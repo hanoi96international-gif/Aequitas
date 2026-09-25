@@ -6,7 +6,7 @@ const landingQuelle = `<!DOCTYPE html>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="google" content="notranslate">
-<title>Aequitas — Proof of Humanity Chain</title>
+<title>Aequitas — Money, because people exist</title>
 <meta name="description" content="Phase 1: one human, one account, 1,000 AEQ start — every new registration passes a live face check by independent matching services. Live Gini on chain.">
 <meta name="theme-color" content="#0B0D14">
 <link rel="canonical" href="https://aequitas.digital/">
@@ -449,6 +449,63 @@ section{padding:64px 16px}
 @media(max-width:1000px){.pg-art{display:none}}
 .eco-cap-v{display:none;align-items:center;justify-content:center;gap:10px;margin-top:8px;font-size:0.85rem;color:var(--muted)}
 @media(max-width:600px){.eco-cap-v{display:flex}.live-card{flex-direction:column;align-items:flex-start;gap:10px}.live-card .stat-lbl{font-size:0.68rem}}
+
+/* ── STORY (26.09.2026) ─────────────────────────────────────── */
+.big3{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:10px}
+.big{background:linear-gradient(160deg,var(--card2),var(--card));border:1px solid var(--border);border-radius:22px;padding:30px 26px;box-shadow:var(--shadow);text-align:center}
+.big-v{font-size:clamp(2.6rem,6vw,3.8rem);font-weight:900;letter-spacing:-0.03em;line-height:1;background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+#problem .big-v{background:linear-gradient(135deg,#FF8F6B,#FF6B6B);-webkit-background-clip:text;background-clip:text}
+.big-l{margin-top:14px;color:var(--muted);font-size:0.95rem;line-height:1.5}
+.src{margin-top:18px;text-align:center;font-size:0.78rem;color:var(--muted)}
+.vs{background:var(--card);border:1px solid var(--border);border-radius:22px;overflow:hidden;box-shadow:var(--shadow);margin-top:10px}
+.vs-head,.vs-row{display:grid;grid-template-columns:1.1fr 1fr 1.3fr;gap:18px;padding:16px 24px;align-items:center}
+.vs-head{font-size:0.78rem;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;border-bottom:1px solid var(--border)}
+.vs-head .vs-old{color:var(--muted)}.vs-head .vs-new{color:var(--green)}
+.vs-row{border-top:1px solid var(--border);font-size:0.95rem}
+.vs-row:nth-child(2){border-top:none}
+.vs-q{display:flex;align-items:center;gap:12px;font-weight:700}
+.vs-q .ico{color:var(--accent)}
+.vs-row .vs-old{color:var(--muted);text-decoration:line-through;text-decoration-color:rgba(255,107,107,0.6)}
+.vs-row .vs-new{color:var(--text);font-weight:600;background:rgba(61,220,151,0.07);border-radius:10px;padding:8px 12px}
+.fn3{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+.fn{position:relative;background:var(--card);border:1px solid var(--border);border-radius:22px;padding:30px 26px;box-shadow:var(--shadow)}
+.fn-ico{width:60px;height:60px;border-radius:18px;display:grid;place-items:center;background:var(--grad);color:#fff;margin-bottom:18px}
+.fn-ico .ico{width:30px;height:30px}
+.fn-n{position:absolute;top:18px;right:22px;font-size:3rem;font-weight:900;color:rgba(255,255,255,0.05);line-height:1}
+.fn h3{font-size:1.15rem;margin-bottom:10px}
+.fn p{color:var(--muted);font-size:0.95rem;line-height:1.55}
+.mg-cols{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.mg-t{font-weight:800;font-size:0.9rem;margin-bottom:12px;color:var(--muted)}
+.mg-bars{display:flex;gap:18px;align-items:flex-end;height:190px;padding-top:24px}
+.mg-bar{flex:1;height:100%;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;position:relative}
+.mg-bar i{display:block;width:100%;border-radius:10px 10px 4px 4px;background:rgba(255,255,255,0.18);transition:transform 1.2s cubic-bezier(.2,.8,.2,1);transform-origin:bottom}
+.mg-bar i.hot{background:linear-gradient(180deg,#FF6B6B,#FF9F5A)}
+.mg-bar span{font-size:0.82rem;font-weight:800;margin-top:8px}
+.mg-bar b{font-size:0.75rem;color:var(--muted);font-weight:600}
+.js .reveal .mg-bar i{transform:scaleY(0)}.js .reveal.in .mg-bar i{transform:scaleY(1)}
+.mg-people{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding-top:12px}
+.mg-p{display:flex;flex-direction:column;align-items:center;gap:4px;background:rgba(61,220,151,0.08);border:1px solid rgba(61,220,151,0.25);border-radius:14px;padding:12px 6px}
+.mg-p .ico{width:28px;height:28px;color:var(--green)}
+.mg-p span{font-weight:800;font-size:0.9rem}
+.mg-eq{text-align:center;margin-top:12px;font-weight:800;color:var(--green);font-size:0.9rem}
+.calc-l{display:block;color:var(--muted);font-size:0.88rem}
+.calc-big{font-size:2.2rem;font-weight:900;margin:4px 0 12px;font-variant-numeric:tabular-nums}
+.calc input[type=range]{width:100%;accent-color:#5B8CFF;height:28px;cursor:pointer}
+.calc-bar{display:flex;height:16px;border-radius:99px;overflow:hidden;background:rgba(255,255,255,0.06);margin-top:12px}
+.calc-bar i{display:block;height:100%;transition:width .2s}
+#calc-free{background:var(--green)}#calc-over{background:var(--gold)}
+.calc-leg{display:flex;gap:18px;margin-top:10px;font-size:0.84rem;color:var(--muted)}
+.calc-leg>span{display:flex;align-items:center;gap:6px}
+.calc-res{display:flex;justify-content:space-between;align-items:baseline;margin-top:18px;padding-top:14px;border-top:1px solid var(--border);color:var(--muted)}
+.calc-res strong{font-size:1.6rem;color:var(--text)}
+.idw{display:flex;gap:20px;align-items:flex-start;margin-top:22px;background:linear-gradient(90deg,rgba(61,220,151,0.10),rgba(91,140,255,0.06));border:1px solid rgba(61,220,151,0.3);border-radius:22px;padding:24px 26px}
+.idw-ico{width:56px;height:56px;border-radius:16px;display:grid;place-items:center;background:rgba(61,220,151,0.15);color:var(--green);flex:none}
+.idw-ico .ico{width:28px;height:28px}
+.idw h3{font-size:1.1rem;margin-bottom:6px}
+.idw p{color:var(--muted);font-size:0.95rem;line-height:1.55}
+.vision-sec{background:radial-gradient(ellipse 60% 80% at 50% 0%,rgba(91,140,255,0.16),transparent 70%)}
+@media(max-width:1000px){.big3,.fn3{grid-template-columns:1fr}.vs-head{display:none}.vs-row{grid-template-columns:1fr;gap:6px;padding:16px 18px}.vs-row .vs-old{font-size:0.88rem}}
+@media(max-width:640px){.mg-cols{grid-template-columns:1fr}.idw{flex-direction:column}}
 </style>
 </head>
 <body>
@@ -501,16 +558,16 @@ section{padding:64px 16px}
         <span class="pulse"></span>
         <span data-i18n="hero-badge">Phase 1 · Chain ID 1926</span>
       </div>
-      <h1 data-i18n="hero-h1">Money that belongs<br>to <span>every human</span> equally</h1>
-      <p class="hero-sub" data-i18n="hero-sub">Every verified person receives 1,000 AEQ and a basic income every day. Businesses take payments without card fees and pay wages free of charge.</p>
+      <h1 data-i18n="hero-h1">Money, because <span>people</span> exist.</h1>
+      <p class="hero-sub" data-i18n="hero-sub">Every person receives the same share: 1,000 AEQ. Nobody can print more. Nobody is excluded. The fairest money in the world.</p>
       <div class="hero-btns">
         <a href="/register" class="btn-primary" data-i18n="btn-register">Register now</a>
         <a href="/business" class="btn-secondary btn-biz" data-i18n="btn-biz">For businesses</a>
       </div>
       <ul class="trust">
         <li><svg class="ico" aria-hidden="true"><use href="#i-check"/></svg><span data-i18n="tr-1">No bank account needed</span></li>
-        <li><svg class="ico" aria-hidden="true"><use href="#i-check"/></svg><span data-i18n="tr-2">No card fees for shops</span></li>
-        <li><svg class="ico" aria-hidden="true"><use href="#i-check"/></svg><span data-i18n="tr-3">Open source, on its own chain</span></li>
+        <li><svg class="ico" aria-hidden="true"><use href="#i-check"/></svg><span data-i18n="tr-2">No money printing</span></li>
+        <li><svg class="ico" aria-hidden="true"><use href="#i-check"/></svg><span data-i18n="tr-3">One person, one account</span></li>
       </ul>
     </div>
     <div class="hero-art reveal" aria-hidden="true">
@@ -574,6 +631,119 @@ section{padding:64px 16px}
   <div class="stats-live"><span class="live-dot"></span><span data-i18n="ubi-pre">Next equal split in</span> <strong id="ubi-next">—</strong> <span data-i18n="ubi-mid">· the pool holds</span> <strong id="ubi-pool">—</strong> AEQ</div>
 </div>
 
+<section id="problem">
+  <div class="section-inner">
+    <div class="center-head reveal">
+      <div class="section-label" data-i18n="pr-label">The problem</div>
+      <h2 data-i18n="pr-h2">Today's money is not fair</h2>
+      <p class="section-sub" data-i18n="pr-sub">New money is created by banks and central banks, and it reaches those who are already close to it first. Everyone else pays for it through inflation, or is left out entirely.</p>
+    </div>
+    <div class="big3">
+      <div class="big reveal"><div class="big-v" data-i18n="pr-1-v">×3.3</div><div class="big-l" data-i18n="pr-1">The euro money supply (M2) has more than tripled since 2001: from under €4.6 trillion to about €15.1 trillion.</div></div>
+      <div class="big reveal"><div class="big-v">75 %</div><div class="big-l" data-i18n="pr-2">of all personal wealth in the world belongs to the richest 10 %. The poorer half of humanity owns about 2 %.</div></div>
+      <div class="big reveal"><div class="big-v" data-i18n="pr-3-v">1.3 bn</div><div class="big-l" data-i18n="pr-3">adults worldwide have no bank account and are shut out of modern money.</div></div>
+    </div>
+    <p class="src" data-i18n="pr-src">Sources: ECB/Statista (M2 2001–2023), World Inequality Report, World Bank Global Findex 2025.</p>
+  </div>
+</section>
+
+<section id="vergleich">
+  <div class="section-inner">
+    <div class="center-head reveal">
+      <div class="section-label" data-i18n="vg-label">The revolution</div>
+      <h2 data-i18n="vg-h2">Money that belongs to people, not to whoever prints it</h2>
+      <p class="section-sub" data-i18n="vg-sub">Aequitas turns the rules around. Money is created only because a person exists, and it is shared out equally.</p>
+    </div>
+    <div class="vs reveal">
+      <div class="vs-head"><span></span><span class="vs-old" data-i18n="vg-old">Money today</span><span class="vs-new">Aequitas</span></div>
+      <div class="vs-row"><span class="vs-q"><svg class="ico" aria-hidden="true"><use href="#i-coin"/></svg><span data-i18n="vg-q1">Who creates money?</span></span><span class="vs-old" data-i18n="vg-o1">Banks and central banks, as credit</span><span class="vs-new" data-i18n="vg-n1">Every verified person receives 1,000 AEQ. Nobody else creates money.</span></div>
+      <div class="vs-row"><span class="vs-q"><svg class="ico" aria-hidden="true"><use href="#i-chart"/></svg><span data-i18n="vg-q2">How much money is there?</span></span><span class="vs-old" data-i18n="vg-o2">Ever more, decided by a few</span><span class="vs-new" data-i18n="vg-n2">Always exactly people × 1,000 AEQ</span></div>
+      <div class="vs-row"><span class="vs-q"><svg class="ico" aria-hidden="true"><use href="#i-users"/></svg><span data-i18n="vg-q3">Who gets new money first?</span></span><span class="vs-old" data-i18n="vg-o3">Those who already have access to credit</span><span class="vs-new" data-i18n="vg-n3">Each new person, the same amount</span></div>
+      <div class="vs-row"><span class="vs-q"><svg class="ico" aria-hidden="true"><use href="#i-globe"/></svg><span data-i18n="vg-q4">Who can take part?</span></span><span class="vs-old" data-i18n="vg-o4">Whoever gets a bank account</span><span class="vs-new" data-i18n="vg-n4">Every person. No bank, no credit check, no address needed.</span></div>
+      <div class="vs-row"><span class="vs-q"><svg class="ico" aria-hidden="true"><use href="#i-refresh"/></svg><span data-i18n="vg-q5">Where do fees go?</span></span><span class="vs-old" data-i18n="vg-o5">To banks and payment companies</span><span class="vs-new" data-i18n="vg-n5">100 % back to everyone as basic income</span></div>
+      <div class="vs-row"><span class="vs-q"><svg class="ico" aria-hidden="true"><use href="#i-lock"/></svg><span data-i18n="vg-q6">What happens to hoarded money?</span></span><span class="vs-old" data-i18n="vg-o6">Large fortunes keep growing</span><span class="vs-new" data-i18n="vg-n6">Money that sits idle flows back to everyone</span></div>
+    </div>
+  </div>
+</section>
+
+<section id="funktionen">
+  <div class="section-inner">
+    <div class="center-head reveal">
+      <div class="section-label" data-i18n="fn-label">What money has to do</div>
+      <h2 data-i18n="fn-h2">The three functions of money, done fairly</h2>
+      <p class="section-sub" data-i18n="fn-sub">Every money has to do three things. Aequitas does all three, and does them for every person equally.</p>
+    </div>
+    <div class="fn3">
+      <div class="fn reveal"><div class="fn-ico"><svg class="ico" aria-hidden="true"><use href="#i-bolt"/></svg></div><div class="fn-n">1</div><h3 data-i18n="fn-1-h">Means of payment</h3><p data-i18n="fn-1-p">Pay in seconds, anywhere in the world, without card fees. The first 1,000 AEQ you spend each month are free of fees, and the shop receives the full price.</p></div>
+      <div class="fn reveal"><div class="fn-ico"><svg class="ico" aria-hidden="true"><use href="#i-lock"/></svg></div><div class="fn-n">2</div><h3 data-i18n="fn-2-h">Store of value</h3><p data-i18n="fn-2-p">Nobody can print AEQ, so your share of all money can never be watered down. Up to 5,000 AEQ your savings lose nothing, ever.</p></div>
+      <div class="fn reveal"><div class="fn-ico"><svg class="ico" aria-hidden="true"><use href="#i-scale"/></svg></div><div class="fn-n">3</div><h3 data-i18n="fn-3-h">Unit of account</h3><p data-i18n="fn-3-p">One fair share is always 1,000 AEQ: what the average person holds. Every rule is a multiple of it, understandable in every country.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="menge">
+  <div class="section-inner split">
+    <div class="reveal">
+      <div class="section-label" data-i18n="mg-label">No inflation by printing</div>
+      <h2 data-i18n="mg-h2">Money supply = people × 1,000</h2>
+      <p class="section-sub" data-i18n="mg-sub">No government, no central bank and not even the founders can create AEQ. New money exists only when a new person joins, and then exactly 1,000 AEQ. Your share of all money stays the same.</p>
+      <ul class="checks">
+        <li><svg class="ico" aria-hidden="true"><use href="#i-check"/></svg><span data-i18n="mg-1"><strong>1 person = 1,000 AEQ.</strong> Nobody receives more at the start.</span></li>
+        <li><svg class="ico" aria-hidden="true"><use href="#i-check"/></svg><span data-i18n="mg-2"><strong>The rules are open.</strong> They are in the public source code and apply to everyone equally.</span></li>
+        <li><svg class="ico" aria-hidden="true"><use href="#i-check"/></svg><span data-i18n="mg-3"><strong>Measured live.</strong> Money supply and inequality are visible on the chain at any time.</span></li>
+      </ul>
+    </div>
+    <div class="chart-card reveal">
+      <div class="chart-h" data-i18n="mg-c-h">How much money there is</div>
+      <div class="mg-cols">
+        <div class="mg-col">
+          <div class="mg-t" data-i18n="mg-c-eur">Euro (M2)</div>
+          <div class="mg-bars">
+            <div class="mg-bar"><i style="height:30%"></i><span data-i18n="mg-c-e1">4.6 tn</span><b>2001</b></div>
+            <div class="mg-bar"><i class="hot" style="height:100%"></i><span data-i18n="mg-c-e2">15.1 tn</span><b>2023</b></div>
+          </div>
+        </div>
+        <div class="mg-col">
+          <div class="mg-t">Aequitas</div>
+          <div class="mg-people">
+            <div class="mg-p"><svg class="ico" aria-hidden="true"><use href="#i-user"/></svg><span data-i18n="mg-p-v">1,000</span></div>
+            <div class="mg-p"><svg class="ico" aria-hidden="true"><use href="#i-user"/></svg><span data-i18n="mg-p-v">1,000</span></div>
+            <div class="mg-p"><svg class="ico" aria-hidden="true"><use href="#i-user"/></svg><span data-i18n="mg-p-v">1,000</span></div>
+            <div class="mg-p"><svg class="ico" aria-hidden="true"><use href="#i-user"/></svg><span data-i18n="mg-p-v">1,000</span></div>
+          </div>
+          <div class="mg-eq" data-i18n="mg-c-aeq">per person, always</div>
+        </div>
+      </div>
+      <p class="chart-note" data-i18n="mg-c-note">Euro: amount of money in the euro area. Aequitas: the amount grows only with the number of people, so every person's share stays at 1,000 AEQ.</p>
+    </div>
+  </div>
+</section>
+
+<section id="umlauf">
+  <div class="section-inner split rev">
+    <div class="reveal">
+      <div class="section-label" data-i18n="ul-label">Circulation incentive</div>
+      <h2 data-i18n="ul-h2">Money should flow, not sit</h2>
+      <p class="section-sub" data-i18n="ul-sub">Whoever holds far more than the fair share pays a small monthly levy on the part above. It never disappears: every AEQ goes back to all people as basic income. This keeps money moving, and wealth cannot pile up without limit.</p>
+      <ul class="checks">
+        <li><svg class="ico" aria-hidden="true"><use href="#i-check"/></svg><span data-i18n="ul-1"><strong>Your first 5,000 AEQ are untouchable.</strong> That is five times the fair share.</span></li>
+        <li><svg class="ico" aria-hidden="true"><use href="#i-check"/></svg><span data-i18n="ul-2"><strong>Above that 0.5 % a month</strong> for people. Businesses keep 1.5 months' turnover free.</span></li>
+        <li><svg class="ico" aria-hidden="true"><use href="#i-check"/></svg><span data-i18n="ul-3"><strong>Tested in history.</strong> In Wörgl (Austria, 1932) money with a circulation levy built roads and bridges in the middle of the Great Depression.</span></li>
+      </ul>
+    </div>
+    <div class="chart-card calc reveal">
+      <div class="chart-h" data-i18n="calc-h">Try it: what would you pay?</div>
+      <label class="calc-l" for="calc-in" data-i18n="calc-l-bal">Your balance</label>
+      <div class="calc-big"><span id="calc-bal">12,000</span> AEQ</div>
+      <input type="range" id="calc-in" min="0" max="25000" step="250" value="12000">
+      <div class="calc-bar"><i id="calc-free"></i><i id="calc-over"></i></div>
+      <div class="calc-leg"><span><span class="dot fb3"></span><span data-i18n="calc-free">free</span></span><span><span class="dot fb2"></span><span data-i18n="calc-over">0.5 % a month</span></span></div>
+      <div class="calc-res"><span data-i18n="calc-l-fee">Levy per month</span><strong><span id="calc-fee">35</span> AEQ</strong></div>
+      <p class="chart-note" data-i18n="calc-note">Everything paid goes back to all people as basic income, so also to you.</p>
+    </div>
+  </div>
+</section>
+
 <section id="kreis">
   <div class="section-inner">
     <div class="section-label" data-i18n="eco-label">The economy</div>
@@ -633,7 +803,7 @@ section{padding:64px 16px}
         <li><svg class="ico" aria-hidden="true"><use href="#i-check"/></svg><span data-i18n="ppl-2"><strong>Everyday life costs nothing.</strong> The first 1,000 AEQ you spend each month are free of fees.</span></li>
         <li><svg class="ico" aria-hidden="true"><use href="#i-check"/></svg><span data-i18n="ppl-4"><strong>Saving is allowed.</strong> Up to 5,000 AEQ your savings lose nothing.</span></li>
       </ul>
-      <a class="section-link" href="/people" data-i18n="fp-btn">All six promises, the basic income and examples →</a>
+      <a class="section-link" href="#people" data-i18n="fp-btn">All six promises, the basic income and examples →</a>
     </div>
     <div class="tiles">
         <div class="tile reveal"><div class="tile-v" data-i18n="pn-1-v">1,000 AEQ</div><div class="tile-l" data-i18n="pn-1-l">start for every verified person</div></div>
@@ -656,6 +826,10 @@ section{padding:64px 16px}
       <div class="step reveal"><div class="step-num">2</div><div class="step-ico"><svg class="ico" aria-hidden="true"><use href="#i-shield"/></svg></div><h3 data-i18n="step2-h">Prove</h3><p data-i18n="step2-p">Zero-knowledge proof to the chain that this face-bound identity is not yet registered (nullifier). The proof server accepts it only with the matching services' signed attestation.</p></div>
       <div class="step reveal"><div class="step-num">3</div><div class="step-ico"><svg class="ico" aria-hidden="true"><use href="#i-coins"/></svg></div><h3 data-i18n="step3-h">Receive</h3><p data-i18n="step3-p">1,000 AEQ once per successful registration.</p></div>
     </div>
+    <div class="idw reveal">
+      <div class="idw-ico"><svg class="ico" aria-hidden="true"><use href="#i-globe"/></svg></div>
+      <div><h3 data-i18n="idw-h">Nobody can exclude you</h3><p data-i18n="idw-p">No bank, no credit check, no address. Today a smartphone is enough. For the launch, registration stations with iris and/or palm-vein recognition are planned, depending on which proves more reliable, so that people without a smartphone can join too. One person, one registration.</p></div>
+    </div>
     <div class="center-head"><a class="btn-primary" href="/register" data-i18n="how-link">Register and claim your 1,000 AEQ →</a></div>
   </div>
 </section>
@@ -667,6 +841,21 @@ section{padding:64px 16px}
       <h2 data-i18n="st-h2">Phase 1: a public test</h2>
       <p data-i18n="st-p">Aequitas runs, but it is not finished. AEQ can only be exchanged into the test currency tUSD, the legal review under the EU crypto regulation is still pending, and the face check has named limits. The economy rules take effect on 1 October 2026.</p>
       <a class="section-link" href="/roadmap" data-i18n="st-link">Roadmap and what is still open →</a>
+    </div>
+  </div>
+</section>
+
+<section id="vision" class="vision-sec">
+  <div class="section-inner">
+    <div class="center-head reveal">
+      <div class="section-label" data-i18n="vi-label">The vision</div>
+      <h2 data-i18n="vi-h2">If 8 billion people take part</h2>
+      <p class="section-sub" data-i18n="vi-sub">A money that belongs to everyone equally, worldwide. Not through redistribution by force, but through rules that are the same for every person from the start.</p>
+    </div>
+    <div class="big3">
+      <div class="big reveal"><div class="big-v" data-i18n="vi-1-v">8 bn</div><div class="big-l" data-i18n="vi-1">people, each with the same fair share of 1,000 AEQ</div></div>
+      <div class="big reveal"><div class="big-v" data-i18n="vi-2-v">0</div><div class="big-l" data-i18n="vi-2">governments or banks that can print more</div></div>
+      <div class="big reveal"><div class="big-v">100 %</div><div class="big-l" data-i18n="vi-3">of every fee and levy back to all people, every day</div></div>
     </div>
   </div>
 </section>
@@ -931,7 +1120,7 @@ section{padding:64px 16px}
       <div class="biz-row"><span class="biz-k" data-i18n="age-r3-k">Businesses with shared responsible people</span><span class="biz-v" data-i18n="age-r3-v">do not count for each other</span></div>
       <div class="biz-row"><span class="biz-k" data-i18n="age-r4-k">Wages, withdrawals, your own payments, other addresses, exchange into AEQ</span><span class="biz-v" data-i18n="age-r4-v">do not count</span></div>
     </div>
-    <p class="note" data-i18n="age-note">Turnover is the average of the last 90 days, or of the last 12 months if that is higher, so a seasonal business keeps its reserve after the season. The surplus rule stops circles: if three firms send each other money, each has as much coming in as going out, and the allowance does not grow. A new business is averaged over at least 30 days, and in its first six months it never pays more than a person would: 5,000 AEQ free, 0.5 % above, up to 25,000 AEQ. Once per person every 12 months.</p>
+    <p class="note" data-i18n="age-note">Turnover is the average of the last 90 days, or of the last 12 months if that is higher, so a seasonal business keeps its reserve after the season. The surplus rule stops circles: if three firms send each other money, each has as much coming in as going out, and the allowance does not grow. A new business is averaged over at least 30 days. In its first six months, founder and business together never pay more than one person would: one shared 5,000 AEQ allowance and one shared 25,000 AEQ limit. Once per person every 12 months.</p>
     </details>
     <div class="biz-live"><span><span data-i18n="biz-live-from">Rules apply from</span> <strong id="biz-from">—</strong></span><span><span data-i18n="biz-live-count">Registered businesses</span>: <strong id="biz-count">—</strong></span></div>
     <a class="section-link" href="https://github.com/hanoi96international-gif/Aequitas/blob/main/docs/UNTERNEHMEN_KONZEPT.md" rel="noopener" data-i18n="biz-link">Read the full concept →</a>
@@ -945,7 +1134,7 @@ section{padding:64px 16px}
     <p class="section-sub" data-i18n="lh-sub">A decentralised network cannot check whether a real company stands behind an account, and it should not have to: no registry, no authority, no gatekeeper. Instead, hoarding is expensive in every form and passing money on is cheap in every form. Registering as a business only pays off for those whose money really flows.</p>
     <details class="lh-details"><summary class="biz-rules-h" data-i18n="lh-list-h">Every workaround we found, and why it fails</summary>
     <ul class="lh-list">
-      <li data-i18n="lh-1"><strong>Registering as a business to get around the 25,000 limit.</strong> Without real turnover a business pays 2 % a month on everything above 2,000 AEQ, four times as much as a person. In its first six months it pays like a person only up to 25,000 AEQ, and only once per person a year.</li>
+      <li data-i18n="lh-1"><strong>Registering as a business to get around the 25,000 limit.</strong> Without real turnover a business pays 2 % a month on everything above 2,000 AEQ, four times as much as a person. In its first six months, founder and business together count as one person with one shared 25,000 AEQ limit.</li>
       <li data-i18n="lh-2"><strong>Sending money in circles between your own or friendly firms to inflate turnover.</strong> Between businesses only the surplus counts, and your own firms do not count for each other: a circle adds nothing.</li>
       <li data-i18n="lh-3"><strong>Paying money in yourself or through the owner.</strong> Payments from a business's own responsible people do not count as turnover.</li>
       <li data-i18n="lh-4"><strong>Friends who buy and get the money back.</strong> Each person counts at most 9,000 AEQ per quarter per business, and whatever the business pays back to that same person cancels it. The money would have to go back through other people, every quarter, publicly visible.</li>

@@ -438,14 +438,16 @@ func menschUmlaufFuer(stand float64) float64 {
 // liegegeldLocked: Liegegeld pro Monat fuer ein Unternehmen bei diesem Stand.
 // Weniger als 30 Tage Daten auf diesem Knoten: 0 (siehe Kopf).
 //
-// GRUENDUNG. Im ersten halben Jahr zahlt ein Unternehmen hoechstens, was ein
-// Mensch zahlen wuerde: 5.000 AEQ frei, darueber 0,5 %. Das gilt nur bis zur
-// Grenze, die fuer Menschen gilt (25.000 AEQ); darueber die Regeln fuer
-// Unternehmen -- sonst liesse sich ein halbes Jahr lang beliebig viel billig
-// parken. Kein Vorrecht fuer Gruender, nur kein Nachteil: Startkapital, das
-// die Gruenderin als Mensch halten koennte, kostet in der Firma nicht mehr.
-// Einmal je Mensch in zwoelf Monaten (inGruendungLocked). w.mu gehalten.
-func (w *wirtschaft) liegegeldLocked(addr string, stand float64, jetzt int64) float64 {
+// GRUENDUNG. Im ersten halben Jahr werden Gruenderin und Firma zusammen nie
+// besser gestellt als ein Mensch: Das Geld in der Firma kostet genau so viel,
+// wie es zusaetzlich kosten wuerde, laege es noch bei der Gruenderin
+// (gruenderStand). Beide teilen sich den Sparfreibetrag und die Grenze fuer
+// Menschen (25.000 AEQ); was darueber liegt, zahlt nach den Regeln fuer
+// Unternehmen. Kein Vorrecht und keine Luecke (eine Scheinfirma verdoppelt
+// die Grenze nicht), aber auch kein Nachteil: Startkapital kostet in der
+// Firma nicht mehr als in der eigenen Tasche. Einmal je Mensch in zwoelf
+// Monaten (inGruendungLocked). w.mu gehalten.
+func (w *wirtschaft) liegegeldLocked(addr string, stand, gruenderStand float64, jetzt int64) float64 {
 	if w.knotenTageLocked(jetzt) < umsatzMindestTage {
 		return 0
 	}
@@ -454,9 +456,11 @@ func (w *wirtschaft) liegegeldLocked(addr string, stand float64, jetzt int64) fl
 	if !w.inGruendungLocked(w.unternehmen[addr], jetzt) {
 		return normal
 	}
-	grenze := registrationGrant * wealthCapMultiplier
-	unten := math.Min(stand, grenze)
-	wieMensch := menschUmlaufFuer(unten) + liegegeldFuerStand(stand, umsatz) - liegegeldFuerStand(unten, umsatz)
+	g := math.Max(0, gruenderStand)
+	platz := math.Max(0, registrationGrant*wealthCapMultiplier-g)
+	unten := math.Min(stand, platz)
+	wieMensch := menschUmlaufFuer(g+unten) - menschUmlaufFuer(g) +
+		liegegeldFuerStand(stand, umsatz) - liegegeldFuerStand(unten, umsatz)
 	return math.Min(normal, wieMensch)
 }
 
@@ -682,6 +686,28 @@ func (cs *ChainState) nachEinzahlung(ctx context.Context, addr string, aeqErhalt
 
 // ------------------------------------------------------------ Umlauf (taeglich)
 
+// gruenderStand: Guthaben der Person, die das Unternehmen eroeffnet hat
+// (fuer die Gruendungsphase, liegegeldLocked). Im Tagesdurchlauf in derselben
+// Reihenfolge gelesen wie beim Nachspielen -- deterministisch.
+func (cs *ChainState) gruenderStand(unternehmen string) float64 {
+	w := cs.wirt()
+	w.mu.Lock()
+	e := w.unternehmen[unternehmen]
+	gruender := ""
+	if e != nil && len(e.Verantwortliche) > 0 {
+		gruender = e.Verantwortliche[0]
+	}
+	w.mu.Unlock()
+	if gruender == "" {
+		return 0
+	}
+	cs.ensureAccountLoadedCtx(context.Background(), gruender)
+	if acc, ok := cs.accounts.Get(gruender); ok {
+		return acc.Balance.Float()
+	}
+	return 0
+}
+
 // umlaufBetrag: was ein Konto fuer den Zeitraum sekunden schuldet.
 func (cs *ChainState) umlaufBetrag(addr string, art kontoart, stand float64, jetzt, sekunden int64) float64 {
 	if stand <= 0 || sekunden <= 0 {
@@ -694,10 +720,11 @@ func (cs *ChainState) umlaufBetrag(addr string, art kontoart, stand float64, jet
 	case artFrei:
 		return round6(stand * freiUmlaufMonat * anteil)
 	case artUnternehmen:
+		g := cs.gruenderStand(addr)
 		w := cs.wirt()
 		w.mu.Lock()
 		defer w.mu.Unlock()
-		return round6(w.liegegeldLocked(addr, stand, jetzt) * anteil)
+		return round6(w.liegegeldLocked(addr, stand, g, jetzt) * anteil)
 	}
 	return 0
 }

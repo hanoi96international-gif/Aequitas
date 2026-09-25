@@ -23,9 +23,9 @@ import (
 
 var (
 	landingHTML = baueSeite("/", "", "", []string{
-		"kreis", "forbiz", "forppl", "how", "news", "faqkurz", "status", "cta"})
+		"problem", "vergleich", "funktionen", "menge", "umlauf", "kreis", "forbiz", "how", "vision", "news", "faqkurz", "status", "cta"})
 	peopleHTML = baueSeite("/people", "Aequitas — For people", seitenKopfPpl, []string{
-		"people", "ubi", "examples"})
+		"forppl", "people", "ubi", "examples"})
 	economyHTML = baueSeite("/economy", "Aequitas — How it works", seitenKopfEco, []string{
 		"economy", "compare", "fairness"})
 	businessHTML = baueSeite("/business", "Aequitas — For businesses", seitenKopfBiz, []string{

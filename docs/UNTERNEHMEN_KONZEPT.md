@@ -714,7 +714,7 @@ ob die Startwerte stimmen (insbesondere 3.000 AEQ Tausch-Freibetrag).
 |---|---|
 | Freibetrag Unternehmen | 1,5 × Monatsumsatz (mind. 2.000 AEQ) |
 | Liegegeld darüber | 0,5 %/Monat bis 3 × Monatsumsatz, darüber 2 %/Monat |
-| Gründungsphase | erstes halbes Jahr: nie mehr als ein Mensch (5.000 AEQ frei, darüber 0,5 %, bis 25.000 AEQ; darüber Unternehmensregeln); einmal je Mensch in 12 Monaten |
+| Gründungsphase | erstes halbes Jahr: Gründerin und Firma zusammen wie ein Mensch (gemeinsamer Freibetrag 5.000 AEQ, gemeinsame Grenze 25.000 AEQ; darüber Unternehmensregeln); einmal je Mensch in 12 Monaten |
 | Monatsumsatz | der höhere Wert aus 90-Tage- und 12-Monats-Durchschnitt, bei neuen Unternehmen über mindestens 30 Tage; Menschen je 9.000 AEQ/Quartal gedeckelt; Unternehmen nur Überschuss; Löhne, freie Adressen, Einstieg zählen nicht |
 | Alter des Geldes | entfällt |
 | Menschen: Überweisungsgebühr | erste 1.000 AEQ/Monat frei, danach 0,1 %, keine Stufen |
@@ -748,13 +748,15 @@ Deshalb wird der Pilot als Kette aufgebaut (Bäckerei, Mühle, Hof, Café) und
 nicht aus einzelnen Läden.
 
 **Drei Regeln, die niemandem einen Vorteil geben:**
-1. **Gründungsphase.** Im ersten halben Jahr zahlt ein Unternehmen nie mehr,
-   als ein Mensch zahlen würde: 5.000 AEQ frei, darüber 0,5 %. Das gilt nur
-   bis zur Grenze für Menschen (25.000 AEQ), darüber gelten die Regeln für
+1. **Gründungsphase.** Im ersten halben Jahr werden Gründerin und Firma
+   zusammen nie besser gestellt als ein Mensch. Das Geld in der Firma kostet
+   genau so viel, wie es zusätzlich kosten würde, läge es noch bei der
+   Gründerin. Beide teilen sich den Sparfreibetrag (5.000 AEQ) und die Grenze
+   für Menschen (25.000 AEQ); was darüber liegt, zahlt nach den Regeln für
    Unternehmen. Es gilt einmal je Mensch in 12 Monaten (maßgeblich ist, wer
-   eröffnet hat). Startkapital, das die Gründerin als Mensch halten könnte,
-   kostet in der Firma also nicht mehr. Die Lücke „jeden Monat eine neue
-   Firma“ bleibt geschlossen.
+   eröffnet hat). Startkapital kostet in der Firma also nicht mehr als in der
+   eigenen Tasche. Eine Scheinfirma verdoppelt die Grenze nicht, und die
+   Lücke „jeden Monat eine neue Firma“ bleibt geschlossen.
 2. **Saisonbetriebe.** Es zählt der höhere Wert aus dem 90-Tage- und dem
    12-Monats-Durchschnitt. Ein Skiverleih behält seine Rücklage nach der
    Saison. Gemessen wird in beiden Fällen echter Umsatz.

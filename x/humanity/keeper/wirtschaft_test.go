@@ -226,10 +226,10 @@ func TestLiegegeldNachUmsatz_Rechenbeispiele(t *testing.T) {
 	}
 }
 
-// Ein neues Unternehmen hat keine Schonfrist, wird aber im ersten halben
-// Jahr wie ein Mensch behandelt: 5.000 frei, darueber 0,5 % -- bis zur
-// Grenze fuer Menschen (25.000), darueber die Regeln fuer Unternehmen.
-// Danach die normalen Regeln. Einmal je Mensch in zwoelf Monaten.
+// Ein neues Unternehmen hat keine Schonfrist. Im ersten halben Jahr werden
+// Gruenderin und Firma aber zusammen wie ein Mensch behandelt: gemeinsamer
+// Sparfreibetrag, gemeinsame Grenze von 25.000 AEQ, darueber die Regeln fuer
+// Unternehmen. Danach die normalen Regeln. Einmal je Mensch in zwoelf Monaten.
 func TestGruendungWieEinMensch(t *testing.T) {
 	cs, ctx, vor := wirtschaftsTest(t)
 	eroeffne(t, cs, ctx, wFirmaA, wMensch1)
@@ -237,11 +237,13 @@ func TestGruendungWieEinMensch(t *testing.T) {
 	lg := func(firma string, stand float64) float64 {
 		return cs.umlaufBetrag(firma, artUnternehmen, stand, nowUnix(), sekundenJeMonat)
 	}
-	if g := lg(wFirmaA, 20_000); !fast(g, 75) {
-		t.Fatalf("Startkapital 20.000: wie ein Mensch 15.000 x 0,5 %% = 75, bekommen %v", g)
+	// Gruenderin haelt 1.000: zusammen 21.000, davon 16.000 ueber dem Freibetrag.
+	if g := lg(wFirmaA, 20_000); !fast(g, 80) {
+		t.Fatalf("Startkapital 20.000: (21.000 - 5.000) x 0,5 %% = 80, bekommen %v", g)
 	}
-	if g := lg(wFirmaA, 1_000_000); !fast(g, 100+19_960-460) {
-		t.Fatalf("1 Mio. geparkt: nur bis 25.000 wie ein Mensch, bekommen %v", g)
+	// 1 Mio. geparkt: nur 24.000 wie ein Mensch (zusammen 25.000), Rest 2 %.
+	if g := lg(wFirmaA, 1_000_000); !fast(g, 100+19_960-440) {
+		t.Fatalf("1 Mio. geparkt: bekommen %v", g)
 	}
 	// Zweite Firma desselben Menschen innerhalb eines Jahres: keine Gruendungsphase.
 	eroeffne(t, cs, ctx, wFirmaB, wMensch1)
@@ -250,8 +252,14 @@ func TestGruendungWieEinMensch(t *testing.T) {
 	}
 	// Ein anderer Mensch gruendet: eigene Phase.
 	eroeffne(t, cs, ctx, wFirmaC, wMensch2)
-	if g := lg(wFirmaC, 20_000); !fast(g, 75) {
+	if g := lg(wFirmaC, 20_000); !fast(g, 80) {
 		t.Fatalf("anderer Gruender: wie ein Mensch, bekommen %v", g)
+	}
+	// Die Luecke: Wer als Mensch schon 25.000 haelt, parkt in einer
+	// Scheinfirma nichts billiger -- die gemeinsame Grenze ist voll.
+	acct(cs, wMensch2).Balance = NewDecimal(25_000)
+	if g := lg(wFirmaC, 20_000); !fast(g, 360) {
+		t.Fatalf("Gruender mit 25.000: Firma zahlt die normalen 360, bekommen %v", g)
 	}
 	vor(182 * tag)
 	if g := lg(wFirmaA, 20_000); !fast(g, 360) {
@@ -285,7 +293,7 @@ func TestLiegegeldErstNach30TagenKnotenDaten(t *testing.T) {
 	}
 	vor(2 * tag)
 	// In der Gruendungsphase: bis 25.000 wie ein Mensch (100), darueber 2 %.
-	if lg := cs.umlaufBetrag(wFirmaA, artUnternehmen, 100_000, nowUnix(), sekundenJeMonat); !fast(lg, 100+1_960-460) {
+	if lg := cs.umlaufBetrag(wFirmaA, artUnternehmen, 100_000, nowUnix(), sekundenJeMonat); !fast(lg, 100+1_960-440) {
 		t.Fatalf("ohne Umsatz, in der Gruendung: bekommen %v", lg)
 	}
 }
