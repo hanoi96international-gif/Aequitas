@@ -338,7 +338,7 @@ func (cs *ChainState) applyTransferBatchParallel(ctx context.Context, batch []Tr
 		if it.from.Balance.Float() < it.amount {
 			merkeBuendelAblehnung(&baGuthaben)
 			schlecht = true
-		} else if hasCap && !isTokenomicsPoolAddress(it.toKey) && nach.Float() > capAmt {
+		} else if cs.wuerdeKappenLocked(it.toKey, it.to, nach.Float(), capAmt, hasCap) {
 			merkeBuendelAblehnung(&baWohlstandsCap)
 			schlecht = true
 		}

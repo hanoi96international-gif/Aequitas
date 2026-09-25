@@ -494,7 +494,7 @@ func (cs *ChainState) transferConcurrentWALGesperrt(from, to string, amount floa
 	if fromAcc.Balance.Float() < amount+gebuehr {
 		return 0, 0, true, fmt.Errorf("insufficient balance"), nil
 	}
-	if hasCapAmt && toAcc.Balance.Float()+amount > capAmt {
+	if cs.wuerdeKappenLocked(to, toAcc, toAcc.Balance.Float()+amount, capAmt, hasCapAmt) {
 		fbWohlstandsCap.Add(1)
 		return 0, 0, false, nil, nil
 	}
