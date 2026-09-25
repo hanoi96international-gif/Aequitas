@@ -113,7 +113,7 @@
   <div class="rhero">
     <div class="hero-badge"><span class="pulse"></span><span data-i18n="phase0-badge">Beta · face check</span></div>
     <h1 class="rhero-title" data-i18n="reg-title">🔐 Register as a Verified Human</h1>
-    <div class="rhero-sub" data-i18n="reg-sub">Join the Aequitas network and receive your 1,000 AEQ start grant. Registration is one-time and permanent. Beta: a live face check by independent matching services is the gate — see the disclaimer for the named limits.</div>
+    <div class="rhero-sub" data-i18n="reg-sub">Join the Aequitas network and receive your 1,000 AEQ start grant. Registration is one-time and permanent. It is in beta: checked, with named limits — see the beta notice below.</div>
     <div class="hero-btns">
       <a href="/download/app.apk" class="btn-primary">
         <span data-i18n="btn-download-app">DOWNLOAD AEQUITAS APP</span>
@@ -133,7 +133,7 @@
       </div>
       <div class="fairness-card c-warn">
         <div class="fairness-card-title" data-i18n="usp-c2-title">1,000 AEQ for every human</div>
-        <div class="fairness-card-desc" data-i18n="usp-c2-desc">Billionaire or subsistence farmer — everyone gets exactly 1,000 AEQ. Not more, not less. Equal start, guaranteed by math.</div>
+        <div class="fairness-card-desc" data-i18n="usp-c2-desc">Billionaire or subsistence farmer — everyone gets exactly 1,000 AEQ. Not more, not less. The same start for everyone, fixed in the code.</div>
       </div>
       <div class="fairness-card">
         <div class="fairness-card-title" data-i18n="usp-c3-title">Accessible to all</div>
@@ -149,18 +149,20 @@
   <div class="aonly">
     <div class="aonly-icon">📱</div>
     <div class="aonly-title" data-i18n="app-title">REGISTRATION VIA ANDROID APP</div>
-    <div class="aonly-text" data-i18n="app-text">Registration captures your face and a short liveness sequence (blink, a glance to a random side, colour flashes on the screen) with the phone camera. Two independent matching services check that this face is not already registered; both must agree, and the proof server accepts the registration only with their signed attestations. A Groth16 ZK proof then carries the result to the chain without revealing anything about you. Your <strong style="color:var(--gold)">1,000 AEQ are credited automatically</strong> upon verification. <strong style="color:var(--gold)">Note:</strong> the named limits (older accounts without a face, uncalibrated threshold, liveness not yet fully binding) are in the disclaimer near the register button.</div>
+    <div class="aonly-text" data-i18n="app-text">Registration runs only in the Android app: a short face capture, checked by two independent matching services. After that, <strong style="color:var(--gold)">1,000 AEQ are credited automatically</strong>. What is and is not stored: step 1 and the beta notice below.</div>
   </div>
   <div class="rsteps">
     <div class="rstep"><div class="snum">1</div><div class="stitle" data-i18n="s1t">Connect</div><div class="sdesc" data-i18n="s1d">The app records your face and a short liveness sequence (blink, a glance to a random side, colour flashes) and sends them to two independent matching services. They compare the face against everyone registered with a face. The photo is discarded within seconds; only a 64-byte sketch is kept.</div></div>
-    <div class="rstep"><div class="snum">2</div><div class="stitle" data-i18n="s2t">Prove</div><div class="sdesc" data-i18n="s2d">A Groth16 ZK proof commits your bio_hash into commitment = keccak256(bioHash‖wallet) without revealing it. The proof server issues it only against the matching services' signed attestation, and the nullifier derived from it can be spent once — so the same face cannot count twice.</div></div>
+    <div class="rstep"><div class="snum">2</div><div class="stitle" data-i18n="s2t">Prove</div><div class="sdesc" data-i18n="s2d">A Groth16 ZK proof binds your bio_hash into a commitment (Poseidon of bio_hash, wallet and a salt) without revealing it. The proof server only issues it with the wallet binding and the two services' signed attestations, and the nullifier can be spent once — so the same face does not count twice.</div></div>
     <div class="rstep"><div class="snum">3</div><div class="stitle" data-i18n="s3t">Receive</div><div class="sdesc" data-i18n="s3d">Registration confirmed on Aequitas BlockDAG within 1 second · 1,000 AEQ credited instantly · your identity is permanently recorded as a verified human</div></div>
   </div>
-  <div class="pbar" data-i18n="priv-bar">🔒 Beta · Face check by quorum · Signed attestation required · Groth16 ZKP · Images discarded after checking</div>
+  <div class="pbar" data-i18n="priv-bar">🔒 Beta · Face check by 2 independent services · 2 signed attestations required · Groth16 ZKP · Only a 64-byte sketch kept</div>
   <div class="pbar" style="background:rgba(245,166,35,0.06);border:1px solid rgba(245,166,35,0.2);color:var(--gold)" data-i18n="x-metamask-mobile-if-aeq-balance">📱 MetaMask Mobile: if AEQ balance shows 0 after registration, go to Settings → Networks → delete Aequitas Chain → re-add via this website</div>
 
-  <div class="phase0-disc" data-i18n="reg-disclaimer"><div style="font-weight:800;color:var(--gold);margin-bottom:6px;font-size:0.88rem">Beta disclaimer</div>Beta: since 25 Aug 2026 the proof server refuses any registration without the signed attestations of the two matching services — a second phone no longer gives the same face a second account. What is not yet true: accounts registered before that date are only covered once their owner adds the face in the app (no new grant); until then they could in principle register again on a new wallet. Error rates are not calibrated (that needs ~1,000 impostor pairs). Liveness: only the glance task is binding today; colour flashes, pulse and parallax are measured but do not decide yet. Read “one human, one account” as “checked, with named limits” — not as “impossible to circumvent.” Long term, Aequitas will rely on iris scans to truly guarantee one person, one registration. How that can be implemented reliably and privacy-preserving is being worked on now; hardware and timing are not decided yet.</div>
-  <div class="phase0-disc" data-i18n="beta-why"><strong>What the beta is for:</strong> it tests whether a person can be recognised again without anyone keeping their picture or a whole face template. The photo and the full face description are deleted within seconds; each of the two matching services keeps only a 64-byte sketch (512 yes/no values) from which the face cannot be reconstructed, but which still recognises a second registration by the same person. This is the groundwork for the iris scan, which is meant to work on the same principle. <strong>Where it stands today:</strong> each service still holds the whole sketch; splitting it so that no service holds it whole is built and tested but not yet active, and error rates are not yet calibrated.</div>
+  <details class="phase0-disc reg-details"><summary data-i18n="reg-disc-sum">Beta notice: what already holds and what does not yet (open)</summary>
+    <div data-i18n="reg-disclaimer" style="margin-top:10px">Beta: since 25 Aug 2026 the proof server refuses any registration without the signed attestations of the two matching services — a second phone no longer gives the same face a second account. What is not yet true: accounts registered before that date are only covered once their owner adds the face in the app (no new grant); until then they could in principle register again on a new wallet. Error rates are not calibrated (that needs ~1,000 impostor pairs). Liveness: only the glance task is binding today; colour flashes, pulse and parallax are measured but do not decide yet. Read “one human, one account” as “checked, with named limits” — not as “impossible to circumvent.” Long term, Aequitas will rely on iris scans to truly guarantee one person, one registration. How that can be implemented reliably and privacy-preserving is being worked on now; hardware and timing are not decided yet.</div>
+    <div data-i18n="beta-why" style="margin-top:10px"><strong>What the beta is for:</strong> it tests whether a person can be recognised again without anyone keeping their picture or a whole face template. The photo and the full face description are deleted within seconds; each of the two matching services keeps only a 64-byte sketch (512 yes/no values) from which the face cannot be reconstructed, but which still recognises a second registration by the same person. This is the groundwork for the iris scan, which is meant to work on the same principle. <strong>Where it stands today:</strong> each service still holds the whole sketch; splitting it so that no service holds it whole is built and tested but not yet active, and error rates are not yet calibrated.</div>
+  </details>
   <div class="rcard">
     <div class="wbox" id="wbox"><div class="wlbl" data-i18n="conn-wallet">CONNECTED WALLET</div><div class="wadr" id="wadr" title="">—</div><button data-act="copyAddr" data-args='["wadr"]' style="margin-top:4px;padding:3px 10px;font-size:0.74rem;background:rgba(0,255,209,0.08);border:1px solid rgba(0,255,209,0.2);color:var(--neon);border-radius:4px;cursor:pointer">📋 Copy</button></div>
     <div id="demurrage-notice" style="display:none"></div>
@@ -169,8 +171,8 @@
     <button class="rbtn bc" id="btn-wc" data-act="connectWalletConnect" style="background:linear-gradient(135deg,#3b99fc,#1e5fd6);color:#fff" data-i18n="btn-wc">🔗 CONNECT WALLETCONNECT</button>
     <button id="btn-disconnect" data-act="disconnectWallet" style="display:none;margin-top:6px;padding:8px 16px;font-size:0.77rem;letter-spacing:1px;border:1px solid rgba(248,113,113,0.4);background:rgba(248,113,113,0.08);color:var(--red);border-radius:6px;cursor:pointer;width:100%" data-i18n="x-disconnect-wallet">⊘ DISCONNECT WALLET</button>
     <button class="rbtn br" id="btn-reg" data-act="doRegister" disabled data-i18n="btn-reg">🔐 REGISTER ON-CHAIN</button>
-    <div style="font-size:0.78rem;color:var(--gold);line-height:1.7;margin-top:8px;opacity:.95" data-i18n="reg-apk-note">Beta: registration needs the app with the face check (app.apk from this site, v1.6.0 or newer).</div>
-    <div class="rlog" id="rlog"><span class="info" data-i18n="reg-log-hint">// Open Aequitas Android App to generate your proof, then return here...</span></div>
+    <div style="font-size:0.78rem;color:var(--gold);line-height:1.7;margin-top:8px;opacity:.95" data-i18n="reg-apk-note">Registration needs the app with the face check (app.apk from this site; use the current version so that a rejection shows its objection code).</div>
+    <div class="rlog" id="rlog"><span class="info" data-i18n="reg-log-hint">// The app registers you by itself. The buttons above are only needed if a link with a finished proof brought you here.</span></div>
 
     <!-- Guardian Panel — shown only when user is a registered human -->
     <div class="guardian-panel" id="guardian-panel" style="display:none">
@@ -1005,7 +1007,7 @@
       <tr><td data-i18n="x-p2p-protocol">P2P Protocol</td><td data-i18n="x-libp2p-go-implementation">libp2p (Go implementation)</td></tr>
       <tr><td>ZKP System</td><td data-i18n="x-groth16-snarkjs-circom">Groth16 / snarkjs / circom</td></tr>
       <tr><td data-i18n="x-elliptic-curve">Elliptic Curve</td><td>BN128 (alt-bn128)</td></tr>
-      <tr><td>Bio Hash</td><td style="color:var(--teal)" data-i18n="x-keccak256-post-quantum-safe">keccak256 (post-quantum safe)</td></tr>
+      <tr><td>Bio Hash</td><td style="color:var(--teal)" data-i18n="x-bio-hash-random">random value, issued after the face check (not derived from the face)</td></tr>
       <tr><td data-i18n="k-storage">Storage</td><td style="color:var(--green)" data-i18n="x-postgresql-persistent">PostgreSQL (persistent)</td></tr>
       <tr><td data-i18n="k-lang">Language</td><td data-i18n="x-go-1-24-chain-node">Go 1.24 (chain) · Node.js (proof server)</td></tr>
       <tr><td data-i18n="k-src">Source</td><td><a href="https://github.com/hanoi96international-gif/Aequitas" target="_blank" style="color:var(--blue)" data-i18n="x-github-open-source">GitHub — Open Source</a></td></tr>
@@ -1956,12 +1958,12 @@
 
 <footer class="site-footer">
   <div class="footer-links">
-    <a href="/">Overview</a>
+    <a href="/" data-i18n="nav-home">Home</a>
     <a href="/register" data-i18n="nav-register">Register</a>
-    <a href="/explorer">Explorer</a>
-    <a href="/index/score">Equality</a>
-    <a href="/network">Network</a>
-    <a href="/exchange">Exchange</a>
+    <a href="/explorer" data-i18n="nav-explorer">Explorer</a>
+    <a href="/index/score" data-i18n="nav-equality">Equality</a>
+    <a href="/network" data-i18n="nav-network">Network</a>
+    <a href="/exchange" data-i18n="nav-exchange">Exchange</a>
     <a href="https://github.com/hanoi96international-gif/Aequitas">GitHub</a>
     <a href="https://x.com/AequitasMoney" target="_blank" rel="noopener noreferrer">X</a>
     <a href="https://t.me/aequitasmoney" target="_blank" rel="noopener noreferrer">Telegram</a>

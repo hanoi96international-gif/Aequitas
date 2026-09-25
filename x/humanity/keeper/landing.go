@@ -516,6 +516,7 @@ section{padding:64px 16px}
 .pz h3{font-size:1.2rem;margin-bottom:10px}
 .pz p{color:var(--muted);font-size:0.96rem;line-height:1.55}
 .pz3 .pz:not(:last-child)::after{content:"→";position:absolute;right:-18px;top:62px;font-size:1.4rem;color:var(--accent);z-index:1}
+[dir="rtl"] .pz3 .pz:not(:last-child)::after{content:"←";right:auto;left:-18px}
 .warum-sec{background:linear-gradient(180deg,rgba(91,140,255,0.06),transparent)}
 .wy6{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
 .wy{background:var(--card);border:1px solid var(--border);border-radius:22px;padding:28px 24px;box-shadow:var(--shadow);transition:border-color .2s,transform .2s}
@@ -601,7 +602,7 @@ section{padding:64px 16px}
         <span data-i18n="hero-badge">Beta · public test</span>
       </div>
       <h1 data-i18n="hero-h1">Money, because <span>people</span> exist.</h1>
-      <p class="hero-sub" data-i18n="hero-sub">Every person receives the same share: 1,000 AEQ. Nobody can print more. Nobody is excluded. The fairest money in the world.</p>
+      <p class="hero-sub" data-i18n="hero-sub">Every person receives the same share: 1,000 AEQ. Nobody can print more. No bank account, no ID needed.</p>
       <div class="hero-btns">
         <a href="/register" class="btn-primary" data-i18n="btn-register">Register now</a>
         <a href="/business" class="btn-secondary btn-biz" data-i18n="btn-biz">For businesses</a>
@@ -717,7 +718,7 @@ section{padding:64px 16px}
     </div>
     <div class="zg4">
       <div class="zg reveal"><span class="zg-ico"><svg class="ico" aria-hidden="true"><use href="#i-phone"/></svg></span><h3 data-i18n="zg-1-h">A smartphone is enough</h3><p data-i18n="zg-1-p">Register with a short live face check. No bank account, no paperwork.</p></div>
-      <div class="zg reveal"><span class="zg-ico"><svg class="ico" aria-hidden="true"><use href="#i-scan"/></svg></span><h3 data-i18n="zg-2-h">Long term: the iris scan</h3><p data-i18n="zg-2-p">In the long run Aequitas will rely on the iris scan. The iris is among the most distinctive features of a person, even among billions, and is meant to truly guarantee 1 person = 1 registration. How it can be implemented reliably and privacy-friendly is being worked on right now; hardware and timing are not decided yet.</p></div>
+      <div class="zg reveal"><span class="zg-ico"><svg class="ico" aria-hidden="true"><use href="#i-scan"/></svg></span><h3 data-i18n="zg-2-h">Long term: the iris scan</h3><p data-i18n="zg-2-p">In the long run the iris scan is meant to guarantee 1 person = 1 registration, even among billions. It is being worked on; hardware and timing are not decided yet.</p></div>
       <div class="zg reveal"><span class="zg-ico"><svg class="ico" aria-hidden="true"><use href="#i-bank"/></svg></span><h3 data-i18n="zg-3-h">No bank, no credit check</h3><p data-i18n="zg-3-p">No address, no credit rating, no minimum income. Being a person is enough.</p></div>
       <div class="zg reveal"><span class="zg-ico"><svg class="ico" aria-hidden="true"><use href="#i-globe"/></svg></span><h3 data-i18n="zg-4-h">Worldwide, in 12 languages</h3><p data-i18n="zg-4-p">The same rules for every person, in every country.</p></div>
     </div>
@@ -770,7 +771,7 @@ section{padding:64px 16px}
     </div>
     <div class="fn3">
       <div class="fn reveal"><div class="fn-ico"><svg class="ico" aria-hidden="true"><use href="#i-bolt"/></svg></div><div class="fn-n">1</div><h3 data-i18n="fn-1-h">Means of payment</h3><p data-i18n="fn-1-p">Pay in seconds, anywhere in the world, without card fees. The first 1,000 AEQ you spend each month are free of fees, and the shop receives the full price.</p></div>
-      <div class="fn reveal"><div class="fn-ico"><svg class="ico" aria-hidden="true"><use href="#i-lock"/></svg></div><div class="fn-n">2</div><h3 data-i18n="fn-2-h">Store of value</h3><p data-i18n="fn-2-p">Nobody can print AEQ, so your share of all money can never be watered down. Up to 5,000 AEQ your savings lose nothing, ever.</p></div>
+      <div class="fn reveal"><div class="fn-ico"><svg class="ico" aria-hidden="true"><use href="#i-lock"/></svg></div><div class="fn-n">2</div><h3 data-i18n="fn-2-h">Store of value</h3><p data-i18n="fn-2-p">New money only comes into being with a new person, 1,000 AEQ each — so there are always exactly 1,000 AEQ per person, and nobody can dilute that. Up to 5,000 AEQ your savings pay no levy.</p></div>
       <div class="fn reveal"><div class="fn-ico"><svg class="ico" aria-hidden="true"><use href="#i-scale"/></svg></div><div class="fn-n">3</div><h3 data-i18n="fn-3-h">Unit of account</h3><p data-i18n="fn-3-p">One fair share is always 1,000 AEQ: what the average person holds. Every rule is a multiple of it, understandable in every country.</p></div>
     </div>
   </div>
@@ -1318,7 +1319,7 @@ section{padding:64px 16px}
 
 <section id="disclaimer" style="padding-top:40px;padding-bottom:40px">
   <div class="disclaimer-card">
-    <h3 data-i18n="disc-title">Beta disclaimer</h3>
+    <h3 data-i18n="disc-title">Beta notice</h3>
     <p data-i18n="disc-body">Beta: since 25 Aug 2026 the proof server refuses any registration without the signed attestations of the two matching services — a second phone no longer gives the same face a second account. What is not yet true: accounts registered before that date are only covered once their owner adds the face in the app (no new grant); until then they could in principle register again on a new wallet. Error rates are not calibrated (that needs ~1,000 impostor pairs). Liveness: only the glance task is binding today; colour flashes, pulse and parallax are measured but do not decide yet. Read “one human, one account” as “checked, with named limits” — not as “impossible to circumvent.” Long term, Aequitas will rely on iris scans to truly guarantee one person, one registration. How that can be implemented reliably and privacy-preserving is being worked on now; hardware and timing are not decided yet.</p>
     <p data-i18n="beta-why"><strong>What the beta is for:</strong> it tests whether a person can be recognised again without anyone keeping their picture or a whole face template. The photo and the full face description are deleted within seconds; each of the two matching services keeps only a 64-byte sketch (512 yes/no values) from which the face cannot be reconstructed, but which still recognises a second registration by the same person. This is the groundwork for the iris scan, which is meant to work on the same principle. <strong>Where it stands today:</strong> each service still holds the whole sketch; splitting it so that no service holds it whole is built and tested but not yet active, and error rates are not yet calibrated.</p>
     <p class="oss-line" data-i18n="oss-line"><strong>Open source:</strong> Core chain public · identity/proof services partly private during the beta.</p>
@@ -1329,13 +1330,13 @@ section{padding:64px 16px}
 
 <footer>
   <div class="footer-links">
-    <a href="/register">Register</a>
-    <a href="/explorer">Block Explorer</a>
-    <a href="/index/score">Equality Score</a>
-    <a href="/network">Network</a>
-    <a href="/exchange">Exchange</a>
-    <a href="/download/node-guide-en.pdf">Node Guide (EN)</a>
-    <a href="/download/node-guide-de.pdf">Node Guide (DE)</a>
+    <a href="/register" data-i18n="nav-register">Register</a>
+    <a href="/explorer" data-i18n="tw-ex-h">Block explorer</a>
+    <a href="/index/score" data-i18n="tw-eq-h">Equality score</a>
+    <a href="/network" data-i18n="nav-network">Network</a>
+    <a href="/exchange" data-i18n="nav-exchange">Exchange</a>
+    <a href="/download/node-guide-en.pdf"><span data-i18n="foot-guide">Node guide</span> (EN)</a>
+    <a href="/download/node-guide-de.pdf"><span data-i18n="foot-guide">Node guide</span> (DE)</a>
     <a href="https://github.com/hanoi96international-gif/Aequitas">GitHub</a><!--LEGAL_LINKS-->
     <a href="https://x.com/AequitasMoney" target="_blank" rel="noopener noreferrer" class="social"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>@AequitasMoney</a>
     <a href="https://t.me/aequitasmoney" target="_blank" rel="noopener noreferrer" class="social"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg>Telegram</a>
