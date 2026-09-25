@@ -138,6 +138,23 @@ h2{font-family:Inter,system-ui,sans-serif;font-size:clamp(1.6rem,4vw,2.2rem);lin
 .biz-live{margin-top:22px;display:flex;flex-wrap:wrap;gap:10px 22px;font-size:0.85rem;color:var(--muted)}
 .biz-live strong{color:var(--gold);font-weight:700}
 @media(max-width:700px){.biz-row{grid-template-columns:1fr;gap:4px}}
+.eco-wrap{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:18px;box-shadow:var(--shadow)}
+.eco-svg{width:100%;max-width:720px;display:block;margin:0 auto;font-family:Inter,system-ui,sans-serif}
+.eco-svg-v{display:none;max-width:360px}
+@media(max-width:600px){.eco-svg-h{display:none}.eco-svg-v{display:block}}
+.eco-points{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;margin-top:16px}
+.cmp-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg)}
+.cmp-table{width:100%;border-collapse:collapse;min-width:640px;font-size:0.9rem}
+.cmp-table th,.cmp-table td{padding:13px 14px;text-align:left;vertical-align:top;border-top:1px solid var(--border);line-height:1.45}
+.cmp-table thead th{border-top:none;font-size:0.8rem;letter-spacing:0.5px;text-transform:uppercase;color:var(--muted)}
+.cmp-table tbody th{font-weight:700;color:var(--text);width:22%}
+.cmp-table td{color:var(--muted)}
+.cmp-table thead .cmp-p{color:#5B8CFF}.cmp-table thead .cmp-b{color:#F5A524}.cmp-table thead .cmp-f{color:#9AA3B5}
+.cmp-note{margin-top:14px;font-size:0.85rem;color:var(--muted)}
+.ppl-list{list-style:none;counter-reset:ppl;display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px}
+.ppl-list li{counter-increment:ppl;position:relative;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:18px 18px 18px 58px;color:var(--muted);font-size:0.93rem;line-height:1.5;box-shadow:var(--shadow)}
+.ppl-list li::before{content:counter(ppl);position:absolute;left:16px;top:16px;width:30px;height:30px;border-radius:50%;background:var(--grad);color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center;font-size:0.9rem}
+.ppl-list li strong{color:var(--text)}
 
 .section-link{display:inline-block;margin-top:28px;font-size:0.88rem;font-weight:600;color:var(--accent);text-decoration:none;border-bottom:1px solid rgba(91,140,255,0.35);padding-bottom:2px;transition:color 0.2s,border-color 0.2s}
 .section-link:hover{color:var(--green);border-color:rgba(61,220,151,0.5)}
@@ -235,6 +252,7 @@ section{padding:56px 16px}
     <a href="/index/score" class="tab">⚖️ Equality</a>
     <a href="/network" class="tab">🌐 Network</a>
     <a href="/exchange" class="tab">🔄 Exchange</a>
+    <a href="#economy" class="tab">💱 Economy</a>
     <a href="#business" class="tab">🏪 Businesses</a>
     <a href="#social" class="tab">💬 Social</a>
   </div>
@@ -278,6 +296,132 @@ section{padding:56px 16px}
   </div>
 </div>
 <div class="stats-live"><span data-i18n="ubi-pre">Next equal split in</span> <strong id="ubi-next">—</strong> <span data-i18n="ubi-mid">· the pool holds</span> <strong id="ubi-pool">—</strong> AEQ</div>
+
+<section id="economy">
+  <div class="section-inner">
+    <div class="section-label" data-i18n="eco-label">The economy</div>
+    <h2 data-i18n="eco-h2">One cycle, three roles</h2>
+    <p class="section-sub" data-i18n="eco-sub">People receive the basic income and spend it. Businesses earn it and pass it on as wages and purchases. Whatever sits idle or leaves the network flows back into the basic income, and from there equally to everyone.</p>
+    <div class="eco-wrap">
+    <svg class="eco-svg eco-svg-h" viewBox="0 0 720 300" role="img" aria-label="One cycle, three roles" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="eco-a1" markerWidth="9" markerHeight="7" refX="7" refY="3.5" orient="auto"><polygon points="0 0, 9 3.5, 0 7" fill="#5B8CFF"/></marker>
+        <marker id="eco-a2" markerWidth="9" markerHeight="7" refX="7" refY="3.5" orient="auto"><polygon points="0 0, 9 3.5, 0 7" fill="#3DDC97"/></marker>
+        <marker id="eco-a3" markerWidth="9" markerHeight="7" refX="7" refY="3.5" orient="auto"><polygon points="0 0, 9 3.5, 0 7" fill="#F5A524"/></marker>
+      </defs>
+      <rect x="30" y="50" width="190" height="90" rx="14" fill="rgba(91,140,255,0.12)" stroke="#5B8CFF" stroke-width="1.5"/>
+      <text x="125" y="92" text-anchor="middle" font-size="26">👤</text>
+      <text x="125" y="122" text-anchor="middle" font-size="16" font-weight="800" fill="#E8EAF0" data-i18n="eco-svg-people">People</text>
+      <rect x="500" y="50" width="190" height="90" rx="14" fill="rgba(245,165,36,0.10)" stroke="#F5A524" stroke-width="1.5"/>
+      <text x="595" y="92" text-anchor="middle" font-size="26">🏪</text>
+      <text x="595" y="122" text-anchor="middle" font-size="16" font-weight="800" fill="#E8EAF0" data-i18n="eco-svg-biz">Businesses</text>
+      <rect x="265" y="215" width="190" height="70" rx="14" fill="rgba(61,220,151,0.12)" stroke="#3DDC97" stroke-width="1.5"/>
+      <text x="360" y="257" text-anchor="middle" font-size="16" font-weight="800" fill="#E8EAF0" data-i18n="eco-svg-ubi">Basic income</text>
+      <line x1="222" y1="78" x2="494" y2="78" stroke="#5B8CFF" stroke-width="2" marker-end="url(#eco-a1)"/>
+      <text x="360" y="68" text-anchor="middle" font-size="13" fill="#9AA3B5" data-i18n="eco-svg-buy">purchases</text>
+      <line x1="498" y1="112" x2="226" y2="112" stroke="#F5A524" stroke-width="2" marker-end="url(#eco-a3)"/>
+      <text x="360" y="132" text-anchor="middle" font-size="13" fill="#9AA3B5" data-i18n="eco-svg-wages">wages</text>
+      <path d="M170 142 Q210 200 290 218" fill="none" stroke="#9AA3B5" stroke-width="1.5" stroke-dasharray="5,4" marker-end="url(#eco-a2)"/>
+      <path d="M550 142 Q510 200 430 218" fill="none" stroke="#9AA3B5" stroke-width="1.5" stroke-dasharray="5,4" marker-end="url(#eco-a2)"/>
+      <text x="360" y="190" text-anchor="middle" font-size="12" fill="#9AA3B5" data-i18n="eco-svg-levies">idle money · exit · fees</text>
+      <path d="M263 262 Q60 262 70 146" fill="none" stroke="#3DDC97" stroke-width="2.5" marker-end="url(#eco-a2)"/>
+      <text x="170" y="292" text-anchor="middle" font-size="12" font-weight="700" fill="#3DDC97" data-i18n="eco-svg-daily">daily, equal for all</text>
+    </svg>
+    <svg class="eco-svg eco-svg-v" viewBox="0 0 360 480" role="img" aria-label="One cycle, three roles" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="eco-b1" markerWidth="9" markerHeight="7" refX="7" refY="3.5" orient="auto"><polygon points="0 0, 9 3.5, 0 7" fill="#5B8CFF"/></marker>
+        <marker id="eco-b2" markerWidth="9" markerHeight="7" refX="7" refY="3.5" orient="auto"><polygon points="0 0, 9 3.5, 0 7" fill="#3DDC97"/></marker>
+        <marker id="eco-b3" markerWidth="9" markerHeight="7" refX="7" refY="3.5" orient="auto"><polygon points="0 0, 9 3.5, 0 7" fill="#F5A524"/></marker>
+      </defs>
+      <rect x="90" y="20" width="180" height="80" rx="14" fill="rgba(91,140,255,0.12)" stroke="#5B8CFF" stroke-width="1.5"/>
+      <text x="180" y="55" text-anchor="middle" font-size="24">👤</text>
+      <text x="180" y="85" text-anchor="middle" font-size="16" font-weight="800" fill="#E8EAF0" data-i18n="eco-svg-people">People</text>
+      <rect x="90" y="200" width="180" height="80" rx="14" fill="rgba(245,165,36,0.10)" stroke="#F5A524" stroke-width="1.5"/>
+      <text x="180" y="235" text-anchor="middle" font-size="24">🏪</text>
+      <text x="180" y="265" text-anchor="middle" font-size="16" font-weight="800" fill="#E8EAF0" data-i18n="eco-svg-biz">Businesses</text>
+      <rect x="90" y="385" width="180" height="70" rx="14" fill="rgba(61,220,151,0.12)" stroke="#3DDC97" stroke-width="1.5"/>
+      <text x="180" y="426" text-anchor="middle" font-size="16" font-weight="800" fill="#E8EAF0" data-i18n="eco-svg-ubi">Basic income</text>
+      <line x1="150" y1="102" x2="150" y2="193" stroke="#5B8CFF" stroke-width="2" marker-end="url(#eco-b1)"/>
+      <text x="142" y="152" text-anchor="end" font-size="13" fill="#9AA3B5" data-i18n="eco-svg-buy">purchases</text>
+      <line x1="210" y1="198" x2="210" y2="107" stroke="#F5A524" stroke-width="2" marker-end="url(#eco-b3)"/>
+      <text x="218" y="152" text-anchor="start" font-size="13" fill="#9AA3B5" data-i18n="eco-svg-wages">wages</text>
+      <line x1="140" y1="282" x2="140" y2="379" stroke="#9AA3B5" stroke-width="1.5" stroke-dasharray="5,4" marker-end="url(#eco-b2)"/>
+      <path d="M272 60 C 358 60, 358 420, 276 420" fill="none" stroke="#9AA3B5" stroke-width="1.5" stroke-dasharray="5,4" marker-end="url(#eco-b2)"/>
+      <text x="148" y="336" text-anchor="start" font-size="10" fill="#9AA3B5" data-i18n="eco-svg-levies">idle money · exit · fees</text>
+      <path d="M88 420 C 8 420, 8 60, 84 60" fill="none" stroke="#3DDC97" stroke-width="2.5" marker-end="url(#eco-b2)"/>
+      <text x="24" y="240" text-anchor="middle" font-size="12" font-weight="700" fill="#3DDC97" transform="rotate(-90 24 240)" data-i18n="eco-svg-daily">daily, equal for all</text>
+    </svg>
+    </div>
+    <div class="eco-points">
+      <div class="biz-card"><h3 data-i18n="eco-p1-h">Money is created only for people</h3><p data-i18n="eco-p1-p">Every verified person receives 1,000 AEQ once. Nobody else creates money: not businesses, not validators, not the founders.</p></div>
+      <div class="biz-card"><h3 data-i18n="eco-p2-h">Circulation is rewarded</h3><p data-i18n="eco-p2-p">Spending, paying wages and paying suppliers costs little or nothing. Money that sits idle beyond clear limits pays a small monthly levy.</p></div>
+      <div class="biz-card"><h3 data-i18n="eco-p3-h">Every levy returns to everyone</h3><p data-i18n="eco-p3-p">Transfer fees, idle-money levies and exit levies go 100 % to the basic income, paid out every day in equal shares to every verified person.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="compare" style="background:var(--card);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
+  <div class="section-inner">
+    <div class="section-label" data-i18n="cmp-label">Person or business?</div>
+    <h2 data-i18n="cmp-h2">Three kinds of account, one set of rules</h2>
+    <p class="section-sub" data-i18n="cmp-sub">Nobody checks what you are. The rules make hoarding expensive in every form and passing money on cheap, so everyone chooses the account that really fits.</p>
+    <div class="cmp-wrap">
+      <table class="cmp-table">
+        <thead><tr><th scope="col" data-i18n="cmp-col-rule">Rule</th><th scope="col" class="cmp-p">👤 <span data-i18n="cmp-col-person">Person</span></th><th scope="col" class="cmp-b">🏪 <span data-i18n="cmp-col-biz">Business</span></th><th scope="col" class="cmp-f">🔑 <span data-i18n="cmp-col-free">Other address</span></th></tr></thead>
+        <tbody>
+        <tr><th scope="row" data-i18n="cmp-r1">Basic income and vote</th><td data-i18n="cmp-yes">yes</td><td data-i18n="cmp-no">no</td><td data-i18n="cmp-no">no</td></tr>
+        <tr><th scope="row" data-i18n="cmp-r2">Maximum holding</th><td data-i18n="cmp-v-25k">25,000 AEQ</td><td data-i18n="cmp-nolimit">no fixed limit</td><td data-i18n="cmp-v-1k">1,000 AEQ</td></tr>
+        <tr><th scope="row" data-i18n="cmp-r3">Idle money</th><td data-i18n="cmp-r3-p">0.5 % a month, only above 5,000 AEQ</td><td data-i18n="cmp-r3-b">money older than 30 days 1 % a month, older than 90 days 3 %; 2,000 AEQ always free</td><td data-i18n="cmp-r3-f">1 % a month</td></tr>
+        <tr><th scope="row" data-i18n="cmp-r4">Sending money</th><td data-i18n="cmp-r4-p">first 1,000 AEQ a month free, then 0.1 %</td><td data-i18n="cmp-r4-b">to people free, otherwise 0.1 %</td><td data-i18n="cmp-r4-f">0.1 %</td></tr>
+        <tr><th scope="row" data-i18n="cmp-r5">Exchange to euro or dollar</th><td data-i18n="cmp-r5-p">wages and 1,000 AEQ a month free, then 2 %</td><td data-i18n="cmp-r5-b">2 %</td><td data-i18n="cmp-r5-b">2 %</td></tr>
+        <tr><th scope="row" data-i18n="cmp-r6">Who opens it</th><td data-i18n="cmp-r6-p">every verified person, once</td><td data-i18n="cmp-r6-b">one to ten verified people; at most 3 per person</td><td data-i18n="cmp-r6-f">anyone</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="cmp-note" data-i18n="cmp-note">These rules apply from 1 October 2026. Every levy goes 100 % to the basic income.</p>
+  </div>
+</section>
+
+<section id="people">
+  <div class="section-inner">
+    <div class="section-label" data-i18n="ppl-label">For people</div>
+    <h2 data-i18n="ppl-h2">Six promises to every person</h2>
+    <p class="section-sub" data-i18n="ppl-sub">The fairest money has to feel fair first to the person who has little.</p>
+    <ol class="ppl-list">
+      <li data-i18n="ppl-1"><strong>Your fair share is untouchable.</strong> The first 1,000 AEQ never pay a levy.</li>
+      <li data-i18n="ppl-2"><strong>Everyday life costs nothing.</strong> The first 1,000 AEQ you spend each month are free of fees.</li>
+      <li data-i18n="ppl-3"><strong>Wages are wages.</strong> Up to 3,000 AEQ of wages a month, plus 1,000 AEQ, can be exchanged without a levy.</li>
+      <li data-i18n="ppl-4"><strong>Saving is allowed.</strong> Up to 5,000 AEQ your savings lose nothing.</li>
+      <li data-i18n="ppl-5"><strong>Those who have more contribute more.</strong> Fees rise only with large balances; the 25,000 AEQ limit stays.</li>
+      <li data-i18n="ppl-6"><strong>People always pay less than businesses</strong> for holding and exiting, and everything anyone pays returns to all people equally.</li>
+    </ol>
+  </div>
+</section>
+
+<section id="business">
+  <div class="section-inner">
+    <div class="section-label" data-i18n="biz-label">For businesses</div>
+    <h2 data-i18n="biz-h2">Accept AEQ, pass it on, pay nothing</h2>
+    <p class="section-sub" data-i18n="biz-sub">Businesses may accept, hold and spend AEQ. The rules make money flow through them and back to people: leaving it idle costs, passing it on is free.</p>
+    <div class="biz-grid">
+      <div class="biz-card"><h3 data-i18n="biz-b1-h">No card fees</h3><p data-i18n="biz-b1-p">A payment costs the business nothing. Customers spend their first 1,000 AEQ each month without any fee.</p></div>
+      <div class="biz-card"><h3 data-i18n="biz-b2-h">Fee-free wages</h3><p data-i18n="biz-b2-p">Wages paid in AEQ cost nothing. Employees can exchange up to 3,000 AEQ of wages a month into euros or dollars without a levy.</p></div>
+      <div class="biz-card"><h3 data-i18n="biz-b3-h">No growth cap</h3><p data-i18n="biz-b3-p">People can hold at most 25,000 AEQ; businesses have no fixed limit. Money that moves on within 30 days never costs anything.</p></div>
+      <div class="biz-card"><h3 data-i18n="biz-b4-h">Paid in seconds</h3><p data-i18n="biz-b4-p">Money arrives in seconds. No chargebacks, no waiting for settlement.</p></div>
+    </div>
+    <div class="biz-rules-h" data-i18n="biz-rules-h">The rules</div>
+    <div class="biz-rules">
+      <div class="biz-row"><span class="biz-k" data-i18n="biz-r1-k">Idle money</span><span class="biz-v" data-i18n="biz-r1-v">Older than 30 days: 1 % per month · older than 90 days: 3 % per month · 2,000 AEQ always free</span></div>
+      <div class="biz-row"><span class="biz-k" data-i18n="biz-r2-k">Money has an age</span><span class="biz-v" data-i18n="biz-r2-v">The age travels with the money. Sending it in circles, through your own firms or through friends, does not make it new. It only becomes new after 30 days with a person.</span></div>
+      <div class="biz-row"><span class="biz-k" data-i18n="biz-r3-k">Exit to euro or dollar</span><span class="biz-v" data-i18n="biz-r3-v">2 % levy. People: wages and 1,000 AEQ a month are free</span></div>
+      <div class="biz-row"><span class="biz-k" data-i18n="biz-r4-k">Business to business</span><span class="biz-v" data-i18n="biz-r4-v">0.1 %, no surcharge</span></div>
+      <div class="biz-row"><span class="biz-k" data-i18n="biz-r5-k">Where it goes</span><span class="biz-v" data-i18n="biz-r5-v">Every levy goes 100 % to the basic income, equally to every person</span></div>
+    </div>
+    <div class="sybil-blurb" data-i18n="biz-open"><strong>Opening a business account:</strong> a verified person and the business wallet sign together. At most 3 businesses per person, up to 10 responsible people per business. No registry office and no gatekeeper: nobody checks what you are, the rules make hoarding expensive in every form. The app will offer it shortly.</div>
+    <div class="biz-live"><span><span data-i18n="biz-live-from">Rules apply from</span> <strong id="biz-from">—</strong></span><span><span data-i18n="biz-live-count">Registered businesses</span>: <strong id="biz-count">—</strong></span></div>
+    <a class="section-link" href="https://github.com/hanoi96international-gif/Aequitas/blob/main/docs/UNTERNEHMEN_KONZEPT.md" rel="noopener" data-i18n="biz-link">Read the full concept →</a>
+  </div>
+</section>
 
 <section>
   <div class="section-inner">
@@ -335,31 +479,6 @@ section{padding:56px 16px}
   </div>
 </section>
 
-<section id="business" style="background:var(--card);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
-  <div class="section-inner">
-    <div class="section-label" data-i18n="biz-label">For businesses</div>
-    <h2 data-i18n="biz-h2">Accept AEQ, pass it on, pay nothing</h2>
-    <p class="section-sub" data-i18n="biz-sub">Businesses may accept, hold and spend AEQ. The rules make money flow through them and back to people: leaving it idle costs, passing it on is free.</p>
-    <div class="biz-grid">
-      <div class="biz-card"><h3 data-i18n="biz-b1-h">No card fees</h3><p data-i18n="biz-b1-p">A payment costs the business nothing. Customers spend their first 1,000 AEQ each month without any fee.</p></div>
-      <div class="biz-card"><h3 data-i18n="biz-b2-h">Fee-free wages</h3><p data-i18n="biz-b2-p">Wages paid in AEQ cost nothing. Employees can exchange up to 3,000 AEQ of wages a month into euros or dollars without a levy.</p></div>
-      <div class="biz-card"><h3 data-i18n="biz-b3-h">No growth cap</h3><p data-i18n="biz-b3-p">People can hold at most 25,000 AEQ; businesses have no fixed limit. Money that moves on within 30 days never costs anything.</p></div>
-      <div class="biz-card"><h3 data-i18n="biz-b4-h">Paid in seconds</h3><p data-i18n="biz-b4-p">Money arrives in seconds. No chargebacks, no waiting for settlement.</p></div>
-    </div>
-    <div class="biz-rules-h" data-i18n="biz-rules-h">The rules</div>
-    <div class="biz-rules">
-      <div class="biz-row"><span class="biz-k" data-i18n="biz-r1-k">Idle money</span><span class="biz-v" data-i18n="biz-r1-v">Older than 30 days: 1 % per month · older than 90 days: 3 % per month · 2,000 AEQ always free</span></div>
-      <div class="biz-row"><span class="biz-k" data-i18n="biz-r2-k">Money has an age</span><span class="biz-v" data-i18n="biz-r2-v">The age travels with the money. Sending it in circles, through your own firms or through friends, does not make it new. It only becomes new after 30 days with a person.</span></div>
-      <div class="biz-row"><span class="biz-k" data-i18n="biz-r3-k">Exit to euro or dollar</span><span class="biz-v" data-i18n="biz-r3-v">2 % levy. People: wages and 1,000 AEQ a month are free</span></div>
-      <div class="biz-row"><span class="biz-k" data-i18n="biz-r4-k">Business to business</span><span class="biz-v" data-i18n="biz-r4-v">0.1 %, no surcharge</span></div>
-      <div class="biz-row"><span class="biz-k" data-i18n="biz-r5-k">Where it goes</span><span class="biz-v" data-i18n="biz-r5-v">Every levy goes 100 % to the basic income, equally to every person</span></div>
-    </div>
-    <div class="sybil-blurb" data-i18n="biz-people"><strong>For people:</strong> the first 1,000 AEQ you spend each month are free, savings up to 5,000 AEQ lose nothing, and wages are exchanged without a levy. Holding and exiting always cost people less than businesses.</div>
-    <div class="sybil-blurb" data-i18n="biz-open"><strong>Opening a business account:</strong> a verified person and the business wallet sign together. At most 3 businesses per person, up to 10 responsible people per business. No registry office and no gatekeeper: nobody checks what you are, the rules make hoarding expensive in every form. The app will offer it shortly.</div>
-    <div class="biz-live"><span><span data-i18n="biz-live-from">Rules apply from</span> <strong id="biz-from">—</strong></span><span><span data-i18n="biz-live-count">Registered businesses</span>: <strong id="biz-count">—</strong></span></div>
-    <a class="section-link" href="https://github.com/hanoi96international-gif/Aequitas/blob/main/docs/UNTERNEHMEN_KONZEPT.md" rel="noopener" data-i18n="biz-link">Read the full concept →</a>
-  </div>
-</section>
 
 <section>
   <div class="section-inner">
