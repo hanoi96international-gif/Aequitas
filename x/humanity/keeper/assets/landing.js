@@ -510,6 +510,10 @@ en: {
   "pg-trans-sub": "Live figures from the chain, the open tools, where Aequitas stands, and what is honestly still open.",
   "toc-live": "Live",
   "toc-status": "Status",
+  "nav-explorer": "Explorer",
+  "nav-network": "Network",
+  "nav-equality": "Equality",
+  "nav-exchange": "Exchange",
 },
 de: {
   "logo-sub": "Das fairste Geld der Welt",
@@ -993,6 +997,10 @@ de: {
   "pg-trans-sub": "Live-Zahlen von der Blockchain, die offenen Werkzeuge, wo Aequitas steht und was ehrlich gesagt noch offen ist.",
   "toc-live": "Live",
   "toc-status": "Stand",
+  "nav-explorer": "Explorer",
+  "nav-network": "Netzwerk",
+  "nav-equality": "Gleichheit",
+  "nav-exchange": "Umtausch",
 },
 es: {
   "logo-sub": "El dinero más justo del mundo",
@@ -1476,6 +1484,10 @@ es: {
   "pg-trans-sub": "Cifras en directo de la cadena, las herramientas abiertas, dónde está Aequitas y lo que, sinceramente, sigue pendiente.",
   "toc-live": "En directo",
   "toc-status": "Estado",
+  "nav-explorer": "Explorador",
+  "nav-network": "Red",
+  "nav-equality": "Igualdad",
+  "nav-exchange": "Cambio",
 },
 ru: {
   "logo-sub": "Самые справедливые деньги в мире",
@@ -1959,6 +1971,10 @@ ru: {
   "pg-trans-sub": "Живые данные из блокчейна, открытые инструменты, где сейчас Aequitas и что, честно говоря, ещё не решено.",
   "toc-live": "Вживую",
   "toc-status": "Статус",
+  "nav-explorer": "Обозреватель",
+  "nav-network": "Сеть",
+  "nav-equality": "Равенство",
+  "nav-exchange": "Обмен",
 },
 zh: {
   "logo-sub": "世界上最公平的货币",
@@ -2442,6 +2458,10 @@ zh: {
   "pg-trans-sub": "来自链上的实时数据、开放工具、Aequitas 的现状，以及坦白说仍待解决的问题。",
   "toc-live": "实时",
   "toc-status": "现状",
+  "nav-explorer": "浏览器",
+  "nav-network": "网络",
+  "nav-equality": "平等",
+  "nav-exchange": "兑换",
 },
 id: {
   "logo-sub": "Uang paling adil di dunia",
@@ -2925,6 +2945,10 @@ id: {
   "pg-trans-sub": "Angka langsung dari rantai, alat-alat terbuka, posisi Aequitas saat ini, dan apa yang sejujurnya masih terbuka.",
   "toc-live": "Langsung",
   "toc-status": "Status",
+  "nav-explorer": "Explorer",
+  "nav-network": "Jaringan",
+  "nav-equality": "Kesetaraan",
+  "nav-exchange": "Tukar",
 },
 it: {
   "logo-sub": "Il denaro più equo del mondo",
@@ -3408,6 +3432,10 @@ it: {
   "pg-trans-sub": "Dati dal vivo dalla blockchain, gli strumenti aperti, a che punto è Aequitas e cosa, onestamente, resta ancora aperto.",
   "toc-live": "Dal vivo",
   "toc-status": "Stato",
+  "nav-explorer": "Explorer",
+  "nav-network": "Rete",
+  "nav-equality": "Uguaglianza",
+  "nav-exchange": "Cambio",
 },
 tr: {
   "logo-sub": "Dünyanın en adil parası",
@@ -3891,6 +3919,10 @@ tr: {
   "pg-trans-sub": "Zincirden canlı rakamlar, açık araçlar, Aequitas'ın nerede durduğu ve dürüst olmak gerekirse hâlâ açık olanlar.",
   "toc-live": "Canlı",
   "toc-status": "Durum",
+  "nav-explorer": "Gezgin",
+  "nav-network": "Ağ",
+  "nav-equality": "Eşitlik",
+  "nav-exchange": "Takas",
 },
 fr: {
   "logo-sub": "L’argent le plus juste du monde",
@@ -4374,6 +4406,10 @@ fr: {
   "pg-trans-sub": "Chiffres en direct de la chaîne, outils ouverts, où en est Aequitas et ce qui, honnêtement, reste à faire.",
   "toc-live": "En direct",
   "toc-status": "État",
+  "nav-explorer": "Explorateur",
+  "nav-network": "Réseau",
+  "nav-equality": "Égalité",
+  "nav-exchange": "Échange",
 },
 pt: {
   "logo-sub": "O dinheiro mais justo do mundo",
@@ -4857,6 +4893,10 @@ pt: {
   "pg-trans-sub": "Números ao vivo da cadeia, as ferramentas abertas, onde está a Aequitas e o que, honestamente, ainda está em aberto.",
   "toc-live": "Ao vivo",
   "toc-status": "Estado",
+  "nav-explorer": "Explorador",
+  "nav-network": "Rede",
+  "nav-equality": "Igualdade",
+  "nav-exchange": "Câmbio",
 },
 ar: {
   "logo-sub": "أعدل مال في العالم",
@@ -5340,6 +5380,10 @@ ar: {
   "pg-trans-sub": "أرقام مباشرة من السلسلة، والأدوات المفتوحة، وأين تقف Aequitas، وما لا يزال مفتوحًا بصراحة.",
   "toc-live": "مباشر",
   "toc-status": "الحالة",
+  "nav-explorer": "المستكشف",
+  "nav-network": "الشبكة",
+  "nav-equality": "المساواة",
+  "nav-exchange": "التبادل",
 },
 hi: {
   "logo-sub": "दुनिया का सबसे न्यायपूर्ण पैसा",
@@ -5823,6 +5867,10 @@ hi: {
   "pg-trans-sub": "चेन से लाइव आँकड़े, खुले टूल, Aequitas कहाँ खड़ा है, और ईमानदारी से क्या अभी बाक़ी है।",
   "toc-live": "लाइव",
   "toc-status": "स्थिति",
+  "nav-explorer": "एक्सप्लोरर",
+  "nav-network": "नेटवर्क",
+  "nav-equality": "समानता",
+  "nav-exchange": "विनिमय",
 }
 };
 
