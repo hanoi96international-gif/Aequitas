@@ -40,7 +40,33 @@ andere Unternehmen.
 5. **Einfach für den Laden.** Bezahlen per QR, Preise auch in Euro sichtbar,
    Buchhaltungs-Export. Ohne das nimmt kein Bäcker AEQ an.
 
-## 3. Die Lücke, die dieses Konzept mit schließt
+## 3. Die Fairness-Garantie für Menschen
+
+Das fairste Geld der Welt muss sich zuerst für den einzelnen Menschen fair
+anfühlen, und zwar für den mit wenig. Deshalb gelten für Menschen sechs Zusagen.
+Alle Zahlen im Rest dieses Konzepts ordnen sich ihnen unter.
+
+1. **Dein fairer Anteil ist unantastbar.** Auf die ersten 1.000 AEQ (der faire
+   Anteil) gibt es nie Haltegebühr, Demurrage oder Abgabe.
+2. **Der Alltag kostet nichts.** Die ersten **1.000 AEQ, die du im Monat
+   ausgibst** (an Menschen oder Läden), sind **gebührenfrei**. Die
+   Überweisungsgebühr zahlt erst, wer mehr ausgibt.
+3. **Lohn ist Lohn.** AEQ, das du als Lohn von einem Unternehmen bekommst,
+   kannst du **ohne Abgabe** in Euro/Dollar tauschen. Zusätzlich hat jeder
+   Mensch **1.000 AEQ im Monat** Tausch-Freibetrag.
+4. **Sparen ist erlaubt.** Bis **5.000 AEQ** (5 × fairer Anteil) verliert
+   Erspartes nichts. Erst auf den Teil darüber wirkt die Demurrage.
+5. **Wer mehr hat, trägt mehr.** Gebühren und Demurrage steigen erst mit großem
+   Guthaben. Die Grenze von 25.000 AEQ bleibt.
+6. **Halten und Aussteigen kosten Menschen immer weniger als Unternehmen.**
+   Die Demurrage für Menschen liegt unter der Haltegebühr für Unternehmen, und **alles, was irgendwer zahlt, geht zu
+   gleichen Teilen an alle Menschen zurück.**
+
+Warum die Freibeträge **pro Mensch** gelten und nicht pro Konto: Jeder Mensch
+existiert bei Aequitas genau einmal. Ein Freibetrag pro Mensch lässt sich
+deshalb nicht vervielfachen. Das kann kein anderes Geld.
+
+## 4. Die Lücke, die dieses Konzept mit schließt
 
 `docs/WHO_MAY_HOLD_AEQ.md` (20.08.2026) regelt: *Jeder darf AEQ halten, jede
 Adresse unterliegt Demurrage und Vermögensgrenze.* Zwei Punkte halten im Code
@@ -60,16 +86,23 @@ nicht, was die Regel verspricht:
 Ein Unternehmensmodell auf dieser Grundlage hätte weder eine Grenze noch einen
 Umlaufanreiz. Deshalb braucht es drei Kontoarten mit klaren Regeln statt einer.
 
-## 4. Drei Kontoarten
+## 5. Drei Kontoarten
 
 | | **Mensch** | **Unternehmen** (neu) | **Freie Adresse** |
 |---|---|---|---|
 | Wer | verifizierter Mensch | eröffnet von 1–N verifizierten Menschen | jede sonstige Adresse, auch Verträge |
 | Grundeinkommen | ✅ | ❌ | ❌ |
 | Stimmrecht | ✅ | ❌ | ❌ |
-| Obergrenze | 25.000 AEQ (wie heute) | **keine feste** – dafür Haltegebühr (5.2) | **1.000 AEQ** (= fairer Anteil) |
-| Umlaufsicherung | heutige Demurrage | **Haltegebühr über dem Freibetrag, unabhängig von Aktivität** | **1 %/Monat ab dem ersten AEQ, ohne Schonfrist** |
-| Umtausch in Stable | 0,1 % bis 1.000 AEQ/Monat, darüber 2 % | 2 % | 2 % |
+| Obergrenze | 25.000 AEQ (wie heute) | **keine feste** – dafür Haltegebühr (6.2) | **1.000 AEQ** (= fairer Anteil) |
+| Umlaufsicherung | **0,5 %/Monat nur auf den Teil über 5.000 AEQ** | **1–3 %/Monat auf das, was über dem Freibetrag liegt** | **1 %/Monat ab dem ersten AEQ** |
+| Überweisen | **erste 1.000 AEQ im Monat gratis**, dann 0,1 % (Aufschlag nur bei großem Guthaben) | an Menschen **0 %**, sonst 0,1 % | 0,1 % |
+| Umtausch in Euro/Dollar | **Lohn + 1.000 AEQ/Monat ohne Abgabe**, darüber 2 % | 2 % | 2 % |
+
+Umlaufsicherung und Haltegebühr laufen bei allen drei Kontoarten **ohne
+Schonfrist, und Aktivität setzt sie nicht zurück.** Nur so wirken sie überhaupt
+(siehe Abschnitt 4). Für Menschen ist das keine Verschärfung, sondern das
+Gegenteil: Heute gilt die Demurrage (auf dem Papier) ab 1.000 AEQ, künftig erst
+ab 5.000. Wer normal lebt und spart, ist nie betroffen.
 
 Die **freie Adresse** bleibt für alles Kleine möglich: Geldbörse eines Besuchers,
 Test, Trinkgeldkasse, ein einfacher Vertrag. Als Versteck taugt sie nicht mehr:
@@ -80,9 +113,9 @@ Unternehmenskonto und steht mit seinem Namen dafür.
 Die **Protokoll-Töpfe** (UBI, LP, Validatoren) bleiben wie heute ausgenommen,
 sie sind Durchlauf.
 
-## 5. Regeln für Unternehmenskonten
+## 6. Regeln für Unternehmenskonten
 
-### 5.1 Eröffnen, Mitinhaber, Schließen
+### 6.1 Eröffnen, Mitinhaber, Schließen
 
 - **Eröffnen:** Transaktion `unternehmen_eroeffnen`, signiert von einem
   verifizierten Menschen. Enthält einen Anzeigenamen (freiwillig) und eine
@@ -100,7 +133,7 @@ sie sind Durchlauf.
   Umsatz- und Lohnsummen je Monat. **Nicht öffentlich:** welche Menschen dahinter
   stehen (nur „verifiziert: ja, Anzahl: 2“).
 
-### 5.2 Haltegebühr statt Obergrenze
+### 6.2 Haltegebühr statt Obergrenze
 
 Ein Unternehmen hat Umsatz, und Umsatz ist kein Vermögen. Eine Bäckerei mit
 40.000 AEQ Monatsumsatz würde an einer 25.000-Grenze scheitern, ohne reich zu
@@ -121,13 +154,13 @@ Zum Vergleich: Der Chiemgauer verliert rund 2 % je Quartal (≈ 0,66 %/Monat),
 Wörgl 1932 hatte 1 %/Monat. 1 % liegt also in der erprobten Spanne. 3 % gelten
 nur für echtes Horten.
 
-### 5.3 Gebühren nach Richtung
+### 6.3 Gebühren nach Richtung
 
 | Richtung | Gebühr | Begründung |
 |---|---|---|
-| Mensch → Unternehmen (Einkauf) | 0,1 % wie jede Überweisung, zahlt der Käufer obendrauf | Preis 10 AEQ bringt dem Laden genau 10 AEQ |
+| Mensch → Unternehmen (Einkauf) und Mensch → Mensch | **0 % für die ersten 1.000 AEQ im Monat**, danach 0,1 % (+ Aufschlag ab 5/10/20 × fairer Anteil). Zahlt der Absender obendrauf | der Alltag kostet nichts. Preis 10 AEQ bringt dem Laden genau 10 AEQ |
 | **Unternehmen → Mensch** (Lohn, Entnahme, Erstattung) | **0 %** | der Weg, den das Geld nehmen soll, ist der günstigste |
-| Unternehmen → Unternehmen (Lieferant) | 0,1 %, **ohne** den Aufschlag für große Guthaben | Lieferketten sollen nicht bestraft werden, Horten regelt 5.2 |
+| Unternehmen → Unternehmen (Lieferant) | 0,1 %, **ohne** den Aufschlag für große Guthaben | Lieferketten sollen nicht bestraft werden, Horten regelt 6.2 |
 | Unternehmen → freie Adresse | 0,1 % | |
 
 Der heutige Aufschlag für große Guthaben (+0,1 / +0,5 / +1 % ab 5/10/20 × fairer
@@ -135,17 +168,27 @@ Anteil) gilt **nur für Menschen und freie Adressen**. Bei Unternehmen übernimm
 die Haltegebühr diese Rolle, sonst würden gerade Unternehmen mit vielen Löhnen
 doppelt zahlen.
 
-### 5.4 Umtausch in Euro/Dollar: Ausstiegsabgabe
+### 6.4 Umtausch in Euro/Dollar: Ausstiegsabgabe
 
 | Wer tauscht AEQ → Stable | Abgabe |
 |---|---|
-| Mensch, bis 1.000 AEQ je Kalendermonat | 0,1 % (wie heute) |
-| Mensch, darüber | 2 % |
+| Mensch: **erhaltener Lohn** (vom Unternehmen, bei dem man *nicht* Verantwortlicher ist) | keine Abgabe |
+| Mensch: dazu **1.000 AEQ je Kalendermonat** | keine Abgabe |
+| Mensch: darüber | 2 % |
 | Unternehmen | 2 % |
 | Freie Adresse | 2 % |
 
-Die Abgabe geht **zu 100 % ins Grundeinkommen.** Stable → AEQ (Einsteigen)
-bleibt bei 0,1 %.
+Die Abgabe geht **zu 100 % ins Grundeinkommen.** Die normale Tauschgebühr von
+0,1 % (an Liquiditätsgeber, Validatoren und Grundeinkommen) bleibt für alle
+bestehen. Stable → AEQ (Einsteigen) kostet nur diese 0,1 %.
+
+**Lohn oder Entnahme?** Die Kette weiß, wer für ein Unternehmenskonto
+verantwortlich ist. Zahlungen an Verantwortliche sind **Entnahmen** und erhöhen
+den Tausch-Freibetrag nicht. Zahlungen an alle anderen Menschen sind **Lohn**,
+und wer für seine Arbeit in AEQ bezahlt wird, kann diesen Lohn ohne Abgabe
+tauschen. Eine Restlücke bleibt: Zwei Inhaber könnten sich gegenseitig als
+„Angestellte“ bezahlen. Das ist auffällig (öffentliche Lohnsummen im Explorer)
+und durch die Vermögensgrenze der Menschen begrenzt.
 
 **Warum ein Freibetrag pro Mensch und nicht pro Adresse:** Ohne ihn könnte ein
 Unternehmen seine Einnahmen gebührenfrei an den Inhaber zahlen, und der
@@ -157,11 +200,11 @@ von Aequitas: **Regeln pro Mensch sind hier wirklich durchsetzbar.**
 Richtwert: Der Chiemgauer verlangt beim Rücktausch 5 %. 2 % liegen darunter und
 im Bereich üblicher Kartengebühren für kleine Händler.
 
-## 6. Der Kreislauf
+## 7. Der Kreislauf
 
 ```mermaid
 flowchart LR
-    M[Menschen] -- Einkauf, 0,1 % --> U[Unternehmen]
+    M[Menschen] -- Einkauf, erste 1.000/Monat gratis --> U[Unternehmen]
     U -- Löhne & Entnahmen, 0 % --> M
     U -- Lieferanten, 0,1 % --> U2[andere Unternehmen]
     U2 -- Löhne, 0 % --> M
@@ -174,7 +217,28 @@ flowchart LR
 Jeder Weg, auf dem AEQ **bei Unternehmen liegen bleibt oder das Netz verlässt**,
 speist das Grundeinkommen. Jeder Weg **zurück zu Menschen** ist gratis.
 
-## 7. Rechenbeispiele
+## 8. Rechenbeispiele
+
+### Für Menschen
+
+**Anna** lebt vom Grundeinkommen, hat 1.200 AEQ und gibt 800 AEQ im Monat aus.
+Sie zahlt **nichts**: keine Überweisungsgebühr (unter 1.000 im Monat), keine
+Demurrage (unter 5.000), keine Abgabe.
+
+**Ben** arbeitet im Café und bekommt 2.000 AEQ Lohn. Er gibt 1.500 AEQ aus und
+tauscht 1.000 AEQ für die Miete in Euro. Er zahlt **0,5 AEQ** Überweisungsgebühr
+(0,1 % auf 500 über dem Freibetrag) und die normale Tauschgebühr von 1 AEQ.
+**Keine Abgabe**, weil es sein Lohn ist.
+
+**Clara** hat 20.000 AEQ, gibt 3.000 AEQ im Monat aus und tauscht 5.000 AEQ in
+Euro. Sie zahlt:
+- Überweisungen: 2.000 × 1,1 % (Aufschlag ab 20 × fairer Anteil) = 22 AEQ
+- Demurrage: 15.000 × 0,5 % = 75 AEQ
+- Umtausch: 4.000 × 2 % = 80 AEQ (die ersten 1.000 sind frei)
+- zusammen **177 AEQ im Monat**. Alles geht ans Grundeinkommen, also auch an
+  Anna und Ben.
+
+### Für Unternehmen
 
 **Café** – Monatsumsatz 3.000 AEQ, Löhne 1.500, Lieferant 800, Entnahme 600.
 Kontostand bleibt um 2.000 AEQ, der Freibetrag liegt bei mindestens 5.000:
@@ -193,7 +257,7 @@ Kontostand bleibt um 2.000 AEQ, der Freibetrag liegt bei mindestens 5.000:
 mit 5.000 Freibetrag: 95.000 AEQ weit über 3 × Freibetrag, also überwiegend
 3 %/Monat. **Verstecken lohnt sich in keiner Form.**
 
-## 8. Was Läden brauchen, damit sie mitmachen
+## 9. Was Läden brauchen, damit sie mitmachen
 
 - **Kassenmodus in der App:** Betrag eingeben → QR-Code → Kunde scannt und
   zahlt → Beleg. Preise wahlweise in AEQ oder als Euro-Gegenwert zum aktuellen
@@ -206,7 +270,7 @@ mit 5.000 Freibetrag: 95.000 AEQ weit über 3 × Freibetrag, also überwiegend
   Kunde zahlt 0,1 %. Kunden mit Grundeinkommen wollen es ausgeben, und Löhne
   lassen sich gebührenfrei in AEQ zahlen.
 
-## 9. Was an der Kette gebaut werden muss
+## 10. Was an der Kette gebaut werden muss
 
 Alles hinter einer **Aktivierungshöhe** (wie `grant_staffel.go`), damit alte
 Blöcke gleich nachgespielt werden. Da die Kette vor dem Launch bei null startet,
@@ -214,7 +278,9 @@ gibt es keine Altbestände umzustellen.
 
 1. `AccountState`: Feld `Kontoart` (mensch / unternehmen / frei),
    `Verantwortliche []Adresse`, `AusgabenVormonat`, `AusgabenLaufenderMonat`,
-   `MonatsTausch` (für den Freibetrag beim Umtausch).
+   dazu bei Menschen `MonatsAusgaben` (Gebührenfreibetrag), `MonatsTausch` und
+   `MonatsLohn` (Tausch-Freibetrag). Alle Zähler springen am Monatsanfang nach
+   Blockzeit zurück, damit jeder Knoten gleich rechnet.
 2. Neue Transaktionen: `unternehmen_eroeffnen`, `unternehmen_mitinhaber`,
    `unternehmen_schliessen`.
 3. `enforceWealthCapLocked`: Unternehmen ausgenommen, freie Adressen auf
@@ -222,15 +288,19 @@ gibt es keine Altbestände umzustellen.
 4. `haltegebuehr.go`: Freibetrag, Stufen, sekundengenaue Verrechnung, Gutschrift
    ans Grundeinkommen. Nach dem Muster von `effectiveBalance`, aber ohne
    Schonfrist und ohne Zurücksetzen durch Aktivität.
-5. `ueberweisungsgebuehr.go`: Gebühr nach Richtung (5.3).
-6. Swap AEQ → Stable: Ausstiegsabgabe mit Monatsfreibetrag pro Mensch (5.4).
+5. `ueberweisungsgebuehr.go`: Gebühr nach Richtung (6.3) und der
+   Monatsfreibetrag von 1.000 AEQ für Menschen.
+5a. Demurrage für Menschen: Sparfreibetrag 5.000 AEQ, ohne Schonfrist, ohne
+   Zurücksetzen durch Aktivität. Website, Whitepaper und Explorer beschreiben
+   heute „0,5 % auf den Teil über 1.000 AEQ“ und müssen mit angepasst werden.
+6. Swap AEQ → Stable: Ausstiegsabgabe mit Monatsfreibetrag pro Mensch (6.4).
 7. Tests: Verteilen auf Adressen lohnt nicht, Gebühren je Richtung, Umweg über
    den Inhaber ist gedeckelt, Nachspielen ist deterministisch.
 8. Explorer: Unternehmensregister. App: Kassenmodus und CSV-Export.
 
 Grober Aufwand: Kette 1–2 Wochen, App-Kassenmodus 1 Woche.
 
-## 10. Recht und offene Punkte (ehrlich)
+## 11. Recht und offene Punkte (ehrlich)
 
 - **Steuern:** Für Unternehmen sind AEQ-Einnahmen Betriebseinnahmen zum
   Euro-Wert am Zahlungstag. Deshalb ist der CSV-Export Pflicht.
@@ -241,21 +311,21 @@ Grober Aufwand: Kette 1–2 Wochen, App-Kassenmodus 1 Woche.
   Ausstieg braucht es einen regulierten Euro-Stablecoin (z. B. EURC) und eine
   Brücke. Das kommt erst nach der rechtlichen Prüfung.
 - **Kursrisiko für Läden:** Solange AEQ klein ist, schwankt der Kurs. Der
-  Sofort-Ausstieg (8.) ist die Antwort für vorsichtige Läden.
+  Sofort-Ausstieg (9.) ist die Antwort für vorsichtige Läden.
 - **Die Zahlen sind Startwerte** (Freibetrag 5.000, 1 %/3 %, 2 %, 1.000/Monat).
   In der Pilotstadt messen, dann per Abstimmung der Menschen anpassen.
 
-## 11. Einführung in Schritten
+## 12. Einführung in Schritten
 
-1. **Entscheidung** über die Zahlen in Abschnitt 12.
-2. **Kette** bauen und testen (Abschnitt 9), vor dem Neustart bei null.
+1. **Entscheidung** über die Zahlen in Abschnitt 13.
+2. **Kette** bauen und testen (Abschnitt 10), vor dem Neustart bei null.
 3. **App**: Kassenmodus und Export.
 4. **Pilotstadt**: 5–10 Läden (Café, Bäcker, Hofladen, Friseur, Werkstatt), drei
    Monate, messen: Wie viel bleibt im Kreislauf, wie viel geht raus, wie viel
    landet im Grundeinkommen?
 5. **Rechtliche Prüfung** und echter Stablecoin, dann breiter öffnen.
 
-## 12. Zu entscheiden
+## 13. Zu entscheiden
 
 | Frage | Vorschlag |
 |---|---|
@@ -266,6 +336,10 @@ Grober Aufwand: Kette 1–2 Wochen, App-Kassenmodus 1 Woche.
 | Unternehmenskonten pro Mensch | höchstens 3 |
 | Löhne/Entnahmen an Menschen | gebührenfrei |
 | Wohin gehen alle Abgaben | 100 % Grundeinkommen |
+| **Menschen:** gebührenfreie Ausgaben | 1.000 AEQ im Monat |
+| **Menschen:** Sparfreibetrag (keine Demurrage) | 5.000 AEQ |
+| **Menschen:** Demurrage darüber | 0,5 %/Monat |
+| **Menschen:** Umtausch ohne Abgabe | erhaltener Lohn + 1.000 AEQ im Monat |
 
 ## Vorbilder
 
