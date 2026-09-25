@@ -584,6 +584,11 @@ section{padding:64px 16px}
     <a href="/business" class="tab tab-biz" data-i18n="nav-biz">For businesses</a>
     <a href="/mitmachen" class="tab" data-i18n="nav-join">Join</a>
     <a href="/transparenz" class="tab" data-i18n="nav-trans">Transparency</a>
+    <span class="tab-sep" aria-hidden="true"></span>
+    <a href="/explorer" class="tab tab-tool" data-i18n="nav-explorer">Explorer</a>
+    <a href="/network" class="tab tab-tool" data-i18n="nav-network">Network</a>
+    <a href="/index/score" class="tab tab-tool" data-i18n="nav-equality">Equality</a>
+    <a href="/exchange" class="tab tab-tool" data-i18n="nav-exchange">Exchange</a>
   </div>
 </nav>
 
