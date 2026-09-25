@@ -1,6 +1,6 @@
 package keeper
 
-const landingHTML = `<!DOCTYPE html>
+const landingQuelle = `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -183,6 +183,22 @@ h2{font-family:Inter,system-ui,sans-serif;font-size:clamp(1.6rem,4vw,2.2rem);lin
 .faq details{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px 18px;margin-bottom:10px}
 .faq summary{cursor:pointer;font-weight:700;font-size:0.96rem;color:var(--text)}
 .faq details p{margin-top:10px;color:var(--muted);font-size:0.92rem;line-height:1.55}
+.alt{background:var(--card);border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
+.ov-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px}
+.ov-card{display:flex;flex-direction:column;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:22px;box-shadow:var(--shadow);text-decoration:none;color:inherit;transition:border-color 0.2s,transform 0.2s}
+.ov-card:hover{border-color:var(--accent);transform:translateY(-2px)}
+.ov-icon{font-size:1.6rem;margin-bottom:10px}
+.ov-card h3{font-size:1.08rem;margin-bottom:8px;color:var(--text)}
+.ov-card p{font-size:0.9rem;color:var(--muted);line-height:1.5;flex:1}
+.ov-more{margin-top:14px;font-size:0.86rem;font-weight:700;color:var(--accent)}
+.page-head{padding:150px 20px 36px;border-bottom:1px solid var(--border)}
+.page-head h1{font-size:clamp(1.9rem,5vw,2.8rem);line-height:1.15;font-weight:800;letter-spacing:-0.02em;margin:10px 0 12px}
+.page-head .section-sub{margin-bottom:22px}
+.pg-back{font-size:0.85rem;color:var(--accent);text-decoration:none;font-weight:600}
+.page-head .toc{padding:0;margin:0}
+.lh-details summary{cursor:pointer;margin:34px 0 12px}
+.lh-details[open] summary{margin-bottom:12px}
+@media(max-width:600px){.page-head{padding:128px 16px 28px}}
 .section-link{display:inline-block;margin-top:28px;font-size:0.88rem;font-weight:600;color:var(--accent);text-decoration:none;border-bottom:1px solid rgba(91,140,255,0.35);padding-bottom:2px;transition:color 0.2s,border-color 0.2s}
 .section-link:hover{color:var(--green);border-color:rgba(61,220,151,0.5)}
 
@@ -279,9 +295,10 @@ section{padding:56px 16px}
     <a href="/index/score" class="tab">⚖️ Equality</a>
     <a href="/network" class="tab">🌐 Network</a>
     <a href="/exchange" class="tab">🔄 Exchange</a>
-    <a href="#economy" class="tab">💱 Economy</a>
-    <a href="#business" class="tab">🏪 Businesses</a>
-    <a href="#social" class="tab">💬 Social</a>
+    <a href="/economy" class="tab">💱 Economy</a>
+    <a href="/business" class="tab">🏪 Businesses</a>
+    <a href="/roadmap" class="tab">🗺️ Roadmap</a>
+    <a href="/#social" class="tab">💬 Social</a>
   </div>
 </nav>
 
@@ -323,7 +340,20 @@ section{padding:56px 16px}
   </div>
 </div>
 <div class="stats-live"><span data-i18n="ubi-pre">Next equal split in</span> <strong id="ubi-next">—</strong> <span data-i18n="ubi-mid">· the pool holds</span> <strong id="ubi-pool">—</strong> AEQ</div>
-<div class="toc" role="navigation" aria-label="On this page"><span class="toc-lbl" data-i18n="toc-label">On this page</span><a href="#economy" data-i18n="toc-eco">Economy</a><a href="#ubi" data-i18n="toc-ubi">Basic income</a><a href="#compare" data-i18n="toc-cmp">Account types</a><a href="#people" data-i18n="toc-ppl">For people</a><a href="#examples" data-i18n="toc-ex">Examples</a><a href="#business" data-i18n="toc-biz">For businesses</a><a href="#shops" data-i18n="toc-shop">For shops</a><a href="#loopholes" data-i18n="toc-lh">Protection against abuse</a><a href="#how" data-i18n="toc-how">Register</a><a href="#roadmap" data-i18n="toc-road">Roadmap</a><a href="#open" data-i18n="toc-open">Open points</a><a href="#faq" data-i18n="toc-faq">Questions</a></div>
+
+<section id="overview">
+  <div class="section-inner">
+    <div class="section-label" data-i18n="ov-label">Find your way</div>
+    <h2 data-i18n="ov-h2">Aequitas in four parts</h2>
+    <p class="section-sub" data-i18n="ov-sub">Each part has its own page, so you only read what you need.</p>
+    <div class="ov-grid">
+      <a class="ov-card" href="/economy"><span class="ov-icon" aria-hidden="true">💱</span><h3 data-i18n="ov-eco-h">The economy</h3><p data-i18n="ov-eco-p">How money flows, the daily basic income, the three account types, what people pay, and worked examples.</p><span class="ov-more" data-i18n="ov-more">Open →</span></a>
+      <a class="ov-card" href="/business"><span class="ov-icon" aria-hidden="true">🏪</span><h3 data-i18n="ov-biz-h">Businesses and shops</h3><p data-i18n="ov-biz-p">How businesses accept and pass on AEQ, how a shop takes part, and why hoarding pays off in no form.</p><span class="ov-more" data-i18n="ov-more">Open →</span></a>
+      <a class="ov-card" href="/roadmap"><span class="ov-icon" aria-hidden="true">🗺️</span><h3 data-i18n="ov-road-h">Roadmap and questions</h3><p data-i18n="ov-road-p">What comes next, what is not finished yet, and answers to frequent questions.</p><span class="ov-more" data-i18n="ov-more">Open →</span></a>
+      <a class="ov-card" href="/register"><span class="ov-icon" aria-hidden="true">🔐</span><h3 data-i18n="ov-reg-h">Register</h3><p data-i18n="ov-reg-p">Get verified and claim the 1,000 AEQ that come with being a human.</p><span class="ov-more" data-i18n="ov-more">Open →</span></a>
+    </div>
+  </div>
+</section>
 
 <section id="economy">
   <div class="section-inner">
@@ -399,11 +429,11 @@ section{padding:56px 16px}
       <div class="biz-card"><h3 data-i18n="ubi-c3-h">Where it comes from</h3><p data-i18n="ubi-c3-p">Transfer fees (100 %), 30 % of swap fees, the idle-money levy, the 2 % exit levy and anything above the 25,000 AEQ limit.</p></div>
       <div class="biz-card"><h3 data-i18n="ubi-c4-h">Who receives it</h3><p data-i18n="ubi-c4-p">Only verified people. Businesses, validators, founders and other addresses receive nothing from it.</p></div>
     </div>
-    <p class="note" data-i18n="ubi-note">How large the daily share is depends on how much money moves: the more AEQ circulates, the more flows back to everyone. The current pool is shown live at the top of this page.</p>
+    <p class="note" data-i18n="ubi-note">How large the daily share is depends on how much money moves: the more AEQ circulates, the more flows back to everyone.</p>
   </div>
 </section>
 
-<section id="compare" style="background:var(--card);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
+<section id="compare">
   <div class="section-inner">
     <div class="section-label" data-i18n="cmp-label">Person or business?</div>
     <h2 data-i18n="cmp-h2">Three kinds of account, one set of rules</h2>
@@ -449,7 +479,7 @@ section{padding:56px 16px}
   </div>
 </section>
 
-<section id="examples" style="background:var(--card);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
+<section id="examples">
   <div class="section-inner">
     <div class="section-label" data-i18n="ex-label">Examples</div>
     <h2 data-i18n="ex-h2">What it means in real numbers</h2>
@@ -499,7 +529,7 @@ section{padding:56px 16px}
   </div>
 </section>
 
-<section id="shops" style="background:var(--card);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
+<section id="shops">
   <div class="section-inner">
     <div class="section-label" data-i18n="shop-label">For shops</div>
     <h2 data-i18n="shop-h2">How a shop takes part</h2>
@@ -519,7 +549,7 @@ section{padding:56px 16px}
     <div class="section-label" data-i18n="lh-label">Protection against abuse</div>
     <h2 data-i18n="lh-h2">Who is a business? We don't need to know.</h2>
     <p class="section-sub" data-i18n="lh-sub">A decentralised network cannot check whether a real company stands behind an account, and it should not have to: no registry, no authority, no gatekeeper. Instead, hoarding is expensive in every form and passing money on is cheap in every form. Registering as a business only pays off for those whose money really flows.</p>
-    <div class="biz-rules-h" data-i18n="lh-list-h">Every workaround we found, and why it fails</div>
+    <details class="lh-details"><summary class="biz-rules-h" data-i18n="lh-list-h">Every workaround we found, and why it fails</summary>
     <ul class="lh-list">
       <li data-i18n="lh-1"><strong>Registering as a business to get around the 25,000 limit.</strong> The idle-money levy of 1–3 % a month is more expensive than any other form.</li>
       <li data-i18n="lh-2"><strong>Sending money in circles between your own or friendly firms.</strong> The age travels with the money; between businesses nothing gets younger, however long the circle.</li>
@@ -531,6 +561,7 @@ section{padding:56px 16px}
       <li data-i18n="lh-8"><strong>Making money “younger” through the liquidity pool.</strong> Only people can provide liquidity.</li>
       <li data-i18n="lh-9"><strong>A smart contract as a hiding place.</strong> Contracts are other addresses: at most 1,000 AEQ, 1 % a month.</li>
     </ul>
+    </details>
     <div class="sybil-blurb" data-i18n="lh-honest"><strong>What honestly remains:</strong> no money system in the world can stop many real people from colluding. Here every known collusion costs more than it saves, or is limited to small amounts. Business turnover and wage totals are public, so unusual patterns stand out. Anyone who finds a new gap reports it, and the rules are adjusted.</div>
   </div>
 </section>
@@ -562,7 +593,7 @@ section{padding:56px 16px}
   </div>
 </section>
 
-<section style="background:var(--card);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
+<section id="fairness">
   <div class="section-inner">
     <div class="section-label" data-i18n="why-label">Fairness</div>
     <h2 data-i18n="why-h2">Bitcoin's Gini is ~0.85 — higher than any country</h2>
@@ -583,7 +614,7 @@ section{padding:56px 16px}
   </div>
 </section>
 
-<section id="roadmap" style="background:var(--card);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
+<section id="roadmap">
   <div class="section-inner">
     <div class="section-label" data-i18n="rm-label">Roadmap</div>
     <h2 data-i18n="rm-h2">What comes next</h2>
@@ -611,7 +642,7 @@ section{padding:56px 16px}
   </div>
 </section>
 
-<section id="faq" style="background:var(--card);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
+<section id="faq">
   <div class="section-inner">
     <div class="section-label" data-i18n="faq-label">Questions</div>
     <h2 data-i18n="faq-h2">Frequently asked</h2>
@@ -627,7 +658,7 @@ section{padding:56px 16px}
   </div>
 </section>
 
-<section style="padding-top:40px;padding-bottom:40px">
+<section id="disclaimer" style="padding-top:40px;padding-bottom:40px">
   <div class="disclaimer-card">
     <h3 data-i18n="disc-title">Phase 1 disclaimer</h3>
     <p data-i18n="disc-body">Phase 1: since 25 Aug 2026 the proof server refuses any registration without a signed attestation from the matching quorum — a second phone no longer gives the same face a second account. What is not yet true: accounts registered before that date have no face template and could in principle register again on a new wallet; error rates are not calibrated (that needs ~1,000 impostor pairs); liveness is a head-turn challenge, stronger deepfake defenses are being calibrated. Read “one human, one account” as “checked, with named limits” — not as “impossible to circumvent.”</p>
@@ -636,7 +667,7 @@ section{padding:56px 16px}
 </section>
 
 
-<section>
+<section id="rest">
   <div class="section-inner">
     <div class="section-label" data-i18n="rest-label">The rest of the site</div>
     <h2 data-i18n="rest-h2">Everything else has its own section</h2>
@@ -676,7 +707,7 @@ section{padding:56px 16px}
   </div>
 </section>
 
-<section id="social" style="background:var(--card);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
+<section id="social">
   <div class="section-inner">
     <div class="section-label" style="text-align:center" data-i18n="soc-label">Social media</div>
     <h2 style="text-align:center" data-i18n="soc-h2">Where the network talks</h2>
