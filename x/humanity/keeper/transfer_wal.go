@@ -315,6 +315,12 @@ func (cs *ChainState) initWALIfEnabled() {
 // Returns (fromLost, toLost, applied, err) with the exact same contract as
 // transferConcurrent — see that function's doc comment.
 func (cs *ChainState) transferConcurrentWAL(from, to string, amount float64, pendingTxTemplate Transaction) (fromLost, toLost float64, applied bool, err error) {
+	// Ab der Aktivierung der Unternehmensregeln (wirtschaft.go) laeuft jede
+	// Ueberweisung ueber transferMutateLocked -- die Regeln stehen dort und
+	// nur dort.
+	if wirtschaftAktiv(nowUnix()) {
+		return 0, 0, false, nil
+	}
 	fromLost, toLost, applied, err, haltbar := cs.transferConcurrentWALGesperrt(from, to, amount, pendingTxTemplate)
 	if haltbar == nil {
 		return fromLost, toLost, applied, err

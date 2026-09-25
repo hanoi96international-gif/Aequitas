@@ -67,6 +67,12 @@ import (
 // concurrent load) — do not treat this as a substitute for that staging
 // validation before this branch is considered for a production deploy.
 func (cs *ChainState) transferConcurrent(from, to string, amount float64, pendingTxTemplate Transaction) (fromLost, toLost float64, applied bool, err error) {
+	// Ab der Aktivierung der Unternehmensregeln (wirtschaft.go) laeuft jede
+	// Ueberweisung ueber transferMutateLocked -- die Regeln stehen dort und
+	// nur dort.
+	if wirtschaftAktiv(nowUnix()) {
+		return 0, 0, false, nil
+	}
 	if from == to {
 		return 0, 0, true, fmt.Errorf("self-transfer not allowed")
 	}

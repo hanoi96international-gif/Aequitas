@@ -124,6 +124,20 @@ h2{font-family:Inter,system-ui,sans-serif;font-size:clamp(1.6rem,4vw,2.2rem);lin
 
 .sybil-blurb{margin-top:28px;padding:18px 20px;background:rgba(91,140,255,0.06);border:1px solid rgba(91,140,255,0.2);border-radius:var(--radius);font-size:0.92rem;color:var(--muted);line-height:1.55}
 .sybil-blurb strong{color:var(--text)}
+/* ── BUSINESSES ──────────────────────────────────────────────── */
+.biz-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px}
+.biz-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:22px;box-shadow:var(--shadow)}
+.biz-card h3{font-size:1.02rem;margin-bottom:8px}
+.biz-card p{font-size:0.92rem;color:var(--muted);line-height:1.5}
+.biz-rules-h{font-size:1.1rem;font-weight:800;margin:34px 0 12px}
+.biz-rules{border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;background:var(--card)}
+.biz-row{display:grid;grid-template-columns:230px 1fr;gap:16px;padding:14px 18px;border-top:1px solid var(--border)}
+.biz-row:first-child{border-top:none}
+.biz-k{font-weight:700;color:var(--text);font-size:0.92rem}
+.biz-v{color:var(--muted);font-size:0.92rem;line-height:1.5}
+.biz-live{margin-top:22px;display:flex;flex-wrap:wrap;gap:10px 22px;font-size:0.85rem;color:var(--muted)}
+.biz-live strong{color:var(--gold);font-weight:700}
+@media(max-width:700px){.biz-row{grid-template-columns:1fr;gap:4px}}
 
 .section-link{display:inline-block;margin-top:28px;font-size:0.88rem;font-weight:600;color:var(--accent);text-decoration:none;border-bottom:1px solid rgba(91,140,255,0.35);padding-bottom:2px;transition:color 0.2s,border-color 0.2s}
 .section-link:hover{color:var(--green);border-color:rgba(61,220,151,0.5)}
@@ -221,6 +235,7 @@ section{padding:56px 16px}
     <a href="/index/score" class="tab">⚖️ Equality</a>
     <a href="/network" class="tab">🌐 Network</a>
     <a href="/exchange" class="tab">🔄 Exchange</a>
+    <a href="#business" class="tab">🏪 Businesses</a>
     <a href="#social" class="tab">💬 Social</a>
   </div>
 </nav>
@@ -317,6 +332,32 @@ section{padding:56px 16px}
     <h3 data-i18n="disc-title">Phase 1 disclaimer</h3>
     <p data-i18n="disc-body">Phase 1: since 25 Aug 2026 the proof server refuses any registration without a signed attestation from the matching quorum — a second phone no longer gives the same face a second account. What is not yet true: accounts registered before that date have no face template and could in principle register again on a new wallet; error rates are not calibrated (that needs ~1,000 impostor pairs); liveness is a head-turn challenge, stronger deepfake defenses are being calibrated. Read “one human, one account” as “checked, with named limits” — not as “impossible to circumvent.”</p>
     <p class="oss-line" data-i18n="oss-line"><strong>Open source:</strong> Core chain public · identity/proof services partly private in Phase 1.</p>
+  </div>
+</section>
+
+<section id="business" style="background:var(--card);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
+  <div class="section-inner">
+    <div class="section-label" data-i18n="biz-label">For businesses</div>
+    <h2 data-i18n="biz-h2">Accept AEQ, pass it on, pay nothing</h2>
+    <p class="section-sub" data-i18n="biz-sub">Businesses may accept, hold and spend AEQ. The rules make money flow through them and back to people: leaving it idle costs, passing it on is free.</p>
+    <div class="biz-grid">
+      <div class="biz-card"><h3 data-i18n="biz-b1-h">No card fees</h3><p data-i18n="biz-b1-p">A payment costs the business nothing. Customers spend their first 1,000 AEQ each month without any fee.</p></div>
+      <div class="biz-card"><h3 data-i18n="biz-b2-h">Fee-free wages</h3><p data-i18n="biz-b2-p">Wages paid in AEQ cost nothing. Employees can exchange up to 3,000 AEQ of wages a month into euros or dollars without a levy.</p></div>
+      <div class="biz-card"><h3 data-i18n="biz-b3-h">No growth cap</h3><p data-i18n="biz-b3-p">People can hold at most 25,000 AEQ; businesses have no fixed limit. Money that moves on within 30 days never costs anything.</p></div>
+      <div class="biz-card"><h3 data-i18n="biz-b4-h">Paid in seconds</h3><p data-i18n="biz-b4-p">Money arrives in seconds. No chargebacks, no waiting for settlement.</p></div>
+    </div>
+    <div class="biz-rules-h" data-i18n="biz-rules-h">The rules</div>
+    <div class="biz-rules">
+      <div class="biz-row"><span class="biz-k" data-i18n="biz-r1-k">Idle money</span><span class="biz-v" data-i18n="biz-r1-v">Older than 30 days: 1 % per month · older than 90 days: 3 % per month · 2,000 AEQ always free</span></div>
+      <div class="biz-row"><span class="biz-k" data-i18n="biz-r2-k">Money has an age</span><span class="biz-v" data-i18n="biz-r2-v">The age travels with the money. Sending it in circles, through your own firms or through friends, does not make it new. It only becomes new after 30 days with a person.</span></div>
+      <div class="biz-row"><span class="biz-k" data-i18n="biz-r3-k">Exit to euro or dollar</span><span class="biz-v" data-i18n="biz-r3-v">2 % levy. People: wages and 1,000 AEQ a month are free</span></div>
+      <div class="biz-row"><span class="biz-k" data-i18n="biz-r4-k">Business to business</span><span class="biz-v" data-i18n="biz-r4-v">0.1 %, no surcharge</span></div>
+      <div class="biz-row"><span class="biz-k" data-i18n="biz-r5-k">Where it goes</span><span class="biz-v" data-i18n="biz-r5-v">Every levy goes 100 % to the basic income, equally to every person</span></div>
+    </div>
+    <div class="sybil-blurb" data-i18n="biz-people"><strong>For people:</strong> the first 1,000 AEQ you spend each month are free, savings up to 5,000 AEQ lose nothing, and wages are exchanged without a levy. Holding and exiting always cost people less than businesses.</div>
+    <div class="sybil-blurb" data-i18n="biz-open"><strong>Opening a business account:</strong> a verified person and the business wallet sign together. At most 3 businesses per person, up to 10 responsible people per business. No registry office and no gatekeeper: nobody checks what you are, the rules make hoarding expensive in every form. The app will offer it shortly.</div>
+    <div class="biz-live"><span><span data-i18n="biz-live-from">Rules apply from</span> <strong id="biz-from">—</strong></span><span><span data-i18n="biz-live-count">Registered businesses</span>: <strong id="biz-count">—</strong></span></div>
+    <a class="section-link" href="https://github.com/hanoi96international-gif/Aequitas/blob/main/docs/UNTERNEHMEN_KONZEPT.md" rel="noopener" data-i18n="biz-link">Read the full concept →</a>
   </div>
 </section>
 
