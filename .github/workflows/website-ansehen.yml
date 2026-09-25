@@ -13,6 +13,13 @@ jobs:
   ansehen:
     runs-on: ubuntu-latest
     steps:
+      - name: Wohin zeigt die Domain, was liefert sie aus
+        run: |
+          getent hosts aequitas.digital www.aequitas.digital || true
+          for s in / /economy /business /roadmap; do
+            echo "== $s"; curl -sS -o /tmp/s.html -D - --max-time 20 "https://aequitas.digital$s" | grep -iE '^(HTTP|server|cache-control|age|last-modified|cf-)' || true
+            echo "Bytes: $(wc -c < /tmp/s.html)  Links auf Unterseiten: $(grep -oE 'href=\"/(economy|business|roadmap)' /tmp/s.html | sort -u | tr '\n' ' ')"
+          done
       - name: API-Status
         run: |
           curl -s --max-time 20 https://aequitas.digital/api/status | python3 -m json.tool | head -80
@@ -26,7 +33,7 @@ jobs:
           const { chromium } = require(process.env.PW);
           (async () => {
             const b = await chromium.launch();
-            const seiten = ['/', '/explorer', '/dapp', '/whitepaper'];
+            const seiten = ['/', '/economy', '/business', '/roadmap', '/explorer'];
             for (const [name, vp] of [['desktop', {width: 1366, height: 900}], ['mobil', {width: 390, height: 844}]]) {
               for (const s of seiten) {
                 const p = await b.newPage({viewport: vp});
@@ -44,6 +51,8 @@ jobs:
                 console.log(`\n##### ${name} ${s} HTTP ${code}`);
                 console.log('Konsole:', fehler.length ? fehler.slice(0, 40).join(' | ') : 'keine Fehler');
                 console.log('Verdaechtige Zeilen:\n  ' + verdacht.join('\n  '));
+                const kopf = await p.evaluate(() => [...document.querySelectorAll('h1,h2')].map(h => h.tagName + ' ' + h.innerText.trim()).slice(0, 40));
+                console.log('Ueberschriften:\n  ' + kopf.join('\n  '));
                 await p.close();
               }
             }
