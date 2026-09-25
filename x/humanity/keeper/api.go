@@ -1000,6 +1000,7 @@ func (a *APIServer) buildMux() *http.ServeMux {
 		w.Header().Set("Cache-Control", "public, max-age=3600")
 		fmt.Fprint(w, "User-agent: *\nDisallow: /api/\nDisallow: /debug/\nDisallow: /rpc\nAllow: /\n")
 	})
+	mux.HandleFunc("/people", a.handleSeite(peopleHTML))
 	mux.HandleFunc("/economy", a.handleSeite(economyHTML))
 	mux.HandleFunc("/business", a.handleSeite(businessHTML))
 	mux.HandleFunc("/roadmap", a.handleSeite(roadmapHTML))
