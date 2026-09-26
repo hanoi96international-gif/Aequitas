@@ -57,7 +57,7 @@ eine Einschätzung. Prüfe es vor dem Start auf https://railway.com/pricing.
 ## 3. Variablen setzen
 
 Dienst `aequitas-node` → **Variables** → **Raw Editor** → einfügen und die
-drei markierten Werte ersetzen:
+zwei Werte ersetzen (`SELF_URL`, `NODE_OPERATOR_WALLET`):
 
 ```
 DATABASE_URL=postgres://${{Postgres.PGUSER}}:${{Postgres.PGPASSWORD}}@${{Postgres.RAILWAY_PRIVATE_DOMAIN}}:5432/aequitas?sslmode=disable
@@ -173,5 +173,5 @@ Dann dem Netzbetreiber Bescheid geben. Er prüft von seiner Seite aus
 | Knoten startet immer wieder neu, `out of memory` | zu wenig RAM | Resources erhöhen oder `GOMEMLIMIT` senken (z. B. `3GiB`) |
 | `no space left on device` | Postgres-Volumen voll | Volumen vergrößern (Schritt 1.2) |
 | Höhe steigt nicht | Snapshot/Sync hängt | Log nach `[BOOTSTRAP]`/`[HTTP-SYNC]` durchsehen; Netzbetreiber fragen |
-| `operator wallet is not a registered human` | Wallet nicht registriert | erst die Registrierung in der App abschließen |
+| `NODE_OPERATOR_WALLET is not a registered human` | Wallet nicht registriert | erst die Registrierung in der App abschließen |
 | `nimmt_an: true` | `ANNAHME_ROLLE` fehlt | sofort `ANNAHME_ROLLE=nur_lesend` setzen |
