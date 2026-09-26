@@ -1,0 +1,69 @@
+name: Coordinator-Register von C2 auf den neuen C1 uebernehmen
+# Das Register (Tabelle coordinator_keys) ist knotenlokal und kein Teil des
+# Konsenses: eine Eintragung auf C2 erreicht C1 nicht. Der neue C1 startete
+# mit leerem Register -- sein Vergleichsdienst meldete "Register nicht
+# lesbar", sein Proof-Server kannte 1 statt 3 Coordinatoren.
+#
+# Die Unterschriften speichert der Knoten nicht; uebernommen werden die
+# Zeilen, die C2 beim Eintragen geprueft hat (oeffentlicher Schluessel,
+# Menschen-Wallet, URL). Beide Boxen gehoeren dem Betreiber. Nur hinzufuegen,
+# nie ueberschreiben.
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/server-changes-quorum-nfksc7]
+    paths: [.github/workflows/coordinator-register-c1.yml]
+permissions:
+  contents: read
+jobs:
+  uebernehmen:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Schluessel
+        env:
+          K1: ${{ secrets.CONTABO_SSH_KEY }}
+          K2: ${{ secrets.CONTABO2_SSH_KEY }}
+        run: |
+          set -eu
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$K1" > ~/.ssh/c1 && chmod 600 ~/.ssh/c1
+          printf '%s\n' "$K2" > ~/.ssh/c2 && chmod 600 ~/.ssh/c2
+          ssh-keyscan 194.163.188.71 2>/dev/null > ~/.ssh/kh
+          ssh-keygen -lf ~/.ssh/kh | awk '{print $2}' | grep -qx 'SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto' || { echo "::error::Host-Schluessel von C2 passt nicht"; exit 1; }
+          cat ~/.ssh/kh >> ~/.ssh/known_hosts
+      - name: Von C2 lesen
+        run: |
+          set -eu
+          ssh -i ~/.ssh/c2 -o BatchMode=yes root@194.163.188.71 '
+            DB=$(docker inspect aequitas-node --format "{{range .Config.Env}}{{println .}}{{end}}" | grep "^DATABASE_URL=" | cut -d= -f2-)
+            docker run --rm --network aequitas-net postgres:16-alpine psql "$DB" -tA -F"|" \
+              -c "SELECT public_key, human_wallet, COALESCE(url, '"''"') FROM coordinator_keys ORDER BY registered_at"
+          ' > zeilen.txt
+          sed -i '/^$/d' zeilen.txt
+          if grep -vqE "^[0-9a-f]{64}\|0x[0-9a-f]{40}\|(https://[A-Za-z0-9./:-]*)?$" zeilen.txt; then
+            echo "::error::unerwartete Zeile -- nichts eingetragen"; exit 1
+          fi
+          echo "Eintraege auf C2: $(wc -l < zeilen.txt)"
+          [ -s zeilen.txt ] || { echo "::error::C2 liefert keine Eintraege"; exit 1; }
+          cut -d'|' -f1,2 zeilen.txt | sed -E 's/^(.{16}).*\|(.*)$/  \1… -> \2/'
+      - name: Auf C1 eintragen
+        run: |
+          set -eu
+          ssh -i ~/.ssh/c1 -o StrictHostKeyChecking=accept-new -o BatchMode=yes root@188.172.229.121 '
+            set -eu
+            while IFS="|" read -r k w u; do
+              [ -n "$k" ] || continue
+              docker exec -i aequitas-postgres psql -U postgres -d aequitas -v ON_ERROR_STOP=1 -q \
+                -c "CREATE TABLE IF NOT EXISTS coordinator_keys (public_key TEXT PRIMARY KEY, human_wallet TEXT NOT NULL, url TEXT, registered_at TIMESTAMP DEFAULT NOW())" \
+                -c "INSERT INTO coordinator_keys (public_key, human_wallet, url) VALUES ('"'"'$k'"'"', '"'"'$w'"'"', NULLIF('"'"'$u'"'"', '"'"''"'"')) ON CONFLICT (public_key) DO NOTHING"
+            done
+            echo "C1 kennt jetzt: $(curl -s -m 10 http://127.0.0.1:8080/api/coordinators | grep -oE "\"public_key\":\"[0-9a-f]{16}" | cut -d\" -f4 | tr "\n" " ")"
+          ' < zeilen.txt
+      - name: Proof-Server und Vergleichsdienst auf C1 lesen das Register (bis 2 min)
+        run: |
+          for i in $(seq 1 12); do
+            H=$(curl -s -m 10 https://proof1.aequitas.digital/health)
+            echo "$H" | grep -q '"coordinatoren":[3-9]' && { echo "$H"; exit 0; }
+            sleep 10
+          done
+          echo "Proof-Server C1: $H"

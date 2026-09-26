@@ -1,16 +1,11 @@
 ﻿name: Deploy to Contabo2 VPS
 
 on:
-  push:
-    # main only — see deploy-contabo.yml for why master was removed.
-    branches: [main]
-    # See deploy-contabo.yml: a workflow- or docs-only push must not restart
-    # the node.
-    paths-ignore:
-      - '.github/**'
-      - '**.md'
-      # Siehe deploy-contabo.yml: tools/** landet nicht im Knoten-Abbild.
-      - 'tools/**'
+  # SEIT DEM 26.09.2026 KEIN EIGENER PUSH-AUSLOESER MEHR. Ein Push auf main
+  # rollt ueber deploy-c1-dann-c2.yml aus: erst der neue C1 (Primary), und
+  # nur wenn der gruen ist, zieht C2 nach. C2 darf nie vor oder ohne C1
+  # neu starten. Von Hand bleibt dieser Workflow fuer den Notfall.
+  workflow_dispatch:
 
 # Deploys nacheinander, nie gleichzeitig: am 15.09.2026 liefen zwei Pushes
 # drei Minuten auseinander als zwei Deploys parallel auf dieselbe Box --
