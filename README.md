@@ -7,7 +7,7 @@
 [![Chain ID](https://img.shields.io/badge/Chain%20ID-1926-blue)](https://aequitas.digital/rpc)
 [![EVM](https://img.shields.io/badge/EVM-Compatible-green)](https://aequitas.digital/rpc)
 [![License](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
-[![Phase](https://img.shields.io/badge/Phase-0%20Live-gold)](https://aequitas.digital)
+[![Beta](https://img.shields.io/badge/Beta-Live-gold)](https://aequitas.digital)
 
 ---
 
@@ -28,19 +28,15 @@ Gesamtangebot / Total Supply  =  Verifizierte Menschen × 1.000 AEQ
 Jede Person, die sich registriert — ob als erste oder als millionste — erhält exakt 1.000 AEQ.
 Every person who registers — whether first or millionth — receives exactly 1,000 AEQ.
 
-Der Gini-Koeffizient von Aequitas liegt bei ~0,08 — verglichen mit ~0,85 bei Bitcoin, dem ungleichsten Währungssystem der Geschichte.
-Aequitas has a Gini coefficient of ~0.08 — compared to ~0.85 for Bitcoin, the most unequal monetary system in history.
+Der Gini-Koeffizient von Aequitas wird live gemessen (Explorer → Gleichheit) — zum Vergleich: Bitcoin liegt bei ~0,85, dem ungleichsten Währungssystem der Geschichte.
+Aequitas's Gini coefficient is measured live (explorer → Equality) — for comparison, Bitcoin is at ~0.85, the most unequal monetary system in history.
 
 ---
 
 ## Live / Website
 
-> **Infrastruktur-Umzug (Stand 2026-08-14).** Das Netzwerk lief bis dahin
-> teilweise auf Railway. Railway ist abgeschaltet; alle Dienste laufen jetzt
-> auf den beiden Contabo-Validatoren. Die Domain `aequitas.digital` wird zum
-> **18.08.2026** frei und dann auf Contabo1 gezeigt — bis dahin sind die
-> IP-Endpunkte maßgeblich. Ablauf und Checkliste:
-> [`docs/MIGRATION_RAILWAY_TO_CONTABO.md`](docs/MIGRATION_RAILWAY_TO_CONTABO.md).
+> Alle Dienste laufen auf den Contabo-Validatoren; Railway ist seit August 2026 abgeschaltet
+> ([`docs/MIGRATION_RAILWAY_TO_CONTABO.md`](docs/MIGRATION_RAILWAY_TO_CONTABO.md)).
 
 | | URL |
 |---|---|
@@ -83,11 +79,14 @@ Jeder AEQ-Halter muss nachweisen, dass er ein einzigartiger lebender Mensch ist 
 
 Every AEQ holder must prove they are a unique living human through biometric verification and Zero-Knowledge Proofs.
 
-- 📱 **Android App** → Fingerabdruck via Hardware Secure Element (HSE)
-- 🔒 Rohdaten verlassen das Gerät **niemals** / Raw biometric data **never** leaves the device
-- 🔐 Groth16 ZKP auf dem Proof-Server generiert / Groth16 ZKP generated on Proof Server
+- 📱 **Android App** → kurze Live-Gesichtsprüfung: Blinzeln, Blick zu einer zufälligen Seite, Farbblitze; nur das Gesicht, kein Fingerabdruck, kein Ausweis / short live face check: blink, glance to a random side, colour flashes; face only, no fingerprint, no ID
+- 🧑‍⚖️ Zwei unabhängige Vergleichsdienste (verschiedene Eigentümer) prüfen, dass das Gesicht noch nicht registriert ist; beide müssen zustimmen / two independent matching services (different owners) check the face is not yet registered; both must agree
+- 🔒 Foto und Template werden nach Sekunden gelöscht; die Vergleichsdienste behalten nur einen 64-Byte-Auszug, aus dem sich das Gesicht nicht rekonstruieren lässt / photo and template are deleted within seconds; the matching services keep only a 64-byte sketch from which the face cannot be reconstructed
+- 🔐 Groth16 ZKP auf dem Proof-Server, nur gegen Wallet-Bindung + 2 signierte Bescheinigungen / Groth16 ZKP on the proof server, only against the wallet binding + 2 signed attestations
+- ⚖️ Abgewiesen? Kennung `W-…` in der App, Widerspruch binnen 90 Tagen, ein Mensch prüft / Rejected? Identifier `W-…` in the app, objection within 90 days, a human reviews
 - ⛓ Commitment-Hash dauerhaft on-chain gespeichert / Commitment stored permanently on-chain
 - 👤 **Ein Mensch, eine Wallet, für immer / One human, one wallet, forever**
+- 👁 **Langfristig: Iris-Scan.** Um wirklich 1 Mensch = 1 Registrierung zu gewährleisten, setzt Aequitas langfristig auf den Iris-Scan. Wie das umgesetzt werden kann, daran wird derzeit gearbeitet; Hardware und Zeitplan stehen noch nicht fest. Die Gesichtsprüfung ist der Zwischenschritt, mit benannten Grenzen (Schwelle noch nicht an echten Aufnahmen kalibriert). / **Long term: iris scan.** To truly guarantee one person = one registration, Aequitas will rely on the iris scan in the long run. How it can be implemented is being worked on now; hardware and timing are not decided. The face check is the interim step, with named limits (threshold not yet calibrated on real captures).
 
 ### 2. Universal Basic Income (UBI) — Universelles Grundeinkommen
 
@@ -95,10 +94,11 @@ UBI aus Protokoll-Ökonomie — ohne Steuern, ohne Regierung, ohne politische En
 UBI from protocol economics — no taxation, no government, no political decision required.
 
 **Quellen / Sources:**
-- Überweisungsgebühren (0,1 % auf jede Überweisung, obendrauf; Aufschlag ab dem 5-/10-/20-fachen des fairen Anteils: +0,1/+0,5/+1 %) → 100% an UBI-Pool / Transfer fees (0.1% on every transfer, paid on top; surcharge from 5×/10×/20× the fair share) → 100% to UBI Pool
+- Überweisungsgebühren (0,1 % auf jede Überweisung, obendrauf; bis 30.09.2026 Aufschlag ab dem 5-/10-/20-fachen des fairen Anteils, ab 1.10.2026 ohne Aufschlag und die ersten 1.000 AEQ im Monat für Menschen frei) → 100% an UBI-Pool / Transfer fees (0.1% on every transfer, paid on top; until 30 Sep 2026 a surcharge from 5×/10×/20× the fair share, from 1 Oct 2026 no surcharge and people's first 1,000 AEQ a month free) → 100% to UBI Pool
 - Swap-Gebühren → 30% an UBI-Pool / Swap fees → 30% to UBI Pool
 - Wealth-Cap-Überschuss → 100% an UBI-Pool / Wealth cap overflow → 100% to UBI Pool
-- Demurrage auf Überschüsse → 100% an UBI-Pool / Demurrage on excess balances → 100% to UBI Pool
+- Liegegeld (Demurrage) → 100% an UBI-Pool / Idle-money levy (demurrage) → 100% to UBI Pool
+- Ausstiegsabgabe 2 % beim Umtausch in einen Stablecoin (ab 1.10.2026) → 100% an UBI-Pool / 2% exit levy when exchanging into a stable coin (from 1 Oct 2026) → 100% to UBI Pool
 - Inaktive Wallets nach 4 Jahren / Inactive wallet escrow after 4 years
 
 ### 3. Wealth Cap — Vermögensobergrenze
@@ -123,8 +123,8 @@ Excess flows instantly into tokenomics pools — no AEQ is destroyed.
 
 ### 4. Demurrage — Haltegebühr
 
-0,5% monatliche Gebühr (nach 3 Monaten Karenzzeit seit der letzten Aktivität) auf Guthaben **über** dem fairShare. Geht zu 100% in den UBI-Pool und damit zu gleichen Teilen an alle Menschen — wird nie vernichtet.
-0.5% monthly fee (after a 3-month grace period since last activity) on any balance **above** fairShare. Goes 100% to the UBI pool, i.e. to all humans in equal shares — never destroyed.
+**Ab 1.10.2026:** Menschen zahlen 0,5 %/Monat nur auf den Teil über 5.000 AEQ. Unternehmen: bis 1,5 Monatsumsätze frei (mindestens 2.000 AEQ), darüber 0,5 %/Monat, über 3 Monatsumsätzen 2 %/Monat. Sonstige Adressen: 1 %/Monat, höchstens 1.000 AEQ. Täglich abgerechnet, 100 % ins Grundeinkommen — wird nie vernichtet. **Bis 30.09.2026** gilt die bisherige Regel: 0,5 %/Monat auf den Teil über dem fairen Anteil nach 3 Monaten ohne Aktivität. Details: [`docs/UNTERNEHMEN_KONZEPT.md`](docs/UNTERNEHMEN_KONZEPT.md).
+**From 1 Oct 2026:** people pay 0.5%/month only on the part above 5,000 AEQ. Businesses: up to 1.5 months' turnover free (at least 2,000 AEQ), above that 0.5%/month, above 3 months' turnover 2%/month. Other addresses: 1%/month, at most 1,000 AEQ. Settled daily, 100% to the basic income — never destroyed. **Until 30 Sep 2026** the previous rule applies: 0.5%/month on the part above the fair share after 3 months without activity.
 
 Historisches Vorbild: Wörgl, Österreich (1932) — Demurrage-Währung reduzierte die Arbeitslosigkeit um 25% in einem Jahr.
 Historical precedent: Wörgl, Austria (1932) — demurrage currency reduced unemployment by 25% in one year.
@@ -154,8 +154,8 @@ No mining. No staking. No protocol emissions.
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                  Android App                            │
-│    Hardware Secure Element · Fingerprint → biohash      │
-│    Biometrische Daten verlassen das Gerät nie           │
+│    Live-Gesichtsprüfung → unabhängige Vergleichsdienste │
+│    2 von 2 → bio_hash + signierte Bescheinigungen       │
 └──────────────────────┬──────────────────────────────────┘
                        │ biometric hash
 ┌──────────────────────▼──────────────────────────────────┐
@@ -250,12 +250,12 @@ aequitas-chain/
 ## Registrierungsablauf / Registration Flow
 
 ```
-1. App          → Fingerabdruck via Hardware Secure Element
-2. App          → Leitet biometric hash ab (verlässt Gerät nie)
-3. App          → Sendet hash an Proof Server → Groth16 ZKP generiert
+1. App          → Live-Gesichtsaufnahme mit Lebendigkeitsprüfung (Blinzeln, Blick zur Seite, Farbblitze)
+2. Vergleich    → Zwei unabhängige Vergleichsdienste prüfen auf Duplikate (beide müssen zustimmen); Coordinator stellt bio_hash + Wallet-Bindung aus, die Dienste bescheinigen
+3. App          → Proof Server erzeugt Groth16 ZKP nur gegen Wallet-Bindung + 2 Bescheinigungen
 4. Proof Server → Gibt pubSignals (commitment, nullifier) zurück
-5. App          → Öffnet MetaMask-Verbindung auf aequitas.digital
-6. Website      → Sendet /api/register mit ZKP-Proof
+5. App          → Signiert mit der Wallet in der App (kein MetaMask nötig)
+6. App          → Sendet /api/register mit ZKP-Proof an den Knoten, der den Beweis ausgestellt hat
 7. Node         → Verifiziert ZKP → Prüft Nullifier on-chain (Replay-Schutz)
 8. Node         → Ruft AequitasV7 auf → Synchronisiert Dual-Ledger
 9. Wallet       → Empfängt 1.000 AEQ · App zeigt Bestätigung
@@ -289,7 +289,9 @@ The answer is simple: **Money exists because people exist. Therefore, every pers
 | 0+ | ✅ | Aequitas Layer 1 (Go) · BlockDAG + GHOSTDAG · P2P · Explorer |
 | V7 | ✅ | EVM · Dual-Ledger · Exchange/AMM · Lorenz-Kurve · Gini-Index · UBI · Demurrage |
 | V7.x | ✅ | Proof of Alive · Guardian-System (Eskrow + UBI-Freigabe) live |
-| 1 | 🔄 | APK-Release · Community-Wachstum · Grant-Anträge · Mehr-Knoten-Skalierung |
+| 1 | 🔄 | APK-Release · Live-Gesichtsprüfung · Community-Wachstum · Grant-Anträge · Mehr-Knoten-Skalierung |
+| 1.10.2026 | ⏳ | Wirtschaftsregeln: drei Kontoarten, Liegegeld, Ausstiegsabgabe, freie Monatsbeträge / economy rules |
+| Iris | 🔄 | Iris-Scan für wirklich 1 Mensch = 1 Registrierung — Umsetzung in Arbeit, kein Datum / iris scan — implementation in progress, no date |
 | 2 | ⬜ | iOS App |
 | 3 | ⬜ | Cross-Chain Bridges · Externe DEX-Integration |
 | 4 | ⬜ | Vollständige Dezentralisierung · Community Governance |
@@ -307,5 +309,5 @@ The answer is simple: **Money exists because people exist. Therefore, every pers
 
 ---
 
-*Aequitas — gestartet Juni 2026 · Phase 0 Live · Chain ID 1926*
-*Aequitas — launched June 2026 · Phase 0 Live · Chain ID 1926*
+*Aequitas — gestartet Juni 2026 · Beta · Chain ID 1926*
+*Aequitas — launched June 2026 · Beta · Chain ID 1926*

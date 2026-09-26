@@ -1,6 +1,8 @@
 # Teil 3: Die drei Wände — warum das Problem nicht auf der Identitätsebene liegt
 
 Stand: 2026-07-29 · Fortsetzung von `BIOMETRIE_ANALYSE.md` und `BIOMETRIE_ANALYSE_TEIL2.md`
+> **Historisches Dokument (Analyse vom 29.07.2026).** Es bewertet Entwürfe, die inzwischen verworfen sind (Fingerabdruck-Kit, Handvenen, Handfläche, Fingerkuppe, Ohr). Der aktuelle Stand steht in [`WHITEPAPER.md` §3](WHITEPAPER.md#3-proof-of-humanity): heute Live-Gesichtsprüfung, langfristig Iris.
+
 
 ---
 

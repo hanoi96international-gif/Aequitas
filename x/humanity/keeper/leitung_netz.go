@@ -242,6 +242,10 @@ func StarteLeitung(dag *BlockDAG, cs *ChainState, selfURL string) *Leitung {
 		Zugelassen: dag.istZugelassenerValidator,
 		Mensch:     dag.validatorMenschVon,
 		Unbekannt:  func(string) { dag.validatorRegisterNachfragen() },
+		Zuteilbar: func(a string) bool {
+			bestanden, unbekannt := proben.geprueft(a, time.Now())
+			return bestanden || unbekannt
+		},
 	}
 	faehig := !cs.nurLesend.Load() && leistungsnachweisErfuellt()
 	l := NeueLeitung(ich, selfURL, satz, start, faehig, cs.leitungLaden(), cfg, env, time.Now())
@@ -251,6 +255,9 @@ func StarteLeitung(dag *BlockDAG, cs *ChainState, selfURL string) *Leitung {
 	validatorIPsFrei(l)
 
 	cs.leitung.Store(l)
+	if n := cs.VorbehalteEinlesen(); n > 0 {
+		fmt.Printf("[VORBEHALT] %d offene Vorbehalte eingelesen (Stufe 2)\n", n)
+	}
 	st := l.Stand(time.Now())
 	fmt.Printf("[LEITUNG] ✓ an: Satz %v (Version %v, %v Validatoren, Wahl %v), Term %d, Leiter %s, dieser Knoten %s (Mitglied %v, leiterfaehig %v), Wechsel alle %s\n",
 		st["satz"], st["satz_version"], st["validatoren"], st["mit_wahl"], l.Term(),
@@ -270,14 +277,25 @@ func (dag *BlockDAG) leitungSchleife(l *Leitung, cs *ChainState) {
 	t := time.NewTicker(200 * time.Millisecond)
 	defer t.Stop()
 	letzteFaehigPruefung := time.Now()
+	letzteKappung := time.Now()
 	for range t.C {
 		SafeCall("leitung-takt", func() {
+			// Stufe 2 (kappung_verteilt.go): vorgemerkte Konten, fuer die
+			// dieser Knoten zustaendig ist, einmal je Sekunde kappen.
+			if verteilteAnnahmeAktiv(nowUnix()) && time.Since(letzteKappung) >= time.Second {
+				letzteKappung = time.Now()
+				cs.KappungenAbarbeiten()
+				cs.VorbehalteAbarbeiten()
+			}
 			if time.Since(letzteFaehigPruefung) > time.Minute {
 				letzteFaehigPruefung = time.Now()
 				l.SetzeFaehig(!cs.nurLesend.Load() && leistungsnachweisErfuellt())
 				validatorIPsFrei(l)
 			}
 			dag.leitungVersenden(l, l.Takt(time.Now()), dag.leitungPeers)
+			if verteilteAnnahmeAktiv(nowUnix()) {
+				dag.leistungsprobenPlanen(l)
+			}
 		})
 	}
 }
@@ -460,19 +478,102 @@ func (cs *ChainState) leitungUnverteiltVerwerfen() (wal int, korb int64) {
 // weiterleitungsZiel: an wen gehoert eine annehmende Anfrage, die dieser
 // Knoten nicht annimmt? Leer = selbst bearbeiten (Leitung aus, selbst
 // Leiter, Leiter unbekannt, oder schon einmal weitergeleitet).
-func (cs *ChainState) weiterleitungsZiel(r *http.Request) string {
+//
+// konten: die Konten, die die Anfrage belastet (anfrageKonten, rpcKonten).
+// Stufe 2: Ziel ist ihr Zustaendiger. Gehoeren sie verschiedenen, gibt es
+// kein gemeinsames Ziel -- dann bearbeitet dieser Knoten selbst, und das Tor
+// lehnt ab, was er nicht annimmt.
+func (cs *ChainState) weiterleitungsZiel(r *http.Request, konten ...string) string {
 	l := cs.leitung.Load()
 	if l == nil || r.Header.Get(weitergeleitetKopf) != "" {
 		return ""
 	}
-	if cs.nimmtUeberweisungenAn() {
+	if cs.nimmtAnFuer(konten...) {
 		return ""
 	}
-	addr, u := l.Leiter()
+	var addr, u string
+	if len(konten) == 0 {
+		addr, u = l.Leiter()
+	} else {
+		addr, u = l.Zustaendig(konten[0])
+		for _, k := range konten[1:] {
+			if a, _ := l.Zustaendig(k); a != addr {
+				return ""
+			}
+		}
+	}
 	if addr == "" || u == "" || addr == l.ich {
 		return ""
 	}
 	return u
+}
+
+// anfrageKonten: welche Konten eine annehmende REST-Anfrage belastet.
+func anfrageKonten(pfad string, body []byte) []string {
+	var f struct {
+		Wallet      string `json:"wallet"`
+		Unternehmen string `json:"unternehmen"`
+	}
+	_ = json.Unmarshal(body, &f)
+	w := strings.ToLower(strings.TrimSpace(f.Wallet))
+	switch {
+	case pfad == "/api/swap" || pfad == "/api/add-liquidity" || pfad == "/api/remove-liquidity":
+		// Zum Zustaendigen des Kontos: ist er zugleich Leiter, tauscht er
+		// direkt, sonst ueber den Vorbehalt (vorbehalt.go).
+		return []string{w}
+	case pfad == "/api/faucet":
+		return []string{kontoFaucet}
+	case strings.HasPrefix(pfad, "/api/unternehmen/"):
+		return []string{strings.ToLower(strings.TrimSpace(f.Unternehmen))}
+	case pfad == "/api/recover-escrow":
+		return []string{w}
+	}
+	return nil
+}
+
+// rpcKonten: die Absender aller eth_sendRawTransaction und die Adressen
+// aller eth_getTransactionCount in einem RPC-Koerper (einzeln oder Batch).
+// Die Wiederherstellung des Absenders kostet beim zweiten Mal nichts
+// (absender_cache.go).
+func rpcKonten(body []byte) []string {
+	var posten []json.RawMessage
+	if len(body) > 0 && body[0] == '[' {
+		if json.Unmarshal(body, &posten) != nil {
+			return nil
+		}
+	} else {
+		posten = []json.RawMessage{body}
+	}
+	gesehen := map[string]bool{}
+	var out []string
+	for _, p := range posten {
+		var req struct {
+			Method string            `json:"method"`
+			Params []json.RawMessage `json:"params"`
+		}
+		if json.Unmarshal(p, &req) != nil || len(req.Params) == 0 {
+			continue
+		}
+		var a string
+		switch req.Method {
+		case "eth_sendRawTransaction":
+			var raw string
+			if json.Unmarshal(req.Params[0], &raw) == nil {
+				if _, s, _, err := decodeAndRecoverSender(raw); err == nil {
+					a = s
+				}
+			}
+		case "eth_getTransactionCount":
+			if json.Unmarshal(req.Params[0], &a) == nil {
+				a = strings.ToLower(strings.TrimSpace(a))
+			}
+		}
+		if a != "" && !gesehen[a] {
+			gesehen[a] = true
+			out = append(out, a)
+		}
+	}
+	return out
 }
 
 var weiterleitungsKlient = &http.Client{Timeout: 20 * time.Second}
@@ -511,18 +612,32 @@ func leiteWeiter(w http.ResponseWriter, r *http.Request, ziel string, body []byt
 // bei rotierendem Leiter gehoeren sie zu ihm wie Ueberweisungen.
 func (a *APIServer) zumLeiter(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// Die Nonce fuer Tausch und Liquiditaet kennt am frischesten, wer das
+		// Konto gerade annimmt (Stufe 2): auch das GET dorthin.
+		if r.Method == http.MethodGet && r.URL.Path == "/api/nonce" && a.state.leitung.Load() != nil {
+			if ziel := a.state.weiterleitungsZiel(r, strings.ToLower(r.URL.Query().Get("wallet"))); ziel != "" && leiteWeiter(w, r, ziel, nil) {
+				return
+			}
+			h(w, r)
+			return
+		}
 		if r.Method != http.MethodPost {
 			h(w, r)
 			return
 		}
-		ziel := a.state.weiterleitungsZiel(r)
-		if ziel == "" {
+		if a.state.leitung.Load() == nil {
 			h(w, r)
 			return
 		}
 		body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
 		if err != nil {
 			http.Error(w, `{"error":"unlesbar"}`, http.StatusBadRequest)
+			return
+		}
+		ziel := a.state.weiterleitungsZiel(r, anfrageKonten(r.URL.Path, body)...)
+		if ziel == "" {
+			r.Body = io.NopCloser(bytes.NewReader(body))
+			h(w, r)
 			return
 		}
 		if !rpcRateLimitFrei(r) && rpcRateLimited(clientIP(r)) {

@@ -316,10 +316,24 @@ func (cs *ChainState) GetEscrow(wallet string) (amount float64, movedAt int64, e
 // outbox TX are a single all-or-nothing DB transaction: secondary nodes
 // replay this as an "escrow_recover" TX via applyEscrowRecoverDeltaLocked.
 func (cs *ChainState) RecoverFromEscrow(wallet string) error {
+	return cs.RecoverFromEscrowMitNachweis(wallet, nil)
+}
+
+// RecoverFromEscrowMitNachweis: wie RecoverFromEscrow, dazu die Unterschrift
+// des Inhabers fuer den Block (auftrag_nachweis.go).
+func (cs *ChainState) RecoverFromEscrowMitNachweis(wallet string, nachweis *Auftragsnachweis) error {
 	wallet = strings.ToLower(wallet)
 	if cs.db == nil {
 		return fmt.Errorf("no database")
 	}
+	// Durch das Annahme-Tor (annahme_tor.go): die Rueckholung verbraucht den
+	// Treuhand-Eintrag. Nehmen zwei Knoten sie gleichzeitig an, ist er auf
+	// jedem noch da -- das Konto bekaeme ihn doppelt. Bis 26.09.2026 lief sie
+	// am Tor vorbei; mit Stufe 2 entscheidet der Zustaendige des Kontos.
+	if err := cs.annahmeBeginnen(wallet); err != nil {
+		return err
+	}
+	defer cs.annahmeEnde()
 	return cs.runAtomicWithOutbox([]string{wallet}, false, func(ctx context.Context) (Transaction, error) {
 		// DELETE...RETURNING inside the active DB transaction — atomically
 		// claims the escrow row while joining the same commit/rollback unit
@@ -383,9 +397,10 @@ func (cs *ChainState) RecoverFromEscrow(wallet string) error {
 		cs.syncGuardianEscrowSlotsLockedCtx(ctx, V7_CONTRACT_ADDR, wallet)
 		fmt.Printf("[ESCROW] ✓ %s recovered %.6f AEQ from escrow\n", wallet, amount)
 		return Transaction{
-			Type:   "escrow_recover",
-			Wallet: wallet,
-			Amount: amount,
+			Type:     "escrow_recover",
+			Wallet:   wallet,
+			Amount:   amount,
+			Nachweis: nachweis,
 		}, nil
 	})
 }

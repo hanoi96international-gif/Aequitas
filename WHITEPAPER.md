@@ -3,7 +3,7 @@
 **Proof of Humanity Chain — Eine faire Währung für alle Menschen**
 **Proof of Humanity Chain — A Fair Currency for All of Humanity**
 
-*Version 2.0 · Juni / June 2026*
+*Version 2.0 · Stand / as of 25.09.2026*
 *Chain ID 1926 · aequitas.digital*
 
 ---
@@ -80,163 +80,120 @@ No pre-mine. No founder allocation. No early-adopter advantage. Someone register
 ## 3. Proof of Humanity
 
 ### DE
-Das zentrale Problem eines auf menschlicher Existenz basierenden Währungssystems ist die Verifikation: Wie beweist man, dass eine Adresse einem echten, einzigartigen Menschen gehört — ohne persönliche Daten zu speichern?
+Das zentrale Problem eines auf menschlicher Existenz basierenden Währungssystems ist die Verifikation: Wie beweist man, dass eine Adresse einem echten, einzigartigen Menschen gehört — ohne Namen, ohne Ausweis und ohne ein Bild des Menschen aufzubewahren?
 
-Aequitas löst dies mit biometrischer Verifikation und Zero-Knowledge-Proofs:
+Aequitas setzt dafür heute auf eine **Live-Gesichtsprüfung** und **Zero-Knowledge-Proofs**, langfristig auf den **Iris-Scan** (§3.1).
 
-**Registrierungsablauf:**
-1. Die Android-App ermittelt eine Identitätsquelle. Seit dem 23.08.2026 ist das im Normalfall eine Kamera-Aufnahme **des Gesichts** (nur des Gesichts), die von den Vergleichsdiensten des Koordinators gegen alle bestehenden Anmeldungen geprüft wird. Das Protokoll ist auf ein Quorum aus M von N unabhängigen Diensten ausgelegt; **die Beta läuft heute mit einem einzigen** (`quorum_size: 1`, live gemessen am 24.08.2026), das Quorum ist also vorerst nominell und dieser Dienst ein Einzelpunkt-Ausfall. Nur wenn kein Koordinator konfiguriert ist, tritt der alte Weg an seine Stelle: ein zufälliges, gerätegebundenes Geheimnis, das an ein Gerät bindet und nicht an einen Menschen. Siehe §3.2.
-2. Daraus wird ein deterministischer Hash abgeleitet — die Rohdaten verlassen das Gerät **niemals**
-3. Der Hash wird an den Proof-Server gesendet
-4. Der Proof-Server generiert einen **Groth16 Zero-Knowledge-Proof** (Groth16/BN128-Kurve)
-5. Der Proof enthält `commitment` (Bindung an die Identitätsquelle) und `nullifier` (Replay-Schutz)
-6. Die Blockchain verifiziert den Proof on-chain via BioVerifier-Contract
-7. Bei Erfolg: 1.000 AEQ werden der Wallet gutgeschrieben
+**Registrierungsablauf (Stand 25.09.2026):**
+1. Die Android-App nimmt ein Foto des Gesichts und eine kurze Bildfolge auf: einmal blinzeln, auf zufällige Aufforderung kurz nach links oder rechts schauen, dazu leuchtet der Bildschirm in einer zufälligen Farbfolge. Nur das Gesicht wird erfasst — kein Fingerabdruck, keine Hand, kein Ausweis.
+2. Die Aufnahme geht an **zwei unabhängige Vergleichsdienste** auf verschiedenen Maschinen, die verschiedenen Personen gehören. Sie berechnen kurzzeitig eine Gesichtsbeschreibung und vergleichen sie mit allen bisherigen Anmeldungen. **Beide** müssen übereinstimmen (Quorum 2 von 2); ist einer nicht erreichbar, wird nicht entschieden.
+3. Gespeichert wird nur ein **64-Byte-Auszug** (512 Ja/Nein-Werte). Foto und vollständige Gesichtsbeschreibung werden nach wenigen Sekunden verworfen.
+4. Ist der Mensch neu, stellt der Coordinator eine zufällige Kennung (`bio_hash`) aus — keine Funktion des Gesichts — und unterschreibt die Bindung an die Wallet; die Vergleichsdienste unterschreiben, dass hinter dieser Kennung ein neuer Mensch steht.
+5. Der Proof-Server erzeugt daraus einen **Groth16-Zero-Knowledge-Proof** (BN128) mit `commitment` und `nullifier` — aber nur, wenn die Wallet-Bindung **und** zwei verschiedene Bescheinigungen vorliegen (seit 25./26.08.2026).
+6. Die Kette prüft den Beweis und lehnt jeden bereits benutzten Nullifier ab.
+7. Bei Erfolg: 1.000 AEQ werden der Wallet gutgeschrieben.
 
-**Garantien:**
-- Dieselbe Identitätsquelle kann sich nur einmal registrieren (Nullifier-Bindung). Ob diese Quelle ein Mensch oder ein Gerät ist, entscheidet der Modus aus Schritt 1 — siehe §3.2
-- Kein persönliches Datum wird gespeichert
-- Verifikation ist dauerhaft und unveränderbar
-- Kein Dritter (auch nicht Aequitas) kann eine Registrierung rückgängig machen
+**Garantien — und ihre Grenzen:**
+- Derselbe Nullifier zählt nie zweimal. Das ist Kryptografie und lückenlos.
+- Dass zwei Aufnahmen desselben Menschen als derselbe erkannt werden, entscheidet der Gesichtsvergleich. Seine Schwelle ist noch nicht an eigenen Aufnahmen kalibriert (dafür braucht es rund 1.000 Impostor-Paare).
+- Namen, Ausweisdaten, Anschrift, E-Mail oder Telefonnummer werden nie erhoben.
+- Der Eintrag auf der Kette ist öffentlich und dauerhaft.
 
 ### EN
-The central problem of a monetary system based on human existence is verification: how do you prove that an address belongs to a real, unique human — without storing personal data?
+The central problem of a monetary system based on human existence is verification: how do you prove that an address belongs to a real, unique human — without names, without ID documents and without keeping a picture of the person?
 
-Aequitas solves this with biometric verification and Zero-Knowledge Proofs:
+Today Aequitas relies on a **live face check** and **zero-knowledge proofs**; in the long run on the **iris scan** (§3.1).
 
-**Registration Flow:**
-1. The Android app establishes an identity source. Since 2026-08-23 this is normally a camera capture of **the face** (the face only), checked by the coordinator's matching services against every existing enrolment. The protocol is built for an M-of-N quorum of independent services; **the beta runs exactly one today** (`quorum_size: 1`, measured live on 2026-08-24), so the quorum is nominal for now and that service is a single point of failure. Only where no coordinator is configured does the older path apply: a random, device-bound secret, which binds to a device rather than to a person. See §3.2.
-2. A deterministic hash is derived from it — raw data **never** leaves the device
-3. The hash is sent to the Proof Server
-4. The Proof Server generates a **Groth16 Zero-Knowledge Proof** (Groth16/BN128 curve)
-5. The proof contains `commitment` (binding to the identity source) and `nullifier` (replay protection)
-6. The blockchain verifies the proof on-chain via BioVerifier contract
-7. On success: 1,000 AEQ credited to the wallet
+**Registration flow (as of 2026-09-25):**
+1. The Android app captures a photo of the face and a short sequence: blink once, glance left or right on a random prompt, while the screen flashes a random colour sequence. Only the face is captured — no fingerprint, no hand, no ID document.
+2. The capture goes to **two independent matching services** on different machines owned by different people. They briefly compute a face description and compare it with every earlier enrolment. **Both** must agree (quorum 2 of 2); if one is unreachable, nothing is decided.
+3. Only a **64-byte sketch** (512 yes/no values) is stored. The photo and the full face description are discarded within seconds.
+4. If the person is new, the coordinator issues a random identifier (`bio_hash`) — not a function of the face — and signs its binding to the wallet; the matching services sign that a new human stands behind that identifier.
+5. The proof server turns this into a **Groth16 zero-knowledge proof** (BN128) with `commitment` and `nullifier` — but only if the wallet binding **and** two distinct attestations are present (since 2026-08-25/26).
+6. The chain verifies the proof and rejects any nullifier it has already seen.
+7. On success: 1,000 AEQ are credited to the wallet.
 
-**Guarantees:**
-- The same identity source can only register once (nullifier binding). Whether that source is a human or a device is decided by the mode in step 1 — see §3.2
-- No personal data is stored
-- Verification is permanent and immutable
-- No third party (not even Aequitas) can reverse a registration
-
----
-
-### 3.1 Biometrisches 3-Faktor-System / 3-Factor Biometric System
-
-#### DE
-Langfristig soll biologische Einzigartigkeit vollständig geräteunabhängig nachgewiesen werden. Die folgenden Phasen beschreiben diesen Weg. **Keine davon ist zum Start am 18.08.2026 aktiv** — was tatsächlich ausgeliefert wird, steht direkt darunter unter „Was zum Start läuft".
-
-**Phase 1 — Alle 10 Fingerabdrücke + Lebenderkennung** *(Referenzdesign, nicht ausgeliefert)*
-- **R503 optischer Fingerabdruckscanner** (GROW, UART-Interface): Alle 10 Finger würden gescannt und zu einem einzigen biometrischen Hash kombiniert.
-- **MAX30102 PPG-Sensor**: Photoplethysmographie-Signal (Herzfrequenz via IR/Rot-LED) als Lebendnachweis gegen Replay-Attacken mit gespeicherten Abdrücken oder Gipsabgüssen.
-
-Dieses Hardware-Kit existiert als Entwurf. Es gibt kein Gerät zu kaufen, und die ausgelieferte App spricht mit keiner solchen Hardware. Die Zahlen unten sind theoretische Eigenschaften der Sensorik, keine gemessenen Eigenschaften des laufenden Systems.
-
-| Eigenschaft (theoretisch) | Wert |
-|------------|------|
-| Einzigartigkeit Fingerabdruck (einzeln) | 1 von 10⁹ |
-| Alle 10 Finger kombiniert | 1 von 10⁹⁰ (theoretisch) |
-| Liveness-Nachweis | PPG-Pulssignal (MAX30102) |
-
-**Phase 2 — Handvenen-Muster** *(geplant)*
-- **ESP32-CAM + IR-LED (850 nm)**: Infrarot-Durchleuchtung der Hand erzeugt ein eindeutiges Venenmuster aus dem Inneren des Körpers — nicht kopierbar, nicht hinterlegbar, unveränderlich über das gesamte Leben.
-- Das Venenmuster wird als zweiter biometrischer Hash `vein_hash` in das ZK-Commitment einbezogen.
-
-| Eigenschaft | Wert |
-|------------|------|
-| Einzigartigkeit Handvenen | 1 von 10⁷ |
-| Auch für eineiige Zwillinge unterschiedlich | ✅ |
-| Unveränderlich über das Leben | ✅ |
-| Unkopierbares Merkmal (innen) | ✅ |
-
-**Phase 3 — Iris** *(geplant)*
-- **IR-Iris-Modul**: Die menschliche Iris ist der Goldstandard biometrischer Einzigartigkeit — 240+ unabhängige Freiheitsgrade, Kollisionswahrscheinlichkeit 1 von 10⁷⁸. Absolut verschieden bei eineiigen Zwillingen, unveränderlich von Geburt an.
-- Der Iris-Hash wird in den Nullifier einbezogen — damit ist die Identität rein körpergebunden, nicht gerätegebunden.
-
-| Eigenschaft | Wert |
-|------------|------|
-| Einzigartigkeit Iris | 1 von 10⁷⁸ |
-| Eineiige Zwillinge: identisch? | ❌ (absolut verschieden) |
-| Gerätunabhängig | ✅ |
-| Falsch-Positiv-Rate (globaler Vergleich) | < 10⁻⁷⁸ |
-
-#### EN
-The long-term goal is to prove biological uniqueness fully independently of the device. The phases below describe that path. **None of them is active at the 2026-08-18 launch** — what actually ships is stated directly below, under "What runs at launch".
-
-**Phase 1 — All 10 Fingerprints + Liveness** *(reference design, not shipped)*
-- **R503 optical fingerprint scanner** (GROW, UART interface): all 10 fingers would be scanned and combined into a single biometric hash.
-- **MAX30102 PPG sensor**: photoplethysmography signal (heart rate via IR/red LED) as a liveness proof against replay attacks using stored fingerprint images or plaster casts.
-
-This hardware kit exists as a design. There is no device to buy, and the shipped app talks to no such hardware. The figures below are theoretical properties of the sensors, not measured properties of the running system.
-
-| Property (theoretical) | Value |
-|----------|-------|
-| Single fingerprint uniqueness | 1 in 10⁹ |
-| All 10 fingers combined | 1 in 10⁹⁰ (theoretical) |
-| Liveness proof | PPG pulse signal (MAX30102) |
-
-**Phase 2 — Hand Vein Pattern** *(planned)*
-- **ESP32-CAM + 850 nm IR LED**: Infrared illumination of the hand produces a unique vein pattern from inside the body — uncopyable, unstorable, immutable over a lifetime.
-- The vein pattern is added as a second biometric hash `vein_hash` to the ZK commitment.
-
-| Property | Value |
-|----------|-------|
-| Hand vein uniqueness | 1 in 10⁷ |
-| Different for identical twins | ✅ |
-| Immutable over lifetime | ✅ |
-| Uncopyable (internal feature) | ✅ |
-
-**Phase 3 — Iris** *(planned)*
-- **IR iris module**: The human iris is the gold standard of biometric uniqueness — 240+ independent degrees of freedom, collision probability 1 in 10⁷⁸. Completely different even in identical twins, immutable from birth.
-- The iris hash is incorporated into the nullifier — making identity purely body-bound, not device-bound.
-
-| Property | Value |
-|----------|-------|
-| Iris uniqueness | 1 in 10⁷⁸ |
-| Identical twins: same? | ❌ (absolutely different) |
-| Device-independent | ✅ |
-| False-match rate (global comparison) | < 10⁻⁷⁸ |
+**Guarantees — and their limits:**
+- The same nullifier never counts twice. That is cryptography and airtight.
+- Whether two captures of the same person are recognised as the same person is decided by the face comparison. Its threshold is not yet calibrated against our own captures (that needs about 1,000 impostor pairs).
+- Names, ID data, postal address, e-mail or phone number are never collected.
+- The on-chain record is public and permanent.
 
 ---
 
-### 3.2 Was zum Start läuft / What runs at launch
+### 3.1 Langfristig: Iris / Long term: iris
 
 #### DE
-Dieser Abschnitt beschreibt den Stand am **23.08.2026**. Er hat Vorrang vor jeder Beschreibung oben, wenn beide sich widersprechen.
+**Langfristig setzt Aequitas auf den Iris-Scan.** Nur ein Merkmal, das auch unter Milliarden Menschen unverwechselbar bleibt — auch bei eineiigen Zwillingen —, kann wirklich 1 Mensch = 1 Registrierung gewährleisten. Das Gesicht kann das in diesem Maßstab nicht.
 
-Es gibt **keine Spezial-Hardware**. Die Registrierung läuft über die Android-App und die Kamera des Telefons.
+Wie das umgesetzt werden kann — zuverlässig, datenschutzfreundlich, mit gemessenen Fehlerraten und bezahlbarer Hardware —, daran wird derzeit gearbeitet. **Hardware und Zeitplan stehen noch nicht fest.** Die Grundsätze stehen: Auch bei der Iris soll kein Bild aufbewahrt werden und kein einzelner Dienst das vollständige Merkmal halten. Genau das erprobt die Beta heute mit dem Gesicht (§3.2).
 
-**Erfasst wird ausschließlich das Gesicht** — ein Standbild und eine kurze Aufnahme für die Lebendigkeitsprüfung. Handfläche, Fingerkuppe, Ohr und ein akustischer Test waren bis zum 23.08.2026 zusätzlich vorgesehen und sind entfernt worden: sie waren allesamt *schwache* Merkmale, und die Entscheidungsregel verlangt zwei übereinstimmende schwache Merkmale, während alle schwachen abgeschaltet ausgeliefert werden. Keines konnte eine Duplikatsentscheidung beeinflussen — erhoben und nach Art. 9 DSGVO gespeichert wurden sie trotzdem.
+Die theoretisch sehr kleine Verwechslungsrate der Iris ist eine Eigenschaft des Merkmals, keine gemessene Eigenschaft dieses Systems. Die reale Rate im Maßstab von Milliarden hängt an Aufnahmequalität und Schwelle und muss erst gemessen werden.
 
-**Biometrie ist seit dem 23.08.2026 der Normalfall**, nicht mehr die Ausnahme: die ausgelieferte App (`app-v1.5.2`) hat den Gesichtsabgleich aktiv und einen erreichbaren Koordinator eingebacken. Die frühere Standardbetriebsart — Identität aus einem zufälligen, gerätegebundenen Geheimnis — band an ein **Gerät**, nicht an einen Menschen; dieselbe Person konnte sich auf einem zweiten Telefon ein zweites Mal anmelden. Sie greift nur noch, wenn kein Koordinator konfiguriert ist.
-
-Der Ablauf: die App nimmt das Gesicht auf, unabhängige Vergleichsdienste prüfen gegen die bestehenden Anmeldungen und müssen mehrheitlich (M von N) zustimmen, bevor ein `bio_hash` ausgestellt wird. Dieser Hash geht in den Nullifier des ZK-Beweises ein, und die Kette lehnt jeden bereits benutzten Nullifier ab.
-
-**Erste Messung an einem echten Gerät (23.08.2026):** dieselbe Person wurde beim zweiten Versuch als Duplikat erkannt, mit und ohne Brille — Ähnlichkeit 0,846 bzw. 0,677 bei einer Schwelle von 0,40. Das ist ein Datenpunkt, keine Falschakzeptanzrate; die Schwelle stammt weiterhin aus der Modellliteratur und nicht aus eigenen Messungen.
-
-**Wo die Templates liegen — und was daran noch offen ist.** Auf der Platte des Vergleichsdienstes liegen sie AES-256-GCM-verschlüsselt, gebunden an die Zeile, zu der sie gehören. Parallel läuft seit dem 23.08.2026 ein MPC-Verfahren mit: jede Aufnahme wird additiv geteilt, je eine Zeile pro Partei, auf zwei getrennt kontrollierten Maschinen — keine von beiden kann aus ihrer Hälfte etwas rekonstruieren.
-
-Solange jedoch der Klartext-Vergleich entscheidet, **muss** der Vergleichsdienst jedes eingeschriebene Template halten, um dagegen zu vergleichen. Verschlüsselung schützt dort die Datei, nicht den Dienst, der den Schlüssel hält. Der Modus, in dem das Komitee entscheidet und lokal gar nichts Ganzes mehr abgelegt wird, ist gebaut und getestet, aber **abgeschaltet**: seine Schwelle ist nie gegen echte Aufnahmen kalibriert worden, und wer sie rät, entscheidet auf einer geratenen Zahl darüber, wer existieren darf. Nötig sind dafür rund 1.000 Impostor-Paare.
-
-**Was die Einmaligkeit heute wirklich trägt:** der Nullifier auf der Kette. Er ist kryptografisch und lückenlos — derselbe Nullifier wird beim zweiten Mal abgelehnt, egal über welchen Weg er eingereicht wird. Er beweist aber nur, dass *dieselbe Identitätsquelle* nicht zweimal zählt. Dass diese Quelle ein Mensch ist, trägt der Gesichtsabgleich — mit einer Schwelle, die noch nicht kalibriert ist.
+*Frühere Entwürfe mit Fingerabdruck-Scanner und Handvenen-Kamera sind verworfen und werden nicht weiterverfolgt. Handfläche, Fingerkuppe, Ohr und ein akustischer Test waren bis zum 23.08.2026 Teil der App und sind entfernt.*
 
 #### EN
+**In the long run Aequitas will rely on the iris scan.** Only a feature that stays distinctive among billions of people — identical twins included — can truly guarantee one person = one registration. The face cannot do that at this scale.
 
-This section describes the state on **2026-08-23**. Where it contradicts anything above, this section is correct.
+How it can be implemented — reliably, privacy-preserving, with measured error rates and affordable hardware — is being worked on now. **Hardware and timing are not decided yet.** The principles are: with the iris too, no image is kept and no single service holds the whole feature. That is exactly what the beta tests today with the face (§3.2).
 
-There is **no special hardware**. Registration runs through the Android app and the phone's own camera.
+The iris's theoretically tiny false-match rate is a property of the feature, not a measured property of this system. The real rate at the scale of billions depends on capture quality and threshold and still has to be measured.
 
-**Only the face is captured** — one still and a short recording for the liveness checks. Palm, fingertip, ear and an acoustic test were part of it until 2026-08-23 and have been removed: all were *weak* modalities, and the decision rule requires two weak modalities to agree while every weak one ships disabled. None could influence a duplicate decision — they were collected and stored as GDPR Art. 9 data regardless.
+*Earlier designs with a fingerprint scanner and a hand-vein camera have been dropped and are not pursued. Palm, fingertip, ear and an acoustic test were part of the app until 2026-08-23 and have been removed.*
 
-**Biometrics is the normal case since 2026-08-23**, no longer the exception: the shipped app (`app-v1.5.2`) has face matching active and a reachable coordinator compiled in. The former default — identity from a random, device-bound secret — bound to a **device**, not to a person; the same human could register again on a second phone. It now applies only when no coordinator is configured.
+---
 
-The flow: the app captures the face, the matching services compare it against existing enrolments, and a quorum (M of N) must agree before a `bio_hash` is issued. **N is 1 in the current beta** — the aggregation, the fan-out and the per-validator vote reporting are all real and exercised, but with a single service there is nothing to outvote it. Adding independent services is deployment, not development. That hash goes into the ZK proof's nullifier, and the chain rejects any nullifier it has already seen.
+### 3.2 Die Beta heute / The beta today
 
-**First measurement on a real device (2026-08-23):** the same person was detected as a duplicate on the second attempt, with and without glasses — similarity 0.846 and 0.677 against a threshold of 0.40. That is one data point, not a false-accept rate; the threshold still comes from the model literature, not from our own measurements.
+#### DE
+Stand **25.09.2026**, abgelesen aus dem laufenden Betrieb. Dieser Abschnitt hat Vorrang vor allem anderen, wenn sich etwas widerspricht.
 
-**Where templates live — and what is still open.** On the matching service's disk they are AES-256-GCM encrypted, bound to the row they belong to. Alongside that, an MPC path stores every capture split additively, one row per party, across two separately controlled machines — neither can reconstruct anything from its half.
+**Wozu die Beta dient.** Sie erprobt, ob ein Mensch wiedererkannt werden kann, ohne dass jemand sein Bild behält und ohne dass irgendwo das vollständige Gesichts-Template liegt. Das ist die Grundlage für den Iris-Scan.
 
-**That MPC path did not work, and finding out why took three separate bugs (2026-08-24).** It is recorded here rather than quietly fixed, because for months it reported "not a duplicate" and looked healthy doing it.
+| | Stand |
+|---|---|
+| Erfasst | nur das Gesicht: Foto + kurze Bildfolge (Blinzeln, Blick zur Seite, Farbblitze) |
+| Vergleichsdienste | zwei, auf zwei Contabo-Servern verschiedener Eigentümer; beide müssen zustimmen. Ein dritter Dienst bei Railway ist seit 14.09.2026 abgeschaltet. |
+| Bescheinigung | Wallet-Bindung des Coordinators **und** 2 verschiedene Personen-Bescheinigungen, auf beiden Proof-Servern verlangt (seit 26.08.2026) |
+| Gespeichert | nur ein 64-Byte-Auszug je Mensch; Foto und Template werden nach Sekunden verworfen (seit 24.08.2026). Aus dem Auszug lässt sich das Gesicht nicht rekonstruieren, er erkennt aber wieder — er gilt deshalb als biometrisches Datum nach Art. 9 DSGVO. |
+| Lebendigkeit | verbindlich ist die Blick-Aufgabe. Blitzfarben, Parallaxe, Puls und Antispoof werden gemessen und zu einer Klasse zusammengefasst, entscheiden aber noch nichts (Schattenmodus, seit 13.09.2026) |
+| Gestaffelter Zuschuss | gebaut (Klasse signiert, Proof-Server prüft sie), aber abgeschaltet, bis die Schwellen gemessen sind |
+| Wiederholte Versuche | verzögert, nicht gesperrt — höchstens zwei Minuten |
+| Abgewiesen? | die App zeigt eine Kennung `W-…`; damit kann man innerhalb von 90 Tagen widersprechen, und ein Mensch prüft den Fall (seit App 1.7.4) |
+| Konten von vor dem 25.08.2026 | haben kein Gesicht in der Duplikatprüfung. In der App kann jedes solche Konto sein Gesicht nachziehen — ohne neuen Zuschuss. Bis es das tut, könnte sich derselbe Mensch mit einer neuen Wallet noch einmal registrieren. |
+| Widerruf | löscht Wallet-Verweis, Einwilligung und alle Merkmale bis auf den 64-Byte-Auszug. Der bleibt ohne Verbindung zu Wallet oder Kennung, sonst ließe sich der Zuschuss durch Löschen und Neuanmelden beliebig oft beziehen. |
+
+**Was noch offen ist:**
+- Jeder der beiden Dienste hält heute den vollständigen 64-Byte-Auszug. Der Modus, in dem auch der Auszug geteilt wird und kein Dienst ihn ganz hat (MPC), ist gebaut und getestet, aber nicht maßgeblich: Seine Kandidatensuche findet genau die Wiederkehrer nicht zuverlässig, die sie finden soll, und seine Schwelle ist nicht kalibriert.
+- Die Fehlerraten des Gesichtsvergleichs sind nicht gemessen. Erste Messung am echten Gerät (23.08.2026): dieselbe Person wurde mit und ohne Brille als Duplikat erkannt (Ähnlichkeit 0,846 bzw. 0,677 bei Schwelle 0,40) — ein Datenpunkt, keine Rate.
+- Ein Live-Deepfake kann die Blick-Aufgabe mitmachen; die stärkeren Signale entscheiden erst nach der Kalibrierung.
+
+#### EN
+State as of **2026-09-25**, read from the running system. Where anything else contradicts this section, this section is correct.
+
+**What the beta is for.** It tests whether a person can be recognised again without anyone keeping their picture and without a whole face template being stored anywhere. That is the groundwork for the iris scan.
+
+| | State |
+|---|---|
+| Captured | the face only: photo + short sequence (blink, glance aside, colour flashes) |
+| Matching services | two, on two Contabo servers with different owners; both must agree. A third service on Railway has been off since 2026-09-14. |
+| Attestation | coordinator's wallet binding **and** 2 distinct personhood attestations, required on both proof servers (since 2026-08-26) |
+| Stored | only a 64-byte sketch per person; photo and template are discarded within seconds (since 2026-08-24). The face cannot be reconstructed from the sketch, but it does recognise — so it counts as biometric data under GDPR Art. 9. |
+| Liveness | the glance task is binding. Flash colours, parallax, pulse and anti-spoof are measured and combined into a class, but decide nothing yet (shadow mode, since 2026-09-13) |
+| Staged grant | built (class is signed, the proof server checks it) but switched off until the thresholds are measured |
+| Repeated attempts | delayed, not banned — two minutes at most |
+| Rejected? | the app shows an identifier `W-…`; with it you can object within 90 days and a human reviews the case (since app 1.7.4) |
+| Accounts from before 2026-08-25 | have no face in the duplicate check. In the app, every such account can add its face afterwards — no new grant. Until it does, the same person could register again with a new wallet. |
+| Withdrawal | deletes the wallet link, the consent record and every feature except the 64-byte sketch. That stays, linked to no wallet and no identifier; otherwise delete-and-re-register would pay the grant again and again. |
+
+**What is still open:**
+- Each of the two services holds the whole 64-byte sketch today. The mode in which the sketch itself is split so that no service holds it whole (MPC) is built and tested but not authoritative: its candidate search does not reliably surface the very returning people it must find, and its threshold is not calibrated.
+- The face comparison's error rates are not measured. First measurement on a real device (2026-08-23): the same person was detected as a duplicate with and without glasses (similarity 0.846 and 0.677 against a threshold of 0.40) — one data point, not a rate.
+- A live deepfake can follow the glance task; the stronger signals only decide after calibration.
+
+#### Background: how the sketch replaced the template (EN)
+
+**The MPC path did not work at first, and finding out why took three separate bugs (2026-08-24).** It is recorded here rather than quietly fixed, because for months it reported "not a duplicate" and looked healthy doing it.
 
 1. *The client asked the parties one after another.* `/mpc/check` runs an interactive two-party protocol, so party 0 blocked waiting for a peer the client had not asked yet — a guaranteed deadlock, ending in a silent three-minute timeout. It looked fine only because the handler answers `duplicate: false` immediately when the bucket lookup finds no candidates, skipping the protocol entirely. Every shadow check that ever completed took that path: 24 of 24 answered "not a duplicate" in about 600 ms, including for a capture the plaintext comparison scored at 1.0 — an identical face.
 2. *The Beaver-triple counters drifted apart.* Each party advances its own counter before handing triples out, and every deadlocked attempt burned party 0's supply and none of party 1's. Measured: 10240 against 4096. From there every comparison used non-corresponding triples and produced a value that was neither 0 nor 1. A first repair — ask the peers, take the maximum — was a race rather than a fix, and a 2048 gap survived it intact. One allocator now hands out the range and both parties use it.
@@ -258,7 +215,7 @@ Verified on the running service after migrating the existing rows: 2 enrolments,
 
 This is not anonymisation, and the app does not claim it is. A sketch remains biometric data under GDPR Art. 9 and still recognises people — that is its purpose. It is simply no longer the template.
 
-### Uniqueness at the scale this project is for
+#### Uniqueness at the scale this project is for (EN)
 
 A universal basic income is not a system for five hundred people, and the design has to be judged at 10⁸–10⁹. At that size the arithmetic decides more than any implementation choice, so it is written out here rather than discovered later.
 
@@ -294,15 +251,15 @@ For the record, the numbers that would have applied had an index been necessary:
 
 
 
-But while the plaintext comparison decides, the matching service **must** hold every enrolled template to compare against. Encryption there protects the file, not the service holding the key. The mode in which the committee decides and nothing whole is stored locally is built and tested, but **switched off** — for the recall reason above, and because its threshold has never been calibrated against real captures. The geometry behind that threshold was checked on 2026-08-24 and holds: sign-LSH turns a cosine `s` into `512·acos(s)/π` bits, and measured against this implementation's own projections over 1,500 constructed pairs per point, the agreement is within 0.5 bits across the whole range. What remains unmeasured is the other half — what cosine two *different* people actually produce. That still needs roughly 1,000 impostor pairs, and no synthetic test substitutes for it.
+Since 2026-08-24 the plaintext comparison works on sketches, not templates: the matching service compares against every enrolled 64-byte sketch and holds no template at all. The mode in which the committee decides on split shares, so that no service holds even the whole sketch, is built and tested but **not authoritative** — for the recall reason above, and because its threshold has never been calibrated against real captures. The geometry behind that threshold was checked on 2026-08-24 and holds: sign-LSH turns a cosine `s` into `512·acos(s)/π` bits, and measured against this implementation's own projections over 1,500 constructed pairs per point, the agreement is within 0.5 bits across the whole range. What remains unmeasured is the other half — what cosine two *different* people actually produce. That still needs roughly 1,000 impostor pairs, and no synthetic test substitutes for it.
 
 **Withdrawal of consent, and why it cannot mean total erasure.** Since 2026-08-24 the app carries the erasure path itself (GDPR Art. 17): it keeps the registrant's `bio_hash` in hardware-backed storage and hands it to `DELETE /enrollment`, which fans out to every matching service. The wallet link, the consent record and every descriptor except one are cleared, and the row is stamped `withdrawn_at`.
 
-One field survives on purpose: the encrypted face embedding. **Erasing a biometric and still recognising its owner are mutually exclusive** — a token that can answer "is this the same person" *is* the template. Removing it outright, which is what the code did until that date, would have opened an unbounded money printer: the chain pays a 1,000 AEQ registration grant per unseen nullifier, the nullifier derives from the `bio_hash`, and the `bio_hash` is `secrets.randbelow` — a fresh random value, not a function of the face. So *register → spend → delete → register again* would have minted a new identity and paid the grant a second time, repeatably, at no cost. Neither the chain nor any wallet-side rule can catch that: the chain only ever sees an unused nullifier and does exactly what it should, and a fresh wallet defeats wallet-side checks.
+One field survives on purpose: the 64-byte face sketch. **Erasing a biometric and still recognising its owner are mutually exclusive** — a token that can answer "is this the same person" *is* the template. Removing it outright, which is what the code did until that date, would have opened an unbounded money printer: the chain pays a 1,000 AEQ registration grant per unseen nullifier, the nullifier derives from the `bio_hash`, and the `bio_hash` is `secrets.randbelow` — a fresh random value, not a function of the face. So *register → spend → delete → register again* would have minted a new identity and paid the grant a second time, repeatably, at no cost. Neither the chain nor any wallet-side rule can catch that: the chain only ever sees an unused nullifier and does exactly what it should, and a fresh wallet defeats wallet-side checks.
 
-What is retained is therefore the minimum that closes the loop, and nothing more: an AES-256-GCM sealed vector bound to no wallet and no identity, whose only answerable question is "has this person enrolled before". The app says this in plain words before asking for confirmation, in all twelve languages, rather than promising an erasure it cannot perform. Withdrawing returns a person's data; it does not return their eligibility for a second grant, and their on-chain registration stands either way — the ledger is immutable.
+What is retained is therefore the minimum that closes the loop, and nothing more: a 64-byte sketch bound to no wallet and no identity, whose only answerable question is "has this person enrolled before". The app says this in plain words before asking for confirmation, in all twelve languages, rather than promising an erasure it cannot perform. Withdrawing returns a person's data; it does not return their eligibility for a second grant, and their on-chain registration stands either way — the ledger is immutable.
 
-If the MPC path ever becomes authoritative this gets strictly better: in that mode no whole embedding is stored anywhere, uniqueness rides on shares no single party can reconstruct, and the local row could be dropped outright. That is the reason the MPC path exists. It is off today only because its threshold has never been calibrated.
+If the MPC path ever becomes authoritative this gets strictly better: in that mode not even a whole sketch is stored anywhere, uniqueness rides on shares no single party can reconstruct, and the local row could be dropped outright. That is the reason the MPC path exists. It is not authoritative today because of the recall problem above and because its threshold has never been calibrated.
 
 **What actually carries uniqueness today:** the on-chain nullifier. It is cryptographic and airtight — the same nullifier is refused the second time, whatever path submits it. But it only proves that *the same identity source* cannot count twice. That the source is a human is carried by the face match — with a threshold that is not yet calibrated.
 
@@ -450,13 +407,17 @@ Aequitas maintains two synchronized ledgers in parallel:
 ### 5.2 Netzwerk-Topologie / Network Topology
 
 ```
-Node 1 (Railway, Berlin)          Node 2 (Railway/VPS)
-├── Primärer API-Server           ├── Sekundärer API-Server
-├── Block-Produzent               ├── Block-Produzent
-├── UBI-Verteilung (täglich)      ├── P2P-Peer
-├── P2P Bootstrap-Node            └── HTTP Block-Sync
-└── Geteilter PostgreSQL State ───────────────────────────┘
+Contabo 1 (Lauterbourg, FR)           Contabo 2 (Lauterbourg, FR)
+├── Validator-Node + eigene DB        ├── Validator-Node + eigene DB
+├── Proof-Server                      ├── Proof-Server
+├── Vergleichsdienst (proof1)         ├── Vergleichsdienst (proof2)
+└── Coordinator                       └── Coordinator
+          └──────── P2P (libp2p) + HTTP-Blocksync ────────┘
 ```
+
+Zwei Server mit je eigener PostgreSQL-Datenbank, zwei Eigentümer der Vergleichsdienste. Railway ist seit August 2026 für die Kette und seit 14.09.2026 auch für den Vergleichsdienst abgeschaltet. Jeder registrierte Mensch kann einen weiteren Knoten betreiben.
+
+Two servers, each with its own PostgreSQL database; the two matching services have different owners. Railway has been shut down for the chain since August 2026 and for the matching service since 2026-09-14. Any registered human can run a further node.
 
 ### 5.3 Technische Kenndaten / Technical Specifications
 
@@ -471,7 +432,7 @@ Node 1 (Railway, Berlin)          Node 2 (Railway/VPS)
 | State-Storage / State Storage | PostgreSQL (persistent) |
 | ZKP-System / ZKP System | Groth16 / snarkjs / circom |
 | Elliptische Kurve / Elliptic Curve | BN128 (alt-bn128) |
-| Bio-Hash | keccak256 |
+| Bio-Hash | Zufallswert des Coordinators, keine Funktion des Gesichts / random value issued by the coordinator, not a function of the face |
 | Dezimalgenauigkeit / Precision | 6 Stellen / decimal places (1 AEQ = 1.000.000 Micro-AEQ) |
 
 ---
@@ -523,31 +484,27 @@ Aequitas nutzt Groth16-Proofs auf der BN128-Kurve — eines der effizientesten Z
 
 > **Was das nicht heißt.** Eine frühere Fassung dieses Absatzes schrieb, Sybil-Angriffe seien „mathematisch ausgeschlossen". Das ist falsch und wird hier korrigiert. Der Nullifier schließt lückenlos aus, dass *dieselbe Identitätsquelle* zweimal zählt — er sagt nichts darüber, ob zwei Aufnahmen desselben Menschen zum selben `bio_hash` führen. Das entscheidet der Gesichtsabgleich, mit einer Schwelle, die noch nicht gegen eigene Aufnahmen kalibriert ist (§3.2). Die Kryptografie ist hier scharf; die Biometrie darunter ist eine Messung mit einer Fehlerrate, die noch nicht beziffert ist.
 
-**Multi-Faktor ZK-Commitment (Phase 3 Zielarchitektur):**
+**ZK-Commitment der Zielarchitektur (Iris, langfristig):**
 ```
-fingers_hash = keccak256(f₁ ‖ f₂ ‖ … ‖ f₁₀)   -- alle 10 Fingerabdrücke
-commitment   = keccak256(iris_hash ‖ vein_hash ‖ fingers_hash ‖ wallet_address)
-nullifier    = keccak256(iris_hash ‖ vein_hash ‖ domain_separator)
+commitment   = Poseidon(iris_merkmal, wallet_address, salt)   -- Skizze, nicht festgelegt
+nullifier    = Poseidon(iris_merkmal)
 ```
 
 **In dieser Zielarchitektur** wäre der Nullifier ausschließlich an physische Körpermerkmale gebunden — kein Gerät, keine SIM-Karte, kein Betriebssystem; wer sein Telefon verliert, verifiziert sich mit denselben Merkmalen neu, ohne eine zweite Identität zu erzeugen.
 
-**Heute (23.08.2026)** ist davon das Gesicht umgesetzt, und zwar allein: kein Iris-Hash, kein Venen-Hash, keine Fingerabdrücke — die dafür nötige Hardware existiert nicht (§3.1). Wer sein Telefon verliert, kommt über eine erneute Gesichtsaufnahme zurück; ob das gelingt, hängt an derselben unkalibrierten Schwelle wie alles andere.
+**Heute (25.09.2026)** ist das Gesicht die Grundlage: Der Nullifier leitet sich aus der zufälligen Kennung `bio_hash` ab, die erst nach dem Gesichtsvergleich ausgestellt wird. Ein Iris-Merkmal gibt es noch nicht — wie der Iris-Scan umgesetzt wird, daran wird gearbeitet (§3.1). Wer sein Telefon verliert, kommt über eine erneute Gesichtsaufnahme zurück; ob das gelingt, hängt an derselben unkalibrierten Schwelle wie alles andere.
 
 | Phase | Commitment-Faktoren | Nullifier-Faktoren |
 |-------|--------------------|--------------------|
-| 1 (aktiv) | fingers_hash + wallet | fingers_hash + domain |
-| 2 (geplant) | vein_hash + fingers_hash + wallet | vein_hash + fingers_hash + domain |
-| 3 (geplant) | iris_hash + vein_hash + fingers_hash + wallet | iris_hash + vein_hash + domain |
+| Beta (heute) | bio_hash (nach Gesichtsvergleich) + wallet + deviceSalt | bio_hash |
+| Ziel (langfristig) | Iris-Merkmal + wallet | Iris-Merkmal — genaue Konstruktion Teil der laufenden Arbeit |
 
 **Was gespeichert wird:**
-- ✅ `commitment` — kryptographischer Hash (nicht rückführbar auf Biometrie)
-- ✅ `nullifier` — eindeutiger Einmal-Nachweis
-- ✅ Wallet-Adresse
-- ❌ Fingerabdruck-Daten — niemals
-- ❌ Venen- oder Iris-Muster — niemals
-- ❌ Name, Adresse, ID — niemals
-- ❌ IP-Adresse — nicht gespeichert
+- ✅ Auf der Kette: `commitment` (nicht rückführbar auf das Gesicht), `nullifier`, Wallet-Adresse — öffentlich und dauerhaft
+- ✅ Bei den zwei Vergleichsdiensten: ein 64-Byte-Auszug des Gesichts, die Kennung `bio_hash`, ein verschlüsselter Verweis auf die Wallet und die Einwilligung (§3.2)
+- ❌ Foto oder vollständiges Gesichts-Template — nach Sekunden verworfen
+- ❌ Name, Anschrift, Ausweis, E-Mail, Telefonnummer — niemals erhoben
+- ❌ IP-Adresse — nur eine Stunde im Arbeitsspeicher gegen Massenanmeldungen, nie in einer Datenbank
 
 ### EN
 Aequitas uses Groth16 proofs on the BN128 curve — one of the most efficient ZKP systems with small proofs (~200 bytes) and fast on-chain verification (~10ms).
@@ -556,31 +513,27 @@ Aequitas uses Groth16 proofs on the BN128 curve — one of the most efficient ZK
 
 > **What that does not mean.** An earlier version of this paragraph said Sybil attacks were "mathematically impossible". That is wrong and is corrected here. The nullifier airtightly prevents *the same identity source* from counting twice — it says nothing about whether two captures of the same human produce the same `bio_hash`. That is decided by the face match, with a threshold not yet calibrated against our own captures (§3.2). The cryptography here is exact; the biometrics underneath it is a measurement with an error rate that has not yet been quantified.
 
-**Multi-Factor ZK Commitment (Phase 3 target architecture):**
+**ZK commitment of the target architecture (iris, long term):**
 ```
-fingers_hash = keccak256(f₁ ‖ f₂ ‖ … ‖ f₁₀)   -- all 10 fingerprints
-commitment   = keccak256(iris_hash ‖ vein_hash ‖ fingers_hash ‖ wallet_address)
-nullifier    = keccak256(iris_hash ‖ vein_hash ‖ domain_separator)
+commitment   = Poseidon(iris_feature, wallet_address, salt)   -- sketch, not fixed
+nullifier    = Poseidon(iris_feature)
 ```
 
 **In that target architecture** the nullifier would be bound exclusively to physical body features — no device, no SIM card, no OS; someone who loses their phone re-verifies with the same traits without creating a second identity.
 
-**Today (2026-08-23)** the face is the only part of this that exists, on its own: no iris hash, no vein hash, no fingerprints — the hardware for those does not exist (§3.1). Someone who loses their phone returns through another face capture; whether that succeeds rests on the same uncalibrated threshold as everything else.
+**Today (2026-09-25)** the face is the basis: the nullifier derives from the random identifier `bio_hash`, which is only issued after the face comparison. There is no iris feature yet — how the iris scan will be implemented is being worked on (§3.1). Someone who loses their phone returns through another face capture; whether that succeeds rests on the same uncalibrated threshold as everything else.
 
 | Phase | Commitment factors | Nullifier factors |
 |-------|--------------------|-------------------|
-| 1 (active) | fingers_hash + wallet | fingers_hash + domain |
-| 2 (planned) | vein_hash + fingers_hash + wallet | vein_hash + fingers_hash + domain |
-| 3 (planned) | iris_hash + vein_hash + fingers_hash + wallet | iris_hash + vein_hash + domain |
+| Beta (today) | bio_hash (after face comparison) + wallet + deviceSalt | bio_hash |
+| Goal (long term) | iris feature + wallet | iris feature — exact construction part of the ongoing work |
 
 **What is stored:**
-- ✅ `commitment` — cryptographic hash (not traceable to biometrics)
-- ✅ `nullifier` — unique one-time proof
-- ✅ Wallet address
-- ❌ Fingerprint data — never
-- ❌ Vein or iris patterns — never
-- ❌ Name, address, ID — never
-- ❌ IP address — not stored
+- ✅ On chain: `commitment` (not traceable to the face), `nullifier`, wallet address — public and permanent
+- ✅ At the two matching services: a 64-byte face sketch, the identifier `bio_hash`, an encrypted reference to the wallet and the consent record (§3.2)
+- ❌ Photo or full face template — discarded within seconds
+- ❌ Name, postal address, ID document, e-mail, phone number — never collected
+- ❌ IP address — held for one hour in memory against mass sign-ups, never in a database
 
 ---
 
@@ -659,7 +612,7 @@ Aequitas contains a built-in Automated Market Maker (AMM) for trading between AE
 |-------------------|---------------------|
 | Doppel-Registrierung / Double registration | Nullifier-Bindung on-chain / Nullifier binding on-chain |
 | Replay-Attacke / Replay attack | Nonce-System mit CAS / Nonce system with compare-and-swap |
-| Sybil-Attacke / Sybil attack | Biometrie + ZKP + Hardware Secure Element |
+| Sybil-Attacke / Sybil attack | Live-Gesichtsprüfung durch 2 unabhängige Dienste + 2 Bescheinigungen + ZKP-Nullifier (Grenzen: §3.2) / live face check by 2 independent services + 2 attestations + ZKP nullifier (limits: §3.2) |
 | Pool-Drain | Wealth Cap + Demurrage + optimistic locking |
 | Contract-Upgrade-Risiko | Vollständiger Storage-Backup vor Wipe / Full storage backup before wipe |
 | Multi-Node-Konflikte / Multi-node conflicts | PostgreSQL optimistic locking + SELECT FOR UPDATE |
@@ -670,24 +623,30 @@ Aequitas contains a built-in Automated Market Maker (AMM) for trading between AE
 
 ### Dezentralisierung / Decentralization
 
-Aequitas befindet sich in Phase 0 mit zwei betriebenen Nodes. Das Protokoll ist für beliebig viele Nodes ausgelegt — jeder Node-Betreiber kann mit `PEER_NODES` beitreten.
+Aequitas ist in der Beta und in Protokollphase 0 (unter 100 Menschen) mit zwei Validatoren. Das Protokoll ist für beliebig viele Knoten ausgelegt; jeder registrierte Mensch kann einen Knoten betreiben, ohne Antrag und ohne Einsatz. Die Protokollphase ergibt sich automatisch aus der Zahl der Menschen (100 / 10.000 / 1 Mio.); Phase 3 verlangt zusätzlich einen Gini unter 0,30. Mindestzahlen an Knoten sind Ziele, der Code setzt sie noch nicht durch.
 
-Aequitas is in Phase 0 with two operated nodes. The protocol is designed for any number of nodes — any operator can join with `PEER_NODES`.
+Aequitas is in beta and in protocol phase 0 (fewer than 100 humans) with two validators. The protocol is designed for any number of nodes; any registered human can run one, with no application and no stake. The protocol phase follows automatically from the number of humans (100 / 10,000 / 1M); phase 3 additionally requires a Gini below 0.30. Minimum node counts are goals; the code does not enforce them yet.
 
 ---
 
 ## 11. Roadmap
 
-| Phase | Status | DE | EN |
-|-------|--------|----|----|
-| 0 | ✅ | Smart Contracts · ZKP · Android App · Proof Server | Smart Contracts · ZKP · Android App · Proof Server |
-| 0+ | ✅ | Aequitas Layer 1 · BlockDAG + GHOSTDAG · P2P · Explorer | Aequitas Layer 1 · BlockDAG + GHOSTDAG · P2P · Explorer |
-| V7 | ✅ | EVM · Dual-Ledger · Exchange/AMM · UBI · Demurrage · Wealth Cap · Lorenz/Gini | EVM · Dual-Ledger · Exchange/AMM · UBI · Demurrage · Wealth Cap · Lorenz/Gini |
-| V7.x | ✅ | Proof of Alive · Guardian-System (Eskrow + UBI-Freigabe) live | Proof of Alive · Guardian System (escrow + UBI release) live |
-| 1 | 🔄 | APK-Veröffentlichung · Community-Aufbau · Grant-Anträge · Mehr-Knoten-Skalierung | APK Release · Community Growth · Grant Applications · Multi-Node Scaling |
-| 2 | ⬜ | iOS App | iOS App |
-| 3 | ⬜ | Cross-Chain Bridges · Externe DEX-Integration | Cross-Chain Bridges · External DEX Integration |
-| 4 | ⬜ | Vollständige Dezentralisierung · Community Governance | Full Decentralization · Community Governance |
+*Die Zeilen sind Arbeitsstände, keine Protokollphasen. Die Protokollphasen 0–3 stehen in §10. / The rows are milestones, not protocol phases; protocol phases 0–3 are in §10.*
+
+| Stand / Status | DE | EN |
+|-------|----|----|
+| ✅ | Smart Contracts · ZKP · Android-App · Proof-Server | Smart Contracts · ZKP · Android app · Proof server |
+| ✅ | Aequitas Layer 1 · BlockDAG + GHOSTDAG/KNIGHTDAG · P2P · Explorer | Aequitas Layer 1 · BlockDAG + GHOSTDAG/KNIGHTDAG · P2P · Explorer |
+| ✅ | EVM · Dual-Ledger · Umtausch/AMM · Grundeinkommen · Vermögensobergrenze · Lorenz/Gini | EVM · dual ledger · exchange/AMM · basic income · wealth cap · Lorenz/Gini |
+| ✅ | Proof of Alive · Guardian-System (Treuhand + UBI-Freigabe) | Proof of Alive · guardian system (escrow + UBI release) |
+| ✅ | Live-Gesichtsprüfung mit 2 unabhängigen Diensten und 2 Bescheinigungen · nur 64-Byte-Auszug gespeichert · Widerspruch mit menschlicher Prüfung | Live face check with 2 independent services and 2 attestations · only a 64-byte sketch stored · objection with human review |
+| 1.10.2026 | Wirtschaftsregeln aktiv: Liegegeld, Freibetrag nach Umsatz, Ausstiegsabgabe | Economy rules active: idle-money levy, turnover-based allowance, exit levy |
+| 🔄 Beta | Fehlerraten messen (~1.000 Impostor-Paare) · Lebendigkeit verbindlich machen · gestaffelter Zuschuss · Auszug aufteilen (kein Dienst hält ihn ganz) · mehr Knotenbetreiber | Measure error rates (~1,000 impostor pairs) · make liveness binding · staged grant · split the sketch (no service holds it whole) · more node operators |
+| 🔄 | Rechtliche Prüfung (MiCA, DSGVO) · echte Stablecoin statt Test-Währung tUSD | Legal review (MiCA, GDPR) · a real stablecoin instead of the test currency tUSD |
+| 🔄 Iris | Iris-Scan, damit wirklich 1 Mensch = 1 Registrierung gilt — Umsetzung in Arbeit, Hardware und Datum offen | Iris scan so that one person = one registration truly holds — implementation in progress, hardware and date open |
+| ⬜ | iOS-App | iOS app |
+| ⬜ | Cross-Chain-Brücken · externe DEX-Anbindung | Cross-chain bridges · external DEX integration |
+| ⬜ | Vollständige Dezentralisierung · Community-Governance | Full decentralisation · community governance |
 
 ---
 
@@ -698,17 +657,17 @@ Aequitas ist kein weiteres Experiment in Kryptospekulation. Es ist ein ernsthaft
 
 Die mathematische Garantie ist simpel und radikal zugleich: Solange Menschen existieren, existiert AEQ. Kein Zentralstaat, keine Bank, kein Algorithmus kann das Grundeinkommen entziehen oder die Gleichheit untergraben — es ist Code.
 
-Der Gini-Koeffizient von Aequitas liegt heute bei ~0,08. Bitcoin liegt bei ~0,85. Der Unterschied ist nicht zufällig — er ist das Ergebnis des Designs.
+Der Gini-Koeffizient von Aequitas wird live gemessen und im Explorer angezeigt (Gleichheit). Bitcoin liegt bei ~0,85. Jeder Mensch startet mit genau demselben Anteil — das ist kein Zufall, sondern das Design.
 
 ### EN
 Aequitas is not another experiment in crypto speculation. It is a serious attempt to rethink money — from first principles, for all people, fairly.
 
 The mathematical guarantee is simple and radical at once: as long as humans exist, AEQ exists. No central state, no bank, no algorithm can remove the basic income or undermine the equality — it is code.
 
-Aequitas's Gini coefficient today is ~0.08. Bitcoin's is ~0.85. The difference is not coincidence — it is the result of design.
+Aequitas's Gini coefficient is measured live and shown in the explorer (Equality). Bitcoin's is ~0.85. Every person starts with exactly the same share — not by coincidence, but by design.
 
 ---
 
 *Aequitas · Chain ID 1926 · aequitas.digital*
-*Version 2.0 · Juni / June 2026*
+*Version 2.0 · Stand / as of 25.09.2026*
 *Lizenz / License: MIT · Open Source: github.com/hanoi96international-gif/Aequitas*

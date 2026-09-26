@@ -74,7 +74,7 @@ func (s *EVMRPCServer) preReserveBatchNonces(precomputed []*precomputedSendTx, p
 	// high" abweist. Genau das, wovor der Kommentar am Tor warnt. Hier wird
 	// nur NICHT reserviert; die Ablehnung selbst (mit ihrem Zaehler und ihrer
 	// Meldung) kommt weiterhin aus sendRawTransaction, fuer jeden Eintrag.
-	if !s.state.nimmtUeberweisungenAn() || admissionRefusalReason() != "" {
+	if s.state.nurLesend.Load() || admissionRefusalReason() != "" {
 		return
 	}
 
@@ -85,6 +85,12 @@ func (s *EVMRPCServer) preReserveBatchNonces(precomputed []*precomputedSendTx, p
 	for _, i := range pending {
 		p := precomputed[i]
 		if p == nil || p.err != nil || p.tx == nil || p.sender == "" {
+			continue
+		}
+		// Nur fuer Absender, die dieser Knoten annimmt (Stufe 2: der
+		// Zustaendige; sonst der Leiter) -- sonst verbrennt die Reservierung
+		// Nonces, die das Tor danach ablehnt.
+		if !s.state.nimmtAnFuer(p.sender) {
 			continue
 		}
 		if _, seen := bySender[p.sender]; !seen {

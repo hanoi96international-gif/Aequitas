@@ -1,0 +1,46 @@
+name: Neuer Server (netcup) -- vorbereiten
+# Der neue Server 188.172.229.121 (netcup RS 2000) soll C1 uebernehmen.
+# Anmeldung mit CONTABO_SSH_KEY: den oeffentlichen Teil hat der Betreiber bei
+# netcup hinterlegt (oeffentlicher-schluessel.yml gibt ihn aus). Kein Passwort.
+#
+#   1. Zugang pruefen.
+#   2. Box vorbereiten (deploy/server-vorbereiten.sh): Docker, Firewall,
+#      Repos, Images. Es wird KEIN Knoten gestartet.
+# C1 ist nicht mehr erreichbar (Wache 26.09.2026: nur ein Validator aktiv);
+# die neue Box ersetzt C1 mit eigener, frischer Identitaet.
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/aequitas-weitermachen-i6yayi]
+    paths:
+      - .github/workflows/neuer-server-einrichten.yml
+      - deploy/server-vorbereiten.sh
+jobs:
+  vorbereiten:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      NEU: 188.172.229.121
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Schluessel bereitstellen
+        env:
+          KEY: ${{ secrets.CONTABO_SSH_KEY }}
+        run: |
+          set -eu
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+
+      - name: Zugang zum neuen Server pruefen
+        run: |
+          set -eu
+          if ! ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o ConnectTimeout=20 root@$NEU 'echo "angemeldet auf $(hostname)"'; then
+            echo "::error::Anmeldung per Schluessel scheitert. Bei netcup den Schluessel 'Aequitas' hinterlegen und das Image mit diesem Schluessel neu installieren."
+            exit 1
+          fi
+
+      - name: Box vorbereiten (kein Knoten wird gestartet)
+        run: |
+          set -eu
+          ssh -o BatchMode=yes -o ServerAliveInterval=30 root@$NEU 'bash -s' < deploy/server-vorbereiten.sh

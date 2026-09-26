@@ -43,7 +43,21 @@ func zeitFrisch(zeit int64) bool {
 
 func (a *APIServer) handleWirtschaftRegeln(w http.ResponseWriter, r *http.Request) {
 	writeJSONCORS(w)
+	// Kurs aus dem internen Pool -- nur zur Einordnung, er steuert keine
+	// Regel (Konzept 6.7). tUSD ist Testgeld aus dem Faucet, der Pool winzig:
+	// kein Euro-Wert, und das steht dabei.
+	kurs := map[string]interface{}{
+		"hinweis": "tUSD ist Testgeld; der Kurs ist kein Euro- oder Dollarwert und steuert keine Regel",
+	}
+	if a.state != nil {
+		if rAEQ, rTUSD := a.state.GetPoolReserves(); rAEQ > 0 && rTUSD > 0 {
+			kurs["aeq_in_tusd"] = rTUSD / rAEQ
+			kurs["fairer_anteil_in_tusd"] = registrationGrant * rTUSD / rAEQ
+			kurs["pool_reserve_aeq"] = rAEQ
+		}
+	}
 	json.NewEncoder(w).Encode(map[string]interface{}{
+		"kurs":     kurs,
 		"aktiv":    wirtschaftAktiv(time.Now().Unix()),
 		"aktiv_ab": wirtschaftAktivAbUnix,
 		// Alle Betraege unten sind Vielfache davon (siehe wirtschaft.go).
@@ -262,7 +276,8 @@ func (a *APIServer) handleUnternehmenEroeffnen(w http.ResponseWriter, r *http.Re
 		jsonError(w, "human signature invalid: "+err.Error(), http.StatusForbidden)
 		return
 	}
-	tx := Transaction{Type: "unternehmen_eroeffnen", Wallet: u, To: m, Name: name, Kategorie: kat}
+	tx := Transaction{Type: "unternehmen_eroeffnen", Wallet: u, To: m, Name: name, Kategorie: kat,
+		Nachweis: nachweisFuerAnnahme(Auftragsnachweis{Sig: req.SigUnternehmen, Sig2: req.SigMensch, Zeit: req.Zeit})}
 	a.unternehmenEinreichen(w, []string{u, m}, tx, func(ctx context.Context) error {
 		return a.state.applyUnternehmenEroeffnenLocked(ctx, u, m, name, kat, now)
 	})
@@ -311,7 +326,8 @@ func (a *APIServer) handleUnternehmenMitinhaber(w http.ResponseWriter, r *http.R
 		jsonError(w, "signatures invalid", http.StatusForbidden)
 		return
 	}
-	tx := Transaction{Type: "unternehmen_mitinhaber", Wallet: u, To: m}
+	tx := Transaction{Type: "unternehmen_mitinhaber", Wallet: u, To: m,
+		Nachweis: nachweisFuerAnnahme(Auftragsnachweis{Sig: req.SigMensch, Sig2: req.SigVerantwortlich, Von2: v, Zeit: req.Zeit})}
 	a.unternehmenEinreichen(w, []string{u, m}, tx, func(ctx context.Context) error {
 		return a.state.applyUnternehmenMitinhaberLocked(ctx, u, m, now)
 	})
@@ -352,7 +368,8 @@ func (a *APIServer) handleUnternehmenSchliessen(w http.ResponseWriter, r *http.R
 		jsonError(w, "signature invalid: "+err.Error(), http.StatusForbidden)
 		return
 	}
-	tx := Transaction{Type: "unternehmen_schliessen", Wallet: u, To: v}
+	tx := Transaction{Type: "unternehmen_schliessen", Wallet: u, To: v,
+		Nachweis: nachweisFuerAnnahme(Auftragsnachweis{Sig: req.Sig, Zeit: req.Zeit})}
 	a.unternehmenEinreichen(w, []string{u}, tx, func(ctx context.Context) error {
 		return a.state.applyUnternehmenSchliessenLocked(ctx, u, now)
 	})

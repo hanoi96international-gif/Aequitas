@@ -121,7 +121,20 @@ type AccountState struct {
 	GrantStagedRest   Decimal `json:"grant_staged_rest,omitempty"`   // noch nicht freigegebener Teil des Zuschusses
 	GrantStagedUntil  int64   `json:"grant_staged_until,omitempty"`  // Ende des Staffelfensters (informativ)
 	LivenessRenewedAt int64   `json:"liveness_renewed_at,omitempty"` // Blockzeit der zweiten Lebendigkeitspruefung
-	Version           int64   `json:"-"`                             // optimistic lock version, not serialized
+	// NaechsteNonce: kleinste Nonce, die eine signierte Ueberweisung dieses
+	// Kontos noch haben darf (signierte_ueberweisung.go, Stufe 1.0). Schutz
+	// gegen das erneute Einreichen einer alten Ueberweisung -- als Teil des
+	// gemeinsamen Zustands, damit JEDER Validator es pruefen kann, nicht nur
+	// der annehmende Knoten. Null bis zur Aktivierung; geht nur in den
+	// Blattwert ein, wenn gesetzt, wie die WP-2-Felder darueber.
+	NaechsteNonce int64 `json:"naechste_nonce,omitempty"`
+	// NaechsteAuftragsNonce: dasselbe fuer die mit personal_sign
+	// unterschriebenen Auftraege (Tausch, Liquiditaet; auftrag_nachweis.go).
+	// Eigene Folge, weil die App sie getrennt von der EVM-Nonce zaehlt
+	// (swap_nonces). Null bis zur Aktivierung, im Blattwert nur wenn gesetzt.
+	NaechsteAuftragsNonce int64 `json:"naechste_auftrag_nonce,omitempty"`
+
+	Version int64 `json:"-"` // optimistic lock version, not serialized
 	// WALSeq is the highest WAL sequence number (see transfer_wal.go /
 	// SCALING_ARCHITECTURE.md Phase 7) whose effect this account's Balance
 	// currently reflects. Zero for every account unless AEQUITAS_WAL_ENABLED
@@ -167,6 +180,24 @@ type PoolState struct {
 }
 
 type ChainState struct {
+	// ausgangOhneDB: nur Tests. Ohne Datenbank gibt es keinen Ausgangskorb;
+	// wer pruefen will, was ein annehmender Knoten in seinen naechsten Block
+	// schreiben wuerde, haengt sich hier ein (runAtomicWithOutbox).
+	ausgangOhneDB func(Transaction)
+
+	// nachspielZeit: Blockzeit des Blocks, den replayTransactions gerade unter
+	// cs.mu anwendet (0 = keiner, Annahme). Fuer Regeln, die ab einer
+	// Blockzeit anders gelten und tief unten entschieden werden
+	// (kappung_verteilt.go). Nur unter cs.mu (write) gesetzt und gelesen.
+	nachspielZeit int64
+	// kappungsKandidaten: Konten, die ueber der Grenze liegen koennten und
+	// deren Kappung Stufe 2 dem Zustaendigen ueberlaesst.
+	kappungsMu         sync.Mutex
+	kappungsKandidaten map[string]bool
+	// Stufe 2 (vorbehalt.go): offene Vorbehalte, Vorbehaltskonto ->
+	// {Auftraggeber, Art}, und ihr Mindestbetrag. offeneVorbehalteMu.
+	vorbehalte map[string]offenerVorbehalt
+
 	// Unternehmen, Alter des Geldes, Monatsfreibetraege (wirtschaft.go).
 	wirtschaftP atomic.Pointer[wirtschaft]
 	// Rolle dieses Knotens bei der Annahme von Ueberweisungen -- siehe
@@ -996,6 +1027,14 @@ is_human BOOLEAN NOT NULL DEFAULT false
 	dbExec(`ALTER TABLE chain_accounts ADD COLUMN IF NOT EXISTS grant_staged_rest DOUBLE PRECISION NOT NULL DEFAULT 0`)
 	dbExec(`ALTER TABLE chain_accounts ADD COLUMN IF NOT EXISTS grant_staged_until BIGINT NOT NULL DEFAULT 0`)
 	dbExec(`ALTER TABLE chain_accounts ADD COLUMN IF NOT EXISTS liveness_renewed_at BIGINT NOT NULL DEFAULT 0`)
+	// Stufe 1.0 (signierte_ueberweisung.go): null bis zur Aktivierung.
+	dbExec(`ALTER TABLE chain_accounts ADD COLUMN IF NOT EXISTS naechste_nonce BIGINT NOT NULL DEFAULT 0`)
+	dbExec(`ALTER TABLE chain_accounts ADD COLUMN IF NOT EXISTS naechste_auftrag_nonce BIGINT NOT NULL DEFAULT 0`)
+	// Stufe 2 (vorbehalt.go): offene Vorbehalte, damit ein Leiter sie nach
+	// einem Neustart wiederfindet. Kein Konsens -- abgeleitet aus Bloecken,
+	// geschrieben in derselben Transaktion wie der Vorbehalt selbst.
+	dbExec(`CREATE TABLE IF NOT EXISTS vorbehalte_offen (konto TEXT PRIMARY KEY, wallet TEXT NOT NULL, art TEXT NOT NULL,
+		betrag DOUBLE PRECISION NOT NULL DEFAULT 0, betrag2 DOUBLE PRECISION NOT NULL DEFAULT 0, min_out DOUBLE PRECISION NOT NULL DEFAULT 0)`)
 	dbExec(`ALTER TABLE chain_accounts ADD COLUMN IF NOT EXISTS version BIGINT NOT NULL DEFAULT 0`)
 	// wal_seq (SCALING_ARCHITECTURE.md Phase 7, transfer_wal.go): the highest
 	// WAL sequence number this row's balance reflects. Only ever written by
@@ -1592,7 +1631,7 @@ func (cs *ChainState) clearRegistrationsFromDB() {
 		// current, accurate picture of what's write-only vs. actively
 		// enforced.
 		`DELETE FROM bio_hashes`,
-		`UPDATE chain_accounts SET is_human = false, balance = 0, tusd_balance = 0, lp_shares = 0, last_activity_at = 0, faucet_claimed = false, grant_staged_rest = 0, grant_staged_until = 0, liveness_renewed_at = 0`,
+		`UPDATE chain_accounts SET is_human = false, balance = 0, tusd_balance = 0, lp_shares = 0, last_activity_at = 0, faucet_claimed = false, grant_staged_rest = 0, grant_staged_until = 0, liveness_renewed_at = 0, naechste_nonce = 0, naechste_auftrag_nonce = 0`,
 		`DELETE FROM evm_storage WHERE lower(address) = '` + v7Addr + `'`,
 		`DELETE FROM evm_nonces`,
 		`DELETE FROM evm_tx_receipts`,
@@ -2073,11 +2112,13 @@ func (cs *ChainState) ensureAccountLoadedCtx(ctx context.Context, addr string) {
 		        COALESCE(last_activity_at, 0), COALESCE(version, 1),
 		        COALESCE(faucet_claimed, false),
 		        COALESCE(demurrage_14_day_warning_shown, false),
-		        COALESCE(grant_staged_rest, 0), COALESCE(grant_staged_until, 0), COALESCE(liveness_renewed_at, 0)
+		        COALESCE(grant_staged_rest, 0), COALESCE(grant_staged_until, 0), COALESCE(liveness_renewed_at, 0),
+		        COALESCE(naechste_nonce, 0), COALESCE(naechste_auftrag_nonce, 0)
 		 FROM chain_accounts WHERE lower(address) = $1`,
 		addr,
 	).Scan(&bal, &acc.IsHuman, &tusd, &lp, &acc.LastActivityAt, &version,
-		&acc.FaucetClaimed, &acc.Demurrage14DayWarningShown, &staffelRest, &acc.GrantStagedUntil, &acc.LivenessRenewedAt)
+		&acc.FaucetClaimed, &acc.Demurrage14DayWarningShown, &staffelRest, &acc.GrantStagedUntil, &acc.LivenessRenewedAt,
+		&acc.NaechsteNonce, &acc.NaechsteAuftragsNonce)
 	if err != nil {
 		// FIX (fresh Monster Audit 2026-07-12, P2): sql.ErrNoRows (genuinely
 		// never registered) and a real transient DB error (connection drop,
@@ -2162,7 +2203,8 @@ func (cs *ChainState) ensureAccountsLoadedCtx(ctx context.Context, addrs []strin
 		        COALESCE(last_activity_at, 0), COALESCE(version, 1),
 		        COALESCE(faucet_claimed, false),
 		        COALESCE(demurrage_14_day_warning_shown, false),
-		        COALESCE(grant_staged_rest, 0), COALESCE(grant_staged_until, 0), COALESCE(liveness_renewed_at, 0)
+		        COALESCE(grant_staged_rest, 0), COALESCE(grant_staged_until, 0), COALESCE(liveness_renewed_at, 0),
+		        COALESCE(naechste_nonce, 0), COALESCE(naechste_auftrag_nonce, 0)
 		 FROM chain_accounts WHERE lower(address) = ANY($1)`,
 		pq.Array(missing),
 	)
@@ -2185,7 +2227,8 @@ func (cs *ChainState) ensureAccountsLoadedCtx(ctx context.Context, addrs []strin
 		var bal, tusd, lp, staffelRest float64
 		var version int64
 		if err := rows.Scan(&addr, &bal, &acc.IsHuman, &tusd, &lp, &acc.LastActivityAt, &version,
-			&acc.FaucetClaimed, &acc.Demurrage14DayWarningShown, &staffelRest, &acc.GrantStagedUntil, &acc.LivenessRenewedAt); err != nil {
+			&acc.FaucetClaimed, &acc.Demurrage14DayWarningShown, &staffelRest, &acc.GrantStagedUntil, &acc.LivenessRenewedAt,
+			&acc.NaechsteNonce, &acc.NaechsteAuftragsNonce); err != nil {
 			fmt.Printf("[STATE] ⚠ ensureAccountsLoaded: row scan failed mid-batch — this address will be treated as cold/fresh, which is WRONG if it already has a balance: %v\n", err)
 			continue
 		}
@@ -2223,7 +2266,7 @@ func (cs *ChainState) loadFromDB() {
 	// delay absorbs the transient case for free; if it still fails,
 	// accountsLoadFailed tells main.go this node's "fresh or not" status is
 	// UNKNOWN, not "fresh", so it can refuse to bootstrap rather than guess.
-	const baseQuery = "SELECT address, balance, is_human, tusd_balance, lp_shares, last_activity_at, demurrage_14_day_warning_shown, faucet_claimed, COALESCE(version,0), COALESCE(grant_staged_rest,0), COALESCE(grant_staged_until,0), COALESCE(liveness_renewed_at,0) FROM chain_accounts"
+	const baseQuery = "SELECT address, balance, is_human, tusd_balance, lp_shares, last_activity_at, demurrage_14_day_warning_shown, faucet_claimed, COALESCE(version,0), COALESCE(grant_staged_rest,0), COALESCE(grant_staged_until,0), COALESCE(liveness_renewed_at,0), COALESCE(naechste_nonce,0), COALESCE(naechste_auftrag_nonce,0) FROM chain_accounts"
 	var totalAccounts int64
 	cs.db.QueryRow(`SELECT COUNT(*) FROM chain_accounts`).Scan(&totalAccounts)
 	query := baseQuery
@@ -2249,7 +2292,7 @@ func (cs *ChainState) loadFromDB() {
 	for rows.Next() {
 		acc := &AccountState{}
 		var bal, tusd, lp, staffelRest float64
-		if err := rows.Scan(&acc.Address, &bal, &acc.IsHuman, &tusd, &lp, &acc.LastActivityAt, &acc.Demurrage14DayWarningShown, &acc.FaucetClaimed, &acc.Version, &staffelRest, &acc.GrantStagedUntil, &acc.LivenessRenewedAt); err != nil {
+		if err := rows.Scan(&acc.Address, &bal, &acc.IsHuman, &tusd, &lp, &acc.LastActivityAt, &acc.Demurrage14DayWarningShown, &acc.FaucetClaimed, &acc.Version, &staffelRest, &acc.GrantStagedUntil, &acc.LivenessRenewedAt, &acc.NaechsteNonce, &acc.NaechsteAuftragsNonce); err != nil {
 			fmt.Printf("[DB] Scan error loading account: %v — skipping row\n", err)
 			continue
 		}
@@ -2296,6 +2339,12 @@ func (cs *ChainState) loadFromDB() {
 			existing.TUsdBalance = existing.TUsdBalance.Add(acc.TUsdBalance)
 			existing.LPShares = existing.LPShares.Add(acc.LPShares)
 			existing.IsHuman = existing.IsHuman || acc.IsHuman
+			if acc.NaechsteNonce > existing.NaechsteNonce {
+				existing.NaechsteNonce = acc.NaechsteNonce
+			}
+			if acc.NaechsteAuftragsNonce > existing.NaechsteAuftragsNonce {
+				existing.NaechsteAuftragsNonce = acc.NaechsteAuftragsNonce
+			}
 			if acc.LastActivityAt > existing.LastActivityAt {
 				existing.LastActivityAt = acc.LastActivityAt
 				existing.Demurrage14DayWarningShown = acc.Demurrage14DayWarningShown
@@ -2575,10 +2624,10 @@ func (cs *ChainState) saveAccountToDBInnerCtx(ctx context.Context, acc *AccountS
 		// row). RETURNING version makes acc.Version reflect the row's ACTUAL
 		// resulting version unconditionally, so this self-corrects
 		// regardless of whether the row was new or already existed.
-		if err = cs.dbExecCtx(ctx).QueryRow(`INSERT INTO chain_accounts (address, balance, is_human, tusd_balance, lp_shares, last_activity_at, demurrage_14_day_warning_shown, faucet_claimed, version, grant_staged_rest, grant_staged_until, liveness_renewed_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1, $9, $10, $11)
-ON CONFLICT (address) DO UPDATE SET balance = $2, is_human = $3, tusd_balance = $4, lp_shares = $5, last_activity_at = $6, demurrage_14_day_warning_shown = $7, faucet_claimed = $8, version = COALESCE(chain_accounts.version,0) + 1, grant_staged_rest = $9, grant_staged_until = $10, liveness_renewed_at = $11
+		if err = cs.dbExecCtx(ctx).QueryRow(`INSERT INTO chain_accounts (address, balance, is_human, tusd_balance, lp_shares, last_activity_at, demurrage_14_day_warning_shown, faucet_claimed, version, grant_staged_rest, grant_staged_until, liveness_renewed_at, naechste_nonce, naechste_auftrag_nonce) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1, $9, $10, $11, $12, $13)
+ON CONFLICT (address) DO UPDATE SET balance = $2, is_human = $3, tusd_balance = $4, lp_shares = $5, last_activity_at = $6, demurrage_14_day_warning_shown = $7, faucet_claimed = $8, version = COALESCE(chain_accounts.version,0) + 1, grant_staged_rest = $9, grant_staged_until = $10, liveness_renewed_at = $11, naechste_nonce = $12, naechste_auftrag_nonce = $13
 RETURNING version`,
-			acc.Address, acc.Balance.Float(), acc.IsHuman, acc.TUsdBalance.Float(), acc.LPShares.Float(), acc.LastActivityAt, acc.Demurrage14DayWarningShown, acc.FaucetClaimed, acc.GrantStagedRest.Float(), acc.GrantStagedUntil, acc.LivenessRenewedAt).Scan(&acc.Version); err != nil {
+			acc.Address, acc.Balance.Float(), acc.IsHuman, acc.TUsdBalance.Float(), acc.LPShares.Float(), acc.LastActivityAt, acc.Demurrage14DayWarningShown, acc.FaucetClaimed, acc.GrantStagedRest.Float(), acc.GrantStagedUntil, acc.LivenessRenewedAt, acc.NaechsteNonce, acc.NaechsteAuftragsNonce).Scan(&acc.Version); err != nil {
 			fmt.Printf("[DB] Error saving account %s: %v\n", acc.Address, err)
 			return fmt.Errorf("could not save account %s: %w", acc.Address, err)
 		}
@@ -2590,9 +2639,9 @@ RETURNING version`,
 	} else {
 		// Optimistic locking: only update if version matches what we read.
 		// If another node updated in parallel, rows affected = 0 → conflict detected.
-		result, err = cs.dbExecCtx(ctx).Exec(`UPDATE chain_accounts SET balance = $2, is_human = $3, tusd_balance = $4, lp_shares = $5, last_activity_at = $6, demurrage_14_day_warning_shown = $7, faucet_claimed = $8, version = $9 + 1, grant_staged_rest = $10, grant_staged_until = $11, liveness_renewed_at = $12
+		result, err = cs.dbExecCtx(ctx).Exec(`UPDATE chain_accounts SET balance = $2, is_human = $3, tusd_balance = $4, lp_shares = $5, last_activity_at = $6, demurrage_14_day_warning_shown = $7, faucet_claimed = $8, version = $9 + 1, grant_staged_rest = $10, grant_staged_until = $11, liveness_renewed_at = $12, naechste_nonce = $13, naechste_auftrag_nonce = $14
 WHERE address = $1 AND version = $9`,
-			acc.Address, acc.Balance.Float(), acc.IsHuman, acc.TUsdBalance.Float(), acc.LPShares.Float(), acc.LastActivityAt, acc.Demurrage14DayWarningShown, acc.FaucetClaimed, acc.Version, acc.GrantStagedRest.Float(), acc.GrantStagedUntil, acc.LivenessRenewedAt)
+			acc.Address, acc.Balance.Float(), acc.IsHuman, acc.TUsdBalance.Float(), acc.LPShares.Float(), acc.LastActivityAt, acc.Demurrage14DayWarningShown, acc.FaucetClaimed, acc.Version, acc.GrantStagedRest.Float(), acc.GrantStagedUntil, acc.LivenessRenewedAt, acc.NaechsteNonce, acc.NaechsteAuftragsNonce)
 		if err == nil {
 			if rows, _ := result.RowsAffected(); rows == 0 {
 				// Conflict: another node wrote a newer version. Reload DB version
@@ -2758,6 +2807,8 @@ func (cs *ChainState) saveAccountsToDBBatchCtx(ctx context.Context, accs []*Acco
 	staffelRests := make([]float64, len(sorted))
 	staffelUntils := make([]int64, len(sorted))
 	renewedAts := make([]int64, len(sorted))
+	naechsteNonces := make([]int64, len(sorted))
+	auftragsNonces := make([]int64, len(sorted))
 	expectedVersions := make([]int64, len(sorted))
 	for i, acc := range sorted {
 		addresses[i] = acc.Address
@@ -2771,16 +2822,18 @@ func (cs *ChainState) saveAccountsToDBBatchCtx(ctx context.Context, accs []*Acco
 		staffelRests[i] = acc.GrantStagedRest.Float()
 		staffelUntils[i] = acc.GrantStagedUntil
 		renewedAts[i] = acc.LivenessRenewedAt
+		naechsteNonces[i] = acc.NaechsteNonce
+		auftragsNonces[i] = acc.NaechsteAuftragsNonce
 		expectedVersions[i] = acc.Version
 	}
 	args := []interface{}{
 		pq.Array(addresses), pq.Array(balances), pq.Array(isHumans),
 		pq.Array(tusdBalances), pq.Array(lpShares), pq.Array(lastActivityAts),
 		pq.Array(demurrageWarnings), pq.Array(faucetClaimeds), pq.Array(expectedVersions),
-		pq.Array(staffelRests), pq.Array(staffelUntils), pq.Array(renewedAts),
+		pq.Array(staffelRests), pq.Array(staffelUntils), pq.Array(renewedAts), pq.Array(naechsteNonces), pq.Array(auftragsNonces),
 	}
-	query := `WITH updates(address, balance, is_human, tusd_balance, lp_shares, last_activity_at, demurrage_14_day_warning_shown, faucet_claimed, expected_version, grant_staged_rest, grant_staged_until, liveness_renewed_at) AS (
-	SELECT * FROM unnest($1::text[], $2::double precision[], $3::boolean[], $4::double precision[], $5::double precision[], $6::bigint[], $7::boolean[], $8::boolean[], $9::bigint[], $10::double precision[], $11::bigint[], $12::bigint[])
+	query := `WITH updates(address, balance, is_human, tusd_balance, lp_shares, last_activity_at, demurrage_14_day_warning_shown, faucet_claimed, expected_version, grant_staged_rest, grant_staged_until, liveness_renewed_at, naechste_nonce, naechste_auftrag_nonce) AS (
+	SELECT * FROM unnest($1::text[], $2::double precision[], $3::boolean[], $4::double precision[], $5::double precision[], $6::bigint[], $7::boolean[], $8::boolean[], $9::bigint[], $10::double precision[], $11::bigint[], $12::bigint[], $13::bigint[], $14::bigint[])
 ),
 upd AS (
 	UPDATE chain_accounts ca
@@ -2788,14 +2841,15 @@ upd AS (
 	    lp_shares = u.lp_shares, last_activity_at = u.last_activity_at,
 	    demurrage_14_day_warning_shown = u.demurrage_14_day_warning_shown,
 	    faucet_claimed = u.faucet_claimed, version = u.expected_version + 1,
-	    grant_staged_rest = u.grant_staged_rest, grant_staged_until = u.grant_staged_until, liveness_renewed_at = u.liveness_renewed_at
+	    grant_staged_rest = u.grant_staged_rest, grant_staged_until = u.grant_staged_until, liveness_renewed_at = u.liveness_renewed_at,
+	    naechste_nonce = u.naechste_nonce, naechste_auftrag_nonce = u.naechste_auftrag_nonce
 	FROM updates u
 	WHERE lower(ca.address) = lower(u.address) AND ca.version = u.expected_version
 	RETURNING ca.address, ca.version
 ),
 ins AS (
-	INSERT INTO chain_accounts (address, balance, is_human, tusd_balance, lp_shares, last_activity_at, demurrage_14_day_warning_shown, faucet_claimed, version, grant_staged_rest, grant_staged_until, liveness_renewed_at)
-	SELECT address, balance, is_human, tusd_balance, lp_shares, last_activity_at, demurrage_14_day_warning_shown, faucet_claimed, 1, grant_staged_rest, grant_staged_until, liveness_renewed_at
+	INSERT INTO chain_accounts (address, balance, is_human, tusd_balance, lp_shares, last_activity_at, demurrage_14_day_warning_shown, faucet_claimed, version, grant_staged_rest, grant_staged_until, liveness_renewed_at, naechste_nonce, naechste_auftrag_nonce)
+	SELECT address, balance, is_human, tusd_balance, lp_shares, last_activity_at, demurrage_14_day_warning_shown, faucet_claimed, 1, grant_staged_rest, grant_staged_until, liveness_renewed_at, naechste_nonce, naechste_auftrag_nonce
 	FROM updates
 	WHERE lower(address) NOT IN (SELECT lower(address) FROM upd) AND expected_version = 0
 	ON CONFLICT (address) DO UPDATE SET
@@ -2803,7 +2857,8 @@ ins AS (
 		lp_shares = EXCLUDED.lp_shares, last_activity_at = EXCLUDED.last_activity_at,
 		demurrage_14_day_warning_shown = EXCLUDED.demurrage_14_day_warning_shown,
 		faucet_claimed = EXCLUDED.faucet_claimed, version = COALESCE(chain_accounts.version, 0) + 1,
-		grant_staged_rest = EXCLUDED.grant_staged_rest, grant_staged_until = EXCLUDED.grant_staged_until, liveness_renewed_at = EXCLUDED.liveness_renewed_at
+		grant_staged_rest = EXCLUDED.grant_staged_rest, grant_staged_until = EXCLUDED.grant_staged_until, liveness_renewed_at = EXCLUDED.liveness_renewed_at,
+		naechste_nonce = EXCLUDED.naechste_nonce, naechste_auftrag_nonce = EXCLUDED.naechste_auftrag_nonce
 	RETURNING address, version
 )
 SELECT address, version FROM upd UNION ALL SELECT address, version FROM ins`
@@ -4177,6 +4232,13 @@ func (cs *ChainState) enforceWealthCapLockedCtx(ctx context.Context, acc *Accoun
 	if isTokenomicsPoolAddress(acc.Address) {
 		return nil
 	}
+	// Stufe 2: gekappt wird nicht hier, bei der Gutschrift, sondern vom
+	// Zustaendigen des Kontos -- als eigene Belastung mit festem Betrag
+	// (kappung_verteilt.go).
+	if cs.kappungVerschobenLocked() {
+		cs.kappungVormerken(acc.Address)
+		return nil
+	}
 	// Unternehmen haben keine feste Obergrenze, sie zahlen Liegegeld
 	// (wirtschaft.go). Konsens: das Register entsteht auf jedem Knoten aus
 	// denselben Transaktionen, vor der Aktivierung ist es leer.
@@ -4524,7 +4586,13 @@ func (cs *ChainState) runAtomicWithOutbox(touchedAddrs []string, fullSnapshot bo
 		// branch never sets cs.activeTx, so there is no transaction for fn
 		// to join regardless of what ctx carries.
 		cs.mu.Lock()
-		_, err := fn(context.Background())
+		pendingTx, err := fn(context.Background())
+		if err == nil {
+			err = cs.merkeAuftragsNonceLocked(context.Background(), pendingTx)
+		}
+		if err == nil && cs.ausgangOhneDB != nil {
+			cs.ausgangOhneDB(pendingTx)
+		}
 		cs.mu.Unlock()
 		return err
 	}
@@ -4600,6 +4668,12 @@ func (cs *ChainState) runAtomicWithOutbox(touchedAddrs []string, fullSnapshot bo
 	// reconstructing the same value from cs.activeTx itself.
 	phFn := time.Now()
 	pendingTx, fnErr := fn(withTx(context.Background(), tx))
+	if fnErr == nil {
+		// Auftrags-Nonce (auftrag_nachweis.go) in derselben Transaktion wie
+		// der Auftrag -- sonst naehme dieser Knoten einen Block an, den jeder
+		// andere Validator wegen verbrauchter Nonce verwirft.
+		fnErr = cs.merkeAuftragsNonceLocked(withTx(context.Background(), tx), pendingTx)
+	}
 	atomicPhasenStand.notiere(&atomicPhasenStand.fnNs, phFn)
 	var outboxErr error
 	if fnErr == nil {
@@ -4978,7 +5052,13 @@ func (cs *ChainState) TransferAtomic(from, to string, amount float64, pendingTxT
 	if cs.db == nil {
 		return cs.transferAtomicDirect(from, to, amount, pendingTxTemplate)
 	}
-	if cs.wal != nil {
+	// Signierte Ueberweisungen (Stufe 1.0) nehmen nie die schnellen Pfade:
+	// nur der Stapelpfad setzt NaechsteNonce beim Annehmen. Ab dem 1.10. sind
+	// die schnellen Pfade ohnehin aus (wirtschaftAktiv), das hier macht es
+	// unabhaengig davon.
+	if pendingTxTemplate.Roh != "" {
+		// kein schneller Pfad
+	} else if cs.wal != nil {
 		if fLost, tLost, applied, werr := cs.transferConcurrentWAL(from, to, amount, pendingTxTemplate); applied {
 			transferFastPathApplied.Add(1)
 			return fLost, tLost, werr
@@ -5055,6 +5135,9 @@ func (cs *ChainState) transferAtomicDirect(from, to string, amount float64, pend
 		at := nowUnix()
 		fromLost, toLost, gebuehr, err = cs.transferLockedMitGebuehr(mitBuchZeit(ctx, at), from, to, amount)
 		if err != nil {
+			return Transaction{}, err
+		}
+		if err := cs.merkeAngenommeneNonceLocked(ctx, from, pendingTxTemplate); err != nil {
 			return Transaction{}, err
 		}
 		pendingTxTemplate.Amount = amount
@@ -5363,6 +5446,11 @@ func (cs *ChainState) processTransferBatch(batch []*transferBatchRequest) {
 			if mErr != nil {
 				return Transaction{}, fmt.Errorf("batch member %d/%d (%s -> %s) failed: %w", i+1, len(batch), req.from, req.to, mErr)
 			}
+			// Stufe 1.0: NaechsteNonce beim Annehmen setzen -- gespeichert
+			// wird das Konto gleich unten mit dem ganzen Stapel.
+			if n, ok := nonceAusVorlage(req.pendingTxTemplate); ok {
+				setzeNaechsteNonce(fromAcc, n)
+			}
 			touchedAccs[fromAcc.Address] = fromAcc
 			touchedAccs[toAcc.Address] = toAcc
 
@@ -5628,6 +5716,9 @@ func (cs *ChainState) TransferWithV7FeeAtomic(from, to string, amount float64, p
 		if err != nil {
 			return Transaction{}, err
 		}
+		if err := cs.merkeAngenommeneNonceLocked(ctx, from, pendingTxTemplate); err != nil {
+			return Transaction{}, err
+		}
 		pendingTxTemplate.Amount = netAmount
 		// Was der Absender ueber netAmount hinaus bezahlt (ans Grundeinkommen,
 		// mit dem Block) -- ohne dieses Feld belastete ein nachspielender
@@ -5740,7 +5831,7 @@ func (cs *ChainState) SwapTUSDForAEQ(address string, amountIn, minAmountOut floa
 // filled in here from the swap's actual result.
 func (cs *ChainState) SwapAtomic(address string, amountIn float64, aeqToTusd bool, minAmountOut float64, pendingTxTemplate Transaction) (amountOut, demurrageLost float64, err error) {
 	// Auch das ist eine Belastung bei der Annahme -- siehe annahme_tor.go.
-	if err := cs.annahmeBeginnen(address); err != nil {
+	if err := cs.annahmeBeginnen(address, address, kontoLiquiditaetspool); err != nil {
 		return 0, 0, err
 	}
 	defer cs.annahmeEnde()
@@ -6416,7 +6507,7 @@ func (cs *ChainState) AddLiquidity(address string, amountAEQ, amountTUSD float64
 // have Type/Wallet/Amount(AEQ)/AmountOut(tUSD) set; LPShares and
 // FromDemurrageLost are filled in here from the operation's actual result.
 func (cs *ChainState) AddLiquidityAtomic(address string, amountAEQ, amountTUSD float64, pendingTxTemplate Transaction) (demurrageLost float64, err error) {
-	if err := cs.annahmeBeginnen(address); err != nil {
+	if err := cs.annahmeBeginnen(address, address, kontoLiquiditaetspool); err != nil {
 		return 0, err
 	}
 	defer cs.annahmeEnde()
@@ -6563,7 +6654,7 @@ func (cs *ChainState) RemoveLiquidity(address string, sharesToBurn float64) (flo
 // secondary's own current pool state rather than replaying exact amounts,
 // so those aren't part of the queued Transaction either today).
 func (cs *ChainState) RemoveLiquidityAtomic(address string, sharesToBurn float64, pendingTxTemplate Transaction) (outAEQ, outTUSD, demurrageLost float64, err error) {
-	if err := cs.annahmeBeginnen(address); err != nil {
+	if err := cs.annahmeBeginnen(address, address, kontoLiquiditaetspool); err != nil {
 		return 0, 0, 0, err
 	}
 	defer cs.annahmeEnde()
@@ -7028,7 +7119,7 @@ func (cs *ChainState) ClaimTUsdFaucet(address string) error {
 // mutation and the resulting outbox insert commit or roll back together as
 // one DB transaction — see TransferAtomic's comment.
 func (cs *ChainState) ClaimTUsdFaucetAtomic(address string, pendingTx Transaction) error {
-	if err := cs.annahmeBeginnen(address); err != nil {
+	if err := cs.annahmeBeginnen(address, kontoFaucet); err != nil {
 		return err
 	}
 	defer cs.annahmeEnde()
@@ -7269,6 +7360,18 @@ func accountLeaf(acc *AccountState) [32]byte {
 		b = append(b, ":lr="...)
 		b = strconv.AppendInt(b, acc.LivenessRenewedAt, 10)
 	}
+	// Stufe 1.0: nur anhaengen, wenn gesetzt -- vor der Aktivierung ist der
+	// Wert ueberall 0, und jedes Konto behaelt seinen bisherigen Blattwert
+	// (signierte_ueberweisung.go).
+	if acc.NaechsteNonce != 0 {
+		b = append(b, ":nn="...)
+		b = strconv.AppendInt(b, acc.NaechsteNonce, 10)
+	}
+	// Auftrag-Nachweis (auftrag_nachweis.go): ebenso nur, wenn gesetzt.
+	if acc.NaechsteAuftragsNonce != 0 {
+		b = append(b, ":an="...)
+		b = strconv.AppendInt(b, acc.NaechsteAuftragsNonce, 10)
+	}
 	return sha256.Sum256(b)
 }
 
@@ -7293,19 +7396,19 @@ func (cs *ChainState) rebuildStateAccumulators() {
 	var humans int64
 	scanned := false
 	if cs.db != nil {
-		rows, err := cs.db.Query(`SELECT address, balance, is_human, tusd_balance, lp_shares, faucet_claimed, COALESCE(grant_staged_rest,0), COALESCE(grant_staged_until,0), COALESCE(liveness_renewed_at,0) FROM chain_accounts`)
+		rows, err := cs.db.Query(`SELECT address, balance, is_human, tusd_balance, lp_shares, faucet_claimed, COALESCE(grant_staged_rest,0), COALESCE(grant_staged_until,0), COALESCE(liveness_renewed_at,0), COALESCE(naechste_nonce,0), COALESCE(naechste_auftrag_nonce,0) FROM chain_accounts`)
 		if err == nil {
 			for rows.Next() {
 				var addr string
 				var bal, tusd, lp, gsRest float64
 				var human, faucet bool
-				var gsUntil, lrAt int64
-				if scanErr := rows.Scan(&addr, &bal, &human, &tusd, &lp, &faucet, &gsRest, &gsUntil, &lrAt); scanErr != nil {
+				var gsUntil, lrAt, nn, an int64
+				if scanErr := rows.Scan(&addr, &bal, &human, &tusd, &lp, &faucet, &gsRest, &gsUntil, &lrAt, &nn, &an); scanErr != nil {
 					continue
 				}
 				lower := strings.ToLower(addr)
 				tmp := &AccountState{Address: lower, Balance: NewDecimal(bal), IsHuman: human, TUsdBalance: NewDecimal(tusd), LPShares: NewDecimal(lp), FaucetClaimed: faucet,
-					GrantStagedRest: NewDecimal(gsRest), GrantStagedUntil: gsUntil, LivenessRenewedAt: lrAt}
+					GrantStagedRest: NewDecimal(gsRest), GrantStagedUntil: gsUntil, LivenessRenewedAt: lrAt, NaechsteNonce: nn, NaechsteAuftragsNonce: an}
 				leaf := accountLeaf(tmp)
 				xorInto(&acc, leaf)
 				if human {

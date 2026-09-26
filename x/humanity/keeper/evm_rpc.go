@@ -498,7 +498,7 @@ func (s *EVMRPCServer) handleRPC(w http.ResponseWriter, r *http.Request) {
 	// stellt die Validatoren frei (sie leiten fuer viele Menschen weiter),
 	// und ohne diese Pruefung waere jeder Folger ein Umweg um jede Grenze.
 	if s.state != nil && rpcSchreibt(body) {
-		if ziel := s.state.weiterleitungsZiel(r); ziel != "" {
+		if ziel := s.state.weiterleitungsZiel(r, rpcKonten(body)...); ziel != "" {
 			if !frei {
 				posten := bytes.Count(body, []byte(`"method"`))
 				if posten < 1 {
@@ -1084,20 +1084,15 @@ func (s *EVMRPCServer) reserveNoncePerItem(tx *types.Transaction, senderAddr str
 // distinct transactions, which is exactly what handleRPC's batch pre-pass
 // does. Kept identical in behavior to the inline code this replaced.
 func decodeAndRecoverSender(rawHex string) (tx *types.Transaction, senderAddr string, senderErr bool, err error) {
-	rawHex = strings.TrimPrefix(rawHex, "0x")
-
-	rawBytes, hexErr := hex.DecodeString(rawHex)
-	if hexErr != nil {
-		return nil, "", false, fmt.Errorf("Invalid hex")
+	t, err := decodeRohTransaktion(rawHex)
+	if err != nil {
+		return nil, "", false, err
 	}
 
-	t := new(types.Transaction)
-	// UnmarshalBinary handles all tx types: legacy (RLP), EIP-2930 (type 1), EIP-1559 (type 2)
-	if binErr := t.UnmarshalBinary(rawBytes); binErr != nil {
-		// Fallback to RLP for legacy transactions
-		if err2 := rlp.DecodeBytes(rawBytes, t); err2 != nil {
-			return nil, "", false, fmt.Errorf("Invalid transaction: %v", binErr)
-		}
+	// Stufe 1.2 (absender_cache.go): dieselbe Rohform nur einmal wiederherstellen.
+	h := t.Hash()
+	if a, ok := absenderSpeicher.holen(h); ok {
+		return t, a, false, nil
 	}
 
 	// Recover sender
@@ -1111,7 +1106,30 @@ func decodeAndRecoverSender(rawHex string) (tx *types.Transaction, senderAddr st
 		}
 	}
 
-	return t, strings.ToLower(sender.Hex()), false, nil
+	absender := strings.ToLower(sender.Hex())
+	absenderSpeicher.merken(h, absender)
+	return t, absender, false, nil
+}
+
+// decodeRohTransaktion liest eine signierte Rohtransaktion, ohne den
+// Absender wiederherzustellen (billig: nur Hex und RLP).
+func decodeRohTransaktion(rawHex string) (*types.Transaction, error) {
+	rawHex = strings.TrimPrefix(rawHex, "0x")
+
+	rawBytes, hexErr := hex.DecodeString(rawHex)
+	if hexErr != nil {
+		return nil, fmt.Errorf("Invalid hex")
+	}
+
+	t := new(types.Transaction)
+	// UnmarshalBinary handles all tx types: legacy (RLP), EIP-2930 (type 1), EIP-1559 (type 2)
+	if binErr := t.UnmarshalBinary(rawBytes); binErr != nil {
+		// Fallback to RLP for legacy transactions
+		if err2 := rlp.DecodeBytes(rawBytes, t); err2 != nil {
+			return nil, fmt.Errorf("Invalid transaction: %v", binErr)
+		}
+	}
+	return t, nil
 }
 
 func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage, pre *precomputedSendTx) (interface{}, *RPCError) {
@@ -1144,7 +1162,12 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage, pre *precomp
 	//
 	// -32005 wie oben: derselbe wiederholbare Code, auf den bestehende
 	// Klienten ohnehin zurueckfallen.
-	if s.state != nil {
+	//
+	// Stufe 2 (leitung_verteilt.go): ob dieser Knoten annimmt, haengt am
+	// Absender -- die Pruefung folgt deshalb unten, sobald er bekannt ist, und
+	// immer noch VOR jeder Nonce-Reservierung. Hier nur, wenn dieser Knoten
+	// fuer gar nichts annimmt (nur_lesend).
+	if s.state != nil && s.state.nurLesend.Load() {
 		if err := s.state.pruefeAnnahmeTor(); err != nil {
 			return nil, &RPCError{Code: -32005, Message: err.Error()}
 		}
@@ -1186,6 +1209,22 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage, pre *precomp
 	// Vertragsaufruf (annahme_tor.go, pruefeAbsenderKeinTopf).
 	if err := pruefeAbsenderKeinTopf(senderAddr); err != nil {
 		return nil, &RPCError{Code: -32003, Message: err.Error()}
+	}
+	if s.state != nil {
+		if err := s.state.pruefeAnnahmeTorFuer(senderAddr); err != nil {
+			return nil, &RPCError{Code: -32005, Message: err.Error()}
+		}
+	}
+	// Stufe 1.0 (signierte_ueberweisung.go): ab dem Vorlauf der Aktivierung
+	// traegt jede Ueberweisung ihre signierte Rohform in den Block, und ihre
+	// Nonce muss gegen den GEMEINSAMEN Zustand gueltig sein -- sonst wuerde
+	// jeder andere Validator den naechsten Block dieses Knotens verwerfen.
+	// Vor der Reservierung, damit eine abgelehnte Nonce nichts verbraucht.
+	mitRoh := s.state != nil && signierteUeberweisungenAufnehmen(nowUnix())
+	if mitRoh {
+		if err := s.state.pruefeAnnahmeNonce(senderAddr, tx.Nonce()); err != nil {
+			return nil, &RPCError{Code: -32000, Message: err.Error()}
+		}
 	}
 	// common.Address form, needed below for DeployContract/CallContract —
 	// round-tripping through the lowercased hex is exact (common.HexToAddress
@@ -1310,6 +1349,9 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage, pre *precomp
 		// write could fail independently after the transfer had already
 		// committed, permanently hiding it from every other node.
 		pendingTxTemplate := Transaction{Type: "transfer", Wallet: senderAddr, To: toAddr, Amount: valueFloat, TxHash: txHash}
+		if mitRoh {
+			pendingTxTemplate.Roh = rawHex
+		}
 		_, _, err := s.state.TransferAtomic(senderAddr, toAddr, valueFloat, pendingTxTemplate)
 		if err != nil {
 			// Transfer failed — mark receipt as failed so MetaMask shows correct status.
@@ -1371,6 +1413,9 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage, pre *precomp
 		// mutation and the pending_tx outbox insert as a single DB
 		// transaction — see TransferAtomic's comment.
 		pendingTxV7Template := Transaction{Type: "transfer", Wallet: senderAddr, To: toAddr, TxHash: txHash}
+		if mitRoh {
+			pendingTxV7Template.Roh = rawHex
+		}
 		_, _, _, err := s.state.TransferWithV7FeeAtomic(senderAddr, toAddr, amountFloat, pendingTxV7Template)
 		if err != nil {
 			// Mark as failed

@@ -707,13 +707,18 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		// Wirkung des kurzen Wiederholens bei belegtem Shard.
 		"shard_retry": ShardRetryStand(),
 		// Drosselung der Blockgroesse bei zurueckfallenden Peers.
-		"peer_lag_bremse":    PeerLagBremseStand(),
-		"hoehen_quellen":     HoehenQuellenStand(),
-		"block_tx_deckel":    BlockTxDeckelStand(),
-		"zustands_ablehnung": ZustandsAblehnungStand(),
-		"annahme_tor":        a.state.AnnahmeTorStand(),
-		"leitung":            a.state.LeitungStand(),
-		"leistungsnachweis":  LeistungsnachweisStand(),
+		"peer_lag_bremse":          PeerLagBremseStand(),
+		"hoehen_quellen":           HoehenQuellenStand(),
+		"block_tx_deckel":          BlockTxDeckelStand(),
+		"zustands_ablehnung":       ZustandsAblehnungStand(),
+		"annahme_tor":              a.state.AnnahmeTorStand(),
+		"signierte_ueberweisungen": SignierteUeberweisungenStand(),
+		"absender_cache":           AbsenderCacheStand(),
+		"kappung_verteilt":         a.state.KappungStand(),
+		"vorbehalte":               a.state.VorbehaltStand(),
+		"leistungsproben":          ProbenStand(),
+		"leitung":                  a.state.LeitungStand(),
+		"leistungsnachweis":        LeistungsnachweisStand(),
 		// Wie das Nachspielen die Ueberweisungen anwendet -- parallel oder seriell.
 		"replay_pfad":         ReplayPfadStand(),
 		"replay_phasen":       ReplayPhasenStand(),
@@ -1106,7 +1111,7 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	mux.HandleFunc("/api/price-history", a.handlePriceHistory)
 	mux.HandleFunc("/api/wealth-cap", a.handleWealthCap)
 	mux.HandleFunc("/api/sign-validator-challenge", a.handleSignValidatorChallenge)
-	mux.HandleFunc("/api/nonce", a.handleNonce)
+	mux.HandleFunc("/api/nonce", a.zumLeiter(a.handleNonce))
 	mux.HandleFunc("/api/peers", a.handlePeers)
 	// Peer roles and build commits, fetched BY THIS NODE. The page cannot do
 	// it itself: its own CSP refuses cross-origin peer reads, and after the
@@ -1126,6 +1131,7 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	// Rotierender Leiter: signierte Nachrichten zwischen Validatoren
 	// (leitung_netz.go). Ohne AEQUITAS_LEITUNG=an antwortet er 404.
 	mux.HandleFunc("/api/leitung", a.handleLeitung)
+	mux.HandleFunc("/api/leistungsprobe", a.handleLeistungsprobe)
 	mux.HandleFunc("/node-binding", a.handleNodeBinding)
 	mux.HandleFunc("/coordinator-binding", a.handleCoordinatorBinding)
 	mux.HandleFunc("/api/register-validator-key", a.handleRegisterValidatorKey)
@@ -1139,16 +1145,18 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	mux.HandleFunc("/api/wirtschaft/regeln", a.handleWirtschaftRegeln)
 	mux.HandleFunc("/api/wirtschaft/konto", a.handleWirtschaftKonto)
 	mux.HandleFunc("/api/unternehmen", a.handleUnternehmenListe)
-	mux.HandleFunc("/api/unternehmen/eroeffnen", a.handleUnternehmenEroeffnen)
-	mux.HandleFunc("/api/unternehmen/mitinhaber", a.handleUnternehmenMitinhaber)
-	mux.HandleFunc("/api/unternehmen/schliessen", a.handleUnternehmenSchliessen)
+	// Wie Swap und Ueberweisung durch die Weiterleitung: sie nehmen an
+	// (annahme_tor.go) und gehoeren zum Zustaendigen des Unternehmens.
+	mux.HandleFunc("/api/unternehmen/eroeffnen", a.zumLeiter(a.handleUnternehmenEroeffnen))
+	mux.HandleFunc("/api/unternehmen/mitinhaber", a.zumLeiter(a.handleUnternehmenMitinhaber))
+	mux.HandleFunc("/api/unternehmen/schliessen", a.zumLeiter(a.handleUnternehmenSchliessen))
 	mux.HandleFunc("/api/coordinator-proof", a.handleCoordinatorProof)
 	mux.HandleFunc("/api/validator-selfproof", a.handleValidatorSelfProof)
 	mux.HandleFunc("/api/set-guardian", a.handleSetGuardian)
 	mux.HandleFunc("/api/confirm-alive", a.handleConfirmAlive)
 	mux.HandleFunc("/api/guardian", a.handleGetGuardian)
 	mux.HandleFunc("/api/escrow", a.handleGetEscrow)
-	mux.HandleFunc("/api/recover-escrow", a.handleRecoverEscrow)
+	mux.HandleFunc("/api/recover-escrow", a.zumLeiter(a.handleRecoverEscrow))
 	mux.HandleFunc("/registered", a.handleRegistered)
 	mux.HandleFunc("/dapp", a.handleDapp)
 	mux.HandleFunc("/dapp.js", a.handleDappJS)
@@ -4303,7 +4311,7 @@ func (a *APIServer) handleRecoverEscrow(w http.ResponseWriter, r *http.Request) 
 		jsonError(w, "invalid signature: "+err.Error(), 400)
 		return
 	}
-	if err := a.state.RecoverFromEscrow(wallet); err != nil {
+	if err := a.state.RecoverFromEscrowMitNachweis(wallet, nachweisFuerAnnahme(Auftragsnachweis{Sig: req.Signature})); err != nil {
 		jsonStateError(w, "recover-escrow", wallet, err)
 		return
 	}

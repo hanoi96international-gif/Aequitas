@@ -912,6 +912,15 @@ func main() {
 					fmt.Printf("[POOLS] ✗ Skipping distribution this round: %s — will re-check in %s\n", syncIssue, distributionHealthRetryInterval)
 					keeper.RecordDistributionOutcome("skipped", syncIssue)
 					retrySoon = true
+				} else if grund := chainState.SystemauftraegeHier(); grund != "" {
+					// Stufe 2 (zustaendigkeit.go): die Verteilung belastet die
+					// Toepfe, und die gehoeren im verteilten Term dem Leiter.
+					// Ein anderer Knoten, der gleichzeitig verteilte, zahlte
+					// doppelt aus denselben Toepfen. Bald erneut pruefen: der
+					// Leiter wechselt.
+					fmt.Printf("[POOLS] Verteilung nicht hier: %s — erneute Pruefung in %s\n", grund, distributionHealthRetryInterval)
+					keeper.RecordDistributionOutcome("skipped", grund)
+					retrySoon = true
 				} else if chainState.TryLockDistribution() {
 					// FIX (audit3, P0 #3): the entire distribution round — UBI, validator
 					// pool, LP pool, escrow move/release, AND every resulting outbox TX —

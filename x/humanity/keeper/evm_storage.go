@@ -2356,14 +2356,44 @@ func (cs *ChainState) InitSwapNoncesTable() {
 
 // GetSwapNonce returns the next nonce a wallet should sign with.
 // Returns 0 for wallets that have never performed a swap.
+//
+// Stufe 1.0/2: das Maximum aus der lokalen Tabelle und NaechsteAuftragsNonce
+// im gemeinsamen Zustand. Die lokale Tabelle kennt nur, was DIESER Knoten
+// angenommen hat; nimmt im naechsten Term ein anderer an (verteilte
+// Annahme), naennte er sonst eine laengst verbrauchte Nonce.
 func (cs *ChainState) GetSwapNonce(wallet string) int64 {
-	if cs.db == nil {
-		return 0
-	}
 	wallet = strings.ToLower(wallet)
+	gemeinsam := cs.gemeinsameAuftragsNonce(wallet)
+	if cs.db == nil {
+		return gemeinsam
+	}
 	var nonce int64
 	cs.db.QueryRow(`SELECT next_nonce FROM swap_nonces WHERE wallet_address = $1`, wallet).Scan(&nonce)
+	if gemeinsam > nonce {
+		return gemeinsam
+	}
 	return nonce
+}
+
+// gemeinsameAuftragsNonce: NaechsteAuftragsNonce aus dem gemeinsamen Zustand.
+func (cs *ChainState) gemeinsameAuftragsNonce(wallet string) int64 {
+	cs.mu.RLock()
+	acc, ok := cs.accounts.Get(wallet)
+	var n int64
+	if ok {
+		n = acc.NaechsteAuftragsNonce
+	}
+	cs.mu.RUnlock()
+	if !ok && cs.db != nil {
+		// Kaltes Konto: laden (verlangt die Schreibsperre).
+		cs.mu.Lock()
+		cs.ensureAccountLoaded(wallet)
+		if acc, ok := cs.accounts.Get(wallet); ok {
+			n = acc.NaechsteAuftragsNonce
+		}
+		cs.mu.Unlock()
+	}
+	return n
 }
 
 // RestoreSwapNonce decrements the nonce back to its pre-swap value when a
@@ -2387,6 +2417,12 @@ func (cs *ChainState) ConsumeSwapNonce(wallet string, nonce int64) error {
 		return nil // no DB — skip in development
 	}
 	wallet = strings.ToLower(wallet)
+	// Lokale Tabelle zuerst auf den gemeinsamen Stand nachziehen (siehe
+	// GetSwapNonce) -- nie zurueck, nur vor.
+	if g := cs.gemeinsameAuftragsNonce(wallet); g > 0 {
+		cs.db.Exec(`INSERT INTO swap_nonces (wallet_address, next_nonce) VALUES ($1, $2)
+			ON CONFLICT (wallet_address) DO UPDATE SET next_nonce = GREATEST(swap_nonces.next_nonce, $2)`, wallet, g)
+	}
 	var result interface{ RowsAffected() (int64, error) }
 	var err error
 	if nonce == 0 {

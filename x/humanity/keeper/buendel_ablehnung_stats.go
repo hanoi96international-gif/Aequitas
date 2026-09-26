@@ -51,7 +51,7 @@ var (
 	baKeinTransfer  atomic.Int64
 	baFelder        atomic.Int64
 	baDemurrage     atomic.Int64
-	baKollision     atomic.Int64
+	baKollision     atomic.Int64 // seit Stufe 1.3 (26.09.2026) immer 0: Adressen duerfen sich wiederholen
 	baKontoFehlt    atomic.Int64
 	baGuthaben      atomic.Int64
 	baWohlstandsCap atomic.Int64
