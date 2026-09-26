@@ -1,5 +1,31 @@
 # Aequitas für Unternehmen – Konzept
 
+> ## Geltende Zahlen (Stand 26.09.2026)
+>
+> Diese Tabelle ist verbindlich und entspricht `x/humanity/keeper/wirtschaft.go`.
+> Wo ältere Abschnitte unten andere Werte nennen, sind sie überholt
+> (Aufschlag für große Guthaben, 1× Umtausch, 1.000 AEQ für freie Adressen, 2 % Liegegeld).
+>
+> | Regel | Wert | in fairen Anteilen |
+> |---|---|---|
+> | Start der Regeln | 26.09.2026, 15:00 UTC | – |
+> | Mensch: gebührenfreie Ausgaben/Monat | 1.000 AEQ, danach 0,1 % (**kein** Aufschlag) | 1× |
+> | Mensch: Umtausch in Stable ohne Abgabe/Monat | 3.000 AEQ, darüber 2 % | 3× |
+> | Mensch: Sparfreibetrag | 5.000 AEQ, darüber 0,5 %/Monat | 5× |
+> | Mensch: Obergrenze | 25.000 AEQ (Phase 0: max(5, min(N, 25))×) | 25× |
+> | Unternehmen: frei | bis 1,5 Monatsumsätze, mindestens 2.000 AEQ | Sockel 2× |
+> | Unternehmen: Liegegeld | 0,5 %/Monat bis 3 Monatsumsätze, **1 %/Monat** darüber | – |
+> | Unternehmen: Überweisungen | an Menschen 0 %, sonst 0,1 % | – |
+> | Freie Adresse: Höchstbetrag | **250 AEQ** | **0,25×** |
+> | Freie Adresse: Umlauf | 1 %/Monat ab dem ersten AEQ | – |
+> | Ausstiegsabgabe (AEQ → Stable) | 2 % (eigene Einzahlung und Freibeträge ausgenommen) | – |
+> | Kleinstbeträge | Umlauf unter 0,001 AEQ je Konto und Tag wird nicht eingezogen | – |
+>
+> **Geändert am 26.09.2026** (Prüfung gegen Euro-Größen, siehe Abschnitt 6.8):
+> freie Adresse 1× → 0,25×; Unternehmens-Oberstufe 2 % → 1 %/Monat;
+> Kleinstbeträge nicht mehr einziehen.
+
+
 Stand: 25.09.2026 · Status: **beschlossen und gebaut**, aktiv ab 26.09.2026, 15:00 UTC (`x/humanity/keeper/wirtschaft.go`; urspruenglich 01.10.2026, vom Betreiber vorgezogen)
 
 ## In einem Satz
@@ -110,7 +136,7 @@ ab 5.000. Wer normal lebt und spart, ist nie betroffen.
 
 Die **freie Adresse** bleibt für alles Kleine möglich: Geldbörse eines Besuchers,
 Test, Trinkgeldkasse, ein einfacher Vertrag. Als Versteck taugt sie nicht mehr:
-höchstens 1.000 AEQ je Adresse, und Halten kostet vom ersten Tag an. Wer mehr
+höchstens 250 AEQ je Adresse (0,25×, seit 26.09.2026), und Halten kostet vom ersten Tag an. Wer mehr
 Geld dauerhaft außerhalb des eigenen Kontos halten will, eröffnet ein
 Unternehmenskonto und steht mit seinem Namen dafür.
 
@@ -249,7 +275,7 @@ horten will, ist sie der teuerste aller Wege.
 | Weg | Kosten |
 |---|---|
 | als Mensch | **unmöglich**, Grenze 25.000 AEQ |
-| auf 100 freien Adressen à 1.000 AEQ | 1 %/Monat = **1.000 AEQ/Monat** |
+| auf 400 freien Adressen à 250 AEQ | 1 %/Monat = **1.000 AEQ/Monat** |
 | als „Unternehmen“ | Monat 2–3: 98.000 × 1 % = 980 AEQ/Monat, ab Monat 4: 98.000 × 3 % = **2.940 AEQ/Monat ≈ 35 % im Jahr** |
 
 **Alle Umgehungswege, die wir gefunden haben, und warum sie nicht funktionieren:**
@@ -267,7 +293,7 @@ horten will, ist sie der teuerste aller Wege.
 | 9 | Zwei Inhaber stellen sich gegenseitig an | wie 8: höchstens 3.000 AEQ im Monat je Mensch, Ersparnis höchstens 60 AEQ |
 | 10 | Private Einkäufe über die Firma, um den Aufschlag für große Guthaben zu sparen | Das Geld muss erst in die Firma. Wer es vom Menschenkonto schickt, zahlt den Aufschlag schon dabei |
 | 10a | Geld über den Liquiditätspool „verjüngen“ | Liquidität stellen nur Menschen bereit |
-| 11 | Ein Vertrag (Smart Contract) als Versteck | Verträge sind freie Adressen: höchstens 1.000 AEQ. Braucht ein Vertrag mehr, wird er als Unternehmenskonto mit verantwortlichem Menschen geführt und zahlt Liegegeld |
+| 11 | Ein Vertrag (Smart Contract) als Versteck | Verträge sind freie Adressen: höchstens 250 AEQ. Braucht ein Vertrag mehr, wird er als Unternehmenskonto mit verantwortlichem Menschen geführt und zahlt Liegegeld |
 | 12 | Das eigene Menschenkonto voll (25.000) und zusätzlich Geld „frisch“ in der eigenen Firma halten | geht nur mit Geld, das einen Monat beim Menschen lag, also höchstens 25.000 zusätzlich je Monat und mit Aufschlag bei jeder Runde. Das ist die Größenordnung der Grenze selbst, kein Schlupfloch nach oben |
 
 **Was ehrlich übrig bleibt:** Kein Geldsystem der Welt kann verhindern, dass sich
@@ -300,13 +326,13 @@ Anteils** (1.000 AEQ, `registrationGrant`):
 | Grenze | in fairen Anteilen |
 |---|---|
 | gebührenfreie Ausgaben im Monat (Mensch) | 1× |
-| Umtausch ohne Abgabe im Monat (Mensch) | 1× |
+| Umtausch ohne Abgabe im Monat (Mensch) | 3× |
 | Lohn, zusätzlich tauschbar (Mensch) | 3× |
 | Sparfreibetrag (Mensch) | 5× |
-| Aufschlag auf Überweisungen ab | 5× / 10× / 20× |
+| Aufschlag auf Überweisungen | keiner (seit Abschnitt 14) |
 | Obergrenze (Mensch) | 25× |
 | Sockel (Unternehmen) | 2× |
-| Höchstbetrag (freie Adresse) | 1× |
+| Höchstbetrag (freie Adresse) | 0,25× (seit 26.09.2026) |
 
 Die Geldmenge ist immer **Menschen × fairer Anteil**. Der Durchschnittsmensch
 hält also immer genau einen fairen Anteil, egal was 1 AEQ in Dollar kostet.
@@ -361,6 +387,43 @@ absprechen und dafür über dem alten Freibetrag Gebühren zahlen. Nach unten
 schieben geht nicht unter die Untergrenze. Der Wert wird am Monatswechsel aus
 den Blöcken berechnet, ohne Kursquelle: Jeder Knoten kommt beim Nachspielen auf
 dieselbe Zahl.
+
+### 6.8 Gegenrechnung in Euro (Prüfung 26.09.2026)
+
+AEQ ist nicht gekoppelt, aber die Zahlen müssen auch in Euro Sinn ergeben.
+Die richtige Bezugsgröße ist **nicht ein Monatsbudget**, sondern das Geld,
+das ein Durchschnittsmensch hält: Die Geldmenge ist Menschen × 1.000 AEQ, also
+hält der Durchschnitt immer 1×.
+
+- In Deutschland liegen bei privaten Haushalten **3.342 Mrd. € Bargeld und
+  Sichteinlagen** (Bundesbank, 2025), bei rund 84 Mio. Menschen also
+  **≈ 40.000 € pro Kopf**. Konsum: 3.257 € je Haushalt und Monat (Destatis,
+  2024), grob 1.600 € pro Person. Der Durchschnitt hält also liquides Geld
+  für rund 25 Monate Konsum.
+- Trägt AEQ einmal den Alltag, liegt 1× in dieser Größenordnung. Dann sind
+  typische Sparziele klein gegen 1×: Gebrauchtwagen Ø 18.310 € (DAT 2025)
+  ≈ 0,45×, Notgroschen 3–6 Monate ≈ 0,15–0,3×, Haupturlaub 1.636 € ≈ 0,04×.
+  **Der Sparfreibetrag von 5× trifft kein normales Sparziel** und bleibt.
+- Heute zeigt der interne Pool 1 AEQ ≈ 36,8 tUSD, also 1× ≈ 36.800 tUSD.
+  tUSD ist Testgeld, der Pool winzig (168 AEQ): **kein Euro-Wert**. Er ordnet
+  nur ein, dass die Grenzen im großzügigen Bereich liegen.
+
+Daraus die Änderungen vom 26.09.2026:
+
+- **Freie Adresse 1× → 0,25×.** Eine Adresse ohne Nachweis durfte so viel
+  halten wie der Durchschnittsmensch und damit Euro/Dollar in AEQ tauschen,
+  ohne sich je zu registrieren. 0,25× reicht für Besucher, Trinkgeldkassen
+  und die Zeit vor der Registrierung (gemessen an 1× ≈ 25 Monate Konsum sind
+  das mehrere Monatsausgaben). Horten über viele Adressen verhindert keine
+  Grenze je Adresse, sondern die 1 %/Monat ab dem ersten AEQ.
+- **Unternehmen über 3 Monatsumsätzen: 2 % → 1 %/Monat.** 2 % im Monat
+  (24 %/Jahr) waren teurer als der einmalige Ausstieg von 2 %: Rücklagen
+  wären sofort in Euro gewandert, mit Dauerdruck auf den Kurs (Abschnitt 1).
+  1 %/Monat entspricht Wörgl 1932 und bleibt eine klare Bremse gegen Horten.
+- **Kleinstbeträge unter 0,001 AEQ** je Konto und Tag werden nicht
+  eingezogen. Beim Start hielten 2.361 Nicht-Menschen zusammen 46,6 AEQ;
+  ohne Schwelle hätte das täglich über 2.300 Buchungen über Millionstel-AEQ
+  erzeugt.
 
 ## 7. Der Kreislauf
 
@@ -417,7 +480,7 @@ geht, sind 40.000 AEQ jünger als 30 Tage, 80.000 AEQ 30–90 Tage alt und
   landet direkt bei Menschen.
 
 **Jemand, der 100.000 AEQ horten will** – siehe Abschnitt 6.5: als Mensch
-unmöglich (Grenze 25.000), auf 100 freien Adressen 1.000 AEQ im Monat, als
+unmöglich (Grenze 25.000), auf 400 freien Adressen à 250 AEQ 1.000 AEQ im Monat, als
 „Unternehmen“ ab dem vierten Monat 2.940 AEQ im Monat. **Horten lohnt sich
 in keiner Form.**
 

@@ -43,7 +43,21 @@ func zeitFrisch(zeit int64) bool {
 
 func (a *APIServer) handleWirtschaftRegeln(w http.ResponseWriter, r *http.Request) {
 	writeJSONCORS(w)
+	// Kurs aus dem internen Pool -- nur zur Einordnung, er steuert keine
+	// Regel (Konzept 6.7). tUSD ist Testgeld aus dem Faucet, der Pool winzig:
+	// kein Euro-Wert, und das steht dabei.
+	kurs := map[string]interface{}{
+		"hinweis": "tUSD ist Testgeld; der Kurs ist kein Euro- oder Dollarwert und steuert keine Regel",
+	}
+	if a.state != nil {
+		if rAEQ, rTUSD := a.state.GetPoolReserves(); rAEQ > 0 && rTUSD > 0 {
+			kurs["aeq_in_tusd"] = rTUSD / rAEQ
+			kurs["fairer_anteil_in_tusd"] = registrationGrant * rTUSD / rAEQ
+			kurs["pool_reserve_aeq"] = rAEQ
+		}
+	}
 	json.NewEncoder(w).Encode(map[string]interface{}{
+		"kurs":     kurs,
 		"aktiv":    wirtschaftAktiv(time.Now().Unix()),
 		"aktiv_ab": wirtschaftAktivAbUnix,
 		// Alle Betraege unten sind Vielfache davon (siehe wirtschaft.go).

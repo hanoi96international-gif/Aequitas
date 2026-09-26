@@ -101,8 +101,13 @@ const (
 	menschSparFreibetrag    = 5 * registrationGrant // darunter keine Umlaufsicherung
 	menschUmlaufMonat       = 0.005                 // 0,5 %/Monat auf den Teil darueber
 
-	// Freie Adressen
-	freiGrenze      = 1 * registrationGrant
+	// Freie Adressen. Grenze 0,25x (26.09.2026, vorher 1x): eine Adresse ohne
+	// Nachweis soll nicht so viel halten koennen wie der Durchschnittsmensch.
+	// Fuer Besucher, Trinkgeldkassen und die Zeit vor der Registrierung reicht
+	// ein Viertel des fairen Anteils; gemessen am Geld, das Menschen im
+	// Durchschnitt halten, sind das mehrere Monatsausgaben. Horten ueber viele
+	// Adressen verhindert keine Grenze je Adresse, sondern die 1 %/Monat.
+	freiGrenze      = 0.25 * registrationGrant
 	freiUmlaufMonat = 0.01
 
 	// Unternehmen
@@ -110,7 +115,7 @@ const (
 	umsatzFreiFaktor         = 1.5                   // bis 1,5 Monatsumsaetze frei
 	umsatzStufe2Faktor       = 3.0                   // ab 3 Monatsumsaetzen die hohe Stufe
 	liegeRate1Monat          = 0.005                 // 0,5 %/Monat zwischen 1,5 und 3 Monatsumsaetzen
-	liegeRate2Monat          = 0.02                  // 2 %/Monat darueber
+	liegeRate2Monat          = 0.01                  // 1 %/Monat darueber (26.09.2026, vorher 2 %: lag ueber der einmaligen Ausstiegsabgabe von 2 %, Halten war teurer als Aussteigen)
 	umsatzFensterTage        = 90                    // Durchschnitt ueber so viele Tage
 	umsatzJahrTage           = 365                   // ... oder ueber das Jahr, wenn das mehr ist (Saison)
 	gruendungTage            = 182                   // erstes halbes Jahr: wie ein Mensch behandelt
@@ -712,8 +717,22 @@ func (cs *ChainState) gruenderStand(unternehmen string) float64 {
 	return 0
 }
 
+// umlaufMindestBetrag: kleinere Betraege je Konto und Durchlauf werden nicht
+// eingezogen, zugunsten des Kontoinhabers. Ohne diese Schwelle erzeugten
+// Tausende Kleinstkonten (meist unter 1 AEQ) jeden Tag je eine Buchung ueber
+// Millionstel-AEQ -- Bloecke und Explorer voll, fuer das Grundeinkommen nichts.
+const umlaufMindestBetrag = 0.001
+
 // umlaufBetrag: was ein Konto fuer den Zeitraum sekunden schuldet.
 func (cs *ChainState) umlaufBetrag(addr string, art kontoart, stand float64, jetzt, sekunden int64) float64 {
+	b := cs.umlaufBetragRoh(addr, art, stand, jetzt, sekunden)
+	if b < umlaufMindestBetrag {
+		return 0
+	}
+	return b
+}
+
+func (cs *ChainState) umlaufBetragRoh(addr string, art kontoart, stand float64, jetzt, sekunden int64) float64 {
 	if stand <= 0 || sekunden <= 0 {
 		return 0
 	}

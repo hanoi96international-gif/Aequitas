@@ -178,15 +178,15 @@ func TestGebuehrenFuerMenschenUndUnternehmen(t *testing.T) {
 	}
 }
 
-func TestFreieAdresseHoechstens1000(t *testing.T) {
+func TestFreieAdresseHoechstens250(t *testing.T) {
 	cs, ctx, _ := wirtschaftsTest(t)
 	geben(cs, wMensch1, 2000)
-	ueberweise(t, cs, ctx, wMensch1, wFrei, 1000)
+	ueberweise(t, cs, ctx, wMensch1, wFrei, 250)
 	cs.mu.Lock()
 	_, _, _, err := cs.transferLockedMitGebuehr(ctx, wMensch1, wFrei, 1)
 	cs.mu.Unlock()
 	if err == nil || !strings.Contains(err.Error(), "free address") {
-		t.Fatalf("mehr als 1.000 auf einer freien Adresse muss abgelehnt werden: %v", err)
+		t.Fatalf("mehr als 250 auf einer freien Adresse muss abgelehnt werden: %v", err)
 	}
 }
 
@@ -214,10 +214,10 @@ func TestLiegegeldNachUmsatz_Rechenbeispiele(t *testing.T) {
 	}{
 		{"Cafe", 1_500, 3_000, 0},
 		{"Supermarkt mit 2 Monaten Reserve", 80_000, 40_000, 100},
-		{"Supermarkt, der hortet", 200_000, 40_000, 1_900},
+		{"Supermarkt, der hortet", 200_000, 40_000, 1_100},
 		{"Konzern mit 1,5 Monaten Reserve", 15_000_000, 10_000_000, 0},
 		{"Grosshaendler (Ueberschuss 100.000)", 250_000, 100_000, 500},
-		{"Horten ohne Umsatz", 100_000, 0, 1_960},
+		{"Horten ohne Umsatz", 100_000, 0, 980},
 		{"unter dem Sockel", 1_500, 0, 0},
 	} {
 		if g := liegegeldFuerStand(f.stand, f.umsatz); !fast(g, f.erwart) {
@@ -241,14 +241,14 @@ func TestGruendungWieEinMensch(t *testing.T) {
 	if g := lg(wFirmaA, 20_000); !fast(g, 80) {
 		t.Fatalf("Startkapital 20.000: (21.000 - 5.000) x 0,5 %% = 80, bekommen %v", g)
 	}
-	// 1 Mio. geparkt: nur 24.000 wie ein Mensch (zusammen 25.000), Rest 2 %.
-	if g := lg(wFirmaA, 1_000_000); !fast(g, 100+19_960-440) {
+	// 1 Mio. geparkt: nur 24.000 wie ein Mensch (zusammen 25.000), Rest 1 %.
+	if g := lg(wFirmaA, 1_000_000); !fast(g, 100+9_980-220) {
 		t.Fatalf("1 Mio. geparkt: bekommen %v", g)
 	}
 	// Zweite Firma desselben Menschen innerhalb eines Jahres: keine Gruendungsphase.
 	eroeffne(t, cs, ctx, wFirmaB, wMensch1)
-	if g := lg(wFirmaB, 20_000); !fast(g, 360) {
-		t.Fatalf("zweite Gruendung im selben Jahr: normale Regeln 18.000 x 2 %% = 360, bekommen %v", g)
+	if g := lg(wFirmaB, 20_000); !fast(g, 180) {
+		t.Fatalf("zweite Gruendung im selben Jahr: normale Regeln 18.000 x 1 %% = 180, bekommen %v", g)
 	}
 	// Ein anderer Mensch gruendet: eigene Phase.
 	eroeffne(t, cs, ctx, wFirmaC, wMensch2)
@@ -258,11 +258,11 @@ func TestGruendungWieEinMensch(t *testing.T) {
 	// Die Luecke: Wer als Mensch schon 25.000 haelt, parkt in einer
 	// Scheinfirma nichts billiger -- die gemeinsame Grenze ist voll.
 	acct(cs, wMensch2).Balance = NewDecimal(25_000)
-	if g := lg(wFirmaC, 20_000); !fast(g, 360) {
-		t.Fatalf("Gruender mit 25.000: Firma zahlt die normalen 360, bekommen %v", g)
+	if g := lg(wFirmaC, 20_000); !fast(g, 180) {
+		t.Fatalf("Gruender mit 25.000: Firma zahlt die normalen 180, bekommen %v", g)
 	}
 	vor(182 * tag)
-	if g := lg(wFirmaA, 20_000); !fast(g, 360) {
+	if g := lg(wFirmaA, 20_000); !fast(g, 180) {
 		t.Fatalf("nach einem halben Jahr normale Regeln, bekommen %v", g)
 	}
 }
@@ -292,8 +292,8 @@ func TestLiegegeldErstNach30TagenKnotenDaten(t *testing.T) {
 		t.Fatalf("Knoten hat erst 29 Tage Daten: kein Liegegeld, bekommen %v", lg)
 	}
 	vor(2 * tag)
-	// In der Gruendungsphase: bis 25.000 wie ein Mensch (100), darueber 2 %.
-	if lg := cs.umlaufBetrag(wFirmaA, artUnternehmen, 100_000, nowUnix(), sekundenJeMonat); !fast(lg, 100+1_960-440) {
+	// In der Gruendungsphase: bis 25.000 wie ein Mensch (100), darueber 1 %.
+	if lg := cs.umlaufBetrag(wFirmaA, artUnternehmen, 100_000, nowUnix(), sekundenJeMonat); !fast(lg, 100+980-220) {
 		t.Fatalf("ohne Umsatz, in der Gruendung: bekommen %v", lg)
 	}
 }
@@ -586,11 +586,24 @@ func TestWirtschaft_GrenzenSindVielfacheDesFairenAnteils(t *testing.T) {
 		{"gebuehrenfreie Ausgaben", menschFreiAusgabenMonat, 1, 1000},
 		{"Tausch frei", menschTauschFreiMonat, 3, 3000},
 		{"Sparfreibetrag", menschSparFreibetrag, 5, 5000},
-		{"freie Adresse", freiGrenze, 1, 1000},
+		{"freie Adresse", freiGrenze, 0.25, 250},
 		{"Unternehmenssockel", unternehmenSockel, 2, 2000},
 	} {
 		if f.wert != f.faktor*registrationGrant || f.wert != f.frueherFest {
 			t.Errorf("%s: %v, erwartet %v x fairer Anteil = %v", f.name, f.wert, f.faktor, f.frueherFest)
 		}
+	}
+}
+
+// Kleinstbetraege unter 0,001 AEQ je Konto und Durchlauf werden nicht
+// eingezogen -- sonst erzeugten Tausende Kleinstkonten taeglich je eine
+// Buchung ueber Millionstel-AEQ.
+func TestUmlauf_KleinstbetraegeWerdenNichtEingezogen(t *testing.T) {
+	cs, _, _ := wirtschaftsTest(t)
+	if b := cs.umlaufBetrag(wFrei, artFrei, 0.078, nowUnix(), 86400); b != 0 {
+		t.Fatalf("0,078 AEQ, ein Tag, 1 %%/Monat = 0,000026: nicht einziehen, bekommen %v", b)
+	}
+	if b := cs.umlaufBetrag(wFrei, artFrei, 250, nowUnix(), 86400); !fast(b, 250*0.01/30) {
+		t.Fatalf("250 AEQ, ein Tag: 0,0833 einziehen, bekommen %v", b)
 	}
 }
