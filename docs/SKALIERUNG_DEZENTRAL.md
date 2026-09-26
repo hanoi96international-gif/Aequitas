@@ -233,6 +233,34 @@ Pools, Grundeinkommen, Liegegeld-Summe, Vermögensgrenze (Durchschnitt) und Gini
 
 **Aktivierung:** nur wenn `validatoren ≥ S × m` gilt, mit einer Mindestgröße *m* je Ausschuss (Vorschlag 16) und **nicht unter 32 Validatoren**. Vorher bleibt Stufe 3 aus. Sie wird mit Simulationen vieler Knoten getestet, nicht live.
 
+### Umgesetzt (26.09.2026): das Protokoll als Paket, mit Simulation
+
+Das Paket `x/humanity/bereiche` enthält das ganze Protokoll als reine, deterministische Rechnung, ohne Netz und ohne Datenbank:
+
+| Teil | Datei |
+|---|---|
+| Zustand je Bereich als Sparse-Merkle-Baum (Tiefe 256): Beweise für jedes Konto, neue Wurzel aus den Beweisen der berührten Konten | `smt.go` |
+| Zustandsübergang eines Bereichsblocks, derselbe für Ausschuss, Prüfer, Fehlerbeweis und Referenz: Quittungen (genau einmal), Registrierung, Überweisungen (ed25519, Nonce, Gebühr), Ausstiege, Kappung, Grundeinkommen je Konto in O(1) | `zustand.go` |
+| Bereichsblock, 2/3-Signaturen, Prüfausschuss, billige Prüfung (Unterschriften, Kette, Rahmen, Quittungssummen, Geldmenge über die Kopfkette) | `block.go` |
+| Losung der Ausschüsse und des Prüfausschusses, Aktivierungsregel (≥ 32 und ≥ S × m) | `losung.go` |
+| Sammelblock je Epoche: Geldmenge, Menschen, Grundeinkommen je Mensch, Grenze, Zufall der nächsten Losung, Erhaltung | `sammel.go` |
+| Fehlerbeweis: berührte Konten mit Beweisen, nachrechnen, vergleichen. Ein Beweis gegen einen richtigen Block oder mit fehlenden Konten taugt nichts | `beweis.go` |
+
+**Simulation** (`simulation_test.go`): 40 Validatoren, 4 Bereiche zu je 8, 120 Menschen. Über viele Epochen laufen Registrierungen, Überweisungen innerhalb und zwischen Bereichen, absichtlich ungültige Aufträge und Ausstiege. Geprüft wird:
+- jeder Block besteht die billige Prüfung,
+- die Geldmenge bleibt erhalten,
+- jede Quittung wird genau einmal eingelöst,
+- jedes Konto stimmt mit einem unabhängig geführten Hauptbuch überein.
+
+Ein gekaperter Ausschuss (6 von 8) stiehlt und will auszahlen. Der Fehlerbeweis entdeckt ihn, der Prüfausschuss verweigert die Auszahlung, die sechs Unterzeichner werden ausgeschlossen, und am Ende steht derselbe Zustand wie ohne Angriff. Wird der Betrug erst zwei Epochen später gefunden, und hat die Beute das Gestohlene inzwischen weitergegeben, stoppt das Netz beim letzten bestätigten Stand. Es rechnet die Zeit danach neu und landet ebenfalls beim ehrlichen Zustand.
+
+**Einbindung in den laufenden Knoten** (erst, wenn ≥ 32 unabhängige Validatoren in Sicht sind, siehe Aktivierung):
+1. Bereichsblöcke und Sammelblock als eigene Nachrichtenarten im P2P-Netz, signiert mit den Validator-Schlüsseln (secp256k1 statt ed25519 der Simulation).
+2. Speicherung je Bereich: `chain_accounts` erhält die Bereichsspalte. Der Baum wird beim Start aus den Konten gebaut.
+3. Umstellung an einer festen Epoche: Der letzte Block der einen Kette wird zur Genesis aller Bereiche (Konten nach `BereichVon`).
+4. Zufall aus einer VRF statt aus dem Sammelblock-Hash. Der letzte Ausschuss einer Epoche kann den Hash in Grenzen beeinflussen.
+5. Wirtschaftsregeln (Unternehmen, Umlauf) als Teil des Bereichszustands. Heute rechnet die Simulation Überweisungen, Registrierung, Grundeinkommen, Kappung und Ausstiege.
+
 ---
 
 ## Stufe 4 — Gültigkeitsbeweise (Forschung)
