@@ -33,7 +33,15 @@ else
 fi
 chmod 600 "$ENVF"
 
-GIT_COMMIT="$(git -C /root/Aequitas rev-parse --short HEAD)" docker compose up -d
+# Quelle fuer den Snapshot des frischen Knotens (wie auf der Website fuer
+# neue Validatoren beschrieben): C2, dessen Blockadresse die Signatur des
+# Snapshots beglaubigt. Ohne PRIMARY_NODE_URLS versucht ein leerer Knoten den
+# Replay ab Genesis und steht bei Hoehe 0 (so am 26.09.2026).
+setze() { grep -q "^$1=" "$ENVF" || echo "$1=$2" >> "$ENVF"; }
+setze PRIMARY_NODE_URLS "http://194.163.188.71:8080"
+setze BOOTSTRAP_SIGNER "0x1a37dcdaa42cf3f7e1f6e41379961f40df44a4e3"
+
+GIT_COMMIT="$(git -C /root/Aequitas rev-parse --short HEAD)" docker compose up -d --force-recreate node
 echo "gestartet; warte auf den NODE_KEY des ersten Starts"
 
 # Beim ersten Start erzeugt der Knoten seinen P2P-Schluessel und druckt ihn
@@ -58,6 +66,14 @@ for i in $(seq 1 150); do
 done
 echo "lokal: $(curl -s http://127.0.0.1:8080/api/status | grep -oE '"height":[0-9]+' || echo 'noch nicht erreichbar')"
 echo "Netz:  $(curl -s https://aequitas.digital/api/status | grep -oE '"height":[0-9]+' || echo 'nicht erreichbar')"
+echo "=== Snapshot-Import beobachten (bis 10 min) ==="
+for i in $(seq 1 60); do
+  H="$(curl -s http://127.0.0.1:8080/api/status | grep -oE '"height":[0-9]+' | grep -oE '[0-9]+' || echo 0)"
+  echo "$(date +%H:%M:%S) Hoehe lokal: $H"
+  [ "${H:-0}" -gt 1000 ] && break
+  sleep 10
+done
+echo "Netz:  $(curl -s https://aequitas.digital/api/status | grep -oE '"height":[0-9]+' || echo 'nicht erreichbar')"
 echo "=== Knoten-Log (gefiltert) ==="
-docker logs --tail 80 aequitas-node 2>&1 | sauber | tail -60
+docker logs aequitas-node 2>&1 | sauber | grep -E 'BOOTSTRAP|RESYNC|HTTP-SYNC|NODE\]|binding|registered|Block #|ERROR' | tail -40
 docker ps --format '{{.Names}}\t{{.Status}}'
