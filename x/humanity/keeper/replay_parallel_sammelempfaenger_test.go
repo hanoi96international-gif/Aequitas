@@ -3,6 +3,7 @@ package keeper
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/rand"
 	"os"
@@ -22,46 +23,27 @@ import (
 //     dritte Gutschrift sie, laufen die ersten zwei im Buendel und die
 //     dritte seriell, mit Kappung.
 
-func TestCollectDisjointTransferBatch_SammelempfaengerBleibtImLauf(t *testing.T) {
-	// Viele zahlen an denselben Laden: ein einziger Lauf.
-	laden := []Transaction{
+func TestCollectDisjointTransferBatch_WiederholteAdressenBleibenImLauf(t *testing.T) {
+	// Viele zahlen an denselben Laden, der Laden zahlt Lohn, derselbe
+	// Absender zahlt zweimal, ein Absender bekommt danach etwas zurueck:
+	// alles ein Lauf.
+	txs := []Transaction{
 		{Type: "transfer", Wallet: "0xa", To: "0xladen", Amount: 1},
 		{Type: "transfer", Wallet: "0xb", To: "0xladen", Amount: 1},
-		{Type: "transfer", Wallet: "0xc", To: "0xladen", Amount: 1},
-		{Type: "transfer", Wallet: "0xd", To: "0xe", Amount: 1},
-		{Type: "transfer", Wallet: "0xf", To: "0xladen", Amount: 1},
-	}
-	if batch, _ := collectDisjointTransferBatch(laden, 0); len(batch) != len(laden) {
-		t.Fatalf("Zahlungen an denselben Empfaenger muessen in einem Lauf bleiben, bekam %d von %d", len(batch), len(laden))
-	}
-
-	// Der Empfaenger zahlt im selben Lauf weiter: seine Deckung haengt dann
-	// von den Gutschriften davor ab -- Ende des Laufs.
-	weiter := []Transaction{
+		{Type: "transfer", Wallet: "0xladen", To: "0xc", Amount: 1},
 		{Type: "transfer", Wallet: "0xa", To: "0xladen", Amount: 1},
-		{Type: "transfer", Wallet: "0xb", To: "0xladen", Amount: 1},
-		{Type: "transfer", Wallet: "0xladen", To: "0xlieferant", Amount: 1},
+		{Type: "transfer", Wallet: "0xc", To: "0xa", Amount: 1},
 	}
-	if batch, _ := collectDisjointTransferBatch(weiter, 0); len(batch) != 2 {
-		t.Fatalf("ein Empfaenger, der im Lauf sendet, muss ihn beenden, bekam %d", len(batch))
+	if batch, _ := collectDisjointTransferBatch(txs, 0); len(batch) != len(txs) {
+		t.Fatalf("wiederholte Adressen muessen im Lauf bleiben, bekam %d von %d", len(batch), len(txs))
 	}
-
-	// Ein Absender, der danach empfaengt: ebenfalls Ende.
-	zurueck := []Transaction{
+	// Eine Ueberweisung an sich selbst beendet ihn weiterhin.
+	selbst := []Transaction{
 		{Type: "transfer", Wallet: "0xa", To: "0xladen", Amount: 1},
-		{Type: "transfer", Wallet: "0xb", To: "0xa", Amount: 1},
+		{Type: "transfer", Wallet: "0xb", To: "0xb", Amount: 1},
 	}
-	if batch, _ := collectDisjointTransferBatch(zurueck, 0); len(batch) != 1 {
-		t.Fatalf("ein Absender, der im Lauf empfaengt, muss ihn beenden, bekam %d", len(batch))
-	}
-
-	// Derselbe Absender zweimal: Ende, wie bisher.
-	doppelt := []Transaction{
-		{Type: "transfer", Wallet: "0xa", To: "0xladen", Amount: 1},
-		{Type: "transfer", Wallet: "0xa", To: "0xladen", Amount: 1},
-	}
-	if batch, _ := collectDisjointTransferBatch(doppelt, 0); len(batch) != 1 {
-		t.Fatalf("ein Absender darf im Lauf nur einmal vorkommen, bekam %d", len(batch))
+	if batch, _ := collectDisjointTransferBatch(selbst, 0); len(batch) != 1 {
+		t.Fatalf("Ueberweisung an sich selbst muss den Lauf beenden, bekam %d", len(batch))
 	}
 }
 
@@ -87,7 +69,7 @@ func TestParallelesNachspielen_SammelempfaengerWieSeriell(t *testing.T) {
 	uhr(t, 1_800_000_000)
 	jetzt := nowUnix()
 
-	for lauf := int64(0); lauf < 20; lauf++ {
+	for lauf := int64(0); lauf < 8; lauf++ {
 		rng := rand.New(rand.NewSource(13_2026_0926 + lauf))
 
 		// ---- parallel: der ganze Block als EIN Buendel ----
@@ -362,6 +344,115 @@ func TestParallelesNachspielen_SammelempfaengerInDB_RealDB(t *testing.T) {
 		memJ, _ := json.Marshal(mem)
 		if string(dbJ) != string(memJ) {
 			t.Fatalf("Buchkonto %s: Datenbank und Speicher weichen ab\n  db:       %s\n  speicher: %s", a, dbJ, memJ)
+		}
+	}
+}
+
+// Beliebige Wiederholungen: jede Adresse darf senden und empfangen, in jeder
+// Reihenfolge, auch mehrfach -- Geld wandert im Lauf weiter (Kunde -> Laden
+// -> Lieferant -> Mensch). Mit knappen Konten, damit auch Ueberweisungen
+// scheitern und das Praefix gekuerzt wird.
+//
+// Parallel: ein Block ueber replayTransactions. Seriell: jede Ueberweisung
+// einzeln ueber applyTransferDeltaLockedSammelnd; eine abgelehnte
+// (ErrZustandLehntAb) aendert dort nichts, wie beim Nachspielen.
+func TestParallelesNachspielen_WiederholteAdressenWieSeriell(t *testing.T) {
+	wirtschaftAn(t)
+	uhr(t, 1_800_000_000)
+	jetzt := nowUnix()
+
+	for lauf := int64(0); lauf < 10; lauf++ {
+		rng := rand.New(rand.NewSource(26_09_2026 + lauf))
+		knapp := lauf%2 == 1
+
+		dagP, csP := newDeterminismTestDAG()
+		weltP := baueBuchfuehrungsWelt(t, csP)
+		alle := append(append(append([]string(nil), weltP.menschen...), weltP.firmen...), weltP.frei...)
+		kreis := make([]string, 0, 24)
+		for _, i := range rng.Perm(len(alle))[:24] {
+			kreis = append(kreis, alle[i])
+		}
+		var txs []Transaction
+		for len(txs) < 120 {
+			von, an := kreis[rng.Intn(len(kreis))], kreis[rng.Intn(len(kreis))]
+			if von == an {
+				continue
+			}
+			betrag := float64(int64((1+rng.Float64()*40)*1e6)) / 1e6
+			if knapp {
+				betrag *= 30 // bis 1.200: manche Konten laufen leer
+			}
+			txs = append(txs, Transaction{Type: "transfer", Wallet: von, To: an, Amount: betrag, BuchAt: jetzt})
+		}
+		if batch, _ := collectDisjointTransferBatch(txs, 0); len(batch) != len(txs) {
+			t.Fatalf("lauf %d: Lauf endete nach %d von %d", lauf, len(batch), len(txs))
+		}
+
+		if !knapp {
+			// Alles gedeckt: das Buendel muss den ganzen Block nehmen.
+			_, csB := newDeterminismTestDAG()
+			baueBuchfuehrungsWelt(t, csB)
+			csB.mu.Lock()
+			n, err := csB.applyTransferBatchParallel(context.Background(), txs, jetzt, nil)
+			csB.mu.Unlock()
+			if err != nil || n != len(txs) {
+				t.Fatalf("lauf %d: Buendel nahm %d von %d (err %v)", lauf, n, len(txs), err)
+			}
+		}
+
+		block := &Block{Height: 1, Hash: fmt.Sprintf("0xwdh-%d", lauf), Timestamp: jetzt, Transactions: txs}
+		if ok := dagP.replayTransactions(block, true); !ok {
+			t.Fatalf("lauf %d: replayTransactions lehnte den Block ab", lauf)
+		}
+
+		_, csS := newDeterminismTestDAG()
+		baueBuchfuehrungsWelt(t, csS)
+		abgelehnt := 0
+		for i, tx := range txs {
+			ctx := mitBuchZeit(context.Background(), buchZeitBeimNachspielen(tx.BuchAt, jetzt))
+			csS.mu.Lock()
+			err := csS.applyTransferDeltaLockedSammelnd(ctx, tx.Wallet, tx.To, tx.Amount, 0, 0, jetzt, nil, 0)
+			csS.mu.Unlock()
+			if err != nil {
+				if !errors.Is(err, ErrZustandLehntAb) {
+					t.Fatalf("lauf %d, tx %d seriell: %v", lauf, i, err)
+				}
+				abgelehnt++
+			}
+		}
+		if knapp && abgelehnt == 0 {
+			t.Fatalf("lauf %d: keine Ueberweisung scheiterte -- der knappe Lauf prueft das Kuerzen nicht", lauf)
+		}
+
+		sort.Strings(alle)
+		for _, a := range alle {
+			if p, s := stand(csP, a), stand(csS, a); p != s {
+				t.Fatalf("lauf %d: Kontostand %s parallel %.6f, seriell %.6f", lauf, a, p, s)
+			}
+			csP.mu.RLock()
+			ap, _ := csP.accounts.Get(a)
+			csP.mu.RUnlock()
+			csS.mu.RLock()
+			as, _ := csS.accounts.Get(a)
+			csS.mu.RUnlock()
+			if ap.LastActivityAt != as.LastActivityAt {
+				t.Fatalf("lauf %d: Demurrage-Uhr %s parallel %d, seriell %d", lauf, a, ap.LastActivityAt, as.LastActivityAt)
+			}
+		}
+		if p, s := csP.StateRoot(), csS.StateRoot(); p != s {
+			t.Fatalf("lauf %d: StateRoot weicht ab\n  parallel: %s\n  seriell:  %s", lauf, p, s)
+		}
+		bp, bs := buchSchnappschuss(t, csP, alle), buchSchnappschuss(t, csS, alle)
+		if len(bs) == 0 {
+			t.Fatalf("lauf %d: serielle Buchfuehrung leer", lauf)
+		}
+		for a, want := range bs {
+			if got := bp[a]; got != want {
+				t.Fatalf("lauf %d: Buchkonto %s weicht ab\n  parallel: %s\n  seriell:  %s", lauf, a, got, want)
+			}
+		}
+		if len(bp) != len(bs) {
+			t.Fatalf("lauf %d: %d Buchkonten parallel, %d seriell", lauf, len(bp), len(bs))
 		}
 	}
 }

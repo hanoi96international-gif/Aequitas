@@ -6947,9 +6947,9 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 		// this differs from the reverted 41b1eee attempt described above).
 		//
 		// Only ever engaged for a run of CONSECUTIVE, demurrage-free,
-		// pairwise-disjoint transfers — a set the determinism tests already
-		// prove is order-independent. Anything else ends the run and falls
-		// through to the serial switch below, unchanged.
+		// fee-free transfers; seit Stufe 1.3 duerfen sich Adressen darin
+		// wiederholen (replay_parallel.go, Phase 1b). Anything else ends the
+		// run and falls through to the serial switch below, unchanged.
 		//
 		// Auch nach der Aktivierung der Unternehmensregeln: der parallele
 		// Pfad fuehrt die Buchfuehrung (nachUeberweisung) seit 25.09.2026

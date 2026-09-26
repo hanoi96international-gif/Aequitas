@@ -44,23 +44,28 @@ import (
 // three strictly separated phases:
 //
 //	1. serial   — warm every account the batch needs (the only DB reads)
-//	2. parallel — pure in-memory arithmetic on disjoint AccountState structs
+//	2. parallel — pure in-memory arithmetic, one work unit per ACCOUNT
 //	3. serial   — ONE batched write for every account the batch touched
 //
+// (Seit Stufe 1.3 steht zwischen 1 und 2 eine serielle Vorrechnung im
+// Speicher, Phase 1b -- siehe applyTransferBatchParallel.)
+//
 // Phase 2 performs no DB access of any kind, so there is no shared *sql.Tx to
-// corrupt. It needs no account locks either: the batch is disjoint BY
-// CONSTRUCTION, so no two workers can reach the same AccountState, and the
+// corrupt. It needs no account locks either: each AccountState is exactly one
+// work unit BY CONSTRUCTION, so no two workers can reach it, and the
 // map itself is only read (every account was made resident in phase 1). The
 // one genuinely shared piece of state, cs.accountSetXOR, is mutated through
 // updateAccountLeafLocked, which already carries accountSetXORMu for exactly
 // this case — see that field's own comment.
 //
-// DETERMINISM: a batch is only ever formed from CONSECUTIVE transfers whose
-// touched addresses are pairwise disjoint, so applying them in any order
-// yields the identical final state. That is not an assumption — it is the
-// property TestReplayTransactions_DisjointTransfers_OrderIndependent and its
-// fuzz variant already pin, written before any parallel implementation
-// existed precisely so this step could rely on it.
+// DETERMINISM: a batch is only ever formed from CONSECUTIVE transfers. Bis
+// 25.09.2026 mussten ihre Adressen paarweise disjunkt sein (belegt von
+// TestReplayTransactions_DisjointTransfers_OrderIndependent und dem Fuzz
+// dazu). Seit Stufe 1.3 duerfen sie sich wiederholen: alles, was von der
+// Reihenfolge abhaengt (Deckung, Grenze, Buchfuehrung), rechnet Phase 1b bzw.
+// 2b in Blockreihenfolge; parallel angewandt wird nur die Summe je Konto, und
+// die haengt von der Reihenfolge nicht ab. Belegt von
+// replay_parallel_sammelempfaenger_test.go gegen den seriellen Pfad.
 
 // parallelReplayMinBatch is the smallest batch this path is used for.
 //
@@ -128,6 +133,10 @@ type replayBatchItem struct {
 	// Buendel stehen; der serielle Pfad reicht an nachUeberweisung den Stand
 	// nach genau dieser Gutschrift weiter, nicht den Endstand des Buendels.
 	toNach float64
+	// fromNach: Stand des Absenders direkt nach dieser Ueberweisung. Seit
+	// dem zweiten Teil von Stufe 1.3 kann auch ein Absender im Lauf vorher
+	// Geld bekommen oder mehrfach senden.
+	fromNach float64
 }
 
 // collectDisjointTransferBatch walks txs starting at index start and returns
@@ -140,33 +149,26 @@ type replayBatchItem struct {
 //     i.e. it is DB work and shared-state work, and it is exactly the
 //     eligibility line transferConcurrentWAL already draws for the same
 //     reason.
-//   - its SENDER has not appeared anywhere earlier in this run (neither as
-//     sender nor as recipient)
-//   - its RECIPIENT has not appeared earlier as a SENDER
+//   - it carries no fee (Gebuehr): the fee credits the UBI pool.
 //
-// STUFE 1.3 (docs/SKALIERUNG_DEZENTRAL.md): ein Empfaenger darf mehrfach
-// vorkommen. Vorher beendete jede wiederholte Adresse den Lauf -- und der
-// haeufigste Fall im echten Betrieb ist genau der, dass viele Menschen im
-// selben Block an dasselbe Geschaeft zahlen. Jede dieser Zahlungen brach
-// den Lauf ab und erzeugte ein Buendel der Laenge eins.
+// STUFE 1.3 (docs/SKALIERUNG_DEZENTRAL.md): Adressen duerfen sich im Lauf
+// wiederholen -- als Empfaenger, als Absender, und dieselbe Adresse erst als
+// Empfaenger und dann als Absender. Bis 25.09. beendete jede wiederholte
+// Adresse den Lauf, und der Alltag (viele zahlen an dasselbe Geschaeft, das
+// Geschaeft zahlt davon Lohn) zerfiel in Buendel der Laenge eins.
 //
-// Warum das sicher ist: eine Gutschrift ist eine Addition in ganzen
-// Mikro-AEQ (Decimal ist int64), also exakt und von der Reihenfolge
-// unabhaengig. Was von der Reihenfolge abhaengt, fuehrt
-// applyTransferBatchParallel in Blockreihenfolge: die Wohlstandsgrenze
-// (laufender Stand je Empfaenger) und die Buchfuehrung (Phase 2b). Und eine
-// Adresse, die im Lauf Geld bekommt, darf darin nie senden -- sonst haenge
-// ihre Deckung von einer frueheren Gutschrift ab. Absender bleiben
-// eindeutig, damit ihre Deckung am Stand vor dem Buendel exakt pruefbar ist.
+// Moeglich ist das, weil applyTransferBatchParallel den Lauf zuerst SERIELL
+// IM SPEICHER vorrechnet (Deckung, Wohlstandsgrenze, Stand nach jeder
+// Ueberweisung) und erst danach parallel anwendet -- siehe dort. Der Name
+// der Funktion ist geblieben; "disjunkt" ist sie nicht mehr.
 //
 // The first transaction that fails any of these ends the run. Returning early
 // rather than skipping past it is what preserves ordering semantics: anything
 // after a non-batchable transaction may depend on it.
 //
-// touched enthaelt alle Adressen des Laufs, Absender wie Empfaenger.
+// touched enthaelt alle Adressen des Laufs.
 func collectDisjointTransferBatch(txs []Transaction, start int) (batch []Transaction, touched map[string]bool) {
 	touched = make(map[string]bool)
-	absender := make(map[string]bool)
 	for i := start; i < len(txs); i++ {
 		tx := txs[i]
 		if tx.Type != "transfer" {
@@ -193,15 +195,6 @@ func collectDisjointTransferBatch(txs []Transaction, start int) (batch []Transac
 			}
 			break
 		}
-		// Absender: nirgends zuvor im Lauf. Empfaenger: zuvor hoechstens als
-		// Empfaenger (Stufe 1.3), nie als Absender.
-		if touched[from] || absender[to] {
-			if i == start {
-				merkeBuendelAblehnung(&baKollision)
-			}
-			break
-		}
-		absender[from] = true
 		touched[from] = true
 		touched[to] = true
 		batch = append(batch, tx)
@@ -209,7 +202,7 @@ func collectDisjointTransferBatch(txs []Transaction, start int) (batch []Transac
 	return batch, touched
 }
 
-// applyTransferBatchParallel applies an already-validated disjoint batch.
+// applyTransferBatchParallel applies a run from collectDisjointTransferBatch.
 //
 // Three-valued result, and the distinction is critical:
 //
@@ -249,7 +242,7 @@ func collectDisjointTransferBatch(txs []Transaction, start int) (batch []Transac
 // lauf_kein_transfer alle null), weil die Wegwerfkonten des Lasttests
 // leerlaufen.
 //
-// Die Ueberweisungen VOR der problematischen sind ein gueltiges, disjunktes
+// Die Ueberweisungen VOR der problematischen sind ein gueltiges
 // Praefix -- sie duerfen angewandt werden, und der Aufrufer setzt danach bei
 // der problematischen fort. Die Reihenfolge bleibt damit exakt erhalten.
 //
@@ -261,6 +254,11 @@ func (cs *ChainState) applyTransferBatchParallel(ctx context.Context, batch []Tr
 	}
 
 	// ---- Phase 1 (serial): warm every account. The ONLY DB access. ----
+	//
+	// Ein unbekanntes Konto beendet das Praefix: die Ueberweisungen davor
+	// sind unabhaengig davon, ab ihr uebernimmt der serielle Pfad (der ein
+	// fehlendes Empfaengerkonto anlegt und ein fehlendes Absenderkonto
+	// meldet).
 	items := make([]replayBatchItem, 0, len(batch))
 	for _, tx := range batch {
 		from := strings.ToLower(strings.TrimSpace(tx.Wallet))
@@ -271,80 +269,74 @@ func (cs *ChainState) applyTransferBatchParallel(ctx context.Context, batch []Tr
 		toAcc, okTo := cs.accounts.Get(to)
 		if !okFrom || !okTo {
 			merkeBuendelAblehnung(&baKontoFehlt)
-			return 0, nil // unknown account — let the serial path report it
+			break
 		}
 		items = append(items, replayBatchItem{
 			from: fromAcc, to: toAcc, amount: tx.Amount, fromKey: from, toKey: to,
 			buchAt: buchZeitBeimNachspielen(tx.BuchAt, activityAt),
 		})
 	}
+	if len(items) < parallelReplayMinBatch {
+		return 0, nil
+	}
 
-	// Sufficiency is checked here, serially, BEFORE anything is mutated. Each
-	// sender appears at most once in the batch and never as a recipient in
-	// it (collectDisjointTransferBatch), so its balance cannot be changed by
-	// another member — meaning this check is exactly as authoritative as the
-	// serial path's own, just hoisted. If any single
-	// transfer would fail, the whole batch is declined and the serial path
-	// replays all of them, reproducing its error handling verbatim.
+	// ---- Phase 1b (serial, nur Speicher, nichts mutiert): vorrechnen. ----
 	//
-	// FIX (audit 2026-08-15): the wealth-cap check below was missing entirely.
-	// The serial path this replaces (applyTransferDeltaLocked) calls
-	// enforceWealthCapLockedCtx on every recipient, which trims a balance that
-	// lands above avg×multiplier back down to the cap and credits the excess to
-	// the four tokenomics pools. Phase 2 cannot do that — enforceWealthCap
-	// credits pools through distributeSwapFeeCtx, i.e. shared state and DB
-	// work, exactly what phase 2 is forbidden to touch — so a cap crossing
-	// inside a batchable run was silently skipped: the recipient kept the full
-	// uncapped amount and the pools were never credited.
+	// Jede Ueberweisung wird in Blockreihenfolge gegen LAUFENDE Staende
+	// geprueft -- genau die Staende, die der serielle Pfad
+	// (applyTransferDeltaLockedSammelnd) an derselben Stelle saehe:
 	//
-	// That is a fork, not a rounding difference. The three INGESTION fast paths
-	// (transferConcurrent, transferBatchConcurrent, transferConcurrentWAL) each
-	// draw exactly this eligibility line for exactly this reason and hand the
-	// transfer to the slow path, which caps it — so a block genuinely can carry
-	// a capped transfer, while every node replaying it through this batch path
-	// would apply it uncapped. Proven by
-	// TestParallelReplay_EnforcesWealthCapLikeSerial: recipient 26,000 vs
-	// 25,000 AEQ, all four pools 0 vs 400/300/200/100, different StateRoot.
+	//   - Deckung: Stand des Absenders nach allem, was er im Lauf davor
+	//     bekommen und gesendet hat.
+	//   - Wohlstandsgrenze: Stand des Empfaengers nach dieser Gutschrift, mit
+	//     seinen LP-Anteilen (wuerdeKappenLocked).
 	//
-	// Declining here (rather than trying to cap in phase 2) keeps this path
-	// what its doc comment promises — a pure speed-up whose declines cost only
-	// speed — and lets the serial path reproduce the cap, the pool credits and
-	// the log line verbatim. The post-transfer balance is exact (see the
-	// running balance below); the Decimal add mirrors the
-	// arithmetic enforceWealthCapLockedCtx itself would see, and tokenomics
-	// pool addresses are exempt there, so they must not trigger a decline here.
+	// Die erste Ueberweisung, die scheitern oder gekappt wuerde, beendet das
+	// Praefix; sie und alles danach uebernimmt der serielle Pfad, der Fehler,
+	// Kappung, Pool-Gutschriften und Protokollzeilen unveraendert erzeugt.
+	// Das haelt diesen Pfad bei dem, was er verspricht: eine reine
+	// Beschleunigung, deren Ablehnungen nur Tempo kosten.
 	//
-	// STUFE 1.3: ein Empfaenger kann mehrfach im Buendel stehen. Geprueft
-	// wird deshalb gegen seinen LAUFENDEN Stand in Blockreihenfolge -- genau
-	// das, was der serielle Pfad nach jeder einzelnen Gutschrift sieht. Die
-	// erste Gutschrift, die die Grenze reisst, beendet das Praefix; sie und
-	// alles danach uebernimmt der serielle Pfad. Die Grenze selbst bleibt im
-	// Buendel fest: Ueberweisungen aendern die Geldmenge nicht, und eine
-	// Kappung, die sie aendern koennte, kommt nie ins Buendel.
+	// Geschichte: bis 15.08.2026 fehlte die Grenzpruefung ganz (belegt von
+	// TestParallelReplay_EnforcesWealthCapLikeSerial: 26.000 statt 25.000
+	// AEQ, andere StateRoot), bis 26.09. fehlten die LP-Anteile
+	// (TestSchnellpfade_KappenWieSeriellMitLPAnteilen).
+	//
+	// Warum vorrechnen statt Block-STM (optimistisch parallel, bei Konflikt
+	// neu): Block-STM lohnt, wenn die Ausfuehrung einer Transaktion teuer
+	// ist. Hier ist sie eine Ganzzahl-Addition; teuer sind Signaturpruefung
+	// (vorab parallel, Stufe 1.2) und Datenbank (Phase 1 und 3). Die serielle
+	// Vorrechnung kostet Nanosekunden je Ueberweisung und ist ohne jede
+	// Wiederholung deterministisch.
+	//
+	// Die Grenze bleibt im Lauf fest: Ueberweisungen aendern die Geldmenge
+	// nicht, der Pool (LP-Wert) wird nicht beruehrt, und eine Kappung kommt
+	// nie ins Buendel.
 	capAmt, hasCap := cs.wealthCapAmountLocked()
-	laufend := make(map[string]Decimal, len(items))
-	// Auf das gesunde Praefix kuerzen statt alles abzulehnen. Die
-	// Ueberweisungen davor sind disjunkt und bezahlbar; die problematische und
-	// alles danach uebernimmt der serielle Pfad, der Fehler, Wohlstandsgrenze
-	// und Protokollzeilen unveraendert erzeugt.
+	laufend := make(map[string]Decimal, len(items)*2)
+	standVon := func(key string, acc *AccountState) Decimal {
+		if d, ok := laufend[key]; ok {
+			return d
+		}
+		return acc.Balance
+	}
 	for i := range items {
 		it := &items[i]
-		vorher, gesehen := laufend[it.toKey]
-		if !gesehen {
-			vorher = it.to.Balance
-		}
-		nach := vorher.Add(NewDecimal(it.amount))
+		betrag := NewDecimal(it.amount)
+		vonVorher := standVon(it.fromKey, it.from)
 		schlecht := false
-		if it.from.Balance.Float() < it.amount {
+		if vonVorher.Float() < it.amount {
 			merkeBuendelAblehnung(&baGuthaben)
 			schlecht = true
-		} else if cs.wuerdeKappenLocked(it.toKey, it.to, nach.Float(), capAmt, hasCap) {
-			merkeBuendelAblehnung(&baWohlstandsCap)
-			schlecht = true
 		}
+		var vonNach, anNach Decimal
 		if !schlecht {
-			laufend[it.toKey] = nach
-			it.toNach = nach.Float()
+			vonNach = vonVorher.Sub(betrag)
+			anNach = standVon(it.toKey, it.to).Add(betrag)
+			if cs.wuerdeKappenLocked(it.toKey, it.to, anNach.Float(), capAmt, hasCap) {
+				merkeBuendelAblehnung(&baWohlstandsCap)
+				schlecht = true
+			}
 		}
 		if schlecht {
 			if i < parallelReplayMinBatch {
@@ -354,41 +346,57 @@ func (cs *ChainState) applyTransferBatchParallel(ctx context.Context, batch []Tr
 			merkeBuendelGekuerzt(len(batch) - i)
 			break
 		}
+		laufend[it.fromKey] = vonNach
+		laufend[it.toKey] = anNach
+		it.fromNach = vonNach.Float()
+		it.toNach = anNach.Float()
 	}
 
 	// ---- Phase 2 (parallel): pure in-memory arithmetic, NO database. ----
 	//
-	// Arbeitseinheiten statt Ueberweisungen (Stufe 1.3): je Absender eine
-	// Belastung, je EMPFAENGER eine Gutschrift mit der Summe aller seiner
-	// Betraege. So beruehrt jede AccountState genau eine Einheit, und kein
-	// Worker kann mit einem anderen um denselben Empfaenger konkurrieren --
-	// auch wenn hundert Ueberweisungen an ihn gehen. Absender und Empfaenger
-	// sind disjunkt (collectDisjointTransferBatch).
+	// Eine Arbeitseinheit je KONTO, nicht je Ueberweisung: jedes Konto
+	// bekommt die Summe aller seiner Gutschriften minus aller Belastungen im
+	// Praefix. So beruehrt jede AccountState genau ein Worker, egal wie oft
+	// sie im Lauf vorkommt.
 	//
-	// Die Summe ist bitgleich mit den einzelnen Gutschriften des seriellen
-	// Pfads: jede wird wie dort einzeln mit NewDecimal in Mikro-AEQ gewandelt
-	// und dann ganzzahlig addiert. Ebenso der StateRoot: updateAccountLeafLocked
-	// tauscht das zuletzt gezaehlte Blatt gegen das aktuelle, einmal mit dem
-	// Endstand ergibt dasselbe XOR wie einmal je Gutschrift. Die Uhr des
-	// Empfaengers startet mit dem Blockzeitpunkt, fuer jede Gutschrift
-	// derselbe -- startClockIfUnsetAt ist damit idempotent.
+	// Bitgleich mit dem seriellen Pfad:
+	//   - Kontostand: jeder Betrag wird wie dort einzeln mit NewDecimal in
+	//     Mikro-AEQ gewandelt, dann ganzzahlig addiert (Decimal ist int64).
+	//     Die Summe haengt nicht von der Reihenfolge ab. Zwischenstaende
+	//     unter null gibt es nicht -- das hat Phase 1b geprueft.
+	//   - StateRoot: updateAccountLeafLocked tauscht das zuletzt gezaehlte
+	//     Blatt gegen das aktuelle; einmal mit dem Endstand ergibt dasselbe
+	//     XOR wie einmal je Ueberweisung.
+	//   - Demurrage-Uhr: alle Ueberweisungen tragen denselben Blockzeitpunkt.
+	//     Wer im Lauf sendet, bekommt touchActivityAt -- ein Empfangen davor
+	//     (startClockIfUnsetAt) oder danach aendert daran nichts. Wer nur
+	//     empfaengt, bekommt startClockIfUnsetAt; mehrfach ist das idempotent.
+	//     Belegt von TestNachspielen_SeriellUndParallelGleicheEmpfaengerUhr
+	//     (annahme_gegen_nachspielen_test.go) fuer den Fall, dass hier
+	//     faelschlich die Uhr eines reinen Empfaengers zurueckgesetzt wird.
 	type einheit struct {
 		acc      *AccountState
-		betrag   Decimal
-		absender bool
+		delta    Decimal
+		gesendet bool
 	}
 	einheiten := make([]einheit, 0, len(items)*2)
-	gutschrift := make(map[string]int, len(items))
-	for _, it := range items {
-		einheiten = append(einheiten, einheit{acc: it.from, betrag: NewDecimal(it.amount), absender: true})
+	index := make(map[string]int, len(items)*2)
+	einheitFuer := func(key string, acc *AccountState) *einheit {
+		j, ok := index[key]
+		if !ok {
+			j = len(einheiten)
+			index[key] = j
+			einheiten = append(einheiten, einheit{acc: acc})
+		}
+		return &einheiten[j]
 	}
 	for _, it := range items {
-		if j, ok := gutschrift[it.toKey]; ok {
-			einheiten[j].betrag = einheiten[j].betrag.Add(NewDecimal(it.amount))
-			continue
-		}
-		gutschrift[it.toKey] = len(einheiten)
-		einheiten = append(einheiten, einheit{acc: it.to, betrag: NewDecimal(it.amount)})
+		betrag := NewDecimal(it.amount)
+		von := einheitFuer(it.fromKey, it.from)
+		von.delta = von.delta.Sub(betrag)
+		von.gesendet = true
+		an := einheitFuer(it.toKey, it.to)
+		an.delta = an.delta.Add(betrag)
 	}
 
 	workers := runtime.NumCPU()
@@ -413,24 +421,12 @@ func (cs *ChainState) applyTransferBatchParallel(ctx context.Context, batch []Tr
 		go func(part []einheit) {
 			defer wg.Done()
 			for _, e := range part {
-				if e.absender {
-					e.acc.Balance = e.acc.Balance.Sub(e.betrag)
+				e.acc.Balance = e.acc.Balance.Add(e.delta)
+				if e.gesendet {
 					touchActivityAt(e.acc, activityAt)
 				} else {
-					e.acc.Balance = e.acc.Balance.Add(e.betrag)
-					// EMPFANGEN STARTET DIE UHR, ES SETZT SIE NIE ZURUECK.
-					//
-					// Hier stand touchActivityAt, also ein Zuruecksetzen -- und
-					// der serielle Pfad, den dieser hier nur beschleunigen soll,
-					// ruft an derselben Stelle startClockIfUnsetAt
-					// (applyTransferDeltaLockedSammelnd, state.go). Damit hing
-					// die Demurrage-Uhr jedes Empfaengers davon ab, ob seine
-					// Ueberweisung zufaellig in einem buendelbaren Lauf lag.
-					// Belegt von TestNachspielen_SeriellUndParallelGleicheEmpfaengerUhr
-					// (300 Tage Unterschied) -- siehe
-					// annahme_gegen_nachspielen_test.go fuer das Experiment und
-					// dafuer, warum kein Waechter das melden konnte
-					// (LastActivityAt steht nicht im accountLeaf).
+					// EMPFANGEN STARTET DIE UHR, ES SETZT SIE NIE ZURUECK --
+					// wie applyTransferDeltaLockedSammelnd (state.go).
 					startClockIfUnsetAt(e.acc, activityAt)
 				}
 				// The one piece of genuinely shared state; guarded by
@@ -451,12 +447,12 @@ func (cs *ChainState) applyTransferBatchParallel(ctx context.Context, batch []Tr
 	//
 	// Warum das hier richtig ist: nachUeberweisung beruehrt nur die
 	// Buchkonten von Sender und Empfaenger (dazu lesend das Register). Seit
-	// Stufe 1.3 kann ein Empfaenger mehrfach vorkommen, und sein Buchkonto
-	// summiert Umsatz und Tageswerte in Gleitkomma -- deshalb zwingend die
-	// Blockreihenfolge, mit dem Empfaengerstand nach genau dieser Gutschrift
-	// (toNach). Dieselben Aufrufe mit denselben Werten in derselben Folge wie
-	// im seriellen Pfad. Die Gebuehr ist
-	// hier immer 0: Ueberweisungen mit Gebuehr kommen nicht ins Buendel
+	// Stufe 1.3 kann jede Adresse mehrfach vorkommen, und die Buchkonten
+	// summieren Umsatz und Tageswerte in Gleitkomma -- deshalb zwingend die
+	// Blockreihenfolge, mit den Staenden nach genau dieser Ueberweisung
+	// (fromNach, toNach aus Phase 1b). Dieselben Aufrufe mit denselben Werten
+	// in derselben Folge wie im seriellen Pfad. Die Gebuehr ist hier immer 0:
+	// Ueberweisungen mit Gebuehr kommen nicht ins Buendel
 	// (collectDisjointTransferBatch).
 	//
 	// Der Speicher ist bereits mutiert. Ein Fehler hier ist deshalb ein
@@ -469,7 +465,7 @@ func (cs *ChainState) applyTransferBatchParallel(ctx context.Context, batch []Tr
 	for _, it := range items {
 		if err := cs.nachUeberweisung(mitBuchZeit(buchCtx, it.buchAt), it.fromKey, it.toKey,
 			cs.kontoartVon(it.fromKey, it.from.IsHuman), cs.kontoartVon(it.toKey, it.to.IsHuman),
-			it.amount, 0, it.from.Balance.Float(), it.toNach, it.buchAt); err != nil {
+			it.amount, 0, it.fromNach, it.toNach, it.buchAt); err != nil {
 			return 0, fmt.Errorf("parallel transfer batch: Buchfuehrung: %w", err)
 		}
 	}
