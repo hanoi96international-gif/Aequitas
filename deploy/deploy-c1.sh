@@ -13,13 +13,13 @@ grep -qx 'ANNAHME_ROLLE=annehmend' "$ENVF" || { echo "ABBRUCH: ANNAHME_ROLLE=ann
 cd /root/Aequitas
 git fetch -q origin main
 git reset -q --hard origin/main
-echo "Stand: $(git rev-parse --short HEAD)"
+echo "Stand: $(git rev-parse --short=7 HEAD)"
 df -h / | tail -1
 cd deploy/validator
 # Erst bauen, waehrend der alte Knoten weiterlaeuft; der Neustart danach
 # dauert nur Sekunden.
-GIT_COMMIT="$(git -C /root/Aequitas rev-parse --short HEAD)" docker compose build -q node
-GIT_COMMIT="$(git -C /root/Aequitas rev-parse --short HEAD)" docker compose up -d node
+GIT_COMMIT="$(git -C /root/Aequitas rev-parse --short=7 HEAD)" docker compose build -q node
+GIT_COMMIT="$(git -C /root/Aequitas rev-parse --short=7 HEAD)" docker compose up -d node
 docker image prune -f >/dev/null 2>&1 || true
 docker builder prune -af --max-used-space 10GB >/dev/null 2>&1 || true
 
