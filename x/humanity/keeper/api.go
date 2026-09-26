@@ -713,6 +713,7 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		"zustands_ablehnung":       ZustandsAblehnungStand(),
 		"annahme_tor":              a.state.AnnahmeTorStand(),
 		"signierte_ueberweisungen": SignierteUeberweisungenStand(),
+		"absender_cache":           AbsenderCacheStand(),
 		"leitung":                  a.state.LeitungStand(),
 		"leistungsnachweis":        LeistungsnachweisStand(),
 		// Wie das Nachspielen die Ueberweisungen anwendet -- parallel oder seriell.

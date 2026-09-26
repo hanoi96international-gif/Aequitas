@@ -1084,20 +1084,15 @@ func (s *EVMRPCServer) reserveNoncePerItem(tx *types.Transaction, senderAddr str
 // distinct transactions, which is exactly what handleRPC's batch pre-pass
 // does. Kept identical in behavior to the inline code this replaced.
 func decodeAndRecoverSender(rawHex string) (tx *types.Transaction, senderAddr string, senderErr bool, err error) {
-	rawHex = strings.TrimPrefix(rawHex, "0x")
-
-	rawBytes, hexErr := hex.DecodeString(rawHex)
-	if hexErr != nil {
-		return nil, "", false, fmt.Errorf("Invalid hex")
+	t, err := decodeRohTransaktion(rawHex)
+	if err != nil {
+		return nil, "", false, err
 	}
 
-	t := new(types.Transaction)
-	// UnmarshalBinary handles all tx types: legacy (RLP), EIP-2930 (type 1), EIP-1559 (type 2)
-	if binErr := t.UnmarshalBinary(rawBytes); binErr != nil {
-		// Fallback to RLP for legacy transactions
-		if err2 := rlp.DecodeBytes(rawBytes, t); err2 != nil {
-			return nil, "", false, fmt.Errorf("Invalid transaction: %v", binErr)
-		}
+	// Stufe 1.2 (absender_cache.go): dieselbe Rohform nur einmal wiederherstellen.
+	h := t.Hash()
+	if a, ok := absenderSpeicher.holen(h); ok {
+		return t, a, false, nil
 	}
 
 	// Recover sender
@@ -1111,7 +1106,30 @@ func decodeAndRecoverSender(rawHex string) (tx *types.Transaction, senderAddr st
 		}
 	}
 
-	return t, strings.ToLower(sender.Hex()), false, nil
+	absender := strings.ToLower(sender.Hex())
+	absenderSpeicher.merken(h, absender)
+	return t, absender, false, nil
+}
+
+// decodeRohTransaktion liest eine signierte Rohtransaktion, ohne den
+// Absender wiederherzustellen (billig: nur Hex und RLP).
+func decodeRohTransaktion(rawHex string) (*types.Transaction, error) {
+	rawHex = strings.TrimPrefix(rawHex, "0x")
+
+	rawBytes, hexErr := hex.DecodeString(rawHex)
+	if hexErr != nil {
+		return nil, fmt.Errorf("Invalid hex")
+	}
+
+	t := new(types.Transaction)
+	// UnmarshalBinary handles all tx types: legacy (RLP), EIP-2930 (type 1), EIP-1559 (type 2)
+	if binErr := t.UnmarshalBinary(rawBytes); binErr != nil {
+		// Fallback to RLP for legacy transactions
+		if err2 := rlp.DecodeBytes(rawBytes, t); err2 != nil {
+			return nil, fmt.Errorf("Invalid transaction: %v", binErr)
+		}
+	}
+	return t, nil
 }
 
 func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage, pre *precomputedSendTx) (interface{}, *RPCError) {

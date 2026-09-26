@@ -168,7 +168,9 @@ func nonceAusVorlage(vorlage Transaction) (uint64, bool) {
 	if vorlage.Roh == "" {
 		return 0, false
 	}
-	t, _, _, err := decodeAndRecoverSender(vorlage.Roh)
+	// Nur lesen, nicht wiederherstellen: die Signatur hat sendRawTransaction
+	// gerade geprueft (Stufe 1.2).
+	t, err := decodeRohTransaktion(vorlage.Roh)
 	if err != nil || t.Nonce() >= math.MaxInt64 {
 		return 0, false
 	}
