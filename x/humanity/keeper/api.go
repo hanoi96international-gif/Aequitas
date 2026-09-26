@@ -4298,7 +4298,7 @@ func (a *APIServer) handleRecoverEscrow(w http.ResponseWriter, r *http.Request) 
 		jsonError(w, "invalid signature: "+err.Error(), 400)
 		return
 	}
-	if err := a.state.RecoverFromEscrow(wallet); err != nil {
+	if err := a.state.RecoverFromEscrowMitNachweis(wallet, nachweisFuerAnnahme(Auftragsnachweis{Sig: req.Signature})); err != nil {
 		jsonStateError(w, "recover-escrow", wallet, err)
 		return
 	}

@@ -71,6 +71,11 @@ type Transaction struct {
 	// Knoten (signierte_ueberweisung.go, Stufe 1.0). omitempty: aeltere
 	// Bloecke und andere Transaktionsarten behalten ihren Hash.
 	Roh string `json:"roh,omitempty"`
+	// Nachweis: Unterschrift(en) des Auftraggebers fuer alle anderen
+	// Auftraege, die Geld oder Rechte bewegen (Tausch, Liquiditaet, Faucet,
+	// Treuhand, Unternehmen) -- das Gegenstueck zu Roh (auftrag_nachweis.go).
+	// omitempty: aeltere Bloecke behalten ihren Hash.
+	Nachweis *Auftragsnachweis `json:"nachweis,omitempty"`
 	// DistributionAt carries the exact Unix timestamp the primary chose for
 	// a distribution round (e.g. the new last_ubi_at) on
 	// "ubi_distribution_finalize" TXs. Audit recheck 2 (P0 #4) found the
@@ -6929,6 +6934,19 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 		if sigErr == nil {
 			sigErr = dag.state.setzeNaechsteNoncenLocked(sigCtx, neueNoncen, kontenSammlung)
 		}
+		// Nachtrag zu 1.0 (auftrag_nachweis.go): dieselbe Pruefung fuer
+		// Tausch, Liquiditaet, Faucet, Treuhand und Unternehmen.
+		if sigErr == nil {
+			var auftraege []auftragsNonce
+			auftraege, sigErr = pruefeAuftraegeImBlock(block.Transactions, block.Timestamp)
+			var neueAuftragsNoncen map[string]int64
+			if sigErr == nil {
+				neueAuftragsNoncen, sigErr = dag.state.naechsteAuftragsNoncenFuerBlockLocked(sigCtx, auftraege)
+			}
+			if sigErr == nil {
+				sigErr = dag.state.setzeAuftragsNoncenLocked(sigCtx, neueAuftragsNoncen, kontenSammlung)
+			}
+		}
 		if sigErr != nil {
 			fmt.Printf("[REPLAY] ✗ Block #%d von %s: %v — Block abgelehnt\n", block.Height, block.Proposer, sigErr)
 			merkeUngueltigeSignaturBlock()
@@ -7354,12 +7372,32 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 				continue
 			}
 		case "unternehmen_mitinhaber":
+			// Ab der Aktivierung (auftrag_nachweis.go): der zweite Unterzeichner
+			// muss in DIESEM Augenblick verantwortlich sein -- sonst truege
+			// sich jeder mit einem eigenen Schluessel als "bisher
+			// verantwortlich" ein. Die Unterschriften selbst sind vorab geprueft.
+			if signierteUeberweisungenPflicht(block.Timestamp) {
+				if err := dag.state.pruefeVerantwortlichLocked(wallet, tx.Nachweis); err != nil {
+					fmt.Printf("[REPLAY] ✗ unternehmen_mitinhaber %s: %v (block #%d) — Block abgelehnt\n", wallet, err, block.Height)
+					merkeUngueltigeSignaturBlock()
+					hardFailure = true
+					continue
+				}
+			}
 			if err := dag.state.applyUnternehmenMitinhaberLocked(context.Background(), wallet, tx.To, block.Timestamp); err != nil {
 				fmt.Printf("[REPLAY] ✗ unternehmen_mitinhaber %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
 				hardFailure = true
 				continue
 			}
 		case "unternehmen_schliessen":
+			if signierteUeberweisungenPflicht(block.Timestamp) {
+				if err := dag.state.pruefeVerantwortlichLocked(wallet, &Auftragsnachweis{Von2: tx.To}); err != nil {
+					fmt.Printf("[REPLAY] ✗ unternehmen_schliessen %s: %v (block #%d) — Block abgelehnt\n", wallet, err, block.Height)
+					merkeUngueltigeSignaturBlock()
+					hardFailure = true
+					continue
+				}
+			}
 			if err := dag.state.applyUnternehmenSchliessenLocked(context.Background(), wallet, block.Timestamp); err != nil {
 				fmt.Printf("[REPLAY] ✗ unternehmen_schliessen %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
 				hardFailure = true

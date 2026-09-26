@@ -157,7 +157,13 @@ func (a *APIServer) handleSwap(w http.ResponseWriter, r *http.Request) {
 	// swap had already committed (swaps are likely the most frequent
 	// state-changing operation in the system, so this was the most
 	// frequently-hit version of the durability gap).
-	pendingTxTemplate := Transaction{Type: txType, Wallet: wallet, Amount: req.Amount}
+	pendingTxTemplate := Transaction{Type: txType, Wallet: wallet, Amount: req.Amount,
+		Nachweis: nachweisFuerAnnahme(Auftragsnachweis{Sig: req.Signature, Nonce: req.Nonce, Zeit: req.Timestamp, Betrag: req.Amount})}
+	if err := a.state.pruefeAuftragsNonce(wallet, pendingTxTemplate.Nachweis); err != nil {
+		a.state.RestoreSwapNonce(wallet, req.Nonce)
+		json.NewEncoder(w).Encode(SwapResponse{Success: false, Message: err.Error()})
+		return
+	}
 	amountOut, _, err := a.state.SwapAtomic(wallet, req.Amount, aeqToTusd, req.MinAmountOut, pendingTxTemplate)
 	if err != nil {
 		// Swap failed — restore nonce so user can retry with the same nonce.
@@ -238,7 +244,13 @@ func (a *APIServer) handleAddLiquidity(w http.ResponseWriter, r *http.Request) {
 	// FIX (atomic outbox): AddLiquidityAtomic commits the state mutation and
 	// the pending_tx outbox insert as a single DB transaction — see
 	// SwapAtomic's comment above / TransferAtomic's comment in state.go.
-	pendingTxTemplate := Transaction{Type: "add_liquidity", Wallet: wallet, Amount: req.AmountAEQ, AmountOut: req.AmountTUSD}
+	pendingTxTemplate := Transaction{Type: "add_liquidity", Wallet: wallet, Amount: req.AmountAEQ, AmountOut: req.AmountTUSD,
+		Nachweis: nachweisFuerAnnahme(Auftragsnachweis{Sig: req.Signature, Nonce: req.Nonce, Zeit: req.Timestamp, Betrag: req.AmountAEQ, Betrag2: req.AmountTUSD})}
+	if err := a.state.pruefeAuftragsNonce(wallet, pendingTxTemplate.Nachweis); err != nil {
+		a.state.RestoreSwapNonce(wallet, req.Nonce)
+		json.NewEncoder(w).Encode(AddLiquidityResponse{Success: false, Message: err.Error()})
+		return
+	}
 	_, err = a.state.AddLiquidityAtomic(wallet, req.AmountAEQ, req.AmountTUSD, pendingTxTemplate)
 	if err != nil {
 		a.state.RestoreSwapNonce(wallet, req.Nonce)
@@ -313,7 +325,13 @@ func (a *APIServer) handleRemoveLiquidity(w http.ResponseWriter, r *http.Request
 	// FIX (atomic outbox): RemoveLiquidityAtomic commits the state mutation
 	// and the pending_tx outbox insert as a single DB transaction — see
 	// SwapAtomic's comment above / TransferAtomic's comment in state.go.
-	pendingTxTemplate := Transaction{Type: "remove_liquidity", Wallet: wallet, Amount: req.SharesToBurn}
+	pendingTxTemplate := Transaction{Type: "remove_liquidity", Wallet: wallet, Amount: req.SharesToBurn,
+		Nachweis: nachweisFuerAnnahme(Auftragsnachweis{Sig: req.Signature, Nonce: req.Nonce, Zeit: req.Timestamp, Betrag: req.SharesToBurn})}
+	if err := a.state.pruefeAuftragsNonce(wallet, pendingTxTemplate.Nachweis); err != nil {
+		a.state.RestoreSwapNonce(wallet, req.Nonce)
+		json.NewEncoder(w).Encode(RemoveLiquidityResponse{Success: false, Message: err.Error()})
+		return
+	}
 	outAEQ, outTUSD, _, err := a.state.RemoveLiquidityAtomic(wallet, req.SharesToBurn, pendingTxTemplate)
 	if err != nil {
 		a.state.RestoreSwapNonce(wallet, req.Nonce)
@@ -434,7 +452,8 @@ func (a *APIServer) handleFaucet(w http.ResponseWriter, r *http.Request) {
 	// FIX (atomic outbox): ClaimTUsdFaucetAtomic commits the state mutation
 	// and the pending_tx outbox insert as a single DB transaction — see
 	// SwapAtomic's comment above / TransferAtomic's comment in state.go.
-	pendingTx := Transaction{Type: "faucet", Wallet: wallet, Amount: tusdFaucetAmount}
+	pendingTx := Transaction{Type: "faucet", Wallet: wallet, Amount: tusdFaucetAmount,
+		Nachweis: nachweisFuerAnnahme(Auftragsnachweis{Sig: req.Signature, Zeit: req.Timestamp})}
 	if err := a.state.ClaimTUsdFaucetAtomic(wallet, pendingTx); err != nil {
 		json.NewEncoder(w).Encode(FaucetResponse{Success: false, Message: err.Error()})
 		return

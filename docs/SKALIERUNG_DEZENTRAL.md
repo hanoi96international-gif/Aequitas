@@ -60,6 +60,14 @@ Zwei Dinge daraus sind entscheidend:
 
 **Danach dieselbe Regel für alle anderen geldbewegenden Transaktionen** (Tausch, Liquidität, Wächter und Treuhand): Jede trägt den Nachweis ihres Auftraggebers im Block.
 
+**Umgesetzt (26.09.2026, `auftrag_nachweis.go`).** Tausch, Liquidität (hinzufügen und abziehen), Faucet, Rückholung aus der Treuhand und die drei Unternehmens-Aufträge tragen ab derselben Aktivierung ihren `Nachweis`. Er enthält die Unterschrift(en) und die unterschriebenen Werte. Jeder Validator baut die Nachricht in denselben Formaten nach wie die Annahme und prüft dann:
+- die Unterschrift, bei Unternehmen beide Unterschriften,
+- die Beträge,
+- das Zeitfenster zur Blockzeit (höchstens eine Stunde alt, höchstens fünf Minuten voraus),
+- bei Tausch und Liquidität die neue `NaechsteAuftragsNonce` im gemeinsamen Zustand.
+
+Bei Mitinhaber und Schließen muss der Unterzeichner zusätzlich im Augenblick der Ausführung verantwortlich sein. Ein Verstoß macht den ganzen Block ungültig. Nicht dabei sind Aufträge, die das System selbst aus Regeln erzeugt (Verteilungsrunden, Treuhand nach Inaktivität, Zuschuss-Staffel). Die rechnet jeder Validator nach.
+
 ---
 
 ## Stufe 1 — Jeder Knoten effizienter
@@ -79,6 +87,8 @@ Heute führt nur der serielle Pfad `nachUeberweisung` (Umsatz, Freibeträge) aus
 - Beim Nachspielen werden alle Signaturen eines Blocks **vorab parallel** geprüft (Worker-Pool, reine Funktion), bevor irgendein Zustand angefasst wird. Für den RPC-Pfad ist das schon umgesetzt (`evm_rpc.go`).
 - Die ermittelte Absenderadresse wird je Transaktion zwischengespeichert. Annahme, Nachspielen und Resync zahlen die 101 µs nicht mehrfach.
 
+**Umgesetzt (26.09.2026).** `absender_cache.go` ordnet dem Hash der Rohtransaktion den Absender zu. Der Hash wird aus den Bytes berechnet, nie aus dem TxHash-Feld. Der Cache ist fest begrenzt und merkt sich nur Erfolge. Die Nonce bei der Annahme wird nur gelesen, nicht erneut wiederhergestellt. `personal_sign`-Unterschriften der Aufträge werden ebenso nur einmal geprüft.
+
 ### 1.3 Schreibmenge sammeln, einmal je Block schreiben
 
 - Phase 1 lädt alle betroffenen Konten, Phase 2 rechnet rein im Speicher, Phase 3 schreibt **eine** gebündelte Anweisung je Block. Das Muster steht schon in `replay_parallel.go` und wird auf den ganzen Block ausgedehnt, nicht nur auf disjunkte Überweisungsfolgen.
@@ -90,7 +100,13 @@ Heute führt nur der serielle Pfad `nachUeberweisung` (Umsatz, Freibeträge) aus
 - Gutschriften werden je Empfänger in ganzen Mikro-AEQ summiert. Das ist exakt und von der Reihenfolge unabhängig.
 - Wohlstandsgrenze und Buchführung laufen in Blockreihenfolge, mit dem laufenden Stand des Empfängers.
 
-Tests: `replay_parallel_sammelempfaenger_test.go`. Er prüft gegen den seriellen Pfad Kontostände, Demurrage-Uhren, StateRoot und Buchkonten. Die Grenze reißt dabei erst mit der dritten Gutschrift. Die Gegenprobe ohne laufenden Stand schlägt fehl. Kein neuer Schalter: Der Pfad bleibt eine reine Beschleunigung, und das Ergebnis ist bitgleich mit dem seriellen. Offen bleibt der Fall, dass ein Konto im selben Block empfängt und danach sendet. Dafür kommt Block-STM.
+Tests: `replay_parallel_sammelempfaenger_test.go`. Er prüft gegen den seriellen Pfad Kontostände, Demurrage-Uhren, StateRoot und Buchkonten. Die Grenze reißt dabei erst mit der dritten Gutschrift. Die Gegenprobe ohne laufenden Stand schlägt fehl. Kein neuer Schalter: Der Pfad bleibt eine reine Beschleunigung, und das Ergebnis ist bitgleich mit dem seriellen.
+
+**Umgesetzt (26.09.2026), zweiter Teil: beliebige Wiederholungen.** Jede Adresse darf im Lauf senden und empfangen, in jeder Reihenfolge. Block-STM wird dafür nicht gebraucht. Phase 1b rechnet den Lauf seriell im Speicher vor: Deckung und Grenze gegen laufende Stände. Danach wird je Konto die Netto-Summe parallel angewandt. Die Ausführung ist eine Ganzzahl-Addition. Teuer sind nur Signaturen und Datenbank, und die sind ohnehin herausgezogen. Block-STM lohnt sich erst, wenn die Ausführung selbst teuer wird.
+
+Der Zufallstest `TestParallelesNachspielen_WiederholteAdressenWieSeriell` prüft Blöcke mit 120 Überweisungen in einem Kreis von 24 Konten, auch mit knappen Konten, gegen den seriellen Pfad.
+
+**Nebenbefund (behoben):** Alle Schnellpfade (Annahme und paralleles Nachspielen) prüften die Wohlstandsgrenze ohne LP-Anteile. Der serielle Pfad kappte mit ihnen. Ein Empfänger mit Pool-Anteilen führte deshalb zu verschiedenen StateRoots. `wuerdeKappenLocked` ist jetzt die eine Vorprüfung für alle.
 
 ### 1.4 Platte
 
