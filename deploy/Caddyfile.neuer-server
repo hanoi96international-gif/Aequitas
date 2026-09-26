@@ -1,0 +1,22 @@
+# Caddy auf dem neuen Server (netcup, 188.172.229.121) -- Ersatz fuer C1.
+#
+# Wie deploy/Caddyfile fuer C1: die Domain zeigt auf den Knoten im Docker-Netz
+# aequitas-net. Die proof1-Routen (Proof-Server, Vergleichsdienst,
+# Coordinator) kommen dazu, sobald diese Dienste hier laufen -- ein Block
+# ohne laufenden Dienst dahinter antwortete nur mit 502.
+#
+# Zertifikate holt Caddy selbst (Let's Encrypt, HTTP-01 auf Port 80); dafuer
+# muss die DNS schon hierher zeigen.
+
+aequitas.digital, www.aequitas.digital {
+	# Kein encode: der Knoten komprimiert selbst (siehe deploy/Caddyfile).
+	# Sicherheits-Header setzt der Knoten je Seite selbst.
+	reverse_proxy aequitas-node:8080
+
+	log {
+		output file /var/log/caddy/aequitas.log {
+			roll_size 50MiB
+			roll_keep 5
+		}
+	}
+}
