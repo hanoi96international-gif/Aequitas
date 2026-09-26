@@ -25,7 +25,7 @@ fi
 sleep 5
 fehler=0
 for u in https://aequitas.digital/api/status https://proof1.aequitas.digital/health \
-         https://proof1.aequitas.digital/matching/health https://proof1.aequitas.digital/coordinator/health \
+         https://proof1.aequitas.digital/matching/health https://proof1.aequitas.digital/coordinator/health https://proof1.aequitas.digital/coordinator-c1/health \
          https://proof1.aequitas.digital/api/status; do
   c=000
   for i in $(seq 1 12); do

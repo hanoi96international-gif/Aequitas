@@ -24,6 +24,12 @@ proof1.aequitas.digital {
 		reverse_proxy aequitas-matching:8098
 	}
 	redir /matching /matching/health permanent
+	# Zweiter Coordinator auf dieser Box (26.09.2026). Eigene Adresse, bis
+	# sein Schluessel eingetragen ist (/coordinator-binding); danach kann
+	# /coordinator/* hierher umziehen.
+	handle_path /coordinator-c1/* {
+		reverse_proxy aequitas-coordinator:8200
+	}
 	redir /coordinator /coordinator/ permanent
 	handle /coordinator/* {
 		reverse_proxy https://proof2.aequitas.digital {
