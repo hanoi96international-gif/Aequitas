@@ -117,6 +117,12 @@ jobs:
             echo "Not targeted this run."
           fi
 
+      - uses: actions/checkout@v4
+        if: steps.gate.outputs.run == 'true'
+        with:
+          sparse-checkout: deploy/backup-ledger.sh
+          sparse-checkout-cone-mode: false
+
       - name: Schluessel und Host-Pruefung
         if: steps.gate.outputs.run == 'true'
         env:

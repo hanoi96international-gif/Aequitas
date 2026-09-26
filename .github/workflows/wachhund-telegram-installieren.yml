@@ -66,6 +66,11 @@ jobs:
             secret: C2
             fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
     steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: deploy/wachhund-einrichten.sh
+          sparse-checkout-cone-mode: false
+
       - name: Welche Kanaele?
         env:
           T: ${{ secrets.TELEGRAM_BOT_TOKEN }}
