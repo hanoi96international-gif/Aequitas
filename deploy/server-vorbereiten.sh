@@ -46,14 +46,9 @@ if [ -d /root/Aequitas/.git ]; then
 else
   git clone -q https://github.com/hanoi96international-gif/Aequitas.git /root/Aequitas
 fi
-if [ -d /root/aequitas-proof-server/.git ]; then
-  git -C /root/aequitas-proof-server fetch -q origin main
-  git -C /root/aequitas-proof-server reset -q --hard origin/main
-else
-  git clone -q https://github.com/hanoi96international-gif/aequitas-proof-server.git /root/aequitas-proof-server
-fi
+# Der Proof-Server ist ein privates Repo: den Quelltext kopiert der Workflow
+# von C1 herueber (/root/aequitas-proof-server), gebaut wird er unten.
 echo "Aequitas: $(git -C /root/Aequitas rev-parse --short HEAD)"
-echo "Proof:    $(git -C /root/aequitas-proof-server rev-parse --short HEAD)"
 
 log "Images bauen (dauert)"
 cd /root/Aequitas/deploy/validator
@@ -61,7 +56,11 @@ cd /root/Aequitas/deploy/validator
 # Bau nicht.
 POSTGRES_PASSWORD=nur-fuer-den-bau GIT_COMMIT="$(git -C /root/Aequitas rev-parse --short HEAD)" \
   docker compose build --quiet node
-docker build -q -t aequitas-proof-server:latest /root/aequitas-proof-server >/dev/null
+if [ -f /root/aequitas-proof-server/Dockerfile ]; then
+  docker build -q -t aequitas-proof-server:latest /root/aequitas-proof-server >/dev/null
+else
+  echo "Proof-Server-Quelltext fehlt noch (/root/aequitas-proof-server) -- Image nicht gebaut"
+fi
 docker images --format '{{.Repository}}:{{.Tag}}  {{.Size}}' | grep aequitas
 
 log "Fertig vorbereitet -- kein Knoten gestartet"

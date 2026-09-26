@@ -41,6 +41,13 @@ jobs:
             exit 1
           fi
 
+      - name: Proof-Server-Quelltext von C1 herueberkopieren (C1 nur lesen)
+        run: |
+          set -eu
+          ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o ConnectTimeout=20 root@$C1 \
+            'tar -C /root --exclude=node_modules -cz aequitas-proof-server' \
+            | ssh -o BatchMode=yes root@$NEU 'rm -rf /root/aequitas-proof-server && tar -C /root -xz && ls /root/aequitas-proof-server | head'
+
       - name: Box vorbereiten (kein Knoten wird gestartet)
         run: |
           set -eu
