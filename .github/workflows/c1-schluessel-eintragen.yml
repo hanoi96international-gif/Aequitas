@@ -1,0 +1,35 @@
+name: Neuer C1 (netcup) -- Deploy-Schluessel des Biometrie-Repos zulassen
+# Die Workflows in aequitas-biometric-beta melden sich mit BOX_SSH_KEY an
+# (C2 und frueher Contabo1). Auf dem neuen C1 war nur CONTABO_SSH_KEY
+# hinterlegt -- der Vergleichsdienst liess sich deshalb nicht ausrollen.
+# Hier kommt der OEFFENTLICHE Teil dazu (ausgegeben von
+# vergleichsdienst-neuer-c1.yml, Lauf 36232894356). Nicht geheim.
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/server-changes-quorum-nfksc7]
+    paths: [.github/workflows/c1-schluessel-eintragen.yml]
+permissions:
+  contents: read
+jobs:
+  eintragen:
+    runs-on: ubuntu-latest
+    env:
+      PUB: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIK8MCr9ui1iQ4vEGqHd1DItamxIXN2dO7uYnYRcWmMtV aequitas-claude-code"
+    steps:
+      - name: Schluessel
+        env:
+          KEY: ${{ secrets.CONTABO_SSH_KEY }}
+        run: |
+          set -eu
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+      - name: Eintragen
+        run: |
+          ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes root@188.172.229.121 "
+            set -eu
+            mkdir -p /root/.ssh && chmod 700 /root/.ssh
+            touch /root/.ssh/authorized_keys && chmod 600 /root/.ssh/authorized_keys
+            grep -qF 'AAAAC3NzaC1lZDI1NTE5AAAAIK8MCr9ui1iQ4vEGqHd1DItamxIXN2dO7uYnYRcWmMtV' /root/.ssh/authorized_keys || echo '$PUB' >> /root/.ssh/authorized_keys
+            echo \"Schluessel auf der Box: \$(wc -l < /root/.ssh/authorized_keys)\"
+          "

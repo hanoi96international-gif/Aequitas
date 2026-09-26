@@ -59,12 +59,18 @@ const (
 	// gekuendigte IP vergibt der Anbieter neu, und ein Bootstrap-Eintrag ist
 	// Vertrauen. Ein neuer zweiter Server kommt mit seiner Peer-ID dazu.
 	defaultBootstrapContabo2 = "/ip4/194.163.188.71/tcp/4001/p2p/12D3KooWBv34kuVcmNDxZT4kCZFvNVGhy4zgkBZDGMtp7YSx2UUN"
+
+	// Der neue C1 (netcup, 188.172.229.121) ersetzt Contabo1 seit dem
+	// 26.09.2026 und ist der Primary (ANNAHME_ROLLE=annehmend). Peer-ID aus
+	// seinem eigenen /api/status (node_id), am 26.09.2026 gelesen; sie haengt
+	// am NODE_KEY in seiner .env und bleibt ueber Neustarts gleich.
+	defaultBootstrapNetcupC1 = "/ip4/188.172.229.121/tcp/4001/p2p/12D3KooWFQyUpthkkVAii4ayMX4wpFGjDaGJxkNQXRBrmC2kx1gc"
 )
 
 // defaultBootstrapNodes is the built-in P2P bootstrap set used when
 // BOOTSTRAP_P2P_ADDR is unset — see the constants above for why these are
 // IP-literal multiaddrs.
-var defaultBootstrapNodes = []string{defaultBootstrapContabo2}
+var defaultBootstrapNodes = []string{defaultBootstrapNetcupC1, defaultBootstrapContabo2}
 
 // p2pListenPort returns P2P_LISTEN_PORT if set to a valid port number,
 // otherwise ListenPort. See ListenPort's own comment for why this exists —
