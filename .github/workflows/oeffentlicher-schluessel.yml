@@ -1,0 +1,24 @@
+name: Oeffentlichen Teil von CONTABO_SSH_KEY ausgeben
+# Fuer einen neuen Server: den oeffentlichen Schluessel beim Anbieter
+# hinterlegen, dann erreichen ihn die Workflows wie C1. Der oeffentliche Teil
+# ist nicht geheim; der private verlaesst den Runner nicht.
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/aequitas-weitermachen-i6yayi]
+    paths: [.github/workflows/oeffentlicher-schluessel.yml]
+jobs:
+  ausgeben:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Oeffentlichen Schluessel ableiten
+        env:
+          KEY: ${{ secrets.CONTABO_SSH_KEY }}
+        run: |
+          set -eu
+          umask 077
+          printf '%s\n' "$KEY" > k
+          echo "----- OEFFENTLICHER SCHLUESSEL (fuer netcup) -----"
+          ssh-keygen -y -f k
+          echo "----- ENDE -----"
+          rm -f k
