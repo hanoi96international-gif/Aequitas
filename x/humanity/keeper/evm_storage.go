@@ -2140,6 +2140,44 @@ func (cs *ChainState) RegisterValidatorFull(signingAddress, humanWallet, personh
 	return err
 }
 
+// GetValidatorOperators: Signieradresse -> Menschen-Wallet des Betreibers,
+// aus beiden Registern (validator_keys ueber /node-binding, validator_slots
+// ueber die Bindung bei der Peer-Anmeldung).
+//
+// WOFUER. Der Explorer zeigte als Erzeuger nur die Signieradresse. Signiert
+// ein Knoten mit der Wallet seines Betreibers selbst, ist das dieselbe
+// Adresse; mit eigenem Signierschluessel -- dem empfohlenen Weg -- steht dort
+// eine Adresse, die niemand kennt. Fuer Laien ist dann nicht erkennbar, wem
+// der Validator gehoert (26.09.2026: neuer Server 0x3066... fuer
+// 0x0be8...d016). Die Zuordnung ist oeffentlich: sie ist genau das, was die
+// Bindungssignatur beweist.
+//
+// Nur lesen, keine Konsensfolgen; ohne Datenbank eine leere Zuordnung.
+func (cs *ChainState) GetValidatorOperators() map[string]string {
+	out := map[string]string{}
+	if cs.db == nil {
+		return out
+	}
+	rows, err := cs.db.Query(`SELECT signing_address, human_wallet FROM validator_keys
+		UNION ALL SELECT signing_address, operator_wallet FROM validator_slots`)
+	if err != nil {
+		return out
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var signing, human string
+		if rows.Scan(&signing, &human) != nil {
+			continue
+		}
+		signing = strings.ToLower(strings.TrimSpace(signing))
+		human = strings.ToLower(strings.TrimSpace(human))
+		if signing != "" && human != "" {
+			out[signing] = human
+		}
+	}
+	return out
+}
+
 // LoadValidatorKeysIntoDAG reads all registered validator signing addresses
 // from the DB and adds them to the DAG's authorized validators set.
 // Called at startup so keys registered before the node restarted are effective.

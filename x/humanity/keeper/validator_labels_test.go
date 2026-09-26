@@ -31,7 +31,19 @@ func TestHandleValidatorLabels_NoBlockchainReturnsEmptyLabels(t *testing.T) {
 		t.Fatalf("status = %d, want 200", rec.Code)
 	}
 	body := rec.Body.String()
-	if body != `{"labels":{}}`+"\n" {
-		t.Fatalf("body = %q, want an empty labels object", body)
+	// operators (Signieradresse -> Betreiber-Wallet) kam am 26.09.2026 dazu;
+	// ohne Blockchain ebenfalls leer, nie null -- der Explorer liest beide.
+	if body != `{"labels":{},"operators":{}}`+"\n" {
+		t.Fatalf("body = %q, want empty labels and operators objects", body)
+	}
+}
+
+// GetValidatorOperators ohne Datenbank: leere Zuordnung, kein nil und keine
+// Panik -- der Explorer-Endpunkt ruft es bei jedem Abruf.
+func TestGetValidatorOperators_NilDBReturnsEmpty(t *testing.T) {
+	cs := &ChainState{}
+	got := cs.GetValidatorOperators()
+	if got == nil || len(got) != 0 {
+		t.Fatalf("GetValidatorOperators() ohne DB = %v, erwartet leere Zuordnung", got)
 	}
 }
