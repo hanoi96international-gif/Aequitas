@@ -237,7 +237,7 @@ func TestVerteilt_MitgliedMitLeiterAbgeschnitten(t *testing.T) {
 }
 
 func TestVerteilt_Zufall(t *testing.T) {
-	for seed := int64(300); seed < 312; seed++ {
+	for seed := int64(300); seed < 300+int64(laeufe(12, 3)); seed++ {
 		c := testKonfig()
 		c.WechselAlle = 40 * time.Second
 		n := verteiltesSimNetz(t, 5, seed, c)

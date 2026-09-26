@@ -69,7 +69,7 @@ func TestParallelesNachspielen_SammelempfaengerWieSeriell(t *testing.T) {
 	uhr(t, 1_800_000_000)
 	jetzt := nowUnix()
 
-	for lauf := int64(0); lauf < 8; lauf++ {
+	for lauf := int64(0); lauf < int64(laeufe(8, 2)); lauf++ {
 		rng := rand.New(rand.NewSource(13_2026_0926 + lauf))
 
 		// ---- parallel: der ganze Block als EIN Buendel ----
@@ -361,7 +361,7 @@ func TestParallelesNachspielen_WiederholteAdressenWieSeriell(t *testing.T) {
 	uhr(t, 1_800_000_000)
 	jetzt := nowUnix()
 
-	for lauf := int64(0); lauf < 10; lauf++ {
+	for lauf := int64(0); lauf < int64(laeufe(10, 2)); lauf++ {
 		rng := rand.New(rand.NewSource(26_09_2026 + lauf))
 		knapp := lauf%2 == 1
 

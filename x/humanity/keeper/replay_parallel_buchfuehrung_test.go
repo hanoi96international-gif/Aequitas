@@ -124,7 +124,7 @@ func TestParallelesNachspielen_FuehrtBuchWieSeriell(t *testing.T) {
 	uhr(t, 1_800_000_000)
 	jetzt := nowUnix()
 
-	for lauf := int64(0); lauf < 20; lauf++ {
+	for lauf := int64(0); lauf < int64(laeufe(20, 4)); lauf++ {
 		rng := rand.New(rand.NewSource(20260925 + lauf))
 
 		// ---- paralleler Pfad: ein Block ueber replayTransactions ----
