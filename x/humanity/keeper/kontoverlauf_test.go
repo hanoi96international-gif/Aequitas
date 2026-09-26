@@ -33,7 +33,7 @@ func TestKontoVerlauf_ZeilenAusBlock(t *testing.T) {
 		art   string
 		seite int
 		want  string
-	}{{"transfer", 0, "aus"}, {"transfer", 1, "ein"}, {"ubi_distribution", 0, "ein"}, {"umlauf", 0, "aus"}, {"kappung", 0, "aus"}, {"grant_release", 0, "ein"}} {
+	}{{"transfer", 0, "aus"}, {"transfer", 1, "ein"}, {"ubi_distribution", 0, "ein"}, {"umlauf", 0, "aus"}, {"kappung", 0, "aus"}, {"grant_release", 0, "ein"}, {"swap_aeq_tusd", 0, "neutral"}, {"faucet", 0, "neutral"}} {
 		if got := verlaufRichtung(f.art, f.seite); got != f.want {
 			t.Fatalf("%s/%d: %s, erwartet %s", f.art, f.seite, got, f.want)
 		}

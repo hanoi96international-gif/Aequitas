@@ -168,7 +168,7 @@ func (cs *ChainState) schreibeKontoVerlauf(height int64, blockZeit int64, txs []
 type VerlaufEintrag struct {
 	Hoehe       int64   `json:"hoehe"`
 	TxIndex     int     `json:"tx_index"`
-	Richtung    string  `json:"richtung"` // "aus" oder "ein"
+	Richtung    string  `json:"richtung"` // "aus", "ein" oder "neutral"
 	Art         string  `json:"art"`
 	Gegenpartei string  `json:"gegenpartei,omitempty"`
 	Betrag      float64 `json:"betrag"`
@@ -214,8 +214,12 @@ func verlaufRichtung(art string, seite int) string {
 			return "ein"
 		}
 		return "aus"
-	case "umlauf", "kappung", "add_liquidity", "swap", "swap_aeq_tusd":
+	case "umlauf", "kappung":
 		return "aus"
+	case "swap", "swap_aeq_tusd", "add_liquidity", "remove_liquidity", "faucet":
+		// Tausch und Liquiditaet bewegen AEQ und tUSD zugleich, der Faucet
+		// nur tUSD: kein Vorzeichen fuer das AEQ-Guthaben.
+		return "neutral"
 	}
 	return "ein"
 }
