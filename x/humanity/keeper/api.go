@@ -3583,7 +3583,14 @@ func (a *APIServer) handleValidatorLabels(w http.ResponseWriter, r *http.Request
 	for addr, label := range validatorLabelOverrides {
 		labels[addr] = label
 	}
-	json.NewEncoder(w).Encode(map[string]interface{}{"labels": labels})
+	// operators: Signieradresse -> Betreiber-Wallet (siehe
+	// GetValidatorOperators). Der Explorer zeigt damit den Menschen hinter
+	// dem Block statt einer Signieradresse, die niemand kennt.
+	operators := map[string]string{}
+	if a.blockchain != nil && a.blockchain.state != nil {
+		operators = a.blockchain.state.GetValidatorOperators()
+	}
+	json.NewEncoder(w).Encode(map[string]interface{}{"labels": labels, "operators": operators})
 }
 
 // handleSigningAddress returns this node's signing address, protected by

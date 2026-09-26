@@ -5329,7 +5329,32 @@ async function loadValidatorLabels() {
     const d = await (await fetch('/api/validator-labels')).json();
     if (mySeq !== loadValidatorLabelsSeq) return;
     validatorLabels = d.labels || {};
+    validatorOperators = d.operators || {};
   } catch (e) {}
+}
+
+// validatorOperators: Signieradresse -> Betreiber-Wallet (handleValidatorLabels).
+// Ein Knoten mit eigenem Signierschluessel unterschreibt mit einer Adresse,
+// die niemand kennt; angezeigt wird deshalb der Mensch, dem er gehoert, und
+// die Signieradresse nur klein dahinter.
+let validatorOperators = {};
+function validatorOperator(address) {
+  const a = (address || '').toLowerCase();
+  const op = validatorOperators[a];
+  return op && op !== a ? op : null;
+}
+
+// proposerHTML: "Validator #1 · 0x0be8…d016" und darunter klein "signs as
+// 0x3066…42dc", wenn Betreiber und Signieradresse verschieden sind; sonst wie
+// bisher Label und Adresse.
+function proposerHTML(address) {
+  if (!address) return '—';
+  const label = validatorLabel(address);
+  const op = validatorOperator(address);
+  const wer = sanitize(short(op || address, 6, 4));
+  let html = label ? ('<strong>' + sanitize(label) + '</strong> · ' + wer) : wer;
+  if (op) html += '<br><span class="exp-muted" style="font-size:0.85em">signs as ' + sanitize(short(address, 6, 4)) + '</span>';
+  return html;
 }
 
 // validatorLabel returns the ready-to-display label for a known signing
@@ -5535,7 +5560,7 @@ function renderDagView(rawBlocks, canonicalHashSet) {
       }[status];
       [
         '#' + n.block.height + ' · ' + statusLabel,
-        'proposer: ' + short(n.block.proposer || '', 8, 4) + (validatorLabel(n.block.proposer) ? ' (' + validatorLabel(n.block.proposer) + ')' : ''),
+        'proposer: ' + short(validatorOperator(n.block.proposer) || n.block.proposer || '', 8, 4) + (validatorLabel(n.block.proposer) ? ' (' + validatorLabel(n.block.proposer) + ')' : '') + (validatorOperator(n.block.proposer) ? ', signs as ' + short(n.block.proposer, 6, 4) : ''),
         'blue_score: ' + (n.block.blue_score != null ? n.block.blue_score : '—'),
         'parents: ' + ((n.block.parent_hashes || []).length)
       ].concat(isKnight ? [
@@ -5723,8 +5748,6 @@ async function loadBlocks() {
         // at this height — showing "0" while the list underneath displays that
         // very transfer is how a user concludes their transaction vanished.
         const txCount = txCountAt[b.height] != null ? txCountAt[b.height] : (b.transactions || []).length;
-        const vLabel = validatorLabel(b.proposer);
-        const proposer = b.proposer ? short(b.proposer, 6, 4) : '—';
         const sibCount = siblingsAt[b.height] || 1;
         const sibBadge = sibCount > 1 ? ' <span style="font-size:0.48rem;color:var(--gold);vertical-align:middle" title="' + sibCount + ' parallel blocks at this height (GHOSTDAG DAG)">⟁' + sibCount + '</span>' : '';
         const typeBadge = merge
@@ -5738,7 +5761,7 @@ async function loadBlocks() {
           '<td style="color:var(--purple);font-weight:700">#' + sanitize(String(b.height)) + sibBadge + '</td>' +
           '<td class="exp-muted" style="font-size:0.6rem">' + sanitize(timeAgo(b.timestamp)) + '</td>' +
           '<td>' + txBadge + '</td>' +
-          '<td class="exp-addr" style="font-size:0.6rem">' + (vLabel ? ('<strong>' + sanitize(vLabel) + '</strong> <span class="exp-muted">(' + sanitize(proposer) + ')</span>') : sanitize(proposer)) + '</td>' +
+          '<td class="exp-addr" style="font-size:0.6rem">' + proposerHTML(b.proposer) + '</td>' +
           '<td>' + typeBadge + '</td>' +
           '<td style="color:var(--teal);font-size:0.6rem">' + blueScore + '</td>' +
           '</tr>';
@@ -5909,8 +5932,13 @@ function openBlock(hash) {
       + sanitize(confLabel) + ' <span style="color:var(--muted);font-weight:400;font-size:0.55rem">(' + depth + ' blue_score behind tip)</span></div></div>';
   }
   const bLabel = validatorLabel(b.proposer);
+  const bOp = validatorOperator(b.proposer);
   html += '<div class="bdc-row"><div class="bdc-k">Proposer</div><div class="bdc-v" style="color:var(--teal);word-break:break-all;font-size:0.54rem">'
-    + (bLabel ? ('<strong>' + sanitize(bLabel) + '</strong> &mdash; ') : '') + sanitize(b.proposer || '—') + '</div></div>';
+    + (bLabel ? ('<strong>' + sanitize(bLabel) + '</strong> &mdash; ') : '') + sanitize(bOp || b.proposer || '—') + '</div></div>';
+  if (bOp) {
+    html += '<div class="bdc-row"><div class="bdc-k">Signing key</div><div class="bdc-v" style="color:var(--muted);word-break:break-all;font-size:0.52rem">'
+      + sanitize(b.proposer) + ' <span style="font-size:0.9em">(the server\'s own key, bound to the operator above)</span></div></div>';
+  }
   html += '<div class="bdc-row"><div class="bdc-k">Block Hash</div><div class="bdc-v" style="font-size:0.52rem;word-break:break-all">'
     + sanitize(b.hash || '') + '</div></div>';
   if (b.state_root) {
