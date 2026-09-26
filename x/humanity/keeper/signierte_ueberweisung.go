@@ -347,6 +347,27 @@ func (cs *ChainState) pruefeAnnahmeNonce(absender string, nonce uint64) error {
 	return nil
 }
 
+// pruefeNonceLocked: die Nonce-Pruefung der Annahme UNTER der Sperre, direkt
+// vor der Buchung. pruefeAnnahmeNonce (vorab, nur lesend) reicht nicht:
+// zwischen ihr und der Buchung kann eine nebenlaeufige Anfrage desselben
+// Absenders hoehere Nonces buchen. Gemessen am 26.09.2026 unter Last: C1
+// buchte ueber den seriellen Weg Nonce 1316, nachdem 1354 schon gebucht war,
+// und schrieb beides in Bloecke -- C2 lehnte sechs davon ab ("Nonce 1316 ...
+// ist verbraucht (naechste erlaubte 1355)") und lief auseinander. Der
+// WAL-Schnellpfad prueft seit jeher unter der Shard-Sperre
+// (transfer_wal.go); der serielle und der Stapel-Weg jetzt ebenso.
+// Mindestens cs.mu gehalten.
+func pruefeNonceLocked(acc *AccountState, vorlage Transaction) error {
+	n, ok := nonceAusVorlage(vorlage)
+	if !ok || acc == nil {
+		return nil
+	}
+	if int64(n) < acc.NaechsteNonce {
+		return fmt.Errorf("nonce too low: %d (next allowed %d)", n, acc.NaechsteNonce)
+	}
+	return nil
+}
+
 // merkeAngenommeneNonceLocked: fuer Annahmepfade, die das Absenderkonto schon
 // gespeichert haben (direkter Pfad, V7) -- NaechsteNonce setzen und das Konto
 // in derselben Transaktion (ctx) noch einmal speichern. cs.mu gehalten.
