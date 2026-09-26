@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"math"
 	"math/big"
 	"strings"
 	"testing"
@@ -131,7 +132,7 @@ func TestSignierteUeberweisung_FaelschungenWerdenAbgelehnt(t *testing.T) {
 func nachspielKnoten(t *testing.T, konten map[string]float64) (*BlockDAG, *ChainState) {
 	t.Helper()
 	signierteUeberweisungenOverride.Store(1)
-	t.Cleanup(func() { signierteUeberweisungenOverride.Store(0) })
+	t.Cleanup(func() { signierteUeberweisungenOverride.Store(math.MaxInt64) })
 	dag, cs := newDeterminismTestDAG()
 	cs.mu.Lock()
 	for a, bal := range konten {
@@ -232,7 +233,7 @@ func TestSignierteUeberweisung_NoncenImBlockMuessenSteigen(t *testing.T) {
 
 func TestSignierteUeberweisung_VorDerAktivierungUnveraendert(t *testing.T) {
 	// Ohne Aktivierung gilt die alte Welt: kein Roh noetig, keine Nonce.
-	signierteUeberweisungenOverride.Store(0)
+	signierteUeberweisungenOverride.Store(math.MaxInt64)
 	a := neuerTestSchluessel(t)
 	b := neuerTestSchluessel(t)
 	dag, cs := newDeterminismTestDAG()
@@ -264,7 +265,7 @@ func TestAccountLeaf_NaechsteNonceNurWennGesetzt(t *testing.T) {
 
 func TestSignierteUeberweisung_AnnahmeSetztDieselbeNonceWieNachspielen(t *testing.T) {
 	signierteUeberweisungenOverride.Store(1)
-	t.Cleanup(func() { signierteUeberweisungenOverride.Store(0) })
+	t.Cleanup(func() { signierteUeberweisungenOverride.Store(math.MaxInt64) })
 	a := neuerTestSchluessel(t)
 	b := neuerTestSchluessel(t)
 	tx := signiere(t, a, b.addr, aeqWei(10), 9, 1926)

@@ -3,6 +3,7 @@ package keeper
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -129,7 +130,7 @@ func TestWALRoh_ErholungSetztNonce_RealDB(t *testing.T) {
 func TestWALRoh_SeriellerWegWartetAufOffeneWALZeilen_RealDB(t *testing.T) {
 	truncateDistTestTables(t)
 	signierteUeberweisungenOverride.Store(1)
-	t.Cleanup(func() { signierteUeberweisungenOverride.Store(0) })
+	t.Cleanup(func() { signierteUeberweisungenOverride.Store(math.MaxInt64) })
 	cs := newWALTestState(t, filepath.Join(t.TempDir(), "r.wal"))
 	cs.stopWALFlushWorkerForTest() // nur ausdruecklich geflusht
 	a, b := neuerTestSchluessel(t), neuerTestSchluessel(t)
@@ -219,5 +220,43 @@ func TestWALRoh_SchnittVorAbsenderImLaufendenFlush(t *testing.T) {
 	cs.walRohUnterwegs = nil
 	if n := cs.walRohSchnittLocked(q, len(q)); n != len(q) {
 		t.Fatalf("ohne laufenden Flush Schnitt bei %d, erwartet %d", n, len(q))
+	}
+}
+
+// Der ganze Weg mit Stufe 1 und aktiven Wirtschaftsregeln: Annahme ueber den
+// WAL-Schnellpfad, Flush, pending_txs so geladen wie vom Blockbauer, Block
+// auf einem zweiten Knoten mit Signaturpruefung nachgespielt -- danach
+// dieselben Staende und Noncen.
+func TestWALRoh_AnnahmeBlockNachspielenGleich_RealDB(t *testing.T) {
+	truncateDistTestTables(t)
+	wirtschaftAn(t)
+	cs := newWALTestState(t, filepath.Join(t.TempDir(), "r.wal"))
+	a, b := neuerTestSchluessel(t), neuerTestSchluessel(t)
+	rohKonto(t, cs, a.addr, 1000)
+	rohKonto(t, cs, b.addr, 0)
+	for n := uint64(0); n < 3; n++ {
+		tx := signiere(t, a, b.addr, aeqWei(int64(n)+1), n, 1926)
+		if _, _, applied, err := cs.transferConcurrentWAL(a.addr, b.addr, tx.Amount, vorlageAus(tx)); !applied || err != nil {
+			t.Fatalf("Nonce %d: applied=%v err=%v", n, applied, err)
+		}
+	}
+	cs.FlushWALNow()
+	txs, ids := cs.LoadPendingTxs()
+	if len(txs) != 3 || len(ids) != 3 {
+		t.Fatalf("%d Zeilen geladen, erwartet 3", len(txs))
+	}
+
+	dag, nachspieler := nachspielKnoten(t, map[string]float64{a.addr: 1000})
+	if ok := dag.replayTransactions(testBlock(1, txs...), true); !ok {
+		t.Fatal("der zweite Knoten lehnt den Block mit den ueber den WAL-Pfad angenommenen signierten Ueberweisungen ab")
+	}
+	for _, addr := range []string{a.addr, b.addr} {
+		an, na := kontoVon(t, cs, addr), kontoVon(t, nachspieler, addr)
+		if an.Balance.Float() != na.Balance.Float() {
+			t.Fatalf("%s: Stand %v (annehmend) != %v (nachspielend)", addr, an.Balance.Float(), na.Balance.Float())
+		}
+	}
+	if an, na := kontoVon(t, cs, a.addr).NaechsteNonce, kontoVon(t, nachspieler, a.addr).NaechsteNonce; an != 3 || na != 3 {
+		t.Fatalf("NaechsteNonce annehmend %d, nachspielend %d, erwartet 3", an, na)
 	}
 }
