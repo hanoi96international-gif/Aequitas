@@ -487,8 +487,15 @@ type ChainState struct {
 	// dirty-queue-plus-periodic-worker shape as evmMirrorDirty/poolFlushDirty
 	// above, guarded by their own mutex for the same reason (cheap enough to
 	// touch inline on every WAL-durable transfer without contending cs.mu).
-	walFlushMu       sync.Mutex
-	walFlushQueue    []walFlushItem
+	walFlushMu    sync.Mutex
+	walFlushQueue []walFlushItem
+	// Signierte Ueberweisungen (Stufe 1.0) im WAL-Pfad, je Absender, unter
+	// walFlushMu: walRohOffen zaehlt noch nicht geschriebene (Warteschlange
+	// und laufende Flushes), walRohUnterwegs die Absender eines gerade
+	// laufenden Flushes. Beides haelt die Nonces eines Absenders in
+	// pending_txs in steigender Reihenfolge (wal_nonce_reihenfolge.go).
+	walRohOffen      map[string]int
+	walRohUnterwegs  map[string]int
 	walFlushOnce     sync.Once
 	walFlushStopCh   chan struct{} // see stopWALFlushWorkerForTest's own comment
 	walFlushStopOnce sync.Once     // makes stopWALFlushWorkerForTest safe to call more than once
@@ -5053,16 +5060,22 @@ func (cs *ChainState) TransferAtomic(from, to string, amount float64, pendingTxT
 		return cs.transferAtomicDirect(from, to, amount, pendingTxTemplate)
 	}
 	// Signierte Ueberweisungen (Stufe 1.0) nehmen nie die schnellen Pfade:
-	// nur der Stapelpfad setzt NaechsteNonce beim Annehmen. Mit aktiven
-	// Wirtschaftsregeln nimmt nur noch der WAL-Pfad Ueberweisungen schnell an
-	// (wirtschaft_schnellpfad.go); das hier gilt unabhaengig davon.
-	if pendingTxTemplate.Roh != "" {
-		// kein schneller Pfad
-	} else if cs.wal != nil {
+	// nur der Stapelpfad und der WAL-Pfad setzen NaechsteNonce beim Annehmen.
+	if cs.wal != nil {
+		// Auch signierte Ueberweisungen: der WAL-Pfad prueft und setzt
+		// NaechsteNonce selbst (wal_nonce_reihenfolge.go).
 		if fLost, tLost, applied, werr := cs.transferConcurrentWAL(from, to, amount, pendingTxTemplate); applied {
 			transferFastPathApplied.Add(1)
 			return fLost, tLost, werr
 		}
+		// Zurueck auf den seriellen Weg: dessen Zeile stuende sofort in
+		// pending_txs, vor noch ungeflushten WAL-Ueberweisungen desselben
+		// Absenders mit kleinerer Nonce. Erst die schreiben.
+		if pendingTxTemplate.Roh != "" && !cs.walVorSeriellLeeren(from) {
+			return 0, 0, fmt.Errorf("server busy: earlier transfers of this sender are still being written, try again shortly")
+		}
+	} else if pendingTxTemplate.Roh != "" {
+		// kein schneller Pfad: transferConcurrent kennt NaechsteNonce nicht
 	} else if fLost, tLost, applied, cerr := cs.transferConcurrent(from, to, amount, pendingTxTemplate); applied {
 		transferFastPathApplied.Add(1)
 		return fLost, tLost, cerr
