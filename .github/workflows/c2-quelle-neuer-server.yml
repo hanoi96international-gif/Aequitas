@@ -41,8 +41,20 @@ jobs:
             CUR="$(docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E '^PRIMARY_NODE_URLS=' | cut -d= -f2-)"
             echo "vorher: PRIMARY_NODE_URLS=${CUR:-<nicht gesetzt>}"
             if [ "$CUR" = "$ZIEL" ]; then echo "schon gesetzt -- nichts zu tun"; exit 0; fi
-            bash /root/env-setzen.sh PRIMARY_NODE_URLS=$ZIEL || echo "(env-setzen.sh meldete einen Fehlercode -- die Pruefung unten entscheidet)"
+            # env-setzen.sh bricht ab, solange RESYNC_FROM_SNAPSHOT nicht
+            # ausdruecklich false ist (Lauf 1: "ABBRUCH: RESYNC nicht false").
+            # Zu Recht: mit einer Quelle und RESYNC an ersetzte C2 beim
+            # Neustart seinen Zustand durch den Snapshot der Quelle. Also
+            # zuerst ausdruecklich false -- die sichere Richtung --, dann die
+            # Quelle. Nimmt das Skript nur ein Paar, folgt ein zweiter Aufruf.
+            bash /root/env-setzen.sh RESYNC_FROM_SNAPSHOT=false PRIMARY_NODE_URLS=$ZIEL || echo "(env-setzen.sh meldete einen Fehlercode -- die Pruefung unten entscheidet)"
+            R="$(docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E '^RESYNC_FROM_SNAPSHOT=' | cut -d= -f2-)"
+            echo "RESYNC_FROM_SNAPSHOT=${R:-<nicht gesetzt>}"
             IST="$(docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E '^PRIMARY_NODE_URLS=' | cut -d= -f2-)"
+            if [ "$IST" != "$ZIEL" ] && [ "$R" = "false" ]; then
+              bash /root/env-setzen.sh PRIMARY_NODE_URLS=$ZIEL || echo "(env-setzen.sh meldete einen Fehlercode)"
+              IST="$(docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E '^PRIMARY_NODE_URLS=' | cut -d= -f2-)"
+            fi
             echo "nachher: PRIMARY_NODE_URLS=${IST:-<nicht gesetzt>}"
             [ "$IST" = "$ZIEL" ] || { echo "FEHLER: Wert nicht im Prozess"; exit 1; }
             for i in $(seq 1 30); do
