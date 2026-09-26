@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -658,32 +659,41 @@ func (s *EVMRPCServer) handleRPC(w http.ResponseWriter, r *http.Request) {
 		// Die Ergebnisse stehen an ihrer Position; das Buendel antwortet in
 		// der Reihenfolge der Anfrage, wie es JSON-RPC verlangt.
 		results := make([]interface{}, len(batch))
+		// Stufe 1.0: Posten DESSELBEN Absenders nacheinander, in
+		// Nonce-Reihenfolge -- die Annahme verlangt je Absender steigende
+		// Nonces (sonst stuenden sie falsch herum im Block). Nebenlaeufig
+		// liefe Nonce 6 womoeglich vor 5, und 5 waere danach "zu niedrig":
+		// Generalprobe 26.09.2026, 440.169 von 605.430 Posten so abgelehnt.
+		// Verschiedene Absender bleiben nebenlaeufig.
+		gruppen := buendelGruppen(len(batch), precomputed, signierteUeberweisungenAufnehmen(nowUnix()))
 		parallel := rpcBatchParallel()
-		if parallel > len(batch) {
-			parallel = len(batch)
+		if parallel > len(gruppen) {
+			parallel = len(gruppen)
 		}
 		if parallel < 1 {
 			parallel = 1
 		}
 		var bwg sync.WaitGroup
-		bjobs := make(chan int)
+		bjobs := make(chan []int)
 		for w := 0; w < parallel; w++ {
 			bwg.Add(1)
 			go func() {
 				defer bwg.Done()
-				for i := range bjobs {
-					if overBudget[i] {
-						// Fail closed, exactly like the single-request path below:
-						// the item is answered, but never dispatched.
-						results[i] = errorResponse(nil, -32005, "rate limited: too many requests, try again shortly")
-						continue
+				for gruppe := range bjobs {
+					for _, i := range gruppe {
+						if overBudget[i] {
+							// Fail closed, exactly like the single-request path below:
+							// the item is answered, but never dispatched.
+							results[i] = errorResponse(nil, -32005, "rate limited: too many requests, try again shortly")
+							continue
+						}
+						results[i] = s.handleSingle(batch[i], precomputed[i])
 					}
-					results[i] = s.handleSingle(batch[i], precomputed[i])
 				}
 			}()
 		}
-		for i := range batch {
-			bjobs <- i
+		for _, g := range gruppen {
+			bjobs <- g
 		}
 		close(bjobs)
 		bwg.Wait()
@@ -1005,6 +1015,35 @@ func (s *EVMRPCServer) ethCall(params []json.RawMessage) (interface{}, *RPCError
 	}
 
 	return "0x" + hex.EncodeToString(result), nil
+}
+
+// buendelGruppen teilt die Posten eines Buendels in Gruppen, die nacheinander
+// laufen. Ohne Nonce-Reihenfolge (nachAbsender=false) ist jeder Posten seine
+// eigene Gruppe -- alles nebenlaeufig, wie bisher. Mit Stufe 1.0 bilden alle
+// dekodierten Ueberweisungen eines Absenders eine Gruppe, nach Nonce sortiert
+// (stabil: gleiche Nonces behalten die Reihenfolge der Anfrage).
+func buendelGruppen(n int, pre []*precomputedSendTx, nachAbsender bool) [][]int {
+	gruppen := make([][]int, 0, n)
+	jeAbsender := map[string]int{}
+	for i := 0; i < n; i++ {
+		p := pre[i]
+		if !nachAbsender || p == nil || p.err != nil || p.tx == nil || p.sender == "" {
+			gruppen = append(gruppen, []int{i})
+			continue
+		}
+		if g, ok := jeAbsender[p.sender]; ok {
+			gruppen[g] = append(gruppen[g], i)
+			continue
+		}
+		jeAbsender[p.sender] = len(gruppen)
+		gruppen = append(gruppen, []int{i})
+	}
+	for _, g := range gruppen {
+		if len(g) > 1 {
+			sort.SliceStable(g, func(a, b int) bool { return pre[g[a]].tx.Nonce() < pre[g[b]].tx.Nonce() })
+		}
+	}
+	return gruppen
 }
 
 // precomputedSendTx carries an eth_sendRawTransaction batch item's decode +
