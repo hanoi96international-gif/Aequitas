@@ -39,6 +39,36 @@ function zeile(text, art) {
   out.appendChild(d);
 }
 
+// wertZeigen: eine Zeile zum Kopieren, markierbar und mit Knopf. Der Guide
+// ("Run a validator") verspricht, dass diese Seite den Wert fuer
+// NODE_OPERATOR_BINDING_SIGNATURE anzeigt; seit dem Umbau auf die direkte
+// Eintragung tat sie das nicht mehr. Beim Umzug auf einen neuen Server
+// (26.09.2026) fehlte er genau dort, wo er gebraucht wird: die ANDEREN Knoten
+// kennen den neuen Signierschluessel nur ueber diese Signatur, die der Knoten
+// bei der Anmeldung mitschickt.
+function wertZeigen(text) {
+  const out = document.getElementById('out');
+  const kasten = document.createElement('div');
+  kasten.style.cssText = 'margin:10px 0;padding:10px;border:1px solid #C9A84C;border-radius:6px;background:#0A0E1A';
+  const code = document.createElement('code');
+  code.textContent = text;
+  code.style.cssText = 'display:block;word-break:break-all;user-select:all;color:#22C55E;font-size:0.75rem';
+  kasten.appendChild(code);
+  const knopf = document.createElement('button');
+  knopf.textContent = 'Copy';
+  knopf.style.cssText = 'margin-top:8px;padding:6px 14px;background:#C9A84C;color:#0A0E1A;border:0;border-radius:4px;font-weight:bold;cursor:pointer';
+  knopf.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      knopf.textContent = 'Copied';
+    } catch (e) {
+      knopf.textContent = 'Select the line above and copy it';
+    }
+  });
+  kasten.appendChild(knopf);
+  out.appendChild(kasten);
+}
+
 function fehler(text) {
   const e = document.getElementById('err');
   e.textContent = text;
@@ -145,9 +175,12 @@ async function eintragen() {
       return;
     }
     zeile('Registered on this node.', 'ok');
-    zeile('The registry is per-node and is not replicated — open this page on each ' +
-      'node that should honour it, or ask its operator to.', 'warn');
-    zeile('Done. Nothing further to run.', 'ok');
+    zeile('Add this line to your node\'s .env and restart it. The node sends it to every ' +
+      'other node when it joins, so they accept your signing key too — this page\'s own ' +
+      'registration only counts on this one node:', 'ok');
+    wertZeigen('NODE_OPERATOR_BINDING_SIGNATURE=' + signatur);
+    zeile('Not secret: it only says that your wallet authorizes this one signing address.', 'ok');
+    zeile('Done.', 'ok');
   } catch (e) {
     // Ablehnen in der Wallet ist ein Nein, kein Fehler.
     fehler(e && e.code === 4001
