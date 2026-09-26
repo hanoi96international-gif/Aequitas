@@ -31,15 +31,19 @@ setze AEQUITAS_PEER_LAG_BODEN 1500
 setze AEQUITAS_PEER_LAG_SLACK 5
 # 15 GB RAM auf C1 (C2: 11 GB, 5GiB). Postgres braucht ~2 GB, Rest bleibt frei.
 setze GOMEMLIMIT 8GiB
+# Lastgenerator auf C2 (eigene Maschine) von der Ratenbegrenzung ausnehmen
+# (rpc_frei.go). Gemessen 26.09.: ohne das 99 % -32005 bei 1.051 Paaren.
+# Nur diese eine Adresse; die Inflight-Grenze gilt weiter.
+setze AEQUITAS_RPC_RATE_LIMIT_FREI 194.163.188.71
 
 # Kein Neubau: dasselbe Image, nur neue Umgebung.
 docker compose up -d --no-deps node
 
-LISTE='^(ENABLE_MULTI_BLOCK_TICK|AEQUITAS_MAX_TXS_PER_BLOCK|AEQUITAS_COMPRESS_BLOCK_PAYLOAD|AEQUITAS_DB_MAX_CONNS|AEQUITAS_PRODUCE_WHEN_BACKLOG_SHRINKING|AEQUITAS_RPC_RATE_LIMIT_MAX|AEQUITAS_RPC_QUIET_TX|AEQUITAS_EIGENLAST_BREMSE|AEQUITAS_PEER_LAG_BODEN|AEQUITAS_PEER_LAG_SLACK|GOMEMLIMIT|AEQUITAS_WAL_ENABLED|ANNAHME_ROLLE|IS_PRIMARY_NODE)='
+LISTE='^(ENABLE_MULTI_BLOCK_TICK|AEQUITAS_MAX_TXS_PER_BLOCK|AEQUITAS_COMPRESS_BLOCK_PAYLOAD|AEQUITAS_DB_MAX_CONNS|AEQUITAS_PRODUCE_WHEN_BACKLOG_SHRINKING|AEQUITAS_RPC_RATE_LIMIT_MAX|AEQUITAS_RPC_QUIET_TX|AEQUITAS_EIGENLAST_BREMSE|AEQUITAS_PEER_LAG_BODEN|AEQUITAS_PEER_LAG_SLACK|GOMEMLIMIT|AEQUITAS_RPC_RATE_LIMIT_FREI|AEQUITAS_WAL_ENABLED|ANNAHME_ROLLE|IS_PRIMARY_NODE)='
 echo "--- im Container ---"
 docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E "$LISTE" | sort
 n=$(docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -cE "$LISTE")
-[ "$n" -ge 14 ] || { echo "FEHLER: nur $n von 14 Schaltern im Container"; exit 1; }
+[ "$n" -ge 15 ] || { echo "FEHLER: nur $n von 15 Schaltern im Container"; exit 1; }
 
 for i in $(seq 1 72); do
   S=$(curl -s -m 5 http://127.0.0.1:8080/api/health/combined || true)

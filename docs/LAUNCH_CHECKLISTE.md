@@ -1,6 +1,32 @@
 # Launch-Checkliste
 
-**Stand 24.09.2026, nachts. Zuerst: eine Gebühr für jede Überweisung. Dann: das fairste Geld (Geldflüsse geprüft und geändert). Dann: rotierender Leiter und Leistungsnachweis (gebaut, aus). Dann: Contabo1 ist abgeschaltet, was das bedeutet und was jetzt gilt. Der Stand vom 23.09. folgt darunter.**
+**Stand 26.09.2026, abends. Neuer C1 (netcup, 188.172.229.121) ist Primary, Wirtschaftsregeln seit 15:00 UTC aktiv, TPS gemessen. Die Einträge vom 24.09. und davor folgen darunter.**
+
+> ## 26.09.: Neuer C1, Wirtschaft aktiv, TPS, Beta-Lücken geschlossen
+>
+> **Aufbau jetzt.** C1 (netcup, 8 Kerne, 15 GB) nimmt an (`ANNAHME_ROLLE=annehmend`), C2 ist `nur_lesend`. Auf C1 laufen Knoten, Proof-Server, Vergleichsdienst und ein eigener Coordinator (`proof1.aequitas.digital/coordinator`, Schlüssel `d3c46a77…` auf beiden Knoten eingetragen). Registrierung hat damit zwei unabhängige Eingänge, Quorum 2 von 2 erreichbar. Deploy immer erst C1, dann C2 (`deploy-c1-dann-c2.yml`).
+>
+> **Wirtschaftsregeln** seit 15:00 UTC auf beiden Knoten aktiv (freie Adresse bis 250 AEQ, Monatsfreibetrag, Liegegeld). Sie liefen zunächst nur seriell; seit #200 wendet der WAL-Schnellpfad sie selbst an (Menschen und freie Adressen; mit Unternehmen seriell), in den Blöcken steht dasselbe (`wirtschaft_schnellpfad.go`).
+>
+> **TPS (C1, Wirtschaft aktiv, Generator auf C2):**
+>
+> | Bündel | angenommen, Mittel | Spitze/s | in Blöcken | Fehlschläge |
+> |---|---|---|---|---|
+> | 100 | 6.316 | 17.942 | 5.937 | viele `-32005` (Inflight-Grenze) |
+> | 20 | 8.259 | 18.751 | 7.623 | 0 |
+> | 35 | **13.279** | **21.775** | **9.219** | 0 |
+>
+> Rund ein Drittel der Blöcke ist leer: C2 produziert, nimmt aber nicht an. Mehr geht mit Stufe 2 (≥ 3 Validatoren, `docs/VALIDATOR_RAILWAY.md` für einen dritten ohne eigenen Server).
+>
+> **Heute gefundene und behobene Beta-Lücken:**
+> - Die Website lieferte **app-v1.6.0** (hängt am abgeschalteten Railway-Coordinator, Registrierung unmöglich). Jetzt zeigt der Rückfall auf das neueste Release; Prüfstand: Website, C1 und C2 liefern app-v1.7.4.
+> - **Backup, Wache, Prüfstand, Geldmengen-Wache** kannten den neuen C1 nicht (nur C2). Jetzt beide Knoten, Prüfstand grün mit den richtigen Rollen.
+> - **Wachhund (ntfy)** auf dem neuen C1 eingerichtet, auf C2 zeigte er auf die tote alte C1 als Partner. Beide Boxen prüfen sich jetzt gegenseitig.
+> - **Das Repo ist öffentlich**, Artefakte sind für jeden angemeldeten GitHub-Nutzer lesbar. Die Ledger-Backups enthielten die MPC-Anteile beider Validatoren (zusammen = Gesichts-Templates) und `bio_hashes`. Alle 64 alten Artefakte gelöscht; ausgelagert wird nur noch eine Fassung ohne diese Zeilen, der volle Dump bleibt auf der Box.
+> - Die Validator-Vorlage setzte `ANNAHME_ROLLE` nicht, ein neuer Validator hätte **angenommen** (zweiter Annehmender → Divergenz). Jetzt `nur_lesend`.
+>
+> **Offen, nur mit dir:** Impressum/Datenschutz (7 Angaben, `rechtstexte-setzen.yml`), eine Test-Registrierung mit frischem Wallet über den neuen C1-Coordinator, Zwei-Personen-Test (Punkt 4), DSGVO-Entscheidung (Punkt 5).
+
 
 > ## 24.09., nachts: Dieselbe Gebühr auf jeder Überweisung
 >

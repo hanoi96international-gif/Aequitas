@@ -66,6 +66,35 @@ jobs:
             secret: C2
             fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
     steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: deploy/wachhund-einrichten.sh
+          sparse-checkout-cone-mode: false
+
+      - name: ntfy-Kanal vom bestehenden Wachhund auf C2 uebernehmen (wenn keiner angegeben)
+        # Der Kanal ist seit dem 23.09.2026 auf C2 eingerichtet. Ohne Eingabe
+        # wird genau dieser uebernommen -- maskiert, nie ausgegeben.
+        env:
+          K2: ${{ secrets.CONTABO2_SSH_KEY }}
+        run: |
+          set -eu
+          N=$(jq -r '.inputs.ntfy_kanal // ""' "$GITHUB_EVENT_PATH" | tr -d '[:space:]')
+          [ -z "$N" ] || exit 0
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$K2" > ~/.ssh/c2 && chmod 600 ~/.ssh/c2
+          ssh-keyscan 194.163.188.71 2>/dev/null > ~/.ssh/kh_c2
+          ssh-keygen -lf ~/.ssh/kh_c2 | awk '{print $2}' | grep -qx 'SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto'
+          V=$(ssh -i ~/.ssh/c2 -o BatchMode=yes -o UserKnownHostsFile=$HOME/.ssh/kh_c2 root@194.163.188.71 \
+            "grep -E '^NTFY_KANAL=' /root/wachhund/env 2>/dev/null | head -1 | cut -d= -f2-" | tr -d '[:space:]')
+          rm -f ~/.ssh/c2
+          if [ -n "$V" ]; then
+            echo "::add-mask::$V"
+            echo "NTFY_VON_C2=$V" >> "$GITHUB_ENV"
+            echo "ntfy: vom Wachhund auf C2 uebernommen (Name maskiert)"
+          else
+            echo "ntfy: auf C2 keiner eingerichtet"
+          fi
+
       - name: Welche Kanaele?
         env:
           T: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -73,6 +102,7 @@ jobs:
         run: |
           # Aus der Ereignisdatei, nicht als Eingabe-Ausdruck -- siehe Kopf.
           N=$(jq -r '.inputs.ntfy_kanal // ""' "$GITHUB_EVENT_PATH" | tr -d '[:space:]')
+          N="${N:-${NTFY_VON_C2:-}}"
           if [ -n "$N" ]; then
             echo "::add-mask::$N"
             case "$N" in

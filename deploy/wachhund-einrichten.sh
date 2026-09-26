@@ -65,7 +65,11 @@ fi
 SKRIPT
 chmod 700 /root/wachhund/wachhund.sh
 # Cron-Eintrag (idempotent).
-( crontab -l 2>/dev/null | grep -v '/root/wachhund/wachhund.sh' ; echo '*/5 * * * * /root/wachhund/wachhund.sh >/dev/null 2>&1' ) | crontab -
+command -v crontab >/dev/null || { echo "FEHLER: kein cron auf dieser Box (apt-get install cron)"; exit 1; }
+# Auf einer frischen Box gibt es noch keine Crontab: crontab -l und grep -v
+# scheitern dann beide, und mit pipefail endete das Skript hier stumm
+# (neuer C1, 26.09.2026). Das "|| true" gehoert zur Vorliste, nicht zum Eintrag.
+{ crontab -l 2>/dev/null | grep -v '/root/wachhund/wachhund.sh' || true; echo '*/5 * * * * /root/wachhund/wachhund.sh >/dev/null 2>&1'; } | crontab -
 echo "Cron: $(crontab -l | grep -c wachhund) Eintrag, Skript $(stat -c %a /root/wachhund/wachhund.sh), Env $(stat -c %a /root/wachhund/env)"
 # Einmal jetzt laufen lassen (setzt den Zustand).
 /root/wachhund/wachhund.sh
