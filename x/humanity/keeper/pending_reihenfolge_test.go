@@ -24,7 +24,7 @@ func TestPendingReihenfolge_ProduceBlockLiestNachWALSeq(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(f), "INSERT INTO pending_txs (tx_json, created_at, wal_seq) VALUES") {
+	if !strings.Contains(string(f), "INSERT INTO pending_txs (tx_json, created_at, wal_seq)\nSELECT v.tx_json, $2::bigint, v.wal_seq") {
 		t.Fatal("der WAL-Flush schreibt wal_seq nicht mehr")
 	}
 }
