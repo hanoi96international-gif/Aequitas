@@ -12,6 +12,7 @@ on:
       duration: {description: "Messfenster", required: false, default: "30s"}
       accounts_csv: {description: "Kontenliste auf C2", required: false, default: "accounts-funded.csv"}
       pairs: {description: "Sender-Paare (0 = alle)", required: false, default: "0"}
+      batch: {description: "Ueberweisungen je Buendel (1..100). Ein Buendel eines Absenders laeuft im Knoten nacheinander.", required: false, default: "20"}
   # Freigegeben am 26.09.2026 ("Freigabe"): der Push dieser Datei startet
   # eine Messung.
   push:
@@ -30,6 +31,7 @@ jobs:
       DURATION: ${{ inputs.duration || '30s' }}
       ACCOUNTS_CSV: ${{ inputs.accounts_csv || 'accounts-funded.csv' }}
       PAIRS: ${{ inputs.pairs || '0' }}
+      BATCH: ${{ inputs.batch || '20' }}
     steps:
       - uses: actions/checkout@v4
       - name: Schluessel und Host-Pruefung
@@ -55,7 +57,7 @@ jobs:
       - name: Last von C2 auf C1
         run: |
           ssh -i ~/.ssh/c2 -o BatchMode=yes root@194.163.188.71 \
-            "DURATION='$DURATION' ACCOUNTS_CSV='$ACCOUNTS_CSV' PAIRS='$PAIRS' bash -s" <<'SKRIPT'
+            "DURATION='$DURATION' ACCOUNTS_CSV='$ACCOUNTS_CSV' PAIRS='$PAIRS' BATCH='$BATCH' bash -s" <<'SKRIPT'
           set -euo pipefail
           cd /root/contabo-loadtest
           rm -rf ./tools
@@ -68,7 +70,7 @@ jobs:
               -rpc http://188.172.229.121:8080/rpc \
               -status http://188.172.229.121:8080/api/status \
               -phase run -duration "$DURATION" -ramp 5 \
-              -transfer-amount-wei 10000000000000 -batch-size 100 -http-timeout 30s -pairs "$PAIRS"
+              -transfer-amount-wei 10000000000000 -batch-size "$BATCH" -http-timeout 30s -pairs "$PAIRS"
           SKRIPT
       - name: Was C1 gezaehlt hat
         if: always()
