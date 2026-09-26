@@ -76,6 +76,9 @@ type Transaction struct {
 	// Treuhand, Unternehmen) -- das Gegenstueck zu Roh (auftrag_nachweis.go).
 	// omitempty: aeltere Bloecke behalten ihren Hash.
 	Nachweis *Auftragsnachweis `json:"nachweis,omitempty"`
+	// Vorbehalt: Stufe 2, Tausch und Liquiditaet in zwei Schritten
+	// (vorbehalt.go). omitempty: aeltere Bloecke behalten ihren Hash.
+	Vorbehalt *VorbehaltAngaben `json:"vorbehalt,omitempty"`
 	// DistributionAt carries the exact Unix timestamp the primary chose for
 	// a distribution round (e.g. the new last_ubi_at) on
 	// "ubi_distribution_finalize" TXs. Audit recheck 2 (P0 #4) found the
@@ -7372,6 +7375,35 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 		case "unternehmen_eroeffnen":
 			if err := dag.state.applyUnternehmenEroeffnenLocked(context.Background(), wallet, tx.To, tx.Name, tx.Kategorie, block.Timestamp); err != nil {
 				fmt.Printf("[REPLAY] ✗ unternehmen_eroeffnen %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
+				hardFailure = true
+				continue
+			}
+		case "vorbehalt":
+			// Stufe 2 (vorbehalt.go), Schritt 1: Einsatz von X aufs
+			// Vorbehaltskonto. Der Nachweis ist vorab geprueft.
+			vtx := tx
+			if err := dag.state.vorbehaltAnwendenLocked(withTx(context.Background(), dbTx), &vtx, kontenSammlung); err != nil {
+				if istZustandsAblehnung(err) {
+					fmt.Printf("[REPLAY] ⚠ vorbehalt %s: %v (block #%d) — uebersprungen\n", wallet, err, block.Height)
+					merkeUebersprungeneUeberweisung()
+					uebersprungenInDiesemBlock++
+					continue
+				}
+				fmt.Printf("[REPLAY] ✗ vorbehalt %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
+				hardFailure = true
+				continue
+			}
+		case "vorbehalt_ausfuehrung":
+			// Schritt 2: Rueckbuchung und der Auftrag, genau wie getragen.
+			vtx := tx
+			if err := dag.state.applyVorbehaltAusfuehrungLocked(withTx(context.Background(), dbTx), &vtx, block.Timestamp); err != nil {
+				if istZustandsAblehnung(err) {
+					fmt.Printf("[REPLAY] ⚠ vorbehalt_ausfuehrung %s: %v (block #%d) — uebersprungen\n", wallet, err, block.Height)
+					merkeUebersprungeneUeberweisung()
+					uebersprungenInDiesemBlock++
+					continue
+				}
+				fmt.Printf("[REPLAY] ✗ vorbehalt_ausfuehrung %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
 				hardFailure = true
 				continue
 			}

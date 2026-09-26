@@ -715,6 +715,7 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		"signierte_ueberweisungen": SignierteUeberweisungenStand(),
 		"absender_cache":           AbsenderCacheStand(),
 		"kappung_verteilt":         a.state.KappungStand(),
+		"vorbehalte":               a.state.VorbehaltStand(),
 		"leitung":                  a.state.LeitungStand(),
 		"leistungsnachweis":        LeistungsnachweisStand(),
 		// Wie das Nachspielen die Ueberweisungen anwendet -- parallel oder seriell.

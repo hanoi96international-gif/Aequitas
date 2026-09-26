@@ -164,6 +164,17 @@ func (a *APIServer) handleSwap(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(SwapResponse{Success: false, Message: err.Error()})
 		return
 	}
+	if a.state.vorbehaltStattDirekt(wallet) {
+		id, err := a.state.VorbehaltAtomic(pendingTxTemplate, req.MinAmountOut)
+		if err != nil {
+			a.state.RestoreSwapNonce(wallet, req.Nonce)
+			json.NewEncoder(w).Encode(SwapResponse{Success: false, Message: err.Error()})
+			return
+		}
+		json.NewEncoder(w).Encode(SwapResponse{Success: true, Message: "swap reserved " + id + " -- executed with the next block (Tausch vorgemerkt)",
+			NewAEQ: a.state.GetBalance(wallet), NewTUSD: a.state.GetTUsdBalance(wallet)})
+		return
+	}
 	amountOut, _, err := a.state.SwapAtomic(wallet, req.Amount, aeqToTusd, req.MinAmountOut, pendingTxTemplate)
 	if err != nil {
 		// Swap failed — restore nonce so user can retry with the same nonce.
@@ -251,6 +262,16 @@ func (a *APIServer) handleAddLiquidity(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(AddLiquidityResponse{Success: false, Message: err.Error()})
 		return
 	}
+	if a.state.vorbehaltStattDirekt(wallet) {
+		id, err := a.state.VorbehaltAtomic(pendingTxTemplate, 0)
+		if err != nil {
+			a.state.RestoreSwapNonce(wallet, req.Nonce)
+			json.NewEncoder(w).Encode(AddLiquidityResponse{Success: false, Message: err.Error()})
+			return
+		}
+		json.NewEncoder(w).Encode(AddLiquidityResponse{Success: true, Message: "liquidity reserved " + id + " -- added with the next block"})
+		return
+	}
 	_, err = a.state.AddLiquidityAtomic(wallet, req.AmountAEQ, req.AmountTUSD, pendingTxTemplate)
 	if err != nil {
 		a.state.RestoreSwapNonce(wallet, req.Nonce)
@@ -330,6 +351,16 @@ func (a *APIServer) handleRemoveLiquidity(w http.ResponseWriter, r *http.Request
 	if err := a.state.pruefeAuftragsNonce(wallet, pendingTxTemplate.Nachweis); err != nil {
 		a.state.RestoreSwapNonce(wallet, req.Nonce)
 		json.NewEncoder(w).Encode(RemoveLiquidityResponse{Success: false, Message: err.Error()})
+		return
+	}
+	if a.state.vorbehaltStattDirekt(wallet) {
+		id, err := a.state.VorbehaltAtomic(pendingTxTemplate, 0)
+		if err != nil {
+			a.state.RestoreSwapNonce(wallet, req.Nonce)
+			json.NewEncoder(w).Encode(RemoveLiquidityResponse{Success: false, Message: err.Error()})
+			return
+		}
+		json.NewEncoder(w).Encode(RemoveLiquidityResponse{Success: true, Message: "withdrawal reserved " + id + " -- executed with the next block"})
 		return
 	}
 	outAEQ, outTUSD, _, err := a.state.RemoveLiquidityAtomic(wallet, req.SharesToBurn, pendingTxTemplate)

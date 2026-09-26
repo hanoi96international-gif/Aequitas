@@ -67,6 +67,8 @@ const (
 // Nachweis tragen muessen.
 func braucheNachweis(typ string) bool {
 	switch typ {
+	case "vorbehalt": // Stufe 2 (vorbehalt.go): der Nachweis des inneren Auftrags
+		return true
 	case "swap_aeq_tusd", "swap_tusd_aeq", "add_liquidity", "remove_liquidity",
 		"faucet", "escrow_recover",
 		"unternehmen_eroeffnen", "unternehmen_mitinhaber", "unternehmen_schliessen":
@@ -78,7 +80,7 @@ func braucheNachweis(typ string) bool {
 // nutztAuftragsNonce: Auftraege mit fortlaufender Nonce (swap_nonces).
 func nutztAuftragsNonce(typ string) bool {
 	switch typ {
-	case "swap_aeq_tusd", "swap_tusd_aeq", "add_liquidity", "remove_liquidity":
+	case "swap_aeq_tusd", "swap_tusd_aeq", "add_liquidity", "remove_liquidity", "vorbehalt":
 		return true
 	}
 	return false
@@ -99,6 +101,15 @@ type unterschrift struct {
 // wirtschaft_api.go, api.go), und prueft, dass der Block ausfuehrt, was
 // unterschrieben wurde. Zustandslos.
 func auftragsNachricht(tx *Transaction) (string, []unterschrift, error) {
+	if tx.Type == "vorbehalt" {
+		// Stufe 2: geprueft wird der innere Auftrag, wie ihn der Auftraggeber
+		// unterschrieben hat (vorbehalt.go).
+		if tx.Vorbehalt == nil || !vorbehaltsArt(tx.Vorbehalt.Art) {
+			return "", nil, fmt.Errorf("Vorbehalt ohne gueltige Art")
+		}
+		inner := innererAuftrag(tx)
+		return auftragsNachricht(&inner)
+	}
 	n := tx.Nachweis
 	w := strings.ToLower(strings.TrimSpace(tx.Wallet))
 	to := strings.ToLower(strings.TrimSpace(tx.To))

@@ -164,6 +164,30 @@ Belasten zwei Knoten **dasselbe Konto** gleichzeitig, prüfen sie gegen verschie
 
 **Aktivierung:** Blockhöhe, frühestens wenn mindestens 3 unabhängige Validatoren laufen.
 
+### Umgesetzt (26.09.2026)
+
+Aktivierung per Zeit (`verteilteAnnahmeAbUnix`, aus). Sie greift immer erst mit dem nächsten Term, und nur mit Wahl (ab 3 Validatoren).
+
+- **Zuständigkeit** (`zustaendigkeit.go`): `zuteilung[H(konto|term) mod n]`. Die globalen Konten (Töpfe, Pool, Faucet) gehören dem Leiter.
+- **Wer ist Validator:** Die Menge, deren Mehrheit zählt, ist der Satz der bestehenden Leitung (Raft-Mitgliedschaft, `leitung.go`). Der Leiter legt beim Antritt die Zuteilung fest und schickt sie mit jeder Lease. Sie gilt fest für den Term und überlebt Neustarts.
+- **Annahme nur mit bestätigter Lease** (`leitung_verteilt.go`). Ein Mitglied nimmt höchstens LeaseDauer/2 nach der letzten Lease an, die der Leiter mit Mehrheit bestätigt hat. Ein abgeschnittenes Mitglied hört so auf, bevor die Mehrheit wählen kann.
+- **Übergabe an der Epochengrenze:** Der Leiter schickt einen Abschluss. Jedes Mitglied meldet „entleert“ mit seinem letzten Block. Die Neuen nehmen erst an, wenn sie alle diese Blöcke nachgespielt haben. Nach einer Wahl gilt stattdessen eine Ruhezeit.
+- **Ausfall:** Der Leiter führt ein Mitglied als ausgefallen, dauerhaft für den Term. Der Nächste im Ring übernimmt nach LeaseDauer + Ruhezeit.
+- **Weiterleitung** an den Zuständigen: RPC nach Absender, REST nach Konto.
+- **Vermögensgrenze** (`kappung_verteilt.go`): Gutschriften kappen nicht mehr selbst. Der Zuständige kappt mit eigener Transaktion und festem Betrag.
+- **Tausch und Liquidität** (`vorbehalt.go`) laufen in zwei Schritten. Zuerst legt der Zuständige des Kontos den Einsatz auf ein Vorbehaltskonto. Dann führt der Leiter den Auftrag aus oder erstattet. Doppelt ausführen ist ausgeschlossen, weil das Konto danach leer ist. Offene Vorbehalte überleben Neustarts.
+- **Tägliche Verteilung:** im verteilten Term nur beim Leiter.
+
+**Nachweise:**
+- Simulation: nie zwei Annehmende für ein Konto, unter Ausfällen, Neustarts, Netztrennungen, Nachrichtenverlust und Uhrengang. Dazu opt-in 120 weitere Läufe mit 3 bis 7 Validatoren. Die Simulation fand zwei echte Fehler, beide behoben.
+- Drei gleichzeitig annehmende Knoten mit leerlaufenden Konten bleiben bitgleich. Ohne Zuständigkeit laufen sie auseinander.
+- Die Kappung ist bitgleich auch bei gleichzeitiger Ausgabe und Gutschrift.
+- Der Tausch per Vorbehalt ist bitgleich über drei Knoten, erstattet beim Scheitern und führt nie doppelt aus.
+
+**Kosten:** Jede geplante Übergabe lässt etwa 3 s niemanden annehmen. Bei 10 Minuten Amtszeit ist das ein halbes Prozent. Ein Tausch, dessen Konto nicht dem Leiter gehört, ist erst mit dem nächsten Block des Leiters ausgeführt.
+
+**Bleibt wie vorher:** Registrierung (der Herkunftszwang bindet sie an den ausstellenden Knoten) und das Vertrauensmodell für Systemaufträge. Der Leiter rechnet die Verteilung, jeder spielt sie mit den getragenen Beträgen nach.
+
 ---
 
 ## Stufe 3 — Bereiche mit ausgelosten Ausschüssen

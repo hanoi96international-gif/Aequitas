@@ -251,6 +251,9 @@ func StarteLeitung(dag *BlockDAG, cs *ChainState, selfURL string) *Leitung {
 	validatorIPsFrei(l)
 
 	cs.leitung.Store(l)
+	if n := cs.VorbehalteEinlesen(); n > 0 {
+		fmt.Printf("[VORBEHALT] %d offene Vorbehalte eingelesen (Stufe 2)\n", n)
+	}
 	st := l.Stand(time.Now())
 	fmt.Printf("[LEITUNG] ✓ an: Satz %v (Version %v, %v Validatoren, Wahl %v), Term %d, Leiter %s, dieser Knoten %s (Mitglied %v, leiterfaehig %v), Wechsel alle %s\n",
 		st["satz"], st["satz_version"], st["validatoren"], st["mit_wahl"], l.Term(),
@@ -278,6 +281,7 @@ func (dag *BlockDAG) leitungSchleife(l *Leitung, cs *ChainState) {
 			if verteilteAnnahmeAktiv(nowUnix()) && time.Since(letzteKappung) >= time.Second {
 				letzteKappung = time.Now()
 				cs.KappungenAbarbeiten()
+				cs.VorbehalteAbarbeiten()
 			}
 			if time.Since(letzteFaehigPruefung) > time.Minute {
 				letzteFaehigPruefung = time.Now()
@@ -507,7 +511,9 @@ func anfrageKonten(pfad string, body []byte) []string {
 	w := strings.ToLower(strings.TrimSpace(f.Wallet))
 	switch {
 	case pfad == "/api/swap" || pfad == "/api/add-liquidity" || pfad == "/api/remove-liquidity":
-		return []string{w, kontoLiquiditaetspool}
+		// Zum Zustaendigen des Kontos: ist er zugleich Leiter, tauscht er
+		// direkt, sonst ueber den Vorbehalt (vorbehalt.go).
+		return []string{w}
 	case pfad == "/api/faucet":
 		return []string{kontoFaucet}
 	case strings.HasPrefix(pfad, "/api/unternehmen/"):

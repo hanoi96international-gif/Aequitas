@@ -194,6 +194,9 @@ type ChainState struct {
 	// deren Kappung Stufe 2 dem Zustaendigen ueberlaesst.
 	kappungsMu         sync.Mutex
 	kappungsKandidaten map[string]bool
+	// Stufe 2 (vorbehalt.go): offene Vorbehalte, Vorbehaltskonto ->
+	// {Auftraggeber, Art}, und ihr Mindestbetrag. offeneVorbehalteMu.
+	vorbehalte map[string]offenerVorbehalt
 
 	// Unternehmen, Alter des Geldes, Monatsfreibetraege (wirtschaft.go).
 	wirtschaftP atomic.Pointer[wirtschaft]
@@ -1027,6 +1030,11 @@ is_human BOOLEAN NOT NULL DEFAULT false
 	// Stufe 1.0 (signierte_ueberweisung.go): null bis zur Aktivierung.
 	dbExec(`ALTER TABLE chain_accounts ADD COLUMN IF NOT EXISTS naechste_nonce BIGINT NOT NULL DEFAULT 0`)
 	dbExec(`ALTER TABLE chain_accounts ADD COLUMN IF NOT EXISTS naechste_auftrag_nonce BIGINT NOT NULL DEFAULT 0`)
+	// Stufe 2 (vorbehalt.go): offene Vorbehalte, damit ein Leiter sie nach
+	// einem Neustart wiederfindet. Kein Konsens -- abgeleitet aus Bloecken,
+	// geschrieben in derselben Transaktion wie der Vorbehalt selbst.
+	dbExec(`CREATE TABLE IF NOT EXISTS vorbehalte_offen (konto TEXT PRIMARY KEY, wallet TEXT NOT NULL, art TEXT NOT NULL,
+		betrag DOUBLE PRECISION NOT NULL DEFAULT 0, betrag2 DOUBLE PRECISION NOT NULL DEFAULT 0, min_out DOUBLE PRECISION NOT NULL DEFAULT 0)`)
 	dbExec(`ALTER TABLE chain_accounts ADD COLUMN IF NOT EXISTS version BIGINT NOT NULL DEFAULT 0`)
 	// wal_seq (SCALING_ARCHITECTURE.md Phase 7, transfer_wal.go): the highest
 	// WAL sequence number this row's balance reflects. Only ever written by

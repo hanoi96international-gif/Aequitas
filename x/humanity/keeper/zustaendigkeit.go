@@ -134,3 +134,24 @@ func annahmeKonto(tx *Transaction) string {
 	}
 	return tx.Wallet
 }
+
+// SystemauftraegeHier: leer, wenn dieser Knoten Systemauftraege (taegliche
+// Verteilung, Treuhand nach Inaktivitaet, Umlauf) ausfuehren darf; sonst der
+// Grund. Sie belasten die Toepfe -- im verteilten Term gehoeren die dem
+// Leiter. Ohne verteilten Term aendert sich nichts (wie bisher).
+func (cs *ChainState) SystemauftraegeHier() string {
+	l := cs.leitung.Load()
+	if l == nil {
+		return ""
+	}
+	l.mu.Lock()
+	verteilt := l.verteiltImTerm()
+	l.mu.Unlock()
+	if !verteilt {
+		return ""
+	}
+	if cs.nimmtAnFuer(ubiPoolAddr) {
+		return ""
+	}
+	return "verteilter Term, dieser Knoten ist nicht der Leiter"
+}
