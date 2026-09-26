@@ -3215,7 +3215,7 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 	// and this is not consensus -- see tx_block_index_async.go. This call
 	// site already treated a failure here as non-fatal, so deferring it is
 	// weaker than what the code already tolerated.
-	dag.state.IndexBlockTransactionsAsync(block.Height, block.Hash, block.Transactions)
+	dag.state.IndexBlockTransactionsAsync(block.Height, block.Hash, block.Transactions, block.Timestamp)
 	// Keep the body retrievable by digest so this node can serve it to a peer
 	// that received the block stripped of its transactions (roadmap step 4,
 	// tx_batch.go). Must happen before the broadcast below, or a peer could ask
@@ -8001,7 +8001,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 	// every concurrent transfer blocked for that entire time. Writing up to
 	// 10,000 index rows inside that window bought nothing consensus depends
 	// on. See tx_block_index_async.go.
-	dag.state.IndexBlockTransactionsAsync(block.Height, block.Hash, block.Transactions)
+	dag.state.IndexBlockTransactionsAsync(block.Height, block.Hash, block.Transactions, block.Timestamp)
 
 	dag.replayedMu.Lock()
 	// FIX 1: Cap the cache to prevent unbounded growth (memory leak).

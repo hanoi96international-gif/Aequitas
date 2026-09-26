@@ -252,6 +252,8 @@ type ChainState struct {
 	// placeholders and wallets mark landed transactions as failed — see
 	// tx_block_index.go for the live report that uncovered it.
 	txBlockIndexOnce sync.Once
+	// kontoVerlaufOnce: Tabelle des Kontoverlaufs (kontoverlauf.go).
+	kontoVerlaufOnce sync.Once
 	nullifiers       map[string]string // nullifier hex → wallet address (in-memory cache)
 	// nullifiersMu guards cs.nullifiers (a plain, non-sharded Go map — unlike
 	// cs.accounts, nullifiers were never migrated to a per-key-lockable

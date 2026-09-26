@@ -37,7 +37,7 @@ func TestAsyncIndexIsANoOpWithoutADatabase(t *testing.T) {
 	// weiterhin.
 	before := txIndexStarted.Load()
 	cs := &ChainState{}
-	cs.IndexBlockTransactionsAsync(1, "0xblock", []Transaction{{TxHash: "0xaa"}})
+	cs.IndexBlockTransactionsAsync(1, "0xblock", []Transaction{{TxHash: "0xaa"}}, 0)
 	if txIndexStarted.Load() != before {
 		t.Error("a worker was started for a state with no database; it would only ever log errors")
 	}
@@ -46,8 +46,8 @@ func TestAsyncIndexIsANoOpWithoutADatabase(t *testing.T) {
 func TestAsyncIndexIgnoresEmptyWork(t *testing.T) {
 	cs := &ChainState{}
 	before := txIndexQueued.Load()
-	cs.IndexBlockTransactionsAsync(1, "0xblock", nil)                      // no transactions
-	cs.IndexBlockTransactionsAsync(1, "", []Transaction{{TxHash: "0xaa"}}) // no block hash
+	cs.IndexBlockTransactionsAsync(1, "0xblock", nil, 0)                      // no transactions
+	cs.IndexBlockTransactionsAsync(1, "", []Transaction{{TxHash: "0xaa"}}, 0) // no block hash
 	if txIndexQueued.Load() != before {
 		t.Error("queued work with nothing to index")
 	}
