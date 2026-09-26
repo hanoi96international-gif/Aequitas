@@ -527,6 +527,23 @@ func (cs *ChainState) transferConcurrentWALGesperrt(from, to string, amount floa
 		fbWohlstandsCap.Add(1)
 		return 0, 0, false, nil, nil
 	}
+	// Signierte Ueberweisung (Stufe 1.0): dieselbe Nonce-Pruefung wie
+	// pruefeAnnahmeNonce, hier unter der Sperre des Absenders -- zwei
+	// Ueberweisungen desselben Absenders koennen sie nicht zugleich bestehen.
+	// Gesetzt wird NaechsteNonce unten mit dem Kontostand.
+	mitRoh := pendingTxTemplate.Roh != ""
+	var rohNonce uint64
+	if mitRoh {
+		n, ok := nonceAusVorlage(pendingTxTemplate)
+		if !ok {
+			fbKodierung.Add(1)
+			return 0, 0, false, nil, nil
+		}
+		if int64(n) < fromAcc.NaechsteNonce {
+			return 0, 0, true, fmt.Errorf("nonce too low: %d (next allowed %d)", n, fromAcc.NaechsteNonce), nil
+		}
+		rohNonce = n
+	}
 
 	payload, err := json.Marshal(walTransferRecord{From: from, To: to, Amount: amount, Gebuehr: gebuehr, TxHash: pendingTxTemplate.TxHash, At: at, Roh: pendingTxTemplate.Roh,
 		Buch: regeln, BuchMensch: regeln && fromArt == artMensch})
@@ -554,6 +571,9 @@ func (cs *ChainState) transferConcurrentWALGesperrt(from, to string, amount floa
 	fromAcc.Balance = fromAcc.Balance.Sub(NewDecimal(amount)).Sub(NewDecimal(gebuehr))
 	fromAcc.WALSeq = seq
 	touchActivityAt(fromAcc, at)
+	if mitRoh {
+		setzeNaechsteNonce(fromAcc, rohNonce)
+	}
 	cs.updateAccountLeafLocked(fromAcc)
 
 	toAcc.Balance = toAcc.Balance.Add(NewDecimal(amount))
@@ -592,8 +612,10 @@ func (cs *ChainState) transferConcurrentWALGesperrt(from, to string, amount floa
 // RLock) so this never contends with anything else — same shape as
 // markEVMMirrorDirtyLocked.
 func (cs *ChainState) enqueueWALFlushLocked(from, to string, tx Transaction, seq uint64) {
+	it := walFlushItem{from: from, to: to, tx: tx, seq: seq}
 	cs.walFlushMu.Lock()
-	cs.walFlushQueue = append(cs.walFlushQueue, walFlushItem{from: from, to: to, tx: tx, seq: seq})
+	cs.walFlushQueue = append(cs.walFlushQueue, it)
+	cs.walRohEingereihtLocked(it)
 	cs.walFlushMu.Unlock()
 	cs.ensureWALFlushWorkerStarted()
 }
@@ -824,7 +846,14 @@ func (cs *ChainState) flushWALQueue() {
 	// hold is what every transfer collides with. Off by default -- see
 	// wal_flush_addr_cap.go.
 	n = limitBatchByAddrs(cs.walFlushQueue, n, walFlushMaxAddrs())
+	// Nonce-Reihenfolge signierter Ueberweisungen (wal_nonce_reihenfolge.go).
+	n = cs.walRohSchnittLocked(cs.walFlushQueue, n)
+	if n == 0 {
+		cs.walFlushMu.Unlock()
+		return
+	}
 	batch := cs.walFlushQueue[:n]
+	cs.walRohUnterwegsLocked(batch, +1)
 	rest := cs.walFlushQueue[n:]
 	if cap(rest) < walFlushMaxBatch {
 		// Less than one full batch's worth of headroom left -- the next
@@ -847,8 +876,14 @@ func (cs *ChainState) flushWALQueue() {
 		fmt.Printf("[WAL] ✗ flush of %d item(s) failed, will retry next tick: %v\n", len(batch), err)
 		cs.walFlushMu.Lock()
 		cs.walFlushQueue = append(batch, cs.walFlushQueue...)
+		cs.walRohUnterwegsLocked(batch, -1)
 		cs.walFlushMu.Unlock()
+		return
 	}
+	cs.walFlushMu.Lock()
+	cs.walRohUnterwegsLocked(batch, -1)
+	cs.walRohGeschriebenLocked(batch)
+	cs.walFlushMu.Unlock()
 }
 
 // flushWALBatch performs the actual reconciliation write for one batch.
@@ -966,6 +1001,9 @@ func (cs *ChainState) flushWALBatch(batch []walFlushItem) error {
 	type walSnapshot struct {
 		balance float64
 		walSeq  uint64
+		// NaechsteNonce (Stufe 1.0): der WAL-Pfad setzt sie beim Annehmen
+		// signierter Ueberweisungen und muss sie mit dem Kontostand schreiben.
+		nonce int64
 	}
 
 	cs.mu.RLock()
@@ -1071,7 +1109,7 @@ func (cs *ChainState) flushWALBatch(batch []walFlushItem) error {
 		if !ok {
 			return fmt.Errorf("flushWALBatch: address %s vanished from cs.accounts between apply and flush -- this should never happen", addr)
 		}
-		snapshots[addr] = walSnapshot{balance: acc.Balance.Float(), walSeq: acc.WALSeq}
+		snapshots[addr] = walSnapshot{balance: acc.Balance.Float(), walSeq: acc.WALSeq, nonce: acc.NaechsteNonce}
 	}
 
 	phSnapshot = time.Since(phMark)
@@ -1130,18 +1168,23 @@ func (cs *ChainState) flushWALBatch(batch []walFlushItem) error {
 	acctAddrs := make([]string, 0, len(snapshots))
 	acctBalances := make([]float64, 0, len(snapshots))
 	acctSeqs := make([]int64, 0, len(snapshots))
+	acctNonces := make([]int64, 0, len(snapshots))
 	for _, addr := range addrList {
 		snap := snapshots[addr]
 		acctAddrs = append(acctAddrs, addr)
 		acctBalances = append(acctBalances, snap.balance)
 		acctSeqs = append(acctSeqs, int64(snap.walSeq))
+		acctNonces = append(acctNonces, snap.nonce)
 	}
-	acctArgs := []interface{}{pq.Array(acctAddrs), pq.Array(acctBalances), pq.Array(acctSeqs)}
-	acctQuery := `INSERT INTO chain_accounts (address, balance, wal_seq, version)
-SELECT address, balance, wal_seq, 1
-FROM unnest($1::text[], $2::double precision[], $3::bigint[]) AS v(address, balance, wal_seq)
+	acctArgs := []interface{}{pq.Array(acctAddrs), pq.Array(acctBalances), pq.Array(acctSeqs), pq.Array(acctNonces)}
+	// naechste_nonce steigt nur (GREATEST): sie wird nie herabgesetzt, auch
+	// nicht von einem Flush, der einen aelteren Stand traegt.
+	acctQuery := `INSERT INTO chain_accounts (address, balance, wal_seq, version, naechste_nonce)
+SELECT address, balance, wal_seq, 1, naechste_nonce
+FROM unnest($1::text[], $2::double precision[], $3::bigint[], $4::bigint[]) AS v(address, balance, wal_seq, naechste_nonce)
 ON CONFLICT (address) DO UPDATE
-SET balance = EXCLUDED.balance, wal_seq = EXCLUDED.wal_seq
+SET balance = EXCLUDED.balance, wal_seq = EXCLUDED.wal_seq,
+    naechste_nonce = GREATEST(chain_accounts.naechste_nonce, EXCLUDED.naechste_nonce)
 WHERE chain_accounts.wal_seq < EXCLUDED.wal_seq`
 	phAcctSQL = time.Since(phMark)
 	phMark = time.Now()
@@ -1396,6 +1439,14 @@ func (cs *ChainState) recoverFromWAL(path string) error {
 		}
 		// Der Absender zahlte Betrag + Gebuehr (Datensaetze vor dem 24.09.2026: 0).
 		fromApplied := applyFrom(fromAcc, entry.Seq, NewDecimal(rec.Amount).Add(NewDecimal(rec.Gebuehr)).Float(), rec.At)
+		// NaechsteNonce einer signierten Ueberweisung: steigt nur, also ohne
+		// Blick auf WALSeq -- ein gespeicherter Stand, der sie schon enthaelt,
+		// bleibt unveraendert.
+		if rec.Roh != "" {
+			if n, ok := nonceAusVorlage(Transaction{Roh: rec.Roh}); ok && setzeNaechsteNonce(fromAcc, n) {
+				cs.updateAccountLeafLocked(fromAcc)
+			}
+		}
 		toApplied := applyTo(toAcc, entry.Seq, rec.Amount, rec.At)
 		// Buchfuehrung der Wirtschaftsregeln, eigene Folgenummer im Buchkonto
 		// (wirtschaft_schnellpfad.go). Stehen beide Kontostaende schon in
