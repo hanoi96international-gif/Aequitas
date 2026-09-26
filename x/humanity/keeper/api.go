@@ -714,6 +714,7 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		"annahme_tor":              a.state.AnnahmeTorStand(),
 		"signierte_ueberweisungen": SignierteUeberweisungenStand(),
 		"absender_cache":           AbsenderCacheStand(),
+		"kappung_verteilt":         a.state.KappungStand(),
 		"leitung":                  a.state.LeitungStand(),
 		"leistungsnachweis":        LeistungsnachweisStand(),
 		// Wie das Nachspielen die Ueberweisungen anwendet -- parallel oder seriell.
@@ -1141,16 +1142,18 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	mux.HandleFunc("/api/wirtschaft/regeln", a.handleWirtschaftRegeln)
 	mux.HandleFunc("/api/wirtschaft/konto", a.handleWirtschaftKonto)
 	mux.HandleFunc("/api/unternehmen", a.handleUnternehmenListe)
-	mux.HandleFunc("/api/unternehmen/eroeffnen", a.handleUnternehmenEroeffnen)
-	mux.HandleFunc("/api/unternehmen/mitinhaber", a.handleUnternehmenMitinhaber)
-	mux.HandleFunc("/api/unternehmen/schliessen", a.handleUnternehmenSchliessen)
+	// Wie Swap und Ueberweisung durch die Weiterleitung: sie nehmen an
+	// (annahme_tor.go) und gehoeren zum Zustaendigen des Unternehmens.
+	mux.HandleFunc("/api/unternehmen/eroeffnen", a.zumLeiter(a.handleUnternehmenEroeffnen))
+	mux.HandleFunc("/api/unternehmen/mitinhaber", a.zumLeiter(a.handleUnternehmenMitinhaber))
+	mux.HandleFunc("/api/unternehmen/schliessen", a.zumLeiter(a.handleUnternehmenSchliessen))
 	mux.HandleFunc("/api/coordinator-proof", a.handleCoordinatorProof)
 	mux.HandleFunc("/api/validator-selfproof", a.handleValidatorSelfProof)
 	mux.HandleFunc("/api/set-guardian", a.handleSetGuardian)
 	mux.HandleFunc("/api/confirm-alive", a.handleConfirmAlive)
 	mux.HandleFunc("/api/guardian", a.handleGetGuardian)
 	mux.HandleFunc("/api/escrow", a.handleGetEscrow)
-	mux.HandleFunc("/api/recover-escrow", a.handleRecoverEscrow)
+	mux.HandleFunc("/api/recover-escrow", a.zumLeiter(a.handleRecoverEscrow))
 	mux.HandleFunc("/registered", a.handleRegistered)
 	mux.HandleFunc("/dapp", a.handleDapp)
 	mux.HandleFunc("/dapp.js", a.handleDappJS)

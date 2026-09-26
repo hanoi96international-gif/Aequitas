@@ -326,6 +326,14 @@ func (cs *ChainState) RecoverFromEscrowMitNachweis(wallet string, nachweis *Auft
 	if cs.db == nil {
 		return fmt.Errorf("no database")
 	}
+	// Durch das Annahme-Tor (annahme_tor.go): die Rueckholung verbraucht den
+	// Treuhand-Eintrag. Nehmen zwei Knoten sie gleichzeitig an, ist er auf
+	// jedem noch da -- das Konto bekaeme ihn doppelt. Bis 26.09.2026 lief sie
+	// am Tor vorbei; mit Stufe 2 entscheidet der Zustaendige des Kontos.
+	if err := cs.annahmeBeginnen(wallet); err != nil {
+		return err
+	}
+	defer cs.annahmeEnde()
 	return cs.runAtomicWithOutbox([]string{wallet}, false, func(ctx context.Context) (Transaction, error) {
 		// DELETE...RETURNING inside the active DB transaction — atomically
 		// claims the escrow row while joining the same commit/rollback unit

@@ -298,6 +298,11 @@ func (cs *ChainState) wuerdeKappenLocked(addr string, acc *AccountState, stand, 
 	if !hasCap || isTokenomicsPoolAddress(strings.ToLower(addr)) {
 		return false
 	}
+	// Stufe 2: Gutschriften kappen nicht mehr (kappung_verteilt.go) -- kein
+	// Grund fuer den langsamen Pfad.
+	if cs.kappungVerschobenLocked() {
+		return false
+	}
 	return stand+cs.lpValueLockedAEQ(acc) > capAmt
 }
 

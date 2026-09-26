@@ -6798,6 +6798,10 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			phBlock.sammler, phBlock.stateroot, phBlock.commit)
 	}()
 	defer dag.state.mu.Unlock()
+	// Blockzeit fuer Regeln, die tief unten nach ihr entscheiden
+	// (kappung_verteilt.go). Vor dem Unlock zurueckgesetzt (defers LIFO).
+	dag.state.nachspielZeit = block.Timestamp
+	defer func() { dag.state.nachspielZeit = 0 }()
 	configBackup := make(map[string]configValueSnapshot, len(stateRootRelevantConfigKeys))
 	for _, key := range stateRootRelevantConfigKeys {
 		value, existed := dag.state.getConfigValueExists(key)
@@ -7368,6 +7372,20 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 		case "unternehmen_eroeffnen":
 			if err := dag.state.applyUnternehmenEroeffnenLocked(context.Background(), wallet, tx.To, tx.Name, tx.Kategorie, block.Timestamp); err != nil {
 				fmt.Printf("[REPLAY] ✗ unternehmen_eroeffnen %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
+				hardFailure = true
+				continue
+			}
+		case "kappung":
+			// Stufe 2 (kappung_verteilt.go): genau der getragene Betrag, vom
+			// Zustaendigen angenommen. Nie neu gerechnet.
+			if err := dag.state.applyKappungDeltaLocked(withTx(context.Background(), dbTx), wallet, tx.Amount, kontenSammlung); err != nil {
+				if istZustandsAblehnung(err) {
+					fmt.Printf("[REPLAY] ⚠ kappung %s: %v (block #%d) — uebersprungen\n", wallet, err, block.Height)
+					merkeUebersprungeneUeberweisung()
+					uebersprungenInDiesemBlock++
+					continue
+				}
+				fmt.Printf("[REPLAY] ✗ kappung %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
 				hardFailure = true
 				continue
 			}

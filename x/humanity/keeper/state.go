@@ -180,6 +180,21 @@ type PoolState struct {
 }
 
 type ChainState struct {
+	// ausgangOhneDB: nur Tests. Ohne Datenbank gibt es keinen Ausgangskorb;
+	// wer pruefen will, was ein annehmender Knoten in seinen naechsten Block
+	// schreiben wuerde, haengt sich hier ein (runAtomicWithOutbox).
+	ausgangOhneDB func(Transaction)
+
+	// nachspielZeit: Blockzeit des Blocks, den replayTransactions gerade unter
+	// cs.mu anwendet (0 = keiner, Annahme). Fuer Regeln, die ab einer
+	// Blockzeit anders gelten und tief unten entschieden werden
+	// (kappung_verteilt.go). Nur unter cs.mu (write) gesetzt und gelesen.
+	nachspielZeit int64
+	// kappungsKandidaten: Konten, die ueber der Grenze liegen koennten und
+	// deren Kappung Stufe 2 dem Zustaendigen ueberlaesst.
+	kappungsMu         sync.Mutex
+	kappungsKandidaten map[string]bool
+
 	// Unternehmen, Alter des Geldes, Monatsfreibetraege (wirtschaft.go).
 	wirtschaftP atomic.Pointer[wirtschaft]
 	// Rolle dieses Knotens bei der Annahme von Ueberweisungen -- siehe
@@ -4209,6 +4224,13 @@ func (cs *ChainState) enforceWealthCapLockedCtx(ctx context.Context, acc *Accoun
 	if isTokenomicsPoolAddress(acc.Address) {
 		return nil
 	}
+	// Stufe 2: gekappt wird nicht hier, bei der Gutschrift, sondern vom
+	// Zustaendigen des Kontos -- als eigene Belastung mit festem Betrag
+	// (kappung_verteilt.go).
+	if cs.kappungVerschobenLocked() {
+		cs.kappungVormerken(acc.Address)
+		return nil
+	}
 	// Unternehmen haben keine feste Obergrenze, sie zahlen Liegegeld
 	// (wirtschaft.go). Konsens: das Register entsteht auf jedem Knoten aus
 	// denselben Transaktionen, vor der Aktivierung ist es leer.
@@ -4559,6 +4581,9 @@ func (cs *ChainState) runAtomicWithOutbox(touchedAddrs []string, fullSnapshot bo
 		pendingTx, err := fn(context.Background())
 		if err == nil {
 			err = cs.merkeAuftragsNonceLocked(context.Background(), pendingTx)
+		}
+		if err == nil && cs.ausgangOhneDB != nil {
+			cs.ausgangOhneDB(pendingTx)
 		}
 		cs.mu.Unlock()
 		return err
@@ -5798,7 +5823,7 @@ func (cs *ChainState) SwapTUSDForAEQ(address string, amountIn, minAmountOut floa
 // filled in here from the swap's actual result.
 func (cs *ChainState) SwapAtomic(address string, amountIn float64, aeqToTusd bool, minAmountOut float64, pendingTxTemplate Transaction) (amountOut, demurrageLost float64, err error) {
 	// Auch das ist eine Belastung bei der Annahme -- siehe annahme_tor.go.
-	if err := cs.annahmeBeginnen(address); err != nil {
+	if err := cs.annahmeBeginnen(address, address, kontoLiquiditaetspool); err != nil {
 		return 0, 0, err
 	}
 	defer cs.annahmeEnde()
@@ -6474,7 +6499,7 @@ func (cs *ChainState) AddLiquidity(address string, amountAEQ, amountTUSD float64
 // have Type/Wallet/Amount(AEQ)/AmountOut(tUSD) set; LPShares and
 // FromDemurrageLost are filled in here from the operation's actual result.
 func (cs *ChainState) AddLiquidityAtomic(address string, amountAEQ, amountTUSD float64, pendingTxTemplate Transaction) (demurrageLost float64, err error) {
-	if err := cs.annahmeBeginnen(address); err != nil {
+	if err := cs.annahmeBeginnen(address, address, kontoLiquiditaetspool); err != nil {
 		return 0, err
 	}
 	defer cs.annahmeEnde()
@@ -6621,7 +6646,7 @@ func (cs *ChainState) RemoveLiquidity(address string, sharesToBurn float64) (flo
 // secondary's own current pool state rather than replaying exact amounts,
 // so those aren't part of the queued Transaction either today).
 func (cs *ChainState) RemoveLiquidityAtomic(address string, sharesToBurn float64, pendingTxTemplate Transaction) (outAEQ, outTUSD, demurrageLost float64, err error) {
-	if err := cs.annahmeBeginnen(address); err != nil {
+	if err := cs.annahmeBeginnen(address, address, kontoLiquiditaetspool); err != nil {
 		return 0, 0, 0, err
 	}
 	defer cs.annahmeEnde()
@@ -7086,7 +7111,7 @@ func (cs *ChainState) ClaimTUsdFaucet(address string) error {
 // mutation and the resulting outbox insert commit or roll back together as
 // one DB transaction — see TransferAtomic's comment.
 func (cs *ChainState) ClaimTUsdFaucetAtomic(address string, pendingTx Transaction) error {
-	if err := cs.annahmeBeginnen(address); err != nil {
+	if err := cs.annahmeBeginnen(address, kontoFaucet); err != nil {
 		return err
 	}
 	defer cs.annahmeEnde()

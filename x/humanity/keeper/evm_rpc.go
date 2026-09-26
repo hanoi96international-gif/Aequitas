@@ -498,7 +498,7 @@ func (s *EVMRPCServer) handleRPC(w http.ResponseWriter, r *http.Request) {
 	// stellt die Validatoren frei (sie leiten fuer viele Menschen weiter),
 	// und ohne diese Pruefung waere jeder Folger ein Umweg um jede Grenze.
 	if s.state != nil && rpcSchreibt(body) {
-		if ziel := s.state.weiterleitungsZiel(r); ziel != "" {
+		if ziel := s.state.weiterleitungsZiel(r, rpcKonten(body)...); ziel != "" {
 			if !frei {
 				posten := bytes.Count(body, []byte(`"method"`))
 				if posten < 1 {
@@ -1162,7 +1162,12 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage, pre *precomp
 	//
 	// -32005 wie oben: derselbe wiederholbare Code, auf den bestehende
 	// Klienten ohnehin zurueckfallen.
-	if s.state != nil {
+	//
+	// Stufe 2 (leitung_verteilt.go): ob dieser Knoten annimmt, haengt am
+	// Absender -- die Pruefung folgt deshalb unten, sobald er bekannt ist, und
+	// immer noch VOR jeder Nonce-Reservierung. Hier nur, wenn dieser Knoten
+	// fuer gar nichts annimmt (nur_lesend).
+	if s.state != nil && s.state.nurLesend.Load() {
 		if err := s.state.pruefeAnnahmeTor(); err != nil {
 			return nil, &RPCError{Code: -32005, Message: err.Error()}
 		}
@@ -1204,6 +1209,11 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage, pre *precomp
 	// Vertragsaufruf (annahme_tor.go, pruefeAbsenderKeinTopf).
 	if err := pruefeAbsenderKeinTopf(senderAddr); err != nil {
 		return nil, &RPCError{Code: -32003, Message: err.Error()}
+	}
+	if s.state != nil {
+		if err := s.state.pruefeAnnahmeTorFuer(senderAddr); err != nil {
+			return nil, &RPCError{Code: -32005, Message: err.Error()}
+		}
 	}
 	// Stufe 1.0 (signierte_ueberweisung.go): ab dem Vorlauf der Aktivierung
 	// traegt jede Ueberweisung ihre signierte Rohform in den Block, und ihre
