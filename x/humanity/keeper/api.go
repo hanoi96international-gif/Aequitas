@@ -3848,7 +3848,12 @@ func (a *APIServer) handleDappJS(w http.ResponseWriter, r *http.Request) {
 // Replacing the mounted file must WRITE INTO it (cat new > dest), never mv:
 // a file bind-mount follows the inode, so a rename leaves the container
 // serving the old file while the host shows the new one.
-const defaultAPKReleaseURL = "https://github.com/hanoi96international-gif/Aequitas-App/releases/download/app-v1.6.0/app-release.apk"
+//
+// 26.09.2026: der neue C1 hatte weder die Datei noch AEQUITAS_APK_URL -- die
+// Website lieferte app-v1.6.0 aus, die am abgeschalteten Railway-Coordinator
+// haengt: wer dort lud, konnte sich nicht registrieren. Seitdem zeigt der
+// Rueckfall auf GitHubs "latest"-Weiterleitung und kann nicht mehr veralten.
+const defaultAPKReleaseURL = "https://github.com/hanoi96international-gif/Aequitas-App/releases/latest/download/app-release.apk"
 
 func (a *APIServer) handleAppDownload(w http.ResponseWriter, r *http.Request) {
 	const apkPath = "downloads/aequitas-app.apk"

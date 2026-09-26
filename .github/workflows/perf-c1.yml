@@ -1,0 +1,41 @@
+name: C1 (netcup) -- Leistungsschalter wie C2 setzen
+# Setzt auf C1 die Schalter, die C2 seit August traegt (deploy/perf-c1-setzen.sh),
+# startet nur den Knoten-Container neu und prueft danach: Schalter im
+# Container, C1 nimmt an, Hoehe steigt. Freigegeben am 26.09.2026.
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/server-changes-quorum-nfksc7]
+    paths: [.github/workflows/perf-c1.yml, deploy/perf-c1-setzen.sh]
+permissions:
+  contents: read
+concurrency:
+  group: c1-knoten
+  cancel-in-progress: false
+jobs:
+  setzen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Schluessel und Host-Pruefung
+        env:
+          K1: ${{ secrets.CONTABO_SSH_KEY }}
+          K2: ${{ secrets.CONTABO2_SSH_KEY }}
+        run: |
+          set -eu
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$K1" > ~/.ssh/c1 && printf '%s\n' "$K2" > ~/.ssh/c2 && chmod 600 ~/.ssh/c1 ~/.ssh/c2
+          ssh-keyscan -t ed25519 188.172.229.121 2>/dev/null > ~/.ssh/k1
+          ssh-keygen -lf ~/.ssh/k1 | awk '{print $2}' | grep -qx 'SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA'
+          ssh-keyscan 194.163.188.71 2>/dev/null > ~/.ssh/k2
+          ssh-keygen -lf ~/.ssh/k2 | awk '{print $2}' | grep -qx 'SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto'
+          cat ~/.ssh/k1 ~/.ssh/k2 > ~/.ssh/known_hosts
+      - name: Schalter setzen und Knoten neu starten
+        run: ssh -i ~/.ssh/c1 -o BatchMode=yes root@188.172.229.121 'bash -s' < deploy/perf-c1-setzen.sh
+      - name: Hoehe steigt
+        run: bash deploy/pruefe-knoten.sh https://aequitas.digital
+      - name: Nachher -- C1
+        run: ssh -i ~/.ssh/c1 -o BatchMode=yes root@188.172.229.121 'bash -s' < deploy/leistung-lesen.sh
+      - name: Nachher -- C2
+        run: ssh -i ~/.ssh/c2 -o BatchMode=yes root@194.163.188.71 'bash -s' < deploy/leistung-lesen.sh

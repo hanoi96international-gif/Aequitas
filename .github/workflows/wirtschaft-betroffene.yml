@@ -47,3 +47,13 @@ jobs:
             echo "=== Status ==="
             curl -s -m 10 http://127.0.0.1:8080/api/status | grep -oE "\"(total_supply|total_humans|pool_[a-z]+)\":[^,]+" | tr "\n" " "; echo
           '
+      - name: Regeln auf beiden Knoten (oeffentlich)
+        run: |
+          for u in https://aequitas.digital https://proof2.aequitas.digital; do
+            echo "== $u"
+            curl -s -m 15 "$u/api/wirtschaft/regeln" | python3 -c "
+          import sys,json; d=json.load(sys.stdin)
+          print('aktiv_ab', d['aktiv_ab'], 'aktiv', d['aktiv'], 'freie_adresse_grenze', d['frei']['grenze'],
+                'liegegeld2', d['unternehmen']['liegegeld2_prozent_monat'], 'kurs', d.get('kurs'))"
+            curl -s -m 15 "$u/api/status" | grep -oE '"git_commit":"[^"]+"'
+          done

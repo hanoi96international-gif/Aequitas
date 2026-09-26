@@ -32,6 +32,7 @@ func skipUnlessRealDBBenchEnv(t *testing.T) {
 // duplicate, or reorder-corrupt any transfer).
 func TestTransferBatch_ConcurrentSuccessAllCommit(t *testing.T) {
 	skipUnlessRealDBBenchEnv(t)
+	truncateDistTestTables(t) // Konten eines frueheren Laufs: sonst Versionskonflikt beim Anlegen
 	state := testKnoten(t, "unused-batch-test-1.json")
 	if !state.useDB {
 		t.Fatal("expected a live PostgreSQL connection")
@@ -83,7 +84,12 @@ func TestTransferBatch_ConcurrentSuccessAllCommit(t *testing.T) {
 		if !ok {
 			t.Fatalf("sender %d (%s): account missing after transfers", i, addr)
 		}
-		want := 1000.0 - float64(txsPerSender)
+		// Ueberweisungsgebuehr je Ueberweisung (seit 24.09.2026).
+		einzel := make([]float64, txsPerSender)
+		for j := range einzel {
+			einzel[j] = 1
+		}
+		want := nachGebuehr(1000, einzel...)
 		got := acc.Balance.Float()
 		if got != want {
 			t.Errorf("sender %d (%s): balance = %.6f, want %.6f", i, addr, got, want)
@@ -111,6 +117,7 @@ func TestTransferBatch_ConcurrentSuccessAllCommit(t *testing.T) {
 // (both DB and in-memory) rather than leaving any partial state.
 func TestTransferBatch_OneBadMemberFailsWholeBatchCleanly(t *testing.T) {
 	skipUnlessRealDBBenchEnv(t)
+	truncateDistTestTables(t) // Konten eines frueheren Laufs: sonst Versionskonflikt beim Anlegen
 	state := testKnoten(t, "unused-batch-test-2.json")
 	if !state.useDB {
 		t.Fatal("expected a live PostgreSQL connection")
@@ -183,7 +190,7 @@ func TestTransferBatch_OneBadMemberFailsWholeBatchCleanly(t *testing.T) {
 	state.ensureAccountLoaded(goodAddr)
 	goodAccRetry, _ := state.accounts.Get(goodAddr)
 	got := goodAccRetry.Balance.Float()
-	want := balanceAfterFirstRound - 10
+	want := nachGebuehr(balanceAfterFirstRound, 10)
 	if got != want {
 		t.Errorf("good sender's balance after retry = %.6f, want %.6f", got, want)
 	}

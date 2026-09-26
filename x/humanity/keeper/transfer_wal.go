@@ -80,6 +80,11 @@ type walTransferRecord struct {
 	// Roh: signierte Rohtransaktion (Stufe 1.0), damit eine nach einem Absturz
 	// wiederhergestellte Ueberweisung sie in den Block mitnimmt.
 	Roh string `json:"roh,omitempty"`
+	// Buch: angenommen mit aktiven Wirtschaftsregeln -- die Erholung bucht
+	// wie buchSchnell (wirtschaft_schnellpfad.go). BuchMensch: der Absender
+	// war ein Mensch, Ausgegeben steigt.
+	Buch       bool `json:"buch,omitempty"`
+	BuchMensch bool `json:"buch_mensch,omitempty"`
 	// At is the instant the transfer actually happened, in unix seconds.
 	//
 	// FIX (pre-launch audit 2026-08-16): the record used to carry no timestamp
@@ -318,12 +323,9 @@ func (cs *ChainState) initWALIfEnabled() {
 // Returns (fromLost, toLost, applied, err) with the exact same contract as
 // transferConcurrent — see that function's doc comment.
 func (cs *ChainState) transferConcurrentWAL(from, to string, amount float64, pendingTxTemplate Transaction) (fromLost, toLost float64, applied bool, err error) {
-	// Ab der Aktivierung der Unternehmensregeln (wirtschaft.go) laeuft jede
-	// Ueberweisung ueber transferMutateLocked -- die Regeln stehen dort und
-	// nur dort.
-	if wirtschaftAktiv(nowUnix()) {
-		return 0, 0, false, nil
-	}
+	// Ab der Aktivierung der Unternehmensregeln (wirtschaft.go) gelten sie
+	// auch hier -- fuer Menschen und freie Adressen untereinander, siehe
+	// wirtschaft_schnellpfad.go. Mit Unternehmen geht es seriell.
 	fromLost, toLost, applied, err, haltbar := cs.transferConcurrentWALGesperrt(from, to, amount, pendingTxTemplate)
 	if haltbar == nil {
 		return fromLost, toLost, applied, err
@@ -359,6 +361,11 @@ func (cs *ChainState) transferConcurrentWAL(from, to string, amount float64, pen
 // synchronisiert werden konnte. Ab dann geht alles den langsamen Weg ueber
 // Postgres -- so, wie es ohne WAL immer ging.
 var walSchnellpfadDefekt atomic.Bool
+
+// fbWirtschaftSeriell zaehlt Ueberweisungen, die wegen eines beteiligten
+// Unternehmens oder Protokoll-Topfs den seriellen Weg nehmen
+// (wirtschaft_schnellpfad.go).
+var fbWirtschaftSeriell atomic.Int64
 
 // walFlushOhneHaltbarkeit zaehlt Flushes, die nicht auf die Haltbarkeit
 // warten konnten. Jeder einzelne ist ein Grund hinzusehen.
@@ -488,22 +495,41 @@ func (cs *ChainState) transferConcurrentWALGesperrt(from, to string, amount floa
 		fbDemurrage.Add(1)
 		return 0, 0, false, nil, nil
 	}
+	// One instant, recorded in the WAL and used for the live stamp below, so a
+	// crash-recovered replay reproduces exactly what this node did rather than
+	// stamping its own restart time (see walTransferRecord.At). Auch der
+	// Buchungsaugenblick der Wirtschaftsregeln (Transaction.BuchAt).
+	at := nowUnix()
 	// Ueberweisungsgebuehr obendrauf (ueberweisungsgebuehr.go) -- kein Topf
-	// wird hier beruehrt, gutgeschrieben wird sie mit dem Block.
+	// wird hier beruehrt, gutgeschrieben wird sie mit dem Block. Ab der
+	// Aktivierung nach Richtung und Monatsfreibetrag, wie transferMutateLocked.
 	gebuehr := ueberweisungsGebuehrFuer(amount, fromAcc.Balance.Float())
+	regeln := wirtschaftAktiv(at)
+	var fromArt, toArt kontoart
+	if regeln {
+		var schnell bool
+		fromArt, toArt, schnell = cs.wirtschaftSchnellArten(from, to, fromAcc.IsHuman, toAcc.IsHuman)
+		if !schnell {
+			fbWirtschaftSeriell.Add(1)
+			return 0, 0, false, nil, nil
+		}
+		gebuehr = cs.gebuehrMitWirtschaft(from, to, fromArt, toArt, amount, fromAcc.Balance.Float(), at)
+	}
 	if fromAcc.Balance.Float() < amount+gebuehr {
 		return 0, 0, true, fmt.Errorf("insufficient balance"), nil
+	}
+	if regeln {
+		if err := pruefeEmpfaengerWirtschaft(toArt, toAcc.Balance.Float(), amount, at); err != nil {
+			return 0, 0, true, err, nil
+		}
 	}
 	if cs.wuerdeKappenLocked(to, toAcc, toAcc.Balance.Float()+amount, capAmt, hasCapAmt) {
 		fbWohlstandsCap.Add(1)
 		return 0, 0, false, nil, nil
 	}
 
-	// One instant, recorded in the WAL and used for the live stamp below, so a
-	// crash-recovered replay reproduces exactly what this node did rather than
-	// stamping its own restart time (see walTransferRecord.At).
-	at := nowUnix()
-	payload, err := json.Marshal(walTransferRecord{From: from, To: to, Amount: amount, Gebuehr: gebuehr, TxHash: pendingTxTemplate.TxHash, At: at, Roh: pendingTxTemplate.Roh})
+	payload, err := json.Marshal(walTransferRecord{From: from, To: to, Amount: amount, Gebuehr: gebuehr, TxHash: pendingTxTemplate.TxHash, At: at, Roh: pendingTxTemplate.Roh,
+		Buch: regeln, BuchMensch: regeln && fromArt == artMensch})
 	if err != nil {
 		fbKodierung.Add(1)
 		return 0, 0, false, nil, nil // encode failure -- nothing mutated, safe to fall back
@@ -537,6 +563,14 @@ func (cs *ChainState) transferConcurrentWALGesperrt(from, to string, amount floa
 	// Augenblick, damit die Wiederherstellung unten dasselbe ergibt.
 	startClockIfUnsetAt(toAcc, at)
 	cs.updateAccountLeafLocked(toAcc)
+
+	// Buchfuehrung wie nachUeberweisung, noch unter den Sperren beider
+	// Konten: die naechste Ueberweisung desselben Absenders sieht Ausgegeben
+	// schon erhoeht. Gespeichert wird sie mit dem Flush.
+	if regeln {
+		cs.buchSchnell(from, to, fromArt, amount, at, seq)
+		pendingTxTemplate.BuchAt = buchStempel(at)
+	}
 
 	pendingTxTemplate.Wallet = from
 	pendingTxTemplate.To = to
@@ -1119,6 +1153,17 @@ WHERE chain_accounts.wal_seq < EXCLUDED.wal_seq`
 	phAcctExec = time.Since(phMark)
 	phMark = time.Now()
 
+	// Buchkonten in dieselbe Transaktion wie die Kontostaende
+	// (wirtschaft_schnellpfad.go). Geschrieben wird der Stand im Speicher --
+	// enthaelt er schon eine spaetere, noch ungeflushte Ueberweisung, weiss
+	// die Erholung das aus buchKonto.WS.
+	if wirtschaftAktiv(nowUnix()) {
+		if err := cs.speichereBuchCtx(ctx, addrList...); err != nil {
+			tx.Rollback()
+			return fmt.Errorf("could not save books during WAL flush: %w", err)
+		}
+	}
+
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("WAL flush commit failed: %w", err)
 	}
@@ -1352,6 +1397,16 @@ func (cs *ChainState) recoverFromWAL(path string) error {
 		// Der Absender zahlte Betrag + Gebuehr (Datensaetze vor dem 24.09.2026: 0).
 		fromApplied := applyFrom(fromAcc, entry.Seq, NewDecimal(rec.Amount).Add(NewDecimal(rec.Gebuehr)).Float(), rec.At)
 		toApplied := applyTo(toAcc, entry.Seq, rec.Amount, rec.At)
+		// Buchfuehrung der Wirtschaftsregeln, eigene Folgenummer im Buchkonto
+		// (wirtschaft_schnellpfad.go). Stehen beide Kontostaende schon in
+		// Postgres, das Buch aber nicht, wird es sofort geschrieben -- sonst
+		// erst mit dem Flush unten.
+		if rec.Buch && cs.buchWiederherstellen(rec.From, rec.To, rec.BuchMensch, rec.Amount, rec.At, entry.Seq) &&
+			!fromApplied && !toApplied && cs.db != nil {
+			if err := cs.speichereBuchCtx(context.Background(), rec.From, rec.To); err != nil {
+				return fmt.Errorf("WAL record seq %d: saving book: %w", entry.Seq, err)
+			}
+		}
 		if fromApplied || toApplied {
 			reappliedCount++
 			if cs.db != nil {
@@ -1374,7 +1429,11 @@ func (cs *ChainState) recoverFromWAL(path string) error {
 				// fork risk for this validator, not just eventual-consistency lag.
 				// Beim Wiederanlauf ist der Datensatz per Definition haltbar --
 				// er kommt aus der Datei. Seine Seq ist die aus der Datei.
-				cs.enqueueWALFlushLocked(rec.From, rec.To, Transaction{Type: "transfer", Wallet: rec.From, To: rec.To, Amount: rec.Amount, Gebuehr: rec.Gebuehr, TxHash: rec.TxHash, Roh: rec.Roh}, entry.Seq)
+				wtx := Transaction{Type: "transfer", Wallet: rec.From, To: rec.To, Amount: rec.Amount, Gebuehr: rec.Gebuehr, TxHash: rec.TxHash, Roh: rec.Roh}
+				if rec.Buch {
+					wtx.BuchAt = buchStempel(rec.At)
+				}
+				cs.enqueueWALFlushLocked(rec.From, rec.To, wtx, entry.Seq)
 			}
 		}
 		return nil

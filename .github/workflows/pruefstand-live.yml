@@ -63,7 +63,9 @@ jobs:
           # ist seit dem 24.09.2026 abgeschaltet -- Abo nicht verlaengert, die
           # Kette startet vor dem Launch bei null. Seitdem nimmt C2 an. Ein neuer
           # zweiter Server kommt hier mit einer Zeile dazu (und in wache.yml).
-          KNOTEN="C2=194.163.188.71=proof2=true"
+          # Seit 26.09.2026: der neue C1 (netcup) ist Primary und nimmt an,
+          # C2 ist nur_lesend.
+          KNOTEN="C1=188.172.229.121=proof1=true C2=194.163.188.71=proof2=false"
           declare -A API RPC IP PH SOLLAN HOEHE COMMIT
           NAMEN=""
           for E in $KNOTEN; do

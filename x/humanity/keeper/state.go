@@ -5053,9 +5053,9 @@ func (cs *ChainState) TransferAtomic(from, to string, amount float64, pendingTxT
 		return cs.transferAtomicDirect(from, to, amount, pendingTxTemplate)
 	}
 	// Signierte Ueberweisungen (Stufe 1.0) nehmen nie die schnellen Pfade:
-	// nur der Stapelpfad setzt NaechsteNonce beim Annehmen. Ab dem 1.10. sind
-	// die schnellen Pfade ohnehin aus (wirtschaftAktiv), das hier macht es
-	// unabhaengig davon.
+	// nur der Stapelpfad setzt NaechsteNonce beim Annehmen. Mit aktiven
+	// Wirtschaftsregeln nimmt nur noch der WAL-Pfad Ueberweisungen schnell an
+	// (wirtschaft_schnellpfad.go); das hier gilt unabhaengig davon.
 	if pendingTxTemplate.Roh != "" {
 		// kein schneller Pfad
 	} else if cs.wal != nil {

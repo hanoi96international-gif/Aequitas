@@ -1,0 +1,91 @@
+name: TPS C1 -- Generator auf C2, Ziel C1 (Primary), bewegt Test-AEQ
+# C2 ist nur_lesend und nimmt keine Ueberweisung an; C1 ist der einzige
+# annehmende Knoten. Die Testkonten (accounts*.csv, Wegwerf-Schluessel)
+# liegen seit August auf C2 -- der Generator laeuft deshalb dort und
+# schickt an C1s oeffentliche RPC (Ratenbegrenzung 1000/10 s je IP bei
+# Batch 100 = bis 10.000 tx/s je Generator-IP). Nur Phase "run": es wird
+# nichts neu finanziert, nur zwischen Testkonten ueberwiesen.
+# Den Durchsatz zaehlt C1 selbst ([RPC] ⚡) -- gelesen im zweiten Schritt.
+on:
+  workflow_dispatch:
+    inputs:
+      duration: {description: "Messfenster", required: false, default: "30s"}
+      accounts_csv: {description: "Kontenliste auf C2", required: false, default: "accounts-funded.csv"}
+      pairs: {description: "Sender-Paare (0 = alle)", required: false, default: "0"}
+  # Freigegeben am 26.09.2026 ("Freigabe"): der Push dieser Datei startet
+  # eine Messung.
+  push:
+    branches: [claude/server-changes-quorum-nfksc7]
+    paths: [.github/workflows/tps-c1.yml]
+permissions:
+  contents: read
+concurrency:
+  group: c1-knoten
+  cancel-in-progress: false
+jobs:
+  messen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DURATION: ${{ inputs.duration || '30s' }}
+      ACCOUNTS_CSV: ${{ inputs.accounts_csv || 'accounts-funded.csv' }}
+      PAIRS: ${{ inputs.pairs || '0' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Schluessel und Host-Pruefung
+        env:
+          K1: ${{ secrets.CONTABO_SSH_KEY }}
+          K2: ${{ secrets.CONTABO2_SSH_KEY }}
+        run: |
+          set -eu
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$K1" > ~/.ssh/c1 && printf '%s\n' "$K2" > ~/.ssh/c2 && chmod 600 ~/.ssh/c1 ~/.ssh/c2
+          ssh-keyscan -t ed25519 188.172.229.121 2>/dev/null > ~/.ssh/k1
+          ssh-keygen -lf ~/.ssh/k1 | awk '{print $2}' | grep -qx 'SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA'
+          ssh-keyscan 194.163.188.71 2>/dev/null > ~/.ssh/k2
+          ssh-keygen -lf ~/.ssh/k2 | awk '{print $2}' | grep -qx 'SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto'
+          cat ~/.ssh/k1 ~/.ssh/k2 > ~/.ssh/known_hosts
+      - name: Werkzeug auf C2
+        run: |
+          scp -i ~/.ssh/c2 -o BatchMode=yes tools/contabo-loadtest/main.go tools/contabo-loadtest/gen_accounts.go go.mod go.sum root@194.163.188.71:/root/contabo-loadtest/
+      - name: Startzeit und Stand C1
+        run: |
+          echo "START=$(date -u +%Y-%m-%dT%H:%M:%S)" >> "$GITHUB_ENV"
+          curl -s -m 10 https://aequitas.digital/api/status | jq -c '{height, uptime}'
+      - name: Last von C2 auf C1
+        run: |
+          ssh -i ~/.ssh/c2 -o BatchMode=yes root@194.163.188.71 \
+            "DURATION='$DURATION' ACCOUNTS_CSV='$ACCOUNTS_CSV' PAIRS='$PAIRS' bash -s" <<'SKRIPT'
+          set -euo pipefail
+          cd /root/contabo-loadtest
+          rm -rf ./tools
+          [ -f "$ACCOUNTS_CSV" ] || ACCOUNTS_CSV=accounts.csv
+          echo "Konten: $ACCOUNTS_CSV ($(($(wc -l < "$ACCOUNTS_CSV") - 1)) Zeilen)"
+          mkdir -p /root/go-mod-cache
+          docker run --rm -v "$(pwd)":/w -w /w -v /root/go-mod-cache:/go/pkg/mod golang:1.24-alpine go build -o loadtest main.go
+          docker run --rm --network host -v "$(pwd)":/w -w /w golang:1.24-alpine \
+            ./loadtest -accounts "$ACCOUNTS_CSV" \
+              -rpc http://188.172.229.121:8080/rpc \
+              -status http://188.172.229.121:8080/api/status \
+              -phase run -duration "$DURATION" -ramp 5 \
+              -transfer-amount-wei 10000000000000 -batch-size 100 -http-timeout 30s -pairs "$PAIRS"
+          SKRIPT
+      - name: Was C1 gezaehlt hat
+        if: always()
+        run: |
+          ssh -i ~/.ssh/c1 -o BatchMode=yes root@188.172.229.121 "START='$START' bash -s" <<'SKRIPT'
+          echo "--- angewandte Ueberweisungen je Sekunde (C1) ---"
+          docker logs --since "$START" aequitas-node 2>&1 | grep -F '[RPC] ⚡' | tail -30 || true
+          echo "--- langsamste Ticks ---"
+          docker logs --since "$START" aequitas-node 2>&1 | grep -F '[BLOCK] ⏱' | tail -8 || true
+          echo "--- Warnungen ---"
+          docker logs --since "$START" aequitas-node 2>&1 | grep -E 'panic|FATAL|ivergen' | tail -10 || true
+          echo "--- Last auf C1 ---"
+          uptime
+          SKRIPT
+      - name: C2 folgt?
+        if: always()
+        run: |
+          a=$(curl -s -m 10 https://aequitas.digital/api/status | jq -r .height)
+          b=$(curl -s -m 10 https://proof2.aequitas.digital/api/status | jq -r .height)
+          echo "C1 $a  C2 $b  Abstand $((a-b))"

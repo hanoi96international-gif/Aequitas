@@ -60,7 +60,8 @@ jobs:
           # Server kommt HIER dazu (und in pruefstand-live.yml); bis dahin
           # meldete die Wache alle 6 h ROT fuer eine Box, die es nicht mehr gibt,
           # und uebertoente damit alles, was auf C2 wirklich schiefgeht.
-          KNOTEN="194.163.188.71=proof2"
+          # Seit 26.09.2026 ist der neue C1 (netcup) Primary und proof1.
+          KNOTEN="188.172.229.121=proof1 194.163.188.71=proof2"
           declare -A H1 H2 PHOST
           for K in $KNOTEN; do PHOST[${K%%=*}]=${K#*=}; done
           for B in "${!PHOST[@]}"; do H1[$B]=$(st $B); done

@@ -61,8 +61,9 @@ package keeper
 // Zahlen -- darauf baut die Pruefung beim Nachspielen (liegegeld_pruefung.go).
 //
 // AKTIVIERUNG. Nichts davon wirkt vor wirtschaftAktivAbUnix. Danach laufen
-// alle Ueberweisungen ueber transferMutateLocked (die schnellen Pfade
-// treten zurueck), damit die Regeln an genau einer Stelle stehen.
+// Ueberweisungen mit Unternehmen ueber transferMutateLocked; Menschen und
+// freie Adressen untereinander nimmt auch der WAL-Schnellpfad
+// (wirtschaft_schnellpfad.go) nach denselben Regeln.
 
 import (
 	"context"
@@ -229,6 +230,10 @@ type buchKonto struct {
 	// alle Kontoarten: selbst von Stable in AEQ getauscht und noch nicht
 	// zurueckgetauscht -- geht ohne Ausstiegsabgabe zurueck (nicht monatlich)
 	Eingezahlt float64 `json:"ez,omitempty"`
+	// WS: WAL-Folgenummer der letzten Ueberweisung, die dieses Buchkonto
+	// enthaelt (wirtschaft_schnellpfad.go). Nur fuer die Absturz-Erholung des
+	// annehmenden Knotens; nachspielende Knoten fuehren es nicht.
+	WS uint64 `json:"ws,omitempty"`
 }
 
 type wirtschaft struct {

@@ -31,6 +31,11 @@ nano .env        # POSTGRES_PASSWORD, SELF_URL, NODE_OPERATOR_WALLET ausfüllen
 docker compose up -d --build
 ```
 
+`ANNAHME_ROLLE=nur_lesend` aus der Vorlage **stehen lassen**: Heute nimmt nur
+C1 Überweisungen an, ein zweiter Annehmender bringt die Kontostände
+auseinander. Ohne eigenen Server geht es auch auf Railway, siehe
+`VALIDATOR_RAILWAY.md`.
+
 Dann:
 
 ```bash
