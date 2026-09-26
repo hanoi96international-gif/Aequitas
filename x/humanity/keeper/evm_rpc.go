@@ -1222,6 +1222,14 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage, pre *precomp
 	// Vor der Reservierung, damit eine abgelehnte Nonce nichts verbraucht.
 	mitRoh := s.state != nil && signierteUeberweisungenAufnehmen(nowUnix())
 	if mitRoh {
+		// Nur Transaktionen mit Chain-ID 1926. LatestSignerForChainID stellt
+		// auch den Absender alter, ungeschuetzter Transaktionen (vor
+		// EIP-155) wieder her -- die Blockpruefung verlangt aber Chain-ID
+		// 1926 (pruefeUeberweisungsRoh). Angenommen, haette jeder andere
+		// Validator den naechsten Block dieses Knotens verworfen.
+		if cid := tx.ChainId(); !tx.Protected() || cid == nil || cid.Cmp(aequitasChainID) != 0 {
+			return nil, &RPCError{Code: -32000, Message: "transaction must be replay-protected with chain id 1926 (EIP-155)"}
+		}
 		if err := s.state.pruefeAnnahmeNonce(senderAddr, tx.Nonce()); err != nil {
 			return nil, &RPCError{Code: -32000, Message: err.Error()}
 		}
