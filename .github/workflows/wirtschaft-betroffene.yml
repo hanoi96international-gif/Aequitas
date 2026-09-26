@@ -1,0 +1,49 @@
+name: Wirtschaftsregeln -- wen treffen sie? (nur lesend)
+# Vor dem Start der Wirtschaftsregeln: welche Konten sind freie Adressen
+# (1 %/Monat, hoechstens 1.000 AEQ), welche Menschen liegen ueber dem
+# Sparfreibetrag, was sagt der Pool zum Kurs? Nur Lesen, Adressen gekuerzt.
+# Kontostaende sind ohnehin oeffentlich (Explorer).
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/server-changes-quorum-nfksc7]
+    paths: [.github/workflows/wirtschaft-betroffene.yml]
+permissions:
+  contents: read
+jobs:
+  lesen:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Schluessel und Host-Pruefung
+        env:
+          KEY: ${{ secrets.CONTABO_SSH_KEY }}
+        run: |
+          set -eu
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -t ed25519 188.172.229.121 2>/dev/null > ~/.ssh/kh1
+          ssh-keygen -lf ~/.ssh/kh1 | awk '{print $2}' | grep -qx 'SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA' || { echo "::error::Host-Schluessel von C1 passt nicht"; exit 1; }
+          cat ~/.ssh/kh1 >> ~/.ssh/known_hosts
+      - name: Auf C1 (Primary) lesen
+        run: |
+          ssh -o BatchMode=yes root@188.172.229.121 '
+            q() { docker exec aequitas-postgres psql -U postgres -d aequitas -tA -F" | " -c "$1"; }
+            echo "=== Menschen: Anzahl, min, Mittel, max, ueber 1.000 / 5.000 / 10.000 ==="
+            q "SELECT count(*), round(min(balance::numeric),2), round(avg(balance::numeric),2), round(max(balance::numeric),2),
+                      count(*) FILTER (WHERE balance::numeric > 1000), count(*) FILTER (WHERE balance::numeric > 5000),
+                      count(*) FILTER (WHERE balance::numeric > 10000)
+               FROM chain_accounts WHERE is_human"
+            echo "=== Nicht-Menschen mit Guthaben: Anzahl, Summe ==="
+            q "SELECT count(*), round(sum(balance::numeric),4) FROM chain_accounts WHERE NOT is_human AND balance::numeric > 0"
+            echo "=== die 25 groessten Nicht-Menschen (Adresse gekuerzt) ==="
+            q "SELECT substr(address,1,8)||chr(8230)||right(address,4), round(balance::numeric,4) FROM chain_accounts
+               WHERE NOT is_human AND balance::numeric > 0 ORDER BY balance::numeric DESC LIMIT 25"
+            echo "=== Unternehmen im Register ==="
+            q "SELECT count(*) FROM information_schema.tables WHERE table_name ILIKE '"'"'%unternehmen%'"'"'" 2>/dev/null || true
+            echo "=== Pool (Kurs AEQ/tUSD) ==="
+            curl -s -m 10 http://127.0.0.1:8080/api/pool | head -c 1500; echo
+            echo "=== Regeln laut Knoten ==="
+            curl -s -m 10 http://127.0.0.1:8080/api/wirtschaft/regeln | head -c 2500; echo
+            echo "=== Status ==="
+            curl -s -m 10 http://127.0.0.1:8080/api/status | grep -oE "\"(total_supply|total_humans|pool_[a-z]+)\":[^,]+" | tr "\n" " "; echo
+          '
