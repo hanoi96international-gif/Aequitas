@@ -302,6 +302,35 @@ func (cs *ChainState) setzeNaechsteNoncenLocked(ctx context.Context, neu map[str
 	return nil
 }
 
+// setzeVorlaufNoncenLocked: im Vorlauf vor der Pflicht dieselbe Wirkung auf
+// NaechsteNonce wie die Annahme -- jede Ueberweisung mit gueltiger Rohform
+// hebt die Nonce ihres Absenders, nie herunter. Ungueltige oder fehlende
+// Rohformen bleiben ohne Wirkung und ohne Ablehnung: im Vorlauf ist die
+// Rohform noch freiwillig. cs.mu gehalten.
+func (cs *ChainState) setzeVorlaufNoncenLocked(ctx context.Context, txs []Transaction, sammler *kontenSammler) error {
+	neu := map[string]int64{}
+	for i := range txs {
+		if txs[i].Type != "transfer" || txs[i].Roh == "" {
+			continue
+		}
+		n, err := pruefeUeberweisungsRoh(&txs[i])
+		if err != nil {
+			continue
+		}
+		a := strings.ToLower(strings.TrimSpace(txs[i].Wallet))
+		if int64(n)+1 > neu[a] {
+			neu[a] = int64(n) + 1
+		}
+	}
+	if len(neu) == 0 {
+		return nil
+	}
+	for a := range neu {
+		cs.ensureAccountLoadedCtx(ctx, a)
+	}
+	return cs.setzeNaechsteNoncenLocked(ctx, neu, sammler)
+}
+
 // pruefeAnnahmeNonce: vor dem Annehmen einer Ueberweisung -- eine Nonce
 // unter NaechsteNonce ist verbraucht und wuerde den naechsten Block fuer
 // jeden anderen Validator ungueltig machen. Nur lesend.

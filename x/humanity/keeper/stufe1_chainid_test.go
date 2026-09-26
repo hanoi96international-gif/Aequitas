@@ -1,6 +1,7 @@
 package keeper
 
 import (
+	"context"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -117,5 +118,46 @@ func TestStufe1_BuendelGruppenNachAbsenderUndNonce(t *testing.T) {
 	}
 	if g := buendelGruppen(len(pre), pre, false); len(g) != len(pre) {
 		t.Fatalf("ohne Stufe 1: %d Gruppen, erwartet %d (alles nebenlaeufig)", len(g), len(pre))
+	}
+}
+
+// Im Vorlauf setzt die Annahme NaechsteNonce, sobald eine Ueberweisung ihre
+// Rohform traegt; das Nachspielen muss dasselbe tun (26.09.2026: 1.772
+// Konten mit verschiedenem Blatt auf C1 und C2). Ungueltige Rohformen wirken
+// nicht und fuehren nicht zur Ablehnung; die Nonce sinkt nie.
+func TestStufe1_VorlaufNachspielenSetztNonceWieAnnahme(t *testing.T) {
+	cs := newTestState()
+	a, b := neuerTestSchluessel(t), neuerTestSchluessel(t)
+	cs.mu.Lock()
+	cs.accounts.Set(a.addr, &AccountState{Address: a.addr, Balance: NewDecimal(1000)})
+	cs.accounts.Set(b.addr, &AccountState{Address: b.addr, Balance: NewDecimal(1000), NaechsteNonce: 9})
+	cs.mu.Unlock()
+
+	falsch := signiere(t, a, b.addr, aeqWei(1), 50, 1926)
+	falsch.Wallet = b.addr // Rohform von a, im Block als b -- darf nichts bewirken
+	ohneRoh := Transaction{Type: "transfer", Wallet: a.addr, To: b.addr, Amount: 1}
+	txs := []Transaction{
+		signiere(t, a, b.addr, aeqWei(1), 1, 1926),
+		signiere(t, a, b.addr, aeqWei(1), 0, 1926),
+		signiere(t, a, b.addr, aeqWei(1), 2, 1926),
+		signiere(t, b, a.addr, aeqWei(1), 3, 1926), // unter der Nonce von b: nie herunter
+		falsch,
+		ohneRoh,
+	}
+	cs.mu.Lock()
+	err := cs.setzeVorlaufNoncenLocked(context.Background(), txs, nil)
+	cs.mu.Unlock()
+	if err != nil {
+		t.Fatalf("Vorlauf-Nonces: %v", err)
+	}
+	if got := kontoVon(t, cs, a.addr).NaechsteNonce; got != 3 {
+		t.Fatalf("NaechsteNonce von a %d, erwartet 3 (wie bei der Annahme)", got)
+	}
+	if got := kontoVon(t, cs, b.addr).NaechsteNonce; got != 9 {
+		t.Fatalf("NaechsteNonce von b %d, erwartet 9 (sinkt nie, falsche Rohform wirkt nicht)", got)
+	}
+	acc := kontoVon(t, cs, a.addr)
+	if acc.leafHash != accountLeaf(&acc) {
+		t.Fatal("Blatt nicht nachgezogen -- account_set_xor liefe auseinander")
 	}
 }
