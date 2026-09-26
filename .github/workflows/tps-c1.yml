@@ -84,6 +84,9 @@ jobs:
           docker logs --since "$START" aequitas-node 2>&1 | grep -E 'panic|FATAL|ivergen' | tail -10 || true
           echo "--- Last auf C1 ---"
           uptime
+          echo "--- Bremse und Deckel (C1) ---"
+          curl -s -m 10 http://127.0.0.1:8080/api/health/combined \
+            | jq -c '{peer_lag_bremse, block_tx_deckel, signierte_ueberweisungen, inflight}' 2>/dev/null | head -c 4000 || true
           SKRIPT
       - name: C2 folgt?
         if: always()
