@@ -7,6 +7,18 @@ set -euo pipefail
 CF=/root/caddy/Caddyfile
 NEU=/root/Aequitas/deploy/Caddyfile.neuer-server
 mkdir -p /root/caddy
+# /coordinator/* zeigt auf den eigenen Coordinator. Nur umschalten, wenn
+# sein Schluessel auf beiden Knoten eingetragen ist -- sonst lehnen die
+# Vergleichsdienste jede Bezeugung ab, und die Registrierung ueber proof1
+# faellt aus.
+C1_COORD=d3c46a772f2c40e533f6abd5781d0c39cdcda9ba3df63e909ebd729d2e2aebbf
+for k in http://127.0.0.1:8080 https://proof2.aequitas.digital; do
+  if curl -fsS -m 10 "$k/api/coordinators" | grep -q "\"$C1_COORD\""; then
+    echo "  Coordinator C1 eingetragen auf $k"
+  else
+    echo "::error::Coordinator C1 fehlt auf $k -- Caddy bleibt unveraendert"; exit 1
+  fi
+done
 docker run --rm -v "$NEU":/etc/caddy/Caddyfile:ro caddy:2 caddy validate --config /etc/caddy/Caddyfile >/dev/null
 if docker ps -a --format '{{.Names}}' | grep -qx aequitas-caddy; then
   [ -f "$CF" ] && cp -a "$CF" "$CF.bak-$(date +%s)"
