@@ -612,6 +612,15 @@ func leiteWeiter(w http.ResponseWriter, r *http.Request, ziel string, body []byt
 // bei rotierendem Leiter gehoeren sie zu ihm wie Ueberweisungen.
 func (a *APIServer) zumLeiter(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// Die Nonce fuer Tausch und Liquiditaet kennt am frischesten, wer das
+		// Konto gerade annimmt (Stufe 2): auch das GET dorthin.
+		if r.Method == http.MethodGet && r.URL.Path == "/api/nonce" && a.state.leitung.Load() != nil {
+			if ziel := a.state.weiterleitungsZiel(r, strings.ToLower(r.URL.Query().Get("wallet"))); ziel != "" && leiteWeiter(w, r, ziel, nil) {
+				return
+			}
+			h(w, r)
+			return
+		}
 		if r.Method != http.MethodPost {
 			h(w, r)
 			return

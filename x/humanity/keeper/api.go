@@ -1111,7 +1111,7 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	mux.HandleFunc("/api/price-history", a.handlePriceHistory)
 	mux.HandleFunc("/api/wealth-cap", a.handleWealthCap)
 	mux.HandleFunc("/api/sign-validator-challenge", a.handleSignValidatorChallenge)
-	mux.HandleFunc("/api/nonce", a.handleNonce)
+	mux.HandleFunc("/api/nonce", a.zumLeiter(a.handleNonce))
 	mux.HandleFunc("/api/peers", a.handlePeers)
 	// Peer roles and build commits, fetched BY THIS NODE. The page cannot do
 	// it itself: its own CSP refuses cross-origin peer reads, and after the

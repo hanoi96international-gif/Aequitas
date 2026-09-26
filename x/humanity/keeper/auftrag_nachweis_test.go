@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"os"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/crypto"
@@ -222,5 +223,42 @@ func TestAuftragsNachweis_AnnahmeSetztUndPrueftNonce(t *testing.T) {
 	neu.Nonce = 6
 	if err := cs.pruefeAuftragsNonce(a.addr, &neu); err != nil {
 		t.Fatalf("naechste Nonce 6 abgelehnt: %v", err)
+	}
+}
+
+// Die lokale swap_nonces-Tabelle kennt nur, was DIESER Knoten angenommen hat.
+// Nimmt im naechsten Term ein anderer an (Stufe 2), muss er die Nonce aus dem
+// gemeinsamen Zustand nennen und annehmen -- sonst signierte die App eine
+// laengst verbrauchte.
+func TestAuftragsNonce_LokaleTabelleFolgtDemGemeinsamenZustand_RealDB(t *testing.T) {
+	if os.Getenv("AEQUITAS_TPS_BENCH") != "1" {
+		t.Skip("opt-in only: set AEQUITAS_TPS_BENCH=1 and DATABASE_URL (a disposable local Postgres) to run")
+	}
+	truncateDistTestTables(t)
+	cs := testKnoten(t, "unused-auftragsnonce-realdb-test.json")
+	if !cs.useDB {
+		t.Fatal("keine Datenbank")
+	}
+	w := distTestAddr(1600)
+	cs.db.Exec(`DELETE FROM swap_nonces WHERE wallet_address = $1`, w)
+	cs.mu.Lock()
+	acc := &AccountState{Address: w, Balance: NewDecimal(10), NaechsteAuftragsNonce: 5}
+	cs.accounts.Set(w, acc)
+	if err := cs.saveAccountToDB(acc); err != nil {
+		cs.mu.Unlock()
+		t.Fatal(err)
+	}
+	cs.mu.Unlock()
+	if got := cs.GetSwapNonce(w); got != 5 {
+		t.Fatalf("GetSwapNonce %d statt 5", got)
+	}
+	if err := cs.ConsumeSwapNonce(w, 3); err == nil {
+		t.Fatal("verbrauchte Nonce 3 angenommen")
+	}
+	if err := cs.ConsumeSwapNonce(w, 5); err != nil {
+		t.Fatalf("Nonce 5 abgelehnt: %v", err)
+	}
+	if got := cs.GetSwapNonce(w); got != 6 {
+		t.Fatalf("danach %d statt 6", got)
 	}
 }
