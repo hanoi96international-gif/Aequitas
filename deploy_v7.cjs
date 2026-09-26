@@ -13,7 +13,7 @@ const http = require('http');
 // reachable by IP today and via https://aequitas.digital/rpc once that domain
 // is repointed (2026-08-18) and Caddy has issued its certificate — see
 // docs/MIGRATION_RAILWAY_TO_CONTABO.md.
-const RPC_URL  = process.env.RPC_URL  || 'http://173.249.37.118:8080/rpc';
+const RPC_URL  = process.env.RPC_URL  || 'https://aequitas.digital/rpc';
 const PK       = process.env.PK;
 const VERIFIER = process.env.VERIFIER || '0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2';
 

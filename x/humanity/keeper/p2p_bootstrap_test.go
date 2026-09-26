@@ -160,13 +160,10 @@ func TestBootstrapAddrIsSelf(t *testing.T) {
 // the HTTP seed went stale at the same time — would reach the network by no
 // transport at all.
 func TestDefaultBootstrapNodes_NoDecommissionedHosts(t *testing.T) {
-	// ZWEI, SOBALD ES ZWEI GIBT. Seit dem 24.09.2026 laeuft genau ein
-	// Validator (Contabo1 abgeschaltet); ein zweiter Eintrag waere eine
-	// tote oder fremde Adresse -- schlechter als keiner. Die Untergrenze ist
-	// deshalb voruebergehend 1. Mit dem neuen zweiten Server kommt seine
-	// Peer-ID in defaultBootstrapNodes, und mindestBootstrapKnoten geht
-	// zurueck auf 2 -- Punkt in docs/LAUNCH_CHECKLISTE.md.
-	const mindestBootstrapKnoten = 1
+	// ZWEI. Vom 24. bis 26.09.2026 lief genau ein Validator (Contabo1
+	// abgeschaltet) und die Untergrenze war voruebergehend 1. Seit dem
+	// 26.09.2026 ersetzt der neue C1 (netcup) ihn -- wieder zwei.
+	const mindestBootstrapKnoten = 2
 	if len(defaultBootstrapNodes) < mindestBootstrapKnoten {
 		t.Fatalf("defaultBootstrapNodes has %d entr(ies) — keep at least %d so one validator being down does not strand newcomers", len(defaultBootstrapNodes), mindestBootstrapKnoten)
 	}

@@ -2292,9 +2292,13 @@ const defaultPublicSeed = "https://aequitas.digital"
 // frischen Knoten ein "vertrauenswuerdiger" Seed. Genau das, was die
 // Reihenfolge oben fuer DNS verhindern soll, darf eine abgelaufene IP nicht
 // durch die Hintertuer wieder einfuehren.
+//
+// Der neue C1 (netcup, 188.172.229.121) steht seit dem 26.09.2026 an erster
+// Stelle: er ist der Primary, und aequitas.digital zeigt auf ihn.
 var defaultPublicSeeds = []string{
-	"http://194.163.188.71:8080", // Contabo2 — verified to carry the real chain
-	defaultPublicSeed,            // canonical domain, consulted last (see above)
+	"http://188.172.229.121:8080", // neuer C1 (netcup) — Primary seit 26.09.2026
+	"http://194.163.188.71:8080",  // Contabo2 — verified to carry the real chain
+	defaultPublicSeed,             // canonical domain, consulted last (see above)
 }
 
 // keineSeeds: PRIMARY_NODE_URLS=keine (oder "none") heisst ausdruecklich

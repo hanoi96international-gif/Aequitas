@@ -14,7 +14,7 @@
 // x/humanity/keeper/snapshot.go): blank the signature, marshal, sha256,
 // ecrecover.
 //
-//	go run ./tools/snapshot-signer http://173.249.37.118:8080
+//	go run ./tools/snapshot-signer http://188.172.229.121:8080
 package main
 
 import (

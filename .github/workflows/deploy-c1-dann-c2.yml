@@ -1,0 +1,108 @@
+name: Deploy -- erst C1 (netcup, Primary), dann C2
+# Ein Push auf main rollt den Knoten in fester Reihenfolge aus:
+#   1. Tests
+#   2. C1 (188.172.229.121, Primary): bauen, neu starten, pruefen
+#      (antwortet, Hoehe steigt, nimmt_an=true)
+#   3. NUR WENN 2 gruen ist: C2 (194.163.188.71) zieht nach
+#      (/root/deploy_safe_c2.sh, uebernimmt seine Umgebung), danach pruefen:
+#      antwortet, Hoehe steigt, weiterhin nur_lesend
+# Nie andersrum: C2 hat keinen eigenen Push-Ausloeser mehr
+# (deploy-contabo2.yml nur noch von Hand), und C2 wird nie neu gestartet,
+# solange C1 nicht nachweislich laeuft -- sonst stuende die Kette ohne
+# annehmenden Knoten da.
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '.github/**'
+      - '**.md'
+      - 'tools/**'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: deploy-knoten
+  cancel-in-progress: false
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go build ./cmd/aequitasd
+      - run: go vet ./...
+      - run: go test ./...
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npx hardhat test
+
+  c1:
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      C1: 188.172.229.121
+    steps:
+      - uses: actions/checkout@v4
+      - name: C2 muss laufen, bevor C1 neu startet
+        run: |
+          for i in $(seq 1 40); do
+            [ "$(curl -s -o /dev/null -w '%{http_code}' -m 10 http://194.163.188.71:8080/api/status || true)" = 200 ] && { echo "C2 antwortet"; exit 0; }
+            echo "C2 antwortet noch nicht ($i/40)"; sleep 15
+          done
+          echo "::error::C2 antwortet seit 10 min nicht -- C1 wird NICHT neu gestartet, sonst stuende die Kette"
+          exit 1
+      - name: Schluessel
+        env:
+          KEY: ${{ secrets.CONTABO_SSH_KEY }}
+        run: |
+          set -eu
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          # Host-Schluessel des neuen C1 festgepinnt (ED25519, gelesen am 26.09.2026).
+          ssh-keyscan -t ed25519 $C1 2>/dev/null > ~/.ssh/kh1
+          ssh-keygen -lf ~/.ssh/kh1 | awk '{print $2}' | grep -qx 'SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA' || { echo "::error::Host-Schluessel von C1 passt nicht"; exit 1; }
+          cat ~/.ssh/kh1 >> ~/.ssh/known_hosts
+      - name: C1 ausrollen
+        run: ssh -o BatchMode=yes -o ServerAliveInterval=30 root@$C1 'bash -s' < deploy/deploy-c1.sh
+      - name: C1 lebt und die Hoehe steigt
+        run: bash deploy/pruefe-knoten.sh http://$C1:8080
+
+  c2:
+    needs: c1
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Schluessel und Host-Pruefung
+        env:
+          KEY: ${{ secrets.CONTABO2_SSH_KEY }}
+        run: |
+          set -eu
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan 194.163.188.71 2>/dev/null > ~/.ssh/kh
+          ssh-keygen -lf ~/.ssh/kh | awk '{print $2}' | grep -qx 'SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto' || { echo "::error::Host-Schluessel von C2 passt nicht"; exit 1; }
+          cp ~/.ssh/kh ~/.ssh/known_hosts
+      - name: C2 nachziehen
+        run: |
+          ssh -o BatchMode=yes -o ServerAliveInterval=30 root@194.163.188.71 '
+            set -euo pipefail
+            grep -qx "ANNAHME_ROLLE=nur_lesend" /root/.aequitas.env || { echo "ABBRUCH: ANNAHME_ROLLE=nur_lesend fehlt in /root/.aequitas.env"; exit 1; }
+            docker builder prune -af --max-used-space 10GB >/dev/null 2>&1 || true
+            /root/deploy_safe_c2.sh
+            docker inspect aequitas-node --format "{{range .Config.Env}}{{println .}}{{end}}" | grep -E "^(ANNAHME_ROLLE|PRIMARY_NODE_URLS|PROOF_SERVER_URLS)=" | sort
+            for i in $(seq 1 60); do
+              S=$(curl -s -m 5 http://127.0.0.1:8080/api/health/combined || true)
+              echo "$S" | grep -q "\"nimmt_an\"" && break
+              sleep 5
+            done
+            echo "$S" | grep -qE "\"nimmt_an\": ?false" || { echo "FEHLER: C2 nimmt nach dem Deploy an -- zwei Annehmende"; exit 1; }
+            echo "C2 bleibt nur lesend."
+          '
+      - name: C2 lebt und die Hoehe steigt
+        run: bash deploy/pruefe-knoten.sh http://194.163.188.71:8080

@@ -1,0 +1,62 @@
+name: Lage C1 (netcup) und C2 -- Rolle, Dienste, Quorum (nur lesend)
+# Vor dem Umschalten: welche Box nimmt an (ANNAHME_ROLLE), welche Dienste
+# laufen wo, steht das Bezeugungs-Quorum? Gibt nur Namen aus festen Listen
+# aus (deploy/lage-lesen.sh) -- das Log ist oeffentlich.
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/server-changes-quorum-nfksc7]
+    paths:
+      - .github/workflows/lage-c1-c2.yml
+      - deploy/lage-lesen.sh
+permissions:
+  contents: read
+jobs:
+  c1:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      NEU: 188.172.229.121
+    steps:
+      - uses: actions/checkout@v4
+      - name: Schluessel
+        env:
+          KEY: ${{ secrets.CONTABO_SSH_KEY }}
+        run: |
+          set -eu
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+      - name: Host-Fingerabdruck C1 (zum Festpinnen)
+        run: ssh-keyscan 188.172.229.121 2>/dev/null | ssh-keygen -lf -
+      - name: C1 lesen
+        run: ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes root@$NEU 'bash -s' < deploy/lage-lesen.sh
+  c2:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Schluessel und Host-Pruefung
+        env:
+          KEY: ${{ secrets.CONTABO2_SSH_KEY }}
+        run: |
+          set -eu
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan 194.163.188.71 2>/dev/null > ~/.ssh/kh_all
+          ssh-keygen -lf ~/.ssh/kh_all | awk '{print $2}' | grep -qx 'SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto' || { echo "::error::Host-Schluessel von C2 passt nicht"; exit 1; }
+          cp ~/.ssh/kh_all ~/.ssh/known_hosts
+      - name: C2 lesen
+        run: ssh -o BatchMode=yes root@194.163.188.71 'bash -s' < deploy/lage-lesen.sh
+      - name: deploy_safe_c2.sh auf C2 (nur Ablauf, keine Werte)
+        run: ssh -o BatchMode=yes root@194.163.188.71 "grep -vE '^\\s*(#|$)' /root/deploy_safe_c2.sh | grep -viE 'KEY=|TOKEN=|PASSWORD=|SECRET=|postgres://' | head -120"
+      - name: env-setzen.sh auf C2 (nur Ablauf, keine Werte)
+        run: ssh -o BatchMode=yes root@194.163.188.71 "grep -vE '^\s*$' /root/env-setzen.sh | grep -viE 'KEY=|TOKEN=|PASSWORD=|SECRET=' | head -80"
+  aussen:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Oeffentliche Endpunkte
+        run: |
+          for u in https://aequitas.digital/api/status https://proof1.aequitas.digital/coordinator/health https://proof2.aequitas.digital/coordinator/health https://proof2.aequitas.digital/coordinator/inventory https://proof1.aequitas.digital/matching/health https://proof2.aequitas.digital/matching/health https://proof2.aequitas.digital/health https://proof2.aequitas.digital/api/status; do
+            echo "== $u"; curl -s -m 10 -w '  [HTTP %{http_code}]' "$u" | head -c 1500; echo
+          done
+          echo "== DNS"; for h in aequitas.digital proof1.aequitas.digital proof2.aequitas.digital; do echo "$h -> $(dig +short $h | tr '\n' ' ')"; done

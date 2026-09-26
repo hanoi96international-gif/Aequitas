@@ -123,7 +123,7 @@ en:{
   'x-imagine-a-world-where-every':'"Imagine a world where every person on Earth &#8212; regardless of where they were born, what language they speak, or how much money their parents had &#8212; receives a guaranteed daily income simply for being human. Not as charity. As a mathematical right, enforced by code that no government or corporation can override."',
   'x-inactive-escrow':'Inactive escrow',
   'x-inactivity-timeline':'Inactivity Timeline',
-  'x-ip4-173-249-37-118':'/ip4/173.249.37.118/tcp/4001/p2p/12D3KooWHfPy6g3jvyC1mvqzCHvy5QBsDmHHsvfwvwXQGrtQ2pVm',
+  'x-ip4-188-172-229-121':'/ip4/188.172.229.121/tcp/4001/p2p/12D3KooWFQyUpthkkVAii4ayMX4wpFGjDaGJxkNQXRBrmC2kx1gc',
   'x-ip4-194-163-188-71':'/ip4/194.163.188.71/tcp/4001/p2p/12D3KooWBv34kuVcmNDxZT4kCZFvNVGhy4zgkBZDGMtp7YSx2UUN',
   'x-keccak256-post-quantum-safe':'keccak256 (post-quantum safe)',
   'x-key-protections':'Key protections:',
@@ -450,7 +450,7 @@ de:{
   'x-imagine-a-world-where-every':'„Stellen Sie sich eine Welt vor, in der jeder Mensch auf der Erde &#8212; gleich wo er geboren wurde, welche Sprache er spricht oder wie viel Geld seine Eltern hatten &#8212; ein gesichertes tägliches Einkommen erhält, einfach weil er ein Mensch ist. Nicht als Almosen. Als mathematisches Recht, durchgesetzt von Code, den keine Regierung und kein Konzern übergehen kann."',
   'x-inactive-escrow':'Treuhand bei Untätigkeit',
   'x-inactivity-timeline':'Zeitlauf bei Untätigkeit',
-  'x-ip4-173-249-37-118':'/ip4/173.249.37.118/tcp/4001/p2p/12D3KooWHfPy6g3jvyC1mvqzCHvy5QBsDmHHsvfwvwXQGrtQ2pVm',
+  'x-ip4-188-172-229-121':'/ip4/188.172.229.121/tcp/4001/p2p/12D3KooWFQyUpthkkVAii4ayMX4wpFGjDaGJxkNQXRBrmC2kx1gc',
   'x-ip4-194-163-188-71':'/ip4/194.163.188.71/tcp/4001/p2p/12D3KooWBv34kuVcmNDxZT4kCZFvNVGhy4zgkBZDGMtp7YSx2UUN',
   'x-keccak256-post-quantum-safe':'keccak256 (quantensicher)',
   'x-key-protections':'Wesentliche Schutzvorkehrungen:',
@@ -790,7 +790,7 @@ es:{
   'x-imagine-a-world-where-every':'«Imagina un mundo en el que cada persona de la Tierra &#8212; sin importar dónde nació, qué idioma habla o cuánto dinero tenían sus padres &#8212; recibe una renta diaria garantizada simplemente por ser humana. No como caridad. Como un derecho matemático, aplicado por un código que ningún gobierno ni empresa puede anular.»',
   'x-inactive-escrow':'Depósito por inactividad',
   'x-inactivity-timeline':'Cronología de inactividad',
-  'x-ip4-173-249-37-118':'/ip4/173.249.37.118/tcp/4001/p2p/12D3KooWHfPy6g3jvyC1mvqzCHvy5QBsDmHHsvfwvwXQGrtQ2pVm',
+  'x-ip4-188-172-229-121':'/ip4/188.172.229.121/tcp/4001/p2p/12D3KooWFQyUpthkkVAii4ayMX4wpFGjDaGJxkNQXRBrmC2kx1gc',
   'x-ip4-194-163-188-71':'/ip4/194.163.188.71/tcp/4001/p2p/12D3KooWBv34kuVcmNDxZT4kCZFvNVGhy4zgkBZDGMtp7YSx2UUN',
   'x-keccak256-post-quantum-safe':'keccak256 (resistente a lo cuántico)',
   'x-key-protections':'Protecciones esenciales:',
@@ -1119,7 +1119,7 @@ ru:{
   'x-imagine-a-world-where-every':'«Представьте мир, где каждый человек на Земле &#8212; независимо от того, где он родился, на каком языке говорит и сколько денег было у его родителей &#8212; получает гарантированный ежедневный доход просто потому, что он человек. Не как подаяние. Как математическое право, соблюдаемое кодом, который не может отменить ни правительство, ни корпорация.»',
   'x-inactive-escrow':'Депонирование при бездействии',
   'x-inactivity-timeline':'Сроки бездействия',
-  'x-ip4-173-249-37-118':'/ip4/173.249.37.118/tcp/4001/p2p/12D3KooWHfPy6g3jvyC1mvqzCHvy5QBsDmHHsvfwvwXQGrtQ2pVm',
+  'x-ip4-188-172-229-121':'/ip4/188.172.229.121/tcp/4001/p2p/12D3KooWFQyUpthkkVAii4ayMX4wpFGjDaGJxkNQXRBrmC2kx1gc',
   'x-ip4-194-163-188-71':'/ip4/194.163.188.71/tcp/4001/p2p/12D3KooWBv34kuVcmNDxZT4kCZFvNVGhy4zgkBZDGMtp7YSx2UUN',
   'x-keccak256-post-quantum-safe':'keccak256 (устойчив к квантовым атакам)',
   'x-key-protections':'Основные меры защиты:',
@@ -1445,7 +1445,7 @@ zh:{
   'x-imagine-a-world-where-every':'「设想这样一个世界：地球上的每个人 —— 无论出生在哪里、说什么语言、父母有多少钱 —— 都仅仅因为身为人类而获得一份有保障的日收入。不是施舍，而是一项数学权利，由任何政府或企业都无法推翻的代码来执行。」',
   'x-inactive-escrow':'不活跃托管',
   'x-inactivity-timeline':'不活跃时间线',
-  'x-ip4-173-249-37-118':'/ip4/173.249.37.118/tcp/4001/p2p/12D3KooWHfPy6g3jvyC1mvqzCHvy5QBsDmHHsvfwvwXQGrtQ2pVm',
+  'x-ip4-188-172-229-121':'/ip4/188.172.229.121/tcp/4001/p2p/12D3KooWFQyUpthkkVAii4ayMX4wpFGjDaGJxkNQXRBrmC2kx1gc',
   'x-ip4-194-163-188-71':'/ip4/194.163.188.71/tcp/4001/p2p/12D3KooWBv34kuVcmNDxZT4kCZFvNVGhy4zgkBZDGMtp7YSx2UUN',
   'x-keccak256-post-quantum-safe':'keccak256（抗量子）',
   'x-key-protections':'主要保护措施：',
@@ -1772,7 +1772,7 @@ id:{
   'x-imagine-a-world-where-every':'«Bayangkan dunia tempat setiap orang di Bumi &#8212; tak peduli di mana ia lahir, bahasa apa yang ia gunakan, atau seberapa banyak uang orang tuanya &#8212; menerima pendapatan harian yang terjamin semata-mata karena ia manusia. Bukan sebagai sedekah. Sebagai hak matematis, ditegakkan oleh kode yang tak bisa dibatalkan pemerintah atau perusahaan mana pun.»',
   'x-inactive-escrow':'Penitipan karena ketidakaktifan',
   'x-inactivity-timeline':'Lini masa ketidakaktifan',
-  'x-ip4-173-249-37-118':'/ip4/173.249.37.118/tcp/4001/p2p/12D3KooWHfPy6g3jvyC1mvqzCHvy5QBsDmHHsvfwvwXQGrtQ2pVm',
+  'x-ip4-188-172-229-121':'/ip4/188.172.229.121/tcp/4001/p2p/12D3KooWFQyUpthkkVAii4ayMX4wpFGjDaGJxkNQXRBrmC2kx1gc',
   'x-ip4-194-163-188-71':'/ip4/194.163.188.71/tcp/4001/p2p/12D3KooWBv34kuVcmNDxZT4kCZFvNVGhy4zgkBZDGMtp7YSx2UUN',
   'x-keccak256-post-quantum-safe':'keccak256 (tahan pasca-kuantum)',
   'x-key-protections':'Perlindungan utama:',
@@ -2094,7 +2094,7 @@ it:{
   'x-imagine-a-world-where-every':'«Immagina un mondo in cui ogni persona sulla Terra &#8212; a prescindere da dove è nata, che lingua parla o quanto denaro avevano i suoi genitori &#8212; riceve un reddito quotidiano garantito solo perché è un essere umano. Non come carità. Come un diritto matematico, applicato da un codice che nessun governo o azienda può scavalcare.»',
   'x-inactive-escrow':'Deposito per inattività',
   'x-inactivity-timeline':'Cronologia dell’inattività',
-  'x-ip4-173-249-37-118':'/ip4/173.249.37.118/tcp/4001/p2p/12D3KooWHfPy6g3jvyC1mvqzCHvy5QBsDmHHsvfwvwXQGrtQ2pVm',
+  'x-ip4-188-172-229-121':'/ip4/188.172.229.121/tcp/4001/p2p/12D3KooWFQyUpthkkVAii4ayMX4wpFGjDaGJxkNQXRBrmC2kx1gc',
   'x-ip4-194-163-188-71':'/ip4/194.163.188.71/tcp/4001/p2p/12D3KooWBv34kuVcmNDxZT4kCZFvNVGhy4zgkBZDGMtp7YSx2UUN',
   'x-keccak256-post-quantum-safe':'keccak256 (resistente al quantistico)',
   'x-key-protections':'Protezioni essenziali:',
@@ -2417,7 +2417,7 @@ tr:{
   'x-imagine-a-world-where-every':'«Yeryüzündeki her insanın &#8212; nerede doğduğuna, hangi dili konuştuğuna ya da ailesinin ne kadar parası olduğuna bakılmaksızın &#8212; yalnızca insan olduğu için güvenceli bir günlük gelir aldığı bir dünya düşün. Sadaka olarak değil. Hiçbir hükümetin ya da şirketin geçersiz kılamayacağı bir kodun uyguladığı matematiksel bir hak olarak.»',
   'x-inactive-escrow':'Hareketsizlik emaneti',
   'x-inactivity-timeline':'Hareketsizlik zaman çizelgesi',
-  'x-ip4-173-249-37-118':'/ip4/173.249.37.118/tcp/4001/p2p/12D3KooWHfPy6g3jvyC1mvqzCHvy5QBsDmHHsvfwvwXQGrtQ2pVm',
+  'x-ip4-188-172-229-121':'/ip4/188.172.229.121/tcp/4001/p2p/12D3KooWFQyUpthkkVAii4ayMX4wpFGjDaGJxkNQXRBrmC2kx1gc',
   'x-ip4-194-163-188-71':'/ip4/194.163.188.71/tcp/4001/p2p/12D3KooWBv34kuVcmNDxZT4kCZFvNVGhy4zgkBZDGMtp7YSx2UUN',
   'x-keccak256-post-quantum-safe':'keccak256 (kuantum sonrasına dayanıklı)',
   'x-key-protections':'Temel korumalar:',
@@ -2746,7 +2746,7 @@ fr:{
   'x-imagine-a-world-where-every':'« Imaginez un monde où chaque personne sur Terre &#8212; peu importe où elle est née, quelle langue elle parle ou combien d’argent avaient ses parents &#8212; reçoit un revenu quotidien garanti simplement parce qu’elle est humaine. Non par charité. Comme un droit mathématique, appliqué par un code qu’aucun gouvernement ni aucune entreprise ne peut contourner. »',
   'x-inactive-escrow':'Séquestre pour inactivité',
   'x-inactivity-timeline':'Calendrier d’inactivité',
-  'x-ip4-173-249-37-118':'/ip4/173.249.37.118/tcp/4001/p2p/12D3KooWHfPy6g3jvyC1mvqzCHvy5QBsDmHHsvfwvwXQGrtQ2pVm',
+  'x-ip4-188-172-229-121':'/ip4/188.172.229.121/tcp/4001/p2p/12D3KooWFQyUpthkkVAii4ayMX4wpFGjDaGJxkNQXRBrmC2kx1gc',
   'x-ip4-194-163-188-71':'/ip4/194.163.188.71/tcp/4001/p2p/12D3KooWBv34kuVcmNDxZT4kCZFvNVGhy4zgkBZDGMtp7YSx2UUN',
   'x-keccak256-post-quantum-safe':'keccak256 (résistant au quantique)',
   'x-key-protections':'Protections essentielles :',
@@ -3074,7 +3074,7 @@ pt:{
   'x-imagine-a-world-where-every':'«Imagina um mundo em que cada pessoa da Terra &#8212; independentemente de onde nasceu, que língua fala ou de quanto dinheiro os pais tinham &#8212; recebe um rendimento diário garantido apenas por ser humana. Não como caridade. Como um direito matemático, imposto por código que nenhum governo ou empresa pode contornar.»',
   'x-inactive-escrow':'Depósito por inatividade',
   'x-inactivity-timeline':'Cronologia da inatividade',
-  'x-ip4-173-249-37-118':'/ip4/173.249.37.118/tcp/4001/p2p/12D3KooWHfPy6g3jvyC1mvqzCHvy5QBsDmHHsvfwvwXQGrtQ2pVm',
+  'x-ip4-188-172-229-121':'/ip4/188.172.229.121/tcp/4001/p2p/12D3KooWFQyUpthkkVAii4ayMX4wpFGjDaGJxkNQXRBrmC2kx1gc',
   'x-ip4-194-163-188-71':'/ip4/194.163.188.71/tcp/4001/p2p/12D3KooWBv34kuVcmNDxZT4kCZFvNVGhy4zgkBZDGMtp7YSx2UUN',
   'x-keccak256-post-quantum-safe':'keccak256 (resistente ao quântico)',
   'x-key-protections':'Proteções essenciais:',
@@ -3402,7 +3402,7 @@ ar:{
   'x-imagine-a-world-where-every':'«تخيَّل عالماً يتلقى فيه كل إنسان على الأرض &#8212; بغضّ النظر عن مكان ولادته أو لغته أو ثروة والديه &#8212; دخلاً يومياً مضموناً لمجرد كونه إنساناً. لا صدقةً، بل حقاً رياضياً تفرضه شِفرة لا تستطيع حكومة ولا شركة تجاوزها.»',
   'x-inactive-escrow':'حجز عند الخمول',
   'x-inactivity-timeline':'الجدول الزمني للخمول',
-  'x-ip4-173-249-37-118':'/ip4/173.249.37.118/tcp/4001/p2p/12D3KooWHfPy6g3jvyC1mvqzCHvy5QBsDmHHsvfwvwXQGrtQ2pVm',
+  'x-ip4-188-172-229-121':'/ip4/188.172.229.121/tcp/4001/p2p/12D3KooWFQyUpthkkVAii4ayMX4wpFGjDaGJxkNQXRBrmC2kx1gc',
   'x-ip4-194-163-188-71':'/ip4/194.163.188.71/tcp/4001/p2p/12D3KooWBv34kuVcmNDxZT4kCZFvNVGhy4zgkBZDGMtp7YSx2UUN',
   'x-keccak256-post-quantum-safe':'‏keccak256 (آمن بعد الكَمّ)',
   'x-key-protections':'الحمايات الأساسية:',
@@ -3728,7 +3728,7 @@ hi:{
   'x-imagine-a-world-where-every':'«ऐसी दुनिया की कल्पना कीजिए जहाँ पृथ्वी का हर व्यक्ति &#8212; चाहे वह कहीं भी जन्मा हो, कोई भी भाषा बोलता हो, या उसके माता-पिता के पास कितना भी धन रहा हो &#8212; केवल मनुष्य होने के नाते एक सुनिश्चित दैनिक आय पाता है। दान के रूप में नहीं। एक गणितीय अधिकार के रूप में, जिसे ऐसा कोड लागू करता है जिसे कोई सरकार या निगम रद्द नहीं कर सकता।»',
   'x-inactive-escrow':'निष्क्रियता पर अमानत',
   'x-inactivity-timeline':'निष्क्रियता की समय-रेखा',
-  'x-ip4-173-249-37-118':'/ip4/173.249.37.118/tcp/4001/p2p/12D3KooWHfPy6g3jvyC1mvqzCHvy5QBsDmHHsvfwvwXQGrtQ2pVm',
+  'x-ip4-188-172-229-121':'/ip4/188.172.229.121/tcp/4001/p2p/12D3KooWFQyUpthkkVAii4ayMX4wpFGjDaGJxkNQXRBrmC2kx1gc',
   'x-ip4-194-163-188-71':'/ip4/194.163.188.71/tcp/4001/p2p/12D3KooWBv34kuVcmNDxZT4kCZFvNVGhy4zgkBZDGMtp7YSx2UUN',
   'x-keccak256-post-quantum-safe':'keccak256 (क्वांटम-पश्चात सुरक्षित)',
   'x-key-protections':'मुख्य सुरक्षाएँ:',
@@ -5344,16 +5344,15 @@ function validatorOperator(address) {
   return op && op !== a ? op : null;
 }
 
-// proposerHTML: "Validator #1 · 0x0be8…d016" und darunter klein "signs as
-// 0x3066…42dc", wenn Betreiber und Signieradresse verschieden sind; sonst wie
-// bisher Label und Adresse.
+// proposerHTML: "Validator #1 · 0x0be8…d016" -- die Betreiber-Wallet, wenn
+// eine bekannt ist, sonst die Signieradresse. Die Signieradresse steht nicht
+// mehr zusaetzlich darunter (26.09.2026, auf Wunsch des Betreibers).
 function proposerHTML(address) {
   if (!address) return '—';
   const label = validatorLabel(address);
   const op = validatorOperator(address);
   const wer = sanitize(short(op || address, 6, 4));
   let html = label ? ('<strong>' + sanitize(label) + '</strong> · ' + wer) : wer;
-  if (op) html += '<br><span class="exp-muted" style="font-size:0.85em">signs as ' + sanitize(short(address, 6, 4)) + '</span>';
   return html;
 }
 
@@ -5560,7 +5559,7 @@ function renderDagView(rawBlocks, canonicalHashSet) {
       }[status];
       [
         '#' + n.block.height + ' · ' + statusLabel,
-        'proposer: ' + short(validatorOperator(n.block.proposer) || n.block.proposer || '', 8, 4) + (validatorLabel(n.block.proposer) ? ' (' + validatorLabel(n.block.proposer) + ')' : '') + (validatorOperator(n.block.proposer) ? ', signs as ' + short(n.block.proposer, 6, 4) : ''),
+        'proposer: ' + short(validatorOperator(n.block.proposer) || n.block.proposer || '', 8, 4) + (validatorLabel(n.block.proposer) ? ' (' + validatorLabel(n.block.proposer) + ')' : ''),
         'blue_score: ' + (n.block.blue_score != null ? n.block.blue_score : '—'),
         'parents: ' + ((n.block.parent_hashes || []).length)
       ].concat(isKnight ? [

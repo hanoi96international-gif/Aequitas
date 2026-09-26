@@ -1,0 +1,51 @@
+name: Rolle -- C1 (netcup) Primary, C2 nur lesend
+# Nur EIN Knoten darf Ueberweisungen annehmen (annahme_tor.go). Seit C1 am
+# 26.09.2026 wieder produziert, nahmen beide an. Reihenfolge ist Absicht:
+#   1. C2 -> ANNAHME_ROLLE=nur_lesend, Quelle C1  (danach hoechstens einer)
+#   2. C1 -> ANNAHME_ROLLE=annehmend, IS_PRIMARY_NODE=true
+# Schritt 2 laeuft nur, wenn C2 nimmt_an=false gemeldet hat.
+# Vom Betreiber am 26.09.2026 freigegeben.
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/server-changes-quorum-nfksc7]
+    paths:
+      - .github/workflows/rolle-c1-primary.yml
+      - deploy/rolle-c2-nur-lesend.sh
+      - deploy/rolle-c1-primary.sh
+permissions:
+  contents: read
+concurrency: rolle-umschalten
+jobs:
+  c2-nur-lesend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Schluessel und Host-Pruefung
+        env:
+          KEY: ${{ secrets.CONTABO2_SSH_KEY }}
+        run: |
+          set -eu
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan 194.163.188.71 2>/dev/null > ~/.ssh/kh_all
+          ssh-keygen -lf ~/.ssh/kh_all | awk '{print $2}' | grep -qx 'SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto' || { echo "::error::Host-Schluessel von C2 passt nicht"; exit 1; }
+          cp ~/.ssh/kh_all ~/.ssh/known_hosts
+      - name: C2 auf nur_lesend
+        run: ssh -o BatchMode=yes -o ServerAliveInterval=30 root@194.163.188.71 'bash -s' < deploy/rolle-c2-nur-lesend.sh
+  c1-primary:
+    needs: c2-nur-lesend
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Schluessel
+        env:
+          KEY: ${{ secrets.CONTABO_SSH_KEY }}
+        run: |
+          set -eu
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+      - name: C1 annehmend und Primary
+        run: ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o ServerAliveInterval=30 root@188.172.229.121 'bash -s' < deploy/rolle-c1-primary.sh

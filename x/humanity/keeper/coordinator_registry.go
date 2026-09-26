@@ -250,8 +250,16 @@ func (a *APIServer) handleRegisterCoordinatorKey(w http.ResponseWriter, r *http.
 // Liste lesen koennen, ohne dafuer ein Geheimnis zu brauchen.
 func (a *APIServer) handleCoordinatorList(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w)
+	// Leeres Register als [] statt null: der Vergleichsdienst iteriert ueber
+	// die Liste und brach bei null mit TypeError ab ("Coordinator-Register
+	// nicht lesbar") -- so geschehen am 26.09.2026 auf dem frisch
+	// aufgesetzten C1, dessen Register noch leer war.
+	liste := a.state.Coordinators()
+	if liste == nil {
+		liste = []CoordinatorEntry{}
+	}
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"coordinators": a.state.Coordinators(),
+		"coordinators": liste,
 	})
 }
 
