@@ -38,3 +38,12 @@ for u in aequitas-proof-server:3000/health proof-server:3000/health aequitas-coo
 done
 echo "--- Maschine ---"
 nproc; free -m | head -2; df -h / | tail -1; uptime
+echo "--- Fehler der Registrierungsdienste, letzte 60 min (Hex/Adressen gekuerzt) ---"
+for c in aequitas-coordinator proof-server aequitas-proof-server aequitas-matching; do
+  docker inspect "$c" >/dev/null 2>&1 || continue
+  echo "## $c"
+  docker logs --since 60m "$c" 2>&1 \
+    | grep -iE 'error|fehl|reject|abgewiesen|denied|quorum|40[0-9] |50[0-9] |exception|traceback|timeout|register|prove' \
+    | grep -vE 'KEY=|TOKEN=|PASSWORD' \
+    | sed -E 's/0x[0-9a-fA-F]{8,}/0x…/g; s/[0-9a-fA-F]{24,}/…/g' | tail -25
+done
