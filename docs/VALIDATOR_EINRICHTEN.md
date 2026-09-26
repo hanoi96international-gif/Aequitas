@@ -52,6 +52,27 @@ curl -s https://aequitas.digital/api/status | grep -oE '"height":[0-9]+'
 
 Beide Zahlen müssen (bis auf ein paar Blöcke) gleich sein.
 
+## Zwei Schlüssel, zwei Aufgaben
+
+| | liegt wo | wofür |
+|---|---|---|
+| **Signierschlüssel** (`RELAYER_PRIVATE_KEY`) | auf dem Server | der Knoten unterschreibt damit seine Blöcke |
+| **Deine Menschen-Wallet** (`NODE_OPERATOR_WALLET`) | nur ihre **Adresse** auf dem Server, der Schlüssel bleibt bei dir | Belohnungen gehen dorthin |
+
+Verbunden werden die beiden **einmal** über `/node-binding`: mit der
+Menschen-Wallet signieren, das Ergebnis als
+`NODE_OPERATOR_BINDING_SIGNATURE` eintragen. Mit eigenem Signierschlüssel ist
+das **Pflicht** — ohne überspringt das Netz den Knoten als Validator.
+
+**Umzug auf einen neuen Server:** der neue Server hat einen neuen
+Signierschlüssel, also auf `/node-binding` noch einmal signieren. Die alte
+Signatur gilt nur für die alte Adresse.
+
+**Nicht empfohlen:** den privaten Schlüssel der Menschen-Wallet selbst als
+`RELAYER_PRIVATE_KEY` auf den Server legen. Dann unterschreibt der Knoten die
+Bindung selbst — aber wer den Server knackt, besitzt auch deine Wallet samt
+Guthaben.
+
 ## Schlüssel sichern
 
 Lässt du `RELAYER_PRIVATE_KEY` und `NODE_KEY` in `.env` leer, erzeugt der
