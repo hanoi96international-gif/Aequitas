@@ -12,6 +12,11 @@ on:
       duration: {description: "Messfenster", required: false, default: "30s"}
       accounts_csv: {description: "Kontenliste auf C2", required: false, default: "accounts-funded.csv"}
       pairs: {description: "Sender-Paare (0 = alle)", required: false, default: "0"}
+  # Freigegeben am 26.09.2026 ("Freigabe"): der Push dieser Datei startet
+  # eine Messung.
+  push:
+    branches: [claude/server-changes-quorum-nfksc7]
+    paths: [.github/workflows/tps-c1.yml]
 permissions:
   contents: read
 concurrency:
