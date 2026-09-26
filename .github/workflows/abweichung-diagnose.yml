@@ -1,0 +1,54 @@
+name: Abweichung C1/C2 -- Diagnose (nur lesen)
+# Wenn konten-vergleich.yml nach einem Lastlauf Abweichungen zeigt: stehen
+# auf C1 noch angenommene Ueberweisungen offen, hat C2 beim Nachspielen
+# welche uebersprungen oder Bloecke abgelehnt? Nur Zaehler und Log-Zeilen.
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [claude/server-changes-quorum-nfksc7]
+    paths: [.github/workflows/abweichung-diagnose.yml]
+permissions:
+  contents: read
+jobs:
+  schauen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Schluessel und Host-Pruefung
+        env:
+          K1: ${{ secrets.CONTABO_SSH_KEY }}
+          K2: ${{ secrets.CONTABO2_SSH_KEY }}
+        run: |
+          set -eu
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$K1" > ~/.ssh/c1 && printf '%s\n' "$K2" > ~/.ssh/c2 && chmod 600 ~/.ssh/c1 ~/.ssh/c2
+          ssh-keyscan -t ed25519 188.172.229.121 2>/dev/null > ~/.ssh/k1
+          ssh-keygen -lf ~/.ssh/k1 | awk '{print $2}' | grep -qx 'SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA'
+          ssh-keyscan 194.163.188.71 2>/dev/null > ~/.ssh/k2
+          ssh-keygen -lf ~/.ssh/k2 | awk '{print $2}' | grep -qx 'SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto'
+          cat ~/.ssh/k1 ~/.ssh/k2 > ~/.ssh/known_hosts
+      - name: Beide Knoten
+        run: |
+          for box in c1:188.172.229.121 c2:194.163.188.71; do
+            k=${box%%:*}; h=${box#*:}
+            echo "################ $k ################"
+            ssh -i ~/.ssh/$k -o BatchMode=yes root@$h 'bash -s' <<'SKRIPT'
+          set +e
+          DATABASE_URL="$(grep -E '^DATABASE_URL=' /root/.aequitas.env 2>/dev/null | head -1 | cut -d= -f2-)"
+          [ -n "$DATABASE_URL" ] || DATABASE_URL="$(docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E '^DATABASE_URL=' | head -1 | cut -d= -f2-)"
+          NET="$(docker inspect aequitas-node --format '{{range $n,$v := .NetworkSettings.Networks}}{{$n}}{{end}}')"
+          q() { docker run --rm --network "$NET" -e DATABASE_URL="$DATABASE_URL" postgres:16-alpine sh -c "psql \"\$DATABASE_URL\" -t -A -c \"$1\""; }
+          echo "--- pending_txs ---"
+          q "SELECT 'offen='||count(*) FROM pending_txs WHERE included_at=0"
+          q "SELECT 'dead_letter='||count(*) FROM pending_txs_dead_letter"
+          echo "--- health ---"
+          curl -s -m 10 http://127.0.0.1:8080/api/health/combined | jq -c '{zustands_ablehnung, divergenz: (.divergenz|{abweichend,strikes,seit}), signierte_ueberweisungen, peer_lag_bremse: (.peer_lag_bremse|{gebremst,letzter_rueckstand})}' 2>/dev/null
+          echo "--- Log seit 23:15 Berlin: Zaehler ---"
+          L=$(docker logs --since 2026-09-26T21:15:00 aequitas-node 2>&1)
+          for m in 'uebersprungen' '\[ZUSTAND\]' 'Block abgelehnt' '\[REPLAY\] ✗' 'nonce too low' 'Nonce .* ist verbraucht' 'nicht signiert' 'insufficient' 'DIVERGENZ' 'dead.letter' 'hardFailure' 'rolled back'; do
+            printf '%-26s %s\n' "$m" "$(echo "$L" | grep -cE "$m")"
+          done
+          echo "--- Beispiele (gekuerzt) ---"
+          echo "$L" | grep -E 'uebersprungen|\[ZUSTAND\]|Block abgelehnt|\[REPLAY\] ✗|verbraucht|dead.letter' | cut -c1-260 | tail -12
+          SKRIPT
+          done
