@@ -78,8 +78,12 @@ import (
 )
 
 const (
-	// 2026-10-01T00:00:00Z
-	wirtschaftAktivAbUnix int64 = 1790812800
+	// 2026-09-26T15:00:00Z (17:00 deutscher Zeit). Urspruenglich
+	// 2026-10-01T00:00:00Z; vom Betreiber am 26.09.2026 ausdruecklich
+	// vorgezogen. Der Zeitpunkt liegt bewusst NACH dem Ausrollen auf beide
+	// Knoten (deploy-c1-dann-c2.yml): eine Konsensregel, die auf C1 schon
+	// gilt und auf C2 noch nicht, liesse die Kette auseinanderlaufen.
+	wirtschaftAktivAbUnix int64 = 1790434800
 
 	// Alle Betraege sind Vielfache des fairen Anteils (registrationGrant),
 	// nicht feste Summen und nicht an den Dollar gekoppelt. Die Geldmenge ist

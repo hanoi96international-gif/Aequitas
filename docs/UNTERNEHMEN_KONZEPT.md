@@ -1,6 +1,6 @@
 # Aequitas für Unternehmen – Konzept
 
-Stand: 25.09.2026 · Status: **beschlossen und gebaut**, aktiv ab 01.10.2026 (`x/humanity/keeper/wirtschaft.go`)
+Stand: 25.09.2026 · Status: **beschlossen und gebaut**, aktiv ab 26.09.2026, 15:00 UTC (`x/humanity/keeper/wirtschaft.go`; urspruenglich 01.10.2026, vom Betreiber vorgezogen)
 
 ## In einem Satz
 
