@@ -269,6 +269,45 @@ Ein gekaperter Ausschuss (6 von 8) stiehlt und will auszahlen. Der Fehlerbeweis 
 - Prüfen kostet dann Millisekunden, auch auf einem Handy. Übernehmen ohne Nachrechnen wird **ohne Vertrauen** möglich.
 - Offen: Kosten des Beweisens, passende Schaltkreise für die Wirtschaftsregeln. Wird nicht vor Stufe 3 begonnen.
 
+### Forschungsstand (26.09.2026): Prototyp und gemessene Kosten
+
+Der Prototyp liegt in `forschung/zk-gueltigkeit`, einem eigenen Go-Modul. `gnark` würde sonst die Kryptobibliothek von `go-ethereum` im Hauptmodul anheben. Er erzeugt einen echten Gültigkeitsbeweis (Groth16 auf BN254) dafür, dass ein Bündel von Überweisungen den Zustand von einer alten zu einer neuen Wurzel führt.
+
+Der Schaltkreis erzwingt für jede Überweisung:
+- das Absenderkonto unter der Wurzel (MiMC-Merkle-Pfad),
+- die Signatur des Absenders (EdDSA auf der Twisted-Edwards-Kurve von BN254),
+- die Nonce,
+- die Deckung (64-Bit-Bereich, keine Überziehung),
+- verschiedene Konten für Absender und Empfänger,
+- die neue Wurzel nach Belastung und Gutschrift.
+
+Öffentlich sind nur die beiden Wurzeln. Die Tests prüfen, dass jede Fälschung den Beweis unmöglich macht: anderer Betrag, fremde Signatur, erfundenes Guthaben, verbrauchte Nonce, Überweisung an sich selbst, Überziehung, falsche Wurzel. Läuft in CI (Job `zk-forschung`).
+
+**Gemessen** (4 Kerne, Groth16, MiMC):
+
+| Konten | Bündel | Bedingungen je Überweisung | Beweis je Überweisung | Prüfung des Bündels | Setup |
+|---|---|---|---|---|---|
+| 256 (Tiefe 8) | 4 | 35.021 | 0,38 s | 1,0 ms | 16 s |
+| 65.536 (Tiefe 16) | 16 | 56.237 | 0,52 s | 1,5 ms | 90 s |
+
+**Was daraus folgt:**
+- **Prüfen ist wirklich fast kostenlos.** Die Prüfung dauert 1 bis 1,5 ms, unabhängig von der Bündelgröße. Das gilt auch auf einem Handy. Das Ziel „Übernehmen ohne Nachrechnen“ ist technisch erreicht.
+- **Beweisen ist der Engpass.** Eine Überweisung kostet etwa 2 Kernsekunden. Für 10.000 Überweisungen je Sekunde bräuchte man etwa 20.000 Kerne. Auf günstiger Hardware ist das nicht tragbar. Stufe 4 ersetzt das Nachrechnen deshalb nicht für den vollen Durchsatz, sondern ergänzt es.
+- **Der Merkle-Pfad dominiert.** Pro Ebene kommen etwa 2.600 Bedingungen dazu. Bei Tiefe 32 (vier Milliarden Konten) wären es etwa 98.000 je Überweisung, davon rund 14.000 für die Signatur. Poseidon statt MiMC senkt das Hashen etwa um den Faktor 3 bis 5. Das ist der erste Hebel.
+- **Das vertrauenswürdige Setup** von Groth16 bräuchte eine Mehrparteien-Zeremonie. Alternativen sind PLONK mit universellem Setup (in `gnark` vorhanden, Beweise etwas größer) oder STARKs ohne Setup (Beweise deutlich größer).
+
+**Schaltkreise für die Wirtschaftsregeln** (abgeschätzt, nicht gebaut):
+- Gebühr samt Staffel: Vergleiche und Multiplikation, einige hundert Bedingungen.
+- Vermögensgrenze: ein Bereichsvergleich gegen die öffentliche Grenze, gut hundert.
+- Grundeinkommen: nach dem Muster aus Stufe 3 (kumulierter Index, `GEStand`) eine Addition.
+- Buchführung der Unternehmen: ein zweiter Baum, je berührtem Buchkonto ein weiterer Pfad, etwa +20.000.
+
+**Empfehlung für den Weg dahin:**
+1. Stufe 3 läuft optimistisch mit Fehlerbeweisen.
+2. Beweise werden nachgereicht, je Bereichsblock und asynchron. Sobald ein Block bewiesen ist, endet sein Einspruchsfenster sofort. Umtausch und Ausstieg werden damit früher sicher, ohne dass jeder Knoten beweisen muss.
+3. Beweisen ist eine offene Rolle, die jeder mit Rechenleistung übernehmen kann. Sie verleiht keinen Rang und keine Stimme. Geprüft wird von allen.
+4. Nächste Messungen: Poseidon2, PLONK, GPU-Beweiser und rekursive Zusammenfassung der S Bereichsbeweise im Sammelblock.
+
 ---
 
 ## Außerhalb der Kette ebenfalls dezentral
