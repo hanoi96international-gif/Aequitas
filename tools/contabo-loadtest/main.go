@@ -1695,7 +1695,7 @@ func pruefeAnnahme(ziele []string) {
 	if basis, verweigert := annahmeVerweigert(ziele, &http.Client{Timeout: 10 * time.Second}); verweigert {
 		fmt.Printf("ABBRUCH: %s nimmt keine Ueberweisungen an (annahme_tor.nimmt_an=false).\n", basis)
 		fmt.Println("Ein Lauf dorthin misst nur Ablehnungen. -rpc auf den annehmenden Knoten richten,")
-		fmt.Println("heute Contabo1: -rpc http://173.249.37.118:8080/rpc -status http://173.249.37.118:8080/api/status")
+		fmt.Println("heute C1 (netcup): -rpc http://188.172.229.121:8080/rpc -status http://188.172.229.121:8080/api/status")
 		os.Exit(2)
 	}
 }

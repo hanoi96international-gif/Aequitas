@@ -200,7 +200,7 @@ railway_vars_code = (
     '# recommended: the key that signs your blocks (or leave empty on first start)\n'
     'RELAYER_PRIVATE_KEY    = 0xYOUR_PRIVATE_KEY\n'
     '# preset, leave as is\n'
-    'PRIMARY_NODE_URLS      = http://173.249.37.118:8080,http://194.163.188.71:8080'
+    'PRIMARY_NODE_URLS      = http://188.172.229.121:8080,http://194.163.188.71:8080'
 ),
 
 docker_title = 'Step 2b — Update, restart, stop',
@@ -315,7 +315,7 @@ railway_vars_code = (
     '# empfohlen: der Schluessel, der deine Bloecke signiert (oder beim ersten Start leer lassen)\n'
     'RELAYER_PRIVATE_KEY    = 0xDEIN_PRIVATER_SCHLUESSEL\n'
     '# voreingestellt, so lassen\n'
-    'PRIMARY_NODE_URLS      = http://173.249.37.118:8080,http://194.163.188.71:8080'
+    'PRIMARY_NODE_URLS      = http://188.172.229.121:8080,http://194.163.188.71:8080'
 ),
 
 docker_title = 'Schritt 2b — Aktualisieren, neu starten, stoppen',
@@ -604,7 +604,7 @@ ES = {'title': 'GUÍA DEL OPERADOR DE NODO AEQUITAS',
                       '# recomendado: la clave que firma tus bloques (o vacío en el primer arranque)\n'
                       'RELAYER_PRIVATE_KEY    = 0xTU_CLAVE_PRIVADA\n'
                       '# preconfigurado, déjalo así\n'
-                      'PRIMARY_NODE_URLS      = http://173.249.37.118:8080,http://194.163.188.71:8080',
+                      'PRIMARY_NODE_URLS      = http://188.172.229.121:8080,http://194.163.188.71:8080',
  'docker_title': 'Paso 2b — Actualizar, reiniciar, parar',
  'docker_intro': 'El nodo guarda su estado en dos volúmenes Docker (base de datos y registro de '
                  'transferencias). Actualizar reconstruye la imagen con el código más reciente; el estado se '
@@ -787,7 +787,7 @@ FR = {'title': "GUIDE DE L'OPÉRATEUR DE NŒUD AEQUITAS",
                       '# recommandé : la clé qui signe vos blocs (ou vide au premier démarrage)\n'
                       'RELAYER_PRIVATE_KEY    = 0xVOTRE_CLE_PRIVEE\n'
                       '# prérempli, laisser tel quel\n'
-                      'PRIMARY_NODE_URLS      = http://173.249.37.118:8080,http://194.163.188.71:8080',
+                      'PRIMARY_NODE_URLS      = http://188.172.229.121:8080,http://194.163.188.71:8080',
  'docker_title': 'Étape 2b — Mettre à jour, redémarrer, arrêter',
  'docker_intro': 'Le nœud garde son état dans deux volumes Docker (base de données et journal des '
                  "transferts). Une mise à jour reconstruit l'image avec le code le plus récent ; l'état "
@@ -974,7 +974,7 @@ IT = {'title': "GUIDA PER L'OPERATORE DI NODO AEQUITAS",
                       '# consigliato: la chiave che firma i tuoi blocchi (o vuota al primo avvio)\n'
                       'RELAYER_PRIVATE_KEY    = 0xTUA_CHIAVE_PRIVATA\n'
                       '# preimpostato, lascia così\n'
-                      'PRIMARY_NODE_URLS      = http://173.249.37.118:8080,http://194.163.188.71:8080',
+                      'PRIMARY_NODE_URLS      = http://188.172.229.121:8080,http://194.163.188.71:8080',
  'docker_title': 'Passo 2b — Aggiornare, riavviare, fermare',
  'docker_intro': 'Il nodo conserva il suo stato in due volumi Docker (database e registro dei '
                  "trasferimenti). Un aggiornamento ricostruisce l'immagine dal codice più recente; lo stato "
@@ -1155,7 +1155,7 @@ PT = {'title': 'GUIA DO OPERADOR DE NÓ AEQUITAS',
                       '# recomendado: a chave que assina os seus blocos (ou vazia no primeiro arranque)\n'
                       'RELAYER_PRIVATE_KEY    = 0xSUA_CHAVE_PRIVADA\n'
                       '# predefinido, deixe como está\n'
-                      'PRIMARY_NODE_URLS      = http://173.249.37.118:8080,http://194.163.188.71:8080',
+                      'PRIMARY_NODE_URLS      = http://188.172.229.121:8080,http://194.163.188.71:8080',
  'docker_title': 'Passo 2b — Atualizar, reiniciar, parar',
  'docker_intro': 'O nó guarda o seu estado em dois volumes Docker (base de dados e registo de '
                  'transferências). Atualizar reconstrói a imagem com o código mais recente; o estado '
@@ -1332,7 +1332,7 @@ TR = {'title': 'AEQUITAS DÜĞÜM OPERATÖRÜ KILAVUZU',
                       '# önerilir: bloklarınızı imzalayan anahtar (ya da ilk başlatmada boş)\n'
                       'RELAYER_PRIVATE_KEY    = 0xOZEL_ANAHTARINIZ\n'
                       '# önceden ayarlı, olduğu gibi bırakın\n'
-                      'PRIMARY_NODE_URLS      = http://173.249.37.118:8080,http://194.163.188.71:8080',
+                      'PRIMARY_NODE_URLS      = http://188.172.229.121:8080,http://194.163.188.71:8080',
  'docker_title': 'Adım 2b — Güncelleme, yeniden başlatma, durdurma',
  'docker_intro': 'Düğüm durumunu iki Docker biriminde tutar (veritabanı ve transfer günlüğü). Güncelleme '
                  'imajı en yeni koddan yeniden oluşturur; durum korunur. Ağdaki tüm doğrulayıcıları asla '
@@ -1513,7 +1513,7 @@ ID = {'title': 'PANDUAN OPERATOR NODE AEQUITAS',
                       'dijalankan)\n'
                       'RELAYER_PRIVATE_KEY    = 0xKUNCI_PRIVAT_ANDA\n'
                       '# sudah diatur, biarkan apa adanya\n'
-                      'PRIMARY_NODE_URLS      = http://173.249.37.118:8080,http://194.163.188.71:8080',
+                      'PRIMARY_NODE_URLS      = http://188.172.229.121:8080,http://194.163.188.71:8080',
  'docker_title': 'Langkah 2b — Memperbarui, memulai ulang, menghentikan',
  'docker_intro': 'Node menyimpan keadaannya di dua volume Docker (basis data dan log transfer). Pembaruan '
                  'membangun ulang image dari kode terbaru; keadaan tetap. Jangan pernah memulai ulang semua '
@@ -1691,7 +1691,7 @@ RU = {'title': 'РУКОВОДСТВО ОПЕРАТОРА УЗЛА AEQUITAS',
                       '# рекомендуется: ключ, подписывающий ваши блоки (или пусто при первом запуске)\n'
                       'RELAYER_PRIVATE_KEY    = 0xВАШ_ПРИВАТНЫЙ_КЛЮЧ\n'
                       '# предустановлено, оставьте как есть\n'
-                      'PRIMARY_NODE_URLS      = http://173.249.37.118:8080,http://194.163.188.71:8080',
+                      'PRIMARY_NODE_URLS      = http://188.172.229.121:8080,http://194.163.188.71:8080',
  'docker_title': 'Шаг 2b — Обновление, перезапуск, остановка',
  'docker_intro': 'Узел хранит состояние в двух томах Docker (база данных и журнал переводов). Обновление '
                  'пересобирает образ из свежего кода; состояние сохраняется. Никогда не перезапускайте все '
@@ -1836,7 +1836,7 @@ ZH = {'title': 'AEQUITAS 节点运营者指南',
                       '# 建议：为你的区块签名的密钥（首次启动也可留空）\n'
                       'RELAYER_PRIVATE_KEY    = 0x你的私钥\n'
                       '# 预设，保持不变\n'
-                      'PRIMARY_NODE_URLS      = http://173.249.37.118:8080,http://194.163.188.71:8080',
+                      'PRIMARY_NODE_URLS      = http://188.172.229.121:8080,http://194.163.188.71:8080',
  'docker_title': '第 2b 步 — 更新、重启、停止',
  'docker_intro': '节点把状态保存在两个 Docker 卷中（数据库和转账日志）。更新会用最新代码重建镜像；状态保留。绝不要同时重启网络中所有验证节点 — 逐个进行。',
  'docker_code': '# 更新到最新代码（约 10 分钟）\n'
@@ -1984,7 +1984,7 @@ AR = {'title': 'دليل مشغّل عقدة AEQUITAS',
                       '# موصى به: المفتاح الذي يوقّع كتلك (أو فارغًا عند أول تشغيل)\n'
                       'RELAYER_PRIVATE_KEY    = 0xمفتاحك_الخاص\n'
                       '# مُعدّ مسبقًا، اتركه كما هو\n'
-                      'PRIMARY_NODE_URLS      = http://173.249.37.118:8080,http://194.163.188.71:8080',
+                      'PRIMARY_NODE_URLS      = http://188.172.229.121:8080,http://194.163.188.71:8080',
  'docker_title': 'الخطوة 2b — التحديث وإعادة التشغيل والإيقاف',
  'docker_intro': 'تحفظ العقدة حالتها في مجلّدي Docker (قاعدة البيانات وسجل التحويلات). التحديث يعيد بناء '
                  'الصورة من أحدث شيفرة؛ الحالة تبقى. لا تعِد أبدًا تشغيل جميع مدقّقي الشبكة في وقت واحد — '
@@ -2155,7 +2155,7 @@ HI = {'title': 'AEQUITAS नोड ऑपरेटर गाइड',
                       '# अनुशंसित: आपके ब्लॉकों पर हस्ताक्षर करने वाली कुंजी (या पहली बार खाली)\n'
                       'RELAYER_PRIVATE_KEY    = 0xआपकी_निजी_कुंजी\n'
                       '# पूर्व-निर्धारित, वैसा ही रहने दें\n'
-                      'PRIMARY_NODE_URLS      = http://173.249.37.118:8080,http://194.163.188.71:8080',
+                      'PRIMARY_NODE_URLS      = http://188.172.229.121:8080,http://194.163.188.71:8080',
  'docker_title': 'चरण 2b — अपडेट, पुनः आरंभ, बंद',
  'docker_intro': 'नोड अपनी स्थिति दो Docker वॉल्यूम में रखता है (डेटाबेस और ट्रांसफ़र लॉग)। अपडेट नवीनतम कोड '
                  'से इमेज फिर बनाता है; स्थिति बनी रहती है। नेटवर्क के सभी वैलिडेटर कभी एक साथ पुनः आरंभ न '
