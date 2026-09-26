@@ -1,0 +1,41 @@
+name: Neuer Server (netcup) -- Validator starten
+# Startet den Validator auf 188.172.229.121 (Ersatz fuer C1, der offline
+# ist). Betreiber-Wallet wie bei C1. Schluessel erzeugt die Box selbst; sie
+# erscheinen nie in diesem (oeffentlichen) Log. Siehe deploy/server-starten.sh.
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/aequitas-weitermachen-i6yayi]
+    paths:
+      - .github/workflows/neuer-server-starten.yml
+      - deploy/server-starten.sh
+jobs:
+  starten:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      NEU: 188.172.229.121
+      WALLET: "0x0be8b961cbf6564bd1931b0803d35c0659e0d016"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Schluessel bereitstellen
+        env:
+          KEY: ${{ secrets.CONTABO_SSH_KEY }}
+        run: |
+          set -eu
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+      - name: Warten, bis das Knoten-Image gebaut ist
+        run: |
+          set -eu
+          for i in $(seq 1 60); do
+            if ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes root@$NEU 'docker image inspect aequitas-node:local >/dev/null 2>&1'; then
+              echo "Image da"; exit 0
+            fi
+            sleep 20
+          done
+          echo "::error::Image aequitas-node:local fehlt nach 20 min"; exit 1
+      - name: Validator starten
+        run: |
+          set -eu
+          ssh -o BatchMode=yes -o ServerAliveInterval=30 root@$NEU "bash -s -- $WALLET" < deploy/server-starten.sh
