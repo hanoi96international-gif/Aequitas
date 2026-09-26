@@ -1,0 +1,42 @@
+# Caddy auf dem neuen C1 (netcup, 188.172.229.121) -- Primary seit 26.09.2026.
+#
+# Wie deploy/Caddyfile.contabo2 fuer proof2: die Domain zeigt auf den Knoten,
+# proof1 auf Proof-Server und Vergleichsdienst dieser Box. Einen eigenen
+# Coordinator hat C1 (noch) nicht -- /coordinator/* geht an den auf C2, damit
+# eine App, die proof1 als Coordinator eingetragen hat, nicht ins Leere laeuft.
+#
+# Zertifikate holt Caddy selbst (Let's Encrypt, HTTP-01 auf Port 80).
+# Ausgerollt ueber .github/workflows/neuer-server-caddy.yml.
+
+aequitas.digital, www.aequitas.digital {
+	# Kein encode: der Knoten komprimiert selbst (siehe deploy/Caddyfile).
+	reverse_proxy aequitas-node:8080
+	log {
+		output file /var/log/caddy/aequitas.log {
+			roll_size 50MiB
+			roll_keep 5
+		}
+	}
+}
+
+proof1.aequitas.digital {
+	handle_path /matching/* {
+		reverse_proxy aequitas-matching:8098
+	}
+	redir /matching /matching/health permanent
+	redir /coordinator /coordinator/ permanent
+	handle /coordinator/* {
+		reverse_proxy https://proof2.aequitas.digital {
+			header_up Host proof2.aequitas.digital
+		}
+	}
+	handle /api/* {
+		reverse_proxy aequitas-node:8080
+	}
+	handle /rpc {
+		reverse_proxy aequitas-node:8080
+	}
+	handle {
+		reverse_proxy proof-server:3000
+	}
+}

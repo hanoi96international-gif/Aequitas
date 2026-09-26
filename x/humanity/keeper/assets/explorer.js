@@ -5344,16 +5344,15 @@ function validatorOperator(address) {
   return op && op !== a ? op : null;
 }
 
-// proposerHTML: "Validator #1 · 0x0be8…d016" und darunter klein "signs as
-// 0x3066…42dc", wenn Betreiber und Signieradresse verschieden sind; sonst wie
-// bisher Label und Adresse.
+// proposerHTML: "Validator #1 · 0x0be8…d016" -- die Betreiber-Wallet, wenn
+// eine bekannt ist, sonst die Signieradresse. Die Signieradresse steht nicht
+// mehr zusaetzlich darunter (26.09.2026, auf Wunsch des Betreibers).
 function proposerHTML(address) {
   if (!address) return '—';
   const label = validatorLabel(address);
   const op = validatorOperator(address);
   const wer = sanitize(short(op || address, 6, 4));
   let html = label ? ('<strong>' + sanitize(label) + '</strong> · ' + wer) : wer;
-  if (op) html += '<br><span class="exp-muted" style="font-size:0.85em">signs as ' + sanitize(short(address, 6, 4)) + '</span>';
   return html;
 }
 
@@ -5560,7 +5559,7 @@ function renderDagView(rawBlocks, canonicalHashSet) {
       }[status];
       [
         '#' + n.block.height + ' · ' + statusLabel,
-        'proposer: ' + short(validatorOperator(n.block.proposer) || n.block.proposer || '', 8, 4) + (validatorLabel(n.block.proposer) ? ' (' + validatorLabel(n.block.proposer) + ')' : '') + (validatorOperator(n.block.proposer) ? ', signs as ' + short(n.block.proposer, 6, 4) : ''),
+        'proposer: ' + short(validatorOperator(n.block.proposer) || n.block.proposer || '', 8, 4) + (validatorLabel(n.block.proposer) ? ' (' + validatorLabel(n.block.proposer) + ')' : ''),
         'blue_score: ' + (n.block.blue_score != null ? n.block.blue_score : '—'),
         'parents: ' + ((n.block.parent_hashes || []).length)
       ].concat(isKnight ? [

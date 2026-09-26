@@ -1,0 +1,34 @@
+name: Neuer C1 (netcup) -- Caddy (aequitas.digital und proof1)
+# Rollt deploy/Caddyfile.neuer-server auf 188.172.229.121 aus
+# (deploy/caddy-neuer-server.sh): Domain -> Knoten, proof1 -> Proof-Server,
+# Vergleichsdienst, /coordinator -> Coordinator auf C2.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, claude/server-changes-quorum-nfksc7]
+    paths:
+      - .github/workflows/neuer-server-caddy.yml
+      - deploy/caddy-neuer-server.sh
+      - deploy/Caddyfile.neuer-server
+permissions:
+  contents: read
+concurrency: neuer-c1-caddy
+jobs:
+  caddy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NEU: 188.172.229.121
+    steps:
+      - uses: actions/checkout@v4
+      - name: Schluessel
+        env:
+          KEY: ${{ secrets.CONTABO_SSH_KEY }}
+        run: |
+          set -eu
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+      - name: Caddyfile auf die Box
+        run: scp -o StrictHostKeyChecking=accept-new -o BatchMode=yes deploy/Caddyfile.neuer-server root@$NEU:/root/Aequitas/deploy/Caddyfile.neuer-server
+      - name: Ausrollen und pruefen
+        run: ssh -o BatchMode=yes -o ServerAliveInterval=30 root@$NEU 'bash -s' < deploy/caddy-neuer-server.sh
