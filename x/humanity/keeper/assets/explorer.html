@@ -1259,6 +1259,14 @@
       <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px">Step 3 &mdash; Understand the Environment Variables</div>
       <div style="font-size:0.79rem;color:var(--muted);line-height:1.9;margin-bottom:10px">Environment variables are configuration settings you pass to your node before it starts. Think of them like a settings file. Collect these values before deploying &mdash; you will enter them in Step 4.</div>
       <div style="background:rgba(220,50,50,0.06);border:1px solid rgba(220,50,50,0.2);border-radius:6px;padding:10px 14px;margin-bottom:12px;font-size:0.77rem"><span style="color:#f87171;font-weight:700">Security Warning: </span><span style="color:var(--muted)">Your RELAYER_PRIVATE_KEY is like a master password. Anyone who has it controls your node wallet. Never share it publicly, never paste it in chat or email. Use a separate MetaMask wallet for RELAYER_PRIVATE_KEY (signing). NODE_OPERATOR_WALLET (for rewards) must be your registered Aequitas human wallet.</span></div>
+      <div style="background:rgba(245,166,35,0.06);border:1px solid rgba(245,166,35,0.25);border-radius:6px;padding:12px 14px;margin-bottom:12px;font-size:0.78rem;color:var(--muted);line-height:1.8">
+        <strong style="color:var(--gold)">Two keys, two jobs &mdash; read this before Step 4.</strong><br>
+        <strong style="color:var(--text)">1. Node signing key</strong> (<code style="color:var(--teal)">RELAYER_PRIVATE_KEY</code>): lives <em>on the server</em>. The node signs its blocks with it. Use a <strong style="color:var(--text)">new, empty wallet</strong> made only for this node &mdash; never the wallet that holds your AEQ.<br>
+        <strong style="color:var(--text)">2. Your human wallet</strong> (<code style="color:var(--teal)">NODE_OPERATOR_WALLET</code>): the wallet you registered with in the app. Its <em>address</em> goes on the server; its <em>private key never does</em>. Rewards are paid to it.<br>
+        <strong style="color:var(--text)">3. Connect the two once:</strong> open <a href="/node-binding" target="_blank" style="color:var(--gold);text-decoration:underline">/node-binding</a>, sign with your human wallet, paste the result as <code style="color:var(--teal)">NODE_OPERATOR_BINDING_SIGNATURE</code>. With a separate signing key this is <strong style="color:var(--text)">required</strong> &mdash; without it the network skips your node as a validator.<br>
+        <strong style="color:var(--text)">Moving to a new server?</strong> The new server gets a new signing key, so sign once more at /node-binding for the new signing address. The old signature only covers the old address.<br>
+        <span style="color:#f87171">Not recommended:</span> putting your human wallet's private key on the server as <code style="color:var(--teal)">RELAYER_PRIVATE_KEY</code>. The node then signs the binding itself, but whoever breaks into the server also owns your wallet and everything in it.
+      </div>
       <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;margin-bottom:18px">
         <tr style="background:rgba(139,92,246,0.15)">
           <td style="font-size:0.77rem;color:var(--text);padding:8px;font-weight:700;width:36%">Variable</td>
@@ -1292,7 +1300,7 @@
         </tr>
         <tr style="border-bottom:1px solid rgba(139,92,246,0.08);background:rgba(0,0,0,0.1)">
           <td style="font-size:0.78rem;font-family:var(--font-mono);color:var(--neon);padding:8px">NODE_OPERATOR_BINDING_SIGNATURE</td>
-          <td style="font-size:0.77rem;color:var(--teal);padding:8px">For multi-node</td>
+          <td style="font-size:0.77rem;color:var(--gold);padding:8px">YES (separate signing key)</td>
           <td style="font-size:0.78rem;color:var(--muted);padding:8px">Proves you own NODE_OPERATOR_WALLET — without it, anyone could claim your wallet as their own node's operator and permanently lock you out of it. Generate it at <a href="/node-binding" target="_blank" style="color:var(--gold);text-decoration:underline">/node-binding</a>: connect the SAME wallet you registered with, it signs a short message naming your node's signing address, and shows you this value to copy here. To move your validator to a new machine later, just generate a new signature there for the new signing address — no need to contact anyone.</td>
         </tr>
         <tr style="border-bottom:1px solid rgba(139,92,246,0.08);background:rgba(0,0,0,0.1)">
