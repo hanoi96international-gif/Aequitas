@@ -1048,31 +1048,31 @@ func (cs *ChainState) flushWALBatch(batch []walFlushItem) error {
 	phMark = dbStart
 	ctx := withTx(context.Background(), tx)
 
-	var txValuesSQL strings.Builder
-	txValuesSQL.Grow(len(batch) * 18) // "($NNNN,$NNNN,$NNNN)," aufgerundet
-	txArgs := make([]interface{}, 0, len(batch)*3)
+	// Drei Array-Parameter statt dreier Platzhalter je Zeile -- dieselbe
+	// Umstellung wie beim Konten-UPSERT weiter unten (O(1) statt O(N)
+	// Parse-Aufwand). WITH ORDINALITY + ORDER BY haelt die Zeilen-IDs in
+	// Buendelreihenfolge: die Nonce-Reihenfolge je Absender haengt daran
+	// (wal_nonce_reihenfolge.go).
+	txJSONs := make([]string, 0, len(batch))
+	txSeqs := make([]int64, 0, len(batch))
 	now := time.Now().Unix()
-	for j, item := range batch {
+	for _, item := range batch {
 		data, err := json.Marshal(item.tx)
 		if err != nil {
 			tx.Rollback()
 			return fmt.Errorf("could not marshal outbox tx for %s->%s during WAL flush: %w", item.from, item.to, err)
 		}
-		if j > 0 {
-			txValuesSQL.WriteByte(',')
-		}
-		n := j * 3
-		txValuesSQL.WriteByte('(')
-		writeDollarParam(&txValuesSQL, n+1, ",")
-		writeDollarParam(&txValuesSQL, n+2, ",")
-		writeDollarParam(&txValuesSQL, n+3, "")
-		txValuesSQL.WriteByte(')')
 		// wal_seq = die Reihenfolge, in der die Ueberweisung angewendet wurde
 		// -- siehe pending_reihenfolge.go. Die Zeilen-ID ist es NICHT: 32
 		// Flush-Arbeiter schreiben die Zeilen in beliebiger Reihenfolge.
-		txArgs = append(txArgs, string(data), now, int64(item.seq))
+		txJSONs = append(txJSONs, string(data))
+		txSeqs = append(txSeqs, int64(item.seq))
 	}
-	txQuery := `INSERT INTO pending_txs (tx_json, created_at, wal_seq) VALUES ` + txValuesSQL.String()
+	txArgs := []interface{}{pq.Array(txJSONs), now, pq.Array(txSeqs)}
+	txQuery := `INSERT INTO pending_txs (tx_json, created_at, wal_seq)
+SELECT v.tx_json, $2::bigint, v.wal_seq
+FROM unnest($1::text[], $3::bigint[]) WITH ORDINALITY AS v(tx_json, wal_seq, ord)
+ORDER BY v.ord`
 	phOutboxSQL = time.Since(phMark)
 	phMark = time.Now()
 	if _, err := cs.dbExecCtx(ctx).Exec(txQuery, txArgs...); err != nil {

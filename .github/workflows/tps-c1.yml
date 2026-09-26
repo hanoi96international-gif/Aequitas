@@ -13,11 +13,8 @@ on:
       accounts_csv: {description: "Kontenliste auf C2", required: false, default: "accounts-funded.csv"}
       pairs: {description: "Sender-Paare (0 = alle)", required: false, default: "0"}
       batch: {description: "Ueberweisungen je Buendel (1..100). Ein Buendel eines Absenders laeuft im Knoten nacheinander.", required: false, default: "20"}
-  # Freigegeben am 26.09.2026 ("Freigabe"): der Push dieser Datei startet
-  # eine Messung.
-  push:
-    branches: [claude/server-changes-quorum-nfksc7]
-    paths: [.github/workflows/tps-c1.yml]
+  # Nur noch von Hand: ein Push dieser Datei darf keine Last auf C1 starten
+  # (26.09.2026, Kontenabweichung in Untersuchung).
 permissions:
   contents: read
 concurrency:
@@ -84,6 +81,9 @@ jobs:
           docker logs --since "$START" aequitas-node 2>&1 | grep -E 'panic|FATAL|ivergen' | tail -10 || true
           echo "--- Last auf C1 ---"
           uptime
+          echo "--- Bremse und Deckel (C1) ---"
+          curl -s -m 10 http://127.0.0.1:8080/api/health/combined \
+            | jq -c '{peer_lag_bremse, block_tx_deckel, signierte_ueberweisungen, inflight}' 2>/dev/null | head -c 4000 || true
           SKRIPT
       - name: C2 folgt?
         if: always()

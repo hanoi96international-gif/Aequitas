@@ -6959,6 +6959,16 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			merkeUngueltigeSignaturBlock()
 			hardFailure = true
 		}
+	} else if signierteUeberweisungenAufnehmen(block.Timestamp) {
+		// VORLAUF: die Annahme setzt NaechsteNonce schon hier (sobald die
+		// Ueberweisung ihre Rohform traegt), also muss es das Nachspielen
+		// auch -- sonst weichen die Blaetter ab. Genau das geschah am
+		// 26.09.2026: 1.772 Konten mit hoeherer Nonce auf dem Annehmenden
+		// (nonce-angleich-c2.yml). Abgelehnt wird im Vorlauf nichts.
+		if err := dag.state.setzeVorlaufNoncenLocked(withTx(context.Background(), dbTx), block.Transactions, kontenSammlung); err != nil {
+			fmt.Printf("[REPLAY] ✗ Block #%d: Vorlauf-Nonces: %v\n", block.Height, err)
+			hardFailure = true
+		}
 	}
 
 	for txIdx := 0; txIdx < len(block.Transactions); txIdx++ {

@@ -1,0 +1,98 @@
+name: Nonce-Angleich C2 an C1 (Stufe-1-Vorlauf, 26.09.2026)
+# Im Vorlauf von Stufe 1 (19:00-20:00 UTC) setzte die ANNAHME auf C1 die
+# NaechsteNonce jeder signierten Ueberweisung, das NACHSPIELEN auf C2 erst ab
+# der Pflicht (20:00). Die Generalprobe um 19:26 hinterliess so 1.772 Konten,
+# deren NaechsteNonce auf C1 hoeher steht als auf C2 -- Salden gleich,
+# account_set_xor verschieden (konten-vergleich.yml).
+#
+# Richtig sind die Werte von C1: sie sperren die in der Generalprobe
+# signierten Ueberweisungen gegen erneutes Einreichen. C2 uebernimmt sie, nur
+# nach oben (GREATEST), bei angehaltenem Knoten, damit er sie nicht aus dem
+# Speicher zurueckschreibt. C1 bleibt unberuehrt und nimmt durchgehend an.
+#
+# Das oeffentliche Log zeigt nur Zahlen, keine Adressen.
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [claude/server-changes-quorum-nfksc7]
+    paths: [.github/workflows/nonce-angleich-c2.yml]
+permissions:
+  contents: read
+concurrency:
+  group: c1-knoten
+  cancel-in-progress: false
+jobs:
+  angleichen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Schluessel und Host-Pruefung
+        env:
+          K1: ${{ secrets.CONTABO_SSH_KEY }}
+          K2: ${{ secrets.CONTABO2_SSH_KEY }}
+        run: |
+          set -eu
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$K1" > ~/.ssh/c1 && printf '%s\n' "$K2" > ~/.ssh/c2 && chmod 600 ~/.ssh/c1 ~/.ssh/c2
+          ssh-keyscan -t ed25519 188.172.229.121 2>/dev/null > ~/.ssh/k1
+          ssh-keygen -lf ~/.ssh/k1 | awk '{print $2}' | grep -qx 'SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA'
+          ssh-keyscan 194.163.188.71 2>/dev/null > ~/.ssh/k2
+          ssh-keygen -lf ~/.ssh/k2 | awk '{print $2}' | grep -qx 'SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto'
+          cat ~/.ssh/k1 ~/.ssh/k2 > ~/.ssh/known_hosts
+      - name: C1 muss laufen und annehmen
+        run: |
+          S=$(curl -s -m 10 http://188.172.229.121:8080/api/health/combined)
+          echo "$S" | grep -qE '"nimmt_an": ?true' || { echo "::error::C1 nimmt nicht an -- C2 wird nicht angehalten"; exit 1; }
+          echo "C1 nimmt an"
+      - name: Nonces von C1 lesen
+        run: |
+          ssh -i ~/.ssh/c1 -o BatchMode=yes root@188.172.229.121 'bash -s' > c1n.txt <<'SKRIPT'
+          set -euo pipefail
+          DATABASE_URL="$(grep -E '^DATABASE_URL=' /root/.aequitas.env 2>/dev/null | head -1 | cut -d= -f2- || true)"
+          [ -n "$DATABASE_URL" ] || DATABASE_URL="$(docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E '^DATABASE_URL=' | head -1 | cut -d= -f2-)"
+          NET="$(docker inspect aequitas-node --format '{{range $n,$v := .NetworkSettings.Networks}}{{$n}}{{end}}')"
+          docker run --rm --network "$NET" -e DATABASE_URL="$DATABASE_URL" postgres:16-alpine sh -c \
+            'psql "$DATABASE_URL" -t -A -F "|" -c "SELECT lower(address), naechste_nonce FROM chain_accounts WHERE naechste_nonce > 0 ORDER BY 1"'
+          SKRIPT
+          echo "C1: $(wc -l < c1n.txt) Konten mit NaechsteNonce > 0"
+          [ -s c1n.txt ] || { echo "::error::leerer Auszug"; exit 1; }
+          scp -i ~/.ssh/c2 -o BatchMode=yes c1n.txt root@194.163.188.71:/root/nonce-c1.txt
+      - name: C2 angleichen
+        run: |
+          ssh -i ~/.ssh/c2 -o BatchMode=yes -o ServerAliveInterval=30 root@194.163.188.71 'bash -s' <<'SKRIPT'
+          set -euo pipefail
+          trap 'docker start aequitas-node >/dev/null 2>&1 || true; rm -f /root/nonce-c1.txt' EXIT
+          grep -qx "ANNAHME_ROLLE=nur_lesend" /root/.aequitas.env || { echo "ABBRUCH: C2 ist nicht nur_lesend"; exit 1; }
+          DATABASE_URL="$(grep -E '^DATABASE_URL=' /root/.aequitas.env 2>/dev/null | head -1 | cut -d= -f2- || true)"
+          [ -n "$DATABASE_URL" ] || DATABASE_URL="$(docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E '^DATABASE_URL=' | head -1 | cut -d= -f2-)"
+          NET="$(docker inspect aequitas-node --format '{{range $n,$v := .NetworkSettings.Networks}}{{$n}}{{end}}')"
+          echo "C2 anhalten"
+          docker stop -t 60 aequitas-node >/dev/null
+          cat > /root/nonce-angleich.sql <<'SQL'
+          CREATE TEMP TABLE n1 (address text PRIMARY KEY, n bigint NOT NULL);
+          \copy n1 FROM '/n.txt' WITH (FORMAT text, DELIMITER '|')
+          SELECT count(*) AS von_c1 FROM n1;
+          WITH u AS (
+            UPDATE chain_accounts c SET naechste_nonce = n1.n
+            FROM n1 WHERE lower(c.address) = n1.address AND n1.n > c.naechste_nonce
+            RETURNING 1)
+          SELECT count(*) AS angehoben FROM u;
+          SQL
+          docker run --rm --network "$NET" -e DATABASE_URL="$DATABASE_URL" \
+            -v /root/nonce-c1.txt:/n.txt:ro -v /root/nonce-angleich.sql:/a.sql:ro postgres:16-alpine \
+            sh -c 'psql "$DATABASE_URL" -v ON_ERROR_STOP=1 --single-transaction -f /a.sql'
+          rm -f /root/nonce-angleich.sql
+          echo "C2 starten"
+          docker start aequitas-node >/dev/null
+          for i in $(seq 1 60); do
+            S=$(curl -s -m 5 http://127.0.0.1:8080/api/health/combined || true)
+            echo "$S" | grep -q '"nimmt_an"' && break
+            sleep 5
+          done
+          echo "$S" | grep -qE '"nimmt_an": ?false' || { echo "FEHLER: C2 nicht nur lesend oder nicht bereit"; exit 1; }
+          echo "C2 laeuft, nur lesend"
+          SKRIPT
+      - name: Hoehen
+        run: |
+          sleep 20
+          for ip in 188.172.229.121 194.163.188.71; do curl -s -m 10 "http://$ip:8080/api/status" | jq -c '{height}'; done

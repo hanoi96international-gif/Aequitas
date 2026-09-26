@@ -1,0 +1,107 @@
+name: Konten-Vergleich C1 gegen C2 (nur lesen)
+# Wenn der Divergenz-Waechter "Kontenstand weicht vom Partner ab" meldet:
+# welche Konten, um wieviel, und in welche Richtung. Liest auf beiden Knoten
+# chain_accounts (deploy/konten-auszug.sh) und vergleicht auf dem Runner.
+# Das Log ist oeffentlich: ausgegeben wird nur eine Zusammenfassung (Zahl
+# der Konten, Summen, Spannweite), keine Adressen und keine Einzelsalden.
+# Die Auszuege selbst bleiben auf dem Runner und werden nicht hochgeladen.
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [claude/server-changes-quorum-nfksc7]
+    paths: [.github/workflows/konten-vergleich.yml, deploy/konten-auszug.sh]
+permissions:
+  contents: read
+concurrency:
+  group: c1-knoten
+  cancel-in-progress: false
+jobs:
+  vergleichen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with: {sparse-checkout: deploy}
+      - name: Schluessel und Host-Pruefung
+        env:
+          K1: ${{ secrets.CONTABO_SSH_KEY }}
+          K2: ${{ secrets.CONTABO2_SSH_KEY }}
+        run: |
+          set -eu
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$K1" > ~/.ssh/c1 && printf '%s\n' "$K2" > ~/.ssh/c2 && chmod 600 ~/.ssh/c1 ~/.ssh/c2
+          ssh-keyscan -t ed25519 188.172.229.121 2>/dev/null > ~/.ssh/k1
+          ssh-keygen -lf ~/.ssh/k1 | awk '{print $2}' | grep -qx 'SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA'
+          ssh-keyscan 194.163.188.71 2>/dev/null > ~/.ssh/k2
+          ssh-keygen -lf ~/.ssh/k2 | awk '{print $2}' | grep -qx 'SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto'
+          cat ~/.ssh/k1 ~/.ssh/k2 > ~/.ssh/known_hosts
+      - name: Auszuege
+        run: |
+          set -eu
+          # account_set_xor im Speicher jedes Knotens (oeffentliche
+          # Mengen-Zusage, keine Kontodaten) -- vor und nach dem Auszug.
+          xor() { curl -s -m 10 "http://$1:8080/api/debug/stateroot-components" | jq -r .account_set_xor; }
+          for i in 1 2; do
+            echo "C1_XOR_VOR=$(xor 188.172.229.121)" > xor.env
+            echo "C2_XOR_VOR=$(xor 194.163.188.71)" >> xor.env
+            ssh -i ~/.ssh/c1 -o BatchMode=yes root@188.172.229.121 'bash -s' < deploy/konten-auszug.sh > c1.txt &
+            ssh -i ~/.ssh/c2 -o BatchMode=yes root@194.163.188.71 'bash -s' < deploy/konten-auszug.sh > c2.txt &
+            wait
+            echo "C1_XOR_NACH=$(xor 188.172.229.121)" >> xor.env
+            echo "C2_XOR_NACH=$(xor 194.163.188.71)" >> xor.env
+            echo "C1 $(wc -l < c1.txt) Konten, C2 $(wc -l < c2.txt) Konten"
+            [ -s c1.txt ] && [ -s c2.txt ] && break
+            sleep 5
+          done
+          cat xor.env
+      - name: Vergleich
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          FELDER = ["saldo", "tusd", "lp", "mensch", "faucet", "grant_rest", "grant_bis", "lebend", "nonce", "auftrag_nonce"]
+          def lade(p):
+              d = {}
+              for z in open(p):
+                  z = z.strip()
+                  if not z:
+                      continue
+                  t = z.split('|')
+                  d[t[0]] = tuple(t[1:])
+              return d
+          def wert(s):
+              return {'t': 1, 'f': 0}.get(s, None) if s in ('t', 'f') else int(s)
+          def blatt(a, v):
+              s, t, l, h, fc, gr, gu, lr, nn, an = v
+              b = f"acct:{a}:{int(s)}:{int(t)}:{int(l)}:h={'true' if h == 't' else 'false'}:fc={'true' if fc == 't' else 'false'}"
+              if int(gr) != 0 or int(gu) != 0 or int(lr) != 0:
+                  b += f":gs={int(gr)}:gu={int(gu)}:lr={int(lr)}"
+              if int(nn) != 0:
+                  b += f":nn={int(nn)}"
+              if int(an) != 0:
+                  b += f":an={int(an)}"
+              return int.from_bytes(hashlib.sha256(b.encode()).digest(), 'big')
+          def xor_aus(d):
+              x = 0
+              for a, v in d.items():
+                  x ^= blatt(a, v)
+              return f"{x:064x}"
+          c1, c2 = lade('c1.txt'), lade('c2.txt')
+          x = dict(z.strip().split('=', 1) for z in open('xor.env') if '=' in z)
+          d1, d2 = xor_aus(c1), xor_aus(c2)
+          print(f"account_set_xor aus DB   C1 {d1[:12]}  C2 {d2[:12]}")
+          print(f"account_set_xor Speicher C1 {x['C1_XOR_VOR'][:12]}/{x['C1_XOR_NACH'][:12]}  C2 {x['C2_XOR_VOR'][:12]}/{x['C2_XOR_NACH'][:12]}")
+          for k, db in (("C1", d1), ("C2", d2)):
+              sp = {x[k + '_XOR_VOR'], x[k + '_XOR_NACH']}
+              print(f"{k}: Speicher {'==' if db in sp else '!='} eigene DB")
+          null = ('0', '0', '0', 'f', 'f', '0', '0', '0', '0', '0')
+          diff = [(a, c1.get(a, null), c2.get(a, null)) for a in sorted(set(c1) | set(c2)) if c1.get(a, null) != c2.get(a, null)]
+          print(f"Konten C1 {len(c1)}, C2 {len(c2)}, verschieden {len(diff)}")
+          # Nur Zusammenfassung: das Log ist oeffentlich, keine Adressen oder
+          # einzelnen Werte (Entscheidung des Betreibers, 26.09.2026).
+          for i, name in enumerate(FELDER):
+              n = [(v, w) for a, v, w in diff if v[i] != w[i]]
+              if n:
+                  print(f"  {name} verschieden: {len(n)} Konten, davon C1 hoeher {sum(1 for v, w in n if wert(v[i]) > wert(w[i]))}")
+          s1 = sum(int(v[0]) for v in c1.values()); s2 = sum(int(v[0]) for v in c2.values())
+          print(f"Geldmenge C1 {s1/1e6:.6f} AEQ, C2 {s2/1e6:.6f} AEQ -> {'gleich' if s1 == s2 else 'VERSCHIEDEN'}")
+          PY

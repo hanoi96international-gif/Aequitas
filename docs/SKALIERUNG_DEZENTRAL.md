@@ -188,6 +188,21 @@ Aktivierung per Zeit (`verteilteAnnahmeAbUnix`, aus). Sie greift immer erst mit 
 
 **Bleibt wie vorher:** Registrierung (der Herkunftszwang bindet sie an den ausstellenden Knoten) und das Vertrauensmodell für Systemaufträge. Der Leiter rechnet die Verteilung, jeder spielt sie mit den getragenen Beträgen nach.
 
+### Vergleich: Zahlungen ohne Konsens (FastPay, 26.09.2026)
+
+Aus der Forschung („Consensus is not needed for payments“, Guerraoui u. a. 2019; umgesetzt in FastPay, Sui, Linera) folgt dasselbe wie oben: Die Reihenfolge der Belastungen eines Kontos legt dessen Nonce fest, eine netzweite Reihenfolge braucht nur geteilter Zustand. Stufe 2 setzt das mit **einem Zuständigen je Konto und Term** um. FastPay nimmt stattdessen **Unterschriften einer Mehrheit** (2 von 3) je Überweisung.
+
+| | Stufe 2 (umgesetzt) | Mehrheitszertifikat (FastPay) |
+|---|---|---|
+| Annahme | ein Knoten je Konto | Mehrheit je Überweisung |
+| Übergabe am Termwechsel | ca. 3 s Pause | entfällt |
+| Ausfall eines Knotens | Übernahme nach Lease + Ruhezeit | sofort, solange die Mehrheit lebt |
+| Mit 2 Validatoren | 4 % bedient bei Ausfall | 0 % (Mehrheit von 2 = beide) |
+| Nachrichten je Überweisung | 1 | n (Anfrage an alle, Antworten sammeln) |
+| Wirtschaftsregeln, Pools, Unternehmen | Leiter | brauchen weiter Konsens |
+
+**Folgerung:** Stufe 2 ist bereits die passende Form. Ein Mehrheitszertifikat lohnt sich erst mit vielen Validatoren, weil es dann Übergaben und Ausfallpausen erspart. Der Hebel für den Durchsatz ist bis dahin nicht die Annahme, sondern das Nachspielen: Jeder Validator spielt jeden Block nach, und der langsamste bremst die Blockgröße (`peer_lag_bremse.go`). Gemessen am 26.09.2026 auf C1: 13.279 TPS angenommen, 9.219 TPS in Blöcken.
+
 ---
 
 ## Stufe 3 — Bereiche mit ausgelosten Ausschüssen
