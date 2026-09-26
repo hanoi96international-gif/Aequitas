@@ -122,7 +122,7 @@ func (cs *ChainState) registerHumanConcurrent(address string, pendingTx Transact
 	// ran without holding the shard lock, so this address's balance (if it
 	// already existed, e.g. received a transfer before ever registering)
 	// could have changed in the gap.
-	if hasCapAmt && scratch.Balance.Float() > capAmt {
+	if cs.wuerdeKappenLocked(scratch.Address, &scratch, scratch.Balance.Float(), capAmt, hasCapAmt) {
 		return false, nil
 	}
 

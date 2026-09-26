@@ -128,17 +128,46 @@ func (cs *ChainState) nimmtUeberweisungenAn() bool {
 	return true
 }
 
+// nimmtAnFuer: darf dieser Knoten einen Auftrag annehmen, der die Konten
+// konten belastet? Stufe 2 (leitung_verteilt.go): jeder Validator fuer seine
+// Konten; ohne verteilte Annahme heisst das wie bisher "ist Leiter".
+func (cs *ChainState) nimmtAnFuer(konten ...string) bool {
+	if cs.nurLesend.Load() {
+		return false
+	}
+	l := cs.leitung.Load()
+	if l == nil {
+		return true
+	}
+	jetzt := time.Now()
+	if len(konten) == 0 {
+		return l.DarfAnnehmen(jetzt)
+	}
+	for _, k := range konten {
+		if !l.DarfAnnehmenFuer(k, jetzt) {
+			return false
+		}
+	}
+	return true
+}
+
 // annahmeBeginnen ist das Tor fuer die sechs annehmenden Pfade, MIT
 // Zaehlung: erst zaehlen, dann pruefen. Schliesst die Leitung das Tor fuer
 // eine Uebergabe, sieht sie in annahmenLaufend jede Annahme, die schon
 // durch ist -- und jede spaetere prueft danach und kehrt um. Erst bei 0
 // (und leerem WAL und Ausgangskorb) wird uebergeben.
-func (cs *ChainState) annahmeBeginnen(absender string) error {
+//
+// konten: die Konten, die der Auftrag belastet (Stufe 2); leer heisst: das
+// des Absenders.
+func (cs *ChainState) annahmeBeginnen(absender string, konten ...string) error {
 	if err := pruefeAbsenderKeinTopf(absender); err != nil {
 		return err
 	}
+	if len(konten) == 0 {
+		konten = []string{absender}
+	}
 	cs.annahmenLaufend.Add(1)
-	if err := cs.pruefeAnnahmeTor(); err != nil {
+	if err := cs.pruefeAnnahmeTorFuer(konten...); err != nil {
 		cs.annahmenLaufend.Add(-1)
 		return err
 	}
@@ -164,7 +193,12 @@ var ErrNurLesend = fmt.Errorf(
 // pruefeAnnahmeTor gibt ErrNurLesend zurueck, wenn dieser Knoten nicht
 // annehmen darf, und zaehlt die Ablehnung.
 func (cs *ChainState) pruefeAnnahmeTor() error {
-	if cs.nimmtUeberweisungenAn() {
+	return cs.pruefeAnnahmeTorFuer()
+}
+
+// pruefeAnnahmeTorFuer: wie pruefeAnnahmeTor, fuer die belasteten Konten.
+func (cs *ChainState) pruefeAnnahmeTorFuer(konten ...string) error {
+	if cs.nimmtAnFuer(konten...) {
 		return nil
 	}
 	abgelehnteUeberweisungen.Add(1)

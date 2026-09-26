@@ -155,7 +155,29 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - run: go test -race ./x/humanity/...
+      # Ausdrueckliches Zeitlimit (26.09.2026): das keeper-Paket braucht unter
+      # -race knapp zehn Minuten, und das Standardlimit von go test ist genau
+      # zehn. Lauf 997 brach deshalb mit "panic: test timed out" ab, mitten
+      # in einem gesunden Test (ubi_chunked_test.go) -- rot ohne Befund. Ein
+      # Test, der wirklich haengt, faellt auch mit 30 Minuten auf.
+      - run: go test -race -timeout 30m ./x/humanity/...
+
+  # Stufe 4 (docs/SKALIERUNG_DEZENTRAL.md): Forschungsprototyp eines
+  # Gueltigkeitsbeweises. Eigenes Go-Modul (gnark hebt gnark-crypto auf eine
+  # Version, von der go-ethereum im Hauptmodul abhaengt) -- deshalb nicht in
+  # ./... oben. Ein echter Groth16-Beweis dauert hier ~20 s.
+  zk-forschung:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: forschung/zk-gueltigkeit
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: forschung/zk-gueltigkeit/go.mod
+      - run: go vet ./...
+      - run: go test -timeout 20m ./...
 
   # FIX (2026-07-26): nothing in CI ever built the Dockerfile. `go build` above
   # runs on ubuntu-latest with the runner's own toolchain — it says nothing

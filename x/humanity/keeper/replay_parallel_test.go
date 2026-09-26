@@ -184,14 +184,15 @@ func TestCollectDisjointTransferBatch_StopsAtFirstIneligible(t *testing.T) {
 		t.Fatalf("run must end at the register_human, got %d entries", len(batch))
 	}
 
-	// An address reused within the run ends it: those two transfers are not
-	// independent and must keep their relative order.
+	// Seit Stufe 1.3 beendet eine wiederholte Adresse den Lauf NICHT mehr:
+	// applyTransferBatchParallel rechnet die Reihenfolge in Phase 1b vor
+	// (replay_parallel_sammelempfaenger_test.go).
 	overlapping := []Transaction{
 		{Type: "transfer", Wallet: "0xa", To: "0xb", Amount: 1},
 		{Type: "transfer", Wallet: "0xb", To: "0xc", Amount: 1},
 	}
-	if batch, _ := collectDisjointTransferBatch(overlapping, 0); len(batch) != 1 {
-		t.Fatalf("overlapping transfers must not share a batch, got %d", len(batch))
+	if batch, _ := collectDisjointTransferBatch(overlapping, 0); len(batch) != 2 {
+		t.Fatalf("a repeated address must stay in the run since Stufe 1.3, got %d", len(batch))
 	}
 
 	// Demurrage-carrying transfers settle pools and persist — never batched.

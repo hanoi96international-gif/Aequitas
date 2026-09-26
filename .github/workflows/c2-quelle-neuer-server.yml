@@ -1,0 +1,65 @@
+name: C2 -- neuen Server (netcup) als Quelle eintragen
+# Seit C1 abgeschaltet ist (24.09.2026), lief C2 mit PRIMARY_NODE_URLS=keine,
+# also als einziger Validator ohne Quelle. Der neue Server 188.172.229.121
+# ersetzt C1 und produziert seit 26.09.2026 selbst Bloecke. C2 bekommt ihn als
+# Quelle, damit C2 bei einem Rueckstand von ihm nachholen kann -- so wie C1
+# und C2 frueher gegenseitig aufeinander zeigten. Vom Betreiber am 26.09.2026
+# ausdruecklich freigegeben.
+#
+# Ein Neustart von C2 (ueber /root/env-setzen.sh, wie in den anderen
+# set-*-contabo2-Workflows). Der neue Server produziert waehrenddessen weiter.
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/aequitas-weitermachen-i6yayi]
+    paths: [.github/workflows/c2-quelle-neuer-server.yml]
+jobs:
+  setzen:
+    runs-on: ubuntu-latest
+    steps:
+      - name: PRIMARY_NODE_URLS auf C2 setzen
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          script_stop: false
+          timeout: 600s
+          command_timeout: 600s
+          script: |
+            set -uo pipefail
+            ZIEL=http://188.172.229.121:8080
+            echo "=== neuer Server erreichbar und gleichauf? ==="
+            N="$(curl -s -m 5 $ZIEL/api/status | grep -oE '"height":[0-9]+' | grep -oE '[0-9]+' || echo 0)"
+            C="$(curl -s -m 5 http://localhost:8080/api/status | grep -oE '"height":[0-9]+' | grep -oE '[0-9]+' || echo 0)"
+            echo "neuer Server $N, C2 $C"
+            if [ "${N:-0}" -le 0 ] || [ $((C - N)) -gt 50 ] || [ $((N - C)) -gt 50 ]; then
+              echo "neuer Server nicht gleichauf -- C2 bleibt unveraendert"; exit 1
+            fi
+            CUR="$(docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E '^PRIMARY_NODE_URLS=' | cut -d= -f2-)"
+            echo "vorher: PRIMARY_NODE_URLS=${CUR:-<nicht gesetzt>}"
+            if [ "$CUR" = "$ZIEL" ]; then echo "schon gesetzt -- nichts zu tun"; exit 0; fi
+            # env-setzen.sh bricht ab, solange RESYNC_FROM_SNAPSHOT nicht
+            # ausdruecklich false ist (Lauf 1: "ABBRUCH: RESYNC nicht false").
+            # Zu Recht: mit einer Quelle und RESYNC an ersetzte C2 beim
+            # Neustart seinen Zustand durch den Snapshot der Quelle. Also
+            # zuerst ausdruecklich false -- die sichere Richtung --, dann die
+            # Quelle. Nimmt das Skript nur ein Paar, folgt ein zweiter Aufruf.
+            bash /root/env-setzen.sh RESYNC_FROM_SNAPSHOT=false PRIMARY_NODE_URLS=$ZIEL || echo "(env-setzen.sh meldete einen Fehlercode -- die Pruefung unten entscheidet)"
+            R="$(docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E '^RESYNC_FROM_SNAPSHOT=' | cut -d= -f2-)"
+            echo "RESYNC_FROM_SNAPSHOT=${R:-<nicht gesetzt>}"
+            IST="$(docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E '^PRIMARY_NODE_URLS=' | cut -d= -f2-)"
+            if [ "$IST" != "$ZIEL" ] && [ "$R" = "false" ]; then
+              bash /root/env-setzen.sh PRIMARY_NODE_URLS=$ZIEL || echo "(env-setzen.sh meldete einen Fehlercode)"
+              IST="$(docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E '^PRIMARY_NODE_URLS=' | cut -d= -f2-)"
+            fi
+            echo "nachher: PRIMARY_NODE_URLS=${IST:-<nicht gesetzt>}"
+            [ "$IST" = "$ZIEL" ] || { echo "FEHLER: Wert nicht im Prozess"; exit 1; }
+            for i in $(seq 1 30); do
+              curl -fs -m 5 http://localhost:8080/api/status >/dev/null && break
+              sleep 5
+            done
+            echo "C2 nach Neustart: $(curl -s -m 5 http://localhost:8080/api/status | grep -oE '"height":[0-9]+')"
+            echo "neuer Server:     $(curl -s -m 5 $ZIEL/api/status | grep -oE '"height":[0-9]+')"

@@ -65,6 +65,20 @@ type Transaction struct {
 	// kurz vor Mitternacht auf zwei Knoten in verschiedenen Tagen, Monaten
 	// oder Quartalen. Vorher 0 und nicht serialisiert.
 	BuchAt int64 `json:"buch_at,omitempty"`
+	// Roh: die vom Absender signierte EVM-Rohtransaktion (Hex), aus der diese
+	// Ueberweisung entstand. Damit kann JEDER Validator selbst pruefen, dass
+	// der Kontoinhaber sie unterschrieben hat -- nicht nur der annehmende
+	// Knoten (signierte_ueberweisung.go, Stufe 1.0). omitempty: aeltere
+	// Bloecke und andere Transaktionsarten behalten ihren Hash.
+	Roh string `json:"roh,omitempty"`
+	// Nachweis: Unterschrift(en) des Auftraggebers fuer alle anderen
+	// Auftraege, die Geld oder Rechte bewegen (Tausch, Liquiditaet, Faucet,
+	// Treuhand, Unternehmen) -- das Gegenstueck zu Roh (auftrag_nachweis.go).
+	// omitempty: aeltere Bloecke behalten ihren Hash.
+	Nachweis *Auftragsnachweis `json:"nachweis,omitempty"`
+	// Vorbehalt: Stufe 2, Tausch und Liquiditaet in zwei Schritten
+	// (vorbehalt.go). omitempty: aeltere Bloecke behalten ihren Hash.
+	Vorbehalt *VorbehaltAngaben `json:"vorbehalt,omitempty"`
 	// DistributionAt carries the exact Unix timestamp the primary chose for
 	// a distribution round (e.g. the new last_ubi_at) on
 	// "ubi_distribution_finalize" TXs. Audit recheck 2 (P0 #4) found the
@@ -6787,6 +6801,10 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			phBlock.sammler, phBlock.stateroot, phBlock.commit)
 	}()
 	defer dag.state.mu.Unlock()
+	// Blockzeit fuer Regeln, die tief unten nach ihr entscheiden
+	// (kappung_verteilt.go). Vor dem Unlock zurueckgesetzt (defers LIFO).
+	dag.state.nachspielZeit = block.Timestamp
+	defer func() { dag.state.nachspielZeit = 0 }()
 	configBackup := make(map[string]configValueSnapshot, len(stateRootRelevantConfigKeys))
 	for _, key := range stateRootRelevantConfigKeys {
 		value, existed := dag.state.getConfigValueExists(key)
@@ -6905,6 +6923,44 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 	// write out of the parallel phase entirely) — a local mutex around a
 	// shared *sql.Tx is provably not sufficient.
 
+	// STUFE 1.0 (signierte_ueberweisung.go): ab der Aktivierung prueft JEDER
+	// Validator jede Ueberweisung selbst gegen ihre signierte Rohform -- vorab,
+	// parallel, fuer den ganzen Block (Stufe 1.2) -- und die Nonces gegen den
+	// gemeinsamen Zustand. Ein Verstoss macht den GANZEN Block ungueltig: eine
+	// gefaelschte Ueberweisung ist kein Zustandsunterschied, den man
+	// ueberspringen koennte, sondern ein Erzeuger, der sich falsch verhaelt.
+	// Die neuen NaechsteNonce-Werte gehen ueber kontenSammlung in dieselbe
+	// Transaktion wie der Rest des Blocks und mit ihm zurueck.
+	if signierteUeberweisungenPflicht(block.Timestamp) {
+		sigCtx := withTx(context.Background(), dbTx)
+		liste, sigErr := pruefeUeberweisungenImBlock(block.Transactions)
+		var neueNoncen map[string]int64
+		if sigErr == nil {
+			neueNoncen, sigErr = dag.state.naechsteNoncenFuerBlockLocked(sigCtx, liste)
+		}
+		if sigErr == nil {
+			sigErr = dag.state.setzeNaechsteNoncenLocked(sigCtx, neueNoncen, kontenSammlung)
+		}
+		// Nachtrag zu 1.0 (auftrag_nachweis.go): dieselbe Pruefung fuer
+		// Tausch, Liquiditaet, Faucet, Treuhand und Unternehmen.
+		if sigErr == nil {
+			var auftraege []auftragsNonce
+			auftraege, sigErr = pruefeAuftraegeImBlock(block.Transactions, block.Timestamp)
+			var neueAuftragsNoncen map[string]int64
+			if sigErr == nil {
+				neueAuftragsNoncen, sigErr = dag.state.naechsteAuftragsNoncenFuerBlockLocked(sigCtx, auftraege)
+			}
+			if sigErr == nil {
+				sigErr = dag.state.setzeAuftragsNoncenLocked(sigCtx, neueAuftragsNoncen, kontenSammlung)
+			}
+		}
+		if sigErr != nil {
+			fmt.Printf("[REPLAY] ✗ Block #%d von %s: %v — Block abgelehnt\n", block.Height, block.Proposer, sigErr)
+			merkeUngueltigeSignaturBlock()
+			hardFailure = true
+		}
+	}
+
 	for txIdx := 0; txIdx < len(block.Transactions); txIdx++ {
 		tx := block.Transactions[txIdx]
 		if hardFailure {
@@ -6916,17 +6972,17 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 		// this differs from the reverted 41b1eee attempt described above).
 		//
 		// Only ever engaged for a run of CONSECUTIVE, demurrage-free,
-		// pairwise-disjoint transfers — a set the determinism tests already
-		// prove is order-independent. Anything else ends the run and falls
-		// through to the serial switch below, unchanged.
+		// fee-free transfers; seit Stufe 1.3 duerfen sich Adressen darin
+		// wiederholen (replay_parallel.go, Phase 1b). Anything else ends the
+		// run and falls through to the serial switch below, unchanged.
 		//
-		// Ab der Aktivierung der Unternehmensregeln nicht mehr: der parallele
-		// Pfad fuehrt keine Buchfuehrung (wirtschaft.go, nachUeberweisung),
-		// und gebuehrenfreie Ueberweisungen (die ersten 1.000 AEQ eines
-		// Menschen, Unternehmen -> Mensch) kaemen sonst hierher. Umsatz und
-		// Freibetraege dieses Knotens waeren falsch, die Liegegeld-Pruefung
-		// wuerde abweichen. Wie bei der Annahme: die Regeln an einer Stelle.
-		if tx.Type == "transfer" && skipDistributionRound == 0 && !wirtschaftAktiv(block.Timestamp) {
+		// Auch nach der Aktivierung der Unternehmensregeln: der parallele
+		// Pfad fuehrt die Buchfuehrung (nachUeberweisung) seit 25.09.2026
+		// selbst mit, in Blockreihenfolge (replay_parallel.go, Phase 2b).
+		// Vorher war er ab dem 1.10. abgeschaltet, und das Nachspielen waere
+		// mit den Wirtschaftsregeln wieder komplett seriell gelaufen.
+		// Ueberweisungen mit Gebuehr bleiben seriell (collectDisjointTransferBatch).
+		if tx.Type == "transfer" && skipDistributionRound == 0 {
 			if batch, _ := collectDisjointTransferBatch(block.Transactions, txIdx); len(batch) >= parallelReplayMinBatch {
 				// withTx statt des leeren ctx: JEDE Kontoaenderung dieses
 				// Replays gehoert in dbTx, sonst ueberlebt sie einen Ruecklauf.
@@ -7322,13 +7378,76 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 				hardFailure = true
 				continue
 			}
+		case "vorbehalt":
+			// Stufe 2 (vorbehalt.go), Schritt 1: Einsatz von X aufs
+			// Vorbehaltskonto. Der Nachweis ist vorab geprueft.
+			vtx := tx
+			if err := dag.state.vorbehaltAnwendenLocked(withTx(context.Background(), dbTx), &vtx, kontenSammlung); err != nil {
+				if istZustandsAblehnung(err) {
+					fmt.Printf("[REPLAY] ⚠ vorbehalt %s: %v (block #%d) — uebersprungen\n", wallet, err, block.Height)
+					merkeUebersprungeneUeberweisung()
+					uebersprungenInDiesemBlock++
+					continue
+				}
+				fmt.Printf("[REPLAY] ✗ vorbehalt %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
+				hardFailure = true
+				continue
+			}
+		case "vorbehalt_ausfuehrung":
+			// Schritt 2: Rueckbuchung und der Auftrag, genau wie getragen.
+			vtx := tx
+			if err := dag.state.applyVorbehaltAusfuehrungLocked(withTx(context.Background(), dbTx), &vtx, block.Timestamp); err != nil {
+				if istZustandsAblehnung(err) {
+					fmt.Printf("[REPLAY] ⚠ vorbehalt_ausfuehrung %s: %v (block #%d) — uebersprungen\n", wallet, err, block.Height)
+					merkeUebersprungeneUeberweisung()
+					uebersprungenInDiesemBlock++
+					continue
+				}
+				fmt.Printf("[REPLAY] ✗ vorbehalt_ausfuehrung %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
+				hardFailure = true
+				continue
+			}
+		case "kappung":
+			// Stufe 2 (kappung_verteilt.go): genau der getragene Betrag, vom
+			// Zustaendigen angenommen. Nie neu gerechnet.
+			if err := dag.state.applyKappungDeltaLocked(withTx(context.Background(), dbTx), wallet, tx.Amount, kontenSammlung); err != nil {
+				if istZustandsAblehnung(err) {
+					fmt.Printf("[REPLAY] ⚠ kappung %s: %v (block #%d) — uebersprungen\n", wallet, err, block.Height)
+					merkeUebersprungeneUeberweisung()
+					uebersprungenInDiesemBlock++
+					continue
+				}
+				fmt.Printf("[REPLAY] ✗ kappung %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
+				hardFailure = true
+				continue
+			}
 		case "unternehmen_mitinhaber":
+			// Ab der Aktivierung (auftrag_nachweis.go): der zweite Unterzeichner
+			// muss in DIESEM Augenblick verantwortlich sein -- sonst truege
+			// sich jeder mit einem eigenen Schluessel als "bisher
+			// verantwortlich" ein. Die Unterschriften selbst sind vorab geprueft.
+			if signierteUeberweisungenPflicht(block.Timestamp) {
+				if err := dag.state.pruefeVerantwortlichLocked(wallet, tx.Nachweis); err != nil {
+					fmt.Printf("[REPLAY] ✗ unternehmen_mitinhaber %s: %v (block #%d) — Block abgelehnt\n", wallet, err, block.Height)
+					merkeUngueltigeSignaturBlock()
+					hardFailure = true
+					continue
+				}
+			}
 			if err := dag.state.applyUnternehmenMitinhaberLocked(context.Background(), wallet, tx.To, block.Timestamp); err != nil {
 				fmt.Printf("[REPLAY] ✗ unternehmen_mitinhaber %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
 				hardFailure = true
 				continue
 			}
 		case "unternehmen_schliessen":
+			if signierteUeberweisungenPflicht(block.Timestamp) {
+				if err := dag.state.pruefeVerantwortlichLocked(wallet, &Auftragsnachweis{Von2: tx.To}); err != nil {
+					fmt.Printf("[REPLAY] ✗ unternehmen_schliessen %s: %v (block #%d) — Block abgelehnt\n", wallet, err, block.Height)
+					merkeUngueltigeSignaturBlock()
+					hardFailure = true
+					continue
+				}
+			}
 			if err := dag.state.applyUnternehmenSchliessenLocked(context.Background(), wallet, block.Timestamp); err != nil {
 				fmt.Printf("[REPLAY] ✗ unternehmen_schliessen %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
 				hardFailure = true

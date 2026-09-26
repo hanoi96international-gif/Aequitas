@@ -546,3 +546,6 @@ a.tab{text-decoration:none;display:inline-block}
 .tab-biz:hover{color:var(--gold,#F5A524);background:rgba(245,165,36,0.08)}
 .tab-sep{flex:0 0 1px;align-self:stretch;margin:6px 6px;background:var(--border)}
 .tab-tool{font-weight:500;font-size:0.76rem;padding:10px 12px}
+/* Beta-Hinweis auf der Registrierungsseite: aufklappbar statt Textwand */
+.reg-details summary{cursor:pointer;font-weight:800;color:var(--gold);font-size:0.9rem;line-height:1.5}
+.reg-details[open] summary{margin-bottom:4px}

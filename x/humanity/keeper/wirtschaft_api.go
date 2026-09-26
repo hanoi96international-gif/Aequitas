@@ -262,7 +262,8 @@ func (a *APIServer) handleUnternehmenEroeffnen(w http.ResponseWriter, r *http.Re
 		jsonError(w, "human signature invalid: "+err.Error(), http.StatusForbidden)
 		return
 	}
-	tx := Transaction{Type: "unternehmen_eroeffnen", Wallet: u, To: m, Name: name, Kategorie: kat}
+	tx := Transaction{Type: "unternehmen_eroeffnen", Wallet: u, To: m, Name: name, Kategorie: kat,
+		Nachweis: nachweisFuerAnnahme(Auftragsnachweis{Sig: req.SigUnternehmen, Sig2: req.SigMensch, Zeit: req.Zeit})}
 	a.unternehmenEinreichen(w, []string{u, m}, tx, func(ctx context.Context) error {
 		return a.state.applyUnternehmenEroeffnenLocked(ctx, u, m, name, kat, now)
 	})
@@ -311,7 +312,8 @@ func (a *APIServer) handleUnternehmenMitinhaber(w http.ResponseWriter, r *http.R
 		jsonError(w, "signatures invalid", http.StatusForbidden)
 		return
 	}
-	tx := Transaction{Type: "unternehmen_mitinhaber", Wallet: u, To: m}
+	tx := Transaction{Type: "unternehmen_mitinhaber", Wallet: u, To: m,
+		Nachweis: nachweisFuerAnnahme(Auftragsnachweis{Sig: req.SigMensch, Sig2: req.SigVerantwortlich, Von2: v, Zeit: req.Zeit})}
 	a.unternehmenEinreichen(w, []string{u, m}, tx, func(ctx context.Context) error {
 		return a.state.applyUnternehmenMitinhaberLocked(ctx, u, m, now)
 	})
@@ -352,7 +354,8 @@ func (a *APIServer) handleUnternehmenSchliessen(w http.ResponseWriter, r *http.R
 		jsonError(w, "signature invalid: "+err.Error(), http.StatusForbidden)
 		return
 	}
-	tx := Transaction{Type: "unternehmen_schliessen", Wallet: u, To: v}
+	tx := Transaction{Type: "unternehmen_schliessen", Wallet: u, To: v,
+		Nachweis: nachweisFuerAnnahme(Auftragsnachweis{Sig: req.Sig, Zeit: req.Zeit})}
 	a.unternehmenEinreichen(w, []string{u}, tx, func(ctx context.Context) error {
 		return a.state.applyUnternehmenSchliessenLocked(ctx, u, now)
 	})

@@ -112,6 +112,13 @@ func (cs *ChainState) processTransferBatchConcurrent(batch []*transferBatchReque
 	if wirtschaftAktiv(nowUnix()) {
 		return false
 	}
+	// Signierte Ueberweisungen (Stufe 1.0) setzen NaechsteNonce nur im
+	// seriellen Stapelpfad -- dieser hier kennt das nicht.
+	for _, req := range batch {
+		if req.pendingTxTemplate.Roh != "" {
+			return false
+		}
+	}
 	defer func() {
 		if r := recover(); r != nil {
 			fmt.Printf("[PANIC RECOVERED] processTransferBatchConcurrent: %v\n%s\n", r, debug.Stack())
@@ -229,7 +236,7 @@ func (cs *ChainState) processTransferBatchConcurrent(batch []*transferBatchReque
 			failWholeBatch(batch, fmt.Errorf("batch member %d/%d (%s -> %s) failed: insufficient balance", i+1, len(batch), req.from, req.to))
 			return true
 		}
-		if hasCapAmt && toAcc.Balance.Float()+req.amount > capAmt {
+		if cs.wuerdeKappenLocked(req.to, toAcc, toAcc.Balance.Float()+req.amount, capAmt, hasCapAmt) {
 			return false // would overflow the wealth cap somewhere in the batch -- bail, nothing touched yet
 		}
 		fromAcc.Balance = fromAcc.Balance.Sub(NewDecimal(req.amount)).Sub(NewDecimal(gebuehren[i]))

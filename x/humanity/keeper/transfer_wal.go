@@ -77,6 +77,9 @@ type walTransferRecord struct {
 	// Gebuehr: Ueberweisungsgebuehr, die der Absender zusaetzlich bezahlt hat
 	// (ueberweisungsgebuehr.go). Aeltere Datensaetze: 0.
 	Gebuehr float64 `json:"gebuehr,omitempty"`
+	// Roh: signierte Rohtransaktion (Stufe 1.0), damit eine nach einem Absturz
+	// wiederhergestellte Ueberweisung sie in den Block mitnimmt.
+	Roh string `json:"roh,omitempty"`
 	// At is the instant the transfer actually happened, in unix seconds.
 	//
 	// FIX (pre-launch audit 2026-08-16): the record used to carry no timestamp
@@ -491,7 +494,7 @@ func (cs *ChainState) transferConcurrentWALGesperrt(from, to string, amount floa
 	if fromAcc.Balance.Float() < amount+gebuehr {
 		return 0, 0, true, fmt.Errorf("insufficient balance"), nil
 	}
-	if hasCapAmt && toAcc.Balance.Float()+amount > capAmt {
+	if cs.wuerdeKappenLocked(to, toAcc, toAcc.Balance.Float()+amount, capAmt, hasCapAmt) {
 		fbWohlstandsCap.Add(1)
 		return 0, 0, false, nil, nil
 	}
@@ -500,7 +503,7 @@ func (cs *ChainState) transferConcurrentWALGesperrt(from, to string, amount floa
 	// crash-recovered replay reproduces exactly what this node did rather than
 	// stamping its own restart time (see walTransferRecord.At).
 	at := nowUnix()
-	payload, err := json.Marshal(walTransferRecord{From: from, To: to, Amount: amount, Gebuehr: gebuehr, TxHash: pendingTxTemplate.TxHash, At: at})
+	payload, err := json.Marshal(walTransferRecord{From: from, To: to, Amount: amount, Gebuehr: gebuehr, TxHash: pendingTxTemplate.TxHash, At: at, Roh: pendingTxTemplate.Roh})
 	if err != nil {
 		fbKodierung.Add(1)
 		return 0, 0, false, nil, nil // encode failure -- nothing mutated, safe to fall back
@@ -1371,7 +1374,7 @@ func (cs *ChainState) recoverFromWAL(path string) error {
 				// fork risk for this validator, not just eventual-consistency lag.
 				// Beim Wiederanlauf ist der Datensatz per Definition haltbar --
 				// er kommt aus der Datei. Seine Seq ist die aus der Datei.
-				cs.enqueueWALFlushLocked(rec.From, rec.To, Transaction{Type: "transfer", Wallet: rec.From, To: rec.To, Amount: rec.Amount, Gebuehr: rec.Gebuehr, TxHash: rec.TxHash}, entry.Seq)
+				cs.enqueueWALFlushLocked(rec.From, rec.To, Transaction{Type: "transfer", Wallet: rec.From, To: rec.To, Amount: rec.Amount, Gebuehr: rec.Gebuehr, TxHash: rec.TxHash, Roh: rec.Roh}, entry.Seq)
 			}
 		}
 		return nil

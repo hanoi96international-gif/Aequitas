@@ -22,7 +22,7 @@ import "sync/atomic"
 //
 // Es GIBT einen parallelen Replay-Pfad (replay_parallel.go), und er ist
 // verdrahtet. Er greift aber nur fuer Laeufe von aufeinanderfolgenden,
-// DEMURRAGE-FREIEN, paarweise disjunkten Ueberweisungen -- jede Demurrage
+// DEMURRAGE-FREIEN, (bis 25.09.2026) paarweise disjunkten Ueberweisungen -- jede Demurrage
 // bricht den Lauf sofort ab (collectDisjointTransferBatch), und in einem Block
 // mit tausenden Ueberweisungen ueber wenige hundert Konten wiederholen sich
 // die Adressen staendig.
@@ -75,7 +75,7 @@ func ReplayPfadStand() map[string]interface{} {
 		"pro_buendel":       proBuendel,
 		"groesstes_buendel": replayBatchMax.Load(),
 		"bedeutung": "Wie das Nachspielen die Ueberweisungen anwendet. Der parallele Pfad greift " +
-			"nur fuer aufeinanderfolgende, demurrage-freie, paarweise disjunkte Laeufe -- jede " +
+			"nur fuer aufeinanderfolgende, demurrage- und gebuehrfreie Laeufe -- jede " +
 			"Demurrage bricht ihn ab. parallel_pct nahe 0 heisst: Replay laeuft praktisch seriell " +
 			"unter der globalen Sperre, und genau das laesst den nachspielenden Knoten " +
 			"zurueckfallen",

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"strings"
 )
 
 // transferConcurrent is SCALING_ARCHITECTURE.md Phase 5's real concurrency
@@ -166,7 +167,7 @@ func (cs *ChainState) transferConcurrent(from, to string, amount float64, pendin
 	if fromAcc.Balance.Float() < amount+gebuehr {
 		return 0, 0, true, fmt.Errorf("insufficient balance")
 	}
-	if hasCapAmt && toAcc.Balance.Float()+amount > capAmt {
+	if cs.wuerdeKappenLocked(to, toAcc, toAcc.Balance.Float()+amount, capAmt, hasCapAmt) {
 		return 0, 0, false, nil // would overflow the wealth cap -> touches a pool address
 	}
 
@@ -274,6 +275,35 @@ func (cs *ChainState) wealthCapAmountLocked() (amt float64, ok bool) {
 		return 0, false
 	}
 	return avg * cs.bootstrapMultiplierLocked(), true
+}
+
+// wuerdeKappenLocked sagt, ob enforceWealthCapLockedCtx ein Konto mit dem
+// Kontostand stand kappen wuerde -- die EINE Vorpruefung, die alle
+// Schnellpfade (Annahme und paralleles Nachspielen) vor dem langsamen Pfad
+// ziehen. Lehnt sie ab, uebernimmt der langsame Pfad, der kappt.
+//
+// FIX (26.09.2026): die Schnellpfade verglichen nur den Kontostand mit der
+// Grenze. enforceWealthCapLockedCtx zaehlt seit dem 20.08.2026 auch den Wert
+// der LP-Anteile (lpValueLockedAEQ) -- ein Empfaenger mit 24.000 AEQ auf dem
+// Konto und 2.000 AEQ im Pool wurde vom langsamen Pfad gekappt, von jedem
+// Schnellpfad nicht. Das ist eine Spaltung: der annehmende Knoten (oder
+// ein Knoten, der den Lauf parallel nachspielt) und ein seriell
+// nachspielender Knoten kommen zu verschiedenen Kontostaenden und
+// StateRoots. Belegt von TestSchnellpfade_KappenWieSeriellMitLPAnteilen.
+//
+// Die Ausnahme fuer Unternehmen (kein fester Deckel) bleibt hier bewusst
+// unberuecksichtigt: eine Ablehnung zu viel kostet nur Tempo, nie Gleichheit.
+// Caller must hold cs.mu (read or write).
+func (cs *ChainState) wuerdeKappenLocked(addr string, acc *AccountState, stand, capAmt float64, hasCap bool) bool {
+	if !hasCap || isTokenomicsPoolAddress(strings.ToLower(addr)) {
+		return false
+	}
+	// Stufe 2: Gutschriften kappen nicht mehr (kappung_verteilt.go) -- kein
+	// Grund fuer den langsamen Pfad.
+	if cs.kappungVerschobenLocked() {
+		return false
+	}
+	return stand+cs.lpValueLockedAEQ(acc) > capAmt
 }
 
 // markEVMMirrorDirtyForAddrsLocked is transferConcurrent's counterpart to

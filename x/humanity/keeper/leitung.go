@@ -131,8 +131,32 @@ type LeitNachricht struct {
 	Uebergabe *LeitNachricht `json:"uebergabe,omitempty"`
 	// Vorwahl (PreVote): "wuerdest du mich waehlen?" -- ohne dass irgendwer
 	// seinen Term hochzaehlt. Siehe vorwahl() unten.
-	Vorwahl bool   `json:"vorwahl,omitempty"`
-	Sig     string `json:"sig,omitempty"`
+	Vorwahl bool `json:"vorwahl,omitempty"`
+
+	// Stufe 2 (leitung_verteilt.go). Alle omitempty: ohne verteilte Annahme
+	// sind die Nachrichten unveraendert.
+	//
+	// Bestaetigt: in einer Lease -- der Leiter darf in diesem Augenblick
+	// annehmen (Mehrheit hat bestaetigt). Nur solche Leases erlauben einem
+	// Mitglied, fuer seine Konten anzunehmen.
+	Bestaetigt bool `json:"bestaetigt,omitempty"`
+	// Zuteilung: die Mitglieder, auf die die Konten dieses Terms verteilt
+	// sind. Fest fuer den ganzen Term.
+	Zuteilung []string `json:"zuteilung,omitempty"`
+	// Ausgefallen: Mitglieder, deren Konten fuer den Rest des Terms an den
+	// Naechsten im Ring gehen.
+	Ausgefallen []string `json:"ausgefallen,omitempty"`
+	// Abschluss: in einer Lease -- der Term endet, niemand nimmt mehr an;
+	// jeder meldet seinen letzten Block, sobald nichts mehr offen ist.
+	Abschluss bool `json:"abschluss,omitempty"`
+	// Entleert: in einer Quittung -- nichts mehr offen, BlockHash ist der
+	// letzte eigene Block.
+	Entleert bool `json:"entleert,omitempty"`
+	// Abschluesse: in der Uebergabe -- je Mitglied der letzte Block des
+	// alten Terms. Wer im neuen Term annimmt, muss sie nachgespielt haben.
+	Abschluesse map[string]string `json:"abschluesse,omitempty"`
+
+	Sig string `json:"sig,omitempty"`
 }
 
 // LeitKonfig: Zeiten. FolgerFrist muss groesser sein als LeaseDauer plus
@@ -158,6 +182,14 @@ type LeitKonfig struct {
 	// So oft meldet sich jedes Mitglied bei allen anderen (Hallo) -- damit
 	// jeder selbst beurteilen kann, ob ein Validator noch lebt.
 	LebenszeichenAlle time.Duration
+
+	// Stufe 2: alle Mitglieder nehmen fuer ihre Konten an
+	// (leitung_verteilt.go). Nur mit Wahl (ab drei Validatoren).
+	Verteilt bool
+	// Ruhezeit: nach einem Term ohne geordnete Uebergabe (Wahl nach
+	// Ausfall) und nach dem Ausfall eines Mitglieds so lange warten, bis
+	// dessen letzte Bloecke angekommen sein koennen.
+	Ruhezeit time.Duration
 }
 
 func leitVorgabe() LeitKonfig {
@@ -175,6 +207,8 @@ func leitVorgabe() LeitKonfig {
 		AufnahmeSperre:   10 * time.Minute,
 
 		LebenszeichenAlle: 10 * time.Second,
+
+		Ruhezeit: 5 * time.Second,
 	}
 }
 
@@ -218,6 +252,10 @@ type LeitUmgebung struct {
 	// Unbekannt: ein Leiter hat einen Validator aufgenommen, den dieser Knoten
 	// (noch) nicht kennt -- Register bei den Peers nachfragen.
 	Unbekannt func(addr string)
+	// Zuteilbar: Stufe 2 -- bekommt addr im naechsten Term Konten? Nein nur,
+	// wenn seine letzte Leistungsprobe gescheitert ist (leistungsprobe.go).
+	// nil = alle.
+	Zuteilbar func(addr string) bool
 }
 
 // LeitSpeicher: was einen Neustart ueberleben muss. Ohne votedFor koennte ein
@@ -234,6 +272,18 @@ type LeitSpeicher struct {
 	SatzFest bool              `json:"satz_fest,omitempty"`
 	Vorher   *LeitSatz         `json:"vorher,omitempty"` // bestaetigter Vorgaenger einer offenen Aenderung
 	URLs     map[string]string `json:"urls,omitempty"`
+
+	// Stufe 2: die Zuteilung des Terms, in dem dieser Knoten zuletzt Leiter
+	// war. Ohne sie baute ein nach einem Neustart weiterleitender Leiter
+	// eine neue -- und stimmte, wenn sich der Satz inzwischen geaendert hat,
+	// nicht mehr mit den Folgern ueberein (leitung_verteilt.go).
+	Zuteilung     []string `json:"zuteilung,omitempty"`
+	ZuteilungTerm uint64   `json:"zuteilung_term,omitempty"`
+	// Ausgefallen im selben Term: geht nie zurueck. Vergaesse ein neu
+	// gestarteter Leiter sie, naehme ein zurueckgekehrtes Mitglied wieder an,
+	// waehrend sein Nachfolger im Ring dessen Konten schon uebernommen hat --
+	// gefunden von TestVerteilt_Zufall.
+	Ausgefallen []string `json:"ausgefallen,omitempty"`
 }
 
 // LeitSatz: die Validatoren, deren Mehrheit zaehlt, mit Stand.
@@ -326,6 +376,9 @@ type Leitung struct {
 	frischZwei bool
 
 	gestartet time.Time
+
+	// Stufe 2 (leitung_verteilt.go).
+	vt verteiltStand
 }
 
 // satzHashVon: Validatoren, die sich in der Zusammensetzung nicht einig
@@ -428,6 +481,19 @@ func NeueLeitung(ich, url string, satz []string, startLeiter string, faehig bool
 		l.warLeiter = true
 		// Stempel dieser Amtszeit (siehe werdeLeiter). Mitglieder unveraendert.
 		l.setzeSatz(l.satz, l.term, l.satzVersion)
+		// Stufe 2: dieselbe Zuteilung wie vor dem Neustart, sonst die
+		// aktuelle (neuer Term, noch keine Lease verschickt).
+		if l.verteilt() {
+			z := l.zuteilbare()
+			var aus []string
+			if gespeichert.ZuteilungTerm == l.term && len(gespeichert.Zuteilung) > 0 {
+				z, aus = gespeichert.Zuteilung, gespeichert.Ausgefallen
+			}
+			l.neuerTermVerteilt(l.term, z, nil, jetzt)
+			for _, a := range aus {
+				l.vt.ausgefallen[a] = jetzt
+			}
+		}
 		if len(l.satz) <= 1 {
 			l.fest = true
 		}
@@ -454,8 +520,16 @@ func (l *Leitung) speichern() {
 				urls[a] = u
 			}
 		}
-		l.env.Speichern(LeitSpeicher{Term: l.term, Stimme: l.stimme, Leiter: l.leiter, WarLeiter: l.warLeiter,
-			Satz: akt, SatzFest: l.fest, Vorher: vor, URLs: urls})
+		sp := LeitSpeicher{Term: l.term, Stimme: l.stimme, Leiter: l.leiter, WarLeiter: l.warLeiter,
+			Satz: akt, SatzFest: l.fest, Vorher: vor, URLs: urls}
+		if l.rolle == leitLeiter && l.vt.term == l.term && len(l.vt.zuteilung) > 0 {
+			sp.Zuteilung, sp.ZuteilungTerm = append([]string(nil), l.vt.zuteilung...), l.vt.term
+			for a := range l.vt.ausgefallen {
+				sp.Ausgefallen = append(sp.Ausgefallen, a)
+			}
+			sort.Strings(sp.Ausgefallen)
+		}
+		l.env.Speichern(sp)
 	}
 }
 
@@ -644,6 +718,7 @@ func (l *Leitung) lease(jetzt time.Time) LeitNachricht {
 			m.URLs[a] = u
 		}
 	}
+	l.leaseVerteilt(&m, jetzt)
 	return m
 }
 
@@ -651,7 +726,9 @@ func (l *Leitung) lease(jetzt time.Time) LeitNachricht {
 // ANDEREN leiterfaehigen Validator gehoert?
 func (l *Leitung) faehigerLebt(jetzt time.Time) bool {
 	for a, f := range l.faehig {
-		if a == l.ich || !f || !l.imSatz(a) {
+		// Wer die Leistungsprobe nicht besteht, zaehlt nicht als faehig --
+		// sonst waere der Notbetrieb nie erreichbar, wenn nur solche leben.
+		if a == l.ich || !f || !l.imSatz(a) || !l.zuteilbar(a) {
 			continue
 		}
 		if t, ok := l.gehoert[a]; ok && jetzt.Sub(t) < l.cfg.FolgerFrist {
@@ -680,7 +757,7 @@ func (l *Leitung) notbetrieb(jetzt time.Time) bool {
 // Kandidat mit einem ueberholten Satz eine Mehrheit zusammenbekommen, die es
 // im bestaetigten Satz nicht gibt.
 func (l *Leitung) waehlbar(m LeitNachricht, jetzt time.Time) bool {
-	return (m.Faehig || l.notbetrieb(jetzt)) && m.Hoehe >= l.hoehe()-l.cfg.HoeheToleranz &&
+	return ((m.Faehig && l.zuteilbar(m.Von)) || l.notbetrieb(jetzt)) && m.Hoehe >= l.hoehe()-l.cfg.HoeheToleranz &&
 		!satzNeuerAls(l.satzTerm, l.satzVersion, m.SatzTerm, m.SatzVersion)
 }
 
@@ -695,7 +772,7 @@ func (l *Leitung) effFaehig(jetzt time.Time) bool {
 func (l *Leitung) nachfolger(addr string, alle bool) string {
 	var kandidaten []string
 	for _, a := range l.satz {
-		if alle || l.faehig[a] {
+		if alle || (l.faehig[a] && l.zuteilbar(a)) {
 			kandidaten = append(kandidaten, a)
 		}
 	}
@@ -734,6 +811,7 @@ func (l *Leitung) rang(jetzt time.Time) int {
 func (l *Leitung) werdeFolger(term uint64, leiter string, jetzt time.Time) {
 	if l.rolle == leitLeiter && term > l.term && l.warLeiter && l.env.Ueberholt != nil {
 		// Leitung verloren, ohne sie selbst zu uebergeben.
+		l.vt.ueberholtFuer = l.term
 		defer l.env.Ueberholt(l.term)
 	}
 	if term > l.term {
@@ -776,6 +854,7 @@ func (l *Leitung) werdeLeiter(jetzt time.Time, beleg *LeitNachricht) {
 	if len(l.satz) <= 1 || (beleg != nil && !l.mitWahl()) {
 		l.fest = true
 	}
+	l.leiterAntrittVerteilt(jetzt, beleg)
 	l.speichern()
 }
 
@@ -804,6 +883,7 @@ func (l *Leitung) Takt(jetzt time.Time) []LeitNachricht {
 			if n := l.nachfolger(l.ich, l.notbetrieb(jetzt)); n != "" && l.lebt(n, jetzt) {
 				l.abschliessen = true
 				l.uebergabeAn = n
+				l.abschlussBeginnt(jetzt)
 			}
 		}
 		// Leistungsnachweis verloren: an einen leiterfaehigen abgeben, sobald
@@ -812,14 +892,16 @@ func (l *Leitung) Takt(jetzt time.Time) []LeitNachricht {
 			if n := l.nachfolger(l.ich, false); n != "" && l.lebt(n, jetzt) {
 				l.abschliessen = true
 				l.uebergabeAn = n
+				l.abschlussBeginnt(jetzt)
 			}
 		}
-		if l.abschliessen && (l.env.Entleert == nil || l.env.Entleert()) {
+		if l.abschliessen && (l.env.Entleert == nil || l.env.Entleert()) && l.abschlussFertig(jetzt) {
 			ue := l.basis(leitArtUebergabe, jetzt)
 			ue.An = l.uebergabeAn
 			if l.env.LetzterBlk != nil {
 				ue.BlockHash = l.env.LetzterBlk()
 			}
+			l.uebergabeVerteilt(&ue)
 			raus = append(raus, ue)
 			// Ab hier ist der Naechste Leiter von term+1 -- sobald er den
 			// Block hat. Dieser Knoten folgt und wartet auf dessen Lease.
@@ -841,6 +923,7 @@ func (l *Leitung) Takt(jetzt time.Time) []LeitNachricht {
 			return raus
 		}
 		l.mitgliedschaft(jetzt)
+		l.ausfaelleErkennen(jetzt)
 		if jetzt.Sub(l.letzterTakt) >= l.cfg.Takt {
 			l.letzterTakt = jetzt
 			m := l.lease(jetzt)
@@ -969,6 +1052,7 @@ func (l *Leitung) Empfange(m LeitNachricht, jetzt time.Time) *LeitNachricht {
 				l.ackSatz[m.Von] = m.SatzHash
 				l.lebendBei[m.Von] = m.Lebend
 			}
+			l.quittungVerteilt(m)
 		} else if m.Term > l.term {
 			l.werdeFolger(m.Term, "", jetzt)
 		}
@@ -1081,6 +1165,7 @@ func (l *Leitung) empfangeLease(m LeitNachricht, jetzt time.Time) *LeitNachricht
 			ack.Lebend = append(ack.Lebend, a)
 		}
 	}
+	l.folgerLeaseVerteilt(m, &ack, jetzt)
 	return &ack
 }
 
@@ -1148,6 +1233,7 @@ func (l *Leitung) Stand(jetzt time.Time) map[string]interface{} {
 		"notbetrieb":       l.notbetrieb(jetzt),
 		"uebergabe_laeuft": l.abschliessen || l.offeneUebergabe != nil || l.wartet != nil,
 		"satz_hash":        l.hash,
+		"verteilt":         l.standVerteilt(jetzt),
 	}
 }
 
