@@ -6,8 +6,8 @@ name: Neuer Server (netcup) -- vorbereiten
 #   1. Zugang pruefen.
 #   2. Box vorbereiten (deploy/server-vorbereiten.sh): Docker, Firewall,
 #      Repos, Images. Es wird KEIN Knoten gestartet.
-#   3. C1 nur lesen: Container, Namen der Env-Variablen (keine Werte),
-#      Caddy -- was der Umzug wissen muss.
+# C1 ist nicht mehr erreichbar (Wache 26.09.2026: nur ein Validator aktiv);
+# die neue Box ersetzt C1 mit eigener, frischer Identitaet.
 on:
   workflow_dispatch:
   push:
@@ -21,7 +21,6 @@ jobs:
     timeout-minutes: 60
     env:
       NEU: 188.172.229.121
-      C1: 173.249.37.118
     steps:
       - uses: actions/checkout@v4
 
@@ -41,35 +40,7 @@ jobs:
             exit 1
           fi
 
-      - name: Proof-Server-Quelltext von C1 herueberkopieren (C1 nur lesen)
-        run: |
-          set -eu
-          ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o ConnectTimeout=20 root@$C1 \
-            'tar -C /root --exclude=node_modules -cz aequitas-proof-server' \
-            | ssh -o BatchMode=yes root@$NEU 'rm -rf /root/aequitas-proof-server && tar -C /root -xz && ls /root/aequitas-proof-server | head'
-
       - name: Box vorbereiten (kein Knoten wird gestartet)
         run: |
           set -eu
           ssh -o BatchMode=yes -o ServerAliveInterval=30 root@$NEU 'bash -s' < deploy/server-vorbereiten.sh
-
-      - name: C1 lesen (nur lesen)
-        run: |
-          set -u
-          ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o ConnectTimeout=20 root@$C1 'bash -s' <<'EOF'
-          echo "=== Container ==="
-          docker ps --format '{{.Names}}\t{{.Image}}\t{{.Ports}}'
-          echo "=== /root ==="
-          ls -la /root
-          echo "=== Env-Dateien (nur Namen, keine Werte) ==="
-          for f in /root/*.env /root/.env /root/*/.env; do
-            [ -f "$f" ] || continue
-            echo "--- $f"
-            grep -oE '^[A-Z_][A-Z0-9_]*=' "$f" | tr '\n' ' '; echo
-          done
-          echo "=== Caddy ==="
-          ls -la /root/caddy 2>/dev/null || true
-          echo "=== Speicher ==="
-          df -h /
-          free -h
-          EOF

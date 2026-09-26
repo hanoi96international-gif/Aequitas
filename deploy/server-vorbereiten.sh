@@ -46,8 +46,8 @@ if [ -d /root/Aequitas/.git ]; then
 else
   git clone -q https://github.com/hanoi96international-gif/Aequitas.git /root/Aequitas
 fi
-# Der Proof-Server ist ein privates Repo: den Quelltext kopiert der Workflow
-# von C1 herueber (/root/aequitas-proof-server), gebaut wird er unten.
+# Der Proof-Server ist ein privates Repo; ihn richtet ein Workflow im
+# Proof-Server-Repo ein.
 echo "Aequitas: $(git -C /root/Aequitas rev-parse --short HEAD)"
 
 log "Images bauen (dauert)"
