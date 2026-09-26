@@ -53,9 +53,9 @@ jobs:
             set -eu
             while IFS="|" read -r k w u; do
               [ -n "$k" ] || continue
-              docker exec -i aequitas-postgres psql -U postgres -d aequitas -v ON_ERROR_STOP=1 -q \
+              docker exec aequitas-postgres psql -U postgres -d aequitas -v ON_ERROR_STOP=1 -q \
                 -c "CREATE TABLE IF NOT EXISTS coordinator_keys (public_key TEXT PRIMARY KEY, human_wallet TEXT NOT NULL, url TEXT, registered_at TIMESTAMP DEFAULT NOW())" \
-                -c "INSERT INTO coordinator_keys (public_key, human_wallet, url) VALUES ('"'"'$k'"'"', '"'"'$w'"'"', NULLIF('"'"'$u'"'"', '"'"''"'"')) ON CONFLICT (public_key) DO NOTHING"
+                -c "INSERT INTO coordinator_keys (public_key, human_wallet, url) VALUES ('"'"'$k'"'"', '"'"'$w'"'"', NULLIF('"'"'$u'"'"', '"'"''"'"')) ON CONFLICT (public_key) DO NOTHING" < /dev/null
             done
             echo "C1 kennt jetzt: $(curl -s -m 10 http://127.0.0.1:8080/api/coordinators | grep -oE "\"public_key\":\"[0-9a-f]{16}" | cut -d\" -f4 | tr "\n" " ")"
           ' < zeilen.txt
