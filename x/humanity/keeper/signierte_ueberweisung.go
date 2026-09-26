@@ -59,12 +59,13 @@ import (
 // ohne diese Pruefung wuerde gefaelschte Ueberweisungen weiter annehmen.
 // Wie KNIGHTDAG_ACTIVATION_HEIGHT: ein Wert, auf allen Knoten gleich.
 //
-// 2026-09-26T21:00:00Z, vom Betreiber am 26.09.2026 freigegeben. Liegt mehr
-// als eine Stunde (signierteUeberweisungenVorlauf) nach dem Ausrollen auf
-// beide Knoten (deploy-c1-dann-c2.yml). Seit #202 nimmt auch der
+// 2026-09-26T20:00:00Z, vom Betreiber am 26.09.2026 freigegeben und auf
+// seinen Wunsch von 21:00 vorgezogen. Der Vorlauf (Rohform anhaengen) beginnt
+// damit sofort nach dem Ausrollen; was davor ohne Rohform angenommen wurde,
+// steht nach Sekunden in einem Block, lange vor 20:00. Seit #202 nimmt auch der
 // WAL-Schnellpfad signierte Ueberweisungen an (wal_nonce_reihenfolge.go).
 // Rueckweg: wieder math.MaxInt64, ausrollen.
-const signierteUeberweisungenAbUnix int64 = 1790456400
+const signierteUeberweisungenAbUnix int64 = 1790452800
 
 // signierteUeberweisungenVorlauf: so lange VOR der Aktivierung nehmen
 // annehmende Knoten die Rohform schon in ihre Ueberweisungen auf. Sonst
