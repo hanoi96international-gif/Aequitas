@@ -242,6 +242,10 @@ func StarteLeitung(dag *BlockDAG, cs *ChainState, selfURL string) *Leitung {
 		Zugelassen: dag.istZugelassenerValidator,
 		Mensch:     dag.validatorMenschVon,
 		Unbekannt:  func(string) { dag.validatorRegisterNachfragen() },
+		Zuteilbar: func(a string) bool {
+			bestanden, unbekannt := proben.geprueft(a, time.Now())
+			return bestanden || unbekannt
+		},
 	}
 	faehig := !cs.nurLesend.Load() && leistungsnachweisErfuellt()
 	l := NeueLeitung(ich, selfURL, satz, start, faehig, cs.leitungLaden(), cfg, env, time.Now())
@@ -289,6 +293,9 @@ func (dag *BlockDAG) leitungSchleife(l *Leitung, cs *ChainState) {
 				validatorIPsFrei(l)
 			}
 			dag.leitungVersenden(l, l.Takt(time.Now()), dag.leitungPeers)
+			if verteilteAnnahmeAktiv(nowUnix()) {
+				dag.leistungsprobenPlanen(l)
+			}
 		})
 	}
 }

@@ -207,7 +207,41 @@ func (l *Leitung) leiterAntrittVerteilt(jetzt time.Time, beleg *LeitNachricht) {
 	if !l.verteilt() {
 		return
 	}
-	l.neuerTermVerteilt(l.term, l.satz, beleg, jetzt)
+	l.neuerTermVerteilt(l.term, l.zuteilbare(), beleg, jetzt)
+}
+
+// zuteilbare: die Mitglieder, die in diesem Term Konten bekommen -- alle, bis
+// auf die, deren letzte Leistungsprobe gescheitert ist. Der Leiter selbst
+// immer (er haelt den eigenen Nachweis, sonst waere er nicht gewaehlt). Nie
+// leer.
+func (l *Leitung) zuteilbare() []string {
+	if l.env.Zuteilbar == nil {
+		return l.satz
+	}
+	var z []string
+	for _, a := range l.satz {
+		if a == l.ich || l.env.Zuteilbar(a) {
+			z = append(z, a)
+		}
+	}
+	if len(z) == 0 {
+		return l.satz
+	}
+	return z
+}
+
+// zuteilbar: hat addr keine gescheiterte Leistungsprobe (leistungsprobe.go)?
+// Gilt fuer Zuteilung, Nachfolge und Wahl -- wer die Probe nicht besteht,
+// bekommt weder Konten noch die Leitung.
+func (l *Leitung) zuteilbar(a string) bool {
+	return l.env.Zuteilbar == nil || l.env.Zuteilbar(a)
+}
+
+// IstMitglied: gehoert addr zum Satz?
+func (l *Leitung) IstMitglied(addr string) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.imSatz(addr)
 }
 
 // leaseVerteilt: was der Leiter in jede Lease schreibt.

@@ -252,6 +252,10 @@ type LeitUmgebung struct {
 	// Unbekannt: ein Leiter hat einen Validator aufgenommen, den dieser Knoten
 	// (noch) nicht kennt -- Register bei den Peers nachfragen.
 	Unbekannt func(addr string)
+	// Zuteilbar: Stufe 2 -- bekommt addr im naechsten Term Konten? Nein nur,
+	// wenn seine letzte Leistungsprobe gescheitert ist (leistungsprobe.go).
+	// nil = alle.
+	Zuteilbar func(addr string) bool
 }
 
 // LeitSpeicher: was einen Neustart ueberleben muss. Ohne votedFor koennte ein
@@ -480,7 +484,7 @@ func NeueLeitung(ich, url string, satz []string, startLeiter string, faehig bool
 		// Stufe 2: dieselbe Zuteilung wie vor dem Neustart, sonst die
 		// aktuelle (neuer Term, noch keine Lease verschickt).
 		if l.verteilt() {
-			z := l.satz
+			z := l.zuteilbare()
 			var aus []string
 			if gespeichert.ZuteilungTerm == l.term && len(gespeichert.Zuteilung) > 0 {
 				z, aus = gespeichert.Zuteilung, gespeichert.Ausgefallen
@@ -722,7 +726,9 @@ func (l *Leitung) lease(jetzt time.Time) LeitNachricht {
 // ANDEREN leiterfaehigen Validator gehoert?
 func (l *Leitung) faehigerLebt(jetzt time.Time) bool {
 	for a, f := range l.faehig {
-		if a == l.ich || !f || !l.imSatz(a) {
+		// Wer die Leistungsprobe nicht besteht, zaehlt nicht als faehig --
+		// sonst waere der Notbetrieb nie erreichbar, wenn nur solche leben.
+		if a == l.ich || !f || !l.imSatz(a) || !l.zuteilbar(a) {
 			continue
 		}
 		if t, ok := l.gehoert[a]; ok && jetzt.Sub(t) < l.cfg.FolgerFrist {
@@ -751,7 +757,7 @@ func (l *Leitung) notbetrieb(jetzt time.Time) bool {
 // Kandidat mit einem ueberholten Satz eine Mehrheit zusammenbekommen, die es
 // im bestaetigten Satz nicht gibt.
 func (l *Leitung) waehlbar(m LeitNachricht, jetzt time.Time) bool {
-	return (m.Faehig || l.notbetrieb(jetzt)) && m.Hoehe >= l.hoehe()-l.cfg.HoeheToleranz &&
+	return ((m.Faehig && l.zuteilbar(m.Von)) || l.notbetrieb(jetzt)) && m.Hoehe >= l.hoehe()-l.cfg.HoeheToleranz &&
 		!satzNeuerAls(l.satzTerm, l.satzVersion, m.SatzTerm, m.SatzVersion)
 }
 
@@ -766,7 +772,7 @@ func (l *Leitung) effFaehig(jetzt time.Time) bool {
 func (l *Leitung) nachfolger(addr string, alle bool) string {
 	var kandidaten []string
 	for _, a := range l.satz {
-		if alle || l.faehig[a] {
+		if alle || (l.faehig[a] && l.zuteilbar(a)) {
 			kandidaten = append(kandidaten, a)
 		}
 	}

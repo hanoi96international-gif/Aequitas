@@ -716,6 +716,7 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		"absender_cache":           AbsenderCacheStand(),
 		"kappung_verteilt":         a.state.KappungStand(),
 		"vorbehalte":               a.state.VorbehaltStand(),
+		"leistungsproben":          ProbenStand(),
 		"leitung":                  a.state.LeitungStand(),
 		"leistungsnachweis":        LeistungsnachweisStand(),
 		// Wie das Nachspielen die Ueberweisungen anwendet -- parallel oder seriell.
@@ -1130,6 +1131,7 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	// Rotierender Leiter: signierte Nachrichten zwischen Validatoren
 	// (leitung_netz.go). Ohne AEQUITAS_LEITUNG=an antwortet er 404.
 	mux.HandleFunc("/api/leitung", a.handleLeitung)
+	mux.HandleFunc("/api/leistungsprobe", a.handleLeistungsprobe)
 	mux.HandleFunc("/node-binding", a.handleNodeBinding)
 	mux.HandleFunc("/coordinator-binding", a.handleCoordinatorBinding)
 	mux.HandleFunc("/api/register-validator-key", a.handleRegisterValidatorKey)
