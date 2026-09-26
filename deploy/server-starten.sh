@@ -40,6 +40,11 @@ chmod 600 "$ENVF"
 setze() { grep -q "^$1=" "$ENVF" || echo "$1=$2" >> "$ENVF"; }
 setze PRIMARY_NODE_URLS "http://194.163.188.71:8080"
 setze BOOTSTRAP_SIGNER "0x1a37dcdaa42cf3f7e1f6e41379961f40df44a4e3"
+# Bindung Signierschluessel 0x3066639a...42dc an die Menschen-Wallet
+# 0x0be8...d016, auf /node-binding erzeugt (26.09.2026, geprueft: stellt
+# genau diese Wallet wieder her). Nicht geheim. Der Knoten schickt sie den
+# anderen Knoten bei der Anmeldung mit, damit sie ihn als Validator annehmen.
+setze NODE_OPERATOR_BINDING_SIGNATURE "0x4ca84728f6d471ab2d499129a540a2e4ca6521e3e95a09bb0d0cc810699553e756dd885edaad3027c9a91b8438abd17c1f08ca9db520ebaaf86e2f41f5f91cf21b"
 
 GIT_COMMIT="$(git -C /root/Aequitas rev-parse --short HEAD)" docker compose up -d --force-recreate node
 echo "gestartet; warte auf den NODE_KEY des ersten Starts"
