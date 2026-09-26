@@ -117,6 +117,16 @@ Der Zufallstest `TestParallelesNachspielen_WiederholteAdressenWieSeriell` prüft
 
 - Erst nach 1.1–1.3: mehrere Blöcke je Takt oder ein kürzerer Takt (`ENABLE_MULTI_BLOCK_TICK`), damit die Grenze von 20.000 Überweisungen je Block nicht deckelt.
 
+**Umgesetzt (26.09.2026), 1.4:** `tools/fsync-messung` misst eine Platte in genau der Form, in der der WAL schreibt: vorbelegte Datei, kleine Sätze, fdatasync nach jedem. Es gibt p50, p90, p99 und das Maximum aus, dazu die WAL-Obergrenze je Bündelgröße. Bei mehreren `-dir` nennt es die Platte mit dem niedrigsten p99. Im laufenden Betrieb zeigt `/health` die Verteilung der WAL-Syncs bereits an (`sync_verteilung.go`).
+
+**1.5:** Der Schalter `ENABLE_MULTI_BLOCK_TICK` besteht (`block_cadence.go`, bis zu 4 zusätzliche Blöcke je Takt, nur bei vollem Block). Es fehlt nur die Messung.
+
+**Messplan vor dem Einschalten (auf beiden Validatoren, von einem Menschen):**
+1. `go run ./tools/fsync-messung -dir <Datenverzeichnis> [-dir <zweite Platte>]`. Liegt das p99 über 20 ms, erst die Platte klären (1.4).
+2. Lasttest `tools/contabo-loadtest` (fund, warmup, run) ohne Schalter. Aus `/api/health/combined` festhalten: `replay_pfad.parallel_pct`, `replay_phasen`, `zustands_ablehnung`, `absender_cache` und die Blockhöhe beider Knoten.
+3. Derselbe Lauf mit `ENABLE_MULTI_BLOCK_TICK=1`, zuerst auf einem Knoten, dann auf beiden.
+4. Einschalten, wenn der Durchsatz steigt, beide Knoten auf gleicher Höhe bleiben, `zustands_ablehnung` bei 0 bleibt und kein StateRoot-Fehler auftritt.
+
 **Aktivierung:** je Punkt ein Schalter. Ein Punkt wird eingeschaltet, wenn der Determinismus-Fuzz grün ist und die Messung auf beiden Validatoren den Gewinn zeigt.
 
 **Erwartung** (vorsichtig): pro Knoten ~10.000–20.000 TPS auf einem Server mit 8 dedizierten Kernen. Die Signaturprüfung setzt die harte Obergrenze: 101 µs × TPS ÷ Kerne.
