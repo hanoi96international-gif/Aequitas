@@ -3,6 +3,7 @@ package keeper
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -129,7 +130,7 @@ func TestWALRoh_ErholungSetztNonce_RealDB(t *testing.T) {
 func TestWALRoh_SeriellerWegWartetAufOffeneWALZeilen_RealDB(t *testing.T) {
 	truncateDistTestTables(t)
 	signierteUeberweisungenOverride.Store(1)
-	t.Cleanup(func() { signierteUeberweisungenOverride.Store(0) })
+	t.Cleanup(func() { signierteUeberweisungenOverride.Store(math.MaxInt64) })
 	cs := newWALTestState(t, filepath.Join(t.TempDir(), "r.wal"))
 	cs.stopWALFlushWorkerForTest() // nur ausdruecklich geflusht
 	a, b := neuerTestSchluessel(t), neuerTestSchluessel(t)

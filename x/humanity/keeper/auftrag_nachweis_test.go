@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"testing"
 
@@ -145,7 +146,7 @@ func TestAuftragsNachweis_GefaelschterTauschAendertNichts(t *testing.T) {
 func TestAuftragsNachweis_VorDerAktivierungUnveraendert(t *testing.T) {
 	a := neuerTestSchluessel(t)
 	dag, cs := tauschKnoten(t, map[string]float64{a.addr: 1000})
-	signierteUeberweisungenOverride.Store(0) // aus: Konstante MaxInt64
+	signierteUeberweisungenOverride.Store(math.MaxInt64) // aus
 	alt := Transaction{Type: "swap_aeq_tusd", Wallet: a.addr, Amount: 10, AmountOut: 9.9}
 	if ok := dag.replayTransactions(testBlock(1, alt), true); !ok {
 		t.Fatal("alter Tausch ohne Nachweis vor der Aktivierung abgelehnt")
@@ -197,7 +198,7 @@ func TestAuftragsNachweis_MitinhaberNurMitVerantwortlichem(t *testing.T) {
 // verbrauchte ab -- sonst erzeugte sie Bloecke, die alle anderen verwerfen.
 func TestAuftragsNachweis_AnnahmeSetztUndPrueftNonce(t *testing.T) {
 	signierteUeberweisungenOverride.Store(1)
-	t.Cleanup(func() { signierteUeberweisungenOverride.Store(0) })
+	t.Cleanup(func() { signierteUeberweisungenOverride.Store(math.MaxInt64) })
 	a := neuerTestSchluessel(t)
 	cs := newTestState()
 	cs.mu.Lock()
