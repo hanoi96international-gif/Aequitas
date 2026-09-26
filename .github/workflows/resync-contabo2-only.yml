@@ -19,6 +19,25 @@ name: Authoritative resync of Contabo2 only from the trusted primary (manual)
 # jetzt mit einem zweiten Neustart ohne den Schluessel -- und haengt dabei
 # dieselben Mounts ein wie der gewoehnliche Deploy, statt MPC und APK
 # abzuwerfen.
+#
+# QUELLE UND SIGNIERER ALS EINGABE (26.09.2026). Bis hierher las der Lauf
+# beides aus /root/.aequitas.env bzw. dem Container: BOOTSTRAP_SNAPSHOT_URL
+# zeigte dort noch auf den abgeschalteten C1 (173.249.37.118 -- die IP
+# vergibt der Anbieter neu), BOOTSTRAP_SIGNER auf eine Wallet statt auf die
+# Validator-Adresse, mit der der neue Primary (188.172.229.121) seine
+# Snapshots signiert, und PRIMARY_NODE_URL fehlte -- ohne sie kein
+# vertrauenswuerdiger Checkpoint, der Knoten liefe ab Genesis nach. Jetzt:
+#   - Quelle und Signierer kommen als Eingabe, vorbelegt mit dem Primary.
+#   - Vorab (auf dem Runner, nur GET): die Quelle antwortet, is_primary=true,
+#     validator_address == Signierer. Sonst Abbruch, bevor C2 angefasst wird.
+#   - Grundlage der Umgebung ist die des LAUFENDEN Containers (bewaehrt),
+#     nicht die Datei; nur RESYNC_FROM_SNAPSHOT, BOOTSTRAP_SNAPSHOT_URL,
+#     BOOTSTRAP_SIGNER und PRIMARY_NODE_URL werden ersetzt. Die Datei
+#     /root/.aequitas.env bleibt unberuehrt.
+#   - Der zweite Neustart (ohne Scharfschalter) folgt erst, wenn der Resync
+#     im Log als fertig oder gescheitert steht (bis 8 Minuten), nicht nach
+#     festen 15 Sekunden.
+# Kein DNS, kein Caddy, nichts auf der Quelle ausser lesenden GETs.
 on:
   workflow_dispatch:
     inputs:
@@ -26,11 +45,41 @@ on:
         description: "Type \"true\" to actually resync Contabo2"
         required: false
         default: "false"
+      quelle:
+        description: "Basis-URL des vertrauenswuerdigen Primary (nur gelesen)"
+        required: true
+        default: "http://188.172.229.121:8080"
+      signierer:
+        description: "Adresse, mit der die Quelle ihre Snapshots signiert"
+        required: true
+        default: "0x3066639af1653325100c1074a9696612dbdc42dc"
 
 jobs:
   contabo2:
     runs-on: ubuntu-latest
     steps:
+      - name: Quelle pruefen (nur lesen, vor jedem Eingriff)
+        env:
+          QUELLE: ${{ inputs.quelle }}
+          SIGNIERER: ${{ inputs.signierer }}
+        run: |
+          set -euo pipefail
+          Q="${QUELLE%/}"
+          case "$Q" in
+            *173.249.37.118*) echo "::error::alter C1 als Quelle -- abgeschaltet, nie verwenden"; exit 1 ;;
+            *194.163.188.71*) echo "::error::C2 kann nicht seine eigene Quelle sein"; exit 1 ;;
+            http://*|https://*) ;;
+            *) echo "::error::Quelle muss http(s)-URL sein"; exit 1 ;;
+          esac
+          grep -qiE '^0x[0-9a-f]{40}$' <<<"$SIGNIERER" || { echo "::error::Signierer ist keine Adresse"; exit 1; }
+          S="$(curl -fs -m 15 "$Q/api/status")"
+          grep -qE '"is_primary": ?true' <<<"$S" || { echo "::error::Quelle meldet is_primary nicht true"; exit 1; }
+          V="$(echo "$S" | grep -oE '"validator_address": ?"0x[0-9a-fA-F]{40}"' | grep -oE '0x[0-9a-fA-F]{40}')"
+          [ "$(echo "$V" | tr A-F a-f)" = "$(echo "$SIGNIERER" | tr A-F a-f)" ] || { echo "::error::Quelle signiert als $V, nicht als $SIGNIERER"; exit 1; }
+          echo "Quelle ok: $Q, Hoehe $(echo "$S" | grep -oE '"height":[0-9]+' | cut -d: -f2), signiert als $V"
+          curl -fs -m 60 -o /dev/null "$Q/api/snapshot" || { echo "::error::$Q/api/snapshot antwortet nicht"; exit 1; }
+          echo "Snapshot abrufbar"
+
       - name: Resync Contabo2 from the trusted primary
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -40,31 +89,20 @@ jobs:
           port: 22
           fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
           script_stop: false  # set -e steht im Skript; script_stop:true haengt hinter JEDE Zeile eine Exit-Pruefung -- auch in Heredocs und hinter else/case (Beleg: wachhund-telegram-installieren.yml, 23.09.2026)
-          timeout: 900s
-          command_timeout: 900s
-          envs: CONFIRM
+          timeout: 1200s
+          command_timeout: 1200s
+          envs: CONFIRM,QUELLE,SIGNIERER
           script: |
             set -euo pipefail
             if [ "${CONFIRM:-false}" != "true" ]; then
               echo "confirm != true -- doing nothing. Re-run with confirm=true to actually resync Contabo2."
               exit 0
             fi
-            echo "=== Contabo2: .aequitas.env RESYNC_FROM_SNAPSHOT (expected true, permanently, by design) ==="
-            grep -E '^RESYNC_FROM_SNAPSHOT=' /root/.aequitas.env || echo "(not present -- aborting)"
-            if ! grep -qE '^RESYNC_FROM_SNAPSHOT=true$' /root/.aequitas.env; then
-              echo "✗ Expected RESYNC_FROM_SNAPSHOT=true already in the file -- aborting rather than guessing."
-              exit 1
-            fi
+            Q="${QUELLE%/}"
             IMG="$(docker inspect aequitas-node --format '{{.Config.Image}}')"
-            # DIE MOUNTS GEHOEREN HIER VOLLSTAENDIG HIN. Hier stand nur die WAL.
-            # Am 22.09.2026 hat dieser Neustart damit den MPC-Ordner und die
-            # lokal ausgelieferte APK abgeworfen -- beide fehlten dem Knoten
-            # danach still, bis ein gewoehnlicher Deploy sie zurueckbrachte. Ein
-            # Wiederherstellungs-Workflow, der beim Wiederherstellen etwas
-            # wegnimmt, ist ein zweiter Vorfall.
-            # if/then, NICHT `[ -x ] && ...`: unter set -e liefert eine solche
-            # Liste 1, wenn der Test falsch ist -- der Lauf waere dann
-            # ausgerechnet dort gestorben, wo eine Box den MPC-Ordner nicht hat.
+            # DIE MOUNTS GEHOEREN HIER VOLLSTAENDIG HIN (22.09.2026: MPC-Ordner
+            # und APK fielen sonst still weg). if/then statt `[ ] && ...`
+            # wegen set -e.
             MOUNTS="-v /root/aequitas-wal-data:/data/wal"
             if [ -d /root/aequitas-mpc ]; then
               MOUNTS="$MOUNTS -v /root/aequitas-mpc:/data/mpc"
@@ -72,9 +110,25 @@ jobs:
             if [ -f /root/aequitas-downloads/aequitas-app.apk ]; then
               MOUNTS="$MOUNTS -v /root/aequitas-downloads/aequitas-app.apk:/app/downloads/aequitas-app.apk"
             fi
-            echo "=== Contabo2: current image (reused, no rebuild): $IMG ==="
-            echo "=== Contabo2: Mounts fuer diesen Lauf: $MOUNTS ==="
-            echo "=== Contabo2: one-off restart with --env-file passed straight through ==="
+            echo "=== Contabo2: Abbild (wiederverwendet, kein Neubau): $IMG ==="
+            echo "=== Contabo2: Mounts: $MOUNTS ==="
+
+            # Grundlage: Umgebung des laufenden Containers, gesichert.
+            STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+            mkdir -p /root/resync && chmod 700 /root/resync
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' \
+              | grep -E '^[A-Za-z_][A-Za-z0-9_]*=' > /root/resync/env.vorher-$STAMP
+            chmod 600 /root/resync/env.vorher-$STAMP
+            echo "Umgebung vorher gesichert: /root/resync/env.vorher-$STAMP"
+            grep -vE '^(RESYNC_FROM_SNAPSHOT|BOOTSTRAP_SNAPSHOT_URL|BOOTSTRAP_SIGNER|PRIMARY_NODE_URL|HOSTNAME|PATH|HOME)=' \
+              /root/resync/env.vorher-$STAMP > /root/resync/env
+            printf '%s\n' "BOOTSTRAP_SNAPSHOT_URL=$Q/api/snapshot" "BOOTSTRAP_SIGNER=$SIGNIERER" "PRIMARY_NODE_URL=$Q" >> /root/resync/env
+            cp /root/resync/env /root/resync/env.resync
+            echo "RESYNC_FROM_SNAPSHOT=true" >> /root/resync/env.resync
+            chmod 600 /root/resync/env /root/resync/env.resync
+            echo "ersetzt: BOOTSTRAP_SNAPSHOT_URL=$Q/api/snapshot BOOTSTRAP_SIGNER=$SIGNIERER PRIMARY_NODE_URL=$Q"
+
+            echo "=== Contabo2: Neustart MIT Scharfschalter (einmalig) ==="
             docker stop aequitas-node 2>&1 || true
             docker rm aequitas-node 2>&1 || true
             mkdir -p /root/aequitas-wal-data
@@ -82,46 +136,26 @@ jobs:
               --network aequitas-net \
               --restart unless-stopped \
               $MOUNTS \
-              --env-file /root/.aequitas.env \
+              --env-file /root/resync/env.resync \
               -p 8080:8080 -p 4001:4001 \
               "$IMG"
-            echo "=== Contabo2: waiting 15s for the node to finish booting ==="
-            sleep 15
-            echo "=== Contabo2: boot log lines mentioning RESYNC/BOOTSTRAP/AUTO-HEAL/DAG merge ==="
-            # Ohne das "|| echo" beendet ein LEERES grep-Ergebnis den ganzen
-            # Schritt: grep gibt bei null Treffern 1 zurueck. Genau so meldete
-            # sich dieser Workflow am 22.09. als "failure", obwohl der Knoten
-            # sauber hochkam -- er starb VOR der Statusausgabe, also vor dem
-            # einzigen Teil, der zeigt, ob der Resync etwas gebracht hat.
-            # (Damals lief er noch mit script_stop:true, das hinter JEDE Zeile
-            # eine Exit-Pruefung haengt; seit 23.09. ist es aus, und set -e
-            # oben traegt den Abbruch -- auch das else weiter unten waere
-            # sonst im Erfolgsfall mit 1 ausgestiegen.)
-            docker logs aequitas-node 2>&1 | grep -iE '\[RESYNC\]|\[BOOTSTRAP\]|\[AUTO-HEAL\]|Merged.*tips|orphan' | tail -60 || echo "(keine solchen Zeilen im Bootlog)"
-            echo "=== Contabo2: /api/status after resync ==="
-            curl -s http://localhost:8080/api/status || true
-            echo ""
 
-            # DEN SCHARFSCHALTER WIEDER AUS DEM LAUFENDEN CONTAINER NEHMEN.
-            #
-            # Oben wird --env-file absichtlich durchgereicht, damit dieser eine
-            # Neustart RESYNC_FROM_SNAPSHOT=true sieht. Danach steckt der
-            # Schluessel aber IM CONTAINER -- und `--restart unless-stopped`
-            # heisst: jeder Absturz, jeder Reboot wirft den Zustand erneut weg
-            # und liest ihn neu ein. Das ist die Dauerschleife aus dem Kopf von
-            # fix-resync-from-snapshot-flag.yml, diesmal von der
-            # Wiederherstellung selbst erzeugt. Am 22.09. blieb der Container
-            # genau so zurueck und musste von Hand geradegezogen werden.
-            #
-            # Also: einmal ohne den Schluessel neu starten. Kein Neubau,
-            # dieselbe Abbildung, dieselben Mounts -- nur die Umgebung
-            # gefiltert. Die Datei behaelt ihr `true` und bleibt fuer den
-            # naechsten Lauf scharf.
-            echo "=== Contabo2: Scharfschalter aus dem laufenden Container nehmen ==="
-            mkdir -p /root/resync
-            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' \
-              | grep -E '^[A-Za-z_][A-Za-z0-9_]*=' \
-              | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME)=' > /root/resync/env
+            echo "=== Contabo2: warten, bis der Resync im Log fertig oder gescheitert ist (max. 8 min) ==="
+            ERGEBNIS=unbekannt
+            for i in $(seq 1 96); do
+              sleep 5
+              L="$(docker logs aequitas-node 2>&1 || true)"
+              if grep -aq '\[RESYNC\] ✗ Resync failed' <<<"$L"; then ERGEBNIS=gescheitert; break; fi
+              if grep -aqE '\[RESYNC\] ✓ Seeded trusted checkpoint|\[RESYNC\] ⚠ Could not seed a trusted checkpoint' <<<"$L"; then ERGEBNIS=fertig; break; fi
+            done
+            echo "Resync: $ERGEBNIS nach $((i*5))s"
+            docker logs aequitas-node 2>&1 | grep -aiE '\[RESYNC\]|\[BOOTSTRAP\]|\[SNAPSHOT\]|\[AUTO-HEAL\]' | tail -40 | cut -c1-300 || echo "(keine solchen Zeilen im Bootlog)"
+            curl -s -m 10 http://localhost:8080/api/status | grep -oE '"(height|uptime)":[0-9]+' || true
+
+            # DEN SCHARFSCHALTER WIEDER AUS DEM LAUFENDEN CONTAINER NEHMEN --
+            # sonst wirft jeder Absturz/Reboot (--restart unless-stopped) den
+            # Zustand erneut weg. Auch nach einem Fehlschlag.
+            echo "=== Contabo2: Neustart OHNE Scharfschalter ==="
             docker stop aequitas-node 2>&1 || true
             docker rm aequitas-node 2>&1 || true
             docker run -d --name aequitas-node \
@@ -131,18 +165,20 @@ jobs:
               --env-file /root/resync/env \
               -p 8080:8080 -p 4001:4001 \
               "$IMG"
-            sleep 20
-            echo "--- steht der Schluessel noch im Prozess? (erwartet: nein) ---"
+            sleep 30
             if docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -qE '^RESYNC_FROM_SNAPSHOT='; then
-              echo "⚠ STEHT NOCH DRIN -- jeder Neustart wuerde den Zustand verwerfen"
+              echo "⚠ STEHT NOCH DRIN -- jeder Neustart wuerde den Zustand verwerfen"; exit 1
             else
-              echo "✓ nicht mehr im Prozess"
+              echo "✓ Scharfschalter nicht mehr im Prozess"
             fi
-            echo "--- und die Rolle? ---"
             docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' \
-              | grep -E '^ANNAHME_ROLLE=' || echo "(nicht gesetzt -- dieser Knoten nimmt Ueberweisungen an)"
+              | grep -E '^(ANNAHME_ROLLE|PRIMARY_NODE_URLS?|BOOTSTRAP_SNAPSHOT_URL|BOOTSTRAP_SIGNER)=' || true
             echo "=== Contabo2: /api/status final ==="
-            curl -s http://localhost:8080/api/status || true
-            echo ""
+            curl -s -m 10 http://localhost:8080/api/status | grep -oE '"(height|uptime|is_primary)":[a-z0-9]+' || true
+            echo "Quelle: $(curl -s -m 10 $Q/api/status | grep -oE '"height":[0-9]+')"
+            if [ "$ERGEBNIS" != fertig ]; then echo "::error::Resync $ERGEBNIS (siehe [RESYNC]-Zeilen)"; exit 1; fi
+            exit 0
         env:
           CONFIRM: ${{ inputs.confirm }}
+          QUELLE: ${{ inputs.quelle }}
+          SIGNIERER: ${{ inputs.signierer }}
