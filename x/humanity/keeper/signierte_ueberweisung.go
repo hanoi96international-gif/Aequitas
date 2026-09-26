@@ -387,3 +387,21 @@ func SignierteUeberweisungenStand() map[string]interface{} {
 		"vorlauf_sekunden":   signierteUeberweisungenVorlauf,
 	}
 }
+
+// naechsteNonceVon: NaechsteNonce des Kontos im Kettenzustand (0, wenn es
+// das Konto nicht gibt). Fuer eth_getTransactionCount.
+func (cs *ChainState) naechsteNonceVon(addr string) uint64 {
+	if cs == nil {
+		return 0
+	}
+	// readAccount wie GetBalance: der schnelle Annahmeweg aendert
+	// NaechsteNonce unter der Kontensperre, nicht unter cs.mu.
+	var n int64
+	cs.readAccount(strings.ToLower(addr), func(acc *AccountState) {
+		n = acc.NaechsteNonce
+	})
+	if n > 0 {
+		return uint64(n)
+	}
+	return 0
+}

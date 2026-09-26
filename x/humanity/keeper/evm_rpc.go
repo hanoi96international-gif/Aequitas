@@ -862,6 +862,14 @@ func (s *EVMRPCServer) getTransactionCount(params []json.RawMessage) (interface{
 
 	// Read DB outside the lock (avoids blocking other goroutines on a DB call).
 	dbNonce := s.state.LoadNonce(addr)
+	// Stufe 1: die Kette fuehrt NaechsteNonce je Konto. evm_nonces fuehrt nur
+	// der Knoten, der annimmt -- ein nur lesender Knoten (C2) kennt dort die
+	// Nonces nicht, die C1 angenommen hat, und schickte einer Wallet, die ihn
+	// ueber ihre Ausweichliste fragt, eine verbrauchte Nonce ("nonce too
+	// low" bei C1). Deshalb der hoehere der beiden Werte.
+	if k := s.state.naechsteNonceVon(addr); k > dbNonce {
+		dbNonce = k
+	}
 	// Lock only for the map read/write — brief critical section. Must be the
 	// SAME shard sendRawTransaction uses for this address, or the nonce would
 	// be guarded by two different mutexes.
