@@ -1,0 +1,43 @@
+name: Alte Ledger-Artefakte loeschen (biometrische Tabellen, oeffentlich lesbar)
+# Das Repo ist oeffentlich; jedes Artefakt ist fuer jeden angemeldeten
+# GitHub-Nutzer lesbar (festgestellt 26.09.2026). Die Ledger-Backups vor
+# diesem Tag enthalten die Zeilen von mpc_shares (die Dumps ZWEIER
+# Validatoren zusammen ergeben die Gesichts-Templates, mpc_store.go),
+# bio_hashes und Verwandten. Seit #200 laedt backup-ledger.yml nur noch eine
+# Fassung ohne diese Zeilen hoch.
+#
+# Loescht ausschliesslich Artefakte, deren Name mit "ledger-" beginnt und
+# die VOR dem Stichtag entstanden sind. Die vollstaendigen Dumps liegen
+# weiter auf den Boxen (/root/backups, die letzten 7). Vom Betreiber
+# beauftragt am 26.09.2026 ("Alles erledigen").
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/server-changes-quorum-nfksc7]
+    paths: [.github/workflows/alte-ledger-artefakte-loeschen.yml]
+permissions:
+  actions: write
+  contents: read
+jobs:
+  loeschen:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      STICHTAG: "2026-09-26T17:00:00Z"
+    steps:
+      - name: Loeschen
+        run: |
+          set -euo pipefail
+          gh api --paginate "repos/$REPO/actions/artifacts?per_page=100" \
+            --jq ".artifacts[] | select(.name | startswith(\"ledger-\")) | select(.created_at < \"$STICHTAG\") | .id" > ids.txt
+          echo "zu loeschen: $(wc -l < ids.txt)"
+          n=0
+          while read -r id; do
+            gh api -X DELETE "repos/$REPO/actions/artifacts/$id" && n=$((n+1))
+          done < ids.txt
+          echo "geloescht: $n"
+          rest=$(gh api --paginate "repos/$REPO/actions/artifacts?per_page=100" \
+            --jq "[.artifacts[] | select(.name | startswith(\"ledger-\")) | select(.created_at < \"$STICHTAG\")] | length" | paste -sd+ | bc)
+          echo "verbleibend vor dem Stichtag: $rest"
+          [ "$rest" = 0 ]
