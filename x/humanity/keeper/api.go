@@ -1212,7 +1212,7 @@ func (a *APIServer) Start(port int) {
 	// re-validated, just transferred smaller.
 	srv := &http.Server{
 		Addr:         addr,
-		Handler:      recoverMiddleware(gzipMiddleware(mux)),
+		Handler:      recoverMiddleware(ipZurDomainMiddleware(gzipMiddleware(mux))),
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 60 * time.Second,
 		IdleTimeout:  120 * time.Second,
