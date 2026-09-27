@@ -1,0 +1,47 @@
+name: Registrierung -- warum quorum_failed? (nur lesen, nur Zahlen)
+# Bestandszahlen beider Vergleichsdienste (oeffentlich in /matching/health:
+# Laenge der Galerie, ueber einzelne Menschen sagt eine Summe nichts) und die
+# ENTSCHEIDUNGEN im Coordinator-Protokoll -- Kennungen, Hashes und Adressen
+# maskiert. Nie Vorlagen, nie Dumps.
+on:
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  lesen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Oeffentliche Zahlen
+        run: |
+          for P in proof1 proof2; do
+            echo "== $P =="
+            curl -s -m 15 "https://$P.aequitas.digital/matching/health" | jq -c '{status, real_data_unlocked, gallery_test, gallery_real, consents_outdated, requires_coordinator_auth, sketch_seed_configured}' || echo "(nicht erreichbar)"
+            curl -s -m 15 "https://$P.aequitas.digital/coordinator/health" | jq -c '{status, quorum_size, validatoren: (.validator_urls|length), warnungen}' || true
+          done
+      - name: Schluessel und Host-Pruefung
+        env:
+          K1: ${{ secrets.CONTABO_SSH_KEY }}
+          K2: ${{ secrets.CONTABO2_SSH_KEY }}
+        run: |
+          set -eu
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$K1" > ~/.ssh/c1 && printf '%s\n' "$K2" > ~/.ssh/c2 && chmod 600 ~/.ssh/c1 ~/.ssh/c2
+          ssh-keyscan -t ed25519 188.172.229.121 2>/dev/null > ~/.ssh/k1
+          ssh-keygen -lf ~/.ssh/k1 | awk '{print $2}' | grep -qx 'SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA'
+          ssh-keyscan 194.163.188.71 2>/dev/null > ~/.ssh/k2
+          ssh-keygen -lf ~/.ssh/k2 | awk '{print $2}' | grep -qx 'SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto'
+          cat ~/.ssh/k1 ~/.ssh/k2 > ~/.ssh/known_hosts
+      - name: Entscheidungen im Protokoll (seit 08:30 UTC)
+        run: |
+          for box in c1:188.172.229.121 c2:194.163.188.71; do
+            k=${box%%:*}; h=${box#*:}
+            echo "################ $k ################"
+            ssh -i ~/.ssh/$k -o BatchMode=yes root@$h 'bash -s' <<'SKRIPT' | sed -E 's/[0-9a-fA-F]{10,}/#/g; s/0x[0-9a-fA-F]{8,}/0x…/g; s/W-[0-9A-Za-z]+/W-…/g; s/([0-9]{1,3}\.){3}[0-9]{1,3}/ip/g' | cut -c1-300
+          docker ps --format '{{.Names}}' | grep -E 'coordinator|matching' || true
+          for c in $(docker ps --format '{{.Names}}' | grep -E 'coordinator|matching'); do
+            echo "--- $c ---"
+            docker logs --since 2026-09-27T08:30:00Z "$c" 2>&1 | grep -iE 'decision|quorum|new_candidate|duplicate|propose|vote|timeout|error|fehl' | grep -viE 'health' | tail -25
+          done
+          SKRIPT
+          done

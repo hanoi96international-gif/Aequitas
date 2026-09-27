@@ -1622,7 +1622,7 @@ func (a *APIServer) handleBlocks(w http.ResponseWriter, r *http.Request) {
 	}
 	// Ausgeduennte Bloecke bekommen ihren Rumpf zurueck -- nur die Seite,
 	// die wirklich rausgeht, nicht der ganze Speicher-DAG.
-	json.NewEncoder(w).Encode(a.blockchain.HydratisiertAlle(blocks[offset:end]))
+	json.NewEncoder(w).Encode(blockListenAnsicht(a.blockchain.HydratisiertAlle(blocks[offset:end])))
 }
 
 // handleCanonicalBlocks serves GET /api/blocks/canonical?limit=N — one block
@@ -1659,7 +1659,7 @@ func (a *APIServer) handleCanonicalBlocks(w http.ResponseWriter, r *http.Request
 			blocks = append(blocks, b)
 		}
 	}
-	json.NewEncoder(w).Encode(blocks)
+	json.NewEncoder(w).Encode(blockListenAnsicht(blocks))
 }
 
 // handleBlockByHash serves GET /api/block?hash=0x... or /api/block?height=N

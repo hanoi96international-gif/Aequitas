@@ -1,0 +1,31 @@
+name: Alter C1 -- laeuft er noch, wie gross ist seine Galerie? (nur Zahlen)
+on:
+  push:
+    branches: [claude/server-changes-quorum-nfksc7]
+    paths: [.github/workflows/alt-c1-galerie-zaehlen.yml]
+permissions:
+  contents: read
+jobs:
+  zaehlen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Alter C1 (173.249.37.118)
+        env:
+          K1: ${{ secrets.CONTABO_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$K1" > ~/.ssh/c1 && chmod 600 ~/.ssh/c1
+          ssh-keyscan -T 10 173.249.37.118 2>/dev/null > ~/.ssh/k || true
+          if ! ssh-keygen -lf ~/.ssh/k 2>/dev/null | awk '{print $2}' | grep -qx 'SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4'; then
+            echo "alter C1: nicht erreichbar oder anderer Host-Schluessel"; exit 0
+          fi
+          cp ~/.ssh/k ~/.ssh/known_hosts
+          ssh -i ~/.ssh/c1 -o BatchMode=yes -o ConnectTimeout=10 root@173.249.37.118 'bash -s' <<'SKRIPT' | sed -E 's/[0-9a-fA-F]{10,}/#/g'
+          uptime
+          docker ps --format '{{.Names}} {{.Status}}' | grep -E 'matching|coordinator|aequitas' || echo "(keine passenden Container)"
+          for c in $(docker ps --format '{{.Names}}' | grep matching); do
+            docker exec "$c" sh -c 'wget -q -O - http://127.0.0.1:8000/health 2>/dev/null || curl -s http://127.0.0.1:8000/health' | head -c 2000 | python3 -c 'import sys,json; d=json.load(sys.stdin); print({k:d.get(k) for k in ("gallery_test","gallery_real","real_data_unlocked")})' 2>/dev/null || echo "(health nicht lesbar)"
+          done
+          ls -la /root/*matching* /root/aequitas-matching* 2>/dev/null | head; find / -maxdepth 4 -name 'poh_beta*.db' 2>/dev/null | head
+          SKRIPT
