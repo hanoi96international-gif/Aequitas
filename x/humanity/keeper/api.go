@@ -710,6 +710,8 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		"peer_lag_bremse":          PeerLagBremseStand(),
 		"hoehen_quellen":           HoehenQuellenStand(),
 		"block_tx_deckel":          BlockTxDeckelStand(),
+		"konto_verlauf":            KontoVerlaufStand(),
+		"rueckstau":                RueckstauStand(),
 		"zustands_ablehnung":       ZustandsAblehnungStand(),
 		"annahme_tor":              a.state.AnnahmeTorStand(),
 		"signierte_ueberweisungen": SignierteUeberweisungenStand(),
@@ -1144,6 +1146,7 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	// Unternehmen (wirtschaft.go, wirtschaft_api.go)
 	mux.HandleFunc("/api/wirtschaft/regeln", a.handleWirtschaftRegeln)
 	mux.HandleFunc("/api/wirtschaft/konto", a.handleWirtschaftKonto)
+	mux.HandleFunc("/api/verlauf", a.handleKontoVerlauf)
 	mux.HandleFunc("/api/unternehmen", a.handleUnternehmenListe)
 	// Wie Swap und Ueberweisung durch die Weiterleitung: sie nehmen an
 	// (annahme_tor.go) und gehoeren zum Zustaendigen des Unternehmens.

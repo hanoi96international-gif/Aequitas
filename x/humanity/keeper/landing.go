@@ -923,7 +923,7 @@ section{padding:64px 16px}
     <div class="status-card">
       <div class="section-label" data-i18n="op-label">Honestly</div>
       <h2 data-i18n="st-h2">Beta: a public test</h2>
-      <p data-i18n="st-p">Aequitas runs, but it is not finished. AEQ can only be exchanged into the test currency tUSD, the legal review under the EU crypto regulation is still pending, and the face check has named limits. The economy rules take effect on 1 October 2026.</p>
+      <p data-i18n="st-p">Aequitas runs, but it is not finished. AEQ can only be exchanged into the test currency tUSD, the legal review under the EU crypto regulation is still pending, and the face check has named limits. The economy rules take effect on 26 September 2026.</p>
       <a class="section-link" href="#roadmap" data-i18n="st-link">Roadmap and what is still open →</a>
     </div>
   </div>
@@ -950,9 +950,9 @@ section{padding:64px 16px}
       <div class="section-label" data-i18n="nw-label">Latest</div>
       <h2 data-i18n="nw-h2">What is happening right now</h2>
     </div>
-    <div class="cd reveal" id="cd-box"><div class="cd-num" id="cd-days">—</div><div><strong data-i18n="nw-cd-h">days until the economy rules start</strong><span data-i18n="nw-cd-p">From 1 October 2026 businesses, people and other addresses each have their own rules. Every levy goes to the basic income.</span></div></div>
+    <div class="cd reveal" id="cd-box"><div class="cd-num" id="cd-days">—</div><div><strong data-i18n="nw-cd-h">days until the economy rules start</strong><span data-i18n="nw-cd-p">From 26 September 2026 businesses, people and other addresses each have their own rules. Every levy goes to the basic income.</span></div></div>
     <div class="news">
-      <article class="news-card next reveal"><div class="news-top"><span class="news-d" data-i18n="nw-1-d">1 Oct 2026</span><span class="news-tag" data-i18n="nw-soon">Coming up</span></div><h3 data-i18n="nw-1-h">Economy rules take effect</h3><p data-i18n="nw-1-p">Business accounts with an allowance based on turnover, fee-free monthly amounts for people, and the idle-money levy.</p></article>
+      <article class="news-card next reveal"><div class="news-top"><span class="news-d" data-i18n="nw-1-d">26 Sep 2026</span><span class="news-tag" data-i18n="nw-soon">In force</span></div><h3 data-i18n="nw-1-h">Economy rules take effect</h3><p data-i18n="nw-1-p">Business accounts with an allowance based on turnover, fee-free monthly amounts for people, and the idle-money levy.</p></article>
       <article class="news-card reveal"><div class="news-top"><span class="news-d" data-i18n="nw-2-d">25 Sep 2026</span></div><h3 data-i18n="nw-2-h">Rules for businesses decided</h3><p data-i18n="nw-2-p">Turnover instead of the age of money: up to one and a half months' turnover stays free. Protection against circles, fake purchases and shell companies.</p></article>
       <article class="news-card reveal"><div class="news-top"><span class="news-d" data-i18n="nw-3-d">25 Aug 2026</span></div><h3 data-i18n="nw-3-h">Live face check for every registration</h3><p data-i18n="nw-3-p">Two independent matching services check every new person. A second phone no longer gives the same face a second account.</p></article>
       <article class="news-card reveal"><div class="news-top"><span class="news-d" data-i18n="nw-4-d">June 2026</span></div><h3 data-i18n="nw-4-h">The network starts</h3><p data-i18n="nw-4-p">Aequitas runs on its own chain (Chain ID 1926) with a daily basic income for every verified person.</p></article>
@@ -1006,7 +1006,7 @@ section{padding:64px 16px}
     <div class="faq faq-2">
       <details><summary data-i18n="faq-q3">Is anything burned?</summary><p data-i18n="faq-a3">No. Every fee and every levy goes 100 % to the basic income and returns to all verified people in equal shares.</p></details>
       <details><summary data-i18n="faq-q4">Can a business receive the basic income or vote?</summary><p data-i18n="faq-a4">No. Basic income, vote and the fair share belong only to verified people. Behind every business account stand one to ten verified people who are responsible for it.</p></details>
-      <details><summary data-i18n="faq-q2">What changes for me as a person on 1 October 2026?</summary><p data-i18n="faq-a2">For most people nothing, or it gets cheaper: the first 1,000 AEQ you spend each month become free of fees, and the levy on idle money applies only above 5,000 AEQ.</p></details>
+      <details><summary data-i18n="faq-q2">What changes for me as a person on 26 September 2026?</summary><p data-i18n="faq-a2">For most people nothing, or it gets cheaper: the first 1,000 AEQ you spend each month become free of fees, and the levy on idle money applies only above 5,000 AEQ.</p></details>
       <details><summary data-i18n="faq-q7">Has money like this ever worked?</summary><p data-i18n="faq-a7">Yes. Wörgl (Austria, 1932) had money that lost 1 % a month; it circulated so fast that the town built roads and bridges with it until the national bank banned it. The Chiemgauer (Bavaria, since 2003) has a circulation levy and hundreds of shops. The WIR Bank (Switzerland, since 1934) runs settlement money between businesses.</p></details>
     </div>
     <div class="center-head"><a class="section-link" href="/mitmachen#faq" data-i18n="faq-more">All questions →</a></div>
@@ -1081,7 +1081,7 @@ section{padding:64px 16px}
         </tbody>
       </table>
     </div>
-    <p class="cmp-note" data-i18n="cmp-note">These rules apply from 1 October 2026. Every levy goes 100 % to the basic income.</p>
+    <p class="cmp-note" data-i18n="cmp-note">These rules apply from 26 September 2026. Every levy goes 100 % to the basic income.</p>
     <div class="sybil-blurb" data-i18n="fs-note"><strong>Every limit is a multiple of the fair share.</strong> 1,000 AEQ is what the average person holds, because the money supply is always people × 1,000 AEQ. So 2,000 = 2×, 3,000 = 3×, 5,000 = 5× and 25,000 = 25× the fair share. The limits are not tied to the dollar: if AEQ gains or loses value, everyone's fair share changes with it and the limits keep their meaning. While fewer than 25 people are registered, the cap for people is lower: 1,000 AEQ per registered person, at least 5,000 AEQ.</div>
   </div>
 </section>
@@ -1127,7 +1127,7 @@ section{padding:64px 16px}
       <tr><th scope="row" data-i18n="fee-r3">Businesses to people (wages)</th><td data-i18n="fee-r3-v">free</td></tr>
       <tr><th scope="row" data-i18n="fee-r4">Between businesses, other addresses</th><td data-i18n="fee-r4-v">0.1 %</td></tr>
     </tbody></table></div>
-    <p class="note" data-i18n="fee-note">The fee is added on top: the recipient always gets the full amount, so a price of 10 AEQ brings the shop exactly 10 AEQ. There are no surcharges for large balances: wealth is already limited by the 25,000 AEQ cap and the levy on savings above 5,000 AEQ. These rules apply from 1 October 2026.</p>
+    <p class="note" data-i18n="fee-note">The fee is added on top: the recipient always gets the full amount, so a price of 10 AEQ brings the shop exactly 10 AEQ. There are no surcharges for large balances: wealth is already limited by the 25,000 AEQ cap and the levy on savings above 5,000 AEQ. These rules apply from 26 September 2026.</p>
   </div>
 </section>
 
@@ -1150,7 +1150,7 @@ section{padding:64px 16px}
   <div class="section-inner">
     <div class="section-label" data-i18n="ex-label">Examples</div>
     <h2 data-i18n="ex-h2">What it means in real numbers</h2>
-    <p class="section-sub" data-i18n="ex-sub">Four situations, calculated with the rules that apply from 1 October 2026.</p>
+    <p class="section-sub" data-i18n="ex-sub">Four situations, calculated with the rules that apply from 26 September 2026.</p>
     <div class="card-grid">
       <div class="ex-card"><h3 data-i18n="ex-anna-h">Anna lives on the basic income</h3><p data-i18n="ex-anna-p">She has 1,200 AEQ and spends 800 AEQ a month. No fee (below 1,000 a month), no levy (below 5,000), no exit levy.</p><div class="ex-r" data-i18n="ex-anna-r">pays 0 AEQ a month</div></div>
       <div class="ex-card"><h3 data-i18n="ex-ben-h">Ben works in a café</h3><p data-i18n="ex-ben-p">He earns 2,000 AEQ in wages, spends 1,500 AEQ and exchanges 1,000 AEQ into euros for his rent. Fee on the 500 AEQ above his free amount: 0.5 AEQ. Normal swap fee: 1 AEQ. No exit levy: up to 3,000 AEQ a month are free.</p><div class="ex-r" data-i18n="ex-ben-r">pays 1.5 AEQ a month</div></div>
@@ -1185,7 +1185,7 @@ section{padding:64px 16px}
       <div class="step"><div class="step-num">3</div><div class="step-ico"><svg class="ico" aria-hidden="true"><use href="#i-handshake"/></svg></div><h3 data-i18n="jn-3-h">Pass it on</h3><p data-i18n="jn-3-p">Wages to people cost nothing, payments to suppliers 0.1 %. Up to one and a half months' turnover never pays a levy.</p></div>
       <div class="step"><div class="step-num">4</div><div class="step-ico"><svg class="ico" aria-hidden="true"><use href="#i-file"/></svg></div><h3 data-i18n="shop-2-h">Accounting export</h3><p data-i18n="shop-2-p">Every payment with date, amount in AEQ and euro value at the time of payment, as a CSV file for the tax adviser.</p></div>
     </div>
-    <div class="sybil-blurb" data-i18n="shop-status"><strong>Status:</strong> the rules on the chain are built and apply from 1 October 2026. Checkout mode and export in the app are in progress.</div>
+    <div class="sybil-blurb" data-i18n="shop-status"><strong>Status:</strong> the rules on the chain are built and apply from 26 September 2026. Checkout mode and export in the app are in progress.</div>
   </div>
 </section>
 
@@ -1193,7 +1193,7 @@ section{padding:64px 16px}
   <div class="section-inner">
     <div class="section-label" data-i18n="bx-label">Costs</div>
     <h2 data-i18n="bx-h2">What it costs a business</h2>
-    <p class="section-sub" data-i18n="bx-sub">Two businesses, calculated with the rules that apply from 1 October 2026.</p>
+    <p class="section-sub" data-i18n="bx-sub">Two businesses, calculated with the rules that apply from 26 September 2026.</p>
     <div class="split top">
       <div class="chart-card reveal">
         <div class="chart-h" data-i18n="bc-h">What a payment of €100 costs the shop</div>
@@ -1224,7 +1224,7 @@ section{padding:64px 16px}
   <div class="section-inner">
     <div class="section-label" data-i18n="ru-label">Rules</div>
     <h2 data-i18n="ru-h2">The rules for business accounts</h2>
-    <p class="section-sub" data-i18n="ru-sub">They apply from 1 October 2026. Every levy goes 100 % to the basic income, equally to every person.</p>
+    <p class="section-sub" data-i18n="ru-sub">They apply from 26 September 2026. Every levy goes 100 % to the basic income, equally to every person.</p>
     <div class="biz-rules">
       <div class="biz-row"><span class="biz-k" data-i18n="biz-r1-k">Idle money</span><span class="biz-v" data-i18n="biz-r1-v">Up to 1.5 months' turnover (at least 2,000 AEQ): free · up to 3 months' turnover: 0.5 % per month on the part above · beyond that: 1 % per month · first six months: never more than a person would pay (up to 25,000 AEQ)</span></div>
       <div class="biz-row"><span class="biz-k" data-i18n="biz-r2-k">What counts as turnover</span><span class="biz-v" data-i18n="biz-r2-v">The average of the last 90 days, or of the last 12 months if that is higher (for seasonal businesses). Purchases count up to 9,000 AEQ per person and quarter; between businesses only the surplus counts; wages, your own payments and exchanges into AEQ do not count.</span></div>
@@ -1275,7 +1275,7 @@ section{padding:64px 16px}
     <h2 data-i18n="rm-h2">What comes next</h2>
     <ol class="rm-list">
       <li class="now"><h3 data-i18n="rm-1-h">Now: Beta</h3><p data-i18n="rm-1-p">Registration with a live face check by two independent matching services. 1,000 AEQ start, basic income every day.</p></li>
-      <li><h3 data-i18n="rm-2-h">1 October 2026</h3><p data-i18n="rm-2-p">The economy rules take effect: three account types, idle-money levy, exit levy, fee-free monthly amounts for people.</p></li>
+      <li><h3 data-i18n="rm-2-h">26 September 2026</h3><p data-i18n="rm-2-p">The economy rules take effect: three account types, idle-money levy, exit levy, fee-free monthly amounts for people.</p></li>
       <li><h3 data-i18n="rm-3-h">App for shops</h3><p data-i18n="rm-3-p">Checkout mode with QR code and accounting export.</p></li>
       <li><h3 data-i18n="rm-4-h">Pilot town</h3><p data-i18n="rm-4-p">5–10 shops (café, bakery, farm shop, hairdresser, workshop) for three months. Measured: how much stays in circulation, how much leaves, how much reaches the basic income.</p></li>
       <li><h3 data-i18n="rm-5-h">Legal review and real stable coin</h3><p data-i18n="rm-5-p">Before real money: review under the EU crypto regulation (MiCA) and a regulated euro stable coin instead of the test currency tUSD. Only then open more widely.</p></li>
@@ -1306,7 +1306,7 @@ section{padding:64px 16px}
     <h2 data-i18n="faq-h2">Frequently asked</h2>
     <div class="faq">
       <details><summary data-i18n="faq-q1">Why don't businesses simply get dollars only?</summary><p data-i18n="faq-a1">Then every purchase would be a sale of AEQ. There would hardly be buyers, and the price, and with it the basic income, would keep falling. Circulation only happens if businesses can pass AEQ on themselves: to staff, suppliers and other businesses.</p></details>
-      <details><summary data-i18n="faq-q2">What changes for me as a person on 1 October 2026?</summary><p data-i18n="faq-a2">For most people nothing, or it gets cheaper: the first 1,000 AEQ you spend each month become free of fees, and the levy on idle money applies only above 5,000 AEQ.</p></details>
+      <details><summary data-i18n="faq-q2">What changes for me as a person on 26 September 2026?</summary><p data-i18n="faq-a2">For most people nothing, or it gets cheaper: the first 1,000 AEQ you spend each month become free of fees, and the levy on idle money applies only above 5,000 AEQ.</p></details>
       <details><summary data-i18n="faq-q3">Is anything burned?</summary><p data-i18n="faq-a3">No. Every fee and every levy goes 100 % to the basic income and returns to all verified people in equal shares.</p></details>
       <details><summary data-i18n="faq-q4">Can a business receive the basic income or vote?</summary><p data-i18n="faq-a4">No. Basic income, vote and the fair share belong only to verified people. Behind every business account stand one to ten verified people who are responsible for it.</p></details>
       <details><summary data-i18n="faq-q5">What is an “other address”?</summary><p data-i18n="faq-a5">Every address that is neither a verified person nor a business: a visitor's wallet, a tip jar, a simple contract. It may hold at most 250 AEQ and pays 1 % a month.</p></details>

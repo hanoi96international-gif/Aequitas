@@ -252,6 +252,8 @@ type ChainState struct {
 	// placeholders and wallets mark landed transactions as failed — see
 	// tx_block_index.go for the live report that uncovered it.
 	txBlockIndexOnce sync.Once
+	// kontoVerlaufOnce: Tabelle des Kontoverlaufs (kontoverlauf.go).
+	kontoVerlaufOnce sync.Once
 	nullifiers       map[string]string // nullifier hex → wallet address (in-memory cache)
 	// nullifiersMu guards cs.nullifiers (a plain, non-sharded Go map — unlike
 	// cs.accounts, nullifiers were never migrated to a per-key-lockable
@@ -5146,6 +5148,11 @@ func (cs *ChainState) transferAtomicDirect(from, to string, amount float64, pend
 		// so ctx carries no transaction to lose regardless.
 		var gebuehr float64
 		at := nowUnix()
+		if acc, ok := cs.accounts.Get(strings.ToLower(from)); ok {
+			if err := pruefeNonceLocked(acc, pendingTxTemplate); err != nil {
+				return Transaction{}, err
+			}
+		}
 		fromLost, toLost, gebuehr, err = cs.transferLockedMitGebuehr(mitBuchZeit(ctx, at), from, to, amount)
 		if err != nil {
 			return Transaction{}, err
@@ -5453,7 +5460,16 @@ func (cs *ChainState) processTransferBatch(batch []*transferBatchRequest) {
 		var last Transaction
 		// Buchfuehrung (wirtschaft.go) wie die Konten: einmal je Stapel.
 		mitgliedCtx, buch := mitBuchSammler(ctx)
+		angenommen := 0
 		for i, req := range batch {
+			// Nonce unter der Sperre (pruefeNonceLocked): eine veraltete
+			// scheitert allein, der Rest des Stapels wird gebucht.
+			if acc, ok := cs.accounts.Get(req.from); ok {
+				if nErr := pruefeNonceLocked(acc, req.pendingTxTemplate); nErr != nil {
+					results[i] = transferBatchResult{err: nErr}
+					continue
+				}
+			}
 			at := nowUnix()
 			fromLost, toLost, fromAcc, toAcc, gebuehr, mErr := cs.transferMutateLocked(mitBuchZeit(mitgliedCtx, at), req.from, req.to, req.amount)
 			if mErr != nil {
@@ -5474,16 +5490,19 @@ func (cs *ChainState) processTransferBatch(batch []*transferBatchRequest) {
 			pendingTx.FromDemurrageLost = fromLost.Float()
 			pendingTx.ToDemurrageLost = toLost.Float()
 			results[i] = transferBatchResult{fromLost: fromLost.Float(), toLost: toLost.Float()}
-			if i == len(batch)-1 {
-				// Last member's outbox row is still inserted by
-				// runAtomicWithOutbox itself (its normal single-Transaction
-				// contract, unchanged) — every earlier member's row is
-				// inserted explicitly below, as one multi-row statement.
-				last = pendingTx
-				continue
-			}
 			pendingTxs = append(pendingTxs, pendingTx)
+			angenommen++
 		}
+		if angenommen == 0 {
+			return Transaction{}, errStapelLeer
+		}
+		// The last APPLIED member's outbox row is still inserted by
+		// runAtomicWithOutbox itself (its normal single-Transaction
+		// contract, unchanged) — every earlier member's row is inserted
+		// explicitly below, as one multi-row statement. "Applied", not
+		// "last in the batch": a member with a stale nonce is skipped.
+		last = pendingTxs[len(pendingTxs)-1]
+		pendingTxs = pendingTxs[:len(pendingTxs)-1]
 
 		accsToSave := make([]*AccountState, 0, len(touchedAccs))
 		for _, acc := range touchedAccs {
@@ -5530,6 +5549,11 @@ func (cs *ChainState) processTransferBatch(batch []*transferBatchRequest) {
 		// mutation (DB and in-memory) this batch made, regardless of which
 		// member actually failed — every result computed above is stale.
 		for i := range results {
+			// Eigene Fehler (veraltete Nonce, pruefeNonceLocked) bleiben
+			// stehen: dieses Mitglied wurde gar nicht erst gebucht.
+			if results[i].err != nil {
+				continue
+			}
 			results[i] = transferBatchResult{err: err}
 		}
 	}
@@ -5537,6 +5561,10 @@ func (cs *ChainState) processTransferBatch(batch []*transferBatchRequest) {
 		req.result <- results[i]
 	}
 }
+
+// errStapelLeer: kein Mitglied des Stapels war buchbar (alle mit veralteter
+// Nonce) -- jedes traegt dann seinen eigenen Fehler.
+var errStapelLeer = errors.New("transfer batch: no member could be applied")
 
 // transferLocked is Transfer's actual implementation; caller must already
 // hold cs.mu. Split out so TransferAtomic can run it under the SAME lock
@@ -5725,6 +5753,11 @@ func (cs *ChainState) TransferWithV7FeeAtomic(from, to string, amount float64, p
 	err = cs.runAtomicWithOutbox([]string{from, to, validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr}, false, func(ctx context.Context) (Transaction, error) {
 		var gebuehr float64
 		at := nowUnix()
+		if acc, ok := cs.accounts.Get(from); ok {
+			if err := pruefeNonceLocked(acc, pendingTxTemplate); err != nil {
+				return Transaction{}, err
+			}
+		}
 		netAmount, fromLost, toLost, gebuehr, err = cs.transferWithV7GebuehrLocked(mitBuchZeit(ctx, at), from, to, amount)
 		if err != nil {
 			return Transaction{}, err

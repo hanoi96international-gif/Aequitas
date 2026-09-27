@@ -48,6 +48,8 @@ type txIndexJob struct {
 	height    int64
 	blockHash string
 	txs       []Transaction
+	// zeit: Blockzeit, fuer den Kontoverlauf (kontoverlauf.go).
+	zeit int64
 }
 
 // txIndexQueueDepth is measured in BLOCKS, not rows. A handful is enough to
@@ -130,13 +132,13 @@ func txIndexNachtragen(height int64, blockHash string) {
 
 // IndexBlockTransactionsAsync hands the work to a background worker and
 // returns immediately. Never blocks the caller.
-func (cs *ChainState) IndexBlockTransactionsAsync(height int64, blockHash string, txs []Transaction) {
+func (cs *ChainState) IndexBlockTransactionsAsync(height int64, blockHash string, txs []Transaction, blockZeit int64) {
 	if cs.db == nil || len(txs) == 0 || blockHash == "" {
 		return
 	}
 	cs.ensureTxIndexWorker()
 	select {
-	case txIndexKanal() <- txIndexJob{height: height, blockHash: blockHash, txs: txs}:
+	case txIndexKanal() <- txIndexJob{height: height, blockHash: blockHash, txs: txs, zeit: blockZeit}:
 		txIndexQueued.Add(1)
 	default:
 		// Full: the writer is behind. Drop for now, and say so once per block
@@ -184,7 +186,7 @@ func (cs *ChainState) txIndexNachtraeger() {
 				continue
 			}
 			select {
-			case txIndexKanal() <- txIndexJob{height: b.Height, blockHash: b.Hash, txs: b.Transactions}:
+			case txIndexKanal() <- txIndexJob{height: b.Height, blockHash: b.Hash, txs: b.Transactions, zeit: b.Timestamp}:
 				txIndexNachgetragen.Add(1)
 			default:
 				// Inzwischen wieder voll: zurueck auf die Liste, naechster Takt.
@@ -214,6 +216,13 @@ func (cs *ChainState) ensureTxIndexWorker() {
 				continue
 			}
 			txIndexWritten.Add(1)
+			// Kontoverlauf (kontoverlauf.go) im selben Schritt: faellt er aus,
+			// traegt der Nachtraeger den Block nach -- beide Schreiber sind
+			// idempotent.
+			if err := cs.schreibeKontoVerlauf(job.height, job.zeit, job.txs); err != nil {
+				txIndexNachtragen(job.height, job.blockHash)
+				fmt.Printf("[VERLAUF] ⚠ %v (wird nachgetragen)\n", err)
+			}
 		}
 	})
 	SafeGoroutine("txBlockIndexNachtraeger", func() { cs.txIndexNachtraeger() })

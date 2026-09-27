@@ -161,3 +161,19 @@ func TestStufe1_VorlaufNachspielenSetztNonceWieAnnahme(t *testing.T) {
 		t.Fatal("Blatt nicht nachgezogen -- account_set_xor liefe auseinander")
 	}
 }
+
+// eth_getTransactionCount auf einem Knoten, dessen evm_nonces nichts weiss
+// (nur lesend), muss trotzdem die Nonce aus der Kette liefern.
+func TestStufe1_TransactionCountFolgtDerKette(t *testing.T) {
+	cs := newTestState()
+	a := neuerTestSchluessel(t)
+	cs.mu.Lock()
+	cs.accounts.Set(a.addr, &AccountState{Address: a.addr, Balance: NewDecimal(10), NaechsteNonce: 7})
+	cs.mu.Unlock()
+	srv := NewEVMRPCServer(&BlockDAG{state: cs}, cs)
+	p, _ := json.Marshal(a.addr)
+	got, rerr := srv.getTransactionCount([]json.RawMessage{p})
+	if rerr != nil || got != "0x7" {
+		t.Fatalf("eth_getTransactionCount = %v (%v), erwartet 0x7", got, rerr)
+	}
+}

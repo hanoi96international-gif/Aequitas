@@ -3,6 +3,7 @@ package keeper
 import (
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -277,5 +278,53 @@ func TestTransferBatchWait_UmgebungKannBeideVerstellen(t *testing.T) {
 	t.Setenv(transferBatchWaitUnterDruckEnv, "keine-zahl")
 	if got := transferBatchWaitUnterDruck(); got != 200*time.Millisecond {
 		t.Errorf("unsinniger Umgebungswert ergab %v, erwartet die Vorgabe 200ms", got)
+	}
+}
+
+// Stufe 1: eine veraltete Nonce im Stapel scheitert allein -- unter der
+// Sperre geprueft (pruefeNonceLocked), nicht nur vorab. Sonst buchte der
+// serielle Weg am 26.09.2026 Nonce 1316 nach 1354, und C2 lehnte die Bloecke
+// ab.
+func TestTransferBatch_VeralteteNonceScheitertAllein_RealDB(t *testing.T) {
+	skipUnlessRealDBBenchEnv(t)
+	truncateDistTestTables(t)
+	state := testKnoten(t, "unused-batch-test-nonce.json")
+	if !state.useDB {
+		t.Fatal("expected a live PostgreSQL connection")
+	}
+	empf := "0x00000000000000000000000000000000005ee3"
+	a := neuerTestSchluessel(t)
+	b := "0xba00000000000000000000000000000000c003"
+	state.mu.Lock()
+	for _, acc := range []*AccountState{
+		{Address: a.addr, Balance: NewDecimal(500), LastActivityAt: time.Now().Unix(), NaechsteNonce: 5},
+		{Address: b, Balance: NewDecimal(500), LastActivityAt: time.Now().Unix()},
+	} {
+		if err := state.saveAccountToDB(acc); err != nil {
+			state.mu.Unlock()
+			t.Fatal(err)
+		}
+		state.accounts.Set(acc.Address, acc)
+	}
+	state.mu.Unlock()
+
+	alt := signiere(t, a, empf, aeqWei(1), 3, 1926) // Nonce 3 < NaechsteNonce 5
+	reqs := []*transferBatchRequest{
+		{from: a.addr, to: empf, amount: alt.Amount, pendingTxTemplate: alt, result: make(chan transferBatchResult, 1)},
+		{from: b, to: empf, amount: 2, pendingTxTemplate: Transaction{Type: "transfer", Wallet: b, To: empf, Amount: 2, TxHash: "0xbatch-nonce-ok"}, result: make(chan transferBatchResult, 1)},
+	}
+	state.processTransferBatch(reqs)
+	rAlt, rOk := <-reqs[0].result, <-reqs[1].result
+	if rAlt.err == nil || !strings.Contains(rAlt.err.Error(), "nonce too low") {
+		t.Fatalf("veraltete Nonce angenommen: %v", rAlt.err)
+	}
+	if rOk.err != nil {
+		t.Fatalf("gueltiges Mitglied mitgerissen: %v", rOk.err)
+	}
+	if got := kontoVon(t, state, a.addr).Balance.Float(); got != 500 {
+		t.Fatalf("Absender mit veralteter Nonce belastet: %v", got)
+	}
+	if got := kontoVon(t, state, b).Balance.Float(); got >= 500 {
+		t.Fatalf("gueltige Ueberweisung nicht gebucht: %v", got)
 	}
 }

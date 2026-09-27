@@ -702,6 +702,8 @@ func main() {
 	// GOMEMLIMIT, und der Garbage Collector bremste beide Knoten.
 	bc.StarteAusduennen()
 	bc.StarteDivergenzWaechter()
+	// Annahme an die Blockleistung koppeln -- siehe rueckstau_grenze.go.
+	bc.StarteRueckstauMesser()
 	// Recover automatically from sustained divergence (opt-in, secondary-only)
 	// — see StartDivergenceAutoHeal. Started after sync so a healthy node has a
 	// chance to converge first and never trips the monitor.
