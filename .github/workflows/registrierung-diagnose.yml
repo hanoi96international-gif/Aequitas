@@ -5,9 +5,6 @@ name: Registrierung -- warum quorum_failed? (nur lesen, nur Zahlen)
 # maskiert. Nie Vorlagen, nie Dumps.
 on:
   workflow_dispatch: {}
-  push:
-    branches: [claude/server-changes-quorum-nfksc7]
-    paths: [.github/workflows/registrierung-diagnose.yml]
 permissions:
   contents: read
 jobs:
@@ -40,7 +37,7 @@ jobs:
           for box in c1:188.172.229.121 c2:194.163.188.71; do
             k=${box%%:*}; h=${box#*:}
             echo "################ $k ################"
-            ssh -i ~/.ssh/$k -o BatchMode=yes root@$h 'bash -s' <<'SKRIPT' | sed -E 's/[0-9a-fA-F]{32,}/#/g; s/0x[0-9a-fA-F]{8,}/0x…/g; s/W-[0-9A-Za-z]+/W-…/g; s/([0-9]{1,3}\.){3}[0-9]{1,3}/ip/g' | cut -c1-300
+            ssh -i ~/.ssh/$k -o BatchMode=yes root@$h 'bash -s' <<'SKRIPT' | sed -E 's/[0-9a-fA-F]{10,}/#/g; s/0x[0-9a-fA-F]{8,}/0x…/g; s/W-[0-9A-Za-z]+/W-…/g; s/([0-9]{1,3}\.){3}[0-9]{1,3}/ip/g' | cut -c1-300
           docker ps --format '{{.Names}}' | grep -E 'coordinator|matching' || true
           for c in $(docker ps --format '{{.Names}}' | grep -E 'coordinator|matching'); do
             echo "--- $c ---"
