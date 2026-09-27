@@ -17,8 +17,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      VON: ${{ inputs.von || '2026-09-27T09:10:05' }}
-      BIS: ${{ inputs.bis || '2026-09-27T09:10:45' }}
+      VON: ${{ inputs.von || '2026-09-27T09:10:05Z' }}
+      BIS: ${{ inputs.bis || '2026-09-27T09:10:45Z' }}
     steps:
       - name: Schluessel und Host-Pruefung
         env:
@@ -32,7 +32,7 @@ jobs:
           cp ~/.ssh/k1 ~/.ssh/known_hosts
       - name: Protokoll
         run: |
-          echo "$VON$BIS" | grep -qE '^[0-9T:.-]+$'
+          echo "$VON$BIS" | grep -qE '^[0-9T:.Z-]+$'
           ssh -i ~/.ssh/c1 -o BatchMode=yes root@188.172.229.121 "VON='$VON' BIS='$BIS' bash -s" <<'SKRIPT' | sed -E 's/0x[0-9a-fA-F]{40}/0x…/g; s/0x[0-9a-fA-F]{64}/0x#/g' | cut -c1-400
           docker logs --timestamps --since "$VON" --until "$BIS" aequitas-node 2>&1 \
             | grep -vE 'eth_sendRawTransaction|\[RPC\] ⚡|goroutine [0-9]+ \[(sleep|select|chan receive|IO wait)' \
