@@ -711,6 +711,7 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		"hoehen_quellen":           HoehenQuellenStand(),
 		"block_tx_deckel":          BlockTxDeckelStand(),
 		"konto_verlauf":            KontoVerlaufStand(),
+		"rueckstau":                RueckstauStand(),
 		"zustands_ablehnung":       ZustandsAblehnungStand(),
 		"annahme_tor":              a.state.AnnahmeTorStand(),
 		"signierte_ueberweisungen": SignierteUeberweisungenStand(),
