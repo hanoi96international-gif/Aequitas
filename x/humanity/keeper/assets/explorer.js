@@ -5786,7 +5786,9 @@ async function loadBlocks() {
     const txCountAt = {};
     (rawBlocks || []).forEach(function(b) {
       siblingsAt[b.height] = (siblingsAt[b.height] || 0) + 1;
-      txCountAt[b.height] = (txCountAt[b.height] || 0) + ((b.transactions || []).length);
+      // tx_count: der Server liefert je Block nur die letzten 30 Ueberweisungen
+      // (block_listen_ansicht.go), die echte Zahl steht hier.
+      txCountAt[b.height] = (txCountAt[b.height] || 0) + (b.tx_count != null ? b.tx_count : (b.transactions || []).length);
     });
     // DAG view needs every sibling (rawBlocks) plus the authoritative
     // canonical set (to mark which one is the real selected-parent chain) —
@@ -5830,7 +5832,7 @@ async function loadBlocks() {
         // GHOSTDAG merges them, so a transfer in a sibling really was included
         // at this height — showing "0" while the list underneath displays that
         // very transfer is how a user concludes their transaction vanished.
-        const txCount = txCountAt[b.height] != null ? txCountAt[b.height] : (b.transactions || []).length;
+        const txCount = txCountAt[b.height] != null ? txCountAt[b.height] : (b.tx_count != null ? b.tx_count : (b.transactions || []).length);
         const sibCount = siblingsAt[b.height] || 1;
         const sibBadge = sibCount > 1 ? ' <span style="font-size:0.48rem;color:var(--gold);vertical-align:middle" title="' + sibCount + ' parallel blocks at this height (GHOSTDAG DAG)">⟁' + sibCount + '</span>' : '';
         const typeBadge = merge
@@ -5966,7 +5968,8 @@ function openBlock(hash) {
   html += '<div class="bdc-row"><div class="bdc-k">Timestamp</div><div class="bdc-v">'
     + sanitize(ts.toUTCString()) + ' <span style="color:var(--muted)">(' + sanitize(timeAgo(b.timestamp)) + ')</span></div></div>';
   html += '<div class="bdc-row"><div class="bdc-k">Transactions</div><div class="bdc-v"><span style="color:var(--neon);font-weight:700">'
-    + txs.length + '</span> in this block</div></div>';
+    + (b.tx_count != null ? b.tx_count : txs.length) + '</span> in this block'
+    + (b.tx_gekuerzt ? ' <span style="color:var(--muted)">(latest ' + txs.length + ' shown)</span>' : '') + '</div></div>';
   html += '<div class="bdc-row"><div class="bdc-k">Humans in Chain</div><div class="bdc-v">' + sanitize(String(b.humans || 0)) + '</div></div>';
   html += '<div class="bdc-row"><div class="bdc-k">Type</div><div class="bdc-v">'
     + (isMerge
