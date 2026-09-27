@@ -1,0 +1,94 @@
+name: C2 -- Snapshot-Quelle und Signierer in .aequitas.env festschreiben
+
+# Nach dem Resync vom 26.09.2026 (resync-contabo2-only.yml, PR #207, Issue
+# #208) hat der LAUFENDE Container auf C2 die richtigen Werte:
+#   BOOTSTRAP_SNAPSHOT_URL = <Primary>/api/snapshot
+#   BOOTSTRAP_SIGNER       = Signieradresse des Primary
+#   PRIMARY_NODE_URL       = <Primary>
+# Die Datei /root/.aequitas.env traegt aber noch den abgeschalteten C1
+# (http://173.249.37.118:8080/api/snapshot) und die falsche Signieradresse.
+# Mehrere set-*/env-Workflows fuehren Datei und Prozess zusammen und lassen
+# dabei die DATEI gewinnen (awk '!seen[$1]++' file proc) -- der naechste
+# solche Lauf oder Deploy braechte die toten Werte zurueck, und Self-Heal
+# koennte sich wieder nicht selbst befreien.
+#
+# Dieser Workflow aendert NUR diese drei Schluessel in der Datei auf C2
+# (vorher Sicherungskopie), sonst nichts: kein Neustart, kein Container,
+# kein DNS, kein Caddy, der Primary wird nur per GET gelesen.
+# RESYNC_FROM_SNAPSHOT bleibt, wie es ist.
+
+on:
+  workflow_dispatch:
+    inputs:
+      quelle:
+        description: "Basis-URL des Primary (nur gelesen)"
+        required: true
+        default: "http://188.172.229.121:8080"
+      signierer:
+        description: "Signieradresse des Primary"
+        required: true
+        default: "0x3066639af1653325100c1074a9696612dbdc42dc"
+
+permissions:
+  contents: read
+
+jobs:
+  festschreiben:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Quelle pruefen (nur lesen)
+        env:
+          QUELLE: ${{ inputs.quelle }}
+          SIGNIERER: ${{ inputs.signierer }}
+        run: |
+          set -euo pipefail
+          Q="${QUELLE%/}"
+          case "$Q" in
+            *173.249.37.118*|*194.163.188.71*) echo "::error::unzulaessige Quelle $Q"; exit 1 ;;
+            http://*|https://*) ;;
+            *) echo "::error::Quelle muss http(s)-URL sein"; exit 1 ;;
+          esac
+          grep -qiE '^0x[0-9a-f]{40}$' <<<"$SIGNIERER" || { echo "::error::Signierer ist keine Adresse"; exit 1; }
+          S="$(curl -fs -m 15 "$Q/api/status")"
+          grep -qE '"is_primary": ?true' <<<"$S" || { echo "::error::Quelle meldet is_primary nicht true"; exit 1; }
+          V="$(grep -oE '"validator_address": ?"0x[0-9a-fA-F]{40}"' <<<"$S" | grep -oE '0x[0-9a-fA-F]{40}')"
+          [ "$(tr A-F a-f <<<"$V")" = "$(tr A-F a-f <<<"$SIGNIERER")" ] || { echo "::error::Quelle signiert als $V"; exit 1; }
+          echo "Quelle ok: $Q signiert als $V"
+
+      - name: Datei auf C2 anpassen
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          script_stop: false
+          timeout: 120s
+          command_timeout: 120s
+          envs: QUELLE,SIGNIERER
+          script: |
+            set -euo pipefail
+            Q="${QUELLE%/}"
+            F=/root/.aequitas.env
+            [ -f "$F" ] || { echo "$F fehlt"; exit 1; }
+            BAK="$F.bak.$(date +%Y%m%d-%H%M%S)"
+            cp -p "$F" "$BAK"
+            echo "Sicherung: $BAK"
+            echo "--- vorher ---"
+            grep -E '^(BOOTSTRAP_SNAPSHOT_URL|BOOTSTRAP_SIGNER|PRIMARY_NODE_URLS?|RESYNC_FROM_SNAPSHOT)=' "$F" || true
+            TMP="$(mktemp)"
+            grep -vE '^(BOOTSTRAP_SNAPSHOT_URL|BOOTSTRAP_SIGNER|PRIMARY_NODE_URL)=' "$F" > "$TMP" || true
+            printf '%s\n' "BOOTSTRAP_SNAPSHOT_URL=$Q/api/snapshot" "BOOTSTRAP_SIGNER=$SIGNIERER" "PRIMARY_NODE_URL=$Q" >> "$TMP"
+            chmod --reference="$F" "$TMP"
+            mv "$TMP" "$F"
+            echo "--- nachher ---"
+            grep -E '^(BOOTSTRAP_SNAPSHOT_URL|BOOTSTRAP_SIGNER|PRIMARY_NODE_URLS?|RESYNC_FROM_SNAPSHOT)=' "$F"
+            echo "Zeilen vorher/nachher: $(grep -c . "$BAK") / $(grep -c . "$F")"
+            if grep -q '173.249.37.118' "$F"; then echo "⚠ noch Verweise auf den alten C1 in anderen Schluesseln:"; grep -n '173.249.37.118' "$F" | cut -d= -f1; fi
+            echo "--- laufender Prozess (unveraendert, kein Neustart) ---"
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' \
+              | grep -E '^(BOOTSTRAP_SNAPSHOT_URL|BOOTSTRAP_SIGNER|PRIMARY_NODE_URLS?)=' || true
+        env:
+          QUELLE: ${{ inputs.quelle }}
+          SIGNIERER: ${{ inputs.signierer }}
