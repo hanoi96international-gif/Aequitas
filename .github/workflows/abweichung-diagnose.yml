@@ -38,6 +38,8 @@ jobs:
           [ -n "$DATABASE_URL" ] || DATABASE_URL="$(docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E '^DATABASE_URL=' | head -1 | cut -d= -f2-)"
           NET="$(docker inspect aequitas-node --format '{{range $n,$v := .NetworkSettings.Networks}}{{$n}}{{end}}')"
           q() { docker run --rm --network "$NET" -e DATABASE_URL="$DATABASE_URL" postgres:16-alpine sh -c "psql \"\$DATABASE_URL\" -t -A -c \"$1\""; }
+          echo "--- Resync-Quelle (nur Schluessel ohne Geheimnis) ---"
+          grep -E '^(PRIMARY_NODE_URLS?|BOOTSTRAP_SNAPSHOT_URL|BOOTSTRAP_SIGNER|RESYNC_FROM_SNAPSHOT|ANNAHME_ROLLE)=' /root/.aequitas.env 2>/dev/null || echo "(keine)"
           echo "--- pending_txs ---"
           q "SELECT 'offen='||count(*) FROM pending_txs WHERE included_at=0"
           q "SELECT 'dead_letter='||count(*) FROM pending_txs_dead_letter"
