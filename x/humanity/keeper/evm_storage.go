@@ -142,6 +142,11 @@ func (cs *ChainState) ReserveNonce(address string, expected, next uint64) (bool,
 		return true, nil
 	}
 	address = strings.ToLower(address)
+	// Offenen Nachtrag dieser Adresse zuerst schreiben -- sonst vergliche der
+	// Compare-and-swap gegen einen veralteten Wert (nonce_nachtrag.go).
+	if err := cs.nonceNachtragJetzt(address); err != nil {
+		return false, err
+	}
 	if expected == 0 {
 		res, err := cs.db.Exec(
 			`INSERT INTO evm_nonces (address, nonce) VALUES ($1, $2)

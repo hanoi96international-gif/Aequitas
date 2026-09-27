@@ -9,6 +9,7 @@ import (
 	"math/big"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -296,5 +297,37 @@ func TestSignierteUeberweisung_AnnahmeSetztDieselbeNonceWieNachspielen(t *testin
 	}
 	if got := kontoVon(t, nachspieler, a.addr).NaechsteNonce; got != 10 {
 		t.Fatalf("Nachspielen: NaechsteNonce %d statt 10", got)
+	}
+}
+
+// Die Vorpruefung darf nie auf die Kontensperre warten, die der WAL-Flush
+// fuer seine ganze Postgres-Transaktion haelt (27.09.2026: 23 von 66 ms je
+// Ueberweisung). Belegter Shard -> sofort weiter, verbindlich prueft die
+// Buchung unter der Sperre.
+func TestSignierteUeberweisung_VorpruefungWartetNichtAufFlush(t *testing.T) {
+	a := neuerTestSchluessel(t)
+	cs := newTestState()
+	cs.mu.Lock()
+	cs.accounts.Set(a.addr, &AccountState{Address: a.addr, Balance: NewDecimal(1), NaechsteNonce: 10})
+	cs.mu.Unlock()
+	if err := cs.pruefeAnnahmeNonce(a.addr, 9); err == nil {
+		t.Fatal("freier Shard: verbrauchte Nonce nicht abgelehnt")
+	}
+	unlock := cs.accounts.LockAddrs(a.addr) // der Flush haelt den Shard
+	vorher := annahmeNonceVorpruefungUebersprungen.Load()
+	fertig := make(chan error, 1)
+	go func() { fertig <- cs.pruefeAnnahmeNonce(a.addr, 9) }()
+	select {
+	case err := <-fertig:
+		if err != nil {
+			t.Fatalf("belegter Shard: Vorpruefung sollte entfallen, lieferte %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		unlock()
+		t.Fatal("Vorpruefung wartet auf die Kontensperre des Flushs")
+	}
+	unlock()
+	if annahmeNonceVorpruefungUebersprungen.Load() != vorher+1 {
+		t.Fatal("Uebersprungen-Zaehler nicht erhoeht")
 	}
 }

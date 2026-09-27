@@ -1091,9 +1091,11 @@ func (s *EVMRPCServer) reserveNoncePerItem(tx *types.Transaction, senderAddr str
 	defer func() { noteRPCNonce(time.Since(nonceStart)) }()
 
 	// Populate from DB on first sight to recover correct nonce after restart.
+	// Die Kette ist die Untergrenze: ging ein Nachtrag (nonce_nachtrag.go)
+	// bei einem Absturz verloren, kennt NaechsteNonce den richtigen Wert.
 	if nonceLock.nonces[senderAddr] == 0 {
-		if dbNonce := s.state.LoadNonce(senderAddr); dbNonce > 0 {
-			nonceLock.nonces[senderAddr] = dbNonce
+		if n := s.state.gespeicherteNonce(senderAddr); n > 0 {
+			nonceLock.nonces[senderAddr] = n
 		}
 	}
 	storedNonce := nonceLock.nonces[senderAddr]
@@ -1109,13 +1111,25 @@ func (s *EVMRPCServer) reserveNoncePerItem(tx *types.Transaction, senderAddr str
 	// Reserve nonce immediately — prevents replay even if two identical
 	// requests arrive concurrently.
 	nextNonce := storedNonce + 1
+	// Einfache signierte Ueberweisung unter Stufe 1: reserviert ist sie mit
+	// dem Wert im Speicher (unter dieser Sperre), evm_nonces zieht im
+	// Hintergrund nach. Den Schutz gegen Wiederholung traegt die Kette --
+	// siehe nonce_nachtrag.go.
+	einfach := tx.To() != nil && len(tx.Data()) == 0 && tx.Value().Sign() > 0
+	if nonceOhneUmlauf(einfach, nowUnix()) {
+		s.state.merkeNonceNachtrag(senderAddr, nextNonce)
+		nonceSchnellReserviert.Add(1)
+		nonceLock.nonces[senderAddr] = nextNonce
+		nonceLock.mu.Unlock()
+		return nil
+	}
 	reserved, err := s.state.ReserveNonce(senderAddr, storedNonce, nextNonce)
 	if err != nil {
 		nonceLock.mu.Unlock()
 		return &RPCError{Code: -32603, Message: "nonce reservation failed: " + err.Error()}
 	}
 	if !reserved {
-		dbNonce := s.state.LoadNonce(senderAddr)
+		dbNonce := s.state.gespeicherteNonce(senderAddr)
 		nonceLock.nonces[senderAddr] = dbNonce
 		nonceLock.mu.Unlock()
 		return &RPCError{Code: -32603, Message: fmt.Sprintf("nonce already reserved: tx=%d expected=%d", txNonce, dbNonce)}

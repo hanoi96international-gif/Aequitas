@@ -125,8 +125,8 @@ func (s *EVMRPCServer) reserveOneSenderRun(sender string, items []*precomputedSe
 	defer lock.mu.Unlock()
 
 	if lock.nonces[sender] == 0 {
-		if dbNonce := s.state.LoadNonce(sender); dbNonce > 0 {
-			lock.nonces[sender] = dbNonce
+		if n := s.state.gespeicherteNonce(sender); n > 0 {
+			lock.nonces[sender] = n
 		}
 	}
 	stored := lock.nonces[sender]
