@@ -1,0 +1,45 @@
+name: Absturz C1/C2? Neustarts, OOM, Speicher (nur lesen)
+on:
+  push:
+    branches: [claude/server-changes-quorum-nfksc7]
+    paths: [.github/workflows/absturz-pruefen.yml]
+permissions:
+  contents: read
+jobs:
+  pruefen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Schluessel und Host-Pruefung
+        env:
+          K1: ${{ secrets.CONTABO_SSH_KEY }}
+          K2: ${{ secrets.CONTABO2_SSH_KEY }}
+        run: |
+          set -eu
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$K1" > ~/.ssh/c1 && printf '%s\n' "$K2" > ~/.ssh/c2 && chmod 600 ~/.ssh/c1 ~/.ssh/c2
+          ssh-keyscan -t ed25519 188.172.229.121 2>/dev/null > ~/.ssh/k1
+          ssh-keygen -lf ~/.ssh/k1 | awk '{print $2}' | grep -qx 'SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA'
+          ssh-keyscan 194.163.188.71 2>/dev/null > ~/.ssh/k2
+          ssh-keygen -lf ~/.ssh/k2 | awk '{print $2}' | grep -qx 'SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto'
+          cat ~/.ssh/k1 ~/.ssh/k2 > ~/.ssh/known_hosts
+      - name: Beide Boxen
+        run: |
+          for box in c1:188.172.229.121 c2:194.163.188.71; do
+            k=${box%%:*}; h=${box#*:}
+            echo "################ $k ################"
+            ssh -i ~/.ssh/$k -o BatchMode=yes root@$h 'bash -s' <<'SKRIPT' | sed -E 's/0x[0-9a-fA-F]{40}/0x…/g; s/[0-9a-fA-F]{16,}/#/g' | cut -c1-260
+          date -u; uptime; free -m | head -2
+          for c in $(docker ps -a --format '{{.Names}}'); do
+            docker inspect "$c" --format '{{.Name}} status={{.State.Status}} gestartet={{.State.StartedAt}} restarts={{.RestartCount}} oom={{.State.OOMKilled}} exit={{.State.ExitCode}}'
+          done
+          docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E '^(GOMEMLIMIT|GOGC|GOMAXPROCS)=' || echo "(kein GOMEMLIMIT)"
+          docker stats --no-stream --format '{{.Name}} {{.CPUPerc}} {{.MemUsage}}' | head -8
+          echo "--- Kernel OOM (heute) ---"
+          dmesg -T 2>/dev/null | grep -iE 'oom|killed process|out of memory' | tail -8 || journalctl -k --since today 2>/dev/null | grep -iE 'oom|killed process' | tail -8
+          echo "--- [MEM] / panic / FATAL seit 08:00 UTC ---"
+          docker logs --since 2026-09-27T08:00:00Z aequitas-node 2>&1 | grep -E '\[MEM\]|panic:|FATAL|fatal error|runtime: out of memory' | sed -E 's/ Above the.*//' | tail -12
+          echo "--- Container-Starts heute (docker events) ---"
+          docker events --since 2026-09-27T06:00:00Z --until "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --filter type=container --filter event=start --filter event=die --filter event=oom --format '{{.Time}} {{.Action}} {{.Actor.Attributes.name}}' 2>/dev/null | tail -20
+          SKRIPT
+          done
