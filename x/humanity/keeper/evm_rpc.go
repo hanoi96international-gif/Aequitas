@@ -1194,6 +1194,12 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage, pre *precomp
 	if reason := admissionRefusalReason(); reason != "" {
 		return nil, &RPCError{Code: -32005, Message: reason}
 	}
+	// Platz im naechsten Block belegen -- oder "gleich nochmal". Nach der
+	// Pruefung oben, damit eine aus anderem Grund abgelehnte Anfrage keinen
+	// Platz belegt (rueckstau_grenze.go).
+	if reason := rueckstauPlatzNehmen(); reason != "" {
+		return nil, &RPCError{Code: -32005, Message: reason}
+	}
 	// NIMMT DIESER KNOTEN UEBERHAUPT AN? Siehe annahme_tor.go.
 	//
 	// HIER und nicht erst in TransferAtomic. Dazwischen liegt ReserveNonce,

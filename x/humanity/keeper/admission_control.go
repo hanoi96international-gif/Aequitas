@@ -134,7 +134,7 @@ func admissionRefusalReason() string {
 			"this validator has only %d MB of disk left and cannot durably record new "+
 				"transactions; retry shortly or send to another validator", plattenFreiMB.Load())
 	}
-	// Kein Rueckstau ueber zwei Bloecke (rueckstau_grenze.go).
+	// Kein Rueckstau ueber den naechsten Block hinaus (rueckstau_grenze.go).
 	if grund := rueckstauGrund(); grund != "" {
 		return grund
 	}
