@@ -37,6 +37,14 @@ jobs:
           docker logs --timestamps --since "$VON" --until "$BIS" aequitas-node 2>&1 \
             | grep -vE 'eth_sendRawTransaction|\[RPC\] ⚡|goroutine [0-9]+ \[(sleep|select|chan receive|IO wait)' \
             | awk '{c[$0]++} END{}1' | head -400
+          echo "--- Speicher: Box, Swap, Container ---"
+          free -m; swapon --show 2>/dev/null || true; nproc
+          docker stats --no-stream --format '{{.Name}} {{.CPUPerc}} {{.MemUsage}}' 2>/dev/null | head -5
+          docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E '^(GOMEMLIMIT|GOGC|GOMAXPROCS)=' || echo "(kein GOMEMLIMIT/GOGC/GOMAXPROCS)"
+          echo "--- [MEM]-Zeilen seit Start des Containers ---"
+          docker logs aequitas-node 2>&1 | grep -F '[MEM]' | sed -E 's/ Above the.*//' | tail -25
+          echo "--- Kernel: OOM/Swap/Hung ---"
+          dmesg -T 2>/dev/null | grep -iE 'oom|out of memory|hung_task|blocked for more' | tail -5 || true
           echo "--- Zaehler im Fenster ---"
           L=$(docker logs --since "$VON" --until "$BIS" aequitas-node 2>&1)
           for m in 'SPERRE' 'Full tick' 'ProduceBlock itself' 'dbpair' 'WAL' 'flush' 'Nachtrag' 'Kontoverlauf' 'tx-index' 'replay'; do printf '%-22s %s\n' "$m" "$(echo "$L" | grep -c "$m")"; done
