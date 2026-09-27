@@ -51,6 +51,15 @@ jobs:
         run: |
           echo "START=$(date -u +%Y-%m-%dT%H:%M:%S)" >> "$GITHUB_ENV"
           curl -s -m 10 https://aequitas.digital/api/status | jq -c '{height, uptime}'
+          ssh -i ~/.ssh/c1 -o BatchMode=yes root@188.172.229.121 \
+            "curl -s -m 10 http://127.0.0.1:8080/api/health/combined | jq -c .produktion_phasen" > /tmp/phasen_vorher.json || true
+      - name: Rueckstau-Messer (jede Sekunde, waehrend der Last)
+        run: |
+          nohup bash -c 'while true; do
+            ssh -i ~/.ssh/c1 -o BatchMode=yes root@188.172.229.121 \
+              "curl -s -m 2 http://127.0.0.1:8080/api/health/combined | jq -c \"{r: .rueckstau.aktuell, g: .rueckstau.grenze}\"" 2>/dev/null
+            sleep 1; done' > /tmp/rueckstau.log 2>&1 &
+          echo $! > /tmp/rueckstau.pid
       - name: Last von C2 auf C1
         run: |
           ssh -i ~/.ssh/c2 -o BatchMode=yes root@194.163.188.71 \
@@ -83,8 +92,27 @@ jobs:
           uptime
           echo "--- Bremse und Deckel (C1) ---"
           curl -s -m 10 http://127.0.0.1:8080/api/health/combined \
-            | jq -c '{peer_lag_bremse, block_tx_deckel, signierte_ueberweisungen, inflight}' 2>/dev/null | head -c 4000 || true
+            | jq -c '{peer_lag_bremse, block_tx_deckel, signierte_ueberweisungen, inflight, rueckstau: (.rueckstau|{aktuell,grenze,abgelehnt}), produktion: (.produktion|{bloecke,tx_je_block,groesster_block})}' 2>/dev/null | head -c 4000 || true
           SKRIPT
+      - name: Rueckstau waehrend der Last und Blockbau-Phasen im Messfenster
+        if: always()
+        run: |
+          kill "$(cat /tmp/rueckstau.pid)" 2>/dev/null || true
+          echo "--- Rueckstau (angenommen, noch in keinem Block), je Sekunde ---"
+          jq -s -c 'map(select(.r != null)) | {proben: length, max: (map(.r)|max), mittel: ((map(.r)|add) / (length|if .==0 then 1 else . end) | floor), grenze: (.[0].g // null)}' /tmp/rueckstau.log || cat /tmp/rueckstau.log | tail -5
+          ssh -i ~/.ssh/c1 -o BatchMode=yes root@188.172.229.121 \
+            "curl -s -m 10 http://127.0.0.1:8080/api/health/combined | jq -c .produktion_phasen" > /tmp/phasen_nachher.json || true
+          echo "--- Annahmeweg (seit Knotenstart, gemittelt) ---"
+          ssh -i ~/.ssh/c1 -o BatchMode=yes root@188.172.229.121 \
+            "curl -s -m 10 http://127.0.0.1:8080/api/health/combined | jq -c '{rpc_phases, atomic_phasen, transfer_path, wal_flush, wal_writer, batcher_phasen, transfer_batch}'" 2>/dev/null | sed -E 's/0x[0-9a-fA-F]{40}/0x…/g' | head -c 6000 || true
+          echo
+          echo "--- Blockbau je Block, nur Bloecke im Messfenster (ms) ---"
+          jq -n -c --slurpfile a /tmp/phasen_vorher.json --slurpfile b /tmp/phasen_nachher.json '
+            ($a[0] // {bloecke:0}) as $v | $b[0] as $n | ($n.bloecke - ($v.bloecke // 0)) as $d
+            | if $d <= 0 then {bloecke: 0} else
+              ([ "gesamt_ms","laden_ms","sperren_ms","db_paar_ms","bauen_ms","speichern_ms","verteilen_ms","rest_ms" ]
+               | map({key: ., value: ((($n[.] * $n.bloecke) - (($v[.] // 0) * ($v.bloecke // 0))) / $d | . * 10 | round / 10)}) | from_entries)
+              + {bloecke: $d, schlimmster_ms: $n.schlimmster_ms, schlimmster_tx: $n.schlimmster_tx} end' || true
       - name: C2 folgt?
         if: always()
         run: |

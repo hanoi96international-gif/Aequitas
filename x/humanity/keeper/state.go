@@ -355,6 +355,7 @@ type ChainState struct {
 	// Batched nonce reservation; see nonce_batch.go for why the single-row
 	// version became the largest single item in the CPU profile.
 	nonceBatchOnce    sync.Once
+	nonceNachtrag     nonceNachtrag // nonce_nachtrag.go
 	nonceBatchCh      chan *nonceReserveRequest
 	transferBatchOnce sync.Once
 

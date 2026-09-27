@@ -1,0 +1,56 @@
+name: APK auf C2 auffrischen (ohne Neustart)
+# C2 liefert /download/app.apk aus einer eingehaengten Datei
+# (/root/aequitas-downloads/aequitas-app.apk, siehe host-apk-locally.yml),
+# C1 leitet auf GitHubs "latest" um. Nach einem App-Release bleibt C2 deshalb
+# auf der alten Version stehen -- pruefstand-live.yml meldet das als ROT.
+#
+# Die Box holt das Release selbst, prueft die SHA-256 gegen den Wert des
+# Releases und SCHREIBT IN die Datei (cat > ziel), statt sie zu ersetzen: ein
+# Datei-Mount folgt dem Inode, ein mv liesse den Container die alte Datei
+# weiter ausliefern. Kein Neustart, der Knoten laeuft weiter.
+on:
+  workflow_dispatch:
+    inputs:
+      tag: {description: "App-Release, z. B. app-v1.8.0", required: true}
+      sha256: {description: "SHA-256 der APK laut Release", required: true}
+  push:
+    branches: [claude/server-changes-quorum-nfksc7]
+    paths: [.github/workflows/apk-c2-auffrischen.yml]
+permissions:
+  contents: read
+jobs:
+  c2:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      TAG: ${{ inputs.tag || 'app-v1.8.0' }}
+      SOLL: ${{ inputs.sha256 || '333a0bc13fe5db2487793aaab7ba69b63f52618cc66e8a084e50b13db0c10bb6' }}
+    steps:
+      - name: Schluessel und Host-Pruefung
+        env:
+          K2: ${{ secrets.CONTABO2_SSH_KEY }}
+        run: |
+          set -eu
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$K2" > ~/.ssh/c2 && chmod 600 ~/.ssh/c2
+          ssh-keyscan 194.163.188.71 2>/dev/null > ~/.ssh/k2
+          ssh-keygen -lf ~/.ssh/k2 | awk '{print $2}' | grep -qx 'SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto'
+          cp ~/.ssh/k2 ~/.ssh/known_hosts
+      - name: Holen, pruefen, hineinschreiben
+        run: |
+          echo "$TAG" | grep -qE '^app-v[0-9]+\.[0-9]+\.[0-9]+$'
+          echo "$SOLL" | grep -qE '^[0-9a-f]{64}$'
+          ssh -i ~/.ssh/c2 -o BatchMode=yes root@194.163.188.71 "TAG='$TAG' SOLL='$SOLL' bash -s" <<'SKRIPT'
+          set -eu
+          ZIEL=/root/aequitas-downloads/aequitas-app.apk
+          [ -f "$ZIEL" ] || { echo "keine eingehaengte Datei auf C2 -- nichts zu tun"; exit 0; }
+          echo "vorher: $(sha256sum "$ZIEL" | cut -c1-16)..."
+          NEU=/root/aequitas-downloads/.neu.apk
+          curl -fsSL -m 600 -o "$NEU" "https://github.com/hanoi96international-gif/Aequitas-App/releases/download/$TAG/app-release.apk"
+          IST=$(sha256sum "$NEU" | cut -d' ' -f1)
+          if [ "$IST" != "$SOLL" ]; then echo "Pruefsumme falsch ($IST) -- nichts geaendert"; rm -f "$NEU"; exit 1; fi
+          cat "$NEU" > "$ZIEL"
+          rm -f "$NEU"
+          echo "nachher: $(sha256sum "$ZIEL" | cut -c1-16)..."
+          echo "ausgeliefert: $(curl -s -m 120 http://127.0.0.1:8080/download/app.apk | sha256sum | cut -c1-16)..."
+          SKRIPT

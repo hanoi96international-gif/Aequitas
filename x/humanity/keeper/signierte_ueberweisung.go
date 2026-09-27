@@ -333,11 +333,34 @@ func (cs *ChainState) setzeVorlaufNoncenLocked(ctx context.Context, txs []Transa
 
 // pruefeAnnahmeNonce: vor dem Annehmen einer Ueberweisung -- eine Nonce
 // unter NaechsteNonce ist verbraucht und wuerde den naechsten Block fuer
-// jeden anderen Validator ungueltig machen. Nur lesend.
+// jeden anderen Validator ungueltig machen. Nur lesend, und nur eine
+// VORPRUEFUNG: verbindlich ist die Pruefung unter der Sperre direkt vor der
+// Buchung (transfer_wal.go, pruefeNonceLocked) -- sie faengt alles, was
+// hier durchgeht.
+//
+// NIE AUF DIE KONTENSPERRE WARTEN (27.09.2026, gemessen). Hier stand
+// cs.accounts.Get -- das nimmt die Shard-Sperre BLOCKIEREND, und genau die
+// haelt flushWALBatch fuer seine ganze Postgres-Transaktion (im Mittel 33 ms,
+// bis 415 ms). Jede Ueberweisung eines Absenders in diesem Shard wartete
+// also auf den Flush: 23 von 66 ms je Ueberweisung lagen in diesem Vorlauf.
+// Dasselbe Muster wurde am 22.08.2026 im Schnellpfad schon einmal gemessen
+// und entfernt (46 ms, siehe transfer_wal.go). Jetzt: ist der Shard frei,
+// wird unter seiner Sperre geprueft (auch das vorher ungeschuetzte Lesen von
+// NaechsteNonce); ist er belegt, entfaellt die Vorpruefung.
 func (cs *ChainState) pruefeAnnahmeNonce(absender string, nonce uint64) error {
 	cs.mu.RLock()
 	defer cs.mu.RUnlock()
-	acc, ok := cs.accounts.Get(strings.ToLower(absender))
+	if cs.accounts == nil {
+		return nil
+	}
+	addr := strings.ToLower(absender)
+	unlock, frei := cs.accounts.TryLockAddrs(addr)
+	if !frei {
+		annahmeNonceVorpruefungUebersprungen.Add(1)
+		return nil
+	}
+	defer unlock()
+	acc, ok := cs.accounts.GetLocked(addr)
 	if !ok {
 		return nil // kaltes Konto: die Annahme laedt es; NaechsteNonce ist dort, wo es fehlt, 0
 	}
@@ -346,6 +369,9 @@ func (cs *ChainState) pruefeAnnahmeNonce(absender string, nonce uint64) error {
 	}
 	return nil
 }
+
+// Wie oft die Vorpruefung wegen eines belegten Shards entfiel.
+var annahmeNonceVorpruefungUebersprungen atomic.Int64
 
 // pruefeNonceLocked: die Nonce-Pruefung der Annahme UNTER der Sperre, direkt
 // vor der Buchung. pruefeAnnahmeNonce (vorab, nur lesend) reicht nicht:
@@ -403,9 +429,10 @@ func SignierteUeberweisungenStand() map[string]interface{} {
 		aktivAb = ab
 	}
 	return map[string]interface{}{
-		"aktiv_ab":           aktivAb,
-		"abgelehnte_bloecke": ungueltigeSignaturBloecke.Load(),
-		"vorlauf_sekunden":   signierteUeberweisungenVorlauf,
+		"aktiv_ab":                        aktivAb,
+		"abgelehnte_bloecke":              ungueltigeSignaturBloecke.Load(),
+		"vorlauf_sekunden":                signierteUeberweisungenVorlauf,
+		"nonce_vorpruefung_uebersprungen": annahmeNonceVorpruefungUebersprungen.Load(),
 	}
 }
 

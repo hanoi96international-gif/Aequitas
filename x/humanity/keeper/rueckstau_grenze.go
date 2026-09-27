@@ -71,13 +71,16 @@ func rueckstauMeldung(n, grenze int64) string {
 }
 
 // rueckstauGrund: leer, solange noch Platz im naechsten Block ist. Nur
-// Pruefung, belegt nichts (admissionRefusalReason, Statistik, Batch-Vorlauf).
+// Pruefung, belegt nichts (admissionRefusalReason, Batch-Vorlauf). Zaehlt
+// jede Ablehnung; AdmissionStats ruft admissionRefusalReason ebenfalls auf,
+// das ist eine Abfrage je Health-Aufruf und faellt nicht ins Gewicht.
 func rueckstauGrund() string {
 	grenze := rueckstauMax()
 	if grenze == 0 || !rueckstauMesserAn.Load() {
 		return ""
 	}
 	if n := rueckstauStand(); n >= grenze {
+		rueckstauAbgelehnt.Add(1)
 		return rueckstauMeldung(n, grenze)
 	}
 	return ""
