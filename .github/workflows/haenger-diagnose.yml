@@ -1,0 +1,43 @@
+name: Haenger C1 -- Protokoll um ein Zeitfenster (nur lesen)
+# Liest das Knotenprotokoll von C1 in einem Zeitfenster, ohne die Zeilen je
+# Ueberweisung; Adressen maskiert. Fuer Haenger unter Last: welche Sperre,
+# welche Phase.
+on:
+  workflow_dispatch:
+    inputs:
+      von: {description: "UTC, z. B. 2026-09-27T09:10:10", required: true}
+      bis: {description: "UTC", required: true}
+  push:
+    branches: [claude/server-changes-quorum-nfksc7]
+    paths: [.github/workflows/haenger-diagnose.yml]
+permissions:
+  contents: read
+jobs:
+  lesen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      VON: ${{ inputs.von || '2026-09-27T09:10:05' }}
+      BIS: ${{ inputs.bis || '2026-09-27T09:10:45' }}
+    steps:
+      - name: Schluessel und Host-Pruefung
+        env:
+          K1: ${{ secrets.CONTABO_SSH_KEY }}
+        run: |
+          set -eu
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$K1" > ~/.ssh/c1 && chmod 600 ~/.ssh/c1
+          ssh-keyscan -t ed25519 188.172.229.121 2>/dev/null > ~/.ssh/k1
+          ssh-keygen -lf ~/.ssh/k1 | awk '{print $2}' | grep -qx 'SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA'
+          cp ~/.ssh/k1 ~/.ssh/known_hosts
+      - name: Protokoll
+        run: |
+          echo "$VON$BIS" | grep -qE '^[0-9T:.-]+$'
+          ssh -i ~/.ssh/c1 -o BatchMode=yes root@188.172.229.121 "VON='$VON' BIS='$BIS' bash -s" <<'SKRIPT' | sed -E 's/0x[0-9a-fA-F]{40}/0x…/g; s/0x[0-9a-fA-F]{64}/0x#/g' | cut -c1-400
+          docker logs --timestamps --since "$VON" --until "$BIS" aequitas-node 2>&1 \
+            | grep -vE 'eth_sendRawTransaction|\[RPC\] ⚡|goroutine [0-9]+ \[(sleep|select|chan receive|IO wait)' \
+            | awk '{c[$0]++} END{}1' | head -400
+          echo "--- Zaehler im Fenster ---"
+          L=$(docker logs --since "$VON" --until "$BIS" aequitas-node 2>&1)
+          for m in 'SPERRE' 'Full tick' 'ProduceBlock itself' 'dbpair' 'WAL' 'flush' 'Nachtrag' 'Kontoverlauf' 'tx-index' 'replay'; do printf '%-22s %s\n' "$m" "$(echo "$L" | grep -c "$m")"; done
+          SKRIPT
