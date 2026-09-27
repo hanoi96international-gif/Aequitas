@@ -1,0 +1,39 @@
+name: Heap C1 -- wo liegt der Speicher? (nur lesen)
+# Holt das Heap-Profil von C1 (pprof, nur im Container auf 127.0.0.1:6061)
+# und zeigt die groessten Posten nach belegtem Speicher. Nur Funktionsnamen
+# und Groessen -- keine Adressen, keine Kontostaende.
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [claude/server-changes-quorum-nfksc7]
+    paths: [.github/workflows/heap-c1.yml]
+permissions:
+  contents: read
+jobs:
+  heap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/setup-go@v5
+        with: {go-version: '1.24'}
+      - name: Schluessel und Host-Pruefung
+        env:
+          K1: ${{ secrets.CONTABO_SSH_KEY }}
+        run: |
+          set -eu
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$K1" > ~/.ssh/c1 && chmod 600 ~/.ssh/c1
+          ssh-keyscan -t ed25519 188.172.229.121 2>/dev/null > ~/.ssh/k1
+          ssh-keygen -lf ~/.ssh/k1 | awk '{print $2}' | grep -qx 'SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA'
+          cp ~/.ssh/k1 ~/.ssh/known_hosts
+      - name: Profil holen
+        run: |
+          ssh -i ~/.ssh/c1 -o BatchMode=yes root@188.172.229.121 'bash -s' > /tmp/heap.pb.gz <<'SKRIPT'
+          docker exec aequitas-node sh -c 'wget -q -O - http://127.0.0.1:6061/debug/pprof/heap 2>/dev/null || curl -s http://127.0.0.1:6061/debug/pprof/heap'
+          SKRIPT
+          ls -la /tmp/heap.pb.gz
+      - name: Groesste Posten (belegt)
+        run: |
+          go tool pprof -sample_index=inuse_space -top -nodecount=35 /tmp/heap.pb.gz 2>&1 | head -50
+          echo "--- kumulativ ---"
+          go tool pprof -sample_index=inuse_space -top -cum -nodecount=35 /tmp/heap.pb.gz 2>&1 | head -50
