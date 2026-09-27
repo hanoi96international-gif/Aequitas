@@ -102,6 +102,10 @@ jobs:
           jq -s -c 'map(select(.r != null)) | {proben: length, max: (map(.r)|max), mittel: ((map(.r)|add) / (length|if .==0 then 1 else . end) | floor), grenze: (.[0].g // null)}' /tmp/rueckstau.log || cat /tmp/rueckstau.log | tail -5
           ssh -i ~/.ssh/c1 -o BatchMode=yes root@188.172.229.121 \
             "curl -s -m 10 http://127.0.0.1:8080/api/health/combined | jq -c .produktion_phasen" > /tmp/phasen_nachher.json || true
+          echo "--- Annahmeweg (seit Knotenstart, gemittelt) ---"
+          ssh -i ~/.ssh/c1 -o BatchMode=yes root@188.172.229.121 \
+            "curl -s -m 10 http://127.0.0.1:8080/api/health/combined | jq -c '{rpc_phases, atomic_phasen, transfer_path, wal_flush, wal_writer, batcher_phasen, transfer_batch}'" 2>/dev/null | sed -E 's/0x[0-9a-fA-F]{40}/0x…/g' | head -c 6000 || true
+          echo
           echo "--- Blockbau je Block, nur Bloecke im Messfenster (ms) ---"
           jq -n -c --slurpfile a /tmp/phasen_vorher.json --slurpfile b /tmp/phasen_nachher.json '
             ($a[0] // {bloecke:0}) as $v | $b[0] as $n | ($n.bloecke - ($v.bloecke // 0)) as $d
