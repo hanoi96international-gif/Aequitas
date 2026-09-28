@@ -326,7 +326,21 @@ func (cs *ChainState) transferConcurrentWAL(from, to string, amount float64, pen
 	// Ab der Aktivierung der Unternehmensregeln (wirtschaft.go) gelten sie
 	// auch hier -- fuer Menschen und freie Adressen untereinander, siehe
 	// wirtschaft_schnellpfad.go. Mit Unternehmen geht es seriell.
-	fromLost, toLost, applied, err, haltbar := cs.transferConcurrentWALGesperrt(from, to, amount, pendingTxTemplate)
+	fromLost, toLost, applied, err, haltbar := cs.transferConcurrentWALGesperrt(from, to, amount, pendingTxTemplate, false)
+	if err == errShardBelegt {
+		// Belegter Konten-Shard: noch einmal, diesmal auf ihn wartend --
+		// siehe shardWartenStattRueckfall.
+		err = nil
+		if shardWartenStattRueckfall() {
+			fromLost, toLost, applied, err, haltbar = cs.transferConcurrentWALGesperrt(from, to, amount, pendingTxTemplate, true)
+			if err == errShardBelegt { // kann mit warten=true nicht vorkommen
+				err = nil
+			}
+			if applied && err == nil {
+				fbShardGewartet.Add(1)
+			}
+		}
+	}
 	if haltbar == nil {
 		return fromLost, toLost, applied, err
 	}
@@ -373,7 +387,10 @@ var walFlushOhneHaltbarkeit atomic.Int64
 
 // transferConcurrentWALGesperrt ist der Teil unter den Sperren. haltbar ist
 // nil, wenn nichts aufgenommen wurde (Rueckfall oder Ablehnung).
-func (cs *ChainState) transferConcurrentWALGesperrt(from, to string, amount float64, pendingTxTemplate Transaction) (fromLost, toLost float64, applied bool, err error, haltbar <-chan error) {
+//
+// warten=true wartet blockierend auf die Konten-Shards statt bei belegtem
+// Shard mit errShardBelegt zurueckzukehren (shardWartenStattRueckfall).
+func (cs *ChainState) transferConcurrentWALGesperrt(from, to string, amount float64, pendingTxTemplate Transaction, warten bool) (fromLost, toLost float64, applied bool, err error, haltbar <-chan error) {
 	if cs.wal == nil || walSchnellpfadDefekt.Load() {
 		fbKeinWAL.Add(1)
 		return 0, 0, false, nil, nil
@@ -472,11 +489,17 @@ func (cs *ChainState) transferConcurrentWALGesperrt(from, to string, amount floa
 	phMark = time.Now()
 	// Kurz wiederholen statt sofort aufzugeben -- siehe shard_wiederholung.go:
 	// ein Rueckfall kostet gemessen rund 800 ms, das Warten hoechstens 1 ms.
-	unlock, ok := cs.sperreMitKurzerWiederholung(from, to)
+	var unlock func()
+	ok := true
+	if warten {
+		unlock = cs.accounts.LockAddrs(from, to)
+	} else {
+		unlock, ok = cs.sperreMitKurzerWiederholung(from, to)
+	}
 	ph.lock = time.Since(phMark)
 	if !ok {
 		fbShardBelegt.Add(1)
-		return 0, 0, false, nil, nil
+		return 0, 0, false, errShardBelegt, nil
 	}
 	defer unlock()
 	phMark = time.Now()
