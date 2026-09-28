@@ -132,7 +132,7 @@ jobs:
             # of a running container.
             echo "=== disk before deploy ==="
             df -h / | tail -1
-            docker builder prune -af --max-used-space 10GB >/dev/null 2>&1 || docker builder prune -af >/dev/null 2>&1 || true
+            if docker builder prune -af --max-used-space 10GB >/tmp/prune.out 2>&1; then tail -2 /tmp/prune.out; else tail -2 /tmp/prune.out; echo "--max-used-space fehlgeschlagen -- Rueckfall: --filter until=72h (#214)"; docker builder prune -af --filter until=72h 2>&1 | tail -2 || true; fi
             # Record which commit this image is built from. The Dockerfile reads
             # this file when no --build-arg GIT_COMMIT is passed, which is the
             # case here because the build happens inside the box-side script and
@@ -181,7 +181,7 @@ jobs:
             # of continuing the line -- a trap already documented in
             # diagnose-tps-ceiling-contabo2.yml after it silently mangled a
             # command there.
-            if docker builder prune -af --max-used-space 10GB >/tmp/prune.out 2>/dev/null; then tail -2 /tmp/prune.out; else docker builder prune -af 2>/dev/null | tail -2 || echo "(builder prune unavailable - watch disk usage manually)"; fi
+            if docker builder prune -af --max-used-space 10GB >/tmp/prune.out 2>&1; then tail -2 /tmp/prune.out; else tail -2 /tmp/prune.out; echo "--max-used-space fehlgeschlagen -- Rueckfall: --filter until=72h (#214)"; docker builder prune -af --filter until=72h 2>&1 | tail -2 || echo "(builder prune unavailable - watch disk usage manually)"; fi
             echo "=== disk after deploy ==="
             df -h / | tail -1
           script_stop: true
@@ -295,3 +295,21 @@ jobs:
             exit 1
           fi
           echo "OK: node is alive and advancing."
+      # #214: alte Images blieben auf C2 liegen (8,4 GB am 29.09.2026). Nur nach
+      # erfolgreichem Deploy und Pruefung; entfernt nur Images ohne Container.
+      - name: Remove unused images on Contabo2 (after a successful deploy)
+        continue-on-error: true
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          script_stop: false
+          timeout: 300s
+          command_timeout: 300s
+          script: |
+            df -h / | tail -1
+            docker image prune -af 2>&1 | tail -2 || echo "(image prune fehlgeschlagen)"
+            df -h / | tail -1
