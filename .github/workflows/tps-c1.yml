@@ -118,7 +118,7 @@ jobs:
         run: |
           echo "--- C1: Takte ohne Block, nach Grund (seit Knotenstart) ---"
           ssh -i ~/.ssh/c1 -o BatchMode=yes root@188.172.229.121 \
-            "curl -s -m 10 http://127.0.0.1:8080/api/health/combined | jq -c '{produktions_ausfaelle, exclusive_lock}'" | head -c 4000 || true
+            "curl -s -m 10 http://127.0.0.1:8080/api/health/combined | jq -c '{produktions_ausfaelle, exclusive_lock, fallback_gruende, signierte_ueberweisungen, rueckstau: (.rueckstau|{aktuell,grenze,abgelehnt})}'" | head -c 4000 || true
           echo
           echo "--- C2: Nachspielen (replay_phasen, replay_schlimmster) ---"
           ssh -i ~/.ssh/c2 -o BatchMode=yes root@194.163.188.71 \
