@@ -132,7 +132,7 @@ jobs:
             # of a running container.
             echo "=== disk before deploy ==="
             df -h / | tail -1
-            if docker builder prune -af --max-used-space 10GB >/tmp/prune.out 2>&1; then tail -2 /tmp/prune.out; else tail -2 /tmp/prune.out; echo "--max-used-space fehlgeschlagen -- Rueckfall: --filter until=72h (#214)"; docker builder prune -af --filter until=72h 2>&1 | tail -2 || true; fi
+            if docker builder prune -af --max-used-space 10GB >/tmp/prune.out 2>&1; then tail -2 /tmp/prune.out; else tail -2 /tmp/prune.out; echo "--max-used-space fehlgeschlagen"; fi; echo "zusaetzlich: --filter until=72h (#214)"; docker builder prune -af --filter until=72h 2>&1 | tail -2 || echo "(builder prune fehlgeschlagen)"
             # Record which commit this image is built from. The Dockerfile reads
             # this file when no --build-arg GIT_COMMIT is passed, which is the
             # case here because the build happens inside the box-side script and
@@ -181,7 +181,7 @@ jobs:
             # of continuing the line -- a trap already documented in
             # diagnose-tps-ceiling-contabo2.yml after it silently mangled a
             # command there.
-            if docker builder prune -af --max-used-space 10GB >/tmp/prune.out 2>&1; then tail -2 /tmp/prune.out; else tail -2 /tmp/prune.out; echo "--max-used-space fehlgeschlagen -- Rueckfall: --filter until=72h (#214)"; docker builder prune -af --filter until=72h 2>&1 | tail -2 || echo "(builder prune unavailable - watch disk usage manually)"; fi
+            if docker builder prune -af --max-used-space 10GB >/tmp/prune.out 2>&1; then tail -2 /tmp/prune.out; else tail -2 /tmp/prune.out; echo "--max-used-space fehlgeschlagen"; fi; echo "zusaetzlich: --filter until=72h (#214)"; docker builder prune -af --filter until=72h 2>&1 | tail -2 || echo "(builder prune fehlgeschlagen)"
             echo "=== disk after deploy ==="
             df -h / | tail -1
           script_stop: true

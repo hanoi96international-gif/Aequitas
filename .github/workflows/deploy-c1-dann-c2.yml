@@ -93,10 +93,12 @@ jobs:
           ssh -o BatchMode=yes -o ServerAliveInterval=30 root@194.163.188.71 '
             set -euo pipefail
             grep -qx "ANNAHME_ROLLE=nur_lesend" /root/.aequitas.env || { echo "ABBRUCH: ANNAHME_ROLLE=nur_lesend fehlt in /root/.aequitas.env"; exit 1; }
-            # Build-Cache begrenzen und das Ergebnis LOGGEN (#214): 48 GB hatten sich
-            # angesammelt, weil ein Fehlschlag hier stumm verschluckt wurde.
+            # Build-Cache begrenzen und das Ergebnis LOGGEN (#214). Auf C2 (Docker
+            # 29.6.1) wird --max-used-space angenommen, raeumt aber nichts (26.09.:
+            # "Total: 0B" bei 78 % Platte; 29.09.: 48 GB Cache). Deshalb danach
+            # immer auch alles aelter als 72 h -- juengerer Cache bleibt fuer schnelle Builds.
             echo "=== Build-Cache vor dem Bau ==="
-            if docker builder prune -af --max-used-space 10GB >/tmp/prune.out 2>&1; then tail -2 /tmp/prune.out; else tail -2 /tmp/prune.out; echo "--max-used-space fehlgeschlagen -- Rueckfall: --filter until=72h"; docker builder prune -af --filter until=72h 2>&1 | tail -2 || echo "(builder prune fehlgeschlagen)"; fi
+            if docker builder prune -af --max-used-space 10GB >/tmp/prune.out 2>&1; then tail -2 /tmp/prune.out; else tail -2 /tmp/prune.out; echo "--max-used-space fehlgeschlagen"; fi; echo "zusaetzlich: --filter until=72h"; docker builder prune -af --filter until=72h 2>&1 | tail -2 || echo "(builder prune fehlgeschlagen)"
             /root/deploy_safe_c2.sh
             docker inspect aequitas-node --format "{{range .Config.Env}}{{println .}}{{end}}" | grep -E "^(ANNAHME_ROLLE|PRIMARY_NODE_URLS|PROOF_SERVER_URLS)=" | sort
             for i in $(seq 1 60); do
