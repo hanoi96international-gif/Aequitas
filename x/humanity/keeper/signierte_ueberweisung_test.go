@@ -331,3 +331,60 @@ func TestSignierteUeberweisung_VorpruefungWartetNichtAufFlush(t *testing.T) {
 		t.Fatal("Uebersprungen-Zaehler nicht erhoeht")
 	}
 }
+
+// Dasselbe fuer cs.mu (28.09.2026): Blockbau und Buchungslaeufe halten die
+// globale Sperre schreibend, und ein RWMutex laesst neue Leser auch dann
+// warten, wenn ein Schreiber nur WARTET. Die Vorpruefung stand damit hinter
+// jedem Block an -- 52 von 106 ms je Ueberweisung.
+func TestSignierteUeberweisung_VorpruefungWartetNichtAufZustandssperre(t *testing.T) {
+	a := neuerTestSchluessel(t)
+	cs := newTestState()
+	cs.mu.Lock()
+	cs.accounts.Set(a.addr, &AccountState{Address: a.addr, Balance: NewDecimal(1), NaechsteNonce: 10})
+	cs.mu.Unlock()
+
+	pruefe := func(name string) {
+		t.Helper()
+		vorher := annahmeNonceVorpruefungOhneZustand.Load()
+		fertig := make(chan error, 1)
+		go func() { fertig <- cs.pruefeAnnahmeNonce(a.addr, 9) }()
+		select {
+		case err := <-fertig:
+			if err != nil {
+				t.Fatalf("%s: Vorpruefung sollte entfallen, lieferte %v", name, err)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatalf("%s: Vorpruefung wartet auf cs.mu", name)
+		}
+		if annahmeNonceVorpruefungOhneZustand.Load() != vorher+1 {
+			t.Fatalf("%s: Zaehler ohne_zustand nicht erhoeht", name)
+		}
+	}
+
+	// 1) Ein Schreiber haelt cs.mu (Blockbau).
+	cs.mu.Lock()
+	pruefe("Schreiber haelt")
+	cs.mu.Unlock()
+
+	// 2) Ein Leser haelt, ein Schreiber wartet -- neue RLock-Aufrufe
+	// blockierten hier, obwohl gerade niemand schreibt.
+	cs.mu.RLock()
+	schreiberDa := make(chan struct{})
+	schreiberFertig := make(chan struct{})
+	go func() {
+		close(schreiberDa)
+		cs.mu.Lock()
+		cs.mu.Unlock()
+		close(schreiberFertig)
+	}()
+	<-schreiberDa
+	time.Sleep(50 * time.Millisecond) // der Schreiber steht jetzt in Lock()
+	pruefe("Schreiber wartet")
+	cs.mu.RUnlock()
+	<-schreiberFertig
+
+	// 3) Frei: die Vorpruefung greift wieder.
+	if err := cs.pruefeAnnahmeNonce(a.addr, 9); err == nil {
+		t.Fatal("freie Sperren: verbrauchte Nonce nicht abgelehnt")
+	}
+}
