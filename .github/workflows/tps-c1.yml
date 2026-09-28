@@ -113,6 +113,17 @@ jobs:
               ([ "gesamt_ms","laden_ms","sperren_ms","db_paar_ms","bauen_ms","speichern_ms","verteilen_ms","rest_ms" ]
                | map({key: ., value: ((($n[.] * $n.bloecke) - (($v[.] // 0) * ($v.bloecke // 0))) / $d | . * 10 | round / 10)}) | from_entries)
               + {bloecke: $d, schlimmster_ms: $n.schlimmster_ms, schlimmster_tx: $n.schlimmster_tx} end' || true
+      - name: Warum kein Block (C1) und haelt C2 beim Nachspielen mit
+        if: always()
+        run: |
+          echo "--- C1: Takte ohne Block, nach Grund (seit Knotenstart) ---"
+          ssh -i ~/.ssh/c1 -o BatchMode=yes root@188.172.229.121 \
+            "curl -s -m 10 http://127.0.0.1:8080/api/health/combined | jq -c '.produktions_ausfaelle'" | head -c 3000 || true
+          echo
+          echo "--- C2: Nachspielen (replay_phasen, replay_schlimmster) ---"
+          ssh -i ~/.ssh/c2 -o BatchMode=yes root@194.163.188.71 \
+            "curl -s -m 10 http://127.0.0.1:8080/api/health/combined | jq -c '{replay_phasen, replay_schlimmster}'" | head -c 3000 || true
+          echo
       - name: C2 folgt?
         if: always()
         run: |
