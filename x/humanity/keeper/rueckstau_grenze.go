@@ -42,7 +42,8 @@ import (
 // Haengt der Messer oder ist die Datenbank weg, waechst der Zaehler weiter
 // und die Annahme schliesst sich von selbst -- fail closed.
 //
-//	AEQUITAS_RUECKSTAU_MAX   Obergrenze in Ueberweisungen (Vorgabe 1 x Blockdeckel, 0 = aus)
+//	AEQUITAS_RUECKSTAU_MAX   Obergrenze in Ueberweisungen (Vorgabe: was der naechste
+//	                         Takt baut, siehe rueckstauBloeckeJeTakt; 0 = aus)
 
 const rueckstauTakt = 200 * time.Millisecond
 
@@ -60,6 +61,42 @@ func rueckstauMax() int64 {
 		if n, err := strconv.ParseInt(raw, 10, 64); err == nil && n >= 0 {
 			return n
 		}
+	}
+	return int64(rueckstauBloeckeJeTakt()) * rueckstauDeckel()
+}
+
+// MIT MEHREREN BLOECKEN JE TAKT (28.09.2026).
+//
+// "Alles Angenommene passt in den naechsten Block" war richtig, solange je
+// Takt ein Block entstand. Mit ENABLE_MULTI_BLOCK_TICK=1 baut der Knoten aber
+// bis zu 1+maxExtraBlocksPerTick Bloecke im selben Takt -- und zwar nur, wenn
+// der vorige VOLL war. Eine Grenze von einem Block laesst nie genug fuer einen
+// vollen Block uebrig, sobald der erste die Warteschlange geleert hat: der
+// Zusatzblock entstand nie. Gemessen am 27.09.: 55 Bloecke im Mittel 4.153,
+// der groesste 6.464 bei Deckel 7.000 -- kein einziger voll, trotz 9.202
+// Ablehnungen "server busy". Die Kette stand damit bei rund 4.000 statt bis
+// zu 5 x 7.000 Ueberweisungen/s.
+//
+// Die Zusage bleibt dieselbe, nur je TAKT statt je Block: alles Angenommene
+// passt in das, was der naechste Takt baut. Greift eine Bremse (Peer-Lag,
+// Eigenlast), entstehen keine Zusatzbloecke (blockVollAmDeckel) -- dann ist
+// es wieder ein Block, und zwar mit dem gebremsten Deckel, damit der Knoten
+// nicht mehr annimmt, als der schonungsbeduerftige Partner verkraftet.
+func rueckstauBloeckeJeTakt() int {
+	if os.Getenv("ENABLE_MULTI_BLOCK_TICK") != "1" {
+		return 1
+	}
+	if d := blockDeckelZuletzt.Load(); d > 0 && !blockDeckelZuletztUngebremst.Load() {
+		return 1 // gebremst: keine Zusatzbloecke
+	}
+	return 1 + maxExtraBlocksPerTick
+}
+
+// rueckstauDeckel: der Deckel des zuletzt gebauten Blocks (gebremst oder
+// nicht), vor dem ersten Block der harte Deckel.
+func rueckstauDeckel() int64 {
+	if d := blockDeckelZuletzt.Load(); d > 0 {
+		return d
 	}
 	return int64(blockTxHartDeckel())
 }
