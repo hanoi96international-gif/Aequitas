@@ -35,8 +35,10 @@ import "fmt"
 const (
 	zeitstempelZukunftToleranz int64 = 120
 	zeitstempelRueckToleranz   int64 = 120
-	// 2026-10-01 00:00:00 UTC.
-	zeitstempelPruefungAbUnix int64 = 1790812800
+	// 2026-09-30 00:00:00 UTC -- so frueh wie moeglich: bis zum Stichtag kann
+	// ein Produzent noch vor die Signaturpflicht zurueckdatieren (K-2
+	// Inventar, Punkt B). Ehrliche Bloecke erfuellen die Regel ohnehin.
+	zeitstempelPruefungAbUnix int64 = 1790726400
 )
 
 func zeitstempelZukunft(blockZeit, jetzt int64) string {
