@@ -66,6 +66,21 @@ func nullifierSchluessel(s string) string {
 	return strings.TrimPrefix(strings.ToLower(strings.TrimSpace(s)), "0x")
 }
 
+// herkunftsSchluessel: die kanonische Zahl des Nullifiers (nullifier_canonical.go),
+// nicht seine Schreibweise. Bis 29.09.2026 stand hier nullifierSchluessel -- es
+// entfernte nur "0x". Damit galt eine /prove-Herkunft fuer N auch fuer "0x"+N,
+// eine ANDERE Zahl, und zusammen mit der fehlenden Bindung an pubSignals
+// (registerOnV7) liess sich mit einem ehrlichen /prove eine zweite Wallet mit
+// selbst erzeugtem Beweis registrieren. Unlesbares ergibt "" und damit nie
+// eine Herkunft.
+func herkunftsSchluessel(s string) string {
+	c, err := canonicalNullifier(s)
+	if err != nil {
+		return ""
+	}
+	return c
+}
+
 // merkeProveHerkunft liest den Nullifier aus einer erfolgreichen
 // /prove-Antwort und haelt ihn fest.
 //
@@ -80,8 +95,12 @@ func merkeProveHerkunft(respBody []byte) {
 	if err := json.Unmarshal(respBody, &b); err != nil || b.ZKNullifier == "" {
 		return
 	}
+	schluessel := herkunftsSchluessel(b.ZKNullifier)
+	if schluessel == "" {
+		return
+	}
 	jetzt := time.Now()
-	proveHerkunft.Store(nullifierSchluessel(b.ZKNullifier), jetzt)
+	proveHerkunft.Store(schluessel, jetzt)
 
 	// Beim Schreiben aufraeumen statt per Zeitgeber: die Menge ist klein, und
 	// ein Zeitgeber waere eine Goroutine mehr fuer nichts.
@@ -110,7 +129,11 @@ func proveHerkunftVerlangt() bool {
 // hatProveHerkunft prueft, ob dieser Nullifier aus einem /prove dieses Knotens
 // stammt und noch nicht verfallen ist.
 func hatProveHerkunft(nullifier string) bool {
-	v, ok := proveHerkunft.Load(nullifierSchluessel(nullifier))
+	schluessel := herkunftsSchluessel(nullifier)
+	if schluessel == "" {
+		return false
+	}
+	v, ok := proveHerkunft.Load(schluessel)
 	if !ok {
 		return false
 	}
