@@ -32,7 +32,7 @@ jobs:
           ssh-keyscan 194.163.188.71 2>/dev/null > ~/.ssh/k2
           ssh-keygen -lf ~/.ssh/k2 | awk '{print $2}' | grep -qx 'SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto'
           cat ~/.ssh/k1 ~/.ssh/k2 > ~/.ssh/known_hosts
-      - name: Entscheidungen im Protokoll (seit 08:30 UTC)
+      - name: Ablauf mit Zeitstempeln (29.09. 11:03-11:13 UTC)
         run: |
           for box in c1:188.172.229.121 c2:194.163.188.71; do
             k=${box%%:*}; h=${box#*:}
@@ -41,7 +41,7 @@ jobs:
           docker ps --format '{{.Names}}' | grep -E 'coordinator|matching' || true
           for c in $(docker ps --format '{{.Names}}' | grep -E 'coordinator|matching'); do
             echo "--- $c ---"
-            docker logs --since 2026-09-27T08:30:00Z "$c" 2>&1 | grep -iE 'decision|quorum|new_candidate|duplicate|propose|vote|timeout|error|fehl' | grep -viE 'health' | tail -25
+            docker logs --timestamps --since 2026-09-29T11:03:00Z --until 2026-09-29T11:13:00Z "$c" 2>&1 | grep -viE 'GET /health|/health HTTP' | tail -80
           done
           SKRIPT
           done
