@@ -4974,6 +4974,15 @@ func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
 		}
 	}
 
+	// Signaturen der Ueberweisungen schon jetzt anstossen: der Block ist vom
+	// berechtigten Erzeuger signiert und nicht doppelt. Ein Kind, das vor
+	// seinem Elternblock ankommt, wird unten zur Waise und erst nach dem
+	// Elternteil wieder vorgelegt -- mit demselben *Block, also mit fertig
+	// gepruefter Signatur. Gemessen 29.09.2026 auf C2: nur 180 von 901
+	// Bloecken trafen die Vorabpruefung, jeder andere pruefte 7.000
+	// Signaturen im Nachspielen selbst (700-1.200 ms je Block).
+	starteSignaturVorpruefung(block)
+
 	// FIX (P0, 2026-07-10): record that we genuinely heard from this authorized
 	// validator right now — BEFORE any of the gates below (finality, suspension,
 	// missing-parent, GHOSTDAG) get a chance to reject the block for an entirely

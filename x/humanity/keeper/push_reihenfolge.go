@@ -22,11 +22,26 @@ import (
 // Annahme lehnte ab.
 //
 // Jetzt hat jeder Partner eine Warteschlange und EINE Goroutine, die sie
-// abarbeitet: ein Block geht erst raus, wenn der vorige beantwortet ist. Der
-// Partner bekommt die Eltern immer vor den Kindern. Ist die Schlange voll
-// (Partner haengt), faellt der Push auf den alten Weg zurueck -- lieber eine
-// Waise als ein Takt, der auf einen toten Partner wartet.
-const pushSchlangeTiefe = 64
+// abarbeitet: die Pushes STARTEN in Produktionsreihenfolge, hoechstens
+// pushFenster zugleich. Ist die Schlange voll (Partner haengt), faellt der
+// Push auf den alten Weg zurueck -- lieber eine Waise als ein Takt, der auf
+// einen toten Partner wartet.
+//
+// # WARUM EIN FENSTER UND NICHT STRENG EINER NACH DEM ANDEREN
+//
+// Streng nacheinander (29.09.2026, erste Fassung) wartete jeder Push auf die
+// Antwort des vorigen, und der Partner antwortet erst nach dem Nachspielen.
+// Die Signaturpruefung des naechsten Blocks konnte damit nicht mehr neben dem
+// Nachspielen des vorigen laufen: auf C2 traf sie nur 180 von 901 Bloecken,
+// ein voller Block brauchte 700-1.200 ms, C2 fiel bis 33 Hoehen zurueck.
+// Mit einem Fenster laufen bis zu pushFenster Bloecke gleichzeitig an; ein
+// Kind, das vor seinem Elternteil fertig empfangen ist, wird beim Partner
+// kurz zur Waise und sofort nach dem Elternblock wieder vorgelegt
+// (popOrphans in AddPeerBlock) -- mit bereits gepruefter Signatur.
+const (
+	pushSchlangeTiefe = 64
+	pushFenster       = 4
+)
 
 var (
 	pushSchlangenMu sync.Mutex
@@ -46,8 +61,14 @@ func pushGeordnet(peerURL string, arbeit func()) {
 		ch = make(chan func(), pushSchlangeTiefe)
 		pushSchlangen[peerURL] = ch
 		SafeGoroutine("push-"+peerURL, func() {
+			plaetze := make(chan struct{}, pushFenster)
 			for a := range ch {
-				SafeCall("push-arbeit", a)
+				plaetze <- struct{}{} // in Reihenfolge starten, hoechstens pushFenster zugleich
+				a := a
+				SafeGoroutine("push-arbeit", func() {
+					defer func() { <-plaetze }()
+					a()
+				})
 			}
 		})
 	}

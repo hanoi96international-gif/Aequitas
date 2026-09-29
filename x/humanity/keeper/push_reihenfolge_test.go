@@ -1,6 +1,7 @@
 package keeper
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -8,25 +9,34 @@ import (
 	"time"
 )
 
-// Je Partner kommt die Arbeit in der Reihenfolge an, in der sie eingereiht
-// wurde -- auch wenn einzelne Pushes unterschiedlich lange brauchen.
-func TestPushGeordnet_ReihenfolgeJePartner(t *testing.T) {
+// Je Partner starten die Pushes in Reihenfolge -- hoechstens ein Fenster
+// daneben -- und nie mehr als pushFenster zugleich.
+func TestPushGeordnet_StartReihenfolgeUndFenster(t *testing.T) {
 	var mu sync.Mutex
-	var gesehen []int
-	fertig := make(chan struct{})
+	var gestartet []int
+	var laufend, hoechst int
+	var wg sync.WaitGroup
 	const n = 40
+	wg.Add(n)
 	for i := 0; i < n; i++ {
 		i := i
 		pushGeordnet("test://reihenfolge", func() {
-			time.Sleep(time.Duration((n-i)%5) * time.Millisecond) // fruehe langsamer
+			defer wg.Done()
 			mu.Lock()
-			gesehen = append(gesehen, i)
-			if len(gesehen) == n {
-				close(fertig)
+			gestartet = append(gestartet, i)
+			laufend++
+			if laufend > hoechst {
+				hoechst = laufend
 			}
+			mu.Unlock()
+			time.Sleep(time.Duration(1+(n-i)%5) * time.Millisecond)
+			mu.Lock()
+			laufend--
 			mu.Unlock()
 		})
 	}
+	fertig := make(chan struct{})
+	go func() { wg.Wait(); close(fertig) }()
 	select {
 	case <-fertig:
 	case <-time.After(10 * time.Second):
@@ -34,10 +44,23 @@ func TestPushGeordnet_ReihenfolgeJePartner(t *testing.T) {
 	}
 	mu.Lock()
 	defer mu.Unlock()
-	for i, v := range gesehen {
-		if v != i {
-			t.Fatalf("Position %d: Push %d -- Reihenfolge verletzt: %v", i, v, gesehen)
+	// Garantiert ist: ein Push startet erst, wenn alle mehr als ein Fenster
+	// frueheren fertig sind. Innerhalb des Fensters entscheidet der
+	// Scheduler; ein Kind, das dadurch vor seinem Elternteil ankommt, legt
+	// der Partner nach dem Elternblock sofort wieder vor.
+	if len(gestartet) != n {
+		t.Fatalf("%d von %d gestartet", len(gestartet), n)
+	}
+	for pos, v := range gestartet {
+		if d := pos - v; d >= pushFenster || -d >= pushFenster {
+			t.Fatalf("Push %d an Position %d gestartet -- mehr als ein Fenster (%d) daneben: %v", v, pos, pushFenster, gestartet)
 		}
+	}
+	if hoechst > pushFenster {
+		t.Fatalf("%d Pushes zugleich, Fenster %d", hoechst, pushFenster)
+	}
+	if hoechst < 2 {
+		t.Fatalf("hoechstens %d zugleich -- das Fenster wird nicht genutzt", hoechst)
 	}
 }
 
@@ -46,16 +69,24 @@ func TestPushGeordnet_ReihenfolgeJePartner(t *testing.T) {
 func TestPushGeordnet_VolleSchlangeBlockiertNicht(t *testing.T) {
 	halt := make(chan struct{})
 	defer close(halt)
+	// Ein eigener Partner je Lauf: sonst zaehlen die Schlangen frueherer Laeufe
+	// (-count) mit.
+	partner := fmt.Sprintf("test://haengt-%d", time.Now().UnixNano())
+	// Aufnahmefaehig sind die Schlange, die pushFenster laufenden Pushes und
+	// der eine, den der Verteiler schon herausgenommen hat und der auf einen
+	// Platz wartet. Alles darueber MUSS ueberlaufen -- wie viel genau, haengt
+	// nur davon ab, wie schnell der Verteiler herausnimmt.
+	fassung := pushSchlangeTiefe + pushFenster + 1
 	vorher := pushUeberlauf.Load()
 	start := time.Now()
-	for i := 0; i < pushSchlangeTiefe+5; i++ {
-		pushGeordnet("test://haengt", func() { <-halt })
+	for i := 0; i < fassung+5; i++ {
+		pushGeordnet(partner, func() { <-halt })
 	}
 	if d := time.Since(start); d > time.Second {
 		t.Fatalf("pushGeordnet blockierte %v bei haengendem Partner", d)
 	}
-	if pushUeberlauf.Load()-vorher < 4 {
-		t.Fatalf("Ueberlauf %d, erwartet mindestens 4", pushUeberlauf.Load()-vorher)
+	if n := pushUeberlauf.Load() - vorher; n < 5 {
+		t.Fatalf("Ueberlauf %d, erwartet mindestens 5 (Fassung %d, eingereiht %d)", n, fassung, fassung+5)
 	}
 }
 
