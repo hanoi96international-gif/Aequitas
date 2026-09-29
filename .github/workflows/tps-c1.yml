@@ -59,7 +59,7 @@ jobs:
         run: |
           nohup bash -c 'while true; do
             ssh -i ~/.ssh/c1 -o BatchMode=yes root@188.172.229.121 \
-              "curl -s -m 2 http://127.0.0.1:8080/api/health/combined | jq -c \"{t: now|floor, r: .rueckstau.aktuell, g: .rueckstau.grenze, cap: .peer_lag_bremse.letzter_cap, lag: .peer_lag_bremse.letzter_rueckstand, eig: .eigenlast_bremse.deckel}\"" 2>/dev/null
+              "curl -s -m 2 http://127.0.0.1:8080/api/health/combined | jq -c \"{t: now|floor, r: .rueckstau.aktuell, gem: .rueckstau.gemessen, g: .rueckstau.grenze, cap: .peer_lag_bremse.letzter_cap, lag: .peer_lag_bremse.letzter_rueckstand, eig: .eigenlast_bremse.deckel}\"" 2>/dev/null
             sleep 1; done' > /tmp/rueckstau.log 2>&1 &
           echo $! > /tmp/rueckstau.pid
       - name: Last von C2 auf C1
@@ -88,6 +88,11 @@ jobs:
           docker logs --since "$START" aequitas-node 2>&1 | grep -F '[RPC] ⚡' | tail -30 || true
           echo "--- langsamste Ticks ---"
           docker logs --since "$START" aequitas-node 2>&1 | grep -F '[BLOCK] ⏱' | tail -8 || true
+          echo "--- Laden/Vorladen/Push im Fenster (Anzahl je Muster, dann Beispiele) ---"
+          for m in 'LoadPendingTxs' 'Vorladung' 'stale-included' 'push' 'Push' 'timeout' 'HTTP push'; do
+            printf '%s: ' "$m"; docker logs --since "$START" aequitas-node 2>&1 | grep -c -- "$m" || true
+          done
+          docker logs --since "$START" aequitas-node 2>&1 | grep -E 'LoadPendingTxs|Vorladung|stale-included|push.*(fail|✗|error)|✗' | tail -15 || true
           echo "--- Warnungen ---"
           docker logs --since "$START" aequitas-node 2>&1 | grep -E 'panic|FATAL|ivergen' | tail -10 || true
           echo "--- Last auf C1 ---"
@@ -103,7 +108,7 @@ jobs:
           echo "--- Rueckstau (angenommen, noch in keinem Block), je Sekunde ---"
           jq -s -c 'map(select(.r != null)) | {proben: length, max: (map(.r)|max), mittel: ((map(.r)|add) / (length|if .==0 then 1 else . end) | floor), grenze: (.[0].g // null)}' /tmp/rueckstau.log || cat /tmp/rueckstau.log | tail -5
           echo "--- je Sekunde: t r(rueckstau) g(grenze) cap(peer-lag) lag eig(eigenlast-deckel) ---"
-          jq -r 'select(.r != null) | "\(.t % 1000) r=\(.r) g=\(.g) cap=\(.cap) lag=\(.lag) eig=\(.eig)"' /tmp/rueckstau.log | head -90 || true
+          jq -r 'select(.r != null) | "\(.t % 1000) r=\(.r) gem=\(.gem) g=\(.g) cap=\(.cap) lag=\(.lag) eig=\(.eig)"' /tmp/rueckstau.log | head -90 || true
           echo "--- je Produktionsversuch im Messfenster: s txs deckel lag gesamt_ms sperren_ms (replay) grund ---"
           ab=$(date -d "$START" +%s)000
           ssh -i ~/.ssh/c1 -o BatchMode=yes root@188.172.229.121 \
@@ -135,6 +140,14 @@ jobs:
           ssh -i ~/.ssh/c2 -o BatchMode=yes root@194.163.188.71 \
             "curl -s -m 10 http://127.0.0.1:8080/api/health/combined | jq -c '{replay_phasen, replay_schlimmster}'" | head -c 3000 || true
           echo
+      - name: C2 im Fenster -- empfangene, abgelehnte, fehlende Bloecke
+        run: |
+          ssh -i ~/.ssh/c2 -o BatchMode=yes root@194.163.188.71 "START='$START' bash -s" <<'SKRIPT' || true
+          for m in 'AddPeerBlock' 'missing parent' 'orphan' 'Orphan' 'awaiting' 'rejected' '✗' 'timeout' 'fetchMissing' 'push'; do
+            printf '%s: ' "$m"; docker logs --since "$START" aequitas-node 2>&1 | grep -c -- "$m" || true
+          done
+          docker logs --since "$START" aequitas-node 2>&1 | grep -E '✗|missing|orphan|Orphan|awaiting|rejected|timeout' | sed -E 's/0x[0-9a-fA-F]{40}/0x…/g' | head -25 || true
+          SKRIPT
       - name: C2 folgt?
         if: always()
         run: |
