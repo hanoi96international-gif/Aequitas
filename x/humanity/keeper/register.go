@@ -402,6 +402,25 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 		return "", fmt.Errorf("only circuit version 3 is accepted: upgrade your app — v3 Poseidon nullifier is required")
 	}
 
+	// DER ANGEGEBENE NULLIFIER MUSS DER DES BEWEISES SEIN (29.09.2026).
+	//
+	// Bis hierhin fragte das niemand: die Herkunftspruefung unten las nur den
+	// angegebenen String, der Vertrag nimmt pubSignals[1] -- zwei verschiedene
+	// Werte. Wer einmal ehrlich /prove bestand (Nullifier N), konnte eine
+	// zweite Wallet mit "0x"+N und einem SELBST erzeugten Beweis anmelden: die
+	// Herkunft von N galt, "0x"+N war als andere Zahl noch frei, die
+	// bytes32-Kodierung fiel bei ueber 32 Byte still auf null, und der Vertrag
+	// akzeptierte nullifier==0 mit dem frischen pubSignals[1] des fremden
+	// Beweises. Ein Mensch, zwei Konten, zweimal 1.000 AEQ.
+	//
+	// Ab hier ist req.ZKNullifier die kanonische Zahl aus pubSignals[1] --
+	// dieselbe, die replayTransactions mit nullifierMatchesProof verlangt.
+	kanonisch, err := registrierungsNullifier(req.ZKNullifier, req.PubSignals)
+	if err != nil {
+		return "", err
+	}
+	req.ZKNullifier = kanonisch
+
 	// KAM DIESER BEWEIS AUS EINER GEPRUEFTEN REGISTRIERUNG?
 	//
 	// Bis zum 26.08.2026 fragte das hier niemand. Der Vertrag prueft, dass der
@@ -492,25 +511,12 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 	// v1 nullifiers are SHA256 hex strings ("0xabc..." or "abc...").
 	// v2 nullifiers are pubSignals[1] — a decimal integer string like "17579322874185".
 	// Both must be encoded as big-endian 32-byte integers for the contract.
-	var nullifierBytes [32]byte
-	if effectiveNullifier != "" {
-		n := new(big.Int)
-		if strings.HasPrefix(effectiveNullifier, "0x") || strings.HasPrefix(effectiveNullifier, "0X") {
-			// Explicit hex prefix → always parse as hex (v1 circuit SHA256 output)
-			n.SetString(strings.TrimPrefix(strings.TrimPrefix(effectiveNullifier, "0x"), "0X"), 16)
-		} else if req.CircuitVersion >= 2 {
-			// v2: decimal string (ZK-bound pubSignals[1])
-			if _, ok := n.SetString(effectiveNullifier, 10); !ok {
-				n.SetString(effectiveNullifier, 16)
-			}
-		} else {
-			// v1 without 0x prefix: SHA256 output is always hex
-			n.SetString(effectiveNullifier, 16)
-		}
-		b := n.Bytes()
-		if len(b) <= 32 {
-			copy(nullifierBytes[32-len(b):], b) // right-align (big-endian)
-		}
+	// nullifierBytes32 statt eigener Kodierung: sie schlug frueher bei ueber
+	// 32 Byte still auf null zurueck, und der Vertrag nimmt null als "keine
+	// Angabe". Jetzt ist ein nicht kodierbarer Nullifier ein Fehler.
+	nullifierBytes, err := nullifierBytes32(effectiveNullifier)
+	if err != nil {
+		return "", fmt.Errorf("nullifier: %w", err)
 	}
 
 	calldata, err := parsedABI.Pack("registerWithSig", pA, pB, pC, pubSignals, claimedHuman, sigBytes, nullifierBytes)

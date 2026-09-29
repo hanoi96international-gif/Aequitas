@@ -161,3 +161,17 @@ func nullifierBytes32(nullifier string) ([32]byte, error) {
 // the contract derives the nullifier from pubSignals[1] itself, so nothing
 // legitimate is affected by moving this earlier or later.
 const nullifierProofBindingActivationUnix = 1787097600
+
+// registrierungsNullifier: der Nullifier, unter dem /api/register eine
+// Anmeldung fuehrt -- nur, wenn er genau der ist, den der Beweis selbst
+// ausgibt (pubSignals[1]), und in kanonischer Form. Siehe registerOnV7.
+func registrierungsNullifier(angegeben string, pubSignals []string) (string, error) {
+	passt, err := nullifierMatchesProof(angegeben, pubSignals)
+	if err != nil {
+		return "", fmt.Errorf("nullifier: %w", err)
+	}
+	if !passt {
+		return "", fmt.Errorf("nullifier does not match the proof (pubSignals[1])")
+	}
+	return canonicalNullifier(pubSignals[1])
+}
