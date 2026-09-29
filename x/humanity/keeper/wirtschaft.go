@@ -601,8 +601,25 @@ func pruefeEmpfaengerWirtschaft(toArt kontoart, standVorher, zufluss float64, je
 
 // nachUeberweisung fuehrt Monatszaehler und Umsatz nach einer Ueberweisung.
 // Buchfuehrung, kein Konsens (siehe Kopf); gespeichert in der Transaktion aus ctx.
+// buchfuehrungNoetig: zwischen zwei freien Adressen bucht nachUeberweisung
+// nichts -- keiner der Faelle unten trifft, und Monatszaehler fuehren nur
+// Menschen und Unternehmen. Bis 29.09.2026 legte die Funktion trotzdem fuer
+// beide Adressen ein Buchkonto an und schrieb es in die Datenbank: beim
+// Nachspielen auf C2 drei Viertel der Zeit des Buendelpfads (buendel_teile:
+// buch 13,2 + buch_schreiben 12,4 von 34 ms je 1.000 Ueberweisungen), unter
+// der globalen Sperre. Gelesen wird ein solches Buchkonto nur ueber
+// kontoLocked, das es bei Bedarf gleich angelegt haette (Monat aktuell,
+// Zaehler null); Eingezahlt fuehrt nachEinzahlung unabhaengig davon. Kein
+// Buchkonto ist Teil des StateRoot.
+func buchfuehrungNoetig(fromArt, toArt kontoart) bool {
+	return fromArt != artFrei || toArt != artFrei
+}
+
 func (cs *ChainState) nachUeberweisung(ctx context.Context, from, to string, fromArt, toArt kontoart, amount, gebuehr, fromNach, toNach float64, jetzt int64) error {
 	if !wirtschaftAktiv(jetzt) || fromArt == artSystem || toArt == artSystem || amount <= 0 {
+		return nil
+	}
+	if !buchfuehrungNoetig(fromArt, toArt) {
 		return nil
 	}
 	w := cs.wirt()

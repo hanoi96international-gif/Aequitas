@@ -45,7 +45,10 @@ func (cs *ChainState) wirtschaftSchnellArten(from, to string, fromMensch, toMens
 
 // buchSchnell: genau das, was nachUeberweisung fuer Menschen und freie
 // Adressen bucht. seq: WAL-Folgenummer dieser Ueberweisung.
-func (cs *ChainState) buchSchnell(from, to string, fromArt kontoart, amount float64, at int64, seq uint64) {
+func (cs *ChainState) buchSchnell(from, to string, fromArt, toArt kontoart, amount float64, at int64, seq uint64) {
+	if !buchfuehrungNoetig(fromArt, toArt) {
+		return // wie nachUeberweisung: zwischen freien Adressen gibt es nichts zu buchen
+	}
 	w := cs.wirt()
 	w.mu.Lock()
 	defer w.mu.Unlock()

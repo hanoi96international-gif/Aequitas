@@ -569,7 +569,7 @@ func (cs *ChainState) transferConcurrentWALGesperrt(from, to string, amount floa
 	}
 
 	payload, err := json.Marshal(walTransferRecord{From: from, To: to, Amount: amount, Gebuehr: gebuehr, TxHash: pendingTxTemplate.TxHash, At: at, Roh: pendingTxTemplate.Roh,
-		Buch: regeln, BuchMensch: regeln && fromArt == artMensch})
+		Buch: regeln && buchfuehrungNoetig(fromArt, toArt), BuchMensch: regeln && fromArt == artMensch})
 	if err != nil {
 		fbKodierung.Add(1)
 		return 0, 0, false, nil, nil // encode failure -- nothing mutated, safe to fall back
@@ -611,7 +611,7 @@ func (cs *ChainState) transferConcurrentWALGesperrt(from, to string, amount floa
 	// Konten: die naechste Ueberweisung desselben Absenders sieht Ausgegeben
 	// schon erhoeht. Gespeichert wird sie mit dem Flush.
 	if regeln {
-		cs.buchSchnell(from, to, fromArt, amount, at, seq)
+		cs.buchSchnell(from, to, fromArt, toArt, amount, at, seq)
 		pendingTxTemplate.BuchAt = buchStempel(at)
 	}
 
