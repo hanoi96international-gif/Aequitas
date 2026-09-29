@@ -32,16 +32,23 @@ jobs:
           ssh-keyscan 194.163.188.71 2>/dev/null > ~/.ssh/k2
           ssh-keygen -lf ~/.ssh/k2 | awk '{print $2}' | grep -qx 'SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto'
           cat ~/.ssh/k1 ~/.ssh/k2 > ~/.ssh/known_hosts
-      - name: Ablauf mit Zeitstempeln (29.09. 11:03-11:13 UTC)
+      - name: Proof-Server: Modus, Schluesselzahl, Quorum (nur lesen)
         run: |
           for box in c1:188.172.229.121 c2:194.163.188.71; do
             k=${box%%:*}; h=${box#*:}
             echo "################ $k ################"
             ssh -i ~/.ssh/$k -o BatchMode=yes root@$h 'bash -s' <<'SKRIPT' | sed -E 's/[0-9a-fA-F]{10,}/#/g; s/0x[0-9a-fA-F]{8,}/0x…/g; s/W-[0-9A-Za-z]+/W-…/g; s/([0-9]{1,3}\.){3}[0-9]{1,3}/ip/g' | cut -c1-300
-          docker ps --format '{{.Names}}' | grep -E 'coordinator|matching' || true
-          for c in $(docker ps --format '{{.Names}}' | grep -E 'coordinator|matching'); do
-            echo "--- $c ---"
-            docker logs --timestamps --since 2026-09-29T11:03:00Z --until 2026-09-29T11:13:00Z "$c" 2>&1 | grep -viE 'GET /health|/health HTTP' | tail -80
+          for c in $(docker ps --format '{{.Names}}' | grep -E 'proof'); do
+            echo "--- $c: Einstellungen (Werte nur fuer Nicht-Geheimes, Schluessel nur gezaehlt) ---"
+            docker inspect "$c" --format '{{range .Config.Env}}{{println .}}{{end}}' \
+              | grep -E '^(BIO_ATTESTATION_MODE|BIO_ATTESTATION_QUORUM|BIO_ATTESTATION_MAX_AGE_SECONDS|NODE_ENV|CHAIN_BASE_URL)=' || true
+            for v in COORDINATOR_PUBLIC_KEYS PERSONHOOD_PUBLIC_KEYS; do
+              w=$(docker inspect "$c" --format '{{range .Config.Env}}{{println .}}{{end}}' | grep "^$v=" | cut -d= -f2- || true)
+              n=$(printf '%s' "$w" | tr ',' '\n' | grep -c . || true)
+              echo "$v: $n Eintraege"
+            done
+            echo "--- $c: /health durchsetzung ---"
+            docker exec "$c" sh -c 'wget -qO- --timeout=8 http://127.0.0.1:3000/health 2>/dev/null || wget -qO- --timeout=8 http://127.0.0.1:8081/health 2>/dev/null' | head -c 1500; echo
           done
           SKRIPT
           done
