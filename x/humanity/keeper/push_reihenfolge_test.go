@@ -1,6 +1,7 @@
 package keeper
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -68,16 +69,24 @@ func TestPushGeordnet_StartReihenfolgeUndFenster(t *testing.T) {
 func TestPushGeordnet_VolleSchlangeBlockiertNicht(t *testing.T) {
 	halt := make(chan struct{})
 	defer close(halt)
+	// Ein eigener Partner je Lauf: sonst zaehlen die Schlangen frueherer Laeufe
+	// (-count) mit.
+	partner := fmt.Sprintf("test://haengt-%d", time.Now().UnixNano())
+	// Aufnahmefaehig sind die Schlange, die pushFenster laufenden Pushes und
+	// der eine, den der Verteiler schon herausgenommen hat und der auf einen
+	// Platz wartet. Alles darueber MUSS ueberlaufen -- wie viel genau, haengt
+	// nur davon ab, wie schnell der Verteiler herausnimmt.
+	fassung := pushSchlangeTiefe + pushFenster + 1
 	vorher := pushUeberlauf.Load()
 	start := time.Now()
-	for i := 0; i < pushSchlangeTiefe+5; i++ {
-		pushGeordnet("test://haengt", func() { <-halt })
+	for i := 0; i < fassung+5; i++ {
+		pushGeordnet(partner, func() { <-halt })
 	}
 	if d := time.Since(start); d > time.Second {
 		t.Fatalf("pushGeordnet blockierte %v bei haengendem Partner", d)
 	}
-	if pushUeberlauf.Load()-vorher < 4 {
-		t.Fatalf("Ueberlauf %d, erwartet mindestens 4", pushUeberlauf.Load()-vorher)
+	if n := pushUeberlauf.Load() - vorher; n < 5 {
+		t.Fatalf("Ueberlauf %d, erwartet mindestens 5 (Fassung %d, eingereiht %d)", n, fassung, fassung+5)
 	}
 }
 
