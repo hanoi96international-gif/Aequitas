@@ -1,0 +1,37 @@
+name: Docker-Version auf C2 (nur lesen)
+
+# Nur lesend: Docker-/BuildKit-Version und Build-Cache-Stand auf C2
+# (194.163.188.71). Anlass #214: unklar, ob `docker builder prune
+# --max-used-space` auf C2 unterstuetzt wird. Kein Eingriff, keine andere Box.
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [fix/c2-build-cache-prune]
+    paths: [.github/workflows/docker-version-c2.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  lesen:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          script_stop: false
+          timeout: 120s
+          command_timeout: 120s
+          script: |
+            docker version --format 'Client {{.Client.Version}} (API {{.Client.APIVersion}}) | Server {{.Server.Version}} (API {{.Server.APIVersion}})'
+            docker buildx version 2>/dev/null || echo "(buildx nicht vorhanden)"
+            echo "--- unterstuetzt 'builder prune' --max-used-space? ---"
+            docker builder prune --help 2>&1 | grep -E 'max-used-space|keep-storage|reserved-space|filter' || true
+            echo "--- Stand ---"
+            docker system df
+            df -h / | tail -1

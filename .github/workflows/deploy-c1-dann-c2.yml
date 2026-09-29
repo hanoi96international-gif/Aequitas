@@ -93,7 +93,12 @@ jobs:
           ssh -o BatchMode=yes -o ServerAliveInterval=30 root@194.163.188.71 '
             set -euo pipefail
             grep -qx "ANNAHME_ROLLE=nur_lesend" /root/.aequitas.env || { echo "ABBRUCH: ANNAHME_ROLLE=nur_lesend fehlt in /root/.aequitas.env"; exit 1; }
-            docker builder prune -af --max-used-space 10GB >/dev/null 2>&1 || true
+            # Build-Cache begrenzen und das Ergebnis LOGGEN (#214). Auf C2 (Docker
+            # 29.6.1) wird --max-used-space angenommen, raeumt aber nichts (26.09.:
+            # "Total: 0B" bei 78 % Platte; 29.09.: 48 GB Cache). Deshalb danach
+            # immer auch alles aelter als 72 h -- juengerer Cache bleibt fuer schnelle Builds.
+            echo "=== Build-Cache vor dem Bau ==="
+            if docker builder prune -af --max-used-space 10GB >/tmp/prune.out 2>&1; then tail -2 /tmp/prune.out; else tail -2 /tmp/prune.out; echo "--max-used-space fehlgeschlagen"; fi; echo "zusaetzlich: --filter until=72h"; docker builder prune -af --filter until=72h 2>&1 | tail -2 || echo "(builder prune fehlgeschlagen)"
             /root/deploy_safe_c2.sh
             docker inspect aequitas-node --format "{{range .Config.Env}}{{println .}}{{end}}" | grep -E "^(ANNAHME_ROLLE|PRIMARY_NODE_URLS|PROOF_SERVER_URLS)=" | sort
             for i in $(seq 1 60); do
@@ -106,3 +111,13 @@ jobs:
           '
       - name: C2 lebt und die Hoehe steigt
         run: bash deploy/pruefe-knoten.sh http://194.163.188.71:8080
+      - name: C2 -- ungenutzte Images entfernen (nur nach erfolgreichem Deploy)
+        # #214: alte Images blieben auf C2 liegen (8,4 GB am 29.09.2026).
+        # Entfernt nur Images ohne Container; der laufende Knoten ist nicht betroffen.
+        continue-on-error: true
+        run: |
+          ssh -o BatchMode=yes -o ServerAliveInterval=30 root@194.163.188.71 '
+            df -h / | tail -1
+            docker image prune -af 2>&1 | tail -2 || echo "(image prune fehlgeschlagen)"
+            df -h / | tail -1
+          '
