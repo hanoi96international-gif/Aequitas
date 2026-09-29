@@ -3198,6 +3198,9 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 	// mehr laufen -- sie wuerde Ueberweisungen freigeben, die gerade in einem
 	// Block gelandet sind, und sie ein zweites Mal in einen naechsten bringen.
 	blockGespeichert = true
+	// Die Annahmegrenze sofort entlasten, nicht erst mit der naechsten
+	// Zaehlung -- siehe rueckstau_grenze.go (29.09.2026).
+	MerkeRueckstauVerblockt(len(pendingTxIDs))
 	// Ueberweisungsgebuehren dieses Blocks ans Grundeinkommen -- jetzt, wo
 	// die Ueberweisungen in einem gespeicherten Block stehen. Nachspielende
 	// Knoten schreiben sie beim Nachspielen genauso gut

@@ -13,10 +13,12 @@ func rueckstauTestAnfang(t *testing.T, grenze string) {
 	rueckstauMesserAn.Store(true)
 	rueckstauAktuell.Store(0)
 	rueckstauZugelassen.Store(0)
+	rueckstauEingeschlossen.Store(0)
 	t.Cleanup(func() {
 		rueckstauMesserAn.Store(alt)
 		rueckstauAktuell.Store(0)
 		rueckstauZugelassen.Store(0)
+		rueckstauEingeschlossen.Store(0)
 	})
 }
 
@@ -139,5 +141,60 @@ func TestRueckstau_GrenzeJeTaktMitMehrerenBloecken(t *testing.T) {
 	t.Setenv("AEQUITAS_RUECKSTAU_MAX", "12345")
 	if got := rueckstauMax(); got != 12345 {
 		t.Fatalf("ausdruecklich gesetzt: Grenze %d, erwartet 12345", got)
+	}
+}
+
+// Die Zaehlabfrage haengt, die Bloecke leeren den Rueckstau aber weiter:
+// jeder gespeicherte Block gibt seine Plaetze sofort frei. Gemessen am
+// 29.09.2026: 45 s ohne Messung, 0 Ueberweisungen je Block, alles mit
+// -32005 abgelehnt.
+func TestRueckstau_VerblocktesGibtFreiAuchOhneMessung(t *testing.T) {
+	rueckstauTestAnfang(t, "10")
+	rueckstauMessungUebernehmen(10, 0) // letzte Messung: voll
+	if rueckstauPlatzNehmen() == "" {
+		t.Fatal("bei vollem Rueckstand angenommen")
+	}
+	MerkeRueckstauVerblockt(6) // ein Block nimmt 6 mit -- keine neue Messung
+	for i := 0; i < 6; i++ {
+		if g := rueckstauPlatzNehmen(); g != "" {
+			t.Fatalf("Platz %d nach dem Block abgelehnt: %s", i, g)
+		}
+	}
+	if rueckstauPlatzNehmen() == "" {
+		t.Fatal("mehr angenommen, als der Block frei gemacht hat")
+	}
+	if s := rueckstauStand(); s != 10 {
+		t.Fatalf("Stand %d, erwartet 10 (10 gemessen + 6 zugelassen - 6 verblockt)", s)
+	}
+}
+
+// Fail closed bleibt: ohne gespeicherten Block wird nichts frei, egal wie
+// lange die Messung ausbleibt.
+func TestRueckstau_OhneBlockBleibtEsZu(t *testing.T) {
+	rueckstauTestAnfang(t, "5")
+	rueckstauMessungUebernehmen(5, 0)
+	for i := 0; i < 3; i++ {
+		if rueckstauPlatzNehmen() == "" {
+			t.Fatal("ohne Block und ohne Messung angenommen")
+		}
+	}
+}
+
+// Nach einer Messung zaehlt der Abzug neu: die Messung sieht die verblockten
+// Zeilen schon nicht mehr als offen.
+func TestRueckstau_MessungSetztAbzugZurueck(t *testing.T) {
+	rueckstauTestAnfang(t, "100")
+	rueckstauMessungUebernehmen(50, 0)
+	MerkeRueckstauVerblockt(30)
+	if s := rueckstauStand(); s != 20 {
+		t.Fatalf("Stand %d, erwartet 20", s)
+	}
+	rueckstauMessungUebernehmen(20, 0) // die Datenbank sagt dasselbe
+	if s := rueckstauStand(); s != 20 {
+		t.Fatalf("nach der Messung Stand %d, erwartet 20 -- doppelt abgezogen?", s)
+	}
+	MerkeRueckstauVerblockt(500) // mehr als je offen war
+	if s := rueckstauStand(); s != 0 {
+		t.Fatalf("Stand %d, erwartet 0 (nie negativ)", s)
 	}
 }
