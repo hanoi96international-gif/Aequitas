@@ -5106,8 +5106,14 @@ func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
 		dag.mu.Unlock()
 		return false
 	}
+	if grund := zeitstempelZukunft(block.Timestamp, time.Now().Unix()); grund != "" {
+		fmt.Printf("[DAG] ✗ Rejected peer block #%d: %s\n", block.Height, grund)
+		dag.mu.Unlock()
+		return false
+	}
 	if block.Height > 1 {
 		maxParentHeight := int64(-1)
+		maxParentZeit := int64(0)
 		missingParent := ""
 		// FIX (durable fix, 2026-07-03 — the actual deepest root cause behind
 		// tonight's whole "never merges" saga): this used to read dag.blocks[ph]
@@ -5138,6 +5144,9 @@ func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
 				// placeholder assigned at resync seeding, not this parent's real
 				// chain position.
 				hasStubParent = true
+			} else if parent.Timestamp > maxParentZeit {
+				// Ein Stumpf traegt einen Platzhalter, keine echte Zeit.
+				maxParentZeit = parent.Timestamp
 			}
 			if parent.Height > maxParentHeight {
 				maxParentHeight = parent.Height
@@ -5194,6 +5203,11 @@ func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
 			if age, tracked := dag.orphanAge(missingParent); !block.SelfFetched && !block.FromSync && !catchingUp && (!tracked || age >= proposerBreakerOrphanGrace) {
 				dag.recordProposerOutcome(block.Proposer, false)
 			}
+			return false
+		}
+		if grund := zeitstempelRueckdatiert(block.Timestamp, maxParentZeit); grund != "" {
+			fmt.Printf("[DAG] ✗ Rejected peer block #%d: %s\n", block.Height, grund)
+			dag.mu.Unlock()
 			return false
 		}
 		if maxParentHeight >= 0 && block.Height != maxParentHeight+1 {
