@@ -6,6 +6,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"time"
 )
 
 // SCALING_ARCHITECTURE.md roadmap step 6 — parallel replay.
@@ -259,14 +260,24 @@ func (cs *ChainState) applyTransferBatchParallel(ctx context.Context, batch []Tr
 	// sind unabhaengig davon, ab ihr uebernimmt der serielle Pfad (der ein
 	// fehlendes Empfaengerkonto anlegt und ein fehlendes Absenderkonto
 	// meldet).
+	teil := time.Now()
+	btAufrufe.Add(1)
 	items := make([]replayBatchItem, 0, len(batch))
 	for _, tx := range batch {
 		from := strings.ToLower(strings.TrimSpace(tx.Wallet))
 		to := strings.ToLower(strings.TrimSpace(tx.To))
-		cs.ensureAccountLoadedCtx(ctx, from)
-		cs.ensureAccountLoadedCtx(ctx, to)
 		fromAcc, okFrom := cs.accounts.Get(from)
+		if !okFrom {
+			btKaltGeladen.Add(1)
+			cs.ensureAccountLoadedCtx(ctx, from)
+			fromAcc, okFrom = cs.accounts.Get(from)
+		}
 		toAcc, okTo := cs.accounts.Get(to)
+		if !okTo {
+			btKaltGeladen.Add(1)
+			cs.ensureAccountLoadedCtx(ctx, to)
+			toAcc, okTo = cs.accounts.Get(to)
+		}
 		if !okFrom || !okTo {
 			merkeBuendelAblehnung(&baKontoFehlt)
 			break
@@ -276,6 +287,7 @@ func (cs *ChainState) applyTransferBatchParallel(ctx context.Context, batch []Tr
 			buchAt: buchZeitBeimNachspielen(tx.BuchAt, activityAt),
 		})
 	}
+	teil = merkeBuendelTeil(&btLadenNanos, teil)
 	if len(items) < parallelReplayMinBatch {
 		return 0, nil
 	}
@@ -351,6 +363,7 @@ func (cs *ChainState) applyTransferBatchParallel(ctx context.Context, batch []Tr
 		it.fromNach = vonNach.Float()
 		it.toNach = anNach.Float()
 	}
+	teil = merkeBuendelTeil(&btVorrechnenNanos, teil)
 
 	// ---- Phase 2 (parallel): pure in-memory arithmetic, NO database. ----
 	//
@@ -436,6 +449,7 @@ func (cs *ChainState) applyTransferBatchParallel(ctx context.Context, batch []Tr
 		}(einheiten[lo:hi])
 	}
 	wg.Wait()
+	teil = merkeBuendelTeil(&btRechnenNanos, teil)
 
 	// ---- Phase 2b (serial): Buchfuehrung, in Blockreihenfolge. ----
 	//
@@ -469,9 +483,14 @@ func (cs *ChainState) applyTransferBatchParallel(ctx context.Context, batch []Tr
 			return 0, fmt.Errorf("parallel transfer batch: Buchfuehrung: %w", err)
 		}
 	}
+	teil = merkeBuendelTeil(&btBuchNanos, teil)
 	if err := buch.schreiben(cs, ctx); err != nil {
 		return 0, fmt.Errorf("parallel transfer batch: Buchfuehrung speichern: %w", err)
 	}
+
+	teil = merkeBuendelTeil(&btBuchSchreiben, teil)
+	btUeberweisungen.Add(int64(len(items)))
+	defer merkeBuendelTeil(&btAbschlussNanos, teil)
 
 	// ---- Phase 3 (serial): ONE batched write for everything touched. ----
 	seen := make(map[string]bool, len(items)*2)
