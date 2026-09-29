@@ -1,0 +1,15 @@
+{
+  "_zweck": "Befristete, begruendete Ausnahmen fuer govulncheck (scripts/govulncheck_pruefen.py). Jede Ausnahme braucht grund und bis. Nach bis wird der Build wieder rot. Neue Eintraege nur mit Sicherheitsbegruendung im PR.",
+  "ausnahmen": [
+    {"id": "GO-2026-4508", "modul": "github.com/ethereum/go-ethereum", "bis": "2026-10-20",
+     "grund": "DoS ueber devp2p-Nachrichten von go-ethereum. devp2p/eth-Protokoll laeuft hier nicht (eigenes libp2p). Behebung: Update auf v1.17 in eigenem PR mit Konsens-Vergleichstest (EVM-Zustand)."},
+    {"id": "GO-2026-4507", "modul": "github.com/ethereum/go-ethereum", "bis": "2026-10-20",
+     "grund": "Absturz bei Punkt ausserhalb der Kurve. Einziger Pfad: AddPeerBlock -> UnmarshalPubkey auf dem Ergebnis von Ecrecover, das immer auf der Kurve liegt. Behebung mit dem v1.17-Update."},
+    {"id": "GO-2026-4315", "modul": "github.com/ethereum/go-ethereum", "bis": "2026-10-20",
+     "grund": "DoS ueber devp2p-Nachrichten; devp2p laeuft hier nicht. Behebung mit dem v1.17-Update."},
+    {"id": "GO-2026-4314", "modul": "github.com/ethereum/go-ethereum", "bis": "2026-10-20",
+     "grund": "CPU-DoS ueber devp2p-Nachrichten; devp2p laeuft hier nicht. Behebung mit dem v1.17-Update."},
+    {"id": "GO-2024-2819", "modul": "github.com/ethereum/go-ethereum", "bis": "2026-10-20",
+     "grund": "DoS ueber devp2p (Nachrichtengroesse); devp2p laeuft hier nicht. Behebung mit dem v1.17-Update."}
+  ]
+}

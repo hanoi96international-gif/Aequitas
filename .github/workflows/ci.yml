@@ -150,11 +150,17 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      # Ausnahmen nur befristet und begruendet: .github/govulncheck-ausnahmen.json.
+      # Jede neue erreichbare Schwachstelle macht den Build rot.
       - name: govulncheck (Hauptmodul)
-        run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
+        run: |
+          set -o pipefail
+          go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 -format json ./... | python3 scripts/govulncheck_pruefen.py
       - name: govulncheck (zk-forschung)
         working-directory: forschung/zk-gueltigkeit
-        run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
+        run: |
+          set -o pipefail
+          go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 -format json ./... | python3 ../../scripts/govulncheck_pruefen.py
 
   # The race detector, on its own job so it reports independently of the
   # ordinary suite (it roughly triples runtime, and a data race is a different
