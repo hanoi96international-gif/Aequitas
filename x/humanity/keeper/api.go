@@ -3450,6 +3450,10 @@ func (a *APIServer) handleProveGetProxy(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, `{"error":"invalid proof id"}`, 400)
 		return
 	}
+	if !burstErlaubt("prove-get:"+clientIP(r), burstProveGetJeIP, burstFenster) {
+		jsonError(w, "rate limited, try again shortly", 429)
+		return
+	}
 	if len(proofServerURLs()) == 0 {
 		http.Error(w, `{"error":"no PROOF_SERVER_URL/PROOF_SERVER_URLS configured on this node"}`, 503)
 		return
