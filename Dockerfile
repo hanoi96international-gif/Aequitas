@@ -1,4 +1,4 @@
-FROM golang:1.24-alpine AS builder
+FROM golang:1.26.8-alpine AS builder
 
 # cgo, deliberately (measured 2026-07-25 on Contabo1 — the real target
 # hardware, not a laptop):

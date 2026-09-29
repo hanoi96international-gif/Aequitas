@@ -19,6 +19,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/protocol"
+	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
 )
 
 const (
@@ -175,8 +176,16 @@ func NewP2PNode() (*P2PNode, error) {
 		return nil, fmt.Errorf("failed to load key: %w", err)
 	}
 
+	// Nur TCP (29.09.2026, Sicherheit): libp2p.New bringt ohne Transport-
+	// Option zusaetzlich QUIC, WebTransport und WebRTC mit. Gelauscht wurde
+	// immer nur auf TCP, aber gewaehlt haette der Knoten jede dieser
+	// Adressen, die ihm ein Peer nennt -- und genau dort lagen 8 bekannte
+	// Schwachstellen (quic-go, webtransport-go, pion/dtls; govulncheck).
+	// Transport-Code, der nicht gebraucht wird, ist Angriffsflaeche ohne
+	// Nutzen.
 	h, err := libp2p.New(
 		libp2p.Identity(priv),
+		libp2p.Transport(tcp.NewTCPTransport),
 		libp2p.ListenAddrStrings(
 			fmt.Sprintf("/ip4/0.0.0.0/tcp/%d", p2pListenPort()),
 		),
