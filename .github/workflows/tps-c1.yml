@@ -59,7 +59,7 @@ jobs:
         run: |
           nohup bash -c 'while true; do
             ssh -i ~/.ssh/c1 -o BatchMode=yes root@188.172.229.121 \
-              "curl -s -m 2 http://127.0.0.1:8080/api/health/combined | jq -c \"{r: .rueckstau.aktuell, g: .rueckstau.grenze}\"" 2>/dev/null
+              "curl -s -m 2 http://127.0.0.1:8080/api/health/combined | jq -c \"{t: now|floor, r: .rueckstau.aktuell, g: .rueckstau.grenze, cap: .peer_lag_bremse.letzter_cap, lag: .peer_lag_bremse.letzter_rueckstand, eig: .eigenlast_bremse.deckel}\"" 2>/dev/null
             sleep 1; done' > /tmp/rueckstau.log 2>&1 &
           echo $! > /tmp/rueckstau.pid
       - name: Last von C2 auf C1
@@ -102,6 +102,15 @@ jobs:
           kill "$(cat /tmp/rueckstau.pid)" 2>/dev/null || true
           echo "--- Rueckstau (angenommen, noch in keinem Block), je Sekunde ---"
           jq -s -c 'map(select(.r != null)) | {proben: length, max: (map(.r)|max), mittel: ((map(.r)|add) / (length|if .==0 then 1 else . end) | floor), grenze: (.[0].g // null)}' /tmp/rueckstau.log || cat /tmp/rueckstau.log | tail -5
+          echo "--- je Sekunde: t r(rueckstau) g(grenze) cap(peer-lag) lag eig(eigenlast-deckel) ---"
+          jq -r 'select(.r != null) | "\(.t % 1000) r=\(.r) g=\(.g) cap=\(.cap) lag=\(.lag) eig=\(.eig)"' /tmp/rueckstau.log | head -90 || true
+          echo "--- je Produktionsversuch im Messfenster: s txs deckel lag gesamt_ms sperren_ms (replay) grund ---"
+          ab=$(date -d "$START" +%s)000
+          ssh -i ~/.ssh/c1 -o BatchMode=yes root@188.172.229.121 \
+            "curl -s -m 10 'http://127.0.0.1:8080/api/produktion?n=600'" \
+            | jq -r --argjson ab "$ab" '.eintraege[] | select(.at_ms >= $ab) | "\((.at_ms - $ab)/1000 | floor) \(.txs) \(.deckel) \(.rueckstand) \(.gesamt_ms|floor) \(.sperren_ms|floor) (\(.sperren_replay_ms|floor)) \(.grund // "")"' | head -260 || true
+          ssh -i ~/.ssh/c1 -o BatchMode=yes root@188.172.229.121 \
+            "curl -s -m 10 http://127.0.0.1:8080/api/health/combined | jq -c '{block_verteiler, eigenlast_bremse: (.eigenlast_bremse|del(.bedeutung))}'" || true
           ssh -i ~/.ssh/c1 -o BatchMode=yes root@188.172.229.121 \
             "curl -s -m 10 http://127.0.0.1:8080/api/health/combined | jq -c .produktion_phasen" > /tmp/phasen_nachher.json || true
           echo "--- Annahmeweg (seit Knotenstart, gemittelt) ---"
