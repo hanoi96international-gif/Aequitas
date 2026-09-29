@@ -1337,7 +1337,10 @@ func (a *APIServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 		"latest_hash":  latest.Hash,
 		"total_humans": m.Humans,
 		"total_supply": fmt.Sprintf("%.2f AEQ", m.Supply),
-		"node_id":      a.p2pNode.GetNodeID(),
+		// false heisst: jeder registrierte Mensch kann Blockproduzent werden
+		// (Audit K-1) -- vor dem Launch muss hier true stehen.
+		"produzenten_geschlossen": a.blockchain.ProduzentenGeschlossen(),
+		"node_id":                 a.p2pNode.GetNodeID(),
 		// Die Signieradresse dieses Knotens -- oeffentlich (steht in jedem
 		// seiner Bloecke). Ein frischer Knoten holt sich hierueber den
 		// BOOTSTRAP_SIGNER fuer den Snapshot; ohne das Feld scheiterte die

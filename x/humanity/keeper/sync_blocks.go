@@ -2815,8 +2815,7 @@ func (dag *BlockDAG) registerAndDiscover(selfURL, primaryURL string) bool {
 	dag.mu.Lock()
 	for _, addr := range result.Validators {
 		addr = strings.ToLower(strings.TrimSpace(addr))
-		if addr != "" && !dag.authorizedValidators[addr] {
-			dag.authorizedValidators[addr] = true
+		if addr != "" && !dag.authorizedValidators[addr] && dag.nimmProduzentAufLocked(addr) {
 			fmt.Printf("[PEERS] Auto-authorized validator: %s\n", addr)
 		}
 		if addr != "" && addr == signerAddr && !dag.validatorBestaetigt.Swap(true) {
