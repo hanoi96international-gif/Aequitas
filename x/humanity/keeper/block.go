@@ -5329,6 +5329,10 @@ func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
 	// provided, without the "silently drop if busy" failure mode: this blocks
 	// instead of dropping, and replayTransactions' own dedup guard makes that
 	// safe even under concurrent delivery of the same block).
+	// Signaturen schon pruefen, waehrend dieser Block auf replayMu wartet --
+	// also waehrend der vorige Block noch angewendet wird. Siehe
+	// signatur_vorab.go (62 % des Replay-Halts auf C2, 29.09.2026).
+	starteSignaturVorpruefung(block)
 	apbSperreStart := time.Now()
 	dag.replayMu.Lock()
 	apbSperre := time.Since(apbSperreStart)
@@ -6777,6 +6781,13 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 	// "...Locked" sibling (assumes cs.mu already held) instead of the
 	// public lock-each-time wrapper, and the snapshot/rollback/StateRoot
 	// comparison below do the same.
+	// Signaturen VOR der globalen Sperre abholen -- meist laengst fertig, weil
+	// sie beim Eintreffen des Blocks gestartet wurden (signatur_vorab.go).
+	// Die Nonce-Pruefung braucht den Zustand und bleibt unten.
+	var sigVorab *signaturVorab
+	if signierteUeberweisungenPflicht(block.Timestamp) {
+		sigVorab = holeSignaturVorpruefung(block)
+	}
 	dag.state.mu.Lock()
 	// Measures how long every concurrent transfer is shut out by this replay.
 	// Deferred BEFORE the Unlock so it runs after it — see
@@ -6932,11 +6943,16 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 	// Transaktion wie der Rest des Blocks und mit ihm zurueck.
 	if signierteUeberweisungenPflicht(block.Timestamp) {
 		sigCtx := withTx(context.Background(), dbTx)
+		if sigVorab == nil { // Pflicht erst nach der Abfrage oben eingetreten (nur Tests schalten um)
+			sigVorab = pruefeSignaturenJetzt(block)
+		}
 		// Eigene Uhren fuer Signatur- und Nonce-Pruefung -- beide lagen bis
 		// zum 29.09.2026 ungemessen in `rest` (71 % des mittleren Halts auf
 		// C2, 7,97 s im schlimmsten Block). Siehe replay_phasen_stats.go.
+		// Die Signaturen selbst sind bereits vor der Sperre geprueft
+		// (sigVorab); signatur misst nur noch die Uebernahme.
 		phMarkSig := time.Now()
-		liste, sigErr := pruefeUeberweisungenImBlock(block.Transactions)
+		liste, sigErr := sigVorab.ueberweisungen, sigVorab.ueberwErr
 		phBlock.signatur += time.Since(phMarkSig)
 		var neueNoncen map[string]int64
 		phMarkNonce := time.Now()
@@ -6952,7 +6968,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 		if sigErr == nil {
 			var auftraege []auftragsNonce
 			phMarkSig = time.Now()
-			auftraege, sigErr = pruefeAuftraegeImBlock(block.Transactions, block.Timestamp)
+			auftraege, sigErr = sigVorab.auftraege, sigVorab.auftragErr
 			phBlock.signatur += time.Since(phMarkSig)
 			var neueAuftragsNoncen map[string]int64
 			phMarkNonce = time.Now()
@@ -9549,6 +9565,11 @@ func (dag *BlockDAG) replayInCanonicalOrder(block *Block) bool {
 	dag.mu.RLock()
 	ancestors := dag.collectUnreplayedAncestors(block)
 	dag.mu.RUnlock()
+	// Alle Vorfahren auf einmal anstossen: ihre Signaturen laufen, waehrend
+	// die vorderen schon nachgespielt werden (signatur_vorab.go).
+	for _, anc := range ancestors {
+		starteSignaturVorpruefung(anc)
+	}
 	for _, anc := range ancestors {
 		if !dag.replayTransactions(anc, false) {
 			return false
