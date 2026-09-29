@@ -725,6 +725,7 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		// Wie das Nachspielen die Ueberweisungen anwendet -- parallel oder seriell.
 		"replay_pfad":         ReplayPfadStand(),
 		"replay_phasen":       ReplayPhasenStand(),
+		"buendel_teile":       BuendelTeileStand(),
 		"replay_sammler":      SammlerStand(),
 		"replay_schlimmster":  ReplaySchlimmsterStand(),
 		"signatur_vorab":      SignaturVorabStand(),
