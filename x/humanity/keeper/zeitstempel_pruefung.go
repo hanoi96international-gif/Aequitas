@@ -57,3 +57,19 @@ func zeitstempelRueckdatiert(blockZeit, maxElternZeit int64) string {
 	}
 	return ""
 }
+
+// syncGeschichte: ob ein Block von einem vertrauten Seed (FromSync) ohne
+// Produzentenpruefung angenommen werden darf -- nur, wenn er klar VOR dem
+// Stichtag liegt (Audit 2026-09-29, H-1). Die Ausnahme existiert fuer alte
+// Bloecke frueherer Validatoren, deren Eintragung laengst geloescht ist. Fuer
+// alles danach gilt die Pruefung auch beim Nachladen: der Seed wird ueber
+// HTTP abgefragt, und ein Block, der nur deshalb angenommen wird, weil er auf
+// diesem Weg kam, waere ein Block, den jeder auf dem Weg einfuegen kann.
+//
+// Die Rueck-Toleranz ist abgezogen: ein Block, der knapp vor den Stichtag
+// datiert ist, obwohl seine Eltern knapp danach liegen, besteht
+// zeitstempelRueckdatiert noch -- er darf dadurch nicht auch die
+// Produzentenpruefung ueberspringen.
+func syncGeschichte(blockZeit int64) bool {
+	return blockZeit+zeitstempelRueckToleranz < zeitstempelPruefungAbUnix
+}

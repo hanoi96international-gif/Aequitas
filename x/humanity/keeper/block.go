@@ -4915,7 +4915,11 @@ func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
 		// any child block waiting on a historical block from an early validator
 		// whose registration was cleared from the local DB. Blocks synced from
 		// a non-seed peer get FromSync=false and are still checked normally.
-		if !dag.authorizedValidators[proposer] && !block.FromSync {
+		// FromSync entbindet nur noch fuer die GESCHICHTE vor dem Stichtag
+		// (Audit 2026-09-29, H-1): der Seed wird per HTTP abgefragt, und wer
+		// sich in diese Verbindung haengt, konnte sonst Bloecke mit eigenem
+		// Schluessel einschleusen, die jede Produzentenpruefung uebergehen.
+		if !dag.authorizedValidators[proposer] && !(block.FromSync && syncGeschichte(block.Timestamp)) {
 			// P3-2: cap to prevent unbounded memory growth from forged proposer addresses
 			if len(dag.warnedUnknownProposers) > 500 {
 				dag.warnedUnknownProposers = make(map[string]bool)

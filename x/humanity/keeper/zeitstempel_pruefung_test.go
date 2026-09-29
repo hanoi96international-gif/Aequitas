@@ -41,3 +41,17 @@ func TestZeitstempel_AlteGeschichteUnberuehrt(t *testing.T) {
 // Irgendeine Aktivierung vor dem Stichtag; der Wert selbst ist egal, er muss
 // nur weit vor dem Elternblock liegen.
 func signierteUeberweisungenAbUnixFuerTest() int64 { return zeitstempelPruefungAbUnix - 30*86400 }
+
+// H-1: nach dem Stichtag entbindet FromSync nicht mehr von der
+// Produzentenpruefung.
+func TestSyncGeschichte_NurVorDemStichtag(t *testing.T) {
+	if !syncGeschichte(zeitstempelPruefungAbUnix - 86400) {
+		t.Fatal("alte Geschichte muss vom Seed nachladbar bleiben")
+	}
+	if syncGeschichte(zeitstempelPruefungAbUnix) || syncGeschichte(zeitstempelPruefungAbUnix+3600) {
+		t.Fatal("nach dem Stichtag darf FromSync die Produzentenpruefung nicht ersetzen")
+	}
+	if syncGeschichte(zeitstempelPruefungAbUnix - zeitstempelRueckToleranz) {
+		t.Fatal("innerhalb der Rueck-Toleranz vor dem Stichtag keine Ausnahme")
+	}
+}
