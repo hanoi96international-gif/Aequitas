@@ -7,9 +7,6 @@ name: Konten-Vergleich C1 gegen C2 (nur lesen)
 # Die Auszuege selbst bleiben auf dem Runner und werden nicht hochgeladen.
 on:
   workflow_dispatch: {}
-  push:
-    branches: [claude/server-changes-quorum-nfksc7]
-    paths: [.github/workflows/konten-vergleich.yml, deploy/konten-auszug.sh]
 permissions:
   contents: read
 concurrency:
@@ -18,6 +15,7 @@ concurrency:
 jobs:
   vergleichen:
     runs-on: ubuntu-latest
+    environment: produktion
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4

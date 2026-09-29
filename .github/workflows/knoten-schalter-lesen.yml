@@ -20,9 +20,6 @@ name: Knoten-Schalter lesen (Leistung, nur lesend)
 # wenn sicher ist, dass sein Wert kein Geheimnis ist.
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - ".github/workflows/knoten-schalter-lesen.yml"
 
 permissions:
   contents: read
@@ -37,6 +34,7 @@ jobs:
           # vergibt der Anbieter neu -- nie mehr per SSH ansprechen.
           - { name: Contabo2, host: "194.163.188.71", secret: C2 }
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: ${{ matrix.box.name }}
         uses: appleboy/ssh-action@v1.0.3

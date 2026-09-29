@@ -45,6 +45,7 @@ on:
 jobs:
   fix:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Repoint BOOTSTRAP_SIGNER and restart Contabo2 once
         uses: appleboy/ssh-action@v1.0.3

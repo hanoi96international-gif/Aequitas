@@ -1,14 +1,12 @@
 name: Leistungsschalter C1 und C2 vergleichen (nur lesend)
 on:
   workflow_dispatch:
-  push:
-    branches: [claude/server-changes-quorum-nfksc7]
-    paths: [.github/workflows/leistung-c1-c2.yml, deploy/leistung-lesen.sh]
 permissions:
   contents: read
 jobs:
   lesen:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - uses: actions/checkout@v4
       - name: Schluessel und Host-Pruefung

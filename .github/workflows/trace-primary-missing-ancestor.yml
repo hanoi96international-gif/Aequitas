@@ -65,6 +65,7 @@ on:
 jobs:
   trace:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Walk Contabo1's ancestor chain and ask the primary about each hash
         env:

@@ -74,6 +74,7 @@ on:
 jobs:
   stability:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Record the starting state of both boxes
         run: |

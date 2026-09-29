@@ -10,12 +10,10 @@ name: C2 -- neuen Server (netcup) als Quelle eintragen
 # set-*-contabo2-Workflows). Der neue Server produziert waehrenddessen weiter.
 on:
   workflow_dispatch:
-  push:
-    branches: [claude/aequitas-weitermachen-i6yayi]
-    paths: [.github/workflows/c2-quelle-neuer-server.yml]
 jobs:
   setzen:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: PRIMARY_NODE_URLS auf C2 setzen
         uses: appleboy/ssh-action@v1.0.3

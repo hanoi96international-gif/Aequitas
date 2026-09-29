@@ -13,9 +13,6 @@ name: Nonce-Angleich C2 an C1 (Stufe-1-Vorlauf, 26.09.2026)
 # Das oeffentliche Log zeigt nur Zahlen, keine Adressen.
 on:
   workflow_dispatch: {}
-  push:
-    branches: [claude/server-changes-quorum-nfksc7]
-    paths: [.github/workflows/nonce-angleich-c2.yml]
 permissions:
   contents: read
 concurrency:
@@ -24,6 +21,7 @@ concurrency:
 jobs:
   angleichen:
     runs-on: ubuntu-latest
+    environment: produktion
     timeout-minutes: 20
     steps:
       - name: Schluessel und Host-Pruefung

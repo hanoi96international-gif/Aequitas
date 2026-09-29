@@ -8,9 +8,6 @@ name: Blockbau-Log (Zeitfenster, feste Muster, nur lesend)
 # Zeilen, die mit den unten genannten Praefixen beginnen -- Laufzeiten,
 # Hoehen, Goroutinen-Namen. Nichts anderes aus dem Log verlaesst die Box.
 on:
-  push:
-    paths:
-      - ".github/workflows/blockbau-log.yml"
   workflow_dispatch:
     inputs:
       box:
@@ -31,6 +28,7 @@ permissions:
 jobs:
   lesen:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Log-Ausschnitt
         uses: appleboy/ssh-action@v1.0.3

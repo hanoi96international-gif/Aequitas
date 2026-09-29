@@ -53,6 +53,7 @@ on:
 jobs:
   compare:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Ask all three nodes what the loadtest accounts hold
         env:

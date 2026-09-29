@@ -53,6 +53,7 @@ on:
 jobs:
   align:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Set the two flags on Contabo2 and restart
         uses: appleboy/ssh-action@v1.0.3

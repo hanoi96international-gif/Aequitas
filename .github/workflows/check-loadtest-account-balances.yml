@@ -39,6 +39,7 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Summarize test-account balances on Contabo2
         uses: appleboy/ssh-action@v1.0.3

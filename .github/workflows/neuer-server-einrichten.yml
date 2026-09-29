@@ -10,14 +10,10 @@ name: Neuer Server (netcup) -- vorbereiten
 # die neue Box ersetzt C1 mit eigener, frischer Identitaet.
 on:
   workflow_dispatch:
-  push:
-    branches: [claude/aequitas-weitermachen-i6yayi]
-    paths:
-      - .github/workflows/neuer-server-einrichten.yml
-      - deploy/server-vorbereiten.sh
 jobs:
   vorbereiten:
     runs-on: ubuntu-latest
+    environment: produktion
     timeout-minutes: 60
     env:
       NEU: 188.172.229.121

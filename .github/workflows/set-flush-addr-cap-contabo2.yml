@@ -39,6 +39,7 @@ on:
 jobs:
   set:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Set the flush address cap on Contabo2
         uses: appleboy/ssh-action@v1.0.3

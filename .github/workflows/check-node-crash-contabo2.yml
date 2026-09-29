@@ -36,6 +36,7 @@ on:
 jobs:
   crash-report:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Read the crash reason from the container
         uses: appleboy/ssh-action@v1.0.3

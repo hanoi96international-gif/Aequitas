@@ -29,6 +29,7 @@ on:
 jobs:
   set:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Pruefen, dass es das Release ueberhaupt gibt
         # Zuerst, und als eigener Schritt: eine Fallback-URL auf ein nicht

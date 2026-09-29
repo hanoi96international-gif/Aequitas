@@ -27,6 +27,7 @@ on:
 jobs:
   set-mode:
     runs-on: ubuntu-latest
+    environment: produktion
     strategy:
       fail-fast: false
       matrix:

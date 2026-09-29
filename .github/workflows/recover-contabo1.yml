@@ -29,6 +29,7 @@ on:
 jobs:
   recover:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Rebuild and start aequitas-node on Contabo1
         uses: appleboy/ssh-action@v1.0.3

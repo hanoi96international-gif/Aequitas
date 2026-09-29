@@ -33,6 +33,7 @@ on:
 jobs:
   gate:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Read the streak counters on Contabo2
         uses: appleboy/ssh-action@v1.0.3

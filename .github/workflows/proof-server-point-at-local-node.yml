@@ -34,6 +34,7 @@ on:
 jobs:
   repoint:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Repoint Contabo1
         if: ${{ inputs.box == 'contabo1' }}

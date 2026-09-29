@@ -6,9 +6,6 @@ name: Docker-Version auf C2 (nur lesen)
 
 on:
   workflow_dispatch: {}
-  push:
-    branches: [fix/c2-build-cache-prune]
-    paths: [.github/workflows/docker-version-c2.yml]
 
 permissions:
   contents: read
@@ -16,6 +13,7 @@ permissions:
 jobs:
   lesen:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - uses: appleboy/ssh-action@v1.0.3
         with:

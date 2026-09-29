@@ -21,6 +21,7 @@ on:
 jobs:
   logs:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Logs Contabo1
         if: ${{ inputs.box == 'contabo1' }}

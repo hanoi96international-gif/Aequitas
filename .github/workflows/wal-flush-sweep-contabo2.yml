@@ -63,6 +63,7 @@ on:
 jobs:
   sweep:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Sweep
         uses: appleboy/ssh-action@v1.0.3

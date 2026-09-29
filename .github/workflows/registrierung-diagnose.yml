@@ -10,6 +10,7 @@ permissions:
 jobs:
   lesen:
     runs-on: ubuntu-latest
+    environment: produktion
     timeout-minutes: 10
     steps:
       - name: Oeffentliche Zahlen

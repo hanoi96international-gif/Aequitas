@@ -28,6 +28,9 @@ jobs:
       # gefunden, darunter der Wachhund und der Ein-Klick-Weg fuer Impressum
       # und Datenschutz. Kopf von scripts/lint_script_stop.py.
       - run: python3 scripts/lint_script_stop.py
+      # Server-Schluessel nur in der Umgebung `produktion` (mit Freigabe), und
+      # kein Server-Workflow startet per Push. Kopf von scripts/lint_server_freigabe.py.
+      - run: python3 scripts/lint_server_freigabe.py
 
   test:
     runs-on: ubuntu-latest

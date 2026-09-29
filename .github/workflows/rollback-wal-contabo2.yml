@@ -15,6 +15,7 @@ on:
 jobs:
   rollback:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Disable WAL + multi-block-tick on Contabo2
         uses: appleboy/ssh-action@v1.0.3

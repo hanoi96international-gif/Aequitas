@@ -5,14 +5,12 @@ name: Wirtschaftsregeln -- wen treffen sie? (nur lesend)
 # Kontostaende sind ohnehin oeffentlich (Explorer).
 on:
   workflow_dispatch:
-  push:
-    branches: [claude/server-changes-quorum-nfksc7]
-    paths: [.github/workflows/wirtschaft-betroffene.yml]
 permissions:
   contents: read
 jobs:
   lesen:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Schluessel und Host-Pruefung
         env:

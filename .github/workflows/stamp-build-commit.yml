@@ -24,6 +24,7 @@ on:
 jobs:
   patch:
     runs-on: ubuntu-latest
+    environment: produktion
     strategy:
       max-parallel: 1
       matrix:

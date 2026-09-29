@@ -38,6 +38,7 @@ on:
 jobs:
   contabo1:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Clear all validator penalties on Contabo1
         uses: appleboy/ssh-action@v1.0.3
@@ -97,6 +98,7 @@ jobs:
     # groesser statt kleiner.
     needs: contabo1
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Clear all validator penalties on Contabo2
         uses: appleboy/ssh-action@v1.0.3

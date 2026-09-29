@@ -4,9 +4,6 @@ name: C1 (netcup) -- Leistungsschalter wie C2 setzen
 # Container, C1 nimmt an, Hoehe steigt. Freigegeben am 26.09.2026.
 on:
   workflow_dispatch:
-  push:
-    branches: [claude/server-changes-quorum-nfksc7]
-    paths: [.github/workflows/perf-c1.yml, deploy/perf-c1-setzen.sh]
 permissions:
   contents: read
 concurrency:
@@ -15,6 +12,7 @@ concurrency:
 jobs:
   setzen:
     runs-on: ubuntu-latest
+    environment: produktion
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4

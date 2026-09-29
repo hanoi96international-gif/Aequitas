@@ -28,6 +28,7 @@ on:
 jobs:
   retire:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Contabo1
         uses: appleboy/ssh-action@v1.0.3

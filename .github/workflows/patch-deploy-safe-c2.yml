@@ -82,6 +82,7 @@ on:
 jobs:
   patch:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Patch deploy_safe_c2.sh (write + syntax-check only, no execution)
         uses: appleboy/ssh-action@v1.0.3

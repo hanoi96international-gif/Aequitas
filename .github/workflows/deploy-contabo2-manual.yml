@@ -29,6 +29,7 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Deploy Contabo2
         uses: appleboy/ssh-action@v1.0.3
