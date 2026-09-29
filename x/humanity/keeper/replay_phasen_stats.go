@@ -59,7 +59,24 @@ var (
 	rpHaltNanos      atomic.Int64 // die ganze Haltezeit, als Bezugsgroesse
 	rpBloecke        atomic.Int64
 	rpSeriellAufrufe atomic.Int64
+
+	// Seit dem 29.09.2026: C2 zeigte 71 % des mittleren Halts als `rest`,
+	// im schlimmsten Block 7,97 s von 8,59 s. Diese vier Uhren decken ab,
+	// was bis dahin keine Phase erfasste.
+	rpSignaturNanos       atomic.Int64 // pruefeUeberweisungenImBlock + pruefeAuftraegeImBlock
+	rpNonceNanos          atomic.Int64 // Nonces lesen und setzen (Stufe 1 und Vorlauf)
+	rpSchleifeUebrigNanos atomic.Int64 // Transaktionsschleife ohne parallel und seriell
+	rpNachlaufNanos       atomic.Int64 // Schleifenende bis Commit ohne Sammler und StateRoot
 )
+
+// merkeReplayZusatzphasen addiert die Phasen, die nur in replayBlockPhasen
+// gemessen werden, zu den laufenden Summen.
+func merkeReplayZusatzphasen(p replayBlockPhasen) {
+	rpSignaturNanos.Add(int64(p.signatur))
+	rpNonceNanos.Add(int64(p.nonce))
+	rpSchleifeUebrigNanos.Add(int64(p.schleifeUebrig))
+	rpNachlaufNanos.Add(int64(p.nachlauf))
+}
 
 func merkeReplayPhase(z *atomic.Int64, seit time.Time) {
 	z.Add(int64(time.Since(seit)))
@@ -89,7 +106,8 @@ func ReplayPhasenStand() map[string]interface{} {
 	}
 	halt := msJe(&rpHaltNanos)
 	benannt := msJe(&rpSnapshotNanos) + msJe(&rpBeginNanos) + msJe(&rpParallelNanos) + msJe(&rpSeriellNanos) +
-		msJe(&rpStateRootNanos) + msJe(&rpCommitNanos) + msJe(&rpSammlerNanos)
+		msJe(&rpStateRootNanos) + msJe(&rpCommitNanos) + msJe(&rpSammlerNanos) +
+		msJe(&rpSignaturNanos) + msJe(&rpNonceNanos) + msJe(&rpSchleifeUebrigNanos) + msJe(&rpNachlaufNanos)
 	seriellJeAufruf := float64(0)
 	if a := rpSeriellAufrufe.Load(); a > 0 {
 		seriellJeAufruf = float64(rpSeriellNanos.Load()) / float64(a) / 1e6
@@ -114,6 +132,14 @@ func ReplayPhasenStand() map[string]interface{} {
 		"commit_ms":            msJe(&rpCommitNanos),
 		"sammler_ms":           msJe(&rpSammlerNanos),
 		"sammler_anteil_pct":   anteil(msJe(&rpSammlerNanos)),
+		"signatur_ms":          msJe(&rpSignaturNanos),
+		"signatur_anteil_pct":  anteil(msJe(&rpSignaturNanos)),
+		"nonce_ms":             msJe(&rpNonceNanos),
+		"nonce_anteil_pct":     anteil(msJe(&rpNonceNanos)),
+		"schleife_uebrig_ms":   msJe(&rpSchleifeUebrigNanos),
+		"schleife_uebrig_pct":  anteil(msJe(&rpSchleifeUebrigNanos)),
+		"nachlauf_ms":          msJe(&rpNachlaufNanos),
+		"nachlauf_anteil_pct":  anteil(msJe(&rpNachlaufNanos)),
 		"rest_ms":              halt - benannt,
 		"rest_anteil_pct":      anteil(halt - benannt),
 		"seriell_anteil_pct":   anteil(msJe(&rpSeriellNanos)),
@@ -132,6 +158,7 @@ func ReplayPhasenZuruecksetzen() {
 		&rpSnapshotNanos, &rpBeginNanos, &rpParallelNanos, &rpSeriellNanos,
 		&rpStateRootNanos, &rpCommitNanos, &rpSammlerNanos, &rpHaltNanos,
 		&rpBloecke, &rpSeriellAufrufe,
+		&rpSignaturNanos, &rpNonceNanos, &rpSchleifeUebrigNanos, &rpNachlaufNanos,
 	} {
 		z.Store(0)
 	}
@@ -207,12 +234,16 @@ var (
 	rpMaxSammlerNs   atomic.Int64
 	rpMaxStateRootNs atomic.Int64
 	rpMaxCommitNs    atomic.Int64
+
+	rpMaxSignaturNs       atomic.Int64
+	rpMaxNonceNs          atomic.Int64
+	rpMaxSchleifeUebrigNs atomic.Int64
+	rpMaxNachlaufNs       atomic.Int64
 )
 
 // merkeReplayBlockDetail haelt den teuersten Halt fest. Die Phasenwerte
 // kommen als Momentaufnahme DIESES Blocks, nicht als laufende Summen.
-func merkeReplayBlockDetail(halt time.Duration, hoehe int64, txAnzahl int,
-	snapshot, begin, parallel, seriell, sammler, stateroot, commit time.Duration) {
+func merkeReplayBlockDetail(halt time.Duration, hoehe int64, txAnzahl int, p replayBlockPhasen) {
 	for {
 		alt := rpMaxHaltNanos.Load()
 		if int64(halt) <= alt {
@@ -227,13 +258,17 @@ func merkeReplayBlockDetail(halt time.Duration, hoehe int64, txAnzahl int,
 	// dann gehoeren sie ohnehin ihm.
 	rpMaxHoehe.Store(hoehe)
 	rpMaxTxAnzahl.Store(int64(txAnzahl))
-	rpMaxSnapshotNs.Store(int64(snapshot))
-	rpMaxBeginNs.Store(int64(begin))
-	rpMaxParallelNs.Store(int64(parallel))
-	rpMaxSeriellNs.Store(int64(seriell))
-	rpMaxSammlerNs.Store(int64(sammler))
-	rpMaxStateRootNs.Store(int64(stateroot))
-	rpMaxCommitNs.Store(int64(commit))
+	rpMaxSnapshotNs.Store(int64(p.snapshot))
+	rpMaxBeginNs.Store(int64(p.begin))
+	rpMaxParallelNs.Store(int64(p.parallel))
+	rpMaxSeriellNs.Store(int64(p.seriell))
+	rpMaxSammlerNs.Store(int64(p.sammler))
+	rpMaxStateRootNs.Store(int64(p.stateroot))
+	rpMaxCommitNs.Store(int64(p.commit))
+	rpMaxSignaturNs.Store(int64(p.signatur))
+	rpMaxNonceNs.Store(int64(p.nonce))
+	rpMaxSchleifeUebrigNs.Store(int64(p.schleifeUebrig))
+	rpMaxNachlaufNs.Store(int64(p.nachlauf))
 }
 
 // ReplaySchlimmsterStand zeigt den teuersten Halt in /api/health/combined.
@@ -241,19 +276,24 @@ func ReplaySchlimmsterStand() map[string]interface{} {
 	ms := func(z *atomic.Int64) float64 { return float64(z.Load()) / 1e6 }
 	halt := ms(&rpMaxHaltNanos)
 	benannt := ms(&rpMaxSnapshotNs) + ms(&rpMaxBeginNs) + ms(&rpMaxParallelNs) +
-		ms(&rpMaxSeriellNs) + ms(&rpMaxSammlerNs) + ms(&rpMaxStateRootNs) + ms(&rpMaxCommitNs)
+		ms(&rpMaxSeriellNs) + ms(&rpMaxSammlerNs) + ms(&rpMaxStateRootNs) + ms(&rpMaxCommitNs) +
+		ms(&rpMaxSignaturNs) + ms(&rpMaxNonceNs) + ms(&rpMaxSchleifeUebrigNs) + ms(&rpMaxNachlaufNs)
 	return map[string]interface{}{
-		"halt_ms":       halt,
-		"hoehe":         rpMaxHoehe.Load(),
-		"transaktionen": rpMaxTxAnzahl.Load(),
-		"snapshot_ms":   ms(&rpMaxSnapshotNs),
-		"begin_ms":      ms(&rpMaxBeginNs),
-		"parallel_ms":   ms(&rpMaxParallelNs),
-		"seriell_ms":    ms(&rpMaxSeriellNs),
-		"sammler_ms":    ms(&rpMaxSammlerNs),
-		"stateroot_ms":  ms(&rpMaxStateRootNs),
-		"commit_ms":     ms(&rpMaxCommitNs),
-		"rest_ms":       halt - benannt,
+		"halt_ms":            halt,
+		"hoehe":              rpMaxHoehe.Load(),
+		"transaktionen":      rpMaxTxAnzahl.Load(),
+		"snapshot_ms":        ms(&rpMaxSnapshotNs),
+		"begin_ms":           ms(&rpMaxBeginNs),
+		"parallel_ms":        ms(&rpMaxParallelNs),
+		"seriell_ms":         ms(&rpMaxSeriellNs),
+		"sammler_ms":         ms(&rpMaxSammlerNs),
+		"stateroot_ms":       ms(&rpMaxStateRootNs),
+		"commit_ms":          ms(&rpMaxCommitNs),
+		"signatur_ms":        ms(&rpMaxSignaturNs),
+		"nonce_ms":           ms(&rpMaxNonceNs),
+		"schleife_uebrig_ms": ms(&rpMaxSchleifeUebrigNs),
+		"nachlauf_ms":        ms(&rpMaxNachlaufNs),
+		"rest_ms":            halt - benannt,
 		"bedeutung": "Der teuerste Halt der globalen Sperre, vollstaendig aufgeschluesselt -- nicht der Mittelwert. " +
 			"Am 06.09.2026 lag der Mittelwert bei 89 ms und der schlimmste bei 35.991 ms; in so einem Fenster produziert " +
 			"der Knoten nichts und lehnt danach zu Recht ab. Ein Mittelwert kann das nicht erklaeren, dieser Satz schon: " +
@@ -266,4 +306,5 @@ func ReplaySchlimmsterStand() map[string]interface{} {
 // Struktur beantwortet "was war im schlimmsten Fall los".
 type replayBlockPhasen struct {
 	snapshot, begin, parallel, seriell, sammler, stateroot, commit time.Duration
+	signatur, nonce, schleifeUebrig, nachlauf                      time.Duration
 }

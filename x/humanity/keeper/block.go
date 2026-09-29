@@ -6796,9 +6796,8 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 	defer func() {
 		halt := time.Since(exclusiveAcquired)
 		merkeReplayBlock(halt)
-		merkeReplayBlockDetail(halt, block.Height, len(block.Transactions),
-			phBlock.snapshot, phBlock.begin, phBlock.parallel, phBlock.seriell,
-			phBlock.sammler, phBlock.stateroot, phBlock.commit)
+		merkeReplayZusatzphasen(phBlock)
+		merkeReplayBlockDetail(halt, block.Height, len(block.Transactions), phBlock)
 	}()
 	defer dag.state.mu.Unlock()
 	// Blockzeit fuer Regeln, die tief unten nach ihr entscheiden
@@ -6933,26 +6932,37 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 	// Transaktion wie der Rest des Blocks und mit ihm zurueck.
 	if signierteUeberweisungenPflicht(block.Timestamp) {
 		sigCtx := withTx(context.Background(), dbTx)
+		// Eigene Uhren fuer Signatur- und Nonce-Pruefung -- beide lagen bis
+		// zum 29.09.2026 ungemessen in `rest` (71 % des mittleren Halts auf
+		// C2, 7,97 s im schlimmsten Block). Siehe replay_phasen_stats.go.
+		phMarkSig := time.Now()
 		liste, sigErr := pruefeUeberweisungenImBlock(block.Transactions)
+		phBlock.signatur += time.Since(phMarkSig)
 		var neueNoncen map[string]int64
+		phMarkNonce := time.Now()
 		if sigErr == nil {
 			neueNoncen, sigErr = dag.state.naechsteNoncenFuerBlockLocked(sigCtx, liste)
 		}
 		if sigErr == nil {
 			sigErr = dag.state.setzeNaechsteNoncenLocked(sigCtx, neueNoncen, kontenSammlung)
 		}
+		phBlock.nonce += time.Since(phMarkNonce)
 		// Nachtrag zu 1.0 (auftrag_nachweis.go): dieselbe Pruefung fuer
 		// Tausch, Liquiditaet, Faucet, Treuhand und Unternehmen.
 		if sigErr == nil {
 			var auftraege []auftragsNonce
+			phMarkSig = time.Now()
 			auftraege, sigErr = pruefeAuftraegeImBlock(block.Transactions, block.Timestamp)
+			phBlock.signatur += time.Since(phMarkSig)
 			var neueAuftragsNoncen map[string]int64
+			phMarkNonce = time.Now()
 			if sigErr == nil {
 				neueAuftragsNoncen, sigErr = dag.state.naechsteAuftragsNoncenFuerBlockLocked(sigCtx, auftraege)
 			}
 			if sigErr == nil {
 				sigErr = dag.state.setzeAuftragsNoncenLocked(sigCtx, neueAuftragsNoncen, kontenSammlung)
 			}
+			phBlock.nonce += time.Since(phMarkNonce)
 		}
 		if sigErr != nil {
 			fmt.Printf("[REPLAY] ✗ Block #%d von %s: %v — Block abgelehnt\n", block.Height, block.Proposer, sigErr)
@@ -6965,12 +6975,18 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 		// auch -- sonst weichen die Blaetter ab. Genau das geschah am
 		// 26.09.2026: 1.772 Konten mit hoeherer Nonce auf dem Annehmenden
 		// (nonce-angleich-c2.yml). Abgelehnt wird im Vorlauf nichts.
+		phMarkNonce := time.Now()
 		if err := dag.state.setzeVorlaufNoncenLocked(withTx(context.Background(), dbTx), block.Transactions, kontenSammlung); err != nil {
 			fmt.Printf("[REPLAY] ✗ Block #%d: Vorlauf-Nonces: %v\n", block.Height, err)
 			hardFailure = true
 		}
+		phBlock.nonce += time.Since(phMarkNonce)
 	}
 
+	// Die ganze Schleife, abzueglich parallel und seriell, ist
+	// schleife_uebrig: alle anderen Transaktionsarten und der Aufwand je
+	// Durchlauf (Buendelsuche, Verzweigung, Protokoll).
+	phMarkSchleife := time.Now()
 	for txIdx := 0; txIdx < len(block.Transactions); txIdx++ {
 		tx := block.Transactions[txIdx]
 		if hardFailure {
@@ -7705,6 +7721,9 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			continue
 		}
 	}
+	phBlock.schleifeUebrig = time.Since(phMarkSchleife) - phBlock.parallel - phBlock.seriell
+	// Von hier bis zum Commit, abzueglich Sammler und StateRoot: nachlauf.
+	phMarkNachSchleife := time.Now()
 
 	if hardFailure {
 		commitOrRollback(false) // real SQL ROLLBACK — see commitOrRollback's comment
@@ -7962,6 +7981,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 	// rollback path: restore in-memory state and reject the block, so
 	// memory and DB can't end up disagreeing about whether this block
 	// applied.
+	phBlock.nachlauf = time.Since(phMarkNachSchleife) - phBlock.sammler - phBlock.stateroot
 	phMarkCommit := time.Now()
 	commitErrReplay := commitOrRollback(true)
 	merkeReplayPhase(&rpCommitNanos, phMarkCommit)

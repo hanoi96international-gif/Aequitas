@@ -121,9 +121,9 @@ func TestReplaySchlimmster_HaeltDenTeuerstenHaltVollstaendig(t *testing.T) {
 	ms := time.Millisecond
 
 	// Ein billiger Block, dann ein teurer, dann wieder ein billiger.
-	merkeReplayBlockDetail(50*ms, 100, 10, ms, ms, 10*ms, 5*ms, ms, ms, ms)
-	merkeReplayBlockDetail(9000*ms, 4242, 8888, 2*ms, 3*ms, 1000*ms, 7000*ms, 20*ms, 5*ms, 10*ms)
-	merkeReplayBlockDetail(60*ms, 300, 12, ms, ms, 12*ms, 6*ms, ms, ms, ms)
+	merkeReplayBlockDetail(50*ms, 100, 10, replayBlockPhasen{snapshot: ms, begin: ms, parallel: 10 * ms, seriell: 5 * ms, sammler: ms, stateroot: ms, commit: ms})
+	merkeReplayBlockDetail(9000*ms, 4242, 8888, replayBlockPhasen{snapshot: 2 * ms, begin: 3 * ms, parallel: 1000 * ms, seriell: 7000 * ms, sammler: 20 * ms, stateroot: 5 * ms, commit: 10 * ms})
+	merkeReplayBlockDetail(60*ms, 300, 12, replayBlockPhasen{snapshot: ms, begin: ms, parallel: 12 * ms, seriell: 6 * ms, sammler: ms, stateroot: ms, commit: ms})
 
 	s := ReplaySchlimmsterStand()
 	if got := s["halt_ms"].(float64); got != 9000 {
@@ -152,8 +152,8 @@ func TestReplaySchlimmster_EinBilligerBlockUeberschreibtNicht(t *testing.T) {
 		z.Store(0)
 	}
 	ms := time.Millisecond
-	merkeReplayBlockDetail(5000*ms, 77, 999, ms, ms, ms, 4000*ms, ms, ms, ms)
-	merkeReplayBlockDetail(10*ms, 78, 1, ms, ms, ms, ms, ms, ms, ms)
+	merkeReplayBlockDetail(5000*ms, 77, 999, replayBlockPhasen{snapshot: ms, begin: ms, parallel: ms, seriell: 4000 * ms, sammler: ms, stateroot: ms, commit: ms})
+	merkeReplayBlockDetail(10*ms, 78, 1, replayBlockPhasen{snapshot: ms, begin: ms, parallel: ms, seriell: ms, sammler: ms, stateroot: ms, commit: ms})
 
 	s := ReplaySchlimmsterStand()
 	if got := s["hoehe"].(int64); got != 77 {
@@ -162,4 +162,39 @@ func TestReplaySchlimmster_EinBilligerBlockUeberschreibtNicht(t *testing.T) {
 	if got := s["seriell_ms"].(float64); got != 4000 {
 		t.Errorf("seriell_ms = %v, erwartet 4000", got)
 	}
+}
+
+// Signatur, Nonce, Schleifenrest und Nachlauf lagen bis zum 29.09.2026 in
+// rest. Jetzt muessen sie dort herausgerechnet sein -- sonst zeigt die
+// naechste Messung wieder nur eine unerklaerte Zahl.
+func TestReplayPhasen_ZusatzphasenVerlassenRest(t *testing.T) {
+	ReplayPhasenZuruecksetzen()
+	rpMaxHaltNanos.Store(0)
+	ms := time.Millisecond
+	p := replayBlockPhasen{snapshot: ms, begin: ms, parallel: 10 * ms, seriell: 5 * ms, sammler: ms, stateroot: ms, commit: ms,
+		signatur: 3000 * ms, nonce: 2000 * ms, schleifeUebrig: 500 * ms, nachlauf: 100 * ms}
+	halt := 6000 * ms
+	merkeReplayBlock(halt)
+	merkeReplayZusatzphasen(p)
+	// Die sieben alten Phasen laufen im Betrieb ueber merkeReplayPhase.
+	for z, d := range map[*atomic.Int64]time.Duration{&rpSnapshotNanos: p.snapshot, &rpBeginNanos: p.begin,
+		&rpParallelNanos: p.parallel, &rpSeriellNanos: p.seriell, &rpSammlerNanos: p.sammler,
+		&rpStateRootNanos: p.stateroot, &rpCommitNanos: p.commit} {
+		z.Add(int64(d))
+	}
+	merkeReplayBlockDetail(halt, 5, 5520, p)
+
+	// 6000 - (1+1+10+5+1+1+1 + 3000+2000+500+100) = 380
+	for name, s := range map[string]map[string]interface{}{"mittel": ReplayPhasenStand(), "schlimmster": ReplaySchlimmsterStand()} {
+		if got := s["rest_ms"].(float64); got < 379.9 || got > 380.1 {
+			t.Errorf("%s: rest_ms = %v, erwartet 380", name, got)
+		}
+		if got := s["signatur_ms"].(float64); got != 3000 {
+			t.Errorf("%s: signatur_ms = %v, erwartet 3000", name, got)
+		}
+		if got := s["nonce_ms"].(float64); got != 2000 {
+			t.Errorf("%s: nonce_ms = %v, erwartet 2000", name, got)
+		}
+	}
+	ReplayPhasenZuruecksetzen()
 }
