@@ -138,7 +138,7 @@ jobs:
           echo
           echo "--- C2: Nachspielen (replay_phasen, replay_schlimmster) ---"
           ssh -i ~/.ssh/c2 -o BatchMode=yes root@194.163.188.71 \
-            "curl -s -m 10 http://127.0.0.1:8080/api/health/combined | jq -c '{replay_phasen, replay_schlimmster}'" | head -c 3000 || true
+            "curl -s -m 10 http://127.0.0.1:8080/api/health/combined | jq -c '{replay_phasen: (.replay_phasen|del(.bedeutung)), replay_schlimmster, buendel_teile: (.buendel_teile|del(.bedeutung))}'" | head -c 6000 || true
           echo
       - name: C2 im Fenster -- empfangene, abgelehnte, fehlende Bloecke
         run: |
