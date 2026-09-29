@@ -39,6 +39,7 @@ on:
 jobs:
   restore:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Restore Contabo2 chain Postgres
         uses: appleboy/ssh-action@v1.0.3

@@ -75,6 +75,7 @@ on:
 jobs:
   run:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - uses: actions/checkout@v4
 

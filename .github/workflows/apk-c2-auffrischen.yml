@@ -13,14 +13,12 @@ on:
     inputs:
       tag: {description: "App-Release, z. B. app-v1.8.0", required: true}
       sha256: {description: "SHA-256 der APK laut Release", required: true}
-  push:
-    branches: [claude/server-changes-quorum-nfksc7]
-    paths: [.github/workflows/apk-c2-auffrischen.yml]
 permissions:
   contents: read
 jobs:
   c2:
     runs-on: ubuntu-latest
+    environment: produktion
     timeout-minutes: 15
     env:
       TAG: ${{ inputs.tag || 'app-v1.8.0' }}

@@ -4,14 +4,12 @@ name: Heap C1 -- wo liegt der Speicher? (nur lesen)
 # und Groessen -- keine Adressen, keine Kontostaende.
 on:
   workflow_dispatch: {}
-  push:
-    branches: [claude/server-changes-quorum-nfksc7]
-    paths: [.github/workflows/heap-c1.yml]
 permissions:
   contents: read
 jobs:
   heap:
     runs-on: ubuntu-latest
+    environment: produktion
     timeout-minutes: 10
     steps:
       - uses: actions/setup-go@v5

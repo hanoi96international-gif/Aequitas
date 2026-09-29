@@ -75,6 +75,7 @@ on:
 jobs:
   contabo1:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Fix RESYNC_FROM_SNAPSHOT on Contabo1
         uses: appleboy/ssh-action@v1.0.3
@@ -138,6 +139,7 @@ jobs:
     # groesser statt kleiner.
     needs: contabo1
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Fix RESYNC_FROM_SNAPSHOT on Contabo2
         uses: appleboy/ssh-action@v1.0.3

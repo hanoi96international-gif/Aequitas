@@ -73,6 +73,7 @@ on:
 jobs:
   profile:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - uses: actions/checkout@v4
 

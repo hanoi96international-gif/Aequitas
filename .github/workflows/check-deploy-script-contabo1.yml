@@ -16,6 +16,7 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Print Contabo1's deploy.sh (read-only)
         uses: appleboy/ssh-action@v1.0.3

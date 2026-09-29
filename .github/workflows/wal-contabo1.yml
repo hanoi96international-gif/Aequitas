@@ -38,6 +38,7 @@ on:
 jobs:
   wal:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: WAL on Contabo1
         uses: appleboy/ssh-action@v1.0.3

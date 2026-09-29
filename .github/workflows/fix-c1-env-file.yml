@@ -31,6 +31,7 @@ on:
 jobs:
   fix:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Edit the env file (no restart)
         uses: appleboy/ssh-action@v1.0.3

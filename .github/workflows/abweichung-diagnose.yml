@@ -4,14 +4,12 @@ name: Abweichung C1/C2 -- Diagnose (nur lesen)
 # welche uebersprungen oder Bloecke abgelehnt? Nur Zaehler und Log-Zeilen.
 on:
   workflow_dispatch: {}
-  push:
-    branches: [claude/server-changes-quorum-nfksc7]
-    paths: [.github/workflows/abweichung-diagnose.yml]
 permissions:
   contents: read
 jobs:
   schauen:
     runs-on: ubuntu-latest
+    environment: produktion
     timeout-minutes: 10
     steps:
       - name: Schluessel und Host-Pruefung

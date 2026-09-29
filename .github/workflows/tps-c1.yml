@@ -12,6 +12,7 @@ on:
       duration: {description: "Messfenster", required: false, default: "30s"}
       accounts_csv: {description: "Kontenliste auf C2", required: false, default: "accounts-funded.csv"}
       pairs: {description: "Sender-Paare (0 = alle)", required: false, default: "0"}
+      topology: {description: "pairs (je Paar ein Absender) oder ring (jedes Konto sendet, doppelt so viele Absender)", required: false, default: "pairs"}
       batch: {description: "Ueberweisungen je Buendel (1..100). Ein Buendel eines Absenders laeuft im Knoten nacheinander.", required: false, default: "20"}
   # Nur noch von Hand: ein Push dieser Datei darf keine Last auf C1 starten
   # (26.09.2026, Kontenabweichung in Untersuchung).
@@ -23,12 +24,14 @@ concurrency:
 jobs:
   messen:
     runs-on: ubuntu-latest
+    environment: produktion
     timeout-minutes: 30
     env:
       DURATION: ${{ inputs.duration || '30s' }}
       ACCOUNTS_CSV: ${{ inputs.accounts_csv || 'accounts-funded.csv' }}
       PAIRS: ${{ inputs.pairs || '0' }}
       BATCH: ${{ inputs.batch || '20' }}
+      TOPOLOGY: ${{ inputs.topology || 'pairs' }}
     steps:
       - uses: actions/checkout@v4
       - name: Schluessel und Host-Pruefung
@@ -57,13 +60,13 @@ jobs:
         run: |
           nohup bash -c 'while true; do
             ssh -i ~/.ssh/c1 -o BatchMode=yes root@188.172.229.121 \
-              "curl -s -m 2 http://127.0.0.1:8080/api/health/combined | jq -c \"{r: .rueckstau.aktuell, g: .rueckstau.grenze}\"" 2>/dev/null
+              "curl -s -m 2 http://127.0.0.1:8080/api/health/combined | jq -c \"{t: now|floor, r: .rueckstau.aktuell, gem: .rueckstau.gemessen, g: .rueckstau.grenze, cap: .peer_lag_bremse.letzter_cap, lag: .peer_lag_bremse.letzter_rueckstand, eig: .eigenlast_bremse.deckel}\"" 2>/dev/null
             sleep 1; done' > /tmp/rueckstau.log 2>&1 &
           echo $! > /tmp/rueckstau.pid
       - name: Last von C2 auf C1
         run: |
           ssh -i ~/.ssh/c2 -o BatchMode=yes root@194.163.188.71 \
-            "DURATION='$DURATION' ACCOUNTS_CSV='$ACCOUNTS_CSV' PAIRS='$PAIRS' BATCH='$BATCH' bash -s" <<'SKRIPT'
+            "DURATION='$DURATION' ACCOUNTS_CSV='$ACCOUNTS_CSV' PAIRS='$PAIRS' BATCH='$BATCH' TOPOLOGY='$TOPOLOGY' bash -s" <<'SKRIPT'
           set -euo pipefail
           cd /root/contabo-loadtest
           rm -rf ./tools
@@ -76,7 +79,7 @@ jobs:
               -rpc http://188.172.229.121:8080/rpc \
               -status http://188.172.229.121:8080/api/status \
               -phase run -duration "$DURATION" -ramp 5 \
-              -transfer-amount-wei 10000000000000 -batch-size "$BATCH" -http-timeout 30s -pairs "$PAIRS"
+              -transfer-amount-wei 10000000000000 -batch-size "$BATCH" -http-timeout 30s -pairs "$PAIRS" -topology "$TOPOLOGY"
           SKRIPT
       - name: Was C1 gezaehlt hat
         if: always()
@@ -86,6 +89,11 @@ jobs:
           docker logs --since "$START" aequitas-node 2>&1 | grep -F '[RPC] ⚡' | tail -30 || true
           echo "--- langsamste Ticks ---"
           docker logs --since "$START" aequitas-node 2>&1 | grep -F '[BLOCK] ⏱' | tail -8 || true
+          echo "--- Laden/Vorladen/Push im Fenster (Anzahl je Muster, dann Beispiele) ---"
+          for m in 'LoadPendingTxs' 'Vorladung' 'stale-included' 'push' 'Push' 'timeout' 'HTTP push'; do
+            printf '%s: ' "$m"; docker logs --since "$START" aequitas-node 2>&1 | grep -c -- "$m" || true
+          done
+          docker logs --since "$START" aequitas-node 2>&1 | grep -E 'LoadPendingTxs|Vorladung|stale-included|push.*(fail|✗|error)|✗' | tail -15 || true
           echo "--- Warnungen ---"
           docker logs --since "$START" aequitas-node 2>&1 | grep -E 'panic|FATAL|ivergen' | tail -10 || true
           echo "--- Last auf C1 ---"
@@ -100,6 +108,15 @@ jobs:
           kill "$(cat /tmp/rueckstau.pid)" 2>/dev/null || true
           echo "--- Rueckstau (angenommen, noch in keinem Block), je Sekunde ---"
           jq -s -c 'map(select(.r != null)) | {proben: length, max: (map(.r)|max), mittel: ((map(.r)|add) / (length|if .==0 then 1 else . end) | floor), grenze: (.[0].g // null)}' /tmp/rueckstau.log || cat /tmp/rueckstau.log | tail -5
+          echo "--- je Sekunde: t r(rueckstau) g(grenze) cap(peer-lag) lag eig(eigenlast-deckel) ---"
+          jq -r 'select(.r != null) | "\(.t % 1000) r=\(.r) gem=\(.gem) g=\(.g) cap=\(.cap) lag=\(.lag) eig=\(.eig)"' /tmp/rueckstau.log | head -90 || true
+          echo "--- je Produktionsversuch im Messfenster: s txs deckel lag gesamt_ms sperren_ms (replay) grund ---"
+          ab=$(date -d "$START" +%s)000
+          ssh -i ~/.ssh/c1 -o BatchMode=yes root@188.172.229.121 \
+            "curl -s -m 10 'http://127.0.0.1:8080/api/produktion?n=600'" \
+            | jq -r --argjson ab "$ab" '.eintraege[] | select(.at_ms >= $ab) | "\((.at_ms - $ab)/1000 | floor) \(.txs) \(.deckel) \(.rueckstand) \(.gesamt_ms|floor) \(.sperren_ms|floor) (\(.sperren_replay_ms|floor)) \(.grund // "")"' | head -260 || true
+          ssh -i ~/.ssh/c1 -o BatchMode=yes root@188.172.229.121 \
+            "curl -s -m 10 http://127.0.0.1:8080/api/health/combined | jq -c '{block_verteiler, eigenlast_bremse: (.eigenlast_bremse|del(.bedeutung))}'" || true
           ssh -i ~/.ssh/c1 -o BatchMode=yes root@188.172.229.121 \
             "curl -s -m 10 http://127.0.0.1:8080/api/health/combined | jq -c .produktion_phasen" > /tmp/phasen_nachher.json || true
           echo "--- Annahmeweg (seit Knotenstart, gemittelt) ---"
@@ -118,12 +135,28 @@ jobs:
         run: |
           echo "--- C1: Takte ohne Block, nach Grund (seit Knotenstart) ---"
           ssh -i ~/.ssh/c1 -o BatchMode=yes root@188.172.229.121 \
-            "curl -s -m 10 http://127.0.0.1:8080/api/health/combined | jq -c '{produktions_ausfaelle, exclusive_lock}'" | head -c 4000 || true
+            "curl -s -m 10 http://127.0.0.1:8080/api/health/combined | jq -c '{produktions_ausfaelle, exclusive_lock, fallback_gruende, signierte_ueberweisungen, rueckstau: (.rueckstau|{aktuell,grenze,abgelehnt})}'" | head -c 4000 || true
           echo
           echo "--- C2: Nachspielen (replay_phasen, replay_schlimmster) ---"
           ssh -i ~/.ssh/c2 -o BatchMode=yes root@194.163.188.71 \
-            "curl -s -m 10 http://127.0.0.1:8080/api/health/combined | jq -c '{replay_phasen, replay_schlimmster}'" | head -c 3000 || true
+            "curl -s -m 10 http://127.0.0.1:8080/api/health/combined | jq -c '{replay_phasen: (.replay_phasen|del(.bedeutung)), replay_schlimmster, buendel_teile: (.buendel_teile|del(.bedeutung))}'" | head -c 6000 || true
           echo
+      - name: C2 im Fenster -- empfangene, abgelehnte, fehlende Bloecke
+        run: |
+          ssh -i ~/.ssh/c2 -o BatchMode=yes root@194.163.188.71 "START='$START' bash -s" <<'SKRIPT' || true
+          for m in 'AddPeerBlock' 'missing parent' 'orphan' 'Orphan' 'awaiting' 'rejected' '✗' 'timeout' 'fetchMissing' 'push'; do
+            printf '%s: ' "$m"; docker logs --since "$START" aequitas-node 2>&1 | grep -c -- "$m" || true
+          done
+          docker logs --since "$START" aequitas-node 2>&1 | grep -E '✗|missing|orphan|Orphan|awaiting|rejected|timeout' | sed -E 's/0x[0-9a-fA-F]{40}/0x…/g' | head -25 || true
+          echo "--- C2 signatur_vorab ---"
+          curl -s -m 10 http://127.0.0.1:8080/api/health/combined | jq -c '.signatur_vorab | del(.bedeutung)' || true
+          echo "--- C2 Annahme je Block im Fenster: s txs sperre_ms replay_ms einhaengen_ms ---"
+          ab=$(date -u -d "$START" +%s)000
+          curl -s -m 10 'http://127.0.0.1:8080/api/annahme?n=600' | jq -r --argjson ab "$ab" '.eintraege[] | select(.at_ms >= $ab and .txs > 0) | "\((.at_ms - $ab)/1000|floor) \(.txs) \(.sperre_ms|floor) \(.replay_ms|floor) \(.einhaengen_ms|floor)"' | head -120 || true
+          SKRIPT
+          echo "--- C1 push_reihenfolge ---"
+          ssh -i ~/.ssh/c1 -o BatchMode=yes root@188.172.229.121 \
+            "curl -s -m 10 http://127.0.0.1:8080/api/health/combined | jq -c '.push_reihenfolge | del(.bedeutung)'" || true
       - name: C2 folgt?
         if: always()
         run: |

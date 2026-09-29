@@ -43,6 +43,7 @@ jobs:
   c1:
     needs: test
     runs-on: ubuntu-latest
+    environment: produktion
     timeout-minutes: 60
     env:
       C1: 188.172.229.121
@@ -75,6 +76,7 @@ jobs:
   c2:
     needs: c1
     runs-on: ubuntu-latest
+    environment: produktion
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4

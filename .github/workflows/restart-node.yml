@@ -24,6 +24,7 @@ jobs:
   c1:
     if: ${{ inputs.box == 'contabo1' || inputs.box == 'both' }}
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Contabo1 neu starten
         uses: appleboy/ssh-action@v1.0.3
@@ -63,6 +64,7 @@ jobs:
     needs: c1
     if: ${{ always() && (inputs.box == 'contabo2' || inputs.box == 'both') }}
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Contabo2 neu starten
         uses: appleboy/ssh-action@v1.0.3

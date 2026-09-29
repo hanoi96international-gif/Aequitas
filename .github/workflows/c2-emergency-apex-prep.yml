@@ -10,6 +10,7 @@ on:
 jobs:
   prep:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Append apex standby + Host-Header smoke
         uses: appleboy/ssh-action@v1.0.3

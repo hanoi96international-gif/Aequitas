@@ -241,6 +241,7 @@ jobs:
 
   contabo1_logs:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Contabo1 merge evidence
         uses: appleboy/ssh-action@v1.0.3
@@ -275,6 +276,7 @@ jobs:
 
   contabo2_logs:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Contabo2 merge evidence
         uses: appleboy/ssh-action@v1.0.3

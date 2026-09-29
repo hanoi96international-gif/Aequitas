@@ -37,6 +37,7 @@ jobs:
   deploy:
     needs: test
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       # FIX (2026-07-25 night): see deploy-contabo.yml's matching comment —
       # simultaneous restarts of all three nodes forked the network twice in

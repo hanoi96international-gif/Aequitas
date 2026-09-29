@@ -52,6 +52,7 @@ on:
 jobs:
   apply:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Set and measure
         uses: appleboy/ssh-action@v1.0.3

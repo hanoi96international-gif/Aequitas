@@ -35,6 +35,7 @@ on:
 jobs:
   inspect:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Contabo2
         uses: appleboy/ssh-action@v1.0.3

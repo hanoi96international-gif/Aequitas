@@ -50,6 +50,7 @@ on:
 jobs:
   recover:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Resync Contabo1 from Contabo2
         uses: appleboy/ssh-action@v1.0.3

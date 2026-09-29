@@ -27,6 +27,7 @@ on:
 jobs:
   contabo1:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Ask Contabo1
         uses: appleboy/ssh-action@v1.0.3
@@ -56,6 +57,7 @@ jobs:
 
   contabo2:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Ask Contabo2
         uses: appleboy/ssh-action@v1.0.3

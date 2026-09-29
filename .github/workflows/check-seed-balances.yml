@@ -16,6 +16,7 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Query eth_getBalance for each address on Contabo2
         uses: appleboy/ssh-action@v1.0.3

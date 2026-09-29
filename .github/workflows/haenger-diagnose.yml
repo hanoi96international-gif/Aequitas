@@ -7,14 +7,12 @@ on:
     inputs:
       von: {description: "UTC, z. B. 2026-09-27T09:10:10", required: true}
       bis: {description: "UTC", required: true}
-  push:
-    branches: [claude/server-changes-quorum-nfksc7]
-    paths: [.github/workflows/haenger-diagnose.yml]
 permissions:
   contents: read
 jobs:
   lesen:
     runs-on: ubuntu-latest
+    environment: produktion
     timeout-minutes: 10
     env:
       VON: ${{ inputs.von || '2026-09-27T09:10:05Z' }}

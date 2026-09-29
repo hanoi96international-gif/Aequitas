@@ -44,6 +44,7 @@ on:
 jobs:
   contabo1:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Recovery timeline on Contabo1
         uses: appleboy/ssh-action@v1.0.3
@@ -119,6 +120,7 @@ jobs:
             echo ""
   contabo2:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Recovery timeline on Contabo2
         uses: appleboy/ssh-action@v1.0.3

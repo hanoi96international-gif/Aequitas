@@ -48,6 +48,7 @@ on:
 jobs:
   widen:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       # Aus der aktuellen Quelle bauen, wie stability-under-load.yml. Bis zum
       # 23.09.2026 lief hier das Binary, das zuletzt irgendein anderer Lauf

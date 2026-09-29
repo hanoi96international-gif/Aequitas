@@ -44,6 +44,7 @@ on:
 jobs:
   normalize:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Resolve target
         id: t

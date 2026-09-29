@@ -59,6 +59,7 @@ on:
 jobs:
   contabo1:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Resync Contabo1 from the trusted primary
         uses: appleboy/ssh-action@v1.0.3
@@ -105,6 +106,7 @@ jobs:
   contabo2:
     needs: contabo1
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Resync Contabo2 from the trusted primary
         uses: appleboy/ssh-action@v1.0.3

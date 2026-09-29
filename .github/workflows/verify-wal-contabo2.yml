@@ -38,6 +38,7 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Check Contabo2 WAL/multi-block-tick status
         uses: appleboy/ssh-action@v1.0.3

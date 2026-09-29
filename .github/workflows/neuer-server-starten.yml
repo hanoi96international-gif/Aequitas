@@ -4,14 +4,10 @@ name: Neuer Server (netcup) -- Validator starten
 # erscheinen nie in diesem (oeffentlichen) Log. Siehe deploy/server-starten.sh.
 on:
   workflow_dispatch:
-  push:
-    branches: [claude/aequitas-weitermachen-i6yayi]
-    paths:
-      - .github/workflows/neuer-server-starten.yml
-      - deploy/server-starten.sh
 jobs:
   starten:
     runs-on: ubuntu-latest
+    environment: produktion
     timeout-minutes: 30
     env:
       NEU: 188.172.229.121

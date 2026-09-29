@@ -33,6 +33,7 @@ on:
 jobs:
   probe:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Ask Contabo1 what the primary reports about itself
         uses: appleboy/ssh-action@v1.0.3

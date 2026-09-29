@@ -6,14 +6,12 @@ name: Neuer C1 (netcup) -- Deploy-Schluessel des Biometrie-Repos zulassen
 # vergleichsdienst-neuer-c1.yml, Lauf 36232894356). Nicht geheim.
 on:
   workflow_dispatch:
-  push:
-    branches: [claude/server-changes-quorum-nfksc7]
-    paths: [.github/workflows/c1-schluessel-eintragen.yml]
 permissions:
   contents: read
 jobs:
   eintragen:
     runs-on: ubuntu-latest
+    environment: produktion
     env:
       PUB: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIK8MCr9ui1iQ4vEGqHd1DItamxIXN2dO7uYnYRcWmMtV aequitas-claude-code"
     steps:

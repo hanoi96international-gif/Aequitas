@@ -4,18 +4,13 @@ name: Neuer C1 (netcup) -- Caddy (aequitas.digital und proof1)
 # Vergleichsdienst, /coordinator -> Coordinator auf C2.
 on:
   workflow_dispatch:
-  push:
-    branches: [main, claude/server-changes-quorum-nfksc7]
-    paths:
-      - .github/workflows/neuer-server-caddy.yml
-      - deploy/caddy-neuer-server.sh
-      - deploy/Caddyfile.neuer-server
 permissions:
   contents: read
 concurrency: neuer-c1-caddy
 jobs:
   caddy:
     runs-on: ubuntu-latest
+    environment: produktion
     timeout-minutes: 20
     env:
       NEU: 188.172.229.121
