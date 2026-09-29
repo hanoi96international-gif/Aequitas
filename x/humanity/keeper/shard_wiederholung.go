@@ -1,6 +1,8 @@
 package keeper
 
 import (
+	"errors"
+	"os"
 	"sync/atomic"
 	"time"
 )
@@ -164,4 +166,48 @@ func ShardRetryStand() map[string]interface{} {
 			"Ein Rueckfall kostet gemessen rund 800 ms, das Wiederholen hoechstens 1 ms. " +
 			"rettungsquote nahe 0 hiesse: die Shards sind laenger belegt als das Fenster",
 	}
+}
+
+// AUF DEN SHARD WARTEN STATT IN DEN SERIELLEN PFAD (28.09.2026).
+//
+// Der Rueckfall ist seit dem 26.09. teurer als alles, was oben gemessen
+// wurde: processTransferBatchConcurrent (Rueckfall unter RLock plus
+// Shard-Sperren) steigt aus, sobald die Wirtschaftsregeln aktiv sind oder
+// eine Ueberweisung signiert ist -- seit Stufe 1 also immer. Jeder Rueckfall
+// landet damit in processTransferBatch unter cs.mu.Lock(), und die globale
+// Schreibsperre sperrt JEDE andere Ueberweisung aus. Gemessen am 27.09.: 613
+// Rueckfall-Laeufe in einer Minute, je 14 ms exklusiv, und warten_auf_sperre
+// 97,6 % -- die 97,5 % des Verkehrs auf dem Schnellpfad standen dahinter an.
+//
+// Ein haeufiger Rueckfallgrund ist ein belegter Shard (fallback_gruende,
+// shard_belegt); belegt haelt ihn meist flushWALBatch fuer seinen
+// Postgres-Schreibvorgang (Mittel 46 ms). Wie viele Rueckfaelle das hier
+// rettet, zaehlt shard_gewartet_gerettet. Statt
+// dann die ganze Kette exklusiv anzuhalten, wartet die Ueberweisung jetzt
+// blockierend auf GENAU ihre zwei Shards -- im selben Schnellpfad, mit
+// denselben Regeln (Nonce, Wirtschaft, Kappung), nur mit LockAddrs statt
+// TryLockAddrs. Die 01.09.-Messung oben wartete nur bis 60 ms und fiel danach
+// weiterhin in den seriellen Pfad; hier gibt es keinen zweiten Rueckfall mehr
+// wegen des Shards.
+//
+// WARUM DAS KEINEN DEADLOCK ERZEUGT. Der Wartende haelt cs.mu.RLock und
+// wartet auf Shards. Ein Kreis entstuende nur, wenn der Halter eines Shards
+// seinerseits auf cs.mu wartete. Die Halter sind: dieser Pfad, flushWALBatch,
+// processTransferBatchConcurrent, pruefeAnnahmeNonce, register_concurrent und
+// kontowerteFuerSpiegel -- keiner fordert cs.mu an, solange er einen Shard
+// haelt (gepruefter Stand 28.09.2026: unter den Shards laufen nur eigene
+// kleine Sperren -- Buch, XOR, Flush-Schlange, Spiegel). Mehrere Shards werden
+// ueberall in aufsteigender Reihenfolge genommen (LockAddrs/TryLockAddrs
+// sortieren), also gibt es auch unter den Shards keinen Kreis.
+//
+// Abschaltbar ohne Deploy: AEQUITAS_SHARD_WARTEN=0.
+var fbShardGewartet atomic.Int64
+
+// errShardBelegt: der Schnellpfad fand einen Shard belegt und hat nichts
+// veraendert. Nur zwischen transferConcurrentWALGesperrt und
+// transferConcurrentWAL; nie an einen Aufrufer weitergereicht.
+var errShardBelegt = errors.New("shard belegt")
+
+func shardWartenStattRueckfall() bool {
+	return os.Getenv("AEQUITAS_SHARD_WARTEN") != "0"
 }

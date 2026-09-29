@@ -42,8 +42,10 @@ func TestRueckstau_GrenzeLehntAbUndGibtFrei(t *testing.T) {
 	if g := rueckstauPlatzNehmen(); g != "" {
 		t.Fatalf("nach dem Block weiter gesperrt: %s", g)
 	}
-	// Vorgabe: EIN voller Block; 0 schaltet ab.
+	// Vorgabe ohne Mehrfach-Takt: EIN voller Block; 0 schaltet ab.
 	t.Setenv("AEQUITAS_RUECKSTAU_MAX", "")
+	t.Setenv("ENABLE_MULTI_BLOCK_TICK", "")
+	blockDeckelZuletzt.Store(0)
 	if rueckstauMax() != int64(blockTxHartDeckel()) {
 		t.Fatalf("Vorgabe %d", rueckstauMax())
 	}
@@ -100,5 +102,42 @@ func TestRueckstau_OhneMessungSchliesstSich(t *testing.T) {
 	rueckstauMessungUebernehmen(4, vorher)
 	if s := rueckstauStand(); s != 7 {
 		t.Fatalf("Stand %d, erwartet 4 gemessen + 3 waehrend der Messung", s)
+	}
+}
+
+// Mit ENABLE_MULTI_BLOCK_TICK=1 baut ein Takt bis zu 1+maxExtraBlocksPerTick
+// Bloecke -- aber nur, wenn der vorige voll war. Eine Grenze von einem Block
+// liess nie einen zweiten vollen entstehen (27.09.2026: 55 Bloecke, keiner
+// voll, 9.202 Ablehnungen). Gebremst: ein Block mit dem gebremsten Deckel.
+func TestRueckstau_GrenzeJeTaktMitMehrerenBloecken(t *testing.T) {
+	t.Setenv("AEQUITAS_RUECKSTAU_MAX", "")
+	t.Setenv("AEQUITAS_MAX_TXS_PER_BLOCK", "7000")
+	alt, altUngebremst := blockDeckelZuletzt.Load(), blockDeckelZuletztUngebremst.Load()
+	t.Cleanup(func() {
+		blockDeckelZuletzt.Store(alt)
+		blockDeckelZuletztUngebremst.Store(altUngebremst)
+	})
+
+	t.Setenv("ENABLE_MULTI_BLOCK_TICK", "1")
+	merkeBlockDeckel(7000, 7000) // ungebremst
+	if got, want := rueckstauMax(), int64(7000*(1+maxExtraBlocksPerTick)); got != want {
+		t.Fatalf("Mehrfach-Takt ungebremst: Grenze %d, erwartet %d", got, want)
+	}
+
+	merkeBlockDeckel(1500, 7000) // Peer-Lag-Bremse: keine Zusatzbloecke
+	if got := rueckstauMax(); got != 1500 {
+		t.Fatalf("Mehrfach-Takt gebremst: Grenze %d, erwartet 1500 (ein gebremster Block)", got)
+	}
+
+	t.Setenv("ENABLE_MULTI_BLOCK_TICK", "")
+	merkeBlockDeckel(7000, 7000)
+	if got := rueckstauMax(); got != 7000 {
+		t.Fatalf("ohne Mehrfach-Takt: Grenze %d, erwartet 7000", got)
+	}
+
+	t.Setenv("ENABLE_MULTI_BLOCK_TICK", "1")
+	t.Setenv("AEQUITAS_RUECKSTAU_MAX", "12345")
+	if got := rueckstauMax(); got != 12345 {
+		t.Fatalf("ausdruecklich gesetzt: Grenze %d, erwartet 12345", got)
 	}
 }

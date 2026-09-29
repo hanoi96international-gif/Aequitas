@@ -67,6 +67,11 @@ func FallbackGruende() map[string]interface{} {
 		aus[k] = v
 	}
 	aus["summe"] = summe
+	// Nicht in der Summe: shard_belegt zaehlt diese Faelle schon einmal, sie
+	// wurden danach aber durch Warten gerettet (shardWartenStattRueckfall).
+	aus["shard_gewartet_gerettet"] = fbShardGewartet.Load()
+	aus["shard_warten_an"] = shardWartenStattRueckfall()
+	aus["wirtschaft_seriell"] = fbWirtschaftSeriell.Load()
 	aus["bedeutung"] = "warum Ueberweisungen den Schnellpfad verlassen. shard_belegt ueberwiegt = " +
 		"Kollisionen auf denselben Konten, im Lasttest ein Artefakt des kleinen Kontenvorrats. " +
 		"demurrage ueberwiegt = Abrechnungen, die sich vorziehen liessen. warteschlange " +

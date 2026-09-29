@@ -347,8 +347,21 @@ func (cs *ChainState) setzeVorlaufNoncenLocked(ctx context.Context, txs []Transa
 // und entfernt (46 ms, siehe transfer_wal.go). Jetzt: ist der Shard frei,
 // wird unter seiner Sperre geprueft (auch das vorher ungeschuetzte Lesen von
 // NaechsteNonce); ist er belegt, entfaellt die Vorpruefung.
+//
+// AUCH NICHT AUF cs.mu WARTEN (28.09.2026). Das RLock davor blieb blockierend
+// -- und ein RWMutex laesst neue Leser warten, sobald ein Schreiber haelt ODER
+// WARTET. cs.mu schreibend halten der Blockbau (sperren_ms 70) und jeder
+// Buchungslauf (runAtomicWithOutbox, 14 ms); gemessen wartete er zu 97,6 %
+// seiner Zeit auf die Sperre. Jede Ueberweisung stand dahinter an: 52 von
+// 106 ms je Posten lagen im Vorlauf, und das hier war dort die einzige
+// Sperre. Dieselbe Regel wie beim Shard: ist cs.mu gerade nicht lesbar,
+// entfaellt die Vorpruefung -- verbindlich ist ohnehin pruefeNonceLocked.
 func (cs *ChainState) pruefeAnnahmeNonce(absender string, nonce uint64) error {
-	cs.mu.RLock()
+	if !cs.mu.TryRLock() {
+		annahmeNonceVorpruefungUebersprungen.Add(1)
+		annahmeNonceVorpruefungOhneZustand.Add(1)
+		return nil
+	}
 	defer cs.mu.RUnlock()
 	if cs.accounts == nil {
 		return nil
@@ -370,8 +383,12 @@ func (cs *ChainState) pruefeAnnahmeNonce(absender string, nonce uint64) error {
 	return nil
 }
 
-// Wie oft die Vorpruefung wegen eines belegten Shards entfiel.
-var annahmeNonceVorpruefungUebersprungen atomic.Int64
+// Wie oft die Vorpruefung entfiel (Shard oder cs.mu belegt), und davon wie
+// oft wegen cs.mu.
+var (
+	annahmeNonceVorpruefungUebersprungen atomic.Int64
+	annahmeNonceVorpruefungOhneZustand   atomic.Int64
+)
 
 // pruefeNonceLocked: die Nonce-Pruefung der Annahme UNTER der Sperre, direkt
 // vor der Buchung. pruefeAnnahmeNonce (vorab, nur lesend) reicht nicht:
@@ -433,6 +450,7 @@ func SignierteUeberweisungenStand() map[string]interface{} {
 		"abgelehnte_bloecke":              ungueltigeSignaturBloecke.Load(),
 		"vorlauf_sekunden":                signierteUeberweisungenVorlauf,
 		"nonce_vorpruefung_uebersprungen": annahmeNonceVorpruefungUebersprungen.Load(),
+		"nonce_vorpruefung_ohne_zustand":  annahmeNonceVorpruefungOhneZustand.Load(),
 	}
 }
 
