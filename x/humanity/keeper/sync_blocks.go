@@ -3223,7 +3223,12 @@ func (dag *BlockDAG) HTTPBroadcastBlock(block *Block) {
 
 	for _, peerURL := range peers {
 		peerURL := peerURL
-		go func() {
+		// Je Partner der Reihe nach, nicht jeder Block in seiner eigenen
+		// Goroutine -- siehe push_reihenfolge.go (29.09.2026: ein Takt mit
+		// fuenf Bloecken kam in beliebiger Reihenfolge an, die spaeteren
+		// wurden Waisen, und C2 stand bis zum naechsten Sync 12 Hoehen
+		// zurueck).
+		pushGeordnet(peerURL, func() {
 			// FIX (P0-3, beta-launch audit 2026-07-05): see panic_recovery.go.
 			defer func() {
 				if r := recover(); r != nil {
@@ -3247,8 +3252,21 @@ func (dag *BlockDAG) HTTPBroadcastBlock(block *Block) {
 				} else if stripped {
 					payload = strippedData
 				}
-				pushResp, ok := dag.pushBlockOnce(block, peerURL, payload, stripped, gepackt)
+				pushResp, ok, zeitUeber := dag.pushBlockOnce(block, peerURL, payload, stripped, gepackt)
 				if !ok {
+					if zeitUeber {
+						// Zu langsam ist nicht "versteht kein gzip": der
+						// Partner war beschaeftigt (Nachspielen). Bis zum
+						// 29.09.2026 schaltete das hier gzip ab und schob den
+						// Block UNGEPACKT nach -- mehrfach so gross, also die
+						// naechste Zeitueberschreitung. Einmal dasselbe noch
+						// einmal; bleibt es aus, holt der Sync den Block.
+						pushZeitUeber.Add(1)
+						if attempt == 0 {
+							continue
+						}
+						return
+					}
 					if gepackt {
 						// Gepackt nicht angekommen: Faehigkeit vergessen und den
 						// Block sofort auf dem alten Weg nachschieben.
@@ -3292,7 +3310,7 @@ func (dag *BlockDAG) HTTPBroadcastBlock(block *Block) {
 				dag.recordPushRejection(peerURL, pushResp.OK, pushResp.Reason)
 				return
 			}
-		}()
+		})
 	}
 }
 
@@ -3313,13 +3331,13 @@ type blockPushResponse struct {
 // pushBlockOnce POSTs one payload to one peer and parses the reply. ok=false
 // means there is nothing further to act on (transport failure or unparseable
 // response) — both are already reported where they happen.
-func (dag *BlockDAG) pushBlockOnce(block *Block, peerURL string, payload []byte, stripped, gepackt bool) (blockPushResponse, bool) {
+func (dag *BlockDAG) pushBlockOnce(block *Block, peerURL string, payload []byte, stripped, gepackt bool) (blockPushResponse, bool, bool) {
 	var pushResp blockPushResponse
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), pushFrist(len(payload)))
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, peerURL+"/api/blocks/push", bytes.NewReader(payload))
 	if err != nil {
-		return pushResp, false
+		return pushResp, false, false
 	}
 	if gepackt {
 		req.Header.Set("Content-Encoding", "gzip")
@@ -3336,7 +3354,7 @@ func (dag *BlockDAG) pushBlockOnce(block *Block, peerURL string, payload []byte,
 	resp, err := httpSyncClient.Do(req)
 	if err != nil {
 		fmt.Printf("[BLOCK-PUSH] ✗ HTTP push block #%d to %s: %v\n", block.Height, peerURL, err)
-		return pushResp, false
+		return pushResp, false, errors.Is(err, context.DeadlineExceeded) || os.IsTimeout(err)
 	}
 	defer resp.Body.Close()
 	// P0 fix (2026-07-02 liveness audit follow-up): read the response instead
@@ -3354,7 +3372,7 @@ func (dag *BlockDAG) pushBlockOnce(block *Block, peerURL string, payload []byte,
 	// reaction.
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<10))
 	if err != nil || json.Unmarshal(body, &pushResp) != nil {
-		return pushResp, false
+		return pushResp, false, false
 	}
 	// Learn (or unlearn) this peer's support for bodies by reference from the
 	// response it just sent, before the caller acts on anything else.
@@ -3378,7 +3396,7 @@ func (dag *BlockDAG) pushBlockOnce(block *Block, peerURL string, payload []byte,
 		// rejected this block for its own reasons but plainly speaks the scheme.
 		recordTxBatchCapability(peerURL, true)
 	}
-	return pushResp, true
+	return pushResp, true, false
 }
 
 // reactToResyncSignal is HTTPBroadcastBlock's response to a peer reporting

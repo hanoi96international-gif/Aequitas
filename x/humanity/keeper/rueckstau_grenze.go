@@ -1,6 +1,7 @@
 package keeper
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strconv"
@@ -42,6 +43,20 @@ import (
 // Haengt der Messer oder ist die Datenbank weg, waechst der Zaehler weiter
 // und die Annahme schliesst sich von selbst -- fail closed.
 //
+// # WAS VERBLOCKT IST, ZAEHLT SOFORT AB (seit 29.09.2026)
+//
+// Gemessen unter Last: die Zaehlabfrage kam 45 s lang nicht durch (gemessen
+// blieb auf 11.872 stehen), waehrend die Bloecke den Rueckstau laengst
+// geleert hatten -- ab da trugen sie 0 Ueberweisungen, und die Annahme
+// lehnte trotzdem alles mit -32005 ab. Ein falsches "voll" legte den Knoten
+// fuer Dutzende Sekunden still. Jetzt zieht jeder GESPEICHERTE Block seine
+// Ueberweisungen sofort ab (rueckstauEingeschlossen), unabhaengig von der
+// Messung. Fail closed bleibt: ohne Datenbank wird kein Block gespeichert,
+// also auch nichts abgezogen. Nach einer Messung wird der Abzug auf den
+// Stand NACH der Abfrage zurueckgesetzt -- was waehrend der Abfrage
+// verblockt wurde, zaehlt damit hoechstens doppelt, nie zu wenig. Die
+// Abfrage selbst hat eine Frist (rueckstauMessFrist).
+//
 //	AEQUITAS_RUECKSTAU_MAX   Obergrenze in Ueberweisungen (Vorgabe: was der naechste
 //	                         Takt baut, siehe rueckstauBloeckeJeTakt; 0 = aus)
 
@@ -53,7 +68,21 @@ var (
 	rueckstauGemessen   atomic.Int64 // Unix-Zeit der letzten Messung
 	rueckstauAbgelehnt  atomic.Int64
 	rueckstauMesserAn   atomic.Bool
+
+	rueckstauEingeschlossen atomic.Int64 // seit der letzten Messung in gespeicherten Bloecken
+	rueckstauMessFehler     atomic.Int64
 )
+
+// rueckstauMessFrist: laenger wartet der Messer nicht auf die Zaehlabfrage.
+const rueckstauMessFrist = 2 * time.Second
+
+// MerkeRueckstauVerblockt: n Ueberweisungen aus pending_txs stehen jetzt in
+// einem gespeicherten Block (ProduceBlock, nach dem Speichern).
+func MerkeRueckstauVerblockt(n int) {
+	if n > 0 {
+		rueckstauEingeschlossen.Add(int64(n))
+	}
+}
 
 // rueckstauMax: die geltende Obergrenze.
 func rueckstauMax() int64 {
@@ -101,7 +130,13 @@ func rueckstauDeckel() int64 {
 	return int64(blockTxHartDeckel())
 }
 
-func rueckstauStand() int64 { return rueckstauAktuell.Load() + rueckstauZugelassen.Load() }
+func rueckstauStand() int64 {
+	n := rueckstauAktuell.Load() + rueckstauZugelassen.Load() - rueckstauEingeschlossen.Load()
+	if n < 0 {
+		return 0
+	}
+	return n
+}
 
 func rueckstauMeldung(n, grenze int64) string {
 	return fmt.Sprintf("server busy: %d accepted transfers are waiting for the next block (limit %d); try again shortly", n, grenze)
@@ -132,7 +167,7 @@ func rueckstauPlatzNehmen() string {
 		return ""
 	}
 	z := rueckstauZugelassen.Add(1)
-	if n := rueckstauAktuell.Load() + z; n > grenze {
+	if n := rueckstauAktuell.Load() + z - rueckstauEingeschlossen.Load(); n > grenze {
 		rueckstauZugelassen.Add(-1)
 		rueckstauAbgelehnt.Add(1)
 		return rueckstauMeldung(n-1, grenze)
@@ -146,6 +181,10 @@ func rueckstauPlatzNehmen() string {
 func rueckstauMessungUebernehmen(offen, vorher int64) {
 	rueckstauAktuell.Store(offen)
 	rueckstauZugelassen.Add(-vorher)
+	// Den Abzug auf den Stand NACH der Abfrage zuruecksetzen: was sie noch
+	// als offen gezaehlt hat, aber schon verblockt ist, zaehlt so einmal zu
+	// viel -- nie einmal zu wenig.
+	rueckstauEingeschlossen.Store(0)
 	rueckstauGemessen.Store(time.Now().Unix())
 }
 
@@ -161,7 +200,11 @@ func (dag *BlockDAG) StarteRueckstauMesser() {
 		for range t.C {
 			vorher := rueckstauZugelassen.Load()
 			var offen int64
-			if err := cs.db.QueryRow(`SELECT count(*) FROM pending_txs WHERE included_at = 0`).Scan(&offen); err != nil {
+			ctx, abbrechen := context.WithTimeout(context.Background(), rueckstauMessFrist)
+			err := cs.db.QueryRowContext(ctx, `SELECT count(*) FROM pending_txs WHERE included_at = 0`).Scan(&offen)
+			abbrechen()
+			if err != nil {
+				rueckstauMessFehler.Add(1)
 				continue
 			}
 			rueckstauMessungUebernehmen(offen+int64(cs.WALFlushQueueDepth()), vorher)
@@ -172,12 +215,14 @@ func (dag *BlockDAG) StarteRueckstauMesser() {
 // RueckstauStand fuer /api/health/combined.
 func RueckstauStand() map[string]interface{} {
 	return map[string]interface{}{
-		"bedeutung":       "Angenommen, aber noch in keinem Block (gemessen plus seit der Messung zugelassen). Die Grenze ist ein voller Block: alles Angenommene passt in den naechsten Block, darueber lehnt der Knoten mit -32005 ab.",
-		"aktuell":         rueckstauStand(),
-		"gemessen":        rueckstauAktuell.Load(),
-		"messung_alter_s": time.Now().Unix() - rueckstauGemessen.Load(),
-		"grenze":          rueckstauMax(),
-		"abgelehnt":       rueckstauAbgelehnt.Load(),
-		"messer_an":       rueckstauMesserAn.Load(),
+		"bedeutung":              "Angenommen, aber noch in keinem Block (gemessen plus seit der Messung zugelassen). Die Grenze ist ein voller Block: alles Angenommene passt in den naechsten Block, darueber lehnt der Knoten mit -32005 ab.",
+		"aktuell":                rueckstauStand(),
+		"gemessen":               rueckstauAktuell.Load(),
+		"messung_alter_s":        time.Now().Unix() - rueckstauGemessen.Load(),
+		"grenze":                 rueckstauMax(),
+		"abgelehnt":              rueckstauAbgelehnt.Load(),
+		"messer_an":              rueckstauMesserAn.Load(),
+		"verblockt_seit_messung": rueckstauEingeschlossen.Load(),
+		"mess_fehler":            rueckstauMessFehler.Load(),
 	}
 }
