@@ -783,6 +783,21 @@ func main() {
 		if multiBlockTick {
 			fmt.Println("⚠ ENABLE_MULTI_BLOCK_TICK=1 — up to", keeper.MaxExtraBlocksPerTick(), "extra block(s)/tick when backlogged. NOT staging-validated (multi-node consensus-timing change).")
 		}
+		// Verteilung neben dem Blockbau statt im Takt -- siehe
+		// keeper/block_verteiler.go (29.09.2026: der Takt verbrachte den
+		// Grossteil seiner Zeit mit JSON und gzip, und verpasste Ticks fielen
+		// weg).
+		verteiler := keeper.NeuerBlockVerteiler(func(block *keeper.Block) {
+			p2pNode.BroadcastBlock(block)
+			bc.HTTPBroadcastBlock(block) // HTTP push for peers where port 4001 is firewalled
+			fmt.Printf("[Block #%d] Hash: %s... | Humans: %d | Time: %s\n",
+				block.Height,
+				block.Hash[:16],
+				block.Humans,
+				time.Unix(block.Timestamp, 0).Format("15:04:05"),
+			)
+		})
+		keeper.SetzeBlockVerteiler(verteiler)
 		ticker := time.NewTicker(BLOCK_TIME)
 		for range ticker.C {
 			// FIX (P0-3, beta-launch audit 2026-07-05): recover per-tick — see
@@ -801,21 +816,14 @@ func main() {
 				if len(blocks) == 0 {
 					return // catch-up gate — skip this tick
 				}
-				for _, block := range blocks {
-					p2pNode.BroadcastBlock(block)
-					bc.HTTPBroadcastBlock(block) // HTTP push for peers where port 4001 is firewalled
-					fmt.Printf("[Block #%d] Hash: %s... | Humans: %d | Time: %s\n",
-						block.Height,
-						block.Hash[:16],
-						block.Humans,
-						time.Unix(block.Timestamp, 0).Format("15:04:05"),
-					)
-				}
+				bauDauer := time.Since(tickStart)
+				verteiler.Verteile(blocks)
 				if len(blocks) > 1 {
 					fmt.Printf("[BLOCK] produced %d blocks this tick (backlog-driven, ENABLE_MULTI_BLOCK_TICK)\n", len(blocks))
 				}
 				if tickDur := time.Since(tickStart); tickDur > 500*time.Millisecond {
-					fmt.Printf("[BLOCK] ⏱ Full tick (ProduceBlock+broadcast) took %s for %d block(s), last #%d\n", tickDur, len(blocks), blocks[len(blocks)-1].Height)
+					fmt.Printf("[BLOCK] ⏱ Full tick (ProduceBlock+broadcast) took %s for %d block(s), last #%d (bauen %s, einreihen %s)\n",
+						tickDur, len(blocks), blocks[len(blocks)-1].Height, bauDauer, tickDur-bauDauer)
 				}
 			})
 		}

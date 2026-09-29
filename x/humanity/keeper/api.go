@@ -728,6 +728,7 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		"replay_sammler":      SammlerStand(),
 		"replay_schlimmster":  ReplaySchlimmsterStand(),
 		"signatur_vorab":      SignaturVorabStand(),
+		"block_verteiler":     BlockVerteilerStand(),
 		"produktion":          ProduktionsStand(),
 		"produktion_phasen":   ProduktionsPhasenStand(),
 		"vorladen":            vorladenStand(),
