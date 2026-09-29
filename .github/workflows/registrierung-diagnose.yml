@@ -32,7 +32,7 @@ jobs:
           ssh-keyscan 194.163.188.71 2>/dev/null > ~/.ssh/k2
           ssh-keygen -lf ~/.ssh/k2 | awk '{print $2}' | grep -qx 'SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto'
           cat ~/.ssh/k1 ~/.ssh/k2 > ~/.ssh/known_hosts
-      - name: Proof-Server: Modus, Schluesselzahl, Quorum (nur lesen)
+      - name: "Proof-Server - Modus, Schluesselzahl, Quorum (nur lesen)"
         run: |
           for box in c1:188.172.229.121 c2:194.163.188.71; do
             k=${box%%:*}; h=${box#*:}
