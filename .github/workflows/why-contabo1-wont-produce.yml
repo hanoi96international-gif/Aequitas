@@ -49,6 +49,7 @@ on:
 jobs:
   contabo1:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Read Contabo1's rejection reasons and per-peer sync state
         env:

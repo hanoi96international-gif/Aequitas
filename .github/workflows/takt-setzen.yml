@@ -28,6 +28,7 @@ jobs:
           - {name: "Contabo1", host: "173.249.37.118", secret: "C1"}
           - {name: "Contabo2", host: "194.163.188.71", secret: "C2"}
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Takt auf ${{ matrix.box.name }}
         uses: appleboy/ssh-action@v1.0.3
@@ -97,6 +98,7 @@ jobs:
   messen:
     needs: set
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Wie viele Bloecke entstehen jetzt wirklich
         uses: appleboy/ssh-action@v1.0.3

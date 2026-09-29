@@ -47,6 +47,7 @@ on:
 jobs:
   contabo2:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Remove WAL / multi-block-tick vars and restart Contabo2
         # `envs:` only forwards names that this step's own `env:` block

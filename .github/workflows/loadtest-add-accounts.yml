@@ -30,6 +30,7 @@ on:
 jobs:
   add:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Append accounts on Contabo2
         uses: appleboy/ssh-action@v1.0.3

@@ -39,6 +39,7 @@ on:
 jobs:
   profile:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Profile Contabo2 under load
         uses: appleboy/ssh-action@v1.0.3

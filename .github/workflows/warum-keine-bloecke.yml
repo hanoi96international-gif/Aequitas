@@ -18,6 +18,7 @@ on:
 jobs:
   c1:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - uses: appleboy/ssh-action@v1.0.3
         with:
@@ -68,6 +69,7 @@ jobs:
             grep -iE 'panic|fatal|out of memory|deadlock' /tmp/nl.txt | tail -5 | cut -c1-200
   c2:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - uses: appleboy/ssh-action@v1.0.3
         with:

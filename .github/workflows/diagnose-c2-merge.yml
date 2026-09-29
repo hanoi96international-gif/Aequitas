@@ -18,6 +18,7 @@ on:
 jobs:
   diag:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Diagnose Contabo2
         uses: appleboy/ssh-action@v1.0.3

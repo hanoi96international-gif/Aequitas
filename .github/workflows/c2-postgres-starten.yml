@@ -14,6 +14,7 @@ on:
 jobs:
   starten:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - uses: appleboy/ssh-action@v1.0.3
         with:

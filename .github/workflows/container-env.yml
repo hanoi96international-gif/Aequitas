@@ -12,6 +12,7 @@ jobs:
       fail-fast: false
       matrix: {box: [{name: "C1", host: "173.249.37.118", secret: "C1"}, {name: "C2", host: "194.163.188.71", secret: "C2"}]}
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - if: ${{ inputs.box == matrix.box.name }}
         uses: appleboy/ssh-action@v1.0.3

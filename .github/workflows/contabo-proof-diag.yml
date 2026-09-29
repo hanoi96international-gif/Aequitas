@@ -19,6 +19,7 @@ on:
 jobs:
   diag:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Diagnose Contabo1
         if: ${{ inputs.box == 'contabo1' }}

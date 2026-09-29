@@ -38,6 +38,7 @@ on:
 jobs:
   token:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Report what each box currently has (fingerprint only)
         id: before

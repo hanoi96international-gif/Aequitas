@@ -10,6 +10,7 @@ on:
 jobs:
   contabo2:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Check validator_penalties + recent suspend-related logs on Contabo2
         uses: appleboy/ssh-action@v1.0.3

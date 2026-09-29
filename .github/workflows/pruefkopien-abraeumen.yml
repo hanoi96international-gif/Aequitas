@@ -7,6 +7,7 @@ jobs:
   d:
     strategy: {max-parallel: 1, matrix: {box: [{name: "C2", host: "194.163.188.71", secret: "C2"}, {name: "C1", host: "173.249.37.118", secret: "C1"}]}}
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - uses: appleboy/ssh-action@v1.0.3
         with:

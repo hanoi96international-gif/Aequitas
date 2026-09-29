@@ -30,6 +30,7 @@ on:
 jobs:
   reconcile:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Reconcile on Contabo1
         if: ${{ inputs.box == 'contabo1' }}

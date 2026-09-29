@@ -7,18 +7,13 @@ name: Rolle -- C1 (netcup) Primary, C2 nur lesend
 # Vom Betreiber am 26.09.2026 freigegeben.
 on:
   workflow_dispatch:
-  push:
-    branches: [claude/server-changes-quorum-nfksc7]
-    paths:
-      - .github/workflows/rolle-c1-primary.yml
-      - deploy/rolle-c2-nur-lesend.sh
-      - deploy/rolle-c1-primary.sh
 permissions:
   contents: read
 concurrency: rolle-umschalten
 jobs:
   c2-nur-lesend:
     runs-on: ubuntu-latest
+    environment: produktion
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -37,6 +32,7 @@ jobs:
   c1-primary:
     needs: c2-nur-lesend
     runs-on: ubuntu-latest
+    environment: produktion
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4

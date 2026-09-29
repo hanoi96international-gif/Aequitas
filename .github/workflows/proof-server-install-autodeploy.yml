@@ -29,6 +29,7 @@ on:
 jobs:
   install:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Install on Contabo1
         if: ${{ inputs.box == 'contabo1' }}

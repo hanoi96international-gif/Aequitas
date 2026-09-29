@@ -1,13 +1,12 @@
 name: Alter C1 -- laeuft er noch, wie gross ist seine Galerie? (nur Zahlen)
 on:
-  push:
-    branches: [claude/server-changes-quorum-nfksc7]
-    paths: [.github/workflows/alt-c1-galerie-zaehlen.yml]
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
   zaehlen:
     runs-on: ubuntu-latest
+    environment: produktion
     timeout-minutes: 5
     steps:
       - name: Alter C1 (173.249.37.118)

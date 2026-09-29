@@ -50,6 +50,7 @@ jobs:
           - { name: Contabo1, host: 173.249.37.118, secret: C1, fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4" }
           - { name: Contabo2, host: 194.163.188.71, secret: C2, fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto" }
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Eingaben pruefen
         env:

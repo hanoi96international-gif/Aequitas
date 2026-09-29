@@ -4,16 +4,12 @@ name: Lage C1 (netcup) und C2 -- Rolle, Dienste, Quorum (nur lesend)
 # aus (deploy/lage-lesen.sh) -- das Log ist oeffentlich.
 on:
   workflow_dispatch:
-  push:
-    branches: [claude/server-changes-quorum-nfksc7]
-    paths:
-      - .github/workflows/lage-c1-c2.yml
-      - deploy/lage-lesen.sh
 permissions:
   contents: read
 jobs:
   c1:
     runs-on: ubuntu-latest
+    environment: produktion
     timeout-minutes: 10
     env:
       NEU: 188.172.229.121
@@ -32,6 +28,7 @@ jobs:
         run: ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes root@$NEU 'bash -s' < deploy/lage-lesen.sh
   c2:
     runs-on: ubuntu-latest
+    environment: produktion
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4

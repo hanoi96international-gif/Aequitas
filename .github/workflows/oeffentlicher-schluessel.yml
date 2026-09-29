@@ -4,12 +4,10 @@ name: Oeffentlichen Teil von CONTABO_SSH_KEY ausgeben
 # ist nicht geheim; der private verlaesst den Runner nicht.
 on:
   workflow_dispatch:
-  push:
-    branches: [claude/aequitas-weitermachen-i6yayi]
-    paths: [.github/workflows/oeffentlicher-schluessel.yml]
 jobs:
   ausgeben:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Oeffentlichen Schluessel ableiten
         env:

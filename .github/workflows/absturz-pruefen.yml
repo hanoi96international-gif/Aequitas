@@ -1,13 +1,12 @@
 name: Absturz C1/C2? Neustarts, OOM, Speicher (nur lesen)
 on:
-  push:
-    branches: [claude/server-changes-quorum-nfksc7]
-    paths: [.github/workflows/absturz-pruefen.yml]
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
   pruefen:
     runs-on: ubuntu-latest
+    environment: produktion
     timeout-minutes: 10
     steps:
       - name: Schluessel und Host-Pruefung

@@ -68,6 +68,7 @@ jobs:
   deploy:
     needs: test
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       # FIX (2026-07-25 night — the second network-wide fork in one evening):
       # a push to main restarts ALL THREE nodes at once (Railway redeploys the

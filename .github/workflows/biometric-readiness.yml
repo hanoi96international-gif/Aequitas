@@ -26,6 +26,7 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Contabo1 (dort laufen Coordinator und Matching)
         uses: appleboy/ssh-action@v1.0.3

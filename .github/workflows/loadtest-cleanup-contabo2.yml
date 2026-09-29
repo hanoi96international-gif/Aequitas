@@ -15,6 +15,7 @@ on:
 jobs:
   cleanup:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Shred accounts.csv and remove the loadtest directory
         uses: appleboy/ssh-action@v1.0.3

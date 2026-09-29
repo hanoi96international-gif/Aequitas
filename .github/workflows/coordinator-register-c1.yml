@@ -10,14 +10,12 @@ name: Coordinator-Register von C2 auf den neuen C1 uebernehmen
 # nie ueberschreiben.
 on:
   workflow_dispatch:
-  push:
-    branches: [claude/server-changes-quorum-nfksc7]
-    paths: [.github/workflows/coordinator-register-c1.yml]
 permissions:
   contents: read
 jobs:
   uebernehmen:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Schluessel
         env:

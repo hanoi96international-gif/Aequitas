@@ -18,6 +18,7 @@ on:
 jobs:
   contabo1:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Read-only resync-readiness check on Contabo1
         uses: appleboy/ssh-action@v1.0.3
@@ -69,6 +70,7 @@ jobs:
 
   contabo2:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Read-only resync-readiness check on Contabo2
         uses: appleboy/ssh-action@v1.0.3

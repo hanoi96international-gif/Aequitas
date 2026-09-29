@@ -67,6 +67,7 @@ on:
 jobs:
   set:
     runs-on: ubuntu-latest
+    environment: produktion
     steps:
       - name: Set the RPC rate limit on Contabo1
         uses: appleboy/ssh-action@v1.0.3
