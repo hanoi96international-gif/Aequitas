@@ -147,7 +147,15 @@ jobs:
             printf '%s: ' "$m"; docker logs --since "$START" aequitas-node 2>&1 | grep -c -- "$m" || true
           done
           docker logs --since "$START" aequitas-node 2>&1 | grep -E '✗|missing|orphan|Orphan|awaiting|rejected|timeout' | sed -E 's/0x[0-9a-fA-F]{40}/0x…/g' | head -25 || true
+          echo "--- C2 signatur_vorab ---"
+          curl -s -m 10 http://127.0.0.1:8080/api/health/combined | jq -c '.signatur_vorab | del(.bedeutung)' || true
+          echo "--- C2 Annahme je Block im Fenster: s txs sperre_ms replay_ms einhaengen_ms ---"
+          ab=$(date -u -d "$START" +%s)000
+          curl -s -m 10 'http://127.0.0.1:8080/api/annahme?n=600' | jq -r --argjson ab "$ab" '.eintraege[] | select(.at_ms >= $ab and .txs > 0) | "\((.at_ms - $ab)/1000|floor) \(.txs) \(.sperre_ms|floor) \(.replay_ms|floor) \(.einhaengen_ms|floor)"' | head -120 || true
           SKRIPT
+          echo "--- C1 push_reihenfolge ---"
+          ssh -i ~/.ssh/c1 -o BatchMode=yes root@188.172.229.121 \
+            "curl -s -m 10 http://127.0.0.1:8080/api/health/combined | jq -c '.push_reihenfolge | del(.bedeutung)'" || true
       - name: C2 folgt?
         if: always()
         run: |
