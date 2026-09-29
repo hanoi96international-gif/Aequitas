@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -69,8 +70,7 @@ func holeBezeugungsnachweis(basis, wallet string) (pub string, sig string, err e
 		return "", "", fmt.Errorf("matching_url must be a public https:// address")
 	}
 	abfrage := basis + "/bezeugungsnachweis?wallet=" + url.QueryEscape(strings.ToLower(wallet))
-	client := &http.Client{Timeout: 12 * time.Second}
-	resp, err := client.Get(abfrage)
+	resp, err := fremdKlient(12 * time.Second).Get(abfrage)
 	if err != nil {
 		return "", "", fmt.Errorf("matching service not reachable at %s: %w", basis, err)
 	}
@@ -109,6 +109,30 @@ func (a *APIServer) handleValidatorSelfProof(w http.ResponseWriter, r *http.Requ
 	wallet := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("wallet")))
 	if !strings.HasPrefix(wallet, "0x") || len(wallet) != 42 {
 		jsonError(w, "wallet must be a 0x address", http.StatusBadRequest)
+		return
+	}
+	// NUR FUER DEN EIGENEN BETREIBER (Audit 2026-09-29, H1).
+	//
+	// Die Ueberlegung oben ("ohne die Unterschrift eben jener Wallet weist die
+	// Kette ab") stimmt fuer die Wallet, fuer die abgeholt wird -- und genau
+	// die waehlt der Anfragende. Ein Angreifer holt den Nachweis fuer SEINE
+	// Wallet, unterschreibt "authorize validator <Signieradresse dieses
+	// Knotens>" mit ihr, und /api/register-validator-key traegt den
+	// Signierschluessel DIESES Knotens unter seinem Namen ein (ON CONFLICT ...
+	// SET human_wallet). Damit gehoerte ihm die Betreiberzuordnung: die Stimme
+	// in der Leitung und alles, was an GetValidatorOperators haengt.
+	//
+	// Der Knoten bestaetigt seinen Schluessel deshalb nur fuer die Wallet, die
+	// sein Betreiber in NODE_OPERATOR_WALLET eingetragen hat.
+	betreiber := strings.ToLower(strings.TrimSpace(os.Getenv("NODE_OPERATOR_WALLET")))
+	if betreiber == "" {
+		jsonError(w, "NODE_OPERATOR_WALLET is not set on this node -- it only links its key to its own operator",
+			http.StatusConflict)
+		return
+	}
+	if wallet != betreiber {
+		jsonError(w, "this node links its signing key only to its own operator (NODE_OPERATOR_WALLET)",
+			http.StatusForbidden)
 		return
 	}
 

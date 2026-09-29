@@ -75,7 +75,7 @@ func (a *APIServer) handlePeerStatuses(w http.ResponseWriter, r *http.Request) {
 	// Sequential and tightly bounded: this runs on a validator that is also
 	// producing blocks, and the list is two entries long today. A slow or dead
 	// peer must cost this handler a second, not a goroutine pile-up.
-	client := &http.Client{Timeout: 3 * time.Second}
+	client := fremdKlient(3 * time.Second)
 	for _, p := range peers {
 		st := peerStatus{URL: p}
 		if !isAllowedPeerURL(p) {

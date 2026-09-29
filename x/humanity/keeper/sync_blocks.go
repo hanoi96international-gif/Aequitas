@@ -233,6 +233,26 @@ var httpSyncClient = &http.Client{
 	},
 }
 
+// fremdKlient ist der Klient fuer jede Adresse, die NICHT der Betreiber
+// selbst eingetragen hat: Anfrage-Parameter (coordinator_url, matching_url)
+// und Peer-Register (Audit 2026-09-29, H2).
+//
+// isAllowedPeerURL prueft nur die Zeichenkette. Ein Hostname, der auf
+// 127.0.0.1 oder 169.254.169.254 aufloest, kommt dort durch -- abgefangen
+// wird er erst von pinningDialer, und den benutzten die Selbstbedienungs-
+// Abrufe nicht: ein blanker http.Client, und jeder konnte diesen Knoten
+// Anfragen an sein eigenes internes Netz stellen lassen. Weiterleitungen
+// werden aus demselben Grund nie gefolgt.
+func fremdKlient(timeout time.Duration) *http.Client {
+	return &http.Client{
+		Timeout: timeout,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+		Transport: &http.Transport{DialContext: pinningDialer},
+	}
+}
+
 const maxSyncPeers = 20
 
 // syncValidatorsFromPeer fetches /api/validators from peerURL and adds any

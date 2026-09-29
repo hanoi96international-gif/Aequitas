@@ -76,8 +76,7 @@ func holeBesitznachweis(basis, wallet string) (pub string, sig string, err error
 	if err != nil {
 		return "", "", err
 	}
-	client := &http.Client{Timeout: 12 * time.Second}
-	resp, err := client.Get(abfrage)
+	resp, err := fremdKlient(12 * time.Second).Get(abfrage)
 	if err != nil {
 		return "", "", fmt.Errorf("coordinator not reachable at %s: %w", basis, err)
 	}
@@ -112,7 +111,7 @@ func holeBesitznachweis(basis, wallet string) (pub string, sig string, err error
 // Richtung, und wer will, sendet spaeter erneut.
 func (a *APIServer) reicheEintragungWeiter(nutzlast []byte) []map[string]interface{} {
 	var aus []map[string]interface{}
-	client := &http.Client{Timeout: 12 * time.Second}
+	client := fremdKlient(12 * time.Second)
 	for _, p := range GlobalPeerRegistry.ActivePeers(os.Getenv("SELF_URL")) {
 		eintrag := map[string]interface{}{"node": p}
 		req, err := http.NewRequest(http.MethodPost,
