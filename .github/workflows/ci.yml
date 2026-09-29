@@ -137,6 +137,25 @@ jobs:
         env:
           ADMIN_URL: "postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable"
 
+  # Sicherheit beim Bauen (29.09.2026): bis hierhin pruefte kein Schritt,
+  # ob eine Abhaengigkeit oder die Go-Standardbibliothek eine BEKANNTE
+  # Schwachstelle mitbringt. govulncheck meldet nur, was vom Code aus
+  # tatsaechlich erreichbar ist -- ein roter Lauf ist also ein echter Befund,
+  # kein Rauschen. Geprueft wird mit der Go-Version aus go.mod, also mit der,
+  # die auch das Image baut (Dockerfile: golang:<go.mod>-alpine).
+  schwachstellen:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: govulncheck (Hauptmodul)
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
+      - name: govulncheck (zk-forschung)
+        working-directory: forschung/zk-gueltigkeit
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
+
   # The race detector, on its own job so it reports independently of the
   # ordinary suite (it roughly triples runtime, and a data race is a different
   # class of failure from a logic bug).
