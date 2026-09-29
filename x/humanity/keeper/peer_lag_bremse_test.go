@@ -334,3 +334,69 @@ func TestMehrheitsRueckstand(t *testing.T) {
 		}
 	}
 }
+
+// DIESELBE MESSUNG DRUECKT NUR EINMAL. Die Peer-Hoehe kommt periodisch, der
+// Deckel wird je Block bestimmt. Am 29.09.2026 schrumpfte eine einzige Probe
+// knapp ueber dem Slack den Deckel Block fuer Block auf den Boden, obwohl C2
+// laengst aufgeholt hatte.
+func TestPeerLagBremse_DieselbeMessungDruecktNurEinmal(t *testing.T) {
+	reglerZuruecksetzen(7000)
+	defer reglerZuruecksetzen(0)
+	dag := frischeDAG(t, map[string]int64{"a": 1000}, nil)
+	setzeEigeneHoehe(dag, 1000+peerLagSlackVorgabe+3) // knapp ueber dem Slack
+	erster := dag.blockTxCapFuerHoehe(1060)
+	if erster >= 7000 {
+		t.Fatalf("Rueckstand ueber dem Slack drosselt nicht: %d", erster)
+	}
+	for i := 0; i < 20; i++ {
+		if g := dag.blockTxCapFuerHoehe(1060); g != erster {
+			t.Fatalf("Block %d: dieselbe Messung drueckt erneut (%d -> %d)", i+2, erster, g)
+		}
+	}
+	if peerLagGehalten.Load() == 0 {
+		t.Fatal("gehalten nicht gezaehlt")
+	}
+	// Eine NEUE, groessere Messung drosselt weiter.
+	setzeEigeneHoehe(dag, 1000+peerLagSlackVorgabe+10)
+	if g := dag.blockTxCapFuerHoehe(1070); g >= erster {
+		t.Fatalf("wachsender Rueckstand drosselt nicht weiter: %d -> %d", erster, g)
+	}
+}
+
+// Mit mehreren Bloecken je Takt liegt ein mithaltender Peer direkt nach einem
+// Takt bis zu 1+maxExtraBlocksPerTick Hoehen zurueck -- das ist kein Anlass.
+func TestPeerLagBremse_SlackUmfasstEinenGanzenTakt(t *testing.T) {
+	reglerZuruecksetzen(7000)
+	defer reglerZuruecksetzen(0)
+	t.Setenv(peerLagSlackEnv, "5")
+	t.Setenv("ENABLE_MULTI_BLOCK_TICK", "1")
+	if got := peerLagSlackEffektiv(); got != 5+1+maxExtraBlocksPerTick {
+		t.Fatalf("slack_effektiv %d, erwartet %d", got, 5+1+maxExtraBlocksPerTick)
+	}
+	dag := frischeDAG(t, map[string]int64{"a": 1000}, nil)
+	setzeEigeneHoehe(dag, 1000+5+1+maxExtraBlocksPerTick) // genau ein voller Takt
+	if g := dag.blockTxCapFuerHoehe(1010); g != maxTxsPerBlock {
+		t.Fatalf("ein Takt Rueckstand drosselt auf %d", g)
+	}
+	t.Setenv("ENABLE_MULTI_BLOCK_TICK", "")
+	if got := peerLagSlackEffektiv(); got != 5 {
+		t.Fatalf("ohne Mehrfachbloecke slack_effektiv %d, erwartet 5", got)
+	}
+}
+
+// Nach einem Fehlalarm zurueck zum Deckel in wenigen Bloecken, nicht elf.
+func TestPeerLagBremse_ErholungInWenigenBloecken(t *testing.T) {
+	reglerZuruecksetzen(1500)
+	defer reglerZuruecksetzen(0)
+	t.Setenv(peerLagBodenEnv, "1500")
+	peerLagLetzterCap.Store(1500)
+	dag := frischeDAG(t, map[string]int64{"a": 1000}, nil)
+	setzeEigeneHoehe(dag, 1000)
+	bloecke := 0
+	for g := 0; g < 7000 && bloecke < 50; bloecke++ {
+		g = dag.blockTxCapFuerHoehe(1000)
+	}
+	if bloecke > 8 {
+		t.Fatalf("von 1.500 auf 7.000 brauchte %d Bloecke, erwartet hoechstens 8", bloecke)
+	}
+}

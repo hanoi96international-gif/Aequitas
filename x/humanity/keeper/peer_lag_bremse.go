@@ -1,6 +1,7 @@
 package keeper
 
 import (
+	"os"
 	"sort"
 	"sync/atomic"
 	"time"
@@ -137,6 +138,7 @@ func MerkeBlockGroesse(n int) {
 }
 
 var (
+	peerLagGehalten   atomic.Int64 // Rueckstand ueber Slack, aber dieselbe Messung: Deckel gehalten
 	peerLagGebremst   atomic.Int64 // wie oft ein Block verkleinert wurde
 	peerLagUngebremst atomic.Int64
 	peerLagLetzterCap atomic.Int64
@@ -148,6 +150,20 @@ func peerLagSlack() int64 {
 		return int64(n)
 	}
 	return peerLagSlackVorgabe
+}
+
+// peerLagSlackEffektiv: der Slack plus die Bloecke eines ganzen Takts, wenn
+// ein Takt mehrere Bloecke bauen darf (ENABLE_MULTI_BLOCK_TICK). Ein Peer,
+// der voll mithaelt, liegt direkt nach einem solchen Takt bis zu
+// 1+maxExtraBlocksPerTick Hoehen zurueck, bis er sie nachgespielt hat -- das
+// ist kein Rueckstand, sondern Laufzeit. Mit Slack 5 und fuenf Bloecken je
+// Takt loeste jede ungluecklich getimte Probe die Bremse aus (29.09.2026).
+func peerLagSlackEffektiv() int64 {
+	s := peerLagSlack()
+	if os.Getenv("ENABLE_MULTI_BLOCK_TICK") == "1" {
+		s += 1 + maxExtraBlocksPerTick
+	}
+	return s
 }
 
 func peerLagVoll() int64 {
@@ -326,17 +342,33 @@ func (dag *BlockDAG) blockTxCapFuerHoehe(eigeneHoehe int64) int {
 	}
 	rueckstand := dag.groesstenFrischenRueckstand(eigeneHoehe)
 	peerLagLetzterLag.Store(rueckstand)
-	slack := peerLagSlack()
+	slack := peerLagSlackEffektiv()
 
 	vorher := peerLagLetzterCap.Load()
 	if vorher <= 0 {
 		vorher = maxTxsPerBlock
 	}
-	waechst := rueckstand > vorherigerRueckstand.Load()
+	alt := vorherigerRueckstand.Load()
+	waechst := rueckstand > alt
 	vorherigerRueckstand.Store(rueckstand)
 
 	var neu int64
-	if rueckstand > slack {
+	if rueckstand > slack && rueckstand == alt {
+		// HALTEN, nicht weiter drosseln: derselbe Rueckstand wie beim letzten
+		// Block ist fast immer DIESELBE Messung. Die Peer-Hoehe wird nur
+		// periodisch abgefragt (peerHoeheIntervall), der Deckel aber je Block
+		// neu bestimmt. Gemessen 29.09.2026: eine einzige Probe kurz nach
+		// einem Takt mit fuenf Bloecken lag knapp ueber dem Slack -- und bis
+		// zur naechsten Probe schrumpfte jeder Block den Deckel erneut um
+		// 10 %, von 7.000 auf den Boden von 1.500. Mit ihm fiel die
+		// Rueckstaugrenze (rueckstauMax) von 35.000 auf 1.500, und die Annahme
+		// lehnte ab, waehrend C2 laengst aufgeholt hatte: Ketten-TPS 4.536
+		// bei 23.975/s Spitze in der Annahme. Ein wirklich haengender Peer
+		// liefert mit jeder neuen Probe einen GROESSEREN Rueckstand und wird
+		// weiter gedrosselt (TestPeerLagBremse_FeststeckenderPeerBremstSehrWohl).
+		neu = vorher
+		peerLagGehalten.Add(1)
+	} else if rueckstand > slack {
 		// DROSSELN. Vom tatsaechlich Erreichten ausgehen, nicht vom Deckel:
 		// liegt die Grenze bei 10.000 und der Block traegt 3.800, schneidet
 		// der erste Schritt sonst in die Luft (gemessen 02.09.2026:
@@ -360,7 +392,18 @@ func (dag *BlockDAG) blockTxCapFuerHoehe(eigeneHoehe int64) int {
 		// wieder hoch. Der Regelkreis sperrte sich selbst ein: Rueckstand 0,
 		// perfekte Synchronitaet -- und dauerhaft ein Zehntel des Durchsatzes.
 		// Eine Bremse, die nicht mehr loslaesst, ist keine Regelung.
-		neu = vorher + maxTxsPerBlock/20
+		//
+		// Mindestens ein Viertel je Block (seit 29.09.2026), nicht nur 500:
+		// von 1.500 zurueck auf 7.000 dauerte es sonst elf Bloecke, und
+		// gebremst gibt es keine Zusatzbloecke je Takt -- elf Sekunden mit
+		// einem Fuenftel der Annahmegrenze nach jedem Fehlalarm. Weiterhin
+		// kein Sprung auf den vollen Deckel
+		// (TestPeerLagBremse_ErholtSichWiederWennDerPeerAufholt).
+		schritt := int64(maxTxsPerBlock / 20)
+		if v := vorher / 4; v > schritt {
+			schritt = v
+		}
+		neu = vorher + schritt
 	}
 	if neu < int64(boden) {
 		neu = int64(boden)
@@ -397,6 +440,8 @@ func PeerLagBremseStand() map[string]interface{} {
 		"letzte_blockgroesse": letzteBlockGroesse.Load(),
 		"letzter_rueckstand":  peerLagLetzterLag.Load(),
 		"slack":               peerLagSlack(),
+		"slack_effektiv":      peerLagSlackEffektiv(),
+		"gehalten":            peerLagGehalten.Load(),
 		"voll":                peerLagVoll(),
 		"boden":               peerLagBoden(),
 		"bedeutung": "Verkleinert Bloecke, wenn ein Peer zurueckfaellt. Der Produzent wendet " +

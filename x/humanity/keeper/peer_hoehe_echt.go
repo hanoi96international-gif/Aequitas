@@ -40,7 +40,12 @@ import (
 // paar Sekunden kostet nichts gegen einen halbierten Durchsatz.
 
 const (
-	peerHoeheIntervall = 5 * time.Second
+	// 1 s statt 5 s (29.09.2026): die Bremse bestimmt den Deckel je Block,
+	// und ein Takt baut bis zu fuenf. Mit 5 s galt eine Probe fuer bis zu 25
+	// Bloecke -- ein Fehlalarm drosselte so lange, ein echter Rueckstand
+	// wurde so spaet bemerkt. Eine /api/status-Abfrage je Peer und Sekunde
+	// kostet nichts.
+	peerHoeheIntervall = 1 * time.Second
 	// Aelter als das, und der Wert wird nicht mehr benutzt: dann greift der
 	// alte Weg. Grosszuegig, weil eine einzelne verpasste Abfrage keine
 	// Drosselung ausloesen soll.
