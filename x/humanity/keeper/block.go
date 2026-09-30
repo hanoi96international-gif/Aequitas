@@ -7108,6 +7108,12 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 				tx.Type, skipDistributionRound, block.Height)
 			continue
 		}
+		// K-2 Schritt 1: Produzentenwerte selbst nachrechnen (nachrechnen.go).
+		if err := dag.state.nachrechnenTxLocked(&tx, block.Timestamp); err != nil {
+			fmt.Printf("[REPLAY] ✗ %s: %v (block #%d) — rolling back whole block\n", tx.Type, err, block.Height)
+			hardFailure = true
+			continue
+		}
 		wallet := strings.ToLower(strings.TrimSpace(tx.Wallet))
 		switch tx.Type {
 
