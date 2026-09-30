@@ -23,6 +23,12 @@ permissions:
 concurrency:
   group: deploy-knoten
   cancel-in-progress: false
+env:
+  # Ist C2 ein laufender Validator dieses Netzes? "nein" nach dem Neustart
+  # bei null (30.09.2026): C2 ist geleert und wird nach docs/VALIDATOR_EINRICHTEN.md
+  # neu eingerichtet (Test des Guides). Dann weder auf C2 warten noch C2
+  # nachziehen. Zurueck auf "ja", sobald C2 wieder Validator ist.
+  C2_AKTIV: "ja"
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -49,7 +55,10 @@ jobs:
       C1: 188.172.229.121
     steps:
       - uses: actions/checkout@v4
+      - name: Genesis passt zur laufenden Kette (Wechsel nur ueber neustart-bei-null.yml)
+        run: bash .github/neustart/genesis-passt.sh http://$C1:8080 http://194.163.188.71:8080
       - name: C2 muss laufen, bevor C1 neu startet
+        if: env.C2_AKTIV == 'ja'
         run: |
           for i in $(seq 1 40); do
             [ "$(curl -s -o /dev/null -w '%{http_code}' -m 10 http://194.163.188.71:8080/api/status || true)" = 200 ] && { echo "C2 antwortet"; exit 0; }
@@ -79,8 +88,12 @@ jobs:
     environment: produktion
     timeout-minutes: 60
     steps:
+      - name: C2 ist kein aktiver Validator (C2_AKTIV)
+        if: env.C2_AKTIV != 'ja'
+        run: echo "::notice::C2_AKTIV=$C2_AKTIV -- C2 wird nicht nachgezogen (Neustart bei null, Neueinrichtung nach Guide)"
       - uses: actions/checkout@v4
       - name: Schluessel und Host-Pruefung
+        if: env.C2_AKTIV == 'ja'
         env:
           KEY: ${{ secrets.CONTABO2_SSH_KEY }}
         run: |
@@ -91,6 +104,7 @@ jobs:
           ssh-keygen -lf ~/.ssh/kh | awk '{print $2}' | grep -qx 'SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto' || { echo "::error::Host-Schluessel von C2 passt nicht"; exit 1; }
           cp ~/.ssh/kh ~/.ssh/known_hosts
       - name: C2 nachziehen
+        if: env.C2_AKTIV == 'ja'
         run: |
           ssh -o BatchMode=yes -o ServerAliveInterval=30 root@194.163.188.71 '
             set -euo pipefail
@@ -112,8 +126,10 @@ jobs:
             echo "C2 bleibt nur lesend."
           '
       - name: C2 lebt und die Hoehe steigt
+        if: env.C2_AKTIV == 'ja'
         run: bash deploy/pruefe-knoten.sh http://194.163.188.71:8080
       - name: C2 -- ungenutzte Images entfernen (nur nach erfolgreichem Deploy)
+        if: env.C2_AKTIV == 'ja'
         # #214: alte Images blieben auf C2 liegen (8,4 GB am 29.09.2026).
         # Entfernt nur Images ohne Container; der laufende Knoten ist nicht betroffen.
         continue-on-error: true

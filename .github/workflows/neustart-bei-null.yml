@@ -1,0 +1,221 @@
+name: Neustart bei null (V8) -- erkunden oder ausfuehren
+# Startet die Kette bei null neu (docs/V8_ENTWURF.md "Beim Neustart zu tun",
+# docs/LAUNCH_CHECKLISTE.md). Entschieden vom Betreiber am 30.09.2026: alle
+# bisherigen Guthaben und Registrierungen duerfen weg.
+#
+# modus=erkunden (Vorgabe): NUR LESEN. Zeigt je Box, was ausfuehren anfassen
+# wuerde -- Container, Mounts, Datenbanknamen, Zeilenzahlen, WAL, Genesis.
+# Nur Namen, Pfade und Zahlen: das Repo und damit diese Logs sind oeffentlich.
+#
+# modus=ausfuehren loescht UNUMKEHRBAR (.github/neustart/leeren.sh):
+#   - die Kettendatenbank des Knotens (DROP/CREATE; der Knoten legt sein
+#     Schema beim Start selbst an -- darin auch EVM-Zustand und MPC-Anteile),
+#   - die WAL-Dateien des Knotens,
+#   - die Proof-Server-Tabellen (bio_hashes, proof_store, Sperren, Sicherungen),
+#   - alle Zeilen der Matching-Datenbank -- sonst lehnt der Coordinator jeden,
+#     der sich im neuen Netz wieder registriert, als Duplikat ab.
+# Bleibt: Widerspruchsvorgaenge des Coordinators (eigene Fristen), MPC-Vorrat
+# auf der Platte, Schluessel, .env, Caddy, APK.
+#
+# ausfuehren verlangt:
+#   - bestaetigung genau "ALLE GUTHABEN WEG",
+#   - neuestes App-Release mindestens app-v1.8.1 (V8-Unterschrift),
+#   - genesis.json auf main schon V8 mit neuer genesis_time (Genesis-PR
+#     gemergt). Der normale Deploy haelt bei diesem Merge an
+#     (.github/neustart/genesis-passt.sh): die Knoten laufen bis hierher
+#     unveraendert auf der alten Kette weiter.
+# Ablauf (Betreiber, 30.09.2026: das neue Netz beginnt mit C1 allein):
+#   1. beide Boxen sichern (deploy/backup-ledger.sh, Kopie bleibt auf der Box),
+#   2. beide leeren (Knoten gestoppt),
+#   3. C1 bekommt einen EIGENEN Signierschluessel statt der persoenlichen
+#      Wallet (schluessel-c1.sh; nur die Adresse wird ausgegeben) und ist
+#      einziger Produzent (AUTHORIZED_VALIDATORS). Gebunden wird er nach der
+#      Registrierung des Betreibers (/node-binding).
+#   4. C1 mit deploy-c1.sh aus main bauen und starten (v8, null Menschen,
+#      nimmt an),
+#   5. C2: Knoten bleibt aus, seine Dienste laufen geleert weiter. C2 wird
+#      danach nach docs/VALIDATOR_EINRICHTEN.md neu eingerichtet (Test des
+#      Guides); bis dahin steht C2_AKTIV in deploy-c1-dann-c2.yml auf "nein".
+on:
+  workflow_dispatch:
+    inputs:
+      modus:
+        description: "erkunden (nur lesen) | ausfuehren"
+        required: true
+        default: erkunden
+        type: choice
+        options: [erkunden, ausfuehren]
+      bestaetigung:
+        description: "Nur fuer ausfuehren: genau ALLE GUTHABEN WEG"
+        required: false
+        default: ""
+permissions:
+  contents: read
+concurrency:
+  group: deploy-knoten
+  cancel-in-progress: false
+jobs:
+  erkunden:
+    if: inputs.modus == 'erkunden'
+    runs-on: ubuntu-latest
+    environment: produktion
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {box: C1, host: 188.172.229.121, fp: "SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA", key: CONTABO_SSH_KEY}
+          - {box: C2, host: 194.163.188.71, fp: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto", key: CONTABO2_SSH_KEY}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Schluessel und Host-Pruefung
+        env:
+          KEY: ${{ secrets[matrix.key] }}
+          HOST: ${{ matrix.host }}
+          FP: ${{ matrix.fp }}
+        run: bash .github/neustart/ssh-einrichten.sh
+      - name: Erkunden (nur lesen)
+        env:
+          HOST: ${{ matrix.host }}
+          BOX: ${{ matrix.box }}
+        run: cat .github/neustart/gemeinsam.sh .github/neustart/erkunden.sh | ssh -i ~/.ssh/k -o BatchMode=yes "root@$HOST" "BOX=$BOX bash -s"
+
+  pruefen:
+    if: inputs.modus == 'ausfuehren'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Bestaetigung
+        env:
+          B: ${{ inputs.bestaetigung }}
+        run: |
+          [ "$B" = "ALLE GUTHABEN WEG" ] || { echo "::error::bestaetigung muss genau 'ALLE GUTHABEN WEG' lauten -- nichts passiert"; exit 1; }
+      - uses: actions/checkout@v4
+      - name: main traegt die V8-Genesis (Genesis-PR gemergt)
+        run: |
+          jq . genesis.json
+          [ "$(jq -r '.register_vertrag.version // "v7"' genesis.json)" = v8 ] \
+            || { echo "::error::genesis.json auf main ist noch nicht V8 -- erst den Genesis-PR mergen. Der normale Deploy haelt dann an (genesis-passt.sh), die Knoten laufen unveraendert weiter."; exit 1; }
+      - name: App mit V8-Unterschrift ist veroeffentlicht
+        run: |
+          set -eu
+          TAG=$(curl -fsS https://api.github.com/repos/hanoi96international-gif/Aequitas-App/releases/latest | python3 -c 'import json,sys; print(json.load(sys.stdin)["tag_name"])')
+          echo "neuestes Release: $TAG"
+          python3 -c '
+          import re, sys
+          m = re.fullmatch(r"app-v(\d+)\.(\d+)\.(\d+)", sys.argv[1])
+          if not m or tuple(map(int, m.groups())) < (1, 8, 1):
+              print("::error::neuestes App-Release ist aelter als app-v1.8.1 -- ohne V8-Unterschrift koennte sich niemand registrieren")
+              sys.exit(1)
+          ' "$TAG"
+
+  sichern:
+    needs: pruefen
+    runs-on: ubuntu-latest
+    environment: produktion
+    timeout-minutes: 45
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - {box: C1, host: 188.172.229.121, fp: "SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA", key: CONTABO_SSH_KEY}
+          - {box: C2, host: 194.163.188.71, fp: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto", key: CONTABO2_SSH_KEY}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Schluessel und Host-Pruefung
+        env:
+          KEY: ${{ secrets[matrix.key] }}
+          HOST: ${{ matrix.host }}
+          FP: ${{ matrix.fp }}
+        run: bash .github/neustart/ssh-einrichten.sh
+      - name: Zustand sichern (bleibt auf der Box)
+        env:
+          HOST: ${{ matrix.host }}
+          BOX: ${{ matrix.box }}
+        run: ssh -i ~/.ssh/k -o BatchMode=yes "root@$HOST" "BOX=$BOX bash -s" < deploy/backup-ledger.sh
+
+  leeren:
+    needs: sichern
+    runs-on: ubuntu-latest
+    environment: produktion
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {box: C1, host: 188.172.229.121, fp: "SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA", key: CONTABO_SSH_KEY}
+          - {box: C2, host: 194.163.188.71, fp: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto", key: CONTABO2_SSH_KEY}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Schluessel und Host-Pruefung
+        env:
+          KEY: ${{ secrets[matrix.key] }}
+          HOST: ${{ matrix.host }}
+          FP: ${{ matrix.fp }}
+        run: bash .github/neustart/ssh-einrichten.sh
+      - name: Leeren (unumkehrbar)
+        env:
+          HOST: ${{ matrix.host }}
+          BOX: ${{ matrix.box }}
+        run: cat .github/neustart/gemeinsam.sh .github/neustart/leeren.sh | ssh -i ~/.ssh/k -o BatchMode=yes "root@$HOST" "BOX=$BOX BESTAETIGT='ALLE GUTHABEN WEG' bash -s"
+
+  schluessel-c1:
+    needs: leeren
+    runs-on: ubuntu-latest
+    environment: produktion
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Schluessel und Host-Pruefung
+        env:
+          KEY: ${{ secrets.CONTABO_SSH_KEY }}
+          HOST: 188.172.229.121
+          FP: "SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA"
+        run: bash .github/neustart/ssh-einrichten.sh
+      - name: Eigener Signierschluessel fuer C1 (nur die Adresse wird ausgegeben)
+        run: cat .github/neustart/gemeinsam.sh .github/neustart/schluessel-c1.sh | ssh -i ~/.ssh/k -o BatchMode=yes root@188.172.229.121 "BOX=C1 BESTAETIGT='ALLE GUTHABEN WEG' bash -s"
+
+  starten-c1:
+    needs: schluessel-c1
+    runs-on: ubuntu-latest
+    environment: produktion
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Schluessel und Host-Pruefung
+        env:
+          KEY: ${{ secrets.CONTABO_SSH_KEY }}
+          HOST: 188.172.229.121
+          FP: "SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA"
+        run: bash .github/neustart/ssh-einrichten.sh
+      - name: C1 mit dem Stand von main bauen und starten (deploy-c1.sh)
+        run: ssh -i ~/.ssh/k -o BatchMode=yes -o ServerAliveInterval=30 root@188.172.229.121 'bash -s' < deploy/deploy-c1.sh
+      - name: C1 ist das neue Netz (v8, null Menschen, nimmt an)
+        run: cat .github/neustart/gemeinsam.sh .github/neustart/starten.sh | ssh -i ~/.ssh/k -o BatchMode=yes root@188.172.229.121 "BOX=C1 bash -s"
+
+  c2-dienste:
+    # C2 bleibt ohne Knoten, bis er nach docs/VALIDATOR_EINRICHTEN.md neu
+    # eingerichtet wird (Test des Guides). Seine Dienste (Proof-Server,
+    # Coordinator, Vergleichsdienst) sind geleert und laufen weiter.
+    needs: starten-c1
+    runs-on: ubuntu-latest
+    environment: produktion
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Schluessel und Host-Pruefung
+        env:
+          KEY: ${{ secrets.CONTABO2_SSH_KEY }}
+          HOST: 194.163.188.71
+          FP: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+        run: bash .github/neustart/ssh-einrichten.sh
+      - name: C2-Knoten bleibt aus, Dienste neu starten
+        run: |
+          cat .github/neustart/gemeinsam.sh - <<'SKRIPT' | ssh -i ~/.ssh/k -o BatchMode=yes root@194.163.188.71 "BOX=C2 bash -s"
+          set -euo pipefail
+          if laeuft "$NODE"; then echo "::error::C2-Knoten laeuft -- er gehoert nicht zum neuen Netz"; exit 1; fi
+          for c in "$PROOF" "$COORD" "$MATCH"; do
+            [ -n "$c" ] && docker inspect "$c" >/dev/null 2>&1 && docker restart "$c" >/dev/null && echo "$c neu gestartet"
+          done
+          echo "C2: Knoten aus (wartet auf Neueinrichtung nach Guide), Dienste laufen."
+          SKRIPT
