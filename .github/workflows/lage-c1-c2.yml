@@ -57,3 +57,6 @@ jobs:
             echo "== $u"; curl -s -m 10 -w '  [HTTP %{http_code}]' "$u" | head -c 1500; echo
           done
           echo "== DNS"; for h in aequitas.digital proof1.aequitas.digital proof2.aequitas.digital; do echo "$h -> $(dig +short $h | tr '\n' ' ')"; done
+          # Welche App liefert die Seite aus? /download/app.apk leitet auf ein
+          # Release weiter (api.go handleAppDownload, AEQUITAS_APK_URL).
+          echo "== /download/app.apk"; curl -sI -m 15 https://aequitas.digital/download/app.apk | grep -iE '^HTTP|^location' || echo "  keine Antwort"

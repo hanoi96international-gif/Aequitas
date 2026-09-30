@@ -39,15 +39,15 @@ else
   schritt "2/5 Zwei Angaben"
   WALLET=""
   while ! [[ "$WALLET" =~ ^0x[0-9a-fA-F]{40}$ ]]; do
-    read -r -p "Deine Wallet-Adresse aus der App (0x..., 42 Zeichen): " WALLET
-    [[ "$WALLET" =~ ^0x[0-9a-fA-F]{40}$ ]] || echo "  Das ist keine Adresse. Sie beginnt mit 0x und hat danach 40 Zeichen (0-9, a-f)."
+    read -r -p "Deine Wallet-Adresse aus der App / Your wallet address from the app (0x..., 42): " WALLET
+    [[ "$WALLET" =~ ^0x[0-9a-fA-F]{40}$ ]] || echo "  Keine Adresse / Not an address: 0x + 40 Zeichen/characters (0-9, a-f)."
   done
   IP="$(curl -4 -fsS -m 10 https://api.ipify.org 2>/dev/null || true)"
   if ! [[ "$IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    read -r -p "Oeffentliche IPv4 dieses Servers: " IP
+    read -r -p "Oeffentliche IPv4 dieses Servers / Public IPv4 of this server: " IP
   fi
-  read -r -p "Oeffentliche Adresse dieses Servers ist $IP -- stimmt das? [J/n] " OK
-  case "${OK:-j}" in n|N) read -r -p "Richtige IPv4: " IP ;; esac
+  read -r -p "Oeffentliche IP / Public IP: $IP -- stimmt das? / correct? [J/n, Y/n] " OK
+  case "${OK:-j}" in n|N) read -r -p "Richtige IPv4 / Correct IPv4: " IP ;; esac
   [[ "$IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || { rot "Keine gueltige IPv4: $IP"; exit 1; }
 
   schritt "3/5 Konfiguration schreiben"
@@ -109,7 +109,7 @@ H="$(printf '%s' "$S" | grep -oE '"height": ?[0-9]+' | grep -oE '[0-9]+' || echo
 gruen "Der Knoten laeuft (Hoehe $H) und holt jetzt das Netz ein."
 cat <<TEXT
 
-Deine Signieradresse (oeffentlich, darf man zeigen):
+Deine Signieradresse / Your signing address (oeffentlich / public):
 
     $ADDR
 
@@ -130,7 +130,15 @@ Noch zwei Dinge, dann bist du Validator:
      Signieradresse. Bis dahin laeuft dein Knoten als vollwertiger Beobachter
      mit: er prueft jeden Block selbst nach.
 
-Nuetzlich:
-    docker compose logs -f node      Log ansehen (Strg+C beendet nur die Anzeige)
-    curl -s localhost:8080/api/wache Selbstpruefung (200 = alles da)
+Two more steps and you are a validator:
+
+  1. BIND -- open the binding page of YOUR node (link above) in a browser
+     with your wallet (e.g. MetaMask with the same wallet as in the app),
+     click "Connect Wallet & Register" and sign. Free, moves no money.
+  2. ADMISSION -- send the signing address to the operator (Telegram group).
+     Until then your node runs as a full observer and checks every block.
+
+Nuetzlich / Useful:
+    docker compose logs -f node      Log (Strg/Ctrl+C beendet nur die Anzeige)
+    curl -s localhost:8080/api/wache Selbstpruefung / self-check (200 = ok)
 TEXT
