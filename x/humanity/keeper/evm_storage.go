@@ -326,6 +326,9 @@ func (cs *ChainState) MigrateEVMFromGoState(contractAddr string) error {
 	if cs.db == nil {
 		return nil
 	}
+	if vertragV8() {
+		return cs.migrateEVMFromGoStateV8(contractAddr)
+	}
 	contractAddr = strings.ToLower(contractAddr)
 	fmt.Printf("[MIGRATE] Rebuilding EVM storage from Go-state for %s...\n", contractAddr)
 
@@ -818,16 +821,17 @@ func (cs *ChainState) doSyncBalanceRLockedCtx(ctx context.Context, contractAddr 
 		// matches the user's real spendable amount, not the stored pre-decay value.
 		balBig := aeqToWei(balMikro)
 		addrBytes := common.HexToAddress(addr).Bytes()
-		// slot 4: balanceOf
-		writes = append(writes, slotValue{mappingSlot(addrBytes, 4).Hex(), common.BigToHash(balBig).Hex()})
-		// slot 6: isHuman
+		// balanceOf: V7 slot 4, V8 slot 2 (contracts/v8_slots.json)
+		writes = append(writes, slotValue{mappingSlot(addrBytes, spiegelSlotBalanceOf()).Hex(), common.BigToHash(balBig).Hex()})
+		// isHuman: V7 slot 6, V8 slot 3
 		isHumanVal := common.HexToHash("0x00")
 		if istMensch {
 			isHumanVal = common.HexToHash("0x01")
 		}
-		writes = append(writes, slotValue{mappingSlot(addrBytes, 6).Hex(), isHumanVal.Hex()})
-		// slots 10 + 11: lastActivity / lastDemurrage
-		if aktivSeit > 0 {
+		writes = append(writes, slotValue{mappingSlot(addrBytes, spiegelSlotIsHuman()).Hex(), isHumanVal.Hex()})
+		// slots 10 + 11: lastActivity / lastDemurrage -- nur V7. In V8 waeren
+		// 10/11 keine Variablen, und die Aktivitaet fuehrt allein Go.
+		if aktivSeit > 0 && !vertragV8() {
 			ts := common.BigToHash(big.NewInt(aktivSeit)).Hex()
 			writes = append(writes, slotValue{mappingSlot(addrBytes, 10).Hex(), ts})
 			writes = append(writes, slotValue{mappingSlot(addrBytes, 11).Hex(), ts})
@@ -911,7 +915,9 @@ func (cs *ChainState) syncGuardianEscrowSlotsLocked(contractAddr, addr string) {
 }
 
 func (cs *ChainState) syncGuardianEscrowSlotsLockedCtx(ctx context.Context, contractAddr, addr string) {
-	if cs.db == nil {
+	// V8 hat keine Guardian-/Escrow-Variablen. Slot 5 ist dort usedNullifiers
+	// und 13 gar nichts -- dieser Spiegel darf unter V8 nie schreiben.
+	if cs.db == nil || vertragV8() {
 		return
 	}
 	contractAddr = strings.ToLower(contractAddr)
@@ -1267,7 +1273,7 @@ func (cs *ChainState) GetRegistrationDebugInfo(wallet string) RegistrationDebugI
 	cs.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM bio_registrations WHERE lower(wallet_address) = $1)`, wallet).Scan(&info.BioRegistrationExists)
 	cs.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM bio_hashes WHERE lower(wallet_address) = $1)`, wallet).Scan(&info.BioHashExists)
 	addrBytes := common.HexToAddress(wallet).Bytes()
-	isHumanSlot := mappingSlot(addrBytes, 6).Hex()
+	isHumanSlot := mappingSlot(addrBytes, spiegelSlotIsHuman()).Hex()
 	if val, err := cs.LoadStorageSlot(strings.ToLower(V7_CONTRACT_ADDR), isHumanSlot); err == nil {
 		info.EVMIsHumanSlot = common.HexToHash(val) != (common.Hash{})
 	}
@@ -4585,4 +4591,120 @@ func (cs *ChainState) PendingTxIDsFreigeben(ids []int64) {
 	if n, _ := res.RowsAffected(); n > 0 {
 		fmt.Printf("[TX] %d Ausgangskorb-Zeilen sofort freigegeben -- die Blockproduktion brach nach dem Laden ab\n", n)
 	}
+}
+
+// spiegelSlotBalanceOf / spiegelSlotIsHuman: wo Go Kontostand und Mensch-Status
+// in den Registervertrag spiegelt -- V7 4/6, V8 2/3 (contracts/v8_slots.json).
+func spiegelSlotBalanceOf() int64 {
+	if vertragV8() {
+		return v8SlotBalanceOf
+	}
+	return 4
+}
+
+func spiegelSlotIsHuman() int64 {
+	if vertragV8() {
+		return v8SlotIsHuman
+	}
+	return 6
+}
+
+// migrateEVMFromGoStateV8 baut die V8-Speicherplaetze aus dem Go-Zustand neu
+// auf (nach einem Snapshot-Import oder Resync). Geschrieben werden genau die
+// Plaetze, deren "writer" in contracts/v8_slots.json Go erlaubt:
+// totalSupply (0), totalHumans (1), balanceOf (2), isHuman (3),
+// usedCommitments (4), usedNullifiers (5), commitmentOf (6), nullifierOf (7).
+// NIE nonces (8) -- die fuehrt nur der Vertrag -- und NIE isRegistrar (9) --
+// den setzt nur der Konstruktor.
+func (cs *ChainState) migrateEVMFromGoStateV8(contractAddr string) error {
+	contractAddr = strings.ToLower(contractAddr)
+	fmt.Printf("[MIGRATE] V8: Rebuilding EVM storage from Go-state for %s...\n", contractAddr)
+	var firstErr error
+	failCount := 0
+	save := func(slot, value string) {
+		if err := cs.SaveStorageSlot(contractAddr, slot, value); err != nil {
+			failCount++
+			if firstErr == nil {
+				firstErr = err
+			}
+			fmt.Printf("[MIGRATE] ERROR: SaveStorageSlot(%s, %s) failed: %v\n", contractAddr, slot, err)
+		}
+	}
+	eins := common.HexToHash("0x01").Hex()
+
+	var totalSupply float64
+	var totalHumans int64
+	cs.mu.RLock()
+	cs.accounts.Range(func(addr string, acc *AccountState) bool {
+		addrBytes := common.HexToAddress(addr).Bytes()
+		save(mappingSlot(addrBytes, v8SlotBalanceOf).Hex(), common.BigToHash(aeqToWei(acc.Balance.Float())).Hex())
+		totalSupply += acc.Balance.Float()
+		if acc.IsHuman {
+			save(mappingSlot(addrBytes, v8SlotIsHuman).Hex(), eins)
+			totalHumans++
+		}
+		return true
+	})
+	cs.mu.RUnlock()
+	save(common.BigToHash(big.NewInt(v8SlotTotalSupply)).Hex(), common.BigToHash(aeqToWei(totalSupply)).Hex())
+	save(common.BigToHash(big.NewInt(v8SlotTotalHumans)).Hex(), common.BigToHash(big.NewInt(totalHumans)).Hex())
+
+	// usedNullifiers (5): nullifier -> Wallet; nullifierOf (7): Wallet -> nullifier.
+	rows, err := cs.db.Query(`SELECT nullifier, wallet_address FROM nullifiers`)
+	if err != nil {
+		return fmt.Errorf("migration incomplete: nullifiers query: %w", err)
+	}
+	for rows.Next() {
+		var nullifier, wallet string
+		if scanErr := rows.Scan(&nullifier, &wallet); scanErr != nil {
+			continue
+		}
+		nullBytes, nullErr := nullifierBytes32(nullifier)
+		if nullErr != nil {
+			fmt.Printf("[MIGRATE] skipping unparseable nullifier %q: %v\n", nullifier, nullErr)
+			continue
+		}
+		nullKey := common.BytesToHash(nullBytes[:])
+		// Wie bei V7 (P0-02): ein Snapshot ohne Wallet darf den Nullifier
+		// nicht als frei erscheinen lassen.
+		inhaber := wallet
+		if inhaber == "" {
+			inhaber = "0x0000000000000000000000000000000000000001"
+		}
+		save(mappingSlotBytes32(nullKey, v8SlotUsedNullifiers).Hex(), common.BigToHash(common.HexToAddress(inhaber).Big()).Hex())
+		if wallet != "" {
+			save(mappingSlot(common.HexToAddress(wallet).Bytes(), v8SlotNullifierOf).Hex(), nullKey.Hex())
+		}
+	}
+	rows.Close()
+
+	// usedCommitments (4), commitmentOf (6): aus bio_registrations.
+	rows2, err := cs.db.Query(`SELECT commitment, wallet_address FROM bio_registrations`)
+	if err != nil {
+		return fmt.Errorf("migration incomplete: bio_registrations query: %w", err)
+	}
+	for rows2.Next() {
+		var commitment, wallet string
+		if err := rows2.Scan(&commitment, &wallet); err != nil {
+			continue
+		}
+		commitBig, ok := new(big.Int).SetString(strings.TrimPrefix(commitment, "0x"), 10)
+		if !ok {
+			commitBig, ok = new(big.Int).SetString(strings.TrimPrefix(commitment, "0x"), 16)
+		}
+		if !ok || commitBig == nil {
+			continue
+		}
+		save(mappingSlotBytes32(common.BigToHash(commitBig), v8SlotUsedCommitments).Hex(), eins)
+		if wallet != "" {
+			save(mappingSlot(common.HexToAddress(wallet).Bytes(), v8SlotCommitmentOf).Hex(), common.BigToHash(commitBig).Hex())
+		}
+	}
+	rows2.Close()
+
+	if firstErr != nil {
+		return fmt.Errorf("migration incomplete: %d write(s) failed: %w", failCount, firstErr)
+	}
+	fmt.Printf("[MIGRATE] ✓ V8 EVM storage rebuilt: %d humans, %.2f AEQ total supply\n", totalHumans, totalSupply)
+	return nil
 }

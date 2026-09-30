@@ -1,0 +1,49 @@
+{
+  "contract": "AequitasV8",
+  "source": "contracts/AequitasV8.sol",
+  "compiler": "solc 0.8.28, optimizer 200 runs, evm cancun",
+  "note": "Complete storage layout of AequitasV8, in declaration order. test/AequitasV8_storage_layout.ts compares every entry with the compiler's storageLayout and fails on any difference (missing, extra, moved, retyped). Mapping value slot = keccak256(pad32(key) . pad32(slot)): keyEncoding 'address' -> Go mappingSlot(addr.Bytes(), slot); 'uint256'/'bytes32' -> Go mappingSlotBytes32(key, slot). writer: 'go' = only the Go mirror writes it (the contract never does); 'contract' = registerWithSig writes it, Go mirrors/migrates it; 'node' = set at deployment and kept current by the node itself: exactly its own relayer (contract_deploy.go v8RegistrarAbgleichen); no other Go path writes it.",
+  "storage": [
+    { "slot": 0, "offset": 0, "label": "totalSupply",     "type": "uint256",                     "keyEncoding": null,      "writer": "go" },
+    { "slot": 1, "offset": 0, "label": "totalHumans",     "type": "uint256",                     "keyEncoding": null,      "writer": "contract" },
+    { "slot": 2, "offset": 0, "label": "balanceOf",       "type": "mapping(address => uint256)", "keyEncoding": "address", "writer": "go" },
+    { "slot": 3, "offset": 0, "label": "isHuman",         "type": "mapping(address => bool)",    "keyEncoding": "address", "writer": "contract" },
+    { "slot": 4, "offset": 0, "label": "usedCommitments", "type": "mapping(uint256 => bool)",    "keyEncoding": "uint256", "writer": "contract" },
+    { "slot": 5, "offset": 0, "label": "usedNullifiers",  "type": "mapping(bytes32 => address)", "keyEncoding": "bytes32", "writer": "contract" },
+    { "slot": 6, "offset": 0, "label": "commitmentOf",    "type": "mapping(address => uint256)", "keyEncoding": "address", "writer": "contract" },
+    { "slot": 7, "offset": 0, "label": "nullifierOf",     "type": "mapping(address => bytes32)", "keyEncoding": "address", "writer": "contract" },
+    { "slot": 8, "offset": 0, "label": "nonces",          "type": "mapping(address => uint256)", "keyEncoding": "address", "writer": "contract" },
+    { "slot": 9, "offset": 0, "label": "isRegistrar",     "type": "mapping(address => bool)",    "keyEncoding": "address", "writer": "node" }
+  ],
+  "selectors": {
+    "note": "Every external function of AequitasV8 with its selector. test/AequitasV8_storage_layout.ts checks this list against the compiled ABI in both directions. persist = what Go's allowlist (checkPersistedCallAllowed) should let a persisting call reach: 'registrar' = only the registrar/relayer, 'view' = harmless read, 'intercepted' = node books it in Go before the EVM runs.",
+    "functions": [
+      { "selector": "0x06fdde03", "signature": "name()", "persist": "view" },
+      { "selector": "0x95d89b41", "signature": "symbol()", "persist": "view" },
+      { "selector": "0x313ce567", "signature": "decimals()", "persist": "view" },
+      { "selector": "0x18160ddd", "signature": "totalSupply()", "persist": "view" },
+      { "selector": "0x70a08231", "signature": "balanceOf(address)", "persist": "view" },
+      { "selector": "0xa9059cbb", "signature": "transfer(address,uint256)", "persist": "intercepted" },
+      { "selector": "0x60529762", "signature": "registerWithSig(uint256[2],uint256[2][2],uint256[2],uint256[2],address,uint256,bytes)", "persist": "registrar" },
+      { "selector": "0xa6f9a665", "signature": "totalHumans()", "persist": "view" },
+      { "selector": "0xf72c436f", "signature": "isHuman(address)", "persist": "view" },
+      { "selector": "0xf83b4f6c", "signature": "usedCommitments(uint256)", "persist": "view" },
+      { "selector": "0x206137aa", "signature": "usedNullifiers(bytes32)", "persist": "view" },
+      { "selector": "0xf662b881", "signature": "commitmentOf(address)", "persist": "view" },
+      { "selector": "0x61e0a22e", "signature": "nullifierOf(address)", "persist": "view" },
+      { "selector": "0x7ecebe00", "signature": "nonces(address)", "persist": "view" },
+      { "selector": "0xd5db72eb", "signature": "isRegistrar(address)", "persist": "view" },
+      { "selector": "0x2b7ac3f3", "signature": "verifier()", "persist": "view" },
+      { "selector": "0x3644e515", "signature": "DOMAIN_SEPARATOR()", "persist": "view" },
+      { "selector": "0x7694154f", "signature": "registrationDigest(address,uint256,uint256,uint256)", "persist": "view" },
+      { "selector": "0xc7977be7", "signature": "EIP712_DOMAIN_TYPEHASH()", "persist": "view" },
+      { "selector": "0x6a5306a3", "signature": "REGISTER_TYPEHASH()", "persist": "view" },
+      { "selector": "0xffa1ad74", "signature": "VERSION()", "persist": "view" },
+      { "selector": "0x25c2cd12", "signature": "SNARK_SCALAR_FIELD()", "persist": "view" },
+      { "selector": "0x3989ac77", "signature": "MAX_SIGNATURE_LIFETIME()", "persist": "view" },
+      { "selector": "0x9ba04aaa", "signature": "MAX_REGISTRARS()", "persist": "view" },
+      { "selector": "0x67522052", "signature": "NETZ_SALT()", "persist": "view" },
+      { "selector": "0x84b0196e", "signature": "eip712Domain()", "persist": "view" }
+    ]
+  }
+}
