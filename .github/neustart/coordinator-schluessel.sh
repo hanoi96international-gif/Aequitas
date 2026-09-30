@@ -42,7 +42,7 @@ fi
 
 VEREINT="$(printf '%s,%s' "$JETZT" "$NEU" | tr ',' '\n' | sed 's/[[:space:]]//g' | grep -E '^[0-9a-f]{64}$' | awk '!s[$0]++' | paste -sd, -)"
 FEHLT="$(printf '%s\n' "$NEU" | tr ',' '\n' | while read -r k; do printf '%s' "$JETZT" | grep -q "$k" || echo "$k"; done | paste -sd, -)"
-echo "Fehlt dem Vergleichsdienst: ${FEHLT:+$(printf '%s' "$FEHLT" | praefixe)}${FEHLT:-nichts}"
+if [ -n "$FEHLT" ]; then echo "Fehlt dem Vergleichsdienst: $(printf '%s' "$FEHLT" | praefixe)"; else echo "Fehlt dem Vergleichsdienst: nichts"; fi
 echo "Danach: $(printf '%s' "$VEREINT" | praefixe)"
 
 if [ -n "$PROOF" ]; then

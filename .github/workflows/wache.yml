@@ -22,6 +22,14 @@ name: Wache (alle 10 Minuten)
 #   - Vergleichsdienst (/matching/health) antwortet
 # Und einmal: der Coordinator antwortet mit Quorum >= 2, und das letzte
 # Backup ist juenger als 36 Stunden.
+#
+# C2_AKTIV (wie in deploy-c1-dann-c2.yml): seit dem Neustart bei null
+# (30.09.2026) laeuft das neue Netz mit C1 allein; der C2-Knoten bleibt aus,
+# bis C2 nach docs/VALIDATOR_EINRICHTEN.md neu eingerichtet ist. Solange
+# "nein": C2s Knoten wird nicht auf Hoehe/Gleichstand geprueft, seine Dienste
+# (Vergleichsdienst proof2 -- Teil des Quorums --, Coordinator) weiter wie
+# bisher. ROT, falls der C2-Knoten doch antwortet: dann laeuft dort eine
+# Kette, die nicht zum neuen Netz gehoert. Nach der Neueinrichtung "ja".
 on:
   schedule:
     - cron: "*/10 * * * *"
@@ -33,6 +41,9 @@ jobs:
   wache:
     runs-on: ubuntu-latest
     timeout-minutes: 8
+    env:
+      C2_AKTIV: "nein"
+      C2_IP: 194.163.188.71
     steps:
       - uses: actions/checkout@v4
       - name: Pruefen
@@ -67,13 +78,24 @@ jobs:
           for B in "${!PHOST[@]}"; do H1[$B]=$(st $B); done
           sleep 25
           for B in "${!PHOST[@]}"; do H2[$B]=$(st $B); done
+          case "$C2_AKTIV" in ja|nein) ;; *) rot "C2_AKTIV='$C2_AKTIV' -- erwartet ja oder nein"; C2_AKTIV=ja;; esac
+          AKTIV=""
           for B in "${!PHOST[@]}"; do
             echo "===== $B ====="
-            if [ -z "${H2[$B]}" ]; then rot "$B antwortet nicht auf /api/status"; continue; fi
-            if [ "${H2[$B]}" -gt "${H1[$B]:-0}" ]; then ok "Hoehe waechst (${H1[$B]} -> ${H2[$B]})"; else rot "Hoehe steht (${H1[$B]} -> ${H2[$B]})"; fi
-            J=$(h $B)
-            if [ -z "$J" ]; then rot "$B antwortet nicht auf /api/health/combined"; continue; fi
-            echo "$J" | python3 .github/wache_pruefung.py || ROT=1
+            if [ "$B" = "$C2_IP" ] && [ "$C2_AKTIV" = nein ]; then
+              # Knoten absichtlich aus (siehe Kopf). Antwortet er doch, laeuft
+              # dort eine Kette ausserhalb des neuen Netzes.
+              if [ -n "${H2[$B]}" ]; then rot "$B: Knoten antwortet (Hoehe ${H2[$B]}), obwohl C2_AKTIV=nein -- gehoert nicht zum neuen Netz"; else echo "ℹ $B: Knoten aus (C2_AKTIV=nein, Neueinrichtung nach Guide) -- Dienste werden weiter geprueft"; fi
+            else
+              AKTIV="$AKTIV $B"
+              if [ -z "${H2[$B]}" ]; then
+                rot "$B antwortet nicht auf /api/status"
+              else
+                if [ "${H2[$B]}" -gt "${H1[$B]:-0}" ]; then ok "Hoehe waechst (${H1[$B]} -> ${H2[$B]})"; else rot "Hoehe steht (${H1[$B]} -> ${H2[$B]})"; fi
+                J=$(h $B)
+                if [ -z "$J" ]; then rot "$B antwortet nicht auf /api/health/combined"; else echo "$J" | python3 .github/wache_pruefung.py || ROT=1; fi
+              fi
+            fi
             M=$(curl -s --max-time 15 "https://${PHOST[$B]}.aequitas.digital/matching/health" | grep -o '"status":"ok"')
             if [ -n "$M" ]; then ok "Vergleichsdienst antwortet"; else rot "Vergleichsdienst (/matching/health) antwortet nicht"; fi
             # Der Coordinator auf derselben Box (seit 13.09. der, auf den die App ab v1.7.0 zeigt).
@@ -105,7 +127,8 @@ jobs:
             if echo "$CB" | grep -q 'widerspruch_ueber_einen_monat_offen'; then rot "$PH: ein Widerspruch liegt LAENGER ALS EINEN MONAT (Art. 12 Abs. 3)"; fi
           done
           echo "===== Netz ====="
-          if [ "${#PHOST[@]}" -lt 2 ]; then
+          set -- $AKTIV
+          if [ "$#" -lt 2 ]; then
             # Bekannt und entschieden (24.09.2026): bis der neue zweite Server
             # steht, gibt es einen Validator. Hinweis, kein Rot -- sonst waere
             # die Wache dauerhaft rot und damit wertlos. Launch-Blocker in
@@ -113,7 +136,7 @@ jobs:
             echo "ℹ nur EIN Validator aktiv -- der zweite Server fehlt (Launch-Blocker)"
           else
             MIN=""; MAX=0
-            for B in "${!PHOST[@]}"; do V=${H2[$B]:-0}; [ -z "$MIN" ] || [ "$V" -lt "$MIN" ] && MIN=$V; [ "$V" -gt "$MAX" ] && MAX=$V; done
+            for B in $AKTIV; do V=${H2[$B]:-0}; [ -z "$MIN" ] || [ "$V" -lt "$MIN" ] && MIN=$V; [ "$V" -gt "$MAX" ] && MAX=$V; done
             D=$(( MAX - MIN ))
             if [ "$D" -le 20 ]; then ok "Boxen gleichauf (Abstand $D)"; else rot "Boxen nicht gleichauf (Abstand $D)"; fi
           fi
