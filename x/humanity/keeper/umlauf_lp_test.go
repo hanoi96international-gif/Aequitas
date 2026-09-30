@@ -146,3 +146,122 @@ func TestUmlauf_LP_UeberhoehterBetragFaelltAuf(t *testing.T) {
 		t.Fatalf("richtiger Betrag abgelehnt: %v", err)
 	}
 }
+
+// lpNachspielKnoten: ein Knoten mit echtem replayTransactions, Mensch wie in
+// lpTestZustand.
+func lpNachspielKnoten(t *testing.T, guthaben, lpAEQ float64) (*BlockDAG, *ChainState) {
+	t.Helper()
+	dag, cs := nachspielKnoten(t, nil)
+	vorlage := lpTestZustand(guthaben, lpAEQ)
+	cs.mu.Lock()
+	cs.accounts.Set(lpTestWallet, acct(vorlage, lpTestWallet))
+	cs.pool = vorlage.pool
+	cs.mu.Unlock()
+	return dag, cs
+}
+
+// Missbrauch M1 (#238): vor dem Stichtag schreibt ein Erzeuger einen Umlauf
+// mit Rundenzeit = Stichtag, um die neue Regel vorzuziehen und LP-Anteile
+// aufloesen zu lassen. Das Nachspielen lehnt den Block ab.
+func TestNachspielen_UmlaufLPRegelVorgezogenWirdAbgelehnt(t *testing.T) {
+	wirtschaftAn(t)
+	dag, cs := lpNachspielKnoten(t, 0, 20000)
+	cs.wirt().letzterUmlauf = umlaufMitLPAbUnix - 4*86400
+	vorLP := acct(cs, lpTestWallet).LPShares
+
+	b := testBlock(1, Transaction{Type: "umlauf", Wallet: lpTestWallet, Amount: 50, DistributionAt: umlaufMitLPAbUnix})
+	b.Timestamp = umlaufMitLPAbUnix - 3*86400
+	if dag.replayTransactions(b, true) {
+		t.Fatal("vordatierter Umlauf ab dem LP-Stichtag angenommen")
+	}
+	if got := acct(cs, lpTestWallet).LPShares; got != vorLP {
+		t.Errorf("LP-Anteile aufgeloest: %v -> %v", vorLP, got)
+	}
+	if got := cs.wirt().letzterUmlauf; got != umlaufMitLPAbUnix-4*86400 {
+		t.Errorf("letzterUmlauf verschoben auf %d", got)
+	}
+}
+
+// Missbrauch M2 (#238): ein ueberhoehter Betrag im Block, OHNE strengen Modus.
+// Bisher konnte er hoechstens das Guthaben abziehen; mit dem Aufloesen haette
+// er die ganze Position im Pool aufgeloest. Muss LP aufgeloest werden, prueft
+// jeder Knoten immer streng.
+func TestNachspielen_UeberhoehterUmlaufLoestKeineLPAuf(t *testing.T) {
+	wirtschaftAn(t)
+	t.Setenv("AEQUITAS_LIEGEGELD_PRUEFUNG", "")
+	at := umlaufMitLPAbUnix + 3600
+	dag, cs := lpNachspielKnoten(t, 0, 20000)
+	cs.wirt().letzterUmlauf = at - 86400
+	vorLP := acct(cs, lpTestWallet).LPShares
+
+	b := testBlock(1, Transaction{Type: "umlauf", Wallet: lpTestWallet, Amount: 1e9, DistributionAt: at})
+	b.Timestamp = at + 5
+	if dag.replayTransactions(b, true) {
+		t.Fatal("ueberhoehter Umlauf auf LP-Anteile ohne strengen Modus angenommen")
+	}
+	if got := acct(cs, lpTestWallet).LPShares; got != vorLP {
+		t.Errorf("LP-Anteile aufgeloest: %v -> %v", vorLP, got)
+	}
+
+	// Gegenprobe: der richtige Betrag geht durch und loest auf.
+	b2 := testBlock(2, Transaction{Type: "umlauf", Wallet: lpTestWallet, Amount: einTagAbgabeMensch(20000), DistributionAt: at})
+	b2.Timestamp = at + 5
+	if !dag.replayTransactions(b2, true) {
+		t.Fatal("richtiger Umlauf auf LP-Anteile abgelehnt")
+	}
+	if got := acct(cs, lpTestWallet).LPShares; got >= vorLP {
+		t.Error("richtiger Umlauf hat keine LP-Anteile aufgeloest")
+	}
+}
+
+// Mehrere LP-Halter in einer Runde, Pool nicht 1:1, krumme Anteile: jeder
+// Einzug veraendert den Pool fuer den naechsten. Erzeuger und Nachspieler
+// bleiben bitgleich, und es entsteht kein Geld.
+func TestUmlauf_LP_MehrereHalter_ErzeugerUndNachspielerGleich(t *testing.T) {
+	wirtschaftAn(t)
+	t.Setenv("AEQUITAS_LIEGEGELD_PRUEFUNG", "streng")
+	at := umlaufMitLPAbUnix + 3600
+	halter := map[string][2]float64{ // Guthaben, LP-Anteile
+		"0xa100000000000000000000000000000000000d01": {0, 7333.333333},
+		"0xa100000000000000000000000000000000000d02": {1234.5678, 4111.111111},
+		"0xa100000000000000000000000000000000000d03": {6000, 2500.5},
+		"0xa100000000000000000000000000000000000d04": {100, 9999.999999},
+	}
+	neu := func() *ChainState {
+		cs := newTestState()
+		var summe float64
+		for a, w := range halter {
+			cs.accounts.Set(a, &AccountState{Address: a, IsHuman: true, Balance: NewDecimal(w[0]), LPShares: NewDecimal(w[1])})
+			summe += w[1]
+			cs.humanCount++
+		}
+		cs.pool = &PoolState{ReserveAEQ: NewDecimal(31234.567891), ReserveTUSD: NewDecimal(17000.123456), TotalLPShares: NewDecimal(summe + 1000)}
+		return cs
+	}
+	erzeuger, nachspieler := neu(), neu()
+	var txs []Transaction
+	assertConserved(t, erzeuger, "Umlauf mehrerer LP-Halter", func() { txs = umlaufRunde(t, erzeuger, at) })
+	if len(txs) != len(halter) {
+		t.Fatalf("erwartet %d Umlauf-Transaktionen, bekommen %d", len(halter), len(txs))
+	}
+	nachspieler.wirt().letzterUmlauf = at - 86400
+	nachspieler.mu.Lock()
+	for _, tx := range txs {
+		if err := nachspieler.pruefeUmlaufLocked(tx.Wallet, tx.Amount, at); err != nil {
+			t.Fatal(err)
+		}
+		if err := nachspieler.applyUmlaufDeltaLocked(context.Background(), tx.Wallet, tx.Amount, at); err != nil {
+			t.Fatal(err)
+		}
+	}
+	nachspieler.mu.Unlock()
+	if *erzeuger.pool != *nachspieler.pool {
+		t.Errorf("Pool weicht ab: %+v gegen %+v", *erzeuger.pool, *nachspieler.pool)
+	}
+	for a := range halter {
+		e, n := acct(erzeuger, a), acct(nachspieler, a)
+		if e.Balance != n.Balance || e.TUsdBalance != n.TUsdBalance || e.LPShares != n.LPShares {
+			t.Errorf("%s weicht ab", a)
+		}
+	}
+}

@@ -22,6 +22,17 @@ package keeper
 // umlaufMitLPAbUnix: 07.10.2026 00:00 UTC -- eine Woche nach dem Einbau.
 const umlaufMitLPAbUnix int64 = 1791331200
 
+// umlaufLPZeitVorgezogen: eine Umlauf-Transaktion beansprucht die neue Regel
+// (Rundenzeit ab umlaufMitLPAbUnix), liegt aber nach ihrem eigenen Block. Der
+// Erzeuger waehlt die Rundenzeit, bevor er den Block baut -- ehrlich kommt
+// das nie vor, auch nicht in der Geschichte (vor dem Stichtag liegt jede
+// Rundenzeit davor). Ohne diese Grenze konnte ein Erzeuger die Regel mit einer
+// vordatierten Rundenzeit vorziehen und LP-Anteile aufloesen lassen
+// (Sicherheitspruefung #238, M1). Eine Minute Uhrenspiel ist erlaubt.
+func umlaufLPZeitVorgezogen(at, blockZeit int64) bool {
+	return at >= umlaufMitLPAbUnix && at > blockZeit+60
+}
+
 // umlaufStandLocked: der Stand, auf den die Umlaufabgabe zur Runde at
 // berechnet wird. Caller haelt cs.mu (lesend genuegt).
 func (cs *ChainState) umlaufStandLocked(acc *AccountState, at int64) float64 {

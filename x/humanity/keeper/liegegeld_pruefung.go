@@ -59,6 +59,13 @@ func (cs *ChainState) pruefeUmlaufLocked(wallet string, betrag float64, at int64
 	if !ok {
 		return nil // applyUmlaufDeltaLocked tut dann nichts
 	}
+	// Muesste der Einzug LP-Anteile aufloesen (umlauf_lp.go), prueft jeder
+	// Knoten IMMER streng -- unabhaengig von AEQUITAS_LIEGEGELD_PRUEFUNG.
+	// Sonst loeste ein ueberhoehter Betrag im Block die ganze Position im
+	// Pool auf (Sicherheitspruefung #238, M2). Was sich nicht nachrechnen
+	// laesst, loest nichts auf.
+	lpNoetig := at >= umlaufMitLPAbUnix && NewDecimal(betrag) > acc.Balance && acc.LPShares > 0
+	streng := liegegeldStreng() || lpNoetig
 	art := cs.kontoartVon(wallet, acc.IsHuman)
 	w := cs.wirt()
 	w.mu.Lock()
@@ -71,11 +78,17 @@ func (cs *ChainState) pruefeUmlaufLocked(wallet string, betrag float64, at int64
 	default:
 		w.mu.Unlock()
 		liegegeldUebersprungen.Add(1)
+		if lpNoetig {
+			return fmt.Errorf("umlauf %s: Zeitraum unbekannt, LP-Anteile werden nicht aufgeloest: %w", wallet, ErrZustandLehntAb)
+		}
 		return nil // ein aelterer Lauf: Zeitraum unbekannt
 	}
 	if art == artUnternehmen && !w.fensterVollLocked(at) {
 		w.mu.Unlock()
 		liegegeldUebersprungen.Add(1)
+		if lpNoetig {
+			return fmt.Errorf("umlauf %s: Umsatzfenster unvollstaendig, LP-Anteile werden nicht aufgeloest: %w", wallet, ErrZustandLehntAb)
+		}
 		return nil
 	}
 	w.mu.Unlock()
@@ -100,7 +113,7 @@ func (cs *ChainState) pruefeUmlaufLocked(wallet string, betrag float64, at int64
 	liegegeldAbweichungen.Add(1)
 	fmt.Printf("[LIEGEGELD] Abweichung %s: im Block %.6f, nachgerechnet %.6f (Stand %.6f, %ds)\n",
 		wallet, betrag, erwartet, stand, sekunden)
-	if liegegeldStreng() {
+	if streng {
 		return fmt.Errorf("umlauf %s: im Block %.6f, nachgerechnet %.6f: %w", wallet, betrag, erwartet, ErrZustandLehntAb)
 	}
 	return nil

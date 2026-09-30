@@ -7500,6 +7500,11 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			// wirtschaft.go: taegliche Umlaufsicherung / Liegegeld, Betrag vom
 			// Erzeuger berechnet, hier nachgerechnet (liegegeld_pruefung.go)
 			// und angewandt.
+			if umlaufLPZeitVorgezogen(tx.DistributionAt, block.Timestamp) {
+				fmt.Printf("[REPLAY] ✗ umlauf %s: Rundenzeit %d nach dem Block (%d) und ab dem LP-Stichtag — rolling back whole block\n", wallet, tx.DistributionAt, block.Timestamp)
+				hardFailure = true
+				continue
+			}
 			if err := dag.state.pruefeUmlaufLocked(wallet, tx.Amount, tx.DistributionAt); err != nil {
 				fmt.Printf("[REPLAY] ✗ %v (block #%d) — rolling back whole block\n", err, block.Height)
 				hardFailure = true
