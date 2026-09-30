@@ -45,9 +45,9 @@ import (
 // Umgebung:
 //
 //	AEQUITAS_LEITER_FAEHIG=ja|nein    Betreiber entscheidet (ueberstimmt die Messung)
-//	AEQUITAS_LEISTUNG_MIN_SIG=20000   Signaturen je Sekunde, mindestens
-//	AEQUITAS_LEISTUNG_MAX_COMMIT_MS=20  Commit-Dauer, hoechstens
-//	AEQUITAS_LEISTUNG_MIN_KERNE=4
+//	AEQUITAS_LEISTUNG_MIN_SIG=50000   Signaturen je Sekunde, mindestens
+//	AEQUITAS_LEISTUNG_MAX_COMMIT_MS=5   Commit-Dauer, hoechstens
+//	AEQUITAS_LEISTUNG_MIN_KERNE=8
 
 const (
 	leiterFaehigEnv    = "AEQUITAS_LEITER_FAEHIG"
@@ -63,11 +63,16 @@ type LeistungsSchwellen struct {
 	MinKerne     int     `json:"min_kerne"`
 }
 
-// Vorgaben: Ziel sind 10.000 Ueberweisungen je Sekunde. Die Signaturpruefung
-// ist nur ein Teil der Arbeit je Ueberweisung (Profil: ~18 % der CPU), also
-// verlangt der Nachweis das Doppelte des Ziels allein dafuer.
+// Vorgaben: Ziel sind 20.000-30.000 Ueberweisungen je Sekunde (Stand
+// 30.09.2026, vorher 10.000). Die Signaturpruefung ist nur ein Teil der
+// Arbeit je Ueberweisung (Profil: ~18 % der CPU), also verlangt der Nachweis
+// das Doppelte der Zielmitte allein dafuer: 50.000 je Sekunde. Gemessen am
+// selben Tag auf C1 (8 Kerne EPYC 9645, 16 GB): 86.800 je Sekunde, Commit
+// 0,12 ms -- die Schwelle laesst ihm Luft, ein 6-Kern-Server alter
+// Generation (C2) faellt durch. Dieselbe Schwelle gilt fuer die
+// Leistungsprobe neuer Validatoren (kandidatenprobe.go).
 func leistungsVorgabe() LeistungsSchwellen {
-	return LeistungsSchwellen{MinSigProSek: 20000, MaxCommitMs: 20, MinKerne: 4}
+	return LeistungsSchwellen{MinSigProSek: 50000, MaxCommitMs: 5, MinKerne: 8}
 }
 
 func leistungsSchwellenAusUmgebung() LeistungsSchwellen {

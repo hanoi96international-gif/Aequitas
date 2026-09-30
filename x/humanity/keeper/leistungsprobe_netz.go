@@ -5,16 +5,21 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	mrand "math/rand"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
 const leitArtProbe = "leistungsprobe"
 
 var probeZufall = mrand.New(mrand.NewSource(time.Now().UnixNano()))
+
+// probeRechnet: hoechstens eine eingehende Probe wird gleichzeitig gerechnet.
+var probeRechnet sync.Mutex
 
 // leistungsprobenPlanen: aus dem Leitungstakt -- jedes andere Mitglied zu
 // zufaelligen Zeiten pruefen.
@@ -37,13 +42,20 @@ func (dag *BlockDAG) probeAnfrage(l *Leitung, n int, seed string) LeitNachricht 
 }
 
 func probePost(url string, m LeitNachricht) (string, time.Duration, error) {
+	return probePostMit(leitungKlient, url, m)
+}
+
+func probePostMit(k *http.Client, url string, m LeitNachricht) (string, time.Duration, error) {
 	b, _ := json.Marshal(m)
 	t0 := time.Now()
-	resp, err := leitungKlient.Post(url+"/api/leistungsprobe", "application/json", bytes.NewReader(b))
+	resp, err := k.Post(strings.TrimRight(url, "/")+"/api/leistungsprobe", "application/json", bytes.NewReader(b))
 	if err != nil {
 		return "", 0, err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", 0, fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
 	var antw struct {
 		Ergebnis string `json:"ergebnis"`
 	}
@@ -74,20 +86,24 @@ func (dag *BlockDAG) leistungsprobeSenden(l *Leitung, addr, url string) {
 	proben.merke(strings.ToLower(addr), probeErgebnis{bestanden: ok, zeit: time.Now(), dauer: dauer})
 }
 
-// handleLeistungsprobe: POST /api/leistungsprobe -- nur von Mitgliedern,
-// signiert, hoechstens eine je Pruefer alle 30 s.
+// handleLeistungsprobe: POST /api/leistungsprobe -- nur von Mitgliedern der
+// Leitung oder von festgelegten Blockproduzenten (die pruefen neue
+// Validatoren bei der Anmeldung, kandidatenprobe.go), signiert, hoechstens
+// eine je Pruefer alle 30 s und nur eine gleichzeitig.
 func (a *APIServer) handleLeistungsprobe(w http.ResponseWriter, r *http.Request) {
-	l := a.state.leitung.Load()
-	if l == nil || r.Method != http.MethodPost {
+	if r.Method != http.MethodPost {
 		http.Error(w, `{"error":"nicht verfuegbar"}`, http.StatusNotFound)
 		return
 	}
+	l := a.state.leitung.Load()
 	var m LeitNachricht
 	if err := json.NewDecoder(io.LimitReader(r.Body, 8<<10)).Decode(&m); err != nil || m.Art != leitArtProbe {
 		http.Error(w, `{"error":"unlesbar"}`, http.StatusBadRequest)
 		return
 	}
-	if err := pruefeLeitNachricht(m, time.Now()); err != nil || !l.IstMitglied(strings.ToLower(m.Von)) {
+	von := strings.ToLower(m.Von)
+	pruefer := (l != nil && l.IstMitglied(von)) || (a.blockchain != nil && a.blockchain.istProduzent(von))
+	if err := pruefeLeitNachricht(m, time.Now()); err != nil || !pruefer {
 		http.Error(w, `{"error":"abgewiesen"}`, http.StatusForbidden)
 		return
 	}
@@ -105,7 +121,14 @@ func (a *APIServer) handleLeistungsprobe(w http.ResponseWriter, r *http.Request)
 		http.Error(w, `{"error":"Zufallswert"}`, http.StatusBadRequest)
 		return
 	}
+	// Eine Probe zur Zeit: mehrere Pruefer duerfen diesen Knoten nicht
+	// gemeinsam auslasten (je Pruefer gilt schon die 30-s-Grenze).
+	if !probeRechnet.TryLock() {
+		http.Error(w, `{"error":"eine Probe laeuft schon"}`, http.StatusTooManyRequests)
+		return
+	}
 	erg, err := leistungsprobeRechnen(seed, probeAnzahl)
+	probeRechnet.Unlock()
 	if err != nil {
 		http.Error(w, `{"error":"Rechnung"}`, http.StatusInternalServerError)
 		return

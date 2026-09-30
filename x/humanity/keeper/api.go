@@ -18,7 +18,6 @@ import (
 	"net/http"
 	"net/http/pprof"
 	"os"
-	"path/filepath"
 	"regexp"
 	"runtime/debug"
 	"sort"
@@ -1139,6 +1138,7 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	// (leitung_netz.go). Ohne AEQUITAS_LEITUNG=an antwortet er 404.
 	mux.HandleFunc("/api/leitung", a.handleLeitung)
 	mux.HandleFunc("/api/leistungsprobe", a.handleLeistungsprobe)
+	mux.HandleFunc("/api/kandidatenprobe", a.handleKandidatenprobe)
 	mux.HandleFunc("/node-binding", a.handleNodeBinding)
 	mux.HandleFunc("/coordinator-binding", a.handleCoordinatorBinding)
 	mux.HandleFunc("/api/register-validator-key", a.handleRegisterValidatorKey)
@@ -1160,6 +1160,7 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	mux.HandleFunc("/api/unternehmen/schliessen", a.zumLeiter(a.handleUnternehmenSchliessen))
 	mux.HandleFunc("/api/coordinator-proof", a.handleCoordinatorProof)
 	mux.HandleFunc("/api/validator-selfproof", a.handleValidatorSelfProof)
+	mux.HandleFunc("/api/validator-binding", a.handleValidatorBinding)
 	mux.HandleFunc("/api/set-guardian", a.handleSetGuardian)
 	mux.HandleFunc("/api/confirm-alive", a.handleConfirmAlive)
 	mux.HandleFunc("/api/guardian", a.handleGetGuardian)
@@ -1169,11 +1170,14 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	mux.HandleFunc("/dapp", a.handleDapp)
 	mux.HandleFunc("/dapp.js", a.handleDappJS)
 	mux.HandleFunc("/download/app.apk", a.handleAppDownload)
+	// Die PDF-Leitfaeden (Juni 2026: Fork, PostgreSQL, MetaMask-Schluessel)
+	// sind seit dem Ein-Befehl-Einrichten vom 30.09.2026 falsch. Alte Links
+	// (Startseite, geteilte Nachrichten) landen deshalb auf der aktuellen
+	// Anleitung im Explorer, in allen zwoelf Sprachen, statt auf einem PDF,
+	// das einen nicht mehr gueltigen Weg beschreibt.
 	for _, lg := range []string{"en", "de", "es", "fr", "id", "it", "pt", "tr", "ru", "zh", "ar", "hi"} {
-		lg := lg
-		up := strings.ToUpper(lg)
 		mux.HandleFunc("/download/node-guide-"+lg+".pdf", func(w http.ResponseWriter, r *http.Request) {
-			a.handleStaticDownload(w, r, "downloads/Aequitas_Node_Guide_"+up+".pdf", "Aequitas_Node_Guide_"+up+".pdf", "application/pdf")
+			http.Redirect(w, r, "/network/node", http.StatusMovedPermanently)
 		})
 	}
 	// Use the shared EVMRPCServer (a.evmRPC) so /rpc and /api/register share
@@ -2950,6 +2954,10 @@ func (a *APIServer) handleRegisterValidatorKey(w http.ResponseWriter, r *http.Re
 	// P1-05 (audit): canonical message is "authorize validator" (no "key").
 	// Accept the old "authorize validator key" variant as a migration fallback.
 	humanMsg := "Aequitas: authorize validator " + signingAddr
+	// Nur eine Signatur ueber GENAU diese Nachricht taugt spaeter als
+	// NODE_OPERATOR_BINDING_SIGNATURE (handlePeerRegister prueft sie) -- nur
+	// die kommt in die Ablage fuer einrichten.sh.
+	aktuellesFormat := verifyPersonalSign(humanMsg, req.HumanSignature, humanWallet) == nil
 	if err := verifyPersonalSign(humanMsg, req.HumanSignature, humanWallet); err != nil {
 		oldMsg := "Aequitas: authorize validator key " + signingAddr
 		if err2 := verifyPersonalSign(oldMsg, req.HumanSignature, humanWallet); err2 != nil {
@@ -2996,6 +3004,9 @@ func (a *APIServer) handleRegisterValidatorKey(w http.ResponseWriter, r *http.Re
 	}
 	a.blockchain.AddAuthorizedValidator(signingAddr)
 	a.blockchain.merkeValidatorMensch(signingAddr, humanWallet)
+	if aktuellesFormat {
+		bindungsAblage.merke(signingAddr, humanWallet, req.HumanSignature, time.Now())
+	}
 	fmt.Printf("[VALIDATOR] ✓ Registered key %s for human %s\n", signingAddr, humanWallet)
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"success":         true,
@@ -3311,6 +3322,15 @@ func (a *APIServer) handlePeerRegister(w http.ResponseWriter, r *http.Request) {
 			if err := verifyPersonalSign(bindingMsg, req.OperatorBindingSignature, nodeWallet); err != nil {
 				fmt.Printf("[PEERS] Rejected %s: NODE_OPERATOR_WALLET %s ownership not proven: %v\n", addr, nodeWallet, err)
 				http.Error(w, `{"error":"operator_binding_signature missing or invalid — sign 'Aequitas: authorize validator <your signing address>' with your NODE_OPERATOR_WALLET to prove ownership (see /node-binding)"}`, http.StatusForbidden)
+				return
+			}
+			// Leistung (kandidatenprobe.go): wer zu langsam ist, wird kein
+			// Validator. Gemessen von HIER, nicht vom Kandidaten behauptet;
+			// fail-closed -- auch "Probe laeuft noch" heisst: noch nicht.
+			if e := a.kandidatZugelassen(addr, req.URL); e.Status != "bestanden" {
+				fmt.Printf("[PEERS] Rejected %s: Leistungsprobe %s (%s)\n", addr, e.Status, e.Grund)
+				w.WriteHeader(http.StatusForbidden)
+				json.NewEncoder(w).Encode(map[string]interface{}{"error": "leistungsprobe: " + e.Status, "probe": e})
 				return
 			}
 			if err := a.state.BindValidatorSlot(nodeWallet, addr, req.OperatorBindingSignature); err != nil {
@@ -3925,24 +3945,6 @@ func (a *APIServer) handleAppDownload(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/vnd.android.package-archive")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	http.ServeContent(w, r, "aequitas-app.apk", fi.ModTime(), f)
-}
-
-func (a *APIServer) handleStaticDownload(w http.ResponseWriter, r *http.Request, path, filename, contentType string) {
-	f, err := os.Open(path)
-	if err != nil {
-		http.Error(w, "File not found", 404)
-		return
-	}
-	defer f.Close()
-	fi, err := f.Stat()
-	if err != nil {
-		http.Error(w, "File error", 500)
-		return
-	}
-	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filepath.Base(filename)))
-	w.Header().Set("Content-Type", contentType)
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	http.ServeContent(w, r, filename, fi.ModTime(), f)
 }
 
 func (a *APIServer) handleLanding(w http.ResponseWriter, r *http.Request) {

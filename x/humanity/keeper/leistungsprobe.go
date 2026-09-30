@@ -107,10 +107,17 @@ func probeBestanden(erwartet, erhalten string, dauer, rtt time.Duration, n int, 
 	if rechen < 0 {
 		rechen = 0
 	}
-	// Zwei Operationen je Signatur (signieren und wiederherstellen), die
-	// Schwelle zaehlt Wiederherstellungen: doppelte Zeit erlaubt.
-	grenze := time.Duration(2 * float64(n) / minSigProSek * float64(time.Second))
-	return rechen <= grenze
+	return rechen <= probeGrenze(n, minSigProSek)
+}
+
+// probeGrenze: erlaubte Rechenzeit fuer n Signaturen. Zwei Operationen je
+// Signatur (signieren und wiederherstellen), die Schwelle zaehlt
+// Wiederherstellungen: doppelte Zeit erlaubt.
+func probeGrenze(n int, minSigProSek float64) time.Duration {
+	if minSigProSek <= 0 {
+		return 0
+	}
+	return time.Duration(2 * float64(n) / minSigProSek * float64(time.Second))
 }
 
 // --- Ergebnisse ------------------------------------------------------------------
