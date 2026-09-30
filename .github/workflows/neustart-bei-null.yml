@@ -24,10 +24,18 @@ name: Neustart bei null (V8) -- erkunden oder ausfuehren
 #     gemergt). Der normale Deploy haelt bei diesem Merge an
 #     (.github/neustart/genesis-passt.sh): die Knoten laufen bis hierher
 #     unveraendert auf der alten Kette weiter.
-# Ablauf: beide Boxen sichern (deploy/backup-ledger.sh, Kopie bleibt auf der
-# Box), beide leeren (Knoten gestoppt), C1 mit deploy-c1.sh aus main bauen
-# und starten (v8, null Menschen, nimmt an), dann C2 mit deploy_safe_c2.sh
-# (v8, null Menschen, nimmt nicht an).
+# Ablauf (Betreiber, 30.09.2026: das neue Netz beginnt mit C1 allein):
+#   1. beide Boxen sichern (deploy/backup-ledger.sh, Kopie bleibt auf der Box),
+#   2. beide leeren (Knoten gestoppt),
+#   3. C1 bekommt einen EIGENEN Signierschluessel statt der persoenlichen
+#      Wallet (schluessel-c1.sh; nur die Adresse wird ausgegeben) und ist
+#      einziger Produzent (AUTHORIZED_VALIDATORS). Gebunden wird er nach der
+#      Registrierung des Betreibers (/node-binding).
+#   4. C1 mit deploy-c1.sh aus main bauen und starten (v8, null Menschen,
+#      nimmt an),
+#   5. C2: Knoten bleibt aus, seine Dienste laufen geleert weiter. C2 wird
+#      danach nach docs/VALIDATOR_EINRICHTEN.md neu eingerichtet (Test des
+#      Guides); bis dahin steht C2_AKTIV in deploy-c1-dann-c2.yml auf "nein".
 on:
   workflow_dispatch:
     inputs:
@@ -151,8 +159,24 @@ jobs:
           BOX: ${{ matrix.box }}
         run: cat .github/neustart/gemeinsam.sh .github/neustart/leeren.sh | ssh -i ~/.ssh/k -o BatchMode=yes "root@$HOST" "BOX=$BOX BESTAETIGT='ALLE GUTHABEN WEG' bash -s"
 
-  starten-c1:
+  schluessel-c1:
     needs: leeren
+    runs-on: ubuntu-latest
+    environment: produktion
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Schluessel und Host-Pruefung
+        env:
+          KEY: ${{ secrets.CONTABO_SSH_KEY }}
+          HOST: 188.172.229.121
+          FP: "SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA"
+        run: bash .github/neustart/ssh-einrichten.sh
+      - name: Eigener Signierschluessel fuer C1 (nur die Adresse wird ausgegeben)
+        run: cat .github/neustart/gemeinsam.sh .github/neustart/schluessel-c1.sh | ssh -i ~/.ssh/k -o BatchMode=yes root@188.172.229.121 "BOX=C1 BESTAETIGT='ALLE GUTHABEN WEG' bash -s"
+
+  starten-c1:
+    needs: schluessel-c1
     runs-on: ubuntu-latest
     environment: produktion
     timeout-minutes: 20
@@ -169,11 +193,14 @@ jobs:
       - name: C1 ist das neue Netz (v8, null Menschen, nimmt an)
         run: cat .github/neustart/gemeinsam.sh .github/neustart/starten.sh | ssh -i ~/.ssh/k -o BatchMode=yes root@188.172.229.121 "BOX=C1 bash -s"
 
-  starten-c2:
+  c2-dienste:
+    # C2 bleibt ohne Knoten, bis er nach docs/VALIDATOR_EINRICHTEN.md neu
+    # eingerichtet wird (Test des Guides). Seine Dienste (Proof-Server,
+    # Coordinator, Vergleichsdienst) sind geleert und laufen weiter.
     needs: starten-c1
     runs-on: ubuntu-latest
     environment: produktion
-    timeout-minutes: 20
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - name: Schluessel und Host-Pruefung
@@ -182,16 +209,13 @@ jobs:
           HOST: 194.163.188.71
           FP: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
         run: bash .github/neustart/ssh-einrichten.sh
-      - name: C2 mit dem Stand von main bauen und starten (deploy_safe_c2.sh)
+      - name: C2-Knoten bleibt aus, Dienste neu starten
         run: |
-          ssh -i ~/.ssh/k -o BatchMode=yes -o ServerAliveInterval=30 root@194.163.188.71 '
-            set -euo pipefail
-            grep -qx "ANNAHME_ROLLE=nur_lesend" /root/.aequitas.env || { echo "ABBRUCH: ANNAHME_ROLLE=nur_lesend fehlt"; exit 1; }
-            /root/deploy_safe_c2.sh
-          '
-      - name: C2 ist das neue Netz (v8, null Menschen, folgt C1)
-        run: cat .github/neustart/gemeinsam.sh .github/neustart/starten.sh | ssh -i ~/.ssh/k -o BatchMode=yes root@194.163.188.71 "BOX=C2 bash -s"
-      - name: C2 nimmt nicht an (genau ein Annehmender)
-        run: |
-          S=$(curl -s -m 10 http://194.163.188.71:8080/api/health/combined || true)
-          echo "$S" | grep -qE '"nimmt_an": ?false' || { echo "::error::C2 nimmt an -- zwei Annehmende"; exit 1; }
+          cat .github/neustart/gemeinsam.sh - <<'SKRIPT' | ssh -i ~/.ssh/k -o BatchMode=yes root@194.163.188.71 "BOX=C2 bash -s"
+          set -euo pipefail
+          if laeuft "$NODE"; then echo "::error::C2-Knoten laeuft -- er gehoert nicht zum neuen Netz"; exit 1; fi
+          for c in "$PROOF" "$COORD" "$MATCH"; do
+            [ -n "$c" ] && docker inspect "$c" >/dev/null 2>&1 && docker restart "$c" >/dev/null && echo "$c neu gestartet"
+          done
+          echo "C2: Knoten aus (wartet auf Neueinrichtung nach Guide), Dienste laufen."
+          SKRIPT
