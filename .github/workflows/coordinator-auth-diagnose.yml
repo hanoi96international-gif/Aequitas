@@ -1,0 +1,33 @@
+name: Coordinator-Auth-Diagnose (nur lesen)
+# Warum lehnt ein Vergleichsdienst den Coordinator ab (401 bei /propose)?
+# Vergleicht je Box Token-Fingerabdruecke (sha256, 8 Hex) und die
+# oeffentlichen Coordinator-Schluessel mit der Vertrauensliste des
+# Vergleichsdienstes und dem Kettenregister. Nie Geheimnisse im Log.
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  d:
+    runs-on: ubuntu-latest
+    environment: produktion
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {box: C1, host: 188.172.229.121, fp: "SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA", key: CONTABO_SSH_KEY}
+          - {box: C2, host: 194.163.188.71, fp: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto", key: CONTABO2_SSH_KEY}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Schluessel und Host-Pruefung
+        env:
+          KEY: ${{ secrets[matrix.key] }}
+          HOST: ${{ matrix.host }}
+          FP: ${{ matrix.fp }}
+        run: bash .github/neustart/ssh-einrichten.sh
+      - name: Diagnose
+        env:
+          HOST: ${{ matrix.host }}
+          BOX: ${{ matrix.box }}
+        run: cat .github/neustart/gemeinsam.sh .github/neustart/coordinator-auth-diagnose.sh | ssh -i ~/.ssh/k -o BatchMode=yes "root@$HOST" "BOX=$BOX bash -s"
