@@ -1,0 +1,126 @@
+name: Blockproduzenten festlegen -- AUTHORIZED_VALIDATORS (Blocker 18, Audit K-1)
+
+# Setzt AUTHORIZED_VALIDATORS auf beiden Boxen auf GENAU die Signieradressen
+# von C1 und C2. Seit #228 ist die Liste abschliessend: ein selbst
+# eingetragener oder von Peers gemeldeter Schluessel wird kein
+# Blockproduzent mehr. Die Adressen kommen aus /api/signing-address der
+# Knoten selbst -- oeffentlich, keine Geheimnisse.
+#
+# Reihenfolge: erst C2 (nimmt nicht an, spielt nur nach), pruefen, dass seine
+# Hoehe weiter steigt; dann C1. Steigt die Hoehe nicht, bricht der Lauf ab,
+# bevor C1 angefasst wird. Rueckweg: Zeile AUTHORIZED_VALIDATORS in der
+# jeweiligen env-Datei loeschen (Sicherung .bak-* liegt daneben) und neu
+# starten -- ohne Liste gilt das alte Verhalten.
+on:
+  workflow_dispatch:
+    inputs:
+      schreiben:
+        description: "Setzen und neu starten (sonst nur anzeigen)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  adressen:
+    runs-on: ubuntu-latest
+    outputs:
+      liste: ${{ steps.a.outputs.liste }}
+    steps:
+      - id: a
+        name: Signieradressen von C1 und C2
+        run: |
+          set -euo pipefail
+          c1=$(curl -sf -m 15 http://188.172.229.121:8080/api/signing-address | jq -r '.signing_address // empty' | tr 'A-F' 'a-f')
+          c2=$(curl -sf -m 15 http://194.163.188.71:8080/api/signing-address | jq -r '.signing_address // empty' | tr 'A-F' 'a-f')
+          echo "C1: $c1"; echo "C2: $c2"
+          for a in "$c1" "$c2"; do [[ "$a" =~ ^0x[0-9a-f]{40}$ ]] || { echo "::error::Signieradresse nicht lesbar: '$a'"; exit 1; }; done
+          [ "$c1" != "$c2" ] || { echo "::error::C1 und C2 haben dieselbe Signieradresse"; exit 1; }
+          echo "liste=$c1,$c2" >> "$GITHUB_OUTPUT"
+
+  c2:
+    needs: adressen
+    runs-on: ubuntu-latest
+    environment: produktion
+    steps:
+      - uses: actions/checkout@v4
+      - name: Schluessel und Host-Pruefung
+        env:
+          KEY: ${{ secrets.CONTABO2_SSH_KEY }}
+        run: |
+          set -eu
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan 194.163.188.71 2>/dev/null > ~/.ssh/kh
+          ssh-keygen -lf ~/.ssh/kh | awk '{print $2}' | grep -qx 'SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto' || { echo "::error::Host-Schluessel von C2 passt nicht"; exit 1; }
+          cp ~/.ssh/kh ~/.ssh/known_hosts
+      - name: C2 setzen
+        env:
+          LISTE: ${{ needs.adressen.outputs.liste }}
+          SCHREIBEN: ${{ inputs.schreiben }}
+        run: |
+          ssh -o BatchMode=yes -o ServerAliveInterval=30 root@194.163.188.71 "LISTE='$LISTE' SCHREIBEN='$SCHREIBEN' bash -s" <<'SKRIPT'
+          set -euo pipefail
+          ist=$(docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep '^AUTHORIZED_VALIDATORS=' | cut -d= -f2- || true)
+          echo "C2 bisher: AUTHORIZED_VALIDATORS=${ist:-<leer>}"
+          echo "C2 neu:    AUTHORIZED_VALIDATORS=$LISTE"
+          [ "$SCHREIBEN" = "true" ] || { echo "nur angezeigt"; exit 0; }
+          [ "$ist" = "$LISTE" ] && { echo "schon gesetzt"; exit 0; }
+          grep -qx "ANNAHME_ROLLE=nur_lesend" /root/.aequitas.env || { echo "ABBRUCH: C2 ist nicht nur_lesend"; exit 1; }
+          cp -a /root/.aequitas.env /root/.aequitas.env.bak-produzenten-$(date +%s)
+          bash /root/env-setzen.sh "AUTHORIZED_VALIDATORS=$LISTE"
+          neu=$(docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep '^AUTHORIZED_VALIDATORS=' | cut -d= -f2- || true)
+          [ "$neu" = "$LISTE" ] || { echo "FEHLER: im Prozess steht '$neu'"; exit 1; }
+          echo "C2 gesetzt"
+          SKRIPT
+      - name: C2 lebt und die Hoehe steigt
+        if: ${{ inputs.schreiben }}
+        run: bash deploy/pruefe-knoten.sh http://194.163.188.71:8080
+
+  c1:
+    needs: [adressen, c2]
+    runs-on: ubuntu-latest
+    environment: produktion
+    steps:
+      - uses: actions/checkout@v4
+      - name: Schluessel
+        env:
+          KEY: ${{ secrets.CONTABO_SSH_KEY }}
+        run: |
+          set -eu
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -t ed25519 188.172.229.121 2>/dev/null > ~/.ssh/kh1
+          ssh-keygen -lf ~/.ssh/kh1 | awk '{print $2}' | grep -qx 'SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA' || { echo "::error::Host-Schluessel von C1 passt nicht"; exit 1; }
+          cp ~/.ssh/kh1 ~/.ssh/known_hosts
+      - name: C1 setzen
+        env:
+          LISTE: ${{ needs.adressen.outputs.liste }}
+          SCHREIBEN: ${{ inputs.schreiben }}
+        run: |
+          ssh -o BatchMode=yes -o ServerAliveInterval=30 root@188.172.229.121 "LISTE='$LISTE' SCHREIBEN='$SCHREIBEN' bash -s" <<'SKRIPT'
+          set -euo pipefail
+          cd /root/Aequitas/deploy/validator
+          ist=$(docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep '^AUTHORIZED_VALIDATORS=' | cut -d= -f2- || true)
+          echo "C1 bisher: AUTHORIZED_VALIDATORS=${ist:-<leer>}"
+          echo "C1 neu:    AUTHORIZED_VALIDATORS=$LISTE"
+          [ "$SCHREIBEN" = "true" ] || { echo "nur angezeigt"; exit 0; }
+          [ "$ist" = "$LISTE" ] && { echo "schon gesetzt"; exit 0; }
+          grep -qx 'ANNAHME_ROLLE=annehmend' .env || { echo "ABBRUCH: ANNAHME_ROLLE=annehmend fehlt in .env"; exit 1; }
+          cp -a .env ".env.bak-produzenten-$(date +%s)"
+          if grep -q '^AUTHORIZED_VALIDATORS=' .env; then sed -i "s|^AUTHORIZED_VALIDATORS=.*|AUTHORIZED_VALIDATORS=$LISTE|" .env; else printf 'AUTHORIZED_VALIDATORS=%s\n' "$LISTE" >> .env; fi
+          docker compose up -d --no-deps node
+          neu=$(docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep '^AUTHORIZED_VALIDATORS=' | cut -d= -f2- || true)
+          [ "$neu" = "$LISTE" ] || { echo "FEHLER: im Prozess steht '$neu'"; exit 1; }
+          echo "C1 gesetzt"
+          SKRIPT
+      - name: C1 lebt und die Hoehe steigt
+        if: ${{ inputs.schreiben }}
+        run: bash deploy/pruefe-knoten.sh http://188.172.229.121:8080
+      - name: Beide melden produzenten_geschlossen
+        if: ${{ inputs.schreiben }}
+        run: |
+          for h in 188.172.229.121 194.163.188.71; do
+            echo "$h: $(curl -s -m 10 http://$h:8080/api/status | jq -c '{height, produzenten_geschlossen}')"
+          done
