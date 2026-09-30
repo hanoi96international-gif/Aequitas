@@ -251,3 +251,51 @@ func TestErhaltung_RueckrollenSetztSummeZurueck(t *testing.T) {
 		t.Errorf("Summe nach zurueckgewiesenem Block veraendert: %+v statt %+v", cs.erhaltung, vorher)
 	}
 }
+
+// Wirtschaftspruefung C1 / Pruefung #239 Befund 4: mit Restuebertrag laesst
+// der Erzeuger einen Rest im Validatoren-/LP-Topf stehen. Der Abschluss traegt
+// ihn jetzt, und der Nachspielende setzt genau ihn statt zu nullen.
+func TestTopfrest_ValidatorenUndLPWieBeimErzeuger(t *testing.T) {
+	dag, cs := erhaltungKnoten(t, 0)
+	cs.mu.Lock()
+	cs.accounts.Set(validatorsPoolAddr, &AccountState{Address: validatorsPoolAddr, Balance: NewDecimal(10.000002)})
+	cs.accounts.Set(lpPoolAddr, &AccountState{Address: lpPoolAddr, Balance: NewDecimal(7.000001)})
+	cs.mu.Unlock()
+	vorher := erhaltungZaehler("topf_rest") + erhaltungZaehler("topf_ueberzogen")
+	if !dag.replayTransactions(erhaltungBlock(1, nowUnix(),
+		Transaction{Type: "validator_distribution", Wallet: erhaltungMenschen[0], Amount: 10},
+		Transaction{Type: "validator_distribution_pool_zero", Amount: 0.000002},
+		Transaction{Type: "lp_distribution", Wallet: erhaltungMenschen[1], Amount: 7},
+		Transaction{Type: "lp_distribution_pool_zero", Amount: 0.000001},
+	), true) {
+		t.Fatal("ehrliche Runde mit Rest abgelehnt")
+	}
+	if got := acct(cs, validatorsPoolAddr).Balance; got != NewDecimal(0.000002) {
+		t.Errorf("Validatoren-Topf %v, erwartet den Rest 0.000002", got)
+	}
+	if got := acct(cs, lpPoolAddr).Balance; got != NewDecimal(0.000001) {
+		t.Errorf("LP-Topf %v, erwartet den Rest 0.000001", got)
+	}
+	if erhaltungZaehler("topf_rest")+erhaltungZaehler("topf_ueberzogen") != vorher {
+		t.Error("ehrlicher Rest als Abweichung gemeldet")
+	}
+
+	// Missbrauch: ein Endstand ueber Topf minus Auszahlung waere neues Geld.
+	cs.mu.Lock()
+	cs.accounts.Set(validatorsPoolAddr, &AccountState{Address: validatorsPoolAddr, Balance: NewDecimal(10)})
+	cs.mu.Unlock()
+	vorher = erhaltungZaehler("topf_rest")
+	dag.replayTransactions(erhaltungBlock(2, nowUnix(),
+		Transaction{Type: "validator_distribution", Wallet: erhaltungMenschen[0], Amount: 10},
+		Transaction{Type: "validator_distribution_pool_zero", Amount: 1000},
+	), true)
+	if erhaltungZaehler("topf_rest") != vorher+1 {
+		t.Fatal("Endstand 1000 nach Auszahlung von 10 aus 10 nicht erkannt")
+	}
+
+	// Alte Bloecke ohne Endstand nullen wie frueher.
+	b := erhaltungBlock(3, nowUnix(), Transaction{Type: "lp_distribution_pool_zero"})
+	if !dag.replayTransactions(b, true) || acct(cs, lpPoolAddr).Balance != 0 {
+		t.Errorf("alter Abschluss ohne Endstand nullt nicht: %v", acct(cs, lpPoolAddr).Balance)
+	}
+}

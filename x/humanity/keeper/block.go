@@ -7674,12 +7674,12 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			// context.Background() is correct — see registerHumanLocked's
 			// comment: dag.state.activeTx was already set directly above
 			// this loop, and dbExecCtx falls back to it.
-			if err := dag.state.applyValidatorPoolZeroDeltaLocked(context.Background()); err != nil {
+			if err := dag.state.setzeTopfNachRundeLocked(context.Background(), validatorsPoolAddr, tx.Amount); err != nil {
 				fmt.Printf("[REPLAY] ✗ validator_distribution_pool_zero: %v (block #%d) — rolling back whole block\n", err, block.Height)
 				hardFailure = true
 				continue
 			}
-			fmt.Printf("[REPLAY] ✓ Zeroed validators pool (block #%d)\n", block.Height)
+			fmt.Printf("[REPLAY] ✓ Validators pool set to %.6f after round (block #%d)\n", tx.Amount, block.Height)
 
 		case "lp_distribution":
 			wallet := strings.ToLower(tx.Wallet)
@@ -7697,12 +7697,12 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			// context.Background() is correct — see registerHumanLocked's
 			// comment: dag.state.activeTx was already set directly above
 			// this loop, and dbExecCtx falls back to it.
-			if err := dag.state.applyLPPoolZeroDeltaLocked(context.Background()); err != nil {
+			if err := dag.state.setzeTopfNachRundeLocked(context.Background(), lpPoolAddr, tx.Amount); err != nil {
 				fmt.Printf("[REPLAY] ✗ lp_distribution_pool_zero: %v (block #%d) — rolling back whole block\n", err, block.Height)
 				hardFailure = true
 				continue
 			}
-			fmt.Printf("[REPLAY] ✓ Zeroed LP pool (block #%d)\n", block.Height)
+			fmt.Printf("[REPLAY] ✓ LP pool set to %.6f after round (block #%d)\n", tx.Amount, block.Height)
 
 		case "escrow_move":
 			wallet := strings.ToLower(tx.Wallet)

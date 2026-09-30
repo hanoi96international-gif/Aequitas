@@ -4895,7 +4895,11 @@ func (cs *ChainState) RunDailyDistributionAtomic(ubiAt int64) error {
 			validatorTotal += s.Amount
 		}
 		if validatorTotal > 0 {
-			txs = append(txs, Transaction{Type: "validator_distribution_pool_zero"})
+			// Endstand des Topfs in der Transaktion, wie bei
+			// ubi_distribution_finalize: mit Restuebertrag (pool_remainder.go)
+			// bleibt ein Rest stehen, und jeder Knoten muss genau ihn setzen
+			// statt zu nullen (Wirtschaftspruefung C1, Pruefung #239 Befund 4).
+			txs = append(txs, Transaction{Type: "validator_distribution_pool_zero", Amount: cs.topfStandLocked(validatorsPoolAddr)})
 		}
 
 		lpShares, err := cs.distributeLPPoolLocked(ctx, ubiAt)
@@ -4908,7 +4912,7 @@ func (cs *ChainState) RunDailyDistributionAtomic(ubiAt int64) error {
 			lpTotal += s.Amount
 		}
 		if lpTotal > 0 {
-			txs = append(txs, Transaction{Type: "lp_distribution_pool_zero"})
+			txs = append(txs, Transaction{Type: "lp_distribution_pool_zero", Amount: cs.topfStandLocked(lpPoolAddr)})
 		}
 
 		moved, err := cs.checkAndMoveToEscrowLocked(ctx)
@@ -8962,16 +8966,39 @@ func (cs *ChainState) ApplyValidatorPoolZeroDelta() error {
 // applyValidatorPoolZeroDeltaLocked is ApplyValidatorPoolZeroDelta's body —
 // see applyTransferDeltaLocked's comment.
 func (cs *ChainState) applyValidatorPoolZeroDeltaLocked(ctx context.Context) error {
-	// FIX (Monster Audit 2026-07-12, P1): see applyUBIDeltaLocked's comment on
-	// the same pattern — a cold pool address must not silently skip zeroing.
-	cs.ensureAccountLoadedCtx(ctx, validatorsPoolAddr)
-	if acc, ok := cs.accounts.Get(validatorsPoolAddr); ok {
-		acc.Balance = NewDecimal(0)
+	return cs.setzeTopfNachRundeLocked(ctx, validatorsPoolAddr, 0)
+}
+
+// setzeTopfNachRundeLocked setzt einen Topf nach der Ausschuettung auf den
+// Endstand rest, den der Erzeuger in *_pool_zero schreibt (Transaction.Amount).
+// Alte Bloecke tragen 0 und nullen wie frueher. Seit dem Restuebertrag
+// (pool_remainder.go) liess der Erzeuger einen Rest stehen, beim Nachspielen
+// wurde trotzdem genullt -- der StateRoot lief auseinander, und der
+// Nachspielende vernichtete Geld (Wirtschaftspruefung C1). Ob rest gedeckt
+// ist, prueft erhaltung.go (topf_rest).
+//
+// FIX (Monster Audit 2026-07-12, P1): see applyUBIDeltaLocked's comment on
+// the same pattern — a cold pool address must not silently skip zeroing.
+func (cs *ChainState) setzeTopfNachRundeLocked(ctx context.Context, addr string, rest float64) error {
+	if rest < 0 || math.IsNaN(rest) || math.IsInf(rest, 0) {
+		return fmt.Errorf("pool %s: ungueltiger Endstand %v: %w", addr, rest, ErrZustandLehntAb)
+	}
+	cs.ensureAccountLoadedCtx(ctx, addr)
+	if acc, ok := cs.accounts.Get(addr); ok {
+		acc.Balance = NewDecimal(rest)
 		if err := cs.saveAccountToDBCtx(ctx, acc); err != nil {
-			return fmt.Errorf("validator pool zero: could not save pool account: %w", err)
+			return fmt.Errorf("pool %s: could not save pool account: %w", addr, err)
 		}
 	}
 	return nil
+}
+
+// topfStandLocked: Stand eines Topfs in AEQ, 0 wenn es ihn nicht gibt.
+func (cs *ChainState) topfStandLocked(addr string) float64 {
+	if acc, ok := cs.accounts.Get(addr); ok {
+		return acc.Balance.Float()
+	}
+	return 0
 }
 
 // ApplyLPRewardDelta credits a single LP-pool reward to wallet, settling
@@ -9048,16 +9075,7 @@ func (cs *ChainState) ApplyLPPoolZeroDelta() error {
 // applyLPPoolZeroDeltaLocked is ApplyLPPoolZeroDelta's body — see
 // applyTransferDeltaLocked's comment.
 func (cs *ChainState) applyLPPoolZeroDeltaLocked(ctx context.Context) error {
-	// FIX (Monster Audit 2026-07-12, P1): see applyUBIDeltaLocked's comment on
-	// the same pattern — a cold pool address must not silently skip zeroing.
-	cs.ensureAccountLoadedCtx(ctx, lpPoolAddr)
-	if acc, ok := cs.accounts.Get(lpPoolAddr); ok {
-		acc.Balance = NewDecimal(0)
-		if err := cs.saveAccountToDBCtx(ctx, acc); err != nil {
-			return fmt.Errorf("lp pool zero: could not save pool account: %w", err)
-		}
-	}
-	return nil
+	return cs.setzeTopfNachRundeLocked(ctx, lpPoolAddr, 0)
 }
 
 // ApplyEscrowMoveDelta zeroes wallet's balance after settling the EXACT
