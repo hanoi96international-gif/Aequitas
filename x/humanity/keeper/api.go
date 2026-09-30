@@ -1160,6 +1160,7 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	mux.HandleFunc("/api/unternehmen/schliessen", a.zumLeiter(a.handleUnternehmenSchliessen))
 	mux.HandleFunc("/api/coordinator-proof", a.handleCoordinatorProof)
 	mux.HandleFunc("/api/validator-selfproof", a.handleValidatorSelfProof)
+	mux.HandleFunc("/api/validator-binding", a.handleValidatorBinding)
 	mux.HandleFunc("/api/set-guardian", a.handleSetGuardian)
 	mux.HandleFunc("/api/confirm-alive", a.handleConfirmAlive)
 	mux.HandleFunc("/api/guardian", a.handleGetGuardian)
@@ -2950,6 +2951,10 @@ func (a *APIServer) handleRegisterValidatorKey(w http.ResponseWriter, r *http.Re
 	// P1-05 (audit): canonical message is "authorize validator" (no "key").
 	// Accept the old "authorize validator key" variant as a migration fallback.
 	humanMsg := "Aequitas: authorize validator " + signingAddr
+	// Nur eine Signatur ueber GENAU diese Nachricht taugt spaeter als
+	// NODE_OPERATOR_BINDING_SIGNATURE (handlePeerRegister prueft sie) -- nur
+	// die kommt in die Ablage fuer einrichten.sh.
+	aktuellesFormat := verifyPersonalSign(humanMsg, req.HumanSignature, humanWallet) == nil
 	if err := verifyPersonalSign(humanMsg, req.HumanSignature, humanWallet); err != nil {
 		oldMsg := "Aequitas: authorize validator key " + signingAddr
 		if err2 := verifyPersonalSign(oldMsg, req.HumanSignature, humanWallet); err2 != nil {
@@ -2996,6 +3001,9 @@ func (a *APIServer) handleRegisterValidatorKey(w http.ResponseWriter, r *http.Re
 	}
 	a.blockchain.AddAuthorizedValidator(signingAddr)
 	a.blockchain.merkeValidatorMensch(signingAddr, humanWallet)
+	if aktuellesFormat {
+		bindungsAblage.merke(signingAddr, humanWallet, req.HumanSignature, time.Now())
+	}
 	fmt.Printf("[VALIDATOR] ✓ Registered key %s for human %s\n", signingAddr, humanWallet)
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"success":         true,
