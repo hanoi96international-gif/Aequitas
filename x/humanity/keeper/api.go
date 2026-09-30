@@ -1216,7 +1216,7 @@ func (a *APIServer) Start(port int) {
 	// re-validated, just transferred smaller.
 	srv := &http.Server{
 		Addr:         addr,
-		Handler:      recoverMiddleware(ipZurDomainMiddleware(gzipMiddleware(mux))),
+		Handler:      recoverMiddleware(retryAfterMiddleware(ipZurDomainMiddleware(gzipMiddleware(mux)))),
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 60 * time.Second,
 		IdleTimeout:  120 * time.Second,
@@ -1354,12 +1354,20 @@ func (a *APIServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 		// P3-8: V5/V6 legacy addresses removed from status — minimise attack surface.
 		"bio_verifier": BIO_VERIFIER_ADDR,
 		"chain_evm_id": 1926,
-		"index":        m.Index,
-		"gini":         m.Gini,
-		"growth":       growth,
-		"velocity":     50,
-		"phase":        m.Phase,
-		"fee_bps":      ueberweisungsGebuehrBps,
+		// Aendert sich nur beim Neustart der Kette bei null (genesis.json);
+		// eine App mit gespeicherten Staenden erkennt daran ein neues Netz
+		// (api_app_grundlagen.go).
+		"netz_kennung": netzKennung(),
+		// "v7" oder "v8": danach richtet die App die Unterschrift der
+		// Registrierung aus (V7 personal_sign, V8 EIP-712 mit Frist,
+		// Domaene per eip712Domain() am Vertrag). vertrag_v8.go.
+		"register_vertrag": vertragVersion(),
+		"index":            m.Index,
+		"gini":             m.Gini,
+		"growth":           growth,
+		"velocity":         50,
+		"phase":            m.Phase,
+		"fee_bps":          ueberweisungsGebuehrBps,
 		// FIX (H1, Audit 2026-08-18): total_supply above is the RULE
 		// (humans × 1000, see TotalSupply), and the explorer prints it as
 		// "Total Supply". Measured from both validators' own databases on
@@ -3388,11 +3396,18 @@ func (a *APIServer) handleProveProxy(w http.ResponseWriter, r *http.Request) {
 	// proxy is the only layer that still knows which wallet a request came
 	// from before it gets collapsed into that shared IP bucket, so the
 	// per-wallet throttle has to live here.
-	var proveBody struct {
-		Wallet string `json:"wallet"`
+	// Genau eine Wallet, genau so geschrieben, wie der Proof-Server sie liest
+	// (eindeutigeWallet, prove_provenance.go). Ein Rumpf, in dem Go und der
+	// Proof-Server verschiedene Wallets saehen, geht gar nicht erst weiter --
+	// er liesse Herkunft und Drossel an einer anderen Wallet haengen als den
+	// Beweis.
+	proveWallet, eindeutig := eindeutigeWallet(body)
+	if !eindeutig {
+		jsonError(w, "request must contain exactly one \"wallet\" field", http.StatusBadRequest)
+		return
 	}
-	if jsonErr := json.Unmarshal(body, &proveBody); jsonErr == nil && proveBody.Wallet != "" {
-		walletKey := "prove-wallet:" + strings.ToLower(proveBody.Wallet)
+	if proveWallet != "" {
+		walletKey := "prove-wallet:" + proveWallet
 		if ts, loaded := registerRateLimit.Load(walletKey); loaded {
 			if time.Since(ts.(time.Time)) < 15*time.Second {
 				jsonError(w, "rate limited, try again shortly", 429)
@@ -3436,7 +3451,7 @@ func (a *APIServer) handleProveProxy(w http.ResponseWriter, r *http.Request) {
 	// durch die Pruefung gekommen ist -- /api/register nimmt nur solche.
 	// Siehe prove_provenance.go fuer die Luecke, die das schliesst.
 	if resp.StatusCode == http.StatusOK {
-		merkeProveHerkunft(respBody)
+		merkeProveHerkunft(body, respBody)
 		merkeProveKlasse(respBody)
 	}
 	w.WriteHeader(resp.StatusCode)

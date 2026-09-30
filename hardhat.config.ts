@@ -24,6 +24,14 @@ export default defineConfig({
             enabled: true,
             runs: 200,
           },
+          // storageLayout is needed by test/AequitasV8_storage_layout.ts,
+          // which compares the compiler's slot assignment with
+          // contracts/v8_slots.json (the table the Go keeper uses). Output
+          // selection does not enter the metadata hash, so bytecode is
+          // unchanged (AequitasV7_bytecode_sync.ts still passes).
+          outputSelection: {
+            "*": { "*": ["storageLayout"] },
+          },
         },
       },
       production: {
@@ -32,6 +40,14 @@ export default defineConfig({
           optimizer: {
             enabled: true,
             runs: 200,
+          },
+          // storageLayout is needed by test/AequitasV8_storage_layout.ts,
+          // which compares the compiler's slot assignment with
+          // contracts/v8_slots.json (the table the Go keeper uses). Output
+          // selection does not enter the metadata hash, so bytecode is
+          // unchanged (AequitasV7_bytecode_sync.ts still passes).
+          outputSelection: {
+            "*": { "*": ["storageLayout"] },
           },
         },
       },

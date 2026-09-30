@@ -428,6 +428,14 @@ func main() {
 		fmt.Printf("✓ Chain ID: %s\n", genesis.ChainID)
 		fmt.Printf("✓ Genesis Time: %s\n", genesis.GenesisTime)
 	}
+	// Registervertrag (V7 oder V8) aus der Genesis. Eine unlesbare oder
+	// widerspruechliche Angabe haelt den Knoten an: er wuerde Registrierungen
+	// sonst nach dem falschen Vertrag pruefen und nachspielen.
+	if err := keeper.PruefeVertragGenesis(); err != nil {
+		fmt.Printf("✗ Registervertrag in genesis.json: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("✓ Registervertrag: %s\n", keeper.VertragVersion())
 	fmt.Println()
 
 	fmt.Println()

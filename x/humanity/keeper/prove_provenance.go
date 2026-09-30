@@ -1,7 +1,9 @@
 package keeper
 
 import (
+	"bytes"
 	"encoding/json"
+	"io"
 	"os"
 	"strings"
 	"sync"
@@ -52,10 +54,32 @@ import (
 // Knoten zwischen beiden Aufrufen aus, scheitert die Registrierung mit einer
 // klaren Meldung und der Mensch versucht es erneut -- die umkehrbare
 // Richtung.
+//
+// AN DIE WALLET GEBUNDEN (30.09.2026)
+//
+// Bis hierhin merkte sich der Knoten nur den Nullifier. Im Beweis steckt die
+// Wallet aber nur als PRIVATER Eingang (commitment = Poseidon(bio, wallet,
+// salt), Circuit v3); welche Wallet, sieht niemand. Wer eine /prove-Antwort
+// abfing, bevor sie benutzt war (boesartige App, mitgelesener Verkehr),
+// konnte sie mit der eigenen Signatur fuer die EIGENE Wallet einreichen: der
+// Nullifier hatte Herkunft, die Signatur passte zur eigenen Wallet, der
+// Beweis war gueltig. Ein fremdes Gesicht, ein eigenes Konto.
+//
+// Die Wallet steht im Rumpf der /prove-Anfrage. Der Proof-Server erzeugt den
+// Beweis genau fuer sie, und die Bescheinigung des Coordinators deckt genau
+// (bio, wallet) ab (bio_attestation.js). Der Knoten merkt sich deshalb das
+// Paar (Nullifier, Wallet), und /api/register nimmt den Nullifier nur fuer
+// diese Wallet. Voll schliesst das erst Circuit v4 (Wallet als oeffentliches
+// Signal), siehe docs/V8_ENTWURF.md (v).
 
 // proveHerkunft haelt fest, welche Nullifier aus einem erfolgreichen
-// /prove-Durchlauf dieses Knotens stammen.
-var proveHerkunft sync.Map // nullifier (klein, ohne 0x) -> time.Time
+// /prove-Durchlauf dieses Knotens stammen -- und fuer welche Wallet.
+var proveHerkunft sync.Map // kanonischer Nullifier -> herkunft
+
+type herkunft struct {
+	zeit   time.Time
+	wallet string // klein, mit 0x
+}
 
 // proveHerkunftTTL ist etwas grosszuegiger als die Gueltigkeit der
 // Bescheinigung selbst (900 s im Proof-Server). Der Mensch soll nicht daran
@@ -81,14 +105,21 @@ func herkunftsSchluessel(s string) string {
 	return c
 }
 
-// merkeProveHerkunft liest den Nullifier aus einer erfolgreichen
-// /prove-Antwort und haelt ihn fest.
+// merkeProveHerkunft liest die Wallet aus der /prove-ANFRAGE (fuer sie hat
+// der Proof-Server den Beweis erzeugt) und den Nullifier aus der
+// erfolgreichen ANTWORT und haelt das Paar fest.
 //
 // Fehler beim Auslesen sind bewusst still: die Antwort geht so oder so an den
 // Aufrufer, und ein Proxy, der wegen einer Notiz eine gueltige Antwort
 // verwirft, waere schlimmer als die Notiz wert ist. Fehlt sie, scheitert
-// spaeter die Registrierung -- die umkehrbare Richtung.
-func merkeProveHerkunft(respBody []byte) {
+// spaeter die Registrierung -- die umkehrbare Richtung. Ohne gueltige Wallet
+// in der Anfrage wird nichts gemerkt (der Proof-Server haette sie ohnehin
+// abgelehnt).
+func merkeProveHerkunft(reqBody, respBody []byte) {
+	wallet, ok := eindeutigeWallet(reqBody)
+	if !ok || !isValidWalletAddr(wallet) {
+		return
+	}
 	var b struct {
 		ZKNullifier string `json:"zkNullifier"`
 	}
@@ -100,12 +131,12 @@ func merkeProveHerkunft(respBody []byte) {
 		return
 	}
 	jetzt := time.Now()
-	proveHerkunft.Store(schluessel, jetzt)
+	proveHerkunft.Store(schluessel, herkunft{zeit: jetzt, wallet: wallet})
 
 	// Beim Schreiben aufraeumen statt per Zeitgeber: die Menge ist klein, und
 	// ein Zeitgeber waere eine Goroutine mehr fuer nichts.
 	proveHerkunft.Range(func(k, v any) bool {
-		if t, ok := v.(time.Time); ok && jetzt.Sub(t) > proveHerkunftTTL {
+		if h, ok := v.(herkunft); !ok || jetzt.Sub(h.zeit) > proveHerkunftTTL {
 			proveHerkunft.Delete(k)
 		}
 		return true
@@ -127,16 +158,71 @@ func proveHerkunftVerlangt() bool {
 }
 
 // hatProveHerkunft prueft, ob dieser Nullifier aus einem /prove dieses Knotens
-// stammt und noch nicht verfallen ist.
-func hatProveHerkunft(nullifier string) bool {
+// FUER DIESE WALLET stammt und noch nicht verfallen ist.
+func hatProveHerkunft(nullifier, wallet string) bool {
 	schluessel := herkunftsSchluessel(nullifier)
-	if schluessel == "" {
+	w := strings.ToLower(strings.TrimSpace(wallet))
+	if schluessel == "" || !isValidWalletAddr(w) {
 		return false
 	}
 	v, ok := proveHerkunft.Load(schluessel)
 	if !ok {
 		return false
 	}
-	t, ok := v.(time.Time)
-	return ok && time.Since(t) <= proveHerkunftTTL
+	h, ok := v.(herkunft)
+	return ok && h.wallet == w && time.Since(h.zeit) <= proveHerkunftTTL
+}
+
+// eindeutigeWallet liest die Wallet aus dem /prove-Rumpf so, wie der
+// Proof-Server sie liest -- und nur, wenn es genau EINE gibt.
+//
+// Sicherheitspruefung 30.09.2026: Go's encoding/json ordnet Schluessel ohne
+// Ruecksicht auf Gross-/Kleinschreibung zu, und der letzte gewinnt. Der
+// Proof-Server (express.json, JSON.parse) liest req.body.wallet genau so
+// geschrieben. Ein Rumpf {"wallet":OPFER, ..., "Wallet":ANGREIFER} liess den
+// Proof-Server Bescheinigung und Beweis fuer das Opfer pruefen, waehrend
+// dieser Knoten die Herkunft fuer den Angreifer notierte -- mit einer
+// mitgelesenen /prove-Anfrage haette er das Gesicht des Opfers auf seine
+// Wallet registriert. Deshalb: genau ein Schluessel, der wie "wallet"
+// aussieht, genau so geschrieben, als Zeichenkette. Alles andere gilt als
+// mehrdeutig und bekommt keine Herkunft (und wird am Proxy abgewiesen).
+func eindeutigeWallet(body []byte) (string, bool) {
+	dec := json.NewDecoder(bytes.NewReader(body))
+	if t, err := dec.Token(); err != nil || t != json.Delim('{') {
+		return "", false
+	}
+	gefunden := 0
+	var wallet string
+	for dec.More() {
+		t, err := dec.Token()
+		if err != nil {
+			return "", false
+		}
+		schluessel, ok := t.(string)
+		if !ok {
+			return "", false
+		}
+		var wert json.RawMessage
+		if err := dec.Decode(&wert); err != nil {
+			return "", false
+		}
+		if !strings.EqualFold(schluessel, "wallet") {
+			continue
+		}
+		gefunden++
+		if schluessel != "wallet" {
+			return "", false
+		}
+		if err := json.Unmarshal(wert, &wallet); err != nil {
+			return "", false
+		}
+	}
+	if t, err := dec.Token(); err != nil || t != json.Delim('}') || gefunden != 1 {
+		return "", false
+	}
+	// Nichts hinter dem Objekt (JSON.parse wuerde es ablehnen, Go liesse es stehen).
+	if _, err := dec.Token(); err != io.EOF {
+		return "", false
+	}
+	return strings.ToLower(strings.TrimSpace(wallet)), true
 }

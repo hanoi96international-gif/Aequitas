@@ -7434,6 +7434,89 @@ async function connectWalletConnect() {
   }
 }
 
+// V8-REGISTER-BEGIN -- Registrierung fuer den Registervertrag V8 (EIP-712).
+// Gleiche Regeln wie die App (Aequitas-App src/domain/registerV8.ts) und
+// der Knoten (vertrag_v8.go, pruefeRegistrierungV8): Domaene aus festen
+// Werten + salt = keccak256(netz_kennung), Nonce 0, Frist 30 min (Knoten:
+// hoechstens 1 Tag). Getestet in test/Explorer_registerV8.ts gegen den
+// gemeinsamen Pruefvektor.
+const V8_FRIST_S = 30 * 60;
+const V8_FELD = 21888242871839275222246405745257275088548364400416034343698204186575808495617n;
+const V8_HALBES_N = 0x7fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a0n;
+const V8_TYPES = {
+  Register: [
+    { name: 'human', type: 'address' },
+    { name: 'commitment', type: 'uint256' },
+    { name: 'nullifier', type: 'uint256' },
+    { name: 'nonce', type: 'uint256' },
+    { name: 'deadline', type: 'uint256' },
+  ],
+};
+
+// "v7"/"v8" aus /api/status; fehlt das Feld: aelterer Knoten = v7. Alles
+// andere: null (nicht unterschreiben).
+function v8RegisterVertrag(status) {
+  if (!status || typeof status !== 'object') return null;
+  const v = status.register_vertrag;
+  if (v === undefined || v === null) return 'v7';
+  return v === 'v7' || v === 'v8' ? v : null;
+}
+
+function v8Feldwert(name, s) {
+  if (typeof s !== 'string' || !/^[0-9]{1,80}$/.test(s)) throw new Error(name + ': not a decimal field element');
+  const x = BigInt(s);
+  if (x <= 0n || x >= V8_FELD) throw new Error(name + ': outside the field');
+  return x;
+}
+
+function v8TypedData(kennung, human, pubSignals, deadline) {
+  if (typeof kennung !== 'string' || !/^aequitas-1926-\d{1,12}$/.test(kennung)) throw new Error('network id missing or invalid');
+  if (!ethers.isAddress(human)) throw new Error('wallet invalid');
+  if (!Array.isArray(pubSignals) || pubSignals.length < 2) throw new Error('public signals missing');
+  if (!Number.isSafeInteger(deadline) || deadline <= 0) throw new Error('deadline invalid');
+  return {
+    domain: {
+      name: 'Aequitas',
+      version: '8',
+      chainId: 1926,
+      verifyingContract: V7_CONTRACT, // V8 liegt an der V7-Adresse
+      salt: ethers.keccak256(ethers.toUtf8Bytes(kennung)),
+    },
+    types: V8_TYPES,
+    message: {
+      human: ethers.getAddress(human),
+      commitment: v8Feldwert('commitment', pubSignals[0]),
+      nullifier: v8Feldwert('nullifier', pubSignals[1]),
+      nonce: 0n,
+      deadline: BigInt(deadline),
+    },
+  };
+}
+
+// Eine Wallet kann v als 0/1 liefern -> 27/28. Hohes s, falsche Laenge oder
+// ein anderer Unterzeichner schliessen ab: dieselbe Pruefung wie am Knoten.
+function v8Signatur(td, roh) {
+  if (typeof roh !== 'string' || !/^0x[0-9a-fA-F]{130}$/.test(roh)) throw new Error('signature must be 65 bytes');
+  const b = ethers.getBytes(roh);
+  if (b[64] === 0 || b[64] === 1) b[64] += 27;
+  if (b[64] !== 27 && b[64] !== 28) throw new Error('signature: invalid v');
+  const r = BigInt(ethers.hexlify(b.slice(0, 32)));
+  const s = BigInt(ethers.hexlify(b.slice(32, 64)));
+  if (r === 0n || s === 0n || s > V8_HALBES_N) throw new Error('signature: invalid r/s or high s');
+  const sig = ethers.hexlify(b);
+  const digest = ethers.TypedDataEncoder.hash(td.domain, td.types, td.message);
+  if (ethers.recoverAddress(digest, sig) !== td.message.human) throw new Error('signature is not from this wallet');
+  return sig;
+}
+
+async function v8Unterschreiben(provider, kennung, human, pubSignals, deadline) {
+  const td = v8TypedData(kennung, human, pubSignals, deadline);
+  const payload = ethers.TypedDataEncoder.getPayload(td.domain, td.types, td.message);
+  const roh = await provider.request({ method: 'eth_signTypedData_v4', params: [human, JSON.stringify(payload)] });
+  return v8Signatur(td, roh);
+}
+// V8-REGISTER-END
+
 async function doRegister() {
   if (!waddr || !proofData) return;
   try {
@@ -7470,21 +7553,45 @@ async function doRegister() {
     const nullifier = zkN.toString(16).padStart(64, '0');
     addLog('Using ZK-bound nullifier (circuit v3)', 'info');
 
-    // Build the EXACT same hash the contract computes:
-    // keccak256(abi.encodePacked(block.chainid, address(this), "register", commitment, nullifier))
-    const messageHash = ethers.solidityPackedKeccak256(
-      ['uint256', 'address', 'string', 'uint256', 'bytes32'],
-      [1926, V7_CONTRACT, 'register', commitment, '0x' + nullifier]
-    );
+    // Welche Unterschrift verlangt dieser Knoten? Fail-closed: unbekannt
+    // oder V8 ohne Netzkennung -> nicht unterschreiben.
+    const st = await (await fetch('/api/status')).json();
+    const vertrag = v8RegisterVertrag(st);
+    if (!vertrag) {
+      addLog('Error: this node expects an unknown registration format — reload the page', 'err');
+      document.getElementById('btn-reg').disabled = false;
+      return;
+    }
 
-    addLog('Please sign the message in your wallet to prove this wallet is yours (no gas, no cost)...', 'info');
-    // personal_sign automatically adds the "\x19Ethereum Signed Message:\n32" prefix
-    const signature = await activeProvider().request({
-      method: 'personal_sign',
-      params: [messageHash, waddr]
-    });
+    let signature;
+    let deadline;
+    if (vertrag === 'v8') {
+      // V8 nimmt den Nullifier nur aus pubSignals[1].
+      if (!proofData.pubSignals[1] || BigInt(proofData.pubSignals[1]) !== zkN) {
+        addLog('Error: the proof\'s nullifier does not match its public signals — generate the proof again', 'err');
+        document.getElementById('btn-reg').disabled = false;
+        return;
+      }
+      deadline = Math.floor(Date.now() / 1000) + V8_FRIST_S;
+      addLog('Please sign the registration in your wallet (EIP-712, valid 30 min, no gas, no cost)...', 'info');
+      signature = await v8Unterschreiben(activeProvider(), st.netz_kennung, waddr, proofData.pubSignals, deadline);
+    } else {
+      // Build the EXACT same hash the contract computes:
+      // keccak256(abi.encodePacked(block.chainid, address(this), "register", commitment, nullifier))
+      const messageHash = ethers.solidityPackedKeccak256(
+        ['uint256', 'address', 'string', 'uint256', 'bytes32'],
+        [1926, V7_CONTRACT, 'register', commitment, '0x' + nullifier]
+      );
 
-    addLog('Registering on Aequitas V7...', 'info');
+      addLog('Please sign the message in your wallet to prove this wallet is yours (no gas, no cost)...', 'info');
+      // personal_sign automatically adds the "\x19Ethereum Signed Message:\n32" prefix
+      signature = await activeProvider().request({
+        method: 'personal_sign',
+        params: [messageHash, waddr]
+      });
+    }
+
+    addLog('Registering on Aequitas ' + vertrag.toUpperCase() + '...', 'info');
     const r = await fetch('/api/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -7496,7 +7603,8 @@ async function doRegister() {
         bioHashKey: proofData.bioHashKey || '',
         nullifier: nullifier,
         circuitVersion: proofData.circuitVersion,
-        zkNullifier: proofData.zkNullifier || null
+        zkNullifier: proofData.zkNullifier || null,
+        ...(deadline !== undefined ? { deadline: deadline } : {})
       })
     });
     const d = await r.json();

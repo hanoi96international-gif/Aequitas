@@ -111,6 +111,15 @@ type Transaction struct {
 	ProofB     [][]string `json:"proof_b,omitempty"`     // [2][2]string big.Int decimal
 	ProofC     []string   `json:"proof_c,omitempty"`     // [2]string big.Int decimal
 	PubSignals []string   `json:"pub_signals,omitempty"` // public signals (decimal)
+	// Nur mit AequitasV8 (vertrag_v8.go): die EIP-712-Unterschrift der
+	// Wallet, die Mensch wird, ihre Frist und der Augenblick, zu dem der
+	// annehmende Knoten sie geprueft hat. Damit prueft JEDER Knoten beim
+	// Nachspielen selbst, dass die Wallet zugestimmt hat (pruefeRegistrierungV8)
+	// -- vorher sah das nur der annehmende Knoten ueber den Vertrag.
+	// omitempty: V7-Bloecke behalten ihren Hash.
+	RegSignatur string `json:"reg_signatur,omitempty"`
+	RegFrist    int64  `json:"reg_frist,omitempty"`
+	RegAt       int64  `json:"reg_at,omitempty"`
 	// BlockAHash/BlockBHash identify the equivocation evidence pair for
 	// "slash_equivocation" TXs so the replay can be idempotent (see the
 	// slash_equivocation case in replayTransactions and
@@ -7294,6 +7303,18 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 				}
 				fmt.Printf("[REPLAY] ⚠ register_human for %s (block #%d, pre-activation): %s — ACCEPTED because this block predates the binding rule, but this is exactly the case that rule exists for. Investigate this registration.\n",
 					wallet, block.Height, reason)
+			}
+			// V8 (vertrag_v8.go): hat die Wallet selbst zugestimmt? Bis hierhin
+			// sah das nur der annehmende Knoten (ueber den Vertrag); ein Knoten,
+			// der nachspielt, glaubte es dem Erzeuger. Unter V8 prueft jeder
+			// Knoten die EIP-712-Unterschrift selbst. Gilt ab Genesis einer
+			// V8-Kette, es gibt keine aelteren Bloecke, die daran scheitern.
+			if vertragV8() {
+				if err := pruefeRegistrierungV8(tx, block.Timestamp); err != nil {
+					fmt.Printf("[REPLAY] ✗ register_human for %s (block #%d): %v — rolling back whole block\n", wallet, block.Height, err)
+					hardFailure = true
+					continue
+				}
 			}
 			// FIX (audit 2026-06-28 recheck 5, P1-1): tryClaimNullifierLocked
 			// now returns an error distinctly from "already used" — a genuine
