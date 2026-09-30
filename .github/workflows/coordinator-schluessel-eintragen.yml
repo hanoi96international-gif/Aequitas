@@ -1,0 +1,84 @@
+name: Coordinator-Schluessel in die Vergleichsdienste eintragen
+# Nach dem Neustart bei null ist das Coordinator-Register der Kette leer; die
+# Vergleichsdienste lehnen die laufenden Coordinatoren mit 401 ab (Diagnose:
+# coordinator-auth-diagnose.yml). Dieser Workflow liest die OEFFENTLICHEN
+# Schluessel der Coordinatoren auf C1 und C2 und traegt sie in
+# COORDINATOR_PUBLIC_KEYS beider Vergleichsdienste ein
+# (.github/neustart/coordinator-schluessel.sh). Vorhandene Eintraege bleiben.
+# modus=erkunden (Vorgabe) aendert nichts.
+on:
+  workflow_dispatch:
+    inputs:
+      modus: {description: "erkunden | ausfuehren", required: true, default: erkunden}
+permissions:
+  contents: read
+concurrency:
+  group: deploy-knoten
+  cancel-in-progress: false
+jobs:
+  sammeln:
+    runs-on: ubuntu-latest
+    environment: produktion
+    timeout-minutes: 5
+    outputs:
+      neu: ${{ steps.s.outputs.neu }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Oeffentliche Coordinator-Schluessel lesen
+        id: s
+        env:
+          K1: ${{ secrets.CONTABO_SSH_KEY }}
+          K2: ${{ secrets.CONTABO2_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          alle=""
+          for b in "C1 188.172.229.121 SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA K1" \
+                   "C2 194.163.188.71 SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto K2"; do
+            set -- $b
+            KEY="${!4}" HOST="$2" FP="$3" bash .github/neustart/ssh-einrichten.sh
+            k="$(ssh -i ~/.ssh/k -o BatchMode=yes "root@$2" 'bash -s' <<'SKRIPT'
+          c="$(docker ps --format '{{.Names}}' | grep -E '^aequitas-coordinator$' | head -1)"
+          [ -n "$c" ] || exit 0
+          docker exec "$c" python -c 'import os
+          from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey as P
+          from cryptography.hazmat.primitives import serialization as s
+          r=os.environ.get("COORDINATOR_SIGNING_KEY","").strip()
+          print(P.from_private_bytes(bytes.fromhex(r)).public_key().public_bytes(encoding=s.Encoding.Raw,format=s.PublicFormat.Raw).hex() if r else "")'
+          SKRIPT
+          )"
+            [[ "$k" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::$1: kein Coordinator-Schluessel lesbar"; exit 1; }
+            echo "$1 Coordinator: $k"
+            alle="${alle:+$alle,}$k"
+          done
+          echo "neu=$alle" >> "$GITHUB_OUTPUT"
+
+  eintragen:
+    needs: sammeln
+    runs-on: ubuntu-latest
+    environment: produktion
+    timeout-minutes: 15
+    strategy:
+      fail-fast: true
+      max-parallel: 1
+      matrix:
+        include:
+          - {box: C1, host: 188.172.229.121, fp: "SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA", key: CONTABO_SSH_KEY}
+          - {box: C2, host: 194.163.188.71, fp: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto", key: CONTABO2_SSH_KEY}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Schluessel und Host-Pruefung
+        env:
+          KEY: ${{ secrets[matrix.key] }}
+          HOST: ${{ matrix.host }}
+          FP: ${{ matrix.fp }}
+        run: bash .github/neustart/ssh-einrichten.sh
+      - name: Eintragen
+        env:
+          HOST: ${{ matrix.host }}
+          BOX: ${{ matrix.box }}
+          MODUS: ${{ inputs.modus }}
+          NEU: ${{ needs.sammeln.outputs.neu }}
+        run: |
+          case "$MODUS" in erkunden|ausfuehren) ;; *) echo "::error::modus $MODUS"; exit 1;; esac
+          [[ "$NEU" =~ ^[0-9a-f,]+$ ]] || { echo "::error::Schluesselliste unlesbar"; exit 1; }
+          cat .github/neustart/gemeinsam.sh .github/neustart/coordinator-schluessel.sh | ssh -i ~/.ssh/k -o BatchMode=yes "root@$HOST" "BOX=$BOX MODUS=$MODUS NEU=$NEU bash -s"
