@@ -95,3 +95,34 @@ func TestDieVoreinstellungVerlangtHerkunft(t *testing.T) {
 		t.Fatal("ausdrueckliches Abschalten muss moeglich bleiben")
 	}
 }
+
+func TestMissbrauch_ZweiWalletsInEinerAnfrage(t *testing.T) {
+	// Sicherheitspruefung 30.09.2026: Go liest "Wallet" wie "wallet" (der
+	// letzte gewinnt), der Proof-Server liest nur "wallet". Mit einer
+	// mitgelesenen Anfrage des Opfers haette ein Angreifer den Beweis fuer
+	// die Wallet des Opfers erzeugen lassen und die Herkunft auf seine eigene
+	// gebucht.
+	angriffe := []string{
+		`{"wallet":"` + walletAlice + `","bio":"1","Wallet":"` + walletMallory + `"}`,
+		`{"wallet":"` + walletAlice + `","WALLET":"` + walletMallory + `"}`,
+		`{"Wallet":"` + walletMallory + `"}`,
+		`{"wallet":"` + walletAlice + `","wallet":"` + walletMallory + `"}`,
+		`{"wallet":"` + walletAlice + `"} {"wallet":"` + walletMallory + `"}`,
+		`[{"wallet":"` + walletAlice + `"}]`,
+	}
+	for i, anfrage := range angriffe {
+		n := "0xC" + string(rune('0'+i)) + "01"
+		merkeProveHerkunft([]byte(anfrage), []byte(`{"zkNullifier":"`+n+`","circuitVersion":3}`))
+		if hatProveHerkunft(n, walletMallory) || hatProveHerkunft(n, walletAlice) {
+			t.Errorf("mehrdeutige Anfrage %s: darf keine Herkunft hinterlassen", anfrage)
+		}
+		if _, ok := eindeutigeWallet([]byte(anfrage)); ok {
+			t.Errorf("mehrdeutige Anfrage %s: muss am Proxy abgewiesen werden", anfrage)
+		}
+	}
+	// Die ehrliche Anfrage geht weiter, auch mit weiteren Feldern.
+	w, ok := eindeutigeWallet([]byte(`{"bio":"1","salt":"2","wallet":"0xA11CE00000000000000000000000000000000001","bioAttestation":"x"}`))
+	if !ok || w != walletAlice {
+		t.Fatalf("ehrliche Anfrage abgewiesen: %q %v", w, ok)
+	}
+}

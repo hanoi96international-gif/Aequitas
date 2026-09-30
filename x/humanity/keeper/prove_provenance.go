@@ -1,7 +1,9 @@
 package keeper
 
 import (
+	"bytes"
 	"encoding/json"
+	"io"
 	"os"
 	"strings"
 	"sync"
@@ -114,14 +116,8 @@ func herkunftsSchluessel(s string) string {
 // in der Anfrage wird nichts gemerkt (der Proof-Server haette sie ohnehin
 // abgelehnt).
 func merkeProveHerkunft(reqBody, respBody []byte) {
-	var anfrage struct {
-		Wallet string `json:"wallet"`
-	}
-	if err := json.Unmarshal(reqBody, &anfrage); err != nil {
-		return
-	}
-	wallet := strings.ToLower(strings.TrimSpace(anfrage.Wallet))
-	if !isValidWalletAddr(wallet) {
+	wallet, ok := eindeutigeWallet(reqBody)
+	if !ok || !isValidWalletAddr(wallet) {
 		return
 	}
 	var b struct {
@@ -175,4 +171,58 @@ func hatProveHerkunft(nullifier, wallet string) bool {
 	}
 	h, ok := v.(herkunft)
 	return ok && h.wallet == w && time.Since(h.zeit) <= proveHerkunftTTL
+}
+
+// eindeutigeWallet liest die Wallet aus dem /prove-Rumpf so, wie der
+// Proof-Server sie liest -- und nur, wenn es genau EINE gibt.
+//
+// Sicherheitspruefung 30.09.2026: Go's encoding/json ordnet Schluessel ohne
+// Ruecksicht auf Gross-/Kleinschreibung zu, und der letzte gewinnt. Der
+// Proof-Server (express.json, JSON.parse) liest req.body.wallet genau so
+// geschrieben. Ein Rumpf {"wallet":OPFER, ..., "Wallet":ANGREIFER} liess den
+// Proof-Server Bescheinigung und Beweis fuer das Opfer pruefen, waehrend
+// dieser Knoten die Herkunft fuer den Angreifer notierte -- mit einer
+// mitgelesenen /prove-Anfrage haette er das Gesicht des Opfers auf seine
+// Wallet registriert. Deshalb: genau ein Schluessel, der wie "wallet"
+// aussieht, genau so geschrieben, als Zeichenkette. Alles andere gilt als
+// mehrdeutig und bekommt keine Herkunft (und wird am Proxy abgewiesen).
+func eindeutigeWallet(body []byte) (string, bool) {
+	dec := json.NewDecoder(bytes.NewReader(body))
+	if t, err := dec.Token(); err != nil || t != json.Delim('{') {
+		return "", false
+	}
+	gefunden := 0
+	var wallet string
+	for dec.More() {
+		t, err := dec.Token()
+		if err != nil {
+			return "", false
+		}
+		schluessel, ok := t.(string)
+		if !ok {
+			return "", false
+		}
+		var wert json.RawMessage
+		if err := dec.Decode(&wert); err != nil {
+			return "", false
+		}
+		if !strings.EqualFold(schluessel, "wallet") {
+			continue
+		}
+		gefunden++
+		if schluessel != "wallet" {
+			return "", false
+		}
+		if err := json.Unmarshal(wert, &wallet); err != nil {
+			return "", false
+		}
+	}
+	if t, err := dec.Token(); err != nil || t != json.Delim('}') || gefunden != 1 {
+		return "", false
+	}
+	// Nichts hinter dem Objekt (JSON.parse wuerde es ablehnen, Go liesse es stehen).
+	if _, err := dec.Token(); err != io.EOF {
+		return "", false
+	}
+	return strings.ToLower(strings.TrimSpace(wallet)), true
 }

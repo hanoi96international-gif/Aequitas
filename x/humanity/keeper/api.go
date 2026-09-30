@@ -3396,11 +3396,18 @@ func (a *APIServer) handleProveProxy(w http.ResponseWriter, r *http.Request) {
 	// proxy is the only layer that still knows which wallet a request came
 	// from before it gets collapsed into that shared IP bucket, so the
 	// per-wallet throttle has to live here.
-	var proveBody struct {
-		Wallet string `json:"wallet"`
+	// Genau eine Wallet, genau so geschrieben, wie der Proof-Server sie liest
+	// (eindeutigeWallet, prove_provenance.go). Ein Rumpf, in dem Go und der
+	// Proof-Server verschiedene Wallets saehen, geht gar nicht erst weiter --
+	// er liesse Herkunft und Drossel an einer anderen Wallet haengen als den
+	// Beweis.
+	proveWallet, eindeutig := eindeutigeWallet(body)
+	if !eindeutig {
+		jsonError(w, "request must contain exactly one \"wallet\" field", http.StatusBadRequest)
+		return
 	}
-	if jsonErr := json.Unmarshal(body, &proveBody); jsonErr == nil && proveBody.Wallet != "" {
-		walletKey := "prove-wallet:" + strings.ToLower(proveBody.Wallet)
+	if proveWallet != "" {
+		walletKey := "prove-wallet:" + proveWallet
 		if ts, loaded := registerRateLimit.Load(walletKey); loaded {
 			if time.Since(ts.(time.Time)) < 15*time.Second {
 				jsonError(w, "rate limited, try again shortly", 429)
