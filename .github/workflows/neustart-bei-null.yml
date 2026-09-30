@@ -20,10 +20,14 @@ name: Neustart bei null (V8) -- erkunden oder ausfuehren
 # ausfuehren verlangt:
 #   - bestaetigung genau "ALLE GUTHABEN WEG",
 #   - neuestes App-Release mindestens app-v1.8.1 (V8-Unterschrift),
-#   - den LAUFENDEN Knoten auf beiden Boxen schon mit V8-Genesis (Genesis-PR
-#     gemergt und deployt),
-# sichert vorher beide Boxen (deploy/backup-ledger.sh, Kopie bleibt auf der
-# Box), leert dann beide und startet erst C1 (nimmt an), dann C2.
+#   - genesis.json auf main schon V8 mit neuer genesis_time (Genesis-PR
+#     gemergt). Der normale Deploy haelt bei diesem Merge an
+#     (.github/neustart/genesis-passt.sh): die Knoten laufen bis hierher
+#     unveraendert auf der alten Kette weiter.
+# Ablauf: beide Boxen sichern (deploy/backup-ledger.sh, Kopie bleibt auf der
+# Box), beide leeren (Knoten gestoppt), C1 mit deploy-c1.sh aus main bauen
+# und starten (v8, null Menschen, nimmt an), dann C2 mit deploy_safe_c2.sh
+# (v8, null Menschen, nimmt nicht an).
 on:
   workflow_dispatch:
     inputs:
@@ -78,6 +82,12 @@ jobs:
           B: ${{ inputs.bestaetigung }}
         run: |
           [ "$B" = "ALLE GUTHABEN WEG" ] || { echo "::error::bestaetigung muss genau 'ALLE GUTHABEN WEG' lauten -- nichts passiert"; exit 1; }
+      - uses: actions/checkout@v4
+      - name: main traegt die V8-Genesis (Genesis-PR gemergt)
+        run: |
+          jq . genesis.json
+          [ "$(jq -r '.register_vertrag.version // "v7"' genesis.json)" = v8 ] \
+            || { echo "::error::genesis.json auf main ist noch nicht V8 -- erst den Genesis-PR mergen. Der normale Deploy haelt dann an (genesis-passt.sh), die Knoten laufen unveraendert weiter."; exit 1; }
       - name: App mit V8-Unterschrift ist veroeffentlicht
         run: |
           set -eu
@@ -110,14 +120,6 @@ jobs:
           HOST: ${{ matrix.host }}
           FP: ${{ matrix.fp }}
         run: bash .github/neustart/ssh-einrichten.sh
-      - name: Laufender Knoten hat die V8-Genesis
-        env:
-          HOST: ${{ matrix.host }}
-        run: |
-          G=$(ssh -i ~/.ssh/k -o BatchMode=yes "root@$HOST" "docker exec aequitas-node cat genesis.json")
-          echo "$G"
-          echo "$G" | python3 -c 'import json,sys; g=json.load(sys.stdin); v=(g.get("register_vertrag") or {}).get("version"); sys.exit(0 if v=="v8" else 1)' \
-            || { echo "::error::Der laufende Knoten hat noch keine V8-Genesis. Erst den Genesis-PR mergen und den Deploy abwarten."; exit 1; }
       - name: Zustand sichern (bleibt auf der Box)
         env:
           HOST: ${{ matrix.host }}
@@ -162,7 +164,9 @@ jobs:
           HOST: 188.172.229.121
           FP: "SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA"
         run: bash .github/neustart/ssh-einrichten.sh
-      - name: C1 starten (nimmt an)
+      - name: C1 mit dem Stand von main bauen und starten (deploy-c1.sh)
+        run: ssh -i ~/.ssh/k -o BatchMode=yes -o ServerAliveInterval=30 root@188.172.229.121 'bash -s' < deploy/deploy-c1.sh
+      - name: C1 ist das neue Netz (v8, null Menschen, nimmt an)
         run: cat .github/neustart/gemeinsam.sh .github/neustart/starten.sh | ssh -i ~/.ssh/k -o BatchMode=yes root@188.172.229.121 "BOX=C1 bash -s"
 
   starten-c2:
@@ -178,5 +182,16 @@ jobs:
           HOST: 194.163.188.71
           FP: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
         run: bash .github/neustart/ssh-einrichten.sh
-      - name: C2 starten (folgt C1)
+      - name: C2 mit dem Stand von main bauen und starten (deploy_safe_c2.sh)
+        run: |
+          ssh -i ~/.ssh/k -o BatchMode=yes -o ServerAliveInterval=30 root@194.163.188.71 '
+            set -euo pipefail
+            grep -qx "ANNAHME_ROLLE=nur_lesend" /root/.aequitas.env || { echo "ABBRUCH: ANNAHME_ROLLE=nur_lesend fehlt"; exit 1; }
+            /root/deploy_safe_c2.sh
+          '
+      - name: C2 ist das neue Netz (v8, null Menschen, folgt C1)
         run: cat .github/neustart/gemeinsam.sh .github/neustart/starten.sh | ssh -i ~/.ssh/k -o BatchMode=yes root@194.163.188.71 "BOX=C2 bash -s"
+      - name: C2 nimmt nicht an (genau ein Annehmender)
+        run: |
+          S=$(curl -s -m 10 http://194.163.188.71:8080/api/health/combined || true)
+          echo "$S" | grep -qE '"nimmt_an": ?false' || { echo "::error::C2 nimmt an -- zwei Annehmende"; exit 1; }

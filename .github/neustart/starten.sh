@@ -4,8 +4,9 @@
 set -euo pipefail
 feld() { printf '%s' "$1" | grep -oE "\"$2\": ?(\"[^\"]*\"|[0-9]+|true|false)" | head -1 | sed -E 's/^"[^"]*": ?//; s/"//g'; }
 
-echo "=== $NODE starten ==="
-docker start "$NODE" >/dev/null
+echo "=== $NODE pruefen (vorher vom Deploy-Skript mit dem Stand von main gebaut) ==="
+laeuft "$NODE" || docker start "$NODE" >/dev/null
+docker exec "$NODE" cat genesis.json
 S=""
 for i in $(seq 1 120); do
   S=$(curl -s -m 5 http://127.0.0.1:8080/api/status || true)

@@ -49,6 +49,8 @@ jobs:
       C1: 188.172.229.121
     steps:
       - uses: actions/checkout@v4
+      - name: Genesis passt zur laufenden Kette (Wechsel nur ueber neustart-bei-null.yml)
+        run: bash .github/neustart/genesis-passt.sh http://$C1:8080 http://194.163.188.71:8080
       - name: C2 muss laufen, bevor C1 neu startet
         run: |
           for i in $(seq 1 40); do

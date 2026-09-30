@@ -71,6 +71,11 @@ echo
 curl -s -m 5 http://127.0.0.1:8080/api/status | grep -oE '"(height|total_humans|netz_kennung|register_vertrag)": ?("[^"]*"|[0-9]+)' | tr '\n' ' '
 echo
 echo
+echo "===== $BOX: Deploy-Skript der Box (nur ob es baut) ====="
+for f in /root/deploy_safe_c2.sh /root/Aequitas/deploy/deploy-c1.sh; do
+  [ -f "$f" ] && echo "$f: git fetch/reset/pull $(grep -cE 'git (fetch|reset|pull)' "$f")x, docker build $(grep -cE 'docker (compose )?build|docker build' "$f")x, docker run/up $(grep -cE 'docker run|compose up' "$f")x"
+done
+echo
 echo "===== $BOX: Platte und Sicherungen ====="
 df -h / | tail -1
 ls -la /root/backups 2>/dev/null | tail -3
