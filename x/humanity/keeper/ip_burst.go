@@ -79,4 +79,10 @@ const (
 	burstRegisterJeIP   = 12 // /api/register -- Groth16-Pruefung auf dem Knoten
 	burstCredentialJeIP = 20 // /api/humanity/credential -- sequentieller Scan ueber chain_blocks
 	burstFenster        = 60 * time.Second
+	// /api/prove/get -- jeder Aufruf ist eine Anfrage an den Proof-Server,
+	// und dort teilen sich ALLE Aufrufe dieses Knotens einen Zaehler (seine
+	// IP). Ohne Grenze hier konnte eine einzige Adresse mit Abrufen erfundener
+	// Kennungen diesen gemeinsamen Zaehler leeren -- und damit /prove fuer
+	// alle anhalten (Audit 2026-09-29, H4).
+	burstProveGetJeIP = 30
 )
