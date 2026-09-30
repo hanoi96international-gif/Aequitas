@@ -4948,7 +4948,12 @@ func (cs *ChainState) RunDailyDistributionAtomic(ubiAt int64) error {
 		// see DistributionHealth's last_payout_note) and conflating the two
 		// would make a validator-only round look like a UBI payout to anyone
 		// reading that field.
-		if len(txs) > 0 {
+		//
+		// Seit der Aktivierung der Wirtschaftsregeln auch ohne jede andere
+		// Transaktion: die Marke schreibt den Zeitpunkt des Umlaufs fort
+		// (umlaufZeitFortschreibenLocked, Pruefung C3), und der muss bei
+		// jedem Knoten derselbe sein wie beim Erzeuger.
+		if len(txs) > 0 || wirtschaftAktiv(ubiAt) {
 			if err := cs.applyDistributionRoundMarkerDeltaLocked(ctx, ubiAt); err != nil {
 				return nil, fmt.Errorf("distribution round marker failed: %w", err)
 			}
@@ -4968,6 +4973,7 @@ func (cs *ChainState) applyDistributionRoundMarkerDeltaLocked(ctx context.Contex
 	if err := cs.setConfigValueCtx(ctx, "last_distribution_round_at", fmt.Sprintf("%d", at)); err != nil {
 		return fmt.Errorf("distribution round marker: could not save last_distribution_round_at: %w", err)
 	}
+	cs.umlaufZeitFortschreibenLocked(ctx, at)
 	return nil
 }
 
@@ -5956,26 +5962,26 @@ func (cs *ChainState) swapLockedMitAbgabe(ctx context.Context, address string, a
 	}
 
 	// Fee is taken off the top of the input amount; only the remainder
-	// participates in the constant-product swap.
-	fee := amountIn * float64(swapFeeBps) / 10000.0
-	amountInAfterFee := amountIn - fee
+	// participates in the constant-product swap. swapTeilung (swap_mikro.go)
+	// keeps einsatz == inPool + fee exact from swapMikroAbUnix on.
+	einsatz, fee, inPool := swapTeilung(amountIn, jetztUnix)
 
 	var amountOut float64
 	if aeqToTusd {
-		// x*y=k: reserveAEQ * reserveTUSD = (reserveAEQ + amountInAfterFee) * (reserveTUSD - amountOut)
-		amountOut = AMMSwapOut(cs.pool.ReserveAEQ, cs.pool.ReserveTUSD, NewDecimal(amountInAfterFee)).Float()
+		// x*y=k: reserveAEQ * reserveTUSD = (reserveAEQ + inPool) * (reserveTUSD - amountOut)
+		amountOut = AMMSwapOut(cs.pool.ReserveAEQ, cs.pool.ReserveTUSD, inPool).Float()
 		if amountOut >= cs.pool.ReserveTUSD.Float() {
 			return 0, 0, 0, fmt.Errorf("swap too large for pool liquidity")
 		}
 		if minAmountOut > 0 && amountOut < minAmountOut {
 			return 0, 0, 0, fmt.Errorf("slippage: output %.6f tUSD below requested minimum %.6f", amountOut, minAmountOut)
 		}
-		cs.pool.ReserveAEQ = cs.pool.ReserveAEQ.Add(NewDecimal(amountInAfterFee))
+		cs.pool.ReserveAEQ = cs.pool.ReserveAEQ.Add(inPool)
 		cs.pool.ReserveTUSD = cs.pool.ReserveTUSD.Sub(NewDecimal(amountOut)).AtLeastZero()
-		acc.Balance = acc.Balance.Sub(NewDecimal(amountIn))
+		acc.Balance = acc.Balance.Sub(einsatz)
 		acc.TUsdBalance = acc.TUsdBalance.Add(NewDecimal(amountOut))
 	} else {
-		amountOut = AMMSwapOut(cs.pool.ReserveTUSD, cs.pool.ReserveAEQ, NewDecimal(amountInAfterFee)).Float()
+		amountOut = AMMSwapOut(cs.pool.ReserveTUSD, cs.pool.ReserveAEQ, inPool).Float()
 		if amountOut >= cs.pool.ReserveAEQ.Float() {
 			return 0, 0, 0, fmt.Errorf("swap too large for pool liquidity")
 		}
@@ -5985,9 +5991,9 @@ func (cs *ChainState) swapLockedMitAbgabe(ctx context.Context, address string, a
 		if err := pruefeEmpfaengerWirtschaft(art, acc.Balance.Float(), amountOut, jetztUnix); err != nil {
 			return 0, 0, 0, err
 		}
-		cs.pool.ReserveTUSD = cs.pool.ReserveTUSD.Add(NewDecimal(amountInAfterFee))
+		cs.pool.ReserveTUSD = cs.pool.ReserveTUSD.Add(inPool)
 		cs.pool.ReserveAEQ = cs.pool.ReserveAEQ.Sub(NewDecimal(amountOut)).AtLeastZero()
-		acc.TUsdBalance = acc.TUsdBalance.Sub(NewDecimal(amountIn))
+		acc.TUsdBalance = acc.TUsdBalance.Sub(einsatz)
 		acc.Balance = acc.Balance.Add(NewDecimal(amountOut))
 	}
 	if abgabe > 0 {
@@ -8367,8 +8373,11 @@ func (cs *ChainState) applySwapDeltaLockedMitAbgabe(ctx context.Context, wallet 
 	if err := cs.applyDemurrageLossLockedCtx(ctx, acc, demurrageLost); err != nil {
 		return fmt.Errorf("swap: could not settle %s demurrage: %w", wallet, err)
 	}
+	// Dieselbe Zerlegung wie der Erzeuger (swapLockedMitAbgabe), zum selben
+	// Buchungsaugenblick -- siehe swap_mikro.go.
+	einsatz, fee, inPool := swapTeilung(amountIn, buchZeit(ctx, activityAt))
 	if aeqToTusd {
-		acc.Balance = acc.Balance.Sub(NewDecimal(amountIn))
+		acc.Balance = acc.Balance.Sub(einsatz)
 		acc.TUsdBalance = acc.TUsdBalance.Add(NewDecimal(amountOut))
 		if abgabe > 0 {
 			acc.Balance = acc.Balance.Sub(NewDecimal(abgabe))
@@ -8383,7 +8392,7 @@ func (cs *ChainState) applySwapDeltaLockedMitAbgabe(ctx context.Context, wallet 
 			return fmt.Errorf("swap: %w", err)
 		}
 	} else {
-		acc.TUsdBalance = acc.TUsdBalance.Sub(NewDecimal(amountIn))
+		acc.TUsdBalance = acc.TUsdBalance.Sub(einsatz)
 		acc.Balance = acc.Balance.Add(NewDecimal(amountOut))
 		// Wie der Erzeuger: die eigene Einlage geht spaeter abgabefrei zurueck.
 		if err := cs.nachEinzahlung(ctx, wallet, amountOut, buchZeit(ctx, activityAt)); err != nil {
@@ -8409,7 +8418,7 @@ func (cs *ChainState) applySwapDeltaLockedMitAbgabe(ctx context.Context, wallet 
 	// saveAccountToDB/savePoolToDB call in this function used to discard its
 	// returned error.
 	// Update pool reserves to match what swapLocked() did on primary.
-	// fee is swapFeeBps (0.1%); amountInAfterFee is what enters the pool.
+	// fee is swapFeeBps (0.1%); inPool is what enters the pool (swapTeilung).
 	//
 	// PERSIST THE AEQ DEBIT BEFORE THE CREDIT, exactly as swapLocked does.
 	//
@@ -8435,15 +8444,13 @@ func (cs *ChainState) applySwapDeltaLockedMitAbgabe(ctx context.Context, wallet 
 	}
 
 	if cs.pool != nil {
-		fee := amountIn * float64(swapFeeBps) / 10000.0
-		amountInAfterFee := amountIn - fee
 		if aeqToTusd {
 			// Sender put in AEQ, got tUSD: reserveAEQ grows, reserveTUSD shrinks.
-			cs.pool.ReserveAEQ = cs.pool.ReserveAEQ.Add(NewDecimal(amountInAfterFee))
+			cs.pool.ReserveAEQ = cs.pool.ReserveAEQ.Add(inPool)
 			cs.pool.ReserveTUSD = cs.pool.ReserveTUSD.Sub(NewDecimal(amountOut)).AtLeastZero()
 		} else {
 			// Sender put in tUSD, got AEQ: reserveTUSD grows, reserveAEQ shrinks.
-			cs.pool.ReserveTUSD = cs.pool.ReserveTUSD.Add(NewDecimal(amountInAfterFee))
+			cs.pool.ReserveTUSD = cs.pool.ReserveTUSD.Add(inPool)
 			cs.pool.ReserveAEQ = cs.pool.ReserveAEQ.Sub(NewDecimal(amountOut)).AtLeastZero()
 		}
 		if saveAccountFirst {
