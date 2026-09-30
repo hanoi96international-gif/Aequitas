@@ -160,7 +160,7 @@
   <div class="pbar" style="background:rgba(245,166,35,0.06);border:1px solid rgba(245,166,35,0.2);color:var(--gold)" data-i18n="x-metamask-mobile-if-aeq-balance">📱 MetaMask Mobile: if AEQ balance shows 0 after registration, go to Settings → Networks → delete Aequitas Chain → re-add via this website</div>
 
   <details class="phase0-disc reg-details"><summary data-i18n="reg-disc-sum">Beta notice: what already holds and what does not yet (open)</summary>
-    <div data-i18n="reg-disclaimer" style="margin-top:10px">Beta: since 25 Aug 2026 the proof server refuses any registration without the signed attestations of the two matching services — a second phone no longer gives the same face a second account. What is not yet true: accounts registered before that date are only covered once their owner adds the face in the app (no new grant); until then they could in principle register again on a new wallet. Error rates are not calibrated (that needs ~1,000 impostor pairs). Liveness: only the glance task is binding today; colour flashes, pulse and parallax are measured but do not decide yet. Read “one human, one account” as “checked, with named limits” — not as “impossible to circumvent.” Long term, Aequitas will rely on iris scans to truly guarantee one person, one registration. How that can be implemented reliably and privacy-preserving is being worked on now; hardware and timing are not decided yet.</div>
+    <div data-i18n="reg-disclaimer" style="margin-top:10px">Beta: since 25 Aug 2026 the proof server refuses any registration without the signed attestations of the two matching services — a second phone no longer gives the same face a second account. Since the network restarted at zero on 30 Sep 2026, every account on it has passed this check. What is not yet true: error rates are not calibrated (that needs ~1,000 impostor pairs). Liveness: only the glance task is binding today; colour flashes, pulse and parallax are measured but do not decide yet. Read “one human, one account” as “checked, with named limits” — not as “impossible to circumvent.” Long term, Aequitas will rely on iris scans to truly guarantee one person, one registration. How that can be implemented reliably and privacy-preserving is being worked on now; hardware and timing are not decided yet.</div>
     <div data-i18n="beta-why" style="margin-top:10px"><strong>What the beta is for:</strong> it tests whether a person can be recognised again without anyone keeping their picture or a whole face template. The photo and the full face description are deleted within seconds; each of the two matching services keeps only a 64-byte sketch (512 yes/no values) from which the face cannot be reconstructed, but which still recognises a second registration by the same person. This is the groundwork for the iris scan, which is meant to work on the same principle. <strong>Where it stands today:</strong> each service still holds the whole sketch; splitting it so that no service holds it whole is built and tested but not yet active, and error rates are not yet calibrated.</div>
   </details>
   <div class="rcard">
@@ -335,7 +335,7 @@
     <div>
       <div class="ib-icon">🛡</div>
       <div class="ib-title" data-i18n="h-sybil">Sybil Resistance — Current State</div>
-      <div class="ib-text" data-i18n="h-sybil-t">Since 25 Aug 2026 the proof server refuses a registration without the signed attestations of the two matching services — so the same face cannot be registered twice, across devices as well, which a device key never could. Two named limits: accounts registered before that date are covered only once their owner adds the face in the app, and the matching threshold has not been calibrated against real captures: the cryptography is exact, the biometrics underneath it is a measurement whose error rate has not been quantified. Liveness: only the glance task is binding today; colour flashes, pulse and parallax are measured and will decide once calibrated.</div>
+      <div class="ib-text" data-i18n="h-sybil-t">Since 25 Aug 2026 the proof server refuses a registration without the signed attestations of the two matching services — so the same face cannot be registered twice, across devices as well, which a device key never could. Since the restart at zero on 30 Sep 2026 this applies to every account on the chain. One named limit: the matching threshold has not been calibrated against real captures: the cryptography is exact, the biometrics underneath it is a measurement whose error rate has not been quantified. Liveness: only the glance task is binding today; colour flashes, pulse and parallax are measured and will decide once calibrated.</div>
     </div>
     <div>
       <div class="ib-icon">🌍</div>
@@ -352,7 +352,7 @@
 <div class="hs">
   <div class="section">
     <div class="sec-head"><div class="sec-title"><span class="sec-dot"></span><span data-i18n="reg-humans">Registered Humans</span></div><div class="sec-count" id="h-count">0</div></div>
-    <div class="sec-desc" data-i18n="h-desc">Every address below is a registered human credited exactly 1,000 AEQ. Since 25 Aug 2026 every registration passes a face check against every registration made since then by independent services, proven with a ZK proof; accounts from before that date were registered without a face template — a known, bounded exception. The registry is permanent, immutable and on-chain.</div>
+    <div class="sec-desc" data-i18n="h-desc">Every address below is a registered human credited exactly 1,000 AEQ. Since 25 Aug 2026 every registration passes a face check against every registration made since then by independent services, proven with a ZK proof. Since the network restarted at zero on 30 Sep 2026, there are no accounts without it. The registry is permanent, immutable and on-chain.</div>
     <div id="humans-list"><div class="empty" data-i18n="no-humans">No humans registered yet.\n\nDownload the Aequitas Android App and be the first human on the chain!</div></div>
   </div>
   <div class="right-col">
@@ -372,7 +372,7 @@
       <div style="font-size:0.79rem;color:var(--text);padding:8px 0;border-bottom:1px solid var(--border);font-weight:600" data-i18n="faq-q1">Is my biometric data safe?</div>
       <div style="font-size:0.79rem;color:var(--muted);padding:6px 0 10px;border-bottom:1px solid var(--border);line-height:1.7" data-i18n="faq-a1">Your face is captured and sent to two independent matching services — that is the only way “one person, one account” can be checked at all. The photo and the full face description are discarded within seconds; they are not stored. What is kept is a 64-byte sketch (512 yes/no values): the face cannot be reconstructed from it, but it recognises a returning person, so it is treated as biometric data. One honest limit, stated rather than hidden: each service holds the whole sketch. A split mode in which no single service holds it whole is built and tested, not yet the binding check.</div>
       <div style="font-size:0.79rem;color:var(--text);padding:8px 0;border-bottom:1px solid var(--border);font-weight:600" data-i18n="faq-q1b">Does registration prove I am a unique real person?</div>
-      <div style="font-size:0.79rem;color:var(--muted);padding:6px 0 10px;border-bottom:1px solid var(--border);line-height:1.7" data-i18n="faq-a1b">Better than a device key ever could, and not yet provable as a number. Since 25 Aug 2026 the face is compared by two independent services that must both agree, and the proof server refuses a registration without their signed attestations — so the same person on a second phone is caught, which a device key never could. Two named limits: accounts registered before that date are covered only once their owner adds the face in the app (no new grant), and the error rate is not established: the threshold has not been calibrated on real captures, which needs about 1,000 impostor pairs. Liveness: only the glance task is binding today; stronger signals are measured and being calibrated. Long term, Aequitas will rely on iris scans to truly guarantee one person, one registration. How that can be implemented reliably and privacy-preserving is being worked on now; hardware and timing are not decided yet.</div>
+      <div style="font-size:0.79rem;color:var(--muted);padding:6px 0 10px;border-bottom:1px solid var(--border);line-height:1.7" data-i18n="faq-a1b">Better than a device key ever could, and not yet provable as a number. Since 25 Aug 2026 the face is compared by two independent services that must both agree, and the proof server refuses a registration without their signed attestations — so the same person on a second phone is caught, which a device key never could. Since the restart at zero on 30 Sep 2026 this covers every account on the chain. One named limit: the error rate is not established: the threshold has not been calibrated on real captures, which needs about 1,000 impostor pairs. Liveness: only the glance task is binding today; stronger signals are measured and being calibrated. Long term, Aequitas will rely on iris scans to truly guarantee one person, one registration. How that can be implemented reliably and privacy-preserving is being worked on now; hardware and timing are not decided yet.</div>
       <div style="font-size:0.79rem;color:var(--text);padding:8px 0;border-bottom:1px solid var(--border);font-weight:600" data-i18n="faq-q2">Can I register with a different wallet later?</div>
       <div style="font-size:0.79rem;color:var(--muted);padding:6px 0 10px;border-bottom:1px solid var(--border);line-height:1.7" data-i18n="faq-a2">No. A registration is permanently bound to one wallet address. That is deliberate: the nullifier derived from your face is spent once, so registering again to a different wallet would be a second identity for the same person.</div>
       <div style="font-size:0.79rem;color:var(--text);padding:8px 0;border-bottom:1px solid var(--border);font-weight:600" data-i18n="faq-q3">What happens if I lose my phone?</div>
@@ -847,7 +847,7 @@
     <div class="idx">
       <div class="idx-title" data-i18n="x-the-core-innovation">The Core Innovation</div>
       <div style="font-size:0.81rem;color:var(--muted);line-height:1.9">
-        <div style="margin-bottom:10px"><span style="color:var(--purple);font-weight:700" data-i18n="x-zk-device-key-proof">ZK Device-Key Proof</span><br>Beta: your face and a short liveness sequence (blink, a glance to a random side, colour flashes) are captured by the app and checked by two independent matching services against everyone registered with a face; both must agree. The photo is discarded within seconds; each service keeps only a 64-byte sketch. A Groth16 zero-knowledge proof then carries only the resulting bio_hash to the chain &#8212; no image, no template. The proof server accepts that proof only with the matching services' signed attestations, so a second device does not let the same face register again. Named limits: accounts from before 25 Aug 2026 are covered only once their owner adds the face in the app, the threshold is not yet calibrated on real captures, and only the glance task is binding for liveness.</div>
+        <div style="margin-bottom:10px"><span style="color:var(--purple);font-weight:700" data-i18n="x-zk-device-key-proof">ZK Device-Key Proof</span><br>Beta: your face and a short liveness sequence (blink, a glance to a random side, colour flashes) are captured by the app and checked by two independent matching services against everyone registered with a face; both must agree. The photo is discarded within seconds; each service keeps only a 64-byte sketch. A Groth16 zero-knowledge proof then carries only the resulting bio_hash to the chain &#8212; no image, no template. The proof server accepts that proof only with the matching services' signed attestations, so a second device does not let the same face register again. Since the network restarted at zero on 30 Sep 2026, every account on it has passed this check. Named limits: the threshold is not yet calibrated on real captures, and only the glance task is binding for liveness.</div>
         <div style="margin-bottom:10px"><span style="color:var(--teal);font-weight:700" data-i18n="x-no-stake-blockchain">No-Stake Blockchain</span><br>No mining. No staking. No proof-of-work. Block production is open to any node operator. Validators earn from the 40% fee pool &#8212; incentivized by fairness, not capital.</div>
         <div><span style="color:var(--neon);font-weight:700" data-i18n="x-one-human-one-wallet-1">One Human = One Wallet = 1,000 AEQ</span><br>Supply formula: Total AEQ = Verified Humans × 1,000. No pre-mine. No contract owner-key &#8212; Beta still has operator/deploy control of the Go L1 node ledger.</div>
       </div>
@@ -928,14 +928,14 @@
     <div class="rwd-1col" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px">
       <div>
         <div style="font-size:0.77rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px" data-i18n="x-why-sybil-resistance">Why Sybil resistance?</div>
-        <div style="font-size:0.79rem;color:var(--muted);line-height:1.85">Sybil resistance &#8212; preventing one person from registering multiple wallets &#8212; is the core problem of fair money distribution. <strong style="color:var(--text)">Beta</strong>: every new registration passes a live face check by two independent matching services that must both agree, and the proof server requires their signed attestations. Named limits: accounts from before 25 Aug 2026 are covered only once their owner adds the face in the app, and <strong style="color:var(--text)" data-i18n="x-the-matching-threshold-has-not">the matching threshold has not been calibrated against real captures</strong>.</div>
+        <div style="font-size:0.79rem;color:var(--muted);line-height:1.85">Sybil resistance &#8212; preventing one person from registering multiple wallets &#8212; is the core problem of fair money distribution. <strong style="color:var(--text)">Beta</strong>: every new registration passes a live face check by two independent matching services that must both agree, and the proof server requires their signed attestations. Since the network restarted at zero on 30 Sep 2026, every account on it has passed this check. Named limit: <strong style="color:var(--text)" data-i18n="x-the-matching-threshold-has-not">the matching threshold has not been calibrated against real captures</strong>.</div>
       </div>
       <div>
         <div style="font-size:0.77rem;color:var(--teal);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px" data-i18n="x-how-it-works">How It Works</div>
         <div style="font-size:0.79rem;color:var(--muted);line-height:1.85">1. The app captures your face and a short liveness sequence (blink, a glance to a random side, colour flashes)<br>2. Two independent matching services compare it against everyone registered with a face; both must agree<br>3. The photo is discarded within seconds; each service keeps only a 64-byte sketch. A split mode in which no single service holds even the whole sketch is built and tested &#8212; not yet the binding check<br>4. A Groth16 ZK proof carries the resulting bio_hash to the chain; the proof server accepts it only with the services' signed attestations, and its nullifier can be spent only once</div>
       </div>
     </div>
-    <div style="margin-top:12px;padding:12px 16px;background:rgba(4,120,87,0.06);border-radius:8px;border:1px solid rgba(4,120,87,0.15);font-size:0.79rem;color:var(--muted);line-height:1.8"><strong style="color:var(--neon)" data-i18n="x-what-is-and-is-not">What is and is not private:</strong> Your face IS captured and sent to independent matching services &#8212; that is the only way one-person-one-account can be checked. The photo and the full face description are discarded within seconds; what each service keeps is a 64-byte sketch, from which the face cannot be reconstructed but which recognises a returning person. The proof server receives only the ZK proof and the signed attestations. The chain stores only a nullifier hash, issued after the face check rather than derived from the device, so a second phone does not make a second identity. <strong style="color:var(--gold)" data-i18n="x-honest-limitation">Honest limitation:</strong> accounts registered before 25 Aug 2026 are covered only once their owner adds the face in the app; the matching threshold has never been calibrated against real captures &#8212; that needs roughly a thousand impostor pairs before any false-match rate can honestly be quoted; and the split mode, in which no single service holds even the whole sketch, is not yet the binding check</div>
+    <div style="margin-top:12px;padding:12px 16px;background:rgba(4,120,87,0.06);border-radius:8px;border:1px solid rgba(4,120,87,0.15);font-size:0.79rem;color:var(--muted);line-height:1.8"><strong style="color:var(--neon)" data-i18n="x-what-is-and-is-not">What is and is not private:</strong> Your face IS captured and sent to independent matching services &#8212; that is the only way one-person-one-account can be checked. The photo and the full face description are discarded within seconds; what each service keeps is a 64-byte sketch, from which the face cannot be reconstructed but which recognises a returning person. The proof server receives only the ZK proof and the signed attestations. The chain stores only a nullifier hash, issued after the face check rather than derived from the device, so a second phone does not make a second identity. <strong style="color:var(--gold)" data-i18n="x-honest-limitation">Honest limitation:</strong> the matching threshold has never been calibrated against real captures &#8212; that needs roughly a thousand impostor pairs before any false-match rate can honestly be quoted; and the split mode, in which no single service holds even the whole sketch, is not yet the binding check</div>
   </div>
 
   <!-- THE VISION -->
@@ -972,7 +972,7 @@
   <div class="stab" data-act="showStab" data-args='["tab-network","net-story"]' role="button" tabindex="0">📖 Story</div>
   <div class="stab" data-act="showStab" data-args='["tab-network","net-runnode"]' role="button" tabindex="0" data-i18n="x-run-a-node">⚙️ Run a Node</div>
   <div class="stab" data-act="showStab" data-args='["tab-network","net-verifier"]' role="button" tabindex="0" data-i18n="x-run-a-verifier">⚙️ Run a Verifier</div>
-  <div class="stab" data-act="showStab" data-args='["tab-network","net-protocol"]' role="button" tabindex="0" data-i18n="x-protocol-v7">📜 Protocol V7</div>
+  <div class="stab" data-act="showStab" data-args='["tab-network","net-protocol"]' role="button" tabindex="0" data-i18n="x-protocol-v7">📜 Protocol V8</div>
 </nav>
 <div id="net-overview" class="stab-panel active">
 <div class="ns">
@@ -1016,7 +1016,7 @@
   </div>
   <div class="nc">
     <div class="nc-title" data-i18n="mm-config">MetaMask Configuration</div>
-    <div style="font-size:0.79rem;color:var(--muted);line-height:1.7;margin-bottom:12px" data-i18n="x-add-aequitas-chain-to-metamask">Add Aequitas Chain to MetaMask to view your AEQ balance, send transactions, and interact with the V7 contract directly from your browser or mobile wallet.</div>
+    <div style="font-size:0.79rem;color:var(--muted);line-height:1.7;margin-bottom:12px" data-i18n="x-add-aequitas-chain-to-metamask">Add Aequitas Chain to MetaMask to view your AEQ balance, send transactions, and interact with the V8 contract directly from your browser or mobile wallet.</div>
     <table class="spect">
       <tr><td data-i18n="k-chain">Chain Name</td><td style="color:var(--gold)" data-i18n="x-aequitas-chain">Aequitas Chain</td></tr>
       <tr><td>RPC URL</td><td style="color:var(--blue);font-size:0.71rem" data-i18n="x-https-aequitas-digital-rpc">https://aequitas.digital/rpc</td></tr>
@@ -1110,7 +1110,7 @@
         <div style="font-size:1.5rem;margin-bottom:10px">&#128421;&#65039;</div>
         <div style="font-size:0.86rem;font-weight:700;color:var(--text);margin-bottom:8px" data-i18n="path-node-title">I am a Node Operator</div>
         <div style="font-size:0.79rem;color:var(--muted);line-height:1.75;margin-bottom:14px" data-i18n="path-node-desc">I want to run a full node, participate in block production, and earn from the 40% validator pool.</div>
-        <div style="font-size:0.77rem;color:var(--teal);font-weight:600;line-height:1.9" data-i18n="path-node-steps">1. Register as a human (required)<br>2. No entry point to configure — the validator addresses are built in<br>3. Deploy on Contabo/Hetzner/any VPS<br>4. Earn daily from validator pool</div>
+        <div style="font-size:0.77rem;color:var(--teal);font-weight:600;line-height:1.9" data-i18n="path-node-steps">1. Register as a human in the app (required)<br>2. Rent a Linux server (8 GB RAM, Ubuntu)<br>3. Run one command, bind the node with the app’s QR scanner<br>4. Once admitted, earn daily from the validator pool</div>
       </div>
       <div style="background:var(--card2);border:1px solid var(--border);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow)">
         <div style="font-size:1.5rem;margin-bottom:10px">&#128187;</div>
@@ -1175,441 +1175,46 @@
 <div class="ns" style="grid-template-columns:1fr">
 <div class="nc" style="grid-column:1/-1;background:linear-gradient(135deg,rgba(245,166,35,0.06),rgba(13,8,32,0.9));border-color:rgba(245,166,35,0.2)">
     <div id="guide-node" class="nc-title" style="color:var(--gold);scroll-margin-top:80px" data-i18n="run-node-title">Run Your Own Node — Help Secure the Network</div>
-    <div style="font-size:0.82rem;color:var(--muted);line-height:1.9;margin-bottom:16px" data-i18n="run-node-desc">Registered humans can run an Aequitas validator node — no stake, no application required, but <strong style="color:var(--gold)" data-i18n="x-node-operator-wallet-must-be">NODE_OPERATOR_WALLET must be a registered Aequitas human</strong> (this is a protocol security requirement). Nodes participate in block production, validate the human registry, and synchronize the BlockDAG. Node operators earn a share of the Validators Pool (40% of all swap fees, distributed daily). The more nodes that run, the more decentralized and resilient the network becomes.</div>
+    <div style="font-size:0.82rem;color:var(--muted);line-height:1.9;margin-bottom:16px" data-i18n="run-node-desc">Every registered human can run exactly one Aequitas validator — no stake, no fee. A validator keeps the whole chain, checks every block itself and, once admitted as a block producer, makes blocks. Validators share the validator pool equally (40% of all swap fees, paid out daily). A node whose NODE_OPERATOR_WALLET is not a registered human is refused, because otherwise one person could quietly become the whole validator set.</div>
     <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
-      <a id="node-guide-pdf-btn" class="hover-fade" href="/download/node-guide-en.pdf" download style="display:inline-flex;align-items:center;gap:8px;background:var(--gold);color:#06091A;padding:12px 20px;border-radius:8px;font-size:0.84rem;font-weight:700;text-decoration:none" data-i18n="x-node-operator-guide-pdf">
-        📄 Node Operator Guide (PDF)
-      </a>
       <a class="hover-fade" href="https://github.com/hanoi96international-gif/Aequitas" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:8px;background:rgba(139,92,246,0.15);color:var(--purple);border:1px solid rgba(139,92,246,0.3);padding:12px 20px;border-radius:8px;font-size:0.84rem;font-weight:700;text-decoration:none" data-i18n="x-view-source-on-github">
         🐙 View Source on GitHub
       </a>
-      <a class="hover-fade" href="/node-binding" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:8px;background:rgba(0,230,118,0.12);color:var(--neon);border:1px solid rgba(0,230,118,0.3);padding:12px 20px;border-radius:8px;font-size:0.84rem;font-weight:700;text-decoration:none" data-i18n="x-generate-node-binding-signature">
-        🔗 Generate Node Binding Signature
-      </a>
     </div>
-
-    <div id="node-guide-lang-banner" style="display:none;font-size:0.79rem;color:var(--muted);padding:8px 12px;background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.2);border-radius:6px;margin-top:8px" data-i18n="node-guide-lang-note">This inline guide is in English. A translated PDF is available in your language using the button above.</div>
-    <!-- INLINE NODE GUIDE -->
+    <!-- EIN-BEFEHL-ANLEITUNG (30.09.2026). Ersetzt den englischen
+         Leitfaden vom Juni (Fork, Postgres von Hand, elf Umgebungsvariablen,
+         Contabo, 2 GB). Quelle: docs/VALIDATOR_EINRICHTEN.md und
+         deploy/validator/einrichten.sh -- aendert sich eins davon, muss
+         diese Rubrik mit. Uebersetzt in alle zwoelf Sprachen; Befehle bleiben
+         woertlich, weil ein uebersetzter Befehl nicht mehr funktioniert. -->
     <div id="node-guide" style="display:block;background:var(--card);border:1px solid rgba(245,166,35,0.2);border-radius:var(--radius);padding:24px;margin-top:4px">
-
-      <!-- Header -->
-      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:20px">
-        <div>
-          <div style="font-size:0.76rem;color:var(--gold);letter-spacing:2.5px;text-transform:uppercase;font-weight:700;display:flex;align-items:center;gap:8px">
-            AEQUITAS NODE OPERATOR GUIDE
-            <span style="font-size:0.71rem;background:rgba(245,166,35,0.12);border:1px solid rgba(245,166,35,0.3);color:var(--gold);padding:2px 8px;border-radius:10px">v1.0 · June 2026</span>
-          </div>
-          <div style="font-size:0.77rem;color:var(--muted);margin-top:4px">Complete step-by-step guide &middot; No prior blockchain experience required &middot; Estimated time: 20&ndash;30 min</div>
-        </div>
-      </div>
-
-      <!-- What is a node -->
-      <div style="background:rgba(139,92,246,0.06);border:1px solid rgba(139,92,246,0.2);border-radius:8px;padding:14px;margin-bottom:20px">
-        <div style="font-size:0.77rem;color:var(--purple);font-weight:700;margin-bottom:6px">What is an Aequitas Node?</div>
-        <div style="font-size:0.79rem;color:var(--muted);line-height:1.9">An Aequitas node is a program that runs in the cloud and participates in the Aequitas network. It keeps a copy of the entire blockchain, validates who is a registered human, and produces new blocks (like new pages in the global ledger). The more nodes exist, the more decentralized and resilient the network becomes. As a reward for running a node, you receive a daily share of all protocol fees &mdash; automatically, with no further action required on your part.</div>
-      </div>
-
-      <!-- Checklist -->
-      <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px">Before You Start &mdash; What You Need</div>
-      <div style="font-size:0.79rem;color:var(--muted);line-height:2.1;margin-bottom:18px">
-        <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:6px"><span style="color:var(--gold);font-weight:700;min-width:16px">1.</span><span><strong style="color:var(--text)">An Aequitas account:</strong> You must first be registered as a human on Aequitas. Install the Android app, complete biometric registration, and note your wallet address. Without this, you cannot receive validator rewards.</span></div>
-        <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:6px"><span style="color:var(--gold);font-weight:700;min-width:16px">2.</span><span><strong style="color:var(--text)">A GitHub account (free):</strong> Go to github.com and create a free account. Optional — only needed if you want to build from your own fork rather than the published image.</span></div>
-        <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:6px"><span style="color:var(--gold);font-weight:700;min-width:16px">3.</span><span><strong style="color:var(--text)">A Linux server (VPS):</strong> Any provider works — Contabo, Hetzner, DigitalOcean. You need SSH access and about 2 GB RAM. A small instance is enough to validate.</span></div>
-        <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:6px"><span style="color:var(--gold);font-weight:700;min-width:16px">4.</span><span><strong style="color:var(--text)">Node signing key (RELAYER_PRIVATE_KEY):</strong> Your node needs a dedicated Ethereum wallet to sign on-chain registrations. This can be any MetaMask wallet. Export its private key: MetaMask &rarr; Account Details &rarr; Show Private Key &rarr; enter password &rarr; copy. Keep strictly private. <strong style="color:var(--gold)">IMPORTANT:</strong> To receive validator rewards you also need NODE_OPERATOR_WALLET set to your <strong style="color:var(--neon)">registered Aequitas human wallet</strong> (the one verified with the Aequitas app). Only verified humans can earn validator rewards.</span></div>
-        <div style="display:flex;align-items:flex-start;gap:10px"><span style="color:var(--gold);font-weight:700;min-width:16px">5.</span><span><strong style="color:var(--text)">20&ndash;40 minutes of your time.</strong> Most of it is waiting for the initial chain sync.</span></div>
-      </div>
-
-      <!-- Step 1: Fork -->
-      <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px">Step 1 &mdash; Fork the Aequitas Repository on GitHub</div>
-      <div style="background:rgba(0,220,170,0.05);border:1px solid rgba(0,220,170,0.15);border-radius:6px;padding:10px 14px;margin-bottom:10px;font-size:0.77rem"><span style="color:var(--teal);font-weight:700">What is a fork?</span> <span style="color:var(--muted)">A fork is your own personal copy of the Aequitas code on GitHub. You only need one if you intend to modify the node or build the image yourself.</span></div>
-      <div style="font-size:0.79rem;color:var(--muted);line-height:2.2;margin-bottom:18px">
-        <div><span style="color:var(--gold);font-weight:700">a)</span> Open <span style="font-family:var(--font-mono);color:var(--neon)">github.com/hanoi96international-gif/Aequitas</span> in your browser</div>
-        <div><span style="color:var(--gold);font-weight:700">b)</span> Click the <strong style="color:var(--text)">Fork</strong> button in the top-right corner of the page</div>
-        <div><span style="color:var(--gold);font-weight:700">c)</span> Click <strong style="color:var(--text)">Create fork</strong> &mdash; GitHub creates a copy under your own account (e.g. github.com/YOUR-NAME/Aequitas)</div>
-        <div><span style="color:var(--gold);font-weight:700">d)</span> Done &mdash; you now have your own copy of the Aequitas node code</div>
-      </div>
-
-      <!-- Step 2: Database -->
-      <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px">Step 2 &mdash; Create a PostgreSQL Database</div>
-      <div style="background:rgba(0,220,170,0.05);border:1px solid rgba(0,220,170,0.15);border-radius:6px;padding:10px 14px;margin-bottom:10px;font-size:0.77rem"><span style="color:var(--teal);font-weight:700">What is a database?</span> <span style="color:var(--muted)">Your node needs permanent storage for all block data and human registrations. Without it, your node loses all data on every restart. PostgreSQL is the storage system Aequitas uses. Each node must have its <strong style="color:var(--text)">own dedicated database</strong> — never share one database between two nodes.</span></div>
-
-      <div style="font-size:0.79rem;color:var(--purple);font-weight:700;margin-bottom:6px">On your VPS (Contabo, Hetzner, DigitalOcean, or any Linux server)</div>
-      <div style="background:rgba(245,166,35,0.05);border:1px solid rgba(245,166,35,0.2);border-radius:6px;padding:8px 12px;margin-bottom:8px;font-size:0.77rem;color:var(--muted)"><strong style="color:var(--gold)">One database per node.</strong> Install PostgreSQL on the same machine as your node and keep it there. Two nodes sharing one database will overwrite each other's state — this is the single most damaging mistake you can make when setting up.</div>
-      <div style="font-family:var(--font-mono);background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.15);border-radius:6px;padding:14px;margin-bottom:8px;font-size:0.78rem;line-height:2.3;overflow-x:auto">
-        <span style="color:var(--muted)"># 1. Install PostgreSQL (Ubuntu / Debian)</span><br>
-        sudo apt update &amp;&amp; sudo apt install -y postgresql postgresql-contrib<br>
-        sudo systemctl enable --now postgresql<br><br>
-        <span style="color:var(--muted)"># 2. Create database and user (run as root or with sudo)</span><br>
-        sudo -u postgres psql -c <span style="color:var(--gold)">"CREATE USER aequitas WITH PASSWORD 'CHOOSE_A_STRONG_PASSWORD';"</span><br>
-        sudo -u postgres psql -c <span style="color:var(--gold)">"CREATE DATABASE aequitas OWNER aequitas;"</span><br><br>
-        <span style="color:var(--muted)"># 3. Allow connections from Docker containers (Docker bridge: 172.17.0.0/16)</span><br>
-        PG_CONF=$(sudo -u postgres psql -t -c <span style="color:var(--gold)">"SHOW hba_file;"</span> | tr -d ' ')<br>
-        echo <span style="color:var(--gold)">"host aequitas aequitas 172.17.0.0/16 md5"</span> | sudo tee -a $PG_CONF<br>
-        sudo -u postgres psql -c <span style="color:var(--gold)">"ALTER SYSTEM SET listen_addresses = '*';"</span><br>
-        sudo systemctl restart postgresql<br><br>
-        <span style="color:var(--muted)"># 4. Test (should print one row)</span><br>
-        psql <span style="color:var(--gold)">"postgres://aequitas:CHOOSE_A_STRONG_PASSWORD@localhost:5432/aequitas"</span> -c <span style="color:var(--gold)">"SELECT 1;"</span><br><br>
-        <span style="color:var(--muted)"># Your DATABASE_URL for the docker run command below:</span><br>
-        <span style="color:var(--teal)"># postgres://aequitas:CHOOSE_A_STRONG_PASSWORD@172.17.0.1:5432/aequitas</span><br>
-        <span style="color:var(--muted)"># (172.17.0.1 = Docker bridge gateway, how containers reach the VPS host)</span>
-      </div>
-      <div style="background:rgba(0,220,170,0.05);border:1px solid rgba(0,220,170,0.15);border-radius:6px;padding:8px 12px;margin-bottom:18px;font-size:0.77rem;color:var(--muted)"><strong style="color:var(--neon)">Firewall:</strong> PostgreSQL only needs to be reachable from within the VPS itself. Do not open port 5432 to the internet. <code style="color:var(--teal)">ufw deny 5432</code> (or leave it closed — most VPS firewalls block it by default).</div>
-
-      <!-- Step 3: Env vars -->
-      <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px">Step 3 &mdash; Understand the Environment Variables</div>
-      <div style="font-size:0.79rem;color:var(--muted);line-height:1.9;margin-bottom:10px">Environment variables are configuration settings you pass to your node before it starts. Think of them like a settings file. Collect these values before deploying &mdash; you will enter them in Step 4.</div>
-      <div style="background:rgba(220,50,50,0.06);border:1px solid rgba(220,50,50,0.2);border-radius:6px;padding:10px 14px;margin-bottom:12px;font-size:0.77rem"><span style="color:#f87171;font-weight:700">Security Warning: </span><span style="color:var(--muted)">Your RELAYER_PRIVATE_KEY is like a master password. Anyone who has it controls your node wallet. Never share it publicly, never paste it in chat or email. Use a separate MetaMask wallet for RELAYER_PRIVATE_KEY (signing). NODE_OPERATOR_WALLET (for rewards) must be your registered Aequitas human wallet.</span></div>
-      <div style="background:rgba(245,166,35,0.06);border:1px solid rgba(245,166,35,0.25);border-radius:6px;padding:12px 14px;margin-bottom:12px;font-size:0.78rem;color:var(--muted);line-height:1.8">
-        <strong style="color:var(--gold)">Two keys, two jobs &mdash; read this before Step 4.</strong><br>
-        <strong style="color:var(--text)">1. Node signing key</strong> (<code style="color:var(--teal)">RELAYER_PRIVATE_KEY</code>): lives <em>on the server</em>. The node signs its blocks with it. Use a <strong style="color:var(--text)">new, empty wallet</strong> made only for this node &mdash; never the wallet that holds your AEQ.<br>
-        <strong style="color:var(--text)">2. Your human wallet</strong> (<code style="color:var(--teal)">NODE_OPERATOR_WALLET</code>): the wallet you registered with in the app. Its <em>address</em> goes on the server; its <em>private key never does</em>. Rewards are paid to it.<br>
-        <strong style="color:var(--text)">3. Connect the two once:</strong> open <a href="/node-binding" target="_blank" style="color:var(--gold);text-decoration:underline">/node-binding</a>, sign with your human wallet, paste the result as <code style="color:var(--teal)">NODE_OPERATOR_BINDING_SIGNATURE</code>. With a separate signing key this is <strong style="color:var(--text)">required</strong> &mdash; without it the network skips your node as a validator.<br>
-        <strong style="color:var(--text)">Moving to a new server?</strong> The new server gets a new signing key, so sign once more at /node-binding for the new signing address. The old signature only covers the old address.<br>
-        <span style="color:#f87171">Not recommended:</span> putting your human wallet's private key on the server as <code style="color:var(--teal)">RELAYER_PRIVATE_KEY</code>. The node then signs the binding itself, but whoever breaks into the server also owns your wallet and everything in it.
-      </div>
-      <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;margin-bottom:18px">
-        <tr style="background:rgba(139,92,246,0.15)">
-          <td style="font-size:0.77rem;color:var(--text);padding:8px;font-weight:700;width:36%">Variable</td>
-          <td style="font-size:0.77rem;color:var(--text);padding:8px;font-weight:700;width:12%">Required?</td>
-          <td style="font-size:0.77rem;color:var(--text);padding:8px;font-weight:700">What to enter and where to find it</td>
-        </tr>
-        <tr style="border-bottom:1px solid rgba(139,92,246,0.08)">
-          <td style="font-size:0.78rem;font-family:var(--font-mono);color:var(--neon);padding:8px">DATABASE_URL</td>
-          <td style="font-size:0.77rem;color:#f87171;padding:8px;font-weight:700">YES</td>
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">Your PostgreSQL connection string. Point it at the PostgreSQL you installed on this same machine. Format: <span style="font-family:var(--font-mono)">postgres://user:pass@host:5432/dbname</span></td>
-        </tr>
-        <tr style="border-bottom:1px solid rgba(139,92,246,0.08);background:rgba(0,0,0,0.1)">
-          <td style="font-size:0.78rem;font-family:var(--font-mono);color:var(--neon);padding:8px">RELAYER_PRIVATE_KEY</td>
-          <td style="font-size:0.77rem;color:#f87171;padding:8px;font-weight:700">YES</td>
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">The private key (starts with 0x, 66 characters total) of your dedicated node wallet. In MetaMask: click account icon &rarr; Account Details &rarr; Show Private Key &rarr; enter your MetaMask password &rarr; copy the key</td>
-        </tr>
-        <tr style="border-bottom:1px solid rgba(139,92,246,0.08)">
-          <td style="font-size:0.78rem;font-family:var(--font-mono);color:var(--neon);padding:8px">RELAYER_ADDRESS</td>
-          <td style="font-size:0.77rem;color:var(--teal);padding:8px">Recommended</td>
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">The wallet address (starts with 0x, 42 characters) matching RELAYER_PRIVATE_KEY. This is the public address &mdash; safe to share. Copy it from MetaMask. A fallback exists in the node code, but setting this explicitly prevents startup errors.</td>
-        </tr>
-        <tr style="border-bottom:1px solid rgba(139,92,246,0.08);background:rgba(0,0,0,0.1)">
-          <td style="font-size:0.78rem;font-family:var(--font-mono);color:var(--neon);padding:8px">NODE_OPERATOR_WALLET</td>
-          <td style="font-size:0.77rem;color:var(--teal);padding:8px">For rewards</td>
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">Your Aequitas human wallet address &mdash; the one you registered with via the Android app. This wallet receives your daily validator rewards (an equal share of the Validators Pool, which gets 40% of all swap fees). Must be a registered human on Aequitas. Find it in the app under your profile.</td>
-        </tr>
-        <tr style="border-bottom:1px solid rgba(139,92,246,0.08)">
-          <td style="font-size:0.78rem;font-family:var(--font-mono);color:var(--neon);padding:8px">PEER_SECRET</td>
-          <td style="font-size:0.77rem;color:var(--muted);padding:8px">No</td>
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">No longer required. Validator authorization is now identity-based: a verified NODE_OPERATOR_WALLET plus the binding signature below is enough — there is nothing to obtain from the network operator for this step.</td>
-        </tr>
-        <tr style="border-bottom:1px solid rgba(139,92,246,0.08);background:rgba(0,0,0,0.1)">
-          <td style="font-size:0.78rem;font-family:var(--font-mono);color:var(--neon);padding:8px">NODE_OPERATOR_BINDING_SIGNATURE</td>
-          <td style="font-size:0.77rem;color:var(--gold);padding:8px">YES (separate signing key)</td>
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">Proves you own NODE_OPERATOR_WALLET — without it, anyone could claim your wallet as their own node's operator and permanently lock you out of it. Generate it at <a href="/node-binding" target="_blank" style="color:var(--gold);text-decoration:underline">/node-binding</a>: connect the SAME wallet you registered with, it signs a short message naming your node's signing address, and shows you this value to copy here. To move your validator to a new machine later, just generate a new signature there for the new signing address — no need to contact anyone.</td>
-        </tr>
-        <tr style="border-bottom:1px solid rgba(139,92,246,0.08);background:rgba(0,0,0,0.1)">
-          <td style="font-size:0.78rem;font-family:var(--font-mono);color:var(--neon);padding:8px">SELF_URL</td>
-          <td style="font-size:0.77rem;color:#f87171;padding:8px;font-weight:700">YES</td>
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">Your node's own public URL (e.g. <span style="font-family:var(--font-mono);color:var(--neon)">http://YOUR-IP:8080</span>, or an https:// hostname if you put a reverse proxy in front). Without it the node starts in isolated mode — it cannot register with peers, cannot propagate blocks, and other nodes cannot reach it.</td>
-        </tr>
-        <tr style="border-bottom:1px solid rgba(139,92,246,0.08)">
-          <td style="font-size:0.78rem;font-family:var(--font-mono);color:var(--neon);padding:8px">PRIMARY_NODE_URL</td>
-          <td style="font-size:0.77rem;color:var(--teal);padding:8px">For multi-node</td>
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">Set to: <span style="font-family:var(--font-mono);color:var(--neon)">https://aequitas.digital</span> &mdash; the primary node your node registers with for automatic peer discovery. On startup your node posts its URL + signing address to the primary, gets the full peer list back, and joins the network automatically. No manual PEER_NODES list needed.</td>
-        </tr>
-        <tr style="border-bottom:1px solid rgba(139,92,246,0.08);background:rgba(0,0,0,0.1)">
-          <td style="font-size:0.78rem;font-family:var(--font-mono);color:var(--muted);padding:8px">PORT</td>
-          <td style="font-size:0.77rem;color:var(--muted);padding:8px">No</td>
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">Leave unset unless your host requires a specific port. Default is 8080.</td>
-        </tr>
-        <tr style="border-bottom:1px solid rgba(139,92,246,0.08)">
-          <td style="font-size:0.78rem;font-family:var(--font-mono);color:var(--muted);padding:8px">NODE_KEY</td>
-          <td style="font-size:0.77rem;color:var(--muted);padding:8px">No</td>
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">Base64-encoded libp2p private key for stable P2P identity. If not set: auto-generated on first start and printed to stderr. Copy the base64 string from <span style="font-family:var(--font-mono);color:var(--gold)">SAVE THIS AS NODE_KEY ENVIRONMENT VAR: &lt;base64&gt;</span> and paste it here to keep a stable peer ID across restarts.</td>
-        </tr>
-        <tr style="border-bottom:1px solid rgba(139,92,246,0.08);background:rgba(0,0,0,0.1)">
-          <td style="font-size:0.78rem;font-family:var(--font-mono);color:var(--muted);padding:8px">IS_PRIMARY_NODE</td>
-          <td style="font-size:0.77rem;color:var(--muted);padding:8px">No</td>
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">Removed — does nothing. Leave unset.</td>
-        </tr>
-        <tr style="border-bottom:1px solid rgba(139,92,246,0.08)">
-          <td style="font-size:0.78rem;font-family:var(--font-mono);color:var(--neon);padding:8px">DISTRIBUTION_ENABLED</td>
-          <td style="font-size:0.77rem;color:var(--muted);padding:8px">No</td>
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">Leave unset for normal operation — all nodes are eligible to trigger the daily pool distribution by default. Three-layer dedup (cross-node <span style="font-family:var(--font-mono)">last_ubi_at</span> check + intra-node CAS lock + replay pre-pass) prevents double-credit even when multiple nodes fire at the same time. Set to <span style="font-family:var(--font-mono);color:#f87171">false</span> only if you explicitly want to opt this node out of running distributions (e.g. a resource-constrained replica).</td>
-        </tr>
-        <tr style="border-bottom:1px solid rgba(139,92,246,0.08)">
-          <td style="font-size:0.78rem;font-family:var(--font-mono);color:var(--neon);padding:8px">BOOTSTRAP_SNAPSHOT_URL</td>
-          <td style="font-size:0.77rem;color:var(--muted);padding:8px">Multi-node</td>
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">Set to <code style="color:var(--gold)">https://aequitas.digital/api/snapshot</code> on a fresh node. If the local DB has 0 humans at startup, the node automatically downloads and imports the full state from this URL — fixing StateRoot mismatches immediately. Also set BOOTSTRAP_SIGNER. SNAPSHOT_TOKEN is optional — only needed if you want the full export instead of the public bootstrap tier.</td>
-        </tr>
-        <tr style="border-bottom:1px solid rgba(139,92,246,0.08);background:rgba(0,0,0,0.1)">
-          <td style="font-size:0.78rem;font-family:var(--font-mono);color:var(--neon);padding:8px">BOOTSTRAP_SIGNER</td>
-          <td style="font-size:0.77rem;color:var(--muted);padding:8px">Multi-node</td>
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">Signing address of the node behind BOOTSTRAP_SNAPSHOT_URL &mdash; the snapshot is verified against it, so the two belong together and must be changed together. For https://aequitas.digital that is <span style="color:var(--purple);font-family:var(--font-mono)">0x0be8b961cbf6564bd1931b0803d35c0659e0d016</span>, the value already filled in above. It is deliberately NOT published in /api/status &mdash; validator addresses are not exposed there. Point the URL at a different node and you have to ask that node&rsquo;s operator for its address. Prevents importing a tampered snapshot.</td>
-        </tr>
-        <tr style="border-bottom:1px solid rgba(139,92,246,0.08)">
-          <td style="font-size:0.78rem;font-family:var(--font-mono);color:var(--neon);padding:8px">SNAPSHOT_TOKEN</td>
-          <td style="font-size:0.77rem;color:var(--muted);padding:8px">No</td>
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">Optional &mdash; no longer required to bootstrap a new node. Without a token, BOOTSTRAP_SNAPSHOT_URL still downloads everything a node needs to run correctly (accounts, balances, pool, config). A token only unlocks the FULL export (nullifier&rarr;wallet linkage + bio_registrations), used for authoritative resync/recovery of an already-diverged node &mdash; get it from the network operator only if you actually need that.</td>
-        </tr>
-        <tr style="border-bottom:1px solid rgba(139,92,246,0.08);background:rgba(0,0,0,0.1)">
-          <td style="font-size:0.78rem;font-family:var(--font-mono);color:#f87171;padding:8px">RESYNC_FROM_SNAPSHOT</td>
-          <td style="font-size:0.77rem;color:var(--muted);padding:8px">No</td>
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">Recovery tool for a node KNOWN to have diverged — unlike BOOTSTRAP_SNAPSHOT_URL (which only merges into an empty DB), this REPLACES local accounts, pool, nullifiers, and chain_config with exactly what the snapshot contains, discarding anything local that doesn't match. Set to <code style="color:var(--gold)">true</code> together with BOOTSTRAP_SNAPSHOT_URL and BOOTSTRAP_SIGNER (mandatory here, no unsigned fallback), restart once, then remove it. Combine with RESET_DB_STATE=true for the cleanest result.</td>
-        </tr>
-        <tr style="border-bottom:1px solid rgba(139,92,246,0.08);background:rgba(52,211,153,0.08)">
-          <td style="font-size:0.78rem;font-family:var(--font-mono);color:var(--green);padding:8px">AUTO_HEAL_ON_DIVERGENCE</td>
-          <td style="font-size:0.77rem;color:var(--green);padding:8px;font-weight:700">Strongly recommended</td>
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px"><b>Important for network security and speed:</b> if your node's chain ever diverges from the network (e.g. after downtime or a bad restart), set this to <code style="color:var(--gold)">true</code> together with PRIMARY_NODE_URL, BOOTSTRAP_SNAPSHOT_URL, and BOOTSTRAP_SIGNER — your node then compares itself against PRIMARY_NODE_URL every few minutes and resyncs itself automatically, no manual RESYNC_FROM_SNAPSHOT needed. A node that stays diverged and keeps broadcasting its own blocks can slow down or destabilize the network for every other operator (confirmed live: this is what caused a network-wide slowdown on 2026-07-02).</td>
-        </tr>
-        <tr style="border-bottom:1px solid rgba(139,92,246,0.08)">
-          <td style="font-size:0.78rem;font-family:var(--font-mono);color:var(--neon);padding:8px">SNAPSHOT_RESTRICT_TO_PRIVATE_NETWORK</td>
-          <td style="font-size:0.77rem;color:var(--muted);padding:8px">No</td>
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">Opt-in: when set to <code style="color:var(--gold)">true</code>, /api/snapshot only answers requests from private/loopback addresses instead of any caller with the right token. Off by default because this project's bootstrap/resync mechanism relies on cross-provider access between servers; only enable this if every node you run shares a private network.</td>
-        </tr>
-        <tr>
-          <td style="font-size:0.78rem;font-family:var(--font-mono);color:#f87171;padding:8px">RESET_STATE</td>
-          <td style="font-size:0.77rem;color:var(--muted);padding:8px">No</td>
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">DANGEROUS: Setting this to true wipes your entire database on every restart. Development use only. Never in production.</td>
-        </tr>
-        <tr style="background:rgba(0,0,0,0.1)">
-          <td style="font-size:0.78rem;font-family:var(--font-mono);color:#f87171;padding:8px">RESET_DB_STATE</td>
-          <td style="font-size:0.77rem;color:var(--muted);padding:8px">No</td>
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">DANGEROUS, one-time use: truncates bootstrap-related tables (including evm_upgrade_relationship_slots) so a node can re-sync clean from genesis. Only takes effect within the first few minutes after process start to avoid repeated wipes on a crash-restart loop, and also requires ALLOW_DESTRUCTIVE_MAINTENANCE (see below). On success the process exits immediately instead of continuing to start &mdash; remove this variable (and ALLOW_DESTRUCTIVE_MAINTENANCE) and redeploy to bring the node back up.</td>
-        </tr>
-        <tr>
-          <td style="font-size:0.78rem;font-family:var(--font-mono);color:#f87171;padding:8px">CLEAR_REGISTRATIONS</td>
-          <td style="font-size:0.77rem;color:var(--muted);padding:8px">No</td>
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">DANGEROUS, one-time use: wipes all human registration data (chain_accounts' human flags, nullifiers, bio_hashes, liquidity_pool, evm_upgrade_relationship_slots) so everyone can re-register. Same 5&ndash;minute-from-startup guard as RESET_DB_STATE, plus also requires CLEAR_REGISTRATIONS_CONFIRM (see below) and ALLOW_DESTRUCTIVE_MAINTENANCE. On success the process exits immediately instead of continuing to start &mdash; remove all three variables and redeploy to bring the node back up.</td>
-        </tr>
-        <tr style="background:rgba(0,0,0,0.1)">
-          <td style="font-size:0.78rem;font-family:var(--font-mono);color:#f87171;padding:8px">CLEAR_REGISTRATIONS_CONFIRM</td>
-          <td style="font-size:0.77rem;color:var(--muted);padding:8px">No</td>
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">Required alongside CLEAR_REGISTRATIONS=true on both this service and the proof-server &mdash; must be set to the exact literal string <code>I_UNDERSTAND_THIS_DELETES_ALL_REGISTRATIONS</code>. Without it, CLEAR_REGISTRATIONS=true alone is refused. Exists so a single boolean set by accident (copy-pasted env file, typo elsewhere) can't wipe every human's registration on the next restart.</td>
-        </tr>
-        <tr>
-          <td style="font-size:0.78rem;font-family:var(--font-mono);color:#f87171;padding:8px">ALLOW_DESTRUCTIVE_MAINTENANCE</td>
-          <td style="font-size:0.77rem;color:var(--muted);padding:8px">No</td>
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">Required alongside RESET_DB_STATE=true or CLEAR_REGISTRATIONS=true &mdash; must be set to <code style="color:var(--gold)">true</code>. Without it, both are refused even with their other confirmation values correct. One more explicit gate so a wrong server selection or a stray copy-pasted env file can't trigger either destructive path alone. Visible at /api/health/combined (destructive_flags_set) whenever any destructive flag is currently set, even if it was refused.</td>
-        </tr>
-        <tr style="background:rgba(0,0,0,0.1)">
-          <td style="font-size:0.78rem;font-family:var(--font-mono);color:var(--neon);padding:8px">BOOTSTRAP_P2P_ADDR</td>
-          <td style="font-size:0.77rem;color:var(--muted);padding:8px">No</td>
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">Overrides the built-in libp2p bootstrap multiaddress (see Step 7 below). Only needed if you want to pin a specific entry point &mdash; both validator addresses are compiled in as defaults, so a node with no value here still finds the network. If those addresses ever change, set this instead of waiting for a code deploy.</td>
-        </tr>
-      </table></div>
-
-      <!-- Optional: serving the private duplicate check.
-           Deliberately placed AFTER the required-variables table and marked
-           optional throughout. Committee membership is drawn from the chain by
-           hash, and a node that does not offer the service is never drawn (see
-           PeerRegistry.MPCCandidates), so none of this is needed to run a
-           validator. Presenting it as a requirement would discourage exactly
-           the operators the network wants. -->
-      <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px" data-i18n="mpc-optin-title">Optional — help check for duplicate registrations (prepared, not yet in service)</div>
-      <div style="font-size:0.79rem;color:var(--muted);line-height:1.9;margin-bottom:12px" data-i18n="mpc-optin-desc">Prepared, but not yet in service. Later your node will be able to help verify that nobody registers twice without ever seeing anyone's biometric data: each participating party holds only a mathematical share of every enrolled template — noise on its own — and they compare a new capture together, so no single machine can reconstruct anything. Today this path decides nothing. The duplicate check does not run over it, and the committee is a fixed list rather than drawn automatically, so setting the three variables below changes nothing about registrations for now.</div>
-      <div style="font-family:var(--font-mono);background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.15);border-radius:6px;padding:12px 14px;margin-bottom:12px;font-size:0.76rem;line-height:1.9;overflow-x:auto">
-        -e <span style="color:var(--neon)">MPC_ENABLED</span>="<span style="color:var(--gold)">true</span>" \<br>
-        -e <span style="color:var(--neon)">MPC_COMMITTEE_SIZE</span>="<span style="color:var(--gold)">2</span>" \<br>
-        -e <span style="color:var(--neon)">MPC_TRIPLE_FILE</span>="<span style="color:var(--gold)">/data/triples-party-N.bin</span>" \
-      </div>
-      <div style="font-size:0.77rem;color:var(--muted);line-height:1.8;margin-bottom:16px" data-i18n="mpc-optin-note">The share file contains one-time randomness that only your node may hold — never copy it to another machine and never commit it anywhere. It currently has to come from the operator, which is the remaining central dependency. You do not need a new key: your node identifies itself to the other members with the same signing key it already uses for blocks.</div>
-
-      <!-- Step 4 was a Railway walkthrough. Railway was decommissioned on
-           2026-08-14 and hosts nothing for this project; following it produced
-           a node that could never reach the network. The Docker path below is
-           now the only supported way and applies to any Linux VPS. -->
-      <!-- Step 4 Docker -->
-      <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px">Step 4 &mdash; Alternative: Deploy on a VPS with Docker</div>
-      <div style="font-size:0.79rem;color:var(--muted);line-height:1.9;margin-bottom:8px">For your own server (Contabo, Hetzner, DigitalOcean). Requires Docker installed on the VPS and a local PostgreSQL database set up via Step 2 Option B above. <strong style="color:var(--gold)">Do not point two nodes at one PostgreSQL</strong> — each node must have its own separate database. NODE_OPERATOR_WALLET must be a registered Aequitas human wallet.</div>
-      <div style="font-family:var(--font-mono);background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.15);border-radius:6px;padding:14px;margin-bottom:8px;font-size:0.78rem;line-height:2.2;overflow-x:auto">
-        <span style="color:var(--muted)"># 1. Install Docker (if not already installed)</span><br>
-        curl -fsSL https://get.docker.com | sh<br><br>
-        <span style="color:var(--muted)"># 2. Clone and build the node (~3 min Go compile)</span><br>
-        git clone https://github.com/hanoi96international-gif/Aequitas &amp;&amp; cd Aequitas<br>
-        docker build -t aequitas-node .<br><br>
-        <span style="color:var(--muted)"># 3. First start (NODE_KEY will be printed in logs — see step 4)</span><br>
-        <span style="color:var(--muted)">#    DATABASE_URL uses 172.17.0.1 = Docker bridge gateway → host PostgreSQL</span><br>
-        <span style="color:var(--muted)">#    (set up PostgreSQL first via Step 2 Option B above)</span><br>
-        docker run -d --name aequitas-node --restart unless-stopped \<br>
-        &nbsp;&nbsp;-e <span style="color:var(--neon)">DATABASE_URL</span>="<span style="color:var(--gold)">postgres://aequitas:YOUR_DB_PASSWORD@172.17.0.1:5432/aequitas</span>" \<br>
-        &nbsp;&nbsp;-e <span style="color:var(--neon)">RELAYER_PRIVATE_KEY</span>="<span style="color:var(--gold)">0xYOUR_PRIVATE_KEY</span>" \<br>
-        &nbsp;&nbsp;-e <span style="color:var(--neon)">RELAYER_ADDRESS</span>="<span style="color:var(--gold)">0xYOUR_NODE_SIGNING_ADDRESS</span>" \<br>
-        &nbsp;&nbsp;-e <span style="color:var(--neon)">NODE_OPERATOR_WALLET</span>="<span style="color:var(--gold)">0xYOUR_REGISTERED_HUMAN_WALLET</span>" \<br>
-        &nbsp;&nbsp;-e <span style="color:var(--neon)">NODE_OPERATOR_BINDING_SIGNATURE</span>="<span style="color:var(--gold)">generate-at-/node-binding</span>" \<br>
-        &nbsp;&nbsp;-e <span style="color:var(--neon)">SELF_URL</span>="<span style="color:var(--gold)">http://YOUR-SERVER-IP:8080</span>" \<br>
-        &nbsp;&nbsp;-e <span style="color:var(--neon)">PRIMARY_NODE_URL</span>="https://aequitas.digital" \<br>
-        &nbsp;&nbsp;-e <span style="color:var(--neon)">BOOTSTRAP_SNAPSHOT_URL</span>="https://aequitas.digital/api/snapshot" \<br>
-        <span style="color:var(--muted)"># must be the signing address of the node serving BOOTSTRAP_SNAPSHOT_URL above.</span><br>
-        <span style="color:var(--muted)"># Point the URL somewhere else and this value has to change with it, or the</span><br>
-        <span style="color:var(--muted)"># snapshot fails signature verification and the node never bootstraps.</span><br>
-        &nbsp;&nbsp;-e <span style="color:var(--neon)">BOOTSTRAP_SIGNER</span>="0x0be8b961cbf6564bd1931b0803d35c0659e0d016" \<br>
-        &nbsp;&nbsp;-e <span style="color:var(--neon)">AUTO_HEAL_ON_DIVERGENCE</span>="true" <span style="color:var(--muted)"># strongly recommended</span> \<br>
-        &nbsp;&nbsp;-p 8080:8080 -p 4001:4001 aequitas-node<br><br>
-        <span style="color:var(--muted)"># 4. Copy NODE_KEY from logs (do this once — gives your node a stable P2P identity)</span><br>
-        docker logs aequitas-node 2&gt;&amp;1 | grep "SAVE THIS AS NODE_KEY"<br><br>
-        <span style="color:var(--muted)"># 5. Stop, add NODE_KEY, restart permanently:</span><br>
-        docker stop aequitas-node &amp;&amp; docker rm aequitas-node<br>
-        docker run -d --name aequitas-node --restart unless-stopped \<br>
-        &nbsp;&nbsp;-e <span style="color:var(--neon)">DATABASE_URL</span>="<span style="color:var(--gold)">postgres://aequitas:YOUR_DB_PASSWORD@172.17.0.1:5432/aequitas</span>" \<br>
-        &nbsp;&nbsp;-e <span style="color:var(--neon)">RELAYER_PRIVATE_KEY</span>="<span style="color:var(--gold)">0xYOUR_PRIVATE_KEY</span>" \<br>
-        &nbsp;&nbsp;-e <span style="color:var(--neon)">RELAYER_ADDRESS</span>="<span style="color:var(--gold)">0xYOUR_NODE_SIGNING_ADDRESS</span>" \<br>
-        &nbsp;&nbsp;-e <span style="color:var(--neon)">NODE_OPERATOR_WALLET</span>="<span style="color:var(--gold)">0xYOUR_REGISTERED_HUMAN_WALLET</span>" \<br>
-        &nbsp;&nbsp;-e <span style="color:var(--neon)">NODE_OPERATOR_BINDING_SIGNATURE</span>="<span style="color:var(--gold)">generate-at-/node-binding</span>" \<br>
-        &nbsp;&nbsp;-e <span style="color:var(--neon)">NODE_KEY</span>="<span style="color:var(--gold)">base64-from-step-4</span>" \<br>
-        &nbsp;&nbsp;-e <span style="color:var(--neon)">SELF_URL</span>="<span style="color:var(--gold)">http://YOUR-SERVER-IP:8080</span>" \<br>
-        &nbsp;&nbsp;-e <span style="color:var(--neon)">PRIMARY_NODE_URL</span>="https://aequitas.digital" \<br>
-        &nbsp;&nbsp;-e <span style="color:var(--neon)">BOOTSTRAP_SNAPSHOT_URL</span>="https://aequitas.digital/api/snapshot" \<br>
-        <span style="color:var(--muted)"># must be the signing address of the node serving BOOTSTRAP_SNAPSHOT_URL above.</span><br>
-        <span style="color:var(--muted)"># Point the URL somewhere else and this value has to change with it, or the</span><br>
-        <span style="color:var(--muted)"># snapshot fails signature verification and the node never bootstraps.</span><br>
-        &nbsp;&nbsp;-e <span style="color:var(--neon)">BOOTSTRAP_SIGNER</span>="0x0be8b961cbf6564bd1931b0803d35c0659e0d016" \<br>
-        &nbsp;&nbsp;-e <span style="color:var(--neon)">AUTO_HEAL_ON_DIVERGENCE</span>="true" <span style="color:var(--muted)"># strongly recommended</span> \<br>
-        &nbsp;&nbsp;-p 8080:8080 -p 4001:4001 aequitas-node
-      </div>
-      <div style="background:rgba(245,166,35,0.06);border:1px solid rgba(245,166,35,0.2);border-radius:6px;padding:8px 12px;margin-bottom:18px;font-size:0.77rem;color:var(--muted)">
-        <strong style="color:var(--gold)">Tip:</strong> Save all vars in <code>/root/.aequitas.env</code> (chmod 600) and use <code>--env-file /root/.aequitas.env</code> instead of listing each <code>-e</code> — keeps secrets out of shell history and simplifies updates.
-      </div>
-      <div style="background:rgba(0,220,170,0.05);border:1px solid rgba(0,220,170,0.15);border-radius:6px;padding:10px 14px;margin-bottom:18px;font-size:0.79rem;color:var(--muted)">
-        <strong style="color:var(--neon)">Port requirements:</strong> TCP 8080 must be open inbound (API + RPC). TCP 4001 is optional (P2P — enables direct node-to-node connections). If P2P is firewalled, HTTP sync still works. On Linux: <code style="color:var(--teal)">ufw allow 8080/tcp</code>
-      </div>
-
-      <!-- Step 5: Verify -->
-      <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px">Step 5 &mdash; Verify Your Node is Running</div>
-      <div style="font-size:0.79rem;color:var(--muted);line-height:1.9;margin-bottom:8px">Open these URLs in your browser. Replace <span style="font-family:var(--font-mono);color:var(--neon)">YOUR-NODE-URL</span> with your server's address.</div>
-      <div style="font-family:var(--font-mono);background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.15);border-radius:6px;padding:14px;margin-bottom:8px;font-size:0.78rem;line-height:2.2">
-        https://YOUR-NODE-URL/api/status<br>
-        <span style="color:var(--muted)">&nbsp;&rarr; Expected: {"height": 1234, "total_humans": N, "aequitas_index": N}</span><br><br>
-        https://YOUR-NODE-URL/rpc<br>
-        <span style="color:var(--muted)">&nbsp;&rarr; Expected: {"jsonrpc":"2.0","error":"method not specified"} &mdash; this confirms RPC is alive</span>
-      </div>
-      <div style="background:rgba(0,220,170,0.05);border:1px solid rgba(0,220,170,0.15);border-radius:6px;padding:10px 14px;margin-bottom:18px;font-size:0.79rem;color:var(--muted)">The block height should match the primary node within 1&ndash;2 blocks within seconds of startup. If it stays at 0, check that PRIMARY_NODE_URL=https://aequitas.digital is set and reachable.</div>
-
-      <!-- Step 5b: Register Validator Key -->
-      <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px">Step 5b &mdash; Link Wallet for Rewards</div>
-
-      <!-- Auto-registration info box -->
-      <div style="background:rgba(52,211,153,0.06);border:1px solid rgba(52,211,153,0.25);border-radius:8px;padding:12px 16px;margin-bottom:14px;font-size:0.79rem;color:var(--muted);line-height:1.9">
-        <div style="color:var(--neon);font-weight:700;margin-bottom:6px">✓ Usually automatic — most users skip this step</div>
-        When your node starts, it <strong style="color:var(--text)">automatically</strong> connects to the network and registers for block production. If you set <code style="color:var(--neon)">NODE_OPERATOR_WALLET</code> in your environment variables (Step 4), your wallet is already linked and you will receive validator rewards automatically.<br><br>
-        <strong style="color:var(--text)">You only need Step 5b if:</strong>
-        <ul style="margin:6px 0 0 16px;padding:0">
-          <li>Your node logs show <code style="color:var(--red)">[NODE] validator key not authorized</code></li>
-          <li>You want to change your reward wallet without restarting the node</li>
-          <li>You are running a Docker/VPS node and auto-registration failed</li>
-        </ul>
-      </div>
-
-      <!-- Check auto-registration status -->
-      <div style="font-size:0.79rem;color:var(--muted);line-height:1.8;margin-bottom:10px">
-        <strong style="color:var(--text)">Check if already registered:</strong> Look in your node logs for <code style="color:var(--neon)">[PEERS] Registered with primary node</code>. If you see it — you're done, no manual step needed.
-      </div>
-
-      <!-- Manual registration (only if needed) -->
-      <div style="background:rgba(139,92,246,0.04);border:1px solid rgba(139,92,246,0.15);border-radius:8px;padding:16px;margin-bottom:18px">
-        <div style="font-size:0.77rem;color:var(--purple);font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">Manual Registration (if auto-registration failed)</div>
-        <div style="font-size:0.77rem;color:var(--muted);margin-bottom:10px;line-height:1.8">
-          Enter your node's <strong style="color:var(--text)">RELAYER_ADDRESS</strong> (the signing address — shown in your node logs as <code style="color:var(--neon)">[NODE] Signing address: 0x...</code> on startup) and click Register. MetaMask will ask you to sign once to prove you own your human wallet.
-        </div>
-        <input id="vk-signing-addr" placeholder="0x... (your node's RELAYER_ADDRESS / signing address)" style="width:100%;box-sizing:border-box;background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.3);color:var(--text);border-radius:6px;padding:9px 12px;font-family:var(--font-mono);font-size:0.79rem;margin-bottom:6px;outline:none">
-        <input id="vk-signing-sig" placeholder='Signature (leave empty — will be generated automatically)' style="width:100%;box-sizing:border-box;background:rgba(0,0,0,0.2);border:1px solid rgba(139,92,246,0.15);color:var(--muted);border-radius:6px;padding:9px 12px;font-family:var(--font-mono);font-size:0.79rem;margin-bottom:8px;outline:none" disabled>
-        <div style="font-size:0.74rem;color:var(--muted);margin-bottom:8px">ℹ The signature is fetched automatically from your node — you only need to provide your RELAYER_ADDRESS above and sign with MetaMask below.</div>
-        <button data-act="registerValidatorKey" style="background:rgba(139,92,246,0.8);color:#fff;border:none;border-radius:6px;padding:10px 20px;font-size:0.81rem;cursor:pointer;font-weight:700;width:100%">🔑 Register Validator Key with MetaMask</button>
-        <div id="vk-status" style="margin-top:8px;font-size:0.77rem;color:var(--muted)"></div>
-      </div>
-
-      <!-- Step 6: MetaMask -->
-      <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px">Step 6 &mdash; Connect MetaMask to Your Node (Optional)</div>
-      <div style="font-size:0.79rem;color:var(--muted);line-height:1.9;margin-bottom:8px">You can use your own node as a custom RPC in MetaMask so your wallet connects through your node instead of the shared public node. In MetaMask: click the network dropdown at the top &rarr; <strong style="color:var(--text)">Add network</strong> &rarr; <strong style="color:var(--text)">Add a network manually</strong>, then enter:</div>
-      <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;margin-bottom:18px">
-        <tr style="border-bottom:1px solid rgba(139,92,246,0.08)"><td style="font-size:0.79rem;color:var(--muted);padding:7px 0;width:40%">Network Name</td><td style="font-size:0.79rem;font-family:var(--font-mono);color:var(--text);padding:7px 0">Aequitas Chain</td></tr>
-        <tr style="border-bottom:1px solid rgba(139,92,246,0.08)"><td style="font-size:0.79rem;color:var(--muted);padding:7px 0">RPC URL</td><td style="font-size:0.79rem;font-family:var(--font-mono);color:var(--neon);padding:7px 0">https://YOUR-NODE-URL/rpc</td></tr>
-        <tr style="border-bottom:1px solid rgba(139,92,246,0.08)"><td style="font-size:0.79rem;color:var(--muted);padding:7px 0">Chain ID</td><td style="font-size:0.79rem;font-family:var(--font-mono);color:var(--text);padding:7px 0">1926</td></tr>
-        <tr style="border-bottom:1px solid rgba(139,92,246,0.08)"><td style="font-size:0.79rem;color:var(--muted);padding:7px 0">Currency Symbol</td><td style="font-size:0.79rem;font-family:var(--font-mono);color:var(--text);padding:7px 0">AEQ</td></tr>
-        <tr style="border-bottom:1px solid rgba(139,92,246,0.08)"><td style="font-size:0.79rem;color:var(--muted);padding:7px 0">Decimals</td><td style="font-size:0.79rem;font-family:var(--font-mono);color:var(--text);padding:7px 0">18</td></tr>
-        <tr><td style="font-size:0.79rem;color:var(--muted);padding:7px 0">Block Explorer</td><td style="font-size:0.79rem;font-family:var(--font-mono);color:var(--purple);padding:7px 0">https://aequitas.digital</td></tr>
-      </table></div>
-
-      <!-- Step 7: Rewards -->
-      <div style="font-size:0.76rem;color:var(--gold);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid rgba(245,166,35,0.2);padding-bottom:6px">Step 7 &mdash; Earning Validator Rewards</div>
-      <div style="background:rgba(245,166,35,0.05);border:1px solid rgba(245,166,35,0.2);border-radius:6px;padding:12px 14px;margin-bottom:12px;font-size:0.79rem;color:var(--muted);line-height:1.9">The Validators Pool collects 40% of all swap fees; transfer fees, the idle-money levy and cap overflow go entirely to the basic income. Every day at <strong style="color:var(--gold)">20:00 Berlin time</strong> (CEST/CET, handles DST automatically) the pool is split equally among all node operators who are registered humans, weighted only by the minutes each node was online that day — not by blocks, so expensive hardware earns no more. The more consistently your node runs, the larger your share.</div>
-      <div style="font-size:0.79rem;color:var(--muted);line-height:2.2;margin-bottom:18px">
-        <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:4px"><span style="color:var(--gold);font-weight:700;min-width:16px">1.</span><span>Make sure you are registered as a human on Aequitas. If not: install the Android app and complete biometric registration first. You will receive a wallet address and 1,000 AEQ.</span></div>
-        <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:4px"><span style="color:var(--gold);font-weight:700;min-width:16px">2.</span><span>Set <span style="font-family:var(--font-mono);color:var(--neon)">NODE_OPERATOR_WALLET</span> = your Aequitas human wallet address in your node's environment</span></div>
-        <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:4px"><span style="color:var(--gold);font-weight:700;min-width:16px">3.</span><span>Restart the node so it picks the value up: <span style="font-family:var(--font-mono);color:var(--teal)">docker restart aequitas-node</span></span></div>
-        <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:4px"><span style="color:var(--gold);font-weight:700;min-width:16px">4.</span><span>In your node logs, confirm: <span style="font-family:var(--font-mono);color:var(--teal)">[NODE] Registered node operator wallet: 0x...</span></span></div>
-        <div style="display:flex;align-items:flex-start;gap:10px"><span style="color:var(--gold);font-weight:700;min-width:16px">5.</span><span>Rewards are distributed automatically every day at 20:00 Berlin time (CEST/CET). Just keep your node running &mdash; no further action needed.</span></div>
-      </div>
-
-      <!-- Troubleshooting -->
-      <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px">Troubleshooting</div>
-      <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;margin-bottom:18px">
-        <tr style="background:rgba(139,92,246,0.12)">
-          <td style="font-size:0.77rem;color:var(--text);padding:8px;font-weight:700;width:32%">Symptom</td>
-          <td style="font-size:0.77rem;color:var(--text);padding:8px;font-weight:700;width:32%">Likely cause</td>
-          <td style="font-size:0.77rem;color:var(--text);padding:8px;font-weight:700">Solution</td>
-        </tr>
-        <tr style="border-bottom:1px solid rgba(139,92,246,0.08)">
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">Block height stays at 0</td>
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">PRIMARY_NODE_URL not set or wrong</td>
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">Set PRIMARY_NODE_URL=https://aequitas.digital and redeploy. Also set SELF_URL to your own node's public URL.</td>
-        </tr>
-        <tr style="border-bottom:1px solid rgba(139,92,246,0.08);background:rgba(0,0,0,0.1)">
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">DATABASE_URL error on startup</td>
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">Wrong connection string or PostgreSQL unreachable</td>
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">Check format: postgres://user:pass@host:5432/dbname &mdash; make sure PostgreSQL is running and accessible</td>
-        </tr>
-        <tr style="border-bottom:1px solid rgba(139,92,246,0.08)">
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">"no code at address" in logs</td>
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">V7 contract not yet deployed in this EVM</td>
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">Normal on first start when RELAYER_ADDRESS is set &mdash; node auto-deploys V7. Wait a few seconds and check again.</td>
-        </tr>
-        <tr style="border-bottom:1px solid rgba(139,92,246,0.08);background:rgba(0,0,0,0.1)">
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">"NODE_OPERATOR_WALLET not set" in logs</td>
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">Missing environment variable</td>
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">Add NODE_OPERATOR_WALLET=0xYOUR_HUMAN_WALLET to your variables. Node runs fine without it but you won't receive rewards.</td>
-        </tr>
-        <tr style="border-bottom:1px solid rgba(139,92,246,0.08)">
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">Node container exits immediately</td>
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">Build or startup failure</td>
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">Run docker logs aequitas-node for the error message. Most common cause: DATABASE_URL missing or RELAYER_PRIVATE_KEY in wrong format (must start with 0x).</td>
-        </tr>
-        <tr style="border-bottom:1px solid rgba(139,92,246,0.08);background:rgba(0,0,0,0.1)">
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">Port 8080 not reachable (Docker)</td>
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">Firewall or cloud provider config</td>
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">Open TCP port 8080 inbound in your firewall or cloud security group settings.</td>
-        </tr>
-        <tr style="border-bottom:1px solid rgba(139,92,246,0.08);background:rgba(0,0,0,0.1)">
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">Docker build fails with module error</td>
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">No internet access during build</td>
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">The Docker build needs outbound internet to download Go modules. Check the VPS firewall allows outbound HTTPS.</td>
-        </tr>
-        <tr style="border-bottom:1px solid rgba(139,92,246,0.08)">
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">⚠ P2P bootstrap unreachable (HTTP sync still works)</td>
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">libp2p port 4001 firewalled (very common)</td>
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">Not critical — HTTP block sync is the primary mechanism and runs automatically. Add <code>-p 4001:4001</code> and <code>ufw allow 4001/tcp</code> to enable P2P as well.</td>
-        </tr>
-        <tr style="border-bottom:1px solid rgba(139,92,246,0.08);background:rgba(0,0,0,0.1)">
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">Bootstrap snapshot failed / StateRoot mismatch</td>
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">SNAPSHOT_TOKEN not set on primary, or BOOTSTRAP_SIGNER wrong</td>
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">Set BOOTSTRAP_SNAPSHOT_URL=https://aequitas.digital/api/snapshot, BOOTSTRAP_SIGNER=0x0be8b961cbf6564bd1931b0803d35c0659e0d016, and restart. No token is needed: /api/snapshot serves a public tier that carries everything a node needs to run. A SNAPSHOT_TOKEN only unlocks the full export, which you do not need in order to join. Restart — node imports state automatically if DB is empty.</td>
-        </tr>
-        <tr style="border-bottom:1px solid rgba(139,92,246,0.08)">
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">Node not in block explorer / no MERGE blocks</td>
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">Port 8080 not reachable from outside OR Step 5b not done</td>
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">1) Open port 8080 inbound (<code>ufw allow 8080/tcp</code>). 2) Set SELF_URL=http://YOUR-IP:8080. 3) Complete Step 5b to register your signing key. Then the primary node syncs your blocks and MERGE events appear.</td>
-        </tr>
-        <tr style="border-bottom:1px solid rgba(139,92,246,0.08);background:rgba(0,0,0,0.1)">
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">MetaMask shows 0 AEQ or wrong balance after registration</td>
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">Stale network config in MetaMask (cached old RPC data)</td>
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">MetaMask → Settings → Networks → delete all "Aequitas Chain" entries → re-add via the "+ ADD AEQUITAS NETWORK" button on this website. Balance will update immediately.</td>
-        </tr>
-        <tr>
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">NODE_KEY generating new key on every restart</td>
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">NODE_KEY env var not set</td>
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">On first start, look for <code>SAVE THIS AS NODE_KEY ENVIRONMENT VAR: &lt;base64&gt;</code> in logs. Copy that value and add it as NODE_KEY environment variable. Restart once — P2P identity is now stable across all future restarts.</td>
-        </tr>
-      </table></div>
-
-      <!-- Footer -->
-      <div style="font-size:0.76rem;color:var(--gold);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid rgba(245,166,35,0.2);padding-bottom:6px">Questions / Feedback</div>
-      <div style="font-size:0.79rem;color:var(--muted);line-height:1.9">Open an issue on <a href="https://github.com/hanoi96international-gif/Aequitas" target="_blank" style="color:var(--purple)">GitHub</a>, ask in the <a href="https://t.me/aequitasmoney" target="_blank" rel="noopener noreferrer" style="color:var(--purple)">Telegram group</a>, or reach the team on <a href="https://x.com/AequitasMoney" target="_blank" rel="noopener noreferrer" style="color:var(--purple)">X (@AequitasMoney)</a>. Feedback on node setup, performance, and documentation gaps is especially welcome. Download this guide as a PDF in your selected language using the button above.</div>
+      <div style="font-size:0.76rem;color:var(--gold);letter-spacing:2.5px;text-transform:uppercase;font-weight:700;margin-bottom:4px" data-i18n="vg-head">Validator guide · updated 30 Sep 2026</div>
+      <div style="font-size:0.77rem;color:var(--muted);margin-bottom:6px" data-i18n="vg-sub">One command, two questions · about 15 minutes, most of it waiting · no blockchain knowledge needed</div>
+      <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:22px 0 10px;border-bottom:1px solid var(--border);padding-bottom:6px" data-i18n="g-need-t">What you need</div>
+      <div style="font-size:0.79rem;color:var(--muted);line-height:1.9;margin-bottom:10px" data-i18n="vg-need-d"><strong style="color:var(--text)">A rented Linux server (VPS)</strong> with Ubuntu 22.04 or 24.04 and a public IPv4 address — at least 8 GB RAM and 60 GB SSD. Most providers offer one for 10–20 € a month; choose “Ubuntu 24.04” when ordering. The IP address and password arrive by e-mail.<br><strong style="color:var(--text)">Two open ports:</strong> 8080 (interface) and 4001 (connection to other nodes).<br><strong style="color:var(--text)">You yourself, registered</strong> in the Aequitas app (face check completed).</div>
+      <div style="background:rgba(245,166,35,0.05);border:1px solid rgba(245,166,35,0.2);border-radius:6px;padding:10px 14px;margin-bottom:12px;font-size:0.79rem;color:var(--muted);line-height:1.9" data-i18n="vg-never"><strong style="color:var(--gold)">Never on the server:</strong> your wallet, its word list (seed phrase) or its private key. The server only holds your wallet’s <strong style="color:var(--text)">address</strong> — whoever breaks into it cannot reach your money.</div>
+      <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:22px 0 10px;border-bottom:1px solid var(--border);padding-bottom:6px" data-i18n="vg-s1-t">Step 1 — Connect to your server</div>
+      <div style="font-size:0.79rem;color:var(--muted);line-height:1.9;margin-bottom:10px" data-i18n="vg-s1-d">On Windows open “PowerShell”, on a Mac “Terminal”, and connect (replace YOUR-SERVER-IP with the address from the e-mail):</div>
+      <div style="font-family:var(--font-mono);background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.15);border-radius:6px;padding:12px 14px;margin-bottom:10px;font-size:0.78rem;line-height:2;overflow-x:auto;color:var(--neon)">ssh root@YOUR-SERVER-IP</div>
+      <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:22px 0 10px;border-bottom:1px solid var(--border);padding-bottom:6px" data-i18n="vg-s2-t">Step 2 — Paste three lines</div>
+      <div style="font-family:var(--font-mono);background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.15);border-radius:6px;padding:12px 14px;margin-bottom:10px;font-size:0.78rem;line-height:2;overflow-x:auto;color:var(--neon)">curl -fsSL https://get.docker.com | sh<br>git clone https://github.com/hanoi96international-gif/Aequitas.git<br>cd Aequitas/deploy/validator &amp;&amp; bash einrichten.sh</div>
+      <div style="font-size:0.79rem;color:var(--muted);line-height:1.9;margin-bottom:10px" data-i18n="vg-s2-d">The first line installs Docker (if it is not there yet), the second fetches Aequitas, the third sets everything up. The script asks only two things: <strong style="color:var(--text)">your wallet address</strong> — the one you registered with; the app shows it under “Receive”, it starts with 0x — and <strong style="color:var(--text)">confirmation of the IP address</strong> it has detected. Everything else it does by itself: a random database password, the configuration, building and starting the node (about 10 minutes the first time) and storing the two keys your node creates for itself on its first start.</div>
+      <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:22px 0 10px;border-bottom:1px solid var(--border);padding-bottom:6px" data-i18n="vg-s3-t">Step 3 — Scan the QR code with the app</div>
+      <div style="font-size:0.79rem;color:var(--muted);line-height:1.9;margin-bottom:10px" data-i18n="vg-s3-d">Rewards go to your wallet, so the network has to know that this node belongs to you. At the end the script shows a <strong style="color:var(--text)">QR code</strong> in the terminal. In the Aequitas app open the tab <strong style="color:var(--text)">“Node”</strong>, tap <strong style="color:var(--text)">“Bind node (scan QR)”</strong>, scan the code and tap <strong style="color:var(--text)">“Confirm”</strong>. Signing costs nothing and moves no money. The script notices the confirmation within seconds, enters the binding itself and restarts the node — nothing to copy, nothing to type. No confirmation within 15 minutes? Just run <code>bash einrichten.sh</code> again.<br>The app checks that the code was made for <strong style="color:var(--text)">your</strong> wallet and that the node really holds the key for the signing address shown. A foreign or tampered code is rejected before anything is signed.</div>
+      <div style="background:rgba(0,220,170,0.05);border:1px solid rgba(0,220,170,0.15);border-radius:6px;padding:10px 14px;margin-bottom:12px;font-size:0.77rem;color:var(--muted);line-height:1.9" data-i18n="vg-s3-noapp"><strong style="color:var(--teal)">Without the app</strong> (for example with MetaMask in a browser): open your node’s own binding page <code>http://YOUR-SERVER-IP:8080/node-binding</code>, sign with the same wallet, put the line <code>NODE_OPERATOR_BINDING_SIGNATURE=…</code> it shows into <code>.env</code> and run <code>docker compose up -d node</code>.</div>
+      <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:22px 0 10px;border-bottom:1px solid var(--border);padding-bottom:6px" data-i18n="vg-s4-t">Step 4 — Admission as a block producer</div>
+      <div style="font-size:0.79rem;color:var(--muted);line-height:1.9;margin-bottom:10px" data-i18n="vg-s4-d">For now the operator admits new block producers by hand. The reason: as long as not every node recomputes every value of a block itself, a malicious producer could create money. Once that check is complete, admission disappears and every registered human automatically becomes a producer with their node. Send your node’s signing address to the operator in the <a href="https://t.me/aequitasmoney" target="_blank" rel="noopener noreferrer" style="color:var(--purple)">Telegram group</a>. Until then your node runs as a full <strong style="color:var(--text)">observer</strong>: it keeps the whole chain and checks every block itself.</div>
+      <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:22px 0 10px;border-bottom:1px solid var(--border);padding-bottom:6px" data-i18n="g-check-t">Is it running?</div>
+      <div style="font-family:var(--font-mono);background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.15);border-radius:6px;padding:12px 14px;margin-bottom:10px;font-size:0.78rem;line-height:2;overflow-x:auto;color:var(--neon)">curl -s http://localhost:8080/api/status | grep -oE '"height":[0-9]+'<br>curl -s https://aequitas.digital/api/status | grep -oE '"height":[0-9]+'</div>
+      <div style="font-size:0.79rem;color:var(--muted);line-height:1.9;margin-bottom:10px" data-i18n="vg-check-d">Both numbers should match to within a few blocks. The self-check <code>curl -s http://localhost:8080/api/wache</code> answers with 200 when everything is in place, otherwise it names the problem. To watch the log: <code>docker compose logs -f node</code> — Ctrl+C only ends the display, the node keeps running.</div>
+      <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:22px 0 10px;border-bottom:1px solid var(--border);padding-bottom:6px" data-i18n="g-upd-t">Updating</div>
+      <div style="font-family:var(--font-mono);background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.15);border-radius:6px;padding:12px 14px;margin-bottom:10px;font-size:0.78rem;line-height:2;overflow-x:auto;color:var(--neon)">cd ~/Aequitas &amp;&amp; git pull &amp;&amp; cd deploy/validator &amp;&amp; docker compose up -d --build</div>
+      <div style="font-size:0.79rem;color:var(--muted);line-height:1.9;margin-bottom:10px" data-i18n="vg-upd-d">After a restart the node comes back by itself and catches up on what it missed.</div>
+      <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:22px 0 10px;border-bottom:1px solid var(--border);padding-bottom:6px" data-i18n="g-keys-t">Back up the .env file</div>
+      <div style="font-size:0.79rem;color:var(--muted);line-height:1.9;margin-bottom:10px" data-i18n="vg-keys-d">Your node’s signing key and network key exist only on the server, in <code>.env</code>. Copy the file to your own computer, for example with <code>scp root@YOUR-SERVER-IP:Aequitas/deploy/validator/.env .</code> If it is lost, the node gets a new identity and has to be bound and admitted again. Moving to a new server: take the old <code>.env</code> with you and everything stays as it was.</div>
+      <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:22px 0 10px;border-bottom:1px solid var(--border);padding-bottom:6px" data-i18n="g-trouble-t">If something does not work</div>
+      <div style="font-size:0.79rem;color:var(--muted);line-height:1.9;margin-bottom:10px" data-i18n="vg-trouble-d"><strong style="color:var(--text)">“NODE_OPERATOR_WALLET is not a registered human”</strong> — the wallet is not registered: register in the app first.<br><strong style="color:var(--text)">“operator_binding_signature missing or invalid”</strong> — the binding is missing or does not match: run <code>bash einrichten.sh</code> again and scan the new QR code.<br><strong style="color:var(--text)">App: “This code was made for a different wallet”</strong> — you entered another address during setup: run <code>bash einrichten.sh</code> again with the wallet address shown in the app.<br><strong style="color:var(--text)">“… not in AUTHORIZED_VALIDATORS”</strong> — not admitted as a producer yet: send your signing address to the operator; until then the node observes.<br><strong style="color:var(--text)">Height stands still, “Not yet 3 consecutive clean sync cycles”</strong> — the node is still catching up: wait.<br><strong style="color:var(--text)">Height stays behind the network</strong> — port 4001 or 8080 is closed, or there is too little memory: check your provider’s firewall and <code>docker stats</code>.<br><strong style="color:var(--text)">The script reports no signing key</strong> — the first start failed: look at <code>docker compose logs node</code> and send the last lines to the operator.</div>
+      <div style="background:rgba(0,220,170,0.05);border:1px solid rgba(0,220,170,0.15);border-radius:6px;padding:10px 14px;margin-bottom:12px;font-size:0.77rem;color:var(--muted);line-height:1.9" data-i18n="vg-more">Every setting is explained in <code>deploy/validator/.env.example</code>. The full guide (German): <a href="https://github.com/hanoi96international-gif/Aequitas/blob/main/docs/VALIDATOR_EINRICHTEN.md" target="_blank" rel="noopener noreferrer" style="color:var(--purple)">VALIDATOR_EINRICHTEN.md</a>. Questions: the <a href="https://t.me/aequitasmoney" target="_blank" rel="noopener noreferrer" style="color:var(--purple)">Telegram group</a>. Want to protect “one human, one account” as well? The verifier has its own one-command guide: <a href="/network/verifier" style="color:var(--purple)">Run a Verifier</a>.</div>
     </div>
   </div>
 </div>
@@ -1628,12 +1233,10 @@
          genuegt nicht mehr. -->
     <div class="nc" style="grid-column:1/-1;margin-top:18px;background:linear-gradient(135deg,rgba(0,230,118,0.06),rgba(13,8,32,0.9));border-color:rgba(0,230,118,0.22)">
             <div id="guide-bv" class="nc-title" style="color:var(--neon);scroll-margin-top:80px" data-i18n="bv-title">Running a Validator Is Not Enough — and Here Is Why</div>
-      <div style="font-size:0.82rem;color:var(--muted);line-height:1.9;margin-bottom:16px" data-i18n="bv-desc">A validator secures that the <strong style="color:var(--text)">numbers add up</strong>. It does not secure the one thing everything else rests on: that <strong style="color:var(--text)">nobody registers twice</strong>. Without that, “one human, one income” is only a slogan — the ledger would be perfectly correct and completely worthless. Today that promise rests on very few machines, and every one you add makes it harder to break. The two roles that carry it — the <strong style="color:var(--text)">verifier</strong> that decides whether a face is already enrolled, and the <strong style="color:var(--text)">coordinator</strong> that collects those decisions — run on the same server. This guide sets up both.</div>
+      <div style="font-size:0.82rem;color:var(--muted);line-height:1.9;margin-bottom:16px" data-i18n="bv-desc">A validator secures that the <strong style="color:var(--text)">numbers add up</strong>. It does not secure the one thing everything else rests on: that <strong style="color:var(--text)">nobody registers twice</strong>. Without that, “one human, one income” is only a slogan — the ledger would be perfectly correct and completely worthless. Today that promise rests on very few machines, and every one you add makes it harder to break. Two roles carry it: the <strong style="color:var(--text)">verifier</strong> that decides whether a face is already enrolled, and the <strong style="color:var(--text)">coordinator</strong> that collects those decisions. The guide below sets up a verifier; it answers the coordinators the network recognises.</div>
 <div style="background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.3);border-radius:8px;padding:14px;margin-bottom:18px">
-        <div style="font-size:0.77rem;color:var(--purple);font-weight:700;margin-bottom:6px" data-i18n="bv-status-t">Status: closed beta — read this before you start</div>
-        <div style="font-size:0.79rem;color:var(--muted);line-height:1.9" data-i18n="bv-status-d">
-          The verifier source is <strong style="color:var(--text)">not public yet</strong>, so the steps below cannot be completed by everyone today. They are published now because the design should be checkable before it is deployed, not after. If you want to run one, ask in the Telegram group linked on the front page. Opening this repository is what turns the guide below from a plan into an invitation, and it is the next thing we owe you.
-        </div>
+        <div style="font-size:0.77rem;color:var(--purple);font-weight:700;margin-bottom:6px" data-i18n="bv-status-t">Status: beta — admission by hand</div>
+        <div style="font-size:0.79rem;color:var(--muted);line-height:1.9" data-i18n="bv-status-d">Setting up takes one command, and the setup script is public. The verifier program comes as a fixed, versioned image; its source code is <strong style="color:var(--text)">not public yet</strong>. New verifiers are admitted by the operator by hand (Step 2) — until then yours runs but receives no requests. Like every verifier today, it starts in test mode.</div>
       </div>
 <div style="background:rgba(0,230,118,0.05);border:1px solid rgba(0,230,118,0.18);border-radius:8px;padding:14px;margin-bottom:14px">
         <div style="font-size:0.77rem;color:var(--neon);font-weight:700;margin-bottom:6px" data-i18n="bv-what-t">What you would hold — and what you would never see</div>
@@ -1641,9 +1244,7 @@
       </div>
 <div style="background:rgba(245,166,35,0.05);border:1px solid rgba(245,166,35,0.2);border-radius:8px;padding:14px;margin-bottom:18px">
         <div style="font-size:0.77rem;color:var(--gold);font-weight:700;margin-bottom:6px" data-i18n="bv-why-t">Why every additional verifier makes the network harder to corrupt</div>
-        <div style="font-size:0.79rem;color:var(--muted);line-height:1.9" data-i18n="bv-why-d">
-          A registration is accepted only once <strong style="color:var(--text)">several different verifiers</strong> have attested it. One stolen key is not enough — an attacker needs a whole committee. And because <strong style="color:var(--neon)">one human may hold exactly one validator key</strong>, buying a committee means being that many people. With 100 verifiers, an attacker controlling 10 of them has under a 1-in-1,000 chance of owning a full committee of three. Every person who joins makes that number smaller. This is the one place where the count of participants <em>is</em> the security. <strong style="color:var(--text)">This arithmetic assumes one human per verifier key.</strong> For block production the chain enforces that; for verifier keys it does not yet (Step 5). Until it does, the number above is an upper bound on the security, not a measurement of it.
-        </div>
+        <div style="font-size:0.79rem;color:var(--muted);line-height:1.9" data-i18n="bv-why-d">A registration is accepted only once <strong style="color:var(--text)">several different verifiers</strong> have attested it. One stolen key is not enough — an attacker needs a whole committee. And because <strong style="color:var(--neon)">one human may hold exactly one key</strong>, buying a committee means being that many people. With 100 verifiers, an attacker controlling 10 of them has under a 1-in-1,000 chance of owning a full committee of three. Every person who joins makes that number smaller. This is the one place where the count of participants <em>is</em> the security. <strong style="color:var(--text)">This arithmetic assumes one human per verifier key.</strong> For block production the chain enforces that; for verifier keys the operator checks it by hand at admission (Step 2), and the chain does not enforce it yet. Until it does, the number above is an upper bound on the security, not a measurement of it.</div>
       </div>
 <div style="background:rgba(245,166,35,0.06);border:1px solid rgba(245,166,35,0.22);border-radius:8px;padding:14px;margin-bottom:14px">
         <div style="font-size:0.77rem;color:var(--gold);font-weight:700;margin-bottom:6px" data-i18n="co-power-t">What a coordinator can do — and what it cannot</div>
@@ -1651,199 +1252,38 @@
           It <strong style="color:var(--text)">cannot invent a human</strong>. No bio_hash exists until several different verifiers have attested it, and a coordinator holds none of their keys. What it can do is bind an <strong style="color:var(--text)">existing</strong> bio_hash to a wallet — so a dishonest one could redirect an allocation to an address of its choosing. That is a real power, it grows with every coordinator added, and anyone weighing whether to trust one should know the difference.
         </div>
       </div>
-      <!-- ===================== DER LEITFADEN =====================
-           Auf dem Niveau des Node-Guides: Erklaerkasten fuer jeden Begriff,
-           jeder Befehl vollstaendig, und die drei Anfaengerschritte (Server,
-           Docker, DNS), die vorher stillschweigend vorausgesetzt wurden.
-
-           Englisch wie der Node-Guide, mit Sprachhinweis. Uebersetzt bleibt
-           der Rahmen darueber -- warum ueberhaupt, was es schuetzt, wofuer man
-           haftet. Befehle zwoelfmal zu pflegen hiesse, dass elf Fassungen
-           veralten, waehrend eine stimmt. -->
+      <!-- EIN-BEFEHL-ANLEITUNG (30.09.2026). Ersetzt den elfstufigen
+           englischen Leitfaden (eigene Domain, Schluessel von Hand, Bindung
+           per MetaMask, Coordinator-Freigabe). Quelle:
+           docs/VERIFIER_EINRICHTEN.md und deploy/verifier/einrichten.sh.
+           Uebersetzt in alle zwoelf Sprachen; Befehle bleiben woertlich. -->
       <div style="background:var(--card);border:1px solid rgba(0,230,118,0.2);border-radius:var(--radius);padding:24px;margin-top:18px">
-
-        <div style="font-size:0.76rem;color:var(--neon);letter-spacing:2.5px;text-transform:uppercase;font-weight:700;margin-bottom:6px">Aequitas Bio Verifier Guide <span style="background:rgba(0,230,118,0.15);color:var(--neon);padding:2px 8px;border-radius:4px;letter-spacing:1px">v2.0 &middot; August 2026</span></div>
-        <div style="font-size:0.78rem;color:var(--muted);margin-bottom:12px" data-i18n="bv-guide-sub">Step by step · No cryptography knowledge required · About 45 minutes, most of it waiting</div>
-        <div style="font-size:0.76rem;color:var(--purple);background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.2);border-radius:6px;padding:8px 12px;margin-bottom:18px" data-i18n="bv-guide-lang-note">The steps below are in English. The sections above — what this is, what it protects, and what you take on — are in your language.</div>
-
-        <div style="background:rgba(0,220,170,0.05);border:1px solid rgba(0,220,170,0.15);border-radius:6px;padding:10px 14px;margin-bottom:10px;font-size:0.77rem"><span style="color:var(--teal);font-weight:700">What is a bio verifier?</span> <span style="color:var(--muted)">When somebody registers as a human, their face has to be checked against everyone already registered &mdash; otherwise one person could register twice and draw two incomes. A bio verifier is a machine that performs that check; two of them must agree before the proof server accepts a registration. It never keeps the picture: the image is discarded after checking, and what the service keeps is a 64-byte sketch. A split-share mode in which no single service holds even the whole sketch exists &mdash; <strong style="color:var(--text)">not yet as the binding check</strong>, because its threshold has never been calibrated. Until it is, each service holds the whole sketch.</span></div>
-
-        <div style="background:rgba(0,220,170,0.05);border:1px solid rgba(0,220,170,0.15);border-radius:6px;padding:10px 14px;margin-bottom:10px;font-size:0.77rem"><span style="color:var(--teal);font-weight:700">What is a coordinator?</span> <span style="color:var(--muted)">The verifier answers questions; the coordinator asks them. It is the door a person arrives at: it hands out the challenge, passes the capture to the verifiers, counts their answers, and issues the certificate the chain pays out on. You will run both on one server &mdash; two programs, not two machines.</span></div>
-
-        <div style="background:rgba(0,220,170,0.05);border:1px solid rgba(0,220,170,0.15);border-radius:6px;padding:10px 14px;margin-bottom:18px;font-size:0.77rem"><span style="color:var(--teal);font-weight:700">What is a committee?</span> <span style="color:var(--muted)">The group of verifiers asked about one registration. It only counts once several of them agree. That is the entire point: one broken or dishonest machine cannot wave anybody through.</span></div>
-
-        <!-- Voraussetzungen -->
-        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:22px 0 10px;border-bottom:1px solid var(--border);padding-bottom:6px">Before You Start &mdash; What You Need</div>
-        <div style="font-size:0.79rem;color:var(--muted);line-height:2.2;margin-bottom:16px">
-          <div><span style="color:var(--gold);font-weight:700">1.</span> <strong style="color:var(--text)">A registered Aequitas human account.</strong> Same rule as for block production, and for the same reason: one human, one key. Without it, one person could quietly become a whole committee.</div>
-          <div><span style="color:var(--gold);font-weight:700">2.</span> <strong style="color:var(--text)">A small Linux server.</strong> 2&nbsp;GB of RAM is enough. Any provider works &mdash; Contabo, Hetzner, DigitalOcean &mdash; for roughly 5&ndash;10&nbsp;&euro; a month. A machine at home is a poor choice: it has to stay reachable.</div>
-          <div><span style="color:var(--gold);font-weight:700">3.</span> <strong style="color:var(--text)">A domain name you control.</strong> Something like <span style="font-family:var(--font-mono);color:var(--neon)">verifier.example.org</span>. A subdomain of one you already own is fine. Browsers hand out no camera to a page without HTTPS, and HTTPS needs a name.</div>
-          <div><span style="color:var(--gold);font-weight:700">4.</span> <strong style="color:var(--text)">About 45 minutes.</strong> Most of it waiting for downloads. Nothing here needs any knowledge of cryptography &mdash; every command is given in full.</div>
-          <div><span style="color:var(--gold);font-weight:700">5.</span> <strong style="color:var(--text)">The intention to stay online.</strong> Every member of a committee must answer for a registration to finish. A verifier that is often away slows people down instead of protecting them.</div>
-        </div>
-
-        <!-- Schritt 1 -->
-        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:22px 0 10px;border-bottom:1px solid var(--border);padding-bottom:6px">Step 1 &mdash; Rent a Server</div>
-        <div style="background:rgba(0,220,170,0.05);border:1px solid rgba(0,220,170,0.15);border-radius:6px;padding:10px 14px;margin-bottom:10px;font-size:0.77rem"><span style="color:var(--teal);font-weight:700">What is a VPS?</span> <span style="color:var(--muted)">A computer in a data centre that you rent and control remotely, as if it stood under your desk. It stays on when your laptop does not.</span></div>
-        <div style="font-size:0.79rem;color:var(--muted);line-height:2.2;margin-bottom:16px">
-          <div><span style="color:var(--gold);font-weight:700">a)</span> Open any provider &mdash; <span style="font-family:var(--font-mono);color:var(--neon)">contabo.com</span>, <span style="font-family:var(--font-mono);color:var(--neon)">hetzner.com</span> and <span style="font-family:var(--font-mono);color:var(--neon)">digitalocean.com</span> all work</div>
-          <div><span style="color:var(--gold);font-weight:700">b)</span> Choose the smallest plan with at least <strong style="color:var(--text)">2 GB RAM</strong></div>
-          <div><span style="color:var(--gold);font-weight:700">c)</span> Choose <strong style="color:var(--text)">Ubuntu 24.04</strong> (or 22.04) as the operating system</div>
-          <div><span style="color:var(--gold);font-weight:700">d)</span> Note the <strong style="color:var(--text)">IP address</strong> and root password they send you</div>
-        </div>
-
-        <!-- Schritt 2 -->
-        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:22px 0 10px;border-bottom:1px solid var(--border);padding-bottom:6px">Step 2 &mdash; Log In and Install Docker</div>
-        <div style="background:rgba(0,220,170,0.05);border:1px solid rgba(0,220,170,0.15);border-radius:6px;padding:10px 14px;margin-bottom:10px;font-size:0.77rem"><span style="color:var(--teal);font-weight:700">What is Docker?</span> <span style="color:var(--muted)">A way to run a program together with everything it needs, in one sealed package. You never install databases or libraries by hand, and what runs on your machine is exactly what runs on everyone else&rsquo;s.</span></div>
-        <div style="font-size:0.79rem;color:var(--muted);line-height:1.9;margin-bottom:12px">On Windows open PowerShell; on macOS or Linux open Terminal. Then:</div>
-        <div style="font-family:var(--font-mono);background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.15);border-radius:6px;padding:14px;margin-bottom:10px;font-size:0.78rem;line-height:2.0;overflow-x:auto">
-          <span style="color:var(--muted)"># Use the IP address from Step 1</span><br>
-          ssh root@YOUR-SERVER-IP<br><br>
-          <span style="color:var(--muted)"># Installs Docker. Takes a couple of minutes.</span><br>
-          curl -fsSL https://get.docker.com | sh<br><br>
-          <span style="color:var(--muted)"># Should print a version number</span><br>
-          docker --version
-        </div>
-
-        <!-- Schritt 3 -->
-        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:22px 0 10px;border-bottom:1px solid var(--border);padding-bottom:6px">Step 3 &mdash; Point Your Domain at the Server</div>
-        <div style="background:rgba(0,220,170,0.05);border:1px solid rgba(0,220,170,0.15);border-radius:6px;padding:10px 14px;margin-bottom:10px;font-size:0.77rem"><span style="color:var(--teal);font-weight:700">What is an A record?</span> <span style="color:var(--muted)">The entry in your domain&rsquo;s settings that says which IP address a name points to. Without it nobody can reach your server by name, however well it is running.</span></div>
-        <div style="font-size:0.79rem;color:var(--muted);line-height:2.2;margin-bottom:16px">
-          <div><span style="color:var(--gold);font-weight:700">a)</span> Open the DNS settings wherever your domain is managed</div>
-          <div><span style="color:var(--gold);font-weight:700">b)</span> Add an <strong style="color:var(--text)">A record</strong>: name <span style="font-family:var(--font-mono);color:var(--neon)">verifier</span>, value = your server&rsquo;s IP address</div>
-          <div><span style="color:var(--gold);font-weight:700">c)</span> Save, wait a few minutes, then check with <span style="font-family:var(--font-mono);color:var(--neon)">ping verifier.example.org</span></div>
-        </div>
-
-        <!-- Schritt 4 -->
-        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:22px 0 10px;border-bottom:1px solid var(--border);padding-bottom:6px">Step 4 &mdash; Generate Your Own Keys</div>
-        <div style="background:rgba(0,220,170,0.05);border:1px solid rgba(0,220,170,0.15);border-radius:6px;padding:10px 14px;margin-bottom:10px;font-size:0.77rem"><span style="color:var(--teal);font-weight:700">What is a key pair?</span> <span style="color:var(--muted)">Two matching halves. The private half signs; the public half lets anyone check a signature without being able to forge one. You publish the public half and show the private one to nobody.</span></div>
-        <div style="background:rgba(255,82,82,0.06);border:1px solid rgba(255,82,82,0.25);border-radius:6px;padding:10px 14px;margin-bottom:10px;font-size:0.77rem"><span style="color:#ff8a80;font-weight:700">Generate them yourself. Never accept keys from anybody, including us.</span> <span style="color:var(--muted)">Two verifiers holding the same secret count as one, and the quorum that is meant to protect people would look satisfied without being so.</span></div>
-        <div style="font-family:var(--font-mono);background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.15);border-radius:6px;padding:14px;margin-bottom:10px;font-size:0.78rem;line-height:2.0;overflow-x:auto">
-          <span style="color:var(--muted)"># 1 &mdash; encrypts what little is stored on disk</span><br>
-          openssl rand -base64 32<br><br>
-          <span style="color:var(--muted)"># 2 &mdash; defines your own projection, see the note below</span><br>
-          openssl rand -hex 32<br><br>
-          <span style="color:var(--muted)"># 3 &mdash; your Ed25519 attestation key pair</span><br>
-          docker run --rm python:3.12-slim sh -c "pip -q install cryptography &amp;&amp; python -c '<br>
-          &nbsp;&nbsp;from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey<br>
-          &nbsp;&nbsp;from cryptography.hazmat.primitives import serialization as s<br>
-          &nbsp;&nbsp;k = Ed25519PrivateKey.generate()<br>
-          &nbsp;&nbsp;print(\"PRIVATE\", k.private_bytes(s.Encoding.Raw, s.PrivateFormat.Raw, s.NoEncryption()).hex())<br>
-          &nbsp;&nbsp;print(\"PUBLIC \", k.public_key().public_bytes(s.Encoding.Raw, s.PublicFormat.Raw).hex())'"
-        </div>
-        <div style="font-size:0.77rem;color:var(--muted);line-height:1.9;margin-bottom:16px">Copy all four values into a text file for the next step, and keep the private half on your server and nowhere else. <strong style="color:var(--text)">Your own projection seed matters:</strong> every verifier must project faces the same way to compare them, but a public projection would let a stolen fragment be reversed. Yours being yours is what prevents that.</div>
-
-        <!-- Schritt 5 -->
-        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:22px 0 10px;border-bottom:1px solid var(--border);padding-bottom:6px">Step 5 &mdash; Write the Configuration File</div>
-        <div style="font-size:0.79rem;color:var(--muted);line-height:1.9;margin-bottom:12px">Put the values from Step 4 into a file only you can read.</div>
-        <div style="font-family:var(--font-mono);background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.15);border-radius:6px;padding:14px;margin-bottom:10px;font-size:0.78rem;line-height:2.0;overflow-x:auto">
-          nano /root/.aequitas-verifier.env<br><br>
-          <span style="color:var(--muted)"># --- paste, with your own values ---</span><br>
-          TEMPLATE_ENCRYPTION_KEY=&lt;the base64 value&gt;<br>
-          FACE_SKETCH_SEED=&lt;the hex value&gt;<br>
-          VALIDATOR_SIGNING_KEY=&lt;the PRIVATE hex from Step 4&gt;<br>
-          ALLOW_REAL_BIOMETRIC_DATA=false<br>
-          POH_DB_PATH=/data/poh.db<br>
-          PORT=8098<br><br>
-          <span style="color:var(--muted)"># Ctrl+O, Enter, Ctrl+X leaves nano</span><br>
-          chmod 600 /root/.aequitas-verifier.env
-        </div>
-        <div style="font-size:0.77rem;color:var(--muted);line-height:1.9;margin-bottom:16px"><strong style="color:var(--text)">Leave ALLOW_REAL_BIOMETRIC_DATA on false</strong> until you have read the data-protection sections above and know what you are taking on. With it false your verifier works fully &mdash; on test data.</div>
-
-        <!-- Schritt 6 -->
-        <div style="background:rgba(255,82,82,0.06);border:1px solid rgba(255,82,82,0.25);border-radius:6px;padding:10px 14px;margin-bottom:10px;font-size:0.77rem"><span style="color:#ff8a80;font-weight:700">This is where the guide stops today.</span> <span style="color:var(--muted)">The image below is real and its name is final, but the package is still private &mdash; the pull will be refused with <span style="font-family:var(--font-mono)">denied</span> unless you were given access. Everything before this step works right now, and everything after it will work the day the package is opened, with no change to these instructions. We would rather show you the wall than hide it.</span></div>
-        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:22px 0 10px;border-bottom:1px solid var(--border);padding-bottom:6px">Step 6 &mdash; Start the Verifier</div>
-        <div style="font-family:var(--font-mono);background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.15);border-radius:6px;padding:14px;margin-bottom:10px;font-size:0.78rem;line-height:2.0;overflow-x:auto">
-          docker network create aequitas-net 2&gt;/dev/null || true<br>
-          mkdir -p /root/aequitas-verifier-data<br><br>
-          docker run -d --name aequitas-verifier <br>
-          &nbsp;&nbsp;--network aequitas-net --restart unless-stopped <br>
-          &nbsp;&nbsp;--env-file /root/.aequitas-verifier.env <br>
-          &nbsp;&nbsp;-v /root/aequitas-verifier-data:/data <br>
-          &nbsp;&nbsp;--log-opt max-size=20m --log-opt max-file=3 <br>
-          &nbsp;&nbsp;ghcr.io/hanoi96international-gif/aequitas-biometric-beta/matching:latest<br><br>
-          <span style="color:var(--muted)"># If this says &quot;denied&quot; or &quot;unauthorized&quot;, the image<br>          &nbsp;&nbsp;# is not published publicly yet. That is on us, not on you &mdash;<br>          &nbsp;&nbsp;# tell us and it gets released.</span><br><br>
-          <span style="color:var(--muted)"># Did it come up?</span><br>
-          curl -s localhost:8098/health
-        </div>
-        <div style="font-size:0.77rem;color:var(--muted);line-height:1.9;margin-bottom:16px">A healthy answer reports <span style="font-family:var(--font-mono);color:var(--neon)">plaintext_templates: 0</span> and <span style="font-family:var(--font-mono);color:var(--neon)">sketch_seed_configured: true</span>. The first is the plaintext-template counter and must stay at zero; the second confirms your own projection from Step 4 is in use rather than the built-in default.</div>
-
-        <!-- Schritt 7 -->
-        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:22px 0 10px;border-bottom:1px solid var(--border);padding-bottom:6px">Step 7 &mdash; Put HTTPS in Front</div>
-        <div style="background:rgba(0,220,170,0.05);border:1px solid rgba(0,220,170,0.15);border-radius:6px;padding:10px 14px;margin-bottom:10px;font-size:0.77rem"><span style="color:var(--teal);font-weight:700">What is a reverse proxy?</span> <span style="color:var(--muted)">A small program that receives requests from the internet and passes them to your verifier, handling the encryption certificate for you. Caddy obtains and renews that certificate automatically and free of charge.</span></div>
-        <div style="font-family:var(--font-mono);background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.15);border-radius:6px;padding:14px;margin-bottom:10px;font-size:0.78rem;line-height:2.0;overflow-x:auto">
-          <span style="color:var(--muted)"># nano /root/Caddyfile &mdash; use your own domain</span><br>
-          verifier.example.org {<br>
-          &nbsp;&nbsp;reverse_proxy aequitas-verifier:8098<br>
-          }<br><br>
-          docker run -d --name caddy --network aequitas-net --restart unless-stopped <br>
-          &nbsp;&nbsp;-p 80:80 -p 443:443 <br>
-          &nbsp;&nbsp;-v /root/Caddyfile:/etc/caddy/Caddyfile <br>
-          &nbsp;&nbsp;-v /root/caddy-data:/data <br>
-          &nbsp;&nbsp;caddy:latest<br><br>
-          <span style="color:var(--muted)"># From your own computer, not the server:</span><br>
-          curl -s https://verifier.example.org/health
-        </div>
-
-        <!-- Schritt 8 -->
-        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:22px 0 10px;border-bottom:1px solid var(--border);padding-bottom:6px">Step 8 &mdash; Bind Your Verifier Key to Your Wallet</div>
-        <div style="background:rgba(0,220,170,0.05);border:1px solid rgba(0,220,170,0.15);border-radius:6px;padding:10px 14px;margin-bottom:10px;font-size:0.77rem"><span style="color:var(--teal);font-weight:700">Why does this exist?</span> <span style="color:var(--muted)">This is what makes one human one verifier. Your wallet signs a sentence naming your key. Without it, anybody could enter a key that is not theirs, or one person could quietly be several verifiers &mdash; and a committee of one person pretending to be five protects nobody.</span></div>
-        <div style="font-size:0.79rem;color:var(--muted);line-height:1.9;margin-bottom:12px">Signing costs nothing and moves nothing: it signs a sentence, not a transaction. Open the button below, paste the <strong style="color:var(--text)">PUBLIC</strong> half from Step 4, and sign with the wallet of your registered account.</div>
-        <div style="margin:4px 0 16px"><a class="hover-fade" href="/node-binding" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:8px;background:rgba(139,92,246,0.15);color:var(--purple);border:1px solid rgba(139,92,246,0.3);padding:12px 20px;border-radius:8px;font-size:0.84rem;font-weight:700;text-decoration:none" data-i18n="bv-bind">🔗 Generate Node Binding Signature</a></div>
-
-        <!-- Schritt 9 -->
-        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:22px 0 10px;border-bottom:1px solid var(--border);padding-bottom:6px">Step 9 &mdash; Register It on the Chain</div>
-        <div style="font-size:0.79rem;color:var(--muted);line-height:1.9;margin-bottom:12px">Your public key and your HTTPS address go into the <strong style="color:var(--text)">validator registry on the chain</strong>, together with the signature from Step 8. From then on your attestations count toward the quorum.</div>
-        <div style="font-family:var(--font-mono);background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.15);border-radius:6px;padding:14px;margin-bottom:10px;font-size:0.78rem;line-height:2.0;overflow-x:auto">
-          <span style="color:var(--muted)"># On your server. Every value here is public.</span><br>
-          curl -s -X POST https://aequitas.digital/api/register-validator-key <br>
-          &nbsp;&nbsp;-H "Content-Type: application/json" <br>
-          &nbsp;&nbsp;-d '{"signing_address":"0xYOUR-WALLET",<br>
-          &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"human_wallet":"0xYOUR-WALLET",<br>
-          &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"signature":"0xSIGNATURE-FROM-STEP-8",<br>
-          &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"personhood_key":"YOUR-PUBLIC-HEX",<br>
-          &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"matching_url":"https://verifier.example.org"}'
-        </div>
-        <div style="font-size:0.77rem;color:var(--muted);line-height:1.9;margin-bottom:16px"><strong style="color:var(--text)">Nobody approves this.</strong> Until August 2026 you had to send your key to us and wait for somebody to add it to a file on every machine &mdash; which made that person a gatekeeper. Nothing secret leaves your server here: the private half stays where it was made.</div>
-
-        <!-- Schritt 10 -->
-        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:22px 0 10px;border-bottom:1px solid var(--border);padding-bottom:6px">Step 10 &mdash; Start Your Coordinator</div>
-        <div style="font-size:0.79rem;color:var(--muted);line-height:1.9;margin-bottom:12px">The second program, on the same server. It generates its own two keys with permissions only root can read, starts the container, and prints its public key. Nothing to copy in beforehand, nothing to send anywhere.</div>
-        <div style="font-family:var(--font-mono);background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.15);border-radius:6px;padding:14px;margin-bottom:10px;font-size:0.78rem;line-height:2.0;overflow-x:auto">
-          ./eigenen-coordinator-starten.sh verifier.example.org<br><br>
-          <span style="color:var(--muted)"># It ends by printing your coordinator public key.</span><br>
-          <span style="color:var(--muted)"># Write it down &mdash; Step 11 needs it.</span>
-        </div>
-        <div style="font-size:0.77rem;color:var(--muted);line-height:1.9;margin-bottom:16px">That key is <strong style="color:var(--text)">not in your wallet</strong>. MetaMask only ever shows addresses; this one belongs to the coordinator, not to you. Never paste its private half into any page, including ours.</div>
-
-        <!-- Schritt 11 -->
-        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:22px 0 10px;border-bottom:1px solid var(--border);padding-bottom:6px">Step 11 &mdash; Authorize It, and You Are Done</div>
-        <div style="background:rgba(0,220,170,0.05);border:1px solid rgba(0,220,170,0.15);border-radius:6px;padding:10px 14px;margin-bottom:10px;font-size:0.77rem"><span style="color:var(--teal);font-weight:700">What happens here?</span> <span style="color:var(--muted)">The page asks your coordinator for its own key, your wallet signs one sentence naming it, and the page registers that on every node. Three parties, one click, no terminal.</span></div>
-        <div style="font-size:0.79rem;color:var(--muted);line-height:1.9;margin-bottom:12px">Open the button below and enter your coordinator&rsquo;s address &mdash; the same <span style="font-family:var(--font-mono);color:var(--neon)">https://</span> address from Step 7. There is no key to look up and nothing to copy back: your coordinator proves possession of its key where that key lies, and it never leaves that machine.</div>
-        <div style="margin:4px 0 16px"><a class="hover-fade" href="/coordinator-binding" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:8px;background:rgba(139,92,246,0.12);color:#a78bfa;border:1px solid rgba(139,92,246,0.3);padding:12px 18px;border-radius:8px;font-size:0.82rem;font-weight:600;text-decoration:none;margin-bottom:16px" data-i18n="x-authorize-coordinator-key">
-        🔑 Authorize a Coordinator Key
-      </a></div>
-        <div style="font-size:0.77rem;color:var(--muted);line-height:1.9;margin-bottom:16px">Until August 2026 this step printed a command for you to run over SSH &mdash; and it was missed three times in a row, silently: signed but never registered, with nothing on screen saying so. A step that needs a terminal is, for most people, not a step at all.</div>
-
-        <!-- Nachpruefen -->
-        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:22px 0 10px;border-bottom:1px solid var(--border);padding-bottom:6px">Checking That It Works</div>
-        <div style="font-family:var(--font-mono);background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.15);border-radius:6px;padding:14px;margin-bottom:10px;font-size:0.78rem;line-height:2.0;overflow-x:auto">
-          <span style="color:var(--muted)"># Reachable from outside, with a valid certificate?</span><br>
-          curl -s https://verifier.example.org/health<br><br>
-          <span style="color:var(--muted)"># Does the network see you and agree with the others?</span><br>
-          curl -s https://aequitas.digital/inventory
-        </div>
-        <div style="font-size:0.77rem;color:var(--muted);line-height:1.9;margin-bottom:16px">The second call lists every verifier and compares them: whether all hold the same number of enrollments, whether anyone is missing a seed, and whether the keys agree. If your entry shows a divergence, it is better to find out here than during someone&rsquo;s registration.</div>
-
-        <!-- Fehlersuche -->
-        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:22px 0 10px;border-bottom:1px solid var(--border);padding-bottom:6px">If Something Goes Wrong</div>
-        <div style="font-size:0.79rem;color:var(--muted);line-height:2.2;margin-bottom:16px">
-          <div><span style="color:var(--gold);font-weight:700">a)</span> <span style="font-family:var(--font-mono);color:var(--neon)">connection refused</span> &mdash; the container is not running. <span style="font-family:var(--font-mono);color:var(--neon)">docker logs aequitas-verifier</span> says why; a missing value in the env file is the usual cause.</div>
-          <div><span style="color:var(--gold);font-weight:700">b)</span> <strong style="color:var(--text)">No certificate appears</strong> &mdash; your A record from Step 3 has not propagated yet, or port 80 is blocked. Caddy needs port 80 reachable to obtain one.</div>
-          <div><span style="color:var(--gold);font-weight:700">c)</span> <span style="font-family:var(--font-mono);color:var(--neon)">sketch_seed_configured: false</span> &mdash; FACE_SKETCH_SEED did not reach the container. Check the env file for stray quotes, then <span style="font-family:var(--font-mono);color:var(--neon)">docker restart aequitas-verifier</span>.</div>
-          <div><span style="color:var(--gold);font-weight:700">d)</span> <strong style="color:var(--text)">Your coordinator is reported as an unknown key</strong> &mdash; Step 11 did not finish. Open it again: the page lists each node it reached, and a node that was unreachable at the time is named there rather than passed over in silence.</div>
-          <div><span style="color:var(--gold);font-weight:700">e)</span> <strong style="color:var(--text)">Still stuck</strong> &mdash; ask in the Telegram group linked on the front page. Include the output of the two checks above, and never paste any private key.</div>
-        </div>
+        <div style="font-size:0.76rem;color:var(--neon);letter-spacing:2.5px;text-transform:uppercase;font-weight:700;margin-bottom:4px" data-i18n="vf-head">Verifier guide · updated 30 Sep 2026</div>
+        <div style="font-size:0.77rem;color:var(--muted);margin-bottom:6px" data-i18n="vf-sub">One command, one question · about 20 minutes, most of it the download · no domain of your own needed</div>
+        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:22px 0 10px;border-bottom:1px solid var(--border);padding-bottom:6px" data-i18n="g-need-t">What you need</div>
+        <div style="font-size:0.79rem;color:var(--muted);line-height:1.9;margin-bottom:10px" data-i18n="vf-need-d"><strong style="color:var(--text)">A rented Linux server (VPS)</strong> with Ubuntu 22.04 or 24.04 and a public IPv4 address — at least 4 GB RAM and 40 GB SSD (the program alone is about 5 GB).<br><strong style="color:var(--text)">Two open ports:</strong> 80 and 443 (for HTTPS).<br><strong style="color:var(--text)">You yourself, registered</strong> in the Aequitas app.<br><strong style="color:var(--text)">No domain needed:</strong> the script uses the address <code>https://&lt;your-IP-with-dashes&gt;.sslip.io</code>, which points to your server without any setup; the server fetches its HTTPS certificate itself.<br>A verifier is not a validator: the validator keeps the chain and checks the blocks, the verifier protects “one human, one account”. Both on one server is possible but needs more memory.</div>
+        <div style="background:rgba(245,166,35,0.05);border:1px solid rgba(245,166,35,0.2);border-radius:6px;padding:10px 14px;margin-bottom:12px;font-size:0.79rem;color:var(--muted);line-height:1.9" data-i18n="vf-never"><strong style="color:var(--gold)">Never on the server:</strong> your wallet, its word list or its private key. The server only holds your wallet’s <strong style="color:var(--text)">address</strong>.</div>
+        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:22px 0 10px;border-bottom:1px solid var(--border);padding-bottom:6px" data-i18n="vf-s1-t">Step 1 — Connect and paste three lines</div>
+        <div style="font-size:0.79rem;color:var(--muted);line-height:1.9;margin-bottom:10px" data-i18n="vf-s1-d">Connect to your server (Windows: “PowerShell”, Mac: “Terminal”; replace YOUR-SERVER-IP) and paste the three lines:</div>
+        <div style="font-family:var(--font-mono);background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.15);border-radius:6px;padding:12px 14px;margin-bottom:10px;font-size:0.78rem;line-height:2;overflow-x:auto;color:var(--neon)">ssh root@YOUR-SERVER-IP<br>curl -fsSL https://get.docker.com | sh<br>git clone https://github.com/hanoi96international-gif/Aequitas.git<br>cd Aequitas/deploy/verifier &amp;&amp; bash einrichten.sh</div>
+        <div style="font-size:0.79rem;color:var(--muted);line-height:1.9;margin-bottom:10px" data-i18n="vf-s1-e">The script asks only for <strong style="color:var(--text)">your wallet address</strong> (in the app under “Receive”, starts with 0x) and lets you confirm the IP address. Everything else it does by itself:<br>• It creates <strong style="color:var(--text)">all keys on your server</strong>: the key the verifier signs its attestations with, a key for the stored data and its own projection for the face sketches. Never use keys from anyone else, not even from us — two verifiers with the same secret count as one.<br>• It fetches the list of recognised coordinators from the network.<br>• It downloads the program (about 5 GB the first time), starts it and sets up HTTPS.</div>
+        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:22px 0 10px;border-bottom:1px solid var(--border);padding-bottom:6px" data-i18n="vf-s2-t">Step 2 — Send three lines for admission</div>
+        <div style="font-size:0.79rem;color:var(--muted);line-height:1.9;margin-bottom:10px" data-i18n="vf-s2-d">At the end the script shows three lines like these:</div>
+        <div style="font-family:var(--font-mono);background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.15);border-radius:6px;padding:12px 14px;margin-bottom:10px;font-size:0.78rem;line-height:2;overflow-x:auto;color:var(--neon)">Verifier: https://203-0-113-9.sslip.io<br>Wallet:   0x…<br>Schluessel/key: …</div>
+        <div style="font-size:0.79rem;color:var(--muted);line-height:1.9;margin-bottom:10px" data-i18n="vf-s2-e">Post them in the <a href="https://t.me/aequitasmoney" target="_blank" rel="noopener noreferrer" style="color:var(--purple)">Telegram group</a> — none of it is secret.<br>For now the operator admits new verifiers by hand. The reason is audit finding K2 (30 Sep 2026): if every key that registers itself counted as a witness at once, one human with enough keys could form a whole quorum alone. So the operator checks that a registered human stands behind the wallet and runs only one verifier. Your verifier supplies the proof itself (<code>https://…sslip.io/bezeugungsnachweis?wallet=0x…</code>). Until admission it runs but receives no requests.</div>
+        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:22px 0 10px;border-bottom:1px solid var(--border);padding-bottom:6px" data-i18n="vf-store-t">What your verifier stores — and what never</div>
+        <div style="font-size:0.79rem;color:var(--muted);line-height:1.9;margin-bottom:10px" data-i18n="vf-store-d">A photo is never stored. After the check only a 64-byte sketch remains (512 yes/no values): no face can be reconstructed from it, but it recognises a second registration by the same person. The script starts in <strong style="color:var(--text)">test mode</strong> (<code>ALLOW_REAL_BIOMETRIC_DATA=false</code>), like every verifier today. Live operation needs a separate decision and legal clearance.</div>
+        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:22px 0 10px;border-bottom:1px solid var(--border);padding-bottom:6px" data-i18n="g-check-t">Is it running?</div>
+        <div style="font-family:var(--font-mono);background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.15);border-radius:6px;padding:12px 14px;margin-bottom:10px;font-size:0.78rem;line-height:2;overflow-x:auto;color:var(--neon)">curl -s https://YOUR-ADDRESS.sslip.io/health</div>
+        <div style="font-size:0.79rem;color:var(--muted);line-height:1.9;margin-bottom:10px" data-i18n="vf-check-d"><code>"status":"ok"</code> together with <code>"sketch_seed_configured":true</code> means: running, with your own projection. To watch the log: <code>docker compose logs -f verifier</code> (Ctrl+C only ends the display).</div>
+        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:22px 0 10px;border-bottom:1px solid var(--border);padding-bottom:6px" data-i18n="g-upd-t">Updating</div>
+        <div style="font-family:var(--font-mono);background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.15);border-radius:6px;padding:12px 14px;margin-bottom:10px;font-size:0.78rem;line-height:2;overflow-x:auto;color:var(--neon)">cd ~/Aequitas &amp;&amp; git pull &amp;&amp; cd deploy/verifier &amp;&amp; docker compose pull &amp;&amp; docker compose up -d</div>
+        <div style="font-size:0.79rem;color:var(--muted);line-height:1.9;margin-bottom:10px" data-i18n="vf-upd-d">The program version is pinned in the script (<code>VERIFIER_IMAGE</code> in <code>.env</code>) so that every verifier checks the same way. A new version arrives with the repository.</div>
+        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:22px 0 10px;border-bottom:1px solid var(--border);padding-bottom:6px" data-i18n="g-keys-t">Back up the .env file</div>
+        <div style="font-size:0.79rem;color:var(--muted);line-height:1.9;margin-bottom:10px" data-i18n="vf-keys-d">The attestation key, the data key and the projection exist only on the server, in <code>.env</code>. Copy the file to your own computer, for example with <code>scp root@YOUR-SERVER-IP:Aequitas/deploy/verifier/.env .</code> If it is lost, your verifier is a new one: new keys, new admission.</div>
+        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:22px 0 10px;border-bottom:1px solid var(--border);padding-bottom:6px" data-i18n="g-trouble-t">If something does not work</div>
+        <div style="font-size:0.79rem;color:var(--muted);line-height:1.9;margin-bottom:10px" data-i18n="vf-trouble-d"><strong style="color:var(--text)">“The verifier image cannot be fetched”</strong> — the program cannot be downloaded: report it in the Telegram group.<br><strong style="color:var(--text)">“Port 80 is in use”</strong> — a web server already runs on this machine: use a separate server for the verifier.<br><strong style="color:var(--text)">“HTTPS not reachable yet”</strong> — port 80 or 443 is blocked at your provider: open both in the provider’s firewall, then run <code>bash einrichten.sh</code> again.<br><strong style="color:var(--text)">“List of coordinators not readable”</strong> — the network was briefly unreachable: try again later.<br><strong style="color:var(--text)"><code>sketch_seed_configured: false</code></strong> — the <code>.env</code> is damaged: restore it from your backup.</div>
+        <div style="background:rgba(0,220,170,0.05);border:1px solid rgba(0,220,170,0.15);border-radius:6px;padding:10px 14px;margin-bottom:12px;font-size:0.77rem;color:var(--muted);line-height:1.9" data-i18n="vf-more">The full guide (German): <a href="https://github.com/hanoi96international-gif/Aequitas/blob/main/docs/VERIFIER_EINRICHTEN.md" target="_blank" rel="noopener noreferrer" style="color:var(--purple)">VERIFIER_EINRICHTEN.md</a>.</div>
 
         <!-- Ehrlichkeit -->
         <div style="background:rgba(139,92,246,0.06);border:1px solid rgba(139,92,246,0.22);border-radius:8px;padding:14px">
@@ -1875,12 +1315,12 @@
 </div>
 <div id="net-protocol" class="stab-panel">
 <div class="ps">
-  <div class="section-label" data-i18n="proto-label">Aequitas V7 Protocol — Technical Documentation</div>
+  <div class="section-label" data-i18n="proto-label">Aequitas V8 Protocol — Technical Documentation</div>
 
   <!-- V7 INTRO CARD -->
   <div class="idx" style="margin-bottom:12px;background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(6,182,212,0.04));border-color:rgba(139,92,246,0.25)">
-    <div class="idx-title" data-i18n="v7-intro-title">What is AequitasV7?</div>
-    <div style="font-size:0.81rem;color:var(--muted);line-height:1.9;margin-bottom:14px" data-i18n="v7-intro-text">AequitasV7 is the central smart contract of the Aequitas protocol. It defines the economic rules — the registration grant, the wealth cap, demurrage, the UBI accounting — and holds the nullifier registry that makes "one human, one registration" enforceable. It is deployed immutably on Aequitas Chain (ID 1926). Live transfers are settled by the chain layer against that rulebook, which is what makes them sub-second with no EVM gas (0.1% protocol fee).</div>
+    <div class="idx-title" data-i18n="v7-intro-title">What is AequitasV8?</div>
+    <div style="font-size:0.81rem;color:var(--muted);line-height:1.9;margin-bottom:14px" data-i18n="v7-intro-text">AequitasV8 is the central smart contract of the Aequitas protocol. It defines the economic rules — the registration grant, the wealth cap, demurrage, the UBI accounting — and holds the nullifier registry that makes "one human, one registration" enforceable. It is deployed immutably on Aequitas Chain (ID 1926). Live transfers are settled by the chain layer against that rulebook, which is what makes them sub-second with no EVM gas (0.1% protocol fee).</div>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
       <div style="background:var(--card);border:1px solid var(--border);border-radius:6px;padding:10px;text-align:center">
         <div style="font-size:0.95rem;font-weight:700;color:var(--purple);font-family:var(--font-display)">6</div>
@@ -1899,8 +1339,8 @@
 
   <div class="idx" style="margin-bottom:12px">
     <div class="idx-title" data-i18n="ca-title">Contract Addresses</div>
-    <div style="font-size:0.81rem;color:var(--muted);line-height:1.9;margin-bottom:12px" data-i18n="ca-desc">AequitasV7 exposes the on-chain registry surface (nullifiers, registrations, wealth-cap and demurrage parameters). Balances, registration, and fees are enforced by the Go L1; the contract is the EVM interface, not the sole source of truth. Live transfers settle in the chain layer: the node intercepts the ERC-20 call before the EVM and applies it to the Go ledger — sub-second, no EVM gas, 0.1% protocol fee.<br><br>The BioVerifier contract receives Groth16 zero-knowledge proofs generated entirely on the user's Android device. It verifies mathematically on-chain in ~10 ms that the submitted nullifier was correctly derived from a secret the registrant holds, and the chain refuses any nullifier it has already seen — without ever learning their name, identity, or biometric data. That rules out a second registration from the same identity source (Beta: the nullifier is face-bound and the proof server requires the matching quorum's signed attestation). Registration needs no EVM gas; transfers carry a 0.1% protocol fee — the proof is what leaves the device.<br><br>What is new here: the rules and the identity-source nullifier registry sit in a contract the operator cannot casually rewrite, and the code that carries them out is open source and reproducible from this repository. All of it can be checked by anyone. What still requires trust is the operation of the nodes themselves, and the honest way to reduce that is more independent validators, not a stronger sentence here.</div>
-    <div class="hlbox" data-i18n="ca-text">Chain: Aequitas Chain (Chain ID: 1926 · 0x786)<br>RPC: __RPC__<br><br>BioVerifier: 0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2<br>AequitasV7 (Main): 0x20D271028f32577FCd07b4583A8e0E4eBBdB4F78</div>
+    <div style="font-size:0.81rem;color:var(--muted);line-height:1.9;margin-bottom:12px" data-i18n="ca-desc">AequitasV8 exposes the on-chain registry surface (nullifiers, registrations, wealth-cap and demurrage parameters). Balances, registration, and fees are enforced by the Go L1; the contract is the EVM interface, not the sole source of truth. Live transfers settle in the chain layer: the node intercepts the ERC-20 call before the EVM and applies it to the Go ledger — sub-second, no EVM gas, 0.1% protocol fee.<br><br>The BioVerifier contract receives Groth16 zero-knowledge proofs generated entirely on the user's Android device. It verifies mathematically on-chain in ~10 ms that the submitted nullifier was correctly derived from a secret the registrant holds, and the chain refuses any nullifier it has already seen — without ever learning their name, identity, or biometric data. That rules out a second registration from the same identity source (Beta: the nullifier is face-bound and the proof server requires the matching quorum's signed attestation). Registration needs no EVM gas; transfers carry a 0.1% protocol fee — the proof is what leaves the device.<br><br>What is new here: the rules and the identity-source nullifier registry sit in a contract the operator cannot casually rewrite, and the code that carries them out is open source and reproducible from this repository. All of it can be checked by anyone. What still requires trust is the operation of the nodes themselves, and the honest way to reduce that is more independent validators, not a stronger sentence here.</div>
+    <div class="hlbox" data-i18n="ca-text">Chain: Aequitas Chain (Chain ID: 1926 · 0x786)<br>RPC: __RPC__<br><br>BioVerifier: 0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2<br>AequitasV8 (Main): 0x20D271028f32577FCd07b4583A8e0E4eBBdB4F78</div>
   </div>
   <div class="idx" style="margin-bottom:12px">
     <div class="idx-title" data-i18n="poa-title">1. PROOF OF ALIVE</div>
@@ -1931,7 +1371,7 @@
   </div>
   <div class="idx" style="margin-bottom:12px;background:linear-gradient(135deg,rgba(6,182,212,0.06),rgba(13,8,32,0.9));border-color:rgba(6,182,212,0.2)">
     <div class="idx-title" style="color:var(--teal)" data-i18n="x-open-source-chain-logic">Open Source Chain Logic</div>
-    <div style="font-size:0.79rem;color:var(--muted);line-height:1.9">The Aequitas chain core — consensus engine, state machine, redistribution logic, wealth cap formula, and ZK proof verification — is written in Go. The redistribution algorithms (CalcGini, enforceWealthCap, DistributeUBIPool, settleDemurrage) are open for review.<br><br>Smart contract source code for AequitasV7 and BioVerifier is embedded in the chain binary and verifiable via the contract addresses above. Chain ID 1926, RPC: <span style="color:var(--teal);font-family:var(--font-mono)">https://aequitas.digital/rpc</span></div>
+    <div style="font-size:0.79rem;color:var(--muted);line-height:1.9">The Aequitas chain core — consensus engine, state machine, redistribution logic, wealth cap formula, and ZK proof verification — is written in Go. The redistribution algorithms (CalcGini, enforceWealthCap, DistributeUBIPool, settleDemurrage) are open for review.<br><br>Smart contract source code for AequitasV8 and BioVerifier is embedded in the chain binary and verifiable via the contract addresses above. Chain ID 1926, RPC: <span style="color:var(--teal);font-family:var(--font-mono)">https://aequitas.digital/rpc</span></div>
     <div style="margin-top:12px;padding:10px 14px;background:rgba(6,182,212,0.06);border:1px solid rgba(6,182,212,0.15);border-radius:6px;font-size:0.77rem;color:var(--teal);font-family:var(--font-mono)">
       /metrics — Prometheus endpoint (gini, humans, pools, block height)<br>
       /api/gini/history — Gini snapshots after each UBI distribution<br>
@@ -1945,12 +1385,12 @@
   </div>
   <div class="idx" style="margin-bottom:12px;background:linear-gradient(135deg,rgba(139,92,246,0.06),rgba(13,8,32,0.9));border-color:rgba(139,92,246,0.2)">
     <div class="idx-title" style="color:var(--purple)" data-i18n="x-node-decentralization-roadmap">Node Decentralization Roadmap</div>
-    <div style="font-size:0.79rem;color:var(--muted);line-height:1.9"><span data-i18n="nr-intro">Currently the network runs on 2 active validators, each on its own server with its own database, with MERGE events from both. Only registered humans can run validator nodes — this is a security requirement. The steps below are goals tied to the protocol phases: the protocol sets the phase automatically, but it does not yet enforce a minimum number of nodes.</span><br><br>
-    <span style="color:var(--neon)" data-i18n="x-phase-0-now">Phase 0 (now):</span> <span data-i18n="nr-0">Two independent Contabo servers, each with its own database and its own proof server. Trust established through code transparency. Any registered human can already join as a validator — no application, no stake.</span><br>
+    <div style="font-size:0.79rem;color:var(--muted);line-height:1.9"><span data-i18n="nr-intro">Since the restart at zero on 30 Sep 2026 the network runs on one validator with its own database and proof server; the second server is switched off for now. Only registered humans can run validator nodes — this is a security requirement. The steps below are goals tied to the protocol phases: the protocol sets the phase automatically, but it does not yet enforce a minimum number of nodes.</span><br><br>
+    <span style="color:var(--neon)" data-i18n="x-phase-0-now">Phase 0 (now):</span> <span data-i18n="nr-0">One validator, run by the founder. Any registered human can set up another one with a single command (Run a Node). Admission as a block producer stays manual until every node recomputes every value of a block itself.</span><br>
     <span style="color:var(--blue)" data-i18n="x-phase-1-100-humans">Phase 1 (100+ humans):</span> <span data-i18n="nr-1">More independent node operators; each earns a share of the validator pool (40% of swap fees).</span><br>
     <span style="color:var(--gold)" data-i18n="x-phase-2-10-000-humans">Phase 2 (10,000+ humans):</span> <span data-i18n="nr-2">Goal: at least 10 independent node operators.</span><br>
     <span style="color:var(--purple)" data-i18n="x-phase-3-1m-humans-gini">Phase 3 (1M+ humans and Gini below 0.30):</span> <span data-i18n="nr-3">Goal: a fully decentralized BlockDAG — no single operator can censor or halt the chain.</span><br><br>
-    <span data-i18n="nr-outro">The node operator guide (PDF) is available on the Network tab. Each new node operator earns from the validator pool — the more nodes, the more resilient the network.</span></div>
+    <span data-i18n="nr-outro">The step-by-step guides are under “Run a Node” and “Run a Verifier” on this tab. Each new node operator earns from the validator pool — the more nodes, the more resilient the network.</span></div>
   </div>
 </div>
 </div>

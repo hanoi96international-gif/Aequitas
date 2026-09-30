@@ -30,8 +30,6 @@ import (
 //
 // WAS AUSDRÜCKLICH NICHT GEZÄHLT WIRD
 //
-//   - Die beiden Leitfäden (Node und Bio-Verifier). Sie sind per Entwurf
-//     englisch, mit Sprachhinweis und übersetzten PDFs.
 //   - Code, Adressen, Platzhalter, Formeln. Ein übersetzter Shell-Befehl ist
 //     kein Schönheitsfehler, sondern eine Anleitung, die nicht mehr
 //     funktioniert.
@@ -61,29 +59,15 @@ func TestJederSichtbareTextHatEinenUebersetzungsschluessel(t *testing.T) {
 	}
 	s := string(roh)
 
-	// Die Leitfaden-Bereiche, per Panel-ID und Klammerzählung.
-	//
-	// Beide Leitfäden sind per Entwurf englisch (Sprachhinweis + übersetzte
-	// PDFs), ihr Inhalt wird hier also nicht gezählt.
-	//
-	// FRÜHER hing das an der Kommentarzeile "<!-- ZWEITE ROLLE" als Anfang und
-	// am Ende von net-runnode als Ende. Am 26.08.2026 sind die beiden
-	// Leitfäden in getrennte Rubriken gewandert — damit lag der Anfang HINTER
-	// dem Ende, das Fenster war leer, und der englische Node-Guide schlug mit
-	// 118 Fundstellen auf. Der Test hatte recht zu melden; er meldete nur
-	// etwas, das absichtlich so ist.
-	//
-	// Deshalb jetzt an den Panel-IDs statt an einem Kommentar: die sind das,
-	// was die Bereiche ausmacht, und sie überleben ein Verschieben.
-	guideBereiche := panelBereiche(s, "net-runnode", "net-verifier")
+	// Die beiden Leitfäden (Node und Verifier) waren bis zum 30.09.2026 per
+	// Entwurf englisch und hier ausgenommen. Seitdem sind es kurze
+	// Ein-Befehl-Anleitungen in allen zwölf Sprachen -- also zählen sie mit.
+	// Eine neue englische Zeile dort fällt damit genauso auf wie überall sonst.
 	i18nEltern := i18nBereiche(s)
 
 	var ohne []string
 	for _, m := range i18nElementRe.FindAllStringSubmatchIndex(s, -1) {
 		start := m[0]
-		if inBereich(start, guideBereiche) {
-			continue
-		}
 		// Nachfahre eines Elements, das SELBST einen Schluessel traegt:
 		// sein Text steht mit im Uebersetzungsstring des Elternteils.
 		if inBereich(start, i18nEltern) {
@@ -121,39 +105,6 @@ func TestJederSichtbareTextHatEinenUebersetzungsschluessel(t *testing.T) {
 			"englisch, und keiner der anderen i18n-Tests bemerkt das:\n  %s",
 			len(ohne), len(i18nLocales), strings.Join(ohne, "\n  "))
 	}
-}
-
-// panelBereiche liefert zu jeder Panel-ID den Bereich [Anfang, Ende) im
-// Dokument, per Klammerzählung über <div>/</div>.
-//
-// Klammerzählung und nicht "bis zum nächsten </div>": ein Panel enthält
-// Dutzende verschachtelter Divs, und die Textsuche liefert das erste innerste.
-// Genau dieser Fehler führte dazu, dass Shell-Befehle zur Übersetzung
-// vorgeschlagen wurden.
-func panelBereiche(s string, ids ...string) [][2]int {
-	divRe := regexp.MustCompile(`<div\b|</div>`)
-	var out [][2]int
-	for _, id := range ids {
-		p := strings.Index(s, `<div id="`+id+`"`)
-		if p < 0 {
-			continue
-		}
-		tiefe := 0
-		ende := len(s)
-		for _, m := range divRe.FindAllStringIndex(s[p:], -1) {
-			if strings.HasPrefix(s[p+m[0]:p+m[1]], "<div") {
-				tiefe++
-			} else {
-				tiefe--
-			}
-			if tiefe == 0 {
-				ende = p + m[1]
-				break
-			}
-		}
-		out = append(out, [2]int{p, ende})
-	}
-	return out
 }
 
 // i18nBereiche liefert die Spannweiten aller Elemente, die SELBST ein

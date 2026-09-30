@@ -549,3 +549,9 @@ a.tab{text-decoration:none;display:inline-block}
 /* Beta-Hinweis auf der Registrierungsseite: aufklappbar statt Textwand */
 .reg-details summary{cursor:pointer;font-weight:800;color:var(--gold);font-size:0.9rem;line-height:1.5}
 .reg-details[open] summary{margin-bottom:4px}
+
+/* Arabisch (rtl): Befehle, Adressen und Dateinamen bleiben links-nach-rechts.
+   Ohne das ordnet der Bidi-Algorithmus https://<IP>.sslip.io oder
+   "cd a && bash b" in umgekehrter Folge an -- abgetippt waere es falsch. */
+[dir="rtl"] code{direction:ltr;unicode-bidi:isolate}
+[dir="rtl"] #node-guide [style*="font-mono"],[dir="rtl"] #net-verifier [style*="font-mono"]{direction:ltr;text-align:left}
