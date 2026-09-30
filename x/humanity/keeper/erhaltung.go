@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"context"
+	"math"
 )
 
 // Erhaltung der Toepfe beim Nachspielen (Audit 2026-09-29, K-2, Schritt 2).
@@ -20,12 +21,14 @@ import (
 // Jeder Knoten zaehlt beim Nachspielen die Gutschriften einer Runde je Topf
 // mit:
 //
-//   - topf_ueberzogen: bei JEDER Gutschrift -- die Summe der Runde bis hierher
-//     ist hoeher als der Topf. Faellt auch auf, wenn der Produzent den
-//     Abschluss weglaesst.
+//   - topf_ueberzogen: Summe der Runde ueber dem Topf. Validatoren/LP bei
+//     jeder Gutschrift; Grundeinkommen beim Abschluss bzw. spaetestens bei
+//     der Rundenmarke (erst dann ist die Demurrage aller Menschen im Topf).
 //   - topf_rest: beim Abschluss -- der gemeldete Endstand des
 //     Grundeinkommens-Topfs ist hoeher als Topf minus Auszahlung; der Rest
 //     waere neues Geld.
+//   - demurrage_ueber_guthaben: die Demurrage, die einem Konto abgezogen wird
+//     und in einen Topf fliesst, ist hoeher als Guthaben + LP-Wert.
 //
 // Die Summen liegen im Speicher. Nach einem Neustart mitten in einer Runde
 // beginnen sie bei null -- die Pruefung zaehlt dann zu wenig, nie zu viel.
@@ -62,32 +65,52 @@ func erhaltungToleranz(n int64) int64 { return n + 2 }
 // pruefeErhaltungLocked: VOR dem Anwenden der Transaktion. Aufrufer haelt
 // cs.mu (replayTransactions).
 func (cs *ChainState) pruefeErhaltungLocked(tx *Transaction, blockZeit int64) error {
+	// Demurrage, die der Produzent einem Konto abzieht, kann nicht mehr sein,
+	// als es hat (Guthaben + LP-Wert). Sonst ging das Konto ins Minus, und der
+	// Topf, der die Demurrage bekommt, wuchs aus dem Nichts
+	// (Sicherheitspruefung #239, Befund 2).
+	if err := cs.demurrageGedecktLocked(tx.Wallet, tx.FromDemurrageLost, blockZeit); err != nil {
+		return err
+	}
+	if tx.Type == "transfer" {
+		if err := cs.demurrageGedecktLocked(tx.To, tx.ToDemurrageLost, blockZeit); err != nil {
+			return err
+		}
+	}
+
 	e := &cs.erhaltung
 	switch tx.Type {
-	// Gutschriften: laufend gegen den Topf. Waehrend einer Runde sinkt der
-	// Topf beim Nachspielen nicht (die Gutschrift belastet ihn nicht, erst
-	// der Abschluss setzt ihn) -- Summe bis hierher <= Topf muss also bei
-	// JEDER Gutschrift gelten. So faellt auch ein Produzent auf, der den
-	// Abschluss einfach weglaesst.
+	// Grundeinkommen: NICHT je Gutschrift pruefen. Der Erzeuger rechnet die
+	// Demurrage ALLER Menschen vorab in den Topf und teilt dann; beim
+	// Nachspielen kommt sie erst mit jeder Gutschrift (FromDemurrageLost)
+	// hinein. Mitten in der Runde ist der Topf also noch nicht voll -- eine
+	// Pruefung dort meldete jede ehrliche Runde mit Demurrage
+	// (Sicherheitspruefung #239, Befund 1). Geprueft wird beim Abschluss und
+	// bei der Rundenmarke, wenn alles im Topf ist.
 	case "ubi_distribution":
 		if tx.AmountPerHuman == 0 {
-			e.ubi += NewDecimal(tx.Amount).Micro()
+			e.ubi = plusGesaettigt(e.ubi, NewDecimal(tx.Amount).Micro())
 			e.ubiN++
-			return cs.ueberzogenLocked("Grundeinkommen", ubiPoolAddr, e.ubi, e.ubiN, blockZeit)
 		}
+	// Validatoren und LP: laufend. Ihre Toepfe bekommen waehrend einer Runde
+	// nichts (Demurrage und Vermoegensgrenze gehen ans Grundeinkommen) und
+	// sinken beim Nachspielen erst mit *_pool_zero -- Summe <= Topf muss bei
+	// JEDER Gutschrift gelten, auch wenn der Abschluss fehlt.
 	case "validator_distribution":
-		e.validatoren += NewDecimal(tx.Amount).Micro()
+		e.validatoren = plusGesaettigt(e.validatoren, NewDecimal(tx.Amount).Micro())
 		e.validatorenN++
 		return cs.ueberzogenLocked("Validatoren", validatorsPoolAddr, e.validatoren, e.validatorenN, blockZeit)
 	case "lp_distribution":
-		e.lp += NewDecimal(tx.Amount).Micro()
+		e.lp = plusGesaettigt(e.lp, NewDecimal(tx.Amount).Micro())
 		e.lpN++
 		return cs.ueberzogenLocked("Liquiditaetsgeber", lpPoolAddr, e.lp, e.lpN, blockZeit)
 
-	// Abschluss: der Topf wird gesetzt bzw. genullt, die Runde ist zu Ende.
 	case "ubi_distribution_finalize":
 		summe, n := e.ubi, e.ubiN
 		e.ubi, e.ubiN = 0, 0
+		if err := cs.ueberzogenLocked("Grundeinkommen", ubiPoolAddr, summe, n, blockZeit); err != nil {
+			return err
+		}
 		topf := cs.topfMikroLocked(ubiPoolAddr)
 		if rest := NewDecimal(tx.Amount).Micro(); rest > topf-summe+erhaltungToleranz(n) {
 			return nachrechnenAbweichung("topf_rest", blockZeit,
@@ -98,8 +121,45 @@ func (cs *ChainState) pruefeErhaltungLocked(tx *Transaction, blockZeit int64) er
 		e.validatoren, e.validatorenN = 0, 0
 	case "lp_distribution_pool_zero":
 		e.lp, e.lpN = 0, 0
+
+	// Die Rundenmarke kommt als letzte Transaktion jeder Runde. Was bis hier
+	// nicht abgeschlossen wurde (Grundeinkommen ohne finalize), wird jetzt
+	// gegen den Topf geprueft; danach beginnt jede Summe neu -- auch wenn der
+	// Produzent einen Abschluss weggelassen hat.
+	case "distribution_round_marker":
+		summe, n := e.ubi, e.ubiN
+		*e = topfErhaltung{}
+		if n > 0 {
+			return cs.ueberzogenLocked("Grundeinkommen", ubiPoolAddr, summe, n, blockZeit)
+		}
 	}
 	return nil
+}
+
+// demurrageGedecktLocked: lost <= Guthaben + LP-Wert von wallet.
+func (cs *ChainState) demurrageGedecktLocked(wallet string, lost float64, blockZeit int64) error {
+	if lost <= 0 || wallet == "" {
+		return nil
+	}
+	cs.ensureAccountLoadedCtx(context.Background(), wallet)
+	var hat int64
+	if acc, ok := cs.accounts.Get(wallet); ok {
+		hat = plusGesaettigt(acc.Balance.Micro(), NewDecimal(cs.lpValueLockedAEQ(acc)).Micro())
+	}
+	if NewDecimal(lost).Micro() > hat+erhaltungToleranz(0) {
+		return nachrechnenAbweichung("demurrage_ueber_guthaben", blockZeit,
+			"%s: Demurrage %.6f AEQ, das Konto hat %.6f", kurzAdresse(wallet), lost,
+			NewDecimalFromMicro(hat).Float())
+	}
+	return nil
+}
+
+// plusGesaettigt: a+b ohne Ueberlauf ins Negative (Befund 6).
+func plusGesaettigt(a, b int64) int64 {
+	if b > 0 && a > math.MaxInt64-b {
+		return math.MaxInt64
+	}
+	return a + b
 }
 
 // ueberzogenLocked: Summe der Gutschriften der laufenden Runde gegen den

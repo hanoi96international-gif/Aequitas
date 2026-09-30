@@ -129,10 +129,9 @@ func TestErhaltung_ValidatorenUndLPUeberzogen(t *testing.T) {
 	}
 }
 
-// Missbrauch: Gutschriften ganz ohne Abschluss, verteilt auf mehrere Bloecke
-// -- jede einzelne bleibt unter dem Topf, zusammen nicht. Die laufende Summe
-// faellt auf, obwohl nie ein finalize kommt.
-func TestErhaltung_OhneAbschlussUeberBloeckeWirdErkannt(t *testing.T) {
+// Missbrauch: Grundeinkommen ohne Abschluss, verteilt auf mehrere Bloecke --
+// spaetestens die Rundenmarke prueft die offene Summe.
+func TestErhaltung_UBIOhneAbschlussBeiMarkeErkannt(t *testing.T) {
 	dag, _ := erhaltungKnoten(t, 90)
 	vorher := erhaltungZaehler("topf_ueberzogen")
 	for i := 1; i <= 4; i++ {
@@ -140,9 +139,99 @@ func TestErhaltung_OhneAbschlussUeberBloeckeWirdErkannt(t *testing.T) {
 			Transaction{Type: "ubi_distribution", Wallet: erhaltungMenschen[0], Amount: 30},
 		), true)
 	}
-	// 30, 60, 90 passen in den Topf von 90 -- die vierte nicht.
+	dag.replayTransactions(erhaltungBlock(5, nowUnix(),
+		Transaction{Type: "distribution_round_marker", DistributionAt: nowUnix()},
+	), true)
+	if got := erhaltungZaehler("topf_ueberzogen") - vorher; got != 1 {
+		t.Fatalf("erwartet eine Ueberziehung bei der Marke (120 aus 90), gezaehlt %d", got)
+	}
+}
+
+// Missbrauch: Validatoren-Gutschriften ohne Abschluss ueber mehrere Bloecke
+// -- jede einzelne passt, zusammen nicht; die laufende Summe faellt auf.
+func TestErhaltung_ValidatorenOhneAbschlussUeberBloeckeErkannt(t *testing.T) {
+	dag, cs := erhaltungKnoten(t, 0)
+	cs.mu.Lock()
+	cs.accounts.Set(validatorsPoolAddr, &AccountState{Address: validatorsPoolAddr, Balance: NewDecimal(90)})
+	cs.mu.Unlock()
+	vorher := erhaltungZaehler("topf_ueberzogen")
+	for i := 1; i <= 4; i++ {
+		dag.replayTransactions(erhaltungBlock(i, nowUnix(),
+			Transaction{Type: "validator_distribution", Wallet: erhaltungMenschen[0], Amount: 30},
+		), true)
+	}
 	if got := erhaltungZaehler("topf_ueberzogen") - vorher; got != 1 {
 		t.Fatalf("erwartet genau eine Ueberziehung (beim vierten Block), gezaehlt %d", got)
+	}
+}
+
+// Gutfall mit Demurrage (Sicherheitspruefung #239, Befund 1): der Erzeuger
+// rechnet die Demurrage aller Menschen vorab in den Topf, beim Nachspielen
+// kommt sie Gutschrift fuer Gutschrift. Keine Abweichung, gleicher Endstand.
+func TestErhaltung_EchteRundeMitDemurrageOhneAbweichung(t *testing.T) {
+	ruhig := nowUnix() - 400*86400
+	anlegen := func(cs *ChainState) {
+		for i, a := range erhaltungMenschen {
+			acc := &AccountState{Address: a, IsHuman: true, Balance: NewDecimal(100)}
+			if i == len(erhaltungMenschen)-1 {
+				acc.Balance, acc.LastActivityAt = NewDecimal(5000), ruhig
+			}
+			cs.accounts.Set(a, acc)
+		}
+		cs.humanCount = int64(len(erhaltungMenschen))
+		cs.accounts.Set(ubiPoolAddr, &AccountState{Address: ubiPoolAddr, Balance: NewDecimal(1)})
+	}
+	erzeuger := newTestState()
+	anlegen(erzeuger)
+	var txs []Transaction
+	erzeuger.ausgangOhneDB = func(t Transaction) { txs = append(txs, t) }
+	at := nowUnix()
+	if err := erzeuger.RunDailyDistributionAtomic(at); err != nil {
+		t.Fatal(err)
+	}
+	var mitDemurrage bool
+	for _, tx := range txs {
+		mitDemurrage = mitDemurrage || tx.FromDemurrageLost > 0
+	}
+	if !mitDemurrage {
+		t.Fatalf("Vorbedingung: die Runde muss Demurrage tragen, bekommen %+v", txs)
+	}
+	regeln := func() int64 {
+		return erhaltungZaehler("topf_ueberzogen") + erhaltungZaehler("topf_rest") + erhaltungZaehler("demurrage_ueber_guthaben")
+	}
+	for _, teilung := range []int{len(txs), 1, 2} {
+		vorher := regeln()
+		dag, cs := nachspielKnoten(t, nil)
+		cs.mu.Lock()
+		anlegen(cs)
+		cs.mu.Unlock()
+		if !dag.replayTransactions(erhaltungBlock(1, at+5, txs[:teilung]...), true) {
+			t.Fatal("erster Block abgelehnt")
+		}
+		if teilung < len(txs) && !dag.replayTransactions(erhaltungBlock(2, at+6, txs[teilung:]...), true) {
+			t.Fatal("zweiter Block abgelehnt")
+		}
+		if got := regeln() - vorher; got != 0 {
+			t.Errorf("Teilung nach %d: ehrliche Runde mit Demurrage meldet %d Abweichung(en)", teilung, got)
+		}
+		if acct(cs, ubiPoolAddr).Balance != acct(erzeuger, ubiPoolAddr).Balance {
+			t.Errorf("Teilung nach %d: Topf %v, beim Erzeuger %v", teilung, acct(cs, ubiPoolAddr).Balance, acct(erzeuger, ubiPoolAddr).Balance)
+		}
+	}
+}
+
+// Missbrauch (Befund 2): FromDemurrageLost weit ueber dem Guthaben pumpt den
+// Topf auf, aus dem danach ausgezahlt wird -- das Opfer steht im Minus.
+func TestErhaltung_DemurrageUeberGuthabenErkannt(t *testing.T) {
+	dag, _ := erhaltungKnoten(t, 1)
+	vorher := erhaltungZaehler("demurrage_ueber_guthaben")
+	dag.replayTransactions(erhaltungBlock(1, nowUnix(),
+		Transaction{Type: "ubi_distribution", Wallet: erhaltungMenschen[0], Amount: 0.000001, FromDemurrageLost: 100000},
+		Transaction{Type: "ubi_distribution", Wallet: erhaltungMenschen[1], Amount: 100000},
+		Transaction{Type: "ubi_distribution_finalize", DistributionAt: nowUnix(), Amount: 0},
+	), true)
+	if erhaltungZaehler("demurrage_ueber_guthaben") != vorher+1 {
+		t.Fatal("Demurrage von 100.000 AEQ auf ein Konto mit 100 nicht erkannt")
 	}
 }
 
