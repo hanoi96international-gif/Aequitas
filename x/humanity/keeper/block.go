@@ -7174,6 +7174,12 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			hardFailure = true
 			continue
 		}
+		// K-2 Schritt 2: Ausschuettungen gegen ihren Topf (erhaltung.go).
+		if err := dag.state.pruefeErhaltungLocked(&tx, block.Timestamp); err != nil {
+			fmt.Printf("[REPLAY] ✗ %s: %v (block #%d) — rolling back whole block\n", tx.Type, err, block.Height)
+			hardFailure = true
+			continue
+		}
 		wallet := strings.ToLower(strings.TrimSpace(tx.Wallet))
 		switch tx.Type {
 

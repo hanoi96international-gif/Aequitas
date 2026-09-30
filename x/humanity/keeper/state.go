@@ -190,6 +190,10 @@ type ChainState struct {
 	// Blockzeit anders gelten und tief unten entschieden werden
 	// (kappung_verteilt.go). Nur unter cs.mu (write) gesetzt und gelesen.
 	nachspielZeit int64
+	// erhaltung: Summe der Ausschuettungen der laufenden Runde beim
+	// Nachspielen (erhaltung.go, K-2 Schritt 2). Unter cs.mu; im
+	// Rueckroll-Snapshot enthalten.
+	erhaltung topfErhaltung
 	// kappungsKandidaten: Konten, die ueber der Grenze liegen koennten und
 	// deren Kappung Stufe 2 dem Zustaendigen ueberlaesst.
 	kappungsMu         sync.Mutex
@@ -4747,7 +4751,12 @@ func (cs *ChainState) runAtomicDistributionWithOutbox(fn func(ctx context.Contex
 		// context.Background() is correct — see runAtomicWithOutbox's
 		// matching no-DB branch comment.
 		cs.mu.Lock()
-		_, err := fn(context.Background())
+		txs, err := fn(context.Background())
+		if err == nil && cs.ausgangOhneDB != nil {
+			for _, t := range txs {
+				cs.ausgangOhneDB(t)
+			}
+		}
 		cs.mu.Unlock()
 		return err
 	}
@@ -7842,6 +7851,9 @@ type blockRollbackSnapshot struct {
 	// buch: Buchfuehrung der Unternehmensregeln (wirtschaft.go). Sie wird in
 	// derselben Transaktion gespeichert und muss mit ihr zurueck.
 	buch *buchStand
+	// erhaltung: die Summen der laufenden Ausschuettungsrunde (erhaltung.go)
+	// -- ein zurueckgewiesener Block darf sie nicht veraendern.
+	erhaltung topfErhaltung
 }
 
 type configValueSnapshot struct {
@@ -7985,6 +7997,7 @@ func (cs *ChainState) snapshotForRollbackLocked(addrs []string, full bool, chain
 	snap.accountSetXOR = cs.accountSetXOR
 	snap.nullifierSetXOR = cs.nullifierSetXOR
 	snap.buch = cs.buchSichern(addrs, full)
+	snap.erhaltung = cs.erhaltung
 	return snap
 }
 
@@ -8048,6 +8061,7 @@ func (cs *ChainState) restoreFromRollbackLocked(snap *blockRollbackSnapshot) err
 // sichtbar und nicht aus Versehen.
 func (cs *ChainState) restoreFromRollbackLockedCtx(ctx context.Context, snap *blockRollbackSnapshot) error {
 	cs.buchZurueck(snap.buch)
+	cs.erhaltung = snap.erhaltung
 	var toDelete []string
 	for _, s := range snap.accounts {
 		if s.existed {
