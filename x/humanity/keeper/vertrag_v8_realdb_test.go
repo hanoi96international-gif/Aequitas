@@ -36,8 +36,10 @@ func TestV8Deploy_RealDB(t *testing.T) {
 	aliceKey, alice := v8Schluessel(t, testKeyAlice)
 	_, reg := v8Schluessel(t, testKeyRegistrar)
 	reg2 := common.HexToAddress("0x2000000000000000000000000000000000000002")
-	zurueck := _setVertragForTest(&vertragKonfig{version: vertragVersionV8, registrare: []common.Address{reg, reg2}})
+	zurueck := _setVertragForTest(&vertragKonfig{version: vertragVersionV8})
 	defer zurueck()
+	t.Setenv("RELAYER_PRIVATE_KEY", "")
+	t.Setenv("RELAYER_ADDRESS", strings.ToLower(reg.Hex()))
 
 	cs := testKnoten(t, "unused-v8-deploy-test.json")
 	if !cs.useDB {
@@ -53,7 +55,7 @@ func TestV8Deploy_RealDB(t *testing.T) {
 	if got := cs.getConfigValueDB(registerVertragVersionKey); got != V8ContractVersion {
 		t.Fatalf("Version nicht gesetzt: %q", got)
 	}
-	if err := pruefeV8Stand(evm, []common.Address{reg, reg2}, v8NetzSalt()); err != nil {
+	if err := pruefeV8Stand(evm, reg, v8NetzSalt()); err != nil {
 		t.Fatalf("V8 steht nicht wie verlangt: %v", err)
 	}
 	if v := cs.getConfigValueDB("v7_contract_version"); v != "" {
@@ -76,14 +78,19 @@ func TestV8Deploy_RealDB(t *testing.T) {
 	deadline = time.Now().Unix() + 600
 	gute := v8Anfrage(t, alice, c, n, deadline,
 		v8Unterschrift(t, aliceKey, v8RegisterDigest(v8Addr, v8NetzSalt(), alice, c, n, big.NewInt(0), big.NewInt(deadline))), v8TestMarker)
-	if _, err := evm.CallContract(reg, v8Addr, gute, big.NewInt(0), false); err == nil || !strings.Contains(err.Error(), "V8: invalid proof") {
-		t.Fatalf("erwartet Abbruch erst an der Beweispruefung: %v", err)
+	bisZumBeweis := func(von common.Address) bool {
+		_, err := evm.CallContract(von, v8Addr, gute, big.NewInt(0), false)
+		return err != nil && strings.Contains(err.Error(), "V8: invalid proof")
 	}
-	if _, err := evm.CallContract(reg2, v8Addr, gute, big.NewInt(0), false); err == nil || !strings.Contains(err.Error(), "V8: invalid proof") {
-		t.Fatalf("zweiter Registrar: erwartet Abbruch erst an der Beweispruefung: %v", err)
+	keinRegistrar := func(von common.Address) bool {
+		_, err := evm.CallContract(von, v8Addr, gute, big.NewInt(0), false)
+		return err != nil && strings.Contains(err.Error(), "not a registrar")
 	}
-	if _, err := evm.CallContract(alice, v8Addr, gute, big.NewInt(0), false); err == nil || !strings.Contains(err.Error(), "not a registrar") {
-		t.Fatalf("ohne Registrar muss es frueher scheitern: %v", err)
+	if !bisZumBeweis(reg) {
+		t.Fatal("eigener Relayer: erwartet Abbruch erst an der Beweispruefung")
+	}
+	if !keinRegistrar(reg2) || !keinRegistrar(alice) {
+		t.Fatal("nur der eigene Relayer ist Registrar")
 	}
 	fremd := v8Anfrage(t, alice, c, n, deadline,
 		v8Unterschrift(t, aliceKey, v8RegisterDigest(v8Addr, testSalt, alice, c, n, big.NewInt(0), big.NewInt(deadline))), v8TestMarker)
@@ -91,12 +98,28 @@ func TestV8Deploy_RealDB(t *testing.T) {
 		t.Fatalf("Signatur mit fremdem Netz-Salt muss scheitern: %v", err)
 	}
 
-	// Ein zweiter Start aendert nichts.
+	// Ein zweiter Start aendert den Vertrag nicht.
 	vorher, _ := cs.LoadContract(strings.ToLower(V7_CONTRACT_ADDR))
 	EnsureContractsDeployed(evm, cs, deployer)
 	nachher, _ := cs.LoadContract(strings.ToLower(V7_CONTRACT_ADDR))
-	if string(vorher) != string(nachher) {
+	if string(vorher) != string(nachher) || !bisZumBeweis(reg) {
 		t.Fatal("zweiter Start hat den Vertrag veraendert")
+	}
+
+	// Schluesselwechsel: der neue Relayer wird Registrar, der alte nicht mehr.
+	// Genau das konnte die feste Genesis-Liste nie -- ein verlorener
+	// Schluessel haette die Registrierung fuer immer gesperrt.
+	t.Setenv("RELAYER_ADDRESS", strings.ToLower(reg2.Hex()))
+	EnsureContractsDeployed(evm, cs, deployer)
+	if !bisZumBeweis(reg2) || !keinRegistrar(reg) {
+		t.Fatal("nach dem Schluesselwechsel muss der neue Relayer Registrar sein und der alte nicht")
+	}
+
+	// Knoten ohne Relayer: niemand registriert ueber ihn.
+	t.Setenv("RELAYER_ADDRESS", "")
+	EnsureContractsDeployed(evm, cs, deployer)
+	if !keinRegistrar(reg) || !keinRegistrar(reg2) {
+		t.Fatal("ohne Relayer darf es keinen Registrar geben, der einreichen kann")
 	}
 }
 
@@ -121,8 +144,7 @@ func TestV8Deploy_BautKeineV7DatenbankUm_RealDB(t *testing.T) {
 		t.Fatal("V7 wurde nicht angelegt")
 	}
 	// ... dann dieselbe Datenbank unter einer V8-Genesis: nichts anfassen.
-	_, reg := v8Schluessel(t, testKeyRegistrar)
-	zurueck := _setVertragForTest(&vertragKonfig{version: vertragVersionV8, registrare: []common.Address{reg}})
+	zurueck := _setVertragForTest(&vertragKonfig{version: vertragVersionV8})
 	defer zurueck()
 	EnsureContractsDeployed(evm, cs, "0x00000000000000000000000000000000000d0e01")
 	nachher, _ := cs.LoadContract(strings.ToLower(V7_CONTRACT_ADDR))

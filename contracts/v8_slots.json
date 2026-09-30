@@ -2,7 +2,7 @@
   "contract": "AequitasV8",
   "source": "contracts/AequitasV8.sol",
   "compiler": "solc 0.8.28, optimizer 200 runs, evm cancun",
-  "note": "Complete storage layout of AequitasV8, in declaration order. test/AequitasV8_storage_layout.ts compares every entry with the compiler's storageLayout and fails on any difference (missing, extra, moved, retyped). Mapping value slot = keccak256(pad32(key) . pad32(slot)): keyEncoding 'address' -> Go mappingSlot(addr.Bytes(), slot); 'uint256'/'bytes32' -> Go mappingSlotBytes32(key, slot). writer: 'go' = only the Go mirror writes it (the contract never does); 'contract' = registerWithSig writes it, Go mirrors/migrates it; 'constructor' = set once at deployment, Go must never write it.",
+  "note": "Complete storage layout of AequitasV8, in declaration order. test/AequitasV8_storage_layout.ts compares every entry with the compiler's storageLayout and fails on any difference (missing, extra, moved, retyped). Mapping value slot = keccak256(pad32(key) . pad32(slot)): keyEncoding 'address' -> Go mappingSlot(addr.Bytes(), slot); 'uint256'/'bytes32' -> Go mappingSlotBytes32(key, slot). writer: 'go' = only the Go mirror writes it (the contract never does); 'contract' = registerWithSig writes it, Go mirrors/migrates it; 'node' = set at deployment and kept current by the node itself: exactly its own relayer (contract_deploy.go v8RegistrarAbgleichen); no other Go path writes it.",
   "storage": [
     { "slot": 0, "offset": 0, "label": "totalSupply",     "type": "uint256",                     "keyEncoding": null,      "writer": "go" },
     { "slot": 1, "offset": 0, "label": "totalHumans",     "type": "uint256",                     "keyEncoding": null,      "writer": "contract" },
@@ -13,7 +13,7 @@
     { "slot": 6, "offset": 0, "label": "commitmentOf",    "type": "mapping(address => uint256)", "keyEncoding": "address", "writer": "contract" },
     { "slot": 7, "offset": 0, "label": "nullifierOf",     "type": "mapping(address => bytes32)", "keyEncoding": "address", "writer": "contract" },
     { "slot": 8, "offset": 0, "label": "nonces",          "type": "mapping(address => uint256)", "keyEncoding": "address", "writer": "contract" },
-    { "slot": 9, "offset": 0, "label": "isRegistrar",     "type": "mapping(address => bool)",    "keyEncoding": "address", "writer": "constructor" }
+    { "slot": 9, "offset": 0, "label": "isRegistrar",     "type": "mapping(address => bool)",    "keyEncoding": "address", "writer": "node" }
   ],
   "selectors": {
     "note": "Every external function of AequitasV8 with its selector. test/AequitasV8_storage_layout.ts checks this list against the compiled ABI in both directions. persist = what Go's allowlist (checkPersistedCallAllowed) should let a persisting call reach: 'registrar' = only the registrar/relayer, 'view' = harmless read, 'intercepted' = node books it in Go before the EVM runs.",

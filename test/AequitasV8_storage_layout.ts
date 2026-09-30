@@ -30,7 +30,7 @@ type SlotRow = {
   label: string;
   type: string;
   keyEncoding: "address" | "uint256" | "bytes32" | null;
-  writer: "go" | "contract" | "constructor";
+  writer: "go" | "contract" | "node";
 };
 type SelectorRow = { selector: Hex; signature: string; persist: string };
 type Table = {
@@ -126,7 +126,7 @@ describe("AequitasV8 storage layout == contracts/v8_slots.json", function () {
         assert.equal(r.keyEncoding, null, `${r.label}: value slots have no key encoding`);
       }
       assert.ok(
-        ["go", "contract", "constructor"].includes(r.writer),
+        ["go", "contract", "node"].includes(r.writer),
         `${r.label}: unknown writer ${r.writer}`,
       );
     }

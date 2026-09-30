@@ -21,14 +21,33 @@ import (
 //
 // Nur auf einer Kette, deren genesis.json es verlangt:
 //
-//	"register_vertrag": {"version": "v8", "registrare": ["0x…", "0x…"]}
+//	"register_vertrag": {"version": "v8"}
 //
 // Fehlt der Eintrag, laeuft alles wie bisher mit V7. Die laufende Kette
 // (genesis_time 2026-06-13) hat ihn nicht, und ein Push auf main geht direkt
 // auf die Server -- nichts hier aendert ihr Verhalten. Ein unbekannter Wert
-// oder eine ungueltige Registrarliste haelt den Knoten beim Start an
-// (fail-closed): lieber kein Start als ein Knoten, der Registrierungen nach
-// dem falschen Vertrag prueft und nachspielt.
+// haelt den Knoten beim Start an (fail-closed): lieber kein Start als ein
+// Knoten, der Registrierungen nach dem falschen Vertrag prueft und nachspielt.
+//
+// # Registrar: je Knoten, nicht aus der Genesis (Entscheidung 30.09.2026)
+//
+// Im Vertrag darf nur ein Registrar registerWithSig aufrufen. Frueher sollte
+// die Genesis diese Liste fest vorgeben. Das haette zwei dauerhafte Folgen
+// gehabt, denn V8 laesst sich nach dem Neustart nicht mehr aendern: gingen
+// die Relayer-Schluessel der Genesis-Knoten verloren, koennte sich nie wieder
+// ein Mensch registrieren; und ein spaeter beigetretener Validator koennte
+// es nie.
+//
+// Der Schutz der festen Liste war dabei klein: andere Knoten fuehren die EVM
+// beim Nachspielen nicht aus, sie pruefen Beweis, Nullifier und die
+// Unterschrift der Wallet (pruefeRegistrierungV8) -- aber nie, wer
+// eingereicht hat. Die Liste wirkte also nur auf dem annehmenden Knoten, und
+// dort erlaubt Go ohnehin nur dem EIGENEN Relayer, zu persistieren
+// (checkPersistedCallAllowed). Deshalb traegt jeder Knoten beim Start genau
+// seinen eigenen Relayer als Registrar ein (ensureV8Deployed,
+// v8RegistrarAbgleichen); wechselt der Schluessel, wird der alte ausgetragen.
+// Die Regel "nur der eigene Relayer" steht damit weiter doppelt: in Go und im
+// Vertrag.
 //
 // # Wo V8 liegt
 //
@@ -55,14 +74,10 @@ import (
 const (
 	vertragVersionV7 = "v7"
 	vertragVersionV8 = "v8"
-
-	// Wie AequitasV8.MAX_REGISTRARS.
-	v8MaxRegistrare = 16
 )
 
 type vertragKonfig struct {
-	version    string
-	registrare []common.Address
+	version string
 }
 
 var (
@@ -90,39 +105,18 @@ func ladeVertragKonfig(data []byte) (vertragKonfig, error) {
 	if g.RegisterVertrag == nil {
 		return vertragKonfig{version: vertragVersionV7}, nil
 	}
-	v := strings.ToLower(strings.TrimSpace(g.RegisterVertrag.Version))
-	switch v {
-	case vertragVersionV7:
-		if len(g.RegisterVertrag.Registrare) > 0 {
-			return vertragKonfig{}, errors.New("register_vertrag: V7 kennt keine Registrarliste")
-		}
-		return vertragKonfig{version: vertragVersionV7}, nil
-	case vertragVersionV8:
+	// Eine Registrarliste gehoert nicht mehr in die Genesis (siehe oben).
+	// Steht sie trotzdem da, lieber nicht starten, als dass jemand glaubt,
+	// sie wirke.
+	if len(g.RegisterVertrag.Registrare) > 0 {
+		return vertragKonfig{}, errors.New("register_vertrag: keine Registrarliste -- jeder Knoten traegt seinen eigenen Relayer ein")
+	}
+	switch v := strings.ToLower(strings.TrimSpace(g.RegisterVertrag.Version)); v {
+	case vertragVersionV7, vertragVersionV8:
+		return vertragKonfig{version: v}, nil
 	default:
 		return vertragKonfig{}, fmt.Errorf("register_vertrag: unbekannte Version %q", g.RegisterVertrag.Version)
 	}
-	n := len(g.RegisterVertrag.Registrare)
-	if n == 0 || n > v8MaxRegistrare {
-		return vertragKonfig{}, fmt.Errorf("register_vertrag: %d Registrare, erlaubt 1..%d", n, v8MaxRegistrare)
-	}
-	gesehen := make(map[common.Address]bool, n)
-	registrare := make([]common.Address, 0, n)
-	for _, r := range g.RegisterVertrag.Registrare {
-		r = strings.ToLower(strings.TrimSpace(r))
-		if !isValidWalletAddr(r) {
-			return vertragKonfig{}, fmt.Errorf("register_vertrag: ungueltige Registrar-Adresse %q", r)
-		}
-		a := common.HexToAddress(r)
-		if a == (common.Address{}) {
-			return vertragKonfig{}, errors.New("register_vertrag: Registrar ist die Null-Adresse")
-		}
-		if gesehen[a] {
-			return vertragKonfig{}, fmt.Errorf("register_vertrag: Registrar %s doppelt", r)
-		}
-		gesehen[a] = true
-		registrare = append(registrare, a)
-	}
-	return vertragKonfig{version: vertragVersionV8, registrare: registrare}, nil
 }
 
 func vertrag() (vertragKonfig, error) {
@@ -161,9 +155,20 @@ func vertragVersion() string {
 	return k.version
 }
 
-func v8Registrare() []common.Address {
-	k, _ := vertrag()
-	return append([]common.Address(nil), k.registrare...)
+// v8KeinRegistrar: Registrar eines Knotens ohne Relayer. Diese Adresse hat
+// keinen bekannten Schluessel -- ueber so einen Knoten laesst sich niemand
+// registrieren, was stimmt: ohne Relayer darf er ohnehin nichts persistieren.
+// Der Vertrag steht trotzdem (eth_call auf name/eip712Domain fuer App und
+// Wallets).
+var v8KeinRegistrar = common.HexToAddress("0x000000000000000000000000000000000000dEaD")
+
+// v8EigenerRegistrar: der Relayer dieses Knotens (RELAYER_ADDRESS bzw. aus
+// RELAYER_PRIVATE_KEY), sonst v8KeinRegistrar.
+func v8EigenerRegistrar() common.Address {
+	if r := relayerAddressFromEnv(); isValidWalletAddr(r) && common.HexToAddress(r) != (common.Address{}) {
+		return common.HexToAddress(r)
+	}
+	return v8KeinRegistrar
 }
 
 // PruefeVertragGenesis wird beim Start aufgerufen (cmd/aequitasd). Ein

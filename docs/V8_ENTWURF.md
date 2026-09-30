@@ -227,13 +227,26 @@ Abhilfe, in dieser Reihenfolge:
 **Schalter in der Genesis.** V8 gilt nur, wenn `genesis.json` es verlangt:
 
 ```json
-"register_vertrag": { "version": "v8", "registrare": ["0x<Relayer C1>", "0x<Relayer C2>"] }
+"register_vertrag": { "version": "v8" }
 ```
 
 Fehlt der Eintrag, bleibt alles V7 – die laufende Kette hat ihn nicht, und ein Push auf `main`
-ändert ihr Verhalten nicht (Test `TestV8Genesis_DieRepoGenesisBleibtV7`). Unbekannte Version,
-0 oder mehr als 16 Registrare, doppelte oder ungültige Adressen: Der Knoten startet nicht
-(`cmd/aequitasd`, `PruefeVertragGenesis`).
+ändert ihr Verhalten nicht (Test `TestV8Genesis_DieRepoGenesisBleibtV7`). Unbekannte Version
+oder eine Registrarliste in der Genesis: Der Knoten startet nicht (`cmd/aequitasd`,
+`PruefeVertragGenesis`).
+
+**Registrar je Knoten (Entscheidung 30.09.2026, ersetzt die Genesis-Liste aus (i)).** Jeder
+Knoten deployt V8 mit seinem eigenen Relayer als Registrar und hält ihn bei jedem Start aktuell
+(`v8RegistrarAbgleichen`): Wechselt der Schlüssel, wird der alte ausgetragen; ohne Relayer ist
+`0x…dEaD` eingetragen (niemand kann über diesen Knoten registrieren). Grund: V8 ist nach dem
+Neustart unveränderlich. Mit einer festen Liste hätte der Verlust der Genesis-Relayer-Schlüssel
+die Registrierung **für immer** gesperrt (beim Ende von C1 ging dessen `NODE_KEY` verloren), und
+später beigetretene Validatoren hätten nie registrieren können. Die Liste schützte dabei nichts
+zusätzlich: Die EVM läuft nur auf dem annehmenden Knoten; nachspielende Knoten prüfen Beweis,
+Nullifier und die Unterschrift der Wallet selbst, nie den Einreicher. Die Regel „nur der eigene
+Relayer“ steht weiter doppelt – in Go (`checkPersistedCallAllowed`) und im Vertrag.
+Test mit Postgres: Deploy, Schlüsselwechsel (neuer Registrar, alter ausgetragen), Knoten ohne
+Relayer.
 
 **Gleiche Adresse wie V7.** V8 liegt an `V7_CONTRACT_ADDR`. Nach dem Neustart ist sie frei;
 Wallets, App, Explorer und der RPC-Abfang (transfer/balanceOf/isHuman haben in V8 dieselben
@@ -242,7 +255,7 @@ Selektoren) bleiben gültig. Übertragbar sind Signaturen trotzdem nicht: `NETZ_
 | Stelle | Umsetzung |
 |---|---|
 | `vertrag_v8.go` (neu) | Genesis-Schalter, Slot-Konstanten, EIP-712-Digest, strenge Signaturprüfung, `pruefeRegistrierungV8` |
-| `contract_deploy.go` | `V8ContractBytecode` (Sync-Test `test/AequitasV8_bytecode_sync.ts`); `ensureV8Deployed`: Konstruktor mit Verifier, Registraren, Salt (ABI-Kodierer); Umzug an die Genesis-Adresse; **Registrare ausdrücklich geschrieben** (DeployContract sichert nur Slots 0–199, das Mapping ginge verloren – Gegenprobe gemacht); Selbstprüfung per `eth_call` (verifier, NETZ_SALT, isRegistrar), sonst zurückgenommen; eine V7-Datenbank wird unter V8 **nie** umgebaut |
+| `contract_deploy.go` | `V8ContractBytecode` (Sync-Test `test/AequitasV8_bytecode_sync.ts`); `ensureV8Deployed`: Konstruktor mit Verifier, eigenem Relayer, Salt (ABI-Kodierer); Umzug an die Genesis-Adresse; **Registrar ausdrücklich geschrieben** (DeployContract sichert nur Slots 0–199, das Mapping ginge verloren – Gegenprobe gemacht) und bei jedem Start abgeglichen; Selbstprüfung per `eth_call` (verifier, NETZ_SALT, isRegistrar), sonst zurückgenommen; eine V7-Datenbank wird unter V8 **nie** umgebaut |
 | `evm_engine.go` | V8: persistieren darf nur `registerWithSig` (`60529762`) vom Relayer; Offsets (Nullifier = `pubSignals[1]` bei 292); gesicherte Slots nach `v8_slots.json`; keine V7-Vorab-Lesungen. **Cancun ab Block 0** (siehe unten) |
 | `evm_storage.go` | Spiegel: balanceOf 2, isHuman 3, keine 10/11; Guardian/Escrow-Spiegel unter V8 aus (V7-Slot 5 wäre V8 `usedNullifiers`); `migrateEVMFromGoStateV8` schreibt nie `nonces` oder `isRegistrar` |
 | `register.go` | V8: Anfrage mit `deadline`, EIP-712-Signatur in Go geprüft (vor dem Probelauf), V8-ABI, kein Spiegel-Ersatzweg; Transaktion trägt `reg_signatur`, `reg_frist`, `reg_at` und wird vor dem Einreihen genauso geprüft wie beim Nachspielen |
@@ -276,9 +289,9 @@ Nachspielen (11 Fälle); Positivliste V8/V7; Tabelle `v8_slots.json` = Go-Konsta
 Postgres: Deploy steht, zweiter Start ändert nichts, eine Go-signierte Anfrage kommt im
 Knoten-Vertrag bis zur Beweisprüfung; eine V7-Datenbank bleibt unter V8 unangetastet.
 
-**Beim Neustart zu tun:** `genesis.json` mit neuer `genesis_time` und `register_vertrag`
-(Relayer-Adressen aller Genesis-Validatoren, gleich auf allen Knoten), leere Datenbanken,
-App mit V8-Unterschrift (Aequitas-App, Etappe 4).
+**Beim Neustart zu tun:** `genesis.json` mit neuer `genesis_time` und
+`"register_vertrag": {"version": "v8"}` (gleich auf allen Knoten), leere Datenbanken,
+`RELAYER_PRIVATE_KEY` je annehmendem Knoten, App mit V8-Unterschrift (Aequitas-App).
 
 ### Ursprüngliche Planung (Stand 30.09. vormittags)
 

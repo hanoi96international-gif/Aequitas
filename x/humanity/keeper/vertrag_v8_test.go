@@ -130,7 +130,6 @@ var testSalt = crypto.Keccak256Hash([]byte("aequitas-1926-1790000000"))
 
 func TestV8Genesis_LesenUndAblehnen(t *testing.T) {
 	r1 := "0x1000000000000000000000000000000000000001"
-	r2 := "0x1000000000000000000000000000000000000002"
 	gut := func(s string) vertragKonfig {
 		t.Helper()
 		k, err := ladeVertragKonfig([]byte(s))
@@ -142,31 +141,42 @@ func TestV8Genesis_LesenUndAblehnen(t *testing.T) {
 	if k := gut(`{"chain_id":"aequitas-1","genesis_time":"2026-06-13T00:00:00Z"}`); k.version != vertragVersionV7 {
 		t.Fatal("ohne register_vertrag muss es V7 bleiben (die laufende Kette)")
 	}
-	k := gut(`{"register_vertrag":{"version":"V8","registrare":["` + r1 + `","0x` + strings.ToUpper(r2[2:]) + `"]}}`)
-	if k.version != vertragVersionV8 || len(k.registrare) != 2 || k.registrare[1] != common.HexToAddress(r2) {
+	if k := gut(`{"register_vertrag":{"version":" V8 "}}`); k.version != vertragVersionV8 {
 		t.Fatalf("V8 erwartet: %+v", k)
 	}
+	if k := gut(`{"register_vertrag":{"version":"v7"}}`); k.version != vertragVersionV7 {
+		t.Fatalf("V7 erwartet: %+v", k)
+	}
 	schlecht := map[string]string{
-		"unbekannte Version": `{"register_vertrag":{"version":"v9","registrare":["` + r1 + `"]}}`,
-		"keine Registrare":   `{"register_vertrag":{"version":"v8","registrare":[]}}`,
-		"doppelt":            `{"register_vertrag":{"version":"v8","registrare":["` + r1 + `","` + strings.ToUpper("0x"+r1[2:]) + `"]}}`,
-		"Null-Adresse":       `{"register_vertrag":{"version":"v8","registrare":["0x0000000000000000000000000000000000000000"]}}`,
-		"kaputte Adresse":    `{"register_vertrag":{"version":"v8","registrare":["0x123"]}}`,
-		"V7 mit Registraren": `{"register_vertrag":{"version":"v7","registrare":["` + r1 + `"]}}`,
-		"kein JSON":          `{"register_vertrag":`,
+		"unbekannte Version": `{"register_vertrag":{"version":"v9"}}`,
+		"leere Version":      `{"register_vertrag":{}}`,
+		// Eine Registrarliste wirkt nicht mehr (Registrar je Knoten) -- wer
+		// sie hinschreibt, soll es beim Start merken.
+		"Registrarliste V8": `{"register_vertrag":{"version":"v8","registrare":["` + r1 + `"]}}`,
+		"Registrarliste V7": `{"register_vertrag":{"version":"v7","registrare":["` + r1 + `"]}}`,
+		"kein JSON":         `{"register_vertrag":`,
 	}
 	for name, s := range schlecht {
 		if _, err := ladeVertragKonfig([]byte(s)); err == nil {
 			t.Errorf("%s: muss abgelehnt werden (Knoten startet dann nicht)", name)
 		}
 	}
-	siebzehn := make([]string, 17)
-	for i := range siebzehn {
-		siebzehn[i] = common.BigToAddress(big.NewInt(int64(i + 1))).Hex()
+}
+
+func TestV8Registrar_IstDerEigeneRelayer(t *testing.T) {
+	_, relayer := v8Schluessel(t, testKeyRegistrar)
+	t.Setenv("RELAYER_PRIVATE_KEY", "")
+	t.Setenv("RELAYER_ADDRESS", strings.ToLower(relayer.Hex()))
+	if got := v8EigenerRegistrar(); got != relayer {
+		t.Fatalf("Registrar = eigener Relayer erwartet: %s", got.Hex())
 	}
-	b, _ := json.Marshal(map[string]any{"register_vertrag": map[string]any{"version": "v8", "registrare": siebzehn}})
-	if _, err := ladeVertragKonfig(b); err == nil {
-		t.Error("17 Registrare: der Vertrag erlaubt hoechstens 16")
+	t.Setenv("RELAYER_ADDRESS", "")
+	if got := v8EigenerRegistrar(); got != v8KeinRegistrar {
+		t.Fatalf("ohne Relayer: niemand soll ueber diesen Knoten registrieren: %s", got.Hex())
+	}
+	t.Setenv("RELAYER_ADDRESS", "0x123")
+	if got := v8EigenerRegistrar(); got != v8KeinRegistrar {
+		t.Fatalf("kaputte Relayer-Adresse: %s", got.Hex())
 	}
 }
 
@@ -469,7 +479,7 @@ func TestV8Nachspielen_JederKnotenPrueftDieZustimmung(t *testing.T) {
 // ─── Wer darf persistieren ──────────────────────────────────────────────────
 
 func TestV8_NurRegisterWithSigVomRelayer(t *testing.T) {
-	zurueck := _setVertragForTest(&vertragKonfig{version: vertragVersionV8, registrare: []common.Address{common.HexToAddress("0x1000000000000000000000000000000000000001")}})
+	zurueck := _setVertragForTest(&vertragKonfig{version: vertragVersionV8})
 	defer zurueck()
 	relayerKey, relayer := v8Schluessel(t, testKeyRegistrar)
 	_ = relayerKey

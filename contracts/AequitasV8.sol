@@ -44,7 +44,7 @@ pragma solidity 0.8.28;
  *     6   commitmentOf      mapping(address => uint256)   contract
  *     7   nullifierOf       mapping(address => bytes32)   contract
  *     8   nonces            mapping(address => uint256)   contract
- *     9   isRegistrar       mapping(address => bool)      constructor only
+ *     9   isRegistrar       mapping(address => bool)      constructor + Go (own relayer)
  *
  *   Mapping value location = keccak256(pad32(key) . pad32(slot)), i.e. Go's
  *   mappingSlot(addr.Bytes(), slot) / mappingSlotBytes32(key, slot).
@@ -71,13 +71,19 @@ pragma solidity 0.8.28;
  *      same genesis address again; without the salt the old chain's
  *      signatures (nonce 0, still inside their deadline) would be valid on
  *      the new one. The genesis time differs, so the domain differs.
- *   2. msg.sender must be a registrar fixed at deployment (genesis). Groth16
- *      proving keys are public, so a valid proof on its own is not evidence
- *      of a human: anyone can prove a made-up biometric. Whether the proof
- *      came out of the node's biometric /prove path is decided by the node
- *      (prove_provenance.go). Only the node's relayer can therefore write
- *      the register. This also keeps the register and the Go ledger on one
- *      path (the same rule checkPersistedCallAllowed enforces in Go).
+ *   2. msg.sender must be a registrar. Groth16 proving keys are public, so a
+ *      valid proof on its own is not evidence of a human: anyone can prove a
+ *      made-up biometric. Whether the proof came out of the node's biometric
+ *      /prove path is decided by the node (prove_provenance.go). Only the
+ *      node's relayer can therefore write the register. This also keeps the
+ *      register and the Go ledger on one path (the same rule
+ *      checkPersistedCallAllowed enforces in Go).
+ *      The registrar is PER NODE: each node deploys with its own relayer and
+ *      keeps it current in slot 9 (contract_deploy.go, v8RegistrarAbgleichen).
+ *      The EVM runs only on the accepting node -- replaying nodes check proof,
+ *      nullifier and the human's signature themselves, never who submitted --
+ *      so a list fixed in genesis protected nothing more, but would have
+ *      locked registration forever once those relayer keys were lost.
  *
  * Residual gap (documented in docs/V8_ENTWURF.md): a party that obtains
  * someone else's proof before it is used can sign it for its OWN wallet.
@@ -169,8 +175,9 @@ contract AequitasV8 {
     // ─── Constructor ────────────────────────────────────────────────────────
 
     /// @param verifier_   Groth16 verifier (BioVerifier from the ceremony).
-    /// @param registrars_ Relayer addresses of the validators, fixed in
-    ///                    genesis. 1..MAX_REGISTRARS, non-zero, no duplicates.
+    /// @param registrars_ The deploying node's own relayer (the node keeps it
+    ///                    current, see header). 1..MAX_REGISTRARS, non-zero,
+    ///                    no duplicates.
     /// @param netzSalt_   keccak256(bytes(netz_kennung)) of this genesis.
     constructor(address verifier_, address[] memory registrars_, bytes32 netzSalt_) {
         require(verifier_ != address(0), "V8: verifier is zero");
