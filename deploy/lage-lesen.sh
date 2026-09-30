@@ -26,6 +26,14 @@ echo "--- Knoten-API (oeffentliche Felder) ---"
 curl -s -m 5 http://127.0.0.1:8080/api/status | head -c 1500; echo
 echo "--- /api/wache ---"
 curl -s -m 15 http://127.0.0.1:8080/api/wache | head -c 3000; echo
+echo "--- Hardware (Leistungsanforderung) ---"
+echo "Kerne: $(nproc)  RAM: $(awk '/MemTotal/ {printf "%.1f GB", $2/1048576}' /proc/meminfo)  CPU: $(grep -m1 'model name' /proc/cpuinfo | cut -d: -f2 | sed 's/^ *//')"
+lsblk -d -o NAME,ROTA,SIZE,MODEL 2>/dev/null | head -6
+echo "--- Leistungsnachweis und Proben ---"
+curl -s -m 10 http://127.0.0.1:8080/api/health/combined | python3 -c 'import json,sys
+d=json.load(sys.stdin)
+for k in ("leistungsnachweis","leistungsproben"):
+    print(k, json.dumps(d.get(k), ensure_ascii=False)[:1500])' 2>/dev/null || echo "  (nicht lesbar)"
 echo "--- /api/leitung ---"
 curl -s -m 5 http://127.0.0.1:8080/api/leitung | head -c 1000; echo
 echo "--- Knoten-Log: Annahme/Bloecke/Peers (gefiltert) ---"
