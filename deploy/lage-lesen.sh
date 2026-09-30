@@ -45,5 +45,6 @@ for c in aequitas-coordinator proof-server aequitas-proof-server aequitas-matchi
   docker logs --since 60m "$c" 2>&1 \
     | grep -iE 'error|fehl|reject|abgewiesen|denied|quorum|40[0-9] |50[0-9] |exception|traceback|timeout|register|prove' \
     | grep -vE 'KEY=|TOKEN=|PASSWORD' \
-    | sed -E 's/0x[0-9a-fA-F]{8,}/0x…/g; s/[0-9a-fA-F]{24,}/…/g' | tail -25
+    | sed -E 's/0x[0-9a-fA-F]{8,}/0x…/g; s/[0-9a-fA-F]{24,}/…/g' | tail -25 \
+    || echo "  (keine Treffer)"
 done
