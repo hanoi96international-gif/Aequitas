@@ -1216,7 +1216,7 @@ func (a *APIServer) Start(port int) {
 	// re-validated, just transferred smaller.
 	srv := &http.Server{
 		Addr:         addr,
-		Handler:      recoverMiddleware(ipZurDomainMiddleware(gzipMiddleware(mux))),
+		Handler:      recoverMiddleware(retryAfterMiddleware(ipZurDomainMiddleware(gzipMiddleware(mux)))),
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 60 * time.Second,
 		IdleTimeout:  120 * time.Second,
@@ -1354,6 +1354,10 @@ func (a *APIServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 		// P3-8: V5/V6 legacy addresses removed from status — minimise attack surface.
 		"bio_verifier": BIO_VERIFIER_ADDR,
 		"chain_evm_id": 1926,
+		// Aendert sich nur beim Neustart der Kette bei null (genesis.json);
+		// eine App mit gespeicherten Staenden erkennt daran ein neues Netz
+		// (api_app_grundlagen.go).
+		"netz_kennung": netzKennung(),
 		"index":        m.Index,
 		"gini":         m.Gini,
 		"growth":       growth,
