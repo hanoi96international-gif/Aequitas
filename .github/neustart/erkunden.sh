@@ -87,6 +87,20 @@ for f in /root/.aequitas.env /root/Aequitas/deploy/validator/.env; do
   [ -f "$f" ] && echo "Umgebungsdatei: $f ($(grep -cE '^[A-Z_]+=' "$f") Eintraege, RELAYER_PRIVATE_KEY-Zeilen: $(grep -c '^RELAYER_PRIVATE_KEY=' "$f"))"
 done
 echo
+echo "===== $BOX: Proof-Server-Vertrauen (Schalter und Zahl der Schluessel, keine Werte) ====="
+# Liest der Proof-Server Coordinator-/Bezeuger-Schluessel aus der KETTE
+# (coordinator_keys/validator_keys, beim Leeren weg und im leeren Netz erst
+# nach der ersten Registrierung neu eintragbar), oder nur aus seiner Umgebung?
+if [ -n "$PROOF" ]; then
+  for v in BIO_ATTESTATION_MODE BIO_ATTESTATION_KETTENSCHLUESSEL BIO_ATTESTATION_QUORUM; do
+    w="$(env_von "$PROOF" "$v" | grep -oE '^(off|optional|required|an|aus|[0-9]+)$' || true)"
+    echo "$v = ${w:-(leer)}"
+  done
+  for v in COORDINATOR_PUBLIC_KEYS PERSONHOOD_PUBLIC_KEYS; do
+    echo "$v: $(env_von "$PROOF" "$v" | tr ',' '\n' | grep -cE '^[[:space:]]*[0-9a-fA-F]{64}[[:space:]]*$') Schluessel"
+  done
+fi
+echo
 echo "===== $BOX: Deploy-Skript der Box (nur ob es baut) ====="
 for f in /root/deploy_safe_c2.sh /root/Aequitas/deploy/deploy-c1.sh; do
   [ -f "$f" ] && echo "$f: git fetch/reset/pull $(grep -cE 'git (fetch|reset|pull)' "$f")x, docker build $(grep -cE 'docker (compose )?build|docker build' "$f")x, docker run/up $(grep -cE 'docker run|compose up' "$f")x"

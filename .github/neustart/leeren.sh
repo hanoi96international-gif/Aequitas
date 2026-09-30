@@ -16,7 +16,9 @@ case "$DBHOST" in postgres|aequitas-postgres) ;; *) fehler "Datenbank-Host '$DBH
 [ -n "$WALDIR" ] && [ "$WALDIR" != / ] && [ -d "$WALDIR" ] || fehler "WAL-Verzeichnis unklar ('$WALDIR')"
 case "$WALDIR" in /root/*|/var/lib/docker/volumes/*) ;; *) fehler "WAL-Verzeichnis '$WALDIR' liegt unerwartet";; esac
 if [ -n "$MATCH" ]; then laeuft "$MATCH" || fehler "$MATCH laeuft nicht"; fi
-if docker inspect "$PROOF" >/dev/null 2>&1; then laeuft "$PROOF" || fehler "$PROOF laeuft nicht"; fi
+[ -n "$PROOF" ] || fehler "kein Proof-Server-Container gefunden (proof-server / aequitas-proof-server)"
+laeuft "$PROOF" || fehler "$PROOF laeuft nicht"
+[ -n "$MATCH" ] || fehler "kein Matching-Container gefunden"
 echo "Geprueft: Knoten=$NODE DB=$DB WAL=$WALDIR Proof=$PROOF Matching=${MATCH:-keiner}"
 
 # ── Ab hier wird geloescht.

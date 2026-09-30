@@ -3,7 +3,7 @@
 # und gibt keine Zugangsdaten aus (das Repo und die Logs sind oeffentlich).
 NODE=aequitas-node
 PG=aequitas-postgres
-PROOF=aequitas-proof-server
+PROOF="$(docker ps -a --format '{{.Names}}' | grep -E '^(aequitas-)?proof-server$' | head -1 || true)"
 MATCH="$(docker ps -a --format '{{.Names}}' | grep -E '^aequitas-matching(-[0-9]+)?$' | head -1 || true)"
 COORD="$(docker ps -a --format '{{.Names}}' | grep -E '^aequitas-coordinator(-[0-9]+)?$' | head -1 || true)"
 env_von() { docker inspect "$1" --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | grep -E "^$2=" | head -1 | cut -d= -f2- || true; }
