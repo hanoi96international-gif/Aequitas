@@ -116,13 +116,14 @@ func (cs *ChainState) nachrechnenTxLocked(tx *Transaction, blockZeit int64) erro
 			return nil
 		}
 		// Genau die Rechnung aus swapLockedMitAbgabe: Gebuehr vom Einsatz,
-		// der Rest geht in die Konstantprodukt-Formel.
-		nachGebuehr := tx.Amount - tx.Amount*float64(swapFeeBps)/10000.0
+		// der Rest geht in die Konstantprodukt-Formel (swapTeilung, zum
+		// selben Buchungsaugenblick wie applySwapDeltaLockedMitAbgabe).
+		_, _, inPool := swapTeilung(tx.Amount, buchZeitBeimNachspielen(tx.BuchAt, blockZeit))
 		var erwartet float64
 		if tx.Type == "swap_aeq_tusd" {
-			erwartet = AMMSwapOut(cs.pool.ReserveAEQ, cs.pool.ReserveTUSD, NewDecimal(nachGebuehr)).Float()
+			erwartet = AMMSwapOut(cs.pool.ReserveAEQ, cs.pool.ReserveTUSD, inPool).Float()
 		} else {
-			erwartet = AMMSwapOut(cs.pool.ReserveTUSD, cs.pool.ReserveAEQ, NewDecimal(nachGebuehr)).Float()
+			erwartet = AMMSwapOut(cs.pool.ReserveTUSD, cs.pool.ReserveAEQ, inPool).Float()
 		}
 		if !nahe(tx.AmountOut, erwartet) {
 			return nachrechnenAbweichung("tausch_ergebnis", blockZeit,

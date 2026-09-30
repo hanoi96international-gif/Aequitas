@@ -7500,6 +7500,11 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			// wirtschaft.go: taegliche Umlaufsicherung / Liegegeld, Betrag vom
 			// Erzeuger berechnet, hier nachgerechnet (liegegeld_pruefung.go)
 			// und angewandt.
+			if rundenZeitNachBlock(tx.DistributionAt, block.Timestamp) {
+				fmt.Printf("[REPLAY] ✗ umlauf %s: Rundenzeit %d liegt nach dem Block (%d) — rolling back whole block\n", wallet, tx.DistributionAt, block.Timestamp)
+				hardFailure = true
+				continue
+			}
 			if err := dag.state.pruefeUmlaufLocked(wallet, tx.Amount, tx.DistributionAt); err != nil {
 				fmt.Printf("[REPLAY] ✗ %v (block #%d) — rolling back whole block\n", err, block.Height)
 				hardFailure = true
@@ -7628,6 +7633,15 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			// an unconditional per-round anchor, independent of which sub-pool
 			// actually paid, so a round that only credited validators/LP/escrow
 			// is still detectable as "already applied" on a second delivery.
+			//
+			// Eine Marke aus der Zukunft des Blocks setzte letzterUmlauf und
+			// last_distribution_round_at dauerhaft vor: Umlauf und
+			// Tagesrunden fielen danach aus (Sicherheitspruefung #237, F1).
+			if rundenZeitNachBlock(tx.DistributionAt, block.Timestamp) {
+				fmt.Printf("[REPLAY] ✗ distribution_round_marker: Rundenzeit %d liegt nach dem Block (%d) — rolling back whole block\n", tx.DistributionAt, block.Timestamp)
+				hardFailure = true
+				continue
+			}
 			if err := dag.state.applyDistributionRoundMarkerDeltaLocked(context.Background(), tx.DistributionAt); err != nil {
 				fmt.Printf("[REPLAY] ✗ distribution_round_marker: %v (block #%d) — rolling back whole block\n", err, block.Height)
 				hardFailure = true
