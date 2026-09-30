@@ -12,7 +12,7 @@ import (
 
 // Nachrechnen beim Nachspielen (Audit 2026-09-29, K-2, Schritt 1).
 //
-// WARUM
+// # WARUM
 //
 // replayTransactions uebernahm Werte, die der Produzent in die Transaktion
 // schreibt, ohne sie selbst zu pruefen: das Ergebnis eines Tauschs
@@ -21,7 +21,7 @@ import (
 // dem Nichts erzeugen koennen. Heute produziert nur C1; mit dem ersten
 // fremden Produzenten waere jeder dieser Wege offen.
 //
-// WIE
+// # WIE
 //
 // Jede Regel rechnet den Wert aus dem eigenen Zustand nach, BEVOR die
 // Transaktion angewendet wird. Zwei Stufen, fest im Code (nicht per
