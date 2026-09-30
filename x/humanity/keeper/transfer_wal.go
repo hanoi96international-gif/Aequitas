@@ -1027,6 +1027,13 @@ func (cs *ChainState) flushWALBatch(batch []walFlushItem) error {
 		// NaechsteNonce (Stufe 1.0): der WAL-Pfad setzt sie beim Annehmen
 		// signierter Ueberweisungen und muss sie mit dem Kontostand schreiben.
 		nonce int64
+		// LastActivityAt (Befund 30.09.2026): der Flush schrieb sie nicht.
+		// Nach Flush und Neustart lud der Knoten die alte Aktivitaetszeit aus
+		// Postgres, und recoverFromWAL wendete die Ueberweisung nicht noch
+		// einmal an (wal_seq schon erreicht) -- die Uhr des Absenders stand
+		// zurueck. Liegegeld und Treuhand haengen an ihr, der Knoten rechnete
+		// danach anders als seine Nachbarn.
+		aktivitaet int64
 	}
 
 	cs.mu.RLock()
@@ -1132,7 +1139,7 @@ ORDER BY v.ord`
 		if !ok {
 			return fmt.Errorf("flushWALBatch: address %s vanished from cs.accounts between apply and flush -- this should never happen", addr)
 		}
-		snapshots[addr] = walSnapshot{balance: acc.Balance.Float(), walSeq: acc.WALSeq, nonce: acc.NaechsteNonce}
+		snapshots[addr] = walSnapshot{balance: acc.Balance.Float(), walSeq: acc.WALSeq, nonce: acc.NaechsteNonce, aktivitaet: acc.LastActivityAt}
 	}
 
 	phSnapshot = time.Since(phMark)
@@ -1192,22 +1199,28 @@ ORDER BY v.ord`
 	acctBalances := make([]float64, 0, len(snapshots))
 	acctSeqs := make([]int64, 0, len(snapshots))
 	acctNonces := make([]int64, 0, len(snapshots))
+	acctAktivitaet := make([]int64, 0, len(snapshots))
 	for _, addr := range addrList {
 		snap := snapshots[addr]
 		acctAddrs = append(acctAddrs, addr)
 		acctBalances = append(acctBalances, snap.balance)
 		acctSeqs = append(acctSeqs, int64(snap.walSeq))
 		acctNonces = append(acctNonces, snap.nonce)
+		acctAktivitaet = append(acctAktivitaet, snap.aktivitaet)
 	}
-	acctArgs := []interface{}{pq.Array(acctAddrs), pq.Array(acctBalances), pq.Array(acctSeqs), pq.Array(acctNonces)}
+	acctArgs := []interface{}{pq.Array(acctAddrs), pq.Array(acctBalances), pq.Array(acctSeqs), pq.Array(acctNonces), pq.Array(acctAktivitaet)}
 	// naechste_nonce steigt nur (GREATEST): sie wird nie herabgesetzt, auch
 	// nicht von einem Flush, der einen aelteren Stand traegt.
-	acctQuery := `INSERT INTO chain_accounts (address, balance, wal_seq, version, naechste_nonce)
-SELECT address, balance, wal_seq, 1, naechste_nonce
-FROM unnest($1::text[], $2::double precision[], $3::bigint[], $4::bigint[]) AS v(address, balance, wal_seq, naechste_nonce)
+	// last_activity_at wird mit dem Stand im Speicher geschrieben (siehe
+	// walSnapshot.aktivitaet) -- im selben WHERE wie der Saldo, also nur von
+	// einem Flush, der einen neueren Stand traegt.
+	acctQuery := `INSERT INTO chain_accounts (address, balance, wal_seq, version, naechste_nonce, last_activity_at)
+SELECT address, balance, wal_seq, 1, naechste_nonce, last_activity_at
+FROM unnest($1::text[], $2::double precision[], $3::bigint[], $4::bigint[], $5::bigint[]) AS v(address, balance, wal_seq, naechste_nonce, last_activity_at)
 ON CONFLICT (address) DO UPDATE
 SET balance = EXCLUDED.balance, wal_seq = EXCLUDED.wal_seq,
-    naechste_nonce = GREATEST(chain_accounts.naechste_nonce, EXCLUDED.naechste_nonce)
+    naechste_nonce = GREATEST(chain_accounts.naechste_nonce, EXCLUDED.naechste_nonce),
+    last_activity_at = EXCLUDED.last_activity_at
 WHERE chain_accounts.wal_seq < EXCLUDED.wal_seq`
 	phAcctSQL = time.Since(phMark)
 	phMark = time.Now()
