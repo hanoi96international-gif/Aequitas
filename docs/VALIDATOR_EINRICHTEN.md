@@ -1,137 +1,154 @@
 # Einen Aequitas-Validator betreiben
 
-**Stand 12.09.2026.** Ersetzt den Node-Guide vom Juni 2026, der auf Railway
-verwies — Railway gibt es für dieses Projekt nicht mehr. Was hier steht, ist
-der Weg, den die beiden Gründerboxen gehen, als Datei statt als Skript, und
-er wurde am 12.09.2026 mit einem leeren Rechner gegen das Live-Netz
-durchgespielt (siehe unten, „Was zu erwarten ist").
+**Stand 30.09.2026, nach dem Neustart des Netzes bei null.** Ersetzt die
+Fassung vom 12.09.2026.
+
+## Worum es geht, in drei Sätzen
+
+Ein Validator ist ein Rechner, der die Kette mitführt, jeden Block selbst
+nachprüft und selbst Blöcke erzeugt. Für diese Arbeit bekommt der Mensch, dem
+er gehört, jeden Tag einen gleichen Anteil am Validator-Topf. Ein Mensch kann
+genau einen Validator betreiben. Rechenleistung kaufen bringt keine
+zusätzliche Stimme.
 
 ## Was du brauchst
 
-| | Minimum | Wie die Gründerboxen |
+| | Mindestens | Wie die Gründerboxen |
 |---|---|---|
-| Rechner | VPS, Ubuntu 22.04/24.04, öffentliche IPv4 | Contabo, 6 vCPU |
-| RAM | 8 GB | 12 GB |
-| Platte | 60 GB SSD (die Datenbank ist 18 GB und wächst) | 100+ GB |
-| Software | Docker mit Compose-Plugin, git | dasselbe |
-| Ports | 8080 (API) und 4001 (P2P) von außen erreichbar | dasselbe |
-| Identität | ein **registrierter Mensch** (App-Registrierung abgeschlossen) | — |
+| Server | ein gemieteter Server (VPS) mit Ubuntu 22.04 oder 24.04 und einer öffentlichen IPv4-Adresse | netcup, 8 Kerne |
+| Arbeitsspeicher | 8 GB | 15 GB |
+| Festplatte | 60 GB SSD | 250 GB |
+| Offene Ports | 8080 (Schnittstelle) und 4001 (Verbindung zu anderen Knoten) | dasselbe |
+| Du selbst | in der Aequitas-App **registriert** (Gesichtsprüfung abgeschlossen) | – |
 
-Ein Mensch = ein Validator. Das Netz lehnt die Anmeldung eines Wallets ab,
-das kein registrierter Mensch ist. Das ist Absicht — Rechenleistung kaufen
-soll keine Stimme kaufen.
+Einen passenden Server gibt es bei den meisten Anbietern für 10 bis 20 Euro
+im Monat. Beim Bestellen „Ubuntu 24.04“ wählen. Die Zugangsdaten (IP-Adresse
+und Passwort) kommen per E-Mail.
 
-## Einrichten (etwa 15 Minuten, davon 10 Bauen)
+**Was nicht auf den Server gehört:** deine Wallet, ihre Wörterliste
+(Seed-Phrase) und ihr privater Schlüssel. Auf dem Server liegt nur die
+**Adresse** deiner Wallet. Wer den Server knackt, kommt so nicht an dein Geld.
+
+## Einrichten: ein Befehl, zwei Fragen
+
+Mit dem Server verbinden (auf Windows mit „PowerShell“, auf dem Mac mit
+„Terminal“):
 
 ```bash
+ssh root@DEINE-SERVER-IP
+```
+
+Dann diese drei Zeilen einfügen:
+
+```bash
+curl -fsSL https://get.docker.com | sh
 git clone https://github.com/hanoi96international-gif/Aequitas.git
-cd Aequitas/deploy/validator
-cp .env.example .env
-nano .env        # POSTGRES_PASSWORD, SELF_URL, NODE_OPERATOR_WALLET ausfüllen
-docker compose up -d --build
+cd Aequitas/deploy/validator && bash einrichten.sh
 ```
 
-`ANNAHME_ROLLE=nur_lesend` aus der Vorlage **stehen lassen**: Heute nimmt nur
-C1 Überweisungen an, ein zweiter Annehmender bringt die Kontostände
-auseinander. Ohne eigenen Server geht es auch auf Railway, siehe
-`VALIDATOR_RAILWAY.md`.
+Die erste Zeile installiert Docker (falls noch nicht da), die zweite holt
+Aequitas, die dritte richtet alles ein. Das Skript fragt nur nach:
 
-Dann:
+1. **deiner Wallet-Adresse**, der Adresse, mit der du dich in der App
+   registriert hast. Sie steht in der App unter „Empfangen“ und beginnt mit `0x`.
+2. **Bestätigung der IP-Adresse**, die es selbst ermittelt.
 
-```bash
-docker compose logs -f node
-```
+Alles andere erledigt es selbst: ein zufälliges Datenbank-Passwort, die
+Konfiguration, Bauen und Starten (beim ersten Mal etwa 10 Minuten) und das
+dauerhafte Speichern der beiden Schlüssel, die dein Knoten beim ersten Start
+für sich erzeugt. Am Ende zeigt es die **Signieradresse** deines Knotens.
 
-Beim ersten Start holt sich der Knoten den Zustand des Netzes (Snapshot) von
-den Gründerboxen und prüft dessen Signatur; danach zieht er die Blöcke seit
-dem Snapshot nach. Im Log erscheinen `[BOOTSTRAP] Fresh node — importing
-state from …`, dann `[HTTP-SYNC] Added … new blocks`, und sobald er an der
-Spitze ist, `[Block #…]`-Zeilen — das sind seine eigenen Blöcke.
+## Danach: zwei Schritte
 
-Prüfen:
+### 1. Binden: zeigen, dass der Knoten dir gehört
+
+Die Belohnungen gehen an deine Wallet. Dafür muss das Netz wissen, dass
+dieser Knoten dir gehört.
+
+1. Öffne im Browser die Bindungsseite **deines eigenen Knotens**:
+   `http://DEINE-SERVER-IP:8080/node-binding`
+2. Klick auf „Connect Wallet & Register“ und unterschreibe mit deiner Wallet.
+   Die Unterschrift kostet nichts und bewegt kein Geld. Der Knoten beweist
+   dabei selbst, dass der Signierschlüssel ihm gehört, und trägt sich ein.
+   Du musst nichts kopieren und nichts in `.env` eintragen.
+
+**Heute noch umständlich:** Die Seite braucht eine Wallet im Browser, zum
+Beispiel die Erweiterung MetaMask, mit **derselben** Wallet wie in der App.
+Dafür importierst du deine Wörterliste aus der App in MetaMask. Das Binden
+direkt in der Aequitas-App (QR-Code scannen, bestätigen) ist geplant und
+ersetzt diesen Schritt.
+
+### 2. Aufnahme als Blockproduzent
+
+Heute nimmt der Betreiber neue Blockproduzenten noch von Hand auf. Der Grund:
+Solange nicht jeder Knoten jeden Wert eines Blocks selbst nachrechnet, könnte
+ein böswilliger Produzent sonst Geld erzeugen. Sobald diese Prüfung vollständig
+ist, entfällt die Aufnahme, und jeder registrierte Mensch wird mit seinem Knoten
+automatisch Produzent.
+
+Schick dem Betreiber deine Signieradresse. Bis zur Aufnahme läuft dein Knoten
+als vollwertiger **Beobachter** mit: Er führt die ganze Kette und prüft jeden
+Block selbst nach.
+
+## Läuft er?
 
 ```bash
 curl -s http://localhost:8080/api/status | grep -oE '"height":[0-9]+'
 curl -s https://aequitas.digital/api/status | grep -oE '"height":[0-9]+'
 ```
 
-Beide Zahlen müssen (bis auf ein paar Blöcke) gleich sein.
+Beide Zahlen sollten bis auf ein paar Blöcke gleich sein. Die Selbstprüfung
+`curl -s http://localhost:8080/api/wache` antwortet mit 200, wenn alles da ist.
+Sonst nennt sie den Befund.
 
-## Zwei Schlüssel, zwei Aufgaben
-
-| | liegt wo | wofür |
-|---|---|---|
-| **Signierschlüssel** (`RELAYER_PRIVATE_KEY`) | auf dem Server | der Knoten unterschreibt damit seine Blöcke |
-| **Deine Menschen-Wallet** (`NODE_OPERATOR_WALLET`) | nur ihre **Adresse** auf dem Server, der Schlüssel bleibt bei dir | Belohnungen gehen dorthin |
-
-Verbunden werden die beiden **einmal** über `/node-binding`: mit der
-Menschen-Wallet signieren, das Ergebnis als
-`NODE_OPERATOR_BINDING_SIGNATURE` eintragen. Mit eigenem Signierschlüssel ist
-das **Pflicht** — ohne überspringt das Netz den Knoten als Validator.
-
-**Umzug auf einen neuen Server:** der neue Server hat einen neuen
-Signierschlüssel, also auf `/node-binding` noch einmal signieren. Die alte
-Signatur gilt nur für die alte Adresse.
-
-**Nicht empfohlen:** den privaten Schlüssel der Menschen-Wallet selbst als
-`RELAYER_PRIVATE_KEY` auf den Server legen. Dann unterschreibt der Knoten die
-Bindung selbst — aber wer den Server knackt, besitzt auch deine Wallet samt
-Guthaben.
-
-## Schlüssel sichern
-
-Lässt du `RELAYER_PRIVATE_KEY` und `NODE_KEY` in `.env` leer, erzeugt der
-Knoten beide beim ersten Start und druckt sie **einmal** ins Log (`SAVE THIS
-AS …`). Trag sie danach in `.env` ein und starte neu (`docker compose up -d`),
-sonst hat dein Knoten nach jedem Neustart eine neue Identität — und das Netz
-sieht ihn als jemand anderen.
-
-Ist `RELAYER_PRIVATE_KEY` nicht der Schlüssel deines `NODE_OPERATOR_WALLET`,
-musst du die Bindung einmal beweisen: auf https://aequitas.digital/node-binding
-die angezeigte Nachricht mit deinem Wallet signieren und die Signatur als
-`NODE_OPERATOR_BINDING_SIGNATURE` eintragen.
+Das Log ansehen: `docker compose logs -f node`. Mit Strg+C beendest du nur die
+Anzeige, der Knoten läuft weiter.
 
 ## Aktualisieren
 
 ```bash
-cd Aequitas && git pull && cd deploy/validator && docker compose up -d --build
+cd ~/Aequitas && git pull && cd deploy/validator && docker compose up -d --build
 ```
 
 Der Knoten kommt nach einem Neustart von allein zurück und holt auf, was er
-verpasst hat. **Starte nie alle Validatoren des Netzes gleichzeitig neu** —
-mit zwei Validatoren stand das Netz am 12.09.2026 genau deshalb still, bis
-der Fehler behoben war; heute fängt der Knoten das ab, aber Reihe nach ist
-trotzdem richtig.
+verpasst hat.
 
-## Was zu erwarten ist
+## Was wo liegt
 
-- Ruhe: der Knoten braucht unter 1 GB, Postgres unter 2 GB.
-- Unter Volllast (gemessen 12.09.2026, ~13.000 Überweisungen/s auf zwei
-  Validatoren): Knoten bis 5 GB (`GOMEMLIMIT`), eine CPU-Kern-Auslastung
-  von 3–4 Kernen, Platte wächst um mehrere GB je Stunde Volllast.
-- Ein Validator ohne eigenen Proof-Server nimmt keine **Registrierungen** an
-  (die Endpunkte antworten 503) — Überweisungen, Blöcke und Belohnungen
-  funktionieren ohne ihn. Wer Registrierungen bedienen will, braucht die
-  Coordinator/Proof-Server-Instanz aus dem App-Repo; das ist ein eigener
-  Schritt und für einen Validator nicht nötig.
-- **Der Knoten heilt sich selbst.** Fällt er hinter das Netz zurück, steht die
-  Höhe, bleibt derselbe Block wiederholt hängen oder weicht sein Kontostand
-  belegt von den Seeds ab (drei Vergleiche in Folge, in der Ruhe), holt er den
-  Zustand neu vom signierten Snapshot der Seeds — von selbst, mit 30 Minuten
-  Sperre gegen Schleifen (`AUTO_HEAL_ON_DIVERGENCE`,
-  `AEQUITAS_DIVERGENZ_AUTORESYNC` in der Compose-Datei). Im Log steht dann
-  `[AUTO-HEAL]`. Du musst nichts tun; die eigene Blockproduktion setzt danach
-  wieder ein.
-- Selbstprüfung: `http://<deine-IP>:8080/api/wache` antwortet 200, wenn alles
-  da ist, sonst 503 mit den Befunden. Ein Proof-Server, den du nicht hast,
-  wird dabei übersprungen, nicht bemängelt.
+| | Wo | Wofür |
+|---|---|---|
+| Signierschlüssel (`RELAYER_PRIVATE_KEY`) | nur auf dem Server, in `.env` | der Knoten unterschreibt damit seine Blöcke |
+| P2P-Schlüssel (`NODE_KEY`) | nur auf dem Server, in `.env` | seine Kennung gegenüber anderen Knoten |
+| Adresse deiner Wallet (`NODE_OPERATOR_WALLET`) | auf dem Server | wohin die Belohnungen gehen |
+| Deine Wallet, Wörterliste, privater Schlüssel | **nur bei dir**, nie auf dem Server | – |
+
+**Sichere die Datei `.env`** (zum Beispiel mit `scp root@DEINE-SERVER-IP:Aequitas/deploy/validator/.env .`
+auf deinen Rechner). Geht sie verloren, bekommt der Knoten eine neue Identität,
+und du musst neu binden und neu aufgenommen werden.
+
+**Umzug auf einen neuen Server:** Die alte `.env` mitnehmen, dann bleibt alles
+wie es war. Ohne sie ist es ein neuer Knoten: neu binden, neu aufnehmen lassen.
 
 ## Wenn etwas nicht geht
 
-| Symptom | Ursache | Abhilfe |
+| Meldung | Bedeutung | Was tun |
 |---|---|---|
-| `NODE_OPERATOR_WALLET is not a registered human` | Wallet ist nicht registriert | erst in der App registrieren |
-| `operator_binding_signature missing or invalid` | Signierschlüssel ≠ Wallet | Bindung auf /node-binding erzeugen |
-| Höhe steht, `Not yet 3 consecutive clean sync cycles` | Knoten holt noch auf | warten; Produktion beginnt nach dem Aufholen |
-| `SELF_URL not set — running in isolated mode` | SELF_URL fehlt | in `.env` setzen, neu starten |
-| Höhe bleibt hinter dem Netz zurück | Port 4001/8080 nicht erreichbar, oder zu wenig RAM | Firewall prüfen, `docker stats` |
+| `NODE_OPERATOR_WALLET is not a registered human` | die Wallet ist nicht registriert | erst in der App registrieren |
+| `operator_binding_signature missing or invalid` | die Bindung fehlt oder passt nicht | Schritt 1 „Binden“ wiederholen |
+| Bindungsseite: „no wallet“ / nichts passiert | keine Wallet im Browser | MetaMask installieren und die Wallet aus der App importieren (siehe Schritt 1) |
+| `ist registriert, aber nicht in AUTHORIZED_VALIDATORS` | noch nicht als Produzent aufgenommen | Signieradresse an den Betreiber schicken; bis dahin Beobachter |
+| Höhe steht, `Not yet 3 consecutive clean sync cycles` | der Knoten holt noch auf | warten |
+| Höhe bleibt hinter dem Netz zurück | Port 4001/8080 zu, oder zu wenig Arbeitsspeicher | Firewall des Anbieters prüfen, `docker stats` |
+| `einrichten.sh`: „Der Knoten hat keinen Signierschlüssel gemeldet“ | der erste Start ist gescheitert | `docker compose logs node` ansehen und die letzten Zeilen dem Betreiber schicken |
+
+## Für Fortgeschrittene
+
+- Alle Einstellungen stehen kommentiert in `.env.example`. `ANNAHME_ROLLE=nur_lesend`
+  bleibt stehen: Nur ein Knoten des Netzes nimmt Überweisungen an, zwei
+  Annehmende brächten die Kontostände auseinander.
+- Der Knoten heilt sich selbst: Fällt er zurück oder weicht ab, holt er den
+  Zustand neu vom signierten Snapshot der Seeds (`AUTO_HEAL_ON_DIVERGENCE`,
+  `AEQUITAS_DIVERGENZ_AUTORESYNC` in der Compose-Datei).
+- Registrierungen neuer Menschen nimmt nur ein Knoten mit eigenem Proof-Server
+  an. Für einen Validator ist das nicht nötig.
+- Ohne eigenen Server: `VALIDATOR_RAILWAY.md`.
