@@ -434,11 +434,15 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 	// required haertete einen Pfad, den niemand benutzen muss.
 	//
 	// Siehe prove_provenance.go.
-	if proveHerkunftVerlangt() && !hatProveHerkunft(req.ZKNullifier) {
-		fmt.Printf("[REGISTER] ✗ Abgewiesen: Nullifier %s… stammt aus keinem /prove dieses Knotens\n",
+	//
+	// Und fuer WELCHE Wallet (30.09.2026): die Herkunft gilt nur fuer die
+	// Wallet, fuer die /prove den Beweis erzeugt hat -- sonst liesse sich eine
+	// abgefangene /prove-Antwort fuer die eigene Wallet einreichen.
+	if proveHerkunftVerlangt() && !hatProveHerkunft(req.ZKNullifier, wallet) {
+		fmt.Printf("[REGISTER] ✗ Abgewiesen: Nullifier %s… stammt aus keinem /prove dieses Knotens fuer diese Wallet\n",
 			nullifierSchluessel(req.ZKNullifier)[:min(16, len(nullifierSchluessel(req.ZKNullifier)))])
-		return "", fmt.Errorf("this proof did not come from a verified registration on this node: " +
-			"run the biometric check via /api/prove first, and register on the same node")
+		return "", fmt.Errorf("this proof did not come from a verified registration for this wallet on this node: " +
+			"run the biometric check via /api/prove first, with this wallet, and register on the same node")
 	}
 
 	// Prefer ZK-circuit-derived nullifier (v2 circuit, pubSignals[1]) over

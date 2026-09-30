@@ -37,18 +37,19 @@ func TestRegistrierung_NullifierMussDerDesBeweisesSein(t *testing.T) {
 }
 
 func TestHerkunft_GiltFuerDieZahlNichtFuerDieSchreibweise(t *testing.T) {
-	merkeProveHerkunft([]byte(`{"zkNullifier":"` + ehrlicherNullifier + `","circuitVersion":3}`))
-	if !hatProveHerkunft(ehrlicherNullifier) {
+	const w = "0x1111111111111111111111111111111111111111"
+	merkeProveHerkunft([]byte(`{"wallet":"`+w+`"}`), []byte(`{"zkNullifier":"`+ehrlicherNullifier+`","circuitVersion":3}`))
+	if !hatProveHerkunft(ehrlicherNullifier, w) {
 		t.Fatal("nach einem erfolgreichen /prove muss die Herkunft stehen")
 	}
-	if hatProveHerkunft("0x" + ehrlicherNullifier) {
+	if hatProveHerkunft("0x"+ehrlicherNullifier, w) {
 		t.Fatal(`"0x"+N ist eine andere Zahl und darf die Herkunft von N nicht erben`)
 	}
 	n, _ := new(big.Int).SetString(ehrlicherNullifier, 10)
-	if !hatProveHerkunft("0x" + n.Text(16)) {
+	if !hatProveHerkunft("0x"+n.Text(16), w) {
 		t.Fatal("dieselbe Zahl in Hex-Schreibweise muss die Herkunft haben")
 	}
-	if hatProveHerkunft("kein-nullifier") {
+	if hatProveHerkunft("kein-nullifier", w) {
 		t.Fatal("Unlesbares darf nie als Herkunft gelten")
 	}
 }

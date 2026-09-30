@@ -3436,7 +3436,7 @@ func (a *APIServer) handleProveProxy(w http.ResponseWriter, r *http.Request) {
 	// durch die Pruefung gekommen ist -- /api/register nimmt nur solche.
 	// Siehe prove_provenance.go fuer die Luecke, die das schliesst.
 	if resp.StatusCode == http.StatusOK {
-		merkeProveHerkunft(respBody)
+		merkeProveHerkunft(body, respBody)
 		merkeProveKlasse(respBody)
 	}
 	w.WriteHeader(resp.StatusCode)
