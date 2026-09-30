@@ -27,10 +27,10 @@ name: Neustart bei null (V8) -- erkunden oder ausfuehren
 # Ablauf (Betreiber, 30.09.2026: das neue Netz beginnt mit C1 allein):
 #   1. beide Boxen sichern (deploy/backup-ledger.sh, Kopie bleibt auf der Box),
 #   2. beide leeren (Knoten gestoppt),
-#   3. C1 bekommt einen EIGENEN Signierschluessel statt der persoenlichen
-#      Wallet (schluessel-c1.sh; nur die Adresse wird ausgegeben) und ist
-#      einziger Produzent (AUTHORIZED_VALIDATORS). Gebunden wird er nach der
-#      Registrierung des Betreibers (/node-binding).
+#   3. C1 wird einziger Produzent (AUTHORIZED_VALIDATORS = seine eigene
+#      Signieradresse, produzenten-c1.sh). C1 signiert schon mit einem eigenen
+#      Schluessel, nicht mit der Wallet des Betreibers (Erkundung 30.09.); der
+#      Schluessel und seine Bindung bleiben.
 #   4. C1 mit deploy-c1.sh aus main bauen und starten (v8, null Menschen,
 #      nimmt an),
 #   5. C2: Knoten bleibt aus, seine Dienste laufen geleert weiter. C2 wird
@@ -159,7 +159,7 @@ jobs:
           BOX: ${{ matrix.box }}
         run: cat .github/neustart/gemeinsam.sh .github/neustart/leeren.sh | ssh -i ~/.ssh/k -o BatchMode=yes "root@$HOST" "BOX=$BOX BESTAETIGT='ALLE GUTHABEN WEG' bash -s"
 
-  schluessel-c1:
+  produzenten-c1:
     needs: leeren
     runs-on: ubuntu-latest
     environment: produktion
@@ -172,11 +172,11 @@ jobs:
           HOST: 188.172.229.121
           FP: "SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA"
         run: bash .github/neustart/ssh-einrichten.sh
-      - name: Eigener Signierschluessel fuer C1 (nur die Adresse wird ausgegeben)
-        run: cat .github/neustart/gemeinsam.sh .github/neustart/schluessel-c1.sh | ssh -i ~/.ssh/k -o BatchMode=yes root@188.172.229.121 "BOX=C1 BESTAETIGT='ALLE GUTHABEN WEG' bash -s"
+      - name: C1 einziger Produzent (AUTHORIZED_VALIDATORS = eigene Signieradresse)
+        run: cat .github/neustart/gemeinsam.sh .github/neustart/produzenten-c1.sh | ssh -i ~/.ssh/k -o BatchMode=yes root@188.172.229.121 "BOX=C1 BESTAETIGT='ALLE GUTHABEN WEG' bash -s"
 
   starten-c1:
-    needs: schluessel-c1
+    needs: produzenten-c1
     runs-on: ubuntu-latest
     environment: produktion
     timeout-minutes: 20
