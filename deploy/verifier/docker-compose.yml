@@ -1,0 +1,39 @@
+# Aequitas-Verifier (Vergleichsdienst) mit HTTPS davor -- eingerichtet von
+# einrichten.sh, siehe docs/VERIFIER_EINRICHTEN.md. Werte kommen aus .env
+# (nur fuer root lesbar); das Skript schreibt sie.
+services:
+  verifier:
+    image: ${VERIFIER_IMAGE}
+    container_name: aequitas-verifier
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - verifierdata:/data
+    networks: [aequitas-net]
+    logging:
+      driver: json-file
+      options: { max-size: "20m", max-file: "3" }
+
+  # Holt und erneuert das Zertifikat selbst (Let's Encrypt). Die Adresse
+  # <IP-mit-Strichen>.sslip.io zeigt ohne eigene Domain auf diesen Server.
+  caddy:
+    image: caddy:2
+    container_name: aequitas-verifier-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+      - caddyconfig:/config
+    networks: [aequitas-net]
+    depends_on: [verifier]
+
+networks:
+  aequitas-net: {}
+
+volumes:
+  verifierdata: {}
+  caddydata: {}
+  caddyconfig: {}

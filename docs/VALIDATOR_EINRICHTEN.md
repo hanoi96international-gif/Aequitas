@@ -56,29 +56,33 @@ Aequitas, die dritte richtet alles ein. Das Skript fragt nur nach:
 Alles andere erledigt es selbst: ein zufälliges Datenbank-Passwort, die
 Konfiguration, Bauen und Starten (beim ersten Mal etwa 10 Minuten) und das
 dauerhafte Speichern der beiden Schlüssel, die dein Knoten beim ersten Start
-für sich erzeugt. Am Ende zeigt es die **Signieradresse** deines Knotens.
+für sich erzeugt.
 
-## Danach: zwei Schritte
-
-### 1. Binden: zeigen, dass der Knoten dir gehört
+## Am Ende: QR-Code scannen
 
 Die Belohnungen gehen an deine Wallet. Dafür muss das Netz wissen, dass
-dieser Knoten dir gehört.
+dieser Knoten dir gehört. Das erledigst du mit dem Handy:
 
-1. Öffne im Browser die Bindungsseite **deines eigenen Knotens**:
-   `http://DEINE-SERVER-IP:8080/node-binding`
-2. Klick auf „Connect Wallet & Register“ und unterschreibe mit deiner Wallet.
-   Die Unterschrift kostet nichts und bewegt kein Geld. Der Knoten beweist
-   dabei selbst, dass der Signierschlüssel ihm gehört, und trägt sich ein.
-   Du musst nichts kopieren und nichts in `.env` eintragen.
+1. Das Skript zeigt am Ende einen **QR-Code** im Terminal.
+2. Öffne die Aequitas-App → Tab **„Knoten“** → **„Knoten binden (QR scannen)“**
+   und scanne den Code.
+3. Die App zeigt die Signieradresse deines Knotens. Tippe auf **„Bestätigen“**.
 
-**Heute noch umständlich:** Die Seite braucht eine Wallet im Browser, zum
-Beispiel die Erweiterung MetaMask, mit **derselben** Wallet wie in der App.
-Dafür importierst du deine Wörterliste aus der App in MetaMask. Das Binden
-direkt in der Aequitas-App (QR-Code scannen, bestätigen) ist geplant und
-ersetzt diesen Schritt.
+Die Unterschrift kostet nichts und bewegt kein Geld. Das Skript merkt die
+Bestätigung nach wenigen Sekunden, trägt die Bindung selbst ein und startet den
+Knoten neu. Du musst nichts kopieren und nichts eintippen. Kommt innerhalb von
+15 Minuten keine Bestätigung, einfach `bash einrichten.sh` noch einmal starten.
 
-### 2. Aufnahme als Blockproduzent
+Die App prüft dabei selbst, dass der Code für **deine** Wallet erzeugt wurde
+und dass der Knoten den Schlüssel zur gezeigten Signieradresse wirklich hat.
+Ein fremder oder verfälschter Code wird abgelehnt, bevor unterschrieben wird.
+
+**Ohne die App** (zum Beispiel mit MetaMask im Browser): die Bindungsseite des
+eigenen Knotens `http://DEINE-SERVER-IP:8080/node-binding` öffnen, mit derselben
+Wallet unterschreiben, die angezeigte Zeile `NODE_OPERATOR_BINDING_SIGNATURE=…`
+in `.env` eintragen und `docker compose up -d node` ausführen.
+
+## Danach: Aufnahme als Blockproduzent
 
 Heute nimmt der Betreiber neue Blockproduzenten noch von Hand auf. Der Grund:
 Solange nicht jeder Knoten jeden Wert eines Blocks selbst nachrechnet, könnte
@@ -134,8 +138,9 @@ wie es war. Ohne sie ist es ein neuer Knoten: neu binden, neu aufnehmen lassen.
 | Meldung | Bedeutung | Was tun |
 |---|---|---|
 | `NODE_OPERATOR_WALLET is not a registered human` | die Wallet ist nicht registriert | erst in der App registrieren |
-| `operator_binding_signature missing or invalid` | die Bindung fehlt oder passt nicht | Schritt 1 „Binden“ wiederholen |
-| Bindungsseite: „no wallet“ / nichts passiert | keine Wallet im Browser | MetaMask installieren und die Wallet aus der App importieren (siehe Schritt 1) |
+| `operator_binding_signature missing or invalid` | die Bindung fehlt oder passt nicht | `bash einrichten.sh` erneut starten und den QR-Code scannen |
+| `einrichten.sh`: „Keine Bestätigung aus der App angekommen“ | QR-Code nicht gescannt oder nicht bestätigt | `bash einrichten.sh` noch einmal starten und den neuen Code scannen |
+| App: „Dieser Code wurde für eine andere Wallet erzeugt“ | beim Einrichten eine andere Adresse eingegeben | in `.env` `NODE_OPERATOR_WALLET` korrigieren oder neu einrichten |
 | `ist registriert, aber nicht in AUTHORIZED_VALIDATORS` | noch nicht als Produzent aufgenommen | Signieradresse an den Betreiber schicken; bis dahin Beobachter |
 | Höhe steht, `Not yet 3 consecutive clean sync cycles` | der Knoten holt noch auf | warten |
 | Höhe bleibt hinter dem Netz zurück | Port 4001/8080 zu, oder zu wenig Arbeitsspeicher | Firewall des Anbieters prüfen, `docker stats` |
@@ -151,4 +156,7 @@ wie es war. Ohne sie ist es ein neuer Knoten: neu binden, neu aufnehmen lassen.
   `AEQUITAS_DIVERGENZ_AUTORESYNC` in der Compose-Datei).
 - Registrierungen neuer Menschen nimmt nur ein Knoten mit eigenem Proof-Server
   an. Für einen Validator ist das nicht nötig.
-- Ohne eigenen Server: `VALIDATOR_RAILWAY.md`.
+- Ohne eigenen Server: `VALIDATOR_RAILWAY.md` (Railway-Pro-Plan und eigene
+  Adresse nötig, nichts für den Einstieg).
+- Die zweite Rolle, der Verifier (Schutz gegen Doppelregistrierung), hat eine
+  eigene Anleitung mit ebenfalls einem Befehl: `VERIFIER_EINRICHTEN.md`.
