@@ -48,6 +48,12 @@ func signTestBlock(t *testing.T, height int64) *Block {
 // the orphan queue) with an otherwise fully valid, authorized block.
 func signTestBlockWithParent(t *testing.T, height int64, parentHash string) *Block {
 	t.Helper()
+	return signTestBlockWithZeit(t, height, parentHash, time.Now().Unix())
+}
+
+// signTestBlockWithZeit wie signTestBlockWithParent, mit vorgegebenem Zeitstempel.
+func signTestBlockWithZeit(t *testing.T, height int64, parentHash string, zeit int64) *Block {
+	t.Helper()
 	key, err := crypto.GenerateKey()
 	if err != nil {
 		t.Fatalf("GenerateKey: %v", err)
@@ -55,7 +61,7 @@ func signTestBlockWithParent(t *testing.T, height int64, parentHash string) *Blo
 	addr := strings.ToLower(crypto.PubkeyToAddress(key.PublicKey).Hex())
 	b := &Block{
 		Height:       height,
-		Timestamp:    time.Now().Unix(),
+		Timestamp:    zeit,
 		ParentHashes: []string{parentHash},
 		Proposer:     addr,
 		Humans:       4,

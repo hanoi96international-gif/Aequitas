@@ -28,36 +28,36 @@ func TestAddPeerBlock_UnauthorizedProposerRejectedWithoutFromSyncBypass(t *testi
 	}
 }
 
-// TestAddPeerBlock_FromSyncTrueWouldHaveBypassedAuthorization documents the
-// OLD bug's mechanism directly: with FromSync=true (what handleBlockPush used
-// to set for every push, regardless of sender), the SAME unauthorized
-// proposer's block WOULD have been accepted. This isn't asserting desired
-// behavior — it's proof of what the vulnerability actually let through,
-// kept as a permanent record of why the fix in api.go (block.FromSync =
-// false) matters.
-func TestAddPeerBlock_FromSyncTrueWouldHaveBypassedAuthorization(t *testing.T) {
-	dag := newOrphanTestDAG()
-	dag.state = &ChainState{}
-	dag.bootHeight = 0
-	dag.authorizedValidators = map[string]bool{} // deliberately empty — proposer is NOT registered
-	dag.warnedUnknownProposers = map[string]bool{}
-	dag.stateRootMismatches = map[string]int{}
-	dag.stateRootMismatchLastAt = map[string]int64{}
-	dag.replayedBlocks = map[string]bool{}
-	dag.equivocationIndex = map[string]string{}
-	// FIX (2026-07-10): "deadbeef" must actually exist in dag.blocks now.
-	// It previously worked unresolved purely because Integrity check 3 skips
-	// parent-existence verification for height==1, and computeGHOSTDAGState
-	// used to silently tolerate an unresolvable SelectedParent candidate
-	// instead of deferring — a real production block always builds on a
-	// real, already-known ancestor (genesis or a checkpoint stub), so a
-	// genuinely-dangling parent hash was never a case this test needed to
-	// exercise; it only ever cared about the authorization gate below.
-	dag.blocks["deadbeef"] = &Block{Hash: "deadbeef", Height: 0, IsGenesis: true}
-	blk := signTestBlockWithParent(t, 1, "deadbeef")
-	blk.FromSync = true // the OLD, vulnerable handleBlockPush behavior
+// FromSync entbindet seit dem Stichtag (30.09.2026, Audit H-1) nur noch
+// Bloecke der alten Geschichte von der Produzentenpruefung. Bis dahin hielt
+// dieser Test fest, dass FromSync=true einen nicht zugelassenen Produzenten
+// durchliess -- genau das, was der Seed-Abruf ueber HTTP fuer jeden auf dem
+// Weg offen liess. Jetzt: ein aktueller Block wird trotz FromSync
+// abgewiesen, ein Block von vor dem Stichtag weiter angenommen.
+func TestAddPeerBlock_FromSyncNurFuerAlteGeschichte(t *testing.T) {
+	neu := func() *BlockDAG {
+		dag := newOrphanTestDAG()
+		dag.state = &ChainState{}
+		dag.bootHeight = 0
+		dag.authorizedValidators = map[string]bool{} // Produzent NICHT zugelassen
+		dag.warnedUnknownProposers = map[string]bool{}
+		dag.stateRootMismatches = map[string]int{}
+		dag.stateRootMismatchLastAt = map[string]int64{}
+		dag.replayedBlocks = map[string]bool{}
+		dag.equivocationIndex = map[string]string{}
+		dag.blocks["deadbeef"] = &Block{Hash: "deadbeef", Height: 0, IsGenesis: true}
+		return dag
+	}
 
-	if !dag.AddPeerBlock(blk) {
-		t.Fatal("expected FromSync=true to bypass the authorized-validator check (confirming the mechanism the api.go fix removes) — if this now fails, some other gate started rejecting unauthorized FromSync blocks and this test's premise should be revisited")
+	aktuell := signTestBlockWithParent(t, 1, "deadbeef")
+	aktuell.FromSync = true
+	if neu().AddPeerBlock(aktuell) {
+		t.Fatal("ein aktueller Block eines nicht zugelassenen Produzenten darf auch mit FromSync nicht durchkommen")
+	}
+
+	alt := signTestBlockWithZeit(t, 1, "deadbeef", zeitstempelPruefungAbUnix-86400)
+	alt.FromSync = true
+	if !neu().AddPeerBlock(alt) {
+		t.Fatal("ein Block von vor dem Stichtag muss vom Seed weiter nachladbar sein")
 	}
 }
