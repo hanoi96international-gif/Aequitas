@@ -385,6 +385,12 @@ type BlockDAG struct {
 	signingKey           *ecdsa.PrivateKey
 	selfProposer         string          // lower-cased Ethereum address of this node's signing key
 	authorizedValidators map[string]bool // Ethereum addresses allowed to propose blocks
+	// produzentenFest ist AUTHORIZED_VALIDATORS als GESCHLOSSENE Menge
+	// (Audit 2026-09-29, K-1). Ist sie gesetzt, nimmt authorizedValidators
+	// nur diese Adressen und den eigenen Schluessel auf -- keine
+	// Selbsteintragung, keine Uebernahme aus Peer-Listen. Leer (auch in jedem
+	// Test, der BlockDAG als Literal baut) gilt das bisherige offene Verhalten.
+	produzentenFest map[string]bool
 	// Signierschluessel -> registrierter Mensch, nur aus geprueften Bindungen
 	// (leitung_netz.go: ein Mensch, eine Stimme in der Leitung).
 	validatorMenschen sync.Map
@@ -1201,8 +1207,52 @@ func (dag *BlockDAG) AddAuthorizedValidator(addr string) {
 		return
 	}
 	dag.mu.Lock()
-	dag.authorizedValidators[addr] = true
+	dag.nimmProduzentAufLocked(addr)
 	dag.mu.Unlock()
+}
+
+// nimmProduzentAufLocked ist der EINZIGE Weg in authorizedValidators nach dem
+// Start (Aufrufer haelt dag.mu). Liefert, ob die Adresse aufgenommen ist.
+//
+// WARUM (Audit 2026-09-29, K-1): jeder registrierte Mensch kann ueber
+// /api/register-validator-key einen Signierschluessel eintragen, und andere
+// Knoten uebernehmen ihn ueber /api/validators automatisch. Damit wurde jeder
+// Mensch Blockproduzent -- und das Nachspielen glaubt dem Produzenten Werte,
+// die es nicht selbst nachrechnet (K-2). Aus "ein Mensch" wurde so "darf
+// Geld schoepfen".
+//
+// Solange das Nachspielen nicht JEDEN Wert selbst prueft, ist die Menge der
+// Produzenten eine Betreiberentscheidung: AUTHORIZED_VALIDATORS. Ist die
+// Liste gesetzt, ist sie abschliessend. Eingetragene Validatoren bleiben im
+// Register (Bezeugung, Vergleichsdienst, Anzeige) -- sie produzieren nur
+// keine Bloecke.
+func (dag *BlockDAG) nimmProduzentAufLocked(addr string) bool {
+	if dag.authorizedValidators[addr] {
+		return true
+	}
+	if len(dag.produzentenFest) > 0 && !dag.produzentenFest[addr] && addr != dag.selfProposer {
+		if dag.warnedUnknownProposers == nil || len(dag.warnedUnknownProposers) > 500 {
+			dag.warnedUnknownProposers = make(map[string]bool)
+		}
+		if !dag.warnedUnknownProposers["fest:"+addr] {
+			dag.warnedUnknownProposers["fest:"+addr] = true
+			fmt.Printf("[VALIDATOR] %s ist registriert, aber nicht in AUTHORIZED_VALIDATORS -- kein Blockproduzent\n", addr)
+		}
+		return false
+	}
+	if dag.authorizedValidators == nil {
+		dag.authorizedValidators = make(map[string]bool)
+	}
+	dag.authorizedValidators[addr] = true
+	return true
+}
+
+// ProduzentenGeschlossen: ob AUTHORIZED_VALIDATORS die Produzenten
+// abschliessend festlegt. Fuer /api/status. Ohne Sperre: produzentenFest wird
+// nur in NewBlockchain geschrieben und danach nie wieder, und /api/status
+// darf gerade NICHT auf dag.mu warten (status_ohne_sperre.go).
+func (dag *BlockDAG) ProduzentenGeschlossen() bool {
+	return len(dag.produzentenFest) > 0
 }
 
 // ValidatorKeyPair pairs a block-signing address with the human wallet that
@@ -1291,6 +1341,7 @@ func NewBlockchain(nodeID string, state *ChainState) *BlockDAG {
 		nodeID:                      nodeID,
 		bootTime:                    time.Now(),
 		authorizedValidators:        loadAuthorizedValidators(),
+		produzentenFest:             loadAuthorizedValidators(),
 		activeSyncPeers:             make(map[string]bool),
 		peerSyncHeight:              make(map[string]int64),
 		peerSyncSeenAt:              make(map[string]time.Time),
@@ -1339,6 +1390,15 @@ func NewBlockchain(nodeID string, state *ChainState) *BlockDAG {
 		} else {
 			fmt.Printf("✓ Block signing enabled (RELAYER_PRIVATE_KEY loaded), proposer addr: %s\n", selfAddr)
 		}
+	}
+
+	if len(dag.produzentenFest) == 0 {
+		fmt.Println("[SICHERHEIT] ⚠ AUTHORIZED_VALIDATORS ist leer: jeder registrierte Mensch kann " +
+			"sich als Blockproduzent eintragen (Audit K-1). Vor dem Launch auf die Signieradressen " +
+			"der Betreiberknoten setzen -- auf JEDEM Knoten dieselbe Liste.")
+	} else {
+		fmt.Printf("[SICHERHEIT] Blockproduzenten abschliessend festgelegt: %d Adresse(n) aus AUTHORIZED_VALIDATORS\n",
+			len(dag.produzentenFest))
 	}
 
 	dag.createGenesisBlock()
