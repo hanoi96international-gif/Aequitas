@@ -54,3 +54,23 @@ for c in $(docker ps --format '{{.Names}}' | grep -E 'matching' || true); do
   echo "  Log (Auth, letzte 2h):"
   docker logs --since 2h "$c" 2>&1 | grep -E ' 401|unauthor|coordinator|missing_bearer' | tail -8 | cut -c1-200
 done
+
+# Netz: erreicht jeder Dienst den Knoten unter dem Namen aus CHAIN_BASE_URL?
+# Nur Netznamen, Container-Namen und Ja/Nein -- keine Adressen von aussen.
+echo "--- Netze ---"
+docker network ls --format '  {{.Name}} ({{.Driver}})' | grep -vE ' (none|null)' || true
+for c in "$NODE" "$MATCH" "$PROOF" "$COORD"; do
+  [ -n "$c" ] || continue
+  docker inspect "$c" >/dev/null 2>&1 || { echo "  $c: fehlt"; continue; }
+  echo "  $c: Modus=$(docker inspect "$c" --format '{{.HostConfig.NetworkMode}}') Netze=$(docker inspect "$c" --format '{{range $n,$_ := .NetworkSettings.Networks}}{{$n}} {{end}}')"
+done
+for c in "$MATCH" "$PROOF" "$COORD"; do
+  [ -n "$c" ] && laeuft "$c" || continue
+  u="$(env_von "$c" CHAIN_BASE_URL)"; [ -n "$u" ] || u="$(env_von "$c" CHAIN_URL)"
+  [ -n "$u" ] || { echo "  $c -> (keine CHAIN_BASE_URL)"; continue; }
+  r="$(docker exec -e U="$u" "$c" python -c 'import os,urllib.request
+try:
+  urllib.request.urlopen(os.environ["U"].rstrip("/")+"/api/status",timeout=5); print("erreichbar")
+except Exception as e: print("NICHT erreichbar:", type(e).__name__)' 2>&1 | tail -1 | cut -c1-80)"
+  echo "  $c -> $u: $r"
+done
