@@ -71,6 +71,22 @@ echo
 curl -s -m 5 http://127.0.0.1:8080/api/status | grep -oE '"(height|total_humans|netz_kennung|register_vertrag)": ?("[^"]*"|[0-9]+)' | tr '\n' ' '
 echo
 echo
+echo "===== $BOX: Validator- und MPC-Eintraege (nur Adressen, URLs, Schalter) ====="
+# Fuer den Schluesselwechsel beim Neustart: wer steht wo. Private Schluessel
+# werden nie gelesen; von RELAYER_PRIVATE_KEY nur, ob gesetzt, und die
+# oeffentliche Adresse aus /api/status.
+for v in AUTHORIZED_VALIDATORS MPC_PEERS MPC_ENABLED MPC_REQUIRED MPC_PARTY_INDEX RELAYER_ADDRESS NODE_OPERATOR_WALLET PRIMARY_NODE_URLS ANNAHME_ROLLE; do
+  w="$(env_von "$NODE" "$v" | grep -oE '0x[0-9a-fA-F]{40}|https?://[A-Za-z0-9.:/_-]+|\b(true|false|[0-9]+|annehmend|nur_lesend|keine)\b' | tr '\n' ' ')"
+  echo "$v = ${w:-(leer)}"
+done
+echo "RELAYER_PRIVATE_KEY gesetzt: $([ -n "$(env_von "$NODE" RELAYER_PRIVATE_KEY)" ] && echo ja || echo nein)"
+echo "NODE_OPERATOR_BINDING_SIGNATURE gesetzt: $([ -n "$(env_von "$NODE" NODE_OPERATOR_BINDING_SIGNATURE)" ] && echo ja || echo nein)"
+curl -s -m 5 http://127.0.0.1:8080/api/status | grep -oE '"(validator_address|produzenten_geschlossen)": ?("[^"]*"|true|false)' | tr '\n' ' '
+echo
+for f in /root/.aequitas.env /root/Aequitas/deploy/validator/.env; do
+  [ -f "$f" ] && echo "Umgebungsdatei: $f ($(grep -cE '^[A-Z_]+=' "$f") Eintraege, RELAYER_PRIVATE_KEY-Zeilen: $(grep -c '^RELAYER_PRIVATE_KEY=' "$f"))"
+done
+echo
 echo "===== $BOX: Deploy-Skript der Box (nur ob es baut) ====="
 for f in /root/deploy_safe_c2.sh /root/Aequitas/deploy/deploy-c1.sh; do
   [ -f "$f" ] && echo "$f: git fetch/reset/pull $(grep -cE 'git (fetch|reset|pull)' "$f")x, docker build $(grep -cE 'docker (compose )?build|docker build' "$f")x, docker run/up $(grep -cE 'docker run|compose up' "$f")x"
