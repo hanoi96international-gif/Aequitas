@@ -222,8 +222,67 @@ Abhilfe, in dieser Reihenfolge:
 
 ## Go-Anbindung
 
-**Nicht Teil dieses Branches** (keine Go-Datei geändert). Zeilen beziehen sich auf `main`
-bei Commit `cc7babbe`. Grundsatz: **Keine V7-Slot-Zahl darf stehen bleiben.** Die
+### Umgesetzt (30.09.2026, Zweig `claude/aktuellen-stand-fhd5bh`)
+
+**Schalter in der Genesis.** V8 gilt nur, wenn `genesis.json` es verlangt:
+
+```json
+"register_vertrag": { "version": "v8", "registrare": ["0x<Relayer C1>", "0x<Relayer C2>"] }
+```
+
+Fehlt der Eintrag, bleibt alles V7 – die laufende Kette hat ihn nicht, und ein Push auf `main`
+ändert ihr Verhalten nicht (Test `TestV8Genesis_DieRepoGenesisBleibtV7`). Unbekannte Version,
+0 oder mehr als 16 Registrare, doppelte oder ungültige Adressen: Der Knoten startet nicht
+(`cmd/aequitasd`, `PruefeVertragGenesis`).
+
+**Gleiche Adresse wie V7.** V8 liegt an `V7_CONTRACT_ADDR`. Nach dem Neustart ist sie frei;
+Wallets, App, Explorer und der RPC-Abfang (transfer/balanceOf/isHuman haben in V8 dieselben
+Selektoren) bleiben gültig. Übertragbar sind Signaturen trotzdem nicht: `NETZ_SALT`.
+
+| Stelle | Umsetzung |
+|---|---|
+| `vertrag_v8.go` (neu) | Genesis-Schalter, Slot-Konstanten, EIP-712-Digest, strenge Signaturprüfung, `pruefeRegistrierungV8` |
+| `contract_deploy.go` | `V8ContractBytecode` (Sync-Test `test/AequitasV8_bytecode_sync.ts`); `ensureV8Deployed`: Konstruktor mit Verifier, Registraren, Salt (ABI-Kodierer); Umzug an die Genesis-Adresse; **Registrare ausdrücklich geschrieben** (DeployContract sichert nur Slots 0–199, das Mapping ginge verloren – Gegenprobe gemacht); Selbstprüfung per `eth_call` (verifier, NETZ_SALT, isRegistrar), sonst zurückgenommen; eine V7-Datenbank wird unter V8 **nie** umgebaut |
+| `evm_engine.go` | V8: persistieren darf nur `registerWithSig` (`60529762`) vom Relayer; Offsets (Nullifier = `pubSignals[1]` bei 292); gesicherte Slots nach `v8_slots.json`; keine V7-Vorab-Lesungen. **Cancun ab Block 0** (siehe unten) |
+| `evm_storage.go` | Spiegel: balanceOf 2, isHuman 3, keine 10/11; Guardian/Escrow-Spiegel unter V8 aus (V7-Slot 5 wäre V8 `usedNullifiers`); `migrateEVMFromGoStateV8` schreibt nie `nonces` oder `isRegistrar` |
+| `register.go` | V8: Anfrage mit `deadline`, EIP-712-Signatur in Go geprüft (vor dem Probelauf), V8-ABI, kein Spiegel-Ersatzweg; Transaktion trägt `reg_signatur`, `reg_frist`, `reg_at` und wird vor dem Einreihen genauso geprüft wie beim Nachspielen |
+| `block.go` | **Jeder Knoten** prüft beim Nachspielen die Unterschrift der Wallet (Domäne mit Salt, Nonce 0, Frist zum Annahmezeitpunkt, Annahme nicht nach dem Block) |
+| `evm_rpc.go` | `totalSupply()` aus Go (vorher veraltet, V7 wie V8) |
+| `api.go` | `/api/status` → `register_vertrag` (`v7`/`v8`), damit die App die richtige Unterschrift wählt |
+| `prove_provenance.go` | Herkunft an die Wallet gebunden (gilt sofort, auch V7) – schließt (v) Punkt 1 |
+
+**Nonce.** V8 kennt keinen Weg zurück (kein Sweep im Vertrag, Go gibt einen Nullifier nur beim
+Zurückrollen eines Blocks frei). Jede Wallet wird höchstens einmal Mensch, die Nonce jeder
+gültigen Registrierung ist 0; nachspielende Knoten verlangen genau das
+(`TestV8_NonceIstImmerNull`). Kommt ein Weg zum Zurücknehmen dazu, muss diese Regel mit.
+
+**Frist beim Nachspielen.** Geprüft wird gegen den Annahmezeitpunkt `reg_at` (≤ Frist ≤
+`reg_at` + 1 Tag) und `reg_at` ≤ Blockzeit + 5 min. Nach hinten gibt es bewusst keine Grenze:
+eine Registrierung, die nach einem Knotenausfall erst spät in einen Block kommt, darf die Kette
+nicht anhalten. Die eigentliche Fristprüfung macht der annehmende Knoten gegen seine Uhr und der
+Vertrag gegen `block.timestamp`.
+
+**Cancun.** solc 0.8.28 benutzt `MCOPY` beim ABI-Kodieren von Zeichenketten. Die Knoten-EVM
+hatte Cancun nicht eingeschaltet: `name()`/`symbol()` von V7 scheiterten **auf der laufenden
+Kette** an `invalid opcode: MCOPY` (Wallets sahen keinen Token-Namen), bei V8 auch
+`eip712Domain()`. Jetzt `CancunTime: 0`. Die EVM läuft nur auf dem annehmenden Knoten, der
+Konsens hängt nicht daran (`TestEVM_CancunZeichenketten`).
+
+**Tests (Go, gegen den echten V8-Bytecode in der Knoten-EVM):** Digest und `DOMAIN_SEPARATOR`
+gleich dem Vertrag; eine in Go gebaute und unterschriebene Anfrage wird angenommen, und jeder
+Slot landet dort, wo die Go-Konstanten ihn erwarten; Missbrauch (hohes `s`, fremdes Netz,
+fremde Unterschrift, `v` 0/1, Länge, Umlenken, Nicht-Registrar) lehnen Go und Vertrag gleich ab;
+Nachspielen (11 Fälle); Positivliste V8/V7; Tabelle `v8_slots.json` = Go-Konstanten. Mit
+Postgres: Deploy steht, zweiter Start ändert nichts, eine Go-signierte Anfrage kommt im
+Knoten-Vertrag bis zur Beweisprüfung; eine V7-Datenbank bleibt unter V8 unangetastet.
+
+**Beim Neustart zu tun:** `genesis.json` mit neuer `genesis_time` und `register_vertrag`
+(Relayer-Adressen aller Genesis-Validatoren, gleich auf allen Knoten), leere Datenbanken,
+App mit V8-Unterschrift (Aequitas-App, Etappe 4).
+
+### Ursprüngliche Planung (Stand 30.09. vormittags)
+
+Zeilen beziehen sich auf `main` bei Commit `cc7babbe`. Grundsatz: **Keine V7-Slot-Zahl darf stehen bleiben.** Die
 Nummern kollidieren gefährlich: V7-Slot 4 (`balanceOf`) ist in V8 `usedCommitments`,
 V7-6 (`isHuman`) ist V8 `commitmentOf`, V7-8 (`usedNullifiers`) ist V8 `nonces`, V7-5
 (`escrowOf`) ist V8 `usedNullifiers`. Ein vergessener V7-Schreiber schreibt also still in

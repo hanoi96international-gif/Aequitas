@@ -1009,6 +1009,20 @@ func (s *EVMRPCServer) ethCall(params []json.RawMessage) (interface{}, *RPCError
 		}
 	}
 
+	// totalSupply() (0x18160ddd) aus Go beantworten, wie balanceOf oben.
+	// Slot 0 des Registervertrags schreibt Go nur bei einer Migration; im
+	// Betrieb waere eth_call totalSupply() sonst veraltet (V7 wie V8,
+	// docs/V8_ENTWURF.md Abschnitt 2). Die Zahl ist dieselbe wie
+	// /api/status total_supply.
+	if len(data) >= 4 && hex.EncodeToString(data[:4]) == "18160ddd" &&
+		toStr == strings.ToLower(V7_CONTRACT_ADDR) {
+		wei, _ := new(big.Float).Mul(big.NewFloat(s.state.TotalSupply()), new(big.Float).SetInt(weiPerAEQ)).Int(nil)
+		result := make([]byte, 32)
+		b := wei.Bytes()
+		copy(result[32-len(b):], b)
+		return "0x" + hex.EncodeToString(result), nil
+	}
+
 	// Always reload contract from DB before call to ensure fresh state
 	bytecode, err := s.state.LoadContract(toStr)
 	if err == nil && len(bytecode) > 0 {

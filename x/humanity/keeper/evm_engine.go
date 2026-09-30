@@ -95,8 +95,19 @@ func NewEVMEngine(cs *ChainState) (*EVMEngine, error) {
 
 // ─── CHAIN CONFIG ─────────────────────────────────────────────────────────────
 
+// Cancun ab Block 0 (30.09.2026): solc 0.8.28 kompiliert fuer Cancun und
+// benutzt MCOPY beim ABI-Kodieren von Zeichenketten. Ohne Cancun brach auf
+// dieser EVM jeder Aufruf ab, der eine Zeichenkette zurueckgibt -- name() und
+// symbol() von V7 ("invalid opcode: MCOPY"), bei V8 auch eip712Domain(), aus
+// dem App und Wallets die Signatur-Domaene lesen. Cancun fuegt nur Opcodes
+// hinzu, die kein bestehender Vertrag hier benutzt hat (MCOPY, TSTORE/TLOAD,
+// BLOBHASH/BLOBBASEFEE) und aendert SELFDESTRUCT (von keinem Vertrag hier
+// benutzt). Die EVM laeuft nur auf dem annehmenden Knoten (Relayer-Aufruf,
+// eth_call); nachspielende Knoten fuehren sie nicht aus, der Konsens haengt
+// nicht daran. Test: TestEVM_CancunZeichenketten.
 func chainConfig() *params.ChainConfig {
 	shanghai := uint64(0)
+	cancun := uint64(0)
 	return &params.ChainConfig{
 		ChainID:             big.NewInt(1926),
 		HomesteadBlock:      big.NewInt(0),
@@ -110,6 +121,7 @@ func chainConfig() *params.ChainConfig {
 		BerlinBlock:         big.NewInt(0),
 		LondonBlock:         big.NewInt(0),
 		ShanghaiTime:        &shanghai,
+		CancunTime:          &cancun,
 	}
 }
 
@@ -461,6 +473,19 @@ func checkPersistedCallAllowed(to common.Address, data []byte, senderAddr string
 		return fmt.Errorf("state-changing calls are only supported for the V7 contract")
 	}
 	sel := hex.EncodeToString(data[:4])
+	if vertragV8() {
+		// V8: einzig registerWithSig vom Relayer. Die Views brauchen keinen
+		// persistierenden Aufruf, transfer faengt die Kette vorher ab (und im
+		// Vertrag revertiert er). Alles andere: fail-closed.
+		if sel == v8RegisterSelector {
+			relayerAddr := relayerAddressFromEnv()
+			if relayerAddr != "" && strings.ToLower(senderAddr) == relayerAddr {
+				return nil
+			}
+			return fmt.Errorf("registerWithSig must be called via /api/register (direct calls bypass Go-state updates)")
+		}
+		return fmt.Errorf("selector %s not supported for persisting calls — use /api/* endpoints", sel)
+	}
 	if knownV7PublicPersistSelectors[sel] {
 		return nil
 	}
@@ -737,6 +762,15 @@ var v7AddressMappingSlots = []int64{
 // v7ArrayBaseSlots: the 10 fixed-size-array slots (CAPS[5] + THRESHOLDS[5]).
 var v7ArrayBaseSlots = []int64{17, 18, 19, 20, 21, 22, 23, 24, 25, 26}
 
+// V8 (contracts/v8_slots.json): was ein registerWithSig schreibt und hier
+// gesichert werden muss. isRegistrar (9) fehlt bewusst: ihn setzt nur der
+// Konstruktor, Go schreibt ihn nie. usedCommitments (4) und usedNullifiers
+// (5) sind nicht nach Adresse geschluesselt und werden eigens gesichert.
+var (
+	v8SimpleSlots         = []int64{v8SlotTotalSupply, v8SlotTotalHumans}
+	v8AddressMappingSlots = []int64{v8SlotBalanceOf, v8SlotIsHuman, v8SlotCommitmentOf, v8SlotNullifierOf, v8SlotNonces}
+)
+
 // v7SlotsVerifiedForVersion must be bumped by hand alongside v7SimpleSlots/
 // v7AddressMappingSlots/v7ArrayBaseSlots whenever AequitasV7.sol's storage
 // layout changes (a new state variable added/removed/reordered) — see
@@ -789,6 +823,9 @@ const v7SlotsVerifiedForVersion = "v7.14-prelaunch-audit"
 // most version bumps only change function logic, not storage layout, so a
 // human still needs to judge whether THIS particular bump added new state.
 func checkV7SlotsMatchDeployedVersion() {
+	if vertragV8() {
+		return // V8: die Tabelle ist contracts/v8_slots.json, geprueft per Test
+	}
 	if !v7SlotsVerifiedFor(V7ContractVersion) {
 		fmt.Printf("[EVM] ⚠ WARNING: V7ContractVersion (%q) has changed since the storage-slot persistence lists in evm_engine.go were last verified (%q). If this version added, removed, or reordered any state variable in AequitasV7.sol, update v7SimpleSlots/v7AddressMappingSlots/v7ArrayBaseSlots (and v7SlotsVerifiedForVersion) accordingly — otherwise writes to any new slot will silently never persist.\n",
 			V7ContractVersion, v7SlotsVerifiedForVersion)
@@ -824,6 +861,12 @@ func extractTouchedEntitiesWithNullifier(from common.Address, data []byte) ([]co
 		copy(nullifier[:], data[388:420]) // bytes32 nullifier is at offset 388
 		return addrs, commits, &nullifier
 	}
+	// V8: kein eigener Parameter mehr -- der Nullifier IST pubSignals[1].
+	if sel == v8RegisterSelector && len(data) >= v8OffNullifier+32 {
+		var nullifier [32]byte
+		copy(nullifier[:], data[v8OffNullifier:v8OffNullifier+32])
+		return addrs, commits, &nullifier
+	}
 	return addrs, commits, nil
 }
 
@@ -834,6 +877,17 @@ func extractTouchedEntities(from common.Address, data []byte) ([]common.Address,
 
 	selector := fmt.Sprintf("%x", data[:4])
 	switch selector {
+	case v8RegisterSelector: // V8 registerWithSig(uint256[2],uint256[2][2],uint256[2],uint256[2],address,uint256,bytes)
+		// Gleiche Lage wie V7 fuer commitment (260) und human (324).
+		addrs := []common.Address{from}
+		var commitments []*big.Int
+		if len(data) >= v8OffHuman+32 {
+			addrs = append(addrs, common.BytesToAddress(data[v8OffHuman:v8OffHuman+32]))
+		}
+		if len(data) >= v8OffCommitment+32 {
+			commitments = append(commitments, new(big.Int).SetBytes(data[v8OffCommitment:v8OffCommitment+32]))
+		}
+		return addrs, commitments
 	case "13b81eb0": // registerWithSig(uint256[2],uint256[2][2],uint256[2],uint256[2],address,bytes,bytes32)
 		// ABI offsets (measured from byte 4, i.e. after selector):
 		//
@@ -912,7 +966,9 @@ func extractTouchedEntities(from common.Address, data []byte) ([]common.Address,
 // cheap (a handful of GetState calls on slots this package already computes
 // elsewhere) and only happen for the three selectors below.
 func extractPreCallEntities(sdb *state.StateDB, contract, from common.Address, data []byte) ([]common.Address, [][32]byte) {
-	if len(data) < 4 {
+	// V8 hat keine dieser Funktionen (kein Sweep, keine Guardians im Vertrag);
+	// die Slots unten waeren dort fremde Mappings.
+	if len(data) < 4 || vertragV8() {
 		return nil, nil
 	}
 	readAddr := func(holder common.Address, base int64) (common.Address, bool) {
@@ -966,7 +1022,11 @@ func (e *EVMEngine) dumpAndPersistStorageWithNullifier(root common.Hash, db stat
 	// it would leave the old non-zero value in the database and the ban would
 	// silently come back on the next restart. These keys were read from the
 	// pre-call state precisely because the call erases the pointer to them.
-	if len(releasedNullifiers) > 0 {
+	nullifierBasis, grantBasis := int64(8), int64(29) // V7: usedNullifiers, grantIssuedTo
+	if vertragV8() {
+		nullifierBasis, grantBasis = v8SlotUsedNullifiers, -1 // V8 hat kein grantIssuedTo
+	}
+	if len(releasedNullifiers) > 0 && !vertragV8() {
 		addrStr := strings.ToLower(addr.Hex())
 		if freshDB, err := state.New(root, db, nil); err == nil {
 			for _, n := range releasedNullifiers {
@@ -984,7 +1044,7 @@ func (e *EVMEngine) dumpAndPersistStorageWithNullifier(root common.Hash, db stat
 		if nullKey != (common.Hash{}) {
 			freshDB2, err2 := state.New(root, db, nil)
 			if err2 == nil {
-				nullSlot := mappingSlotBytes32(nullKey, 8)
+				nullSlot := mappingSlotBytes32(nullKey, nullifierBasis)
 				val := freshDB2.GetState(addr, nullSlot)
 				if val != (common.Hash{}) {
 					e.chainState.SaveStorageSlot(addrStr, nullSlot.Hex(), val.Hex())
@@ -996,9 +1056,11 @@ func (e *EVMEngine) dumpAndPersistStorageWithNullifier(root common.Hash, db stat
 				// human from drawing a second INITIAL_GRANT; if it silently failed to
 				// persist, the guard would evaporate on the next restart and the
 				// re-registration path would mint fresh money every time.
-				grantSlot := mappingSlotBytes32(nullKey, 29)
-				if gv := freshDB2.GetState(addr, grantSlot); gv != (common.Hash{}) {
-					e.chainState.SaveStorageSlot(addrStr, grantSlot.Hex(), gv.Hex())
+				if grantBasis >= 0 {
+					grantSlot := mappingSlotBytes32(nullKey, grantBasis)
+					if gv := freshDB2.GetState(addr, grantSlot); gv != (common.Hash{}) {
+						e.chainState.SaveStorageSlot(addrStr, grantSlot.Hex(), gv.Hex())
+					}
 				}
 			}
 		}
@@ -1013,32 +1075,36 @@ func (e *EVMEngine) dumpAndPersistStorage(root common.Hash, db state.Database, a
 	}
 
 	addrStr := strings.ToLower(addr.Hex())
+	einfach, proAdresse, felder, commitBasis := v7SimpleSlots, v7AddressMappingSlots, v7ArrayBaseSlots, int64(7)
+	if vertragV8() {
+		einfach, proAdresse, felder, commitBasis = v8SimpleSlots, v8AddressMappingSlots, nil, v8SlotUsedCommitments
+	}
 	// FIX (performance audit 2026-07-06): this used to call SaveStorageSlot
 	// individually for every slot below — up to ~40 round trips per call, on
 	// every registration and every intercepted V7 transfer. Collect every
 	// (slot, value) pair here and persist them all in ONE round trip via
 	// SaveStorageSlots instead.
-	slots := make(map[string]string, len(v7SimpleSlots)+len(v7ArrayBaseSlots)+len(touchedAddrs)*len(v7AddressMappingSlots)+len(touchedCommitments))
+	slots := make(map[string]string, len(einfach)+len(felder)+len(touchedAddrs)*len(proAdresse)+len(touchedCommitments))
 
-	for _, slotIdx := range v7SimpleSlots {
+	for _, slotIdx := range einfach {
 		slot := common.BigToHash(big.NewInt(slotIdx))
 		slots[slot.Hex()] = freshDB.GetState(addr, slot).Hex()
 	}
-	// Persist all fixed-size array slots (CAPS[5] + THRESHOLDS[5]).
-	for _, slotIdx := range v7ArrayBaseSlots {
+	// Persist all fixed-size array slots (V7: CAPS[5] + THRESHOLDS[5]).
+	for _, slotIdx := range felder {
 		slot := common.BigToHash(big.NewInt(slotIdx))
 		slots[slot.Hex()] = freshDB.GetState(addr, slot).Hex()
 	}
 
 	for _, touched := range touchedAddrs {
-		for _, base := range v7AddressMappingSlots {
+		for _, base := range proAdresse {
 			slot := mappingSlot(touched.Bytes(), base)
 			slots[slot.Hex()] = freshDB.GetState(addr, slot).Hex()
 		}
 	}
 
 	for _, commitment := range touchedCommitments {
-		slot := mappingSlotBytes32(common.BigToHash(commitment), 7) // usedCommitments (slot 7)
+		slot := mappingSlotBytes32(common.BigToHash(commitment), commitBasis) // usedCommitments (V7 7, V8 4)
 		slots[slot.Hex()] = freshDB.GetState(addr, slot).Hex()
 	}
 	// SECURITY/PERF (P0, launch audit 2026-07-03): this used to also run a

@@ -1358,12 +1358,16 @@ func (a *APIServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 		// eine App mit gespeicherten Staenden erkennt daran ein neues Netz
 		// (api_app_grundlagen.go).
 		"netz_kennung": netzKennung(),
-		"index":        m.Index,
-		"gini":         m.Gini,
-		"growth":       growth,
-		"velocity":     50,
-		"phase":        m.Phase,
-		"fee_bps":      ueberweisungsGebuehrBps,
+		// "v7" oder "v8": danach richtet die App die Unterschrift der
+		// Registrierung aus (V7 personal_sign, V8 EIP-712 mit Frist,
+		// Domaene per eip712Domain() am Vertrag). vertrag_v8.go.
+		"register_vertrag": vertragVersion(),
+		"index":            m.Index,
+		"gini":             m.Gini,
+		"growth":           growth,
+		"velocity":         50,
+		"phase":            m.Phase,
+		"fee_bps":          ueberweisungsGebuehrBps,
 		// FIX (H1, Audit 2026-08-18): total_supply above is the RULE
 		// (humans × 1000, see TotalSupply), and the explorer prints it as
 		// "Total Supply". Measured from both validators' own databases on

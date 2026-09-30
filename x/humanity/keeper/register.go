@@ -164,6 +164,22 @@ const registerWithSigABI = `[{
 ]
 }]`
 
+// V8-Fassung (contracts/AequitasV8.sol): kein eigener Nullifier-Parameter
+// mehr (er ist pubSignals[1]), dafuer die Frist der EIP-712-Unterschrift.
+const registerWithSigV8ABI = `[{
+"name": "registerWithSig",
+"type": "function",
+"inputs": [
+{"name": "pA", "type": "uint256[2]"},
+{"name": "pB", "type": "uint256[2][2]"},
+{"name": "pC", "type": "uint256[2]"},
+{"name": "pubSignals", "type": "uint256[2]"},
+{"name": "human", "type": "address"},
+{"name": "deadline", "type": "uint256"},
+{"name": "signature", "type": "bytes"}
+]
+}]`
+
 const bioVerifierABI = `[{
 "name": "verifyProof",
 "type": "function",
@@ -183,7 +199,10 @@ type RegisterRequest struct {
 	PA         []string   `json:"pA"`
 	PB         [][]string `json:"pB"`
 	PC         []string   `json:"pC"`
-	Signature  string     `json:"signature"` // hex-encoded, 65 bytes, from personal_sign
+	Signature  string     `json:"signature"` // hex-encoded, 65 bytes: V7 personal_sign, V8 EIP-712 (eth_signTypedData_v4)
+	// Deadline: nur V8 -- Unix-Sekunden, bis zu denen die EIP-712-Unterschrift
+	// gilt (hoechstens einen Tag in der Zukunft, vertrag_v8.go).
+	Deadline int64 `json:"deadline,omitempty"`
 	// BioHash is the raw bigint biometric hash from the device, used to
 	// record the registration in bio_registrations so the app can poll for
 	// its own registration by bioHash on startup.
@@ -389,6 +408,31 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 
 	claimedHuman := common.HexToAddress(wallet)
 
+	// V8 (vertrag_v8.go): die Wallet unterschreibt per EIP-712 mit Frist.
+	// Hier vor jedem Probelauf pruefen -- dieselbe Pruefung, die spaeter JEDER
+	// Knoten beim Nachspielen macht (pruefeRegistrierungV8). Die Nonce ist 0:
+	// V8 kennt keinen Weg, eine Registrierung zurueckzunehmen.
+	v8 := vertragV8()
+	annahmeZeit := time.Now().Unix()
+	if v8 {
+		if err := v8FristPruefen(req.Deadline, annahmeZeit); err != nil {
+			return "", fmt.Errorf("registration rejected: %w", err)
+		}
+		if len(req.PubSignals) < 2 {
+			return "", fmt.Errorf("registration rejected: public signals missing")
+		}
+		commitmentV8, cErr := dezimalImFeld(req.PubSignals[0])
+		nullifierV8, nErr := dezimalImFeld(req.PubSignals[1])
+		if cErr != nil || nErr != nil {
+			return "", fmt.Errorf("registration rejected: public signals must be decimal field elements")
+		}
+		digest := v8RegisterDigest(common.HexToAddress(V7_CONTRACT_ADDR), v8NetzSalt(), claimedHuman,
+			commitmentV8, nullifierV8, big.NewInt(0), big.NewInt(req.Deadline))
+		if err := v8SignaturPruefen(digest, sigBytes, claimedHuman); err != nil {
+			return "", fmt.Errorf("registration rejected: %w", err)
+		}
+	}
+
 	// FIX: AequitasV7.sol now REQUIRES the ZK-circuit-bound nullifier
 	// (pubSignals[1] != 0) — the old fallback that trusted a caller-supplied
 	// nullifier whenever a v1-circuit proof omitted it was removed because it
@@ -523,7 +567,16 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 		return "", fmt.Errorf("nullifier: %w", err)
 	}
 
-	calldata, err := parsedABI.Pack("registerWithSig", pA, pB, pC, pubSignals, claimedHuman, sigBytes, nullifierBytes)
+	var calldata []byte
+	if v8 {
+		parsedV8, abiErr := abi.JSON(strings.NewReader(registerWithSigV8ABI))
+		if abiErr != nil {
+			return "", fmt.Errorf("abi parse failed: %w", abiErr)
+		}
+		calldata, err = parsedV8.Pack("registerWithSig", pA, pB, pC, pubSignals, claimedHuman, big.NewInt(req.Deadline), sigBytes)
+	} else {
+		calldata, err = parsedABI.Pack("registerWithSig", pA, pB, pC, pubSignals, claimedHuman, sigBytes, nullifierBytes)
+	}
 	if err != nil {
 		return "", fmt.Errorf("encoding failed: %w", err)
 	}
@@ -569,6 +622,11 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 		// silently fire and create that half-written state; an operator who
 		// actually hits the V7-missing startup race has to deliberately
 		// acknowledge the risk first.
+		// V8 hat keinen Spiegel-Ersatz: der Vertrag steht ab Genesis, und der
+		// Ersatzweg kennt weder EIP-712 noch die V8-Speicherplaetze.
+		if v8 {
+			return "", fmt.Errorf("registration rejected: register contract not deployed on this node: %w", dryRunErr)
+		}
 		if os.Getenv("ALLOW_V7_MIRROR_FALLBACK") != "true" {
 			return "", fmt.Errorf("registration rejected: V7 contract not yet deployed on this node and ALLOW_V7_MIRROR_FALLBACK is not set — wait for V7 auto-deploy to finish, or set ALLOW_V7_MIRROR_FALLBACK=true to use the (less safe) mirror registration fallback: %w", dryRunErr)
 		}
@@ -724,6 +782,16 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 		ProofB:     bigInt2x2ToDecimalStrings(pB),
 		ProofC:     bigIntsToDecimalStrings(pCslice),
 		PubSignals: bigIntsToDecimalStrings(psSlice),
+	}
+	if v8 {
+		pendingRegTx.RegSignatur = "0x" + common.Bytes2Hex(sigBytes)
+		pendingRegTx.RegFrist = req.Deadline
+		pendingRegTx.RegAt = annahmeZeit
+		// Genau das pruefen, was jeder nachspielende Knoten pruefen wird --
+		// sonst erzeugte dieser Knoten einen Block, den die anderen ablehnen.
+		if err := pruefeRegistrierungV8(pendingRegTx, annahmeZeit); err != nil {
+			return "", fmt.Errorf("registration rejected: %w", err)
+		}
 	}
 
 	// ── REGISTRATION STATE MACHINE (audit P1-02) ─────────────────────────
