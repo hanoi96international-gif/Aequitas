@@ -4915,7 +4915,11 @@ func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
 		// any child block waiting on a historical block from an early validator
 		// whose registration was cleared from the local DB. Blocks synced from
 		// a non-seed peer get FromSync=false and are still checked normally.
-		if !dag.authorizedValidators[proposer] && !block.FromSync {
+		// FromSync entbindet nur noch fuer die GESCHICHTE vor dem Stichtag
+		// (Audit 2026-09-29, H-1): der Seed wird per HTTP abgefragt, und wer
+		// sich in diese Verbindung haengt, konnte sonst Bloecke mit eigenem
+		// Schluessel einschleusen, die jede Produzentenpruefung uebergehen.
+		if !dag.authorizedValidators[proposer] && !(block.FromSync && syncGeschichte(block.Timestamp)) {
 			// P3-2: cap to prevent unbounded memory growth from forged proposer addresses
 			if len(dag.warnedUnknownProposers) > 500 {
 				dag.warnedUnknownProposers = make(map[string]bool)
@@ -5106,8 +5110,14 @@ func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
 		dag.mu.Unlock()
 		return false
 	}
+	if grund := zeitstempelZukunft(block.Timestamp, time.Now().Unix()); grund != "" {
+		fmt.Printf("[DAG] ✗ Rejected peer block #%d: %s\n", block.Height, grund)
+		dag.mu.Unlock()
+		return false
+	}
 	if block.Height > 1 {
 		maxParentHeight := int64(-1)
+		maxParentZeit := int64(0)
 		missingParent := ""
 		// FIX (durable fix, 2026-07-03 — the actual deepest root cause behind
 		// tonight's whole "never merges" saga): this used to read dag.blocks[ph]
@@ -5138,6 +5148,9 @@ func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
 				// placeholder assigned at resync seeding, not this parent's real
 				// chain position.
 				hasStubParent = true
+			} else if parent.Timestamp > maxParentZeit {
+				// Ein Stumpf traegt einen Platzhalter, keine echte Zeit.
+				maxParentZeit = parent.Timestamp
 			}
 			if parent.Height > maxParentHeight {
 				maxParentHeight = parent.Height
@@ -5194,6 +5207,11 @@ func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
 			if age, tracked := dag.orphanAge(missingParent); !block.SelfFetched && !block.FromSync && !catchingUp && (!tracked || age >= proposerBreakerOrphanGrace) {
 				dag.recordProposerOutcome(block.Proposer, false)
 			}
+			return false
+		}
+		if grund := zeitstempelRueckdatiert(block.Timestamp, maxParentZeit); grund != "" {
+			fmt.Printf("[DAG] ✗ Rejected peer block #%d: %s\n", block.Height, grund)
+			dag.mu.Unlock()
 			return false
 		}
 		if maxParentHeight >= 0 && block.Height != maxParentHeight+1 {
