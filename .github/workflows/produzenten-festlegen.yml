@@ -3,8 +3,9 @@ name: Blockproduzenten festlegen -- AUTHORIZED_VALIDATORS (Blocker 18, Audit K-1
 # Setzt AUTHORIZED_VALIDATORS auf beiden Boxen auf GENAU die Signieradressen
 # von C1 und C2. Seit #228 ist die Liste abschliessend: ein selbst
 # eingetragener oder von Peers gemeldeter Schluessel wird kein
-# Blockproduzent mehr. Die Adressen kommen aus /api/signing-address der
-# Knoten selbst -- oeffentlich, keine Geheimnisse.
+# Blockproduzent mehr. Die Adressen kommen aus /api/status der Knoten selbst
+# (Feld validator_address) -- oeffentlich, keine Geheimnisse. Nicht
+# /api/signing-address: das verlangt SNAPSHOT_TOKEN und eine Wallet.
 #
 # Reihenfolge: erst C2 (nimmt nicht an, spielt nur nach), pruefen, dass seine
 # Hoehe weiter steigt; dann C1. Steigt die Hoehe nicht, bricht der Lauf ab,
@@ -32,8 +33,8 @@ jobs:
         name: Signieradressen von C1 und C2
         run: |
           set -euo pipefail
-          c1=$(curl -sf -m 15 http://188.172.229.121:8080/api/signing-address | jq -r '.signing_address // empty' | tr 'A-F' 'a-f')
-          c2=$(curl -sf -m 15 http://194.163.188.71:8080/api/signing-address | jq -r '.signing_address // empty' | tr 'A-F' 'a-f')
+          c1=$(curl -sf -m 25 http://188.172.229.121:8080/api/status | jq -r '.validator_address // empty' | tr 'A-F' 'a-f')
+          c2=$(curl -sf -m 25 http://194.163.188.71:8080/api/status | jq -r '.validator_address // empty' | tr 'A-F' 'a-f')
           echo "C1: $c1"; echo "C2: $c2"
           for a in "$c1" "$c2"; do [[ "$a" =~ ^0x[0-9a-f]{40}$ ]] || { echo "::error::Signieradresse nicht lesbar: '$a'"; exit 1; }; done
           [ "$c1" != "$c2" ] || { echo "::error::C1 und C2 haben dieselbe Signieradresse"; exit 1; }
