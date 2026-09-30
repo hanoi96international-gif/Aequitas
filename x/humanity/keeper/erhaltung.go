@@ -111,16 +111,17 @@ func (cs *ChainState) pruefeErhaltungLocked(tx *Transaction, blockZeit int64) er
 		if err := cs.ueberzogenLocked("Grundeinkommen", ubiPoolAddr, summe, n, blockZeit); err != nil {
 			return err
 		}
-		topf := cs.topfMikroLocked(ubiPoolAddr)
-		if rest := NewDecimal(tx.Amount).Micro(); rest > topf-summe+erhaltungToleranz(n) {
-			return nachrechnenAbweichung("topf_rest", blockZeit,
-				"Grundeinkommen: Endstand %.6f AEQ, moeglich hoechstens %.6f", tx.Amount,
-				NewDecimalFromMicro(topf-summe).Float())
-		}
+		return cs.restGedecktLocked("Grundeinkommen", ubiPoolAddr, tx.Amount, summe, n, blockZeit)
+	// Seit C1 tragen auch diese Abschluesse ihren Endstand; er darf nicht
+	// ueber Topf minus Auszahlung liegen (Pruefung #239, Befund 4).
 	case "validator_distribution_pool_zero":
+		summe, n := e.validatoren, e.validatorenN
 		e.validatoren, e.validatorenN = 0, 0
+		return cs.restGedecktLocked("Validatoren", validatorsPoolAddr, tx.Amount, summe, n, blockZeit)
 	case "lp_distribution_pool_zero":
+		summe, n := e.lp, e.lpN
 		e.lp, e.lpN = 0, 0
+		return cs.restGedecktLocked("Liquiditaetsgeber", lpPoolAddr, tx.Amount, summe, n, blockZeit)
 
 	// Die Rundenmarke kommt als letzte Transaktion jeder Runde. Was bis hier
 	// nicht abgeschlossen wurde (Grundeinkommen ohne finalize), wird jetzt
@@ -160,6 +161,18 @@ func plusGesaettigt(a, b int64) int64 {
 		return math.MaxInt64
 	}
 	return a + b
+}
+
+// restGedecktLocked: der gemeldete Endstand eines Topfs nach der Runde liegt
+// nicht ueber Topf minus Auszahlung -- sonst waere der Rest neues Geld.
+func (cs *ChainState) restGedecktLocked(name, topfAdresse string, rest float64, summe, n, blockZeit int64) error {
+	topf := cs.topfMikroLocked(topfAdresse)
+	if NewDecimal(rest).Micro() > topf-summe+erhaltungToleranz(n) {
+		return nachrechnenAbweichung("topf_rest", blockZeit,
+			"%s: Endstand %.6f AEQ, moeglich hoechstens %.6f", name, rest,
+			NewDecimalFromMicro(topf-summe).Float())
+	}
+	return nil
 }
 
 // ueberzogenLocked: Summe der Gutschriften der laufenden Runde gegen den
