@@ -897,6 +897,20 @@ func (cs *ChainState) applyUmlaufDeltaLocked(ctx context.Context, wallet string,
 	return nil
 }
 
+// rundenZeitStrengAbUnix: ab Bloecken mit dieser Zeit (07.10.2026 00:00 UTC)
+// lehnt das Nachspielen eine Tagesrunde ab, deren Zeitpunkt nach dem Block
+// liegt. Der Erzeuger waehlt ubiAt, bevor er den Block baut -- die Rundenzeit
+// liegt also nie spaeter als der Block. Vorher nur beobachtet (nachrechnen.go,
+// "rundenmarke"); aeltere Bloecke spielen unveraendert nach.
+const rundenZeitStrengAbUnix int64 = 1791331200
+
+// rundenZeitNachBlock: true, wenn eine Rundenzeit (umlauf,
+// distribution_round_marker) mehr als eine Minute Uhrenspiel nach dem Block
+// liegt und der Block unter die strenge Regel faellt.
+func rundenZeitNachBlock(at, blockZeit int64) bool {
+	return blockZeit >= rundenZeitStrengAbUnix && at > blockZeit+60
+}
+
 // umlaufZeitFortschreibenLocked: die Tagesrunde zu at ist gelaufen -- auch
 // wenn niemand etwas zahlen musste. Aufgerufen ueber die Rundenmarke
 // (applyDistributionRoundMarkerDeltaLocked), auf dem Erzeuger wie beim

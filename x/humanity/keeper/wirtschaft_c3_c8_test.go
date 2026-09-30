@@ -207,6 +207,65 @@ func TestRundenmarke_NieRueckwaerts(t *testing.T) {
 	}
 }
 
+// Missbrauch (Sicherheitspruefung #237, F1): Ein Erzeuger schreibt eine
+// Rundenmarke oder einen Umlauf mit einer Zeit weit nach dem Block. Ohne
+// Grenze setzte jeder Nachspielende letzterUmlauf dauerhaft in die Zukunft
+// (GREATEST beim Speichern), und die Umlaufabgabe fiel fuer immer aus. Ab dem
+// Stichtag lehnt das Nachspielen den ganzen Block ab.
+func TestNachspielen_RundenzeitAusDerZukunftWirdAbgelehnt(t *testing.T) {
+	wirtschaftAn(t)
+	const reich = "0xa100000000000000000000000000000000000c31"
+	blockZeit := rundenZeitStrengAbUnix + 86400
+	ehrlich := blockZeit - 5
+	zukunft := blockZeit + 365*86400
+
+	for _, tx := range []Transaction{
+		{Type: "distribution_round_marker", DistributionAt: zukunft},
+		{Type: "umlauf", Wallet: reich, Amount: 1, DistributionAt: zukunft},
+	} {
+		dag, cs := nachspielKnoten(t, map[string]float64{reich: 10000})
+		cs.wirt().letzterUmlauf = ehrlich - 86400
+		b := testBlock(1, tx)
+		b.Timestamp = blockZeit
+		if dag.replayTransactions(b, true) {
+			t.Errorf("%s mit Rundenzeit ein Jahr nach dem Block angenommen", tx.Type)
+		}
+		if got := cs.wirt().letzterUmlauf; got != ehrlich-86400 {
+			t.Errorf("%s: letzterUmlauf auf %d verschoben", tx.Type, got)
+		}
+		if got := kontoVon(t, cs, reich).Balance.Float(); got != 10000 {
+			t.Errorf("%s: Konto veraendert (%.6f)", tx.Type, got)
+		}
+	}
+
+	// Gegenprobe: die ehrliche Marke kurz vor dem Block geht durch.
+	dag, cs := nachspielKnoten(t, map[string]float64{reich: 10000})
+	cs.wirt().letzterUmlauf = ehrlich - 86400
+	b := testBlock(2, Transaction{Type: "distribution_round_marker", DistributionAt: ehrlich})
+	b.Timestamp = blockZeit
+	if !dag.replayTransactions(b, true) {
+		t.Fatal("ehrliche Rundenmarke abgelehnt")
+	}
+	if got := cs.wirt().letzterUmlauf; got != ehrlich {
+		t.Errorf("ehrliche Marke: letzterUmlauf %d, erwartet %d", got, ehrlich)
+	}
+}
+
+// Vor dem Stichtag spielen aeltere Bloecke unveraendert nach -- auch mit einer
+// Rundenzeit nach dem Block (nur beobachtet), damit sich die Geschichte nicht
+// aendert.
+func TestRundenZeitNachBlock_ErstAbStichtag(t *testing.T) {
+	if rundenZeitNachBlock(rundenZeitStrengAbUnix+1000, rundenZeitStrengAbUnix-1) {
+		t.Error("Block vor dem Stichtag wird schon streng geprueft")
+	}
+	if !rundenZeitNachBlock(rundenZeitStrengAbUnix+61, rundenZeitStrengAbUnix) {
+		t.Error("Rundenzeit 61 s nach dem Block ab dem Stichtag nicht erkannt")
+	}
+	if rundenZeitNachBlock(rundenZeitStrengAbUnix+60, rundenZeitStrengAbUnix) {
+		t.Error("eine Minute Uhrenspiel muss erlaubt bleiben")
+	}
+}
+
 // Vor der Aktivierung (in Tests: ohne wirtschaftAn) tut die Marke nichts am
 // Umlauf -- alte Bloecke spielen wie bisher nach.
 func TestRundenmarke_NichtVorAktivierung(t *testing.T) {
