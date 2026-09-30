@@ -87,7 +87,7 @@ func (cs *ChainState) pruefeUmlaufLocked(wallet string, betrag float64, at int64
 	if sekunden > 7*86400 {
 		sekunden = 7 * 86400
 	}
-	stand := acc.Balance.Float()
+	stand := cs.umlaufStandLocked(acc, at)
 	erwartet := cs.umlaufBetrag(wallet, art, stand, at, sekunden)
 	// Der Abzug ist auf das Guthaben gedeckelt; der Erzeuger schreibt den
 	// ungedeckelten Betrag, also beide Seiten gleich deckeln.
