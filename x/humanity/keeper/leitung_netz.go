@@ -266,7 +266,13 @@ func StarteLeitung(dag *BlockDAG, cs *ChainState, selfURL string) *Leitung {
 	return l
 }
 
-var leitungKlient = &http.Client{Timeout: 3 * time.Second}
+// Keine Weiterleitungen (Audit 2026-09-29, H3): die Leitungsadressen setzt
+// der Betreiber, aber weiterleitungsKlient traegt den Authorization-Kopf des
+// Nutzers mit. Ein Ziel, das umleitet, duerfte ihn nicht an eine dritte
+// Adresse weiterreichen.
+func ohneUmleitung(req *http.Request, via []*http.Request) error { return http.ErrUseLastResponse }
+
+var leitungKlient = &http.Client{Timeout: 3 * time.Second, CheckRedirect: ohneUmleitung}
 
 var (
 	leitungWeitergeleitet      atomic.Int64
@@ -576,7 +582,7 @@ func rpcKonten(body []byte) []string {
 	return out
 }
 
-var weiterleitungsKlient = &http.Client{Timeout: 20 * time.Second}
+var weiterleitungsKlient = &http.Client{Timeout: 20 * time.Second, CheckRedirect: ohneUmleitung}
 
 // leiteWeiter schickt die Anfrage unveraendert an den Leiter und gibt dessen
 // Antwort zurueck. false = hat nicht geklappt, selbst bearbeiten (das Tor
