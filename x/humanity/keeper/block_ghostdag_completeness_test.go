@@ -157,7 +157,10 @@ func TestAddPeerBlock_QueuesOrphanWhenGHOSTDAGIncomplete(t *testing.T) {
 		t.Fatalf("Sign: %v", err)
 	}
 	blk.Signature = hex.EncodeToString(sig)
-	blk.FromSync = true // bypass authorization for this test's purpose
+	// Der Produzent ist zugelassen: FromSync entbindet seit dem Stichtag
+	// (30.09.2026, syncGeschichte) nicht mehr von der Produzentenpruefung, und
+	// um die geht es hier nicht.
+	dag.authorizedValidators[addr] = true
 
 	if dag.AddPeerBlock(blk) {
 		t.Fatal("block must not attach while a merge-set ancestor is genuinely unresolvable")
