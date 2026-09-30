@@ -797,9 +797,13 @@ func (cs *ChainState) umlaufLocked(ctx context.Context, at int64) ([]Transaction
 
 	kandidaten := map[string]bool{}
 	if cs.db != nil {
+		// lp_shares > 0: ab umlaufMitLPAbUnix zaehlen LP-Anteile mit
+		// (umlaufStandLocked) -- wer sein Geld im Pool haelt, stand sonst
+		// gar nicht erst auf der Liste. Frueher mitgelesen schadet nicht:
+		// umlaufBetrag entscheidet.
 		rows, err := cs.dbExecCtx(ctx).Query(
 			`SELECT lower(address) FROM chain_accounts
-			 WHERE (is_human = true AND balance > $1) OR (is_human = false AND balance > 0)
+			 WHERE (is_human = true AND balance > $1) OR (is_human = false AND balance > 0) OR lp_shares > 0
 			 ORDER BY 1`, menschSparFreibetrag)
 		if err != nil {
 			return nil, fmt.Errorf("umlauf: %w", err)
@@ -813,7 +817,7 @@ func (cs *ChainState) umlaufLocked(ctx context.Context, at int64) ([]Transaction
 		rows.Close()
 	} else {
 		cs.accounts.Range(func(a string, acc *AccountState) bool {
-			if acc.Balance.Float() > 0 {
+			if acc.Balance.Float() > 0 || acc.LPShares > 0 {
 				kandidaten[strings.ToLower(a)] = true
 			}
 			return true
@@ -835,7 +839,7 @@ func (cs *ChainState) umlaufLocked(ctx context.Context, at int64) ([]Transaction
 			continue
 		}
 		art := cs.kontoartVon(a, acc.IsHuman)
-		betrag := cs.umlaufBetrag(a, art, acc.Balance.Float(), at, sekunden)
+		betrag := cs.umlaufBetrag(a, art, cs.umlaufStandLocked(acc, at), at, sekunden)
 		if betrag <= 0 {
 			continue
 		}
@@ -867,10 +871,26 @@ func (cs *ChainState) applyUmlaufDeltaLocked(ctx context.Context, wallet string,
 		return nil
 	}
 	b := NewDecimal(amount)
+	// Ab umlaufMitLPAbUnix: fehlt Guthaben, wird der Rest aus den LP-Anteilen
+	// geloest -- dieselbe Funktion wie bei der Vermoegensgrenze, auf jedem
+	// Knoten mit demselben Pool-Stand, also dasselbe Ergebnis.
+	aufgeloest := false
+	if at >= umlaufMitLPAbUnix && b > acc.Balance && acc.LPShares > 0 {
+		frei, err := cs.releaseLPForAEQ(ctx, acc, b.Sub(acc.Balance).Float())
+		if err != nil {
+			return fmt.Errorf("umlauf %s: LP aufloesen: %w", wallet, err)
+		}
+		aufgeloest = frei > 0
+	}
 	if b > acc.Balance {
 		b = acc.Balance
 	}
 	if b <= 0 {
+		if aufgeloest {
+			if err := cs.saveAccountToDBCtx(ctx, acc); err != nil {
+				return fmt.Errorf("umlauf %s: %w", wallet, err)
+			}
+		}
 		return nil
 	}
 	acc.Balance = acc.Balance.Sub(b)

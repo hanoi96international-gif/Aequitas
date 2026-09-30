@@ -7500,7 +7500,10 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			// wirtschaft.go: taegliche Umlaufsicherung / Liegegeld, Betrag vom
 			// Erzeuger berechnet, hier nachgerechnet (liegegeld_pruefung.go)
 			// und angewandt.
-			if rundenZeitNachBlock(tx.DistributionAt, block.Timestamp) {
+			// Rundenzeit nach dem Block: ab dem 07.10. allgemein abgelehnt
+			// (#237, F1), und immer, wenn sie die LP-Regel vorziehen will
+			// (#238, M1).
+			if rundenZeitNachBlock(tx.DistributionAt, block.Timestamp) || umlaufLPZeitVorgezogen(tx.DistributionAt, block.Timestamp) {
 				fmt.Printf("[REPLAY] ✗ umlauf %s: Rundenzeit %d liegt nach dem Block (%d) — rolling back whole block\n", wallet, tx.DistributionAt, block.Timestamp)
 				hardFailure = true
 				continue

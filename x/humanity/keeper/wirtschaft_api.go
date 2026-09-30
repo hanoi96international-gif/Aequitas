@@ -127,16 +127,21 @@ func (a *APIServer) handleWirtschaftKonto(w http.ResponseWriter, r *http.Request
 	jetzt := time.Now().Unix()
 	cs.mu.RLock()
 	acc, da := cs.accounts.Get(addr)
-	var stand float64
+	var stand, abgabeStand, lpWert float64
 	istMensch := false
 	if da {
 		stand = acc.Balance.Float()
 		istMensch = acc.IsHuman
+		abgabeStand = cs.umlaufStandLocked(acc, jetzt)
+		lpWert = cs.lpValueLockedAEQ(acc)
 	}
 	cs.mu.RUnlock()
 	art := cs.kontoartVon(addr, istMensch)
 	antwort := map[string]interface{}{
 		"adresse": addr, "art": art.String(), "guthaben": stand,
+		// Wert der LP-Anteile in AEQ; ab umlaufMitLPAbUnix zaehlt er zur
+		// Grundlage der Umlaufabgabe (abgabe_grundlage).
+		"lp_wert": round6(lpWert), "abgabe_grundlage": round6(abgabeStand),
 		"aktiv": wirtschaftAktiv(jetzt),
 	}
 	wi := cs.wirt()
@@ -174,7 +179,7 @@ func (a *APIServer) handleWirtschaftKonto(w http.ResponseWriter, r *http.Request
 	}
 	wi.mu.Unlock()
 	if art != artSystem {
-		antwort["abgabe_pro_monat_bei_diesem_stand"] = cs.umlaufBetrag(addr, art, stand, jetzt, sekundenJeMonat)
+		antwort["abgabe_pro_monat_bei_diesem_stand"] = cs.umlaufBetrag(addr, art, abgabeStand, jetzt, sekundenJeMonat)
 	}
 	json.NewEncoder(w).Encode(antwort)
 }
