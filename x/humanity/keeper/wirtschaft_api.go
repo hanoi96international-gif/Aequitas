@@ -91,6 +91,7 @@ func (a *APIServer) handleWirtschaftRegeln(w http.ResponseWriter, r *http.Reques
 			"eigene_einlage_abgabefrei":        true,
 			"mensch_zaehlt_hoechstens_quartal": menschZaehltJeUntQuartal,
 			"liegegeld_pruefung":               liegegeldPruefungStand(),
+			"nachrechnen":                      nachrechnenStand(),
 			"zwischen_unternehmen_zaehlt":      "ueberschuss",
 			"max_je_mensch":                    maxUnternehmenJeMensch,
 			"max_verantwortliche":              maxVerantwortlicheJeUnt,
