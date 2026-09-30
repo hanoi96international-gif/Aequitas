@@ -22,10 +22,18 @@ unset PK
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 mkdir -p /root/backups && chmod 700 /root/backups
 install -m 600 "$ENVF" "/root/backups/validator-env-vor-neustart-$STAMP"
+# Einziger Validator: keine Seeds (PRIMARY_NODE_URLS=keine, erprobt seit dem
+# 24.09.2026 auf C2 allein). Sonst wartet C1 auf den ausgeschalteten C2: das
+# Tor der taeglichen Verteilung bliebe zu ("never synced from any peer"),
+# Selbstheilung und Totmann-Schalter prueften gegen eine tote Adresse, und ein
+# gesetztes BOOTSTRAP_SNAPSHOT_URL wuerde beim leeren Start einen Snapshot
+# holen wollen. Die alten Zeilen bleiben auskommentiert stehen, damit C2 nach
+# der Neueinrichtung wieder eingetragen werden kann.
 tmp="$(mktemp)"
-grep -vE '^AUTHORIZED_VALIDATORS=' "$ENVF" > "$tmp" || true
-printf 'AUTHORIZED_VALIDATORS=%s\n' "$ADDR" >> "$tmp"
+sed -E 's/^(AUTHORIZED_VALIDATORS|PRIMARY_NODE_URLS|PRIMARY_NODE_URL|PEER_NODES|BOOTSTRAP_SNAPSHOT_URL|BOOTSTRAP_SIGNER)=/# vor Neustart 30.09.: &/' "$ENVF" > "$tmp"
+printf 'AUTHORIZED_VALIDATORS=%s\nPRIMARY_NODE_URLS=keine\n' "$ADDR" >> "$tmp"
 install -m 600 "$tmp" "$ENVF"; rm -f "$tmp"
+echo "Seeds: PRIMARY_NODE_URLS=keine (einziger Validator); auskommentiert: $(grep -cE '^# vor Neustart 30.09.: ' "$ENVF") alte Zeilen"
 
 echo "Signieradresse von C1 (bleibt): $ADDR"
 echo "AUTHORIZED_VALIDATORS = $ADDR (C1 allein)"
