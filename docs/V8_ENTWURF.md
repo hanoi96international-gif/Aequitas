@@ -93,16 +93,26 @@ Revert-Gründe sind bewusst `Error(string)` mit Präfix `V8:` statt Custom Error
 **Signatur (EIP-712, Nutzer):**
 
 ```
-Domain   EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)
+Domain   EIP712Domain(string name,string version,uint256 chainId,address verifyingContract,bytes32 salt)
          name = "Aequitas", version = "8", chainId = block.chainid (Kette: 1926),
-         verifyingContract = address(this)
+         verifyingContract = address(this), salt = NETZ_SALT = keccak256(bytes(netz_kennung))
 Struct   Register(address human,uint256 commitment,uint256 nullifier,uint256 nonce,uint256 deadline)
          commitment = pubSignals[0], nullifier = pubSignals[1], nonce = nonces[human]
 Digest   keccak256(0x1901 ‖ DOMAIN_SEPARATOR ‖ hashStruct)
 ```
 
-Das bindet Contract, Chain-ID, Beweis (über seine öffentlichen Signale Commitment und
-Nullifier), Empfänger und Frist. Einen eigenen Hash über `pA/pB/pC` bindet die Signatur
+Das bindet Contract, Chain-ID, **Netz**, Beweis (über seine öffentlichen Signale Commitment und
+Nullifier), Empfänger und Frist.
+
+**Warum `salt` (Nachtrag 30.09.):** Beim Neustart bei null bleibt die Chain-ID 1926, und V8 kann
+wieder an derselben Genesis-Adresse liegen. Ohne `salt` wäre eine Signatur der alten Kette
+(Nonce 0, Frist noch nicht abgelaufen) auf der neuen gültig. `NETZ_SALT` ist
+`keccak256(bytes(netz_kennung))` mit `netz_kennung = "aequitas-<chainId>-<genesis-unix>"`
+(dieselbe Kennung, die `/api/status` liefert und an der die App den Neustart erkennt). Sie wird
+im Konstruktor gesetzt (`immutable`, im Bytecode, überlebt den Code-Umzug an die Genesis-Adresse)
+und ist nie null. `eip712Domain()` (EIP-5267) liefert die Domäne, damit App und Wallets genau sie
+signieren; die App gleicht `salt` zusätzlich mit `keccak256(netz_kennung)` aus `/api/status` ab.
+Test: „restart at zero: a signature from the previous network … is void“. Einen eigenen Hash über `pA/pB/pC` bindet die Signatur
 nicht: der Beweis ist durch seine öffentlichen Signale vollständig bestimmt, was er
 beweist; ein zweiter gültiger Beweis für dieselben Signale beweist dasselbe.
 Signaturprüfung streng: 65 Byte, `v ∈ {27, 28}`, `s ≤ n/2` (EIP-2), Ergebnis ≠ 0.
@@ -329,8 +339,8 @@ fremde V8-Mappings.
   (`bytecode`). Dazu ein Sync-Test wie `test/AequitasV7_bytecode_sync.ts` für V8
   (Vorlage kopieren, Pfade/Konstante anpassen).
 - `contract_deploy.go:313–318` Konstruktor-Argumente: jetzt
-  `abi.encode(address verifier, address[] registrars)` (dynamisches Array: Offset 0x40,
-  Länge, Einträge) – mit go-ethereum `abi.Arguments.Pack` statt Handkodierung.
+  `abi.encode(address verifier, address[] registrars, bytes32 netzSalt)` – mit go-ethereum
+  `abi.Arguments.Pack` statt Handkodierung; `netzSalt = keccak256(netzKennung())`.
   `registrars` = **feste Genesis-Liste** der Relayer-Adressen aller Validatoren, in allen
   Knoten identisch (sonst unterscheidet sich der Contract-Zustand je Knoten).
 - Der Konstruktor verlangt, dass am Verifier Code liegt: BioVerifier muss vorher deployt und

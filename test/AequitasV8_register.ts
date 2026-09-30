@@ -44,6 +44,13 @@ const GOOD_PROOF: Proof = {
 };
 const BAD_PROOF: Proof = { ...GOOD_PROOF, pA: [VALID_MARKER + 1n, 1n] };
 
+// NETZ_SALT = keccak256(bytes(netz_kennung)), netz_kennung as /api/status
+// serves it: "aequitas-<chainId>-<genesis unix>". 31337 = the hardhat chain.
+const NETZ_KENNUNG = "aequitas-31337-1790000000";
+const NETZ_SALT = keccak256(toHex(NETZ_KENNUNG));
+// The same chain id after a restart at zero, with a later genesis time.
+const OTHER_NETZ_SALT = keccak256(toHex("aequitas-31337-1800000000"));
+
 const REGISTER_TYPES = {
   Register: [
     { name: "human", type: "address" },
@@ -66,6 +73,7 @@ describe("AequitasV8 registerWithSig", async function () {
     const v8 = await viem.deployContract("AequitasV8", [
       verifier.address,
       [registrar.account.address, registrar2.account.address],
+      NETZ_SALT,
     ]);
     return { v8, verifier };
   }
@@ -88,6 +96,7 @@ describe("AequitasV8 registerWithSig", async function () {
       version: string;
       chainId: bigint;
       verifyingContract: Address;
+      salt: Hex;
     }> = {},
   ): Promise<Hex> {
     const nonce = msg.nonce ?? (await v8.read.nonces([msg.human]));
@@ -98,6 +107,7 @@ describe("AequitasV8 registerWithSig", async function () {
         version: "8",
         chainId,
         verifyingContract: v8.address,
+        salt: NETZ_SALT,
         ...domainOverride,
       },
       types: REGISTER_TYPES,
@@ -197,7 +207,7 @@ describe("AequitasV8 registerWithSig", async function () {
     const deadline = 1_900_000_000n;
     const domainTypeHash = keccak256(
       toHex(
-        "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)",
+        "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract,bytes32 salt)",
       ),
     );
     const registerTypeHash = keccak256(
@@ -213,6 +223,7 @@ describe("AequitasV8 registerWithSig", async function () {
           { type: "bytes32" },
           { type: "uint256" },
           { type: "address" },
+          { type: "bytes32" },
         ],
         [
           domainTypeHash,
@@ -220,6 +231,7 @@ describe("AequitasV8 registerWithSig", async function () {
           keccak256(toHex("8")),
           chainId,
           v8.address,
+          NETZ_SALT,
         ],
       ),
     );
@@ -388,6 +400,61 @@ describe("AequitasV8 registerWithSig", async function () {
         "V8: invalid signature",
       );
     }
+  });
+
+  it("restart at zero: a signature from the previous network (same chain id, same address, other genesis) is void", async function () {
+    const { v8 } = await deployV8();
+    const human = alice.account.address;
+    const deadline = await deadlineIn(600n);
+    // Exactly what the old chain's app signed: nonce 0, still inside the
+    // deadline, same chain id and contract address -- only the genesis differs.
+    const signature = await sign(
+      v8,
+      alice,
+      { human, commitment: 1095n, nullifier: 2095n, deadline, nonce: 0n },
+      { salt: OTHER_NETZ_SALT },
+    );
+    await viem.assertions.revertWith(
+      register(v8, { human, commitment: 1095n, nullifier: 2095n, deadline, signature }),
+      "V8: invalid signature",
+    );
+    // And without any salt (the domain before this fix) as well.
+    const unsalted = await alice.signTypedData({
+      account: alice.account,
+      domain: { name: "Aequitas", version: "8", chainId, verifyingContract: v8.address },
+      types: REGISTER_TYPES,
+      primaryType: "Register",
+      message: { human, commitment: 1095n, nullifier: 2095n, nonce: 0n, deadline },
+    });
+    await viem.assertions.revertWith(
+      register(v8, { human, commitment: 1095n, nullifier: 2095n, deadline, signature: unsalted }),
+      "V8: invalid signature",
+    );
+  });
+
+  it("eip712Domain (EIP-5267) reports exactly the domain it checks, salt = keccak256(netz_kennung)", async function () {
+    const { v8 } = await deployV8();
+    const [fields, name, version, cid, verifyingContract, salt, extensions] =
+      await v8.read.eip712Domain();
+    assert.equal(fields, "0x1f");
+    assert.equal(name, "Aequitas");
+    assert.equal(version, "8");
+    assert.equal(cid, chainId);
+    assert.equal(verifyingContract.toLowerCase(), v8.address.toLowerCase());
+    assert.equal(salt, keccak256(toHex(NETZ_KENNUNG)));
+    assert.equal(await v8.read.NETZ_SALT(), salt);
+    assert.deepEqual(extensions, []);
+    // A wallet that builds the domain from eip712Domain() gets a signature the contract accepts.
+    const deadline = await deadlineIn(600n);
+    const signature = await alice.signTypedData({
+      account: alice.account,
+      domain: { name, version, chainId: cid, verifyingContract, salt },
+      types: REGISTER_TYPES,
+      primaryType: "Register",
+      message: { human: alice.account.address, commitment: 1096n, nullifier: 2096n, nonce: 0n, deadline },
+    });
+    await register(v8, { human: alice.account.address, commitment: 1096n, nullifier: 2096n, deadline, signature });
+    assert.equal(await v8.read.isHuman([alice.account.address]), true);
   });
 
   // ─── deadline ───────────────────────────────────────────────────────────
@@ -595,6 +662,7 @@ describe("AequitasV8 constructor", async function () {
       viem.deployContract("AequitasV8", [
         "0x0000000000000000000000000000000000000000",
         [registrar.account.address],
+        NETZ_SALT,
       ]),
       "V8: verifier is zero",
     );
@@ -602,15 +670,28 @@ describe("AequitasV8 constructor", async function () {
       viem.deployContract("AequitasV8", [
         other.account.address,
         [registrar.account.address],
+        NETZ_SALT,
       ]),
       "V8: verifier has no code",
+    );
+  });
+
+  it("rejects a zero network salt (a domain not bound to any genesis)", async function () {
+    const verifier = await viem.deployContract("MockGroth16Verifier");
+    await viem.assertions.revertWith(
+      viem.deployContract("AequitasV8", [
+        verifier.address,
+        [registrar.account.address],
+        "0x0000000000000000000000000000000000000000000000000000000000000000",
+      ]),
+      "V8: netz salt is zero",
     );
   });
 
   it("bounds and validates the registrar list", async function () {
     const verifier = await viem.deployContract("MockGroth16Verifier");
     await viem.assertions.revertWith(
-      viem.deployContract("AequitasV8", [verifier.address, []]),
+      viem.deployContract("AequitasV8", [verifier.address, [], NETZ_SALT]),
       "V8: registrar count",
     );
     const seventeen = Array.from(
@@ -618,13 +699,14 @@ describe("AequitasV8 constructor", async function () {
       (_, i) => padHex(toHex(i + 1), { size: 20 }) as Address,
     );
     await viem.assertions.revertWith(
-      viem.deployContract("AequitasV8", [verifier.address, seventeen]),
+      viem.deployContract("AequitasV8", [verifier.address, seventeen, NETZ_SALT]),
       "V8: registrar count",
     );
     await viem.assertions.revertWith(
       viem.deployContract("AequitasV8", [
         verifier.address,
         [registrar.account.address, registrar.account.address],
+        NETZ_SALT,
       ]),
       "V8: duplicate registrar",
     );
@@ -632,12 +714,14 @@ describe("AequitasV8 constructor", async function () {
       viem.deployContract("AequitasV8", [
         verifier.address,
         ["0x0000000000000000000000000000000000000000"],
+        NETZ_SALT,
       ]),
       "V8: registrar is zero",
     );
     const v8 = await viem.deployContract("AequitasV8", [
       verifier.address,
       seventeen.slice(0, 16),
+      NETZ_SALT,
     ]);
     assert.equal(await v8.read.isRegistrar([seventeen[15]]), true);
     assert.equal(await v8.read.isRegistrar([registrar.account.address]), false);
@@ -657,6 +741,7 @@ describe("AequitasV8 ERC-20 facade", async function () {
     return viem.deployContract("AequitasV8", [
       verifier.address,
       [registrar.account.address],
+      NETZ_SALT,
     ]);
   }
 

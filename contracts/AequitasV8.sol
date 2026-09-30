@@ -59,11 +59,18 @@ pragma solidity 0.8.28;
  *
  *   1. The human's own EIP-712 signature over
  *        Register(human, commitment, nullifier, nonce, deadline)
- *      in the domain (name "Aequitas", version "8", chainId, this contract).
- *      Nobody can register a wallet whose key they do not hold, and nobody
- *      can move a pending registration to another wallet (front-running),
- *      replay it on another chain/contract, or reuse it after the nonce moved
- *      or the deadline passed.
+ *      in the domain (name "Aequitas", version "8", chainId, this contract,
+ *      salt = NETZ_SALT). Nobody can register a wallet whose key they do not
+ *      hold, and nobody can move a pending registration to another wallet
+ *      (front-running), replay it on another chain/contract, or reuse it
+ *      after the nonce moved or the deadline passed.
+ *
+ *      NETZ_SALT = keccak256(bytes(netz_kennung)), netz_kennung =
+ *      "aequitas-<chainId>-<genesis unix time>" as served by /api/status.
+ *      A restart at height zero keeps chain id 1926 and may put V8 at the
+ *      same genesis address again; without the salt the old chain's
+ *      signatures (nonce 0, still inside their deadline) would be valid on
+ *      the new one. The genesis time differs, so the domain differs.
  *   2. msg.sender must be a registrar fixed at deployment (genesis). Groth16
  *      proving keys are public, so a valid proof on its own is not evidence
  *      of a human: anyone can prove a made-up biometric. Whether the proof
@@ -115,7 +122,7 @@ contract AequitasV8 {
         0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501DDFE92F46681B20A0;
 
     bytes32 public constant EIP712_DOMAIN_TYPEHASH = keccak256(
-        "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
+        "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract,bytes32 salt)"
     );
 
     bytes32 public constant REGISTER_TYPEHASH = keccak256(
@@ -131,6 +138,11 @@ contract AequitasV8 {
     /// means a new verifier contract and therefore a new V8 deployment,
     /// which is a consensus change anyway.
     IGroth16Verifier public immutable verifier;
+
+    /// Binds every signature to THIS network (see header): keccak256 of the
+    /// netz_kennung "aequitas-<chainId>-<genesis unix time>". Set once in
+    /// genesis; a new genesis is a new network and a new domain.
+    bytes32 public immutable NETZ_SALT;
 
     // ─── Storage — ORDER IS CONSENSUS, see header and v8_slots.json ─────────
 
@@ -159,9 +171,12 @@ contract AequitasV8 {
     /// @param verifier_   Groth16 verifier (BioVerifier from the ceremony).
     /// @param registrars_ Relayer addresses of the validators, fixed in
     ///                    genesis. 1..MAX_REGISTRARS, non-zero, no duplicates.
-    constructor(address verifier_, address[] memory registrars_) {
+    /// @param netzSalt_   keccak256(bytes(netz_kennung)) of this genesis.
+    constructor(address verifier_, address[] memory registrars_, bytes32 netzSalt_) {
         require(verifier_ != address(0), "V8: verifier is zero");
         require(verifier_.code.length > 0, "V8: verifier has no code");
+        require(netzSalt_ != bytes32(0), "V8: netz salt is zero");
+        NETZ_SALT = netzSalt_;
         require(
             registrars_.length > 0 && registrars_.length <= MAX_REGISTRARS,
             "V8: registrar count"
@@ -250,8 +265,26 @@ contract AequitasV8 {
     /// name the wrong contract.
     function DOMAIN_SEPARATOR() public view returns (bytes32) {
         return keccak256(abi.encode(
-            EIP712_DOMAIN_TYPEHASH, NAME_HASH, VERSION_HASH, block.chainid, address(this)
+            EIP712_DOMAIN_TYPEHASH, NAME_HASH, VERSION_HASH, block.chainid, address(this), NETZ_SALT
         ));
+    }
+
+    /// EIP-5267: the domain fields, so the app and wallets build exactly the
+    /// domain this contract checks (0x1f = name, version, chainId,
+    /// verifyingContract, salt).
+    function eip712Domain()
+        external view
+        returns (
+            bytes1 fields,
+            string memory name_,
+            string memory version_,
+            uint256 chainId,
+            address verifyingContract,
+            bytes32 salt,
+            uint256[] memory extensions
+        )
+    {
+        return (hex"1f", name, VERSION, block.chainid, address(this), NETZ_SALT, new uint256[](0));
     }
 
     /// The digest `human` has to sign for a registration with the CURRENT

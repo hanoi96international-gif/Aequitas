@@ -41,7 +41,9 @@
       { "selector": "0xffa1ad74", "signature": "VERSION()", "persist": "view" },
       { "selector": "0x25c2cd12", "signature": "SNARK_SCALAR_FIELD()", "persist": "view" },
       { "selector": "0x3989ac77", "signature": "MAX_SIGNATURE_LIFETIME()", "persist": "view" },
-      { "selector": "0x9ba04aaa", "signature": "MAX_REGISTRARS()", "persist": "view" }
+      { "selector": "0x9ba04aaa", "signature": "MAX_REGISTRARS()", "persist": "view" },
+      { "selector": "0x67522052", "signature": "NETZ_SALT()", "persist": "view" },
+      { "selector": "0x84b0196e", "signature": "eip712Domain()", "persist": "view" }
     ]
   }
 }

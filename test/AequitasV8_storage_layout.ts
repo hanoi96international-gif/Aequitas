@@ -39,6 +39,9 @@ type Table = {
   selectors: { functions: SelectorRow[] };
 };
 
+// Any non-zero network salt; the register tests cover what it binds.
+const NETZ_SALT = keccak256(toHex("aequitas-31337-1790000000"));
+
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(here, "..");
 const table: Table = JSON.parse(
@@ -195,6 +198,7 @@ describe("AequitasV8 table slots, used from outside like Go does", async functio
     const v8 = await viem.deployContract("AequitasV8", [
       verifier.address,
       [registrar.account.address],
+      NETZ_SALT,
     ]);
     return { v8 };
   }
@@ -229,6 +233,7 @@ describe("AequitasV8 table slots, used from outside like Go does", async functio
         version: "8",
         chainId: BigInt(await publicClient.getChainId()),
         verifyingContract: v8.address,
+        salt: NETZ_SALT,
       },
       types: {
         Register: [
