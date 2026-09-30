@@ -19,8 +19,9 @@
 #      Pruefung aufnimmt.
 #
 # Deine Wallet und ihr privater Schluessel bleiben bei dir; auf dem Server
-# liegt nur ihre ADRESSE. Erneut aufrufen ist sicher: eine vorhandene .env
-# bleibt, wie sie ist.
+# liegt nur ihre ADRESSE. Erneut aufrufen ist sicher und ist zugleich das
+# Aktualisieren: Schluessel und Adresse in .env bleiben, nur die
+# Programmversion wird auf die des Repos gesetzt.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -117,6 +118,11 @@ EOF
   unset SIGNIER
   gruen ".env geschrieben (nur fuer root lesbar) / written (root only)"
 fi
+
+# Die Programmversion kommt mit dem Repo: auch bei vorhandener .env gilt die
+# festgelegte, damit "git pull && bash einrichten.sh" aktualisiert und alle
+# Verifier dasselbe pruefen. Schluessel und Adresse bleiben unberuehrt.
+[ "$(wert VERIFIER_IMAGE)" = "$VERIFIER_IMAGE_STANDARD" ] || setze VERIFIER_IMAGE "$VERIFIER_IMAGE_STANDARD"
 
 HOST="$(wert VERIFIER_HOST)"
 WALLET="$(wert OPERATOR_WALLET)"

@@ -106,11 +106,12 @@ nur die Anzeige).
 ## Aktualisieren
 
 ```bash
-cd ~/Aequitas && git pull && cd deploy/verifier && docker compose pull && docker compose up -d
+cd ~/Aequitas && git pull && cd deploy/verifier && bash einrichten.sh
 ```
 
-Die Programmversion steht fest im Skript (`VERIFIER_IMAGE` in `.env`), damit
-alle Verifier dasselbe prüfen. Eine neue Version kommt mit dem Repo.
+Die Programmversion steht fest im Skript, damit alle Verifier dasselbe prüfen.
+Eine neue Version kommt mit dem Repo; das erneute Einrichten übernimmt sie und
+lässt deine Schlüssel in `.env`, wie sie sind.
 
 ## Was wo liegt
 

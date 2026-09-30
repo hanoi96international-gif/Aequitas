@@ -18,7 +18,6 @@ import (
 	"net/http"
 	"net/http/pprof"
 	"os"
-	"path/filepath"
 	"regexp"
 	"runtime/debug"
 	"sort"
@@ -1170,11 +1169,14 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	mux.HandleFunc("/dapp", a.handleDapp)
 	mux.HandleFunc("/dapp.js", a.handleDappJS)
 	mux.HandleFunc("/download/app.apk", a.handleAppDownload)
+	// Die PDF-Leitfaeden (Juni 2026: Fork, PostgreSQL, MetaMask-Schluessel)
+	// sind seit dem Ein-Befehl-Einrichten vom 30.09.2026 falsch. Alte Links
+	// (Startseite, geteilte Nachrichten) landen deshalb auf der aktuellen
+	// Anleitung im Explorer, in allen zwoelf Sprachen, statt auf einem PDF,
+	// das einen nicht mehr gueltigen Weg beschreibt.
 	for _, lg := range []string{"en", "de", "es", "fr", "id", "it", "pt", "tr", "ru", "zh", "ar", "hi"} {
-		lg := lg
-		up := strings.ToUpper(lg)
 		mux.HandleFunc("/download/node-guide-"+lg+".pdf", func(w http.ResponseWriter, r *http.Request) {
-			a.handleStaticDownload(w, r, "downloads/Aequitas_Node_Guide_"+up+".pdf", "Aequitas_Node_Guide_"+up+".pdf", "application/pdf")
+			http.Redirect(w, r, "/network/node", http.StatusMovedPermanently)
 		})
 	}
 	// Use the shared EVMRPCServer (a.evmRPC) so /rpc and /api/register share
@@ -3933,24 +3935,6 @@ func (a *APIServer) handleAppDownload(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/vnd.android.package-archive")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	http.ServeContent(w, r, "aequitas-app.apk", fi.ModTime(), f)
-}
-
-func (a *APIServer) handleStaticDownload(w http.ResponseWriter, r *http.Request, path, filename, contentType string) {
-	f, err := os.Open(path)
-	if err != nil {
-		http.Error(w, "File not found", 404)
-		return
-	}
-	defer f.Close()
-	fi, err := f.Stat()
-	if err != nil {
-		http.Error(w, "File error", 500)
-		return
-	}
-	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filepath.Base(filename)))
-	w.Header().Set("Content-Type", contentType)
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	http.ServeContent(w, r, filename, fi.ModTime(), f)
 }
 
 func (a *APIServer) handleLanding(w http.ResponseWriter, r *http.Request) {

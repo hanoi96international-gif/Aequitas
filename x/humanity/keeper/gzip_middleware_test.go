@@ -86,3 +86,17 @@ func TestGzipMiddleware_SkipsDownloadPaths(t *testing.T) {
 		t.Fatal("a /download/ path's body must pass through unmodified")
 	}
 }
+
+// Die alten PDF-Leitfaeden beschrieben einen Weg, der nicht mehr gilt
+// (Fork, PostgreSQL, MetaMask-Schluessel). Ihre Adressen leiten auf die
+// aktuelle Anleitung um, statt eine veraltete Datei auszuliefern.
+func TestAlteLeitfadenPDFsLeitenAufDieAnleitungUm(t *testing.T) {
+	mux := (&APIServer{state: &ChainState{}}).buildMux()
+	for _, lg := range []string{"en", "de", "hi"} {
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, httptest.NewRequest("GET", "/download/node-guide-"+lg+".pdf", nil))
+		if rec.Code != http.StatusMovedPermanently || rec.Header().Get("Location") != "/network/node" {
+			t.Fatalf("%s: Code %d, Location %q -- erwartet 301 nach /network/node", lg, rec.Code, rec.Header().Get("Location"))
+		}
+	}
+}

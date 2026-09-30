@@ -30,8 +30,9 @@ import (
 //
 // WAS AUSDRÜCKLICH NICHT GEZÄHLT WIRD
 //
-//   - Die beiden Leitfäden (Node und Bio-Verifier). Sie sind per Entwurf
-//     englisch, mit Sprachhinweis und übersetzten PDFs.
+//   - Nichts mehr fuer die Leitfaeden (Node und Verifier): Seit dem
+//     30.09.2026 sind beide Ein-Befehl-Anleitungen in allen zwoelf Sprachen,
+//     und dieser Test haelt das fest. Nur ihre Befehle bleiben, wie sie sind.
 //   - Code, Adressen, Platzhalter, Formeln. Ein übersetzter Shell-Befehl ist
 //     kein Schönheitsfehler, sondern eine Anleitung, die nicht mehr
 //     funktioniert.
@@ -61,29 +62,11 @@ func TestJederSichtbareTextHatEinenUebersetzungsschluessel(t *testing.T) {
 	}
 	s := string(roh)
 
-	// Die Leitfaden-Bereiche, per Panel-ID und Klammerzählung.
-	//
-	// Beide Leitfäden sind per Entwurf englisch (Sprachhinweis + übersetzte
-	// PDFs), ihr Inhalt wird hier also nicht gezählt.
-	//
-	// FRÜHER hing das an der Kommentarzeile "<!-- ZWEITE ROLLE" als Anfang und
-	// am Ende von net-runnode als Ende. Am 26.08.2026 sind die beiden
-	// Leitfäden in getrennte Rubriken gewandert — damit lag der Anfang HINTER
-	// dem Ende, das Fenster war leer, und der englische Node-Guide schlug mit
-	// 118 Fundstellen auf. Der Test hatte recht zu melden; er meldete nur
-	// etwas, das absichtlich so ist.
-	//
-	// Deshalb jetzt an den Panel-IDs statt an einem Kommentar: die sind das,
-	// was die Bereiche ausmacht, und sie überleben ein Verschieben.
-	guideBereiche := panelBereiche(s, "net-runnode", "net-verifier")
 	i18nEltern := i18nBereiche(s)
 
 	var ohne []string
 	for _, m := range i18nElementRe.FindAllStringSubmatchIndex(s, -1) {
 		start := m[0]
-		if inBereich(start, guideBereiche) {
-			continue
-		}
 		// Nachfahre eines Elements, das SELBST einen Schluessel traegt:
 		// sein Text steht mit im Uebersetzungsstring des Elternteils.
 		if inBereich(start, i18nEltern) {
