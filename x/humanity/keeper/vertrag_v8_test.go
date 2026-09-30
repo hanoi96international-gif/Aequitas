@@ -180,16 +180,18 @@ func TestV8Registrar_IstDerEigeneRelayer(t *testing.T) {
 	}
 }
 
-func TestV8Genesis_DieRepoGenesisBleibtV7(t *testing.T) {
-	// Ein Push auf main geht direkt auf die Server -- deren genesis.json
-	// darf durch diese Aenderung nicht zu V8 werden.
+func TestV8Genesis_DieRepoGenesisIstV8(t *testing.T) {
+	// Seit dem Neustart bei null (30.09.2026) laeuft die Kette mit V8. Die
+	// genesis.json im Repo muss lesbar sein und V8 tragen; ein Wechsel geht
+	// nie per gewoehnlichem Deploy (.github/neustart/genesis-passt.sh), nur
+	// ueber neustart-bei-null.yml.
 	data, err := os.ReadFile(filepath.Join("..", "..", "..", "genesis.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	k, err := ladeVertragKonfig(data)
-	if err != nil || k.version != vertragVersionV7 {
-		t.Fatalf("genesis.json der laufenden Kette muss V7 bleiben: %+v %v", k, err)
+	if err != nil || k.version != vertragVersionV8 {
+		t.Fatalf("genesis.json der Kette muss V8 tragen: %+v %v", k, err)
 	}
 }
 

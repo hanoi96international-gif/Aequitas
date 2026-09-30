@@ -28,7 +28,7 @@ env:
   # bei null (30.09.2026): C2 ist geleert und wird nach docs/VALIDATOR_EINRICHTEN.md
   # neu eingerichtet (Test des Guides). Dann weder auf C2 warten noch C2
   # nachziehen. Zurueck auf "ja", sobald C2 wieder Validator ist.
-  C2_AKTIV: "ja"
+  C2_AKTIV: "nein"
 jobs:
   test:
     runs-on: ubuntu-latest

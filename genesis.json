@@ -1,6 +1,7 @@
 {
   "chain_id": "aequitas-1",
-  "genesis_time": "2026-06-13T00:00:00Z",
+  "genesis_time": "2026-09-30T18:10:00Z",
   "initial_humans": [],
-  "initial_supply": 0
+  "initial_supply": 0,
+  "register_vertrag": {"version": "v8"}
 }
