@@ -4,7 +4,8 @@
 #   cd Aequitas/deploy/validator && bash einrichten.sh
 #
 # Was das Skript tut (docs/VALIDATOR_EINRICHTEN.md):
-#   1. prueft Docker, Compose und git,
+#   1. prueft Docker, Compose, git und die Mindestausstattung (8 Kerne,
+#      16 GB, 60 GB frei) -- ein zu schwacher Server wird abgelehnt,
 #   2. fragt nach deiner Wallet-Adresse (die in der App registrierte) und
 #      ermittelt die oeffentliche IP dieses Servers,
 #   3. schreibt .env (nur fuer root lesbar) mit einem zufaelligen
@@ -31,7 +32,27 @@ command -v docker >/dev/null || { rot "Docker fehlt. Installieren: curl -fsSL ht
 docker compose version >/dev/null 2>&1 || { rot "Das Compose-Plugin fehlt (docker compose). Mit get.docker.com ist es dabei."; exit 1; }
 command -v git >/dev/null || { rot "git fehlt: apt-get install -y git"; exit 1; }
 command -v openssl >/dev/null || { rot "openssl fehlt: apt-get install -y openssl"; exit 1; }
+command -v python3 >/dev/null || { rot "python3 fehlt: apt-get install -y python3"; exit 1; }
 gruen "Docker, Compose, git: vorhanden"
+
+# LEISTUNG (Stand 30.09.2026): Ziel des Netzes sind 20.000-30.000
+# Ueberweisungen je Sekunde. Ein zu schwacher Validator bremst alle -- er wird
+# abgewiesen. Hier die Teile, die das Netz nicht messen kann (Kerne,
+# Arbeitsspeicher, Platz); die Rechenleistung misst danach der Knoten selbst
+# und zuletzt das Netz (Leistungsprobe bei der Anmeldung).
+MIN_KERNE=8; MIN_RAM_MB=15000; MIN_PLATZ_GB=60
+KERNE="$(nproc 2>/dev/null || echo 0)"
+RAM_MB="$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo 2>/dev/null || echo 0)"
+PLATZ_GB="$(df -Pk . 2>/dev/null | awk 'NR==2 {print int($4/1048576)}' || echo 0)"
+echo "  Server: $KERNE Kerne/cores, $((RAM_MB/1024)) GB RAM, $PLATZ_GB GB frei/free"
+if { [ "$KERNE" -lt "$MIN_KERNE" ] || [ "$RAM_MB" -lt "$MIN_RAM_MB" ] || [ "$PLATZ_GB" -lt "$MIN_PLATZ_GB" ]; }; then
+  rot "Dieser Server ist zu schwach fuer einen Validator -- abgelehnt.
+This server is too weak for a validator -- rejected.
+  Mindestens / at least: $MIN_KERNE Kerne/cores, 16 GB RAM, $MIN_PLATZ_GB GB freie SSD/free SSD.
+  Hier / here:           $KERNE Kerne/cores, $((RAM_MB/1024)) GB RAM, $PLATZ_GB GB.
+Einen groesseren Server nehmen und neu starten. / Use a bigger server and run again."
+  exit 1
+fi
 
 if [ -f .env ]; then
   gruen ".env gibt es schon -- sie bleibt, wie sie ist."
@@ -107,6 +128,36 @@ done
 ADDR="$(printf '%s' "$ADDR" | tr 'A-F' 'a-f')"
 gruen "Der Knoten laeuft. Signieradresse / signing address: $ADDR"
 
+# Eigene Messung des Knotens (leistungsnachweis.go): Signaturen je Sekunde und
+# Datenbank-Commit. Faellt sie durch, braucht die App gar nicht erst zu
+# unterschreiben -- das Netz wuerde die Anmeldung ohnehin abweisen.
+# Gemessen wird beim Start und, solange es nicht reicht, alle zehn Minuten
+# erneut (der Bestwert zaehlt) -- ein Knoten, der gerade aufholt, bekommt so
+# eine zweite Gelegenheit. Hoechstens 12 Minuten warten.
+leistung() { curl -fsS -m 10 http://127.0.0.1:8080/api/health/combined 2>/dev/null | python3 -c '
+import json,sys
+l=json.load(sys.stdin).get("leistungsnachweis") or {}
+b=l.get("bester") or {}
+print("ja" if l.get("leiterfaehig") else "nein", int(b.get("signaturen_pro_sek") or 0), l.get("grund",""))' 2>/dev/null || echo "nein 0 keine Antwort"; }
+ERG="$(leistung)"
+for i in $(seq 1 72); do
+  case "$ERG" in ja*) break ;; esac
+  [ "$i" = 1 ] && echo "  Leistung wird gemessen ... / measuring performance ..."
+  sleep 10
+  ERG="$(leistung)"
+done
+SIGS="$(printf '%s' "$ERG" | cut -d' ' -f2)"; GRUND="$(printf '%s' "$ERG" | cut -d' ' -f3-)"
+if [ "${ERG%% *}" != "ja" ]; then
+  docker compose stop node >/dev/null 2>&1 || true
+  rot "Leistung nicht ausreichend -- als Validator abgelehnt. Der Knoten wurde angehalten.
+Performance not sufficient -- rejected as a validator. The node was stopped.
+  Messung / measured: $SIGS Signaturen/s -- $GRUND
+  Gebraucht / required: mindestens 50000 Signaturen/s, Datenbank-Commit hoechstens 5 ms, 8 Kerne.
+Einen schnelleren Server nehmen (aktuelle CPU-Generation, NVMe-SSD). / Use a faster server (current CPU generation, NVMe SSD)."
+  exit 1
+fi
+gruen "Leistung / performance: $SIGS Signaturen/s -- ausreichend / sufficient"
+
 schritt "6/6 Mit deiner Wallet verbinden / Bind to your wallet"
 # Ohne diese Bindung nimmt das Netz den Knoten nicht an (handlePeerRegister):
 # die Wallet des Menschen muss diese Signieradresse ermaechtigen. Die Wallet
@@ -163,6 +214,32 @@ No confirmation from the app yet. Just run it again: bash einrichten.sh"
   gruen "Verbunden / bound. Neustart mit Bindung ..."
   docker compose up -d node
 fi
+
+# Letzte Pruefung, und die einzige, die der Knoten nicht beeinflussen kann:
+# das Netz misst ihn selbst (Leistungsprobe bei der Anmeldung,
+# kandidatenprobe.go). Nicht bestanden = abgewiesen.
+echo "  Das Netz misst jetzt die Leistung dieses Servers ... / The network is now measuring this server ..."
+PROBE=""; STATUS=""
+for i in $(seq 1 150); do
+  PROBE="$(curl -fsS -m 10 "$NETZ/api/kandidatenprobe?signing_address=$ADDR" 2>/dev/null || true)"
+  STATUS="$(printf '%s' "$PROBE" | grep -oE '"status": ?"[a-z_]+"' | head -1 | cut -d'"' -f4 || true)"
+  case "$STATUS" in bestanden|nicht_bestanden) break ;; esac
+  sleep 10
+done
+PGRUND="$(printf '%s' "$PROBE" | grep -oE '"grund": ?"[^"]*"' | head -1 | cut -d'"' -f4 || true)"
+case "$STATUS" in
+  bestanden) gruen "Leistungsprobe des Netzes bestanden / network performance probe passed ($PGRUND)" ;;
+  nicht_bestanden)
+    docker compose stop node >/dev/null 2>&1 || true
+    rot "Leistungsprobe des Netzes NICHT bestanden -- als Validator abgelehnt. Der Knoten wurde angehalten.
+Network performance probe FAILED -- rejected as a validator. The node was stopped.
+  Grund / reason: $PGRUND
+Einen schnelleren Server nehmen, oder Port 8080 beim Anbieter oeffnen, falls \"nicht erreichbar\".
+Use a faster server, or open port 8080 at your provider if it says \"nicht erreichbar\"."
+    exit 1 ;;
+  *) rot "Noch kein Ergebnis der Leistungsprobe / no probe result yet ($STATUS). Spaeter pruefen / check later:
+    curl -s \"$NETZ/api/kandidatenprobe?signing_address=$ADDR\"" ;;
+esac
 
 gruen "Fertig. Der Knoten holt jetzt das Netz ein / Done. The node is catching up."
 cat <<TEXT

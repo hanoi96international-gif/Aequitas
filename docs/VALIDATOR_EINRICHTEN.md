@@ -13,17 +13,34 @@ zusätzliche Stimme.
 
 ## Was du brauchst
 
-| | Mindestens | Wie die Gründerboxen |
+Ziel des Netzes sind 20.000 bis 30.000 Überweisungen je Sekunde. Ein zu
+schwacher Validator bremst alle, deshalb gilt: **Wer die Mindestleistung nicht
+bringt, wird abgelehnt.**
+
+| | Mindestens | Zum Vergleich: C1 |
 |---|---|---|
-| Server | ein gemieteter Server (VPS) mit Ubuntu 22.04 oder 24.04 und einer öffentlichen IPv4-Adresse | netcup, 8 Kerne |
-| Arbeitsspeicher | 8 GB | 15 GB |
-| Festplatte | 60 GB SSD | 250 GB |
+| Server | ein gemieteter Server (VPS oder Root-Server) mit Ubuntu 22.04 oder 24.04 und einer öffentlichen IPv4-Adresse | netcup |
+| Prozessor | **8 Kerne** einer aktuellen Generation (z. B. AMD EPYC 9004/9005, Ryzen 7000/9000, Intel Xeon 4. Gen.) | 8 Kerne AMD EPYC 9645 |
+| Arbeitsspeicher | **16 GB** | 16 GB |
+| Festplatte | **60 GB NVMe-SSD** frei | 250 GB |
 | Offene Ports | 8080 (Schnittstelle) und 4001 (Verbindung zu anderen Knoten) | dasselbe |
+| Leistung | **50.000 Signaturen je Sekunde**, Datenbank-Commit höchstens 5 ms | 86.800 je Sekunde, 0,12 ms |
 | Du selbst | in der Aequitas-App **registriert** (Gesichtsprüfung abgeschlossen) | – |
 
-Einen passenden Server gibt es bei den meisten Anbietern für 10 bis 20 Euro
-im Monat. Beim Bestellen „Ubuntu 24.04“ wählen. Die Zugangsdaten (IP-Adresse
-und Passwort) kommen per E-Mail.
+Geprüft wird dreimal, und jede Stufe lehnt ab:
+
+1. **Das Skript** prüft vor dem Bauen Kerne, Arbeitsspeicher und Platz.
+2. **Der Knoten misst sich selbst** (Signaturen je Sekunde, Datenbank). Reicht
+   es nicht, hält das Skript ihn an, bevor du irgendetwas unterschreibst.
+3. **Das Netz misst ihn noch einmal**, bei der Anmeldung: C1 schickt ihm eine
+   Rechenaufgabe aus einem Zufallswert, rechnet selbst nach und misst die
+   Zeit. Diese Probe kann ein Server nicht schönreden. Nicht bestanden heißt:
+   keine Aufnahme, und das Skript sagt, warum.
+
+Einen passenden Server gibt es bei den meisten Anbietern ab etwa 20 bis 40 Euro
+im Monat („8 vCPU dediziert“ oder Root-Server, **nicht** „geteilte vCPU“ der
+kleinsten Klasse). Beim Bestellen „Ubuntu 24.04“ wählen. Die Zugangsdaten
+(IP-Adresse und Passwort) kommen per E-Mail.
 
 **Was nicht auf den Server gehört:** deine Wallet, ihre Wörterliste
 (Seed-Phrase) und ihr privater Schlüssel. Auf dem Server liegt nur die
@@ -144,6 +161,9 @@ wie es war. Ohne sie ist es ein neuer Knoten: neu binden, neu aufnehmen lassen.
 | `ist registriert, aber nicht in AUTHORIZED_VALIDATORS` | noch nicht als Produzent aufgenommen | Signieradresse an den Betreiber schicken; bis dahin Beobachter |
 | Höhe steht, `Not yet 3 consecutive clean sync cycles` | der Knoten holt noch auf | warten |
 | Höhe bleibt hinter dem Netz zurück | Port 4001/8080 zu, oder zu wenig Arbeitsspeicher | Firewall des Anbieters prüfen, `docker stats` |
+| `einrichten.sh`: „Dieser Server ist zu schwach“ | zu wenige Kerne, zu wenig Arbeitsspeicher oder Platz | größeren Server nehmen |
+| `einrichten.sh`: „Leistung nicht ausreichend“ | der Knoten schafft keine 50.000 Signaturen je Sekunde oder die Platte ist zu langsam | schnelleren Server nehmen (aktuelle CPU, NVMe) |
+| `einrichten.sh`: „Leistungsprobe des Netzes NICHT bestanden“ | das Netz hat den Server gemessen: zu langsam oder nicht erreichbar | Grund steht dabei; bei „nicht erreichbar“ Port 8080 öffnen |
 | `einrichten.sh`: „Der Knoten hat keinen Signierschlüssel gemeldet“ | der erste Start ist gescheitert | `docker compose logs node` ansehen und die letzten Zeilen dem Betreiber schicken |
 
 ## Für Fortgeschrittene

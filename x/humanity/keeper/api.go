@@ -1138,6 +1138,7 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	// (leitung_netz.go). Ohne AEQUITAS_LEITUNG=an antwortet er 404.
 	mux.HandleFunc("/api/leitung", a.handleLeitung)
 	mux.HandleFunc("/api/leistungsprobe", a.handleLeistungsprobe)
+	mux.HandleFunc("/api/kandidatenprobe", a.handleKandidatenprobe)
 	mux.HandleFunc("/node-binding", a.handleNodeBinding)
 	mux.HandleFunc("/coordinator-binding", a.handleCoordinatorBinding)
 	mux.HandleFunc("/api/register-validator-key", a.handleRegisterValidatorKey)
@@ -3321,6 +3322,15 @@ func (a *APIServer) handlePeerRegister(w http.ResponseWriter, r *http.Request) {
 			if err := verifyPersonalSign(bindingMsg, req.OperatorBindingSignature, nodeWallet); err != nil {
 				fmt.Printf("[PEERS] Rejected %s: NODE_OPERATOR_WALLET %s ownership not proven: %v\n", addr, nodeWallet, err)
 				http.Error(w, `{"error":"operator_binding_signature missing or invalid — sign 'Aequitas: authorize validator <your signing address>' with your NODE_OPERATOR_WALLET to prove ownership (see /node-binding)"}`, http.StatusForbidden)
+				return
+			}
+			// Leistung (kandidatenprobe.go): wer zu langsam ist, wird kein
+			// Validator. Gemessen von HIER, nicht vom Kandidaten behauptet;
+			// fail-closed -- auch "Probe laeuft noch" heisst: noch nicht.
+			if e := a.kandidatZugelassen(addr, req.URL); e.Status != "bestanden" {
+				fmt.Printf("[PEERS] Rejected %s: Leistungsprobe %s (%s)\n", addr, e.Status, e.Grund)
+				w.WriteHeader(http.StatusForbidden)
+				json.NewEncoder(w).Encode(map[string]interface{}{"error": "leistungsprobe: " + e.Status, "probe": e})
 				return
 			}
 			if err := a.state.BindValidatorSlot(nodeWallet, addr, req.OperatorBindingSignature); err != nil {
