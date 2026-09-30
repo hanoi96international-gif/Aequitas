@@ -897,6 +897,31 @@ func (cs *ChainState) applyUmlaufDeltaLocked(ctx context.Context, wallet string,
 	return nil
 }
 
+// umlaufZeitFortschreibenLocked: die Tagesrunde zu at ist gelaufen -- auch
+// wenn niemand etwas zahlen musste. Aufgerufen ueber die Rundenmarke
+// (applyDistributionRoundMarkerDeltaLocked), auf dem Erzeuger wie beim
+// Nachspielen, und gespeichert.
+//
+// Wirtschaftspruefung 29.09.2026, C3: Der Erzeuger setzte letzterUmlauf in
+// jeder Runde (umlaufLocked), nachspielende Knoten nur in Runden mit einer
+// Umlauf-Transaktion und ohne es zu speichern. Uebernahm ein solcher Knoten
+// die Erzeugung nach einer Runde ohne Umlauf, rechnete er den Zeitraum
+// doppelt ab (Deckel erst bei 7 Tagen), und die Liegegeld-Pruefung meldete
+// falsche Abweichungen. Caller haelt cs.mu.
+func (cs *ChainState) umlaufZeitFortschreibenLocked(ctx context.Context, at int64) {
+	if !wirtschaftAktiv(at) {
+		return
+	}
+	w := cs.wirt()
+	w.mu.Lock()
+	if at > w.letzterUmlauf {
+		w.laufAt, w.laufVorher = at, w.letzterUmlauf
+		w.letzterUmlauf = at
+	}
+	w.mu.Unlock()
+	cs.speichereLetztenUmlauf(ctx, at)
+}
+
 // ------------------------------------------------------------ Register (Konsens)
 
 func normAdresse(a string) (string, bool) {
