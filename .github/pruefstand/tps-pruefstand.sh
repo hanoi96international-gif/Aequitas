@@ -123,7 +123,14 @@ tail -n +2 "$WERK/accounts.csv" | cut -d, -f2 | tr 'A-F' 'a-f' \
 cp "$WERK/accounts.csv" /root/pruefstand/konten.csv
 fi
 if [ "$PHASE" = aufbau ]; then
-  echo "Pruefknoten steht: 127.0.0.1:$PORT, $KONTEN Konten"; exit 0
+  # Aufwaermen HIER, lokal: jedes Konto einmal anfassen. Ueber den Tunnel
+  # (0,3 s je Anfrage, nacheinander) dauerte das ~11 Minuten je Generator,
+  # und die Lastfenster der Generatoren lagen dadurch versetzt.
+  echo "== Aufwaermen (lokal, alle Konten)"
+  docker run --rm --name pruefstand-last $NIEDRIG --network host -v "$WERK":/w -w /w golang:1.26.8-alpine \
+    ./loadtest -accounts accounts.csv -rpc "http://127.0.0.1:$PORT/rpc" -status "http://127.0.0.1:$PORT/api/status" \
+      -phase warmup 2>&1 | grep -vE '^warmup pair [0-9]+ ok|^\[monitor\]' | tail -5
+  echo "Pruefknoten steht: 127.0.0.1:$PORT, $KONTEN Konten, aufgewaermt"; exit 0
 fi
 docker inspect "$KN" >/dev/null 2>&1 || { echo "Pruefknoten laeuft nicht"; exit 1; }
 

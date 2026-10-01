@@ -33,6 +33,7 @@ jobs:
     timeout-minutes: 30
     outputs:
       teile: ${{ steps.p.outputs.teile }}
+      start: ${{ steps.s.outputs.start }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -74,6 +75,12 @@ jobs:
           echo "Laufender Knoten vorher: $(curl -s -m 10 http://$C1:8080/api/status | jq -c '{height, git_commit}')"
           git archive --format=tar "$ref" | ssh -o BatchMode=yes root@$C1 "rm -rf /root/pruefstand/a && mkdir -p /root/pruefstand/a && tar -x -C /root/pruefstand/a"
           ssh -o BatchMode=yes root@$C1 "PHASE=aufbau QUELLE=/root/pruefstand/a NAME=a KONTEN='$KONTEN' bash -s" < .github/pruefstand/tps-pruefstand.sh
+      - name: Gemeinsamer Startzeitpunkt
+        id: s
+        # Alle Generatoren beginnen das Lastfenster zur selben Sekunde (sonst
+        # lagen sie versetzt und massen nacheinander statt zusammen).
+        # Genug Vorlauf fuer Bauen, Tunnel und paralleles Nonce-Lesen.
+        run: echo "start=$(( $(date +%s) + 240 ))" >> "$GITHUB_OUTPUT"
 
   last:
     needs: aufbau
@@ -116,6 +123,7 @@ jobs:
         env:
           TEIL: ${{ matrix.teil }}
           N: ${{ inputs.generatoren }}
+          START: ${{ needs.aufbau.outputs.start }}
           DAUER: ${{ inputs.dauer }}
           BUENDEL: ${{ inputs.buendel }}
         run: |
@@ -129,13 +137,17 @@ jobs:
           ssh -o BatchMode=yes -o ExitOnForwardFailure=yes -o ServerAliveInterval=10 -N -L 18080:127.0.0.1:18080 root@$C1 &
           for i in $(seq 1 20); do curl -fsS -m 3 http://127.0.0.1:18080/api/status >/dev/null 2>&1 && break; sleep 1; done
           echo "Laufzeit zum Pruefknoten: $(curl -s -o /dev/null -w '%{time_total}' http://127.0.0.1:18080/api/status) s"
-          # Teil 1 startet auf der Box die Messungen (CPU, Profil, Zeitreihe).
+          [[ "$START" =~ ^[0-9]{10}$ ]] || { echo "::error::Startzeit fehlt"; exit 1; }
+          # Teil 1 startet auf der Box die Messungen (CPU, Profil, Zeitreihe)
+          # -- erst kurz vor dem gemeinsamen Start, damit das Messfenster
+          # (120 s) die Last trifft.
           if [ "$TEIL" = 1 ]; then
-            ssh -o BatchMode=yes root@$C1 "PHASE=messen DAUER='$DAUER' BUENDEL='$BUENDEL' bash -s" < ../../.github/pruefstand/tps-pruefstand.sh > messung.txt 2>&1 &
+            ( w=$(( START - 5 - $(date +%s) )); [ "$w" -gt 0 ] && sleep "$w"
+              ssh -o BatchMode=yes root@$C1 "PHASE=messen DAUER='$DAUER' BUENDEL='$BUENDEL' bash -s" < ../../.github/pruefstand/tps-pruefstand.sh ) > messung.txt 2>&1 &
             MESS=$!
           fi
           ./loadtest -accounts accounts.csv -teil "$TEIL/$N" -rpc http://127.0.0.1:18080/rpc -status http://127.0.0.1:18080/api/status \
-            -phase warmup,run -duration "$DAUER" -batch-size "$BUENDEL" 2>&1 \
+            -phase run -start-at "$START" -duration "$DAUER" -batch-size "$BUENDEL" 2>&1 \
             | grep -vE '^warmup pair [0-9]+ ok|^\[monitor\]' | tail -25
           rm -f accounts.csv
           if [ "$TEIL" = 1 ]; then
