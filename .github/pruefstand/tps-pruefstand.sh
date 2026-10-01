@@ -138,7 +138,10 @@ echo "== Last ($DAUER, Buendel $BUENDEL, Phase $PHASE)"
 # CPU-Profil aus dem Messfenster (Aufwaermen dauert rund 50 s). pprof lauscht
 # nur auf 127.0.0.1 im Container und ist von aussen nicht erreichbar.
 PROFIL="$(mktemp -d)"
-( sleep 70; docker exec "$KN" wget -qO- 'http://127.0.0.1:6061/debug/pprof/profile?seconds=20' > "$PROFIL/cpu.pb" 2>/dev/null || true ) &
+# Bei Last von aussen (PHASE=messen) beginnt die Last ~5 s nach dem
+# Messstart; beim Lauf von der Box (alles) erst nach dem Aufwaermen.
+PROFIL_NACH=70; [ "$PHASE" = messen ] && PROFIL_NACH=15
+( sleep "$PROFIL_NACH"; docker exec "$KN" wget -qO- 'http://127.0.0.1:6061/debug/pprof/profile?seconds=20' > "$PROFIL/cpu.pb" 2>/dev/null || true ) &
 PROFIL_PID=$!
 # Worauf warten die Goroutinen? Schnappschuss mitten im Messfenster,
 # gruppiert nach identischem Stapel (debug=1), die groessten Gruppen.
@@ -168,13 +171,21 @@ REIHE_PID=$!
 # CPU je Container (Prozent eines Kerns), alle ~3 s: Knoten, Postgres,
 # Lastgenerator und der laufende Knoten daneben. Daraus: Kerne je 10.000
 # Ueberweisungen/s -- was ein eigener Validator ohne Generator schafft.
-( for i in $(seq 1 30); do
-    for c in "$KN" "$PG" pruefstand-last aequitas-node; do
-      docker stats --no-stream --format '{{.Name}} {{.CPUPerc}}' "$c" 2>/dev/null | tr -d '%' | tr '\n' ' '
-    done
-    echo
-    sleep 1
-  done ) > "$PROFIL/cpu.txt" 2>&1 &
+# CPU je Container aus den Kernel-Zaehlern (cgroup v2, cpu.stat usage_usec):
+# Stand am Anfang und am Ende des Lastfensters, daraus Kerne im Mittel.
+# (docker stats lieferte unter Last keine verwertbaren Proben.)
+cg_usec() {
+  local id; id="$(docker inspect -f '{{.Id}}' "$1" 2>/dev/null)" || return 0
+  for f in "/sys/fs/cgroup/system.slice/docker-$id.scope/cpu.stat" "/sys/fs/cgroup/docker/$id/cpu.stat"; do
+    [ -r "$f" ] && { awk '/^usage_usec/{print $2}' "$f"; return 0; }
+  done
+}
+FENSTER=45; [ "$PHASE" = alles ] && FENSTER=60
+( sleep 5
+  for c in "$KN" "$PG" aequitas-node; do echo "$c $(cg_usec "$c") $(date +%s%N)"; done > "$PROFIL/cpu_a.txt"
+  sleep "$FENSTER"
+  for c in "$KN" "$PG" aequitas-node; do echo "$c $(cg_usec "$c") $(date +%s%N)"; done > "$PROFIL/cpu_b.txt"
+) > /dev/null 2>&1 &
 CPU_PID=$!
 if [ "$PHASE" = alles ]; then
 docker run --rm --name pruefstand-last $NIEDRIG --network host -v "$WERK":/w -w /w golang:1.26.8-alpine \
@@ -188,22 +199,21 @@ fi
 
 wait "$PROFIL_PID" 2>/dev/null || true
 kill "$REIHE_PID" 2>/dev/null || true
-kill "$CPU_PID" 2>/dev/null || true
-echo "== CPU je Container waehrend der Last (Mittel ueber Proben mit Pruefknoten > 100 %, Prozent eines Kerns)"
-python3 - "$PROFIL/cpu.txt" <<'PY' || true
+echo "== CPU je Container im Lastfenster (Kerne im Mittel, aus cgroup cpu.stat)"
+wait "$CPU_PID" 2>/dev/null || true
+python3 - "$PROFIL/cpu_a.txt" "$PROFIL/cpu_b.txt" <<'PY' || true
 import sys
-summe, n = {}, 0
-for z in open(sys.argv[1]):
-    t = z.split()
-    w = {t[i]: float(t[i+1]) for i in range(0, len(t)-1, 2) if t[i+1].replace('.','',1).isdigit()}
-    if w.get("pruefstand-node", 0) < 100:
-        continue
-    n += 1
-    for k, v in w.items():
-        summe[k] = summe.get(k, 0) + v
-print("proben:", n)
-for k, v in sorted(summe.items()):
-    print("  %-18s %7.1f %%" % (k, v / max(n, 1)))
+def lies(p):
+    d={}
+    for z in open(p):
+        t=z.split()
+        if len(t)==3 and t[1].isdigit(): d[t[0]]=(int(t[1]),int(t[2]))
+    return d
+a,b=lies(sys.argv[1]),lies(sys.argv[2])
+for k in a:
+    if k in b:
+        dt=(b[k][1]-a[k][1])/1e9
+        print("  %-18s %5.2f Kerne" % (k,(b[k][0]-a[k][0])/1e6/max(dt,1e-9)))
 PY
 echo "== Zeitreihe (alle 2 s ab Lastbeginn)"
 cat "$PROFIL/reihe.txt" 2>/dev/null | head -60 || true
