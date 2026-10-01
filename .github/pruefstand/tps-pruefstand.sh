@@ -249,11 +249,29 @@ echo "== Knoten nach dem Lauf"
 curl -fsS "http://127.0.0.1:$PORT/api/health/combined" | python3 -c '
 import json,sys
 d=json.load(sys.stdin)
-for k in ("produktion","produktion_phasen","eigenlast_bremse","rueckstau","inflight","wal_druck","fallback_gruende","wal_flush","wal_writer","leistungsnachweis"):
+for k in ("produktion","produktion_phasen","produktions_ausfaelle","eigenlast_bremse","peer_lag_bremse","rueckstau","inflight","wal_druck","fallback_gruende","wal_flush","wal_writer","leistungsnachweis"):
     v=d.get(k)
     if isinstance(v,dict): v={a:b for a,b in v.items() if a not in ("bedeutung","sync_verteilung")}
     print(k, json.dumps(v, ensure_ascii=False)[:900])
 '
+# Je Produktionsversuch (produktion_protokoll.go): zeigt, ob Zusatzbloecke
+# je Takt entstehen, welcher Deckel galt und wo die Zeit eines langsamen
+# Blocks blieb. Nur Zahlen, keine Inhalte.
+echo "== Produktionsversuche (letzte 160; ms relativ zum ersten)"
+curl -fsS "http://127.0.0.1:$PORT/api/produktion?n=160" | python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+e=d.get("eintraege", d) if isinstance(d,dict) else d
+e=[x for x in e if isinstance(x,dict)]
+if not e: print("(leer)"); sys.exit()
+t0=e[0].get("at_ms",0)
+print("     t_ms  txs  deckel  gesamt  laden  sperren  db_paar  speichern  grund")
+for x in e:
+    print("%9d %5d %6d %7.0f %6.0f %8.0f %8.0f %10.0f  %s" % (x.get("at_ms",0)-t0, x.get("txs",0), x.get("deckel",0), x.get("gesamt_ms",0), x.get("laden_ms",0), x.get("sperren_ms",0), x.get("db_paar_ms",0), x.get("speichern_ms",0), x.get("grund","")))
+' || echo "(nicht lesbar)"
+echo "== Zusatzbloecke je Takt (Knotenprotokoll)"
+docker logs "$KN" 2>&1 | grep -oE 'produced [0-9]+ blocks this tick' | sort | uniq -c || true
+docker logs "$KN" 2>&1 | grep -c 'Full tick (ProduceBlock+broadcast) took' || true
 # Woher Konflikte kommen: nur Zeilen zu Versionskonflikten und den Zeilen
 # davor (Wegwerf-Knoten; Schluessel stehen nicht in diesen Zeilen).
 echo "== Versionskonflikte im Knotenprotokoll"
