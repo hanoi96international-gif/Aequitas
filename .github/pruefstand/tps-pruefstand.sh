@@ -22,7 +22,9 @@ set -euo pipefail
 DAUER="${DAUER:-40s}"; KONTEN="${KONTEN:-1000}"; BUENDEL="${BUENDEL:-20}"
 NETZ=pruefstand-net; PG=pruefstand-pg; KN=pruefstand-node; PORT=18080
 
+ENVDATEI=""
 aufraeumen() {
+  [ -n "$ENVDATEI" ] && rm -f "$ENVDATEI"
   docker rm -f "$KN" "$PG" >/dev/null 2>&1 || true
   docker volume rm -f pruefstand-wal >/dev/null 2>&1 || true
   docker network rm "$NETZ" >/dev/null 2>&1 || true
