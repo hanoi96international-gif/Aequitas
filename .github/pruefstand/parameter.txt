@@ -1,5 +1,5 @@
 # Parameter fuer den Pruefstand-Lauf beim Push (pruefstand-tps-c1.yml).
-# A gegen B; B leer = der gepushte Stand.
+# A gegen B; B leer = der gepushte Stand. (Lauf: Bremse + Versionsfix)
 A=main
 B=
 DAUER=40s
