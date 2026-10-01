@@ -18,6 +18,7 @@ on:
       dauer: {description: "Messfenster je Generator", required: false, default: "40s"}
       konten: {description: "Testkonten gesamt", required: false, default: "4000"}
       buendel: {description: "Ueberweisungen je RPC-Buendel", required: false, default: "20"}
+      einstellungen: {description: "Leistungsschalter NAME=ZAHL,... (nur AEQUITAS_WAL_FLUSH_*, AEQUITAS_WAL_QUEUE_DEPTH, AEQUITAS_DB_MAX_CONNS)", required: false, default: ""}
 permissions:
   contents: read
 concurrency:
@@ -67,14 +68,20 @@ jobs:
         env:
           A: ${{ inputs.a }}
           KONTEN: ${{ inputs.konten }}
+          EINST: ${{ inputs.einstellungen }}
         run: |
           set -euo pipefail
+          # Nur Leistungsschalter aus einer festen Liste, nur Zahlen -- keine
+          # Schutzgrenze (Rate-Limit, Inflight, Rueckstau, WAL-Druck).
+          E='(AEQUITAS_WAL_FLUSH_(BATCH|CONCURRENCY|INTERVAL_MS)|AEQUITAS_WAL_QUEUE_DEPTH|AEQUITAS_DB_MAX_CONNS)=[0-9]{1,6}'
+          [ -z "$EINST" ] || [[ "$EINST" =~ ^$E(,$E)*$ ]] || { echo "::error::einstellungen unzulaessig"; exit 1; }
+          echo "Einstellungen: ${EINST:-(wie laufender Knoten)}"
           ref="$A"
           git rev-parse --verify --quiet "origin/$ref^{commit}" >/dev/null && ref="origin/$ref"
           echo "Quellstand: $ref ($(git rev-parse --short "$ref"))"
           echo "Laufender Knoten vorher: $(curl -s -m 10 http://$C1:8080/api/status | jq -c '{height, git_commit}')"
           git archive --format=tar "$ref" | ssh -o BatchMode=yes root@$C1 "rm -rf /root/pruefstand/a && mkdir -p /root/pruefstand/a && tar -x -C /root/pruefstand/a"
-          ssh -o BatchMode=yes root@$C1 "PHASE=aufbau QUELLE=/root/pruefstand/a NAME=a KONTEN='$KONTEN' bash -s" < .github/pruefstand/tps-pruefstand.sh
+          ssh -o BatchMode=yes root@$C1 "PHASE=aufbau QUELLE=/root/pruefstand/a NAME=a KONTEN='$KONTEN' EINSTELLUNGEN='$EINST' bash -s" < .github/pruefstand/tps-pruefstand.sh
       - name: Gemeinsamer Startzeitpunkt
         id: s
         # Alle Generatoren beginnen das Lastfenster zur selben Sekunde (sonst
