@@ -13,7 +13,7 @@ jobs:
       NEU: 188.172.229.121
       WALLET: "0x0be8b961cbf6564bd1931b0803d35c0659e0d016"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Schluessel bereitstellen
         env:
           KEY: ${{ secrets.CONTABO_SSH_KEY }}

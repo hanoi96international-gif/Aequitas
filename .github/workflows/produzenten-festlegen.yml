@@ -45,7 +45,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: produktion
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Schluessel und Host-Pruefung
         env:
           KEY: ${{ secrets.CONTABO2_SSH_KEY }}
@@ -84,7 +84,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: produktion
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Schluessel
         env:
           KEY: ${{ secrets.CONTABO_SSH_KEY }}

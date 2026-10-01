@@ -88,7 +88,7 @@ jobs:
       # happened to be sitting on the box, so a change to the generator measured
       # nothing until someone remembered to dispatch loadtest-run-contabo2.yml
       # first -- and a stale binary is invisible in the output.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Copy the current generator source to Contabo2
         uses: appleboy/scp-action@v1.0.0
         with:

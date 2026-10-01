@@ -17,8 +17,8 @@ jobs:
   workflows:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.x"
       - run: pip install pyyaml
@@ -35,8 +35,8 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
       - run: go build ./cmd/aequitasd
@@ -58,7 +58,7 @@ jobs:
           fi
           echo "✓ gofmt clean"
       - run: go test ./...
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
       - run: npm ci
@@ -100,8 +100,8 @@ jobs:
       DATABASE_URL: "postgres://postgres:postgres@localhost:5432/aequitas_ci?sslmode=disable"
       AEQUITAS_TPS_BENCH: "1"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
       - name: Run the Postgres-backed tests
@@ -149,8 +149,8 @@ jobs:
   schwachstellen:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
       # Ausnahmen nur befristet und begruendet: .github/govulncheck-ausnahmen.json.
@@ -179,8 +179,8 @@ jobs:
   race:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
       # Ausdrueckliches Zeitlimit (26.09.2026): das keeper-Paket braucht unter
@@ -200,8 +200,8 @@ jobs:
       run:
         working-directory: forschung/zk-gueltigkeit
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: forschung/zk-gueltigkeit/go.mod
       - run: go vet ./...
@@ -229,7 +229,7 @@ jobs:
   docker-image:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Build the node image
         run: docker build -t aequitas-node:ci .
       - name: Assert the binary is cgo-linked (fast secp256k1 path)

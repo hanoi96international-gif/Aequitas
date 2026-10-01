@@ -34,7 +34,7 @@ jobs:
     outputs:
       teile: ${{ steps.p.outputs.teile }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - name: Parameter
@@ -85,7 +85,7 @@ jobs:
       matrix:
         teil: ${{ fromJSON(needs.aufbau.outputs.teile) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - name: Schluessel und Host-Pruefung
@@ -98,7 +98,7 @@ jobs:
           ssh-keyscan -t ed25519 $C1 2>/dev/null > ~/.ssh/kh1
           ssh-keygen -lf ~/.ssh/kh1 | awk '{print $2}' | grep -qx "$C1_HOSTKEY" || { echo "::error::Host-Schluessel von C1 passt nicht"; exit 1; }
           cp ~/.ssh/kh1 ~/.ssh/known_hosts
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
           cache: false
@@ -151,7 +151,7 @@ jobs:
     environment: produktion
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Schluessel und Host-Pruefung
         env:
           KEY: ${{ secrets.CONTABO_SSH_KEY }}

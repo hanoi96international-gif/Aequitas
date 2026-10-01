@@ -73,7 +73,7 @@ jobs:
           insecure_ignore_fingerprint: true
           source: "/root/profil/aequitasd"
           target: "${{ matrix.box.name }}-aequitasd"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: heap-${{ matrix.box.name }}
           path: |

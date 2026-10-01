@@ -23,7 +23,7 @@ jobs:
     outputs:
       neu: ${{ steps.s.outputs.neu }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Oeffentliche Coordinator-Schluessel lesen
         id: s
         env:
@@ -65,7 +65,7 @@ jobs:
           - {box: C1, host: 188.172.229.121, fp: "SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA", key: CONTABO_SSH_KEY}
           - {box: C2, host: 194.163.188.71, fp: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto", key: CONTABO2_SSH_KEY}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Schluessel und Host-Pruefung
         env:
           KEY: ${{ secrets[matrix.key] }}

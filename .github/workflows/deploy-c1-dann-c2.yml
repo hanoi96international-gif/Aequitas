@@ -33,14 +33,14 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
       - run: go build ./cmd/aequitasd
       - run: go vet ./...
       - run: go test ./...
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
       - run: npm ci
@@ -54,7 +54,7 @@ jobs:
     env:
       C1: 188.172.229.121
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Genesis passt zur laufenden Kette (Wechsel nur ueber neustart-bei-null.yml)
         run: bash .github/neustart/genesis-passt.sh http://$C1:8080 http://194.163.188.71:8080
       - name: C2 muss laufen, bevor C1 neu startet
@@ -91,7 +91,7 @@ jobs:
       - name: C2 ist kein aktiver Validator (C2_AKTIV)
         if: env.C2_AKTIV != 'ja'
         run: echo "::notice::C2_AKTIV=$C2_AKTIV -- C2 wird nicht nachgezogen (Neustart bei null, Neueinrichtung nach Guide)"
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Schluessel und Host-Pruefung
         if: env.C2_AKTIV == 'ja'
         env:
