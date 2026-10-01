@@ -1445,6 +1445,7 @@ blocks_produced BIGINT NOT NULL DEFAULT 0
 	cs.initSlashingTables()
 	cs.backfillBioHashesOnce()
 	cs.wirtschaftInitDB()
+	cs.lowerIndizesSicherstellen()
 }
 
 // resetDBStateForBootstrap is an explicit operator escape hatch for secondary
