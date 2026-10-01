@@ -74,7 +74,10 @@ created_at    TIMESTAMP DEFAULT NOW()
 	// Vorhandene Zeilen werden geleert statt die Tabelle zu loeschen: ein DROP
 	// waere gegenueber einer aelteren Node-Fassung, die noch schreibt, nicht
 	// vertraeglich. Leer ist sie harmlos.
-	dbExec(`DELETE FROM mpc_share_buckets`)
+	//
+	// Nur wenn es sie gibt: auf jedem neuen Knoten fehlt sie, und ein blindes
+	// DELETE schrieb bei jedem Start einen ERROR ins Postgres-Protokoll.
+	dbExec(`DO $$ BEGIN IF to_regclass('mpc_share_buckets') IS NOT NULL THEN DELETE FROM mpc_share_buckets; END IF; END $$`)
 }
 
 // encodeRow packs one party's row as big-endian uint64 per feature.
@@ -233,6 +236,9 @@ func (cs *ChainState) deleteLeftoverMPCBuckets(enrollmentID string) {
 	if cs.db == nil {
 		return
 	}
+	if da, err := cs.tabelleDa("mpc_share_buckets"); err != nil || !da {
+		return
+	}
 	if _, err := cs.db.Exec(`DELETE FROM mpc_share_buckets WHERE enrollment_id = $1`, enrollmentID); err != nil {
 		_ = err
 	}
@@ -340,4 +346,12 @@ func (cs *ChainState) MPCEnrollmentsOfCommittee(committeeID string) ([]string, e
 		out = append(out, id)
 	}
 	return out, rows.Err()
+}
+
+// tabelleDa sagt, ob es eine Tabelle gibt (to_regclass, ohne Fehler im
+// Postgres-Protokoll, wenn nicht).
+func (cs *ChainState) tabelleDa(name string) (bool, error) {
+	var da bool
+	err := cs.db.QueryRow(`SELECT to_regclass($1) IS NOT NULL`, name).Scan(&da)
+	return da, err
 }

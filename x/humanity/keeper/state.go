@@ -1172,7 +1172,6 @@ WHERE commitment IN (
 	dbExec(`CREATE UNIQUE INDEX IF NOT EXISTS uidx_bio_registrations_bio_hash ON bio_registrations(bio_hash) WHERE bio_hash IS NOT NULL AND bio_hash != ''`)
 	// Scale indices for 8B registrations: fast lookup by wallet without full scans.
 	dbExec(`CREATE INDEX IF NOT EXISTS idx_bio_registrations_wallet ON bio_registrations(lower(wallet_address))`)
-	dbExec(`CREATE INDEX IF NOT EXISTS idx_nullifiers_wallet ON nullifiers(lower(wallet_address))`)
 	// Partial index on is_human lets distributeUBIPoolLocked enumerate all
 	// registered humans from the DB without a full chain_accounts table scan.
 	dbExec(`CREATE INDEX IF NOT EXISTS idx_chain_accounts_is_human ON chain_accounts(address) WHERE is_human = true`)
@@ -1211,6 +1210,9 @@ nullifier TEXT PRIMARY KEY,
 wallet_address TEXT NOT NULL,
 registered_at TIMESTAMP DEFAULT NOW()
 )`)
+	// Nach der Tabelle: stand vorher davor und schlug auf jeder neuen
+	// Datenbank beim ersten Start fehl (Index erst ab dem zweiten Start).
+	dbExec(`CREATE INDEX IF NOT EXISTS idx_nullifiers_wallet ON nullifiers(lower(wallet_address))`)
 	dbExec(`CREATE TABLE IF NOT EXISTS chain_config (
 key TEXT PRIMARY KEY,
 value TEXT NOT NULL
