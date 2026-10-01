@@ -154,7 +154,7 @@ echo "== Knoten nach dem Lauf"
 curl -fsS "http://127.0.0.1:$PORT/api/health/combined" | python3 -c '
 import json,sys
 d=json.load(sys.stdin)
-for k in ("produktion","produktion_phasen","eigenlast_bremse","rueckstau","inflight","wal_flush","wal_writer","leistungsnachweis"):
+for k in ("produktion","produktion_phasen","eigenlast_bremse","rueckstau","inflight","wal_druck","fallback_gruende","wal_flush","wal_writer","leistungsnachweis"):
     v=d.get(k)
     if isinstance(v,dict): v={a:b for a,b in v.items() if a not in ("bedeutung","sync_verteilung")}
     print(k, json.dumps(v, ensure_ascii=False)[:900])

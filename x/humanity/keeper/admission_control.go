@@ -134,6 +134,11 @@ func admissionRefusalReason() string {
 			"this validator has only %d MB of disk left and cannot durably record new "+
 				"transactions; retry shortly or send to another validator", plattenFreiMB.Load())
 	}
+	// WAL-Warteschlange fast voll: abweisen statt auf den seriellen Weg
+	// ausweichen (wal_annahme_druck.go).
+	if grund := walDruckGrund(); grund != "" {
+		return grund
+	}
 	// Kein Rueckstau ueber den naechsten Block hinaus (rueckstau_grenze.go).
 	if grund := rueckstauGrund(); grund != "" {
 		return grund

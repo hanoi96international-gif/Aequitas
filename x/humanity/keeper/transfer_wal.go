@@ -639,6 +639,7 @@ func (cs *ChainState) enqueueWALFlushLocked(from, to string, tx Transaction, seq
 	cs.walFlushMu.Lock()
 	cs.walFlushQueue = append(cs.walFlushQueue, it)
 	cs.walRohEingereihtLocked(it)
+	walWarteschlangeStand.Store(int64(len(cs.walFlushQueue)))
 	cs.walFlushMu.Unlock()
 	cs.ensureWALFlushWorkerStarted()
 }
@@ -893,6 +894,7 @@ func (cs *ChainState) flushWALQueue() {
 	} else {
 		cs.walFlushQueue = rest
 	}
+	walWarteschlangeStand.Store(int64(len(cs.walFlushQueue)))
 	cs.walFlushMu.Unlock()
 
 	if err := cs.flushWALBatch(batch); err != nil {
@@ -900,6 +902,7 @@ func (cs *ChainState) flushWALQueue() {
 		cs.walFlushMu.Lock()
 		cs.walFlushQueue = append(batch, cs.walFlushQueue...)
 		cs.walRohUnterwegsLocked(batch, -1)
+		walWarteschlangeStand.Store(int64(len(cs.walFlushQueue)))
 		cs.walFlushMu.Unlock()
 		return
 	}
@@ -1271,6 +1274,23 @@ WHERE chain_accounts.wal_seq < EXCLUDED.wal_seq`
 func (cs *ChainState) FlushWALNow() {
 	cs.walFlushNowMu.Lock()
 	defer cs.walFlushNowMu.Unlock()
+	cs.flushWALNowGesperrt()
+}
+
+// versucheFlushWALNow ist FlushWALNow, aber nur, wenn nicht schon einer
+// laeuft. false = es lief schon einer; der Aufrufer wartet kurz und prueft
+// erneut, statt einen zweiten vollen Flush anzuhaengen.
+func (cs *ChainState) versucheFlushWALNow() bool {
+	if !cs.walFlushNowMu.TryLock() {
+		return false
+	}
+	defer cs.walFlushNowMu.Unlock()
+	cs.flushWALNowGesperrt()
+	return true
+}
+
+// flushWALNowGesperrt: Rumpf von FlushWALNow, walFlushNowMu gehalten.
+func (cs *ChainState) flushWALNowGesperrt() {
 	if sem := cs.walFlushSem; sem != nil {
 		for i := 0; i < cap(sem); i++ {
 			sem <- struct{}{}

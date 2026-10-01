@@ -103,7 +103,14 @@ func (cs *ChainState) walVorSeriellLeeren(from string) bool {
 		if cs.walRohOffenFuer(from) == 0 {
 			return true
 		}
-		cs.FlushWALNow()
+		// Laeuft schon ein voller Flush, nicht dahinter anstellen, um gleich
+		// noch einen zu machen: er bringt auch diesen Absender nach Postgres.
+		// Gemessen am 01.10.2026: 1.027 Goroutinen standen hier in einer
+		// Reihe, jede fuer ihren eigenen vollen Flush (wal_annahme_druck.go).
+		if !cs.versucheFlushWALNow() {
+			time.Sleep(10 * time.Millisecond)
+			continue
+		}
 		if versuch > 0 {
 			time.Sleep(10 * time.Millisecond)
 		}

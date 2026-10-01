@@ -760,6 +760,7 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		// Blockbau ab). Zusammen mit rueckstau.gemessen zeigt das, auf welcher
 		// Seite des Flushs sich ein Rueckstau staut.
 		"wal_warteschlange": a.state.WALFlushQueueDepth(),
+		"wal_druck":         WALDruckStand(),
 		"admission":         AdmissionStats(),
 		"wal_writer":        wal.WriterStats(),
 		"wal_vornuller":     a.state.WALVornullerStand(),
