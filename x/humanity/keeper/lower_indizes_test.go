@@ -29,6 +29,17 @@ func TestLowerIndizes_AbfragenBenutzenIndex_RealDB(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
+
+	// Der Indexbau darf die Spalten-Migrationen nicht verdraengen (Befund
+	// Pruefstand 01.10.2026: chain_blocks.blue_score fehlte, der Knoten
+	// beendete sich). Nach dem Bau muessen sie da sein.
+	for _, spalte := range []string{"blue_score", "selected_parent", "blues", "tx_root", "replayed"} {
+		var n int
+		db.QueryRow(`SELECT count(*) FROM information_schema.columns WHERE table_name = 'chain_blocks' AND column_name = $1`, spalte).Scan(&n)
+		if n != 1 {
+			t.Fatalf("chain_blocks.%s fehlt nach dem Indexbau", spalte)
+		}
+	}
 	// Genug Zeilen, dass der Planer einen Index einer Tabellen-Lesung vorzieht.
 	if _, err := db.Exec(`INSERT INTO evm_nonces (address, nonce)
 		SELECT '0x' || lpad(to_hex(g), 40, '0'), g FROM generate_series(1, 20000) g

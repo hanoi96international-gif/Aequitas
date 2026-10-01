@@ -3,6 +3,7 @@ package keeper
 import (
 	"fmt"
 	"sync"
+	"time"
 )
 
 // AUSDRUCKS-INDIZES FUER lower(...)-ABFRAGEN.
@@ -41,8 +42,21 @@ func (cs *ChainState) lowerIndizesSicherstellen() {
 	if cs == nil || cs.db == nil {
 		return
 	}
-	SafeGoroutine("lower-indizes", func() { cs.lowerIndizesBauen() })
+	SafeGoroutine("lower-indizes", func() {
+		// Erst nach dem Start: CREATE INDEX CONCURRENTLY haelt eine Sperre,
+		// mit der ein ALTER TABLE ... ADD COLUMN nicht gleichzeitig laufen
+		// kann. Beim Start ziehen mehrere Stellen Spalten nach (einmalig,
+		// Fehler werden dort nicht wiederholt) -- gemessen am 01.10.2026 auf
+		// dem Pruefstand: das ALTER von chain_blocks.blue_score wartete hinter
+		// dem Indexbau, lief ins 5-s-Limit, und der Knoten beendete sich mit
+		// "column blue_score does not exist".
+		time.Sleep(lowerIndizesVerzoegerung)
+		cs.lowerIndizesBauen()
+	})
 }
+
+// lowerIndizesVerzoegerung: Abstand zum Start (siehe oben). In Tests 0.
+var lowerIndizesVerzoegerung = 30 * time.Second
 
 var lowerIndizesMu sync.Mutex
 
@@ -53,6 +67,11 @@ func (cs *ChainState) lowerIndizesBauen() (fehlend []string) {
 	// denselben Namen scheitern beide oder hinterlassen einen ungueltigen.
 	lowerIndizesMu.Lock()
 	defer lowerIndizesMu.Unlock()
+	// Die Spalten-Migrationen der Tabellen, die hier einen Index bekommen,
+	// VOR dem Indexbau -- sie sind einmalig je Prozess und idempotent.
+	cs.ensureGHOSTDAGColumns()
+	cs.ensureReplayedColumn()
+	cs.ensureTxRootColumn()
 	for _, ix := range lowerIndizes {
 		if err := cs.indexNebenlaeufigSicherstellen(ix.name, ix.definition); err != nil {
 			fmt.Printf("[INDEX] %s nicht gebaut: %v -- Abfragen laufen weiter ohne ihn\n", ix.name, err)
