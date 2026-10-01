@@ -63,3 +63,33 @@ func TestAbsenderCache_BegrenzteGroesse(t *testing.T) {
 		t.Fatal("aeltester Eintrag blieb erhalten")
 	}
 }
+
+// Verteilt: insgesamt nie mehr als absenderCacheGroesse Eintraege, auch wenn
+// ein Angreifer Hashes waehlt, die alle in denselben Teil fallen -- dann
+// verdraengt dieser Teil seine eigenen, aeltesten Eintraege.
+func TestAbsenderCache_VerteiltBegrenzt(t *testing.T) {
+	v := neuerAbsenderCacheVerteilt()
+	for i := 0; i < absenderCacheGroesse+5000; i++ {
+		var h common.Hash
+		h[1], h[2], h[3] = byte(i), byte(i>>8), byte(i>>16) // h[0] = 0: alle im selben Teil
+		v.merken(h, "x")
+	}
+	je := absenderCacheGroesse / absenderCacheTeile
+	if n := v.anzahl(); n != je {
+		t.Fatalf("ein Teil haelt %d Eintraege, Grenze je Teil %d", n, je)
+	}
+	for i := 0; i < absenderCacheGroesse*2; i++ {
+		var h common.Hash
+		h[0], h[1], h[2], h[3] = byte(i), byte(i>>8), byte(i>>16), byte(i>>24)
+		v.merken(h, "y")
+	}
+	if n := v.anzahl(); n > absenderCacheGroesse {
+		t.Fatalf("verteilt %d Eintraege, Grenze %d", n, absenderCacheGroesse)
+	}
+	var h common.Hash
+	h[0] = 7
+	v.merken(h, "z")
+	if a, ok := v.holen(h); !ok || a != "z" {
+		t.Fatalf("eben gemerkter Eintrag fehlt: %q %v", a, ok)
+	}
+}

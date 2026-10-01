@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -601,10 +602,19 @@ func (s *EVMRPCServer) handleRPC(w http.ResponseWriter, r *http.Request) {
 			overBudget[i] = !frei && rpcRateLimited(ip)
 		}
 
+		// Weist die Annahme gerade ohnehin ab (admissionRefusalReason:
+		// WAL-Druck, Rueckstau, Stillstand), keine Signatur vorab
+		// wiederherstellen. sendRawTransaction prueft denselben Grund als
+		// Erstes und antwortet -32005, bevor es selbst dekodiert. Gemessen am
+		// 01.10.2026 (C1-Pruefstand): ohne diese Abkuerzung gingen 50 % der
+		// CPU in Wiederherstellungen fuer Posten, die danach abgewiesen
+		// wurden -- und der Knoten bremste sich damit selbst aus.
+		annahmeZu := s.state != nil && admissionRefusalReason() != ""
+
 		precomputed := make([]*precomputedSendTx, len(batch))
 		var pending []int
 		for i, raw := range batch {
-			if overBudget[i] {
+			if overBudget[i] || annahmeZu {
 				continue
 			}
 			var env struct {
@@ -873,8 +883,23 @@ func (s *EVMRPCServer) getTransactionCount(params []json.RawMessage) (interface{
 	}
 	addr = strings.ToLower(addr)
 
-	// Read DB outside the lock (avoids blocking other goroutines on a DB call).
-	dbNonce := s.state.LoadNonce(addr)
+	shard := s.nonceShardFor(addr)
+	// Kennt die Nonce-Shard dieses Knotens die Adresse schon, ist sie nie
+	// kleiner als evm_nonces: in die Tabelle schreiben nur ReserveNonce (das
+	// die Shard unter derselben Sperre fortschreibt) und der Nachtrag (mit
+	// Werten aus genau diesen Reservierungen). Die Datenbank wird dann nicht
+	// gefragt. Gemessen am 01.10.2026 (C1-Pruefstand, Goroutine-
+	// Schnappschuss): 943 Goroutinen warteten hier auf eine
+	// Datenbankverbindung -- fuer eine Zahl, die schon im Speicher stand.
+	shard.mu.Lock()
+	bekannt := shard.nonces[addr]
+	shard.mu.Unlock()
+	var dbNonce uint64
+	if bekannt == 0 {
+		// Read DB outside the lock (avoids blocking other goroutines on a DB call).
+		nonceDBAbfragen.Add(1)
+		dbNonce = s.state.LoadNonce(addr)
+	}
 	// Stufe 1: die Kette fuehrt NaechsteNonce je Konto. evm_nonces fuehrt nur
 	// der Knoten, der annimmt -- ein nur lesender Knoten (C2) kennt dort die
 	// Nonces nicht, die C1 angenommen hat, und schickte einer Wallet, die ihn
@@ -886,7 +911,6 @@ func (s *EVMRPCServer) getTransactionCount(params []json.RawMessage) (interface{
 	// Lock only for the map read/write — brief critical section. Must be the
 	// SAME shard sendRawTransaction uses for this address, or the nonce would
 	// be guarded by two different mutexes.
-	shard := s.nonceShardFor(addr)
 	shard.mu.Lock()
 	if dbNonce > shard.nonces[addr] {
 		shard.nonces[addr] = dbNonce
@@ -2238,6 +2262,9 @@ type RPCError struct {
 func (e *RPCError) Error() string {
 	return e.Message
 }
+
+// nonceDBAbfragen zaehlt, wie oft eth_getTransactionCount die Datenbank fragt.
+var nonceDBAbfragen atomic.Int64
 
 // rpcMaxBuendel: hoechstens so viele Posten je Buendel (handleRPC, rpcKonten).
 const rpcMaxBuendel = 100

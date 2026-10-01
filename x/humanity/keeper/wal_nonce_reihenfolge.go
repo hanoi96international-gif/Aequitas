@@ -30,6 +30,45 @@ package keeper
 
 import "time"
 
+// walRohAuswahlLocked: das naechste Buendel (hoechstens max Eintraege) aus der
+// Warteschlange -- OHNE an der ersten Ueberweisung eines Absenders
+// abzubrechen, der gerade in einem laufenden Flush steht. Dessen Eintraege
+// bleiben (alle, in ihrer Reihenfolge) in der Warteschlange; die der anderen
+// Absender gehen mit. Die Reihenfolge JE ABSENDER bleibt damit dieselbe wie
+// beim Schnitt (walRohSchnittLocked): ein Absender steht nie in zwei
+// gleichzeitig laufenden Flushes, und innerhalb der Warteschlange behalten
+// seine Eintraege ihre Folge. Strenger als der Schnitt: auch unsignierte
+// Eintraege eines laufenden Absenders warten.
+//
+// Gemessen am 01.10.2026 (C1-Pruefstand, 2.000 aktive Absender): mit dem
+// Schnitt endete ein Buendel fast sofort -- im Mittel 540 Eintraege, bei
+// einer Warteschlange von 13.000-15.000. Der Flush war damit der Engpass der
+// ganzen Annahme.
+//
+// Die Warteschlange wird an Ort und Stelle verdichtet. walFlushMu gehalten.
+func (cs *ChainState) walRohAuswahlLocked(max int) []walFlushItem {
+	q := cs.walFlushQueue
+	groesse := len(q)
+	if groesse > max {
+		groesse = max
+	}
+	batch := make([]walFlushItem, 0, groesse)
+	k := 0
+	for _, it := range q {
+		if len(batch) < max && cs.walRohUnterwegs[it.from] == 0 {
+			batch = append(batch, it)
+			continue
+		}
+		q[k] = it
+		k++
+	}
+	for i := k; i < len(q); i++ {
+		q[i] = walFlushItem{}
+	}
+	cs.walFlushQueue = q[:k]
+	return batch
+}
+
 // walRohEingereihtLocked: eine signierte Ueberweisung von from steht in der
 // Warteschlange. walFlushMu gehalten.
 func (cs *ChainState) walRohEingereihtLocked(it walFlushItem) {
@@ -103,7 +142,14 @@ func (cs *ChainState) walVorSeriellLeeren(from string) bool {
 		if cs.walRohOffenFuer(from) == 0 {
 			return true
 		}
-		cs.FlushWALNow()
+		// Laeuft schon ein voller Flush, nicht dahinter anstellen, um gleich
+		// noch einen zu machen: er bringt auch diesen Absender nach Postgres.
+		// Gemessen am 01.10.2026: 1.027 Goroutinen standen hier in einer
+		// Reihe, jede fuer ihren eigenen vollen Flush (wal_annahme_druck.go).
+		if !cs.versucheFlushWALNow() {
+			time.Sleep(10 * time.Millisecond)
+			continue
+		}
 		if versuch > 0 {
 			time.Sleep(10 * time.Millisecond)
 		}

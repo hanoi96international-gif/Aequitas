@@ -33,9 +33,55 @@ type absenderCache struct {
 	eintrag map[common.Hash]string
 	ring    []common.Hash
 	pos     int
+	grenze  int // 0 = absenderCacheGroesse
 }
 
-var absenderSpeicher = &absenderCache{eintrag: make(map[common.Hash]string, absenderCacheGroesse)}
+// VERTEILT AUF absenderCacheTeile SPERREN (seit 01.10.2026).
+//
+// Gemessen auf dem C1-Pruefstand (4.000 Konten, Goroutine-Schnappschuss):
+// 1.204 Goroutinen standen an der EINEN Sperre dieses Caches -- jede
+// Ueberweisung fragt ihn bei der Annahme. Der Schluessel ist ein keccak-
+// Hash, sein erstes Byte also gleichverteilt; danach wird verteilt. Gesamt-
+// groesse und Verdraengung (aeltester zuerst, je Teil) bleiben begrenzt wie
+// bisher.
+const absenderCacheTeile = 64
+
+type absenderCacheVerteilt struct {
+	teile [absenderCacheTeile]*absenderCache
+}
+
+func neuerAbsenderCacheVerteilt() *absenderCacheVerteilt {
+	v := &absenderCacheVerteilt{}
+	je := absenderCacheGroesse / absenderCacheTeile
+	for i := range v.teile {
+		v.teile[i] = &absenderCache{eintrag: make(map[common.Hash]string, je), grenze: je}
+	}
+	return v
+}
+
+func (v *absenderCacheVerteilt) teil(h common.Hash) *absenderCache {
+	return v.teile[int(h[0])%absenderCacheTeile]
+}
+
+func (v *absenderCacheVerteilt) holen(h common.Hash) (string, bool) {
+	return v.teil(h).holen(h)
+}
+
+func (v *absenderCacheVerteilt) merken(h common.Hash, absender string) {
+	v.teil(h).merken(h, absender)
+}
+
+func (v *absenderCacheVerteilt) anzahl() int {
+	n := 0
+	for _, t := range v.teile {
+		t.mu.Lock()
+		n += len(t.eintrag)
+		t.mu.Unlock()
+	}
+	return n
+}
+
+var absenderSpeicher = neuerAbsenderCacheVerteilt()
 
 var (
 	absenderTreffer  atomic.Int64
@@ -60,21 +106,23 @@ func (c *absenderCache) merken(h common.Hash, absender string) {
 	if _, ok := c.eintrag[h]; ok {
 		return
 	}
-	if len(c.ring) < absenderCacheGroesse {
+	grenze := c.grenze
+	if grenze <= 0 {
+		grenze = absenderCacheGroesse
+	}
+	if len(c.ring) < grenze {
 		c.ring = append(c.ring, h)
 	} else {
 		delete(c.eintrag, c.ring[c.pos])
 		c.ring[c.pos] = h
-		c.pos = (c.pos + 1) % absenderCacheGroesse
+		c.pos = (c.pos + 1) % grenze
 	}
 	c.eintrag[h] = absender
 }
 
 // AbsenderCacheStand fuer /health: wie oft eine Wiederherstellung gespart wurde.
 func AbsenderCacheStand() map[string]interface{} {
-	absenderSpeicher.mu.Lock()
-	n := len(absenderSpeicher.eintrag)
-	absenderSpeicher.mu.Unlock()
+	n := absenderSpeicher.anzahl()
 	return map[string]interface{}{
 		"eintraege": n,
 		"treffer":   absenderTreffer.Load(),

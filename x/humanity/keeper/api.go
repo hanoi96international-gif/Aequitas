@@ -755,18 +755,23 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		// The WAL flush loop, which a mutex profile identified as the single
 		// largest source of lock contention in the node (45.21%). addrs_per_flush
 		// and hold_avg_ms are the two numbers that explain it; see wal_tuning.go.
-		"wal_flush":        WALFlushStats(),
-		"admission":        AdmissionStats(),
-		"wal_writer":       wal.WriterStats(),
-		"wal_vornuller":    a.state.WALVornullerStand(),
-		"tx_index":         TxIndexStats(),
-		"receipt_flush":    a.blockchain.state.ReceiptFlushStand(),
-		"receipt_prune":    ReceiptPruneStand(),
-		"pending_leichen":  PendingLeichenStand(),
-		"tx_batch_cache":   a.blockchain.state.TxBatchCacheStand(),
-		"push_gzip":        GzipPushStand(),
-		"eigenlast_bremse": EigenlastBremseStand(),
-		"divergenz":        DivergenzStand(),
+		"wal_flush": WALFlushStats(),
+		// Angenommen und im WAL, aber noch nicht in pending_txs (dort holt der
+		// Blockbau ab). Zusammen mit rueckstau.gemessen zeigt das, auf welcher
+		// Seite des Flushs sich ein Rueckstau staut.
+		"wal_warteschlange": a.state.WALFlushQueueDepth(),
+		"wal_druck":         WALDruckStand(),
+		"admission":         AdmissionStats(),
+		"wal_writer":        wal.WriterStats(),
+		"wal_vornuller":     a.state.WALVornullerStand(),
+		"tx_index":          TxIndexStats(),
+		"receipt_flush":     a.blockchain.state.ReceiptFlushStand(),
+		"receipt_prune":     ReceiptPruneStand(),
+		"pending_leichen":   PendingLeichenStand(),
+		"tx_batch_cache":    a.blockchain.state.TxBatchCacheStand(),
+		"push_gzip":         GzipPushStand(),
+		"eigenlast_bremse":  EigenlastBremseStand(),
+		"divergenz":         DivergenzStand(),
 		// The request split, so the ~50ms per transfer that TransferAtomic does
 		// not account for can be subtracted out instead of guessed at. Read
 		// unaccounted_in_send_ms first; see rpc_phase_stats.go.

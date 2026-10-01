@@ -58,6 +58,8 @@ ENVDATEI="$(mktemp)"; chmod 600 "$ENVDATEI"
   echo "IS_PRIMARY_NODE=true"
   echo "SELF_URL=http://127.0.0.1:$PORT"
   echo "AUTO_HEAL_ON_DIVERGENCE=false"
+  # Wie deploy/validator/docker-compose.yml: keine Protokollzeile je Ueberweisung.
+  echo "AEQUITAS_RPC_QUIET_TX=1"
   # Nur dieser Pruefstand: der Generator laeuft von EINER Adresse aus, die
   # Begrenzung je Adresse wuerde sonst den Generator messen, nicht den Knoten.
   echo "AEQUITAS_RPC_RATE_LIMIT_MAX=1000000"
@@ -94,12 +96,54 @@ echo "== Last ($DAUER, Buendel $BUENDEL)"
 PROFIL="$(mktemp -d)"
 ( sleep 70; docker exec "$KN" wget -qO- 'http://127.0.0.1:6061/debug/pprof/profile?seconds=20' > "$PROFIL/cpu.pb" 2>/dev/null || true ) &
 PROFIL_PID=$!
+# Worauf warten die Goroutinen? Schnappschuss mitten im Messfenster,
+# gruppiert nach identischem Stapel (debug=1), die groessten Gruppen.
+( sleep 80; docker exec "$KN" wget -qO- 'http://127.0.0.1:6061/debug/pprof/goroutine?debug=1' > "$PROFIL/gr.txt" 2>/dev/null || true ) &
+GR_PID=$!
+# Zeitreihe alle 2 s: wo staut es sich? (Rueckstand gesamt, davon noch im WAL,
+# offen in pending_txs, Inflight, Hoehe.) Nur Zahlen.
+( for i in $(seq 1 60); do
+    h="$(curl -s -m 2 "http://127.0.0.1:$PORT/api/health/combined" 2>/dev/null || true)"
+    p="$(docker exec "$PG" psql -tA -U postgres -d aequitas -c "SELECT count(*) FILTER (WHERE included_at=0) || '/' || count(*) FROM pending_txs" 2>/dev/null || true)"
+    printf '%s' "$h" | python3 -c '
+import json,sys
+try: d=json.load(sys.stdin)
+except Exception: sys.exit(0)
+r=d.get("rueckstau",{}); i=d.get("inflight",{})
+print("[reihe] t=%s rueckstau=%s gemessen=%s wal=%s pending_offen/gesamt=%s inflight=%s" % (sys.argv[1], r.get("aktuell"), r.get("gemessen"), d.get("wal_warteschlange"), sys.argv[2], i.get("aktuell")))
+' "$((i*2))" "$p" || true
+    sleep 2
+  done ) > "$PROFIL/reihe.txt" 2>&1 &
+REIHE_PID=$!
 docker run --rm --network host -v "$WERK":/w -w /w golang:1.26.8-alpine \
   ./loadtest -accounts accounts.csv -rpc "http://127.0.0.1:$PORT/rpc" -status "http://127.0.0.1:$PORT/api/status" \
     -phase warmup,run -duration "$DAUER" -batch-size "$BUENDEL" 2>&1 \
   | grep -vE '^warmup pair [0-9]+ ok|^\[monitor\]' | tail -25
 
 wait "$PROFIL_PID" 2>/dev/null || true
+kill "$REIHE_PID" 2>/dev/null || true
+echo "== Zeitreihe (alle 2 s ab Lastbeginn)"
+cat "$PROFIL/reihe.txt" 2>/dev/null | head -60 || true
+wait "$GR_PID" 2>/dev/null || true
+echo "== Goroutinen im Messfenster (groesste Gruppen gleicher Stapel)"
+python3 - "$PROFIL/gr.txt" <<'PY' || true
+import re,sys
+try: t=open(sys.argv[1]).read()
+except Exception: print("(kein Schnappschuss)"); sys.exit(0)
+gruppen=[]
+for block in t.split("\n\n"):
+    z=block.strip().splitlines()
+    if not z: continue
+    m=re.match(r"(\d+) @",z[0])
+    if not m: continue
+    fn=[re.split(r"\s+",l.strip())[2] for l in z[1:] if l.strip().startswith("#") and len(re.split(r"\s+",l.strip()))>2]
+    fn=[f.split("/")[-1] for f in fn]
+    gruppen.append((int(m.group(1)),fn))
+gruppen.sort(key=lambda g:-g[0])
+print("gesamt:", sum(g[0] for g in gruppen))
+for n,fn in gruppen[:14]:
+    print("%6d  %s" % (n, " <- ".join(fn[:9])))
+PY
 echo "== CPU-Profil (20 s im Messfenster, oberste Posten)"
 if [ -s "$PROFIL/cpu.pb" ]; then
   docker run --rm -v "$PROFIL":/p golang:1.26.8-alpine go tool pprof -top -nodecount=30 /p/cpu.pb 2>/dev/null | tail -32 || true
@@ -112,7 +156,7 @@ echo "== Knoten nach dem Lauf"
 curl -fsS "http://127.0.0.1:$PORT/api/health/combined" | python3 -c '
 import json,sys
 d=json.load(sys.stdin)
-for k in ("produktion","produktion_phasen","eigenlast_bremse","rueckstau","inflight","wal_flush","wal_writer","leistungsnachweis"):
+for k in ("produktion","produktion_phasen","eigenlast_bremse","rueckstau","inflight","wal_druck","fallback_gruende","wal_flush","wal_writer","leistungsnachweis"):
     v=d.get(k)
     if isinstance(v,dict): v={a:b for a,b in v.items() if a not in ("bedeutung","sync_verteilung")}
     print(k, json.dumps(v, ensure_ascii=False)[:900])
