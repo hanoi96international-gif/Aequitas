@@ -1,0 +1,169 @@
+name: TPS-Pruefstand C1, Last von aussen (GitHub-Rechner per SSH-Tunnel)
+# Wie pruefstand-tps-c1.yml, aber der Lastgenerator laeuft NICHT auf der Box.
+#
+# Warum: Auf C1 frass der Generator 2,6 Kerne -- derselbe Rechner, auf dem
+# der Pruefknoten gemessen wird. Gemessen wurde also "Knoten + Generator",
+# nicht, was ein Validator ohne Generator schafft. Hier erzeugen 1-3
+# GitHub-Rechner die Last, jeder mit einem eigenen Teil der Konten
+# (loadtest -teil i/N, sonst kollidieren die Nonces), ueber einen SSH-Tunnel
+# auf 127.0.0.1:18080 der Box. Der Pruefknoten wird dafuer NICHT
+# oeffentlich gemacht; der laufende Knoten und seine Ports bleiben
+# unberuehrt (siehe .github/pruefstand/tps-pruefstand.sh).
+on:
+  # Nur von Hand (Regel: Server-Workflows nur per workflow_dispatch).
+  workflow_dispatch:
+    inputs:
+      a: {description: "Quellstand (Zweig/Tag/Commit)", required: true, default: "main"}
+      generatoren: {description: "Anzahl Lastrechner (1-3)", required: false, default: "2"}
+      dauer: {description: "Messfenster je Generator", required: false, default: "40s"}
+      konten: {description: "Testkonten gesamt", required: false, default: "4000"}
+      buendel: {description: "Ueberweisungen je RPC-Buendel", required: false, default: "20"}
+permissions:
+  contents: read
+concurrency:
+  group: c1-knoten
+  cancel-in-progress: false
+env:
+  C1: 188.172.229.121
+  C1_HOSTKEY: SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA
+jobs:
+  aufbau:
+    runs-on: ubuntu-latest
+    environment: produktion
+    timeout-minutes: 30
+    outputs:
+      teile: ${{ steps.p.outputs.teile }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Parameter
+        id: p
+        env:
+          A: ${{ inputs.a }}
+          N: ${{ inputs.generatoren }}
+          DAUER: ${{ inputs.dauer }}
+          KONTEN: ${{ inputs.konten }}
+          BUENDEL: ${{ inputs.buendel }}
+        run: |
+          set -euo pipefail
+          [[ "$A" =~ ^[A-Za-z0-9._/][A-Za-z0-9._/-]*$ ]] || { echo "::error::Quellstand unzulaessig"; exit 1; }
+          [[ "$N" =~ ^[1-3]$ ]] || { echo "::error::generatoren: 1-3"; exit 1; }
+          [[ "$KONTEN" =~ ^[0-9]+$ ]] && [ "$KONTEN" -le 20000 ] || { echo "::error::konten unplausibel"; exit 1; }
+          [[ "$BUENDEL" =~ ^[0-9]{1,3}$ ]] && [[ "$DAUER" =~ ^[0-9]{1,3}s$ ]] || { echo "::error::Parameter unplausibel"; exit 1; }
+          echo "teile=$(python3 -c "import json;print(json.dumps(list(range(1,$N+1))))")" >> "$GITHUB_OUTPUT"
+      - name: Schluessel und Host-Pruefung
+        env:
+          KEY: ${{ secrets.CONTABO_SSH_KEY }}
+        run: |
+          set -eu
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -t ed25519 $C1 2>/dev/null > ~/.ssh/kh1
+          ssh-keygen -lf ~/.ssh/kh1 | awk '{print $2}' | grep -qx "$C1_HOSTKEY" || { echo "::error::Host-Schluessel von C1 passt nicht"; exit 1; }
+          cp ~/.ssh/kh1 ~/.ssh/known_hosts
+      - name: Pruefknoten aufbauen
+        env:
+          A: ${{ inputs.a }}
+          KONTEN: ${{ inputs.konten }}
+        run: |
+          set -euo pipefail
+          ref="$A"
+          git rev-parse --verify --quiet "origin/$ref^{commit}" >/dev/null && ref="origin/$ref"
+          echo "Quellstand: $ref ($(git rev-parse --short "$ref"))"
+          echo "Laufender Knoten vorher: $(curl -s -m 10 http://$C1:8080/api/status | jq -c '{height, git_commit}')"
+          git archive --format=tar "$ref" | ssh -o BatchMode=yes root@$C1 "rm -rf /root/pruefstand/a && mkdir -p /root/pruefstand/a && tar -x -C /root/pruefstand/a"
+          ssh -o BatchMode=yes root@$C1 "PHASE=aufbau QUELLE=/root/pruefstand/a NAME=a KONTEN='$KONTEN' bash -s" < .github/pruefstand/tps-pruefstand.sh
+
+  last:
+    needs: aufbau
+    runs-on: ubuntu-latest
+    environment: produktion
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        teil: ${{ fromJSON(needs.aufbau.outputs.teile) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Schluessel und Host-Pruefung
+        env:
+          KEY: ${{ secrets.CONTABO_SSH_KEY }}
+        run: |
+          set -eu
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -t ed25519 $C1 2>/dev/null > ~/.ssh/kh1
+          ssh-keygen -lf ~/.ssh/kh1 | awk '{print $2}' | grep -qx "$C1_HOSTKEY" || { echo "::error::Host-Schluessel von C1 passt nicht"; exit 1; }
+          cp ~/.ssh/kh1 ~/.ssh/known_hosts
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Generator bauen (gleicher Quellstand)
+        env:
+          A: ${{ inputs.a }}
+        run: |
+          set -euo pipefail
+          ref="$A"
+          git rev-parse --verify --quiet "origin/$ref^{commit}" >/dev/null && ref="origin/$ref"
+          git checkout -q "$ref"
+          cd tools/contabo-loadtest && cp ../../go.mod ../../go.sum . && go build -o loadtest main.go
+          echo "Kerne hier: $(nproc)"
+      - name: Tunnel und Last
+        env:
+          TEIL: ${{ matrix.teil }}
+          N: ${{ inputs.generatoren }}
+          DAUER: ${{ inputs.dauer }}
+          BUENDEL: ${{ inputs.buendel }}
+        run: |
+          set -euo pipefail
+          cd tools/contabo-loadtest
+          # Konten des Wegwerf-Knotens; nur im Arbeitsverzeichnis dieses
+          # Laufs, nie ins Protokoll oder als Artefakt.
+          ssh -o BatchMode=yes root@$C1 'cat /root/pruefstand/konten.csv' > accounts.csv
+          echo "Konten: $(($(wc -l < accounts.csv) - 1)), Teil $TEIL/$N"
+          # Tunnel: lokal 18080 -> 127.0.0.1:18080 auf der Box.
+          ssh -o BatchMode=yes -o ExitOnForwardFailure=yes -o ServerAliveInterval=10 -N -L 18080:127.0.0.1:18080 root@$C1 &
+          for i in $(seq 1 20); do curl -fsS -m 3 http://127.0.0.1:18080/api/status >/dev/null 2>&1 && break; sleep 1; done
+          echo "Laufzeit zum Pruefknoten: $(curl -s -o /dev/null -w '%{time_total}' http://127.0.0.1:18080/api/status) s"
+          # Teil 1 startet auf der Box die Messungen (CPU, Profil, Zeitreihe).
+          if [ "$TEIL" = 1 ]; then
+            ssh -o BatchMode=yes root@$C1 "PHASE=messen DAUER='$DAUER' BUENDEL='$BUENDEL' bash -s" < ../../.github/pruefstand/tps-pruefstand.sh > messung.txt 2>&1 &
+            MESS=$!
+          fi
+          ./loadtest -accounts accounts.csv -teil "$TEIL/$N" -rpc http://127.0.0.1:18080/rpc -status http://127.0.0.1:18080/api/status \
+            -phase warmup,run -duration "$DAUER" -batch-size "$BUENDEL" 2>&1 \
+            | grep -vE '^warmup pair [0-9]+ ok|^\[monitor\]' | tail -25
+          rm -f accounts.csv
+          if [ "$TEIL" = 1 ]; then
+            wait "$MESS" || true
+            echo; echo "################ Messung auf der Box ################"
+            cat messung.txt
+          fi
+
+  abbau:
+    needs: [aufbau, last]
+    if: always()
+    runs-on: ubuntu-latest
+    environment: produktion
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Schluessel und Host-Pruefung
+        env:
+          KEY: ${{ secrets.CONTABO_SSH_KEY }}
+        run: |
+          set -eu
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -t ed25519 $C1 2>/dev/null > ~/.ssh/kh1
+          ssh-keygen -lf ~/.ssh/kh1 | awk '{print $2}' | grep -qx "$C1_HOSTKEY" || { echo "::error::Host-Schluessel von C1 passt nicht"; exit 1; }
+          cp ~/.ssh/kh1 ~/.ssh/known_hosts
+      - name: Abbauen
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes root@$C1 "PHASE=abbau bash -s; rm -f /root/pruefstand/konten.csv" < .github/pruefstand/tps-pruefstand.sh
+          echo "Laufender Knoten nachher: $(curl -s -m 10 http://$C1:8080/api/status | jq -c '{height, git_commit}')"

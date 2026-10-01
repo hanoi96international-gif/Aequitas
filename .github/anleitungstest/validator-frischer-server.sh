@@ -10,7 +10,11 @@
 #   - die Wallet ist 0x...dEaD: die Bindung (Schritt 6) braucht eine echte
 #     Wallet in der App und wird hier NICHT gemacht; der Test endet, sobald
 #     Schritt 6 erreicht ist (Schritte 1-5 sind geprueft),
-#   - am Ende wird alles entfernt (Container, Volumes, Wegwerf-Schluessel).
+#   - am Ende wird alles entfernt (Container, Volumes, Wegwerf-Schluessel),
+#   - niedrige CPU-Prioritaet (--cpu-shares, gilt fuer alles im eigenen
+#     Docker-Daemon): Bau und Leistungsmessung belegen sonst alle Kerne. Am
+#     01.10.2026 lief der Test genau waehrend einer echten Registrierung;
+#     der laufende Knoten muss bei Knappheit Vorrang haben.
 set -euo pipefail
 N=anleitungstest
 LOG="$(mktemp)"
@@ -23,9 +27,9 @@ trap aufraeumen EXIT
 aufraeumen
 
 echo "== Frischer Server (Ubuntu 24.04 mit eigenem Docker)"
-docker run -d --name "$N-dind" --privileged -v "$N-docker:/var/lib/docker" -e DOCKER_TLS_CERTDIR= docker:27-dind >/dev/null
+docker run -d --name "$N-dind" --cpu-shares=128 --privileged -v "$N-docker:/var/lib/docker" -e DOCKER_TLS_CERTDIR= docker:27-dind >/dev/null
 for i in $(seq 1 60); do docker exec "$N-dind" docker info >/dev/null 2>&1 && break; sleep 2; done
-docker run -d --name "$N-ubuntu" --network "container:$N-dind" -e DOCKER_HOST=tcp://127.0.0.1:2375 ubuntu:24.04 sleep 7200 >/dev/null
+docker run -d --name "$N-ubuntu" --cpu-shares=128 --network "container:$N-dind" -e DOCKER_HOST=tcp://127.0.0.1:2375 ubuntu:24.04 sleep 7200 >/dev/null
 # Was ein Ubuntu-Server von Haus aus mitbringt (das Container-Abbild ist nackter).
 docker exec "$N-ubuntu" bash -c 'export DEBIAN_FRONTEND=noninteractive; apt-get update -qq && apt-get install -y -qq curl git openssl python3 iproute2 ca-certificates >/dev/null'
 
