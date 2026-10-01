@@ -53,6 +53,14 @@ jobs:
           BUENDEL: ${{ inputs.buendel || '20' }}
         run: |
           set -euo pipefail
+          if [ "${{ github.event_name }}" = push ]; then
+            # Beim Push gelten die Werte aus der Datei (feste Namen, nichts ausgefuehrt).
+            while IFS='=' read -r k v; do
+              case "$k" in A|B|DAUER|KONTEN|BUENDEL) [ -n "$v" ] && printf -v "$k" '%s' "$v" ;; esac
+            done < <(grep -E '^[A-Z]+=[A-Za-z0-9._/-]*$' .github/pruefstand/parameter.env)
+            [ -n "$B" ] || B="${{ github.sha }}"
+            [[ "$KONTEN" =~ ^[0-9]+$ ]] && [ "$KONTEN" -le 20000 ] || { echo "KONTEN unplausibel"; exit 1; }
+          fi
           lauf() {
             local ref="$1" name="$2"
             git rev-parse --verify --quiet "origin/$ref^{commit}" >/dev/null && ref="origin/$ref"
