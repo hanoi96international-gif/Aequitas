@@ -1299,7 +1299,15 @@ included_at BIGINT NOT NULL DEFAULT 0
 	// Der partielle Index enthaelt NUR die offenen Zeilen. Er bleibt damit
 	// klein, egal wie gross die Tabelle wird, und der Unterausdruck wird zum
 	// Index-Scan ueber genau die Menge, die er sucht.
-	dbExec(`CREATE INDEX IF NOT EXISTS idx_pending_txs_offen ON pending_txs (id) WHERE included_at = 0`)
+	// ABGELOEST (01.10.2026): LoadPendingTxsWithLimit liest seit
+	// pending_reihenfolge.go nach (wal_seq, id) -- dafuer steht
+	// idx_pending_txs_offen_seq gleich darunter, und count(*) der offenen
+	// Zeilen kommt mit ihm genauso aus. Der alte Index auf (id) wurde von
+	// keiner Abfrage mehr gebraucht, kostete aber bei JEDER Zeile drei
+	// Schreibvorgaenge: beim Einfuegen (Flush), beim Markieren (Blockbau)
+	// und beim Loeschen (Block gespeichert). Gemessen auf dem Pruefstand,
+	// siehe .github/pruefstand/.
+	dbExec(`DROP INDEX IF EXISTS idx_pending_txs_offen`)
 	// wal_seq: die Anwendungsreihenfolge -- siehe pending_reihenfolge.go.
 	dbExec(`ALTER TABLE pending_txs ADD COLUMN IF NOT EXISTS wal_seq BIGINT NOT NULL DEFAULT 0`)
 	dbExec(`CREATE INDEX IF NOT EXISTS idx_pending_txs_offen_seq ON pending_txs (wal_seq, id) WHERE included_at = 0`)

@@ -57,7 +57,7 @@ jobs:
             # Beim Push gelten die Werte aus der Datei (feste Namen, nichts ausgefuehrt).
             while IFS='=' read -r k v; do
               case "$k" in A|B|DAUER|KONTEN|BUENDEL) [ -n "$v" ] && printf -v "$k" '%s' "$v" ;; esac
-            done < <(grep -E '^[A-Z]+=[A-Za-z0-9._/-]*$' .github/pruefstand/parameter.env)
+            done < <(grep -E '^[A-Z]+=[A-Za-z0-9._/-]*$' .github/pruefstand/parameter.txt)
             [ -n "$B" ] || B="${{ github.sha }}"
             [[ "$KONTEN" =~ ^[0-9]+$ ]] && [ "$KONTEN" -le 20000 ] || { echo "KONTEN unplausibel"; exit 1; }
           fi

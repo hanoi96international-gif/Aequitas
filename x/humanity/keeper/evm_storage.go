@@ -2839,7 +2839,7 @@ func (cs *ChainState) LoadPendingTxsWithLimit(limit int) ([]Transaction, []int64
 	// andere mit kleineren Bloecken 0,88 schaffte und keinen einzigen Treffer
 	// ueber der Meldeschwelle hatte.
 	//
-	// Jetzt liest der SELECT ueber den partiellen Index (idx_pending_txs_offen,
+	// Jetzt liest der SELECT ueber den partiellen Index (idx_pending_txs_offen_seq,
 	// siehe state.go) genau die offenen Zeilen, und der UPDATE trifft sie
 	// direkt ueber ihre Primaerschluessel als Array, ohne den Kandidatensatz
 	// ein zweites Mal zu bestimmen.

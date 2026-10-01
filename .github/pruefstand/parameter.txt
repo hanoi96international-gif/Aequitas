@@ -1,0 +1,7 @@
+# Parameter fuer den Pruefstand-Lauf beim Push (pruefstand-tps-c1.yml).
+# A gegen B; B leer = der gepushte Stand.
+A=7e57da0f087de6c1af297bf6c858ae70f57b33e6
+B=
+DAUER=40s
+KONTEN=4000
+BUENDEL=20
