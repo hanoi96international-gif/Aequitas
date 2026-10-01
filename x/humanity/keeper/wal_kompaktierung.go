@@ -111,12 +111,11 @@ func (cs *ChainState) walKompaktierungsRunde(_ uint64) uint64 {
 	if kopf <= offen+abstand {
 		return kopf // noch zu jung zum Kuerzen
 	}
-	bis := kopf - offen - abstand
-	if boden := cs.walRecoveryFloor(); boden > bis {
-		// Unterhalb des Wiederanlauf-Bodens darf ohnehin nie wieder abgespielt
-		// werden, dort ist Kuerzen immer erlaubt.
-		bis = boden
+	var korbBis uint64
+	if cs.korb != nil {
+		korbBis = cs.korbBis.Load()
 	}
+	bis := walKuerzenBis(kopf, offen, abstand, cs.walRecoveryFloor(), cs.korb != nil, korbBis)
 	vorher := walDateiGroesse(cs.wal.Path())
 	if vorher < walKompaktAbBytes {
 		return kopf
@@ -166,4 +165,26 @@ func WALKompaktierungsStand() map[string]interface{} {
 		"intervall_minuten": int64(walKompaktIntervall / time.Minute),
 		"ab_groesse_mb":     int64(walKompaktAbBytes >> 20),
 	}
+}
+
+// walKuerzenBis: bis zu welcher Seq (ausschliesslich) gekuerzt werden darf --
+// rein, damit die Regel ohne 512-MB-Datei testbar ist. Voraussetzung:
+// kopf > offen+abstand (vom Aufrufer geprueft).
+func walKuerzenBis(kopf, offen, abstand, boden uint64, korbAn bool, korbBis uint64) uint64 {
+	bis := kopf - offen - abstand
+	if boden > bis {
+		// Unterhalb des Wiederanlauf-Bodens darf ohnehin nie wieder abgespielt
+		// werden, dort ist Kuerzen immer erlaubt.
+		bis = boden
+	}
+	// Speicherkorb (speicherkorb.go): Datensaetze ueber der Marke stehen in
+	// keinem Block und werden beim Wiederanlauf wieder in den Korb gelegt --
+	// sie duerfen NIE weg, auch nicht unter dem Boden. TruncateBefore(bis)
+	// entfernt Seq < bis.
+	if korbAn {
+		if grenze := korbBis + 1; bis > grenze {
+			bis = grenze
+		}
+	}
+	return bis
 }

@@ -87,7 +87,7 @@ ENVDATEI="$(mktemp)"; chmod 600 "$ENVDATEI"
   # Liste; hier noch einmal, fail closed).
   if [ -n "${EINSTELLUNGEN:-}" ]; then
     printf '%s\n' "$EINSTELLUNGEN" | tr ',' '\n' \
-      | grep -E '^(AEQUITAS_WAL_FLUSH_(BATCH|CONCURRENCY|INTERVAL_MS)|AEQUITAS_WAL_QUEUE_DEPTH|AEQUITAS_DB_MAX_CONNS)=[0-9]{1,6}$' || true
+      | grep -E '^((AEQUITAS_WAL_FLUSH_(BATCH|CONCURRENCY|INTERVAL_MS)|AEQUITAS_WAL_QUEUE_DEPTH|AEQUITAS_DB_MAX_CONNS)=[0-9]{1,6}|AEQUITAS_BLOCK_AUS_SPEICHER=[01])$' || true
   fi
   # Nur dieser Pruefstand: der Generator laeuft von EINER Adresse aus, die
   # Begrenzung je Adresse wuerde sonst den Generator messen, nicht den Knoten.
@@ -249,7 +249,7 @@ echo "== Knoten nach dem Lauf"
 curl -fsS "http://127.0.0.1:$PORT/api/health/combined" | python3 -c '
 import json,sys
 d=json.load(sys.stdin)
-for k in ("produktion","produktion_phasen","produktions_ausfaelle","eigenlast_bremse","peer_lag_bremse","rueckstau","inflight","wal_druck","fallback_gruende","wal_flush","wal_writer","leistungsnachweis"):
+for k in ("produktion","produktion_phasen","produktions_ausfaelle","speicherkorb","eigenlast_bremse","peer_lag_bremse","rueckstau","inflight","wal_druck","fallback_gruende","wal_flush","wal_writer","leistungsnachweis"):
     v=d.get(k)
     if isinstance(v,dict): v={a:b for a,b in v.items() if a not in ("bedeutung","sync_verteilung")}
     print(k, json.dumps(v, ensure_ascii=False)[:900])

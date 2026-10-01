@@ -18,7 +18,7 @@ on:
       dauer: {description: "Messfenster je Generator", required: false, default: "40s"}
       konten: {description: "Testkonten gesamt", required: false, default: "4000"}
       buendel: {description: "Ueberweisungen je RPC-Buendel", required: false, default: "20"}
-      einstellungen: {description: "Leistungsschalter NAME=ZAHL,... (nur AEQUITAS_WAL_FLUSH_*, AEQUITAS_WAL_QUEUE_DEPTH, AEQUITAS_DB_MAX_CONNS)", required: false, default: ""}
+      einstellungen: {description: "Leistungsschalter NAME=ZAHL,... (nur AEQUITAS_WAL_FLUSH_*, AEQUITAS_WAL_QUEUE_DEPTH, AEQUITAS_DB_MAX_CONNS, AEQUITAS_BLOCK_AUS_SPEICHER=0/1)", required: false, default: ""}
 permissions:
   contents: read
 concurrency:
@@ -73,7 +73,7 @@ jobs:
           set -euo pipefail
           # Nur Leistungsschalter aus einer festen Liste, nur Zahlen -- keine
           # Schutzgrenze (Rate-Limit, Inflight, Rueckstau, WAL-Druck).
-          E='(AEQUITAS_WAL_FLUSH_(BATCH|CONCURRENCY|INTERVAL_MS)|AEQUITAS_WAL_QUEUE_DEPTH|AEQUITAS_DB_MAX_CONNS)=[0-9]{1,6}'
+          E='((AEQUITAS_WAL_FLUSH_(BATCH|CONCURRENCY|INTERVAL_MS)|AEQUITAS_WAL_QUEUE_DEPTH|AEQUITAS_DB_MAX_CONNS)=[0-9]{1,6}|AEQUITAS_BLOCK_AUS_SPEICHER=[01])'
           [ -z "$EINST" ] || [[ "$EINST" =~ ^$E(,$E)*$ ]] || { echo "::error::einstellungen unzulaessig"; exit 1; }
           echo "Einstellungen: ${EINST:-(wie laufender Knoten)}"
           ref="$A"

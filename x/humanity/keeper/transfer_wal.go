@@ -115,6 +115,9 @@ type walFlushItem struct {
 	from, to string
 	tx       Transaction
 	seq      uint64 // WAL-Seq der Ueberweisung; der Flush wartet auf ihre Haltbarkeit
+	// ohneOutbox: die Ueberweisung steht im Speicherkorb (speicherkorb.go)
+	// und kommt von dort in einen Block -- keine Zeile in pending_txs.
+	ohneOutbox bool
 }
 
 // walFlushInterval originally mirrored evmMirrorFlushInterval/
@@ -287,13 +290,40 @@ func (cs *ChainState) initWALIfEnabled() {
 		path = "aequitas_transfers.wal"
 	}
 	fmt.Printf("[WAL] AEQUITAS_WAL_ENABLED=1 — opening %s (NOT staging-validated, see transfer_wal.go's own warning)\n", path)
+	// Speicherkorb (speicherkorb.go). Die Marke sagt, bis zu welcher Seq die
+	// Schnellpfad-Ueberweisungen in gespeicherten Bloecken stehen. Ist sie
+	// nicht lesbar, weiss niemand, was schon verblockt ist -- dann bleibt der
+	// Schnellpfad aus (fail-closed); das WAL bleibt unberuehrt.
+	korbAn := speicherKorbGewuenscht()
+	marke, markeDa, markeErr := cs.speicherKorbMarkeLesen()
+	if markeErr != nil {
+		fmt.Printf("[WAL] ✗ %v — WAL fast path stays DISABLED for this process\n", markeErr)
+		return
+	}
+	if korbAn && markeDa {
+		ab := marke
+		if boden := cs.walRecoveryFloor(); boden > ab {
+			ab = boden
+		}
+		cs.korb = neuerSpeicherKorb(ab + 1)
+		cs.korbBis.Store(ab)
+	}
+	cs.korbUebergangBis, cs.korbUebergang = marke, !korbAn && markeDa
 	if err := cs.recoverFromWAL(path); err != nil {
+		cs.korb = nil
 		fmt.Printf("[WAL] ✗ recovery failed, WAL fast path stays DISABLED for this process: %v\n", err)
 		return
 	}
 	w, err := wal.Open(path)
 	if err != nil {
+		cs.korb = nil
 		fmt.Printf("[WAL] ✗ could not open %s, WAL fast path stays DISABLED for this process: %v\n", path, err)
+		return
+	}
+	if err := cs.speicherKorbNachWiederanlauf(w.PeekSeq(), korbAn, markeDa); err != nil {
+		w.Close()
+		cs.korb = nil
+		fmt.Printf("[WAL] ✗ %v — WAL fast path stays DISABLED for this process\n", err)
 		return
 	}
 	cs.wal = w
@@ -635,7 +665,19 @@ func (cs *ChainState) transferConcurrentWALGesperrt(from, to string, amount floa
 // RLock) so this never contends with anything else — same shape as
 // markEVMMirrorDirtyLocked.
 func (cs *ChainState) enqueueWALFlushLocked(from, to string, tx Transaction, seq uint64) {
-	it := walFlushItem{from: from, to: to, tx: tx, seq: seq}
+	cs.enqueueWALFlushMitLocked(from, to, tx, seq, false)
+}
+
+// enqueueWALFlushMitLocked: wie enqueueWALFlushLocked; schonVerblockt heisst,
+// die Ueberweisung steht schon in einem gespeicherten Block (Wiederanlauf
+// nach dem Ausschalten des Speicherkorbs) -- dann nur die Kontostaende,
+// keine Zeile in pending_txs, sonst kaeme sie ein zweites Mal in einen Block.
+func (cs *ChainState) enqueueWALFlushMitLocked(from, to string, tx Transaction, seq uint64, schonVerblockt bool) {
+	it := walFlushItem{from: from, to: to, tx: tx, seq: seq, ohneOutbox: schonVerblockt}
+	if k := cs.korb; k != nil {
+		k.hinzu(seq, tx)
+		it.ohneOutbox = true
+	}
 	cs.walFlushMu.Lock()
 	cs.walFlushQueue = append(cs.walFlushQueue, it)
 	cs.walRohEingereihtLocked(it)
@@ -1134,6 +1176,9 @@ func (cs *ChainState) flushWALBatch(batch []walFlushItem) error {
 	txSeqs := make([]int64, 0, len(batch))
 	now := time.Now().Unix()
 	for _, item := range batch {
+		if item.ohneOutbox {
+			continue // steht im Speicherkorb, siehe speicherkorb.go
+		}
 		data, err := json.Marshal(item.tx)
 		if err != nil {
 			tx.Rollback()
@@ -1152,9 +1197,11 @@ FROM unnest($1::text[], $3::bigint[]) WITH ORDINALITY AS v(tx_json, wal_seq, ord
 ORDER BY v.ord`
 	phOutboxSQL = time.Since(phMark)
 	phMark = time.Now()
-	if _, err := cs.dbExecCtx(ctx).Exec(txQuery, txArgs...); err != nil {
-		tx.Rollback()
-		return fmt.Errorf("could not queue %d outbox tx(s) during WAL flush: %w", len(batch), err)
+	if len(txJSONs) > 0 {
+		if _, err := cs.dbExecCtx(ctx).Exec(txQuery, txArgs...); err != nil {
+			tx.Rollback()
+			return fmt.Errorf("could not queue %d outbox tx(s) during WAL flush: %w", len(txJSONs), err)
+		}
 	}
 	phOutboxExec = time.Since(phMark)
 	phMark = time.Now()
@@ -1548,6 +1595,11 @@ func (cs *ChainState) recoverFromWAL(path string) error {
 			}
 		}
 		toApplied := applyTo(toAcc, entry.Seq, rec.Amount, rec.At)
+		// Speicherkorb: alles ueber der Marke ist noch in keinem Block --
+		// unabhaengig davon, ob die Kontostaende schon in Postgres stehen.
+		if k := cs.korb; k != nil && entry.Seq >= k.naechste {
+			k.hinzu(entry.Seq, walRecordAlsTx(rec))
+		}
 		// Buchfuehrung der Wirtschaftsregeln, eigene Folgenummer im Buchkonto
 		// (wirtschaft_schnellpfad.go). Stehen beide Kontostaende schon in
 		// Postgres, das Buch aber nicht, wird es sofort geschrieben -- sonst
@@ -1556,6 +1608,16 @@ func (cs *ChainState) recoverFromWAL(path string) error {
 			!fromApplied && !toApplied && cs.db != nil {
 			if err := cs.speichereBuchCtx(context.Background(), rec.From, rec.To); err != nil {
 				return fmt.Errorf("WAL record seq %d: saving book: %w", entry.Seq, err)
+			}
+		}
+		// Korb war an, ist jetzt aus: was ueber der Marke liegt und dessen
+		// Kontostaende schon in Postgres stehen, hat keine Zeile in
+		// pending_txs (der Korb-Flush schreibt keine). Jetzt nachholen --
+		// sonst kaeme es nie in einen Block. Das Nachgespielte (unten) geht
+		// den normalen Flush-Weg mit Zeile.
+		if cs.korbUebergang && entry.Seq > cs.korbUebergangBis && !fromApplied && !toApplied && cs.db != nil {
+			if err := cs.korbUebergangZeile(walRecordAlsTx(rec), entry.Seq); err != nil {
+				return fmt.Errorf("WAL record seq %d: Korb-Uebergang: %w", entry.Seq, err)
 			}
 		}
 		if fromApplied || toApplied {
@@ -1580,11 +1642,10 @@ func (cs *ChainState) recoverFromWAL(path string) error {
 				// fork risk for this validator, not just eventual-consistency lag.
 				// Beim Wiederanlauf ist der Datensatz per Definition haltbar --
 				// er kommt aus der Datei. Seine Seq ist die aus der Datei.
-				wtx := Transaction{Type: "transfer", Wallet: rec.From, To: rec.To, Amount: rec.Amount, Gebuehr: rec.Gebuehr, TxHash: rec.TxHash, Roh: rec.Roh}
-				if rec.Buch {
-					wtx.BuchAt = buchStempel(rec.At)
-				}
-				cs.enqueueWALFlushLocked(rec.From, rec.To, wtx, entry.Seq)
+				// Nach dem Ausschalten des Speicherkorbs: was bis zur Marke
+				// reicht, steht schon in einem Block.
+				schonVerblockt := cs.korbUebergang && entry.Seq <= cs.korbUebergangBis
+				cs.enqueueWALFlushMitLocked(rec.From, rec.To, walRecordAlsTx(rec), entry.Seq, schonVerblockt)
 			}
 		}
 		return nil
@@ -1597,4 +1658,14 @@ func (cs *ChainState) recoverFromWAL(path string) error {
 			readCount, path, supersededCount, floor, readCount-supersededCount-reappliedCount, reappliedCount, truncated)
 	}
 	return nil
+}
+
+// walRecordAlsTx baut aus einem WAL-Datensatz die Transaktion, wie sie der
+// Schnellpfad eingereiht hat -- fuer den Wiederanlauf (Flush und Korb).
+func walRecordAlsTx(rec walTransferRecord) Transaction {
+	wtx := Transaction{Type: "transfer", Wallet: rec.From, To: rec.To, Amount: rec.Amount, Gebuehr: rec.Gebuehr, TxHash: rec.TxHash, Roh: rec.Roh}
+	if rec.Buch {
+		wtx.BuchAt = buchStempel(rec.At)
+	}
+	return wtx
 }

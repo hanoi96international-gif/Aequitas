@@ -207,7 +207,15 @@ func (dag *BlockDAG) StarteRueckstauMesser() {
 				rueckstauMessFehler.Add(1)
 				continue
 			}
-			rueckstauMessungUebernehmen(offen+int64(cs.WALFlushQueueDepth()), vorher)
+			// Mit Speicherkorb steht jede angenommene Schnellpfad-Ueberweisung
+			// dort, bis sie verblockt ist; die Flush-Warteschlange schreibt nur
+			// noch Kontostaende (speicherkorb.go). Sonst wartet sie auf ihre
+			// Zeile in pending_txs.
+			nochNichtImBlock := int64(cs.WALFlushQueueDepth())
+			if k := cs.korb; k != nil {
+				nochNichtImBlock = int64(k.laenge())
+			}
+			rueckstauMessungUebernehmen(offen+nochNichtImBlock, vorher)
 		}
 	})
 }

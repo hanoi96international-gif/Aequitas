@@ -182,6 +182,9 @@ func (cs *ChainState) leitungEntleert() bool {
 	if cs.WALFlushQueueDepth() != 0 {
 		return false
 	}
+	if cs.korb != nil && cs.korb.laenge() != 0 {
+		return false // speicherkorb.go
+	}
 	if cs.walFlushSem != nil && len(cs.walFlushSem) != 0 {
 		return false
 	}
@@ -469,6 +472,20 @@ func (cs *ChainState) leitungUnverteiltVerwerfen() (wal int, korb int64) {
 	cs.walFlushMu.Unlock()
 	for i := 0; i < 300 && cs.walFlushSem != nil && len(cs.walFlushSem) > 0; i++ {
 		time.Sleep(100 * time.Millisecond)
+	}
+	// Speicherkorb (speicherkorb.go): verwerfen UND die Marke dahinter
+	// setzen -- sonst kaemen die verworfenen Ueberweisungen beim naechsten
+	// Start aus dem WAL wieder in den Korb.
+	if k := cs.korb; k != nil {
+		n, bis := k.verwerfen()
+		korb += int64(n)
+		if bis > cs.korbBis.Load() {
+			if err := cs.setConfigValueDB(speicherKorbMarke, strconv.FormatUint(bis, 10)); err != nil {
+				fmt.Printf("[LEITUNG] ✗ Korb-Marke nicht gesetzt: %v\n", err)
+			} else {
+				cs.korbBis.Store(bis)
+			}
+		}
 	}
 	if cs.db != nil {
 		if res, err := cs.db.Exec(`DELETE FROM pending_txs WHERE included_block_hash IS NULL`); err == nil {

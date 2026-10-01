@@ -496,6 +496,13 @@ type ChainState struct {
 	// touch inline on every WAL-durable transfer without contending cs.mu).
 	walFlushMu    sync.Mutex
 	walFlushQueue []walFlushItem
+	// Bloecke aus dem Speicher (speicherkorb.go): nil = aus. korbBis ist die
+	// mit dem letzten eigenen Block gesicherte Marke.
+	korb    *speicherKorb
+	korbBis atomic.Uint64
+	// Nur waehrend des Wiederanlaufs: Korb war an (Marke da), ist jetzt aus.
+	korbUebergang    bool
+	korbUebergangBis uint64
 	// Signierte Ueberweisungen (Stufe 1.0) im WAL-Pfad, je Absender, unter
 	// walFlushMu: walRohOffen zaehlt noch nicht geschriebene (Warteschlange
 	// und laufende Flushes), walRohUnterwegs die Absender eines gerade
