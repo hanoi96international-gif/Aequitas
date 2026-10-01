@@ -44,7 +44,7 @@ jobs:
       - name: API-Status
         run: |
           curl -s --max-time 20 https://aequitas.digital/api/status | python3 -m json.tool | head -80
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with: {node-version: "20"}
       - run: npm i -g playwright@1 >/dev/null 2>&1 && npx playwright install --with-deps chromium >/dev/null 2>&1 && echo ok
       - name: Seiten rendern
@@ -81,5 +81,5 @@ jobs:
           })();
           JS
           PW=$(npm root -g)/playwright node r.js
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with: {name: screenshots, path: shots, retention-days: 3}

@@ -19,7 +19,7 @@ jobs:
     environment: produktion
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Schluessel und Host-Pruefung
         env:
           KEY: ${{ secrets.CONTABO_SSH_KEY }}
@@ -38,7 +38,7 @@ jobs:
     environment: produktion
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Schluessel und Host-Pruefung
         env:
           KEY: ${{ secrets.CONTABO2_SSH_KEY }}

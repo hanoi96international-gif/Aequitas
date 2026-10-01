@@ -593,9 +593,20 @@ func (cs *ChainState) RestorePreUpgradeRelationshipSlots(contractAddr string) er
 		return nil
 	}
 	contractAddr = strings.ToLower(contractAddr)
+	// Erst fragen, ob es die Tabelle gibt (erster Einsatz: noch kein
+	// Schnappschuss). Vorher wurde JEDER Fehler der Abfrage als "gibt es
+	// nicht" gelesen -- auch ein echter Datenbankfehler, und dann fehlten
+	// Waechter-/Treuhand-Beziehungen nach dem Upgrade still.
+	da, err := cs.tabelleDa(upgradeRelationshipSlotsTable)
+	if err != nil {
+		return fmt.Errorf("check relationship snapshot table: %w", err)
+	}
+	if !da {
+		return nil
+	}
 	rows, err := cs.db.Query(fmt.Sprintf(`SELECT slot, value FROM %s WHERE address = $1`, upgradeRelationshipSlotsTable), contractAddr)
 	if err != nil {
-		return nil // table doesn't exist yet (first-ever deploy, no prior snapshot)
+		return fmt.Errorf("read relationship snapshot: %w", err)
 	}
 	defer rows.Close()
 	count := 0

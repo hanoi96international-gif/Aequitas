@@ -112,6 +112,10 @@ func (cs *ChainState) pruneTxIndex() {
 	if cs.db == nil {
 		return
 	}
+	// Auf einer frischen Datenbank legt erst der erste Eintrag die Tabelle
+	// an -- bis dahin scheiterte hier der Index ("Begrenzung greift nicht")
+	// und Postgres protokollierte einen ERROR. Einmalig, idempotent.
+	cs.ensureTxBlockIndexTable()
 	budget := txIndexBudget()
 	txIndexLaeufe.Add(1)
 	// Ohne den Hoehenindex ist jedes Loeschen ein Scan ueber die ganze

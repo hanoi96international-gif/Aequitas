@@ -67,7 +67,7 @@ jobs:
             secret: C2
             fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           sparse-checkout: deploy/wachhund-einrichten.sh
           sparse-checkout-cone-mode: false

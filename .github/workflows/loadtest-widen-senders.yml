@@ -54,7 +54,7 @@ jobs:
       # 23.09.2026 lief hier das Binary, das zuletzt irgendein anderer Lauf
       # gebaut hatte -- eine Korrektur am Generator (hier: kein Aussortieren
       # vor der Befuellung) kam damit nie an.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Aktuelle Generator-Quelle nach Contabo2
         uses: appleboy/scp-action@v1.0.0
         with:

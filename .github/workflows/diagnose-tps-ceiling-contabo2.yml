@@ -67,7 +67,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: produktion
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # Hot-swapping the node binary, rather than merging to main to deploy it.
       #

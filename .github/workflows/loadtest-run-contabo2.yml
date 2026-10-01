@@ -77,7 +77,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: produktion
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Copy current loadtest tool source to Contabo2
         uses: appleboy/scp-action@v1.0.0

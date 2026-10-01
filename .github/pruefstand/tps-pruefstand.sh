@@ -16,9 +16,31 @@
 #
 # Eingaben (Umgebung): QUELLE (Verzeichnis mit dem entpackten Quellstand),
 # NAME (Bezeichnung des Laufs), DAUER (z. B. 40s), KONTEN (z. B. 1000),
-# BUENDEL (Ueberweisungen je RPC-Buendel).
+# BUENDEL (Ueberweisungen je RPC-Buendel), PHASE (siehe unten).
+#
+# PHASE (seit 01.10.2026):
+#   alles  -- wie bisher: aufbauen, Last von dieser Box, messen, abraeumen.
+#   aufbau -- nur aufbauen und Konten anlegen; der Pruefknoten BLEIBT stehen
+#             (127.0.0.1:18080). Die Last kommt dann von aussen, ueber einen
+#             SSH-Tunnel von GitHub-Rechnern: so misst der Pruefstand den
+#             Knoten, nicht Knoten + Generator auf denselben Kernen.
+#   messen -- nur die Messungen (CPU, Profil, Zeitreihe, Goroutinen) ueber
+#             ein festes Fenster, waehrend die Last von aussen laeuft.
+#   abbau  -- alles entfernen.
+# Der Pruefstand laeuft mit niedriger CPU-Prioritaet (--cpu-shares): bei
+# Knappheit hat der laufende Knoten Vorrang, echte Nutzer merken nichts.
 set -euo pipefail
-: "${QUELLE:?}" "${NAME:?}"
+PHASE="${PHASE:-alles}"
+case "$PHASE" in alles|aufbau|messen|abbau) ;; *) echo "PHASE unzulaessig"; exit 1 ;; esac
+NIEDRIG="--cpu-shares=256"
+if [ "$PHASE" = abbau ]; then
+  docker rm -f pruefstand-node pruefstand-pg pruefstand-last >/dev/null 2>&1 || true
+  docker volume rm -f pruefstand-wal >/dev/null 2>&1 || true
+  docker network rm pruefstand-net >/dev/null 2>&1 || true
+  echo "Pruefstand abgeraeumt"; exit 0
+fi
+if [ "$PHASE" != messen ]; then : "${QUELLE:?}" "${NAME:?}"; fi
+NAME="${NAME:-a}"
 DAUER="${DAUER:-40s}"; KONTEN="${KONTEN:-1000}"; BUENDEL="${BUENDEL:-20}"
 NETZ=pruefstand-net; PG=pruefstand-pg; KN=pruefstand-node; PORT=18080
 
@@ -29,7 +51,8 @@ aufraeumen() {
   docker volume rm -f pruefstand-wal >/dev/null 2>&1 || true
   docker network rm "$NETZ" >/dev/null 2>&1 || true
 }
-trap aufraeumen EXIT
+if [ "$PHASE" = alles ]; then trap aufraeumen EXIT; fi
+if [ "$PHASE" = alles ] || [ "$PHASE" = aufbau ]; then
 aufraeumen
 
 echo "== Bauen ($NAME)"
@@ -37,7 +60,7 @@ docker build -q -t "aequitas-pruefstand:$NAME" "$QUELLE" >/dev/null
 docker network create "$NETZ" >/dev/null
 
 echo "== Postgres (wegwerfbar, dieselben Einstellungen wie deploy/validator)"
-docker run -d --name "$PG" --network "$NETZ" -e POSTGRES_PASSWORD=pruefstand -e POSTGRES_DB=aequitas \
+docker run -d --name "$PG" $NIEDRIG --network "$NETZ" -e POSTGRES_PASSWORD=pruefstand -e POSTGRES_DB=aequitas \
   postgres:16-alpine postgres -c max_connections=250 -c shared_buffers=1GB -c synchronous_commit=off \
   -c max_wal_size=8GB -c checkpoint_timeout=15min -c wal_compression=on >/dev/null
 for i in $(seq 1 30); do docker exec "$PG" pg_isready -U postgres -d aequitas >/dev/null 2>&1 && break; sleep 1; done
@@ -73,7 +96,7 @@ ENVDATEI="$(mktemp)"; chmod 600 "$ENVDATEI"
 
 starte() {
   docker rm -f "$KN" >/dev/null 2>&1 || true
-  docker run -d --name "$KN" --network "$NETZ" --env-file "$ENVDATEI" "$@" \
+  docker run -d --name "$KN" $NIEDRIG --network "$NETZ" --env-file "$ENVDATEI" "$@" \
     -v pruefstand-wal:/data/wal -p 127.0.0.1:$PORT:8080 "aequitas-pruefstand:$NAME" >/dev/null
   for i in $(seq 1 60); do curl -fsS -m 3 "http://127.0.0.1:$PORT/api/status" >/dev/null 2>&1 && return 0; sleep 1; done
   echo "Pruefstand-Knoten antwortet nicht"; docker logs --tail 30 "$KN"; return 1
@@ -88,15 +111,23 @@ echo "== $KONTEN Testkonten"
 WERK="$QUELLE/tools/contabo-loadtest"
 cp "$QUELLE/go.mod" "$QUELLE/go.sum" "$WERK/"
 mkdir -p /root/go-mod-cache
-docker run --rm -v "$WERK":/w -w /w -v /root/go-mod-cache:/go/pkg/mod golang:1.26.8-alpine \
+docker run --rm $NIEDRIG -v "$WERK":/w -w /w -v /root/go-mod-cache:/go/pkg/mod golang:1.26.8-alpine \
   sh -c "go build -o loadtest main.go && go run gen_accounts.go $KONTEN > accounts.csv"
 # Guthaben direkt in die Wegwerf-Datenbank: 100 AEQ (freie Adressen duerfen
 # hoechstens 250 halten).
 tail -n +2 "$WERK/accounts.csv" | cut -d, -f2 | tr 'A-F' 'a-f' \
   | awk -v t="$(date +%s)" -v q="'" '{printf "INSERT INTO chain_accounts(address,balance,last_activity_at) VALUES (%s%s%s,100,%s) ON CONFLICT (address) DO UPDATE SET balance=100;\n", q, $1, q, t}' \
   | docker exec -i "$PG" psql -q -U postgres -d aequitas
+# Fuer die Generatoren draussen: die Konten (Wegwerf-Schluessel eines
+# Wegwerf-Knotens, der nur ueber 127.0.0.1 erreichbar ist).
+cp "$WERK/accounts.csv" /root/pruefstand/konten.csv
+fi
+if [ "$PHASE" = aufbau ]; then
+  echo "Pruefknoten steht: 127.0.0.1:$PORT, $KONTEN Konten"; exit 0
+fi
+docker inspect "$KN" >/dev/null 2>&1 || { echo "Pruefknoten laeuft nicht"; exit 1; }
 
-echo "== Last ($DAUER, Buendel $BUENDEL)"
+echo "== Last ($DAUER, Buendel $BUENDEL, Phase $PHASE)"
 # CPU-Profil aus dem Messfenster (Aufwaermen dauert rund 50 s). pprof lauscht
 # nur auf 127.0.0.1 im Container und ist von aussen nicht erreichbar.
 PROFIL="$(mktemp -d)"
@@ -138,10 +169,15 @@ REIHE_PID=$!
     sleep 1
   done ) > "$PROFIL/cpu.txt" 2>&1 &
 CPU_PID=$!
-docker run --rm --name pruefstand-last --network host -v "$WERK":/w -w /w golang:1.26.8-alpine \
+if [ "$PHASE" = alles ]; then
+docker run --rm --name pruefstand-last $NIEDRIG --network host -v "$WERK":/w -w /w golang:1.26.8-alpine \
   ./loadtest -accounts accounts.csv -rpc "http://127.0.0.1:$PORT/rpc" -status "http://127.0.0.1:$PORT/api/status" \
     -phase warmup,run -duration "$DAUER" -batch-size "$BUENDEL" 2>&1 \
   | grep -vE '^warmup pair [0-9]+ ok|^\[monitor\]' | tail -25
+else
+  # Last kommt von aussen; die Messfenster oben laufen 120 s.
+  sleep 120
+fi
 
 wait "$PROFIL_PID" 2>/dev/null || true
 kill "$REIHE_PID" 2>/dev/null || true

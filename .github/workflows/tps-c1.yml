@@ -33,7 +33,7 @@ jobs:
       BATCH: ${{ inputs.batch || '20' }}
       TOPOLOGY: ${{ inputs.topology || 'pairs' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Schluessel und Host-Pruefung
         env:
           K1: ${{ secrets.CONTABO_SSH_KEY }}

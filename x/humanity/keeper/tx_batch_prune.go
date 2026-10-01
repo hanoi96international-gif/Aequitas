@@ -107,6 +107,9 @@ func (cs *ChainState) pruneTxBatches() {
 	if cs.db == nil {
 		return
 	}
+	// Wie beim Tx-Index: auf frischer Datenbank gibt es die Tabelle erst
+	// nach dem ersten Block mit Transaktionen.
+	cs.ensureTxBatchTable()
 	budget := txBatchKeep()
 	txBatchPruneRuns.Add(1)
 
