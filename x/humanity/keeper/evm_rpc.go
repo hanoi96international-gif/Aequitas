@@ -541,7 +541,7 @@ func (s *EVMRPCServer) handleRPC(w http.ResponseWriter, r *http.Request) {
 		}
 		// P2-AUDIT: Limit batch size to prevent DoS via 1 MB batch of expensive calls.
 		// 100 requests per batch is generous for any legitimate client use case.
-		const maxBatchSize = 100
+		const maxBatchSize = rpcMaxBuendel
 		if len(batch) > maxBatchSize {
 			writeError(w, -32600, fmt.Sprintf("batch too large: max %d requests, got %d", maxBatchSize, len(batch)), nil)
 			return
@@ -2238,6 +2238,9 @@ type RPCError struct {
 func (e *RPCError) Error() string {
 	return e.Message
 }
+
+// rpcMaxBuendel: hoechstens so viele Posten je Buendel (handleRPC, rpcKonten).
+const rpcMaxBuendel = 100
 
 // schreibeBesetzt: -32005 fuer jeden Posten einer Anfrage (einzeln oder
 // Buendel), ohne sie zu dekodieren.

@@ -554,6 +554,12 @@ func rpcKonten(body []byte) []string {
 		if json.Unmarshal(body, &posten) != nil {
 			return nil
 		}
+		// Zu grosse Buendel weist handleRPC ohnehin ab -- hier keine
+		// Wiederherstellung dafuer. Ohne diese Grenze kostete ein 1-MB-Buendel
+		// tausende secp256k1-Rechnungen, bevor die Buendelgrenze griff.
+		if len(posten) > rpcMaxBuendel {
+			return nil
+		}
 	} else {
 		posten = []json.RawMessage{body}
 	}

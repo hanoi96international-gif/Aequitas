@@ -63,3 +63,24 @@ func TestBesetzt_KeineWiederherstellungBeiVollerSchranke(t *testing.T) {
 		})
 	}
 }
+
+// Missbrauch: ein Buendel ueber der Buendelgrenze darf in rpcKonten keine
+// einzige Signatur wiederherstellen -- handleRPC weist es ohnehin ab.
+func TestRpcKonten_UebergrossesBuendelOhneWiederherstellung(t *testing.T) {
+	raw, _ := signedRawHex(t, 0, testRecipientHex)
+	posten := make([]string, 0, rpcMaxBuendel+1)
+	for i := 0; i <= rpcMaxBuendel; i++ {
+		posten = append(posten, fmt.Sprintf(`{"jsonrpc":"2.0","id":%d,"method":"eth_sendRawTransaction","params":["%s"]}`, i, raw))
+	}
+	vorher := absenderTreffer.Load() + absenderVerfehlt.Load()
+	if k := rpcKonten([]byte("[" + strings.Join(posten, ",") + "]")); k != nil {
+		t.Fatalf("uebergrosses Buendel lieferte Konten %v", k)
+	}
+	if nachher := absenderTreffer.Load() + absenderVerfehlt.Load(); nachher != vorher {
+		t.Fatalf("%d Wiederherstellungen fuer ein Buendel, das abgewiesen wird", nachher-vorher)
+	}
+	// Gutfall: an der Grenze wird weiter ermittelt.
+	if k := rpcKonten([]byte("[" + strings.Join(posten[:rpcMaxBuendel], ",") + "]")); len(k) != 1 {
+		t.Fatalf("Buendel an der Grenze: %d Konten, erwartet 1", len(k))
+	}
+}
