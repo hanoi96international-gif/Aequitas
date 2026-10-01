@@ -477,6 +477,11 @@ func (cs *ChainState) leitungUnverteiltVerwerfen() (wal int, korb int64) {
 	// setzen -- sonst kaemen die verworfenen Ueberweisungen beim naechsten
 	// Start aus dem WAL wieder in den Korb.
 	if k := cs.korb; k != nil {
+		// Einen laufenden Blockbau erst fertig werden lassen (hoechstens
+		// 30 s) -- sonst legte er Genommenes nach dem Verwerfen zurueck.
+		for i := 0; i < 300 && k.bauer.Load(); i++ {
+			time.Sleep(100 * time.Millisecond)
+		}
 		n, bis := k.verwerfen()
 		korb += int64(n)
 		if bis > cs.korbBis.Load() {
