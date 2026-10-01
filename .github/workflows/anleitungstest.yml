@@ -1,0 +1,76 @@
+name: Anleitungstest (Validator und Verifier, wie ein Neuling)
+# Prueft die Ein-Befehl-Anleitungen von der Website auf frischen Rechnern:
+#   schwach:   frischer GitHub-Rechner (4 Kerne) -- der Validator muss sauber
+#              abgelehnt werden; prueft nebenbei, dass git clone ohne
+#              Anmeldung geht.
+#   validator: frisches Ubuntu, abgeschottet auf C1 (eigener Docker-Daemon,
+#              eigenes Netz) -- Schritte 1-5 bis zur Bindung.
+#   verifier:  frischer GitHub-Rechner -- bis "Verifier laeuft"; HTTPS kann
+#              dort nicht klappen (von aussen nicht erreichbar).
+# Beruehrt die laufende Kette nicht: kein Testknoten wird gebunden oder
+# angemeldet.
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: c1-knoten
+  cancel-in-progress: false
+jobs:
+  schwach:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Anleitung auf einem 4-Kern-Rechner
+        run: |
+          set -uo pipefail
+          cd "$RUNNER_TEMP"
+          git clone -q https://github.com/hanoi96international-gif/Aequitas.git
+          cd Aequitas/deploy/validator
+          echo "Kerne: $(nproc)"
+          bash einrichten.sh < /dev/null > ausgabe.txt 2>&1; rc=$?
+          sed -e 's/\x1b\[[0-9;]*m//g' ausgabe.txt
+          [ "$rc" != 0 ] && grep -q 'zu schwach' ausgabe.txt || { echo "::error::Erwartet: Ablehnung 'zu schwach'"; exit 1; }
+          echo "ERGEBNIS: sauber abgelehnt"
+  verifier:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Anleitung auf einem frischen Rechner
+        run: |
+          set -uo pipefail
+          cd "$RUNNER_TEMP"
+          git clone -q https://github.com/hanoi96international-gif/Aequitas.git
+          cd Aequitas/deploy/verifier
+          # Wallet, "IP stimmt nicht", Dokumentations-IP: so wird kein
+          # Zertifikat fuer eine fremde Adresse angefragt.
+          printf '0x000000000000000000000000000000000000dEaD\nn\n203.0.113.10\n' | bash einrichten.sh > ausgabe.txt 2>&1; rc=$?
+          sed -e 's/\x1b\[[0-9;]*m//g' ausgabe.txt | grep -vE 'TEMPLATE_ENCRYPTION_KEY|FACE_SKETCH_SEED|VALIDATOR_SIGNING_KEY|SERVICE_AUTH_TOKEN'
+          docker compose ps || true
+          grep -q 'Verifier laeuft' ausgabe.txt || { echo "::error::Verifier kam nicht bis 'laeuft'"; exit 1; }
+          echo "ERGEBNIS: bis 'Verifier laeuft' (rc=$rc; HTTPS ist hier nicht erreichbar)"
+          docker compose down -v >/dev/null 2>&1 || true
+  validator:
+    runs-on: ubuntu-latest
+    environment: produktion
+    timeout-minutes: 60
+    env:
+      C1: 188.172.229.121
+    steps:
+      - uses: actions/checkout@v4
+      - name: Schluessel und Host-Pruefung
+        env:
+          KEY: ${{ secrets.CONTABO_SSH_KEY }}
+        run: |
+          set -eu
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -t ed25519 $C1 2>/dev/null > ~/.ssh/kh1
+          ssh-keygen -lf ~/.ssh/kh1 | awk '{print $2}' | grep -qx 'SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA' || { echo "::error::Host-Schluessel von C1 passt nicht"; exit 1; }
+          cp ~/.ssh/kh1 ~/.ssh/known_hosts
+      - name: Anleitung auf frischem Ubuntu (abgeschottet auf C1)
+        run: |
+          set -euo pipefail
+          echo "Laufender Knoten vorher: $(curl -s -m 10 http://$C1:8080/api/status | jq -c '{height, git_commit}')"
+          ssh -o BatchMode=yes root@$C1 'bash -s' < .github/anleitungstest/validator-frischer-server.sh
+          echo "Laufender Knoten nachher: $(curl -s -m 10 http://$C1:8080/api/status | jq -c '{height, git_commit}')"
