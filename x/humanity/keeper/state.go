@@ -2170,6 +2170,21 @@ func (cs *ChainState) ensureAccountLoadedCtx(ctx context.Context, addr string) {
 	acc.LPShares = NewDecimal(lp)
 	acc.GrantStagedRest = NewDecimal(staffelRest)
 	if version == 0 {
+		// Wie beim Komplettladen (loadFromDB): Version 0 im Speicher UND in
+		// der Zeile auf 1 heben. Befund C1-Pruefstand 01.10.2026: hier wurde
+		// nur der Speicher gehoben, die Zeile blieb bei 0. Jede geprueft
+		// Speicherung (UPDATE ... WHERE version = 1) traf danach keine Zeile:
+		// "version conflict" fuer jede Ueberweisung dieses Kontos, und die
+		// Ruecknahme danach scheiterte an derselben Pruefung ("rollback
+		// persistence failed -- memory/DB may now disagree"). Zeilen mit 0
+		// stammen aus der Zeit vor der Versionsspalte (DEFAULT 0).
+		//
+		// Schlaegt die Anhebung fehl, bleibt die Zeile bei 0 und jede
+		// Speicherung meldet einen Konflikt -- fail closed, nichts wird
+		// blind ueberschrieben.
+		if _, uErr := cs.dbExecCtx(ctx).Exec(`UPDATE chain_accounts SET version = 1 WHERE lower(address) = $1 AND (version IS NULL OR version = 0)`, addr); uErr != nil {
+			fmt.Printf("[STATE] ⚠ ensureAccountLoaded(%s): Version 0 nicht auf 1 gehoben: %v\n", addr, uErr)
+		}
 		version = 1
 	}
 	acc.Version = version
