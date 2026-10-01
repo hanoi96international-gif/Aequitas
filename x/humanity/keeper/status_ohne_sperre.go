@@ -105,3 +105,27 @@ func (dag *BlockDAG) TryLatestBlock() (*Block, bool) {
 	}
 	return latest, true
 }
+
+// statusNotstand: die Antwort, solange es seit dem Start noch keinen
+// vollstaendigen Stand gibt -- mit den festen Netzangaben.
+//
+// Befund 01.10.2026: Ein Mensch registrierte sich wenige Minuten nach einem
+// Neustart von C1. Die App prueft vor dem Unterschreiben chain_evm_id und
+// netz_kennung aus /api/status (fail-closed). Diese Notantwort enthielt nur
+// die Hoehe -- die App brach mit "Netz nicht bestaetigt" ab, NACH der
+// Gesichtspruefung und VOR dem Schritt auf der Kette, und die Einschreibung
+// blieb verwaist. Chain-ID, Netzkennung und Vertragsversion haengen an
+// keiner Sperre (genesis.json, Prozesskonstanten) und gehoeren deshalb immer
+// in die Antwort.
+func statusNotstand(hoehe int64) map[string]interface{} {
+	return map[string]interface{}{
+		"height":           hoehe,
+		"stand_veraltet":   true,
+		"stand_hinweis":    "Knoten beschaeftigt, noch kein vollstaendiger Stand seit dem Start",
+		"chain_id":         "aequitas-1",
+		"chain_evm_id":     1926,
+		"netz_kennung":     netzKennung(),
+		"register_vertrag": vertragVersion(),
+		"contract_v7":      V7_CONTRACT_ADDR,
+	}
+}

@@ -1,0 +1,53 @@
+name: Verwaiste Test-Einschreibung entfernen (nur bei 0 Menschen auf der Kette)
+# Nur von Hand. Fuer den Fall, dass eine Registrierung nach der
+# Gesichtspruefung am Schritt auf der Kette scheitert, solange die Kette noch
+# KEINEN Menschen kennt (Beta-Start): dann ist jede Einschreibung verwaist und
+# sperrt ihren Menschen als "Duplikat" aus. Siehe
+# .github/neustart/verwaiste-einschreibung.sh. Fail-closed: bei mehr als 0
+# Menschen auf der Kette, nicht leerer Realgalerie oder mehr als 5
+# Testeintraegen wird nichts geloescht.
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: verwaiste-einschreibung
+  cancel-in-progress: false
+jobs:
+  c1:
+    runs-on: ubuntu-latest
+    environment: produktion
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Schluessel und Host-Pruefung
+        env:
+          KEY: ${{ secrets.CONTABO_SSH_KEY }}
+        run: |
+          set -eu
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -t ed25519 188.172.229.121 2>/dev/null > ~/.ssh/kh
+          ssh-keygen -lf ~/.ssh/kh | awk '{print $2}' | grep -qx 'SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA' || { echo "::error::Host-Schluessel von C1 passt nicht"; exit 1; }
+          cp ~/.ssh/kh ~/.ssh/known_hosts
+      - name: C1 Vergleichsdienst
+        run: ssh -o BatchMode=yes root@188.172.229.121 'bash -s' < .github/neustart/verwaiste-einschreibung.sh
+  c2:
+    needs: c1
+    runs-on: ubuntu-latest
+    environment: produktion
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Schluessel und Host-Pruefung
+        env:
+          KEY: ${{ secrets.CONTABO2_SSH_KEY }}
+        run: |
+          set -eu
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan 194.163.188.71 2>/dev/null > ~/.ssh/kh
+          ssh-keygen -lf ~/.ssh/kh | awk '{print $2}' | grep -qx 'SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto' || { echo "::error::Host-Schluessel von C2 passt nicht"; exit 1; }
+          cp ~/.ssh/kh ~/.ssh/known_hosts
+      - name: C2 Vergleichsdienst (nur der Dienst, der C2-Knoten bleibt aus)
+        run: ssh -o BatchMode=yes root@194.163.188.71 'bash -s' < .github/neustart/verwaiste-einschreibung.sh

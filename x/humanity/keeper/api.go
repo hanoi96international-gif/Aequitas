@@ -1294,11 +1294,7 @@ func (a *APIServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 		}
 		// Noch nie einen vollstaendigen Stand gehabt (frisch gestartet):
 		// wenigstens die Hoehe, damit die Ueberwachung etwas sieht.
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"height":         a.blockchain.HeightSchnell(),
-			"stand_veraltet": true,
-			"stand_hinweis":  "Knoten beschaeftigt, noch kein vollstaendiger Stand seit dem Start",
-		})
+		json.NewEncoder(w).Encode(statusNotstand(a.blockchain.HeightSchnell()))
 		return
 	}
 	// Beide Wege dieser Funktion melden dieselbe Zahl. Der Vergleich daneben
