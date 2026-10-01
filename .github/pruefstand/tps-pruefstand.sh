@@ -89,11 +89,25 @@ tail -n +2 "$WERK/accounts.csv" | cut -d, -f2 | tr 'A-F' 'a-f' \
   | docker exec -i "$PG" psql -q -U postgres -d aequitas
 
 echo "== Last ($DAUER, Buendel $BUENDEL)"
+# CPU-Profil aus dem Messfenster (Aufwaermen dauert rund 50 s). pprof lauscht
+# nur auf 127.0.0.1 im Container und ist von aussen nicht erreichbar.
+PROFIL="$(mktemp -d)"
+( sleep 70; docker exec "$KN" wget -qO- 'http://127.0.0.1:6061/debug/pprof/profile?seconds=20' > "$PROFIL/cpu.pb" 2>/dev/null || true ) &
+PROFIL_PID=$!
 docker run --rm --network host -v "$WERK":/w -w /w golang:1.26.8-alpine \
   ./loadtest -accounts accounts.csv -rpc "http://127.0.0.1:$PORT/rpc" -status "http://127.0.0.1:$PORT/api/status" \
     -phase warmup,run -duration "$DAUER" -batch-size "$BUENDEL" 2>&1 \
   | grep -vE '^warmup pair [0-9]+ ok|^\[monitor\]' | tail -25
 
+wait "$PROFIL_PID" 2>/dev/null || true
+echo "== CPU-Profil (20 s im Messfenster, oberste Posten)"
+if [ -s "$PROFIL/cpu.pb" ]; then
+  docker run --rm -v "$PROFIL":/p golang:1.26.8-alpine go tool pprof -top -nodecount=30 /p/cpu.pb 2>/dev/null | tail -32 || true
+  docker run --rm -v "$PROFIL":/p golang:1.26.8-alpine go tool pprof -top -cum -nodecount=30 /p/cpu.pb 2>/dev/null | tail -30 || true
+else
+  echo "(kein Profil)"
+fi
+rm -rf "$PROFIL"
 echo "== Knoten nach dem Lauf"
 curl -fsS "http://127.0.0.1:$PORT/api/health/combined" | python3 -c '
 import json,sys
