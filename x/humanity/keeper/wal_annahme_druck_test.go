@@ -86,3 +86,22 @@ func TestWALDruck_KeinZweiterVollerFlushHintendran(t *testing.T) {
 		t.Fatal("ohne laufenden Flush muss versucheFlushWALNow laufen")
 	}
 }
+
+// Fehlerfall: wird die Warteschlange verworfen (ueberholter Leiter), darf der
+// Druckzaehler nicht auf dem alten Stand stehen bleiben -- sonst wiese die
+// Annahme dauerhaft ab, obwohl nichts mehr wartet.
+func TestWALDruck_VerwerfenSetztZaehlerZurueck(t *testing.T) {
+	walDruckZuruecksetzen()
+	defer walDruckZuruecksetzen()
+	cs := newTestState()
+	cs.walFlushMu.Lock()
+	cs.walFlushQueue = make([]walFlushItem, 3)
+	cs.walFlushMu.Unlock()
+	walWarteschlangeStand.Store(walDruckSchwelle())
+	if wal, _ := cs.leitungUnverteiltVerwerfen(); wal != 3 {
+		t.Fatalf("verworfen %d, erwartet 3", wal)
+	}
+	if n := walWarteschlangeStand.Load(); n != 0 {
+		t.Fatalf("Druckzaehler nach dem Verwerfen %d, erwartet 0", n)
+	}
+}
