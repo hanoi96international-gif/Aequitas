@@ -498,13 +498,26 @@ func (s *EVMRPCServer) handleRPC(w http.ResponseWriter, r *http.Request) {
 	// Die Ratenbegrenzung gilt HIER, vor der Weiterleitung -- der Leiter
 	// stellt die Validatoren frei (sie leiten fuer viele Menschen weiter),
 	// und ohne diese Pruefung waere jeder Folger ein Umweg um jede Grenze.
-	if s.state != nil && rpcSchreibt(body) {
+	if s.state != nil && rpcSchreibt(body) && s.state.weiterleitungDenkbar(r) {
+		posten := bytes.Count(body, []byte(`"method"`))
+		if posten < 1 {
+			posten = 1
+		}
+		// Voll? Dann abweisen, BEVOR rpcKonten jede Signatur wiederherstellt.
+		// Gemessen am 01.10.2026 (C1-Pruefstand, 4.000 Konten, CPU-Profil):
+		// rpcKonten kostete 46 % der CPU, davon die Wiederherstellung 25 % --
+		// auch fuer die 74 % der Posten, die gleich danach mit "too much work
+		// in flight" abgewiesen wurden. Dieselbe Begruendung wie bei der
+		// Schranke im Buendelpfad unten: Ablehnung kostet einen Zaehler,
+		// keine secp256k1-Rechnung. Nur fuer Ueberweisungen; eine reine
+		// Nonce-Abfrage stellt nichts wieder her.
+		if bytes.Contains(body, []byte(`"eth_sendRawTransaction"`)) && inflightVoll(int64(posten)) {
+			handlerItems = posten
+			schreibeBesetzt(w, body, posten)
+			return
+		}
 		if ziel := s.state.weiterleitungsZiel(r, rpcKonten(body)...); ziel != "" {
 			if !frei {
-				posten := bytes.Count(body, []byte(`"method"`))
-				if posten < 1 {
-					posten = 1
-				}
 				for i := 0; i < posten; i++ {
 					if rpcRateLimited(ip) {
 						writeError(w, -32005, "rate limited: too many requests, try again shortly", nil)
@@ -2224,6 +2237,21 @@ type RPCError struct {
 
 func (e *RPCError) Error() string {
 	return e.Message
+}
+
+// schreibeBesetzt: -32005 fuer jeden Posten einer Anfrage (einzeln oder
+// Buendel), ohne sie zu dekodieren.
+func schreibeBesetzt(w http.ResponseWriter, body []byte, posten int) {
+	const text = "server busy: too much work in flight, try again shortly"
+	if len(body) > 0 && body[0] == '[' {
+		results := make([]interface{}, 0, posten)
+		for i := 0; i < posten; i++ {
+			results = append(results, errorResponse(nil, -32005, text))
+		}
+		json.NewEncoder(w).Encode(results)
+		return
+	}
+	writeError(w, -32005, text, nil)
 }
 
 func writeError(w http.ResponseWriter, code int, message string, id interface{}) {

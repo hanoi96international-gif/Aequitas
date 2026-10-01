@@ -489,6 +489,13 @@ func (cs *ChainState) leitungUnverteiltVerwerfen() (wal int, korb int64) {
 // Stufe 2: Ziel ist ihr Zustaendiger. Gehoeren sie verschiedenen, gibt es
 // kein gemeinsames Ziel -- dann bearbeitet dieser Knoten selbst, und das Tor
 // lehnt ab, was er nicht annimmt.
+// weiterleitungDenkbar: kann weiterleitungsZiel ueberhaupt ein Ziel liefern?
+// Billig, ohne die Konten der Anfrage -- deren Ermittlung kostet je
+// Ueberweisung eine Signatur-Wiederherstellung (rpcKonten).
+func (cs *ChainState) weiterleitungDenkbar(r *http.Request) bool {
+	return cs.leitung.Load() != nil && r.Header.Get(weitergeleitetKopf) == ""
+}
+
 func (cs *ChainState) weiterleitungsZiel(r *http.Request, konten ...string) string {
 	l := cs.leitung.Load()
 	if l == nil || r.Header.Get(weitergeleitetKopf) != "" {
