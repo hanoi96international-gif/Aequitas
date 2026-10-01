@@ -94,6 +94,10 @@ echo "== Last ($DAUER, Buendel $BUENDEL)"
 PROFIL="$(mktemp -d)"
 ( sleep 70; docker exec "$KN" wget -qO- 'http://127.0.0.1:6061/debug/pprof/profile?seconds=20' > "$PROFIL/cpu.pb" 2>/dev/null || true ) &
 PROFIL_PID=$!
+# Worauf warten die Goroutinen? Schnappschuss mitten im Messfenster,
+# gruppiert nach identischem Stapel (debug=1), die groessten Gruppen.
+( sleep 80; docker exec "$KN" wget -qO- 'http://127.0.0.1:6061/debug/pprof/goroutine?debug=1' > "$PROFIL/gr.txt" 2>/dev/null || true ) &
+GR_PID=$!
 # Zeitreihe alle 2 s: wo staut es sich? (Rueckstand gesamt, davon noch im WAL,
 # offen in pending_txs, Inflight, Hoehe.) Nur Zahlen.
 ( for i in $(seq 1 60); do
@@ -118,6 +122,26 @@ wait "$PROFIL_PID" 2>/dev/null || true
 kill "$REIHE_PID" 2>/dev/null || true
 echo "== Zeitreihe (alle 2 s ab Lastbeginn)"
 cat "$PROFIL/reihe.txt" 2>/dev/null | head -60 || true
+wait "$GR_PID" 2>/dev/null || true
+echo "== Goroutinen im Messfenster (groesste Gruppen gleicher Stapel)"
+python3 - "$PROFIL/gr.txt" <<'PY' || true
+import re,sys
+try: t=open(sys.argv[1]).read()
+except Exception: print("(kein Schnappschuss)"); sys.exit(0)
+gruppen=[]
+for block in t.split("\n\n"):
+    z=block.strip().splitlines()
+    if not z: continue
+    m=re.match(r"(\d+) @",z[0])
+    if not m: continue
+    fn=[re.split(r"\s+",l.strip())[2] for l in z[1:] if l.strip().startswith("#") and len(re.split(r"\s+",l.strip()))>2]
+    fn=[f.split("/")[-1] for f in fn]
+    gruppen.append((int(m.group(1)),fn))
+gruppen.sort(key=lambda g:-g[0])
+print("gesamt:", sum(g[0] for g in gruppen))
+for n,fn in gruppen[:14]:
+    print("%6d  %s" % (n, " <- ".join(fn[:9])))
+PY
 echo "== CPU-Profil (20 s im Messfenster, oberste Posten)"
 if [ -s "$PROFIL/cpu.pb" ]; then
   docker run --rm -v "$PROFIL":/p golang:1.26.8-alpine go tool pprof -top -nodecount=30 /p/cpu.pb 2>/dev/null | tail -32 || true
