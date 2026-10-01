@@ -661,7 +661,12 @@ func (cs *ChainState) ensureWALFlushWorkerStarted() {
 	cs.walFlushOnce.Do(func() {
 		cs.walFlushStopCh = make(chan struct{})
 		cs.walFlushSem = make(chan struct{}, walFlushConcurrency)
-		SafeGoroutine("walFlushWorker", cs.runWALFlushWorker)
+		// Takt und Schwelle HIER lesen, nicht im Arbeiter: der startet
+		// spaeter, und Tests setzen diese Paketwerte zwischen zwei Laeufen um
+		// (-race meldete genau das, ein Arbeiter des vorigen Tests las
+		// walFlushInterval, waehrend der naechste ihn schrieb).
+		takt, viel := walFlushInterval, int64(walFlushMaxBatch)/2
+		SafeGoroutine("walFlushWorker", func() { cs.runWALFlushWorker(takt, viel) })
 	})
 }
 
@@ -737,27 +742,43 @@ func (cs *ChainState) ensureWALFlushWorkerStarted() {
 // representative than the small one.
 var walFlushConcurrency = 4
 
-func (cs *ChainState) runWALFlushWorker() {
-	ticker := time.NewTicker(walFlushInterval)
+// walFlushStarten belegt einen Flush-Platz und startet dort einen Flush.
+// false = alle Plaetze belegt, nichts gestartet.
+func (cs *ChainState) walFlushStarten() bool {
+	select {
+	case cs.walFlushSem <- struct{}{}:
+		cs.walFlushWG.Add(1)
+		go func() {
+			defer cs.walFlushWG.Done()
+			defer func() { <-cs.walFlushSem }()
+			cs.flushWALQueue()
+		}()
+		return true
+	default:
+		return false
+	}
+}
+
+func (cs *ChainState) runWALFlushWorker(takt time.Duration, viel int64) {
+	ticker := time.NewTicker(takt)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ticker.C:
-			select {
-			case cs.walFlushSem <- struct{}{}:
-				cs.walFlushWG.Add(1)
-				go func() {
-					defer cs.walFlushWG.Done()
-					defer func() { <-cs.walFlushSem }()
-					cs.flushWALQueue()
-				}()
-			default:
-				// Every concurrent flush slot is already busy -- skip this
-				// tick rather than pile up an unbounded number of goroutines
-				// each waiting for a semaphore slot. The queue just waits a
-				// little longer; walFlushMaxQueueDepth (this file) is the
-				// actual backstop against it growing without bound, not this
-				// tick cadence.
+			// Steht viel an, alle freien Plaetze in DIESEM Takt belegen statt
+			// einen je 100 ms (gemessen am 01.10.2026: hoechstens 10 Flushes
+			// je Sekunde, die Warteschlange stand bei 13.000-15.000). Die
+			// Buendel gleichzeitiger Flushes haben getrennte Absender
+			// (walRohAuswahlLocked). Sonst wie bisher: einer je Takt.
+			//
+			// Sind alle Plaetze belegt, wird nichts angehaengt -- keine
+			// unbegrenzte Zahl wartender Goroutinen; walFlushMaxQueueDepth
+			// bleibt die eigentliche Grenze der Warteschlange.
+			plaetze := 1
+			if walWarteschlangeStand.Load() >= viel {
+				plaetze = cap(cs.walFlushSem)
+			}
+			for i := 0; i < plaetze && cs.walFlushStarten(); i++ {
 			}
 		case <-cs.walFlushStopCh:
 			return
@@ -860,6 +881,22 @@ func (cs *ChainState) flushWALQueue() {
 		cs.walFlushMu.Unlock()
 		return
 	}
+	// Laeuft schon ein Flush mit signierten Ueberweisungen, nicht am ersten
+	// betroffenen Absender abbrechen, sondern dessen Eintraege ueberspringen
+	// (wal_nonce_reihenfolge.go, walRohAuswahlLocked). Mit Adressgrenze
+	// (aus, siehe wal_flush_addr_cap.go) bleibt es beim Schnitt.
+	if len(cs.walRohUnterwegs) > 0 && walFlushMaxAddrs() == 0 {
+		batch := cs.walRohAuswahlLocked(walFlushMaxBatch)
+		if len(batch) == 0 {
+			cs.walFlushMu.Unlock()
+			return
+		}
+		cs.walRohUnterwegsLocked(batch, +1)
+		walWarteschlangeStand.Store(int64(len(cs.walFlushQueue)))
+		cs.walFlushMu.Unlock()
+		cs.flushWALBatchUndAbschliessen(batch)
+		return
+	}
 	n := len(cs.walFlushQueue)
 	if n > walFlushMaxBatch {
 		n = walFlushMaxBatch
@@ -896,7 +933,14 @@ func (cs *ChainState) flushWALQueue() {
 	}
 	walWarteschlangeStand.Store(int64(len(cs.walFlushQueue)))
 	cs.walFlushMu.Unlock()
+	cs.flushWALBatchUndAbschliessen(batch)
+}
 
+// flushWALBatchUndAbschliessen schreibt ein entnommenes Buendel und raeumt
+// danach auf: bei Fehler zurueck an den Anfang der Warteschlange (die
+// Eintraege je Absender bleiben dabei vor allen spaeteren desselben
+// Absenders), sonst als geschrieben vermerken.
+func (cs *ChainState) flushWALBatchUndAbschliessen(batch []walFlushItem) {
 	if err := cs.flushWALBatch(batch); err != nil {
 		fmt.Printf("[WAL] ✗ flush of %d item(s) failed, will retry next tick: %v\n", len(batch), err)
 		cs.walFlushMu.Lock()

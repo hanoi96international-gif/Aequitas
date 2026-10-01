@@ -140,3 +140,90 @@ func TestWALDruck_KeineWiederherstellungBeiAbweisung(t *testing.T) {
 		}
 	}
 }
+
+func walTestEintrag(from string, nonce int) walFlushItem {
+	return walFlushItem{from: from, tx: Transaction{Roh: fmt.Sprintf("roh-%s-%d", from, nonce)}}
+}
+
+// Die Auswahl ueberspringt Absender, die gerade in einem Flush stehen, statt
+// abzubrechen -- und laesst deren Eintraege in ihrer Reihenfolge stehen.
+func TestWALAuswahl_UeberspringtLaufendeAbsender(t *testing.T) {
+	cs := newTestState()
+	cs.walFlushMu.Lock()
+	defer cs.walFlushMu.Unlock()
+	cs.walFlushQueue = []walFlushItem{
+		walTestEintrag("x", 1), walTestEintrag("y", 1), walTestEintrag("x", 2),
+		walTestEintrag("z", 1), walTestEintrag("y", 2),
+	}
+	cs.walRohUnterwegs = map[string]int{"x": 1}
+	b := cs.walRohAuswahlLocked(100)
+	if got := namen(b); got != "y1 z1 y2" {
+		t.Fatalf("Buendel %q, erwartet \"y1 z1 y2\"", got)
+	}
+	if got := namen(cs.walFlushQueue); got != "x1 x2" {
+		t.Fatalf("Rest %q, erwartet \"x1 x2\"", got)
+	}
+}
+
+// Grenze: ein volles Buendel nimmt nichts mehr mit; der Rest behaelt je
+// Absender seine Reihenfolge.
+func TestWALAuswahl_GrenzeUndReihenfolge(t *testing.T) {
+	cs := newTestState()
+	cs.walFlushMu.Lock()
+	defer cs.walFlushMu.Unlock()
+	cs.walFlushQueue = []walFlushItem{
+		walTestEintrag("x", 1), walTestEintrag("y", 1), walTestEintrag("z", 1), walTestEintrag("y", 2),
+	}
+	cs.walRohUnterwegs = map[string]int{"x": 1}
+	b := cs.walRohAuswahlLocked(1)
+	if got := namen(b); got != "y1" {
+		t.Fatalf("Buendel %q", got)
+	}
+	if got := namen(cs.walFlushQueue); got != "x1 z1 y2" {
+		t.Fatalf("Rest %q", got)
+	}
+}
+
+// Missbrauch der Nebenlaeufigkeit ausgeschlossen: zwei nacheinander
+// entnommene Buendel (das erste "laeuft" noch) haben nie einen Absender
+// gemeinsam -- sonst koennte eine groessere Nonce vor einer kleineren
+// committen.
+func TestWALAuswahl_GleichzeitigeBuendelGetrennteAbsender(t *testing.T) {
+	cs := newTestState()
+	cs.walFlushMu.Lock()
+	defer cs.walFlushMu.Unlock()
+	for i := 0; i < 50; i++ {
+		for _, a := range []string{"a", "b", "c", "d", "e"} {
+			cs.walFlushQueue = append(cs.walFlushQueue, walTestEintrag(a, i))
+		}
+	}
+	cs.walRohUnterwegs = map[string]int{"zz": 1} // Auswahlpfad
+	erstes := cs.walRohAuswahlLocked(7)
+	cs.walRohUnterwegsLocked(erstes, +1)
+	zweites := cs.walRohAuswahlLocked(1000)
+	in := map[string]bool{}
+	for _, it := range erstes {
+		in[it.from] = true
+	}
+	for _, it := range zweites {
+		if in[it.from] {
+			t.Fatalf("Absender %s in zwei gleichzeitigen Buendeln", it.from)
+		}
+	}
+	// Je Absender: Rest beginnt genau dort, wo das erste Buendel aufhoerte.
+	letzte := map[string]string{}
+	for _, it := range append(append([]walFlushItem{}, erstes...), cs.walFlushQueue...) {
+		if v, ok := letzte[it.from]; ok && v >= it.tx.Roh && len(v) == len(it.tx.Roh) {
+			t.Fatalf("Reihenfolge von %s verletzt: %s vor %s", it.from, v, it.tx.Roh)
+		}
+		letzte[it.from] = it.tx.Roh
+	}
+}
+
+func namen(q []walFlushItem) string {
+	var s []string
+	for _, it := range q {
+		s = append(s, strings.TrimPrefix(strings.ReplaceAll(it.tx.Roh, "-", ""), "roh"))
+	}
+	return strings.Join(s, " ")
+}
