@@ -37,6 +37,23 @@ import (
 // bei der Peer-Lag-Bremse (peerLagBoden); der Deckel ist nie hoeher als der
 // harte.
 //
+// NUR BEI ANHALTENDER LANGSAMKEIT (seit 01.10.2026).
+//
+// Gemessen am 01.10.2026 auf dem C1-Pruefstand mit 4.000 Konten: einzelne
+// Produktionsversuche dauerten 2,7 bzw. 8,1 s (Datenbank-Spitze, ein Block
+// mit 1.340 Ueberweisungen -- an der Blockgroesse lag es nicht), der Mittel
+// 346 ms. Jede solche Spitze schrumpfte den Deckel sofort; ein gebremster
+// Deckel schaltet die Zusatzbloecke ab (blockVollAmDeckel) und senkt die
+// Annahmegrenze von 5 Bloecken auf einen (rueckstauBloeckeJeTakt). Die
+// Erholung braucht ein Zwanzigstel je Block. Ergebnis: Kettendurchsatz
+// 3.122/s statt 13.185/s bei 1.000 Konten -- der Knoten fiel unter Last weit
+// unter seine Leistung, statt sie zu halten und den Rest abzuweisen.
+//
+// Geschrumpft wird deshalb erst, wenn eigenlastFolgeGrenze Versuche
+// HINTEREINANDER zu lange dauerten. Ein Knoten, der seinen Takt dauerhaft
+// nicht schafft, wird nach drei Bloecken gebremst wie bisher; eine einzelne
+// Spitze nicht mehr. Der harte Deckel (Haltezeit der Sperre) gilt immer.
+//
 // Abschalten: AEQUITAS_EIGENLAST_BREMSE=0.
 
 const eigenlastBremseEnv = "AEQUITAS_EIGENLAST_BREMSE"
@@ -46,10 +63,22 @@ var (
 	eigenlastCap           atomic.Int64 // eigener Deckel, 0 = noch nicht gesetzt
 	eigenlastGebremst      atomic.Int64 // Bloecke, bei denen dieser Deckel unter dem harten lag
 	eigenlastGeschrumpft   atomic.Int64 // Schrumpfschritte
+	eigenlastLangsamFolge  atomic.Int64 // zu lange Versuche in Folge
+	eigenlastSpitzen       atomic.Int64 // zu lange Versuche, die (noch) nicht bremsten
 )
+
+// eigenlastFolgeGrenze: so viele zu lange Versuche in Folge, bevor der Deckel
+// schrumpft (siehe oben).
+const eigenlastFolgeGrenze = 3
 
 func merkeEigenlast(gesamt time.Duration) {
 	eigenlastLetzteDauerNs.Store(int64(gesamt))
+	blockZeit := time.Duration(ConfiguredBlockTimeSeconds() * float64(time.Second))
+	if blockZeit > 0 && gesamt > blockZeit*9/10 {
+		eigenlastLangsamFolge.Add(1)
+	} else {
+		eigenlastLangsamFolge.Store(0)
+	}
 }
 
 func eigenlastBremseAktiv() bool {
@@ -74,9 +103,11 @@ func eigenlastDeckel(hart, boden int) int {
 		deckel = int64(hart)
 	}
 	switch {
-	case dauer > blockZeit*9/10:
+	case dauer > blockZeit*9/10 && eigenlastLangsamFolge.Load() >= eigenlastFolgeGrenze:
 		deckel = deckel * 8 / 10
 		eigenlastGeschrumpft.Add(1)
+	case dauer > blockZeit*9/10:
+		eigenlastSpitzen.Add(1) // einzelne Spitze: Deckel bleibt
 	case dauer < blockZeit/2:
 		deckel += int64(hart) / 20
 	}
@@ -96,14 +127,16 @@ func eigenlastDeckel(hart, boden int) int {
 // EigenlastBremseStand fuer /api/health/combined.
 func EigenlastBremseStand() map[string]interface{} {
 	return map[string]interface{}{
-		"bedeutung": "Dauert der eigene Produktionsversuch laenger als 90 % der Blockzeit, schrumpft der " +
-			"eigene Blockdeckel (x0,8 je Block); unter der halben Blockzeit waechst er wieder. " +
+		"bedeutung": "Dauern " + fmt.Sprint(eigenlastFolgeGrenze) + " eigene Produktionsversuche in Folge laenger als 90 % der " +
+			"Blockzeit, schrumpft der eigene Blockdeckel (x0,8 je Block); einzelne Spitzen bremsen nicht; unter der halben Blockzeit waechst er wieder. " +
 			"Gegenstueck zur Peer-Lag-Bremse: der langsame Knoten schont sich selbst, statt nur " +
 			"den schnellen zu drosseln. " + eigenlastBremseEnv + "=0 schaltet ab.",
-		"aktiv":            eigenlastBremseAktiv(),
-		"deckel":           eigenlastCap.Load(),
-		"letzte_dauer_ms":  fmt.Sprintf("%.0f", float64(eigenlastLetzteDauerNs.Load())/1e6),
-		"gebremst_bloecke": eigenlastGebremst.Load(),
-		"schrumpfschritte": eigenlastGeschrumpft.Load(),
+		"aktiv":               eigenlastBremseAktiv(),
+		"deckel":              eigenlastCap.Load(),
+		"letzte_dauer_ms":     fmt.Sprintf("%.0f", float64(eigenlastLetzteDauerNs.Load())/1e6),
+		"gebremst_bloecke":    eigenlastGebremst.Load(),
+		"schrumpfschritte":    eigenlastGeschrumpft.Load(),
+		"langsam_in_folge":    eigenlastLangsamFolge.Load(),
+		"spitzen_ohne_bremse": eigenlastSpitzen.Load(),
 	}
 }

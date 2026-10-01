@@ -27,7 +27,7 @@ import (
 //
 // Ein Messer liest alle rueckstauTakt, was angenommen und noch nicht in einem
 // Block ist: offene Zeilen in pending_txs (ueber den Teilindex
-// idx_pending_txs_offen) plus die WAL-Warteschlange im Speicher, die noch gar
+// idx_pending_txs_offen_seq) plus die WAL-Warteschlange im Speicher, die noch gar
 // nicht in pending_txs steht. Zwischen zwei Messungen zaehlt jede Zulassung
 // in sendRawTransaction sofort mit (rueckstauPlatzNehmen); die Messung zieht
 // nur ab, was sie selbst schon gesehen hat. Der Stand ist damit nie kleiner
