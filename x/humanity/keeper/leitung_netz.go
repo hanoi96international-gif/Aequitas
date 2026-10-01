@@ -489,6 +489,13 @@ func (cs *ChainState) leitungUnverteiltVerwerfen() (wal int, korb int64) {
 // Stufe 2: Ziel ist ihr Zustaendiger. Gehoeren sie verschiedenen, gibt es
 // kein gemeinsames Ziel -- dann bearbeitet dieser Knoten selbst, und das Tor
 // lehnt ab, was er nicht annimmt.
+// weiterleitungDenkbar: kann weiterleitungsZiel ueberhaupt ein Ziel liefern?
+// Billig, ohne die Konten der Anfrage -- deren Ermittlung kostet je
+// Ueberweisung eine Signatur-Wiederherstellung (rpcKonten).
+func (cs *ChainState) weiterleitungDenkbar(r *http.Request) bool {
+	return cs.leitung.Load() != nil && r.Header.Get(weitergeleitetKopf) == ""
+}
+
 func (cs *ChainState) weiterleitungsZiel(r *http.Request, konten ...string) string {
 	l := cs.leitung.Load()
 	if l == nil || r.Header.Get(weitergeleitetKopf) != "" {
@@ -545,6 +552,12 @@ func rpcKonten(body []byte) []string {
 	var posten []json.RawMessage
 	if len(body) > 0 && body[0] == '[' {
 		if json.Unmarshal(body, &posten) != nil {
+			return nil
+		}
+		// Zu grosse Buendel weist handleRPC ohnehin ab -- hier keine
+		// Wiederherstellung dafuer. Ohne diese Grenze kostete ein 1-MB-Buendel
+		// tausende secp256k1-Rechnungen, bevor die Buendelgrenze griff.
+		if len(posten) > rpcMaxBuendel {
 			return nil
 		}
 	} else {

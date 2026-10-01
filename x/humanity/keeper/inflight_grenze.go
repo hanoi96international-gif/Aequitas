@@ -133,6 +133,21 @@ func inflightEintritt(n int64) bool {
 	}
 }
 
+// inflightVoll: wuerde inflightEintritt(n) jetzt ablehnen? Meldet nichts an,
+// zaehlt aber die Ablehnung -- der Aufrufer weist ab. Fuer Arbeit, die VOR
+// der eigentlichen Anmeldung teuer waere (rpcKonten in handleRPC). Ein
+// Blick ohne Anmeldung ist absichtlich nur eine Abkuerzung zum Ablehnen:
+// wer durchkommt, meldet sich danach regulaer an und kann dort immer noch
+// abgewiesen werden.
+func inflightVoll(n int64) bool {
+	grenze := inflightGrenze()
+	if grenze > 0 && inflightAktuell.Load()+n > grenze {
+		inflightAbgelehnt.Add(n)
+		return true
+	}
+	return false
+}
+
 // inflightAustritt meldet n Posten wieder ab. Gehoert IMMER in ein defer
 // unmittelbar nach einem erfolgreichen inflightEintritt -- ein vergessener
 // Austritt laesst die Schranke dauerhaft zulaufen und der Knoten lehnt fuer
