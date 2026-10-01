@@ -45,13 +45,13 @@ echo "== Befehl 3: cd Aequitas/deploy/validator && bash einrichten.sh"
   echo "EXIT=$?" >> "$LOG" ) &
 for i in $(seq 1 270); do   # hoechstens 45 Minuten
   grep -q '^EXIT=' "$LOG" && break
-  grep -q '6/6' "$LOG" && { sleep 20; break; }
+  grep -q '== 6/6' "$LOG" && { sleep 20; break; }
   sleep 10
 done
 # Ausgabe ohne den QR-Code (Blockzeichen) und ohne Farbcodes.
 sed -e 's/\x1b\[[0-9;]*m//g' "$LOG" | grep -vE '^[[:space:]]*[█▀▄ ]+[[:space:]]*$' | tail -80
 echo
-if grep -q '6/6' "$LOG"; then
+if grep -q '== 6/6' "$LOG"; then
   echo "ERGEBNIS: Schritte 1-5 bestanden; Schritt 6 (Bindung per App) erreicht -- hier bewusst nicht ausgefuehrt."
   docker exec "$N-dind" docker ps --format '{{.Names}} {{.Status}}' || true
 elif grep -q '^EXIT=0' "$LOG"; then

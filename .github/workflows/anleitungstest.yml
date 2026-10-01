@@ -28,7 +28,8 @@ jobs:
           git clone -q https://github.com/hanoi96international-gif/Aequitas.git
           cd Aequitas/deploy/validator
           echo "Kerne: $(nproc)"
-          bash einrichten.sh < /dev/null > ausgabe.txt 2>&1; rc=$?
+          # Die Ablehnung IST das erwartete Ergebnis -- nicht an -e scheitern.
+          rc=0; bash einrichten.sh < /dev/null > ausgabe.txt 2>&1 || rc=$?
           sed -e 's/\x1b\[[0-9;]*m//g' ausgabe.txt
           [ "$rc" != 0 ] && grep -q 'zu schwach' ausgabe.txt || { echo "::error::Erwartet: Ablehnung 'zu schwach'"; exit 1; }
           echo "ERGEBNIS: sauber abgelehnt"
@@ -44,7 +45,7 @@ jobs:
           cd Aequitas/deploy/verifier
           # Wallet, "IP stimmt nicht", Dokumentations-IP: so wird kein
           # Zertifikat fuer eine fremde Adresse angefragt.
-          printf '0x000000000000000000000000000000000000dEaD\nn\n203.0.113.10\n' | bash einrichten.sh > ausgabe.txt 2>&1; rc=$?
+          rc=0; printf '0x000000000000000000000000000000000000dEaD\nn\n203.0.113.10\n' | bash einrichten.sh > ausgabe.txt 2>&1 || rc=$?
           sed -e 's/\x1b\[[0-9;]*m//g' ausgabe.txt | grep -vE 'TEMPLATE_ENCRYPTION_KEY|FACE_SKETCH_SEED|VALIDATOR_SIGNING_KEY|SERVICE_AUTH_TOKEN'
           docker compose ps || true
           grep -q 'Verifier laeuft' ausgabe.txt || { echo "::error::Verifier kam nicht bis 'laeuft'"; exit 1; }
