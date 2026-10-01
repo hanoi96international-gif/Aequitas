@@ -1128,6 +1128,12 @@ func (cs *ChainState) flushWALBatch(batch []walFlushItem) error {
 	cs.mu.RLock()
 	defer cs.mu.RUnlock()
 
+	// Aufgeteilter Flush (wal_flush_teile.go): nur ohne Outbox-Zeilen, also
+	// nur, wenn jede Ueberweisung im Speicherkorb steht.
+	if teile := walFlushTeileFuer(batch, len(addrList)); teile > 1 {
+		return cs.flushWALKontenAufgeteilt(batch, addrList, teile)
+	}
+
 	snapshots := make(map[string]walSnapshot, len(addrList))
 
 	var dbStart time.Time
@@ -1308,14 +1314,7 @@ ORDER BY v.ord`
 	// last_activity_at wird mit dem Stand im Speicher geschrieben (siehe
 	// walSnapshot.aktivitaet) -- im selben WHERE wie der Saldo, also nur von
 	// einem Flush, der einen neueren Stand traegt.
-	acctQuery := `INSERT INTO chain_accounts (address, balance, wal_seq, version, naechste_nonce, last_activity_at)
-SELECT address, balance, wal_seq, 1, naechste_nonce, last_activity_at
-FROM unnest($1::text[], $2::double precision[], $3::bigint[], $4::bigint[], $5::bigint[]) AS v(address, balance, wal_seq, naechste_nonce, last_activity_at)
-ON CONFLICT (address) DO UPDATE
-SET balance = EXCLUDED.balance, wal_seq = EXCLUDED.wal_seq,
-    naechste_nonce = GREATEST(chain_accounts.naechste_nonce, EXCLUDED.naechste_nonce),
-    last_activity_at = EXCLUDED.last_activity_at
-WHERE chain_accounts.wal_seq < EXCLUDED.wal_seq`
+	acctQuery := walKontenUpsertSQL
 	phAcctSQL = time.Since(phMark)
 	phMark = time.Now()
 	if _, err := cs.dbExecCtx(ctx).Exec(acctQuery, acctArgs...); err != nil {
@@ -1669,3 +1668,16 @@ func walRecordAlsTx(rec walTransferRecord) Transaction {
 	}
 	return wtx
 }
+
+// walKontenUpsertSQL: der Konten-UPSERT des Flushs, gemeinsam fuer
+// flushWALBatch und flushWALKontenTeil (wal_flush_teile.go). Schreibt nur,
+// wenn die wal_seq steigt -- ein wiederholter oder veralteter Flush aendert
+// nichts.
+const walKontenUpsertSQL = `INSERT INTO chain_accounts (address, balance, wal_seq, version, naechste_nonce, last_activity_at)
+SELECT address, balance, wal_seq, 1, naechste_nonce, last_activity_at
+FROM unnest($1::text[], $2::double precision[], $3::bigint[], $4::bigint[], $5::bigint[]) AS v(address, balance, wal_seq, naechste_nonce, last_activity_at)
+ON CONFLICT (address) DO UPDATE
+SET balance = EXCLUDED.balance, wal_seq = EXCLUDED.wal_seq,
+    naechste_nonce = GREATEST(chain_accounts.naechste_nonce, EXCLUDED.naechste_nonce),
+    last_activity_at = EXCLUDED.last_activity_at
+WHERE chain_accounts.wal_seq < EXCLUDED.wal_seq`

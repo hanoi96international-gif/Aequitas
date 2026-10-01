@@ -380,3 +380,93 @@ func TestWALSpeicherkorb_AusschaltenNachBlockOhneFlush_NichtDoppelt(t *testing.T
 		t.Fatalf("Empfaenger in Postgres %v, erwartet 2 (Kontostaende muessen trotzdem nachgezogen werden)", saldo)
 	}
 }
+
+func TestAdressenAufteilen_DisjunktUndStabil(t *testing.T) {
+	var adr []string
+	for i := 0; i < 500; i++ {
+		adr = append(adr, distTestAddr(2000+i))
+	}
+	g := adressenAufteilen(adr, 4)
+	gesehen := map[string]int{}
+	for i, grp := range g {
+		for _, a := range grp {
+			if _, schon := gesehen[a]; schon {
+				t.Fatalf("%s in zwei Gruppen", a)
+			}
+			gesehen[a] = i
+		}
+	}
+	if len(gesehen) != len(adr) {
+		t.Fatalf("%d von %d Adressen verteilt", len(gesehen), len(adr))
+	}
+	g2 := adressenAufteilen(adr, 4)
+	for i := range g {
+		if fmt.Sprint(g[i]) != fmt.Sprint(g2[i]) {
+			t.Fatal("Aufteilung nicht stabil")
+		}
+	}
+}
+
+func TestWALFlushTeileFuer_NurOhneOutbox(t *testing.T) {
+	alt := walFlushTeileWert
+	t.Cleanup(func() { walFlushTeileWert = alt })
+	walFlushTeileWert = 4
+	ohne := []walFlushItem{{ohneOutbox: true}, {ohneOutbox: true}}
+	mit := []walFlushItem{{ohneOutbox: true}, {ohneOutbox: false}}
+	if walFlushTeileFuer(ohne, 1000) != 4 {
+		t.Fatal("ohne Outbox und genug Adressen: 4 Teile erwartet")
+	}
+	if walFlushTeileFuer(mit, 1000) != 1 {
+		t.Fatal("mit Outbox-Zeile darf nicht geteilt werden (doppelte Zeilen bei Wiederholung)")
+	}
+	if walFlushTeileFuer(ohne, 10) != 1 {
+		t.Fatal("wenige Adressen: nicht teilen")
+	}
+}
+
+// Aufgeteilter Flush gegen echtes Postgres: alle Kontostaende stimmen mit dem
+// Speicher ueberein, auch nach einer Wiederholung desselben Buendels.
+func TestWALSpeicherkorb_AufgeteilterFlushSchreibtAlles(t *testing.T) {
+	truncateDistTestTables(t)
+	alt := walFlushTeileWert
+	t.Cleanup(func() { walFlushTeileWert = alt })
+	walFlushTeileWert = 4
+	cs := korbTestState(t, filepath.Join(t.TempDir(), "t.wal"), true)
+	const paare = 60
+	for i := 0; i < paare; i++ {
+		seedConcurrentTestAccount(t, cs, distTestAddr(3000+2*i), 100, time.Now().Unix())
+		seedConcurrentTestAccount(t, cs, distTestAddr(3001+2*i), 0, time.Now().Unix())
+	}
+	for i := 0; i < paare; i++ {
+		korbUeberweisen(t, cs, distTestAddr(3000+2*i), distTestAddr(3001+2*i), 2, fmt.Sprintf("0xteil%d-", i))
+	}
+	vorher := walFlushTeileLaeufe.Load()
+	cs.FlushWALNow()
+	if walFlushTeileLaeufe.Load() == vorher {
+		t.Fatal("Flush lief nicht aufgeteilt")
+	}
+	pruefe := func() {
+		for i := 0; i < 2*paare; i++ {
+			a := distTestAddr(3000 + i)
+			acc, _ := cs.accounts.Get(a)
+			var saldo float64
+			var seq int64
+			if err := cs.db.QueryRow(`SELECT balance, wal_seq FROM chain_accounts WHERE lower(address) = $1`, a).Scan(&saldo, &seq); err != nil {
+				t.Fatalf("%s: %v", a, err)
+			}
+			if saldo != acc.Balance.Float() || uint64(seq) != acc.WALSeq {
+				t.Fatalf("%s: Postgres %v/%d, Speicher %v/%d", a, saldo, seq, acc.Balance.Float(), acc.WALSeq)
+			}
+		}
+	}
+	pruefe()
+	// Wiederholung (wie nach einem gescheiterten Teil): nichts aendert sich.
+	var items []walFlushItem
+	for i := 0; i < paare; i++ {
+		items = append(items, walFlushItem{from: distTestAddr(3000 + 2*i), to: distTestAddr(3001 + 2*i), ohneOutbox: true})
+	}
+	if err := cs.flushWALBatch(items); err != nil {
+		t.Fatal(err)
+	}
+	pruefe()
+}

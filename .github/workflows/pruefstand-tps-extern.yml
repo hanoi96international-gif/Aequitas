@@ -73,7 +73,7 @@ jobs:
           set -euo pipefail
           # Nur Leistungsschalter aus einer festen Liste, nur Zahlen -- keine
           # Schutzgrenze (Rate-Limit, Inflight, Rueckstau, WAL-Druck).
-          E='((AEQUITAS_WAL_FLUSH_(BATCH|CONCURRENCY|INTERVAL_MS)|AEQUITAS_WAL_QUEUE_DEPTH|AEQUITAS_DB_MAX_CONNS)=[0-9]{1,6}|AEQUITAS_BLOCK_AUS_SPEICHER=[01])'
+          E='((AEQUITAS_WAL_FLUSH_(BATCH|CONCURRENCY|INTERVAL_MS)|AEQUITAS_WAL_QUEUE_DEPTH|AEQUITAS_DB_MAX_CONNS)=[0-9]{1,6}|AEQUITAS_BLOCK_AUS_SPEICHER=[01]|AEQUITAS_WAL_FLUSH_TEILE=[0-9]{1,2})'
           [ -z "$EINST" ] || [[ "$EINST" =~ ^$E(,$E)*$ ]] || { echo "::error::einstellungen unzulaessig"; exit 1; }
           echo "Einstellungen: ${EINST:-(wie laufender Knoten)}"
           ref="$A"
