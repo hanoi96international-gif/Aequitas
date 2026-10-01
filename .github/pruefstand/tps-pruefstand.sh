@@ -58,6 +58,8 @@ ENVDATEI="$(mktemp)"; chmod 600 "$ENVDATEI"
   echo "IS_PRIMARY_NODE=true"
   echo "SELF_URL=http://127.0.0.1:$PORT"
   echo "AUTO_HEAL_ON_DIVERGENCE=false"
+  # Wie deploy/validator/docker-compose.yml: keine Protokollzeile je Ueberweisung.
+  echo "AEQUITAS_RPC_QUIET_TX=1"
   # Nur dieser Pruefstand: der Generator laeuft von EINER Adresse aus, die
   # Begrenzung je Adresse wuerde sonst den Generator messen, nicht den Knoten.
   echo "AEQUITAS_RPC_RATE_LIMIT_MAX=1000000"

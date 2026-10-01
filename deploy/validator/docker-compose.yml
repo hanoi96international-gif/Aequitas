@@ -56,6 +56,11 @@ services:
       AEQUITAS_WAL_ENABLED: "1"
       AEQUITAS_WAL_PATH: /data/wal/aequitas_transfers.wal
       GOMEMLIMIT: ${GOMEMLIMIT:-5GiB}
+      # Keine zwei Protokollzeilen je Ueberweisung: bei Tausenden je Sekunde
+      # wird das Schreiben nach stdout selbst zum Engpass (gemessen
+      # 01.10.2026: 1.024 Goroutinen warteten darauf). Der Durchsatz wird
+      # weiter einmal je Sekunde gemeldet.
+      AEQUITAS_RPC_QUIET_TX: "1"
       AUTO_HEAL_ON_DIVERGENCE: "true"
       # Weicht der Kontostand dieses Knotens belegt von den Seeds ab (drei
       # Vergleiche in Folge, in der Ruhe, gleichauf), holt er den Zustand
