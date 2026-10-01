@@ -105,3 +105,38 @@ func TestWALDruck_VerwerfenSetztZaehlerZurueck(t *testing.T) {
 		t.Fatalf("Druckzaehler nach dem Verwerfen %d, erwartet 0", n)
 	}
 }
+
+// Missbrauch: Wird ohnehin abgewiesen, darf ein Buendel gueltig signierter
+// Ueberweisungen keine einzige Signatur-Wiederherstellung kosten.
+func TestWALDruck_KeineWiederherstellungBeiAbweisung(t *testing.T) {
+	walDruckZuruecksetzen()
+	defer walDruckZuruecksetzen()
+	inflightZuruecksetzen()
+	defer inflightZuruecksetzen()
+	noteBlockProduced()
+	walWarteschlangeStand.Store(walDruckSchwelle())
+
+	cs := newTestState()
+	srv := NewEVMRPCServer(&BlockDAG{state: cs}, cs)
+	var posten []string
+	for i := 0; i < 8; i++ {
+		raw, _ := signedRawHex(t, 0, testRecipientHex)
+		posten = append(posten, fmt.Sprintf(`{"jsonrpc":"2.0","id":%d,"method":"eth_sendRawTransaction","params":["%s"]}`, i, raw))
+	}
+	vorher := absenderTreffer.Load() + absenderVerfehlt.Load()
+	w := httptest.NewRecorder()
+	srv.handleRPC(w, httptest.NewRequest("POST", "/rpc", bytes.NewBufferString("["+strings.Join(posten, ",")+"]")))
+	if nachher := absenderTreffer.Load() + absenderVerfehlt.Load(); nachher != vorher {
+		t.Fatalf("%d Wiederherstellungen fuer abgewiesene Posten", nachher-vorher)
+	}
+	var antworten []map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &antworten); err != nil || len(antworten) != 8 {
+		t.Fatalf("Antwort: %v (%s)", err, w.Body.String())
+	}
+	for i, a := range antworten {
+		e, _ := a["error"].(map[string]interface{})
+		if e == nil || e["code"].(float64) != -32005 {
+			t.Fatalf("Posten %d: erwartet -32005, bekam %v", i, a)
+		}
+	}
+}
