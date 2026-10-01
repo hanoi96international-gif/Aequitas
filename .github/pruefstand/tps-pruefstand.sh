@@ -101,4 +101,9 @@ for k in ("produktion","produktion_phasen","eigenlast_bremse","rueckstau","infli
     if isinstance(v,dict): v={a:b for a,b in v.items() if a not in ("bedeutung","sync_verteilung")}
     print(k, json.dumps(v, ensure_ascii=False)[:900])
 '
+# Woher Konflikte kommen: nur Zeilen zu Versionskonflikten und den Zeilen
+# davor (Wegwerf-Knoten; Schluessel stehen nicht in diesen Zeilen).
+echo "== Versionskonflikte im Knotenprotokoll"
+docker logs "$KN" 2>&1 | grep -ciE 'version conflict' || true
+docker logs "$KN" 2>&1 | grep -iE -B3 'version conflict' | grep -viE 'key|secret|passw' | cut -c1-300 | head -24 || true
 echo "== Box waehrend des Laufs"; uptime
