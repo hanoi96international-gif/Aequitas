@@ -5,12 +5,7 @@ name: TPS-Pruefstand auf C1-Hardware (abgeschottet, beruehrt die Kette nicht)
 # .github/pruefstand/tps-pruefstand.sh. Zwei Staende (A/B) laufen
 # nacheinander unter denselben Bedingungen.
 on:
-  # Beim Push dieser Dateien auf den Arbeitszweig: main gegen den Zweig.
-  push:
-    branches: [claude/weiter-gehts-iczgit]
-    paths:
-      - ".github/workflows/pruefstand-tps-c1.yml"
-      - ".github/pruefstand/**"
+  # Nur von Hand (Regel: Server-Workflows nur per workflow_dispatch).
   workflow_dispatch:
     inputs:
       a: {description: "Quellstand A (Zweig/Tag/Commit)", required: true, default: "main"}
@@ -47,20 +42,14 @@ jobs:
       - name: Messen
         env:
           A: ${{ inputs.a || 'main' }}
-          B: ${{ github.event_name == 'push' && github.sha || inputs.b }}
+          B: ${{ inputs.b }}
           DAUER: ${{ inputs.dauer || '40s' }}
           KONTEN: ${{ inputs.konten || '1000' }}
           BUENDEL: ${{ inputs.buendel || '20' }}
         run: |
           set -euo pipefail
-          if [ "${{ github.event_name }}" = push ]; then
-            # Beim Push gelten die Werte aus der Datei (feste Namen, nichts ausgefuehrt).
-            while IFS='=' read -r k v; do
-              case "$k" in A|B|DAUER|KONTEN|BUENDEL) [ -n "$v" ] && printf -v "$k" '%s' "$v" ;; esac
-            done < <(grep -E '^[A-Z]+=[A-Za-z0-9._/-]*$' .github/pruefstand/parameter.txt)
-            [ -n "$B" ] || B="${{ github.sha }}"
-            [[ "$KONTEN" =~ ^[0-9]+$ ]] && [ "$KONTEN" -le 20000 ] || { echo "KONTEN unplausibel"; exit 1; }
-          fi
+          [[ "$KONTEN" =~ ^[0-9]+$ ]] && [ "$KONTEN" -le 20000 ] || { echo "KONTEN unplausibel"; exit 1; }
+          [[ "$BUENDEL" =~ ^[0-9]+$ ]] && [[ "$DAUER" =~ ^[0-9]+[smh]$ ]] || { echo "Parameter unplausibel"; exit 1; }
           lauf() {
             local ref="$1" name="$2"
             # Nur Namen/Commits, keine Optionen (git archive/rev-parse).
@@ -73,5 +62,5 @@ jobs:
           }
           echo "Laufender Knoten vorher: $(curl -s -m 10 http://$C1:8080/api/status | jq -c '{height, git_commit}')"
           lauf "$A" a
-          [ -n "$B" ] && lauf "$B" b
+          if [ -n "$B" ]; then lauf "$B" b; fi
           echo "Laufender Knoten nachher: $(curl -s -m 10 http://$C1:8080/api/status | jq -c '{height, git_commit}')"
