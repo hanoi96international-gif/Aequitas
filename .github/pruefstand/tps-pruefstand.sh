@@ -89,9 +89,15 @@ ENVDATEI="$(mktemp)"; chmod 600 "$ENVDATEI"
     printf '%s\n' "$EINSTELLUNGEN" | tr ',' '\n' \
       | grep -E '^((AEQUITAS_WAL_FLUSH_(BATCH|CONCURRENCY|INTERVAL_MS)|AEQUITAS_WAL_QUEUE_DEPTH|AEQUITAS_DB_MAX_CONNS)=[0-9]{1,6}|AEQUITAS_BLOCK_AUS_SPEICHER=[01])$' || true
   fi
-  # Nur dieser Pruefstand: der Generator laeuft von EINER Adresse aus, die
-  # Begrenzung je Adresse wuerde sonst den Generator messen, nicht den Knoten.
-  echo "AEQUITAS_RPC_RATE_LIMIT_MAX=1000000"
+  # Der Generator kommt ueber den SSH-Tunnel und den veroeffentlichten Port,
+  # beim Knoten also von EINER Adresse: dem Gateway des Pruefstand-Netzes.
+  # Statt die Ratenbegrenzung fuer alle aufzudrehen (verboten: Schutzgrenzen
+  # nie fuer Messungen lockern, AGENTS.md) wird nur diese Adresse
+  # freigestellt -- derselbe Mechanismus wie in Produktion fuer den
+  # Lastgenerator (rpc_frei.go). Inflight, Rueckstau und WAL-Druck gelten.
+  GW="$(docker network inspect "$NETZ" -f '{{(index .IPAM.Config 0).Gateway}}')"
+  [[ "$GW" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]] || { echo "Gateway des Pruefstand-Netzes unbekannt: '$GW'" >&2; exit 1; }
+  echo "AEQUITAS_RPC_RATE_LIMIT_FREI=$GW"
 } > "$ENVDATEI"
 
 starte() {
