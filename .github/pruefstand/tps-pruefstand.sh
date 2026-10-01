@@ -94,12 +94,30 @@ echo "== Last ($DAUER, Buendel $BUENDEL)"
 PROFIL="$(mktemp -d)"
 ( sleep 70; docker exec "$KN" wget -qO- 'http://127.0.0.1:6061/debug/pprof/profile?seconds=20' > "$PROFIL/cpu.pb" 2>/dev/null || true ) &
 PROFIL_PID=$!
+# Zeitreihe alle 2 s: wo staut es sich? (Rueckstand gesamt, davon noch im WAL,
+# offen in pending_txs, Inflight, Hoehe.) Nur Zahlen.
+( for i in $(seq 1 60); do
+    h="$(curl -s -m 2 "http://127.0.0.1:$PORT/api/health/combined" 2>/dev/null || true)"
+    p="$(docker exec "$PG" psql -tA -U postgres -d aequitas -c "SELECT count(*) FILTER (WHERE included_at=0) || '/' || count(*) FROM pending_txs" 2>/dev/null || true)"
+    printf '%s' "$h" | python3 -c '
+import json,sys
+try: d=json.load(sys.stdin)
+except Exception: sys.exit(0)
+r=d.get("rueckstau",{}); i=d.get("inflight",{})
+print("[reihe] t=%s rueckstau=%s gemessen=%s wal=%s pending_offen/gesamt=%s inflight=%s" % (sys.argv[1], r.get("aktuell"), r.get("gemessen"), d.get("wal_warteschlange"), sys.argv[2], i.get("aktuell")))
+' "$((i*2))" "$p" || true
+    sleep 2
+  done ) > "$PROFIL/reihe.txt" 2>&1 &
+REIHE_PID=$!
 docker run --rm --network host -v "$WERK":/w -w /w golang:1.26.8-alpine \
   ./loadtest -accounts accounts.csv -rpc "http://127.0.0.1:$PORT/rpc" -status "http://127.0.0.1:$PORT/api/status" \
     -phase warmup,run -duration "$DAUER" -batch-size "$BUENDEL" 2>&1 \
   | grep -vE '^warmup pair [0-9]+ ok|^\[monitor\]' | tail -25
 
 wait "$PROFIL_PID" 2>/dev/null || true
+kill "$REIHE_PID" 2>/dev/null || true
+echo "== Zeitreihe (alle 2 s ab Lastbeginn)"
+cat "$PROFIL/reihe.txt" 2>/dev/null | head -60 || true
 echo "== CPU-Profil (20 s im Messfenster, oberste Posten)"
 if [ -s "$PROFIL/cpu.pb" ]; then
   docker run --rm -v "$PROFIL":/p golang:1.26.8-alpine go tool pprof -top -nodecount=30 /p/cpu.pb 2>/dev/null | tail -32 || true
