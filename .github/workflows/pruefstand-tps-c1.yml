@@ -1,0 +1,67 @@
+name: TPS-Pruefstand auf C1-Hardware (abgeschottet, beruehrt die Kette nicht)
+# Baut einen ZWEITEN Knoten aus einem Quellstand, mit eigener Wegwerf-Postgres
+# und Testkonten, auf der C1-Box -- und misst ihn unter Last. Der laufende
+# Knoten, seine Datenbank und seine Ports bleiben unberuehrt; siehe
+# .github/pruefstand/tps-pruefstand.sh. Zwei Staende (A/B) laufen
+# nacheinander unter denselben Bedingungen.
+on:
+  # Beim Push dieser Dateien auf den Arbeitszweig: main gegen den Zweig.
+  push:
+    branches: [claude/weiter-gehts-iczgit]
+    paths:
+      - ".github/workflows/pruefstand-tps-c1.yml"
+      - ".github/pruefstand/**"
+  workflow_dispatch:
+    inputs:
+      a: {description: "Quellstand A (Zweig/Tag/Commit)", required: true, default: "main"}
+      b: {description: "Quellstand B (leer = nur A)", required: false, default: ""}
+      dauer: {description: "Messfenster", required: false, default: "40s"}
+      konten: {description: "Testkonten", required: false, default: "1000"}
+      buendel: {description: "Ueberweisungen je RPC-Buendel", required: false, default: "20"}
+permissions:
+  contents: read
+concurrency:
+  group: c1-knoten
+  cancel-in-progress: false
+jobs:
+  messen:
+    runs-on: ubuntu-latest
+    environment: produktion
+    timeout-minutes: 60
+    env:
+      C1: 188.172.229.121
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Schluessel und Host-Pruefung
+        env:
+          KEY: ${{ secrets.CONTABO_SSH_KEY }}
+        run: |
+          set -eu
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -t ed25519 $C1 2>/dev/null > ~/.ssh/kh1
+          ssh-keygen -lf ~/.ssh/kh1 | awk '{print $2}' | grep -qx 'SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA' || { echo "::error::Host-Schluessel von C1 passt nicht"; exit 1; }
+          cp ~/.ssh/kh1 ~/.ssh/known_hosts
+      - name: Messen
+        env:
+          A: ${{ inputs.a || 'main' }}
+          B: ${{ github.event_name == 'push' && github.sha || inputs.b }}
+          DAUER: ${{ inputs.dauer || '40s' }}
+          KONTEN: ${{ inputs.konten || '1000' }}
+          BUENDEL: ${{ inputs.buendel || '20' }}
+        run: |
+          set -euo pipefail
+          lauf() {
+            local ref="$1" name="$2"
+            git rev-parse --verify --quiet "origin/$ref^{commit}" >/dev/null && ref="origin/$ref"
+            local sha; sha="$(git rev-parse --short "$ref")"
+            echo "################ $name = $ref ($sha) ################"
+            git archive --format=tar "$ref" | ssh -o BatchMode=yes root@$C1 "rm -rf /root/pruefstand/$name && mkdir -p /root/pruefstand/$name && tar -x -C /root/pruefstand/$name"
+            ssh -o BatchMode=yes root@$C1 "QUELLE=/root/pruefstand/$name NAME=$name DAUER='$DAUER' KONTEN='$KONTEN' BUENDEL='$BUENDEL' bash -s" < .github/pruefstand/tps-pruefstand.sh
+          }
+          echo "Laufender Knoten vorher: $(curl -s -m 10 http://$C1:8080/api/status | jq -c '{height, git_commit}')"
+          lauf "$A" a
+          [ -n "$B" ] && lauf "$B" b
+          echo "Laufender Knoten nachher: $(curl -s -m 10 http://$C1:8080/api/status | jq -c '{height, git_commit}')"
