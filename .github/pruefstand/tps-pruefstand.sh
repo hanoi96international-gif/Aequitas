@@ -25,7 +25,7 @@ NETZ=pruefstand-net; PG=pruefstand-pg; KN=pruefstand-node; PORT=18080
 ENVDATEI=""
 aufraeumen() {
   [ -n "$ENVDATEI" ] && rm -f "$ENVDATEI"
-  docker rm -f "$KN" "$PG" >/dev/null 2>&1 || true
+  docker rm -f "$KN" "$PG" pruefstand-last >/dev/null 2>&1 || true
   docker volume rm -f pruefstand-wal >/dev/null 2>&1 || true
   docker network rm "$NETZ" >/dev/null 2>&1 || true
 }
@@ -115,13 +115,39 @@ print("[reihe] t=%s rueckstau=%s gemessen=%s wal=%s pending_offen/gesamt=%s infl
     sleep 2
   done ) > "$PROFIL/reihe.txt" 2>&1 &
 REIHE_PID=$!
-docker run --rm --network host -v "$WERK":/w -w /w golang:1.26.8-alpine \
+# CPU je Container (Prozent eines Kerns), alle ~3 s: Knoten, Postgres,
+# Lastgenerator und der laufende Knoten daneben. Daraus: Kerne je 10.000
+# Ueberweisungen/s -- was ein eigener Validator ohne Generator schafft.
+( for i in $(seq 1 40); do
+    docker stats --no-stream --format '{{.Name}} {{.CPUPerc}}' "$KN" "$PG" pruefstand-last aequitas-node 2>/dev/null | tr -d '%' | tr '\n' ' '
+    echo
+    sleep 1
+  done ) > "$PROFIL/cpu.txt" 2>&1 &
+CPU_PID=$!
+docker run --rm --name pruefstand-last --network host -v "$WERK":/w -w /w golang:1.26.8-alpine \
   ./loadtest -accounts accounts.csv -rpc "http://127.0.0.1:$PORT/rpc" -status "http://127.0.0.1:$PORT/api/status" \
     -phase warmup,run -duration "$DAUER" -batch-size "$BUENDEL" 2>&1 \
   | grep -vE '^warmup pair [0-9]+ ok|^\[monitor\]' | tail -25
 
 wait "$PROFIL_PID" 2>/dev/null || true
 kill "$REIHE_PID" 2>/dev/null || true
+kill "$CPU_PID" 2>/dev/null || true
+echo "== CPU je Container waehrend der Last (Mittel ueber Proben mit Generator > 50 %, Prozent eines Kerns)"
+python3 - "$PROFIL/cpu.txt" <<'PY' || true
+import sys
+summe, n = {}, 0
+for z in open(sys.argv[1]):
+    t = z.split()
+    w = {t[i]: float(t[i+1]) for i in range(0, len(t)-1, 2) if t[i+1].replace('.','',1).isdigit()}
+    if w.get("pruefstand-last", 0) < 50:
+        continue
+    n += 1
+    for k, v in w.items():
+        summe[k] = summe.get(k, 0) + v
+print("proben:", n)
+for k, v in sorted(summe.items()):
+    print("  %-18s %7.1f %%" % (k, v / max(n, 1)))
+PY
 echo "== Zeitreihe (alle 2 s ab Lastbeginn)"
 cat "$PROFIL/reihe.txt" 2>/dev/null | head -60 || true
 wait "$GR_PID" 2>/dev/null || true
