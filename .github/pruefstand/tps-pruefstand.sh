@@ -60,6 +60,12 @@ ENVDATEI="$(mktemp)"; chmod 600 "$ENVDATEI"
   echo "AUTO_HEAL_ON_DIVERGENCE=false"
   # Wie deploy/validator/docker-compose.yml: keine Protokollzeile je Ueberweisung.
   echo "AEQUITAS_RPC_QUIET_TX=1"
+  # Zusaetzliche Leistungsschalter fuer diesen Lauf (Workflow prueft die
+  # Liste; hier noch einmal, fail closed).
+  if [ -n "${EINSTELLUNGEN:-}" ]; then
+    printf '%s\n' "$EINSTELLUNGEN" | tr ',' '\n' \
+      | grep -E '^(AEQUITAS_WAL_FLUSH_(BATCH|CONCURRENCY|INTERVAL_MS)|AEQUITAS_WAL_QUEUE_DEPTH|AEQUITAS_DB_MAX_CONNS)=[0-9]{1,6}$' || true
+  fi
   # Nur dieser Pruefstand: der Generator laeuft von EINER Adresse aus, die
   # Begrenzung je Adresse wuerde sonst den Generator messen, nicht den Knoten.
   echo "AEQUITAS_RPC_RATE_LIMIT_MAX=1000000"
@@ -98,14 +104,13 @@ PROFIL="$(mktemp -d)"
 PROFIL_PID=$!
 # Worauf warten die Goroutinen? Schnappschuss mitten im Messfenster,
 # gruppiert nach identischem Stapel (debug=1), die groessten Gruppen.
-( for i in $(seq 1 150); do
-    n="$(curl -s -m 2 "http://127.0.0.1:$PORT/api/health/combined" 2>/dev/null | python3 -c 'import json,sys
-try: print(json.load(sys.stdin).get("inflight",{}).get("aktuell",0))
-except Exception: print(0)' 2>/dev/null || echo 0)"
-    [ "${n:-0}" -ge 10000 ] && sleep 5 && break
-    sleep 1
-  done
-  docker exec "$KN" wget -qO- 'http://127.0.0.1:6061/debug/pprof/goroutine?debug=1' > "$PROFIL/gr.txt" 2>/dev/null || true ) &
+( beste=0
+  for i in $(seq 1 60); do
+    docker exec "$KN" wget -qO- 'http://127.0.0.1:6061/debug/pprof/goroutine?debug=1' > "$PROFIL/gr.neu" 2>/dev/null || true
+    n="$(head -1 "$PROFIL/gr.neu" 2>/dev/null | grep -oE '[0-9]+$' || echo 0)"
+    if [ "${n:-0}" -gt "$beste" ]; then beste="$n"; mv "$PROFIL/gr.neu" "$PROFIL/gr.txt"; fi
+    sleep 2
+  done ) &
 GR_PID=$!
 # Zeitreihe alle 2 s: wo staut es sich? (Rueckstand gesamt, davon noch im WAL,
 # offen in pending_txs, Inflight, Hoehe.) Nur Zahlen.
@@ -160,7 +165,7 @@ PY
 echo "== Zeitreihe (alle 2 s ab Lastbeginn)"
 cat "$PROFIL/reihe.txt" 2>/dev/null | head -60 || true
 wait "$GR_PID" 2>/dev/null || true
-echo "== Goroutinen im Messfenster (groesste Gruppen gleicher Stapel)"
+echo "== Goroutinen im Messfenster (Schnappschuss mit den meisten Goroutinen; groesste Gruppen gleicher Stapel)"
 python3 - "$PROFIL/gr.txt" <<'PY' || true
 import re,sys
 try: t=open(sys.argv[1]).read()

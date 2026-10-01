@@ -13,6 +13,7 @@ on:
       dauer: {description: "Messfenster", required: false, default: "40s"}
       konten: {description: "Testkonten", required: false, default: "1000"}
       buendel: {description: "Ueberweisungen je RPC-Buendel", required: false, default: "20"}
+      b_einstellungen: {description: "Nur fuer B: NAME=ZAHL,... (nur AEQUITAS_WAL_FLUSH_*, AEQUITAS_WAL_QUEUE_DEPTH, AEQUITAS_DB_MAX_CONNS)", required: false, default: ""}
 permissions:
   contents: read
 concurrency:
@@ -46,21 +47,26 @@ jobs:
           DAUER: ${{ inputs.dauer || '40s' }}
           KONTEN: ${{ inputs.konten || '1000' }}
           BUENDEL: ${{ inputs.buendel || '20' }}
+          B_EINSTELLUNGEN: ${{ inputs.b_einstellungen }}
         run: |
           set -euo pipefail
           [[ "$KONTEN" =~ ^[0-9]+$ ]] && [ "$KONTEN" -le 20000 ] || { echo "KONTEN unplausibel"; exit 1; }
           [[ "$BUENDEL" =~ ^[0-9]+$ ]] && [[ "$DAUER" =~ ^[0-9]+[smh]$ ]] || { echo "Parameter unplausibel"; exit 1; }
+          # Nur Leistungsschalter aus einer festen Liste, nur Zahlen -- keine
+          # Schutzgrenze (Rate-Limit, Inflight, Rueckstau) ist darunter.
+          E='(AEQUITAS_WAL_FLUSH_(BATCH|CONCURRENCY|INTERVAL_MS)|AEQUITAS_WAL_QUEUE_DEPTH|AEQUITAS_DB_MAX_CONNS)=[0-9]{1,6}'
+          [ -z "$B_EINSTELLUNGEN" ] || [[ "$B_EINSTELLUNGEN" =~ ^$E(,$E)*$ ]] || { echo "::error::b_einstellungen unzulaessig"; exit 1; }
           lauf() {
-            local ref="$1" name="$2"
+            local ref="$1" name="$2" einst="${3:-}"
             # Nur Namen/Commits, keine Optionen (git archive/rev-parse).
             [[ "$ref" =~ ^[A-Za-z0-9._/][A-Za-z0-9._/-]*$ ]] || { echo "::error::Quellstand unzulaessig"; exit 1; }
             git rev-parse --verify --quiet "origin/$ref^{commit}" >/dev/null && ref="origin/$ref"
             local sha; sha="$(git rev-parse --short "$ref")"
             echo "################ $name = $ref ($sha) ################"
             git archive --format=tar "$ref" | ssh -o BatchMode=yes root@$C1 "rm -rf /root/pruefstand/$name && mkdir -p /root/pruefstand/$name && tar -x -C /root/pruefstand/$name"
-            ssh -o BatchMode=yes root@$C1 "QUELLE=/root/pruefstand/$name NAME=$name DAUER='$DAUER' KONTEN='$KONTEN' BUENDEL='$BUENDEL' bash -s" < .github/pruefstand/tps-pruefstand.sh
+            ssh -o BatchMode=yes root@$C1 "QUELLE=/root/pruefstand/$name NAME=$name DAUER='$DAUER' KONTEN='$KONTEN' BUENDEL='$BUENDEL' EINSTELLUNGEN='$einst' bash -s" < .github/pruefstand/tps-pruefstand.sh
           }
           echo "Laufender Knoten vorher: $(curl -s -m 10 http://$C1:8080/api/status | jq -c '{height, git_commit}')"
           lauf "$A" a
-          if [ -n "$B" ]; then lauf "$B" b; fi
+          if [ -n "$B" ]; then lauf "$B" b "$B_EINSTELLUNGEN"; fi
           echo "Laufender Knoten nachher: $(curl -s -m 10 http://$C1:8080/api/status | jq -c '{height, git_commit}')"
