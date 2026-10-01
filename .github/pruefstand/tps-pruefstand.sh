@@ -98,7 +98,14 @@ PROFIL="$(mktemp -d)"
 PROFIL_PID=$!
 # Worauf warten die Goroutinen? Schnappschuss mitten im Messfenster,
 # gruppiert nach identischem Stapel (debug=1), die groessten Gruppen.
-( sleep 80; docker exec "$KN" wget -qO- 'http://127.0.0.1:6061/debug/pprof/goroutine?debug=1' > "$PROFIL/gr.txt" 2>/dev/null || true ) &
+( for i in $(seq 1 150); do
+    n="$(curl -s -m 2 "http://127.0.0.1:$PORT/api/health/combined" 2>/dev/null | python3 -c 'import json,sys
+try: print(json.load(sys.stdin).get("inflight",{}).get("aktuell",0))
+except Exception: print(0)' 2>/dev/null || echo 0)"
+    [ "${n:-0}" -ge 10000 ] && sleep 5 && break
+    sleep 1
+  done
+  docker exec "$KN" wget -qO- 'http://127.0.0.1:6061/debug/pprof/goroutine?debug=1' > "$PROFIL/gr.txt" 2>/dev/null || true ) &
 GR_PID=$!
 # Zeitreihe alle 2 s: wo staut es sich? (Rueckstand gesamt, davon noch im WAL,
 # offen in pending_txs, Inflight, Hoehe.) Nur Zahlen.
@@ -118,8 +125,10 @@ REIHE_PID=$!
 # CPU je Container (Prozent eines Kerns), alle ~3 s: Knoten, Postgres,
 # Lastgenerator und der laufende Knoten daneben. Daraus: Kerne je 10.000
 # Ueberweisungen/s -- was ein eigener Validator ohne Generator schafft.
-( for i in $(seq 1 40); do
-    docker stats --no-stream --format '{{.Name}} {{.CPUPerc}}' "$KN" "$PG" pruefstand-last aequitas-node 2>/dev/null | tr -d '%' | tr '\n' ' '
+( for i in $(seq 1 30); do
+    for c in "$KN" "$PG" pruefstand-last aequitas-node; do
+      docker stats --no-stream --format '{{.Name}} {{.CPUPerc}}' "$c" 2>/dev/null | tr -d '%' | tr '\n' ' '
+    done
     echo
     sleep 1
   done ) > "$PROFIL/cpu.txt" 2>&1 &
@@ -132,14 +141,14 @@ docker run --rm --name pruefstand-last --network host -v "$WERK":/w -w /w golang
 wait "$PROFIL_PID" 2>/dev/null || true
 kill "$REIHE_PID" 2>/dev/null || true
 kill "$CPU_PID" 2>/dev/null || true
-echo "== CPU je Container waehrend der Last (Mittel ueber Proben mit Generator > 50 %, Prozent eines Kerns)"
+echo "== CPU je Container waehrend der Last (Mittel ueber Proben mit Pruefknoten > 100 %, Prozent eines Kerns)"
 python3 - "$PROFIL/cpu.txt" <<'PY' || true
 import sys
 summe, n = {}, 0
 for z in open(sys.argv[1]):
     t = z.split()
     w = {t[i]: float(t[i+1]) for i in range(0, len(t)-1, 2) if t[i+1].replace('.','',1).isdigit()}
-    if w.get("pruefstand-last", 0) < 50:
+    if w.get("pruefstand-node", 0) < 100:
         continue
     n += 1
     for k, v in w.items():
