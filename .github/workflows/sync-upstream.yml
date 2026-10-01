@@ -8,17 +8,31 @@ on:
     - cron: '0 */6 * * *'   # every 6 hours
   workflow_dispatch:          # manual trigger available
 
+# Nur schreiben, was der Abgleich braucht.
+permissions:
+  contents: write
+
 jobs:
   sync:
     runs-on: ubuntu-latest
     # Only run in forks, not in the upstream repo itself
     if: github.repository != 'hanoi96international-gif/Aequitas'
     steps:
-      - name: Sync fork with upstream
-        uses: aormsby/Fork-Sync-With-Upstream-action@v3.4
+      # Ohne Fremd-Action (seit 01.10.2026): aormsby/Fork-Sync-With-Upstream
+      # lief auf einer abgekuendigten Node-Version. Dasselbe mit git, und nur
+      # vorwaerts: hat der Fork eigene Commits auf main, wird NICHTS
+      # ueberschrieben (--ff-only), der Lauf meldet es.
+      - uses: actions/checkout@v5
         with:
-          upstream_sync_repo: hanoi96international-gif/Aequitas
-          upstream_sync_branch: main
-          target_sync_branch: main
-          target_repo_token: ${{ secrets.GITHUB_TOKEN }}
-          test_mode: false
+          ref: main
+          fetch-depth: 0
+      - name: Sync fork with upstream
+        run: |
+          set -euo pipefail
+          git remote add upstream https://github.com/hanoi96international-gif/Aequitas.git
+          git fetch --no-tags upstream main
+          if git merge-base --is-ancestor upstream/main HEAD; then
+            echo "Fork ist aktuell."; exit 0
+          fi
+          git merge --ff-only upstream/main || { echo "::error::Fork hat eigene Commits auf main -- nicht automatisch abgleichbar"; exit 1; }
+          git push origin HEAD:main
