@@ -558,14 +558,9 @@ func (s *EVMRPCServer) handleRPC(w http.ResponseWriter, r *http.Request) {
 		// waehrend der Knoten durchgehend fehlerfrei arbeitete. Siehe
 		// inflight_grenze.go.
 		if !inflightEintritt(int64(len(batch))) {
-			results := make([]interface{}, 0, len(batch))
-			for range batch {
-				results = append(results, errorResponse(nil, -32005,
-					"server busy: too much work in flight, try again shortly"))
-			}
 			handlerItems = len(batch)
 			encodeStart := time.Now()
-			json.NewEncoder(w).Encode(results)
+			schreibeBesetztBuendel(w, len(batch), "server busy: too much work in flight, try again shortly")
 			noteRPCEncode(time.Since(encodeStart))
 			return
 		}
@@ -750,7 +745,7 @@ func (s *EVMRPCServer) handleRPC(w http.ResponseWriter, r *http.Request) {
 	noteRPCEncode(time.Since(encodeStart))
 }
 
-func (s *EVMRPCServer) handleSingle(body []byte, pre *precomputedSendTx) map[string]interface{} {
+func (s *EVMRPCServer) handleSingle(body []byte, pre *precomputedSendTx) interface{} {
 	var req struct {
 		JSONRPC string            `json:"jsonrpc"`
 		ID      interface{}       `json:"id"`
@@ -766,21 +761,9 @@ func (s *EVMRPCServer) handleSingle(body []byte, pre *precomputedSendTx) map[str
 
 	result, rpcErr := s.dispatch(req.Method, req.Params, pre)
 	if rpcErr != nil {
-		return map[string]interface{}{
-			"jsonrpc": "2.0",
-			"id":      req.ID,
-			"error": map[string]interface{}{
-				"code":    rpcErr.Code,
-				"message": rpcErr.Message,
-			},
-		}
+		return errorResponse(req.ID, rpcErr.Code, rpcErr.Message)
 	}
-
-	return map[string]interface{}{
-		"jsonrpc": "2.0",
-		"id":      req.ID,
-		"result":  result,
-	}
+	return erfolgResponse(req.ID, result)
 }
 
 // ─── DISPATCH ─────────────────────────────────────────────────────────────────
@@ -2297,36 +2280,10 @@ const rpcMaxBuendel = 100
 func schreibeBesetzt(w http.ResponseWriter, body []byte, posten int) {
 	const text = "server busy: too much work in flight, try again shortly"
 	if len(body) > 0 && body[0] == '[' {
-		results := make([]interface{}, 0, posten)
-		for i := 0; i < posten; i++ {
-			results = append(results, errorResponse(nil, -32005, text))
-		}
-		json.NewEncoder(w).Encode(results)
+		schreibeBesetztBuendel(w, posten, text)
 		return
 	}
 	writeError(w, -32005, text, nil)
-}
-
-func writeError(w http.ResponseWriter, code int, message string, id interface{}) {
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"jsonrpc": "2.0",
-		"id":      id,
-		"error": map[string]interface{}{
-			"code":    code,
-			"message": message,
-		},
-	})
-}
-
-func errorResponse(id interface{}, code int, message string) map[string]interface{} {
-	return map[string]interface{}{
-		"jsonrpc": "2.0",
-		"id":      id,
-		"error": map[string]interface{}{
-			"code":    code,
-			"message": message,
-		},
-	}
 }
 
 func min4(a, b int) int {
