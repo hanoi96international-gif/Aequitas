@@ -68,7 +68,7 @@ for i in $(seq 1 30); do docker exec "$PG" pg_isready -U postgres -d aequitas >/
 # Dieselben Leistungs-Einstellungen wie der laufende Knoten -- nur Namen aus
 # einer festen Liste, keine Schluessel, keine Adressen.
 TUNING="$(docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null \
-  | grep -E '^(ENABLE_MULTI_BLOCK_TICK|BLOCK_TIME_MS|GOMEMLIMIT|GOGC|AEQUITAS_WAL_(MAX|FLUSH)[A-Z_]*|AEQUITAS_INFLIGHT[A-Z_]*|AEQUITAS_BLOCK[A-Z_]*|AEQUITAS_RUECKSTAU[A-Z_]*)=' || true)"
+  | grep -E '^(ENABLE_MULTI_BLOCK_TICK|BLOCK_TIME_MS|GOMEMLIMIT|GOGC|AEQUITAS_WAL_(MAX|FLUSH)[A-Z_]*|AEQUITAS_INFLIGHT[A-Z_]*|AEQUITAS_BLOCK[A-Z_]*|AEQUITAS_RUECKSTAU[A-Z_]*|AEQUITAS_DB_MAX_CONNS)=' || true)"
 echo "Einstellungen wie der laufende Knoten:"; printf '%s\n' "$TUNING" | sed 's/^/  /'
 ENVDATEI="$(mktemp)"; chmod 600 "$ENVDATEI"
 {
