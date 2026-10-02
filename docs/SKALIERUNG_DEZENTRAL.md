@@ -89,6 +89,8 @@ Heute führt nur der serielle Pfad `nachUeberweisung` (Umsatz, Freibeträge) aus
 
 **Umgesetzt (26.09.2026).** `absender_cache.go` ordnet dem Hash der Rohtransaktion den Absender zu. Der Hash wird aus den Bytes berechnet, nie aus dem TxHash-Feld. Der Cache ist fest begrenzt und merkt sich nur Erfolge. Die Nonce bei der Annahme wird nur gelesen, nicht erneut wiederhergestellt. `personal_sign`-Unterschriften der Aufträge werden ebenso nur einmal geprüft.
 
+**Schnellere Kurvenrechnung (02.10.2026).** Die Wiederherstellung des Absenders war mit 88 von 165 µs der größte Posten je angenommener Überweisung (`BenchmarkAnnahmeBuendelDB`: Postgres, WAL und Speicherkorb wie auf C1). Jeder Validator zahlt sie beim Nachspielen noch einmal. `x/humanity/secp` rechnet sie mit libsecp256k1 v0.6.0 statt mit der Fassung von 2017 aus go-ethereum v1.13. Gemessen auf demselben Rechner: 35 % weniger Zeit je Wiederherstellung und 15 % weniger CPU je angenommener Überweisung. Die Regeln (Chain-ID, Transaktionsarten, hohes S, V-Werte) stehen in `absender_schnell.go` wie in go-ethereum. Ein Vergleichstest gegen `types.Sender` prüft sie über alle Arten und über tausende kaputte Signaturen. Ein Wechsel auf go-ethereum v1.17 hätte die EVM und damit Konsensregeln mitgezogen.
+
 ### 1.3 Schreibmenge sammeln, einmal je Block schreiben
 
 - Phase 1 lädt alle betroffenen Konten, Phase 2 rechnet rein im Speicher, Phase 3 schreibt **eine** gebündelte Anweisung je Block. Das Muster steht schon in `replay_parallel.go` und wird auf den ganzen Block ausgedehnt, nicht nur auf disjunkte Überweisungsfolgen.

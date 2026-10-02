@@ -5,6 +5,7 @@ go 1.26.8
 require (
 	github.com/ethereum/go-ethereum v1.13.0
 	github.com/hdevalence/ed25519consensus v0.2.0
+	github.com/holiman/uint256 v1.2.3
 	github.com/lib/pq v1.12.3
 	github.com/libp2p/go-libp2p v0.50.0
 	golang.org/x/crypto v0.54.0
@@ -45,7 +46,6 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/holiman/bloomfilter/v2 v2.0.3 // indirect
-	github.com/holiman/uint256 v1.2.3 // indirect
 	github.com/huin/goupnp v1.3.0 // indirect
 	github.com/ipfs/go-cid v0.6.2 // indirect
 	github.com/jackpal/go-nat-pmp v1.0.2 // indirect
