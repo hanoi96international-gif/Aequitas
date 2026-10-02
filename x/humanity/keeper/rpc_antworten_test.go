@@ -68,7 +68,7 @@ func TestSchreibeBesetztBuendel_WieEncoder(t *testing.T) {
 // Die Liste der vorberechneten Texte waechst nicht ueber ihre Grenze.
 func TestBesetztPosten_Begrenzt(t *testing.T) {
 	for i := 0; i < 100; i++ {
-		besetztPosten(string(rune('a' + i%26)) + string(rune('A'+i/26)))
+		besetztPosten(string(rune('a'+i%26)) + string(rune('A'+i/26)))
 	}
 	besetztPostenMu.Lock()
 	n := len(besetztPostenBytes)
