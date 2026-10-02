@@ -149,6 +149,9 @@ PROFIL="$(mktemp -d)"
 PROFIL_NACH=70; [ "$PHASE" = messen ] && PROFIL_NACH=15
 ( sleep "$PROFIL_NACH"; docker exec "$KN" wget -qO- 'http://127.0.0.1:6061/debug/pprof/profile?seconds=20' > "$PROFIL/cpu.pb" 2>/dev/null || true ) &
 PROFIL_PID=$!
+# Allokationen: kumuliert seit Start, kurz nach dem CPU-Profil abgeholt.
+( sleep "$PROFIL_NACH"; sleep 22; docker exec "$KN" wget -qO- 'http://127.0.0.1:6061/debug/pprof/allocs' > "$PROFIL/allocs.pb" 2>/dev/null || true ) &
+ALLOC_PID=$!
 # Worauf warten die Goroutinen? Schnappschuss mitten im Messfenster,
 # gruppiert nach identischem Stapel (debug=1), die groessten Gruppen.
 ( beste=0
@@ -208,6 +211,7 @@ else
 fi
 
 wait "$PROFIL_PID" 2>/dev/null || true
+wait "$ALLOC_PID" 2>/dev/null || true
 kill "$REIHE_PID" 2>/dev/null || true
 echo "== CPU je Container im Lastfenster (Kerne im Mittel, aus cgroup cpu.stat)"
 wait "$CPU_PID" 2>/dev/null || true
@@ -266,8 +270,19 @@ echo "== CPU-Profil (20 s im Messfenster, oberste Posten)"
 if [ -s "$PROFIL/cpu.pb" ]; then
   docker run --rm -v "$PROFIL":/p golang:1.26.8-alpine go tool pprof -top -nodecount=30 /p/cpu.pb 2>/dev/null | tail -32 || true
   docker run --rm -v "$PROFIL":/p golang:1.26.8-alpine go tool pprof -top -cum -nodecount=30 /p/cpu.pb 2>/dev/null | tail -30 || true
+  # Ohne die Signatur-Wiederherstellung: wohin der Rest der Annahme-CPU geht
+  # (Lauf 17: 245 us je Ueberweisung, davon nur ~70 us Signatur).
+  echo "== CPU ohne Signatur (nur Knoten-Funktionen, kumuliert)"
+  docker run --rm -v "$PROFIL":/p golang:1.26.8-alpine go tool pprof -top -cum -nodecount=45 \
+    -focus='keeper\.' -ignore='secp256k1|types\.Sender|recoverPlain' /p/cpu.pb 2>/dev/null | tail -45 || true
 else
   echo "(kein Profil)"
+fi
+echo "== Allokationen seit Start (alloc_space, oberste Posten)"
+if [ -s "$PROFIL/allocs.pb" ]; then
+  docker run --rm -v "$PROFIL":/p golang:1.26.8-alpine go tool pprof -sample_index=alloc_space -top -nodecount=30 /p/allocs.pb 2>/dev/null | tail -32 || true
+else
+  echo "(kein Allokationsprofil)"
 fi
 rm -rf "$PROFIL"
 echo "== Knoten nach dem Lauf"

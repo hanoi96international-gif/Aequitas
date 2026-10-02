@@ -38,8 +38,20 @@ func TestHandleSingle_VorabGeparstGleicheAntwort(t *testing.T) {
 func TestHandleSingle_OhneVorabParseFehler(t *testing.T) {
 	s := &EVMRPCServer{}
 	r := s.handleSingle([]byte(`{kaputt`), nil)
-	e, _ := r["error"].(map[string]interface{})
-	if e == nil || e["code"] != -32700 {
-		t.Fatalf("erwartet -32700, bekam %v", r)
+	// Auf dem Draht pruefen, so wie ein Client es liest.
+	roh, err := json.Marshal(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]interface{}
+	if err := json.Unmarshal(roh, &m); err != nil {
+		t.Fatal(err)
+	}
+	e, _ := m["error"].(map[string]interface{})
+	if e == nil || e["code"] != float64(-32700) {
+		t.Fatalf("erwartet -32700, bekam %s", roh)
+	}
+	if _, hat := m["result"]; hat {
+		t.Fatalf("Fehlerantwort darf kein result tragen: %s", roh)
 	}
 }

@@ -558,14 +558,9 @@ func (s *EVMRPCServer) handleRPC(w http.ResponseWriter, r *http.Request) {
 		// waehrend der Knoten durchgehend fehlerfrei arbeitete. Siehe
 		// inflight_grenze.go.
 		if !inflightEintritt(int64(len(batch))) {
-			results := make([]interface{}, 0, len(batch))
-			for range batch {
-				results = append(results, errorResponse(nil, -32005,
-					"server busy: too much work in flight, try again shortly"))
-			}
 			handlerItems = len(batch)
 			encodeStart := time.Now()
-			json.NewEncoder(w).Encode(results)
+			schreibeBesetztBuendel(w, len(batch), "server busy: too much work in flight, try again shortly")
 			noteRPCEncode(time.Since(encodeStart))
 			return
 		}
@@ -750,7 +745,7 @@ func (s *EVMRPCServer) handleRPC(w http.ResponseWriter, r *http.Request) {
 	noteRPCEncode(time.Since(encodeStart))
 }
 
-func (s *EVMRPCServer) handleSingle(body []byte, pre *precomputedSendTx) map[string]interface{} {
+func (s *EVMRPCServer) handleSingle(body []byte, pre *precomputedSendTx) interface{} {
 	var req struct {
 		JSONRPC string            `json:"jsonrpc"`
 		ID      interface{}       `json:"id"`
@@ -766,21 +761,9 @@ func (s *EVMRPCServer) handleSingle(body []byte, pre *precomputedSendTx) map[str
 
 	result, rpcErr := s.dispatch(req.Method, req.Params, pre)
 	if rpcErr != nil {
-		return map[string]interface{}{
-			"jsonrpc": "2.0",
-			"id":      req.ID,
-			"error": map[string]interface{}{
-				"code":    rpcErr.Code,
-				"message": rpcErr.Message,
-			},
-		}
+		return errorResponse(req.ID, rpcErr.Code, rpcErr.Message)
 	}
-
-	return map[string]interface{}{
-		"jsonrpc": "2.0",
-		"id":      req.ID,
-		"result":  result,
-	}
+	return erfolgResponse(req.ID, result)
 }
 
 // ─── DISPATCH ─────────────────────────────────────────────────────────────────
@@ -987,7 +970,7 @@ func (s *EVMRPCServer) ethCall(params []json.RawMessage) (interface{}, *RPCError
 
 	from := common.HexToAddress(callObj["from"])
 	to := common.HexToAddress(callObj["to"])
-	toStr := strings.ToLower(to.Hex())
+	toStr := adresseKlein(to)
 	data, _ := hex.DecodeString(strings.TrimPrefix(callObj["data"], "0x"))
 
 	if evmRPCVerboseLog() {
@@ -1239,7 +1222,7 @@ func decodeAndRecoverSender(rawHex string) (tx *types.Transaction, senderAddr st
 		return nil, "", true, fmt.Errorf("Cannot recover sender: %v", sErr)
 	}
 
-	absender := strings.ToLower(sender.Hex())
+	absender := adresseKlein(sender)
 	absenderSpeicher.merken(h, absender)
 	return t, absender, false, nil
 }
@@ -1406,7 +1389,7 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage, pre *precomp
 	// this transaction's nonce.
 	toAddrForReceipt := ""
 	if tx.To() != nil {
-		toAddrForReceipt = strings.ToLower(tx.To().Hex())
+		toAddrForReceipt = adresseKlein(*tx.To())
 	}
 
 	if pre != nil && pre.nonceReserved {
@@ -1457,7 +1440,7 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage, pre *precomp
 	// ── SIMPLE AEQ TRANSFER (native value transfer, no calldata) ─────────────
 	if tx.To() != nil && len(tx.Data()) == 0 && tx.Value().Sign() > 0 {
 		phBetragStart := time.Now()
-		toAddr := strings.ToLower(tx.To().Hex())
+		toAddr := adresseKlein(*tx.To())
 		decimals := new(big.Float).SetInt(weiPerAEQ)
 		valueFloat, _ := new(big.Float).Quo(new(big.Float).SetInt(tx.Value()), decimals).Float64()
 		merkeRPCBetrag(time.Since(phBetragStart))
@@ -1535,10 +1518,10 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage, pre *precomp
 	// Route transfer(address,uint256) calls to the V7 contract through Go state
 	// so both ledgers stay in sync (Go state is authoritative for balances).
 	if tx.To() != nil && len(tx.Data()) >= 68 &&
-		strings.ToLower(tx.To().Hex()) == strings.ToLower(V7_CONTRACT_ADDR) &&
+		adresseKlein(*tx.To()) == strings.ToLower(V7_CONTRACT_ADDR) &&
 		hex.EncodeToString(tx.Data()[:4]) == "a9059cbb" {
 		toBytes := tx.Data()[16:36]
-		toAddr := strings.ToLower(common.BytesToAddress(toBytes).Hex())
+		toAddr := adresseKlein(common.BytesToAddress(toBytes))
 		amountBig := new(big.Int).SetBytes(tx.Data()[36:68])
 		decimals := new(big.Float).SetInt(weiPerAEQ)
 		amountFloat, _ := new(big.Float).Quo(new(big.Float).SetInt(amountBig), decimals).Float64()
@@ -1608,7 +1591,7 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage, pre *precomp
 			return nil, &RPCError{Code: -32603, Message: "Deploy failed: " + deployErr.Error()}
 		}
 
-		contractAddrStr := strings.ToLower(contractAddr.Hex())
+		contractAddrStr := adresseKlein(contractAddr)
 		sh := s.txMetaShardFor(txHash)
 		sh.mu.Lock()
 		sh.deployed[txHash] = contractAddrStr
@@ -1649,7 +1632,7 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage, pre *precomp
 	}
 	if tx.To() != nil && len(tx.Data()) > 0 && s.evm != nil {
 		toAddr := *tx.To()
-		toStr := strings.ToLower(toAddr.Hex())
+		toStr := adresseKlein(toAddr)
 
 		// Reload contract from DB
 		bytecode, dbErr := s.state.LoadContract(toStr)
@@ -2297,36 +2280,10 @@ const rpcMaxBuendel = 100
 func schreibeBesetzt(w http.ResponseWriter, body []byte, posten int) {
 	const text = "server busy: too much work in flight, try again shortly"
 	if len(body) > 0 && body[0] == '[' {
-		results := make([]interface{}, 0, posten)
-		for i := 0; i < posten; i++ {
-			results = append(results, errorResponse(nil, -32005, text))
-		}
-		json.NewEncoder(w).Encode(results)
+		schreibeBesetztBuendel(w, posten, text)
 		return
 	}
 	writeError(w, -32005, text, nil)
-}
-
-func writeError(w http.ResponseWriter, code int, message string, id interface{}) {
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"jsonrpc": "2.0",
-		"id":      id,
-		"error": map[string]interface{}{
-			"code":    code,
-			"message": message,
-		},
-	})
-}
-
-func errorResponse(id interface{}, code int, message string) map[string]interface{} {
-	return map[string]interface{}{
-		"jsonrpc": "2.0",
-		"id":      id,
-		"error": map[string]interface{}{
-			"code":    code,
-			"message": message,
-		},
-	}
 }
 
 func min4(a, b int) int {

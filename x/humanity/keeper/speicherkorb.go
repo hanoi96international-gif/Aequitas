@@ -264,6 +264,24 @@ func blockKorbMischen(korb []korbEintrag, zeilen []langsameZeile, deckel int, al
 		return zeilen[i].id < zeilen[j].id
 	})
 	neuBis = altBis
+	// Kapazitaet vorab: ohne sie wuchsen txs und genommen beim Anhaengen in
+	// Stufen und wurden dabei mehrfach ganz umkopiert -- bei 7.000 grossen
+	// Transaction-Werten je Block 10 % aller Allokationen des Knotens
+	// (Pruefstand Lauf 18, alloc_space).
+	if n := len(korb) + len(zeilen); n > 0 {
+		if n > deckel {
+			n = deckel
+		}
+		if n < 0 {
+			n = 0
+		}
+		txs = make([]Transaction, 0, n)
+		m := len(korb)
+		if m > n {
+			m = n
+		}
+		genommen = make([]korbEintrag, 0, m)
+	}
 	i, j := 0, 0
 	for len(txs) < deckel && (i < len(korb) || j < len(zeilen)) {
 		nimmZeile := false
