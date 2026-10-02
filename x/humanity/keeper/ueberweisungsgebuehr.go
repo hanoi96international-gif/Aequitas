@@ -4,6 +4,7 @@ import (
 	"context"
 	"math"
 	"sync/atomic"
+	"time"
 )
 
 // Ueberweisungsgebuehr: dieselbe auf JEDER Ueberweisung, ganz ans
@@ -83,7 +84,9 @@ func (cs *ChainState) gebuehrenInsGrundeinkommen(summe float64) {
 	if summe <= 0 {
 		return
 	}
+	t0 := time.Now()
 	cs.mu.Lock()
+	tuGebuehrSperre.seit(t0)
 	cs.ensureAccountLoadedCtx(context.Background(), ubiPoolAddr)
 	ubiAcc, ok := cs.accounts.Get(ubiPoolAddr)
 	if !ok {

@@ -309,6 +309,7 @@ func (cs *ChainState) SpeicherKorbStand() map[string]interface{} {
 	s["an"] = true
 	s["flush_teile"] = walFlushTeileWert
 	s["flush_aufgeteilt"] = walFlushTeileLaeufe.Load()
+	s["flush_zusammengefasst"] = walFlushZusammengefasst.Load()
 	s["bis"] = cs.korbBis.Load()
 	s["bedeutung"] = "Bloecke aus dem Speicher (" + speicherKorbEnv + "=1): angenommene Schnellpfad-Ueberweisungen in WAL-Reihenfolge; bis = hoechste Seq, die in einem gespeicherten Block steht (mit dem Block in einer Transaktion gesichert)."
 	return s
@@ -335,10 +336,13 @@ func (cs *ChainState) SaveBlockMitKorb(block *Block, ids []int64, bis uint64) er
 	if cs.db == nil {
 		return nil
 	}
+	t0 := time.Now()
 	args, err := cs.blockZeileArgs(block)
 	if err != nil {
 		return err
 	}
+	tuSpeichernArgs.seit(t0)
+	defer tuSpeichernDB.seit(time.Now())
 	tx, err := cs.db.Begin()
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
@@ -463,7 +467,9 @@ func (cs *ChainState) korbFuerBlock(deckel int) (txs []Transaction, ids []int64,
 	}
 	var zeilen []langsameZeile
 	if cs.db != nil {
+		t0 := time.Now()
 		zeilen = cs.ladeOffeneZeilen(deckel, int64(grenze)+1)
+		tuKorbOffeneZeilen.seit(t0)
 	}
 	var zurueck []korbEintrag
 	var freigeben []int64

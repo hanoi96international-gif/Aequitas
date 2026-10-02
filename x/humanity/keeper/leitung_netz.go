@@ -468,6 +468,7 @@ func (cs *ChainState) leitungUnverteiltVerwerfen() (wal int, korb int64) {
 	cs.walFlushMu.Lock()
 	wal = len(cs.walFlushQueue)
 	cs.walFlushQueue = nil
+	cs.walInSchlange = nil
 	walWarteschlangeStand.Store(0) // sonst wiese die Annahme weiter ab (wal_annahme_druck.go)
 	cs.walFlushMu.Unlock()
 	for i := 0; i < 300 && cs.walFlushSem != nil && len(cs.walFlushSem) > 0; i++ {

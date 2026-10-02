@@ -508,8 +508,13 @@ type ChainState struct {
 	// und laufende Flushes), walRohUnterwegs die Absender eines gerade
 	// laufenden Flushes. Beides haelt die Nonces eines Absenders in
 	// pending_txs in steigender Reihenfolge (wal_nonce_reihenfolge.go).
-	walRohOffen      map[string]int
-	walRohUnterwegs  map[string]int
+	walRohOffen     map[string]int
+	walRohUnterwegs map[string]int
+	// Stufe 2a (wal_flush_zusammenfassen.go), unter walFlushMu: in wie
+	// vielen wartenden Eintraegen ein Konto steht, und die kleinste Seq je
+	// laufendem Flush.
+	walInSchlange    map[string]int
+	walUnterwegsMin  map[uint64]int
 	walFlushOnce     sync.Once
 	walFlushStopCh   chan struct{} // see stopWALFlushWorkerForTest's own comment
 	walFlushStopOnce sync.Once     // makes stopWALFlushWorkerForTest safe to call more than once
@@ -7281,9 +7286,14 @@ func (cs *ChainState) StateRoot() string {
 	// sees the last value that was actually committed — never a
 	// concurrent transaction's in-flight write, and never races on
 	// cs.activeTx itself.
+	t0 := time.Now()
 	lastUBIAt := cs.getConfigValueDB("last_ubi_at")
+	tuStateRootDB.seit(t0)
+	t1 := time.Now()
 	cs.mu.RLock()
 	defer cs.mu.RUnlock()
+	tuStateRootSperre.seit(t1)
+	defer tuStateRootHash.seit(time.Now())
 	return cs.stateRootLocked(lastUBIAt)
 }
 

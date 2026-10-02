@@ -115,7 +115,11 @@ func (cs *ChainState) walKompaktierungsRunde(_ uint64) uint64 {
 	if cs.korb != nil {
 		korbBis = cs.korbBis.Load()
 	}
-	bis := walKuerzenBis(kopf, offen, abstand, cs.walRecoveryFloor(), cs.korb != nil, korbBis)
+	offenMin, offenDa := cs.walOffenMinSeq()
+	bis := walKuerzenBis(kopf, offen, abstand, cs.walRecoveryFloor(), cs.korb != nil, korbBis, offenMin, offenDa)
+	if bis == 0 {
+		return kopf // noch alles offen
+	}
 	vorher := walDateiGroesse(cs.wal.Path())
 	if vorher < walKompaktAbBytes {
 		return kopf
@@ -170,8 +174,20 @@ func WALKompaktierungsStand() map[string]interface{} {
 // walKuerzenBis: bis zu welcher Seq (ausschliesslich) gekuerzt werden darf --
 // rein, damit die Regel ohne 512-MB-Datei testbar ist. Voraussetzung:
 // kopf > offen+abstand (vom Aufrufer geprueft).
-func walKuerzenBis(kopf, offen, abstand, boden uint64, korbAn bool, korbBis uint64) uint64 {
+//
+// offenMin (wenn offenDa): kleinste Seq in Warteschlange oder laufendem
+// Flush (walOffenMinSeq). Mit zusammengefassten Eintraegen
+// (wal_flush_zusammenfassen.go) ist die Laenge der Warteschlange kleiner als
+// die Zahl offener Datensaetze; dann traegt erst diese Grenze.
+func walKuerzenBis(kopf, offen, abstand, boden uint64, korbAn bool, korbBis uint64, offenMin uint64, offenDa bool) uint64 {
 	bis := kopf - offen - abstand
+	if offenDa {
+		if offenMin <= abstand {
+			bis = 0
+		} else if g := offenMin - abstand; bis > g {
+			bis = g
+		}
+	}
 	if boden > bis {
 		// Unterhalb des Wiederanlauf-Bodens darf ohnehin nie wieder abgespielt
 		// werden, dort ist Kuerzen immer erlaubt.

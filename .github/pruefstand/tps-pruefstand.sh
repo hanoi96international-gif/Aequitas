@@ -68,7 +68,7 @@ for i in $(seq 1 30); do docker exec "$PG" pg_isready -U postgres -d aequitas >/
 # Dieselben Leistungs-Einstellungen wie der laufende Knoten -- nur Namen aus
 # einer festen Liste, keine Schluessel, keine Adressen.
 TUNING="$(docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null \
-  | grep -E '^(ENABLE_MULTI_BLOCK_TICK|BLOCK_TIME_MS|GOMEMLIMIT|GOGC|AEQUITAS_WAL_(MAX|FLUSH)[A-Z_]*|AEQUITAS_INFLIGHT[A-Z_]*|AEQUITAS_BLOCK[A-Z_]*|AEQUITAS_RUECKSTAU[A-Z_]*)=' || true)"
+  | grep -E '^(ENABLE_MULTI_BLOCK_TICK|BLOCK_TIME_MS|GOMEMLIMIT|GOGC|AEQUITAS_WAL_(MAX|FLUSH)[A-Z_]*|AEQUITAS_INFLIGHT[A-Z_]*|AEQUITAS_BLOCK[A-Z_]*|AEQUITAS_RUECKSTAU[A-Z_]*|AEQUITAS_DB_MAX_CONNS|AEQUITAS_MAX_TXS_PER_BLOCK|AEQUITAS_COMPRESS_BLOCK_PAYLOAD|AEQUITAS_PRODUCE_WHEN_BACKLOG_SHRINKING|AEQUITAS_EIGENLAST_BREMSE|AEQUITAS_PEER_LAG_[A-Z_]*)=' || true)"
 echo "Einstellungen wie der laufende Knoten:"; printf '%s\n' "$TUNING" | sed 's/^/  /'
 ENVDATEI="$(mktemp)"; chmod 600 "$ENVDATEI"
 {
@@ -87,7 +87,7 @@ ENVDATEI="$(mktemp)"; chmod 600 "$ENVDATEI"
   # Liste; hier noch einmal, fail closed).
   if [ -n "${EINSTELLUNGEN:-}" ]; then
     printf '%s\n' "$EINSTELLUNGEN" | tr ',' '\n' \
-      | grep -E '^((AEQUITAS_WAL_FLUSH_(BATCH|CONCURRENCY|INTERVAL_MS)|AEQUITAS_WAL_QUEUE_DEPTH|AEQUITAS_DB_MAX_CONNS)=[0-9]{1,6}|AEQUITAS_BLOCK_AUS_SPEICHER=[01]|AEQUITAS_WAL_FLUSH_TEILE=[0-9]{1,2})$' || true
+      | grep -E '^((AEQUITAS_WAL_FLUSH_(BATCH|CONCURRENCY|INTERVAL_MS)|AEQUITAS_WAL_QUEUE_DEPTH|AEQUITAS_DB_MAX_CONNS)=[0-9]{1,6}|AEQUITAS_BLOCK_AUS_SPEICHER=[01]|AEQUITAS_WAL_FLUSH_TEILE=[0-9]{1,2}|AEQUITAS_RPC_SIGNATUR_PARALLEL=[0-9]{1,2})$' || true
   fi
   # Der Generator kommt ueber den SSH-Tunnel und den veroeffentlichten Port,
   # beim Knoten also von EINER Adresse: dem Gateway des Pruefstand-Netzes.
@@ -174,6 +174,10 @@ print("[reihe] t=%s rueckstau=%s gemessen=%s wal=%s pending_offen/gesamt=%s infl
     sleep 2
   done ) > "$PROFIL/reihe.txt" 2>&1 &
 REIHE_PID=$!
+# Die ganze Box im Lastfenster: steht der Prozess, weil die VM keine CPU
+# bekommt (st), auf die Platte wartet (wa) oder zu viele lauffaehig sind (r)?
+( sleep 5; vmstat 1 45 ) > "$PROFIL/vmstat.txt" 2>&1 &
+VMSTAT_PID=$!
 # CPU je Container (Prozent eines Kerns), alle ~3 s: Knoten, Postgres,
 # Lastgenerator und der laufende Knoten daneben. Daraus: Kerne je 10.000
 # Ueberweisungen/s -- was ein eigener Validator ohne Generator schafft.
@@ -221,6 +225,21 @@ for k in a:
         dt=(b[k][1]-a[k][1])/1e9
         print("  %-18s %5.2f Kerne" % (k,(b[k][0]-a[k][0])/1e6/max(dt,1e-9)))
 PY
+echo "== Box im Lastfenster (vmstat 1 s: r lauffaehig, wa I/O-Warten %, st Steal %)"
+wait "$VMSTAT_PID" 2>/dev/null || true
+python3 - "$PROFIL/vmstat.txt" <<'PY' || true
+import sys
+kopf=None; zeilen=[]
+for z in open(sys.argv[1]):
+    t=z.split()
+    if "r" in t and "st" in t: kopf=t; continue
+    if kopf and len(t)==len(kopf) and t[0].isdigit(): zeilen.append(dict(zip(kopf,map(int,t))))
+zeilen=zeilen[1:]  # erste Zeile: Mittel seit Start
+if not zeilen: print("  (keine Proben)"); sys.exit(0)
+for k in ("r","b","us","sy","id","wa","st"):
+    w=[z.get(k,0) for z in zeilen]
+    print("  %-3s Mittel %6.1f  Max %4d" % (k, sum(w)/len(w), max(w)))
+PY
 echo "== Zeitreihe (alle 2 s ab Lastbeginn)"
 cat "$PROFIL/reihe.txt" 2>/dev/null | head -60 || true
 wait "$GR_PID" 2>/dev/null || true
@@ -255,7 +274,7 @@ echo "== Knoten nach dem Lauf"
 curl -fsS "http://127.0.0.1:$PORT/api/health/combined" | python3 -c '
 import json,sys
 d=json.load(sys.stdin)
-for k in ("produktion","produktion_phasen","produktions_ausfaelle","speicherkorb","eigenlast_bremse","peer_lag_bremse","rueckstau","inflight","wal_druck","fallback_gruende","wal_flush","wal_writer","leistungsnachweis"):
+for k in ("produktion","produktion_phasen","produktion_teile","laufzeit","produktions_ausfaelle","speicherkorb","eigenlast_bremse","peer_lag_bremse","rueckstau","inflight","wal_druck","fallback_gruende","wal_flush","wal_writer","leistungsnachweis"):
     v=d.get(k)
     if isinstance(v,dict): v={a:b for a,b in v.items() if a not in ("bedeutung","sync_verteilung")}
     print(k, json.dumps(v, ensure_ascii=False)[:900])
