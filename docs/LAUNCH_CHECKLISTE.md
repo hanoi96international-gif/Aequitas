@@ -1,5 +1,24 @@
 # Launch-Checkliste
 
+> ## 02.10.2026: Stand vor der Beta
+>
+> **Live geprüft** (`pruefstand-live.yml`, nur lesend; C2 seit dem Neustart bei null bewusst aus, `C2_AKTIV=nein`):
+> - **C1:** Kette gesund (Höhe 147.676, keine Kontostand-Abweichung, nimmt an), Commit `30f0b6d` (= `main`).
+> - **Registrierung:** proof1 und proof2 mit Coordinator ok, Quorum 2 von 2 erreichbar, keine offenen Widersprüche, `/challenge` gibt einen Nonce. Vergleichsdienste und Proof-Server antworten.
+> - **App 1.9.0:** Website und C1 liefern Byte für Byte das neueste Release. Beim Senden zeigt die App die Gebühr an, „Maximum“ zieht sie ab.
+> - **Backup:** prüft den Inhalt (Höhe > 0, Kontentabelle im Dump, Restore ≥ live). Der Widerspruch W-17E83A0B2A2F9CA7 ist geschlossen.
+> - **Seit dem 30.09. erledigt:** Blocker 18 (Blockproduzenten festgelegt, `produzenten-festlegen.yml` grün) und Punkt 15 (eigener Signierschlüssel für C1).
+>
+> **Noch offen vor der Beta, nur mit dir:**
+> 1. **Blocker 3:** `/impressum` und `/datenschutz` antworten 404. Alle sieben `LEGAL_*`-Angaben fehlen; `rechtstexte-setzen.yml` ist noch nie gelaufen.
+> 2. **Blocker 5:** DSGVO-Entscheidung. Die Vergleichsdienste laufen im Testmodus.
+> 3. **Blocker 4:** Zwei-Personen-Test; die Schwelle ist nicht kalibriert.
+> 4. **Blocker 2:** eine Registrierung mit frischem Wallet über Quorum 2 als Beleg (Test läuft am 02.10.).
+> 5. **Blocker 17:** In GitHub hat die Umgebung `produktion` keine Pflicht-Freigabe. Workflow-Läufe am 02.10. starteten ohne Freigabe. Danach Schlüsseltausch (`docs/SERVER_FREIGABE.md`).
+> 6. **Kein zweiter Validator:** Fällt C1 aus, stehen Kette, App-API und Registrierungs-Annahme.
+>
+> **Durchsatz (Prüfstand C1, 02.10.):** 16.140 Ketten-TPS (Lauf 20). Die Wiederherstellung des Absenders ist mit libsecp256k1 v0.6.0 schneller (lokal −15 % CPU je Überweisung, auf C1 −13 % für die Signatur). Die Box ist im Prüfstand aber voll: Knoten 3,9 Kerne, Postgres 0,9, SSH-Tunnel und Kernel den Rest. Die Annahme bleibt die Grenze, nicht die Blockgröße: ein Block braucht im Mittel 79 ms.
+
 **Stand 26.09.2026, abends. Neuer C1 (netcup, 188.172.229.121) ist Primary, Wirtschaftsregeln seit 15:00 UTC aktiv, TPS gemessen. Die Einträge vom 24.09. und davor folgen darunter.**
 
 > ## 26.09.: Neuer C1, Wirtschaft aktiv, TPS, Beta-Lücken geschlossen
