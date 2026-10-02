@@ -6,7 +6,7 @@ package keeper
 // eroeffnet, Register unten) und freie Adresse (alles andere ausser den
 // Protokoll-Toepfen). Unternehmen haben keine 25.000-Grenze, zahlen aber
 // Liegegeld auf Geld, das bei ihnen liegen bleibt. Freie Adressen duerfen
-// hoechstens 1.000 AEQ halten und zahlen 1 %/Monat. Menschen zahlen auf
+// hoechstens 250 AEQ halten und zahlen 1 %/Monat. Menschen zahlen auf
 // Erspartes erst ueber 5.000 AEQ etwas.
 //
 // WAS KONSENS IST UND WAS BUCHFUEHRUNG. Konsens ist nur das Register der
@@ -21,10 +21,10 @@ package keeper
 // Ergebnis. Die Buchfuehrung wird auch beim Nachspielen mitgefuehrt, damit
 // ein anderer Knoten, der die Erzeugung uebernimmt, dieselben Zahlen hat.
 //
-// FREIBETRAG NACH UMSATZ (Konzept Abschnitt 14, beschlossen 25.09.2026).
+// FREIBETRAG NACH UMSATZ (Konzept Abschnitt 4.2 und 4.3, beschlossen 25.09.2026).
 // Unternehmen halten bis zu 1,5 Monatsumsaetze frei (mindestens den Sockel),
 // bis 3 Monatsumsaetze kostet der Teil darueber 0,5 %/Monat, alles darueber
-// 2 %/Monat. Frueher trug jedes AEQ ein Alter und wurde in fester Reihenfolge
+// 1 %/Monat (bis 26.09.2026: 2 %). Frueher trug jedes AEQ ein Alter und wurde in fester Reihenfolge
 // ausgegeben -- gruendlich gegen Umgehung, aber fuer echte Unternehmen zu
 // teuer (12-36 %/Jahr auf ganz normale Reserven) und fuer Buchhaltung und
 // Kassen nicht abbildbar. Ein AEQ ist jetzt wieder wie das andere.
@@ -93,7 +93,7 @@ const (
 	// Durchschnitt", egal ob AEQ steigt oder faellt. Eine Kopplung an den
 	// Dollar braeuchte eine Kursquelle, die jemand verschieben koennte, und
 	// wuerde die Grenzen bei steigendem Kurs still verschaerfen.
-	// (Konzept Abschnitt 6.7; der Monatsfreibetrag soll nach der Pilotstadt
+	// (Konzept Abschnitt 9; der Monatsfreibetrag soll nach der Pilotstadt
 	// dem Median der echten Monatsausgaben folgen, nie unter 1x.)
 
 	// Menschen (Fairness-Garantie, Konzept Abschnitt 3)
@@ -554,7 +554,7 @@ func liegegeldFuerStand(stand, umsatz float64) float64 {
 
 // gebuehrMitWirtschaft ersetzt ueberweisungsGebuehrFuer ab der Aktivierung:
 //   - Mensch: die ersten 1.000 AEQ Ausgaben im Monat gebuehrenfrei, danach
-//     0,1 % ohne Aufschlagstufen (Konzept 14.5).
+//     0,1 % ohne Aufschlagstufen (Konzept Abschnitt 3).
 //   - Unternehmen -> Mensch: 0 (Lohn, Entnahme, Erstattung).
 //   - Unternehmen -> sonst und freie Adresse: 0,1 %.
 //
@@ -587,7 +587,7 @@ func grundGebuehr(betrag float64) float64 {
 	return round6(betrag * float64(ueberweisungsGebuehrBps) / 10_000)
 }
 
-// pruefeEmpfaengerWirtschaft: eine freie Adresse haelt hoechstens 1.000 AEQ.
+// pruefeEmpfaengerWirtschaft: eine freie Adresse haelt hoechstens 250 AEQ (freiGrenze).
 // Nur bei der Annahme -- das Nachspielen bestehender Bloecke aendert sich nicht.
 func pruefeEmpfaengerWirtschaft(toArt kontoart, standVorher, zufluss float64, jetzt int64) error {
 	if !wirtschaftAktiv(jetzt) || toArt != artFrei {
@@ -669,7 +669,7 @@ func (cs *ChainState) nachUeberweisung(ctx context.Context, from, to string, fro
 // ausstiegsAbgabe: 2 % auf AEQ -> Stable. Abgabefrei ist, was das Konto
 // selbst von Stable in AEQ getauscht hat (Eingezahlt): wer Geld einzahlt und
 // wieder abhebt, gewinnt nichts und nimmt niemandem etwas. Menschen tauschen
-// darueber hinaus 3.000 AEQ im Monat ohne Abgabe, egal woher (Konzept 14.5).
+// darueber hinaus 3.000 AEQ im Monat ohne Abgabe, egal woher (Konzept Abschnitt 3).
 func (cs *ChainState) ausstiegsAbgabe(addr string, art kontoart, amountIn float64, jetzt int64) float64 {
 	if !wirtschaftAktiv(jetzt) || amountIn <= 0 || art == artSystem {
 		return 0
@@ -1065,8 +1065,13 @@ func (cs *ChainState) applyUnternehmenMitinhaberLocked(ctx context.Context, unte
 		w.mu.Unlock()
 		return fmt.Errorf("unternehmen_mitinhaber: %s ist schon fuer %d Unternehmen verantwortlich: %w", m, maxUnternehmenJeMensch, ErrZustandLehntAb)
 	}
+	// Anhaengen, nicht sortieren: Verantwortliche[0] ist die Person, die
+	// eroeffnet hat (inGruendungLocked, gruenderStand). Bis 02.10.2026 stand
+	// hier sort.Strings -- ein Mitinhaber mit kleinerer Adresse wurde damit
+	// zum "Gruender", und eine zweite Firma der echten Gruenderin bekam
+	// innerhalb von zwoelf Monaten noch einmal die Gruendungsphase. Die
+	// Reihenfolge ist trotzdem deterministisch: Blockreihenfolge.
 	e.Verantwortliche = append(e.Verantwortliche, m)
-	sort.Strings(e.Verantwortliche)
 	cp := *e
 	w.mu.Unlock()
 	return cs.speichereUnternehmen(ctx, &cp)

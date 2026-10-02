@@ -44,7 +44,7 @@ func zeitFrisch(zeit int64) bool {
 func (a *APIServer) handleWirtschaftRegeln(w http.ResponseWriter, r *http.Request) {
 	writeJSONCORS(w)
 	// Kurs aus dem internen Pool -- nur zur Einordnung, er steuert keine
-	// Regel (Konzept 6.7). tUSD ist Testgeld aus dem Faucet, der Pool winzig:
+	// Regel (Konzept Abschnitt 9). tUSD ist Testgeld aus dem Faucet, der Pool winzig:
 	// kein Euro-Wert, und das steht dabei.
 	kurs := map[string]interface{}{
 		"hinweis": "tUSD ist Testgeld; der Kurs ist kein Euro- oder Dollarwert und steuert keine Regel",
@@ -79,7 +79,7 @@ func (a *APIServer) handleWirtschaftRegeln(w http.ResponseWriter, r *http.Reques
 		},
 		"unternehmen": map[string]interface{}{
 			"sockel": unternehmenSockel,
-			// Freibetrag nach Umsatz (Konzept 14.2)
+			// Freibetrag nach Umsatz (Konzept Abschnitt 4.2)
 			"frei_bis_monatsumsaetze":          umsatzFreiFaktor,
 			"liegegeld_prozent_monat":          liegeRate1Monat * 100,
 			"liegegeld2_ab_monatsumsaetzen":    umsatzStufe2Faktor,

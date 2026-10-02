@@ -206,7 +206,7 @@ func TestUnternehmenOhneVermoegensgrenze(t *testing.T) {
 	}
 }
 
-// Die Rechenbeispiele aus Konzept 14.4, als feste Zahlen.
+// Die Rechenbeispiele aus Konzept Abschnitt 7, als feste Zahlen.
 func TestLiegegeldNachUmsatz_Rechenbeispiele(t *testing.T) {
 	for _, f := range []struct {
 		name                  string
@@ -264,6 +264,35 @@ func TestGruendungWieEinMensch(t *testing.T) {
 	vor(182 * tag)
 	if g := lg(wFirmaA, 20_000); !fast(g, 180) {
 		t.Fatalf("nach einem halben Jahr normale Regeln, bekommen %v", g)
+	}
+}
+
+// Missbrauch: Ein Mitinhaber mit kleinerer Adresse darf nicht zum Gruender
+// werden. Sonst bekommt eine zweite Firma der echten Gruenderin innerhalb von
+// zwoelf Monaten noch einmal die Gruendungsphase.
+func TestGruenderBleibtNachMitinhaber(t *testing.T) {
+	cs, ctx, vor := wirtschaftsTest(t)
+	// wMensch2 gruendet; wMensch1 sortiert alphabetisch davor.
+	eroeffne(t, cs, ctx, wFirmaA, wMensch2)
+	vor(tag)
+	eroeffne(t, cs, ctx, wFirmaB, wMensch2)
+	cs.mu.Lock()
+	err := cs.applyUnternehmenMitinhaberLocked(ctx, wFirmaA, wMensch1, nowUnix())
+	cs.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if g := cs.wirt().unternehmen[wFirmaA].Verantwortliche[0]; g != wMensch2 {
+		t.Fatalf("Gruenderin von A ist %s, erwartet %s", g, wMensch2)
+	}
+	lg := func(firma string, stand float64) float64 {
+		return cs.umlaufBetrag(firma, artUnternehmen, stand, nowUnix(), sekundenJeMonat)
+	}
+	if g := lg(wFirmaB, 20_000); !fast(g, 180) {
+		t.Fatalf("zweite Firma derselben Gruenderin: normale 180, bekommen %v", g)
+	}
+	if g := lg(wFirmaA, 20_000); !fast(g, 80) {
+		t.Fatalf("A bleibt in der Gruendungsphase der echten Gruenderin: 80, bekommen %v", g)
 	}
 }
 
