@@ -363,6 +363,16 @@ Ohne eine dieser Quellen wiederholt sich Bristol.
 - **Kredit** kann ein erlaubnispflichtiges Bankgeschäft sein.
 - **DSGVO Art. 9** für biometrische Daten; Drittlandübermittlung.
 
+- **Nachtrag 02.10.2026** (ausführlich mit Quellen in `RECHT_UND_LITERATUR.md`):
+  E-Geld setzt eine Ausgabe gegen Zahlung voraus; das verschenkte
+  Startguthaben ist **vermutlich kein E-Geld**, die ZAG-Frage tritt hinter
+  MiCA zurück. Die Ausnahme „vollständig dezentral“ greift mit einem
+  erkennbaren Betreiber eher nicht. Ein E-Geld-Token am Pool bringt seit
+  02.03.2026 möglicherweise eine zweite Erlaubnis (Zahlungsdienst). Der
+  BayLDA-Bescheid gegen Worldcoin und die Stopps in Spanien und Portugal
+  zeigen: Löschung, Einwilligung und **Minderjährige** sind die Punkte, an
+  denen Aufsichtsbehörden eingreifen. **Aequitas fragt heute kein Alter ab.**
+
 **Grundsatz**
 > Kein echter Wert, bevor die Rechtslage geklärt ist. Die Beta bleibt Testgeld.
 

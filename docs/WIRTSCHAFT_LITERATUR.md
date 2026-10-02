@@ -105,6 +105,11 @@ bei mehreren unabhängigen Unternehmen gelten, dürfen nach den Hinweisen der
 Aufsicht in der Regel nur über ein E-Geld-Institut laufen. Der Chiemgauer ist
 euro-gedeckt; AEQ ist es nicht. Die Einordnung ist eine Frage an die Kanzlei.
 
+> **Korrektur 02.10.2026:** Das gilt für **gekaufte** Gutscheine. E-Geld
+> setzt eine Ausgabe gegen Zahlung voraus; AEQ wird verschenkt. Für AEQ ist
+> deshalb vermutlich MiCA entscheidend, nicht das ZAG. Einzelheiten und
+> Quellen: `RECHT_UND_LITERATUR.md`.
+
 ---
 
 ## 2. Was das für die Zahlenprüfung bedeutet

@@ -105,6 +105,35 @@ Fragen und die Fakten, die die Kanzlei braucht.
 27. Entfällt eine Ausnahme, wenn Website oder Kanäle einen späteren Handel
     oder Umtausch ankündigen?
 
+## I. Ergänzungen aus der Recherche vom 02.10.2026 (`RECHT_UND_LITERATUR.md`)
+
+28. Nach Art. 4 Abs. 3 MiCA ist ein Angebot nicht kostenlos, wenn Erwerber
+    personenbezogene Daten geben müssen. Wer ist bei Aequitas „Anbieter“, wenn
+    die Kette das Startguthaben schreibt, der Betreiber aber App, Registrierung
+    und Coordinator führt? Ab welchem Grad der Verteilung (Validatoren,
+    Coordinatoren) gäbe es keinen Anbieter mehr?
+29. AEQ wird nicht gegen Zahlung ausgegeben. Ist es damit sicher kein E-Geld
+    nach § 1 Abs. 2 ZAG, und sind Überweisungen von AEQ damit keine
+    Zahlungsdienste?
+30. Nach dem No-Action-Letter der EBA (Juni 2025) gelten Übertragung und
+    Verwahrung von E-Geld-Token ab 02.03.2026 auch als Zahlungsdienst. Was
+    bedeutet das für einen Pool AEQ ↔ EURC auf der eigenen Kette?
+31. Fällt ein zinsfreies Leihprotokoll in AEQ unter § 1 KWG, unter MiCA oder
+    unter keines von beiden? Was ändert die MiCA-Überprüfung 2026?
+
+## J. Datenschutz und AI Act
+
+32. Welches Mindestalter gilt für die Gesichtsprüfung, und reicht eine
+    Selbsterklärung? (Spanien und Portugal haben Worldcoin 2024 wegen
+    Minderjährigen gestoppt; Aequitas fragt heute kein Alter ab.)
+33. Hält die Abwägung „ein Merkmal bleibt nach Löschung, damit niemand doppelt
+    bezieht“ dem BayLDA-Bescheid gegen Worldcoin (Dezember 2024) stand?
+34. Sind künftige Validatoren der Kette gemeinsam Verantwortliche nach
+    Art. 26 DSGVO (EDPB-Leitlinien 02/2025, Fassung 2.0)?
+35. Ist der 1:N-Abgleich bei aktiver Mitwirkung eine „biometrische
+    Fernidentifizierung“ nach Anhang III AI Act oder nicht?
+36. Ist eine vorherige Konsultation der Aufsicht nach Art. 36 DSGVO nötig?
+
 ## Was wir von der Kanzlei brauchen
 
 Für jede Frage: Antwort, Begründung, was **vor der Beta**, was **vor einem
