@@ -1210,13 +1210,11 @@ func decodeAndRecoverSender(rawHex string) (tx *types.Transaction, senderAddr st
 	// cgo, GOMAXPROCS haelt es nicht auf.
 	var sender common.Address
 	var sErr error
+	// Dieselben Regeln wie types.Sender(LatestSignerForChainID(1926)), mit
+	// Rueckfall auf EIP155Signer -- nur mit schnellerer Kurvenrechnung
+	// (absender_schnell.go).
 	mitSignaturPlatz(func() {
-		signer := types.LatestSignerForChainID(big.NewInt(1926))
-		sender, sErr = types.Sender(signer, t)
-		if sErr != nil {
-			signer = types.NewEIP155Signer(big.NewInt(1926))
-			sender, sErr = types.Sender(signer, t)
-		}
+		sender, sErr = absenderWiederherstellen(t)
 	})
 	if sErr != nil {
 		return nil, "", true, fmt.Errorf("Cannot recover sender: %v", sErr)
