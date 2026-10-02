@@ -84,6 +84,14 @@ Fragen und die Fakten, die die Kanzlei braucht.
 23. Darf eine Schuld im Protokoll nach drei Jahren erlöschen, und was
     bedeutet das für die Forderung außerhalb der Kette?
 
+## G. Einordnung als Gutschein- oder Zahlungssystem
+
+24. Die BaFin legt die Ausnahme für „begrenzte Netze“ eng aus; Gutscheine,
+    die bei mehreren unabhängigen Unternehmen gelten, laufen nach ihren
+    Hinweisen in der Regel über ein E-Geld-Institut. Der Chiemgauer ist
+    euro-gedeckt, AEQ nicht. Wie ist AEQ einzuordnen, und was folgt daraus für
+    einen Pilot mit mehreren Läden in der Beta (Testgeld) und danach?
+
 ## Was wir von der Kanzlei brauchen
 
 Für jede Frage: Antwort, Begründung, was **vor der Beta**, was **vor einem

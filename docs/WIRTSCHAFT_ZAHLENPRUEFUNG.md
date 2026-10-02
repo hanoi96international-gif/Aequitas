@@ -1,5 +1,13 @@
 # Wirtschaft: Zahlenprüfung
 
+> **Korrektur nach Literaturauswertung (`WIRTSCHAFT_LITERATUR.md`):**
+> Abschnitt 3.2 überschätzt das Problem. Läuft AEQ um wie der Chiemgauer
+> (4 bis 6 Mal im Jahr), liegen die Monatsgrenzen im plausiblen Bereich; die
+> Rechnung mit 25 Monaten galt für Ersparnisse, nicht für ein Zahlungsmittel.
+> Abschnitt 3.3 gilt erst, wenn AEQ die Hauptwährung eines Betriebs ist:
+> Chiemgauer-Firmen zahlen 8 % im Jahr auf alles und machen mit, weil sie
+> Rücklagen in Euro halten. Der Vorschlag 3 / 6 ist darum nicht dringend.
+
 Stand 02.10.2026. Ehrliche Antwort auf drei Fragen: Wie erkennen wir ein
 Unternehmen? Sind die Regeln fair? Sind die Zahlen durchdacht?
 **Analyse und Vorschläge, nichts davon gebaut.**
