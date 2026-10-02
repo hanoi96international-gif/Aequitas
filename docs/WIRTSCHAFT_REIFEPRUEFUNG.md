@@ -1,5 +1,13 @@
 # Wirtschaft: Reifeprüfung
 
+> **Umsetzung (02.10.2026, später am Tag):** Entscheidungen 1 bis 5 sind
+> gebaut und getestet (`x/humanity/keeper/wirtschaft2.go`, `kundschaft.go`).
+> A, B und C gelten ab **15.10.2026, 00:00 UTC**; Kundschaft und
+> Grundeinkommen sind sofort als Zahlen in der API. Kredit (6) ist **nicht**
+> gebaut: Er hängt an der Rechtsprüfung (`RECHTSFRAGEN_UNTERNEHMEN.md`, F).
+> Die Verifizierungsschichten 3 bis 5 (Website, vLEI, Bewertungen) sind
+> beschrieben, aber nicht gebaut; sie gehören in App und Verzeichnis.
+
 Stand 02.10.2026. Prüft die geltenden Wirtschaftsregeln (`docs/UNTERNEHMEN_KONZEPT.md`,
 Fassung 3) gegen drei Maßstäbe: **fair** (für den Menschen mit wenig),
 **Anreiz** (bringt es AEQ in Umlauf?) und **reif** (hält es dem Betrieb stand?).

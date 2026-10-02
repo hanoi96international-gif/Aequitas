@@ -30,8 +30,11 @@ als er nützt.
 
 ## Die eine Grenze, die man kennen muss
 
-Ein Menschenkonto hat eine **Vermögensgrenze**. Was darüber eingeht, wird
-sofort an alle Menschen verteilt; es ist für die Inhaberin verloren.
+Ein Menschenkonto hat eine **Vermögensgrenze**. Bis zum 14.10.2026 wird, was
+darüber eingeht, sofort an alle Menschen verteilt; es ist für die Inhaberin
+verloren. **Ab dem 15.10.2026** wird eine solche Zahlung abgelehnt: Die
+Kundin behält ihr Geld, der Laden muss erst ausgeben, bevor er wieder annehmen
+kann.
 
 | Menschen auf der Kette | Grenze für ein Menschenkonto |
 |---|---|
@@ -50,7 +53,9 @@ Regel gar nicht in die Nähe.
 
 Wenn ein Laden regelmäßig an die Grenze kommt, Löhne in AEQ zahlen will oder
 mehrere Menschen gemeinsam verantwortlich sind. Das Unternehmenskonto hat
-keine feste Grenze und hält bis anderthalb Monatsumsätze kostenlos. Heute geht
+keine feste Grenze und hält bis anderthalb Monatsumsätze kostenlos. Ab dem
+15.10.2026 ist das **erste** Unternehmen eines Menschen nie teurer als das
+eigene Konto (Konzept 4.4); der Wechsel lohnt sich also auch für Kleine. Heute geht
 die Eröffnung nur über die Schnittstelle mit Hilfe des Teams; die Anmeldung in
 der App wird gebaut, sobald der erste Laden sie braucht.
 
