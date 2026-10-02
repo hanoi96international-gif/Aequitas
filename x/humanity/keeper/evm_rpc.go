@@ -535,10 +535,16 @@ func (s *EVMRPCServer) handleRPC(w http.ResponseWriter, r *http.Request) {
 
 	// Handle batch requests
 	if len(body) > 0 && body[0] == '[' {
-		var batch []json.RawMessage
-		if err := json.Unmarshal(body, &batch); err != nil {
-			writeError(w, -32700, "Parse error", nil)
-			return
+		// Ueberweisungsbuendel in der ueblichen Form ohne Reflexion lesen
+		// (rpc_buendel_lesen.go); alles andere wie bisher.
+		batch, schnell, ok := buendelSchnellLesen(body)
+		if !ok {
+			schnell = nil
+			batch = nil
+			if err := json.Unmarshal(body, &batch); err != nil {
+				writeError(w, -32700, "Parse error", nil)
+				return
+			}
 		}
 		// P2-AUDIT: Limit batch size to prevent DoS via 1 MB batch of expensive calls.
 		// 100 requests per batch is generous for any legitimate client use case.
@@ -612,16 +618,13 @@ func (s *EVMRPCServer) handleRPC(w http.ResponseWriter, r *http.Request) {
 			if overBudget[i] || annahmeZu {
 				continue
 			}
-			var env struct {
-				ID     interface{}       `json:"id"`
-				Method string            `json:"method"`
-				Params []json.RawMessage `json:"params"`
+			var p buendelPosten
+			if schnell != nil {
+				p = schnell[i]
+			} else {
+				p = postenLesen(raw)
 			}
-			if err := json.Unmarshal(raw, &env); err != nil || env.Method != "eth_sendRawTransaction" || len(env.Params) == 0 {
-				continue
-			}
-			var rawHex string
-			if err := json.Unmarshal(env.Params[0], &rawHex); err != nil {
+			if !p.ok {
 				continue
 			}
 			pending = append(pending, i)
@@ -629,7 +632,7 @@ func (s *EVMRPCServer) handleRPC(w http.ResponseWriter, r *http.Request) {
 			// und sendRawTransaction lesen sie nicht noch einmal (je Posten
 			// zwei JSON-Durchlaeufe weniger; Pruefstand 01.10.2026: JSON-
 			// Dekodieren 13 % der Knoten-CPU unter Last).
-			precomputed[i] = &precomputedSendTx{rawHex: rawHex, geparst: true, id: env.ID, method: env.Method, params: env.Params}
+			precomputed[i] = &precomputedSendTx{rawHex: p.rawHex, geparst: true, id: p.id, method: p.method, params: p.params}
 		}
 		if len(pending) > 0 {
 			decodeStart := time.Now()
