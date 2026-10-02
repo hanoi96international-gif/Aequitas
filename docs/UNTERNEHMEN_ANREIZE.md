@@ -1,6 +1,6 @@
 # Unternehmen: Warum sollte ein Laden AEQ annehmen?
 
-Stand: 02.10.2026 · Status: **Analyse und Vorschlag, nichts davon ist beschlossen
+Stand: 02.10.2026 (ergänzt um 4a: Prüfung von Unternehmen) · Status: **Analyse und Vorschlag, nichts davon ist beschlossen
 oder gebaut.** Ergänzt `docs/UNTERNEHMEN_KONZEPT.md`; dort stehen die geltenden
 Regeln.
 
@@ -119,15 +119,12 @@ gedeckelt (3.000 AEQ je Mensch und Monat), aber nicht null.
 Ohne das gibt es keinen Pilot, nur Einzelfälle mit Entwicklerhilfe.
 
 - Neuer Bereich „Mein Unternehmen“ in der App: Name, Kategorie, fertig.
-- Die App erzeugt das Schlüsselpaar der Unternehmensadresse auf dem Gerät
-  (SecureStore), unterschreibt damit die Eröffnungsnachricht, der Mensch
-  unterschreibt dieselbe Nachricht mit seiner Wallet. Kein Schlüssel verlässt
-  das Gerät.
-- Danach dasselbe für Mitinhaber und Schließen.
-
-Sicherheitsfragen vor dem Bau: Verlust des Geräts (Wiederherstellung des
-Unternehmensschlüssels; Vorschlag: Export als verschlüsselte Datei, und
-Mitinhaber als zweite Instanz), keine Server-Kopie des Schlüssels.
+- Heute braucht die Eröffnung zwei Unterschriften: eine vom Unternehmensschlüssel
+  und eine vom Menschen. **Empfehlung:** die Anmeldung gleich für Unternehmen
+  ohne eigenen Schlüssel bauen (4a, Lücke 1). Dann unterschreibt nur der
+  Mensch mit seiner Wallet, und es gibt keinen zweiten Schlüssel, der gesichert,
+  verloren oder verkauft werden kann.
+- Danach dasselbe für Mitinhaber, Austreten und Schließen.
 
 ### 4.3 Kassenmodus (App, Beta-Pilot)
 
@@ -207,6 +204,127 @@ Und ehrlich für die Beta: **Es gibt noch keinen Umtausch in Euro.** Wer
 mitmacht, macht es für die Kundschaft und für die Idee, mit einer Grenze, die
 er selbst setzt.
 
+## 4a. Wie prüft man Unternehmen weltweit? Gar nicht, man prüft Menschen
+
+### Der Grundsatz
+
+Menschen werden geprüft: heute mit der Gesichtsprüfung, zum richtigen Launch
+mit der Iris. **Unternehmen werden nicht geprüft und sollen es nicht werden.**
+Es gibt rund 200 Länder mit eigenen Handelsregistern, viele davon nicht
+öffentlich oder nicht verlässlich. Wer sie prüft, ist eine zentrale Stelle, die
+entscheidet, wer mitmachen darf. Das passt nicht zu Aequitas.
+
+Stattdessen gilt:
+
+1. **Ein Unternehmen ist ein Hut, den ein geprüfter Mensch aufsetzt.** Jedes
+   Unternehmenskonto hängt an mindestens einem verifizierten Menschen. Die Iris
+   des Menschen ist die einzige Prüfung, die es braucht. Weil jeder Mensch nur
+   einmal existiert, sind die Grenzen pro Mensch echt: höchstens 3 Unternehmen,
+   die Gründungsphase einmal im Jahr, je 9.000 AEQ Umsatz pro Quartal und Firma.
+2. **Ein Unternehmenskonto darf nichts hergeben, das sich auszunutzen lohnt.**
+   Jeder Vorteil gegenüber einem Menschen hat einen Preis, der höher ist als
+   der Vorteil für jemanden, der kein echtes Geschäft hat.
+
+| Was ein Unternehmenskonto mehr hat als ein Mensch | Preis dafür |
+|---|---|
+| keine Grenze von 25.000 AEQ | Liegegeld 0,5–1 %/Monat über 1,5 Monatsumsätzen |
+| Löhne an Menschen gebührenfrei | Menschen zahlen beim Einkauf (über 1.000 AEQ/Monat) die 0,1 % schon |
+| Sockel 2.000 AEQ frei | höchstens 3 je Mensch, also 6.000 AEQ |
+| – (kein Grundeinkommen, keine Stimme, kein Tausch-Freibetrag) | – |
+
+Die Iris macht Unternehmen also nicht prüfbar. Sie macht die **Menschen hinter
+ihnen** zählbar, und das reicht, **solange diese Menschen auch die Kontrolle
+haben**. Genau da hält der Code heute nicht ganz.
+
+### Lücke 1: Verantwortung ist heute nur ein Name (wichtigster Befund)
+
+Ein Unternehmenskonto ist eine gewöhnliche Adresse mit **eigenem privaten
+Schlüssel**. Der Mensch unterschreibt nur einmal bei der Eröffnung. Danach:
+
+- bewegt **wer den Unternehmensschlüssel hat** das Geld, nicht der
+  verantwortliche Mensch;
+- kann der verantwortliche Mensch das Konto weder sperren noch verlassen (es
+  gibt nur Eröffnen, Mitinhaber und Schließen; Schließen nur, wenn das Konto
+  leer ist).
+
+**Der Angriff:** Jemand mit geprüfter Iris eröffnet 3 Unternehmen und verkauft
+die 3 Schlüssel. Der Käufer bleibt anonym und hat Konten **ohne
+Vermögensgrenze**; ein Mensch steht nur auf dem Papier dafür ein. Bei
+Worldcoin wurden verifizierte Konten genau so gehandelt. Ein menschliches Konto
+zu verkaufen bringt bei uns wenig (Grenze 25.000 AEQ); ein Unternehmenskonto ist
+das Wertvollste, was man verkaufen kann. Für Geldwäsche oder anonymes Horten in
+großem Stil sind 12 % im Jahr kein Hindernis.
+
+**Vorschlag: Unternehmen ohne eigenen Schlüssel.**
+- Die Unternehmensadresse wird aus Mensch und laufender Nummer abgeleitet. Es
+  gibt **keinen privaten Schlüssel** dafür, also nichts zu verkaufen oder zu
+  verlieren.
+- **Empfangen** geht wie bei jeder Adresse (QR, MetaMask, Kasse). Die Kasse
+  braucht dafür gar keinen Schlüssel: Angestellte können kassieren, ohne an das
+  Geld zu kommen.
+- **Ausgeben** (Löhne, Lieferanten) ist ein Auftrag, den ein verantwortlicher
+  Mensch mit **seiner eigenen Wallet** unterschreibt. Dieselbe Technik wie bei
+  den Tauschaufträgen heute (`auftrag_nachweis.go`, fortlaufende Nonce).
+- Wer ein Unternehmen verkaufen will, muss damit seine eigene Identität
+  verkaufen, samt Grundeinkommen und Stimme. Mit der Iris und dem
+  Lebensnachweis lässt sich das nicht dauerhaft übergeben.
+- Für die Läden wird es **einfacher**: eine Unterschrift zur Eröffnung, kein
+  zweiter Schlüssel zum Sichern, Wiederherstellung über die Wallet des
+  Menschen (Guardian-System).
+
+Dazu: ein verantwortlicher Mensch kann **austreten**, solange ein anderer
+bleibt. Ist der letzte Verantwortliche nicht mehr da, gilt das Konto als freie
+Adresse mit Übergangsfrist (Regel noch zu entscheiden).
+
+**Wann:** Die Anmeldung in der App (4.2) ist noch nicht gebaut. Das ist der
+günstigste Zeitpunkt, sie gleich so zu bauen. Vor echtem Geld muss es stehen.
+Konsensänderung mit Aktivierungszeit und eigener Sicherheitsprüfung.
+
+### Lücke 2: Rückzahlung vor dem Einkauf (im Code nachgewiesen)
+
+Die Schutzregel „Was das Unternehmen demselben Menschen zurückzahlt, hebt dessen
+gezählte Einkäufe auf“ wirkt nur **in einer Richtung**: `rueckzahlungLocked`
+zieht nur ab, was schon gezählt ist. Zahlt die Firma **zuerst** und kauft der
+Freund **danach** mit demselben Geld ein, zählt der Einkauf voll.
+
+Nachgestellt am 02.10.2026 (Testkonten, Phase-0-Grenze 5.000):
+
+| Reihenfolge | gezählter Monatsumsatz |
+|---|---|
+| Freund kauft für 3.990 ein, Firma zahlt 3.990 zurück | **0 AEQ** (Regel wirkt) |
+| Firma zahlt 4.000 „Lohn“, Freund kauft für 3.990 ein | **3.740 AEQ** (Regel wirkt nicht) |
+
+Mit echten Zahlen: je Freund 9.000 AEQ pro Quartal, also 3.000 AEQ Monatsumsatz
+und 4.500 AEQ mehr Freibetrag. Ersparnis bis 45 AEQ im Monat, Kosten rund
+8 AEQ im Quartal (seine Überweisungsgebühr). Der Freund braucht dafür **kein
+eigenes Geld**, die Firma stellt es. Das Konzept (14.3) setzte voraus, dass
+Freunde jedes Quartal eigenes Geld einzahlen.
+
+**Vorschlag:** Zahlungen der Firma an einen Menschen werden auch gegen dessen
+**spätere** Einkäufe dort gerechnet (gleiche zwei Quartale wie heute). Kauft
+eine Angestellte bei ihrem Arbeitgeber ein, zählt das bis zur Höhe ihres Lohns
+nicht. So steht es im Konzept schon als gewollt. Kleine Änderung in
+`nachUeberweisung`/`rueckzahlungLocked`, aber sie ändert die Liegegeld-Beträge.
+Darum braucht sie eine Aktivierungszeit, einen Missbrauchstest (genau die
+Tabelle oben) und eine eigene Sicherheitsprüfung.
+
+### Kleiner, aber zu wissen
+
+- **Name und Kategorie sind selbst angegeben.** Im Verzeichnis (4.4) könnte
+  sich jeder „Aldi“ nennen. Vorschlag: Namen als „selbst angegeben“ zeigen,
+  dazu ein freiwilliger, **von jedem nachprüfbarer** Nachweis über die eigene
+  Website (Datei unter `/.well-known/aequitas.txt` mit der
+  Unternehmensadresse). Keine Stelle entscheidet, jeder Knoten und jede App kann
+  es selbst prüfen. Er bringt nur Vertrauen, keinen wirtschaftlichen Vorteil.
+- **Ein Menschenstatus lässt sich nie entziehen** (kein `IsHuman = false` im
+  Code). Fliegt eine gefälschte Identität später auf, bleiben auch ihre
+  Unternehmen. Das ist keine Lücke der Unternehmensregeln, sondern der
+  Personenprüfung. Mit der Iris wird sie kleiner, braucht aber trotzdem eine
+  Regel.
+- **Schon bedacht:** Eine Unternehmensadresse, die sich später als Mensch
+  registriert, fällt unter die Grenze für Menschen
+  (`TestUnternehmenDasMenschWirdBehaeltGrenze`).
+
 ## 5. Was wir bewusst nicht machen
 
 | Idee | Warum nicht |
@@ -240,6 +358,8 @@ Alles ist aus den Blöcken ablesbar, ohne neue Datenerhebung.
 | 4 | Verzeichnis „Wo kann ich AEQ ausgeben?“ (4.4) | App, Website, Register-Feld | Pilotstart |
 | 5 | Weitergabequote (4.5) | API, App | im Pilot |
 | 6 | Startguthaben 90 Tage ohne Tausch-Freibetrag (4.1) | Konsens | **entschieden und gebaut, bevor echtes Stable angebunden wird** |
+| 7 | Rückzahlung vor dem Einkauf schließen (4a, Lücke 2) | Konsens, klein | nach der Beta, vor dem Pilot |
+| 8 | Unternehmen ohne eigenen Schlüssel (4a, Lücke 1) | Konsens und App | zusammen mit 2 entwerfen, **vor echtem Geld** |
 
 Die Beta selbst muss nicht warten. Menschen können ab Tag 1 mitmachen;
 Unternehmen kommen im begleiteten Pilot dazu, sobald 2 und 3 stehen.
