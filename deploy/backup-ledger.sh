@@ -16,15 +16,12 @@
 set -euo pipefail
 BOX="${BOX:?BOX setzen}"
 
-# DIE DATENBANK DES LAUFENDEN KNOTENS, NICHT DIE AUS EINER DATEI.
+# DIE DATENBANK DES LAUFENDEN KNOTENS ZUERST, die Datei nur ohne ihn.
 #
-# Bis zum 02.10.2026 kam DATABASE_URL zuerst aus /root/.aequitas.env. Auf dem
-# neuen C1 (netcup) laeuft der Knoten aber ueber deploy/validator/.env; die
-# alte Datei zeigte auf eine andere, leere Datenbank. Gesichert wurde damit
-# tagelang eine Datenbank ohne ein einziges Konto (61 KB) -- aufgefallen erst,
-# als die Pruefung den lebenden Stand mitzaehlte ("no accounts at all").
-# Massgeblich ist, womit der Prozess wirklich laeuft; die Datei nur, wenn es
-# keinen laufenden Knoten gibt.
+# Massgeblich ist, womit der Prozess wirklich laeuft. Auf dem neuen C1
+# (netcup) kommt seine Umgebung aus deploy/validator/.env, nicht aus
+# /root/.aequitas.env; beide zeigten am 02.10.2026 auf dieselbe Datenbank,
+# aber nichts garantiert, dass das so bleibt. Das Log nennt Host/Datenbank.
 DATABASE_URL="$(docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | grep -E '^DATABASE_URL=' | head -1 | cut -d= -f2- || true)"
 if [ -z "$DATABASE_URL" ]; then
   DATABASE_URL="$(grep -E '^DATABASE_URL=' /root/.aequitas.env 2>/dev/null | head -1 | cut -d= -f2- || true)"
@@ -58,11 +55,17 @@ LIVE_ACCOUNTS="$(live "SELECT count(*) FROM chain_accounts")"
 case "${LIVE_HUMANS}x${LIVE_ACCOUNTS}" in
   *[!0-9x]*|x*|*x) echo "Live counts unreadable (humans='${LIVE_HUMANS}' accounts='${LIVE_ACCOUNTS}'). Failing."; exit 1 ;;
 esac
-if [ "$LIVE_ACCOUNTS" -lt 1 ]; then
-  echo "The live node has no accounts at all — nothing to back up, and that is itself wrong. Failing."
+# Ist das ueberhaupt die Datenbank eines laufenden Knotens? Konten sind kein
+# Beweis: nach dem Neustart bei null gibt es ohne Menschen auch keine Konten
+# (C1 am 02.10.2026: 0 Konten bei Hoehe > 100.000). Die Blockhoehe ist einer
+# -- eine laufende Kette hat Bloecke (Index auf height, sofort beantwortet).
+LIVE_HOEHE="$(live "SELECT COALESCE(max(height),0) FROM chain_blocks")"
+case "$LIVE_HOEHE" in ''|*[!0-9]*) echo "Live block height unreadable ('${LIVE_HOEHE}'). Failing."; exit 1 ;; esac
+if [ "$LIVE_HOEHE" -lt 1 ]; then
+  echo "This database has no blocks — it is not the running node's ledger. Failing."
   exit 1
 fi
-echo "live before the dump: humans=${LIVE_HUMANS} accounts=${LIVE_ACCOUNTS}"
+echo "live before the dump: humans=${LIVE_HUMANS} accounts=${LIVE_ACCOUNTS} height=${LIVE_HOEHE}"
 
 echo "=== pg_dump (custom format, compressed; Zustand ohne Bloecke) ==="
 # -Fc so the restore check can use pg_restore and so the file is
@@ -192,7 +195,7 @@ fi
 case "${HUMANS}x${ACCOUNTS}" in
   *[!0-9x]*|x*|*x) echo "Restored counts unreadable (humans='${HUMANS}' accounts='${ACCOUNTS}'). Failing."; exit 1 ;;
 esac
-if [ "$ACCOUNTS" -lt 1 ] || [ "$ACCOUNTS" -lt "$LIVE_ACCOUNTS" ] || [ "$HUMANS" -lt "$LIVE_HUMANS" ]; then
+if [ "$ACCOUNTS" -lt "$LIVE_ACCOUNTS" ] || [ "$HUMANS" -lt "$LIVE_HUMANS" ]; then
   echo "The restored copy has humans=${HUMANS} accounts=${ACCOUNTS}, the live node had humans=${LIVE_HUMANS} accounts=${LIVE_ACCOUNTS} before the dump — incomplete. Failing."
   exit 1
 fi
