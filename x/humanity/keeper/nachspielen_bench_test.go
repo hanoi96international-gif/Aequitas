@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math"
 	"math/big"
 	"net/url"
 	"os"
@@ -114,6 +115,17 @@ func nachspielenMessen(b *testing.B, mensch bool) {
 	lauf := fmt.Sprintf("nachspielen_%d", time.Now().UnixNano()%1_000_000_000)
 	dbA := frischeDatenbank(b, basis, lauf+"_a")
 	dbB := frischeDatenbank(b, basis, lauf+"_b")
+
+	// Wie auf C1: Wirtschaftsregeln und signierte Ueberweisungen (Stufe 1.0)
+	// sind aktiv. TestMain schaltet beide fuer alle anderen Tests ab
+	// (wirtschaft_main_test.go) -- ohne das hier pruefte B keine Signatur und
+	// jede Ueberweisung truege die alte Gebuehr.
+	wirtschaftAktivOverride.Store(1)
+	signierteUeberweisungenOverride.Store(1)
+	b.Cleanup(func() {
+		wirtschaftAktivOverride.Store(math.MaxInt64)
+		signierteUeberweisungenOverride.Store(math.MaxInt64)
+	})
 
 	altLeise := rpcQuietTx
 	rpcQuietTx = true
