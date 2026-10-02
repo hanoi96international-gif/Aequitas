@@ -1,6 +1,6 @@
 # Unternehmen: Warum sollte ein Laden AEQ annehmen?
 
-Stand: 02.10.2026 (ergänzt um 4a: Prüfung von Unternehmen) · Status: **Analyse und Vorschlag, nichts davon ist beschlossen
+Stand: 02.10.2026, zweiter Durchgang · Status: **Analyse und Vorschlag, nichts davon ist beschlossen
 oder gebaut.** Ergänzt `docs/UNTERNEHMEN_KONZEPT.md`; dort stehen die geltenden
 Regeln.
 
@@ -8,11 +8,28 @@ Regeln.
 
 Die Regeln für Unternehmen sind gründlich durchdacht, **aber nur von der
 Kostenseite**: Was kostet Horten, wie wird Missbrauch verhindert, wer zahlt wie
-viel. Die Nutzenseite fehlt fast ganz. Heute kann sich ein Unternehmen ohne
+viel. Die Nutzenseite fehlt fast ganz: Heute kann sich ein Unternehmen ohne
 Entwickler nicht einmal anmelden, es gibt keine Kasse, kein Verzeichnis und in
-der Beta keinen echten Ausstieg. Dazu kommt eine Regel, die nach dem Start mit
-echtem Geld genau die Todesspirale auslösen kann, vor der wir Angst haben
-(Abschnitt 2.2).
+der Beta keinen echten Ausstieg. **Keine Gebühr und keine Regel erzeugt
+Nachfrage nach AEQ; das tun nur Läden, die es annehmen, und Läden, die es
+weitergeben können.**
+
+> **Zweiter Durchgang (02.10.2026, abends).** Drei Vorschläge aus dem ersten
+> Durchgang hielten der Gegenprüfung als Angreifer nicht stand und sind
+> zurückgenommen oder herabgestuft:
+>
+> 1. *Ausstiegsabgabe auf das Startguthaben* (alt 4.1): Ein Verkauf von Mensch
+>    zu Mensch gegen Euro per Bank läuft gar nicht über den Tausch auf der
+>    Kette. 1.000 AEQ im Monat sind zwischen Menschen gebührenfrei, genau das
+>    Startguthaben. Die Abgabe verschiebt den Verkauf nur. **Zurückgenommen**,
+>    ersetzt durch 4.1 neu.
+> 2. *Unternehmen ohne eigenen Schlüssel* (4a, Lücke 1): Ein gekauftes
+>    Unternehmenskonto spart gegenüber vielen freien Adressen nur 20 AEQ im
+>    Monat. Es ist kein Geldproblem, sondern ein Problem der ehrlichen Anzeige.
+>    Und der Umbau verhindert den Verkauf nicht, er bündelt das Unternehmen nur
+>    mit der Identität und macht diese wertvoller. **Herabgestuft.**
+> 3. *Reparatur der Rückzahlungsregel* (4a, Lücke 2): Mit einem zweiten Freund
+>    ist sie wieder offen. **Nicht bauen**, Konzepttext korrigieren.
 
 ---
 
@@ -49,19 +66,25 @@ Unternehmen und ihren Lieferketten anfangen, nicht bei den Kunden.
 
 - Jeder neue Mensch bekommt **1.000 AEQ** (`registrationGrant`).
 - Jeder Mensch darf **3.000 AEQ im Monat ohne Abgabe** in Stable tauschen
-  (`menschTauschFreiMonat`).
-- Folge: **Das gesamte Startguthaben kann am Tag der Registrierung abgabefrei
-  verkauft werden.**
+  (`menschTauschFreiMonat`), und **1.000 AEQ im Monat gebührenfrei an andere
+  Menschen** überweisen.
+- Folge: **Das gesamte Startguthaben kann am Tag der Registrierung verkauft
+  werden**, über den Tausch auf der Kette oder an jemanden, der Euro per Bank
+  zahlt.
+- Die Staffelung des Startguthabens (`grant_staffel.go`, 200 sofort und 800
+  über 30 Tage) gibt es, sie ist aber bis 2100 abgeschaltet und nur für
+  auffällige Registrierungen gedacht.
 
 Solange es nur tUSD gibt, ist das egal. Sobald ein echter Euro-Stablecoin
 angebunden ist, ist es der kürzeste Weg in die Spirale aus 2.1: Neue Menschen
 verkaufen, weil sie (noch) nichts kaufen können, der Kurs fällt, Läden steigen
-aus. Dazu ist es ein **Sicherheitsthema**: Wer die Personenprüfung einmal
-überlistet, kann jede gefälschte Identität sofort in Euro verwandeln. Je
-leichter der Ausstieg, desto lohnender der Angriff auf die Biometrie.
+aus.
 
-Das ist der eine Punkt in diesem Dokument, der **vor echtem Geld entschieden
-sein muss**. Vorschlag in 4.1.
+**Was dagegen nicht hilft:** eine Abgabe. Wer Geld geschenkt bekommt und nichts
+dafür kaufen kann, verkauft es auch mit 2 % oder 5 % Abschlag, notfalls an der
+Kette vorbei. Eine Gebühr hoch genug, um das zu bremsen, wäre unfair gegenüber
+allen, die ehrlich tauschen müssen. **Was hilft:** Gründe zu bleiben, bevor der
+Ausgang aufgeht (4.1).
 
 ## 3. Was ein Unternehmen wirklich will
 
@@ -82,49 +105,43 @@ Jeder Vorschlag ist gegen den Kern geprüft: **kein neues Geld, kein Vorrecht
 für Unternehmen, Regeln pro Mensch.** Was dagegen verstößt, steht in
 Abschnitt 5.
 
-### 4.1 Startguthaben zum Ausgeben, nicht zum Verkaufen (Konsens, vor echtem Geld)
+### 4.1 Den echten Ausgang erst öffnen, wenn es Gründe zum Bleiben gibt
 
-**Regel:** Wer in den **ersten 90 Tagen nach der Registrierung** AEQ in Stable
-tauscht, hat keinen Tausch-Freibetrag. Es gilt die normale Ausstiegsabgabe von
-2 %. Danach gelten wie heute 3.000 AEQ im Monat frei. Die eigene Einlage
-(selbst eingezahltes Stable) bleibt immer frei.
+Die Beta hat einen Schutz, den wir nicht verschenken sollten: **Es gibt keinen
+Umtausch in echtes Geld.** Ein Startguthaben, das man nicht verkaufen kann, wird
+ausgegeben oder liegt. Das ist die Zeit, in der der Kreislauf wachsen muss.
 
-- **Fair:** gilt für jeden Menschen gleich, nimmt niemandem etwas, das
-  Startguthaben bleibt voll nutzbar zum Ausgeben, Überweisen, Sparen.
-- **Wirkt gegen die Spirale:** Verkaufen bleibt möglich, aber Ausgeben im
-  Netz ist die bessere Wahl. Die 20 AEQ Abgabe auf einen vollen Verkauf gehen
-  ans Grundeinkommen.
-- **Wirkt gegen Fälschungen:** Eine gefälschte Identität ist nicht mehr
-  sofort und kostenlos Bargeld.
-- **Einfach:** ein Datum je Mensch, das die Kette schon kennt (Registrierung).
+- Die Anbindung eines echten Euro-Stablecoins (ohnehin erst nach der
+  rechtlichen Prüfung, Konzept Abschnitt 11) wird **an Messwerte aus dem Pilot
+  gebunden**, nicht an ein Datum. Vorschlag: wenn ein nennenswerter Teil der
+  Startguthaben innerhalb von 30 Tagen bei Unternehmen ankommt und
+  Unternehmen im Mittel den größeren Teil ihrer Einnahmen weitergeben (6.).
+  Die Schwellen setzt ihr nach den ersten Pilotwochen.
+- Bis dahin hat AEQ für einen Laden **keinen Euro-Wert, nur einen
+  Kundenwert**. Darum ist die Teilannahme (4.6) am Anfang der wichtigste Hebel,
+  nicht eine Randnotiz: Der Laden behandelt AEQ wie einen Gutschein der
+  Gemeinschaft, mit einer Grenze, die er selbst setzt.
+- Ehrlich: Das löst die Spirale nicht für immer. Sobald es einen Ausgang gibt,
+  zählt nur noch, ob es mehr Gründe zum Bleiben als zum Gehen gibt. Darum
+  kommen Kasse, Verzeichnis und Pilotkette (4.2 bis 4.7) zuerst.
 
-Alternativen, falls 2 % zu mild sind: 5 % in den ersten 90 Tagen (Chiemgauer-Höhe),
-oder Freibetrag erst ab 180 Tagen. Empfehlung: mit 2 % / 90 Tage starten und
-im Pilot messen, welcher Anteil der Startguthaben in den ersten 30 Tagen bei
-Unternehmen landet und welcher im Ausstieg.
-
-> Ändert eine Konsensregel (`ausstiegsAbgabe` in `wirtschaft.go`), braucht eine
-> Aktivierungshöhe, Tests für Nachspielen und Missbrauch (Registrierung,
-> Weiterleiten an zweites Konto, Tausch) und eine eigene Sicherheitsprüfung des
-> Diffs. Nicht in der Woche vor dem Beta-Start bauen. Die Beta hat ohnehin nur
-> tUSD; die Regel muss stehen, **bevor** ein echter Stablecoin angebunden wird.
-
-Offen bei der Entscheidung: Ein Mensch kann das Startguthaben an einen Freund
-überweisen, der älter als 90 Tage ist und abgabefrei tauscht. Das spart 2 % und
-verbraucht dessen Monatsfreibetrag, und der Freund muss mitmachen. Klein und
-gedeckelt (3.000 AEQ je Mensch und Monat), aber nicht null.
+Eine Abgabe auf frühen Umtausch (erster Durchgang) ist zurückgenommen, siehe
+2.2.
 
 ### 4.2 Unternehmen in der App anmelden (App, Beta-Pilot)
 
 Ohne das gibt es keinen Pilot, nur Einzelfälle mit Entwicklerhilfe.
 
 - Neuer Bereich „Mein Unternehmen“ in der App: Name, Kategorie, fertig.
-- Heute braucht die Eröffnung zwei Unterschriften: eine vom Unternehmensschlüssel
-  und eine vom Menschen. **Empfehlung:** die Anmeldung gleich für Unternehmen
-  ohne eigenen Schlüssel bauen (4a, Lücke 1). Dann unterschreibt nur der
-  Mensch mit seiner Wallet, und es gibt keinen zweiten Schlüssel, der gesichert,
-  verloren oder verkauft werden kann.
-- Danach dasselbe für Mitinhaber, Austreten und Schließen.
+- Die Eröffnung braucht zwei Unterschriften: eine vom Unternehmensschlüssel
+  und eine vom Menschen. Die App erzeugt den Unternehmensschlüssel auf dem
+  Gerät (SecureStore) und unterschreibt damit; der Mensch unterschreibt mit
+  seiner Wallet. Kein Schlüssel verlässt das Gerät.
+- Danach dasselbe für Mitinhaber und Schließen.
+- Zu klären vor dem Bau: Verlust des Geräts (verschlüsselter Export des
+  Unternehmensschlüssels), keine Kopie auf einem Server. Der Umbau auf
+  Unternehmen ohne eigenen Schlüssel ist nach dem zweiten Durchgang keine
+  Voraussetzung mehr (4a, Lücke 1).
 
 ### 4.3 Kassenmodus (App, Beta-Pilot)
 
@@ -166,7 +183,7 @@ Buchführung und müssten in die Monatssummen aufgenommen werden. Zu klären: ab
 welcher Mindestmenge die Quote gezeigt wird, damit Einzelzahlungen nicht
 täuschen.
 
-### 4.6 Teilannahme als Empfehlung für Läden (kein Code)
+### 4.6 Teilannahme: am Anfang der wichtigste Hebel (kein Code)
 
 Das Risiko eines Ladens ist sein AEQ-Bestand, nicht die einzelne Zahlung. Die
 einfachste Bremse ist, dass der Laden **selbst** festlegt, wie viel er annimmt:
@@ -233,52 +250,76 @@ Stattdessen gilt:
 | – (kein Grundeinkommen, keine Stimme, kein Tausch-Freibetrag) | – |
 
 Die Iris macht Unternehmen also nicht prüfbar. Sie macht die **Menschen hinter
-ihnen** zählbar, und das reicht, **solange diese Menschen auch die Kontrolle
-haben**. Genau da hält der Code heute nicht ganz.
+ihnen** zählbar. Der zweite Anker ist wichtiger, als er aussieht: **Liegegeld
+und Grenzen wirken auf jedes AEQ, egal wer es hält.** Darum muss niemand wissen,
+wer hinter einem Konto steht. Der richtige Vergleich für ein
+Unternehmenskonto ist deshalb nicht der Mensch, sondern die freie Adresse, die
+jeder ohne Prüfung anlegen kann (Lücke 1 rechnet das nach).
 
-### Lücke 1: Verantwortung ist heute nur ein Name (wichtigster Befund)
+**Was das Netz nicht ersetzt:** Wo echtes Geld ein- und ausgeht
+(Euro-Stablecoin, Börsen), gelten Regeln gegen Geldwäsche, und dort wird
+geprüft. Ob das für Aequitas reicht oder ob der eingebaute Tausch selbst
+Pflichten auslöst, ist Teil der MiCA-Prüfung (Konzept Abschnitt 11) und muss
+vor echtem Geld rechtlich geklärt sein. Der Grundsatz „das Netz prüft
+Menschen, nicht Unternehmen“ ist eine Entscheidung über das Protokoll, keine
+Rechtsauskunft.
+
+### Lücke 1: Verantwortung ist heute nur ein Eintrag
 
 Ein Unternehmenskonto ist eine gewöhnliche Adresse mit **eigenem privaten
-Schlüssel**. Der Mensch unterschreibt nur einmal bei der Eröffnung. Danach:
+Schlüssel**. Der Mensch unterschreibt nur einmal bei der Eröffnung. Danach
+bewegt, wer den Unternehmensschlüssel hat, das Geld. Der eingetragene Mensch
+kann das Konto weder sperren noch verlassen.
 
-- bewegt **wer den Unternehmensschlüssel hat** das Geld, nicht der
-  verantwortliche Mensch;
-- kann der verantwortliche Mensch das Konto weder sperren noch verlassen (es
-  gibt nur Eröffnen, Mitinhaber und Schließen; Schließen nur, wenn das Konto
-  leer ist).
+**Was ein Käufer davon hat, nachgerechnet** (Liegegeld ohne Umsatz gegen 1 %
+je freie Adresse, `liegegeldFuerStand`):
 
-**Der Angriff:** Jemand mit geprüfter Iris eröffnet 3 Unternehmen und verkauft
-die 3 Schlüssel. Der Käufer bleibt anonym und hat Konten **ohne
-Vermögensgrenze**; ein Mensch steht nur auf dem Papier dafür ein. Bei
-Worldcoin wurden verifizierte Konten genau so gehandelt. Ein menschliches Konto
-zu verkaufen bringt bei uns wenig (Grenze 25.000 AEQ); ein Unternehmenskonto ist
-das Wertvollste, was man verkaufen kann. Für Geldwäsche oder anonymes Horten in
-großem Stil sind 12 % im Jahr kein Hindernis.
+| anonym halten | als gekauftes Unternehmen | auf freien Adressen à 250 AEQ |
+|---|---|---|
+| 10.000 AEQ | 80 AEQ/Monat | 100 AEQ/Monat (40 Adressen) |
+| 100.000 AEQ | 980 AEQ/Monat | 1.000 AEQ/Monat (400 Adressen) |
+| 1.000.000 AEQ | 9.980 AEQ/Monat | 10.000 AEQ/Monat (4.000 Adressen) |
 
-**Vorschlag: Unternehmen ohne eigenen Schlüssel.**
-- Die Unternehmensadresse wird aus Mensch und laufender Nummer abgeleitet. Es
-  gibt **keinen privaten Schlüssel** dafür, also nichts zu verkaufen oder zu
-  verlieren.
-- **Empfangen** geht wie bei jeder Adresse (QR, MetaMask, Kasse). Die Kasse
-  braucht dafür gar keinen Schlüssel: Angestellte können kassieren, ohne an das
-  Geld zu kommen.
-- **Ausgeben** (Löhne, Lieferanten) ist ein Auftrag, den ein verantwortlicher
-  Mensch mit **seiner eigenen Wallet** unterschreibt. Dieselbe Technik wie bei
-  den Tauschaufträgen heute (`auftrag_nachweis.go`, fortlaufende Nonce).
-- Wer ein Unternehmen verkaufen will, muss damit seine eigene Identität
-  verkaufen, samt Grundeinkommen und Stimme. Mit der Iris und dem
-  Lebensnachweis lässt sich das nicht dauerhaft übergeben.
-- Für die Läden wird es **einfacher**: eine Unterschrift zur Eröffnung, kein
-  zweiter Schlüssel zum Sichern, Wiederherstellung über die Wallet des
-  Menschen (Guardian-System).
+Anonym große Beträge halten geht **schon heute ohne jeden Menschen**, zum
+gleichen Preis. Das gekaufte Unternehmen spart 20 AEQ im Monat und etwas
+Aufwand. **Wirtschaftlich ist das keine Lücke.** Die Regeln greifen, weil sie
+auf jedes AEQ wirken, nicht weil wir wissen, wer es hält. Das ist der
+Grundsatz aus `WHO_MAY_HOLD_AEQ.md`, und er trägt.
 
-Dazu: ein verantwortlicher Mensch kann **austreten**, solange ein anderer
-bleibt. Ist der letzte Verantwortliche nicht mehr da, gilt das Konto als freie
-Adresse mit Übergangsfrist (Regel noch zu entscheiden).
+**Was bleibt:** Das Register zeigt einen verantwortlichen Menschen, der vielleicht
+nichts mehr zu sagen hat. Wo Kunden dem vertrauen (Verzeichnis, 4.4), ist das
+eine falsche Anzeige.
 
-**Wann:** Die Anmeldung in der App (4.2) ist noch nicht gebaut. Das ist der
-günstigste Zeitpunkt, sie gleich so zu bauen. Vor echtem Geld muss es stehen.
-Konsensänderung mit Aktivierungszeit und eigener Sicherheitsprüfung.
+**Warum der Umbau auf „Unternehmen ohne eigenen Schlüssel“ (erster Durchgang)
+das nicht löst:**
+- Ein Mensch kann seine **eigene Wallet** verkaufen. Es gibt heute keinen Weg,
+  eine Identität per Biometrie auf eine neue Wallet umzuziehen, also kann der
+  Verkäufer sie auch nicht zurückholen. Mit dem Umbau wären die drei
+  Unternehmen im Paket dabei. Die Identität würde **wertvoller zum Kaufen**,
+  samt Grundeinkommen und Stimme. Das ist schlechter als heute.
+- Ohne Verkauf geht es mit einem Strohmann, der jeden Auftrag unterschreibt.
+- Der Umbau betrifft Kette (neue Auftragsart, Nonces, Schnellpfad) und App
+  (Löhne und Lieferanten nur über unterschriebene Aufträge, kein MetaMask).
+  Großer Aufwand für wenig Schutz.
+
+**Was stattdessen:**
+- **Ehrliche Anzeige:** Im Verzeichnis „bei Eröffnung eingetragen von einem
+  verifizierten Menschen“, nicht „ein Mensch steht dafür ein“.
+- **Austreten:** Ein eingetragener Mensch kann sich jederzeit austragen. Ist
+  danach niemand mehr eingetragen, fällt das Konto auf die Regeln einer freien
+  Adresse zurück (Übergangsfrist zum Auszahlen, Regel zu entscheiden). So kann
+  sich niemand mit seinem Namen an einem Konto festhalten lassen, das er nicht
+  mehr kontrolliert. Kleine Konsensänderung.
+- **Das eigentliche Mittel gegen Identitätsverkauf** ist allgemein, nicht
+  unternehmensbezogen: ein **Umzug per Iris**. Wer mit seiner Iris
+  nachweist, dass er es ist, zieht seine Identität (Grundeinkommen, Stimme,
+  Unternehmen) auf eine neue Wallet um, mit Wartefrist. Dann ist jede
+  verkaufte Identität für den Käufer wertlos, weil der Verkäufer sie jederzeit
+  zurückholen kann. Der Vergleichsdienst erkennt heute schon, dass eine Person
+  bereits registriert ist; statt abzulehnen, könnte er den Umzug anbieten.
+  Offene Fragen: Was passiert mit dem Guthaben auf der alten Wallet, und wie
+  schützt man jemanden, der zum Scan gezwungen wird? Für den Iris-Launch
+  durchdenken, nicht für die Beta.
 
 ### Lücke 2: Rückzahlung vor dem Einkauf (im Code nachgewiesen)
 
@@ -300,13 +341,22 @@ und 4.500 AEQ mehr Freibetrag. Ersparnis bis 45 AEQ im Monat, Kosten rund
 eigenes Geld**, die Firma stellt es. Das Konzept (14.3) setzte voraus, dass
 Freunde jedes Quartal eigenes Geld einzahlen.
 
-**Vorschlag:** Zahlungen der Firma an einen Menschen werden auch gegen dessen
-**spätere** Einkäufe dort gerechnet (gleiche zwei Quartale wie heute). Kauft
-eine Angestellte bei ihrem Arbeitgeber ein, zählt das bis zur Höhe ihres Lohns
-nicht. So steht es im Konzept schon als gewollt. Kleine Änderung in
-`nachUeberweisung`/`rueckzahlungLocked`, aber sie ändert die Liegegeld-Beträge.
-Darum braucht sie eine Aktivierungszeit, einen Missbrauchstest (genau die
-Tabelle oben) und eine eigene Sicherheitsprüfung.
+**Warum die naheliegende Reparatur nicht hilft:** Rechnet man frühere
+Zahlungen der Firma gegen spätere Einkäufe desselben Menschen, nimmt das Geld
+einfach einen Umweg: Firma → Freund 1 → Freund 2 → Firma. Freund 2 hat von
+der Firma nichts bekommen, sein Einkauf zählt voll. Zwei Freunde tauschen die
+Rollen, und es ist wie vorher. Kosten des Umwegs: 0,1 % über 1.000 AEQ im
+Monat.
+
+**Was wirklich begrenzt**, und das reicht: je Mensch höchstens 9.000 AEQ pro
+Quartal und Firma, und jeder Mensch existiert nur einmal. Jeder eingespannte
+Freund bringt der Firma höchstens rund 45 AEQ Ersparnis im Monat. Wer so 1.000
+AEQ im Monat sparen will, braucht über 20 Menschen, die jedes Quartal
+mitmachen, öffentlich sichtbar in den Lohnsummen.
+
+**Vorschlag:** Nicht bauen. Im Konzept (14.3) den Satz korrigieren, der eine
+Wirkung verspricht, die die Regel nicht hat. Die Regel selbst bleibt: Sie
+verhindert den plumpsten Fall (einkaufen und dasselbe Geld zurückbekommen).
 
 ### Kleiner, aber zu wissen
 
@@ -337,7 +387,7 @@ Tabelle oben) und eine eigene Sicherheitsprüfung.
 
 ## 6. Was der Pilot messen muss
 
-Dieselben Zahlen, die über 4.1 entscheiden:
+Dieselben Zahlen, an die 4.1 den echten Ausgang bindet:
 
 1. Anteil der Startguthaben, der in den ersten 30 Tagen **bei Unternehmen**
    ankommt, und Anteil, der **aussteigt**.
@@ -353,13 +403,14 @@ Alles ist aus den Blöcken ablesbar, ohne neue Datenerhebung.
 | # | Was | Art | Wann |
 |---|---|---|---|
 | 1 | Klartext und Teilannahme auf der Website (4.6, 4.8) | Text | **zur Beta** |
-| 2 | Anmeldung in der App (4.2) | App | **zur Beta**, sonst kein Pilot |
+| 2 | Anmeldung in der App (4.2), mit heutigem Zwei-Schlüssel-Verfahren | App | **zur Beta**, sonst kein Pilot |
 | 3 | Kassenmodus mit CSV (4.3) | App | Pilotstart |
-| 4 | Verzeichnis „Wo kann ich AEQ ausgeben?“ (4.4) | App, Website, Register-Feld | Pilotstart |
+| 4 | Verzeichnis „Wo kann ich AEQ ausgeben?“ (4.4) mit ehrlicher Anzeige (4a) | App, Website, Register-Feld | Pilotstart |
 | 5 | Weitergabequote (4.5) | API, App | im Pilot |
-| 6 | Startguthaben 90 Tage ohne Tausch-Freibetrag (4.1) | Konsens | **entschieden und gebaut, bevor echtes Stable angebunden wird** |
-| 7 | Rückzahlung vor dem Einkauf schließen (4a, Lücke 2) | Konsens, klein | nach der Beta, vor dem Pilot |
-| 8 | Unternehmen ohne eigenen Schlüssel (4a, Lücke 1) | Konsens und App | zusammen mit 2 entwerfen, **vor echtem Geld** |
+| 6 | Austreten aus einem Unternehmen (4a, Lücke 1) | Konsens, klein | im Pilot |
+| 7 | Echten Ausgang an Messwerte binden (4.1) | Entscheidung | **vor jeder Anbindung von echtem Stable** |
+| 8 | Umzug per Iris (4a) | Konzept | für den Iris-Launch |
+| – | Konzepttext 14.3 zur Rückzahlungsregel korrigieren (4a, Lücke 2) | Text | bald |
 
 Die Beta selbst muss nicht warten. Menschen können ab Tag 1 mitmachen;
 Unternehmen kommen im begleiteten Pilot dazu, sobald 2 und 3 stehen.
