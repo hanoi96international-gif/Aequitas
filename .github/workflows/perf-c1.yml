@@ -6,6 +6,8 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+env:
+  C2_AKTIV: "nein"
 concurrency:
   group: c1-knoten
   cancel-in-progress: false
@@ -35,5 +37,9 @@ jobs:
         run: bash deploy/pruefe-knoten.sh https://aequitas.digital
       - name: Nachher -- C1
         run: ssh -i ~/.ssh/c1 -o BatchMode=yes root@188.172.229.121 'bash -s' < deploy/leistung-lesen.sh
+      # Wie deploy-c1-dann-c2.yml: ist C2 kein laufender Validator (Neustart
+      # bei null, Neueinrichtung nach Guide), gibt es dort keinen Knoten zu
+      # lesen -- der Schritt waere sonst jedes Mal rot.
       - name: Nachher -- C2
+        if: env.C2_AKTIV == 'ja'
         run: ssh -i ~/.ssh/c2 -o BatchMode=yes root@194.163.188.71 'bash -s' < deploy/leistung-lesen.sh
