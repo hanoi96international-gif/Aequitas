@@ -679,7 +679,15 @@ func (cs *ChainState) enqueueWALFlushMitLocked(from, to string, tx Transaction, 
 		it.ohneOutbox = true
 	}
 	cs.walFlushMu.Lock()
+	// Stufe 2a (wal_flush_zusammenfassen.go): traegt ein wartender Eintrag
+	// beide Konten schon, keinen zweiten anlegen.
+	if cs.walGedecktLocked(it) {
+		walFlushZusammengefasst.Add(1)
+		cs.walFlushMu.Unlock()
+		return
+	}
 	cs.walFlushQueue = append(cs.walFlushQueue, it)
+	cs.walSchlangeZaehlenLocked(it, +1)
 	cs.walRohEingereihtLocked(it)
 	walWarteschlangeStand.Store(int64(len(cs.walFlushQueue)))
 	cs.walFlushMu.Unlock()
@@ -934,6 +942,7 @@ func (cs *ChainState) flushWALQueue() {
 			return
 		}
 		cs.walRohUnterwegsLocked(batch, +1)
+		cs.walGenommenLocked(batch)
 		walWarteschlangeStand.Store(int64(len(cs.walFlushQueue)))
 		cs.walFlushMu.Unlock()
 		cs.flushWALBatchUndAbschliessen(batch)
@@ -957,6 +966,7 @@ func (cs *ChainState) flushWALQueue() {
 	}
 	batch := cs.walFlushQueue[:n]
 	cs.walRohUnterwegsLocked(batch, +1)
+	cs.walGenommenLocked(batch)
 	rest := cs.walFlushQueue[n:]
 	if cap(rest) < walFlushMaxBatch {
 		// Less than one full batch's worth of headroom left -- the next
@@ -988,6 +998,7 @@ func (cs *ChainState) flushWALBatchUndAbschliessen(batch []walFlushItem) {
 		cs.walFlushMu.Lock()
 		cs.walFlushQueue = append(batch, cs.walFlushQueue...)
 		cs.walRohUnterwegsLocked(batch, -1)
+		cs.walZurueckLocked(batch)
 		walWarteschlangeStand.Store(int64(len(cs.walFlushQueue)))
 		cs.walFlushMu.Unlock()
 		return
@@ -995,6 +1006,7 @@ func (cs *ChainState) flushWALBatchUndAbschliessen(batch []walFlushItem) {
 	cs.walFlushMu.Lock()
 	cs.walRohUnterwegsLocked(batch, -1)
 	cs.walRohGeschriebenLocked(batch)
+	cs.walAbgeschlossenLocked(batch)
 	cs.walFlushMu.Unlock()
 }
 

@@ -163,14 +163,14 @@ func TestBlockKorbMischen_LeererKorb(t *testing.T) {
 
 func TestWALKuerzenBis_NieUeberDieKorbMarke(t *testing.T) {
 	// Ohne Korb wie bisher.
-	if got := walKuerzenBis(1_000_000, 100, 300_000, 0, false, 0); got != 699_900 {
+	if got := walKuerzenBis(1_000_000, 100, 300_000, 0, false, 0, 0, false); got != 699_900 {
 		t.Fatalf("ohne Korb: %d", got)
 	}
 	// Mit Korb: nie ueber Marke+1, auch wenn Boden oder Abstand mehr erlaubten.
-	if got := walKuerzenBis(1_000_000, 100, 300_000, 900_000, true, 500_000); got != 500_001 {
+	if got := walKuerzenBis(1_000_000, 100, 300_000, 900_000, true, 500_000, 0, false); got != 500_001 {
 		t.Fatalf("mit Korb: %d, erwartet 500001", got)
 	}
-	if got := walKuerzenBis(1_000_000, 100, 300_000, 0, true, 900_000); got != 699_900 {
+	if got := walKuerzenBis(1_000_000, 100, 300_000, 0, true, 900_000, 0, false); got != 699_900 {
 		t.Fatalf("Marke weit vorn: %d", got)
 	}
 }

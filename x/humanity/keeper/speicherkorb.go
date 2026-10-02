@@ -309,6 +309,7 @@ func (cs *ChainState) SpeicherKorbStand() map[string]interface{} {
 	s["an"] = true
 	s["flush_teile"] = walFlushTeileWert
 	s["flush_aufgeteilt"] = walFlushTeileLaeufe.Load()
+	s["flush_zusammengefasst"] = walFlushZusammengefasst.Load()
 	s["bis"] = cs.korbBis.Load()
 	s["bedeutung"] = "Bloecke aus dem Speicher (" + speicherKorbEnv + "=1): angenommene Schnellpfad-Ueberweisungen in WAL-Reihenfolge; bis = hoechste Seq, die in einem gespeicherten Block steht (mit dem Block in einer Transaktion gesichert)."
 	return s
