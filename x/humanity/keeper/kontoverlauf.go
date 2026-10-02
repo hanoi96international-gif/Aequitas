@@ -106,6 +106,11 @@ func (cs *ChainState) ensureKontoVerlaufTable() {
 			zeit         BIGINT NOT NULL DEFAULT 0,
 			PRIMARY KEY (adresse, block_height, tx_index, seite)
 		)`)
+		// Teilindex nur fuer Grundeinkommensbuchungen (kundschaft.go): ohne ihn
+		// laese die 30-Tage-Summe die ganze Tabelle. CONCURRENTLY, damit das
+		// Anlegen auf einer gefuellten Tabelle die Schreiber nicht sperrt.
+		cs.db.Exec(`CREATE INDEX CONCURRENTLY IF NOT EXISTS chain_konto_verlauf_ubi_zeit
+			ON chain_konto_verlauf (zeit) WHERE art = 'ubi_distribution'`)
 	})
 }
 

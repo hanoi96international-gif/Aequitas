@@ -57,9 +57,12 @@ func (a *APIServer) handleWirtschaftRegeln(w http.ResponseWriter, r *http.Reques
 		}
 	}
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"kurs":     kurs,
-		"aktiv":    wirtschaftAktiv(time.Now().Unix()),
-		"aktiv_ab": wirtschaftAktivAbUnix,
+		"kurs": kurs,
+		// Was ein Mensch, der die ganzen 30 Tage dabei war, an Grundeinkommen
+		// bekommen hat (kundschaft.go). null = noch nicht berechnet.
+		"grundeinkommen_30_tage": grundeinkommenStand(a.state),
+		"aktiv":                  wirtschaftAktiv(time.Now().Unix()),
+		"aktiv_ab":               wirtschaftAktivAbUnix,
 		// Alle Betraege unten sind Vielfache davon (siehe wirtschaft.go).
 		"fairer_anteil": registrationGrant,
 		"in_fairen_anteilen": map[string]interface{}{
@@ -189,6 +192,7 @@ func (a *APIServer) handleUnternehmenListe(w http.ResponseWriter, r *http.Reques
 	cs := a.state
 	jetzt := time.Now().Unix()
 	liste := cs.unternehmenFuerSnapshot()
+	kundschaft, _, _ := cs.kundschaftUndGrundeinkommen()
 	out := make([]map[string]interface{}, 0, len(liste))
 	for _, e := range liste {
 		if !e.offen() {
@@ -209,6 +213,9 @@ func (a *APIServer) handleUnternehmenListe(w http.ResponseWriter, r *http.Reques
 			"adresse": e.Adresse, "name": e.Name, "kategorie": e.Kategorie,
 			"verantwortliche": len(e.Verantwortliche), "eroeffnet_am": e.EroeffnetAm,
 			"guthaben": round6(stand), "monat": monat,
+			// Verschiedene verifizierte Menschen, die in 90 Tagen hier bezahlt
+			// haben (kundschaft.go). null = noch nicht berechnet.
+			"kundschaft_90_tage": kundschaftWert(kundschaft, e.Adresse),
 		})
 	}
 	json.NewEncoder(w).Encode(map[string]interface{}{
@@ -379,4 +386,23 @@ func (a *APIServer) handleUnternehmenSchliessen(w http.ResponseWriter, r *http.R
 	a.unternehmenEinreichen(w, []string{u}, tx, func(ctx context.Context) error {
 		return a.state.applyUnternehmenSchliessenLocked(ctx, u, now)
 	})
+}
+
+func kundschaftWert(je map[string]int, adresse string) interface{} {
+	if je == nil {
+		return nil
+	}
+	return je[adresse] // nicht in der Antwort: 0 Kundinnen und Kunden
+}
+
+func grundeinkommenStand(cs *ChainState) map[string]interface{} {
+	_, ubi, ok := cs.kundschaftUndGrundeinkommen()
+	if !ok {
+		return map[string]interface{}{"je_mensch": nil, "in_fairen_anteilen": nil}
+	}
+	return map[string]interface{}{
+		"je_mensch":          round6(ubi),
+		"in_fairen_anteilen": round6(ubi / registrationGrant),
+		"hinweis":            "Summe der letzten 30 Tage fuer einen Menschen, der die ganze Zeit registriert war; aus dem Kontoverlauf, kein Konsens",
+	}
 }
