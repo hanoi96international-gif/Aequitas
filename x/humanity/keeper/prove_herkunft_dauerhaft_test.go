@@ -86,3 +86,48 @@ func TestProveHerkunftDatenbankWegSchliesstAb_RealDB(t *testing.T) {
 		t.Fatal("bei kaputter Datenbank trotzdem Herkunft")
 	}
 }
+
+// Missbrauch: Nach dem Fenster fragt /api/register die Datenbank nicht mehr --
+// auch eine dort liegende, gueltige Zeile hilft dann nicht (sie waere ohnehin
+// im Arbeitsspeicher, wenn dieser Prozess sie geschrieben haette).
+func TestProveHerkunftDBNurImFensterNachDemStart_RealDB(t *testing.T) {
+	db := herkunftTestDB(t)
+	const alice = "0xa11ce00000000000000000000000000000000001"
+	if _, err := db.Exec(`INSERT INTO prove_herkunft (nullifier, wallet, zeit_unix) VALUES ($1,$2,$3)`,
+		herkunftsSchluessel("0xfe0001"), alice, time.Now().Unix()); err != nil {
+		t.Fatal(err)
+	}
+	arbeitsspeicherLeeren()
+	if !hatProveHerkunft("0xfe0001", alice) {
+		t.Fatal("im Fenster nach dem Start muss die Tabelle gelesen werden")
+	}
+	arbeitsspeicherLeeren()
+	vorher := proveHerkunftDBAb.Load()
+	proveHerkunftDBAb.Store(time.Now().Add(-proveHerkunftTTL - time.Minute).UnixNano())
+	defer proveHerkunftDBAb.Store(vorher)
+	if hatProveHerkunft("0xfe0001", alice) {
+		t.Fatal("nach dem Fenster darf die Datenbank nicht mehr gefragt werden")
+	}
+}
+
+// Missbrauch: Sind alle Plaetze belegt, gibt es keine Herkunft statt Warten.
+func TestProveHerkunftDBGrenzeVollSchliesstAb_RealDB(t *testing.T) {
+	db := herkunftTestDB(t)
+	const alice = "0xa11ce00000000000000000000000000000000001"
+	if _, err := db.Exec(`INSERT INTO prove_herkunft (nullifier, wallet, zeit_unix) VALUES ($1,$2,$3)`,
+		herkunftsSchluessel("0xfe0002"), alice, time.Now().Unix()); err != nil {
+		t.Fatal(err)
+	}
+	arbeitsspeicherLeeren()
+	for i := 0; i < proveHerkunftDBGleichzeitig; i++ {
+		proveHerkunftDBPlaetze <- struct{}{}
+	}
+	defer func() {
+		for i := 0; i < proveHerkunftDBGleichzeitig; i++ {
+			<-proveHerkunftDBPlaetze
+		}
+	}()
+	if hatProveHerkunft("0xfe0002", alice) {
+		t.Fatal("bei voller Grenze darf es keine Herkunft geben")
+	}
+}

@@ -18,6 +18,14 @@ package keeper
 //     heisst "keine Herkunft" -- die Pruefung schliesst ab.
 //   - Dieselben Regeln wie im Arbeitsspeicher: kanonischer Nullifier, genau
 //     diese Wallet, nicht aelter als proveHerkunftTTL.
+//   - Nur nach einem Neustart: Die Tabelle kann nur Notizen liefern, die vor
+//     dem Start geschrieben wurden, und die verfallen spaetestens
+//     proveHerkunftTTL nach dem Start. Danach kennt der Arbeitsspeicher alles,
+//     und /api/register fragt die Datenbank gar nicht mehr. Ohne diese Grenze
+//     haette jede Registrierung mit erfundenem Nullifier eine
+//     Datenbankanfrage ausgeloest (eigene Sicherheitspruefung 02.10.2026).
+//   - Auch in diesem Fenster hoechstens proveHerkunftDBGleichzeitig Anfragen
+//     zugleich; ist die Grenze voll, gibt es keine Herkunft.
 //   - Begrenzt: jede Datenbankanfrage hat eine feste Wartezeit; alte Zeilen
 //     werden bei jedem Schreiben geloescht, die Tabelle haelt also nur die
 //     Notizen der letzten 15 Minuten. Wie viele das sind, begrenzen die
@@ -31,7 +39,17 @@ import (
 	"time"
 )
 
-const proveHerkunftDBWartezeit = 2 * time.Second
+const (
+	proveHerkunftDBWartezeit    = 2 * time.Second
+	proveHerkunftDBGleichzeitig = 4
+)
+
+// proveHerkunftDBAb: wann die dauerhafte Ablage eingeschaltet wurde (Start
+// des Knotens). Gelesen wird nur bis proveHerkunftTTL danach.
+var proveHerkunftDBAb atomic.Int64
+
+// proveHerkunftDBPlaetze begrenzt gleichzeitige Leseanfragen.
+var proveHerkunftDBPlaetze = make(chan struct{}, proveHerkunftDBGleichzeitig)
 
 // proveHerkunftDB: die Datenbank dieses Knotens, gesetzt von NewAPIServer.
 // nil (Tests ohne Datenbank, Knoten ohne Postgres): nur Arbeitsspeicher, wie
@@ -53,6 +71,7 @@ func richteProveHerkunftDBEin(db *sql.DB) {
 		fmt.Printf("[PROVE] Herkunftstabelle nicht angelegt, nur Arbeitsspeicher: %v\n", err)
 		return
 	}
+	proveHerkunftDBAb.Store(time.Now().UnixNano())
 	proveHerkunftDB.Store(db)
 }
 
@@ -84,6 +103,16 @@ func ladeProveHerkunftDB(schluessel string) (herkunft, bool) {
 	db := proveHerkunftDB.Load()
 	if db == nil {
 		return herkunft{}, false
+	}
+	// Nach dem Fenster weiss der Arbeitsspeicher alles: nicht fragen.
+	if time.Since(time.Unix(0, proveHerkunftDBAb.Load())) > proveHerkunftTTL {
+		return herkunft{}, false
+	}
+	select {
+	case proveHerkunftDBPlaetze <- struct{}{}:
+		defer func() { <-proveHerkunftDBPlaetze }()
+	default:
+		return herkunft{}, false // Grenze voll: keine Herkunft
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), proveHerkunftDBWartezeit)
 	defer cancel()
