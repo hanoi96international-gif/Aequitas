@@ -377,3 +377,23 @@ func TestVerzeichnisBuergschaftAustretenNachspielen(t *testing.T) {
 		t.Fatalf("Zustand nach dem Nachspielen: %+v", e)
 	}
 }
+
+// Die App (Aequitas-App lib/unternehmen.ts) baut dieselben Nachrichten; ihr
+// Test pinnt dieselben Zeichenketten. Weicht eine Seite ab, scheitert jede
+// Unterschrift aus der App.
+func TestUnternehmenNachrichtenFuerDieApp(t *testing.T) {
+	u, m := "0xb200000000000000000000000000000000000001", "0xa100000000000000000000000000000000000001"
+	for got, want := range map[string]string{
+		unternehmenEroeffnenNachricht(u, m, "Bäckerei Sonne", "lebensmittel", 1800000000):              "Aequitas: Unternehmenskonto eroeffnen\nUnternehmen: " + u + "\nVerantwortlich: " + m + "\nName: Bäckerei Sonne\nKategorie: lebensmittel\nZeit: 1800000000",
+		unternehmenVerzeichnisNachricht(u, m, "Rosenheim", "bis 20 %", "https://laden.de", 1800000000): "Aequitas: Verzeichniseintrag\nUnternehmen: " + u + "\nVerantwortlich: " + m + "\nOrt: Rosenheim\nAnnahme: bis 20 %\nWebseite: https://laden.de\nZeit: 1800000000",
+		unternehmenBuergschaftNachricht(u, m, 1800000000):                                              "Aequitas: Buergschaft fuer ein Unternehmen\nUnternehmen: " + u + "\nMensch: " + m + "\nZeit: 1800000000",
+		unternehmenAustretenNachricht(u, m, 1800000000):                                                "Aequitas: Als Verantwortliche austreten\nUnternehmen: " + u + "\nVerantwortlich: " + m + "\nZeit: 1800000000",
+	} {
+		if got != want {
+			t.Errorf("Nachricht weicht ab:\n%q\n%q", got, want)
+		}
+	}
+	if normName("  Café | Bar\n ") != "Café   Bar" {
+		t.Errorf("normName: %q", normName("  Café | Bar\n "))
+	}
+}
