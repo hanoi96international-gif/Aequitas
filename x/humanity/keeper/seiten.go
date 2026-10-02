@@ -138,7 +138,7 @@ const seitenKopfBiz = `<section class="page-head page-biz">
     <div class="pg-art pa-o" aria-hidden="true"><svg class="ico"><use href="#i-store"/></svg></div>
     <a href="/" class="pg-back" data-i18n="pg-back">← Back to the overview</a>
     <h1 data-i18n="pg-biz-h1">Aequitas for businesses</h1>
-    <p class="section-sub" data-i18n="pg-biz-sub">Take payments without card fees, pay wages free of charge and pass the money on. Only money left idle costs.</p>
+    <p class="section-sub" data-i18n="pg-biz-sub">Businesses join in a pilot town once enough people there have registered. Until then you can try AEQ without risk, with a limit you set yourself.</p>
     <div class="pg-btns"><a href="https://t.me/aequitasmoney" class="btn-primary" rel="noopener noreferrer" target="_blank" data-i18n="pg-biz-cta">Join the pilot</a><a href="https://github.com/hanoi96international-gif/Aequitas/blob/main/docs/UNTERNEHMEN_KONZEPT.md" class="btn-secondary" rel="noopener" data-i18n="biz-link">Read the full concept →</a></div>
     <div class="toc" role="navigation" aria-label="On this page"><span class="toc-lbl" data-i18n="toc-label">On this page</span><a href="#business" data-i18n="toc-adv">Advantages</a><a href="#join" data-i18n="toc-join">Taking part</a><a href="#bexamples" data-i18n="toc-bex">Costs</a><a href="#rules" data-i18n="toc-rules">Rules</a><a href="#loopholes" data-i18n="toc-lh">Protection against abuse</a></div>
   </div>

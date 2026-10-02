@@ -1178,15 +1178,15 @@ section{padding:64px 16px}
 <section id="join">
   <div class="section-inner">
     <div class="section-label" data-i18n="jn-label">How to take part</div>
-    <h2 data-i18n="jn-h2">Four steps to your first payment</h2>
-    <p class="section-sub" data-i18n="jn-sub">What a bakery, a café or a workshop needs to accept AEQ.</p>
+    <h2 data-i18n="jn-h2">Taking part in the pilot</h2>
+    <p class="section-sub" data-i18n="jn-sub">What a bakery, a café or a workshop can do today, without a business account and without risk.</p>
     <div class="steps steps-4">
-      <div class="step"><div class="step-num">1</div><div class="step-ico"><svg class="ico" aria-hidden="true"><use href="#i-store"/></svg></div><h3 data-i18n="jn-1-h">Open a business account</h3><p data-i18n="jn-1-p">A verified person and the business wallet sign together. Up to 10 responsible people per business, at most 3 businesses per person. No registry office, no gatekeeper.</p></div>
-      <div class="step"><div class="step-num">2</div><div class="step-ico"><svg class="ico" aria-hidden="true"><use href="#i-qr"/></svg></div><h3 data-i18n="shop-1-h">Checkout by QR code</h3><p data-i18n="shop-1-p">Enter the amount, show the QR code, the customer scans and pays, and gets a receipt. Prices can be shown in AEQ or as the euro equivalent at the current rate.</p></div>
-      <div class="step"><div class="step-num">3</div><div class="step-ico"><svg class="ico" aria-hidden="true"><use href="#i-handshake"/></svg></div><h3 data-i18n="jn-3-h">Pass it on</h3><p data-i18n="jn-3-p">Wages to people cost nothing, payments to suppliers 0.1 %. Up to one and a half months' turnover never pays a levy.</p></div>
-      <div class="step"><div class="step-num">4</div><div class="step-ico"><svg class="ico" aria-hidden="true"><use href="#i-file"/></svg></div><h3 data-i18n="shop-2-h">Accounting export</h3><p data-i18n="shop-2-p">Every payment with date, amount in AEQ and euro value at the time of payment, as a CSV file for the tax adviser.</p></div>
+      <div class="step"><div class="step-num">1</div><div class="step-ico"><svg class="ico" aria-hidden="true"><use href="#i-store"/></svg></div><h3 data-i18n="jn-1-h">Register as a person</h3><p data-i18n="jn-1-p">The owner registers like everyone else. At first, payments go to their own account. No business account is needed for that.</p></div>
+      <div class="step"><div class="step-num">2</div><div class="step-ico"><svg class="ico" aria-hidden="true"><use href="#i-qr"/></svg></div><h3 data-i18n="shop-1-h">Show your QR code</h3><p data-i18n="shop-1-p">In the app, tap Receive. The customer scans the code and enters the amount. The money arrives in seconds, and receiving costs the shop nothing.</p></div>
+      <div class="step"><div class="step-num">3</div><div class="step-ico"><svg class="ico" aria-hidden="true"><use href="#i-handshake"/></svg></div><h3 data-i18n="jn-3-h">Set your own limit</h3><p data-i18n="jn-3-p">You decide how much you accept, for example up to 20 % of a purchase or up to 500 AEQ a month, and you set your AEQ prices yourself.</p></div>
+      <div class="step"><div class="step-num">4</div><div class="step-ico"><svg class="ico" aria-hidden="true"><use href="#i-file"/></svg></div><h3 data-i18n="shop-2-h">Business account when it pays off</h3><p data-i18n="shop-2-p">If AEQ takes off for you, a business account follows: no fixed limit, wages free of charge, reserves free up to one and a half months' turnover.</p></div>
     </div>
-    <div class="sybil-blurb" data-i18n="shop-status"><strong>Status:</strong> the rules on the chain are built and apply from 26 September 2026. Checkout mode and export in the app are in progress.</div>
+    <div class="sybil-blurb" data-i18n="shop-status"><strong>Honestly:</strong> during the beta there is no exchange into euros, so AEQ has no euro value yet. Checkout mode and accounting export are not built yet. Take part for your customers and for the idea, with a limit you set yourself.</div>
   </div>
 </section>
 

@@ -26,6 +26,28 @@ sparen, 3.000 AEQ im Monat ohne Abgabe in Stable tauschen.
 wirken auf jedes AEQ, egal wer es hält; darum muss niemand wissen, wer hinter
 einem Konto steht.
 
+## 0a. Beta: Menschen zuerst, Unternehmen im Pilot
+
+**Entscheidung für die Beta (02.10.2026):** Die Beta ist für Menschen.
+Unternehmen sind nicht abgesagt, sie kommen in einer **Pilotstadt** dazu,
+sobald dort genug Menschen registriert sind (Richtwert 50 bis 100).
+
+- **Kein neuer Code für Unternehmen vor dem Pilot.** Die Regeln auf der Kette
+  bleiben, sie sind getestet und belasten niemanden, der sie nicht nutzt. Neue
+  Regeln kommen erst mit Zahlen aus dem Pilot.
+- **Der erste Laden braucht kein Unternehmenskonto.** Die Inhaberin nimmt AEQ
+  auf ihr Menschenkonto, mit selbst gesetzter Grenze
+  (`docs/PILOTLADEN.md`). Achtung: Ein Menschenkonto hat eine
+  Vermögensgrenze (Phase 0: 5.000 bis 25.000 AEQ); was darüber eingeht, wird
+  verteilt.
+- **Anmeldung, Kasse und Verzeichnis in der App** werden gebaut, wenn der erste
+  Laden sie braucht (Abschnitt 13).
+- **Recht vor Ware:** Bevor ein Laden echte Ware gegen AEQ abgibt, beantwortet
+  eine Kanzlei die Fragen in `docs/RECHTSFRAGEN_UNTERNEHMEN.md`.
+- **Nach außen ehrlich:** Die Unternehmensseite der Website sagt, dass es in
+  der Beta keinen Euro-Wert, keine Kasse und keinen Export gibt
+  (geändert am 02.10.2026, 12 Sprachen).
+
 ## 1. Grundsätze
 
 1. **Das Geld ist für Menschen.** AEQ entsteht nur, wenn sich ein Mensch
@@ -416,9 +438,10 @@ Ehrlich, gemessen am externen Audit vom 02.10.2026
 
 | # | Was | Wann |
 |---|---|---|
-| 1 | Klartext und Teilannahme auf der Website (10.2, 1–2) | zur Beta |
+| 1 | Klartext und Teilannahme auf der Website (10.2, 1–2) | **erledigt 02.10.2026** |
+| 1a | Kanzlei beantwortet `RECHTSFRAGEN_UNTERNEHMEN.md` | vor dem ersten Pilotladen |
 | 2 | Gründer-Reihenfolge (4.1 ²) nach eigener Sicherheitsprüfung mergen | zur Beta |
-| 3 | Anmeldung in der App (10.2, 3) | zum Pilot, sonst kein Pilot |
+| 3 | Anmeldung in der App (10.2, 3) | wenn der erste Pilotladen sie braucht (0a) |
 | 4 | Kassenmodus und Verzeichnis (10.2, 4–5) | Pilotstart |
 | 5 | Liegegeld-Prüfung auf `streng` | vor dem zweiten unabhängigen Validator |
 | 6 | Weitergabequote, Austreten (10.2, 6; 12) | im Pilot |
