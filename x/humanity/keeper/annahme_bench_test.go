@@ -5,6 +5,7 @@ import (
 	"crypto/ecdsa"
 	"encoding/hex"
 	"fmt"
+	"math"
 	"math/big"
 	"net/http/httptest"
 	"os"
@@ -86,6 +87,16 @@ func annahmeBuendelMessenMit(b *testing.B, cs *ChainState, dag *BlockDAG) {
 	b.Cleanup(func() { rpcQuietTx = altLeise })
 	inflightZuruecksetzen()
 	b.Cleanup(inflightZuruecksetzen)
+	// Wie auf C1 (seit 02.10.2026 hier): Wirtschaftsregeln und signierte
+	// Ueberweisungen (Stufe 1.0) sind aktiv. TestMain schaltet beide fuer alle
+	// anderen Tests ab (wirtschaft_main_test.go); ohne das hier mass dieser
+	// Benchmark eine Annahme ohne Gebuehrenregeln und ohne Buchfuehrung.
+	wirtschaftAktivOverride.Store(1)
+	signierteUeberweisungenOverride.Store(1)
+	b.Cleanup(func() {
+		wirtschaftAktivOverride.Store(math.MaxInt64)
+		signierteUeberweisungenOverride.Store(math.MaxInt64)
+	})
 	// Wie auf dem Pruefstand: der Lastgenerator ist freigestellt (nur die
 	// Ratenbegrenzung je IP; Inflight- und Rueckstaugrenze gelten weiter).
 	altFrei := rpcRateLimitFreiListe.Load()
@@ -102,7 +113,9 @@ func annahmeBuendelMessenMit(b *testing.B, cs *ChainState, dag *BlockDAG) {
 		}
 		schluessel[i] = k
 		addr := strings.ToLower(crypto.PubkeyToAddress(k.PublicKey).Hex())
-		acc := &AccountState{Address: addr, Balance: NewDecimal(1e12), LastActivityAt: nowUnix()}
+		// Freie Adressen duerfen hoechstens 1.000 AEQ halten
+		// (pruefeEmpfaengerWirtschaft) -- also 200, wie im Pruefstand.
+		acc := &AccountState{Address: addr, Balance: NewDecimal(200), LastActivityAt: nowUnix()}
 		if cs.useDB {
 			cs.mu.Lock()
 			err = cs.saveAccountToDB(acc)
@@ -115,13 +128,16 @@ func annahmeBuendelMessenMit(b *testing.B, cs *ChainState, dag *BlockDAG) {
 		}
 	}
 	signer := types.NewEIP155Signer(big.NewInt(1926))
-	an := addrFromHexForBench(testRecipientHex)
 	wert := new(big.Int).Exp(big.NewInt(10), big.NewInt(15), nil) // 0,001 AEQ
 
 	buendel := func(nonce uint64) []byte {
 		var sb strings.Builder
 		sb.WriteByte('[')
 		for i, k := range schluessel {
+			// Im Kreis an den naechsten Absender wie der Lastgenerator auf C1
+			// -- nicht an eine System-Adresse, die mit den Wirtschaftsregeln
+			// jede Ueberweisung auf den langsamen Weg schickt.
+			an := crypto.PubkeyToAddress(schluessel[(i+1)%len(schluessel)].PublicKey)
 			tx, err := types.SignTx(types.NewTransaction(nonce, an, wert, 21000, big.NewInt(0), nil), signer, k)
 			if err != nil {
 				b.Fatal(err)

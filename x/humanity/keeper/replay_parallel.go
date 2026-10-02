@@ -138,6 +138,10 @@ type replayBatchItem struct {
 	// dem zweiten Teil von Stufe 1.3 kann auch ein Absender im Lauf vorher
 	// Geld bekommen oder mehrfach senden.
 	fromNach float64
+	// gebuehr: Ueberweisungsgebuehr aus der Transaktion (Transaction.Gebuehr),
+	// die der Absender zusaetzlich zahlt und die ins Grundeinkommen geht --
+	// genau wie applyTransferDeltaLockedSammelnd.
+	gebuehr float64
 }
 
 // collectDisjointTransferBatch walks txs starting at index start and returns
@@ -186,13 +190,32 @@ func collectDisjointTransferBatch(txs []Transaction, start int) (batch []Transac
 			}
 			break
 		}
-		if tx.FromDemurrageLost != 0 || tx.ToDemurrageLost != 0 || tx.Gebuehr != 0 {
+		if tx.FromDemurrageLost != 0 || tx.ToDemurrageLost != 0 {
 			// Nur zaehlen, wenn es die ERSTE ist: dann bleibt der Lauf leer und
 			// die Ueberweisung geht seriell. Bricht die Demurrage einen bereits
 			// laufenden Buendel ab, ist das kein Verlust -- das Buendel wird
 			// angewendet und die naechste Runde beginnt bei ihr.
 			if i == start {
 				merkeBuendelAblehnung(&baDemurrage)
+			}
+			break
+		}
+		// GEBUEHR IM LAUF (02.10.2026). Bis dahin beendete jede Gebuehr den
+		// Lauf. Seit dem 24.09. traegt aber jede Ueberweisung einer freien
+		// Adresse, jedes Unternehmen an Nicht-Menschen und jeder Mensch ueber
+		// seinem Monatsfreibetrag eine -- und die liefen alle seriell, mit
+		// einem Datenbank-Umlauf je Ueberweisung unter der globalen Sperre.
+		// Gemessen (BenchmarkNachspielenDB): 894 statt 15.530 Ueberweisungen
+		// je Sekunde. applyTransferBatchParallel bucht sie jetzt genau wie der
+		// serielle Pfad: Absender zahlt Betrag plus Gebuehr, der Topf des
+		// Grundeinkommens bekommt die Gebuehr.
+		//
+		// Was weiter seriell geht, damit der schnelle Pfad nie etwas anders
+		// rechnet: Werte, die nachrechnenTxLocked (nur seriell) anmerken
+		// wuerde -- nicht endlich oder negativ.
+		if !endlichNichtNegativ(tx.Amount) || !endlichNichtNegativ(tx.Gebuehr) {
+			if i == start {
+				merkeBuendelAblehnung(&baFelder)
 			}
 			break
 		}
@@ -284,8 +307,32 @@ func (cs *ChainState) applyTransferBatchParallel(ctx context.Context, batch []Tr
 		}
 		items = append(items, replayBatchItem{
 			from: fromAcc, to: toAcc, amount: tx.Amount, fromKey: from, toKey: to,
-			buchAt: buchZeitBeimNachspielen(tx.BuchAt, activityAt),
+			buchAt:  buchZeitBeimNachspielen(tx.BuchAt, activityAt),
+			gebuehr: tx.Gebuehr,
 		})
+	}
+	// Der Topf des Grundeinkommens, falls im Praefix eine Gebuehr steht. Der
+	// serielle Pfad legt ihn notfalls leer an; hier endet das Praefix vor der
+	// ersten Gebuehr, wenn er fehlt -- dann macht der serielle Pfad das.
+	var topf *AccountState
+	for i := range items {
+		if items[i].gebuehr <= 0 {
+			continue
+		}
+		if topf == nil {
+			acc, ok := cs.accounts.Get(ubiPoolAddr)
+			if !ok {
+				btKaltGeladen.Add(1)
+				cs.ensureAccountLoadedCtx(ctx, ubiPoolAddr)
+				acc, ok = cs.accounts.Get(ubiPoolAddr)
+			}
+			if !ok {
+				merkeBuendelAblehnung(&baKontoFehlt)
+				items = items[:i]
+				break
+			}
+			topf = acc
+		}
 	}
 	teil = merkeBuendelTeil(&btLadenNanos, teil)
 	if len(items) < parallelReplayMinBatch {
@@ -336,21 +383,15 @@ func (cs *ChainState) applyTransferBatchParallel(ctx context.Context, batch []Tr
 		it := &items[i]
 		betrag := NewDecimal(it.amount)
 		vonVorher := standVon(it.fromKey, it.from)
-		schlecht := false
-		if vonVorher.Float() < it.amount {
+		// In der Reihenfolge von applyTransferDeltaLockedSammelnd (ohne
+		// Demurrage, die nie im Lauf steht):
+		//   1. Deckung: Guthaben < Betrag + Gebuehr -> abgelehnt
+		//   2. Absender: minus Betrag, dann minus Gebuehr
+		//   3. Topf des Grundeinkommens: plus Gebuehr
+		//   4. Empfaenger: plus Betrag (ist er der Topf, nach Schritt 3)
+		//   5. Buchfuehrung mit den Staenden danach
+		if vonVorher.Float() < it.amount+it.gebuehr {
 			merkeBuendelAblehnung(&baGuthaben)
-			schlecht = true
-		}
-		var vonNach, anNach Decimal
-		if !schlecht {
-			vonNach = vonVorher.Sub(betrag)
-			anNach = standVon(it.toKey, it.to).Add(betrag)
-			if cs.wuerdeKappenLocked(it.toKey, it.to, anNach.Float(), capAmt, hasCap) {
-				merkeBuendelAblehnung(&baWohlstandsCap)
-				schlecht = true
-			}
-		}
-		if schlecht {
 			if i < parallelReplayMinBatch {
 				return 0, nil // kein brauchbares Praefix uebrig
 			}
@@ -358,9 +399,35 @@ func (cs *ChainState) applyTransferBatchParallel(ctx context.Context, batch []Tr
 			merkeBuendelGekuerzt(len(batch) - i)
 			break
 		}
+		vonNach := vonVorher.Sub(betrag)
+		var gebuehr Decimal
+		if it.gebuehr > 0 {
+			gebuehr = NewDecimal(it.gebuehr)
+			vonNach = vonNach.Sub(gebuehr)
+		}
+		// Stand des Empfaengers nach Schritt 2 und 3 -- er kann der Topf
+		// sein, aber nie der Absender (collectDisjointTransferBatch).
+		anVorher := standVon(it.toKey, it.to)
+		if it.gebuehr > 0 && it.toKey == ubiPoolAddr {
+			anVorher = anVorher.Add(gebuehr)
+		}
+		anNach := anVorher.Add(betrag)
+		if cs.wuerdeKappenLocked(it.toKey, it.to, anNach.Float(), capAmt, hasCap) {
+			merkeBuendelAblehnung(&baWohlstandsCap)
+			if i < parallelReplayMinBatch {
+				return 0, nil
+			}
+			items = items[:i]
+			merkeBuendelGekuerzt(len(batch) - i)
+			break
+		}
 		laufend[it.fromKey] = vonNach
+		if it.gebuehr > 0 && it.toKey != ubiPoolAddr {
+			// Ist der Absender der Topf, bekommt er die Gebuehr gleich zurueck.
+			laufend[ubiPoolAddr] = standVon(ubiPoolAddr, topf).Add(gebuehr)
+		}
 		laufend[it.toKey] = anNach
-		it.fromNach = vonNach.Float()
+		it.fromNach = standVon(it.fromKey, it.from).Float()
 		it.toNach = anNach.Float()
 	}
 	teil = merkeBuendelTeil(&btVorrechnenNanos, teil)
@@ -387,10 +454,16 @@ func (cs *ChainState) applyTransferBatchParallel(ctx context.Context, batch []Tr
 	//     Belegt von TestNachspielen_SeriellUndParallelGleicheEmpfaengerUhr
 	//     (annahme_gegen_nachspielen_test.go) fuer den Fall, dass hier
 	//     faelschlich die Uhr eines reinen Empfaengers zurueckgesetzt wird.
+	//   - Gebuehr: der Absender verliert Betrag und Gebuehr (je einzeln in
+	//     Mikro-AEQ, wie seriell), der Topf des Grundeinkommens bekommt die
+	//     Summe der Gebuehren. Fuer die Gebuehr beruehrt der serielle Pfad
+	//     seine Uhr nicht -- hier auch nicht. Empfaengt oder sendet der Topf
+	//     im Lauf selbst, gilt fuer ihn dieselbe Uhr-Regel wie fuer jeden.
 	type einheit struct {
-		acc      *AccountState
-		delta    Decimal
-		gesendet bool
+		acc       *AccountState
+		delta     Decimal
+		gesendet  bool
+		empfangen bool
 	}
 	einheiten := make([]einheit, 0, len(items)*2)
 	index := make(map[string]int, len(items)*2)
@@ -410,6 +483,14 @@ func (cs *ChainState) applyTransferBatchParallel(ctx context.Context, batch []Tr
 		von.gesendet = true
 		an := einheitFuer(it.toKey, it.to)
 		an.delta = an.delta.Add(betrag)
+		an.empfangen = true
+		if it.gebuehr > 0 {
+			g := NewDecimal(it.gebuehr)
+			von = einheitFuer(it.fromKey, it.from)
+			von.delta = von.delta.Sub(g)
+			t := einheitFuer(ubiPoolAddr, topf)
+			t.delta = t.delta.Add(g)
+		}
 	}
 
 	workers := runtime.NumCPU()
@@ -435,12 +516,15 @@ func (cs *ChainState) applyTransferBatchParallel(ctx context.Context, batch []Tr
 			defer wg.Done()
 			for _, e := range part {
 				e.acc.Balance = e.acc.Balance.Add(e.delta)
-				if e.gesendet {
+				switch {
+				case e.gesendet:
 					touchActivityAt(e.acc, activityAt)
-				} else {
+				case e.empfangen:
 					// EMPFANGEN STARTET DIE UHR, ES SETZT SIE NIE ZURUECK --
 					// wie applyTransferDeltaLockedSammelnd (state.go).
 					startClockIfUnsetAt(e.acc, activityAt)
+				default:
+					// Nur Gebuehren (der Topf): keine Uhr -- wie seriell.
 				}
 				// The one piece of genuinely shared state; guarded by
 				// accountSetXORMu inside, which exists for precisely this.
@@ -465,9 +549,8 @@ func (cs *ChainState) applyTransferBatchParallel(ctx context.Context, batch []Tr
 	// summieren Umsatz und Tageswerte in Gleitkomma -- deshalb zwingend die
 	// Blockreihenfolge, mit den Staenden nach genau dieser Ueberweisung
 	// (fromNach, toNach aus Phase 1b). Dieselben Aufrufe mit denselben Werten
-	// in derselben Folge wie im seriellen Pfad. Die Gebuehr ist hier immer 0:
-	// Ueberweisungen mit Gebuehr kommen nicht ins Buendel
-	// (collectDisjointTransferBatch).
+	// in derselben Folge wie im seriellen Pfad, mit der Gebuehr aus der
+	// Transaktion.
 	//
 	// Der Speicher ist bereits mutiert. Ein Fehler hier ist deshalb ein
 	// harter Blockfehler (Rueckgabe mit err), nie ein Rueckfall auf den
@@ -476,10 +559,21 @@ func (cs *ChainState) applyTransferBatchParallel(ctx context.Context, batch []Tr
 	// Transaktion geschrieben (ctx); den Rueckbau im Speicher macht
 	// blockRollbackSnapshot (buchStand).
 	buchCtx, buch := mitBuchSammler(ctx)
+	// Stufe 2 (kappung_verteilt.go): seriell merkt enforceWealthCapLockedCtx
+	// JEDEN Empfaenger zur Kappung durch seinen Zustaendigen vor, statt bei
+	// der Gutschrift zu kappen. Dieser Pfad liess das bis zum 02.10.2026 aus
+	// (wuerdeKappenLocked lehnt unter Stufe 2 nie ab) -- eine Gutschrift, die
+	// parallel nachgespielt wurde, wurde nie gekappt. Belegt von
+	// TestKappungVerteilt_DreiKnotenGleicherZustand, sobald die Ueberweisung
+	// dort (mit Gebuehr) parallel laeuft.
+	vormerken := cs.kappungVerschobenLocked()
 	for _, it := range items {
+		if vormerken && !isTokenomicsPoolAddress(it.toKey) {
+			cs.kappungVormerken(it.toKey)
+		}
 		if err := cs.nachUeberweisung(mitBuchZeit(buchCtx, it.buchAt), it.fromKey, it.toKey,
 			cs.kontoartVon(it.fromKey, it.from.IsHuman), cs.kontoartVon(it.toKey, it.to.IsHuman),
-			it.amount, 0, it.fromNach, it.toNach, it.buchAt); err != nil {
+			it.amount, it.gebuehr, it.fromNach, it.toNach, it.buchAt); err != nil {
 			return 0, fmt.Errorf("parallel transfer batch: Buchfuehrung: %w", err)
 		}
 	}
@@ -503,6 +597,10 @@ func (cs *ChainState) applyTransferBatchParallel(ctx context.Context, batch []Tr
 		if !seen[it.toKey] {
 			seen[it.toKey] = true
 			accs = append(accs, it.to)
+		}
+		if it.gebuehr > 0 && !seen[ubiPoolAddr] {
+			seen[ubiPoolAddr] = true
+			accs = append(accs, topf)
 		}
 	}
 	// Sammeln statt schreiben, wenn der Aufrufer die Statements eines ganzen
