@@ -33,7 +33,7 @@ jobs:
       matrix:
         include:
           - name: contabo1
-            host: 173.249.37.118
+            host: alter-c1-abgeschaltet.invalid
             secret: C1
             fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
           - name: contabo2

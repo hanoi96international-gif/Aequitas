@@ -79,7 +79,7 @@ jobs:
       - name: Record the starting state of both boxes
         run: |
           set -uo pipefail
-          for h in 173.249.37.118 194.163.188.71; do
+          for h in alter-c1-abgeschaltet.invalid 194.163.188.71; do
             S=$(curl -s --max-time 20 "http://$h:8080/api/status" || echo '{}')
             echo "$h  $(echo "$S" | tr ',' '\n' | grep -E '"height"|uptime' | tr '\n' ' ')"
           done
@@ -148,17 +148,17 @@ jobs:
           SSHOPT="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR"
           scp $SSHOPT -i ~/.ssh/c2 root@194.163.188.71:/root/contabo-loadtest/accounts-funded.csv /tmp/accounts-funded.csv
           echo "Kontenliste geholt: $(wc -l < /tmp/accounts-funded.csv) Zeilen"
-          ssh $SSHOPT -i ~/.ssh/c1 root@173.249.37.118 'mkdir -p /root/contabo-loadtest'
-          scp $SSHOPT -i ~/.ssh/c1 /tmp/accounts-funded.csv root@173.249.37.118:/root/contabo-loadtest/accounts-funded.csv
-          scp $SSHOPT -i ~/.ssh/c1 tools/contabo-loadtest/main.go tools/contabo-loadtest/gen_accounts.go go.mod go.sum root@173.249.37.118:/root/contabo-loadtest/
-          ssh $SSHOPT -i ~/.ssh/c1 root@173.249.37.118 'cd /root/contabo-loadtest && docker run --rm --network host -v "$(pwd)":/w -w /w -v /root/go-mod-cache:/go/pkg/mod golang:1.24-alpine go build -o loadtest . 2>&1 | tail -10 && ls -la loadtest'
+          ssh $SSHOPT -i ~/.ssh/c1 root@alter-c1-abgeschaltet.invalid 'mkdir -p /root/contabo-loadtest'
+          scp $SSHOPT -i ~/.ssh/c1 /tmp/accounts-funded.csv root@alter-c1-abgeschaltet.invalid:/root/contabo-loadtest/accounts-funded.csv
+          scp $SSHOPT -i ~/.ssh/c1 tools/contabo-loadtest/main.go tools/contabo-loadtest/gen_accounts.go go.mod go.sum root@alter-c1-abgeschaltet.invalid:/root/contabo-loadtest/
+          ssh $SSHOPT -i ~/.ssh/c1 root@alter-c1-abgeschaltet.invalid 'cd /root/contabo-loadtest && docker run --rm --network host -v "$(pwd)":/w -w /w -v /root/go-mod-cache:/go/pkg/mod golang:1.24-alpine go build -o loadtest . 2>&1 | tail -10 && ls -la loadtest'
           rm -f ~/.ssh/c1 ~/.ssh/c2
 
       - name: Start the load on Contabo1 (returns immediately)
         if: ${{ inputs.beide_generatoren == 'ja' }}
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: 173.249.37.118
+          host: alter-c1-abgeschaltet.invalid
           username: root
           key: ${{ secrets.CONTABO_SSH_KEY }}
           port: 22
@@ -231,7 +231,7 @@ jobs:
             # Ueberweisungen an (annahme_tor.go). Beschickt der Generator einen
             # nur lesenden Knoten, misst er ausschliesslich Ablehnungen -- das
             # wird hier vor dem Start ausgeschlossen, nicht hinterher erklaert.
-            C1_BASIS="http://173.249.37.118:8080"
+            C1_BASIS="http://alter-c1-abgeschaltet.invalid:8080"
             TEIL=""
             if [ "${{ inputs.beide_generatoren }}" = "ja" ]; then
               # Beide Generatoren beschicken C1; dieser hier ueber das Netz.
@@ -334,7 +334,7 @@ jobs:
           # Beginn nicht, wird nur C2 beobachtet: waechst seine Hoehe durch Last
           # und Erholung, ist der Lauf bestanden.
           EINZELN=0
-          if [ -z "$(curl -s --max-time 10 http://173.249.37.118:8080/api/status 2>/dev/null | grep -o '"height":[0-9]*')" ]; then
+          if [ -z "$(curl -s --max-time 10 http://alter-c1-abgeschaltet.invalid:8080/api/status 2>/dev/null | grep -o '"height":[0-9]*')" ]; then
             EINZELN=1; echo "C1 antwortet nicht -- Einzelknoten-Modus: nur C2 wird beobachtet"
           fi
           t=0
@@ -342,7 +342,7 @@ jobs:
             # Im Einzelknoten-Modus C1 gar nicht erst fragen: jeder Versuch kostete
             # 10 s Timeout und verdoppelte die Beobachtungszeit.
             H1=""
-            [ "$EINZELN" = 1 ] || H1=$(curl -s --max-time 10 "http://173.249.37.118:8080/api/status" 2>/dev/null | grep -o '"height":[0-9]*' | cut -d: -f2)
+            [ "$EINZELN" = 1 ] || H1=$(curl -s --max-time 10 "http://alter-c1-abgeschaltet.invalid:8080/api/status" 2>/dev/null | grep -o '"height":[0-9]*' | cut -d: -f2)
             H2=$(curl -s --max-time 10 "http://194.163.188.71:8080/api/status" 2>/dev/null | grep -o '"height":[0-9]*' | cut -d: -f2)
             N=""
             [ -z "$H2" ] && { N="$N C2 UNREACHABLE"; H2=0; }
@@ -371,9 +371,9 @@ jobs:
             exit 1
           fi
           echo "worst divergence seen: $WORST blocks"
-          H1=$(curl -s --max-time 15 "http://173.249.37.118:8080/api/status" | grep -o '"height":[0-9]*' | cut -d: -f2)
+          H1=$(curl -s --max-time 15 "http://alter-c1-abgeschaltet.invalid:8080/api/status" | grep -o '"height":[0-9]*' | cut -d: -f2)
           H2=$(curl -s --max-time 15 "http://194.163.188.71:8080/api/status" | grep -o '"height":[0-9]*' | cut -d: -f2)
-          K1=$(curl -s --max-time 15 "http://173.249.37.118:8080/api/status" | grep -o '"latest_hash":"[^"]*"')
+          K1=$(curl -s --max-time 15 "http://alter-c1-abgeschaltet.invalid:8080/api/status" | grep -o '"latest_hash":"[^"]*"')
           K2=$(curl -s --max-time 15 "http://194.163.188.71:8080/api/status" | grep -o '"latest_hash":"[^"]*"')
           echo "final: C1=$H1  C2=$H2  diff=$(( H1 - H2 ))"
           echo "C1 $K1"
@@ -425,7 +425,7 @@ jobs:
         if: always() && inputs.ziele == 'c1'
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: 173.249.37.118
+          host: alter-c1-abgeschaltet.invalid
           username: root
           key: ${{ secrets.CONTABO_SSH_KEY }}
           port: 22

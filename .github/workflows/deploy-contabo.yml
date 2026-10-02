@@ -115,7 +115,7 @@ jobs:
       - name: Deploy to Contabo
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: 173.249.37.118
+          host: alter-c1-abgeschaltet.invalid
           username: root
           key: ${{ secrets.CONTABO_SSH_KEY }}
           port: 22
@@ -216,7 +216,7 @@ jobs:
       - name: Verify Contabo1 is alive and advancing after the deploy
         run: |
           set -uo pipefail
-          BASE=http://173.249.37.118:8080
+          BASE=http://alter-c1-abgeschaltet.invalid:8080
           # /api/health/combined answers in ~50ms; /api/status has historically
           # taken seconds under load and once took eleven. Poll the cheap one,
           # and read height exactly twice - this is the live primary, not a

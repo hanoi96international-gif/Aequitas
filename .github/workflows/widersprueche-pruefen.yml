@@ -47,7 +47,10 @@ jobs:
       max-parallel: 1
       matrix:
         box:
-          - { name: Contabo1, host: 173.249.37.118, secret: C1, fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4" }
+          # Der alte Contabo1 (173.249.37.118) ist seit dem 24.09.2026 abgeschaltet,
+          # die IP vergibt der Anbieter neu -- nie mehr per SSH ansprechen. C1 ist
+          # seit dem 26.09.2026 die netcup-Box (wie backup-ledger.yml, wache.yml).
+          - { name: C1, host: 188.172.229.121, secret: C1, fingerprint: "SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA" }
           - { name: Contabo2, host: 194.163.188.71, secret: C2, fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto" }
     runs-on: ubuntu-latest
     environment: produktion
@@ -69,59 +72,51 @@ jobs:
             fi
           fi
 
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: deploy/widerspruch-box.sh
+          sparse-checkout-cone-mode: false
+
+      # Host-Key gepinnt wie in backup-ledger.yml: alle Schluesseltypen
+      # holen, NUR die Zeile mit dem gepinnten Fingerabdruck behalten.
+      # (appleboy/ssh-action verglich am 02.10.2026 einen anderen
+      # Schluesseltyp und brach mit "fingerprint mismatch" ab.)
+      - name: Schluessel und Host-Pruefung
+        env:
+          KEY: ${{ matrix.box.secret == 'C1' && secrets.CONTABO_SSH_KEY || secrets.CONTABO2_SSH_KEY }}
+          HOST: ${{ matrix.box.host }}
+          FP: ${{ matrix.box.fingerprint }}
+        run: |
+          set -eu
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan "$HOST" 2>/dev/null > ~/.ssh/alle
+          : > ~/.ssh/known_hosts
+          while IFS= read -r z; do
+            [ -n "$z" ] || continue
+            f="$(printf '%s\n' "$z" | ssh-keygen -lf - 2>/dev/null | awk '{print $2}')"
+            if [ "$f" = "$FP" ]; then printf '%s\n' "$z" >> ~/.ssh/known_hosts; fi
+          done < ~/.ssh/alle
+          [ -s ~/.ssh/known_hosts ] || { echo "::error::Host-Schluessel von $HOST passt nicht"; exit 1; }
+
+      # Eingaben nur base64-kodiert in den Kopf des Skripts (Zeichenvorrat
+      # A-Za-z0-9+/=), nie als Shell-Text: die Begruendung ist Freitext.
       - name: ${{ inputs.aktion }} auf ${{ matrix.box.name }}
-        uses: appleboy/ssh-action@v1.0.3
+        timeout-minutes: 3
         env:
           AKTION: ${{ inputs.aktion }}
           KENNUNG: ${{ inputs.kennung }}
           ERGEBNIS: ${{ inputs.ergebnis }}
-        with:
-          host: ${{ matrix.box.host }}
-          username: root
-          key: ${{ matrix.box.secret == 'C1' && secrets.CONTABO_SSH_KEY || secrets.CONTABO2_SSH_KEY }}
-          port: 22
-          fingerprint: ${{ matrix.box.fingerprint }}
-          script_stop: false
-          timeout: 120s
-          command_timeout: 120s
-          envs: AKTION,KENNUNG,ERGEBNIS
-          script: |
-            set -u
-            echo "##### ${{ matrix.box.name }} #####"
-            if ! docker inspect aequitas-coordinator >/dev/null 2>&1; then
-              echo "kein Coordinator-Container auf dieser Box"; exit 0
-            fi
-            if [ "$AKTION" = "liste" ]; then
-              docker exec aequitas-coordinator python -c '
-            import time
-            from app import widerspruch as w
-            def iso(t):
-                return time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime(t)) if t else "-"
-            z = w.zaehlstand()
-            print("Vorgaenge gesamt: %s | offen (widersprochen, nicht entschieden): %s"
-                  % (z["vorgaenge_gesamt"], z["widersprueche_offen"]))
-            jetzt = time.time()
-            for v in w.offene_vorgaenge():
-                frist = v["widerspruch_am"] + 30 * 86400
-                rest = int((frist - jetzt) // 86400)
-                sp = v.get("standpunkt") or ""
-                # Standpunkt und getroffene Kennung werden NICHT ausgegeben.
-                print("  %s | abgewiesen %s | widersprochen %s | %s | Aehnlichkeit %s | Frist %s (%s)%s"
-                      % (v["kennung"], iso(v["abgewiesen_am"]), iso(v["widerspruch_am"]),
-                         v["entscheidung"], v["aehnlichkeit"], iso(frist),
-                         ("noch %d Tage" % rest) if rest >= 0 else ("UEBERSCHRITTEN seit %d Tagen" % -rest),
-                         (" | Standpunkt in der DB: %d Zeichen, hier nicht gezeigt" % len(sp)) if sp else ""))
-            if not z["widersprueche_offen"]:
-                print("  (keine offenen Widersprueche)")
-            '
-            else
-              docker exec -e KENNUNG -e ERGEBNIS aequitas-coordinator python -c '
-            import os
-            from app import widerspruch as w
-            k = os.environ["KENNUNG"].strip()
-            if w.vorgang_abschliessen(k, os.environ["ERGEBNIS"]):
-                print("abgeschlossen: %s -- der Mensch sieht die Entscheidung unter /coordinator/widerspruch/%s" % (k, k))
-            else:
-                print("unbekannt auf dieser Box (liegt auf der anderen, oder die Kennung stimmt nicht)")
-            '
-            fi
+          HOST: ${{ matrix.box.host }}
+          BOX: ${{ matrix.box.name }}
+        run: |
+          set -eu
+          b() { printf '%s' "$1" | base64 -w0; }
+          {
+            printf 'AKTION="$(echo %s | base64 -d)"\n' "$(b "$AKTION")"
+            printf 'KENNUNG="$(echo %s | base64 -d)"\n' "$(b "$KENNUNG")"
+            printf 'ERGEBNIS="$(echo %s | base64 -d)"\n' "$(b "$ERGEBNIS")"
+            printf 'BOX="$(echo %s | base64 -d)"\n' "$(b "$BOX")"
+            printf 'export AKTION KENNUNG ERGEBNIS BOX\n'
+            cat deploy/widerspruch-box.sh
+          } | ssh -o BatchMode=yes root@"$HOST" 'bash -s'

@@ -38,7 +38,7 @@ jobs:
       - name: Ask Contabo1 what the primary reports about itself
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: 173.249.37.118
+          host: alter-c1-abgeschaltet.invalid
           username: root
           key: ${{ secrets.CONTABO_SSH_KEY }}
           port: 22

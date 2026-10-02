@@ -43,7 +43,7 @@ jobs:
           wip=$(getent hosts www.aequitas.digital | awk '{print $1}' | head -1)
           echo "aequitas.digital     -> ${ip:-<unresolved>}"
           echo "www.aequitas.digital -> ${wip:-<unresolved>}"
-          if [ "$wip" != "173.249.37.118" ]; then
+          if [ "$wip" != "alter-c1-abgeschaltet.invalid" ]; then
             echo ""
             echo "WARNING: www does not point at Contabo1. deploy/Caddyfile serves"
             echo "'aequitas.digital, www.aequitas.digital', so Caddy will request a"
@@ -52,7 +52,7 @@ jobs:
             echo "A record, or drop www from deploy/Caddyfile."
             echo ""
           fi
-          if [ "$ip" = "173.249.37.118" ]; then
+          if [ "$ip" = "alter-c1-abgeschaltet.invalid" ]; then
             echo "DNS is correct — proceeding"; exit 0
           fi
           if [ "${{ inputs.skip_dns_check }}" = "true" ]; then
@@ -61,14 +61,14 @@ jobs:
             exit 0
           fi
           echo ""
-          echo "REFUSING: aequitas.digital must resolve to 173.249.37.118 first."
+          echo "REFUSING: aequitas.digital must resolve to alter-c1-abgeschaltet.invalid first."
           echo "Set the A record, wait for it to propagate, then re-run this workflow."
           exit 1
 
       - name: Install the Caddy config
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: 173.249.37.118
+          host: alter-c1-abgeschaltet.invalid
           username: root
           key: ${{ secrets.CONTABO_SSH_KEY }}
           port: 22
@@ -106,7 +106,7 @@ jobs:
       - name: Copy and reload
         uses: appleboy/scp-action@v0.1.7
         with:
-          host: 173.249.37.118
+          host: alter-c1-abgeschaltet.invalid
           username: root
           key: ${{ secrets.CONTABO_SSH_KEY }}
           port: 22
@@ -117,7 +117,7 @@ jobs:
       - name: Validate and apply
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: 173.249.37.118
+          host: alter-c1-abgeschaltet.invalid
           username: root
           key: ${{ secrets.CONTABO_SSH_KEY }}
           port: 22

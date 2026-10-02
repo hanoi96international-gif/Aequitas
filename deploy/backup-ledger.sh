@@ -16,9 +16,15 @@
 set -euo pipefail
 BOX="${BOX:?BOX setzen}"
 
-DATABASE_URL="$(grep -E '^DATABASE_URL=' /root/.aequitas.env 2>/dev/null | head -1 | cut -d= -f2- || true)"
+# DIE DATENBANK DES LAUFENDEN KNOTENS ZUERST, die Datei nur ohne ihn.
+#
+# Massgeblich ist, womit der Prozess wirklich laeuft. Auf dem neuen C1
+# (netcup) kommt seine Umgebung aus deploy/validator/.env, nicht aus
+# /root/.aequitas.env; beide zeigten am 02.10.2026 auf dieselbe Datenbank,
+# aber nichts garantiert, dass das so bleibt. Das Log nennt Host/Datenbank.
+DATABASE_URL="$(docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | grep -E '^DATABASE_URL=' | head -1 | cut -d= -f2- || true)"
 if [ -z "$DATABASE_URL" ]; then
-  DATABASE_URL="$(docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | grep -E '^DATABASE_URL=' | head -1 | cut -d= -f2- || true)"
+  DATABASE_URL="$(grep -E '^DATABASE_URL=' /root/.aequitas.env 2>/dev/null | head -1 | cut -d= -f2- || true)"
 fi
 if [ -z "$DATABASE_URL" ]; then
   echo "No DATABASE_URL on this box — cannot back up. Failing loudly rather than reporting success."
@@ -36,6 +42,30 @@ OUT="/root/backups"
 rm -f /root/backup-latest.dump
 mkdir -p "$OUT"
 DUMP="$OUT/aequitas-${STAMP}.dump"
+
+# Stand des lebenden Knotens VOR dem Dump. Die Wiederherstellung muss
+# mindestens ihn tragen: Konten werden nur angelegt, Menschen nur
+# hinzugefuegt (die Aufraeumung verwaister Einschreibungen laeuft nur bei 0
+# Menschen auf der Kette). Spaeter Hinzugekommenes darf fehlen.
+# Welche Datenbank -- ohne Benutzer und Passwort (das Log ist oeffentlich).
+echo "database: $(printf '%s' "$DATABASE_URL" | sed -E 's#^[a-z]+://([^@]*@)?##; s#\?.*$##')"
+live() { docker run --rm --network "$NET" postgres:16-alpine psql "$DATABASE_URL" -t -A -c "$1"; }
+LIVE_HUMANS="$(live "SELECT count(*) FROM chain_accounts WHERE is_human = true")"
+LIVE_ACCOUNTS="$(live "SELECT count(*) FROM chain_accounts")"
+case "${LIVE_HUMANS}x${LIVE_ACCOUNTS}" in
+  *[!0-9x]*|x*|*x) echo "Live counts unreadable (humans='${LIVE_HUMANS}' accounts='${LIVE_ACCOUNTS}'). Failing."; exit 1 ;;
+esac
+# Ist das ueberhaupt die Datenbank eines laufenden Knotens? Konten sind kein
+# Beweis: nach dem Neustart bei null gibt es ohne Menschen auch keine Konten
+# (C1 am 02.10.2026: 0 Konten bei Hoehe > 100.000). Die Blockhoehe ist einer
+# -- eine laufende Kette hat Bloecke (Index auf height, sofort beantwortet).
+LIVE_HOEHE="$(live "SELECT COALESCE(max(height),0) FROM chain_blocks")"
+case "$LIVE_HOEHE" in ''|*[!0-9]*) echo "Live block height unreadable ('${LIVE_HOEHE}'). Failing."; exit 1 ;; esac
+if [ "$LIVE_HOEHE" -lt 1 ]; then
+  echo "This database has no blocks — it is not the running node's ledger. Failing."
+  exit 1
+fi
+echo "live before the dump: humans=${LIVE_HUMANS} accounts=${LIVE_ACCOUNTS} height=${LIVE_HOEHE}"
 
 echo "=== pg_dump (custom format, compressed; Zustand ohne Bloecke) ==="
 # -Fc so the restore check can use pg_restore and so the file is
@@ -56,8 +86,20 @@ docker run --rm --network "$NET" -v "$OUT:/out" postgres:16-alpine \
 
 ls -lh "$DUMP"
 SIZE=$(stat -c %s "$DUMP")
-if [ "$SIZE" -lt 100000 ]; then
-  echo "Dump is only ${SIZE} bytes — that is not a whole ledger. Failing."
+# DER INHALT ZAEHLT, NICHT EINE FESTE MINDESTGROESSE.
+#
+# Hier stand "unter 100.000 Bytes ist es kein Ledger". Nach dem Neustart bei
+# null (0 Menschen, eine Handvoll Genesis-Konten) ist der echte Zustand
+# kleiner: C1 dumpte am 01.10.2026 61 KB, der Lauf wurde rot, und die Wache
+# meldete 38 Stunden ohne Sicherung -- fuer einen Ledger, der genau so
+# aussehen soll. Geprueft wird jetzt, dass der Dump die Zeilen der
+# Kontentabelle ENTHAELT (Inhaltsverzeichnis), und unten, dass die
+# Wiederherstellung mindestens den Stand des lebenden Knotens vor dem Dump
+# traegt. Eine leere Datenbank (C2 am 01.10.: 848 Bytes, kein Schema)
+# faellt weiter durch.
+if ! docker run --rm -v "$OUT:/out" postgres:16-alpine \
+    pg_restore -l "/out/$(basename "$DUMP")" | grep -q "TABLE DATA public chain_accounts "; then
+  echo "Dump (${SIZE} bytes) contains no chain_accounts rows — that is not a ledger. Failing."
   exit 1
 fi
 # Regression guard: state-only dumps are <<200MB. A multi-GB file means
@@ -148,8 +190,13 @@ if [ "$RESTORE_RC" -ne 0 ]; then
   echo "pg_restore exited ${RESTORE_RC} — this dump is not restorable. Failing."
   exit 1
 fi
-if [ "${HUMANS:-0}" -lt 1 ] || [ "${ACCOUNTS:-0}" -lt 1 ]; then
-  echo "The restored copy has humans=${HUMANS} accounts=${ACCOUNTS} — it restored, but it is empty. Failing."
+# Gemessen am lebenden Knoten statt an festen Zahlen (">= 1 Mensch" war nach
+# dem Neustart bei null jeden Tag rot, obwohl der Ledger stimmte).
+case "${HUMANS}x${ACCOUNTS}" in
+  *[!0-9x]*|x*|*x) echo "Restored counts unreadable (humans='${HUMANS}' accounts='${ACCOUNTS}'). Failing."; exit 1 ;;
+esac
+if [ "$ACCOUNTS" -lt "$LIVE_ACCOUNTS" ] || [ "$HUMANS" -lt "$LIVE_HUMANS" ]; then
+  echo "The restored copy has humans=${HUMANS} accounts=${ACCOUNTS}, the live node had humans=${LIVE_HUMANS} accounts=${LIVE_ACCOUNTS} before the dump — incomplete. Failing."
   exit 1
 fi
 echo "✓ dump restores cleanly and contains a real ledger"

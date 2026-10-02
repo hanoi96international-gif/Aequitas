@@ -143,7 +143,7 @@ jobs:
             # Der eigentliche Beweis: gleicher Block auf gleicher Hoehe. Reine
             # Hoehenvergleiche taeuschen, siehe die Finality-Slack-Havarie.
             H=$(( AFTER1 - 20 ))
-            C1="$(curl -s --max-time 15 "http://173.249.37.118:8080/api/block?height=$H" | sed -n 's/.*"hash":"\([0-9a-fx]*\)".*/\1/p' | head -1)"
+            C1="$(curl -s --max-time 15 "http://alter-c1-abgeschaltet.invalid:8080/api/block?height=$H" | sed -n 's/.*"hash":"\([0-9a-fx]*\)".*/\1/p' | head -1)"
             C2="$(curl -s --max-time 15 "http://localhost:8080/api/block?height=$H" | sed -n 's/.*"hash":"\([0-9a-fx]*\)".*/\1/p' | head -1)"
             echo "Hoehe $H  C1=$C1"
             echo "Hoehe $H  C2=$C2"

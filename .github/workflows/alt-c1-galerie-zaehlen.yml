@@ -9,18 +9,18 @@ jobs:
     environment: produktion
     timeout-minutes: 5
     steps:
-      - name: Alter C1 (173.249.37.118)
+      - name: Alter C1 (alter-c1-abgeschaltet.invalid)
         env:
           K1: ${{ secrets.CONTABO_SSH_KEY }}
         run: |
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           printf '%s\n' "$K1" > ~/.ssh/c1 && chmod 600 ~/.ssh/c1
-          ssh-keyscan -T 10 173.249.37.118 2>/dev/null > ~/.ssh/k || true
+          ssh-keyscan -T 10 alter-c1-abgeschaltet.invalid 2>/dev/null > ~/.ssh/k || true
           if ! ssh-keygen -lf ~/.ssh/k 2>/dev/null | awk '{print $2}' | grep -qx 'SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4'; then
             echo "alter C1: nicht erreichbar oder anderer Host-Schluessel"; exit 0
           fi
           cp ~/.ssh/k ~/.ssh/known_hosts
-          ssh -i ~/.ssh/c1 -o BatchMode=yes -o ConnectTimeout=10 root@173.249.37.118 'bash -s' <<'SKRIPT' | sed -E 's/[0-9a-fA-F]{10,}/#/g'
+          ssh -i ~/.ssh/c1 -o BatchMode=yes -o ConnectTimeout=10 root@alter-c1-abgeschaltet.invalid 'bash -s' <<'SKRIPT' | sed -E 's/[0-9a-fA-F]{10,}/#/g'
           uptime
           docker ps --format '{{.Names}} {{.Status}}' | grep -E 'matching|coordinator|aequitas' || echo "(keine passenden Container)"
           for c in $(docker ps --format '{{.Names}}' | grep matching); do

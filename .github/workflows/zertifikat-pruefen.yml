@@ -32,6 +32,6 @@ jobs:
           for k in ("status","validator_urls","quorum_size","gallery_test","gallery_real","service_mode"):
             if k in d: print(k, "=", d[k])' || echo "fehler"
           done
-          for v in http://173.249.37.118:8080/matching/health http://194.163.188.71:8080/matching/health; do
+          for v in http://alter-c1-abgeschaltet.invalid:8080/matching/health http://194.163.188.71:8080/matching/health; do
             echo "##### $v -> $(curl -s -o /dev/null -w '%{http_code}' --max-time 10 $v || echo fehler)"
           done

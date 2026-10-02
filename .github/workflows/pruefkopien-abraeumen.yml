@@ -5,7 +5,7 @@ name: Liegengebliebene Backup-Pruefkopien abraeumen (aequitas_restore_check_*)
 on: {workflow_dispatch: {}}
 jobs:
   d:
-    strategy: {max-parallel: 1, matrix: {box: [{name: "C2", host: "194.163.188.71", secret: "C2"}, {name: "C1", host: "173.249.37.118", secret: "C1"}]}}
+    strategy: {max-parallel: 1, matrix: {box: [{name: "C2", host: "194.163.188.71", secret: "C2"}, {name: "C1", host: "alter-c1-abgeschaltet.invalid", secret: "C1"}]}}
     runs-on: ubuntu-latest
     environment: produktion
     steps:

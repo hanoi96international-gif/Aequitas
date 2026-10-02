@@ -33,7 +33,7 @@ jobs:
       - name: Vorher-Zustand beider Boxen
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: 173.249.37.118
+          host: alter-c1-abgeschaltet.invalid
           username: root
           key: ${{ secrets.CONTABO_SSH_KEY }}
           port: 22
@@ -53,7 +53,7 @@ jobs:
       - name: Freigeben, korrigieren, wieder verriegeln
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: 173.249.37.118
+          host: alter-c1-abgeschaltet.invalid
           username: root
           key: ${{ secrets.CONTABO_SSH_KEY }}
           port: 22
@@ -125,7 +125,7 @@ jobs:
         if: always()
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: 173.249.37.118
+          host: alter-c1-abgeschaltet.invalid
           username: root
           key: ${{ secrets.CONTABO_SSH_KEY }}
           port: 22

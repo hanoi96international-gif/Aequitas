@@ -55,7 +55,7 @@ jobs:
           set +e
 
           PRIMARY="https://aequitas.digital"
-          C1="http://173.249.37.118:8080"
+          C1="http://alter-c1-abgeschaltet.invalid:8080"
           C2="http://194.163.188.71:8080"
           url_of () { case "$1" in primary) echo "$PRIMARY";; c1) echo "$C1";; c2) echo "$C2";; esac; }
 
@@ -246,7 +246,7 @@ jobs:
       - name: Contabo1 merge evidence
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: 173.249.37.118
+          host: alter-c1-abgeschaltet.invalid
           username: root
           key: ${{ secrets.CONTABO_SSH_KEY }}
           port: 22

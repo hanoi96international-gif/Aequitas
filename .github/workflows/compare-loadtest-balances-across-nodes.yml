@@ -77,7 +77,7 @@ jobs:
           script: |
             set -uo pipefail
             PRIMARY="https://aequitas.digital"
-            C1="http://173.249.37.118:8080"
+            C1="http://alter-c1-abgeschaltet.invalid:8080"
             C2="http://localhost:8080"
             CSV=/root/contabo-loadtest/accounts.csv
 

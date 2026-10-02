@@ -45,7 +45,7 @@ jobs:
           set -euo pipefail
           Q="${QUELLE%/}"
           case "$Q" in
-            *173.249.37.118*|*194.163.188.71*) echo "::error::unzulaessige Quelle $Q"; exit 1 ;;
+            *alter-c1-abgeschaltet.invalid*|*194.163.188.71*) echo "::error::unzulaessige Quelle $Q"; exit 1 ;;
             http://*|https://*) ;;
             *) echo "::error::Quelle muss http(s)-URL sein"; exit 1 ;;
           esac
@@ -86,7 +86,7 @@ jobs:
             echo "--- nachher ---"
             grep -E '^(BOOTSTRAP_SNAPSHOT_URL|BOOTSTRAP_SIGNER|PRIMARY_NODE_URLS?|RESYNC_FROM_SNAPSHOT)=' "$F"
             echo "Zeilen vorher/nachher: $(grep -c . "$BAK") / $(grep -c . "$F")"
-            if grep -q '173.249.37.118' "$F"; then echo "⚠ noch Verweise auf den alten C1 in anderen Schluesseln:"; grep -n '173.249.37.118' "$F" | cut -d= -f1; fi
+            if grep -q 'alter-c1-abgeschaltet.invalid' "$F"; then echo "⚠ noch Verweise auf den alten C1 in anderen Schluesseln:"; grep -n 'alter-c1-abgeschaltet.invalid' "$F" | cut -d= -f1; fi
             echo "--- laufender Prozess (unveraendert, kein Neustart) ---"
             docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' \
               | grep -E '^(BOOTSTRAP_SNAPSHOT_URL|BOOTSTRAP_SIGNER|PRIMARY_NODE_URLS?)=' || true

@@ -36,7 +36,7 @@ jobs:
             # The exact request the ordered sync makes. If this fails or is
             # slow, the ordered sync cannot work no matter what else is right.
             time curl -s --max-time 30 -o /tmp/gap.json -w "HTTP %{http_code}  %{size_download} bytes  %{time_total}s\n" \
-              "http://173.249.37.118:8080/api/blocks?min_height=4425913&limit=5"
+              "http://alter-c1-abgeschaltet.invalid:8080/api/blocks?min_height=4425913&limit=5"
             echo "--- first heights returned ---"
             head -c 400 /tmp/gap.json; echo
 

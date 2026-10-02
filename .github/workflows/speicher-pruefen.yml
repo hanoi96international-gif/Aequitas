@@ -2,7 +2,7 @@ name: Speicher unter Ruhe pruefen
 on: {workflow_dispatch: {}}
 jobs:
   m:
-    strategy: {matrix: {box: [{name: "C1", host: "173.249.37.118", secret: "C1"}, {name: "C2", host: "194.163.188.71", secret: "C2"}]}}
+    strategy: {matrix: {box: [{name: "C1", host: "alter-c1-abgeschaltet.invalid", secret: "C1"}, {name: "C2", host: "194.163.188.71", secret: "C2"}]}}
     runs-on: ubuntu-latest
     environment: produktion
     steps:

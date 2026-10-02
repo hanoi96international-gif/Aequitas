@@ -46,18 +46,18 @@ jobs:
         id: cfg
         run: |
           if [ "${{ inputs.box }}" = "contabo1" ]; then
-            echo "host=173.249.37.118"              >> $GITHUB_OUTPUT
+            echo "host=alter-c1-abgeschaltet.invalid"              >> $GITHUB_OUTPUT
             echo "peer=http://194.163.188.71:8080"  >> $GITHUB_OUTPUT
           else
             echo "host=194.163.188.71"              >> $GITHUB_OUTPUT
-            echo "peer=http://173.249.37.118:8080"  >> $GITHUB_OUTPUT
+            echo "peer=http://alter-c1-abgeschaltet.invalid:8080"  >> $GITHUB_OUTPUT
           fi
 
       - name: Wire Contabo1
         if: ${{ inputs.box == 'contabo1' }}
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: 173.249.37.118
+          host: alter-c1-abgeschaltet.invalid
           username: root
           key: ${{ secrets.CONTABO_SSH_KEY }}
           port: 22

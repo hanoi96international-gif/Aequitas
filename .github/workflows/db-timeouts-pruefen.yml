@@ -26,7 +26,7 @@ jobs:
     steps:
       - uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ inputs.box == 'contabo1' && '173.249.37.118' || '194.163.188.71' }}
+          host: ${{ inputs.box == 'contabo1' && 'alter-c1-abgeschaltet.invalid' || '194.163.188.71' }}
           username: root
           key: ${{ inputs.box == 'contabo1' && secrets.CONTABO_SSH_KEY || secrets.CONTABO2_SSH_KEY }}
           port: 22

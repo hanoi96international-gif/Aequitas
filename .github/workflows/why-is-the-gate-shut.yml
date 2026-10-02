@@ -68,7 +68,7 @@ jobs:
             echo ""
             echo "===== how far behind is it, if at all ====="
             LOCAL=$(curl -s -m 15 http://localhost:8080/api/status | grep -o '"height":[0-9]*' | cut -d: -f2)
-            PEER=$(curl -s -m 15 http://173.249.37.118:8080/api/status | grep -o '"height":[0-9]*' | cut -d: -f2)
+            PEER=$(curl -s -m 15 http://alter-c1-abgeschaltet.invalid:8080/api/status | grep -o '"height":[0-9]*' | cut -d: -f2)
             echo "  contabo2=$LOCAL contabo1=$PEER lag=$(( ${PEER:-0} - ${LOCAL:-0} ))"
 
             echo ""

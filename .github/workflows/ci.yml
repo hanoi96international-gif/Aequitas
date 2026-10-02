@@ -31,6 +31,9 @@ jobs:
       # Server-Schluessel nur in der Umgebung `produktion` (mit Freigabe), und
       # kein Server-Workflow startet per Push. Kopf von scripts/lint_server_freigabe.py.
       - run: python3 scripts/lint_server_freigabe.py
+      # Kein Workflow spricht einen abgeschalteten Server an (alte IPs werden
+      # neu vergeben). Kopf von scripts/lint_alte_hosts.py.
+      - run: python3 scripts/lint_alte_hosts.py
 
   test:
     runs-on: ubuntu-latest

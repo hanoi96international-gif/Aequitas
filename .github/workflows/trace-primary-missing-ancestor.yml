@@ -76,7 +76,7 @@ jobs:
           # From Contabo1: it reaches the primary over the public URL and
           # Contabo2 over its IP, same vantage point compare-stateroot-components
           # uses.
-          host: 173.249.37.118
+          host: alter-c1-abgeschaltet.invalid
           username: root
           key: ${{ secrets.CONTABO_SSH_KEY }}
           port: 22
