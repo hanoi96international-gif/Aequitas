@@ -20,8 +20,9 @@ on:
   workflow_dispatch:
     inputs:
       wallet:
-        description: "Deine Wallet-Adresse aus der App (0x..., 42 Zeichen)"
-        required: true
+        description: "Leer lassen = die auf C1 eingetragene Betreiber-Wallet. Nur fuer eine ANDERE Wallet hier deren Adresse (0x..., 42 Zeichen)"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -42,7 +43,7 @@ jobs:
     timeout-minutes: 10
     outputs:
       adresse: ${{ steps.link.outputs.adresse }}
-      wallet: ${{ steps.eingabe.outputs.wallet }}
+      wallet: ${{ steps.link.outputs.wallet }}
     steps:
       - uses: actions/checkout@v5
       - name: Eingabe pruefen
@@ -52,7 +53,7 @@ jobs:
         run: |
           set -euo pipefail
           W="$(printf '%s' "$W" | tr -d '[:space:]')"
-          [[ "$W" =~ ^0x[0-9a-fA-F]{40}$ ]] || { echo "::error::Das ist keine Wallet-Adresse (0x und 40 Zeichen 0-9/a-f)"; exit 1; }
+          [ -z "$W" ] || [[ "$W" =~ ^0x[0-9a-fA-F]{40}$ ]] || { echo "::error::Das ist keine Wallet-Adresse (0x und 40 Zeichen 0-9/a-f)"; exit 1; }
           echo "wallet=$(printf '%s' "$W" | tr 'A-F' 'a-f')" >> "$GITHUB_OUTPUT"
       - name: Schluessel und Host-Pruefung
         env:
@@ -72,12 +73,15 @@ jobs:
           set -euo pipefail
           # Eingabe ist oben auf 0x + 40 Hex geprueft; das Skript prueft erneut.
           scp -q -o BatchMode=yes deploy/knoten-binden.sh root@$C1:/root/knoten-binden.sh
-          AUS="$(ssh -o BatchMode=yes root@$C1 "PHASE=link WALLET=$W bash /root/knoten-binden.sh")"
+          AUS="$(ssh -o BatchMode=yes root@$C1 "PHASE=link WALLET='$W' bash /root/knoten-binden.sh")"
           printf '%s\n' "$AUS" | grep -v '^LINK='
           LINK="$(printf '%s\n' "$AUS" | sed -n 's/^LINK=//p')"
           ADR="$(printf '%s\n' "$AUS" | sed -n 's/^ADRESSE=//p')"
           [[ "$LINK" =~ ^aequitasapp://knoten-binden\?adresse=0x[0-9a-f]{40}\&wallet=0x[0-9a-f]{40}\&beweis=0x[0-9a-f]{130}$ ]] || { echo "::error::Kein gueltiger Bindungscode"; exit 1; }
+          WJ="$(printf '%s\n' "$LINK" | sed -E 's/.*&wallet=(0x[0-9a-f]{40})&.*/\1/')"
+          WEB="$NETZ/binden?${LINK#aequitasapp://knoten-binden?}"
           echo "adresse=$ADR" >> "$GITHUB_OUTPUT"
+          echo "wallet=$WJ" >> "$GITHUB_OUTPUT"
           sudo apt-get install -y -qq qrencode >/dev/null
           mkdir -p qr
           qrencode -o qr/aequitas-knoten-binden.png -s 12 -m 4 "$LINK"
@@ -87,11 +91,15 @@ jobs:
           {
             echo "## Knoten C1 mit deiner Wallet verbinden"
             echo
-            echo "1. Oben unter **Artifacts** \`qr-code\` herunterladen und das Bild auf einem zweiten Bildschirm öffnen (oder den QR-Code im Protokoll des Schritts *Bindungscode erzeugen* ansehen)."
-            echo "2. In der App: **Knoten → Knoten binden (QR scannen)** → Code scannen → Adresse prüfen → bestätigen."
-            echo "3. Dieser Lauf wartet bis zu 15 Minuten und trägt die Bindung dann auf C1 ein."
+            echo "**Auf dem Handy mit der App:** diesen Link antippen und auf der Seite **In der Aequitas-App öffnen** wählen, dann in der App bestätigen:"
             echo
-            echo "Signieradresse von C1: \`$ADR\`"
+            echo "**[Knoten jetzt verbinden]($WEB)**"
+            echo
+            echo "**Mit zweitem Bildschirm:** unter *Artifacts* \`qr-code\` öffnen und in der App mit **Knoten → Knoten binden (QR scannen)** scannen."
+            echo
+            echo "Dieser Lauf wartet bis zu 15 Minuten und trägt die Bindung dann auf C1 ein."
+            echo
+            echo "Signieradresse von C1: \`$ADR\` · Wallet: \`$WJ\`"
             echo
             echo "Code als Text:"
             echo

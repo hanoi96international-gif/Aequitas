@@ -192,6 +192,10 @@ TEXT
     echo "  (qrencode fehlt -- den Code gibt es auch hier / QR also here:)"
   fi
   echo
+  echo "  Nur ein Handy? Diesen Link auf dem Handy oeffnen (z. B. per Nachricht an dich selbst):"
+  echo "  Only one phone? Open this link on the phone (e.g. message it to yourself):"
+  echo "  $NETZ/binden?adresse=$ADDR&wallet=$WALLET_ENV&beweis=$BEWEIS"
+  echo
   echo "  Signieradresse / signing address: $ADDR"
   echo "  Warte auf die Bestaetigung in der App (hoechstens 15 Minuten) ..."
   echo "  Waiting for the confirmation in the app (at most 15 minutes) ..."
