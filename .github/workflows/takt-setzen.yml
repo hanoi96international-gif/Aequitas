@@ -25,7 +25,7 @@ jobs:
       max-parallel: 1
       matrix:
         box:
-          - {name: "Contabo1", host: "173.249.37.118", secret: "C1"}
+          - {name: "Contabo1", host: "alter-c1-abgeschaltet.invalid", secret: "C1"}
           - {name: "Contabo2", host: "194.163.188.71", secret: "C2"}
     runs-on: ubuntu-latest
     environment: produktion
@@ -103,7 +103,7 @@ jobs:
       - name: Wie viele Bloecke entstehen jetzt wirklich
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: "173.249.37.118"
+          host: "alter-c1-abgeschaltet.invalid"
           username: root
           key: ${{ secrets.CONTABO_SSH_KEY }}
           port: 22

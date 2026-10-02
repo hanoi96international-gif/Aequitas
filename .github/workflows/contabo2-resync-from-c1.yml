@@ -44,12 +44,12 @@ jobs:
 
       - name: Verify Contabo1 is healthy and serving a snapshot
         run: |
-          h=$(curl -s -m 15 http://173.249.37.118:8080/api/status | grep -o '"height":[0-9]*' | cut -d: -f2)
+          h=$(curl -s -m 15 http://alter-c1-abgeschaltet.invalid:8080/api/status | grep -o '"height":[0-9]*' | cut -d: -f2)
           echo "Contabo1 height: ${h:-UNREACHABLE}"
           if [ -z "$h" ] || [ "$h" -lt 1000 ]; then
             echo "Contabo1 is not a usable source — aborting"; exit 1
           fi
-          code=$(curl -s -o /dev/null -w '%{http_code}' -m 60 http://173.249.37.118:8080/api/snapshot)
+          code=$(curl -s -o /dev/null -w '%{http_code}' -m 60 http://alter-c1-abgeschaltet.invalid:8080/api/snapshot)
           echo "Contabo1 /api/snapshot -> $code"
           [ "$code" = "200" ] || { echo "snapshot not served — aborting"; exit 1; }
 
@@ -67,7 +67,7 @@ jobs:
           script: |
             set -euo pipefail
             NODE=aequitas-node
-            SNAP="http://173.249.37.118:8080/api/snapshot"
+            SNAP="http://alter-c1-abgeschaltet.invalid:8080/api/snapshot"
             SIGNER="0x0BE8b961CBf6564bd1931B0803D35C0659E0D016"   # Contabo1's block proposer
             IMAGE=$(docker inspect "$NODE" --format '{{.Config.Image}}')
             NETS=$(docker inspect "$NODE" --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}')

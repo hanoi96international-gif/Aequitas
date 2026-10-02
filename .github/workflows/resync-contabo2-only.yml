@@ -67,7 +67,7 @@ jobs:
           set -euo pipefail
           Q="${QUELLE%/}"
           case "$Q" in
-            *173.249.37.118*) echo "::error::alter C1 als Quelle -- abgeschaltet, nie verwenden"; exit 1 ;;
+            *alter-c1-abgeschaltet.invalid*) echo "::error::alter C1 als Quelle -- abgeschaltet, nie verwenden"; exit 1 ;;
             *194.163.188.71*) echo "::error::C2 kann nicht seine eigene Quelle sein"; exit 1 ;;
             http://*|https://*) ;;
             *) echo "::error::Quelle muss http(s)-URL sein"; exit 1 ;;

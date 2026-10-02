@@ -79,6 +79,14 @@ on:
         type: choice
         options: [both, c1, contabo2]
 
+# Wie deploy-c1-dann-c2.yml: ist C2 gerade kein Validator (Neustart bei null,
+# Neueinrichtung nach Guide), hat seine Datenbank keinen Ledger -- der Dump
+# waere leer und der Lauf jeden Tag rot (01.10.2026: 848 Bytes). Dann wird C2
+# uebersprungen, ausser jemand waehlt ihn von Hand aus. Zurueck auf "ja",
+# sobald C2 wieder Validator ist.
+env:
+  C2_AKTIV: "nein"
+
 concurrency:
   group: backup-ledger
   cancel-in-progress: false
@@ -110,7 +118,10 @@ jobs:
         id: gate
         run: |
           want="${{ github.event.inputs.box || 'both' }}"
-          if [ "$want" = "both" ] || [ "$want" = "${{ matrix.box }}" ]; then
+          if [ "${{ matrix.box }}" = "contabo2" ] && [ "$C2_AKTIV" != "ja" ] && [ "$want" != "contabo2" ]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "C2_AKTIV=$C2_AKTIV -- C2 ist kein Validator, kein Ledger zu sichern."
+          elif [ "$want" = "both" ] || [ "$want" = "${{ matrix.box }}" ]; then
             echo "run=true" >> "$GITHUB_OUTPUT"
           else
             echo "run=false" >> "$GITHUB_OUTPUT"

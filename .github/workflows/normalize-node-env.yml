@@ -50,11 +50,11 @@ jobs:
         id: t
         run: |
           if [ "${{ inputs.box }}" = "contabo1" ]; then
-            echo "host=173.249.37.118" >> $GITHUB_OUTPUT
+            echo "host=alter-c1-abgeschaltet.invalid" >> $GITHUB_OUTPUT
             echo "other=194.163.188.71" >> $GITHUB_OUTPUT
           else
             echo "host=194.163.188.71" >> $GITHUB_OUTPUT
-            echo "other=173.249.37.118" >> $GITHUB_OUTPUT
+            echo "other=alter-c1-abgeschaltet.invalid" >> $GITHUB_OUTPUT
           fi
 
       - name: Refuse unless BOTH validators are up first

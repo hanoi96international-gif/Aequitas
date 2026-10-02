@@ -28,7 +28,7 @@ jobs:
       matrix:
         include:
           - name: C1
-            host: 173.249.37.118
+            host: alter-c1-abgeschaltet.invalid
             secret: CONTABO_SSH_KEY
           - name: C2-Vergleich
             host: 194.163.188.71

@@ -168,7 +168,7 @@ jobs:
             # 22.09.2026 ist das Contabo1 (annahme_tor.go). Dieser Schritt laeuft
             # auf Contabo2, weil dort die Schluessel liegen; localhost waere
             # hier der nur lesende Knoten.
-            ANNAHME="http://173.249.37.118:8080"
+            ANNAHME="http://alter-c1-abgeschaltet.invalid:8080"
             echo "=== PHASE fund (an $ANNAHME) ==="
             docker run --rm --network host -v "$(pwd)":/w -w /w \
               -v /tmp:/tmp golang:1.24-alpine \

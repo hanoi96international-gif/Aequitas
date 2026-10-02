@@ -47,7 +47,10 @@ jobs:
       max-parallel: 1
       matrix:
         box:
-          - { name: Contabo1, host: 173.249.37.118, secret: C1, fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4" }
+          # Der alte Contabo1 (173.249.37.118) ist seit dem 24.09.2026 abgeschaltet,
+          # die IP vergibt der Anbieter neu -- nie mehr per SSH ansprechen. C1 ist
+          # seit dem 26.09.2026 die netcup-Box (wie backup-ledger.yml, wache.yml).
+          - { name: C1, host: 188.172.229.121, secret: C1, fingerprint: "SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA" }
           - { name: Contabo2, host: 194.163.188.71, secret: C2, fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto" }
     runs-on: ubuntu-latest
     environment: produktion

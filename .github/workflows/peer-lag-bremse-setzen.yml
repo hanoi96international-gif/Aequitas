@@ -40,7 +40,7 @@ jobs:
     strategy:
       max-parallel: 1
       matrix:
-        box: ${{ inputs.box == 'contabo1' && fromJSON('[{"name":"Contabo1","host":"173.249.37.118","secret":"C1"}]') || inputs.box == 'contabo2' && fromJSON('[{"name":"Contabo2","host":"194.163.188.71","secret":"C2"}]') || fromJSON('[{"name":"Contabo1","host":"173.249.37.118","secret":"C1"},{"name":"Contabo2","host":"194.163.188.71","secret":"C2"}]') }}
+        box: ${{ inputs.box == 'contabo1' && fromJSON('[{"name":"Contabo1","host":"alter-c1-abgeschaltet.invalid","secret":"C1"}]') || inputs.box == 'contabo2' && fromJSON('[{"name":"Contabo2","host":"194.163.188.71","secret":"C2"}]') || fromJSON('[{"name":"Contabo1","host":"alter-c1-abgeschaltet.invalid","secret":"C1"},{"name":"Contabo2","host":"194.163.188.71","secret":"C2"}]') }}
     runs-on: ubuntu-latest
     environment: produktion
     steps:

@@ -30,7 +30,7 @@ jobs:
       matrix:
         include:
           - box: contabo1
-            host: 173.249.37.118
+            host: alter-c1-abgeschaltet.invalid
             script: /root/deploy.sh
           - box: contabo2
             host: 194.163.188.71

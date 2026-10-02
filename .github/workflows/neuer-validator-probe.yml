@@ -45,8 +45,8 @@ jobs:
       - name: Knoten starten und beobachten
         env:
           DATABASE_URL: postgres://postgres:aequitas@localhost:5432/aequitas?sslmode=disable
-          PRIMARY_NODE_URLS: http://173.249.37.118:8080,http://194.163.188.71:8080
-          PRIMARY_NODE_URL: http://173.249.37.118:8080
+          PRIMARY_NODE_URLS: http://alter-c1-abgeschaltet.invalid:8080,http://194.163.188.71:8080
+          PRIMARY_NODE_URL: http://alter-c1-abgeschaltet.invalid:8080
           AEQUITAS_WAL_ENABLED: "1"
           AEQUITAS_WAL_PATH: /tmp/aequitas-wal/aequitas_transfers.wal
           GOMEMLIMIT: 10GiB
@@ -62,7 +62,7 @@ jobs:
           sleep 20
           echo "=== Bootstrap-Zeilen ==="
           grep -E "BOOTSTRAP|RESYNC|Snapshot|snapshot|Restored|Genesis|genesis|WARN|✗" node.log | head -40 || true
-          SPITZE_START=$(curl -s --max-time 10 http://173.249.37.118:8080/api/status | grep -oE '"height":[0-9]+' | cut -d: -f2)
+          SPITZE_START=$(curl -s --max-time 10 http://alter-c1-abgeschaltet.invalid:8080/api/status | grep -oE '"height":[0-9]+' | cut -d: -f2)
           echo "Spitze des Netzes beim Start: $SPITZE_START"
           ENDE=$((START + MINUTEN*60))
           LETZTE=0
@@ -71,14 +71,14 @@ jobs:
           while [ "$(date +%s)" -lt "$ENDE" ]; do
             if ! kill -0 $NODEPID 2>/dev/null; then echo "!! Knoten ist gestorben"; break; fi
             H=$(curl -s --max-time 5 http://localhost:8080/api/status | grep -oE '"height":[0-9]+' | cut -d: -f2)
-            S=$(curl -s --max-time 5 http://173.249.37.118:8080/api/status | grep -oE '"height":[0-9]+' | cut -d: -f2)
+            S=$(curl -s --max-time 5 http://alter-c1-abgeschaltet.invalid:8080/api/status | grep -oE '"height":[0-9]+' | cut -d: -f2)
             RSS=$(ps -o rss= -p $NODEPID 2>/dev/null | awk '{printf "%d", $1/1024}')
             printf "%-9s %-10s %-10s %-9s %-8s\n" "$(( $(date +%s) - START ))" "${H:-?}" "${S:-?}" "$(( ${S:-0} - ${H:-0} ))" "${RSS:-?}"
             LETZTE=${H:-0}
             LETZTE_SPITZE=${S:-0}
             sleep 30
           done
-          echo "=== Ende: Knoten-Hoehe $LETZTE, Netz $(curl -s --max-time 10 http://173.249.37.118:8080/api/status | grep -oE '"height":[0-9]+' | cut -d: -f2) ==="
+          echo "=== Ende: Knoten-Hoehe $LETZTE, Netz $(curl -s --max-time 10 http://alter-c1-abgeschaltet.invalid:8080/api/status | grep -oE '"height":[0-9]+' | cut -d: -f2) ==="
           echo "=== Sync-Zeilen (letzte 40) ==="
           grep -E "HTTP-SYNC|SYNC\]|BOOTSTRAP|RESYNC|Checkpoint|FINALITY" node.log | tail -40 || true
           echo "=== Fehler/Warnungen (letzte 40) ==="

@@ -28,7 +28,7 @@ jobs:
           set -uo pipefail
           ip=$(getent hosts aequitas.digital | awk '{print $1}' | head -1)
           echo "aequitas.digital -> ${ip:-<unresolved>}"
-          if [ "$ip" = "173.249.37.118" ]; then
+          if [ "$ip" = "alter-c1-abgeschaltet.invalid" ]; then
             echo "DNS already points at Contabo1 — the real workflow would proceed."
           else
             echo "DNS does not point at Contabo1 yet. Expected before 2026-08-18; not a failure today."
@@ -38,13 +38,13 @@ jobs:
             | head -c 300 || echo "(no answer)"
           echo ""
           echo "--- what SHOULD answer after the switch (Contabo1, direct) ---"
-          curl -s -m 15 "http://173.249.37.118:8080/api/status" | head -c 300 || echo "(no answer)"
+          curl -s -m 15 "http://alter-c1-abgeschaltet.invalid:8080/api/status" | head -c 300 || echo "(no answer)"
           echo ""
 
       - name: Rehearse the box-side preconditions
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: 173.249.37.118
+          host: alter-c1-abgeschaltet.invalid
           username: root
           key: ${{ secrets.CONTABO_SSH_KEY }}
           port: 22

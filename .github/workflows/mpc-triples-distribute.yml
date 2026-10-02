@@ -93,7 +93,7 @@ jobs:
       - name: Assert Contabo1 is still the lower address (party 0)
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: 173.249.37.118
+          host: alter-c1-abgeschaltet.invalid
           username: root
           key: ${{ secrets.CONTABO_SSH_KEY }}
           port: 22
@@ -131,7 +131,7 @@ jobs:
       - name: Send party 0 to Contabo1 ONLY
         uses: appleboy/scp-action@v0.1.7
         with:
-          host: 173.249.37.118
+          host: alter-c1-abgeschaltet.invalid
           username: root
           key: ${{ secrets.CONTABO_SSH_KEY }}
           port: 22
@@ -153,7 +153,7 @@ jobs:
       - name: Verify Contabo1 has party 0 and NOT party 1
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: 173.249.37.118
+          host: alter-c1-abgeschaltet.invalid
           username: root
           key: ${{ secrets.CONTABO_SSH_KEY }}
           port: 22

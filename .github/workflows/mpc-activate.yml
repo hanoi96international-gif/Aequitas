@@ -55,7 +55,7 @@ on:
       peers:
         description: "static committee: URL|0xSigningAddress, comma-separated. ORDER DEFINES THE PARTY INDEX."
         required: false
-        default: "http://173.249.37.118:8080|0x0be8b961cbf6564bd1931b0803d35c0659e0d016,http://194.163.188.71:8080|0x1a37dcdaa42cf3f7e1f6e41379961f40df44a4e3"
+        default: "http://alter-c1-abgeschaltet.invalid:8080|0x0be8b961cbf6564bd1931b0803d35c0659e0d016,http://194.163.188.71:8080|0x1a37dcdaa42cf3f7e1f6e41379961f40df44a4e3"
 
 jobs:
   c1:
@@ -65,7 +65,7 @@ jobs:
       - name: Contabo1
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: 173.249.37.118
+          host: alter-c1-abgeschaltet.invalid
           username: root
           key: ${{ secrets.CONTABO_SSH_KEY }}
           port: 22
