@@ -38,6 +38,15 @@ jobs:
   pruefen:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # C2_AKTIV wie in wache.yml: seit dem Neustart bei null (30.09.2026)
+    # laeuft das Netz mit C1 allein, der C2-Knoten bleibt aus, bis C2 nach
+    # docs/VALIDATOR_EINRICHTEN.md neu eingerichtet ist. Solange "nein": C2s
+    # KNOTEN (Kette, App-API, RPC, Tor, APK) wird nicht geprueft -- ROT nur,
+    # falls er doch antwortet (dann laeuft dort eine Kette ausserhalb des
+    # Netzes). C2s DIENSTE (Coordinator, Vergleichsdienst proof2 -- Teil des
+    # Quorums --, Proof-Server) weiter wie bisher. Nach der Neueinrichtung "ja".
+    env:
+      C2_AKTIV: "nein"
     steps:
       - name: Pruefen
         env:
@@ -73,6 +82,13 @@ jobs:
             NAMEN="$NAMEN $N"; IP[$N]=$I; PH[$N]=$P; SOLLAN[$N]=$A
             API[$N]=https://$P.aequitas.digital/api; RPC[$N]=https://$P.aequitas.digital/rpc
           done
+          DIENSTE="$NAMEN"
+          case "$C2_AKTIV" in ja|nein) ;; *) rot "C2_AKTIV='$C2_AKTIV' -- erwartet ja oder nein"; C2_AKTIV=ja;; esac
+          if [ "$C2_AKTIV" = nein ]; then
+            NAMEN=$(for N in $NAMEN; do [ "$N" != C2 ] && echo "$N"; done | xargs)
+            C2S=$(get --max-time 10 "http://${IP[C2]}:8080/api/status" | jq_ '.height // empty')
+            if [ -n "$C2S" ]; then rot "C2-Knoten antwortet (Hoehe $C2S), obwohl C2_AKTIV=nein -- gehoert nicht zum neuen Netz"; else info "C2-Knoten aus (C2_AKTIV=nein) -- nur seine Dienste werden geprueft"; fi
+          fi
           ANNEHMER=$(for N in $NAMEN; do [ "${SOLLAN[$N]}" = true ] && echo "$N"; done | wc -l)
           [ "$ANNEHMER" = 1 ] && ok "genau ein Knoten nimmt Ueberweisungen an" || rot "$ANNEHMER Knoten als annehmend eingetragen -- genau einer ist richtig"
 
@@ -127,7 +143,7 @@ jobs:
           done
 
           echo "===== Coordinator, Vergleichsdienst, Proof-Server ====="
-          for K in $NAMEN; do
+          for K in $DIENSTE; do
             B="https://${PH[$K]}.aequitas.digital"
             CH=$(get "$B/coordinator/health")
             [ "$(echo "$CH" | jq_ '.status')" = ok ] && ok "${PH[$K]} Coordinator ok" || rot "${PH[$K]} Coordinator: $(echo "$CH" | head -c 120)"

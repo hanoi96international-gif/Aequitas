@@ -1150,6 +1150,7 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	mux.HandleFunc("/api/leistungsprobe", a.handleLeistungsprobe)
 	mux.HandleFunc("/api/kandidatenprobe", a.handleKandidatenprobe)
 	mux.HandleFunc("/node-binding", a.handleNodeBinding)
+	mux.HandleFunc("/binden", a.handleKnotenBindenSeite)
 	mux.HandleFunc("/coordinator-binding", a.handleCoordinatorBinding)
 	mux.HandleFunc("/api/register-validator-key", a.handleRegisterValidatorKey)
 	// Das Coordinator-Register: derselbe Gedanke wie beim Bezeugungs-
