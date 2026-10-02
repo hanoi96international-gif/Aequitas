@@ -92,6 +92,19 @@ Fragen und die Fakten, die die Kanzlei braucht.
     euro-gedeckt, AEQ nicht. Wie ist AEQ einzuordnen, und was folgt daraus für
     einen Pilot mit mehreren Läden in der Beta (Testgeld) und danach?
 
+## H. MiCA Titel II (Angebot, Whitepaper)
+
+25. Die Whitepaper-Pflicht entfällt für kostenlos angebotene Kryptowerte. Nach
+    Darstellung von Kanzleien gilt ein Angebot nicht als kostenlos, wenn der
+    Anbieter personenbezogene Daten verlangt. Aequitas gibt 1.000 AEQ nur nach
+    einer Gesichtsprüfung. Ist das Startguthaben ein öffentliches Angebot mit
+    Whitepaper-Pflicht? Wer wäre Anbieter?
+26. Greifen in der Beta andere Ausnahmen (weniger als 150 Personen je
+    Mitgliedstaat, unter 1 Mio. € in 12 Monaten), und was passiert beim
+    Überschreiten?
+27. Entfällt eine Ausnahme, wenn Website oder Kanäle einen späteren Handel
+    oder Umtausch ankündigen?
+
 ## Was wir von der Kanzlei brauchen
 
 Für jede Frage: Antwort, Begründung, was **vor der Beta**, was **vor einem
