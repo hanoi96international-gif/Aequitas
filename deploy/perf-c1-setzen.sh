@@ -35,15 +35,22 @@ setze GOMEMLIMIT 8GiB
 # (rpc_frei.go). Gemessen 26.09.: ohne das 99 % -32005 bei 1.051 Paaren.
 # Nur diese eine Adresse; die Inflight-Grenze gilt weiter.
 setze AEQUITAS_RPC_RATE_LIMIT_FREI 194.163.188.71
+# Bloecke aus dem Speicher (speicherkorb.go) und aufgeteilter Flush
+# (wal_flush_teile.go), freigegeben am 02.10.2026 nach Pruefstand und
+# Sicherheitspruefung (PR #259, #260): Ketten-TPS auf dem C1-Pruefstand
+# 7.719 -> 13.585. Rueckweg: AEQUITAS_BLOCK_AUS_SPEICHER=0 -- beim Neustart
+# kommt alles Unverblockte genau einmal nach pending_txs (getestet).
+setze AEQUITAS_BLOCK_AUS_SPEICHER 1
+setze AEQUITAS_WAL_FLUSH_TEILE 4
 
 # Kein Neubau: dasselbe Image, nur neue Umgebung.
 docker compose up -d --no-deps node
 
-LISTE='^(ENABLE_MULTI_BLOCK_TICK|AEQUITAS_MAX_TXS_PER_BLOCK|AEQUITAS_COMPRESS_BLOCK_PAYLOAD|AEQUITAS_DB_MAX_CONNS|AEQUITAS_PRODUCE_WHEN_BACKLOG_SHRINKING|AEQUITAS_RPC_RATE_LIMIT_MAX|AEQUITAS_RPC_QUIET_TX|AEQUITAS_EIGENLAST_BREMSE|AEQUITAS_PEER_LAG_BODEN|AEQUITAS_PEER_LAG_SLACK|GOMEMLIMIT|AEQUITAS_RPC_RATE_LIMIT_FREI|AEQUITAS_WAL_ENABLED|ANNAHME_ROLLE|IS_PRIMARY_NODE)='
+LISTE='^(ENABLE_MULTI_BLOCK_TICK|AEQUITAS_MAX_TXS_PER_BLOCK|AEQUITAS_COMPRESS_BLOCK_PAYLOAD|AEQUITAS_DB_MAX_CONNS|AEQUITAS_PRODUCE_WHEN_BACKLOG_SHRINKING|AEQUITAS_RPC_RATE_LIMIT_MAX|AEQUITAS_RPC_QUIET_TX|AEQUITAS_EIGENLAST_BREMSE|AEQUITAS_PEER_LAG_BODEN|AEQUITAS_PEER_LAG_SLACK|GOMEMLIMIT|AEQUITAS_RPC_RATE_LIMIT_FREI|AEQUITAS_WAL_ENABLED|AEQUITAS_BLOCK_AUS_SPEICHER|AEQUITAS_WAL_FLUSH_TEILE|ANNAHME_ROLLE|IS_PRIMARY_NODE)='
 echo "--- im Container ---"
 docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E "$LISTE" | sort
 n=$(docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -cE "$LISTE")
-[ "$n" -ge 15 ] || { echo "FEHLER: nur $n von 15 Schaltern im Container"; exit 1; }
+[ "$n" -ge 17 ] || { echo "FEHLER: nur $n von 17 Schaltern im Container"; exit 1; }
 
 for i in $(seq 1 72); do
   S=$(curl -s -m 5 http://127.0.0.1:8080/api/health/combined || true)
@@ -52,6 +59,12 @@ for i in $(seq 1 72); do
 done
 echo "$S" | grep -qE '"nimmt_an": ?true' || { echo "FEHLER: C1 nimmt nach dem Neustart nicht an"; exit 1; }
 echo "C1 nimmt an."
+# Der Speicherkorb muss nach dem Neustart wirklich an sein -- sonst laeuft der
+# Knoten still auf dem alten Weg weiter, waehrend die .env etwas anderes sagt.
+echo "$S" | python3 -c "
+import sys,json; d=json.load(sys.stdin); k=d.get('speicherkorb') or {}
+print('speicherkorb', json.dumps({x:k.get(x) for x in ('an','bis','wartend','bereit','flush_teile')}))
+sys.exit(0 if k.get('an') is True else 1)" || { echo "FEHLER: Speicherkorb nach dem Neustart nicht an"; exit 1; }
 echo "$S" | python3 -c "
 import sys,json; d=json.load(sys.stdin)
 print('db_pool max_open', (d.get('db_pool') or {}).get('max_open'))" 2>/dev/null || true
