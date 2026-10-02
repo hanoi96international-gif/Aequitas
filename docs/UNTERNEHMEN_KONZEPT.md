@@ -62,6 +62,12 @@ sobald dort genug Menschen registriert sind (Richtwert 50 bis 100).
   der Beta keinen Euro-Wert, keine Kasse und keinen Export gibt
   (geändert am 02.10.2026, 12 Sprachen).
 
+> **Zahlenprüfung (02.10.2026):** `docs/WIRTSCHAFT_ZAHLENPRUEFUNG.md` zeigt,
+> dass die Monatsgrenzen eine ungemessene Umlaufgeschwindigkeit voraussetzen
+> und das Liegegeld-Fenster von 1,5 Monatsumsätzen Betriebe mit kleiner Marge
+> hart trifft (drei Monate Rücklage kosten einen Supermarkt über ein Drittel
+> seines Gewinns). Vorschläge dort, noch nicht beschlossen.
+
 > **Reifeprüfung (02.10.2026):** `docs/WIRTSCHAFT_REIFEPRUEFUNG.md` prüft jede
 > Regel auf Fairness und Anreiz, findet drei Schwächen (Kleinbetriebe,
 > Weitergabe an Lieferanten, Vermögensgrenze bei Eingängen), beschreibt die
