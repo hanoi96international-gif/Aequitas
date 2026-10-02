@@ -205,6 +205,21 @@ mildert das für Kleine. Für alle anderen hilft der Vorschlag aus 3.3.
 5. **Änderungen per Abstimmung der Menschen**, mit festen Unter- und
    Obergrenzen, damit niemand die Regeln auf einmal kippen kann.
 
+## 5a. Entschieden am 02.10.2026
+
+1. **Liegegeld-Fenster bleibt 1,5 / 3 Monatsumsätze in Stufe 2.** Gründe:
+   Solange AEQ ein Zweitgeld ist, hält ein Betrieb nur Betriebsmittel darin,
+   und dann trifft das Fenster kaum (Chiemgauer: 8 % im Jahr auf alles, ohne
+   Freibetrag, und die Betriebe machen mit, `WIRTSCHAFT_LITERATUR.md`). Sardex
+   deckelt Guthaben je Firma bei rund 10 % des Jahresumsatzes, also gut einem
+   Monatsumsatz; 1,5 liegt darüber. Eine Konsensänderung kurz vor dem
+   15.10. wäre ein Risiko ohne belegten Nutzen. **Wiedervorlage im Pilot**,
+   sobald ein Betrieb AEQ als Hauptwährung nutzt; dann 3 / 6 wie in 3.3.
+2. **Flussgrenzen gelten als Platzhalter** und werden im Pilot an gemessene
+   Monatsausgaben gebunden (Literatur Nr. 7).
+3. **Bürgen und Verzeichnis werden gebaut**, mit eigener Aktivierungszeit nach
+   Stufe 2 (`UNTERNEHMEN_KONZEPT.md`, Abschnitt 13).
+
 ## 5. Was jetzt zu entscheiden ist
 
 1. **Liegegeld-Fenster 3 / 6 Monatsumsätze statt 1,5 / 3** (3.3). Wenn ja: in
