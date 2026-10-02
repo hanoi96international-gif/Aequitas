@@ -16,9 +16,18 @@
 set -euo pipefail
 BOX="${BOX:?BOX setzen}"
 
-DATABASE_URL="$(grep -E '^DATABASE_URL=' /root/.aequitas.env 2>/dev/null | head -1 | cut -d= -f2- || true)"
+# DIE DATENBANK DES LAUFENDEN KNOTENS, NICHT DIE AUS EINER DATEI.
+#
+# Bis zum 02.10.2026 kam DATABASE_URL zuerst aus /root/.aequitas.env. Auf dem
+# neuen C1 (netcup) laeuft der Knoten aber ueber deploy/validator/.env; die
+# alte Datei zeigte auf eine andere, leere Datenbank. Gesichert wurde damit
+# tagelang eine Datenbank ohne ein einziges Konto (61 KB) -- aufgefallen erst,
+# als die Pruefung den lebenden Stand mitzaehlte ("no accounts at all").
+# Massgeblich ist, womit der Prozess wirklich laeuft; die Datei nur, wenn es
+# keinen laufenden Knoten gibt.
+DATABASE_URL="$(docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | grep -E '^DATABASE_URL=' | head -1 | cut -d= -f2- || true)"
 if [ -z "$DATABASE_URL" ]; then
-  DATABASE_URL="$(docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | grep -E '^DATABASE_URL=' | head -1 | cut -d= -f2- || true)"
+  DATABASE_URL="$(grep -E '^DATABASE_URL=' /root/.aequitas.env 2>/dev/null | head -1 | cut -d= -f2- || true)"
 fi
 if [ -z "$DATABASE_URL" ]; then
   echo "No DATABASE_URL on this box — cannot back up. Failing loudly rather than reporting success."
@@ -41,6 +50,8 @@ DUMP="$OUT/aequitas-${STAMP}.dump"
 # mindestens ihn tragen: Konten werden nur angelegt, Menschen nur
 # hinzugefuegt (die Aufraeumung verwaister Einschreibungen laeuft nur bei 0
 # Menschen auf der Kette). Spaeter Hinzugekommenes darf fehlen.
+# Welche Datenbank -- ohne Benutzer und Passwort (das Log ist oeffentlich).
+echo "database: $(printf '%s' "$DATABASE_URL" | sed -E 's#^[a-z]+://([^@]*@)?##; s#\?.*$##')"
 live() { docker run --rm --network "$NET" postgres:16-alpine psql "$DATABASE_URL" -t -A -c "$1"; }
 LIVE_HUMANS="$(live "SELECT count(*) FROM chain_accounts WHERE is_human = true")"
 LIVE_ACCOUNTS="$(live "SELECT count(*) FROM chain_accounts")"
