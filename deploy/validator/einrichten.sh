@@ -189,15 +189,23 @@ else
   for i in $(seq 1 12); do anfragen && { GEMELDET=1; break; }; sleep 5; done
   [ -n "$GEMELDET" ] || { rot "Das Netz ($NETZ) nimmt die Anfrage nicht an. Ist die Wallet $WALLET_ENV in der App registriert?
 The network does not accept the request. Is wallet $WALLET_ENV registered in the app?"; exit 1; }
+  # Kontrollzahl wie beim Bluetooth-Koppeln: dieselbe Rechnung wie in der
+  # App (lib/knotenBindung.ts, kontrollzahl): SHA-256 der Signieradresse,
+  # erste 4 Byte, modulo 1.000.000, sechsstellig.
+  ZAHL="$(python3 -c "import hashlib,sys;n=int.from_bytes(hashlib.sha256(sys.argv[1].encode()).digest()[:4],'big')%1000000;s='%06d'%n;print(s[:3]+' '+s[3:])" "$ADDR")"
   cat <<TEXT
 
   Jetzt die Aequitas-App oeffnen -> "Knoten".
-  Dort erscheint: "Dein neuer Server moechte sich mit dir verbinden".
-  Pruefe die IP ($(curl -4 -fsS -m 5 https://api.ipify.org 2>/dev/null || echo "dieses Servers")) und tippe auf "Bestaetigen".
+  Dort erscheint: "Dein Server moechte sich mit dir verbinden"
+  mit dieser Kontrollzahl:
+
+        $ZAHL
+
+  Nur wenn die Zahl in der App GENAU so lautet, auf "Bestaetigen" tippen.
   Kostet nichts, bewegt kein Geld.
 
-  Now open the Aequitas app -> "Node". A request from this server appears;
-  check the IP and tap "Confirm". Free, moves no money.
+  Now open the Aequitas app -> "Node". A request appears with the number
+  above. Only if it matches exactly, tap "Confirm". Free, moves no money.
 
 TEXT
   echo "  Warte auf die Bestaetigung in der App (hoechstens 15 Minuten) ..."

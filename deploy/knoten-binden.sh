@@ -74,6 +74,7 @@ link)
       -d "{\"signing_address\":\"$ADDR\",\"wallet\":\"$WALLET\",\"beweis\":\"$BEWEIS\"}" \
       "$NETZ/api/bindungsanfrage" >/dev/null; then
     echo "ANFRAGE=gemeldet"
+    echo "KONTROLLZAHL=$(python3 -c "import hashlib,sys;n=int.from_bytes(hashlib.sha256(sys.argv[1].encode()).digest()[:4],'big')%1000000;s='%06d'%n;print(s[:3]+' '+s[3:])" "$ADDR")"
   else
     echo "ANFRAGE=fehlgeschlagen"
   fi

@@ -36,8 +36,12 @@ import (
 //   - nur mit gueltigem Schluesselnachweis (Signatur der Signieradresse ueber
 //     "Aequitas: validator key linked to human <wallet>"),
 //   - nur fuer registrierte Menschen,
-//   - die App zeigt die IP, von der die Anfrage kam (die des Servers) und
-//     verlangt einen bewussten Tipp; abgelehnte Anfragen verschwinden,
+//   - einrichten.sh und die App zeigen dieselbe sechsstellige Kontrollzahl
+//     (aus der Signieradresse); bestaetigt wird nur, wenn sie gleich ist --
+//     wie beim Bluetooth-Koppeln. Dazu die IP des Servers; abgelehnte
+//     Anfragen verschwinden,
+//   - je Wallet und IP nur die neueste Anfrage (wer von einer Adresse aus
+//     flutet, verdraengt die echte Anfrage nicht),
 //   - je Wallet hoechstens bindungsAnfragenJeWallet, insgesamt hoechstens
 //     bindungsAnfragenMax, jede verfaellt nach bindungsAnfrageDauer,
 //   - je IP hoechstens bindungsAnfrageJeIP Anfragen je Minute.
@@ -80,6 +84,13 @@ func (b *bindungsAnfragenTyp) merke(a bindungsAnfrage) {
 	defer b.mu.Unlock()
 	b.aufraeumenLocked(a.Zeit)
 	delete(b.eintrag, a.Adresse)
+	// Je Wallet und IP nur die neueste: von EINER Adresse aus laesst sich die
+	// echte Anfrage eines Menschen nicht mit eigenen verdraengen.
+	for k, e := range b.eintrag {
+		if e.Wallet == a.Wallet && e.IP == a.IP {
+			delete(b.eintrag, k)
+		}
+	}
 	// Je Wallet: die aelteste weicht.
 	var gleich []bindungsAnfrage
 	for _, e := range b.eintrag {

@@ -172,3 +172,26 @@ func TestBindungsanfrage_AblehnenNurMitWallet(t *testing.T) {
 		t.Fatal("abgelehnte Anfrage noch offen")
 	}
 }
+
+// Von EINER IP aus verdraengt niemand die echte Anfrage eines Menschen.
+func TestBindungsanfrage_FlutVonEinerIPVerdraengtNicht(t *testing.T) {
+	wl := neueAnfrageWelt(t)
+	echt, _ := crypto.GenerateKey()
+	if c := wl.anfrage(t, "192.0.2.10", echt, wl.wallet, personalSign(t, echt, "Aequitas: validator key linked to human "+wl.wallet)); c != 200 {
+		t.Fatalf("Status %d", c)
+	}
+	for i := 0; i < bindungsAnfrageJeIP; i++ {
+		k, _ := crypto.GenerateKey()
+		wl.anfrage(t, "198.51.100.66", k, wl.wallet, personalSign(t, k, "Aequitas: validator key linked to human "+wl.wallet))
+	}
+	o := wl.offen(t)
+	gefunden := false
+	for _, e := range o {
+		if e.Adresse == adrVon(echt) {
+			gefunden = true
+		}
+	}
+	if !gefunden || len(o) != 2 {
+		t.Fatalf("echte Anfrage verdraengt oder Flut nicht zusammengefasst: %+v", o)
+	}
+}
