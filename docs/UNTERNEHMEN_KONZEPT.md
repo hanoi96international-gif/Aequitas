@@ -1,5 +1,8 @@
 # Aequitas für Unternehmen – Konzept
 
+> **Anreize für Unternehmen (02.10.2026):** Warum ein Laden AEQ annehmen soll
+> und was dafür fehlt, steht in `docs/UNTERNEHMEN_ANREIZE.md` (Vorschlag).
+
 > ## Geltende Zahlen (Stand 26.09.2026)
 >
 > Diese Tabelle ist verbindlich und entspricht `x/humanity/keeper/wirtschaft.go`.
