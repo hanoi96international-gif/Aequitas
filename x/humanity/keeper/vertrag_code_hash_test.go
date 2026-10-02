@@ -20,13 +20,16 @@ func TestVertragCodeHashAusDerDatenbank_RealDB(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	db.Exec(`DROP TABLE IF EXISTS evm_contracts`)
-	if _, err := db.Exec(`CREATE TABLE evm_contracts (address TEXT PRIMARY KEY, bytecode TEXT NOT NULL, deployer TEXT, deployed_at TIMESTAMP DEFAULT NOW())`); err != nil {
+	// Gemeinsame Tabelle: anlegen wie state.go, nur die eigene Zeile anfassen.
+	// Bis 02.10.2026 stand hier DROP TABLE -- die V8-Tests danach fanden
+	// evm_contracts nicht mehr und scheiterten, je nach Reihenfolge.
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS evm_contracts (address TEXT PRIMARY KEY, bytecode TEXT NOT NULL, deployer TEXT, deployed_at TIMESTAMP DEFAULT NOW())`); err != nil {
 		t.Fatal(err)
 	}
-	defer db.Exec(`DROP TABLE IF EXISTS evm_contracts`)
 	cs := &ChainState{db: db, useDB: true}
 	const addr = "0x00000000000000000000000000000000c0de0001"
+	db.Exec(`DELETE FROM evm_contracts WHERE address = $1`, addr)
+	defer db.Exec(`DELETE FROM evm_contracts WHERE address = $1`, addr)
 	codeHashMu.Lock()
 	delete(codeHashCache, addr)
 	codeHashMu.Unlock()
