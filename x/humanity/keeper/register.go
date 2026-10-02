@@ -349,7 +349,7 @@ func (a *APIServer) handleRegister(w http.ResponseWriter, r *http.Request) {
 	fmt.Printf("[REGISTER] ✓ Relayed registerWithSig for %s, tx=%s\n", wallet, txHash)
 	json.NewEncoder(w).Encode(RegisterResponse{
 		Success: true,
-		Message: "Registered as human on Aequitas V7! 1,000 AEQ granted.",
+		Message: fmt.Sprintf("Registered as human on Aequitas (register contract %s). 1,000 AEQ granted.", strings.ToUpper(vertragVersion())),
 		Balance: 1000,
 		TxHash:  txHash,
 	})
@@ -1035,13 +1035,19 @@ func aggregateBroadcastResults(results map[string]error) error {
 func notifyProofServerWithRetryQueue(cs *ChainState, bioHashKey, wallet string) {
 	attempted, err := notifyProofServer(bioHashKey, wallet)
 	if !attempted {
+		// Nicht mehr still (proof_sync_status.go): ohne PROOF_SERVER_URLS
+		// und CHAIN_SERVICE_TOKEN kennt kein Proof-Server diesen Menschen.
+		proofSyncUebersprungen.Add(1)
+		fmt.Printf("[REGISTER] Warnung: Proof-Server nicht benachrichtigt -- PROOF_SERVER_URLS oder CHAIN_SERVICE_TOKEN fehlt auf diesem Knoten\n")
 		return
 	}
 	if err != nil {
+		proofSyncFehlgeschl.Add(1)
 		fmt.Printf("[REGISTER] Warning: proof-server sync failed, queued for retry: %v\n", err)
 		cs.QueueProofServerSync(bioHashKey, wallet, err.Error())
 		return
 	}
+	proofSyncErfolgreich.Add(1)
 	// Succeeded — in case this wallet had a stale queue entry from an
 	// earlier failed attempt, clear it now.
 	cs.RemoveFromProofServerSyncQueue(bioHashKey)

@@ -860,6 +860,11 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 				"dead":            proofQueueDeadCount,
 				"oldest_age_secs": proofQueueOldestSecs,
 			},
+			// Ob die Meldung an die Proof-Server ueberhaupt eingerichtet ist,
+			// und was seit dem Start daraus wurde (proof_sync_status.go).
+			// "uebersprungen" > 0 erklaert ein bio_hash_count unter
+			// chain_bio_hashes.
+			"proof_server_sync": proofSyncStand(),
 			"evm_mirror_sync_queue": map[string]interface{}{
 				"pending":         evmQueueCount,
 				"dead":            evmQueueDeadCount,
@@ -1363,6 +1368,10 @@ func (a *APIServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 		"uptime":            uptime,
 		"is_primary":        os.Getenv("IS_PRIMARY_NODE") == "true",
 		"block_time":        ConfiguredBlockTimeSeconds(), // read from the real constant (see its own comment) — never hand-typed again
+		// Adresse des Registervertrags. V8 steht an derselben Adresse wie V7
+		// (vertrag_v8.go); welche Fassung gilt, sagt register_vertrag.
+		// contract_v7 bleibt als alter Name fuer bestehende Leser.
+		"register_contract": V7_CONTRACT_ADDR,
 		"contract_v7":       V7_CONTRACT_ADDR,
 		// P3-8: V5/V6 legacy addresses removed from status — minimise attack surface.
 		"bio_verifier": BIO_VERIFIER_ADDR,

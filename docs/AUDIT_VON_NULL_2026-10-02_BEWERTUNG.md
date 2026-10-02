@@ -62,6 +62,24 @@ Zusätzlich zur eigenen Checkliste:
    zurückgeben, damit die nächste Messung sie richtig ansetzt (POST auf den
    Coordinator, Galerie des Vergleichsdienstes, Repo `aequitas-app`).
 
+### Umgesetzt am 02.10.2026 (Branch `claude/beta-launch-business-integration-vr7u4c`)
+
+- **Punkt 1, Sichtbarkeit:** `notifyProofServer` überspringt nicht mehr still.
+  Warnung im Log, und `/api/health/combined` zeigt unter `proof_server_sync`
+  ob die Meldung eingerichtet ist (`konfiguriert`) und Zähler für
+  `erfolgreich`, `uebersprungen`, `fehlgeschlagen` seit dem Start. Nur Ja/Nein
+  und Zahlen, keine URL, kein Token (`proof_sync_status.go`, Test
+  `TestProofSyncUebersprungenIstSichtbar`). **Offen, nur auf C1 prüfbar:** ob
+  `PROOF_SERVER_URLS` und `CHAIN_SERVICE_TOKEN` gesetzt sind, und ob
+  `gallery_real` im Vergleichsdienst die Zahl der Menschen erklärt.
+- **Punkt 2, Website:** „Launched June 2026“ ersetzt durch „Restarted at zero
+  on 30 Sep 2026“, „The fairest money in the world“ durch „On the way to the
+  fairest money in the world“, in allen 12 Sprachen auf Startseite und
+  Explorer.
+- **Punkt 3, Kosmetik:** Registrierungsmeldung nennt die geltende
+  Vertragsfassung statt „V7“. `/api/status` hat das neue Feld
+  `register_contract`; `contract_v7` bleibt als alter Name für bestehende Leser.
+
 ## 5. Bei dieser Prüfung zusätzlich gefunden (Wirtschaft)
 
 - **Gründungsphase doppelt über Mitinhaber-Reihenfolge.** Beim Aufnehmen eines
