@@ -2825,12 +2825,12 @@ func (cs *ChainState) LoadPendingTxs() ([]Transaction, []int64) {
 // LoadPendingTxsWithLimit ist dasselbe mit einer aufrufseitig gesetzten
 // Obergrenze. Die Blockproduktion setzt sie kleiner, wenn ein Peer
 // zurueckfaellt -- siehe peer_lag_bremse.go fuer das Warum.
-func (cs *ChainState) LoadPendingTxsWithLimit(limit int) ([]Transaction, []int64) {
+func (cs *ChainState) ladeOffeneZeilen(limit int, bisSeq int64) []langsameZeile {
 	if limit <= 0 || limit > maxTxsPerBlock {
 		limit = maxTxsPerBlock
 	}
 	if cs.db == nil {
-		return nil, nil
+		return nil
 	}
 	// LESEN UND MARKIEREN GETRENNT. Vorher tat das eine einzige Anweisung:
 	//
@@ -2863,7 +2863,7 @@ func (cs *ChainState) LoadPendingTxsWithLimit(limit int) ([]Transaction, []int64
 	dbTx, err := cs.db.Begin()
 	if err != nil {
 		fmt.Printf("[TX] LoadPendingTxs konnte keine Transaktion oeffnen: %v\n", err)
-		return nil, nil
+		return nil
 	}
 	// Sicherheitsnetz: kehrt die Funktion zwischen hier und dem Commit aus
 	// einem unerwarteten Grund zurueck, bliebe die Transaktion sonst offen und
@@ -2875,16 +2875,23 @@ func (cs *ChainState) LoadPendingTxsWithLimit(limit int) ([]Transaction, []int64
 			dbTx.Rollback()
 		}
 	}()
-	rows, err := dbTx.Query(
-		`SELECT id, tx_json FROM pending_txs
+	// bisSeq >= 0: nur Zeilen mit wal_seq <= bisSeq (Speicherkorb, siehe
+	// blockKorbMischen). Sonst alle offenen.
+	abfrage := `SELECT id, tx_json, wal_seq FROM pending_txs
 		 WHERE included_at = 0 ORDER BY wal_seq, id LIMIT $1
-		 FOR UPDATE SKIP LOCKED`,
-		limit,
-	)
+		 FOR UPDATE SKIP LOCKED`
+	argumente := []interface{}{limit}
+	if bisSeq >= 0 {
+		abfrage = `SELECT id, tx_json, wal_seq FROM pending_txs
+		 WHERE included_at = 0 AND wal_seq <= $2 ORDER BY wal_seq, id LIMIT $1
+		 FOR UPDATE SKIP LOCKED`
+		argumente = append(argumente, bisSeq)
+	}
+	rows, err := dbTx.Query(abfrage, argumente...)
 	if err != nil {
 		dbTx.Rollback()
 		fmt.Printf("[TX] LoadPendingTxs error: %v\n", err)
-		return nil, nil
+		return nil
 	}
 	// FIX (BRUTAL-P2-03): do NOT issue DML (INSERT/DELETE on pending_txs) while
 	// the UPDATE...RETURNING cursor is still open — the same connection holds
@@ -2895,8 +2902,9 @@ func (cs *ChainState) LoadPendingTxsWithLimit(limit int) ([]Transaction, []int64
 	// safety net for the early-return error paths above.
 	defer rows.Close()
 	type idTx struct {
-		id int64
-		tx Transaction
+		id  int64
+		seq int64
+		tx  Transaction
 	}
 	type badRow struct {
 		id     int64
@@ -2928,16 +2936,17 @@ func (cs *ChainState) LoadPendingTxsWithLimit(limit int) ([]Transaction, []int64
 	// werden.
 	type rohZeile struct {
 		id  int64
+		seq int64
 		raw string
 	}
 	var rohe []rohZeile
 	for rows.Next() {
-		var id int64
+		var id, seq int64
 		var raw string
-		if err := rows.Scan(&id, &raw); err != nil {
+		if err := rows.Scan(&id, &raw, &seq); err != nil {
 			continue
 		}
-		rohe = append(rohe, rohZeile{id: id, raw: raw})
+		rohe = append(rohe, rohZeile{id: id, seq: seq, raw: raw})
 	}
 	// Close the cursor before any DML so we no longer hold locks on the rows.
 	rows.Close()
@@ -2955,7 +2964,7 @@ func (cs *ChainState) LoadPendingTxsWithLimit(limit int) ([]Transaction, []int64
 					corrupt = append(corrupt, badRow{id: r.id, errMsg: err.Error()})
 					continue
 				}
-				loaded = append(loaded, idTx{id: r.id, tx: tx})
+				loaded = append(loaded, idTx{id: r.id, seq: r.seq, tx: tx})
 			}
 		} else {
 			ergebnis := make([]idTx, len(rohe))
@@ -2988,7 +2997,7 @@ func (cs *ChainState) LoadPendingTxsWithLimit(limit int) ([]Transaction, []int64
 							fehler[i] = &e
 							continue
 						}
-						ergebnis[i] = idTx{id: rohe[i].id, tx: tx}
+						ergebnis[i] = idTx{id: rohe[i].id, seq: rohe[i].seq, tx: tx}
 					}
 				}(von, bis)
 			}
@@ -3024,12 +3033,12 @@ func (cs *ChainState) LoadPendingTxsWithLimit(limit int) ([]Transaction, []int64
 		); err != nil {
 			dbTx.Rollback()
 			fmt.Printf("[TX] LoadPendingTxs konnte die Zeilen nicht beanspruchen: %v — dieser Block bleibt leer, die Ueberweisungen bleiben in der Warteschlange%c", err, 10)
-			return nil, nil
+			return nil
 		}
 	}
 	if err := dbTx.Commit(); err != nil {
 		fmt.Printf("[TX] LoadPendingTxs konnte nicht festschreiben: %v — dieser Block bleibt leer%c", err, 10)
-		return nil, nil
+		return nil
 	}
 	abgeschlossen = true
 
@@ -3071,12 +3080,40 @@ func (cs *ChainState) LoadPendingTxsWithLimit(limit int) ([]Transaction, []int64
 	// subquery's ORDER BY — restore insertion order explicitly, since
 	// block.Transactions order is part of the block hash and replay
 	// processes TXs in order.
-	sort.Slice(loaded, func(i, j int) bool { return loaded[i].id < loaded[j].id })
-	txs := make([]Transaction, 0, len(loaded))
-	ids := make([]int64, 0, len(loaded))
+	// In der Reihenfolge der ANWENDUNG (wal_seq, dann id) -- nicht nach id.
+	//
+	// Bis zum 01.10.2026 stand hier sort.Slice(... id): die Abfrage ordnete
+	// richtig nach wal_seq, und diese Zeile ordnete danach wieder nach der
+	// Zeilen-ID um -- der Reihenfolge des FLUSH, die bei mehreren Flush-
+	// Arbeitern von der Anwendungsreihenfolge abweicht. Genau das, was
+	// pending_reihenfolge.go als Ursache der Abweichung C1/C2 vom 12.09.2026
+	// beschreibt. Der Test dort prueft nur den SQL-Text; dieser hier
+	// (TestLadeOffeneZeilen_OrdnetNachWALSeq) das Ergebnis.
+	sort.SliceStable(loaded, func(i, j int) bool {
+		if loaded[i].seq != loaded[j].seq {
+			return loaded[i].seq < loaded[j].seq
+		}
+		return loaded[i].id < loaded[j].id
+	})
+	out := make([]langsameZeile, 0, len(loaded))
 	for _, lt := range loaded {
-		txs = append(txs, lt.tx)
-		ids = append(ids, lt.id)
+		out = append(out, langsameZeile{id: lt.id, walSeq: lt.seq, tx: lt.tx})
+	}
+	return out
+}
+
+// LoadPendingTxsWithLimit laedt bis zu limit offene Zeilen in Anwendungs-
+// reihenfolge und beansprucht sie (included_at). Siehe ladeOffeneZeilen.
+func (cs *ChainState) LoadPendingTxsWithLimit(limit int) ([]Transaction, []int64) {
+	zeilen := cs.ladeOffeneZeilen(limit, -1)
+	if len(zeilen) == 0 {
+		return nil, nil
+	}
+	txs := make([]Transaction, 0, len(zeilen))
+	ids := make([]int64, 0, len(zeilen))
+	for _, z := range zeilen {
+		txs = append(txs, z.tx)
+		ids = append(ids, z.id)
 	}
 	return txs, ids
 }
@@ -3829,73 +3866,12 @@ func (cs *ChainState) SaveBlockWithPendingTxsAtomic(block *Block, ids []int64) e
 	if cs.db == nil {
 		return nil
 	}
-	parentHashesJSON, err := json.Marshal(block.ParentHashes)
+	args, err := cs.blockZeileArgs(block)
 	if err != nil {
-		return fmt.Errorf("marshal parent_hashes: %w", err)
+		return err
 	}
-	txsJSON, err := block.transaktionenJSONFuerDB()
-	if err != nil {
-		return fmt.Errorf("marshal transactions: %w", err)
-	}
-
-	// Compressed payload, when the operator has enabled it. The plain column is
-	// then left empty so exactly one of the two carries the transactions —
-	// decodeBlockPayload prefers the compressed one when it holds anything.
-	// Measured 3.5x faster on a full block; see block_payload_codec.go, which
-	// also explains why turning this on is a decision for the whole network.
-	//
-	// A compression failure falls back to writing the payload plainly rather
-	// than failing the save: a block that cannot be persisted is a far worse
-	// outcome than a block that is persisted uncompressed.
-	var txsZ []byte
-	if blockPayloadCompressionEnabled() {
-		if z, zErr := compressBlockPayload(txsJSON); zErr == nil {
-			txsZ = z
-			txsJSON = []byte("")
-		} else {
-			fmt.Printf("[BLOCK] ⚠ could not compress the payload of block #%d, storing it plainly: %v\n", block.Height, zErr)
-		}
-	}
-
-	bluesJSONFast, _ := json.Marshal(block.Blues)
-	if bluesJSONFast == nil {
-		bluesJSONFast = []byte("[]")
-	}
-
-	// FAST PATH (2026-07-02 cadence fix): the overwhelmingly common case is a
-	// block with no pending-TX rows to reconcile (0 tx/block in steady state).
-	// The atomic Begin/INSERT/Commit below exists ONLY to keep the block INSERT
-	// and the pending_txs UPDATE+DELETE in one transaction — with no ids there
-	// is nothing to make atomic, so the explicit transaction is pure overhead:
-	// 3 network round trips (BEGIN, INSERT, COMMIT) instead of 1. Over a remote
-	// DB reached via a cross-project public proxy (~380ms/round-trip, confirmed
-	// live on the primary) that turned every block save into ~1.14s held under
-	// dag.mu — the direct cause of the sustained multi-second cadence and the
-	// resulting failure to merge with peers. A single autocommit INSERT is one
-	// round trip (~380ms) and is exactly as durable here (a lone INSERT is its
-	// own implicit transaction). The transactional path is still used verbatim
-	// whenever there ARE pending-TX ids to reconcile atomically.
-	// replayed = true, EXPLICITLY (2026-07-25 night): this function persists
-	// this node's OWN freshly-produced block, whose transaction effects were
-	// already applied to chain_accounts synchronously at RPC time, before the
-	// block was even assembled — there is nothing for a later repair pass to
-	// redo. This previously relied on the column's schema DEFAULT true, which
-	// works but leaves the intent invisible and one schema-default change away
-	// from every self-produced block silently joining the boot-repair backlog
-	// (the exact backlog class that kept Primary unreachable for ~35 minutes).
-	cs.ensureReplayedColumn()
-	cs.ensureTxRootColumn()
 	if len(ids) == 0 {
-		if _, err := cs.db.Exec(
-			`INSERT INTO chain_blocks
-			   (hash, height, parent_hashes, proposer, timestamp, humans, state_root,
-			    signature, transactions, selected_parent, blue_score, blues, replayed, transactions_z, tx_root)
-			 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,true,$13,$14)
-			 ON CONFLICT (hash) DO NOTHING`,
-			block.Hash, block.Height, string(parentHashesJSON), block.Proposer, block.Timestamp,
-			block.Humans, block.StateRoot, block.Signature, string(txsJSON),
-			block.SelectedParent, block.BlueScore, string(bluesJSONFast), txsZ, block.TxRoot,
-		); err != nil {
+		if _, err := cs.db.Exec(blockZeileInsertSQL, args...); err != nil {
 			return fmt.Errorf("save block (fast path): %w", err)
 		}
 		return nil
@@ -3945,20 +3921,7 @@ func (cs *ChainState) SaveBlockWithPendingTxsAtomic(block *Block, ids []int64) e
 	// now vestigial (nothing writes it; MarkPendingTxsIncluded, its only other
 	// writer, has no callers left), deliberately left in place rather than
 	// dropped in the same change as a performance fix.
-	bluesJSON, _ := json.Marshal(block.Blues)
-	if bluesJSON == nil {
-		bluesJSON = []byte("[]")
-	}
-	if _, err := tx.Exec(
-		`INSERT INTO chain_blocks
-		   (hash, height, parent_hashes, proposer, timestamp, humans, state_root,
-		    signature, transactions, selected_parent, blue_score, blues, replayed, transactions_z, tx_root)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,true,$13,$14)
-		 ON CONFLICT (hash) DO NOTHING`,
-		block.Hash, block.Height, string(parentHashesJSON), block.Proposer, block.Timestamp,
-		block.Humans, block.StateRoot, block.Signature, string(txsJSON),
-		block.SelectedParent, block.BlueScore, string(bluesJSON), txsZ, block.TxRoot,
-	); err != nil {
+	if _, err := tx.Exec(blockZeileInsertSQL, args...); err != nil {
 		rollback()
 		return fmt.Errorf("save block: %w", err)
 	}
@@ -3977,6 +3940,82 @@ func (cs *ChainState) SaveBlockWithPendingTxsAtomic(block *Block, ids []int64) e
 		return fmt.Errorf("commit: %w", err)
 	}
 	return nil
+}
+
+// blockZeileInsertSQL / blockZeileArgs: die Zeile in chain_blocks, gemeinsam
+// fuer SaveBlockWithPendingTxsAtomic und SaveBlockMitKorb (speicherkorb.go) --
+// beide Wege schreiben exakt dasselbe.
+const blockZeileInsertSQL = `INSERT INTO chain_blocks
+		   (hash, height, parent_hashes, proposer, timestamp, humans, state_root,
+		    signature, transactions, selected_parent, blue_score, blues, replayed, transactions_z, tx_root)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,true,$13,$14)
+		 ON CONFLICT (hash) DO NOTHING`
+
+func (cs *ChainState) blockZeileArgs(block *Block) ([]interface{}, error) {
+	parentHashesJSON, err := json.Marshal(block.ParentHashes)
+	if err != nil {
+		return nil, fmt.Errorf("marshal parent_hashes: %w", err)
+	}
+	txsJSON, err := block.transaktionenJSONFuerDB()
+	if err != nil {
+		return nil, fmt.Errorf("marshal transactions: %w", err)
+	}
+
+	// Compressed payload, when the operator has enabled it. The plain column is
+	// then left empty so exactly one of the two carries the transactions —
+	// decodeBlockPayload prefers the compressed one when it holds anything.
+	// Measured 3.5x faster on a full block; see block_payload_codec.go, which
+	// also explains why turning this on is a decision for the whole network.
+	//
+	// A compression failure falls back to writing the payload plainly rather
+	// than failing the save: a block that cannot be persisted is a far worse
+	// outcome than a block that is persisted uncompressed.
+	var txsZ []byte
+	if blockPayloadCompressionEnabled() {
+		if z, zErr := compressBlockPayload(txsJSON); zErr == nil {
+			txsZ = z
+			txsJSON = []byte("")
+		} else {
+			fmt.Printf("[BLOCK] ⚠ could not compress the payload of block #%d, storing it plainly: %v\n", block.Height, zErr)
+		}
+	}
+
+	bluesJSONFast, _ := json.Marshal(block.Blues)
+	if bluesJSONFast == nil {
+		bluesJSONFast = []byte("[]")
+	}
+
+	// FAST PATH (2026-07-02 cadence fix): the overwhelmingly common case is a
+	// block with no pending-TX rows to reconcile (0 tx/block in steady state).
+	// The atomic Begin/INSERT/Commit below exists ONLY to keep the block INSERT
+	// and the pending_txs UPDATE+DELETE in one transaction — with no ids there
+	// is nothing to make atomic, so the explicit transaction is pure overhead:
+	// 3 network round trips (BEGIN, INSERT, COMMIT) instead of 1. Over a remote
+	// DB reached via a cross-project public proxy (~380ms/round-trip, confirmed
+	// live on the primary) that turned every block save into ~1.14s held under
+	// dag.mu — the direct cause of the sustained multi-second cadence and the
+	// resulting failure to merge with peers. A single autocommit INSERT is one
+	// round trip (~380ms) and is exactly as durable here (a lone INSERT is its
+	// own implicit transaction). The transactional path is still used verbatim
+	// whenever there ARE pending-TX ids to reconcile atomically.
+	// replayed = true, EXPLICITLY (2026-07-25 night): this function persists
+	// this node's OWN freshly-produced block, whose transaction effects were
+	// already applied to chain_accounts synchronously at RPC time, before the
+	// block was even assembled — there is nothing for a later repair pass to
+	// redo. This previously relied on the column's schema DEFAULT true, which
+	// works but leaves the intent invisible and one schema-default change away
+	// from every self-produced block silently joining the boot-repair backlog
+	// (the exact backlog class that kept Primary unreachable for ~35 minutes).
+	// Alle Spalten, die die Zeile beschreibt (je Prozess einmal): auf einer
+	// frischen Datenbank legt sie sonst erst LoadBlocksFromDB an.
+	cs.ensureGHOSTDAGColumns()
+	cs.ensureReplayedColumn()
+	cs.ensureTxRootColumn()
+	return []interface{}{
+		block.Hash, block.Height, string(parentHashesJSON), block.Proposer, block.Timestamp,
+		block.Humans, block.StateRoot, block.Signature, string(txsJSON),
+		block.SelectedParent, block.BlueScore, string(bluesJSONFast), txsZ, block.TxRoot,
+	}, nil
 }
 
 // LoadBlocksFromDB reconstructs every durably-saved block (see SaveBlockToDB)

@@ -324,18 +324,45 @@ func (c *rpcClient) nonce(addr string) uint64 {
 // either direction, so keeping it would only add failures to the throughput
 // number it is supposed to contribute to.
 func prefetchNonces(c *rpcClient, senders, recipients []*account) ([]*account, []*account) {
+	// PARALLEL, mit fester Zahl von Arbeitern (seit 01.10.2026): ueber einen
+	// SSH-Tunnel mit 0,3 s Laufzeit dauerte das Lesen von 2.000 Nonces
+	// nacheinander rund zehn Minuten -- laenger als die ganze Messung. Die
+	// Reihenfolge der Paare bleibt erhalten.
+	const arbeiter = 32
+	type ergebnis struct {
+		sn, rn   uint64
+		sok, rok bool
+	}
+	erg := make([]ergebnis, len(senders))
+	var wg sync.WaitGroup
+	idx := make(chan int)
+	for w := 0; w < arbeiter; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range idx {
+				sn, sok := c.tryNonceRetrying(senders[i].address)
+				rn, rok := c.tryNonceRetrying(recipients[i].address)
+				erg[i] = ergebnis{sn, rn, sok, rok}
+			}
+		}()
+	}
+	for i := range senders {
+		idx <- i
+	}
+	close(idx)
+	wg.Wait()
+
 	keptS := make([]*account, 0, len(senders))
 	keptR := make([]*account, 0, len(recipients))
 	dropped := 0
 	for i := range senders {
-		sn, sok := c.tryNonceRetrying(senders[i].address)
-		rn, rok := c.tryNonceRetrying(recipients[i].address)
-		if !sok || !rok {
+		if !erg[i].sok || !erg[i].rok {
 			dropped++
 			continue
 		}
-		senders[i].nonce = sn
-		recipients[i].nonce = rn
+		senders[i].nonce = erg[i].sn
+		recipients[i].nonce = erg[i].rn
 		keptS = append(keptS, senders[i])
 		keptR = append(keptR, recipients[i])
 	}
@@ -743,6 +770,7 @@ func main() {
 	kontenTeil := flag.String("teil", "", "Nur einen Teil der Konten benutzen, Form N/M (z.B. 1/2 = erste Haelfte). Fuer je einen Generator PRO Box: beide duerfen nicht dieselben Absender benutzen, sonst kollidieren ihre Nonces.")
 	csvPath := flag.String("accounts", "accounts.csv", "account CSV path")
 	phase := flag.String("phase", "fund,warmup,run", "comma-separated phases to run")
+	startAt := flag.Int64("start-at", 0, "Unix-Sekunde, zu der die Run-Phase beginnt (0 = sofort). Damit mehrere Generatoren auf verschiedenen Rechnern GLEICHZEITIG Last erzeugen statt nacheinander.")
 	numSeeds := flag.Int("seeds", 5, "number of seed accounts (first N rows)")
 	maxPairs := flag.Int("pairs", 0, "cap on concurrent sender pairs (0 = every pair in the CSV). Lower values find the rate the network SUSTAINS, as opposed to the peak it briefly reaches.")
 	topology := flag.String("topology", "pairs", "pairs = disjoint A<->B couples, half as many senders as accounts; ring = every account sends to the next, twice the concurrency but neighbouring senders share an account")
@@ -1159,6 +1187,15 @@ func main() {
 		if numPairs == 0 {
 			fmt.Println("no pair had both nonces readable — nothing to measure")
 			return
+		}
+		if *startAt > 0 {
+			warte := time.Until(time.Unix(*startAt, 0))
+			if warte > 0 && warte < 30*time.Minute {
+				fmt.Printf("warte %s bis zum gemeinsamen Start\n", warte.Round(time.Second))
+				time.Sleep(warte)
+			} else if warte <= 0 {
+				fmt.Printf("⚠ gemeinsamer Start schon %s vorbei -- Fenster nicht mehr gleichzeitig\n", (-warte).Round(time.Second))
+			}
 		}
 
 		var succeeded, failed int64

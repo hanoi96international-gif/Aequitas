@@ -2480,6 +2480,11 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 	// Sperren, nicht davor.
 	var dbTxs []Transaction
 	var pendingTxIDs []int64
+	// Speicherkorb (speicherkorb.go): die aus dem Korb genommenen Eintraege
+	// und die Marke, die mit dem Block gespeichert wird.
+	var korbGenommen []korbEintrag
+	var korbNeuBis uint64
+	var korbGehalten bool
 	var pendingDur time.Duration
 	var pendingWG sync.WaitGroup
 	pendingWG.Add(1)
@@ -2499,14 +2504,18 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 			deckel := dag.blockTxCap()
 			// Liegt der Korb schon bereit (vorlader.go), wird er nur noch
 			// eingeloest; sonst wie bisher selbst laden.
-			if vl := dag.vorlauf.nehmen(); vl != nil {
+			if dag.state.korb != nil {
+				// Bloecke aus dem Speicher: kein Vorladen noetig, der Korb
+				// ist schon im RAM.
+				dbTxs, pendingTxIDs, korbGenommen, korbNeuBis, korbGehalten = dag.state.korbFuerBlock(deckel)
+			} else if vl := dag.vorlauf.nehmen(); vl != nil {
 				dbTxs, pendingTxIDs = vl.einloesen(deckel, dag.state.PendingTxIDsFreigeben, dag.state.LoadPendingTxsWithLimit)
 			} else {
 				dbTxs, pendingTxIDs = dag.state.LoadPendingTxsWithLimit(deckel)
 			}
 			// Voller Korb = es gibt Rueckstand: den naechsten schon jetzt
 			// laden, waehrend dieser Block gebaut wird.
-			if vorladenAn && deckel > 0 && len(pendingTxIDs) >= deckel {
+			if dag.state.korb == nil && vorladenAn && deckel > 0 && len(pendingTxIDs) >= deckel {
 				dag.vorlauf.starten(func() ([]Transaction, []int64) {
 					return dag.state.LoadPendingTxsWithLimit(deckel)
 				})
@@ -2553,6 +2562,12 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 		if !blockGespeichert && dag.state != nil {
 			if len(pendingTxIDs) > 0 {
 				dag.state.PendingTxIDsFreigeben(pendingTxIDs)
+			}
+			// Aus dem Korb Genommenes zurueck an den Anfang -- es steht in
+			// keinem gespeicherten Block.
+			if k := dag.state.korb; k != nil && korbGehalten {
+				k.zurueckLegen(korbGenommen)
+				dag.state.korbFreigeben()
 			}
 			// Die Vorladung fuer den naechsten Block mit -- sie haelt die
 			// SPAETEREN Ueberweisungen derselben Absender (vorlader.go, Fall 1).
@@ -3256,7 +3271,14 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 	saveStart := time.Now()
 	pbBauen = time.Since(pbBauenStart)
 	pbTxAnzahl = len(block.Transactions)
-	if err := dag.state.SaveBlockWithPendingTxsAtomic(block, pendingTxIDs); err != nil {
+	var speicherFehler error
+	if korbGehalten {
+		// Block, Zeilen und Korb-Marke in EINER Transaktion (speicherkorb.go).
+		speicherFehler = dag.state.SaveBlockMitKorb(block, pendingTxIDs, korbNeuBis)
+	} else {
+		speicherFehler = dag.state.SaveBlockWithPendingTxsAtomic(block, pendingTxIDs)
+	}
+	if err := speicherFehler; err != nil {
 		fmt.Printf("[BLOCK] ⚠ Could not persist block #%d (%s...): %v — skipping broadcast, TXs stay queued\n",
 			block.Height, block.Hash[:16], err)
 		merkeProduktionsAusfall("block_nicht_speicherbar")
@@ -3267,9 +3289,13 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 	// mehr laufen -- sie wuerde Ueberweisungen freigeben, die gerade in einem
 	// Block gelandet sind, und sie ein zweites Mal in einen naechsten bringen.
 	blockGespeichert = true
+	if korbGehalten {
+		dag.state.korbBis.Store(korbNeuBis)
+		dag.state.korbFreigeben()
+	}
 	// Die Annahmegrenze sofort entlasten, nicht erst mit der naechsten
 	// Zaehlung -- siehe rueckstau_grenze.go (29.09.2026).
-	MerkeRueckstauVerblockt(len(pendingTxIDs))
+	MerkeRueckstauVerblockt(len(pendingTxIDs) + len(korbGenommen))
 	// Ueberweisungsgebuehren dieses Blocks ans Grundeinkommen -- jetzt, wo
 	// die Ueberweisungen in einem gespeicherten Block stehen. Nachspielende
 	// Knoten schreiben sie beim Nachspielen genauso gut

@@ -760,18 +760,20 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		// Blockbau ab). Zusammen mit rueckstau.gemessen zeigt das, auf welcher
 		// Seite des Flushs sich ein Rueckstau staut.
 		"wal_warteschlange": a.state.WALFlushQueueDepth(),
-		"wal_druck":         WALDruckStand(),
-		"admission":         AdmissionStats(),
-		"wal_writer":        wal.WriterStats(),
-		"wal_vornuller":     a.state.WALVornullerStand(),
-		"tx_index":          TxIndexStats(),
-		"receipt_flush":     a.blockchain.state.ReceiptFlushStand(),
-		"receipt_prune":     ReceiptPruneStand(),
-		"pending_leichen":   PendingLeichenStand(),
-		"tx_batch_cache":    a.blockchain.state.TxBatchCacheStand(),
-		"push_gzip":         GzipPushStand(),
-		"eigenlast_bremse":  EigenlastBremseStand(),
-		"divergenz":         DivergenzStand(),
+		// Bloecke aus dem Speicher (speicherkorb.go, AEQUITAS_BLOCK_AUS_SPEICHER).
+		"speicherkorb":     a.state.SpeicherKorbStand(),
+		"wal_druck":        WALDruckStand(),
+		"admission":        AdmissionStats(),
+		"wal_writer":       wal.WriterStats(),
+		"wal_vornuller":    a.state.WALVornullerStand(),
+		"tx_index":         TxIndexStats(),
+		"receipt_flush":    a.blockchain.state.ReceiptFlushStand(),
+		"receipt_prune":    ReceiptPruneStand(),
+		"pending_leichen":  PendingLeichenStand(),
+		"tx_batch_cache":   a.blockchain.state.TxBatchCacheStand(),
+		"push_gzip":        GzipPushStand(),
+		"eigenlast_bremse": EigenlastBremseStand(),
+		"divergenz":        DivergenzStand(),
 		// The request split, so the ~50ms per transfer that TransferAtomic does
 		// not account for can be subtracted out instead of guessed at. Read
 		// unaccounted_in_send_ms first; see rpc_phase_stats.go.

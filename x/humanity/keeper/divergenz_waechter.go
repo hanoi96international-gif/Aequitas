@@ -132,6 +132,9 @@ func (dag *BlockDAG) offeneUeberweisungen() int64 {
 	dag.txMu.Lock()
 	n += int64(len(dag.pendingTxs))
 	dag.txMu.Unlock()
+	if dag.state != nil && dag.state.korb != nil {
+		n += int64(dag.state.korb.laenge()) // speicherkorb.go
+	}
 	return n
 }
 

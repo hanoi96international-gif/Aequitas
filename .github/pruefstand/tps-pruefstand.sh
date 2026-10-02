@@ -87,11 +87,17 @@ ENVDATEI="$(mktemp)"; chmod 600 "$ENVDATEI"
   # Liste; hier noch einmal, fail closed).
   if [ -n "${EINSTELLUNGEN:-}" ]; then
     printf '%s\n' "$EINSTELLUNGEN" | tr ',' '\n' \
-      | grep -E '^(AEQUITAS_WAL_FLUSH_(BATCH|CONCURRENCY|INTERVAL_MS)|AEQUITAS_WAL_QUEUE_DEPTH|AEQUITAS_DB_MAX_CONNS)=[0-9]{1,6}$' || true
+      | grep -E '^((AEQUITAS_WAL_FLUSH_(BATCH|CONCURRENCY|INTERVAL_MS)|AEQUITAS_WAL_QUEUE_DEPTH|AEQUITAS_DB_MAX_CONNS)=[0-9]{1,6}|AEQUITAS_BLOCK_AUS_SPEICHER=[01]|AEQUITAS_WAL_FLUSH_TEILE=[0-9]{1,2})$' || true
   fi
-  # Nur dieser Pruefstand: der Generator laeuft von EINER Adresse aus, die
-  # Begrenzung je Adresse wuerde sonst den Generator messen, nicht den Knoten.
-  echo "AEQUITAS_RPC_RATE_LIMIT_MAX=1000000"
+  # Der Generator kommt ueber den SSH-Tunnel und den veroeffentlichten Port,
+  # beim Knoten also von EINER Adresse: dem Gateway des Pruefstand-Netzes.
+  # Statt die Ratenbegrenzung fuer alle aufzudrehen (verboten: Schutzgrenzen
+  # nie fuer Messungen lockern, AGENTS.md) wird nur diese Adresse
+  # freigestellt -- derselbe Mechanismus wie in Produktion fuer den
+  # Lastgenerator (rpc_frei.go). Inflight, Rueckstau und WAL-Druck gelten.
+  GW="$(docker network inspect "$NETZ" -f '{{(index .IPAM.Config 0).Gateway}}')"
+  [[ "$GW" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]] || { echo "Gateway des Pruefstand-Netzes unbekannt: '$GW'" >&2; exit 1; }
+  echo "AEQUITAS_RPC_RATE_LIMIT_FREI=$GW"
 } > "$ENVDATEI"
 
 starte() {
@@ -123,7 +129,14 @@ tail -n +2 "$WERK/accounts.csv" | cut -d, -f2 | tr 'A-F' 'a-f' \
 cp "$WERK/accounts.csv" /root/pruefstand/konten.csv
 fi
 if [ "$PHASE" = aufbau ]; then
-  echo "Pruefknoten steht: 127.0.0.1:$PORT, $KONTEN Konten"; exit 0
+  # Aufwaermen HIER, lokal: jedes Konto einmal anfassen. Ueber den Tunnel
+  # (0,3 s je Anfrage, nacheinander) dauerte das ~11 Minuten je Generator,
+  # und die Lastfenster der Generatoren lagen dadurch versetzt.
+  echo "== Aufwaermen (lokal, alle Konten)"
+  docker run --rm --name pruefstand-last $NIEDRIG --network host -v "$WERK":/w -w /w golang:1.26.8-alpine \
+    ./loadtest -accounts accounts.csv -rpc "http://127.0.0.1:$PORT/rpc" -status "http://127.0.0.1:$PORT/api/status" \
+      -phase warmup 2>&1 | grep -vE '^warmup pair [0-9]+ ok|^\[monitor\]' | tail -5
+  echo "Pruefknoten steht: 127.0.0.1:$PORT, $KONTEN Konten, aufgewaermt"; exit 0
 fi
 docker inspect "$KN" >/dev/null 2>&1 || { echo "Pruefknoten laeuft nicht"; exit 1; }
 
@@ -131,7 +144,10 @@ echo "== Last ($DAUER, Buendel $BUENDEL, Phase $PHASE)"
 # CPU-Profil aus dem Messfenster (Aufwaermen dauert rund 50 s). pprof lauscht
 # nur auf 127.0.0.1 im Container und ist von aussen nicht erreichbar.
 PROFIL="$(mktemp -d)"
-( sleep 70; docker exec "$KN" wget -qO- 'http://127.0.0.1:6061/debug/pprof/profile?seconds=20' > "$PROFIL/cpu.pb" 2>/dev/null || true ) &
+# Bei Last von aussen (PHASE=messen) beginnt die Last ~5 s nach dem
+# Messstart; beim Lauf von der Box (alles) erst nach dem Aufwaermen.
+PROFIL_NACH=70; [ "$PHASE" = messen ] && PROFIL_NACH=15
+( sleep "$PROFIL_NACH"; docker exec "$KN" wget -qO- 'http://127.0.0.1:6061/debug/pprof/profile?seconds=20' > "$PROFIL/cpu.pb" 2>/dev/null || true ) &
 PROFIL_PID=$!
 # Worauf warten die Goroutinen? Schnappschuss mitten im Messfenster,
 # gruppiert nach identischem Stapel (debug=1), die groessten Gruppen.
@@ -161,13 +177,21 @@ REIHE_PID=$!
 # CPU je Container (Prozent eines Kerns), alle ~3 s: Knoten, Postgres,
 # Lastgenerator und der laufende Knoten daneben. Daraus: Kerne je 10.000
 # Ueberweisungen/s -- was ein eigener Validator ohne Generator schafft.
-( for i in $(seq 1 30); do
-    for c in "$KN" "$PG" pruefstand-last aequitas-node; do
-      docker stats --no-stream --format '{{.Name}} {{.CPUPerc}}' "$c" 2>/dev/null | tr -d '%' | tr '\n' ' '
-    done
-    echo
-    sleep 1
-  done ) > "$PROFIL/cpu.txt" 2>&1 &
+# CPU je Container aus den Kernel-Zaehlern (cgroup v2, cpu.stat usage_usec):
+# Stand am Anfang und am Ende des Lastfensters, daraus Kerne im Mittel.
+# (docker stats lieferte unter Last keine verwertbaren Proben.)
+cg_usec() {
+  local id; id="$(docker inspect -f '{{.Id}}' "$1" 2>/dev/null)" || return 0
+  for f in "/sys/fs/cgroup/system.slice/docker-$id.scope/cpu.stat" "/sys/fs/cgroup/docker/$id/cpu.stat"; do
+    [ -r "$f" ] && { awk '/^usage_usec/{print $2}' "$f"; return 0; }
+  done
+}
+FENSTER=45; [ "$PHASE" = alles ] && FENSTER=60
+( sleep 5
+  for c in "$KN" "$PG" aequitas-node; do echo "$c $(cg_usec "$c") $(date +%s%N)"; done > "$PROFIL/cpu_a.txt"
+  sleep "$FENSTER"
+  for c in "$KN" "$PG" aequitas-node; do echo "$c $(cg_usec "$c") $(date +%s%N)"; done > "$PROFIL/cpu_b.txt"
+) > /dev/null 2>&1 &
 CPU_PID=$!
 if [ "$PHASE" = alles ]; then
 docker run --rm --name pruefstand-last $NIEDRIG --network host -v "$WERK":/w -w /w golang:1.26.8-alpine \
@@ -181,22 +205,21 @@ fi
 
 wait "$PROFIL_PID" 2>/dev/null || true
 kill "$REIHE_PID" 2>/dev/null || true
-kill "$CPU_PID" 2>/dev/null || true
-echo "== CPU je Container waehrend der Last (Mittel ueber Proben mit Pruefknoten > 100 %, Prozent eines Kerns)"
-python3 - "$PROFIL/cpu.txt" <<'PY' || true
+echo "== CPU je Container im Lastfenster (Kerne im Mittel, aus cgroup cpu.stat)"
+wait "$CPU_PID" 2>/dev/null || true
+python3 - "$PROFIL/cpu_a.txt" "$PROFIL/cpu_b.txt" <<'PY' || true
 import sys
-summe, n = {}, 0
-for z in open(sys.argv[1]):
-    t = z.split()
-    w = {t[i]: float(t[i+1]) for i in range(0, len(t)-1, 2) if t[i+1].replace('.','',1).isdigit()}
-    if w.get("pruefstand-node", 0) < 100:
-        continue
-    n += 1
-    for k, v in w.items():
-        summe[k] = summe.get(k, 0) + v
-print("proben:", n)
-for k, v in sorted(summe.items()):
-    print("  %-18s %7.1f %%" % (k, v / max(n, 1)))
+def lies(p):
+    d={}
+    for z in open(p):
+        t=z.split()
+        if len(t)==3 and t[1].isdigit(): d[t[0]]=(int(t[1]),int(t[2]))
+    return d
+a,b=lies(sys.argv[1]),lies(sys.argv[2])
+for k in a:
+    if k in b:
+        dt=(b[k][1]-a[k][1])/1e9
+        print("  %-18s %5.2f Kerne" % (k,(b[k][0]-a[k][0])/1e6/max(dt,1e-9)))
 PY
 echo "== Zeitreihe (alle 2 s ab Lastbeginn)"
 cat "$PROFIL/reihe.txt" 2>/dev/null | head -60 || true
@@ -232,11 +255,29 @@ echo "== Knoten nach dem Lauf"
 curl -fsS "http://127.0.0.1:$PORT/api/health/combined" | python3 -c '
 import json,sys
 d=json.load(sys.stdin)
-for k in ("produktion","produktion_phasen","eigenlast_bremse","rueckstau","inflight","wal_druck","fallback_gruende","wal_flush","wal_writer","leistungsnachweis"):
+for k in ("produktion","produktion_phasen","produktions_ausfaelle","speicherkorb","eigenlast_bremse","peer_lag_bremse","rueckstau","inflight","wal_druck","fallback_gruende","wal_flush","wal_writer","leistungsnachweis"):
     v=d.get(k)
     if isinstance(v,dict): v={a:b for a,b in v.items() if a not in ("bedeutung","sync_verteilung")}
     print(k, json.dumps(v, ensure_ascii=False)[:900])
 '
+# Je Produktionsversuch (produktion_protokoll.go): zeigt, ob Zusatzbloecke
+# je Takt entstehen, welcher Deckel galt und wo die Zeit eines langsamen
+# Blocks blieb. Nur Zahlen, keine Inhalte.
+echo "== Produktionsversuche (letzte 160; ms relativ zum ersten)"
+curl -fsS "http://127.0.0.1:$PORT/api/produktion?n=160" | python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+e=d.get("eintraege", d) if isinstance(d,dict) else d
+e=[x for x in e if isinstance(x,dict)]
+if not e: print("(leer)"); sys.exit()
+t0=e[0].get("at_ms",0)
+print("     t_ms  txs  deckel  gesamt  laden  sperren  db_paar  speichern  grund")
+for x in e:
+    print("%9d %5d %6d %7.0f %6.0f %8.0f %8.0f %10.0f  %s" % (x.get("at_ms",0)-t0, x.get("txs",0), x.get("deckel",0), x.get("gesamt_ms",0), x.get("laden_ms",0), x.get("sperren_ms",0), x.get("db_paar_ms",0), x.get("speichern_ms",0), x.get("grund","")))
+' || echo "(nicht lesbar)"
+echo "== Zusatzbloecke je Takt (Knotenprotokoll)"
+docker logs "$KN" 2>&1 | grep -oE 'produced [0-9]+ blocks this tick' | sort | uniq -c || true
+docker logs "$KN" 2>&1 | grep -c 'Full tick (ProduceBlock+broadcast) took' || true
 # Woher Konflikte kommen: nur Zeilen zu Versionskonflikten und den Zeilen
 # davor (Wegwerf-Knoten; Schluessel stehen nicht in diesen Zeilen).
 echo "== Versionskonflikte im Knotenprotokoll"
