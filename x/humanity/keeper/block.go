@@ -2490,6 +2490,7 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 	pendingWG.Add(1)
 	ladeStart := time.Now()
 	produceBlockPool.submit(func() {
+		tuLadenPoolWarten.seit(ladeStart)
 		defer pendingWG.Done()
 		defer func() {
 			if r := recover(); r != nil {

@@ -1137,8 +1137,10 @@ func (cs *ChainState) flushWALBatch(batch []walFlushItem) error {
 		aktivitaet int64
 	}
 
+	tRL := time.Now()
 	cs.mu.RLock()
 	defer cs.mu.RUnlock()
+	tuFlushRLock.seit(tRL)
 
 	// Aufgeteilter Flush (wal_flush_teile.go): nur ohne Outbox-Zeilen, also
 	// nur, wenn jede Ueberweisung im Speicherkorb steht.

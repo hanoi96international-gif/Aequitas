@@ -732,6 +732,7 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		"push_reihenfolge":    PushReihenfolgeStand(),
 		"produktion":          ProduktionsStand(),
 		"produktion_phasen":   ProduktionsPhasenStand(),
+		"produktion_teile":    ProduktionsTeiluhrenStand(),
 		"vorladen":            vorladenStand(),
 		"wal_kompaktierung":   WALKompaktierungsStand(),
 		"produktions_vorrang": ProduktionsVorrangStand(),

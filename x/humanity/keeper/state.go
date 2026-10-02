@@ -7286,9 +7286,14 @@ func (cs *ChainState) StateRoot() string {
 	// sees the last value that was actually committed — never a
 	// concurrent transaction's in-flight write, and never races on
 	// cs.activeTx itself.
+	t0 := time.Now()
 	lastUBIAt := cs.getConfigValueDB("last_ubi_at")
+	tuStateRootDB.seit(t0)
+	t1 := time.Now()
 	cs.mu.RLock()
 	defer cs.mu.RUnlock()
+	tuStateRootSperre.seit(t1)
+	defer tuStateRootHash.seit(time.Now())
 	return cs.stateRootLocked(lastUBIAt)
 }
 
