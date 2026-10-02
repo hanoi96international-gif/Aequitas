@@ -1223,14 +1223,20 @@ func decodeAndRecoverSender(rawHex string) (tx *types.Transaction, senderAddr st
 	}
 
 	// Recover sender
-	signer := types.LatestSignerForChainID(big.NewInt(1926))
-	sender, sErr := types.Sender(signer, t)
-	if sErr != nil {
-		signer = types.NewEIP155Signer(big.NewInt(1926))
+	// Begrenzt gleichzeitig (signatur_plaetze.go): secp256k1 laeuft ueber
+	// cgo, GOMAXPROCS haelt es nicht auf.
+	var sender common.Address
+	var sErr error
+	mitSignaturPlatz(func() {
+		signer := types.LatestSignerForChainID(big.NewInt(1926))
 		sender, sErr = types.Sender(signer, t)
 		if sErr != nil {
-			return nil, "", true, fmt.Errorf("Cannot recover sender: %v", sErr)
+			signer = types.NewEIP155Signer(big.NewInt(1926))
+			sender, sErr = types.Sender(signer, t)
 		}
+	})
+	if sErr != nil {
+		return nil, "", true, fmt.Errorf("Cannot recover sender: %v", sErr)
 	}
 
 	absender := strings.ToLower(sender.Hex())

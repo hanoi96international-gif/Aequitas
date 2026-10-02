@@ -734,6 +734,7 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		"produktion_phasen":   ProduktionsPhasenStand(),
 		"produktion_teile":    ProduktionsTeiluhrenStand(),
 		"laufzeit":            LaufzeitStand(),
+		"rpc_signaturen":      RPCSignaturStand(),
 		"vorladen":            vorladenStand(),
 		"wal_kompaktierung":   WALKompaktierungsStand(),
 		"produktions_vorrang": ProduktionsVorrangStand(),

@@ -87,7 +87,7 @@ ENVDATEI="$(mktemp)"; chmod 600 "$ENVDATEI"
   # Liste; hier noch einmal, fail closed).
   if [ -n "${EINSTELLUNGEN:-}" ]; then
     printf '%s\n' "$EINSTELLUNGEN" | tr ',' '\n' \
-      | grep -E '^((AEQUITAS_WAL_FLUSH_(BATCH|CONCURRENCY|INTERVAL_MS)|AEQUITAS_WAL_QUEUE_DEPTH|AEQUITAS_DB_MAX_CONNS)=[0-9]{1,6}|AEQUITAS_BLOCK_AUS_SPEICHER=[01]|AEQUITAS_WAL_FLUSH_TEILE=[0-9]{1,2})$' || true
+      | grep -E '^((AEQUITAS_WAL_FLUSH_(BATCH|CONCURRENCY|INTERVAL_MS)|AEQUITAS_WAL_QUEUE_DEPTH|AEQUITAS_DB_MAX_CONNS)=[0-9]{1,6}|AEQUITAS_BLOCK_AUS_SPEICHER=[01]|AEQUITAS_WAL_FLUSH_TEILE=[0-9]{1,2}|AEQUITAS_RPC_SIGNATUR_PARALLEL=[0-9]{1,2})$' || true
   fi
   # Der Generator kommt ueber den SSH-Tunnel und den veroeffentlichten Port,
   # beim Knoten also von EINER Adresse: dem Gateway des Pruefstand-Netzes.
