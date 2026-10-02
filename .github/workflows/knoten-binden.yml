@@ -91,11 +91,9 @@ jobs:
           {
             echo "## Knoten C1 mit deiner Wallet verbinden"
             echo
-            echo "**Auf dem Handy mit der App:** diesen Link antippen und auf der Seite **In der Aequitas-App öffnen** wählen, dann in der App bestätigen:"
+            echo "**In der Aequitas-App unter *Knoten*** erscheint jetzt die Anfrage dieses Servers -- dort auf **Bestätigen** tippen."
             echo
-            echo "**[Knoten jetzt verbinden]($WEB)**"
-            echo
-            echo "**Mit zweitem Bildschirm:** unter *Artifacts* \`qr-code\` öffnen und in der App mit **Knoten → Knoten binden (QR scannen)** scannen."
+            echo "Ersatzweise: Link [Knoten verbinden]($WEB) auf dem Handy mit der App öffnen, oder unter *Artifacts* \`qr-code\` mit der App scannen."
             echo
             echo "Dieser Lauf wartet bis zu 15 Minuten und trägt die Bindung dann auf C1 ein."
             echo

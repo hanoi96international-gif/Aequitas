@@ -68,6 +68,15 @@ link)
   [ -n "$BEWEIS" ] || { echo "ABBRUCH: Knoten liefert keinen Schluesselnachweis"; exit 1; }
   echo "ADRESSE=$ADDR"
   echo "LINK=aequitasapp://knoten-binden?adresse=$ADDR&wallet=$WALLET&beweis=$BEWEIS"
+  # Wie einrichten.sh: Anfrage ans Netz, die App zeigt sie unter "Knoten"
+  # zum Bestaetigen an (keeper/bindungsanfrage.go).
+  if curl -fsS -m 10 -H 'Content-Type: application/json' \
+      -d "{\"signing_address\":\"$ADDR\",\"wallet\":\"$WALLET\",\"beweis\":\"$BEWEIS\"}" \
+      "$NETZ/api/bindungsanfrage" >/dev/null; then
+    echo "ANFRAGE=gemeldet"
+  else
+    echo "ANFRAGE=fehlgeschlagen"
+  fi
   ;;
 setzen)
   B="$(curl -fsS -m 10 "$NETZ/api/validator-binding?signing_address=$ADDR" || true)"

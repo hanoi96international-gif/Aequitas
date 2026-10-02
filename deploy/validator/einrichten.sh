@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # Aequitas-Validator einrichten -- ein Befehl, zwei Fragen.
 #
-#   cd Aequitas/deploy/validator && bash einrichten.sh
+#   cd Aequitas/deploy/validator && bash einrichten.sh [0xDEINE-WALLET]
+#
+# Die App zeigt den Befehl unter "Knoten" schon mit deiner Wallet am Ende --
+# dann fragt das Skript nur noch, ob die IP stimmt.
 #
 # Was das Skript tut (docs/VALIDATOR_EINRICHTEN.md):
 #   1. prueft Docker, Compose, git und die Mindestausstattung (8 Kerne,
@@ -13,8 +16,9 @@
 #   4. baut und startet den Knoten; der Knoten erzeugt beim ersten Start
 #      seinen EIGENEN Signier- und P2P-Schluessel, das Skript traegt beide
 #      dauerhaft in .env ein und startet neu,
-#   5. zeigt die Signieradresse und die zwei Dinge, die danach noch zu tun
-#      sind (Bindung, Aufnahme als Produzent).
+#   5. misst die Leistung,
+#   6. meldet dem Netz "dieser Server moechte sich mit Wallet 0x... verbinden";
+#      in der App erscheint die Anfrage, ein Tipp auf Bestaetigen -- fertig.
 #
 # Deine Wallet und ihr privater Schluessel bleiben bei dir, auf dem Server
 # liegt nur ihre ADRESSE. Wer den Server knackt, bekommt nicht dein Geld.
@@ -58,7 +62,8 @@ if [ -f .env ]; then
   gruen ".env gibt es schon -- sie bleibt, wie sie ist."
 else
   schritt "2/6 Zwei Angaben"
-  WALLET=""
+  WALLET="${1:-}"
+  [ -z "$WALLET" ] || [[ "$WALLET" =~ ^0x[0-9a-fA-F]{40}$ ]] || { echo "  Das ist keine Wallet-Adresse: $WALLET"; WALLET=""; }
   while ! [[ "$WALLET" =~ ^0x[0-9a-fA-F]{40}$ ]]; do
     read -r -p "Deine Wallet-Adresse aus der App / Your wallet address from the app (0x..., 42): " WALLET
     [[ "$WALLET" =~ ^0x[0-9a-fA-F]{40}$ ]] || echo "  Keine Adresse / Not an address: 0x + 40 Zeichen/characters (0-9, a-f)."
@@ -161,9 +166,10 @@ gruen "Leistung / performance: $SIGS Signaturen/s -- ausreichend / sufficient"
 schritt "6/6 Mit deiner Wallet verbinden / Bind to your wallet"
 # Ohne diese Bindung nimmt das Netz den Knoten nicht an (handlePeerRegister):
 # die Wallet des Menschen muss diese Signieradresse ermaechtigen. Die Wallet
-# liegt in der App, nicht hier -- also zeigt das Skript einen QR-Code, die App
-# unterschreibt und reicht die Bindung bei $NETZ ein, und das Skript holt sie
-# dort ab (GET /api/validator-binding). Nichts davon ist geheim.
+# liegt in der App, nicht hier -- also meldet das Skript eine Anfrage beim
+# Netz an, die App zeigt sie von selbst, unterschreibt auf einen Tipp und
+# reicht die Bindung bei $NETZ ein, und das Skript holt sie dort ab
+# (GET /api/validator-binding). Nichts davon ist geheim.
 NETZ="${AEQUITAS_NETZ:-https://aequitas.digital}"
 WALLET_ENV="$(grep -E '^NODE_OPERATOR_WALLET=' .env | cut -d= -f2- | tr 'A-F' 'a-f')"
 if ! fehlt NODE_OPERATOR_BINDING_SIGNATURE; then
@@ -172,31 +178,28 @@ else
   P="$(curl -fsS -m 10 "http://127.0.0.1:8080/api/validator-selfproof?wallet=$WALLET_ENV" 2>/dev/null || true)"
   BEWEIS="$(printf '%s' "$P" | grep -oE '"signing_key_signature": ?"0x[0-9a-f]{130}"' | grep -oE '0x[0-9a-f]{130}' || true)"
   [ -n "$BEWEIS" ] || { rot "Der Knoten liefert keinen Schluesselnachweis. Log: docker compose logs node"; exit 1; }
-  LINK="aequitasapp://knoten-binden?adresse=$ADDR&wallet=$WALLET_ENV&beweis=$BEWEIS"
-  if ! command -v qrencode >/dev/null; then
-    { apt-get update -qq && apt-get install -y -qq qrencode; } >/dev/null 2>&1 || true
-  fi
+  # Anfrage ans Netz: die App mit dieser Wallet zeigt sie von selbst an
+  # (keeper/bindungsanfrage.go). Kein QR-Code, kein Link.
+  anfragen() {
+    curl -fsS -m 10 -H 'Content-Type: application/json' \
+      -d "{\"signing_address\":\"$ADDR\",\"wallet\":\"$WALLET_ENV\",\"beweis\":\"$BEWEIS\"}" \
+      "$NETZ/api/bindungsanfrage" >/dev/null 2>&1
+  }
+  GEMELDET=""
+  for i in $(seq 1 12); do anfragen && { GEMELDET=1; break; }; sleep 5; done
+  [ -n "$GEMELDET" ] || { rot "Das Netz ($NETZ) nimmt die Anfrage nicht an. Ist die Wallet $WALLET_ENV in der App registriert?
+The network does not accept the request. Is wallet $WALLET_ENV registered in the app?"; exit 1; }
   cat <<TEXT
 
-  Oeffne die Aequitas-App -> "Knoten" -> "Knoten binden (QR scannen)"
-  und scanne diesen Code. Pruefe die Adresse und bestaetige.
+  Jetzt die Aequitas-App oeffnen -> "Knoten".
+  Dort erscheint: "Dein neuer Server moechte sich mit dir verbinden".
+  Pruefe die IP ($(curl -4 -fsS -m 5 https://api.ipify.org 2>/dev/null || echo "dieses Servers")) und tippe auf "Bestaetigen".
   Kostet nichts, bewegt kein Geld.
 
-  Open the Aequitas app -> "Node" -> "Bind node (scan QR)",
-  scan this code, check the address and confirm. Free, moves no money.
+  Now open the Aequitas app -> "Node". A request from this server appears;
+  check the IP and tap "Confirm". Free, moves no money.
 
 TEXT
-  if command -v qrencode >/dev/null; then
-    qrencode -t ansiutf8 -m 2 "$LINK"
-  else
-    echo "  (qrencode fehlt -- den Code gibt es auch hier / QR also here:)"
-  fi
-  echo
-  echo "  Nur ein Handy? Diesen Link auf dem Handy oeffnen (z. B. per Nachricht an dich selbst):"
-  echo "  Only one phone? Open this link on the phone (e.g. message it to yourself):"
-  echo "  $NETZ/binden?adresse=$ADDR&wallet=$WALLET_ENV&beweis=$BEWEIS"
-  echo
-  echo "  Signieradresse / signing address: $ADDR"
   echo "  Warte auf die Bestaetigung in der App (hoechstens 15 Minuten) ..."
   echo "  Waiting for the confirmation in the app (at most 15 minutes) ..."
   SIG=""
@@ -209,7 +212,7 @@ TEXT
     sleep 5
   done
   if [ -z "$SIG" ]; then
-    rot "Keine Bestaetigung aus der App angekommen. Einfach noch einmal starten: bash einrichten.sh
+    rot "Keine Bestaetigung aus der App angekommen. Einfach noch einmal starten: bash einrichten.sh $WALLET_ENV
 No confirmation from the app yet. Just run it again: bash einrichten.sh"
     exit 1
   fi
