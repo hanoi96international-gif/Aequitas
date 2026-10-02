@@ -34,6 +34,12 @@ func uhr(t *testing.T, start int64) func(sekunden int64) int64 {
 func wirtschaftsTest(t *testing.T) (*ChainState, context.Context, func(int64) int64) {
 	t.Helper()
 	wirtschaftAn(t)
+	// Die zweite Stufe (wirtschaft2.go) ist hier AUS: diese Tests pruefen die
+	// Regeln, wie sie bis zu ihrer Aktivierung gelten. wirtschaft2An schaltet
+	// sie ein.
+	vorher2 := wirtschaft2AktivOverride.Load()
+	wirtschaft2AktivOverride.Store(math.MaxInt64)
+	t.Cleanup(func() { wirtschaft2AktivOverride.Store(vorher2) })
 	vor := uhr(t, 1_800_000_000)
 	cs := newTestState()
 	for _, m := range []string{wMensch1, wMensch2, wMensch3} {

@@ -207,6 +207,9 @@ type tagesUmsatz struct {
 	Mensch float64 `json:"m,omitempty"`  // von Menschen, je Mensch gedeckelt
 	BEin   float64 `json:"be,omitempty"` // von anderen Unternehmen
 	BAus   float64 `json:"ba,omitempty"` // an andere Unternehmen
+	// Ab der zweiten Stufe (wirtschaft2.go, B): von anderen Unternehmen, je
+	// zahlendem Unternehmen und Quartal gedeckelt wie bei Menschen.
+	Firmen float64 `json:"fi,omitempty"`
 }
 
 type buchKonto struct {
@@ -443,6 +446,33 @@ func (w *wirtschaft) inGruendungLocked(e *unternehmenEintrag, jetzt int64) bool 
 	return true
 }
 
+// erstesOffenesLocked: ist e das aelteste noch offene Unternehmen der Person,
+// die es eroeffnet hat (Verantwortliche[0])? Bei gleicher Sekunde gilt die
+// kleinere Adresse als erstes. Folgt allein aus dem Register (Konsens).
+// Je Gruenderin ist so immer hoechstens EIN Unternehmen "wie ein Mensch"
+// gestellt; ihr Freibetrag wird mit ihrem eigenen Guthaben geteilt
+// (liegegeldLocked), also nie verdoppelt.
+//
+// Aufwand: ein Durchlauf ueber das Register, wie inGruendungLocked. Im
+// Tageslauf also quadratisch in der Zahl der Unternehmen; bei 10.000
+// Unternehmen 10^8 einfache Vergleiche am Tag. Vor einer Groessenordnung
+// darueber gehoert ein Index her. w.mu gehalten.
+func (w *wirtschaft) erstesOffenesLocked(e *unternehmenEintrag) bool {
+	if !e.offen() || len(e.Verantwortliche) == 0 {
+		return false
+	}
+	gruender := e.Verantwortliche[0]
+	for _, x := range w.unternehmen {
+		if x == e || !x.offen() || len(x.Verantwortliche) == 0 || x.Verantwortliche[0] != gruender {
+			continue
+		}
+		if x.EroeffnetAm < e.EroeffnetAm || (x.EroeffnetAm == e.EroeffnetAm && x.Adresse < e.Adresse) {
+			return false
+		}
+	}
+	return true
+}
+
 // menschUmlaufFuer: was ein Mensch mit diesem Guthaben im Monat zahlt --
 // bis zur Vermoegensgrenze, die fuer Menschen gilt.
 func menschUmlaufFuer(stand float64) float64 {
@@ -467,7 +497,12 @@ func (w *wirtschaft) liegegeldLocked(addr string, stand, gruenderStand float64, 
 	}
 	umsatz := w.umsatzLocked(addr, jetzt)
 	normal := liegegeldFuerStand(stand, umsatz)
-	if !w.inGruendungLocked(w.unternehmen[addr], jetzt) {
+	e := w.unternehmen[addr]
+	// Ab der zweiten Stufe (wirtschaft2.go, A) gilt die Rechnung "wie ein
+	// Mensch" dauerhaft fuer das erste offene Unternehmen jeder Gruenderin,
+	// nicht nur im ersten halben Jahr: ein kleiner Laden zahlt nie mehr als ein
+	// Mensch mit demselben Guthaben.
+	if !w.inGruendungLocked(e, jetzt) && !(wirtschaft2Aktiv(jetzt) && w.erstesOffenesLocked(e)) {
 		return normal
 	}
 	g := math.Max(0, gruenderStand)
@@ -485,17 +520,24 @@ func (w *wirtschaft) monatsUmsatzLocked(k *buchKonto, tage, jetzt int64) float64
 		return 0
 	}
 	grenze := unixTag(jetzt) - tage
-	var mensch, ein, aus float64
+	var mensch, ein, aus, firmen float64
 	for _, t := range k.Tage {
 		if t.Tag > grenze {
 			mensch += t.Mensch
 			ein += t.BEin
 			aus += t.BAus
+			firmen += t.Firmen
 		}
 	}
-	// mensch kann durch Rueckzahlungen (rueckzahlungLocked) unter null
-	// fallen, wenn der Einkauf schon aus dem Fenster ist.
-	return (math.Max(0, mensch) + math.Max(0, ein-aus)) * 30 / float64(tage)
+	// mensch (und firmen) kann durch Rueckzahlungen (rueckzahlungLocked)
+	// unter null fallen, wenn der Einkauf schon aus dem Fenster ist.
+	//
+	// Zwischen Unternehmen zaehlt der hoehere Wert aus dem Ueberschuss
+	// (Eingaenge minus Zahlungen an Unternehmen) und der gedeckelten Summe der
+	// Eingaenge (wirtschaft2.go, B). Firmen ist vor der zweiten Stufe immer 0,
+	// dann ist das genau die alte Rechnung.
+	unternehmen := math.Max(math.Max(0, ein-aus), math.Max(0, firmen))
+	return (math.Max(0, mensch) + unternehmen) * 30 / float64(tage)
 }
 
 // quartalLocked: Gezaehlt auf das laufende Quartal bringen; das eben
@@ -538,6 +580,45 @@ func rueckzahlungLocked(fk, mensch *buchKonto, firma string, amount float64, jet
 		m[firma] -= n
 		rest -= n
 		fk.tagLocked(jetzt).Mensch -= n
+	}
+}
+
+// zahlungZwischenFirmenLocked (wirtschaft2.go, B): Unternehmen from zahlt
+// Unternehmen to.
+//
+//  1. Rueckzahlung: Hat to vorher bei from eingekauft (fk ist dabei Verkaeufer
+//     gewesen), hebt diese Zahlung das auf, was davon bei from als Umsatz
+//     gezaehlt hat -- wie bei Menschen (rueckzahlungLocked). Hin und zurueck
+//     zwischen zwei Firmen bringt so nur einer Seite etwas.
+//  2. Zaehlen: Bei to zaehlt die Zahlung als Umsatz, je zahlendem Unternehmen
+//     hoechstens menschZaehltJeUntQuartal im Kalenderquartal (Zaehler beim
+//     Zahler: Gezaehlt[to]).
+//
+// w.mu gehalten.
+func zahlungZwischenFirmenLocked(fk, tk *buchKonto, from, to string, amount float64, jetzt int64) {
+	tk.quartalLocked(jetzt)
+	rest := amount
+	for _, m := range []map[string]float64{tk.Gezaehlt, tk.GezaehltVorher} {
+		if rest <= 0 || m == nil || m[from] <= 0 {
+			continue
+		}
+		n := math.Min(rest, m[from])
+		m[from] -= n
+		rest -= n
+		fk.tagLocked(jetzt).Firmen -= n
+	}
+
+	fk.quartalLocked(jetzt)
+	bisher := 0.0
+	if fk.Gezaehlt != nil {
+		bisher = fk.Gezaehlt[to]
+	}
+	if n := math.Min(amount, math.Max(0, menschZaehltJeUntQuartal-bisher)); n > 0 {
+		if fk.Gezaehlt == nil {
+			fk.Gezaehlt = map[string]float64{}
+		}
+		fk.Gezaehlt[to] = bisher + n
+		tk.tagLocked(jetzt).Firmen += n
 	}
 }
 
@@ -657,6 +738,9 @@ func (cs *ChainState) nachUeberweisung(ctx context.Context, from, to string, fro
 		if !gemeinsameVerantwortliche(fromU, toU) {
 			fk.tagLocked(jetzt).BAus += amount
 			tk.tagLocked(jetzt).BEin += amount
+			if wirtschaft2Aktiv(jetzt) {
+				zahlungZwischenFirmenLocked(fk, tk, from, to, amount, jetzt)
+			}
 		}
 	}
 	if toArt == artUnternehmen {

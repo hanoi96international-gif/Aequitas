@@ -5718,6 +5718,14 @@ func (cs *ChainState) transferMutateLocked(ctx context.Context, from, to string,
 	if err := pruefeEmpfaengerWirtschaft(toArt, standVorherTo, amount, jetztUnix); err != nil {
 		return 0, 0, nil, nil, 0, err
 	}
+	// Ablehnen statt wegnehmen (wirtschaft2.go, C).
+	var vorherToAcc *AccountState
+	if toDa {
+		vorherToAcc = vorherTo
+	}
+	if err := cs.pruefeVermoegensgrenzeAnnahmeLocked(to, vorherToAcc, toArt, amount, jetztUnix); err != nil {
+		return 0, 0, nil, nil, 0, err
+	}
 
 	fromAcc.Balance = fromAcc.Balance.Sub(NewDecimal(amount)).Sub(NewDecimal(gebuehr))
 	touchActivity(fromAcc) // sending counts as "using" the money — resets its decay clock
@@ -6040,6 +6048,11 @@ func (cs *ChainState) swapLockedMitAbgabe(ctx context.Context, address string, a
 			return 0, 0, 0, fmt.Errorf("slippage: output %.6f AEQ below requested minimum %.6f", amountOut, minAmountOut)
 		}
 		if err := pruefeEmpfaengerWirtschaft(art, acc.Balance.Float(), amountOut, jetztUnix); err != nil {
+			return 0, 0, 0, err
+		}
+		// Ablehnen statt wegnehmen (wirtschaft2.go, C): wer tauscht, behaelt
+		// sein tUSD, statt dass der Ueberschuss verteilt wird.
+		if err := cs.pruefeVermoegensgrenzeAnnahmeLocked(address, acc, art, amountOut, jetztUnix); err != nil {
 			return 0, 0, 0, err
 		}
 		cs.pool.ReserveTUSD = cs.pool.ReserveTUSD.Add(inPool)
