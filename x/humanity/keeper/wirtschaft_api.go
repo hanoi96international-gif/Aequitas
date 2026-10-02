@@ -223,6 +223,9 @@ func (a *APIServer) handleUnternehmenListe(w http.ResponseWriter, r *http.Reques
 				"stand": e.VerzeichnisZeit, "selbst_angegeben": true,
 			},
 			"buergen_anzahl": e.BuergenAnzahl,
+			// Weitergabe im Netz und Ausstieg, 90 Tage (kundschaft.go).
+			// null = noch nicht berechnet.
+			"weitergabe": weitergabeAnzeige(e.Adresse),
 		})
 	}
 	json.NewEncoder(w).Encode(map[string]interface{}{
@@ -393,6 +396,14 @@ func (a *APIServer) handleUnternehmenSchliessen(w http.ResponseWriter, r *http.R
 	a.unternehmenEinreichen(w, []string{u}, tx, func(ctx context.Context) error {
 		return a.state.applyUnternehmenSchliessenLocked(ctx, u, now)
 	})
+}
+
+func weitergabeAnzeige(adresse string) interface{} {
+	g, ok := weitergabeVon(adresse)
+	if !ok {
+		return nil
+	}
+	return g.quoten()
 }
 
 func kundschaftWert(je map[string]int, adresse string) interface{} {

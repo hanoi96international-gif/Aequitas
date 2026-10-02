@@ -57,6 +57,8 @@ func TestKundschaftUndGrundeinkommen_RealDB(t *testing.T) {
 	zeile(7, wFirmaA, "transfer", wMensch3, 0, 5, jetzt-40)                                       // Ausgang der Firma: nicht
 	zeile(8, wFirmaB, "transfer", wMensch2, 1, 10, jetzt-30)                                      // anderes Konto
 	zeile(9, wFirmaA, "transfer", wMensch2, 1, 10, jetzt-100*86400)                               // aelter als 90 Tage
+	zeile(11, wFirmaA, "swap_aeq_tusd", "", 0, 20, jetzt-10)                                      // Ausstieg
+	zeile(12, wFirmaA, "swap_aeq_tusd", "", 0, 999, jetzt-100*86400)                              // Ausstieg, zu alt
 
 	// Grundeinkommen: zwei Runden fuer Mensch2 und Mensch3, eine fuer den Neuen.
 	zeile(20, wMensch2, "ubi_distribution", "", 0, 0.3, jetzt-20*86400)
@@ -74,5 +76,22 @@ func TestKundschaftUndGrundeinkommen_RealDB(t *testing.T) {
 	}
 	if !ok || !fast(ubi, 0.5) {
 		t.Fatalf("Grundeinkommen 30 Tage: 0,5 erwartet, bekommen %v (ok=%v)", ubi, ok)
+	}
+
+	// Weitergabe: Eingang 125,5 (alles an A in 90 Tagen, auch von Nicht-Menschen),
+	// weitergegeben 5, getauscht 20.
+	g, ok := weitergabeVon(wFirmaA)
+	if !ok || !fast(g.Ein, 125.5) || !fast(g.Weiter, 5) || !fast(g.Ausstieg, 20) {
+		t.Fatalf("Weitergabe A: %+v (ok=%v)", g, ok)
+	}
+	q := g.quoten()
+	if !fast(q["weitergabe"].(float64), round6(5/125.5)) || !fast(q["ausstieg"].(float64), round6(20/125.5)) {
+		t.Fatalf("Quoten: %v", q)
+	}
+	if leer := (weitergabe{}).quoten(); leer["weitergabe"] != nil {
+		t.Fatalf("ohne Eingang keine Quote, nicht 0: %v", leer)
+	}
+	if mehr := (weitergabe{Ein: 10, Weiter: 30}).quoten(); mehr["weitergabe"].(float64) != 1 {
+		t.Fatalf("Weitergabe aus frueherem Guthaben wird auf 1 begrenzt: %v", mehr)
 	}
 }

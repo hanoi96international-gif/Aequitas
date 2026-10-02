@@ -26,6 +26,7 @@ package keeper
 import (
 	"context"
 	"fmt"
+	"math"
 	"strings"
 	"sync"
 	"time"
@@ -42,12 +43,35 @@ const (
 )
 
 type kundschaftStand struct {
-	mu        sync.Mutex // nur eine Rechnung zugleich (TryLock)
-	lesen     sync.RWMutex
-	je        map[string]int
-	ubi30     float64
-	ubiOK     bool
+	mu    sync.Mutex // nur eine Rechnung zugleich (TryLock)
+	lesen sync.RWMutex
+	je    map[string]int
+	ubi30 float64
+	ubiOK bool
+	// Weitergabe je Unternehmen (90 Tage), siehe rechneWeitergabe.
+	weiter    map[string]weitergabe
 	gerechnet time.Time
+}
+
+// weitergabe: wie viel vom Eingenommenen ein Unternehmen im Netz weitergibt
+// (UNTERNEHMEN_KONZEPT.md 10.2 Nr. 6, "Ruf statt Rabatt"). Ein Laden, der
+// AEQ sofort in Stable tauscht, hat eine hohe Ausstiegsquote; einer, der
+// Lieferanten und Loehne in AEQ zahlt, eine hohe Weitergabe. Anzeige, kein
+// Konsens, keine Regel haengt daran.
+type weitergabe struct {
+	Ein      float64 `json:"eingang_90_tage"`
+	Weiter   float64 `json:"weitergegeben_90_tage"`
+	Ausstieg float64 `json:"getauscht_90_tage"`
+}
+
+// quoten: Anteile am Eingang, auf 0..1 begrenzt (Weitergabe kann aus
+// frueherem Guthaben groesser sein als der Eingang). nil ohne Eingang.
+func (g weitergabe) quoten() map[string]interface{} {
+	if g.Ein <= 0 {
+		return map[string]interface{}{"weitergabe": nil, "ausstieg": nil, "eingang_90_tage": 0}
+	}
+	q := func(x float64) float64 { return round6(math.Min(1, math.Max(0, x/g.Ein))) }
+	return map[string]interface{}{"weitergabe": q(g.Weiter), "ausstieg": q(g.Ausstieg), "eingang_90_tage": round6(g.Ein)}
 }
 
 var kundschaftCache kundschaftStand
@@ -70,11 +94,17 @@ func (cs *ChainState) kundschaftUndGrundeinkommen() (map[string]int, float64, bo
 
 	neuJe, errK := cs.rechneKundschaft(time.Now())
 	neuUbi, errU := cs.rechneGrundeinkommen30(time.Now())
+	neuWeiter, errW := cs.rechneWeitergabe(time.Now())
 	k.lesen.Lock()
 	if errK == nil {
 		k.je = neuJe
 	} else {
 		fmt.Printf("[KUNDSCHAFT] nicht berechnet (alter Wert bleibt): %v\n", errK)
+	}
+	if errW == nil {
+		k.weiter = neuWeiter
+	} else {
+		fmt.Printf("[WEITERGABE] nicht berechnet (alter Wert bleibt): %v\n", errW)
 	}
 	if errU == nil {
 		k.ubi30, k.ubiOK = neuUbi, true
@@ -131,6 +161,58 @@ func (cs *ChainState) rechneKundschaft(jetzt time.Time) (map[string]int, error) 
 	return out, rows.Err()
 }
 
+// weitergabeVon: zwischengespeicherte Weitergabe (nach kundschaftUndGrundeinkommen).
+func weitergabeVon(adresse string) (weitergabe, bool) {
+	k := &kundschaftCache
+	k.lesen.RLock()
+	defer k.lesen.RUnlock()
+	if k.weiter == nil {
+		return weitergabe{}, false
+	}
+	return k.weiter[adresse], true
+}
+
+// rechneWeitergabe: eine Abfrage fuer alle offenen Unternehmen, 90 Tage.
+// Eingang: Ueberweisungen an das Unternehmen. Weitergabe: Ueberweisungen des
+// Unternehmens an andere (Loehne, Lieferanten, Entnahmen -- alles bleibt im
+// Netz). Ausstieg: Tausch AEQ -> Stable.
+func (cs *ChainState) rechneWeitergabe(jetzt time.Time) (map[string]weitergabe, error) {
+	var adressen []string
+	for _, e := range cs.unternehmenFuerSnapshot() {
+		if e.offen() {
+			adressen = append(adressen, e.Adresse)
+		}
+	}
+	out := make(map[string]weitergabe, len(adressen))
+	if len(adressen) == 0 {
+		return out, nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), kundschaftWartezeit)
+	defer cancel()
+	ab := jetzt.Add(-kundschaftFensterTage * 24 * time.Hour).Unix()
+	rows, err := cs.db.QueryContext(ctx, `
+		SELECT adresse,
+		       COALESCE(SUM(betrag) FILTER (WHERE art = 'transfer' AND seite = 1), 0),
+		       COALESCE(SUM(betrag) FILTER (WHERE art = 'transfer' AND seite = 0), 0),
+		       COALESCE(SUM(betrag) FILTER (WHERE art = 'swap_aeq_tusd' AND seite = 0), 0)
+		FROM chain_konto_verlauf
+		WHERE adresse = ANY($1) AND zeit >= $2
+		GROUP BY adresse`, pq.Array(adressen), ab)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var adr string
+		var g weitergabe
+		if err := rows.Scan(&adr, &g.Ein, &g.Weiter, &g.Ausstieg); err != nil {
+			return nil, err
+		}
+		out[adr] = g
+	}
+	return out, rows.Err()
+}
+
 // rechneGrundeinkommen30: groesste Summe an Grundeinkommen, die ein Mensch in
 // den letzten 30 Tagen bekommen hat.
 func (cs *ChainState) rechneGrundeinkommen30(jetzt time.Time) (float64, error) {
@@ -150,6 +232,6 @@ func (cs *ChainState) rechneGrundeinkommen30(jetzt time.Time) (float64, error) {
 func kundschaftCacheLeeren() {
 	k := &kundschaftCache
 	k.lesen.Lock()
-	k.je, k.ubi30, k.ubiOK, k.gerechnet = nil, 0, false, time.Time{}
+	k.je, k.ubi30, k.ubiOK, k.weiter, k.gerechnet = nil, 0, false, nil, time.Time{}
 	k.lesen.Unlock()
 }
