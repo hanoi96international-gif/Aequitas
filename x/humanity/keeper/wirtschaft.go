@@ -185,6 +185,14 @@ type unternehmenEintrag struct {
 	Verantwortliche []string `json:"verantwortliche"`
 	EroeffnetAm     int64    `json:"eroeffnet_am"`
 	GeschlossenAm   int64    `json:"geschlossen_am,omitempty"`
+	// Verzeichnis und Bürgschaften (unternehmen_verzeichnis.go): selbst
+	// angegeben bzw. von Menschen bestätigt, ohne Wirkung auf Geld.
+	Ort             string          `json:"ort,omitempty"`
+	Annahme         string          `json:"annahme,omitempty"`
+	Webseite        string          `json:"webseite,omitempty"`
+	VerzeichnisZeit int64           `json:"verzeichnis_zeit,omitempty"`
+	Buergen         []buergeEintrag `json:"buergen,omitempty"`
+	BuergenAnzahl   int             `json:"buergen_anzahl,omitempty"`
 }
 
 func (e *unternehmenEintrag) offen() bool { return e != nil && e.GeschlossenAm == 0 }
@@ -1195,6 +1203,7 @@ func (cs *ChainState) wirtschaftInitDB() {
 		`CREATE TABLE IF NOT EXISTS wirtschaft_unternehmen (
 			address TEXT PRIMARY KEY, name TEXT NOT NULL DEFAULT '', kategorie TEXT NOT NULL DEFAULT '',
 			verantwortliche TEXT NOT NULL DEFAULT '', eroeffnet_at BIGINT NOT NULL DEFAULT 0, geschlossen_at BIGINT NOT NULL DEFAULT 0)`,
+		`ALTER TABLE wirtschaft_unternehmen ADD COLUMN IF NOT EXISTS verzeichnis TEXT NOT NULL DEFAULT ''`,
 		`CREATE TABLE IF NOT EXISTS wirtschaft_buch (address TEXT PRIMARY KEY, daten TEXT NOT NULL DEFAULT '{}')`,
 		`CREATE TABLE IF NOT EXISTS wirtschaft_meta (schluessel TEXT PRIMARY KEY, wert BIGINT NOT NULL DEFAULT 0)`,
 	} {
@@ -1208,10 +1217,10 @@ func (cs *ChainState) speichereUnternehmen(ctx context.Context, e *unternehmenEi
 	if cs.db == nil {
 		return nil
 	}
-	_, err := cs.dbExecCtx(ctx).Exec(`INSERT INTO wirtschaft_unternehmen (address, name, kategorie, verantwortliche, eroeffnet_at, geschlossen_at)
-		VALUES ($1,$2,$3,$4,$5,$6)
-		ON CONFLICT (address) DO UPDATE SET name=$2, kategorie=$3, verantwortliche=$4, eroeffnet_at=$5, geschlossen_at=$6`,
-		e.Adresse, e.Name, e.Kategorie, strings.Join(e.Verantwortliche, ","), e.EroeffnetAm, e.GeschlossenAm)
+	_, err := cs.dbExecCtx(ctx).Exec(`INSERT INTO wirtschaft_unternehmen (address, name, kategorie, verantwortliche, eroeffnet_at, geschlossen_at, verzeichnis)
+		VALUES ($1,$2,$3,$4,$5,$6,$7)
+		ON CONFLICT (address) DO UPDATE SET name=$2, kategorie=$3, verantwortliche=$4, eroeffnet_at=$5, geschlossen_at=$6, verzeichnis=$7`,
+		e.Adresse, e.Name, e.Kategorie, strings.Join(e.Verantwortliche, ","), e.EroeffnetAm, e.GeschlossenAm, verzeichnisJSON(e))
 	if err != nil {
 		return fmt.Errorf("unternehmen speichern: %w", err)
 	}
@@ -1246,14 +1255,15 @@ func (cs *ChainState) wirtschaftLaden() {
 	w := cs.wirt()
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if rows, err := cs.db.Query(`SELECT address, name, kategorie, verantwortliche, eroeffnet_at, geschlossen_at FROM wirtschaft_unternehmen`); err == nil {
+	if rows, err := cs.db.Query(`SELECT address, name, kategorie, verantwortliche, eroeffnet_at, geschlossen_at, verzeichnis FROM wirtschaft_unternehmen`); err == nil {
 		for rows.Next() {
 			var e unternehmenEintrag
-			var v string
-			if rows.Scan(&e.Adresse, &e.Name, &e.Kategorie, &v, &e.EroeffnetAm, &e.GeschlossenAm) == nil {
+			var v, vz string
+			if rows.Scan(&e.Adresse, &e.Name, &e.Kategorie, &v, &e.EroeffnetAm, &e.GeschlossenAm, &vz) == nil {
 				if v != "" {
 					e.Verantwortliche = strings.Split(v, ",")
 				}
+				verzeichnisAusJSON(&e, vz)
 				w.unternehmen[e.Adresse] = &e
 			}
 		}
@@ -1396,6 +1406,9 @@ type buchStand struct {
 func (e *unternehmenEintrag) kopie() *unternehmenEintrag {
 	cp := *e
 	cp.Verantwortliche = append([]string(nil), e.Verantwortliche...)
+	if e.Buergen != nil {
+		cp.Buergen = append([]buergeEintrag(nil), e.Buergen...)
+	}
 	return &cp
 }
 
@@ -1486,9 +1499,7 @@ func (cs *ChainState) unternehmenFuerSnapshot() []*unternehmenEintrag {
 	defer w.mu.Unlock()
 	out := make([]*unternehmenEintrag, 0, len(w.unternehmen))
 	for _, e := range w.unternehmen {
-		cp := *e
-		cp.Verantwortliche = append([]string(nil), e.Verantwortliche...)
-		out = append(out, &cp)
+		out = append(out, e.kopie())
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Adresse < out[j].Adresse })
 	return out

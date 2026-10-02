@@ -216,6 +216,13 @@ func (a *APIServer) handleUnternehmenListe(w http.ResponseWriter, r *http.Reques
 			// Verschiedene verifizierte Menschen, die in 90 Tagen hier bezahlt
 			// haben (kundschaft.go). null = noch nicht berechnet.
 			"kundschaft_90_tage": kundschaftWert(kundschaft, e.Adresse),
+			// Selbst angegeben (unternehmen_verzeichnis.go); die Webseite
+			// prueft jede App selbst ueber /.well-known/aequitas.txt.
+			"verzeichnis": map[string]interface{}{
+				"ort": e.Ort, "annahme": e.Annahme, "webseite": e.Webseite,
+				"stand": e.VerzeichnisZeit, "selbst_angegeben": true,
+			},
+			"buergen_anzahl": e.BuergenAnzahl,
 		})
 	}
 	json.NewEncoder(w).Encode(map[string]interface{}{
