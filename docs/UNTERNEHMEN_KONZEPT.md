@@ -48,6 +48,12 @@ sobald dort genug Menschen registriert sind (Richtwert 50 bis 100).
   der Beta keinen Euro-Wert, keine Kasse und keinen Export gibt
   (geändert am 02.10.2026, 12 Sprachen).
 
+> **Reifeprüfung (02.10.2026):** `docs/WIRTSCHAFT_REIFEPRUEFUNG.md` prüft jede
+> Regel auf Fairness und Anreiz, findet drei Schwächen (Kleinbetriebe,
+> Weitergabe an Lieferanten, Vermögensgrenze bei Eingängen), beschreibt die
+> Verifizierung von Unternehmen in Schichten und Kredit ohne Banken. Die
+> Vorschläge dort sind noch nicht beschlossen.
+
 ## 1. Grundsätze
 
 1. **Das Geld ist für Menschen.** AEQ entsteht nur, wenn sich ein Mensch

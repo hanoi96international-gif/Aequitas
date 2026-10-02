@@ -71,6 +71,19 @@ Fragen und die Fakten, die die Kanzlei braucht.
 19. DSGVO Art. 9: Grundlage für die Gesichtsprüfung heute und die Iris später;
     Drittlandübermittlung (Server außerhalb der EU).
 
+## F. Kredit (Vorschlag in `docs/WIRTSCHAFT_REIFEPRUEFUNG.md`, Abschnitt 4)
+
+20. Ist ein Protokoll, über das Menschen einander zinsfrei Geld leihen (mit
+    automatischer Rückzahlung aus künftigen Eingängen), ein erlaubnispflichtiges
+    Kreditgeschäft oder eine Kreditvermittlung? Für wen: Betreiber,
+    Validatoren, niemand?
+21. Ist die automatische Rückzahlung aus Eingängen zulässig, und welche
+    Pfändungsgrenzen gelten entsprechend?
+22. Ist ein gegenseitiger Kredit zwischen Unternehmen (Minus bis zu einer
+    Grenze, wie WIR oder Sardex) ein Einlagen- oder Kreditgeschäft?
+23. Darf eine Schuld im Protokoll nach drei Jahren erlöschen, und was
+    bedeutet das für die Forderung außerhalb der Kette?
+
 ## Was wir von der Kanzlei brauchen
 
 Für jede Frage: Antwort, Begründung, was **vor der Beta**, was **vor einem
