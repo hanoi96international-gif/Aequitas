@@ -80,6 +80,31 @@ Zusätzlich zur eigenen Checkliste:
   Vertragsfassung statt „V7“. `/api/status` hat das neue Feld
   `register_contract`; `contract_v7` bleibt als alter Name für bestehende Leser.
 
+### Umgesetzt am 02.10.2026, zweiter Teil
+
+- **Herkunftsnotiz übersteht einen Neustart.** Zusätzlich zum Arbeitsspeicher
+  eine knotenlokale Tabelle `prove_herkunft` (kein Kettenzustand, nicht
+  repliziert). Gelesen nur, wenn der Arbeitsspeicher nichts weiß; jeder
+  Fehler heißt „keine Herkunft“; Wartezeit je Anfrage 2 s; Abgelaufenes wird
+  bei jedem Schreiben gelöscht (`prove_herkunft_dauerhaft.go`). Tests gegen
+  echtes Postgres: Neustart (richtige Wallet ja, fremde nein), abgelaufene
+  Zeile, Datenbank weg.
+- **Welcher Vertrag läuft.** `/api/status` zeigt `register_contract_code` und
+  `bio_verifier_code`: Adresse, keccak256 des Laufzeit-Codes, Länge. Jeder kann
+  ihn mit dem eigenen Kompilat oder einem zweiten Knoten vergleichen
+  (`vertrag_code_hash.go`, Test gegen echtes Postgres).
+- **Liegegeld streng:** im Code fertig. Der Test
+  `TestLiegegeldPruefungBeimNachspielen` zeigt Zählen bei `beobachten` und
+  Ablehnen bei `streng`, der Blockpfad rollt den ganzen Block zurück. **Aber:**
+  Abweichungen zählt nur ein Knoten, der fremde Blöcke nachspielt. C1 erzeugt
+  selbst, C2 ist aus; heute beobachtet also niemand, und das Kriterium
+  „Wochen ohne Abweichung“ kann nicht erfüllt werden. Der Weg: Der lesende
+  Validator eines zweiten Betreibers (Audit-Blocker 6) läuft mit
+  `beobachten` (Voreinstellung); sein `/api/wirtschaft/regeln` →
+  `liegegeld_pruefung.abweichungen` muss über die Zeit 0 bleiben, dann
+  `AEQUITAS_LIEGEGELD_PRUEFUNG=streng` auf jedem nachspielenden Knoten, bevor
+  einer davon Blöcke erzeugt.
+
 ## 5. Bei dieser Prüfung zusätzlich gefunden (Wirtschaft)
 
 - **Gründungsphase doppelt über Mitinhaber-Reihenfolge.** Beim Aufnehmen eines

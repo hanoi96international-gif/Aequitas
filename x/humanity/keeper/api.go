@@ -71,6 +71,9 @@ func NewAPIServer(bc *BlockDAG, p2p *P2PNode, state *ChainState) *APIServer {
 		state:             state,
 		evmRPC:            NewEVMRPCServer(bc, state),
 	}
+	if state != nil && state.useDB {
+		richteProveHerkunftDBEin(state.db)
+	}
 	SafeGoroutine("syncProofServerStatus", s.syncProofServerStatus)
 	// FIX (audit 2026-06-28 recheck 4, P1-5): periodically retry any queued
 	// proof-server bio_hash sync failures (see proof_server_sync_queue's
@@ -1372,7 +1375,11 @@ func (a *APIServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 		// (vertrag_v8.go); welche Fassung gilt, sagt register_vertrag.
 		// contract_v7 bleibt als alter Name fuer bestehende Leser.
 		"register_contract": V7_CONTRACT_ADDR,
-		"contract_v7":       V7_CONTRACT_ADDR,
+		// Welcher Code dort liegt (vertrag_code_hash.go): mit dem eigenen
+		// Kompilat oder einem zweiten Knoten vergleichbar.
+		"register_contract_code": vertragCodeStand(a.state, V7_CONTRACT_ADDR),
+		"bio_verifier_code":      vertragCodeStand(a.state, BIO_VERIFIER_ADDR),
+		"contract_v7":            V7_CONTRACT_ADDR,
 		// P3-8: V5/V6 legacy addresses removed from status — minimise attack surface.
 		"bio_verifier": BIO_VERIFIER_ADDR,
 		"chain_evm_id": 1926,
