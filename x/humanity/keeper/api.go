@@ -1153,6 +1153,8 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	mux.HandleFunc("/binden", a.handleKnotenBindenSeite)
 	mux.HandleFunc("/coordinator-binding", a.handleCoordinatorBinding)
 	mux.HandleFunc("/api/register-validator-key", a.handleRegisterValidatorKey)
+	mux.HandleFunc("/api/bindungsanfrage", a.handleBindungsanfrage)
+	mux.HandleFunc("/api/bindungsanfragen", a.handleBindungsanfragen)
 	// Das Coordinator-Register: derselbe Gedanke wie beim Bezeugungs-
 	// schluessel, an der wichtigsten Stelle -- der Coordinator ist der
 	// Eingang, an dem ein Mensch ankommt.
@@ -3014,6 +3016,8 @@ func (a *APIServer) handleRegisterValidatorKey(w http.ResponseWriter, r *http.Re
 	if aktuellesFormat {
 		bindungsAblage.merke(signingAddr, humanWallet, req.HumanSignature, time.Now())
 	}
+	// Die Anfrage dazu ist erledigt (bindungsanfrage.go).
+	bindungsAnfragen.erledigt(signingAddr)
 	fmt.Printf("[VALIDATOR] ✓ Registered key %s for human %s\n", signingAddr, humanWallet)
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"success":         true,

@@ -75,6 +75,7 @@ jobs:
           scp -q -o BatchMode=yes deploy/knoten-binden.sh root@$C1:/root/knoten-binden.sh
           AUS="$(ssh -o BatchMode=yes root@$C1 "PHASE=link WALLET='$W' bash /root/knoten-binden.sh")"
           printf '%s\n' "$AUS" | grep -v '^LINK='
+          ZAHL="$(printf '%s\n' "$AUS" | sed -n 's/^KONTROLLZAHL=//p')"
           LINK="$(printf '%s\n' "$AUS" | sed -n 's/^LINK=//p')"
           ADR="$(printf '%s\n' "$AUS" | sed -n 's/^ADRESSE=//p')"
           [[ "$LINK" =~ ^aequitasapp://knoten-binden\?adresse=0x[0-9a-f]{40}\&wallet=0x[0-9a-f]{40}\&beweis=0x[0-9a-f]{130}$ ]] || { echo "::error::Kein gueltiger Bindungscode"; exit 1; }
@@ -91,11 +92,9 @@ jobs:
           {
             echo "## Knoten C1 mit deiner Wallet verbinden"
             echo
-            echo "**Auf dem Handy mit der App:** diesen Link antippen und auf der Seite **In der Aequitas-App öffnen** wählen, dann in der App bestätigen:"
+            echo "**In der Aequitas-App unter *Knoten*** erscheint jetzt die Anfrage dieses Servers mit der Kontrollzahl **$ZAHL** -- nur wenn sie gleich ist, auf **Bestätigen** tippen."
             echo
-            echo "**[Knoten jetzt verbinden]($WEB)**"
-            echo
-            echo "**Mit zweitem Bildschirm:** unter *Artifacts* \`qr-code\` öffnen und in der App mit **Knoten → Knoten binden (QR scannen)** scannen."
+            echo "Ersatzweise: Link [Knoten verbinden]($WEB) auf dem Handy mit der App öffnen, oder unter *Artifacts* \`qr-code\` mit der App scannen."
             echo
             echo "Dieser Lauf wartet bis zu 15 Minuten und trägt die Bindung dann auf C1 ein."
             echo
