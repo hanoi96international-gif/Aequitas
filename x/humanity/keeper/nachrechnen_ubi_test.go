@@ -365,3 +365,31 @@ func TestNachrechnen_OffeneRundeWaechstNicht(t *testing.T) {
 		t.Errorf("LP: %d erfundene Wallets in der Menge der Bedachten", n)
 	}
 }
+
+// Missbrauch: der Endstand des Topfs nach der Runde liegt unter dem, was
+// waehrend der Runde (Vermoegensgrenze) zufloss -- der Produzent vernichtet
+// Geld. Der Zufluss wird hier zwischen Gutschriften und Abschluss
+// nachgestellt.
+func TestNachrechnenUBI_EndstandUnterZufluss(t *testing.T) {
+	m := erhaltungMenschen
+	for _, f := range []struct {
+		endstand float64
+		meldet   bool
+	}{{5, false}, {0, true}} {
+		dag, cs := erhaltungKnoten(t, 90)
+		at := nowUnix()
+		if !dag.replayTransactions(erhaltungBlock(1, at, ubiAn(m[0], 30), ubiAn(m[1], 30), ubiAn(m[2], 30)), true) {
+			t.Fatal("Gutschriften abgelehnt")
+		}
+		cs.mu.Lock()
+		pool, _ := cs.accounts.Get(ubiPoolAddr)
+		pool.Balance = pool.Balance.Add(NewDecimal(5)) // Zufluss aus der Vermoegensgrenze
+		cs.mu.Unlock()
+		vorher := erhaltungZaehler("ubi_rest_zu_niedrig")
+		dag.replayTransactions(erhaltungBlock(2, at,
+			Transaction{Type: "ubi_distribution_finalize", DistributionAt: at, Amount: f.endstand}), true)
+		if got := erhaltungZaehler("ubi_rest_zu_niedrig") - vorher; (got == 1) != f.meldet {
+			t.Errorf("Endstand %.0f bei Zufluss 5: gemeldet %d, erwartet %v", f.endstand, got, f.meldet)
+		}
+	}
+}

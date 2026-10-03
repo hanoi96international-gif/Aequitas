@@ -172,12 +172,16 @@ func (cs *ChainState) nachrechnenTxLocked(tx *Transaction, blockZeit int64) erro
 		return cs.nachrechnenUBILocked(tx, blockZeit)
 
 	case "ubi_distribution_finalize":
-		return cs.nachrechnenUBIAbschlussLocked(blockZeit)
+		endstand := tx.Amount
+		return cs.nachrechnenUBIAbschlussLocked(blockZeit, &endstand)
 
 	case "lp_distribution":
 		return cs.nachrechnenLPLocked(tx, blockZeit) // nachrechnen_lp.go
 	case "lp_distribution_pool_zero":
 		return cs.nachrechnenLPAbschlussLocked(blockZeit)
+
+	case "escrow_move", "escrow_release", "escrow_recover":
+		return cs.nachrechnenTreuhandLocked(tx, blockZeit) // nachrechnen_treuhand.go
 
 	case "grant_release":
 		return cs.nachrechnenFreigabeLocked(tx, blockZeit) // nachrechnen_freigabe.go
@@ -205,7 +209,7 @@ func (cs *ChainState) nachrechnenTxLocked(tx *Transaction, blockZeit int64) erro
 		}
 		// Spaetestens hier ist die Runde zu Ende, auch ohne Abschluss.
 		cs.nachrechnenFreigabeRundeEndeLocked()
-		if err := cs.nachrechnenUBIAbschlussLocked(blockZeit); err != nil {
+		if err := cs.nachrechnenUBIAbschlussLocked(blockZeit, nil); err != nil {
 			return err
 		}
 		return cs.nachrechnenLPAbschlussLocked(blockZeit)

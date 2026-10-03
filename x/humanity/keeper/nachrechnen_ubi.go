@@ -172,7 +172,14 @@ func (cs *ChainState) nachrechnenUBILocked(tx *Transaction, blockZeit int64) err
 
 // nachrechnenUBIAbschlussLocked: beim Abschluss (finalize) oder spaetestens
 // bei der Rundenmarke -- jetzt ist die Runde vollstaendig.
-func (cs *ChainState) nachrechnenUBIAbschlussLocked(blockZeit int64) error {
+//
+// endstand: der Endstand des Topfs aus ubi_distribution_finalize (nil bei
+// der Rundenmarke). Er darf nicht unter dem liegen, was waehrend der Runde
+// ueber die Vermoegensgrenze in den Topf floss (Regel "ubi_rest_zu_niedrig"):
+// der Erzeuger setzt neuerTopfstand(gesamt, ausgezahlt) + zufluss, und
+// neuerTopfstand ist nie negativ. Ein niedrigerer Endstand vernichtet Geld.
+// Die Obergrenze (kein neues Geld) prueft erhaltung.go (topf_rest).
+func (cs *ChainState) nachrechnenUBIAbschlussLocked(blockZeit int64, endstand *float64) error {
 	r := cs.ubiRunde
 	cs.ubiRunde = ubiRundePruefung{} // Rundengrenze: der naechste Anfang ist beobachtet
 	if !r.aktiv || r.unsicher {
@@ -182,6 +189,21 @@ func (cs *ChainState) nachrechnenUBIAbschlussLocked(blockZeit int64) error {
 		if err := nachrechnenAbweichung("ubi_empfaenger", blockZeit,
 			"%d Empfaenger, registriert sind %d Menschen", r.n, r.menschen); err != nil {
 			return err
+		}
+	}
+	if endstand != nil {
+		// Beim Nachspielen zieht keine Gutschrift den Topf ab; er steht jetzt
+		// auf Start + Demurrage + Zufluss aus der Vermoegensgrenze.
+		zufluss := cs.topfMikroLocked(ubiPoolAddr) - plusGesaettigt(r.topfStart, r.demurrage)
+		if zufluss < 0 {
+			zufluss = 0
+		}
+		if NewDecimal(*endstand).Micro() < zufluss-erhaltungToleranz(r.n) {
+			if err := nachrechnenAbweichung("ubi_rest_zu_niedrig", blockZeit,
+				"Endstand %.6f AEQ, in der Runde zugeflossen %.6f -- der Rest wuerde vernichtet",
+				*endstand, NewDecimalFromMicro(zufluss).Float()); err != nil {
+				return err
+			}
 		}
 	}
 	if r.menschen <= 0 {

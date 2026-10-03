@@ -98,7 +98,14 @@ den verlinkten Dokumenten.
             unverändert
       - [x] Liegegeld: streng mit dem gemeinsamen Stichtag statt nur je
             Knoten per Umgebungsvariable; Abweichungen zählen im Nachrechnen
-      - [ ] Töpfe nach der Runde (Rest), Treuhand
+      - [x] Topf nach der Grundeinkommens-Runde: Endstand nicht unter dem
+            Zufluss der Runde (kein Geld vernichten); Obergrenze schon in
+            erhaltung.go
+      - [x] Treuhand: escrow_move nur für 2,5 Jahre inaktive Menschen;
+            Freigabe/Rückholung vor der ersten möglichen Treuhand (ab
+            Dezember 2028 bzw. Juni 2030) gemeldet
+      - [ ] Treuhand als Konsenszustand (Freigabe ≤ Bestand) -- nötig vor
+            Dezember 2028, der ersten möglichen Verschiebung
       - [ ] Stichtag `nachrechnenStrengAbUnix` setzen, sobald
             `/api/wirtschaft/regeln` über mehrere Runden 0 Abweichungen zeigt
 - [ ] Regel B von Stufe 2 trennen (eigenes Aktivierungsdatum) -- nur falls
