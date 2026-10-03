@@ -3,9 +3,9 @@
 Stand 02.10.2026. Eine Liste zum Abhaken. Begründungen und Quellen stehen in
 den verlinkten Dokumenten.
 
-## ⏰ Frist: 15.10.2026, Stufe 2 der Wirtschaftsregeln
+## ⏰ Frist: 03.10.2026, Stufe 2 der Wirtschaftsregeln
 
-Ab **15.10.2026, 00:00 UTC** gelten die neuen Regeln A, B und C
+Ab **03.10.2026, 12:00 UTC (14:00 MESZ)** gelten die neuen Regeln A, B und C
 (`wirtschaft2.go`). Bis dahin:
 
 - [ ] Branch `claude/beta-launch-business-integration-vr7u4c` mergen und

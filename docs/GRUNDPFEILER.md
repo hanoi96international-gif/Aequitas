@@ -198,7 +198,7 @@ Rücklagen der Pilotbetriebe in AEQ.
   Firmen schafft (Stodder 2009; Stodder & Lietaer 2016).
 
 **Stand:** Regeln für Unternehmenskonten gebaut und geprüft; zweite Stufe ab
-15.10.2026; echte Kundschaft als Zahl. Anmeldung, Kasse, Verzeichnis fehlen.
+03.10.2026; echte Kundschaft als Zahl. Anmeldung, Kasse, Verzeichnis fehlen.
 
 **Grundsatz**
 > Ein Unternehmen wird nicht geprüft, sondern an seinem Verhalten erkannt. Das

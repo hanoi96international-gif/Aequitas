@@ -2,7 +2,7 @@
 
 > **Umsetzung (02.10.2026, später am Tag):** Entscheidungen 1 bis 5 sind
 > gebaut und getestet (`x/humanity/keeper/wirtschaft2.go`, `kundschaft.go`).
-> A, B und C gelten ab **15.10.2026, 00:00 UTC**; Kundschaft und
+> A, B und C gelten ab **03.10.2026, 12:00 UTC (14:00 MESZ)**; Kundschaft und
 > Grundeinkommen sind sofort als Zahlen in der API. Kredit (6) ist **nicht**
 > gebaut: Er hängt an der Rechtsprüfung (`RECHTSFRAGEN_UNTERNEHMEN.md`, F).
 > Die Verifizierungsschichten 3 bis 5 (Website, vLEI, Bewertungen) sind

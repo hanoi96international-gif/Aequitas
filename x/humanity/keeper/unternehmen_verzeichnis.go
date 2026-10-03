@@ -43,8 +43,10 @@ import (
 	"time"
 )
 
-// 2026-11-01T00:00:00Z: nach Stufe 2 (15.10.), mit Zeit für das Ausrollen.
-const unternehmenVerzeichnisAbUnix int64 = 1793491200
+// 2026-10-03T12:00:00Z (14:00 MESZ), zusammen mit Stufe 2 (wirtschaft2.go).
+// Vorgezogen vom 01.11.; der Zeitpunkt muss nach dem Ausrollen auf alle Knoten
+// liegen, sonst weisen Knoten mit altem Stand Bloecke mit diesen Arten ab.
+const unternehmenVerzeichnisAbUnix int64 = 1791028800
 
 // unternehmenVerzeichnisOverride: nur für Tests (0 = Konstante gilt).
 var unternehmenVerzeichnisOverride atomic.Int64

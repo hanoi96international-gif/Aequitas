@@ -40,8 +40,11 @@ import (
 	"sync/atomic"
 )
 
-// 2026-10-15T00:00:00Z.
-const wirtschaft2AktivAbUnix int64 = 1792022400
+// 2026-10-03T12:00:00Z (14:00 MESZ). Vorgezogen vom 15.10.: gilt ab dem Tag
+// des Ausrollens, und erst NACHDEM alle Knoten diesen Stand haben -- ein
+// frueherer Zeitpunkt liesse Knoten mit altem und neuem Stand verschieden
+// nachrechnen.
+const wirtschaft2AktivAbUnix int64 = 1791028800
 
 // wirtschaft2AktivOverride: nur fuer Tests (0 = Konstante gilt).
 var wirtschaft2AktivOverride atomic.Int64

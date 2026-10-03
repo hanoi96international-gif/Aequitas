@@ -11,7 +11,7 @@ steht in Abschnitt 14. Die Analyse vom 02.10. (früher
 heutige Kette beginnt am 30.09.2026; die Regeln gelten auf ihr vom ersten
 Block an.
 
-**Zweite Stufe ab 15.10.2026, 00:00 UTC** (`wirtschaft2AktivAbUnix`,
+**Zweite Stufe ab 03.10.2026, 12:00 UTC (14:00 MESZ)** (`wirtschaft2AktivAbUnix`,
 `x/humanity/keeper/wirtschaft2.go`), aus der Reifeprüfung
 (`docs/WIRTSCHAFT_REIFEPRUEFUNG.md`):
 - **C** Zahlungen über die Vermögensgrenze werden **abgelehnt statt
@@ -96,7 +96,7 @@ Protokoll-Topf, dann Mensch, dann offenes Unternehmen, sonst freie Adresse.
 |---|---|---|---|
 | Wer | verifizierter Mensch | eröffnet von einem Menschen, bis 10 Verantwortliche | jede andere Adresse, auch Verträge |
 | Grundeinkommen, Stimme | ja | nein | nein |
-| Höchstbetrag | 25.000 AEQ¹; ab 15.10.2026 werden Eingänge darüber abgelehnt | keiner | **250 AEQ** (`freiGrenze`), Eingänge darüber abgelehnt |
+| Höchstbetrag | 25.000 AEQ¹; ab 03.10.2026 werden Eingänge darüber abgelehnt | keiner | **250 AEQ** (`freiGrenze`), Eingänge darüber abgelehnt |
 | Halten kostet | 0,5 %/Monat auf den Teil über **5.000 AEQ** | Liegegeld nach Umsatz (4.2) | **1 %/Monat** ab dem ersten AEQ |
 | Überweisen | erste **1.000 AEQ/Monat** frei, dann 0,1 % | an Menschen **0 %**, sonst 0,1 % | 0,1 % |
 | In Stable tauschen | **3.000 AEQ/Monat** ohne Abgabe, dann 2 % | 2 % | 2 % |
@@ -133,7 +133,7 @@ Dollar gekoppelt. Warum: Abschnitt 9.
   sie geht an Validatoren, Liquiditätsgeber und Grundeinkommen.
 - Die frühere Demurrage (über 1.000 AEQ, erst nach 90 Tagen ohne Bewegung) ist
   seit der Aktivierung abgeschaltet (`effectiveBalance`).
-- **Vermögensgrenze (ab 15.10.2026):** Eine Überweisung oder ein Tausch, der
+- **Vermögensgrenze (ab 03.10.2026):** Eine Überweisung oder ein Tausch, der
   einen Menschen über die Grenze bringen würde, wird abgelehnt
   (`pruefeVermoegensgrenzeAnnahmeLocked`). Das Geld bleibt beim Absender, der
   Empfänger verliert nichts. Gezählt wird wie bei der Kappung: Guthaben plus
@@ -201,7 +201,7 @@ Es zählen nur **anrechenbare Eingänge**:
 | Einkauf eines Menschen | ja, je Mensch höchstens **9.000 AEQ je Kalenderquartal und Unternehmen** (`menschZaehltJeUntQuartal`) | echter Umsatz, gegen Aufblähen gedeckelt |
 | … von einem eigenen Verantwortlichen | nein | sonst kauft man sich den Freibetrag selbst |
 | Zahlung des Unternehmens an denselben Menschen | zieht dessen schon gezählte Einkäufe dort ab (laufendes und voriges Quartal, `rueckzahlungLocked`) | einkaufen und das Geld zurückbekommen ist kein Umsatz |
-| von anderen Unternehmen | bis 14.10.2026 nur der **Überschuss** (Eingänge minus Zahlungen an Unternehmen im selben Fenster). **Ab 15.10.2026 der höhere Wert** aus Überschuss und der Summe der Eingänge, **je zahlender Firma höchstens 9.000 AEQ im Kalenderquartal**; zahlt die Firma später an dieselbe Firma zurück, hebt das deren Gezähltes auf (`zahlungZwischenFirmenLocked`) | Weitergeben an Lieferanten soll nicht kosten. Gefälschter Umsatz ist auf den Deckel je zahlender Firma begrenzt (8.1, Nr. 3) |
+| von anderen Unternehmen | bis 03.10.2026, 12:00 UTC, nur der **Überschuss** (Eingänge minus Zahlungen an Unternehmen im selben Fenster). **Ab 03.10.2026 der höhere Wert** aus Überschuss und der Summe der Eingänge, **je zahlender Firma höchstens 9.000 AEQ im Kalenderquartal**; zahlt die Firma später an dieselbe Firma zurück, hebt das deren Gezähltes auf (`zahlungZwischenFirmenLocked`) | Weitergeben an Lieferanten soll nicht kosten. Gefälschter Umsatz ist auf den Deckel je zahlender Firma begrenzt (8.1, Nr. 3) |
 | … von Unternehmen mit gemeinsamen Verantwortlichen | nein | eigene Firmen zählen füreinander nicht |
 | von freien Adressen | nein | ohne Menschen dahinter |
 | Einstieg aus Stable | nein | Einzahlung ist kein Umsatz |
@@ -228,13 +228,13 @@ Beispiel: Gründerin hält 1.000 AEQ, Firma 20.000 AEQ. Normal:
 18.000 × 1 % = 180 AEQ/Monat. In der Gründungsphase: (21.000 − 5.000) × 0,5 %
 = 80 AEQ/Monat.
 
-**Ab 15.10.2026 gilt dieselbe Rechnung dauerhaft für das erste Unternehmen**
+**Ab 03.10.2026 gilt dieselbe Rechnung dauerhaft für das erste Unternehmen**
 (`erstesOffenesLocked`): das älteste noch offene Unternehmen jeder Gründerin
 wird nie schlechter gestellt als ein Mensch, auch nach dem ersten halben Jahr.
 Weitere Unternehmen derselben Person zahlen nach 4.2. Wird das erste
 geschlossen, rückt das nächste nach; es ist immer höchstens eins. Beispiel:
 Laden mit 1.000 AEQ Monatsumsatz hält 4.000 AEQ, Gründerin 1.000 AEQ:
-bisher 15 AEQ/Monat, ab 15.10. 0, wie bei einem Menschen mit 5.000 AEQ.
+bisher 15 AEQ/Monat, ab 03.10. 0, wie bei einem Menschen mit 5.000 AEQ.
 
 Hinweis: Die Gründungsphase rechnet immer mit 25.000 AEQ, auch in Phase 0, in
 der Menschen weniger halten dürfen. Das begünstigt Gründer, solange es weniger
@@ -332,14 +332,14 @@ eine Entscheidung über das Protokoll, keine Rechtsauskunft.
 |---|---|---|---|
 | 1 | Als Unternehmen die 25.000-Grenze umgehen | **begrenzt** | ohne Umsatz 1 %/Monat über 2.000, so teuer wie freie Adressen |
 | 2 | Viele Firmen für viele Sockel | **begrenzt** | 3 offene je Mensch: höchstens 6.000 AEQ, spart rund 30 AEQ/Monat |
-| 3 | Kreis zwischen Firmen (A → B → C → A) | bis 14.10. **geschlossen**; ab 15.10. **begrenzt** | Damit Weitergeben an Lieferanten nicht mehr kostet, zählen Eingänge von Firmen je Zahler bis 9.000 AEQ im Quartal. Gezählt wird je zahlender Firma höchstens dieser Deckel (rund 3.000 AEQ Monatsumsatz, Ersparnis bis etwa 70 AEQ/Monat je zahlendem Partner); im Kreis hat jede Firma einen Zahler, bei einem Stern zählt jeder Zahler einzeln, und jede zahlende Firma braucht einen eigenen verifizierten Menschen (gemeinsame Verantwortliche zählen nicht); hin und zurück zwischen zwei Firmen bringt nur einer Seite etwas. Bewusster Tausch, siehe `WIRTSCHAFT_REIFEPRUEFUNG.md` 3.2 B |
+| 3 | Kreis zwischen Firmen (A → B → C → A) | bis 03.10., 12:00 UTC, **geschlossen**; danach **begrenzt** | Damit Weitergeben an Lieferanten nicht mehr kostet, zählen Eingänge von Firmen je Zahler bis 9.000 AEQ im Quartal. Gezählt wird je zahlender Firma höchstens dieser Deckel (rund 3.000 AEQ Monatsumsatz, Ersparnis bis etwa 70 AEQ/Monat je zahlendem Partner); im Kreis hat jede Firma einen Zahler, bei einem Stern zählt jeder Zahler einzeln, und jede zahlende Firma braucht einen eigenen verifizierten Menschen (gemeinsame Verantwortliche zählen nicht); hin und zurück zwischen zwei Firmen bringt nur einer Seite etwas. Bewusster Tausch, siehe `WIRTSCHAFT_REIFEPRUEFUNG.md` 3.2 B |
 | 4 | Eigene Zahlungen als Umsatz | **geschlossen** | Verantwortliche und Firmen mit gemeinsamen Verantwortlichen zählen nicht |
 | 5 | Freund kauft ein, bekommt das Geld als Lohn zurück | **geschlossen** für diese Reihenfolge | `rueckzahlungLocked` |
 | 6 | Firma zahlt zuerst, Freund kauft danach mit demselben Geld | **begrenzt, nicht geschlossen** | Die Rückzahlung zieht nur schon Gezähltes ab. Nachgestellt: 3.740 AEQ Monatsumsatz statt 0. Eine Reparatur hilft nicht, weil das Geld sonst über einen zweiten Freund läuft. Grenze: 9.000 AEQ je Mensch, Quartal und Firma; Ersparnis höchstens rund 45 AEQ/Monat je eingespanntem Menschen, öffentlich in den Lohnsummen |
 | 7 | Quartalswechsel: 9.000 kurz vor und 9.000 kurz nach dem Wechsel | **begrenzt** | Kalenderquartal, also bis 18.000 AEQ in wenigen Tagen je Mensch; danach wieder ein Quartal Pause |
 | 8 | Gründungsphase mehrfach über Mitinhaber-Reihenfolge | **behoben auf dem Branch** | siehe ² in 4.1 |
 | 8a | Erstes-Unternehmen-Regel mehrfach nutzen (drei Firmen, alle „wie ein Mensch“) | **geschlossen** | nur das älteste offene Unternehmen je Gründerin; Platz mit ihrem eigenen Guthaben geteilt (`TestNurDasErsteUnternehmenWieEinMensch`) |
-| 8b | Jemanden durch eine Zahlung über die Grenze schädigen | ab 15.10. **geschlossen** | Zahlung wird abgelehnt statt weggenommen |
+| 8b | Jemanden durch eine Zahlung über die Grenze schädigen | ab 03.10. **geschlossen** | Zahlung wird abgelehnt statt weggenommen |
 | 9 | Jeden Monat eine neue Firma ohne Liegegeld | **geschlossen** | keine Schonfrist; Gründungsphase einmal je 365 Tage und nie besser als ein Mensch |
 | 10 | Unternehmenskonto verkaufen (eigener Schlüssel) | **wirtschaftlich wertlos**, Anzeige offen | Der Käufer spart gegenüber freien Adressen 20 AEQ/Monat. Aber das Register nennt dann einen Menschen, der nichts mehr zu sagen hat |
 | 11 | Vertrag als Versteck | **begrenzt** | Verträge sind freie Adressen: 250 AEQ, 1 %/Monat |
@@ -506,7 +506,7 @@ Ehrlich, gemessen am externen Audit vom 02.10.2026
 | 26.09. | freie Adresse 1.000 → **250 AEQ**; obere Stufe 2 % → **1 %**; Kleinstbeträge unter 0,001 AEQ nicht einziehen | Euro-Gegenrechnung (Abschnitt 9) |
 | 26.09., 15:00 UTC | Regeln aktiv (vorgezogen vom 01.10.) | – |
 | 02.10. | Fassung 3: ein gültiger Text statt Schichten; Gründer bleibt an erster Stelle; Angriffe 6, 7, 10, 13 offen benannt; Anreize (Abschnitt 10) | Prüfung gegen den Code und externes Audit |
-| 02.10. | Fassung 4: zweite Stufe ab 15.10.2026 (C ablehnen statt wegnehmen, A erstes Unternehmen wie ein Mensch, B Firmen-Eingänge gedeckelt brutto); echte Kundschaft und Grundeinkommen als Zahl | Reifeprüfung: Kleine und Lieferketten wurden bestraft, Empfänger verloren Geld ohne eigenes Zutun |
+| 02.10. | Fassung 4: zweite Stufe ab 15.10.2026 (am 03.10. vorgezogen auf 03.10.2026, 12:00 UTC) (C ablehnen statt wegnehmen, A erstes Unternehmen wie ein Mensch, B Firmen-Eingänge gedeckelt brutto); echte Kundschaft und Grundeinkommen als Zahl | Reifeprüfung: Kleine und Lieferketten wurden bestraft, Empfänger verloren Geld ohne eigenes Zutun |
 
 ## Vorbilder
 

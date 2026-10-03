@@ -34,6 +34,7 @@ func humanAddr(i int) string {
 // redistribute the excess while the replay path left the account
 // uncapped, diverging AccountSetXOR and pool state between nodes.
 func TestApplySwapDeltaLocked_MirrorsPrimaryWealthCap(t *testing.T) {
+	wirtschaft2Aus(t)             // prueft das Kappen vor Stufe 2 (Nachspielen alter Bloecke)
 	const startBalance = 20_000.0 // comfortably above the 25x-average cap once AEQ arrives
 	const startTUsd = 20_000.0    // funds the tUSD->AEQ swap below
 	primary := newWealthCapTestState(startBalance)

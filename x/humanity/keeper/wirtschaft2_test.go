@@ -3,6 +3,7 @@ package keeper
 import (
 	"context"
 	"errors"
+	"math"
 	"testing"
 )
 
@@ -10,6 +11,16 @@ func wirtschaft2An(t *testing.T) {
 	t.Helper()
 	vorher := wirtschaft2AktivOverride.Load()
 	wirtschaft2AktivOverride.Store(1)
+	t.Cleanup(func() { wirtschaft2AktivOverride.Store(vorher) })
+}
+
+// wirtschaft2Aus: Regeln wie vor der Aktivierung -- so werden Bloecke vor
+// wirtschaft2AktivAbUnix weiter nachgespielt. Ausdruecklich gesetzt statt von
+// der Uhrzeit abhaengig: sonst kippt ein Test, sobald der Stichtag vorbei ist.
+func wirtschaft2Aus(t *testing.T) {
+	t.Helper()
+	vorher := wirtschaft2AktivOverride.Load()
+	wirtschaft2AktivOverride.Store(math.MaxInt64)
 	t.Cleanup(func() { wirtschaft2AktivOverride.Store(vorher) })
 }
 

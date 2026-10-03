@@ -117,6 +117,7 @@ func TestKappungVerteilt_DreiKnotenGleicherZustand(t *testing.T) {
 
 // Vor der Aktivierung kappt die Gutschrift wie immer selbst.
 func TestKappungVerteilt_VorDerAktivierungUnveraendert(t *testing.T) {
+	wirtschaft2Aus(t) // prueft das Kappen vor Stufe 2 (Nachspielen alter Bloecke)
 	a := kappungsKnoten(t, "a")
 	if _, _, err := a.cs.TransferAtomic("0xx", "0xy", 2_000, Transaction{Type: "transfer", Wallet: "0xx", To: "0xy", Amount: 2_000, TxHash: "0x1"}); err != nil {
 		t.Fatal(err)
