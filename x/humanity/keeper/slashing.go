@@ -524,7 +524,10 @@ func (cs *ChainState) RecordEquivocationAndSuspend(signingAddress, blockAHash, b
 // on the same (block_a_hash, block_b_hash) UNIQUE constraint) so
 // validator_penalties converges identically on every node that replays the
 // TX, regardless of who detected it first.
-func (cs *ChainState) QueueEquivocationEvidenceTx(signingAddr, blockAHash, blockBHash string, detectedAt int64) error {
+//
+// beweis: die beiden unterschriebenen Koepfe (slash_beweis.go). Ohne ihn
+// meldet jeder Nachspielende die Transaktion als slash_ohne_beweis.
+func (cs *ChainState) QueueEquivocationEvidenceTx(signingAddr, blockAHash, blockBHash string, detectedAt int64, beweis *Doppelbeweis) error {
 	if cs.db == nil {
 		return nil
 	}
@@ -532,10 +535,11 @@ func (cs *ChainState) QueueEquivocationEvidenceTx(signingAddr, blockAHash, block
 		blockAHash, blockBHash = blockBHash, blockAHash
 	}
 	return savePendingTxExec(cs.db, Transaction{
-		Type:       "slash_equivocation",
-		Wallet:     strings.ToLower(signingAddr),
-		BlockAHash: blockAHash,
-		BlockBHash: blockBHash,
-		DetectedAt: detectedAt,
+		Type:         "slash_equivocation",
+		Wallet:       strings.ToLower(signingAddr),
+		BlockAHash:   blockAHash,
+		BlockBHash:   blockBHash,
+		DetectedAt:   detectedAt,
+		Doppelbeweis: beweis,
 	})
 }

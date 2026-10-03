@@ -41,6 +41,10 @@ type Transaction struct {
 	// output from a primary-supplied input rather than a primary-supplied
 	// output (pool state can only be assumed identical for the INPUT side).
 	EscrowTUsdConverted float64 `json:"escrow_tusd_converted,omitempty"`
+	// Doppelbeweis: bei slash_equivocation die beiden widerspruechlichen,
+	// unterschriebenen Blockkoepfe, damit jeder Knoten die Strafe selbst
+	// prueft (slash_beweis.go).
+	Doppelbeweis *Doppelbeweis `json:"doppelbeweis,omitempty"`
 	// FromDemurrageLost/ToDemurrageLost carry the exact AEQ amount the
 	// primary node decayed off Wallet/To via settleDemurrageLocked while
 	// processing this TX. Secondary nodes replay these exact numbers
@@ -5594,6 +5598,9 @@ func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
 		blockAHash := conflict.Hash
 		blockBHash := block.Hash
 		detectedAt := block.Timestamp
+		// Beweis fuer jeden Nachspielenden (slash_beweis.go): beide Koepfe,
+		// hier unter dag.mu kopiert.
+		beweis := &Doppelbeweis{A: kopfVon(conflict), B: kopfVon(block)}
 		SafeGoroutine("equivocation-slashing", func() {
 			// FIX (P0, 2026-07-24 — source of the slash_equivocation TXs that
 			// were STILL being minted against the primary hours after the
@@ -5698,7 +5705,7 @@ func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
 				return
 			}
 			fmt.Printf("[SLASHING] ✓ Equivocation recorded for %s (offense #%d)\n", proposerAddr, count)
-			if qErr := dag.state.QueueEquivocationEvidenceTx(proposerAddr, blockAHash, blockBHash, detectedAt); qErr != nil {
+			if qErr := dag.state.QueueEquivocationEvidenceTx(proposerAddr, blockAHash, blockBHash, detectedAt, beweis); qErr != nil {
 				fmt.Printf("[SLASHING] ✗ Could not queue equivocation evidence TX for %s: %v\n", proposerAddr, qErr)
 			} else if slashWallet != "" {
 				fmt.Printf("[SLASHING] ✓ Equivocation evidence TX queued for %s (offense #%d, %.0f AEQ penalty pending replay)\n",

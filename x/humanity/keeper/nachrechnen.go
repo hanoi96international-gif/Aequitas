@@ -127,38 +127,37 @@ func (cs *ChainState) nachrechnenTxLocked(tx *Transaction, blockZeit int64) erro
 			return nachrechnenAbweichung("faucet_kein_mensch", blockZeit, "%s ist kein registrierter Mensch", kurzAdresse(wallet))
 		}
 
-	case "swap_aeq_tusd", "swap_tusd_aeq":
-		if cs.pool == nil || tx.Amount <= 0 {
-			return nil
-		}
-		// Genau die Rechnung aus swapLockedMitAbgabe: Gebuehr vom Einsatz,
-		// der Rest geht in die Konstantprodukt-Formel (swapTeilung, zum
-		// selben Buchungsaugenblick wie applySwapDeltaLockedMitAbgabe).
-		_, _, inPool := swapTeilung(tx.Amount, buchZeitBeimNachspielen(tx.BuchAt, blockZeit))
-		var erwartet float64
-		if tx.Type == "swap_aeq_tusd" {
-			erwartet = AMMSwapOut(cs.pool.ReserveAEQ, cs.pool.ReserveTUSD, inPool).Float()
-		} else {
-			erwartet = AMMSwapOut(cs.pool.ReserveTUSD, cs.pool.ReserveAEQ, inPool).Float()
-		}
-		if !nahe(tx.AmountOut, erwartet) {
-			return nachrechnenAbweichung("tausch_ergebnis", blockZeit,
-				"%s %s: im Block %.6f, nachgerechnet %.6f", tx.Type, kurzAdresse(wallet), tx.AmountOut, erwartet)
-		}
+	case "swap_aeq_tusd", "swap_tusd_aeq", "add_liquidity":
+		return cs.nachrechnenPoolAuftragLocked(tx.Type, tx, wallet, blockZeit)
 
-	case "add_liquidity":
-		if tx.LPShares <= 0 || cs.pool == nil {
-			return nil // ohne Feld rechnet addLiquidityDeltaLocked ohnehin selbst
+	case "vorbehalt_ausfuehrung":
+		return cs.nachrechnenVorbehaltLocked(tx, wallet, blockZeit) // nachrechnen_vorbehalt.go
+
+	case "slash_equivocation":
+		return nachrechnenSlashLocked(tx, blockZeit) // slash_beweis.go
+
+	case "kappung":
+		// Die Kappung bucht einen festen Betrag ins Grundeinkommen, den der
+		// Zustaendige des Kontos bestimmt (kappung_verteilt.go). Er muss ueber
+		// der Vermoegensgrenze liegen -- sonst nimmt ein Produzent einem
+		// Konto Geld, das ihm zusteht. Die Grenze haengt am Durchschnitt aller
+		// Menschen und kann sich zwischen Annahme und Nachspielen leicht
+		// verschieben; deshalb nur die Obergrenze, mit 0,01 % der Grenze
+		// Spielraum (2,5 AEQ bei 25.000). Ob das fuer ehrliche Bloecke reicht,
+		// zeigt die Beobachtung, bevor der strenge Modus gilt.
+		cs.ensureAccountLoadedCtx(context.Background(), wallet)
+		acc, ok := cs.accounts.Get(wallet)
+		if !ok {
+			return nil // applyKappungDeltaLocked lehnt ab
 		}
-		var erwartet float64
-		if cs.pool.ReserveAEQ.Float() > 0 && cs.pool.TotalLPShares.Float() > 0 {
-			erwartet = (tx.Amount / cs.pool.ReserveAEQ.Float()) * cs.pool.TotalLPShares.Float()
-		} else {
-			erwartet = math.Sqrt(tx.Amount * tx.AmountOut)
+		erlaubt := cs.kappungsBetragLocked(acc)
+		spielraum := 1e-6
+		if grenze, ok := cs.wealthCapAmountLocked(); ok {
+			spielraum += grenze * 0.0001
 		}
-		if !nahe(tx.LPShares, erwartet) {
-			return nachrechnenAbweichung("lp_anteile", blockZeit,
-				"%s: im Block %.6f, nachgerechnet %.6f", kurzAdresse(wallet), tx.LPShares, erwartet)
+		if tx.Amount > erlaubt+spielraum {
+			return nachrechnenAbweichung("kappung_unter_grenze", blockZeit,
+				"%s: %.6f AEQ gekappt, ueber der Grenze liegen %.6f", kurzAdresse(wallet), tx.Amount, erlaubt)
 		}
 
 	case "ubi_distribution":
@@ -248,4 +247,47 @@ func nachrechnenStand() map[string]interface{} {
 			"Faucet-Betrag, Rundenzeit, Grundeinkommen je Mensch, Demurrage), rechnet dieser Knoten beim Nachspielen selbst nach. " +
 			"0 Abweichungen ist der Normalfall; erst danach wird die Pruefung scharf geschaltet.",
 	}
+}
+
+// nachrechnenPoolAuftragLocked: Tausch und Einlage nachrechnen -- direkt
+// (tx.Type) oder als Ausfuehrung eines Vorbehalts (art = Vorbehalt.Art).
+// Dieselbe Rechnung fuer beide Wege, damit die Ausfuehrung nicht an der
+// Pruefung vorbeifuehrt (Analyse 03.10.2026).
+func (cs *ChainState) nachrechnenPoolAuftragLocked(art string, tx *Transaction, wallet string, blockZeit int64) error {
+	switch art {
+	case "swap_aeq_tusd", "swap_tusd_aeq":
+		if cs.pool == nil || tx.Amount <= 0 {
+			return nil
+		}
+		// Genau die Rechnung aus swapLockedMitAbgabe: Gebuehr vom Einsatz,
+		// der Rest geht in die Konstantprodukt-Formel (swapTeilung, zum
+		// selben Buchungsaugenblick wie applySwapDeltaLockedMitAbgabe).
+		_, _, inPool := swapTeilung(tx.Amount, buchZeitBeimNachspielen(tx.BuchAt, blockZeit))
+		var erwartet float64
+		if art == "swap_aeq_tusd" {
+			erwartet = AMMSwapOut(cs.pool.ReserveAEQ, cs.pool.ReserveTUSD, inPool).Float()
+		} else {
+			erwartet = AMMSwapOut(cs.pool.ReserveTUSD, cs.pool.ReserveAEQ, inPool).Float()
+		}
+		if !nahe(tx.AmountOut, erwartet) {
+			return nachrechnenAbweichung("tausch_ergebnis", blockZeit,
+				"%s %s: im Block %.6f, nachgerechnet %.6f", art, kurzAdresse(wallet), tx.AmountOut, erwartet)
+		}
+
+	case "add_liquidity":
+		if tx.LPShares <= 0 || cs.pool == nil {
+			return nil // ohne Feld rechnet addLiquidityDeltaLocked ohnehin selbst
+		}
+		var erwartet float64
+		if cs.pool.ReserveAEQ.Float() > 0 && cs.pool.TotalLPShares.Float() > 0 {
+			erwartet = (tx.Amount / cs.pool.ReserveAEQ.Float()) * cs.pool.TotalLPShares.Float()
+		} else {
+			erwartet = math.Sqrt(tx.Amount * tx.AmountOut)
+		}
+		if !nahe(tx.LPShares, erwartet) {
+			return nachrechnenAbweichung("lp_anteile", blockZeit,
+				"%s: im Block %.6f, nachgerechnet %.6f", kurzAdresse(wallet), tx.LPShares, erwartet)
+		}
+	}
+	return nil
 }
