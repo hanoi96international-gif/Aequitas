@@ -1,6 +1,7 @@
 package keeper
 
 import (
+	"fmt"
 	"testing"
 )
 
@@ -165,5 +166,75 @@ func TestNachrechnenFreigabe_RueckrollenEntferntFreigabe(t *testing.T) {
 	}
 	if neu := freigabeNeu(vorher); len(neu) != 0 {
 		t.Fatalf("Freigabe nach Zurueckrollen meldet %v", neu)
+	}
+}
+
+// Missbrauch: eine zweite Runde weniger als 24 Stunden nach der ersten wird
+// beim Nachspielen als doppelt erkannt und samt ihren Gutschriften
+// uebersprungen (distributionRoundToSkip). Die Staffel-Freigabe darin muss
+// mit uebersprungen werden -- sonst gibt eine doppelte Runde den Rest
+// schneller frei als die Tagesrate.
+//
+// Braucht eine echte Datenbank: die Doppelrunden-Erkennung liest den
+// Zeitpunkt der letzten Runde aus chain_config. Ohne Datenbank erkennt sie
+// nie eine Runde als doppelt, und der Test waere gruen, ohne etwas zu pruefen.
+func TestFreigabe_DoppelteRundeGibtNichtFrei_RealDB(t *testing.T) {
+	truncateDistTestTables(t) // auch das Opt-in-Tor
+	cs := testKnoten(t, "unused-freigabe-doppelrunde-test.json")
+	if !cs.useDB {
+		t.Fatal("erwartet eine echte PostgreSQL-Verbindung -- DATABASE_URL pruefen")
+	}
+	freigabeAktiv(t)
+	rate := grantStaffelTagesrate()
+	mensch := distTestAddr(901)
+	cs.mu.Lock()
+	acc := &AccountState{Address: mensch, IsHuman: true, Balance: NewDecimal(200),
+		GrantStagedRest: NewDecimal(800), LivenessRenewedAt: 1}
+	if err := cs.saveAccountToDB(acc); err != nil {
+		cs.mu.Unlock()
+		t.Fatalf("Mensch anlegen: %v", err)
+	}
+	cs.accounts.Set(mensch, acc)
+	cs.mu.Unlock()
+
+	dag := newOrphanTestDAG()
+	dag.state = cs
+	dag.bootHeight = 0
+	dag.replayedBlocks = make(map[string]bool)
+	dag.replayFailures = make(map[string]replayFailureState)
+	dag.stateRootMismatches = map[string]int{}
+	dag.stateRootMismatchLastAt = map[string]int64{}
+
+	at := nowUnix()
+	runde := func(n int, zeit int64) {
+		t.Helper()
+		b := &Block{Height: int64(n), Hash: fmt.Sprintf("freigabe-doppelrunde-%d", n), Timestamp: zeit,
+			Transactions: []Transaction{
+				{Type: "grant_release", Wallet: mensch, Amount: rate},
+				{Type: "distribution_round_marker", DistributionAt: zeit},
+			}}
+		if !dag.replayTransactions(b, true) {
+			t.Fatalf("Runde %d abgelehnt", n)
+		}
+	}
+	rest := func() Decimal {
+		cs.mu.Lock()
+		defer cs.mu.Unlock()
+		a, _ := cs.accounts.Get(mensch)
+		return a.GrantStagedRest
+	}
+
+	runde(1, at)
+	nachErster := rest()
+	if nachErster != NewDecimal(800-rate) {
+		t.Fatalf("Vorbedingung: nach der ersten Runde Rest %v, erwartet %v", nachErster, NewDecimal(800-rate))
+	}
+	runde(2, at+3600) // eine Stunde spaeter: doppelte Runde
+	if got := rest(); got != nachErster {
+		t.Fatalf("doppelte Runde hat freigegeben: Rest %v, erwartet unveraendert %v", got, nachErster)
+	}
+	runde(3, at+86400) // naechster Tag: wieder eine echte Runde
+	if got := rest(); got != NewDecimal(800-2*rate) {
+		t.Fatalf("Runde am naechsten Tag: Rest %v, erwartet %v", got, NewDecimal(800-2*rate))
 	}
 }
