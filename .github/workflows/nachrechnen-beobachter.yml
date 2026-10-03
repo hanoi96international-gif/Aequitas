@@ -1,0 +1,126 @@
+name: Nachrechnen beobachten (Knoten auf einem Runner spielt C1 nach)
+# WARUM: Die Nachrechen-Regeln (K-2/K-4) laufen nur beim NACHSPIELEN fremder
+# Bloecke. C1 spielt seine eigenen nicht nach, und C2 gibt es nicht mehr --
+# ohne diesen Lauf zaehlt niemand, ob ehrliche Bloecke eine Regel verletzen,
+# und ohne diese Zahl darf der strenge Modus nicht scharf werden.
+#
+# WAS: ein frischer Knoten auf dem Runner holt C1s unterschriebenen Snapshot,
+# spielt danach jeden neuen Block von C1 nach (nur Pull-Sync, kein SELF_URL,
+# also von aussen unerreichbar) und erzeugt selbst NIE einen Block
+# (AEQUITAS_BEOBACHTER=1, beobachter.go). Am Ende: Abweichungen je Regel aus
+# /api/wirtschaft/regeln und die [NACHRECHNEN]-Zeilen des Logs.
+#
+# Taeglich vor der Verteilungsrunde (zuletzt 18:00 UTC), damit eine ganze
+# Runde nachgespielt wird. C1 wird nur gelesen (Status, Snapshot, Bloecke).
+on:
+  schedule:
+    - cron: "20 17 * * *"
+  workflow_dispatch:
+    inputs:
+      minuten: {description: "Laufzeit des Beobachters in Minuten", required: false, default: "100"}
+      signierer: {description: "Signieradresse von C1 (leer: aus /api/status)", required: false, default: ""}
+permissions:
+  contents: read
+concurrency:
+  group: nachrechnen-beobachter
+  cancel-in-progress: false
+jobs:
+  beobachten:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: aequitas
+          POSTGRES_DB: aequitas
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      C1: http://188.172.229.121:8080
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Binary bauen (cgo, wie das Docker-Image)
+        run: CGO_ENABLED=1 go build -o aequitasd ./cmd/aequitasd/
+      - name: Signieradresse von C1
+        id: c1
+        env:
+          VORGABE: ${{ inputs.signierer }}
+        run: |
+          set -u
+          s="${VORGABE:-}"
+          if [ -z "$s" ]; then
+            s=$(curl -sf -m 25 "$C1/api/status" | jq -r '.validator_address // empty' | tr 'A-F' 'a-f')
+          fi
+          if ! printf '%s' "$s" | grep -Eq '^0x[0-9a-f]{40}$'; then
+            echo "::error::keine gueltige Signieradresse von C1 ($s)"; exit 1
+          fi
+          echo "C1 unterschreibt mit $s"
+          echo "signierer=$s" >> "$GITHUB_OUTPUT"
+      - name: Beobachter starten und nachspielen lassen
+        env:
+          DATABASE_URL: postgres://postgres:aequitas@localhost:5432/aequitas?sslmode=disable
+          PRIMARY_NODE_URLS: ${{ env.C1 }}
+          PRIMARY_NODE_URL: ${{ env.C1 }}
+          BOOTSTRAP_SNAPSHOT_URL: ${{ env.C1 }}/api/snapshot
+          BOOTSTRAP_SIGNER: ${{ steps.c1.outputs.signierer }}
+          AEQUITAS_BEOBACHTER: "1"
+          AEQUITAS_WAL_ENABLED: "1"
+          AEQUITAS_WAL_PATH: /tmp/aequitas-wal/aequitas_transfers.wal
+          GOMEMLIMIT: 10GiB
+          PORT: "8080"
+          MINUTEN: ${{ inputs.minuten || '100' }}
+        run: |
+          set -u
+          case "$MINUTEN" in ''|*[!0-9]*) echo "::error::minuten muss eine Zahl sein"; exit 1;; esac
+          [ "$MINUTEN" -le 170 ] || { echo "::error::hoechstens 170 Minuten"; exit 1; }
+          mkdir -p /tmp/aequitas-wal
+          nohup ./aequitasd > node.log 2>&1 &
+          PID=$!
+          START=$(date +%s); ENDE=$((START + MINUTEN*60))
+          sleep 30
+          grep -E "BOOTSTRAP|Snapshot|snapshot|✗" node.log | head -20 || true
+          while [ "$(date +%s)" -lt "$ENDE" ]; do
+            kill -0 $PID 2>/dev/null || { echo "::error::Knoten ist gestorben"; tail -80 node.log; exit 1; }
+            H=$(curl -s -m 5 http://localhost:8080/api/status | jq -r '.height // "?"')
+            S=$(curl -s -m 5 "$C1/api/status" | jq -r '.height // "?"')
+            A=$(curl -s -m 5 http://localhost:8080/api/wirtschaft/regeln | jq -r '.nachrechnen.abweichungen // "?"')
+            echo "$(( $(date +%s) - START ))s  Beobachter $H  C1 $S  Abweichungen $A"
+            sleep 60
+          done
+          curl -s -m 20 http://localhost:8080/api/wirtschaft/regeln > regeln.json || true
+          curl -s -m 20 http://localhost:8080/api/status > status.json || true
+          kill $PID 2>/dev/null || true
+          sleep 5
+      - name: Ergebnis
+        if: always()
+        run: |
+          set -u
+          EIGENE=$(grep -cE "^\[Block #" node.log || true)
+          {
+            echo "## Nachrechnen beobachtet"
+            echo
+            echo "- Hoehe am Ende: $(jq -r '.height // "?"' status.json 2>/dev/null)"
+            echo "- Modus: $(jq -r '.nachrechnen.modus // "?"' regeln.json 2>/dev/null)"
+            echo "- geprueft: $(jq -r '.nachrechnen.geprueft // "?"' regeln.json 2>/dev/null), Abweichungen: $(jq -r '.nachrechnen.abweichungen // "?"' regeln.json 2>/dev/null)"
+            echo "- eigene Bloecke (muss 0 sein): ${EIGENE:-0}"
+            echo "- nachgespielte Bloecke: $(grep -cE '\[REPLAY\]' node.log || true) Zeilen, abgelehnt: $(grep -cE 'rolling back whole block' node.log || true)"
+            echo
+            echo "| Regel | Abweichungen |"
+            echo "|---|---|"
+            jq -r '.nachrechnen.je_regel // {} | to_entries[] | "| \(.key) | \(.value) |"' regeln.json 2>/dev/null || true
+          } >> "$GITHUB_STEP_SUMMARY"
+          cat "$GITHUB_STEP_SUMMARY"
+          echo "=== [NACHRECHNEN]-Zeilen (hoechstens 200) ==="
+          grep -F "[NACHRECHNEN]" node.log | head -200 || true
+          echo "=== Fehler (letzte 40) ==="
+          grep -E "✗|panic|PANIC" node.log | tail -40 || true
+          if [ "${EIGENE:-0}" -gt 0 ]; then echo "::error::der Beobachter hat Bloecke erzeugt"; exit 1; fi

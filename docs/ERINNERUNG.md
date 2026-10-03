@@ -135,9 +135,16 @@ den verlinkten Dokumenten.
             unsigniert -- dann an eine Unterschrift des Menschen binden
       - [ ] Stichtag `nachrechnenStrengAbUnix` setzen, sobald
             `/api/wirtschaft/regeln` über mehrere Runden 0 Abweichungen zeigt.
-            **Daten gibt es erst mit einem zweiten Knoten:** C1 spielt seine
-            eigenen Blöcke nicht nach, seine Zähler bleiben 0, solange C2
-            aus ist
+            C1 spielt seine eigenen Blöcke nicht nach, und **C2 gibt es seit
+            03.10. nicht mehr**. Die Zahlen liefert jetzt der Workflow
+            `nachrechnen-beobachter.yml`: täglich 17:20 UTC ein Knoten auf einem
+            GitHub-Runner, Snapshot von C1, danach jeder Block nachgespielt,
+            erzeugt selbst nie einen (`AEQUITAS_BEOBACHTER=1`). Ergebnis je
+            Regel in der Zusammenfassung des Laufs
+      - [ ] Zweiter Vergleichsdienst für die Registrierung: das Quorum war 2
+            von 2 (C1 und C2). Ohne C2 ist es nicht erreichbar -- es wird
+            nicht gesenkt (Schutzgrenze); nötig ist ein zweiter, unabhängiger
+            Betreiber mit Vergleichsdienst
 - [ ] Regel B von Stufe 2 trennen (eigenes Aktivierungsdatum) -- nur falls
       gewünscht
 - [ ] Ein Wirtschaftsmodell (Simulation) der Regeln bauen
