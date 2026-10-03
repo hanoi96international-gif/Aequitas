@@ -432,6 +432,9 @@ func TestWALSpeicherkorb_AufgeteilterFlushSchreibtAlles(t *testing.T) {
 	t.Cleanup(func() { walFlushTeileWert = alt })
 	walFlushTeileWert = 4
 	cs := korbTestState(t, filepath.Join(t.TempDir(), "t.wal"), true)
+	// Ohne Hintergrund-Flush: sonst nimmt der Ticker waehrend des Einzahlens
+	// Teile weg, und FlushWALNow bekommt ein Buendel unter der Teilungsgrenze.
+	cs.stopWALFlushWorkerForTest()
 	const paare = 60
 	for i := 0; i < paare; i++ {
 		seedConcurrentTestAccount(t, cs, distTestAddr(3000+2*i), 100, time.Now().Unix())
