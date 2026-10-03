@@ -97,6 +97,11 @@ func (cs *ChainState) nachrechnenTxLocked(tx *Transaction, blockZeit int64) erro
 		}
 	}
 
+	// 2. Seit der Umlaufsicherung keine Demurrage mehr (nachrechnen_ubi.go).
+	if err := nachrechnenDemurrage(tx, blockZeit); err != nil {
+		return err
+	}
+
 	wallet := strings.ToLower(strings.TrimSpace(tx.Wallet))
 	switch tx.Type {
 	case "faucet":
@@ -152,14 +157,47 @@ func (cs *ChainState) nachrechnenTxLocked(tx *Transaction, blockZeit int64) erro
 		if tx.AmountPerHuman > 0 {
 			return nachrechnenAbweichung("ubi_alte_form", blockZeit, "amount_per_human=%.6f", tx.AmountPerHuman)
 		}
+		// Wer, wie oft, wieviel (nachrechnen_ubi.go).
+		return cs.nachrechnenUBILocked(tx, blockZeit)
+
+	case "ubi_distribution_finalize":
+		return cs.nachrechnenUBIAbschlussLocked(blockZeit)
+
+	case "lp_distribution":
+		return cs.nachrechnenLPLocked(tx, blockZeit) // nachrechnen_lp.go
+	case "lp_distribution_pool_zero":
+		return cs.nachrechnenLPAbschlussLocked(blockZeit)
+
+	case "grant_release":
+		return cs.nachrechnenFreigabeLocked(tx, blockZeit) // nachrechnen_freigabe.go
+
+	case "validator_distribution":
+		// Die Gewichte (Minuten Anwesenheit aus registered_nodes und den
+		// Bloecken der letzten 24 Stunden) sind nicht auf jedem Knoten
+		// dieselben -- registered_nodes ist ein lokales Verzeichnis. Was
+		// jeder Knoten gleich weiss: Der Erzeuger zahlt nur Betreibern, die
+		// registrierte Menschen sind (distributeValidatorsPoolLocked).
+		cs.ensureAccountLoadedCtx(context.Background(), wallet)
+		if acc, ok := cs.accounts.Get(wallet); !ok || !acc.IsHuman {
+			return nachrechnenAbweichung("validator_kein_mensch", blockZeit,
+				"%s ist kein registrierter Mensch (%.6f AEQ)", kurzAdresse(wallet), tx.Amount)
+		}
 
 	case "distribution_round_marker":
 		// Die Runde traegt ihren eigenen Zeitpunkt. Liegt er weit neben dem
 		// Block, verschiebt er die Doppelrunden-Erkennung aller Nachspieler.
 		if d := tx.DistributionAt - blockZeit; d > 600 || d < -600 {
-			return nachrechnenAbweichung("rundenmarke", blockZeit,
-				"distribution_at=%d, Blockzeit %d (Abstand %ds)", tx.DistributionAt, blockZeit, d)
+			if err := nachrechnenAbweichung("rundenmarke", blockZeit,
+				"distribution_at=%d, Blockzeit %d (Abstand %ds)", tx.DistributionAt, blockZeit, d); err != nil {
+				return err
+			}
 		}
+		// Spaetestens hier ist die Runde zu Ende, auch ohne Abschluss.
+		cs.nachrechnenFreigabeRundeEndeLocked()
+		if err := cs.nachrechnenUBIAbschlussLocked(blockZeit); err != nil {
+			return err
+		}
+		return cs.nachrechnenLPAbschlussLocked(blockZeit)
 	}
 	return nil
 }
@@ -192,7 +230,7 @@ func nachrechnenStand() map[string]interface{} {
 		"abweichungen": nachrechnenAbweichungen.Load(),
 		"je_regel":     jeRegel,
 		"bedeutung": "Werte, die der Produzent in Transaktionen schreibt (Tauschergebnis, LP-Anteile, " +
-			"Faucet-Betrag, Rundenzeit), rechnet dieser Knoten beim Nachspielen selbst nach. " +
+			"Faucet-Betrag, Rundenzeit, Grundeinkommen je Mensch, Demurrage), rechnet dieser Knoten beim Nachspielen selbst nach. " +
 			"0 Abweichungen ist der Normalfall; erst danach wird die Pruefung scharf geschaltet.",
 	}
 }

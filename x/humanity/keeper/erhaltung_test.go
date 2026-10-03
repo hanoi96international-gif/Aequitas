@@ -242,7 +242,12 @@ func TestErhaltung_RueckrollenSetztSummeZurueck(t *testing.T) {
 	vorher := cs.erhaltung
 	ok := dag.replayTransactions(erhaltungBlock(1, nowUnix(),
 		Transaction{Type: "ubi_distribution", Wallet: erhaltungMenschen[0], Amount: 30},
-		Transaction{Type: "transfer", Wallet: erhaltungMenschen[1], To: erhaltungMenschen[2], Amount: -1},
+		// Ohne Wallet: das Nachspielen lehnt den Block IN der Schleife ab,
+		// nachdem die Gutschrift davor schon gezaehlt ist. (Eine Ueberweisung
+		// mit -1 wurde schon vor der Schleife abgelehnt -- der Test lief
+		// dann gruen, auch wenn das Zurueckrollen die Summe nicht
+		// wiederherstellte.)
+		Transaction{Type: "ubi_distribution", Amount: 30},
 	), true)
 	if ok {
 		t.Fatal("Vorbedingung: der Block muss abgelehnt werden")

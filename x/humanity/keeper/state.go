@@ -194,6 +194,13 @@ type ChainState struct {
 	// Nachspielen (erhaltung.go, K-2 Schritt 2). Unter cs.mu; im
 	// Rueckroll-Snapshot enthalten.
 	erhaltung topfErhaltung
+	// ubiRunde: die laufende Grundeinkommens-Runde beim Nachspielen
+	// (nachrechnen_ubi.go, K-2 Schritt 3). Unter cs.mu; im Rueckroll-Snapshot.
+	ubiRunde ubiRundePruefung
+	// lpRunde: dasselbe fuer die Liquiditaetsgeber-Runde (nachrechnen_lp.go).
+	lpRunde lpRundePruefung
+	// freigaben: Staffel-Freigaben der laufenden Runde (nachrechnen_freigabe.go).
+	freigaben freigabeRunde
 	// kappungsKandidaten: Konten, die ueber der Grenze liegen koennten und
 	// deren Kappung Stufe 2 dem Zustaendigen ueberlaesst.
 	kappungsMu         sync.Mutex
@@ -967,6 +974,10 @@ func NewChainState(dataFile string) *ChainState {
 					cs.clearRegistrationsFromDB()
 				}
 				cs.loadFromDB()
+				// Nach einem Neustart ist offen, ob gerade eine
+				// Grundeinkommens-Runde laeuft (nachrechnen_ubi.go, NEUSTART).
+				cs.ubiRunde.unsicher = true
+				cs.lpRunde.unsicher = true
 				// Der Uebersprungen-Zaehler muss den Neustart ueberleben --
 				// siehe zustand_ablehnung.go: ein Neustart nach rotem Alarm
 				// loeschte bisher den Alarm, nicht die Divergenz.
@@ -3795,47 +3806,11 @@ func (cs *ChainState) distributeLPPoolLocked(ctx context.Context, verteiltAm int
 	// skipped, never receiving their share and permanently understating
 	// totalShares. Query the DB directly instead, same fix already applied
 	// to distributeUBIPoolLocked — see idx_chain_accounts_lp_shares.
-	type lpHolder struct {
-		addr   string
-		shares float64
-	}
-	var holders []lpHolder
-	totalShares := 0.0
-	if cs.db != nil {
-		// FIX (deadlock, same as ensureAccountLoaded's FIX comment):
-		// distributeLPPoolLocked runs inside RunDailyDistributionAtomic's
-		// runAtomicDistributionWithOutbox critical section (cs.mu held,
-		// cs.activeTx set) — route through cs.dbExec() so this enumeration
-		// reuses that transaction's own connection.
-		rows, err := cs.dbExecCtx(ctx).Query(`SELECT lower(address) FROM chain_accounts WHERE lp_shares > 0`)
-		if err != nil {
-			return nil, fmt.Errorf("could not enumerate LP holders: %w", err)
-		}
-		var addrs []string
-		for rows.Next() {
-			var addr string
-			rows.Scan(&addr)
-			if addr != "" {
-				addrs = append(addrs, addr)
-			}
-		}
-		rows.Close()
-		cs.ensureAccountsLoadedCtx(ctx, addrs) // page in cold accounts so LP distribution works beyond the in-memory cap
-		for _, addr := range addrs {
-			if acc, ok := cs.accounts.Get(addr); ok && acc.LPShares.Float() > 0 {
-				holders = append(holders, lpHolder{addr, acc.LPShares.Float()})
-				totalShares += acc.LPShares.Float()
-			}
-		}
-	} else {
-		// No DB (unit tests): fall back to in-memory iteration.
-		cs.accounts.Range(func(addr string, acc *AccountState) bool {
-			if acc.LPShares > 0 {
-				holders = append(holders, lpHolder{addr, acc.LPShares.Float()})
-				totalShares += acc.LPShares.Float()
-			}
-			return true
-		})
+	// Aufzaehlung in lpHalterLocked (nachrechnen_lp.go): dieselbe, mit der
+	// jeder Nachspielende die Runde nachrechnet.
+	holders, totalShares, err := cs.lpHalterLocked(ctx)
+	if err != nil {
+		return nil, err
 	}
 	if totalShares <= 0 || len(holders) == 0 {
 		fmt.Println("[LP] No LP holders — pool left untouched")
@@ -3901,7 +3876,7 @@ func (cs *ChainState) distributeLPPoolLocked(ctx context.Context, verteiltAm int
 	for _, h := range holders {
 		// floor6, not round6 — see floor6's own comment. Measured minting one
 		// micro-AEQ per round on every probed pool value before this changed.
-		share := floor6((h.shares / totalShares) * total)
+		share := lpAnteil(h.shares, totalShares, total)
 		totalDistributed += share
 		acc, _ := cs.accounts.Get(h.addr)
 		acc.Balance = acc.Balance.Add(NewDecimal(share))
@@ -7914,6 +7889,10 @@ type blockRollbackSnapshot struct {
 	// erhaltung: die Summen der laufenden Ausschuettungsrunde (erhaltung.go)
 	// -- ein zurueckgewiesener Block darf sie nicht veraendern.
 	erhaltung topfErhaltung
+	// ubiRunde: dasselbe fuer die Grundeinkommens-Runde (nachrechnen_ubi.go).
+	ubiRunde  ubiRundePruefung
+	lpRunde   lpRundePruefung
+	freigaben freigabeRunde
 }
 
 type configValueSnapshot struct {
@@ -8058,6 +8037,9 @@ func (cs *ChainState) snapshotForRollbackLocked(addrs []string, full bool, chain
 	snap.nullifierSetXOR = cs.nullifierSetXOR
 	snap.buch = cs.buchSichern(addrs, full)
 	snap.erhaltung = cs.erhaltung
+	snap.ubiRunde = cs.ubiRunde.kopie()
+	snap.lpRunde = cs.lpRunde
+	snap.freigaben = cs.freigaben
 	return snap
 }
 
@@ -8122,6 +8104,9 @@ func (cs *ChainState) restoreFromRollbackLocked(snap *blockRollbackSnapshot) err
 func (cs *ChainState) restoreFromRollbackLockedCtx(ctx context.Context, snap *blockRollbackSnapshot) error {
 	cs.buchZurueck(snap.buch)
 	cs.erhaltung = snap.erhaltung
+	cs.ubiRunde = snap.ubiRunde.zurueck()
+	cs.lpRunde = snap.lpRunde.zurueck()
+	cs.freigaben = snap.freigaben.zurueck()
 	var toDelete []string
 	for _, s := range snap.accounts {
 		if s.existed {

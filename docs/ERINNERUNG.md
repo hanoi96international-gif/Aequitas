@@ -79,6 +79,25 @@ den verlinkten Dokumenten.
 - [ ] Strenges Nachrechnen aller Systembuchungen auf jedem Knoten („K-2
       strict“) -- Voraussetzung dafür, neue Validatoren automatisch und ohne
       Liste aufzunehmen
+      - [x] Grundeinkommens-Runde: wer, wie oft, wieviel; Demurrage seit
+            der Umlaufsicherung (`nachrechnen_ubi.go`, beobachtend)
+      - [x] LP-Runde: jeder Halter genau einmal, Anteil nachgerechnet
+            (`nachrechnen_lp.go`, seit der Umlaufsicherung)
+      - [x] Validatoren-Runde: nur an Menschen
+      - [ ] Validatoren-Gewichte: Sie kommen aus `registered_nodes` und den
+            Blöcken der letzten 24 h -- beides ist je Knoten verschieden.
+            Nachrechnen geht erst, wenn das Verzeichnis Konsenszustand ist
+            (Voraussetzung für offene Zulassung)
+      - [x] Staffel-Freigaben: höchstens die Tagesrate, nur mit
+            Lebenszeichen, einmal je Runde (`nachrechnen_freigabe.go`)
+      - [ ] `grant_release` steht nicht in `isDistributionRoundTxType`: In
+            einer als doppelt erkannten Runde wird es trotzdem angewendet
+            (dieselbe Klasse wie der Treuhand-Fund vom 16.08.). Das
+            Nachrechnen meldet es jetzt als `freigabe_doppelt`; das
+            Überspringen selbst ist eine Konsensänderung und kommt einzeln
+      - [ ] Töpfe nach der Runde (Rest), Treuhand, Liegegeld streng
+      - [ ] Stichtag `nachrechnenStrengAbUnix` setzen, sobald
+            `/api/wirtschaft/regeln` über mehrere Runden 0 Abweichungen zeigt
 - [ ] Regel B von Stufe 2 trennen (eigenes Aktivierungsdatum) -- nur falls
       gewünscht
 - [ ] Ein Wirtschaftsmodell (Simulation) der Regeln bauen
