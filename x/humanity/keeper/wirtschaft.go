@@ -6,7 +6,7 @@ package keeper
 // eroeffnet, Register unten) und freie Adresse (alles andere ausser den
 // Protokoll-Toepfen). Unternehmen haben keine 25.000-Grenze, zahlen aber
 // Liegegeld auf Geld, das bei ihnen liegen bleibt. Freie Adressen duerfen
-// hoechstens 1.000 AEQ halten und zahlen 1 %/Monat. Menschen zahlen auf
+// hoechstens 250 AEQ halten und zahlen 1 %/Monat. Menschen zahlen auf
 // Erspartes erst ueber 5.000 AEQ etwas.
 //
 // WAS KONSENS IST UND WAS BUCHFUEHRUNG. Konsens ist nur das Register der
@@ -21,10 +21,10 @@ package keeper
 // Ergebnis. Die Buchfuehrung wird auch beim Nachspielen mitgefuehrt, damit
 // ein anderer Knoten, der die Erzeugung uebernimmt, dieselben Zahlen hat.
 //
-// FREIBETRAG NACH UMSATZ (Konzept Abschnitt 14, beschlossen 25.09.2026).
+// FREIBETRAG NACH UMSATZ (Konzept Abschnitt 4.2 und 4.3, beschlossen 25.09.2026).
 // Unternehmen halten bis zu 1,5 Monatsumsaetze frei (mindestens den Sockel),
 // bis 3 Monatsumsaetze kostet der Teil darueber 0,5 %/Monat, alles darueber
-// 2 %/Monat. Frueher trug jedes AEQ ein Alter und wurde in fester Reihenfolge
+// 1 %/Monat (bis 26.09.2026: 2 %). Frueher trug jedes AEQ ein Alter und wurde in fester Reihenfolge
 // ausgegeben -- gruendlich gegen Umgehung, aber fuer echte Unternehmen zu
 // teuer (12-36 %/Jahr auf ganz normale Reserven) und fuer Buchhaltung und
 // Kassen nicht abbildbar. Ein AEQ ist jetzt wieder wie das andere.
@@ -93,7 +93,7 @@ const (
 	// Durchschnitt", egal ob AEQ steigt oder faellt. Eine Kopplung an den
 	// Dollar braeuchte eine Kursquelle, die jemand verschieben koennte, und
 	// wuerde die Grenzen bei steigendem Kurs still verschaerfen.
-	// (Konzept Abschnitt 6.7; der Monatsfreibetrag soll nach der Pilotstadt
+	// (Konzept Abschnitt 9; der Monatsfreibetrag soll nach der Pilotstadt
 	// dem Median der echten Monatsausgaben folgen, nie unter 1x.)
 
 	// Menschen (Fairness-Garantie, Konzept Abschnitt 3)
@@ -185,6 +185,17 @@ type unternehmenEintrag struct {
 	Verantwortliche []string `json:"verantwortliche"`
 	EroeffnetAm     int64    `json:"eroeffnet_am"`
 	GeschlossenAm   int64    `json:"geschlossen_am,omitempty"`
+	// Verzeichnis und Bürgschaften (unternehmen_verzeichnis.go): selbst
+	// angegeben bzw. von Menschen bestätigt, ohne Wirkung auf Geld.
+	Ort             string          `json:"ort,omitempty"`
+	Annahme         string          `json:"annahme,omitempty"`
+	Webseite        string          `json:"webseite,omitempty"`
+	VerzeichnisZeit int64           `json:"verzeichnis_zeit,omitempty"`
+	Buergen         []buergeEintrag `json:"buergen,omitempty"`
+	BuergenAnzahl   int             `json:"buergen_anzahl,omitempty"`
+	// Austritte: unterschriebene Zeit des letzten Austritts je Person, nur
+	// solange eine Unterschrift noch gelten kann (unternehmen_verzeichnis.go).
+	Austritte map[string]int64 `json:"austritte,omitempty"`
 }
 
 func (e *unternehmenEintrag) offen() bool { return e != nil && e.GeschlossenAm == 0 }
@@ -207,6 +218,9 @@ type tagesUmsatz struct {
 	Mensch float64 `json:"m,omitempty"`  // von Menschen, je Mensch gedeckelt
 	BEin   float64 `json:"be,omitempty"` // von anderen Unternehmen
 	BAus   float64 `json:"ba,omitempty"` // an andere Unternehmen
+	// Ab der zweiten Stufe (wirtschaft2.go, B): von anderen Unternehmen, je
+	// zahlendem Unternehmen und Quartal gedeckelt wie bei Menschen.
+	Firmen float64 `json:"fi,omitempty"`
 }
 
 type buchKonto struct {
@@ -443,6 +457,33 @@ func (w *wirtschaft) inGruendungLocked(e *unternehmenEintrag, jetzt int64) bool 
 	return true
 }
 
+// erstesOffenesLocked: ist e das aelteste noch offene Unternehmen der Person,
+// die es eroeffnet hat (Verantwortliche[0])? Bei gleicher Sekunde gilt die
+// kleinere Adresse als erstes. Folgt allein aus dem Register (Konsens).
+// Je Gruenderin ist so immer hoechstens EIN Unternehmen "wie ein Mensch"
+// gestellt; ihr Freibetrag wird mit ihrem eigenen Guthaben geteilt
+// (liegegeldLocked), also nie verdoppelt.
+//
+// Aufwand: ein Durchlauf ueber das Register, wie inGruendungLocked. Im
+// Tageslauf also quadratisch in der Zahl der Unternehmen; bei 10.000
+// Unternehmen 10^8 einfache Vergleiche am Tag. Vor einer Groessenordnung
+// darueber gehoert ein Index her. w.mu gehalten.
+func (w *wirtschaft) erstesOffenesLocked(e *unternehmenEintrag) bool {
+	if !e.offen() || len(e.Verantwortliche) == 0 {
+		return false
+	}
+	gruender := e.Verantwortliche[0]
+	for _, x := range w.unternehmen {
+		if x == e || !x.offen() || len(x.Verantwortliche) == 0 || x.Verantwortliche[0] != gruender {
+			continue
+		}
+		if x.EroeffnetAm < e.EroeffnetAm || (x.EroeffnetAm == e.EroeffnetAm && x.Adresse < e.Adresse) {
+			return false
+		}
+	}
+	return true
+}
+
 // menschUmlaufFuer: was ein Mensch mit diesem Guthaben im Monat zahlt --
 // bis zur Vermoegensgrenze, die fuer Menschen gilt.
 func menschUmlaufFuer(stand float64) float64 {
@@ -467,7 +508,12 @@ func (w *wirtschaft) liegegeldLocked(addr string, stand, gruenderStand float64, 
 	}
 	umsatz := w.umsatzLocked(addr, jetzt)
 	normal := liegegeldFuerStand(stand, umsatz)
-	if !w.inGruendungLocked(w.unternehmen[addr], jetzt) {
+	e := w.unternehmen[addr]
+	// Ab der zweiten Stufe (wirtschaft2.go, A) gilt die Rechnung "wie ein
+	// Mensch" dauerhaft fuer das erste offene Unternehmen jeder Gruenderin,
+	// nicht nur im ersten halben Jahr: ein kleiner Laden zahlt nie mehr als ein
+	// Mensch mit demselben Guthaben.
+	if !w.inGruendungLocked(e, jetzt) && !(wirtschaft2Aktiv(jetzt) && w.erstesOffenesLocked(e)) {
 		return normal
 	}
 	g := math.Max(0, gruenderStand)
@@ -485,17 +531,24 @@ func (w *wirtschaft) monatsUmsatzLocked(k *buchKonto, tage, jetzt int64) float64
 		return 0
 	}
 	grenze := unixTag(jetzt) - tage
-	var mensch, ein, aus float64
+	var mensch, ein, aus, firmen float64
 	for _, t := range k.Tage {
 		if t.Tag > grenze {
 			mensch += t.Mensch
 			ein += t.BEin
 			aus += t.BAus
+			firmen += t.Firmen
 		}
 	}
-	// mensch kann durch Rueckzahlungen (rueckzahlungLocked) unter null
-	// fallen, wenn der Einkauf schon aus dem Fenster ist.
-	return (math.Max(0, mensch) + math.Max(0, ein-aus)) * 30 / float64(tage)
+	// mensch (und firmen) kann durch Rueckzahlungen (rueckzahlungLocked)
+	// unter null fallen, wenn der Einkauf schon aus dem Fenster ist.
+	//
+	// Zwischen Unternehmen zaehlt der hoehere Wert aus dem Ueberschuss
+	// (Eingaenge minus Zahlungen an Unternehmen) und der gedeckelten Summe der
+	// Eingaenge (wirtschaft2.go, B). Firmen ist vor der zweiten Stufe immer 0,
+	// dann ist das genau die alte Rechnung.
+	unternehmen := math.Max(math.Max(0, ein-aus), math.Max(0, firmen))
+	return (math.Max(0, mensch) + unternehmen) * 30 / float64(tage)
 }
 
 // quartalLocked: Gezaehlt auf das laufende Quartal bringen; das eben
@@ -541,6 +594,45 @@ func rueckzahlungLocked(fk, mensch *buchKonto, firma string, amount float64, jet
 	}
 }
 
+// zahlungZwischenFirmenLocked (wirtschaft2.go, B): Unternehmen from zahlt
+// Unternehmen to.
+//
+//  1. Rueckzahlung: Hat to vorher bei from eingekauft (fk ist dabei Verkaeufer
+//     gewesen), hebt diese Zahlung das auf, was davon bei from als Umsatz
+//     gezaehlt hat -- wie bei Menschen (rueckzahlungLocked). Hin und zurueck
+//     zwischen zwei Firmen bringt so nur einer Seite etwas.
+//  2. Zaehlen: Bei to zaehlt die Zahlung als Umsatz, je zahlendem Unternehmen
+//     hoechstens menschZaehltJeUntQuartal im Kalenderquartal (Zaehler beim
+//     Zahler: Gezaehlt[to]).
+//
+// w.mu gehalten.
+func zahlungZwischenFirmenLocked(fk, tk *buchKonto, from, to string, amount float64, jetzt int64) {
+	tk.quartalLocked(jetzt)
+	rest := amount
+	for _, m := range []map[string]float64{tk.Gezaehlt, tk.GezaehltVorher} {
+		if rest <= 0 || m == nil || m[from] <= 0 {
+			continue
+		}
+		n := math.Min(rest, m[from])
+		m[from] -= n
+		rest -= n
+		fk.tagLocked(jetzt).Firmen -= n
+	}
+
+	fk.quartalLocked(jetzt)
+	bisher := 0.0
+	if fk.Gezaehlt != nil {
+		bisher = fk.Gezaehlt[to]
+	}
+	if n := math.Min(amount, math.Max(0, menschZaehltJeUntQuartal-bisher)); n > 0 {
+		if fk.Gezaehlt == nil {
+			fk.Gezaehlt = map[string]float64{}
+		}
+		fk.Gezaehlt[to] = bisher + n
+		tk.tagLocked(jetzt).Firmen += n
+	}
+}
+
 // liegegeldFuerStand: Liegegeld pro Monat bei diesem Guthaben und Monatsumsatz.
 func liegegeldFuerStand(stand, umsatz float64) float64 {
 	frei := math.Max(unternehmenSockel, umsatzFreiFaktor*umsatz)
@@ -554,7 +646,7 @@ func liegegeldFuerStand(stand, umsatz float64) float64 {
 
 // gebuehrMitWirtschaft ersetzt ueberweisungsGebuehrFuer ab der Aktivierung:
 //   - Mensch: die ersten 1.000 AEQ Ausgaben im Monat gebuehrenfrei, danach
-//     0,1 % ohne Aufschlagstufen (Konzept 14.5).
+//     0,1 % ohne Aufschlagstufen (Konzept Abschnitt 3).
 //   - Unternehmen -> Mensch: 0 (Lohn, Entnahme, Erstattung).
 //   - Unternehmen -> sonst und freie Adresse: 0,1 %.
 //
@@ -587,7 +679,7 @@ func grundGebuehr(betrag float64) float64 {
 	return round6(betrag * float64(ueberweisungsGebuehrBps) / 10_000)
 }
 
-// pruefeEmpfaengerWirtschaft: eine freie Adresse haelt hoechstens 1.000 AEQ.
+// pruefeEmpfaengerWirtschaft: eine freie Adresse haelt hoechstens 250 AEQ (freiGrenze).
 // Nur bei der Annahme -- das Nachspielen bestehender Bloecke aendert sich nicht.
 func pruefeEmpfaengerWirtschaft(toArt kontoart, standVorher, zufluss float64, jetzt int64) error {
 	if !wirtschaftAktiv(jetzt) || toArt != artFrei {
@@ -657,6 +749,9 @@ func (cs *ChainState) nachUeberweisung(ctx context.Context, from, to string, fro
 		if !gemeinsameVerantwortliche(fromU, toU) {
 			fk.tagLocked(jetzt).BAus += amount
 			tk.tagLocked(jetzt).BEin += amount
+			if wirtschaft2Aktiv(jetzt) {
+				zahlungZwischenFirmenLocked(fk, tk, from, to, amount, jetzt)
+			}
 		}
 	}
 	if toArt == artUnternehmen {
@@ -669,7 +764,7 @@ func (cs *ChainState) nachUeberweisung(ctx context.Context, from, to string, fro
 // ausstiegsAbgabe: 2 % auf AEQ -> Stable. Abgabefrei ist, was das Konto
 // selbst von Stable in AEQ getauscht hat (Eingezahlt): wer Geld einzahlt und
 // wieder abhebt, gewinnt nichts und nimmt niemandem etwas. Menschen tauschen
-// darueber hinaus 3.000 AEQ im Monat ohne Abgabe, egal woher (Konzept 14.5).
+// darueber hinaus 3.000 AEQ im Monat ohne Abgabe, egal woher (Konzept Abschnitt 3).
 func (cs *ChainState) ausstiegsAbgabe(addr string, art kontoart, amountIn float64, jetzt int64) float64 {
 	if !wirtschaftAktiv(jetzt) || amountIn <= 0 || art == artSystem {
 		return 0
@@ -1065,8 +1160,13 @@ func (cs *ChainState) applyUnternehmenMitinhaberLocked(ctx context.Context, unte
 		w.mu.Unlock()
 		return fmt.Errorf("unternehmen_mitinhaber: %s ist schon fuer %d Unternehmen verantwortlich: %w", m, maxUnternehmenJeMensch, ErrZustandLehntAb)
 	}
+	// Anhaengen, nicht sortieren: Verantwortliche[0] ist die Person, die
+	// eroeffnet hat (inGruendungLocked, gruenderStand). Bis 02.10.2026 stand
+	// hier sort.Strings -- ein Mitinhaber mit kleinerer Adresse wurde damit
+	// zum "Gruender", und eine zweite Firma der echten Gruenderin bekam
+	// innerhalb von zwoelf Monaten noch einmal die Gruendungsphase. Die
+	// Reihenfolge ist trotzdem deterministisch: Blockreihenfolge.
 	e.Verantwortliche = append(e.Verantwortliche, m)
-	sort.Strings(e.Verantwortliche)
 	cp := *e
 	w.mu.Unlock()
 	return cs.speichereUnternehmen(ctx, &cp)
@@ -1106,6 +1206,7 @@ func (cs *ChainState) wirtschaftInitDB() {
 		`CREATE TABLE IF NOT EXISTS wirtschaft_unternehmen (
 			address TEXT PRIMARY KEY, name TEXT NOT NULL DEFAULT '', kategorie TEXT NOT NULL DEFAULT '',
 			verantwortliche TEXT NOT NULL DEFAULT '', eroeffnet_at BIGINT NOT NULL DEFAULT 0, geschlossen_at BIGINT NOT NULL DEFAULT 0)`,
+		`ALTER TABLE wirtschaft_unternehmen ADD COLUMN IF NOT EXISTS verzeichnis TEXT NOT NULL DEFAULT ''`,
 		`CREATE TABLE IF NOT EXISTS wirtschaft_buch (address TEXT PRIMARY KEY, daten TEXT NOT NULL DEFAULT '{}')`,
 		`CREATE TABLE IF NOT EXISTS wirtschaft_meta (schluessel TEXT PRIMARY KEY, wert BIGINT NOT NULL DEFAULT 0)`,
 	} {
@@ -1119,10 +1220,10 @@ func (cs *ChainState) speichereUnternehmen(ctx context.Context, e *unternehmenEi
 	if cs.db == nil {
 		return nil
 	}
-	_, err := cs.dbExecCtx(ctx).Exec(`INSERT INTO wirtschaft_unternehmen (address, name, kategorie, verantwortliche, eroeffnet_at, geschlossen_at)
-		VALUES ($1,$2,$3,$4,$5,$6)
-		ON CONFLICT (address) DO UPDATE SET name=$2, kategorie=$3, verantwortliche=$4, eroeffnet_at=$5, geschlossen_at=$6`,
-		e.Adresse, e.Name, e.Kategorie, strings.Join(e.Verantwortliche, ","), e.EroeffnetAm, e.GeschlossenAm)
+	_, err := cs.dbExecCtx(ctx).Exec(`INSERT INTO wirtschaft_unternehmen (address, name, kategorie, verantwortliche, eroeffnet_at, geschlossen_at, verzeichnis)
+		VALUES ($1,$2,$3,$4,$5,$6,$7)
+		ON CONFLICT (address) DO UPDATE SET name=$2, kategorie=$3, verantwortliche=$4, eroeffnet_at=$5, geschlossen_at=$6, verzeichnis=$7`,
+		e.Adresse, e.Name, e.Kategorie, strings.Join(e.Verantwortliche, ","), e.EroeffnetAm, e.GeschlossenAm, verzeichnisJSON(e))
 	if err != nil {
 		return fmt.Errorf("unternehmen speichern: %w", err)
 	}
@@ -1157,14 +1258,15 @@ func (cs *ChainState) wirtschaftLaden() {
 	w := cs.wirt()
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if rows, err := cs.db.Query(`SELECT address, name, kategorie, verantwortliche, eroeffnet_at, geschlossen_at FROM wirtschaft_unternehmen`); err == nil {
+	if rows, err := cs.db.Query(`SELECT address, name, kategorie, verantwortliche, eroeffnet_at, geschlossen_at, verzeichnis FROM wirtschaft_unternehmen`); err == nil {
 		for rows.Next() {
 			var e unternehmenEintrag
-			var v string
-			if rows.Scan(&e.Adresse, &e.Name, &e.Kategorie, &v, &e.EroeffnetAm, &e.GeschlossenAm) == nil {
+			var v, vz string
+			if rows.Scan(&e.Adresse, &e.Name, &e.Kategorie, &v, &e.EroeffnetAm, &e.GeschlossenAm, &vz) == nil {
 				if v != "" {
 					e.Verantwortliche = strings.Split(v, ",")
 				}
+				verzeichnisAusJSON(&e, vz)
 				w.unternehmen[e.Adresse] = &e
 			}
 		}
@@ -1307,6 +1409,15 @@ type buchStand struct {
 func (e *unternehmenEintrag) kopie() *unternehmenEintrag {
 	cp := *e
 	cp.Verantwortliche = append([]string(nil), e.Verantwortliche...)
+	if e.Buergen != nil {
+		cp.Buergen = append([]buergeEintrag(nil), e.Buergen...)
+	}
+	if e.Austritte != nil {
+		cp.Austritte = make(map[string]int64, len(e.Austritte))
+		for m, z := range e.Austritte {
+			cp.Austritte[m] = z
+		}
+	}
 	return &cp
 }
 
@@ -1397,9 +1508,7 @@ func (cs *ChainState) unternehmenFuerSnapshot() []*unternehmenEintrag {
 	defer w.mu.Unlock()
 	out := make([]*unternehmenEintrag, 0, len(w.unternehmen))
 	for _, e := range w.unternehmen {
-		cp := *e
-		cp.Verantwortliche = append([]string(nil), e.Verantwortliche...)
-		out = append(out, &cp)
+		out = append(out, e.kopie())
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Adresse < out[j].Adresse })
 	return out

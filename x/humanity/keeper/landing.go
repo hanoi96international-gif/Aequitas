@@ -558,7 +558,7 @@ section{padding:64px 16px}
   <div class="nav-top">
     <a href="/" class="logo-wrap">
       <div class="logo-icon">⚖</div>
-      <div><div class="logo-text">AEQUITAS</div><div class="logo-sub" data-i18n="logo-sub">The fairest money in the world</div></div>
+      <div><div class="logo-text">AEQUITAS</div><div class="logo-sub" data-i18n="logo-sub">On the way to the fairest money in the world</div></div>
     </a>
     <select class="lang-sel" id="lang-sel" aria-label="Language">
       <option value="en">🌐 EN</option>
@@ -1075,7 +1075,7 @@ section{padding:64px 16px}
         <tbody>
         <tr><th scope="row" data-i18n="cmp-r1">Basic income and vote</th><td data-i18n="cmp-yes">yes</td><td data-i18n="cmp-no">no</td><td data-i18n="cmp-no">no</td></tr>
         <tr><th scope="row" data-i18n="cmp-r2">Maximum holding</th><td data-i18n="cmp-v-25k">25,000 AEQ (25×)</td><td data-i18n="cmp-nolimit">no fixed limit</td><td data-i18n="cmp-v-1k">250 AEQ (0.25×)</td></tr>
-        <tr><th scope="row" data-i18n="cmp-r3">Idle money</th><td data-i18n="cmp-r3-p">0.5 % a month, only above 5,000 AEQ</td><td data-i18n="cmp-r3-b">up to 1.5 months' turnover free, then 0.5 % a month; above 3 months' turnover 1 %; in the first six months never more than a person</td><td data-i18n="cmp-r3-f">1 % a month</td></tr>
+        <tr><th scope="row" data-i18n="cmp-r3">Idle money</th><td data-i18n="cmp-r3-p">0.5 % a month, only above 5,000 AEQ</td><td data-i18n="cmp-r3-b">up to 1.5 months' turnover free, then 0.5 % a month; above 3 months' turnover 1 %; a person's first business never pays more than the person would</td><td data-i18n="cmp-r3-f">1 % a month</td></tr>
         <tr><th scope="row" data-i18n="cmp-r4">Sending money</th><td data-i18n="cmp-r4-p">first 1,000 AEQ a month free, then 0.1 %</td><td data-i18n="cmp-r4-b">to people free, otherwise 0.1 %</td><td data-i18n="cmp-r4-f">0.1 %</td></tr>
         <tr><th scope="row" data-i18n="cmp-r5">Exchange to euro or dollar</th><td data-i18n="cmp-r5-p">3,000 AEQ a month free, plus what you paid in yourself; then 2 %</td><td data-i18n="cmp-r5-b">2 %; what you paid in yourself goes back free</td><td data-i18n="cmp-r5-b">2 %; what you paid in yourself goes back free</td></tr>
         <tr><th scope="row" data-i18n="cmp-r6">Who opens it</th><td data-i18n="cmp-r6-p">every verified person, once</td><td data-i18n="cmp-r6-b">one to ten verified people; at most 3 per person</td><td data-i18n="cmp-r6-f">anyone</td></tr>
@@ -1118,7 +1118,7 @@ section{padding:64px 16px}
       <li data-i18n="ppl-2"><strong>Everyday life costs nothing.</strong> The first 1,000 AEQ you spend each month are free of fees.</li>
       <li data-i18n="ppl-3"><strong>Wages are wages.</strong> Up to 3,000 AEQ a month can be exchanged into euros or dollars without a levy, whatever the money comes from.</li>
       <li data-i18n="ppl-4"><strong>Saving is allowed.</strong> Up to 5,000 AEQ your savings lose nothing.</li>
-      <li data-i18n="ppl-5"><strong>Those who have more contribute more.</strong> Savings above 5,000 AEQ pay 0.5 % a month; the 25,000 AEQ limit stays.</li>
+      <li data-i18n="ppl-5"><strong>Those who have more contribute more.</strong> Savings above 5,000 AEQ pay 0.5 % a month; the 25,000 AEQ limit stays. From 3 October 2026 a payment that would take someone over the limit is refused instead of taken away.</li>
       <li data-i18n="ppl-6"><strong>People always pay less than businesses</strong> for holding and exiting, and everything anyone pays returns to all people equally.</li>
     </ol>
     <div class="biz-rules-h" data-i18n="fee-h">Transfer fee in detail</div>
@@ -1178,15 +1178,15 @@ section{padding:64px 16px}
 <section id="join">
   <div class="section-inner">
     <div class="section-label" data-i18n="jn-label">How to take part</div>
-    <h2 data-i18n="jn-h2">Four steps to your first payment</h2>
-    <p class="section-sub" data-i18n="jn-sub">What a bakery, a café or a workshop needs to accept AEQ.</p>
+    <h2 data-i18n="jn-h2">Taking part in the pilot</h2>
+    <p class="section-sub" data-i18n="jn-sub">What a bakery, a café or a workshop can do today, without a business account and without risk.</p>
     <div class="steps steps-4">
-      <div class="step"><div class="step-num">1</div><div class="step-ico"><svg class="ico" aria-hidden="true"><use href="#i-store"/></svg></div><h3 data-i18n="jn-1-h">Open a business account</h3><p data-i18n="jn-1-p">A verified person and the business wallet sign together. Up to 10 responsible people per business, at most 3 businesses per person. No registry office, no gatekeeper.</p></div>
-      <div class="step"><div class="step-num">2</div><div class="step-ico"><svg class="ico" aria-hidden="true"><use href="#i-qr"/></svg></div><h3 data-i18n="shop-1-h">Checkout by QR code</h3><p data-i18n="shop-1-p">Enter the amount, show the QR code, the customer scans and pays, and gets a receipt. Prices can be shown in AEQ or as the euro equivalent at the current rate.</p></div>
-      <div class="step"><div class="step-num">3</div><div class="step-ico"><svg class="ico" aria-hidden="true"><use href="#i-handshake"/></svg></div><h3 data-i18n="jn-3-h">Pass it on</h3><p data-i18n="jn-3-p">Wages to people cost nothing, payments to suppliers 0.1 %. Up to one and a half months' turnover never pays a levy.</p></div>
-      <div class="step"><div class="step-num">4</div><div class="step-ico"><svg class="ico" aria-hidden="true"><use href="#i-file"/></svg></div><h3 data-i18n="shop-2-h">Accounting export</h3><p data-i18n="shop-2-p">Every payment with date, amount in AEQ and euro value at the time of payment, as a CSV file for the tax adviser.</p></div>
+      <div class="step"><div class="step-num">1</div><div class="step-ico"><svg class="ico" aria-hidden="true"><use href="#i-store"/></svg></div><h3 data-i18n="jn-1-h">Register as a person</h3><p data-i18n="jn-1-p">The owner registers like everyone else. At first, payments go to their own account. No business account is needed for that.</p></div>
+      <div class="step"><div class="step-num">2</div><div class="step-ico"><svg class="ico" aria-hidden="true"><use href="#i-qr"/></svg></div><h3 data-i18n="shop-1-h">Show your QR code</h3><p data-i18n="shop-1-p">In the app, tap Receive. The customer scans the code and enters the amount. The money arrives in seconds, and receiving costs the shop nothing.</p></div>
+      <div class="step"><div class="step-num">3</div><div class="step-ico"><svg class="ico" aria-hidden="true"><use href="#i-handshake"/></svg></div><h3 data-i18n="jn-3-h">Set your own limit</h3><p data-i18n="jn-3-p">You decide how much you accept, for example up to 20 % of a purchase or up to 500 AEQ a month, and you set your AEQ prices yourself.</p></div>
+      <div class="step"><div class="step-num">4</div><div class="step-ico"><svg class="ico" aria-hidden="true"><use href="#i-file"/></svg></div><h3 data-i18n="shop-2-h">Business account when it pays off</h3><p data-i18n="shop-2-p">If AEQ takes off for you, a business account follows: no fixed limit, wages free of charge, reserves free up to one and a half months' turnover.</p></div>
     </div>
-    <div class="sybil-blurb" data-i18n="shop-status"><strong>Status:</strong> the rules on the chain are built and apply from 26 September 2026. Checkout mode and export in the app are in progress.</div>
+    <div class="sybil-blurb" data-i18n="shop-status"><strong>Honestly:</strong> during the beta there is no exchange into euros, so AEQ has no euro value yet. Checkout mode and accounting export are not built yet. Take part for your customers and for the idea, with a limit you set yourself.</div>
   </div>
 </section>
 
@@ -1227,8 +1227,8 @@ section{padding:64px 16px}
     <h2 data-i18n="ru-h2">The rules for business accounts</h2>
     <p class="section-sub" data-i18n="ru-sub">They apply from 26 September 2026. Every levy goes 100 % to the basic income, equally to every person.</p>
     <div class="biz-rules">
-      <div class="biz-row"><span class="biz-k" data-i18n="biz-r1-k">Idle money</span><span class="biz-v" data-i18n="biz-r1-v">Up to 1.5 months' turnover (at least 2,000 AEQ): free · up to 3 months' turnover: 0.5 % per month on the part above · beyond that: 1 % per month · first six months: never more than a person would pay (up to 25,000 AEQ)</span></div>
-      <div class="biz-row"><span class="biz-k" data-i18n="biz-r2-k">What counts as turnover</span><span class="biz-v" data-i18n="biz-r2-v">The average of the last 90 days, or of the last 12 months if that is higher (for seasonal businesses). Purchases count up to 9,000 AEQ per person and quarter; between businesses only the surplus counts; wages, your own payments and exchanges into AEQ do not count.</span></div>
+      <div class="biz-row"><span class="biz-k" data-i18n="biz-r1-k">Idle money</span><span class="biz-v" data-i18n="biz-r1-v">Up to 1.5 months' turnover (at least 2,000 AEQ): free · up to 3 months' turnover: 0.5 % per month on the part above · beyond that: 1 % per month · a person's first business never pays more than the person would (until 3 Oct 2026 only in its first six months, from then permanently)</span></div>
+      <div class="biz-row"><span class="biz-k" data-i18n="biz-r2-k">What counts as turnover</span><span class="biz-v" data-i18n="biz-r2-v">The average of the last 90 days, or of the last 12 months if that is higher (for seasonal businesses). Purchases count up to 9,000 AEQ per person and quarter. Between businesses the surplus counts; from 3 Oct 2026 also each paying business up to 9,000 AEQ per quarter, whichever is higher, so passing AEQ on to suppliers costs nothing. Wages, your own payments and exchanges into AEQ do not count.</span></div>
       <div class="biz-row"><span class="biz-k" data-i18n="biz-r3-k">Exit to euro or dollar</span><span class="biz-v" data-i18n="biz-r3-v">2 % levy. What you exchanged into AEQ yourself goes back free. People: also 3,000 AEQ a month free</span></div>
       <div class="biz-row"><span class="biz-k" data-i18n="biz-r4-k">Business to business</span><span class="biz-v" data-i18n="biz-r4-v">0.1 %</span></div>
       <div class="biz-row"><span class="biz-k" data-i18n="biz-r5-k">Where it goes</span><span class="biz-v" data-i18n="biz-r5-v">Every levy goes 100 % to the basic income, equally to every person</span></div>
@@ -1237,11 +1237,11 @@ section{padding:64px 16px}
     <details class="age-details"><summary class="biz-rules-h" data-i18n="age-h">What counts as turnover?</summary>
     <div class="biz-rules">
       <div class="biz-row"><span class="biz-k" data-i18n="age-r1-k">Purchases by people</span><span class="biz-v" data-i18n="age-r1-v">up to 9,000 AEQ per person and quarter</span></div>
-      <div class="biz-row"><span class="biz-k" data-i18n="age-r2-k">Payments from other businesses</span><span class="biz-v" data-i18n="age-r2-v">only the surplus: income from businesses minus payments to businesses</span></div>
+      <div class="biz-row"><span class="biz-k" data-i18n="age-r2-k">Payments from other businesses</span><span class="biz-v" data-i18n="age-r2-v">the surplus: income from businesses minus payments to businesses; from 3 Oct 2026 at least each paying business up to 9,000 AEQ per quarter</span></div>
       <div class="biz-row"><span class="biz-k" data-i18n="age-r3-k">Businesses with shared responsible people</span><span class="biz-v" data-i18n="age-r3-v">do not count for each other</span></div>
       <div class="biz-row"><span class="biz-k" data-i18n="age-r4-k">Wages, withdrawals, your own payments, other addresses, exchange into AEQ</span><span class="biz-v" data-i18n="age-r4-v">do not count</span></div>
     </div>
-    <p class="note" data-i18n="age-note">Turnover is the average of the last 90 days, or of the last 12 months if that is higher, so a seasonal business keeps its reserve after the season. The surplus rule stops circles: if three firms send each other money, each has as much coming in as going out, and the allowance does not grow. A new business is averaged over at least 30 days. In its first six months, founder and business together never pay more than one person would: one shared 5,000 AEQ allowance and one shared 25,000 AEQ limit. Once per person every 12 months.</p>
+    <p class="note" data-i18n="age-note">Turnover is the average of the last 90 days, or of the last 12 months if that is higher, so a seasonal business keeps its reserve after the season. A new business is averaged over at least 30 days. Between businesses the surplus counts; from 3 October 2026 each paying business also counts up to 9,000 AEQ per quarter, so passing AEQ on to suppliers no longer lowers the allowance. A circle between friendly firms gains at most that cap per firm, and every firm needs a verified person behind it. A person's first business never pays more than that person would: one shared 5,000 AEQ allowance and one shared 25,000 AEQ limit (until 3 October 2026 only in its first six months, once per person every 12 months).</p>
     </details>
     <div class="biz-live"><span><span data-i18n="biz-live-from">Rules apply from</span> <strong id="biz-from">—</strong></span><span><span data-i18n="biz-live-count">Registered businesses</span>: <strong id="biz-count">—</strong></span></div>
     <a class="section-link" href="https://github.com/hanoi96international-gif/Aequitas/blob/main/docs/UNTERNEHMEN_KONZEPT.md" rel="noopener" data-i18n="biz-link">Read the full concept →</a>
@@ -1255,8 +1255,8 @@ section{padding:64px 16px}
     <p class="section-sub" data-i18n="lh-sub">A decentralised network cannot check whether a real company stands behind an account, and it should not have to: no registry, no authority, no gatekeeper. Instead, hoarding is expensive in every form and passing money on is cheap in every form. Registering as a business only pays off for those whose money really flows.</p>
     <details class="lh-details"><summary class="biz-rules-h" data-i18n="lh-list-h">Every workaround we found, and why it fails</summary>
     <ul class="lh-list">
-      <li data-i18n="lh-1"><strong>Registering as a business to get around the 25,000 limit.</strong> Without real turnover a business pays 1 % a month on everything above 2,000 AEQ, twice as much as a person. In its first six months, founder and business together count as one person with one shared 25,000 AEQ limit.</li>
-      <li data-i18n="lh-2"><strong>Sending money in circles between your own or friendly firms to inflate turnover.</strong> Between businesses only the surplus counts, and your own firms do not count for each other: a circle adds nothing.</li>
+      <li data-i18n="lh-1"><strong>Registering as a business to get around the 25,000 limit.</strong> Without real turnover a business pays 1 % a month on everything above 2,000 AEQ, twice as much as a person. A person's first business shares one 5,000 AEQ allowance and one 25,000 AEQ limit with that person.</li>
+      <li data-i18n="lh-2"><strong>Sending money in circles between your own or friendly firms to inflate turnover.</strong> Your own firms do not count for each other. Between other firms each paying firm counts for at most 9,000 AEQ per quarter, and money sent back cancels what was counted: a circle gains little and needs a real person behind every firm.</li>
       <li data-i18n="lh-3"><strong>Paying money in yourself or through the owner.</strong> Payments from a business's own responsible people do not count as turnover.</li>
       <li data-i18n="lh-4"><strong>Friends who buy and get the money back.</strong> Each person counts at most 9,000 AEQ per quarter per business, and whatever the business pays back to that same person cancels it. The money would have to go back through other people, every quarter, publicly visible.</li>
       <li data-i18n="lh-5"><strong>Founding many firms for many free amounts.</strong> At most 3 business accounts per person, so at most 6,000 AEQ free.</li>
@@ -1342,7 +1342,7 @@ section{padding:64px 16px}
     <a href="https://x.com/AequitasMoney" target="_blank" rel="noopener noreferrer" class="social"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>@AequitasMoney</a>
     <a href="https://t.me/aequitasmoney" target="_blank" rel="noopener noreferrer" class="social"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg>Telegram</a>
   </div>
-  <p>Aequitas Chain · Chain ID 1926 · <span>aequitas.digital</span> · <span data-i18n="foot-launched">Launched June 2026</span> · <span data-i18n="foot-phase">Beta</span></p>
+  <p>Aequitas Chain · Chain ID 1926 · <span>aequitas.digital</span> · <span data-i18n="foot-launched">Restarted at zero on 30 Sep 2026</span> · <span data-i18n="foot-phase">Beta</span></p>
   <p style="margin-top:6px">"<em data-i18n="foot-quote">Money exists because people exist. Nothing more, nothing less.</em>"</p>
 </footer>
 

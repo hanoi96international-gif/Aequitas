@@ -14,6 +14,12 @@ import (
 // is nil-safe (see its own comment) but a nil breaker never trips, which
 // would make those tests vacuously pass.
 func newOrphanTestDAG() *BlockDAG {
+	// Jeder Test-DAG beginnt mit frischer Mauer-Zaehlung (replay_mauer.go).
+	// Der Zaehler ist paketweit -- im Betrieb richtig, ein Knoten hat eine
+	// Kette. In Tests summierten sich Abweisungen von Block #1 aus
+	// unabhaengigen Tests, und die dritte loeste die Selbstheilung samt
+	// os.Exit aus: je nach Testauswahl brach der ganze Testlauf ab.
+	merkeBlockErfolg()
 	return &BlockDAG{
 		blocks:                  make(map[string]*Block),
 		tips:                    make(map[string]bool),

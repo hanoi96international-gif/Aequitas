@@ -41,7 +41,8 @@ import (
 // Der Knoten merkt sich also: DIESER Nullifier ist durch die Pruefung
 // gekommen. /api/register nimmt nur solche.
 //
-// WARUM NUR IM ARBEITSSPEICHER
+// WARUM KNOTENLOKAL (seit 02.10.2026 mit Tabelle fuer den Neustart,
+// prove_herkunft_dauerhaft.go -- weiterhin kein Kettenzustand)
 //
 // Es ist kein Kettenzustand, sondern eine kurzlebige Herkunftsnotiz zwischen
 // zwei Aufrufen, die Sekunden auseinanderliegen. Sie in die Datenbank oder gar
@@ -131,7 +132,10 @@ func merkeProveHerkunft(reqBody, respBody []byte) {
 		return
 	}
 	jetzt := time.Now()
-	proveHerkunft.Store(schluessel, herkunft{zeit: jetzt, wallet: wallet})
+	h := herkunft{zeit: jetzt, wallet: wallet}
+	proveHerkunft.Store(schluessel, h)
+	// Zweites Gedaechtnis fuer einen Neustart (prove_herkunft_dauerhaft.go).
+	speichereProveHerkunftDB(schluessel, h)
 
 	// Beim Schreiben aufraeumen statt per Zeitgeber: die Menge ist klein, und
 	// ein Zeitgeber waere eine Goroutine mehr fuer nichts.
@@ -165,12 +169,19 @@ func hatProveHerkunft(nullifier, wallet string) bool {
 	if schluessel == "" || !isValidWalletAddr(w) {
 		return false
 	}
-	v, ok := proveHerkunft.Load(schluessel)
-	if !ok {
-		return false
+	var h herkunft
+	if v, ok := proveHerkunft.Load(schluessel); ok {
+		if h, ok = v.(herkunft); !ok {
+			return false
+		}
+	} else {
+		// Nach einem Neustart weiss der Arbeitsspeicher nichts mehr; die
+		// Tabelle schon. Jeder Fehler dort heisst: keine Herkunft.
+		if h, ok = ladeProveHerkunftDB(schluessel); !ok {
+			return false
+		}
 	}
-	h, ok := v.(herkunft)
-	return ok && h.wallet == w && time.Since(h.zeit) <= proveHerkunftTTL
+	return h.wallet == w && time.Since(h.zeit) <= proveHerkunftTTL
 }
 
 // eindeutigeWallet liest die Wallet aus dem /prove-Rumpf so, wie der

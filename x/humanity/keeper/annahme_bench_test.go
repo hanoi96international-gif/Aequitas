@@ -113,7 +113,7 @@ func annahmeBuendelMessenMit(b *testing.B, cs *ChainState, dag *BlockDAG) {
 		}
 		schluessel[i] = k
 		addr := strings.ToLower(crypto.PubkeyToAddress(k.PublicKey).Hex())
-		// Freie Adressen duerfen hoechstens 1.000 AEQ halten
+		// Freie Adressen duerfen hoechstens 250 AEQ halten
 		// (pruefeEmpfaengerWirtschaft) -- also 200, wie im Pruefstand.
 		acc := &AccountState{Address: addr, Balance: NewDecimal(200), LastActivityAt: nowUnix()}
 		if cs.useDB {

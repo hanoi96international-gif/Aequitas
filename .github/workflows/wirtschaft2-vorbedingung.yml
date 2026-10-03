@@ -1,0 +1,50 @@
+name: Wirtschaft Stufe 2 -- Vorbedingung auf C1/C2 pruefen (nur lesen)
+
+# Vor dem Ausrollen von wirtschaft.go (Gruender bleibt an erster Stelle,
+# docs/SICHERHEITSPRUEFUNG_BRANCH_2026-10-02.md, Abschnitt 1): Haelt die
+# Datenbank schon ein Unternehmen mit zwei oder mehr Verantwortlichen, rechnet
+# ein aktualisierter Knoten anders als einer, der neu nachspielt. Die Zahl muss
+# auf jeder Box 0 sein. Ist sie es nicht: NICHT ausrollen, sondern eine
+# Aktivierungszeit einbauen.
+#
+# Nur lesend. Ausgegeben wird nur eine Zahl je Box, keine Adresse, kein Name.
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  pruefen:
+    runs-on: ubuntu-latest
+    environment: produktion
+    timeout-minutes: 10
+    steps:
+      - name: Schluessel und Host-Pruefung
+        env:
+          K1: ${{ secrets.CONTABO_SSH_KEY }}
+          K2: ${{ secrets.CONTABO2_SSH_KEY }}
+        run: |
+          set -eu
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$K1" > ~/.ssh/c1 && printf '%s\n' "$K2" > ~/.ssh/c2 && chmod 600 ~/.ssh/c1 ~/.ssh/c2
+          ssh-keyscan -t ed25519 188.172.229.121 2>/dev/null > ~/.ssh/k1
+          ssh-keygen -lf ~/.ssh/k1 | awk '{print $2}' | grep -qx 'SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA'
+          ssh-keyscan 194.163.188.71 2>/dev/null > ~/.ssh/k2
+          ssh-keygen -lf ~/.ssh/k2 | awk '{print $2}' | grep -qx 'SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto'
+          cat ~/.ssh/k1 ~/.ssh/k2 > ~/.ssh/known_hosts
+      - name: Unternehmen mit mehreren Verantwortlichen
+        run: |
+          fehler=0
+          for box in c1:188.172.229.121 c2:194.163.188.71; do
+            k=${box%%:*}; h=${box#*:}
+            n=$(ssh -i ~/.ssh/$k -o BatchMode=yes root@$h \
+              "docker exec aequitas-postgres psql -U postgres -d aequitas -t -A -c \"SELECT count(*) FROM wirtschaft_unternehmen WHERE verantwortliche LIKE '%,%'\"" 2>/dev/null | tr -d '[:space:]')
+            gesamt=$(ssh -i ~/.ssh/$k -o BatchMode=yes root@$h \
+              "docker exec aequitas-postgres psql -U postgres -d aequitas -t -A -c 'SELECT count(*) FROM wirtschaft_unternehmen'" 2>/dev/null | tr -d '[:space:]')
+            echo "$k: Unternehmen gesamt=${gesamt:-?}, mit mehreren Verantwortlichen=${n:-?}"
+            if [ "${n:-x}" != "0" ]; then fehler=1; fi
+          done
+          if [ "$fehler" != "0" ]; then
+            echo "::error::Vorbedingung NICHT erfuellt (oder nicht lesbar) -- nicht ausrollen"
+            exit 1
+          fi
+          echo "Vorbedingung erfuellt: auf beiden Boxen 0"

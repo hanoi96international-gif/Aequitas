@@ -44,6 +44,7 @@ func TestUBICreditDoesNotResetTheDemurrageClock(t *testing.T) {
 // micro-AEQ from a second wallet every 89 days reset the clock on an entire
 // balance. Anyone who knew it was exempt; anyone who did not, was not.
 func TestReceivingDoesNotResetTheClock(t *testing.T) {
+	wirtschaft2Aus(t) // prueft das Kappen vor Stufe 2 (Nachspielen alter Bloecke)
 	cs := newTestState()
 	cs.pool = &PoolState{}
 	hoard := idleAcc("0xhoard", 50000, 89)

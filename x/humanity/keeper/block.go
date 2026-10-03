@@ -103,6 +103,11 @@ type Transaction struct {
 	// Name und Kategorie bei unternehmen_eroeffnen (wirtschaft.go).
 	Name      string `json:"name,omitempty"`
 	Kategorie string `json:"kategorie,omitempty"`
+	// Verzeichniseintrag (unternehmen_verzeichnis.go). omitempty: aeltere
+	// Bloecke behalten ihren Hash.
+	Ort      string `json:"ort,omitempty"`
+	Annahme  string `json:"annahme,omitempty"`
+	Webseite string `json:"webseite,omitempty"`
 	// ZK proof fields for register_human — enables secondary nodes to
 	// independently verify the proof via BioVerifier without trusting
 	// the validator signature alone. Fields are omitted for non-registration
@@ -5344,7 +5349,8 @@ func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
 			"validator_distribution", "validator_distribution_pool_zero", "lp_distribution", "lp_distribution_pool_zero", "escrow_move", "escrow_release", "escrow_recover",
 			"slash_equivocation", "distribution_round_marker", "pool_correction",
 			"liveness_renewal", "grant_release",
-			"umlauf", "unternehmen_eroeffnen", "unternehmen_mitinhaber", "unternehmen_schliessen":
+			"umlauf", "unternehmen_eroeffnen", "unternehmen_mitinhaber", "unternehmen_schliessen",
+			"unternehmen_verzeichnis", "unternehmen_buergschaft", "unternehmen_austreten":
 		// known / empty — OK
 		default:
 			fmt.Printf("[DAG] ✗ Rejected peer block #%d: unknown tx type %q\n", block.Height, tx.Type)
@@ -7650,6 +7656,32 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			}
 			if err := dag.state.applyUnternehmenSchliessenLocked(context.Background(), wallet, block.Timestamp); err != nil {
 				fmt.Printf("[REPLAY] ✗ unternehmen_schliessen %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
+				hardFailure = true
+				continue
+			}
+		case "unternehmen_verzeichnis", "unternehmen_buergschaft", "unternehmen_austreten":
+			// unternehmen_verzeichnis.go. Die Unterschrift ist vorab geprueft
+			// (auftrag_nachweis.go); ob der Unterzeichner in DIESEM Augenblick
+			// darf, prueft die apply-Funktion selbst. Ohne Nachweis gibt es
+			// keine dieser Arten -- auch nicht vor der Pflicht fuer
+			// signierte Auftraege.
+			if tx.Nachweis == nil {
+				fmt.Printf("[REPLAY] ✗ %s %s ohne Nachweis (block #%d) — Block abgelehnt\n", tx.Type, wallet, block.Height)
+				merkeUngueltigeSignaturBlock()
+				hardFailure = true
+				continue
+			}
+			var uerr error
+			switch tx.Type {
+			case "unternehmen_verzeichnis":
+				uerr = dag.state.applyUnternehmenVerzeichnisLocked(context.Background(), wallet, tx.To, tx.Ort, tx.Annahme, tx.Webseite, tx.Nachweis.Zeit, block.Timestamp)
+			case "unternehmen_buergschaft":
+				uerr = dag.state.applyUnternehmenBuergschaftLocked(context.Background(), wallet, tx.To, block.Timestamp)
+			default:
+				uerr = dag.state.applyUnternehmenAustretenLocked(context.Background(), wallet, tx.To, tx.Nachweis.Zeit, block.Timestamp)
+			}
+			if uerr != nil {
+				fmt.Printf("[REPLAY] ✗ %s %s: %v (block #%d) — rolling back whole block\n", tx.Type, wallet, uerr, block.Height)
 				hardFailure = true
 				continue
 			}

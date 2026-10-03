@@ -71,7 +71,8 @@ func braucheNachweis(typ string) bool {
 		return true
 	case "swap_aeq_tusd", "swap_tusd_aeq", "add_liquidity", "remove_liquidity",
 		"faucet", "escrow_recover",
-		"unternehmen_eroeffnen", "unternehmen_mitinhaber", "unternehmen_schliessen":
+		"unternehmen_eroeffnen", "unternehmen_mitinhaber", "unternehmen_schliessen",
+		"unternehmen_verzeichnis", "unternehmen_buergschaft", "unternehmen_austreten":
 		return true
 	}
 	return false
@@ -152,6 +153,12 @@ func auftragsNachricht(tx *Transaction) (string, []unterschrift, error) {
 			[]unterschrift{{to, n.Sig}, {v, n.Sig2}}, nil
 	case "unternehmen_schliessen":
 		return unternehmenSchliessenNachricht(w, n.Zeit), []unterschrift{{to, n.Sig}}, nil
+	case "unternehmen_verzeichnis":
+		return unternehmenVerzeichnisNachricht(w, to, tx.Ort, tx.Annahme, tx.Webseite, n.Zeit), []unterschrift{{to, n.Sig}}, nil
+	case "unternehmen_buergschaft":
+		return unternehmenBuergschaftNachricht(w, to, n.Zeit), []unterschrift{{to, n.Sig}}, nil
+	case "unternehmen_austreten":
+		return unternehmenAustretenNachricht(w, to, n.Zeit), []unterschrift{{to, n.Sig}}, nil
 	}
 	return "", nil, fmt.Errorf("Art %q traegt keinen Nachweis", tx.Type)
 }

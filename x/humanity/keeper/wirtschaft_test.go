@@ -4,6 +4,7 @@ import (
 	"context"
 	"math"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -25,15 +26,24 @@ const tag = int64(86400)
 // uhr setzt die Zeit fuer nowUnix() und gibt eine Funktion zum Vorstellen zurueck.
 func uhr(t *testing.T, start int64) func(sekunden int64) int64 {
 	t.Helper()
-	jetztWert := start
-	vorher := setzeZeitQuelleFuerTest(func() time.Time { return time.Unix(jetztWert, 0) })
+	// Atomar: Hintergrundarbeiter (z. B. der EVM-Spiegel) lesen die Uhr,
+	// waehrend der Test sie vorstellt.
+	var jetztWert atomic.Int64
+	jetztWert.Store(start)
+	vorher := setzeZeitQuelleFuerTest(func() time.Time { return time.Unix(jetztWert.Load(), 0) })
 	t.Cleanup(func() { setzeZeitQuelleFuerTest(vorher) })
-	return func(s int64) int64 { jetztWert += s; return jetztWert }
+	return func(s int64) int64 { return jetztWert.Add(s) }
 }
 
 func wirtschaftsTest(t *testing.T) (*ChainState, context.Context, func(int64) int64) {
 	t.Helper()
 	wirtschaftAn(t)
+	// Die zweite Stufe (wirtschaft2.go) ist hier AUS: diese Tests pruefen die
+	// Regeln, wie sie bis zu ihrer Aktivierung gelten. wirtschaft2An schaltet
+	// sie ein.
+	vorher2 := wirtschaft2AktivOverride.Load()
+	wirtschaft2AktivOverride.Store(math.MaxInt64)
+	t.Cleanup(func() { wirtschaft2AktivOverride.Store(vorher2) })
 	vor := uhr(t, 1_800_000_000)
 	cs := newTestState()
 	for _, m := range []string{wMensch1, wMensch2, wMensch3} {
@@ -206,7 +216,7 @@ func TestUnternehmenOhneVermoegensgrenze(t *testing.T) {
 	}
 }
 
-// Die Rechenbeispiele aus Konzept 14.4, als feste Zahlen.
+// Die Rechenbeispiele aus Konzept Abschnitt 7, als feste Zahlen.
 func TestLiegegeldNachUmsatz_Rechenbeispiele(t *testing.T) {
 	for _, f := range []struct {
 		name                  string
@@ -264,6 +274,35 @@ func TestGruendungWieEinMensch(t *testing.T) {
 	vor(182 * tag)
 	if g := lg(wFirmaA, 20_000); !fast(g, 180) {
 		t.Fatalf("nach einem halben Jahr normale Regeln, bekommen %v", g)
+	}
+}
+
+// Missbrauch: Ein Mitinhaber mit kleinerer Adresse darf nicht zum Gruender
+// werden. Sonst bekommt eine zweite Firma der echten Gruenderin innerhalb von
+// zwoelf Monaten noch einmal die Gruendungsphase.
+func TestGruenderBleibtNachMitinhaber(t *testing.T) {
+	cs, ctx, vor := wirtschaftsTest(t)
+	// wMensch2 gruendet; wMensch1 sortiert alphabetisch davor.
+	eroeffne(t, cs, ctx, wFirmaA, wMensch2)
+	vor(tag)
+	eroeffne(t, cs, ctx, wFirmaB, wMensch2)
+	cs.mu.Lock()
+	err := cs.applyUnternehmenMitinhaberLocked(ctx, wFirmaA, wMensch1, nowUnix())
+	cs.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if g := cs.wirt().unternehmen[wFirmaA].Verantwortliche[0]; g != wMensch2 {
+		t.Fatalf("Gruenderin von A ist %s, erwartet %s", g, wMensch2)
+	}
+	lg := func(firma string, stand float64) float64 {
+		return cs.umlaufBetrag(firma, artUnternehmen, stand, nowUnix(), sekundenJeMonat)
+	}
+	if g := lg(wFirmaB, 20_000); !fast(g, 180) {
+		t.Fatalf("zweite Firma derselben Gruenderin: normale 180, bekommen %v", g)
+	}
+	if g := lg(wFirmaA, 20_000); !fast(g, 80) {
+		t.Fatalf("A bleibt in der Gruendungsphase der echten Gruenderin: 80, bekommen %v", g)
 	}
 }
 
