@@ -1,24 +1,33 @@
 # Erinnerung: was noch offen ist
 
-Stand 02.10.2026. Eine Liste zum Abhaken. Begründungen und Quellen stehen in
+Stand 03.10.2026. Eine Liste zum Abhaken. Begründungen und Quellen stehen in
 den verlinkten Dokumenten.
 
-## ⏰ Frist: 03.10.2026, Stufe 2 der Wirtschaftsregeln
+## Erledigt am 03.10.2026
 
-Ab **03.10.2026, 12:00 UTC (14:00 MESZ)** gelten die neuen Regeln A, B und C
-(`wirtschaft2.go`). Bis dahin:
+- [x] Wirtschaft Stufe 2 und Unternehmensverzeichnis gemergt (#267) und auf
+      C1 ausgerollt (07:55 UTC, Stand `afc7178`); aktiv ab **03.10.2026,
+      12:00 UTC (14:00 MESZ)**
+- [x] Vorbedingung auf C1 geprüft: 0 Unternehmen mit mehreren
+      Verantwortlichen (Workflow „Wirtschaft Stufe 2 – Vorbedingung“, #268)
+- [x] Sicherheitsprüfung der Diffs als PR-Kommentare
+- [x] **Mindestalter umgesetzt**, ohne Ausweispflicht: Selbstangabe mit
+      Länderregel, Altersschätzung vor dem Vergleich, Altersbürgschaft
+      (aequitas-biometric-beta#30, Aequitas-App#26); Einwilligung v3
+- [x] Coordinator und Vergleichsdienst auf C1 ausgerollt, Altersprüfung
+      `beobachten`
+- [x] App 1.10.0 gemergt (Altersangabe, Altersbürgschaft, Unternehmen)
 
-- [ ] Branch `claude/beta-launch-business-integration-vr7u4c` mergen und
-      deployen. **Oder** das Aktivierungsdatum verschieben.
-- [ ] Vor dem Deploy prüfen, ob diese Abfrage **0** ergibt:
-      `SELECT count(*) FROM wirtschaft_unternehmen WHERE verantwortliche LIKE '%,%'`
-      (Erläuterung in `SICHERHEITSPRUEFUNG_BRANCH_2026-10-02.md`)
-- [ ] Eigene Sicherheitsprüfung des Diffs als PR-Kommentar (Regel aus
-      `AGENTS.md`)
-- [ ] Freigabe für die Produktionsumgebung erteilen
+## Betrieb, jetzt
 
-## Betrieb, vor dem Beta-Start
-
+- [ ] **C2 ist nicht erreichbar** (SSH-Zeitüberschreitung am 03.10.). Der
+      Coordinator verlangt ein Quorum von 2 aus C1 und C2 -- solange C2 fehlt,
+      scheitert jede Registrierung am Quorum. C2 wieder einrichten
+      (`VALIDATOR_EINRICHTEN.md`) oder das Quorum bewusst anders festlegen.
+- [ ] Altersmodell messen und freigeben (`aequitas-biometric-beta/docs/ALTERSMODELL.md`,
+      Workflow „Altersmodell messen“); erst danach `ALTERSPRUEFUNG=erzwingen`
+- [ ] App 1.10.0 als Release veröffentlichen (Workflow „APK als Release
+      veröffentlichen“)
 - [ ] Auf dem Server sind `PROOF_SERVER_URLS` und `CHAIN_SERVICE_TOKEN`
       gesetzt; `/api/health/combined` → `proof_server_sync` zeigt keine
       übersprungenen Meldungen
@@ -30,16 +39,13 @@ Ab **03.10.2026, 12:00 UTC (14:00 MESZ)** gelten die neuen Regeln A, B und C
 
 ## Entscheidungen, die nur ihr treffen könnt
 
-- [ ] **Mindestalter** für die Gesichtsprüfung festlegen (Vorschlag:
-      Selbsterklärung „mindestens 18“ in Einwilligung und App).
-      Hintergrund: Spanien und Portugal haben Worldcoin wegen Minderjähriger
-      gestoppt; Aequitas fragt heute kein Alter ab.
-- [ ] **Verantwortlichen** für den Datenschutz benennen (Name, Anschrift)
+- [ ] **Verantwortlichen** für den Datenschutz benennen (Name, Anschrift) --
+      fehlt in Einwilligung, Datenschutzerklärung und Impressum
 - [ ] Die sechs Grundsatzentscheidungen in `GRUNDPFEILER.md`, Abschnitt 13
 
 ## Vor dem Öffnen des Biometrie-Riegels (`ALLOW_REAL_BIOMETRIC_DATA`)
 
-- [ ] Mindestalter umsetzen (siehe oben)
+- [x] Mindestalter umsetzen (03.10.2026, siehe oben)
 - [ ] Festplattenverschlüsselung auf den Servern, die die Sketches halten
 - [ ] DSFA-Abwägung „ein Merkmal bleibt nach Löschung“ gegen den
       BayLDA-Bescheid zu Worldcoin prüfen lassen
@@ -49,7 +55,7 @@ Ab **03.10.2026, 12:00 UTC (14:00 MESZ)** gelten die neuen Regeln A, B und C
 
 ## Vor echtem Wert (Stablecoin, Euro, Pilotladen mit echter Ware)
 
-- [ ] **Kanzlei** beauftragen: Fragen 1–36 in `RECHTSFRAGEN_UNTERNEHMEN.md`
+- [ ] **Kanzlei** beauftragen (vorerst bewusst ohne, Entscheidung 02.10.): Fragen 1–36 in `RECHTSFRAGEN_UNTERNEHMEN.md`
       (u. a. MiCA-Whitepaper und Anbieter, Tausch-Pool als
       Krypto-Dienstleistung, E-Geld-Token am Pool)
 - [ ] Keinen eigenen Euro-Ein- und -Ausgang betreiben, sondern einen
@@ -68,13 +74,15 @@ Ab **03.10.2026, 12:00 UTC (14:00 MESZ)** gelten die neuen Regeln A, B und C
 - [ ] Mitbestimmung (Grundpfeiler 8) planen; die Forschung nennt sie eine
       Überlebensbedingung
 
-## Angebote von Claude, die auf eure Antwort warten
+## Technik, in Arbeit
 
-- [ ] Pull Request für den Branch erstellen
-- [ ] Regel B von Stufe 2 trennen (eigenes Aktivierungsdatum)
+- [ ] Strenges Nachrechnen aller Systembuchungen auf jedem Knoten („K-2
+      strict“) -- Voraussetzung dafür, neue Validatoren automatisch und ohne
+      Liste aufzunehmen
+- [ ] Regel B von Stufe 2 trennen (eigenes Aktivierungsdatum) -- nur falls
+      gewünscht
 - [ ] Ein Wirtschaftsmodell (Simulation) der Regeln bauen
 - [ ] `GRUNDPFEILER.md` als Seite veröffentlichen
-- [ ] Altersabfrage in App und Einwilligung einbauen
 
 ## Wo was steht
 
@@ -87,3 +95,4 @@ Ab **03.10.2026, 12:00 UTC (14:00 MESZ)** gelten die neuen Regeln A, B und C
 | Zahlen und Fairness | `WIRTSCHAFT_ZAHLENPRUEFUNG.md`, `WIRTSCHAFT_REIFEPRUEFUNG.md` |
 | Sicherheitsprüfung des Branches | `SICHERHEITSPRUEFUNG_BRANCH_2026-10-02.md` |
 | Datenschutz-Unterlagen | `aequitas-biometric-beta/docs/dsgvo/` |
+| Altersmodell, Freigabe | `aequitas-biometric-beta/docs/ALTERSMODELL.md` |
