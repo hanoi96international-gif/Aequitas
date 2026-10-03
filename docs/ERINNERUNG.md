@@ -96,7 +96,9 @@ den verlinkten Dokumenten.
             übersprungen. Geprüft vorher auf C1 (03.10.): seit 26.09. eine
             einzige Runde, keine einzige umlauf-Buchung -- Altblöcke
             unverändert
-      - [ ] Töpfe nach der Runde (Rest), Treuhand, Liegegeld streng
+      - [x] Liegegeld: streng mit dem gemeinsamen Stichtag statt nur je
+            Knoten per Umgebungsvariable; Abweichungen zählen im Nachrechnen
+      - [ ] Töpfe nach der Runde (Rest), Treuhand
       - [ ] Stichtag `nachrechnenStrengAbUnix` setzen, sobald
             `/api/wirtschaft/regeln` über mehrere Runden 0 Abweichungen zeigt
 - [ ] Regel B von Stufe 2 trennen (eigenes Aktivierungsdatum) -- nur falls

@@ -16,11 +16,21 @@ import (
 // durch das Guthaben. Jetzt rechnet jeder nachspielende Knoten nach, sofern
 // er selbst die Daten dazu hat.
 //
-// Zwei Stufen (AEQUITAS_LIEGEGELD_PRUEFUNG):
+// Zwei Stufen:
 //
-//   - "beobachten" (Standard): Abweichungen werden gezaehlt, protokolliert und
+//   - beobachten (Standard): Abweichungen werden gezaehlt, protokolliert und
 //     unter /api/wirtschaft/regeln veroeffentlicht; der Block gilt trotzdem.
-//   - "streng": eine Abweichung lehnt den Block ab.
+//   - streng: eine Abweichung lehnt den Block ab.
+//
+// Streng wird es fuer ALLE Knoten zugleich mit dem gemeinsamen Stichtag
+// nachrechnenStrengAbUnix (nachrechnen.go, K-2). Bis 03.10.2026 schaltete
+// nur AEQUITAS_LIEGEGELD_PRUEFUNG=streng um -- je Knoten. Eine Konsensregel,
+// die jeder Knoten anders eingestellt haben kann, ist selbst nicht
+// deterministisch: ein strenger Knoten verwirft, was die anderen annehmen,
+// und laeuft von der Kette weg. Die Variable bleibt als Moeglichkeit, einen
+// einzelnen Knoten frueher streng zu stellen (nie lockerer), und die
+// Abweichungen zaehlen jetzt auch im gemeinsamen Nachrechnen (Regel
+// "liegegeld").
 //
 // Warum nicht sofort streng: der Erzeuger schreibt seinen Buchungsaugenblick
 // in die Transaktion (Transaction.BuchAt), der Nachspielende bucht zum selben
@@ -113,6 +123,13 @@ func (cs *ChainState) pruefeUmlaufLocked(wallet string, betrag float64, at int64
 	liegegeldAbweichungen.Add(1)
 	fmt.Printf("[LIEGEGELD] Abweichung %s: im Block %.6f, nachgerechnet %.6f (Stand %.6f, %ds)\n",
 		wallet, betrag, erwartet, stand, sekunden)
+	// Gemeinsamer Stichtag (nachrechnen.go): zaehlt dort mit und lehnt ab dem
+	// Stichtag auf jedem Knoten ab. at ist die Rundenzeit; sie liegt
+	// hoechstens 600 s neben der Blockzeit (Regel "rundenmarke").
+	if err := nachrechnenAbweichung("liegegeld", at, "%s: im Block %.6f, nachgerechnet %.6f",
+		kurzAdresse(wallet), betrag, erwartet); err != nil {
+		return err
+	}
 	if streng {
 		return fmt.Errorf("umlauf %s: im Block %.6f, nachgerechnet %.6f: %w", wallet, betrag, erwartet, ErrZustandLehntAb)
 	}
@@ -130,7 +147,7 @@ func (w *wirtschaft) fensterVollLocked(jetzt int64) bool {
 
 func liegegeldPruefungStand() map[string]interface{} {
 	modus := "beobachten"
-	if liegegeldStreng() {
+	if liegegeldStreng() || nachrechnenStreng(nowUnix()) {
 		modus = "streng"
 	}
 	return map[string]interface{}{
