@@ -7808,7 +7808,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			// context.Background() is correct — see registerHumanLocked's
 			// comment: dag.state.activeTx was already set directly above
 			// this loop, and dbExecCtx falls back to it.
-			if err := dag.state.applyEscrowMoveDeltaLocked(context.Background(), wallet, tx.FromDemurrageLost, tx.LPShares, tx.EscrowTUsdConverted); err != nil {
+			if err := dag.state.applyEscrowMoveDeltaLocked(context.Background(), wallet, tx.FromDemurrageLost, tx.LPShares, tx.EscrowTUsdConverted, block.Timestamp); err != nil {
 				fmt.Printf("[REPLAY] ✗ escrow_move %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
 				hardFailure = true
 				continue
@@ -7819,7 +7819,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			// context.Background() is correct — see registerHumanLocked's
 			// comment: dag.state.activeTx was already set directly above
 			// this loop, and dbExecCtx falls back to it.
-			if err := dag.state.applyEscrowReleaseDeltaLocked(context.Background(), tx.Amount); err != nil {
+			if err := dag.state.applyEscrowReleaseDeltaLocked(context.Background(), strings.ToLower(tx.Wallet), tx.Amount); err != nil {
 				fmt.Printf("[REPLAY] ✗ escrow_release: %v (block #%d) — rolling back whole block\n", err, block.Height)
 				hardFailure = true
 				continue

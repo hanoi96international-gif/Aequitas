@@ -104,8 +104,15 @@ den verlinkten Dokumenten.
       - [x] Treuhand: escrow_move nur für 2,5 Jahre inaktive Menschen;
             Freigabe/Rückholung vor der ersten möglichen Treuhand (ab
             Dezember 2028 bzw. Juni 2030) gemeldet
-      - [ ] Treuhand als Konsenszustand (Freigabe ≤ Bestand) -- nötig vor
-            Dezember 2028, der ersten möglichen Verschiebung
+      - [x] Treuhand als Bestand bei jedem Knoten: Nachspielende legen die
+            Treuhand-Zeile selbst an (Betrag aus dem eigenen Zustand,
+            Blockzeit als Frist) und entfernen sie bei Freigabe/Rückholung;
+            gemeldet werden Freigabe/Rückholung ohne oder über Bestand, vor
+            der Frist und eine zweite Verschiebung derselben Wallet. Altbestand
+            gibt es nicht (erste Verschiebung frühestens 09.12.2028)
+      - [ ] Treuhand in die StateRoot aufnehmen -- heute zählt nur das
+            genullte Guthaben, nicht die Zeile; bis dahin sichern die
+            Nachrechen-Regeln den Bestand
       - [ ] Stichtag `nachrechnenStrengAbUnix` setzen, sobald
             `/api/wirtschaft/regeln` über mehrere Runden 0 Abweichungen zeigt
 - [ ] Regel B von Stufe 2 trennen (eigenes Aktivierungsdatum) -- nur falls

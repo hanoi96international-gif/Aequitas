@@ -622,8 +622,9 @@ func (cs *ChainState) checkAndMoveToEscrowLocked(ctx context.Context) ([]Distrib
 // moves them into the UBI pool for distribution. Returns exactly what was
 // released for each wallet so the caller can build "escrow_release" TXs for
 // secondaries to replay — secondaries never run this function themselves
-// (see main.go's primary-only gate), and don't need an escrow_accounts
-// table at all since only the resulting UBI-pool credit affects StateRoot.
+// (see main.go's primary-only gate). Seit K-2 fuehren sie die
+// escrow_accounts-Zeilen trotzdem mit (applyEscrowMoveDeltaLocked), um jede
+// Freigabe gegen den eigenen Bestand zu pruefen (nachrechnen_treuhand.go).
 //
 // FIX (audit3, P0 #3): now assumes cs.mu is already held by the caller
 // (RunDailyDistributionAtomic) and uses cs.dbExec() so the escrow DELETE and
@@ -696,10 +697,11 @@ func (cs *ChainState) releaseEscrowToUBILocked(ctx context.Context) ([]Distribut
 }
 
 // applyEscrowRecoverDeltaLocked is the secondary-node replay handler for an
-// "escrow_recover" TX produced by RecoverFromEscrow on the primary.  The
-// secondary never had an escrow_accounts row (it only zeroed the balance via
-// applyEscrowMoveDeltaLocked), so this just credits the amount back and
-// resets the activity timer — no DELETE needed.  Caller must hold cs.mu.
+// "escrow_recover" TX produced by RecoverFromEscrow on the primary. It
+// credits the amount back, resets the activity timer and -- seit K-2, weil
+// der Nachspielende die Treuhand jetzt mitfuehrt (applyEscrowMoveDeltaLocked)
+// -- entfernt die escrow_accounts-Zeile wie der Erzeuger. Caller must hold
+// cs.mu.
 // Block replay (block.go) calls this with context.Background(): it sets
 // dag.state.activeTx itself before this runs, and dbExecCtx falls back to
 // that field when ctx carries no transaction, so behavior there is
@@ -709,6 +711,9 @@ func (cs *ChainState) releaseEscrowToUBILocked(ctx context.Context) ([]Distribut
 func (cs *ChainState) applyEscrowRecoverDeltaLocked(ctx context.Context, wallet string, amount float64, activityAt int64) error {
 	if amount <= 0 {
 		return fmt.Errorf("escrow_recover amount must be positive, got %.6f", amount)
+	}
+	if err := cs.treuhandZeileEntfernenLocked(ctx, wallet); err != nil {
+		return fmt.Errorf("escrow_recover: %w", err)
 	}
 	// FIX (Monster Audit follow-up, 2026-07-12, P0): same cold-cache
 	// blind-create pattern as applyValidatorRewardDeltaLocked et al. — a cold
@@ -728,6 +733,21 @@ func (cs *ChainState) applyEscrowRecoverDeltaLocked(ctx context.Context, wallet 
 	}
 	if err := cs.saveAccountToDBCtx(ctx, acc); err != nil {
 		return fmt.Errorf("could not persist escrow recovery for %s: %w", wallet, err)
+	}
+	return nil
+}
+
+// treuhandZeileEntfernenLocked: die Treuhand-Zeile einer Wallet beim
+// Nachspielen entfernen (Freigabe in den Topf oder Rueckholung). Fehlt sie,
+// ist das hier kein Fehler -- ob es sie geben muesste, prueft und meldet
+// nachrechnen_treuhand.go vor dem Anwenden.
+func (cs *ChainState) treuhandZeileEntfernenLocked(ctx context.Context, wallet string) error {
+	wallet = strings.ToLower(strings.TrimSpace(wallet))
+	if cs.db == nil || wallet == "" {
+		return nil
+	}
+	if _, err := cs.dbExecCtx(ctx).Exec(`DELETE FROM escrow_accounts WHERE wallet_address = $1`, wallet); err != nil {
+		return fmt.Errorf("could not clear escrow row for %s: %w", wallet, err)
 	}
 	return nil
 }
