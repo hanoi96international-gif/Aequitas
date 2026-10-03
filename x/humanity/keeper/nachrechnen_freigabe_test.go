@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"fmt"
+	"math"
 	"testing"
 )
 
@@ -236,5 +237,62 @@ func TestFreigabe_DoppelteRundeGibtNichtFrei_RealDB(t *testing.T) {
 	runde(3, at+86400) // naechster Tag: wieder eine echte Runde
 	if got := rest(); got != NewDecimal(800-2*rate) {
 		t.Fatalf("Runde am naechsten Tag: Rest %v, erwartet %v", got, NewDecimal(800-2*rate))
+	}
+}
+
+// Dasselbe fuer das Liegegeld (umlauf): eine doppelte Runde darf es nicht
+// ein zweites Mal einziehen.
+func TestUmlauf_DoppelteRundeZiehtNichtZweimalEin_RealDB(t *testing.T) {
+	truncateDistTestTables(t) // auch das Opt-in-Tor
+	cs := testKnoten(t, "unused-umlauf-doppelrunde-test.json")
+	if !cs.useDB {
+		t.Fatal("erwartet eine echte PostgreSQL-Verbindung -- DATABASE_URL pruefen")
+	}
+	wirtschaftAktivOverride.Store(1)
+	t.Cleanup(func() { wirtschaftAktivOverride.Store(math.MaxInt64) })
+	konto := distTestAddr(902)
+	cs.mu.Lock()
+	acc := &AccountState{Address: konto, IsHuman: true, Balance: NewDecimal(10000)}
+	if err := cs.saveAccountToDB(acc); err != nil {
+		cs.mu.Unlock()
+		t.Fatalf("Konto anlegen: %v", err)
+	}
+	cs.accounts.Set(konto, acc)
+	cs.mu.Unlock()
+
+	dag := newOrphanTestDAG()
+	dag.state = cs
+	dag.bootHeight = 0
+	dag.replayedBlocks = make(map[string]bool)
+	dag.replayFailures = make(map[string]replayFailureState)
+	dag.stateRootMismatches = map[string]int{}
+	dag.stateRootMismatchLastAt = map[string]int64{}
+
+	at := nowUnix()
+	runde := func(n int, zeit int64) {
+		t.Helper()
+		b := &Block{Height: int64(n), Hash: fmt.Sprintf("umlauf-doppelrunde-%d", n), Timestamp: zeit,
+			Transactions: []Transaction{
+				{Type: "umlauf", Wallet: konto, Amount: 10, DistributionAt: zeit},
+				{Type: "distribution_round_marker", DistributionAt: zeit},
+			}}
+		if !dag.replayTransactions(b, true) {
+			t.Fatalf("Runde %d abgelehnt", n)
+		}
+	}
+	guthaben := func() Decimal {
+		cs.mu.Lock()
+		defer cs.mu.Unlock()
+		a, _ := cs.accounts.Get(konto)
+		return a.Balance
+	}
+
+	runde(1, at)
+	if got := guthaben(); got != NewDecimal(9990) {
+		t.Fatalf("Vorbedingung: nach der ersten Runde %v, erwartet 9990", got)
+	}
+	runde(2, at+3600)
+	if got := guthaben(); got != NewDecimal(9990) {
+		t.Fatalf("doppelte Runde hat ein zweites Mal eingezogen: %v, erwartet 9990", got)
 	}
 }

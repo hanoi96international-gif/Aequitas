@@ -6709,7 +6709,15 @@ func isDistributionRoundTxType(txType string) bool {
 		// Ohne Wirkung auf Altbloecke: die Staffel ist vor
 		// stagedGrantActivationUnix (2100) Leerlauf, kein Block traegt eine
 		// angewandte Freigabe.
-		"grant_release":
+		"grant_release",
+		// umlauf (wirtschaft.go, Umlaufsicherung/Liegegeld) entsteht ebenfalls
+		// nur in der Tagesrunde (umlaufLocked, einziger Aufrufer
+		// RunDailyDistributionAtomic) und fehlte hier: In einer doppelten
+		// Runde wurde das Liegegeld ein zweites Mal eingezogen. Ohne Wirkung
+		// auf Altbloecke: bis 03.10.2026 gab es auf C1 eine einzige Runde
+		// seit der Umlaufsicherung und keine einzige umlauf-Buchung
+		// (betrieb-pruefen-c1.yml, Rundenzeiten).
+		"umlauf":
 		return true
 	default:
 		return false
