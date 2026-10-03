@@ -2417,6 +2417,10 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 	// Jeder Eintritt ist ein Versuch; zusammen mit den Ausfallgruenden ergibt
 	// das den Anteil der Ticks, die tatsaechlich einen Block ergaben.
 	merkeProduktionsVersuch()
+	if beobachterModus() {
+		merkeProduktionsAusfall("beobachter")
+		return nil // nur nachspielen, nie erzeugen (beobachter.go)
+	}
 	if dag.resyncInProgress.Load() {
 		merkeProduktionsAusfall("resync_laeuft")
 		return nil // an in-process self-heal resync is atomically swapping account/DAG state right now — see resyncInProgress's field comment

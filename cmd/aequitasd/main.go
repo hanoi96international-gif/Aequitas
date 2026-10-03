@@ -436,6 +436,9 @@ func main() {
 		os.Exit(1)
 	}
 	fmt.Printf("✓ Registervertrag: %s\n", keeper.VertragVersion())
+	if keeper.BeobachterModus() {
+		fmt.Println("✓ Beobachter (AEQUITAS_BEOBACHTER): spielt nur nach, erzeugt keine Bloecke")
+	}
 	fmt.Println()
 
 	fmt.Println()
