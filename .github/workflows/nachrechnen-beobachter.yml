@@ -76,6 +76,10 @@ jobs:
           PRIMARY_NODE_URL: ${{ env.C1 }}
           BOOTSTRAP_SNAPSHOT_URL: ${{ env.C1 }}/api/snapshot
           BOOTSTRAP_SIGNER: ${{ steps.c1.outputs.signierer }}
+          # Geschlossene Produzentenliste wie bei jedem Betreiberknoten (K-1):
+          # ohne sie kennt der frische Knoten C1 nicht als Erzeuger und haengt
+          # keinen einzigen Block an (Lauf 2: "Unknown proposer").
+          AUTHORIZED_VALIDATORS: ${{ steps.c1.outputs.signierer }}
           AEQUITAS_BEOBACHTER: "1"
           AEQUITAS_WAL_ENABLED: "1"
           AEQUITAS_WAL_PATH: /tmp/aequitas-wal/aequitas_transfers.wal

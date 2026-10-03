@@ -134,6 +134,9 @@ func (cs *ChainState) rechneKundschaft(jetzt time.Time) (map[string]int, error) 
 	if len(adressen) == 0 {
 		return out, nil
 	}
+	// Die Tabelle entsteht sonst erst beim ersten Schreiben; ein frischer
+	// Knoten (Beobachter, neuer Validator) las bis dahin ins Leere.
+	cs.ensureKontoVerlaufTable()
 	ctx, cancel := context.WithTimeout(context.Background(), kundschaftWartezeit)
 	defer cancel()
 	ab := jetzt.Add(-kundschaftFensterTage * 24 * time.Hour).Unix()
@@ -187,6 +190,9 @@ func (cs *ChainState) rechneWeitergabe(jetzt time.Time) (map[string]weitergabe, 
 	if len(adressen) == 0 {
 		return out, nil
 	}
+	// Die Tabelle entsteht sonst erst beim ersten Schreiben; ein frischer
+	// Knoten (Beobachter, neuer Validator) las bis dahin ins Leere.
+	cs.ensureKontoVerlaufTable()
 	ctx, cancel := context.WithTimeout(context.Background(), kundschaftWartezeit)
 	defer cancel()
 	ab := jetzt.Add(-kundschaftFensterTage * 24 * time.Hour).Unix()
@@ -216,6 +222,9 @@ func (cs *ChainState) rechneWeitergabe(jetzt time.Time) (map[string]weitergabe, 
 // rechneGrundeinkommen30: groesste Summe an Grundeinkommen, die ein Mensch in
 // den letzten 30 Tagen bekommen hat.
 func (cs *ChainState) rechneGrundeinkommen30(jetzt time.Time) (float64, error) {
+	// Die Tabelle entsteht sonst erst beim ersten Schreiben; ein frischer
+	// Knoten (Beobachter, neuer Validator) las bis dahin ins Leere.
+	cs.ensureKontoVerlaufTable()
 	ctx, cancel := context.WithTimeout(context.Background(), kundschaftWartezeit)
 	defer cancel()
 	ab := jetzt.Add(-grundeinkommenFensterTag * 24 * time.Hour).Unix()
