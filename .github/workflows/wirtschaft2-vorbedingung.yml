@@ -12,6 +12,12 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+env:
+  # Wie in deploy-c1-dann-c2.yml: C2 ist seit dem Neustart bei null (30.09.)
+  # kein Validator und wird neu eingerichtet. Solange "nein", wird nur C1
+  # geprueft -- der einzige Knoten, der ausgerollt wird. Zurueck auf "ja",
+  # sobald C2 wieder Validator ist.
+  C2_AKTIV: "nein"
 jobs:
   pruefen:
     runs-on: ubuntu-latest
@@ -27,14 +33,19 @@ jobs:
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           printf '%s\n' "$K1" > ~/.ssh/c1 && printf '%s\n' "$K2" > ~/.ssh/c2 && chmod 600 ~/.ssh/c1 ~/.ssh/c2
           ssh-keyscan -t ed25519 188.172.229.121 2>/dev/null > ~/.ssh/k1
-          ssh-keygen -lf ~/.ssh/k1 | awk '{print $2}' | grep -qx 'SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA'
-          ssh-keyscan 194.163.188.71 2>/dev/null > ~/.ssh/k2
-          ssh-keygen -lf ~/.ssh/k2 | awk '{print $2}' | grep -qx 'SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto'
-          cat ~/.ssh/k1 ~/.ssh/k2 > ~/.ssh/known_hosts
+          ssh-keygen -lf ~/.ssh/k1 | awk '{print $2}' | grep -qx 'SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA' || { echo "::error::Host-Schluessel von C1 passt nicht"; exit 1; }
+          cat ~/.ssh/k1 > ~/.ssh/known_hosts
+          if [ "$C2_AKTIV" = "ja" ]; then
+            ssh-keyscan 194.163.188.71 2>/dev/null > ~/.ssh/k2
+            ssh-keygen -lf ~/.ssh/k2 | awk '{print $2}' | grep -qx 'SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto' || { echo "::error::Host-Schluessel von C2 passt nicht"; exit 1; }
+            cat ~/.ssh/k2 >> ~/.ssh/known_hosts
+          fi
       - name: Unternehmen mit mehreren Verantwortlichen
         run: |
           fehler=0
-          for box in c1:188.172.229.121 c2:194.163.188.71; do
+          boxen="c1:188.172.229.121"
+          if [ "$C2_AKTIV" = "ja" ]; then boxen="$boxen c2:194.163.188.71"; else echo "::notice::C2_AKTIV=$C2_AKTIV -- C2 ist kein Validator und wird nicht ausgerollt, nur C1 wird geprueft"; fi
+          for box in $boxen; do
             k=${box%%:*}; h=${box#*:}
             n=$(ssh -i ~/.ssh/$k -o BatchMode=yes root@$h \
               "docker exec aequitas-postgres psql -U postgres -d aequitas -t -A -c \"SELECT count(*) FROM wirtschaft_unternehmen WHERE verantwortliche LIKE '%,%'\"" 2>/dev/null | tr -d '[:space:]')
@@ -47,4 +58,4 @@ jobs:
             echo "::error::Vorbedingung NICHT erfuellt (oder nicht lesbar) -- nicht ausrollen"
             exit 1
           fi
-          echo "Vorbedingung erfuellt: auf beiden Boxen 0"
+          echo "Vorbedingung erfuellt: 0 auf allen geprueften Boxen ($boxen)"
