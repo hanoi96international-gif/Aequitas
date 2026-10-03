@@ -59,6 +59,18 @@ const poolCorrectionFlagV1 = "pool_correction_applied_v1"
 //
 // cs.mu muss gehalten werden.
 func (cs *ChainState) applyPoolCorrectionLocked(ctx context.Context, aeqBurn, tusdBurn float64) error {
+	// NUR AUF DER ALTEN KETTE (Analyse 03.10.2026). Der Ueberschuss, den diese
+	// Korrektur beseitigt, entstand auf der Kette vom 13.06.2026. Seit dem
+	// Neustart bei null (V8, genesis_time 30.09.2026) gibt es ihn nicht, und
+	// die Sperre poolCorrectionFlagV1 steht in chain_config -- die der
+	// Neustart geleert hat. Ohne diese Grenze haette jeder Produzent EINMAL
+	// eine unsignierte pool_correction schicken und die Reserven bis auf null
+	// vernichten koennen: kein neues Geld, aber enteignete LP-Halter. Kein
+	// ehrlicher Knoten erzeugt sie unter V8 (CorrectPhantomSupplyAtomic geht
+	// durch dieselbe Funktion), also lehnt jeder Knoten sie ab.
+	if vertragV8() {
+		return fmt.Errorf("pool_correction: auf der V8-Kette gibt es keinen Altueberschuss zu korrigieren: %w", ErrZustandLehntAb)
+	}
 	if cs.pool == nil {
 		return fmt.Errorf("pool_correction: dieser Knoten fuehrt keinen Pool")
 	}

@@ -113,8 +113,31 @@ den verlinkten Dokumenten.
       - [ ] Treuhand in die StateRoot aufnehmen -- heute zählt nur das
             genullte Guthaben, nicht die Zeile; bis dahin sichern die
             Nachrechen-Regeln den Bestand
+      - [x] Vollständige Durchsicht aller 31 Transaktionsarten im
+            Nachspielen (03.10.): drei Wege nahmen Produzentenwerte noch
+            ungeprüft, jetzt nachgerechnet --
+            `vorbehalt_ausfuehrung` (Tauschergebnis, LP-Anteile, Betrag gegen
+            den unterschriebenen Auftrag, Mindestbetrag;
+            `nachrechnen_vorbehalt.go`), `kappung` (nur über der
+            Vermögensgrenze) und `slash_equivocation` (zwei erfundene Hashes
+            reichten, um jeden Validator zu sperren und ab dem zweiten Mal 50
+            AEQ zu nehmen; jetzt trägt die Strafe beide unterschriebenen
+            Blockköpfe als Beweis, `slash_beweis.go`). `pool_correction` gilt
+            nur auf der alten Kette und wird auf V8 abgelehnt
+      - K-4 aus dem Audit vom 29.09.: der Wortlaut ist in keinem Commit,
+        Kommentar oder Dokument erhalten; bekannt ist nur die Einordnung
+        „bis das Nachspielen jeden Wert selbst prüft (K-2, K-3, K-4)“
+        (Launch-Checkliste 18). Die Durchsicht oben deckt dieses Thema
+        inhaltlich ab; offen davon bleiben die Validatoren-Gewichte, der
+        strenge Stichtag und `liveness_renewal`. Das K4 vom 18.08.
+        (Nullifier an den Beweis gebunden) ist erledigt und getestet
+      - [ ] Vor der Staffel-Aktivierung (2100): `liveness_renewal` ist
+            unsigniert -- dann an eine Unterschrift des Menschen binden
       - [ ] Stichtag `nachrechnenStrengAbUnix` setzen, sobald
-            `/api/wirtschaft/regeln` über mehrere Runden 0 Abweichungen zeigt
+            `/api/wirtschaft/regeln` über mehrere Runden 0 Abweichungen zeigt.
+            **Daten gibt es erst mit einem zweiten Knoten:** C1 spielt seine
+            eigenen Blöcke nicht nach, seine Zähler bleiben 0, solange C2
+            aus ist
 - [ ] Regel B von Stufe 2 trennen (eigenes Aktivierungsdatum) -- nur falls
       gewünscht
 - [ ] Ein Wirtschaftsmodell (Simulation) der Regeln bauen
