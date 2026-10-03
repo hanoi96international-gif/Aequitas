@@ -9122,10 +9122,14 @@ func (cs *ChainState) applyLPPoolZeroDeltaLocked(ctx context.Context) error {
 // ApplyEscrowMoveDelta zeroes wallet's balance after settling the EXACT
 // demurrage loss the primary already computed, mirroring
 // CheckAndMoveToEscrow's effect on a single wallet. Used by secondary nodes
-// replaying "escrow_move" TXs. Secondaries don't maintain an
-// escrow_accounts row at all — only the balance zeroing affects StateRoot,
-// and secondaries never independently decide who to escrow (see
-// main.go's primary-only gate).
+// replaying "escrow_move" TXs. Secondaries never independently decide who to
+// escrow (see main.go's primary-only gate).
+//
+// Seit K-2 (Audit 2026-09-29) fuehrt auch der Nachspielende die Treuhand:
+// er legt dieselbe escrow_accounts-Zeile an wie der Erzeuger, mit dem Betrag
+// aus SEINEM Zustand (nicht aus dem Block) und der Blockzeit als moved_at.
+// Damit kann jeder Knoten eine spaetere escrow_release/escrow_recover gegen
+// den eigenen Bestand pruefen (nachrechnen_treuhand.go).
 //
 // lpSharesBurned/tusdConverted (beta-launch audit 2026-07-05) carry the exact
 // LP-shares-burned input the primary computed in checkAndMoveToEscrowLocked
@@ -9138,7 +9142,7 @@ func (cs *ChainState) ApplyEscrowMoveDelta(wallet string, demurrageLost, lpShare
 	defer cs.mu.Unlock()
 	// cs.mu-only path, never runs inside runAtomicWithOutbox/
 	// runAtomicDistributionWithOutbox — see RegisterHuman's comment.
-	return cs.applyEscrowMoveDeltaLocked(context.Background(), wallet, demurrageLost, lpSharesBurned, tusdConverted)
+	return cs.applyEscrowMoveDeltaLocked(context.Background(), wallet, demurrageLost, lpSharesBurned, tusdConverted, nowUnix())
 }
 
 // applyEscrowMoveDeltaLocked is ApplyEscrowMoveDelta's body — see
@@ -9147,7 +9151,10 @@ func (cs *ChainState) ApplyEscrowMoveDelta(wallet string, demurrageLost, lpShare
 // itself before this runs, and dbExecCtx falls back to that field when ctx
 // carries no transaction, so behavior there is unchanged — see
 // registerHumanLocked's comment for the same reasoning.
-func (cs *ChainState) applyEscrowMoveDeltaLocked(ctx context.Context, wallet string, demurrageLost, lpSharesBurned, tusdConverted float64) error {
+//
+// movedAt: die Blockzeit -- nie die eigene Uhr, sonst haette jeder Knoten
+// eine andere Frist (touchActivityAt).
+func (cs *ChainState) applyEscrowMoveDeltaLocked(ctx context.Context, wallet string, demurrageLost, lpSharesBurned, tusdConverted float64, movedAt int64) error {
 	wallet = strings.ToLower(wallet)
 	// FIX (Monster Audit follow-up, 2026-07-12, P0): see applyTransferDeltaLocked's
 	// comment — same cold-cache pattern. Here a cold wallet fails as
@@ -9194,12 +9201,29 @@ func (cs *ChainState) applyEscrowMoveDeltaLocked(ctx context.Context, wallet str
 		}
 	}
 
+	// Derselbe Betrag wie beim Erzeuger (checkAndMoveToEscrowLocked:
+	// round6(acc.Balance) nach Aufloesen und Umtausch), aus dem eigenen
+	// Zustand gerechnet.
+	treuhand := round6(acc.Balance.Float())
 	acc.Balance = NewDecimal(0)
 	acc.TUsdBalance = NewDecimal(0)
 	acc.LPShares = NewDecimal(0)
 	// FIX (audit recheck2, P0 #3): see ApplyTransferDelta's comment.
 	if err := cs.saveAccountToDBCtx(ctx, acc); err != nil {
 		return fmt.Errorf("escrow move: could not save account %s: %w", wallet, err)
+	}
+	if cs.db != nil && treuhand > 0 {
+		// Wie beim Erzeuger: eine bestehende Zeile bleibt, ihre Frist wird
+		// nie neu gestartet. In der laufenden Transaktion des Nachspielens,
+		// faellt also mit einem zurueckgewiesenen Block weg.
+		if _, err := cs.dbExecCtx(ctx).Exec(
+			`INSERT INTO escrow_accounts (wallet_address, amount, moved_at)
+			 VALUES ($1, $2, $3)
+			 ON CONFLICT (wallet_address) DO NOTHING`,
+			wallet, treuhand, movedAt,
+		); err != nil {
+			return fmt.Errorf("escrow move: could not record escrow for %s: %w", wallet, err)
+		}
 	}
 	return nil
 }
@@ -9212,12 +9236,17 @@ func (cs *ChainState) ApplyEscrowReleaseDelta(amount float64) error {
 	defer cs.mu.Unlock()
 	// cs.mu-only path, never runs inside runAtomicWithOutbox — see
 	// RegisterHuman's comment.
-	return cs.applyEscrowReleaseDeltaLocked(context.Background(), amount)
+	return cs.applyEscrowReleaseDeltaLocked(context.Background(), "", amount)
 }
 
 // applyEscrowReleaseDeltaLocked is ApplyEscrowReleaseDelta's body — see
-// applyTransferDeltaLocked's comment.
-func (cs *ChainState) applyEscrowReleaseDeltaLocked(ctx context.Context, amount float64) error {
+// applyTransferDeltaLocked's comment. wallet: wessen Treuhand freigegeben
+// wird; ihre Zeile wird entfernt wie beim Erzeuger (releaseEscrowToUBILocked).
+// Ob der Betrag zum Bestand passt, prueft nachrechnen_treuhand.go vorher.
+func (cs *ChainState) applyEscrowReleaseDeltaLocked(ctx context.Context, wallet string, amount float64) error {
+	if err := cs.treuhandZeileEntfernenLocked(ctx, wallet); err != nil {
+		return fmt.Errorf("escrow release: %w", err)
+	}
 	// FIX (Monster Audit 2026-07-12, P1): see distributeSwapFee's comment on
 	// the same pattern — a cold pool address must be loaded before a blank
 	// Version==0 AccountState is created for it, or the real DB balance gets
