@@ -64,6 +64,10 @@ const (
 	verzeichnisOrtMax       = 60
 	verzeichnisAnnahmeMax   = 80
 	verzeichnisWebseiteMax  = 100
+	// austrittMerkenSek: so lange bleibt die Zeit eines Austritts gemerkt.
+	// Laenger als das Fenster, in dem eine Unterschrift zum Block passt
+	// (auftrag_nachweis.go: hoechstens eine Stunde alt).
+	austrittMerkenSek = 2 * 3600
 )
 
 // buergeEintrag: eine Bürgschaft im Register des Unternehmens. Gehalten
@@ -242,8 +246,11 @@ func (cs *ChainState) hatDortBezahlt(m, u string, at int64) bool {
 	return false
 }
 
-// applyUnternehmenAustretenLocked: Mitinhaber m trägt sich aus u aus.
-func (cs *ChainState) applyUnternehmenAustretenLocked(ctx context.Context, unternehmen, mensch string, at int64) error {
+// applyUnternehmenAustretenLocked: Mitinhaber m trägt sich aus u aus. zeit
+// ist die unterschriebene Zeit. Sie muss neuer sein als die des letzten
+// Austritts von m aus u: Sonst koennte ein Produzent dieselbe Unterschrift
+// erneut einreichen, nachdem m wieder aufgenommen wurde.
+func (cs *ChainState) applyUnternehmenAustretenLocked(ctx context.Context, unternehmen, mensch string, zeit, at int64) error {
 	if !unternehmenVerzeichnisAktiv(at) {
 		return fmt.Errorf("unternehmen_austreten vor der Aktivierung: %w", ErrZustandLehntAb)
 	}
@@ -265,6 +272,9 @@ func (cs *ChainState) applyUnternehmenAustretenLocked(ctx context.Context, unter
 	case e.Verantwortliche[0] == m:
 		w.mu.Unlock()
 		return fmt.Errorf("unternehmen_austreten: die Gruenderin tritt nicht aus, sie schliesst: %w", ErrZustandLehntAb)
+	case zeit <= e.Austritte[m]:
+		w.mu.Unlock()
+		return fmt.Errorf("unternehmen_austreten: Unterschrift nicht neuer als der letzte Austritt: %w", ErrZustandLehntAb)
 	}
 	rest := make([]string, 0, len(e.Verantwortliche)-1)
 	for _, v := range e.Verantwortliche {
@@ -273,6 +283,14 @@ func (cs *ChainState) applyUnternehmenAustretenLocked(ctx context.Context, unter
 		}
 	}
 	e.Verantwortliche = rest
+	frisch := make(map[string]int64, len(e.Austritte)+1)
+	for a, z := range e.Austritte {
+		if at-z < austrittMerkenSek {
+			frisch[a] = z
+		}
+	}
+	frisch[m] = zeit
+	e.Austritte = frisch
 	cp := e.kopie()
 	w.mu.Unlock()
 	return cs.speichereUnternehmen(ctx, cp)
@@ -280,17 +298,18 @@ func (cs *ChainState) applyUnternehmenAustretenLocked(ctx context.Context, unter
 
 // verzeichnisDaten: was in der Spalte wirtschaft_unternehmen.verzeichnis steht.
 type verzeichnisDaten struct {
-	Ort             string          `json:"ort,omitempty"`
-	Annahme         string          `json:"annahme,omitempty"`
-	Webseite        string          `json:"webseite,omitempty"`
-	VerzeichnisZeit int64           `json:"zeit,omitempty"`
-	Buergen         []buergeEintrag `json:"buergen,omitempty"`
-	BuergenAnzahl   int             `json:"buergen_anzahl,omitempty"`
+	Ort             string           `json:"ort,omitempty"`
+	Annahme         string           `json:"annahme,omitempty"`
+	Webseite        string           `json:"webseite,omitempty"`
+	VerzeichnisZeit int64            `json:"zeit,omitempty"`
+	Buergen         []buergeEintrag  `json:"buergen,omitempty"`
+	BuergenAnzahl   int              `json:"buergen_anzahl,omitempty"`
+	Austritte       map[string]int64 `json:"austritte,omitempty"`
 }
 
 func verzeichnisJSON(e *unternehmenEintrag) string {
-	d := verzeichnisDaten{e.Ort, e.Annahme, e.Webseite, e.VerzeichnisZeit, e.Buergen, e.BuergenAnzahl}
-	if d.Ort == "" && d.Annahme == "" && d.Webseite == "" && d.VerzeichnisZeit == 0 && len(d.Buergen) == 0 && d.BuergenAnzahl == 0 {
+	d := verzeichnisDaten{e.Ort, e.Annahme, e.Webseite, e.VerzeichnisZeit, e.Buergen, e.BuergenAnzahl, e.Austritte}
+	if d.Ort == "" && d.Annahme == "" && d.Webseite == "" && d.VerzeichnisZeit == 0 && len(d.Buergen) == 0 && d.BuergenAnzahl == 0 && len(d.Austritte) == 0 {
 		return ""
 	}
 	b, _ := json.Marshal(d)
@@ -306,7 +325,7 @@ func verzeichnisAusJSON(e *unternehmenEintrag, s string) {
 		return
 	}
 	e.Ort, e.Annahme, e.Webseite, e.VerzeichnisZeit = d.Ort, d.Annahme, d.Webseite, d.VerzeichnisZeit
-	e.Buergen, e.BuergenAnzahl = d.Buergen, d.BuergenAnzahl
+	e.Buergen, e.BuergenAnzahl, e.Austritte = d.Buergen, d.BuergenAnzahl, d.Austritte
 }
 
 // ------------------------------------------------------------ Annahme (HTTP)
@@ -364,7 +383,7 @@ func (a *APIServer) handleUnternehmenVerzeichnis(w http.ResponseWriter, r *http.
 // POST /api/unternehmen/buergschaft {unternehmen, mensch, zeit, sig}
 func (a *APIServer) handleUnternehmenBuergschaft(w http.ResponseWriter, r *http.Request) {
 	a.unternehmenEinfacherAuftrag(w, r, "unternehmen_buergschaft", unternehmenBuergschaftNachricht,
-		func(ctx context.Context, u, m string, at int64) error {
+		func(ctx context.Context, u, m string, _, at int64) error {
 			if !a.state.hatDortBezahlt(m, u, at) {
 				return fmt.Errorf("unternehmen_buergschaft: %s hat dort in diesem oder dem vorigen Quartal nicht bezahlt: %w", m, ErrZustandLehntAb)
 			}
@@ -375,14 +394,14 @@ func (a *APIServer) handleUnternehmenBuergschaft(w http.ResponseWriter, r *http.
 // POST /api/unternehmen/austreten {unternehmen, mensch, zeit, sig}
 func (a *APIServer) handleUnternehmenAustreten(w http.ResponseWriter, r *http.Request) {
 	a.unternehmenEinfacherAuftrag(w, r, "unternehmen_austreten", unternehmenAustretenNachricht,
-		func(ctx context.Context, u, m string, at int64) error {
-			return a.state.applyUnternehmenAustretenLocked(ctx, u, m, at)
+		func(ctx context.Context, u, m string, zeit, at int64) error {
+			return a.state.applyUnternehmenAustretenLocked(ctx, u, m, zeit, at)
 		})
 }
 
 // unternehmenEinfacherAuftrag: ein Mensch unterschreibt (unternehmen, mensch, zeit).
 func (a *APIServer) unternehmenEinfacherAuftrag(w http.ResponseWriter, r *http.Request, typ string,
-	nachricht func(u, m string, zeit int64) string, anwenden func(ctx context.Context, u, m string, at int64) error) {
+	nachricht func(u, m string, zeit int64) string, anwenden func(ctx context.Context, u, m string, zeit, at int64) error) {
 	writeJSONCORS(w)
 	if r.Method != http.MethodPost {
 		jsonError(w, "POST only", http.StatusMethodNotAllowed)
@@ -416,6 +435,6 @@ func (a *APIServer) unternehmenEinfacherAuftrag(w http.ResponseWriter, r *http.R
 	tx := Transaction{Type: typ, Wallet: u, To: m,
 		Nachweis: nachweisFuerAnnahme(Auftragsnachweis{Sig: req.Sig, Zeit: req.Zeit})}
 	a.unternehmenEinreichen(w, []string{u, m}, tx, func(ctx context.Context) error {
-		return anwenden(ctx, u, m, now)
+		return anwenden(ctx, u, m, req.Zeit, now)
 	})
 }

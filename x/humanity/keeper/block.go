@@ -7678,7 +7678,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			case "unternehmen_buergschaft":
 				uerr = dag.state.applyUnternehmenBuergschaftLocked(context.Background(), wallet, tx.To, block.Timestamp)
 			default:
-				uerr = dag.state.applyUnternehmenAustretenLocked(context.Background(), wallet, tx.To, block.Timestamp)
+				uerr = dag.state.applyUnternehmenAustretenLocked(context.Background(), wallet, tx.To, tx.Nachweis.Zeit, block.Timestamp)
 			}
 			if uerr != nil {
 				fmt.Printf("[REPLAY] ✗ %s %s: %v (block #%d) — rolling back whole block\n", tx.Type, wallet, uerr, block.Height)

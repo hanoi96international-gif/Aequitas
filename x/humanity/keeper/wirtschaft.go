@@ -193,6 +193,9 @@ type unternehmenEintrag struct {
 	VerzeichnisZeit int64           `json:"verzeichnis_zeit,omitempty"`
 	Buergen         []buergeEintrag `json:"buergen,omitempty"`
 	BuergenAnzahl   int             `json:"buergen_anzahl,omitempty"`
+	// Austritte: unterschriebene Zeit des letzten Austritts je Person, nur
+	// solange eine Unterschrift noch gelten kann (unternehmen_verzeichnis.go).
+	Austritte map[string]int64 `json:"austritte,omitempty"`
 }
 
 func (e *unternehmenEintrag) offen() bool { return e != nil && e.GeschlossenAm == 0 }
@@ -1408,6 +1411,12 @@ func (e *unternehmenEintrag) kopie() *unternehmenEintrag {
 	cp.Verantwortliche = append([]string(nil), e.Verantwortliche...)
 	if e.Buergen != nil {
 		cp.Buergen = append([]buergeEintrag(nil), e.Buergen...)
+	}
+	if e.Austritte != nil {
+		cp.Austritte = make(map[string]int64, len(e.Austritte))
+		for m, z := range e.Austritte {
+			cp.Austritte[m] = z
+		}
 	}
 	return &cp
 }

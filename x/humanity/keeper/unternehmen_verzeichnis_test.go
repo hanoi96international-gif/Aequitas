@@ -89,7 +89,7 @@ func TestVerzeichnisVorDerAktivierungAbgelehnt(t *testing.T) {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
 	if !errors.Is(cs.applyUnternehmenBuergschaftLocked(ctx, wFirmaA, wMensch2, nowUnix()), ErrZustandLehntAb) ||
-		!errors.Is(cs.applyUnternehmenAustretenLocked(ctx, wFirmaA, wMensch2, nowUnix()), ErrZustandLehntAb) {
+		!errors.Is(cs.applyUnternehmenAustretenLocked(ctx, wFirmaA, wMensch2, nowUnix(), nowUnix()), ErrZustandLehntAb) {
 		t.Fatal("Buergschaft und Austreten vor der Aktivierung muessen scheitern")
 	}
 }
@@ -194,9 +194,9 @@ func TestAustretenMitinhaberJaGruenderinNein(t *testing.T) {
 		cs.mu.Unlock()
 		t.Fatal(err)
 	}
-	gruenderin := cs.applyUnternehmenAustretenLocked(ctx, wFirmaA, wMensch1, nowUnix())
-	fremd := cs.applyUnternehmenAustretenLocked(ctx, wFirmaA, wMensch3, nowUnix())
-	mit := cs.applyUnternehmenAustretenLocked(ctx, wFirmaA, wMensch2, nowUnix())
+	gruenderin := cs.applyUnternehmenAustretenLocked(ctx, wFirmaA, wMensch1, nowUnix(), nowUnix())
+	fremd := cs.applyUnternehmenAustretenLocked(ctx, wFirmaA, wMensch3, nowUnix(), nowUnix())
+	mit := cs.applyUnternehmenAustretenLocked(ctx, wFirmaA, wMensch2, nowUnix(), nowUnix())
 	cs.mu.Unlock()
 	if !errors.Is(gruenderin, ErrZustandLehntAb) {
 		t.Fatalf("Gruenderin tritt aus: %v", gruenderin)
@@ -209,6 +209,68 @@ func TestAustretenMitinhaberJaGruenderinNein(t *testing.T) {
 	}
 	if v := cs.wirt().unternehmen[wFirmaA].Verantwortliche; len(v) != 1 || v[0] != wMensch1 {
 		t.Fatalf("Verantwortliche danach: %v", v)
+	}
+}
+
+// Ein Produzent darf eine alte Austritts-Unterschrift nicht erneut
+// einreichen, nachdem die Person wieder aufgenommen wurde.
+func TestAustretenAlteUnterschriftNachWiederaufnahme(t *testing.T) {
+	cs, ctx, vor := wirtschaftsTest(t)
+	eroeffne(t, cs, ctx, wFirmaA, wMensch1)
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+	aufnehmen := func() {
+		t.Helper()
+		if err := cs.applyUnternehmenMitinhaberLocked(ctx, wFirmaA, wMensch2, nowUnix()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	aufnehmen()
+	alt := nowUnix()
+	if err := cs.applyUnternehmenAustretenLocked(ctx, wFirmaA, wMensch2, alt, nowUnix()); err != nil {
+		t.Fatal(err)
+	}
+	vor(60)
+	aufnehmen()
+	if err := cs.applyUnternehmenAustretenLocked(ctx, wFirmaA, wMensch2, alt, nowUnix()); !errors.Is(err, ErrZustandLehntAb) {
+		t.Fatalf("alte Unterschrift nach Wiederaufnahme angenommen: %v", err)
+	}
+	if err := cs.applyUnternehmenAustretenLocked(ctx, wFirmaA, wMensch2, alt-30, nowUnix()); !errors.Is(err, ErrZustandLehntAb) {
+		t.Fatalf("noch aeltere Unterschrift angenommen: %v", err)
+	}
+	if v := cs.wirt().unternehmen[wFirmaA].Verantwortliche; len(v) != 2 {
+		t.Fatalf("Mitinhaber wurde trotzdem entfernt: %v", v)
+	}
+	// Eine neue Unterschrift wirkt.
+	if err := cs.applyUnternehmenAustretenLocked(ctx, wFirmaA, wMensch2, nowUnix(), nowUnix()); err != nil {
+		t.Fatal(err)
+	}
+	// Die gemerkte Zeit uebersteht Speichern und Laden.
+	var zurueck unternehmenEintrag
+	verzeichnisAusJSON(&zurueck, verzeichnisJSON(cs.wirt().unternehmen[wFirmaA]))
+	if zurueck.Austritte[wMensch2] != nowUnix() {
+		t.Fatalf("Austritt nicht gespeichert: %v", zurueck.Austritte)
+	}
+}
+
+// Die gemerkten Austritte bleiben begrenzt: nach austrittMerkenSek fallen sie
+// beim naechsten Austritt weg.
+func TestAustritteBleibenBegrenzt(t *testing.T) {
+	cs, ctx, vor := wirtschaftsTest(t)
+	eroeffne(t, cs, ctx, wFirmaA, wMensch1)
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+	for _, m := range []string{wMensch2, wMensch3} {
+		if err := cs.applyUnternehmenMitinhaberLocked(ctx, wFirmaA, m, nowUnix()); err != nil {
+			t.Fatal(err)
+		}
+		if err := cs.applyUnternehmenAustretenLocked(ctx, wFirmaA, m, nowUnix(), nowUnix()); err != nil {
+			t.Fatal(err)
+		}
+		vor(austrittMerkenSek)
+	}
+	if a := cs.wirt().unternehmen[wFirmaA].Austritte; len(a) != 1 || a[wMensch3] == 0 {
+		t.Fatalf("alte Austritte nicht geloescht: %v", a)
 	}
 }
 
@@ -266,7 +328,7 @@ func TestNachweisNeueArtenGegenFaelschung(t *testing.T) {
 
 func TestVerzeichnisSpeicherUndKopie(t *testing.T) {
 	e := &unternehmenEintrag{Adresse: wFirmaA, Ort: "O", Annahme: "A", Webseite: "https://w.de", VerzeichnisZeit: 7,
-		Buergen: []buergeEintrag{{M: wMensch1, At: 3}}, BuergenAnzahl: 4}
+		Buergen: []buergeEintrag{{M: wMensch1, At: 3}}, BuergenAnzahl: 4, Austritte: map[string]int64{wMensch2: 9}}
 	var zurueck unternehmenEintrag
 	verzeichnisAusJSON(&zurueck, verzeichnisJSON(e))
 	if zurueck.Ort != "O" || zurueck.Annahme != "A" || zurueck.Webseite != "https://w.de" || zurueck.VerzeichnisZeit != 7 ||
@@ -280,6 +342,13 @@ func TestVerzeichnisSpeicherUndKopie(t *testing.T) {
 	cp.Buergen[0].M = "x"
 	if e.Buergen[0].M != wMensch1 {
 		t.Fatal("kopie teilt die Buergen-Liste mit dem Original (Rueckrollen waere falsch)")
+	}
+	if zurueck.Austritte[wMensch2] != 9 {
+		t.Fatalf("Austritte nicht gespeichert: %v", zurueck.Austritte)
+	}
+	cp.Austritte[wMensch2] = 1
+	if e.Austritte[wMensch2] != 9 {
+		t.Fatal("kopie teilt die Austritte mit dem Original")
 	}
 }
 
@@ -368,6 +437,21 @@ func TestVerzeichnisBuergschaftAustretenNachspielen(t *testing.T) {
 	}
 	if !dag.replayTransactions(block(aus(mit)), true) {
 		t.Fatal("Mitinhaber konnte nicht austreten")
+	}
+	// Wieder aufgenommen (neue Unterschriften) -- dann legt ein Produzent die
+	// alte Austritts-Unterschrift noch einmal in einen Block: abgelehnt.
+	wieder := unternehmenMitinhaberNachricht(firma.addr, mit.addr, jetzt+1)
+	if !dag.replayTransactions(block(Transaction{Type: "unternehmen_mitinhaber", Wallet: firma.addr, To: mit.addr,
+		Nachweis: &Auftragsnachweis{Sig: persoenlichSignieren(t, mit, wieder), Sig2: persoenlichSignieren(t, inhaber, wieder), Von2: inhaber.addr, Zeit: jetzt + 1}}), true) {
+		t.Fatal("Wiederaufnahme abgelehnt")
+	}
+	if dag.replayTransactions(block(aus(mit)), true) {
+		t.Fatal("alte Austritts-Unterschrift nach der Wiederaufnahme angenommen")
+	}
+	neu := Transaction{Type: "unternehmen_austreten", Wallet: firma.addr, To: mit.addr,
+		Nachweis: &Auftragsnachweis{Sig: persoenlichSignieren(t, mit, unternehmenAustretenNachricht(firma.addr, mit.addr, jetzt+2)), Zeit: jetzt + 2}}
+	if !dag.replayTransactions(block(neu), true) {
+		t.Fatal("neue Austritts-Unterschrift abgelehnt")
 	}
 
 	cs.wirt().mu.Lock()
