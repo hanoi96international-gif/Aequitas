@@ -83,6 +83,23 @@ jobs:
           echo "=== Vergleichsdienst: /health (Auszug) ==="
           docker exec aequitas-matching python -c "import json,urllib.request,os; p=os.environ.get('PORT','8098'); d=json.load(urllib.request.urlopen('http://127.0.0.1:'+p+'/health', timeout=10)); print(json.dumps({k:d.get(k) for k in ('gallery_real','gallery_test','real_data_unlocked','consent_version_current','consents_outdated')}, sort_keys=True)); print('alter:', json.dumps({k:(d.get('alter') or {}).get(k) for k in ('modus','pruefgrenze','modell_bereit')}))" 2>/dev/null || echo "(nicht lesbar)"
           echo
+          echo "=== Ausschuettungsrunden seit der Umlaufsicherung (26.09.) ==="
+          # Nur Zeitpunkte und Anzahlen, keine Adressen. Abstand < 86400 s
+          # hiesse: zwei Runden in weniger als 24 h -- beim Nachspielen
+          # wuerde die zweite als doppelt uebersprungen (distributionRoundToSkip).
+          docker exec aequitas-postgres psql -U postgres -d aequitas -t -A -F ' | ' -c "
+            SELECT to_char(to_timestamp(zeit) AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS') || ' UTC',
+                   COALESCE((zeit - lag(zeit) OVER (ORDER BY zeit))::text, '-') AS abstand_s,
+                   n AS gutschriften
+            FROM (SELECT zeit, count(*) AS n FROM chain_konto_verlauf
+                  WHERE art = 'ubi_distribution' AND zeit >= 1790434800 GROUP BY zeit) r
+            ORDER BY zeit" 2>&1 | tail -30
+          echo "Umlauf-Buchungen je Zeitpunkt:"
+          docker exec aequitas-postgres psql -U postgres -d aequitas -t -A -F ' | ' -c "
+            SELECT to_char(to_timestamp(zeit) AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS') || ' UTC', count(*)
+            FROM chain_konto_verlauf WHERE art = 'umlauf' GROUP BY zeit ORDER BY zeit" 2>&1 | tail -30
+          echo "last_distribution_round_at: $(docker exec aequitas-postgres psql -U postgres -d aequitas -t -A -c "SELECT value FROM chain_config WHERE key = 'last_distribution_round_at'" 2>/dev/null)"
+          echo
           echo "=== Knoten-Log seit $SEIT: Fehler ==="
           docker logs --since "$SEIT" aequitas-node 2>&1 \
             | grep -E 'panic|FATAL|✗|REPLAY.*(abgelehnt|rolling back)|[Ww]irtschaft.*(Fehler|error)|StateRoot.*(mismatch|Abweichung)' \

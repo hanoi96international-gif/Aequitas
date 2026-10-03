@@ -6698,7 +6698,18 @@ func isDistributionRoundTxType(txType string) bool {
 	case "ubi_distribution", "ubi_distribution_finalize",
 		"validator_distribution", "validator_distribution_pool_zero",
 		"lp_distribution", "lp_distribution_pool_zero",
-		"escrow_move", "escrow_release", "distribution_round_marker":
+		"escrow_move", "escrow_release", "distribution_round_marker",
+		// grant_release (grant_staffel.go) entsteht nur in der Tagesrunde
+		// (RunDailyDistributionAtomic) und fehlte hier -- dieselbe Luecke
+		// wie escrow_release am 16.08.: In einer als doppelt erkannten Runde
+		// wurde alles uebersprungen ausser der Freigabe. Neues Geld entstand
+		// dabei nicht (applyGrantReleaseDeltaLocked begrenzt auf den offenen
+		// Rest), aber der Rest wurde schneller frei als die Tagesrate
+		// erlaubt. Gefunden beim Nachrechnen (#271, freigabe_doppelt).
+		// Ohne Wirkung auf Altbloecke: die Staffel ist vor
+		// stagedGrantActivationUnix (2100) Leerlauf, kein Block traegt eine
+		// angewandte Freigabe.
+		"grant_release":
 		return true
 	default:
 		return false

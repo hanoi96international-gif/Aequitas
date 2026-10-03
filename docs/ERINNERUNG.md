@@ -90,11 +90,13 @@ den verlinkten Dokumenten.
             (Voraussetzung für offene Zulassung)
       - [x] Staffel-Freigaben: höchstens die Tagesrate, nur mit
             Lebenszeichen, einmal je Runde (`nachrechnen_freigabe.go`)
-      - [ ] `grant_release` steht nicht in `isDistributionRoundTxType`: In
-            einer als doppelt erkannten Runde wird es trotzdem angewendet
-            (dieselbe Klasse wie der Treuhand-Fund vom 16.08.). Das
-            Nachrechnen meldet es jetzt als `freigabe_doppelt`; das
-            Überspringen selbst ist eine Konsensänderung und kommt einzeln
+      - [x] `grant_release` wird in einer doppelten Runde mit übersprungen
+            (ohne Wirkung auf Altblöcke: Staffel erst ab 2100 aktiv)
+      - [ ] `umlauf` (Liegegeld) wird in einer doppelten Runde ebenfalls
+            nicht übersprungen und würde zweimal eingezogen. Seit 26.09.
+            aktiv -- vor der Änderung prüfen, ob C1 je zwei Runden mit
+            weniger als 24 h Abstand erzeugt hat (sonst ändert sich das
+            Nachspielen alter Blöcke)
       - [ ] Töpfe nach der Runde (Rest), Treuhand, Liegegeld streng
       - [ ] Stichtag `nachrechnenStrengAbUnix` setzen, sobald
             `/api/wirtschaft/regeln` über mehrere Runden 0 Abweichungen zeigt

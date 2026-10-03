@@ -98,6 +98,7 @@ func TestIsDistributionRoundTxType_CoversEveryRoundTxIncludingEscrow(t *testing.
 		"lp_distribution", "lp_distribution_pool_zero",
 		"escrow_move", "escrow_release", // the exact bug: these were missing
 		"distribution_round_marker",
+		"grant_release", // fehlte ebenfalls (Nachrechnen #271, freigabe_doppelt)
 	}
 	for _, ty := range mustSkip {
 		if !isDistributionRoundTxType(ty) {
@@ -110,7 +111,7 @@ func TestIsDistributionRoundTxType_OrdinaryTxTypesAreUnaffected(t *testing.T) {
 	// A duplicate-round skip must never accidentally swallow ordinary money
 	// movement — that would be its own, opposite bug (money that should have
 	// moved, silently didn't).
-	for _, ty := range []string{"transfer", "register_human", "swap_aeq_tusd", "faucet", "escrow_recover", "slash_equivocation"} {
+	for _, ty := range []string{"transfer", "register_human", "swap_aeq_tusd", "faucet", "escrow_recover", "slash_equivocation", "liveness_renewal"} {
 		if isDistributionRoundTxType(ty) {
 			t.Errorf("%q must NOT be treated as a distribution-round TX type", ty)
 		}
