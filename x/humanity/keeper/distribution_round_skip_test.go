@@ -99,6 +99,7 @@ func TestIsDistributionRoundTxType_CoversEveryRoundTxIncludingEscrow(t *testing.
 		"escrow_move", "escrow_release", // the exact bug: these were missing
 		"distribution_round_marker",
 		"grant_release", // fehlte ebenfalls (Nachrechnen #271, freigabe_doppelt)
+		"umlauf",        // fehlte ebenfalls (Liegegeld doppelt eingezogen)
 	}
 	for _, ty := range mustSkip {
 		if !isDistributionRoundTxType(ty) {

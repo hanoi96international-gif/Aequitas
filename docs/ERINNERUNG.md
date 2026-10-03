@@ -92,11 +92,10 @@ den verlinkten Dokumenten.
             Lebenszeichen, einmal je Runde (`nachrechnen_freigabe.go`)
       - [x] `grant_release` wird in einer doppelten Runde mit übersprungen
             (ohne Wirkung auf Altblöcke: Staffel erst ab 2100 aktiv)
-      - [ ] `umlauf` (Liegegeld) wird in einer doppelten Runde ebenfalls
-            nicht übersprungen und würde zweimal eingezogen. Seit 26.09.
-            aktiv -- vor der Änderung prüfen, ob C1 je zwei Runden mit
-            weniger als 24 h Abstand erzeugt hat (sonst ändert sich das
-            Nachspielen alter Blöcke)
+      - [x] `umlauf` (Liegegeld) wird in einer doppelten Runde mit
+            übersprungen. Geprüft vorher auf C1 (03.10.): seit 26.09. eine
+            einzige Runde, keine einzige umlauf-Buchung -- Altblöcke
+            unverändert
       - [ ] Töpfe nach der Runde (Rest), Treuhand, Liegegeld streng
       - [ ] Stichtag `nachrechnenStrengAbUnix` setzen, sobald
             `/api/wirtschaft/regeln` über mehrere Runden 0 Abweichungen zeigt
