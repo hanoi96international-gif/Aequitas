@@ -11,25 +11,24 @@ import (
 // Gutfall und alles, was NICHT zaehlen darf: dieselbe Person zweimal, eigene
 // Verantwortliche, Nicht-Menschen, Kleinstbetraege, alte Zahlungen.
 func TestKundschaftUndGrundeinkommen_RealDB(t *testing.T) {
-	url := os.Getenv("DATABASE_URL")
-	if url == "" {
-		t.Skip("braucht DATABASE_URL (wegwerfbare lokale Datenbank)")
-	}
-	db, err := sql.Open("postgres", url)
+	// Echtes Schema, nur Zeilen leeren: Frueher loeschte dieser Test
+	// chain_accounts und legte eine Minimalfassung an -- danach fehlte die
+	// Tabelle jedem spaeteren DB-Test im selben Lauf.
+	truncateDistTestTables(t)
+	db, err := sql.Open("postgres", os.Getenv("DATABASE_URL"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
-	for _, q := range []string{`DROP TABLE IF EXISTS chain_konto_verlauf`, `DROP TABLE IF EXISTS chain_accounts`,
-		`CREATE TABLE chain_accounts (address TEXT PRIMARY KEY, balance FLOAT NOT NULL DEFAULT 0, is_human BOOLEAN NOT NULL DEFAULT false)`} {
-		if _, err := db.Exec(q); err != nil {
+	t.Cleanup(func() { db.Close() }) // nach leeren (Cleanups laufen rueckwaerts)
+	cs := &ChainState{db: db, useDB: true}
+	cs.ensureKontoVerlaufTable()
+	leeren := func() {
+		if _, err := db.Exec(`DELETE FROM chain_konto_verlauf`); err != nil {
 			t.Fatal(err)
 		}
 	}
-	defer db.Exec(`DROP TABLE IF EXISTS chain_konto_verlauf`)
-	defer db.Exec(`DROP TABLE IF EXISTS chain_accounts`)
-	cs := &ChainState{db: db, useDB: true}
-	cs.ensureKontoVerlaufTable()
+	leeren()
+	t.Cleanup(leeren)
 
 	wirtschaftAn(t)
 	uhr(t, time.Now().Unix())
