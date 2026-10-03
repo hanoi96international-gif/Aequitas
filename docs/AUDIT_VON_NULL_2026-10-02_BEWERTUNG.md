@@ -18,7 +18,7 @@ oder überzeichnet; sie ändern das Urteil nicht, gehören aber nicht in eine
 | Audit-Aussage | Beleg | Bewertung |
 |---|---|---|
 | StateRoot-Abweichung wird nur geloggt, Block angenommen | `block.go` ~7997, Meldung „accepted (TXs individually verified)“ ~8022 | richtig; bekannte Entscheidung, Sicherheit liegt in der Prüfung jeder Transaktion |
-| Produzentenliste geschlossen, weil das Nachspielen nicht jeden Wert nachrechnet (K-2) | `produzenten_geschlossen`, Checkliste Blocker 18 | richtig. Für die Wirtschaft konkret: Liegegeld wird beim Nachspielen nur **beobachtend** geprüft (`liegegeld_pruefung.go`); vor einem zweiten Produzenten muss `AEQUITAS_LIEGEGELD_PRUEFUNG=streng` gelten |
+| Produzentenliste geschlossen, weil das Nachspielen nicht jeden Wert nachrechnet (K-2) | `produzenten_geschlossen`, Checkliste Blocker 18 | richtig. Für die Wirtschaft konkret: Liegegeld wird beim Nachspielen nur **beobachtend** geprüft (`liegegeld_pruefung.go`); vor einem zweiten Produzenten muss der gemeinsame Stichtag `nachrechnenStrengAbUnix` gesetzt sein (seit #274 gilt er auch für das Liegegeld; vorher nur je Knoten per `AEQUITAS_LIEGEGELD_PRUEFUNG`) |
 | Herkunft eines Beweises nur 15 min im Arbeitsspeicher | `prove_provenance.go`, `proveHerkunftTTL`, `sync.Map` | richtig. Nach einem Neustart scheitert die Registrierung (schließt ab, kein Loch), der Mensch muss den Beweis neu erzeugen |
 | Wallet nicht im Circuit, erst v4 | Kommentar in `prove_provenance.go` | richtig, bekannt |
 | MPC-Tor lässt alles durch, solange `MPC_REQUIRED` nicht `true` | `mpc_api.go:388` | richtig und gewollt: MPC ist Gegenprobe, nicht Pflichtweg (Whitepaper 3.2). Die Duplikatprüfung läuft im Vergleichsdienst |
@@ -101,9 +101,10 @@ Zusätzlich zur eigenen Checkliste:
   „Wochen ohne Abweichung“ kann nicht erfüllt werden. Der Weg: Der lesende
   Validator eines zweiten Betreibers (Audit-Blocker 6) läuft mit
   `beobachten` (Voreinstellung); sein `/api/wirtschaft/regeln` →
-  `liegegeld_pruefung.abweichungen` muss über die Zeit 0 bleiben, dann
-  `AEQUITAS_LIEGEGELD_PRUEFUNG=streng` auf jedem nachspielenden Knoten, bevor
-  einer davon Blöcke erzeugt.
+  `liegegeld_pruefung.abweichungen` und `nachrechnen.abweichungen` müssen
+  über die Zeit 0 bleiben, dann wird der gemeinsame Stichtag
+  `nachrechnenStrengAbUnix` gesetzt (gilt für alle Knoten zugleich, seit
+  #274 auch für das Liegegeld), bevor ein zweiter Knoten Blöcke erzeugt.
 
 ## 5. Bei dieser Prüfung zusätzlich gefunden (Wirtschaft)
 
