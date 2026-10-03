@@ -4,6 +4,7 @@ import (
 	"context"
 	"math"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -25,10 +26,13 @@ const tag = int64(86400)
 // uhr setzt die Zeit fuer nowUnix() und gibt eine Funktion zum Vorstellen zurueck.
 func uhr(t *testing.T, start int64) func(sekunden int64) int64 {
 	t.Helper()
-	jetztWert := start
-	vorher := setzeZeitQuelleFuerTest(func() time.Time { return time.Unix(jetztWert, 0) })
+	// Atomar: Hintergrundarbeiter (z. B. der EVM-Spiegel) lesen die Uhr,
+	// waehrend der Test sie vorstellt.
+	var jetztWert atomic.Int64
+	jetztWert.Store(start)
+	vorher := setzeZeitQuelleFuerTest(func() time.Time { return time.Unix(jetztWert.Load(), 0) })
 	t.Cleanup(func() { setzeZeitQuelleFuerTest(vorher) })
-	return func(s int64) int64 { jetztWert += s; return jetztWert }
+	return func(s int64) int64 { return jetztWert.Add(s) }
 }
 
 func wirtschaftsTest(t *testing.T) (*ChainState, context.Context, func(int64) int64) {
