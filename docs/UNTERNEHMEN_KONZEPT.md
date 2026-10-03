@@ -266,9 +266,11 @@ als 25 Menschen gibt; bei 25 und mehr fällt es weg.
   Konto und Lauf werden nicht eingezogen (`umlaufMindestBetrag`).
 - **Der erzeugende Knoten rechnet**, die Beträge stehen im Block.
   Nachspielende Knoten rechnen nach (`liegegeld_pruefung.go`), **zählen
-  Abweichungen aber nur** (Beobachtungsmodus). Abgelehnt wird erst mit
-  `AEQUITAS_LIEGEGELD_PRUEFUNG=streng`. Solange das nicht gilt, vertraut das
-  Netz beim Liegegeld dem Erzeuger. Siehe Abschnitt 11.
+  Abweichungen aber nur** (Beobachtungsmodus). Abgelehnt wird auf allen
+  Knoten zugleich ab dem gemeinsamen Stichtag `nachrechnenStrengAbUnix`
+  (nachrechnen.go); `AEQUITAS_LIEGEGELD_PRUEFUNG=streng` stellt einen
+  einzelnen Knoten nur früher streng. Solange der Stichtag nicht gesetzt
+  ist, vertraut das Netz beim Liegegeld dem Erzeuger. Siehe Abschnitt 11.
 - **Fehlende Buchführung geht zugunsten der Kontoinhaber:** Hat ein Knoten
   weniger als 30 Tage Daten (nach dem Start oder nach einem Snapshot),
   berechnet er kein Liegegeld.

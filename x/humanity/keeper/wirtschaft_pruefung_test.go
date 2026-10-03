@@ -2,7 +2,9 @@ package keeper
 
 import (
 	"context"
+	"errors"
 	"os"
+	"sync/atomic"
 	"testing"
 )
 
@@ -254,6 +256,59 @@ func TestLiegegeldPruefungBeimNachspielen(t *testing.T) {
 	t.Setenv("AEQUITAS_LIEGEGELD_PRUEFUNG", "streng")
 	if n, err := lauf(2); n != 1 || err == nil {
 		t.Fatalf("streng: ablehnen: %d, %v", n, err)
+	}
+}
+
+// Der gemeinsame Stichtag (nachrechnenStrengAbUnix) macht die Liegegeld-
+// Pruefung auf JEDEM Knoten streng -- ohne AEQUITAS_LIEGEGELD_PRUEFUNG. Vor
+// dem Stichtag zaehlt eine Abweichung auch im gemeinsamen Nachrechnen
+// (Regel "liegegeld"), lehnt aber nicht ab.
+func TestLiegegeldPruefung_GemeinsamerStichtag(t *testing.T) {
+	os.Unsetenv("AEQUITAS_LIEGEGELD_PRUEFUNG")
+	cs, nach, ctx, vor := zweiKnoten(t)
+	lauf := func() error {
+		vor(tag)
+		cs.mu.Lock()
+		txs, err := cs.umlaufLocked(ctx, nowUnix())
+		cs.mu.Unlock()
+		if err != nil {
+			t.Fatal(err)
+		}
+		nach.mu.Lock()
+		defer nach.mu.Unlock()
+		for _, tx := range txs {
+			betrag := tx.Amount
+			if tx.Wallet == wFirmaA {
+				betrag *= 2 // verfaelscht
+			}
+			if err := nach.pruefeUmlaufLocked(tx.Wallet, betrag, tx.DistributionAt); err != nil {
+				return err
+			}
+			if err := nach.applyUmlaufDeltaLocked(ctx, tx.Wallet, betrag, tx.DistributionAt); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return nil
+	}
+	zaehler := func() int64 {
+		if z, ok := nachrechnenJeRegel.Load("liegegeld"); ok {
+			return z.(*atomic.Int64).Load()
+		}
+		return 0
+	}
+
+	vorher := zaehler()
+	if err := lauf(); err != nil {
+		t.Fatalf("vor dem Stichtag darf nichts abgelehnt werden: %v", err)
+	}
+	if zaehler()-vorher != 1 {
+		t.Fatalf("Abweichung muss im gemeinsamen Nachrechnen zaehlen, gezaehlt %d", zaehler()-vorher)
+	}
+
+	nachrechnenStrengOverride.Store(1)
+	t.Cleanup(func() { nachrechnenStrengOverride.Store(0) })
+	if err := lauf(); !errors.Is(err, ErrZustandLehntAb) {
+		t.Fatalf("ab dem Stichtag muss die Abweichung abgelehnt werden, bekam %v", err)
 	}
 }
 

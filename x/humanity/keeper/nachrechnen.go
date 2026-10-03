@@ -49,7 +49,18 @@ var (
 	nachrechnenJeRegel      sync.Map // regel -> *atomic.Int64
 )
 
-func nachrechnenStreng(blockZeit int64) bool { return blockZeit >= nachrechnenStrengAbUnix }
+// nachrechnenStrengOverride: nur fuer Tests (wie wirtschaftAktivOverride);
+// 0 = der Stichtag im Code gilt.
+var nachrechnenStrengOverride atomic.Int64
+
+func nachrechnenStrengAb() int64 {
+	if o := nachrechnenStrengOverride.Load(); o != 0 {
+		return o
+	}
+	return nachrechnenStrengAbUnix
+}
+
+func nachrechnenStreng(blockZeit int64) bool { return blockZeit >= nachrechnenStrengAb() }
 
 // nachrechnenAbweichung zaehlt und protokolliert eine Abweichung; im
 // strengen Modus ein Fehler, der den Block ablehnt.
@@ -213,8 +224,8 @@ func kurzAdresse(a string) string {
 // nachrechnenStand fuer /api/wirtschaft/regeln.
 func nachrechnenStand() map[string]interface{} {
 	modus := "beobachten"
-	if nachrechnenStrengAbUnix != math.MaxInt64 {
-		modus = fmt.Sprintf("streng ab %d", nachrechnenStrengAbUnix)
+	if ab := nachrechnenStrengAb(); ab != math.MaxInt64 {
+		modus = fmt.Sprintf("streng ab %d", ab)
 	}
 	jeRegel := map[string]int64{}
 	var namen []string
