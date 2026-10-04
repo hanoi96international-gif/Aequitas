@@ -85,7 +85,6 @@ func (cs *ChainState) GetGuardian(wallet string) (guardian string, setAt int64, 
 	return guardian, setAt, err
 }
 
-
 // GetEscrow returns the escrow amount and moved_at timestamp for wallet, or
 // (0, 0, nil) if no escrow entry exists.
 func (cs *ChainState) GetEscrow(wallet string) (amount float64, movedAt int64, err error) {
