@@ -6,7 +6,10 @@
   Identität des Verantwortlichen ist eine Datenschutzerklärung wertlos: die
   Betroffenen erfahren nicht, gegen wen sie ihre Rechte richten können.
 
-  Der Text beschreibt den am 23.09.2026 gemessenen Ist-Zustand, abgelesen aus
+  Stand 04.10.2026: C2 (proof2) ist seit 03.10.2026 abgeschaltet; es laeuft
+  ein Vergleichsdienst auf dem netcup-Server in Wien, im Einzelbetrieb mit
+  Tagesgrenze (aequitas-biometric-beta, einzelbetrieb.py).
+  Davor beschrieb der Text den am 23.09.2026 gemessenen Ist-Zustand, abgelesen aus
   den laufenden Containern beider Boxen (container-env.yml):
     - Coordinator: VALIDATOR_URLS = proof1 + proof2, QUORUM_SIZE=2
     - Vergleichsdienste: keiner der *_PARTICIPATES_IN_MATCH-Schalter gesetzt
@@ -166,9 +169,10 @@
 
 <h2>8. Wo die Daten verarbeitet werden</h2>
 <p>
-  Auf zwei Servern, gemietet bei der Contabo GmbH in Lauterbourg
-  (Frankreich), also innerhalb der EU. Einer der beiden Server gehört einer
-  anderen Person, die ihn für den Betrieb von Aequitas bereitstellt. Eine
+  Auf einem Server, gemietet bei der netcup GmbH, Rechenzentrum in Wien
+  (Österreich), also innerhalb der EU. Bis zum 03.10.2026 lief ein zweiter
+  Vergleichsdienst auf einem Server bei der Contabo GmbH in Lauterbourg
+  (Frankreich), der einer anderen Person gehört; er ist abgeschaltet. Eine
   Weitergabe an Dritte darüber hinaus findet nicht statt, eine Übermittlung
   in Länder außerhalb der EU ebenfalls nicht. Wir verkaufen keine Daten.
 </p>
