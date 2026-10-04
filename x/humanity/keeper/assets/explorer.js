@@ -6239,12 +6239,14 @@ async function doSetGuardian() {
   }
   try {
     guardianLog('Sign in your wallet to set guardian...', 'info');
-    const msg = 'Aequitas: set guardian ' + guardian;
+    // Mit Zeitpunkt: die Unterschrift gilt eine Stunde (vormund_kette.go).
+    const ts = Math.floor(Date.now() / 1000);
+    const msg = 'Aequitas: set guardian ' + guardian + ' ts:' + ts;
     const sig = await activeProvider().request({ method: 'personal_sign', params: [msg, waddr] });
     const resp = await fetch('/api/set-guardian', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ wallet: waddr, guardian, signature: sig })
+      body: JSON.stringify({ wallet: waddr, guardian, signature: sig, ts })
     });
     const d = await resp.json();
     if (d.guardian) {
@@ -6273,12 +6275,13 @@ async function doGuardianConfirmAlive() {
   }
   try {
     guardianLog('Sign in your wallet as guardian...', 'info');
-    const msg = 'Aequitas: confirm alive ' + ward;
+    const ts = Math.floor(Date.now() / 1000);
+    const msg = 'Aequitas: confirm alive ' + ward + ' ts:' + ts;
     const sig = await activeProvider().request({ method: 'personal_sign', params: [msg, waddr] });
     const resp = await fetch('/api/confirm-alive', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ wallet: ward, guardian: waddr, signature: sig })
+      body: JSON.stringify({ wallet: ward, guardian: waddr, signature: sig, ts })
     });
     const d = await resp.json();
     if (d.success) {

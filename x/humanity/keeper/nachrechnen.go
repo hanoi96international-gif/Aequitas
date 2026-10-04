@@ -130,6 +130,9 @@ func (cs *ChainState) nachrechnenTxLocked(tx *Transaction, blockZeit int64) erro
 	case "swap_aeq_tusd", "swap_tusd_aeq", "add_liquidity":
 		return cs.nachrechnenPoolAuftragLocked(tx.Type, tx, wallet, blockZeit)
 
+	case "vormund_setzen", "lebenszeichen":
+		return cs.nachrechnenVormundLocked(tx, blockZeit)
+
 	case "vorbehalt_ausfuehrung":
 		return cs.nachrechnenVorbehaltLocked(tx, wallet, blockZeit) // nachrechnen_vorbehalt.go
 

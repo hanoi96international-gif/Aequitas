@@ -70,7 +70,7 @@ func braucheNachweis(typ string) bool {
 	case "vorbehalt": // Stufe 2 (vorbehalt.go): der Nachweis des inneren Auftrags
 		return true
 	case "swap_aeq_tusd", "swap_tusd_aeq", "add_liquidity", "remove_liquidity",
-		"faucet", "escrow_recover",
+		"faucet", "escrow_recover", "vormund_setzen", "lebenszeichen",
 		"unternehmen_eroeffnen", "unternehmen_mitinhaber", "unternehmen_schliessen",
 		"unternehmen_verzeichnis", "unternehmen_buergschaft", "unternehmen_austreten":
 		return true
@@ -141,6 +141,10 @@ func auftragsNachricht(tx *Transaction) (string, []unterschrift, error) {
 		return fmt.Sprintf("Aequitas tUSD Faucet Claim: %s ts:%d", w, n.Zeit), []unterschrift{{w, n.Sig}}, nil
 	case "escrow_recover":
 		return "Aequitas: recover escrow " + w, []unterschrift{{w, n.Sig}}, nil
+	case "vormund_setzen": // vormund_kette.go: der Schutzbefohlene unterschreibt
+		return vormundSetzenNachricht(to, n.Zeit), []unterschrift{{w, n.Sig}}, nil
+	case "lebenszeichen": // der Vormund unterschreibt
+		return lebenszeichenNachricht(w, n.Zeit), []unterschrift{{to, n.Sig}}, nil
 	case "unternehmen_eroeffnen":
 		return unternehmenEroeffnenNachricht(w, to, tx.Name, tx.Kategorie, n.Zeit),
 			[]unterschrift{{w, n.Sig}, {to, n.Sig2}}, nil

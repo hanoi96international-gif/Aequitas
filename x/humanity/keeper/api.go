@@ -1185,8 +1185,10 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	mux.HandleFunc("/api/coordinator-proof", a.handleCoordinatorProof)
 	mux.HandleFunc("/api/validator-selfproof", a.handleValidatorSelfProof)
 	mux.HandleFunc("/api/validator-binding", a.handleValidatorBinding)
-	mux.HandleFunc("/api/set-guardian", a.handleSetGuardian)
-	mux.HandleFunc("/api/confirm-alive", a.handleConfirmAlive)
+	// Zum Zustaendigen des Schutzbefohlenen: beides sind Transaktionen
+	// (vormund_kette.go) und gehoeren durch dessen Annahme-Tor.
+	mux.HandleFunc("/api/set-guardian", a.zumLeiter(a.handleSetGuardian))
+	mux.HandleFunc("/api/confirm-alive", a.zumLeiter(a.handleConfirmAlive))
 	mux.HandleFunc("/api/guardian", a.handleGetGuardian)
 	mux.HandleFunc("/api/escrow", a.handleGetEscrow)
 	mux.HandleFunc("/api/recover-escrow", a.zumLeiter(a.handleRecoverEscrow))
@@ -4175,6 +4177,7 @@ func (a *APIServer) handleSetGuardian(w http.ResponseWriter, r *http.Request) {
 		Wallet    string `json:"wallet"`
 		Guardian  string `json:"guardian"`
 		Signature string `json:"signature"`
+		Zeit      int64  `json:"ts"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, `{"error":"invalid request body"}`, 400)
@@ -4186,14 +4189,17 @@ func (a *APIServer) handleSetGuardian(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"invalid wallet or guardian address"}`, 400)
 		return
 	}
-	// Verify signature: wallet signs "Aequitas: set guardian {guardian_address}"
-	msg := "Aequitas: set guardian " + guardian
-	if err := verifyPersonalSign(msg, req.Signature, wallet); err != nil {
-		jsonError(w, "invalid signature: "+err.Error(), 400)
+	// Seit 04.10.2026 mit Zeitpunkt und als Transaktion (vormund_kette.go):
+	// wallet unterschreibt "Aequitas: set guardian {guardian} ts:{ts}".
+	if req.Zeit <= 0 {
+		jsonError(w, "ts required: sign \"Aequitas: set guardian <guardian> ts:<unix seconds>\"", 400)
 		return
 	}
-	now := time.Now().Unix()
-	if err := a.state.SetGuardian(wallet, guardian); err != nil {
+	if err := a.state.VormundSetzen(wallet, guardian, &Auftragsnachweis{Sig: req.Signature, Zeit: req.Zeit}); err != nil {
+		if errors.Is(err, ErrUeberweisungNichtSigniert) {
+			jsonError(w, "invalid signature or expired ts", 400)
+			return
+		}
 		jsonStateError(w, "set-guardian", wallet, err)
 		return
 	}
@@ -4201,7 +4207,7 @@ func (a *APIServer) handleSetGuardian(w http.ResponseWriter, r *http.Request) {
 		"success":  true,
 		"wallet":   wallet,
 		"guardian": guardian,
-		"set_at":   now,
+		"set_at":   req.Zeit,
 	})
 }
 
@@ -4237,7 +4243,8 @@ func (a *APIServer) handleConfirmAlive(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Wallet    string `json:"wallet"`
 		Signature string `json:"signature"`
-		Guardian  string `json:"guardian"` // FIX 9: optional client-supplied guardian for early mismatch detection
+		Guardian  string `json:"guardian"`
+		Zeit      int64  `json:"ts"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, `{"error":"invalid request body"}`, 400)
@@ -4248,30 +4255,30 @@ func (a *APIServer) handleConfirmAlive(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"invalid wallet address"}`, 400)
 		return
 	}
-	// FIX 3: Look up guardian from DB first, then immediately verify the
-	// signature using that address before passing it into ConfirmAlive.
-	// ConfirmAlive re-fetches under its own lock to close the TOCTOU window.
 	guardianAddr, _, err := a.state.GetGuardian(wallet)
 	if err != nil || guardianAddr == "" {
 		http.Error(w, `{"error":"no guardian set for this wallet"}`, 404)
 		return
 	}
 	guardianAddr = strings.ToLower(guardianAddr)
-	// FIX 9: Defense-in-depth — if client supplied a guardian address, check it
-	// matches the DB value before doing any signature work.
 	if req.Guardian != "" && strings.ToLower(strings.TrimSpace(req.Guardian)) != guardianAddr {
 		jsonError(w, "guardian address mismatch", 400)
 		return
 	}
-	// Signature is by the guardian.
-	msg := "Aequitas: confirm alive " + wallet
-	if sigErr := verifyPersonalSign(msg, req.Signature, guardianAddr); sigErr != nil {
-		jsonError(w, "invalid guardian signature: "+sigErr.Error(), 400)
+	// Seit 04.10.2026 mit Zeitpunkt und als Transaktion (vormund_kette.go):
+	// der Vormund unterschreibt "Aequitas: confirm alive {wallet} ts:{ts}".
+	// Ohne Zeitpunkt liess sich eine einmal gesehene Unterschrift beliebig
+	// oft wiederverwenden.
+	if req.Zeit <= 0 {
+		jsonError(w, "ts required: sign \"Aequitas: confirm alive <wallet> ts:<unix seconds>\"", 400)
 		return
 	}
-	// FIX 3 (cont.): pass guardianAddr so ConfirmAlive can re-verify under lock.
-	if confirmErr := a.state.ConfirmAlive(wallet, guardianAddr); confirmErr != nil {
-		jsonError(w, confirmErr.Error(), 400)
+	if err := a.state.Lebenszeichen(wallet, guardianAddr, &Auftragsnachweis{Sig: req.Signature, Zeit: req.Zeit}); err != nil {
+		if errors.Is(err, ErrUeberweisungNichtSigniert) {
+			jsonError(w, "invalid guardian signature or expired ts", 400)
+			return
+		}
+		jsonError(w, err.Error(), 400)
 		return
 	}
 	json.NewEncoder(w).Encode(map[string]interface{}{

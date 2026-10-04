@@ -5358,7 +5358,8 @@ func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
 			"slash_equivocation", "distribution_round_marker", "pool_correction",
 			"liveness_renewal", "grant_release",
 			"umlauf", "unternehmen_eroeffnen", "unternehmen_mitinhaber", "unternehmen_schliessen",
-			"unternehmen_verzeichnis", "unternehmen_buergschaft", "unternehmen_austreten":
+			"unternehmen_verzeichnis", "unternehmen_buergschaft", "unternehmen_austreten",
+			"vormund_setzen", "lebenszeichen":
 		// known / empty — OK
 		default:
 			fmt.Printf("[DAG] ✗ Rejected peer block #%d: unknown tx type %q\n", block.Height, tx.Type)
@@ -7848,6 +7849,22 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 				continue
 			}
 			fmt.Printf("[REPLAY] ✓ Applied escrow recovery %.6f AEQ → %s (block #%d)\n", tx.Amount, wallet, block.Height)
+
+		case "vormund_setzen", "lebenszeichen":
+			// vormund_kette.go. Unterschrift und Zeitfenster sind schon fuer
+			// den ganzen Block geprueft (pruefeAuftraegeImBlock), die Regeln
+			// in nachrechnenTxLocked.
+			var err error
+			if tx.Type == "vormund_setzen" {
+				err = dag.state.applyVormundSetzenLocked(context.Background(), &tx)
+			} else {
+				err = dag.state.applyLebenszeichenLocked(context.Background(), &tx, block.Timestamp)
+			}
+			if err != nil {
+				fmt.Printf("[REPLAY] ✗ %s %s: %v (block #%d) — rolling back whole block\n", tx.Type, wallet, err, block.Height)
+				hardFailure = true
+				continue
+			}
 
 		case "slash_equivocation":
 			// tx.Wallet = signer (signing address of the equivocating validator)
