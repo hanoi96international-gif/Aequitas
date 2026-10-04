@@ -20,10 +20,19 @@ den verlinkten Dokumenten.
 
 ## Betrieb, jetzt
 
-- [ ] **C2 ist nicht erreichbar** (SSH-Zeitüberschreitung am 03.10.). Der
-      Coordinator verlangt ein Quorum von 2 aus C1 und C2 -- solange C2 fehlt,
-      scheitert jede Registrierung am Quorum. C2 wieder einrichten
-      (`VALIDATOR_EINRICHTEN.md`) oder das Quorum bewusst anders festlegen.
+- [ ] **C2 ist abgeschaltet (03.10.)** -- Einzelbetrieb nach Entscheidung des
+      Betreibers vom 04.10.: Quorum 1 MIT Tagesgrenze (Standard 25 neue
+      Menschen je UTC-Tag), sichtbar in `/coordinator/health` und
+      `/health` des Proof-Servers (`einzelbetrieb`).
+      - [x] Code: Coordinator (aequitas-biometric-beta#36), Proof-Server
+            (aequitas-proof-server#10), Wache akzeptiert Quorum 1 nur mit
+            aktiver Tagesgrenze
+      - [ ] Umstellen: biometric „Coordinator auf eine Contabo-Box
+            ausrollen“ mit `einzelbetrieb` (proof1 allein, proof2 abgemeldet);
+            proof-server „Einzelbetrieb auf C1“ (nur proof1-Schlüssel)
+      - [ ] Zurück auf 2: sobald ein zweiter, unabhängiger Vergleichsdienst
+            läuft -- Coordinator automatisch (Mehrheit der bekannten Dienste),
+            Proof-Server `BIO_ATTESTATION_QUORUM=2` per `schluessel-festlegen.yml`
 - [ ] Altersmodell messen und freigeben (`aequitas-biometric-beta/docs/ALTERSMODELL.md`,
       Workflow „Altersmodell messen“); erst danach `ALTERSPRUEFUNG=erzwingen`
 - [ ] App 1.10.0 als Release veröffentlichen (Workflow „APK als Release
@@ -141,10 +150,9 @@ den verlinkten Dokumenten.
             GitHub-Runner, Snapshot von C1, danach jeder Block nachgespielt,
             erzeugt selbst nie einen (`AEQUITAS_BEOBACHTER=1`). Ergebnis je
             Regel in der Zusammenfassung des Laufs
-      - [ ] Zweiter Vergleichsdienst für die Registrierung: das Quorum war 2
-            von 2 (C1 und C2). Ohne C2 ist es nicht erreichbar -- es wird
-            nicht gesenkt (Schutzgrenze); nötig ist ein zweiter, unabhängiger
-            Betreiber mit Vergleichsdienst
+      - [ ] Zweiter Vergleichsdienst für die Registrierung: bis dahin
+            Einzelbetrieb mit Tagesgrenze (siehe „Betrieb, jetzt“); nötig ist
+            ein zweiter, unabhängiger Betreiber mit Vergleichsdienst
 - [ ] Regel B von Stufe 2 trennen (eigenes Aktivierungsdatum) -- nur falls
       gewünscht
 - [ ] Ein Wirtschaftsmodell (Simulation) der Regeln bauen
