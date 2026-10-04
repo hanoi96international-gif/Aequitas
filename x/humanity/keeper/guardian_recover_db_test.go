@@ -4,6 +4,8 @@ import (
 	"os"
 	"testing"
 	"time"
+
+	"github.com/ethereum/go-ethereum/crypto"
 )
 
 // TestRecoverFromEscrow_RealDB is RecoverFromEscrow's only regression test
@@ -97,7 +99,8 @@ func TestConfirmAlive_ColdAccount_RealDB(t *testing.T) {
 	}
 
 	wallet := distTestAddr(202)
-	guardian := distTestAddr(203)
+	vormundKey, _ := crypto.GenerateKey()
+	guardian := adrVon(vormundKey)
 	cs.mu.Lock()
 	acc := &AccountState{Address: wallet, IsHuman: true, Balance: NewDecimal(500)}
 	acc.LastActivityAt = 1 // long inactive, the state that makes this account cold
@@ -125,7 +128,9 @@ func TestConfirmAlive_ColdAccount_RealDB(t *testing.T) {
 	cs.accounts.Delete(wallet)
 	cs.mu.Unlock()
 
-	if err := cs.ConfirmAlive(wallet, guardian); err != nil {
+	zeit := time.Now().Unix()
+	nachweis := &Auftragsnachweis{Sig: personalSign(t, vormundKey, lebenszeichenNachricht(wallet, zeit)), Zeit: zeit}
+	if err := cs.Lebenszeichen(wallet, guardian, nachweis); err != nil {
 		t.Fatalf("ConfirmAlive on a cold (non-resident) account: %v\n"+
 			"the guardian's proof-of-life must work for exactly the long-inactive "+
 			"wallets that are least likely to be resident", err)
@@ -135,7 +140,7 @@ func TestConfirmAlive_ColdAccount_RealDB(t *testing.T) {
 	after, ok := cs.accounts.Get(wallet)
 	cs.mu.Unlock()
 	if !ok {
-		t.Fatal("want the account warmed and resident after ConfirmAlive")
+		t.Fatal("want the account warmed and resident after Lebenszeichen")
 	}
 	if after.LastActivityAt <= 1 {
 		t.Errorf("want the inactivity clock reset, got LastActivityAt = %d", after.LastActivityAt)

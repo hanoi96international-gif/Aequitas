@@ -562,7 +562,7 @@ func anfrageKonten(pfad string, body []byte) []string {
 		return []string{kontoFaucet}
 	case strings.HasPrefix(pfad, "/api/unternehmen/"):
 		return []string{strings.ToLower(strings.TrimSpace(f.Unternehmen))}
-	case pfad == "/api/recover-escrow":
+	case pfad == "/api/recover-escrow", pfad == "/api/set-guardian", pfad == "/api/confirm-alive":
 		return []string{w}
 	}
 	return nil
