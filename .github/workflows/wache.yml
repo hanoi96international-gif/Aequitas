@@ -20,7 +20,8 @@ name: Wache (alle 10 Minuten)
 #   - keine Ueberweisung beim Nachspielen uebersprungen (zustands_ablehnung)
 #   - Platte nicht kritisch, Knoten nicht degraded
 #   - Vergleichsdienst (/matching/health) antwortet
-# Und einmal: der Coordinator antwortet mit Quorum >= 2, und das letzte
+# Und einmal: der Coordinator antwortet mit Quorum >= 2 (oder Quorum 1 im
+# Einzelbetrieb mit aktiver Tagesgrenze), und das letzte
 # Backup ist juenger als 36 Stunden.
 #
 # C2_AKTIV (wie in deploy-c1-dann-c2.yml): seit dem Neustart bei null
@@ -72,7 +73,9 @@ jobs:
           # meldete die Wache alle 6 h ROT fuer eine Box, die es nicht mehr gibt,
           # und uebertoente damit alles, was auf C2 wirklich schiefgeht.
           # Seit 26.09.2026 ist der neue C1 (netcup) Primary und proof1.
-          KNOTEN="188.172.229.121=proof1 194.163.188.71=proof2"
+          # Seit 03.10.2026 ist C2 (proof2) abgeschaltet -- Box und Dienste.
+          # Ein neuer zweiter Server kommt HIER wieder dazu.
+          KNOTEN="188.172.229.121=proof1"
           declare -A H1 H2 PHOST
           for K in $KNOTEN; do PHOST[${K%%=*}]=${K#*=}; done
           for B in "${!PHOST[@]}"; do H1[$B]=$(st $B); done
@@ -102,7 +105,22 @@ jobs:
             PH=${PHOST[$B]}
             CB=$(curl -s --max-time 15 "https://$PH.aequitas.digital/coordinator/health")
             QB=$(echo "$CB" | grep -oE '"quorum_size":[0-9]+' | cut -d: -f2)
-            if echo "$CB" | grep -q '"status":"ok"' && [ "${QB:-0}" -ge 2 ]; then ok "Coordinator $PH ok, Quorum $QB"; else rot "Coordinator $PH: ${CB:-keine Antwort}"; fi
+            # Quorum 1 ist nur im EINZELBETRIEB in Ordnung (Entscheidung des
+            # Betreibers vom 04.10.2026, coordinator/app/einzelbetrieb.py):
+            # dann muss die Tagesgrenze aktiv sein. Quorum 1 ohne sie ist rot.
+            EB=$(echo "$CB" | python3 -c "import sys,json
+          try:
+              e=json.load(sys.stdin).get('einzelbetrieb') or {}
+              print('aktiv' if e.get('aktiv') and e.get('tagesgrenze') else '', e.get('tagesgrenze') or '', e.get('heute') if e.get('heute') is not None else '?')
+          except Exception:
+              print('')" 2>/dev/null)
+            if ! echo "$CB" | grep -q '"status":"ok"'; then rot "Coordinator $PH: ${CB:-keine Antwort}"
+            elif [ "${QB:-0}" -ge 2 ]; then ok "Coordinator $PH ok, Quorum $QB"
+            elif [ "${QB:-0}" = 1 ] && [ "${EB%% *}" = aktiv ]; then
+              set -- $EB
+              ok "Coordinator $PH ok, EINZELBETRIEB: Quorum 1, Tagesgrenze $2, heute $3"
+              [ "$3" != "?" ] && [ "$3" -ge "$2" ] && echo "ℹ $PH: Tagesgrenze heute erreicht -- weitere Registrierungen erst morgen (UTC)"
+            else rot "Coordinator $PH: Quorum ${QB:-?} OHNE Einzelbetrieb-Tagesgrenze"; fi
             # QUORUM ERREICHBAR? quorum_size ist eine Zahl aus der Konfiguration,
             # kein Beleg. Am 24.09.2026 meldete die Wache "Quorum 2 ok", waehrend
             # einer der beiden Vergleichsdienste mit C1 verschwunden war -- keine
