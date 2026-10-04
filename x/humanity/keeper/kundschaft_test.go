@@ -94,3 +94,22 @@ func TestKundschaftUndGrundeinkommen_RealDB(t *testing.T) {
 		t.Fatalf("Weitergabe aus frueherem Guthaben wird auf 1 begrenzt: %v", mehr)
 	}
 }
+
+// Ein frischer Knoten (Beobachter, neuer Validator) hat die Verlaufstabelle
+// noch nicht -- sie entsteht beim ersten Schreiben. Lesen davor scheiterte mit
+// "relation chain_konto_verlauf does not exist" (Beobachter-Lauf 03.10.).
+func TestGrundeinkommen30_OhneVerlaufstabelle_RealDB(t *testing.T) {
+	truncateDistTestTables(t)
+	db, err := sql.Open("postgres", os.Getenv("DATABASE_URL"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	if _, err := db.Exec(`DROP TABLE IF EXISTS chain_konto_verlauf`); err != nil {
+		t.Fatal(err)
+	}
+	cs := &ChainState{db: db, useDB: true} // frisch: kontoVerlaufOnce nicht gelaufen
+	if _, err := cs.rechneGrundeinkommen30(time.Now()); err != nil {
+		t.Fatalf("Lesen ohne Tabelle: %v", err)
+	}
+}

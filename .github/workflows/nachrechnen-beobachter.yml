@@ -64,6 +64,10 @@ jobs:
             echo "::error::keine gueltige Signieradresse von C1 ($s)"; exit 1
           fi
           echo "C1 unterschreibt mit $s"
+          # Liefert C1 Bloecke an einen Fremden? (Grundlage des Nachspielens)
+          h=$(curl -sf -m 25 "$C1/api/status" | jq -r '.height // 0')
+          code=$(curl -s -o bloecke.json -w '%{http_code}' -m 25 "$C1/api/blocks?min_height=$((h-5))&limit=5")
+          echo "/api/blocks ab $((h-5)): HTTP $code, $(jq 'if type=="array" then length elif .blocks then (.blocks|length) else "?" end' bloecke.json 2>/dev/null) Bloecke"
           echo "signierer=$s" >> "$GITHUB_OUTPUT"
       - name: Beobachter starten und nachspielen lassen
         env:
@@ -72,6 +76,10 @@ jobs:
           PRIMARY_NODE_URL: ${{ env.C1 }}
           BOOTSTRAP_SNAPSHOT_URL: ${{ env.C1 }}/api/snapshot
           BOOTSTRAP_SIGNER: ${{ steps.c1.outputs.signierer }}
+          # Geschlossene Produzentenliste wie bei jedem Betreiberknoten (K-1):
+          # ohne sie kennt der frische Knoten C1 nicht als Erzeuger und haengt
+          # keinen einzigen Block an (Lauf 2: "Unknown proposer").
+          AUTHORIZED_VALIDATORS: ${{ steps.c1.outputs.signierer }}
           AEQUITAS_BEOBACHTER: "1"
           AEQUITAS_WAL_ENABLED: "1"
           AEQUITAS_WAL_PATH: /tmp/aequitas-wal/aequitas_transfers.wal
@@ -92,11 +100,13 @@ jobs:
             kill -0 $PID 2>/dev/null || { echo "::error::Knoten ist gestorben"; tail -80 node.log; exit 1; }
             H=$(curl -s -m 5 http://localhost:8080/api/status | jq -r '.height // "?"')
             S=$(curl -s -m 5 "$C1/api/status" | jq -r '.height // "?"')
-            A=$(curl -s -m 5 http://localhost:8080/api/wirtschaft/regeln | jq -r '.nachrechnen.abweichungen // "?"')
+            A=$(curl -s -m 5 http://localhost:8080/api/wirtschaft/regeln | jq -r '[.. | objects | select(has("nachrechnen")) | .nachrechnen][0].abweichungen // "?"')
             echo "$(( $(date +%s) - START ))s  Beobachter $H  C1 $S  Abweichungen $A"
             sleep 60
           done
-          curl -s -m 20 http://localhost:8080/api/wirtschaft/regeln > regeln.json || true
+          # nachrechnen steht unter .unternehmen -- unabhaengig von der Stelle lesen.
+          curl -s -m 20 http://localhost:8080/api/wirtschaft/regeln \
+            | jq '[.. | objects | select(has("nachrechnen")) | .nachrechnen][0] // {}' > nachrechnen.json || true
           curl -s -m 20 http://localhost:8080/api/status > status.json || true
           kill $PID 2>/dev/null || true
           sleep 5
@@ -109,18 +119,24 @@ jobs:
             echo "## Nachrechnen beobachtet"
             echo
             echo "- Hoehe am Ende: $(jq -r '.height // "?"' status.json 2>/dev/null)"
-            echo "- Modus: $(jq -r '.nachrechnen.modus // "?"' regeln.json 2>/dev/null)"
-            echo "- geprueft: $(jq -r '.nachrechnen.geprueft // "?"' regeln.json 2>/dev/null), Abweichungen: $(jq -r '.nachrechnen.abweichungen // "?"' regeln.json 2>/dev/null)"
+            echo "- Modus: $(jq -r '.modus // "?"' nachrechnen.json 2>/dev/null)"
+            echo "- geprueft: $(jq -r '.geprueft // "?"' nachrechnen.json 2>/dev/null), Abweichungen: $(jq -r '.abweichungen // "?"' nachrechnen.json 2>/dev/null)"
             echo "- eigene Bloecke (muss 0 sein): ${EIGENE:-0}"
             echo "- nachgespielte Bloecke: $(grep -cE '\[REPLAY\]' node.log || true) Zeilen, abgelehnt: $(grep -cE 'rolling back whole block' node.log || true)"
             echo
             echo "| Regel | Abweichungen |"
             echo "|---|---|"
-            jq -r '.nachrechnen.je_regel // {} | to_entries[] | "| \(.key) | \(.value) |"' regeln.json 2>/dev/null || true
+            jq -r '.je_regel // {} | to_entries[] | "| \(.key) | \(.value) |"' nachrechnen.json 2>/dev/null || true
           } >> "$GITHUB_STEP_SUMMARY"
           cat "$GITHUB_STEP_SUMMARY"
           echo "=== [NACHRECHNEN]-Zeilen (hoechstens 200) ==="
           grep -F "[NACHRECHNEN]" node.log | head -200 || true
-          echo "=== Fehler (letzte 40) ==="
-          grep -E "✗|panic|PANIC" node.log | tail -40 || true
+          echo "=== Sync und DAG (erste 60, letzte 60) ==="
+          grep -E "HTTP-SYNC|SYNC\]|\[DAG\]|CHECKPOINT|Checkpoint|orphan|Rejected|BOOTSTRAP|RESYNC" node.log | head -60 || true
+          echo "..."
+          grep -E "HTTP-SYNC|SYNC\]|\[DAG\]|CHECKPOINT|Checkpoint|orphan|Rejected|BOOTSTRAP|RESYNC" node.log | tail -60 || true
+          echo "=== Fehler (letzte 40, ohne die Peer-Anmeldung) ==="
+          grep -E "✗|panic|PANIC" node.log | grep -v "Registration with primary" | tail -40 || true
+          echo "=== Log-Ende (80) ==="
+          tail -80 node.log
           if [ "${EIGENE:-0}" -gt 0 ]; then echo "::error::der Beobachter hat Bloecke erzeugt"; exit 1; fi
