@@ -192,14 +192,18 @@ func TestDatenschutzerklaerungBeschreibtDenLaufendenBetrieb(t *testing.T) {
 		t.Errorf("unersetzte Marke in der ausgelieferten Seite: %q", seite[i:i+30])
 	}
 	sichtbar := sichtbarerText(seite)
-	for _, darfNicht := range []string{"Railway", "drei voneinander unabhängige", "zwei übereinstimmen"} {
+	// Seit 03.10.2026 laeuft nur noch ein Vergleichsdienst (Einzelbetrieb mit
+	// Tagesgrenze). "beide muessen uebereinstimmen" waere jetzt falsch.
+	for _, darfNicht := range []string{"Railway", "drei voneinander unabhängige", "zwei übereinstimmen",
+		"beide</strong> müssen übereinstimmen"} {
 		if strings.Contains(sichtbar, darfNicht) {
 			t.Errorf("veraltet: %q steht noch auf der Seite", darfNicht)
 		}
 	}
 	for _, muss := range []string{
-		"zwei voneinander unabhängige Dienste",
-		"beide</strong> müssen übereinstimmen",
+		"mindestens zwei voneinander unabhängige Dienste",
+		"läuft nur einer</strong>",
+		"höchstens 25 neue Anmeldungen je Tag",
 		"Art. 22 Abs. 3",
 		"innerhalb von 90 Tagen",
 	} {
