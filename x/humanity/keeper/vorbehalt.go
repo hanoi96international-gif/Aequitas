@@ -149,10 +149,12 @@ func (cs *ChainState) vorbehaltOffen(ctx context.Context, konto string, o *offen
 
 // vorbehaltSicherung: Stand von cs.vorbehalte fuer den Rueckroll-Snapshot.
 //
-// Die Karte im Speicher stand neben der Tabelle vorbehalte_offen, die mit
-// der Datenbanktransaktion zurueckgeht -- die Karte ging nicht mit. Nach
-// einem zurueckgewiesenen Block fuehrte der Leiter dann einen Vorbehalt aus,
-// den es nicht gibt, oder fand einen offenen nicht mehr.
+// Die Karte im Speicher steht neben der Tabelle vorbehalte_offen, die mit
+// der Datenbanktransaktion zurueckgeht -- die Karte ging nicht mit. Mit
+// Datenbank arbeitet der Leiter seit #284 nur noch die Tabelle ab; ohne
+// Datenbank (Tests, Entwicklungsknoten) ist die Karte der einzige Stand, und
+// ein zurueckgewiesener Block hinterliess dort einen Vorbehalt, den es nicht
+// gibt, oder loeschte einen offenen. Die Sicherung haelt beide gleich.
 //
 // Gesichert werden nur die Vorbehaltskonten unter den Adressen des
 // Snapshots: blockTouchedAddresses nennt sie fuer jeden Vorbehalt und jede
