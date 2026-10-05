@@ -1295,6 +1295,16 @@ func bekannteTxArt(typ string, blockZeit int64) bool {
 		return true
 	case "validator_bindung": // validator_register.go, schlafend bis zum Stichtag
 		return validatorRegisterAktiv(blockZeit)
+	case "vorbehalt", "vorbehalt_ausfuehrung", "kappung":
+		// Stufe 2 (vorbehalt.go, kappung_verteilt.go). Fehlten hier bis
+		// 05.10.2026 ganz: ab der Aktivierung haette jeder Knoten jeden
+		// fremden Block mit einem Vorbehalt oder einer Kappung abgewiesen.
+		// Bekannt erst, wenn AUCH streng nachgerechnet wird: kappung traegt
+		// keine Unterschrift, ihre Obergrenze und die Werte einer
+		// vorbehalt_ausfuehrung prueft nur nachrechnen -- im
+		// Beobachtungsmodus gezaehlt, nicht abgelehnt. Davor bleiben sie
+		// unbekannt wie bisher.
+		return verteilteAnnahmeAktiv(blockZeit) && nachrechnenStreng(blockZeit)
 	}
 	return false
 }

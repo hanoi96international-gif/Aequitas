@@ -176,3 +176,33 @@ func TestValidatorBindung_ChainIDImSatz(t *testing.T) {
 		t.Fatalf("Satz ohne Chain-ID: %s", validatorBindungNachricht("0xa", "0xb", 1))
 	}
 }
+
+// Stufe 2: Vorbehalt, Ausfuehrung und Kappung sind bis zur Aktivierung
+// unbekannt (wie bisher) und danach bekannt -- sonst wiese jeder Knoten ab
+// der Aktivierung jeden fremden Block damit ab.
+func TestBekannteTxArt_Stufe2ErstAbAktivierung(t *testing.T) {
+	verteilteAnnahmeOverride.Store(1000)
+	nachrechnenStrengOverride.Store(1000)
+	t.Cleanup(func() { verteilteAnnahmeOverride.Store(0); nachrechnenStrengOverride.Store(0) })
+	for _, typ := range []string{"vorbehalt", "vorbehalt_ausfuehrung", "kappung"} {
+		if bekannteTxArt(typ, 999) {
+			t.Fatalf("%s vor der Aktivierung durchgelassen", typ)
+		}
+		if !bekannteTxArt(typ, 1000) {
+			t.Fatalf("%s ab der Aktivierung abgewiesen", typ)
+		}
+	}
+	// Stufe 2 aktiv, aber noch nicht streng nachgerechnet: unbekannt --
+	// sonst koennte jeder Erzeuger mit einer Kappung jedes Konto belasten.
+	nachrechnenStrengOverride.Store(2000)
+	for _, typ := range []string{"vorbehalt", "vorbehalt_ausfuehrung", "kappung"} {
+		if bekannteTxArt(typ, 1500) {
+			t.Fatalf("%s ohne strenges Nachrechnen durchgelassen", typ)
+		}
+	}
+	verteilteAnnahmeOverride.Store(0)
+	nachrechnenStrengOverride.Store(0)
+	if bekannteTxArt("vorbehalt", nowUnix()) {
+		t.Fatal("ohne gesetzten Stichtag muss vorbehalt unbekannt sein")
+	}
+}
