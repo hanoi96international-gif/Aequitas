@@ -331,7 +331,7 @@ func (a *APIServer) handleLivenessRenewal(w http.ResponseWriter, r *http.Request
 			"error": "second liveness check counts from day 7 after registration", "frueh_ab": ab})
 		return
 	}
-	tx := Transaction{Type: "liveness_renewal", Wallet: wallet, DistributionAt: req.IssuedAt}
+	tx := erneuerungsTransaktion(wallet, req.IssuedAt, req.PublicKey, req.Signature)
 	if err := a.state.runAtomicWithOutbox([]string{wallet}, false, func(ctx context.Context) (Transaction, error) {
 		if err := a.state.applyLivenessRenewalDeltaLocked(ctx, wallet, now); err != nil {
 			return Transaction{}, err
@@ -356,6 +356,24 @@ func erneuerungFruehestens(acc *AccountState) int64 {
 }
 
 const livenessRenewalDomain = "aequitas-liveness-renewal-v1"
+
+// Lebendigkeitsbescheinigung: was der Coordinator unterschrieben hat, so wie
+// es in der Transaktion steht. Der Zeitpunkt steht in DistributionAt.
+type Lebendigkeitsbescheinigung struct {
+	PublicKey string `json:"public_key"`
+	Signature string `json:"signature"`
+}
+
+// erneuerungsTransaktion: die liveness_renewal mit der Bescheinigung --
+// vorher trug sie nur Wallet und Zeitpunkt, und kein Nachspielender konnte
+// pruefen, ob es die zweite Lebendigkeitspruefung gab.
+func erneuerungsTransaktion(wallet string, issuedAt int64, publicHex, signatureHex string) Transaction {
+	return Transaction{Type: "liveness_renewal", Wallet: wallet, DistributionAt: issuedAt,
+		Bescheinigung: &Lebendigkeitsbescheinigung{
+			PublicKey: strings.ToLower(strings.TrimSpace(publicHex)),
+			Signature: strings.TrimSpace(signatureHex),
+		}}
+}
 
 // livenessRenewalSignaturGueltig prueft die Ed25519-Bescheinigung gegen das
 // Coordinator-Register des Knotens.
