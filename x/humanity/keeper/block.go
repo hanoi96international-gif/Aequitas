@@ -1465,6 +1465,9 @@ func NewBlockchain(nodeID string, state *ChainState) *BlockDAG {
 	// Seit 14.09.2026 begrenzt und wiederkehrend (aufraeumen_begrenzt.go):
 	// Reste aelter als einen Tag werden geloescht statt wieder geoeffnet.
 	state.PendingLeichenAufraeumenStart(10 * time.Minute)
+	// Was jetzt noch offen im Ausgang liegt, stammt von vor dem Start: bis es
+	// verblockt ist, nimmt dieser Knoten nichts Neues an (annahme_pause.go).
+	state.ausgangVorStartMerken()
 
 	// FIX (audit 2026-06-28 full recheck, P1-3): restore every durably-saved
 	// block (see chain_blocks' own comment and SaveBlockToDB) BEFORE falling
@@ -2457,6 +2460,10 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 		merkeProduktionsAusfall("beobachter")
 		return nil // nur nachspielen, nie erzeugen (beobachter.go)
 	}
+	// Ab jetzt misst annahme_pause.go, ob dieser Knoten Bloecke erzeugt.
+	if dag.state != nil {
+		dag.state.erzeugerSeit.CompareAndSwap(0, time.Now().Unix())
+	}
 	if dag.resyncInProgress.Load() {
 		merkeProduktionsAusfall("resync_laeuft")
 		return nil // an in-process self-heal resync is atomically swapping account/DAG state right now — see resyncInProgress's field comment
@@ -2968,10 +2975,16 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 
 	// Height = max parent height + 1
 	maxParentHeight := int64(0)
+	// Die juengste Elternzeit: frueher darf die Blockzeit nicht liegen
+	// (block_tauglich.go). Ein Stumpf traegt einen Platzhalter, keine Zeit.
+	elternZeit := int64(0)
 	for _, ph := range parentHashes {
 		if parent, ok := dag.blocks[ph]; ok {
 			if parent.Height > maxParentHeight {
 				maxParentHeight = parent.Height
+			}
+			if parent.Proposer != "synthetic-checkpoint" && parent.Timestamp > elternZeit {
+				elternZeit = parent.Timestamp
 			}
 		}
 	}
@@ -3193,11 +3206,22 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 		return nil
 	}
 
-	// Blockzeit einmal festlegen und den Ausgang daran messen: was jeder
-	// andere Knoten an seiner Zeit scheitern liesse, kommt nicht hinein
-	// (block_tauglich.go) -- sonst stuende die Kette an einem alten Auftrag.
-	blockZeit := time.Now().Unix()
-	txs = ohneUntauglicheAuftraege(txs, blockZeit)
+	// Die Blockzeit nach den Auftraegen: jetzt, wenn alle dazu passen; sonst
+	// die spaeteste Zeit seit den Eltern, zu der jeder andere Knoten alle
+	// annimmt (block_tauglich.go). Gibt es keine, entsteht kein Block --
+	// weder einer, den jeder abweist, noch ein Zustand, den nur dieser Knoten
+	// hat.
+	jetztUnix := time.Now().Unix()
+	blockZeit, zeitErr := blockZeitFuer(txs, jetztUnix, elternZeit)
+	if zeitErr != nil {
+		blockZeitKonfliktMelden(zeitErr)
+		merkeProduktionsAusfall("auftraege_ohne_gemeinsame_zeit")
+		return nil
+	}
+	if blockZeit != jetztUnix {
+		blockZeitZurueck.Add(1)
+		fmt.Printf("[BLOCK] ⏪ Blockzeit %d statt %d: die Auftraege dieses Blocks wurden frueher angenommen (block_tauglich.go)\n", blockZeit, jetztUnix)
+	}
 	block := &Block{
 		Height:       maxParentHeight + 1,
 		Timestamp:    blockZeit,
@@ -3477,6 +3501,8 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 	// now. See admission_control.go for why time-since-a-block is the signal
 	// rather than queue depth.
 	noteBlockProduced()
+	// annahme_pause.go: Erzeugung laeuft; Ausgang von vor dem Start verblockt?
+	dag.state.eigenerBlockGespeichert()
 	// Alles nach dem Speichern -- Verteilen an die Peers und Nachlauf.
 	pbVerteilen = time.Since(pbVerteilenStart)
 	merkeProduktionsErfolg()

@@ -59,8 +59,12 @@ type Auftragsnachweis struct {
 
 // Zeitfenster gegen die Blockzeit.
 const (
-	nachweisHoechstensAlt    int64 = 3600
-	nachweisHoechstensVoraus int64 = 300
+	nachweisHoechstensAlt int64 = 3600
+	// nachweisAnnahmeHoechstensAlt: so alt darf ein Nachweis bei der ANNAHME
+	// sein (pruefeNachweisJetzt). Der Rest bis nachweisHoechstensAlt ist der
+	// Spielraum bis zum Block (block_tauglich.go, annahme_pause.go).
+	nachweisAnnahmeHoechstensAlt int64 = 600
+	nachweisHoechstensVoraus     int64 = 300
 )
 
 // braucheNachweis: welche Transaktionsarten ab der Aktivierung einen

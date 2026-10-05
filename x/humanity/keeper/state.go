@@ -221,6 +221,12 @@ type ChainState struct {
 	// annahmenLaufend zaehlt Annahmen, die das Tor passiert haben und noch
 	// nicht fertig sind -- der Leiter uebergibt erst, wenn es 0 ist.
 	annahmenLaufend atomic.Int64
+	// annahme_pause.go: seit wann dieser Knoten Bloecke erzeugt (0 = nie
+	// versucht), wann er zuletzt einen gespeichert hat, und bis zu welcher
+	// Ausgangszeile der Ausgang von vor dem Start reicht (0 = verblockt).
+	erzeugerSeit        atomic.Int64
+	letzterEigenerBlock atomic.Int64
+	ausgangVorStartBis  atomic.Int64
 
 	mu sync.RWMutex
 	// accounts is a *shardedAccounts (see sharded_accounts.go /

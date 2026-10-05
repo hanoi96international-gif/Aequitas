@@ -178,12 +178,19 @@ den verlinkten Dokumenten.
             `issued_at` der Bescheinigung) statt jeder nach seiner Uhr bzw.
             der Blockzeit -- sonst wiche ab der Aktivierung jedes gestaffelte
             Konto in der StateRoot ab (`grant_staffel.go`, „EIN ZEITPUNKT“)
-      - [x] Erzeuger legt keine Aufträge mehr in den Block, die jeder andere
-            Knoten an ihrer Zeit scheitern ließe (05.10., `block_tauglich.go`):
-            ein Tausch oder Vormund-Auftrag, der nach einem Neustart über eine
-            Stunde im Ausgang lag, hätte den ganzen Block und damit die Kette
-            angehalten. Weggelassene zählen in
-            `produktions_ausfaelle.auftraege_aussortiert`
+      - [x] Blockzeit nach den Aufträgen (05.10., `block_tauglich.go`): ein
+            Tausch oder Vormund-Auftrag, der nach einem Neustart über eine
+            Stunde im Ausgang lag, hätte mit der Uhrzeit den ganzen Block und
+            damit die Kette angehalten. Jetzt trägt der Block die späteste
+            Zeit seit den Eltern, zu der jeder Knoten alle Aufträge annimmt
+            (nach einem Absturz: die Zeit ihrer Annahme) -- nichts wird
+            weggelassen, sonst wiche der Erzeuger ab. Gibt es keine solche
+            Zeit, entsteht kein Block (fail-closed, `blockzeit.konflikte`).
+            Damit das nicht vorkommt, hält die Annahme an, solange der
+            Ausgang von vor dem Start offen ist oder seit 30 s kein eigener
+            Block entstand (`annahme_pause.go`, auch für die Registrierung),
+            und Vormund/Lebenszeichen werden nur noch bis 10 min nach der
+            Unterschrift angenommen
       - [ ] Coordinator-Register (`coordinator_keys`) als Konsenszustand --
             heute knotenlokal; nötig, bevor die Staffel aktiv wird, sonst
             prüfen Knoten mit verschiedenem Register verschieden
