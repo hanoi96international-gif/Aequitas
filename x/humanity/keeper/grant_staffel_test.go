@@ -81,7 +81,7 @@ func TestStaffelLebenszyklus(t *testing.T) {
 	}
 	// Erneuerung -- zweimal nachgespielt aendert nichts.
 	for i := 0; i < 2; i++ {
-		if err := cs.applyLivenessRenewalDeltaLocked(ctx, w, 7_000); err != nil {
+		if err := cs.applyLivenessRenewalDeltaLocked(ctx, w, 7_000, 7_000); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -136,7 +136,7 @@ func TestStaffelLeerlaufVorAktivierung(t *testing.T) {
 	if acc.Balance.Float() != 1000 || acc.GrantStagedRest != 0 {
 		t.Fatalf("vor Aktivierung voller Zuschuss: %+v", acc)
 	}
-	if err := cs.applyLivenessRenewalDeltaLocked(ctx, w, 1_800_000_000); err != nil || acc.LivenessRenewedAt != 0 {
+	if err := cs.applyLivenessRenewalDeltaLocked(ctx, w, 1_800_000_000, 1_800_000_000); err != nil || acc.LivenessRenewedAt != 0 {
 		t.Fatalf("Erneuerung vor Aktivierung: %v %d", err, acc.LivenessRenewedAt)
 	}
 	if err := cs.applyGrantReleaseDeltaLocked(ctx, w, 26.666667, 1_800_000_000); err != nil || acc.Balance.Float() != 1000 {
