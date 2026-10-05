@@ -18,6 +18,11 @@ func vorbehaltsKnoten(t *testing.T, name string) *annahmeKnoten {
 	cs.accounts.Set("0xpoolstarter", &AccountState{Address: "0xpoolstarter", LPShares: NewDecimal(1000)})
 	cs.accounts.Set("0xvx", &AccountState{Address: "0xvx", Balance: NewDecimal(2_000), TUsdBalance: NewDecimal(500), LastActivityAt: nowUnix(), IsHuman: true})
 	cs.accounts.Set("0xvz", &AccountState{Address: "0xvz", Balance: NewDecimal(10), LastActivityAt: nowUnix()})
+	// Blatt-Hashes und accountSetXOR zu den direkt gesetzten Konten -- wie
+	// nach dem Laden eines echten Knotens. Ohne das stimmt die Summe erst
+	// fuer die Konten, die eine Buchung beruehrt, und ein Zurueckrollen
+	// (das die Blaetter nachtraegt) verschoebe sie gegenueber den anderen.
+	cs.rebuildStateAccumulators()
 	cs.mu.Unlock()
 	k := &annahmeKnoten{name: name, dag: dag, cs: cs}
 	cs.ausgangOhneDB = func(tx Transaction) { k.korb = append(k.korb, tx) }

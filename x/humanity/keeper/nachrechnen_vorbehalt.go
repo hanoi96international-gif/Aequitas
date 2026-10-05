@@ -42,8 +42,9 @@ import (
 // rueckbuchenLocked begrenzt die auf den Inhalt des Vorbehaltskontos.
 //
 // Gelesen wird aus der Datenbank in der laufenden Transaktion, nicht aus
-// cs.vorbehalte: die Karte im Speicher wird beim Zurueckrollen eines Blocks
-// nicht zurueckgesetzt, die Tabelle schon.
+// cs.vorbehalte: die Tabelle ist der Stand, der nach einem Neustart gilt.
+// Die Karte im Speicher geht seit dem 05.10.2026 beim Zurueckrollen mit
+// (vorbehaltSicherung), ist aber nur der Arbeitsvorrat des Leiters.
 
 type vorbehaltAuftrag struct {
 	wallet, art     string

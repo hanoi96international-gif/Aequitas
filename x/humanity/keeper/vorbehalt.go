@@ -137,6 +137,77 @@ func (cs *ChainState) vorbehaltOffen(ctx context.Context, konto string, o *offen
 	return nil
 }
 
+// vorbehaltSicherung: Stand von cs.vorbehalte fuer den Rueckroll-Snapshot.
+//
+// Die Karte im Speicher stand neben der Tabelle vorbehalte_offen, die mit
+// der Datenbanktransaktion zurueckgeht -- die Karte ging nicht mit. Nach
+// einem zurueckgewiesenen Block fuehrte der Leiter dann einen Vorbehalt aus,
+// den es nicht gibt, oder fand einen offenen nicht mehr.
+//
+// Gesichert werden nur die Vorbehaltskonten unter den Adressen des
+// Snapshots: blockTouchedAddresses nennt sie fuer jeden Vorbehalt und jede
+// Ausfuehrung im Block, VorbehaltAtomic und VorbehaltAusfuehren geben sie
+// runAtomicWithOutbox mit. Eine Ueberweisung beruehrt keines und zahlt
+// nichts. Der volle Snapshot sichert die ganze Karte.
+type vorbehaltSicherung struct {
+	voll      bool
+	eintraege map[string]vorbehaltEintrag
+}
+
+type vorbehaltEintrag struct {
+	o     offenerVorbehalt
+	offen bool
+}
+
+// vorbehaltSichern: unter cs.mu (wie snapshotForRollbackLocked).
+func (cs *ChainState) vorbehaltSichern(addrs []string, voll bool) vorbehaltSicherung {
+	offeneVorbehalteMu.Lock()
+	defer offeneVorbehalteMu.Unlock()
+	if voll {
+		s := vorbehaltSicherung{voll: true, eintraege: make(map[string]vorbehaltEintrag, len(cs.vorbehalte))}
+		for k, o := range cs.vorbehalte {
+			s.eintraege[k] = vorbehaltEintrag{o: o, offen: true}
+		}
+		return s
+	}
+	var s vorbehaltSicherung
+	for _, a := range addrs {
+		if !strings.HasPrefix(a, "vorbehalt:") {
+			continue
+		}
+		if s.eintraege == nil {
+			s.eintraege = make(map[string]vorbehaltEintrag)
+		}
+		o, ok := cs.vorbehalte[a]
+		s.eintraege[a] = vorbehaltEintrag{o: o, offen: ok}
+	}
+	return s
+}
+
+// vorbehaltZurueck: nur der Speicher -- die Zeilen in vorbehalte_offen lagen
+// in der zurueckgerollten Transaktion.
+func (cs *ChainState) vorbehaltZurueck(s vorbehaltSicherung) {
+	offeneVorbehalteMu.Lock()
+	defer offeneVorbehalteMu.Unlock()
+	if s.voll {
+		cs.vorbehalte = make(map[string]offenerVorbehalt, len(s.eintraege))
+		for k, e := range s.eintraege {
+			cs.vorbehalte[k] = e.o
+		}
+		return
+	}
+	for k, e := range s.eintraege {
+		if !e.offen {
+			delete(cs.vorbehalte, k)
+			continue
+		}
+		if cs.vorbehalte == nil {
+			cs.vorbehalte = map[string]offenerVorbehalt{}
+		}
+		cs.vorbehalte[k] = e.o
+	}
+}
+
 // --- Schritt 1: Vorbehalt (Zustaendiger des Kontos) ---------------------------
 
 // VorbehaltAtomic nimmt den ersten Schritt an. tmpl traegt Art (Type),
