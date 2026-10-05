@@ -96,6 +96,10 @@ func ProduktionsAusfaelle() map[string]interface{} {
 		"ausfaelle":     produktionAusfallSum.Load(),
 		"letzter_grund": letzter,
 		"nach_grund":    liste,
+		// block_tauglich.go: Auftraege, die beim Bau eines Blocks wegen ihrer
+		// Zeit weggelassen wurden. 0 ist der Normalfall; jeder andere Wert
+		// heisst, dieser Knoten weicht fuer die betroffenen Konten ab.
+		"auftraege_aussortiert": AussortierteAuftraegeStand(),
 	}
 }
 

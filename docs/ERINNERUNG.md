@@ -172,6 +172,12 @@ den verlinkten Dokumenten.
             Tag 7 (`nachrechnen_erneuerung.go`). Vor der Aktivierung (2100)
             ungeprüft wie bisher. Die Bindung an dieselbe Person leistet der
             Coordinator (WP 3, Wallet-Signatur und Gesichtsabgleich)
+      - [x] Erzeuger legt keine Aufträge mehr in den Block, die jeder andere
+            Knoten an ihrer Zeit scheitern ließe (05.10., `block_tauglich.go`):
+            ein Tausch oder Vormund-Auftrag, der nach einem Neustart über eine
+            Stunde im Ausgang lag, hätte den ganzen Block und damit die Kette
+            angehalten. Weggelassene zählen in
+            `produktions_ausfaelle.auftraege_aussortiert`
       - [ ] Coordinator-Register (`coordinator_keys`) als Konsenszustand --
             heute knotenlokal; nötig, bevor die Staffel aktiv wird, sonst
             prüfen Knoten mit verschiedenem Register verschieden

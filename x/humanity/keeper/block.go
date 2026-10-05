@@ -3193,9 +3193,14 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 		return nil
 	}
 
+	// Blockzeit einmal festlegen und den Ausgang daran messen: was jeder
+	// andere Knoten an seiner Zeit scheitern liesse, kommt nicht hinein
+	// (block_tauglich.go) -- sonst stuende die Kette an einem alten Auftrag.
+	blockZeit := time.Now().Unix()
+	txs = ohneUntauglicheAuftraege(txs, blockZeit)
 	block := &Block{
 		Height:       maxParentHeight + 1,
-		Timestamp:    time.Now().Unix(),
+		Timestamp:    blockZeit,
 		ParentHashes: parentHashes,
 		Proposer:     proposer,
 		Humans:       dag.state.TotalHumans(),
