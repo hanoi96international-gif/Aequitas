@@ -294,6 +294,9 @@ type ChainState struct {
 	// blockRollbackSnapshot.
 	accountSetXOR   [32]byte
 	nullifierSetXOR [32]byte
+	// escrowSetXOR: dieselbe Summe ueber die Treuhand-Zeilen (escrow_accounts),
+	// treuhand_stateroot.go. Unter cs.mu; null, solange es keine Treuhand gibt.
+	escrowSetXOR [32]byte
 	// accountSetXORMu additionally guards accountSetXOR's own mutation
 	// (updateAccountLeafLocked) specifically for SCALING_ARCHITECTURE.md
 	// Phase 5's concurrent-transfer path (transferConcurrent, see
@@ -7358,6 +7361,12 @@ func (cs *ChainState) stateRootLocked(lastUBIAt string) string {
 	// Nullifier set commitment (keys only, never wallet addresses — privacy).
 	sb.WriteString("|nullXOR:")
 	sb.WriteString(hex.EncodeToString(cs.nullifierSetXOR[:]))
+	// Treuhand (treuhand_stateroot.go): nur wenn es eine gibt -- ohne bleibt
+	// die Wurzel byte-gleich, also auch die StateRoot jedes bisherigen Blocks.
+	if cs.escrowSetXOR != ([32]byte{}) {
+		sb.WriteString("|escrowXOR:")
+		sb.WriteString(hex.EncodeToString(cs.escrowSetXOR[:]))
+	}
 	// Include last UBI distribution timestamp (pre-fetched before RLock — P1-1).
 	fmt.Fprintf(&sb, "|ubi:%s", lastUBIAt)
 	hash := sha256.Sum256([]byte(sb.String()))
@@ -7388,8 +7397,10 @@ type StateRootComponents struct {
 	PoolReserveTUSD int64  `json:"pool_reserve_tusd_micro"`
 	PoolLPShares    int64  `json:"pool_lp_shares_micro"`
 	NullifierSetXOR string `json:"nullifier_set_xor"`
-	LastUBIAt       string `json:"last_ubi_at"`
-	StateRoot       string `json:"state_root"`
+	// Leer, solange es keine Treuhand gibt (dann ist sie nicht in der Wurzel).
+	EscrowSetXOR string `json:"escrow_set_xor,omitempty"`
+	LastUBIAt    string `json:"last_ubi_at"`
+	StateRoot    string `json:"state_root"`
 }
 
 // StateRootComponentBreakdown returns the same inputs stateRootLocked hashes,
@@ -7410,6 +7421,9 @@ func (cs *ChainState) StateRootComponentBreakdown() StateRootComponents {
 		out.PoolReserveAEQ = cs.pool.ReserveAEQ.Micro()
 		out.PoolReserveTUSD = cs.pool.ReserveTUSD.Micro()
 		out.PoolLPShares = cs.pool.TotalLPShares.Micro()
+	}
+	if cs.escrowSetXOR != ([32]byte{}) {
+		out.EscrowSetXOR = hex.EncodeToString(cs.escrowSetXOR[:])
 	}
 	return out
 }
@@ -7596,6 +7610,16 @@ func (cs *ChainState) rebuildStateAccumulators() {
 		}
 	}
 	cs.nullifierSetXOR = nul
+
+	// Treuhand: ganze Tabelle. Scheitert das Lesen, bleibt die Summe null --
+	// laut gemeldet, denn dann stimmt die Wurzel nicht, solange es Treuhand
+	// gibt (StateRoot-Abweichungen sind eine Warnung, kein Halt).
+	if esc, err := cs.treuhandSummeAusDB(); err != nil {
+		fmt.Printf("[STATE] ⚠ Treuhand-Summe nicht lesbar -- StateRoot ohne Treuhand, bis zum naechsten Neuaufbau: %v\n", err)
+		cs.escrowSetXOR = [32]byte{}
+	} else {
+		cs.escrowSetXOR = esc
+	}
 }
 
 // calcGiniLocked computes the Gini coefficient without acquiring cs.mu.
@@ -7920,6 +7944,9 @@ type blockRollbackSnapshot struct {
 	// would survive its own rejection and permanently skew every later root.
 	accountSetXOR   [32]byte
 	nullifierSetXOR [32]byte
+	// escrowSetXOR: die Treuhand-Summe (treuhand_stateroot.go); die Zeilen
+	// selbst gehen mit der Transaktion zurueck.
+	escrowSetXOR [32]byte
 	// buch: Buchfuehrung der Unternehmensregeln (wirtschaft.go). Sie wird in
 	// derselben Transaktion gespeichert und muss mit ihr zurueck.
 	buch *buchStand
@@ -8093,6 +8120,7 @@ func (cs *ChainState) snapshotForRollbackLocked(addrs []string, full bool, chain
 	snap.chainConfig = chainConfig
 	snap.accountSetXOR = cs.accountSetXOR
 	snap.nullifierSetXOR = cs.nullifierSetXOR
+	snap.escrowSetXOR = cs.escrowSetXOR
 	snap.buch = cs.buchSichern(addrs, full)
 	snap.erhaltung = cs.erhaltung
 	snap.ubiRunde = cs.ubiRunde.kopie()
@@ -8254,6 +8282,7 @@ func (cs *ChainState) restoreFromRollbackLockedCtx(ctx context.Context, snap *bl
 	// map/DB rollback happens via the surrounding transaction, not this function.
 	cs.accountSetXOR = snap.accountSetXOR
 	cs.nullifierSetXOR = snap.nullifierSetXOR
+	cs.escrowSetXOR = snap.escrowSetXOR
 	return firstErr
 }
 
@@ -9281,12 +9310,7 @@ func (cs *ChainState) applyEscrowMoveDeltaLocked(ctx context.Context, wallet str
 		// Wie beim Erzeuger: eine bestehende Zeile bleibt, ihre Frist wird
 		// nie neu gestartet. In der laufenden Transaktion des Nachspielens,
 		// faellt also mit einem zurueckgewiesenen Block weg.
-		if _, err := cs.dbExecCtx(ctx).Exec(
-			`INSERT INTO escrow_accounts (wallet_address, amount, moved_at)
-			 VALUES ($1, $2, $3)
-			 ON CONFLICT (wallet_address) DO NOTHING`,
-			wallet, treuhand, movedAt,
-		); err != nil {
+		if err := cs.treuhandZeileAnlegenLocked(ctx, wallet, treuhand, movedAt); err != nil {
 			return fmt.Errorf("escrow move: could not record escrow for %s: %w", wallet, err)
 		}
 	}

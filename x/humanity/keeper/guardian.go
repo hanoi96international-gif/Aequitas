@@ -143,6 +143,9 @@ func (cs *ChainState) RecoverFromEscrowMitNachweis(wallet string, nachweis *Auft
 		if err != nil {
 			return Transaction{}, fmt.Errorf("escrow retrieval failed: %w", err)
 		}
+		// Treuhand-Summe (treuhand_stateroot.go); scheitert der Schritt,
+		// setzt die Ruecknahme sie zurueck.
+		cs.treuhandBlattUmlegenLocked(wallet, amount)
 		if amount <= 0 {
 			return Transaction{}, fmt.Errorf("escrow amount is zero")
 		}
@@ -382,12 +385,7 @@ func (cs *ChainState) checkAndMoveToEscrowLocked(ctx context.Context) ([]Distrib
 	// clock is never reset — resetting it would restart the 1.5-year countdown.
 	var moved []DistributionShare
 	for _, entry := range toEscrow {
-		if _, err := cs.dbExecCtx(ctx).Exec(
-			`INSERT INTO escrow_accounts (wallet_address, amount, moved_at)
-			 VALUES ($1, $2, $3)
-			 ON CONFLICT (wallet_address) DO NOTHING`,
-			entry.acc.Address, entry.balance, now,
-		); err != nil {
+		if err := cs.treuhandZeileAnlegenLocked(ctx, entry.acc.Address, entry.balance, now); err != nil {
 			return nil, fmt.Errorf("could not write escrow for %s: %w", entry.acc.Address, err)
 		}
 		acc := entry.acc
@@ -449,9 +447,21 @@ func (cs *ChainState) releaseEscrowToUBILocked(ctx context.Context) ([]Distribut
 	var entries []escrowEntry
 	for rows.Next() {
 		var e escrowEntry
-		if scanErr := rows.Scan(&e.addr, &e.amount); scanErr == nil && e.amount > 0 {
+		// Jede entfernte Zeile muss aus der Treuhand-Summe -- eine, die sich
+		// nicht lesen laesst, liesse sie falsch zurueck. Dann scheitert die
+		// Runde und geht zurueck (vorher wurde die Zeile still uebergangen).
+		if scanErr := rows.Scan(&e.addr, &e.amount); scanErr != nil {
+			rows.Close()
+			return nil, fmt.Errorf("could not read released escrow row: %w", scanErr)
+		}
+		cs.treuhandBlattUmlegenLocked(e.addr, e.amount)
+		if e.amount > 0 {
 			entries = append(entries, e)
 		}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, fmt.Errorf("could not release escrow: %w", err)
 	}
 	rows.Close()
 
@@ -540,8 +550,16 @@ func (cs *ChainState) treuhandZeileEntfernenLocked(ctx context.Context, wallet s
 	if cs.db == nil || wallet == "" {
 		return nil
 	}
-	if _, err := cs.dbExecCtx(ctx).Exec(`DELETE FROM escrow_accounts WHERE wallet_address = $1`, wallet); err != nil {
+	var amount float64
+	err := cs.dbExecCtx(ctx).QueryRow(
+		`DELETE FROM escrow_accounts WHERE wallet_address = $1 RETURNING amount`, wallet,
+	).Scan(&amount)
+	if err == sql.ErrNoRows {
+		return nil
+	}
+	if err != nil {
 		return fmt.Errorf("could not clear escrow row for %s: %w", wallet, err)
 	}
+	cs.treuhandBlattUmlegenLocked(wallet, amount)
 	return nil
 }

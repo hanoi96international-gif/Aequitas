@@ -51,7 +51,11 @@ type StateSnapshot struct {
 	// Unternehmensregister (wirtschaft.go) -- Konsens, weil es die
 	// Vermoegensgrenze entscheidet. Leer vor der Aktivierung.
 	Unternehmen []*unternehmenEintrag `json:"unternehmen,omitempty"`
-	Signature   string                `json:"signature,omitempty"` // ECDSA over SHA256(JSON without this field)
+	// Treuhand-Zeilen (escrow_accounts) -- Konsens, seit sie in der StateRoot
+	// stehen (treuhand_stateroot.go). omitempty: ohne Treuhand bleibt der
+	// Snapshot byte-gleich, seine Signatur auch.
+	Treuhand  []SnapshotTreuhand `json:"treuhand,omitempty"`
+	Signature string             `json:"signature,omitempty"` // ECDSA over SHA256(JSON without this field)
 }
 
 type SnapshotBioRegistration struct {
@@ -161,6 +165,11 @@ func (cs *ChainState) ExportSnapshot(signingKey *ecdsa.PrivateKey, height int64,
 		Nullifiers:         nullifiers,
 		NullifiersRedacted: !includeSensitive,
 		Unternehmen:        cs.unternehmenFuerSnapshot(),
+	}
+	if t, err := cs.treuhandFuerSnapshot(); err != nil {
+		fmt.Printf("[SNAPSHOT] ⚠ Treuhand-Zeilen nicht lesbar -- Snapshot ohne Treuhand: %v\n", err)
+	} else {
+		snap.Treuhand = t
 	}
 
 	// Pull bio_registrations from DB (commitment → wallet only).
@@ -548,6 +557,17 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) e
 					return fmt.Errorf("saving bio_registration %s: %w", br.Commitment, err)
 				}
 			}
+			// Treuhand ergaenzend wie die Konten: eine bestehende Zeile bleibt.
+			// Die Summe baut rebuildStateAccumulators unten neu auf.
+			for _, t := range snap.Treuhand {
+				if _, err := tx.Exec(
+					`INSERT INTO escrow_accounts (wallet_address, amount, moved_at) VALUES ($1, $2, $3)
+					 ON CONFLICT (wallet_address) DO NOTHING`,
+					strings.ToLower(t.Wallet), t.Amount, t.MovedAt,
+				); err != nil {
+					return fmt.Errorf("saving escrow %s: %w", t.Wallet, err)
+				}
+			}
 			// Import chain_config timing values. Do NOT overwrite if already set —
 			// the primary's live value takes precedence over the snapshot's snapshot-time value.
 			for key, val := range snap.ChainConfig {
@@ -805,6 +825,11 @@ func (cs *ChainState) ResyncFromSnapshotURL(peerURL, expectedSignerHex string) e
 	if _, err := tx.Exec(`TRUNCATE chain_accounts, nullifiers, bio_registrations`); err != nil {
 		return fail(fmt.Errorf("resync: could not clear chain_accounts/nullifiers/bio_registrations: %w", err))
 	}
+	// Treuhand ersetzend wie die Konten (treuhand_stateroot.go): sie steht in
+	// der StateRoot, also gilt hier der Stand des Snapshots.
+	if _, err := tx.Exec(`TRUNCATE escrow_accounts`); err != nil {
+		return fail(fmt.Errorf("resync: could not clear escrow_accounts: %w", err))
+	}
 	// chain_blocks wird NICHT mehr mitgeleert -- nur der abweichende Teil
 	// oberhalb der Snapshot-Hoehe.
 	//
@@ -898,6 +923,14 @@ func (cs *ChainState) ResyncFromSnapshotURL(peerURL, expectedSignerHex string) e
 			br.Commitment, strings.ToLower(br.WalletAddress), br.BioHash,
 		); err != nil {
 			return fail(fmt.Errorf("resync: could not insert bio_registration: %w", err))
+		}
+	}
+	for _, t := range snap.Treuhand {
+		if _, err := tx.Exec(
+			`INSERT INTO escrow_accounts (wallet_address, amount, moved_at) VALUES ($1, $2, $3)`,
+			strings.ToLower(t.Wallet), t.Amount, t.MovedAt,
+		); err != nil {
+			return fail(fmt.Errorf("resync: could not insert escrow: %w", err))
 		}
 	}
 	// Authoritative: every StateRoot-relevant config key takes the

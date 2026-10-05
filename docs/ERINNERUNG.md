@@ -119,9 +119,12 @@ den verlinkten Dokumenten.
             gemeldet werden Freigabe/Rückholung ohne oder über Bestand, vor
             der Frist und eine zweite Verschiebung derselben Wallet. Altbestand
             gibt es nicht (erste Verschiebung frühestens 09.12.2028)
-      - [ ] Treuhand in die StateRoot aufnehmen -- heute zählt nur das
-            genullte Guthaben, nicht die Zeile; bis dahin sichern die
-            Nachrechen-Regeln den Bestand
+      - [x] Treuhand in der StateRoot (05.10.): `escrowSetXOR` summiert die
+            Zeilen (Wallet und Betrag; die Frist nicht, die setzen Erzeuger
+            und Nachspielende verschieden), geht mit dem Block zurück, wird
+            beim Start neu aufgebaut, und der Snapshot trägt die Zeilen mit.
+            Ohne Treuhand bleibt die Wurzel byte-gleich
+            (`treuhand_stateroot.go`)
       - [x] Vollständige Durchsicht aller 31 Transaktionsarten im
             Nachspielen (03.10.): drei Wege nahmen Produzentenwerte noch
             ungeprüft, jetzt nachgerechnet --
