@@ -97,6 +97,16 @@ den verlinkten Dokumenten.
             Blöcken der letzten 24 h -- beides ist je Knoten verschieden.
             Nachrechnen geht erst, wenn das Verzeichnis Konsenszustand ist
             (Voraussetzung für offene Zulassung)
+        - [x] Schritt 1, schlafend (05.10.): Kettentransaktion
+              `validator_bindung` mit Unterschrift von Betreiber und
+              Signierschlüssel, Register in `validator_register`, Summe in
+              der StateRoot, Snapshot (`validator_register.go`). Vor dem
+              Stichtag `validatorRegisterAbUnix` (Platzhalter) ungültig
+        - [ ] Schritt 2: `/api/peers/register` legt die Bindung in den
+              Ausgang, bestehende Betreiber binden neu
+        - [ ] Schritt 3: Strafkonto, Belohnung, Erzeugerliste und Komitee
+              lesen aus dem Register; Stichtag setzen (eure Entscheidung,
+              `docs/VALIDATOR_REGISTER_KONSENS.md`)
       - [x] Staffel-Freigaben: höchstens die Tagesrate, nur mit
             Lebenszeichen, einmal je Runde (`nachrechnen_freigabe.go`)
       - [x] `grant_release` wird in einer doppelten Runde mit übersprungen

@@ -3865,6 +3865,12 @@ func (a *APIServer) handleSnapshot(w http.ResponseWriter, r *http.Request) {
 		registerRateLimit.Store("snapshot-public:"+ip, time.Now())
 	}
 	snap := a.state.ExportSnapshot(a.blockchain.GetSigningKey(), a.blockchain.Height(), includeSensitive)
+	if snap == nil {
+		// Konsenstabellen nicht lesbar (ExportSnapshot) -- lieber keiner als
+		// ein unvollstaendiger, unterschriebener.
+		jsonError(w, "snapshot unavailable: consensus tables not readable", http.StatusServiceUnavailable)
+		return
+	}
 	writeJSON(w)
 	json.NewEncoder(w).Encode(snap)
 }

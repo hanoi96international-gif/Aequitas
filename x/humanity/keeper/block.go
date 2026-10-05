@@ -1280,6 +1280,25 @@ func (dag *BlockDAG) ProduzentenGeschlossen() bool {
 	return len(dag.produzentenFest) > 0
 }
 
+// bekannteTxArt: Integrity check 4 in AddPeerBlock. Eine Art, die erst ab
+// einem Stichtag gilt, ist davor so unbekannt wie eine erfundene -- der Block
+// wird abgewiesen, wie ihn ein Knoten ohne diese Art abwiese.
+func bekannteTxArt(typ string, blockZeit int64) bool {
+	switch typ {
+	case "", "register_human", "transfer", "swap_aeq_tusd", "swap_tusd_aeq", "add_liquidity", "remove_liquidity", "faucet", "ubi_distribution", "ubi_distribution_finalize",
+		"validator_distribution", "validator_distribution_pool_zero", "lp_distribution", "lp_distribution_pool_zero", "escrow_move", "escrow_release", "escrow_recover",
+		"slash_equivocation", "distribution_round_marker", "pool_correction",
+		"liveness_renewal", "grant_release",
+		"umlauf", "unternehmen_eroeffnen", "unternehmen_mitinhaber", "unternehmen_schliessen",
+		"unternehmen_verzeichnis", "unternehmen_buergschaft", "unternehmen_austreten",
+		"vormund_setzen", "lebenszeichen":
+		return true
+	case "validator_bindung": // validator_register.go, schlafend bis zum Stichtag
+		return validatorRegisterAktiv(blockZeit)
+	}
+	return false
+}
+
 // ValidatorKeyPair pairs a block-signing address with the human wallet that
 // authorized it. Returned by /api/validators so peers can verify credentials
 // rather than blindly trusting a raw address list.
@@ -5359,16 +5378,7 @@ func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
 	// Integrity check 4: transaction type whitelist — unknown types could
 	// inject unrecognised state-change commands into the audit log.
 	for _, tx := range block.Transactions {
-		switch tx.Type {
-		case "", "register_human", "transfer", "swap_aeq_tusd", "swap_tusd_aeq", "add_liquidity", "remove_liquidity", "faucet", "ubi_distribution", "ubi_distribution_finalize",
-			"validator_distribution", "validator_distribution_pool_zero", "lp_distribution", "lp_distribution_pool_zero", "escrow_move", "escrow_release", "escrow_recover",
-			"slash_equivocation", "distribution_round_marker", "pool_correction",
-			"liveness_renewal", "grant_release",
-			"umlauf", "unternehmen_eroeffnen", "unternehmen_mitinhaber", "unternehmen_schliessen",
-			"unternehmen_verzeichnis", "unternehmen_buergschaft", "unternehmen_austreten",
-			"vormund_setzen", "lebenszeichen":
-		// known / empty — OK
-		default:
+		if !bekannteTxArt(tx.Type, block.Timestamp) {
 			fmt.Printf("[DAG] ✗ Rejected peer block #%d: unknown tx type %q\n", block.Height, tx.Type)
 			dag.mu.Unlock()
 			return false
@@ -7872,6 +7882,26 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 				hardFailure = true
 				continue
 			}
+
+		case "validator_bindung":
+			// validator_register.go. Form, Unterschriften und Stichtag machen
+			// bei einem Verstoss den Block ungueltig; Regeln gegen das
+			// Register (neuere Bindung, Betreiber Mensch) ueberspringen die
+			// Transaktion.
+			vtx := tx
+			if err := dag.state.applyValidatorBindungLocked(withTx(context.Background(), dbTx), &vtx, block.Timestamp); err != nil {
+				if istZustandsAblehnung(err) {
+					// Eigener Zaehler, nicht der der Ueberweisungen (siehe
+					// uebersprungeneBindungen).
+					fmt.Printf("[REPLAY] ⚠ %v (block #%d) — uebersprungen\n", err, block.Height)
+					uebersprungeneBindungen.Add(1)
+					continue
+				}
+				fmt.Printf("[REPLAY] ✗ %v (block #%d) — rolling back whole block\n", err, block.Height)
+				hardFailure = true
+				continue
+			}
+			fmt.Printf("[REPLAY] ✓ Validator %s an Betreiber %s gebunden (block #%d)\n", kurzAdresse(tx.To), kurzAdresse(tx.Wallet), block.Height)
 
 		case "slash_equivocation":
 			// tx.Wallet = signer (signing address of the equivocating validator)

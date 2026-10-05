@@ -74,6 +74,8 @@ func braucheNachweis(typ string) bool {
 		"unternehmen_eroeffnen", "unternehmen_mitinhaber", "unternehmen_schliessen",
 		"unternehmen_verzeichnis", "unternehmen_buergschaft", "unternehmen_austreten":
 		return true
+	case "validator_bindung": // validator_register.go: Betreiber und Signierschluessel
+		return true
 	}
 	return false
 }
@@ -145,6 +147,8 @@ func auftragsNachricht(tx *Transaction) (string, []unterschrift, error) {
 		return vormundSetzenNachricht(to, n.Zeit), []unterschrift{{w, n.Sig}}, nil
 	case "lebenszeichen": // der Vormund unterschreibt
 		return lebenszeichenNachricht(w, n.Zeit), []unterschrift{{to, n.Sig}}, nil
+	case "validator_bindung": // validator_register.go: beide unterschreiben denselben Satz
+		return validatorBindungNachricht(to, w, n.Zeit), []unterschrift{{w, n.Sig}, {to, n.Sig2}}, nil
 	case "unternehmen_eroeffnen":
 		return unternehmenEroeffnenNachricht(w, to, tx.Name, tx.Kategorie, n.Zeit),
 			[]unterschrift{{w, n.Sig}, {to, n.Sig2}}, nil
