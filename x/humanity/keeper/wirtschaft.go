@@ -1470,6 +1470,30 @@ func (cs *ChainState) buchSichern(addrs []string, voll bool) *buchStand {
 	return st
 }
 
+// buchNachtragen: eine Adresse nachtraeglich in die Sicherung aufnehmen
+// (kontoNachtragenLocked), wenn sie noch nicht drin ist. Die volle Sicherung
+// hat ohnehin alles.
+func (cs *ChainState) buchNachtragen(st *buchStand, a string) {
+	if st == nil || st.voll {
+		return
+	}
+	w := cs.wirt()
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if _, ok := st.konten[a]; !ok {
+		st.konten[a] = nil
+		if k := w.buch[a]; k != nil {
+			st.konten[a] = k.kopie()
+		}
+	}
+	if _, ok := st.register[a]; !ok {
+		st.register[a] = nil
+		if e := w.unternehmen[a]; e != nil {
+			st.register[a] = e.kopie()
+		}
+	}
+}
+
 // buchZurueck: nur der Speicher -- die Zeilen in der Datenbank lagen in der
 // zurueckgerollten Transaktion.
 func (cs *ChainState) buchZurueck(st *buchStand) {
