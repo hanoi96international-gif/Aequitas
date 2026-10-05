@@ -45,6 +45,13 @@ type Transaction struct {
 	// unterschriebenen Blockkoepfe, damit jeder Knoten die Strafe selbst
 	// prueft (slash_beweis.go).
 	Doppelbeweis *Doppelbeweis `json:"doppelbeweis,omitempty"`
+	// Bescheinigung: bei liveness_renewal die Ed25519-Bescheinigung des
+	// Coordinators ueber aequitas-liveness-renewal-v1|wallet|issued_at
+	// (issued_at steht in DistributionAt), damit jeder Knoten selbst prueft,
+	// dass die zweite Lebendigkeitspruefung bestanden ist
+	// (nachrechnen_erneuerung.go). omitempty: aeltere Bloecke behalten ihren
+	// Hash.
+	Bescheinigung *Lebendigkeitsbescheinigung `json:"bescheinigung,omitempty"`
 	// FromDemurrageLost/ToDemurrageLost carry the exact AEQ amount the
 	// primary node decayed off Wallet/To via settleDemurrageLocked while
 	// processing this TX. Secondary nodes replay these exact numbers

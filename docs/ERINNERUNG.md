@@ -148,11 +148,18 @@ den verlinkten Dokumenten.
         Kommentar oder Dokument erhalten; bekannt ist nur die Einordnung
         „bis das Nachspielen jeden Wert selbst prüft (K-2, K-3, K-4)“
         (Launch-Checkliste 18). Die Durchsicht oben deckt dieses Thema
-        inhaltlich ab; offen davon bleiben die Validatoren-Gewichte, der
-        strenge Stichtag und `liveness_renewal`. Das K4 vom 18.08.
+        inhaltlich ab; offen davon bleiben die Validatoren-Gewichte und der
+        strenge Stichtag. Das K4 vom 18.08.
         (Nullifier an den Beweis gebunden) ist erledigt und getestet
-      - [ ] Vor der Staffel-Aktivierung (2100): `liveness_renewal` ist
-            unsigniert -- dann an eine Unterschrift des Menschen binden
+      - [x] `liveness_renewal` trägt die Bescheinigung des Coordinators
+            (05.10.): Ed25519 über Wallet und Zeitpunkt steht jetzt im Block,
+            jeder Knoten prüft sie selbst, dazu Alter (höchstens 1 h) und
+            Tag 7 (`nachrechnen_erneuerung.go`). Vor der Aktivierung (2100)
+            ungeprüft wie bisher. Die Bindung an dieselbe Person leistet der
+            Coordinator (WP 3, Wallet-Signatur und Gesichtsabgleich)
+      - [ ] Coordinator-Register (`coordinator_keys`) als Konsenszustand --
+            heute knotenlokal; nötig, bevor die Staffel aktiv wird, sonst
+            prüfen Knoten mit verschiedenem Register verschieden
       - [ ] Stichtag `nachrechnenStrengAbUnix` setzen, sobald
             `/api/wirtschaft/regeln` über mehrere Runden 0 Abweichungen zeigt.
             C1 spielt seine eigenen Blöcke nicht nach, und **C2 gibt es seit
