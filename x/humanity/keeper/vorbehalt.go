@@ -30,6 +30,7 @@ package keeper
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"sort"
 	"strings"
@@ -109,18 +110,27 @@ type offenerVorbehalt struct {
 
 // vorbehaltOffen: Vorbehaltskonto -> offener Vorbehalt, auf diesem Knoten
 // bekannt (Annahme und Nachspielen). Nur der Leiter arbeitet sie ab.
+//
+// Mit Datenbank ist die Tabelle vorbehalte_offen die EINZIGE Quelle (seit
+// 05.10.2026). Vorher fuehrte der Knoten zusaetzlich cs.vorbehalte im
+// Speicher -- und die Karte wurde beim Zurueckrollen eines Blocks nicht
+// zurueckgesetzt, die Tabelle schon. Folgen: ein zurueckgerollter Vorbehalt
+// stand weiter in der Karte, und der Leiter fuehrte ihn aus (Rueckbuchung aus
+// einem Vorbehaltskonto, das es so nicht gab); eine zurueckgerollte Loeschung
+// fehlte in der Karte, und der Vorbehalt blieb bis zum Neustart liegen. Die
+// Karte gilt nur noch ohne Datenbank (Tests, Entwicklungsknoten).
 func (cs *ChainState) vorbehaltOffen(ctx context.Context, konto string, o *offenerVorbehalt) error {
-	offeneVorbehalteMu.Lock()
-	if cs.vorbehalte == nil {
-		cs.vorbehalte = map[string]offenerVorbehalt{}
-	}
-	if o != nil {
-		cs.vorbehalte[konto] = *o
-	} else {
-		delete(cs.vorbehalte, konto)
-	}
-	offeneVorbehalteMu.Unlock()
 	if cs.db == nil {
+		offeneVorbehalteMu.Lock()
+		if cs.vorbehalte == nil {
+			cs.vorbehalte = map[string]offenerVorbehalt{}
+		}
+		if o != nil {
+			cs.vorbehalte[konto] = *o
+		} else {
+			delete(cs.vorbehalte, konto)
+		}
+		offeneVorbehalteMu.Unlock()
 		return nil
 	}
 	var err error
@@ -258,9 +268,10 @@ func (cs *ChainState) rueckbuchenLocked(ctx context.Context, x, v string, aeq, t
 
 // VorbehaltAusfuehren: der Leiter fuehrt einen offenen Vorbehalt aus.
 func (cs *ChainState) VorbehaltAusfuehren(v string) error {
-	offeneVorbehalteMu.Lock()
-	eintrag, ok := cs.vorbehalte[v]
-	offeneVorbehalteMu.Unlock()
+	eintrag, ok, err := cs.offenerVorbehaltCtx(context.Background(), v)
+	if err != nil {
+		return err
+	}
 	if !ok {
 		return fmt.Errorf("kein offener Vorbehalt %s", v)
 	}
@@ -271,6 +282,16 @@ func (cs *ChainState) VorbehaltAusfuehren(v string) error {
 	defer cs.annahmeEnde()
 	return cs.runAtomicWithOutbox([]string{x, v, validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr}, false,
 		func(ctx context.Context) (Transaction, error) {
+			// Unter der Sperre und in der Transaktion noch einmal: steht er
+			// noch so da? Ein Block dazwischen kann ihn erledigt oder
+			// zurueckgerollt haben.
+			jetztEintrag, noch, lesFehler := cs.offenerVorbehaltCtx(ctx, v)
+			if lesFehler != nil {
+				return Transaction{}, lesFehler
+			}
+			if !noch || jetztEintrag != eintrag {
+				return Transaction{}, fmt.Errorf("Vorbehalt %s nicht mehr offen oder veraendert", v)
+			}
 			cs.ensureAccountLoadedCtx(ctx, v)
 			vAcc, ok := cs.accounts.Get(v)
 			if !ok {
@@ -362,13 +383,11 @@ func (cs *ChainState) VorbehalteAbarbeiten() int {
 	if !cs.nimmtAnFuer(kontoLiquiditaetspool) {
 		return 0
 	}
-	offeneVorbehalteMu.Lock()
-	var konten []string
-	for v := range cs.vorbehalte {
-		konten = append(konten, v)
+	konten, err := cs.offeneVorbehaltKonten()
+	if err != nil {
+		fmt.Printf("[VORBEHALT] ✗ offene Vorbehalte nicht lesbar: %v\n", err)
+		return 0
 	}
-	offeneVorbehalteMu.Unlock()
-	sort.Strings(konten)
 	n := 0
 	for _, v := range konten {
 		if err := cs.VorbehaltAusfuehren(v); err != nil {
@@ -380,39 +399,89 @@ func (cs *ChainState) VorbehalteAbarbeiten() int {
 	return n
 }
 
-// VorbehalteEinlesen: nach einem Neustart die offenen Vorbehalte aus
-// vorbehalte_offen wieder in den Speicher holen.
+// VorbehalteEinlesen: wie viele Vorbehalte nach einem Neustart offen sind.
+// Mit Datenbank wird nichts in den Speicher geholt -- die Tabelle ist die
+// Quelle (vorbehaltOffen); gezaehlt wird nur fuer das Protokoll.
 func (cs *ChainState) VorbehalteEinlesen() int {
 	if cs.db == nil {
+		offeneVorbehalteMu.Lock()
+		defer offeneVorbehalteMu.Unlock()
+		return len(cs.vorbehalte)
+	}
+	var n int
+	if err := cs.db.QueryRow(`SELECT COUNT(*) FROM vorbehalte_offen`).Scan(&n); err != nil {
 		return 0
-	}
-	rows, err := cs.db.Query(`SELECT konto, wallet, art, betrag, betrag2, min_out FROM vorbehalte_offen`)
-	if err != nil {
-		return 0
-	}
-	defer rows.Close()
-	n := 0
-	offeneVorbehalteMu.Lock()
-	defer offeneVorbehalteMu.Unlock()
-	if cs.vorbehalte == nil {
-		cs.vorbehalte = map[string]offenerVorbehalt{}
-	}
-	for rows.Next() {
-		var k string
-		var o offenerVorbehalt
-		if rows.Scan(&k, &o.wallet, &o.art, &o.betrag, &o.betrag2, &o.minOut) == nil {
-			cs.vorbehalte[k] = o
-			n++
-		}
 	}
 	return n
 }
 
+// vorbehaltAbarbeitenGrenze: so viele Vorbehalte arbeitet der Leiter je
+// Durchgang hoechstens ab; der Rest folgt im naechsten.
+const vorbehaltAbarbeitenGrenze = 1000
+
+// offenerVorbehaltCtx: ein offener Vorbehalt -- aus der Tabelle (in der
+// Transaktion von ctx, wenn es eine gibt), ohne Datenbank aus der Karte.
+func (cs *ChainState) offenerVorbehaltCtx(ctx context.Context, konto string) (offenerVorbehalt, bool, error) {
+	if cs.db == nil {
+		offeneVorbehalteMu.Lock()
+		o, ok := cs.vorbehalte[konto]
+		offeneVorbehalteMu.Unlock()
+		return o, ok, nil
+	}
+	var o offenerVorbehalt
+	err := cs.dbExecCtx(ctx).QueryRow(
+		`SELECT wallet, art, betrag, betrag2, min_out FROM vorbehalte_offen WHERE konto = $1`, konto,
+	).Scan(&o.wallet, &o.art, &o.betrag, &o.betrag2, &o.minOut)
+	if err == sql.ErrNoRows {
+		return o, false, nil
+	}
+	if err != nil {
+		return o, false, fmt.Errorf("vorbehalte_offen: %w", err)
+	}
+	return o, true, nil
+}
+
+// offeneVorbehaltKonten: die offenen Vorbehaltskonten, sortiert, begrenzt.
+func (cs *ChainState) offeneVorbehaltKonten() ([]string, error) {
+	if cs.db == nil {
+		offeneVorbehalteMu.Lock()
+		var konten []string
+		for v := range cs.vorbehalte {
+			konten = append(konten, v)
+		}
+		offeneVorbehalteMu.Unlock()
+		sort.Strings(konten)
+		if len(konten) > vorbehaltAbarbeitenGrenze {
+			konten = konten[:vorbehaltAbarbeitenGrenze]
+		}
+		return konten, nil
+	}
+	rows, err := cs.db.Query(`SELECT konto FROM vorbehalte_offen ORDER BY konto LIMIT $1`, vorbehaltAbarbeitenGrenze)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var konten []string
+	for rows.Next() {
+		var k string
+		if err := rows.Scan(&k); err != nil {
+			return nil, err
+		}
+		konten = append(konten, k)
+	}
+	return konten, rows.Err()
+}
+
 // VorbehaltStand fuer /health.
 func (cs *ChainState) VorbehaltStand() map[string]interface{} {
-	offeneVorbehalteMu.Lock()
-	n := len(cs.vorbehalte)
-	offeneVorbehalteMu.Unlock()
+	n := -1
+	if cs.db == nil {
+		offeneVorbehalteMu.Lock()
+		n = len(cs.vorbehalte)
+		offeneVorbehalteMu.Unlock()
+	} else if err := cs.db.QueryRow(`SELECT COUNT(*) FROM vorbehalte_offen`).Scan(&n); err != nil {
+		n = -1 // unlesbar
+	}
 	return map[string]interface{}{
 		"offen":     n,
 		"bedeutung": "Stufe 2: Tausch/Liquiditaet, deren Einsatz vorgemerkt ist und die der Leiter noch ausfuehren muss.",

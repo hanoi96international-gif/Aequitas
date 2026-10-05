@@ -252,3 +252,68 @@ func TestVorbehalt_UeberlebtNeustart_RealDB(t *testing.T) {
 		t.Fatalf("tUSD nicht in der Datenbank angekommen: %v, %v", tusd, err)
 	}
 }
+
+// Missbrauch/Fehlerfall: die Karte im Speicher wich nach dem Zurueckrollen
+// eines Blocks von der Tabelle ab. Massgeblich ist jetzt nur die Tabelle --
+// ein dort fehlender Vorbehalt wird nicht ausgefuehrt, ein dort stehender
+// auch ohne Karte.
+func TestVorbehalt_TabelleIstDieQuelle_RealDB(t *testing.T) {
+	if os.Getenv("AEQUITAS_TPS_BENCH") != "1" {
+		t.Skip("opt-in only: set AEQUITAS_TPS_BENCH=1 and DATABASE_URL (a disposable local Postgres) to run")
+	}
+	truncateDistTestTables(t)
+	cs := testKnoten(t, "unused-vorbehalt-quelle-test.json")
+	if !cs.useDB {
+		t.Fatal("keine Datenbank -- DATABASE_URL pruefen")
+	}
+	if _, err := cs.db.Exec(`DELETE FROM vorbehalte_offen`); err != nil {
+		t.Fatal(err)
+	}
+	x := distTestAddr(1501)
+	cs.mu.Lock()
+	cs.pool = &PoolState{ReserveAEQ: NewDecimal(100_000), ReserveTUSD: NewDecimal(100_000), TotalLPShares: NewDecimal(1000)}
+	acc := &AccountState{Address: x, Balance: NewDecimal(2_000), LastActivityAt: nowUnix()}
+	cs.accounts.Set(x, acc)
+	if err := cs.saveAccountToDB(acc); err != nil {
+		cs.mu.Unlock()
+		t.Fatal(err)
+	}
+	if err := cs.savePoolToDBCtx(context.Background()); err != nil {
+		cs.mu.Unlock()
+		t.Fatal(err)
+	}
+	cs.mu.Unlock()
+
+	weg, err := cs.VorbehaltAtomic(Transaction{Type: "swap_aeq_tusd", Wallet: x, Amount: 100, TxHash: "0xvbq1"}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bleibt, err := cs.VorbehaltAtomic(Transaction{Type: "swap_aeq_tusd", Wallet: x, Amount: 50, TxHash: "0xvbq2"}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Der Block mit "weg" wurde zurueckgerollt: die Tabelle kennt ihn nicht
+	// mehr. Fruehere Karten haetten ihn behalten -- hier steht er absichtlich
+	// noch darin, als waere es so.
+	if _, err := cs.db.Exec(`DELETE FROM vorbehalte_offen WHERE konto = $1`, vorbehaltsKonto(weg)); err != nil {
+		t.Fatal(err)
+	}
+	offeneVorbehalteMu.Lock()
+	cs.vorbehalte = map[string]offenerVorbehalt{vorbehaltsKonto(weg): {wallet: x, art: "swap_aeq_tusd", betrag: 100}}
+	offeneVorbehalteMu.Unlock()
+
+	if err := cs.VorbehaltAusfuehren(vorbehaltsKonto(weg)); err == nil {
+		t.Fatal("ein zurueckgerollter Vorbehalt wurde ausgefuehrt")
+	}
+	if got := cs.VorbehalteAbarbeiten(); got != 1 {
+		t.Fatalf("%d ausgefuehrt statt 1 (nur der in der Tabelle)", got)
+	}
+	var n int
+	cs.db.QueryRow(`SELECT COUNT(*) FROM vorbehalte_offen WHERE konto = $1`, vorbehaltsKonto(bleibt)).Scan(&n)
+	if n != 0 {
+		t.Fatal("der Vorbehalt aus der Tabelle wurde nicht abgearbeitet")
+	}
+	if st := cs.VorbehaltStand()["offen"]; st != 0 {
+		t.Fatalf("/health zeigt %v offene statt 0", st)
+	}
+}
