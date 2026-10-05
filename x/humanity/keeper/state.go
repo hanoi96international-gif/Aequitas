@@ -474,7 +474,7 @@ type ChainState struct {
 	// penaltyMu guards the in-memory validator_penalties cache (P0, cadence
 	// 2026-07-03 night) — see IsValidatorSuspended. Same design as the
 	// finalized-checkpoint cache above: the table is only ever written by
-	// THIS process (RecordEquivocationAndSuspend, initSlashingTables'
+	// THIS process (vermerkeDoppelsignatur, initSlashingTables'
 	// activation cleanup), both writers keep the cache in sync, so a
 	// load-once cache is always current for the process lifetime. Before
 	// this cache, IsValidatorSuspended was a synchronous Postgres round trip
@@ -8041,6 +8041,32 @@ func (cs *ChainState) snapshotForRollbackLocked(addrs []string, full bool, chain
 	snap.lpRunde = cs.lpRunde
 	snap.freigaben = cs.freigaben
 	return snap
+}
+
+// kontoNachtragenLocked: ein Konto, das erst waehrend des Blocks bekannt
+// wird -- das Strafkonto des Betreibers aus registered_nodes
+// (slash_equivocation) --, vor seiner ersten Aenderung in den Snapshot
+// aufnehmen. cs.mu ist seit dem Snapshot durchgehend gehalten, und nur dieser
+// Weg kennt das Konto ohne Wallet/To: steht es noch nicht im Snapshot, hat
+// der Block es noch nicht beruehrt, und sein Stand jetzt ist der vor dem
+// Block. Steht es schon drin, bleibt der fruehere Stand.
+func (cs *ChainState) kontoNachtragenLocked(ctx context.Context, snap *blockRollbackSnapshot, addr string) {
+	addr = strings.ToLower(strings.TrimSpace(addr))
+	if snap == nil || addr == "" {
+		return
+	}
+	for _, s := range snap.accounts {
+		if s.address == addr {
+			return
+		}
+	}
+	cs.ensureAccountLoadedCtx(ctx, addr)
+	if acc, ok := cs.accounts.Get(addr); ok {
+		snap.accounts = append(snap.accounts, accountSnapshot{address: addr, existed: true, state: *acc})
+	} else {
+		snap.accounts = append(snap.accounts, accountSnapshot{address: addr, existed: false})
+	}
+	cs.buchNachtragen(snap.buch, addr)
 }
 
 // restoreFromRollback reverts cs.accounts/cs.pool to a previously captured

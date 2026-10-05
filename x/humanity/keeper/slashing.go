@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"os"
 	"sort"
@@ -171,7 +172,7 @@ func (cs *ChainState) initSlashingTables() {
 // suspension against this node's own configured trusted bootstrap signer
 // (BOOTSTRAP_SIGNER) when that suspension was never corroborated by the
 // rest of the network. Confirmed-recurring false-positive pattern (Contabo1,
-// 2026-07-10, 07-12, 07-17): RecordEquivocationAndSuspend applies a
+// 2026-07-10, 07-12, 07-17): DoppelsignaturErkannt applies a
 // suspension on THIS node immediately, without waiting for network
 // corroboration, on purpose (see its own comment — a node needs to protect
 // itself right away, not wait on its own slow block production). That's
@@ -187,7 +188,7 @@ func (cs *ChainState) initSlashingTables() {
 // became true on ANY of that address's equivocation_evidence rows. A REAL,
 // consensus-replicated 2nd offense always ends with slash_applied=true once
 // this node's own queued slash_equivocation TX replays through its own
-// chain (see the switch/case in RecordEquivocationAndSuspend and the
+// chain (see the switch/case in vermerkeDoppelsignatur and the
 // slash_equivocation case in replayTransactions) — so "escalated to 2nd
 // offense, zero applied penalties" is only possible when the underlying
 // evidence never actually made it into this node's real canonical history.
@@ -293,8 +294,9 @@ func (cs *ChainState) loadPenaltyCacheLockedCtx(ctx context.Context) {
 
 // invalidatePenaltyCache forces the next IsValidatorSuspended call to reload
 // from the DB. Called by every validator_penalties writer after a successful
-// change (RecordEquivocationAndSuspend, initSlashingTables' activation
-// cleanup) — writes are rare, so a full reload beats write-through
+// change (DoppelsignaturErkannt; the block replay after its commit or
+// rollback; initSlashingTables' activation cleanup) — writes are rare, so a
+// full reload beats write-through
 // bookkeeping for correctness-per-line.
 func (cs *ChainState) invalidatePenaltyCache() {
 	cs.penaltyMu.Lock()
@@ -356,26 +358,39 @@ func (cs *ChainState) IsValidatorSuspended(addr string, blockTimestamp int64) (s
 	return false, ""
 }
 
-// RecordEquivocationAndSuspend persists proof that signingAddress produced
-// blockAHash and blockBHash for the same parent set, applies the graduated
-// slashing policy, and returns the offense count plus the operator wallet
-// address that should receive the financial penalty (empty string when no
-// balance penalty is warranted — 1st offense or 2nd outside the window).
-//
-// UNIQUE constraint on (block_a_hash, block_b_hash) makes this idempotent:
-// two nodes recording the same evidence pair produce one row, not two
-// (ON CONFLICT DO NOTHING → rows=0 → early return with current count).
-//
-// The balance penalty for 2nd-offense is NOT applied here — the caller
-// should call MaybeQueueSlashOutboxTx(pendingSlashWallet, ...) so that a
-// "slash_equivocation" outbox TX goes into the next block and is replayed
-// identically by every other node. This avoids the double-deduction race
-// that would occur if both the detecting node and a TX-replaying node each
-// deducted the balance independently.
-func (cs *ChainState) RecordEquivocationAndSuspend(signingAddress, blockAHash, blockBHash string, now int64) (offenseCount int, pendingSlashWallet string, err error) {
+// vermerkeDoppelsignaturImBlock: eine Doppelsignatur beim Nachspielen
+// vermerken, in der Transaktion des Blocks (ctx traegt sie). Geht der Block
+// zurueck, gehen Beweis und Sperre mit -- vorher schrieb
+// RecordEquivocationAndSuspend sie in einer eigenen, sofort
+// festgeschriebenen Transaktion: ein
+// zurueckgewiesener Block sperrte trotzdem, der ehrliche Block mit demselben
+// Beweis fand ihn dann schon vor und zog die Strafe nicht mehr ab, und ein
+// zweiter Vermerk desselben Paars im selben Block wartete auf die
+// Zeilensperre des Blocks, bis statement_timeout den Block scheitern liess.
+// Den Zwischenspeicher der Sperren erneuert der Aufrufer NACH Commit bzw.
+// Rollback -- vorher saehe ein Leser nur den alten Stand und hielte ihn fest.
+func (cs *ChainState) vermerkeDoppelsignaturImBlock(ctx context.Context, signingAddress, blockAHash, blockBHash string, now int64) (int, string, error) {
 	if cs.db == nil {
 		return 0, "", fmt.Errorf("no database configured")
 	}
+	return cs.vermerkeDoppelsignatur(cs.dbExecCtx(ctx), signingAddress, blockAHash, blockBHash, now)
+}
+
+// vermerkeDoppelsignatur: persists proof that signingAddress produced
+// blockAHash and blockBHash for the same parent set, applies the graduated
+// slashing policy, and returns the offense count plus the operator wallet
+// that owes the financial penalty (empty when none is due — 1st offense, 2nd
+// outside the window, or a pair this node already knows). q ist immer eine
+// Transaktion.
+//
+// UNIQUE (block_a_hash, block_b_hash) macht sie idempotent: ein schon
+// bekanntes Paar zaehlt nicht noch einmal und schuldet nichts mehr. Das
+// stimmt, weil Vermerk und Abzug (strafeAbziehenLocked) immer in DERSELBEN
+// Transaktion laufen -- beim Nachspielen wie beim Erkennen
+// (DoppelsignaturErkannt). Wer ein Paar kennt, hat es auch abgerechnet.
+// Vorher vermerkte der Erkennende ohne Abzug, und weil er dann ein bekanntes
+// Paar vorfand, zog er die 50 AEQ nie ab, waehrend jeder andere sie abzog.
+func (cs *ChainState) vermerkeDoppelsignatur(q sqlExecutor, signingAddress, blockAHash, blockBHash string, now int64) (offenseCount int, pendingSlashWallet string, err error) {
 	// Pre-activation evidence is exempt (see equivocationSlashingActivationUnix's
 	// comment for the full rationale). The primary gate is at the detection call
 	// site in AddPeerBlock (which skips the whole recording goroutine); this is
@@ -390,18 +405,7 @@ func (cs *ChainState) RecordEquivocationAndSuspend(signingAddress, blockAHash, b
 		blockAHash, blockBHash = blockBHash, blockAHash
 	}
 
-	tx, txErr := cs.db.Begin()
-	if txErr != nil {
-		return 0, "", txErr
-	}
-	committed := false
-	defer func() {
-		if !committed {
-			tx.Rollback()
-		}
-	}()
-
-	res, insErr := tx.Exec(
+	res, insErr := q.Exec(
 		`INSERT INTO equivocation_evidence
 		    (signing_address, block_a_hash, block_b_hash, detected_at)
 		 VALUES ($1,$2,$3,$4)
@@ -412,16 +416,16 @@ func (cs *ChainState) RecordEquivocationAndSuspend(signingAddress, blockAHash, b
 		return 0, "", insErr
 	}
 	if rows, _ := res.RowsAffected(); rows == 0 {
-		// Already recorded. Read current count and return.
+		// Already recorded (and settled). Read current count and return.
 		var count int
-		tx.QueryRow(`SELECT offense_count FROM validator_penalties WHERE signing_address = $1`, addr).Scan(&count)
-		tx.Commit()
-		committed = true
+		if err := q.QueryRow(`SELECT offense_count FROM validator_penalties WHERE signing_address = $1`, addr).Scan(&count); err != nil && err != sql.ErrNoRows {
+			return 0, "", err
+		}
 		return count, "", nil
 	}
 
 	// Upsert penalty record, incrementing the offense counter.
-	_, upsertErr := tx.Exec(`
+	_, upsertErr := q.Exec(`
 		INSERT INTO validator_penalties
 		    (signing_address, offense_count, suspended_until, banned, last_offense_at)
 		VALUES ($1, 1, $2, FALSE, $3)
@@ -439,28 +443,33 @@ func (cs *ChainState) RecordEquivocationAndSuspend(signingAddress, blockAHash, b
 
 	var count int
 	var prevOffenseAt int64
-	tx.QueryRow(
+	if err := q.QueryRow(
 		`SELECT offense_count, last_offense_at FROM validator_penalties WHERE signing_address = $1`,
 		addr,
-	).Scan(&count, &prevOffenseAt)
+	).Scan(&count, &prevOffenseAt); err != nil {
+		return 0, "", err
+	}
 	// prevOffenseAt was just set to `now` by the upsert above — we need
 	// the PREVIOUS last_offense_at to decide whether we're within the
 	// second-offense window. Re-read from equivocation_evidence instead:
 	// the second-to-last detection_at for this address.
 	var prevDetectedAt int64
-	tx.QueryRow(
+	if err := q.QueryRow(
 		`SELECT detected_at FROM equivocation_evidence
 		 WHERE signing_address = $1 AND NOT (block_a_hash=$2 AND block_b_hash=$3)
 		 ORDER BY detected_at DESC LIMIT 1`,
 		addr, blockAHash, blockBHash,
-	).Scan(&prevDetectedAt)
+	).Scan(&prevDetectedAt); err != nil && err != sql.ErrNoRows {
+		return 0, "", err
+	}
 	withinWindow := prevDetectedAt > 0 && now-prevDetectedAt <= equivocationSecondOffenseWindowDays*86400
 
+	var stufeErr error
 	switch {
 	case count >= 3:
-		tx.Exec(`UPDATE validator_penalties SET banned = TRUE WHERE signing_address = $1`, addr)
+		_, stufeErr = q.Exec(`UPDATE validator_penalties SET banned = TRUE WHERE signing_address = $1`, addr)
 	case count == 2 && withinWindow:
-		tx.Exec(
+		_, stufeErr = q.Exec(
 			`UPDATE validator_penalties SET suspended_until = $1 WHERE signing_address = $2`,
 			now+equivocationSecondOffenseSuspensionDays*86400, addr,
 		)
@@ -469,17 +478,14 @@ func (cs *ChainState) RecordEquivocationAndSuspend(signingAddress, blockAHash, b
 		// 1st): the 14-day suspension was already set by the upsert above.
 		if count >= 2 && !withinWindow {
 			count = 1 // Reset counter — the prior offense is "stale"
-			tx.Exec(
+			_, stufeErr = q.Exec(
 				`UPDATE validator_penalties SET offense_count = 1 WHERE signing_address = $1`, addr,
 			)
 		}
 	}
-
-	if err := tx.Commit(); err != nil {
-		return 0, "", err
+	if stufeErr != nil {
+		return 0, "", stufeErr
 	}
-	committed = true
-	cs.invalidatePenaltyCache() // keep IsValidatorSuspended's cache current
 
 	// Log every offense clearly so operators can investigate.
 	var slashWallet string
@@ -487,15 +493,13 @@ func (cs *ChainState) RecordEquivocationAndSuspend(signingAddress, blockAHash, b
 	case count >= 3:
 		fmt.Printf("[SLASHING] ⛔ %s permanently banned after %d equivocation offense(s)\n", addr, count)
 	case count == 2 && withinWindow:
-		fmt.Printf("[SLASHING] ⚠ %s: 2nd equivocation within %d days — 90-day suspension; 50 AEQ penalty TX queued...\n",
-			addr, equivocationSecondOffenseWindowDays)
-		// Look up the operator wallet so the caller can queue the penalty TX.
-		cs.db.QueryRow(
-			`SELECT wallet_address FROM registered_nodes WHERE lower(signing_address) = $1`, addr,
-		).Scan(&slashWallet)
-		if slashWallet == "" {
-			fmt.Printf("[SLASHING] ⚠ operator wallet not found for signer %s — penalty TX skipped\n", addr)
+		fmt.Printf("[SLASHING] ⚠ %s: 2nd equivocation within %d days — 90-day suspension and %.0f AEQ penalty\n",
+			addr, equivocationSecondOffenseWindowDays, equivocationSecondOffensePenaltyAEQ)
+		w, err := strafKonto(q, addr)
+		if err != nil {
+			return 0, "", err
 		}
+		slashWallet = w
 	default:
 		days := equivocationFirstOffenseSuspensionDays
 		fmt.Printf("[SLASHING] ⚠ %s: 1st equivocation — %d-day suspension (no balance loss)\n", addr, days)
@@ -504,42 +508,133 @@ func (cs *ChainState) RecordEquivocationAndSuspend(signingAddress, blockAHash, b
 	return count, slashWallet, nil
 }
 
-// QueueEquivocationEvidenceTx creates a "slash_equivocation" pending TX that
-// carries ONLY the evidence (signer + conflicting block hashes + the
-// original detection timestamp) — no wallet/penalty. Queued for EVERY
-// offense (1st, 2nd, 3rd+), not just a 2nd-offense financial penalty.
-//
-// FIX (2026-07-07 — closes a node-local/consensus asymmetry): this used to
-// be MaybeQueueSlashOutboxTx, called only when the offense already warranted
-// a balance penalty, and only the balance deduction itself was replayed
-// consensus-wide (replayTransactions' "slash_equivocation" case, idempotent
-// via equivocation_evidence.slash_applied). The SUSPENSION decision
-// (validator_penalties.suspended_until/banned, offense_count) was applied
-// exclusively by whichever node's RecordEquivocationAndSuspend call detected
-// the conflict locally — a node that never independently saw both
-// conflicting blocks (e.g. one of them never reached it before the other was
-// superseded/orphaned) never suspended the validator at all, silently
-// diverging from a node that did. Now every offense is queued, and replay
-// calls RecordEquivocationAndSuspend itself (same idempotent function, keyed
-// on the same (block_a_hash, block_b_hash) UNIQUE constraint) so
-// validator_penalties converges identically on every node that replays the
-// TX, regardless of who detected it first.
+// strafKonto: das Betreiberkonto eines Unterzeichners, in derselben
+// Transaktion gelesen. Keins eingetragen: keine Strafe (wie bisher).
+func strafKonto(q sqlExecutor, signer string) (string, error) {
+	var w string
+	err := q.QueryRow(`SELECT wallet_address FROM registered_nodes WHERE lower(signing_address) = $1`, signer).Scan(&w)
+	if err == sql.ErrNoRows || (err == nil && w == "") {
+		fmt.Printf("[SLASHING] ⚠ operator wallet not found for signer %s — penalty TX skipped\n", signer)
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return strings.ToLower(w), nil
+}
+
+// strafeAbziehenLocked: die 50 AEQ vom Betreiberkonto in den
+// Grundeinkommenstopf, hoechstens sein Guthaben -- genau einmal je Paar und
+// Knoten: slash_applied wird in derselben Transaktion (ctx) umgelegt, ein
+// zweiter Aufruf fuer dasselbe Paar findet ihn gesetzt und bucht nichts.
+// Unter cs.mu. activityAt wie bei applyTransferDeltaLocked.
+func (cs *ChainState) strafeAbziehenLocked(ctx context.Context, signer, blockA, blockB string, detectedAt int64, opWallet string, activityAt int64) (betrag float64, abgezogen bool, err error) {
+	if blockA > blockB {
+		blockA, blockB = blockB, blockA
+	}
+	res, err := cs.dbExecCtx(ctx).Exec(
+		`INSERT INTO equivocation_evidence
+		     (signing_address, block_a_hash, block_b_hash, detected_at, slash_applied)
+		 VALUES ($1, $2, $3, $4, TRUE)
+		 ON CONFLICT (block_a_hash, block_b_hash) DO UPDATE
+		     SET slash_applied = TRUE
+		     WHERE equivocation_evidence.slash_applied = FALSE`,
+		strings.ToLower(signer), blockA, blockB, detectedAt,
+	)
+	if err != nil {
+		return 0, false, fmt.Errorf("slash_equivocation CAS: %w", err)
+	}
+	if rows, _ := res.RowsAffected(); rows == 0 {
+		return 0, false, nil
+	}
+	// Apply the balance deduction, capping at the wallet's current balance
+	// in case it has shrunk since the offense was recorded.
+	//
+	// FIX (audit 2026-08-15, cold-cache class): this read used to go
+	// straight to cs.accounts with no ensureAccountLoaded, so a wallet
+	// that is simply not resident (never paged in on this node, or
+	// beyond the startup preload's maxInMemAccounts limit) reported
+	// ok=false and left penaltyAmt at the full 50 AEQ — a value
+	// assumption derived from "not found", which is exactly the pattern
+	// that has bitten this file before. applyTransferDeltaLocked on the
+	// very next line DOES warm the same address, which is what makes
+	// this inconsistent rather than merely unlucky: it then finds the
+	// real (smaller) balance and hard-fails the whole block with
+	// "insufficient balance". Cache residency is per-node and not part
+	// of consensus, so the identical block would be accepted by a node
+	// holding the wallet warm and rejected by one that does not —
+	// non-deterministic replay, i.e. a fork. Warming first makes the
+	// cap read the same real balance on every node; it is a no-op
+	// whenever the account was already resident.
+	betrag = equivocationSecondOffensePenaltyAEQ
+	cs.ensureAccountLoadedCtx(ctx, opWallet)
+	if acc, ok := cs.accounts.Get(opWallet); ok && acc.Balance.Float() < betrag {
+		betrag = acc.Balance.Float()
+	}
+	if betrag > 0 {
+		if err := cs.applyTransferDeltaLocked(ctx, opWallet, ubiPoolAddr, betrag, 0, 0, activityAt); err != nil {
+			return 0, false, fmt.Errorf("slash_equivocation transfer %s→UBI %.4f: %w", opWallet, betrag, err)
+		}
+	}
+	return betrag, true, nil
+}
+
+// DoppelsignaturErkannt: der Knoten, der die Doppelsignatur selbst sieht
+// (AddPeerBlock), vermerkt sie, zieht beim zweiten Vergehen die Strafe ab und
+// legt die Beweis-Transaktion in den Ausgang -- in EINER Transaktion, wie
+// eine angenommene Ueberweisung. Seinen eigenen Block mit dieser Transaktion
+// spielt er nie nach; ohne den Abzug hier fehlten ihm die 50 AEQ, die jeder
+// Nachspielende abzieht. Spielt er spaeter den Block eines anderen mit
+// demselben Paar nach, findet strafeAbziehenLocked slash_applied gesetzt.
 //
 // beweis: die beiden unterschriebenen Koepfe (slash_beweis.go). Ohne ihn
 // meldet jeder Nachspielende die Transaktion als slash_ohne_beweis.
-func (cs *ChainState) QueueEquivocationEvidenceTx(signingAddr, blockAHash, blockBHash string, detectedAt int64, beweis *Doppelbeweis) error {
+func (cs *ChainState) DoppelsignaturErkannt(signingAddr, blockAHash, blockBHash string, detectedAt int64, beweis *Doppelbeweis) (offenseCount int, betrag float64, err error) {
 	if cs.db == nil {
-		return nil
+		return 0, 0, fmt.Errorf("no database configured")
 	}
+	signer := strings.ToLower(signingAddr)
 	if blockAHash > blockBHash {
 		blockAHash, blockBHash = blockBHash, blockAHash
 	}
-	return savePendingTxExec(cs.db, Transaction{
-		Type:         "slash_equivocation",
-		Wallet:       strings.ToLower(signingAddr),
-		BlockAHash:   blockAHash,
-		BlockBHash:   blockBHash,
-		DetectedAt:   detectedAt,
-		Doppelbeweis: beweis,
+	// Das Strafkonto vorab, fuer die Ruecknahme-Liste von runAtomicWithOutbox;
+	// in der Transaktion wird es noch einmal gelesen und muss gleich sein.
+	vorab, err := strafKonto(cs.db, signer)
+	if err != nil {
+		return 0, 0, err
+	}
+	konten := []string{ubiPoolAddr}
+	if vorab != "" {
+		konten = append(konten, vorab)
+	}
+	err = cs.runAtomicWithOutbox(konten, false, func(ctx context.Context) (Transaction, error) {
+		n, wallet, err := cs.vermerkeDoppelsignatur(cs.dbExecCtx(ctx), signer, blockAHash, blockBHash, detectedAt)
+		if err != nil {
+			return Transaction{}, err
+		}
+		offenseCount = n
+		if wallet != "" {
+			if wallet != vorab {
+				return Transaction{}, fmt.Errorf("Strafkonto von %s hat sich waehrenddessen geaendert (%s statt %s)", signer, wallet, vorab)
+			}
+			b, _, err := cs.strafeAbziehenLocked(ctx, signer, blockAHash, blockBHash, detectedAt, wallet, 0)
+			if err != nil {
+				return Transaction{}, err
+			}
+			betrag = b
+		}
+		return Transaction{
+			Type:         "slash_equivocation",
+			Wallet:       signer,
+			BlockAHash:   blockAHash,
+			BlockBHash:   blockBHash,
+			DetectedAt:   detectedAt,
+			Doppelbeweis: beweis,
+		}, nil
 	})
+	if err != nil {
+		return 0, 0, err
+	}
+	cs.invalidatePenaltyCache()
+	return offenseCount, betrag, nil
 }
