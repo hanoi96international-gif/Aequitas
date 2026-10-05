@@ -142,8 +142,12 @@ den verlinkten Dokumenten.
             Vorher blieben Einsatz und offener Vorbehalt im Speicher stehen;
             der ehrliche Block mit demselben Vorbehalt scheiterte danach
             („existiert schon“) bzw. seine Ausführung wurde übersprungen
-      - [ ] `RecordEquivocationAndSuspend` öffnet eine eigene
-            Datenbank-Transaktion außerhalb der des Blocks
+      - [x] `RecordEquivocationAndSuspend` öffnete eine eigene
+            Datenbank-Transaktion außerhalb der des Blocks (05.10., #286):
+            Beweis, Sperre und Strafabzug laufen beim Nachspielen jetzt in
+            der Transaktion des Blocks und gehen mit ihm zurück; erkannt wird
+            über `DoppelsignaturErkannt` in einer Transaktion samt Ausgang
+            (`slashing.go`)
       - K-4 aus dem Audit vom 29.09.: der Wortlaut ist in keinem Commit,
         Kommentar oder Dokument erhalten; bekannt ist nur die Einordnung
         „bis das Nachspielen jeden Wert selbst prüft (K-2, K-3, K-4)“
@@ -153,7 +157,8 @@ den verlinkten Dokumenten.
         (Nullifier an den Beweis gebunden) ist erledigt und getestet
       - [x] `liveness_renewal` trägt die Bescheinigung des Coordinators
             (05.10.): Ed25519 über Wallet und Zeitpunkt steht jetzt im Block,
-            jeder Knoten prüft sie selbst, dazu Alter (höchstens 1 h) und
+            jeder Knoten prüft sie selbst, dazu Alter (höchstens 7 Tage,
+            höchstens 5 min voraus) und
             Tag 7 (`nachrechnen_erneuerung.go`). Vor der Aktivierung (2100)
             ungeprüft wie bisher. Die Bindung an dieselbe Person leistet der
             Coordinator (WP 3, Wallet-Signatur und Gesichtsabgleich)
@@ -168,6 +173,14 @@ den verlinkten Dokumenten.
             GitHub-Runner, Snapshot von C1, danach jeder Block nachgespielt,
             erzeugt selbst nie einen (`AEQUITAS_BEOBACHTER=1`). Ergebnis je
             Regel in der Zusammenfassung des Laufs
+        - Auswertung 05.10.: Lauf #4 (04.10.) begann um 20:13 statt 17:20
+          und verpasste die Runde um 18:00 -- „0 Abweichungen“ bei 0
+          geprüften Transaktionen, **ohne Aussage**. Seit #289 startet der
+          Workflow um 15:40 und 16:40 UTC, prüft vorab, ob die nächste Runde
+          (`last_ubi_at` von C1 + 24 h) im Lauf liegt, läuft bis 5 min nach
+          dieser Runde und kennzeichnet Läufe ohne nachgespielte Runde als
+          „Ohne Aussage“. Gezählt werden nur Läufe mit Runde; der Stichtag
+          bleibt offen, bis mehrere solche Läufe 0 Abweichungen zeigen
       - [ ] Zweiter Vergleichsdienst für die Registrierung: bis dahin
             Einzelbetrieb mit Tagesgrenze (siehe „Betrieb, jetzt“); nötig ist
             ein zweiter, unabhängiger Betreiber mit Vergleichsdienst
