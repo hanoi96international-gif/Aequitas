@@ -133,11 +133,11 @@ func TestAuftragsFenster_SpiegeltBlockTauglich(t *testing.T) {
 		"ohne Nachweis":     {Type: "vormund_setzen", Wallet: "0xa", To: "0xb"},
 		"transfer":          {Type: "transfer", Wallet: "0xa", To: "0xb", Amount: 1},
 	}
-	if vertragV8() {
-		faelle["registrierung"] = Transaction{Type: "register_human", Wallet: "0xa", RegAt: basis}
-	}
+	t.Cleanup(_setVertragForTest(&vertragKonfig{version: vertragVersionV8}))
+	faelle["registrierung"] = Transaction{Type: "register_human", Wallet: "0xa", RegAt: basis}
 	jetzt := basis + 10*86400
-	for name, tx := range faelle {
+	spiegeln := func(name string, tx Transaction) {
+		t.Helper()
 		f := auftragsFenster(&tx, jetzt)
 		for d := int64(-8 * 86400); d <= 8*86400; d += 37 {
 			ts := basis + d
@@ -148,6 +148,12 @@ func TestAuftragsFenster_SpiegeltBlockTauglich(t *testing.T) {
 			}
 		}
 	}
+	for name, tx := range faelle {
+		spiegeln(name, tx)
+	}
+	// Der Stichtag der Validator-Bindung mitten im Fenster ihres Nachweises.
+	validatorRegisterOverride.Store(basis + 100)
+	spiegeln("validator_bindung am Stichtag", faelle["validator_bindung"])
 }
 
 // Validator-Bindung: vor dem Stichtag passt keine Blockzeit.
