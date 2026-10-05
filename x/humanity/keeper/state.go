@@ -2240,8 +2240,17 @@ func (cs *ChainState) ensureAccountsLoaded(addrs []string) {
 }
 
 func (cs *ChainState) ensureAccountsLoadedCtx(ctx context.Context, addrs []string) {
+	cs.ladeKontenCtx(ctx, addrs)
+}
+
+// ladeKontenCtx ist ensureAccountsLoadedCtx mit Auskunft: zurueck kommen die
+// Adressen, deren Stand nach einem Fehler UNBEKANNT ist -- nicht im Speicher,
+// und ob es ihre Zeile gibt, ist offen. Der Rueckroll-Snapshot braucht das:
+// "nicht geladen" hiess dort bisher "gibt es nicht", und das Zurueckrollen
+// loeschte die Zeile (snapshotForRollbackLocked, restoreFromRollbackLockedCtx).
+func (cs *ChainState) ladeKontenCtx(ctx context.Context, addrs []string) (unbekannt map[string]bool) {
 	if cs.db == nil {
-		return
+		return nil
 	}
 	var missing []string
 	for _, addr := range addrs {
@@ -2250,7 +2259,19 @@ func (cs *ChainState) ensureAccountsLoadedCtx(ctx context.Context, addrs []strin
 		}
 	}
 	if len(missing) == 0 {
-		return
+		return nil
+	}
+	// Nach einem Fehler: alles, was noch nicht im Speicher steht, ist
+	// unbekannt. Bei einem Lesefehler mitten im Ergebnis ist nicht zu sagen,
+	// welche Zeile es war -- also alle uebrigen.
+	alleUebrigenUnbekannt := func() map[string]bool {
+		u := map[string]bool{}
+		for _, a := range missing {
+			if _, ok := cs.accounts.Get(a); !ok {
+				u[a] = true
+			}
+		}
+		return u
 	}
 	// FIX (deadlock, same as ensureAccountLoaded's FIX comment): route
 	// through cs.dbExecCtx(ctx) so this reuses an already-active
@@ -2284,9 +2305,10 @@ func (cs *ChainState) ensureAccountsLoadedCtx(ctx context.Context, addrs []strin
 		// observable; see the single-address version for why a full
 		// abort-on-error signature change isn't done here in this pass.
 		fmt.Printf("[STATE] ⚠ ensureAccountsLoaded: batch query failed for %d addresses — all will be treated as cold/fresh, which is WRONG for any that already have a balance: %v\n", len(missing), err)
-		return
+		return alleUebrigenUnbekannt()
 	}
 	defer rows.Close()
+	lesefehler := false
 	for rows.Next() {
 		var addr string
 		acc := &AccountState{}
@@ -2296,6 +2318,7 @@ func (cs *ChainState) ensureAccountsLoadedCtx(ctx context.Context, addrs []strin
 			&acc.FaucetClaimed, &acc.Demurrage14DayWarningShown, &staffelRest, &acc.GrantStagedUntil, &acc.LivenessRenewedAt,
 			&acc.NaechsteNonce, &acc.NaechsteAuftragsNonce); err != nil {
 			fmt.Printf("[STATE] ⚠ ensureAccountsLoaded: row scan failed mid-batch — this address will be treated as cold/fresh, which is WRONG if it already has a balance: %v\n", err)
+			lesefehler = true
 			continue
 		}
 		acc.Address = addr
@@ -2314,6 +2337,14 @@ func (cs *ChainState) ensureAccountsLoadedCtx(ctx context.Context, addrs []strin
 		acc.leafHash = accountLeaf(acc)
 		cs.accounts.Set(addr, acc)
 	}
+	if err := rows.Err(); err != nil {
+		fmt.Printf("[STATE] ⚠ ensureAccountsLoaded: result iteration failed — the rest of the batch is unknown: %v\n", err)
+		lesefehler = true
+	}
+	if lesefehler {
+		return alleUebrigenUnbekannt()
+	}
+	return nil
 }
 
 func (cs *ChainState) loadFromDB() {
@@ -7871,6 +7902,12 @@ type accountSnapshot struct {
 	address string
 	existed bool
 	state   AccountState
+	// unbekannt: das Vorladen im Snapshot scheiterte (Abfrage- oder
+	// Lesefehler, etwa in einer nach statement_timeout abgebrochenen
+	// Transaktion). Die Adresse war nicht im Speicher, ob es ihre Zeile gibt,
+	// ist offen. Beim Zurueckrollen faellt sie nur aus dem Speicher -- nie aus
+	// der Datenbank.
+	unbekannt bool
 }
 
 type blockRollbackSnapshot struct {
@@ -8036,7 +8073,11 @@ func (cs *ChainState) snapshotForRollbackLocked(addrs []string, full bool, chain
 	// cs.accounts, so anything warmed here is captured as existed:true with
 	// real state instead of falling into the addrs-only "doesn't exist yet"
 	// fallback).
-	cs.ensureAccountsLoaded(addrs)
+	//
+	// Scheitert das Vorladen, ist der Stand der betroffenen Adressen
+	// unbekannt (accountSnapshot.unbekannt) -- vorher hiess das hier "gibt es
+	// nicht", und das Zurueckrollen loeschte ihre echte Zeile.
+	unbekannt := cs.ladeKontenCtx(context.Background(), addrs)
 	snap := &blockRollbackSnapshot{}
 	if full {
 		// ubi_distribution touches every human's account (see ApplyUBIDelta) —
@@ -8058,7 +8099,7 @@ func (cs *ChainState) snapshotForRollbackLocked(addrs []string, full bool, chain
 		// precisely because they don't exist yet.
 		for _, a := range addrs {
 			if !existing[a] {
-				snap.accounts = append(snap.accounts, accountSnapshot{address: a, existed: false})
+				snap.accounts = append(snap.accounts, accountSnapshot{address: a, existed: false, unbekannt: unbekannt[a]})
 				existing[a] = true
 			}
 		}
@@ -8068,7 +8109,7 @@ func (cs *ChainState) snapshotForRollbackLocked(addrs []string, full bool, chain
 			if acc, ok := cs.accounts.Get(a); ok {
 				snap.accounts = append(snap.accounts, accountSnapshot{address: a, existed: true, state: *acc})
 			} else {
-				snap.accounts = append(snap.accounts, accountSnapshot{address: a, existed: false})
+				snap.accounts = append(snap.accounts, accountSnapshot{address: a, existed: false, unbekannt: unbekannt[a]})
 			}
 		}
 	}
@@ -8161,7 +8202,12 @@ func (cs *ChainState) restoreFromRollbackLockedCtx(ctx context.Context, snap *bl
 			cs.accounts.Set(s.address, &restored)
 		} else {
 			cs.accounts.Delete(s.address)
-			toDelete = append(toDelete, s.address)
+			// Unbekannt: nur aus dem Speicher. Die Zeile, falls es eine
+			// gibt, ist mit der Transaktion schon auf ihrem wahren Stand,
+			// und der naechste Zugriff laedt sie von dort.
+			if !s.unbekannt {
+				toDelete = append(toDelete, s.address)
+			}
 		}
 	}
 	if snap.pool != nil {
