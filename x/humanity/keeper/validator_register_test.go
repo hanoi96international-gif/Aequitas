@@ -2,6 +2,8 @@ package keeper
 
 import (
 	"crypto/ecdsa"
+	"encoding/hex"
+	"math/big"
 	"strings"
 	"testing"
 
@@ -118,18 +120,18 @@ func TestPruefeSnapshotValidatoren(t *testing.T) {
 	}
 	// Alt ist erlaubt: ein Eintrag ist so alt wie seine Bindung.
 	gut := []SnapshotValidator{eintrag(b1, s1, 1_700_000_000), eintrag(b2, s2, 1_700_000_100)}
-	if err := pruefeSnapshotValidatoren(gut); err != nil {
+	if err := pruefeSnapshotValidatoren(gut, nowUnix()+nachweisHoechstensVoraus); err != nil {
 		t.Fatalf("gueltiges Register abgewiesen: %v", err)
 	}
 	_, fremd := neuerSchluessel(t)
 	umgelenkt := append([]SnapshotValidator(nil), gut...)
 	umgelenkt[1].Signing = fremd
-	if err := pruefeSnapshotValidatoren(umgelenkt); err == nil {
+	if err := pruefeSnapshotValidatoren(umgelenkt, nowUnix()+nachweisHoechstensVoraus); err == nil {
 		t.Fatal("Snapshot-Eintrag mit fremder Signieradresse angenommen")
 	}
 	verschoben := append([]SnapshotValidator(nil), gut...)
 	verschoben[0].Zeit++
-	if err := pruefeSnapshotValidatoren(verschoben); err == nil {
+	if err := pruefeSnapshotValidatoren(verschoben, nowUnix()+nachweisHoechstensVoraus); err == nil {
 		t.Fatal("Snapshot-Eintrag mit veraendertem Zeitpunkt angenommen")
 	}
 	// Je nur eine Unterschrift falsch: ein Fremder unterschreibt den
@@ -138,34 +140,34 @@ func TestPruefeSnapshotValidatoren(t *testing.T) {
 	satz := validatorBindungNachricht(gut[0].Signing, gut[0].Betreiber, gut[0].Zeit)
 	ohneBetreiber := append([]SnapshotValidator(nil), gut...)
 	ohneBetreiber[0].SigOperator = personalSign(t, fremdKey, satz)
-	if err := pruefeSnapshotValidatoren(ohneBetreiber); err == nil {
+	if err := pruefeSnapshotValidatoren(ohneBetreiber, nowUnix()+nachweisHoechstensVoraus); err == nil {
 		t.Fatal("Snapshot-Eintrag ohne Unterschrift des Betreibers angenommen")
 	}
 	ohneSigning := append([]SnapshotValidator(nil), gut...)
 	ohneSigning[0].SigSigning = personalSign(t, fremdKey, satz)
-	if err := pruefeSnapshotValidatoren(ohneSigning); err == nil {
+	if err := pruefeSnapshotValidatoren(ohneSigning, nowUnix()+nachweisHoechstensVoraus); err == nil {
 		t.Fatal("Snapshot-Eintrag ohne Unterschrift des Signierschluessels angenommen")
 	}
 	doppelt := []SnapshotValidator{gut[0], gut[0]}
-	if err := pruefeSnapshotValidatoren(doppelt); err == nil {
+	if err := pruefeSnapshotValidatoren(doppelt, nowUnix()+nachweisHoechstensVoraus); err == nil {
 		t.Fatal("doppelter Snapshot-Eintrag angenommen")
 	}
 	// Zwei Betreiber mit derselben Signieradresse sind ein gueltiger Zustand
 	// (umstritten, beim Lesen entschieden).
 	geteilt := []SnapshotValidator{eintrag(b1, s1, 1_700_000_000), eintrag(b2, s1, 1_700_000_000)}
-	if err := pruefeSnapshotValidatoren(geteilt); err != nil {
+	if err := pruefeSnapshotValidatoren(geteilt, nowUnix()+nachweisHoechstensVoraus); err != nil {
 		t.Fatalf("geteilte Signieradresse abgewiesen: %v", err)
 	}
 	// Vor dem Stichtag kann es keine Bindung geben.
 	validatorRegisterOverride.Store(1_700_000_000 + nachweisHoechstensAlt + 1)
-	if err := pruefeSnapshotValidatoren(gut[:1]); err == nil {
+	if err := pruefeSnapshotValidatoren(gut[:1], nowUnix()+nachweisHoechstensVoraus); err == nil {
 		t.Fatal("Snapshot-Eintrag von vor dem Stichtag angenommen")
 	}
 	validatorRegisterOverride.Store(0)
-	if err := pruefeSnapshotValidatoren(gut[:1]); err == nil {
+	if err := pruefeSnapshotValidatoren(gut[:1], nowUnix()+nachweisHoechstensVoraus); err == nil {
 		t.Fatal("Snapshot-Eintrag ohne gesetzten Stichtag angenommen")
 	}
-	if err := pruefeSnapshotValidatoren(nil); err != nil {
+	if err := pruefeSnapshotValidatoren(nil, nowUnix()+nachweisHoechstensVoraus); err != nil {
 		t.Fatalf("leeres Register abgewiesen: %v", err)
 	}
 }
@@ -204,5 +206,100 @@ func TestBekannteTxArt_Stufe2ErstAbAktivierung(t *testing.T) {
 	nachrechnenStrengOverride.Store(0)
 	if bekannteTxArt("vorbehalt", nowUnix()) {
 		t.Fatal("ohne gesetzten Stichtag muss vorbehalt unbekannt sein")
+	}
+}
+
+// Die Unterschrift hat genau eine Schreibweise: sonst liesse sich dieselbe
+// Bindung unter vielen Transaktions-Hashes einreichen, und angehaengte Bytes
+// landeten im Register.
+func TestValidatorBindung_KanonischeSignatur(t *testing.T) {
+	betreiber, _ := neuerSchluessel(t)
+	signing, _ := neuerSchluessel(t)
+	jetzt := nowUnix()
+	gut := bindungUnterschrieben(t, betreiber, signing, jetzt-60)
+	if err := validatorBindungForm(&gut); err != nil {
+		t.Fatalf("kanonische Unterschrift abgewiesen: %v", err)
+	}
+	sig := gut.Nachweis.Sig
+	roh, _ := hex.DecodeString(sig[2:])
+	// s -> n - s: dieselbe Unterschrift in der oberen Haelfte, v gekippt.
+	hoch := append([]byte(nil), roh...)
+	sWert := new(big.Int).SetBytes(hoch[32:64])
+	sWert.Sub(crypto.S256().Params().N, sWert)
+	sWert.FillBytes(hoch[32:64])
+	hoch[64] = 55 - hoch[64] // 27 <-> 28
+	v0 := append([]byte(nil), roh...)
+	v0[64] -= 27
+	for name, falsch := range map[string]string{
+		"Grossbuchstaben": "0x" + strings.ToUpper(sig[2:]),
+		"ohne 0x":         sig[2:],
+		"angehaengt":      sig + "00",
+		"Muell hinten":    sig[:130] + "zz",
+		"v 0/1":           "0x" + hex.EncodeToString(v0),
+		"hohes s":         "0x" + hex.EncodeToString(hoch),
+		"zu kurz":         sig[:130],
+	} {
+		tx := gut
+		n := *gut.Nachweis
+		n.Sig = falsch
+		tx.Nachweis = &n
+		if err := validatorBindungForm(&tx); err == nil {
+			t.Fatalf("%s: nicht kanonische Unterschrift angenommen (%s)", name, falsch)
+		}
+		n2 := *gut.Nachweis
+		n2.Sig2 = falsch
+		tx.Nachweis = &n2
+		if err := validatorBindungForm(&tx); err == nil {
+			t.Fatalf("%s: nicht kanonische zweite Unterschrift angenommen", name)
+		}
+	}
+	// Die Variante mit hohem s waere sonst gueltig -- genau das soll die
+	// Form ausschliessen.
+	if err := verifyPersonalSign(validatorBindungNachricht(gut.To, gut.Wallet, gut.Nachweis.Zeit), "0x"+hex.EncodeToString(hoch), gut.Wallet); err != nil {
+		t.Fatalf("Vorbedingung: die Variante mit hohem s muss sonst gueltig sein: %v", err)
+	}
+}
+
+// Snapshot: kein Zeitpunkt aus der Zukunft, und "ueberholt" muss stimmen.
+func TestPruefeSnapshotValidatoren_ZukunftUndUeberholt(t *testing.T) {
+	validatorRegisterOverride.Store(1)
+	t.Cleanup(func() { validatorRegisterOverride.Store(0) })
+	a, _ := neuerSchluessel(t)
+	c, _ := neuerSchluessel(t)
+	s1, _ := neuerSchluessel(t)
+	jetzt := nowUnix()
+	eintrag := func(b, s *ecdsa.PrivateKey, zeit int64, ueberholt bool) SnapshotValidator {
+		tx := bindungUnterschrieben(t, b, s, zeit)
+		return SnapshotValidator{Betreiber: tx.Wallet, Signing: tx.To, Zeit: zeit, SigOperator: tx.Nachweis.Sig, SigSigning: tx.Nachweis.Sig2, Ueberholt: ueberholt}
+	}
+	bis := snapshotValidatorenBis(jetzt)
+	if err := pruefeSnapshotValidatoren([]SnapshotValidator{eintrag(a, s1, jetzt+3600, false)}, bis); err == nil {
+		t.Fatal("Snapshot-Eintrag aus der Zukunft angenommen")
+	}
+	if err := pruefeSnapshotValidatoren([]SnapshotValidator{eintrag(a, s1, jetzt-200, false), eintrag(c, s1, jetzt-100, false)}, bis); err == nil {
+		t.Fatal("fruehere Bindung an dieselbe Adresse ohne Markierung angenommen")
+	}
+	if err := pruefeSnapshotValidatoren([]SnapshotValidator{eintrag(a, s1, jetzt-200, true), eintrag(c, s1, jetzt-100, false)}, bis); err != nil {
+		t.Fatalf("korrekt markiertes Register abgewiesen: %v", err)
+	}
+	// Ueberholt ohne spaetere Bindung daneben ist gueltig: der spaetere
+	// Betreiber ist weitergezogen.
+	if err := pruefeSnapshotValidatoren([]SnapshotValidator{eintrag(a, s1, jetzt-200, true)}, bis); err != nil {
+		t.Fatalf("ueberholte Bindung ohne Nachfolger abgewiesen: %v", err)
+	}
+}
+
+// Stufe 2 darf nie vor dem strengen Nachrechnen gelten (zweiter
+// Sicherheitsdurchgang zu #292): sonst erzeugte der Leiter Kappungen und
+// Vorbehalte, die jeder andere Knoten als unbekannte Art abweist.
+func TestStufe2NieVorStrengemNachrechnen(t *testing.T) {
+	if verteilteAnnahmeAbUnix < nachrechnenStrengAbUnix {
+		t.Fatalf("verteilteAnnahmeAbUnix (%d) liegt vor nachrechnenStrengAbUnix (%d)", verteilteAnnahmeAbUnix, nachrechnenStrengAbUnix)
+	}
+}
+
+func TestValidatorBlatt_UeberholtAendertDasBlatt(t *testing.T) {
+	if validatorBlatt("0xa", "0xb", 1, true) == validatorBlatt("0xa", "0xb", 1, false) {
+		t.Fatal("die Ueberholt-Markierung aendert das Blatt nicht")
 	}
 }

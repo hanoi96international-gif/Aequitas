@@ -127,7 +127,7 @@ func TestValidatorRegister_BindenUndNeuBinden_RealDB(t *testing.T) {
 	if s, z, ok := f.eintrag(b1); !ok || s != adrVon(s1) || z != t1 {
 		t.Fatalf("Eintrag nach der Bindung: %s %d %v", s, z, ok)
 	}
-	if got := f.summe(); got != validatorBlatt(adrVon(b1), adrVon(s1), t1) {
+	if got := f.summe(); got != validatorBlatt(adrVon(b1), adrVon(s1), t1, false) {
 		t.Fatalf("Summe %x, erwartet das Blatt der Bindung", got[:6])
 	}
 	if got := f.neuAufgebaut(); got != f.summe() {
@@ -156,7 +156,7 @@ func TestValidatorRegister_BindenUndNeuBinden_RealDB(t *testing.T) {
 	if s, z, _ := f.eintrag(b1); s != adrVon(s2) || z != t2 {
 		t.Fatalf("Eintrag nach der neuen Bindung: %s %d", s, z)
 	}
-	if got := f.summe(); got != validatorBlatt(adrVon(b1), adrVon(s2), t2) {
+	if got := f.summe(); got != validatorBlatt(adrVon(b1), adrVon(s2), t2, false) {
 		t.Fatal("die alte Bindung ist nicht aus der Summe heraus")
 	}
 	// s1 ist frei geworden.
@@ -321,7 +321,7 @@ func TestValidatorRegister_ZurueckgewiesenerBlock_RealDB(t *testing.T) {
 	if !f.block(f.jetzt, gut) {
 		t.Fatal("ehrlicher Block abgewiesen")
 	}
-	if f.anzahl() != 1 || f.summe() != validatorBlatt(gut.Wallet, gut.To, gut.Nachweis.Zeit) {
+	if f.anzahl() != 1 || f.summe() != validatorBlatt(gut.Wallet, gut.To, gut.Nachweis.Zeit, false) {
 		t.Fatal("ehrlicher Block hat die Bindung nicht genau einmal angelegt")
 	}
 }
@@ -365,6 +365,9 @@ func TestValidatorRegister_Snapshot_RealDB(t *testing.T) {
 	}
 	stand := f.summe()
 	snap := f.cs.ExportSnapshot(nil, 3, false)
+	if snap == nil {
+		t.Fatal("kein Snapshot")
+	}
 	if len(snap.Validatoren) != 2 || snap.Validatoren[0].Betreiber > snap.Validatoren[1].Betreiber {
 		t.Fatalf("Register im Snapshot: %+v", snap.Validatoren)
 	}
@@ -378,7 +381,12 @@ func TestValidatorRegister_Snapshot_RealDB(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := validatorenImportieren(tx, liste, true); err != nil {
+		bis := snapshotValidatorenBis(nowUnix())
+		if err := pruefeSnapshotValidatoren(liste, bis); err != nil {
+			tx.Rollback()
+			return err
+		}
+		if err := validatorenImportieren(tx, liste, true, bis); err != nil {
 			tx.Rollback()
 			return err
 		}
@@ -397,7 +405,7 @@ func TestValidatorRegister_Snapshot_RealDB(t *testing.T) {
 		t.Fatalf("Import: %v", err)
 	}
 	erster := snap.Validatoren[0] // nach Betreiber geordnet
-	if f.anzahl() != 1 || f.neuAufgebaut() != validatorBlatt(erster.Betreiber, erster.Signing, erster.Zeit) {
+	if f.anzahl() != 1 || f.neuAufgebaut() != validatorBlatt(erster.Betreiber, erster.Signing, erster.Zeit, false) {
 		t.Fatal("ersetzender Import hat das Register nicht auf den Snapshot gesetzt")
 	}
 	if err := importiere(snap.Validatoren); err != nil {
@@ -490,10 +498,11 @@ func TestValidatorRegister_ReihenfolgeEgal_RealDB(t *testing.T) {
 	z := f.jetzt
 
 	faelle := []struct {
-		name  string
-		vorab []Transaction // gemeinsamer Vorlauf (Vorfahren)
-		txs   []Transaction // in Geschwisterbloecken
-		pruef func(t *testing.T)
+		name    string
+		vorab   []Transaction // gemeinsamer Vorlauf (Vorfahren)
+		txs     []Transaction // in Geschwisterbloecken
+		nachher []Transaction // gemeinsamer Nachlauf (Nachfahren)
+		pruef   func(t *testing.T)
 	}{
 		{
 			name: "zwei Betreiber, eine Adresse",
@@ -514,6 +523,19 @@ func TestValidatorRegister_ReihenfolgeEgal_RealDB(t *testing.T) {
 				}
 				if got := f.zuSignieradresse(adrVon(s2)); got != adrVon(a) {
 					t.Fatalf("s2 gehoert %s, erwartet %s", got, adrVon(a))
+				}
+			},
+		},
+		{
+			// C uebernimmt s1 von A in einem Geschwisterblock und zieht
+			// spaeter weiter: A's Bindung bleibt ueberholt, in beiden
+			// Reihenfolgen -- s1 gehoert danach keinem.
+			name:    "uebernommen, dann weitergezogen",
+			txs:     []Transaction{bindungUnterschrieben(t, a, s1, z-300), bindungUnterschrieben(t, c, s1, z-200)},
+			nachher: []Transaction{bindungUnterschrieben(t, c, s2, z-100)},
+			pruef: func(t *testing.T) {
+				if got := f.zuSignieradresse(adrVon(s1)); got != "" {
+					t.Fatalf("s1 gehoert nach dem Weiterziehen %s -- ueberholte Bindung wieder aufgelebt", got)
 				}
 			},
 		},
@@ -549,6 +571,9 @@ func TestValidatorRegister_ReihenfolgeEgal_RealDB(t *testing.T) {
 				if !f.block(z, tx) {
 					t.Fatalf("%s: Block abgewiesen", fall.name)
 				}
+			}
+			if len(fall.nachher) > 0 && !f.block(z, fall.nachher...) {
+				t.Fatalf("%s: Nachlauf abgewiesen", fall.name)
 			}
 			summen[richtung] = f.summe()
 			e, err := f.cs.validatorRegisterLesen()
@@ -588,7 +613,7 @@ func TestValidatorRegister_MergeImportNimmtDieNeuere_RealDB(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := validatorenImportieren(tx, snap, false); err != nil {
+	if err := validatorenImportieren(tx, snap, false, snapshotValidatorenBis(nowUnix())); err != nil {
 		tx.Rollback()
 		t.Fatal(err)
 	}
@@ -600,6 +625,29 @@ func TestValidatorRegister_MergeImportNimmtDieNeuere_RealDB(t *testing.T) {
 	}
 	if s, _, _ := f.eintrag(c); s != adrVon(s1) {
 		t.Fatalf("neuere Bindung aus dem Snapshot nicht uebernommen: %s", s)
+	}
+
+	// Nach dem Merge stimmen die Markierungen: lokal bindet d an s4 um
+	// jetzt-300, der Snapshot bringt e an s4 um jetzt-150 -- d ist danach
+	// ueberholt, s4 gehoert e.
+	d, e := f.betreiber(), f.betreiber()
+	s4, _ := neuerSchluessel(t)
+	if !f.block(f.jetzt, bindungUnterschrieben(t, d, s4, f.jetzt-300)) {
+		t.Fatal("Bindung d abgewiesen")
+	}
+	tx2, err := f.cs.db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validatorenImportieren(tx2, []SnapshotValidator{eintrag(e, s4, f.jetzt-150)}, false, snapshotValidatorenBis(nowUnix())); err != nil {
+		tx2.Rollback()
+		t.Fatal(err)
+	}
+	if err := tx2.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.zuSignieradresse(adrVon(s4)); got != adrVon(e) {
+		t.Fatalf("nach dem Merge gehoert s4 %q statt e -- d's fruehere Bindung nicht als ueberholt markiert", got)
 	}
 }
 
@@ -621,5 +669,64 @@ func TestValidatorRegister_ExportOhneRegisterGibtKeinenSnapshot_RealDB(t *testin
 	})
 	if snap := f.cs.ExportSnapshot(nil, 2, false); snap != nil {
 		t.Fatalf("Snapshot trotz unlesbarem Register ausgegeben (%d Validatoren)", len(snap.Validatoren))
+	}
+}
+
+// Eine ueberholte Bindung lebt nicht wieder auf (zweiter Sicherheitsdurchgang
+// zu #292): A bindet s1, s1 stimmt spaeter C zu, C zieht weiter -- s1 gehoert
+// danach KEINEM, nicht wieder A. Erst eine neue Bindung von A mit neuer
+// Zustimmung von s1 gibt sie A zurueck.
+func TestValidatorRegister_UeberholteLebtNichtAuf_RealDB(t *testing.T) {
+	f := neuerRegisterFall(t)
+	a, c := f.betreiber(), f.betreiber()
+	s1, _ := neuerSchluessel(t)
+	s3, _ := neuerSchluessel(t)
+	if !f.block(f.jetzt, bindungUnterschrieben(t, a, s1, f.jetzt-300)) {
+		t.Fatal("Bindung A abgewiesen")
+	}
+	if got := f.zuSignieradresse(adrVon(s1)); got != adrVon(a) {
+		t.Fatalf("s1 gehoert %s statt A", got)
+	}
+	if !f.block(f.jetzt, bindungUnterschrieben(t, c, s1, f.jetzt-200)) {
+		t.Fatal("Bindung C abgewiesen")
+	}
+	if got := f.zuSignieradresse(adrVon(s1)); got != adrVon(c) {
+		t.Fatalf("s1 gehoert %s statt C", got)
+	}
+	// Die Markierung steht in der Summe (also in der StateRoot): A's Blatt
+	// ist jetzt das der ueberholten Bindung.
+	var erwartet [32]byte
+	xorInto(&erwartet, validatorBlatt(adrVon(a), adrVon(s1), f.jetzt-300, true))
+	xorInto(&erwartet, validatorBlatt(adrVon(c), adrVon(s1), f.jetzt-200, false))
+	if f.summe() != erwartet || f.neuAufgebaut() != erwartet {
+		t.Fatal("die Ueberholt-Markierung steht nicht in der Summe")
+	}
+	if !f.block(f.jetzt, bindungUnterschrieben(t, c, s3, f.jetzt-100)) {
+		t.Fatal("Weiterziehen von C abgewiesen")
+	}
+	if got := f.zuSignieradresse(adrVon(s1)); got != "" {
+		t.Fatalf("s1 gehoert nach dem Weiterziehen wieder %s -- ohne neue Zustimmung des Schluessels", got)
+	}
+	if f.neuAufgebaut() != f.summe() {
+		t.Fatal("laufende und neu aufgebaute Summe weichen ab (Markierung nicht in der Summe)")
+	}
+	// Neu binden mit neuer Zustimmung: s1 gehoert wieder A.
+	if !f.block(f.jetzt, bindungUnterschrieben(t, a, s1, f.jetzt-50)) {
+		t.Fatal("neue Bindung A abgewiesen")
+	}
+	if got := f.zuSignieradresse(adrVon(s1)); got != adrVon(a) {
+		t.Fatalf("nach neuer Bindung gehoert s1 %s statt A", got)
+	}
+	// Rueckrollen nimmt die Markierung mit: ein Block, der C noch einmal
+	// auf s1 bindet und dann scheitert, laesst A's Bindung unberuehrt.
+	stand := f.summe()
+	kaputt := bindungUnterschrieben(t, c, s1, f.jetzt-10)
+	kaputt2 := kaputt
+	kaputt2.To = "0xkaputt"
+	if f.block(f.jetzt, kaputt, kaputt2) {
+		t.Fatal("Vorbedingung: der Block muss scheitern")
+	}
+	if got := f.zuSignieradresse(adrVon(s1)); got != adrVon(a) || f.summe() != stand {
+		t.Fatalf("zurueckgewiesener Block hat die Markierung hinterlassen (s1 -> %s)", got)
 	}
 }

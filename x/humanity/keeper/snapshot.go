@@ -431,7 +431,8 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) e
 	snap := *snapPtr
 	// Validator-Register selbst pruefen, BEVOR cs.mu gesperrt wird -- die
 	// Unterschriften wiederherzustellen kostet Zeit (validator_register.go).
-	if err := pruefeSnapshotValidatoren(snap.Validatoren); err != nil {
+	validatorenBis := snapshotValidatorenBis(snap.Timestamp)
+	if err := pruefeSnapshotValidatoren(snap.Validatoren, validatorenBis); err != nil {
 		return fmt.Errorf("snapshot import: validator register: %w", err)
 	}
 
@@ -587,9 +588,9 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) e
 					return fmt.Errorf("saving escrow %s: %w", t.Wallet, err)
 				}
 			}
-			// Validator-Register ergaenzend; jeder Eintrag wird hier selbst
-			// geprueft (beide Unterschriften), ein falscher verwirft den Import.
-			if err := validatorenImportieren(tx, snap.Validatoren, false); err != nil {
+			// Validator-Register ergaenzend; die Unterschriften sind oben vor
+			// der Sperre geprueft, ein falscher Eintrag verwirft den Import.
+			if err := validatorenImportieren(tx, snap.Validatoren, false, validatorenBis); err != nil {
 				return fmt.Errorf("saving validator register: %w", err)
 			}
 			// Import chain_config timing values. Do NOT overwrite if already set —
@@ -711,7 +712,8 @@ func (cs *ChainState) ResyncFromSnapshotURL(peerURL, expectedSignerHex string) e
 	}
 	snap := *snapPtr
 	// Wie beim Import: das Register vor jeder Sperre selbst pruefen.
-	if err := pruefeSnapshotValidatoren(snap.Validatoren); err != nil {
+	validatorenBis := snapshotValidatorenBis(snap.Timestamp)
+	if err := pruefeSnapshotValidatoren(snap.Validatoren, validatorenBis); err != nil {
 		return fmt.Errorf("resync: validator register: %w", err)
 	}
 
@@ -961,8 +963,8 @@ func (cs *ChainState) ResyncFromSnapshotURL(peerURL, expectedSignerHex string) e
 			return fail(fmt.Errorf("resync: could not insert escrow: %w", err))
 		}
 	}
-	// Validator-Register ersetzend, jeder Eintrag selbst geprueft.
-	if err := validatorenImportieren(tx, snap.Validatoren, true); err != nil {
+	// Validator-Register ersetzend; Unterschriften oben vor der Sperre geprueft.
+	if err := validatorenImportieren(tx, snap.Validatoren, true, validatorenBis); err != nil {
 		return fail(fmt.Errorf("resync: validator register: %w", err))
 	}
 	// Authoritative: every StateRoot-relevant config key takes the

@@ -150,6 +150,9 @@ func TestTreuhandStateRoot_SnapshotTraegtTreuhand_RealDB(t *testing.T) {
 		t.Fatal("Verschiebung abgelehnt")
 	}
 	snap := k.cs.ExportSnapshot(nil, 2, false)
+	if snap == nil {
+		t.Fatal("kein Snapshot")
+	}
 	if len(snap.Treuhand) != 1 || snap.Treuhand[0].Wallet != w || snap.Treuhand[0].Amount != 40 || snap.Treuhand[0].MovedAt != t1 {
 		t.Fatalf("Treuhand im Snapshot: %+v", snap.Treuhand)
 	}

@@ -60,22 +60,34 @@ Dinge ohne Konsenswirkung (Erreichbarkeit, Messwerte als Hinweis).
      abhängen.
      - Je Betreiber gilt das Maximum über (Zeitpunkt, Signieradresse). Die
        Adresse entscheidet nur bei zwei Bindungen mit demselben Zeitpunkt.
-     - Ob eine Adresse schon einem anderen gehört, wird beim Schreiben nicht
-       geprüft, sondern beim Lesen entschieden: Sie gehört der Bindung mit dem
-       spätesten Zeitpunkt (dorthin hat der Schlüssel zuletzt zugestimmt).
-       Teilen sich zwei den spätesten, gehört sie keinem
+     - Eine Adresse gehört der Bindung mit dem spätesten Zeitpunkt (dorthin
+       hat der Schlüssel zuletzt zugestimmt). Stimmt der Schlüssel einem
+       anderen Betreiber später zu, wird die frühere Bindung **überholt**
+       markiert – in beiden Reihenfolgen. Eine überholte Bindung lebt nicht
+       wieder auf, wenn der spätere Betreiber weiterzieht; der Betreiber
+       bindet neu, mit neuer Zustimmung des Schlüssels. Teilen sich zwei den
+       spätesten Zeitpunkt, gehört die Adresse keinem
        (`validatorZuSignieradresseCtx`).
-     - Übrig bleibt „Betreiber ist Mensch“, wenn seine Registrierung in einem
-       Geschwisterblock der Bindung steht. Ein ehrlicher Annehmender erzeugt
-       das nie (DAG-Regel). Ein böswilliger Erzeuger erreicht damit eine
+     - Übrig bleiben zwei Fälle, in denen die Reihenfolge entscheidet:
+       „Betreiber ist Mensch“, wenn seine Registrierung in einem
+       Geschwisterblock der Bindung steht, und eine Bindung, die erst
+       ankommt, nachdem ein späterer Betreiber derselben Adresse schon
+       weitergezogen ist (dafür müsste jede Zustimmung unbegrenzt
+       aufbewahrt werden). Ein ehrlicher Annehmender erzeugt beides nie
+       (DAG-Regel; nimmt nur ein Knoten an, liegen alle Bindungen in einer
+       Linie). Ein böswilliger Erzeuger erreicht damit eine
        StateRoot-Abweichung wie mit jeder Zustandsablehnung. Ohne die Prüfung
-       könnte jeder Erzeuger das Register mit erfundenen Schlüsseln füllen.
+       „Mensch“ könnte jeder Erzeuger das Register mit erfundenen Schlüsseln
+       füllen.
+   - Jede Unterschrift hat genau eine Schreibweise (`0x` + 130 Hex klein,
+     v 27/28, niedriges s) – sonst ließe sich dieselbe Bindung unter vielen
+     Transaktions-Hashes einreichen.
    - Tabelle `validator_register`, Summe `validatorSetXOR` in der StateRoot
      (nur wenn es Einträge gibt – sonst byte-gleich), Rücknahme mit dem Block,
      Neuaufbau beim Start. Der Snapshot trägt das Register mit beiden
      Unterschriften; der importierende Knoten prüft sie selbst (vor jeder
-     Sperre), ein falscher Eintrag oder einer von vor dem Stichtag verwirft
-     den Import. Ist das Register (oder die Treuhand) beim Export nicht
+     Sperre), ein falscher Eintrag, einer von vor dem Stichtag oder aus der
+     Zukunft, oder eine falsche Überholt-Markierung verwirft den Import. Ist das Register (oder die Treuhand) beim Export nicht
      lesbar, gibt es keinen Snapshot (HTTP 503) statt eines unvollständigen,
      unterschriebenen. Merge-Import nimmt je Betreiber die neuere Bindung;
      `RESET_DB_STATE` und `CLEAR_REGISTRATIONS` leeren das Register.
