@@ -42,9 +42,9 @@ import (
 // rueckbuchenLocked begrenzt die auf den Inhalt des Vorbehaltskontos.
 //
 // Gelesen wird aus der Datenbank in der laufenden Transaktion, nicht aus
-// cs.vorbehalte: die Tabelle ist der Stand, der nach einem Neustart gilt.
-// Die Karte im Speicher geht seit dem 05.10.2026 beim Zurueckrollen mit
-// (vorbehaltSicherung), ist aber nur der Arbeitsvorrat des Leiters.
+// cs.vorbehalte: die Tabelle ist die einzige Quelle, wo es eine Datenbank
+// gibt (#284). Die Karte im Speicher gilt nur ohne Datenbank und geht beim
+// Zurueckrollen mit (vorbehaltSicherung).
 
 type vorbehaltAuftrag struct {
 	wallet, art     string
