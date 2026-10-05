@@ -783,10 +783,13 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 		ProofC:     bigIntsToDecimalStrings(pCslice),
 		PubSignals: bigIntsToDecimalStrings(psSlice),
 	}
+	// Annahmezeitpunkt in der Transaktion, auch auf V7: nach ihm bemessen
+	// Erzeuger und Nachspielende die Staffel (grant_staffel.go, "EIN
+	// ZEITPUNKT").
+	pendingRegTx.RegAt = annahmeZeit
 	if v8 {
 		pendingRegTx.RegSignatur = "0x" + common.Bytes2Hex(sigBytes)
 		pendingRegTx.RegFrist = req.Deadline
-		pendingRegTx.RegAt = annahmeZeit
 		// Genau das pruefen, was jeder nachspielende Knoten pruefen wird --
 		// sonst erzeugte dieser Knoten einen Block, den die anderen ablehnen.
 		if err := pruefeRegistrierungV8(pendingRegTx, annahmeZeit); err != nil {

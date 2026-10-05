@@ -1,10 +1,14 @@
 package keeper
 
 import (
+	"bytes"
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 )
 
@@ -208,5 +212,49 @@ func TestErneuerung_StrengLehntErfundeneAb_RealDB(t *testing.T) {
 	// "EIN ZEITPUNKT") -- derselbe, den der annehmende Knoten setzt.
 	if got := erneuert(); got != f.jetzt-60 {
 		t.Fatalf("echte Erneuerung nicht mit dem bescheinigten Zeitpunkt angewendet (%d)", got)
+	}
+}
+
+// Missbrauch (zweiter Sicherheitsdurchgang zu #295): vor der Aktivierung
+// setzt ein Block mit einer Erneuerung, deren issued_at NACH dem Stichtag
+// liegt, nichts -- ob die Staffel gilt, entscheidet die Blockzeit.
+func TestErneuerung_VorDerAktivierungMitZukunftsZeitpunktLeerlauf_RealDB(t *testing.T) {
+	f := neuerErneuerungsFall(t, 10)
+	// Stichtag in 100 s, issued_at in 200 s -- innerhalb der 5 min, die ein
+	// Zeitpunkt nach dem Block liegen darf. Nur die Blockzeit (jetzt, vor dem
+	// Stichtag) haelt die Erneuerung auf.
+	stagedGrantActivationOverride.Store(f.jetzt + 100)
+	tx := f.gueltig(f.jetzt + 200)
+	b := &Block{Height: 1, Hash: "erneuerung-zukunft-" + t.Name(), Timestamp: f.jetzt, Transactions: []Transaction{tx}}
+	f.dag.replayTransactions(b, true)
+	f.cs.mu.Lock()
+	acc, _ := f.cs.accounts.Get(f.wallet)
+	got := acc.LivenessRenewedAt
+	f.cs.mu.Unlock()
+	if got != 0 {
+		t.Fatalf("Erneuerung vor der Aktivierung gesetzt (%d) -- die Staffel schlaeft nicht mehr", got)
+	}
+}
+
+// Die Annahme prueft Tag 7 auch fuer den Zeitpunkt der Bescheinigung: eine
+// an Tag 6 ausgestellte, an Tag 7 eingereichte wird abgewiesen -- jeder
+// Nachspielende wiese sie im strengen Modus ab (erneuerung_zu_frueh).
+func TestErneuerung_AnnahmeTagSiebenAuchFuerDieBescheinigung_RealDB(t *testing.T) {
+	f := neuerErneuerungsFall(t, 7) // Tag 7 beginnt genau jetzt
+	a := &APIServer{state: f.cs}
+	reiche := func(issued int64) int {
+		body, _ := json.Marshal(map[string]interface{}{
+			"wallet": f.wallet, "issued_at": issued,
+			"public_key": hex.EncodeToString(f.pub), "signature": f.unterschreibe(f.priv, f.wallet, issued),
+		})
+		w := httptest.NewRecorder()
+		a.handleLivenessRenewal(w, httptest.NewRequest(http.MethodPost, "/api/liveness-renewal", bytes.NewReader(body)))
+		return w.Code
+	}
+	if code := reiche(f.jetzt - 600); code != http.StatusConflict {
+		t.Fatalf("an Tag 6 ausgestellte Bescheinigung angenommen (%d)", code)
+	}
+	if code := reiche(nowUnix()); code != http.StatusOK {
+		t.Fatalf("an Tag 7 ausgestellte Bescheinigung abgewiesen (%d)", code)
 	}
 }

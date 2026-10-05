@@ -2,6 +2,8 @@ package keeper
 
 import (
 	"context"
+	"math"
+	"os"
 	"strings"
 	"testing"
 )
@@ -21,6 +23,66 @@ func TestStaffelRegZeit(t *testing.T) {
 	// Rueckdatiert: hoechstens einen Tag vor dem Block.
 	if got := staffelRegZeit(block-10*86400, block); got != block-86400 {
 		t.Fatalf("rueckdatierte Registrierung nicht begrenzt: %d", got)
+	}
+	// Vordatiert (V7 prueft RegAt nicht): hoechstens 5 min nach dem Block,
+	// sonst der Block -- auch bei MaxInt64 kein Ueberlauf.
+	if got := staffelRegZeit(block+v8NachspielKarenz, block); got != block+v8NachspielKarenz {
+		t.Fatalf("RegAt knapp nach dem Block: %d", got)
+	}
+	for _, vor := range []int64{block + v8NachspielKarenz + 1, 4_102_444_800, math.MaxInt64} {
+		if got := staffelRegZeit(vor, block); got != block {
+			t.Fatalf("vordatierte Registrierung %d nicht auf die Blockzeit gesetzt: %d", vor, got)
+		}
+	}
+}
+
+// Missbrauch: eine vordatierte Registrierung (RegAt = MaxInt64) laeuft nicht
+// ueber und haelt die Staffel nicht ewig.
+func TestStaffelZeit_VordatiertLaeuftNichtUeber(t *testing.T) {
+	stagedGrantActivationOverride.Store(1_000)
+	t.Cleanup(func() { stagedGrantActivationOverride.Store(0) })
+	w := "0x00000000000000000000000000000000000000c5"
+	blockZeit := int64(5_000_000)
+	cs := newTestState()
+	cs.mu.Lock()
+	err := cs.registerHumanMitZeitenLocked(context.Background(), w, blockZeit, staffelRegZeit(math.MaxInt64, blockZeit), grantKlasseGestaffelt)
+	cs.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := acct(cs, w).GrantStagedUntil; got != blockZeit+grantStaffelTage*86400 {
+		t.Fatalf("GrantStagedUntil %d nach vordatierter Registrierung", got)
+	}
+}
+
+// Wiederanlauf: eine Registrierung, die Tage nach ihrer Annahme erneut
+// angewendet wird (RetryRegistrationRecoveries), begrenzt der Erzeuger wie
+// jeder Nachspielende -- die Staffel laeuft hoechstens einen Tag vor jetzt los.
+func TestStaffelZeit_WiederanlaufBegrenztWieNachspielen(t *testing.T) {
+	stagedGrantActivationOverride.Store(1_000)
+	t.Cleanup(func() { stagedGrantActivationOverride.Store(0) })
+	w := "0x00000000000000000000000000000000000000c6"
+	jetzt := nowUnix()
+	tx := Transaction{Type: "register_human", Wallet: w, GrantClass: grantKlasseGestaffelt, RegAt: jetzt - 3*86400}
+	cs := newTestState()
+	if err := cs.RegisterHumanAtomic(w, tx); err != nil {
+		t.Fatal(err)
+	}
+	got := acct(cs, w).GrantStagedUntil
+	erwartet := jetzt - 86400 + grantStaffelTage*86400
+	if got < erwartet || got > erwartet+5 {
+		t.Fatalf("GrantStagedUntil %d nach Wiederanlauf, erwartet etwa %d (ein Tag vor jetzt)", got, erwartet)
+	}
+}
+
+// V7: auch ohne Vertrag V8 traegt die Registrierung ihren Annahmezeitpunkt.
+func TestStaffelZeit_RegistrierungTraegtRegAtAuchAufV7(t *testing.T) {
+	src, err := os.ReadFile("register.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(src), "pendingRegTx.RegAt = annahmeZeit\n\tif v8 {") {
+		t.Fatal("register.go setzt RegAt nicht mehr fuer jede Registrierung (vor dem V8-Zweig)")
 	}
 }
 
@@ -93,10 +155,14 @@ func TestStaffelZeit_ErneuerungNachBescheinigung(t *testing.T) {
 	if err := cs.registerHumanMitKlasseLocked(ctx, w, 5_000, grantKlasseGestaffelt); err != nil {
 		t.Fatal(err)
 	}
-	if err := cs.applyLivenessRenewalDeltaLocked(ctx, w, 0); err != nil || acct(cs, w).LivenessRenewedAt != 0 {
+	if err := cs.applyLivenessRenewalDeltaLocked(ctx, w, 0, 700_100); err != nil || acct(cs, w).LivenessRenewedAt != 0 {
 		t.Fatalf("Erneuerung ohne Zeitpunkt hat freigeschaltet: %v %d", err, acct(cs, w).LivenessRenewedAt)
 	}
-	if err := cs.applyLivenessRenewalDeltaLocked(ctx, w, 700_000); err != nil || acct(cs, w).LivenessRenewedAt != 700_000 {
+	// Mehr als 5 min nach dem Block: schaltet nichts frei.
+	if err := cs.applyLivenessRenewalDeltaLocked(ctx, w, 700_100+nachweisHoechstensVoraus+1, 700_100); err != nil || acct(cs, w).LivenessRenewedAt != 0 {
+		t.Fatalf("Erneuerung aus der Zukunft des Blocks hat freigeschaltet: %v %d", err, acct(cs, w).LivenessRenewedAt)
+	}
+	if err := cs.applyLivenessRenewalDeltaLocked(ctx, w, 700_000, 700_100); err != nil || acct(cs, w).LivenessRenewedAt != 700_000 {
 		t.Fatalf("erneuert am %d statt am bescheinigten Zeitpunkt", acct(cs, w).LivenessRenewedAt)
 	}
 }
@@ -109,13 +175,13 @@ func TestStaffelZeit_NachspielenNimmtDieZeitAusDerTransaktion(t *testing.T) {
 	body := functionBodyFromSource(t, "block.go", "func (dag *BlockDAG) replayTransactions(")
 	for _, muss := range []string{
 		"registerHumanMitZeitenLocked(context.Background(), wallet, block.Timestamp,\n\t\t\t\tstaffelRegZeit(tx.RegAt, block.Timestamp), tx.GrantClass)",
-		"applyLivenessRenewalDeltaLocked(context.Background(), wallet, tx.DistributionAt)",
+		"applyLivenessRenewalDeltaLocked(context.Background(), wallet, tx.DistributionAt, block.Timestamp)",
 	} {
 		if !strings.Contains(body, muss) {
 			t.Fatalf("replayTransactions enthaelt nicht mehr:\n%s", muss)
 		}
 	}
-	if strings.Contains(body, "applyLivenessRenewalDeltaLocked(context.Background(), wallet, block.Timestamp)") {
+	if strings.Contains(body, "applyLivenessRenewalDeltaLocked(context.Background(), wallet, block.Timestamp") {
 		t.Fatal("die Erneuerung nimmt beim Nachspielen wieder die Blockzeit")
 	}
 }

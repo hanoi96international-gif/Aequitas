@@ -7614,7 +7614,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			// WP 2 (grant_staffel.go): vor der Aktivierung Leerlauf. Zeitpunkt
 			// ist der bescheinigte (DistributionAt = issued_at), wie bei der
 			// Annahme -- nicht die Blockzeit ("EIN ZEITPUNKT").
-			if err := dag.state.applyLivenessRenewalDeltaLocked(context.Background(), wallet, tx.DistributionAt); err != nil {
+			if err := dag.state.applyLivenessRenewalDeltaLocked(context.Background(), wallet, tx.DistributionAt, block.Timestamp); err != nil {
 				fmt.Printf("[REPLAY] ✗ liveness_renewal %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
 				hardFailure = true
 				continue

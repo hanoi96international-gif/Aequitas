@@ -117,27 +117,38 @@ func hatStaffel(acc *AccountState) bool {
 // beide denselben Wert aus der Transaktion:
 //
 //   - Registrierung: RegAt, den Annahmezeitpunkt, den der Erzeuger in die
-//     Transaktion schreibt und jeder Knoten prueft (pruefeRegistrierungV8:
-//     nicht nach dem Block). Nach hinten begrenzt staffelRegZeit ihn auf
-//     einen Tag vor der Blockzeit -- sonst verkuerzte eine rueckdatierte
-//     Registrierung die Wartezeit bis zur Erneuerung oder fiele vor die
-//     Aktivierung (voller Zuschuss sofort). Eine Registrierung, die mehr als
-//     einen Tag nach der Annahme in einen Block kommt, weicht beim Erzeuger
-//     dann ab; sie haelt die Kette nicht an.
-//   - Erneuerung: issued_at aus der Bescheinigung (DistributionAt), auch
-//     fuer den Stichtag. Fehlt er, ist die Erneuerung Leerlauf -- schaltet
-//     also nichts frei (nachrechnen_erneuerung.go meldet sie).
+//     Transaktion schreibt (V8 wie V7; V8 prueft ihn zusaetzlich gegen die
+//     Unterschrift der Wallet, pruefeRegistrierungV8). staffelRegZeit
+//     begrenzt ihn auf [Blockzeit - 1 Tag, Blockzeit + 5 min] -- auf beiden
+//     Seiten, beim Erzeuger mit seiner Uhr. Ohne die untere Grenze verkuerzte
+//     eine rueckdatierte Registrierung die Wartezeit bis zur Erneuerung oder
+//     fiele vor die Aktivierung (voller Zuschuss sofort); ohne die obere
+//     liesse ein vordatierter (bis MaxInt64) die Staffel ewig laufen oder
+//     liefe ueber. Kommt eine Registrierung mehr als einen Tag nach der
+//     Annahme in einen Block (Wiederanlauf), greift die untere Grenze beim
+//     Erzeuger und beim Nachspielenden an verschiedenen Uhren -- dieses eine
+//     Konto weicht dann um die Sekunden bis zum Block ab; die Kette haelt
+//     nicht an.
+//   - Erneuerung: issued_at aus der Bescheinigung (DistributionAt) als WERT.
+//     Ob die Staffel gilt, entscheidet weiter die Blockzeit -- sonst haette
+//     ein Erzeuger mit einem issued_at nach dem Stichtag die Erneuerung schon
+//     heute setzen koennen (zweiter Sicherheitsdurchgang zu #295). issued_at
+//     darf hoechstens 5 min nach dem Block liegen; fehlt er oder liegt er
+//     spaeter, schaltet die Erneuerung nichts frei (nachrechnen_erneuerung.go
+//     meldet sie).
 //
-// Vor der Aktivierung aendert sich nichts: Vor 2100 liegt jeder dieser
-// Zeitpunkte vor dem Stichtag, wie vorher die Blockzeit.
+// Vor der Aktivierung aendert sich nichts: Vor 2100 ist jede Staffel
+// Leerlauf, gemessen an der Blockzeit wie bisher, und RegAt aendert an einer
+// Registrierung ohne Staffel nichts.
 
-// staffelRegZeit: der Zeitpunkt, nach dem eine nachgespielte Registrierung
-// ihre Staffel bemisst. Ohne RegAt (V7) die Blockzeit wie bisher.
-func staffelRegZeit(regAt, blockZeit int64) int64 {
-	if regAt <= 0 {
-		return blockZeit
+// staffelRegZeit: der Zeitpunkt, nach dem eine Registrierung ihre Staffel
+// bemisst -- beim Nachspielen mit der Blockzeit, beim Erzeuger mit seiner
+// Uhr. Ohne RegAt oder mit einem RegAt nach (Bezug + 5 min) der Bezug selbst.
+func staffelRegZeit(regAt, bezug int64) int64 {
+	if regAt <= 0 || regAt > bezug+v8NachspielKarenz {
+		return bezug
 	}
-	if fruehestens := blockZeit - 86400; regAt < fruehestens {
+	if fruehestens := bezug - 86400; regAt < fruehestens {
 		return fruehestens
 	}
 	return regAt
@@ -146,10 +157,16 @@ func staffelRegZeit(regAt, blockZeit int64) int64 {
 // applyLivenessRenewalDeltaLocked wendet eine liveness_renewal an: der
 // Zeitpunkt wird gesetzt, die Staffel darf laufen. Idempotent -- ein zweites
 // Nachspielen derselben Erneuerung aendert nichts. Vor der Aktivierung
-// Leerlauf. zeit ist der bescheinigte Zeitpunkt (issued_at) -- bei der
-// Annahme wie beim Nachspielen (siehe "EIN ZEITPUNKT"). Caller haelt cs.mu.
-func (cs *ChainState) applyLivenessRenewalDeltaLocked(ctx context.Context, address string, zeit int64) error {
-	if !stagedGrantAktiv(zeit) { // auch ohne Zeitpunkt (0): liegt vor jedem Stichtag
+// Leerlauf, gemessen an der Blockzeit (bei der Annahme: jetzt). zeit ist
+// der bescheinigte Zeitpunkt (issued_at) und wird der Wert -- bei der
+// Annahme wie beim Nachspielen (siehe "EIN ZEITPUNKT"); fehlt er oder liegt
+// er mehr als 5 min nach dem Block, schaltet die Erneuerung nichts frei.
+// Caller haelt cs.mu.
+func (cs *ChainState) applyLivenessRenewalDeltaLocked(ctx context.Context, address string, zeit, blockUnix int64) error {
+	if !stagedGrantAktiv(blockUnix) {
+		return nil
+	}
+	if zeit <= 0 || zeit > blockUnix+nachweisHoechstensVoraus {
 		return nil
 	}
 	address = strings.ToLower(strings.TrimSpace(address))
@@ -363,7 +380,11 @@ func (a *APIServer) handleLivenessRenewal(w http.ResponseWriter, r *http.Request
 	// das Nachspielen bestehender Bloecke darf sich nicht aendern. Der
 	// Coordinator prueft dasselbe schon vor der Aufnahme (erneuerung.py);
 	// das hier haelt auch, wenn ein Coordinator es nicht tut.
-	if now < ab {
+	// Tag 7 gilt fuer die Bescheinigung selbst, nicht nur fuer ihre Annahme
+	// -- so prueft es jeder Nachspielende (erneuerung_zu_frueh). Sonst nahme
+	// dieser Knoten eine an Tag 6 ausgestellte Bescheinigung an Tag 7 an, und
+	// im strengen Modus wiese jeder andere den Block ab.
+	if now < ab || req.IssuedAt < ab {
 		w.WriteHeader(http.StatusConflict)
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"error": "second liveness check counts from day 7 after registration", "frueh_ab": ab})
@@ -371,7 +392,7 @@ func (a *APIServer) handleLivenessRenewal(w http.ResponseWriter, r *http.Request
 	}
 	tx := erneuerungsTransaktion(wallet, req.IssuedAt, req.PublicKey, req.Signature)
 	if err := a.state.runAtomicWithOutbox([]string{wallet}, false, func(ctx context.Context) (Transaction, error) {
-		if err := a.state.applyLivenessRenewalDeltaLocked(ctx, wallet, req.IssuedAt); err != nil {
+		if err := a.state.applyLivenessRenewalDeltaLocked(ctx, wallet, req.IssuedAt, now); err != nil {
 			return Transaction{}, err
 		}
 		return tx, nil

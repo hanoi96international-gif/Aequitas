@@ -4534,10 +4534,7 @@ func (cs *ChainState) RegisterHumanAtomic(address string, pendingTx Transaction)
 		// Die Staffel nach dem Annahmezeitpunkt, der in der Transaktion steht
 		// (RegAt) -- wie jeder Nachspielende (staffelRegZeit).
 		jetzt := time.Now().Unix()
-		regZeit := pendingTx.RegAt
-		if regZeit <= 0 {
-			regZeit = jetzt
-		}
+		regZeit := staffelRegZeit(pendingTx.RegAt, jetzt)
 		if err := cs.registerHumanMitZeitenLocked(ctx, address, jetzt, regZeit, pendingTx.GrantClass); err != nil {
 			return Transaction{}, err
 		}
