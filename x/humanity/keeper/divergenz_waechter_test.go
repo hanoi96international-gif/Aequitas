@@ -150,13 +150,16 @@ func TestDivergenzAuskunftLesen_FeindlicheAntworten(t *testing.T) {
 		t.Fatalf("alter Seed: Felder muessen nil bleiben: %+v, %v", alt, err)
 	}
 	for name, body := range map[string]string{
-		"zu gross":       `{"account_set_xor":"` + summe('a') + `","last_ubi_at":"` + strings.Repeat("x", divergenzAuskunftGrenze) + `"}`,
-		"keine Summe":    `{"account_set_xor":"` + summe('a') + `","escrow_set_xor":"zz"}`,
-		"Gross-Hex":      `{"account_set_xor":"` + strings.ToUpper(summe('a')) + `"}`,
-		"Steuerzeichen":  `{"account_set_xor":"` + summe('a') + `","validator_set_xor":"\n[FAKE] ok\u001b[` + strings.Repeat("a", 50) + `"}`,
-		"Konten fehlen":  `{"escrow_set_xor":"` + summe('b') + `"}`,
-		"Konten zu kurz": `{"account_set_xor":"abc"}`,
-		"kein JSON":      `<html>`,
+		"zu gross": `{"account_set_xor":"` + summe('a') + `","last_ubi_at":"` + strings.Repeat("x", divergenzAuskunftGrenze) + `"}`,
+		// Gueltiges JSON, aufgefuellt: auch abgeschnitten noch lesbar -- die
+		// Grenze muss trotzdem greifen.
+		"zu gross, gueltig": `{"account_set_xor":"` + summe('a') + `"}` + strings.Repeat(" ", divergenzAuskunftGrenze),
+		"keine Summe":       `{"account_set_xor":"` + summe('a') + `","escrow_set_xor":"zz"}`,
+		"Gross-Hex":         `{"account_set_xor":"` + strings.ToUpper(summe('a')) + `"}`,
+		"Steuerzeichen":     `{"account_set_xor":"` + summe('a') + `","validator_set_xor":"\n[FAKE] ok\u001b[` + strings.Repeat("a", 50) + `"}`,
+		"Konten fehlen":     `{"escrow_set_xor":"` + summe('b') + `"}`,
+		"Konten zu kurz":    `{"account_set_xor":"abc"}`,
+		"kein JSON":         `<html>`,
 	} {
 		if _, err := divergenzAuskunftLesen(strings.NewReader(body)); err == nil {
 			t.Fatalf("%s: angenommen", name)
