@@ -3,11 +3,13 @@ package keeper
 import (
 	"encoding/json"
 	"fmt"
+	"math/bits"
 	"os"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 )
 
 // numAccountShards partitions account storage into this many independent
@@ -83,10 +85,10 @@ import (
 // der jeden Sperrvorgang um eine Groessenordnung verlangsamt.
 //
 // 26 MB gegen die 1,28 GB, die der Knoten unter Last ohnehin haelt. Der eine
-// reale Preis ist Range: es sperrt JEDEN Shard einzeln, auch die leeren. Auf
-// dem Ueberweisungspfad liegt es nicht (siehe range_auf_heissem_pfad_test.go),
-// auf dem Blockpfad hoechstens einmal je Block -- 6,24 ms gegen eine Blockzeit
-// von 1 s. Der Test haelt 100 ms als Schmerzgrenze fest.
+// reale Preis war Range: es sperrte JEDEN Shard einzeln, auch die leeren.
+// Seit dem 05.10.2026 sperrt es nur belegte Shards (siehe "NUR BELEGTE
+// SHARDS" unten; gemessen 14 MB, Range-Faktor 1,5x statt 16x). Auf dem
+// Ueberweisungspfad liegt es trotzdem nicht (range_auf_heissem_pfad_test.go).
 //
 //	AEQUITAS_ACCOUNT_SHARDS   Zahl der Shards (Vorgabe 262144)
 //
@@ -145,14 +147,75 @@ type accountShard struct {
 // Phase 2 for that migration, NOT done by this file.
 type shardedAccounts struct {
 	shards []*accountShard
+	// belegt: ein Bit je Shard, gesetzt, solange der Shard Eintraege hat.
+	// Damit sperren Range und Len nur die belegten Shards statt aller
+	// numAccountShards (siehe unten, "NUR BELEGTE SHARDS").
+	belegt []atomic.Uint64
 }
 
+// NUR BELEGTE SHARDS (05.10.2026).
+//
+// Range und Len sperrten jeden der 262.144 Shards einzeln, auch die leeren
+// (oben: "Der eine reale Preis ist Range"). Gemessen am 05.10.2026 in der
+// Testsuite des Pakets: 40 % der gesamten CPU in Range, 31 % allein in
+// Lock/Unlock leerer Shards, dazu 10 % im Anlegen der Shards. Unter -race,
+// das jede Sperre um eine Groessenordnung verteuert, brauchte ein einziger
+// Test (TestVerteilteAnnahme_DreiAnnehmende...) 450 s, und die Suite riss
+// das 30-Minuten-Limit des CI. Auf dem Blockpfad kostet dasselbe Range je
+// Block Millisekunden.
+//
+// Das Bitfeld wird nur unter der Sperre des jeweiligen Shards geaendert
+// (Set/SetLocked setzen, Delete loescht beim letzten Eintrag) -- atomar,
+// weil 64 Shards ein Wort teilen. Range liest ein Wort und sperrt nur die
+// Shards mit gesetztem Bit, in derselben aufsteigenden Reihenfolge wie
+// bisher. Was Range damit sieht, ist dasselbe wie vorher: jeder Eintrag,
+// der waehrend des ganzen Durchlaufs besteht, hat sein Bit seit dem Eintragen
+// gesetzt (geloescht wird es erst, wenn der Shard leer ist). Ein Eintrag,
+// der waehrend des Durchlaufs hinzukommt, kann gesehen werden oder nicht --
+// genau wie vorher, wenn Range seinen Shard schon hinter sich hatte. Einen
+// Schnappschuss hat Range nie versprochen.
+//
+// Die Shards liegen ausserdem in EINER Zuweisung, und ihre Map entsteht
+// erst beim ersten Eintrag: Lesen, Loeschen und Iterieren einer nil-Map
+// sind in Go erlaubt.
+
 func newShardedAccounts() *shardedAccounts {
-	sa := &shardedAccounts{shards: make([]*accountShard, numAccountShards)}
+	sa := &shardedAccounts{
+		shards: make([]*accountShard, numAccountShards),
+		belegt: make([]atomic.Uint64, (numAccountShards+63)/64),
+	}
+	alle := make([]accountShard, numAccountShards)
 	for i := range sa.shards {
-		sa.shards[i] = &accountShard{data: make(map[string]*AccountState)}
+		sa.shards[i] = &alle[i]
 	}
 	return sa
+}
+
+// eintragenLocked: m[addr] = acc in Shard idx, dessen Sperre gehalten wird.
+func (sa *shardedAccounts) eintragenLocked(idx int, addr string, acc *AccountState) {
+	s := sa.shards[idx]
+	if s.data == nil {
+		s.data = make(map[string]*AccountState)
+	}
+	s.data[addr] = acc
+	if len(s.data) == 1 {
+		sa.belegt[idx>>6].Or(uint64(1) << (idx & 63))
+	}
+}
+
+// belegteShards ruft fn fuer jeden Shard mit gesetztem Bit auf, aufsteigend.
+// fn sperrt selbst.
+func (sa *shardedAccounts) belegteShards(fn func(s *accountShard) bool) {
+	for w := range sa.belegt {
+		b := sa.belegt[w].Load()
+		for b != 0 {
+			i := bits.TrailingZeros64(b)
+			b &= b - 1
+			if !fn(sa.shards[w<<6+i]) {
+				return
+			}
+		}
+	}
 }
 
 // shardIndexFor is the routing function every operation on a given
@@ -215,10 +278,11 @@ func (sa *shardedAccounts) Get(addr string) (*AccountState, bool) {
 // AND then tries to mutate cs.accounts, which would have been an equally
 // invalid nil-map write before this migration.
 func (sa *shardedAccounts) Set(addr string, acc *AccountState) {
-	s := sa.shardFor(addr)
+	idx := shardIndexFor(addr)
+	s := sa.shards[idx]
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.data[addr] = acc
+	sa.eintragenLocked(idx, addr, acc)
 }
 
 // Delete mirrors `delete(m, addr)`, including on a nil receiver: deleting
@@ -228,10 +292,17 @@ func (sa *shardedAccounts) Delete(addr string) {
 	if sa == nil {
 		return
 	}
-	s := sa.shardFor(addr)
+	idx := shardIndexFor(addr)
+	s := sa.shards[idx]
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if _, ok := s.data[addr]; !ok {
+		return
+	}
 	delete(s.data, addr)
+	if len(s.data) == 0 {
+		sa.belegt[idx>>6].And(^(uint64(1) << (idx & 63)))
+	}
 }
 
 // XorLeaf folds addr's leaf change into its shard's own partialXOR,
@@ -286,20 +357,19 @@ func (sa *shardedAccounts) CombinedXOR() [32]byte {
 }
 
 // Len mirrors `len(m)`, including on a nil receiver (len(nilMap) == 0 in
-// Go, never a panic -- see Get's comment). O(numAccountShards), not O(1) --
-// acceptable here since every existing len(cs.accounts) call site is
-// cold-path bookkeeping (snapshot sizing, stats), never a per-transfer hot
-// path.
+// Go, never a panic -- see Get's comment). Sperrt nur belegte Shards (siehe
+// "NUR BELEGTE SHARDS"); liest dazu numAccountShards/64 Woerter.
 func (sa *shardedAccounts) Len() int {
 	if sa == nil {
 		return 0
 	}
 	total := 0
-	for _, s := range sa.shards {
+	sa.belegteShards(func(s *accountShard) bool {
 		s.mu.Lock()
 		total += len(s.data)
 		s.mu.Unlock()
-	}
+		return true
+	})
 	return total
 }
 
@@ -322,16 +392,17 @@ func (sa *shardedAccounts) Range(fn func(addr string, acc *AccountState) bool) {
 	if sa == nil {
 		return
 	}
-	for _, s := range sa.shards {
+	sa.belegteShards(func(s *accountShard) bool {
 		s.mu.Lock()
 		for addr, acc := range s.data {
 			if !fn(addr, acc) {
 				s.mu.Unlock()
-				return
+				return false
 			}
 		}
 		s.mu.Unlock()
-	}
+		return true
+	})
 }
 
 // Clone returns a new, independent shardedAccounts holding a deep copy of
@@ -465,8 +536,7 @@ func (sa *shardedAccounts) GetLocked(addr string) (*AccountState, bool) {
 // SetLocked is Set's counterpart for a caller already holding addr's
 // shard lock via LockAddrs -- see LockAddrs's own comment.
 func (sa *shardedAccounts) SetLocked(addr string, acc *AccountState) {
-	s := sa.shardFor(addr)
-	s.data[addr] = acc
+	sa.eintragenLocked(shardIndexFor(addr), addr, acc)
 }
 
 // MarshalJSON lets `json.Marshal(sa)` behave like `json.Marshal(m)` did
