@@ -7893,6 +7893,10 @@ type blockRollbackSnapshot struct {
 	ubiRunde  ubiRundePruefung
 	lpRunde   lpRundePruefung
 	freigaben freigabeRunde
+	// vorbehalte: die offenen Vorbehalte (cs.vorbehalte) der Vorbehaltskonten
+	// unter den Adressen. Die Tabelle vorbehalte_offen geht mit der
+	// Transaktion zurueck, die Karte im Speicher nur hiermit.
+	vorbehalte vorbehaltSicherung
 }
 
 type configValueSnapshot struct {
@@ -7927,6 +7931,19 @@ func blockTouchedAddresses(block *Block) (addrs []string, needsFullSnapshot bool
 		}
 		add(tx.Wallet)
 		add(tx.To)
+		// Stufe 2 (vorbehalt.go): der Vorbehalt legt ein Vorbehaltskonto an,
+		// die Ausfuehrung leert es -- beides steht in keinem Wallet/To. Ohne
+		// diese Adressen behielte ein zurueckgewiesener Block Konto und
+		// offenen Vorbehalt im Speicher, und der ehrliche Block mit demselben
+		// Vorbehalt scheiterte danach.
+		switch tx.Type {
+		case "vorbehalt":
+			add(vorbehaltsKonto(tx.TxHash))
+		case "vorbehalt_ausfuehrung":
+			if tx.Vorbehalt != nil && tx.Vorbehalt.Ref != "" {
+				add(vorbehaltsKonto(tx.Vorbehalt.Ref))
+			}
+		}
 	}
 	add(validatorsPoolAddr)
 	add(lpPoolAddr)
@@ -8040,6 +8057,7 @@ func (cs *ChainState) snapshotForRollbackLocked(addrs []string, full bool, chain
 	snap.ubiRunde = cs.ubiRunde.kopie()
 	snap.lpRunde = cs.lpRunde
 	snap.freigaben = cs.freigaben
+	snap.vorbehalte = cs.vorbehaltSichern(addrs, full)
 	return snap
 }
 
@@ -8107,6 +8125,7 @@ func (cs *ChainState) restoreFromRollbackLockedCtx(ctx context.Context, snap *bl
 	cs.ubiRunde = snap.ubiRunde.zurueck()
 	cs.lpRunde = snap.lpRunde.zurueck()
 	cs.freigaben = snap.freigaben.zurueck()
+	cs.vorbehaltZurueck(snap.vorbehalte)
 	var toDelete []string
 	for _, s := range snap.accounts {
 		if s.existed {
