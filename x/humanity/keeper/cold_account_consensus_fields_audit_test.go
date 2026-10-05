@@ -183,8 +183,17 @@ func TestEnsureAccountLoadedCtx_SelectsEveryConsensusColumn(t *testing.T) {
 //
 // Kept as a separate test from the single-address one so a regression names
 // the path it broke.
+//
+// Seit dem 05.10.2026 steht die Abfrage in ladeKontenCtx (dieselbe Ladung mit
+// Auskunft, welche Adressen nach einem Fehler unbekannt sind);
+// ensureAccountsLoadedCtx reicht nur weiter. Geprueft wird deshalb, dass es
+// weiterreicht, und die Abfrage dort.
 func TestEnsureAccountsLoadedCtx_SelectsEveryConsensusColumn(t *testing.T) {
-	body := functionBodyFromSource(t, "state.go", "func (cs *ChainState) ensureAccountsLoadedCtx(")
+	huelle := functionBodyFromSource(t, "state.go", "func (cs *ChainState) ensureAccountsLoadedCtx(")
+	if !strings.Contains(huelle, "cs.ladeKontenCtx(ctx, addrs)") {
+		t.Fatal("ensureAccountsLoadedCtx reicht nicht mehr an ladeKontenCtx weiter -- diesen Test auf die neue Abfrage richten, nicht loeschen")
+	}
+	body := functionBodyFromSource(t, "state.go", "func (cs *ChainState) ladeKontenCtx(")
 
 	for _, column := range []string{"balance", "is_human", "tusd_balance", "lp_shares", "faucet_claimed"} {
 		if !strings.Contains(body, column) {
