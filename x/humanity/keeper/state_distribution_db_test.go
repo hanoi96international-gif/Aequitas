@@ -81,7 +81,7 @@ func truncateDistTestTables(t *testing.T) {
 	// makes the whole _RealDB set self-sufficient: hand it an empty database
 	// and it works.
 	ensureRealDBSchema(t, db)
-	if _, err := db.Exec(`TRUNCATE chain_accounts, chain_config, nullifiers, liquidity_pool, escrow_accounts, registered_nodes, pending_txs CASCADE`); err != nil {
+	if _, err := db.Exec(`TRUNCATE chain_accounts, chain_config, nullifiers, liquidity_pool, escrow_accounts, validator_register, registered_nodes, pending_txs CASCADE`); err != nil {
 		t.Fatalf("truncateDistTestTables: %v", err)
 	}
 }

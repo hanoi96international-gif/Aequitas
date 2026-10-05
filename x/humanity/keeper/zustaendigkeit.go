@@ -45,6 +45,13 @@ import (
 // unabhaengige Validatoren laufen (docs/SKALIERUNG_DEZENTRAL.md) und
 // signierte Auftraege (Stufe 1.0) aktiv sind -- ohne sie koennte jeder
 // Annehmende fremde Konten belasten.
+//
+// NIE VOR nachrechnenStrengAbUnix (TestStufe2NieVorStrengemNachrechnen):
+// kappung traegt keine Unterschrift, und ihre Obergrenze wie die Werte
+// einer vorbehalt_ausfuehrung prueft nur das Nachrechnen. Bekannt sind die
+// Arten fuer fremde Bloecke erst, wenn beides gilt (bekannteTxArt) -- laege
+// dieser Tag frueher, erzeugte der Leiter Kappungen und Vorbehalte, die jeder
+// andere Knoten als unbekannte Art abwiese: eine Gabelung.
 const verteilteAnnahmeAbUnix int64 = math.MaxInt64
 
 // verteilteAnnahmeOverride: nur fuer Tests (0 = Konstante).

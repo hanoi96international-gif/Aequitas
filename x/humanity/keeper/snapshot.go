@@ -54,8 +54,11 @@ type StateSnapshot struct {
 	// Treuhand-Zeilen (escrow_accounts) -- Konsens, seit sie in der StateRoot
 	// stehen (treuhand_stateroot.go). omitempty: ohne Treuhand bleibt der
 	// Snapshot byte-gleich, seine Signatur auch.
-	Treuhand  []SnapshotTreuhand `json:"treuhand,omitempty"`
-	Signature string             `json:"signature,omitempty"` // ECDSA over SHA256(JSON without this field)
+	Treuhand []SnapshotTreuhand `json:"treuhand,omitempty"`
+	// Validator-Register (validator_register.go) -- Konsens, steht in der
+	// StateRoot, sobald es Eintraege hat. omitempty wie Treuhand.
+	Validatoren []SnapshotValidator `json:"validatoren,omitempty"`
+	Signature   string              `json:"signature,omitempty"` // ECDSA over SHA256(JSON without this field)
 }
 
 type SnapshotBioRegistration struct {
@@ -166,10 +169,21 @@ func (cs *ChainState) ExportSnapshot(signingKey *ecdsa.PrivateKey, height int64,
 		NullifiersRedacted: !includeSensitive,
 		Unternehmen:        cs.unternehmenFuerSnapshot(),
 	}
+	// Treuhand und Validator-Register stehen in der StateRoot. Sind sie
+	// nicht lesbar, gibt es KEINEN Snapshot: ohne sie truege er einen
+	// anderen Zustand als den der Kette, unterschrieben -- ein Resync daraus
+	// leerte beim Empfaenger beide Tabellen.
 	if t, err := cs.treuhandFuerSnapshot(); err != nil {
-		fmt.Printf("[SNAPSHOT] ⚠ Treuhand-Zeilen nicht lesbar -- Snapshot ohne Treuhand: %v\n", err)
+		fmt.Printf("[SNAPSHOT] ✗ Treuhand-Zeilen nicht lesbar -- kein Snapshot: %v\n", err)
+		return nil
 	} else {
 		snap.Treuhand = t
+	}
+	if v, err := cs.validatorRegisterLesen(); err != nil {
+		fmt.Printf("[SNAPSHOT] ✗ Validator-Register nicht lesbar -- kein Snapshot: %v\n", err)
+		return nil
+	} else {
+		snap.Validatoren = v
 	}
 
 	// Pull bio_registrations from DB (commitment → wallet only).
@@ -415,6 +429,12 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) e
 		return err
 	}
 	snap := *snapPtr
+	// Validator-Register selbst pruefen, BEVOR cs.mu gesperrt wird -- die
+	// Unterschriften wiederherzustellen kostet Zeit (validator_register.go).
+	validatorenBis := snapshotValidatorenBis(snap.Timestamp)
+	if err := pruefeSnapshotValidatoren(snap.Validatoren, validatorenBis); err != nil {
+		return fmt.Errorf("snapshot import: validator register: %w", err)
+	}
 
 	// Apply in-memory under lock, then persist outside lock to avoid deadlock.
 	// Existing accounts are NOT overwritten — only missing ones are added.
@@ -568,6 +588,11 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) e
 					return fmt.Errorf("saving escrow %s: %w", t.Wallet, err)
 				}
 			}
+			// Validator-Register ergaenzend; die Unterschriften sind oben vor
+			// der Sperre geprueft, ein falscher Eintrag verwirft den Import.
+			if err := validatorenImportieren(tx, snap.Validatoren, false, validatorenBis); err != nil {
+				return fmt.Errorf("saving validator register: %w", err)
+			}
 			// Import chain_config timing values. Do NOT overwrite if already set —
 			// the primary's live value takes precedence over the snapshot's snapshot-time value.
 			for key, val := range snap.ChainConfig {
@@ -686,6 +711,11 @@ func (cs *ChainState) ResyncFromSnapshotURL(peerURL, expectedSignerHex string) e
 		return err
 	}
 	snap := *snapPtr
+	// Wie beim Import: das Register vor jeder Sperre selbst pruefen.
+	validatorenBis := snapshotValidatorenBis(snap.Timestamp)
+	if err := pruefeSnapshotValidatoren(snap.Validatoren, validatorenBis); err != nil {
+		return fmt.Errorf("resync: validator register: %w", err)
+	}
 
 	// FIX (audit 2026-08-15, after a live near-miss): refuse a snapshot that
 	// would move this node BACKWARDS by more than a rollout's worth of blocks.
@@ -932,6 +962,10 @@ func (cs *ChainState) ResyncFromSnapshotURL(peerURL, expectedSignerHex string) e
 		); err != nil {
 			return fail(fmt.Errorf("resync: could not insert escrow: %w", err))
 		}
+	}
+	// Validator-Register ersetzend; Unterschriften oben vor der Sperre geprueft.
+	if err := validatorenImportieren(tx, snap.Validatoren, true, validatorenBis); err != nil {
+		return fail(fmt.Errorf("resync: validator register: %w", err))
 	}
 	// Authoritative: every StateRoot-relevant config key takes the
 	// snapshot's value unconditionally, unlike ImportSnapshotFromURL's

@@ -297,6 +297,9 @@ type ChainState struct {
 	// escrowSetXOR: dieselbe Summe ueber die Treuhand-Zeilen (escrow_accounts),
 	// treuhand_stateroot.go. Unter cs.mu; null, solange es keine Treuhand gibt.
 	escrowSetXOR [32]byte
+	// validatorSetXOR: dieselbe Summe ueber das Validator-Register
+	// (validator_register.go). Unter cs.mu; null, solange es leer ist.
+	validatorSetXOR [32]byte
 	// accountSetXORMu additionally guards accountSetXOR's own mutation
 	// (updateAccountLeafLocked) specifically for SCALING_ARCHITECTURE.md
 	// Phase 5's concurrent-transfer path (transferConcurrent, see
@@ -1457,6 +1460,12 @@ created_at BIGINT NOT NULL
 		fmt.Printf("[DB] FATAL: InitGuardianTables failed: %v\n", err)
 		panic(err)
 	}
+	// Schlafend bis zum Stichtag (validator_register.go). Fehlt die Tabelle,
+	// scheitert jede validator_bindung beim Schreiben -- der Block wird
+	// abgewiesen, nichts wird uebersprungen.
+	if err := cs.InitValidatorRegisterTable(); err != nil {
+		fmt.Printf("[DB] ⚠ %v\n", err)
+	}
 	// validator_slots and registered_nodes are created on first use inside
 	// BindValidatorSlot / RegisterNode, but GetValidatorKeyPairsForSync and
 	// IncrementBlockCount query/update them unconditionally on every sync cycle
@@ -1536,6 +1545,7 @@ func (cs *ChainState) resetDBStateForBootstrap() {
 		"gini_snapshots",
 		"guardians",
 		"escrow_accounts",
+		"validator_register", // Konsens (validator_register.go), kommt mit dem Snapshot
 		"chain_accounts",
 		"chain_config",
 		"v6_balances",
@@ -1682,6 +1692,10 @@ func (cs *ChainState) clearRegistrationsFromDB() {
 		// current, accurate picture of what's write-only vs. actively
 		// enforced.
 		`DELETE FROM bio_hashes`,
+		// Treuhand und Validator-Register stehen in der StateRoot und haengen
+		// an Menschen, die es nach diesem Loeschen nicht mehr gibt.
+		`DELETE FROM escrow_accounts`,
+		`DELETE FROM validator_register`,
 		`UPDATE chain_accounts SET is_human = false, balance = 0, tusd_balance = 0, lp_shares = 0, last_activity_at = 0, faucet_claimed = false, grant_staged_rest = 0, grant_staged_until = 0, liveness_renewed_at = 0, naechste_nonce = 0, naechste_auftrag_nonce = 0`,
 		`DELETE FROM evm_storage WHERE lower(address) = '` + v7Addr + `'`,
 		`DELETE FROM evm_nonces`,
@@ -7367,6 +7381,12 @@ func (cs *ChainState) stateRootLocked(lastUBIAt string) string {
 		sb.WriteString("|escrowXOR:")
 		sb.WriteString(hex.EncodeToString(cs.escrowSetXOR[:]))
 	}
+	// Validator-Register (validator_register.go): ebenso nur, wenn es
+	// Eintraege gibt.
+	if cs.validatorSetXOR != ([32]byte{}) {
+		sb.WriteString("|validatorXOR:")
+		sb.WriteString(hex.EncodeToString(cs.validatorSetXOR[:]))
+	}
 	// Include last UBI distribution timestamp (pre-fetched before RLock — P1-1).
 	fmt.Fprintf(&sb, "|ubi:%s", lastUBIAt)
 	hash := sha256.Sum256([]byte(sb.String()))
@@ -7399,8 +7419,10 @@ type StateRootComponents struct {
 	NullifierSetXOR string `json:"nullifier_set_xor"`
 	// Leer, solange es keine Treuhand gibt (dann ist sie nicht in der Wurzel).
 	EscrowSetXOR string `json:"escrow_set_xor,omitempty"`
-	LastUBIAt    string `json:"last_ubi_at"`
-	StateRoot    string `json:"state_root"`
+	// Ebenso fuer das Validator-Register.
+	ValidatorSetXOR string `json:"validator_set_xor,omitempty"`
+	LastUBIAt       string `json:"last_ubi_at"`
+	StateRoot       string `json:"state_root"`
 }
 
 // StateRootComponentBreakdown returns the same inputs stateRootLocked hashes,
@@ -7424,6 +7446,9 @@ func (cs *ChainState) StateRootComponentBreakdown() StateRootComponents {
 	}
 	if cs.escrowSetXOR != ([32]byte{}) {
 		out.EscrowSetXOR = hex.EncodeToString(cs.escrowSetXOR[:])
+	}
+	if cs.validatorSetXOR != ([32]byte{}) {
+		out.ValidatorSetXOR = hex.EncodeToString(cs.validatorSetXOR[:])
 	}
 	return out
 }
@@ -7619,6 +7644,14 @@ func (cs *ChainState) rebuildStateAccumulators() {
 		cs.escrowSetXOR = [32]byte{}
 	} else {
 		cs.escrowSetXOR = esc
+	}
+
+	// Validator-Register: ebenso.
+	if val, err := cs.validatorSummeAusDB(); err != nil {
+		fmt.Printf("[STATE] ⚠ Validator-Register nicht lesbar -- StateRoot ohne Register, bis zum naechsten Neuaufbau: %v\n", err)
+		cs.validatorSetXOR = [32]byte{}
+	} else {
+		cs.validatorSetXOR = val
 	}
 }
 
@@ -7947,6 +7980,8 @@ type blockRollbackSnapshot struct {
 	// escrowSetXOR: die Treuhand-Summe (treuhand_stateroot.go); die Zeilen
 	// selbst gehen mit der Transaktion zurueck.
 	escrowSetXOR [32]byte
+	// validatorSetXOR: ebenso fuer das Validator-Register.
+	validatorSetXOR [32]byte
 	// buch: Buchfuehrung der Unternehmensregeln (wirtschaft.go). Sie wird in
 	// derselben Transaktion gespeichert und muss mit ihr zurueck.
 	buch *buchStand
@@ -8121,6 +8156,7 @@ func (cs *ChainState) snapshotForRollbackLocked(addrs []string, full bool, chain
 	snap.accountSetXOR = cs.accountSetXOR
 	snap.nullifierSetXOR = cs.nullifierSetXOR
 	snap.escrowSetXOR = cs.escrowSetXOR
+	snap.validatorSetXOR = cs.validatorSetXOR
 	snap.buch = cs.buchSichern(addrs, full)
 	snap.erhaltung = cs.erhaltung
 	snap.ubiRunde = cs.ubiRunde.kopie()
@@ -8329,6 +8365,7 @@ func (cs *ChainState) restoreFromRollbackLockedCtx(ctx context.Context, snap *bl
 	cs.accountSetXOR = snap.accountSetXOR
 	cs.nullifierSetXOR = snap.nullifierSetXOR
 	cs.escrowSetXOR = snap.escrowSetXOR
+	cs.validatorSetXOR = snap.validatorSetXOR
 	return firstErr
 }
 

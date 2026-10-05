@@ -80,6 +80,9 @@ func ZustandsAblehnungStand() map[string]interface{} {
 	n := uebersprungeneUeberweisungen.Load()
 	return map[string]interface{}{
 		"uebersprungene_ueberweisungen": n,
+		// Eigene Zahl (validator_register.go): eine wiederholte Bindung ist
+		// keine Kontoabweichung und darf den Alarm oben nicht ausloesen.
+		"uebersprungene_validator_bindungen": uebersprungeneBindungen.Load(),
 		"bedeutung": "Ueberweisungen, die beim Nachspielen nicht anwendbar waren und " +
 			"uebersprungen statt mit dem ganzen Block abgewiesen wurden. 0 ist der " +
 			"Normalfall. Steigt der Wert, sind sich erzeugender und nachspielender " +

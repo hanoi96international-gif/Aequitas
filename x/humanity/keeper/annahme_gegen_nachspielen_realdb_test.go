@@ -348,7 +348,7 @@ func schemaAnlegenUndLeeren(t *testing.T, url string) {
 	// Datenbank A schon gelaufen ist, und liefe hier als stiller No-op --
 	// Knoten B bekaeme nie ein Schema. Direkt anlegen.
 	(&ChainState{db: db, useDB: true}).initDB()
-	if _, err := db.Exec(`TRUNCATE chain_accounts, chain_config, nullifiers, liquidity_pool, escrow_accounts, registered_nodes, pending_txs CASCADE`); err != nil {
+	if _, err := db.Exec(`TRUNCATE chain_accounts, chain_config, nullifiers, liquidity_pool, escrow_accounts, validator_register, registered_nodes, pending_txs CASCADE`); err != nil {
 		t.Fatalf("Datenbank B leeren: %v", err)
 	}
 }
