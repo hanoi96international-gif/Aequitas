@@ -138,9 +138,17 @@ func TestErneuerung_Missbrauch_RealDB(t *testing.T) {
 		t.Fatalf("veraenderter Zeitpunkt nicht erkannt: %v", got)
 	}
 
-	alt := f.gueltig(f.jetzt - 2*3600)
+	alt := f.gueltig(f.jetzt - 8*86400)
 	if got := f.pruefe(alt, f.jetzt); got["erneuerung_zeit"] != 1 {
-		t.Fatalf("wiederverwendete alte Bescheinigung nicht erkannt: %v", got)
+		t.Fatalf("Bescheinigung von vor 8 Tagen nicht erkannt: %v", got)
+	}
+	// Ein Tag im Ausgang des Erzeugers ist kein Fehler.
+	if got := f.pruefe(f.gueltig(f.jetzt-86400), f.jetzt); len(got) != 0 {
+		t.Fatalf("Bescheinigung von gestern gemeldet: %v", got)
+	}
+	nullZeit := erneuerungsTransaktion(f.wallet, 0, hex.EncodeToString(f.pub), f.unterschreibe(f.priv, f.wallet, 0))
+	if got := f.pruefe(nullZeit, f.jetzt); got["erneuerung_zeit"] != 1 {
+		t.Fatalf("Bescheinigung ohne Zeitpunkt nicht erkannt: %v", got)
 	}
 
 	voraus := f.gueltig(f.jetzt + 3600)
@@ -151,6 +159,11 @@ func TestErneuerung_Missbrauch_RealDB(t *testing.T) {
 	frueh := neuerErneuerungsFall(t, 3)
 	if got := frueh.pruefe(frueh.gueltig(frueh.jetzt-60), frueh.jetzt); got["erneuerung_zu_frueh"] != 1 {
 		t.Fatalf("Erneuerung an Tag 3 nicht erkannt: %v", got)
+	}
+	// An Tag 3 ausgestellt, an Tag 8 in einen Block gelegt: zaehlt nicht.
+	spaet := neuerErneuerungsFall(t, 8)
+	if got := spaet.pruefe(spaet.gueltig(spaet.jetzt-5*86400), spaet.jetzt); got["erneuerung_zu_frueh"] != 1 {
+		t.Fatalf("an Tag 3 ausgestellte Bescheinigung an Tag 8 nicht erkannt: %v", got)
 	}
 }
 

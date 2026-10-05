@@ -25,11 +25,16 @@ import (
 //   - erneuerung_ohne_bescheinigung: keine, falsch unterschrieben, fuer eine
 //     andere Wallet oder einen anderen Zeitpunkt, oder von einem Schluessel,
 //     der nicht im Coordinator-Register steht.
-//   - erneuerung_zeit: die Bescheinigung ist aelter als eine Stunde oder
-//     liegt mehr als fuenf Minuten nach der Blockzeit -- eine alte
-//     Bescheinigung laesst sich nicht wiederverwenden.
-//   - erneuerung_zu_frueh: vor Tag 7 nach der Registrierung
-//     (erneuerungFruehestens), die Regel, die bisher nur die Annahme kannte.
+//   - erneuerung_zeit: kein Zeitpunkt, aelter als 7 Tage, oder mehr als fuenf
+//     Minuten nach der Blockzeit. Die Frist ist bewusst weit: eine
+//     Erneuerung, die im Ausgang des Erzeugers liegen blieb, darf nicht bei
+//     jedem anderen Knoten scheitern, waehrend der Erzeuger sie angewendet
+//     hat. Wiederverwenden bringt nichts -- die Erneuerung schaltet einmal
+//     frei (LivenessRenewedAt > 0), mehrfach aendert nichts.
+//   - erneuerung_zu_frueh: Bescheinigung oder Block vor Tag 7 nach der
+//     Registrierung (erneuerungFruehestens), die Regel, die bisher nur die
+//     Annahme kannte. Eine an Tag 3 ausgestellte Bescheinigung zaehlt auch
+//     an Tag 8 nicht.
 //
 // Vor stagedGrantActivationUnix ist liveness_renewal Leerlauf und wird nicht
 // geprueft. Abgelehnt wird erst im strengen Modus (nachrechnenStreng), bis
@@ -37,10 +42,10 @@ import (
 // knotenlokal; es muss Konsenszustand sein, bevor die Staffel aktiv wird.
 
 const (
-	// Die Annahme verlangt hoechstens 15 Minuten; bis der Block entsteht,
-	// vergeht hoechstens ein Takt. Eine Stunde laesst Spielraum fuer einen
-	// verzoegerten Block und schliesst Wiederverwendung trotzdem aus.
-	erneuerungHoechstensAlt    = 3600
+	// Die Annahme verlangt hoechstens 15 Minuten. Bis die Transaktion in
+	// einem Block steht, kann sie im Ausgang liegen (Produktionsstau,
+	// Rueckstau) -- 7 Tage, damit kein ehrlicher Block daran scheitert.
+	erneuerungHoechstensAlt    = 7 * 86400
 	erneuerungHoechstensVoraus = 300
 )
 
@@ -54,7 +59,7 @@ func (cs *ChainState) nachrechnenErneuerungLocked(tx *Transaction, wallet string
 		return nachrechnenAbweichung("erneuerung_ohne_bescheinigung", blockZeit,
 			"%s: keine gueltige Bescheinigung eines eingetragenen Coordinators", kurzAdresse(wallet))
 	}
-	if blockZeit-tx.DistributionAt > erneuerungHoechstensAlt || tx.DistributionAt-blockZeit > erneuerungHoechstensVoraus {
+	if tx.DistributionAt <= 0 || blockZeit-tx.DistributionAt > erneuerungHoechstensAlt || tx.DistributionAt-blockZeit > erneuerungHoechstensVoraus {
 		return nachrechnenAbweichung("erneuerung_zeit", blockZeit,
 			"%s: bescheinigt %d, Blockzeit %d", kurzAdresse(wallet), tx.DistributionAt, blockZeit)
 	}
@@ -63,9 +68,10 @@ func (cs *ChainState) nachrechnenErneuerungLocked(tx *Transaction, wallet string
 	if !ok {
 		return nil // applyLivenessRenewalDeltaLocked lehnt ab
 	}
-	if ab := erneuerungFruehestens(acc); ab > 0 && blockZeit < ab {
+	if ab := erneuerungFruehestens(acc); ab > 0 && (blockZeit < ab || tx.DistributionAt < ab) {
 		return nachrechnenAbweichung("erneuerung_zu_frueh", blockZeit,
-			"%s: Blockzeit %d, fruehestens %d (Tag 7 nach der Registrierung)", kurzAdresse(wallet), blockZeit, ab)
+			"%s: bescheinigt %d, Blockzeit %d, fruehestens %d (Tag 7 nach der Registrierung)",
+			kurzAdresse(wallet), tx.DistributionAt, blockZeit, ab)
 	}
 	return nil
 }
