@@ -172,6 +172,12 @@ den verlinkten Dokumenten.
             Tag 7 (`nachrechnen_erneuerung.go`). Vor der Aktivierung (2100)
             ungeprüft wie bisher. Die Bindung an dieselbe Person leistet der
             Coordinator (WP 3, Wallet-Signatur und Gesichtsabgleich)
+      - [x] Staffel-Zeitpunkte (05.10.): `GrantStagedUntil` und
+            `LivenessRenewedAt` setzen Erzeuger und Nachspielende jetzt aus
+            der Transaktion (`RegAt`, höchstens einen Tag vor dem Block;
+            `issued_at` der Bescheinigung) statt jeder nach seiner Uhr bzw.
+            der Blockzeit -- sonst wiche ab der Aktivierung jedes gestaffelte
+            Konto in der StateRoot ab (`grant_staffel.go`, „EIN ZEITPUNKT“)
       - [x] Erzeuger legt keine Aufträge mehr in den Block, die jeder andere
             Knoten an ihrer Zeit scheitern ließe (05.10., `block_tauglich.go`):
             ein Tausch oder Vormund-Auftrag, der nach einem Neustart über eine

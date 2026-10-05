@@ -7440,7 +7440,8 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			// this loop runs — context.Background() carries no transaction of
 			// its own, so dbExecCtx falls back to that field, exactly
 			// matching pre-migration behavior. See dbExecCtx's comment.
-			if err := dag.state.registerHumanMitKlasseLocked(context.Background(), wallet, block.Timestamp, tx.GrantClass); err != nil {
+			if err := dag.state.registerHumanMitZeitenLocked(context.Background(), wallet, block.Timestamp,
+				staffelRegZeit(tx.RegAt, block.Timestamp), tx.GrantClass); err != nil {
 				// FIX: release the nullifier claimed two lines above on failure —
 				// it used to stay claimed forever ("nullifier recorded, balance
 				// NOT credited"), permanently burning that biometric for
@@ -7615,8 +7616,10 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			}
 
 		case "liveness_renewal":
-			// WP 2 (grant_staffel.go): vor der Aktivierung Leerlauf.
-			if err := dag.state.applyLivenessRenewalDeltaLocked(context.Background(), wallet, block.Timestamp); err != nil {
+			// WP 2 (grant_staffel.go): vor der Aktivierung Leerlauf. Zeitpunkt
+			// ist der bescheinigte (DistributionAt = issued_at), wie bei der
+			// Annahme -- nicht die Blockzeit ("EIN ZEITPUNKT").
+			if err := dag.state.applyLivenessRenewalDeltaLocked(context.Background(), wallet, tx.DistributionAt, block.Timestamp); err != nil {
 				fmt.Printf("[REPLAY] ✗ liveness_renewal %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
 				hardFailure = true
 				continue
