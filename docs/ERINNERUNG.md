@@ -133,6 +133,14 @@ den verlinkten Dokumenten.
             AEQ zu nehmen; jetzt trägt die Strafe beide unterschriebenen
             Blockköpfe als Beweis, `slash_beweis.go`). `pool_correction` gilt
             nur auf der alten Kette und wird auf V8 abgelehnt
+      - [x] Zurückgewiesener Block hinterlässt keinen Vorbehalt (05.10.):
+            die Vorbehaltskonten stehen jetzt in der Rückroll-Liste des
+            Blocks, und `cs.vorbehalte` geht mit (`vorbehaltSicherung`).
+            Vorher blieben Einsatz und offener Vorbehalt im Speicher stehen;
+            der ehrliche Block mit demselben Vorbehalt scheiterte danach
+            („existiert schon“) bzw. seine Ausführung wurde übersprungen
+      - [ ] `RecordEquivocationAndSuspend` öffnet eine eigene
+            Datenbank-Transaktion außerhalb der des Blocks
       - K-4 aus dem Audit vom 29.09.: der Wortlaut ist in keinem Commit,
         Kommentar oder Dokument erhalten; bekannt ist nur die Einordnung
         „bis das Nachspielen jeden Wert selbst prüft (K-2, K-3, K-4)“
