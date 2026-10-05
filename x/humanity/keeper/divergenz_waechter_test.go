@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 )
@@ -87,5 +88,40 @@ func TestDivergenzAuskunftJSON(t *testing.T) {
 	}
 	if err := json.Unmarshal([]byte(`{"account_set_xor":"ab"}`), &alt); err != nil || alt.RuheSeitS != nil {
 		t.Fatal("ohne Feld muss der Zeiger nil bleiben (alter Seed)")
+	}
+}
+
+// Treuhand und Register zaehlen mit: zwei Knoten mit gleichen Konten, aber
+// verschiedener Treuhand oder verschiedenem Register sind NICHT gleich.
+func TestDivergenzAbweichung_TreuhandUndRegister(t *testing.T) {
+	gleich := StateRootComponents{AccountSetXOR: "aa", EscrowSetXOR: "bb", ValidatorSetXOR: "cc"}
+	if got := divergenzAbweichung(gleich, gleich); got != "" {
+		t.Fatalf("gleicher Zustand gemeldet: %s", got)
+	}
+	// Leer gegen leer (beide Felder fehlen in der Auskunft) ist gleich.
+	if got := divergenzAbweichung(StateRootComponents{AccountSetXOR: "aa"}, StateRootComponents{AccountSetXOR: "aa"}); got != "" {
+		t.Fatalf("leere Treuhand und leeres Register gemeldet: %s", got)
+	}
+	for name, fremd := range map[string]StateRootComponents{
+		"Konten":   {AccountSetXOR: "a0", EscrowSetXOR: "bb", ValidatorSetXOR: "cc"},
+		"Treuhand": {AccountSetXOR: "aa", EscrowSetXOR: "b0", ValidatorSetXOR: "cc"},
+		"Register": {AccountSetXOR: "aa", EscrowSetXOR: "bb", ValidatorSetXOR: ""},
+	} {
+		if got := divergenzAbweichung(gleich, fremd); got == "" {
+			t.Fatalf("%s: Abweichung nicht erkannt", name)
+		}
+	}
+}
+
+// Der Waechter selbst entscheidet ueber divergenzAbweichung -- nicht mehr
+// ueber die Konten allein. (Den Ablauf mit echten Seeds und Hoehen baut kein
+// Test nach; deshalb am Quelltext.)
+func TestDivergenzWaechterVergleichtAlleTeile(t *testing.T) {
+	body := functionBodyFromSource(t, "divergenz_waechter.go", "func (dag *BlockDAG) divergenzEinmalPruefen(")
+	if !strings.Contains(body, "divergenzAbweichung(eigene, StateRootComponents{AccountSetXOR: fremd.AccountSetXOR,\n\t\t\tEscrowSetXOR: fremd.EscrowSetXOR, ValidatorSetXOR: fremd.ValidatorSetXOR})") {
+		t.Fatal("divergenzEinmalPruefen vergleicht nicht mehr Konten, Treuhand und Register")
+	}
+	if strings.Contains(body, "fremd.AccountSetXOR == eigene.AccountSetXOR") {
+		t.Fatal("divergenzEinmalPruefen vergleicht wieder nur die Konten")
 	}
 }

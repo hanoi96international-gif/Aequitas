@@ -172,6 +172,9 @@ den verlinkten Dokumenten.
             Tag 7 (`nachrechnen_erneuerung.go`). Vor der Aktivierung (2100)
             ungeprüft wie bisher. Die Bindung an dieselbe Person leistet der
             Coordinator (WP 3, Wallet-Signatur und Gesichtsabgleich)
+      - [x] Divergenz-Wächter vergleicht in der Ruhe neben den Konten auch
+            Treuhand- und Register-Summe (05.10., `divergenzAbweichung`) --
+            vorher sahen zwei Knoten mit verschiedener Treuhand gleich aus
       - [ ] Coordinator-Register (`coordinator_keys`) als Konsenszustand --
             heute knotenlokal; nötig, bevor die Staffel aktiv wird, sonst
             prüfen Knoten mit verschiedenem Register verschieden

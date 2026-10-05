@@ -11,7 +11,8 @@ import (
 )
 
 // Der Divergenz-Waechter: vergleicht in der Ruhe die Konten-Summe mit den
-// Seeds. Meldet, heilt nicht.
+// Seeds -- seit 05.10.2026 auch Treuhand und Validator-Register
+// (divergenzAbweichung). Meldet, heilt nicht.
 //
 // WARUM DER STATEROOT-VERGLEICH IM BLOCK NICHT REICHT. Der StateRoot eines
 // Blocks ist der Nachzustand des Produzenten INKLUSIVE seines Mempools --
@@ -181,10 +182,12 @@ func (dag *BlockDAG) divergenzEinmalPruefen() {
 			continue
 		}
 		var fremd struct {
-			AccountSetXOR string   `json:"account_set_xor"`
-			LastUBIAt     string   `json:"last_ubi_at"`
-			RuheSeitS     *float64 `json:"ruhe_seit_s"`
-			Offen         *int64   `json:"offen"`
+			AccountSetXOR   string   `json:"account_set_xor"`
+			EscrowSetXOR    string   `json:"escrow_set_xor"`
+			ValidatorSetXOR string   `json:"validator_set_xor"`
+			LastUBIAt       string   `json:"last_ubi_at"`
+			RuheSeitS       *float64 `json:"ruhe_seit_s"`
+			Offen           *int64   `json:"offen"`
 		}
 		decErr := json.NewDecoder(resp.Body).Decode(&fremd)
 		resp.Body.Close()
@@ -198,10 +201,12 @@ func (dag *BlockDAG) divergenzEinmalPruefen() {
 			continue // Partner nicht in Ruhe -- der Vergleich sagt nichts
 		}
 		divergenzVergleiche.Add(1)
-		if fremd.AccountSetXOR == eigene.AccountSetXOR {
+		teil := divergenzAbweichung(eigene, StateRootComponents{AccountSetXOR: fremd.AccountSetXOR,
+			EscrowSetXOR: fremd.EscrowSetXOR, ValidatorSetXOR: fremd.ValidatorSetXOR})
+		if teil == "" {
 			divergenzGleich.Add(1)
 			if divergenzStrikes.Swap(0) >= divergenzSchwelle {
-				fmt.Printf("[DIVERGENZ] ✓ Kontenstand wieder gleich mit %s\n", seed)
+				fmt.Printf("[DIVERGENZ] ✓ Zustand wieder gleich mit %s\n", seed)
 			}
 			divergenzSeitUnix.Store(0)
 			return
@@ -213,15 +218,37 @@ func (dag *BlockDAG) divergenzEinmalPruefen() {
 		divergenzPeer.Store(seed)
 		if n >= divergenzSchwelle && time.Now().Unix()-divergenzLetzteMeld.Load() >= 600 {
 			divergenzLetzteMeld.Store(time.Now().Unix())
-			fmt.Printf("[DIVERGENZ] ✗ Kontenstand weicht von %s ab (account_set_xor %s… gegen %s…), %d Vergleiche in Folge, beide in Ruhe und gleichauf (Hoehe %d/%d). Das ist kein Geschwister-Effekt. Abhilfe: Resync eines Knotens vom anderen (resync-contabo1-only.yml / -contabo2-only.yml) -- in der Ruhe, nie unter Last.\n",
-				seed, kurzHex(eigene.AccountSetXOR), kurzHex(fremd.AccountSetXOR), n, eigeneHoehe, peerHoehe)
+			fmt.Printf("[DIVERGENZ] ✗ Zustand weicht von %s ab (%s), %d Vergleiche in Folge, beide in Ruhe und gleichauf (Hoehe %d/%d). Das ist kein Geschwister-Effekt. Abhilfe: Resync eines Knotens vom anderen (resync-contabo1-only.yml / -contabo2-only.yml) -- in der Ruhe, nie unter Last.\n",
+				seed, teil, n, eigeneHoehe, peerHoehe)
 		}
 		// Selbstheilung -- nur wo sie erlaubt ist (siehe divergenzAutoResyncErlaubt).
 		if divergenzAutoResyncErlaubt(n, os.Getenv("AEQUITAS_DIVERGENZ_AUTORESYNC"), dag.resyncBootstrapURL != "" && dag.resyncSigner != "") {
-			dag.triggerAutoResync(fmt.Sprintf("Kontenstand weicht von %s ab: %d Vergleiche in Folge in der Ruhe und gleichauf (account_set_xor %s… gegen %s…) -- dieser Knoten holt den Zustand neu vom Seed", seed, n, kurzHex(eigene.AccountSetXOR), kurzHex(fremd.AccountSetXOR)))
+			dag.triggerAutoResync(fmt.Sprintf("Zustand weicht von %s ab: %d Vergleiche in Folge in der Ruhe und gleichauf (%s) -- dieser Knoten holt den Zustand neu vom Seed", seed, n, teil))
 		}
 		return
 	}
+}
+
+// divergenzAbweichung: welcher Teil des Zustands weicht ab ("" = keiner)?
+// Verglichen wird, was in der Ruhe auf beiden Seiten gleich sein muss und in
+// der StateRoot steht: die Konten, die Treuhand (treuhand_stateroot.go) und
+// das Validator-Register (validator_register.go). Treuhand und Register
+// fehlen in der Auskunft, solange sie leer sind (omitempty) -- leer gegen
+// leer ist gleich. Bis 05.10.2026 verglich der Waechter nur die Konten: zwei
+// Knoten mit verschiedener Treuhand oder verschiedenem Register sahen gleich
+// aus.
+func divergenzAbweichung(eigene, fremd StateRootComponents) string {
+	var teile []string
+	for _, t := range []struct{ name, e, f string }{
+		{"account_set_xor", eigene.AccountSetXOR, fremd.AccountSetXOR},
+		{"escrow_set_xor", eigene.EscrowSetXOR, fremd.EscrowSetXOR},
+		{"validator_set_xor", eigene.ValidatorSetXOR, fremd.ValidatorSetXOR},
+	} {
+		if t.e != t.f {
+			teile = append(teile, fmt.Sprintf("%s %s… gegen %s…", t.name, kurzHex(t.e), kurzHex(t.f)))
+		}
+	}
+	return strings.Join(teile, ", ")
 }
 
 // divergenzAutoResyncErlaubt: darf eine belegte Kontostand-Abweichung einen
@@ -260,7 +287,7 @@ func DivergenzStand() map[string]interface{} {
 	}
 	strikes := divergenzStrikes.Load()
 	return map[string]interface{}{
-		"bedeutung": "Vergleich von account_set_xor mit den Seeds in der Ruhe (keine eigene Ueberweisung seit 30 s und kein offener Ausgangskorb auf BEIDEN Seiten, Hoehe gleichauf). " +
+		"bedeutung": "Vergleich von account_set_xor, escrow_set_xor und validator_set_xor mit den Seeds in der Ruhe (keine eigene Ueberweisung seit 30 s und kein offener Ausgangskorb auf BEIDEN Seiten, Hoehe gleichauf). " +
 			"abweichend=true ab 3 Vergleichen in Folge mit Unterschied -- dann stimmen Kontostaende nicht ueberein, nicht nur Geschwister-Unschaerfe. " +
 			"autoresync=true (AEQUITAS_DIVERGENZ_AUTORESYNC=1, fuer Validatoren, die nicht Seed sind): dann Resync vom Seed statt nur Meldung.",
 		"autoresync":        strings.TrimSpace(os.Getenv("AEQUITAS_DIVERGENZ_AUTORESYNC")) == "1",
