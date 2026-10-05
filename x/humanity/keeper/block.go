@@ -7913,7 +7913,11 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			// Ruecknahme aufnehmen, sonst bliebe er nach einem
 			// zurueckgewiesenen Block im Speicher stehen.
 			opWallet := strings.ToLower(slashWallet)
-			dag.state.kontoNachtragenLocked(withTx(context.Background(), dbTx), rollbackSnap, opWallet)
+			if nErr := dag.state.kontoNachtragenLocked(withTx(context.Background(), dbTx), rollbackSnap, opWallet); nErr != nil {
+				fmt.Printf("[REPLAY] ✗ slash_equivocation: %v (block #%d) — rolling back whole block\n", nErr, block.Height)
+				hardFailure = true
+				continue
+			}
 			// Genau einmal je Paar (slash_applied), hoechstens das Guthaben.
 			penaltyAmt, abgezogen, aErr := dag.state.strafeAbziehenLocked(withTx(context.Background(), dbTx), tx.Wallet, tx.BlockAHash, tx.BlockBHash, tx.DetectedAt, opWallet, block.Timestamp)
 			if aErr != nil {

@@ -1,6 +1,7 @@
 package keeper
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"fmt"
 	"strings"
@@ -261,5 +262,47 @@ func TestStrafe_ZweimalDasselbePaarImBlock_RealDB(t *testing.T) {
 	}
 	if v := k.vergehen(); v != 2 {
 		t.Fatalf("%d Vergehen statt 2", v)
+	}
+}
+
+// Fehlerfall beim Nachtragen des Strafkontos: ist es kalt und die
+// Transaktion abgebrochen (etwa nach statement_timeout), laesst sich sein
+// Stand nicht lesen. Dann kein Eintrag "gab es nicht" -- das Zurueckrollen
+// loeschte sonst seine echte Zeile --, sondern ein Fehler, der den Block
+// scheitern laesst, bevor das Konto angefasst wird.
+func TestStrafe_NachtragenBeiLesefehlerLoeschtNichts_RealDB(t *testing.T) {
+	k := neuerStrafKnoten(t)
+	k.cs.mu.Lock()
+	k.cs.accounts.Delete(k.op) // kalt: nur in der Datenbank
+	k.cs.mu.Unlock()
+
+	tx, err := k.cs.db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	k.cs.mu.Lock()
+	k.cs.setActiveTx(tx)
+	snap := k.cs.snapshotForRollbackLocked(nil, false, nil)
+	if _, err := tx.Exec(`SELECT 1/0`); err == nil {
+		t.Fatal("die Transaktion sollte abgebrochen sein")
+	}
+	nErr := k.cs.kontoNachtragenLocked(withTx(context.Background(), tx), snap, k.op)
+	for _, s := range snap.accounts {
+		if s.address == k.op {
+			t.Errorf("Strafkonto trotz Lesefehler im Snapshot (existed=%v)", s.existed)
+		}
+	}
+	k.cs.setActiveTx(nil)
+	tx.Rollback()
+	_ = k.cs.restoreFromRollbackLocked(snap)
+	k.cs.mu.Unlock()
+	if nErr == nil {
+		t.Fatal("Lesefehler beim Nachtragen nicht gemeldet")
+	}
+	k.cs.mu.Lock()
+	k.cs.ensureAccountLoaded(k.op) // wieder warm, damit guthaben Speicher und Datenbank vergleicht
+	k.cs.mu.Unlock()
+	if got := k.guthaben(); got != 100 {
+		t.Fatalf("Strafkonto nach dem Zurueckrollen %.6f statt 100", got)
 	}
 }
