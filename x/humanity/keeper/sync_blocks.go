@@ -2675,6 +2675,18 @@ func (dag *BlockDAG) healSyntheticCheckpoints() {
 // best-effort upgrade over PEER_SECRET, not a hard requirement, since a
 // node with PEER_SECRET configured should keep working exactly as before
 // even if the challenge round-trip fails for some transient reason.
+//
+// NUR ECHTE CHALLENGES (05.10.2026). Bis dahin unterschrieb der Knoten
+// JEDEN Text, den der Seed als "challenge" zurueckgab, mit seinem
+// Blocksignierschluessel -- als personal_sign, also genau in der Form, in der
+// die Kette Zustimmungen prueft. Ein boesartiger oder uebernommener Seed (oder
+// wer eine http-Seed-URL mitliest) bekam damit beliebige Saetze von diesem
+// Schluessel unterschrieben, etwa "Aequitas: validator key linked to human
+// <seine Wallet>" (/api/register-validator-key) -- und bei Betreibern, deren
+// Wallet derselbe Schluessel ist, auch jeden Auftrag dieser Wallet.
+// IssuePeerChallenge gibt immer einen sha256-Hash in Hex aus (64 Zeichen);
+// nur so etwas wird unterschrieben. Kein Satz, den die Kette als Zustimmung
+// liest, hat diese Form.
 func fetchAndSignPeerChallenge(primaryURL, signerAddr string, signingKey *ecdsa.PrivateKey) string {
 	if signingKey == nil || signerAddr == "" {
 		return ""
@@ -2691,7 +2703,7 @@ func fetchAndSignPeerChallenge(primaryURL, signerAddr string, signingKey *ecdsa.
 	var result struct {
 		Challenge string `json:"challenge"`
 	}
-	if err := json.Unmarshal(body, &result); err != nil || result.Challenge == "" {
+	if err := json.Unmarshal(body, &result); err != nil || !echteChallenge(result.Challenge) {
 		return ""
 	}
 	msg := fmt.Sprintf("\x19Ethereum Signed Message:\n%d%s", len(result.Challenge), result.Challenge)
@@ -2701,6 +2713,20 @@ func fetchAndSignPeerChallenge(primaryURL, signerAddr string, signingKey *ecdsa.
 		return ""
 	}
 	return "0x" + hex.EncodeToString(sig)
+}
+
+// echteChallenge: die Form, die IssuePeerChallenge erzeugt -- genau 64
+// Hex-Ziffern, klein.
+func echteChallenge(c string) bool {
+	if len(c) != 64 {
+		return false
+	}
+	for i := 0; i < len(c); i++ {
+		if !(c[i] >= '0' && c[i] <= '9' || c[i] >= 'a' && c[i] <= 'f') {
+			return false
+		}
+	}
+	return true
 }
 
 // registerAndDiscover POSTs our URL and signing address to the primary's
