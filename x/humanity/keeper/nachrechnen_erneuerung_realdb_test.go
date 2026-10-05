@@ -204,7 +204,9 @@ func TestErneuerung_StrengLehntErfundeneAb_RealDB(t *testing.T) {
 	if !block(f.gueltig(f.jetzt - 60)) {
 		t.Fatal("Block mit echter Erneuerung abgelehnt")
 	}
-	if got := erneuert(); got != f.jetzt {
-		t.Fatalf("echte Erneuerung nicht angewendet (%d)", got)
+	// Der bescheinigte Zeitpunkt, nicht die Blockzeit (grant_staffel.go,
+	// "EIN ZEITPUNKT") -- derselbe, den der annehmende Knoten setzt.
+	if got := erneuert(); got != f.jetzt-60 {
+		t.Fatalf("echte Erneuerung nicht mit dem bescheinigten Zeitpunkt angewendet (%d)", got)
 	}
 }

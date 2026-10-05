@@ -106,12 +106,50 @@ func hatStaffel(acc *AccountState) bool {
 	return acc != nil && acc.GrantStagedRest > 0
 }
 
+// EIN ZEITPUNKT (05.10.2026).
+//
+// GrantStagedUntil und LivenessRenewedAt stehen im Blatt der StateRoot
+// (accountLeaf, sobald eine Staffel existiert). Bis hierhin setzte der
+// annehmende Knoten beide nach SEINER Uhr (Registrierung: time.Now(),
+// Erneuerung: now) und jeder Nachspielende nach der Blockzeit -- zwei
+// verschiedene Werte, also ab der Aktivierung fuer jedes gestaffelte Konto
+// eine StateRoot-Abweichung zwischen Erzeuger und allen anderen. Jetzt nehmen
+// beide denselben Wert aus der Transaktion:
+//
+//   - Registrierung: RegAt, den Annahmezeitpunkt, den der Erzeuger in die
+//     Transaktion schreibt und jeder Knoten prueft (pruefeRegistrierungV8:
+//     nicht nach dem Block). Nach hinten begrenzt staffelRegZeit ihn auf
+//     einen Tag vor der Blockzeit -- sonst verkuerzte eine rueckdatierte
+//     Registrierung die Wartezeit bis zur Erneuerung oder fiele vor die
+//     Aktivierung (voller Zuschuss sofort). Eine Registrierung, die mehr als
+//     einen Tag nach der Annahme in einen Block kommt, weicht beim Erzeuger
+//     dann ab; sie haelt die Kette nicht an.
+//   - Erneuerung: issued_at aus der Bescheinigung (DistributionAt), auch
+//     fuer den Stichtag. Fehlt er, ist die Erneuerung Leerlauf -- schaltet
+//     also nichts frei (nachrechnen_erneuerung.go meldet sie).
+//
+// Vor der Aktivierung aendert sich nichts: Vor 2100 liegt jeder dieser
+// Zeitpunkte vor dem Stichtag, wie vorher die Blockzeit.
+
+// staffelRegZeit: der Zeitpunkt, nach dem eine nachgespielte Registrierung
+// ihre Staffel bemisst. Ohne RegAt (V7) die Blockzeit wie bisher.
+func staffelRegZeit(regAt, blockZeit int64) int64 {
+	if regAt <= 0 {
+		return blockZeit
+	}
+	if fruehestens := blockZeit - 86400; regAt < fruehestens {
+		return fruehestens
+	}
+	return regAt
+}
+
 // applyLivenessRenewalDeltaLocked wendet eine liveness_renewal an: der
 // Zeitpunkt wird gesetzt, die Staffel darf laufen. Idempotent -- ein zweites
 // Nachspielen derselben Erneuerung aendert nichts. Vor der Aktivierung
-// Leerlauf. Caller haelt cs.mu.
-func (cs *ChainState) applyLivenessRenewalDeltaLocked(ctx context.Context, address string, blockUnix int64) error {
-	if !stagedGrantAktiv(blockUnix) {
+// Leerlauf. zeit ist der bescheinigte Zeitpunkt (issued_at) -- bei der
+// Annahme wie beim Nachspielen (siehe "EIN ZEITPUNKT"). Caller haelt cs.mu.
+func (cs *ChainState) applyLivenessRenewalDeltaLocked(ctx context.Context, address string, zeit int64) error {
+	if !stagedGrantAktiv(zeit) { // auch ohne Zeitpunkt (0): liegt vor jedem Stichtag
 		return nil
 	}
 	address = strings.ToLower(strings.TrimSpace(address))
@@ -120,10 +158,10 @@ func (cs *ChainState) applyLivenessRenewalDeltaLocked(ctx context.Context, addre
 	if !ok || !acc.IsHuman {
 		return fmt.Errorf("liveness_renewal fuer %s: kein registrierter Mensch", address)
 	}
-	if acc.LivenessRenewedAt >= blockUnix {
+	if acc.LivenessRenewedAt >= zeit {
 		return nil // schon erneuert (Replay derselben Transaktion)
 	}
-	acc.LivenessRenewedAt = blockUnix
+	acc.LivenessRenewedAt = zeit
 	return cs.saveAccountToDBCtx(ctx, acc)
 }
 
@@ -333,7 +371,7 @@ func (a *APIServer) handleLivenessRenewal(w http.ResponseWriter, r *http.Request
 	}
 	tx := erneuerungsTransaktion(wallet, req.IssuedAt, req.PublicKey, req.Signature)
 	if err := a.state.runAtomicWithOutbox([]string{wallet}, false, func(ctx context.Context) (Transaction, error) {
-		if err := a.state.applyLivenessRenewalDeltaLocked(ctx, wallet, now); err != nil {
+		if err := a.state.applyLivenessRenewalDeltaLocked(ctx, wallet, req.IssuedAt); err != nil {
 			return Transaction{}, err
 		}
 		return tx, nil
@@ -341,7 +379,7 @@ func (a *APIServer) handleLivenessRenewal(w http.ResponseWriter, r *http.Request
 		jsonError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "wallet": wallet, "renewed_at": now})
+	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "wallet": wallet, "renewed_at": req.IssuedAt})
 }
 
 // erneuerungFruehestens: ab wann eine Erneuerung angenommen wird -- Tag 7

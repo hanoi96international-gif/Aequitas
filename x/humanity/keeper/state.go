@@ -4531,7 +4531,14 @@ func (cs *ChainState) RegisterHumanAtomic(address string, pendingTx Transaction)
 		}
 	}
 	return cs.runAtomicWithOutbox([]string{address}, false, func(ctx context.Context) (Transaction, error) {
-		if err := cs.registerHumanMitKlasseLocked(ctx, address, time.Now().Unix(), pendingTx.GrantClass); err != nil {
+		// Die Staffel nach dem Annahmezeitpunkt, der in der Transaktion steht
+		// (RegAt) -- wie jeder Nachspielende (staffelRegZeit).
+		jetzt := time.Now().Unix()
+		regZeit := pendingTx.RegAt
+		if regZeit <= 0 {
+			regZeit = jetzt
+		}
+		if err := cs.registerHumanMitZeitenLocked(ctx, address, jetzt, regZeit, pendingTx.GrantClass); err != nil {
 			return Transaction{}, err
 		}
 		if pendingTx.Nullifier != "" {
@@ -4565,6 +4572,16 @@ func (cs *ChainState) registerHumanLocked(ctx context.Context, address string, a
 // der Coordinator-Bescheinigung (grant_staffel.go). "" oder "sofort" = voller
 // Zuschuss; "gestaffelt" = 200 sofort + 800 Staffel, nur nach Aktivierung.
 func (cs *ChainState) registerHumanMitKlasseLocked(ctx context.Context, address string, activityAt int64, grantClass string) error {
+	return cs.registerHumanMitZeitenLocked(ctx, address, activityAt, activityAt, grantClass)
+}
+
+// registerHumanMitZeitenLocked: regZeit entscheidet die Staffel -- ob sie
+// schon gilt und bis wann sie laeuft (GrantStagedUntil, steht im Blatt der
+// StateRoot). Annahme und Nachspielen muessen dafuer DENSELBEN Wert nehmen:
+// den Annahmezeitpunkt aus der Transaktion (RegAt, staffelRegZeit), nicht
+// jeder seine eigene Uhr bzw. die Blockzeit (grant_staffel.go, "EIN
+// ZEITPUNKT").
+func (cs *ChainState) registerHumanMitZeitenLocked(ctx context.Context, address string, activityAt, regZeit int64, grantClass string) error {
 	address = strings.ToLower(address)
 	cs.ensureAccountLoadedCtx(ctx, address)
 
@@ -4578,11 +4595,11 @@ func (cs *ChainState) registerHumanMitKlasseLocked(ctx context.Context, address 
 	}
 
 	acc.IsHuman = true
-	sofort, staffel := grantBeiRegistrierung(grantClass, activityAt)
+	sofort, staffel := grantBeiRegistrierung(grantClass, regZeit)
 	acc.Balance = acc.Balance.Add(NewDecimal(sofort))
 	if staffel > 0 {
 		acc.GrantStagedRest = acc.GrantStagedRest.Add(NewDecimal(staffel))
-		acc.GrantStagedUntil = activityAt + int64(grantStaffelTage)*86400
+		acc.GrantStagedUntil = regZeit + int64(grantStaffelTage)*86400
 	}
 	touchActivityAt(acc, activityAt) // starts this 1,000 AEQ's own grace period fresh
 	if err := cs.enforceWealthCapLockedCtx(ctx, acc); err != nil {
