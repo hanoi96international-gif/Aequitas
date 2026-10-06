@@ -558,7 +558,7 @@ func TestCoordinatorEintragung_SchreibweiseAngeglichen_RealDB(t *testing.T) {
 	roh, _ := hex.DecodeString(freigabe[2:])
 	hoch := hohesS(roh)
 	if w := f.eintragen(map[string]string{"public_key": pubHex, "human_wallet": mensch, "human_signature": "0x" + hex.EncodeToString(hoch),
-		"key_signature": ed25519SigNormal(besitz)}); w.Code != http.StatusBadRequest {
+		"key_signature": ed25519SigNormal(besitz)}); w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "canonical form") {
 		t.Fatalf("Freigabe mit hohem s: %d %s", w.Code, w.Body.String())
 	}
 }

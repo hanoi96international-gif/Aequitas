@@ -301,10 +301,6 @@ func (a *APIServer) handleRegisterCoordinatorKey(w http.ResponseWriter, r *http.
 		jsonError(w, "invalid human_wallet", http.StatusBadRequest)
 		return
 	}
-	if !kanonischeSignatur(req.HumanSignature) {
-		jsonError(w, "invalid human_signature: not in canonical form (0x + 130 hex, v 27/28, low s)", http.StatusBadRequest)
-		return
-	}
 	if err := verifyPersonalSign(coordinatorFreigabeNachricht(pub), req.HumanSignature, human); err != nil {
 		jsonError(w, "invalid human_signature: "+err.Error(), http.StatusBadRequest)
 		return
