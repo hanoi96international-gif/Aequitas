@@ -140,7 +140,11 @@ Dinge ohne Konsenswirkung (Erreichbarkeit, Messwerte als Hinweis).
    - Der Abgleich `syncValidatorsFromPeer` entfällt für Bindungen.
    - Die Leistungsprobe wird zur Entscheidung des Leiters, die als eigene
      Transaktion auf die Kette kommt – oder entfällt.
-4. **Coordinator-Register** (`coordinator_keys`) nach demselben Muster.
+4. **Coordinator-Register** (`coordinator_keys`): seit 06.10.2026 trägt die
+   Erneuerungs-Bescheinigung ihre Bindung selbst, und jeder Knoten prüft sie
+   gegen den Kettenzustand (`bescheinigungPruefen`). Offen ist die Zulassung
+   und der Entzug von Coordinatoren im Konsens (`coordinatorZulassungImKonsens`).
+   Vorher bleibt die Staffel beim Platzhalter, erzwungen durch einen Test.
 
 ## Entscheidungen, die bei euch liegen
 

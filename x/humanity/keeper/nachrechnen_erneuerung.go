@@ -23,8 +23,10 @@ import (
 // jeder Knoten prueft sie selbst, wie die anderen Nachrechen-Regeln:
 //
 //   - erneuerung_ohne_bescheinigung: keine, falsch unterschrieben, fuer eine
-//     andere Wallet oder einen anderen Zeitpunkt, oder von einem Schluessel,
-//     der nicht im Coordinator-Register steht.
+//     andere Wallet oder einen anderen Zeitpunkt, oder ohne gueltige Bindung
+//     des Schluessels (Freigabe des Menschen, Besitznachweis, Mensch
+//     registriert und ohne offene Staffel -- bescheinigungPruefen,
+//     grant_staffel.go).
 //   - erneuerung_zeit: kein Zeitpunkt, aelter als 7 Tage, oder mehr als fuenf
 //     Minuten nach der Blockzeit. Die Frist ist bewusst weit: eine
 //     Erneuerung, die im Ausgang des Erzeugers liegen blieb, darf nicht bei
@@ -38,8 +40,10 @@ import (
 //
 // Vor stagedGrantActivationUnix ist liveness_renewal Leerlauf und wird nicht
 // geprueft. Abgelehnt wird erst im strengen Modus (nachrechnenStreng), bis
-// dahin gezaehlt. Das Coordinator-Register (coordinator_keys) ist noch
-// knotenlokal; es muss Konsenszustand sein, bevor die Staffel aktiv wird.
+// dahin gezaehlt -- deshalb darf die Staffel nicht vor dem strengen Modus
+// aktiv werden (TestStaffel_StichtagErstMitZulassungUndStreng). Das
+// knotenlokale Coordinator-Register (coordinator_keys) entscheidet nichts
+// mehr: die Bescheinigung traegt ihre Bindung (06.10.2026).
 
 const (
 	// Die Annahme verlangt hoechstens 15 Minuten. Bis die Transaktion in
@@ -57,12 +61,12 @@ func (cs *ChainState) nachrechnenErneuerungLocked(tx *Transaction, wallet string
 	// Ohne Coordinator-Register: die Bescheinigung traegt ihre Bindung, und
 	// ob der Mensch dahinter registriert ist, steht im Kettenzustand -- jeder
 	// Knoten kommt zum selben Urteil (grant_staffel.go, bescheinigungPruefen).
-	istMensch := func(m string) bool {
+	stand := func(m string) (bool, bool) {
 		cs.ensureAccountLoadedCtx(context.Background(), m)
 		acc, ok := cs.accounts.Get(m)
-		return ok && acc.IsHuman
+		return ok && acc.IsHuman, ok && acc.GrantStagedRest > 0
 	}
-	if err := bescheinigungPruefen(wallet, tx.DistributionAt, tx.Bescheinigung, istMensch); err != nil {
+	if err := bescheinigungPruefen(wallet, tx.DistributionAt, tx.Bescheinigung, stand); err != nil {
 		return nachrechnenAbweichung("erneuerung_ohne_bescheinigung", blockZeit,
 			"%s: keine gueltige Bescheinigung: %v", kurzAdresse(wallet), err)
 	}

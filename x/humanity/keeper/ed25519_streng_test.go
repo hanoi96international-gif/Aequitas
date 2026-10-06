@@ -1,0 +1,265 @@
+package keeper
+
+import (
+	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/hex"
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	"filippo.io/edwards25519"
+)
+
+// Die acht Punkte kleiner Ordnung, wie sie als Schluessel eingereicht werden
+// koennen (mit den nicht-kanonischen Schreibweisen von x = 0).
+var ed25519KleineOrdnung = []string{
+	"0100000000000000000000000000000000000000000000000000000000000000", // neutrales Element
+	"ecffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f", // Ordnung 2
+	"0000000000000000000000000000000000000000000000000000000000000000", // Ordnung 4
+	"0000000000000000000000000000000000000000000000000000000000000080",
+	"26e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc05", // Ordnung 8
+	"26e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc85",
+	"c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac037a",
+	"c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac03fa",
+}
+
+// Die Universalunterschrift zum neutralen Element: R = Basispunkt, s = 1.
+const (
+	ed25519NeutralSchluessel = "0100000000000000000000000000000000000000000000000000000000000000"
+	ed25519NeutralUnterschr  = "5866666666666666666666666666666666666666666666666666666666666666" +
+		"0100000000000000000000000000000000000000000000000000000000000000"
+)
+
+// Missbrauch (Sicherheitspruefung #300, MEDIUM-2): mit dem neutralen Element
+// als Schluessel gilt dieselbe Unterschrift fuer JEDE Nachricht. Die strenge
+// Pruefung weist sie ab -- Besitznachweis, Personhood-Nachweis, Bescheinigung.
+func TestEd25519Streng_KleineOrdnungIstUniversalunterschrift(t *testing.T) {
+	pub, _ := hex.DecodeString(ed25519NeutralSchluessel)
+	sig, _ := hex.DecodeString(ed25519NeutralUnterschr)
+	for _, msg := range []string{"Aequitas: coordinator key for human 0xabc", "aequitas-liveness-renewal-v1|0xdef|1"} {
+		if !ed25519.Verify(pub, []byte(msg), sig) {
+			t.Logf("crypto/ed25519 lehnt die Universalunterschrift inzwischen selbst ab (%q)", msg)
+		}
+		if ed25519PruefenStreng(ed25519NeutralSchluessel, ed25519NeutralUnterschr, []byte(msg)) {
+			t.Fatalf("Universalunterschrift angenommen fuer %q", msg)
+		}
+	}
+	mensch := "0x" + strings.Repeat("ab", 20)
+	if verifyCoordinatorPossession(ed25519NeutralSchluessel, ed25519NeutralUnterschr, mensch) {
+		t.Fatal("Besitznachweis mit Schluessel kleiner Ordnung angenommen")
+	}
+	if verifyPersonhoodPossession(ed25519NeutralSchluessel, ed25519NeutralUnterschr, mensch) {
+		t.Fatal("Personhood-Nachweis mit Schluessel kleiner Ordnung angenommen")
+	}
+	for _, k := range ed25519KleineOrdnung {
+		b, _ := hex.DecodeString(k)
+		if ed25519SchluesselTauglich(b) {
+			t.Fatalf("Schluessel kleiner Ordnung %s angenommen", k)
+		}
+	}
+}
+
+// Nicht-kanonisch kodiert (y = p+1 statt 1) und gemischte Ordnung (echter
+// Schluessel plus Punkt der Ordnung 2) taugen nicht; echte Schluessel taugen.
+func TestEd25519Streng_KodierungUndOrdnung(t *testing.T) {
+	nichtKanonisch, _ := hex.DecodeString("eeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f")
+	if ed25519SchluesselTauglich(nichtKanonisch) {
+		t.Fatal("nicht-kanonische Kodierung angenommen")
+	}
+	for i := 0; i < 20; i++ {
+		pub, priv, _ := ed25519.GenerateKey(rand.Reader)
+		if !ed25519SchluesselTauglich(pub) {
+			t.Fatalf("echter Schluessel abgewiesen: %x", []byte(pub))
+		}
+		msg := []byte("nachricht")
+		if !ed25519PruefenStreng(hex.EncodeToString(pub), hex.EncodeToString(ed25519.Sign(priv, msg)), msg) {
+			t.Fatal("echte Unterschrift abgewiesen")
+		}
+		a, _ := new(edwards25519.Point).SetBytes(pub)
+		t2, _ := new(edwards25519.Point).SetBytes(func() []byte { b, _ := hex.DecodeString(ed25519KleineOrdnung[1]); return b }())
+		gemischt := new(edwards25519.Point).Add(a, t2).Bytes()
+		if ed25519SchluesselTauglich(gemischt) {
+			t.Fatalf("Schluessel gemischter Ordnung angenommen: %x", gemischt)
+		}
+	}
+}
+
+// Genau eine Schreibweise je Unterschrift: Grossbuchstaben, 0x, Rand oder
+// angehaengte Zeichen werden abgewiesen -- ed25519SigNormal macht aus den
+// ersten drei die eine.
+func TestEd25519Streng_EineSchreibweise(t *testing.T) {
+	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
+	msg := []byte("m")
+	p, s := hex.EncodeToString(pub), hex.EncodeToString(ed25519.Sign(priv, msg))
+	for name, v := range map[string]string{
+		"gross": strings.ToUpper(s), "0x": "0x" + s, "rand": " " + s, "angehaengt": s + "00", "gekuerzt": s[:126],
+	} {
+		if ed25519PruefenStreng(p, v, msg) {
+			t.Fatalf("%s angenommen", name)
+		}
+	}
+	if ed25519PruefenStreng(strings.ToUpper(p), s, msg) {
+		t.Fatal("Schluessel in Grossbuchstaben angenommen")
+	}
+	for _, v := range []string{strings.ToUpper(s), "0x" + s, " 0X" + strings.ToUpper(s) + " "} {
+		if !ed25519PruefenStreng(p, ed25519SigNormal(v), msg) {
+			t.Fatalf("angeglichen abgewiesen: %q", v)
+		}
+	}
+}
+
+// bescheinigungPruefen ohne Datenbank: jede Regel einzeln, mit ihrem Grund.
+func TestBescheinigungPruefen_Regeln(t *testing.T) {
+	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
+	pubHex := hex.EncodeToString(pub)
+	mk, mensch := neuerSchluessel(t)
+	wallet := "0x" + strings.Repeat("12", 20)
+	issued := int64(1_800_000_000)
+	signiere := func(w string) string {
+		return hex.EncodeToString(ed25519.Sign(priv, []byte(fmt.Sprintf("%s|%s|%d", livenessRenewalDomain, w, issued))))
+	}
+	bindung := CoordinatorBindung{Mensch: mensch,
+		MenschSig:     personalSign(t, mk, coordinatorFreigabeNachricht(pubHex)),
+		SchluesselSig: hex.EncodeToString(ed25519.Sign(priv, []byte("Aequitas: coordinator key for human "+mensch)))}
+	gut := func(m string) (bool, bool) { return m == mensch, false }
+	tx := erneuerungsTransaktion(wallet, issued, pubHex, signiere(wallet), bindung)
+	if err := bescheinigungPruefen(wallet, issued, tx.Bescheinigung, gut); err != nil {
+		t.Fatalf("gueltige Bescheinigung: %v", err)
+	}
+	// Die Transaktion traegt die eine Schreibweise, auch wenn der
+	// Coordinator anders schickt.
+	anders := erneuerungsTransaktion(wallet, issued, strings.ToUpper(pubHex), "0x"+strings.ToUpper(signiere(wallet)),
+		CoordinatorBindung{Mensch: strings.ToUpper(mensch), MenschSig: bindung.MenschSig, SchluesselSig: strings.ToUpper(bindung.SchluesselSig)})
+	if err := bescheinigungPruefen(wallet, issued, anders.Bescheinigung, gut); err != nil {
+		t.Fatalf("angeglichene Bescheinigung: %v", err)
+	}
+
+	faelle := map[string]struct {
+		b     func() *Lebendigkeitsbescheinigung
+		stand CoordinatorMenschStand
+		grund string
+	}{
+		"Mensch mit offener Staffel": {func() *Lebendigkeitsbescheinigung { c := *tx.Bescheinigung; return &c },
+			func(string) (bool, bool) { return true, true }, "offene Staffel"},
+		"kein Mensch": {func() *Lebendigkeitsbescheinigung { c := *tx.Bescheinigung; return &c },
+			func(string) (bool, bool) { return false, false }, "kein registrierter Mensch"},
+		"Freigabe mit v=0": {func() *Lebendigkeitsbescheinigung {
+			c := *tx.Bescheinigung
+			v := c.MenschSig[130:]
+			c.MenschSig = c.MenschSig[:130] + map[string]string{"1b": "00", "1c": "01"}[v]
+			return &c
+		}, gut, "kanonischer Schreibweise"},
+		"Freigabe gross": {func() *Lebendigkeitsbescheinigung {
+			c := *tx.Bescheinigung
+			c.MenschSig = "0x" + strings.ToUpper(c.MenschSig[2:])
+			return &c
+		}, gut, "kanonischer Schreibweise"},
+		"Bescheinigung mit 0x": {func() *Lebendigkeitsbescheinigung {
+			c := *tx.Bescheinigung
+			c.Signature = "0x" + c.Signature
+			return &c
+		}, gut, "Bescheinigung passt nicht"},
+		"Besitznachweis gross": {func() *Lebendigkeitsbescheinigung {
+			c := *tx.Bescheinigung
+			c.SchluesselSig = strings.ToUpper(c.SchluesselSig)
+			return &c
+		}, gut, "Besitznachweis"},
+		"Schluessel gross": {func() *Lebendigkeitsbescheinigung {
+			c := *tx.Bescheinigung
+			c.PublicKey = strings.ToUpper(c.PublicKey)
+			return &c
+		}, gut, "64 Hex"},
+		"Selbstbescheinigung": {func() *Lebendigkeitsbescheinigung { c := *tx.Bescheinigung; return &c },
+			gut, "nicht selbst"},
+		// Kleine Ordnung: der Mensch gibt das neutrale Element frei, Besitz
+		// und Bescheinigung tragen die Universalunterschrift.
+		"Schluessel kleiner Ordnung": {func() *Lebendigkeitsbescheinigung {
+			return &Lebendigkeitsbescheinigung{PublicKey: ed25519NeutralSchluessel, Signature: ed25519NeutralUnterschr,
+				Mensch: mensch, MenschSig: personalSign(t, mk, coordinatorFreigabeNachricht(ed25519NeutralSchluessel)),
+				SchluesselSig: ed25519NeutralUnterschr}
+		}, gut, "Besitznachweis"},
+	}
+	for name, f := range faelle {
+		w := wallet
+		if name == "Selbstbescheinigung" {
+			w = mensch
+		}
+		err := bescheinigungPruefen(w, issued, f.b(), f.stand)
+		if err == nil || !strings.Contains(err.Error(), f.grund) {
+			t.Fatalf("%s: %v (erwartet %q)", name, err, f.grund)
+		}
+	}
+}
+
+// Die Erneuerung belastet das erneuerte Konto: anfrageKonten nennt es, und
+// im verteilten Term leitet ein Folger ueber den Mux zu dessen Zustaendigem
+// -- nicht zum Leiter (Sicherheitspruefung #300, MEDIUM-1). Vorher ging sie
+// zum Leiter, der sie mit "nicht zustaendig" (503) abwies.
+func TestZumLeiter_ErneuerungZumZustaendigen(t *testing.T) {
+	wallet := "0x" + strings.Repeat("ab", 20)
+	if got := anfrageKonten("/api/liveness-renewal", []byte(`{"wallet":" 0x`+strings.Repeat("AB", 20)+` "}`)); len(got) != 1 || got[0] != wallet {
+		t.Fatalf("anfrageKonten: %v", got)
+	}
+	antwort := func(name string) *httptest.Server {
+		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			b, _ := io.ReadAll(r.Body)
+			io.WriteString(w, name+":"+r.URL.Path+":"+string(b))
+		}))
+	}
+	leiterSrv, zustSrv := antwort("leiter"), antwort("zustaendig")
+	defer leiterSrv.Close()
+	defer zustSrv.Close()
+	ich := "0x0000000000000000000000000000000000000003"
+	leiter := "0x0000000000000000000000000000000000000001"
+	dritter := "0x0000000000000000000000000000000000000002"
+	l := NeueLeitung(ich, "", []string{ich, leiter, dritter}, leiter, true, LeitSpeicher{Term: 3, Leiter: leiter}, testKonfig(), LeitUmgebung{}, time.Now())
+	l.SetzeURL(leiter, leiterSrv.URL)
+	l.SetzeURL(dritter, zustSrv.URL)
+	zuteilung := []string{ich, leiter, dritter}
+	l.mu.Lock()
+	l.vt.term = l.term
+	l.vt.zuteilung = zuteilung
+	term := l.term
+	l.mu.Unlock()
+	// Ein Konto, fuer das der dritte zustaendig ist.
+	var konto string
+	for i := 0; i < 10000 && konto == ""; i++ {
+		k := fmt.Sprintf("0x%040x", i+1)
+		if zustaendigFuer(k, term, zuteilung, nil, leiter) == dritter {
+			konto = k
+		}
+	}
+	if konto == "" {
+		t.Fatal("kein Konto fuer den dritten gefunden")
+	}
+	cs := newTestState()
+	cs.leitung.Store(l)
+	mux := (&APIServer{state: cs}).buildMux()
+	body := `{"wallet":"` + konto + `","issued_at":1}`
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/liveness-renewal", strings.NewReader(body)))
+	if got := rec.Body.String(); got != "zustaendig:/api/liveness-renewal:"+body {
+		t.Fatalf("Erneuerung ging an %q, erwartet der Zustaendige des Kontos", got)
+	}
+}
+
+// Die Staffel wird erst aktiv, wenn Coordinatoren im Konsens zugelassen
+// werden (HIGH-1) und der strenge Modus spaetestens mit ihr beginnt (LOW-4):
+// sonst schaltete eine erfundene Erneuerung im Beobachtungsmodus frei, und
+// jeder registrierte Mensch -- auch der einer Farm -- bescheinigte.
+func TestStaffel_StichtagErstMitZulassungUndStreng(t *testing.T) {
+	if stagedGrantActivationUnix == stagedGrantPlatzhalterUnix {
+		return // Platzhalter: die Staffel schlaeft
+	}
+	if !coordinatorZulassungImKonsens {
+		t.Fatal("stagedGrantActivationUnix gesetzt, aber Coordinatoren werden nicht im Konsens zugelassen (coordinatorZulassungImKonsens)")
+	}
+	if nachrechnenStrengAbUnix > stagedGrantActivationUnix {
+		t.Fatalf("Staffel ab %d, strenger Modus erst ab %d -- bis dahin wuerden erfundene Erneuerungen nur gezaehlt", stagedGrantActivationUnix, nachrechnenStrengAbUnix)
+	}
+}

@@ -267,6 +267,10 @@ type ChainState struct {
 	// column is for.
 	replayedColumnOnce sync.Once
 	txRootSpalteDa     atomic.Bool // chain_blocks.tx_root angelegt -- siehe ensureTxRootColumn
+	// coordinatorRegisterDa/-Mu: coordinator_keys einmal je Prozess anlegen,
+	// nicht je Anfrage (EnsureCoordinatorRegistry).
+	coordinatorRegisterDa atomic.Bool
+	coordinatorRegisterMu sync.Mutex
 	// txBatchTableOnce/txBatches back the body store that lets a block travel
 	// without its transactions (roadmap step 4 — see tx_batch.go).
 	txBatchTableOnce sync.Once

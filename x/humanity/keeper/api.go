@@ -3076,7 +3076,9 @@ func verifyPersonhoodPossession(publicHex, signatureHex, humanWallet string) boo
 		return false
 	}
 	pub, err := hex.DecodeString(publicHex)
-	if err != nil || len(pub) != ed25519.PublicKeySize {
+	// Kein Schluessel kleiner Ordnung (ed25519_streng.go): mit ihm gaelte eine
+	// Unterschrift fuer jede Nachricht.
+	if err != nil || !ed25519SchluesselTauglich(pub) {
 		return false
 	}
 	msg := []byte("Aequitas: personhood key for human " + strings.ToLower(strings.TrimSpace(humanWallet)))

@@ -208,9 +208,30 @@ den verlinkten Dokumenten.
             prüft sie gegen den Kettenzustand -- das knotenlokale
             `coordinator_keys` entscheidet nichts mehr. Neu: kein
             Coordinator bescheinigt sich selbst. Die Erneuerung geht durchs
-            Annahme-Tor (zum Leiter). Wirkt mit der Staffel (2100,
-            Platzhalter); bestehende Coordinatoren tragen sich vorher einmal
-            neu ein (die Unterschriften werden erst seit heute gespeichert)
+            Annahme-Tor (zum Zuständigen des erneuerten Kontos). Wirkt mit
+            der Staffel (2100, Platzhalter); bestehende Coordinatoren tragen
+            sich vorher einmal neu ein (die Unterschriften werden erst seit
+            heute gespeichert). Nach der Sicherheitsprüfung: Ed25519 streng
+            (kein Schlüssel kleiner Ordnung -- sonst Universalunterschrift,
+            `ed25519_streng.go`), je Unterschrift eine Schreibweise, ein
+            Schlüssel wandert nicht zu einem anderen Menschen, das Register
+            wird einmal je Prozess angelegt statt je Anfrage, und ein Mensch
+            mit offener Staffel bescheinigt nicht
+      - [ ] **Vor dem Staffel-Stichtag** (erzwungen in
+            `TestStaffel_StichtagErstMitZulassungUndStreng`):
+        - [ ] Coordinatoren im Konsens zulassen und entziehen
+              (`coordinatorZulassungImKonsens`). Heute kann jeder
+              registrierte Mensch ohne offene Staffel Erneuerungen
+              bescheinigen -- eine Farm mit einem alten Konto bescheinigte
+              allen ihren Kunstfiguren
+        - [ ] Strenger Modus spätestens mit der Staffel
+              (`nachrechnenStrengAbUnix` ≤ `stagedGrantActivationUnix`),
+              sonst würde eine erfundene Erneuerung nur gezählt
+        - [ ] Gibt es dann ein zweites Netz mit denselben Wallets
+              (Testnetz), die Nachrichten der Bindung und der Bescheinigung
+              um die Chain-ID erweitern (v2, Coordinator und Kette
+              zugleich) -- heute gälte eine Lebendigkeitsprüfung derselben
+              Wallet in beiden
       - [ ] Stichtag `nachrechnenStrengAbUnix` setzen, sobald
             `/api/wirtschaft/regeln` über mehrere Runden 0 Abweichungen zeigt.
             C1 spielt seine eigenen Blöcke nicht nach, und **C2 gibt es seit
