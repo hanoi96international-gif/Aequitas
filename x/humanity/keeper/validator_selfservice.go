@@ -176,5 +176,13 @@ func (a *APIServer) handleValidatorSelfProof(w http.ResponseWriter, r *http.Requ
 			antwort["matching_url"] = strings.TrimRight(mu, "/")
 		}
 	}
+	// Ab dem Stichtag des Validator-Registers: die Unterschrift dieses
+	// Knotens unter die Bindung an seinen Betreiber, Zeitpunkt jetzt
+	// (validator_bindung_annahme.go). Vor dem Stichtag fehlt sie.
+	for k, v := range knotenBindungsNachweis(signingAddr, wallet, time.Now().Unix(), func(h []byte) ([]byte, error) {
+		return crypto.Sign(h, key)
+	}) {
+		antwort[k] = v
+	}
 	json.NewEncoder(w).Encode(antwort)
 }
