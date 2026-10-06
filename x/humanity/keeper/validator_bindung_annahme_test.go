@@ -229,6 +229,13 @@ func TestKanonischeSignaturVersuch(t *testing.T) {
 	if got := kanonischeSignaturVersuch(kurz); got != kurz {
 		t.Fatal("falsche Laenge veraendert")
 	}
+	// Beide v-Werte, unabhaengig vom Zufall des Schluessels.
+	rs := "0x" + strings.Repeat("ab", 64)
+	for roh, want := range map[string]string{rs + "00": rs + "1b", rs + "01": rs + "1c", rs + "1b": rs + "1b", rs + "1c": rs + "1c", rs + "02": rs + "02"} {
+		if got := kanonischeSignaturVersuch(roh); got != want {
+			t.Fatalf("%s… v=%s: %s, erwartet v=%s", roh[:6], roh[130:], got[130:], want[130:])
+		}
+	}
 }
 
 // Der Endpunkt: Methode, Groesse, Gleichzeitigkeit, Fehlversuch je IP auf dem

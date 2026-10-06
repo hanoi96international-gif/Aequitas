@@ -188,6 +188,9 @@ func TestValidatorBinden_AngeglicheneSignatur_RealDB(t *testing.T) {
 		v = "01"
 	}
 	tx.Nachweis.Sig = "0x" + strings.ToUpper(kanon[2:130]) + v
+	// Felder, die zur Bindung nicht gehoeren -- die Unterschrift deckt sie
+	// nicht, also duerfen sie weder in Ausgang noch Block.
+	tx.Nachweis.Nonce, tx.Nachweis.Von2, tx.Nachweis.Betrag = 5, "0x"+strings.Repeat("9", 40), 1.5
 	if err := f.cs.ValidatorBinden(tx); err != nil {
 		t.Fatalf("angeglichene Signatur abgewiesen: %v", err)
 	}
