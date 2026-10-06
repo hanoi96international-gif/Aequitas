@@ -67,9 +67,20 @@ func TestEd25519Streng_KleineOrdnungIstUniversalunterschrift(t *testing.T) {
 // Nicht-kanonisch kodiert (y = p+1 statt 1) und gemischte Ordnung (echter
 // Schluessel plus Punkt der Ordnung 2) taugen nicht; echte Schluessel taugen.
 func TestEd25519Streng_KodierungUndOrdnung(t *testing.T) {
-	nichtKanonisch, _ := hex.DecodeString("eeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f")
-	if ed25519SchluesselTauglich(nichtKanonisch) {
-		t.Fatal("nicht-kanonische Kodierung angenommen")
+	// Alle nicht-kanonischen Kodierungen: y + p fuer y < 19, mit und ohne
+	// Vorzeichenbit.
+	for y := 0; y < 19; y++ {
+		for _, vz := range []byte{0, 0x80} {
+			b := make([]byte, 32)
+			b[0] = byte(0xed + y)
+			for i := 1; i < 31; i++ {
+				b[i] = 0xff
+			}
+			b[31] = 0x7f | vz
+			if ed25519SchluesselTauglich(b) {
+				t.Fatalf("nicht-kanonische Kodierung angenommen: %x", b)
+			}
+		}
 	}
 	for i := 0; i < 20; i++ {
 		pub, priv, _ := ed25519.GenerateKey(rand.Reader)

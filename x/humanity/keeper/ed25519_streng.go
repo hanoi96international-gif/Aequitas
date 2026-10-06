@@ -33,6 +33,11 @@ import (
 //     verschiedene Unterschriften).
 //
 // Jeder echte Schluessel ([a]B mit geklemmtem a) erfuellt alle drei. Die
+// erste Bedingung ist neben den beiden anderen eigentlich ueberzaehlig: jede
+// nicht-kanonische Kodierung (y + p fuer y < 19, Vorzeichen bei x = 0) ist
+// kleiner Ordnung oder liegt ausserhalb der Primordnung (nachgerechnet,
+// TestEd25519Streng_KodierungUndOrdnung). Sie bleibt, weil sie billig ist und
+// die Eindeutigkeit ausdruecklich macht. Die
 // Unterschrift selbst muss klein geschriebenes Hex ohne 0x sein -- genau eine
 // Schreibweise, damit dieselbe Bescheinigung nicht unter mehreren
 // Transaktions-Hashes in Bloecke kommt. s < L prueft crypto/ed25519 selbst.
