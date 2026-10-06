@@ -223,7 +223,10 @@ den verlinkten Dokumenten.
             ein zweiter, unabhängiger Betreiber mit Vergleichsdienst
 - [ ] Regel B von Stufe 2 trennen (eigenes Aktivierungsdatum) -- nur falls
       gewünscht
-- [ ] Ein Wirtschaftsmodell (Simulation) der Regeln bauen
+- [x] Ein Wirtschaftsmodell der Regeln (06.10.): `go run ./cmd/wirtschaftsmodell`,
+      feste Akteure, echte Formeln (Test gegen die Kette), jede Zahl gegen alle
+      Akteure (`docs/WIRTSCHAFTSMODELL.md`). Offen: Messwerte aus dem Pilot und
+      fachliche Prüfung
 - [x] `GRUNDPFEILER.md` als Seite veröffentlichen (06.10.): `/grundpfeiler`,
       verlinkt auf Startseite und Explorer (`grundpfeiler_seite.go`)
 
