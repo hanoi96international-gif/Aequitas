@@ -254,8 +254,12 @@ type langsameZeile struct {
 // Rueckgabe: die Transaktionen des Blocks; die genommenen Korb-Eintraege;
 // die IDs der aufgenommenen Zeilen; was zurueck in den Korb muss; welche
 // Zeilen-IDs freizugeben sind; die neue Marke.
+//
+// zeilenPos: an welchen Stellen von txs Zeilen stehen (aufsteigend) -- fuer
+// korbPraefix, wenn ein Block nur einen Anfang davon tragen kann
+// (block_tauglich.go).
 func blockKorbMischen(korb []korbEintrag, zeilen []langsameZeile, deckel int, altBis uint64) (
-	txs []Transaction, genommen []korbEintrag, ids []int64, zurueck []korbEintrag, freigeben []int64, neuBis uint64) {
+	txs []Transaction, genommen []korbEintrag, ids []int64, zurueck []korbEintrag, freigeben []int64, neuBis uint64, zeilenPos []int) {
 
 	sort.SliceStable(zeilen, func(i, j int) bool {
 		if zeilen[i].walSeq != zeilen[j].walSeq {
@@ -298,6 +302,7 @@ func blockKorbMischen(korb []korbEintrag, zeilen []langsameZeile, deckel int, al
 			}
 		}
 		if nimmZeile {
+			zeilenPos = append(zeilenPos, len(txs))
 			txs = append(txs, zeilen[j].tx)
 			ids = append(ids, zeilen[j].id)
 			j++
@@ -464,15 +469,22 @@ WHERE NOT EXISTS (SELECT 1 FROM pending_txs WHERE wal_seq = $3::bigint AND tx_js
 // davor oder dazwischen gehoeren (blockKorbMischen). Was nicht hineinpasst,
 // geht sofort zurueck (Korb) bzw. wird freigegeben (Zeilen).
 func (cs *ChainState) korbFuerBlock(deckel int) (txs []Transaction, ids []int64, genommen []korbEintrag, neuBis uint64, gehalten bool) {
+	txs, ids, genommen, neuBis, _, gehalten = cs.korbFuerBlockMitPos(deckel)
+	return
+}
+
+// korbFuerBlockMitPos: wie korbFuerBlock, dazu die Stellen der Zeilen in txs
+// (blockKorbMischen, zeilenPos).
+func (cs *ChainState) korbFuerBlockMitPos(deckel int) (txs []Transaction, ids []int64, genommen []korbEintrag, neuBis uint64, zeilenPos []int, gehalten bool) {
 	k := cs.korb
 	alt := cs.korbBis.Load()
 	if k == nil || deckel <= 0 {
-		return nil, nil, nil, alt, false
+		return nil, nil, nil, alt, nil, false
 	}
 	if !k.bauer.CompareAndSwap(false, true) {
 		// Ein anderer Blockbau haelt den Korb: dieser Block bleibt leer
 		// (fail-closed), statt die Reihenfolge zu riskieren.
-		return nil, nil, nil, alt, false
+		return nil, nil, nil, alt, nil, false
 	}
 	var haltbar uint64
 	if cs.wal != nil {
@@ -491,12 +503,43 @@ func (cs *ChainState) korbFuerBlock(deckel int) (txs []Transaction, ids []int64,
 	}
 	var zurueck []korbEintrag
 	var freigeben []int64
-	txs, genommen, ids, zurueck, freigeben, neuBis = blockKorbMischen(mem, zeilen, deckel, alt)
+	txs, genommen, ids, zurueck, freigeben, neuBis, zeilenPos = blockKorbMischen(mem, zeilen, deckel, alt)
 	k.zurueckLegen(zurueck)
 	if len(freigeben) > 0 {
 		cs.PendingTxIDsFreigeben(freigeben)
 	}
-	return txs, ids, genommen, neuBis, true
+	return txs, ids, genommen, neuBis, zeilenPos, true
+}
+
+// korbPraefix: von einem aus Korb und Zeilen gemischten Block (in dieser
+// Reihenfolge, blockKorbMischen) nur die ersten j Transaktionen behalten.
+// Zurueck in den Korb gehen die uebrigen Korb-Eintraege (vorn, in ihrer
+// Reihenfolge), freigegeben werden die uebrigen Zeilen; die Marke ist die
+// letzte behaltene Korb-Seq (oder die alte). Ein Anfang einer gueltigen
+// Mischung ist selbst gueltig: jede behaltene Zeile hatte ihre kleineren
+// Schnellpfad-Seqs schon vor sich.
+func korbPraefix(genommen []korbEintrag, ids []int64, zeilenPos []int, j int, altBis uint64) (
+	behGenommen []korbEintrag, behIds []int64, zurueck []korbEintrag, freigeben []int64, neuBis uint64) {
+	zeilen := 0
+	for zeilen < len(zeilenPos) && zeilenPos[zeilen] < j {
+		zeilen++
+	}
+	korb := j - zeilen
+	if korb < 0 {
+		korb = 0
+	}
+	if korb > len(genommen) {
+		korb = len(genommen)
+	}
+	behGenommen = append([]korbEintrag(nil), genommen[:korb]...)
+	zurueck = append([]korbEintrag(nil), genommen[korb:]...)
+	behIds = append([]int64(nil), ids[:zeilen]...)
+	freigeben = append([]int64(nil), ids[zeilen:]...)
+	neuBis = altBis
+	if korb > 0 {
+		neuBis = genommen[korb-1].seq
+	}
+	return
 }
 
 // korbFreigeben: der Blockbau ist fertig (gespeichert oder zurueckgelegt).

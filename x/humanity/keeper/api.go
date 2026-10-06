@@ -717,6 +717,7 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		"nonce_nachtrag":           NonceNachtragStand(),
 		"zustands_ablehnung":       ZustandsAblehnungStand(),
 		"annahme_tor":              a.state.AnnahmeTorStand(),
+		"annahme_pause":            a.state.AnnahmePauseStand(),
 		"signierte_ueberweisungen": SignierteUeberweisungenStand(),
 		"absender_cache":           AbsenderCacheStand(),
 		"kappung_verteilt":         a.state.KappungStand(),

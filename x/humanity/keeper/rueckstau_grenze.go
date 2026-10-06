@@ -199,14 +199,16 @@ func (dag *BlockDAG) StarteRueckstauMesser() {
 		defer t.Stop()
 		for range t.C {
 			vorher := rueckstauZugelassen.Load()
-			var offen int64
+			var offen, aelteste int64
 			ctx, abbrechen := context.WithTimeout(context.Background(), rueckstauMessFrist)
-			err := cs.db.QueryRowContext(ctx, `SELECT count(*) FROM pending_txs WHERE included_at = 0`).Scan(&offen)
+			err := cs.db.QueryRowContext(ctx, `SELECT count(*), COALESCE(MIN(created_at), 0) FROM pending_txs WHERE included_at = 0`).Scan(&offen, &aelteste)
 			abbrechen()
 			if err != nil {
 				rueckstauMessFehler.Add(1)
 				continue
 			}
+			// Fuer annahme_pause.go: haengt der Ausgang?
+			aeltesteOffeneZeile.Store(aelteste)
 			// Mit Speicherkorb steht jede angenommene Schnellpfad-Ueberweisung
 			// dort, bis sie verblockt ist; die Flush-Warteschlange schreibt nur
 			// noch Kontostaende (speicherkorb.go). Sonst wartet sie auf ihre
