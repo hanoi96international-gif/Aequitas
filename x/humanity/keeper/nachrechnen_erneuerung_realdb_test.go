@@ -24,8 +24,11 @@ type erneuerungsFall struct {
 	pub    ed25519.PublicKey
 	priv   ed25519.PrivateKey
 	wallet string
-	jetzt  int64
-	n      int
+	// bindung: der Mensch hinter dem Coordinator-Schluessel und die beiden
+	// Unterschriften der Eintragung -- sie gehen in jede Bescheinigung.
+	bindung CoordinatorBindung
+	jetzt   int64
+	n       int
 }
 
 func neuerErneuerungsFall(t *testing.T, registriertVorTagen int64) *erneuerungsFall {
@@ -45,11 +48,24 @@ func neuerErneuerungsFall(t *testing.T, registriertVorTagen int64) *erneuerungsF
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := cs.db.Exec(`INSERT INTO coordinator_keys (public_key, human_wallet) VALUES ($1, $2)`,
-		hex.EncodeToString(pub), distTestAddr(1901)); err != nil {
+	// Der Coordinator gehoert einem registrierten Menschen, der ihn
+	// freigegeben hat; der Schluessel weist den Besitz nach.
+	mk, mensch := neuerSchluessel(t)
+	cs.mu.Lock()
+	macc := &AccountState{Address: mensch, IsHuman: true, Balance: NewDecimal(10)}
+	cs.accounts.Set(mensch, macc)
+	err = cs.saveAccountToDB(macc)
+	cs.mu.Unlock()
+	if err != nil {
 		t.Fatal(err)
 	}
-	f := &erneuerungsFall{t: t, cs: cs, pub: pub, priv: priv, wallet: distTestAddr(1900), jetzt: nowUnix()}
+	bindung := CoordinatorBindung{Mensch: mensch,
+		MenschSig:     personalSign(t, mk, coordinatorFreigabeNachricht(hex.EncodeToString(pub))),
+		SchluesselSig: hex.EncodeToString(ed25519.Sign(priv, []byte("Aequitas: coordinator key for human "+mensch)))}
+	if err := cs.RegisterCoordinatorKey(hex.EncodeToString(pub), mensch, "", bindung.MenschSig, bindung.SchluesselSig); err != nil {
+		t.Fatal(err)
+	}
+	f := &erneuerungsFall{t: t, cs: cs, pub: pub, priv: priv, wallet: distTestAddr(1900), jetzt: nowUnix(), bindung: bindung}
 	// Gestaffeltes Konto: GrantStagedUntil = Registrierung + 30 Tage.
 	reg := f.jetzt - registriertVorTagen*86400
 	cs.mu.Lock()
@@ -77,7 +93,7 @@ func (f *erneuerungsFall) unterschreibe(priv ed25519.PrivateKey, wallet string, 
 }
 
 func (f *erneuerungsFall) gueltig(issuedAt int64) Transaction {
-	return erneuerungsTransaktion(f.wallet, issuedAt, hex.EncodeToString(f.pub), f.unterschreibe(f.priv, f.wallet, issuedAt))
+	return erneuerungsTransaktion(f.wallet, issuedAt, hex.EncodeToString(f.pub), f.unterschreibe(f.priv, f.wallet, issuedAt), f.bindung)
 }
 
 // pruefe: nur nachrechnen, Zaehler-Differenz zurueck.
@@ -126,12 +142,12 @@ func TestErneuerung_Missbrauch_RealDB(t *testing.T) {
 	}
 
 	_, fremdPriv, _ := ed25519.GenerateKey(rand.Reader)
-	fremd := erneuerungsTransaktion(f.wallet, issued, hex.EncodeToString(fremdPriv.Public().(ed25519.PublicKey)), f.unterschreibe(fremdPriv, f.wallet, issued))
+	fremd := erneuerungsTransaktion(f.wallet, issued, hex.EncodeToString(fremdPriv.Public().(ed25519.PublicKey)), f.unterschreibe(fremdPriv, f.wallet, issued), f.bindung)
 	if got := f.pruefe(fremd, f.jetzt); got["erneuerung_ohne_bescheinigung"] != 1 {
 		t.Fatalf("Schluessel ausserhalb des Registers nicht erkannt: %v", got)
 	}
 
-	andereWallet := erneuerungsTransaktion(f.wallet, issued, hex.EncodeToString(f.pub), f.unterschreibe(f.priv, distTestAddr(1999), issued))
+	andereWallet := erneuerungsTransaktion(f.wallet, issued, hex.EncodeToString(f.pub), f.unterschreibe(f.priv, distTestAddr(1999), issued), f.bindung)
 	if got := f.pruefe(andereWallet, f.jetzt); got["erneuerung_ohne_bescheinigung"] != 1 {
 		t.Fatalf("Bescheinigung fuer eine andere Wallet nicht erkannt: %v", got)
 	}
@@ -150,7 +166,7 @@ func TestErneuerung_Missbrauch_RealDB(t *testing.T) {
 	if got := f.pruefe(f.gueltig(f.jetzt-86400), f.jetzt); len(got) != 0 {
 		t.Fatalf("Bescheinigung von gestern gemeldet: %v", got)
 	}
-	nullZeit := erneuerungsTransaktion(f.wallet, 0, hex.EncodeToString(f.pub), f.unterschreibe(f.priv, f.wallet, 0))
+	nullZeit := erneuerungsTransaktion(f.wallet, 0, hex.EncodeToString(f.pub), f.unterschreibe(f.priv, f.wallet, 0), f.bindung)
 	if got := f.pruefe(nullZeit, f.jetzt); got["erneuerung_zeit"] != 1 {
 		t.Fatalf("Bescheinigung ohne Zeitpunkt nicht erkannt: %v", got)
 	}
@@ -256,5 +272,148 @@ func TestErneuerung_AnnahmeTagSiebenAuchFuerDieBescheinigung_RealDB(t *testing.T
 	}
 	if code := reiche(nowUnix()); code != http.StatusOK {
 		t.Fatalf("an Tag 7 ausgestellte Bescheinigung abgewiesen (%d)", code)
+	}
+}
+
+// Die Bescheinigung traegt ihre Bindung -- jeder Knoten prueft sie selbst,
+// ohne Coordinator-Register. Missbrauch: Bindung fehlt (alte Form, obwohl der
+// Schluessel im lokalen Register steht), Besitznachweis fuer einen anderen
+// Menschen, Freigabe von einem anderen Schluessel, Mensch nicht registriert,
+// der Coordinator bescheinigt sich selbst.
+func TestErneuerung_BindungInDerBescheinigung_RealDB(t *testing.T) {
+	f := neuerErneuerungsFall(t, 10)
+	issued := f.jetzt - 60
+	if got := f.pruefe(f.gueltig(issued), f.jetzt); len(got) != 0 {
+		t.Fatalf("gueltige Erneuerung gemeldet: %v", got)
+	}
+	// Das lokale Register entscheidet nicht mehr: leer -- gleiches Urteil.
+	if _, err := f.cs.db.Exec(`DELETE FROM coordinator_keys`); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.pruefe(f.gueltig(issued), f.jetzt); len(got) != 0 {
+		t.Fatalf("ohne lokales Register anders beurteilt: %v", got)
+	}
+	altForm := f.gueltig(issued)
+	altForm.Bescheinigung.Mensch, altForm.Bescheinigung.MenschSig, altForm.Bescheinigung.SchluesselSig = "", "", ""
+	k2, m2 := neuerSchluessel(t)
+	fremderBesitz := f.gueltig(issued)
+	fremderBesitz.Bescheinigung.SchluesselSig = hex.EncodeToString(ed25519.Sign(f.priv, []byte("Aequitas: coordinator key for human "+m2)))
+	fremdeFreigabe := f.gueltig(issued)
+	fremdeFreigabe.Bescheinigung.MenschSig = personalSign(t, k2, coordinatorFreigabeNachricht(hex.EncodeToString(f.pub)))
+	// Ein Mensch, den es auf der Kette nicht gibt, mit gueltigen Unterschriften.
+	keinMensch := erneuerungsTransaktion(f.wallet, issued, hex.EncodeToString(f.pub), f.unterschreibe(f.priv, f.wallet, issued),
+		CoordinatorBindung{Mensch: m2, MenschSig: personalSign(t, k2, coordinatorFreigabeNachricht(hex.EncodeToString(f.pub))),
+			SchluesselSig: hex.EncodeToString(ed25519.Sign(f.priv, []byte("Aequitas: coordinator key for human "+m2)))})
+	for name, tx := range map[string]Transaction{
+		"alte Form": altForm, "fremder Besitz": fremderBesitz, "fremde Freigabe": fremdeFreigabe, "kein Mensch": keinMensch,
+	} {
+		if got := f.pruefe(tx, f.jetzt); got["erneuerung_ohne_bescheinigung"] != 1 {
+			t.Fatalf("%s nicht erkannt: %v", name, got)
+		}
+	}
+	// Der Coordinator-Mensch erneuert sich selbst.
+	selbst := neuerErneuerungsFall(t, 10)
+	selbst.cs.mu.Lock()
+	acc := &AccountState{Address: selbst.bindung.Mensch, IsHuman: true, Balance: NewDecimal(200), GrantStagedRest: NewDecimal(800),
+		GrantStagedUntil: selbst.jetzt - 10*86400 + grantStaffelTage*86400}
+	selbst.cs.accounts.Set(acc.Address, acc)
+	err := selbst.cs.saveAccountToDB(acc)
+	selbst.cs.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	eigen := erneuerungsTransaktion(selbst.bindung.Mensch, issued, hex.EncodeToString(selbst.pub),
+		selbst.unterschreibe(selbst.priv, selbst.bindung.Mensch, issued), selbst.bindung)
+	if got := selbst.pruefe(eigen, selbst.jetzt); got["erneuerung_ohne_bescheinigung"] != 1 {
+		t.Fatalf("Selbstbescheinigung nicht erkannt: %v", got)
+	}
+}
+
+// Die Annahme: Bindung aus dem lokalen Register in die Transaktion; ein
+// Eintrag ohne Unterschriften (vor dem 06.10.2026) reicht nicht; ein Folger
+// nimmt nicht an.
+func TestErneuerung_AnnahmeMitBindung_RealDB(t *testing.T) {
+	f := neuerErneuerungsFall(t, 10)
+	a := &APIServer{state: f.cs}
+	reiche := func(issued int64) *httptest.ResponseRecorder {
+		body, _ := json.Marshal(map[string]interface{}{
+			"wallet": f.wallet, "issued_at": issued,
+			"public_key": hex.EncodeToString(f.pub), "signature": f.unterschreibe(f.priv, f.wallet, issued),
+		})
+		w := httptest.NewRecorder()
+		a.handleLivenessRenewal(w, httptest.NewRequest(http.MethodPost, "/api/liveness-renewal", bytes.NewReader(body)))
+		return w
+	}
+	if _, err := f.cs.db.Exec(`UPDATE coordinator_keys SET human_signature = NULL`); err != nil {
+		t.Fatal(err)
+	}
+	if w := reiche(nowUnix()); w.Code != http.StatusForbidden || !bytes.Contains(w.Body.Bytes(), []byte("register the coordinator key again")) {
+		t.Fatalf("Eintrag ohne Unterschriften: %d %s", w.Code, w.Body.String())
+	}
+	if err := f.cs.RegisterCoordinatorKey(hex.EncodeToString(f.pub), f.bindung.Mensch, "", f.bindung.MenschSig, f.bindung.SchluesselSig); err != nil {
+		t.Fatal(err)
+	}
+	f.cs.leitung.Store(&Leitung{}) // Folger
+	if w := reiche(nowUnix()); w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("Folger hat angenommen: %d %s", w.Code, w.Body.String())
+	}
+	f.cs.leitung.Store(nil)
+	if w := reiche(nowUnix()); w.Code != http.StatusOK {
+		t.Fatalf("gueltige Erneuerung abgewiesen: %d %s", w.Code, w.Body.String())
+	}
+	var tj string
+	if err := f.cs.db.QueryRow(`SELECT tx_json FROM pending_txs WHERE included_at = 0 ORDER BY id DESC LIMIT 1`).Scan(&tj); err != nil {
+		t.Fatal(err)
+	}
+	var tx Transaction
+	if err := json.Unmarshal([]byte(tj), &tx); err != nil {
+		t.Fatal(err)
+	}
+	if tx.Bescheinigung == nil || tx.Bescheinigung.Mensch != f.bindung.Mensch || tx.Bescheinigung.MenschSig == "" || tx.Bescheinigung.SchluesselSig == "" {
+		t.Fatalf("Ausgang traegt die Bindung nicht: %+v", tx.Bescheinigung)
+	}
+	// Was im Ausgang liegt, besteht die Pruefung jedes Knotens -- auch ohne
+	// dessen Register.
+	f.cs.db.Exec(`DELETE FROM coordinator_keys`)
+	if got := f.pruefe(tx, f.jetzt); len(got) != 0 {
+		t.Fatalf("ausgesandte Erneuerung beim Nachrechnen gemeldet: %v", got)
+	}
+}
+
+// Die Eintragung ueber HTTP speichert beide Unterschriften -- sonst fehlte
+// der annehmenden Stelle spaeter die Bindung fuer die Bescheinigung.
+func TestCoordinatorEintragung_SpeichertUnterschriften_RealDB(t *testing.T) {
+	f := neuerErneuerungsFall(t, 10)
+	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
+	pubHex := hex.EncodeToString(pub)
+	k, mensch := neuerSchluessel(t)
+	f.cs.mu.Lock()
+	acc := &AccountState{Address: mensch, IsHuman: true, Balance: NewDecimal(10)}
+	f.cs.accounts.Set(mensch, acc)
+	err := f.cs.saveAccountToDB(acc)
+	f.cs.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := json.Marshal(map[string]string{
+		"public_key": pubHex, "human_wallet": mensch,
+		"human_signature": personalSign(t, k, coordinatorFreigabeNachricht(pubHex)),
+		"key_signature":   hex.EncodeToString(ed25519.Sign(priv, []byte("Aequitas: coordinator key for human "+mensch))),
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/register-coordinator-key", bytes.NewReader(body))
+	req.Header.Set("X-Aequitas-Forwarded", "1") // nicht weiterreichen
+	w := httptest.NewRecorder()
+	(&APIServer{state: f.cs}).handleRegisterCoordinatorKey(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("Eintragung: %d %s", w.Code, w.Body.String())
+	}
+	b, ok := f.cs.CoordinatorBindungLokal(pubHex)
+	if !ok || b.Mensch != mensch {
+		t.Fatalf("Bindung nicht gespeichert: %+v %v", b, ok)
+	}
+	tx := erneuerungsTransaktion(f.wallet, f.jetzt-60, pubHex,
+		hex.EncodeToString(ed25519.Sign(priv, []byte(fmt.Sprintf("%s|%s|%d", livenessRenewalDomain, f.wallet, f.jetzt-60)))), b)
+	if got := f.pruefe(tx, f.jetzt); len(got) != 0 {
+		t.Fatalf("Bescheinigung mit gespeicherter Bindung gemeldet: %v", got)
 	}
 }

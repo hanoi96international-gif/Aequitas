@@ -1168,7 +1168,8 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	// Eingang, an dem ein Mensch ankommt.
 	mux.HandleFunc("/api/register-coordinator-key", a.handleRegisterCoordinatorKey)
 	mux.HandleFunc("/api/coordinators", a.handleCoordinatorList)
-	mux.HandleFunc("/api/liveness-renewal", a.handleLivenessRenewal)
+	// Zum Leiter: die Erneuerung geht durch dessen Annahme-Tor (grant_staffel.go).
+	mux.HandleFunc("/api/liveness-renewal", a.zumLeiter(a.handleLivenessRenewal))
 	// Unternehmen (wirtschaft.go, wirtschaft_api.go)
 	mux.HandleFunc("/api/wirtschaft/regeln", a.handleWirtschaftRegeln)
 	mux.HandleFunc("/api/wirtschaft/konto", a.handleWirtschaftKonto)

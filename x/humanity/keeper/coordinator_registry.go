@@ -26,6 +26,14 @@ import (
 // Hier haengt der Schluessel an derselben Bindung wie ueberall sonst -- ein
 // Mensch, ein Schluessel, mit Besitznachweis, oeffentlich nachpruefbar.
 //
+// FUER DEN KONSENS ZAEHLT ES NICHT MEHR (06.10.2026)
+//
+// Die Erneuerungs-Bescheinigung traegt jetzt die Bindung selbst (beide
+// Unterschriften dieser Eintragung, grant_staffel.go), und jeder Knoten prueft
+// sie gegen den Kettenzustand. Das Register dient nur noch dem annehmenden
+// Knoten als Quelle dieser Unterschriften und der Liste fuer die
+// Vergleichsdienste. Unten der Stand davor -- fuer die Liste gilt er weiter.
+//
 // DAS REGISTER IST KNOTENLOKAL, NICHT REPLIZIERT
 //
 // RegisterCoordinatorKey schreibt direkt in die Datenbank DIESES Knotens. Es
@@ -71,6 +79,36 @@ func (cs *ChainState) EnsureCoordinatorRegistry() {
 		url           TEXT,
 		registered_at TIMESTAMP DEFAULT NOW()
 	)`)
+	// Seit 06.10.2026: die beiden Unterschriften der Eintragung. Sie gehen in
+	// jede Erneuerungs-Bescheinigung, damit jeder Knoten die Bindung selbst
+	// prueft (grant_staffel.go, Lebendigkeitsbescheinigung).
+	cs.db.Exec(`ALTER TABLE coordinator_keys ADD COLUMN IF NOT EXISTS human_signature TEXT`)
+	cs.db.Exec(`ALTER TABLE coordinator_keys ADD COLUMN IF NOT EXISTS key_signature TEXT`)
+}
+
+// CoordinatorBindung: was eine Eintragung belegt -- in der Bescheinigung
+// mitgeschickt.
+type CoordinatorBindung struct {
+	Mensch        string
+	MenschSig     string
+	SchluesselSig string
+}
+
+// CoordinatorBindungLokal: die Bindung eines eingetragenen Schluessels aus
+// dem Register dieses Knotens. false, wenn er nicht eingetragen ist oder die
+// Eintragung keine Unterschriften traegt (vor dem 06.10.2026).
+func (cs *ChainState) CoordinatorBindungLokal(publicKey string) (CoordinatorBindung, bool) {
+	if cs.db == nil {
+		return CoordinatorBindung{}, false
+	}
+	cs.EnsureCoordinatorRegistry()
+	var b CoordinatorBindung
+	err := cs.db.QueryRow(`SELECT human_wallet, COALESCE(human_signature, ''), COALESCE(key_signature, '')
+		FROM coordinator_keys WHERE public_key = $1`, strings.ToLower(strings.TrimSpace(publicKey))).Scan(&b.Mensch, &b.MenschSig, &b.SchluesselSig)
+	if err != nil || b.MenschSig == "" || b.SchluesselSig == "" {
+		return CoordinatorBindung{}, false
+	}
+	return b, true
 }
 
 // CoordinatorEntry ist ein anerkannter Coordinator.
@@ -81,7 +119,7 @@ type CoordinatorEntry struct {
 }
 
 // RegisterCoordinatorKey traegt einen Coordinator ein.
-func (cs *ChainState) RegisterCoordinatorKey(publicKey, humanWallet, url string) error {
+func (cs *ChainState) RegisterCoordinatorKey(publicKey, humanWallet, url, humanSig, keySig string) error {
 	if cs.db == nil {
 		return fmt.Errorf("no database")
 	}
@@ -93,13 +131,15 @@ func (cs *ChainState) RegisterCoordinatorKey(publicKey, humanWallet, url string)
 	}
 	cs.EnsureCoordinatorRegistry()
 	_, err := cs.db.Exec(
-		`INSERT INTO coordinator_keys (public_key, human_wallet, url)
-		 VALUES ($1, $2, NULLIF($3, ''))
+		`INSERT INTO coordinator_keys (public_key, human_wallet, url, human_signature, key_signature)
+		 VALUES ($1, $2, NULLIF($3, ''), $4, $5)
 		 ON CONFLICT (public_key) DO UPDATE SET
 		   human_wallet = $2,
 		   url = COALESCE(NULLIF($3, ''), coordinator_keys.url),
+		   human_signature = $4,
+		   key_signature = $5,
 		   registered_at = NOW()`,
-		publicKey, humanWallet, url)
+		publicKey, humanWallet, url, strings.TrimSpace(humanSig), strings.TrimSpace(keySig))
 	return err
 }
 
@@ -210,7 +250,7 @@ func (a *APIServer) handleRegisterCoordinatorKey(w http.ResponseWriter, r *http.
 		jsonError(w, "url must be a public https:// address", http.StatusBadRequest)
 		return
 	}
-	if err := a.state.RegisterCoordinatorKey(pub, human, url); err != nil {
+	if err := a.state.RegisterCoordinatorKey(pub, human, url, req.HumanSignature, req.KeySignature); err != nil {
 		jsonStateError(w, "register-coordinator-key", pub, err)
 		return
 	}

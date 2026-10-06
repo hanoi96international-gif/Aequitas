@@ -181,9 +181,15 @@ den verlinkten Dokumenten.
       - [x] Divergenz-Wächter vergleicht in der Ruhe neben den Konten auch
             Treuhand- und Register-Summe (05.10., `divergenzAbweichung`) --
             vorher sahen zwei Knoten mit verschiedener Treuhand gleich aus
-      - [ ] Coordinator-Register (`coordinator_keys`) als Konsenszustand --
-            heute knotenlokal; nötig, bevor die Staffel aktiv wird, sonst
-            prüfen Knoten mit verschiedenem Register verschieden
+      - [x] Coordinator-Register für den Konsens (06.10.): die
+            Erneuerungs-Bescheinigung trägt jetzt ihre Bindung (Mensch,
+            dessen Freigabe, Besitznachweis des Schlüssels), und jeder Knoten
+            prüft sie gegen den Kettenzustand -- das knotenlokale
+            `coordinator_keys` entscheidet nichts mehr. Neu: kein
+            Coordinator bescheinigt sich selbst. Die Erneuerung geht durchs
+            Annahme-Tor (zum Leiter). Wirkt mit der Staffel (2100,
+            Platzhalter); bestehende Coordinatoren tragen sich vorher einmal
+            neu ein (die Unterschriften werden erst seit heute gespeichert)
       - [ ] Stichtag `nachrechnenStrengAbUnix` setzen, sobald
             `/api/wirtschaft/regeln` über mehrere Runden 0 Abweichungen zeigt.
             C1 spielt seine eigenen Blöcke nicht nach, und **C2 gibt es seit

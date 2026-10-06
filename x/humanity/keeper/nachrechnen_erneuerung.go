@@ -54,10 +54,17 @@ func (cs *ChainState) nachrechnenErneuerungLocked(tx *Transaction, wallet string
 		return nil
 	}
 	wallet = strings.ToLower(strings.TrimSpace(wallet))
-	b := tx.Bescheinigung
-	if b == nil || !livenessRenewalSignaturGueltig(cs, wallet, tx.DistributionAt, b.PublicKey, b.Signature) {
+	// Ohne Coordinator-Register: die Bescheinigung traegt ihre Bindung, und
+	// ob der Mensch dahinter registriert ist, steht im Kettenzustand -- jeder
+	// Knoten kommt zum selben Urteil (grant_staffel.go, bescheinigungPruefen).
+	istMensch := func(m string) bool {
+		cs.ensureAccountLoadedCtx(context.Background(), m)
+		acc, ok := cs.accounts.Get(m)
+		return ok && acc.IsHuman
+	}
+	if err := bescheinigungPruefen(wallet, tx.DistributionAt, tx.Bescheinigung, istMensch); err != nil {
 		return nachrechnenAbweichung("erneuerung_ohne_bescheinigung", blockZeit,
-			"%s: keine gueltige Bescheinigung eines eingetragenen Coordinators", kurzAdresse(wallet))
+			"%s: keine gueltige Bescheinigung: %v", kurzAdresse(wallet), err)
 	}
 	if tx.DistributionAt <= 0 || blockZeit-tx.DistributionAt > erneuerungHoechstensAlt || tx.DistributionAt-blockZeit > erneuerungHoechstensVoraus {
 		return nachrechnenAbweichung("erneuerung_zeit", blockZeit,
