@@ -208,7 +208,7 @@ async function eintragen() {
         fehler(d3.error || 'The chain registry refused the binding.');
         return;
       }
-      zeile('Bound on the chain: every node now knows this signing key belongs to your wallet.', 'ok');
+      zeile('Accepted: the binding goes into the next block, and every node checks it there before it counts.', 'ok');
     }
     zeile('Done.', 'ok');
   } catch (e) {

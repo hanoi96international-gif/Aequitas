@@ -1,8 +1,12 @@
 package keeper
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -34,6 +38,7 @@ func (f *registerFall) ausgang() []Transaction {
 
 func TestValidatorBinden_AnnahmeUndNachspielen_RealDB(t *testing.T) {
 	f := neuerRegisterFall(t)
+	f.cs.annehmendAusdruecklich.Store(true)
 	betreiber := f.betreiber()
 	knoten, kw := neuerSchluessel(t)
 
@@ -99,6 +104,7 @@ func TestValidatorBinden_AnnahmeUndNachspielen_RealDB(t *testing.T) {
 // Ablehnung hinterlaesst weder Register noch Ausgang noch Summe.
 func TestValidatorBinden_NichtMensch_RealDB(t *testing.T) {
 	f := neuerRegisterFall(t)
+	f.cs.annehmendAusdruecklich.Store(true)
 	fremd, _ := neuerSchluessel(t) // kein Konto
 	knoten, _ := neuerSchluessel(t)
 
@@ -115,6 +121,7 @@ func TestValidatorBinden_NichtMensch_RealDB(t *testing.T) {
 // -- sonst laegen Bindungen in Geschwisterbloecken.
 func TestValidatorBinden_NurDerLeiter_RealDB(t *testing.T) {
 	f := neuerRegisterFall(t)
+	f.cs.annehmendAusdruecklich.Store(true)
 	betreiber := f.betreiber()
 	knoten, _ := neuerSchluessel(t)
 
@@ -129,5 +136,135 @@ func TestValidatorBinden_NurDerLeiter_RealDB(t *testing.T) {
 	}
 	if n := f.cs.annahmenLaufend.Load(); n != 0 {
 		t.Fatalf("annahmenLaufend %d", n)
+	}
+}
+
+// Ein Fehler NACH dem Anwenden (hier: der Ausgang nimmt die Zeile nicht)
+// rollt alles zurueck -- auch die Ueberholt-Markierung der frueheren Bindung
+// eines anderen Betreibers an denselben Schluessel und die Summe.
+func TestValidatorBinden_RollbackNachAusgangsfehler_RealDB(t *testing.T) {
+	f := neuerRegisterFall(t)
+	f.cs.annehmendAusdruecklich.Store(true)
+	a, b := f.betreiber(), f.betreiber()
+	knoten, _ := neuerSchluessel(t)
+	if err := f.cs.ValidatorBinden(bindungUnterschrieben(t, a, knoten, f.jetzt-60)); err != nil {
+		t.Fatal(err)
+	}
+	summe := f.summe()
+	if _, err := f.cs.db.Exec(`ALTER TABLE pending_txs ADD CONSTRAINT test_keine_bindung CHECK (tx_json NOT LIKE '%"validator_bindung"%') NOT VALID`); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { f.cs.db.Exec(`ALTER TABLE pending_txs DROP CONSTRAINT IF EXISTS test_keine_bindung`) })
+	if err := f.cs.ValidatorBinden(bindungUnterschrieben(t, b, knoten, f.jetzt)); err == nil {
+		t.Fatal("Bindung trotz Ausgangsfehler angenommen")
+	}
+	var ueberholt bool
+	if err := f.cs.db.QueryRow(`SELECT ueberholt FROM validator_register WHERE operator_wallet = $1`, adrVon(a)).Scan(&ueberholt); err != nil || ueberholt {
+		t.Fatalf("fruehere Bindung nach dem Rollback ueberholt=%v (%v)", ueberholt, err)
+	}
+	if _, _, ok := f.eintrag(b); ok {
+		t.Fatal("Bindung von B nach dem Rollback im Register")
+	}
+	if f.summe() != summe || f.summe() != f.neuAufgebaut() {
+		t.Fatal("Summe nach dem Rollback veraendert")
+	}
+	if n := f.cs.annahmenLaufend.Load(); n != 0 {
+		t.Fatalf("annahmenLaufend %d", n)
+	}
+}
+
+// Wallets, die v 0/1 oder Grossbuchstaben liefern, binden trotzdem -- im
+// Register und im Ausgang steht die kanonische Form, die jeder Nachspielende
+// verlangt.
+func TestValidatorBinden_AngeglicheneSignatur_RealDB(t *testing.T) {
+	f := neuerRegisterFall(t)
+	f.cs.annehmendAusdruecklich.Store(true)
+	op := f.betreiber()
+	knoten, _ := neuerSchluessel(t)
+	tx := bindungUnterschrieben(t, op, knoten, f.jetzt)
+	kanon := tx.Nachweis.Sig
+	v := "00"
+	if kanon[130:] == "1c" {
+		v = "01"
+	}
+	tx.Nachweis.Sig = "0x" + strings.ToUpper(kanon[2:130]) + v
+	if err := f.cs.ValidatorBinden(tx); err != nil {
+		t.Fatalf("angeglichene Signatur abgewiesen: %v", err)
+	}
+	aus := f.ausgang()
+	if len(aus) != 1 || aus[0].Nachweis.Sig != kanon {
+		t.Fatalf("im Ausgang: %+v", aus)
+	}
+	if aus[0].Nachweis.Nonce != 0 || aus[0].Nachweis.Von2 != "" || aus[0].Nachweis.Betrag != 0 {
+		t.Fatal("fremde Nachweis-Felder im Ausgang")
+	}
+}
+
+// Ueber HTTP: je Betreiber eine angenommene Bindung je 30 s; ein Erfolg
+// verbraucht keinen Fehlversuch der IP.
+func TestHandleValidatorBindung_JeBetreiber_RealDB(t *testing.T) {
+	f := neuerRegisterFall(t)
+	f.cs.annehmendAusdruecklich.Store(true)
+	op := f.betreiber()
+	k1, _ := neuerSchluessel(t)
+	k2, _ := neuerSchluessel(t)
+	a := &APIServer{state: f.cs}
+	h := a.bindungsGrenze(a.handleValidatorBindung)
+	ip := "192.0.2.77"
+	t.Cleanup(func() {
+		registerRateLimit.Delete("validator-bindung-fehl:" + ip)
+		registerRateLimit.Delete("validator-bindung-betreiber:" + adrVon(op))
+	})
+	posten := func(tx Transaction) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/api/validator-bindung", bytes.NewReader(bindungsKoerper(t, tx)))
+		req.RemoteAddr = ip + ":1"
+		rec := httptest.NewRecorder()
+		h(rec, req)
+		return rec
+	}
+	rec := posten(bindungUnterschrieben(t, op, k1, f.jetzt))
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "next block") {
+		t.Fatalf("erste Bindung: %d %s", rec.Code, rec.Body.String())
+	}
+	if _, ok := registerRateLimit.Load("validator-bindung-fehl:" + ip); ok {
+		t.Fatal("Erfolg als Fehlversuch gezaehlt")
+	}
+	if rec := posten(bindungUnterschrieben(t, op, k2, f.jetzt+1)); rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("zweite Bindung desselben Betreibers binnen 30 s: %d %s", rec.Code, rec.Body.String())
+	}
+	if s, _, _ := f.eintrag(op); s != adrVon(k1) {
+		t.Fatalf("Register: %s", s)
+	}
+}
+
+// Missbrauch: ein Fremder mit zwei frischen Schluesseln (gueltige
+// Unterschriften, aber kein Mensch) erreicht die Schreibsperre nicht -- die
+// Vorpruefung weist ihn ab.
+func TestValidatorBinden_VorpruefungOhneSperre_RealDB(t *testing.T) {
+	f := neuerRegisterFall(t)
+	f.cs.annehmendAusdruecklich.Store(true)
+	fremd, _ := neuerSchluessel(t)
+	knoten, _ := neuerSchluessel(t)
+	// snapshotNs waechst bei jedem Eintritt in die atomare Sektion (unter
+	// der Schreibsperre), auch wenn sie danach scheitert.
+	vorher := atomicPhasenStand.snapshotNs.Load()
+	err := f.cs.ValidatorBinden(bindungUnterschrieben(t, fremd, knoten, f.jetzt))
+	if !istZustandsAblehnung(err) {
+		t.Fatalf("erwartet Zustandsablehnung, bekam %v", err)
+	}
+	if atomicPhasenStand.snapshotNs.Load() != vorher {
+		t.Fatal("die Bindung eines Fremden hat die Schreibsperre erreicht")
+	}
+	// Nicht neuer: ebenso vor der Sperre.
+	op := f.betreiber()
+	if err := f.cs.ValidatorBinden(bindungUnterschrieben(t, op, knoten, f.jetzt)); err != nil {
+		t.Fatal(err)
+	}
+	vorher = atomicPhasenStand.snapshotNs.Load()
+	if err := f.cs.ValidatorBinden(bindungUnterschrieben(t, op, knoten, f.jetzt-5)); !istZustandsAblehnung(err) {
+		t.Fatalf("aeltere Bindung: %v", err)
+	}
+	if atomicPhasenStand.snapshotNs.Load() != vorher {
+		t.Fatal("eine aeltere Bindung hat die Schreibsperre erreicht")
 	}
 }

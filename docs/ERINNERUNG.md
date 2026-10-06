@@ -102,8 +102,11 @@ den verlinkten Dokumenten.
               Signierschlüssel, Register in `validator_register`, Summe in
               der StateRoot, Snapshot (`validator_register.go`). Vor dem
               Stichtag `validatorRegisterAbUnix` (Platzhalter) ungültig
-        - [ ] Schritt 2: `/api/peers/register` legt die Bindung in den
-              Ausgang, bestehende Betreiber binden neu
+        - [x] Schritt 2, schlafend (05.10.): `POST /api/validator-bindung`
+              legt die Bindung beim Leiter (oder dem einen Knoten mit
+              `ANNAHME_ROLLE=annehmend`) in den Ausgang, beide Unterschriften
+              mit Zeitpunkt (Selbstnachweis + `/node-binding`). Bestehende
+              Betreiber binden nach dem Stichtag einmal neu
         - [ ] Schritt 3: Strafkonto, Belohnung, Erzeugerliste und Komitee
               lesen aus dem Register; Stichtag setzen (eure Entscheidung,
               `docs/VALIDATOR_REGISTER_KONSENS.md`)
@@ -172,11 +175,6 @@ den verlinkten Dokumenten.
             Tag 7 (`nachrechnen_erneuerung.go`). Vor der Aktivierung (2100)
             ungeprüft wie bisher. Die Bindung an dieselbe Person leistet der
             Coordinator (WP 3, Wallet-Signatur und Gesichtsabgleich)
-      - [x] Validator-Register Schritt 2 (05.10., schlafend): die Bindung
-            kommt über `POST /api/validator-bindung` beim Leiter in den
-            Ausgang, beide Unterschriften mit Zeitpunkt (Selbstnachweis +
-            `/node-binding`). Offen: Schritt 3 (Leser umstellen) und der
-            Stichtag (`docs/VALIDATOR_REGISTER_KONSENS.md`)
       - [ ] Coordinator-Register (`coordinator_keys`) als Konsenszustand --
             heute knotenlokal; nötig, bevor die Staffel aktiv wird, sonst
             prüfen Knoten mit verschiedenem Register verschieden

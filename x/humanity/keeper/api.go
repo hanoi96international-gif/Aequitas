@@ -1186,7 +1186,7 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	mux.HandleFunc("/api/validator-selfproof", a.handleValidatorSelfProof)
 	// Validator-Register, Schritt 2 (validator_bindung_annahme.go): nur der
 	// Leiter nimmt an -- das Register gehoert keinem Konto.
-	mux.HandleFunc("/api/validator-bindung", a.zumLeiter(a.handleValidatorBindung))
+	mux.HandleFunc("/api/validator-bindung", a.bindungsGrenze(a.zumLeiter(a.handleValidatorBindung)))
 	mux.HandleFunc("/api/validator-binding", a.handleValidatorBinding)
 	// Zum Zustaendigen des Schutzbefohlenen: beides sind Transaktionen
 	// (vormund_kette.go) und gehoeren durch dessen Annahme-Tor.

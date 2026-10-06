@@ -111,13 +111,24 @@ Dinge ohne Konsenswirkung (Erreichbarkeit, Messwerte als Hinweis).
      schickt beide Unterschriften an `POST /api/validator-bindung`.
    - Nur der **Leiter** nimmt an (`annahmeBeginnenLeiter`; Folger leiten
      weiter, `zumLeiter`): das Register gehört keinem Konto, und so liegen
-     alle Bindungen in einer Linie von Blöcken. Die Annahme prüft Form,
-     beide Unterschriften, „Betreiber ist Mensch“ und „neuer als die
-     bisherige“ wie jeder Nachspielende und wendet die Bindung in derselben
-     Transaktion an wie den Ausgang.
+     alle Bindungen in einer Linie von Blöcken. **Ohne rotierenden Leiter
+     nimmt nur der Knoten an, der ausdrücklich `ANNAHME_ROLLE=annehmend`
+     trägt** – vor dem Stichtag auf genau einem Knoten setzen. Ohne Angabe
+     nimmt kein Knoten Bindungen an (per Vorgabe nähmen sonst alle an).
+   - Die Annahme prüft Form, beide Unterschriften, „Betreiber ist Mensch“
+     und „neuer als die bisherige“ wie jeder Nachspielende – die letzten
+     beiden zuerst ohne Schreibsperre (Vorprüfung), verbindlich in derselben
+     Transaktion wie der Ausgang.
    - Strenger als das Nachspielen ist nur der Zeitpunkt: höchstens
      **10 Minuten** alt bei der Annahme (das Nachspielen nimmt eine Stunde).
-   - Grenzen: 4 KB Body, eine Anfrage je IP in 30 s.
+     Liegt eine Bindung länger im Ausgang (Absturz), trägt der nächste Block
+     die Zeit ihrer Annahme (`block_tauglich.go`); weggelassen wird nichts.
+   - Grenzen: 4 KB Body, höchstens 4 Anfragen zugleich, je IP ein
+     Fehlversuch je 30 s (gezählt auf dem Knoten, den der Mensch erreicht,
+     vor der Weiterleitung), je Betreiber eine angenommene Bindung je 30 s.
+     Signaturen mit `v` 0/1 oder Großbuchstaben werden angeglichen.
+   - Angenommen heißt: im Ausgang des Leiters. Auf der Kette steht die
+     Bindung mit dem nächsten Block.
    - Vor dem Stichtag: Endpunkt 409, Selbstnachweis ohne die neuen Felder.
    - Jeder bestehende Betreiber bindet nach dem Stichtag einmal neu – bei der
      heutigen Zahl (ein Betreiber, C1) ein Handgriff.
