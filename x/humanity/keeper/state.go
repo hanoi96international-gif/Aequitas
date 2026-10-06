@@ -221,6 +221,10 @@ type ChainState struct {
 	// annahmenLaufend zaehlt Annahmen, die das Tor passiert haben und noch
 	// nicht fertig sind -- der Leiter uebergibt erst, wenn es 0 ist.
 	annahmenLaufend atomic.Int64
+	// annehmendAusdruecklich: ANNAHME_ROLLE=annehmend -- dieser Knoten ist
+	// ausdruecklich der eine Annehmende (Validator-Bindung ohne Leitung,
+	// validator_bindung_annahme.go). Ohne Angabe nehmen sonst alle an.
+	annehmendAusdruecklich atomic.Bool
 	// annahme_pause.go: seit wann dieser Knoten Bloecke erzeugt (0 = nie
 	// versucht), wann er zuletzt einen gespeichert hat, und bis zu welcher
 	// Ausgangszeile der Ausgang von vor dem Start reicht (0 = verblockt).
@@ -815,6 +819,7 @@ func NewChainState(dataFile string) *ChainState {
 		nullifiers: make(map[string]string),
 	}
 	cs.nurLesend.Store(annahmeRolleAusUmgebung())
+	cs.annehmendAusdruecklich.Store(annahmeRolleAusdruecklichAnnehmend())
 
 	// Try PostgreSQL first
 	if os.Getenv("RESET_STATE") == "true" && os.Getenv("DATABASE_URL") != "" {

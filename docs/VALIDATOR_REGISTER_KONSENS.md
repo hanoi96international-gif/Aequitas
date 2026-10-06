@@ -100,17 +100,38 @@ Dinge ohne Konsenswirkung (Erreichbarkeit, Messwerte als Hinweis).
      Sie ist öffentlich (`/api/validators`) und zeitlos: wer sie kennt, hätte
      einen Betreiber an eine alte Adresse binden können, bevor er selbst
      bindet. Bestehende Betreiber unterschreiben deshalb neu (Schritt 2).
-2. **Aussenden**
-   - `/api/peers/register` nimmt beide Unterschriften mit Zeitpunkt an und
-     legt die Bindung in den Ausgang; die Signier-Unterschrift liefert der
-     Knoten selbst (wie heute `signing_key_signature` in
-     `/api/validator-self-proof`).
-   - Das Werkzeug `/node-binding` zeigt den neuen Satz.
-   - Der Annehmende legt die Bindung sofort in einen Block. Eine Bindung,
-     die älter als eine Stunde würde, nimmt er aus dem Ausgang – sonst
-     machte sie seinen ganzen Block ungültig.
-   - Jeder bestehende Betreiber bindet einmal neu – bei der heutigen Zahl
-     (ein Betreiber, C1) ein Handgriff.
+2. **Aussenden** – umgesetzt (05.10., `validator_bindung_annahme.go`),
+   schlafend bis zum selben Stichtag
+   - `/api/validator-selfproof` liefert ab dem Stichtag zusätzlich
+     `bindung_zeit`, `bindung_nachricht` (`Aequitas: bind validator
+     <signing> to operator <wallet> chain:<id> ts:<zeit>`) und
+     `bindung_signatur_knoten` – nur für den eigenen Betreiber
+     (`NODE_OPERATOR_WALLET`), wie der bisherige Nachweis.
+   - `/node-binding` lässt die Wallet denselben Satz unterschreiben und
+     schickt beide Unterschriften an `POST /api/validator-bindung`.
+   - Nur der **Leiter** nimmt an (`annahmeBeginnenLeiter`; Folger leiten
+     weiter, `zumLeiter`): das Register gehört keinem Konto, und so liegen
+     alle Bindungen in einer Linie von Blöcken. **Ohne rotierenden Leiter
+     nimmt nur der Knoten an, der ausdrücklich `ANNAHME_ROLLE=annehmend`
+     trägt** – vor dem Stichtag auf genau einem Knoten setzen. Ohne Angabe
+     nimmt kein Knoten Bindungen an (per Vorgabe nähmen sonst alle an).
+   - Die Annahme prüft Form, beide Unterschriften, „Betreiber ist Mensch“
+     und „neuer als die bisherige“ wie jeder Nachspielende – die letzten
+     beiden zuerst ohne Schreibsperre (Vorprüfung), verbindlich in derselben
+     Transaktion wie der Ausgang.
+   - Strenger als das Nachspielen ist nur der Zeitpunkt: höchstens
+     **10 Minuten** alt bei der Annahme (das Nachspielen nimmt eine Stunde).
+     Liegt eine Bindung länger im Ausgang (Absturz), trägt der nächste Block
+     die Zeit ihrer Annahme (`block_tauglich.go`); weggelassen wird nichts.
+   - Grenzen: 4 KB Body, höchstens 4 Anfragen zugleich, je IP ein
+     Fehlversuch je 30 s (gezählt auf dem Knoten, den der Mensch erreicht,
+     vor der Weiterleitung), je Betreiber eine angenommene Bindung je 30 s.
+     Signaturen mit `v` 0/1 oder Großbuchstaben werden angeglichen.
+   - Angenommen heißt: im Ausgang des Leiters. Auf der Kette steht die
+     Bindung mit dem nächsten Block.
+   - Vor dem Stichtag: Endpunkt 409, Selbstnachweis ohne die neuen Felder.
+   - Jeder bestehende Betreiber bindet nach dem Stichtag einmal neu – bei der
+     heutigen Zahl (ein Betreiber, C1) ein Handgriff.
 3. **Leser umstellen** (ab dem Stichtag)
    - Strafkonto, Validatoren-Belohnung, Erzeugerliste und Komitee lesen aus
      `validator_register` – über `validatorZuSignieradresseCtx`, und nur

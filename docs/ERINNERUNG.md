@@ -102,8 +102,11 @@ den verlinkten Dokumenten.
               Signierschlüssel, Register in `validator_register`, Summe in
               der StateRoot, Snapshot (`validator_register.go`). Vor dem
               Stichtag `validatorRegisterAbUnix` (Platzhalter) ungültig
-        - [ ] Schritt 2: `/api/peers/register` legt die Bindung in den
-              Ausgang, bestehende Betreiber binden neu
+        - [x] Schritt 2, schlafend (05.10.): `POST /api/validator-bindung`
+              legt die Bindung beim Leiter (oder dem einen Knoten mit
+              `ANNAHME_ROLLE=annehmend`) in den Ausgang, beide Unterschriften
+              mit Zeitpunkt (Selbstnachweis + `/node-binding`). Bestehende
+              Betreiber binden nach dem Stichtag einmal neu
         - [ ] Schritt 3: Strafkonto, Belohnung, Erzeugerliste und Komitee
               lesen aus dem Register; Stichtag setzen (eure Entscheidung,
               `docs/VALIDATOR_REGISTER_KONSENS.md`)

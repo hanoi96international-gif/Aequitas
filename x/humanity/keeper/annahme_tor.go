@@ -113,6 +113,12 @@ func annahmeRolleAusUmgebung() bool {
 	return strings.EqualFold(strings.TrimSpace(os.Getenv(annahmeRolleEnv)), "nur_lesend")
 }
 
+// annahmeRolleAusdruecklichAnnehmend: ANNAHME_ROLLE=annehmend ausdruecklich
+// gesetzt (nicht nur "nichts gesetzt").
+func annahmeRolleAusdruecklichAnnehmend() bool {
+	return strings.EqualFold(strings.TrimSpace(os.Getenv(annahmeRolleEnv)), "annehmend")
+}
+
 // nimmtUeberweisungenAn sagt, ob dieser Knoten Ueberweisungen annehmen darf.
 //
 // Mit rotierendem Leiter (leitung.go) nur, solange er der Leiter ist und

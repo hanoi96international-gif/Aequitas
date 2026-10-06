@@ -180,6 +180,36 @@ async function eintragen() {
       'registration only counts on this one node:', 'ok');
     wertZeigen('NODE_OPERATOR_BINDING_SIGNATURE=' + signatur);
     zeile('Not secret: it only says that your wallet authorizes this one signing address.', 'ok');
+
+    // Validator-Register auf der Kette (validator_bindung_annahme.go): sobald
+    // der Stichtag gilt, liefert der Knoten einen zweiten Satz mit Zeitpunkt
+    // und seiner eigenen Unterschrift. Die Wallet unterschreibt ihn auch, und
+    // die Bindung geht als Transaktion an den Leiter -- dann gilt sie auf
+    // JEDEM Knoten, ohne die Zeile oben weiterzureichen.
+    if (d1.bindung_nachricht) {
+      zeile('Waiting for your second signature (chain registry)…');
+      const bindung = await window.ethereum.request({
+        method: 'personal_sign',
+        params: [d1.bindung_nachricht, wallet],
+      });
+      const r3 = await fetch('/api/validator-bindung', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          operator: wallet,
+          signing: d1.signing_address,
+          ts: d1.bindung_zeit,
+          operator_signature: bindung,
+          signing_signature: d1.bindung_signatur_knoten,
+        }),
+      });
+      const d3 = await alsJSON(r3);
+      if (!r3.ok || d3.error) {
+        fehler(d3.error || 'The chain registry refused the binding.');
+        return;
+      }
+      zeile('Accepted: the binding goes into the next block, and every node checks it there before it counts.', 'ok');
+    }
     zeile('Done.', 'ok');
   } catch (e) {
     // Ablehnen in der Wallet ist ein Nein, kein Fehler.
