@@ -181,6 +181,24 @@ den verlinkten Dokumenten.
       - [x] Divergenz-Wächter vergleicht in der Ruhe neben den Konten auch
             Treuhand- und Register-Summe (05.10., `divergenzAbweichung`) --
             vorher sahen zwei Knoten mit verschiedener Treuhand gleich aus
+      - [x] Blockzeit nach den Aufträgen (05.10., `block_tauglich.go`): ein
+            Tausch oder Vormund-Auftrag, der nach einem Neustart über eine
+            Stunde im Ausgang lag, hätte mit der Uhrzeit den ganzen Block und
+            damit die Kette angehalten. Jetzt trägt der Block die späteste
+            Zeit seit den Eltern, zu der jeder Knoten alle Aufträge annimmt
+            (nach einem Absturz: die Zeit ihrer Annahme) -- nichts wird
+            weggelassen, sonst wiche der Erzeuger ab. Passen nicht alle zu
+            einer Zeit, trägt der Block den längsten passenden Anfang und der
+            Rest folgt (`blockzeit.geteilt`, auch im Speicherkorb); passt
+            schon der erste Auftrag zu keiner Zeit, entsteht kein Block
+            (fail-closed, `blockzeit.konflikte`). Die Annahme hält an,
+            solange der Ausgang von vor dem Start offen ist, seit 30 s kein
+            eigener Block entstand oder die älteste offene Zeile über 10 min
+            alt ist (`annahme_pause.go`, auch Registrierung und RPC vor der
+            Nonce). Beim Start öffnet der Knoten mit der Erzeuger-
+            Instanzsperre Zeilen aus einem ungespeicherten Block sofort
+            wieder. Vormund/Lebenszeichen werden nur noch bis 10 min nach der
+            Unterschrift angenommen
       - [x] Coordinator-Register für den Konsens (06.10.): die
             Erneuerungs-Bescheinigung trägt jetzt ihre Bindung (Mensch,
             dessen Freigabe, Besitznachweis des Schlüssels), und jeder Knoten
@@ -212,7 +230,8 @@ den verlinkten Dokumenten.
 - [ ] Regel B von Stufe 2 trennen (eigenes Aktivierungsdatum) -- nur falls
       gewünscht
 - [ ] Ein Wirtschaftsmodell (Simulation) der Regeln bauen
-- [ ] `GRUNDPFEILER.md` als Seite veröffentlichen
+- [x] `GRUNDPFEILER.md` als Seite veröffentlichen (06.10.): `/grundpfeiler`,
+      verlinkt auf Startseite und Explorer (`grundpfeiler_seite.go`)
 
 ## Wo was steht
 

@@ -328,6 +328,18 @@ func (a *APIServer) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// annahme_pause.go: nicht, solange die Erzeugung steht oder der Ausgang
+	// von vor dem Start noch offen ist -- VOR der EVM-Transaktion, damit
+	// nichts halb geschieht (danach waere es ein Fall fuer die Wiederholung,
+	// registration_recovery). Nur auf dem annehmenden Knoten: ein Knoten,
+	// der nichts annimmt, verblockt auch keinen Ausgang.
+	if a.state.nimmtAnFuer() {
+		if err := a.state.annahmePausiert(); err != nil {
+			json.NewEncoder(w).Encode(RegisterResponse{Success: false, Message: err.Error()})
+			return
+		}
+	}
+
 	fmt.Printf("[REGISTER] Relaying registerWithSig for: %s\n", wallet)
 
 	// Use the shared EVMRPCServer so all parallel registrations share

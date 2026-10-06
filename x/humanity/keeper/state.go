@@ -221,6 +221,19 @@ type ChainState struct {
 	// annahmenLaufend zaehlt Annahmen, die das Tor passiert haben und noch
 	// nicht fertig sind -- der Leiter uebergibt erst, wenn es 0 ist.
 	annahmenLaufend atomic.Int64
+	// annahme_pause.go: seit wann dieser Knoten Bloecke erzeugt (0 = nie
+	// versucht), wann er zuletzt einen gespeichert hat, und bis zu welcher
+	// Ausgangszeile der Ausgang von vor dem Start reicht (0 = verblockt).
+	erzeugerSeit        atomic.Int64
+	letzterEigenerBlock atomic.Int64
+	ausgangVorStartBis  atomic.Int64
+	// instanzSperre: eigene Verbindung, die die Erzeuger-Instanzsperre haelt
+	// (annahme_pause.go, erzeugerInstanzSperren) -- solange dieser Prozess
+	// lebt. nil = nicht gehalten.
+	instanzSperre *sql.Conn
+	// ausgangVorStartBedingung: welche Zeilen die Startsperre zaehlt
+	// (annahme_pause.go). Gesetzt beim Start, danach nur gelesen.
+	ausgangVorStartBedingung string
 
 	mu sync.RWMutex
 	// accounts is a *shardedAccounts (see sharded_accounts.go /

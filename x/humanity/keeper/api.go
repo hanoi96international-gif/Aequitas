@@ -717,6 +717,7 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		"nonce_nachtrag":           NonceNachtragStand(),
 		"zustands_ablehnung":       ZustandsAblehnungStand(),
 		"annahme_tor":              a.state.AnnahmeTorStand(),
+		"annahme_pause":            a.state.AnnahmePauseStand(),
 		"signierte_ueberweisungen": SignierteUeberweisungenStand(),
 		"absender_cache":           AbsenderCacheStand(),
 		"kappung_verteilt":         a.state.KappungStand(),
@@ -1018,6 +1019,9 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	// /datenschutz zu existieren SCHIENEN, ohne es zu tun.
 	mux.HandleFunc("/impressum", a.handleImpressum)
 	mux.HandleFunc("/datenschutz", a.handleDatenschutz)
+	// Die Grundpfeiler (grundpfeiler_seite.go) -- immer sichtbar, anders als
+	// die Rechtstexte haengen sie an keiner Pflichtangabe.
+	mux.HandleFunc("/grundpfeiler", a.handleGrundpfeiler)
 	mux.HandleFunc("/api/legal-status", a.handleLegalStatus)
 	// robots.txt fiel bis zum 13.09.2026 in den Catch-all und bekam die
 	// 238-KB-Explorer-Seite als text/html. Ein Crawler liest daraus keine
@@ -2703,7 +2707,8 @@ func (a *APIServer) handleUI(w http.ResponseWriter, r *http.Request) {
 	// explorerHTMLVersioned (not the raw explorerHTML) — see its own comment
 	// in api_html.go for why: it points at content-hashed CSS/JS URLs so a
 	// browser that cached last deploy's assets fetches this deploy's instead.
-	fmt.Fprint(w, mitLegalLinks(explorerHTMLVersioned, ` · <a href="/impressum" style="color:inherit">Impressum</a> · <a href="/datenschutz" style="color:inherit">Datenschutz</a>`))
+	fmt.Fprint(w, mitFussLinks(explorerHTMLVersioned, ` · <a href="/grundpfeiler" style="color:inherit">Grundpfeiler</a>`,
+		` · <a href="/impressum" style="color:inherit">Impressum</a> · <a href="/datenschutz" style="color:inherit">Datenschutz</a>`))
 }
 
 // mitLegalLinks setzt die Verweise auf Impressum und Datenschutz in die
@@ -2712,10 +2717,16 @@ func (a *APIServer) handleUI(w http.ResponseWriter, r *http.Request) {
 // waere schlimmer als keiner; ohne Verweis waeren die Seiten nach dem
 // Freischalten von keiner Seite aus erreichbar (§ 5 DDG: zwei Klicks).
 func mitLegalLinks(html, links string) string {
+	return mitFussLinks(html, "", links)
+}
+
+// mitFussLinks: fest erscheint immer (Grundpfeiler), legal nur, wenn das
+// Impressum vollstaendig ist.
+func mitFussLinks(html, fest, legal string) string {
 	if len(fehlendeLegalFelder()) > 0 {
-		links = ""
+		legal = ""
 	}
-	return strings.Replace(html, "<!--LEGAL_LINKS-->", links, 1)
+	return strings.Replace(html, "<!--LEGAL_LINKS-->", fest+legal, 1)
 }
 
 // handleExplorerCSS/handleExplorerJS serve the Explorer UI's stylesheet and
@@ -4006,7 +4017,8 @@ func (a *APIServer) schreibeLandingSeite(w http.ResponseWriter, r *http.Request,
 	setHSTS(w, r)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
-	fmt.Fprint(w, mitLegalLinks(html, `
+	fmt.Fprint(w, mitFussLinks(html, `
+    <a href="/grundpfeiler">Grundpfeiler</a>`, `
     <a href="/impressum">Impressum</a>
     <a href="/datenschutz">Datenschutz</a>`))
 }
