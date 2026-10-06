@@ -178,6 +178,9 @@ den verlinkten Dokumenten.
             `issued_at` der Bescheinigung) statt jeder nach seiner Uhr bzw.
             der Blockzeit -- sonst wiche ab der Aktivierung jedes gestaffelte
             Konto in der StateRoot ab (`grant_staffel.go`, „EIN ZEITPUNKT“)
+      - [x] Divergenz-Wächter vergleicht in der Ruhe neben den Konten auch
+            Treuhand- und Register-Summe (05.10., `divergenzAbweichung`) --
+            vorher sahen zwei Knoten mit verschiedener Treuhand gleich aus
       - [x] Blockzeit nach den Aufträgen (05.10., `block_tauglich.go`): ein
             Tausch oder Vormund-Auftrag, der nach einem Neustart über eine
             Stunde im Ausgang lag, hätte mit der Uhrzeit den ganzen Block und

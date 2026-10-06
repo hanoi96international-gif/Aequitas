@@ -7438,9 +7438,11 @@ type StateRootComponents struct {
 	PoolLPShares    int64  `json:"pool_lp_shares_micro"`
 	NullifierSetXOR string `json:"nullifier_set_xor"`
 	// Leer, solange es keine Treuhand gibt (dann ist sie nicht in der Wurzel).
-	EscrowSetXOR string `json:"escrow_set_xor,omitempty"`
+	// Immer im JSON, auch leer: der Divergenz-Waechter unterscheidet "leer"
+	// von "fehlt" (aelterer Seed, divergenz_waechter.go).
+	EscrowSetXOR string `json:"escrow_set_xor"`
 	// Ebenso fuer das Validator-Register.
-	ValidatorSetXOR string `json:"validator_set_xor,omitempty"`
+	ValidatorSetXOR string `json:"validator_set_xor"`
 	LastUBIAt       string `json:"last_ubi_at"`
 	StateRoot       string `json:"state_root"`
 }
