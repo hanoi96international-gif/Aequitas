@@ -224,7 +224,8 @@ den verlinkten Dokumenten.
 - [ ] Regel B von Stufe 2 trennen (eigenes Aktivierungsdatum) -- nur falls
       gewünscht
 - [ ] Ein Wirtschaftsmodell (Simulation) der Regeln bauen
-- [ ] `GRUNDPFEILER.md` als Seite veröffentlichen
+- [x] `GRUNDPFEILER.md` als Seite veröffentlichen (06.10.): `/grundpfeiler`,
+      verlinkt auf Startseite und Explorer (`grundpfeiler_seite.go`)
 
 ## Wo was steht
 
