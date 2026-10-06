@@ -183,6 +183,13 @@ func TestAnnahmeBeginnenLeiter_NurDerLeiter(t *testing.T) {
 	}
 	cs.annahmeEnde()
 
+	// Die Annahmepause (annahme_pause.go) gilt auch hier.
+	cs.ausgangVorStartBis.Store(1)
+	if err := cs.annahmeBeginnenLeiter(); !errors.Is(err, ErrAnnahmePausiert) {
+		t.Fatalf("waehrend der Startsperre: %v", err)
+	}
+	cs.ausgangVorStartBis.Store(0)
+
 	cs.leitung.Store(&Leitung{}) // Folger
 	if err := cs.annahmeBeginnenLeiter(); !errors.Is(err, ErrNichtLeiter) {
 		t.Fatalf("Folger: %v", err)

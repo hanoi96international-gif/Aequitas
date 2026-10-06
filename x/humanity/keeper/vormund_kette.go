@@ -136,9 +136,18 @@ func (cs *ChainState) eingetragenerVormundCtx(ctx context.Context, wallet string
 }
 
 // pruefeNachweisJetzt: Zeitfenster und Unterschrift schon beim Annehmen --
-// dieselbe Pruefung, die jeder Nachspielende gegen die Blockzeit macht.
+// dieselbe Pruefung, die jeder Nachspielende gegen die Blockzeit macht, und
+// beim Alter strenger: hoechstens nachweisAnnahmeHoechstensAlt. Mit dem
+// vollen Fenster der Nachspielenden (eine Stunde) haette ein Angreifer mit
+// Zeit = jetzt - 3599 einen Auftrag annehmen lassen, der Sekunden spaeter im
+// Ausgang verfaellt (Sicherheitspruefung #297).
 func pruefeNachweisJetzt(tx *Transaction) error {
-	return pruefeAuftragsNachweis(tx, nowUnix())
+	jetzt := nowUnix()
+	if tx.Nachweis != nil && hatNachweisZeit(tx.Type) && tx.Nachweis.Zeit < jetzt-nachweisAnnahmeHoechstensAlt {
+		return fmt.Errorf("%w: %s unterschrieben um %d, jetzt %d (hoechstens %d s alt)",
+			ErrUeberweisungNichtSigniert, tx.Type, tx.Nachweis.Zeit, jetzt, nachweisAnnahmeHoechstensAlt)
+	}
+	return pruefeAuftragsNachweis(tx, jetzt)
 }
 
 // VormundSetzen: wallet setzt vormund, mit Unterschrift und Zeitpunkt.

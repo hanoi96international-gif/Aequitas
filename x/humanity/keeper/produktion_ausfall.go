@@ -96,6 +96,9 @@ func ProduktionsAusfaelle() map[string]interface{} {
 		"ausfaelle":     produktionAusfallSum.Load(),
 		"letzter_grund": letzter,
 		"nach_grund":    liste,
+		// block_tauglich.go: Blockzeit nach den Auftraegen; konflikte > 0
+		// heisst, im Ausgang liegt etwas, das zu keiner Blockzeit passt.
+		"blockzeit": BlockZeitStand(),
 	}
 }
 

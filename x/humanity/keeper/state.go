@@ -225,6 +225,19 @@ type ChainState struct {
 	// ausdruecklich der eine Annehmende (Validator-Bindung ohne Leitung,
 	// validator_bindung_annahme.go). Ohne Angabe nehmen sonst alle an.
 	annehmendAusdruecklich atomic.Bool
+	// annahme_pause.go: seit wann dieser Knoten Bloecke erzeugt (0 = nie
+	// versucht), wann er zuletzt einen gespeichert hat, und bis zu welcher
+	// Ausgangszeile der Ausgang von vor dem Start reicht (0 = verblockt).
+	erzeugerSeit        atomic.Int64
+	letzterEigenerBlock atomic.Int64
+	ausgangVorStartBis  atomic.Int64
+	// instanzSperre: eigene Verbindung, die die Erzeuger-Instanzsperre haelt
+	// (annahme_pause.go, erzeugerInstanzSperren) -- solange dieser Prozess
+	// lebt. nil = nicht gehalten.
+	instanzSperre *sql.Conn
+	// ausgangVorStartBedingung: welche Zeilen die Startsperre zaehlt
+	// (annahme_pause.go). Gesetzt beim Start, danach nur gelesen.
+	ausgangVorStartBedingung string
 
 	mu sync.RWMutex
 	// accounts is a *shardedAccounts (see sharded_accounts.go /
@@ -4536,7 +4549,11 @@ func (cs *ChainState) RegisterHumanAtomic(address string, pendingTx Transaction)
 		}
 	}
 	return cs.runAtomicWithOutbox([]string{address}, false, func(ctx context.Context) (Transaction, error) {
-		if err := cs.registerHumanMitKlasseLocked(ctx, address, time.Now().Unix(), pendingTx.GrantClass); err != nil {
+		// Die Staffel nach dem Annahmezeitpunkt, der in der Transaktion steht
+		// (RegAt) -- wie jeder Nachspielende (staffelRegZeit).
+		jetzt := time.Now().Unix()
+		regZeit := staffelRegZeit(pendingTx.RegAt, jetzt)
+		if err := cs.registerHumanMitZeitenLocked(ctx, address, jetzt, regZeit, pendingTx.GrantClass); err != nil {
 			return Transaction{}, err
 		}
 		if pendingTx.Nullifier != "" {
@@ -4570,6 +4587,16 @@ func (cs *ChainState) registerHumanLocked(ctx context.Context, address string, a
 // der Coordinator-Bescheinigung (grant_staffel.go). "" oder "sofort" = voller
 // Zuschuss; "gestaffelt" = 200 sofort + 800 Staffel, nur nach Aktivierung.
 func (cs *ChainState) registerHumanMitKlasseLocked(ctx context.Context, address string, activityAt int64, grantClass string) error {
+	return cs.registerHumanMitZeitenLocked(ctx, address, activityAt, activityAt, grantClass)
+}
+
+// registerHumanMitZeitenLocked: regZeit entscheidet die Staffel -- ob sie
+// schon gilt und bis wann sie laeuft (GrantStagedUntil, steht im Blatt der
+// StateRoot). Annahme und Nachspielen muessen dafuer DENSELBEN Wert nehmen:
+// den Annahmezeitpunkt aus der Transaktion (RegAt, staffelRegZeit), nicht
+// jeder seine eigene Uhr bzw. die Blockzeit (grant_staffel.go, "EIN
+// ZEITPUNKT").
+func (cs *ChainState) registerHumanMitZeitenLocked(ctx context.Context, address string, activityAt, regZeit int64, grantClass string) error {
 	address = strings.ToLower(address)
 	cs.ensureAccountLoadedCtx(ctx, address)
 
@@ -4583,11 +4610,11 @@ func (cs *ChainState) registerHumanMitKlasseLocked(ctx context.Context, address 
 	}
 
 	acc.IsHuman = true
-	sofort, staffel := grantBeiRegistrierung(grantClass, activityAt)
+	sofort, staffel := grantBeiRegistrierung(grantClass, regZeit)
 	acc.Balance = acc.Balance.Add(NewDecimal(sofort))
 	if staffel > 0 {
 		acc.GrantStagedRest = acc.GrantStagedRest.Add(NewDecimal(staffel))
-		acc.GrantStagedUntil = activityAt + int64(grantStaffelTage)*86400
+		acc.GrantStagedUntil = regZeit + int64(grantStaffelTage)*86400
 	}
 	touchActivityAt(acc, activityAt) // starts this 1,000 AEQ's own grace period fresh
 	if err := cs.enforceWealthCapLockedCtx(ctx, acc); err != nil {
@@ -7423,9 +7450,11 @@ type StateRootComponents struct {
 	PoolLPShares    int64  `json:"pool_lp_shares_micro"`
 	NullifierSetXOR string `json:"nullifier_set_xor"`
 	// Leer, solange es keine Treuhand gibt (dann ist sie nicht in der Wurzel).
-	EscrowSetXOR string `json:"escrow_set_xor,omitempty"`
+	// Immer im JSON, auch leer: der Divergenz-Waechter unterscheidet "leer"
+	// von "fehlt" (aelterer Seed, divergenz_waechter.go).
+	EscrowSetXOR string `json:"escrow_set_xor"`
 	// Ebenso fuer das Validator-Register.
-	ValidatorSetXOR string `json:"validator_set_xor,omitempty"`
+	ValidatorSetXOR string `json:"validator_set_xor"`
 	LastUBIAt       string `json:"last_ubi_at"`
 	StateRoot       string `json:"state_root"`
 }

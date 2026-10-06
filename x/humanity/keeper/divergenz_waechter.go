@@ -2,7 +2,9 @@ package keeper
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"strings"
@@ -11,7 +13,8 @@ import (
 )
 
 // Der Divergenz-Waechter: vergleicht in der Ruhe die Konten-Summe mit den
-// Seeds. Meldet, heilt nicht.
+// Seeds -- seit 05.10.2026 auch Treuhand und Validator-Register
+// (divergenzAbweichung). Meldet, heilt nicht.
 //
 // WARUM DER STATEROOT-VERGLEICH IM BLOCK NICHT REICHT. Der StateRoot eines
 // Blocks ist der Nachzustand des Produzenten INKLUSIVE seines Mempools --
@@ -70,7 +73,104 @@ var (
 	divergenzLetzteMeld atomic.Int64
 	// einmalige Meldung je Prozess, wenn ein Seed ruhe_seit_s nicht kennt
 	divergenzOhneAuskunftGemeldet atomic.Bool
+	// Auskuenfte, die Groesse, Status oder Form nicht bestanden (kein Urteil).
+	divergenzAuskunftUngueltig atomic.Int64
+	// Die Teile, wegen derer zuletzt ein Resync ausgeloest wurde, bis wieder
+	// ein Vergleich gleich ausgeht (divergenzResyncEntscheiden).
+	divergenzResyncTeile atomic.Value // string
+	// Resyncs, die unterblieben, weil der vorige dieselbe Abweichung nicht behob.
+	divergenzResyncOhneWirkung atomic.Int64
 )
+
+// GRENZEN FUER DIE AUSKUNFT EINES SEEDS (Sicherheitspruefung #296).
+//
+// Die Auskunft kommt ueber das Netz, die vorgegebenen Seeds sprechen http://.
+// Bis 05.10.2026 las der Waechter sie ohne Groessengrenze (eine einzige
+// riesige Zeichenkette band Gigabytes), folgte Weiterleitungen (ein Seed
+// konnte den Knoten auf jede Adresse lenken), sah den Status nicht an und
+// schrieb ungepruefte Zeichen ins Log (Steuerzeichen faelschten Zeilen).
+//
+//   - hoechstens divergenzAuskunftGrenze Byte (eine ehrliche Auskunft hat
+//     etwa 500), nur Status 200, keine Weiterleitung;
+//   - jede Summe ist leer oder genau 64 Hex-Ziffern, klein -- sonst kein
+//     Urteil (kein Strike: ein kaputter Seed ist kein Beleg gegen uns);
+//   - Treuhand und Register: fehlt das Feld (aelterer Seed), wird der Teil
+//     nicht verglichen. Ein fehlendes Feld ist kein leeres -- sonst saehe ein
+//     Knoten mit Treuhand gegen einen alten Seed wie abgewichen aus, und der
+//     Resync behoebe nichts.
+const divergenzAuskunftGrenze = 16 << 10
+
+// divergenzAuskunftFremd: die Auskunft eines Seeds, wie sie ankommt.
+type divergenzAuskunftFremd struct {
+	AccountSetXOR   string   `json:"account_set_xor"`
+	EscrowSetXOR    *string  `json:"escrow_set_xor"`
+	ValidatorSetXOR *string  `json:"validator_set_xor"`
+	RuheSeitS       *float64 `json:"ruhe_seit_s"`
+	Offen           *int64   `json:"offen"`
+}
+
+// divergenzKlient: Frist 10 s (inklusive Lesen), keine Weiterleitung.
+func divergenzKlient() *http.Client {
+	return &http.Client{
+		Timeout: 10 * time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+}
+
+// divergenzAuskunftHolen: GET url, nur Status 200, gelesen und geprueft
+// (divergenzAuskunftLesen). Ein Fehler heisst: kein Urteil.
+func divergenzAuskunftHolen(hc *http.Client, url string) (divergenzAuskunftFremd, error) {
+	resp, err := hc.Get(url)
+	if err != nil {
+		return divergenzAuskunftFremd{}, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return divergenzAuskunftFremd{}, fmt.Errorf("Status %d", resp.StatusCode)
+	}
+	return divergenzAuskunftLesen(resp.Body)
+}
+
+// divergenzAuskunftLesen: hoechstens divergenzAuskunftGrenze Byte, jede
+// Summe in kanonischer Form.
+func divergenzAuskunftLesen(r io.Reader) (divergenzAuskunftFremd, error) {
+	var f divergenzAuskunftFremd
+	body, err := io.ReadAll(io.LimitReader(r, divergenzAuskunftGrenze+1))
+	if err != nil {
+		return f, err
+	}
+	if len(body) > divergenzAuskunftGrenze {
+		return f, fmt.Errorf("Auskunft groesser als %d Byte", divergenzAuskunftGrenze)
+	}
+	if err := json.Unmarshal(body, &f); err != nil {
+		return f, err
+	}
+	if f.AccountSetXOR == "" || !divergenzSummeForm(f.AccountSetXOR) {
+		return f, errors.New("account_set_xor fehlt oder ist keine Summe")
+	}
+	for _, p := range []*string{f.EscrowSetXOR, f.ValidatorSetXOR} {
+		if p != nil && *p != "" && !divergenzSummeForm(*p) {
+			return f, errors.New("escrow_set_xor/validator_set_xor ist keine Summe")
+		}
+	}
+	return f, nil
+}
+
+// divergenzSummeForm: genau 64 Hex-Ziffern, klein.
+func divergenzSummeForm(s string) bool {
+	if len(s) != 64 {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
+			return false
+		}
+	}
+	return true
+}
 
 func (dag *BlockDAG) StarteDivergenzWaechter() {
 	if dag.state == nil {
@@ -168,7 +268,7 @@ func (dag *BlockDAG) divergenzEinmalPruefen() {
 	}
 	eigene := dag.state.StateRootComponentBreakdown()
 	eigeneHoehe := dag.heightSchnell.Load()
-	hc := &http.Client{Timeout: 10 * time.Second}
+	hc := divergenzKlient()
 	for _, seed := range seeds {
 		// Gleichauf heisst: zum Zeitpunkt der Abfrage -- gegen die eigene
 		// Hoehe von damals, nicht von jetzt (siehe peer_hoehe_echt.go).
@@ -176,19 +276,9 @@ func (dag *BlockDAG) divergenzEinmalPruefen() {
 		if !ok || peerHoehe < eigeneDamals-2 || peerHoehe > eigeneDamals+2 {
 			continue // nicht gleichauf -- kein Vergleich
 		}
-		resp, err := hc.Get(seed + "/api/debug/stateroot-components")
+		fremd, err := divergenzAuskunftHolen(hc, seed+"/api/debug/stateroot-components")
 		if err != nil {
-			continue
-		}
-		var fremd struct {
-			AccountSetXOR string   `json:"account_set_xor"`
-			LastUBIAt     string   `json:"last_ubi_at"`
-			RuheSeitS     *float64 `json:"ruhe_seit_s"`
-			Offen         *int64   `json:"offen"`
-		}
-		decErr := json.NewDecoder(resp.Body).Decode(&fremd)
-		resp.Body.Close()
-		if decErr != nil || fremd.AccountSetXOR == "" {
+			divergenzAuskunftUngueltig.Add(1)
 			continue
 		}
 		if !divergenzVergleichbar(eigeneRuhe, eigeneOffen, fremd.RuheSeitS, fremd.Offen) {
@@ -198,12 +288,14 @@ func (dag *BlockDAG) divergenzEinmalPruefen() {
 			continue // Partner nicht in Ruhe -- der Vergleich sagt nichts
 		}
 		divergenzVergleiche.Add(1)
-		if fremd.AccountSetXOR == eigene.AccountSetXOR {
+		teile, text := divergenzAbweichung(eigene, fremd)
+		if len(teile) == 0 {
 			divergenzGleich.Add(1)
 			if divergenzStrikes.Swap(0) >= divergenzSchwelle {
-				fmt.Printf("[DIVERGENZ] ✓ Kontenstand wieder gleich mit %s\n", seed)
+				fmt.Printf("[DIVERGENZ] ✓ Zustand wieder gleich mit %s\n", seed)
 			}
 			divergenzSeitUnix.Store(0)
+			divergenzResyncTeile.Store("")
 			return
 		}
 		n := divergenzStrikes.Add(1)
@@ -213,15 +305,70 @@ func (dag *BlockDAG) divergenzEinmalPruefen() {
 		divergenzPeer.Store(seed)
 		if n >= divergenzSchwelle && time.Now().Unix()-divergenzLetzteMeld.Load() >= 600 {
 			divergenzLetzteMeld.Store(time.Now().Unix())
-			fmt.Printf("[DIVERGENZ] ✗ Kontenstand weicht von %s ab (account_set_xor %s… gegen %s…), %d Vergleiche in Folge, beide in Ruhe und gleichauf (Hoehe %d/%d). Das ist kein Geschwister-Effekt. Abhilfe: Resync eines Knotens vom anderen (resync-contabo1-only.yml / -contabo2-only.yml) -- in der Ruhe, nie unter Last.\n",
-				seed, kurzHex(eigene.AccountSetXOR), kurzHex(fremd.AccountSetXOR), n, eigeneHoehe, peerHoehe)
+			fmt.Printf("[DIVERGENZ] ✗ Zustand weicht von %s ab (%s), %d Vergleiche in Folge, beide in Ruhe und gleichauf (Hoehe %d/%d). Das ist kein Geschwister-Effekt. Abhilfe: Resync eines Knotens vom anderen (resync-contabo1-only.yml / -contabo2-only.yml) -- in der Ruhe, nie unter Last.\n",
+				seed, text, n, eigeneHoehe, peerHoehe)
 		}
-		// Selbstheilung -- nur wo sie erlaubt ist (siehe divergenzAutoResyncErlaubt).
-		if divergenzAutoResyncErlaubt(n, os.Getenv("AEQUITAS_DIVERGENZ_AUTORESYNC"), dag.resyncBootstrapURL != "" && dag.resyncSigner != "") {
-			dag.triggerAutoResync(fmt.Sprintf("Kontenstand weicht von %s ab: %d Vergleiche in Folge in der Ruhe und gleichauf (account_set_xor %s… gegen %s…) -- dieser Knoten holt den Zustand neu vom Seed", seed, n, kurzHex(eigene.AccountSetXOR), kurzHex(fremd.AccountSetXOR)))
+		// Selbstheilung -- nur wo sie erlaubt ist (siehe divergenzAutoResyncErlaubt),
+		// und nicht zweimal wegen derselben Abweichung (divergenzResyncEntscheiden).
+		erlaubt := divergenzAutoResyncErlaubt(n, os.Getenv("AEQUITAS_DIVERGENZ_AUTORESYNC"), dag.resyncBootstrapURL != "" && dag.resyncSigner != "")
+		if divergenzResyncEntscheiden(erlaubt, teile) {
+			dag.triggerAutoResync(fmt.Sprintf("Zustand weicht von %s ab: %d Vergleiche in Folge in der Ruhe und gleichauf (%s) -- dieser Knoten holt den Zustand neu vom Seed", seed, n, text))
 		}
 		return
 	}
+}
+
+// divergenzResyncEntscheiden: soll diese belegte Abweichung einen Resync
+// ausloesen? Nur wenn erlaubt -- und nicht, wenn der vorige Resync wegen
+// GENAU DIESER Teile ausgeloest wurde und seitdem kein Vergleich gleich
+// ausging: dann hat er sie nicht behoben, und ein weiterer behebt sie auch
+// nicht (Sicherheitspruefung #296, F4: ohne das loeste jede Sperrfrist
+// einen neuen Resync aus). Nach einem Ausloesen beginnt die Zaehlung neu.
+func divergenzResyncEntscheiden(erlaubt bool, teile []string) bool {
+	if !erlaubt {
+		return false
+	}
+	schluessel := strings.Join(teile, ",")
+	if vorher, _ := divergenzResyncTeile.Load().(string); vorher == schluessel {
+		if divergenzResyncOhneWirkung.Add(1) == 1 || divergenzResyncOhneWirkung.Load()%60 == 0 {
+			fmt.Printf("[DIVERGENZ] ✗ Der Resync hat die Abweichung (%s) nicht behoben -- kein weiterer automatischer Resync, ein Mensch muss nachsehen\n", schluessel)
+		}
+		return false
+	}
+	divergenzResyncTeile.Store(schluessel)
+	divergenzStrikes.Store(0)
+	return true
+}
+
+// divergenzAbweichung: welche Teile des Zustands weichen ab (leer = keiner)?
+// Verglichen wird, was in der Ruhe auf beiden Seiten gleich sein muss und in
+// der StateRoot steht: die Konten, die Treuhand (treuhand_stateroot.go) und
+// das Validator-Register (validator_register.go). Fehlt Treuhand oder
+// Register in der Auskunft (aelterer Seed), wird dieser Teil nicht
+// verglichen; ein leeres Feld heisst "leer" und wird verglichen. Bis
+// 05.10.2026 verglich der Waechter nur die Konten: zwei Knoten mit
+// verschiedener Treuhand oder verschiedenem Register sahen gleich aus.
+func divergenzAbweichung(eigene StateRootComponents, fremd divergenzAuskunftFremd) ([]string, string) {
+	var teile, texte []string
+	acc := fremd.AccountSetXOR
+	for _, t := range []struct {
+		name string
+		e    string
+		f    *string
+	}{
+		{"account_set_xor", eigene.AccountSetXOR, &acc},
+		{"escrow_set_xor", eigene.EscrowSetXOR, fremd.EscrowSetXOR},
+		{"validator_set_xor", eigene.ValidatorSetXOR, fremd.ValidatorSetXOR},
+	} {
+		if t.f == nil {
+			continue // aelterer Seed: Teil unbekannt, kein Urteil
+		}
+		if t.e != *t.f {
+			teile = append(teile, t.name)
+			texte = append(texte, fmt.Sprintf("%s %s… gegen %s…", t.name, kurzHex(t.e), kurzHex(*t.f)))
+		}
+	}
+	return teile, strings.Join(texte, ", ")
 }
 
 // divergenzAutoResyncErlaubt: darf eine belegte Kontostand-Abweichung einen
@@ -260,7 +407,7 @@ func DivergenzStand() map[string]interface{} {
 	}
 	strikes := divergenzStrikes.Load()
 	return map[string]interface{}{
-		"bedeutung": "Vergleich von account_set_xor mit den Seeds in der Ruhe (keine eigene Ueberweisung seit 30 s und kein offener Ausgangskorb auf BEIDEN Seiten, Hoehe gleichauf). " +
+		"bedeutung": "Vergleich von account_set_xor, escrow_set_xor und validator_set_xor mit den Seeds in der Ruhe (keine eigene Ueberweisung seit 30 s und kein offener Ausgangskorb auf BEIDEN Seiten, Hoehe gleichauf). " +
 			"abweichend=true ab 3 Vergleichen in Folge mit Unterschied -- dann stimmen Kontostaende nicht ueberein, nicht nur Geschwister-Unschaerfe. " +
 			"autoresync=true (AEQUITAS_DIVERGENZ_AUTORESYNC=1, fuer Validatoren, die nicht Seed sind): dann Resync vom Seed statt nur Meldung.",
 		"autoresync":        strings.TrimSpace(os.Getenv("AEQUITAS_DIVERGENZ_AUTORESYNC")) == "1",
@@ -270,5 +417,9 @@ func DivergenzStand() map[string]interface{} {
 		"peer":              peer,
 		"vergleiche":        divergenzVergleiche.Load(),
 		"vergleiche_gleich": divergenzGleich.Load(),
+		// Auskuenfte ohne Urteil: zu gross, falscher Status, keine Summe.
+		"auskunft_ungueltig": divergenzAuskunftUngueltig.Load(),
+		// Resyncs, die unterblieben, weil der vorige dieselbe Abweichung nicht behob.
+		"resync_ohne_wirkung": divergenzResyncOhneWirkung.Load(),
 	}
 }

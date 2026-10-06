@@ -125,7 +125,7 @@ func blockReihe(txs []Transaction) []string {
 func TestBlockKorbMischen_ReihenfolgeUndVoraussetzung(t *testing.T) {
 	korb := []korbEintrag{{5, korbTx(5)}, {6, korbTx(6)}, {7, korbTx(7)}}
 	zeilen := []langsameZeile{zeile(1, 6), zeile(2, 9), zeile(3, 5)}
-	txs, genommen, ids, zurueck, freigeben, bis := blockKorbMischen(korb, zeilen, 100, 4)
+	txs, genommen, ids, zurueck, freigeben, bis, _ := blockKorbMischen(korb, zeilen, 100, 4)
 	want := []string{"0xz3", "0xk5", "0xz1", "0xk6", "0xk7"}
 	got := blockReihe(txs)
 	if fmt.Sprint(got) != fmt.Sprint(want) {
@@ -142,7 +142,7 @@ func TestBlockKorbMischen_ReihenfolgeUndVoraussetzung(t *testing.T) {
 func TestBlockKorbMischen_DeckelSchneidetUndGibtZurueck(t *testing.T) {
 	korb := []korbEintrag{{5, korbTx(5)}, {6, korbTx(6)}, {7, korbTx(7)}}
 	zeilen := []langsameZeile{zeile(1, 6), zeile(3, 5)}
-	txs, _, ids, zurueck, freigeben, bis := blockKorbMischen(korb, zeilen, 2, 4)
+	txs, _, ids, zurueck, freigeben, bis, _ := blockKorbMischen(korb, zeilen, 2, 4)
 	if fmt.Sprint(blockReihe(txs)) != "[0xz3 0xk5]" || bis != 5 {
 		t.Fatalf("Block %v bis=%d", blockReihe(txs), bis)
 	}
@@ -155,7 +155,7 @@ func TestBlockKorbMischen_DeckelSchneidetUndGibtZurueck(t *testing.T) {
 // Leerer Korb: eine Zeile mit Seq bis+1 gehoert dazu (sie wurde vor der
 // naechsten Schnellpfad-Ueberweisung angewendet); bis+2 muss warten.
 func TestBlockKorbMischen_LeererKorb(t *testing.T) {
-	txs, _, ids, _, freigeben, bis := blockKorbMischen(nil, []langsameZeile{zeile(1, 11), zeile(2, 12)}, 100, 10)
+	txs, _, ids, _, freigeben, bis, _ := blockKorbMischen(nil, []langsameZeile{zeile(1, 11), zeile(2, 12)}, 100, 10)
 	if len(txs) != 1 || fmt.Sprint(ids) != "[1]" || fmt.Sprint(freigeben) != "[2]" || bis != 10 {
 		t.Fatalf("txs=%d ids=%v freigeben=%v bis=%d", len(txs), ids, freigeben, bis)
 	}
@@ -472,4 +472,35 @@ func TestWALSpeicherkorb_AufgeteilterFlushSchreibtAlles(t *testing.T) {
 		t.Fatal(err)
 	}
 	pruefe()
+}
+
+// korbPraefix: der Anfang einer Mischung ist genau das, was blockKorbMischen
+// mit diesem Deckel genommen haette -- dieselben Korb-Eintraege, dieselben
+// Zeilen, dieselbe Marke; der Rest geht vollstaendig zurueck bzw. wird
+// freigegeben (block_tauglich.go, Teilen eines Blocks).
+func TestKorbPraefix_GleichDemKleinerenDeckel(t *testing.T) {
+	korb := []korbEintrag{{5, korbTx(5)}, {6, korbTx(6)}, {7, korbTx(7)}, {9, korbTx(9)}}
+	zeilen := []langsameZeile{zeile(1, 6), zeile(2, 8), zeile(3, 5), zeile(4, 10)}
+	txs, genommen, ids, _, _, _, pos := blockKorbMischen(korb, append([]langsameZeile(nil), zeilen...), 100, 4)
+	for j := 0; j <= len(txs); j++ {
+		behG, behI, zurueck, frei, bis := korbPraefix(genommen, ids, pos, j, 4)
+		wTxs, wG, wI, _, _, wBis, _ := blockKorbMischen(korb, append([]langsameZeile(nil), zeilen...), j, 4)
+		if j > 0 && len(wTxs) != j {
+			t.Fatalf("j=%d: Vorbedingung, Deckel j ergibt %d", j, len(wTxs))
+		}
+		if len(behG)+len(behI) != j || len(behG) != len(wG) || len(behI) != len(wI) || bis != wBis {
+			t.Fatalf("j=%d: behalten %d Korb/%d Zeilen, Marke %d -- Deckel j: %d/%d, Marke %d", j, len(behG), len(behI), bis, len(wG), len(wI), wBis)
+		}
+		for i := range behI {
+			if behI[i] != wI[i] {
+				t.Fatalf("j=%d: Zeile %d: %d statt %d", j, i, behI[i], wI[i])
+			}
+		}
+		if len(behG)+len(zurueck) != len(genommen) || len(behI)+len(frei) != len(ids) {
+			t.Fatalf("j=%d: etwas ging verloren (Korb %d+%d/%d, Zeilen %d+%d/%d)", j, len(behG), len(zurueck), len(genommen), len(behI), len(frei), len(ids))
+		}
+		if len(zurueck) > 0 && len(behG) > 0 && zurueck[0].seq <= behG[len(behG)-1].seq {
+			t.Fatalf("j=%d: Reihenfolge im Korb verletzt", j)
+		}
+	}
 }

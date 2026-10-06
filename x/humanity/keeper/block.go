@@ -1465,6 +1465,9 @@ func NewBlockchain(nodeID string, state *ChainState) *BlockDAG {
 	// Seit 14.09.2026 begrenzt und wiederkehrend (aufraeumen_begrenzt.go):
 	// Reste aelter als einen Tag werden geloescht statt wieder geoeffnet.
 	state.PendingLeichenAufraeumenStart(10 * time.Minute)
+	// Was jetzt noch offen im Ausgang liegt, stammt von vor dem Start: bis es
+	// verblockt ist, nimmt dieser Knoten nichts Neues an (annahme_pause.go).
+	state.ausgangVorStartMerken()
 
 	// FIX (audit 2026-06-28 full recheck, P1-3): restore every durably-saved
 	// block (see chain_blocks' own comment and SaveBlockToDB) BEFORE falling
@@ -2457,6 +2460,10 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 		merkeProduktionsAusfall("beobachter")
 		return nil // nur nachspielen, nie erzeugen (beobachter.go)
 	}
+	// Ab jetzt misst annahme_pause.go, ob dieser Knoten Bloecke erzeugt.
+	if dag.state != nil {
+		dag.state.erzeugerSeit.CompareAndSwap(0, time.Now().Unix())
+	}
 	if dag.resyncInProgress.Load() {
 		merkeProduktionsAusfall("resync_laeuft")
 		return nil // an in-process self-heal resync is atomically swapping account/DAG state right now — see resyncInProgress's field comment
@@ -2534,6 +2541,8 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 	var korbGenommen []korbEintrag
 	var korbNeuBis uint64
 	var korbGehalten bool
+	// Stellen der Zeilen in dbTxs (speicherkorb.go, korbPraefix).
+	var korbZeilenPos []int
 	var pendingDur time.Duration
 	var pendingWG sync.WaitGroup
 	pendingWG.Add(1)
@@ -2557,7 +2566,7 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 			if dag.state.korb != nil {
 				// Bloecke aus dem Speicher: kein Vorladen noetig, der Korb
 				// ist schon im RAM.
-				dbTxs, pendingTxIDs, korbGenommen, korbNeuBis, korbGehalten = dag.state.korbFuerBlock(deckel)
+				dbTxs, pendingTxIDs, korbGenommen, korbNeuBis, korbZeilenPos, korbGehalten = dag.state.korbFuerBlockMitPos(deckel)
 			} else if vl := dag.vorlauf.nehmen(); vl != nil {
 				dbTxs, pendingTxIDs = vl.einloesen(deckel, dag.state.PendingTxIDsFreigeben, dag.state.LoadPendingTxsWithLimit)
 			} else {
@@ -2975,6 +2984,24 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 			}
 		}
 	}
+	// Die juengste Elternzeit: frueher darf die Blockzeit nicht liegen
+	// (block_tauglich.go). Gesucht wie beim Nachspielen (mit Rueckgriff auf
+	// die Datenbank); ein Stumpf traegt einen Platzhalter, keine Zeit. Ist ein
+	// Elternteil nicht auffindbar, wird nicht zurueckdatiert -- sonst laege
+	// die Blockzeit womoeglich mehr als 120 s vor ihm, und jeder wiese den
+	// Block ab.
+	elternZeit := int64(0)
+	elternUnbekannt := false
+	for _, ph := range parentHashes {
+		parent := dag.ghostdagBlockLookup(ph, nil)
+		if parent == nil {
+			elternUnbekannt = true
+			continue
+		}
+		if parent.Proposer != "synthetic-checkpoint" && parent.Timestamp > elternZeit {
+			elternZeit = parent.Timestamp
+		}
+	}
 
 	dag.txMu.Lock()
 	txs := make([]Transaction, len(dag.pendingTxs))
@@ -3193,9 +3220,58 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 		return nil
 	}
 
+	// Die Blockzeit nach den Auftraegen: jetzt, wenn alle dazu passen; sonst
+	// die spaeteste Zeit seit den Eltern, zu der jeder andere Knoten alle
+	// annimmt (block_tauglich.go). Gibt es keine, entsteht kein Block --
+	// weder einer, den jeder abweist, noch ein Zustand, den nur dieser Knoten
+	// hat.
+	jetztUnix := time.Now().Unix()
+	if elternUnbekannt {
+		elternZeit = jetztUnix
+	}
+	anzahl, blockZeit, zeitErr := blockZeitPraefix(txs, jetztUnix, elternZeit)
+	if zeitErr != nil {
+		blockZeitKonfliktMelden(zeitErr)
+		merkeProduktionsAusfall("auftraege_ohne_gemeinsame_zeit")
+		return nil
+	}
+	if anzahl < len(txs) {
+		// Nur der Anfang passt zu einer Zeit: der Rest geht zurueck -- in den
+		// Korb (vorn) bzw. als offene Zeilen -- und kommt in den naechsten
+		// Block. Die Vorladung haelt SPAETERE Zeilen und wird verworfen, sonst
+		// kaemen die vor dem zurueckgegebenen Rest.
+		blockZeitGeteilt.Add(1)
+		fmt.Printf("[BLOCK] ✂ %d von %d Transaktionen in diesen Block (Blockzeit %d), der Rest passt erst zu einer spaeteren (block_tauglich.go)\n", anzahl, len(txs), blockZeit)
+		behalten := 0
+		if anzahl > nTxsSnapshotted {
+			behalten = anzahl - nTxsSnapshotted
+		} else {
+			nTxsSnapshotted = anzahl
+		}
+		if korbGehalten {
+			var zurueck []korbEintrag
+			var freigeben []int64
+			korbGenommen, pendingTxIDs, zurueck, freigeben, korbNeuBis = korbPraefix(korbGenommen, pendingTxIDs, korbZeilenPos, behalten, dag.state.korbBis.Load())
+			if k := dag.state.korb; k != nil {
+				k.zurueckLegen(zurueck)
+			}
+			if len(freigeben) > 0 {
+				dag.state.PendingTxIDsFreigeben(freigeben)
+			}
+		} else if behalten < len(pendingTxIDs) {
+			dag.state.PendingTxIDsFreigeben(pendingTxIDs[behalten:])
+			pendingTxIDs = pendingTxIDs[:behalten]
+		}
+		dag.vorlauf.verwerfen(dag.state.PendingTxIDsFreigeben)
+		txs = txs[:anzahl]
+	}
+	if blockZeit != jetztUnix {
+		blockZeitZurueck.Add(1)
+		fmt.Printf("[BLOCK] ⏪ Blockzeit %d statt %d: die Auftraege dieses Blocks wurden frueher angenommen (block_tauglich.go)\n", blockZeit, jetztUnix)
+	}
 	block := &Block{
 		Height:       maxParentHeight + 1,
-		Timestamp:    time.Now().Unix(),
+		Timestamp:    blockZeit,
 		ParentHashes: parentHashes,
 		Proposer:     proposer,
 		Humans:       dag.state.TotalHumans(),
@@ -3472,6 +3548,8 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 	// now. See admission_control.go for why time-since-a-block is the signal
 	// rather than queue depth.
 	noteBlockProduced()
+	// annahme_pause.go: Erzeugung laeuft; Ausgang von vor dem Start verblockt?
+	dag.state.eigenerBlockGespeichert()
 	// Alles nach dem Speichern -- Verteilen an die Peers und Nachlauf.
 	pbVerteilen = time.Since(pbVerteilenStart)
 	merkeProduktionsErfolg()
@@ -7435,7 +7513,8 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			// this loop runs — context.Background() carries no transaction of
 			// its own, so dbExecCtx falls back to that field, exactly
 			// matching pre-migration behavior. See dbExecCtx's comment.
-			if err := dag.state.registerHumanMitKlasseLocked(context.Background(), wallet, block.Timestamp, tx.GrantClass); err != nil {
+			if err := dag.state.registerHumanMitZeitenLocked(context.Background(), wallet, block.Timestamp,
+				staffelRegZeit(tx.RegAt, block.Timestamp), tx.GrantClass); err != nil {
 				// FIX: release the nullifier claimed two lines above on failure —
 				// it used to stay claimed forever ("nullifier recorded, balance
 				// NOT credited"), permanently burning that biometric for
@@ -7610,8 +7689,10 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			}
 
 		case "liveness_renewal":
-			// WP 2 (grant_staffel.go): vor der Aktivierung Leerlauf.
-			if err := dag.state.applyLivenessRenewalDeltaLocked(context.Background(), wallet, block.Timestamp); err != nil {
+			// WP 2 (grant_staffel.go): vor der Aktivierung Leerlauf. Zeitpunkt
+			// ist der bescheinigte (DistributionAt = issued_at), wie bei der
+			// Annahme -- nicht die Blockzeit ("EIN ZEITPUNKT").
+			if err := dag.state.applyLivenessRenewalDeltaLocked(context.Background(), wallet, tx.DistributionAt, block.Timestamp); err != nil {
 				fmt.Printf("[REPLAY] ✗ liveness_renewal %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
 				hardFailure = true
 				continue

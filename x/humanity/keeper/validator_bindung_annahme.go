@@ -91,6 +91,11 @@ func (cs *ChainState) annahmeBeginnenLeiter() error {
 		cs.annahmenLaufend.Add(-1)
 		return err
 	}
+	// annahme_pause.go: wie jede Annahme, die in den Ausgang schreibt.
+	if err := cs.annahmePausiert(); err != nil {
+		cs.annahmenLaufend.Add(-1)
+		return err
+	}
 	return nil
 }
 
@@ -263,7 +268,7 @@ func (a *APIServer) handleValidatorBindung(w http.ResponseWriter, r *http.Reques
 			jsonError(w, "invalid binding: "+err.Error(), http.StatusBadRequest)
 		case istZustandsAblehnung(err), errors.Is(err, errValidatorRegisterSchlaeft):
 			jsonError(w, err.Error(), http.StatusConflict)
-		case errors.Is(err, ErrNichtLeiter), errors.Is(err, ErrNurLesend), errors.Is(err, errKeinAlleinigerAnnehmer):
+		case istWiederholbareAnnahmeAblehnung(err), errors.Is(err, errKeinAlleinigerAnnehmer):
 			jsonError(w, err.Error(), http.StatusServiceUnavailable)
 		default:
 			jsonStateError(w, "validator-bindung", strings.ToLower(req.Operator), err)

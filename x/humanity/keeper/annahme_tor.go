@@ -177,6 +177,12 @@ func (cs *ChainState) annahmeBeginnen(absender string, konten ...string) error {
 		cs.annahmenLaufend.Add(-1)
 		return err
 	}
+	// annahme_pause.go: nicht, solange die Erzeugung steht oder der Ausgang
+	// von vor dem Start noch offen ist.
+	if err := cs.annahmePausiert(); err != nil {
+		cs.annahmenLaufend.Add(-1)
+		return err
+	}
 	return nil
 }
 
