@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"crypto/ecdsa"
+	"encoding/json"
 	"errors"
 	"math"
 	"strings"
@@ -234,7 +235,10 @@ func TestAnnahmePausiert_ErzeugungSteht(t *testing.T) {
 func TestProduceBlock_NimmtDieGewaehlteBlockzeit(t *testing.T) {
 	body := functionBodyFromSource(t, "block.go", "func (dag *BlockDAG) ProduceBlock(")
 	for _, muss := range []string{
-		"blockZeit, zeitErr := blockZeitFuer(txs, jetztUnix, elternZeit)",
+		"anzahl, blockZeit, zeitErr := blockZeitPraefix(txs, jetztUnix, elternZeit)",
+		"korbPraefix(korbGenommen, pendingTxIDs, korbZeilenPos, behalten, dag.state.korbBis.Load())",
+		"dag.vorlauf.verwerfen(dag.state.PendingTxIDsFreigeben)\n\t\ttxs = txs[:anzahl]",
+		"parent := dag.ghostdagBlockLookup(ph, nil)",
 		"merkeProduktionsAusfall(\"auftraege_ohne_gemeinsame_zeit\")",
 		"Timestamp:    blockZeit,",
 		"dag.state.eigenerBlockGespeichert()",
@@ -246,5 +250,102 @@ func TestProduceBlock_NimmtDieGewaehlteBlockzeit(t *testing.T) {
 	}
 	if strings.Contains(body, "ohneUntauglicheAuftraege") {
 		t.Fatal("ProduceBlock laesst wieder Auftraege weg")
+	}
+}
+
+// Teilen statt alles oder nichts: ein alter Auftrag neben frischen (eine
+// Rundenmarke ab dem 07.10.) -- der erste Block traegt den alten mit dessen
+// Zeit, der naechste den Rest mit jetzt. Nichts wird weggelassen.
+func TestBlockZeitPraefix_TeiltStattStillzustehen(t *testing.T) {
+	mitSignaturpflicht(t)
+	jetzt := rundenZeitStrengAbUnix + 30*86400
+	alt := vormundAuftrag(t, jetzt-2*3600)
+	marke := Transaction{Type: "distribution_round_marker", DistributionAt: jetzt}
+	frisch := vormundAuftrag(t, jetzt-5)
+	txs := []Transaction{alt, marke, frisch}
+	eltern := jetzt - 3*3600
+	if _, err := blockZeitFuer(txs, jetzt, eltern); err == nil {
+		t.Fatal("Vorbedingung: zusammen gibt es keine gemeinsame Zeit")
+	}
+	k, t1, err := blockZeitPraefix(txs, jetzt, eltern)
+	if err != nil || k != 1 {
+		t.Fatalf("erster Block: %d Transaktionen, %v", k, err)
+	}
+	if _, err := pruefeAuftraegeImBlock(txs[:k], t1); err != nil {
+		t.Fatalf("erster Block besteht nicht: %v", err)
+	}
+	k2, t2, err := blockZeitPraefix(txs[k:], jetzt, t1)
+	if err != nil || k2 != 2 || t2 != jetzt {
+		t.Fatalf("zweiter Block: %d Transaktionen bei %d, %v", k2, t2, err)
+	}
+	for i := range txs[k:] {
+		if err := blockTauglich(&txs[k+i], t2); err != nil {
+			t.Fatalf("zweiter Block besteht nicht: %v", err)
+		}
+	}
+	// Passt schon der erste zu keiner Zeit seit den Eltern: kein Block, und
+	// die Meldung nennt sein Fenster.
+	_, _, err = blockZeitPraefix(txs, jetzt, jetzt-60)
+	if err == nil || !strings.Contains(err.Error(), "vormund_setzen") {
+		t.Fatalf("erster Auftrag ohne Zeit: %v", err)
+	}
+}
+
+// BuchAt: der Nachspielende nimmt es nur bis 60 s nach und 7 Tage vor dem
+// Block, sonst still die Blockzeit -- also gehoert es ins Fenster.
+func TestAuftragsFenster_BuchAt(t *testing.T) {
+	wirtschaftAktivOverride.Store(1)
+	t.Cleanup(func() { wirtschaftAktivOverride.Store(math.MaxInt64) })
+	basis := int64(1_800_000_000)
+	tx := Transaction{Type: "transfer", Wallet: "0xa", To: "0xb", Amount: 1, BuchAt: basis}
+	f := auftragsFenster(&tx, basis+30*86400)
+	for d := int64(-9 * 86400); d <= 9*86400; d += 41 {
+		ts := basis + d
+		drin := ts >= f.von && ts <= f.bis
+		if ok := blockTauglich(&tx, ts) == nil; drin != ok {
+			t.Fatalf("t=basis%+d: im Fenster=%v, blockTauglich=%v", d, drin, ok)
+		}
+		if ok := buchZeitBeimNachspielen(tx.BuchAt, ts) == tx.BuchAt; drin != ok {
+			t.Fatalf("t=basis%+d: Fenster=%v, Nachspielende nehmen BuchAt=%v", d, drin, ok)
+		}
+	}
+}
+
+// Haengt der Ausgang (aelteste offene Zeile ueber 10 min), haelt die Annahme
+// an -- auch wenn kleine Bloecke weiterlaufen.
+func TestAnnahmePausiert_AusgangHaengt(t *testing.T) {
+	cs := newTestState()
+	t.Cleanup(func() { aeltesteOffeneZeile.Store(0) })
+	aeltesteOffeneZeile.Store(nowUnix() - ausgangHoechstensAlt - 5)
+	if err := cs.annahmePauseGrund(); !errors.Is(err, ErrAnnahmePausiert) {
+		t.Fatalf("haengender Ausgang: %v", err)
+	}
+	aeltesteOffeneZeile.Store(nowUnix() - 60)
+	if err := cs.annahmePauseGrund(); err != nil {
+		t.Fatalf("junger Ausgang: %v", err)
+	}
+	aeltesteOffeneZeile.Store(0)
+	if err := cs.annahmePauseGrund(); err != nil {
+		t.Fatalf("leerer Ausgang: %v", err)
+	}
+}
+
+// Missbrauch des RPC-Wegs: waehrend der Startsperre darf eine Ueberweisung
+// keine Nonce verbrauchen -- sie bekommt -32005 VOR der Reservierung.
+func TestSendRawTransaction_PauseVorDerNonce(t *testing.T) {
+	cs := newTestState()
+	cs.ausgangVorStartBis.Store(7)
+	noteBlockProduced()
+	srv := NewEVMRPCServer(&BlockDAG{state: cs}, cs)
+	raw, sender := signedRawHex(t, 0, testRecipientHex)
+	params, _ := json.Marshal([]string{raw})
+	var p []json.RawMessage
+	json.Unmarshal(params, &p)
+	_, rerr := srv.sendRawTransaction(p, nil)
+	if rerr == nil || rerr.Code != -32005 {
+		t.Fatalf("waehrend der Startsperre: %+v", rerr)
+	}
+	if n := srv.nonceShardFor(sender).nonces[sender]; n != 0 {
+		t.Fatalf("Nonce verbraucht: %d", n)
 	}
 }

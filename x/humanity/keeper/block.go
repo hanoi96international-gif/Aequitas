@@ -2541,6 +2541,8 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 	var korbGenommen []korbEintrag
 	var korbNeuBis uint64
 	var korbGehalten bool
+	// Stellen der Zeilen in dbTxs (speicherkorb.go, korbPraefix).
+	var korbZeilenPos []int
 	var pendingDur time.Duration
 	var pendingWG sync.WaitGroup
 	pendingWG.Add(1)
@@ -2564,7 +2566,7 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 			if dag.state.korb != nil {
 				// Bloecke aus dem Speicher: kein Vorladen noetig, der Korb
 				// ist schon im RAM.
-				dbTxs, pendingTxIDs, korbGenommen, korbNeuBis, korbGehalten = dag.state.korbFuerBlock(deckel)
+				dbTxs, pendingTxIDs, korbGenommen, korbNeuBis, korbZeilenPos, korbGehalten = dag.state.korbFuerBlockMitPos(deckel)
 			} else if vl := dag.vorlauf.nehmen(); vl != nil {
 				dbTxs, pendingTxIDs = vl.einloesen(deckel, dag.state.PendingTxIDsFreigeben, dag.state.LoadPendingTxsWithLimit)
 			} else {
@@ -2975,17 +2977,29 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 
 	// Height = max parent height + 1
 	maxParentHeight := int64(0)
-	// Die juengste Elternzeit: frueher darf die Blockzeit nicht liegen
-	// (block_tauglich.go). Ein Stumpf traegt einen Platzhalter, keine Zeit.
-	elternZeit := int64(0)
 	for _, ph := range parentHashes {
 		if parent, ok := dag.blocks[ph]; ok {
 			if parent.Height > maxParentHeight {
 				maxParentHeight = parent.Height
 			}
-			if parent.Proposer != "synthetic-checkpoint" && parent.Timestamp > elternZeit {
-				elternZeit = parent.Timestamp
-			}
+		}
+	}
+	// Die juengste Elternzeit: frueher darf die Blockzeit nicht liegen
+	// (block_tauglich.go). Gesucht wie beim Nachspielen (mit Rueckgriff auf
+	// die Datenbank); ein Stumpf traegt einen Platzhalter, keine Zeit. Ist ein
+	// Elternteil nicht auffindbar, wird nicht zurueckdatiert -- sonst laege
+	// die Blockzeit womoeglich mehr als 120 s vor ihm, und jeder wiese den
+	// Block ab.
+	elternZeit := int64(0)
+	elternUnbekannt := false
+	for _, ph := range parentHashes {
+		parent := dag.ghostdagBlockLookup(ph, nil)
+		if parent == nil {
+			elternUnbekannt = true
+			continue
+		}
+		if parent.Proposer != "synthetic-checkpoint" && parent.Timestamp > elternZeit {
+			elternZeit = parent.Timestamp
 		}
 	}
 
@@ -3212,11 +3226,44 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 	// weder einer, den jeder abweist, noch ein Zustand, den nur dieser Knoten
 	// hat.
 	jetztUnix := time.Now().Unix()
-	blockZeit, zeitErr := blockZeitFuer(txs, jetztUnix, elternZeit)
+	if elternUnbekannt {
+		elternZeit = jetztUnix
+	}
+	anzahl, blockZeit, zeitErr := blockZeitPraefix(txs, jetztUnix, elternZeit)
 	if zeitErr != nil {
 		blockZeitKonfliktMelden(zeitErr)
 		merkeProduktionsAusfall("auftraege_ohne_gemeinsame_zeit")
 		return nil
+	}
+	if anzahl < len(txs) {
+		// Nur der Anfang passt zu einer Zeit: der Rest geht zurueck -- in den
+		// Korb (vorn) bzw. als offene Zeilen -- und kommt in den naechsten
+		// Block. Die Vorladung haelt SPAETERE Zeilen und wird verworfen, sonst
+		// kaemen die vor dem zurueckgegebenen Rest.
+		blockZeitGeteilt.Add(1)
+		fmt.Printf("[BLOCK] ✂ %d von %d Transaktionen in diesen Block (Blockzeit %d), der Rest passt erst zu einer spaeteren (block_tauglich.go)\n", anzahl, len(txs), blockZeit)
+		behalten := 0
+		if anzahl > nTxsSnapshotted {
+			behalten = anzahl - nTxsSnapshotted
+		} else {
+			nTxsSnapshotted = anzahl
+		}
+		if korbGehalten {
+			var zurueck []korbEintrag
+			var freigeben []int64
+			korbGenommen, pendingTxIDs, zurueck, freigeben, korbNeuBis = korbPraefix(korbGenommen, pendingTxIDs, korbZeilenPos, behalten, dag.state.korbBis.Load())
+			if k := dag.state.korb; k != nil {
+				k.zurueckLegen(zurueck)
+			}
+			if len(freigeben) > 0 {
+				dag.state.PendingTxIDsFreigeben(freigeben)
+			}
+		} else if behalten < len(pendingTxIDs) {
+			dag.state.PendingTxIDsFreigeben(pendingTxIDs[behalten:])
+			pendingTxIDs = pendingTxIDs[:behalten]
+		}
+		dag.vorlauf.verwerfen(dag.state.PendingTxIDsFreigeben)
+		txs = txs[:anzahl]
 	}
 	if blockZeit != jetztUnix {
 		blockZeitZurueck.Add(1)

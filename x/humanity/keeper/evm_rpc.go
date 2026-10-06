@@ -1264,6 +1264,14 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage, pre *precomp
 	if reason := admissionRefusalReason(); reason != "" {
 		return nil, &RPCError{Code: -32005, Message: reason}
 	}
+	// annahme_pause.go: VOR der Nonce-Reservierung -- sonst verbrauchte die
+	// Ueberweisung ihre Nonce und scheiterte danach in TransferAtomic
+	// (Sicherheitspruefung #297, zweiter Durchgang).
+	if s.state != nil {
+		if err := s.state.annahmePauseGrund(); err != nil {
+			return nil, &RPCError{Code: -32005, Message: err.Error()}
+		}
+	}
 	// Platz im naechsten Block belegen -- oder "gleich nochmal". Nach der
 	// Pruefung oben, damit eine aus anderem Grund abgelehnte Anfrage keinen
 	// Platz belegt (rueckstau_grenze.go).
@@ -1494,6 +1502,9 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage, pre *precomp
 			sh.note(txHash)
 			sh.mu.Unlock()
 			s.state.SaveTxReceipt(txHash, senderAddr, toAddr, "0x0", "")
+			if istWiederholbareAnnahmeAblehnung(err) {
+				return nil, &RPCError{Code: -32005, Message: err.Error()}
+			}
 			return nil, &RPCError{Code: -32603, Message: "Transfer failed: " + err.Error()}
 		}
 		// Letzter unvermessener Aufruf dieser Funktion. Er gilt als billig
@@ -1558,6 +1569,9 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage, pre *precomp
 			sh.note(txHash)
 			sh.mu.Unlock()
 			s.state.SaveTxReceipt(txHash, senderAddr, toAddr, "0x0", "")
+			if istWiederholbareAnnahmeAblehnung(err) {
+				return nil, &RPCError{Code: -32005, Message: err.Error()}
+			}
 			return nil, &RPCError{Code: -32603, Message: "Transfer failed: " + err.Error()}
 		}
 		s.state.SyncBalancesToEVM(V7_CONTRACT_ADDR, senderAddr, toAddr)

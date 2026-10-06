@@ -39,7 +39,9 @@ import (
 // begrenzen sie nach hinten nicht (zeitstempel_pruefung.go); der Erzeuger
 // geht nie vor seine Eltern.
 //
-// Gibt es keine solche Zeit, entsteht kein Block (fail-closed): lieber steht
+// Passen nicht alle zu einer Zeit, traegt der Block den laengsten Anfang, der
+// passt, und der Rest folgt im naechsten (blockZeitPraefix). Passt schon die
+// erste Transaktion zu keiner Zeit, entsteht kein Block (fail-closed): lieber steht
 // die Erzeugung laut, als dass ein Block entsteht, den jeder abweist, oder
 // ein Zustand, den nur dieser Knoten hat. Damit das nicht eintritt, haelt
 // annahme_pause.go die Annahme an, solange die Erzeugung steht oder der
@@ -50,6 +52,7 @@ import (
 // es verlangten. blockZeitKonflikte: Versuche ohne gemeinsame Zeit.
 var (
 	blockZeitZurueck     atomic.Int64
+	blockZeitGeteilt     atomic.Int64
 	blockZeitKonflikte   atomic.Int64
 	blockZeitLetzterGrnd atomic.Value // string
 	blockZeitLetzteMeld  atomic.Int64
@@ -60,10 +63,12 @@ func BlockZeitStand() map[string]interface{} {
 	grund, _ := blockZeitLetzterGrnd.Load().(string)
 	return map[string]interface{}{
 		"bedeutung": "Blockzeit nach den Auftraegen (block_tauglich.go). zurueckdatiert: Bloecke, die die Zeit ihrer Annahme " +
-			"tragen statt der Uhr (nach einem Neustart normal). konflikte > 0: es gibt Auftraege im Ausgang, die zu keiner " +
-			"gemeinsamen Blockzeit passen -- dieser Knoten erzeugt dann keinen Block und nimmt nach 30 s nichts mehr an. " +
+			"tragen statt der Uhr (nach einem Neustart normal). geteilt: Bloecke, die nur den Anfang des Ausgangs trugen, weil der Rest erst " +
+			"zu einer spaeteren Zeit passt. konflikte > 0: der ERSTE Auftrag im Ausgang passt zu keiner Blockzeit seit den Eltern -- " +
+			"dieser Knoten erzeugt dann keinen Block und nimmt nach 30 s nichts mehr an. " +
 			"Abhilfe durch einen Menschen: den Knoten vom Seed neu aufsetzen (Resync) und seinen Ausgang verwerfen.",
 		"zurueckdatiert":   blockZeitZurueck.Load(),
+		"geteilt":          blockZeitGeteilt.Load(),
 		"konflikte":        blockZeitKonflikte.Load(),
 		"letzter_konflikt": grund,
 	}
@@ -119,6 +124,13 @@ func auftragsFenster(tx *Transaction, jetzt int64) zeitFenster {
 			f.eng(sattAdd(z, -nachweisHoechstensVoraus), sattAdd(z, nachweisHoechstensAlt))
 		}
 	}
+	// wirtschaft.go (buchZeitBeimNachspielen): der Nachspielende nimmt BuchAt
+	// nur, wenn es hoechstens 60 s nach und hoechstens 7 Tage vor dem Block
+	// liegt -- sonst still die Blockzeit, und Gebuehren und Liegegeld-Uhren
+	// wichen ab (Sicherheitspruefung #297, zweiter Durchgang).
+	if tx.BuchAt > 0 && wirtschaftAktiv(tx.BuchAt) {
+		f.eng(sattAdd(tx.BuchAt, -60), sattAdd(tx.BuchAt, 7*86400))
+	}
 	switch tx.Type {
 	case "liveness_renewal":
 		// nachrechnen_erneuerung.go (erneuerung_zeit): nur im strengen Modus.
@@ -172,6 +184,9 @@ func blockTauglich(tx *Transaction, blockZeit int64) error {
 				return fmt.Errorf("%s unterschrieben um %d, Block %d (Fenster -%ds/+%ds)", tx.Type, z, blockZeit, nachweisHoechstensAlt, nachweisHoechstensVoraus)
 			}
 		}
+	}
+	if tx.BuchAt > 0 && wirtschaftAktiv(tx.BuchAt) && buchZeitBeimNachspielen(tx.BuchAt, blockZeit) != tx.BuchAt {
+		return fmt.Errorf("%s gebucht um %d, Block %d (Nachspielende naehmen die Blockzeit)", tx.Type, tx.BuchAt, blockZeit)
 	}
 	switch tx.Type {
 	case "liveness_renewal":
@@ -240,6 +255,46 @@ func blockZeitFuer(txs []Transaction, jetzt, elternZeit int64) (int64, error) {
 		}
 	}
 	return t, nil
+}
+
+// blockZeitPraefix: wie blockZeitFuer, aber ein Block muss nicht alles
+// tragen. Passen nicht alle Transaktionen zu einer gemeinsamen Zeit, nimmt
+// der Block den laengsten Anfang (in Annahmereihenfolge), der zu einer passt,
+// mit der spaetesten solchen Zeit; der Rest kommt in den naechsten Block mit
+// einer spaeteren. Die Reihenfolge bleibt, weggelassen wird nichts
+// (Sicherheitspruefung #297, zweiter Durchgang: alles oder nichts stand
+// dauerhaft still, sobald ein alter Auftrag neben einer frischen Rundenmarke
+// lag). Fehler nur, wenn schon die erste Transaktion zu keiner Zeit zwischen
+// den Eltern und jetzt passt -- dann entsteht kein Block.
+func blockZeitPraefix(txs []Transaction, jetzt, elternZeit int64) (int, int64, error) {
+	if t, err := blockZeitFuer(txs, jetzt, elternZeit); err == nil {
+		return len(txs), t, nil
+	}
+	f := offenesFenster()
+	f.eng(elternZeit, jetzt)
+	k := 0
+	for k < len(txs) {
+		g := auftragsFenster(&txs[k], jetzt)
+		vorher := f
+		f.eng(g.von, g.bis)
+		if f.von > f.bis {
+			f = vorher
+			break
+		}
+		k++
+	}
+	if k == 0 {
+		g := auftragsFenster(&txs[0], jetzt)
+		return 0, 0, fmt.Errorf("%s von %s passt nur in Bloecke zwischen %d und %d, moeglich ist [%d (Eltern), %d (jetzt)]",
+			txs[0].Type, kurzAdresse(txs[0].Wallet), g.von, g.bis, elternZeit, jetzt)
+	}
+	t := f.bis
+	for i := 0; i < k; i++ {
+		if err := blockTauglich(&txs[i], t); err != nil {
+			return 0, 0, fmt.Errorf("Blockzeit %d fuer die ersten %d (Eltern %d, jetzt %d) besteht nicht: %v", t, k, elternZeit, jetzt, err)
+		}
+	}
+	return k, t, nil
 }
 
 // blockZeitKonfliktMelden: zaehlt und meldet (hoechstens einmal je Minute).

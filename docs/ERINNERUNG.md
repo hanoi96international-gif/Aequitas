@@ -187,12 +187,17 @@ den verlinkten Dokumenten.
             damit die Kette angehalten. Jetzt trägt der Block die späteste
             Zeit seit den Eltern, zu der jeder Knoten alle Aufträge annimmt
             (nach einem Absturz: die Zeit ihrer Annahme) -- nichts wird
-            weggelassen, sonst wiche der Erzeuger ab. Gibt es keine solche
-            Zeit, entsteht kein Block (fail-closed, `blockzeit.konflikte`).
-            Damit das nicht vorkommt, hält die Annahme an, solange der
-            Ausgang von vor dem Start offen ist oder seit 30 s kein eigener
-            Block entstand (`annahme_pause.go`, auch für die Registrierung),
-            und Vormund/Lebenszeichen werden nur noch bis 10 min nach der
+            weggelassen, sonst wiche der Erzeuger ab. Passen nicht alle zu
+            einer Zeit, trägt der Block den längsten passenden Anfang und der
+            Rest folgt (`blockzeit.geteilt`, auch im Speicherkorb); passt
+            schon der erste Auftrag zu keiner Zeit, entsteht kein Block
+            (fail-closed, `blockzeit.konflikte`). Die Annahme hält an,
+            solange der Ausgang von vor dem Start offen ist, seit 30 s kein
+            eigener Block entstand oder die älteste offene Zeile über 10 min
+            alt ist (`annahme_pause.go`, auch Registrierung und RPC vor der
+            Nonce). Beim Start öffnet der Knoten mit der Erzeuger-
+            Instanzsperre Zeilen aus einem ungespeicherten Block sofort
+            wieder. Vormund/Lebenszeichen werden nur noch bis 10 min nach der
             Unterschrift angenommen
       - [ ] Coordinator-Register (`coordinator_keys`) als Konsenszustand --
             heute knotenlokal; nötig, bevor die Staffel aktiv wird, sonst

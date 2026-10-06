@@ -227,6 +227,13 @@ type ChainState struct {
 	erzeugerSeit        atomic.Int64
 	letzterEigenerBlock atomic.Int64
 	ausgangVorStartBis  atomic.Int64
+	// instanzSperre: eigene Verbindung, die die Erzeuger-Instanzsperre haelt
+	// (annahme_pause.go, erzeugerInstanzSperren) -- solange dieser Prozess
+	// lebt. nil = nicht gehalten.
+	instanzSperre *sql.Conn
+	// ausgangVorStartBedingung: welche Zeilen die Startsperre zaehlt
+	// (annahme_pause.go). Gesetzt beim Start, danach nur gelesen.
+	ausgangVorStartBedingung string
 
 	mu sync.RWMutex
 	// accounts is a *shardedAccounts (see sharded_accounts.go /
