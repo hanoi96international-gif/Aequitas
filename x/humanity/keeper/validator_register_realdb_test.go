@@ -275,9 +275,10 @@ func TestValidatorRegister_ZustandsRegeln_RealDB(t *testing.T) {
 		t.Fatal("uebersprungene Bindungen haben die Summe veraendert")
 	}
 
-	// Zwei Bindungen desselben Betreibers in einem Block: die spaetere gilt;
-	// bei gleichem Zeitpunkt die mit der groesseren Adresse -- in jeder
-	// Reihenfolge dieselbe.
+	// Zwei Bindungen desselben Betreibers in einem Block: die spaetere gilt.
+	// Eine zweite mit demselben Zeitpunkt liegt unter dem Abstand je
+	// Betreiber (validatorBindungAbstand) und wird abgewiesen -- welche
+	// Adresse die groessere ist, spielt keine Rolle mehr.
 	s4, _ := neuerSchluessel(t)
 	s5, _ := neuerSchluessel(t)
 	if !f.block(f.jetzt, bindungUnterschrieben(t, b2, s4, f.jetzt-50), bindungUnterschrieben(t, b2, s5, f.jetzt-40)) {
@@ -290,12 +291,8 @@ func TestValidatorRegister_ZustandsRegeln_RealDB(t *testing.T) {
 	if !f.block(f.jetzt, bindungUnterschrieben(t, b2, s6, f.jetzt-40)) {
 		t.Fatal("Block abgewiesen")
 	}
-	erwartet := adrVon(s5)
-	if adrVon(s6) > erwartet {
-		erwartet = adrVon(s6)
-	}
-	if s, _, _ := f.eintrag(b2); s != erwartet {
-		t.Fatalf("bei gleichem Zeitpunkt gilt %s statt der groesseren Adresse %s", s, erwartet)
+	if s, _, _ := f.eintrag(b2); s != adrVon(s5) {
+		t.Fatalf("bei gleichem Zeitpunkt gilt %s statt der ersten %s", s, adrVon(s5))
 	}
 	if f.neuAufgebaut() != f.summe() {
 		t.Fatal("laufende und neu aufgebaute Summe weichen ab")
