@@ -94,8 +94,8 @@ func holeBesitznachweis(basis, wallet string) (pub string, sig string, err error
 		return "", "", fmt.Errorf("could not read the coordinator's answer: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return "", "", fmt.Errorf("the coordinator refused (HTTP %d) -- is COORDINATOR_SIGNING_KEY set there?",
-			resp.StatusCode)
+		return "", "", fmt.Errorf("the coordinator refused (HTTP %d) -- is COORDINATOR_SIGNING_KEY set there, "+
+			"and is COORDINATOR_BETREIBER_WALLET there exactly the operator wallet this registration is for?", resp.StatusCode)
 	}
 	var b struct {
 		PublicKey    string `json:"public_key"`
@@ -105,7 +105,8 @@ func holeBesitznachweis(basis, wallet string) (pub string, sig string, err error
 		return "", "", fmt.Errorf("the coordinator's answer was not the expected JSON")
 	}
 	if b.PublicKey == "" || b.KeySignature == "" {
-		return "", "", fmt.Errorf("the coordinator returned no proof -- is COORDINATOR_SIGNING_KEY set there?")
+		return "", "", fmt.Errorf("the coordinator returned no proof -- is COORDINATOR_SIGNING_KEY set there, " +
+			"and is COORDINATOR_BETREIBER_WALLET there exactly the operator wallet this registration is for?")
 	}
 	return b.PublicKey, b.KeySignature, nil
 }

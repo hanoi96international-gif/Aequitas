@@ -80,8 +80,8 @@ func holeBezeugungsnachweis(basis, wallet string) (pub string, sig string, err e
 		return "", "", fmt.Errorf("could not read the matching service's answer: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return "", "", fmt.Errorf("the matching service refused (HTTP %d) -- is VALIDATOR_SIGNING_KEY set there?",
-			resp.StatusCode)
+		return "", "", fmt.Errorf("the matching service refused (HTTP %d) -- is VALIDATOR_SIGNING_KEY set there, "+
+			"and is VALIDATOR_BETREIBER_WALLET there exactly the operator wallet this registration is for?", resp.StatusCode)
 	}
 	var b struct {
 		PersonhoodKey       string `json:"personhood_key"`
@@ -91,7 +91,8 @@ func holeBezeugungsnachweis(basis, wallet string) (pub string, sig string, err e
 		return "", "", fmt.Errorf("the matching service's answer was not the expected JSON")
 	}
 	if b.PersonhoodKey == "" || b.PersonhoodSignature == "" {
-		return "", "", fmt.Errorf("the matching service returned no proof -- is VALIDATOR_SIGNING_KEY set there?")
+		return "", "", fmt.Errorf("the matching service returned no proof -- is VALIDATOR_SIGNING_KEY set there, " +
+			"and is VALIDATOR_BETREIBER_WALLET there exactly the operator wallet this registration is for?")
 	}
 	return b.PersonhoodKey, b.PersonhoodSignature, nil
 }
