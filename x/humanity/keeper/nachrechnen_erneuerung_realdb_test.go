@@ -69,7 +69,7 @@ func neuerErneuerungsFall(t *testing.T, registriertVorTagen int64) *erneuerungsF
 	}
 	bindung := CoordinatorBindung{Mensch: mensch,
 		MenschSig:     personalSign(t, mk, coordinatorFreigabeNachricht(hex.EncodeToString(pub))),
-		SchluesselSig: hex.EncodeToString(ed25519.Sign(priv, []byte("Aequitas: coordinator key for human "+mensch)))}
+		SchluesselSig: hex.EncodeToString(ed25519.Sign(priv, []byte(coordinatorBesitzNachricht(mensch))))}
 	if err := cs.RegisterCoordinatorKey(hex.EncodeToString(pub), mensch, "", bindung.MenschSig, bindung.SchluesselSig); err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +105,7 @@ func neuerErneuerungsFall(t *testing.T, registriertVorTagen int64) *erneuerungsF
 }
 
 func (f *erneuerungsFall) unterschreibe(priv ed25519.PrivateKey, wallet string, issuedAt int64) string {
-	return hex.EncodeToString(ed25519.Sign(priv, []byte(fmt.Sprintf("%s|%s|%d", livenessRenewalDomain, wallet, issuedAt))))
+	return hex.EncodeToString(ed25519.Sign(priv, []byte(erneuerungsNachricht(wallet, issuedAt))))
 }
 
 func (f *erneuerungsFall) gueltig(issuedAt int64) Transaction {
@@ -316,13 +316,13 @@ func TestErneuerung_BindungInDerBescheinigung_RealDB(t *testing.T) {
 	altForm.Bescheinigung.Mensch, altForm.Bescheinigung.MenschSig, altForm.Bescheinigung.SchluesselSig = "", "", ""
 	k2, m2 := neuerSchluessel(t)
 	fremderBesitz := f.gueltig(issued)
-	fremderBesitz.Bescheinigung.SchluesselSig = hex.EncodeToString(ed25519.Sign(f.priv, []byte("Aequitas: coordinator key for human "+m2)))
+	fremderBesitz.Bescheinigung.SchluesselSig = hex.EncodeToString(ed25519.Sign(f.priv, []byte(coordinatorBesitzNachricht(m2))))
 	fremdeFreigabe := f.gueltig(issued)
 	fremdeFreigabe.Bescheinigung.MenschSig = personalSign(t, k2, coordinatorFreigabeNachricht(hex.EncodeToString(f.pub)))
 	// Ein Mensch, den es auf der Kette nicht gibt, mit gueltigen Unterschriften.
 	keinMensch := erneuerungsTransaktion(f.wallet, issued, hex.EncodeToString(f.pub), f.unterschreibe(f.priv, f.wallet, issued),
 		CoordinatorBindung{Mensch: m2, MenschSig: personalSign(t, k2, coordinatorFreigabeNachricht(hex.EncodeToString(f.pub))),
-			SchluesselSig: hex.EncodeToString(ed25519.Sign(f.priv, []byte("Aequitas: coordinator key for human "+m2)))})
+			SchluesselSig: hex.EncodeToString(ed25519.Sign(f.priv, []byte(coordinatorBesitzNachricht(m2))))})
 	for name, tx := range map[string]Transaction{
 		"alte Form": altForm, "fremder Besitz": fremderBesitz, "fremde Freigabe": fremdeFreigabe, "kein Mensch": keinMensch,
 	} {
@@ -418,7 +418,7 @@ func TestCoordinatorEintragung_SpeichertUnterschriften_RealDB(t *testing.T) {
 	body, _ := json.Marshal(map[string]string{
 		"public_key": pubHex, "human_wallet": mensch,
 		"human_signature": personalSign(t, k, coordinatorFreigabeNachricht(pubHex)),
-		"key_signature":   hex.EncodeToString(ed25519.Sign(priv, []byte("Aequitas: coordinator key for human "+mensch))),
+		"key_signature":   hex.EncodeToString(ed25519.Sign(priv, []byte(coordinatorBesitzNachricht(mensch)))),
 	})
 	req := httptest.NewRequest(http.MethodPost, "/api/register-coordinator-key", bytes.NewReader(body))
 	req.Header.Set("X-Aequitas-Forwarded", "1") // nicht weiterreichen
@@ -432,7 +432,7 @@ func TestCoordinatorEintragung_SpeichertUnterschriften_RealDB(t *testing.T) {
 		t.Fatalf("Bindung nicht gespeichert: %+v %v", b, ok)
 	}
 	tx := erneuerungsTransaktion(f.wallet, f.jetzt-60, pubHex,
-		hex.EncodeToString(ed25519.Sign(priv, []byte(fmt.Sprintf("%s|%s|%d", livenessRenewalDomain, f.wallet, f.jetzt-60)))), b)
+		hex.EncodeToString(ed25519.Sign(priv, []byte(erneuerungsNachricht(f.wallet, f.jetzt-60)))), b)
 	if got := f.pruefe(tx, f.jetzt); len(got) != 0 {
 		t.Fatalf("Bescheinigung mit gespeicherter Bindung gemeldet: %v", got)
 	}
@@ -529,7 +529,7 @@ func TestCoordinatorEintragung_SchluesselWandertNicht_RealDB(t *testing.T) {
 	k2, m2 := f.neuerMensch(false)
 	w := f.eintragen(map[string]string{"public_key": pubHex, "human_wallet": m2,
 		"human_signature": personalSign(t, k2, coordinatorFreigabeNachricht(pubHex)),
-		"key_signature":   hex.EncodeToString(ed25519.Sign(f.priv, []byte("Aequitas: coordinator key for human "+m2)))})
+		"key_signature":   hex.EncodeToString(ed25519.Sign(f.priv, []byte(coordinatorBesitzNachricht(m2))))})
 	if w.Code != http.StatusConflict {
 		t.Fatalf("Schluessel zu einem anderen Menschen verschoben: %d %s", w.Code, w.Body.String())
 	}
@@ -554,7 +554,7 @@ func TestCoordinatorEintragung_SchreibweiseAngeglichen_RealDB(t *testing.T) {
 	verlaufEintrag(t, f.cs, mensch, distTestAddr(1953), nowUnix()-30*86400) // als Validator zugelassen
 	freigabe := personalSign(t, k, coordinatorFreigabeNachricht(pubHex))
 	v0 := "0x" + strings.ToUpper(freigabe[2:130]) + map[string]string{"1b": "00", "1c": "01"}[freigabe[130:]]
-	besitz := "0x" + strings.ToUpper(hex.EncodeToString(ed25519.Sign(priv, []byte("Aequitas: coordinator key for human "+mensch))))
+	besitz := "0x" + strings.ToUpper(hex.EncodeToString(ed25519.Sign(priv, []byte(coordinatorBesitzNachricht(mensch)))))
 	if w := f.eintragen(map[string]string{"public_key": pubHex, "human_wallet": mensch, "human_signature": v0, "key_signature": besitz}); w.Code != http.StatusOK {
 		t.Fatalf("Eintragung mit v=0/1 und Grossbuchstaben: %d %s", w.Code, w.Body.String())
 	}
@@ -563,7 +563,7 @@ func TestCoordinatorEintragung_SchreibweiseAngeglichen_RealDB(t *testing.T) {
 		t.Fatalf("nicht in der einen Schreibweise gespeichert: %+v", b)
 	}
 	tx := erneuerungsTransaktion(f.wallet, f.jetzt-60, pubHex,
-		hex.EncodeToString(ed25519.Sign(priv, []byte(fmt.Sprintf("%s|%s|%d", livenessRenewalDomain, f.wallet, f.jetzt-60)))), b)
+		hex.EncodeToString(ed25519.Sign(priv, []byte(erneuerungsNachricht(f.wallet, f.jetzt-60)))), b)
 	if got := f.pruefe(tx, f.jetzt); len(got) != 0 {
 		t.Fatalf("Bescheinigung aus angeglichener Eintragung gemeldet: %v", got)
 	}
@@ -719,7 +719,7 @@ func TestCoordinatorEintragung_OffeneStaffelAbgewiesen_RealDB(t *testing.T) {
 	k, mensch := f.neuerMensch(true)
 	w := f.eintragen(map[string]string{"public_key": pubHex, "human_wallet": mensch,
 		"human_signature": personalSign(t, k, coordinatorFreigabeNachricht(pubHex)),
-		"key_signature":   hex.EncodeToString(ed25519.Sign(priv, []byte("Aequitas: coordinator key for human "+mensch)))})
+		"key_signature":   hex.EncodeToString(ed25519.Sign(priv, []byte(coordinatorBesitzNachricht(mensch))))})
 	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "open staged grant") {
 		t.Fatalf("Eintragung mit offener Staffel: %d %s", w.Code, w.Body.String())
 	}

@@ -54,7 +54,8 @@ const (
 	//     (coordinator_zulassung.go; registerLeserAb <= Staffel, erzwungen in
 	//     TestStaffel_ZulassungVorDerStaffel);
 	//   - der strenge Modus beginnt spaetestens mit der Staffel;
-	//   - Bindung und Bescheinigung tragen die Chain-ID.
+	//   - Bindung und Bescheinigung tragen die Chain-ID
+	//     (coordinator_nachrichten.go, v2; im Konsens nur v2).
 	stagedGrantActivationUnix int64 = 4102444800
 
 	grantKlasseSofort     = "sofort"
@@ -332,7 +333,7 @@ func merkeProveKlasse(respBody []byte) {
 
 // handleLivenessRenewal nimmt eine Erneuerung entgegen: der Coordinator hat
 // eine zweite Lebendigkeitspruefung bestanden gesehen und das mit seinem
-// Ed25519-Schluessel bescheinigt (aequitas-liveness-renewal-v1|<wallet>|<issued_at>).
+// Ed25519-Schluessel bescheinigt (erneuerungsNachricht, mit Chain-ID).
 // Der Schluessel muss im Coordinator-Register dieses Knotens stehen (daher
 // kommt die Bindung, die in die Transaktion geht); ueber die Gueltigkeit
 // entscheidet bescheinigungPruefen, wie bei jedem Nachspielenden. Angenommen
@@ -458,8 +459,6 @@ func erneuerungFruehestens(acc *AccountState) int64 {
 	return acc.GrantStagedUntil - int64(grantStaffelTage-erneuerungMindestTage)*86400
 }
 
-const livenessRenewalDomain = "aequitas-liveness-renewal-v1"
-
 // Lebendigkeitsbescheinigung: was der Coordinator unterschrieben hat, so wie
 // es in der Transaktion steht. Der Zeitpunkt steht in DistributionAt.
 type Lebendigkeitsbescheinigung struct {
@@ -472,20 +471,14 @@ type Lebendigkeitsbescheinigung struct {
 	// zwei Knoten mit verschiedenem Register haetten denselben Block
 	// verschieden beurteilt, sobald die Staffel gilt. Jetzt traegt die
 	// Bescheinigung, was eine Eintragung ausmacht: den Menschen, dem der
-	// Schluessel gehoert, seine Freigabe ("Aequitas: authorize coordinator
-	// <schluessel>", EIP-191) und den Besitznachweis des Schluessels
-	// ("Aequitas: coordinator key for human <mensch>", Ed25519). Jeder Knoten
+	// Schluessel gehoert, seine Freigabe (coordinatorFreigabeNachricht,
+	// EIP-191) und den Besitznachweis des Schluessels
+	// (coordinatorBesitzNachricht, Ed25519), beide mit Chain-ID. Jeder Knoten
 	// prueft sie selbst, dazu, dass der Mensch registriert ist -- dieselbe
 	// Bedingung wie bei einer Eintragung, nur ohne lokale Liste.
 	Mensch        string `json:"mensch,omitempty"`
 	MenschSig     string `json:"mensch_sig,omitempty"`
 	SchluesselSig string `json:"schluessel_sig,omitempty"`
-}
-
-// coordinatorFreigabeNachricht: was der Mensch fuer seinen Schluessel
-// unterschreibt (wie bei der Eintragung, coordinator_registry.go).
-func coordinatorFreigabeNachricht(schluessel string) string {
-	return "Aequitas: authorize coordinator " + strings.ToLower(strings.TrimSpace(schluessel))
 }
 
 // erneuerungsTransaktion: die liveness_renewal mit der Bescheinigung --
@@ -575,7 +568,7 @@ func bescheinigungPruefen(wallet string, issuedAt int64, b *Lebendigkeitsbeschei
 	if !ok {
 		return fmt.Errorf("%s haelt zur Zeit der Bescheinigung keinen Validator-Schluessel -- nicht als Coordinator zugelassen", kurzAdresse(mensch))
 	}
-	msg := fmt.Sprintf("%s|%s|%d", livenessRenewalDomain, wallet, issuedAt)
+	msg := erneuerungsNachricht(wallet, issuedAt)
 	if !ed25519PruefenStreng(pub, b.Signature, []byte(msg)) {
 		return fmt.Errorf("Bescheinigung passt nicht zu Wallet und Zeitpunkt (oder ist keine Ed25519-Unterschrift in kanonischer Schreibweise)")
 	}

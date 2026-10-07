@@ -356,11 +356,14 @@ func (a *APIServer) handleRegisterCoordinatorKey(w http.ResponseWriter, r *http.
 		jsonError(w, "invalid human_wallet", http.StatusBadRequest)
 		return
 	}
-	if err := verifyPersonalSign(coordinatorFreigabeNachricht(pub), req.HumanSignature, human); err != nil {
+	// Freigabe: v2 mit Chain-ID, im Uebergang auch der alte Satz
+	// (coordinator_nachrichten.go) -- fuer eine Bescheinigung taugt nur v2.
+	if err := verifyPersonalSign(coordinatorFreigabeNachricht(pub), req.HumanSignature, human); err != nil &&
+		verifyPersonalSign(coordinatorFreigabeNachrichtV1(pub), req.HumanSignature, human) != nil {
 		jsonError(w, "invalid human_signature: "+err.Error(), http.StatusBadRequest)
 		return
 	}
-	if !verifyCoordinatorPossession(pub, req.KeySignature, human) {
+	if !verifyCoordinatorPossessionEintragung(pub, req.KeySignature, human) {
 		jsonError(w, "invalid key_signature -- sign the coordinator-key message with the Ed25519 key itself",
 			http.StatusBadRequest)
 		return
@@ -431,7 +434,17 @@ func (a *APIServer) handleCoordinatorList(w http.ResponseWriter, r *http.Request
 // unterschrieben. Streng (ed25519_streng.go): kein Schluessel kleiner
 // Ordnung, Unterschrift in ihrer einen Schreibweise -- dieselbe Pruefung
 // macht jeder Knoten an der Bescheinigung.
+// Nur v2 (mit Chain-ID, coordinator_nachrichten.go) -- so prueft es die
+// Bescheinigung im Konsens.
 func verifyCoordinatorPossession(publicHex, signatureHex, humanWallet string) bool {
-	msg := []byte("Aequitas: coordinator key for human " + strings.ToLower(strings.TrimSpace(humanWallet)))
-	return ed25519PruefenStreng(strings.ToLower(strings.TrimSpace(publicHex)), signatureHex, msg)
+	return ed25519PruefenStreng(strings.ToLower(strings.TrimSpace(publicHex)), signatureHex, []byte(coordinatorBesitzNachricht(humanWallet)))
+}
+
+// verifyCoordinatorPossessionEintragung: fuer die Eintragung im Uebergang
+// auch der alte Satz ohne Chain-ID.
+func verifyCoordinatorPossessionEintragung(publicHex, signatureHex, humanWallet string) bool {
+	if verifyCoordinatorPossession(publicHex, signatureHex, humanWallet) {
+		return true
+	}
+	return ed25519PruefenStreng(strings.ToLower(strings.TrimSpace(publicHex)), signatureHex, []byte(coordinatorBesitzNachrichtV1(humanWallet)))
 }
