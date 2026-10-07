@@ -1,6 +1,7 @@
 package keeper
 
 import (
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"math"
@@ -189,5 +190,26 @@ func TestAddPeerBlock_ErzeugerpruefungAusDemRegister(t *testing.T) {
 	}
 	if lauf(map[string]bool{proposer: true}) {
 		t.Fatal("ab erzeugerSchnittAb: gebundener Schluessel als unbekannt abgewiesen")
+	}
+}
+
+// fehlerSQL: jede Abfrage scheitert (Verbindung weg).
+type fehlerSQL struct{}
+
+func (fehlerSQL) Exec(string, ...interface{}) (sql.Result, error) {
+	return nil, errors.New("verbindung weg")
+}
+func (fehlerSQL) QueryRow(string, ...interface{}) *sql.Row { return nil }
+func (fehlerSQL) Query(string, ...interface{}) (*sql.Rows, error) {
+	return nil, errors.New("verbindung weg")
+}
+
+// Fail-closed: ist das Register nicht lesbar, liefert das Strafkonto einen
+// Fehler -- beim Nachspielen weist er den Block ab. Nie "keine Strafe".
+func TestStrafkonto_LesefehlerIstFehler(t *testing.T) {
+	registerLeserOverride.Store(1)
+	t.Cleanup(func() { registerLeserOverride.Store(0) })
+	if w, err := strafKonto(fehlerSQL{}, "0xsigner", 100); err == nil {
+		t.Fatalf("Lesefehler ergab Strafkonto %q ohne Fehler", w)
 	}
 }
