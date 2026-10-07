@@ -621,10 +621,11 @@ func (cs *ChainState) DoppelsignaturErkannt(signingAddr, blockAHash, blockBHash 
 	}
 	// Ab registerLeserAb nur frische Beweise (strafe_abrechnung.go): jeder
 	// Nachspielende weist einen Block ab, der mehr als strafBeweisFrisch nach
-	// der Tat liegt. Ein alter Beweis (etwa aus der nachgeholten Geschichte)
+	// (oder mehr als fuenf Minuten vor) der Tat liegt. Ein alter Beweis (etwa aus der nachgeholten Geschichte)
 	// wird darum weder vermerkt noch verschickt -- vermerkt, aber nicht
 	// verschickt, sperrte er den Validator nur auf diesem Knoten.
-	if jetzt := nowUnix(); registerLeserAktiv(jetzt) && jetzt > detectedAt+strafBeweisFrisch-strafBeweisMarge {
+	if jetzt := nowUnix(); registerLeserAktiv(jetzt) &&
+		(jetzt > detectedAt+strafBeweisFrisch-strafBeweisMarge || detectedAt > jetzt+zeitstempelZukunftToleranz) {
 		fmt.Printf("[SLASHING] ⚠ Doppelsignatur von %s (%s/%s) von %d ist zu alt fuer einen Beweis -- nichts vermerkt\n",
 			signer, kurzHash(blockAHash), kurzHash(blockBHash), detectedAt)
 		return 0, 0, nil

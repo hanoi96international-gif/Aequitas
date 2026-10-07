@@ -42,7 +42,9 @@ import (
 // Zeitpunkt unterschreiben, zu dem der fruehere ihn hielt. Darum muss der
 // Beweis ab registerLeserAb in einem Block stehen, dessen Zeit hoechstens
 // strafBeweisFrisch nach DetectedAt liegt (beweisFrischPruefen, beim
-// Nachspielen und in block_tauglich.go). Erfindet B nach seiner Bindung X
+// Nachspielen und in block_tauglich.go), und hoechstens fuenf Minuten davor
+// -- sonst datierte der Halter die Tat in die Zeit nach einer geplanten
+// Uebergabe. Erfindet B nach seiner Bindung X
 // einen Beweis, gilt DetectedAt >= Blockzeit - W >= X - W, also liegt X in
 // (DetectedAt, DetectedAt + W] -- B zahlt selbst (oder ein noch frueherer
 // anderer Binder in diesem Fenster, siehe Grenzen).
@@ -93,8 +95,15 @@ func strafeFaelligAb(detectedAt int64) int64 {
 }
 
 // beweisFrischPruefen: ab registerLeserAb darf ein slash_equivocation nur in
-// einem Block stehen, der hoechstens strafBeweisFrisch nach DetectedAt liegt.
-// Davor wie bisher ohne Grenze.
+// einem Block stehen, der hoechstens strafBeweisFrisch nach und hoechstens
+// nachweisHoechstensVoraus vor DetectedAt liegt. Davor wie bisher ohne
+// Grenze.
+//
+// Die Grenze nach vorn (Sicherheitspruefung #306): ohne sie legte der Halter
+// einen Beweis mit DetectedAt in zwei Tagen in seinen eigenen Block, gaebe
+// den Schluessel morgen an B -- und B hielte ihn "zur Tat". Ein ehrlicher
+// Erkennender sieht nur Bloecke, die hoechstens zeitstempelZukunftToleranz
+// voraus sind (AddPeerBlock).
 func beweisFrischPruefen(detectedAt, blockZeit int64) error {
 	if !registerLeserAktiv(blockZeit) {
 		return nil
@@ -102,13 +111,10 @@ func beweisFrischPruefen(detectedAt, blockZeit int64) error {
 	if blockZeit > sattAdd(detectedAt, strafBeweisFrisch) {
 		return fmt.Errorf("slash_equivocation: Beweis von %d zu alt fuer Block %d (hoechstens %ds)", detectedAt, blockZeit, strafBeweisFrisch)
 	}
+	if blockZeit < sattAdd(detectedAt, -nachweisHoechstensVoraus) {
+		return fmt.Errorf("slash_equivocation: Beweis von %d liegt nach Block %d (hoechstens %ds voraus)", detectedAt, blockZeit, nachweisHoechstensVoraus)
+	}
 	return nil
-}
-
-// beweisFrischFenster: die Blockzeiten, zu denen beweisFrischPruefen
-// besteht -- vor dem Stichtag alle, danach bis DetectedAt + W.
-func beweisFrischFenster(detectedAt int64) (bis int64) {
-	return max(sattAdd(detectedAt, strafBeweisFrisch), sattAdd(registerLeserAb(), -1))
 }
 
 // strafKontoZurAbrechnung: wer die Strafe fuer die Tat zahlt. Gelesen werden
@@ -288,6 +294,15 @@ func (cs *ChainState) strafAbrechnungLauf() {
 	if !registerLeserAktiv(jetzt) {
 		return
 	}
+	// Folger und Knoten ohne Annahme: nichts zu tun. Vorher pruefen statt
+	// am Tor scheitern -- annahmeBeginnenLeiter zaehlt sonst jede Minute
+	// eine abgelehnte Ueberweisung, und das Log liefe voll.
+	if cs.leitung.Load() == nil && !cs.annehmendAusdruecklich.Load() {
+		return
+	}
+	if !cs.nimmtAnFuer() {
+		return
+	}
 	// Faellig: DetectedAt + W + Frist + Marge <= jetzt.
 	grenze := jetzt - strafBeweisFrisch - erzeugerFrist - strafAbrechnungMarge
 	rows, err := cs.db.Query(`SELECT signing_address, block_a_hash, block_b_hash, detected_at FROM equivocation_evidence
@@ -311,9 +326,7 @@ func (cs *ChainState) strafAbrechnungLauf() {
 	for _, o := range offen {
 		if err := cs.strafeAbrechnen(o); err != nil {
 			fmt.Printf("[SLASHING] Abrechnung %s (%s/%s) nicht gelegt: %v\n", kurzAdresse(o.signer), kurzHash(o.a), kurzHash(o.b), err)
-			if errors.Is(err, errKeinAlleinigerAnnehmer) {
-				return
-			}
+			return // der naechste Lauf versucht es wieder
 		}
 	}
 }

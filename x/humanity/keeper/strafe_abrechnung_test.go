@@ -44,6 +44,14 @@ func TestStrafeAbrechnung_FrischeNurAbStichtag(t *testing.T) {
 	if err := beweisFrischPruefen(10_000-strafBeweisFrisch, 10_000); err != nil {
 		t.Fatalf("Beweis genau W alt abgewiesen: %v", err)
 	}
+	// In die Zukunft datiert (Sicherheitspruefung #306): hoechstens fuenf
+	// Minuten nach dem Block.
+	if err := beweisFrischPruefen(10_000+nachweisHoechstensVoraus+1, 10_000); err == nil {
+		t.Fatal("in die Zukunft datierter Beweis angenommen")
+	}
+	if err := beweisFrischPruefen(10_000+nachweisHoechstensVoraus, 10_000); err != nil {
+		t.Fatalf("Beweis fuenf Minuten voraus abgewiesen: %v", err)
+	}
 }
 
 // Die Abrechnung liest Bindungen bis Tat + W. Jede solche Bindung steht in

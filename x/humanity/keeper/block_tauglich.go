@@ -133,8 +133,12 @@ func auftragsFenster(tx *Transaction, jetzt int64) zeitFenster {
 	}
 	switch tx.Type {
 	case "slash_equivocation":
-		// strafe_abrechnung.go: ab registerLeserAb nur frische Beweise.
-		f.eng(math.MinInt64, beweisFrischFenster(tx.DetectedAt))
+		// strafe_abrechnung.go: ab registerLeserAb nur frische Beweise (vor dem
+		// Stichtag gilt keine Grenze, und eine Zeit danach waehlt der Erzeuger
+		// dann nicht).
+		if registerLeserAktiv(jetzt) {
+			f.eng(sattAdd(tx.DetectedAt, -nachweisHoechstensVoraus), sattAdd(tx.DetectedAt, strafBeweisFrisch))
+		}
 	case "slash_abrechnung":
 		// strafe_abrechnung.go: erst ab der Faelligkeit.
 		f.eng(strafeFaelligAb(tx.DetectedAt), math.MaxInt64)

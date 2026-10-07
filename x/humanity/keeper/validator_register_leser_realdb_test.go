@@ -334,6 +334,36 @@ func TestStrafe_NurFrischeBeweise_RealDB(t *testing.T) {
 	}
 }
 
+// Missbrauch (Sicherheitspruefung #306): V legt einen Beweis mit DetectedAt
+// in zwei Tagen in seinen eigenen Block und gibt den Schluessel morgen an B
+// -- B hielte ihn "zur Tat". Der Block wird abgewiesen; V's Erkennung legt
+// ihn gar nicht erst.
+func TestStrafe_InDieZukunftDatierterBeweis_RealDB(t *testing.T) {
+	k, v := strafFall(t)
+	b := distTestAddr(1714)
+	registerKonto(t, k.cs, b, true)
+	jetzt := nowUnix()
+	zukunft := k.doppelsignatur(jetzt+2*86400, "cc", "dd")
+	verlaufEintrag(t, k.cs, b, k.signer, jetzt+86400)
+	var ok bool
+	mitStichtag(1, func() { ok = k.blockZu(jetzt, zukunft) })
+	if ok {
+		t.Fatal("in die Zukunft datierter Beweis angenommen")
+	}
+	k.cs.db.Exec(`DELETE FROM pending_txs`)
+	mitStichtag(1, func() {
+		k.cs.DoppelsignaturErkannt(k.signer, zukunft.BlockAHash, zukunft.BlockBHash, zukunft.DetectedAt, zukunft.Doppelbeweis)
+	})
+	var imAusgang int
+	k.cs.db.QueryRow(`SELECT COUNT(*) FROM pending_txs WHERE tx_json LIKE '%slash_equivocation%'`).Scan(&imAusgang)
+	if v := k.vergehen(); v != 1 || imAusgang != 0 {
+		t.Fatalf("%d Vergehen, %d im Ausgang", v, imAusgang)
+	}
+	if standVon(t, k.cs, b) != 100 || standVon(t, k.cs, v) != 100 {
+		t.Fatal("belastet")
+	}
+}
+
 // Der Erkennende legt einen alten Beweis nicht mehr in den Ausgang -- er
 // wuerde abgewiesen, und vermerkt sperrte er nur auf diesem Knoten.
 func TestStrafe_ErkennenderUebergehtAltenBeweis_RealDB(t *testing.T) {

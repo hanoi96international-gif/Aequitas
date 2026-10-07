@@ -187,9 +187,12 @@ Dinge ohne Konsenswirkung (Erreichbarkeit, Messwerte als Hinweis).
          nachzuspielen. Erkennender und Nachspielende rechnen dasselbe,
          egal, wann sie eine Übergabe gesehen haben.
        - **Nur frische Beweise:** ab dem Stichtag steht `slash_equivocation`
-         höchstens W nach `DetectedAt` in einem Block (sonst ist der Block
-         ungültig); der Erkennende legt ältere nicht in den Ausgang und
-         vermerkt sie nicht. Sonst hängte ein späterer Halter, der den
+         höchstens W nach und höchstens fünf Minuten vor `DetectedAt` in
+         einem Block (sonst ist der Block ungültig); der Erkennende legt
+         andere nicht in den Ausgang und vermerkt sie nicht. Ohne die Grenze
+         nach vorn legte der Halter einen Beweis mit `DetectedAt` in zwei
+         Tagen in seinen Block, übergäbe morgen – und der Nachfolger hielte
+         den Schlüssel „zur Tat“. Sonst hängte ein späterer Halter, der den
          Schlüssel kennt, dem früheren einen alt datierten Beweis an. Wer
          nach seiner Bindung X einen Beweis erfindet, datiert ihn auf
          mindestens X − W – und zahlt dann selbst.
