@@ -126,6 +126,19 @@ func TestValidatorVerlauf_Snapshot_RealDB(t *testing.T) {
 	if pruefeSnapshotVerlauf(append(snap.ValidatorVerlauf, snap.ValidatorVerlauf[0]), bis) == nil {
 		t.Fatal("doppelte Zeile angenommen")
 	}
+	// Je eine der beiden Unterschriften aus einer anderen Zeile: gueltig
+	// geformt, aber nicht ueber diese Bindung.
+	for _, welche := range []string{"Betreiber", "Signierschluessel"} {
+		vertauscht := append([]SnapshotValidator(nil), snap.ValidatorVerlauf...)
+		if welche == "Betreiber" {
+			vertauscht[0].SigOperator = vertauscht[1].SigOperator
+		} else {
+			vertauscht[0].SigSigning = vertauscht[1].SigSigning
+		}
+		if pruefeSnapshotVerlauf(vertauscht, bis) == nil {
+			t.Fatalf("fremde Unterschrift des %s angenommen", welche)
+		}
+	}
 	importiere := func(verlauf []SnapshotValidator, ersetzen bool) {
 		t.Helper()
 		tx, err := f.cs.db.Begin()
