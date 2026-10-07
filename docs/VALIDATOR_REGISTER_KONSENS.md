@@ -23,10 +23,11 @@ ist eine eigene Messung. Daraus folgt, schon im Code vermerkt:
 
 - Strafkonto (`slash_equivocation`) und Validatoren-Belohnung hängen an
   `registered_nodes` – zwei Knoten können verschieden abziehen bzw. auszahlen.
-- Die Komitee-Auswahl (`GetAllRegisteredValidatorAddresses`) sortiert die
-  lokal bekannten Adressen. Sie entscheidet nur, ob ein Knoten selbst
-  erzeugt. GHOSTDAGs K hing bis 07.10.2026 zusätzlich an der Größe dieses
-  lokalen Komitees, und das nur auf erzeugenden Knoten; ab 57 Validatoren
+- Die Komitee-Auswahl (`computeEpochCommittee` über
+  `authorizedValidators`) sortiert die lokal bekannten Adressen. Sie
+  entscheidet nur, ob ein Knoten selbst erzeugt. GHOSTDAGs K hing bis
+  07.10.2026 zusätzlich an der Größe dieses lokalen Komitees, und das nur
+  auf Knoten, die bis zur Komiteeprüfung kamen; ab 57 Validatoren
   hätten Erzeuger und Beobachter mit verschiedenem K gerechnet. Seitdem gilt
   für alle K = 18, bis ein Komitee aus der Kette kommt.
 - Die Signatur trägt keinen Zeitpunkt: eine alte Bindung lässt sich wieder

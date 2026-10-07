@@ -711,7 +711,7 @@ type BlockDAG struct {
 	// syncStallTimeout (see ProduceBlock's gate), production proceeds
 	// independently so a downed seed never blocks all other nodes.
 	syncTargetHeight atomic.Int64
-	activeGhostdagK  atomic.Int32 // live GHOSTDAG K for current epoch; 0 → use ghostdagKBase
+	activeGhostdagK  atomic.Int32 // GHOSTDAG K; no production writer since 07.10.2026 (always ghostdagKBase, see k())
 	startupTime      int64        // Unix timestamp of NewBlockchain — used by the initial-sync gate
 	// (ghostdagStuckHash/ghostdagStuckCount removed 2026-07-10 — ProduceBlock's
 	// stuck-ancestor escape hatch now shares the orphan-tracking machinery
@@ -8665,7 +8665,8 @@ func (dag *BlockDAG) getEpochCommittee(height int64) *EpochCommittee {
 			// Bisher wurde K auf Komiteegroesse/3 gehoben -- aber das Komitee
 			// kommt aus authorizedValidators, einer Liste, die jeder Knoten
 			// selbst fuehrt, und getEpochCommittee laeuft nur in ProduceBlock:
-			// ein Knoten, der nicht erzeugt, blieb immer bei ghostdagKBase.
+			// ein Knoten, der vor der Komiteepruefung aussteigt (Beobachter,
+			// ohne Bindung, im Resync), blieb immer bei ghostdagKBase.
 			// Ab 57 Validatoren haetten Erzeuger und Beobachter GHOSTDAG mit
 			// verschiedenem K gerechnet -- verschiedene blaue Mengen,
 			// verschiedene Reihenfolge, ein Konsensfehler. Ein wachsendes K
@@ -8692,11 +8693,12 @@ func (dag *BlockDAG) getEpochCommittee(height int64) *EpochCommittee {
 // value until a committee exists that every node derives from the chain.
 const ghostdagKBase = 18
 
-// activeGhostdagK is the live K for the current epoch, stored as an atomic
-// so GHOSTDAG computations (called under dag.mu) can read it without a
-// separate lock. Updated by getEpochCommittee at every epoch transition.
-// Defaults to ghostdagKBase until the first committee is computed.
-// dag.k() is the accessor — use it everywhere instead of ghostdagKBase.
+// k returns GHOSTDAG's K. activeGhostdagK has no writer in production code
+// since 07.10.2026 (only tests store into it), so this is ghostdagKBase on
+// every node. Do NOT add a writer that reads node-local state: K must be the
+// same on every node for the same block, or blue sets, BlueScore and the
+// StateRoot diverge (getEpochCommittee's comment). dag.k() is the accessor —
+// use it everywhere instead of ghostdagKBase.
 func (dag *BlockDAG) k() int {
 	v := int(dag.activeGhostdagK.Load())
 	if v < ghostdagKBase {
@@ -8756,9 +8758,9 @@ func (dag *BlockDAG) logMergeSetBFSCap(blockHash string, visitCap int) {
 const maxParentsPerBlock = 64
 
 // dagPruneBuffer is how many block-heights above the finalized checkpoint
-// dag.blocks keeps in RAM. ghostdagMergeDepth = 2*K+1 hops back; at K=333
-// (1000-validator committee) that is 667 hops, so we keep 5× = 3350. The
-// buffer scales with K at runtime via dag.pruneBuffer().
+// dag.blocks keeps in RAM. ghostdagMergeDepth = 2*K+1 hops back; at the
+// fixed K=18 that is 37 hops, and 5*(2K+1) = 185 < 200, so the base value
+// binds. dag.pruneBuffer() would scale it if K ever grew.
 // Pruned blocks are never deleted from the DB (chain_blocks).
 const dagPruneBufferBase = 200
 
@@ -8782,8 +8784,8 @@ func (dag *BlockDAG) pruneBuffer() int64 {
 const startupLoadWindow = 2000
 
 // mergeDepthLimit returns 2*K+1: the maximum parent-hops ghostdagMergeSet
-// and ghostdagIsAncestor will walk. Scales with the live K so large-committee
-// epochs never truncate valid merge sets. Must be called while dag.mu is held.
+// and ghostdagIsAncestor will walk (37 at the fixed K=18). Must be called
+// while dag.mu is held.
 func (dag *BlockDAG) mergeDepthLimit() int {
 	return 2*dag.k() + 1
 }
@@ -9327,7 +9329,7 @@ func (dag *BlockDAG) knightdagInferK(sorted []string, cc *knightdagConcCache) (k
 // normal operation (validators converging within a few rounds, as real
 // gossip propagation within a ~6s block interval should achieve) actual
 // merge sets are tiny — typically single digits — and this never triggers.
-// maxMergeSetBFSVisits floor (50) — actual limit computed by dag.maxMergeVisits() = max(50, 5*(2K+1))
+// maxMergeSetBFSVisits floor (50) — actual limit computed by dag.maxMergeVisits() = 50 + 3*(K-18), i.e. 50 at the fixed K=18
 
 // maxGhostdagDBLookups bounds the number of REAL (cache-miss) database round
 // trips a SINGLE computeGHOSTDAGState call may make in total, shared across

@@ -742,8 +742,9 @@ func TestCanonicalBlockAtHeight_NoTips(t *testing.T) {
 
 // K haengt an keiner lokalen Liste: ein Knoten, der 200 Validatoren kennt
 // und erzeugt, rechnet mit demselben K wie einer, der nicht erzeugt (und
-// getEpochCommittee nie aufruft). Vorher hob das Komitee K auf 66 -- nur auf
-// erzeugenden Knoten, nur aus dem eigenen Verzeichnis.
+// getEpochCommittee nie aufruft). Vorher hob das Komitee K auf 33 (100
+// Mitglieder / 3) -- nur auf Knoten, die bis zur Komiteeprüfung kamen, nur
+// aus dem eigenen Verzeichnis.
 func TestEpochenKomitee_KBleibtGleich(t *testing.T) {
 	erzeuger := newGhostdagTestDAG()
 	erzeuger.authorizedValidators = map[string]bool{}
