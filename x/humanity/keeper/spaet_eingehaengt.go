@@ -56,6 +56,14 @@ import "fmt"
 //     eine Bindung aus der Zeit vor dem Absturz traegt. Er muss dann vom
 //     Seed neu aufsetzen -- angenommen haette seine Zeile rueckwirkend
 //     gewirkt.
+//   - Ebenso nach einer Trennung: ein ERZEUGER, der ueber 30 Minuten
+//     abgeschnitten war und weiter eigene Bloecke gemacht hat, weist danach
+//     einen Block mit Bindung oder Beweis von der anderen Seite ab und heilt
+//     nicht mehr von selbst (die ruhende Finalitaet haette es sonst
+//     erlaubt). Er setzt vom Seed neu auf. Ein Knoten, der nicht erzeugt,
+//     ist nicht betroffen: seine Spitzen stehen waehrend der Trennung.
+//   - Ein ehrlicher Block, der ueber 30 Minuten als Waise wartet, waehrend
+//     die Spitzen weiterlaufen, kommt nur noch ueber die Geschichte vom Seed.
 const spaetEingehaengtGrenze int64 = 30 * 60
 
 // spaetEingehaengt: Grund, warum der Block zu spaet kommt, oder "".

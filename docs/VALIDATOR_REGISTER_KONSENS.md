@@ -281,7 +281,10 @@ Dinge ohne Konsenswirkung (Erreichbarkeit, Messwerte als Hinweis).
      höchstens seinen eigenen Block. Mit mehreren Erzeugern wird der erste
      Block eines abgestürzten Erzeugers abgewiesen, wenn die anderen
      weitergemacht haben und er eine Bindung von vor dem Absturz trägt – er
-     setzt dann vom Seed neu auf.
+     setzt dann vom Seed neu auf. Ebenso heilt ein **Erzeuger**, der über 30
+     Minuten abgeschnitten war und weiter erzeugt hat, nicht mehr von selbst,
+     wenn auf der anderen Seite eine Bindung oder ein Beweis stand; ein
+     Knoten, der nicht erzeugt, ist nicht betroffen (seine Spitzen stehen).
    - Erledigt vor `registerLeserAb`: M1, M2, L3 (spätere Abrechnung) und L1.
    - Offen (Teil 2): Validatoren-Belohnung mit Gewichten aus der Kette statt
      aus `registered_nodes` (Blöcke je Signieradresse im Vergangenheitskegel
