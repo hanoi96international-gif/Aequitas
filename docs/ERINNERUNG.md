@@ -248,6 +248,16 @@ den verlinkten Dokumenten.
           dieser Runde und kennzeichnet Läufe ohne nachgespielte Runde als
           „Ohne Aussage“. Gezählt werden nur Läufe mit Runde; der Stichtag
           bleibt offen, bis mehrere solche Läufe 0 Abweichungen zeigen
+        - Auswertung 06.10.: Lauf #5 (05.10.) startete erst 22:53 und wartete
+          170 Minuten vergeblich -- die Fensterprüfung nahm `last_ubi_at` +
+          24 h, aber `last_ubi_at` rückt nur vor, wenn eine Runde etwas
+          **ausgezahlt** hat. Die Runde läuft täglich um 20:00 Berlin. Jetzt:
+          C1s geplanter Zeitpunkt (`ubi_next_payout_secs`), stündliche Starts
+          12:40–18:40 UTC, und im Ergebnis C1s eigener Stand (Runde erreicht?
+          ausgezahlt?). Eine Runde ohne Auszahlung hat nichts nachzurechnen;
+          hat C1 ausgezahlt und der Beobachter nicht nachgespielt, wird der
+          Lauf rot. Folge: aussagekräftige Läufe gibt es nur an Tagen mit
+          Gebühren in den Töpfen
       - [ ] Zweiter Vergleichsdienst für die Registrierung: bis dahin
             Einzelbetrieb mit Tagesgrenze (siehe „Betrieb, jetzt“); nötig ist
             ein zweiter, unabhängiger Betreiber mit Vergleichsdienst
