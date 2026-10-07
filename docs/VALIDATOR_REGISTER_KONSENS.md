@@ -316,9 +316,19 @@ Dinge ohne Konsenswirkung (Erreichbarkeit, Messwerte als Hinweis).
      Leiters, die als eigene Transaktion auf die Kette kommt – oder entfällt.
 4. **Coordinator-Register** (`coordinator_keys`): seit 06.10.2026 trägt die
    Erneuerungs-Bescheinigung ihre Bindung selbst, und jeder Knoten prüft sie
-   gegen den Kettenzustand (`bescheinigungPruefen`). Offen ist die Zulassung
-   und der Entzug von Coordinatoren im Konsens.
-   Vorher bleibt die Staffel beim Platzhalter, erzwungen durch einen Test.
+   gegen den Kettenzustand (`bescheinigungPruefen`). **Zulassung und Entzug
+   im Konsens (07.10.2026, `coordinator_zulassung.go`):** Coordinator darf
+   nur sein, wer zur Zeit der Bescheinigung (`issued_at`) einen
+   Validator-Schlüssel im Kettenregister hält – dieselben Erzeugerfenster
+   wie bei der Erzeugerprüfung (Frist, nur Menschen, umstritten: keiner).
+   Wer seine Bindung verliert oder den Schlüssel abgibt, bescheinigt nicht
+   mehr; eine Farm mit einem alten Konto ohne Validator-Bindung auch nicht.
+   Vor `registerLeserAb` ist niemand zugelassen (fail-closed), darum muss
+   `registerLeserAb` ≤ Staffel-Stichtag sein (Test). Grenze: gezählt wird
+   `issued_at`, nicht die Blockzeit – eine vor dem Ende der Bindung
+   ausgestellte Bescheinigung bleibt bis zu 7 Tage gültig.
+   Die Staffel bleibt beim Platzhalter, bis auch strenger Modus und
+   Chain-ID stehen, erzwungen durch einen Test.
 
 ## Entscheidungen, die bei euch liegen
 

@@ -242,10 +242,12 @@ den verlinkten Dokumenten.
             mit offener Staffel bescheinigt nicht
       - [ ] **Vor dem Staffel-Stichtag** (erzwungen in
             `TestStaffel_SchlaeftBisZulassungUndStreng`):
-        - [ ] Coordinatoren im Konsens zulassen und entziehen. Heute kann
-              jeder registrierte Mensch ohne offene Staffel Erneuerungen
-              bescheinigen -- eine Farm mit einem alten Konto bescheinigte
-              allen ihren Kunstfiguren
+        - [x] Coordinatoren im Konsens zulassen und entziehen (07.10.):
+              nur, wer zur Zeit der Bescheinigung einen Validator-Schlüssel
+              im Kettenregister hält (Erzeugerfenster, Frist), darf
+              bescheinigen; vor `registerLeserAb` niemand
+              (`coordinator_zulassung.go`). Bedingung: `registerLeserAb` ≤
+              Staffel-Stichtag (`TestStaffel_ZulassungVorDerStaffel`)
         - [ ] Strenger Modus spätestens mit der Staffel
               (`nachrechnenStrengAbUnix` ≤ `stagedGrantActivationUnix`),
               sonst würde eine erfundene Erneuerung nur gezählt
