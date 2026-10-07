@@ -121,8 +121,11 @@ den verlinkten Dokumenten.
               eine Stunde danach; bei einer Übernahme in dieser Stunde zahlt
               der erste spätere Binder; nur frische Beweise
               (`strafe_abrechnung.go`)
-        - [ ] Vor `registerLeserAb`: spät eingehängte Blöcke mit Bindung
-              (L1) – `docs/VALIDATOR_REGISTER_KONSENS.md`, Schritt 3
+        - [x] Spät eingehängte Blöcke mit Bindung oder Beweis (L1): ab dem
+              Stichtag abgewiesen, wenn ihre Zeit über 30 min hinter der
+              eigenen Spitze liegt (nicht die Uhr: sonst risse die Kette nach
+              einem Absturz des einzigen Erzeugers); Geschichte vom Seed
+              ausgenommen (`spaet_eingehaengt.go`)
         - [ ] Schritt 3, Teil 2: Validatoren-Belohnung mit Gewichten aus der
               Kette, nachgerechnet; Komitee aus derselben Menge
         - [ ] Stichtage setzen (eure Entscheidung,

@@ -5354,6 +5354,13 @@ func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
 		dag.mu.Unlock()
 		return false
 	}
+	// spaet_eingehaengt.go (L1): kein zurueckgehaltener Block mit Bindung
+	// oder Beweis -- seine Zeile wirkte sonst rueckwirkend.
+	if grund := spaetEingehaengt(block, dag.neuesteSpitzenzeitLocked); grund != "" {
+		fmt.Printf("[DAG] ✗ Rejected peer block #%d: %s\n", block.Height, grund)
+		dag.mu.Unlock()
+		return false
+	}
 	if block.Height > 1 {
 		maxParentHeight := int64(-1)
 		maxParentZeit := int64(0)

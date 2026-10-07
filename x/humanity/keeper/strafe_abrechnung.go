@@ -66,9 +66,9 @@ import (
 //     erste -- auch wenn ein spaeterer den Beweis erfunden hat. Wer einen
 //     Schluessel uebernimmt, den kurz zuvor ein anderer uebernommen hat,
 //     traegt dieses Risiko.
-//   - Spaet eingehaengte Bloecke mit einer Bindung (L1) wirken wie bei der
-//     Erzeugerpruefung rueckwirkend; das bleibt eine Bedingung vor dem
-//     Stichtag (docs/VALIDATOR_REGISTER_KONSENS.md).
+//   - Spaet eingehaengte Bloecke mit Bindung oder Beweis (L1) nimmt ab dem
+//     Stichtag kein Knoten mehr an (spaet_eingehaengt.go); sonst wirkte ihre
+//     Zeile rueckwirkend.
 
 const (
 	// strafBeweisFrisch (W): so lange nach der Tat zaehlen Bindungen fuer das
