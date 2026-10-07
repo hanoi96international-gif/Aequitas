@@ -169,3 +169,22 @@ func TestValidatorVerlauf_Snapshot_RealDB(t *testing.T) {
 		t.Fatalf("ersetzt: %d Zeilen, Summe gleich: %v", n, f.neuAufgebaut() == stand)
 	}
 }
+
+// Fail-closed: laesst sich der Verlauf nicht schreiben, wird der Block
+// abgewiesen -- die Bindung landet weder im Register noch in der Summe.
+func TestValidatorVerlauf_NichtSchreibbarWeistBlockAb_RealDB(t *testing.T) {
+	f := neuerRegisterFall(t)
+	b := f.betreiber()
+	k, _ := neuerSchluessel(t)
+	if _, err := f.cs.db.Exec(`ALTER TABLE validator_verlauf RENAME TO validator_verlauf_weg`); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { f.cs.db.Exec(`ALTER TABLE validator_verlauf_weg RENAME TO validator_verlauf`) })
+	vorher := f.summe()
+	if f.block(f.jetzt, bindungUnterschrieben(t, b, k, f.jetzt-60)) {
+		t.Fatal("Block trotz unschreibbarem Verlauf angenommen")
+	}
+	if f.anzahl() != 0 || f.summe() != vorher {
+		t.Fatal("abgewiesener Block hat das Register veraendert")
+	}
+}
