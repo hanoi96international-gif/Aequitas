@@ -21,7 +21,8 @@
 # Deine Wallet und ihr privater Schluessel bleiben bei dir; auf dem Server
 # liegt nur ihre ADRESSE. Erneut aufrufen ist sicher und ist zugleich das
 # Aktualisieren: Schluessel und Adresse in .env bleiben, nur die
-# Programmversion wird auf die des Repos gesetzt.
+# Programmversion wird auf die des Repos gesetzt (und eine fehlende
+# VALIDATOR_BETREIBER_WALLET aus OPERATOR_WALLET nachgetragen).
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -102,6 +103,7 @@ else
 VERIFIER_IMAGE=$VERIFIER_IMAGE_STANDARD
 VERIFIER_HOST=$HOST
 OPERATOR_WALLET=$WALLET
+VALIDATOR_BETREIBER_WALLET=$WALLET
 PORT=8098
 POH_DB_PATH=/data/poh.db
 TEMPLATE_ENCRYPTION_KEY=$(openssl rand -base64 32)
@@ -125,8 +127,26 @@ fi
 [ "$(wert VERIFIER_IMAGE)" = "$VERIFIER_IMAGE_STANDARD" ] || setze VERIFIER_IMAGE "$VERIFIER_IMAGE_STANDARD"
 
 HOST="$(wert VERIFIER_HOST)"
-WALLET="$(wert OPERATOR_WALLET)"
+WALLET="$(wert OPERATOR_WALLET || true)"
 [ -n "$HOST" ] && [ -n "$WALLET" ] || { rot ".env unvollstaendig (VERIFIER_HOST/OPERATOR_WALLET) / incomplete"; exit 1; }
+[[ "$WALLET" =~ ^0x[0-9a-fA-F]{40}$ ]] || { rot "OPERATOR_WALLET in .env ist keine Adresse / not an address (0x + 40)"; exit 1; }
+WALLET="$(printf '%s' "$WALLET" | tr 'A-F' 'a-f')"
+
+# Seit aequitas-biometric-beta#38 stellt der Verifier den Bezeugungsnachweis
+# (Schritt 6) NUR fuer VALIDATOR_BETREIBER_WALLET aus, ohne die Variable fuer
+# niemanden -- sonst koennte jeder registrierte Mensch den Schluessel dieses
+# Verifiers unter seiner eigenen Wallet eintragen. Aeltere .env haben die
+# Zeile nicht: einmalig aus OPERATOR_WALLET nachtragen. Steht dort schon eine
+# ANDERE Wallet, wird nichts ueberschrieben -- Abbruch, der Mensch entscheidet.
+BETREIBER="$(wert VALIDATOR_BETREIBER_WALLET || true)"
+if [ -z "$BETREIBER" ]; then
+  setze VALIDATOR_BETREIBER_WALLET "$WALLET"
+  gruen "VALIDATOR_BETREIBER_WALLET in .env nachgetragen / added (= OPERATOR_WALLET)"
+elif [ "$(printf '%s' "$BETREIBER" | tr 'A-F' 'a-f')" != "$WALLET" ]; then
+  rot "VALIDATOR_BETREIBER_WALLET ($BETREIBER) ist nicht OPERATOR_WALLET ($WALLET) / differs.
+Beide muessen deine Wallet sein -- in .env angleichen, dann erneut / make both your wallet in .env, then rerun."
+  exit 1
+fi
 printf '%s {\n\treverse_proxy aequitas-verifier:8098\n}\n' "$HOST" > Caddyfile
 
 schritt "5/6 Starten (erster Download etwa 5 GB) / Starting (first download ~5 GB)"
@@ -163,7 +183,8 @@ schritt "6/6 Fuer den Betreiber / For the operator"
 N="$(curl -fsS -m 15 "https://$HOST/bezeugungsnachweis?wallet=$WALLET" 2>/dev/null || true)"
 PKEY="$(printf '%s' "$N" | grep -oE '"personhood_key": ?"[0-9a-f]{64}"' | grep -oE '[0-9a-f]{64}' || true)"
 PSIG="$(printf '%s' "$N" | grep -oE '"personhood_signature": ?"[^"]+"' | cut -d'"' -f4 || true)"
-[ -n "$PKEY" ] && [ -n "$PSIG" ] || { rot "Kein Bezeugungsnachweis / no witness proof. Log: docker compose logs --tail 50 verifier"; exit 1; }
+[ -n "$PKEY" ] && [ -n "$PSIG" ] || { rot "Kein Bezeugungsnachweis / no witness proof. Steht VALIDATOR_BETREIBER_WALLET=$WALLET in .env? / Is it set?
+Log: docker compose logs --tail 50 verifier"; exit 1; }
 gruen "Fertig / Done."
 cat <<TEXT
 
