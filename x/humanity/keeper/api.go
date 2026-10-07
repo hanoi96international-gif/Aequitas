@@ -1374,7 +1374,11 @@ func (a *APIServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 		// false heisst: jeder registrierte Mensch kann Blockproduzent werden
 		// (Audit K-1) -- vor dem Launch muss hier true stehen.
 		"produzenten_geschlossen": a.blockchain.ProduzentenGeschlossen(),
-		"node_id":                 a.p2pNode.GetNodeID(),
+		// Erzeuger aus AUTHORIZED_VALIDATORS ohne Bindung im Kettenregister:
+		// ab erzeugerSchnittAb erzeugten sie nicht mehr. Der Stichtag darf
+		// erst gesetzt werden, wenn die Liste leer ist (null = nicht lesbar).
+		"erzeuger_ohne_bindung": a.blockchain.ErzeugerOhneBindung(),
+		"node_id":               a.p2pNode.GetNodeID(),
 		// Die Signieradresse dieses Knotens -- oeffentlich (steht in jedem
 		// seiner Bloecke). Ein frischer Knoten holt sich hierueber den
 		// BOOTSTRAP_SIGNER fuer den Snapshot; ohne das Feld scheiterte die

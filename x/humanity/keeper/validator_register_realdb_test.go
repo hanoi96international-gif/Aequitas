@@ -29,6 +29,11 @@ func neuerRegisterFall(t *testing.T) *registerFall {
 	}
 	validatorRegisterOverride.Store(1)
 	t.Cleanup(func() { validatorRegisterOverride.Store(0) })
+	// Die Tests der Register-Regeln binden im Minutenabstand; der Abstand je
+	// Betreiber (validatorBindungAbstand) hat eigene Tests und steht hier
+	// auf einer Sekunde.
+	validatorBindungAbstandOverride.Store(1)
+	t.Cleanup(func() { validatorBindungAbstandOverride.Store(0) })
 	dag := newOrphanTestDAG()
 	dag.state = cs
 	dag.bootHeight = 0
@@ -88,6 +93,14 @@ func (f *registerFall) summe() [32]byte {
 	return f.cs.validatorSetXOR
 }
 
+// bindungsBlaetter: das Blatt einer Bindung im Register und das ihrer Zeile
+// im Verlauf.
+func bindungsBlaetter(betreiber, signing string, zeit int64, ueberholt bool) [32]byte {
+	x := validatorBlatt(betreiber, signing, zeit, ueberholt)
+	xorInto(&x, validatorVerlaufBlatt(betreiber, signing, zeit))
+	return x
+}
+
 // neuAufgebaut: wie ein frisch gestarteter Knoten die Summe rechnet.
 func (f *registerFall) neuAufgebaut() [32]byte {
 	f.t.Helper()
@@ -127,7 +140,7 @@ func TestValidatorRegister_BindenUndNeuBinden_RealDB(t *testing.T) {
 	if s, z, ok := f.eintrag(b1); !ok || s != adrVon(s1) || z != t1 {
 		t.Fatalf("Eintrag nach der Bindung: %s %d %v", s, z, ok)
 	}
-	if got := f.summe(); got != validatorBlatt(adrVon(b1), adrVon(s1), t1, false) {
+	if got := f.summe(); got != bindungsBlaetter(adrVon(b1), adrVon(s1), t1, false) {
 		t.Fatalf("Summe %x, erwartet das Blatt der Bindung", got[:6])
 	}
 	if got := f.neuAufgebaut(); got != f.summe() {
@@ -156,7 +169,11 @@ func TestValidatorRegister_BindenUndNeuBinden_RealDB(t *testing.T) {
 	if s, z, _ := f.eintrag(b1); s != adrVon(s2) || z != t2 {
 		t.Fatalf("Eintrag nach der neuen Bindung: %s %d", s, z)
 	}
-	if got := f.summe(); got != validatorBlatt(adrVon(b1), adrVon(s2), t2, false) {
+	// Im Register nur noch die neue Bindung, im Verlauf beide.
+	erwartet := validatorBlatt(adrVon(b1), adrVon(s2), t2, false)
+	xorInto(&erwartet, validatorVerlaufBlatt(adrVon(b1), adrVon(s1), t1))
+	xorInto(&erwartet, validatorVerlaufBlatt(adrVon(b1), adrVon(s2), t2))
+	if got := f.summe(); got != erwartet {
 		t.Fatal("die alte Bindung ist nicht aus der Summe heraus")
 	}
 	// s1 ist frei geworden.
@@ -258,9 +275,10 @@ func TestValidatorRegister_ZustandsRegeln_RealDB(t *testing.T) {
 		t.Fatal("uebersprungene Bindungen haben die Summe veraendert")
 	}
 
-	// Zwei Bindungen desselben Betreibers in einem Block: die spaetere gilt;
-	// bei gleichem Zeitpunkt die mit der groesseren Adresse -- in jeder
-	// Reihenfolge dieselbe.
+	// Zwei Bindungen desselben Betreibers in einem Block: die spaetere gilt.
+	// Eine zweite mit demselben Zeitpunkt liegt unter dem Abstand je
+	// Betreiber (validatorBindungAbstand) und wird abgewiesen -- welche
+	// Adresse die groessere ist, spielt keine Rolle mehr.
 	s4, _ := neuerSchluessel(t)
 	s5, _ := neuerSchluessel(t)
 	if !f.block(f.jetzt, bindungUnterschrieben(t, b2, s4, f.jetzt-50), bindungUnterschrieben(t, b2, s5, f.jetzt-40)) {
@@ -273,12 +291,8 @@ func TestValidatorRegister_ZustandsRegeln_RealDB(t *testing.T) {
 	if !f.block(f.jetzt, bindungUnterschrieben(t, b2, s6, f.jetzt-40)) {
 		t.Fatal("Block abgewiesen")
 	}
-	erwartet := adrVon(s5)
-	if adrVon(s6) > erwartet {
-		erwartet = adrVon(s6)
-	}
-	if s, _, _ := f.eintrag(b2); s != erwartet {
-		t.Fatalf("bei gleichem Zeitpunkt gilt %s statt der groesseren Adresse %s", s, erwartet)
+	if s, _, _ := f.eintrag(b2); s != adrVon(s5) {
+		t.Fatalf("bei gleichem Zeitpunkt gilt %s statt der ersten %s", s, adrVon(s5))
 	}
 	if f.neuAufgebaut() != f.summe() {
 		t.Fatal("laufende und neu aufgebaute Summe weichen ab")
@@ -321,7 +335,7 @@ func TestValidatorRegister_ZurueckgewiesenerBlock_RealDB(t *testing.T) {
 	if !f.block(f.jetzt, gut) {
 		t.Fatal("ehrlicher Block abgewiesen")
 	}
-	if f.anzahl() != 1 || f.summe() != validatorBlatt(gut.Wallet, gut.To, gut.Nachweis.Zeit, false) {
+	if f.anzahl() != 1 || f.summe() != bindungsBlaetter(gut.Wallet, gut.To, gut.Nachweis.Zeit, false) {
 		t.Fatal("ehrlicher Block hat die Bindung nicht genau einmal angelegt")
 	}
 }
@@ -390,6 +404,12 @@ func TestValidatorRegister_Snapshot_RealDB(t *testing.T) {
 			tx.Rollback()
 			return err
 		}
+		// Wie der Resync: der Verlauf wird mit ersetzt (hier ohne eigene
+		// Verlaufszeilen -- die Registereintraege kommen immer mit).
+		if err := verlaufImportieren(tx, nil, liste, true); err != nil {
+			tx.Rollback()
+			return err
+		}
 		return tx.Commit()
 	}
 	falsch := append([]SnapshotValidator(nil), snap.Validatoren...)
@@ -405,7 +425,7 @@ func TestValidatorRegister_Snapshot_RealDB(t *testing.T) {
 		t.Fatalf("Import: %v", err)
 	}
 	erster := snap.Validatoren[0] // nach Betreiber geordnet
-	if f.anzahl() != 1 || f.neuAufgebaut() != validatorBlatt(erster.Betreiber, erster.Signing, erster.Zeit, false) {
+	if f.anzahl() != 1 || f.neuAufgebaut() != bindungsBlaetter(erster.Betreiber, erster.Signing, erster.Zeit, false) {
 		t.Fatal("ersetzender Import hat das Register nicht auf den Snapshot gesetzt")
 	}
 	if err := importiere(snap.Validatoren); err != nil {
@@ -467,10 +487,11 @@ func TestValidatorRegister_KaltesKonto_RealDB(t *testing.T) {
 	}
 }
 
-// zuruecksetzen: leeres Register, Summe null -- wie ein frischer Knoten.
+// zuruecksetzen: leeres Register und leerer Verlauf, Summe null -- wie ein
+// frischer Knoten.
 func (f *registerFall) zuruecksetzen() {
 	f.t.Helper()
-	if _, err := f.cs.db.Exec(`TRUNCATE validator_register`); err != nil {
+	if _, err := f.cs.db.Exec(`TRUNCATE validator_register, validator_verlauf`); err != nil {
 		f.t.Fatal(err)
 	}
 	f.cs.mu.Lock()
@@ -547,10 +568,6 @@ func TestValidatorRegister_ReihenfolgeEgal_RealDB(t *testing.T) {
 					t.Fatalf("umstrittene Adresse gehoert %s", got)
 				}
 			},
-		},
-		{
-			name: "ein Betreiber, zwei Adressen, gleicher Zeitpunkt",
-			txs:  []Transaction{bindungUnterschrieben(t, a, s1, z-100), bindungUnterschrieben(t, a, s2, z-100)},
 		},
 	}
 	for _, fall := range faelle {
@@ -696,8 +713,8 @@ func TestValidatorRegister_UeberholteLebtNichtAuf_RealDB(t *testing.T) {
 	// Die Markierung steht in der Summe (also in der StateRoot): A's Blatt
 	// ist jetzt das der ueberholten Bindung.
 	var erwartet [32]byte
-	xorInto(&erwartet, validatorBlatt(adrVon(a), adrVon(s1), f.jetzt-300, true))
-	xorInto(&erwartet, validatorBlatt(adrVon(c), adrVon(s1), f.jetzt-200, false))
+	xorInto(&erwartet, bindungsBlaetter(adrVon(a), adrVon(s1), f.jetzt-300, true))
+	xorInto(&erwartet, bindungsBlaetter(adrVon(c), adrVon(s1), f.jetzt-200, false))
 	if f.summe() != erwartet || f.neuAufgebaut() != erwartet {
 		t.Fatal("die Ueberholt-Markierung steht nicht in der Summe")
 	}

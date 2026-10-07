@@ -267,6 +267,18 @@ type ChainState struct {
 	// column is for.
 	replayedColumnOnce sync.Once
 	txRootSpalteDa     atomic.Bool // chain_blocks.tx_root angelegt -- siehe ensureTxRootColumn
+	// erzeugerRegister: wer laut Register erzeugen darf (validator_register_leser.go).
+	erzeugerRegister atomic.Pointer[erzeugerStand]
+	// registerGeaendert: ein Block hat eine Bindung angewandt -- danach den
+	// Erzeugerstand neu lesen (replayTransactions).
+	registerGeaendert atomic.Bool
+	// erzeugerFest: AUTHORIZED_VALIDATORS, fuer den Erzeugerstand (nur diese
+	// werden gelesen, wenn die Liste geschlossen ist).
+	erzeugerFest atomic.Pointer[[]string]
+	// erzeugerAuffrischenMu: ein Auffrischen nach dem anderen -- sonst
+	// speicherte ein langsames, frueher begonnenes den aelteren Stand nach
+	// einem neueren.
+	erzeugerAuffrischenMu sync.Mutex
 	// coordinatorRegisterDa/-Mu: coordinator_keys einmal je Prozess anlegen,
 	// nicht je Anfrage (EnsureCoordinatorRegistry).
 	coordinatorRegisterDa atomic.Bool
@@ -1570,6 +1582,7 @@ func (cs *ChainState) resetDBStateForBootstrap() {
 		"guardians",
 		"escrow_accounts",
 		"validator_register", // Konsens (validator_register.go), kommt mit dem Snapshot
+		"validator_verlauf",  // ebenso
 		"chain_accounts",
 		"chain_config",
 		"v6_balances",
@@ -1720,6 +1733,7 @@ func (cs *ChainState) clearRegistrationsFromDB() {
 		// an Menschen, die es nach diesem Loeschen nicht mehr gibt.
 		`DELETE FROM escrow_accounts`,
 		`DELETE FROM validator_register`,
+		`DELETE FROM validator_verlauf`,
 		`UPDATE chain_accounts SET is_human = false, balance = 0, tusd_balance = 0, lp_shares = 0, last_activity_at = 0, faucet_claimed = false, grant_staged_rest = 0, grant_staged_until = 0, liveness_renewed_at = 0, naechste_nonce = 0, naechste_auftrag_nonce = 0`,
 		`DELETE FROM evm_storage WHERE lower(address) = '` + v7Addr + `'`,
 		`DELETE FROM evm_nonces`,

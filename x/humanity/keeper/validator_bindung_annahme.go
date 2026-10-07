@@ -183,13 +183,21 @@ func (cs *ChainState) ValidatorBinden(tx Transaction) error {
 	if err := cs.bindungVorpruefen(tx.Wallet, tx.To, tx.Nachweis.Zeit); err != nil {
 		return err
 	}
-	return cs.runAtomicWithOutbox([]string{tx.Wallet}, false, func(ctx context.Context) (Transaction, error) {
+	if err := cs.runAtomicWithOutbox([]string{tx.Wallet}, false, func(ctx context.Context) (Transaction, error) {
 		if err := cs.applyValidatorBindungLocked(ctx, &tx, jetzt); err != nil {
 			return Transaction{}, err
 		}
 		fmt.Printf("[VALIDATOR] ✓ Bindung %s -> %s angenommen (ts %d)\n", kurzAdresse(tx.To), kurzAdresse(tx.Wallet), tx.Nachweis.Zeit)
 		return tx, nil
-	})
+	}); err != nil {
+		return err
+	}
+	// Der Stand der Erzeuger (validator_register_leser.go) -- nach dem Commit,
+	// ohne Sperre, und nur wenn der Verlauf gewachsen ist.
+	if cs.registerGeaendert.Swap(false) {
+		cs.erzeugerRegisterAuffrischen()
+	}
+	return nil
 }
 
 // knotenBindungsNachweis: der Teil des Selbstnachweises, den nur der Knoten

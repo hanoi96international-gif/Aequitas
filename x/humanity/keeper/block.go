@@ -419,9 +419,13 @@ type BlockDAG struct {
 	// Signierschluessel -> registrierter Mensch, nur aus geprueften Bindungen
 	// (leitung_netz.go: ein Mensch, eine Stimme in der Leitung).
 	validatorMenschen sync.Map
-	currentEpoch      *EpochCommittee // active block-producer committee for the current epoch
-	epochMu           sync.RWMutex    // guards currentEpoch
-	activeSyncPeers   map[string]bool // peers with a running syncWithNode goroutine
+	// registerMenschen: dasselbe ab registerLeserAb, aus dem Kettenregister
+	// (validator_register_leser.go, menschAusRegister).
+	registerMenschen     sync.Map
+	registerMenschenZahl atomic.Int64
+	currentEpoch         *EpochCommittee // active block-producer committee for the current epoch
+	epochMu              sync.RWMutex    // guards currentEpoch
+	activeSyncPeers      map[string]bool // peers with a running syncWithNode goroutine
 	// peerSyncHeight tracks, per peer URL, the highest block height this
 	// node has actually SUCCESSFULLY imported FROM that specific peer via
 	// doSyncOnce — see that function's own FIX comment (2026-07-06) for the
@@ -2459,6 +2463,13 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 	if beobachterModus() {
 		merkeProduktionsAusfall("beobachter")
 		return nil // nur nachspielen, nie erzeugen (beobachter.go)
+	}
+	// Ab erzeugerSchnittAb nimmt jeder andere Knoten nur Bloecke von
+	// Schluesseln, die das Register zur Blockzeit traegt -- ohne Bindung
+	// erzeugt dieser Knoten nicht, statt Bloecke zu bauen, die alle abweisen.
+	if jetzt := nowUnix(); erzeugerSchnittAktiv(jetzt) && !dag.erzeugerNachRegister(dag.selfProposer, jetzt) {
+		merkeProduktionsAusfall("nicht_im_register")
+		return nil
 	}
 	// Ab jetzt misst annahme_pause.go, ob dieser Knoten Bloecke erzeugt.
 	if dag.state != nil {
@@ -5142,7 +5153,9 @@ func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
 		// (Audit 2026-09-29, H-1): der Seed wird per HTTP abgefragt, und wer
 		// sich in diese Verbindung haengt, konnte sonst Bloecke mit eigenem
 		// Schluessel einschleusen, die jede Produzentenpruefung uebergehen.
-		if !dag.authorizedValidators[proposer] && !(block.FromSync && syncGeschichte(block.Timestamp)) {
+		// Ab erzeugerSchnittAb entscheidet das Register mit
+		// (validator_register_leser.go, erzeugerErlaubt).
+		if !dag.erzeugerErlaubt(proposer, block.Timestamp) && !(block.FromSync && syncGeschichte(block.Timestamp)) {
 			// P3-2: cap to prevent unbounded memory growth from forged proposer addresses
 			if len(dag.warnedUnknownProposers) > 500 {
 				dag.warnedUnknownProposers = make(map[string]bool)
@@ -6860,6 +6873,14 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 		if skippedByBackoff {
 			return
 		}
+		// Hat der Block den Verlauf der Bindungen erweitert, den Stand der
+		// Erzeuger neu lesen -- nach allen anderen defers, also ohne cs.mu.
+		// Nur dann: eine Bindung, die als Zustandsablehnung uebersprungen
+		// wurde, loest keine Abfrage aus (sonst erzwaenge ein Erzeuger mit
+		// solchen Bindungen je Block eine auf jedem Knoten).
+		if ok && dag.state != nil && dag.state.registerGeaendert.Swap(false) {
+			dag.state.erzeugerRegisterAuffrischen()
+		}
 		dag.replayedMu.Lock()
 		if ok {
 			delete(dag.replayFailures, block.Hash)
@@ -8025,7 +8046,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			//
 			// In der Transaktion des Blocks (vermerkeDoppelsignaturImBlock):
 			// geht der Block zurueck, gehen Beweis und Sperre mit.
-			count, slashWallet, rErr := dag.state.vermerkeDoppelsignaturImBlock(withTx(context.Background(), dbTx), tx.Wallet, tx.BlockAHash, tx.BlockBHash, tx.DetectedAt)
+			count, slashWallet, rErr := dag.state.vermerkeDoppelsignaturImBlock(withTx(context.Background(), dbTx), tx.Wallet, tx.BlockAHash, tx.BlockBHash, tx.DetectedAt, block.Timestamp)
 			strafeVermerkt = true
 			if rErr != nil {
 				fmt.Printf("[REPLAY] ✗ slash_equivocation: could not record evidence for %s (block #%d): %v — rolling back whole block\n", tx.Wallet, block.Height, rErr)

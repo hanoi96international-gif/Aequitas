@@ -455,6 +455,11 @@ func main() {
 	// Load individually-registered validator keys from DB into the DAG's
 	// authorized set so they survive node restarts without re-registration.
 	chainState.LoadValidatorKeysIntoDAG(bc)
+	// Wer laut Validator-Register erzeugen darf -- ab erzeugerSchnittAb Teil
+	// der Erzeugerpruefung (validator_register_leser.go). Vor P2P und
+	// HTTP-Sync: sonst wiese der Knoten nach dem Stichtag die ersten Bloecke
+	// ab, weil noch kein Stand gelesen ist.
+	bc.StarteErzeugerRegister()
 	fmt.Println()
 
 	p2pNode.SetDAG(bc)
