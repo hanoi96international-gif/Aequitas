@@ -93,10 +93,9 @@ den verlinkten Dokumenten.
       - [x] LP-Runde: jeder Halter genau einmal, Anteil nachgerechnet
             (`nachrechnen_lp.go`, seit der Umlaufsicherung)
       - [x] Validatoren-Runde: nur an Menschen
-      - [ ] Validatoren-Gewichte: Sie kommen aus `registered_nodes` und den
-            Blöcken der letzten 24 h -- beides ist je Knoten verschieden.
-            Nachrechnen geht erst, wenn das Verzeichnis Konsenszustand ist
-            (Voraussetzung für offene Zulassung)
+      - [ ] Validatoren-Gewichte: vor der Umstellung aus `registered_nodes`
+            (je Knoten verschieden); danach aus der Kette und nachgerechnet
+            (Schritt 3, Teil 2, unten). Offen bleibt das Komitee
         - [x] Schritt 1, schlafend (05.10.): Kettentransaktion
               `validator_bindung` mit Unterschrift von Betreiber und
               Signierschlüssel, Register in `validator_register`, Summe in
@@ -123,8 +122,12 @@ den verlinkten Dokumenten.
               (`strafe_abrechnung.go`)
         - [ ] Vor `registerLeserAb`: spät eingehängte Blöcke mit Bindung
               (L1) – `docs/VALIDATOR_REGISTER_KONSENS.md`, Schritt 3
-        - [ ] Schritt 3, Teil 2: Validatoren-Belohnung mit Gewichten aus der
-              Kette, nachgerechnet; Komitee aus derselben Menge
+        - [x] Schritt 3, Teil 2, schlafend (07.10.): Validatoren-Belohnung
+              aus der Kette -- Minuten Anwesenheit je Betreiber aus
+              `chain_blocks` und den Erzeugerfenstern, jeder Knoten rechnet
+              nach; schaltet, wenn das ganze Fenster nach
+              `erzeugerSchnittAb` liegt (`validator_lohn_kette.go`)
+        - [ ] Komitee (`getEpochCommittee`) aus derselben Menge
         - [ ] Stichtage setzen (eure Entscheidung,
               `docs/VALIDATOR_REGISTER_KONSENS.md`)
       - [x] Staffel-Freigaben: höchstens die Tagesrate, nur mit
