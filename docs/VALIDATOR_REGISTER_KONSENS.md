@@ -290,10 +290,28 @@ Dinge ohne Konsenswirkung (Erreichbarkeit, Messwerte als Hinweis).
      wenn auf der anderen Seite eine Bindung oder ein Beweis stand; ein
      Knoten, der nicht erzeugt, ist nicht betroffen (seine Spitzen stehen).
    - Erledigt vor `registerLeserAb`: M1, M2, L3 (spätere Abrechnung) und L1.
-   - Offen (Teil 2): Validatoren-Belohnung mit Gewichten aus der Kette statt
-     aus `registered_nodes` (Blöcke je Signieradresse im Vergangenheitskegel
-     eines Ankerblocks, nachgerechnet von jedem Knoten); das Komitee aus
-     derselben Menge.
+   - **Teil 2, Validatoren-Belohnung aus der Kette** (`validator_lohn_kette.go`,
+     schlafend): dieselbe Regel wie bisher – gleicher Anteil je Minute
+     Anwesenheit, mehr Blöcke in einer Minute zählen nicht –, aber jede
+     Eingabe steht in der Kette. Die Blöcke aus `chain_blocks`; wem ein Block
+     gehört, sagen die Erzeugerfenster aus dem Verlauf der Bindungen (zur
+     Blockzeit, umstritten: keiner); nur Menschen. Gezählt werden die 24
+     Stunden bis 15 Minuten vor der Runde. Die Gutschrift trägt die
+     Rundenzeit (höchstens 10 Minuten neben der Blockzeit), und **jeder
+     Knoten rechnet die Runde nach**: Empfänger, Betrag (1 Mikro Rundung),
+     keiner doppelt, keiner vergessen (`validator_kein_betreiber`,
+     `validator_anteil`, `validator_doppelt`, `validator_empfaenger`,
+     `validator_ohne_runde`, `validator_runde`). Ein Knoten mit Lücke im
+     Fenster (ein 10-Minuten-Abschnitt ohne Block: frisch aus einem Snapshot
+     oder neu aufgesetzt) prüft nur Mensch und doppelt. Kann der Erzeuger die
+     Anwesenheit nicht lesen (über 1.000 Schlüssel, Verlauf zu groß), bleibt
+     der Validatoren-Topf stehen; die Tagesrunde läuft weiter. **Schalter:**
+     erst wenn das ganze Fenster nach `erzeugerSchnittAb` liegt – vorher
+     zählten Blöcke ungebundener Schlüssel nicht. **Grenze:** hat ein Knoten
+     einen Block des Fensters, den der Erzeuger nicht hat (an der
+     Finalitätswand verschieden behandelt), meldet er eine Abweichung.
+   - Offen: das Komitee (`getEpochCommittee`) aus derselben Menge statt aus
+     den lokal bekannten Adressen.
    - Offen (eure Entscheidung): die Leistungsprobe wird zur Entscheidung des
      Leiters, die als eigene Transaktion auf die Kette kommt – oder entfällt.
 4. **Coordinator-Register** (`coordinator_keys`): seit 06.10.2026 trägt die
