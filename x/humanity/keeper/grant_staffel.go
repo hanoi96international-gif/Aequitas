@@ -50,9 +50,9 @@ const (
 	// 2100-01-01T00:00:00Z, Platzhalter. WP 4 setzt das echte Datum -- aber
 	// erst, wenn drei Dinge stehen (TestStaffel_SchlaeftBisZulassungUndStreng
 	// wird sonst rot, und ihn zu aendern ist die bewusste Entscheidung):
-	//   - Coordinatoren werden im Konsens zugelassen und entzogen -- heute
-	//     kann jeder registrierte Mensch ohne offene Staffel bescheinigen
-	//     (bescheinigungPruefen, "WER COORDINATOR SEIN KANN");
+	//   - Coordinatoren werden im Konsens zugelassen und entzogen
+	//     (coordinator_zulassung.go; registerLeserAb <= Staffel, erzwungen in
+	//     TestStaffel_ZulassungVorDerStaffel);
 	//   - der strenge Modus beginnt spaetestens mit der Staffel;
 	//   - Bindung und Bescheinigung tragen die Chain-ID.
 	stagedGrantActivationUnix int64 = 4102444800
@@ -379,7 +379,7 @@ func (a *APIServer) handleLivenessRenewal(w http.ResponseWriter, r *http.Request
 		return
 	}
 	tx := erneuerungsTransaktion(wallet, req.IssuedAt, req.PublicKey, req.Signature, bindung)
-	if err := bescheinigungPruefen(wallet, req.IssuedAt, tx.Bescheinigung, a.state.coordinatorMenschStand); err != nil {
+	if err := bescheinigungPruefen(wallet, req.IssuedAt, tx.Bescheinigung, a.state.coordinatorMenschStand, a.state.coordinatorZugelassen); err != nil {
 		jsonError(w, "invalid renewal attestation: "+err.Error(), http.StatusForbidden)
 		return
 	}
@@ -524,16 +524,14 @@ func (cs *ChainState) coordinatorMenschStand(mensch string) (istMensch, staffelO
 //     dem Kettenzustand), und er ist nicht selbst der Erneuerte;
 //   - die Ed25519-Unterschrift ueber Domaene|Wallet|Zeitpunkt.
 //
-// WER COORDINATOR SEIN KANN (Sicherheitspruefung #300, HIGH-1). Jeder
-// registrierte Mensch kann einen Schluessel binden und damit Erneuerungen
-// bescheinigen -- eine Zulassung im Konsens gibt es noch nicht. Ein Konto
+// WER COORDINATOR SEIN KANN (Sicherheitspruefung #300, HIGH-1). Ein Konto
 // mit offener Staffel ist ausgeschlossen: sonst bescheinigte eine frisch
 // registrierte Kunstfigur der naechsten die zweite Pruefung, und die Staffel
-// koste eine Farm nichts. Das reicht NICHT gegen eine Farm, die ein altes
-// oder fertig gestaffeltes Konto besitzt. Deshalb darf die Staffel erst
-// aktiv werden, wenn die Zulassung (und der Entzug) der Coordinatoren im
-// Konsens steht -- erzwungen in TestStaffel_SchlaeftBisZulassungUndStreng.
-func bescheinigungPruefen(wallet string, issuedAt int64, b *Lebendigkeitsbescheinigung, stand CoordinatorMenschStand) error {
+// koste eine Farm nichts. Das allein reichte nicht gegen eine Farm, die ein
+// altes oder fertig gestaffeltes Konto besitzt -- darum zusaetzlich die
+// Zulassung im Konsens: nur, wer zur Zeit der Bescheinigung einen
+// Validator-Schluessel im Kettenregister haelt (coordinator_zulassung.go).
+func bescheinigungPruefen(wallet string, issuedAt int64, b *Lebendigkeitsbescheinigung, stand CoordinatorMenschStand, zugelassen CoordinatorZulassung) error {
 	if b == nil {
 		return fmt.Errorf("keine Bescheinigung")
 	}
@@ -563,6 +561,19 @@ func bescheinigungPruefen(wallet string, issuedAt int64, b *Lebendigkeitsbeschei
 	}
 	if staffelOffen {
 		return fmt.Errorf("%s hat selbst eine offene Staffel -- bescheinigt keine Erneuerung", kurzAdresse(mensch))
+	}
+	// Zulassung im Konsens (coordinator_zulassung.go): nur, wer zur Zeit der
+	// Bescheinigung einen Validator-Schluessel im Kettenregister haelt. Vor
+	// registerLeserAb ist niemand zugelassen.
+	if !registerLeserAktiv(issuedAt) {
+		return fmt.Errorf("Coordinatoren sind vor registerLeserAb nicht im Konsens zugelassen")
+	}
+	ok, err := zugelassen(mensch, issuedAt)
+	if err != nil {
+		return fmt.Errorf("Zulassung nicht lesbar: %v", err)
+	}
+	if !ok {
+		return fmt.Errorf("%s haelt zur Zeit der Bescheinigung keinen Validator-Schluessel -- nicht als Coordinator zugelassen", kurzAdresse(mensch))
 	}
 	msg := fmt.Sprintf("%s|%s|%d", livenessRenewalDomain, wallet, issuedAt)
 	if !ed25519PruefenStreng(pub, b.Signature, []byte(msg)) {

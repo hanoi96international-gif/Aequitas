@@ -138,72 +138,101 @@ func TestBescheinigungPruefen_Regeln(t *testing.T) {
 		MenschSig:     personalSign(t, mk, coordinatorFreigabeNachricht(pubHex)),
 		SchluesselSig: hex.EncodeToString(ed25519.Sign(priv, []byte("Aequitas: coordinator key for human "+mensch)))}
 	gut := func(m string) (bool, bool) { return m == mensch, false }
+	zugelassen := func(m string, t int64) (bool, error) { return m == mensch && t == issued, nil }
+	registerLeserOverride.Store(1)
+	t.Cleanup(func() { registerLeserOverride.Store(0) })
 	tx := erneuerungsTransaktion(wallet, issued, pubHex, signiere(wallet), bindung)
-	if err := bescheinigungPruefen(wallet, issued, tx.Bescheinigung, gut); err != nil {
+	if err := bescheinigungPruefen(wallet, issued, tx.Bescheinigung, gut, zugelassen); err != nil {
 		t.Fatalf("gueltige Bescheinigung: %v", err)
 	}
 	// Die Transaktion traegt die eine Schreibweise, auch wenn der
 	// Coordinator anders schickt.
 	anders := erneuerungsTransaktion(wallet, issued, strings.ToUpper(pubHex), "0x"+strings.ToUpper(signiere(wallet)),
 		CoordinatorBindung{Mensch: strings.ToUpper(mensch), MenschSig: bindung.MenschSig, SchluesselSig: strings.ToUpper(bindung.SchluesselSig)})
-	if err := bescheinigungPruefen(wallet, issued, anders.Bescheinigung, gut); err != nil {
+	if err := bescheinigungPruefen(wallet, issued, anders.Bescheinigung, gut, zugelassen); err != nil {
 		t.Fatalf("angeglichene Bescheinigung: %v", err)
 	}
 
 	faelle := map[string]struct {
-		b     func() *Lebendigkeitsbescheinigung
-		stand CoordinatorMenschStand
-		grund string
+		b          func() *Lebendigkeitsbescheinigung
+		stand      CoordinatorMenschStand
+		grund      string
+		zugelassen CoordinatorZulassung
 	}{
+		// Zulassung im Konsens (coordinator_zulassung.go).
+		"kein Validator-Schluessel": {func() *Lebendigkeitsbescheinigung { c := *tx.Bescheinigung; return &c },
+			gut, "nicht als Coordinator zugelassen", func(string, int64) (bool, error) { return false, nil }},
+		"Zulassung unlesbar": {func() *Lebendigkeitsbescheinigung { c := *tx.Bescheinigung; return &c },
+			gut, "Zulassung nicht lesbar", func(string, int64) (bool, error) { return true, fmt.Errorf("weg") }},
 		"Mensch mit offener Staffel": {func() *Lebendigkeitsbescheinigung { c := *tx.Bescheinigung; return &c },
-			func(string) (bool, bool) { return true, true }, "offene Staffel"},
+			func(string) (bool, bool) { return true, true }, "offene Staffel", nil},
 		"kein Mensch": {func() *Lebendigkeitsbescheinigung { c := *tx.Bescheinigung; return &c },
-			func(string) (bool, bool) { return false, false }, "kein registrierter Mensch"},
+			func(string) (bool, bool) { return false, false }, "kein registrierter Mensch", nil},
 		"Freigabe mit v=0": {func() *Lebendigkeitsbescheinigung {
 			c := *tx.Bescheinigung
 			v := c.MenschSig[130:]
 			c.MenschSig = c.MenschSig[:130] + map[string]string{"1b": "00", "1c": "01"}[v]
 			return &c
-		}, gut, "kanonischer Schreibweise"},
+		}, gut, "kanonischer Schreibweise", nil},
 		"Freigabe gross": {func() *Lebendigkeitsbescheinigung {
 			c := *tx.Bescheinigung
 			c.MenschSig = "0x" + strings.ToUpper(c.MenschSig[2:])
 			return &c
-		}, gut, "kanonischer Schreibweise"},
+		}, gut, "kanonischer Schreibweise", nil},
 		"Bescheinigung mit 0x": {func() *Lebendigkeitsbescheinigung {
 			c := *tx.Bescheinigung
 			c.Signature = "0x" + c.Signature
 			return &c
-		}, gut, "Bescheinigung passt nicht"},
+		}, gut, "Bescheinigung passt nicht", nil},
 		"Besitznachweis gross": {func() *Lebendigkeitsbescheinigung {
 			c := *tx.Bescheinigung
 			c.SchluesselSig = strings.ToUpper(c.SchluesselSig)
 			return &c
-		}, gut, "Besitznachweis"},
+		}, gut, "Besitznachweis", nil},
 		"Schluessel gross": {func() *Lebendigkeitsbescheinigung {
 			c := *tx.Bescheinigung
 			c.PublicKey = strings.ToUpper(c.PublicKey)
 			return &c
-		}, gut, "64 Hex"},
+		}, gut, "64 Hex", nil},
 		"Selbstbescheinigung": {func() *Lebendigkeitsbescheinigung { c := *tx.Bescheinigung; return &c },
-			gut, "nicht selbst"},
+			gut, "nicht selbst", nil},
 		// Kleine Ordnung: der Mensch gibt das neutrale Element frei, Besitz
 		// und Bescheinigung tragen die Universalunterschrift.
 		"Schluessel kleiner Ordnung": {func() *Lebendigkeitsbescheinigung {
 			return &Lebendigkeitsbescheinigung{PublicKey: ed25519NeutralSchluessel, Signature: ed25519NeutralUnterschr,
 				Mensch: mensch, MenschSig: personalSign(t, mk, coordinatorFreigabeNachricht(ed25519NeutralSchluessel)),
 				SchluesselSig: ed25519NeutralUnterschr}
-		}, gut, "Besitznachweis"},
+		}, gut, "Besitznachweis", nil},
 	}
 	for name, f := range faelle {
 		w := wallet
 		if name == "Selbstbescheinigung" {
 			w = mensch
 		}
-		err := bescheinigungPruefen(w, issued, f.b(), f.stand)
+		z := f.zugelassen
+		if z == nil {
+			z = zugelassen
+		}
+		err := bescheinigungPruefen(w, issued, f.b(), f.stand, z)
 		if err == nil || !strings.Contains(err.Error(), f.grund) {
 			t.Fatalf("%s: %v (erwartet %q)", name, err, f.grund)
 		}
+	}
+	// Vor registerLeserAb ist niemand zugelassen -- auch mit gueltiger
+	// Bindung und Zulassung (fail-closed, wenn die Staffel frueher gaelte).
+	registerLeserOverride.Store(issued + 1)
+	if err := bescheinigungPruefen(wallet, issued, tx.Bescheinigung, gut, zugelassen); err == nil || !strings.Contains(err.Error(), "vor registerLeserAb") {
+		t.Fatalf("vor registerLeserAb: %v", err)
+	}
+}
+
+// Die Zulassung im Konsens setzt voraus, dass das Register gelesen wird:
+// registerLeserAb darf nicht nach dem Staffel-Stichtag liegen. Solange die
+// Staffel auf dem Platzhalter steht, gilt das nicht.
+func TestStaffel_ZulassungVorDerStaffel(t *testing.T) {
+	if stagedGrantActivationUnix != 4102444800 && registerLeserAbUnix > stagedGrantActivationUnix {
+		t.Fatalf("Staffel ab %d, Coordinatoren erst ab registerLeserAb %d im Konsens zugelassen -- "+
+			"jede Bescheinigung waere bis dahin ungueltig", stagedGrantActivationUnix, registerLeserAbUnix)
 	}
 }
 

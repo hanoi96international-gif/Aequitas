@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"context"
+	"fmt"
 	"strings"
 )
 
@@ -73,7 +74,13 @@ func (cs *ChainState) nachrechnenErneuerungLocked(tx *Transaction, wallet string
 		acc, ok := cs.accounts.Get(m)
 		return ok && acc.IsHuman, ok && acc.GrantStagedRest > 0
 	}
-	if err := bescheinigungPruefen(wallet, tx.DistributionAt, tx.Bescheinigung, stand); err != nil {
+	zugelassen := func(m string, t int64) (bool, error) {
+		if cs.db == nil {
+			return false, fmt.Errorf("keine Datenbank")
+		}
+		return coordinatorZugelassenIn(cs.dbExecCtx(context.Background()), m, t)
+	}
+	if err := bescheinigungPruefen(wallet, tx.DistributionAt, tx.Bescheinigung, stand, zugelassen); err != nil {
 		return nachrechnenAbweichung("erneuerung_ohne_bescheinigung", blockZeit,
 			"%s: keine gueltige Bescheinigung: %v", kurzAdresse(wallet), err)
 	}

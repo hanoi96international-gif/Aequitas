@@ -73,6 +73,14 @@ func neuerErneuerungsFall(t *testing.T, registriertVorTagen int64) *erneuerungsF
 	if err := cs.RegisterCoordinatorKey(hex.EncodeToString(pub), mensch, "", bindung.MenschSig, bindung.SchluesselSig); err != nil {
 		t.Fatal(err)
 	}
+	// Zugelassen (coordinator_zulassung.go): der Mensch haelt seit 30 Tagen
+	// einen Validator-Schluessel im Kettenregister.
+	registerLeserOverride.Store(1)
+	t.Cleanup(func() { registerLeserOverride.Store(0) })
+	if _, err := cs.db.Exec(`DELETE FROM validator_verlauf`); err != nil {
+		t.Fatal(err)
+	}
+	verlaufEintrag(t, cs, mensch, distTestAddr(1950), nowUnix()-30*86400)
 	f := &erneuerungsFall{t: t, cs: cs, pub: pub, priv: priv, wallet: distTestAddr(1900), jetzt: nowUnix(), bindung: bindung, menschSchluessel: mk}
 	// Gestaffeltes Konto: GrantStagedUntil = Registrierung + 30 Tage.
 	reg := f.jetzt - registriertVorTagen*86400
@@ -174,8 +182,11 @@ func TestErneuerung_Missbrauch_RealDB(t *testing.T) {
 	if got := f.pruefe(f.gueltig(f.jetzt-86400), f.jetzt); len(got) != 0 {
 		t.Fatalf("Bescheinigung von gestern gemeldet: %v", got)
 	}
+	// Ohne Zeitpunkt scheitert die Bescheinigung schon an der Zulassung: vor
+	// registerLeserAb (Zeitpunkt 0) ist kein Coordinator zugelassen
+	// (coordinator_zulassung.go) -- erkannt bevor die Zeitregel greift.
 	nullZeit := erneuerungsTransaktion(f.wallet, 0, hex.EncodeToString(f.pub), f.unterschreibe(f.priv, f.wallet, 0), f.bindung)
-	if got := f.pruefe(nullZeit, f.jetzt); got["erneuerung_zeit"] != 1 {
+	if got := f.pruefe(nullZeit, f.jetzt); got["erneuerung_ohne_bescheinigung"] != 1 {
 		t.Fatalf("Bescheinigung ohne Zeitpunkt nicht erkannt: %v", got)
 	}
 
@@ -403,6 +414,7 @@ func TestCoordinatorEintragung_SpeichertUnterschriften_RealDB(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	verlaufEintrag(t, f.cs, mensch, distTestAddr(1952), nowUnix()-30*86400) // als Validator zugelassen
 	body, _ := json.Marshal(map[string]string{
 		"public_key": pubHex, "human_wallet": mensch,
 		"human_signature": personalSign(t, k, coordinatorFreigabeNachricht(pubHex)),
@@ -539,6 +551,7 @@ func TestCoordinatorEintragung_SchreibweiseAngeglichen_RealDB(t *testing.T) {
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
 	pubHex := hex.EncodeToString(pub)
 	k, mensch := f.neuerMensch(false)
+	verlaufEintrag(t, f.cs, mensch, distTestAddr(1953), nowUnix()-30*86400) // als Validator zugelassen
 	freigabe := personalSign(t, k, coordinatorFreigabeNachricht(pubHex))
 	v0 := "0x" + strings.ToUpper(freigabe[2:130]) + map[string]string{"1b": "00", "1c": "01"}[freigabe[130:]]
 	besitz := "0x" + strings.ToUpper(hex.EncodeToString(ed25519.Sign(priv, []byte("Aequitas: coordinator key for human "+mensch))))
@@ -764,4 +777,86 @@ func hohesS(roh []byte) []byte {
 	s.FillBytes(hoch[32:64])
 	hoch[64] = 55 - hoch[64]
 	return hoch
+}
+
+// Zulassung im Konsens (coordinator_zulassung.go): nur, wer zur Zeit der
+// Bescheinigung einen Validator-Schluessel haelt, bescheinigt. Missbrauch:
+// ein registrierter Mensch ohne Bindung (die Farm mit dem alten Konto), ein
+// Schluessel, den ein anderer uebernommen hat, und eine Bindung, die noch in
+// ihrer Frist steht -- bei der Annahme wie beim Nachspielen.
+func TestErneuerung_CoordinatorZulassung_RealDB(t *testing.T) {
+	f := neuerErneuerungsFall(t, 8)
+	mensch := f.bindung.Mensch
+	schluessel := distTestAddr(1950)
+	issued := nowUnix()
+	a := &APIServer{state: f.cs}
+	annahme := func() int {
+		body, _ := json.Marshal(map[string]interface{}{
+			"wallet": f.wallet, "issued_at": issued,
+			"public_key": hex.EncodeToString(f.pub), "signature": f.unterschreibe(f.priv, f.wallet, issued),
+		})
+		w := httptest.NewRecorder()
+		a.handleLivenessRenewal(w, httptest.NewRequest(http.MethodPost, "/api/liveness-renewal", bytes.NewReader(body)))
+		return w.Code
+	}
+	abgewiesen := func(fall string) {
+		t.Helper()
+		if n := f.pruefe(f.gueltig(issued), issued+60)["erneuerung_ohne_bescheinigung"]; n != 1 {
+			t.Fatalf("%s: beim Nachspielen nicht erkannt (%d)", fall, n)
+		}
+		if code := annahme(); code != http.StatusForbidden {
+			t.Fatalf("%s: bei der Annahme %d statt 403", fall, code)
+		}
+	}
+	if ok, err := coordinatorZugelassenIn(f.cs.db, mensch, issued); err != nil || !ok {
+		t.Fatalf("Voraussetzung: gebundener Mensch nicht zugelassen (%v, %v)", ok, err)
+	}
+
+	f.cs.db.Exec(`DELETE FROM validator_verlauf`)
+	abgewiesen("ohne Validator-Bindung")
+
+	// Ein anderer Betreiber hat den Schluessel uebernommen (Frist vorbei).
+	anderer := distTestAddr(1951)
+	f.cs.mu.Lock()
+	acc := &AccountState{Address: anderer, IsHuman: true}
+	f.cs.accounts.Set(anderer, acc)
+	err := f.cs.saveAccountToDB(acc)
+	f.cs.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	verlaufEintrag(t, f.cs, mensch, schluessel, issued-30*86400)
+	verlaufEintrag(t, f.cs, anderer, schluessel, issued-erzeugerFrist-60)
+	abgewiesen("Schluessel uebernommen")
+
+	// Frisch gebunden: wirkt erst nach erzeugerFrist.
+	f.cs.db.Exec(`DELETE FROM validator_verlauf`)
+	verlaufEintrag(t, f.cs, mensch, schluessel, issued-erzeugerFrist+60)
+	abgewiesen("Bindung in der Frist")
+
+	f.cs.db.Exec(`DELETE FROM validator_verlauf`)
+	verlaufEintrag(t, f.cs, mensch, schluessel, issued-erzeugerFrist)
+	if n := f.pruefe(f.gueltig(issued), issued+60)["erneuerung_ohne_bescheinigung"]; n != 0 {
+		t.Fatalf("Bindung genau nach der Frist abgewiesen (%d)", n)
+	}
+	if code := annahme(); code != http.StatusOK {
+		t.Fatalf("zugelassener Coordinator bei der Annahme %d", code)
+	}
+}
+
+// Fail-closed: ist der Verlauf nicht lesbar, gilt niemand als zugelassen.
+func TestErneuerung_ZulassungUnlesbar_RealDB(t *testing.T) {
+	f := neuerErneuerungsFall(t, 8)
+	if _, err := f.cs.db.Exec(`ALTER TABLE validator_verlauf RENAME TO validator_verlauf_weg`); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { f.cs.db.Exec(`ALTER TABLE validator_verlauf_weg RENAME TO validator_verlauf`) })
+	issued := nowUnix()
+	n := f.pruefe(f.gueltig(issued), issued+60)["erneuerung_ohne_bescheinigung"]
+	if _, err := f.cs.db.Exec(`ALTER TABLE validator_verlauf_weg RENAME TO validator_verlauf`); err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("unlesbare Zulassung nicht gemeldet (%d)", n)
+	}
 }
