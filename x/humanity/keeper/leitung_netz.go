@@ -562,7 +562,11 @@ func anfrageKonten(pfad string, body []byte) []string {
 		return []string{kontoFaucet}
 	case strings.HasPrefix(pfad, "/api/unternehmen/"):
 		return []string{strings.ToLower(strings.TrimSpace(f.Unternehmen))}
-	case pfad == "/api/recover-escrow", pfad == "/api/set-guardian", pfad == "/api/confirm-alive":
+	case pfad == "/api/recover-escrow", pfad == "/api/set-guardian", pfad == "/api/confirm-alive",
+		// Die Erneuerung belastet das erneuerte Konto (handleLivenessRenewal,
+		// annahmeBeginnen(wallet)) -- im verteilten Term nimmt sie nur dessen
+		// Zustaendiger an, nicht zwingend der Leiter (Sicherheitspruefung #300).
+		pfad == "/api/liveness-renewal":
 		return []string{w}
 	}
 	return nil

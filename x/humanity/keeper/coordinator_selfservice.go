@@ -39,8 +39,15 @@ import (
 // Coordinator nichts -- er rechnet nach.
 //
 // Der Satz ist an die WALLET gebunden. Ein anderswo abgeholter Nachweis passt
-// zu keiner anderen Adresse, laesst sich also nicht einsammeln und unter
-// fremdem Namen einreichen.
+// zu keiner anderen Adresse, laesst sich also nicht unter fremdem Namen
+// einreichen. ABER: er beweist nicht, dass der Halter des Schluessels DIESEM
+// Menschen zugestimmt hat, solange der Coordinator den Nachweis fuer jede
+// Wallet ausstellt -- wer sich einen fuer die eigene Wallet holt, besetzte
+// den Schluessel auf jedem Knoten, der ihn noch nicht kennt (zweiter
+// Sicherheitsdurchgang #300). Der Coordinator stellt ihn deshalb nur noch
+// fuer seinen eingestellten Betreiber aus (aequitas-biometric-beta,
+// COORDINATOR_BETREIBER_WALLET), und ein eingetragener Schluessel wandert
+// nicht weiter (RegisterCoordinatorKey).
 //
 // WARUM DER KNOTEN WEITERREICHT
 //

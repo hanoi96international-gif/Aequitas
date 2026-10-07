@@ -1,12 +1,14 @@
 package keeper
 
 import (
-	"crypto/ed25519"
-	"encoding/hex"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
+	"time"
 )
 
 // Das Register der anerkannten Coordinatoren.
@@ -25,6 +27,14 @@ import (
 //
 // Hier haengt der Schluessel an derselben Bindung wie ueberall sonst -- ein
 // Mensch, ein Schluessel, mit Besitznachweis, oeffentlich nachpruefbar.
+//
+// FUER DEN KONSENS ZAEHLT ES NICHT MEHR (06.10.2026)
+//
+// Die Erneuerungs-Bescheinigung traegt jetzt die Bindung selbst (beide
+// Unterschriften dieser Eintragung, grant_staffel.go), und jeder Knoten prueft
+// sie gegen den Kettenzustand. Das Register dient nur noch dem annehmenden
+// Knoten als Quelle dieser Unterschriften und der Liste fuer die
+// Vergleichsdienste. Unten der Stand davor -- fuer die Liste gilt er weiter.
 //
 // DAS REGISTER IST KNOTENLOKAL, NICHT REPLIZIERT
 //
@@ -61,16 +71,111 @@ import (
 // Coordinatoren erhoeht.
 
 // EnsureCoordinatorRegistry legt die Tabelle an. Idempotent.
+//
+// EINMAL JE PROZESS, NICHT JE ANFRAGE (Sicherheitspruefung #300, HIGH-2).
+// Die Funktion steht in jedem Lese- und Schreibpfad des Registers, auch in
+// der oeffentlichen Erneuerung. ALTER TABLE braucht eine ACCESS-EXCLUSIVE-
+// Sperre, auch wenn die Spalte schon da ist -- je Anfrage zwei davon hiessen:
+// eine lange Lesung (Liste, Sicherung) haelt jede Erneuerung auf, und jede
+// wartende Erneuerung haelt alle Leser dahinter auf. Deshalb ein Riegel, der
+// nur bei ERFOLG faellt (wie ensureTxRootColumn), und eine Sperrfrist: kommt
+// die Sperre nicht binnen zwei Sekunden, bricht das Anlegen ab und der
+// naechste Aufruf versucht es erneut -- statt dass Anfragen ohne Grenze
+// warten.
+//
+// HOECHSTENS EIN VERSUCH ZUGLEICH, HOECHSTENS ALLE 10 S (zweiter
+// Sicherheitsdurchgang #300). Mit einer Sperre, auf die jeder Aufrufer
+// wartete, reihten sich die Wartezeiten auf (der k-te wartete k mal die
+// Sperrfrist) -- auch die oeffentliche Liste, die der Proof-Server abfragt.
+// Jetzt: laeuft schon ein Versuch oder liegt der letzte keine 10 s zurueck,
+// geht der Aufrufer gleich weiter; fehlen die Spalten noch, scheitert seine
+// Abfrage (fail-closed: Liste leer, Annahme 403, Eintragung 500). Und zuerst
+// ein Blick in information_schema: sind die Spalten da, gibt es kein ALTER
+// TABLE und keine ACCESS-EXCLUSIVE-Sperre.
 func (cs *ChainState) EnsureCoordinatorRegistry() {
-	if cs.db == nil {
+	if cs.db == nil || cs.coordinatorRegisterDa.Load() {
 		return
 	}
-	cs.db.Exec(`CREATE TABLE IF NOT EXISTS coordinator_keys (
+	if !cs.coordinatorRegisterMu.TryLock() {
+		return
+	}
+	defer cs.coordinatorRegisterMu.Unlock()
+	if cs.coordinatorRegisterDa.Load() {
+		return
+	}
+	jetzt := time.Now().Unix()
+	if zuletzt := cs.coordinatorRegisterVersuch.Load(); zuletzt != 0 && jetzt-zuletzt < 10 {
+		return
+	}
+	cs.coordinatorRegisterVersuch.Store(jetzt)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	var spalten int
+	if err := cs.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM information_schema.columns
+		WHERE table_schema = current_schema() AND table_name = 'coordinator_keys'
+		  AND column_name IN ('public_key', 'human_wallet', 'url', 'registered_at', 'human_signature', 'key_signature')`).Scan(&spalten); err == nil && spalten == 6 {
+		cs.coordinatorRegisterDa.Store(true)
+		return
+	}
+	tx, err := cs.db.BeginTx(ctx, nil)
+	if err != nil {
+		fmt.Printf("[COORDINATORS] Register nicht angelegt (naechster Versuch beim naechsten Aufruf): %v\n", err)
+		return
+	}
+	defer tx.Rollback()
+	for _, q := range []string{
+		`SET LOCAL lock_timeout = '2s'`,
+		`CREATE TABLE IF NOT EXISTS coordinator_keys (
 		public_key    TEXT PRIMARY KEY,
 		human_wallet  TEXT NOT NULL,
 		url           TEXT,
 		registered_at TIMESTAMP DEFAULT NOW()
-	)`)
+	)`,
+		// Seit 06.10.2026: die beiden Unterschriften der Eintragung. Sie
+		// gehen in jede Erneuerungs-Bescheinigung, damit jeder Knoten die
+		// Bindung selbst prueft (grant_staffel.go, Lebendigkeitsbescheinigung).
+		`ALTER TABLE coordinator_keys ADD COLUMN IF NOT EXISTS human_signature TEXT`,
+		`ALTER TABLE coordinator_keys ADD COLUMN IF NOT EXISTS key_signature TEXT`,
+	} {
+		if _, err := tx.ExecContext(ctx, q); err != nil {
+			fmt.Printf("[COORDINATORS] Register nicht angelegt (naechster Versuch beim naechsten Aufruf): %v\n", err)
+			return
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		fmt.Printf("[COORDINATORS] Register nicht angelegt (naechster Versuch beim naechsten Aufruf): %v\n", err)
+		return
+	}
+	cs.coordinatorRegisterDa.Store(true)
+}
+
+// CoordinatorBindung: was eine Eintragung belegt -- in der Bescheinigung
+// mitgeschickt.
+type CoordinatorBindung struct {
+	Mensch        string
+	MenschSig     string
+	SchluesselSig string
+}
+
+// CoordinatorBindungLokal: die Bindung eines eingetragenen Schluessels aus
+// dem Register dieses Knotens. false, wenn er nicht eingetragen ist oder die
+// Eintragung keine Unterschriften traegt (vor dem 06.10.2026).
+func (cs *ChainState) CoordinatorBindungLokal(publicKey string) (CoordinatorBindung, bool) {
+	if cs.db == nil {
+		return CoordinatorBindung{}, false
+	}
+	cs.EnsureCoordinatorRegistry()
+	var b CoordinatorBindung
+	publicKey = strings.ToLower(strings.TrimSpace(publicKey))
+	if !ed25519HexTauglich(publicKey) {
+		return CoordinatorBindung{}, false
+	}
+	err := cs.db.QueryRow(`SELECT human_wallet, COALESCE(human_signature, ''), COALESCE(key_signature, '')
+		FROM coordinator_keys WHERE public_key = $1`, publicKey).Scan(&b.Mensch, &b.MenschSig, &b.SchluesselSig)
+	if err != nil || b.MenschSig == "" || b.SchluesselSig == "" {
+		return CoordinatorBindung{}, false
+	}
+	return b, true
 }
 
 // CoordinatorEntry ist ein anerkannter Coordinator.
@@ -80,27 +185,60 @@ type CoordinatorEntry struct {
 	URL         string `json:"url,omitempty"`
 }
 
-// RegisterCoordinatorKey traegt einen Coordinator ein.
-func (cs *ChainState) RegisterCoordinatorKey(publicKey, humanWallet, url string) error {
+// errCoordinatorFremderMensch: der Schluessel ist schon fuer einen anderen
+// Menschen eingetragen.
+var errCoordinatorFremderMensch = errors.New("this coordinator key is already registered to another human")
+
+// RegisterCoordinatorKey traegt einen Coordinator ein. Die Unterschriften
+// werden in ihrer einen Schreibweise gespeichert (kanonischeSignaturVersuch,
+// ed25519SigNormal) -- so gehen sie in die Bescheinigung, und so prueft sie
+// jeder Knoten.
+//
+// Ein eingetragener Schluessel wandert nicht zu einem anderen Menschen
+// (Sicherheitspruefung #300, LOW-2): sonst kippte, wer zuletzt eintraegt, die
+// Bindung eines Schluessels, dessen Besitzer fuer zwei Menschen unterschrieben
+// hat. Neu eintragen fuer DENSELBEN Menschen (frische Unterschriften, neue
+// Adresse) bleibt moeglich.
+func (cs *ChainState) RegisterCoordinatorKey(publicKey, humanWallet, url, humanSig, keySig string) error {
 	if cs.db == nil {
 		return fmt.Errorf("no database")
 	}
 	publicKey = strings.ToLower(strings.TrimSpace(publicKey))
 	humanWallet = strings.ToLower(strings.TrimSpace(humanWallet))
 	url = strings.TrimRight(strings.TrimSpace(url), "/")
-	if !cs.IsHuman(humanWallet) {
+	humanSig, keySig = kanonischeSignaturVersuch(humanSig), ed25519SigNormal(keySig)
+	if !kanonischeSignatur(humanSig) {
+		return fmt.Errorf("human_signature is not in canonical form (0x + 130 hex, v 27/28, low s)")
+	}
+	istMensch, staffelOffen := cs.coordinatorMenschStand(humanWallet)
+	if !istMensch {
 		return fmt.Errorf("human_wallet %s is not a registered human", humanWallet)
 	}
+	// Wer selbst eine offene Staffel hat, bescheinigt keine Erneuerung
+	// (bescheinigungPruefen) -- und besetzt deshalb auch keinen Schluessel,
+	// den danach niemand anderes mehr eintragen kann (zweiter
+	// Sicherheitsdurchgang #300).
+	if staffelOffen {
+		return fmt.Errorf("human_wallet %s still has an open staged grant -- a coordinator cannot be registered for it yet", humanWallet)
+	}
 	cs.EnsureCoordinatorRegistry()
-	_, err := cs.db.Exec(
-		`INSERT INTO coordinator_keys (public_key, human_wallet, url)
-		 VALUES ($1, $2, NULLIF($3, ''))
+	res, err := cs.db.Exec(
+		`INSERT INTO coordinator_keys (public_key, human_wallet, url, human_signature, key_signature)
+		 VALUES ($1, $2, NULLIF($3, ''), $4, $5)
 		 ON CONFLICT (public_key) DO UPDATE SET
-		   human_wallet = $2,
 		   url = COALESCE(NULLIF($3, ''), coordinator_keys.url),
-		   registered_at = NOW()`,
-		publicKey, humanWallet, url)
-	return err
+		   human_signature = $4,
+		   key_signature = $5,
+		   registered_at = NOW()
+		 WHERE coordinator_keys.human_wallet = $2`,
+		publicKey, humanWallet, url, humanSig, keySig)
+	if err != nil {
+		return err
+	}
+	if n, err := res.RowsAffected(); err == nil && n == 0 {
+		return errCoordinatorFremderMensch
+	}
+	return nil
 }
 
 // Coordinators liefert alle anerkannten Coordinatoren.
@@ -120,11 +258,29 @@ func (cs *ChainState) Coordinators() []CoordinatorEntry {
 	var out []CoordinatorEntry
 	for rows.Next() {
 		var k, w, u string
-		if rows.Scan(&k, &w, &u) == nil && k != "" {
-			out = append(out, CoordinatorEntry{PublicKey: k, HumanWallet: w, URL: u})
+		if rows.Scan(&k, &w, &u) != nil || k == "" {
+			continue
 		}
+		// Vor dem 06.10.2026 nahm die Eintragung jeden lesbaren Schluessel --
+		// auch einen kleiner Ordnung, mit dem eine Unterschrift fuer jede
+		// Nachricht gilt. Proof-Server und Vergleichsdienst lesen diese Liste;
+		// ein solcher Eintrag geht nicht hinaus (ed25519_streng.go).
+		if !ed25519HexTauglich(k) {
+			coordinatorSchluesselUntauglich(k)
+			continue
+		}
+		out = append(out, CoordinatorEntry{PublicKey: k, HumanWallet: w, URL: u})
 	}
 	return out
+}
+
+// coordinatorSchluesselUntauglich: einmal je Schluessel melden.
+var gemeldeteUntauglicheSchluessel sync.Map
+
+func coordinatorSchluesselUntauglich(k string) {
+	if _, schon := gemeldeteUntauglicheSchluessel.LoadOrStore(k, true); !schon {
+		fmt.Printf("[SICHERHEIT] ⚠ gespeicherter Ed25519-Schluessel %s ist untauglich (kleine Ordnung oder nicht kanonisch) -- wird nicht ausgeliefert; Eintrag pruefen und entfernen\n", k)
+	}
 }
 
 // handleRegisterCoordinatorKey traegt einen Coordinator-Schluessel ein.
@@ -188,6 +344,10 @@ func (a *APIServer) handleRegisterCoordinatorKey(w http.ResponseWriter, r *http.
 	}
 
 	pub := strings.ToLower(strings.TrimSpace(req.PublicKey))
+	// Die eine Schreibweise jeder Unterschrift (Wallets liefern v 0/1 oder
+	// Grossbuchstaben) -- so wird gespeichert und weitergereicht.
+	req.HumanSignature = kanonischeSignaturVersuch(req.HumanSignature)
+	req.KeySignature = ed25519SigNormal(req.KeySignature)
 	if len(pub) != 64 || strings.Trim(pub, "0123456789abcdef") != "" {
 		jsonError(w, "public_key must be 64 hex characters (Ed25519)", http.StatusBadRequest)
 		return
@@ -196,7 +356,7 @@ func (a *APIServer) handleRegisterCoordinatorKey(w http.ResponseWriter, r *http.
 		jsonError(w, "invalid human_wallet", http.StatusBadRequest)
 		return
 	}
-	if err := verifyPersonalSign("Aequitas: authorize coordinator "+pub, req.HumanSignature, human); err != nil {
+	if err := verifyPersonalSign(coordinatorFreigabeNachricht(pub), req.HumanSignature, human); err != nil {
 		jsonError(w, "invalid human_signature: "+err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -210,7 +370,11 @@ func (a *APIServer) handleRegisterCoordinatorKey(w http.ResponseWriter, r *http.
 		jsonError(w, "url must be a public https:// address", http.StatusBadRequest)
 		return
 	}
-	if err := a.state.RegisterCoordinatorKey(pub, human, url); err != nil {
+	if err := a.state.RegisterCoordinatorKey(pub, human, url, req.HumanSignature, req.KeySignature); err != nil {
+		if errors.Is(err, errCoordinatorFremderMensch) {
+			jsonError(w, err.Error(), http.StatusConflict)
+			return
+		}
 		jsonStateError(w, "register-coordinator-key", pub, err)
 		return
 	}
@@ -263,15 +427,11 @@ func (a *APIServer) handleCoordinatorList(w http.ResponseWriter, r *http.Request
 	})
 }
 
+// verifyCoordinatorPossession: der Schluessel hat fuer diesen Menschen
+// unterschrieben. Streng (ed25519_streng.go): kein Schluessel kleiner
+// Ordnung, Unterschrift in ihrer einen Schreibweise -- dieselbe Pruefung
+// macht jeder Knoten an der Bescheinigung.
 func verifyCoordinatorPossession(publicHex, signatureHex, humanWallet string) bool {
-	roh, err := hex.DecodeString(strings.TrimPrefix(strings.TrimSpace(signatureHex), "0x"))
-	if err != nil || len(roh) != ed25519.SignatureSize {
-		return false
-	}
-	pub, err := hex.DecodeString(publicHex)
-	if err != nil || len(pub) != ed25519.PublicKeySize {
-		return false
-	}
 	msg := []byte("Aequitas: coordinator key for human " + strings.ToLower(strings.TrimSpace(humanWallet)))
-	return ed25519.Verify(ed25519.PublicKey(pub), msg, roh)
+	return ed25519PruefenStreng(strings.ToLower(strings.TrimSpace(publicHex)), signatureHex, msg)
 }

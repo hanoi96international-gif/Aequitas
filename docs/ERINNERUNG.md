@@ -108,10 +108,14 @@ den verlinkten Dokumenten.
               mit Zeitpunkt (Selbstnachweis + `/node-binding`). Bestehende
               Betreiber binden nach dem Stichtag einmal neu
         - [x] Schritt 3, Teil 1, schlafend (07.10.): Strafkonto, Leitung und
-              Abgleich ab `registerLeserAb` aus dem Register, Erzeuger ab
-              `erzeugerSchnittAb` als Schnittmenge aus Liste und Register
-              (`validator_register_leser.go`). Stichtage erst setzen, wenn
-              `/api/status` → `erzeuger_ohne_bindung` leer ist
+              Abgleich ab `registerLeserAb` aus dem Verlauf der Bindungen
+              (`validator_verlauf`), Erzeuger ab `erzeugerSchnittAb` als
+              Schnittmenge aus Liste und Register zur Zeit des Blocks, mit
+              zwei Stunden Frist (`validator_register_leser.go`). Strafe nur
+              fuer den Halter vor der Tat, keine, wenn danach ein anderer
+              den Schluessel gebunden hat. Nur fuer den geschlossenen
+              Betrieb (`AUTHORIZED_VALIDATORS`) freigegeben. Stichtage erst
+              setzen, wenn `/api/status` → `erzeuger_ohne_bindung` leer ist
         - [ ] Schritt 3, Teil 2: Validatoren-Belohnung mit Gewichten aus der
               Kette, nachgerechnet; Komitee aus derselben Menge
         - [ ] Stichtage setzen (eure Entscheidung,
@@ -208,9 +212,35 @@ den verlinkten Dokumenten.
             Instanzsperre Zeilen aus einem ungespeicherten Block sofort
             wieder. Vormund/Lebenszeichen werden nur noch bis 10 min nach der
             Unterschrift angenommen
-      - [ ] Coordinator-Register (`coordinator_keys`) als Konsenszustand --
-            heute knotenlokal; nötig, bevor die Staffel aktiv wird, sonst
-            prüfen Knoten mit verschiedenem Register verschieden
+      - [x] Coordinator-Register für den Konsens (06.10.): die
+            Erneuerungs-Bescheinigung trägt jetzt ihre Bindung (Mensch,
+            dessen Freigabe, Besitznachweis des Schlüssels), und jeder Knoten
+            prüft sie gegen den Kettenzustand -- das knotenlokale
+            `coordinator_keys` entscheidet nichts mehr. Neu: kein
+            Coordinator bescheinigt sich selbst. Die Erneuerung geht durchs
+            Annahme-Tor (zum Zuständigen des erneuerten Kontos). Wirkt mit
+            der Staffel (2100, Platzhalter); bestehende Coordinatoren tragen
+            sich vorher einmal neu ein (die Unterschriften werden erst seit
+            heute gespeichert). Nach der Sicherheitsprüfung: Ed25519 streng
+            (kein Schlüssel kleiner Ordnung -- sonst Universalunterschrift,
+            `ed25519_streng.go`), je Unterschrift eine Schreibweise, ein
+            Schlüssel wandert nicht zu einem anderen Menschen, das Register
+            wird einmal je Prozess angelegt statt je Anfrage, und ein Mensch
+            mit offener Staffel bescheinigt nicht
+      - [ ] **Vor dem Staffel-Stichtag** (erzwungen in
+            `TestStaffel_SchlaeftBisZulassungUndStreng`):
+        - [ ] Coordinatoren im Konsens zulassen und entziehen. Heute kann
+              jeder registrierte Mensch ohne offene Staffel Erneuerungen
+              bescheinigen -- eine Farm mit einem alten Konto bescheinigte
+              allen ihren Kunstfiguren
+        - [ ] Strenger Modus spätestens mit der Staffel
+              (`nachrechnenStrengAbUnix` ≤ `stagedGrantActivationUnix`),
+              sonst würde eine erfundene Erneuerung nur gezählt
+        - [ ] Die Nachrichten der Bindung und der Bescheinigung um die
+              Chain-ID erweitern (v2, Coordinator und Kette zugleich) --
+              heute gälte eine Lebendigkeitsprüfung derselben Wallet in jedem
+              Netz mit derselben Domäne, und ein früher für eine fremde
+              Wallet ausgestellter Besitznachweis hat kein Datum
       - [ ] Stichtag `nachrechnenStrengAbUnix` setzen, sobald
             `/api/wirtschaft/regeln` über mehrere Runden 0 Abweichungen zeigt.
             C1 spielt seine eigenen Blöcke nicht nach, und **C2 gibt es seit
