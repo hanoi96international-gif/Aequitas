@@ -257,14 +257,32 @@ Dinge ohne Konsenswirkung (Erreichbarkeit, Messwerte als Hinweis).
    - Bleibt von der Reihenfolge abhängig: eine Übergabe in einem
      Geschwisterblock der Strafe (wie „Mensch im Geschwisterblock“). Ein
      ehrlicher Annehmender legt beides in eine Linie.
-   - **Vor `registerLeserAb` noch offen:**
-     - L1: Ein Block mit einer Bindung, der zurückgehalten und spät
-       eingehängt wird, wirkt rückwirkend auf alte Blöcke (die Frist setzt
-       pünktliches Nachspielen voraus); das gilt auch für die Abrechnung.
-       Lösung: die Erzeugerprüfung nur nach Zeilen im Vergangenheitskegel
-       des Blocks, oder alte Eltern mit `validator_bindung` nicht mehr
-       einhängen.
-     - Erledigt: M1, M2 und L3 (spätere Abrechnung, siehe oben).
+   - **Kein spät eingehängter Block mit Bindung oder Beweis** (L1,
+     `spaet_eingehaengt.go`): Erzeugerprüfung und Abrechnung setzen voraus,
+     dass jeder Knoten eine Zeile kennt, bevor sie wirkt. Ein Erzeuger, der
+     einen Block mit Bindung zurückhält und Stunden später über einen
+     frischen Nachfolger einhängt, umginge die Finalitätswand (ein
+     nachgeholter Vorfahr mit wartendem Nachfolger ist ausgenommen, und
+     ruhende Finalität hält nichts auf) – seine Zeile wirkte rückwirkend.
+     Ab dem Stichtag nimmt ein Knoten einen Block mit `validator_bindung`
+     oder `slash_equivocation` nicht an, wenn dessen Blockzeit mehr als
+     **30 Minuten hinter seiner eigenen neuesten Spitze** liegt. Schaden
+     entstünde nur, wenn ein Block Y mit t_Y ≥ Zeitpunkt + 2 h schon
+     beurteilt wäre – dann liegt die Spitze mindestens eine Stunde nach dem
+     späten Block, und er wird abgewiesen. **Bewusst nicht die Uhr:** der
+     erste Block des einzigen Erzeugers nach einem Absturz trägt eine
+     Bindung aus dem Ausgang mit der Zeit ihrer Annahme (Stunden zurück);
+     nach der Uhr wiese ihn jeder ab und die Kette risse, gegen die Spitze
+     (Stand vor dem Absturz) ist er pünktlich. Ein nachholender Knoten hat
+     ebenso alte Spitzen. Ausgenommen: Geschichte vom vertrauten Seed
+     (`FromSync`), in der ein zurückgehaltener Block nie steht. **Grenzen:**
+     Gibt ein Erzeuger den Block genau an der Grenze frei, können Knoten ihn
+     verschieden behandeln (wie an der Finalitätswand); er verliert damit
+     höchstens seinen eigenen Block. Mit mehreren Erzeugern wird der erste
+     Block eines abgestürzten Erzeugers abgewiesen, wenn die anderen
+     weitergemacht haben und er eine Bindung von vor dem Absturz trägt – er
+     setzt dann vom Seed neu auf.
+   - Erledigt vor `registerLeserAb`: M1, M2, L3 (spätere Abrechnung) und L1.
    - Offen (Teil 2): Validatoren-Belohnung mit Gewichten aus der Kette statt
      aus `registered_nodes` (Blöcke je Signieradresse im Vergangenheitskegel
      eines Ankerblocks, nachgerechnet von jedem Knoten); das Komitee aus
