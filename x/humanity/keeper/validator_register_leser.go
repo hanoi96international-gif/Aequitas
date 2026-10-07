@@ -449,6 +449,8 @@ func (cs *ChainState) erzeugerRegisterAuffrischen() {
 	if cs == nil || cs.db == nil {
 		return
 	}
+	cs.erzeugerAuffrischenMu.Lock()
+	defer cs.erzeugerAuffrischenMu.Unlock()
 	var fest []string
 	if p := cs.erzeugerFest.Load(); p != nil {
 		fest = *p

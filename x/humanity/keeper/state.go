@@ -275,6 +275,10 @@ type ChainState struct {
 	// erzeugerFest: AUTHORIZED_VALIDATORS, fuer den Erzeugerstand (nur diese
 	// werden gelesen, wenn die Liste geschlossen ist).
 	erzeugerFest atomic.Pointer[[]string]
+	// erzeugerAuffrischenMu: ein Auffrischen nach dem anderen -- sonst
+	// speicherte ein langsames, frueher begonnenes den aelteren Stand nach
+	// einem neueren.
+	erzeugerAuffrischenMu sync.Mutex
 	// coordinatorRegisterDa/-Mu: coordinator_keys einmal je Prozess anlegen,
 	// nicht je Anfrage (EnsureCoordinatorRegistry).
 	coordinatorRegisterDa atomic.Bool
