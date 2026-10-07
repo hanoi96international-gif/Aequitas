@@ -58,7 +58,10 @@ type StateSnapshot struct {
 	// Validator-Register (validator_register.go) -- Konsens, steht in der
 	// StateRoot, sobald es Eintraege hat. omitempty wie Treuhand.
 	Validatoren []SnapshotValidator `json:"validatoren,omitempty"`
-	Signature   string              `json:"signature,omitempty"` // ECDSA over SHA256(JSON without this field)
+	// Verlauf der Bindungen (validator_register.go, validator_verlauf) --
+	// jede Zeile mit beiden Unterschriften. omitempty wie oben.
+	ValidatorVerlauf []SnapshotValidator `json:"validator_verlauf,omitempty"`
+	Signature        string              `json:"signature,omitempty"` // ECDSA over SHA256(JSON without this field)
 }
 
 type SnapshotBioRegistration struct {
@@ -184,6 +187,12 @@ func (cs *ChainState) ExportSnapshot(signingKey *ecdsa.PrivateKey, height int64,
 		return nil
 	} else {
 		snap.Validatoren = v
+	}
+	if v, err := cs.validatorVerlaufLesen(); err != nil {
+		fmt.Printf("[SNAPSHOT] ✗ Verlauf des Validator-Registers nicht lesbar -- kein Snapshot: %v\n", err)
+		return nil
+	} else {
+		snap.ValidatorVerlauf = v
 	}
 
 	// Pull bio_registrations from DB (commitment → wallet only).
@@ -416,7 +425,14 @@ func fetchAndValidateSnapshot(peerURL, expectedSignerHex string) (*StateSnapshot
 // wrong value, since merge only fills gaps, never corrects existing entries.
 // See ResyncFromSnapshotURL below for the authoritative-replace counterpart
 // this audit asked for; this function's own merge behavior is unchanged.
-func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) error {
+func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) (err error) {
+	// Der Verlauf der Bindungen kam mit: den Stand der Erzeuger neu lesen,
+	// nach allen Sperren (validator_register_leser.go).
+	defer func() {
+		if err == nil {
+			cs.erzeugerRegisterAuffrischen()
+		}
+	}()
 	local := cs.TotalHumans()
 	if local > 0 {
 		fmt.Printf("[SNAPSHOT] Merging into existing state (%d humans local) — adding missing entries\n", local)
@@ -434,6 +450,9 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) e
 	validatorenBis := snapshotValidatorenBis(snap.Timestamp)
 	if err := pruefeSnapshotValidatoren(snap.Validatoren, validatorenBis); err != nil {
 		return fmt.Errorf("snapshot import: validator register: %w", err)
+	}
+	if err := pruefeSnapshotVerlauf(snap.ValidatorVerlauf, validatorenBis); err != nil {
+		return fmt.Errorf("snapshot import: validator history: %w", err)
 	}
 
 	// Apply in-memory under lock, then persist outside lock to avoid deadlock.
@@ -593,6 +612,9 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) e
 			if err := validatorenImportieren(tx, snap.Validatoren, false, validatorenBis); err != nil {
 				return fmt.Errorf("saving validator register: %w", err)
 			}
+			if err := verlaufImportieren(tx, snap.ValidatorVerlauf, snap.Validatoren, false); err != nil {
+				return fmt.Errorf("saving validator history: %w", err)
+			}
 			// Import chain_config timing values. Do NOT overwrite if already set —
 			// the primary's live value takes precedence over the snapshot's snapshot-time value.
 			for key, val := range snap.ChainConfig {
@@ -699,7 +721,13 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) e
 // correctly — this is the same signed-snapshot recovery this session
 // already used twice in production for CD20/the VPS via a full DB wipe;
 // this gives operators a way to do it without one.
-func (cs *ChainState) ResyncFromSnapshotURL(peerURL, expectedSignerHex string) error {
+func (cs *ChainState) ResyncFromSnapshotURL(peerURL, expectedSignerHex string) (err error) {
+	// Wie ImportSnapshotFromURL: den Stand der Erzeuger neu lesen.
+	defer func() {
+		if err == nil {
+			cs.erzeugerRegisterAuffrischen()
+		}
+	}()
 	if expectedSignerHex == "" {
 		return fmt.Errorf("RESYNC_FROM_SNAPSHOT requires BOOTSTRAP_SIGNER set — refusing to replace local state from an unverified source")
 	}
@@ -715,6 +743,9 @@ func (cs *ChainState) ResyncFromSnapshotURL(peerURL, expectedSignerHex string) e
 	validatorenBis := snapshotValidatorenBis(snap.Timestamp)
 	if err := pruefeSnapshotValidatoren(snap.Validatoren, validatorenBis); err != nil {
 		return fmt.Errorf("resync: validator register: %w", err)
+	}
+	if err := pruefeSnapshotVerlauf(snap.ValidatorVerlauf, validatorenBis); err != nil {
+		return fmt.Errorf("resync: validator history: %w", err)
 	}
 
 	// FIX (audit 2026-08-15, after a live near-miss): refuse a snapshot that
@@ -966,6 +997,9 @@ func (cs *ChainState) ResyncFromSnapshotURL(peerURL, expectedSignerHex string) e
 	// Validator-Register ersetzend; Unterschriften oben vor der Sperre geprueft.
 	if err := validatorenImportieren(tx, snap.Validatoren, true, validatorenBis); err != nil {
 		return fail(fmt.Errorf("resync: validator register: %w", err))
+	}
+	if err := verlaufImportieren(tx, snap.ValidatorVerlauf, snap.Validatoren, true); err != nil {
+		return fail(fmt.Errorf("resync: validator history: %w", err))
 	}
 	// Authoritative: every StateRoot-relevant config key takes the
 	// snapshot's value unconditionally, unlike ImportSnapshotFromURL's

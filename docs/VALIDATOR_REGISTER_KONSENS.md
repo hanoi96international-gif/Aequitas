@@ -135,37 +135,84 @@ Dinge ohne Konsenswirkung (Erreichbarkeit, Messwerte als Hinweis).
 3. **Leser umstellen** – Teil 1 umgesetzt (07.10., `validator_register_leser.go`),
    schlafend bis zu zwei eigenen Stichtagen (Platzhalter `math.MaxInt64`,
    beide mindestens eine Woche nach `validatorRegisterAb`, per Test erzwungen)
-   - **`registerLeserAb`** (an `DetectedAt` bzw. der Uhr für Lokales):
-     - Strafkonto (`strafKonto`): der Betreiber, der den Schlüssel **zur Zeit
-       der Erkennung** hielt (größter Bindungszeitpunkt ≤ `DetectedAt`, auch
-       eine inzwischen überholte Bindung), und nur, wenn er Mensch ist. Kein
-       Betreiber, umstritten oder kein Mensch: keine Geldstrafe (Sperre und
-       Zähler bleiben). Ein Lesefehler weist den Block ab, er wird nie zu
-       „keine Strafe“. `registered_nodes` lenkt die Strafe nicht mehr um.
-     - Leitung (`validatorMenschVon`): der Mensch aus dem Register, nicht aus
-       dem Abgleich.
-     - Der Abgleich `syncValidatorsFromPeer` nimmt nichts mehr auf.
-   - **`erzeugerSchnittAb`** (an der Blockzeit, ≥ `registerLeserAb`): wer
-     Blöcke erzeugen darf. Mit `AUTHORIZED_VALIDATORS` die **Schnittmenge**
-     aus Liste und Register (nicht überholt, unumstritten, Betreiber ist
-     Mensch) – das Register nimmt Erzeuger weg, fügt aber keine hinzu. Ohne
-     Liste das Register allein. Der Stand liegt im Speicher (Prüfung unter
-     `dag.mu` ohne Datenbank), neu gelesen nach jedem Block mit
-     `validator_bindung`, nach der eigenen Annahme und alle 30 s; kein Stand
-     oder ein Lesefehler: nur noch Blöcke aus der Geschichte (fail-closed).
-     Ohne eigene Bindung erzeugt der Knoten nicht. **Erst setzen, wenn
-     `/api/status` → `erzeuger_ohne_bindung` leer ist** – sonst schlösse sich
-     C1 selbst aus.
+   - **Der Verlauf** (`validator_verlauf`, nach dem Sicherheitsdurchgang
+     zu #303): das Register hält je Betreiber nur die letzte Bindung, beide
+     Leser brauchen aber, was **zu einer Zeit** galt. Darum steht jede
+     gültige Bindung, die je in einem Block stand, mit beiden Unterschriften
+     im Verlauf – auch eine, die nicht neuer war und das Register nicht
+     änderte. In der Summe (`validatorVerlaufBlatt`), im Snapshot (jede Zeile
+     prüft der Importierende selbst), Rücknahme mit dem Block. Aus dem
+     Verlauf die **Zeiträume**: eine Bindung gilt ab ihrem Zeitpunkt bis zur
+     nächsten Bindung ihres Betreibers oder bis ein anderer Betreiber den
+     Schlüssel später bindet. Hängt nur an der Menge der Zeilen, nicht an
+     ihrer Reihenfolge.
+   - **`registerLeserAb`**, geschaltet an `max(DetectedAt, Blockzeit)` –
+     `DetectedAt` wählt, wer den Schlüssel hält (die Zeit eines der beiden
+     Köpfe, die er selbst unterschreibt); allein daran hätte er jeden Beweis
+     vor den Stichtag datieren und den alten Weg erzwingen können. Beim
+     Erkennen zählt die Uhr.
+     - Strafkonto (`strafKonto`): wer den Schlüssel **zuletzt vor der Tat**
+       gebunden hat – auch wenn er danach selbst einen neuen gebunden hat
+       (den alten kennt er weiter, in der Frist darf der alte noch
+       erzeugen). Nur ein Mensch zahlt. Hat **nach der Tat ein anderer
+       Betreiber** den Schlüssel gebunden, zahlt **keiner**: der spätere
+       Halter besitzt den Schlüssel und hätte den Beweis mit beliebigem
+       Zeitpunkt selbst unterschreiben und dem früheren anhängen können.
+       Wer seinen Schlüssel abgibt, entgeht damit der Geldstrafe; Sperre und
+       Zähler bleiben am Schlüssel. Kein Halter oder zwei mit demselben
+       letzten Zeitpunkt: keine Geldstrafe. Ein Lesefehler weist den Block
+       ab. Ändert sich das Strafkonto, während der Erkennende auf die
+       Sperre wartet, versucht er es einmal neu (vorher fiel die ganze
+       Erkennung weg). `registered_nodes` lenkt die Strafe nicht mehr um.
+     - Leitung (`validatorMenschVon`): der Mensch aus dem Stand im Speicher
+       (dieselben Zeiträume und Frist wie beim Erzeugen) – keine Datenbank
+       unter der Sperre der Leitung. Nach einem Lesefehler bleibt der
+       letzte Stand stehen; sonst sähe die Leitung für ein Mitglied keinen
+       Menschen mehr und nähme einen zweiten Schlüssel desselben Menschen
+       auf.
+     - Mit `AUTHORIZED_VALIDATORS` nimmt der Abgleich unter Peers
+       (`syncValidatorsFromPeer` und die Liste des Seeds) nichts mehr auf.
+   - **`erzeugerSchnittAb`** (an der Blockzeit plus der Rück-Toleranz von
+     zwei Minuten, ≥ `registerLeserAb`): wer Blöcke erzeugen darf – ein
+     Schlüssel, dessen Zeitraum **zur Zeit des Blocks** gilt, um die
+     **Frist** von zwei Stunden verschoben (`erzeugerFrist` =
+     `nachweisHoechstensAlt` + 1 h): eine neue Bindung wirkt erst zwei
+     Stunden nach ihrem Zeitpunkt, eine beendete noch zwei Stunden danach.
+     Der Zeitpunkt liegt höchstens eine Stunde vor dem tragenden Block, also
+     hat jeder Knoten mindestens eine Stunde, ihn nachzuspielen, bevor er auf
+     irgendeinen Block wirkt; bis dahin urteilen alle gleich (per Test über
+     zufällige Verläufe erzwungen). Eine Übergabe ist nahtlos, der alte
+     Schlüssel erzeugt bis zum Ende der Frist. Vorher wies jeder Knoten, der
+     eine Übergabe schon nachgespielt hatte, die Blöcke des alten Schlüssels
+     ab, während andere sie annahmen – das Netz zerfiel dauerhaft.
+     - Mit `AUTHORIZED_VALIDATORS` die **Schnittmenge** aus Liste und
+       Register; gelesen werden nur die Schlüssel der Liste. Ohne Liste das
+       Register allein (dann endet auch der Abgleich unter Peers erst hier,
+       sonst nähme nur der Knoten, bei dem sich ein neuer Erzeuger
+       eingetragen hat, dessen Blöcke an). **Für den Stichtag ist nur der
+       geschlossene Betrieb freigegeben:** offen liest der Stand den ganzen
+       Verlauf, höchstens 100.000 Zeilen, jeder Mensch kann ihn füllen, und
+       darüber schließt die Prüfung für alle ab. Vor einem offenen Betrieb
+       bräuchte es einen Mindestabstand je Betreiber und einen
+       fortgeschriebenen statt neu gelesenen Stand.
+     - Der Stand liegt im Speicher (Prüfung unter `dag.mu` ohne Datenbank),
+       neu gelesen nach jedem Block, der den Verlauf erweitert hat, nach der
+       eigenen Annahme, nach einem Snapshot-Import und alle 30 s (nur, wenn
+       ein Stichtag keinen Tag mehr entfernt ist); gelesen vor P2P und
+       HTTP-Sync. Kein Stand oder ein Lesefehler: nur noch Blöcke aus der
+       Geschichte (fail-closed).
+     - Ohne eigene Bindung erzeugt der Knoten nicht. **Erst setzen, wenn
+       `/api/status` → `erzeuger_ohne_bindung` leer ist** (null heißt:
+       offen oder nicht lesbar) – sonst schlösse sich C1 selbst aus.
+   - Bleibt von der Reihenfolge abhängig: eine Übergabe in einem
+     Geschwisterblock der Strafe (wie „Mensch im Geschwisterblock“). Ein
+     ehrlicher Annehmender legt beides in eine Linie.
    - Offen (Teil 2): Validatoren-Belohnung mit Gewichten aus der Kette statt
      aus `registered_nodes` (Blöcke je Signieradresse im Vergangenheitskegel
      eines Ankerblocks, nachgerechnet von jedem Knoten); das Komitee aus
      derselben Menge.
    - Offen (eure Entscheidung): die Leistungsprobe wird zur Entscheidung des
      Leiters, die als eigene Transaktion auf die Kette kommt – oder entfällt.
-   - Grenze: das Register hält je Betreiber nur die letzte Bindung. Wechselt
-     ein Betreiber seinen Schlüssel, bevor die Strafe für den alten ankommt,
-     gibt es keine Geldstrafe (wie heute ohne Eintrag); die Sperre hängt an
-     der Signieradresse.
 4. **Coordinator-Register** (`coordinator_keys`) nach demselben Muster.
 
 ## Entscheidungen, die bei euch liegen

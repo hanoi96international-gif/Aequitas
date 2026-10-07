@@ -263,11 +263,12 @@ const maxSyncPeers = 20
 // registers with ONE node (via /api/peers/register), and every other node
 // that syncs from it — directly or transitively — learns about them here.
 func (dag *BlockDAG) syncValidatorsFromPeer(peerURL string) {
-	// Ab registerLeserAb kommen Erzeuger und Menschen aus dem Kettenregister
-	// (validator_register_leser.go). Was ein Peer hier meldet, nimmt dieser
-	// Knoten nicht mehr auf -- auch keine zeitlose Bindung ("authorize
-	// validator <adresse>"), die jeder wieder einspielen kann.
-	if registerLeserAktiv(nowUnix()) {
+	// Ab dem Stichtag kommen Erzeuger und Menschen aus dem Kettenregister
+	// (validator_register_leser.go, abgleichBeendet). Was ein Peer hier
+	// meldet, nimmt dieser Knoten nicht mehr auf -- auch keine zeitlose
+	// Bindung ("authorize validator <adresse>"), die jeder wieder einspielen
+	// kann.
+	if dag.abgleichBeendet(nowUnix()) {
 		return
 	}
 	resp, err := httpSyncClient.Get(peerURL + "/api/validators")
@@ -2865,10 +2866,13 @@ func (dag *BlockDAG) registerAndDiscover(selfURL, primaryURL string) bool {
 
 	// Add newly discovered authorized validators to our local set so we
 	// accept blocks from them without requiring AUTHORIZED_VALIDATORS env var.
+	// Ab dem Stichtag nicht mehr (wie syncValidatorsFromPeer): die Liste des
+	// Seeds ist nicht unterschrieben, und wer erzeugt, sagt das Register.
+	abgleichZu := dag.abgleichBeendet(nowUnix())
 	dag.mu.Lock()
 	for _, addr := range result.Validators {
 		addr = strings.ToLower(strings.TrimSpace(addr))
-		if addr != "" && !dag.authorizedValidators[addr] && dag.nimmProduzentAufLocked(addr) {
+		if addr != "" && !abgleichZu && !dag.authorizedValidators[addr] && dag.nimmProduzentAufLocked(addr) {
 			fmt.Printf("[PEERS] Auto-authorized validator: %s\n", addr)
 		}
 		if addr != "" && addr == signerAddr && !dag.validatorBestaetigt.Swap(true) {

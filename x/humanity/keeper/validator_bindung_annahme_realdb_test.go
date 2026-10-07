@@ -57,9 +57,10 @@ func TestValidatorBinden_AnnahmeUndNachspielen_RealDB(t *testing.T) {
 		t.Fatalf("Summe nach der Annahme %x, neu aufgebaut %x", summe, f.neuAufgebaut())
 	}
 
-	// Ein anderer Knoten (hier: derselbe nach Leeren des Registers) spielt den
-	// Auftrag aus dem Ausgang nach und kommt auf dieselbe Summe.
-	if _, err := f.cs.db.Exec(`TRUNCATE validator_register`); err != nil {
+	// Ein anderer Knoten (hier: derselbe nach Leeren von Register und
+	// Verlauf) spielt den Auftrag aus dem Ausgang nach und kommt auf dieselbe
+	// Summe.
+	if _, err := f.cs.db.Exec(`TRUNCATE validator_register, validator_verlauf`); err != nil {
 		t.Fatal(err)
 	}
 	f.cs.mu.Lock()

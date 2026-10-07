@@ -208,6 +208,14 @@ func validatorBlatt(betreiber, signing string, zeit int64, ueberholt bool) [32]b
 	return sha256.Sum256(b)
 }
 
+// validatorVerlaufBlatt: ein Eintrag des Verlaufs in der Summe. Eigenes
+// Praefix -- kein Verlaufseintrag faellt mit einem Registereintrag zusammen.
+func validatorVerlaufBlatt(betreiber, signing string, zeit int64) [32]byte {
+	b := []byte("validator-verlauf:" + strings.ToLower(betreiber) + ":" + strings.ToLower(signing) + ":")
+	b = strconv.AppendInt(b, zeit, 10)
+	return sha256.Sum256(b)
+}
+
 // InitValidatorRegisterTable: aus initDB. Kleinschreibung garantiert der
 // Schreibweg (kanonischeAdresse), also genuegen einfache Schluessel. Die
 // Signieradresse ist bewusst NICHT eindeutig (siehe REIHENFOLGE oben).
@@ -230,6 +238,35 @@ func (cs *ChainState) InitValidatorRegisterTable() error {
 	}
 	if _, err := cs.db.Exec(`CREATE INDEX IF NOT EXISTS validator_register_signing ON validator_register (signing_address)`); err != nil {
 		return fmt.Errorf("validator_register Index: %w", err)
+	}
+	// DER VERLAUF (Schritt 3, Sicherheitsdurchgang #303). Das Register haelt
+	// je Betreiber nur die letzte Bindung. Wer einen Schluessel zu einer
+	// bestimmten Zeit hielt (Strafkonto) und ab wann ein Schluessel Bloecke
+	// erzeugen darf (Erzeugerpruefung mit Frist), steht nur im Verlauf: jede
+	// gueltige Bindung, die je in einem Block stand -- auch eine, die nicht
+	// neuer war und darum das Register nicht aenderte (dann haengt der
+	// Verlauf weniger an der Reihenfolge der Geschwisterbloecke). Mit beiden
+	// Unterschriften: der Snapshot traegt ihn, und der importierende Knoten
+	// prueft jede Zeile selbst. In der Summe (validatorVerlaufBlatt).
+	if _, err := cs.db.Exec(`CREATE TABLE IF NOT EXISTS validator_verlauf (
+		operator_wallet TEXT NOT NULL,
+		signing_address TEXT NOT NULL,
+		bindung_ts      BIGINT NOT NULL,
+		sig_operator    TEXT NOT NULL,
+		sig_signing     TEXT NOT NULL,
+		PRIMARY KEY (operator_wallet, bindung_ts, signing_address)
+	)`); err != nil {
+		return fmt.Errorf("validator_verlauf anlegen: %w", err)
+	}
+	if _, err := cs.db.Exec(`CREATE INDEX IF NOT EXISTS validator_verlauf_signing ON validator_verlauf (signing_address)`); err != nil {
+		return fmt.Errorf("validator_verlauf Index: %w", err)
+	}
+	// Bestehende Registereintraege gehoeren in den Verlauf (Knoten, die das
+	// Register vor dem Verlauf fuehrten). Ohne Wirkung, wenn schon da.
+	if _, err := cs.db.Exec(`INSERT INTO validator_verlauf (operator_wallet, signing_address, bindung_ts, sig_operator, sig_signing)
+		SELECT operator_wallet, signing_address, bindung_ts, sig_operator, sig_signing FROM validator_register
+		ON CONFLICT DO NOTHING`); err != nil {
+		return fmt.Errorf("validator_verlauf nachtragen: %w", err)
 	}
 	return nil
 }
@@ -279,6 +316,16 @@ func (cs *ChainState) applyValidatorBindungLocked(ctx context.Context, tx *Trans
 	}
 
 	db := cs.dbExecCtx(ctx)
+	// In den Verlauf -- auch wenn die Bindung unten als nicht neuer
+	// uebersprungen wird: sie ist gueltig unterschrieben und stand in einem
+	// Block, der Schluessel gehoerte dem Betreiber ab diesem Zeitpunkt.
+	if res, err := db.Exec(`INSERT INTO validator_verlauf (operator_wallet, signing_address, bindung_ts, sig_operator, sig_signing)
+		VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING`, betreiber, signing, zeit, tx.Nachweis.Sig, tx.Nachweis.Sig2); err != nil {
+		return fmt.Errorf("validator_bindung: Verlauf schreiben: %w", err)
+	} else if n, _ := res.RowsAffected(); n == 1 {
+		xorInto(&cs.validatorSetXOR, validatorVerlaufBlatt(betreiber, signing, zeit))
+		cs.registerGeaendert.Store(true)
+	}
 	var bisherSigning string
 	var bisherZeit int64
 	var bisherUeberholt bool
@@ -383,7 +430,93 @@ func (cs *ChainState) validatorSummeAusDB() ([32]byte, error) {
 	for _, e := range eintraege {
 		xorInto(&x, validatorBlatt(e.Betreiber, e.Signing, e.Zeit, e.Ueberholt))
 	}
+	verlauf, err := cs.validatorVerlaufLesen()
+	if err != nil {
+		return x, err
+	}
+	for _, e := range verlauf {
+		xorInto(&x, validatorVerlaufBlatt(e.Betreiber, e.Signing, e.Zeit))
+	}
 	return x, nil
+}
+
+// validatorVerlaufLesen: der ganze Verlauf, fest geordnet (fuer den
+// signierten Snapshot und die Summe).
+func (cs *ChainState) validatorVerlaufLesen() ([]SnapshotValidator, error) {
+	if cs.db == nil {
+		return nil, nil
+	}
+	var gibt bool
+	if err := cs.db.QueryRow(`SELECT to_regclass('validator_verlauf') IS NOT NULL`).Scan(&gibt); err != nil || !gibt {
+		return nil, err
+	}
+	rows, err := cs.db.Query(`SELECT operator_wallet, signing_address, bindung_ts, sig_operator, sig_signing
+		FROM validator_verlauf ORDER BY operator_wallet, bindung_ts, signing_address`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []SnapshotValidator
+	for rows.Next() {
+		var e SnapshotValidator
+		if err := rows.Scan(&e.Betreiber, &e.Signing, &e.Zeit, &e.SigOperator, &e.SigSigning); err != nil {
+			return nil, fmt.Errorf("validator_verlauf lesen: %w", err)
+		}
+		out = append(out, e)
+	}
+	return out, rows.Err()
+}
+
+// pruefeSnapshotVerlauf: jede Zeile des Verlaufs wie eine Bindung -- Form,
+// Zeitfenster, beide Unterschriften; keine doppelte Zeile. Ohne cs.mu.
+func pruefeSnapshotVerlauf(liste []SnapshotValidator, bis int64) error {
+	fruehestens := validatorRegisterAb() - nachweisHoechstensAlt
+	gesehen := make(map[string]bool, len(liste))
+	for i, e := range liste {
+		tx := Transaction{Type: "validator_bindung", Wallet: e.Betreiber, To: e.Signing,
+			Nachweis: &Auftragsnachweis{Zeit: e.Zeit, Sig: e.SigOperator, Sig2: e.SigSigning}}
+		if err := validatorBindungForm(&tx); err != nil {
+			return fmt.Errorf("Verlauf %d: %w", i, err)
+		}
+		if e.Zeit < fruehestens || e.Zeit > bis {
+			return fmt.Errorf("Verlauf %d: Bindung von %d ausserhalb [%d, %d]", i, e.Zeit, fruehestens, bis)
+		}
+		k := e.Betreiber + "|" + strconv.FormatInt(e.Zeit, 10) + "|" + e.Signing
+		if gesehen[k] {
+			return fmt.Errorf("Verlauf %d: doppelt", i)
+		}
+		gesehen[k] = true
+		msg := validatorBindungNachricht(e.Signing, e.Betreiber, e.Zeit)
+		if err := pruefePersonalSignGemerkt(msg, e.SigOperator, e.Betreiber); err != nil {
+			return fmt.Errorf("Verlauf %d: Unterschrift des Betreibers: %w", i, err)
+		}
+		if err := pruefePersonalSignGemerkt(msg, e.SigSigning, e.Signing); err != nil {
+			return fmt.Errorf("Verlauf %d: Unterschrift des Signierschluessels: %w", i, err)
+		}
+	}
+	return nil
+}
+
+// verlaufImportieren: in die Transaktion des Imports, nach
+// validatorenImportieren. ersetzen = Resync. Die Registereintraege kommen
+// immer mit (ein Snapshot von vor dem Verlauf traegt nur sie). Die
+// Unterschriften des Verlaufs hat der Aufrufer VORHER mit
+// pruefeSnapshotVerlauf geprueft.
+func verlaufImportieren(tx validatorImportZiel, verlauf, register []SnapshotValidator, ersetzen bool) error {
+	if ersetzen {
+		if _, err := tx.Exec(`TRUNCATE validator_verlauf`); err != nil {
+			return fmt.Errorf("validator_verlauf leeren: %w", err)
+		}
+	}
+	for _, liste := range [][]SnapshotValidator{verlauf, register} {
+		for _, e := range liste {
+			if _, err := tx.Exec(`INSERT INTO validator_verlauf (operator_wallet, signing_address, bindung_ts, sig_operator, sig_signing)
+				VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING`, e.Betreiber, e.Signing, e.Zeit, e.SigOperator, e.SigSigning); err != nil {
+				return fmt.Errorf("Verlauf %s: %w", kurzAdresse(e.Betreiber), err)
+			}
+		}
+	}
+	return nil
 }
 
 // SnapshotValidator: ein Eintrag des Registers im Snapshot, mit beiden

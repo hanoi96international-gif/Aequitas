@@ -2465,9 +2465,9 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 		return nil // nur nachspielen, nie erzeugen (beobachter.go)
 	}
 	// Ab erzeugerSchnittAb nimmt jeder andere Knoten nur Bloecke von
-	// Schluesseln, die das Register traegt -- ohne Bindung erzeugt dieser
-	// Knoten nicht, statt Bloecke zu bauen, die alle abweisen.
-	if erzeugerSchnittAktiv(nowUnix()) && !dag.erzeugerNachRegister(dag.selfProposer) {
+	// Schluesseln, die das Register zur Blockzeit traegt -- ohne Bindung
+	// erzeugt dieser Knoten nicht, statt Bloecke zu bauen, die alle abweisen.
+	if jetzt := nowUnix(); erzeugerSchnittAktiv(jetzt) && !dag.erzeugerNachRegister(dag.selfProposer, jetzt) {
 		merkeProduktionsAusfall("nicht_im_register")
 		return nil
 	}
@@ -6873,9 +6873,12 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 		if skippedByBackoff {
 			return
 		}
-		// Hat der Block das Register geaendert, den Stand der Erzeuger neu
-		// lesen -- nach allen anderen defers, also ohne cs.mu.
-		if ok && blockHatValidatorBindung(block) {
+		// Hat der Block den Verlauf der Bindungen erweitert, den Stand der
+		// Erzeuger neu lesen -- nach allen anderen defers, also ohne cs.mu.
+		// Nur dann: eine Bindung, die als Zustandsablehnung uebersprungen
+		// wurde, loest keine Abfrage aus (sonst erzwaenge ein Erzeuger mit
+		// solchen Bindungen je Block eine auf jedem Knoten).
+		if ok && dag.state != nil && dag.state.registerGeaendert.Swap(false) {
 			dag.state.erzeugerRegisterAuffrischen()
 		}
 		dag.replayedMu.Lock()
@@ -8043,7 +8046,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			//
 			// In der Transaktion des Blocks (vermerkeDoppelsignaturImBlock):
 			// geht der Block zurueck, gehen Beweis und Sperre mit.
-			count, slashWallet, rErr := dag.state.vermerkeDoppelsignaturImBlock(withTx(context.Background(), dbTx), tx.Wallet, tx.BlockAHash, tx.BlockBHash, tx.DetectedAt)
+			count, slashWallet, rErr := dag.state.vermerkeDoppelsignaturImBlock(withTx(context.Background(), dbTx), tx.Wallet, tx.BlockAHash, tx.BlockBHash, tx.DetectedAt, block.Timestamp)
 			strafeVermerkt = true
 			if rErr != nil {
 				fmt.Printf("[REPLAY] ✗ slash_equivocation: could not record evidence for %s (block #%d): %v — rolling back whole block\n", tx.Wallet, block.Height, rErr)

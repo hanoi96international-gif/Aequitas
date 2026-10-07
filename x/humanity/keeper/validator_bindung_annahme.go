@@ -193,8 +193,10 @@ func (cs *ChainState) ValidatorBinden(tx Transaction) error {
 		return err
 	}
 	// Der Stand der Erzeuger (validator_register_leser.go) -- nach dem Commit,
-	// ohne Sperre.
-	cs.erzeugerRegisterAuffrischen()
+	// ohne Sperre, und nur wenn der Verlauf gewachsen ist.
+	if cs.registerGeaendert.Swap(false) {
+		cs.erzeugerRegisterAuffrischen()
+	}
 	return nil
 }
 
