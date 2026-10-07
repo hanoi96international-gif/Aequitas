@@ -12,7 +12,7 @@ import (
 //
 // Die zweite Lebendigkeitspruefung schaltet die Staffel frei: 800 AEQ ueber
 // 30 Tage. Bescheinigt hat sie der Coordinator (Ed25519 ueber
-// aequitas-liveness-renewal-v1|wallet|issued_at), geprueft wurde die
+// erneuerungsNachricht, seit 07.10.2026 v2 mit Chain-ID), geprueft wurde die
 // Bescheinigung aber nur beim annehmenden Knoten -- im Block stand die
 // Transaktion ohne sie. Ein Produzent haette jedes gestaffelte Konto
 // freischalten koennen, ohne dass irgendwer die Pruefung gesehen hat; genau

@@ -218,6 +218,17 @@ func TestBescheinigungPruefen_Regeln(t *testing.T) {
 			t.Fatalf("%s: %v (erwartet %q)", name, err, f.grund)
 		}
 	}
+	// Missbrauch (#310, M1): eine Muell-Unterschrift kostet keine Abfrage --
+	// die Zulassung (Datenbank) kommt erst nach jeder Unterschrift.
+	muell := erneuerungsTransaktion(wallet, issued, pubHex, strings.Repeat("ab", 64), bindung)
+	keineAbfrage := func(string, int64) (bool, error) {
+		t.Fatal("Zulassung gelesen, bevor die Unterschrift geprueft war")
+		return false, nil
+	}
+	if err := bescheinigungPruefen(wallet, issued, muell.Bescheinigung, gut, keineAbfrage); err == nil ||
+		!strings.Contains(err.Error(), "Bescheinigung passt nicht") {
+		t.Fatalf("Muell-Unterschrift: %v", err)
+	}
 	// Vor registerLeserAb ist niemand zugelassen -- auch mit gueltiger
 	// Bindung und Zulassung (fail-closed, wenn die Staffel frueher gaelte).
 	registerLeserOverride.Store(issued + 1)

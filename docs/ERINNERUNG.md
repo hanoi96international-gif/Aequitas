@@ -242,12 +242,18 @@ den verlinkten Dokumenten.
             mit offener Staffel bescheinigt nicht
       - [ ] **Vor dem Staffel-Stichtag** (erzwungen in
             `TestStaffel_SchlaeftBisZulassungUndStreng`):
-        - [x] Coordinatoren im Konsens zulassen und entziehen (07.10.):
-              nur, wer zur Zeit der Bescheinigung einen Validator-Schlüssel
-              im Kettenregister hält (Erzeugerfenster, Frist), darf
-              bescheinigen; vor `registerLeserAb` niemand
-              (`coordinator_zulassung.go`). Bedingung: `registerLeserAb` ≤
-              Staffel-Stichtag (`TestStaffel_ZulassungVorDerStaffel`)
+        - [ ] Coordinatoren im Konsens zulassen und entziehen. Der
+              Baustein steht (07.10., `coordinator_zulassung.go`): nur, wer
+              zur Zeit der Bescheinigung einen Validator-Schlüssel im
+              Kettenregister hält (Erzeugerfenster, Frist), darf
+              bescheinigen; vor `registerLeserAb` niemand; Bedingung
+              `registerLeserAb` ≤ Staffel-Stichtag
+              (`TestStaffel_ZulassungVorDerStaffel`). **Offen
+              (Sicherheitsdurchgang #310, H1):** eine Bindung im Register
+              kostet nichts -- jeder Mensch bindet einen frischen Schlüssel
+              und ist zwei Stunden später Coordinator, und gegen seinen
+              Willen entziehen lässt er sich nicht. Die Zulassung braucht
+              etwas Knappes, das im Konsens steht
         - [ ] Strenger Modus spätestens mit der Staffel
               (`nachrechnenStrengAbUnix` ≤ `stagedGrantActivationUnix`),
               sonst würde eine erfundene Erneuerung nur gezählt

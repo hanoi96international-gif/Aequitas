@@ -50,9 +50,11 @@ const (
 	// 2100-01-01T00:00:00Z, Platzhalter. WP 4 setzt das echte Datum -- aber
 	// erst, wenn drei Dinge stehen (TestStaffel_SchlaeftBisZulassungUndStreng
 	// wird sonst rot, und ihn zu aendern ist die bewusste Entscheidung):
-	//   - Coordinatoren werden im Konsens zugelassen und entzogen
-	//     (coordinator_zulassung.go; registerLeserAb <= Staffel, erzwungen in
-	//     TestStaffel_ZulassungVorDerStaffel);
+	//   - Coordinatoren werden im Konsens zugelassen und entzogen -- der
+	//     Baustein steht (coordinator_zulassung.go; registerLeserAb <=
+	//     Staffel, erzwungen in TestStaffel_ZulassungVorDerStaffel), aber
+	//     eine Bindung im Register kostet nichts (Sicherheitsdurchgang #310,
+	//     H1): OFFEN, was die Zulassung knapp macht;
 	//   - der strenge Modus beginnt spaetestens mit der Staffel;
 	//   - Bindung und Bescheinigung tragen die Chain-ID
 	//     (coordinator_nachrichten.go, v2; im Konsens nur v2).
@@ -555,9 +557,16 @@ func bescheinigungPruefen(wallet string, issuedAt int64, b *Lebendigkeitsbeschei
 	if staffelOffen {
 		return fmt.Errorf("%s hat selbst eine offene Staffel -- bescheinigt keine Erneuerung", kurzAdresse(mensch))
 	}
+	msg := erneuerungsNachricht(wallet, issuedAt)
+	if !ed25519PruefenStreng(pub, b.Signature, []byte(msg)) {
+		return fmt.Errorf("Bescheinigung passt nicht zu Wallet und Zeitpunkt (oder ist keine Ed25519-Unterschrift in kanonischer Schreibweise)")
+	}
 	// Zulassung im Konsens (coordinator_zulassung.go): nur, wer zur Zeit der
 	// Bescheinigung einen Validator-Schluessel im Kettenregister haelt. Vor
-	// registerLeserAb ist niemand zugelassen.
+	// registerLeserAb ist niemand zugelassen. ZULETZT, nach jeder
+	// Unterschrift (Sicherheitsdurchgang #310, M1): die Zulassung liest die
+	// Datenbank, und eine Anfrage mit Muell-Unterschrift soll keine Abfrage
+	// kosten.
 	if !registerLeserAktiv(issuedAt) {
 		return fmt.Errorf("Coordinatoren sind vor registerLeserAb nicht im Konsens zugelassen")
 	}
@@ -567,10 +576,6 @@ func bescheinigungPruefen(wallet string, issuedAt int64, b *Lebendigkeitsbeschei
 	}
 	if !ok {
 		return fmt.Errorf("%s haelt zur Zeit der Bescheinigung keinen Validator-Schluessel -- nicht als Coordinator zugelassen", kurzAdresse(mensch))
-	}
-	msg := erneuerungsNachricht(wallet, issuedAt)
-	if !ed25519PruefenStreng(pub, b.Signature, []byte(msg)) {
-		return fmt.Errorf("Bescheinigung passt nicht zu Wallet und Zeitpunkt (oder ist keine Ed25519-Unterschrift in kanonischer Schreibweise)")
 	}
 	return nil
 }

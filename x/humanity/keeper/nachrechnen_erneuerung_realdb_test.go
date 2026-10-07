@@ -70,7 +70,7 @@ func neuerErneuerungsFall(t *testing.T, registriertVorTagen int64) *erneuerungsF
 	bindung := CoordinatorBindung{Mensch: mensch,
 		MenschSig:     personalSign(t, mk, coordinatorFreigabeNachricht(hex.EncodeToString(pub))),
 		SchluesselSig: hex.EncodeToString(ed25519.Sign(priv, []byte(coordinatorBesitzNachricht(mensch))))}
-	if err := cs.RegisterCoordinatorKey(hex.EncodeToString(pub), mensch, "", bindung.MenschSig, bindung.SchluesselSig); err != nil {
+	if err := cs.RegisterCoordinatorKey(hex.EncodeToString(pub), mensch, "", bindung.MenschSig, bindung.SchluesselSig, true); err != nil {
 		t.Fatal(err)
 	}
 	// Zugelassen (coordinator_zulassung.go): der Mensch haelt seit 30 Tagen
@@ -369,7 +369,7 @@ func TestErneuerung_AnnahmeMitBindung_RealDB(t *testing.T) {
 	if w := reiche(nowUnix()); w.Code != http.StatusForbidden || !bytes.Contains(w.Body.Bytes(), []byte("register the coordinator key again")) {
 		t.Fatalf("Eintrag ohne Unterschriften: %d %s", w.Code, w.Body.String())
 	}
-	if err := f.cs.RegisterCoordinatorKey(hex.EncodeToString(f.pub), f.bindung.Mensch, "", f.bindung.MenschSig, f.bindung.SchluesselSig); err != nil {
+	if err := f.cs.RegisterCoordinatorKey(hex.EncodeToString(f.pub), f.bindung.Mensch, "", f.bindung.MenschSig, f.bindung.SchluesselSig, true); err != nil {
 		t.Fatal(err)
 	}
 	f.cs.leitung.Store(&Leitung{}) // Folger
@@ -540,6 +540,60 @@ func TestCoordinatorEintragung_SchluesselWandertNicht_RealDB(t *testing.T) {
 		"human_signature": f.bindung.MenschSig, "key_signature": f.bindung.SchluesselSig, "url": "https://coordinator.example.org"})
 	if w.Code != http.StatusOK {
 		t.Fatalf("Neueintragung fuer denselben Menschen: %d %s", w.Code, w.Body.String())
+	}
+}
+
+// MEDIUM-1 (#311): wer eine alte Eintragung (v1, oder v1-Besitz mit der
+// oeffentlichen v2-Freigabe) wieder einspielt, kippt die gespeicherte
+// v2-Bindung nicht -- sonst bekaeme jede Erneuerung dieses Coordinators auf
+// allen Knoten 403. Eine neue Eintragung im alten Satz wird eingetragen, aber
+// ohne Unterschriften, und sagt das.
+func TestCoordinatorEintragung_V1UeberschreibtNicht_RealDB(t *testing.T) {
+	f := neuerErneuerungsFall(t, 10)
+	pubHex := hex.EncodeToString(f.pub)
+	besitzV1 := hex.EncodeToString(ed25519.Sign(f.priv, []byte(coordinatorBesitzNachrichtV1(f.bindung.Mensch))))
+	freigabeV1 := personalSign(t, f.menschSchluessel, coordinatorFreigabeNachrichtV1(pubHex))
+	for name, body := range map[string]map[string]string{
+		"v2-Freigabe, v1-Besitz": {"public_key": pubHex, "human_wallet": f.bindung.Mensch,
+			"human_signature": f.bindung.MenschSig, "key_signature": besitzV1},
+		"v1-Freigabe, v2-Besitz": {"public_key": pubHex, "human_wallet": f.bindung.Mensch,
+			"human_signature": freigabeV1, "key_signature": f.bindung.SchluesselSig},
+		"ganz v1": {"public_key": pubHex, "human_wallet": f.bindung.Mensch,
+			"human_signature": freigabeV1, "key_signature": besitzV1},
+	} {
+		w := f.eintragen(body)
+		if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"bescheinigungstauglich":false`) {
+			t.Fatalf("%s: %d %s", name, w.Code, w.Body.String())
+		}
+		b, ok := f.cs.CoordinatorBindungLokal(pubHex)
+		if !ok || b != f.bindung {
+			t.Fatalf("%s: Bindung gekippt: %+v %v", name, b, ok)
+		}
+		// Die Bescheinigung mit der GESPEICHERTEN Bindung, wie die API sie baut.
+		tx := erneuerungsTransaktion(f.wallet, f.jetzt-60, pubHex, f.unterschreibe(f.priv, f.wallet, f.jetzt-60), b)
+		if got := f.pruefe(tx, f.jetzt); len(got) != 0 {
+			t.Fatalf("%s: Erneuerung danach gemeldet: %v", name, got)
+		}
+	}
+	// v2 wieder eintragen: tauglich, Bindung bleibt dieselbe.
+	if w := f.eintragen(map[string]string{"public_key": pubHex, "human_wallet": f.bindung.Mensch,
+		"human_signature": f.bindung.MenschSig, "key_signature": f.bindung.SchluesselSig}); w.Code != http.StatusOK ||
+		!strings.Contains(w.Body.String(), `"bescheinigungstauglich":true`) {
+		t.Fatalf("v2: %d %s", w.Code, w.Body.String())
+	}
+
+	// Ein NEUER Schluessel nur im alten Satz: eingetragen, ohne Bindung.
+	pub2, priv2, _ := ed25519.GenerateKey(rand.Reader)
+	pub2Hex := hex.EncodeToString(pub2)
+	k, mensch := f.neuerMensch(false)
+	w := f.eintragen(map[string]string{"public_key": pub2Hex, "human_wallet": mensch,
+		"human_signature": personalSign(t, k, coordinatorFreigabeNachrichtV1(pub2Hex)),
+		"key_signature":   hex.EncodeToString(ed25519.Sign(priv2, []byte(coordinatorBesitzNachrichtV1(mensch))))})
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"bescheinigungstauglich":false`) {
+		t.Fatalf("neue v1-Eintragung: %d %s", w.Code, w.Body.String())
+	}
+	if b, ok := f.cs.CoordinatorBindungLokal(pub2Hex); ok {
+		t.Fatalf("v1-Eintragung traegt eine Bindung: %+v", b)
 	}
 }
 

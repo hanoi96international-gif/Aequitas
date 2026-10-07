@@ -323,13 +323,18 @@ Dinge ohne Konsenswirkung (Erreichbarkeit, Messwerte als Hinweis).
    Validator-Schlüssel im Kettenregister hält – dieselben Erzeugerfenster
    wie bei der Erzeugerprüfung (Frist, nur Menschen, umstritten: keiner).
    Wer seine Bindung verliert oder den Schlüssel abgibt, bescheinigt nicht
-   mehr; eine Farm mit einem alten Konto ohne Validator-Bindung auch nicht.
-   Vor `registerLeserAb` ist niemand zugelassen (fail-closed), darum muss
-   `registerLeserAb` ≤ Staffel-Stichtag sein (Test). Grenze: gezählt wird
-   `issued_at`, nicht die Blockzeit – eine vor dem Ende der Bindung
-   ausgestellte Bescheinigung bleibt bis zu 7 Tage gültig.
-   Die Staffel bleibt beim Platzhalter, bis auch strenger Modus und
-   Chain-ID stehen, erzwungen durch einen Test.
+   mehr. Vor `registerLeserAb` ist niemand zugelassen (fail-closed), darum
+   muss `registerLeserAb` ≤ Staffel-Stichtag sein (Test). Grenze: gezählt
+   wird `issued_at`, nicht die Blockzeit, und den wählt der Coordinator –
+   eine auf die Zeit vor dem Ende der Bindung datierte Bescheinigung besteht
+   beim Nachspielen bis zu 7 Tage lang. **Noch nicht genug
+   (Sicherheitsdurchgang #310, H1):** eine Bindung kostet nichts – kein
+   Listenplatz, kein Einsatz. Eine Farm mit einem alten Konto bindet einen
+   frischen Schlüssel und ist zwei Stunden später Coordinator; entziehen
+   lässt er sich gegen seinen Willen nicht. Die Zulassung braucht etwas
+   Knappes, das im Konsens steht. Die Staffel bleibt beim Platzhalter, bis
+   das, der strenge Modus und die Chain-ID stehen, erzwungen durch einen
+   Test.
 
 ## Entscheidungen, die bei euch liegen
 

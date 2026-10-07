@@ -47,8 +47,9 @@ type Transaction struct {
 	// prueft (slash_beweis.go).
 	Doppelbeweis *Doppelbeweis `json:"doppelbeweis,omitempty"`
 	// Bescheinigung: bei liveness_renewal die Ed25519-Bescheinigung des
-	// Coordinators ueber aequitas-liveness-renewal-v1|wallet|issued_at
-	// (issued_at steht in DistributionAt), damit jeder Knoten selbst prueft,
+	// Coordinators ueber erneuerungsNachricht (v2:
+	// aequitas-liveness-renewal-v2|chain:1926|wallet|issued_at, issued_at
+	// steht in DistributionAt), damit jeder Knoten selbst prueft,
 	// dass die zweite Lebendigkeitspruefung bestanden ist
 	// (nachrechnen_erneuerung.go). omitempty: aeltere Bloecke behalten ihren
 	// Hash.

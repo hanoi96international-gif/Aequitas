@@ -199,7 +199,17 @@ var errCoordinatorFremderMensch = errors.New("this coordinator key is already re
 // Bindung eines Schluessels, dessen Besitzer fuer zwei Menschen unterschrieben
 // hat. Neu eintragen fuer DENSELBEN Menschen (frische Unterschriften, neue
 // Adresse) bleibt moeglich.
-func (cs *ChainState) RegisterCoordinatorKey(publicKey, humanWallet, url, humanSig, keySig string) error {
+//
+// tauglich: Freigabe UND Besitznachweis sind v2 (mit Chain-ID) -- nur dann
+// taugen die Unterschriften fuer eine Bescheinigung, und nur dann werden sie
+// gespeichert. Eine Eintragung im alten Satz (oder gemischt) traegt den
+// Schluessel ein, ueberschreibt aber nie gespeicherte Unterschriften
+// (Sicherheitsdurchgang #311, MEDIUM-1): beide Saetze sind oeffentlich (der
+// v1-Besitznachweis ist deterministisch, die v2-Freigabe steht in jeder
+// Erneuerung im Block), und sonst kippte jeder, der eine alte Eintragung
+// wieder einspielt, die Bindung -- und damit jede Erneuerung dieses
+// Coordinators auf allen Knoten.
+func (cs *ChainState) RegisterCoordinatorKey(publicKey, humanWallet, url, humanSig, keySig string, tauglich bool) error {
 	if cs.db == nil {
 		return fmt.Errorf("no database")
 	}
@@ -224,14 +234,14 @@ func (cs *ChainState) RegisterCoordinatorKey(publicKey, humanWallet, url, humanS
 	cs.EnsureCoordinatorRegistry()
 	res, err := cs.db.Exec(
 		`INSERT INTO coordinator_keys (public_key, human_wallet, url, human_signature, key_signature)
-		 VALUES ($1, $2, NULLIF($3, ''), $4, $5)
+		 VALUES ($1, $2, NULLIF($3, ''), CASE WHEN $6 THEN $4 END, CASE WHEN $6 THEN $5 END)
 		 ON CONFLICT (public_key) DO UPDATE SET
 		   url = COALESCE(NULLIF($3, ''), coordinator_keys.url),
-		   human_signature = $4,
-		   key_signature = $5,
+		   human_signature = CASE WHEN $6 THEN $4 ELSE coordinator_keys.human_signature END,
+		   key_signature = CASE WHEN $6 THEN $5 ELSE coordinator_keys.key_signature END,
 		   registered_at = NOW()
 		 WHERE coordinator_keys.human_wallet = $2`,
-		publicKey, humanWallet, url, humanSig, keySig)
+		publicKey, humanWallet, url, humanSig, keySig, tauglich)
 	if err != nil {
 		return err
 	}
@@ -358,12 +368,13 @@ func (a *APIServer) handleRegisterCoordinatorKey(w http.ResponseWriter, r *http.
 	}
 	// Freigabe: v2 mit Chain-ID, im Uebergang auch der alte Satz
 	// (coordinator_nachrichten.go) -- fuer eine Bescheinigung taugt nur v2.
-	if err := verifyPersonalSign(coordinatorFreigabeNachricht(pub), req.HumanSignature, human); err != nil &&
-		verifyPersonalSign(coordinatorFreigabeNachrichtV1(pub), req.HumanSignature, human) != nil {
-		jsonError(w, "invalid human_signature: "+err.Error(), http.StatusBadRequest)
+	errV2 := verifyPersonalSign(coordinatorFreigabeNachricht(pub), req.HumanSignature, human)
+	if errV2 != nil && verifyPersonalSign(coordinatorFreigabeNachrichtV1(pub), req.HumanSignature, human) != nil {
+		jsonError(w, "invalid human_signature: "+errV2.Error(), http.StatusBadRequest)
 		return
 	}
-	if !verifyCoordinatorPossessionEintragung(pub, req.KeySignature, human) {
+	tauglich := errV2 == nil && verifyCoordinatorPossession(pub, req.KeySignature, human)
+	if !tauglich && !verifyCoordinatorPossessionEintragung(pub, req.KeySignature, human) {
 		jsonError(w, "invalid key_signature -- sign the coordinator-key message with the Ed25519 key itself",
 			http.StatusBadRequest)
 		return
@@ -373,7 +384,7 @@ func (a *APIServer) handleRegisterCoordinatorKey(w http.ResponseWriter, r *http.
 		jsonError(w, "url must be a public https:// address", http.StatusBadRequest)
 		return
 	}
-	if err := a.state.RegisterCoordinatorKey(pub, human, url, req.HumanSignature, req.KeySignature); err != nil {
+	if err := a.state.RegisterCoordinatorKey(pub, human, url, req.HumanSignature, req.KeySignature, tauglich); err != nil {
 		if errors.Is(err, errCoordinatorFremderMensch) {
 			jsonError(w, err.Error(), http.StatusConflict)
 			return
@@ -385,6 +396,13 @@ func (a *APIServer) handleRegisterCoordinatorKey(w http.ResponseWriter, r *http.
 
 	antwort := map[string]interface{}{
 		"success": true, "public_key": pub, "human_wallet": human, "url": url,
+		// Nur eine v2-Eintragung (Freigabe und Besitznachweis mit Chain-ID)
+		// traegt Erneuerungen; eine alte wird eingetragen, ihre
+		// Unterschriften aber nicht gespeichert (RegisterCoordinatorKey).
+		"bescheinigungstauglich": tauglich,
+	}
+	if !tauglich {
+		antwort["hinweis"] = "registered without chain id (v1): renewal attestations need both signatures in v2 -- sign the v2 sentences and register again"
 	}
 	// Das Register ist knotenlokal. Aus einem Browser sind die anderen Knoten
 	// nicht erreichbar -- sie sprechen http://, die Seite laeuft unter
