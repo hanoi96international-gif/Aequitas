@@ -267,6 +267,8 @@ type ChainState struct {
 	// column is for.
 	replayedColumnOnce sync.Once
 	txRootSpalteDa     atomic.Bool // chain_blocks.tx_root angelegt -- siehe ensureTxRootColumn
+	// erzeugerRegister: wer laut Register erzeugen darf (validator_register_leser.go).
+	erzeugerRegister atomic.Pointer[erzeugerStand]
 	// txBatchTableOnce/txBatches back the body store that lets a block travel
 	// without its transactions (roadmap step 4 — see tx_batch.go).
 	txBatchTableOnce sync.Once

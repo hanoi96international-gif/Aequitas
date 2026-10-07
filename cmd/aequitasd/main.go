@@ -715,6 +715,9 @@ func main() {
 	bc.StarteDivergenzWaechter()
 	// Annahme an die Blockleistung koppeln -- siehe rueckstau_grenze.go.
 	bc.StarteRueckstauMesser()
+	// Wer laut Validator-Register erzeugen darf -- ab erzeugerSchnittAb Teil
+	// der Erzeugerpruefung (validator_register_leser.go).
+	bc.StarteErzeugerRegister()
 	// Recover automatically from sustained divergence (opt-in, secondary-only)
 	// — see StartDivergenceAutoHeal. Started after sync so a healthy node has a
 	// chance to converge first and never trips the monitor.

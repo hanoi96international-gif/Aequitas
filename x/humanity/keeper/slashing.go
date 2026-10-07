@@ -495,7 +495,7 @@ func (cs *ChainState) vermerkeDoppelsignatur(q sqlExecutor, signingAddress, bloc
 	case count == 2 && withinWindow:
 		fmt.Printf("[SLASHING] ⚠ %s: 2nd equivocation within %d days — 90-day suspension and %.0f AEQ penalty\n",
 			addr, equivocationSecondOffenseWindowDays, equivocationSecondOffensePenaltyAEQ)
-		w, err := strafKonto(q, addr)
+		w, err := strafKonto(q, addr, now)
 		if err != nil {
 			return 0, "", err
 		}
@@ -510,7 +510,15 @@ func (cs *ChainState) vermerkeDoppelsignatur(q sqlExecutor, signingAddress, bloc
 
 // strafKonto: das Betreiberkonto eines Unterzeichners, in derselben
 // Transaktion gelesen. Keins eingetragen: keine Strafe (wie bisher).
-func strafKonto(q sqlExecutor, signer string) (string, error) {
+//
+// Ab registerLeserAb (an DetectedAt, aus der Transaktion -- nicht an der Uhr)
+// aus dem Kettenregister: registered_nodes fuehrt jeder Knoten selbst, und
+// zwei Knoten zogen verschiedenen Betreibern ab
+// (validator_register_leser.go, strafKontoAusRegister).
+func strafKonto(q sqlExecutor, signer string, detectedAt int64) (string, error) {
+	if registerLeserAktiv(detectedAt) {
+		return strafKontoAusRegister(q, signer, detectedAt)
+	}
 	var w string
 	err := q.QueryRow(`SELECT wallet_address FROM registered_nodes WHERE lower(signing_address) = $1`, signer).Scan(&w)
 	if err == sql.ErrNoRows || (err == nil && w == "") {
@@ -599,7 +607,7 @@ func (cs *ChainState) DoppelsignaturErkannt(signingAddr, blockAHash, blockBHash 
 	}
 	// Das Strafkonto vorab, fuer die Ruecknahme-Liste von runAtomicWithOutbox;
 	// in der Transaktion wird es noch einmal gelesen und muss gleich sein.
-	vorab, err := strafKonto(cs.db, signer)
+	vorab, err := strafKonto(cs.db, signer, detectedAt)
 	if err != nil {
 		return 0, 0, err
 	}

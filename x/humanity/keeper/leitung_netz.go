@@ -773,6 +773,11 @@ func (dag *BlockDAG) merkeValidatorMensch(signing, mensch string) {
 // validatorMenschVon: "" = unbekannt (dann nimmt die Leitung ihn nicht auf).
 func (dag *BlockDAG) validatorMenschVon(signing string) string {
 	signing = strings.ToLower(strings.TrimSpace(signing))
+	// Ab registerLeserAb aus dem Kettenregister -- nicht mehr aus dem, was
+	// ein Peer im Abgleich erzaehlt hat (validator_register_leser.go).
+	if registerLeserAktiv(nowUnix()) {
+		return dag.menschAusRegister(signing)
+	}
 	if v, ok := dag.validatorMenschen.Load(signing); ok {
 		return v.(string)
 	}

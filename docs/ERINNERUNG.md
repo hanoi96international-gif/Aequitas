@@ -107,8 +107,14 @@ den verlinkten Dokumenten.
               `ANNAHME_ROLLE=annehmend`) in den Ausgang, beide Unterschriften
               mit Zeitpunkt (Selbstnachweis + `/node-binding`). Bestehende
               Betreiber binden nach dem Stichtag einmal neu
-        - [ ] Schritt 3: Strafkonto, Belohnung, Erzeugerliste und Komitee
-              lesen aus dem Register; Stichtag setzen (eure Entscheidung,
+        - [x] Schritt 3, Teil 1, schlafend (07.10.): Strafkonto, Leitung und
+              Abgleich ab `registerLeserAb` aus dem Register, Erzeuger ab
+              `erzeugerSchnittAb` als Schnittmenge aus Liste und Register
+              (`validator_register_leser.go`). Stichtage erst setzen, wenn
+              `/api/status` → `erzeuger_ohne_bindung` leer ist
+        - [ ] Schritt 3, Teil 2: Validatoren-Belohnung mit Gewichten aus der
+              Kette, nachgerechnet; Komitee aus derselben Menge
+        - [ ] Stichtage setzen (eure Entscheidung,
               `docs/VALIDATOR_REGISTER_KONSENS.md`)
       - [x] Staffel-Freigaben: höchstens die Tagesrate, nur mit
             Lebenszeichen, einmal je Runde (`nachrechnen_freigabe.go`)

@@ -132,14 +132,40 @@ Dinge ohne Konsenswirkung (Erreichbarkeit, Messwerte als Hinweis).
    - Vor dem Stichtag: Endpunkt 409, Selbstnachweis ohne die neuen Felder.
    - Jeder bestehende Betreiber bindet nach dem Stichtag einmal neu – bei der
      heutigen Zahl (ein Betreiber, C1) ein Handgriff.
-3. **Leser umstellen** (ab dem Stichtag)
-   - Strafkonto, Validatoren-Belohnung, Erzeugerliste und Komitee lesen aus
-     `validator_register` – über `validatorZuSignieradresseCtx`, und nur
-     Betreiber, die Mensch sind; Blockzählung aus der Kette statt aus
-     `blocks_produced`.
-   - Der Abgleich `syncValidatorsFromPeer` entfällt für Bindungen.
-   - Die Leistungsprobe wird zur Entscheidung des Leiters, die als eigene
-     Transaktion auf die Kette kommt – oder entfällt.
+3. **Leser umstellen** – Teil 1 umgesetzt (07.10., `validator_register_leser.go`),
+   schlafend bis zu zwei eigenen Stichtagen (Platzhalter `math.MaxInt64`,
+   beide mindestens eine Woche nach `validatorRegisterAb`, per Test erzwungen)
+   - **`registerLeserAb`** (an `DetectedAt` bzw. der Uhr für Lokales):
+     - Strafkonto (`strafKonto`): der Betreiber, der den Schlüssel **zur Zeit
+       der Erkennung** hielt (größter Bindungszeitpunkt ≤ `DetectedAt`, auch
+       eine inzwischen überholte Bindung), und nur, wenn er Mensch ist. Kein
+       Betreiber, umstritten oder kein Mensch: keine Geldstrafe (Sperre und
+       Zähler bleiben). Ein Lesefehler weist den Block ab, er wird nie zu
+       „keine Strafe“. `registered_nodes` lenkt die Strafe nicht mehr um.
+     - Leitung (`validatorMenschVon`): der Mensch aus dem Register, nicht aus
+       dem Abgleich.
+     - Der Abgleich `syncValidatorsFromPeer` nimmt nichts mehr auf.
+   - **`erzeugerSchnittAb`** (an der Blockzeit, ≥ `registerLeserAb`): wer
+     Blöcke erzeugen darf. Mit `AUTHORIZED_VALIDATORS` die **Schnittmenge**
+     aus Liste und Register (nicht überholt, unumstritten, Betreiber ist
+     Mensch) – das Register nimmt Erzeuger weg, fügt aber keine hinzu. Ohne
+     Liste das Register allein. Der Stand liegt im Speicher (Prüfung unter
+     `dag.mu` ohne Datenbank), neu gelesen nach jedem Block mit
+     `validator_bindung`, nach der eigenen Annahme und alle 30 s; kein Stand
+     oder ein Lesefehler: nur noch Blöcke aus der Geschichte (fail-closed).
+     Ohne eigene Bindung erzeugt der Knoten nicht. **Erst setzen, wenn
+     `/api/status` → `erzeuger_ohne_bindung` leer ist** – sonst schlösse sich
+     C1 selbst aus.
+   - Offen (Teil 2): Validatoren-Belohnung mit Gewichten aus der Kette statt
+     aus `registered_nodes` (Blöcke je Signieradresse im Vergangenheitskegel
+     eines Ankerblocks, nachgerechnet von jedem Knoten); das Komitee aus
+     derselben Menge.
+   - Offen (eure Entscheidung): die Leistungsprobe wird zur Entscheidung des
+     Leiters, die als eigene Transaktion auf die Kette kommt – oder entfällt.
+   - Grenze: das Register hält je Betreiber nur die letzte Bindung. Wechselt
+     ein Betreiber seinen Schlüssel, bevor die Strafe für den alten ankommt,
+     gibt es keine Geldstrafe (wie heute ohne Eintrag); die Sperre hängt an
+     der Signieradresse.
 4. **Coordinator-Register** (`coordinator_keys`) nach demselben Muster.
 
 ## Entscheidungen, die bei euch liegen
