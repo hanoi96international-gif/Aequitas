@@ -22,11 +22,26 @@ name: Nachrechnen beobachten (Knoten auf einem Runner spielt C1 nach)
 #   - Zwei Startzeiten; der zweite Lauf endet sofort, wenn der erste die
 #     Runde schon gesehen hat. concurrency haelt sie nacheinander.
 #   - Ergebnis "ohne Aussage", wenn nichts geprueft wurde.
-# C1 wird nur gelesen (Status, Snapshot, Bloecke, StateRoot-Bestandteile).
+# Lauf 5 (05.10.) startete erst 22:53 statt 15:40 und lief trotzdem: die
+# Fensterpruefung nahm last_ubi_at + 24 h -- aber last_ubi_at rueckt nur vor,
+# wenn eine Runde etwas AUSGEZAHLT hat. Nach einem Tag ohne Gebuehren im Topf
+# schien die Runde "ueberfaellig", der Lauf wartete 170 Minuten auf eine Runde,
+# die erst am naechsten Tag um 20:00 Berlin kam. Darum seit 06.10.:
+#   - die naechste Runde ist C1s geplanter Zeitpunkt (ubi_next_payout_secs aus
+#     /api/status, 20:00 Berlin); last_ubi_at + 24 h nur, wenn er fehlt;
+#   - stuendliche Startzeiten 12:40-18:40 UTC (Sommer- und Winterzeit, und
+#     Verspaetungen geplanter Laeufe von mehreren Stunden); wer das Fenster
+#     nicht trifft, endet nach einer Minute;
+#   - am Ende C1s eigener Stand (/api/health/combined, distribution): Lief
+#     die Runde auf C1, und zahlte sie etwas aus? Eine Runde ohne Auszahlung
+#     hat nichts nachzurechnen -- dann steht das so da, statt "verpasst". Hat
+#     C1 ausgezahlt und der Beobachter es nicht nachgespielt, ist das ein
+#     Fehler (rot).
+# C1 wird nur gelesen (Status, Snapshot, Bloecke, StateRoot-Bestandteile,
+# Gesundheit).
 on:
   schedule:
-    - cron: "40 15 * * *"
-    - cron: "40 16 * * *"
+    - cron: "40 12-18 * * *"
   workflow_dispatch:
     inputs:
       minuten: {description: "Laufzeit des Beobachters in Minuten (hoechstens 170)", required: false, default: "170"}
@@ -63,16 +78,30 @@ jobs:
           case "$MINUTEN" in ''|*[!0-9]*) echo "::error::minuten muss eine Zahl sein"; exit 1;; esac
           [ "$MINUTEN" -le 170 ] || { echo "::error::hoechstens 170 Minuten"; exit 1; }
           L=$(curl -sf -m 25 "$C1/api/debug/stateroot-components" | jq -r '.last_ubi_at // empty' || true)
-          case "$L" in
-            ''|*[!0-9]*)
-              echo "::warning::last_ubi_at von C1 nicht lesbar ('$L') -- Lauf ohne Fensterpruefung"
-              echo "laufen=1" >> "$GITHUB_OUTPUT"; echo "ubi_vorher=" >> "$GITHUB_OUTPUT"; exit 0;;
-          esac
-          JETZT=$(date +%s); NAECHSTE=$((L + 86400))
-          echo "Letzte Runde auf C1: $(date -u -d "@$L" '+%F %H:%M') UTC, naechste etwa $(date -u -d "@$NAECHSTE" '+%F %H:%M') UTC"
+          case "$L" in ''|*[!0-9]*) L="";; esac
           echo "ubi_vorher=$L" >> "$GITHUB_OUTPUT"
+          # C1s Stand der Verteilung beim Start: wann zuletzt eine Runde
+          # erreicht wurde (auch ohne Auszahlung) -- fuer das Ergebnis.
+          V=$(curl -sf -m 25 "$C1/api/health/combined" | jq -r '.distribution.last_attempt.at // empty' 2>/dev/null || true)
+          case "$V" in ''|*[!0-9]*) V="";; esac
+          echo "versuch_vorher=$V" >> "$GITHUB_OUTPUT"
+          JETZT=$(date +%s)
+          # Der geplante Zeitpunkt der naechsten Runde auf C1 (20:00 Berlin).
+          SEK=$(curl -sf -m 25 "$C1/api/status" | jq -r '.ubi_next_payout_secs // empty' || true)
+          case "$SEK" in ''|*[!0-9]*) SEK="";; esac
+          if [ -n "$SEK" ] && [ "$SEK" -gt 0 ]; then
+            NAECHSTE=$((JETZT + SEK))
+            echo "Naechste Runde auf C1 (geplant): $(date -u -d "@$NAECHSTE" '+%F %H:%M') UTC"
+          elif [ -n "$L" ]; then
+            NAECHSTE=$((L + 86400))
+            echo "::warning::C1 nennt keinen geplanten Zeitpunkt -- Schaetzung letzte Auszahlung + 24 h: $(date -u -d "@$NAECHSTE" '+%F %H:%M') UTC"
+          else
+            echo "::warning::weder Plan noch letzte Runde von C1 lesbar -- Lauf ohne Fensterpruefung"
+            echo "laufen=1" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          [ -n "$L" ] && echo "Letzte Auszahlung auf C1: $(date -u -d "@$L" '+%F %H:%M') UTC"
           # 15 Minuten Reserve fuer Snapshot und Nachspielen der Runde.
-          if [ "$NAECHSTE" -gt $((JETZT + MINUTEN*60 - 900)) ]; then
+          if [ "$NAECHSTE" -lt "$JETZT" ] || [ "$NAECHSTE" -gt $((JETZT + MINUTEN*60 - 900)) ]; then
             echo "::warning::Die naechste Verteilungsrunde liegt ausserhalb dieses Laufs -- ohne Aussage, beendet."
             echo "laufen=0" >> "$GITHUB_OUTPUT"
           else
@@ -156,12 +185,17 @@ jobs:
           curl -s -m 20 http://localhost:8080/api/wirtschaft/regeln \
             | jq '[.. | objects | select(has("nachrechnen")) | .nachrechnen][0] // {}' > nachrechnen.json || true
           curl -s -m 20 http://localhost:8080/api/status > status.json || true
+          # C1s eigener Stand am Ende: Runde erreicht? Ausgezahlt?
+          curl -s -m 20 "$C1/api/health/combined" | jq '.distribution // {}' > c1_verteilung.json 2>/dev/null || echo '{}' > c1_verteilung.json
+          curl -s -m 20 "$C1/api/debug/stateroot-components" | jq -r '.last_ubi_at // ""' > c1_ubi_nachher.txt 2>/dev/null || true
           kill $PID 2>/dev/null || true
           sleep 5
       - name: Ergebnis
         if: always()
         env:
           LAUFEN: ${{ steps.fenster.outputs.laufen }}
+          UBI_VORHER: ${{ steps.fenster.outputs.ubi_vorher }}
+          VERSUCH_VORHER: ${{ steps.fenster.outputs.versuch_vorher }}
         run: |
           set -u
           if [ "$LAUFEN" != "1" ]; then
@@ -175,6 +209,14 @@ jobs:
           EIGENE=$(grep -cE "^\[Block #" node.log || true)
           GEPRUEFT=$(jq -r '.geprueft // 0' nachrechnen.json 2>/dev/null || echo 0)
           RUNDE=$(cat runde.txt 2>/dev/null || echo 0)
+          # C1: Runde im Lauf erreicht (last_attempt neuer als beim Start)?
+          # Ausgezahlt (last_ubi_at neuer)?
+          C1_VERSUCH=$(jq -r '.last_attempt.at // ""' c1_verteilung.json 2>/dev/null || true)
+          C1_AUSGANG=$(jq -r '.last_attempt.outcome // "?"' c1_verteilung.json 2>/dev/null || true)
+          C1_UBI=$(cat c1_ubi_nachher.txt 2>/dev/null || true)
+          C1_RUNDE=nein; C1_AUSGEZAHLT=nein
+          if [ -n "$C1_VERSUCH" ] && { [ -z "$VERSUCH_VORHER" ] || [ "$C1_VERSUCH" -gt "$VERSUCH_VORHER" ] 2>/dev/null; }; then C1_RUNDE="ja ($C1_AUSGANG)"; fi
+          if [ -n "$C1_UBI" ] && [ -n "$UBI_VORHER" ] && [ "$C1_UBI" -gt "$UBI_VORHER" ] 2>/dev/null; then C1_AUSGEZAHLT=ja; fi
           {
             echo "## Nachrechnen beobachtet"
             echo
@@ -184,9 +226,14 @@ jobs:
             echo "- eigene Bloecke (muss 0 sein): ${EIGENE:-0}"
             echo "- nachgespielte Bloecke: $(grep -cE '\[REPLAY\]' node.log || true) Zeilen, abgelehnt: $(grep -cE 'rolling back whole block' node.log || true)"
             echo "- Verteilungsrunde nachgespielt: $([ "$RUNDE" = 1 ] && echo ja || echo nein)"
+            echo "- C1: Runde im Lauf erreicht: $C1_RUNDE, ausgezahlt: $C1_AUSGEZAHLT"
             if [ "$GEPRUEFT" = 0 ] || [ "$RUNDE" != 1 ]; then
               echo
-              echo "**Ohne Aussage:** keine Verteilungsrunde nachgespielt oder keine Transaktion nachgerechnet -- 0 Abweichungen heisst hier nichts."
+              if [ "$C1_AUSGEZAHLT" = nein ] && [ "$C1_RUNDE" != nein ]; then
+                echo "**Ohne Aussage:** C1s Runde lief, zahlte aber nichts aus (keine Gebuehren in den Toepfen) -- es gab nichts nachzurechnen."
+              else
+                echo "**Ohne Aussage:** keine Verteilungsrunde nachgespielt oder keine Transaktion nachgerechnet -- 0 Abweichungen heisst hier nichts."
+              fi
             fi
             echo
             echo "| Regel | Abweichungen |"
@@ -208,3 +255,8 @@ jobs:
             echo "::warning::ohne Aussage -- keine Verteilungsrunde nachgespielt oder nichts nachgerechnet"
           fi
           if [ "${EIGENE:-0}" -gt 0 ]; then echo "::error::der Beobachter hat Bloecke erzeugt"; exit 1; fi
+          # C1 hat ausgezahlt, der Beobachter hat die Runde nicht nachgespielt:
+          # das ist kein "ohne Aussage", sondern ein Fehler des Nachspielens.
+          if [ "$C1_AUSGEZAHLT" = ja ] && [ "$RUNDE" != 1 ]; then
+            echo "::error::C1 hat im Lauf ausgezahlt, der Beobachter hat die Runde nicht nachgespielt"; exit 1
+          fi
