@@ -112,16 +112,17 @@ den verlinkten Dokumenten.
               (`validator_verlauf`, höchstens eine Bindung je Betreiber und
               Tag), Erzeuger ab `erzeugerSchnittAb` als
               Schnittmenge aus Liste und Register zur Zeit des Blocks, mit
-              zwei Stunden Frist (`validator_register_leser.go`). Strafe nur
-              fuer den Halter vor der Tat, keine, wenn danach ein anderer
-              den Schluessel gebunden hat. Nur fuer den geschlossenen
+              zwei Stunden Frist (`validator_register_leser.go`). Nur fuer den geschlossenen
               Betrieb (`AUTHORIZED_VALIDATORS`) freigegeben. Stichtage erst
               setzen, wenn `/api/status` → `erzeuger_ohne_bindung` leer ist
-        - [ ] Vor `registerLeserAb` (zweiter Sicherheitsdurchgang zu #303):
-              die Geldstrafe später und für alle gleich abrechnen statt beim
-              Erkennen (M1), nur frische Beweise und keine kostenlose
-              Ausnahme mehr (M2); spät eingehängte Blöcke mit Bindung (L1)
-              – `docs/VALIDATOR_REGISTER_KONSENS.md`, Schritt 3
+        - [x] Geldstrafe später und für alle gleich (zweiter
+              Sicherheitsdurchgang zu #303, M1/M2/L3): `slash_abrechnung`
+              frühestens drei Stunden nach der Tat, nur aus Bindungen bis
+              eine Stunde danach; bei einer Übernahme in dieser Stunde zahlt
+              der erste spätere Binder; nur frische Beweise
+              (`strafe_abrechnung.go`)
+        - [ ] Vor `registerLeserAb`: spät eingehängte Blöcke mit Bindung
+              (L1) – `docs/VALIDATOR_REGISTER_KONSENS.md`, Schritt 3
         - [ ] Schritt 3, Teil 2: Validatoren-Belohnung mit Gewichten aus der
               Kette, nachgerechnet; Komitee aus derselben Menge
         - [ ] Stichtage setzen (eure Entscheidung,

@@ -464,15 +464,9 @@ func (fehlerSQL) Query(string, ...interface{}) (*sql.Rows, error) {
 
 // Fail-closed: ist der Verlauf nicht lesbar, liefert das Strafkonto einen
 // Fehler -- beim Nachspielen weist er den Block ab. Nie "keine Strafe".
-// Geschaltet an der spaeteren der beiden Zeiten (DetectedAt waehlt der
-// Halter des Schluessels).
 func TestStrafkonto_LesefehlerIstFehler(t *testing.T) {
-	registerLeserOverride.Store(1000)
-	t.Cleanup(func() { registerLeserOverride.Store(0) })
-	for _, f := range [][2]int64{{2000, 2000}, {10, 2000}, {2000, 10}} {
-		if w, err := strafKonto(fehlerSQL{}, "0xsigner", f[0], f[1]); err == nil {
-			t.Fatalf("Tat %d, Schalter %d: Lesefehler ergab Strafkonto %q ohne Fehler", f[0], f[1], w)
-		}
+	if w, err := strafKontoZurAbrechnung(fehlerSQL{}, "0xsigner", 2000); err == nil {
+		t.Fatalf("Lesefehler ergab Strafkonto %q ohne Fehler", w)
 	}
 }
 

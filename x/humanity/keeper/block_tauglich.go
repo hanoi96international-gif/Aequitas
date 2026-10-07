@@ -132,6 +132,16 @@ func auftragsFenster(tx *Transaction, jetzt int64) zeitFenster {
 		f.eng(sattAdd(tx.BuchAt, -60), sattAdd(tx.BuchAt, 7*86400))
 	}
 	switch tx.Type {
+	case "slash_equivocation":
+		// strafe_abrechnung.go: ab registerLeserAb nur frische Beweise (vor dem
+		// Stichtag gilt keine Grenze, und eine Zeit danach waehlt der Erzeuger
+		// dann nicht).
+		if registerLeserAktiv(jetzt) {
+			f.eng(sattAdd(tx.DetectedAt, -nachweisHoechstensVoraus), sattAdd(tx.DetectedAt, strafBeweisFrisch))
+		}
+	case "slash_abrechnung":
+		// strafe_abrechnung.go: erst ab der Faelligkeit.
+		f.eng(strafeFaelligAb(tx.DetectedAt), math.MaxInt64)
 	case "liveness_renewal":
 		// nachrechnen_erneuerung.go (erneuerung_zeit): nur im strengen Modus.
 		if stagedGrantAktiv(jetzt) && nachrechnenStreng(jetzt) {
@@ -189,6 +199,14 @@ func blockTauglich(tx *Transaction, blockZeit int64) error {
 		return fmt.Errorf("%s gebucht um %d, Block %d (Nachspielende naehmen die Blockzeit)", tx.Type, tx.BuchAt, blockZeit)
 	}
 	switch tx.Type {
+	case "slash_equivocation":
+		if err := beweisFrischPruefen(tx.DetectedAt, blockZeit); err != nil {
+			return err
+		}
+	case "slash_abrechnung":
+		if ab := strafeFaelligAb(tx.DetectedAt); blockZeit < ab {
+			return fmt.Errorf("slash_abrechnung faellig ab %d, Block %d", ab, blockZeit)
+		}
 	case "liveness_renewal":
 		if stagedGrantAktiv(blockZeit) && nachrechnenStreng(blockZeit) {
 			if z := tx.DistributionAt; z <= 0 || blockZeit-z > erneuerungHoechstensAlt || z-blockZeit > erneuerungHoechstensVoraus {

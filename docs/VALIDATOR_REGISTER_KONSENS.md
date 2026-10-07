@@ -162,24 +162,58 @@ Dinge ohne Konsenswirkung (Erreichbarkeit, Messwerte als Hinweis).
      nächsten Bindung ihres Betreibers oder bis ein anderer Betreiber den
      Schlüssel später bindet. Hängt nur an der Menge der Zeilen, nicht an
      ihrer Reihenfolge.
-   - **`registerLeserAb`**, geschaltet an `max(DetectedAt, Blockzeit)` –
-     `DetectedAt` wählt, wer den Schlüssel hält (die Zeit eines der beiden
-     Köpfe, die er selbst unterschreibt); allein daran hätte er jeden Beweis
-     vor den Stichtag datieren und den alten Weg erzwingen können. Beim
-     Erkennen zählt die Uhr.
-     - Strafkonto (`strafKonto`): wer den Schlüssel **zuletzt vor der Tat**
-       gebunden hat – auch wenn er danach selbst einen neuen gebunden hat
-       (den alten kennt er weiter, in der Frist darf der alte noch
-       erzeugen). Nur ein Mensch zahlt. Hat **nach der Tat ein anderer
-       Betreiber** den Schlüssel gebunden, zahlt **keiner**: der spätere
-       Halter besitzt den Schlüssel und hätte den Beweis mit beliebigem
-       Zeitpunkt selbst unterschreiben und dem früheren anhängen können.
-       Wer seinen Schlüssel abgibt, entgeht damit der Geldstrafe; Sperre und
-       Zähler bleiben am Schlüssel. Kein Halter oder zwei mit demselben
-       letzten Zeitpunkt: keine Geldstrafe. Ein Lesefehler weist den Block
-       ab. Ändert sich das Strafkonto, während der Erkennende auf die
-       Sperre wartet, versucht er es einmal neu (vorher fiel die ganze
-       Erkennung weg). `registered_nodes` lenkt die Strafe nicht mehr um.
+   - **`registerLeserAb`**. Leitung und Abgleich schalten an der Blockzeit
+     bzw. der Uhr, die Geldstrafe an `DetectedAt` (beim Erkennen wie beim
+     Nachspielen gleich).
+     - Geldstrafe (`strafe_abrechnung.go`, zweiter Sicherheitsdurchgang zu
+       #303, M1/M2/L3): `slash_equivocation` vermerkt Beweis, Zähler und
+       Sperre wie bisher, bucht aber kein Geld mehr. Ein zweites Vergehen
+       wird als `strafe_offen` markiert; die Strafe bucht eine eigene
+       Transaktion **`slash_abrechnung`**, frühestens bei Blockzeit
+       `DetectedAt` + W + `erzeugerFrist` (W = `strafBeweisFrisch` = 1 h,
+       zusammen drei Stunden). Gelegt wird sie vom Leiter bzw. dem einen
+       annehmenden Knoten (`StarteStrafAbrechnung`, einmal je Minute).
+       - **Wer zahlt** (`strafKontoZurAbrechnung`), nur aus Bindungen bis
+         `DetectedAt` + W: hat in dieser Zeit ein **anderer** Betreiber den
+         Schlüssel gebunden, der **erste** davon; sonst, wer ihn zuletzt vor
+         oder bei der Tat gebunden hat (auch nach einem eigenen Wechsel).
+         Umstritten oder keiner: keine Geldstrafe. Nur ein Mensch zahlt.
+         Wer einen Schlüssel übernimmt, haftet damit für Beweise, die bis zu
+         einer Stunde vor seiner Bindung datiert sind – „nach der Tat hat ein
+         anderer gebunden, also zahlt keiner“ gibt es nicht mehr (M2).
+       - **Gleich für alle** (M1): jede zählende Bindung steht in einem
+         Block höchstens eine Stunde nach ihrem Zeitpunkt; bis zur
+         Abrechnung hatte jeder Knoten mindestens eine Stunde, sie
+         nachzuspielen. Erkennender und Nachspielende rechnen dasselbe,
+         egal, wann sie eine Übergabe gesehen haben.
+       - **Nur frische Beweise:** ab dem Stichtag steht `slash_equivocation`
+         höchstens W nach und höchstens fünf Minuten vor `DetectedAt` in
+         einem Block (sonst ist der Block ungültig); der Erkennende legt
+         andere nicht in den Ausgang und vermerkt sie nicht. Ohne die Grenze
+         nach vorn legte der Halter einen Beweis mit `DetectedAt` in zwei
+         Tagen in seinen Block, übergäbe morgen – und der Nachfolger hielte
+         den Schlüssel „zur Tat“. Sonst hängte ein späterer Halter, der den
+         Schlüssel kennt, dem früheren einen alt datierten Beweis an. Wer
+         nach seiner Bindung X einen Beweis erfindet, datiert ihn auf
+         mindestens X − W – und zahlt dann selbst.
+       - **Ungültig** (der Block wird abgewiesen): Abrechnung vor der
+         Fälligkeit, für einen unbekannten Beweis, ohne offene Strafe, mit
+         falschem Unterzeichner oder Zeitpunkt, oder bei einem Lesefehler.
+         Eine zweite Abrechnung desselben Paars bucht nichts. Vor dem
+         Stichtag ist `slash_abrechnung` unbekannt.
+       - Ein vor den Stichtag datierter Beweis nimmt den alten Weg über
+         `registered_nodes` nur, wenn er höchstens W nach `DetectedAt` in
+         einem Block steht – also nur in der ersten Stunde nach dem
+         Stichtag (vorher war das an `max(DetectedAt, Blockzeit)` geschaltet;
+         das rechneten Erkennender und Nachspielende um den Stichtag
+         verschieden, L3).
+       - **Grenzen:** Den Beweis kennt nur, wer `slash_equivocation`
+         nachgespielt hat – er steht nicht in der StateRoot und nicht im
+         Snapshot; ein Knoten aus einem Snapshot weist eine Abrechnung ab
+         (wie bisher das zweite Vergehen, das er nicht zählen konnte). Ohne
+         Leiter oder annehmenden Knoten bleibt die Strafe offen. Haben
+         innerhalb von W mehrere andere gebunden, zahlt der erste, auch wenn
+         ein späterer den Beweis erfunden hat.
      - Leitung (`validatorMenschVon`): der Mensch, der den Schlüssel
        zuletzt gebunden hat, aus dem Stand im Speicher – keine Datenbank
        unter der Sperre der Leitung. Nach einem Wechsel bleibt der alte
@@ -223,27 +257,14 @@ Dinge ohne Konsenswirkung (Erreichbarkeit, Messwerte als Hinweis).
    - Bleibt von der Reihenfolge abhängig: eine Übergabe in einem
      Geschwisterblock der Strafe (wie „Mensch im Geschwisterblock“). Ein
      ehrlicher Annehmender legt beides in eine Linie.
-   - **Vor `registerLeserAb` noch offen** (zweiter Sicherheitsdurchgang zu
-     #303; der Stichtag darf erst danach gesetzt werden):
-     - M1: Der Erkennende zieht die Strafe bei der Erkennung ab, jeder
-       andere beim Nachspielen seines Blocks – spielt der Erkennende
-       dazwischen eine Übergabe nach, die die anderen vor seinem Block
-       nachspielen, rechnen sie verschieden. Lösung: die Strafe später und
-       für alle gleich abrechnen (eigene Transaktion, beurteilt nur nach
-       Zeilen bis `DetectedAt` + W, frühestens bei Blockzeit
-       `DetectedAt` + W + Frist).
-     - M2: „Nach der Tat hat ein anderer gebunden, also zahlt keiner“ macht
-       die Strafe für zwei, die zusammenarbeiten, freiwillig. Lösung: nur
-       frische Beweise; innerhalb W nach der Tat zahlt der erste spätere
-       Binder statt keiner.
+   - **Vor `registerLeserAb` noch offen:**
      - L1: Ein Block mit einer Bindung, der zurückgehalten und spät
        eingehängt wird, wirkt rückwirkend auf alte Blöcke (die Frist setzt
-       pünktliches Nachspielen voraus). Lösung: die Erzeugerprüfung nur nach
-       Zeilen im Vergangenheitskegel des Blocks, oder alte Eltern mit
-       `validator_bindung` nicht mehr einhängen.
-     - L3: Um den Stichtag herum schaltet der Erkennende an seiner Uhr, die
-       anderen an der Blockzeit – einmalig können sie verschieden rechnen.
-       Entfällt mit der späteren Abrechnung (M1).
+       pünktliches Nachspielen voraus); das gilt auch für die Abrechnung.
+       Lösung: die Erzeugerprüfung nur nach Zeilen im Vergangenheitskegel
+       des Blocks, oder alte Eltern mit `validator_bindung` nicht mehr
+       einhängen.
+     - Erledigt: M1, M2 und L3 (spätere Abrechnung, siehe oben).
    - Offen (Teil 2): Validatoren-Belohnung mit Gewichten aus der Kette statt
      aus `registered_nodes` (Blöcke je Signieradresse im Vergangenheitskegel
      eines Ankerblocks, nachgerechnet von jedem Knoten); das Komitee aus

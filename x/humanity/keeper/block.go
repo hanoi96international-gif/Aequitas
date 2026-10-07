@@ -9,6 +9,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/big"
 	"os"
@@ -1299,6 +1300,8 @@ func bekannteTxArt(typ string, blockZeit int64) bool {
 		return true
 	case "validator_bindung": // validator_register.go, schlafend bis zum Stichtag
 		return validatorRegisterAktiv(blockZeit)
+	case "slash_abrechnung": // strafe_abrechnung.go, schlafend bis registerLeserAb
+		return registerLeserAktiv(blockZeit)
 	case "vorbehalt", "vorbehalt_ausfuehrung", "kappung":
 		// Stufe 2 (vorbehalt.go, kappung_verteilt.go). Fehlten hier bis
 		// 05.10.2026 ganz: ab der Aktivierung haette jeder Knoten jeden
@@ -8046,7 +8049,14 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			//
 			// In der Transaktion des Blocks (vermerkeDoppelsignaturImBlock):
 			// geht der Block zurueck, gehen Beweis und Sperre mit.
-			count, slashWallet, rErr := dag.state.vermerkeDoppelsignaturImBlock(withTx(context.Background(), dbTx), tx.Wallet, tx.BlockAHash, tx.BlockBHash, tx.DetectedAt, block.Timestamp)
+			// Ab registerLeserAb nur frische Beweise (strafe_abrechnung.go):
+			// sonst haengte ein spaeterer Halter dem frueheren einen alten an.
+			if fErr := beweisFrischPruefen(tx.DetectedAt, block.Timestamp); fErr != nil {
+				fmt.Printf("[REPLAY] ✗ %v (block #%d) — rolling back whole block\n", fErr, block.Height)
+				hardFailure = true
+				continue
+			}
+			count, slashWallet, rErr := dag.state.vermerkeDoppelsignaturImBlock(withTx(context.Background(), dbTx), tx.Wallet, tx.BlockAHash, tx.BlockBHash, tx.DetectedAt)
 			strafeVermerkt = true
 			if rErr != nil {
 				fmt.Printf("[REPLAY] ✗ slash_equivocation: could not record evidence for %s (block #%d): %v — rolling back whole block\n", tx.Wallet, block.Height, rErr)
@@ -8080,6 +8090,27 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			}
 			fmt.Printf("[REPLAY] ✓ Applied slash_equivocation %.4f AEQ from %s → UBI pool (signer %s, offense #%d, block #%d)\n",
 				penaltyAmt, opWallet, tx.Wallet, count, block.Height)
+
+		case "slash_abrechnung":
+			// strafe_abrechnung.go: die Geldstrafe eines zweiten Vergehens ab
+			// registerLeserAb, fuer alle gleich aus dem Verlauf. Jeder Verstoss
+			// (zu frueh, Beweis unbekannt, keine Strafe offen, Lesefehler)
+			// weist den Block ab; ein Duplikat bucht nichts.
+			atx := tx
+			wer, betrag, aErr := dag.state.strafeAbrechnenLocked(withTx(context.Background(), dbTx), &atx, block.Timestamp,
+				func(konto string) error {
+					return dag.state.kontoNachtragenLocked(withTx(context.Background(), dbTx), rollbackSnap, konto)
+				}, block.Timestamp)
+			if errors.Is(aErr, errAbrechnungSchonErledigt) {
+				fmt.Printf("[REPLAY] ℹ slash_abrechnung for %s already applied — skipping duplicate (block #%d)\n", tx.Wallet, block.Height)
+				continue
+			}
+			if aErr != nil {
+				fmt.Printf("[REPLAY] ✗ %v (block #%d) — rolling back whole block\n", aErr, block.Height)
+				hardFailure = true
+				continue
+			}
+			fmt.Printf("[REPLAY] ✓ slash_abrechnung %.4f AEQ von %s (signer %s, block #%d)\n", betrag, kurzAdresse(wer), tx.Wallet, block.Height)
 
 		default:
 			// FIX (audit 2026-06-28 recheck 4, P2-2): unknown TX types used to

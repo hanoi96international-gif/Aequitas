@@ -149,6 +149,9 @@ func (cs *ChainState) initSlashingTables() {
 	)`)
 	// Migration for nodes that already have the table without slash_applied.
 	cs.db.Exec(`ALTER TABLE equivocation_evidence ADD COLUMN IF NOT EXISTS slash_applied BOOLEAN NOT NULL DEFAULT FALSE`)
+	// strafe_abrechnung.go: ein zweites Vergehen ab registerLeserAb, dessen
+	// Geldstrafe slash_abrechnung spaeter bucht.
+	cs.db.Exec(`ALTER TABLE equivocation_evidence ADD COLUMN IF NOT EXISTS strafe_offen BOOLEAN NOT NULL DEFAULT FALSE`)
 	// Self-heal for nodes poisoned by pre-activation offenses (see
 	// equivocationSlashingActivationUnix): any node that ran the pre-cutoff
 	// code while replaying history recorded suspensions/bans against the
@@ -213,9 +216,12 @@ func (cs *ChainState) selfHealUncorroboratedSeedSuspension() {
 	).Scan(&offenseCount); err != nil || offenseCount < 2 {
 		return // no row, or not yet escalated — nothing to self-heal
 	}
+	// strafe_offen zaehlt wie slash_applied: ab registerLeserAb bucht das
+	// zweite Vergehen die Strafe erst spaeter (strafe_abrechnung.go), und
+	// bis dahin ist slash_applied auch bei einem bestaetigten Vergehen falsch.
 	var hasApplied bool
 	if err := cs.db.QueryRow(
-		`SELECT EXISTS(SELECT 1 FROM equivocation_evidence WHERE signing_address = $1 AND slash_applied = TRUE)`,
+		`SELECT EXISTS(SELECT 1 FROM equivocation_evidence WHERE signing_address = $1 AND (slash_applied = TRUE OR strafe_offen = TRUE))`,
 		trustedSigner,
 	).Scan(&hasApplied); err != nil || hasApplied {
 		return // a real applied penalty exists (or the check failed) — leave the suspension in place
@@ -370,12 +376,11 @@ func (cs *ChainState) IsValidatorSuspended(addr string, blockTimestamp int64) (s
 // Zeilensperre des Blocks, bis statement_timeout den Block scheitern liess.
 // Den Zwischenspeicher der Sperren erneuert der Aufrufer NACH Commit bzw.
 // Rollback -- vorher saehe ein Leser nur den alten Stand und hielte ihn fest.
-// blockZeit: die Zeit des tragenden Blocks (fuer den Schalter in strafKonto).
-func (cs *ChainState) vermerkeDoppelsignaturImBlock(ctx context.Context, signingAddress, blockAHash, blockBHash string, now, blockZeit int64) (int, string, error) {
+func (cs *ChainState) vermerkeDoppelsignaturImBlock(ctx context.Context, signingAddress, blockAHash, blockBHash string, now int64) (int, string, error) {
 	if cs.db == nil {
 		return 0, "", fmt.Errorf("no database configured")
 	}
-	return cs.vermerkeDoppelsignatur(cs.dbExecCtx(ctx), signingAddress, blockAHash, blockBHash, now, blockZeit)
+	return cs.vermerkeDoppelsignatur(cs.dbExecCtx(ctx), signingAddress, blockAHash, blockBHash, now)
 }
 
 // vermerkeDoppelsignatur: persists proof that signingAddress produced
@@ -393,9 +398,10 @@ func (cs *ChainState) vermerkeDoppelsignaturImBlock(ctx context.Context, signing
 // Vorher vermerkte der Erkennende ohne Abzug, und weil er dann ein bekanntes
 // Paar vorfand, zog er die 50 AEQ nie ab, waehrend jeder andere sie abzog.
 //
-// schalter: die Zeit, an der strafKonto zwischen alter und neuer Quelle
-// waehlt -- beim Nachspielen die Blockzeit, beim Erkennen die Uhr.
-func (cs *ChainState) vermerkeDoppelsignatur(q sqlExecutor, signingAddress, blockAHash, blockBHash string, now, schalter int64) (offenseCount int, pendingSlashWallet string, err error) {
+// Ab registerLeserAb (an now, strafeSpaeter) bucht sie keine Geldstrafe mehr:
+// ein zweites Vergehen wird als strafe_offen vermerkt und spaeter mit
+// slash_abrechnung abgerechnet (strafe_abrechnung.go).
+func (cs *ChainState) vermerkeDoppelsignatur(q sqlExecutor, signingAddress, blockAHash, blockBHash string, now int64) (offenseCount int, pendingSlashWallet string, err error) {
 	// Pre-activation evidence is exempt (see equivocationSlashingActivationUnix's
 	// comment for the full rationale). The primary gate is at the detection call
 	// site in AddPeerBlock (which skips the whole recording goroutine); this is
@@ -500,7 +506,15 @@ func (cs *ChainState) vermerkeDoppelsignatur(q sqlExecutor, signingAddress, bloc
 	case count == 2 && withinWindow:
 		fmt.Printf("[SLASHING] ⚠ %s: 2nd equivocation within %d days — 90-day suspension and %.0f AEQ penalty\n",
 			addr, equivocationSecondOffenseWindowDays, equivocationSecondOffensePenaltyAEQ)
-		w, err := strafKonto(q, addr, now, schalter)
+		if strafeSpaeter(now) {
+			if _, err := q.Exec(`UPDATE equivocation_evidence SET strafe_offen = TRUE WHERE block_a_hash = $1 AND block_b_hash = $2`,
+				blockAHash, blockBHash); err != nil {
+				return 0, "", err
+			}
+			fmt.Printf("[SLASHING] Geldstrafe fuer %s offen, abgerechnet ab Blockzeit %d (slash_abrechnung)\n", addr, strafeFaelligAb(now))
+			break
+		}
+		w, err := strafKonto(q, addr)
 		if err != nil {
 			return 0, "", err
 		}
@@ -513,22 +527,12 @@ func (cs *ChainState) vermerkeDoppelsignatur(q sqlExecutor, signingAddress, bloc
 	return count, slashWallet, nil
 }
 
-// strafKonto: das Betreiberkonto eines Unterzeichners, in derselben
-// Transaktion gelesen. Keins eingetragen: keine Strafe (wie bisher).
-//
-// Ab registerLeserAb aus dem Verlauf des Kettenregisters: registered_nodes
-// fuehrt jeder Knoten selbst, und zwei Knoten zogen verschiedenen
-// Betreibern ab (validator_register_leser.go, strafKontoAusRegister).
-// Geschaltet an max(DetectedAt, schalter): DetectedAt waehlt, wer den
-// Schluessel haelt (die Zeit eines der beiden Koepfe, die er selbst
-// unterschreibt) -- allein daran haette er nach dem Stichtag jeden Beweis
-// auf vorher datieren und damit den alten Weg ueber registered_nodes
-// erzwingen koennen. schalter ist die Blockzeit des tragenden Blocks bzw.
-// beim Erkennen die Uhr.
-func strafKonto(q sqlExecutor, signer string, detectedAt, schalter int64) (string, error) {
-	if registerLeserAktiv(max(detectedAt, schalter)) {
-		return strafKontoAusRegister(q, signer, detectedAt)
-	}
+// strafKonto: das Betreiberkonto eines Unterzeichners vor registerLeserAb,
+// aus registered_nodes, in derselben Transaktion gelesen. Keins
+// eingetragen: keine Strafe (wie bisher). Ab dem Stichtag rechnet
+// slash_abrechnung aus dem Verlauf des Kettenregisters ab
+// (strafe_abrechnung.go, strafKontoZurAbrechnung).
+func strafKonto(q sqlExecutor, signer string) (string, error) {
 	var w string
 	err := q.QueryRow(`SELECT wallet_address FROM registered_nodes WHERE lower(signing_address) = $1`, signer).Scan(&w)
 	if err == sql.ErrNoRows || (err == nil && w == "") {
@@ -615,7 +619,17 @@ func (cs *ChainState) DoppelsignaturErkannt(signingAddr, blockAHash, blockBHash 
 	if blockAHash > blockBHash {
 		blockAHash, blockBHash = blockBHash, blockAHash
 	}
-	schalter := nowUnix()
+	// Ab registerLeserAb nur frische Beweise (strafe_abrechnung.go): jeder
+	// Nachspielende weist einen Block ab, der mehr als strafBeweisFrisch nach
+	// (oder mehr als fuenf Minuten vor) der Tat liegt. Ein alter Beweis (etwa aus der nachgeholten Geschichte)
+	// wird darum weder vermerkt noch verschickt -- vermerkt, aber nicht
+	// verschickt, sperrte er den Validator nur auf diesem Knoten.
+	if jetzt := nowUnix(); registerLeserAktiv(jetzt) &&
+		(jetzt > detectedAt+strafBeweisFrisch-strafBeweisMarge || detectedAt > jetzt+zeitstempelZukunftToleranz) {
+		fmt.Printf("[SLASHING] ⚠ Doppelsignatur von %s (%s/%s) von %d ist zu alt fuer einen Beweis -- nichts vermerkt\n",
+			signer, kurzHash(blockAHash), kurzHash(blockBHash), detectedAt)
+		return 0, 0, nil
+	}
 	// Das Strafkonto vorab, fuer die Ruecknahme-Liste von runAtomicWithOutbox;
 	// in der Transaktion wird es noch einmal gelesen und muss gleich sein.
 	// Hat sich das Register dazwischen geaendert (ein Block mit einer
@@ -624,9 +638,11 @@ func (cs *ChainState) DoppelsignaturErkannt(signingAddr, blockAHash, blockBHash 
 	// Zaehler und Beweis-Transaktion.
 	for versuch := 0; ; versuch++ {
 		offenseCount, betrag = 0, 0
-		vorab, err := strafKonto(cs.db, signer, detectedAt, schalter)
-		if err != nil {
-			return 0, 0, err
+		var vorab string
+		if !strafeSpaeter(detectedAt) {
+			if vorab, err = strafKonto(cs.db, signer); err != nil {
+				return 0, 0, err
+			}
 		}
 		konten := []string{ubiPoolAddr}
 		if vorab != "" {
@@ -636,7 +652,7 @@ func (cs *ChainState) DoppelsignaturErkannt(signingAddr, blockAHash, blockBHash 
 			h()
 		}
 		err = cs.runAtomicWithOutbox(konten, false, func(ctx context.Context) (Transaction, error) {
-			n, wallet, err := cs.vermerkeDoppelsignatur(cs.dbExecCtx(ctx), signer, blockAHash, blockBHash, detectedAt, schalter)
+			n, wallet, err := cs.vermerkeDoppelsignatur(cs.dbExecCtx(ctx), signer, blockAHash, blockBHash, detectedAt)
 			if err != nil {
 				return Transaction{}, err
 			}
