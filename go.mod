@@ -3,6 +3,7 @@ module github.com/hanoi96international-gif/aequitas-chain
 go 1.26.8
 
 require (
+	filippo.io/edwards25519 v1.0.0
 	github.com/ethereum/go-ethereum v1.13.0
 	github.com/hdevalence/ed25519consensus v0.2.0
 	github.com/holiman/uint256 v1.2.3
@@ -14,7 +15,6 @@ require (
 
 require (
 	filippo.io/bigmod v0.1.1-0.20260103110540-f8a47775ebe5 // indirect
-	filippo.io/edwards25519 v1.0.0 // indirect
 	filippo.io/keygen v1.0.0 // indirect
 	github.com/DataDog/zstd v1.4.5 // indirect
 	github.com/StackExchange/wmi v1.2.1 // indirect

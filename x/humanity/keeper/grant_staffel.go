@@ -35,9 +35,8 @@ package keeper
 
 import (
 	"context"
-	"crypto/ed25519"
-	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"sort"
@@ -48,7 +47,14 @@ import (
 )
 
 const (
-	// 2100-01-01T00:00:00Z. WP 4 ersetzt das durch das echte Datum.
+	// 2100-01-01T00:00:00Z, Platzhalter. WP 4 setzt das echte Datum -- aber
+	// erst, wenn drei Dinge stehen (TestStaffel_SchlaeftBisZulassungUndStreng
+	// wird sonst rot, und ihn zu aendern ist die bewusste Entscheidung):
+	//   - Coordinatoren werden im Konsens zugelassen und entzogen -- heute
+	//     kann jeder registrierte Mensch ohne offene Staffel bescheinigen
+	//     (bescheinigungPruefen, "WER COORDINATOR SEIN KANN");
+	//   - der strenge Modus beginnt spaetestens mit der Staffel;
+	//   - Bindung und Bescheinigung tragen die Chain-ID.
 	stagedGrantActivationUnix int64 = 4102444800
 
 	grantKlasseSofort     = "sofort"
@@ -327,7 +333,9 @@ func merkeProveKlasse(respBody []byte) {
 // handleLivenessRenewal nimmt eine Erneuerung entgegen: der Coordinator hat
 // eine zweite Lebendigkeitspruefung bestanden gesehen und das mit seinem
 // Ed25519-Schluessel bescheinigt (aequitas-liveness-renewal-v1|<wallet>|<issued_at>).
-// Der Schluessel muss im Coordinator-Register dieses Knotens stehen. Angenommen
+// Der Schluessel muss im Coordinator-Register dieses Knotens stehen (daher
+// kommt die Bindung, die in die Transaktion geht); ueber die Gueltigkeit
+// entscheidet bescheinigungPruefen, wie bei jedem Nachspielenden. Angenommen
 // wird nur fuer Konten mit offener Staffel -- fuer alle anderen gibt es nichts
 // zu erneuern. Vor der Aktivierung antwortet der Endpunkt 409.
 func (a *APIServer) handleLivenessRenewal(w http.ResponseWriter, r *http.Request) {
@@ -360,8 +368,19 @@ func (a *APIServer) handleLivenessRenewal(w http.ResponseWriter, r *http.Request
 		jsonError(w, "attestation expired or from the future", http.StatusBadRequest)
 		return
 	}
-	if !livenessRenewalSignaturGueltig(a.state, wallet, req.IssuedAt, req.PublicKey, req.Signature) {
-		jsonError(w, "renewal attestation not signed by a registered coordinator", http.StatusForbidden)
+	// Die Bindung des Schluessels kommt aus dem Register dieses Knotens --
+	// in die Transaktion, wo jeder andere sie selbst prueft
+	// (bescheinigungPruefen). Fehlt der Eintrag oder hat er keine
+	// Unterschriften (vor dem 06.10.2026 eingetragen), muss der Coordinator
+	// sich einmal neu eintragen.
+	bindung, ok := a.state.CoordinatorBindungLokal(req.PublicKey)
+	if !ok {
+		jsonError(w, "renewal attestation not signed by a registered coordinator (or its registration predates stored signatures -- register the coordinator key again)", http.StatusForbidden)
+		return
+	}
+	tx := erneuerungsTransaktion(wallet, req.IssuedAt, req.PublicKey, req.Signature, bindung)
+	if err := bescheinigungPruefen(wallet, req.IssuedAt, tx.Bescheinigung, a.state.coordinatorMenschStand); err != nil {
+		jsonError(w, "invalid renewal attestation: "+err.Error(), http.StatusForbidden)
 		return
 	}
 	a.state.mu.RLock()
@@ -390,18 +409,43 @@ func (a *APIServer) handleLivenessRenewal(w http.ResponseWriter, r *http.Request
 			"error": "second liveness check counts from day 7 after registration", "frueh_ab": ab})
 		return
 	}
-	tx := erneuerungsTransaktion(wallet, req.IssuedAt, req.PublicKey, req.Signature)
+	// Durchs Annahme-Tor wie jeder andere Auftrag fuer ein Konto: nur der
+	// Knoten, der fuer dieses Konto annimmt (Folger leiten weiter,
+	// zumLeiter) -- sonst laegen Erneuerungen desselben Kontos in
+	// Geschwisterbloecken.
+	if err := a.state.annahmeBeginnen(wallet); err != nil {
+		jsonError(w, err.Error(), http.StatusServiceUnavailable)
+		return
+	}
+	defer a.state.annahmeEnde()
 	if err := a.state.runAtomicWithOutbox([]string{wallet}, false, func(ctx context.Context) (Transaction, error) {
+		// Schon erneuert: nichts mehr in den Ausgang. Die Erneuerung schaltet
+		// einmal frei (LivenessRenewedAt > 0); jede weitere waere nur eine
+		// Transaktion mehr in den Bloecken -- dieselbe Anfrage binnen 15
+		// Minuten noch einmal geschickt lag sonst mehrfach im Ausgang
+		// (zweiter Sicherheitsdurchgang #300). Unter der Sperre geprueft, damit
+		// zwei gleichzeitige Anfragen nicht beide durchkommen.
+		a.state.ensureAccountLoadedCtx(ctx, wallet)
+		if acc, ok := a.state.accounts.Get(wallet); ok && acc.LivenessRenewedAt > 0 {
+			return Transaction{}, errSchonErneuert
+		}
 		if err := a.state.applyLivenessRenewalDeltaLocked(ctx, wallet, req.IssuedAt, now); err != nil {
 			return Transaction{}, err
 		}
 		return tx, nil
 	}); err != nil {
+		if errors.Is(err, errSchonErneuert) {
+			json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "wallet": wallet, "schon_erneuert": true})
+			return
+		}
 		jsonError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "wallet": wallet, "renewed_at": req.IssuedAt})
 }
+
+// errSchonErneuert: das Konto ist schon erneuert -- nichts in den Ausgang.
+var errSchonErneuert = errors.New("schon erneuert")
 
 // erneuerungFruehestens: ab wann eine Erneuerung angenommen wird -- Tag 7
 // nach der Registrierung. Die Registrierzeit steckt in GrantStagedUntil
@@ -421,43 +465,110 @@ const livenessRenewalDomain = "aequitas-liveness-renewal-v1"
 type Lebendigkeitsbescheinigung struct {
 	PublicKey string `json:"public_key"`
 	Signature string `json:"signature"`
+	// DIE BINDUNG DES SCHLUESSELS, IN DER BESCHEINIGUNG SELBST (06.10.2026).
+	//
+	// Bis hierhin pruefte jeder Knoten den Schluessel gegen SEIN
+	// Coordinator-Register (coordinator_keys) -- und das ist knotenlokal:
+	// zwei Knoten mit verschiedenem Register haetten denselben Block
+	// verschieden beurteilt, sobald die Staffel gilt. Jetzt traegt die
+	// Bescheinigung, was eine Eintragung ausmacht: den Menschen, dem der
+	// Schluessel gehoert, seine Freigabe ("Aequitas: authorize coordinator
+	// <schluessel>", EIP-191) und den Besitznachweis des Schluessels
+	// ("Aequitas: coordinator key for human <mensch>", Ed25519). Jeder Knoten
+	// prueft sie selbst, dazu, dass der Mensch registriert ist -- dieselbe
+	// Bedingung wie bei einer Eintragung, nur ohne lokale Liste.
+	Mensch        string `json:"mensch,omitempty"`
+	MenschSig     string `json:"mensch_sig,omitempty"`
+	SchluesselSig string `json:"schluessel_sig,omitempty"`
+}
+
+// coordinatorFreigabeNachricht: was der Mensch fuer seinen Schluessel
+// unterschreibt (wie bei der Eintragung, coordinator_registry.go).
+func coordinatorFreigabeNachricht(schluessel string) string {
+	return "Aequitas: authorize coordinator " + strings.ToLower(strings.TrimSpace(schluessel))
 }
 
 // erneuerungsTransaktion: die liveness_renewal mit der Bescheinigung --
 // vorher trug sie nur Wallet und Zeitpunkt, und kein Nachspielender konnte
-// pruefen, ob es die zweite Lebendigkeitspruefung gab.
-func erneuerungsTransaktion(wallet string, issuedAt int64, publicHex, signatureHex string) Transaction {
+// pruefen, ob es die zweite Lebendigkeitspruefung gab. Jede Unterschrift in
+// ihrer einen Schreibweise; bescheinigungPruefen nimmt keine andere.
+func erneuerungsTransaktion(wallet string, issuedAt int64, publicHex, signatureHex string, bindung CoordinatorBindung) Transaction {
 	return Transaction{Type: "liveness_renewal", Wallet: wallet, DistributionAt: issuedAt,
 		Bescheinigung: &Lebendigkeitsbescheinigung{
-			PublicKey: strings.ToLower(strings.TrimSpace(publicHex)),
-			Signature: strings.TrimSpace(signatureHex),
+			PublicKey:     strings.ToLower(strings.TrimSpace(publicHex)),
+			Signature:     ed25519SigNormal(signatureHex),
+			Mensch:        strings.ToLower(strings.TrimSpace(bindung.Mensch)),
+			MenschSig:     kanonischeSignaturVersuch(bindung.MenschSig),
+			SchluesselSig: ed25519SigNormal(bindung.SchluesselSig),
 		}}
 }
 
-// livenessRenewalSignaturGueltig prueft die Ed25519-Bescheinigung gegen das
-// Coordinator-Register des Knotens.
-func livenessRenewalSignaturGueltig(cs *ChainState, wallet string, issuedAt int64, publicHex, signatureHex string) bool {
-	publicHex = strings.ToLower(strings.TrimSpace(publicHex))
-	bekannt := false
-	for _, c := range cs.Coordinators() {
-		if strings.EqualFold(c.PublicKey, publicHex) {
-			bekannt = true
-			break
-		}
+// CoordinatorMenschStand: was bescheinigungPruefen ueber den Menschen hinter
+// einem Coordinator-Schluessel aus dem Kettenzustand braucht.
+type CoordinatorMenschStand func(mensch string) (istMensch, staffelOffen bool)
+
+// coordinatorMenschStand: dasselbe fuer die Annahme, ohne gehaltene Sperre.
+func (cs *ChainState) coordinatorMenschStand(mensch string) (istMensch, staffelOffen bool) {
+	cs.readAccount(mensch, func(acc *AccountState) {
+		istMensch, staffelOffen = acc.IsHuman, acc.GrantStagedRest > 0
+	})
+	return
+}
+
+// bescheinigungPruefen: ist die Bescheinigung fuer wallet zu issuedAt
+// gueltig? Jeder Knoten rechnet sie selbst nach, ohne Coordinator-Register:
+//   - Bindung: Freigabe des Menschen (EIP-191, kanonische Schreibweise) und
+//     Besitznachweis des Schluessels (Ed25519, streng -- kein Schluessel
+//     kleiner Ordnung, ed25519_streng.go);
+//   - der Mensch ist registriert und hat KEINE offene Staffel (stand, aus
+//     dem Kettenzustand), und er ist nicht selbst der Erneuerte;
+//   - die Ed25519-Unterschrift ueber Domaene|Wallet|Zeitpunkt.
+//
+// WER COORDINATOR SEIN KANN (Sicherheitspruefung #300, HIGH-1). Jeder
+// registrierte Mensch kann einen Schluessel binden und damit Erneuerungen
+// bescheinigen -- eine Zulassung im Konsens gibt es noch nicht. Ein Konto
+// mit offener Staffel ist ausgeschlossen: sonst bescheinigte eine frisch
+// registrierte Kunstfigur der naechsten die zweite Pruefung, und die Staffel
+// koste eine Farm nichts. Das reicht NICHT gegen eine Farm, die ein altes
+// oder fertig gestaffeltes Konto besitzt. Deshalb darf die Staffel erst
+// aktiv werden, wenn die Zulassung (und der Entzug) der Coordinatoren im
+// Konsens steht -- erzwungen in TestStaffel_SchlaeftBisZulassungUndStreng.
+func bescheinigungPruefen(wallet string, issuedAt int64, b *Lebendigkeitsbescheinigung, stand CoordinatorMenschStand) error {
+	if b == nil {
+		return fmt.Errorf("keine Bescheinigung")
 	}
-	if !bekannt {
-		return false
+	pub := b.PublicKey
+	if len(pub) != 64 || !kleinHex(pub) {
+		return fmt.Errorf("Schluessel ist kein Ed25519-Schluessel (64 Hex, klein)")
+	}
+	mensch := b.Mensch
+	if !kanonischeAdresse(mensch) {
+		return fmt.Errorf("Bindung fehlt: kein Mensch zum Schluessel")
+	}
+	if mensch == strings.ToLower(strings.TrimSpace(wallet)) {
+		return fmt.Errorf("ein Coordinator bescheinigt sich nicht selbst")
+	}
+	if !verifyCoordinatorPossession(pub, b.SchluesselSig, mensch) {
+		return fmt.Errorf("Besitznachweis des Schluessels fehlt oder ist falsch")
+	}
+	if !kanonischeSignatur(b.MenschSig) {
+		return fmt.Errorf("Freigabe des Menschen nicht in kanonischer Schreibweise")
+	}
+	if err := pruefePersonalSignGemerkt(coordinatorFreigabeNachricht(pub), b.MenschSig, mensch); err != nil {
+		return fmt.Errorf("Freigabe des Menschen: %v", err)
+	}
+	istMensch, staffelOffen := stand(mensch)
+	if !istMensch {
+		return fmt.Errorf("%s ist kein registrierter Mensch", kurzAdresse(mensch))
+	}
+	if staffelOffen {
+		return fmt.Errorf("%s hat selbst eine offene Staffel -- bescheinigt keine Erneuerung", kurzAdresse(mensch))
 	}
 	msg := fmt.Sprintf("%s|%s|%d", livenessRenewalDomain, wallet, issuedAt)
-	roh, err := hex.DecodeString(strings.TrimPrefix(strings.TrimSpace(signatureHex), "0x"))
-	if err != nil || len(roh) != ed25519.SignatureSize {
-		return false
+	if !ed25519PruefenStreng(pub, b.Signature, []byte(msg)) {
+		return fmt.Errorf("Bescheinigung passt nicht zu Wallet und Zeitpunkt (oder ist keine Ed25519-Unterschrift in kanonischer Schreibweise)")
 	}
-	pub, err := hex.DecodeString(publicHex)
-	if err != nil || len(pub) != ed25519.PublicKeySize {
-		return false
-	}
-	return ed25519.Verify(ed25519.PublicKey(pub), []byte(msg), roh)
+	return nil
 }
 
 // StaffelStandVon liest den Staffelstand eines Kontos unter der Lesesperre.

@@ -2305,6 +2305,13 @@ func (cs *ChainState) GetValidatorKeyPairsForSync() []ValidatorKeyPair {
 			addr = strings.ToLower(strings.TrimSpace(addr))
 			wallet = strings.ToLower(strings.TrimSpace(wallet))
 			personhood = strings.ToLower(strings.TrimSpace(personhood))
+			// Ein untauglicher Personhood-Schluessel (kleine Ordnung: eine
+			// Unterschrift fuer jede Nachricht) geht nicht hinaus -- der
+			// Proof-Server zaehlt damit Bezeugungen (ed25519_streng.go).
+			if personhood != "" && !ed25519HexTauglich(personhood) {
+				coordinatorSchluesselUntauglich(personhood)
+				personhood = ""
+			}
 			if addr != "" && !seen[addr] {
 				seen[addr] = true
 				pairs = append(pairs, ValidatorKeyPair{
