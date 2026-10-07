@@ -8654,17 +8654,22 @@ func (dag *BlockDAG) getEpochCommittee(height int64) *EpochCommittee {
 	if dag.currentEpoch == nil || dag.currentEpoch.Number != epochNum {
 		dag.currentEpoch = ec
 		if ec != nil {
-			newK := ghostdagKBase
-			if ec.Size/3 > newK {
-				newK = ec.Size / 3
-			}
-			dag.activeGhostdagK.Store(int32(newK))
+			// K bleibt hier stehen (KEIN K AUS EINER LOKALEN LISTE, 07.10.2026).
+			// Bisher wurde K auf Komiteegroesse/3 gehoben -- aber das Komitee
+			// kommt aus authorizedValidators, einer Liste, die jeder Knoten
+			// selbst fuehrt, und getEpochCommittee laeuft nur in ProduceBlock:
+			// ein Knoten, der nicht erzeugt, blieb immer bei ghostdagKBase.
+			// Ab 57 Validatoren haetten Erzeuger und Beobachter GHOSTDAG mit
+			// verschiedenem K gerechnet -- verschiedene blaue Mengen,
+			// verschiedene Reihenfolge, ein Konsensfehler. Ein wachsendes K
+			// kommt erst mit einem Komitee, das jeder Knoten zur selben Epoche
+			// gleich aus der Kette berechnet (docs/VALIDATOR_REGISTER_KONSENS.md).
 			role := "observer"
 			if ec.Members[dag.selfProposer] {
 				role = "producer"
 			}
 			fmt.Printf("[EPOCH] Epoch %d (height %d): committee=%d validators, K=%d, self=%s (%s)\n",
-				epochNum, height, ec.Size, newK, dag.selfProposer, role)
+				epochNum, height, ec.Size, dag.k(), dag.selfProposer, role)
 		}
 	} else {
 		ec = dag.currentEpoch
@@ -8673,11 +8678,11 @@ func (dag *BlockDAG) getEpochCommittee(height int64) *EpochCommittee {
 	return ec
 }
 
-// ghostdagKBase is the minimum K used on a near-empty network. Once the
-// active-producer committee exceeds 3*ghostdagKBase validators the epoch
-// boundary raises K to committeeSize/3 so the blue-set ratio stays healthy.
-// All nodes compute the same K from the same deterministic committee, so
-// this is a safe consensus-layer change with no manual coordination.
+// ghostdagKBase is K for every node. It used to be raised to
+// committeeSize/3 at epoch boundaries, from a committee each node built from
+// its own authorizedValidators -- and only on producing nodes (see
+// getEpochCommittee's comment): not the same K everywhere. K stays at this
+// value until a committee exists that every node derives from the chain.
 const ghostdagKBase = 18
 
 // activeGhostdagK is the live K for the current epoch, stored as an atomic
@@ -8706,8 +8711,9 @@ func (dag *BlockDAG) maxParents() int {
 // maxMergeVisits bounds how many blocks the merge-set BFS visits and how many
 // get blue/red-classified. It must be at least the number of blocks that can
 // be produced CONCURRENTLY (all of them land in one block's merge set in the
-// worst case), which is the committee size ≈ 3*K (K is set to committeeSize/3
-// in getEpochCommittee). It must NOT grow faster than that: classification is
+// worst case), which is the committee size ≈ 3*K (K stays at ghostdagKBase
+// until a chain-derived committee exists, see getEpochCommittee). It must NOT
+// grow faster than that: classification is
 // roughly O(visits^2), so an over-large cap turns a burst into a multi-second
 // stall (confirmed by block_ghostdag_scale_test at cap 185). 3*K tracks the
 // real concurrency; the floor of 50 preserves small-network behaviour, where
