@@ -443,3 +443,20 @@ func TestReplay_FrischtNurBeiNeuerZeileAuf_RealDB(t *testing.T) {
 		t.Fatalf("neue Bindung nicht im Stand: %+v", st)
 	}
 }
+
+// Eine Bindung eines ANDEREN Schluessels im selben Augenblick macht den
+// Halter nicht umstritten -- es zaehlen nur die Zeilen dieses Schluessels.
+func TestStrafkonto_GleicherZeitpunktAndererSchluessel_RealDB(t *testing.T) {
+	k, v := strafFall(t)
+	var zeit int64
+	if err := k.cs.db.QueryRow(`SELECT bindung_ts FROM validator_verlauf WHERE signing_address = $1`, k.signer).Scan(&zeit); err != nil {
+		t.Fatal(err)
+	}
+	fremd := distTestAddr(1710)
+	registerKonto(t, k.cs, fremd, true)
+	verlaufEintrag(t, k.cs, fremd, distTestAddr(1711), zeit)
+	zweitesVergehen(t, k, nowUnix()-3600)
+	if got := standVon(t, k.cs, v); got != strafe {
+		t.Fatalf("Halter nicht belastet: %.2f", got)
+	}
+}
