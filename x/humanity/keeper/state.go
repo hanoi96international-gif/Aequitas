@@ -199,6 +199,9 @@ type ChainState struct {
 	ubiRunde ubiRundePruefung
 	// lpRunde: dasselbe fuer die Liquiditaetsgeber-Runde (nachrechnen_lp.go).
 	lpRunde lpRundePruefung
+	// validatorRunde: dasselbe fuer die Validatoren-Runde
+	// (nachrechnen_validator.go).
+	validatorRunde validatorRundePruefung
 	// freigaben: Staffel-Freigaben der laufenden Runde (nachrechnen_freigabe.go).
 	freigaben freigabeRunde
 	// kappungsKandidaten: Konten, die ueber der Grenze liegen koennten und
@@ -1020,6 +1023,7 @@ func NewChainState(dataFile string) *ChainState {
 				// Grundeinkommens-Runde laeuft (nachrechnen_ubi.go, NEUSTART).
 				cs.ubiRunde.unsicher = true
 				cs.lpRunde.unsicher = true
+				cs.validatorRunde.unsicher = true
 				// Der Uebersprungen-Zaehler muss den Neustart ueberleben --
 				// siehe zustand_ablehnung.go: ein Neustart nach rotem Alarm
 				// loeschte bisher den Alarm, nicht die Divergenz.
@@ -3677,6 +3681,11 @@ type DistributionShare struct {
 	Wallet        string
 	Amount        float64
 	DemurrageLost float64
+	// Anker/RundenZeit: ab registerLeserAb bei validator_distribution -- der
+	// Block, aus dessen Vergangenheitskegel die Gewichte stammen, und die
+	// Zeit der Runde (validator_belohnung_kette.go).
+	Anker      string
+	RundenZeit int64
 	// LPSharesBurned/TUsdConverted are set only by checkAndMoveToEscrowLocked
 	// when a wallet being swept into escrow held wealth as LP shares or tUSD
 	// rather than liquid AEQ — see that function's comment for why these must
@@ -3718,12 +3727,95 @@ func (cs *ChainState) distributeValidatorsPoolLocked(ctx context.Context, vertei
 	// for correctness, only kept historically reachable via the public
 	// DistributeValidatorsPool wrapper above where cs.mu is also already held
 	// by the time this runs).
-	nodes := cs.GetRegisteredNodes()
-	if len(nodes) == 0 {
-		fmt.Println("[VALIDATORS] No registered node operators — pool left untouched")
-		return nil, nil
+	bis := verteiltAm
+	if bis <= 0 {
+		bis = time.Now().Unix()
 	}
+	// Ab registerLeserAb aus der Kette: Betreiber aus dem Verlauf, Gewichte
+	// aus dem Vergangenheitskegel eines Ankers -- jeder Knoten rechnet nach
+	// (validator_belohnung_kette.go, nachrechnen_validator.go).
+	var nodes []string
+	var nodeShares []validatorGewicht
+	var totalBlocks int64
+	var anker string
+	if validatorKetteAktiv(bis) {
+		var err error
+		anker, nodeShares, err = cs.validatorGewichteAusKetteLocked(ctx, bis)
+		if err != nil {
+			return nil, err
+		}
+		if len(nodeShares) == 0 {
+			return nil, nil
+		}
+		for _, ns := range nodeShares {
+			nodes = append(nodes, ns.wallet)
+			totalBlocks += ns.blocks
+		}
+	} else {
+		nodes = cs.GetRegisteredNodes()
+		if len(nodes) == 0 {
+			fmt.Println("[VALIDATORS] No registered node operators — pool left untouched")
+			return nil, nil
+		}
+		var weiter bool
+		nodeShares, totalBlocks, weiter = cs.validatorGewichteAltLocked(ctx, nodes, bis)
+		if !weiter {
+			return nil, nil
+		}
+	}
+	return cs.validatorenGutschreibenLocked(ctx, verteiltAm, nodes, nodeShares, totalBlocks, anker, bis)
+}
 
+// validatorGewicht: ein Betreiber und sein Gewicht (Minuten anwesend).
+type validatorGewicht struct {
+	wallet string
+	blocks int64 // Gewicht: Minuten anwesend (oder 1, siehe validatorGewichteAltLocked)
+}
+
+// validatorGewichteAusKetteLocked: Anker und Gewichte aus der Kette. Keine
+// Gewichte (Topf bleibt stehen): kein Anker, Luecke im Kegel, Kegel zu
+// gross, oder kein Block einem Betreiber zuzurechnen.
+func (cs *ChainState) validatorGewichteAusKetteLocked(ctx context.Context, T int64) (string, []validatorGewicht, error) {
+	q := cs.dbExecCtx(ctx)
+	anker, err := validatorAnkerWaehlen(q, T)
+	if err != nil {
+		return "", nil, fmt.Errorf("Validatoren-Anker: %w", err)
+	}
+	if anker == "" {
+		fmt.Println("[VALIDATORS] Kein Anker in den letzten 10 Minuten -- Topf bleibt stehen")
+		return "", nil, nil
+	}
+	gewichte, stand, err := validatorGewichte(q, anker, T)
+	if err != nil {
+		return "", nil, fmt.Errorf("Validatoren-Gewichte: %w", err)
+	}
+	switch {
+	case stand == kegelLuecke:
+		fmt.Println("[VALIDATORS] Geschichte im Kegel unvollstaendig -- Topf bleibt stehen")
+		return "", nil, nil
+	case stand == kegelZuGross:
+		fmt.Println("[VALIDATORS] Kegel groesser als die Grenze -- Topf bleibt stehen")
+		return "", nil, nil
+	case len(gewichte) == 0:
+		fmt.Println("[VALIDATORS] Kein Block einem gebundenen Betreiber zuzurechnen -- Topf bleibt stehen")
+		return "", nil, nil
+	}
+	ops := make([]string, 0, len(gewichte))
+	for op := range gewichte {
+		ops = append(ops, op)
+	}
+	sort.Strings(ops)
+	out := make([]validatorGewicht, 0, len(ops))
+	for _, op := range ops {
+		out = append(out, validatorGewicht{wallet: op, blocks: gewichte[op]})
+	}
+	return anker, out, nil
+}
+
+// validatorGewichteAltLocked: die Gewichte vor registerLeserAb (aus
+// registered_nodes und chain_blocks des eigenen Knotens). weiter = false:
+// nichts zu verteilen.
+func (cs *ChainState) validatorGewichteAltLocked(ctx context.Context, nodes []string, bis int64) (nodeShares []validatorGewicht, totalBlocks int64, weiter bool) {
 	// GERECHT (24.09.2026): gleicher Anteil fuer jeden Menschen, der einen
 	// Validator betreibt -- gewichtet NUR danach, wie viele Minuten des Tages
 	// sein Knoten da war (validator_anwesenheit.go). Nicht nach Bloecken:
@@ -3732,32 +3824,22 @@ func (cs *ChainState) distributeValidatorsPoolLocked(ctx context.Context, vertei
 	// Bloecken verdiente also, wer sich teure Hardware leisten kann. Und
 	// nicht nach Bloecken seit der Registrierung (blocks_produced zaehlt nie
 	// zurueck): damit verdienten die Ersten auf Dauer mehr als alle Spaeteren.
-	type nodeShare struct {
-		wallet string
-		blocks int64 // Gewicht: Minuten anwesend (oder 1, siehe unten)
-	}
-	bis := verteiltAm
-	if bis <= 0 {
-		bis = time.Now().Unix()
-	}
 	anwesend := cs.validatorAnwesenheitCtx(ctx, nodes, bis-anwesenheitsZeitraum, bis)
 	// Nur Menschen: Validator-Geld geht an registrierte Menschen, nie an eine
 	// Adresse, hinter der keiner steht.
 	cs.ensureAccountsLoadedCtx(ctx, nodes)
-	var nodeShares []nodeShare
-	var totalBlocks int64
 	for _, w := range nodes {
 		acc, ok := cs.accounts.Get(w)
 		if !ok || !acc.IsHuman {
 			fmt.Printf("[VALIDATORS] %s ist kein registrierter Mensch -- kein Anteil\n", w)
 			continue
 		}
-		nodeShares = append(nodeShares, nodeShare{w, anwesend[w]})
+		nodeShares = append(nodeShares, validatorGewicht{w, anwesend[w]})
 		totalBlocks += anwesend[w]
 	}
 	if len(nodeShares) == 0 {
 		fmt.Println("[VALIDATORS] Kein Validator-Betreiber ist ein registrierter Mensch -- Topf bleibt stehen")
-		return nil, nil
+		return nil, 0, false
 	}
 	if totalBlocks == 0 {
 		// Keine Bloecke im Zeitraum bekannt (frisch, oder nach einer
@@ -3767,6 +3849,15 @@ func (cs *ChainState) distributeValidatorsPoolLocked(ctx context.Context, vertei
 			nodeShares[i].blocks = 1
 			totalBlocks++
 		}
+	}
+	return nodeShares, totalBlocks, true
+}
+
+// validatorenGutschreibenLocked: der Topf nach den Gewichten, fuer beide
+// Wege. anker/rundenZeit stehen ab registerLeserAb in jeder Zahlung.
+func (cs *ChainState) validatorenGutschreibenLocked(ctx context.Context, verteiltAm int64, nodes []string, nodeShares []validatorGewicht, totalBlocks int64, anker string, rundenZeit int64) ([]DistributionShare, error) {
+	if anker == "" {
+		rundenZeit = 0
 	}
 	// FIX (Monster Audit 2026-07-12, P1): a pool address that fell out of (or
 	// never entered) the in-memory cache used to read as "not present" here,
@@ -3836,7 +3927,7 @@ func (cs *ChainState) distributeValidatorsPoolLocked(ctx context.Context, vertei
 			return nil, fmt.Errorf("could not save validator reward for %s: %w", wallet, err)
 		}
 		totalDistributed += share
-		shares = append(shares, DistributionShare{Wallet: wallet, Amount: share, DemurrageLost: lost.Float()})
+		shares = append(shares, DistributionShare{Wallet: wallet, Amount: share, DemurrageLost: lost.Float(), Anker: anker, RundenZeit: rundenZeit})
 	}
 	// Zero pool only after all recipients are successfully written,
 	// and only if something was actually distributed (prevents destroying
@@ -5004,7 +5095,7 @@ func (cs *ChainState) RunDailyDistributionAtomic(ubiAt int64) error {
 		}
 		var validatorTotal float64
 		for _, s := range validatorShares {
-			txs = append(txs, Transaction{Type: "validator_distribution", Wallet: s.Wallet, Amount: s.Amount, FromDemurrageLost: s.DemurrageLost})
+			txs = append(txs, Transaction{Type: "validator_distribution", Wallet: s.Wallet, Amount: s.Amount, FromDemurrageLost: s.DemurrageLost, Anker: s.Anker, DistributionAt: s.RundenZeit})
 			validatorTotal += s.Amount
 		}
 		if validatorTotal > 0 {
@@ -8043,9 +8134,11 @@ type blockRollbackSnapshot struct {
 	// -- ein zurueckgewiesener Block darf sie nicht veraendern.
 	erhaltung topfErhaltung
 	// ubiRunde: dasselbe fuer die Grundeinkommens-Runde (nachrechnen_ubi.go).
-	ubiRunde  ubiRundePruefung
-	lpRunde   lpRundePruefung
-	freigaben freigabeRunde
+	ubiRunde ubiRundePruefung
+	lpRunde  lpRundePruefung
+	// validatorRunde: wie lpRunde (nachrechnen_validator.go).
+	validatorRunde validatorRundePruefung
+	freigaben      freigabeRunde
 	// vorbehalte: die offenen Vorbehalte (cs.vorbehalte) der Vorbehaltskonten
 	// unter den Adressen. Die Tabelle vorbehalte_offen geht mit der
 	// Transaktion zurueck, die Karte im Speicher nur hiermit.
@@ -8215,6 +8308,7 @@ func (cs *ChainState) snapshotForRollbackLocked(addrs []string, full bool, chain
 	snap.erhaltung = cs.erhaltung
 	snap.ubiRunde = cs.ubiRunde.kopie()
 	snap.lpRunde = cs.lpRunde
+	snap.validatorRunde = cs.validatorRunde
 	snap.freigaben = cs.freigaben
 	snap.vorbehalte = cs.vorbehaltSichern(addrs, full)
 	return snap
@@ -8329,6 +8423,7 @@ func (cs *ChainState) restoreFromRollbackLockedCtx(ctx context.Context, snap *bl
 	cs.erhaltung = snap.erhaltung
 	cs.ubiRunde = snap.ubiRunde.zurueck()
 	cs.lpRunde = snap.lpRunde.zurueck()
+	cs.validatorRunde = snap.validatorRunde.zurueck()
 	cs.freigaben = snap.freigaben.zurueck()
 	cs.vorbehaltZurueck(snap.vorbehalte)
 	var toDelete []string

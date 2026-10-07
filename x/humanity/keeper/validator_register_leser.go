@@ -358,7 +358,13 @@ func (cs *ChainState) erzeugerAusVerlauf(ctx context.Context, fest []string) (ma
 	if cs.db == nil {
 		return nil, fmt.Errorf("keine Datenbank")
 	}
-	q := dbMitKontext{ctx: ctx, db: cs.db}
+	return fensterAusVerlauf(dbMitKontext{ctx: ctx, db: cs.db}, fest)
+}
+
+// fensterAusVerlauf: die Erzeugerfenster aus dem Verlauf, gelesen ueber q
+// (Verbindung mit Zeitgrenze oder die Transaktion des Nachspielens). fest =
+// nil: alle Schluessel; sonst nur diese.
+func fensterAusVerlauf(q sqlExecutor, fest []string) (map[string][]zeitfenster, error) {
 	if fest != nil && len(fest) == 0 {
 		return map[string][]zeitfenster{}, nil
 	}

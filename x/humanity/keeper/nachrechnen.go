@@ -192,16 +192,12 @@ func (cs *ChainState) nachrechnenTxLocked(tx *Transaction, blockZeit int64) erro
 		return cs.nachrechnenFreigabeLocked(tx, blockZeit) // nachrechnen_freigabe.go
 
 	case "validator_distribution":
-		// Die Gewichte (Minuten Anwesenheit aus registered_nodes und den
-		// Bloecken der letzten 24 Stunden) sind nicht auf jedem Knoten
-		// dieselben -- registered_nodes ist ein lokales Verzeichnis. Was
-		// jeder Knoten gleich weiss: Der Erzeuger zahlt nur Betreibern, die
-		// registrierte Menschen sind (distributeValidatorsPoolLocked).
-		cs.ensureAccountLoadedCtx(context.Background(), wallet)
-		if acc, ok := cs.accounts.Get(wallet); !ok || !acc.IsHuman {
-			return nachrechnenAbweichung("validator_kein_mensch", blockZeit,
-				"%s ist kein registrierter Mensch (%.6f AEQ)", kurzAdresse(wallet), tx.Amount)
-		}
+		// Vor registerLeserAb nur "ist Mensch" (die Gewichte kamen aus dem
+		// lokalen registered_nodes); danach Anker, Gewichte und Betraege
+		// (nachrechnen_validator.go).
+		return cs.nachrechnenValidatorLocked(tx, blockZeit)
+	case "validator_distribution_pool_zero":
+		return cs.nachrechnenValidatorAbschlussLocked(blockZeit)
 
 	case "distribution_round_marker":
 		// Die Runde traegt ihren eigenen Zeitpunkt. Liegt er weit neben dem
@@ -215,6 +211,9 @@ func (cs *ChainState) nachrechnenTxLocked(tx *Transaction, blockZeit int64) erro
 		// Spaetestens hier ist die Runde zu Ende, auch ohne Abschluss.
 		cs.nachrechnenFreigabeRundeEndeLocked()
 		if err := cs.nachrechnenUBIAbschlussLocked(blockZeit, nil); err != nil {
+			return err
+		}
+		if err := cs.nachrechnenValidatorAbschlussLocked(blockZeit); err != nil {
 			return err
 		}
 		return cs.nachrechnenLPAbschlussLocked(blockZeit)
