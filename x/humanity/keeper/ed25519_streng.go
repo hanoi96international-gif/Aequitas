@@ -107,3 +107,12 @@ func ed25519PruefenStreng(pubHex, sigHex string, msg []byte) bool {
 	}
 	return ed25519.Verify(ed25519.PublicKey(pub), msg, sig)
 }
+
+// ed25519HexTauglich: 64 Hex klein und ed25519SchluesselTauglich.
+func ed25519HexTauglich(pubHex string) bool {
+	if len(pubHex) != 2*ed25519.PublicKeySize || !kleinHex(pubHex) {
+		return false
+	}
+	pub, err := hex.DecodeString(pubHex)
+	return err == nil && ed25519SchluesselTauglich(pub)
+}

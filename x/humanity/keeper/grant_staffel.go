@@ -36,6 +36,7 @@ package keeper
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"sort"
@@ -46,19 +47,15 @@ import (
 )
 
 const (
-	// 2100-01-01T00:00:00Z. WP 4 ersetzt das durch das echte Datum -- aber
-	// erst, wenn coordinatorZulassungImKonsens steht und der strenge Modus
-	// spaetestens mit der Staffel beginnt (TestStaffel_StichtagErstMit-
-	// ZulassungUndStreng).
-	stagedGrantPlatzhalterUnix int64 = 4102444800
-	stagedGrantActivationUnix        = stagedGrantPlatzhalterUnix
-
-	// coordinatorZulassungImKonsens: werden Coordinatoren im Konsens
-	// zugelassen und entzogen? Noch nicht -- heute kann jeder registrierte
-	// Mensch ohne offene Staffel Erneuerungen bescheinigen
-	// (bescheinigungPruefen, "WER COORDINATOR SEIN KANN"). Solange das so
-	// ist, bleibt die Staffel beim Platzhalter.
-	coordinatorZulassungImKonsens = false
+	// 2100-01-01T00:00:00Z, Platzhalter. WP 4 setzt das echte Datum -- aber
+	// erst, wenn drei Dinge stehen (TestStaffel_SchlaeftBisZulassungUndStreng
+	// wird sonst rot, und ihn zu aendern ist die bewusste Entscheidung):
+	//   - Coordinatoren werden im Konsens zugelassen und entzogen -- heute
+	//     kann jeder registrierte Mensch ohne offene Staffel bescheinigen
+	//     (bescheinigungPruefen, "WER COORDINATOR SEIN KANN");
+	//   - der strenge Modus beginnt spaetestens mit der Staffel;
+	//   - Bindung und Bescheinigung tragen die Chain-ID.
+	stagedGrantActivationUnix int64 = 4102444800
 
 	grantKlasseSofort     = "sofort"
 	grantKlasseGestaffelt = "gestaffelt"
@@ -422,16 +419,33 @@ func (a *APIServer) handleLivenessRenewal(w http.ResponseWriter, r *http.Request
 	}
 	defer a.state.annahmeEnde()
 	if err := a.state.runAtomicWithOutbox([]string{wallet}, false, func(ctx context.Context) (Transaction, error) {
+		// Schon erneuert: nichts mehr in den Ausgang. Die Erneuerung schaltet
+		// einmal frei (LivenessRenewedAt > 0); jede weitere waere nur eine
+		// Transaktion mehr in den Bloecken -- dieselbe Anfrage binnen 15
+		// Minuten noch einmal geschickt lag sonst mehrfach im Ausgang
+		// (zweiter Sicherheitsdurchgang #300). Unter der Sperre geprueft, damit
+		// zwei gleichzeitige Anfragen nicht beide durchkommen.
+		a.state.ensureAccountLoadedCtx(ctx, wallet)
+		if acc, ok := a.state.accounts.Get(wallet); ok && acc.LivenessRenewedAt > 0 {
+			return Transaction{}, errSchonErneuert
+		}
 		if err := a.state.applyLivenessRenewalDeltaLocked(ctx, wallet, req.IssuedAt, now); err != nil {
 			return Transaction{}, err
 		}
 		return tx, nil
 	}); err != nil {
+		if errors.Is(err, errSchonErneuert) {
+			json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "wallet": wallet, "schon_erneuert": true})
+			return
+		}
 		jsonError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "wallet": wallet, "renewed_at": req.IssuedAt})
 }
+
+// errSchonErneuert: das Konto ist schon erneuert -- nichts in den Ausgang.
+var errSchonErneuert = errors.New("schon erneuert")
 
 // erneuerungFruehestens: ab wann eine Erneuerung angenommen wird -- Tag 7
 // nach der Registrierung. Die Registrierzeit steckt in GrantStagedUntil
@@ -518,8 +532,7 @@ func (cs *ChainState) coordinatorMenschStand(mensch string) (istMensch, staffelO
 // koste eine Farm nichts. Das reicht NICHT gegen eine Farm, die ein altes
 // oder fertig gestaffeltes Konto besitzt. Deshalb darf die Staffel erst
 // aktiv werden, wenn die Zulassung (und der Entzug) der Coordinatoren im
-// Konsens steht -- erzwungen in TestStaffel_StichtagErstMitZulassungUndStreng
-// (coordinatorZulassungImKonsens).
+// Konsens steht -- erzwungen in TestStaffel_SchlaeftBisZulassungUndStreng.
 func bescheinigungPruefen(wallet string, issuedAt int64, b *Lebendigkeitsbescheinigung, stand CoordinatorMenschStand) error {
 	if b == nil {
 		return fmt.Errorf("keine Bescheinigung")

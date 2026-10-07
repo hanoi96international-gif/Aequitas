@@ -143,7 +143,7 @@ Dinge ohne Konsenswirkung (Erreichbarkeit, Messwerte als Hinweis).
 4. **Coordinator-Register** (`coordinator_keys`): seit 06.10.2026 trägt die
    Erneuerungs-Bescheinigung ihre Bindung selbst, und jeder Knoten prüft sie
    gegen den Kettenzustand (`bescheinigungPruefen`). Offen ist die Zulassung
-   und der Entzug von Coordinatoren im Konsens (`coordinatorZulassungImKonsens`).
+   und der Entzug von Coordinatoren im Konsens.
    Vorher bleibt die Staffel beim Platzhalter, erzwungen durch einen Test.
 
 ## Entscheidungen, die bei euch liegen

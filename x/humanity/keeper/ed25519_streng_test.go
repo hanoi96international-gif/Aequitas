@@ -259,18 +259,20 @@ func TestZumLeiter_ErneuerungZumZustaendigen(t *testing.T) {
 	}
 }
 
-// Die Staffel wird erst aktiv, wenn Coordinatoren im Konsens zugelassen
-// werden (HIGH-1) und der strenge Modus spaetestens mit ihr beginnt (LOW-4):
-// sonst schaltete eine erfundene Erneuerung im Beobachtungsmodus frei, und
-// jeder registrierte Mensch -- auch der einer Farm -- bescheinigte.
-func TestStaffel_StichtagErstMitZulassungUndStreng(t *testing.T) {
-	if stagedGrantActivationUnix == stagedGrantPlatzhalterUnix {
-		return // Platzhalter: die Staffel schlaeft
-	}
-	if !coordinatorZulassungImKonsens {
-		t.Fatal("stagedGrantActivationUnix gesetzt, aber Coordinatoren werden nicht im Konsens zugelassen (coordinatorZulassungImKonsens)")
-	}
-	if nachrechnenStrengAbUnix > stagedGrantActivationUnix {
-		t.Fatalf("Staffel ab %d, strenger Modus erst ab %d -- bis dahin wuerden erfundene Erneuerungen nur gezaehlt", stagedGrantActivationUnix, nachrechnenStrengAbUnix)
+// Die Staffel schlaeft, bis Coordinatoren im Konsens zugelassen werden
+// (HIGH-1), der strenge Modus spaetestens mit ihr beginnt (LOW-4) und
+// Bindung und Bescheinigung die Chain-ID tragen (LOW-3). Sonst schaltete eine
+// erfundene Erneuerung im Beobachtungsmodus frei, und jeder registrierte
+// Mensch -- auch der einer Farm -- bescheinigte.
+//
+// Gegen das Literal, nicht gegen eine Konstante (zweiter
+// Sicherheitsdurchgang #300): wer den Stichtag setzt, muss diesen Test
+// aendern -- und ersetzt ihn dann durch Verhaltenstests fuer die drei
+// Bedingungen, statt einen Schalter umzulegen.
+func TestStaffel_SchlaeftBisZulassungUndStreng(t *testing.T) {
+	if stagedGrantActivationUnix != 4102444800 {
+		t.Fatalf("stagedGrantActivationUnix = %d: vor der Staffel muessen stehen (1) Zulassung und Entzug der "+
+			"Coordinatoren im Konsens, (2) nachrechnenStrengAbUnix <= Staffel-Stichtag (heute %d), "+
+			"(3) Chain-ID in Bindung und Bescheinigung -- jeweils mit Verhaltenstest", stagedGrantActivationUnix, nachrechnenStrengAbUnix)
 	}
 }

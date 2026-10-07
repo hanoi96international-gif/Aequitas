@@ -564,9 +564,11 @@ func TestCoordinatorEintragung_SchreibweiseAngeglichen_RealDB(t *testing.T) {
 }
 
 // HIGH-2: das Register wird einmal angelegt, nicht je Anfrage. Haelt eine
-// lange Lesung die Tabelle, wartet keine Anfrage auf ein ALTER TABLE; und
-// faellt das Anlegen auf eine Sperre, bricht es nach der Sperrfrist ab und
-// gelingt beim naechsten Aufruf.
+// lange Lesung die Tabelle, wartet keine Anfrage auf ein ALTER TABLE -- sind
+// die Spalten da, gibt es gar keins (information_schema). Fehlen sie und
+// haengt das Anlegen an einer Sperre, wartet hoechstens EIN Aufrufer die
+// Sperrfrist ab (die anderen gehen gleich weiter), nach dem Fehlschlag gibt
+// es 10 s keinen neuen Versuch, und danach gelingt er.
 func TestCoordinatorRegister_DDLEinmalUndBegrenzt_RealDB(t *testing.T) {
 	f := neuerErneuerungsFall(t, 10)
 	pubHex := hex.EncodeToString(f.pub)
@@ -591,21 +593,165 @@ func TestCoordinatorRegister_DDLEinmalUndBegrenzt_RealDB(t *testing.T) {
 	case <-time.After(1500 * time.Millisecond):
 		t.Fatal("Anfrage wartet auf die Tabelle -- DDL im Anfragepfad")
 	}
-	// Riegel zurueck: das Anlegen faellt auf die Sperre, gibt nach der
-	// Sperrfrist auf und laesst den Riegel stehen.
+	// Riegel zurueck, Spalten da: kein ALTER TABLE, auch unter der Sperre
+	// sofort fertig.
 	f.cs.coordinatorRegisterDa.Store(false)
+	f.cs.coordinatorRegisterVersuch.Store(0)
 	start := time.Now()
 	f.cs.EnsureCoordinatorRegistry()
-	if d := time.Since(start); d > 4*time.Second {
-		t.Fatalf("Anlegen wartete %v -- keine Sperrfrist", d)
+	if d := time.Since(start); d > time.Second || !f.cs.coordinatorRegisterDa.Load() {
+		t.Fatalf("mit vorhandenen Spalten: %v, Riegel %v -- erwartet sofort und gesetzt", d, f.cs.coordinatorRegisterDa.Load())
+	}
+	sperre.Rollback()
+
+	// Spalte fehlt, die Tabelle ist gesperrt: vier Aufrufer gleichzeitig.
+	if _, err := f.cs.db.Exec(`ALTER TABLE coordinator_keys DROP COLUMN key_signature`); err != nil {
+		t.Fatal(err)
+	}
+	sperre2, err := f.cs.db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sperre2.Rollback()
+	if _, err := sperre2.Exec(`LOCK TABLE coordinator_keys IN ACCESS SHARE MODE`); err != nil {
+		t.Fatal(err)
+	}
+	f.cs.coordinatorRegisterDa.Store(false)
+	f.cs.coordinatorRegisterVersuch.Store(0)
+	dauer := make(chan time.Duration, 4)
+	for i := 0; i < 4; i++ {
+		go func() {
+			s := time.Now()
+			f.cs.EnsureCoordinatorRegistry()
+			dauer <- time.Since(s)
+		}()
+	}
+	lange := 0
+	for i := 0; i < 4; i++ {
+		d := <-dauer
+		if d > 4*time.Second {
+			t.Fatalf("ein Aufrufer wartete %v -- keine Sperrfrist", d)
+		}
+		if d > time.Second {
+			lange++
+		}
+	}
+	if lange > 1 {
+		t.Fatalf("%d Aufrufer warteten die Sperrfrist ab -- hoechstens einer darf", lange)
 	}
 	if f.cs.coordinatorRegisterDa.Load() {
 		t.Fatal("Riegel gesetzt, obwohl das Anlegen an der Sperre scheiterte")
 	}
-	sperre.Rollback()
+	// Binnen 10 s kein neuer Versuch -- auch nicht nach Freigabe der Sperre.
+	sperre2.Rollback()
+	f.cs.EnsureCoordinatorRegistry()
+	if f.cs.coordinatorRegisterDa.Load() {
+		t.Fatal("neuer Versuch binnen 10 s")
+	}
+	f.cs.coordinatorRegisterVersuch.Store(time.Now().Unix() - 11)
 	f.cs.EnsureCoordinatorRegistry()
 	if !f.cs.coordinatorRegisterDa.Load() {
-		t.Fatal("Riegel nach dem zweiten Versuch nicht gesetzt")
+		t.Fatal("Riegel nach dem naechsten Versuch nicht gesetzt")
+	}
+	var spalte int
+	f.cs.db.QueryRow(`SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'coordinator_keys' AND column_name = 'key_signature'`).Scan(&spalte)
+	if spalte != 1 {
+		t.Fatal("Spalte key_signature nicht wieder angelegt")
+	}
+}
+
+// Missbrauch (zweiter Sicherheitsdurchgang #300): ein vor dem 06.10. mit
+// einem Schluessel kleiner Ordnung eingetragener Coordinator oder
+// Personhood-Schluessel geht nicht mehr hinaus -- Proof-Server und
+// Vergleichsdienst lesen diese Listen und haetten die Universalunterschrift
+// angenommen.
+func TestGespeicherteSchluesselKleinerOrdnung_NichtAusgeliefert_RealDB(t *testing.T) {
+	f := neuerErneuerungsFall(t, 10)
+	if _, err := f.cs.db.Exec(`INSERT INTO coordinator_keys (public_key, human_wallet, human_signature, key_signature)
+		VALUES ($1, $2, 'x', $3)`, ed25519NeutralSchluessel, f.bindung.Mensch, ed25519NeutralUnterschr); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range f.cs.Coordinators() {
+		if c.PublicKey == ed25519NeutralSchluessel {
+			t.Fatal("Coordinator mit Schluessel kleiner Ordnung in der Liste")
+		}
+	}
+	if len(f.cs.Coordinators()) != 1 {
+		t.Fatalf("echter Coordinator fehlt in der Liste: %+v", f.cs.Coordinators())
+	}
+	if _, ok := f.cs.CoordinatorBindungLokal(ed25519NeutralSchluessel); ok {
+		t.Fatal("Bindung zu einem Schluessel kleiner Ordnung geliefert")
+	}
+	f.cs.InitValidatorKeysTable()
+	f.cs.db.Exec(`DELETE FROM validator_keys`)
+	_, signing := neuerSchluessel(t)
+	if _, err := f.cs.db.Exec(`INSERT INTO validator_keys (signing_address, human_wallet, personhood_key) VALUES ($1, $2, $3)`,
+		signing, f.bindung.Mensch, ed25519NeutralSchluessel); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range f.cs.GetValidatorKeyPairsForSync() {
+		if p.SigningAddress == signing && p.PersonhoodKey != "" {
+			t.Fatalf("Personhood-Schluessel kleiner Ordnung ausgeliefert: %+v", p)
+		}
+	}
+}
+
+// Wer selbst eine offene Staffel hat, traegt keinen Coordinator ein -- sonst
+// besetzte eine frische Kunstfigur einen Schluessel, den danach niemand mehr
+// eintragen kann, und jede Erneuerung dieses Coordinators scheiterte.
+func TestCoordinatorEintragung_OffeneStaffelAbgewiesen_RealDB(t *testing.T) {
+	f := neuerErneuerungsFall(t, 10)
+	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
+	pubHex := hex.EncodeToString(pub)
+	k, mensch := f.neuerMensch(true)
+	w := f.eintragen(map[string]string{"public_key": pubHex, "human_wallet": mensch,
+		"human_signature": personalSign(t, k, coordinatorFreigabeNachricht(pubHex)),
+		"key_signature":   hex.EncodeToString(ed25519.Sign(priv, []byte("Aequitas: coordinator key for human "+mensch)))})
+	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "open staged grant") {
+		t.Fatalf("Eintragung mit offener Staffel: %d %s", w.Code, w.Body.String())
+	}
+	if _, ok := f.cs.CoordinatorBindungLokal(pubHex); ok {
+		t.Fatal("Schluessel trotzdem eingetragen")
+	}
+}
+
+// Dieselbe Erneuerung zweimal geschickt: einmal im Ausgang, die zweite
+// Antwort sagt "schon erneuert" (zweiter Sicherheitsdurchgang #300).
+func TestErneuerung_ZweimalGeschicktEinmalImAusgang_RealDB(t *testing.T) {
+	f := neuerErneuerungsFall(t, 10)
+	a := &APIServer{state: f.cs}
+	issued := nowUnix()
+	body, _ := json.Marshal(map[string]interface{}{
+		"wallet": f.wallet, "issued_at": issued,
+		"public_key": hex.EncodeToString(f.pub), "signature": f.unterschreibe(f.priv, f.wallet, issued),
+	})
+	var antworten []string
+	for i := 0; i < 3; i++ {
+		w := httptest.NewRecorder()
+		a.handleLivenessRenewal(w, httptest.NewRequest(http.MethodPost, "/api/liveness-renewal", bytes.NewReader(body)))
+		if w.Code != http.StatusOK {
+			t.Fatalf("Anfrage %d: %d %s", i, w.Code, w.Body.String())
+		}
+		antworten = append(antworten, w.Body.String())
+	}
+	if !strings.Contains(antworten[1], "schon_erneuert") || !strings.Contains(antworten[2], "schon_erneuert") {
+		t.Fatalf("Wiederholung nicht als schon erneuert beantwortet: %v", antworten)
+	}
+	var n int
+	f.cs.db.QueryRow(`SELECT COUNT(*) FROM pending_txs WHERE included_at = 0 AND tx_json LIKE '%liveness_renewal%'`).Scan(&n)
+	if n != 1 {
+		t.Fatalf("%d Erneuerungen im Ausgang statt 1", n)
+	}
+}
+
+// Eine Wallet, eine Schreibweise: dieselbe Erneuerung mit gross geschriebener
+// Adresse wird gemeldet (sonst laege sie unter mehreren Hashes in Bloecken).
+func TestErneuerung_WalletNichtKanonisch_RealDB(t *testing.T) {
+	f := neuerErneuerungsFall(t, 10)
+	tx := f.gueltig(f.jetzt - 60)
+	tx.Wallet = "0x" + strings.ToUpper(f.wallet[2:])
+	if got := f.pruefe(tx, f.jetzt); got["erneuerung_ohne_bescheinigung"] != 1 {
+		t.Fatalf("nicht kanonische Wallet nicht erkannt: %v", got)
 	}
 }
 

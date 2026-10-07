@@ -41,7 +41,7 @@ import (
 // Vor stagedGrantActivationUnix ist liveness_renewal Leerlauf und wird nicht
 // geprueft. Abgelehnt wird erst im strengen Modus (nachrechnenStreng), bis
 // dahin gezaehlt -- deshalb darf die Staffel nicht vor dem strengen Modus
-// aktiv werden (TestStaffel_StichtagErstMitZulassungUndStreng). Das
+// aktiv werden (TestStaffel_SchlaeftBisZulassungUndStreng). Das
 // knotenlokale Coordinator-Register (coordinator_keys) entscheidet nichts
 // mehr: die Bescheinigung traegt ihre Bindung (06.10.2026).
 
@@ -56,6 +56,13 @@ const (
 func (cs *ChainState) nachrechnenErneuerungLocked(tx *Transaction, wallet string, blockZeit int64) error {
 	if !stagedGrantAktiv(blockZeit) {
 		return nil
+	}
+	// Eine Schreibweise je Wallet: sonst laege dieselbe Erneuerung mit
+	// anders geschriebener Adresse unter mehreren Transaktions-Hashes in den
+	// Bloecken (zweiter Sicherheitsdurchgang #300).
+	if !kanonischeAdresse(tx.Wallet) {
+		return nachrechnenAbweichung("erneuerung_ohne_bescheinigung", blockZeit,
+			"%q: Wallet nicht in kanonischer Schreibweise", tx.Wallet)
 	}
 	wallet = strings.ToLower(strings.TrimSpace(wallet))
 	// Ohne Coordinator-Register: die Bescheinigung traegt ihre Bindung, und
