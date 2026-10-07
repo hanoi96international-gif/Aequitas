@@ -223,13 +223,22 @@ func TestStrafkonto_UebernahmeUndWechsel_RealDB(t *testing.T) {
 }
 
 // Wer nur den eigenen Schluessel wechselt, bleibt fuer den alten haftbar --
-// er kennt ihn weiter, und in der Frist darf der alte noch erzeugen.
+// er kennt ihn weiter, und in der Frist darf der alte noch erzeugen. Ebenso,
+// wer denselben Schluessel nach der Tat neu bindet: nur ein ANDERER
+// Betreiber befreit.
 func TestStrafkonto_EigenerWechselBefreitNicht_RealDB(t *testing.T) {
-	k, v := strafFall(t)
-	verlaufEintrag(t, k.cs, v, distTestAddr(1706), nowUnix()-7200)
-	zweitesVergehen(t, k, nowUnix()-3600)
-	if got := standVon(t, k.cs, v); got != strafe {
-		t.Fatalf("nach eigenem Wechsel nicht belastet: %.2f", got)
+	for _, fall := range []string{"anderer Schluessel vor der Tat", "derselbe Schluessel nach der Tat"} {
+		k, v := strafFall(t)
+		switch fall {
+		case "anderer Schluessel vor der Tat":
+			verlaufEintrag(t, k.cs, v, distTestAddr(1706), nowUnix()-7200)
+		case "derselbe Schluessel nach der Tat":
+			verlaufEintrag(t, k.cs, v, k.signer, nowUnix()-1800)
+		}
+		zweitesVergehen(t, k, nowUnix()-3600)
+		if got := standVon(t, k.cs, v); got != strafe {
+			t.Fatalf("%s: nicht belastet: %.2f", fall, got)
+		}
 	}
 }
 
