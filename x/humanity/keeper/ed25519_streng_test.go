@@ -41,7 +41,7 @@ const (
 func TestEd25519Streng_KleineOrdnungIstUniversalunterschrift(t *testing.T) {
 	pub, _ := hex.DecodeString(ed25519NeutralSchluessel)
 	sig, _ := hex.DecodeString(ed25519NeutralUnterschr)
-	for _, msg := range []string{"Aequitas: coordinator key for human 0xabc", "aequitas-liveness-renewal-v1|0xdef|1"} {
+	for _, msg := range []string{coordinatorBesitzNachricht("0xabc"), erneuerungsNachricht("0xdef", 1)} {
 		if !ed25519.Verify(pub, []byte(msg), sig) {
 			t.Logf("crypto/ed25519 lehnt die Universalunterschrift inzwischen selbst ab (%q)", msg)
 		}
@@ -132,11 +132,11 @@ func TestBescheinigungPruefen_Regeln(t *testing.T) {
 	wallet := "0x" + strings.Repeat("12", 20)
 	issued := int64(1_800_000_000)
 	signiere := func(w string) string {
-		return hex.EncodeToString(ed25519.Sign(priv, []byte(fmt.Sprintf("%s|%s|%d", livenessRenewalDomain, w, issued))))
+		return hex.EncodeToString(ed25519.Sign(priv, []byte(erneuerungsNachricht(w, issued))))
 	}
 	bindung := CoordinatorBindung{Mensch: mensch,
 		MenschSig:     personalSign(t, mk, coordinatorFreigabeNachricht(pubHex)),
-		SchluesselSig: hex.EncodeToString(ed25519.Sign(priv, []byte("Aequitas: coordinator key for human "+mensch)))}
+		SchluesselSig: hex.EncodeToString(ed25519.Sign(priv, []byte(coordinatorBesitzNachricht(mensch))))}
 	gut := func(m string) (bool, bool) { return m == mensch, false }
 	tx := erneuerungsTransaktion(wallet, issued, pubHex, signiere(wallet), bindung)
 	if err := bescheinigungPruefen(wallet, issued, tx.Bescheinigung, gut); err != nil {

@@ -243,11 +243,13 @@ den verlinkten Dokumenten.
         - [ ] Strenger Modus spätestens mit der Staffel
               (`nachrechnenStrengAbUnix` ≤ `stagedGrantActivationUnix`),
               sonst würde eine erfundene Erneuerung nur gezählt
-        - [ ] Die Nachrichten der Bindung und der Bescheinigung um die
-              Chain-ID erweitern (v2, Coordinator und Kette zugleich) --
-              heute gälte eine Lebendigkeitsprüfung derselben Wallet in jedem
-              Netz mit derselben Domäne, und ein früher für eine fremde
-              Wallet ausgestellter Besitznachweis hat kein Datum
+        - [x] Die Nachrichten der Bindung und der Bescheinigung tragen die
+              Chain-ID (07.10., v2, `coordinator_nachrichten.go`): im
+              Konsens nur v2; die Eintragung nimmt im Übergang auch die
+              alten Sätze. Bestehende Coordinatoren tragen sich vor der
+              Staffel einmal mit v2 neu ein. Der Besitznachweis hat
+              weiter kein Datum (ein Schlüssel wandert nicht zu einem
+              anderen Menschen)
       - [ ] Stichtag `nachrechnenStrengAbUnix` setzen, sobald
             `/api/wirtschaft/regeln` über mehrere Runden 0 Abweichungen zeigt.
             C1 spielt seine eigenen Blöcke nicht nach, und **C2 gibt es seit
