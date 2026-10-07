@@ -358,13 +358,15 @@ func TestErzeugerAusVerlauf_RealDB(t *testing.T) {
 		}
 	}
 
-	// Geschlossen: nur die Schluessel der Liste werden gelesen.
-	fest := []string{s(0), s(4)}
+	// Geschlossen: nur die Schluessel der Liste. s5 wird mitgelesen (sein
+	// Betreiber m1 haelt s1, das auf der Liste steht), bekommt aber kein
+	// Fenster.
+	fest := []string{s(0), s(1), s(4)}
 	f.cs.erzeugerFest.Store(&fest)
 	t.Cleanup(func() { f.cs.erzeugerFest.Store(nil) })
 	f.cs.erzeugerRegisterAuffrischen()
 	st := f.cs.erzeugerRegister.Load()
-	if st == nil || st.fehler != nil || len(st.fenster) != 1 || len(st.fenster[s(0)]) != 1 {
+	if st == nil || st.fehler != nil || len(st.fenster) != 2 || len(st.fenster[s(0)]) != 1 || len(st.fenster[s(1)]) != 1 || st.fenster[s(5)] != nil {
 		t.Fatalf("geschlossen: %+v", st)
 	}
 
