@@ -716,7 +716,12 @@ func (cs *ChainState) ensureWALFlushWorkerStarted() {
 		// (-race meldete genau das, ein Arbeiter des vorigen Tests las
 		// walFlushInterval, waehrend der naechste ihn schrieb).
 		takt, viel := walFlushInterval, int64(walFlushMaxBatch)/2
-		SafeGoroutine("walFlushWorker", func() { cs.runWALFlushWorker(takt, viel) })
+		fertig := make(chan struct{})
+		cs.walFlushWorkerDone = fertig
+		SafeGoroutine("walFlushWorker", func() {
+			defer close(fertig)
+			cs.runWALFlushWorker(takt, viel)
+		})
 	})
 }
 
@@ -861,12 +866,24 @@ func (cs *ChainState) runWALFlushWorker(takt time.Duration, viel int64) {
 // this function could return while one of those goroutines is still
 // writing to the SHARED test Postgres DB, reopening exactly the cross-test
 // corruption this function exists to prevent (see its own comment above).
+//
+// FIX (07.10.2026): erst auf das Ende des Arbeiters warten, dann auf
+// walFlushWG. Nach dem Schliessen des Stop-Kanals kann der Arbeiter noch im
+// Takt-Zweig stecken und ueber walFlushStarten walFlushWG.Add rufen --
+// gleichzeitig mit Wait bei Zaehler null. -race meldete das, sync brach
+// mit "WaitGroup is reused before previous Wait has returned" ab, und ein Flush
+// konnte nach der Rueckkehr noch starten. Ist der Arbeiter beendet, ruft
+// niemand mehr Add (walFlushStarten hat keinen anderen Aufrufer).
+// TestStopWALFlushWorker_KeinAddNachWait zeigt den Fall.
 func (cs *ChainState) stopWALFlushWorkerForTest() {
 	cs.walFlushStopOnce.Do(func() {
 		if cs.walFlushStopCh != nil {
 			close(cs.walFlushStopCh)
 		}
 	})
+	if cs.walFlushWorkerDone != nil {
+		<-cs.walFlushWorkerDone
+	}
 	cs.walFlushWG.Wait()
 }
 

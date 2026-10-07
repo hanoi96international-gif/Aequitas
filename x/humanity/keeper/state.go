@@ -561,11 +561,12 @@ type ChainState struct {
 	// Stufe 2a (wal_flush_zusammenfassen.go), unter walFlushMu: in wie
 	// vielen wartenden Eintraegen ein Konto steht, und die kleinste Seq je
 	// laufendem Flush.
-	walInSchlange    map[string]int
-	walUnterwegsMin  map[uint64]int
-	walFlushOnce     sync.Once
-	walFlushStopCh   chan struct{} // see stopWALFlushWorkerForTest's own comment
-	walFlushStopOnce sync.Once     // makes stopWALFlushWorkerForTest safe to call more than once
+	walInSchlange      map[string]int
+	walUnterwegsMin    map[uint64]int
+	walFlushOnce       sync.Once
+	walFlushStopCh     chan struct{} // see stopWALFlushWorkerForTest's own comment
+	walFlushStopOnce   sync.Once     // makes stopWALFlushWorkerForTest safe to call more than once
+	walFlushWorkerDone chan struct{} // schliesst, wenn runWALFlushWorker endet; siehe stopWALFlushWorkerForTest
 	// walFlushSem/walFlushWG back concurrent flush dispatch — see
 	// runWALFlushWorker's own FIX comment (transfer_wal.go, 2026-07-24) for
 	// why a single sequential flush-per-tick became the binding throughput
