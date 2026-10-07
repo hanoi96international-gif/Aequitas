@@ -260,44 +260,50 @@ func istMenschIn(q sqlExecutor, adresse string) (bool, error) {
 //
 // Gelesen werden die Zeilen des Schluessels selbst (nicht die Zeitraeume):
 // so zaehlt auch eine Bindung, deren Zeitraum leer ist, weil ihr Betreiber
-// im selben Augenblick einen anderen Schluessel gebunden hat.
+// im selben Augenblick einen anderen Schluessel gebunden hat. Zwei Abfragen
+// mit fester Antwortgroesse (hoechstens zwei Zeilen, ein Wahrheitswert) --
+// keine Grenze, die der Halter mit vielen Bindungen ueberschreiten koennte,
+// um der Strafe zu entgehen.
 //
 // Bleibt von der Reihenfolge abhaengig: eine Uebergabe in einem
 // Geschwisterblock der Strafe (wie "Mensch im Geschwisterblock" bei den
 // Bindungen) -- ein ehrlicher Annehmender legt beides in eine Linie.
 func strafKontoAusRegister(q sqlExecutor, signer string, tat int64) (string, error) {
 	signer = strings.ToLower(signer)
-	zeilen, err := verlaufLesen(q, []string{signer})
+	rows, err := q.Query(`SELECT operator_wallet FROM validator_verlauf
+		WHERE signing_address = $1 AND bindung_ts = (
+			SELECT max(bindung_ts) FROM validator_verlauf WHERE signing_address = $1 AND bindung_ts <= $2)
+		ORDER BY operator_wallet LIMIT 2`, signer, tat)
 	if err != nil {
 		return "", fmt.Errorf("Strafkonto aus dem Verlauf: %w", err)
 	}
-	var letzte int64
-	halter := map[string]bool{}
-	for _, z := range zeilen {
-		if z.signing != signer || z.zeit > tat {
-			continue
+	var halter []string
+	for rows.Next() {
+		var b string
+		if err := rows.Scan(&b); err != nil {
+			rows.Close()
+			return "", fmt.Errorf("Strafkonto aus dem Verlauf: %w", err)
 		}
-		if len(halter) == 0 || z.zeit > letzte {
-			letzte, halter = z.zeit, map[string]bool{}
-		}
-		if z.zeit == letzte {
-			halter[z.betreiber] = true
-		}
+		halter = append(halter, strings.ToLower(b))
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return "", fmt.Errorf("Strafkonto aus dem Verlauf: %w", err)
 	}
 	if len(halter) != 1 {
 		fmt.Printf("[SLASHING] ⚠ kein eindeutiger Halter fuer %s zur Tat (%d) -- keine Geldstrafe\n", signer, tat)
 		return "", nil
 	}
-	var wer string
-	for b := range halter {
-		wer = b
+	wer := halter[0]
+	var spaeter bool
+	if err := q.QueryRow(`SELECT EXISTS (SELECT 1 FROM validator_verlauf
+		WHERE signing_address = $1 AND operator_wallet <> $2 AND bindung_ts > $3)`, signer, wer, tat).Scan(&spaeter); err != nil {
+		return "", fmt.Errorf("Strafkonto aus dem Verlauf: %w", err)
 	}
-	for _, z := range zeilen {
-		if z.signing == signer && z.betreiber != wer && z.zeit > tat {
-			fmt.Printf("[SLASHING] ⚠ %s wurde nach der Tat von %s gebunden -- keine Geldstrafe fuer %s\n",
-				signer, kurzAdresse(z.betreiber), kurzAdresse(wer))
-			return "", nil
-		}
+	if spaeter {
+		fmt.Printf("[SLASHING] ⚠ %s wurde nach der Tat von einem anderen Betreiber gebunden -- keine Geldstrafe fuer %s\n",
+			signer, kurzAdresse(wer))
+		return "", nil
 	}
 	mensch, err := istMenschIn(q, wer)
 	if err != nil {

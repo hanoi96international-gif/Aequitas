@@ -258,7 +258,7 @@ func (cs *ChainState) InitValidatorRegisterTable() error {
 	)`); err != nil {
 		return fmt.Errorf("validator_verlauf anlegen: %w", err)
 	}
-	if _, err := cs.db.Exec(`CREATE INDEX IF NOT EXISTS validator_verlauf_signing ON validator_verlauf (signing_address)`); err != nil {
+	if _, err := cs.db.Exec(`CREATE INDEX IF NOT EXISTS validator_verlauf_signing_ts ON validator_verlauf (signing_address, bindung_ts)`); err != nil {
 		return fmt.Errorf("validator_verlauf Index: %w", err)
 	}
 	// Bestehende Registereintraege gehoeren in den Verlauf (Knoten, die das
