@@ -26,7 +26,8 @@ import (
 //
 // ZWEI STICHTAGE, BEIDE PLATZHALTER
 //
-//   - registerLeserAb: Strafkonto (slashing.go, strafKonto), Leitung
+//   - registerLeserAb: Strafkonto (strafe_abrechnung.go: spaeter und fuer
+//     alle gleich abgerechnet, slash_abrechnung), Leitung
 //     (validatorMenschVon) und -- mit geschlossener Liste -- der Abgleich
 //     unter Peers (syncValidatorsFromPeer nimmt nichts mehr auf).
 //   - erzeugerSchnittAb: wer Bloecke erzeugen darf. Mit AUTHORIZED_VALIDATORS
@@ -46,7 +47,8 @@ import (
 //
 // Das Register haelt je Betreiber nur die LETZTE Bindung. Beide Leser
 // brauchen aber, was ZU EINER ZEIT galt:
-//   - das Strafkonto, wer den Schluessel zur Tat hielt -- mit dem Register
+//   - das Strafkonto, wer den Schluessel zur Tat hielt (oder kurz danach
+//     als anderer Betreiber band, strafe_abrechnung.go) -- mit dem Register
 //     allein zahlte nach "V bindet K, B uebernimmt K, B zieht weiter" V fuer
 //     B's Tat;
 //   - die Erzeugerpruefung, ob ein Schluessel zur Zeit des BLOCKS erzeugen
@@ -246,84 +248,6 @@ func istMenschIn(q sqlExecutor, adresse string) (bool, error) {
 		return false, err
 	}
 	return mensch, nil
-}
-
-// ------------------------------------------------------------ Strafkonto
-
-// strafKontoAusRegister: das Strafkonto ab registerLeserAb.
-//
-//   - Es zahlt, wer den Schluessel zuletzt VOR der Tat (DetectedAt) gebunden
-//     hat -- auch wenn er danach selbst einen neuen Schluessel gebunden hat:
-//     den alten kennt er weiter, und in der Frist darf der alte noch
-//     erzeugen. Nur wenn das ein registrierter Mensch ist.
-//   - Hat NACH der Tat ein ANDERER Betreiber den Schluessel gebunden, zahlt
-//     keiner: der spaetere Halter besitzt den Schluessel (er hat ihm
-//     zugestimmt) und haette den Beweis mit beliebigem Zeitpunkt selbst
-//     unterschreiben und so dem frueheren anhaengen koennen. Sperre und
-//     Zaehler bleiben -- sie haengen am Schluessel. Wer seinen Schluessel
-//     abgibt, entgeht damit der Geldstrafe; wer ihn nur wechselt (eigene
-//     neue Bindung), nicht.
-//   - Kein Halter, oder zwei Betreiber mit demselben letzten Zeitpunkt
-//     (umstritten): keine Geldstrafe.
-//   - Ein Lesefehler ist ein Fehler -- beim Nachspielen weist er den Block
-//     ab, er wird nie zu "keine Strafe".
-//
-// Gelesen werden die Zeilen des Schluessels selbst (nicht die Zeitraeume):
-// so zaehlt auch eine Bindung, deren Zeitraum leer ist, weil ihr Betreiber
-// im selben Augenblick einen anderen Schluessel gebunden hat. Eine Abfrage
-// mit fester Antwortgroesse (hoechstens zwei Zeilen) -- keine Grenze, die
-// der Halter mit vielen Bindungen ueberschreiten koennte, um der Strafe zu
-// entgehen.
-//
-// Bleibt von der Reihenfolge abhaengig: eine Uebergabe in einem
-// Geschwisterblock der Strafe (wie "Mensch im Geschwisterblock" bei den
-// Bindungen) -- ein ehrlicher Annehmender legt beides in eine Linie.
-func strafKontoAusRegister(q sqlExecutor, signer string, tat int64) (string, error) {
-	signer = strings.ToLower(signer)
-	// Je Halter der letzten Bindung vor der Tat: hat danach ein anderer
-	// Betreiber den Schluessel gebunden?
-	rows, err := q.Query(`SELECT v.operator_wallet, EXISTS (SELECT 1 FROM validator_verlauf s
-			WHERE s.signing_address = $1 AND s.operator_wallet <> v.operator_wallet AND s.bindung_ts > $2)
-		FROM validator_verlauf v
-		WHERE v.signing_address = $1 AND v.bindung_ts = (
-			SELECT max(bindung_ts) FROM validator_verlauf WHERE signing_address = $1 AND bindung_ts <= $2)
-		ORDER BY v.operator_wallet LIMIT 2`, signer, tat)
-	if err != nil {
-		return "", fmt.Errorf("Strafkonto aus dem Verlauf: %w", err)
-	}
-	var halter []string
-	var spaeter bool
-	for rows.Next() {
-		var b string
-		if err := rows.Scan(&b, &spaeter); err != nil {
-			rows.Close()
-			return "", fmt.Errorf("Strafkonto aus dem Verlauf: %w", err)
-		}
-		halter = append(halter, strings.ToLower(b))
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return "", fmt.Errorf("Strafkonto aus dem Verlauf: %w", err)
-	}
-	if len(halter) != 1 {
-		fmt.Printf("[SLASHING] ⚠ kein eindeutiger Halter fuer %s zur Tat (%d) -- keine Geldstrafe\n", signer, tat)
-		return "", nil
-	}
-	wer := halter[0]
-	if spaeter {
-		fmt.Printf("[SLASHING] ⚠ %s wurde nach der Tat von einem anderen Betreiber gebunden -- keine Geldstrafe fuer %s\n",
-			signer, kurzAdresse(wer))
-		return "", nil
-	}
-	mensch, err := istMenschIn(q, wer)
-	if err != nil {
-		return "", fmt.Errorf("Strafkonto aus dem Verlauf: %w", err)
-	}
-	if !mensch {
-		fmt.Printf("[SLASHING] ⚠ Halter %s von %s ist kein registrierter Mensch -- keine Geldstrafe\n", kurzAdresse(wer), signer)
-		return "", nil
-	}
-	return wer, nil
 }
 
 // ------------------------------------------------------------ Erzeuger

@@ -1,6 +1,7 @@
 package keeper
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -62,18 +63,6 @@ func standVon(t *testing.T, cs *ChainState, adresse string) float64 {
 	return db
 }
 
-// zweitesVergehen: das zweite Vergehen zur Zeit tat, im Block nachgespielt,
-// mit registerLeserAb = 1.
-func zweitesVergehen(t *testing.T, k *strafKnoten, tat int64) {
-	t.Helper()
-	registerLeserOverride.Store(1)
-	ok := k.block(k.doppelsignatur(tat, "cc", "dd"))
-	registerLeserOverride.Store(0)
-	if !ok {
-		t.Fatal("zweites Vergehen abgelehnt")
-	}
-}
-
 const strafe = 100 - equivocationSecondOffensePenaltyAEQ
 
 // Vor dem Stichtag zahlt, wen registered_nodes nennt -- byte-gleich wie
@@ -91,230 +80,389 @@ func TestStrafkonto_VorDemStichtagWieBisher_RealDB(t *testing.T) {
 	}
 }
 
-// Missbrauch: ab dem Stichtag zahlt der Betreiber aus dem Verlauf -- ein
-// Eintrag in registered_nodes (jeder Knoten fuehrt ihn selbst) lenkt die
-// Strafe nicht mehr um. Beim Nachspielen wie bei der Erkennung.
-func TestStrafkonto_AbStichtagAusDemVerlauf_RealDB(t *testing.T) {
-	for _, weg := range []string{"nachspielen", "erkennen"} {
-		k, reg := strafFall(t)
-		registerLeserOverride.Store(1)
-		zweites := k.doppelsignatur(nowUnix()-3600, "cc", "dd")
-		switch weg {
-		case "nachspielen":
-			if !k.block(zweites) {
-				t.Fatal("zweites Vergehen abgelehnt")
-			}
-		case "erkennen":
-			if _, _, err := k.cs.DoppelsignaturErkannt(k.signer, zweites.BlockAHash, zweites.BlockBHash, zweites.DetectedAt, zweites.Doppelbeweis); err != nil {
-				t.Fatal(err)
-			}
-		}
-		registerLeserOverride.Store(0)
-		if got := standVon(t, k.cs, reg); got != strafe {
-			t.Fatalf("%s: Register-Betreiber %.2f", weg, got)
-		}
-		if got := standVon(t, k.cs, k.op); got != 100 {
-			t.Fatalf("%s: registered_nodes-Betreiber belastet: %.2f", weg, got)
-		}
+// ------------------------------------------------------------ ab registerLeserAb:
+// spaeter und fuer alle gleich abgerechnet (strafe_abrechnung.go)
+
+func (k *strafKnoten) blockZu(zeit int64, txs ...Transaction) bool {
+	k.t.Helper()
+	k.n++
+	b := &Block{Height: int64(k.n), Hash: fmt.Sprintf("strafe-%s-%d", k.t.Name(), k.n), Timestamp: zeit, Transactions: txs}
+	return k.dag.replayTransactions(b, true)
+}
+
+// mitStichtag: registerLeserAb fuer die Dauer von f.
+func mitStichtag(ab int64, f func()) {
+	registerLeserOverride.Store(ab)
+	defer registerLeserOverride.Store(0)
+	f()
+}
+
+func abrechnung(beweis Transaction) Transaction {
+	return Transaction{Type: "slash_abrechnung", Wallet: beweis.Wallet, BlockAHash: beweis.BlockAHash,
+		BlockBHash: beweis.BlockBHash, DetectedAt: beweis.DetectedAt}
+}
+
+// zweitesVergehen: das zweite Vergehen zur Zeit tat, eine Minute danach im
+// Block nachgespielt, mit registerLeserAb = 1. Bucht keine Geldstrafe.
+func zweitesVergehen(t *testing.T, k *strafKnoten, tat int64) Transaction {
+	t.Helper()
+	tx := k.doppelsignatur(tat, "cc", "dd")
+	var ok bool
+	mitStichtag(1, func() { ok = k.blockZu(tat+60, tx) })
+	if !ok {
+		t.Fatal("zweites Vergehen abgelehnt")
+	}
+	return tx
+}
+
+// abrechnen: slash_abrechnung im Block zur Zeit zeit, mit registerLeserAb = 1.
+func abrechnen(k *strafKnoten, beweis Transaction, zeit int64) (ok bool) {
+	k.t.Helper()
+	mitStichtag(1, func() { ok = k.blockZu(zeit, abrechnung(beweis)) })
+	return ok
+}
+
+func (k *strafKnoten) strafeStand(beweis Transaction) (offen, erledigt bool) {
+	k.t.Helper()
+	a, b := beweis.BlockAHash, beweis.BlockBHash
+	if a > b {
+		a, b = b, a
+	}
+	if err := k.cs.db.QueryRow(`SELECT strafe_offen, slash_applied FROM equivocation_evidence WHERE block_a_hash = $1 AND block_b_hash = $2`,
+		a, b).Scan(&offen, &erledigt); err != nil {
+		k.t.Fatal(err)
+	}
+	return offen, erledigt
+}
+
+// Das zweite Vergehen bucht ab dem Stichtag nichts; slash_abrechnung bucht
+// die Strafe fruehestens zur Faelligkeit, beim Halter aus dem Verlauf --
+// registered_nodes lenkt sie nicht um. Eine zweite Abrechnung bucht nichts.
+func TestStrafe_AbStichtagSpaeterAbgerechnet_RealDB(t *testing.T) {
+	k, reg := strafFall(t)
+	zweites := zweitesVergehen(t, k, nowUnix()-3600)
+	if got := standVon(t, k.cs, reg); got != 100 {
+		t.Fatalf("beim Vermerk belastet: %.2f", got)
+	}
+	if offen, erledigt := k.strafeStand(zweites); !offen || erledigt {
+		t.Fatalf("offen=%v erledigt=%v nach dem zweiten Vergehen", offen, erledigt)
+	}
+	if gesperrt, _ := k.cs.IsValidatorSuspended(k.signer, 0); !gesperrt || k.vergehen() != 2 {
+		t.Fatalf("Sperre %v, %d Vergehen", gesperrt, k.vergehen())
+	}
+	faellig := strafeFaelligAb(zweites.DetectedAt)
+	if abrechnen(k, zweites, faellig-1) {
+		t.Fatal("Abrechnung vor der Faelligkeit angenommen")
+	}
+	if got := standVon(t, k.cs, reg); got != 100 {
+		t.Fatalf("nach der zu fruehen Abrechnung belastet: %.2f", got)
+	}
+	if !abrechnen(k, zweites, faellig) {
+		t.Fatal("faellige Abrechnung abgelehnt")
+	}
+	if got := standVon(t, k.cs, reg); got != strafe {
+		t.Fatalf("Halter aus dem Verlauf %.2f", got)
+	}
+	if got := standVon(t, k.cs, k.op); got != 100 {
+		t.Fatalf("registered_nodes-Betreiber belastet: %.2f", got)
+	}
+	if !abrechnen(k, zweites, faellig+60) {
+		t.Fatal("doppelte Abrechnung weist den Block ab")
+	}
+	if got := standVon(t, k.cs, reg); got != strafe {
+		t.Fatalf("zweimal abgerechnet: %.2f", got)
 	}
 }
 
-// Missbrauch (MEDIUM 1, #303): DetectedAt waehlt, wer den Schluessel haelt.
-// Datiert er den Beweis vor den Stichtag, bleibt es trotzdem beim Verlauf --
-// geschaltet wird an der Blockzeit (beim Erkennen an der Uhr), wenn sie
-// spaeter liegt.
-func TestStrafkonto_RueckdatierterBeweisUmgehtDenStichtagNicht_RealDB(t *testing.T) {
-	for _, weg := range []string{"nachspielen", "erkennen"} {
-		k, reg := strafFall(t)
-		registerLeserOverride.Store(nowUnix() - 1800)
-		zweites := k.doppelsignatur(nowUnix()-3600, "cc", "dd") // vor dem Stichtag
-		switch weg {
-		case "nachspielen":
-			if !k.block(zweites) { // Blockzeit: jetzt, nach dem Stichtag
-				t.Fatal("zweites Vergehen abgelehnt")
-			}
-		case "erkennen":
-			if _, _, err := k.cs.DoppelsignaturErkannt(k.signer, zweites.BlockAHash, zweites.BlockBHash, zweites.DetectedAt, zweites.Doppelbeweis); err != nil {
-				t.Fatal(err)
-			}
-		}
-		registerLeserOverride.Store(0)
-		if got := standVon(t, k.cs, k.op); got != 100 {
-			t.Fatalf("%s: rueckdatierter Beweis nahm den alten Weg (registered_nodes %.2f)", weg, got)
-		}
-		if got := standVon(t, k.cs, reg); got != strafe {
-			t.Fatalf("%s: Halter aus dem Verlauf %.2f", weg, got)
-		}
+// M2 (#303): wer zahlt. Bindungen bis W nach der Tat zaehlen; der erste
+// ANDERE Betreiber in dieser Zeit zahlt, sonst der Halter zur Tat. Kein
+// Fall ist "keiner zahlt, weil ein anderer gebunden hat".
+func TestStrafe_AbrechnungWerZahlt_RealDB(t *testing.T) {
+	type fall struct {
+		name    string
+		vorher  func(k *strafKnoten, v, b, c string, d int64)
+		zahlt   string // "v", "b", "c" oder "" (keine Geldstrafe)
+		bMensch bool
 	}
-}
-
-// Kein eindeutiger Halter: umstritten (zwei mit demselben Zeitpunkt), kein
-// Mensch, oder keine Bindung vor der Tat -- keine Geldstrafe, die Sperre
-// bleibt.
-func TestStrafkonto_UmstrittenOderKeinMensch_RealDB(t *testing.T) {
-	for _, fall := range []string{"umstritten", "kein Mensch", "keine Bindung", "erst nach der Tat gebunden"} {
-		k, reg := strafFall(t)
-		switch fall {
-		case "umstritten":
-			zweiter := distTestAddr(1702)
-			registerKonto(t, k.cs, zweiter, true)
-			verlaufEintrag(t, k.cs, zweiter, k.signer, nowUnix()-10*86400)
-		case "kein Mensch":
-			registerKonto(t, k.cs, reg, false)
-		case "keine Bindung":
+	faelle := []fall{
+		{"Halter zur Tat", func(k *strafKnoten, v, b, c string, d int64) {}, "v", true},
+		{"Uebernahme innerhalb W", func(k *strafKnoten, v, b, c string, d int64) {
+			verlaufEintrag(k.t, k.cs, b, k.signer, d+1800)
+		}, "b", true},
+		{"Uebernahme genau am Ende von W", func(k *strafKnoten, v, b, c string, d int64) {
+			verlaufEintrag(k.t, k.cs, b, k.signer, d+strafBeweisFrisch)
+		}, "b", true},
+		{"Uebernahme nach W", func(k *strafKnoten, v, b, c string, d int64) {
+			verlaufEintrag(k.t, k.cs, b, k.signer, d+strafBeweisFrisch+1)
+		}, "v", true},
+		{"zwei Uebernahmen: der erste zahlt", func(k *strafKnoten, v, b, c string, d int64) {
+			verlaufEintrag(k.t, k.cs, c, k.signer, d+1200)
+			verlaufEintrag(k.t, k.cs, b, k.signer, d+600)
+		}, "b", true},
+		{"Uebernahme durch Nicht-Menschen", func(k *strafKnoten, v, b, c string, d int64) {
+			verlaufEintrag(k.t, k.cs, b, k.signer, d+600)
+		}, "", false},
+		{"eigene Neubindung nach der Tat", func(k *strafKnoten, v, b, c string, d int64) {
+			verlaufEintrag(k.t, k.cs, v, k.signer, d+600)
+		}, "v", true},
+		{"eigener Wechsel vor der Tat", func(k *strafKnoten, v, b, c string, d int64) {
+			verlaufEintrag(k.t, k.cs, v, distTestAddr(1706), d-600)
+		}, "v", true},
+		{"Uebernahme im Augenblick der Tat", func(k *strafKnoten, v, b, c string, d int64) {
+			verlaufEintrag(k.t, k.cs, b, k.signer, d)
+		}, "b", true},
+		{"umstritten", func(k *strafKnoten, v, b, c string, d int64) {
+			verlaufEintrag(k.t, k.cs, c, k.signer, nowUnix()-10*86400)
+		}, "", true},
+		{"umstritten, dann uebernommen", func(k *strafKnoten, v, b, c string, d int64) {
+			verlaufEintrag(k.t, k.cs, c, k.signer, nowUnix()-10*86400)
+			verlaufEintrag(k.t, k.cs, b, k.signer, d+600)
+		}, "b", true},
+		{"keine Bindung", func(k *strafKnoten, v, b, c string, d int64) {
 			k.cs.db.Exec(`DELETE FROM validator_verlauf`)
-		case "erst nach der Tat gebunden":
+		}, "", true},
+		{"erst nach der Tat gebunden, innerhalb W", func(k *strafKnoten, v, b, c string, d int64) {
 			k.cs.db.Exec(`DELETE FROM validator_verlauf`)
-			verlaufEintrag(t, k.cs, reg, k.signer, nowUnix()-1800)
+			verlaufEintrag(k.t, k.cs, v, k.signer, d+1800)
+		}, "v", true},
+		{"erst nach W gebunden", func(k *strafKnoten, v, b, c string, d int64) {
+			k.cs.db.Exec(`DELETE FROM validator_verlauf`)
+			verlaufEintrag(k.t, k.cs, v, k.signer, d+strafBeweisFrisch+1)
+		}, "", true},
+	}
+	for _, f := range faelle {
+		k, v := strafFall(t)
+		b, c := distTestAddr(1711), distTestAddr(1712)
+		registerKonto(t, k.cs, b, f.bMensch)
+		registerKonto(t, k.cs, c, true)
+		zweites := zweitesVergehen(t, k, nowUnix()-3600)
+		f.vorher(k, v, b, c, zweites.DetectedAt)
+		if !abrechnen(k, zweites, strafeFaelligAb(zweites.DetectedAt)) {
+			t.Fatalf("%s: Abrechnung abgelehnt", f.name)
 		}
-		zweitesVergehen(t, k, nowUnix()-3600)
-		if got := standVon(t, k.cs, reg); got != 100 {
-			t.Fatalf("%s: Register-Betreiber belastet: %.2f", fall, got)
+		for name, adr := range map[string]string{"v": v, "b": b, "c": c, "registered_nodes": k.op} {
+			want := 100.0
+			if name == f.zahlt {
+				want = strafe
+			}
+			if got := standVon(t, k.cs, adr); got != want {
+				t.Fatalf("%s: %s hat %.2f, erwartet %.2f", f.name, name, got, want)
+			}
 		}
-		if got := standVon(t, k.cs, k.op); got != 100 {
-			t.Fatalf("%s: registered_nodes-Betreiber belastet: %.2f", fall, got)
+		if _, erledigt := k.strafeStand(zweites); !erledigt {
+			t.Fatalf("%s: nicht als abgerechnet vermerkt -- kaeme wieder in den Ausgang", f.name)
 		}
 		if gesperrt, _ := k.cs.IsValidatorSuspended(k.signer, 0); !gesperrt {
-			t.Fatalf("%s: Sperre fehlt", fall)
+			t.Fatalf("%s: Sperre fehlt", f.name)
 		}
 	}
 }
 
-// Missbrauch (MEDIUM 1, #303): wer den Schluessel nach der Tat uebernimmt,
-// besitzt ihn und haette den Beweis selbst unterschreiben koennen -- mit
-// einem Zeitpunkt, zu dem ihn der fruehere Halter hielt. Darum zahlt dann
-// KEINER: weder der spaetere Halter noch der fruehere. Die Sperre bleibt.
-func TestStrafkonto_UebernahmeNachDerTatZahltKeiner_RealDB(t *testing.T) {
-	k, reg := strafFall(t)
-	spaeter := distTestAddr(1703)
-	registerKonto(t, k.cs, spaeter, true)
-	verlaufEintrag(t, k.cs, spaeter, k.signer, nowUnix()-1800)
-	// Vor der Tat hielt der Spaetere einen anderen Schluessel -- der zaehlt
-	// fuer K nicht.
-	verlaufEintrag(t, k.cs, spaeter, distTestAddr(1709), nowUnix()-2*86400)
-	zweitesVergehen(t, k, nowUnix()-3600)
-	if got := standVon(t, k.cs, reg); got != 100 {
-		t.Fatalf("frueherer Halter belastet: %.2f -- der spaetere haette ihm den Beweis anhaengen koennen", got)
-	}
-	if got := standVon(t, k.cs, spaeter); got != 100 {
-		t.Fatalf("spaeterer Halter belastet: %.2f", got)
-	}
-	if gesperrt, _ := k.cs.IsValidatorSuspended(k.signer, 0); !gesperrt {
-		t.Fatal("Sperre fehlt")
-	}
-}
-
-// Der Ablauf aus MEDIUM 1 (#303): V bindet K, B uebernimmt K, B zieht zu K3
-// weiter. Fuer eine Tat in B's Zeit zahlt B -- vorher fand das Register nur
-// noch V's (ueberholte) Zeile, und V zahlte fuer B.
-func TestStrafkonto_UebernahmeUndWechsel_RealDB(t *testing.T) {
-	k, v := strafFall(t) // V bindet K vor zehn Tagen
-	b := distTestAddr(1704)
-	registerKonto(t, k.cs, b, true)
-	verlaufEintrag(t, k.cs, b, k.signer, nowUnix()-2*86400)
-	verlaufEintrag(t, k.cs, b, distTestAddr(1705), nowUnix()-86400)
-	zweitesVergehen(t, k, nowUnix()-36*3600)
-	if got := standVon(t, k.cs, b); got != strafe {
-		t.Fatalf("Halter zur Tat (B) %.2f", got)
-	}
-	if got := standVon(t, k.cs, v); got != 100 {
-		t.Fatalf("V zahlte fuer B: %.2f", got)
-	}
-}
-
-// Wer nur den eigenen Schluessel wechselt, bleibt fuer den alten haftbar --
-// er kennt ihn weiter, und in der Frist darf der alte noch erzeugen. Ebenso,
-// wer denselben Schluessel nach der Tat neu bindet: nur ein ANDERER
-// Betreiber befreit.
-func TestStrafkonto_EigenerWechselBefreitNicht_RealDB(t *testing.T) {
-	for _, fall := range []string{"anderer Schluessel vor der Tat", "derselbe Schluessel nach der Tat"} {
+// M1 (#303): der Erkennende vermerkt, bevor er eine Uebergabe nachgespielt
+// hat, die die anderen schon kennen -- oder danach. Abgerechnet wird erst
+// spaeter, aus Bindungen bis W nach der Tat: in beiden Reihenfolgen zahlt
+// derselbe. Vorher zahlte beim Erkennenden keiner, bei den anderen V.
+func TestStrafe_ErkennenderUndNachspielendeRechnenGleich_RealDB(t *testing.T) {
+	for _, wann := range []string{"Uebergabe vor der Erkennung bekannt", "Uebergabe erst danach bekannt"} {
 		k, v := strafFall(t)
-		switch fall {
-		case "anderer Schluessel vor der Tat":
-			verlaufEintrag(t, k.cs, v, distTestAddr(1706), nowUnix()-7200)
-		case "derselbe Schluessel nach der Tat":
-			verlaufEintrag(t, k.cs, v, k.signer, nowUnix()-1800)
+		b := distTestAddr(1713)
+		registerKonto(t, k.cs, b, true)
+		zweites := k.doppelsignatur(nowUnix()-600, "cc", "dd")
+		if wann == "Uebergabe vor der Erkennung bekannt" {
+			verlaufEintrag(t, k.cs, b, k.signer, zweites.DetectedAt+300)
 		}
-		zweitesVergehen(t, k, nowUnix()-3600)
-		if got := standVon(t, k.cs, v); got != strafe {
-			t.Fatalf("%s: nicht belastet: %.2f", fall, got)
+		var err error
+		mitStichtag(1, func() {
+			_, _, err = k.cs.DoppelsignaturErkannt(k.signer, zweites.BlockAHash, zweites.BlockBHash, zweites.DetectedAt, zweites.Doppelbeweis)
+		})
+		if err != nil {
+			t.Fatalf("%s: %v", wann, err)
+		}
+		if got := standVon(t, k.cs, v) + standVon(t, k.cs, b); got != 200 {
+			t.Fatalf("%s: beim Erkennen gebucht (%.2f)", wann, got)
+		}
+		if wann == "Uebergabe erst danach bekannt" {
+			verlaufEintrag(t, k.cs, b, k.signer, zweites.DetectedAt+300)
+		}
+		if !abrechnen(k, zweites, strafeFaelligAb(zweites.DetectedAt)) {
+			t.Fatalf("%s: Abrechnung abgelehnt", wann)
+		}
+		if got := standVon(t, k.cs, b); got != strafe {
+			t.Fatalf("%s: B (Uebernahme innerhalb W) %.2f", wann, got)
+		}
+		if got := standVon(t, k.cs, v); got != 100 {
+			t.Fatalf("%s: V belastet %.2f", wann, got)
 		}
 	}
 }
 
-// Missbrauch: B bindet K und im selben Augenblick einen anderen Schluessel,
-// sodass B's Zeitraum fuer K leer ist. Die Zeile zaehlt trotzdem -- B
-// besitzt K und haette V den Beweis anhaengen koennen.
-func TestStrafkonto_LeererZeitraumZaehltAlsUebernahme_RealDB(t *testing.T) {
-	k, v := strafFall(t)
-	b := distTestAddr(1707)
-	registerKonto(t, k.cs, b, true)
-	zeit := nowUnix() - 1800
-	verlaufEintrag(t, k.cs, b, k.signer, zeit)
-	verlaufEintrag(t, k.cs, b, "0x"+strings.Repeat("f", 40), zeit) // ordnet nach K
-	if iv := bindungsIntervalle([]bindungsZeile{z(b, k.signer, zeit), z(b, "0x"+strings.Repeat("f", 40), zeit)}); len(iv) != 1 {
-		t.Fatalf("Voraussetzung: B's Zeitraum fuer K leer, erwartet ein Zeitraum, %+v", iv)
-	}
-	zweitesVergehen(t, k, nowUnix()-3600)
-	if got := standVon(t, k.cs, v); got != 100 {
-		t.Fatalf("V belastet: %.2f", got)
-	}
-}
-
-// Fail-closed: ist der Verlauf nicht lesbar, wird der Block abgewiesen --
-// nie "keine Strafe".
-func TestStrafkonto_VerlaufNichtLesbarWeistAb_RealDB(t *testing.T) {
+// Frische (#303, M2): ab dem Stichtag steht ein Beweis hoechstens W nach der
+// Tat in einem Block. Sonst haengte ein spaeterer Halter dem frueheren einen
+// alten an. Vor dem Stichtag datiert und kurz danach getragen: alter Weg,
+// aber nur innerhalb von W.
+func TestStrafe_NurFrischeBeweise_RealDB(t *testing.T) {
 	k, reg := strafFall(t)
+	tat := nowUnix() - 3*3600
+	zweites := k.doppelsignatur(tat, "cc", "dd")
+	var ok bool
+	mitStichtag(1, func() { ok = k.blockZu(zweites.DetectedAt+strafBeweisFrisch+1, zweites) })
+	if ok {
+		t.Fatal("alter Beweis angenommen")
+	}
+	if v := k.vergehen(); v != 1 {
+		t.Fatalf("%d Vergehen nach der Abweisung", v)
+	}
+	mitStichtag(1, func() { ok = k.blockZu(zweites.DetectedAt+strafBeweisFrisch, zweites) })
+	if !ok || k.vergehen() != 2 {
+		t.Fatalf("frischer Beweis: angenommen %v, %d Vergehen", ok, k.vergehen())
+	}
+
+	// Vor den Stichtag datiert: innerhalb von W alter Weg (registered_nodes,
+	// sofort), danach abgewiesen.
+	k, reg = strafFall(t)
+	jetzt := nowUnix()
+	vorher := k.doppelsignatur(jetzt-3000, "cc", "dd")
+	mitStichtag(jetzt-1800, func() { ok = k.blockZu(jetzt, vorher) })
+	if !ok || standVon(t, k.cs, k.op) != strafe || standVon(t, k.cs, reg) != 100 {
+		t.Fatalf("innerhalb W: angenommen %v, registered_nodes %.2f, Register %.2f", ok, standVon(t, k.cs, k.op), standVon(t, k.cs, reg))
+	}
+	k, _ = strafFall(t)
+	alt := k.doppelsignatur(jetzt-2*3600, "cc", "dd")
+	mitStichtag(jetzt-1800, func() { ok = k.blockZu(jetzt, alt) })
+	if ok {
+		t.Fatal("vor den Stichtag rueckdatierter alter Beweis nach dem Stichtag angenommen")
+	}
+}
+
+// Der Erkennende legt einen alten Beweis nicht mehr in den Ausgang -- er
+// wuerde abgewiesen, und vermerkt sperrte er nur auf diesem Knoten.
+func TestStrafe_ErkennenderUebergehtAltenBeweis_RealDB(t *testing.T) {
+	k, reg := strafFall(t)
+	k.cs.db.Exec(`DELETE FROM pending_txs`)
+	zweites := k.doppelsignatur(nowUnix()-strafBeweisFrisch+strafBeweisMarge-60, "cc", "dd")
+	var err error
+	mitStichtag(1, func() {
+		_, _, err = k.cs.DoppelsignaturErkannt(k.signer, zweites.BlockAHash, zweites.BlockBHash, zweites.DetectedAt, zweites.Doppelbeweis)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var imAusgang int
+	k.cs.db.QueryRow(`SELECT COUNT(*) FROM pending_txs WHERE tx_json LIKE '%slash_equivocation%'`).Scan(&imAusgang)
+	if v := k.vergehen(); v != 1 || imAusgang != 0 || standVon(t, k.cs, reg) != 100 {
+		t.Fatalf("alter Beweis: %d Vergehen, %d im Ausgang", v, imAusgang)
+	}
+}
+
+// Missbrauch: Abrechnungen, die jeder Knoten abweist -- ohne bekannten
+// Beweis, ohne offene Strafe (erstes Vergehen), mit falschem Zeitpunkt, und
+// bei unlesbarem Verlauf (fail-closed, nie "keine Strafe").
+func TestStrafe_UngueltigeAbrechnungWeistAb_RealDB(t *testing.T) {
+	k, reg := strafFall(t)
+	zweites := zweitesVergehen(t, k, nowUnix()-3600)
+	faellig := strafeFaelligAb(zweites.DetectedAt)
+
+	unbekannt := k.doppelsignatur(nowUnix()-3600, "ee", "ff")
+	erstes := k.doppelsignatur(nowUnix()-5*86400, "aa", "bb") // erstes Vergehen, keine Geldstrafe
+	falsch := zweites
+	falsch.DetectedAt--
+	for name, tx := range map[string]Transaction{"unbekannter Beweis": unbekannt, "erstes Vergehen": erstes, "falscher Zeitpunkt": falsch} {
+		if abrechnen(k, tx, faellig+86400*6) {
+			t.Fatalf("%s: Abrechnung angenommen", name)
+		}
+	}
 	if _, err := k.cs.db.Exec(`ALTER TABLE validator_verlauf RENAME TO validator_verlauf_weg`); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { k.cs.db.Exec(`ALTER TABLE validator_verlauf_weg RENAME TO validator_verlauf`) })
-	registerLeserOverride.Store(1)
-	ok := k.block(k.doppelsignatur(nowUnix()-3600, "cc", "dd"))
-	registerLeserOverride.Store(0)
-	if ok {
-		t.Fatal("Block trotz unlesbarem Verlauf angenommen")
-	}
+	ok := abrechnen(k, zweites, faellig)
 	if _, err := k.cs.db.Exec(`ALTER TABLE validator_verlauf_weg RENAME TO validator_verlauf`); err != nil {
 		t.Fatal(err)
 	}
-	if got := standVon(t, k.cs, reg); got != 100 {
-		t.Fatalf("nach der Abweisung belastet: %.2f", got)
+	if ok {
+		t.Fatal("Abrechnung trotz unlesbarem Verlauf angenommen")
 	}
-	if v := k.vergehen(); v != 1 {
-		t.Fatalf("%d Vergehen nach der Abweisung (erwartet 1)", v)
+	if offen, erledigt := k.strafeStand(zweites); !offen || erledigt || standVon(t, k.cs, reg) != 100 {
+		t.Fatalf("nach der Abweisung offen=%v erledigt=%v, Halter %.2f", offen, erledigt, standVon(t, k.cs, reg))
+	}
+	if !abrechnen(k, zweites, faellig) || standVon(t, k.cs, reg) != strafe {
+		t.Fatal("Abrechnung danach nicht gebucht")
 	}
 }
 
-// LOW 1 (#303): aendert sich das Strafkonto zwischen der Vorab-Lesung und
-// der Transaktion (ein Block mit einer Bindung wird nachgespielt, waehrend
-// der Erkennende auf cs.mu wartet), versucht er es einmal neu -- vorher fiel
-// die ganze Erkennung weg: Sperre, Zaehler und Beweis-Transaktion.
+// Der Leiter legt faellige Strafen in den Ausgang und bucht sie dabei, genau
+// einmal. Ein Knoten ohne Annahme legt nichts.
+func TestStrafe_LeiterLegtAbrechnungInDenAusgang_RealDB(t *testing.T) {
+	k, reg := strafFall(t)
+	k.cs.db.Exec(`DELETE FROM pending_txs`)
+	tat := nowUnix() - strafBeweisFrisch - erzeugerFrist - strafAbrechnungMarge - 600
+	zweites := zweitesVergehen(t, k, tat)
+	ausgang := func() int {
+		var n int
+		k.cs.db.QueryRow(`SELECT COUNT(*) FROM pending_txs WHERE tx_json LIKE '%slash_abrechnung%'`).Scan(&n)
+		return n
+	}
+	mitStichtag(1, k.cs.strafAbrechnungLauf)
+	if n := ausgang(); n != 0 || standVon(t, k.cs, reg) != 100 {
+		t.Fatalf("ohne Annahme: %d im Ausgang, Halter %.2f", n, standVon(t, k.cs, reg))
+	}
+	k.cs.annehmendAusdruecklich.Store(true)
+	t.Cleanup(func() { k.cs.annehmendAusdruecklich.Store(false) })
+	mitStichtag(1, k.cs.strafAbrechnungLauf)
+	mitStichtag(1, k.cs.strafAbrechnungLauf)
+	if n := ausgang(); n != 1 {
+		t.Fatalf("%d Abrechnungen im Ausgang, erwartet 1", n)
+	}
+	if got := standVon(t, k.cs, reg); got != strafe {
+		t.Fatalf("Halter nach der Abrechnung %.2f", got)
+	}
+	// Ein anderer Erzeuger hat dieselbe Abrechnung gelegt: kein zweiter Abzug.
+	if !abrechnen(k, zweites, nowUnix()) || standVon(t, k.cs, reg) != strafe {
+		t.Fatalf("Duplikat: Halter %.2f", standVon(t, k.cs, reg))
+	}
+}
+
+// Die Selbstheilung fuer den BOOTSTRAP_SIGNER haelt ein zweites Vergehen,
+// dessen Strafe noch offen ist, fuer bestaetigt -- slash_applied ist dann
+// noch falsch.
+func TestStrafe_OffeneStrafeIstBestaetigt_RealDB(t *testing.T) {
+	k, _ := strafFall(t)
+	zweitesVergehen(t, k, nowUnix()-3600)
+	t.Setenv("BOOTSTRAP_SIGNER", k.signer)
+	k.cs.selfHealUncorroboratedSeedSuspension()
+	k.cs.invalidatePenaltyCache()
+	if v := k.vergehen(); v != 2 {
+		t.Fatalf("Selbstheilung loeschte ein bestaetigtes Vergehen (%d)", v)
+	}
+}
+
+// Vor dem Stichtag (registered_nodes): aendert sich das Strafkonto zwischen
+// der Vorab-Lesung und der Transaktion, versucht der Erkennende es einmal
+// neu -- vorher fiel die ganze Erkennung weg (LOW 1, #303).
 func TestDoppelsignaturErkannt_StrafkontoAendertSichWaehrenddessen_RealDB(t *testing.T) {
 	k, _ := strafFall(t)
-	k.cs.db.Exec(`DELETE FROM validator_verlauf`) // vorab: kein Halter
 	neu := distTestAddr(1708)
 	registerKonto(t, k.cs, neu, true)
 	aufrufe := 0
 	strafkontoVorabGelesen = func() {
 		aufrufe++
 		if aufrufe == 1 {
-			verlaufEintrag(t, k.cs, neu, k.signer, nowUnix()-7200)
+			if _, err := k.cs.db.Exec(`UPDATE registered_nodes SET wallet_address = $1 WHERE signing_address = $2`, neu, k.signer); err != nil {
+				t.Error(err)
+			}
 		}
 	}
 	t.Cleanup(func() { strafkontoVorabGelesen = nil })
-	registerLeserOverride.Store(1)
 	zweites := k.doppelsignatur(nowUnix()-3600, "cc", "dd")
 	_, betrag, err := k.cs.DoppelsignaturErkannt(k.signer, zweites.BlockAHash, zweites.BlockBHash, zweites.DetectedAt, zweites.Doppelbeweis)
-	registerLeserOverride.Store(0)
 	if err != nil {
 		t.Fatalf("Erkennung verworfen: %v", err)
 	}
 	if aufrufe != 2 {
 		t.Fatalf("%d Versuche, erwartet 2", aufrufe)
 	}
-	if betrag != equivocationSecondOffensePenaltyAEQ || standVon(t, k.cs, neu) != strafe {
-		t.Fatalf("Strafe %.2f, Halter %.2f", betrag, standVon(t, k.cs, neu))
+	if betrag != equivocationSecondOffensePenaltyAEQ || standVon(t, k.cs, neu) != strafe || standVon(t, k.cs, k.op) != 100 {
+		t.Fatalf("Strafe %.2f, neu %.2f, alt %.2f", betrag, standVon(t, k.cs, neu), standVon(t, k.cs, k.op))
 	}
 	if v := k.vergehen(); v != 2 {
 		t.Fatalf("%d Vergehen, erwartet 2", v)
@@ -462,8 +610,30 @@ func TestStrafkonto_GleicherZeitpunktAndererSchluessel_RealDB(t *testing.T) {
 	fremd := distTestAddr(1710)
 	registerKonto(t, k.cs, fremd, true)
 	verlaufEintrag(t, k.cs, fremd, distTestAddr(1711), zeit)
-	zweitesVergehen(t, k, nowUnix()-3600)
+	zweites := zweitesVergehen(t, k, nowUnix()-3600)
+	if !abrechnen(k, zweites, strafeFaelligAb(zweites.DetectedAt)) {
+		t.Fatal("Abrechnung abgelehnt")
+	}
 	if got := standVon(t, k.cs, v); got != strafe {
 		t.Fatalf("Halter nicht belastet: %.2f", got)
+	}
+}
+
+// Ein Block mit einer Abrechnung, der scheitert, bucht nichts -- auch nicht
+// im Speicher: das Strafkonto steht nicht im Block und muss vor dem Abzug
+// in die Ruecknahme (kontoNachtragenLocked).
+func TestStrafe_ZurueckgewiesenerBlockMitAbrechnungBuchtNicht_RealDB(t *testing.T) {
+	k, reg := strafFall(t)
+	zweites := zweitesVergehen(t, k, nowUnix()-3600)
+	var ok bool
+	mitStichtag(1, func() { ok = k.blockZu(strafeFaelligAb(zweites.DetectedAt), abrechnung(zweites), gift()) })
+	if ok {
+		t.Fatal("Block mit unbekannter Transaktion angenommen")
+	}
+	if mem, db := stand(k.cs, reg), standVon(t, k.cs, reg); mem != 100 || db != 100 {
+		t.Fatalf("nach dem Zurueckrollen: Speicher %.2f, Datenbank %.2f", mem, db)
+	}
+	if offen, erledigt := k.strafeStand(zweites); !offen || erledigt {
+		t.Fatalf("nach dem Zurueckrollen offen=%v erledigt=%v", offen, erledigt)
 	}
 }

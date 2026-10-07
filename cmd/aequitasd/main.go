@@ -460,6 +460,9 @@ func main() {
 	// HTTP-Sync: sonst wiese der Knoten nach dem Stichtag die ersten Bloecke
 	// ab, weil noch kein Stand gelesen ist.
 	bc.StarteErzeugerRegister()
+	// Geldstrafen zweiter Vergehen ab registerLeserAb: der Leiter legt die
+	// faelligen als slash_abrechnung in den Ausgang (strafe_abrechnung.go).
+	chainState.StarteStrafAbrechnung()
 	fmt.Println()
 
 	p2pNode.SetDAG(bc)
