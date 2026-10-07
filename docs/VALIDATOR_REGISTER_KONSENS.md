@@ -138,10 +138,26 @@ Dinge ohne Konsenswirkung (Erreichbarkeit, Messwerte als Hinweis).
    - **Der Verlauf** (`validator_verlauf`, nach dem Sicherheitsdurchgang
      zu #303): das Register hält je Betreiber nur die letzte Bindung, beide
      Leser brauchen aber, was **zu einer Zeit** galt. Darum steht jede
-     gültige Bindung, die je in einem Block stand, mit beiden Unterschriften
-     im Verlauf – auch eine, die nicht neuer war und das Register nicht
-     änderte. In der Summe (`validatorVerlaufBlatt`), im Snapshot (jede Zeile
-     prüft der Importierende selbst), Rücknahme mit dem Block. Aus dem
+     Bindung, die das Register geändert hat, mit beiden Unterschriften im
+     Verlauf. In der Summe (`validatorVerlaufBlatt`), im Snapshot (jede Zeile
+     prüft der Importierende selbst), Rücknahme mit dem Block.
+   - **Höchstens eine Bindung je Betreiber und Tag**
+     (`validatorBindungAbstand`, zweiter Durchgang, H1): eine Bindung, die
+     weniger als einen Tag nach der letzten des Betreibers liegt, wird als
+     Zustandsablehnung übersprungen und hinterlässt keine Zeile; der
+     Snapshot-Import prüft dasselbe. Sonst füllte jeder Mensch den Verlauf
+     (eine Bindung je 30 s über die Annahme, beliebig viele je Block über
+     einen Erzeuger) und damit Summe und Snapshot – über 50 MiB scheitert
+     jeder Snapshot-Import. So wächst der Verlauf höchstens um eine Zeile je
+     Mensch und Tag. Wer seinen Schlüssel wechselt, wartet bis zum nächsten
+     Wechsel einen Tag; der alte erzeugt so lange weiter. **Preis:** zwei
+     Bindungen desselben Betreibers innerhalb eines Tages in
+     Geschwisterblöcken – welche gilt, hängt von der Reihenfolge ab (jede
+     Regel, die Zeilen je Betreiber begrenzt, hat diesen Rand; eine, die
+     ersetzt statt abweist, löschte Zeilen, auf die die Frist baut). Ein
+     ehrlicher, einziger Annehmender legt sie nie nebeneinander; geschlossen
+     erreicht die Erzeugerprüfung nur, wer einen Schlüssel der Liste
+     betreibt. Aus dem
      Verlauf die **Zeiträume**: eine Bindung gilt ab ihrem Zeitpunkt bis zur
      nächsten Bindung ihres Betreibers oder bis ein anderer Betreiber den
      Schlüssel später bindet. Hängt nur an der Menge der Zeilen, nicht an
@@ -164,12 +180,12 @@ Dinge ohne Konsenswirkung (Erreichbarkeit, Messwerte als Hinweis).
        ab. Ändert sich das Strafkonto, während der Erkennende auf die
        Sperre wartet, versucht er es einmal neu (vorher fiel die ganze
        Erkennung weg). `registered_nodes` lenkt die Strafe nicht mehr um.
-     - Leitung (`validatorMenschVon`): der Mensch aus dem Stand im Speicher
-       (dieselben Zeiträume und Frist wie beim Erzeugen) – keine Datenbank
-       unter der Sperre der Leitung. Nach einem Lesefehler bleibt der
-       letzte Stand stehen; sonst sähe die Leitung für ein Mitglied keinen
-       Menschen mehr und nähme einen zweiten Schlüssel desselben Menschen
-       auf.
+     - Leitung (`validatorMenschVon`): der Mensch, der den Schlüssel
+       zuletzt gebunden hat, aus dem Stand im Speicher – keine Datenbank
+       unter der Sperre der Leitung. Nach einem Wechsel bleibt der alte
+       Schlüssel seinem Menschen, bis er die Leitung verlässt; sonst säße
+       derselbe Mensch mit beiden Schlüsseln drin (L2). Nach einem Lesefehler
+       bleibt der letzte Stand stehen.
      - Mit `AUTHORIZED_VALIDATORS` nimmt der Abgleich unter Peers
        (`syncValidatorsFromPeer` und die Liste des Seeds) nichts mehr auf.
    - **`erzeugerSchnittAb`** (an der Blockzeit plus der Rück-Toleranz von
@@ -207,6 +223,27 @@ Dinge ohne Konsenswirkung (Erreichbarkeit, Messwerte als Hinweis).
    - Bleibt von der Reihenfolge abhängig: eine Übergabe in einem
      Geschwisterblock der Strafe (wie „Mensch im Geschwisterblock“). Ein
      ehrlicher Annehmender legt beides in eine Linie.
+   - **Vor `registerLeserAb` noch offen** (zweiter Sicherheitsdurchgang zu
+     #303; der Stichtag darf erst danach gesetzt werden):
+     - M1: Der Erkennende zieht die Strafe bei der Erkennung ab, jeder
+       andere beim Nachspielen seines Blocks – spielt der Erkennende
+       dazwischen eine Übergabe nach, die die anderen vor seinem Block
+       nachspielen, rechnen sie verschieden. Lösung: die Strafe später und
+       für alle gleich abrechnen (eigene Transaktion, beurteilt nur nach
+       Zeilen bis `DetectedAt` + W, frühestens bei Blockzeit
+       `DetectedAt` + W + Frist).
+     - M2: „Nach der Tat hat ein anderer gebunden, also zahlt keiner“ macht
+       die Strafe für zwei, die zusammenarbeiten, freiwillig. Lösung: nur
+       frische Beweise; innerhalb W nach der Tat zahlt der erste spätere
+       Binder statt keiner.
+     - L1: Ein Block mit einer Bindung, der zurückgehalten und spät
+       eingehängt wird, wirkt rückwirkend auf alte Blöcke (die Frist setzt
+       pünktliches Nachspielen voraus). Lösung: die Erzeugerprüfung nur nach
+       Zeilen im Vergangenheitskegel des Blocks, oder alte Eltern mit
+       `validator_bindung` nicht mehr einhängen.
+     - L3: Um den Stichtag herum schaltet der Erkennende an seiner Uhr, die
+       anderen an der Blockzeit – einmalig können sie verschieden rechnen.
+       Entfällt mit der späteren Abrechnung (M1).
    - Offen (Teil 2): Validatoren-Belohnung mit Gewichten aus der Kette statt
      aus `registered_nodes` (Blöcke je Signieradresse im Vergangenheitskegel
      eines Ankerblocks, nachgerechnet von jedem Knoten); das Komitee aus

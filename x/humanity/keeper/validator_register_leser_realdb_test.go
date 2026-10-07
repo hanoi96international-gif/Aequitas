@@ -361,7 +361,9 @@ func TestErzeugerAusVerlauf_RealDB(t *testing.T) {
 	if !dag.erzeugerNachRegister(s(5), jetzt+erzeugerFrist) || dag.erzeugerNachRegister(s(1), jetzt+erzeugerFrist) {
 		t.Fatal("nach der Frist: Wechsel von s1 zu s5 nicht vollzogen")
 	}
-	for addr, want := range map[string]string{s(0): m(0), s(1): m(1), s(5): "", s(2): "", s(4): ""} {
+	// Leitung: wer den Schluessel zuletzt gebunden hat (auch in der Frist und
+	// nach einem Wechsel), nur Menschen, nicht umstritten.
+	for addr, want := range map[string]string{s(0): m(0), s(1): m(1), s(5): m(1), s(2): "", s(4): ""} {
 		if got := dag.menschAusRegister(addr); got != want {
 			t.Fatalf("Mensch zu %s: %q, erwartet %q", addr, got, want)
 		}
@@ -377,6 +379,11 @@ func TestErzeugerAusVerlauf_RealDB(t *testing.T) {
 	st := f.cs.erzeugerRegister.Load()
 	if st == nil || st.fehler != nil || len(st.fenster) != 2 || len(st.fenster[s(0)]) != 1 || len(st.fenster[s(1)]) != 1 || st.fenster[s(5)] != nil {
 		t.Fatalf("geschlossen: %+v", st)
+	}
+	// Auch fuer die Leitung nur die Schluessel der Liste -- fuer s5 sind
+	// nicht alle Zeilen gelesen, ein Mensch daraus koennte falsch sein.
+	if _, da := st.halter[s(5)]; da || st.halter[s(1)] != m(1) {
+		t.Fatalf("geschlossen, Halter: %v", st.halter)
 	}
 
 	// Ein Lesefehler: die Erzeugerpruefung schliesst ab, die Leitung behaelt

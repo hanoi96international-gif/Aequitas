@@ -53,8 +53,10 @@ import (
 //     durfte -- mit dem jeweils aktuellen Register wiesen Knoten, die eine
 //     Uebergabe schon nachgespielt hatten, die Bloecke des alten Schluessels
 //     ab, waehrend andere sie annahmen, und das Netz zerfiel dauerhaft.
-// Darum der Verlauf (validator_verlauf, validator_register.go): jede gueltige
-// Bindung, die je in einem Block stand. Aus ihm die Zeitraeume
+// Darum der Verlauf (validator_verlauf, validator_register.go): jede
+// Bindung, die je das Register geaendert hat -- hoechstens eine je Betreiber
+// und Tag (validatorBindungAbstand), sonst fuellte jeder Mensch Summe und
+// Snapshot. Aus ihm die Zeitraeume
 // (bindungsIntervalle): eine Bindung gilt ab ihrem Zeitpunkt bis zur
 // naechsten Bindung ihres Betreibers oder bis ein anderer Betreiber den
 // Schluessel spaeter bindet.
@@ -158,6 +160,9 @@ func bindungsIntervalle(zeilen []bindungsZeile) []bindungsIntervall {
 			return l[i].signing < l[j].signing
 		})
 	}
+	for _, l := range jeSchluessel {
+		sort.Slice(l, func(i, j int) bool { return l[i].zeit < l[j].zeit })
+	}
 	var out []bindungsIntervall
 	for _, l := range jeBetreiber {
 		for i, z := range l {
@@ -165,8 +170,13 @@ func bindungsIntervalle(zeilen []bindungsZeile) []bindungsIntervall {
 			if i+1 < len(l) {
 				bis = l[i+1].zeit
 			}
-			for _, a := range jeSchluessel[z.signing] {
-				if a.betreiber != z.betreiber && a.zeit > z.zeit && a.zeit < bis {
+			// Die erste spaetere Bindung desselben Schluessels. Ist sie vom
+			// selben Betreiber, liegt sie nicht vor bis (die eigene naechste
+			// Bindung endet frueher oder gleichzeitig) -- also genuegt die
+			// erste, O(log n) statt alle.
+			k := jeSchluessel[z.signing]
+			if j := sort.Search(len(k), func(j int) bool { return k[j].zeit > z.zeit }); j < len(k) {
+				if a := k[j]; a.betreiber != z.betreiber && a.zeit < bis {
 					bis = a.zeit
 				}
 			}
@@ -331,6 +341,9 @@ type erzeugerStand struct {
 	// die Bindungszeitraeume menschlicher Betreiber, um erzeugerFrist
 	// verschoben. Nach einem Lesefehler die des letzten gelesenen Stands.
 	fenster map[string][]zeitfenster
+	// halter: je Signierschluessel der Mensch, der ihn zuletzt gebunden hat
+	// (fuer die Leitung). Umstritten oder kein Mensch: fehlt.
+	halter map[string]string
 	// fehler: der letzte Lesefehler; die Erzeugerpruefung schliesst dann ab.
 	fehler error
 	zeit   time.Time
@@ -354,17 +367,17 @@ func (st *erzeugerStand) erzeugerFenster(addr string, t int64) string {
 // erzeugerAusVerlauf: die Fenster aus dem Verlauf. fest = nil: offen, alle
 // Schluessel; sonst nur diese (geschlossene Liste -- keine Grenze fuer das
 // ganze Netz, die jeder Mensch mit Bindungen fuellen koennte).
-func (cs *ChainState) erzeugerAusVerlauf(ctx context.Context, fest []string) (map[string][]zeitfenster, error) {
+func (cs *ChainState) erzeugerAusVerlauf(ctx context.Context, fest []string) (map[string][]zeitfenster, map[string]string, error) {
 	if cs.db == nil {
-		return nil, fmt.Errorf("keine Datenbank")
+		return nil, nil, fmt.Errorf("keine Datenbank")
 	}
 	q := dbMitKontext{ctx: ctx, db: cs.db}
 	if fest != nil && len(fest) == 0 {
-		return map[string][]zeitfenster{}, nil
+		return map[string][]zeitfenster{}, map[string]string{}, nil
 	}
 	zeilen, err := verlaufLesen(q, fest)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	betreiber := map[string]bool{}
 	for _, z := range zeilen {
@@ -378,19 +391,19 @@ func (cs *ChainState) erzeugerAusVerlauf(ctx context.Context, fest []string) (ma
 		}
 		rows, err := q.Query(`SELECT lower(address) FROM chain_accounts WHERE lower(address) = ANY($1) AND is_human`, pq.Array(liste))
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		for rows.Next() {
 			var a string
 			if err := rows.Scan(&a); err != nil {
 				rows.Close()
-				return nil, err
+				return nil, nil, err
 			}
 			menschen[a] = true
 		}
 		rows.Close()
 		if err := rows.Err(); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
 	var gesucht map[string]bool
@@ -400,7 +413,41 @@ func (cs *ChainState) erzeugerAusVerlauf(ctx context.Context, fest []string) (ma
 			gesucht[strings.ToLower(a)] = true
 		}
 	}
-	return fensterAusIntervallen(bindungsIntervalle(zeilen), menschen, gesucht), nil
+	return fensterAusIntervallen(bindungsIntervalle(zeilen), menschen, gesucht), letzteHalter(zeilen, menschen, gesucht), nil
+}
+
+// letzteHalter: je Signierschluessel der Betreiber seiner letzten Bindung,
+// wenn er ein Mensch ist und keine zweite Bindung denselben Zeitpunkt
+// teilt. Fuer die Leitung: ein Schluessel bleibt dem Menschen, der ihn
+// zuletzt gebunden hat, auch wenn der inzwischen einen neuen gebunden hat
+// -- sonst saesse derselbe Mensch nach einem Wechsel mit beiden Schluesseln
+// in der Leitung (L2, #303), bis der alte wegen Schweigen herausfaellt.
+func letzteHalter(zeilen []bindungsZeile, menschen, gesucht map[string]bool) map[string]string {
+	type letzte struct {
+		zeit       int64
+		betreiber  string
+		umstritten bool
+	}
+	je := map[string]*letzte{}
+	for _, z := range zeilen {
+		if gesucht != nil && !gesucht[z.signing] {
+			continue
+		}
+		l := je[z.signing]
+		switch {
+		case l == nil || z.zeit > l.zeit:
+			je[z.signing] = &letzte{zeit: z.zeit, betreiber: z.betreiber}
+		case z.zeit == l.zeit && z.betreiber != l.betreiber:
+			l.umstritten = true
+		}
+	}
+	out := map[string]string{}
+	for s, l := range je {
+		if !l.umstritten && menschen[l.betreiber] {
+			out[s] = l.betreiber
+		}
+	}
+	return out
 }
 
 // fensterAusIntervallen: die Zeitraeume menschlicher Betreiber, um
@@ -457,23 +504,24 @@ func (cs *ChainState) erzeugerRegisterAuffrischen() {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	m, err := cs.erzeugerAusVerlauf(ctx, fest)
+	m, h, err := cs.erzeugerAusVerlauf(ctx, fest)
 	if err != nil {
 		fmt.Printf("[VALIDATOR] Erzeuger aus dem Verlauf nicht lesbar: %v\n", err)
-		m = nil
+		m, h = nil, nil
 		if alt := cs.erzeugerRegister.Load(); alt != nil {
-			m = alt.fenster
+			m, h = alt.fenster, alt.halter
 		}
 	}
-	cs.erzeugerRegister.Store(&erzeugerStand{fenster: m, fehler: err, zeit: time.Now()})
+	cs.erzeugerRegister.Store(&erzeugerStand{fenster: m, halter: h, fehler: err, zeit: time.Now()})
 }
 
 // erzeugerAuffrischenEinmal: der Hintergrund-Leser laeuft einmal je Prozess.
 var erzeugerAuffrischenEinmal sync.Once
 
 // StarteErzeugerRegister: die geschlossene Liste merken, den Stand sofort
-// lesen und danach alle 30 s -- solange einer der Stichtage keinen Tag mehr
-// entfernt ist (vorher braucht ihn niemand). Vor dem HTTP-Sync starten.
+// lesen (immer) und danach alle 30 s -- solange einer der Stichtage keinen
+// Tag mehr entfernt ist (vorher genuegt das Auffrischen nach jeder neuen
+// Bindung). Vor P2P und HTTP-Sync starten.
 func (dag *BlockDAG) StarteErzeugerRegister() {
 	if dag == nil || dag.state == nil || dag.state.db == nil {
 		return
@@ -486,6 +534,12 @@ func (dag *BlockDAG) StarteErzeugerRegister() {
 			grenze := nowUnix() + 86400
 			return registerLeserAb() <= grenze || erzeugerSchnittAb() <= grenze
 		}
+		// Der erste Stand immer, auch wenn die Stichtage fern sind: sonst
+		// zeigte /api/status nach jedem Neustart erzeuger_ohne_bindung =
+		// null, bis der erste Block mit einer Bindung nachgespielt ist
+		// (L4, #303) -- und gerade diese Antwort braucht der Betreiber,
+		// bevor er erzeugerSchnittAb setzt.
+		dag.state.erzeugerRegisterAuffrischen()
 		if bald() {
 			if len(dag.produzentenFest) == 0 {
 				// Offen liest der Stand den ganzen Verlauf, hoechstens
@@ -495,7 +549,6 @@ func (dag *BlockDAG) StarteErzeugerRegister() {
 				// freigegeben (docs/VALIDATOR_REGISTER_KONSENS.md).
 				fmt.Printf("[VALIDATOR] ⚠ Erzeugerpruefung aus dem Register OHNE AUTHORIZED_VALIDATORS -- nicht freigegeben, Grenze %d Verlaufszeilen\n", verlaufGrenze)
 			}
-			dag.state.erzeugerRegisterAuffrischen()
 		}
 		SafeGoroutine("erzeuger-register", func() {
 			t := time.NewTicker(30 * time.Second)
@@ -595,13 +648,15 @@ func (dag *BlockDAG) ErzeugerOhneBindung() []string {
 // menschAusRegister: der Mensch hinter einem Signierschluessel fuer die
 // Leitung ("ein Mensch, eine Stimme") ab registerLeserAb -- aus dem Stand im
 // Speicher (die Leitung fragt unter ihrer Sperre; keine Datenbank). Der
-// Betreiber, dessen Fenster jetzt gilt (dieselbe Frist wie beim Erzeugen).
-// Nach einem Lesefehler aus dem letzten gelesenen Stand: so sieht die
-// Leitung fuer ein Mitglied nicht ploetzlich keinen Menschen mehr und
-// nimmt einen zweiten Schluessel desselben Menschen auf (vorher: je
-// Schluessel eine eigene Abfrage, und ein Fehler bei einem Mitglied liess
-// genau das zu). Noch nie gelesen, keiner oder umstritten: "" -- die
-// Leitung nimmt ihn dann nicht auf.
+// Mensch, der den Schluessel zuletzt gebunden hat (letzteHalter) -- auch
+// nach einem Wechsel bleibt der alte Schluessel seiner, bis er die Leitung
+// verlaesst; wer aufgenommen wird, regelt die Zulassung. Nach einem
+// Lesefehler aus dem letzten gelesenen Stand: so sieht die Leitung fuer ein
+// Mitglied nicht ploetzlich keinen Menschen mehr und nimmt einen zweiten
+// Schluessel desselben Menschen auf (vorher: je Schluessel eine eigene
+// Abfrage, und ein Fehler bei einem Mitglied liess genau das zu). Noch nie
+// gelesen, keiner, kein Mensch oder umstritten: "" -- die Leitung nimmt ihn
+// dann nicht auf.
 func (dag *BlockDAG) menschAusRegister(signing string) string {
 	if dag.state == nil {
 		return ""
@@ -610,5 +665,5 @@ func (dag *BlockDAG) menschAusRegister(signing string) string {
 	if st == nil {
 		return ""
 	}
-	return st.erzeugerFenster(strings.ToLower(signing), nowUnix())
+	return st.halter[strings.ToLower(signing)]
 }

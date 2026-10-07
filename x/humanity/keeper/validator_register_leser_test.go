@@ -63,6 +63,8 @@ func TestBindungsIntervalle(t *testing.T) {
 			[]bindungsIntervall{{"v", "k", 100, 150}, {"b", "k", 150, ewig}}},
 		"Uebernahme, dann weiter": {[]bindungsZeile{z("v", "k", 100), z("b", "k", 150), z("b", "k3", 300)},
 			[]bindungsIntervall{{"v", "k", 100, 150}, {"b", "k", 150, 300}, {"b", "k3", 300, ewig}}},
+		"Wechsel, dann Uebernahme": {[]bindungsZeile{z("v", "k", 100), z("v", "k2", 200), z("b", "k", 300)},
+			[]bindungsIntervall{{"v", "k", 100, 200}, {"b", "k", 300, ewig}, {"v", "k2", 200, ewig}}},
 		"umstritten": {[]bindungsZeile{z("v", "k", 100), z("w", "k", 100)},
 			[]bindungsIntervall{{"v", "k", 100, ewig}, {"w", "k", 100, ewig}}},
 		"leerer Zeitraum": {[]bindungsZeile{z("v", "k", 100), z("v", "kz", 100)},
@@ -87,7 +89,8 @@ func standAus(zeilen ...bindungsZeile) *erzeugerStand {
 	for _, r := range zeilen {
 		menschen[r.betreiber] = true
 	}
-	return &erzeugerStand{fenster: fensterAusIntervallen(bindungsIntervalle(zeilen), menschen, nil), zeit: time.Now()}
+	return &erzeugerStand{fenster: fensterAusIntervallen(bindungsIntervalle(zeilen), menschen, nil),
+		halter: letzteHalter(zeilen, menschen, nil), zeit: time.Now()}
 }
 
 // Die Frist: eine Bindung wirkt erst erzeugerFrist nach ihrem Zeitpunkt, ihr
@@ -356,15 +359,22 @@ func TestValidatorMenschVon_AbStichtagAusDemStand(t *testing.T) {
 	if got := dag.validatorMenschVon("0xaa"); got != "" {
 		t.Fatalf("ab registerLeserAb ohne Stand: %q", got)
 	}
-	st := standAus(z("0xm1", "0xaa", 0), z("0xm2", "0xbb", nowUnix()))
+	st := standAus(z("0xm1", "0xaa", 0), z("0xm2", "0xbb", nowUnix()), z("0xm3", "0xcc", 0), z("0xm4", "0xcc", 0),
+		z("0xm5", "0xdd", 100), z("0xm6", "0xdd", 200)) // dd: von m5 an m6 uebergeben
 	dag.state.erzeugerRegister.Store(st)
 	if got := dag.validatorMenschVon("0xAA"); got != "0xm1" {
 		t.Fatalf("aus dem Stand: %q", got)
 	}
-	if got := dag.validatorMenschVon("0xbb"); got != "" {
-		t.Fatalf("in der Frist schon Mitglied: %q", got)
+	if got := dag.validatorMenschVon("0xbb"); got != "0xm2" {
+		t.Fatalf("gerade gebunden: %q -- der Mensch steht fest, aufgenommen wird nach der Zulassung", got)
 	}
-	dag.state.erzeugerRegister.Store(&erzeugerStand{fenster: st.fenster, fehler: errors.New("db weg")})
+	if got := dag.validatorMenschVon("0xcc"); got != "" {
+		t.Fatalf("umstritten: %q", got)
+	}
+	if got := dag.validatorMenschVon("0xdd"); got != "0xm6" {
+		t.Fatalf("nach der Uebergabe: %q, erwartet der spaetere 0xm6", got)
+	}
+	dag.state.erzeugerRegister.Store(&erzeugerStand{fenster: st.fenster, halter: st.halter, fehler: errors.New("db weg")})
 	if got := dag.validatorMenschVon("0xaa"); got != "0xm1" {
 		t.Fatalf("nach einem Lesefehler: %q -- der letzte Stand muss bleiben", got)
 	}
@@ -511,5 +521,27 @@ func TestRegisterAndDiscover_SeedListeAbStichtagNicht(t *testing.T) {
 	t.Cleanup(func() { erzeugerSchnittOverride.Store(0) })
 	if lauf() {
 		t.Fatal("ab dem Stichtag aus der Liste des Seeds aufgenommen")
+	}
+}
+
+// Missbrauch (L2, #303): nach einem Wechsel von K0 zu K1 gehoert K0 weiter
+// demselben Menschen -- die Leitung nimmt K1 nicht als zweiten Sitz auf,
+// solange K0 drin ist. Vorher fiel K0 nach der Frist auf "" und zaehlte
+// nicht mehr gegen K1.
+func TestLeitung_WechselGibtKeinenZweitenSitz(t *testing.T) {
+	registerLeserOverride.Store(1)
+	t.Cleanup(func() { registerLeserOverride.Store(0) })
+	dag := newOrphanTestDAG()
+	dag.state = newTestState()
+	dag.state.erzeugerRegister.Store(standAus(z("0xm", "0xk0", 0), z("0xm", "0xk1", nowUnix()-3*erzeugerFrist)))
+	if a, b := dag.validatorMenschVon("0xk0"), dag.validatorMenschVon("0xk1"); a != "0xm" || b != "0xm" {
+		t.Fatalf("Mensch zu K0 %q, zu K1 %q -- beide muessen 0xm sein", a, b)
+	}
+	l := &Leitung{env: LeitUmgebung{Mensch: dag.validatorMenschVon}}
+	if l.aufnehmbar("0xk1", []string{"0xk0"}) {
+		t.Fatal("K1 neben K0 aufgenommen -- derselbe Mensch zweimal")
+	}
+	if !l.aufnehmbar("0xk1", nil) {
+		t.Fatal("K1 allein nicht aufnehmbar")
 	}
 }

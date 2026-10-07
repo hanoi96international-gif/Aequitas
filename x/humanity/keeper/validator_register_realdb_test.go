@@ -29,6 +29,11 @@ func neuerRegisterFall(t *testing.T) *registerFall {
 	}
 	validatorRegisterOverride.Store(1)
 	t.Cleanup(func() { validatorRegisterOverride.Store(0) })
+	// Die Tests der Register-Regeln binden im Minutenabstand; der Abstand je
+	// Betreiber (validatorBindungAbstand) hat eigene Tests und steht hier
+	// auf einer Sekunde.
+	validatorBindungAbstandOverride.Store(1)
+	t.Cleanup(func() { validatorBindungAbstandOverride.Store(0) })
 	dag := newOrphanTestDAG()
 	dag.state = cs
 	dag.bootHeight = 0
@@ -566,10 +571,6 @@ func TestValidatorRegister_ReihenfolgeEgal_RealDB(t *testing.T) {
 					t.Fatalf("umstrittene Adresse gehoert %s", got)
 				}
 			},
-		},
-		{
-			name: "ein Betreiber, zwei Adressen, gleicher Zeitpunkt",
-			txs:  []Transaction{bindungUnterschrieben(t, a, s1, z-100), bindungUnterschrieben(t, a, s2, z-100)},
 		},
 	}
 	for _, fall := range faelle {
