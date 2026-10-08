@@ -314,17 +314,22 @@ Dinge ohne Konsenswirkung (Erreichbarkeit, Messwerte als Hinweis).
      einen Block des Fensters, den der Erzeuger nicht hat (an der
      Finalitätswand verschieden behandelt), meldet er eine Abweichung.
    - **Komitee aus derselben Menge** (08.10.2026, `komitee_register.go`,
-     schlafend bis `erzeugerSchnittAb`): Kandidaten sind die Schlüssel, die
-     zum Beginn der Epoche in genau einem Erzeugerfenster eines Menschen
-     stehen; die Epoche zählt nach der Zeit, nicht nach der Höhe. Jeder
-     Knoten, der dem Netz folgt, wählt so zur selben Epoche dasselbe Komitee
-     (höchstens 100 Erzeuger), und eine mit erfundenen Adressen gefüllte
-     lokale Liste drückt niemanden mehr hinaus. Das Komitee bleibt eine
+     schlafend bis `erzeugerSchnittAb`): zur Zeit t ist im Komitee, wer zu t
+     in genau einem Erzeugerfenster eines Menschen steht und unter diesen zu
+     den ersten 100 der Rangfolge der Epoche gehört; die Epoche zählt nach
+     der Zeit, nicht nach der Höhe. Jeder Knoten, der dem Netz folgt, wählt
+     so zur selben Zeit dasselbe Komitee (höchstens 100 Erzeuger), und eine
+     mit erfundenen Adressen gefüllte lokale Liste drückt niemanden mehr
+     hinaus. Ein Schlüsselwechsel bleibt nahtlos (der neue Schlüssel ist
+     dabei, sobald sein Fenster beginnt). Ohne lesbaren Stand ist das
+     Komitee leer: dieser Knoten erzeugt nicht. Das Komitee bleibt eine
      Regel für den eigenen Knoten – kein Block wird abgewiesen, weil sein
-     Erzeuger nicht im Komitee ist. Ein neu gebundener Schlüssel erzeugt ab
-     der nächsten Epoche (bis zu einer Stunde nach seiner Frist). Ein
-     wachsendes K bräuchte ein Komitee, das je **Block** (nicht je Knoten
-     und Uhr) feststeht – offen.
+     Erzeuger nicht im Komitee ist. Ein wachsendes K bräuchte ein Komitee,
+     das je **Block** (nicht je Knoten und Uhr) feststeht – offen. **Vor
+     einem offenen Betrieb:** die Rangfolge ist vorhersagbar
+     (`sha256(adresse:epoche)`); gebundene, aber schweigende Schlüssel oder
+     gezielt gesuchte Adressen belegen Sitze – die Auswahl braucht dann einen
+     Zufall, der zur Zeit der Bindung unbekannt ist.
    - Offen (eure Entscheidung): die Leistungsprobe wird zur Entscheidung des
      Leiters, die als eigene Transaktion auf die Kette kommt – oder entfällt.
 4. **Coordinator-Register** (`coordinator_keys`): seit 06.10.2026 trägt die

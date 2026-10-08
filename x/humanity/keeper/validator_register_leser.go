@@ -271,6 +271,9 @@ type erzeugerStand struct {
 	// fehler: der letzte Lesefehler; die Erzeugerpruefung schliesst dann ab.
 	fehler error
 	zeit   time.Time
+	// komiteeRang: je Epoche die Rangliste des Komitees (komitee_register.go),
+	// beim Auffrischen vorberechnet; nach dem Speichern unveraendert.
+	komiteeRang map[int64][]string
 }
 
 // erzeugerFenster: ist addr zur Blockzeit t in genau einem Fenster? (Zwei:
@@ -436,7 +439,11 @@ func (cs *ChainState) erzeugerRegisterAuffrischen() {
 			m, h = alt.fenster, alt.halter
 		}
 	}
-	cs.erzeugerRegister.Store(&erzeugerStand{fenster: m, halter: h, fehler: err, zeit: time.Now()})
+	neu := &erzeugerStand{fenster: m, halter: h, fehler: err, zeit: time.Now()}
+	// Ausserhalb von dag.mu: die Rangliste des Komitees fuer diese und die
+	// naechste Epoche (komitee_register.go).
+	neu.komiteeRang = komiteeVorberechnen(neu, nowUnix())
+	cs.erzeugerRegister.Store(neu)
 }
 
 // erzeugerAuffrischenEinmal: der Hintergrund-Leser laeuft einmal je Prozess.

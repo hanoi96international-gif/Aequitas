@@ -131,8 +131,8 @@ den verlinkten Dokumenten.
               nach; schaltet, wenn das ganze Fenster nach
               `erzeugerSchnittAb` liegt (`validator_lohn_kette.go`)
         - [x] Komitee (`getEpochCommittee`) aus derselben Menge, schlafend
-              (08.10.): ab `erzeugerSchnittAb` Kandidaten aus den
-              Erzeugerfenstern zum Beginn der Epoche, Epoche nach der Zeit
+              (08.10.): ab `erzeugerSchnittAb` die ersten 100 der zur Zeit
+              Zugelassenen in der Rangfolge der Epoche, Epoche nach der Zeit
               (`komitee_register.go`)
         - [ ] Stichtage setzen (eure Entscheidung,
               `docs/VALIDATOR_REGISTER_KONSENS.md`)

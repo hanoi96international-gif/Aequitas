@@ -426,13 +426,15 @@ type BlockDAG struct {
 	registerMenschen     sync.Map
 	registerMenschenZahl atomic.Int64
 	currentEpoch         *EpochCommittee // active block-producer committee for the current epoch
-	epochMu              sync.RWMutex    // guards currentEpoch, registerKomitee, registerKomiteeStand
-	// registerKomitee: das Komitee ab erzeugerSchnittAb, aus dem Register
-	// (komitee_register.go); registerKomiteeStand: der Stand, aus dem es
-	// berechnet wurde.
-	registerKomitee      *EpochCommittee
-	registerKomiteeStand *erzeugerStand
-	activeSyncPeers      map[string]bool // peers with a running syncWithNode goroutine
+	epochMu              sync.RWMutex    // guards currentEpoch and the register* fields below
+	// Ab erzeugerSchnittAb (komitee_register.go): die zuletzt gemeldete
+	// Epoche und die zuletzt selbst berechnete Rangliste (fuer welchen Stand
+	// und welche Epoche).
+	registerKomiteeEpoche int64
+	registerRang          []string
+	registerRangStand     *erzeugerStand
+	registerRangEpoche    int64
+	activeSyncPeers       map[string]bool // peers with a running syncWithNode goroutine
 	// peerSyncHeight tracks, per peer URL, the highest block height this
 	// node has actually SUCCESSFULLY imported FROM that specific peer via
 	// doSyncOnce — see that function's own FIX comment (2026-07-06) for the
@@ -8642,7 +8644,7 @@ func komiteeWaehlen(allOps []string, epochNum int64) *EpochCommittee {
 	entries := make([]entry, len(allOps))
 	for i, addr := range allOps {
 		entries[i].addr = strings.ToLower(addr)
-		entries[i].score = sha256.Sum256([]byte(fmt.Sprintf("%s:%d", entries[i].addr, epochNum)))
+		entries[i].score = komiteePunkte(entries[i].addr, epochNum)
 	}
 	sort.Slice(entries, func(i, j int) bool {
 		return bytes.Compare(entries[i].score[:], entries[j].score[:]) < 0
