@@ -401,18 +401,26 @@ verification alone runs at 40,577/s on six cores with cgo.
 
 ---
 
-## 7. Supply is 305.278008 AEQ above what registrations account for
+## 7. Supply was 305.278008 AEQ above what registrations account for — **closed**
 
-**State:** Both benign explanations were ruled out live — the counter has not
-drifted and no humans deregistered — so the AEQ was created, on the liquidity
-or swap path. Five instances of the underlying bug class (account and pool are
-two non-atomic writes) were found and fixed, and
-`x/humanity/keeper/write_order_test.go` now fails if a new path appears that
-does not declare which side loses AEQ. A daily drift watch runs against the
-`305.278008` baseline.
+**State (checked 2026-10-08):** Both benign explanations were ruled out live —
+the counter had not drifted and no humans deregistered — so the AEQ was
+created, on the liquidity or swap path. Cause: account and pool were two
+non-atomic writes in the minting order; five such paths were fixed (since
+2026-08-20 the debit is persisted before the credit, so a failure destroys
+instead of creating), and `x/humanity/keeper/write_order_test.go` fails if a
+new path appears that does not declare which side loses AEQ.
 
-**Why it matters:** The fixes stop it recurring; they do not explain the
-existing gap or remove it.
+The excess itself was removed on 2026-08-26 by a replicated `pool_correction`
+transaction (`x/humanity/keeper/pool_correction.go`), together with
+7,907.114977 tUSD in proportion so the price stayed put. The daily
+`supply-drift-watch.yml` has run against baseline **0** since then; its run on
+2026-10-07 measured a difference of 0.000000 AEQ.
+
+**What is not reconstructible:** which single transaction minted the excess —
+a failed second write leaves no trace in the transaction log, and the old C1
+with its database was shut down on 2026-09-24. The class of bug is fixed and
+guarded by a test; the watch would show a new one within a day.
 
 ---
 

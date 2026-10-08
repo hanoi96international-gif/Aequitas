@@ -73,6 +73,10 @@ func TestStaffelLebenszyklus(t *testing.T) {
 	if st := StaffelStand(acc); st == nil || st["laeuft"] != false {
 		t.Fatalf("Staffel darf ohne Erneuerung nicht laufen: %v", st)
 	}
+	// Tag 7 steht in der Antwort, genau wie die Annahme ihn prueft.
+	if st := StaffelStand(acc); st["erneuerung_ab"] != int64(5_000+7*86400) || st["erneuerung_ab"] != erneuerungFruehestens(acc) {
+		t.Fatalf("erneuerung_ab: %v, erwartet %d", st["erneuerung_ab"], 5_000+7*86400)
+	}
 
 	// Tagesdurchlauf ohne Erneuerung: nichts.
 	txs, err := cs.grantReleasesLocked(ctx, 6_000)

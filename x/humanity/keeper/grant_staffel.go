@@ -291,11 +291,15 @@ func StaffelStand(acc *AccountState) map[string]interface{} {
 	if acc == nil || (acc.GrantStagedRest == 0 && acc.LivenessRenewedAt == 0) {
 		return nil
 	}
+	// erneuerung_ab: ab wann eine Erneuerung angenommen wird (Tag 7) --
+	// dieselbe Zahl, die handleLivenessRenewal prueft; App und Coordinator
+	// rechnen sie so nicht selbst nach. 0 ohne offene Staffel.
 	return map[string]interface{}{
 		"rest_aeq":      acc.GrantStagedRest.Float(),
 		"laeuft":        acc.GrantStagedRest > 0 && acc.LivenessRenewedAt > 0,
 		"erneuert_am":   acc.LivenessRenewedAt,
 		"bis":           acc.GrantStagedUntil,
+		"erneuerung_ab": erneuerungFruehestens(acc),
 		"tagesrate_aeq": grantStaffelTagesrate(),
 		"bedeutung":     "Teil des Startzuschusses, der erst nach einer zweiten Lebendigkeitspruefung ueber 30 Tage freigegeben wird. Kein Verlust: pausiert, bis die Pruefung kommt.",
 	}
