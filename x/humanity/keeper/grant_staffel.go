@@ -351,6 +351,13 @@ func (a *APIServer) handleLivenessRenewal(w http.ResponseWriter, r *http.Request
 		jsonError(w, "staged grant not active yet", http.StatusConflict)
 		return
 	}
+	// Je Anfrage eine Registerabfrage und die Zulassung (Datenbank): begrenzt
+	// je Absender-IP (Pruefung #314, LOW-3). Knoten der Freiliste (leiten
+	// fuer ihre Nutzer weiter, zumLeiter) zaehlen nicht.
+	if !rpcRateLimitFrei(r) && !burstErlaubt("liveness-renewal:"+clientIP(r), burstErneuerungJeIP, burstFenster) {
+		jsonError(w, "too many renewal requests from this address -- please retry in a minute", http.StatusTooManyRequests)
+		return
+	}
 	var req struct {
 		Wallet    string `json:"wallet"`
 		IssuedAt  int64  `json:"issued_at"`
@@ -376,6 +383,15 @@ func (a *APIServer) handleLivenessRenewal(w http.ResponseWriter, r *http.Request
 	// (bescheinigungPruefen). Fehlt der Eintrag oder hat er keine
 	// Unterschriften (vor dem 06.10.2026 eingetragen), muss der Coordinator
 	// sich einmal neu eintragen.
+	// Die Unterschrift der Bescheinigung haengt nur am Schluessel und der
+	// Nachricht: VOR der Registerabfrage -- eine Muell-Unterschrift kostet
+	// keine Datenbank. Dieselbe Pruefung wie in bescheinigungPruefen (unten
+	// noch einmal), mit derselben Schreibweise (erneuerungsTransaktion).
+	if !ed25519PruefenStreng(strings.ToLower(strings.TrimSpace(req.PublicKey)), ed25519SigNormal(req.Signature),
+		[]byte(erneuerungsNachricht(wallet, req.IssuedAt))) {
+		jsonError(w, "invalid renewal attestation: Bescheinigung passt nicht zu Wallet und Zeitpunkt (oder ist keine Ed25519-Unterschrift in kanonischer Schreibweise)", http.StatusForbidden)
+		return
+	}
 	bindung, ok := a.state.CoordinatorBindungLokal(req.PublicKey)
 	if !ok {
 		jsonError(w, "renewal attestation not signed by a registered coordinator (or its registration predates stored signatures -- register the coordinator key again)", http.StatusForbidden)

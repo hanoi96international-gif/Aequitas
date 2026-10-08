@@ -85,4 +85,8 @@ const (
 	// Kennungen diesen gemeinsamen Zaehler leeren -- und damit /prove fuer
 	// alle anhalten (Audit 2026-09-29, H4).
 	burstProveGetJeIP = 30
+	// /api/liveness-renewal -- je Anfrage eine Abfrage im Coordinator-Register
+	// und die Zulassung (Datenbank). Ein Coordinator erneuert hoechstens so
+	// viele Menschen, wie am Tag registriert werden (Pruefung #314, LOW-3).
+	burstErneuerungJeIP = 30
 )

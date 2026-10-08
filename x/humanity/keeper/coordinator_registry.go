@@ -170,7 +170,12 @@ func (cs *ChainState) CoordinatorBindungLokal(publicKey string) (CoordinatorBind
 	if !ed25519HexTauglich(publicKey) {
 		return CoordinatorBindung{}, false
 	}
-	err := cs.db.QueryRow(`SELECT human_wallet, COALESCE(human_signature, ''), COALESCE(key_signature, '')
+	// Mit Zeitgrenze: die Erneuerung fragt hier fuer oeffentliche Anfragen
+	// (Pruefung #314, LOW-3) -- eine haengende Datenbank haelt keine
+	// Anfrage unbegrenzt fest.
+	ctx, abbruch := context.WithTimeout(context.Background(), 5*time.Second)
+	defer abbruch()
+	err := cs.db.QueryRowContext(ctx, `SELECT human_wallet, COALESCE(human_signature, ''), COALESCE(key_signature, '')
 		FROM coordinator_keys WHERE public_key = $1`, publicKey).Scan(&b.Mensch, &b.MenschSig, &b.SchluesselSig)
 	if err != nil || b.MenschSig == "" || b.SchluesselSig == "" {
 		return CoordinatorBindung{}, false

@@ -48,6 +48,9 @@ func neuerErneuerungsFall(t *testing.T, registriertVorTagen int64) *erneuerungsF
 	}
 	stagedGrantActivationOverride.Store(1)
 	t.Cleanup(func() { stagedGrantActivationOverride.Store(0) })
+	// Die Tests schicken alle von der Adresse von httptest: ihre Grenze je
+	// Absender-IP (burstErneuerungJeIP) gilt je Test, nicht ueber -count.
+	ipBurst.Delete("liveness-renewal:192.0.2.1")
 	cs.EnsureCoordinatorRegistry()
 	if _, err := cs.db.Exec(`DELETE FROM coordinator_keys`); err != nil {
 		t.Fatal(err)
