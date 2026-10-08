@@ -182,17 +182,34 @@ func TestErneuerung_Missbrauch_RealDB(t *testing.T) {
 	if got := f.pruefe(f.gueltig(f.jetzt-86400), f.jetzt); len(got) != 0 {
 		t.Fatalf("Bescheinigung von gestern gemeldet: %v", got)
 	}
-	// Ohne Zeitpunkt scheitert die Bescheinigung schon an der Zulassung: vor
-	// registerLeserAb (Zeitpunkt 0) ist kein Coordinator zugelassen
-	// (coordinator_zulassung.go) -- erkannt bevor die Zeitregel greift.
+	// Ohne Zeitpunkt greift die Zeitregel, bevor die Bescheinigung etwas
+	// kostet (Sicherheitsdurchgang #312, LOW-2) -- genau eine Meldung.
 	nullZeit := erneuerungsTransaktion(f.wallet, 0, hex.EncodeToString(f.pub), f.unterschreibe(f.priv, f.wallet, 0), f.bindung)
-	if got := f.pruefe(nullZeit, f.jetzt); got["erneuerung_ohne_bescheinigung"] != 1 {
+	if got := f.pruefe(nullZeit, f.jetzt); got["erneuerung_zeit"] != 1 || len(got) != 1 {
 		t.Fatalf("Bescheinigung ohne Zeitpunkt nicht erkannt: %v", got)
+	}
+	// Die Bescheinigung selbst taugte auch nicht: vor registerLeserAb
+	// (Zeitpunkt 0) ist kein Coordinator zugelassen (coordinator_zulassung.go).
+	if err := bescheinigungPruefen(f.wallet, 0, nullZeit.Bescheinigung, f.cs.coordinatorMenschStand, f.cs.coordinatorZugelassen); err == nil {
+		t.Fatal("Bescheinigung ohne Zeitpunkt angenommen")
 	}
 
 	voraus := f.gueltig(f.jetzt + 3600)
 	if got := f.pruefe(voraus, f.jetzt); got["erneuerung_zeit"] != 1 {
 		t.Fatalf("Bescheinigung aus der Zukunft nicht erkannt: %v", got)
+	}
+	// Missbrauch (#312, LOW-2): eine Flut alter Erneuerungen mit
+	// Muell-Unterschrift kostet nur die Zeitregel -- die Bescheinigung wird
+	// gar nicht erst angesehen (sonst kaeme erneuerung_ohne_bescheinigung
+	// dazu), die Zulassung nicht abgefragt.
+	muellAlt := erneuerungsTransaktion(f.wallet, f.jetzt-8*86400, hex.EncodeToString(f.pub), strings.Repeat("ab", 64), f.bindung)
+	if got := f.pruefe(muellAlt, f.jetzt); got["erneuerung_zeit"] != 1 || len(got) != 1 {
+		t.Fatalf("alte Muell-Erneuerung: %v (erwartet nur erneuerung_zeit)", got)
+	}
+	muellFrueh := neuerErneuerungsFall(t, 3)
+	muellTx := erneuerungsTransaktion(muellFrueh.wallet, muellFrueh.jetzt-60, hex.EncodeToString(muellFrueh.pub), strings.Repeat("ab", 64), muellFrueh.bindung)
+	if got := muellFrueh.pruefe(muellTx, muellFrueh.jetzt); got["erneuerung_zu_frueh"] != 1 || len(got) != 1 {
+		t.Fatalf("fruehe Muell-Erneuerung: %v (erwartet nur erneuerung_zu_frueh)", got)
 	}
 
 	frueh := neuerErneuerungsFall(t, 3)
@@ -600,6 +617,59 @@ func TestCoordinatorEintragung_V1UeberschreibtNicht_RealDB(t *testing.T) {
 	}
 }
 
+// #312, LOW-3: die Antwort meldet den gespeicherten Stand nur, wenn dessen
+// Unterschriften selbst v2 sind. Eine Zeile mit gespeicherten
+// v1-Unterschriften (vor #311 eingetragen) taugt nicht -- die Antwort darf
+// nicht "tauglich" sagen, nur weil eine Zeile da ist, sonst erfuehre der
+// Coordinator nie, dass er sich neu eintragen muss, und jede Erneuerung
+// scheiterte auf allen Knoten.
+func TestCoordinatorEintragung_GespeicherteV1TaugtNicht_RealDB(t *testing.T) {
+	f := neuerErneuerungsFall(t, 10)
+	f.cs.EnsureCoordinatorRegistry()
+	// Jede Haelfte allein: ist nur eine der beiden gespeicherten
+	// Unterschriften v1, taugt die Bindung genauso wenig.
+	for _, fall := range []struct {
+		name                 string
+		freigabeV2, besitzV2 bool
+	}{{"ganz v1", false, false}, {"v2-Freigabe, v1-Besitz", true, false}, {"v1-Freigabe, v2-Besitz", false, true}} {
+		pub, priv, _ := ed25519.GenerateKey(rand.Reader)
+		pubHex := hex.EncodeToString(pub)
+		k, mensch := f.neuerMensch(false)
+		freigabeV1 := kanonischeSignaturVersuch(personalSign(t, k, coordinatorFreigabeNachrichtV1(pubHex)))
+		besitzV1 := hex.EncodeToString(ed25519.Sign(priv, []byte(coordinatorBesitzNachrichtV1(mensch))))
+		freigabe, besitz := freigabeV1, besitzV1
+		if fall.freigabeV2 {
+			freigabe = kanonischeSignaturVersuch(personalSign(t, k, coordinatorFreigabeNachricht(pubHex)))
+		}
+		if fall.besitzV2 {
+			besitz = hex.EncodeToString(ed25519.Sign(priv, []byte(coordinatorBesitzNachricht(mensch))))
+		}
+		if _, err := f.cs.db.Exec(`INSERT INTO coordinator_keys (public_key, human_wallet, human_signature, key_signature)
+			VALUES ($1, $2, $3, $4)`, pubHex, mensch, freigabe, besitz); err != nil {
+			t.Fatal(err)
+		}
+		// Vorbedingung: die Zeile wird als Bindung gelesen -- sonst pruefte
+		// der Test nur den Fall "keine Zeile".
+		gespeichert, ok := f.cs.CoordinatorBindungLokal(pubHex)
+		if !ok || gespeichert.Mensch != mensch {
+			t.Fatalf("%s: gespeicherte Zeile nicht gelesen: %+v %v", fall.name, gespeichert, ok)
+		}
+		w := f.eintragen(map[string]string{"public_key": pubHex, "human_wallet": mensch,
+			"human_signature": freigabeV1, "key_signature": besitzV1})
+		if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"bescheinigungstauglich":false`) ||
+			!strings.Contains(w.Body.String(), "hinweis") {
+			t.Fatalf("%s: gespeicherte Zeile als tauglich gemeldet: %d %s", fall.name, w.Code, w.Body.String())
+		}
+		// Und tatsaechlich: eine Erneuerung mit dieser Bindung besteht bei
+		// keinem Knoten.
+		tx := erneuerungsTransaktion(f.wallet, f.jetzt-60, pubHex,
+			hex.EncodeToString(ed25519.Sign(priv, []byte(erneuerungsNachricht(f.wallet, f.jetzt-60)))), gespeichert)
+		if got := f.pruefe(tx, f.jetzt); got["erneuerung_ohne_bescheinigung"] != 1 {
+			t.Fatalf("%s: Erneuerung mit dieser Bindung nicht gemeldet: %v", fall.name, got)
+		}
+	}
+}
+
 // LOW-1: die Eintragung gleicht die Schreibweise an (v 0/1, Grossbuchstaben,
 // 0x) und speichert die eine -- die Bescheinigung daraus besteht beim
 // Nachrechnen. Eine Freigabe mit hohem s bleibt abgewiesen.
@@ -957,6 +1027,63 @@ func TestErneuerung_ZulassungBetreiberGrenze_RealDB(t *testing.T) {
 	}
 	if n := f.pruefe(f.gueltig(issued), issued+60)["erneuerung_ohne_bescheinigung"]; n != 1 {
 		t.Fatalf("ueber der Grenze beim Nachspielen nicht abgewiesen (%d)", n)
+	}
+}
+
+// #312: ein Datenbankfehler bei der Zulassung geht nicht an den Aufrufer
+// (Treiber- und Tabellennamen, bei einem Verbindungsfehler der Host) --
+// die Antwort ist 500 mit festem Text, die Erneuerung abgewiesen
+// (fail-closed), der Ausgang leer.
+func TestErneuerung_AnnahmeVerraetKeineInterna_RealDB(t *testing.T) {
+	f := neuerErneuerungsFall(t, 8)
+	if _, err := f.cs.db.Exec(`ALTER TABLE validator_verlauf RENAME TO validator_verlauf_weg`); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { f.cs.db.Exec(`ALTER TABLE validator_verlauf_weg RENAME TO validator_verlauf`) })
+	issued := nowUnix()
+	body, _ := json.Marshal(map[string]interface{}{
+		"wallet": f.wallet, "issued_at": issued,
+		"public_key": hex.EncodeToString(f.pub), "signature": f.unterschreibe(f.priv, f.wallet, issued),
+	})
+	w := httptest.NewRecorder()
+	(&APIServer{state: f.cs}).handleLivenessRenewal(w, httptest.NewRequest(http.MethodPost, "/api/liveness-renewal", bytes.NewReader(body)))
+	if _, err := f.cs.db.Exec(`ALTER TABLE validator_verlauf_weg RENAME TO validator_verlauf`); err != nil {
+		t.Fatal(err)
+	}
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("unlesbare Zulassung: %d %s (erwartet 500)", w.Code, w.Body.String())
+	}
+	for _, intern := range []string{"pq", "validator_verlauf", "relation", "Zulassung"} {
+		if strings.Contains(w.Body.String(), intern) {
+			t.Fatalf("Antwort verraet %q: %s", intern, w.Body.String())
+		}
+	}
+	var n int
+	if err := f.cs.db.QueryRow(`SELECT COUNT(*) FROM pending_txs WHERE included_at = 0`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Fatalf("Erneuerung trotz unlesbarer Zulassung im Ausgang (%d)", n)
+	}
+
+	// Dasselbe beim Schreiben: scheitert der Ausgang an der Datenbank, steht
+	// in der Antwort nur der feste Text.
+	if _, err := f.cs.db.Exec(`ALTER TABLE pending_txs RENAME TO pending_txs_weg`); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { f.cs.db.Exec(`ALTER TABLE pending_txs_weg RENAME TO pending_txs`) })
+	w = httptest.NewRecorder()
+	(&APIServer{state: f.cs}).handleLivenessRenewal(w, httptest.NewRequest(http.MethodPost, "/api/liveness-renewal", bytes.NewReader(body)))
+	if _, err := f.cs.db.Exec(`ALTER TABLE pending_txs_weg RENAME TO pending_txs`); err != nil {
+		t.Fatal(err)
+	}
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("Ausgang nicht schreibbar: %d %s (erwartet 500)", w.Code, w.Body.String())
+	}
+	for _, intern := range []string{"pq", "pending_txs", "relation"} {
+		if strings.Contains(w.Body.String(), intern) {
+			t.Fatalf("Antwort verraet %q: %s", intern, w.Body.String())
+		}
 	}
 }
 

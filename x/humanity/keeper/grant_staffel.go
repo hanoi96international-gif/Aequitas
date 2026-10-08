@@ -383,6 +383,14 @@ func (a *APIServer) handleLivenessRenewal(w http.ResponseWriter, r *http.Request
 	}
 	tx := erneuerungsTransaktion(wallet, req.IssuedAt, req.PublicKey, req.Signature, bindung)
 	if err := bescheinigungPruefen(wallet, req.IssuedAt, tx.Bescheinigung, a.state.coordinatorMenschStand, a.state.coordinatorZugelassen); err != nil {
+		// Ein Datenbankfehler (Zulassung) traegt Treiber- und Hostangaben:
+		// die gehen ins Log, nicht an den Aufrufer (Sicherheitsdurchgang
+		// #312).
+		if isInternalError(err) {
+			fmt.Printf("[API] liveness renewal failed for %s: %v\n", kurzAdresse(wallet), err)
+			jsonError(w, "internal error, please retry shortly", http.StatusInternalServerError)
+			return
+		}
 		jsonError(w, "invalid renewal attestation: "+err.Error(), http.StatusForbidden)
 		return
 	}
@@ -439,6 +447,11 @@ func (a *APIServer) handleLivenessRenewal(w http.ResponseWriter, r *http.Request
 	}); err != nil {
 		if errors.Is(err, errSchonErneuert) {
 			json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "wallet": wallet, "schon_erneuert": true})
+			return
+		}
+		if isInternalError(err) {
+			fmt.Printf("[API] liveness renewal failed for %s: %v\n", kurzAdresse(wallet), err)
+			jsonError(w, "internal error, please retry shortly", http.StatusInternalServerError)
 			return
 		}
 		jsonError(w, err.Error(), http.StatusInternalServerError)
@@ -550,16 +563,19 @@ func bescheinigungPruefen(wallet string, issuedAt int64, b *Lebendigkeitsbeschei
 	if err := pruefePersonalSignGemerkt(coordinatorFreigabeNachricht(pub), b.MenschSig, mensch); err != nil {
 		return fmt.Errorf("Freigabe des Menschen: %v", err)
 	}
+	msg := erneuerungsNachricht(wallet, issuedAt)
+	if !ed25519PruefenStreng(pub, b.Signature, []byte(msg)) {
+		return fmt.Errorf("Bescheinigung passt nicht zu Wallet und Zeitpunkt (oder ist keine Ed25519-Unterschrift in kanonischer Schreibweise)")
+	}
+	// Der Kettenzustand erst nach jeder Unterschrift (Sicherheitsdurchgang
+	// #312, LOW-1): stand laedt das Konto, unter Umstaenden aus der
+	// Datenbank -- eine Muell-Unterschrift soll keinen Zugriff kosten.
 	istMensch, staffelOffen := stand(mensch)
 	if !istMensch {
 		return fmt.Errorf("%s ist kein registrierter Mensch", kurzAdresse(mensch))
 	}
 	if staffelOffen {
 		return fmt.Errorf("%s hat selbst eine offene Staffel -- bescheinigt keine Erneuerung", kurzAdresse(mensch))
-	}
-	msg := erneuerungsNachricht(wallet, issuedAt)
-	if !ed25519PruefenStreng(pub, b.Signature, []byte(msg)) {
-		return fmt.Errorf("Bescheinigung passt nicht zu Wallet und Zeitpunkt (oder ist keine Ed25519-Unterschrift in kanonischer Schreibweise)")
 	}
 	// Zulassung im Konsens (coordinator_zulassung.go): nur, wer zur Zeit der
 	// Bescheinigung einen Validator-Schluessel im Kettenregister haelt. Vor
@@ -572,7 +588,9 @@ func bescheinigungPruefen(wallet string, issuedAt int64, b *Lebendigkeitsbeschei
 	}
 	ok, err := zugelassen(mensch, issuedAt)
 	if err != nil {
-		return fmt.Errorf("Zulassung nicht lesbar: %v", err)
+		// %w: der API-Rand erkennt Datenbankfehler (isInternalError) und
+		// gibt sie nicht an den Aufrufer weiter.
+		return fmt.Errorf("Zulassung nicht lesbar: %w", err)
 	}
 	if !ok {
 		return fmt.Errorf("%s haelt zur Zeit der Bescheinigung keinen Validator-Schluessel -- nicht als Coordinator zugelassen", kurzAdresse(mensch))
