@@ -37,6 +37,20 @@ func registerKonto(t *testing.T, cs *ChainState, adresse string, mensch bool) {
 // strafFall: registered_nodes nennt k.op (100 AEQ, wie bisher), der Verlauf
 // einen anderen Betreiber reg (Mensch, 100 AEQ, seit zehn Tagen) -- beide
 // fuer denselben Signierschluessel. Das erste Vergehen steht schon im Block.
+// bindungsZeit: der Zeitpunkt, zu dem betreiber den Schluessel von k
+// gebunden hat. "Umstritten" heisst dieselbe Sekunde -- ein zweites
+// nowUnix() liegt unter -race auch mal eine Sekunde spaeter, und dann ist es
+// eine Uebernahme (so zuvor zufaellig rot).
+func bindungsZeit(k *strafKnoten, betreiber string) int64 {
+	k.t.Helper()
+	var ts int64
+	if err := k.cs.db.QueryRow(`SELECT bindung_ts FROM validator_verlauf WHERE operator_wallet = $1 AND signing_address = $2`,
+		strings.ToLower(betreiber), strings.ToLower(k.signer)).Scan(&ts); err != nil {
+		k.t.Fatal(err)
+	}
+	return ts
+}
+
 func strafFall(t *testing.T) (*strafKnoten, string) {
 	t.Helper()
 	k := neuerStrafKnoten(t)
@@ -212,10 +226,10 @@ func TestStrafe_AbrechnungWerZahlt_RealDB(t *testing.T) {
 			verlaufEintrag(k.t, k.cs, b, k.signer, d)
 		}, "b", true},
 		{"umstritten", func(k *strafKnoten, v, b, c string, d int64) {
-			verlaufEintrag(k.t, k.cs, c, k.signer, nowUnix()-10*86400)
+			verlaufEintrag(k.t, k.cs, c, k.signer, bindungsZeit(k, v))
 		}, "", true},
 		{"umstritten, dann uebernommen", func(k *strafKnoten, v, b, c string, d int64) {
-			verlaufEintrag(k.t, k.cs, c, k.signer, nowUnix()-10*86400)
+			verlaufEintrag(k.t, k.cs, c, k.signer, bindungsZeit(k, v))
 			verlaufEintrag(k.t, k.cs, b, k.signer, d+600)
 		}, "b", true},
 		{"keine Bindung", func(k *strafKnoten, v, b, c string, d int64) {
