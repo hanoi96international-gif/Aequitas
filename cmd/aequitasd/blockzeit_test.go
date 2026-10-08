@@ -81,3 +81,24 @@ func TestBlockZeit_WirdVorDenAbgeleitetenSchwellenGesetzt(t *testing.T) {
 		}
 	}
 }
+
+// Die Annahme-Pause misst ab dem Start, nicht ab dem ersten
+// Erzeugungsversuch (Pruefung von #318): der Aufruf muss vor dem API-Server
+// stehen, sonst nehmen die HTTP-Wege waehrend Bootstrap und Resync ohne Pause
+// an.
+func TestAnnahmeMessung_BeginntVorDemAPIServer(t *testing.T) {
+	b, err := os.ReadFile("main.go")
+	if err != nil {
+		t.Fatalf("main.go nicht lesbar: %v", err)
+	}
+	body := string(b)
+	messen := strings.Index(body, "chainState.AnnahmeMessungBeginnen()")
+	if messen < 0 {
+		t.Fatal("main.go beginnt die Messung der Annahme-Pause nicht (AnnahmeMessungBeginnen)")
+	}
+	for _, spaeter := range []string{"keeper.NewAPIServer(", "api.Start(", "StartHTTPBlockSync("} {
+		if i := strings.Index(body, spaeter); i < 0 || i < messen {
+			t.Errorf("%s steht vor AnnahmeMessungBeginnen (oder fehlt)", spaeter)
+		}
+	}
+}

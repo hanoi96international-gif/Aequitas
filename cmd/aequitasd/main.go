@@ -480,6 +480,10 @@ func main() {
 	// block was permanently skipped on a freshly-started secondary because the
 	// EVM engine hadn't been wired up yet when that block was replayed.
 	fmt.Println("── Starting API Server ──────────────────")
+	// Die Annahme-Pause misst ab hier, nicht erst ab dem ersten
+	// Erzeugungsversuch nach Bootstrap und Resync (annahme_pause.go): sonst
+	// naehmen die HTTP-Wege waehrend des Aufholens ohne Pause an.
+	chainState.AnnahmeMessungBeginnen()
 	api := keeper.NewAPIServer(bc, p2pNode, chainState)
 	keeper.SafeGoroutine("api.Start", func() { api.Start(apiPort()) })
 	fmt.Println()

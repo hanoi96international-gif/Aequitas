@@ -65,10 +65,16 @@ func noteBlockProduced() { lastBlockProducedUnix.Store(time.Now().Unix()) }
 // a false acceptance costs the network a validator.
 const admissionStallSeconds = 30
 
+// admissionStallHoechstens: groesser wird AEQUITAS_ADMIT_STALL_SECONDS nicht
+// (Pruefung von #318). Ein Knoten, der so lange nicht erzeugt, haelt die
+// Annahme an -- auch wenn sein Ausgang leer ist und der Rueckstau-Messer
+// (ausgangHoechstensAlt, dieselben 10 Minuten) deshalb nicht greift.
+const admissionStallHoechstens = ausgangHoechstensAlt
+
 func admissionStallLimit() int64 {
 	if raw := os.Getenv("AEQUITAS_ADMIT_STALL_SECONDS"); raw != "" {
 		if v, err := strconv.ParseInt(raw, 10, 64); err == nil && v > 0 {
-			return v
+			return min(v, admissionStallHoechstens)
 		}
 		// A typo must not disable the protection -- same rule as
 		// rpcRateLimitMax's own override.

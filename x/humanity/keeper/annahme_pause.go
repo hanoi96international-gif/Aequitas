@@ -31,11 +31,14 @@ import (
 //     nicht greift.
 //
 // Alles ist wiederholbar ("gleich nochmal"), nicht endgueltig. Die Messung in
-// 2 beginnt mit dem ersten ProduceBlock-Versuch -- auf jedem Knoten, der
-// erzeugen koennte, auch einem, dessen Schluessel das Register (noch) nicht
-// traegt. Ein Knoten, der dann keine Bloecke speichert (nicht im
+// 2 beginnt beim Start des Knotens (AnnahmeMessungBeginnen, main.go -- vor dem
+// API-Server, wie der RPC-Weg ab processStartUnix misst), spaetestens mit dem
+// ersten ProduceBlock-Versuch -- auf jedem Knoten, der erzeugen koennte, auch
+// einem, dessen Schluessel das Register (noch) nicht traegt. Ein Knoten, der
+// dann keine Bloecke speichert (Bootstrap oder Resync beim Start, nicht im
 // Erzeugerkreis, nicht im Register, Folger), nimmt nach 30 s ueber
-// annahmeBeginnen nichts mehr an;
+// annahmeBeginnen nichts mehr an; ein Beobachter (AEQUITAS_BEOBACHTER)
+// erzeugt nie und nimmt darum gar nicht an;
 // Folger lehnt das Annahme-Tor ohnehin vorher ab, und der RPC-Weg lehnt hier
 // schon immer ab (admissionRefusalReason). Wer nicht verblockt, soll nicht
 // annehmen -- sein Ausgang kaeme in keinen Block.
@@ -181,6 +184,19 @@ func (cs *ChainState) eigenerBlockGespeichert() {
 	}
 }
 
+// AnnahmeMessungBeginnen: die Messung in 2 beginnt jetzt, nicht erst mit dem
+// ersten Erzeugungsversuch (Pruefung von #318). Bis dahin vergehen beim
+// Start Bootstrap und Resync, und die HTTP-Wege naehmen in dieser Zeit ohne
+// Pause an -- Auftraege, die erst nach dem Aufholen in einen Block kaemen.
+// Einmal je Knoten (CompareAndSwap): ein spaeterer Aufruf setzt eine
+// laufende Messung nicht zurueck.
+func (cs *ChainState) AnnahmeMessungBeginnen() {
+	if cs == nil {
+		return
+	}
+	cs.erzeugerSeit.CompareAndSwap(0, time.Now().Unix())
+}
+
 // annahmePausiert: nil, wenn angenommen werden darf; zaehlt Ablehnungen.
 func (cs *ChainState) annahmePausiert() error {
 	err := cs.annahmePauseGrund()
@@ -199,6 +215,11 @@ func (cs *ChainState) annahmePauseGrund() error {
 		if d := time.Now().Unix() - a; d > ausgangHoechstensAlt {
 			return fmt.Errorf("%w: der Ausgang haengt (aelteste offene Zeile %d s alt) -- bitte in Kuerze erneut versuchen", ErrAnnahmePausiert, d)
 		}
+	}
+	// Ein Beobachter erzeugt nie (ProduceBlock kehrt vor der Messung um):
+	// was er annaehme, kaeme in keinen Block (Pruefung von #318).
+	if beobachterModus() {
+		return fmt.Errorf("%w: dieser Knoten ist ein Beobachter (AEQUITAS_BEOBACHTER) und erzeugt keine Bloecke -- bitte einen anderen Knoten nutzen", ErrAnnahmePausiert)
 	}
 	// Der eigene Schluessel steht (noch) nicht im Register -- frisch
 	// gebunden, in der Frist von zwei Stunden: bis dahin entsteht hier kein
