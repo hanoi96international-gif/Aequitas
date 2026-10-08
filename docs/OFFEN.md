@@ -92,7 +92,12 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
   Folger und Zuständigem mithört (`http://IP:8080`) und den Ring der
   Merkliste in unter 30 s mit 20.000 gültigen Weiterleitungen leert, kann
   einen Nachweis noch einmal einspielen; er zählt dann unter dem Budget des
-  echten Coordinators. Abhilfe: TLS zwischen Validatoren.
+  echten Coordinators. Verzögert er Weiterleitungen über das Zeitfenster
+  oder spielt sie vor dem Original ein, scheitern deren Nachweise und
+  zählen unter der Adresse des Folgers (30 je Minute); gültige Nachweise
+  bleiben davon seit #319 (LOW-24) unberührt. Abgelehnte Nachweise je Grund
+  zeigt `/api/health/combined` → `weiterleitung_nachweis` (dort auch
+  Uhrabweichung und unbekannte Folger). Abhilfe: TLS zwischen Validatoren.
 - Die Freiliste wird etwa einmal je Minute neu aufgebaut: wer den Satz
   verlässt, bleibt bis zu 60 s frei, neue Mitglieder sind bis zu 60 s
   begrenzt.

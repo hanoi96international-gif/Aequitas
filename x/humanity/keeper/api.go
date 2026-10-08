@@ -724,6 +724,7 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		"vorbehalte":               a.state.VorbehaltStand(),
 		"leistungsproben":          ProbenStand(),
 		"leitung":                  a.state.LeitungStand(),
+		"weiterleitung_nachweis":   WeiterleitungNachweisStand(),
 		"leistungsnachweis":        LeistungsnachweisStand(),
 		// Wie das Nachspielen die Ueberweisungen anwendet -- parallel oder seriell.
 		"replay_pfad":         ReplayPfadStand(),

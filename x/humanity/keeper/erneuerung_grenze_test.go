@@ -13,6 +13,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/ethereum/go-ethereum/crypto"
 )
 
 func erneuerungUeberMux(t *testing.T, mux http.Handler, ip string, body string, weitergeleitet bool) *httptest.ResponseRecorder {
@@ -54,7 +56,8 @@ func TestErneuerung_GrenzeVorDerWeiterleitung(t *testing.T) {
 	l.SetzeURL(leiter, zustSrv.URL)
 	cs := newTestState()
 	cs.leitung.Store(l)
-	mux := (&APIServer{state: cs}).buildMux()
+	k, _ := crypto.GenerateKey()
+	mux := (&APIServer{state: cs, blockchain: &BlockDAG{signingKey: k}}).buildMux()
 	angreifer, ehrlich := "203.0.113.10", "203.0.113.11"
 	erneuerungsGrenzeLeeren(angreifer, ehrlich)
 	body := func(i int) string { return fmt.Sprintf(`{"wallet":"0x%040x","issued_at":1}`, i+1) }

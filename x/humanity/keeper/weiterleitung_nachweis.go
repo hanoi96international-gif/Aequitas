@@ -79,9 +79,45 @@ const (
 // gegen Wiederholung. Variable nur fuer Tests.
 var weiterleitungGemerktMax = 20000
 
-// weiterleitungPruefungen zaehlt die Unterschriftspruefungen (ecrecover) --
-// fuer Tests und Lagebilder.
-var weiterleitungPruefungen atomic.Int64
+// weiterleitungPruefungen zaehlt die Unterschriftspruefungen (ecrecover),
+// weiterleitungAbgelehnt die abgelehnten Nachweise je Grund -- fuer Tests
+// und /api/health/combined: Uhrabweichung oder ein Folger, den die Leitung
+// (noch) nicht kennt, sind sonst unsichtbar (Pruefung von #319, LOW-24).
+var (
+	weiterleitungPruefungen atomic.Int64
+	weiterleitungAbgelehnt  [weiterleitungGruende]atomic.Int64
+	weiterleitungAnerkannt  atomic.Int64
+	weiterleitungGrundNamen = [weiterleitungGruende]string{"format", "zeit", "koerper", "unbekannt", "wiederholung"}
+)
+
+const (
+	grundFormat = iota
+	grundZeit
+	grundKoerper
+	grundUnbekannt
+	grundWiederholung
+	weiterleitungGruende
+)
+
+func weiterleitungAbweisen(grund int) string {
+	weiterleitungAbgelehnt[grund].Add(1)
+	return ""
+}
+
+// WeiterleitungNachweisStand fuer /api/health/combined.
+func WeiterleitungNachweisStand() map[string]interface{} {
+	abgelehnt := map[string]int64{}
+	for i, name := range weiterleitungGrundNamen {
+		abgelehnt[name] = weiterleitungAbgelehnt[i].Load()
+	}
+	return map[string]interface{}{
+		"anerkannt": weiterleitungAnerkannt.Load(),
+		"abgelehnt": abgelehnt,
+		"bedeutung": "Unterschriebene Weiterleitungen von Erneuerungen beim Zustaendigen. " +
+			"zeit: Uhren weichen mehr als 30 s ab; unbekannt: Folger nicht im Satz oder " +
+			"zugelassen, falsches Ziel oder Faelschung; wiederholung: schon gesehen.",
+	}
+}
 
 func weiterleitungUnterschreiben(pfad string) bool {
 	return pfad == "/api/liveness-renewal"
@@ -95,8 +131,9 @@ func weiterleitungHash(methode, pfad string, zeitMs int64, fuer, ziel, nonce str
 }
 
 // weiterleitungNachweis: die Koepfe fuer die weitergeleitete Anfrage, oder
-// nil (kein Schluessel, kein Ziel, anderer Pfad, keine IP als Absender --
-// dann zaehlt der Zustaendige unter der Adresse des Folgers, fail-closed).
+// nil (kein Schluessel, kein Ziel, anderer Pfad, Koerper zu gross, keine IP
+// als Absender, kein Zufall) -- dann leitet zumLeiter nicht weiter
+// (Pruefung von #319, INFO-26).
 func weiterleitungNachweis(k *ecdsa.PrivateKey, r *http.Request, ziel string, koerper []byte, jetzt time.Time) http.Header {
 	if k == nil || ziel == "" || !weiterleitungUnterschreiben(r.URL.Path) || len(koerper) > weiterleitungKoerperMax {
 		return nil
@@ -127,51 +164,55 @@ func weiterleitungNachweis(k *ecdsa.PrivateKey, r *http.Request, ziel string, ko
 func (cs *ChainState) weiterleitungFuer(r *http.Request, jetzt time.Time) string {
 	l := cs.leitung.Load()
 	kopf := r.Header.Get(weiterleitungNachweisKopf)
-	if l == nil || kopf == "" || len(kopf) > weiterleitungKopfMax {
+	if l == nil || kopf == "" {
 		return ""
+	}
+	if len(kopf) > weiterleitungKopfMax {
+		return weiterleitungAbweisen(grundFormat)
 	}
 	teile := strings.SplitN(kopf, ";", 5)
 	if len(teile) != 4 || len(teile[2]) != weiterleitungNonceLaenge || len(teile[3]) != weiterleitungSigLaenge {
-		return ""
+		return weiterleitungAbweisen(grundFormat)
 	}
 	if _, err := hex.DecodeString(teile[2]); err != nil {
-		return ""
+		return weiterleitungAbweisen(grundFormat)
 	}
 	zeit, err := strconv.ParseInt(teile[0], 10, 64)
 	if err != nil {
-		return ""
+		return weiterleitungAbweisen(grundFormat)
 	}
 	if d := jetzt.Sub(time.UnixMilli(zeit)); d > leitungZeitfenster || d < -leitungZeitfenster {
-		return ""
+		return weiterleitungAbweisen(grundZeit)
 	}
 	ip := net.ParseIP(teile[1])
 	if ip == nil || ip.String() != teile[1] {
-		return ""
+		return weiterleitungAbweisen(grundFormat)
 	}
 	sig, err := hex.DecodeString(teile[3])
 	if err != nil {
-		return ""
+		return weiterleitungAbweisen(grundFormat)
 	}
 	koerper, err := io.ReadAll(io.LimitReader(r.Body, weiterleitungKoerperMax+1))
 	r.Body = io.NopCloser(bytes.NewReader(koerper))
 	if err != nil || len(koerper) > weiterleitungKoerperMax {
-		return ""
+		return weiterleitungAbweisen(grundKoerper)
 	}
 	hash := weiterleitungHash(r.Method, r.URL.Path, zeit, teile[1], l.Ich(), teile[2], koerper)
 	weiterleitungPruefungen.Add(1)
 	pub, err := crypto.SigToPub(hash, sig)
 	if err != nil {
-		return ""
+		return weiterleitungAbweisen(grundUnbekannt)
 	}
 	folger := strings.ToLower(crypto.PubkeyToAddress(*pub).Hex())
 	if !l.KenntValidator(folger) {
-		return ""
+		return weiterleitungAbweisen(grundUnbekannt)
 	}
 	// Der Hash, nicht die Unterschrift: eine Unterschrift laesst sich in eine
 	// zweite, ebenso gueltige umformen (s und n-s).
 	if !weiterleitungErstmals(hex.EncodeToString(hash), jetzt) {
-		return ""
+		return weiterleitungAbweisen(grundWiederholung)
 	}
+	weiterleitungAnerkannt.Add(1)
 	return folger + "|" + teile[1]
 }
 

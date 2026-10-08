@@ -352,8 +352,8 @@ func merkeProveKlasse(respBody []byte) {
 //   - sonst -- auch mit gefaelschtem Kopf -- wie eine direkte Anfrage unter
 //     ihrer Adresse (Pruefung von #319, LOW-8).
 //
-// Den Nachweis prueft der Knoten nur, solange die Adresse noch Platz hat --
-// wer schon begrenzt ist, kostet keine Unterschriftspruefung.
+// Den Nachweis prueft der Knoten hoechstens burstNachweisPruefungJeIP-mal je
+// Minute und Absender -- unabhaengig vom Direktzaehler.
 //
 // Vor der Aktivierung der Staffel nichts (der Handler antwortet 409).
 func (a *APIServer) erneuerungsGrenze(next http.HandlerFunc) http.HandlerFunc {
@@ -370,10 +370,16 @@ func (a *APIServer) erneuerungsGrenze(next http.HandlerFunc) http.HandlerFunc {
 			jsonError(w, "staged grant not active yet", http.StatusConflict)
 			return
 		}
-		schluessel := "liveness-renewal:" + erneuerungsAbsender(r)
+		absender := erneuerungsAbsender(r)
+		schluessel := "liveness-renewal:" + absender
 		if r.Header.Get(weitergeleitetKopf) != "" {
+			// Die Pruefung haengt nicht am Direktzaehler: ein gescheiterter
+			// Nachweis faellt dort hinein und sperrte sonst auch die
+			// gueltigen danach (Pruefung von #319, LOW-24). Ihre Kosten
+			// (Koerper lesen, ecrecover) deckelt eine eigene, grosszuegige
+			// Grenze je Absender.
 			fuer := ""
-			if !burstVoll(schluessel, burstErneuerungJeIP, burstFenster) {
+			if burstErlaubt("liveness-renewal-pruefung:"+absender, burstNachweisPruefungJeIP, burstFenster) {
 				fuer = a.state.weiterleitungFuer(r, time.Now())
 			}
 			if fuer != "" {

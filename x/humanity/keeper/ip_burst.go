@@ -58,29 +58,6 @@ func burstErlaubt(key string, max int, fenster time.Duration) bool {
 	return true
 }
 
-// burstVoll meldet, ob key sein Fenster schon ausgeschoepft hat -- ohne eine
-// Anfrage zu buchen (erneuerungsGrenze: eine teure Pruefung erst, wenn die
-// Anfrage ueberhaupt noch durchkaeme).
-func burstVoll(key string, max int, fenster time.Duration) bool {
-	if max <= 0 {
-		return false
-	}
-	v, ok := ipBurst.Load(key)
-	if !ok {
-		return false
-	}
-	e := v.(*ipBurstEintrag)
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	now, n := time.Now(), 0
-	for _, z := range e.zeiten {
-		if now.Sub(z) < fenster {
-			n++
-		}
-	}
-	return n >= max
-}
-
 // ipBurstAufraeumen entfernt Schluessel ohne Eintrag im Fenster.
 func ipBurstAufraeumen(fenster time.Duration) {
 	now := time.Now()
@@ -115,4 +92,8 @@ const (
 	// nachweislich von einem Validator kommen (weiterleitung_nachweis.go);
 	// alle anderen zaehlen hier mit.
 	burstErneuerungJeIP = 30
+	// Pruefungen eines Weiterleitungsnachweises (weiterleitung_nachweis.go)
+	// je Absender: deckelt nur die Kosten (Koerper lesen, ecrecover), nicht
+	// die Erneuerungen -- ein ehrlicher Folger buendelt viele Coordinatoren.
+	burstNachweisPruefungJeIP = 600
 )

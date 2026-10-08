@@ -207,6 +207,8 @@ func TestWeiterleitungNachweis_NurEchteWeiterleitungen(t *testing.T) {
 		fmt.Sprintf("%d;kein-ip;%s;%s", jetzt.UnixMilli(), n, strings.Repeat("ab", 65)),
 		fmt.Sprintf("%d;::FFFF:203.0.113.20;%s;%s", jetzt.UnixMilli(), n, strings.Repeat("ab", 65)),
 		fmt.Sprintf("%d;203.0.113.20;%s;%s", jetzt.UnixMilli(), strings.Repeat("zz", 16), strings.Repeat("ab", 65)),
+		fmt.Sprintf("%d;203.0.113.20;%s;%s", jetzt.UnixMilli(), strings.Repeat("ab", 15), strings.Repeat("ab", 65)),
+		fmt.Sprintf("%d;203.0.113.20;%s;%s;x", jetzt.UnixMilli(), n, strings.Repeat("ab", 65)),
 		fmt.Sprintf("%d;203.0.113.20;%s;%s", jetzt.UnixMilli(), n, strings.Repeat("zz", 65))} {
 		if nochmal(k, jetzt) != "" {
 			t.Fatalf("Kopf %.60q anerkannt", k)
@@ -280,6 +282,7 @@ func TestWeiterleitungNachweis_MerklisteVerdraengt(t *testing.T) {
 // Zustaendige zaehlt jede Weiterleitung unter ihrem Absender -- ein
 // ehrlicher Coordinator hinter dem Folger kommt weiter durch.
 type folgerPaar struct {
+	zustURL            string
 	folgerMux          http.Handler
 	folgerAdr          string
 	folgerDAG          *BlockDAG
@@ -325,6 +328,7 @@ func neuesFolgerPaar(t *testing.T, aktiv bool) *folgerPaar {
 		io.Copy(w, rec.Body)
 	}))
 	t.Cleanup(zustSrv.Close)
+	p.zustURL = zustSrv.URL
 	zustTCP := strings.TrimPrefix(zustSrv.URL, "http://")
 	zustTCP = zustTCP[:strings.LastIndex(zustTCP, ":")]
 	erneuerungsGrenzeLeeren(zustTCP)
@@ -390,13 +394,21 @@ func TestWeiterleitungNachweis_FolgerNichtAusgesperrt(t *testing.T) {
 		t.Fatalf("ehrlicher Coordinator hinter dem Folger ausgesperrt: %s", w.Body.String())
 	}
 
-	// Gegenprobe: ohne Schluessel (alter Folger) zaehlt der Zustaendige unter
-	// der Adresse des Folgers -- genau das Aussperren von vorher.
+	// Ohne Schluessel leitet der Folger nicht weiter (Pruefung von #319,
+	// INFO-26) -- sonst zaehlte der Zustaendige unter seiner Adresse.
 	folgerDAG.signingKey = nil
-	leeren()
-	for _, ip := range angreifer {
-		for i := 0; i < burstErneuerungJeIP; i++ {
-			erneuerungUeberMux(t, folgerMux, ip, body(i), false)
+	vorher := beimZust.Load()
+	if w := erneuerungUeberMux(t, folgerMux, ehrlich, body(998), false); w.Code != http.StatusServiceUnavailable || beimZust.Load() != vorher {
+		t.Fatalf("Folger ohne Schluessel: %d, weitergeleitet %d", w.Code, beimZust.Load()-vorher)
+	}
+	// Gegenprobe: eine Weiterleitung ohne Nachweis (alter Folger) zaehlt
+	// beim Zustaendigen unter der TCP-Adresse -- genau das Aussperren von
+	// vorher.
+	for i := 0; i < burstErneuerungJeIP+1; i++ {
+		req, _ := http.NewRequest(http.MethodPost, p.zustURL+nachweisPfad, strings.NewReader(body(i)))
+		req.Header.Set(weitergeleitetKopf, "1")
+		if resp, err := http.DefaultClient.Do(req); err == nil {
+			resp.Body.Close()
 		}
 	}
 	if begrenztBeimZust.Load() == 0 {
@@ -467,17 +479,20 @@ func TestWeiterleitungNachweis_ProAbsenderGezaehlt(t *testing.T) {
 	}
 }
 
-// Wer schon begrenzt ist, kostet keine Unterschriftspruefung mehr (Pruefung
-// von #319, LOW-13/M5): nach burstErneuerungJeIP Anfragen mit gefaelschtem
-// Nachweis bleibt der Zaehler der Pruefungen stehen.
+// Die Kosten der Pruefung (Koerper lesen, ecrecover) deckelt eine eigene
+// Grenze je Absender: nach burstNachweisPruefungJeIP gefaelschten Nachweisen
+// steht der Zaehler der Pruefungen still (Pruefung von #319, LOW-13/M5 und
+// LOW-24). Jede Anfrage mit gefaelschtem Nachweis zaehlt dabei unter dem
+// Absender.
 func TestWeiterleitungNachweis_BegrenzteKostenKeinePruefung(t *testing.T) {
 	stagedGrantActivationOverride.Store(1)
 	t.Cleanup(func() { stagedGrantActivationOverride.Store(0) })
 	cs := nachweisLeitung(t)
 	mux := (&APIServer{state: cs}).buildMux()
 	ip := "198.51.100.170"
-	erneuerungsGrenzeLeeren(ip)
-	t.Cleanup(func() { erneuerungsGrenzeLeeren(ip) })
+	leeren := func() { erneuerungsGrenzeLeeren(ip); ipBurst.Delete("liveness-renewal-pruefung:" + ip) }
+	leeren()
+	t.Cleanup(leeren)
 	schicke := func() int {
 		req := httptest.NewRequest(http.MethodPost, nachweisPfad, strings.NewReader(`{}`))
 		req.RemoteAddr = ip + ":4711"
@@ -487,51 +502,102 @@ func TestWeiterleitungNachweis_BegrenzteKostenKeinePruefung(t *testing.T) {
 		mux.ServeHTTP(w, req)
 		return w.Code
 	}
-	vorher := weiterleitungPruefungen.Load()
-	for i := 0; i < burstErneuerungJeIP; i++ {
-		if schicke() == http.StatusTooManyRequests {
-			t.Fatalf("Anfrage %d schon begrenzt", i+1)
-		}
-	}
-	if n := weiterleitungPruefungen.Load() - vorher; n != int64(burstErneuerungJeIP) {
-		t.Fatalf("%d Pruefungen fuer %d Anfragen", n, burstErneuerungJeIP)
-	}
-	for i := 0; i < 100; i++ {
+	vorher, unbekannt := weiterleitungPruefungen.Load(), weiterleitungAbgelehnt[grundUnbekannt].Load()
+	durch := 0
+	for i := 0; i < burstNachweisPruefungJeIP+100; i++ {
 		if schicke() != http.StatusTooManyRequests {
-			t.Fatal("gefaelschter Nachweis ueber der Grenze nicht begrenzt")
+			durch++
 		}
 	}
-	if n := weiterleitungPruefungen.Load() - vorher; n != int64(burstErneuerungJeIP) {
-		t.Fatalf("%d Pruefungen nach der Grenze, erwartet weiter %d", n, burstErneuerungJeIP)
+	if durch != burstErneuerungJeIP {
+		t.Fatalf("mit gefaelschtem Nachweis kamen %d durch, erwartet %d", durch, burstErneuerungJeIP)
+	}
+	if n := weiterleitungPruefungen.Load() - vorher; n != int64(burstNachweisPruefungJeIP) {
+		t.Fatalf("%d Pruefungen, erwartet hoechstens %d", n, burstNachweisPruefungJeIP)
+	}
+	if n := weiterleitungAbgelehnt[grundUnbekannt].Load() - unbekannt; n != int64(burstNachweisPruefungJeIP) {
+		t.Fatalf("%d als unbekannt abgelehnt, erwartet %d", n, burstNachweisPruefungJeIP)
+	}
+	if st := WeiterleitungNachweisStand(); st["abgelehnt"].(map[string]int64)["unbekannt"] < int64(burstNachweisPruefungJeIP) {
+		t.Fatalf("/api/health/combined zeigt die Ablehnungen nicht: %v", st)
 	}
 }
 
-// burstVoll bucht nichts und zaehlt nur, was im Fenster liegt.
-func TestBurstVoll_BuchtNichts(t *testing.T) {
-	key := "test-burst-voll"
-	ipBurst.Delete(key)
-	t.Cleanup(func() { ipBurst.Delete(key) })
-	for i := 0; i < 3; i++ {
-		if burstVoll(key, 3, time.Minute) {
-			t.Fatalf("nach %d Buchungen schon voll", i)
+// Der Angriff aus der Pruefung von #319 (LOW-24): gescheiterte Nachweise
+// (etwa vor einem Satzwechsel, bei Uhrabweichung) fuellen den Zaehler der
+// TCP-Adresse des Folgers. Ein gueltiger Nachweis danach wird trotzdem
+// geprueft und unter seinem Absender gezaehlt.
+func TestWeiterleitungNachweis_GescheiterteSperrenGueltigeNicht(t *testing.T) {
+	stagedGrantActivationOverride.Store(1)
+	t.Cleanup(func() { stagedGrantActivationOverride.Store(0) })
+	folger, _ := crypto.GenerateKey()
+	fremd, _ := crypto.GenerateKey()
+	cs := nachweisLeitung(t, adresseVon(folger))
+	mux := (&APIServer{state: cs}).buildMux()
+	tcp, x := "198.51.100.150", "203.0.113.160"
+	k := "liveness-renewal-von:" + adresseVon(folger) + "|" + x
+	leeren := func() {
+		erneuerungsGrenzeLeeren(tcp)
+		ipBurst.Delete("liveness-renewal-pruefung:" + tcp)
+		ipBurst.Delete(k)
+	}
+	leeren()
+	t.Cleanup(leeren)
+	for i := 0; i < burstErneuerungJeIP; i++ {
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, beimZustaendigen(t, fremd, fmt.Sprintf("203.0.113.%d", 170+i%50), nachweisIch, fmt.Sprintf(`{"wallet":"0x%040x","issued_at":1}`, i+1), time.Now()))
+	}
+	if burstZahl("liveness-renewal:"+tcp) != burstErneuerungJeIP {
+		t.Fatal("Vorbedingung: gescheiterte Nachweise zaehlen unter der TCP-Adresse")
+	}
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, beimZustaendigen(t, folger, x, nachweisIch, `{"wallet":"0x00000000000000000000000000000000000000ee","issued_at":1}`, time.Now()))
+	if w.Code == http.StatusTooManyRequests || burstZahl(k) != 1 {
+		t.Fatalf("gueltiger Nachweis nach gescheiterten: %d (unter dem Absender %d)", w.Code, burstZahl(k))
+	}
+}
+
+// Schreibweisen ueber den lokalen Weg (der Knoten nimmt selbst an, keine
+// Leitung): drei Schreibweisen derselben Adresse zaehlen zusammen (Pruefung
+// von #319, INFO-27).
+func TestErneuerung_AbsenderNormalisiertLokal(t *testing.T) {
+	stagedGrantActivationOverride.Store(1)
+	t.Cleanup(func() { stagedGrantActivationOverride.Store(0) })
+	mux := (&APIServer{state: newTestState()}).buildMux()
+	erneuerungsGrenzeLeeren("203.0.113.161")
+	t.Cleanup(func() { erneuerungsGrenzeLeeren("203.0.113.161") })
+	durch := 0
+	for i := 0; i < 2*burstErneuerungJeIP; i++ {
+		req := httptest.NewRequest(http.MethodPost, nachweisPfad, strings.NewReader(`{}`))
+		req.RemoteAddr = "172.18.0.5:4711"
+		req.Header.Set("X-Forwarded-For", []string{"203.0.113.161", "::FFFF:203.0.113.161", "::ffff:cb00:71a1"}[i%3])
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, req)
+		if w.Code != http.StatusTooManyRequests {
+			durch++
 		}
-		if !burstErlaubt(key, 3, time.Minute) {
-			t.Fatalf("Buchung %d abgelehnt -- burstVoll hat gebucht", i+1)
+	}
+	if durch != burstErneuerungJeIP {
+		t.Fatalf("drei Schreibweisen derselben Adresse: %d durch, erwartet %d", durch, burstErneuerungJeIP)
+	}
+}
+
+// burstZahl: Buchungen von key im Fenster (nur fuer Tests).
+func burstZahl(key string) int {
+	v, ok := ipBurst.Load(key)
+	if !ok {
+		return 0
+	}
+	e := v.(*ipBurstEintrag)
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	n := 0
+	for _, z := range e.zeiten {
+		if time.Since(z) < burstFenster {
+			n++
 		}
 	}
-	if !burstVoll(key, 3, time.Minute) {
-		t.Fatal("nach 3 von 3 nicht voll")
-	}
-	kurz := "test-burst-voll-kurz"
-	ipBurst.Delete(kurz)
-	t.Cleanup(func() { ipBurst.Delete(kurz) })
-	for i := 0; i < 3; i++ {
-		burstErlaubt(kurz, 3, 30*time.Millisecond)
-	}
-	time.Sleep(40 * time.Millisecond)
-	if burstVoll(kurz, 3, 30*time.Millisecond) {
-		t.Fatal("verfallene Eintraege zaehlen mit")
-	}
+	return n
 }
 
 // Der Angriff aus der Pruefung von #319 (MEDIUM-18 a): ein Absender schickt
@@ -605,8 +671,15 @@ func TestWeiterleitungNachweis_AbsenderNormalisiert(t *testing.T) {
 	if n := p.beimZust.Load() - vorher; n != 0 {
 		t.Fatalf("%d Anfragen ohne IP als Absender weitergeleitet", n)
 	}
-	if !burstVoll("liveness-renewal:"+tcp, burstErneuerungJeIP, burstFenster) {
-		t.Fatal("Anfragen ohne IP als Absender zaehlten nicht unter der TCP-Adresse")
+	if burstZahl("liveness-renewal:"+tcp) != burstErneuerungJeIP {
+		t.Fatalf("Anfragen ohne IP als Absender: %d unter der TCP-Adresse gezaehlt, erwartet %d", burstZahl("liveness-renewal:"+tcp), burstErneuerungJeIP)
+	}
+	if schicke("kein-ip") != http.StatusTooManyRequests {
+		t.Fatal("Vorbedingung: begrenzt")
+	}
+	erneuerungsGrenzeLeeren(tcp)
+	if c := schicke("kein-ip"); c != http.StatusBadRequest {
+		t.Fatalf("ohne IP als Absender: %d, erwartet 400 (ohne Datenbank, ohne Weiterleitung)", c)
 	}
 }
 

@@ -698,19 +698,29 @@ func (a *APIServer) zumLeiter(h http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 		zielAdr, ziel := a.state.weiterleitungsZielMitAdresse(r, anfrageKonten(r.URL.Path, body)...)
+		var nachweis http.Header
 		if ziel != "" && weiterleitungUnterschreiben(r.URL.Path) {
 			// Was der Zustaendige nicht pruefen kann, wird nicht
-			// unterschrieben: ein Koerper ueber seiner Lesegrenze liesse den
-			// Nachweis scheitern, und die Anfrage zaehlte dort unter der
-			// Adresse dieses Knotens -- ein Absender sperrte so alle hinter
-			// ihm aus (Pruefung von #319, MEDIUM-18). Ohne IP als Absender
-			// (INFO-23) gibt es keinen Nachweis: dann hier bearbeiten.
+			// weitergeleitet: ein Koerper ueber seiner Lesegrenze oder eine
+			// Weiterleitung ohne Nachweis zaehlte dort unter der Adresse
+			// dieses Knotens, und ein Absender sperrte so alle hinter ihm aus
+			// (Pruefungen von #319, MEDIUM-18 und INFO-26). Ohne IP als
+			// Absender gibt es keinen Nachweis: gleich 400, ohne Datenbank
+			// (INFO-23, INFO-25).
 			if len(body) > weiterleitungKoerperMax {
 				http.Error(w, `{"error":"request body too large"}`, http.StatusRequestEntityTooLarge)
 				return
 			}
 			if net.ParseIP(clientIP(r)) == nil {
-				ziel = ""
+				http.Error(w, `{"error":"sender address not determinable"}`, http.StatusBadRequest)
+				return
+			}
+			if a.blockchain != nil {
+				nachweis = weiterleitungNachweis(a.blockchain.GetSigningKey(), r, zielAdr, body, time.Now())
+			}
+			if nachweis == nil {
+				http.Error(w, `{"error":"cannot forward to the responsible node right now -- please retry shortly"}`, http.StatusServiceUnavailable)
+				return
 			}
 		}
 		if ziel == "" {
@@ -721,10 +731,6 @@ func (a *APIServer) zumLeiter(h http.HandlerFunc) http.HandlerFunc {
 		if !rpcRateLimitFrei(r) && rpcRateLimited(clientIP(r)) {
 			http.Error(w, `{"error":"rate limited"}`, http.StatusTooManyRequests)
 			return
-		}
-		var nachweis http.Header
-		if a.blockchain != nil {
-			nachweis = weiterleitungNachweis(a.blockchain.GetSigningKey(), r, zielAdr, body, time.Now())
 		}
 		if leiteWeiterMit(w, r, ziel, body, nachweis) {
 			return

@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"filippo.io/edwards25519"
+
+	"github.com/ethereum/go-ethereum/crypto"
 )
 
 // Die acht Punkte kleiner Ordnung, wie sie als Schluessel eingereicht werden
@@ -319,7 +321,8 @@ func TestZumLeiter_ErneuerungZumZustaendigen(t *testing.T) {
 	}
 	cs := newTestState()
 	cs.leitung.Store(l)
-	mux := (&APIServer{state: cs}).buildMux()
+	k, _ := crypto.GenerateKey()
+	mux := (&APIServer{state: cs, blockchain: &BlockDAG{signingKey: k}}).buildMux()
 	body := `{"wallet":"` + konto + `","issued_at":1}`
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/liveness-renewal", strings.NewReader(body)))
