@@ -4,6 +4,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 )
 
 // Beobachter: ein Knoten, der nur nachspielt und nie einen Block erzeugt.
@@ -20,17 +21,20 @@ import (
 // nach -- jede Zahl waere wertlos. AEQUITAS_BEOBACHTER=1 schaltet das
 // Erzeugen ab, sonst nichts: Nachspielen, Pruefungen und Zaehler bleiben, wie
 // sie sind. Genutzt vom Workflow nachrechnen-beobachter.yml.
+//
+// Atomar (Pruefung von #322, INFO-3): annahmePauseGrund fragt das auf dem
+// heissen Weg jeder Annahme, und Tests setzen es um.
 var (
 	beobachterEinmal sync.Once
-	beobachterAn     bool
+	beobachterAn     atomic.Bool
 )
 
 func beobachterModus() bool {
 	beobachterEinmal.Do(func() {
 		v := strings.TrimSpace(strings.ToLower(os.Getenv("AEQUITAS_BEOBACHTER")))
-		beobachterAn = v == "1" || v == "true" || v == "ja"
+		beobachterAn.Store(v == "1" || v == "true" || v == "ja")
 	})
-	return beobachterAn
+	return beobachterAn.Load()
 }
 
 // BeobachterModus fuer Startmeldung und /api/status.

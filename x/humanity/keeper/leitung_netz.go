@@ -200,6 +200,13 @@ func (cs *ChainState) leitungEntleert() bool {
 
 // --- Knoten-Anbindung ---------------------------------------------------------
 
+// leiterFaehig: darf dieser Knoten Leiter werden? Nicht nur lesend, mit
+// Leistungsnachweis -- und kein Beobachter: der erzeugt nie, als Leiter
+// hielte er die Annahme des ganzen Netzes an (Pruefung von #322, INFO-1).
+func leiterFaehig(cs *ChainState) bool {
+	return !cs.nurLesend.Load() && !beobachterModus() && leistungsnachweisErfuellt()
+}
+
 // StarteLeitung baut die Leitung, wenn AEQUITAS_LEITUNG=an. Liefert nil sonst.
 func StarteLeitung(dag *BlockDAG, cs *ChainState, selfURL string) *Leitung {
 	StarteLeistungsnachweis(cs)
@@ -250,7 +257,7 @@ func StarteLeitung(dag *BlockDAG, cs *ChainState, selfURL string) *Leitung {
 			return bestanden || unbekannt
 		},
 	}
-	faehig := !cs.nurLesend.Load() && leistungsnachweisErfuellt()
+	faehig := leiterFaehig(cs)
 	l := NeueLeitung(ich, selfURL, satz, start, faehig, cs.leitungLaden(), cfg, env, time.Now())
 	for a, u := range urls {
 		l.SetzeURL(a, u)
@@ -298,7 +305,7 @@ func (dag *BlockDAG) leitungSchleife(l *Leitung, cs *ChainState) {
 			}
 			if time.Since(letzteFaehigPruefung) > time.Minute {
 				letzteFaehigPruefung = time.Now()
-				l.SetzeFaehig(!cs.nurLesend.Load() && leistungsnachweisErfuellt())
+				l.SetzeFaehig(leiterFaehig(cs))
 				validatorIPsFrei(l)
 			}
 			dag.leitungVersenden(l, l.Takt(time.Now()), dag.leitungPeers)

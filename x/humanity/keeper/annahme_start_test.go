@@ -1,7 +1,11 @@
 package keeper
 
 import (
+	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -71,4 +75,57 @@ func TestAnnahme_MessungAbStart(t *testing.T) {
 func TestAnnahme_MessungAbStartOhneZustand(t *testing.T) {
 	var cs *ChainState
 	cs.AnnahmeMessungBeginnen()
+}
+
+// Missbrauch (Pruefung von #322, LOW-1): ein Beobachter nimmt auch dann keine
+// Registrierung an, wenn er sonst nichts annimmt (ANNAHME_ROLLE=nur_lesend,
+// Folger). Vorher lief sie an der Pause vorbei bis zur EVM, und der Mensch
+// bekam "Registered", ohne je in einen Block zu kommen.
+func TestAnnahme_BeobachterNimmtKeineRegistrierungAn(t *testing.T) {
+	cs := newTestState()
+	cs.SetzeNurLesend(true)
+	a := &APIServer{state: cs}
+	ip := "198.51.100.231"
+	ipBurst.Delete("register:" + ip)
+	t.Cleanup(func() { ipBurst.Delete("register:" + ip) })
+	schicke := func() string {
+		body := `{"wallet":"0x00000000000000000000000000000000000000ab","pA":["1","2"],"pB":[["1","2"],["3","4"]],"pC":["1","2"],"pubSignals":["1","2"],"signature":"0x01"}`
+		req := httptest.NewRequest(http.MethodPost, "/api/register", strings.NewReader(body))
+		req.RemoteAddr = ip + ":4711"
+		w := httptest.NewRecorder()
+		a.handleRegister(w, req)
+		var resp RegisterResponse
+		json.NewDecoder(w.Body).Decode(&resp)
+		if resp.Success {
+			t.Fatal("Registrierung angenommen")
+		}
+		return resp.Message
+	}
+	// Gegenprobe: ohne Beobachter kommt die Anfrage bis zur EVM (die es im
+	// Test nicht gibt) -- die Pause gilt fuer einen nur lesenden Knoten nicht.
+	if msg := schicke(); !strings.Contains(msg, "EVM engine unavailable") {
+		t.Fatalf("Vorbedingung: ohne Beobachter bis zur EVM, bekam %q", msg)
+	}
+	setzeBeobachterFuerTest(t, true)
+	if msg := schicke(); !strings.Contains(msg, "Beobachter") {
+		t.Fatalf("Beobachter (nur lesend) nimmt eine Registrierung an: %q", msg)
+	}
+}
+
+// Ein Beobachter wird nicht Leiter (Pruefung von #322, INFO-1): er erzeugt
+// nie, als Leiter hielte er die Annahme des ganzen Netzes an.
+func TestLeitung_BeobachterNichtLeiterfaehig(t *testing.T) {
+	leistung.mu.Lock()
+	altZwang := leistung.zwang
+	leistung.zwang = "ja"
+	leistung.mu.Unlock()
+	t.Cleanup(func() { leistung.mu.Lock(); leistung.zwang = altZwang; leistung.mu.Unlock() })
+	cs := newTestState()
+	if !leiterFaehig(cs) {
+		t.Fatal("Vorbedingung: mit Leistungsnachweis und annehmend leiterfaehig")
+	}
+	setzeBeobachterFuerTest(t, true)
+	if leiterFaehig(cs) {
+		t.Fatal("Beobachter ist leiterfaehig")
+	}
 }

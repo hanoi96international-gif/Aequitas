@@ -45,6 +45,22 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
 5. Offener Betrieb (ohne `AUTHORIZED_VALIDATORS`) mit über 1.000
    Validatoren: fortgeschriebener statt neu gelesener Stand (Erzeugerprüfung
    und Anwesenheit).
+6. **Pausierter Leiter übergibt nicht** (Prüfung von #322, INFO-1; bestand
+   schon vorher): Ein Leiter, der nach einem Neustart wieder übernimmt,
+   pausiert bis zu seinem ersten eigenen Block; so lange lehnen die
+   Leiter-Wege netzweit wiederholbar ab, und bei zwei Validatoren ohne
+   `AEQUITAS_LEITUNG_ZWEI_WECHSELN` beendet kein Wechsel das. Fix: eine
+   Pause länger als `admissionStallLimit()` im Takt wie einen verlorenen
+   Leistungsnachweis behandeln, also übergeben. (Beobachter sind seit #322
+   nicht leiterfähig.)
+7. **Einträge in `pending_txs` ohne Annahme-Pause** (Prüfung von #322,
+   INFO-2; bestand schon vorher): `DoppelsignaturErkannt` (slashing.go,
+   ausgelöst von Peer-Blöcken) legt den Strafbeweis auch auf einem Beobachter
+   oder pausierten Knoten in den Ausgang; läuft `strafBeweisFrisch` ab, bevor
+   der Knoten erzeugt, helfen nur Resync oder Verwerfen.
+   `RetryRegistrationRecoveries` (alle 5 Minuten) prüft die Pause nicht. Fix:
+   auf einem Beobachter den Beweis nur vermerken; die Wiederholung an
+   `annahmePauseGrund()` koppeln.
 
 ## Betrieb – bei dir
 - `COORDINATOR_BETREIBER_WALLET` und `VALIDATOR_BETREIBER_WALLET` auf den

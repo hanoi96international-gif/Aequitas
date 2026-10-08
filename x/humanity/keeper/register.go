@@ -332,8 +332,11 @@ func (a *APIServer) handleRegister(w http.ResponseWriter, r *http.Request) {
 	// von vor dem Start noch offen ist -- VOR der EVM-Transaktion, damit
 	// nichts halb geschieht (danach waere es ein Fall fuer die Wiederholung,
 	// registration_recovery). Nur auf dem annehmenden Knoten: ein Knoten,
-	// der nichts annimmt, verblockt auch keinen Ausgang.
-	if a.state.nimmtAnFuer() {
+	// der nichts annimmt, verblockt auch keinen Ausgang -- ausser ein
+	// Beobachter: der erzeugt nie, und was er annaehme, kaeme in keinen
+	// Block, auch mit ANNAHME_ROLLE=nur_lesend oder als Folger (Pruefung von
+	// #322, LOW-1).
+	if beobachterModus() || a.state.nimmtAnFuer() {
 		if err := a.state.annahmePausiert(); err != nil {
 			json.NewEncoder(w).Encode(RegisterResponse{Success: false, Message: err.Error()})
 			return
