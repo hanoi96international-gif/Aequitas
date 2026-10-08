@@ -66,6 +66,30 @@ func (cs *ChainState) nachrechnenErneuerungLocked(tx *Transaction, wallet string
 			"%q: Wallet nicht in kanonischer Schreibweise", tx.Wallet)
 	}
 	wallet = strings.ToLower(strings.TrimSpace(wallet))
+	// Erst die Zeitregeln (Sicherheitsdurchgang #312, LOW-2): sie kosten
+	// nichts, die Bescheinigung kostet Unterschriften und die Zulassung eine
+	// Datenbankabfrage. Abgelehnt wird so wie vorher, nur frueher. Scheitert
+	// eine Erneuerung an mehreren Regeln, steht seitdem die Zeitregel im
+	// Protokoll: eine gefaelschte UND zu alte Erneuerung erscheint als
+	// erneuerung_zeit, nicht als erneuerung_ohne_bescheinigung -- kein
+	// Hinweis auf eine falsche Uhr.
+	if tx.DistributionAt <= 0 || blockZeit-tx.DistributionAt > erneuerungHoechstensAlt || tx.DistributionAt-blockZeit > erneuerungHoechstensVoraus {
+		return nachrechnenAbweichung("erneuerung_zeit", blockZeit,
+			"%s: bescheinigt %d, Blockzeit %d", kurzAdresse(wallet), tx.DistributionAt, blockZeit)
+	}
+	// Das Konto der Wallet laedt auch eine Erneuerung mit Muell-Unterschrift
+	// -- beim Nachspielen liegt es schon im Speicher
+	// (snapshotForRollbackLocked), sonst kostet es eine Abfrage ueber den
+	// Schluessel. Ohne Konto lehnt applyLivenessRenewalDeltaLocked ab; die
+	// Bescheinigung wird trotzdem geprueft.
+	cs.ensureAccountLoadedCtx(context.Background(), wallet)
+	if acc, ok := cs.accounts.Get(wallet); ok {
+		if ab := erneuerungFruehestens(acc); ab > 0 && (blockZeit < ab || tx.DistributionAt < ab) {
+			return nachrechnenAbweichung("erneuerung_zu_frueh", blockZeit,
+				"%s: bescheinigt %d, Blockzeit %d, fruehestens %d (Tag 7 nach der Registrierung)",
+				kurzAdresse(wallet), tx.DistributionAt, blockZeit, ab)
+		}
+	}
 	// Ohne Coordinator-Register: die Bescheinigung traegt ihre Bindung, und
 	// ob der Mensch dahinter registriert ist, steht im Kettenzustand -- jeder
 	// Knoten kommt zum selben Urteil (grant_staffel.go, bescheinigungPruefen).
@@ -83,20 +107,6 @@ func (cs *ChainState) nachrechnenErneuerungLocked(tx *Transaction, wallet string
 	if err := bescheinigungPruefen(wallet, tx.DistributionAt, tx.Bescheinigung, stand, zugelassen); err != nil {
 		return nachrechnenAbweichung("erneuerung_ohne_bescheinigung", blockZeit,
 			"%s: keine gueltige Bescheinigung: %v", kurzAdresse(wallet), err)
-	}
-	if tx.DistributionAt <= 0 || blockZeit-tx.DistributionAt > erneuerungHoechstensAlt || tx.DistributionAt-blockZeit > erneuerungHoechstensVoraus {
-		return nachrechnenAbweichung("erneuerung_zeit", blockZeit,
-			"%s: bescheinigt %d, Blockzeit %d", kurzAdresse(wallet), tx.DistributionAt, blockZeit)
-	}
-	cs.ensureAccountLoadedCtx(context.Background(), wallet)
-	acc, ok := cs.accounts.Get(wallet)
-	if !ok {
-		return nil // applyLivenessRenewalDeltaLocked lehnt ab
-	}
-	if ab := erneuerungFruehestens(acc); ab > 0 && (blockZeit < ab || tx.DistributionAt < ab) {
-		return nachrechnenAbweichung("erneuerung_zu_frueh", blockZeit,
-			"%s: bescheinigt %d, Blockzeit %d, fruehestens %d (Tag 7 nach der Registrierung)",
-			kurzAdresse(wallet), tx.DistributionAt, blockZeit, ab)
 	}
 	return nil
 }
