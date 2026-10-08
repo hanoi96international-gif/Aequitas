@@ -562,7 +562,10 @@ func TestCoordinatorEintragung_V1UeberschreibtNicht_RealDB(t *testing.T) {
 			"human_signature": freigabeV1, "key_signature": besitzV1},
 	} {
 		w := f.eintragen(body)
-		if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"bescheinigungstauglich":false`) {
+		// Die Antwort meldet den gespeicherten Stand: die v2-Bindung bleibt
+		// und taugt -- keine Aufforderung, sich neu einzutragen.
+		if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"bescheinigungstauglich":true`) ||
+			strings.Contains(w.Body.String(), "hinweis") {
 			t.Fatalf("%s: %d %s", name, w.Code, w.Body.String())
 		}
 		b, ok := f.cs.CoordinatorBindungLokal(pubHex)
@@ -895,6 +898,65 @@ func TestErneuerung_CoordinatorZulassung_RealDB(t *testing.T) {
 	}
 	if code := annahme(); code != http.StatusOK {
 		t.Fatalf("zugelassener Coordinator bei der Annahme %d", code)
+	}
+}
+
+// Nur Fenster menschlicher Betreiber zaehlen (Sicherheitsdurchgang zu den
+// Korrekturen in #312, Testluecke): bindet ein Nicht-Mensch denselben
+// Schluessel zum selben Zeitpunkt, ist das kein Streit -- bindet ihn ein
+// zweiter Mensch, schon (umstritten: keiner zugelassen).
+func TestErneuerung_ZulassungNurMenschlicheBetreiber_RealDB(t *testing.T) {
+	f := neuerErneuerungsFall(t, 8)
+	mensch := f.bindung.Mensch
+	schluessel := distTestAddr(1950)
+	issued := nowUnix()
+	seit := issued - 30*86400
+	f.cs.db.Exec(`DELETE FROM validator_verlauf`)
+	verlaufEintrag(t, f.cs, mensch, schluessel, seit)
+	keinMensch := distTestAddr(1954)
+	registerKonto(t, f.cs, keinMensch, false)
+	verlaufEintrag(t, f.cs, keinMensch, schluessel, seit)
+	if ok, err := coordinatorZugelassenIn(f.cs.db, mensch, issued); err != nil || !ok {
+		t.Fatalf("Nicht-Mensch zum selben Zeitpunkt macht den Schluessel streitig: %v, %v", ok, err)
+	}
+	zweiter := distTestAddr(1955)
+	registerKonto(t, f.cs, zweiter, true)
+	verlaufEintrag(t, f.cs, zweiter, schluessel, seit)
+	if ok, err := coordinatorZugelassenIn(f.cs.db, mensch, issued); err != nil || ok {
+		t.Fatalf("zwei Menschen zum selben Zeitpunkt: zugelassen=%v, %v -- erwartet umstritten", ok, err)
+	}
+}
+
+// Die Grenze der Betreiber eines Schluessels (Testluecke): bis zu
+// coordinatorSchluesselGrenze gelesen, darueber ein Fehler -- abgewiesen,
+// nicht abgeschnitten. Nur der Inhaber des Schluessels kann Betreiber
+// hinzufuegen (jede Bindung traegt seine Unterschrift).
+func TestErneuerung_ZulassungBetreiberGrenze_RealDB(t *testing.T) {
+	f := neuerErneuerungsFall(t, 8)
+	mensch := f.bindung.Mensch
+	schluessel := distTestAddr(1950)
+	issued := nowUnix()
+	weitere := func(n int) {
+		t.Helper()
+		f.cs.db.Exec(`DELETE FROM validator_verlauf`)
+		// n fruehere Betreiber, danach der Mensch selbst.
+		if _, err := f.cs.db.Exec(`INSERT INTO validator_verlauf (operator_wallet, signing_address, bindung_ts, sig_operator, sig_signing)
+			SELECT '0x' || lpad(to_hex(g), 40, '0'), $1, $2::bigint - g, 'x', 'y' FROM generate_series(1, $3::bigint) g`,
+			strings.ToLower(schluessel), issued-40*86400, n); err != nil {
+			t.Fatal(err)
+		}
+		verlaufEintrag(t, f.cs, mensch, schluessel, issued-30*86400)
+	}
+	weitere(coordinatorSchluesselGrenze - 1)
+	if ok, err := coordinatorZugelassenIn(f.cs.db, mensch, issued); err != nil || !ok {
+		t.Fatalf("%d Betreiber: %v, %v -- erwartet zugelassen", coordinatorSchluesselGrenze, ok, err)
+	}
+	weitere(coordinatorSchluesselGrenze)
+	if _, err := coordinatorZugelassenIn(f.cs.db, mensch, issued); err == nil {
+		t.Fatalf("%d Betreiber: kein Fehler -- die Grenze schneidet ab statt abzuweisen", coordinatorSchluesselGrenze+1)
+	}
+	if n := f.pruefe(f.gueltig(issued), issued+60)["erneuerung_ohne_bescheinigung"]; n != 1 {
+		t.Fatalf("ueber der Grenze beim Nachspielen nicht abgewiesen (%d)", n)
 	}
 }
 

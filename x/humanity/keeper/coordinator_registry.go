@@ -394,10 +394,21 @@ func (a *APIServer) handleRegisterCoordinatorKey(w http.ResponseWriter, r *http.
 	}
 	fmt.Printf("[COORDINATOR] Registered %s for human %s\n", pub[:16], human)
 
+	// Was jetzt gespeichert ist, nicht nur, was diese Anfrage brachte: eine
+	// alte Eintragung ueber einer gespeicherten v2-Bindung aendert diese
+	// nicht (RegisterCoordinatorKey), und die Antwort soll dann nicht zum
+	// Neu-Eintragen auffordern.
+	if !tauglich {
+		if b, ok := a.state.CoordinatorBindungLokal(pub); ok && b.Mensch == human &&
+			verifyCoordinatorPossession(pub, b.SchluesselSig, human) &&
+			verifyPersonalSign(coordinatorFreigabeNachricht(pub), b.MenschSig, human) == nil {
+			tauglich = true
+		}
+	}
 	antwort := map[string]interface{}{
 		"success": true, "public_key": pub, "human_wallet": human, "url": url,
-		// Nur eine v2-Eintragung (Freigabe und Besitznachweis mit Chain-ID)
-		// traegt Erneuerungen; eine alte wird eingetragen, ihre
+		// Nur eine v2-Bindung (Freigabe und Besitznachweis mit Chain-ID)
+		// traegt Erneuerungen; eine alte Eintragung wird angenommen, ihre
 		// Unterschriften aber nicht gespeichert (RegisterCoordinatorKey).
 		"bescheinigungstauglich": tauglich,
 	}
