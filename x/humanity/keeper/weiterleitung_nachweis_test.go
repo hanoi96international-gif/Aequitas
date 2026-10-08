@@ -115,14 +115,14 @@ func TestWeiterleitungNachweis_NurEchteWeiterleitungen(t *testing.T) {
 	}
 	// Umgeformte Unterschrift nach dem Original.
 	teile := strings.Split(kopf, ";")
-	if nochmal(teile[0]+";"+teile[1]+";"+umgeformt(t, teile[2]), jetzt) != "" {
+	if nochmal(teile[0]+";"+teile[1]+";"+teile[2]+";"+umgeformt(t, teile[3]), jetzt) != "" {
 		t.Fatal("umgeformte Unterschrift nach dem Original anerkannt")
 	}
 	// Anderer Absender im Kopf als unterschrieben -- an einer frischen,
 	// noch nie gesehenen Weiterleitung (sonst faengt schon die Merkliste).
 	frisch := beimZustaendigen(t, folger, "203.0.113.23", nachweisIch, koerper, ms(9))
 	ft := strings.Split(frisch.Header.Get(weiterleitungNachweisKopf), ";")
-	if nochmal(ft[0]+";203.0.113.21;"+ft[2], jetzt) != "" {
+	if nochmal(ft[0]+";203.0.113.21;"+ft[2]+";"+ft[3], jetzt) != "" {
 		t.Fatal("ausgetauschter Absender anerkannt")
 	}
 	if got := cs.weiterleitungFuer(frisch, jetzt); got != adresseVon(folger)+"|203.0.113.23" {
@@ -159,15 +159,30 @@ func TestWeiterleitungNachweis_NurEchteWeiterleitungen(t *testing.T) {
 			t.Fatalf("Zeit %s neben jetzt anerkannt", d)
 		}
 	}
-	// Ein Byte zu viel, korrekt unterschrieben: nicht anerkannt, aber fuer
-	// den Handler (der ihn selbst abweist) zurueckgelegt.
+	// Ein Byte zu viel: der Folger unterschreibt ihn gar nicht (zumLeiter
+	// antwortet 413, Pruefung von #319, MEDIUM-18).
 	gross := strings.Repeat("x", weiterleitungKoerperMax+1)
-	r := beimZustaendigen(t, folger, "203.0.113.20", nachweisIch, gross, ms(5))
+	ueber := httptest.NewRequest(http.MethodPost, nachweisPfad, strings.NewReader(gross))
+	ueber.RemoteAddr = "203.0.113.20:4711"
+	if weiterleitungNachweis(folger, ueber, nachweisIch, []byte(gross), jetzt) != nil {
+		t.Fatal("der Folger unterschreibt einen Koerper ueber der Lesegrenze")
+	}
+	// Kommt doch einer an (gefaelscht): nicht anerkannt, aber fuer den
+	// Handler (der ihn selbst abweist) zurueckgelegt.
+	r := beimZustaendigen(t, folger, "203.0.113.20", nachweisIch, koerper, ms(5))
+	r.Body = io.NopCloser(strings.NewReader(gross))
 	if cs.weiterleitungFuer(r, jetzt) != "" {
 		t.Fatal("uebergrosser Koerper anerkannt")
 	}
 	if b, _ := io.ReadAll(r.Body); len(b) != weiterleitungKoerperMax+1 {
 		t.Fatalf("zurueckgelegt %d Bytes, erwartet die gelesenen %d", len(b), weiterleitungKoerperMax+1)
+	}
+	// Zwillinge: dieselbe Anfrage zweimal in derselben Millisekunde -- beide
+	// sind eigene Weiterleitungen (Pruefung von #319, MEDIUM-18).
+	z1 := beimZustaendigen(t, folger, "203.0.113.24", nachweisIch, koerper, ms(8))
+	z2 := beimZustaendigen(t, folger, "203.0.113.24", nachweisIch, koerper, ms(8))
+	if cs.weiterleitungFuer(z1, jetzt) == "" || cs.weiterleitungFuer(z2, jetzt) == "" {
+		t.Fatal("Zwillinge: der zweite gilt als Wiederholung")
 	}
 	// Ein endloser Koerper wird nicht ganz gelesen.
 	leser := &zaehlLeser{}
@@ -177,13 +192,22 @@ func TestWeiterleitungNachweis_NurEchteWeiterleitungen(t *testing.T) {
 	if leser.gelesen > 2*(weiterleitungKoerperMax+1)+4096 {
 		t.Fatalf("%d Bytes gelesen -- die Pruefung liest ohne Grenze", leser.gelesen)
 	}
-	// Kaputte Koepfe -- auch ein riesiger -- kosten keine Unterschriftspruefung.
+	// Ausgetauschte Zufallszahl.
+	if nochmal(ft[0]+";"+ft[1]+";"+strings.Repeat("00", 16)+";"+ft[3], jetzt) != "" {
+		t.Fatal("ausgetauschte Zufallszahl anerkannt")
+	}
+	// Kaputte Koepfe -- auch riesige (Pruefung von #319, LOW-19) -- kosten
+	// keine Unterschriftspruefung.
 	vorher := weiterleitungPruefungen.Load()
-	for _, k := range []string{"", "x", "1;2", fmt.Sprintf("%d;203.0.113.20;%s", jetzt.UnixMilli(), strings.Repeat("ab", 64)),
-		fmt.Sprintf("%d;203.0.113.20;%s", jetzt.UnixMilli(), strings.Repeat("ab", 500000)),
-		fmt.Sprintf("%d;kein-ip;%s", jetzt.UnixMilli(), strings.Repeat("ab", 65)),
-		fmt.Sprintf("%d;::FFFF:203.0.113.20;%s", jetzt.UnixMilli(), strings.Repeat("ab", 65)),
-		fmt.Sprintf("%d;203.0.113.20;%s", jetzt.UnixMilli(), strings.Repeat("zz", 65))} {
+	n := strings.Repeat("ab", 16)
+	for _, k := range []string{"", "x", "1;2;3", fmt.Sprintf("%d;203.0.113.20;%s;%s", jetzt.UnixMilli(), n, strings.Repeat("ab", 64)),
+		fmt.Sprintf("%d;203.0.113.20;%s;%s", jetzt.UnixMilli(), n, strings.Repeat("ab", 500000)),
+		strings.Repeat(";", 1<<20-1),
+		fmt.Sprintf("%d;203.0.113.20;%s", jetzt.UnixMilli(), strings.Repeat("ab", 65)),
+		fmt.Sprintf("%d;kein-ip;%s;%s", jetzt.UnixMilli(), n, strings.Repeat("ab", 65)),
+		fmt.Sprintf("%d;::FFFF:203.0.113.20;%s;%s", jetzt.UnixMilli(), n, strings.Repeat("ab", 65)),
+		fmt.Sprintf("%d;203.0.113.20;%s;%s", jetzt.UnixMilli(), strings.Repeat("zz", 16), strings.Repeat("ab", 65)),
+		fmt.Sprintf("%d;203.0.113.20;%s;%s", jetzt.UnixMilli(), n, strings.Repeat("zz", 65))} {
 		if nochmal(k, jetzt) != "" {
 			t.Fatalf("Kopf %.60q anerkannt", k)
 		}
@@ -227,8 +251,12 @@ func TestWeiterleitungNachweis_MerklisteVerdraengt(t *testing.T) {
 			t.Fatalf("Eintrag %d bei voller Merkliste abgelehnt", i)
 		}
 	}
-	if weiterleitungErstmals("174", jetzt) {
-		t.Fatal("die juengste Weiterleitung gilt als neu")
+	// Nach dem Umlauf sind alle 50 juengsten bekannt -- der Ring verdraengt
+	// reihum, nicht immer denselben Platz (Pruefung von #319, INFO-20).
+	for i := 125; i < 175; i++ {
+		if weiterleitungErstmals(fmt.Sprint(i), jetzt) {
+			t.Fatalf("Eintrag %d (unter den 50 juengsten) gilt als neu", i)
+		}
 	}
 	if !weiterleitungErstmals("0", jetzt) {
 		t.Fatal("die aelteste wurde nicht verdraengt")
@@ -251,9 +279,22 @@ func TestWeiterleitungNachweis_MerklisteVerdraengt(t *testing.T) {
 // Folger und fuellt dabei die Merkliste des Zustaendigen mehrfach. Der
 // Zustaendige zaehlt jede Weiterleitung unter ihrem Absender -- ein
 // ehrlicher Coordinator hinter dem Folger kommt weiter durch.
-func TestWeiterleitungNachweis_FolgerNichtAusgesperrt(t *testing.T) {
-	stagedGrantActivationOverride.Store(1)
-	t.Cleanup(func() { stagedGrantActivationOverride.Store(0) })
+type folgerPaar struct {
+	folgerMux          http.Handler
+	folgerAdr          string
+	folgerDAG          *BlockDAG
+	beimZust, begrenzt *atomic.Int64
+}
+
+// neuesFolgerPaar: Folger (echter Mux, eigener Schluessel) und Zustaendiger
+// (echter Mux hinter einem httptest-Server, Leiter, kennt den Folger als
+// Mitglied des Satzes, Freiliste leer). Merkliste auf 50 Plaetze.
+func neuesFolgerPaar(t *testing.T, aktiv bool) *folgerPaar {
+	t.Helper()
+	if aktiv {
+		stagedGrantActivationOverride.Store(1)
+		t.Cleanup(func() { stagedGrantActivationOverride.Store(0) })
+	}
 	altFrei := rpcRateLimitFreiListe.Load()
 	leer := map[string]bool{}
 	rpcRateLimitFreiListe.Store(&leer)
@@ -266,52 +307,70 @@ func TestWeiterleitungNachweis_FolgerNichtAusgesperrt(t *testing.T) {
 	t.Cleanup(func() { m.Lock(); weiterleitungGemerktMax = altMax; m.Unlock() })
 
 	folger, _ := crypto.GenerateKey()
-	folgerAdr := adresseVon(folger)
+	p := &folgerPaar{folgerAdr: adresseVon(folger), beimZust: &atomic.Int64{}, begrenzt: &atomic.Int64{}}
 	zustAdr := "0x0000000000000000000000000000000000000001"
-
-	zustLeitung := NeueLeitung(zustAdr, "", []string{zustAdr, folgerAdr}, zustAdr, true, LeitSpeicher{Term: 3, Leiter: zustAdr},
+	zustLeitung := NeueLeitung(zustAdr, "", []string{zustAdr, p.folgerAdr}, zustAdr, true, LeitSpeicher{Term: 3, Leiter: zustAdr},
 		testKonfig(), LeitUmgebung{Zugelassen: func(string) bool { return false }}, time.Now())
 	zustCS := newTestState()
 	zustCS.leitung.Store(zustLeitung)
-	var beimZust, begrenztBeimZust atomic.Int64
 	zustMux := (&APIServer{state: zustCS}).buildMux()
 	zustSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		rec := httptest.NewRecorder()
 		zustMux.ServeHTTP(rec, r)
-		beimZust.Add(1)
+		p.beimZust.Add(1)
 		if rec.Code == http.StatusTooManyRequests {
-			begrenztBeimZust.Add(1)
+			p.begrenzt.Add(1)
 		}
 		w.WriteHeader(rec.Code)
 		io.Copy(w, rec.Body)
 	}))
-	defer zustSrv.Close()
+	t.Cleanup(zustSrv.Close)
 	zustTCP := strings.TrimPrefix(zustSrv.URL, "http://")
 	zustTCP = zustTCP[:strings.LastIndex(zustTCP, ":")]
 	erneuerungsGrenzeLeeren(zustTCP)
 	t.Cleanup(func() { erneuerungsGrenzeLeeren(zustTCP) })
 
-	folgerLeitung := NeueLeitung(folgerAdr, "", []string{zustAdr, folgerAdr}, zustAdr, true, LeitSpeicher{Term: 3, Leiter: zustAdr},
+	folgerLeitung := NeueLeitung(p.folgerAdr, "", []string{zustAdr, p.folgerAdr}, zustAdr, true, LeitSpeicher{Term: 3, Leiter: zustAdr},
 		testKonfig(), LeitUmgebung{}, time.Now())
 	folgerLeitung.SetzeURL(zustAdr, zustSrv.URL)
 	folgerCS := newTestState()
 	folgerCS.leitung.Store(folgerLeitung)
-	folgerDAG := &BlockDAG{signingKey: folger}
-	folgerMux := (&APIServer{state: folgerCS, blockchain: folgerDAG}).buildMux()
+	p.folgerDAG = &BlockDAG{signingKey: folger}
+	p.folgerMux = (&APIServer{state: folgerCS, blockchain: p.folgerDAG}).buildMux()
+	return p
+}
 
+func (p *folgerPaar) leeren(t *testing.T, ips ...string) {
+	t.Helper()
+	erneuerungsGrenzeLeeren(ips...)
+	for _, ip := range ips {
+		ipBurst.Delete("liveness-renewal-von:" + p.folgerAdr + "|" + ip)
+	}
+	t.Cleanup(func() {
+		erneuerungsGrenzeLeeren(ips...)
+		for _, ip := range ips {
+			ipBurst.Delete("liveness-renewal-von:" + p.folgerAdr + "|" + ip)
+		}
+	})
+}
+
+// Der Angriff aus der Pruefung von #319 (MEDIUM-7 und MEDIUM-11), mit echtem
+// Mux bei Folger und Zustaendigem: der Folger steht NICHT in der Freiliste
+// des Zustaendigen. Ein Angreifer schickt von vielen Adressen Muell an den
+// Folger und fuellt dabei die Merkliste des Zustaendigen mehrfach. Der
+// Zustaendige zaehlt jede Weiterleitung unter ihrem Absender -- ein
+// ehrlicher Coordinator hinter dem Folger kommt weiter durch.
+func TestWeiterleitungNachweis_FolgerNichtAusgesperrt(t *testing.T) {
+	p := neuesFolgerPaar(t, true)
+	folgerMux, folgerAdr, folgerDAG, beimZust, begrenztBeimZust := p.folgerMux, p.folgerAdr, p.folgerDAG, p.beimZust, p.begrenzt
+	_ = folgerAdr
 	body := func(i int) string { return fmt.Sprintf(`{"wallet":"0x%040x","issued_at":1}`, i+1) }
 	var angreifer []string
 	for i := 0; i < 12; i++ {
 		angreifer = append(angreifer, fmt.Sprintf("203.0.113.%d", 100+i))
 	}
-	leeren := func() {
-		erneuerungsGrenzeLeeren(angreifer...)
-		for _, ip := range angreifer {
-			ipBurst.Delete("liveness-renewal-von:" + folgerAdr + "|" + ip)
-		}
-	}
+	leeren := func() { p.leeren(t, angreifer...) }
 	leeren()
-	t.Cleanup(leeren)
 	for _, ip := range angreifer {
 		for i := 0; i < burstErneuerungJeIP; i++ {
 			if w := erneuerungUeberMux(t, folgerMux, ip, body(i), false); w.Code == http.StatusTooManyRequests {
@@ -326,8 +385,7 @@ func TestWeiterleitungNachweis_FolgerNichtAusgesperrt(t *testing.T) {
 		t.Fatalf("der Zustaendige hat %d unterschriebene Weiterleitungen begrenzt", n)
 	}
 	ehrlich := "198.51.100.200"
-	erneuerungsGrenzeLeeren(ehrlich)
-	ipBurst.Delete("liveness-renewal-von:" + folgerAdr + "|" + ehrlich)
+	p.leeren(t, ehrlich)
 	if w := erneuerungUeberMux(t, folgerMux, ehrlich, body(999), false); w.Code == http.StatusTooManyRequests {
 		t.Fatalf("ehrlicher Coordinator hinter dem Folger ausgesperrt: %s", w.Body.String())
 	}
@@ -424,7 +482,7 @@ func TestWeiterleitungNachweis_BegrenzteKostenKeinePruefung(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, nachweisPfad, strings.NewReader(`{}`))
 		req.RemoteAddr = ip + ":4711"
 		req.Header.Set(weitergeleitetKopf, "1")
-		req.Header.Set(weiterleitungNachweisKopf, fmt.Sprintf("%d;203.0.113.20;%s", time.Now().UnixMilli(), strings.Repeat("ab", 65)))
+		req.Header.Set(weiterleitungNachweisKopf, fmt.Sprintf("%d;203.0.113.20;%s;%s", time.Now().UnixMilli(), strings.Repeat("ab", 16), strings.Repeat("ab", 65)))
 		w := httptest.NewRecorder()
 		mux.ServeHTTP(w, req)
 		return w.Code
@@ -473,5 +531,111 @@ func TestBurstVoll_BuchtNichts(t *testing.T) {
 	time.Sleep(40 * time.Millisecond)
 	if burstVoll(kurz, 3, 30*time.Millisecond) {
 		t.Fatal("verfallene Eintraege zaehlen mit")
+	}
+}
+
+// Der Angriff aus der Pruefung von #319 (MEDIUM-18 a): ein Absender schickt
+// Erneuerungen ueber der Lesegrenze des Zustaendigen an den Folger. Der
+// Folger unterschreibt und leitet sie nicht weiter (413); beim Zustaendigen
+// faellt nichts unter die Adresse des Folgers, und ein ehrlicher Coordinator
+// kommt durch.
+func TestWeiterleitungNachweis_UebergrosserKoerperSperrtNichtAus(t *testing.T) {
+	p := neuesFolgerPaar(t, true)
+	angreifer, ehrlich := "203.0.113.150", "198.51.100.201"
+	p.leeren(t, angreifer, ehrlich)
+	gross := `{"wallet":"0x00000000000000000000000000000000000000ab","issued_at":1}` + strings.Repeat(" ", weiterleitungKoerperMax)
+	for i := 0; i < burstErneuerungJeIP; i++ {
+		if w := erneuerungUeberMux(t, p.folgerMux, angreifer, gross, false); w.Code != http.StatusRequestEntityTooLarge {
+			t.Fatalf("Anfrage %d ueber der Lesegrenze: %d, erwartet 413", i+1, w.Code)
+		}
+	}
+	if n := p.beimZust.Load(); n != 0 {
+		t.Fatalf("%d uebergrosse Anfragen weitergeleitet", n)
+	}
+	if w := erneuerungUeberMux(t, p.folgerMux, ehrlich, `{"wallet":"0x00000000000000000000000000000000000000cd","issued_at":1}`, false); w.Code == http.StatusTooManyRequests || p.beimZust.Load() != 1 {
+		t.Fatalf("ehrlicher Coordinator: %d (weitergeleitet %d)", w.Code, p.beimZust.Load())
+	}
+}
+
+// Vor dem Stichtag antwortet schon der Folger 409: nichts gezaehlt,
+// unterschrieben oder weitergeleitet (Pruefung von #319, INFO-22).
+func TestWeiterleitungNachweis_VorDemStichtagNichtWeitergeleitet(t *testing.T) {
+	p := neuesFolgerPaar(t, false)
+	ip := "203.0.113.151"
+	p.leeren(t, ip)
+	for i := 0; i < 3; i++ {
+		if w := erneuerungUeberMux(t, p.folgerMux, ip, `{"wallet":"0x00000000000000000000000000000000000000ab","issued_at":1}`, false); w.Code != http.StatusConflict {
+			t.Fatalf("vor dem Stichtag: %d, erwartet 409", w.Code)
+		}
+	}
+	if n := p.beimZust.Load(); n != 0 {
+		t.Fatalf("vor dem Stichtag %d weitergeleitet", n)
+	}
+}
+
+// Hinter einem privaten TCP-Partner bestimmt X-Forwarded-For den Absender.
+// Eine Schreibweise zaehlt wie die andere, und ein Kopf ohne IP zaehlt unter
+// der TCP-Adresse und wird nicht weitergeleitet -- sonst zaehlte der
+// Zustaendige ihn unter der Adresse des Folgers (Pruefung von #319, INFO-23).
+func TestWeiterleitungNachweis_AbsenderNormalisiert(t *testing.T) {
+	p := neuesFolgerPaar(t, true)
+	tcp := "172.18.0.5"
+	p.leeren(t, tcp, "203.0.113.152")
+	schicke := func(xff string) int {
+		req := httptest.NewRequest(http.MethodPost, nachweisPfad, strings.NewReader(`{"wallet":"0x00000000000000000000000000000000000000ab","issued_at":1}`))
+		req.RemoteAddr = tcp + ":4711"
+		req.Header.Set("X-Forwarded-For", xff)
+		w := httptest.NewRecorder()
+		p.folgerMux.ServeHTTP(w, req)
+		return w.Code
+	}
+	durch := 0
+	for i := 0; i < 2*burstErneuerungJeIP; i++ {
+		if schicke([]string{"203.0.113.152", "::FFFF:203.0.113.152", "::ffff:cb00:7198"}[i%3]) != http.StatusTooManyRequests {
+			durch++
+		}
+	}
+	if durch != burstErneuerungJeIP {
+		t.Fatalf("drei Schreibweisen derselben Adresse: %d durch, erwartet %d", durch, burstErneuerungJeIP)
+	}
+	vorher := p.beimZust.Load()
+	for i := 0; i < 2*burstErneuerungJeIP; i++ {
+		schicke(fmt.Sprintf("kein-ip-%d", i))
+	}
+	if n := p.beimZust.Load() - vorher; n != 0 {
+		t.Fatalf("%d Anfragen ohne IP als Absender weitergeleitet", n)
+	}
+	if !burstVoll("liveness-renewal:"+tcp, burstErneuerungJeIP, burstFenster) {
+		t.Fatal("Anfragen ohne IP als Absender zaehlten nicht unter der TCP-Adresse")
+	}
+}
+
+// Ein gueltiger Nachweis von einer Adresse der Freiliste wird gezaehlt, nicht
+// freigestellt -- der Nachweis geht vor (Pruefung von #319, INFO-20).
+func TestWeiterleitungNachweis_FreilisteMitNachweisGezaehlt(t *testing.T) {
+	stagedGrantActivationOverride.Store(1)
+	t.Cleanup(func() { stagedGrantActivationOverride.Store(0) })
+	folger, _ := crypto.GenerateKey()
+	cs := nachweisLeitung(t, adresseVon(folger))
+	mux := (&APIServer{state: cs}).buildMux()
+	alt := rpcRateLimitFreiListe.Load()
+	t.Cleanup(func() { rpcRateLimitFreiListe.Store(alt) })
+	frei := map[string]bool{"198.51.100.150": true} // TCP-Adresse in beimZustaendigen
+	rpcRateLimitFreiListe.Store(&frei)
+	x := "203.0.113.153"
+	k := "liveness-renewal-von:" + adresseVon(folger) + "|" + x
+	ipBurst.Delete(k)
+	t.Cleanup(func() { ipBurst.Delete(k) })
+	for i := 0; i < burstErneuerungJeIP; i++ {
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, beimZustaendigen(t, folger, x, nachweisIch, fmt.Sprintf(`{"wallet":"0x%040x","issued_at":%d}`, i+1, i+1), time.Now()))
+		if w.Code == http.StatusTooManyRequests {
+			t.Fatalf("Anfrage %d schon begrenzt", i+1)
+		}
+	}
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, beimZustaendigen(t, folger, x, nachweisIch, `{"wallet":"0x00000000000000000000000000000000000000ff","issued_at":1}`, time.Now()))
+	if w.Code != http.StatusTooManyRequests {
+		t.Fatalf("Nachweis von der Freiliste: Anfrage %d nicht begrenzt (%d) -- die Freiliste ging vor", burstErneuerungJeIP+1, w.Code)
 	}
 }

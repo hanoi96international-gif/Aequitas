@@ -88,6 +88,11 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
   eigenen Schnittstellen liegt (Hostrouten ausgenommen), und denselben
   Filter auf die beobachtete Quelle anwenden. In /32-Umgebungen das Pod- oder
   Knotennetz nie in `AEQUITAS_FREILISTE_NETZE` nennen.
+- **Weiterleitungen im Klartext** (Prüfung von #319, INFO-21): Wer zwischen
+  Folger und Zuständigem mithört (`http://IP:8080`) und den Ring der
+  Merkliste in unter 30 s mit 20.000 gültigen Weiterleitungen leert, kann
+  einen Nachweis noch einmal einspielen; er zählt dann unter dem Budget des
+  echten Coordinators. Abhilfe: TLS zwischen Validatoren.
 - Die Freiliste wird etwa einmal je Minute neu aufgebaut: wer den Satz
   verlässt, bleibt bis zu 60 s frei, neue Mitglieder sind bis zu 60 s
   begrenzt.
@@ -122,6 +127,11 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
   stehen einmal je Mitglied im Log (`[LEITUNG] ⚠ … wird nicht von der
   Ratenbegrenzung freigestellt`). Anfragen mit `X-Forwarded-For`,
   `Forwarded` oder `X-Real-IP` sind nie freigestellt.
+- Staffel-Stichtag (#319, INFO-22): erst setzen, wenn **alle** Validatoren
+  eine Version mit unterschriebenen Weiterleitungen fahren. Ein alter Folger
+  unterschreibt nicht; steht der Zuständige hinter Caddy, zählt er dessen
+  Weiterleitungen unter der Adresse des Folgers, und ein einzelner Absender
+  sperrt dann alle Coordinatoren dahinter aus.
 - Außerdem aus `ERINNERUNG.md`: C2 / zweiter unabhängiger Betreiber,
   App 1.10.0 als Release, Altersmodell, `PROOF_SERVER_URLS` und
   `CHAIN_SERVICE_TOKEN` auf dem Server, Impressum und Datenschutz,

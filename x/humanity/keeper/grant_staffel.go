@@ -38,6 +38,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"sort"
 	"strings"
@@ -357,11 +358,19 @@ func merkeProveKlasse(respBody []byte) {
 // Vor der Aktivierung der Staffel nichts (der Handler antwortet 409).
 func (a *APIServer) erneuerungsGrenze(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || !stagedGrantAktiv(time.Now().Unix()) {
+		if r.Method != http.MethodPost {
 			next(w, r)
 			return
 		}
-		schluessel := "liveness-renewal:" + clientIP(r)
+		// Vor dem Stichtag gleich hier: nichts zaehlen, nichts unterschreiben
+		// und weiterleiten, nur damit der Zustaendige 409 sagt (Pruefung von
+		// #319, INFO-22).
+		if !stagedGrantAktiv(time.Now().Unix()) {
+			writeJSONCORS(w)
+			jsonError(w, "staged grant not active yet", http.StatusConflict)
+			return
+		}
+		schluessel := "liveness-renewal:" + erneuerungsAbsender(r)
 		if r.Header.Get(weitergeleitetKopf) != "" {
 			fuer := ""
 			if !burstVoll(schluessel, burstErneuerungJeIP, burstFenster) {
@@ -381,6 +390,25 @@ func (a *APIServer) erneuerungsGrenze(next http.HandlerFunc) http.HandlerFunc {
 		}
 		next(w, r)
 	}
+}
+
+// erneuerungsAbsender: unter welcher Adresse eine Erneuerung zaehlt -- die
+// IP aus clientIP in einer Schreibweise, und wenn clientIP keine IP ist
+// (Kopf eines privaten TCP-Partners), die TCP-Adresse: sonst zaehlte jede
+// erfundene Schreibweise unter einem neuen Schluessel (Pruefung von #319,
+// INFO-23). zumLeiter leitet eine solche Anfrage nicht weiter.
+func erneuerungsAbsender(r *http.Request) string {
+	if ip := net.ParseIP(clientIP(r)); ip != nil {
+		return ip.String()
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.String()
+	}
+	return host
 }
 
 // handleLivenessRenewal nimmt eine Erneuerung entgegen: der Coordinator hat

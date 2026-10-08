@@ -698,6 +698,21 @@ func (a *APIServer) zumLeiter(h http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 		zielAdr, ziel := a.state.weiterleitungsZielMitAdresse(r, anfrageKonten(r.URL.Path, body)...)
+		if ziel != "" && weiterleitungUnterschreiben(r.URL.Path) {
+			// Was der Zustaendige nicht pruefen kann, wird nicht
+			// unterschrieben: ein Koerper ueber seiner Lesegrenze liesse den
+			// Nachweis scheitern, und die Anfrage zaehlte dort unter der
+			// Adresse dieses Knotens -- ein Absender sperrte so alle hinter
+			// ihm aus (Pruefung von #319, MEDIUM-18). Ohne IP als Absender
+			// (INFO-23) gibt es keinen Nachweis: dann hier bearbeiten.
+			if len(body) > weiterleitungKoerperMax {
+				http.Error(w, `{"error":"request body too large"}`, http.StatusRequestEntityTooLarge)
+				return
+			}
+			if net.ParseIP(clientIP(r)) == nil {
+				ziel = ""
+			}
+		}
 		if ziel == "" {
 			r.Body = io.NopCloser(bytes.NewReader(body))
 			h(w, r)

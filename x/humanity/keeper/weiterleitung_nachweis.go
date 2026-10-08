@@ -3,6 +3,7 @@ package keeper
 import (
 	"bytes"
 	"crypto/ecdsa"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"io"
@@ -32,7 +33,11 @@ import (
 // WIE. Der Folger unterschreibt die Weiterleitung mit seinem Signierschluessel
 // (derselbe wie fuer Bloecke und Leitungsnachrichten): Methode, Pfad, Zeit,
 // die Adresse, unter der ER gezaehlt hat ("fuer"), die Adresse des
-// Zustaendigen und sha256 des Koerpers. Der Zustaendige prueft
+// Zustaendigen, eine Zufallszahl (zwei gleiche Anfragen in derselben
+// Millisekunde sind sonst dieselbe Weiterleitung, und die zweite galte als
+// Wiederholung -- Pruefung von #319, MEDIUM-18) und sha256 des Koerpers.
+// Einen Koerper ueber weiterleitungKoerperMax unterschreibt er nicht
+// (zumLeiter antwortet 413). Der Zustaendige prueft
 //   - die Unterschrift passt zu einem Validator, den seine Leitung kennt
 //     (Mitglied des Satzes oder zugelassen, nicht er selbst),
 //   - das Ziel ist er selbst (sonst gaelte ein mitgehoerter Nachweis bei
@@ -62,6 +67,12 @@ const (
 	weiterleitungKoerperMax = 8 << 10
 	// Eine secp256k1-Unterschrift (65 Byte) in Hex.
 	weiterleitungSigLaenge = 130
+	// Die Zufallszahl: 16 Byte in Hex.
+	weiterleitungNonceLaenge = 32
+	// Laenger ist kein gueltiger Kopf (Zeit, IPv6, Zufallszahl,
+	// Unterschrift): vor jedem Zerlegen abgewiesen (Pruefung von #319,
+	// LOW-19).
+	weiterleitungKopfMax = 256
 )
 
 // weiterleitungGemerktMax: so viele Weiterleitungen merkt sich ein Knoten
@@ -76,31 +87,35 @@ func weiterleitungUnterschreiben(pfad string) bool {
 	return pfad == "/api/liveness-renewal"
 }
 
-func weiterleitungHash(methode, pfad string, zeitMs int64, fuer, ziel string, koerper []byte) []byte {
+func weiterleitungHash(methode, pfad string, zeitMs int64, fuer, ziel, nonce string, koerper []byte) []byte {
 	h := sha256.Sum256(koerper)
-	return crypto.Keccak256([]byte("aequitas-weiterleitung-v2:"), []byte(methode), []byte{0},
+	return crypto.Keccak256([]byte("aequitas-weiterleitung-v3:"), []byte(methode), []byte{0},
 		[]byte(pfad), []byte{0}, []byte(strconv.FormatInt(zeitMs, 10)), []byte{0},
-		[]byte(fuer), []byte{0}, []byte(ziel), []byte{0}, h[:])
+		[]byte(fuer), []byte{0}, []byte(ziel), []byte{0}, []byte(nonce), []byte{0}, h[:])
 }
 
 // weiterleitungNachweis: die Koepfe fuer die weitergeleitete Anfrage, oder
 // nil (kein Schluessel, kein Ziel, anderer Pfad, keine IP als Absender --
 // dann zaehlt der Zustaendige unter der Adresse des Folgers, fail-closed).
 func weiterleitungNachweis(k *ecdsa.PrivateKey, r *http.Request, ziel string, koerper []byte, jetzt time.Time) http.Header {
-	if k == nil || ziel == "" || !weiterleitungUnterschreiben(r.URL.Path) {
+	if k == nil || ziel == "" || !weiterleitungUnterschreiben(r.URL.Path) || len(koerper) > weiterleitungKoerperMax {
 		return nil
 	}
 	ip := net.ParseIP(clientIP(r))
 	if ip == nil {
 		return nil
 	}
-	fuer, zeit := ip.String(), jetzt.UnixMilli()
-	sig, err := crypto.Sign(weiterleitungHash(r.Method, r.URL.Path, zeit, fuer, ziel, koerper), k)
+	var zufall [weiterleitungNonceLaenge / 2]byte
+	if _, err := rand.Read(zufall[:]); err != nil {
+		return nil
+	}
+	fuer, zeit, nonce := ip.String(), jetzt.UnixMilli(), hex.EncodeToString(zufall[:])
+	sig, err := crypto.Sign(weiterleitungHash(r.Method, r.URL.Path, zeit, fuer, ziel, nonce, koerper), k)
 	if err != nil {
 		return nil
 	}
 	h := http.Header{}
-	h.Set(weiterleitungNachweisKopf, strconv.FormatInt(zeit, 10)+";"+fuer+";"+hex.EncodeToString(sig))
+	h.Set(weiterleitungNachweisKopf, strconv.FormatInt(zeit, 10)+";"+fuer+";"+nonce+";"+hex.EncodeToString(sig))
 	return h
 }
 
@@ -112,11 +127,14 @@ func weiterleitungNachweis(k *ecdsa.PrivateKey, r *http.Request, ziel string, ko
 func (cs *ChainState) weiterleitungFuer(r *http.Request, jetzt time.Time) string {
 	l := cs.leitung.Load()
 	kopf := r.Header.Get(weiterleitungNachweisKopf)
-	if l == nil || kopf == "" {
+	if l == nil || kopf == "" || len(kopf) > weiterleitungKopfMax {
 		return ""
 	}
-	teile := strings.Split(kopf, ";")
-	if len(teile) != 3 || len(teile[2]) != weiterleitungSigLaenge {
+	teile := strings.SplitN(kopf, ";", 5)
+	if len(teile) != 4 || len(teile[2]) != weiterleitungNonceLaenge || len(teile[3]) != weiterleitungSigLaenge {
+		return ""
+	}
+	if _, err := hex.DecodeString(teile[2]); err != nil {
 		return ""
 	}
 	zeit, err := strconv.ParseInt(teile[0], 10, 64)
@@ -130,7 +148,7 @@ func (cs *ChainState) weiterleitungFuer(r *http.Request, jetzt time.Time) string
 	if ip == nil || ip.String() != teile[1] {
 		return ""
 	}
-	sig, err := hex.DecodeString(teile[2])
+	sig, err := hex.DecodeString(teile[3])
 	if err != nil {
 		return ""
 	}
@@ -139,7 +157,7 @@ func (cs *ChainState) weiterleitungFuer(r *http.Request, jetzt time.Time) string
 	if err != nil || len(koerper) > weiterleitungKoerperMax {
 		return ""
 	}
-	hash := weiterleitungHash(r.Method, r.URL.Path, zeit, teile[1], l.Ich(), koerper)
+	hash := weiterleitungHash(r.Method, r.URL.Path, zeit, teile[1], l.Ich(), teile[2], koerper)
 	weiterleitungPruefungen.Add(1)
 	pub, err := crypto.SigToPub(hash, sig)
 	if err != nil {

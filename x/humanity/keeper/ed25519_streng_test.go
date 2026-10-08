@@ -279,6 +279,12 @@ func TestZumLeiter_ErneuerungZumZustaendigen(t *testing.T) {
 	if got := anfrageKonten("/api/liveness-renewal", []byte(`{"wallet":" 0x`+strings.Repeat("AB", 20)+` "}`)); len(got) != 1 || got[0] != wallet {
 		t.Fatalf("anfrageKonten: %v", got)
 	}
+	// Weitergeleitet wird erst ab dem Stichtag; vorher antwortet schon dieser
+	// Knoten 409 (Pruefung von #319, INFO-22).
+	stagedGrantActivationOverride.Store(1)
+	t.Cleanup(func() { stagedGrantActivationOverride.Store(0) })
+	erneuerungsGrenzeLeeren("192.0.2.1")
+	t.Cleanup(func() { erneuerungsGrenzeLeeren("192.0.2.1") })
 	antwort := func(name string) *httptest.Server {
 		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			b, _ := io.ReadAll(r.Body)
