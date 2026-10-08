@@ -761,57 +761,137 @@ func (dag *BlockDAG) leitungPeers() []string {
 // der Teil der Validatoren wird bei jedem Lauf ersetzt (wer den Satz
 // verlaesst, faellt heraus).
 //
-// PRIVATE ADRESSEN NUR AUF AUSDRUECKLICHEN WUNSCH. Vor dem Knoten steht ein
-// Proxy im Docker-Netz (deploy/Caddyfile): ALLE Anfragen von aussen kommen
-// von dessen privater Adresse. Stuende die in der Liste, gaelte die Grenze
-// je IP fuer niemanden mehr. Private und CGNAT-Adressen (10/8, 172.16/12,
-// 192.168/16, 100.64/10, fc00::/7) kommen deshalb nur mit
-// AEQUITAS_FREILISTE_PRIVAT=1 hinein -- fuer Validatoren, die wirklich ein
-// privates Netz teilen (Tailscale) und dann keinen solchen Proxy davor haben.
+// PRIVATE ADRESSEN NUR IN AUSDRUECKLICH GENANNTEN NETZEN. Vor dem Knoten
+// steht ein Proxy im Docker-Netz (deploy/Caddyfile): ALLE Anfragen von aussen
+// kommen von dessen privater Adresse. Stuende die in der Liste, gaelte die
+// Grenze je IP fuer niemanden mehr. Private und CGNAT-Adressen (10/8,
+// 172.16/12, 192.168/16, 100.64/10, fc00::/7) kommen deshalb nur hinein, wenn
+// sie in einem Netz aus AEQUITAS_FREILISTE_NETZE liegen -- etwa
+// 100.64.0.0/10 fuer Validatoren, die ein Tailscale-Netz teilen. Ein
+// Schalter fuer ALLE privaten Netze haette das Docker-Netz des Proxys gleich
+// mit geoeffnet (Pruefung von #320, LOW-2); zusaetzlich stellt
+// rpcRateLimitFreiFuer eine private Adresse nie frei, wenn die Anfrage
+// X-Forwarded-For traegt.
+//
+// SONDERADRESSEN NIE (Pruefung von #320, INFO-1): nur globale Unicast-
+// Adressen, und auch von denen nicht die Bereiche, die einen anderen Rechner
+// oder ein Uebersetzungsnetz meinen (0/8, 198.18/15, 240/4, NAT64, 6to4,
+// Teredo, IPv4-kompatibel, Site-Local).
+//
+// MELDUNGEN BEGRENZT (Pruefung von #320, LOW-1 und INFO-2): je Mitglied wird
+// gemerkt, welche Adresse zuletzt als nicht freistellbar gemeldet wurde, und
+// zwar nur fuer Mitglieder des aktuellen Satzes -- die Merkliste ist durch
+// die Satzgroesse begrenzt, und eine Logzeile gibt es nur, wenn sich die
+// Adresse eines Mitglieds aendert. Auch Namen (https://<domain>) werden
+// gemeldet: sie werden nie aufgeloest und nie freigestellt.
 func validatorIPsFrei(l *Leitung) {
+	netze := freilisteNetze()
+	nichtFrei.Lock()
+	defer nichtFrei.Unlock()
+	gemeldet := map[string]string{}
 	var ips []string
 	for a, u := range l.SatzURLs() {
-		pu, err := url.Parse(u)
-		if err != nil {
+		host := ""
+		if pu, err := url.Parse(u); err == nil {
+			host = pu.Hostname()
+		}
+		ip := net.ParseIP(host)
+		if freistellbar(ip, netze) {
+			ips = append(ips, ip.String())
 			continue
 		}
-		ip := net.ParseIP(pu.Hostname())
-		if !freistellbar(ip, freilistePrivatErlaubt()) {
-			if ip != nil {
-				nichtFreiMelden(a, ip.String())
-			}
-			continue
+		gemeldet[a] = host
+		if alt, schon := nichtFrei.gemeldet[a]; !schon || alt != host {
+			nichtFreiLog(a, host)
 		}
-		ips = append(ips, ip.String())
 	}
+	nichtFrei.gemeldet = gemeldet
 	rpcRateLimitFreiValidatoren(ips)
 }
 
+// sonderNetze: global geroutet sieht keiner dieser Bereiche nach einem
+// einzelnen anderen Validator aus.
+var sonderNetze = mussNetze(
+	"0.0.0.0/8", "192.0.0.0/24", "198.18.0.0/15", "240.0.0.0/4",
+	"::/96", "64:ff9b::/96", "64:ff9b:1::/48", "2002::/16", "2001::/32",
+	"fec0::/10", "100::/64",
+)
+
+func mussNetze(cidrs ...string) []*net.IPNet {
+	out := make([]*net.IPNet, 0, len(cidrs))
+	for _, c := range cidrs {
+		_, n, err := net.ParseCIDR(c)
+		if err != nil {
+			panic(err)
+		}
+		out = append(out, n)
+	}
+	return out
+}
+
+func inNetzen(ip net.IP, netze []*net.IPNet) bool {
+	for _, n := range netze {
+		if n.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
 // freistellbar: eine Adresse, von der ein anderer Validator weiterleiten
-// kann -- nie Loopback (das waere dieser Rechner selbst und jeder lokale
-// Proxy), unspezifiziert, Link-Local oder Multicast; privat oder CGNAT nur,
-// wenn privat erlaubt ist.
-func freistellbar(ip net.IP, privat bool) bool {
-	if ip == nil || ip.IsLoopback() || ip.IsUnspecified() || ip.IsLinkLocalUnicast() ||
-		ip.IsLinkLocalMulticast() || ip.IsInterfaceLocalMulticast() || ip.IsMulticast() {
+// kann -- nur globale Unicast-Adressen (nie Loopback, das waere dieser Rechner
+// selbst und jeder lokale Proxy; nie unspezifiziert, Link-Local, Multicast
+// oder Broadcast), keine Sonderbereiche, und privat oder CGNAT nur innerhalb
+// der genannten Netze.
+func freistellbar(ip net.IP, netze []*net.IPNet) bool {
+	if ip == nil || !ip.IsGlobalUnicast() || inNetzen(ip, sonderNetze) {
 		return false
 	}
-	return privat || !isPrivateOrLoopback(ip.String())
+	return !isPrivateOrLoopback(ip.String()) || inNetzen(ip, netze)
 }
 
-func freilistePrivatErlaubt() bool {
-	v := strings.TrimSpace(strings.ToLower(os.Getenv("AEQUITAS_FREILISTE_PRIVAT")))
-	return v == "1" || v == "true" || v == "ja"
-}
+var freilisteNetzeGewarnt atomic.Pointer[string]
 
-var nichtFreiGemeldet sync.Map
-
-func nichtFreiMelden(validator, ip string) {
-	if _, schon := nichtFreiGemeldet.LoadOrStore(validator+"|"+ip, true); schon {
-		return
+// freilisteNetze liest AEQUITAS_FREILISTE_NETZE (CIDR, durch Kommas
+// getrennt). Ein Tippfehler stellt niemanden frei; das Log sagt es einmal je
+// Wert.
+func freilisteNetze() []*net.IPNet {
+	roh := strings.TrimSpace(os.Getenv("AEQUITAS_FREILISTE_NETZE"))
+	var netze []*net.IPNet
+	var falsch []string
+	for _, teil := range strings.Split(roh, ",") {
+		if teil = strings.TrimSpace(teil); teil == "" {
+			continue
+		}
+		if _, n, err := net.ParseCIDR(teil); err == nil {
+			netze = append(netze, n)
+		} else {
+			falsch = append(falsch, teil)
+		}
 	}
-	fmt.Printf("[LEITUNG] ⚠ %s kuendigt %s an -- wird nicht von der Ratenbegrenzung freigestellt (Loopback, privat oder ohne Unicast; privates Netz: AEQUITAS_FREILISTE_PRIVAT=1)\n",
-		kurzAdresse(validator), ip)
+	if len(falsch) > 0 {
+		if alt := freilisteNetzeGewarnt.Load(); alt == nil || *alt != roh {
+			freilisteNetzeGewarnt.Store(&roh)
+			fmt.Printf("[LEITUNG] ⚠ AEQUITAS_FREILISTE_NETZE: %q ist kein Netz in CIDR-Schreibweise (etwa 100.64.0.0/10) -- ignoriert\n",
+				strings.Join(falsch, ", "))
+		}
+	}
+	return netze
+}
+
+// nichtFrei: je Mitglied des Satzes die zuletzt gemeldete Adresse, die nicht
+// freigestellt wurde (validatorIPsFrei).
+var nichtFrei struct {
+	sync.Mutex
+	gemeldet map[string]string
+}
+
+var nichtFreiLog = func(validator, host string) {
+	if host == "" {
+		host = "keine Adresse"
+	}
+	fmt.Printf("[LEITUNG] ⚠ %s kuendigt %s an -- wird nicht von der Ratenbegrenzung freigestellt (kein IP-Literal, Loopback, Sonderadresse oder privat ausserhalb von AEQUITAS_FREILISTE_NETZE)\n",
+		kurzAdresse(validator), host)
 }
 
 // merkeValidatorMensch: nur aus geprueften Bindungen (eigene Registrierung

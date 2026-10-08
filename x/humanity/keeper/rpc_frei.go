@@ -71,27 +71,6 @@ func rpcRateLimitFreiValidatoren(ips []string) {
 	rpcRateLimitFreiListe.Store(&neu)
 }
 
-// rpcRateLimitFreiErgaenzen stellt weitere Adressen zusaetzlich frei (nur
-// noch Tests; die Validatoren legt rpcRateLimitFreiValidatoren neu fest). Nur
-// IP-Literale; Namen werden nie aufgeloest.
-func rpcRateLimitFreiErgaenzen(ips []string) {
-	rpcRateLimitFreiMu.Lock()
-	defer rpcRateLimitFreiMu.Unlock()
-	alt := rpcRateLimitFreiListe.Load()
-	neu := map[string]bool{}
-	if alt != nil {
-		for k, v := range *alt {
-			neu[k] = v
-		}
-	}
-	for _, s := range ips {
-		if ip := net.ParseIP(strings.TrimSpace(s)); ip != nil {
-			neu[ip.String()] = true
-		}
-	}
-	rpcRateLimitFreiListe.Store(&neu)
-}
-
 func rpcRateLimitFreiAusUmgebung() map[string]bool {
 	roh := strings.TrimSpace(os.Getenv("AEQUITAS_RPC_RATE_LIMIT_FREI"))
 	if roh == "" {
@@ -143,6 +122,15 @@ func rpcRateLimitFreiFuer(liste map[string]bool, r *http.Request) bool {
 	}
 	ip := net.ParseIP(host)
 	if ip == nil {
+		return false
+	}
+	// Ueber einen Proxy (Pruefung von #320, LOW-2): eine Verbindung von einer
+	// privaten Adresse, die X-Forwarded-For oder Forwarded mitbringt, kommt
+	// von einem vorgeschalteten Proxy (Caddy setzt den Kopf immer) -- der
+	// eigentliche Absender ist ein anderer, und er bleibt begrenzt, auch wenn
+	// die Adresse des Proxys versehentlich in der Liste steht. Weitergeleitete
+	// Anfragen der Validatoren (leiteWeiter) tragen keinen dieser Koepfe.
+	if isPrivateOrLoopback(ip.String()) && (r.Header.Get("X-Forwarded-For") != "" || r.Header.Get("Forwarded") != "") {
 		return false
 	}
 	return liste[ip.String()]

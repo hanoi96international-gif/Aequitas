@@ -46,6 +46,21 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
    Validatoren: fortgeschriebener statt neu gelesener Stand (Erzeugerprüfung
    und Anwesenheit).
 
+## Ratenbegrenzung – bekannte Lücken
+- **Freiliste ohne Herkunftsnachweis** (Prüfung von #320, LOW-3; bestand
+  schon vorher, seit #320 auf den Satz eingeengt): ein Satzmitglied kann
+  jede öffentliche IP ankündigen und sie so von den Grenzen je IP
+  freistellen lassen – auch eine geteilte Ausgangsadresse (Mobilfunk-CGNAT,
+  VPN). Ein Leiter kann bei einem plausiblen Satzwechsel über `m.URLs` auch
+  die URLs anderer Mitglieder setzen (leitung.go, `empfangeLease`). Fix:
+  nur die TCP-Quelle freistellen, von der eine gültig signierte
+  `/api/leitung`-Nachricht dieses Mitglieds kam (oder Übereinstimmung mit
+  der angekündigten IP verlangen); besser noch Weiterleitungen selbst
+  unterschreiben (wie für die Erneuerung, #319 MEDIUM-7).
+- Die Freiliste wird etwa einmal je Minute neu aufgebaut: wer den Satz
+  verlässt, bleibt bis zu 60 s frei, neue Mitglieder sind bis zu 60 s
+  begrenzt.
+
 ## Betrieb – bei dir
 - `COORDINATOR_BETREIBER_WALLET` und `VALIDATOR_BETREIBER_WALLET` auf den
   Boxen setzen (die Deploy-Workflows übernehmen die alte Umgebung, die neuen
@@ -64,6 +79,14 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
   `erzeugerSchnittAb` (erst wenn `/api/status` → `erzeuger_ohne_bindung`
   leer ist), Staffel, strenges Nachrechnen. Nur geschlossener Betrieb
   (`AUTHORIZED_VALIDATORS`) ist für die Register-Stichtage freigegeben.
+- Freiliste der Ratenbegrenzung (#320): Validatoren, deren `SELF_URL` ein
+  Name (`https://<domain>`) oder eine private/Tailscale-Adresse ist, werden
+  nicht mehr freigestellt; ihre Weiterleitungen laufen beim Leiter in die
+  Grenze je IP. Private Netze nur gezielt freigeben:
+  `AEQUITAS_FREILISTE_NETZE=100.64.0.0/10` (CIDR, durch Kommas getrennt),
+  nie das Docker-Netz des Proxys. Abgewiesene Adressen stehen einmal je
+  Mitglied im Log (`[LEITUNG] ⚠ … wird nicht von der Ratenbegrenzung
+  freigestellt`).
 - Außerdem aus `ERINNERUNG.md`: C2 / zweiter unabhängiger Betreiber,
   App 1.10.0 als Release, Altersmodell, `PROOF_SERVER_URLS` und
   `CHAIN_SERVICE_TOKEN` auf dem Server, Impressum und Datenschutz,
