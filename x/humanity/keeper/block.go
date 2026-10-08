@@ -2475,16 +2475,21 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 		merkeProduktionsAusfall("beobachter")
 		return nil // nur nachspielen, nie erzeugen (beobachter.go)
 	}
+	// Ab jetzt misst annahme_pause.go, ob dieser Knoten Bloecke erzeugt --
+	// VOR der Registerpruefung: ein Knoten, dessen Schluessel (noch) nicht
+	// erzeugen darf (frisch gebunden, in der Frist), haelt so nach 30 s die
+	// Annahme an. Vorher begann die Messung nie, und er nahm Auftraege an,
+	// die bis zum Beginn seines Fensters zu alt fuer jede Blockzeit wurden --
+	// mit einem einzigen Erzeuger stand die Kette danach (Pruefung von #317).
+	if dag.state != nil {
+		dag.state.erzeugerSeit.CompareAndSwap(0, time.Now().Unix())
+	}
 	// Ab erzeugerSchnittAb nimmt jeder andere Knoten nur Bloecke von
 	// Schluesseln, die das Register zur Blockzeit traegt -- ohne Bindung
 	// erzeugt dieser Knoten nicht, statt Bloecke zu bauen, die alle abweisen.
 	if jetzt := nowUnix(); erzeugerSchnittAktiv(jetzt) && !dag.erzeugerNachRegister(dag.selfProposer, jetzt) {
 		merkeProduktionsAusfall("nicht_im_register")
 		return nil
-	}
-	// Ab jetzt misst annahme_pause.go, ob dieser Knoten Bloecke erzeugt.
-	if dag.state != nil {
-		dag.state.erzeugerSeit.CompareAndSwap(0, time.Now().Unix())
 	}
 	if dag.resyncInProgress.Load() {
 		merkeProduktionsAusfall("resync_laeuft")

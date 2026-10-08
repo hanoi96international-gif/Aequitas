@@ -32,8 +32,10 @@ import (
 //
 // Alles ist wiederholbar ("gleich nochmal"), nicht endgueltig. Die Messung in
 // 2 beginnt mit dem ersten ProduceBlock-Versuch -- auf jedem Knoten, der
-// erzeugen koennte. Ein Knoten, der dann keine Bloecke speichert (nicht im
-// Erzeugerkreis, Folger), nimmt nach 30 s ueber annahmeBeginnen nichts mehr an;
+// erzeugen koennte, auch einem, dessen Schluessel das Register (noch) nicht
+// traegt. Ein Knoten, der dann keine Bloecke speichert (nicht im
+// Erzeugerkreis, nicht im Register, Folger), nimmt nach 30 s ueber
+// annahmeBeginnen nichts mehr an;
 // Folger lehnt das Annahme-Tor ohnehin vorher ab, und der RPC-Weg lehnt hier
 // schon immer ab (admissionRefusalReason). Wer nicht verblockt, soll nicht
 // annehmen -- sein Ausgang kaeme in keinen Block.
