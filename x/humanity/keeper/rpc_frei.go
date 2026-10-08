@@ -116,6 +116,17 @@ func rpcRateLimitFreiFuer(liste map[string]bool, r *http.Request) bool {
 	if len(liste) == 0 || r == nil {
 		return false
 	}
+	// Ueber einen Proxy (Pruefung von #320, LOW-2 und INFO-6): eine Anfrage
+	// mit X-Forwarded-For, Forwarded oder X-Real-IP -- auch leer, von jeder
+	// Quelle -- kommt ueber einen vorgeschalteten Proxy (Caddy setzt den Kopf
+	// immer); der eigentliche Absender ist ein anderer, und er bleibt
+	// begrenzt, auch wenn die Adresse des Proxys in der Liste steht. Kein Weg
+	// der Knoten setzt diese Koepfe (leiteWeiter, leitungSende,
+	// Lastgenerator). Zuerst geprueft, weil billig: der Heissweg von /rpc
+	// parst sonst bei jeder Anfrage (INFO-7).
+	if ueberProxy(r) {
+		return false
+	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		host = r.RemoteAddr
@@ -124,14 +135,16 @@ func rpcRateLimitFreiFuer(liste map[string]bool, r *http.Request) bool {
 	if ip == nil {
 		return false
 	}
-	// Ueber einen Proxy (Pruefung von #320, LOW-2): eine Verbindung von einer
-	// privaten Adresse, die X-Forwarded-For oder Forwarded mitbringt, kommt
-	// von einem vorgeschalteten Proxy (Caddy setzt den Kopf immer) -- der
-	// eigentliche Absender ist ein anderer, und er bleibt begrenzt, auch wenn
-	// die Adresse des Proxys versehentlich in der Liste steht. Weitergeleitete
-	// Anfragen der Validatoren (leiteWeiter) tragen keinen dieser Koepfe.
-	if isPrivateOrLoopback(ip.String()) && (r.Header.Get("X-Forwarded-For") != "" || r.Header.Get("Forwarded") != "") {
-		return false
-	}
 	return liste[ip.String()]
+}
+
+var proxyKoepfe = [...]string{"X-Forwarded-For", "Forwarded", "X-Real-Ip"}
+
+func ueberProxy(r *http.Request) bool {
+	for _, k := range proxyKoepfe {
+		if _, da := r.Header[k]; da {
+			return true
+		}
+	}
+	return false
 }

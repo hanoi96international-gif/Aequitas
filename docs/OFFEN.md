@@ -84,9 +84,13 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
   nicht mehr freigestellt; ihre Weiterleitungen laufen beim Leiter in die
   Grenze je IP. Private Netze nur gezielt freigeben:
   `AEQUITAS_FREILISTE_NETZE=100.64.0.0/10` (CIDR, durch Kommas getrennt),
-  nie das Docker-Netz des Proxys. Abgewiesene Adressen stehen einmal je
-  Mitglied im Log (`[LEITUNG] ⚠ … wird nicht von der Ratenbegrenzung
-  freigestellt`).
+  nie das Docker-Netz des Knotens (Gateway, docker-proxy, Proxy). Der Knoten
+  verwirft selbst, was zu weit ist (IPv4 kürzer als /8, IPv6 kürzer als /16)
+  oder ein Netz seiner eigenen Schnittstellen berührt, und sagt es einmal im
+  Log (`AEQUITAS_FREILISTE_NETZE: … -- ignoriert`). Abgewiesene Adressen
+  stehen einmal je Mitglied im Log (`[LEITUNG] ⚠ … wird nicht von der
+  Ratenbegrenzung freigestellt`). Anfragen mit `X-Forwarded-For`,
+  `Forwarded` oder `X-Real-IP` sind nie freigestellt.
 - Außerdem aus `ERINNERUNG.md`: C2 / zweiter unabhängiger Betreiber,
   App 1.10.0 als Release, Altersmodell, `PROOF_SERVER_URLS` und
   `CHAIN_SERVICE_TOKEN` auf dem Server, Impressum und Datenschutz,

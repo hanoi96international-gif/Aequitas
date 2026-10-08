@@ -770,13 +770,17 @@ func (dag *BlockDAG) leitungPeers() []string {
 // 100.64.0.0/10 fuer Validatoren, die ein Tailscale-Netz teilen. Ein
 // Schalter fuer ALLE privaten Netze haette das Docker-Netz des Proxys gleich
 // mit geoeffnet (Pruefung von #320, LOW-2); zusaetzlich stellt
-// rpcRateLimitFreiFuer eine private Adresse nie frei, wenn die Anfrage
-// X-Forwarded-For traegt.
+// rpcRateLimitFreiFuer keine Anfrage frei, die X-Forwarded-For, Forwarded
+// oder X-Real-IP traegt. Ein genanntes Netz gilt nur, wenn es eng genug ist
+// und kein Netz der eigenen Schnittstellen beruehrt: das Docker-Netz des
+// Knotens samt Gateway (docker-proxy reicht Verbindungen ohne Kopf von dort
+// weiter) darf nie freistellbar werden (Pruefung von #320, LOW-5).
 //
 // SONDERADRESSEN NIE (Pruefung von #320, INFO-1): nur globale Unicast-
 // Adressen, und auch von denen nicht die Bereiche, die einen anderen Rechner
-// oder ein Uebersetzungsnetz meinen (0/8, 198.18/15, 240/4, NAT64, 6to4,
-// Teredo, IPv4-kompatibel, Site-Local).
+// oder ein Uebersetzungsnetz meinen (0/8, 198.18/15, 240/4, NAT64, SIIT,
+// 6to4, Teredo, IPv4-kompatibel, Site-Local, ORCHID, SRv6; Pruefung von #320,
+// INFO-1 und INFO-8).
 //
 // MELDUNGEN BEGRENZT (Pruefung von #320, LOW-1 und INFO-2): je Mitglied wird
 // gemerkt, welche Adresse zuletzt als nicht freistellbar gemeldet wurde, und
@@ -812,9 +816,10 @@ func validatorIPsFrei(l *Leitung) {
 // sonderNetze: global geroutet sieht keiner dieser Bereiche nach einem
 // einzelnen anderen Validator aus.
 var sonderNetze = mussNetze(
-	"0.0.0.0/8", "192.0.0.0/24", "198.18.0.0/15", "240.0.0.0/4",
-	"::/96", "64:ff9b::/96", "64:ff9b:1::/48", "2002::/16", "2001::/32",
-	"fec0::/10", "100::/64",
+	"0.0.0.0/8", "192.0.0.0/24", "192.88.99.0/24", "198.18.0.0/15", "240.0.0.0/4",
+	"::/96", "::ffff:0:0:0/96", "64:ff9b::/96", "64:ff9b:1::/48", "2002::/16",
+	"2001::/32", "2001:2::/48", "2001:10::/28", "2001:20::/28",
+	"fec0::/10", "100::/64", "5f00::/16", "3fff::/20",
 )
 
 func mussNetze(cidrs ...string) []*net.IPNet {
@@ -852,28 +857,94 @@ func freistellbar(ip net.IP, netze []*net.IPNet) bool {
 
 var freilisteNetzeGewarnt atomic.Pointer[string]
 
+// eigeneNetze: die Netze der eigenen Schnittstellen (im Container: das
+// Docker-Netz). Variable fuer Tests.
+var eigeneNetze = func() ([]*net.IPNet, error) {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return nil, err
+	}
+	var out []*net.IPNet
+	for _, a := range addrs {
+		if n, ok := a.(*net.IPNet); ok {
+			out = append(out, n)
+		}
+	}
+	return out, nil
+}
+
+// freilisteNetzeWarnen: Variable fuer Tests.
+var freilisteNetzeWarnen = func(text string) {
+	fmt.Printf("[LEITUNG] ⚠ AEQUITAS_FREILISTE_NETZE: %s\n", text)
+}
+
+// netzPraefix: die Praefixlaenge, ein IPv4-Netz in IPv6-Schreibweise
+// (::ffff:0:0/96 ist nach Go 0.0.0.0/0) auf die IPv4-Maske umgerechnet.
+func netzPraefix(n *net.IPNet) (einsen int, v4 bool) {
+	einsen, bits := n.Mask.Size()
+	if n.IP.To4() != nil {
+		if bits == 128 {
+			einsen -= 96
+		}
+		return einsen, true
+	}
+	return einsen, false
+}
+
+func netzeBeruehren(a, b *net.IPNet) bool {
+	return a.Contains(b.IP) || b.Contains(a.IP)
+}
+
 // freilisteNetze liest AEQUITAS_FREILISTE_NETZE (CIDR, durch Kommas
-// getrennt). Ein Tippfehler stellt niemanden frei; das Log sagt es einmal je
-// Wert.
+// getrennt). Verworfen -- und einmal je Wert im Log genannt -- wird, was
+// kein Netz ist, was zu weit ist (IPv4 kuerzer als /8, IPv6 kuerzer als
+// /16) und was ein Netz der eigenen Schnittstellen beruehrt (Pruefung von
+// #320, LOW-5). Sind die Schnittstellen nicht lesbar, gilt keines
+// (fail-closed).
 func freilisteNetze() []*net.IPNet {
 	roh := strings.TrimSpace(os.Getenv("AEQUITAS_FREILISTE_NETZE"))
+	if roh == "" {
+		return nil
+	}
+	eigene, err := eigeneNetze()
 	var netze []*net.IPNet
-	var falsch []string
+	var verworfen []string
 	for _, teil := range strings.Split(roh, ",") {
 		if teil = strings.TrimSpace(teil); teil == "" {
 			continue
 		}
-		if _, n, err := net.ParseCIDR(teil); err == nil {
-			netze = append(netze, n)
-		} else {
-			falsch = append(falsch, teil)
+		_, n, perr := net.ParseCIDR(teil)
+		if perr != nil {
+			verworfen = append(verworfen, teil+" (kein Netz in CIDR-Schreibweise)")
+			continue
 		}
+		if einsen, v4 := netzPraefix(n); (v4 && einsen < 8) || (!v4 && einsen < 16) {
+			verworfen = append(verworfen, teil+" (zu weit)")
+			continue
+		}
+		if err != nil {
+			verworfen = append(verworfen, teil+" (eigene Schnittstellen nicht lesbar)")
+			continue
+		}
+		beruehrt := ""
+		for _, e := range eigene {
+			if einsen, bits := e.Mask.Size(); einsen < bits && netzeBeruehren(n, e) {
+				beruehrt = e.String()
+				break
+			}
+		}
+		if beruehrt != "" {
+			verworfen = append(verworfen, teil+" (beruehrt das eigene Netz "+beruehrt+")")
+			continue
+		}
+		netze = append(netze, n)
 	}
-	if len(falsch) > 0 {
-		if alt := freilisteNetzeGewarnt.Load(); alt == nil || *alt != roh {
-			freilisteNetzeGewarnt.Store(&roh)
-			fmt.Printf("[LEITUNG] ⚠ AEQUITAS_FREILISTE_NETZE: %q ist kein Netz in CIDR-Schreibweise (etwa 100.64.0.0/10) -- ignoriert\n",
-				strings.Join(falsch, ", "))
+	if len(verworfen) > 0 {
+		text := strings.Join(verworfen, ", ") + " -- ignoriert"
+		if alt := freilisteNetzeGewarnt.Load(); alt == nil || *alt != roh+"|"+text {
+			merk := roh + "|" + text
+			freilisteNetzeGewarnt.Store(&merk)
+			freilisteNetzeWarnen(text)
 		}
 	}
 	return netze
@@ -887,10 +958,19 @@ var nichtFrei struct {
 }
 
 var nichtFreiLog = func(validator, host string) {
+	fmt.Println(nichtFreiText(validator, host))
+}
+
+// nichtFreiText: gekuerzt und in Anfuehrungszeichen -- der Name kommt von
+// einem Peer (Pruefung von #320, INFO-9).
+func nichtFreiText(validator, host string) string {
 	if host == "" {
 		host = "keine Adresse"
 	}
-	fmt.Printf("[LEITUNG] ⚠ %s kuendigt %s an -- wird nicht von der Ratenbegrenzung freigestellt (kein IP-Literal, Loopback, Sonderadresse oder privat ausserhalb von AEQUITAS_FREILISTE_NETZE)\n",
+	if len(host) > 100 {
+		host = host[:100] + "..."
+	}
+	return fmt.Sprintf("[LEITUNG] ⚠ %s kuendigt %q an -- wird nicht von der Ratenbegrenzung freigestellt (kein IP-Literal, Loopback, Sonderadresse oder privat ausserhalb von AEQUITAS_FREILISTE_NETZE)",
 		kurzAdresse(validator), host)
 }
 
