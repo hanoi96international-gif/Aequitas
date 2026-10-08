@@ -29,7 +29,9 @@ ist eine eigene Messung. Daraus folgt, schon im Code vermerkt:
   07.10.2026 zusätzlich an der Größe dieses lokalen Komitees, und das nur
   auf Knoten, die bis zur Komiteeprüfung kamen; ab 57 Validatoren
   hätten Erzeuger und Beobachter mit verschiedenem K gerechnet. Seitdem gilt
-  für alle K = 18, bis ein Komitee aus der Kette kommt.
+  für alle K = 18. Ab `erzeugerSchnittAb` kommt das Komitee aus dem Register
+  (unten, Schritt 3); K bleibt trotzdem 18, bis es je Block für alle gleich
+  feststeht.
 - Die Signatur trägt keinen Zeitpunkt: eine alte Bindung lässt sich wieder
   einspielen und eine neuere damit zurückdrehen.
 
@@ -311,8 +313,18 @@ Dinge ohne Konsenswirkung (Erreichbarkeit, Messwerte als Hinweis).
      zählten Blöcke ungebundener Schlüssel nicht. **Grenze:** hat ein Knoten
      einen Block des Fensters, den der Erzeuger nicht hat (an der
      Finalitätswand verschieden behandelt), meldet er eine Abweichung.
-   - Offen: das Komitee (`getEpochCommittee`) aus derselben Menge statt aus
-     den lokal bekannten Adressen.
+   - **Komitee aus derselben Menge** (08.10.2026, `komitee_register.go`,
+     schlafend bis `erzeugerSchnittAb`): Kandidaten sind die Schlüssel, die
+     zum Beginn der Epoche in genau einem Erzeugerfenster eines Menschen
+     stehen; die Epoche zählt nach der Zeit, nicht nach der Höhe. Jeder
+     Knoten, der dem Netz folgt, wählt so zur selben Epoche dasselbe Komitee
+     (höchstens 100 Erzeuger), und eine mit erfundenen Adressen gefüllte
+     lokale Liste drückt niemanden mehr hinaus. Das Komitee bleibt eine
+     Regel für den eigenen Knoten – kein Block wird abgewiesen, weil sein
+     Erzeuger nicht im Komitee ist. Ein neu gebundener Schlüssel erzeugt ab
+     der nächsten Epoche (bis zu einer Stunde nach seiner Frist). Ein
+     wachsendes K bräuchte ein Komitee, das je **Block** (nicht je Knoten
+     und Uhr) feststeht – offen.
    - Offen (eure Entscheidung): die Leistungsprobe wird zur Entscheidung des
      Leiters, die als eigene Transaktion auf die Kette kommt – oder entfällt.
 4. **Coordinator-Register** (`coordinator_keys`): seit 06.10.2026 trägt die

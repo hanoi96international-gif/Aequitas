@@ -426,7 +426,12 @@ type BlockDAG struct {
 	registerMenschen     sync.Map
 	registerMenschenZahl atomic.Int64
 	currentEpoch         *EpochCommittee // active block-producer committee for the current epoch
-	epochMu              sync.RWMutex    // guards currentEpoch
+	epochMu              sync.RWMutex    // guards currentEpoch, registerKomitee, registerKomiteeStand
+	// registerKomitee: das Komitee ab erzeugerSchnittAb, aus dem Register
+	// (komitee_register.go); registerKomiteeStand: der Stand, aus dem es
+	// berechnet wurde.
+	registerKomitee      *EpochCommittee
+	registerKomiteeStand *erzeugerStand
 	activeSyncPeers      map[string]bool // peers with a running syncWithNode goroutine
 	// peerSyncHeight tracks, per peer URL, the highest block height this
 	// node has actually SUCCESSFULLY imported FROM that specific peer via
@@ -2923,13 +2928,15 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 	// Epoch-committee gate: only the selected committee members produce blocks.
 	// All registered node operators are ranked deterministically by
 	// sha256(addr+epochNum) and the top targetCommitteeSize are chosen.
+	// Ab erzeugerSchnittAb kommen die Kandidaten aus dem Register, die Epoche
+	// aus der Zeit (komitee_register.go) -- jeder Knoten waehlt dasselbe.
 	// Non-committee nodes run in observer mode — syncing and verifying without
 	// producing — which keeps simultaneous producers bounded regardless of how
 	// many humans have registered. Returns nil (no block) when not selected;
 	// committee is recomputed lazily when the epoch number changes.
 	{
 		nextHeight := dag.height + 1
-		ec := dag.getEpochCommittee(nextHeight)
+		ec := dag.erzeugerKomitee(nextHeight, nowUnix())
 		if ec != nil && !ec.Members[dag.selfProposer] {
 			merkeProduktionsAusfall("nicht_im_epochenkomitee")
 			return nil
@@ -8607,6 +8614,14 @@ func (dag *BlockDAG) computeEpochCommittee(epochNum int64) *EpochCommittee {
 	for addr := range dag.authorizedValidators {
 		allOps = append(allOps, addr)
 	}
+	return komiteeWaehlen(allOps, epochNum)
+}
+
+// komiteeWaehlen: die targetCommitteeSize Adressen mit dem kleinsten
+// sha256(lower(addr)+":"+epochNum) -- dieselbe Auswahl fuer die lokale Liste
+// (computeEpochCommittee) und das Register (komitee_register.go). Keine
+// Adressen: nil (jeder darf erzeugen).
+func komiteeWaehlen(allOps []string, epochNum int64) *EpochCommittee {
 	sort.Strings(allOps) // deterministic ordering before scoring
 	if len(allOps) == 0 {
 		return nil // no validators known yet → everyone can produce (bootstrap)
