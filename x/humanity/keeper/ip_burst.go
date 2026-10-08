@@ -89,4 +89,8 @@ const (
 	// und die Zulassung (Datenbank). Ein Coordinator erneuert hoechstens so
 	// viele Menschen, wie am Tag registriert werden (Pruefung #314, LOW-3).
 	burstErneuerungJeIP = 30
+	// Dasselbe fuer weitergeleitete Erneuerungen von Adressen ausserhalb der
+	// Freiliste (erneuerungsGrenze): ein Folger buendelt die Coordinatoren,
+	// die ihn erreichen, und hat deren Grenze schon angewandt.
+	burstErneuerungWeiterJeIP = 300
 )
