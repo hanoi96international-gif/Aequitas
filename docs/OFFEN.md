@@ -57,6 +57,20 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
   `/api/leitung`-Nachricht dieses Mitglieds kam (oder Übereinstimmung mit
   der angekündigten IP verlangen); besser noch Weiterleitungen selbst
   unterschreiben (wie für die Erneuerung, #319 MEDIUM-7).
+- **Eigene Netze nur für private Adressen geprüft** (Prüfung von #320,
+  INFO-11; Spielart von LOW-3): Eine öffentliche Adresse ist ohne Einstellung
+  freistellbar und wird nie gegen die eigenen Schnittstellen geprüft. Liegt
+  das Docker-Netz in einem globalen Präfix (IPv6 `fixed-cidr-v6` aus dem /64
+  des Providers, öffentliches `bip`) oder hat die Schnittstelle nur eine
+  Hostroute (Kubernetes/Calico, eth0 /32), kann ein böswilliges Mitglied das
+  Gateway ankündigen; frei wäre dann alles, was ein Weiterleiter ohne Kopf
+  (docker-proxy, L4-Balancer, SNAT) von dort zustellt. Das Deploy
+  (`deploy/validator/docker-compose.yml`, Bridge ohne IPv6) ist nicht
+  betroffen. Fix mit LOW-3: auch die angekündigte Adresse selbst nie
+  freistellen, wenn sie eine eigene Adresse ist oder in einem Netz der
+  eigenen Schnittstellen liegt (Hostrouten ausgenommen), und denselben
+  Filter auf die beobachtete Quelle anwenden. In /32-Umgebungen das Pod- oder
+  Knotennetz nie in `AEQUITAS_FREILISTE_NETZE` nennen.
 - Die Freiliste wird etwa einmal je Minute neu aufgebaut: wer den Satz
   verlässt, bleibt bis zu 60 s frei, neue Mitglieder sind bis zu 60 s
   begrenzt.
