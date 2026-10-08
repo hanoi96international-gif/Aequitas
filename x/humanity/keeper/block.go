@@ -3300,6 +3300,17 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 		dag.vorlauf.verwerfen(dag.state.PendingTxIDsFreigeben)
 		txs = txs[:anzahl]
 	}
+	// Jeder andere Knoten prueft den Erzeuger zur BLOCKZEIT (erzeugerErlaubt),
+	// nicht zu jetzt. Die Blockzeit kann vor jetzt liegen (oben), und ganz
+	// am Anfang dieses Laufs prueft ProduceBlock nur jetzt
+	// (nicht_im_register): kurz nach einem Schluesselwechsel laege eine
+	// zurueckgenommene Blockzeit vor dem Fenster des neuen Schluessels, und
+	// jeder wiese den Block ab. Dann lieber keiner -- die Auftraege gehen
+	// zurueck (blockGespeichert).
+	if erzeugerSchnittAktiv(blockZeit) && !dag.erzeugerNachRegister(strings.ToLower(proposer), blockZeit) {
+		merkeProduktionsAusfall("blockzeit_nicht_im_register")
+		return nil
+	}
 	if blockZeit != jetztUnix {
 		blockZeitZurueck.Add(1)
 		fmt.Printf("[BLOCK] ⏪ Blockzeit %d statt %d: die Auftraege dieses Blocks wurden frueher angenommen (block_tauglich.go)\n", blockZeit, jetztUnix)
