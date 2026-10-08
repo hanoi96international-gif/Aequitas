@@ -739,3 +739,24 @@ func TestCanonicalBlockAtHeight_NoTips(t *testing.T) {
 		t.Fatalf("canonicalBlockAtHeightLocked(5) = %v, want nil with no tips present", got)
 	}
 }
+
+// K haengt an keiner lokalen Liste: ein Knoten, der 200 Validatoren kennt
+// und erzeugt, rechnet mit demselben K wie einer, der nicht erzeugt (und
+// getEpochCommittee nie aufruft). Vorher hob das Komitee K auf 33 (100
+// Mitglieder / 3) -- nur auf Knoten, die bis zur Komiteeprüfung kamen, nur
+// aus dem eigenen Verzeichnis.
+func TestEpochenKomitee_KBleibtGleich(t *testing.T) {
+	erzeuger := newGhostdagTestDAG()
+	erzeuger.authorizedValidators = map[string]bool{}
+	for i := 0; i < 200; i++ {
+		erzeuger.authorizedValidators[fmt.Sprintf("0x%040x", i)] = true
+	}
+	erzeuger.selfProposer = fmt.Sprintf("0x%040x", 7)
+	if ec := erzeuger.getEpochCommittee(epochLength * 3); ec == nil || ec.Size != targetCommitteeSize {
+		t.Fatalf("Komitee %+v -- der Test beweist nichts", ec)
+	}
+	beobachter := newGhostdagTestDAG()
+	if erzeuger.k() != beobachter.k() || erzeuger.k() != ghostdagKBase {
+		t.Fatalf("K Erzeuger %d, Beobachter %d -- erwartet beide %d", erzeuger.k(), beobachter.k(), ghostdagKBase)
+	}
+}

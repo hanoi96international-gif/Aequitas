@@ -23,8 +23,13 @@ ist eine eigene Messung. Daraus folgt, schon im Code vermerkt:
 
 - Strafkonto (`slash_equivocation`) und Validatoren-Belohnung hängen an
   `registered_nodes` – zwei Knoten können verschieden abziehen bzw. auszahlen.
-- Die Komitee-Auswahl (`GetAllRegisteredValidatorAddresses`) sortiert die
-  lokal bekannten Adressen.
+- Die Komitee-Auswahl (`computeEpochCommittee` über
+  `authorizedValidators`) sortiert die lokal bekannten Adressen. Sie
+  entscheidet nur, ob ein Knoten selbst erzeugt. GHOSTDAGs K hing bis
+  07.10.2026 zusätzlich an der Größe dieses lokalen Komitees, und das nur
+  auf Knoten, die bis zur Komiteeprüfung kamen; ab 57 Validatoren
+  hätten Erzeuger und Beobachter mit verschiedenem K gerechnet. Seitdem gilt
+  für alle K = 18, bis ein Komitee aus der Kette kommt.
 - Die Signatur trägt keinen Zeitpunkt: eine alte Bindung lässt sich wieder
   einspielen und eine neuere damit zurückdrehen.
 
@@ -257,25 +262,79 @@ Dinge ohne Konsenswirkung (Erreichbarkeit, Messwerte als Hinweis).
    - Bleibt von der Reihenfolge abhängig: eine Übergabe in einem
      Geschwisterblock der Strafe (wie „Mensch im Geschwisterblock“). Ein
      ehrlicher Annehmender legt beides in eine Linie.
-   - **Vor `registerLeserAb` noch offen:**
-     - L1: Ein Block mit einer Bindung, der zurückgehalten und spät
-       eingehängt wird, wirkt rückwirkend auf alte Blöcke (die Frist setzt
-       pünktliches Nachspielen voraus); das gilt auch für die Abrechnung.
-       Lösung: die Erzeugerprüfung nur nach Zeilen im Vergangenheitskegel
-       des Blocks, oder alte Eltern mit `validator_bindung` nicht mehr
-       einhängen.
-     - Erledigt: M1, M2 und L3 (spätere Abrechnung, siehe oben).
-   - Offen (Teil 2): Validatoren-Belohnung mit Gewichten aus der Kette statt
-     aus `registered_nodes` (Blöcke je Signieradresse im Vergangenheitskegel
-     eines Ankerblocks, nachgerechnet von jedem Knoten); das Komitee aus
-     derselben Menge.
+   - **Kein spät eingehängter Block mit Bindung oder Beweis** (L1,
+     `spaet_eingehaengt.go`): Erzeugerprüfung und Abrechnung setzen voraus,
+     dass jeder Knoten eine Zeile kennt, bevor sie wirkt. Ein Erzeuger, der
+     einen Block mit Bindung zurückhält und Stunden später über einen
+     frischen Nachfolger einhängt, umginge die Finalitätswand (ein
+     nachgeholter Vorfahr mit wartendem Nachfolger ist ausgenommen, und
+     ruhende Finalität hält nichts auf) – seine Zeile wirkte rückwirkend.
+     Ab dem Stichtag nimmt ein Knoten einen Block mit `validator_bindung`
+     oder `slash_equivocation` nicht an, wenn dessen Blockzeit mehr als
+     **30 Minuten hinter seiner eigenen neuesten Spitze** liegt. Schaden
+     entstünde nur, wenn ein Block Y mit t_Y ≥ Zeitpunkt + 2 h schon
+     beurteilt wäre – dann liegt die Spitze mindestens eine Stunde nach dem
+     späten Block, und er wird abgewiesen. **Bewusst nicht die Uhr:** der
+     erste Block des einzigen Erzeugers nach einem Absturz trägt eine
+     Bindung aus dem Ausgang mit der Zeit ihrer Annahme (Stunden zurück);
+     nach der Uhr wiese ihn jeder ab und die Kette risse, gegen die Spitze
+     (Stand vor dem Absturz) ist er pünktlich. Ein nachholender Knoten hat
+     ebenso alte Spitzen. Ausgenommen: Geschichte vom vertrauten Seed
+     (`FromSync`), in der ein zurückgehaltener Block nie steht. **Grenzen:**
+     Gibt ein Erzeuger den Block genau an der Grenze frei, können Knoten ihn
+     verschieden behandeln (wie an der Finalitätswand); er verliert damit
+     höchstens seinen eigenen Block. Mit mehreren Erzeugern wird der erste
+     Block eines abgestürzten Erzeugers abgewiesen, wenn die anderen
+     weitergemacht haben und er eine Bindung von vor dem Absturz trägt – er
+     setzt dann vom Seed neu auf. Ebenso heilt ein **Erzeuger**, der über 30
+     Minuten abgeschnitten war und weiter erzeugt hat, nicht mehr von selbst,
+     wenn auf der anderen Seite eine Bindung oder ein Beweis stand; ein
+     Knoten, der nicht erzeugt, ist nicht betroffen (seine Spitzen stehen).
+   - Erledigt vor `registerLeserAb`: M1, M2, L3 (spätere Abrechnung) und L1.
+   - **Teil 2, Validatoren-Belohnung aus der Kette** (`validator_lohn_kette.go`,
+     schlafend): dieselbe Regel wie bisher – gleicher Anteil je Minute
+     Anwesenheit, mehr Blöcke in einer Minute zählen nicht –, aber jede
+     Eingabe steht in der Kette. Die Blöcke aus `chain_blocks`; wem ein Block
+     gehört, sagen die Erzeugerfenster aus dem Verlauf der Bindungen (zur
+     Blockzeit, umstritten: keiner); nur Menschen. Gezählt werden die 24
+     Stunden bis 15 Minuten vor der Runde. Die Gutschrift trägt die
+     Rundenzeit (höchstens 10 Minuten neben der Blockzeit), und **jeder
+     Knoten rechnet die Runde nach**: Empfänger, Betrag (1 Mikro Rundung),
+     keiner doppelt, keiner vergessen (`validator_kein_betreiber`,
+     `validator_anteil`, `validator_doppelt`, `validator_empfaenger`,
+     `validator_ohne_runde`, `validator_runde`). Ein Knoten mit Lücke im
+     Fenster (ein 10-Minuten-Abschnitt ohne Block: frisch aus einem Snapshot
+     oder neu aufgesetzt) prüft nur Mensch und doppelt. Kann der Erzeuger die
+     Anwesenheit nicht lesen (über 1.000 Schlüssel, Verlauf zu groß), bleibt
+     der Validatoren-Topf stehen; die Tagesrunde läuft weiter. **Schalter:**
+     erst wenn das ganze Fenster nach `erzeugerSchnittAb` liegt – vorher
+     zählten Blöcke ungebundener Schlüssel nicht. **Grenze:** hat ein Knoten
+     einen Block des Fensters, den der Erzeuger nicht hat (an der
+     Finalitätswand verschieden behandelt), meldet er eine Abweichung.
+   - Offen: das Komitee (`getEpochCommittee`) aus derselben Menge statt aus
+     den lokal bekannten Adressen.
    - Offen (eure Entscheidung): die Leistungsprobe wird zur Entscheidung des
      Leiters, die als eigene Transaktion auf die Kette kommt – oder entfällt.
 4. **Coordinator-Register** (`coordinator_keys`): seit 06.10.2026 trägt die
    Erneuerungs-Bescheinigung ihre Bindung selbst, und jeder Knoten prüft sie
-   gegen den Kettenzustand (`bescheinigungPruefen`). Offen ist die Zulassung
-   und der Entzug von Coordinatoren im Konsens.
-   Vorher bleibt die Staffel beim Platzhalter, erzwungen durch einen Test.
+   gegen den Kettenzustand (`bescheinigungPruefen`). **Zulassung und Entzug
+   im Konsens (07.10.2026, `coordinator_zulassung.go`):** Coordinator darf
+   nur sein, wer zur Zeit der Bescheinigung (`issued_at`) einen
+   Validator-Schlüssel im Kettenregister hält – dieselben Erzeugerfenster
+   wie bei der Erzeugerprüfung (Frist, nur Menschen, umstritten: keiner).
+   Wer seine Bindung verliert oder den Schlüssel abgibt, bescheinigt nicht
+   mehr. Vor `registerLeserAb` ist niemand zugelassen (fail-closed), darum
+   muss `registerLeserAb` ≤ Staffel-Stichtag sein (Test). Grenze: gezählt
+   wird `issued_at`, nicht die Blockzeit, und den wählt der Coordinator –
+   eine auf die Zeit vor dem Ende der Bindung datierte Bescheinigung besteht
+   beim Nachspielen bis zu 7 Tage lang. **Noch nicht genug
+   (Sicherheitsdurchgang #310, H1):** eine Bindung kostet nichts – kein
+   Listenplatz, kein Einsatz. Eine Farm mit einem alten Konto bindet einen
+   frischen Schlüssel und ist zwei Stunden später Coordinator; entziehen
+   lässt er sich gegen seinen Willen nicht. Die Zulassung braucht etwas
+   Knappes, das im Konsens steht. Die Staffel bleibt beim Platzhalter, bis
+   das, der strenge Modus und die Chain-ID stehen, erzwungen durch einen
+   Test.
 
 ## Entscheidungen, die bei euch liegen
 

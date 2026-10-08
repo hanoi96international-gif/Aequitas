@@ -192,6 +192,6 @@ func (a *APIServer) handleCoordinatorProof(w http.ResponseWriter, r *http.Reques
 		// Genau der Satz, der unterschrieben werden muss. Ihn hier
 		// mitzugeben, nimmt der Seite die Gelegenheit, ihn falsch
 		// zusammenzusetzen -- ein Leerzeichen daneben, und die Kette lehnt ab.
-		"message": "Aequitas: authorize coordinator " + pub,
+		"message": coordinatorFreigabeNachricht(pub),
 	})
 }

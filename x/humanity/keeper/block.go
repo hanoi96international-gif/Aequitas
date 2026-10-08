@@ -47,8 +47,9 @@ type Transaction struct {
 	// prueft (slash_beweis.go).
 	Doppelbeweis *Doppelbeweis `json:"doppelbeweis,omitempty"`
 	// Bescheinigung: bei liveness_renewal die Ed25519-Bescheinigung des
-	// Coordinators ueber aequitas-liveness-renewal-v1|wallet|issued_at
-	// (issued_at steht in DistributionAt), damit jeder Knoten selbst prueft,
+	// Coordinators ueber erneuerungsNachricht (v2:
+	// aequitas-liveness-renewal-v2|chain:1926|wallet|issued_at, issued_at
+	// steht in DistributionAt), damit jeder Knoten selbst prueft,
 	// dass die zweite Lebendigkeitspruefung bestanden ist
 	// (nachrechnen_erneuerung.go). omitempty: aeltere Bloecke behalten ihren
 	// Hash.
@@ -711,7 +712,7 @@ type BlockDAG struct {
 	// syncStallTimeout (see ProduceBlock's gate), production proceeds
 	// independently so a downed seed never blocks all other nodes.
 	syncTargetHeight atomic.Int64
-	activeGhostdagK  atomic.Int32 // live GHOSTDAG K for current epoch; 0 → use ghostdagKBase
+	activeGhostdagK  atomic.Int32 // GHOSTDAG K; no production writer since 07.10.2026 (always ghostdagKBase, see k())
 	startupTime      int64        // Unix timestamp of NewBlockchain — used by the initial-sync gate
 	// (ghostdagStuckHash/ghostdagStuckCount removed 2026-07-10 — ProduceBlock's
 	// stuck-ancestor escape hatch now shares the orphan-tracking machinery
@@ -5354,6 +5355,13 @@ func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
 		dag.mu.Unlock()
 		return false
 	}
+	// spaet_eingehaengt.go (L1): kein zurueckgehaltener Block mit Bindung
+	// oder Beweis -- seine Zeile wirkte sonst rueckwirkend.
+	if grund := spaetEingehaengt(block, dag.neuesteSpitzenzeitLocked); grund != "" {
+		fmt.Printf("[DAG] ✗ Rejected peer block #%d: %s\n", block.Height, grund)
+		dag.mu.Unlock()
+		return false
+	}
 	if block.Height > 1 {
 		maxParentHeight := int64(-1)
 		maxParentZeit := int64(0)
@@ -8654,17 +8662,23 @@ func (dag *BlockDAG) getEpochCommittee(height int64) *EpochCommittee {
 	if dag.currentEpoch == nil || dag.currentEpoch.Number != epochNum {
 		dag.currentEpoch = ec
 		if ec != nil {
-			newK := ghostdagKBase
-			if ec.Size/3 > newK {
-				newK = ec.Size / 3
-			}
-			dag.activeGhostdagK.Store(int32(newK))
+			// K bleibt hier stehen (KEIN K AUS EINER LOKALEN LISTE, 07.10.2026).
+			// Bisher wurde K auf Komiteegroesse/3 gehoben -- aber das Komitee
+			// kommt aus authorizedValidators, einer Liste, die jeder Knoten
+			// selbst fuehrt, und getEpochCommittee laeuft nur in ProduceBlock:
+			// ein Knoten, der vor der Komiteepruefung aussteigt (Beobachter,
+			// ohne Bindung, im Resync), blieb immer bei ghostdagKBase.
+			// Ab 57 Validatoren haetten Erzeuger und Beobachter GHOSTDAG mit
+			// verschiedenem K gerechnet -- verschiedene blaue Mengen,
+			// verschiedene Reihenfolge, ein Konsensfehler. Ein wachsendes K
+			// kommt erst mit einem Komitee, das jeder Knoten zur selben Epoche
+			// gleich aus der Kette berechnet (docs/VALIDATOR_REGISTER_KONSENS.md).
 			role := "observer"
 			if ec.Members[dag.selfProposer] {
 				role = "producer"
 			}
 			fmt.Printf("[EPOCH] Epoch %d (height %d): committee=%d validators, K=%d, self=%s (%s)\n",
-				epochNum, height, ec.Size, newK, dag.selfProposer, role)
+				epochNum, height, ec.Size, dag.k(), dag.selfProposer, role)
 		}
 	} else {
 		ec = dag.currentEpoch
@@ -8673,18 +8687,19 @@ func (dag *BlockDAG) getEpochCommittee(height int64) *EpochCommittee {
 	return ec
 }
 
-// ghostdagKBase is the minimum K used on a near-empty network. Once the
-// active-producer committee exceeds 3*ghostdagKBase validators the epoch
-// boundary raises K to committeeSize/3 so the blue-set ratio stays healthy.
-// All nodes compute the same K from the same deterministic committee, so
-// this is a safe consensus-layer change with no manual coordination.
+// ghostdagKBase is K for every node. It used to be raised to
+// committeeSize/3 at epoch boundaries, from a committee each node built from
+// its own authorizedValidators -- and only on producing nodes (see
+// getEpochCommittee's comment): not the same K everywhere. K stays at this
+// value until a committee exists that every node derives from the chain.
 const ghostdagKBase = 18
 
-// activeGhostdagK is the live K for the current epoch, stored as an atomic
-// so GHOSTDAG computations (called under dag.mu) can read it without a
-// separate lock. Updated by getEpochCommittee at every epoch transition.
-// Defaults to ghostdagKBase until the first committee is computed.
-// dag.k() is the accessor — use it everywhere instead of ghostdagKBase.
+// k returns GHOSTDAG's K. activeGhostdagK has no writer in production code
+// since 07.10.2026 (only tests store into it), so this is ghostdagKBase on
+// every node. Do NOT add a writer that reads node-local state: K must be the
+// same on every node for the same block, or blue sets, BlueScore and the
+// StateRoot diverge (getEpochCommittee's comment). dag.k() is the accessor —
+// use it everywhere instead of ghostdagKBase.
 func (dag *BlockDAG) k() int {
 	v := int(dag.activeGhostdagK.Load())
 	if v < ghostdagKBase {
@@ -8706,8 +8721,9 @@ func (dag *BlockDAG) maxParents() int {
 // maxMergeVisits bounds how many blocks the merge-set BFS visits and how many
 // get blue/red-classified. It must be at least the number of blocks that can
 // be produced CONCURRENTLY (all of them land in one block's merge set in the
-// worst case), which is the committee size ≈ 3*K (K is set to committeeSize/3
-// in getEpochCommittee). It must NOT grow faster than that: classification is
+// worst case), which is the committee size ≈ 3*K (K stays at ghostdagKBase
+// until a chain-derived committee exists, see getEpochCommittee). It must NOT
+// grow faster than that: classification is
 // roughly O(visits^2), so an over-large cap turns a burst into a multi-second
 // stall (confirmed by block_ghostdag_scale_test at cap 185). 3*K tracks the
 // real concurrency; the floor of 50 preserves small-network behaviour, where
@@ -8743,9 +8759,9 @@ func (dag *BlockDAG) logMergeSetBFSCap(blockHash string, visitCap int) {
 const maxParentsPerBlock = 64
 
 // dagPruneBuffer is how many block-heights above the finalized checkpoint
-// dag.blocks keeps in RAM. ghostdagMergeDepth = 2*K+1 hops back; at K=333
-// (1000-validator committee) that is 667 hops, so we keep 5× = 3350. The
-// buffer scales with K at runtime via dag.pruneBuffer().
+// dag.blocks keeps in RAM. ghostdagMergeDepth = 2*K+1 hops back; at the
+// fixed K=18 that is 37 hops, and 5*(2K+1) = 185 < 200, so the base value
+// binds. dag.pruneBuffer() would scale it if K ever grew.
 // Pruned blocks are never deleted from the DB (chain_blocks).
 const dagPruneBufferBase = 200
 
@@ -8769,8 +8785,8 @@ func (dag *BlockDAG) pruneBuffer() int64 {
 const startupLoadWindow = 2000
 
 // mergeDepthLimit returns 2*K+1: the maximum parent-hops ghostdagMergeSet
-// and ghostdagIsAncestor will walk. Scales with the live K so large-committee
-// epochs never truncate valid merge sets. Must be called while dag.mu is held.
+// and ghostdagIsAncestor will walk (37 at the fixed K=18). Must be called
+// while dag.mu is held.
 func (dag *BlockDAG) mergeDepthLimit() int {
 	return 2*dag.k() + 1
 }
@@ -9314,7 +9330,7 @@ func (dag *BlockDAG) knightdagInferK(sorted []string, cc *knightdagConcCache) (k
 // normal operation (validators converging within a few rounds, as real
 // gossip propagation within a ~6s block interval should achieve) actual
 // merge sets are tiny — typically single digits — and this never triggers.
-// maxMergeSetBFSVisits floor (50) — actual limit computed by dag.maxMergeVisits() = max(50, 5*(2K+1))
+// maxMergeSetBFSVisits floor (50) — actual limit computed by dag.maxMergeVisits() = 50 + 3*(K-18), i.e. 50 at the fixed K=18
 
 // maxGhostdagDBLookups bounds the number of REAL (cache-miss) database round
 // trips a SINGLE computeGHOSTDAGState call may make in total, shared across

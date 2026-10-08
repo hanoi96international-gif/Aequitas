@@ -93,10 +93,9 @@ den verlinkten Dokumenten.
       - [x] LP-Runde: jeder Halter genau einmal, Anteil nachgerechnet
             (`nachrechnen_lp.go`, seit der Umlaufsicherung)
       - [x] Validatoren-Runde: nur an Menschen
-      - [ ] Validatoren-Gewichte: Sie kommen aus `registered_nodes` und den
-            Blöcken der letzten 24 h -- beides ist je Knoten verschieden.
-            Nachrechnen geht erst, wenn das Verzeichnis Konsenszustand ist
-            (Voraussetzung für offene Zulassung)
+      - [ ] Validatoren-Gewichte: vor der Umstellung aus `registered_nodes`
+            (je Knoten verschieden); danach aus der Kette und nachgerechnet
+            (Schritt 3, Teil 2, unten). Offen bleibt das Komitee
         - [x] Schritt 1, schlafend (05.10.): Kettentransaktion
               `validator_bindung` mit Unterschrift von Betreiber und
               Signierschlüssel, Register in `validator_register`, Summe in
@@ -121,10 +120,17 @@ den verlinkten Dokumenten.
               eine Stunde danach; bei einer Übernahme in dieser Stunde zahlt
               der erste spätere Binder; nur frische Beweise
               (`strafe_abrechnung.go`)
-        - [ ] Vor `registerLeserAb`: spät eingehängte Blöcke mit Bindung
-              (L1) – `docs/VALIDATOR_REGISTER_KONSENS.md`, Schritt 3
-        - [ ] Schritt 3, Teil 2: Validatoren-Belohnung mit Gewichten aus der
-              Kette, nachgerechnet; Komitee aus derselben Menge
+        - [x] Spät eingehängte Blöcke mit Bindung oder Beweis (L1): ab dem
+              Stichtag abgewiesen, wenn ihre Zeit über 30 min hinter der
+              eigenen Spitze liegt (nicht die Uhr: sonst risse die Kette nach
+              einem Absturz des einzigen Erzeugers); Geschichte vom Seed
+              ausgenommen (`spaet_eingehaengt.go`)
+        - [x] Schritt 3, Teil 2, schlafend (07.10.): Validatoren-Belohnung
+              aus der Kette -- Minuten Anwesenheit je Betreiber aus
+              `chain_blocks` und den Erzeugerfenstern, jeder Knoten rechnet
+              nach; schaltet, wenn das ganze Fenster nach
+              `erzeugerSchnittAb` liegt (`validator_lohn_kette.go`)
+        - [ ] Komitee (`getEpochCommittee`) aus derselben Menge
         - [ ] Stichtage setzen (eure Entscheidung,
               `docs/VALIDATOR_REGISTER_KONSENS.md`)
       - [x] Staffel-Freigaben: höchstens die Tagesrate, nur mit
@@ -236,18 +242,28 @@ den verlinkten Dokumenten.
             mit offener Staffel bescheinigt nicht
       - [ ] **Vor dem Staffel-Stichtag** (erzwungen in
             `TestStaffel_SchlaeftBisZulassungUndStreng`):
-        - [ ] Coordinatoren im Konsens zulassen und entziehen. Heute kann
-              jeder registrierte Mensch ohne offene Staffel Erneuerungen
-              bescheinigen -- eine Farm mit einem alten Konto bescheinigte
-              allen ihren Kunstfiguren
+        - [ ] Coordinatoren im Konsens zulassen und entziehen. Der
+              Baustein steht (07.10., `coordinator_zulassung.go`): nur, wer
+              zur Zeit der Bescheinigung einen Validator-Schlüssel im
+              Kettenregister hält (Erzeugerfenster, Frist), darf
+              bescheinigen; vor `registerLeserAb` niemand; Bedingung
+              `registerLeserAb` ≤ Staffel-Stichtag
+              (`TestStaffel_ZulassungVorDerStaffel`). **Offen
+              (Sicherheitsdurchgang #310, H1):** eine Bindung im Register
+              kostet nichts -- jeder Mensch bindet einen frischen Schlüssel
+              und ist zwei Stunden später Coordinator, und gegen seinen
+              Willen entziehen lässt er sich nicht. Die Zulassung braucht
+              etwas Knappes, das im Konsens steht
         - [ ] Strenger Modus spätestens mit der Staffel
               (`nachrechnenStrengAbUnix` ≤ `stagedGrantActivationUnix`),
               sonst würde eine erfundene Erneuerung nur gezählt
-        - [ ] Die Nachrichten der Bindung und der Bescheinigung um die
-              Chain-ID erweitern (v2, Coordinator und Kette zugleich) --
-              heute gälte eine Lebendigkeitsprüfung derselben Wallet in jedem
-              Netz mit derselben Domäne, und ein früher für eine fremde
-              Wallet ausgestellter Besitznachweis hat kein Datum
+        - [x] Die Nachrichten der Bindung und der Bescheinigung tragen die
+              Chain-ID (07.10., v2, `coordinator_nachrichten.go`): im
+              Konsens nur v2; die Eintragung nimmt im Übergang auch die
+              alten Sätze. Bestehende Coordinatoren tragen sich vor der
+              Staffel einmal mit v2 neu ein. Der Besitznachweis hat
+              weiter kein Datum (ein Schlüssel wandert nicht zu einem
+              anderen Menschen)
       - [ ] Stichtag `nachrechnenStrengAbUnix` setzen, sobald
             `/api/wirtschaft/regeln` über mehrere Runden 0 Abweichungen zeigt.
             C1 spielt seine eigenen Blöcke nicht nach, und **C2 gibt es seit

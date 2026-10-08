@@ -50,11 +50,14 @@ const (
 	// 2100-01-01T00:00:00Z, Platzhalter. WP 4 setzt das echte Datum -- aber
 	// erst, wenn drei Dinge stehen (TestStaffel_SchlaeftBisZulassungUndStreng
 	// wird sonst rot, und ihn zu aendern ist die bewusste Entscheidung):
-	//   - Coordinatoren werden im Konsens zugelassen und entzogen -- heute
-	//     kann jeder registrierte Mensch ohne offene Staffel bescheinigen
-	//     (bescheinigungPruefen, "WER COORDINATOR SEIN KANN");
+	//   - Coordinatoren werden im Konsens zugelassen und entzogen -- der
+	//     Baustein steht (coordinator_zulassung.go; registerLeserAb <=
+	//     Staffel, erzwungen in TestStaffel_ZulassungVorDerStaffel), aber
+	//     eine Bindung im Register kostet nichts (Sicherheitsdurchgang #310,
+	//     H1): OFFEN, was die Zulassung knapp macht;
 	//   - der strenge Modus beginnt spaetestens mit der Staffel;
-	//   - Bindung und Bescheinigung tragen die Chain-ID.
+	//   - Bindung und Bescheinigung tragen die Chain-ID
+	//     (coordinator_nachrichten.go, v2; im Konsens nur v2).
 	stagedGrantActivationUnix int64 = 4102444800
 
 	grantKlasseSofort     = "sofort"
@@ -332,7 +335,7 @@ func merkeProveKlasse(respBody []byte) {
 
 // handleLivenessRenewal nimmt eine Erneuerung entgegen: der Coordinator hat
 // eine zweite Lebendigkeitspruefung bestanden gesehen und das mit seinem
-// Ed25519-Schluessel bescheinigt (aequitas-liveness-renewal-v1|<wallet>|<issued_at>).
+// Ed25519-Schluessel bescheinigt (erneuerungsNachricht, mit Chain-ID).
 // Der Schluessel muss im Coordinator-Register dieses Knotens stehen (daher
 // kommt die Bindung, die in die Transaktion geht); ueber die Gueltigkeit
 // entscheidet bescheinigungPruefen, wie bei jedem Nachspielenden. Angenommen
@@ -379,7 +382,7 @@ func (a *APIServer) handleLivenessRenewal(w http.ResponseWriter, r *http.Request
 		return
 	}
 	tx := erneuerungsTransaktion(wallet, req.IssuedAt, req.PublicKey, req.Signature, bindung)
-	if err := bescheinigungPruefen(wallet, req.IssuedAt, tx.Bescheinigung, a.state.coordinatorMenschStand); err != nil {
+	if err := bescheinigungPruefen(wallet, req.IssuedAt, tx.Bescheinigung, a.state.coordinatorMenschStand, a.state.coordinatorZugelassen); err != nil {
 		jsonError(w, "invalid renewal attestation: "+err.Error(), http.StatusForbidden)
 		return
 	}
@@ -458,8 +461,6 @@ func erneuerungFruehestens(acc *AccountState) int64 {
 	return acc.GrantStagedUntil - int64(grantStaffelTage-erneuerungMindestTage)*86400
 }
 
-const livenessRenewalDomain = "aequitas-liveness-renewal-v1"
-
 // Lebendigkeitsbescheinigung: was der Coordinator unterschrieben hat, so wie
 // es in der Transaktion steht. Der Zeitpunkt steht in DistributionAt.
 type Lebendigkeitsbescheinigung struct {
@@ -472,20 +473,14 @@ type Lebendigkeitsbescheinigung struct {
 	// zwei Knoten mit verschiedenem Register haetten denselben Block
 	// verschieden beurteilt, sobald die Staffel gilt. Jetzt traegt die
 	// Bescheinigung, was eine Eintragung ausmacht: den Menschen, dem der
-	// Schluessel gehoert, seine Freigabe ("Aequitas: authorize coordinator
-	// <schluessel>", EIP-191) und den Besitznachweis des Schluessels
-	// ("Aequitas: coordinator key for human <mensch>", Ed25519). Jeder Knoten
+	// Schluessel gehoert, seine Freigabe (coordinatorFreigabeNachricht,
+	// EIP-191) und den Besitznachweis des Schluessels
+	// (coordinatorBesitzNachricht, Ed25519), beide mit Chain-ID. Jeder Knoten
 	// prueft sie selbst, dazu, dass der Mensch registriert ist -- dieselbe
 	// Bedingung wie bei einer Eintragung, nur ohne lokale Liste.
 	Mensch        string `json:"mensch,omitempty"`
 	MenschSig     string `json:"mensch_sig,omitempty"`
 	SchluesselSig string `json:"schluessel_sig,omitempty"`
-}
-
-// coordinatorFreigabeNachricht: was der Mensch fuer seinen Schluessel
-// unterschreibt (wie bei der Eintragung, coordinator_registry.go).
-func coordinatorFreigabeNachricht(schluessel string) string {
-	return "Aequitas: authorize coordinator " + strings.ToLower(strings.TrimSpace(schluessel))
 }
 
 // erneuerungsTransaktion: die liveness_renewal mit der Bescheinigung --
@@ -524,16 +519,14 @@ func (cs *ChainState) coordinatorMenschStand(mensch string) (istMensch, staffelO
 //     dem Kettenzustand), und er ist nicht selbst der Erneuerte;
 //   - die Ed25519-Unterschrift ueber Domaene|Wallet|Zeitpunkt.
 //
-// WER COORDINATOR SEIN KANN (Sicherheitspruefung #300, HIGH-1). Jeder
-// registrierte Mensch kann einen Schluessel binden und damit Erneuerungen
-// bescheinigen -- eine Zulassung im Konsens gibt es noch nicht. Ein Konto
+// WER COORDINATOR SEIN KANN (Sicherheitspruefung #300, HIGH-1). Ein Konto
 // mit offener Staffel ist ausgeschlossen: sonst bescheinigte eine frisch
 // registrierte Kunstfigur der naechsten die zweite Pruefung, und die Staffel
-// koste eine Farm nichts. Das reicht NICHT gegen eine Farm, die ein altes
-// oder fertig gestaffeltes Konto besitzt. Deshalb darf die Staffel erst
-// aktiv werden, wenn die Zulassung (und der Entzug) der Coordinatoren im
-// Konsens steht -- erzwungen in TestStaffel_SchlaeftBisZulassungUndStreng.
-func bescheinigungPruefen(wallet string, issuedAt int64, b *Lebendigkeitsbescheinigung, stand CoordinatorMenschStand) error {
+// koste eine Farm nichts. Das allein reichte nicht gegen eine Farm, die ein
+// altes oder fertig gestaffeltes Konto besitzt -- darum zusaetzlich die
+// Zulassung im Konsens: nur, wer zur Zeit der Bescheinigung einen
+// Validator-Schluessel im Kettenregister haelt (coordinator_zulassung.go).
+func bescheinigungPruefen(wallet string, issuedAt int64, b *Lebendigkeitsbescheinigung, stand CoordinatorMenschStand, zugelassen CoordinatorZulassung) error {
 	if b == nil {
 		return fmt.Errorf("keine Bescheinigung")
 	}
@@ -564,9 +557,25 @@ func bescheinigungPruefen(wallet string, issuedAt int64, b *Lebendigkeitsbeschei
 	if staffelOffen {
 		return fmt.Errorf("%s hat selbst eine offene Staffel -- bescheinigt keine Erneuerung", kurzAdresse(mensch))
 	}
-	msg := fmt.Sprintf("%s|%s|%d", livenessRenewalDomain, wallet, issuedAt)
+	msg := erneuerungsNachricht(wallet, issuedAt)
 	if !ed25519PruefenStreng(pub, b.Signature, []byte(msg)) {
 		return fmt.Errorf("Bescheinigung passt nicht zu Wallet und Zeitpunkt (oder ist keine Ed25519-Unterschrift in kanonischer Schreibweise)")
+	}
+	// Zulassung im Konsens (coordinator_zulassung.go): nur, wer zur Zeit der
+	// Bescheinigung einen Validator-Schluessel im Kettenregister haelt. Vor
+	// registerLeserAb ist niemand zugelassen. ZULETZT, nach jeder
+	// Unterschrift (Sicherheitsdurchgang #310, M1): die Zulassung liest die
+	// Datenbank, und eine Anfrage mit Muell-Unterschrift soll keine Abfrage
+	// kosten.
+	if !registerLeserAktiv(issuedAt) {
+		return fmt.Errorf("Coordinatoren sind vor registerLeserAb nicht im Konsens zugelassen")
+	}
+	ok, err := zugelassen(mensch, issuedAt)
+	if err != nil {
+		return fmt.Errorf("Zulassung nicht lesbar: %v", err)
+	}
+	if !ok {
+		return fmt.Errorf("%s haelt zur Zeit der Bescheinigung keinen Validator-Schluessel -- nicht als Coordinator zugelassen", kurzAdresse(mensch))
 	}
 	return nil
 }

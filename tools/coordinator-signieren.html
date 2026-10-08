@@ -135,7 +135,8 @@ function karten() {
       status.className = "status";
       status.textContent = "warte auf die Wallet …";
       try {
-        const nachricht = "Aequitas: authorize coordinator " + b.pub;
+        // v2 mit Chain-ID (coordinator_nachrichten.go): im Konsens zaehlt nur v2.
+        const nachricht = "Aequitas: authorize coordinator " + b.pub + " chain:1926";
         const sig = await window.ethereum.request({
           method: "personal_sign",
           params: [nachricht, konto],
