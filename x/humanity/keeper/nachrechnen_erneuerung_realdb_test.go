@@ -199,17 +199,24 @@ func TestErneuerung_Missbrauch_RealDB(t *testing.T) {
 		t.Fatalf("Bescheinigung aus der Zukunft nicht erkannt: %v", got)
 	}
 	// Missbrauch (#312, LOW-2): eine Flut alter Erneuerungen mit
-	// Muell-Unterschrift kostet nur die Zeitregel -- die Bescheinigung wird
-	// gar nicht erst angesehen (sonst kaeme erneuerung_ohne_bescheinigung
-	// dazu), die Zulassung nicht abgefragt.
+	// Muell-Unterschrift scheitert an der Zeitregel, vor der Bescheinigung --
+	// gemeldet wird nur sie.
 	muellAlt := erneuerungsTransaktion(f.wallet, f.jetzt-8*86400, hex.EncodeToString(f.pub), strings.Repeat("ab", 64), f.bindung)
 	if got := f.pruefe(muellAlt, f.jetzt); got["erneuerung_zeit"] != 1 || len(got) != 1 {
 		t.Fatalf("alte Muell-Erneuerung: %v (erwartet nur erneuerung_zeit)", got)
 	}
 	muellFrueh := neuerErneuerungsFall(t, 3)
 	muellTx := erneuerungsTransaktion(muellFrueh.wallet, muellFrueh.jetzt-60, hex.EncodeToString(muellFrueh.pub), strings.Repeat("ab", 64), muellFrueh.bindung)
+	// Mit kaltem Speicher: die Regel laedt das Konto selbst.
+	muellFrueh.cs.accounts.Delete(muellFrueh.wallet)
 	if got := muellFrueh.pruefe(muellTx, muellFrueh.jetzt); got["erneuerung_zu_frueh"] != 1 || len(got) != 1 {
 		t.Fatalf("fruehe Muell-Erneuerung: %v (erwartet nur erneuerung_zu_frueh)", got)
+	}
+	// Ohne Konto wird die Bescheinigung trotzdem geprueft (#314).
+	ohneKonto := distTestAddr(1997)
+	ohneKontoTx := erneuerungsTransaktion(ohneKonto, issued, hex.EncodeToString(f.pub), strings.Repeat("ab", 64), f.bindung)
+	if got := f.pruefe(ohneKontoTx, f.jetzt); got["erneuerung_ohne_bescheinigung"] != 1 || len(got) != 1 {
+		t.Fatalf("Muell-Erneuerung fuer ein Konto, das es nicht gibt: %v", got)
 	}
 
 	frueh := neuerErneuerungsFall(t, 3)
@@ -628,13 +635,19 @@ func TestCoordinatorEintragung_GespeicherteV1TaugtNicht_RealDB(t *testing.T) {
 	f.cs.EnsureCoordinatorRegistry()
 	// Jede Haelfte allein: ist nur eine der beiden gespeicherten
 	// Unterschriften v1, taugt die Bindung genauso wenig.
-	for _, fall := range []struct {
+	for i, fall := range []struct {
 		name                 string
 		freigabeV2, besitzV2 bool
-	}{{"ganz v1", false, false}, {"v2-Freigabe, v1-Besitz", true, false}, {"v1-Freigabe, v2-Besitz", false, true}} {
+		grund                string
+	}{{"ganz v1", false, false, "Besitznachweis"}, {"v2-Freigabe, v1-Besitz", true, false, "Besitznachweis"},
+		{"v1-Freigabe, v2-Besitz", false, true, "Freigabe des Menschen"}} {
 		pub, priv, _ := ed25519.GenerateKey(rand.Reader)
 		pubHex := hex.EncodeToString(pub)
 		k, mensch := f.neuerMensch(false)
+		// Zugelassen (Validator-Schluessel im Register): sonst scheiterte die
+		// Erneuerung unten schon an der Zulassung, und der Test bewiese
+		// nichts ueber v1.
+		verlaufEintrag(t, f.cs, mensch, distTestAddr(1960+i), nowUnix()-30*86400)
 		freigabeV1 := kanonischeSignaturVersuch(personalSign(t, k, coordinatorFreigabeNachrichtV1(pubHex)))
 		besitzV1 := hex.EncodeToString(ed25519.Sign(priv, []byte(coordinatorBesitzNachrichtV1(mensch))))
 		freigabe, besitz := freigabeV1, besitzV1
@@ -666,6 +679,10 @@ func TestCoordinatorEintragung_GespeicherteV1TaugtNicht_RealDB(t *testing.T) {
 			hex.EncodeToString(ed25519.Sign(priv, []byte(erneuerungsNachricht(f.wallet, f.jetzt-60)))), gespeichert)
 		if got := f.pruefe(tx, f.jetzt); got["erneuerung_ohne_bescheinigung"] != 1 {
 			t.Fatalf("%s: Erneuerung mit dieser Bindung nicht gemeldet: %v", fall.name, got)
+		}
+		if err := bescheinigungPruefen(f.wallet, f.jetzt-60, tx.Bescheinigung, f.cs.coordinatorMenschStand, f.cs.coordinatorZugelassen); err == nil ||
+			!strings.Contains(err.Error(), fall.grund) {
+			t.Fatalf("%s: Grund %v, erwartet %q", fall.name, err, fall.grund)
 		}
 	}
 }

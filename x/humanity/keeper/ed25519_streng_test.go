@@ -4,6 +4,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -239,6 +240,17 @@ func TestBescheinigungPruefen_Regeln(t *testing.T) {
 	if err := bescheinigungPruefen(wallet, issued, muell.Bescheinigung, keinStand, keineAbfrage); err == nil ||
 		!strings.Contains(err.Error(), "Bescheinigung passt nicht") {
 		t.Fatalf("Muell-Unterschrift (Kettenzustand): %v", err)
+	}
+	// Ein Lesefehler der Zulassung gilt am API-Rand immer als intern -- auch
+	// ein Treiberfehler, den isInternalError nicht kennt (#314, LOW-1); ein
+	// Pruefungsfehler nie.
+	unlesbar := func(string, int64) (bool, error) { return false, io.ErrUnexpectedEOF }
+	if err := bescheinigungPruefen(wallet, issued, tx.Bescheinigung, gut, unlesbar); err == nil ||
+		!annahmeFehlerIntern(err) || !errors.Is(err, io.ErrUnexpectedEOF) {
+		t.Fatalf("unlesbare Zulassung nicht als intern erkannt: %v", err)
+	}
+	if err := bescheinigungPruefen(wallet, issued, muell.Bescheinigung, gut, zugelassen); err == nil || annahmeFehlerIntern(err) {
+		t.Fatalf("Pruefungsfehler als intern behandelt: %v", err)
 	}
 	// Vor registerLeserAb ist niemand zugelassen -- auch mit gueltiger
 	// Bindung und Zulassung (fail-closed, wenn die Staffel frueher gaelte).

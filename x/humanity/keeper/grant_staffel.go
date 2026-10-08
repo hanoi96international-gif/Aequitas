@@ -386,7 +386,7 @@ func (a *APIServer) handleLivenessRenewal(w http.ResponseWriter, r *http.Request
 		// Ein Datenbankfehler (Zulassung) traegt Treiber- und Hostangaben:
 		// die gehen ins Log, nicht an den Aufrufer (Sicherheitsdurchgang
 		// #312).
-		if isInternalError(err) {
+		if annahmeFehlerIntern(err) {
 			fmt.Printf("[API] liveness renewal failed for %s: %v\n", kurzAdresse(wallet), err)
 			jsonError(w, "internal error, please retry shortly", http.StatusInternalServerError)
 			return
@@ -449,7 +449,7 @@ func (a *APIServer) handleLivenessRenewal(w http.ResponseWriter, r *http.Request
 			json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "wallet": wallet, "schon_erneuert": true})
 			return
 		}
-		if isInternalError(err) {
+		if annahmeFehlerIntern(err) {
 			fmt.Printf("[API] liveness renewal failed for %s: %v\n", kurzAdresse(wallet), err)
 			jsonError(w, "internal error, please retry shortly", http.StatusInternalServerError)
 			return
@@ -588,14 +588,27 @@ func bescheinigungPruefen(wallet string, issuedAt int64, b *Lebendigkeitsbeschei
 	}
 	ok, err := zugelassen(mensch, issuedAt)
 	if err != nil {
-		// %w: der API-Rand erkennt Datenbankfehler (isInternalError) und
-		// gibt sie nicht an den Aufrufer weiter.
-		return fmt.Errorf("Zulassung nicht lesbar: %w", err)
+		// Jeder Lesefehler der Zulassung ist einer der Infrastruktur, nie des
+		// Aufrufers: errZulassungNichtLesbar -- der API-Rand antwortet 500
+		// ohne Text (annahmeFehlerIntern), auch fuer Treiberfehler, die
+		// isInternalError nicht kennt (TLS beim Verbindungsaufbau, mit
+		// Hostnamen).
+		return fmt.Errorf("%w: %w", errZulassungNichtLesbar, err)
 	}
 	if !ok {
 		return fmt.Errorf("%s haelt zur Zeit der Bescheinigung keinen Validator-Schluessel -- nicht als Coordinator zugelassen", kurzAdresse(mensch))
 	}
 	return nil
+}
+
+// errZulassungNichtLesbar: die Zulassung war nicht lesbar (bescheinigungPruefen).
+var errZulassungNichtLesbar = errors.New("Zulassung nicht lesbar")
+
+// annahmeFehlerIntern: gehoert der Fehler der Annahme einer Erneuerung ins
+// Log statt in die Antwort? Datenbank- und Treiberfehler tragen Tabellen-
+// und Hostnamen (Sicherheitsdurchgang #312/#314).
+func annahmeFehlerIntern(err error) bool {
+	return errors.Is(err, errZulassungNichtLesbar) || isInternalError(err)
 }
 
 // StaffelStandVon liest den Staffelstand eines Kontos unter der Lesesperre.

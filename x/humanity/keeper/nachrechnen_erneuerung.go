@@ -68,14 +68,21 @@ func (cs *ChainState) nachrechnenErneuerungLocked(tx *Transaction, wallet string
 	wallet = strings.ToLower(strings.TrimSpace(wallet))
 	// Erst die Zeitregeln (Sicherheitsdurchgang #312, LOW-2): sie kosten
 	// nichts, die Bescheinigung kostet Unterschriften und die Zulassung eine
-	// Datenbankabfrage. Abgelehnt wird so wie vorher, nur frueher.
+	// Datenbankabfrage. Abgelehnt wird so wie vorher, nur frueher. Scheitert
+	// eine Erneuerung an mehreren Regeln, steht seitdem die Zeitregel im
+	// Protokoll: eine gefaelschte UND zu alte Erneuerung erscheint als
+	// erneuerung_zeit, nicht als erneuerung_ohne_bescheinigung -- kein
+	// Hinweis auf eine falsche Uhr.
 	if tx.DistributionAt <= 0 || blockZeit-tx.DistributionAt > erneuerungHoechstensAlt || tx.DistributionAt-blockZeit > erneuerungHoechstensVoraus {
 		return nachrechnenAbweichung("erneuerung_zeit", blockZeit,
 			"%s: bescheinigt %d, Blockzeit %d", kurzAdresse(wallet), tx.DistributionAt, blockZeit)
 	}
+	// Das Konto der Wallet laedt auch eine Erneuerung mit Muell-Unterschrift
+	// -- beim Nachspielen liegt es schon im Speicher
+	// (snapshotForRollbackLocked), sonst kostet es eine Abfrage ueber den
+	// Schluessel. Ohne Konto lehnt applyLivenessRenewalDeltaLocked ab; die
+	// Bescheinigung wird trotzdem geprueft.
 	cs.ensureAccountLoadedCtx(context.Background(), wallet)
-	// Ohne Konto lehnt applyLivenessRenewalDeltaLocked ab; die Bescheinigung
-	// wird trotzdem geprueft.
 	if acc, ok := cs.accounts.Get(wallet); ok {
 		if ab := erneuerungFruehestens(acc); ab > 0 && (blockZeit < ab || tx.DistributionAt < ab) {
 			return nachrechnenAbweichung("erneuerung_zu_frueh", blockZeit,
