@@ -41,7 +41,11 @@ func neuerLohnFall(t *testing.T) *lohnFall {
 	if !cs.useDB {
 		t.Fatal("erwartet eine echte PostgreSQL-Verbindung")
 	}
-	f := &lohnFall{t: t, cs: cs, rundeAt: time.Now().Unix(),
+	// Auf die volle Minute: gezaehlt wird je Kalenderminute (timestamp/60),
+	// die Bloecke liegen bei seit + k*60 + {0,1,2}. Lag die Sekunde von
+	// rundeAt auf 58/59, rutschte der letzte Block einer Minute in die
+	// naechste, und A bekam eine Minute mehr (361 statt 360, in der CI rot).
+	f := &lohnFall{t: t, cs: cs, rundeAt: time.Now().Unix() / 60 * 60,
 		a: distTestAddr(60), b: distTestAddr(61), c: distTestAddr(62), n: distTestAddr(63), r: distTestAddr(64),
 		ka: distTestAddr(70), kb: distTestAddr(71), kn: distTestAddr(72), ku: distTestAddr(73)}
 	for _, q := range []string{`DELETE FROM chain_blocks WHERE hash LIKE 'lohn-%'`, `DELETE FROM validator_verlauf`, `DELETE FROM registered_nodes`} {
