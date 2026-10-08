@@ -29,7 +29,9 @@ ist eine eigene Messung. Daraus folgt, schon im Code vermerkt:
   07.10.2026 zusätzlich an der Größe dieses lokalen Komitees, und das nur
   auf Knoten, die bis zur Komiteeprüfung kamen; ab 57 Validatoren
   hätten Erzeuger und Beobachter mit verschiedenem K gerechnet. Seitdem gilt
-  für alle K = 18, bis ein Komitee aus der Kette kommt.
+  für alle K = 18. Ab `erzeugerSchnittAb` kommt das Komitee aus dem Register
+  (unten, Schritt 3); K bleibt trotzdem 18, bis es je Block für alle gleich
+  feststeht.
 - Die Signatur trägt keinen Zeitpunkt: eine alte Bindung lässt sich wieder
   einspielen und eine neuere damit zurückdrehen.
 
@@ -311,8 +313,25 @@ Dinge ohne Konsenswirkung (Erreichbarkeit, Messwerte als Hinweis).
      zählten Blöcke ungebundener Schlüssel nicht. **Grenze:** hat ein Knoten
      einen Block des Fensters, den der Erzeuger nicht hat (an der
      Finalitätswand verschieden behandelt), meldet er eine Abweichung.
-   - Offen: das Komitee (`getEpochCommittee`) aus derselben Menge statt aus
-     den lokal bekannten Adressen.
+   - **Komitee aus derselben Menge** (08.10.2026, `komitee_register.go`,
+     schlafend bis `erzeugerSchnittAb`): zur Zeit t ist im Komitee, wer zu t
+     in genau einem Erzeugerfenster eines Menschen steht und unter diesen zu
+     den ersten 100 der Rangfolge der Epoche gehört; die Epoche zählt nach
+     der Zeit, nicht nach der Höhe. Jeder Knoten, der dem Netz folgt, wählt
+     so mit demselben Stand zur selben Zeit dasselbe Komitee (höchstens 100
+     Erzeuger; an Fenstergrenzen für die Dauer der Uhrabweichung uneinig),
+     und eine mit erfundenen Adressen gefüllte lokale Liste drückt niemanden
+     mehr hinaus. Ein Schlüsselwechsel bleibt nahtlos, solange der neue
+     Schlüssel unter den ersten 100 Zugelassenen liegt – im geschlossenen
+     Betrieb immer (er ist dabei, sobald sein Fenster beginnt). Ohne lesbaren Stand ist das
+     Komitee leer: dieser Knoten erzeugt nicht. Das Komitee bleibt eine
+     Regel für den eigenen Knoten – kein Block wird abgewiesen, weil sein
+     Erzeuger nicht im Komitee ist. Ein wachsendes K bräuchte ein Komitee,
+     das je **Block** (nicht je Knoten und Uhr) feststeht – offen. **Vor
+     einem offenen Betrieb:** die Rangfolge ist vorhersagbar
+     (`sha256(adresse:epoche)`); gebundene, aber schweigende Schlüssel oder
+     gezielt gesuchte Adressen belegen Sitze – die Auswahl braucht dann einen
+     Zufall, der zur Zeit der Bindung unbekannt ist.
    - Offen (eure Entscheidung): die Leistungsprobe wird zur Entscheidung des
      Leiters, die als eigene Transaktion auf die Kette kommt – oder entfällt.
 4. **Coordinator-Register** (`coordinator_keys`): seit 06.10.2026 trägt die
