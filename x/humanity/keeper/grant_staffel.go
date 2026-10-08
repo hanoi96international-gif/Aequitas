@@ -334,22 +334,25 @@ func merkeProveKlasse(respBody []byte) {
 // ------------------------------------------------------------ API
 
 // erneuerungsGrenze: hoechstens burstErneuerungJeIP Erneuerungen je Minute und
-// Absender-IP (Pruefung #314, LOW-3: je Anfrage eine Registerabfrage und die
+// Absender (Pruefung #314, LOW-3: je Anfrage eine Registerabfrage und die
 // Zulassung, beides Datenbank). Gezaehlt auf dem Knoten, den der Coordinator
 // erreicht -- VOR der Weiterleitung zum Zustaendigen (zumLeiter), sonst
 // zaehlte der Zustaendige alle Anfragen eines Folgers unter dessen Adresse
 // (ein Angreifer sperrte so jeden ehrlichen Coordinator hinter demselben
 // Folger aus) oder, mit dem Folger in der Freiliste, gar nicht (Pruefung von
-// #319, MEDIUM-1). Beim Empfaenger zaehlt eine weitergeleitete Anfrage nicht,
-//   - wenn sie von einem Knoten der Freiliste kommt (TCP-Adresse), oder
-//   - wenn der Folger sie nachweislich unterschrieben hat
-//     (weiterleitung_nachweis.go) -- auch hinter Proxy, NAT oder mit einem
-//     Namen als URL (Pruefung von #319, MEDIUM-7).
+// #319, MEDIUM-1). Beim Empfaenger zaehlt eine weitergeleitete Anfrage
+//   - mit gueltigem Nachweis (weiterleitung_nachweis.go) unter dem Absender,
+//     fuer den der Folger sie unterschrieben hat -- mit derselben Grenze, in
+//     einem eigenen Zaehler je Folger. Ein Angreifer verbraucht so nur sein
+//     eigenes Budget; einen gemeinsamen Vorrat gibt es nicht (Pruefungen von
+//     #319, MEDIUM-7 und MEDIUM-11);
+//   - ohne Nachweis von einem Knoten der Freiliste (TCP-Adresse; aeltere
+//     Folger) gar nicht;
+//   - sonst -- auch mit gefaelschtem Kopf -- wie eine direkte Anfrage unter
+//     ihrer Adresse (Pruefung von #319, LOW-8).
 //
-// Jede andere Anfrage mit dem Weiterleitungskopf zaehlt wie eine direkte
-// unter ihrer Adresse: ein gefaelschter Kopf bringt nichts (Pruefung von
-// #319, LOW-8). Geprueft wird erst, wenn die Adresse noch Platz hat -- wer
-// schon begrenzt ist, kostet keine Unterschriftspruefung.
+// Den Nachweis prueft der Knoten nur, solange die Adresse noch Platz hat --
+// wer schon begrenzt ist, kostet keine Unterschriftspruefung.
 //
 // Vor der Aktivierung der Staffel nichts (der Handler antwortet 409).
 func (a *APIServer) erneuerungsGrenze(next http.HandlerFunc) http.HandlerFunc {
@@ -360,11 +363,13 @@ func (a *APIServer) erneuerungsGrenze(next http.HandlerFunc) http.HandlerFunc {
 		}
 		schluessel := "liveness-renewal:" + clientIP(r)
 		if r.Header.Get(weitergeleitetKopf) != "" {
-			if rpcRateLimitFrei(r) {
-				next(w, r)
-				return
+			fuer := ""
+			if !burstVoll(schluessel, burstErneuerungJeIP, burstFenster) {
+				fuer = a.state.weiterleitungFuer(r, time.Now())
 			}
-			if !burstVoll(schluessel, burstErneuerungJeIP, burstFenster) && a.state.weiterleitungNachgewiesen(r, time.Now()) {
+			if fuer != "" {
+				schluessel = "liveness-renewal-von:" + fuer
+			} else if rpcRateLimitFrei(r) {
 				next(w, r)
 				return
 			}
@@ -436,7 +441,7 @@ func (a *APIServer) handleLivenessRenewal(w http.ResponseWriter, r *http.Request
 		// eingetragen", aber mit dem Rat zu wiederholen -- nicht, sich neu
 		// einzutragen (Pruefung von #319, INFO-8). Die Einzelheiten gehen
 		// ins Log, nicht an den Aufrufer.
-		fmt.Printf("[API] liveness renewal: coordinator register not readable for %s: %v\n", kurzAdresse(wallet), err)
+		fmt.Printf("[API] liveness renewal: coordinator register not readable for %q: %v\n", kurzAdresse(wallet), err)
 		jsonError(w, "coordinator register temporarily unavailable, please retry shortly", http.StatusServiceUnavailable)
 		return
 	}

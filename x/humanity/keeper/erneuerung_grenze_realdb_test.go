@@ -3,6 +3,8 @@ package keeper
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
@@ -55,8 +57,22 @@ func TestErneuerung_RegisterNichtLesbar_RealDB(t *testing.T) {
 	if _, ok, err := f.cs.coordinatorBindungLesen(context.Background(), pubHex); !ok || err != nil {
 		t.Fatalf("Vorbedingung: der Schluessel ist eingetragen (%v)", err)
 	}
-	if _, ok, err := f.cs.coordinatorBindungLesen(context.Background(), strings.Repeat("ab", 32)); ok || err != nil {
+	// Ein echter, gueltiger, aber nicht eingetragener Schluessel: nicht
+	// eingetragen, kein Fehler -- und der Handler sagt 403 "neu eintragen",
+	// nicht 503 (Pruefung von #319, LOW-13/M13).
+	fremdPub, fremdPriv, _ := ed25519.GenerateKey(rand.Reader)
+	if _, ok, err := f.cs.coordinatorBindungLesen(context.Background(), hex.EncodeToString(fremdPub)); ok || err != nil {
 		t.Fatalf("unbekannter Schluessel: ok=%v err=%v, erwartet nicht eingetragen ohne Fehler", ok, err)
+	}
+	{
+		issued := nowUnix()
+		body, _ := json.Marshal(map[string]interface{}{"wallet": f.wallet, "issued_at": issued,
+			"public_key": hex.EncodeToString(fremdPub), "signature": f.unterschreibe(fremdPriv, f.wallet, issued)})
+		w := httptest.NewRecorder()
+		(&APIServer{state: f.cs}).handleLivenessRenewal(w, httptest.NewRequest(http.MethodPost, "/api/liveness-renewal", bytes.NewReader(body)))
+		if w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "registered coordinator") {
+			t.Fatalf("unbekannter Schluessel: %d %s, erwartet 403", w.Code, w.Body.String())
+		}
 	}
 	vorher := f.cs.db.Stats().MaxOpenConnections
 	f.cs.db.SetMaxOpenConns(1)
