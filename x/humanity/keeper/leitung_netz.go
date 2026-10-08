@@ -759,10 +759,15 @@ func (dag *BlockDAG) leitungPeers() []string {
 // Leitung, Bindung, Erneuerung). Jetzt: nur Mitglieder des eigenen Satzes,
 // keine Loopback-, unspezifizierte, Link-Local- oder Multicast-Adresse, und
 // der Teil der Validatoren wird bei jedem Lauf ersetzt (wer den Satz
-// verlaesst, faellt heraus). Private und CGNAT-Adressen bleiben moeglich --
-// Validatoren in einem privaten Netz (Tailscale) leiten so weiter --, aber
-// mit Warnung: hinter einem Proxy mit dieser Adresse hoebe das die Grenze
-// fuer alle auf.
+// verlaesst, faellt heraus).
+//
+// PRIVATE ADRESSEN NUR AUF AUSDRUECKLICHEN WUNSCH. Vor dem Knoten steht ein
+// Proxy im Docker-Netz (deploy/Caddyfile): ALLE Anfragen von aussen kommen
+// von dessen privater Adresse. Stuende die in der Liste, gaelte die Grenze
+// je IP fuer niemanden mehr. Private und CGNAT-Adressen (10/8, 172.16/12,
+// 192.168/16, 100.64/10, fc00::/7) kommen deshalb nur mit
+// AEQUITAS_FREILISTE_PRIVAT=1 hinein -- fuer Validatoren, die wirklich ein
+// privates Netz teilen (Tailscale) und dann keinen solchen Proxy davor haben.
 func validatorIPsFrei(l *Leitung) {
 	var ips []string
 	for a, u := range l.SatzURLs() {
@@ -771,14 +776,11 @@ func validatorIPsFrei(l *Leitung) {
 			continue
 		}
 		ip := net.ParseIP(pu.Hostname())
-		if !freistellbar(ip) {
+		if !freistellbar(ip, freilistePrivatErlaubt()) {
 			if ip != nil {
-				fmt.Printf("[LEITUNG] ⚠ %s kuendigt %s an -- wird nicht von der Ratenbegrenzung freigestellt\n", kurzAdresse(a), ip)
+				nichtFreiMelden(a, ip.String())
 			}
 			continue
-		}
-		if isPrivateOrLoopback(ip.String()) {
-			privatFreiWarnen(a, ip.String())
 		}
 		ips = append(ips, ip.String())
 	}
@@ -787,19 +789,28 @@ func validatorIPsFrei(l *Leitung) {
 
 // freistellbar: eine Adresse, von der ein anderer Validator weiterleiten
 // kann -- nie Loopback (das waere dieser Rechner selbst und jeder lokale
-// Proxy), unspezifiziert, Link-Local oder Multicast.
-func freistellbar(ip net.IP) bool {
-	return ip != nil && !ip.IsLoopback() && !ip.IsUnspecified() && !ip.IsLinkLocalUnicast() &&
-		!ip.IsLinkLocalMulticast() && !ip.IsInterfaceLocalMulticast() && !ip.IsMulticast()
+// Proxy), unspezifiziert, Link-Local oder Multicast; privat oder CGNAT nur,
+// wenn privat erlaubt ist.
+func freistellbar(ip net.IP, privat bool) bool {
+	if ip == nil || ip.IsLoopback() || ip.IsUnspecified() || ip.IsLinkLocalUnicast() ||
+		ip.IsLinkLocalMulticast() || ip.IsInterfaceLocalMulticast() || ip.IsMulticast() {
+		return false
+	}
+	return privat || !isPrivateOrLoopback(ip.String())
 }
 
-var privatFreiGewarnt sync.Map
+func freilistePrivatErlaubt() bool {
+	v := strings.TrimSpace(strings.ToLower(os.Getenv("AEQUITAS_FREILISTE_PRIVAT")))
+	return v == "1" || v == "true" || v == "ja"
+}
 
-func privatFreiWarnen(validator, ip string) {
-	if _, schon := privatFreiGewarnt.LoadOrStore(ip, true); schon {
+var nichtFreiGemeldet sync.Map
+
+func nichtFreiMelden(validator, ip string) {
+	if _, schon := nichtFreiGemeldet.LoadOrStore(validator+"|"+ip, true); schon {
 		return
 	}
-	fmt.Printf("[LEITUNG] ⚠ %s ist unter einer privaten Adresse (%s) von der Ratenbegrenzung freigestellt -- nur richtig, wenn die Validatoren ein privates Netz teilen. Steht dieser Knoten hinter einem Proxy mit dieser Adresse, gilt die Grenze je IP fuer niemanden mehr.\n",
+	fmt.Printf("[LEITUNG] ⚠ %s kuendigt %s an -- wird nicht von der Ratenbegrenzung freigestellt (Loopback, privat oder ohne Unicast; privates Netz: AEQUITAS_FREILISTE_PRIVAT=1)\n",
 		kurzAdresse(validator), ip)
 }
 
