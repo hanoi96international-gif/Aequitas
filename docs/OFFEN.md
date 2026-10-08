@@ -46,6 +46,25 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
    Validatoren: fortgeschriebener statt neu gelesener Stand (Erzeugerprüfung
    und Anwesenheit).
 
+## Ratenbegrenzung – bekannte Lücken
+- **`clientIP` und IPv6** (Prüfung von #319, LOW-3; bestand schon vorher, gilt
+  für alle Grenzen je IP): Jede IPv6-Adresse hat einen eigenen Zähler – aus
+  einem /64 kamen 100 von 100 Anfragen durch. Fix: IPv6 je /64 zählen.
+- **`X-Forwarded-For` hinter einem privaten TCP-Partner** (ebenda):
+  `clientIP` nimmt den ersten Eintrag des Kopfes ungeprüft, sobald die
+  Verbindung von einer privaten Adresse kommt. Über Caddy ist das dicht
+  (Annahme: Caddy überschreibt den Kopf ohne `trusted_proxies`; Version auf
+  C1 prüfen). Offen ist es für andere Container im Docker-Netz und
+  vermutlich für `docker-proxy` bei Hairpin oder IPv6 auf dem
+  veröffentlichten Port – dort kamen 1000 von 1000 Anfragen mit rotierendem
+  Kopf durch. Fix: nur der Adresse des eigenen Proxys glauben (feste
+  Adresse statt „privat“) und den letzten, nicht den ersten Eintrag nehmen.
+- **`ipBurst` ohne feste Obergrenze** (Prüfung von #319, LOW-4; bestand schon
+  vorher): Die Einträge verfallen nach etwa 120 s (Aufräumen alle 60 s),
+  ihre Zahl ist aber nur durch Anfragerate × 120 s begrenzt – gemessen
+  228 B je Schlüssel, bei 5.000 Anfragen/s etwa 137 MB. Fix: Obergrenze für
+  die Zahl der Schlüssel; voll heißt begrenzen.
+
 ## Betrieb – bei dir
 - `COORDINATOR_BETREIBER_WALLET` und `VALIDATOR_BETREIBER_WALLET` auf den
   Boxen setzen (die Deploy-Workflows übernehmen die alte Umgebung, die neuen

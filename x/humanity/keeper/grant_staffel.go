@@ -340,13 +340,16 @@ func merkeProveKlasse(respBody []byte) {
 // zaehlte der Zustaendige alle Anfragen eines Folgers unter dessen Adresse
 // (ein Angreifer sperrte so jeden ehrlichen Coordinator hinter demselben
 // Folger aus) oder, mit dem Folger in der Freiliste, gar nicht (Pruefung von
-// #319, MEDIUM-1). Beim Empfaenger:
-//   - weitergeleitet von einem Knoten der Freiliste (TCP-Adresse, nicht
-//     faelschbar): der hat seine Grenze schon angewandt -- zaehlt nicht;
-//   - weitergeleitet von einer anderen Adresse: ein eigener, groesserer
-//     Zaehler je Adresse (burstErneuerungWeiterJeIP) -- ein gefaelschter Kopf
-//     bringt einem Angreifer hoechstens diesen, und ein ehrlicher Folger
-//     teilt sich ihn nicht mit dem direkten Weg.
+// #319, MEDIUM-1). Beim Empfaenger zaehlt eine weitergeleitete Anfrage nicht,
+//   - wenn sie von einem Knoten der Freiliste kommt (TCP-Adresse), oder
+//   - wenn der Folger sie nachweislich unterschrieben hat
+//     (weiterleitung_nachweis.go) -- auch hinter Proxy, NAT oder mit einem
+//     Namen als URL (Pruefung von #319, MEDIUM-7).
+//
+// Jede andere Anfrage mit dem Weiterleitungskopf zaehlt wie eine direkte
+// unter ihrer Adresse: ein gefaelschter Kopf bringt nichts (Pruefung von
+// #319, LOW-8). Geprueft wird erst, wenn die Adresse noch Platz hat -- wer
+// schon begrenzt ist, kostet keine Unterschriftspruefung.
 //
 // Vor der Aktivierung der Staffel nichts (der Handler antwortet 409).
 func (a *APIServer) erneuerungsGrenze(next http.HandlerFunc) http.HandlerFunc {
@@ -355,15 +358,18 @@ func (a *APIServer) erneuerungsGrenze(next http.HandlerFunc) http.HandlerFunc {
 			next(w, r)
 			return
 		}
-		schluessel, grenze := "liveness-renewal:"+clientIP(r), burstErneuerungJeIP
+		schluessel := "liveness-renewal:" + clientIP(r)
 		if r.Header.Get(weitergeleitetKopf) != "" {
 			if rpcRateLimitFrei(r) {
 				next(w, r)
 				return
 			}
-			schluessel, grenze = "liveness-renewal-weiter:"+clientIP(r), burstErneuerungWeiterJeIP
+			if !burstVoll(schluessel, burstErneuerungJeIP, burstFenster) && a.state.weiterleitungNachgewiesen(r, time.Now()) {
+				next(w, r)
+				return
+			}
 		}
-		if !burstErlaubt(schluessel, grenze, burstFenster) {
+		if !burstErlaubt(schluessel, burstErneuerungJeIP, burstFenster) {
 			writeJSONCORS(w)
 			jsonError(w, "too many renewal requests from this address -- please retry in a minute", http.StatusTooManyRequests)
 			return
@@ -424,7 +430,16 @@ func (a *APIServer) handleLivenessRenewal(w http.ResponseWriter, r *http.Request
 		jsonError(w, "invalid renewal attestation: Bescheinigung passt nicht zu Wallet und Zeitpunkt (oder ist keine Ed25519-Unterschrift in kanonischer Schreibweise)", http.StatusForbidden)
 		return
 	}
-	bindung, ok := a.state.CoordinatorBindungLokalCtx(r.Context(), req.PublicKey)
+	bindung, ok, err := a.state.coordinatorBindungLesen(r.Context(), req.PublicKey)
+	if err != nil {
+		// Zeitgrenze, Abbruch oder Datenbank: abgelehnt wie "nicht
+		// eingetragen", aber mit dem Rat zu wiederholen -- nicht, sich neu
+		// einzutragen (Pruefung von #319, INFO-8). Die Einzelheiten gehen
+		// ins Log, nicht an den Aufrufer.
+		fmt.Printf("[API] liveness renewal: coordinator register not readable for %s: %v\n", kurzAdresse(wallet), err)
+		jsonError(w, "coordinator register temporarily unavailable, please retry shortly", http.StatusServiceUnavailable)
+		return
+	}
 	if !ok {
 		jsonError(w, "renewal attestation not signed by a registered coordinator (or its registration predates stored signatures -- register the coordinator key again)", http.StatusForbidden)
 		return

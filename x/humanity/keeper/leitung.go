@@ -533,6 +533,15 @@ func (l *Leitung) speichern() {
 	}
 }
 
+// KenntValidator: darf a an diesen Knoten weiterleiten (weiterleitung_nachweis.go)?
+// Mitglied des Satzes oder zugelassener Validator -- dieselbe Bedingung, unter
+// der Empfange Leitungsnachrichten hoert --, nie dieser Knoten selbst.
+func (l *Leitung) KenntValidator(a string) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return a != "" && a != l.ich && (l.imSatz(a) || l.zugelassen(a))
+}
+
 func (l *Leitung) zugelassen(addr string) bool {
 	return l.env.Zugelassen == nil || l.env.Zugelassen(addr)
 }

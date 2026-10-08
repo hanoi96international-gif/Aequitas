@@ -58,6 +58,29 @@ func burstErlaubt(key string, max int, fenster time.Duration) bool {
 	return true
 }
 
+// burstVoll meldet, ob key sein Fenster schon ausgeschoepft hat -- ohne eine
+// Anfrage zu buchen (erneuerungsGrenze: eine teure Pruefung erst, wenn die
+// Anfrage ueberhaupt noch durchkaeme).
+func burstVoll(key string, max int, fenster time.Duration) bool {
+	if max <= 0 {
+		return false
+	}
+	v, ok := ipBurst.Load(key)
+	if !ok {
+		return false
+	}
+	e := v.(*ipBurstEintrag)
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	now, n := time.Now(), 0
+	for _, z := range e.zeiten {
+		if now.Sub(z) < fenster {
+			n++
+		}
+	}
+	return n >= max
+}
+
 // ipBurstAufraeumen entfernt Schluessel ohne Eintrag im Fenster.
 func ipBurstAufraeumen(fenster time.Duration) {
 	now := time.Now()
@@ -88,9 +111,8 @@ const (
 	// /api/liveness-renewal -- je Anfrage eine Abfrage im Coordinator-Register
 	// und die Zulassung (Datenbank). Ein Coordinator erneuert hoechstens so
 	// viele Menschen, wie am Tag registriert werden (Pruefung #314, LOW-3).
+	// Weitergeleitete Erneuerungen zaehlen beim Zustaendigen nicht, wenn sie
+	// nachweislich von einem Validator kommen (weiterleitung_nachweis.go);
+	// alle anderen zaehlen hier mit.
 	burstErneuerungJeIP = 30
-	// Dasselbe fuer weitergeleitete Erneuerungen von Adressen ausserhalb der
-	// Freiliste (erneuerungsGrenze): ein Folger buendelt die Coordinatoren,
-	// die ihn erreichen, und hat deren Grenze schon angewandt.
-	burstErneuerungWeiterJeIP = 300
 )

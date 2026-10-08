@@ -30,7 +30,6 @@ func erneuerungUeberMux(t *testing.T, mux http.Handler, ip string, body string, 
 func erneuerungsGrenzeLeeren(ips ...string) {
 	for _, ip := range ips {
 		ipBurst.Delete("liveness-renewal:" + ip)
-		ipBurst.Delete("liveness-renewal-weiter:" + ip)
 	}
 }
 
@@ -80,10 +79,10 @@ func TestErneuerung_GrenzeVorDerWeiterleitung(t *testing.T) {
 }
 
 // Beim Empfaenger: direkte Anfragen zaehlen je Adresse (auch ungueltige),
-// weitergeleitete von Knoten der Freiliste nicht, weitergeleitete von anderen
-// Adressen unter einem eigenen, groesseren Zaehler -- ein gefaelschter Kopf
-// bringt nicht mehr als den, und der Folger teilt ihn nicht mit dem direkten
-// Weg.
+// weitergeleitete von Knoten der Freiliste nicht. Ein Weiterleitungskopf ohne
+// Nachweis (weiterleitung_nachweis.go) zaehlt wie eine direkte Anfrage --
+// abwechselnd mit und ohne Kopf kommt eine Adresse nicht ueber
+// burstErneuerungJeIP (Pruefung von #319, LOW-8).
 func TestErneuerung_GrenzeBeimEmpfaenger(t *testing.T) {
 	stagedGrantActivationOverride.Store(1)
 	t.Cleanup(func() { stagedGrantActivationOverride.Store(0) })
@@ -94,6 +93,10 @@ func TestErneuerung_GrenzeBeimEmpfaenger(t *testing.T) {
 	t.Cleanup(func() { rpcRateLimitFreiListe.Store(alt) })
 	rpcRateLimitFreiErgaenzen([]string{knoten})
 
+	// Die Grenze selbst: nicht aus Versehen gelockert.
+	if burstErneuerungJeIP > 30 {
+		t.Fatalf("burstErneuerungJeIP = %d, gedacht sind hoechstens 30 je Minute", burstErneuerungJeIP)
+	}
 	// Direkt, auch mit ungueltigem Inhalt: gezaehlt (vor dem Lesen).
 	for i := 0; i < burstErneuerungJeIP; i++ {
 		if w := erneuerungUeberMux(t, mux, direkt, "kein json", false); w.Code == http.StatusTooManyRequests {
@@ -117,18 +120,35 @@ func TestErneuerung_GrenzeBeimEmpfaenger(t *testing.T) {
 	if w := erneuerungUeberMux(t, mux, knoten, `{}`, false); w.Code != http.StatusTooManyRequests {
 		t.Fatalf("Freiliste ohne Weiterleitungskopf nicht begrenzt: %d", w.Code)
 	}
-	// Weitergeleitet von ausserhalb der Freiliste (oder gefaelschter Kopf):
-	// eigener Zaehler bis burstErneuerungWeiterJeIP.
-	for i := 0; i < burstErneuerungWeiterJeIP; i++ {
-		if w := erneuerungUeberMux(t, mux, weiter, `{}`, true); w.Code == http.StatusTooManyRequests {
-			t.Fatalf("weitergeleitet: Anfrage %d schon begrenzt", i+1)
+	// Gefaelschter Kopf von ausserhalb der Freiliste, abwechselnd mit und
+	// ohne: zusammen hoechstens burstErneuerungJeIP.
+	durch := 0
+	for i := 0; i < 10*burstErneuerungJeIP; i++ {
+		if w := erneuerungUeberMux(t, mux, weiter, `{}`, i%2 == 0); w.Code != http.StatusTooManyRequests {
+			durch++
 		}
 	}
-	if w := erneuerungUeberMux(t, mux, weiter, `{}`, true); w.Code != http.StatusTooManyRequests {
-		t.Fatalf("weitergeleitet: Anfrage %d nicht begrenzt: %d", burstErneuerungWeiterJeIP+1, w.Code)
+	if durch != burstErneuerungJeIP {
+		t.Fatalf("mit gefaelschtem Kopf kamen %d Anfragen durch, erwartet %d", durch, burstErneuerungJeIP)
 	}
-	if w := erneuerungUeberMux(t, mux, weiter, `{}`, false); w.Code == http.StatusTooManyRequests {
-		t.Fatal("der direkte Weg teilt den Zaehler der Weiterleitung")
+	// Hinter einem Proxy: die TCP-Adresse ist privat, X-Forwarded-For nennt
+	// einen Knoten der Freiliste. Die Freiliste gilt nur fuer die
+	// TCP-Adresse -- gezaehlt wird unter der Adresse aus dem Kopf.
+	erneuerungsGrenzeLeeren(knoten)
+	proxyDurch := 0
+	for i := 0; i < 2*burstErneuerungJeIP; i++ {
+		req := httptest.NewRequest(http.MethodPost, "/api/liveness-renewal", strings.NewReader(`{}`))
+		req.RemoteAddr = "172.18.0.5:4711"
+		req.Header.Set("X-Forwarded-For", knoten)
+		req.Header.Set(weitergeleitetKopf, "1")
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, req)
+		if w.Code != http.StatusTooManyRequests {
+			proxyDurch++
+		}
+	}
+	if proxyDurch != burstErneuerungJeIP {
+		t.Fatalf("ueber einen Proxy mit X-Forwarded-For der Freiliste kamen %d durch, erwartet %d", proxyDurch, burstErneuerungJeIP)
 	}
 }
 

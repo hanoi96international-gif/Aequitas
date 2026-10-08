@@ -216,6 +216,7 @@ func StarteLeitung(dag *BlockDAG, cs *ChainState, selfURL string) *Leitung {
 		return nil
 	}
 	ich := strings.ToLower(crypto.PubkeyToAddress(dag.signingKey.PublicKey).Hex())
+	weiterleitungsSchluessel.Store(dag.signingKey)
 	if url, ok := urls[ich]; ok && url != "" {
 		selfURL = url
 	}
@@ -638,6 +639,7 @@ func leiteWeiter(w http.ResponseWriter, r *http.Request, ziel string, body []byt
 		req.Header.Set("Authorization", auth)
 	}
 	req.Header.Set(weitergeleitetKopf, "1")
+	weiterleitungNachweisSetzen(req, r.URL.Path, body, time.Now())
 	resp, err := weiterleitungsKlient.Do(req)
 	if err != nil {
 		leitungWeiterleitungFehler.Add(1)

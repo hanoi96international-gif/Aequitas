@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -167,14 +168,22 @@ func (cs *ChainState) CoordinatorBindungLokal(publicKey string) (CoordinatorBind
 // CoordinatorBindungLokalCtx: dasselbe im Kontext einer Anfrage (bricht mit
 // ihr ab).
 func (cs *ChainState) CoordinatorBindungLokalCtx(ctx context.Context, publicKey string) (CoordinatorBindung, bool) {
+	b, ok, _ := cs.coordinatorBindungLesen(ctx, publicKey)
+	return b, ok
+}
+
+// coordinatorBindungLesen trennt "nicht eingetragen oder ohne Unterschriften"
+// (false, nil) von einem Fehler beim Lesen (Zeitgrenze, Abbruch, Datenbank:
+// false, err). Beides heisst: keine Bindung (fail-closed).
+func (cs *ChainState) coordinatorBindungLesen(ctx context.Context, publicKey string) (CoordinatorBindung, bool, error) {
 	if cs.db == nil {
-		return CoordinatorBindung{}, false
+		return CoordinatorBindung{}, false, nil
 	}
 	cs.EnsureCoordinatorRegistry()
 	var b CoordinatorBindung
 	publicKey = strings.ToLower(strings.TrimSpace(publicKey))
 	if !ed25519HexTauglich(publicKey) {
-		return CoordinatorBindung{}, false
+		return CoordinatorBindung{}, false, nil
 	}
 	// Mit Zeitgrenze: die Erneuerung fragt hier fuer oeffentliche Anfragen
 	// (Pruefung #314, LOW-3) -- das Warten auf eine Verbindung aus dem Pool
@@ -183,10 +192,16 @@ func (cs *ChainState) CoordinatorBindungLokalCtx(ctx context.Context, publicKey 
 	defer abbruch()
 	err := cs.db.QueryRowContext(ctx, `SELECT human_wallet, COALESCE(human_signature, ''), COALESCE(key_signature, '')
 		FROM coordinator_keys WHERE public_key = $1`, publicKey).Scan(&b.Mensch, &b.MenschSig, &b.SchluesselSig)
-	if err != nil || b.MenschSig == "" || b.SchluesselSig == "" {
-		return CoordinatorBindung{}, false
+	if errors.Is(err, sql.ErrNoRows) {
+		return CoordinatorBindung{}, false, nil
 	}
-	return b, true
+	if err != nil {
+		return CoordinatorBindung{}, false, err
+	}
+	if b.MenschSig == "" || b.SchluesselSig == "" {
+		return CoordinatorBindung{}, false, nil
+	}
+	return b, true, nil
 }
 
 // CoordinatorEntry ist ein anerkannter Coordinator.
