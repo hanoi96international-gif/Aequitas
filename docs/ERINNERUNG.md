@@ -95,7 +95,7 @@ den verlinkten Dokumenten.
       - [x] Validatoren-Runde: nur an Menschen
       - [ ] Validatoren-Gewichte: vor der Umstellung aus `registered_nodes`
             (je Knoten verschieden); danach aus der Kette und nachgerechnet
-            (Schritt 3, Teil 2, unten). Offen bleibt das Komitee
+            (Schritt 3, Teil 2, unten), Komitee ebenso (unten)
         - [x] Schritt 1, schlafend (05.10.): Kettentransaktion
               `validator_bindung` mit Unterschrift von Betreiber und
               Signierschlüssel, Register in `validator_register`, Summe in
@@ -130,7 +130,15 @@ den verlinkten Dokumenten.
               `chain_blocks` und den Erzeugerfenstern, jeder Knoten rechnet
               nach; schaltet, wenn das ganze Fenster nach
               `erzeugerSchnittAb` liegt (`validator_lohn_kette.go`)
-        - [ ] Komitee (`getEpochCommittee`) aus derselben Menge
+        - [x] Komitee aus derselben Menge, schlafend (08.10.): ab
+              `erzeugerSchnittAb` wählt jeder Knoten das Epochenkomitee
+              aus den Schlüsseln, deren Blöcke alle annehmen (Register zur
+              Zeit jetzt, mit Liste die Schnittmenge) statt aus seiner
+              lokalen Liste; unlesbar oder leer: keiner erzeugt
+              (`komiteeKandidaten`). K bleibt 18 -- ein wachsendes K
+              braucht ein K je Block aus der Blockzeit und lohnt erst ab
+              rund 55 gleichzeitigen Erzeugern
+              (`docs/VALIDATOR_REGISTER_KONSENS.md`)
         - [ ] Stichtage setzen (eure Entscheidung,
               `docs/VALIDATOR_REGISTER_KONSENS.md`)
       - [x] Staffel-Freigaben: höchstens die Tagesrate, nur mit

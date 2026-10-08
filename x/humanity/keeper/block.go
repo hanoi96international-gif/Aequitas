@@ -8590,25 +8590,77 @@ type EpochCommittee struct {
 	Number  int64
 	Members map[string]bool // lower-cased signing addresses of active producers
 	Size    int
+	// vorlaeufig: aus einem unlesbaren Registerstand (leer) -- wird nicht fuer
+	// die Epoche gemerkt, sondern beim naechsten Versuch neu berechnet.
+	vorlaeufig bool
 }
 
-// computeEpochCommittee builds the committee for epochNum from the live
+// komiteeKandidaten: wer fuer das Komitee in Frage kommt (KOMITEE AUS DEM
+// REGISTER, 07.10.2026).
+//
+// Vor erzeugerSchnittAb wie bisher die lokal bekannten Adressen
+// (authorizedValidators) -- eine Liste, die jeder Knoten selbst fuehrt. Ab
+// dem Stichtag das Register zur Zeit jetzt: genau die Schluessel, deren
+// Bloecke jeder andere Knoten annimmt (erzeugerNachRegister -- Fenster aus
+// dem Verlauf, nur Menschen, mit AUTHORIZED_VALIDATORS die Schnittmenge).
+// Damit waehlen alle Knoten mit demselben Register und derselben Liste zur
+// selben Epoche dasselbe Komitee, und niemand rechnet sich in ein Komitee,
+// dessen Bloecke die anderen abweisen. ok = false: der Stand ist nicht
+// lesbar -- dann kein Komitee mit diesem Knoten (er erzeugt nicht, wie
+// erzeugerNachRegister am Anfang von ProduceBlock), statt auf die lokale
+// Liste zurueckzufallen.
+//
+// Das Komitee entscheidet weiter nur, ob DIESER Knoten erzeugt; ein Peer
+// prueft es nicht (die Erzeugerpruefung in AddPeerBlock ist das Register
+// selbst). K bleibt ghostdagKBase -- siehe getEpochCommittee.
+func (dag *BlockDAG) komiteeKandidaten(jetzt int64) (kandidaten []string, ausRegister, ok bool) {
+	if !erzeugerSchnittAktiv(jetzt) {
+		kandidaten = make([]string, 0, len(dag.authorizedValidators))
+		for addr := range dag.authorizedValidators {
+			kandidaten = append(kandidaten, addr)
+		}
+		return kandidaten, false, true
+	}
+	if dag.state == nil {
+		return nil, true, false
+	}
+	st := dag.state.erzeugerRegister.Load()
+	if st == nil || st.fehler != nil {
+		return nil, true, false
+	}
+	// st.fenster ist durch verlaufGrenze begrenzt; gerechnet wird einmal je
+	// Epoche (getEpochCommittee merkt das Ergebnis).
+	for addr := range st.fenster {
+		if dag.erzeugerNachRegister(addr, jetzt) {
+			kandidaten = append(kandidaten, addr)
+		}
+	}
+	return kandidaten, true, true
+}
+
+// computeEpochCommittee builds the committee for epochNum from the
+// candidates komiteeKandidaten names: before erzeugerSchnittAb the live
 // authorizedValidators map (which always contains this node's own signing key
-// plus every peer validator discovered via registration). Must be called while
-// dag.mu is already held by the caller (ProduceBlock holds it; getEpochCommittee
-// is only invoked from there).
+// plus every peer validator discovered via registration), afterwards the
+// on-chain register. Must be called while dag.mu is already held by the
+// caller (ProduceBlock holds it; getEpochCommittee is only invoked from there).
 //
 // Using authorizedValidators instead of validator_keys/validator_slots avoids
 // the critical bug where the primary never registers with itself: its own
 // signing address is absent from both DB tables, so a DB-based query would
 // exclude it from its own committee, halting all primary block production.
 func (dag *BlockDAG) computeEpochCommittee(epochNum int64) *EpochCommittee {
-	allOps := make([]string, 0, len(dag.authorizedValidators))
-	for addr := range dag.authorizedValidators {
-		allOps = append(allOps, addr)
+	allOps, ausRegister, ok := dag.komiteeKandidaten(nowUnix())
+	if !ok {
+		return &EpochCommittee{Number: epochNum, Members: map[string]bool{}, vorlaeufig: true}
 	}
 	sort.Strings(allOps) // deterministic ordering before scoring
 	if len(allOps) == 0 {
+		if ausRegister {
+			// Ab dem Stichtag heisst "keiner im Register": keiner erzeugt --
+			// nicht "jeder darf" wie beim Hochfahren ohne bekannte Validatoren.
+			return &EpochCommittee{Number: epochNum, Members: map[string]bool{}}
+		}
 		return nil // no validators known yet → everyone can produce (bootstrap)
 	}
 
@@ -8657,6 +8709,12 @@ func (dag *BlockDAG) getEpochCommittee(height int64) *EpochCommittee {
 	dag.epochMu.RUnlock()
 
 	ec := dag.computeEpochCommittee(epochNum)
+
+	if ec != nil && ec.vorlaeufig {
+		// Registerstand gerade nicht lesbar: dieser Versuch erzeugt nicht,
+		// der naechste rechnet neu -- nicht eine ganze Epoche lang aussetzen.
+		return ec
+	}
 
 	dag.epochMu.Lock()
 	if dag.currentEpoch == nil || dag.currentEpoch.Number != epochNum {

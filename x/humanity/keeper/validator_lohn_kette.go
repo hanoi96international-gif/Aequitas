@@ -53,8 +53,8 @@ import (
 //     er die Runde ab.
 //   - Die Rundenzeit waehlt der Erzeuger, hoechstens 10 Minuten neben der
 //     Blockzeit -- er verschiebt das Fenster damit um hoechstens so viel.
-//   - Das Komitee (getEpochCommittee) kommt noch aus den lokal bekannten
-//     Adressen; es folgt in einem eigenen Schritt.
+//   - Das Komitee (getEpochCommittee) kommt ab erzeugerSchnittAb aus
+//     derselben Menge (komiteeKandidaten in block.go).
 
 const (
 	// anwesenheitRand: so lange vor der Runde endet das gezaehlte Fenster.

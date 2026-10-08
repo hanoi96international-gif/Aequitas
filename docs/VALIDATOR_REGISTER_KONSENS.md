@@ -24,12 +24,13 @@ ist eine eigene Messung. Daraus folgt, schon im Code vermerkt:
 - Strafkonto (`slash_equivocation`) und Validatoren-Belohnung hängen an
   `registered_nodes` – zwei Knoten können verschieden abziehen bzw. auszahlen.
 - Die Komitee-Auswahl (`computeEpochCommittee` über
-  `authorizedValidators`) sortiert die lokal bekannten Adressen. Sie
-  entscheidet nur, ob ein Knoten selbst erzeugt. GHOSTDAGs K hing bis
-  07.10.2026 zusätzlich an der Größe dieses lokalen Komitees, und das nur
-  auf Knoten, die bis zur Komiteeprüfung kamen; ab 57 Validatoren
+  `authorizedValidators`) sortiert die lokal bekannten Adressen – bis
+  `erzeugerSchnittAb`, danach das Register (`komiteeKandidaten`, siehe
+  Schritt 3). Sie entscheidet nur, ob ein Knoten selbst erzeugt. GHOSTDAGs K
+  hing bis 07.10.2026 zusätzlich an der Größe dieses lokalen Komitees, und
+  das nur auf Knoten, die bis zur Komiteeprüfung kamen; ab 57 Validatoren
   hätten Erzeuger und Beobachter mit verschiedenem K gerechnet. Seitdem gilt
-  für alle K = 18, bis ein Komitee aus der Kette kommt.
+  für alle K = 18.
 - Die Signatur trägt keinen Zeitpunkt: eine alte Bindung lässt sich wieder
   einspielen und eine neuere damit zurückdrehen.
 
@@ -311,8 +312,28 @@ Dinge ohne Konsenswirkung (Erreichbarkeit, Messwerte als Hinweis).
      zählten Blöcke ungebundener Schlüssel nicht. **Grenze:** hat ein Knoten
      einen Block des Fensters, den der Erzeuger nicht hat (an der
      Finalitätswand verschieden behandelt), meldet er eine Abweichung.
-   - Offen: das Komitee (`getEpochCommittee`) aus derselben Menge statt aus
-     den lokal bekannten Adressen.
+   - **Komitee aus derselben Menge** (`komiteeKandidaten` in `block.go`,
+     schlafend): ab `erzeugerSchnittAb` wählt jeder Knoten das
+     Epochenkomitee aus den Schlüsseln, die das Register zur Zeit jetzt
+     erzeugen lässt (`erzeugerNachRegister` – Fenster aus dem Verlauf, nur
+     Menschen, mit `AUTHORIZED_VALIDATORS` die Schnittmenge), statt aus
+     seiner lokalen Liste. Knoten mit demselben Register und derselben Liste
+     wählen zur selben Epoche dasselbe Komitee, und keiner rechnet sich in
+     ein Komitee, dessen Blöcke die anderen abweisen. Ist der Stand nicht
+     lesbar, erzeugt dieser Knoten in diesem Versuch nicht (nicht für die
+     ganze Epoche gemerkt); ist das Register leer, erzeugt keiner – nie
+     „jeder darf“ wie beim Hochfahren. Wer erst im Lauf einer Epoche
+     erzeugen darf, kommt mit der nächsten dazu (Epoche: 3.600 Höhen).
+     Das Komitee prüft weiter kein Peer: die Erzeugerprüfung in
+     `AddPeerBlock` ist das Register selbst.
+   - **K bleibt 18.** Ein wachsendes K müsste jeder Knoten für jeden Block
+     gleich berechnen – aus dem Register zur **Blockzeit** (Anzahl
+     erzeugender Schlüssel), nicht aus einem Komitee, das nach Höhe und
+     Uhrzeit des eigenen Knotens gewählt wird –, und GHOSTDAG müsste K je
+     Block statt global führen (Merge-Menge, Tiefe, KnightDAG-Obergrenze).
+     Das lohnt erst, wenn mehr als rund 55 Erzeuger gleichzeitig erzeugen;
+     KnightDAG passt K bis dahin ohnehin je Block in [0, 18] an. Bis dahin
+     bleibt es bewusst bei der Konstante.
    - Offen (eure Entscheidung): die Leistungsprobe wird zur Entscheidung des
      Leiters, die als eigene Transaktion auf die Kette kommt – oder entfällt.
 4. **Coordinator-Register** (`coordinator_keys`): seit 06.10.2026 trägt die
