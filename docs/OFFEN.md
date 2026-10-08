@@ -31,10 +31,18 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
    statt aus lokal bekannten Adressen.
 2. **#310 H1:** Zulassung von Coordinatoren braucht einen Preis
    (eine Bindung kostet nichts) – vor dem Staffel-Stichtag.
-3. **Strenger Modus** spätestens mit der Staffel; Stichtag
+3. **Vor dem strengen Modus: Anwesenheit aus dem Vergangenheitskegel**
+   eines Ankerblocks zählen statt aller Blöcke im Zeitfenster (#308 zählt
+   `chain_blocks` im Fenster: ein Knoten mit einem Block mehr oder weniger –
+   etwa an der Finalitätswand – rechnet anders und wiese im strengen Modus
+   die Runde ab). Mit dem Kegel zählen nur Vorfahren des Ankers; fehlt einem
+   Knoten einer, rechnet er nicht nach statt falsch. Bausteine liegen in
+   `claude/weiter-gehts-r7rb9w-register3b` (`bloeckeImKegel`,
+   `validatorAnkerWaehlen`, Tests).
+4. **Strenger Modus** spätestens mit der Staffel; Stichtag
    `nachrechnenStrengAbUnix`, sobald `/api/wirtschaft/regeln` über mehrere
    Runden 0 Abweichungen zeigt.
-4. Offener Betrieb (ohne `AUTHORIZED_VALIDATORS`) mit über 1.000
+5. Offener Betrieb (ohne `AUTHORIZED_VALIDATORS`) mit über 1.000
    Validatoren: fortgeschriebener statt neu gelesener Stand (Erzeugerprüfung
    und Anwesenheit).
 
