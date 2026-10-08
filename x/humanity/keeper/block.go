@@ -2488,8 +2488,14 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 	// Schluesseln, die das Register zur Blockzeit traegt -- ohne Bindung
 	// erzeugt dieser Knoten nicht, statt Bloecke zu bauen, die alle abweisen.
 	if jetzt := nowUnix(); erzeugerSchnittAktiv(jetzt) && !dag.erzeugerNachRegister(dag.selfProposer, jetzt) {
+		if dag.state != nil {
+			dag.state.nichtImRegister.Store(true)
+		}
 		merkeProduktionsAusfall("nicht_im_register")
 		return nil
+	}
+	if dag.state != nil {
+		dag.state.nichtImRegister.Store(false)
 	}
 	if dag.resyncInProgress.Load() {
 		merkeProduktionsAusfall("resync_laeuft")

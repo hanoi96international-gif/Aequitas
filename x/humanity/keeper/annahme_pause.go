@@ -200,6 +200,14 @@ func (cs *ChainState) annahmePauseGrund() error {
 			return fmt.Errorf("%w: der Ausgang haengt (aelteste offene Zeile %d s alt) -- bitte in Kuerze erneut versuchen", ErrAnnahmePausiert, d)
 		}
 	}
+	// Der eigene Schluessel steht (noch) nicht im Register -- frisch
+	// gebunden, in der Frist von zwei Stunden: bis dahin entsteht hier kein
+	// Block, und was jetzt angenommen wuerde, waere zu Beginn des Fensters zu
+	// alt fuer jede Blockzeit. Sofort anhalten, nicht erst nach 30 s
+	// (Pruefung von #318).
+	if cs.nichtImRegister.Load() {
+		return fmt.Errorf("%w: der Schluessel dieses Knotens darf laut Register (noch) keine Bloecke erzeugen -- bitte einen anderen Knoten nutzen oder spaeter erneut versuchen", ErrAnnahmePausiert)
+	}
 	seit := cs.erzeugerSeit.Load()
 	if seit == 0 {
 		return nil // erzeugt nicht (oder noch nie versucht)

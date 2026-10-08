@@ -234,6 +234,11 @@ type ChainState struct {
 	erzeugerSeit        atomic.Int64
 	letzterEigenerBlock atomic.Int64
 	ausgangVorStartBis  atomic.Int64
+	// nichtImRegister: der letzte Erzeugungsversuch scheiterte daran, dass
+	// das Register den eigenen Schluessel ab erzeugerSchnittAb nicht traegt
+	// (nicht_im_register) -- die Annahme haelt dann sofort an, nicht erst
+	// nach admissionStallLimit (annahme_pause.go).
+	nichtImRegister atomic.Bool
 	// instanzSperre: eigene Verbindung, die die Erzeuger-Instanzsperre haelt
 	// (annahme_pause.go, erzeugerInstanzSperren) -- solange dieser Prozess
 	// lebt. nil = nicht gehalten.
