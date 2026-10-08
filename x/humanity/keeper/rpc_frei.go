@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"sync/atomic"
 )
 
@@ -36,22 +37,31 @@ import (
 // Leer (Vorgabe) = niemand ist freigestellt, das Verhalten ist unveraendert.
 var rpcRateLimitFreiListe atomic.Pointer[map[string]bool]
 
+// rpcRateLimitFreiUmgebung: der Teil aus AEQUITAS_RPC_RATE_LIMIT_FREI -- fest
+// fuer die Laufzeit des Prozesses; der Teil der Validatoren wird darueber neu
+// gelegt (rpcRateLimitFreiValidatoren).
+var rpcRateLimitFreiUmgebung map[string]bool
+
 func init() {
-	m := rpcRateLimitFreiAusUmgebung()
+	rpcRateLimitFreiUmgebung = rpcRateLimitFreiAusUmgebung()
+	m := map[string]bool{}
+	for k, v := range rpcRateLimitFreiUmgebung {
+		m[k] = v
+	}
 	rpcRateLimitFreiListe.Store(&m)
 }
 
-// rpcRateLimitFreiErgaenzen stellt weitere Adressen frei -- die der anderen
-// Validatoren bei rotierendem Leiter (leitung_netz.go): sie leiten die
-// Anfragen ihrer Nutzer weiter und haben deren Ratenbegrenzung schon
-// angewandt. Nur IP-Literale; Namen werden nie aufgeloest.
-func rpcRateLimitFreiErgaenzen(ips []string) {
-	alt := rpcRateLimitFreiListe.Load()
+var rpcRateLimitFreiMu sync.Mutex
+
+// rpcRateLimitFreiValidatoren ERSETZT den Teil der Validatoren: die Liste
+// ist danach die aus der Umgebung plus genau diese Adressen (leitung_netz.go,
+// validatorIPsFrei). Wer den Satz verlaesst, ist nicht mehr freigestellt.
+func rpcRateLimitFreiValidatoren(ips []string) {
+	rpcRateLimitFreiMu.Lock()
+	defer rpcRateLimitFreiMu.Unlock()
 	neu := map[string]bool{}
-	if alt != nil {
-		for k, v := range *alt {
-			neu[k] = v
-		}
+	for k, v := range rpcRateLimitFreiUmgebung {
+		neu[k] = v
 	}
 	for _, s := range ips {
 		if ip := net.ParseIP(strings.TrimSpace(s)); ip != nil {
@@ -106,6 +116,17 @@ func rpcRateLimitFreiFuer(liste map[string]bool, r *http.Request) bool {
 	if len(liste) == 0 || r == nil {
 		return false
 	}
+	// Ueber einen Proxy (Pruefung von #320, LOW-2 und INFO-6): eine Anfrage
+	// mit X-Forwarded-For, Forwarded oder X-Real-IP -- auch leer, von jeder
+	// Quelle -- kommt ueber einen vorgeschalteten Proxy (Caddy setzt den Kopf
+	// immer); der eigentliche Absender ist ein anderer, und er bleibt
+	// begrenzt, auch wenn die Adresse des Proxys in der Liste steht. Kein Weg
+	// der Knoten setzt diese Koepfe (leiteWeiter, leitungSende,
+	// Lastgenerator). Zuerst geprueft, weil billig: der Heissweg von /rpc
+	// parst sonst bei jeder Anfrage (INFO-7).
+	if ueberProxy(r) {
+		return false
+	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		host = r.RemoteAddr
@@ -115,4 +136,15 @@ func rpcRateLimitFreiFuer(liste map[string]bool, r *http.Request) bool {
 		return false
 	}
 	return liste[ip.String()]
+}
+
+var proxyKoepfe = [...]string{"X-Forwarded-For", "Forwarded", "X-Real-Ip"}
+
+func ueberProxy(r *http.Request) bool {
+	for _, k := range proxyKoepfe {
+		if _, da := r.Header[k]; da {
+			return true
+		}
+	}
+	return false
 }
