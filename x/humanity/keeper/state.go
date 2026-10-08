@@ -4747,6 +4747,9 @@ func (cs *ChainState) registerHumanMitZeitenLocked(ctx context.Context, address 
 // it. Wrapping both in one transaction means a failure at either step undoes
 // both.
 func (cs *ChainState) runAtomicWithOutbox(touchedAddrs []string, fullSnapshot bool, fn func(ctx context.Context) (Transaction, error)) error {
+	if err := beobachterOhneAusgang(); err != nil {
+		return err
+	}
 	if cs.db == nil {
 		// No DB configured — nothing to make atomic with. Every call site
 		// of TransferAtomic/SwapAtomic/etc. treats a non-nil error here as
@@ -4908,6 +4911,9 @@ func (cs *ChainState) runAtomicWithOutbox(touchedAddrs []string, fullSnapshot bo
 // full daily distribution, an outbox failure must roll back the whole
 // round, not be "rescued" by a queue that doesn't survive a restart.
 func (cs *ChainState) runAtomicDistributionWithOutbox(fn func(ctx context.Context) ([]Transaction, error)) error {
+	if err := beobachterOhneAusgang(); err != nil {
+		return err
+	}
 	if cs.db == nil {
 		// context.Background() is correct — see runAtomicWithOutbox's
 		// matching no-DB branch comment.

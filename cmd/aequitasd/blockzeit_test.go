@@ -147,8 +147,11 @@ func TestBlockZeit_WirdVorDenAbgeleitetenSchwellenGesetzt(t *testing.T) {
 		{"keeper", "TuneProposerBreakerForBlockTime"},
 		{"keeper", "TuneFinalitySlackForBlockTime"},
 	} {
-		if i := enthaeltAufruf(liste, abgeleitet[0], abgeleitet[1]); i < 0 || i < setzen {
-			t.Errorf("%s.%s steht vor der Zuweisung von BLOCK_TIME (oder fehlt) und saehe damit die Vorgabe", abgeleitet[0], abgeleitet[1])
+		// Direkt, nicht in defer, go oder if (Pruefung von #322, LOW-5): in
+		// main liefe ein defer nie, und der Schutzschalter bliebe auf dem
+		// Vorgabetakt.
+		if i := direkterAufruf(liste, abgeleitet[0], abgeleitet[1]); i < 0 || i < setzen {
+			t.Errorf("%s.%s steht nicht als eigene Anweisung nach der Zuweisung von BLOCK_TIME (vorher, verschachtelt oder fehlt)", abgeleitet[0], abgeleitet[1])
 		}
 	}
 	// Das Banner nennt die tatsaechliche Blockzeit.

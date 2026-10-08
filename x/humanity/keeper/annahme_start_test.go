@@ -1,6 +1,7 @@
 package keeper
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -8,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/ethereum/go-ethereum/crypto"
 )
 
 // Missbrauch der Annahme (Pruefung von #318): ein Beobachter erzeugt nie
@@ -127,5 +130,46 @@ func TestLeitung_BeobachterNichtLeiterfaehig(t *testing.T) {
 	setzeBeobachterFuerTest(t, true)
 	if leiterFaehig(cs) {
 		t.Fatal("Beobachter ist leiterfaehig")
+	}
+}
+
+// Missbrauch (Pruefung von #322, LOW-4 und INFO-2): ein Beobachter legt
+// nichts in den Ausgang -- weder die eigene Tagesverteilung noch irgendeinen
+// anderen Auftrag. Die Sperre sitzt dort, wo jeder Ausgang durchgeht, und
+// greift vor jeder Aenderung am Zustand.
+func TestBeobachter_LegtNichtsInDenAusgang(t *testing.T) {
+	cs := newTestState()
+	lief := false
+	einzeln := func(ctx context.Context) (Transaction, error) { lief = true; return Transaction{}, nil }
+	viele := func(ctx context.Context) ([]Transaction, error) { lief = true; return nil, nil }
+	if err := cs.runAtomicWithOutbox(nil, false, einzeln); err != nil || !lief {
+		t.Fatalf("Vorbedingung: ohne Beobachter laeuft der Auftrag (%v, %v)", err, lief)
+	}
+	setzeBeobachterFuerTest(t, true)
+	lief = false
+	if err := cs.runAtomicWithOutbox(nil, false, einzeln); !errors.Is(err, ErrAnnahmePausiert) || lief {
+		t.Fatalf("Beobachter: runAtomicWithOutbox = %v, Auftrag gelaufen = %v", err, lief)
+	}
+	if err := cs.runAtomicDistributionWithOutbox(viele); !errors.Is(err, ErrAnnahmePausiert) || lief {
+		t.Fatalf("Beobachter: runAtomicDistributionWithOutbox = %v, Auftrag gelaufen = %v", err, lief)
+	}
+	if err := cs.RunDailyDistributionAtomic(time.Now().Unix()); !errors.Is(err, ErrAnnahmePausiert) {
+		t.Fatalf("Beobachter verteilt die Tagesrunde selbst: %v", err)
+	}
+}
+
+// Ein Beobachter baut keine Leitung (Pruefung von #322, INFO-6 und INFO-8):
+// sonst bliebe er Startleiter, gespeicherter Leiter oder Leiter im
+// Notbetrieb und bekaeme in Stufe 2 Konten zugeteilt.
+func TestLeitung_BeobachterBautKeineLeitung(t *testing.T) {
+	t.Setenv("AEQUITAS_LEITUNG", "an")
+	t.Setenv("AEQUITAS_LEITUNG_GENESIS", "")
+	altGestartet := leistungGestartet.Swap(true) // keine Messung im Test
+	t.Cleanup(func() { leistungGestartet.Store(altGestartet) })
+	setzeBeobachterFuerTest(t, true)
+	k, _ := crypto.GenerateKey()
+	cs := newTestState()
+	if l := StarteLeitung(&BlockDAG{signingKey: k}, cs, "http://203.0.113.9:8080"); l != nil || cs.leitung.Load() != nil {
+		t.Fatal("Beobachter hat eine Leitung gebaut")
 	}
 }

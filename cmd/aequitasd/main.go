@@ -916,6 +916,12 @@ func main() {
 				if os.Getenv("DISTRIBUTION_ENABLED") == "false" {
 					fmt.Println("[POOLS] Distribution disabled on this node (DISTRIBUTION_ENABLED=false)")
 					keeper.RecordDistributionOutcome("skipped", "DISTRIBUTION_ENABLED=false on this node")
+				} else if keeper.BeobachterModus() {
+					// Ein Beobachter verteilt nie selbst, er spielt die Runde
+					// des Erzeugers nach -- sonst ueberspraenge er dessen Runde
+					// und rechnete seine eigene nach (Pruefung von #322,
+					// LOW-4). Auch vor TryLockDistribution: nichts sperren.
+					keeper.RecordDistributionOutcome("skipped", "observer (AEQUITAS_BEOBACHTER)")
 				} else if syncIssue := distributionSyncHealthIssue(bc); syncIssue != "" {
 					// FIX (scale audit, SPOF): DistributeValidatorsPool weights every
 					// validator's reward by registered_nodes.blocks_produced read from

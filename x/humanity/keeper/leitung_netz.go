@@ -213,6 +213,14 @@ func StarteLeitung(dag *BlockDAG, cs *ChainState, selfURL string) *Leitung {
 	if !leitungAn() || dag == nil || cs == nil {
 		return nil
 	}
+	if beobachterModus() {
+		// Ein Beobachter erzeugt nie: als Leiter (Startleiter, gespeichert,
+		// Notbetrieb) hielte er die Annahme des Netzes an, und in Stufe 2
+		// bekaeme er Konten zugeteilt. Ohne Leitung sehen die anderen ihn als
+		// ausgefallen (Pruefung von #322, INFO-6).
+		fmt.Println("[LEITUNG] Beobachter (AEQUITAS_BEOBACHTER) -- Leitung bleibt aus")
+		return nil
+	}
 	if dag.signingKey == nil {
 		fmt.Println("[LEITUNG] ✗ Kein Signierschluessel -- Leitung bleibt aus")
 		return nil

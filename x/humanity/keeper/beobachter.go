@@ -1,6 +1,7 @@
 package keeper
 
 import (
+	"fmt"
 	"os"
 	"strings"
 	"sync"
@@ -35,6 +36,19 @@ func beobachterModus() bool {
 		beobachterAn.Store(v == "1" || v == "true" || v == "ja")
 	})
 	return beobachterAn.Load()
+}
+
+// beobachterOhneAusgang: ein Beobachter legt nichts in den Ausgang -- er
+// erzeugt nie, was dort laege, kaeme in keinen Block, und sein Stand wiche ab.
+// An der einen Stelle, durch die jeder Ausgang geht (runAtomicWithOutbox,
+// runAtomicDistributionWithOutbox): auch die eigene Tagesverteilung, der
+// Strafbeweis aus Peer-Bloecken und die Wiederholung von Registrierungen
+// (Pruefung von #322, LOW-4 und INFO-2). Vor jeder Aenderung am Zustand.
+func beobachterOhneAusgang() error {
+	if beobachterModus() {
+		return fmt.Errorf("%w: dieser Knoten ist ein Beobachter (AEQUITAS_BEOBACHTER) und legt nichts in den Ausgang", ErrAnnahmePausiert)
+	}
+	return nil
 }
 
 // BeobachterModus fuer Startmeldung und /api/status.

@@ -51,16 +51,23 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
    Leiter-Wege netzweit wiederholbar ab, und bei zwei Validatoren ohne
    `AEQUITAS_LEITUNG_ZWEI_WECHSELN` beendet kein Wechsel das. Fix: eine
    Pause länger als `admissionStallLimit()` im Takt wie einen verlorenen
-   Leistungsnachweis behandeln, also übergeben. (Beobachter sind seit #322
-   nicht leiterfähig.)
+   Leistungsnachweis behandeln, also übergeben. (Ein Beobachter baut seit #322
+   keine Leitung mehr auf und legt nichts in den Ausgang.)
 7. **Einträge in `pending_txs` ohne Annahme-Pause** (Prüfung von #322,
    INFO-2; bestand schon vorher): `DoppelsignaturErkannt` (slashing.go,
    ausgelöst von Peer-Blöcken) legt den Strafbeweis auch auf einem Beobachter
    oder pausierten Knoten in den Ausgang; läuft `strafBeweisFrisch` ab, bevor
    der Knoten erzeugt, helfen nur Resync oder Verwerfen.
    `RetryRegistrationRecoveries` (alle 5 Minuten) prüft die Pause nicht. Fix:
-   auf einem Beobachter den Beweis nur vermerken; die Wiederholung an
-   `annahmePauseGrund()` koppeln.
+   die Wiederholung an `annahmePauseGrund()` koppeln. (Auf einem Beobachter
+   sperrt seit #322 `beobachterOhneAusgang` jeden Ausgang.)
+8. **Folger nimmt beim Start bis zu 30 s ohne Leitung an** (Prüfung von
+   #322, INFO-7; bestand schon vorher): Bis `StarteLeitung` läuft, ist
+   `cs.leitung` nil und `nimmtAnFuer()` true, auch mit `AEQUITAS_LEITUNG=an`;
+   Überweisung, Tausch und Faucet nehmen dann lokal an, statt
+   weiterzuleiten. Fix: pausieren, solange `leitungAn()` und der Start der
+   Leitung noch nicht versucht wurde (versucht, nicht gelungen -- sonst
+   hielte eine kaputte Leitung den Knoten für immer an).
 
 ## Betrieb – bei dir
 - `COORDINATOR_BETREIBER_WALLET` und `VALIDATOR_BETREIBER_WALLET` auf den
