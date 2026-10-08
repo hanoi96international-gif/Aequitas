@@ -125,7 +125,9 @@ func annahmeRolleAusdruecklichAnnehmend() bool {
 // seine Lease traegt. nur_lesend bleibt eine harte Sperre darueber: ein so
 // eingestellter Knoten nimmt nie an, auch nicht als gewaehlter Leiter.
 func (cs *ChainState) nimmtUeberweisungenAn() bool {
-	if cs.nurLesend.Load() {
+	// Ein Beobachter nimmt nie an (annahme_pause.go) -- auch der Stand sagt
+	// das (Pruefung von #322, INFO-10).
+	if cs.nurLesend.Load() || beobachterModus() {
 		return false
 	}
 	if l := cs.leitung.Load(); l != nil {
@@ -231,6 +233,7 @@ var ErrNichtLeiter = fmt.Errorf("dieser Knoten ist gerade nicht der Leiter und k
 func (cs *ChainState) AnnahmeTorStand() map[string]interface{} {
 	return map[string]interface{}{
 		"nimmt_an":          cs.nimmtUeberweisungenAn(),
+		"beobachter":        beobachterModus(),
 		"abgelehnt":         abgelehnteUeberweisungen.Load(),
 		"umgebungsvariable": annahmeRolleEnv,
 		"bedeutung": "Nimmt dieser Knoten Ueberweisungen an? Nehmen ZWEI Knoten gleichzeitig " +

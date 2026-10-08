@@ -60,7 +60,10 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
    der Knoten erzeugt, helfen nur Resync oder Verwerfen.
    `RetryRegistrationRecoveries` (alle 5 Minuten) prüft die Pause nicht. Fix:
    die Wiederholung an `annahmePauseGrund()` koppeln. (Auf einem Beobachter
-   sperrt seit #322 `beobachterOhneAusgang` jeden Ausgang.)
+   sperren seit #322 `beobachterOhneAusgang` in `runAtomicWithOutbox`,
+   `runAtomicDistributionWithOutbox` und `RegisterHumanAtomic` sowie
+   `RetryRegistrationRecoveries` den Ausgang; Überweisungen sperrt
+   `annahmeBeginnen`.)
 8. **Folger nimmt beim Start bis zu 30 s ohne Leitung an** (Prüfung von
    #322, INFO-7; bestand schon vorher): Bis `StarteLeitung` läuft, ist
    `cs.leitung` nil und `nimmtAnFuer()` true, auch mit `AEQUITAS_LEITUNG=an`;
@@ -87,6 +90,11 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
   `erzeugerSchnittAb` (erst wenn `/api/status` → `erzeuger_ohne_bindung`
   leer ist), Staffel, strenges Nachrechnen. Nur geschlossener Betrieb
   (`AUTHORIZED_VALIDATORS`) ist für die Register-Stichtage freigegeben.
+- Ein Beobachter (`AEQUITAS_BEOBACHTER=1`) darf in keinem Leitungs-Satz
+  stehen (`AEQUITAS_LEITUNG_GENESIS` anderer Knoten, registrierter
+  Validator): er baut keine Leitung, die anderen hielten ihn für ein
+  Mitglied, das nie antwortet (bei zwei Validatoren nimmt dann niemand an).
+  Er warnt beim Start laut, wenn er seine Adresse im Genesis-Satz findet.
 - Außerdem aus `ERINNERUNG.md`: C2 / zweiter unabhängiger Betreiber,
   App 1.10.0 als Release, Altersmodell, `PROOF_SERVER_URLS` und
   `CHAIN_SERVICE_TOKEN` auf dem Server, Impressum und Datenschutz,

@@ -219,6 +219,16 @@ func StarteLeitung(dag *BlockDAG, cs *ChainState, selfURL string) *Leitung {
 		// bekaeme er Konten zugeteilt. Ohne Leitung sehen die anderen ihn als
 		// ausgefallen (Pruefung von #322, INFO-6).
 		fmt.Println("[LEITUNG] Beobachter (AEQUITAS_BEOBACHTER) -- Leitung bleibt aus")
+		if dag.signingKey != nil {
+			ich := strings.ToLower(crypto.PubkeyToAddress(dag.signingKey.PublicKey).Hex())
+			if satz, _, err := leitungValidatorenAusUmgebung(os.Getenv(leitungGenesisEnv)); err == nil {
+				for _, a := range satz {
+					if a == ich {
+						fmt.Printf("[LEITUNG] ⚠ dieser Beobachter (%s) steht in %s -- die anderen halten ihn fuer ein Mitglied, das nie antwortet; aus dem Satz nehmen (Pruefung von #322, INFO-11)\n", ich, leitungGenesisEnv)
+					}
+				}
+			}
+		}
 		return nil
 	}
 	if dag.signingKey == nil {
@@ -727,6 +737,10 @@ func rpcSchreibt(body []byte) bool {
 func (cs *ChainState) LeitungStand() map[string]interface{} {
 	l := cs.leitung.Load()
 	if l == nil {
+		if beobachterModus() {
+			return map[string]interface{}{"an": false, "beobachter": true,
+				"bedeutung": "Beobachter (AEQUITAS_BEOBACHTER): keine Leitung, nimmt nichts an, erzeugt keine Bloecke -- darf in keinem Leitungs-Satz stehen."}
+		}
 		return map[string]interface{}{"an": false,
 			"bedeutung": "Rotierender Leiter aus -- es nimmt an, wer nicht ANNAHME_ROLLE=nur_lesend hat (siehe annahme_tor)."}
 	}

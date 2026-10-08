@@ -173,3 +173,62 @@ func TestLeitung_BeobachterBautKeineLeitung(t *testing.T) {
 		t.Fatal("Beobachter hat eine Leitung gebaut")
 	}
 }
+
+// Missbrauch (Pruefung von #322, LOW-9): ein Beobachter holt keine
+// Registrierung nach -- der nebenlaeufige Pfad schrieb Konto, Nullifier und
+// Ausgang an runAtomicWithOutbox vorbei. Stand und Annahme-Tor sagen, dass er
+// nicht annimmt (INFO-10).
+func TestBeobachter_RegistriertNicht(t *testing.T) {
+	cs := newTestState()
+	w := "0x00000000000000000000000000000000000000d1"
+	setzeBeobachterFuerTest(t, true)
+	if err := cs.RegisterHumanAtomic(w, Transaction{Type: "register_human", Wallet: w}); !errors.Is(err, ErrAnnahmePausiert) {
+		t.Fatalf("Beobachter registriert: %v", err)
+	}
+	if cs.IsHuman(w) {
+		t.Fatal("Beobachter hat das Konto als Mensch gesetzt")
+	}
+	if st := cs.AnnahmeTorStand(); st["nimmt_an"] != false || st["beobachter"] != true {
+		t.Fatalf("Annahme-Tor meldet fuer den Beobachter %v", st)
+	}
+	if st := cs.LeitungStand(); st["beobachter"] != true {
+		t.Fatalf("Leitungsstand meldet den Beobachter nicht: %v", st)
+	}
+}
+
+// Dasselbe mit Datenbank ueber die Wiederholung (alle 5 Minuten und
+// /api/admin/registration-recovery/retry): beide Wege -- mit Nullifier
+// (nebenlaeufig) und ohne (RegisterHuman, ganz ohne Ausgang) -- holen auf
+// einem Beobachter nichts nach; die Zeilen bleiben fuer einen Rollenwechsel.
+func TestBeobachter_HoltKeineRegistrierungNach_RealDB(t *testing.T) {
+	skipUnlessRealDBBenchEnv(t)
+	cs := testKnoten(t, "unused-beobachter-recovery-test.json")
+	if !cs.useDB {
+		t.Fatal("erwartet eine echte PostgreSQL-Verbindung")
+	}
+	if _, err := cs.db.Exec(`DELETE FROM registration_recovery`); err != nil {
+		t.Fatal(err)
+	}
+	mit, ohne := "0x00000000000000000000000000000000000000d2", "0x00000000000000000000000000000000000000d3"
+	for _, f := range [][2]string{{mit, "0x" + strings.Repeat("d2", 32)}, {ohne, ""}} {
+		if _, err := cs.SaveRegistrationIntent(f[0], f[1], Transaction{Type: "register_human", Wallet: f[0]}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var vorher int
+	cs.db.QueryRow(`SELECT COUNT(*) FROM pending_txs`).Scan(&vorher)
+	setzeBeobachterFuerTest(t, true)
+	if n := cs.RetryRegistrationRecoveries(); n != 0 {
+		t.Fatalf("Beobachter hat %d Registrierungen nachgeholt", n)
+	}
+	var nachher int
+	cs.db.QueryRow(`SELECT COUNT(*) FROM pending_txs`).Scan(&nachher)
+	if nachher != vorher || cs.IsHuman(mit) || cs.IsHuman(ohne) || cs.CountUnrecoveredRegistrations() != 2 {
+		t.Fatalf("Beobachter: Ausgang %d -> %d, Mensch %v/%v, offen %d", vorher, nachher, cs.IsHuman(mit), cs.IsHuman(ohne), cs.CountUnrecoveredRegistrations())
+	}
+	// Gegenprobe: ohne Beobachter holt derselbe Knoten beide nach.
+	beobachterAn.Store(false)
+	if n := cs.RetryRegistrationRecoveries(); n != 2 || !cs.IsHuman(mit) || !cs.IsHuman(ohne) {
+		t.Fatalf("Gegenprobe: %d nachgeholt, Mensch %v/%v", n, cs.IsHuman(mit), cs.IsHuman(ohne))
+	}
+}

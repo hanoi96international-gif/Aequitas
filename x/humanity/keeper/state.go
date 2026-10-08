@@ -4608,6 +4608,11 @@ func (cs *ChainState) RegisterHuman(address string) error {
 // slow path, unchanged from before this fast path existed. registerHumanConcurrent
 // self-gates on cs.db == nil, so this is a no-op for no-DB nodes.
 func (cs *ChainState) RegisterHumanAtomic(address string, pendingTx Transaction) error {
+	// Der nebenlaeufige Pfad schreibt Konto, Nullifier und Ausgang selbst,
+	// an runAtomicWithOutbox vorbei (Pruefung von #322, LOW-9).
+	if err := beobachterOhneAusgang(); err != nil {
+		return err
+	}
 	address = strings.ToLower(address)
 	// Eine gestaffelte Registrierung nimmt immer den gesperrten Pfad: der
 	// nebenlaeufige kennt nur den flachen Zuschuss (register_concurrent.go).

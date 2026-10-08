@@ -3313,7 +3313,10 @@ func (cs *ChainState) CountUnrecoveredRegistrations() int {
 // unrecovered record, marks the record recovered on success, and returns the
 // number of records newly recovered in this pass.
 func (cs *ChainState) RetryRegistrationRecoveries() int {
-	if cs.db == nil {
+	// Ein Beobachter holt nichts nach: der Weg ohne Nullifier (RegisterHuman)
+	// aenderte seinen Stand ganz ohne Ausgang und Block (Pruefung von #322,
+	// LOW-9). Die Zeilen bleiben fuer einen spaeteren Rollenwechsel liegen.
+	if cs.db == nil || beobachterModus() {
 		return 0
 	}
 	rows, err := cs.db.Query(`
