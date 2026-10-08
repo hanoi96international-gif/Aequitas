@@ -891,6 +891,16 @@ func netzPraefix(n *net.IPNet) (einsen int, v4 bool) {
 	return einsen, false
 }
 
+// mitNetzmaske: mindestens ein Netz, das mehr als eine Adresse umfasst.
+func mitNetzmaske(netze []*net.IPNet) bool {
+	for _, n := range netze {
+		if einsen, bits := n.Mask.Size(); einsen < bits {
+			return true
+		}
+	}
+	return false
+}
+
 func netzeBeruehren(a, b *net.IPNet) bool {
 	return a.Contains(b.IP) || b.Contains(a.IP)
 }
@@ -907,6 +917,12 @@ func freilisteNetze() []*net.IPNet {
 		return nil
 	}
 	eigene, err := eigeneNetze()
+	if err == nil && !mitNetzmaske(eigene) {
+		// Ohne ein einziges Netz mit echter Maske (lo hat immer 127.0.0.0/8)
+		// ist die Liste nicht glaubwuerdig: wie nicht lesbar (Pruefung von
+		// #320, INFO-12).
+		err = fmt.Errorf("keine Schnittstelle mit Netzmaske")
+	}
 	var netze []*net.IPNet
 	var verworfen []string
 	for _, teil := range strings.Split(roh, ",") {

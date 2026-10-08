@@ -232,6 +232,63 @@ func TestFreiliste_NetzePlausibel(t *testing.T) {
 	if freiFuer("100.101.102.103") {
 		t.Fatal("ohne lesbare Schnittstellen gilt ein genanntes Netz")
 	}
+	// Lesbar, aber leer oder nur Hostrouten: ebenso (Pruefung von #320,
+	// INFO-12) -- sonst gaelte jedes Netz, auch das eigene Docker-Netz.
+	for name, liste := range map[string][]*net.IPNet{
+		"leer":           nil,
+		"nur Hostrouten": mussNetze("172.18.0.5/32", "fd00::5/128"),
+	} {
+		eigeneNetze = func() ([]*net.IPNet, error) { return liste, nil }
+		validatorIPsFrei(l)
+		if freiFuer("100.101.102.103") {
+			t.Fatalf("Schnittstellen %s: ein genanntes Netz gilt", name)
+		}
+	}
+	eigeneNetze = testEigeneNetze
+
+	// IPv6: zu weit ist kuerzer als /16, eng genug und fremd gilt (Pruefung
+	// von #320, INFO-12).
+	l.SetzeURL(lan, "http://[fd12:3456::5]:8080")
+	for _, wert := range []string{"fc00::/7", "fd00::/8", "::/0", "fd00::/15"} {
+		t.Setenv("AEQUITAS_FREILISTE_NETZE", wert)
+		validatorIPsFrei(l)
+		if freiFuer("fd12:3456::5") {
+			t.Fatalf("AEQUITAS_FREILISTE_NETZE=%q (zu weit) stellt ein ULA-Mitglied frei", wert)
+		}
+	}
+	for _, wert := range []string{"fd12:3456::/32", "fd12::/16"} {
+		t.Setenv("AEQUITAS_FREILISTE_NETZE", wert)
+		validatorIPsFrei(l)
+		if !freiFuer("fd12:3456::5") {
+			t.Fatalf("AEQUITAS_FREILISTE_NETZE=%q: das ULA-Mitglied ist nicht frei", wert)
+		}
+	}
+}
+
+// Die echten Schnittstellen (Pruefung von #320, INFO-12): jeder andere Test
+// ersetzt eigeneNetze. Loopback steht immer mit /8 darin, und ein Netz, das
+// es beruehrt, gilt nicht.
+func TestFreiliste_EchteSchnittstellen(t *testing.T) {
+	echt := eigeneNetze
+	netze, err := echt()
+	if err != nil {
+		t.Fatalf("eigene Schnittstellen nicht lesbar: %v", err)
+	}
+	lo := false
+	for _, n := range netze {
+		if einsen, bits := n.Mask.Size(); n.Contains(net.ParseIP("127.0.0.1")) && bits == 32 && einsen == 8 {
+			lo = true
+		}
+	}
+	if !lo {
+		t.Fatalf("127.0.0.0/8 fehlt in den eigenen Netzen %v", netze)
+	}
+	freilisteSichern(t)
+	eigeneNetze = echt
+	t.Setenv("AEQUITAS_FREILISTE_NETZE", "127.0.0.0/8")
+	if n := freilisteNetze(); len(n) != 0 {
+		t.Fatalf("ein Netz, das Loopback beruehrt, gilt mit den echten Schnittstellen: %v", n)
+	}
 }
 
 // Eine Warnung je Wert, nicht je Lauf (Pruefung von #320, INFO-10).
