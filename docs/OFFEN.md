@@ -46,6 +46,35 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
    Validatoren: fortgeschriebener statt neu gelesener Stand (Erzeugerprüfung
    und Anwesenheit).
 
+## Ratenbegrenzung – bekannte Lücken
+- **Freiliste ohne Herkunftsnachweis** (Prüfung von #320, LOW-3; bestand
+  schon vorher, seit #320 auf den Satz eingeengt): ein Satzmitglied kann
+  jede öffentliche IP ankündigen und sie so von den Grenzen je IP
+  freistellen lassen – auch eine geteilte Ausgangsadresse (Mobilfunk-CGNAT,
+  VPN). Ein Leiter kann bei einem plausiblen Satzwechsel über `m.URLs` auch
+  die URLs anderer Mitglieder setzen (leitung.go, `empfangeLease`). Fix:
+  nur die TCP-Quelle freistellen, von der eine gültig signierte
+  `/api/leitung`-Nachricht dieses Mitglieds kam (oder Übereinstimmung mit
+  der angekündigten IP verlangen); besser noch Weiterleitungen selbst
+  unterschreiben (wie für die Erneuerung, #319 MEDIUM-7).
+- **Eigene Netze nur für private Adressen geprüft** (Prüfung von #320,
+  INFO-11; Spielart von LOW-3): Eine öffentliche Adresse ist ohne Einstellung
+  freistellbar und wird nie gegen die eigenen Schnittstellen geprüft. Liegt
+  das Docker-Netz in einem globalen Präfix (IPv6 `fixed-cidr-v6` aus dem /64
+  des Providers, öffentliches `bip`) oder hat die Schnittstelle nur eine
+  Hostroute (Kubernetes/Calico, eth0 /32), kann ein böswilliges Mitglied das
+  Gateway ankündigen; frei wäre dann alles, was ein Weiterleiter ohne Kopf
+  (docker-proxy, L4-Balancer, SNAT) von dort zustellt. Das Deploy
+  (`deploy/validator/docker-compose.yml`, Bridge ohne IPv6) ist nicht
+  betroffen. Fix mit LOW-3: auch die angekündigte Adresse selbst nie
+  freistellen, wenn sie eine eigene Adresse ist oder in einem Netz der
+  eigenen Schnittstellen liegt (Hostrouten ausgenommen), und denselben
+  Filter auf die beobachtete Quelle anwenden. In /32-Umgebungen das Pod- oder
+  Knotennetz nie in `AEQUITAS_FREILISTE_NETZE` nennen.
+- Die Freiliste wird etwa einmal je Minute neu aufgebaut: wer den Satz
+  verlässt, bleibt bis zu 60 s frei, neue Mitglieder sind bis zu 60 s
+  begrenzt.
+
 ## Betrieb – bei dir
 - `COORDINATOR_BETREIBER_WALLET` und `VALIDATOR_BETREIBER_WALLET` auf den
   Boxen setzen (die Deploy-Workflows übernehmen die alte Umgebung, die neuen
@@ -64,6 +93,18 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
   `erzeugerSchnittAb` (erst wenn `/api/status` → `erzeuger_ohne_bindung`
   leer ist), Staffel, strenges Nachrechnen. Nur geschlossener Betrieb
   (`AUTHORIZED_VALIDATORS`) ist für die Register-Stichtage freigegeben.
+- Freiliste der Ratenbegrenzung (#320): Validatoren, deren `SELF_URL` ein
+  Name (`https://<domain>`) oder eine private/Tailscale-Adresse ist, werden
+  nicht mehr freigestellt; ihre Weiterleitungen laufen beim Leiter in die
+  Grenze je IP. Private Netze nur gezielt freigeben:
+  `AEQUITAS_FREILISTE_NETZE=100.64.0.0/10` (CIDR, durch Kommas getrennt),
+  nie das Docker-Netz des Knotens (Gateway, docker-proxy, Proxy). Der Knoten
+  verwirft selbst, was zu weit ist (IPv4 kürzer als /8, IPv6 kürzer als /16)
+  oder ein Netz seiner eigenen Schnittstellen berührt, und sagt es einmal im
+  Log (`AEQUITAS_FREILISTE_NETZE: … -- ignoriert`). Abgewiesene Adressen
+  stehen einmal je Mitglied im Log (`[LEITUNG] ⚠ … wird nicht von der
+  Ratenbegrenzung freigestellt`). Anfragen mit `X-Forwarded-For`,
+  `Forwarded` oder `X-Real-IP` sind nie freigestellt.
 - Außerdem aus `ERINNERUNG.md`: C2 / zweiter unabhängiger Betreiber,
   App 1.10.0 als Release, Altersmodell, `PROOF_SERVER_URLS` und
   `CHAIN_SERVICE_TOKEN` auf dem Server, Impressum und Datenschutz,
