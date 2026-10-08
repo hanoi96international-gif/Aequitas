@@ -12,24 +12,31 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
 - proof-server #11 und biometric #38 (Schlüssel kleiner Ordnung,
   Besitznachweis nur für den Betreiber) – gemergt.
 
-## Code – als Nächstes
-1. **Schritt 3, Teil 2: Validatoren-Belohnung aus der Kette.** Gebaut und
-   getestet im Zweig `claude/weiter-gehts-r7rb9w-register3b` (Commit
-   f0e2632, gepusht, noch **kein PR**). Dateien:
-   `validator_belohnung_kette.go`, `nachrechnen_validator.go`, Tests
-   `validator_belohnung_kette_realdb_test.go`. Zu tun: auf das heutige
-   `main` bringen (#305/#306 sind neu; `erzeugerAusVerlauf` liefert seit
-   #303 auch `halter` – `fensterAusVerlauf` anpassen), Mutationen, `-race`,
-   getrennte Sicherheitsprüfung, PR, Merge.
-2. **L1** vor den Stichtagen: ein zurückgehaltener, spät eingehängter Block
-   mit `validator_bindung` wirkt rückwirkend (die Frist setzt pünktliches
-   Nachspielen voraus).
-3. **Komitee** aus derselben Menge wie die Belohnung (Teil 2b).
-4. **Vor dem Staffel-Stichtag:** Coordinatoren im Konsens zulassen und
-   entziehen; strenger Modus spätestens mit der Staffel; Chain-ID in die
-   Nachrichten der Bindung und der Bescheinigung (v2).
-5. Stichtag `nachrechnenStrengAbUnix` setzen, sobald
-   `/api/wirtschaft/regeln` über mehrere Runden 0 Abweichungen zeigt.
+## In Arbeit (andere Sitzung, offen als PRs)
+- **#312 Bündel** aus #307–#311 (ein Deploy statt fünf), CI grün:
+  - #307 L1: kein spät eingehängter Block mit Bindung oder Beweis (schlafend)
+  - #308 Schritt 3, Teil 2: Validatoren-Belohnung aus der Kette (schlafend)
+  - #309 GHOSTDAG: K nicht mehr aus einem lokalen Komitee (wirkt sofort,
+    K bleibt 18)
+  - #310 Coordinatoren nach dem Register zulassen (Baustein, schlafend;
+    H1 offen: eine Bindung kostet nichts)
+  - #311 Coordinator-Nachrichten mit Chain-ID (v2)
+  - Offen vor dem Merge: getrennte Sicherheitsprüfung der Korrekturen im
+    Bündel (läuft), dann Merge.
+- Mein Zweig `claude/weiter-gehts-r7rb9w-register3b` (Teil 2) ist durch #308
+  **überholt** und wird nicht weiterverfolgt.
+
+## Code – danach
+1. **Komitee** (`getEpochCommittee`) aus derselben Menge wie die Belohnung
+   statt aus lokal bekannten Adressen.
+2. **#310 H1:** Zulassung von Coordinatoren braucht einen Preis
+   (eine Bindung kostet nichts) – vor dem Staffel-Stichtag.
+3. **Strenger Modus** spätestens mit der Staffel; Stichtag
+   `nachrechnenStrengAbUnix`, sobald `/api/wirtschaft/regeln` über mehrere
+   Runden 0 Abweichungen zeigt.
+4. Offener Betrieb (ohne `AUTHORIZED_VALIDATORS`) mit über 1.000
+   Validatoren: fortgeschriebener statt neu gelesener Stand (Erzeugerprüfung
+   und Anwesenheit).
 
 ## Betrieb – bei dir
 - `COORDINATOR_BETREIBER_WALLET` und `VALIDATOR_BETREIBER_WALLET` auf den
