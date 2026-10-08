@@ -318,10 +318,12 @@ Dinge ohne Konsenswirkung (Erreichbarkeit, Messwerte als Hinweis).
      in genau einem Erzeugerfenster eines Menschen steht und unter diesen zu
      den ersten 100 der Rangfolge der Epoche gehört; die Epoche zählt nach
      der Zeit, nicht nach der Höhe. Jeder Knoten, der dem Netz folgt, wählt
-     so zur selben Zeit dasselbe Komitee (höchstens 100 Erzeuger), und eine
-     mit erfundenen Adressen gefüllte lokale Liste drückt niemanden mehr
-     hinaus. Ein Schlüsselwechsel bleibt nahtlos (der neue Schlüssel ist
-     dabei, sobald sein Fenster beginnt). Ohne lesbaren Stand ist das
+     so mit demselben Stand zur selben Zeit dasselbe Komitee (höchstens 100
+     Erzeuger; an Fenstergrenzen für die Dauer der Uhrabweichung uneinig),
+     und eine mit erfundenen Adressen gefüllte lokale Liste drückt niemanden
+     mehr hinaus. Ein Schlüsselwechsel bleibt nahtlos, solange der neue
+     Schlüssel unter den ersten 100 Zugelassenen liegt – im geschlossenen
+     Betrieb immer (er ist dabei, sobald sein Fenster beginnt). Ohne lesbaren Stand ist das
      Komitee leer: dieser Knoten erzeugt nicht. Das Komitee bleibt eine
      Regel für den eigenen Knoten – kein Block wird abgewiesen, weil sein
      Erzeuger nicht im Komitee ist. Ein wachsendes K bräuchte ein Komitee,

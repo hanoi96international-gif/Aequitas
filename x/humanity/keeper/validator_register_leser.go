@@ -439,11 +439,16 @@ func (cs *ChainState) erzeugerRegisterAuffrischen() {
 			m, h = alt.fenster, alt.halter
 		}
 	}
-	neu := &erzeugerStand{fenster: m, halter: h, fehler: err, zeit: time.Now()}
-	// Ausserhalb von dag.mu: die Rangliste des Komitees fuer diese und die
-	// naechste Epoche (komitee_register.go).
-	neu.komiteeRang = komiteeVorberechnen(neu, nowUnix())
-	cs.erzeugerRegister.Store(neu)
+	cs.erzeugerRegister.Store(erzeugerStandBauen(m, h, err, time.Now(), nowUnix()))
+}
+
+// erzeugerStandBauen: der Stand, wie er gespeichert wird -- mit der
+// Rangliste des Komitees fuer diese und die naechste Epoche, ausserhalb von
+// dag.mu vorberechnet (komitee_register.go).
+func erzeugerStandBauen(fenster map[string][]zeitfenster, halter map[string]string, fehler error, zeit time.Time, jetzt int64) *erzeugerStand {
+	st := &erzeugerStand{fenster: fenster, halter: halter, fehler: fehler, zeit: zeit}
+	st.komiteeRang = komiteeVorberechnen(st, jetzt)
+	return st
 }
 
 // erzeugerAuffrischenEinmal: der Hintergrund-Leser laeuft einmal je Prozess.

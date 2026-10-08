@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"testing"
+	"time"
 )
 
 // komiteeStand: ein Stand mit n Schluesseln, jeder von einem eigenen
@@ -268,6 +269,13 @@ func TestKomiteeAusRegister_Rangliste(t *testing.T) {
 				t.Fatalf("Epoche %d, Platz %d: %s vorberechnet, %s selbst", ep, i, vor[ep][i], selbst[i])
 			}
 		}
+	}
+	// So wird der Stand beim Auffrischen gebaut: mit Rangliste.
+	if gebaut := erzeugerStandBauen(st.fenster, nil, nil, time.Unix(jetzt, 0), jetzt); len(gebaut.komiteeRang[jetzt/epochLength]) != 150 {
+		t.Fatal("der gebaute Stand traegt keine Rangliste")
+	}
+	if kaputt := erzeugerStandBauen(st.fenster, nil, errors.New("db weg"), time.Unix(jetzt, 0), jetzt); kaputt.komiteeRang != nil || kaputt.fehler == nil {
+		t.Fatal("Rangliste fuer einen Stand mit Lesefehler")
 	}
 	// Die vorberechnete Liste wird benutzt: eine umgedrehte Liste ergibt das
 	// umgedrehte Komitee.

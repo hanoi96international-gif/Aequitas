@@ -32,13 +32,19 @@ import (
 //     je Knoten verschieden, die Zeit bis auf die Uhr nicht.
 //   - Die Fenster zu t stehen fest, sobald t erreicht ist: eine Bindung wirkt
 //     erst erzeugerFrist nach ihrem Zeitpunkt, und bis dahin hat jeder
-//     Knoten, der dem Netz folgt, sie nachgespielt. Jeder solche Knoten
-//     berechnet zu t dasselbe Komitee -- hoechstens targetCommitteeSize
-//     Erzeuger zugleich.
-//   - Ein Schluesselwechsel bleibt nahtlos: der neue Schluessel steht im
-//     Komitee, sobald sein Fenster beginnt, nicht erst in der naechsten
-//     Epoche (Sicherheitsdurchgang zum Komitee, MEDIUM-1 -- sonst stuende
-//     ein Netz mit einem Validator nach einem Wechsel bis zum Epochenende).
+//     Knoten, der dem Netz folgt, sie nachgespielt. Jeder solche Knoten mit
+//     demselben Stand berechnet zu t dasselbe Komitee -- hoechstens
+//     targetCommitteeSize Erzeuger zugleich. (Geschlossen liest der Stand
+//     die eigene Liste und den eigenen Schluessel; verschieden wird es erst
+//     mit mehr als targetCommitteeSize Eintraegen. An einer Fenstergrenze
+//     sind sich Knoten so lange uneinig, wie ihre Uhren auseinanderliegen.)
+//   - Ein Schluesselwechsel bleibt nahtlos, solange der neue Schluessel
+//     unter den ersten targetCommitteeSize Zugelassenen liegt -- mit
+//     hoechstens so vielen Zugelassenen (geschlossener Betrieb) immer: er
+//     steht im Komitee, sobald sein Fenster beginnt, nicht erst in der
+//     naechsten Epoche (Sicherheitsdurchgang zum Komitee, MEDIUM-1 -- sonst
+//     stuende ein Netz mit einem Validator nach einem Wechsel bis zum
+//     Epochenende).
 //
 // Das Komitee bleibt eine Regel fuer den eigenen Knoten: kein Knoten weist
 // einen Block ab, weil sein Erzeuger nicht im Komitee ist (das waere eine
@@ -61,6 +67,10 @@ import (
 // Bindungen fuer Schluessel haelt, die nie erzeugen, oder Adressen sucht, die
 // in einer Epoche vorn liegen, belegt Sitze -- vor einem offenen Betrieb
 // braucht die Auswahl einen Zufall, der zur Zeit der Bindung unbekannt ist.
+// Und die Kosten wachsen mit dem Verlauf: bei 100.000 Schluesseln rund
+// 250 ms Vorberechnung je Auffrischen (auch unter replayMu, nach Bloecken
+// mit Bindungen) und bis zu 6 ms je Block, wenn weniger als
+// targetCommitteeSize zugelassen sind.
 
 // komiteePunkte: die Rangzahl einer Adresse in einer Epoche (kleiner ist
 // vorn) -- fuer die lokale Liste und das Register dieselbe.
