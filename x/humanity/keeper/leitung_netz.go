@@ -750,16 +750,57 @@ func (dag *BlockDAG) leitungPeers() []string {
 // validatorIPsFrei: weitergeleitete Anfragen kommen von den Validatoren
 // selbst; die Ratenbegrenzung eines einzelnen Menschen darf sie nicht
 // treffen (der weiterleitende Knoten hat seine eigene schon angewandt).
+//
+// NUR DER SATZ, NIE LOOPBACK, NEU AUFGEBAUT (Pruefung von #319, MEDIUM-2).
+// Bisher kam jede URL, die irgendein zugelassener Validator in einer
+// Leitungsnachricht ankuendigte, ungefiltert und fuer immer in die Liste.
+// Wer 127.0.0.1 oder die Adresse eines vorgeschalteten Proxys ankuendigte,
+// hob die Grenze je IP fuer jeden auf, der ueber diesen Weg kommt (/rpc,
+// Leitung, Bindung, Erneuerung). Jetzt: nur Mitglieder des eigenen Satzes,
+// keine Loopback-, unspezifizierte, Link-Local- oder Multicast-Adresse, und
+// der Teil der Validatoren wird bei jedem Lauf ersetzt (wer den Satz
+// verlaesst, faellt heraus). Private und CGNAT-Adressen bleiben moeglich --
+// Validatoren in einem privaten Netz (Tailscale) leiten so weiter --, aber
+// mit Warnung: hinter einem Proxy mit dieser Adresse hoebe das die Grenze
+// fuer alle auf.
 func validatorIPsFrei(l *Leitung) {
 	var ips []string
-	for _, u := range l.URLs() {
-		if pu, err := url.Parse(u); err == nil {
-			if ip := net.ParseIP(pu.Hostname()); ip != nil {
-				ips = append(ips, ip.String())
-			}
+	for a, u := range l.SatzURLs() {
+		pu, err := url.Parse(u)
+		if err != nil {
+			continue
 		}
+		ip := net.ParseIP(pu.Hostname())
+		if !freistellbar(ip) {
+			if ip != nil {
+				fmt.Printf("[LEITUNG] ⚠ %s kuendigt %s an -- wird nicht von der Ratenbegrenzung freigestellt\n", kurzAdresse(a), ip)
+			}
+			continue
+		}
+		if isPrivateOrLoopback(ip.String()) {
+			privatFreiWarnen(a, ip.String())
+		}
+		ips = append(ips, ip.String())
 	}
-	rpcRateLimitFreiErgaenzen(ips)
+	rpcRateLimitFreiValidatoren(ips)
+}
+
+// freistellbar: eine Adresse, von der ein anderer Validator weiterleiten
+// kann -- nie Loopback (das waere dieser Rechner selbst und jeder lokale
+// Proxy), unspezifiziert, Link-Local oder Multicast.
+func freistellbar(ip net.IP) bool {
+	return ip != nil && !ip.IsLoopback() && !ip.IsUnspecified() && !ip.IsLinkLocalUnicast() &&
+		!ip.IsLinkLocalMulticast() && !ip.IsInterfaceLocalMulticast() && !ip.IsMulticast()
+}
+
+var privatFreiGewarnt sync.Map
+
+func privatFreiWarnen(validator, ip string) {
+	if _, schon := privatFreiGewarnt.LoadOrStore(ip, true); schon {
+		return
+	}
+	fmt.Printf("[LEITUNG] ⚠ %s ist unter einer privaten Adresse (%s) von der Ratenbegrenzung freigestellt -- nur richtig, wenn die Validatoren ein privates Netz teilen. Steht dieser Knoten hinter einem Proxy mit dieser Adresse, gilt die Grenze je IP fuer niemanden mehr.\n",
+		kurzAdresse(validator), ip)
 }
 
 // merkeValidatorMensch: nur aus geprueften Bindungen (eigene Registrierung

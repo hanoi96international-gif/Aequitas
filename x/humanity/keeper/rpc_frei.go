@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"sync/atomic"
 )
 
@@ -36,16 +37,46 @@ import (
 // Leer (Vorgabe) = niemand ist freigestellt, das Verhalten ist unveraendert.
 var rpcRateLimitFreiListe atomic.Pointer[map[string]bool]
 
+// rpcRateLimitFreiUmgebung: der Teil aus AEQUITAS_RPC_RATE_LIMIT_FREI -- fest
+// fuer die Laufzeit des Prozesses; der Teil der Validatoren wird darueber neu
+// gelegt (rpcRateLimitFreiValidatoren).
+var rpcRateLimitFreiUmgebung map[string]bool
+
 func init() {
-	m := rpcRateLimitFreiAusUmgebung()
+	rpcRateLimitFreiUmgebung = rpcRateLimitFreiAusUmgebung()
+	m := map[string]bool{}
+	for k, v := range rpcRateLimitFreiUmgebung {
+		m[k] = v
+	}
 	rpcRateLimitFreiListe.Store(&m)
 }
 
-// rpcRateLimitFreiErgaenzen stellt weitere Adressen frei -- die der anderen
-// Validatoren bei rotierendem Leiter (leitung_netz.go): sie leiten die
-// Anfragen ihrer Nutzer weiter und haben deren Ratenbegrenzung schon
-// angewandt. Nur IP-Literale; Namen werden nie aufgeloest.
+var rpcRateLimitFreiMu sync.Mutex
+
+// rpcRateLimitFreiValidatoren ERSETZT den Teil der Validatoren: die Liste
+// ist danach die aus der Umgebung plus genau diese Adressen (leitung_netz.go,
+// validatorIPsFrei). Wer den Satz verlaesst, ist nicht mehr freigestellt.
+func rpcRateLimitFreiValidatoren(ips []string) {
+	rpcRateLimitFreiMu.Lock()
+	defer rpcRateLimitFreiMu.Unlock()
+	neu := map[string]bool{}
+	for k, v := range rpcRateLimitFreiUmgebung {
+		neu[k] = v
+	}
+	for _, s := range ips {
+		if ip := net.ParseIP(strings.TrimSpace(s)); ip != nil {
+			neu[ip.String()] = true
+		}
+	}
+	rpcRateLimitFreiListe.Store(&neu)
+}
+
+// rpcRateLimitFreiErgaenzen stellt weitere Adressen zusaetzlich frei (nur
+// noch Tests; die Validatoren legt rpcRateLimitFreiValidatoren neu fest). Nur
+// IP-Literale; Namen werden nie aufgeloest.
 func rpcRateLimitFreiErgaenzen(ips []string) {
+	rpcRateLimitFreiMu.Lock()
+	defer rpcRateLimitFreiMu.Unlock()
 	alt := rpcRateLimitFreiListe.Load()
 	neu := map[string]bool{}
 	if alt != nil {
