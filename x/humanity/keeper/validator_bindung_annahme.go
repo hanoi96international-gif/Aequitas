@@ -262,14 +262,21 @@ func (a *APIServer) handleValidatorBindung(w http.ResponseWriter, r *http.Reques
 	}
 	// Erst den Rumpf lesen, dann einen Platz belegen (Pruefung von #326, B):
 	// sonst hielten vier langsame Ruempfe alle Plaetze bis zum ReadTimeout,
-	// und keine Bindung kaeme mehr an. Hinter zumLeiter mit Leitung ist er
-	// schon gelesen; die Frist gilt dann nicht mehr.
-	_ = http.NewResponseController(w).SetReadDeadline(time.Now().Add(validatorBindungLeseFrist))
+	// und keine Bindung kaeme mehr an. Die Frist gilt nur fuer das Lesen und
+	// wird danach geloescht: hinter zumLeiter (mit Leitung) ist der Rumpf
+	// schon gelesen, und eine stehengebliebene Frist liefe auf dem
+	// Hintergrund-Lesen der Verbindung ab -- net/http braeche den Kontext der
+	// Verbindung ab, auch fuer jede Folgeanfrage auf ihr (Pruefung von #327,
+	// LOW-1). Nach einem Fehler bleibt sie: net/http verwirft vor der Antwort
+	// den Rest des Rumpfs und hinge ohne Frist.
+	rc := http.NewResponseController(w)
+	_ = rc.SetReadDeadline(time.Now().Add(validatorBindungLeseFrist))
 	rumpf, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 4<<10))
 	if err != nil {
 		jsonError(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
+	_ = rc.SetReadDeadline(time.Time{})
 	if validatorBindungLaufend.Add(1) > validatorBindungGleichzeitig {
 		validatorBindungLaufend.Add(-1)
 		jsonError(w, "busy, try again shortly", http.StatusServiceUnavailable)

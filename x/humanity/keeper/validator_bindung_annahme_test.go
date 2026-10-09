@@ -450,9 +450,10 @@ func TestHandleValidatorBindung_LangsamerRumpfHaeltKeinenPlatz(t *testing.T) {
 	}
 }
 
-// Pruefung von #326, B: der Rumpf hat eine eigene Lese-Frist -- auch hinter
-// bindungsGrenze (statusMerker reicht die Verbindung durch). Danach 400, und
-// die IP gilt als Fehlversuch.
+// Pruefung von #326, B, und #327, LOW-2: der Rumpf hat eine eigene
+// Lese-Frist -- durch die Kette des Servers, hinter bindungsGrenze
+// (statusMerker) und auch fuer Clients mit Accept-Encoding: gzip
+// (gzipResponseWriter). Danach 400, und die IP gilt als Fehlversuch.
 func TestHandleValidatorBindung_LeseFrist(t *testing.T) {
 	validatorRegisterOverride.Store(1)
 	alt := validatorBindungLeseFrist
@@ -462,27 +463,91 @@ func TestHandleValidatorBindung_LeseFrist(t *testing.T) {
 		validatorBindungLeseFrist = alt
 		bindungRateLimit.Delete("validator-bindung-fehl:127.0.0.1")
 	})
-	bindungRateLimit.Delete("validator-bindung-fehl:127.0.0.1")
 	a := &APIServer{state: newTestState()}
-	srv := httptest.NewServer(a.bindungsGrenze(a.handleValidatorBindung))
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/validator-bindung", a.bindungsGrenze(a.handleValidatorBindung))
+	srv := httptest.NewServer(serverKette(mux))
+	defer srv.Close()
+	for _, kodierung := range []string{"", "gzip, deflate, br"} {
+		bindungRateLimit.Delete("validator-bindung-fehl:127.0.0.1")
+		conn, err := net.Dial("tcp", srv.Listener.Addr().String())
+		if err != nil {
+			t.Fatal(err)
+		}
+		kopf := ""
+		if kodierung != "" {
+			kopf = "Accept-Encoding: " + kodierung + "\r\n"
+		}
+		fmt.Fprintf(conn, "POST /api/validator-bindung HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\n%sContent-Length: 300\r\n\r\n{\"operator\":\"", kopf)
+		beginn := time.Now()
+		conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+		resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
+		if err != nil {
+			conn.Close()
+			t.Fatalf("Accept-Encoding %q: keine Antwort binnen 5 s -- die Lese-Frist greift nicht: %v", kodierung, err)
+		}
+		resp.Body.Close()
+		conn.Close()
+		if resp.StatusCode != http.StatusBadRequest || time.Since(beginn) > 3*time.Second {
+			t.Fatalf("Accept-Encoding %q: Status %d nach %v, erwartet 400 nach etwa 300 ms", kodierung, resp.StatusCode, time.Since(beginn))
+		}
+		if _, ok := bindungRateLimit.Load("validator-bindung-fehl:127.0.0.1"); !ok {
+			t.Fatalf("Accept-Encoding %q: der abgebrochene Rumpf zaehlt nicht als Fehlversuch", kodierung)
+		}
+	}
+}
+
+// Pruefung von #327, LOW-1: hinter zumLeiter (mit Leitung) ist der Rumpf
+// schon gelesen. Bliebe die Lese-Frist stehen, liefe sie auf dem
+// Hintergrund-Lesen ab, und net/http braeche den Kontext der Verbindung ab --
+// jede Folgeanfrage auf ihr (Caddy und Folger halten Verbindungen offen) kaeme
+// mit abgebrochenem Kontext an.
+func TestHandleValidatorBindung_FristNachDemLesenGeloescht(t *testing.T) {
+	validatorRegisterOverride.Store(1)
+	alt := validatorBindungLeseFrist
+	validatorBindungLeseFrist = 100 * time.Millisecond
+	t.Cleanup(func() {
+		validatorRegisterOverride.Store(0)
+		validatorBindungLeseFrist = alt
+	})
+	a := &APIServer{state: newTestState()}
+	mux := http.NewServeMux()
+	// Wie zumLeiter mit Leitung: erst den Rumpf lesen, dann der Handler; der
+	// Rest dauert laenger als die Frist (etwa das Warten auf cs.mu).
+	mux.HandleFunc("/api/validator-bindung", func(w http.ResponseWriter, r *http.Request) {
+		rumpf, _ := io.ReadAll(r.Body)
+		r.Body = io.NopCloser(bytes.NewReader(rumpf))
+		a.handleValidatorBindung(w, r)
+		time.Sleep(4 * validatorBindungLeseFrist)
+	})
+	mux.HandleFunc("/kontext", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, "%v", r.Context().Err())
+	})
+	srv := httptest.NewServer(serverKette(mux))
 	defer srv.Close()
 	conn, err := net.Dial("tcp", srv.Listener.Addr().String())
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer conn.Close()
-	fmt.Fprintf(conn, "POST /api/validator-bindung HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\nContent-Length: 300\r\n\r\n{\"operator\":\"")
-	beginn := time.Now()
-	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
-	resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
+	conn.SetDeadline(time.Now().Add(10 * time.Second))
+	leser := bufio.NewReader(conn)
+	koerper := `{"operator":"0x1"}`
+	fmt.Fprintf(conn, "POST /api/validator-bindung HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\nContent-Length: %d\r\n\r\n%s", len(koerper), koerper)
+	resp, err := http.ReadResponse(leser, nil)
 	if err != nil {
-		t.Fatalf("keine Antwort binnen 5 s -- die Lese-Frist greift nicht: %v", err)
+		t.Fatal(err)
 	}
+	io.Copy(io.Discard, resp.Body)
 	resp.Body.Close()
-	if resp.StatusCode != http.StatusBadRequest || time.Since(beginn) > 3*time.Second {
-		t.Fatalf("Status %d nach %v, erwartet 400 nach etwa 300 ms", resp.StatusCode, time.Since(beginn))
+	fmt.Fprintf(conn, "GET /kontext HTTP/1.1\r\nHost: x\r\n\r\n")
+	resp, err = http.ReadResponse(leser, nil)
+	if err != nil {
+		t.Fatalf("keine Antwort auf die Folgeanfrage derselben Verbindung: %v", err)
 	}
-	if _, ok := bindungRateLimit.Load("validator-bindung-fehl:127.0.0.1"); !ok {
-		t.Fatal("der abgebrochene Rumpf zaehlt nicht als Fehlversuch")
+	b, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if string(b) != "<nil>" {
+		t.Fatalf("Folgeanfrage auf derselben Verbindung: Kontext %q -- die Lese-Frist ist stehengeblieben", b)
 	}
 }
