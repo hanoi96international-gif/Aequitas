@@ -264,7 +264,7 @@ func (a *APIServer) handleValidatorBindung(w http.ResponseWriter, r *http.Reques
 	// Je Betreiber eine angenommene Bindung je 30 s. Gesetzt wird der Platz
 	// erst nach der Annahme -- die braucht die Unterschrift des Betreibers,
 	// also kann kein Fremder ihn verbrauchen.
-	if ts, ok := registerRateLimit.Load("validator-bindung-betreiber:" + betreiber); ok && time.Since(ts.(time.Time)) < validatorBindungSperre {
+	if ts, ok := bindungRateLimit.Load("validator-bindung-betreiber:" + betreiber); ok && time.Since(ts.(time.Time)) < validatorBindungSperre {
 		jsonError(w, "this operator bound a key moments ago -- try again shortly", http.StatusTooManyRequests)
 		return
 	}
@@ -283,7 +283,7 @@ func (a *APIServer) handleValidatorBindung(w http.ResponseWriter, r *http.Reques
 		}
 		return
 	}
-	registerRateLimit.Store("validator-bindung-betreiber:"+betreiber, time.Now())
+	bindungRateLimit.Store("validator-bindung-betreiber:"+betreiber, time.Now())
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true, "operator": betreiber, "signing": strings.ToLower(req.Signing), "ts": req.Zeit,
 		// Angenommen heisst: im Ausgang des Leiters. Auf der Kette steht die
@@ -304,7 +304,7 @@ func (a *APIServer) bindungsGrenze(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 		schluessel := "validator-bindung-fehl:" + clientIP(r)
-		if ts, ok := registerRateLimit.Load(schluessel); ok && time.Since(ts.(time.Time)) < validatorBindungSperre {
+		if ts, ok := bindungRateLimit.Load(schluessel); ok && time.Since(ts.(time.Time)) < validatorBindungSperre {
 			writeJSONCORS(w)
 			jsonError(w, "rate limited after a rejected binding, try again shortly", http.StatusTooManyRequests)
 			return
@@ -312,7 +312,7 @@ func (a *APIServer) bindungsGrenze(next http.HandlerFunc) http.HandlerFunc {
 		rec := &statusMerker{ResponseWriter: w, status: http.StatusOK}
 		next(rec, r)
 		if rec.status == http.StatusBadRequest || rec.status == http.StatusConflict {
-			registerRateLimit.Store(schluessel, time.Now())
+			bindungRateLimit.Store(schluessel, time.Now())
 		}
 	}
 }

@@ -117,8 +117,47 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
 - Die Freiliste wird etwa einmal je Minute neu aufgebaut: wer den Satz
   verlässt, bleibt bis zu 60 s frei, neue Mitglieder sind bis zu 60 s
   begrenzt.
+- **Geteilte Karten der Grenzen je Absender** (Prüfung von #324, LOW-6;
+  `begrenzte_karte.go`): Seit #324 halten `registerRateLimit`, `ipBurst`,
+  `rpcRateLimit` und `walletRateLimit` je höchstens 200.000 Schlüssel; voll
+  heißt, neue Absender werden begrenzt. Ein Absender belegt aber je Funktion
+  einen Schlüssel – in `registerRateLimit` bis zu zehn, in `ipBurst` bis zu
+  fünf. 20.000 bzw. 40.000 Absender (mit IPv6 je /64: ein bis zwei /48)
+  füllen eine Karte, danach sind alle neuen Absender dieser Karte gesperrt,
+  solange der Angreifer etwa 3.300 Anfragen je Sekunde hält. Die
+  Validator-Bindung hat seit dem Folge-PR eine eigene Karte
+  (`bindungRateLimit`), die frei gewählten Wallets ebenso. Fix: ein Eintrag
+  je Absender mit den Werten je Funktion; bei voller Karte gröber zählen
+  (/48, /24) statt global zu sperren.
+- **Zwei anhängende Proxys** (Prüfung von #324, INFO-4/INFO-9): `clientIP`
+  nimmt den letzten Eintrag von `X-Forwarded-For` – richtig hinter genau
+  einem Proxy (Caddy). Kommt ein zweiter davor (CDN, Load-Balancer), ist der
+  letzte Eintrag dieser Proxy, und alle Nutzer zählen unter ihm. Dann
+  braucht es eine Liste vertrauenswürdiger Proxys und den letzten Eintrag
+  davor.
+- **IPv6 über Caddy zählt unter dem Gateway** (Prüfung von #324, MEDIUM-5):
+  `aequitas-net` hat kein IPv6; IPv6-Verbindungen an 80/443 nimmt
+  docker-proxy an und reicht sie vom Gateway des Docker-Netzes an Caddy.
+  Caddy setzt dann das Gateway als Absender – alle IPv6-Nutzer teilen sich
+  einen Zähler. Abhilfe im Betrieb (siehe unten): IPv6 im Docker-Netz
+  einschalten oder `"userland-proxy": false`.
+- **Proof-Server zählt einen Knoten als einen Absender** (Prüfung von #324,
+  Nebenbefund): Der Proof-Server begrenzt je IP (`PROVE_RATE_MAX` = 30 je
+  Minute, `server.js`) und sieht nur den Knoten. Der Knoten lässt 12 je
+  Minute und Absender durch – drei Absender leeren das gemeinsame Budget.
+  Fix: Grenze am Knoten auf das Budget des Proof-Servers abstimmen oder den
+  Proof-Server je Wallet zählen lassen (der Knoten reicht sie signiert
+  durch).
 
 ## Betrieb – bei dir
+- **docker-proxy auf `[::]:8080` prüfen** (Prüfung von #324, MEDIUM-5): auf
+  C1 und C2 `ss -ltnp 'sport = :8080'`. Steht dort `docker-proxy` auf
+  `[::]:8080`, erreichen IPv6-Clients den Knoten am Proxy vorbei vom
+  Gateway aus. Seit dem Folge-PR zu #324 glaubt der Knoten dem Gateway keinen
+  `X-Forwarded-For` mehr; trotzdem 8080 nur auf IPv4 veröffentlichen
+  (`-p 0.0.0.0:8080:8080`) oder in `/etc/docker/daemon.json`
+  `"userland-proxy": false` setzen. Auf Boxen mit Caddy muss 8080 gar nicht
+  öffentlich sein.
 - `COORDINATOR_BETREIBER_WALLET` und `VALIDATOR_BETREIBER_WALLET` auf den
   Boxen setzen (die Deploy-Workflows übernehmen die alte Umgebung, die neuen
   Variablen kommen nicht von selbst). Ohne sie stellt der Dienst keinen

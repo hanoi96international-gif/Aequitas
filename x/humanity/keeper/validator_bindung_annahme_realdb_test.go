@@ -216,8 +216,8 @@ func TestHandleValidatorBindung_JeBetreiber_RealDB(t *testing.T) {
 	h := a.bindungsGrenze(a.handleValidatorBindung)
 	ip := "192.0.2.77"
 	t.Cleanup(func() {
-		registerRateLimit.Delete("validator-bindung-fehl:" + ip)
-		registerRateLimit.Delete("validator-bindung-betreiber:" + adrVon(op))
+		bindungRateLimit.Delete("validator-bindung-fehl:" + ip)
+		bindungRateLimit.Delete("validator-bindung-betreiber:" + adrVon(op))
 	})
 	posten := func(tx Transaction) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(http.MethodPost, "/api/validator-bindung", bytes.NewReader(bindungsKoerper(t, tx)))
@@ -230,7 +230,7 @@ func TestHandleValidatorBindung_JeBetreiber_RealDB(t *testing.T) {
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "next block") {
 		t.Fatalf("erste Bindung: %d %s", rec.Code, rec.Body.String())
 	}
-	if _, ok := registerRateLimit.Load("validator-bindung-fehl:" + ip); ok {
+	if _, ok := bindungRateLimit.Load("validator-bindung-fehl:" + ip); ok {
 		t.Fatal("Erfolg als Fehlversuch gezaehlt")
 	}
 	if rec := posten(bindungUnterschrieben(t, op, k2, f.jetzt+1)); rec.Code != http.StatusTooManyRequests {
