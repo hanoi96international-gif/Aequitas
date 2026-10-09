@@ -12,7 +12,8 @@ import (
 // ipBurst, rpcRateLimit und registerRateLimit fuehren je Absender einen
 // Eintrag. Die Eintraege verfallen (Aufraeumen jede Minute), ihre ZAHL war
 // aber nur durch Anfragerate mal Lebensdauer begrenzt: gemessen 228 B je
-// Schluessel, bei 5.000 neuen Adressen je Sekunde rund 137 MB allein in
+// Schluessel (ipBurst und erneuerungVon seit #319 mit zuletzt etwa 33 B
+// mehr), bei 5.000 neuen Adressen je Sekunde rund 137 MB allein in
 // ipBurst. Jetzt hat jede Karte eine feste Hoechstzahl.
 //
 // Voll heisst begrenzen: ein NEUER Absender wird abgewiesen, bis das
@@ -20,17 +21,21 @@ import (
 // wer schon einen Eintrag hat, zaehlt weiter wie bisher. Mit IPv6 je /64
 // (clientIP) braucht ein Angreifer dafuer viele Netze -- aber nicht so viele
 // wie Eintraege: ein Absender belegt je Funktion einen Schluessel (in
-// registerRateLimit bis zu zehn, in ipBurst bis zu fuenf), 20.000 bzw.
-// 40.000 Absender fuellen also eine Karte (Pruefung von #324, LOW-6;
-// docs/OFFEN.md). Die Validator-Bindung hat darum eine eigene Karte
-// (bindungRateLimit), ebenso die frei gewaehlten Wallets (walletRateLimit)
-// und die Betreiber (betreiberRateLimit).
+// registerRateLimit bis zu zehn, in ipBurst bis zu sieben), 20.000 bzw.
+// etwa 28.600 Absender fuellen also eine Karte (Pruefung von #324, LOW-6,
+// und von #319, INFO-42; docs/OFFEN.md). Die Validator-Bindung hat darum
+// eine eigene Karte (bindungRateLimit), ebenso die frei gewaehlten Wallets
+// (walletRateLimit), die Betreiber (betreiberRateLimit) und die
+// weitergeleiteten Erneuerungen (erneuerungVon, ip_burst.go).
 // Abgewiesene neue Absender stehen je Karte in /api/health/combined
 // (grenzen_je_absender) und hoechstens einmal je Minute im Log.
 
 // grenzenSchluesselHoechstens: Eintraege je Karte -- bei 228 B je Schluessel
-// etwa 45 MB, und weit ueber dem, was ein Knoten in zwei Minuten an echten
-// Absendern sieht.
+// etwa 45 MB ohne Buchungen, und weit ueber dem, was ein Knoten in zwei
+// Minuten an echten Absendern sieht. Jede Buchung im Fenster kostet etwa 24 B
+// dazu (ein Pruefschluessel mit 600 Buchungen gut 16 KB); diesen Teil deckelt
+// die Anfragerate, nicht die Zahl der Schluessel (Pruefung von #319,
+// INFO-42).
 const grenzenSchluesselHoechstens = 200_000
 
 type begrenzteKarte struct {

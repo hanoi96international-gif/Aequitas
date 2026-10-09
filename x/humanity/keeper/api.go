@@ -724,6 +724,7 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		"vorbehalte":               a.state.VorbehaltStand(),
 		"leistungsproben":          ProbenStand(),
 		"leitung":                  a.state.LeitungStand(),
+		"weiterleitung_nachweis":   WeiterleitungNachweisStand(),
 		"leistungsnachweis":        LeistungsnachweisStand(),
 		// Wie das Nachspielen die Ueberweisungen anwendet -- parallel oder seriell.
 		"replay_pfad":         ReplayPfadStand(),
@@ -1175,7 +1176,7 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	mux.HandleFunc("/api/register-coordinator-key", a.handleRegisterCoordinatorKey)
 	mux.HandleFunc("/api/coordinators", a.handleCoordinatorList)
 	// Zum Leiter: die Erneuerung geht durch dessen Annahme-Tor (grant_staffel.go).
-	mux.HandleFunc("/api/liveness-renewal", a.zumLeiter(a.handleLivenessRenewal))
+	mux.HandleFunc("/api/liveness-renewal", a.erneuerungsGrenze(a.zumLeiter(a.handleLivenessRenewal)))
 	// Unternehmen (wirtschaft.go, wirtschaft_api.go)
 	mux.HandleFunc("/api/wirtschaft/regeln", a.handleWirtschaftRegeln)
 	mux.HandleFunc("/api/wirtschaft/konto", a.handleWirtschaftKonto)

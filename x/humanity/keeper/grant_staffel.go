@@ -38,6 +38,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"sort"
 	"strings"
@@ -333,6 +334,102 @@ func merkeProveKlasse(respBody []byte) {
 
 // ------------------------------------------------------------ API
 
+// erneuerungsGrenze: hoechstens burstErneuerungJeIP Erneuerungen je Minute und
+// Absender (Pruefung #314, LOW-3: je Anfrage eine Registerabfrage und die
+// Zulassung, beides Datenbank). Gezaehlt auf dem Knoten, den der Coordinator
+// erreicht -- VOR der Weiterleitung zum Zustaendigen (zumLeiter), sonst
+// zaehlte der Zustaendige alle Anfragen eines Folgers unter dessen Adresse
+// (ein Angreifer sperrte so jeden ehrlichen Coordinator hinter demselben
+// Folger aus) oder, mit dem Folger in der Freiliste, gar nicht (Pruefung von
+// #319, MEDIUM-1). Beim Empfaenger zaehlt eine weitergeleitete Anfrage
+//   - mit gueltigem Nachweis (weiterleitung_nachweis.go) unter dem Absender,
+//     fuer den der Folger sie unterschrieben hat -- mit derselben Grenze, in
+//     einem eigenen Zaehler je Folger. Ein Angreifer verbraucht so nur sein
+//     eigenes Budget; einen gemeinsamen Vorrat gibt es nicht (Pruefungen von
+//     #319, MEDIUM-7 und MEDIUM-11);
+//   - ohne Nachweis von einem Knoten der Freiliste (TCP-Adresse; aeltere
+//     Folger) gar nicht;
+//   - sonst -- auch mit gefaelschtem Kopf -- wie eine direkte Anfrage unter
+//     ihrer Adresse (Pruefung von #319, LOW-8).
+//
+// Hoechstens burstNachweisPruefungJeIP Nachweise je Minute und Absender
+// werden geprueft oder sind gerade in Pruefung -- unabhaengig vom
+// Direktzaehler. Gueltige zaehlen danach nicht mehr mit.
+//
+// Vor der Aktivierung der Staffel nichts (der Handler antwortet 409).
+func (a *APIServer) erneuerungsGrenze(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			next(w, r)
+			return
+		}
+		// Vor dem Stichtag gleich hier: nichts zaehlen, nichts unterschreiben
+		// und weiterleiten, nur damit der Zustaendige 409 sagt (Pruefung von
+		// #319, INFO-22).
+		if !stagedGrantAktiv(time.Now().Unix()) {
+			writeJSONCORS(w)
+			jsonError(w, "staged grant not active yet", http.StatusConflict)
+			return
+		}
+		absender := erneuerungsAbsender(r)
+		schluessel := "liveness-renewal:" + absender
+		if r.Header.Get(weitergeleitetKopf) != "" {
+			// Die Pruefung haengt nicht am Direktzaehler: ein gescheiterter
+			// Nachweis faellt dort hinein und sperrte sonst auch die
+			// gueltigen danach (Pruefung von #319, LOW-24). Ihre Kosten
+			// (Koerper lesen, ecrecover) deckelt eine eigene, grosszuegige
+			// Grenze je Absender. Gebucht wird VOR der Pruefung -- ein
+			// Nachsehen ohne Buchung liess gleichzeitige Anfragen (langsamer
+			// Koerper) alle vorbei, bevor die erste buchte (LOW-30). Ein
+			// gueltiger Nachweis bekommt seine Buchung zurueck: sonst teilten
+			// sich die eines ehrlichen Folgers das Budget mit jedem, der ueber
+			// ihn kommt, und ein Angreifer mit 21 Adressen sperrte alle hinter
+			// ihm aus (MEDIUM-28).
+			fuer := ""
+			pruefung := "liveness-renewal-pruefung:" + absender
+			if r.Header.Get(weiterleitungNachweisKopf) != "" {
+				if gebucht, ok := burstBuchen(pruefung, burstNachweisPruefungJeIP, burstFenster); ok {
+					fuer = a.state.weiterleitungFuer(r, time.Now())
+					if fuer != "" {
+						burstErstatten(pruefung, gebucht)
+					}
+				}
+			}
+			if fuer != "" {
+				schluessel = erneuerungVonPraefix + fuer
+			} else if rpcRateLimitFrei(r) {
+				next(w, r)
+				return
+			}
+		}
+		if !burstErlaubt(schluessel, burstErneuerungJeIP, burstFenster) {
+			writeJSONCORS(w)
+			jsonError(w, "too many renewal requests from this address -- please retry in a minute", http.StatusTooManyRequests)
+			return
+		}
+		next(w, r)
+	}
+}
+
+// erneuerungsAbsender: unter welcher Adresse eine Erneuerung zaehlt -- die
+// IP aus clientIP in einer Schreibweise, und wenn clientIP keine IP ist
+// (Kopf eines privaten TCP-Partners), die TCP-Adresse: sonst zaehlte jede
+// erfundene Schreibweise unter einem neuen Schluessel (Pruefung von #319,
+// INFO-23). zumLeiter leitet eine solche Anfrage nicht weiter.
+func erneuerungsAbsender(r *http.Request) string {
+	if ip := net.ParseIP(clientIP(r)); ip != nil {
+		return ip.String()
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.String()
+	}
+	return host
+}
+
 // handleLivenessRenewal nimmt eine Erneuerung entgegen: der Coordinator hat
 // eine zweite Lebendigkeitspruefung bestanden gesehen und das mit seinem
 // Ed25519-Schluessel bescheinigt (erneuerungsNachricht, mit Chain-ID).
@@ -376,7 +473,25 @@ func (a *APIServer) handleLivenessRenewal(w http.ResponseWriter, r *http.Request
 	// (bescheinigungPruefen). Fehlt der Eintrag oder hat er keine
 	// Unterschriften (vor dem 06.10.2026 eingetragen), muss der Coordinator
 	// sich einmal neu eintragen.
-	bindung, ok := a.state.CoordinatorBindungLokal(req.PublicKey)
+	// Die Unterschrift der Bescheinigung haengt nur am Schluessel und der
+	// Nachricht: VOR der Registerabfrage -- eine Muell-Unterschrift kostet
+	// keine Datenbank. Dieselbe Pruefung wie in bescheinigungPruefen (unten
+	// noch einmal), mit derselben Schreibweise (erneuerungsTransaktion).
+	if !ed25519PruefenStreng(strings.ToLower(strings.TrimSpace(req.PublicKey)), ed25519SigNormal(req.Signature),
+		[]byte(erneuerungsNachricht(wallet, req.IssuedAt))) {
+		jsonError(w, "invalid renewal attestation: Bescheinigung passt nicht zu Wallet und Zeitpunkt (oder ist keine Ed25519-Unterschrift in kanonischer Schreibweise)", http.StatusForbidden)
+		return
+	}
+	bindung, ok, err := a.state.coordinatorBindungLesen(r.Context(), req.PublicKey)
+	if err != nil {
+		// Zeitgrenze, Abbruch oder Datenbank: abgelehnt wie "nicht
+		// eingetragen", aber mit dem Rat zu wiederholen -- nicht, sich neu
+		// einzutragen (Pruefung von #319, INFO-8). Die Einzelheiten gehen
+		// ins Log, nicht an den Aufrufer.
+		fmt.Printf("[API] liveness renewal: coordinator register not readable for %q: %v\n", kurzAdresse(wallet), err)
+		jsonError(w, "coordinator register temporarily unavailable, please retry shortly", http.StatusServiceUnavailable)
+		return
+	}
 	if !ok {
 		jsonError(w, "renewal attestation not signed by a registered coordinator (or its registration predates stored signatures -- register the coordinator key again)", http.StatusForbidden)
 		return

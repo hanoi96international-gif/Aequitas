@@ -546,12 +546,19 @@ func (cs *ChainState) weiterleitungDenkbar(r *http.Request) bool {
 }
 
 func (cs *ChainState) weiterleitungsZiel(r *http.Request, konten ...string) string {
+	_, u := cs.weiterleitungsZielMitAdresse(r, konten...)
+	return u
+}
+
+// weiterleitungsZielMitAdresse: dasselbe, dazu die Adresse des Ziels (fuer
+// den Nachweis, weiterleitung_nachweis.go).
+func (cs *ChainState) weiterleitungsZielMitAdresse(r *http.Request, konten ...string) (string, string) {
 	l := cs.leitung.Load()
 	if l == nil || r.Header.Get(weitergeleitetKopf) != "" {
-		return ""
+		return "", ""
 	}
 	if cs.nimmtAnFuer(konten...) {
-		return ""
+		return "", ""
 	}
 	var addr, u string
 	if len(konten) == 0 {
@@ -560,14 +567,14 @@ func (cs *ChainState) weiterleitungsZiel(r *http.Request, konten ...string) stri
 		addr, u = l.Zustaendig(konten[0])
 		for _, k := range konten[1:] {
 			if a, _ := l.Zustaendig(k); a != addr {
-				return ""
+				return "", ""
 			}
 		}
 	}
 	if addr == "" || u == "" || addr == l.ich {
-		return ""
+		return "", ""
 	}
-	return u
+	return addr, u
 }
 
 // anfrageKonten: welche Konten eine annehmende REST-Anfrage belastet.
@@ -654,6 +661,12 @@ var weiterleitungsKlient = &http.Client{Timeout: 20 * time.Second, CheckRedirect
 // Antwort zurueck. false = hat nicht geklappt, selbst bearbeiten (das Tor
 // antwortet dann mit einem wiederholbaren Fehler).
 func leiteWeiter(w http.ResponseWriter, r *http.Request, ziel string, body []byte) bool {
+	return leiteWeiterMit(w, r, ziel, body, nil)
+}
+
+// leiteWeiterMit: dasselbe mit zusaetzlichen Koepfen (der Nachweis,
+// weiterleitung_nachweis.go).
+func leiteWeiterMit(w http.ResponseWriter, r *http.Request, ziel string, body []byte, zusatz http.Header) bool {
 	req, err := http.NewRequest(r.Method, ziel+r.URL.RequestURI(), bytes.NewReader(body))
 	if err != nil {
 		return false
@@ -663,6 +676,9 @@ func leiteWeiter(w http.ResponseWriter, r *http.Request, ziel string, body []byt
 		req.Header.Set("Authorization", auth)
 	}
 	req.Header.Set(weitergeleitetKopf, "1")
+	for k, v := range zusatz {
+		req.Header[k] = v
+	}
 	resp, err := weiterleitungsKlient.Do(req)
 	if err != nil {
 		leitungWeiterleitungFehler.Add(1)
@@ -706,7 +722,32 @@ func (a *APIServer) zumLeiter(h http.HandlerFunc) http.HandlerFunc {
 			http.Error(w, `{"error":"unlesbar"}`, http.StatusBadRequest)
 			return
 		}
-		ziel := a.state.weiterleitungsZiel(r, anfrageKonten(r.URL.Path, body)...)
+		zielAdr, ziel := a.state.weiterleitungsZielMitAdresse(r, anfrageKonten(r.URL.Path, body)...)
+		var nachweis http.Header
+		if ziel != "" && weiterleitungUnterschreiben(r.URL.Path) {
+			// Was der Zustaendige nicht pruefen kann, wird nicht
+			// weitergeleitet: ein Koerper ueber seiner Lesegrenze oder eine
+			// Weiterleitung ohne Nachweis zaehlte dort unter der Adresse
+			// dieses Knotens, und ein Absender sperrte so alle hinter ihm aus
+			// (Pruefungen von #319, MEDIUM-18 und INFO-26). Ohne IP als
+			// Absender gibt es keinen Nachweis: gleich 400, ohne Datenbank
+			// (INFO-23, INFO-25).
+			if len(body) > weiterleitungKoerperMax {
+				http.Error(w, `{"error":"request body too large"}`, http.StatusRequestEntityTooLarge)
+				return
+			}
+			if net.ParseIP(clientIP(r)) == nil {
+				http.Error(w, `{"error":"sender address not determinable"}`, http.StatusBadRequest)
+				return
+			}
+			if a.blockchain != nil {
+				nachweis = weiterleitungNachweis(a.blockchain.GetSigningKey(), r, zielAdr, body, time.Now())
+			}
+			if nachweis == nil {
+				http.Error(w, `{"error":"cannot forward to the responsible node right now -- please retry shortly"}`, http.StatusServiceUnavailable)
+				return
+			}
+		}
 		if ziel == "" {
 			r.Body = io.NopCloser(bytes.NewReader(body))
 			h(w, r)
@@ -716,7 +757,7 @@ func (a *APIServer) zumLeiter(h http.HandlerFunc) http.HandlerFunc {
 			http.Error(w, `{"error":"rate limited"}`, http.StatusTooManyRequests)
 			return
 		}
-		if leiteWeiter(w, r, ziel, body) {
+		if leiteWeiterMit(w, r, ziel, body, nachweis) {
 			return
 		}
 		r.Body = io.NopCloser(bytes.NewReader(body))

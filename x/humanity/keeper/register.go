@@ -8,6 +8,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"net/netip"
 	"os"
 	"strings"
 	"sync"
@@ -204,7 +205,15 @@ func clientIP(r *http.Request) string {
 func absenderSchluessel(s string) string {
 	ip := net.ParseIP(s)
 	if ip == nil {
-		return s
+		// Mit Zone (fe80::1%eth0) kennt ParseIP die Adresse nicht; ohne Zone
+		// zaehlt sie wie jede andere je /64 -- sonst haette jede Adresse
+		// eines Segments ihren eigenen Schluessel (Pruefung von #319,
+		// INFO-44).
+		a, err := netip.ParseAddr(s)
+		if err != nil || a.Zone() == "" {
+			return s
+		}
+		ip = net.IP(a.WithZone("").AsSlice())
 	}
 	if v4 := ip.To4(); v4 != nil {
 		return v4.String()
