@@ -3558,12 +3558,20 @@ func (cs *ChainState) vorEVMIntentAufloesen(id int64, wallet, nullifier string, 
 		}
 		return vorEVMOffen
 	}
-	// Eine Zeile mit Hash fuer dieselbe Wallet (register.go legt sie an, wenn
-	// der Vermerk am Intent scheiterte -- bestaetigteRegistrierungSichern)
-	// traegt alles, was die Wiederholung braucht: der Intent ist abgeloest.
+	// Die eigene Zeile mit Hash (register.go legt sie an, wenn der Vermerk am
+	// Intent scheiterte -- bestaetigteRegistrierungSichern) traegt alles, was
+	// die Wiederholung braucht: der Intent ist abgeloest. Nur genau diese
+	// Zeile: juenger als der Intent (dieselbe Anfrage legt sie danach an),
+	// derselbe Nullifier, noch offen. Eine alte oder geschlossene Zeile
+	// derselben Wallet -- jede fruehere Registrierung hinterlaesst eine, und
+	// RESET_DB_STATE/CLEAR_REGISTRATIONS leeren die Tabelle nicht -- schloss
+	// sonst eine bestaetigte Registrierung still (Pruefung #330, 2.
+	// Durchgang, Befund 1). Ist sie geschlossen, Go aber kein Mensch, geht es
+	// weiter zum Beleg.
 	var abgeloest bool
-	if err := cs.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM registration_recovery WHERE wallet=$1 AND evm_tx_hash<>'' AND id<>$2)`,
-		strings.ToLower(wallet), id).Scan(&abgeloest); err != nil {
+	if err := cs.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM registration_recovery
+		WHERE wallet=$1 AND evm_tx_hash<>'' AND id>$2 AND COALESCE(nullifier,'')=$3 AND recovered_at IS NULL)`,
+		strings.ToLower(wallet), id, nullifier).Scan(&abgeloest); err != nil {
 		fmt.Printf("[RECOVERY] ⚠ Vor-EVM-Intent id=%d nicht pruefbar: %v\n", id, err)
 		return vorEVMOffen
 	}

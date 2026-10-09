@@ -20,6 +20,9 @@ func testKnoten(t testing.TB, datei string) *ChainState {
 	t.Helper()
 	cs := NewChainState(datei)
 	t.Cleanup(func() {
+		// Erst den Spiegel-Arbeiter anhalten (er liest Paketwerte und die DB),
+		// dann die DB schliessen.
+		cs.stopEVMMirrorFlushWorkerForTest()
 		if cs.db != nil {
 			cs.db.Close()
 		}

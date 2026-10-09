@@ -506,6 +506,33 @@ func TestRegister_HashVermerkUndSicherung(t *testing.T) {
 		}
 		return true
 	})
+	// Der Vermerk fliesst wirklich in die Sicherung: hashVermerkt kommt aus
+	// intentHashVermerken und ist das erste Argument der Sicherung.
+	var ausVermerk, alsArgument bool
+	ast.Inspect(f, func(n ast.Node) bool {
+		switch x := n.(type) {
+		case *ast.AssignStmt:
+			if len(x.Lhs) == 1 && len(x.Rhs) == 1 {
+				if id, ok := x.Lhs[0].(*ast.Ident); ok && id.Name == "hashVermerkt" {
+					if c, ok := x.Rhs[0].(*ast.CallExpr); ok {
+						if sel, ok := c.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == "intentHashVermerken" {
+							ausVermerk = true
+						}
+					}
+				}
+			}
+		case *ast.CallExpr:
+			if sel, ok := x.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == "bestaetigteRegistrierungSichern" && len(x.Args) > 0 {
+				if id, ok := x.Args[0].(*ast.Ident); ok && id.Name == "hashVermerkt" {
+					alsArgument = true
+				}
+			}
+		}
+		return true
+	})
+	if !ausVermerk || !alsArgument {
+		t.Errorf("hashVermerkt aus intentHashVermerken: %v, als erstes Argument der Sicherung: %v", ausVermerk, alsArgument)
+	}
 	if aufrufe["UpdateRegistrationIntentEVMTxHash"] != 0 {
 		t.Error("register.go ruft UpdateRegistrationIntentEVMTxHash direkt auf -- der Fehler ginge wieder verloren")
 	}
@@ -526,5 +553,70 @@ func TestRecovery_UnlesbarerNullifierLaesstLiegen_RealDB(t *testing.T) {
 	cs.RetryRegistrationRecoveries()
 	if zu, _ := recoveryZeile(t, cs, id); zu || cs.IsHuman(w) {
 		t.Fatalf("unlesbarer Nullifier: geschlossen=%v Mensch=%v", zu, cs.IsHuman(w))
+	}
+}
+
+// Missbrauch der Abloesung (Pruefung #330, 2. Durchgang, Befund 1): nur die
+// eigene Zeile mit Hash -- juenger als der Intent, derselbe Nullifier, offen
+// -- loest ihn ab. Eine alte geschlossene Zeile (jede fruehere Registrierung
+// hinterlaesst eine), eine aeltere offene, eine mit anderem Nullifier oder
+// eine juengere geschlossene schliessen keinen Intent, dessen Registrierung
+// der EVM-Speicher belegt: er bleibt fuer den Betreiber offen.
+func TestRecovery_AbloesungNurDurchEigeneZeile_RealDB(t *testing.T) {
+	cs := recoveryTestKnoten(t, "unused-recovery-abloesung-test.json")
+	nullifierOf := int64(28)
+	if vertragV8() {
+		nullifierOf = v8SlotNullifierOf
+	}
+	// Pausiert: Zeilen mit Hash werden nicht nachgeholt, nur der Intent zaehlt.
+	cs.erzeugerSeit.Store(time.Now().Unix() - admissionStallLimit() - 1)
+	t.Cleanup(func() { cs.erzeugerSeit.Store(0) })
+	const n = "424242"
+	zeileMitHash := func(w, nullifier string, geschlossen bool) {
+		t.Helper()
+		if err := cs.SaveRegistrationRecovery(w, "0x"+strings.Repeat("ab", 32), nullifier, Transaction{Type: "register_human", Wallet: w, Nullifier: nullifier}); err != nil {
+			t.Fatal(err)
+		}
+		if geschlossen {
+			if _, err := cs.db.Exec(`UPDATE registration_recovery SET recovered_at=$1 WHERE wallet=$2 AND evm_tx_hash<>''`, time.Now().Unix(), w); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	faelle := []struct {
+		name            string
+		vorher, nachher func(w string)
+		abgeloest       bool
+	}{
+		{"alt_geschlossen", func(w string) { zeileMitHash(w, n, true) }, nil, false},
+		{"aelter_offen", func(w string) { zeileMitHash(w, n, false) }, nil, false},
+		{"anderer_nullifier", nil, func(w string) { zeileMitHash(w, "999", false) }, false},
+		{"juenger_geschlossen", nil, func(w string) { zeileMitHash(w, n, true) }, false},
+		{"eigene_zeile", nil, func(w string) { zeileMitHash(w, n, false) }, true},
+	}
+	for i, f := range faelle {
+		t.Run(f.name, func(t *testing.T) {
+			w := distTestAddr(2330 + i)
+			vertragsPlatzSetzen(t, cs, mappingSlot(common.HexToAddress(w).Bytes(), nullifierOf), common.HexToHash("0x0424242"))
+			if f.vorher != nil {
+				f.vorher(w)
+			}
+			id := vorEVMIntentAnlegen(t, cs, w, n, vorEVMMindestAlterSek+60)
+			if f.nachher != nil {
+				f.nachher(w)
+			}
+			cs.SetBootstrapDegraded("")
+			cs.RetryRegistrationRecoveries()
+			zu, le := recoveryZeile(t, cs, id)
+			if f.abgeloest {
+				if !zu || !strings.Contains(le, "superseded") || cs.BootstrapDegradedReason() != "" {
+					t.Fatalf("eigene Zeile: geschlossen=%v last_error=%q degraded=%q", zu, le, cs.BootstrapDegradedReason())
+				}
+				return
+			}
+			if zu || !strings.Contains(le, "nullifierOf") || !strings.Contains(cs.BootstrapDegradedReason(), "registration_recovery") {
+				t.Fatalf("%s loest ab: geschlossen=%v last_error=%q degraded=%q", f.name, zu, le, cs.BootstrapDegradedReason())
+			}
+		})
 	}
 }

@@ -54,19 +54,47 @@ func (cs *ChainState) markEVMMirrorDirtyLocked(contractAddr string, addrs ...str
 // balance-affecting operation never pays for an idle goroutine.
 func (cs *ChainState) ensureEVMMirrorFlushWorkerStarted() {
 	cs.evmMirrorFlushOnce.Do(func() {
-		SafeGoroutine("evmMirrorFlushWorker", cs.runEVMMirrorFlushWorker)
+		stop, fertig := make(chan struct{}), make(chan struct{})
+		cs.evmMirrorStopCh, cs.evmMirrorWorkerDone = stop, fertig
+		SafeGoroutine("evmMirrorFlushWorker", func() {
+			defer close(fertig)
+			cs.runEVMMirrorFlushWorker(stop)
+		})
 	})
+}
+
+// stopEVMMirrorFlushWorkerForTest haelt den Arbeiter an und wartet auf sein
+// Ende -- wie stopWALFlushWorkerForTest. Sonst lief er nach dem Test weiter
+// und las Paketwerte, die ein spaeterer Test umsetzt (-race: shardIndexFor
+// gegen TestShardZahl_WasSieKostet, numAccountShards). Geht selbst durch
+// evmMirrorFlushOnce: lief der Arbeiter noch nicht, startet er danach nie,
+// und die Kanaele sind vor dem Lesen sicher veroeffentlicht.
+func (cs *ChainState) stopEVMMirrorFlushWorkerForTest() {
+	cs.evmMirrorFlushOnce.Do(func() {})
+	cs.evmMirrorStopOnce.Do(func() {
+		if cs.evmMirrorStopCh != nil {
+			close(cs.evmMirrorStopCh)
+		}
+	})
+	if cs.evmMirrorWorkerDone != nil {
+		<-cs.evmMirrorWorkerDone
+	}
 }
 
 // runEVMMirrorFlushWorker ticks every evmMirrorFlushInterval and flushes
 // whatever addresses have accumulated since the previous tick. Runs for the
 // lifetime of the process once started, matching every other ticker-based
 // background worker in this codebase.
-func (cs *ChainState) runEVMMirrorFlushWorker() {
+func (cs *ChainState) runEVMMirrorFlushWorker(stop <-chan struct{}) {
 	ticker := time.NewTicker(evmMirrorFlushInterval)
 	defer ticker.Stop()
-	for range ticker.C {
-		cs.flushEVMMirrorDirty()
+	for {
+		select {
+		case <-stop:
+			return
+		case <-ticker.C:
+			cs.flushEVMMirrorDirty()
+		}
 	}
 }
 

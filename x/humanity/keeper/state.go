@@ -466,6 +466,12 @@ type ChainState struct {
 	evmMirrorDirtyMu   sync.Mutex
 	evmMirrorDirty     map[evmMirrorDirtyKey]struct{}
 	evmMirrorFlushOnce sync.Once
+	// evmMirrorStopCh/evmMirrorWorkerDone: nur fuer
+	// stopEVMMirrorFlushWorkerForTest (evm_mirror_flush.go); in evmMirrorFlushOnce
+	// gesetzt, in Produktion nie geschlossen.
+	evmMirrorStopCh     chan struct{}
+	evmMirrorWorkerDone chan struct{}
+	evmMirrorStopOnce   sync.Once
 
 	// receiptBuf/receiptBufMu/receiptFlushOnce back SaveTxReceipt's deferred
 	// write -- same dirty-buffer-plus-periodic-worker shape as evmMirrorDirty
@@ -1335,6 +1341,11 @@ last_error TEXT
 )`)
 	dbExec(`CREATE INDEX IF NOT EXISTS idx_registration_recovery_unrecovered
 ON registration_recovery(created_at) WHERE recovered_at IS NULL`)
+	// Fuer die Abloesung eines Vor-EVM-Intents (vorEVMIntentAufloesen): ohne
+	// ihn las jede Pruefung die ganze Tabelle, die je Registrierung waechst
+	// (Pruefung #330, 2. Durchgang, Befund 2).
+	dbExec(`CREATE INDEX IF NOT EXISTS idx_registration_recovery_wallet_hash
+ON registration_recovery(wallet) WHERE evm_tx_hash <> ''`)
 
 	// Pending block transactions — persisted so they survive node restarts.
 	// Without this, transfers via sendRawTransaction update Go-state/DB but

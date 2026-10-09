@@ -93,6 +93,19 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
      Teilstring erkannt; besser typisierte Fehler.
    - Ein Knoten, der nie wieder erzeugt (etwa ein früherer Leiter als
      Folger), hält bestätigte Registrierungen in seiner Tabelle fest.
+   - *2. Durchgang, INFO-3 (bestand schon vorher):* `registration_recovery`
+     überlebt `CLEAR_REGISTRATIONS` und `RESET_DB_STATE`. Offene Zeilen mit
+     Hash von vor dem Wipe würden danach wieder registriert (nur der
+     Betreiber löst das aus). Fix: die Tabelle in `CLEAR_REGISTRATIONS`
+     aufnehmen, für `RESET_DB_STATE` bewusst entscheiden.
+   - *2. Durchgang, INFO-4 (bestand schon vorher):* Kann `/api/register` den
+     Intent nicht schreiben, läuft die Registrierung trotzdem weiter; stürzt
+     der Prozess dann zwischen EVM und eigener Zeile ab, ist nichts
+     vorgemerkt. Fail-closed wäre: ablehnen, solange noch keine
+     EVM-Transaktion lief.
+   - *2. Durchgang, INFO-5:* Der Degraded-Grund steht im öffentlichen
+     `/api/health/combined` und enthält Wallet, Hash und rohe DB-Fehlertexte
+     (keine Geheimnisse). Optional: öffentlich neutral, Details nur ins Log.
 8. **WAL nach einem Rollenwechsel ohne Deckungsprüfung** (Prüfung von
    #322, INFO-15): Ein Beobachter liest das WAL nicht ein, die Datei bleibt
    liegen. Startet ein abgestürzter Validator mit ungeflushten Sätzen erst
