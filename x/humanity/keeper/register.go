@@ -25,6 +25,12 @@ import (
 // gerade gesperrt (begrenzte_karte.go).
 var registerRateLimit = neueBegrenzteKarte("register", grenzenSchluesselHoechstens, func() any { return time.Now() })
 
+// walletRateLimit: wie registerRateLimit, fuer Schluessel, die der Aufrufer
+// waehlt (die Wallet in /api/prove). Eigene Karte: ist sie voll, sperrt das
+// nur neue Wallets dort, nicht die Funktionen hinter registerRateLimit
+// (Pruefung von #324, HIGH-1).
+var walletRateLimit = neueBegrenzteKarte("wallet", grenzenSchluesselHoechstens, func() any { return time.Now() })
+
 // registerWalletLocks serializes the full registration flow (IsHuman check
 // → EVM registerWithSig call → Go-state RegisterHuman) per wallet.
 //
@@ -80,17 +86,25 @@ func init() {
 			time.Sleep(60 * time.Second)
 			// FIX (P0-3, beta-launch audit 2026-07-05): recover per-iteration — see safeCall's comment.
 			SafeCall("registerRateLimit-cleanup-tick", func() {
-				now := time.Now()
-				registerRateLimit.Range(func(k, v interface{}) bool {
-					if now.Sub(v.(time.Time)) > 35*time.Second { // must exceed maximum rate limit window (30s)
-						registerRateLimit.Delete(k)
-					}
-					return true
-				})
+				sperrKartenAufraeumen(time.Now())
 				ipBurstAufraeumen(burstFenster)
 			})
 		}
 	})
+}
+
+// sperrKartenAufraeumen: Eintraege von registerRateLimit und walletRateLimit,
+// deren Sperre abgelaufen ist, loeschen -- erst das schafft in einer vollen
+// Karte wieder Platz (begrenzte_karte.go).
+func sperrKartenAufraeumen(now time.Time) {
+	for _, karte := range []*begrenzteKarte{registerRateLimit, walletRateLimit} {
+		karte.Range(func(k, v interface{}) bool {
+			if now.Sub(v.(time.Time)) > 35*time.Second { // must exceed maximum rate limit window (30s)
+				karte.Delete(k)
+			}
+			return true
+		})
+	}
 }
 
 // isPrivateOrLoopback returns true for RFC-1918 private ranges, RFC-6598
@@ -138,7 +152,10 @@ func isPrivateOrLoopback(ipStr string) bool {
 // Kopfzeile: den hat der eigene Proxy angehaengt, die frueheren schreibt der
 // Client. Haengt ein Proxy an, statt zu ersetzen, waehlte sonst der Client
 // seinen Zaehler selbst (Pruefung von #319, LOW-3). Caddy ersetzt den Kopf
-// fuer fremde Clients; dort sind erster und letzter Eintrag gleich.
+// fuer fremde Clients; dort sind erster und letzter Eintrag gleich. Das gilt
+// fuer GENAU EINEN anhaengenden Proxy: stehen zwei hintereinander (etwa ein
+// CDN vor Caddy), ist der letzte Eintrag der vordere Proxy, und alle Nutzer
+// zaehlen unter ihm (docs/OFFEN.md, Betrieb).
 //
 // IPv6 zaehlt je /64 (absenderSchluessel): ein Anschluss bekommt mindestens
 // ein /64, und jede Adresse daraus einzeln zu zaehlen hiesse, ein Absender
@@ -155,7 +172,9 @@ func clientIP(r *http.Request) string {
 		if ip, _, err := net.SplitHostPort(letzter); err == nil {
 			letzter = ip
 		}
-		if letzter != "" {
+		// Nur eine IP; leer oder Muell ("unknown") zaehlt unter dem Proxy
+		// selbst (Pruefung von #324, LOW-3).
+		if net.ParseIP(letzter) != nil {
 			return absenderSchluessel(letzter)
 		}
 	}

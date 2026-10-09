@@ -1,8 +1,12 @@
 package keeper
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -194,6 +198,8 @@ func TestClientIP_XFFLetzterEintrag(t *testing.T) {
 		{"IPv6 im Kopf", "10.0.0.2:4000", []string{"6.6.6.6, [2001:db8:7:7::5]:443"}, "2001:db8:7:7::"},
 		{"von aussen: Kopf zaehlt nicht", "198.51.100.9:4000", []string{"203.0.113.7"}, "198.51.100.9"},
 		{"leerer letzter Eintrag", "172.18.0.5:4000", []string{"203.0.113.7, "}, "172.18.0.5"},
+		{"Muell als letzter Eintrag", "172.18.0.5:4000", []string{"203.0.113.7, unknown"}, "172.18.0.5"},
+		{"Zone als letzter Eintrag", "172.18.0.5:4000", []string{"203.0.113.7, fe80::1%eth0"}, "172.18.0.5"},
 	} {
 		r := httptest.NewRequest("POST", "/api/prove", nil)
 		r.RemoteAddr = f.remote
@@ -225,5 +231,89 @@ func TestAbsenderSchluessel_Denylist(t *testing.T) {
 	}
 	if len(m) != 3 {
 		t.Fatalf("Liste %v, erwartet 3 Eintraege", m)
+	}
+}
+
+// Missbrauch (Pruefung von #324, HIGH-1 und MEDIUM-2): /api/prove legte den
+// Schluessel "prove-wallet:<frei gewaehlt>" an, bevor die Grenze je IP griff,
+// und pruefte die Wallet nicht. Eine IP fuellte so die geteilte
+// registerRateLimit -- voll gilt dort jeder neue Absender als gesperrt, quer
+// ueber alle Funktionen bis zur Validator-Bindung --, mit Schluesseln bis
+// 64 KiB. Jetzt: Grenze je IP zuerst, nur gueltige Adressen, eigene Karte.
+func TestProveProxy_WalletSchluesselHinterDerIPGrenze(t *testing.T) {
+	a := &APIServer{}
+	anfrage := func(remote, wallet string) int {
+		body, _ := json.Marshal(map[string]string{"wallet": wallet, "bio": "1", "salt": "2"})
+		r := httptest.NewRequest("POST", "/api/prove", bytes.NewReader(body))
+		r.RemoteAddr = remote
+		w := httptest.NewRecorder()
+		a.handleProveProxy(w, r)
+		return w.Code
+	}
+	ipBurst.Delete("prove:198.51.100.70")
+	ipBurst.Delete("prove:198.51.100.71")
+	t.Cleanup(func() {
+		ipBurst.Delete("prove:198.51.100.70")
+		ipBurst.Delete("prove:198.51.100.71")
+	})
+	vorherWallet, vorherRegister := walletRateLimit.anzahl.Load(), registerRateLimit.anzahl.Load()
+
+	// Ungueltige Wallets: 400, kein Schluessel, keine Buchung je IP.
+	for _, w := range []string{"", "kein-hex-keine-adresse", "0x" + strings.Repeat("a", 60000), "0xzz00000000000000000000000000000000000000"} {
+		if code := anfrage("198.51.100.70:1", w); code != http.StatusBadRequest {
+			t.Fatalf("Wallet %.20q: Status %d, erwartet 400", w, code)
+		}
+	}
+	if n := walletRateLimit.anzahl.Load(); n != vorherWallet {
+		t.Fatalf("ungueltige Wallets haben %d Schluessel angelegt", n-vorherWallet)
+	}
+
+	// 40 gueltige Wallets von EINER IP: hoechstens burstProveJeIP Schluessel.
+	for i := 0; i < 40; i++ {
+		anfrage("198.51.100.70:1", fmt.Sprintf("0x%040x", 0xabc000+i))
+	}
+	if n := walletRateLimit.anzahl.Load() - vorherWallet; n > int64(burstProveJeIP) {
+		t.Fatalf("eine IP hat %d Wallet-Schluessel angelegt, hoechstens %d erlaubt", n, burstProveJeIP)
+	}
+	if n := registerRateLimit.anzahl.Load(); n != vorherRegister {
+		t.Fatalf("/api/prove schreibt in registerRateLimit (%d neue Schluessel)", n-vorherRegister)
+	}
+
+	// Die Grenze je Wallet bleibt: dieselbe Wallet von einer anderen IP binnen
+	// 15 s ist begrenzt.
+	wallet := fmt.Sprintf("0x%040x", 0xabc000)
+	walletRateLimit.Delete("prove-wallet:" + wallet)
+	t.Cleanup(func() {
+		for i := 0; i < 40; i++ {
+			walletRateLimit.Delete(fmt.Sprintf("prove-wallet:0x%040x", 0xabc000+i))
+		}
+	})
+	if code := anfrage("198.51.100.71:1", wallet); code == http.StatusTooManyRequests {
+		t.Fatal("Vorbedingung: erste Anfrage der Wallet begrenzt")
+	}
+	if code := anfrage("198.51.100.71:1", strings.ToUpper(wallet[:2])+wallet[2:]); code != http.StatusTooManyRequests {
+		t.Fatalf("dieselbe Wallet (andere Schreibweise) binnen 15 s: Status %d, erwartet 429", code)
+	}
+}
+
+// Das Aufraeumen schafft in beiden Sperrkarten Platz: abgelaufene Eintraege
+// gehen, frische bleiben, und die Zahl sinkt mit.
+func TestSperrKartenAufraeumen(t *testing.T) {
+	jetzt := time.Now()
+	for _, k := range []*begrenzteKarte{registerRateLimit, walletRateLimit} {
+		k.Store("test-alt", jetzt.Add(-time.Minute))
+		k.Store("test-frisch", jetzt)
+		t.Cleanup(func() { k.Delete("test-alt"); k.Delete("test-frisch") })
+		vorher := k.anzahl.Load()
+		sperrKartenAufraeumen(jetzt)
+		if _, ok := k.m.Load("test-alt"); ok {
+			t.Fatalf("%s: abgelaufener Eintrag nicht geloescht", k.name)
+		}
+		if _, ok := k.m.Load("test-frisch"); !ok {
+			t.Fatalf("%s: frischer Eintrag geloescht", k.name)
+		}
+		if n := k.anzahl.Load(); n > vorher-1 {
+			t.Fatalf("%s: Zahl %d nach dem Aufraeumen, vorher %d", k.name, n, vorher)
+		}
 	}
 }
