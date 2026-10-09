@@ -58,20 +58,54 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
    ausgelöst von Peer-Blöcken) legt den Strafbeweis auch auf einem Beobachter
    oder pausierten Knoten in den Ausgang; läuft `strafBeweisFrisch` ab, bevor
    der Knoten erzeugt, helfen nur Resync oder Verwerfen.
-   `RetryRegistrationRecoveries` (alle 5 Minuten) prüft die Pause nicht. Fix:
-   die Wiederholung an `annahmePauseGrund()` koppeln. (Auf einem Beobachter
-   sperren seit #322 `beobachterOhneAusgang` in `runAtomicWithOutbox`,
-   `runAtomicDistributionWithOutbox`, `RegisterHumanAtomic` und
-   `RegisterHuman` sowie `RetryRegistrationRecoveries` und der
-   WAL-Wiederanlauf den Ausgang; Überweisungen sperrt `annahmeBeginnen`.)
-   Dazu (Prüfung von #329, INFO-13): Auf jedem nicht annehmenden Knoten
-   (Folger, Leitung startet oder gescheitert) schreibt `/api/register` einen
-   Vor-EVM-Intent und löscht ihn nach der Ablehnung an der EVM-Übergabe;
-   scheitert das Löschen oder stürzt der Prozess dazwischen ab, registriert
-   `RetryRegistrationRecoveries` im Zweig `evm_tx_hash = ''` den Menschen
-   lokal per `RegisterHumanAtomic`, ohne Pause und ohne EVM-Transaktion
-   (der Kommentar dort sagt „leave pending“). Fix: diesen Zweig nur
-   schließen, nicht registrieren lassen.
+   **Erledigt (Zweig `claude/weiter-gehts-hklfhc`):**
+   `RetryRegistrationRecoveries` holt nach der EVM (Hash gesetzt) nichts
+   nach, solange `annahmePauseGrund()` pausiert – auf jedem Knoten, nicht
+   nur dem annehmenden (was ein nicht erzeugender Knoten in den Ausgang legt,
+   kommt in keinen Block). Und (Prüfung von #329, INFO-13): Vor-EVM-Intents
+   (`evm_tx_hash = ''`) registriert die Wiederholung **nie** mehr –
+   `vorEVMIntentAufloesen` schließt sie nur: Go-Zustand hat den Menschen →
+   erledigt; EVM-Spiegel zeigt ihn, Go nicht → bleibt offen für den
+   Betreiber (Degraded-Hinweis); sonst → verworfen, der Nutzer reicht neu
+   ein. Erst ab 10 Minuten Alter (sonst evtl. noch unterwegs); ein später
+   gesetzter EVM-Hash öffnet einen verworfenen Intent wieder. Der Durchlauf
+   liest höchstens 1.000 Zeilen. Tests: `registration_recovery_test.go`.
+   Seit der Prüfung von #330: Als Beleg einer bestätigten Registrierung
+   zählen auch `commitmentOf`, `nullifierOf` und `usedNullifiers` (= diese
+   Wallet), nicht nur `isHuman` (den überschreibt der Go-Spiegel). Scheitert
+   der Hash-Vermerk am Intent, legt `/api/register` eine eigene Zeile mit
+   Hash an. Offen bleibt hier der Strafbeweis-Teil (`DoppelsignaturErkannt`).
+   **Rest aus der Prüfung von #330** (Folge-PR):
+   - *LOW-3 Kopf-Blockade:* Der Durchlauf liest die 1.000 ältesten offenen
+     Zeilen. Zeilen, die nie geschlossen werden (Fälle für den Betreiber,
+     dauerhafte Fehler wie „nullifier already used by a different wallet“,
+     korruptes JSON), können jüngere Zeilen mit Hash dauerhaft verdrängen.
+     Von außen schwer zu erreichen (gültiger Beweis, Ratengrenzen, Zeilen
+     werden gelöscht oder verworfen). Fix: Zeilen mit Hash vorziehen bzw.
+     über `last_attempt_at` rotieren, Fälle für den Betreiber aus dem
+     Durchlauf nehmen.
+   - *LOW-4 Betreiberweg:* Für den Fall „EVM-Speicher belegt, Go nicht“ gibt
+     es keine Admin-Aktion (`/api/admin/registration-recovery` listet nur);
+     lösen derzeit nur per SQL. Fix: geprüfte Admin-Aktion oder Runbook.
+   - *INFO-7:* Der Degraded-Hinweis erscheint nur bei leerem Feld, und
+     `CountUnrecoveredRegistrations` ignoriert Scan-Fehler.
+   - *INFO-8 (bestand schon vorher):* „already registered“ wird über einen
+     Teilstring erkannt; besser typisierte Fehler.
+   - Ein Knoten, der nie wieder erzeugt (etwa ein früherer Leiter als
+     Folger), hält bestätigte Registrierungen in seiner Tabelle fest.
+   - *2. Durchgang, INFO-3 (bestand schon vorher):* `registration_recovery`
+     überlebt `CLEAR_REGISTRATIONS` und `RESET_DB_STATE`. Offene Zeilen mit
+     Hash von vor dem Wipe würden danach wieder registriert (nur der
+     Betreiber löst das aus). Fix: die Tabelle in `CLEAR_REGISTRATIONS`
+     aufnehmen, für `RESET_DB_STATE` bewusst entscheiden.
+   - *2. Durchgang, INFO-4 (bestand schon vorher):* Kann `/api/register` den
+     Intent nicht schreiben, läuft die Registrierung trotzdem weiter; stürzt
+     der Prozess dann zwischen EVM und eigener Zeile ab, ist nichts
+     vorgemerkt. Fail-closed wäre: ablehnen, solange noch keine
+     EVM-Transaktion lief.
+   - *2. Durchgang, INFO-5:* Der Degraded-Grund steht im öffentlichen
+     `/api/health/combined` und enthält Wallet, Hash und rohe DB-Fehlertexte
+     (keine Geheimnisse). Optional: öffentlich neutral, Details nur ins Log.
 8. **WAL nach einem Rollenwechsel ohne Deckungsprüfung** (Prüfung von
    #322, INFO-15): Ein Beobachter liest das WAL nicht ein, die Datei bleibt
    liegen. Startet ein abgestürzter Validator mit ungeflushten Sätzen erst
