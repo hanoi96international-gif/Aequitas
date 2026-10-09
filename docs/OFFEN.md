@@ -58,20 +58,18 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
    ausgelöst von Peer-Blöcken) legt den Strafbeweis auch auf einem Beobachter
    oder pausierten Knoten in den Ausgang; läuft `strafBeweisFrisch` ab, bevor
    der Knoten erzeugt, helfen nur Resync oder Verwerfen.
-   `RetryRegistrationRecoveries` (alle 5 Minuten) prüft die Pause nicht. Fix:
-   die Wiederholung an `annahmePauseGrund()` koppeln. (Auf einem Beobachter
-   sperren seit #322 `beobachterOhneAusgang` in `runAtomicWithOutbox`,
-   `runAtomicDistributionWithOutbox`, `RegisterHumanAtomic` und
-   `RegisterHuman` sowie `RetryRegistrationRecoveries` und der
-   WAL-Wiederanlauf den Ausgang; Überweisungen sperrt `annahmeBeginnen`.)
-   Dazu (Prüfung von #329, INFO-13): Auf jedem nicht annehmenden Knoten
-   (Folger, Leitung startet oder gescheitert) schreibt `/api/register` einen
-   Vor-EVM-Intent und löscht ihn nach der Ablehnung an der EVM-Übergabe;
-   scheitert das Löschen oder stürzt der Prozess dazwischen ab, registriert
-   `RetryRegistrationRecoveries` im Zweig `evm_tx_hash = ''` den Menschen
-   lokal per `RegisterHumanAtomic`, ohne Pause und ohne EVM-Transaktion
-   (der Kommentar dort sagt „leave pending“). Fix: diesen Zweig nur
-   schließen, nicht registrieren lassen.
+   **Erledigt (Zweig `claude/weiter-gehts-hklfhc`):**
+   `RetryRegistrationRecoveries` holt nach der EVM (Hash gesetzt) nichts
+   nach, solange `annahmePauseGrund()` auf dem annehmenden Knoten pausiert
+   (wie `/api/register`). Und (Prüfung von #329, INFO-13): Vor-EVM-Intents
+   (`evm_tx_hash = ''`) registriert die Wiederholung **nie** mehr –
+   `vorEVMIntentAufloesen` schließt sie nur: Go-Zustand hat den Menschen →
+   erledigt; EVM-Spiegel zeigt ihn, Go nicht → bleibt offen für den
+   Betreiber (Degraded-Hinweis); sonst → verworfen, der Nutzer reicht neu
+   ein. Erst ab 10 Minuten Alter (sonst evtl. noch unterwegs); ein später
+   gesetzter EVM-Hash öffnet einen verworfenen Intent wieder. Der Durchlauf
+   liest höchstens 1.000 Zeilen. Tests: `registration_recovery_test.go`.
+   Offen bleibt hier nur der Strafbeweis-Teil (`DoppelsignaturErkannt`).
 8. **WAL nach einem Rollenwechsel ohne Deckungsprüfung** (Prüfung von
    #322, INFO-15): Ein Beobachter liest das WAL nicht ein, die Datei bleibt
    liegen. Startet ein abgestürzter Validator mit ungeflushten Sätzen erst

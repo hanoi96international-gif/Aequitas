@@ -210,6 +210,7 @@ func TestBeobachter_RegistriertNicht(t *testing.T) {
 // einem Beobachter nichts nach; die Zeilen bleiben fuer einen Rollenwechsel.
 func TestBeobachter_HoltKeineRegistrierungNach_RealDB(t *testing.T) {
 	skipUnlessRealDBBenchEnv(t)
+	truncateDistTestTables(t) // Menschen eines frueheren Laufs
 	cs := testKnoten(t, "unused-beobachter-recovery-test.json")
 	if !cs.useDB {
 		t.Fatal("erwartet eine echte PostgreSQL-Verbindung")
@@ -218,8 +219,10 @@ func TestBeobachter_HoltKeineRegistrierungNach_RealDB(t *testing.T) {
 		t.Fatal(err)
 	}
 	mit, ohne := "0x00000000000000000000000000000000000000d2", "0x00000000000000000000000000000000000000d3"
+	// Nach der EVM (Hash gesetzt): nur diese Zeilen holt die Wiederholung
+	// nach -- Vor-EVM-Intents registriert sie nie (registration_recovery_test.go).
 	for _, f := range [][2]string{{mit, "0x" + strings.Repeat("d2", 32)}, {ohne, ""}} {
-		if _, err := cs.SaveRegistrationIntent(f[0], f[1], Transaction{Type: "register_human", Wallet: f[0], Nullifier: f[1]}); err != nil {
+		if err := cs.SaveRegistrationRecovery(f[0], "0x"+strings.Repeat("e1", 32), f[1], Transaction{Type: "register_human", Wallet: f[0], Nullifier: f[1]}); err != nil {
 			t.Fatal(err)
 		}
 	}

@@ -3197,11 +3197,13 @@ func (cs *ChainState) ResetStaleIncludedPendingTxs(maxAge time.Duration) {
 //     → on failure (3 retries): leave the record; background retry picks it up
 //
 // Background RetryRegistrationRecoveries:
-//   • evm_tx_hash = '' : pre-EVM intent — EVM was never confirmed. Try
-//     RegisterHumanAtomic anyway; if the wallet was registered by block replay
-//     from another node, "already registered" closes the record. If not,
-//     leave pending — the user must re-submit the registration.
-//   • evm_tx_hash != '' : post-EVM recovery — retry RegisterHumanAtomic only.
+//   • evm_tx_hash = '' : pre-EVM intent — EVM was never confirmed. Never
+//     registers (vorEVMIntentAufloesen): closes the record when Go-state
+//     already has the human, leaves it for the operator when the EVM mirror
+//     shows the human but Go-state does not, otherwise discards it — the
+//     user must re-submit the registration.
+//   • evm_tx_hash != '' : post-EVM recovery — retry RegisterHumanAtomic only,
+//     and not while admission is paused (annahmePauseGrund).
 //
 // This closes the critical window where EVM commits but the process crashes
 // before either RegisterHumanAtomic or SaveRegistrationRecovery is called,
@@ -3230,7 +3232,10 @@ func (cs *ChainState) UpdateRegistrationIntentEVMTxHash(id int64, txHash string)
 	if cs.db == nil {
 		return nil
 	}
-	_, err := cs.db.Exec(`UPDATE registration_recovery SET evm_tx_hash = $1 WHERE id = $2`, txHash, id)
+	// recovered_at zurueck: hat die Wiederholung den Intent als verworfen
+	// geschlossen, waehrend die EVM-Uebergabe noch lief, muss er wieder offen
+	// sein, falls RegisterHumanAtomic gleich scheitert (vorEVMIntentAufloesen).
+	_, err := cs.db.Exec(`UPDATE registration_recovery SET evm_tx_hash = $1, recovered_at = NULL, last_error = NULL WHERE id = $2`, txHash, id)
 	return err
 }
 
@@ -3323,7 +3328,8 @@ func (cs *ChainState) RetryRegistrationRecoveries() int {
 		SELECT id, wallet, evm_tx_hash, nullifier, pending_tx_json
 		FROM registration_recovery
 		WHERE recovered_at IS NULL
-		ORDER BY created_at ASC`)
+		ORDER BY created_at ASC
+		LIMIT $1`, recoveryHoechstensJeDurchlauf)
 	if err != nil {
 		fmt.Printf("[RECOVERY] RetryRegistrationRecoveries query failed: %v\n", err)
 		return 0
@@ -3344,42 +3350,36 @@ func (cs *ChainState) RetryRegistrationRecoveries() int {
 	}
 	rows.Close()
 
-	recovered := 0
+	// Einmal je Durchlauf, wie register.go: die Pause gilt nur fuer den
+	// annehmenden Knoten (ein Folger registriert lokal weiter).
+	var pause error
+	if cs.nimmtAnFuer() {
+		pause = cs.annahmePauseGrund()
+	}
+	recovered, geschlossen := 0, 0
 	for _, r := range records {
-		// Pre-EVM intent (evm_tx_hash='') — EVM was never confirmed for this record.
-		// This happens when the process crashed between SaveRegistrationIntent and
-		// sendRawTransaction.  We can't re-submit the EVM tx from here (no signing
-		// key available in ChainState), so try RegisterHumanAtomic:
-		// • if the wallet was registered via block replay from another node →
-		//   "already registered" → mark recovered (the registration did happen)
-		// • if not yet registered → leave pending (user must re-submit via /register)
+		// Vor-EVM-Intent (evm_tx_hash = ''): die EVM hat diese Registrierung
+		// nie bestaetigt. Frueher rief dieser Zweig RegisterHumanAtomic bzw.
+		// RegisterHuman auf -- und registrierte den Menschen lokal, ohne dass
+		// der Vertrag den Groth16-Beweis je geprueft hatte, ohne Annahme-Pause
+		// und ohne EVM-Transaktion (Pruefung von #329, INFO-13). Jetzt wird er
+		// nur geschlossen, nie registriert: vorEVMIntentAufloesen.
 		if r.evmTxHash == "" {
-			var regErr error
-			var pendingTx Transaction
-			if r.pendingJSON != "" {
-				if err := json.Unmarshal([]byte(r.pendingJSON), &pendingTx); err != nil {
-					fmt.Printf("[RECOVERY] ⚠ Pre-EVM intent id=%d (wallet %s) has corrupt pending_tx_json — leaving pending for manual review\n", r.id, r.wallet)
-					continue
-				}
-			}
-			if pendingTx.Nullifier != "" {
-				regErr = cs.RegisterHumanAtomic(r.wallet, pendingTx)
-			} else {
-				regErr = cs.RegisterHuman(r.wallet)
-			}
-			if regErr == nil || strings.Contains(regErr.Error(), "already registered") {
-				if _, err := cs.db.Exec(`UPDATE registration_recovery SET recovered_at=$1, last_error='pre-evm intent: resolved via block replay or RegisterHumanAtomic' WHERE id=$2`,
-					time.Now().Unix(), r.id); err != nil {
-					fmt.Printf("[RECOVERY] ⚠ Could not mark pre-EVM intent id=%d recovered: %v\n", r.id, err)
-				}
+			switch cs.vorEVMIntentAufloesen(r.id, r.wallet, time.Now().Unix()) {
+			case vorEVMErledigt:
 				recovered++
-				fmt.Printf("[RECOVERY] ✓ Pre-EVM intent for %s resolved\n", r.wallet)
-			} else {
-				fmt.Printf("[RECOVERY] ℹ Pre-EVM intent id=%d (wallet %s) not yet recoverable: %v — user should re-submit registration\n", r.id, r.wallet, regErr)
-				if _, err := cs.db.Exec(`UPDATE registration_recovery SET last_error=$1 WHERE id=$2`, "pre-evm intent: "+regErr.Error(), r.id); err != nil {
-					fmt.Printf("[RECOVERY] ⚠ Could not update last_error for pre-EVM intent id=%d: %v\n", r.id, err)
-				}
+				geschlossen++
+			case vorEVMVerworfen:
+				geschlossen++
 			}
+			continue
+		}
+
+		// Wiederholen schreibt in den Ausgang: nicht, solange die Annahme
+		// pausiert -- genau wie /api/register (register.go) nur auf dem
+		// annehmenden Knoten (Pruefung von #322, INFO-2). Die Zeile bleibt
+		// fuer den naechsten Durchlauf liegen.
+		if pause != nil {
 			continue
 		}
 
@@ -3448,13 +3448,103 @@ func (cs *ChainState) RetryRegistrationRecoveries() int {
 	}
 
 	// Clear the degraded flag once no unrecovered records remain.
-	if recovered > 0 && cs.CountUnrecoveredRegistrations() == 0 {
+	if (recovered > 0 || geschlossen > 0) && cs.CountUnrecoveredRegistrations() == 0 {
 		cur := cs.BootstrapDegradedReason()
 		if strings.Contains(cur, "registration_recovery") {
 			cs.SetBootstrapDegraded("")
 		}
 	}
 	return recovered
+}
+
+// recoveryHoechstensJeDurchlauf begrenzt die Zeilen, die ein Durchlauf von
+// RetryRegistrationRecoveries liest (alle 5 Minuten und ueber den
+// Admin-Weg): frueher las er die ganze Tabelle ohne Grenze.
+const recoveryHoechstensJeDurchlauf = 1000
+
+// vorEVMMindestAlterSek: so alt muss ein Vor-EVM-Intent sein, bevor die
+// Wiederholung ihn anfasst. Juenger kann /api/register noch mitten in der
+// EVM-Uebergabe stecken (register.go, Schritt 2) -- der Intent ist dann
+// nicht liegengeblieben, sondern unterwegs.
+const vorEVMMindestAlterSek = 10 * 60
+
+type vorEVMErgebnis int
+
+const (
+	vorEVMOffen     vorEVMErgebnis = iota // bleibt liegen (zu jung, Fehler oder fuer den Betreiber)
+	vorEVMErledigt                        // Go-Zustand hat den Menschen schon: geschlossen
+	vorEVMVerworfen                       // nie bestaetigt: geschlossen, nichts registriert
+)
+
+// vorEVMIntentAufloesen schliesst einen Vor-EVM-Intent (leerer evm_tx_hash),
+// registriert aber NIE (Pruefung von #329, INFO-13). Den Groth16-Beweis
+// prueft der Vertrag bei der EVM-Transaktion; ohne deren Bestaetigung hat ihn
+// niemand geprueft, und ein lokales RegisterHumanAtomic setzte trotzdem
+// einen Menschen -- ohne Annahme-Pause, auch auf einem Folger, dessen
+// Intent nach der Ablehnung an der EVM-Uebergabe nur nicht geloescht wurde.
+//
+//   - Go-Zustand hat den Menschen (Block eines anderen Knotens, eigener
+//     spaeterer Erfolg): geschlossen.
+//   - EVM-Spiegel zeigt den Menschen, Go nicht: der Prozess starb wohl
+//     zwischen EVM-Bestaetigung und dem Vermerk des Hashes. Bleibt offen fuer
+//     den Betreiber (/api/admin/registration-recovery) -- ein Spiegelplatz
+//     ist kein geprufter Beweis, er kann auch veraltet sein.
+//   - sonst: verworfen; die Registrierung fand nie statt, der Nutzer reicht
+//     sie neu ein.
+//
+// Lesefehler lassen die Zeile liegen. Das Schliessen ist bedingt
+// (evm_tx_hash leer und noch offen), und UpdateRegistrationIntentEVMTxHash
+// oeffnet eine geschlossene Zeile wieder: ein spaet bestaetigter Intent geht
+// der Wiederholung nicht verloren.
+func (cs *ChainState) vorEVMIntentAufloesen(id int64, wallet string, jetzt int64) vorEVMErgebnis {
+	schliessen := func(grund string) bool {
+		res, err := cs.db.Exec(`UPDATE registration_recovery SET recovered_at=$1, last_error=$2
+			WHERE id=$3 AND evm_tx_hash='' AND recovered_at IS NULL AND created_at <= $4`,
+			jetzt, grund, id, jetzt-vorEVMMindestAlterSek)
+		if err != nil {
+			fmt.Printf("[RECOVERY] ⚠ Vor-EVM-Intent id=%d (%s) nicht geschlossen: %v\n", id, wallet, err)
+			return false
+		}
+		n, err := res.RowsAffected()
+		return err == nil && n == 1
+	}
+	var erstellt int64
+	if err := cs.db.QueryRow(`SELECT created_at FROM registration_recovery WHERE id=$1`, id).Scan(&erstellt); err != nil {
+		fmt.Printf("[RECOVERY] ⚠ Vor-EVM-Intent id=%d nicht lesbar: %v\n", id, err)
+		return vorEVMOffen
+	}
+	if jetzt-erstellt < vorEVMMindestAlterSek {
+		return vorEVMOffen
+	}
+	if cs.IsHuman(wallet) {
+		if schliessen("pre-evm intent: wallet already human in go-state (block replay) — closed, nothing registered") {
+			fmt.Printf("[RECOVERY] ✓ Vor-EVM-Intent id=%d: %s ist schon Mensch -- geschlossen\n", id, wallet)
+			return vorEVMErledigt
+		}
+		return vorEVMOffen
+	}
+	slot := mappingSlot(common.HexToAddress(wallet).Bytes(), spiegelSlotIsHuman()).Hex()
+	val, err := cs.LoadStorageSlot(strings.ToLower(V7_CONTRACT_ADDR), slot)
+	if err != nil {
+		fmt.Printf("[RECOVERY] ⚠ Vor-EVM-Intent id=%d: EVM-Spiegel nicht lesbar (%v) -- bleibt liegen\n", id, err)
+		return vorEVMOffen
+	}
+	if common.HexToHash(val) != (common.Hash{}) {
+		const grund = "pre-evm intent: EVM mirror shows wallet as human but go-state does not — manual review, NOT registered automatically"
+		if _, err := cs.db.Exec(`UPDATE registration_recovery SET last_error=$1 WHERE id=$2`, grund, id); err != nil {
+			fmt.Printf("[RECOVERY] ⚠ last_error fuer Vor-EVM-Intent id=%d nicht gesetzt: %v\n", id, err)
+		}
+		if cs.BootstrapDegradedReason() == "" {
+			cs.SetBootstrapDegraded(fmt.Sprintf("registration_recovery: pre-EVM intent %d for %s needs manual review (EVM mirror human, go-state not) — check /api/admin/registration-recovery", id, wallet))
+		}
+		fmt.Printf("[RECOVERY] ✗ Vor-EVM-Intent id=%d: EVM-Spiegel zeigt %s als Mensch, Go nicht -- NICHT registriert, bitte pruefen\n", id, wallet)
+		return vorEVMOffen
+	}
+	if schliessen("pre-evm intent: never confirmed on EVM — discarded, nothing registered; user must re-submit") {
+		fmt.Printf("[RECOVERY] ℹ Vor-EVM-Intent id=%d (%s) nie von der EVM bestaetigt -- verworfen, nichts registriert\n", id, wallet)
+		return vorEVMVerworfen
+	}
+	return vorEVMOffen
 }
 
 // ClearPendingTxs deletes the given pending_txs rows by id. Call only after
