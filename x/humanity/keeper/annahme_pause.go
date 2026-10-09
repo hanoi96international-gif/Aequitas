@@ -240,14 +240,13 @@ func (cs *ChainState) annahmePauseGrund() error {
 			return fmt.Errorf("%w: der Ausgang haengt (aelteste offene Zeile %d s alt) -- bitte in Kuerze erneut versuchen", ErrAnnahmePausiert, d)
 		}
 	}
-	// Leitung an, aber noch nicht gestartet: bis StarteLeitung gelaufen ist
-	// (main.go: nach Bootstrap, Resync und Block-Sync), ist cs.leitung nil
-	// und nimmtAnFuer() true -- ein Folger naehme lokal an, statt an den
-	// Leiter weiterzuleiten, und zwei Knoten naehmen zugleich an
-	// (docs/OFFEN.md; Pruefung von #322, INFO-7). Versucht genuegt, gelungen
-	// nicht: eine kaputte Leitung haelt den Knoten nicht fuer immer an. Erst
-	// der Merker: nach dem Start (main ruft StarteLeitung immer) liest der
-	// heisse Weg die Umgebung nicht mehr.
+	// Leitung an, aber noch nicht gestartet oder gescheitert: bis
+	// StarteLeitung gelaufen ist (main.go: nach Bootstrap, Resync und
+	// Block-Sync), ist cs.leitung nil -- ein Folger naehme lokal an, statt an
+	// den Leiter weiterzuleiten, und zwei Knoten naehmen zugleich an
+	// (Pruefung von #322, INFO-7). Ein gescheiterter Start haelt an, bis der
+	// Knoten nach einer Korrektur neu startet (fail-closed, Pruefung von
+	// #329, Befund 2).
 	if err := cs.leitungNichtBereit(); err != nil {
 		return err
 	}

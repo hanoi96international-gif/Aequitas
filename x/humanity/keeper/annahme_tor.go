@@ -140,7 +140,12 @@ func (cs *ChainState) nimmtUeberweisungenAn() bool {
 // konten belastet? Stufe 2 (leitung_verteilt.go): jeder Validator fuer seine
 // Konten; ohne verteilte Annahme heisst das wie bisher "ist Leiter".
 func (cs *ChainState) nimmtAnFuer(konten ...string) bool {
-	if cs.nurLesend.Load() {
+	// Erst der Merker, dann cs.leitung (leitungNichtBereit): solange die
+	// Leitung startet oder ihr Start gescheitert ist, nimmt dieser Knoten
+	// nichts an -- gleich, in welcher Reihenfolge ein Aufrufer Tor und Pause
+	// fragt (Pruefung von #329, Befund 6). Wie ein Folger: die
+	// Registrierung laeuft dann lokal weiter (register.go).
+	if cs.nurLesend.Load() || cs.leitungNichtBereit() != nil {
 		return false
 	}
 	l := cs.leitung.Load()
@@ -223,6 +228,9 @@ func (cs *ChainState) pruefeAnnahmeTorFuer(konten ...string) error {
 		return nil
 	}
 	abgelehnteUeberweisungen.Add(1)
+	if err := cs.leitungNichtBereit(); err != nil {
+		return err
+	}
 	if !cs.nurLesend.Load() && cs.leitung.Load() != nil {
 		return ErrNichtLeiter
 	}

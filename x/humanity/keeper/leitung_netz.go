@@ -798,17 +798,21 @@ func rpcSchreibt(body []byte) bool {
 
 // LeitungStand fuer /api/health/combined.
 func (cs *ChainState) LeitungStand() map[string]interface{} {
+	// Erst die Merker, dann cs.leitung -- sonst meldete eine Abfrage genau
+	// an der Umschaltkante "Rotierender Leiter aus" (Pruefung von #329,
+	// INFO-10).
+	versucht, gescheitert := cs.leitungStartVersucht.Load(), cs.leitungGescheitert.Load()
 	l := cs.leitung.Load()
 	if l == nil {
 		if beobachterModus() {
 			return map[string]interface{}{"an": false, "beobachter": true,
 				"bedeutung": "Beobachter (AEQUITAS_BEOBACHTER): keine Leitung, nimmt nichts an, erzeugt keine Bloecke -- darf in keinem Leitungs-Satz stehen."}
 		}
-		if cs.leitungGescheitert.Load() {
+		if gescheitert {
 			return map[string]interface{}{"an": false, "gescheitert": true,
 				"bedeutung": "AEQUITAS_LEITUNG=an, aber die Leitung ist nicht gestartet (Log [LEITUNG] ✗: Signierschluessel, " + leitungGenesisEnv + ") -- dieser Knoten nimmt nichts an, bis sie nach einer Korrektur startet."}
 		}
-		if !cs.leitungStartVersucht.Load() && leitungAn() {
+		if !versucht && leitungAn() {
 			return map[string]interface{}{"an": false, "startet": true,
 				"bedeutung": "Die Leitung startet noch -- bis dahin nimmt dieser Knoten nichts an."}
 		}

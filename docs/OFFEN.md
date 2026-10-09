@@ -241,9 +241,11 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
 
 ## Betrieb – bei dir
 - **`AEQUITAS_LEITUNG=an` und gescheiterter Start** (seit #329, fail-closed):
-  Fehlt der Signierschlüssel oder ist `AEQUITAS_LEITUNG_GENESIS` ungültig,
-  nimmt der Knoten nichts an (wiederholbar abgelehnt), statt lokal
-  anzunehmen. Zu sehen in `/api/health/combined` → `leitung` →
+  Ist der Signierschlüssel (`RELAYER_PRIVATE_KEY`) ungültig – fehlt er,
+  erzeugt der Knoten einen – oder `AEQUITAS_LEITUNG_GENESIS` ungültig, nimmt
+  der Knoten nichts an (wiederholbar abgelehnt) und führt keine
+  Systemaufträge aus, statt lokal anzunehmen; registrieren und lesen geht
+  weiter wie auf einem Folger. Zu sehen in `/api/health/combined` → `leitung` →
   `gescheitert: true` bzw. `annahme_pause` → `leitung_gescheitert`, im Log
   `[LEITUNG] ✗`. Nach der Korrektur neu starten. Während des Starts (bis die
   Leitung läuft) zeigt `annahme_pause` → `leitung_startet`.

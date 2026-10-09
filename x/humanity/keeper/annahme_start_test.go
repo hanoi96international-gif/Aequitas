@@ -324,9 +324,10 @@ func TestBeobachter_LiestKeinWALEin_RealDB(t *testing.T) {
 // meldet true -- ein Folger naehme beim Start lokal an, statt an den Leiter
 // weiterzuleiten, und zwei Knoten naehmen zugleich an. Bis der Start versucht
 // ist, haelt jeder annehmende Weg an (die Ausgangsschreiber ohne Annahme
-// stehen in docs/OFFEN.md, Punkt 7). Scheitert der Start (kein
-// Signierschluessel), bleibt die Annahme angehalten -- fail-closed, mit
-// eigenem Grund im Stand (Pruefung von #329, Befund 2).
+// stehen in docs/OFFEN.md, Punkt 7), und es laufen keine Systemauftraege;
+// registriert wird wie auf einem Folger. Scheitert der Start (kein
+// Signierschluessel), bleibt es so -- fail-closed, mit eigenem Grund im
+// Stand (Pruefung von #329, Befund 2).
 func TestAnnahme_FolgerWartetAufLeitung(t *testing.T) {
 	t.Setenv("AEQUITAS_LEITUNG", "an")
 	t.Setenv("AEQUITAS_LEITUNG_GENESIS", "")
@@ -352,8 +353,21 @@ func TestAnnahme_FolgerWartetAufLeitung(t *testing.T) {
 		if err := cs.annahmePauseGrund(); err == nil || !strings.Contains(err.Error(), wort) {
 			t.Fatalf("annahmePauseGrund: %v", err)
 		}
-		// Registrierung: ohne Leitung meldet nimmtAnFuer true, also greift
-		// die Pause auch dort.
+		// Das Tor selbst: unabhaengig von der Reihenfolge der Aufrufer
+		// (Pruefung von #329, Befund 6).
+		if cs.nimmtAnFuer() || cs.nimmtAnFuer(w) {
+			t.Fatal("nimmtAnFuer meldet Annahme, obwohl die Leitung nicht bereit ist")
+		}
+		if err := cs.pruefeAnnahmeTorFuer(w); !errors.Is(err, ErrAnnahmePausiert) {
+			t.Fatalf("pruefeAnnahmeTorFuer: %v", err)
+		}
+		// Keine Systemauftraege (Pruefung von #329, INFO-8).
+		if grund := cs.SystemauftraegeHier(); !strings.Contains(grund, wort) {
+			t.Fatalf("SystemauftraegeHier: %q", grund)
+		}
+		// Registrierung: wie auf einem Folger lokal weiter (der Knoten nimmt
+		// nichts an, also verblockt er auch keinen Ausgang) -- bis zur EVM,
+		// die es im Test nicht gibt.
 		a := &APIServer{state: cs}
 		ip := "198.51.100.232"
 		ipBurst.Delete("register:" + ip)
@@ -365,8 +379,8 @@ func TestAnnahme_FolgerWartetAufLeitung(t *testing.T) {
 		a.handleRegister(rec, req)
 		var resp RegisterResponse
 		json.NewDecoder(rec.Body).Decode(&resp)
-		if resp.Success || !strings.Contains(resp.Message, wort) {
-			t.Fatalf("Registrierung: %+v", resp)
+		if resp.Success || !strings.Contains(resp.Message, "EVM engine unavailable") {
+			t.Fatalf("Registrierung nicht wie auf einem Folger: %+v", resp)
 		}
 		if st := cs.AnnahmeTorStand(); st["nimmt_an"] != false {
 			t.Fatalf("Annahme-Tor meldet nimmt_an: %v", st)
@@ -566,6 +580,74 @@ func TestAnnahme_LeitungVorDemTor(t *testing.T) {
 		i, j := erste(f.vorher), erste(f.nachher)
 		if i < 0 || j < 0 || i >= j {
 			t.Errorf("%s: %s (Anweisung %d) muss vor %s (Anweisung %d) stehen", f.fn, f.vorher, i, f.nachher, j)
+		}
+		// ... und die Ablehnung kehrt zurueck (Pruefung von #329, Befund 6).
+		if i >= 0 {
+			wi, ok := rumpf[i].(*ast.IfStmt)
+			zurueck := false
+			if ok {
+				for _, st := range wi.Body.List {
+					if _, r := st.(*ast.ReturnStmt); r {
+						zurueck = true
+					}
+				}
+			}
+			if !zurueck {
+				t.Errorf("%s: die Anweisung mit %s kehrt bei Ablehnung nicht zurueck", f.fn, f.vorher)
+			}
+		}
+	}
+}
+
+// aufrufStellen: die erste Stelle jedes Aufrufs (als Text, etwa
+// "cs.leitung.Load") im Rumpf von fn in datei.
+func aufrufStellen(t *testing.T, datei, fn string) map[string]token.Pos {
+	t.Helper()
+	f, err := parser.ParseFile(token.NewFileSet(), datei, nil, 0)
+	if err != nil {
+		t.Fatalf("%s: %v", datei, err)
+	}
+	stellen := map[string]token.Pos{}
+	gefunden := false
+	for _, d := range f.Decls {
+		fd, ok := d.(*ast.FuncDecl)
+		if !ok || fd.Name.Name != fn {
+			continue
+		}
+		gefunden = true
+		ast.Inspect(fd.Body, func(n ast.Node) bool {
+			if c, ok := n.(*ast.CallExpr); ok {
+				k := types.ExprString(c.Fun)
+				if _, da := stellen[k]; !da {
+					stellen[k] = c.Pos()
+				}
+			}
+			return true
+		})
+	}
+	if !gefunden {
+		t.Fatalf("%s: %s nicht gefunden", datei, fn)
+	}
+	return stellen
+}
+
+// Befund 6 aus der Pruefung von #329: die Reihenfolgen, an denen das
+// Startfenster haengt. StarteLeitung setzt gescheitert VOR versucht (sonst
+// saehe ein Leser kurz "versucht, nicht gescheitert, keine Leitung");
+// leitungNichtBereit liest versucht VOR gescheitert (aus demselben Grund);
+// der RPC-Weg fragt die Pause vor dem Tor und vor der Nonce-Reservierung.
+func TestAnnahme_MerkerReihenfolge(t *testing.T) {
+	for _, f := range []struct{ datei, fn, vorher, nachher string }{
+		{"leitung_netz.go", "StarteLeitung", "cs.leitungGescheitert.Store", "cs.leitungStartVersucht.Store"},
+		{"annahme_pause.go", "leitungNichtBereit", "cs.leitungStartVersucht.Load", "cs.leitungGescheitert.Load"},
+		{"evm_rpc.go", "sendRawTransaction", "s.state.annahmePauseGrund", "s.state.pruefeAnnahmeTorFuer"},
+		{"evm_rpc.go", "sendRawTransaction", "s.state.annahmePauseGrund", "s.reserveNoncePerItem"},
+	} {
+		st := aufrufStellen(t, f.datei, f.fn)
+		v, okV := st[f.vorher]
+		n, okN := st[f.nachher]
+		if !okV || !okN || v >= n {
+			t.Errorf("%s: %s muss vor %s stehen (gefunden %v/%v)", f.fn, f.vorher, f.nachher, okV, okN)
 		}
 	}
 }

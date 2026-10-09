@@ -147,6 +147,13 @@ func annahmeKonto(tx *Transaction) string {
 // Grund. Sie belasten die Toepfe -- im verteilten Term gehoeren die dem
 // Leiter. Ohne verteilten Term aendert sich nichts (wie bisher).
 func (cs *ChainState) SystemauftraegeHier() string {
+	// Leitung an, aber (noch) nicht da: keine Systemauftraege -- sonst hielte
+	// sich ein Knoten mit gescheitertem Start im verteilten Term als einziger
+	// fuer zustaendig und zahlte die Toepfe doppelt aus (Pruefung von #329,
+	// INFO-8). Erst der Merker, dann cs.leitung.
+	if err := cs.leitungNichtBereit(); err != nil {
+		return "Leitung nicht bereit: " + err.Error()
+	}
 	l := cs.leitung.Load()
 	if l == nil {
 		return ""
