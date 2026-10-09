@@ -648,9 +648,11 @@ func TestWeiterleitungNachweis_VorDemStichtagNichtWeitergeleitet(t *testing.T) {
 }
 
 // Hinter einem privaten TCP-Partner bestimmt X-Forwarded-For den Absender.
-// Eine Schreibweise zaehlt wie die andere, und ein Kopf ohne IP zaehlt unter
-// der TCP-Adresse und wird nicht weitergeleitet -- sonst zaehlte der
-// Zustaendige ihn unter der Adresse des Folgers (Pruefung von #319, INFO-23).
+// Eine Schreibweise zaehlt wie die andere. Ein Kopf ohne IP zaehlt seit #324
+// unter dem Proxy selbst (clientIP) -- beim Folger unter der TCP-Adresse, und
+// weitergeleitet fuer genau diese, beim Zustaendigen also unter (Folger,
+// Proxy), nie unter dem Folger allein (Pruefung von #319, INFO-23). Ein
+// Absender ohne IP wird nicht weitergeleitet (400, INFO-25).
 func TestWeiterleitungNachweis_AbsenderNormalisiert(t *testing.T) {
 	p := neuesFolgerPaar(t, true)
 	tcp := "172.18.0.5"
@@ -673,21 +675,31 @@ func TestWeiterleitungNachweis_AbsenderNormalisiert(t *testing.T) {
 		t.Fatalf("drei Schreibweisen derselben Adresse: %d durch, erwartet %d", durch, burstErneuerungJeIP)
 	}
 	vorher := p.beimZust.Load()
+	durch = 0
 	for i := 0; i < 2*burstErneuerungJeIP; i++ {
-		schicke(fmt.Sprintf("kein-ip-%d", i))
+		if schicke(fmt.Sprintf("kein-ip-%d", i)) != http.StatusTooManyRequests {
+			durch++
+		}
 	}
-	if n := p.beimZust.Load() - vorher; n != 0 {
-		t.Fatalf("%d Anfragen ohne IP als Absender weitergeleitet", n)
+	if durch != burstErneuerungJeIP || burstZahl("liveness-renewal:"+tcp) != burstErneuerungJeIP {
+		t.Fatalf("Koepfe ohne IP: %d durch, %d unter der TCP-Adresse gezaehlt, erwartet je %d", durch, burstZahl("liveness-renewal:"+tcp), burstErneuerungJeIP)
 	}
-	if burstZahl("liveness-renewal:"+tcp) != burstErneuerungJeIP {
-		t.Fatalf("Anfragen ohne IP als Absender: %d unter der TCP-Adresse gezaehlt, erwartet %d", burstZahl("liveness-renewal:"+tcp), burstErneuerungJeIP)
+	if n := p.beimZust.Load() - vorher; n != int64(burstErneuerungJeIP) {
+		t.Fatalf("%d Anfragen weitergeleitet, erwartet %d", n, burstErneuerungJeIP)
 	}
-	if schicke("kein-ip") != http.StatusTooManyRequests {
-		t.Fatal("Vorbedingung: begrenzt")
+	if n := burstZahl("liveness-renewal-von:" + p.folgerAdr + "|" + tcp); n != burstErneuerungJeIP {
+		t.Fatalf("beim Zustaendigen %d unter (Folger, Proxy) gezaehlt, erwartet %d", n, burstErneuerungJeIP)
 	}
-	erneuerungsGrenzeLeeren(tcp)
-	if c := schicke("kein-ip"); c != http.StatusBadRequest {
-		t.Fatalf("ohne IP als Absender: %d, erwartet 400 (ohne Datenbank, ohne Weiterleitung)", c)
+	// Ein Absender, der keine IP ist (etwa ein Unix-Socket): 400, ohne
+	// Datenbank und ohne Weiterleitung.
+	vorher = p.beimZust.Load()
+	req := httptest.NewRequest(http.MethodPost, nachweisPfad, strings.NewReader(`{"wallet":"0x00000000000000000000000000000000000000ab","issued_at":1}`))
+	req.RemoteAddr = "@"
+	w := httptest.NewRecorder()
+	p.folgerMux.ServeHTTP(w, req)
+	t.Cleanup(func() { erneuerungsGrenzeLeeren("@") })
+	if w.Code != http.StatusBadRequest || p.beimZust.Load() != vorher {
+		t.Fatalf("ohne IP als Absender: %d (weitergeleitet %d), erwartet 400 ohne Weiterleitung", w.Code, p.beimZust.Load()-vorher)
 	}
 }
 

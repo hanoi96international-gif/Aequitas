@@ -22,10 +22,13 @@ import (
 // unveraendert -- sie sind die eigentliche Missbrauchsgrenze, die IP-Grenze
 // ist nur der Rechenzeitschutz.
 //
-// Speicher: je Schluessel hoechstens N Zeitstempel; die Aufraeumroutine von
-// registerRateLimit (register.go) raeumt hier mit auf.
+// Speicher: je Schluessel hoechstens N Zeitstempel, hoechstens
+// grenzenSchluesselHoechstens Schluessel (begrenzte_karte.go); die
+// Aufraeumroutine von registerRateLimit (register.go) raeumt hier mit auf.
 
-var ipBurst sync.Map // key -> *ipBurstEintrag
+// ipBurst: key -> *ipBurstEintrag, hoechstens grenzenSchluesselHoechstens
+// Schluessel (begrenzte_karte.go).
+var ipBurst = neueBegrenzteKarte("ip_burst", grenzenSchluesselHoechstens, nil)
 
 type ipBurstEintrag struct {
 	mu     sync.Mutex
@@ -46,7 +49,10 @@ func burstBuchen(key string, max int, fenster time.Duration) (time.Time, bool) {
 	if max <= 0 {
 		return time.Time{}, true
 	}
-	v, _ := ipBurst.LoadOrStore(key, &ipBurstEintrag{})
+	v, ok := ipBurst.LoadOrStore(key, &ipBurstEintrag{})
+	if !ok {
+		return time.Time{}, false // voll: ein neuer Absender wird begrenzt (begrenzte_karte.go)
+	}
 	e := v.(*ipBurstEintrag)
 	e.mu.Lock()
 	defer e.mu.Unlock()
