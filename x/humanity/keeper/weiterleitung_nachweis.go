@@ -55,9 +55,11 @@ import (
 // beliebig viele Zaehler aufmachen (Pruefung von #319, LOW-31). Wo der
 // Knoten direkt erreichbar ist, gibt ihm die Freiliste dasselbe schon; hinter
 // einem Proxy (Caddy) stellt sie nie frei, dort ist der Nachweis ein
-// zusaetzliches Recht (INFO-38). Vertretbar, solange IPv6 nicht je /64 zaehlt
-// -- dasselbe erreicht jeder mit vielen IPv6-Adressen. Darum nur der aktuelle
-// Satz, kein bloss zugelassener Validator (docs/OFFEN.md, Ratenbegrenzung).
+// zusaetzliches Recht (INFO-38). Seine Zaehler liegen in einer eigenen Karte
+// (erneuerungVon): fuellt er sie, trifft das nur neue weitergeleitete
+// Erneuerungen. Vertretbar, weil ein Satzmitglied die Annahme als Leiter
+// ohnehin anhalten kann. Darum nur der aktuelle Satz, kein bloss
+// zugelassener Validator (docs/OFFEN.md, Ratenbegrenzung).
 //
 // Die Merkliste schuetzt nur vor doppelter Arbeit und vor mitgehoerten
 // Wiederholungen. Sie ist ein Ring fester Groesse; voll heisst: den aeltesten

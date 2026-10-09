@@ -150,8 +150,13 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
   neue weitergeleitete Erneuerungen 429, bis das Aufräumen Platz schafft –
   kein anderer Endpunkt. Vertretbar, weil ein Satzmitglied die Annahme als
   Leiter ohnehin anhalten kann (Verfügbarkeit hängt am Satz, nicht die
-  Richtigkeit). Fix, falls nötig: eine großzügige Grenze oder ein
-  Schlüsselkontingent je Unterzeichner – mit dem Nachteil, dass ein
+  Richtigkeit). Auch Außenstehende füllen die Karte über einen ehrlichen
+  Folger, ein Schlüssel je Absendernetz (Prüfung von #319, INFO-41): rund
+  200.000 Netze (etwa drei /48) je ein bis zwei Minuten – teurer, als
+  `ipBurst` zu füllen; dann bekommen neue weitergeleitete Erneuerungen 429,
+  direkte nicht. Fix, falls nötig: ein Schlüsselkontingent je Folger (etwa
+  Höchstzahl durch Größe des Satzes) – dann trifft ein Füllen nur den einen
+  Folger; eine Grenze je Unterzeichner hätte den Nachteil, dass ein
   Angreifer mit vielen Netzen über einen ehrlichen Folger dessen Grenze
   leeren kann.
 - **Weiterleitende Validatoren außerhalb des Satzes** (Prüfung von #319,
@@ -182,7 +187,8 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
   `rpcRateLimit` und `walletRateLimit` je höchstens 200.000 Schlüssel; voll
   heißt, neue Absender werden begrenzt. Ein Absender belegt aber je Funktion
   einen Schlüssel – in `registerRateLimit` bis zu zehn, in `ipBurst` bis zu
-  fünf. 20.000 bzw. 40.000 Absender (mit IPv6 je /64: ein bis zwei /48)
+  sieben (mit Erneuerung und Prüfbudget aus #319). 20.000 bzw. etwa 28.600
+  Absender (mit IPv6 je /64: ein bis zwei /48)
   füllen eine Karte, danach sind alle neuen Absender dieser Karte gesperrt,
   solange der Angreifer etwa 3.300 Anfragen je Sekunde hält. Die
   Validator-Bindung hat seit dem Folge-PR eine eigene Karte
@@ -201,8 +207,13 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
   `aequitas-net` hat kein IPv6; IPv6-Verbindungen an 80/443 nimmt
   docker-proxy an und reicht sie vom Gateway des Docker-Netzes an Caddy.
   Caddy setzt dann das Gateway als Absender – alle IPv6-Nutzer teilen sich
-  einen Zähler. Abhilfe im Betrieb (siehe unten): IPv6 im Docker-Netz
-  einschalten oder `"userland-proxy": false`.
+  einen Zähler. Das trifft auch Weiterleitungen (Prüfung von #319,
+  INFO-43): erreicht ein Folger den Zuständigen so, zählen er und jeder
+  IPv6-Angreifer unter dem Gateway; 600 gefälschte Nachweise leeren das
+  gemeinsame Prüfbudget, und alle gültigen Weiterleitungen fallen in 30 je
+  Minute. Abhilfe im Betrieb (siehe unten): IPv6 im Docker-Netz einschalten
+  oder `"userland-proxy": false`; Leitungs-URLs (`SELF_URL`) vor der
+  Staffel nur über IPv4.
 - **Proof-Server zählt einen Knoten als einen Absender** (Prüfung von #324,
   Nebenbefund): Der Proof-Server begrenzt je IP (`PROVE_RATE_MAX` = 30 je
   Minute, `server.js`) und sieht nur den Knoten. Der Knoten lässt 12 je

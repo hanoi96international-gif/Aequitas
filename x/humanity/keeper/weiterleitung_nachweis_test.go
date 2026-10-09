@@ -1150,3 +1150,120 @@ func TestBurstAufraeumen_AuchWeitergeleitete(t *testing.T) {
 		t.Fatal("frischer weitergeleiteter Zaehler aufgeraeumt")
 	}
 }
+
+// Der Angriff aus der Pruefung von #319 (LOW-39): ipBurst ist voll (#324:
+// neue Absender werden begrenzt). Ein aktiver Folger, dessen gueltige
+// Pruefungen alle erstattet werden, behaelt beim Aufraeumen seinen Platz --
+// sonst gaelte er danach als neu, und jede weitergeleitete Erneuerung bekaeme
+// 429, waehrend direkte Coordinatoren durchkommen.
+func TestWeiterleitungNachweis_AktiverFolgerBehaeltPlatz(t *testing.T) {
+	stagedGrantActivationOverride.Store(1)
+	t.Cleanup(func() { stagedGrantActivationOverride.Store(0) })
+	folger, _ := crypto.GenerateKey()
+	cs := nachweisLeitung(t, adresseVon(folger))
+	h := (&APIServer{state: cs}).erneuerungsGrenze(func(w http.ResponseWriter, r *http.Request) {})
+	tcp := "198.51.100.150" // RemoteAddr aus beimZustaendigen
+	fuer := []string{"203.0.113.60", "203.0.113.61"}
+	leeren := func() {
+		erneuerungsGrenzeLeeren(tcp)
+		ipBurst.Delete("liveness-renewal-pruefung:" + tcp)
+		for _, f := range fuer {
+			erneuerungVon.Delete(erneuerungVonPraefix + adresseVon(folger) + "|" + f)
+		}
+	}
+	leeren()
+	altMax := ipBurst.max
+	t.Cleanup(func() { ipBurst.max = altMax; leeren() })
+	koerper := `{"wallet":"0x00000000000000000000000000000000000000aa","issued_at":1}`
+	schicke := func(f string) int {
+		w := httptest.NewRecorder()
+		h(w, beimZustaendigen(t, folger, f, nachweisIch, koerper, time.Now()))
+		return w.Code
+	}
+	if c := schicke(fuer[0]); c == http.StatusTooManyRequests {
+		t.Fatalf("Vorbedingung: gueltige Weiterleitung %d", c)
+	}
+	if n := burstZahl("liveness-renewal-pruefung:" + tcp); n != 0 {
+		t.Fatalf("Vorbedingung: Pruefbuchung erstattet, %d uebrig", n)
+	}
+	ipBurst.max = ipBurst.anzahl.Load() // voll
+	ipBurstAufraeumen(burstFenster)
+	ipBurst.max = ipBurst.anzahl.Load() // frei gewordene Plaetze sofort wieder belegt
+	if c := schicke(fuer[1]); c == http.StatusTooManyRequests {
+		t.Fatal("aktiver Folger hat bei voller Karte seinen Platz verloren: weitergeleitete Erneuerung begrenzt")
+	}
+}
+
+// SatzMitglied liest ohne Sperre, waehrend unter l.mu der Satz wechselt
+// (Pruefung von #319, INFO-40) -- unter -race ohne Datenrennen, und ein
+// Mitglied, das in jedem Satz steht, gilt in jedem Augenblick.
+func TestSatzMitglied_NebenlaeufigZuSatzwechsel(t *testing.T) {
+	a := "0x00000000000000000000000000000000000000c1"
+	b := "0x00000000000000000000000000000000000000c2"
+	cs := nachweisLeitung(t, a, b)
+	l := cs.leitung.Load()
+	fertig := make(chan struct{})
+	go func() {
+		defer close(fertig)
+		for i := 0; i < 200; i++ {
+			neu := []string{nachweisIch, a, b}
+			if i%2 == 0 {
+				neu = []string{nachweisIch, a}
+			}
+			l.mu.Lock()
+			l.aendere(neu, "test: Wechsel", time.Now())
+			l.mu.Unlock()
+		}
+	}()
+	for laeuft := true; laeuft; {
+		select {
+		case <-fertig:
+			laeuft = false
+		default:
+		}
+		if !l.SatzMitglied(a) {
+			t.Fatal("ein Mitglied jedes Satzes gilt waehrend des Wechsels nicht")
+		}
+		l.SatzMitglied(b)
+	}
+}
+
+// Der Satz wird normalisiert (Kleinschreibung), die lesbare Menge auch: ein
+// Satz in Pruefsummen-Schreibweise erkennt die Adresse aus ecrecover
+// (Pruefung von #319, INFO-40).
+func TestSatzMitglied_Schreibweise(t *testing.T) {
+	gemischt := "0xAbCdEf0000000000000000000000000000000001"
+	l := NeueLeitung(nachweisIch, "", []string{nachweisIch, gemischt}, nachweisIch, true, LeitSpeicher{Term: 3, Leiter: nachweisIch}, testKonfig(),
+		LeitUmgebung{Zugelassen: func(string) bool { return false }}, time.Now())
+	if !l.SatzMitglied(strings.ToLower(gemischt)) {
+		t.Fatal("Mitglied in Pruefsummen-Schreibweise nicht erkannt")
+	}
+	// Ein Satz aus der Lease eines Peers kommt roh an (Empfange ->
+	// setzeSatz(m.Satz, ...)).
+	anderes := "0x00000000000000000000000000000000000000Dd"
+	l.mu.Lock()
+	l.setzeSatz([]string{nachweisIch, anderes}, 4, 1)
+	l.mu.Unlock()
+	if !l.SatzMitglied(strings.ToLower(anderes)) || l.SatzMitglied(strings.ToLower(gemischt)) {
+		t.Fatal("Satz aus einer Lease in Pruefsummen-Schreibweise falsch gelesen")
+	}
+}
+
+// Link-Local mit Zone zaehlt je /64 wie jede andere IPv6-Adresse (Pruefung
+// von #319, INFO-44) -- sonst haette jede Adresse eines Segments ihren
+// eigenen Schluessel in allen Karten.
+func TestAbsenderSchluessel_ZoneJeNetz(t *testing.T) {
+	for _, s := range []string{"fe80::1%eth0", "fe80::2%eth1", "fe80::abcd:1%3"} {
+		if got := absenderSchluessel(s); got != "fe80::" {
+			t.Fatalf("absenderSchluessel(%q) = %q, erwartet fe80::", s, got)
+		}
+	}
+	req := httptest.NewRequest(http.MethodPost, nachweisPfad, nil)
+	req.RemoteAddr = "[fe80::1%eth0]:4711"
+	if got := clientIP(req); got != "fe80::" {
+		t.Fatalf("clientIP mit Zone = %q, erwartet fe80::", got)
+	}
+	if got := absenderSchluessel("kein-ip"); got != "kein-ip" {
+		t.Fatalf("absenderSchluessel(kein-ip) = %q", got)
+	}
+}

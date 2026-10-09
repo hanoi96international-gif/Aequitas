@@ -53,6 +53,12 @@ func burstKarte(key string) *begrenzteKarte {
 type ipBurstEintrag struct {
 	mu     sync.Mutex
 	zeiten []time.Time
+	// zuletzt: die letzte Buchung, auch wenn sie erstattet wurde. Das
+	// Aufraeumen haelt den Eintrag, solange sie im Fenster liegt -- sonst
+	// verloere ein Folger, dessen gueltige Pruefungen alle erstattet werden,
+	// bei voller Karte seinen Platz und gaelte als neuer Absender (Pruefung
+	// von #319, LOW-39).
+	zuletzt time.Time
 }
 
 // burstErlaubt meldet, ob fuer key noch eine Anfrage im Fenster frei ist, und
@@ -89,6 +95,7 @@ func burstBuchen(key string, max int, fenster time.Duration) (time.Time, bool) {
 		return time.Time{}, false
 	}
 	e.zeiten = append(e.zeiten, now)
+	e.zuletzt = now
 	return now, true
 }
 
@@ -122,7 +129,7 @@ func ipBurstAufraeumen(fenster time.Duration) {
 		karte.Range(func(k, v any) bool {
 			e := v.(*ipBurstEintrag)
 			e.mu.Lock()
-			leer := len(e.zeiten) == 0 || now.Sub(e.zeiten[len(e.zeiten)-1]) >= fenster
+			leer := (len(e.zeiten) == 0 || now.Sub(e.zeiten[len(e.zeiten)-1]) >= fenster) && now.Sub(e.zuletzt) >= fenster
 			e.mu.Unlock()
 			if leer {
 				karte.Delete(k)
@@ -147,9 +154,9 @@ const (
 	// /api/liveness-renewal -- je Anfrage eine Abfrage im Coordinator-Register
 	// und die Zulassung (Datenbank). Ein Coordinator erneuert hoechstens so
 	// viele Menschen, wie am Tag registriert werden (Pruefung #314, LOW-3).
-	// Weitergeleitete Erneuerungen zaehlen beim Zustaendigen nicht, wenn sie
-	// nachweislich von einem Validator kommen (weiterleitung_nachweis.go);
-	// alle anderen zaehlen hier mit.
+	// Weitergeleitete Erneuerungen mit gueltigem Nachweis zaehlen beim
+	// Zustaendigen unter (Folger, Absender) in erneuerungVon
+	// (weiterleitung_nachweis.go), alle anderen unter ihrer Verbindung.
 	burstErneuerungJeIP = 30
 	// Pruefungen von Weiterleitungsnachweisen (weiterleitung_nachweis.go) je
 	// Absender, danach wird nicht mehr geprueft: deckelt die Kosten (Koerper
