@@ -768,19 +768,21 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		// Seite des Flushs sich ein Rueckstau staut.
 		"wal_warteschlange": a.state.WALFlushQueueDepth(),
 		// Bloecke aus dem Speicher (speicherkorb.go, AEQUITAS_BLOCK_AUS_SPEICHER).
-		"speicherkorb":     a.state.SpeicherKorbStand(),
-		"wal_druck":        WALDruckStand(),
-		"admission":        AdmissionStats(),
-		"wal_writer":       wal.WriterStats(),
-		"wal_vornuller":    a.state.WALVornullerStand(),
-		"tx_index":         TxIndexStats(),
-		"receipt_flush":    a.blockchain.state.ReceiptFlushStand(),
-		"receipt_prune":    ReceiptPruneStand(),
-		"pending_leichen":  PendingLeichenStand(),
-		"tx_batch_cache":   a.blockchain.state.TxBatchCacheStand(),
-		"push_gzip":        GzipPushStand(),
-		"eigenlast_bremse": EigenlastBremseStand(),
-		"divergenz":        DivergenzStand(),
+		"speicherkorb": a.state.SpeicherKorbStand(),
+		"wal_druck":    WALDruckStand(),
+		"admission":    AdmissionStats(),
+		// Wie voll die Karten der Grenzen je Absender sind (begrenzte_karte.go).
+		"grenzen_je_absender": GrenzenJeAbsenderStand(),
+		"wal_writer":          wal.WriterStats(),
+		"wal_vornuller":       a.state.WALVornullerStand(),
+		"tx_index":            TxIndexStats(),
+		"receipt_flush":       a.blockchain.state.ReceiptFlushStand(),
+		"receipt_prune":       ReceiptPruneStand(),
+		"pending_leichen":     PendingLeichenStand(),
+		"tx_batch_cache":      a.blockchain.state.TxBatchCacheStand(),
+		"push_gzip":           GzipPushStand(),
+		"eigenlast_bremse":    EigenlastBremseStand(),
+		"divergenz":           DivergenzStand(),
 		// The request split, so the ~50ms per transfer that TransferAtomic does
 		// not account for can be subtracted out instead of guessed at. Read
 		// unaccounted_in_send_ms first; see rpc_phase_stats.go.
@@ -1979,16 +1981,20 @@ var (
 	// never expires — set it to permanently refuse a peer that has repeatedly
 	// attacked (e.g. PEER_PUSH_DENYLIST=178.105.186.119). Checked before the body
 	// is read.
-	blockPushIPDenylist = func() map[string]bool {
-		m := map[string]bool{}
-		for _, ip := range strings.Split(os.Getenv("PEER_PUSH_DENYLIST"), ",") {
-			if ip = strings.TrimSpace(ip); ip != "" {
-				m[ip] = true
-			}
-		}
-		return m
-	}()
+	blockPushIPDenylist = pushDenylist(os.Getenv("PEER_PUSH_DENYLIST"))
 )
+
+// pushDenylist liest PEER_PUSH_DENYLIST (durch Kommas getrennt) in der
+// Schreibweise von clientIP: ein IPv6-Eintrag sperrt sein /64.
+func pushDenylist(roh string) map[string]bool {
+	m := map[string]bool{}
+	for _, ip := range strings.Split(roh, ",") {
+		if ip = strings.TrimSpace(ip); ip != "" {
+			m[absenderSchluessel(ip)] = true
+		}
+	}
+	return m
+}
 
 // blockPushShouldDrop reports whether an inbound push from ip must be dropped
 // now without reading its body — either a permanent denylist entry or an open

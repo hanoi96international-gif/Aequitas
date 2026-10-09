@@ -37,8 +37,10 @@ func TestClientIP_WemDerKopfGeglaubtWird(t *testing.T) {
 		if strings.Contains(f.quelle, ":") {
 			r.RemoteAddr = "[" + f.quelle + "]:4711"
 		}
-		r.Header.Set("X-Forwarded-For", "203.0.113.77, 10.9.9.9")
-		want := f.quelle
+		// Der letzte Eintrag zaehlt (den haengt der eigene Proxy an), und
+		// IPv6 je /64 (absenderSchluessel).
+		r.Header.Set("X-Forwarded-For", "10.9.9.9, 203.0.113.77")
+		want := absenderSchluessel(f.quelle)
 		if f.privat {
 			want = "203.0.113.77"
 		}

@@ -20,7 +20,10 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
-var registerRateLimit sync.Map
+// registerRateLimit: Schluessel -> Zeitpunkt der letzten Anfrage, hoechstens
+// grenzenSchluesselHoechstens Schluessel. Voll gilt ein neuer Schluessel als
+// gerade gesperrt (begrenzte_karte.go).
+var registerRateLimit = neueBegrenzteKarte("register", grenzenSchluesselHoechstens, func() any { return time.Now() })
 
 // registerWalletLocks serializes the full registration flow (IsHuman check
 // → EVM registerWithSig call → Go-state RegisterHuman) per wallet.
@@ -126,24 +129,54 @@ func isPrivateOrLoopback(ipStr string) bool {
 	return inNetzen(parsed, privatOderLoopbackNetze)
 }
 
+// clientIP: die Adresse, unter der eine Anfrage zaehlt (Grenzen je
+// Absender, Block-Push-Schutz, Weiterleitungsnachweis).
+//
+// X-Forwarded-For gilt nur, wenn die TCP-Verbindung von einer privaten oder
+// Loopback-Adresse kommt (der eigene Proxy) -- ein Client aus dem Netz darf
+// seine Adresse nicht selbst angeben. Und dann der LETZTE Eintrag der letzten
+// Kopfzeile: den hat der eigene Proxy angehaengt, die frueheren schreibt der
+// Client. Haengt ein Proxy an, statt zu ersetzen, waehlte sonst der Client
+// seinen Zaehler selbst (Pruefung von #319, LOW-3). Caddy ersetzt den Kopf
+// fuer fremde Clients; dort sind erster und letzter Eintrag gleich.
+//
+// IPv6 zaehlt je /64 (absenderSchluessel): ein Anschluss bekommt mindestens
+// ein /64, und jede Adresse daraus einzeln zu zaehlen hiesse, ein Absender
+// haette 2^64 Zaehler (ebenda: aus einem /64 kamen 100 von 100 Anfragen
+// durch).
 func clientIP(r *http.Request) string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		host = r.RemoteAddr
 	}
-	// Only trust X-Forwarded-For when the TCP connection itself comes from a
-	// private/loopback address — i.e. through the trusted platform proxy.
-	// A direct internet client must not be able to spoof their IP via this header.
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" && isPrivateOrLoopback(host) {
-		first := strings.TrimSpace(strings.SplitN(xff, ",", 2)[0])
-		if ip, _, err := net.SplitHostPort(first); err == nil {
-			return ip
+	if werte := r.Header.Values("X-Forwarded-For"); len(werte) > 0 && isPrivateOrLoopback(host) {
+		xff := werte[len(werte)-1]
+		letzter := strings.TrimSpace(xff[strings.LastIndexByte(xff, ',')+1:])
+		if ip, _, err := net.SplitHostPort(letzter); err == nil {
+			letzter = ip
 		}
-		if first != "" {
-			return first
+		if letzter != "" {
+			return absenderSchluessel(letzter)
 		}
 	}
-	return host
+	return absenderSchluessel(host)
+}
+
+// absenderSchluessel: IPv4 (auch in IPv6-Schreibweise) als IPv4, Loopback
+// unveraendert, jede andere IPv6-Adresse als Netzadresse ihres /64; was keine
+// IP ist, bleibt, wie es ist.
+func absenderSchluessel(s string) string {
+	ip := net.ParseIP(s)
+	if ip == nil {
+		return s
+	}
+	if v4 := ip.To4(); v4 != nil {
+		return v4.String()
+	}
+	if ip.IsLoopback() {
+		return ip.String()
+	}
+	return ip.Mask(net.CIDRMask(64, 128)).String()
 }
 
 // V7 ABI fragment for registerWithSig — used only to encode calldata correctly,
