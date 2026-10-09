@@ -90,6 +90,15 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
    Validator sauber wiederangelaufen ist.
 
 ## Ratenbegrenzung – bekannte Lücken
+- **`X-Forwarded-For` hinter einem privaten TCP-Partner** (Prüfung von #319,
+  LOW-3; seit #324 zählt der letzte Eintrag, IPv6 je /64, und jede Karte der
+  Grenzen je Absender hat eine feste Höchstzahl): `clientIP` glaubt dem Kopf
+  weiter, sobald die Verbindung von irgendeiner privaten Adresse kommt –
+  offen für andere Container im Docker-Netz und vermutlich für
+  `docker-proxy` bei Hairpin oder IPv6 auf dem veröffentlichten Port. Fix:
+  nur der Adresse des eigenen Proxys glauben (feste Adresse statt
+  „privat“; das Gateway der eigenen Routen ist seit #325 ausgenommen).
+  Zwei anhängende Proxys: siehe unten.
 - **Freiliste ohne Herkunftsnachweis** (Prüfung von #320, LOW-3; bestand
   schon vorher, seit #320 auf den Satz eingeengt): ein Satzmitglied kann
   jede öffentliche IP ankündigen und sie so von den Grenzen je IP
@@ -114,6 +123,69 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
   eigenen Schnittstellen liegt (Hostrouten ausgenommen), und denselben
   Filter auf die beobachtete Quelle anwenden. In /32-Umgebungen das Pod- oder
   Knotennetz nie in `AEQUITAS_FREILISTE_NETZE` nennen.
+- **Weiterleitungen im Klartext** (Prüfung von #319, INFO-21): Wer zwischen
+  Folger und Zuständigem mithört (`http://IP:8080`) und den Ring der
+  Merkliste in unter 30 s mit 20.000 gültigen Weiterleitungen leert, kann
+  einen Nachweis noch einmal einspielen; er zählt dann unter dem Budget des
+  echten Coordinators. Verzögert er Weiterleitungen über das Zeitfenster
+  oder spielt sie vor dem Original ein, scheitern deren Nachweise und
+  zählen unter der Adresse des Folgers (30 je Minute); gültige Nachweise
+  bleiben davon seit #319 (LOW-24) unberührt. Abgelehnte Nachweise je Grund
+  zeigt `/api/health/combined` → `weiterleitung_nachweis` (dort auch
+  Uhrabweichung und unbekannte Folger). Abhilfe: TLS zwischen Validatoren.
+- **Satzmitglieder bestimmen den Absender ihrer Weiterleitungen** (Prüfung
+  von #319, LOW-31 und INFO-38; bewusste Annahme): Der Zuständige zählt eine
+  Erneuerung mit gültigem Nachweis unter (Folger, `fuer`), und `fuer` setzt
+  der Folger. Ein böswilliges Mitglied des aktuellen Satzes kann so
+  beliebig viele Zähler aufmachen; gültige Nachweise bekommen ihre
+  Prüfbuchung zurück (netto kein Prüfbudget) – es erreicht den Handler
+  (ecrecover, Ed25519, Registerabfrage) so oft, wie es Anfragen schickt. Wo
+  der Knoten direkt auf :8080 erreichbar ist, gibt ihm die Freiliste
+  dasselbe schon (LOW-3 oben); hinter Caddy stellt die Freiliste nie frei,
+  dort ist der Nachweis ein zusätzliches Recht. Im offenen Betrieb kommt
+  jeder registrierte Mensch mit einem aufgeholten Knoten in den Satz (einer
+  je Mensch). Seine Zähler liegen in einer eigenen Karte
+  (`erneuerung_weitergeleitet`, höchstens 200.000 Schlüssel; `fuer` nur in
+  der Schreibweise von `clientIP`, IPv6 je /64): füllt er sie, bekommen nur
+  neue weitergeleitete Erneuerungen 429, bis das Aufräumen Platz schafft –
+  kein anderer Endpunkt. Vertretbar, weil ein Satzmitglied die Annahme als
+  Leiter ohnehin anhalten kann (Verfügbarkeit hängt am Satz, nicht die
+  Richtigkeit). Auch Außenstehende füllen die Karte über ehrliche Folger,
+  ein Schlüssel je Absendernetz und Folger (Prüfung von #319, INFO-41 und
+  INFO-46): rund 200.000 Netze geteilt durch die Zahl der Folger, über die
+  sie gehen, je ein bis zwei Minuten – ab etwa sieben Folgern billiger, als
+  `ipBurst` zu füllen; dann bekommen neue weitergeleitete Erneuerungen 429,
+  direkte nicht. Ein Kontingent je Folger verteilt das nur (dieselben Netze
+  über alle Folger füllen alle Kontingente). Fix, falls nötig: je
+  `fuer`-Netz über alle Folger begrenzen oder bei voller Karte gröber zählen
+  (/48); eine Grenze je Unterzeichner hätte den Nachteil, dass ein Angreifer
+  mit vielen Netzen über einen ehrlichen Folger dessen Grenze leeren kann.
+- **Aufräumen: Prüfen und Löschen nicht unter einer Sperre** (Prüfung von
+  #319, INFO-48; bestand schon vorher, nur Theorie): `ipBurstAufraeumen`
+  entscheidet unter der Sperre des Eintrags und löscht danach; bucht genau
+  dazwischen jemand, geht höchstens diese eine Buchung mit dem Eintrag
+  verloren. Fix: unter der Sperre mit `CompareAndDelete` löschen und den
+  Eintrag als tot markieren (`burstBuchen` lädt dann neu).
+- **Weiterleitende Validatoren außerhalb des Satzes** (Prüfung von #319,
+  INFO-37; gegenüber vorher keine Verschlechterung): Bloß zugelassene
+  Validatoren, Bewerber und gerade entfernte Mitglieder werden nicht
+  anerkannt. Ihre Weiterleitungen zählen beim Zuständigen unter ihrer
+  Adresse – 30 je Minute für alle ihre Coordinatoren, und ein Angreifer mit
+  einer Adresse sperrt darüber alle aus; der Folger selbst sieht nur die
+  429. Aufgenommen wird meist in Sekunden; dauerhaft draußen bleiben ein
+  zweiter Schlüssel desselben Menschen, ein Schlüssel ohne bekannten
+  Menschen, ein Knoten mehr als 50 Blöcke zurück und einer in der
+  Aufnahmesperre (10 min). Betrieb: Coordinatoren nur an Knoten richten,
+  die in `/api/health/combined` → `leitung` → `mitglied: true` zeigen. Fix:
+  ein Knoten außerhalb des Satzes leitet Erneuerungen nicht weiter, sondern
+  antwortet 503 mit Hinweis.
+- **Gleichzeitig offene gültige Prüfungen** (Prüfung von #319, LOW-35;
+  Rest): Auch eine gültige Weiterleitung belegt ihren Platz im Prüfbudget
+  des Folgers, bis sie geprüft ist (Körper lesen, ecrecover, Merkliste –
+  Mikrosekunden; die Satzprüfung wartet seit #319 auf keine Sperre). Nur
+  wer über einen Folger 600 Weiterleitungen im selben Augenblick beim
+  Zuständigen ankommen lässt (600 Adressen in einem Schwall), schiebt die
+  folgenden für diesen Augenblick in die Zählung des Folgers.
 - Die Freiliste wird etwa einmal je Minute neu aufgebaut: wer den Satz
   verlässt, bleibt bis zu 60 s frei, neue Mitglieder sind bis zu 60 s
   begrenzt.
@@ -121,8 +193,10 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
   #325, INFO-6; `begrenzte_karte.go`): `registerRateLimit`, `ipBurst`,
   `rpcRateLimit`, `walletRateLimit` und `bindungRateLimit` halten je
   höchstens 200.000 Schlüssel. Ein Angreifer füllt eine davon mit wenigen
-  Netzen – ein /48 hat 65.536 /64, `walletRateLimit` füllen schon
-  8.000–17.000. Bisher war danach jeder neue Absender gesperrt. Seit dem
+  Netzen – ein Absender belegt je Funktion einen Schlüssel (in `ipBurst` mit
+  Erneuerung und Prüfbudget aus #319 bis zu sieben), ein /48 hat 65.536 /64,
+  `walletRateLimit` füllen schon 8.000–17.000. Bisher war danach jeder neue
+  Absender gesperrt. Seit dem
   Folge-PR zählt ein neuer Absender bei voller Karte unter seinem Netz: IPv4
   je /24, IPv6 je /48, über alle Funktionen der Karte, in einer eigenen
   Karte mit höchstens 50.000 Netzen; von einem IPv6-/32 zählen höchstens 64
@@ -141,8 +215,12 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
   für neue Wallets die Grenze je Netz statt je Wallet: dieselbe neue Wallet
   kommt aus drei Netzen binnen 15 s dreimal durch; es bleiben die Grenze je
   IP bei `/api/prove` (12 je Minute) und die Bescheinigung, die der
-  Proof-Server verlangt. Speicher: die Netzkarten zusammen bis etwa
-  100 MB. Erkennbar in `/api/health/combined` →
+  Proof-Server verlangt. (d) Die weitergeleiteten Erneuerungen
+  (`erneuerung_weitergeleitet`, #319) haben keine Netzkarte: ihr Absender
+  steht im Nachweis des Folgers, nicht in der Verbindung; voll trifft dort
+  nur neue weitergeleitete Erneuerungen. Speicher: die Netzkarten zusammen
+  bis etwa 100 MB ohne Buchungen; jede Buchung im Fenster kostet etwa 24 B
+  dazu, gedeckelt durch die Anfragerate. Erkennbar in `/api/health/combined` →
   `grenzen_je_absender.<karte>.je_netz_gezaehlt` und `.grob`.
 - **Zwei anhängende Proxys** (Prüfung von #324, INFO-4/INFO-9): `clientIP`
   nimmt den letzten Eintrag von `X-Forwarded-For` – richtig hinter genau
@@ -154,8 +232,13 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
   `aequitas-net` hat kein IPv6; IPv6-Verbindungen an 80/443 nimmt
   docker-proxy an und reicht sie vom Gateway des Docker-Netzes an Caddy.
   Caddy setzt dann das Gateway als Absender – alle IPv6-Nutzer teilen sich
-  einen Zähler. Abhilfe im Betrieb (siehe unten): IPv6 im Docker-Netz
-  einschalten oder `"userland-proxy": false`.
+  einen Zähler. Das trifft auch Weiterleitungen (Prüfung von #319,
+  INFO-43): erreicht ein Folger den Zuständigen so, zählen er und jeder
+  IPv6-Angreifer unter dem Gateway; 600 gefälschte Nachweise leeren das
+  gemeinsame Prüfbudget, und alle gültigen Weiterleitungen fallen in 30 je
+  Minute. Abhilfe im Betrieb (siehe unten): IPv6 im Docker-Netz einschalten
+  oder `"userland-proxy": false`; Leitungs-URLs (`SELF_URL`) vor der
+  Staffel nur über IPv4.
 - **Proof-Server zählt einen Knoten als einen Absender** (Prüfung von #324,
   Nebenbefund): Der Proof-Server begrenzt je IP (`PROVE_RATE_MAX` = 30 je
   Minute, `server.js`) und sieht nur den Knoten. Der Knoten lässt 12 je
@@ -229,6 +312,11 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
   stehen einmal je Mitglied im Log (`[LEITUNG] ⚠ … wird nicht von der
   Ratenbegrenzung freigestellt`). Anfragen mit `X-Forwarded-For`,
   `Forwarded` oder `X-Real-IP` sind nie freigestellt.
+- Staffel-Stichtag (#319, INFO-22): erst setzen, wenn **alle** Validatoren
+  eine Version mit unterschriebenen Weiterleitungen fahren. Ein alter Folger
+  unterschreibt nicht; steht der Zuständige hinter Caddy, zählt er dessen
+  Weiterleitungen unter der Adresse des Folgers, und ein einzelner Absender
+  sperrt dann alle Coordinatoren dahinter aus.
 - Außerdem aus `ERINNERUNG.md`: C2 / zweiter unabhängiger Betreiber,
   App 1.10.0 als Release, Altersmodell, `PROOF_SERVER_URLS` und
   `CHAIN_SERVICE_TOKEN` auf dem Server, Impressum und Datenschutz,

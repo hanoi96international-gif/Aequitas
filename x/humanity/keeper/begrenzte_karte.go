@@ -14,14 +14,15 @@ import (
 // ipBurst, rpcRateLimit und registerRateLimit fuehren je Absender einen
 // Eintrag. Die Eintraege verfallen (Aufraeumen jede Minute), ihre ZAHL war
 // aber nur durch Anfragerate mal Lebensdauer begrenzt: gemessen 228 B je
-// Schluessel, bei 5.000 neuen Adressen je Sekunde rund 137 MB allein in
+// Schluessel (ipBurst und erneuerungVon seit #319 mit zuletzt etwa 33 B
+// mehr), bei 5.000 neuen Adressen je Sekunde rund 137 MB allein in
 // ipBurst. Jetzt hat jede Karte eine feste Hoechstzahl.
 //
 // Eine Karte fuellen kann ein Angreifer mit wenigen Netzen: ein Absender
 // belegt je Funktion einen Schluessel (in registerRateLimit bis zu zehn, in
-// ipBurst bis zu fuenf), 20.000 bzw. 40.000 /64 -- ein einziges /48 --
-// fuellen eine Karte. Bisher war danach jeder neue Absender ueberall gesperrt
-// (Pruefung von #324, LOW-6).
+// ipBurst bis zu sieben), 20.000 bzw. etwa 28.600 /64 -- weniger als ein /48
+// -- fuellen eine Karte. Bisher war danach jeder neue Absender ueberall
+// gesperrt (Pruefung von #324, LOW-6, und #319, INFO-42).
 //
 // Voll heisst darum groeber zaehlen: ein NEUER Absender zaehlt nicht mehr
 // unter seiner Adresse (IPv4) bzw. seinem /64 (IPv6), sondern unter seinem
@@ -39,14 +40,18 @@ import (
 // schon bei voller Karte abweisen -- ausser der Aufrufer nennt den Absender
 // (LoadUeber/StoreUeber, so die Wallets von /api/prove).
 // Die Validator-Bindung hat eine eigene Karte (bindungRateLimit), ebenso die
-// frei gewaehlten Wallets (walletRateLimit) und die Betreiber
-// (betreiberRateLimit, ohne Netz). Je Netz gezaehlte und abgewiesene neue
+// frei gewaehlten Wallets (walletRateLimit), die Betreiber
+// (betreiberRateLimit, ohne Netz) und die weitergeleiteten Erneuerungen
+// (erneuerungVon, ip_burst.go, ohne Netz: ihren Absender nennt der Folger). Je Netz gezaehlte und abgewiesene neue
 // Absender stehen je Karte in /api/health/combined (grenzen_je_absender) und
 // hoechstens einmal je Minute im Log.
 
 // grenzenSchluesselHoechstens: Eintraege je Karte -- bei 228 B je Schluessel
-// etwa 45 MB, und weit ueber dem, was ein Knoten in zwei Minuten an echten
-// Absendern sieht.
+// etwa 45 MB ohne Buchungen, und weit ueber dem, was ein Knoten in zwei
+// Minuten an echten Absendern sieht. Jede Buchung im Fenster kostet etwa 24 B
+// dazu (ein Pruefschluessel mit 600 Buchungen gut 16 KB); diesen Teil deckelt
+// die Anfragerate, nicht die Zahl der Schluessel (Pruefung von #319,
+// INFO-42).
 const grenzenSchluesselHoechstens = 200_000
 
 // grobHoechstens: Netze je Ueberlaufkarte. Gemessen 175 B je Netz mit einem

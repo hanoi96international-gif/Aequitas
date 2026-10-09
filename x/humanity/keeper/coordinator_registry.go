@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -161,21 +162,46 @@ type CoordinatorBindung struct {
 // dem Register dieses Knotens. false, wenn er nicht eingetragen ist oder die
 // Eintragung keine Unterschriften traegt (vor dem 06.10.2026).
 func (cs *ChainState) CoordinatorBindungLokal(publicKey string) (CoordinatorBindung, bool) {
+	return cs.CoordinatorBindungLokalCtx(context.Background(), publicKey)
+}
+
+// CoordinatorBindungLokalCtx: dasselbe im Kontext einer Anfrage (bricht mit
+// ihr ab).
+func (cs *ChainState) CoordinatorBindungLokalCtx(ctx context.Context, publicKey string) (CoordinatorBindung, bool) {
+	b, ok, _ := cs.coordinatorBindungLesen(ctx, publicKey)
+	return b, ok
+}
+
+// coordinatorBindungLesen trennt "nicht eingetragen oder ohne Unterschriften"
+// (false, nil) von einem Fehler beim Lesen (Zeitgrenze, Abbruch, Datenbank:
+// false, err). Beides heisst: keine Bindung (fail-closed).
+func (cs *ChainState) coordinatorBindungLesen(ctx context.Context, publicKey string) (CoordinatorBindung, bool, error) {
 	if cs.db == nil {
-		return CoordinatorBindung{}, false
+		return CoordinatorBindung{}, false, nil
 	}
 	cs.EnsureCoordinatorRegistry()
 	var b CoordinatorBindung
 	publicKey = strings.ToLower(strings.TrimSpace(publicKey))
 	if !ed25519HexTauglich(publicKey) {
-		return CoordinatorBindung{}, false
+		return CoordinatorBindung{}, false, nil
 	}
-	err := cs.db.QueryRow(`SELECT human_wallet, COALESCE(human_signature, ''), COALESCE(key_signature, '')
+	// Mit Zeitgrenze: die Erneuerung fragt hier fuer oeffentliche Anfragen
+	// (Pruefung #314, LOW-3) -- das Warten auf eine Verbindung aus dem Pool
+	// ist so begrenzt (langsame Abfragen begrenzt statement_timeout schon).
+	ctx, abbruch := context.WithTimeout(ctx, 5*time.Second)
+	defer abbruch()
+	err := cs.db.QueryRowContext(ctx, `SELECT human_wallet, COALESCE(human_signature, ''), COALESCE(key_signature, '')
 		FROM coordinator_keys WHERE public_key = $1`, publicKey).Scan(&b.Mensch, &b.MenschSig, &b.SchluesselSig)
-	if err != nil || b.MenschSig == "" || b.SchluesselSig == "" {
-		return CoordinatorBindung{}, false
+	if errors.Is(err, sql.ErrNoRows) {
+		return CoordinatorBindung{}, false, nil
 	}
-	return b, true
+	if err != nil {
+		return CoordinatorBindung{}, false, err
+	}
+	if b.MenschSig == "" || b.SchluesselSig == "" {
+		return CoordinatorBindung{}, false, nil
+	}
+	return b, true, nil
 }
 
 // CoordinatorEntry ist ein anerkannter Coordinator.
