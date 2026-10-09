@@ -61,9 +61,9 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
    `RetryRegistrationRecoveries` (alle 5 Minuten) prüft die Pause nicht. Fix:
    die Wiederholung an `annahmePauseGrund()` koppeln. (Auf einem Beobachter
    sperren seit #322 `beobachterOhneAusgang` in `runAtomicWithOutbox`,
-   `runAtomicDistributionWithOutbox` und `RegisterHumanAtomic` sowie
-   `RetryRegistrationRecoveries` den Ausgang; Überweisungen sperrt
-   `annahmeBeginnen`.)
+   `runAtomicDistributionWithOutbox`, `RegisterHumanAtomic` und
+   `RegisterHuman` sowie `RetryRegistrationRecoveries` und der
+   WAL-Wiederanlauf den Ausgang; Überweisungen sperrt `annahmeBeginnen`.)
 8. **Folger nimmt beim Start bis zu 30 s ohne Leitung an** (Prüfung von
    #322, INFO-7; bestand schon vorher): Bis `StarteLeitung` läuft, ist
    `cs.leitung` nil und `nimmtAnFuer()` true, auch mit `AEQUITAS_LEITUNG=an`;
@@ -71,6 +71,23 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
    weiterzuleiten. Fix: pausieren, solange `leitungAn()` und der Start der
    Leitung noch nicht versucht wurde (versucht, nicht gelungen -- sonst
    hielte eine kaputte Leitung den Knoten für immer an).
+9. **WAL nach einem Rollenwechsel ohne Deckungsprüfung** (Prüfung von
+   #322, INFO-15): Ein Beobachter liest das WAL nicht ein, die Datei bleibt
+   liegen. Startet ein abgestürzter Validator mit ungeflushten Sätzen erst
+   als Beobachter (spielt fremde Blöcke nach, `wal_seq` bleibt stehen) und
+   dann wieder als Validator, wendet `recoverFromWAL` die alten Sätze ohne
+   Deckungsprüfung auf den weitergelaufenen Stand an (PoC: Kontostand
+   −42,042, eine Zeile im Ausgang). Nur der umgestellte Knoten ist betroffen
+   – die anderen prüfen die Deckung beim Nachspielen und lehnten einen Block
+   mit dieser Zeile ab; der Workflow-Beobachter startet mit leerem WAL.
+   Fix: Ein Beobachter, dessen WAL nicht abgeglichene Sätze trägt (über der
+   Untergrenze, `seq` > `wal_seq` der Konten; rein lesend per
+   `wal.ReplayFile`), startet nicht (fail-closed), mit dem Hinweis, erst als
+   Validator wiederanlaufen zu lassen oder den Rest bewusst zu verwerfen;
+   ergänzend prüft `recoverFromWAL` die Deckung und parkt Sätze, die ins
+   Minus führten. Missbrauchstest wie der PoC. Bis dahin (Betrieb): einen
+   Validator mit WAL nie als Beobachter neu starten, ohne dass er vorher als
+   Validator sauber wiederangelaufen ist.
 
 ## Ratenbegrenzung – bekannte Lücken
 - **Freiliste ohne Herkunftsnachweis** (Prüfung von #320, LOW-3; bestand
