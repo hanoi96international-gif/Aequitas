@@ -133,7 +133,7 @@ func rpcRateLimitMaxFromEnv() int {
 func rpcRateLimited(ip string) bool {
 	v, ok := rpcRateLimit.LoadOrStore(ip, &rpcRateLimitEntry{windowStart: time.Now()})
 	if !ok {
-		return true // voll: ein neuer Absender wird begrenzt (begrenzte_karte.go)
+		return true // voll, auch je Netz: ein neuer Absender wird begrenzt (begrenzte_karte.go)
 	}
 	entry := v.(*rpcRateLimitEntry)
 	entry.mu.Lock()

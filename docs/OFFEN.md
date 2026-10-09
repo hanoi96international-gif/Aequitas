@@ -117,25 +117,25 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
 - Die Freiliste wird etwa einmal je Minute neu aufgebaut: wer den Satz
   verlässt, bleibt bis zu 60 s frei, neue Mitglieder sind bis zu 60 s
   begrenzt.
-- **Geteilte Karten der Grenzen je Absender** (Prüfung von #324, LOW-6;
-  `begrenzte_karte.go`): Seit #324 halten `registerRateLimit`, `ipBurst`,
-  `rpcRateLimit` und `walletRateLimit` je höchstens 200.000 Schlüssel; voll
-  heißt, neue Absender werden begrenzt. Ein Absender belegt aber je Funktion
-  einen Schlüssel – in `registerRateLimit` bis zu zehn, in `ipBurst` bis zu
-  fünf. 20.000 bzw. 40.000 Absender (mit IPv6 je /64: ein bis zwei /48)
-  füllen eine Karte, danach sind alle neuen Absender dieser Karte gesperrt,
-  solange der Angreifer etwa 3.300 Anfragen je Sekunde hält. Eigene Karten
-  haben seit #325 die Validator-Bindung (`bindungRateLimit`, Fehlversuche je
-  IP) und die frei gewählten Wallets, seit dem Folge-PR auch die Grenze je
-  Betreiber (`betreiberRateLimit`; ihre Schlüssel entstehen nur nach einer
-  angenommenen, unterschriebenen Bindung). Rest (Prüfung von #325, LOW-1
-  und INFO-6): `bindungRateLimit` füllen ungültige Bindungen aus 200.000 /64
-  (drei bis vier /48, 2.100–5.700 Anfragen je Sekunde zum Halten) – danach
-  bekommt jeder neue Absender bei der Bindung 429; `walletRateLimit` füllen
-  schon 8.000–17.000 /64 (12 Wallets je Minute und Absender) – danach
-  bekommt jede neue Wallet bei `/api/prove` 429. Fix: ein Eintrag je
-  Absender mit den Werten je Funktion; bei voller Karte gröber zählen
-  (/48, /24) statt global zu sperren.
+- **Volle Karten der Grenzen je Absender** (Prüfung von #324, LOW-6, und
+  #325, INFO-6; `begrenzte_karte.go`): `registerRateLimit`, `ipBurst`,
+  `rpcRateLimit`, `walletRateLimit` und `bindungRateLimit` halten je
+  höchstens 200.000 Schlüssel. Ein Angreifer füllt eine davon mit wenigen
+  Netzen – ein /48 hat 65.536 /64, `walletRateLimit` füllen schon
+  8.000–17.000. Bisher war danach jeder neue Absender gesperrt. Seit dem
+  Folge-PR zählt ein neuer Absender bei voller Karte unter seinem Netz (IPv4
+  je /24, IPv6 je /48, in einer eigenen Karte mit höchstens 50.000 Netzen),
+  bei `/api/prove` zählt statt der Wallet das Netz des Absenders (eine neue
+  Wallet je 15 s je Netz). Rest, bewusst so: (a) Solange eine Karte voll ist,
+  teilen sich ehrliche Nutzer im Netz des Angreifers (/24, /48) dessen
+  Grenze. (b) Wer 50.000 /48 oder /24 hat (12,8 Mio. IPv4-Adressen, ein
+  großes Botnetz), füllt auch die Netzkarte – dann ist jedes neue Netz
+  gesperrt (fail-closed), wie bisher bei voller Karte. (c) Ein Absender
+  belegt weiter je Funktion einen Schlüssel (bis zu zehn in
+  `registerRateLimit`); ein Eintrag je Absender würde die Karten später
+  füllen, ändert an (a) und (b) aber nichts. Erkennbar in
+  `/api/health/combined` → `grenzen_je_absender.<karte>.je_netz_gezaehlt`
+  und `.grob`.
 - **Zwei anhängende Proxys** (Prüfung von #324, INFO-4/INFO-9): `clientIP`
   nimmt den letzten Eintrag von `X-Forwarded-For` – richtig hinter genau
   einem Proxy (Caddy). Kommt ein zweiter davor (CDN, Load-Balancer), ist der

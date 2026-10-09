@@ -100,40 +100,237 @@ func TestBegrenzteKarte_ZahlNebenlaeufig(t *testing.T) {
 	}
 }
 
-// Missbrauch: ipBurst und rpcRateLimit voll -- ein neuer Absender wird
-// begrenzt, ein bekannter zaehlt weiter.
+// Die Zahlen beider Karten stimmen auch, wenn die volle Karte nebenlaeufig
+// in die Netzkarte ueberlaeuft (-race).
+func TestBegrenzteKarte_ZahlNebenlaeufigJeNetz(t *testing.T) {
+	k := &begrenzteKarte{name: "test", max: 50, grob: &begrenzteKarte{name: "test_grob", max: 1 << 30}}
+	var wg sync.WaitGroup
+	for g := 0; g < 8; g++ {
+		wg.Add(1)
+		go func(g int) {
+			defer wg.Done()
+			for i := 0; i < 2000; i++ {
+				key := fmt.Sprintf("x:2001:db8:%x:%x::", (g*7+i)%40, i%5)
+				switch i % 3 {
+				case 0:
+					k.LoadOrStore(key, i)
+				case 1:
+					k.Store(key, i)
+				default:
+					k.Range(func(a, _ any) bool {
+						if a == key || i%7 == 0 {
+							k.Delete(a)
+						}
+						return true
+					})
+				}
+			}
+		}(g)
+	}
+	wg.Wait()
+	for _, karte := range []*begrenzteKarte{k, k.grob} {
+		echt := int64(0)
+		karte.m.Range(func(_, _ any) bool { echt++; return true })
+		if n := karte.anzahl.Load(); n != echt {
+			t.Fatalf("%s: anzahl %d, in der Karte %d", karte.name, n, echt)
+		}
+	}
+}
+
+// vollMachen: k gilt als voll -- mit grob auch seine Ueberlaufkarte.
+func vollMachen(t *testing.T, k *begrenzteKarte, grob bool) {
+	t.Helper()
+	alt := k.max
+	k.max = k.anzahl.Load()
+	t.Cleanup(func() { k.max = alt })
+	if grob {
+		altG := k.grob.max
+		k.grob.max = k.grob.anzahl.Load()
+		t.Cleanup(func() { k.grob.max = altG })
+	}
+}
+
+// Das Netz eines Absenders: IPv4 je /24, IPv6 je /48, mit dem Zweck davor;
+// ohne Adresse keins.
+func TestNetzSchluessel(t *testing.T) {
+	for key, want := range map[string]string{
+		"198.51.100.7":               "198.51.100.0/24",
+		"humans:198.51.100.7":        "humans:198.51.100.0/24",
+		"x:::ffff:198.51.100.7":      "x:198.51.100.0/24",
+		"2001:db8:a:1::":             "2001:db8:a::/48",
+		"prove:2001:db8:a:ffff::":    "prove:2001:db8:a::/48",
+		"validator-bindung-fehl:::1": "validator-bindung-fehl:::/48",
+		"rpc:2001:DB8:A:0:0:0:0:9":   "rpc:2001:db8:a::/48",
+	} {
+		if got, ok := netzSchluessel(key); !ok || got != want {
+			t.Errorf("netzSchluessel(%q) = %q, %v -- erwartet %q", key, got, ok, want)
+		}
+	}
+	for _, key := range []any{"prove-wallet:0xabc", "validator-bindung-betreiber:0xabc", "x", "", "x:", "a:b:198.51.100.7", "x:198.51.100.0/24", 42} {
+		if got, ok := netzSchluessel(key); ok {
+			t.Errorf("netzSchluessel(%v) = %q, erwartet keins", key, got)
+		}
+	}
+}
+
+// Missbrauch (Pruefung von #324, LOW-6): wer die Karte aus EINEM /48 fuellt
+// (20.000 /64), sperrte bisher jeden neuen Absender. Jetzt teilen sich die
+// neuen /64 des Angreifers einen Eintrag je Netz; ein anderes Netz hat seinen
+// eigenen. Ohne Netz oder bei vollem grob: abweisen (fail-closed).
+func TestBegrenzteKarte_VollZaehltJeNetz(t *testing.T) {
+	k := &begrenzteKarte{name: "test", max: 2, grob: &begrenzteKarte{name: "test_grob", max: 3}}
+	k.LoadOrStore("x:2001:db8:a:1::", 1)
+	k.LoadOrStore("x:2001:db8:a:2::", 2)
+	if v, ok := k.LoadOrStore("x:2001:db8:a:1::", 9); !ok || v != 1 {
+		t.Fatalf("voll: ein bekannter Absender zaehlt nicht weiter unter seinem /64 (%v, %v)", v, ok)
+	}
+	if v, ok := k.LoadOrStore("x:2001:db8:a:3::", 3); !ok || v != 3 {
+		t.Fatalf("voll: ein neues /64 bekommt keinen Eintrag seines Netzes (%v, %v)", v, ok)
+	}
+	if v, ok := k.LoadOrStore("x:2001:db8:a:ffff::", 4); !ok || v != 3 {
+		t.Fatalf("voll: ein weiteres /64 desselben /48 zaehlt nicht unter dem Netz (%v, %v)", v, ok)
+	}
+	if v, ok := k.LoadOrStore("x:2001:db8:b:1::", 5); !ok || v != 5 {
+		t.Fatalf("voll: ein anderes /48 teilt sich den Eintrag des Angreifers (%v, %v)", v, ok)
+	}
+	if !k.Store("x:198.51.100.7", 6) {
+		t.Fatal("voll: Store legt keinen Eintrag des /24 an")
+	}
+	if v, ok := k.Load("x:198.51.100.200"); !ok || v != 6 {
+		t.Fatalf("voll: eine andere Adresse desselben /24 sieht den Eintrag nicht (%v, %v)", v, ok)
+	}
+	if _, ok := k.m.Load("x:2001:db8:a:3::"); ok {
+		t.Fatal("voll: das neue /64 steht in der vollen Karte")
+	}
+	if k.anzahl.Load() != 2 || k.grob.anzahl.Load() != 3 {
+		t.Fatalf("anzahl %d/%d, erwartet 2/3", k.anzahl.Load(), k.grob.anzahl.Load())
+	}
+	// Ohne Netz: abgewiesen.
+	if _, ok := k.LoadOrStore("x:0xabc", 7); ok {
+		t.Fatal("voll: ein Schluessel ohne Adresse wurde gespeichert")
+	}
+	// Mit Absender: das Netz des Absenders.
+	if v, ok := k.LoadUeber("w:0xabc", "x:198.51.100.9"); !ok || v != 6 {
+		t.Fatalf("LoadUeber: das Netz des Absenders zaehlt nicht (%v, %v)", v, ok)
+	}
+	// grob voll: ein neues Netz wird abgewiesen, bekannte Netze zaehlen weiter.
+	if _, ok := k.LoadOrStore("x:2001:db8:c:1::", 8); ok {
+		t.Fatal("grob voll: ein neues Netz wurde gespeichert")
+	}
+	if k.Store("x:203.0.113.5", 8) {
+		t.Fatal("grob voll: Store hat ein neues Netz gespeichert")
+	}
+	if v, ok := k.LoadOrStore("x:2001:db8:a:7::", 9); !ok || v != 3 {
+		t.Fatalf("grob voll: ein bekanntes Netz zaehlt nicht weiter (%v, %v)", v, ok)
+	}
+	if a := k.abgelehnt.Load() + k.grob.abgelehnt.Load(); a != 3 {
+		t.Fatalf("abgelehnt %d, erwartet 3", a)
+	}
+	// Range sieht beide Karten, Delete loescht in beiden.
+	n := 0
+	k.Range(func(key, _ any) bool { n++; k.Delete(key); return true })
+	if n != 5 || k.anzahl.Load() != 0 || k.grob.anzahl.Load() != 0 {
+		t.Fatalf("Range %d (erwartet 5), danach anzahl %d/%d", n, k.anzahl.Load(), k.grob.anzahl.Load())
+	}
+	// Range haelt an, wenn f false liefert -- auch vor grob.
+	k.LoadOrStore("x:2001:db8:a:1::", 1)
+	k.LoadOrStore("x:2001:db8:a:2::", 2)
+	k.LoadOrStore("x:2001:db8:a:3::", 3)
+	n = 0
+	k.Range(func(_, _ any) bool { n++; return false })
+	if n != 1 {
+		t.Fatalf("Range nach false weiter: %d", n)
+	}
+}
+
+// registerRateLimit (wertWennVoll): voll und das Netz unbekannt -- frei; das
+// Netz gesperrt -- gesperrt; auch grob voll -- gesperrt (fail-closed).
+func TestBegrenzteKarte_VollJeNetzGesperrt(t *testing.T) {
+	jetzt := func() any { return time.Now() }
+	k := &begrenzteKarte{name: "test", max: 1, wertWennVoll: jetzt, grob: &begrenzteKarte{name: "test_grob", max: 1, wertWennVoll: jetzt}}
+	k.Store("humans:198.51.100.1", time.Now().Add(-time.Hour))
+	if _, ok := k.Load("humans:203.0.113.1"); ok {
+		t.Fatal("voll: ein neues Netz gilt als gesperrt")
+	}
+	k.Store("humans:203.0.113.1", time.Now())
+	if ts, ok := k.Load("humans:203.0.113.99"); !ok || time.Since(ts.(time.Time)) > time.Second {
+		t.Fatalf("voll: eine andere Adresse des gesperrten /24 ist frei (%v, %v)", ts, ok)
+	}
+	if ts, ok := k.Load("humans:192.0.2.1"); !ok || time.Since(ts.(time.Time)) > time.Second {
+		t.Fatalf("grob voll: ein neues Netz ist nicht gesperrt (%v, %v)", ts, ok)
+	}
+	if ts, ok := k.Load("humans:0xabc"); !ok || time.Since(ts.(time.Time)) > time.Second {
+		t.Fatalf("voll: ein Schluessel ohne Netz ist nicht gesperrt (%v, %v)", ts, ok)
+	}
+}
+
+// Missbrauch (Pruefung von #324, LOW-6): ipBurst und rpcRateLimit voll -- ein
+// bekannter Absender zaehlt weiter, ein neuer unter seinem Netz: das Netz des
+// Angreifers teilt sich eine Grenze, ein anderes Netz kommt durch. Ohne Netz,
+// oder wenn auch grob voll ist, wird ein neuer Absender begrenzt.
 func TestBegrenzteKarte_VollBegrenztNeueAbsender(t *testing.T) {
-	ipBurst.Delete("test-voll:alt")
-	ipBurst.Delete("test-voll:neu")
-	rpcRateLimit.Delete("198.51.100.201")
-	rpcRateLimit.Delete("198.51.100.202")
+	aufraeumen := func() {
+		for _, k := range []string{"test-voll:alt", "test-voll:neu", "test-voll:198.51.100.0/24", "test-voll:203.0.113.0/24"} {
+			ipBurst.Delete(k)
+		}
+		for _, k := range []string{"198.51.100.201", "198.51.100.0/24", "203.0.113.0/24"} {
+			rpcRateLimit.Delete(k)
+		}
+	}
+	aufraeumen()
+	t.Cleanup(aufraeumen)
 	if !burstErlaubt("test-voll:alt", 5, time.Minute) || rpcRateLimited("198.51.100.201") {
 		t.Fatal("Vorbedingung: mit Platz begrenzt")
 	}
-	altBurst, altRPC := ipBurst.max, rpcRateLimit.max
-	ipBurst.max, rpcRateLimit.max = ipBurst.anzahl.Load(), rpcRateLimit.anzahl.Load()
-	t.Cleanup(func() {
-		ipBurst.max, rpcRateLimit.max = altBurst, altRPC
-		ipBurst.Delete("test-voll:alt")
-		rpcRateLimit.Delete("198.51.100.201")
-	})
-	if burstErlaubt("test-voll:neu", 5, time.Minute) {
-		t.Fatal("ipBurst voll: neuer Absender nicht begrenzt")
-	}
+	vollMachen(t, ipBurst, false)
+	vollMachen(t, rpcRateLimit, false)
 	if !burstErlaubt("test-voll:alt", 5, time.Minute) {
 		t.Fatal("ipBurst voll: bekannter Absender begrenzt")
 	}
-	if !rpcRateLimited("198.51.100.202") {
-		t.Fatal("rpcRateLimit voll: neuer Absender nicht begrenzt")
-	}
 	if rpcRateLimited("198.51.100.201") {
 		t.Fatal("rpcRateLimit voll: bekannter Absender begrenzt")
+	}
+	if burstErlaubt("test-voll:neu", 5, time.Minute) {
+		t.Fatal("ipBurst voll: neuer Absender ohne Netz nicht begrenzt")
+	}
+	for i := 0; i < 5; i++ {
+		if !burstErlaubt(fmt.Sprintf("test-voll:198.51.100.%d", 10+i), 5, time.Minute) {
+			t.Fatalf("ipBurst voll: Anfrage %d aus einem freien /24 begrenzt", i)
+		}
+	}
+	if burstErlaubt("test-voll:198.51.100.99", 5, time.Minute) {
+		t.Fatal("ipBurst voll: die Adressen eines /24 zaehlen nicht zusammen")
+	}
+	if !burstErlaubt("test-voll:203.0.113.5", 5, time.Minute) {
+		t.Fatal("ipBurst voll: ein anderes /24 ist mitgesperrt")
+	}
+	for i := 0; i < rpcRateLimitMax; i++ {
+		if rpcRateLimited(fmt.Sprintf("198.51.100.%d", 10+i%150)) {
+			t.Fatalf("rpcRateLimit voll: Anfrage %d aus einem freien /24 begrenzt", i)
+		}
+	}
+	if !rpcRateLimited("198.51.100.160") {
+		t.Fatal("rpcRateLimit voll: die Adressen eines /24 zaehlen nicht zusammen")
+	}
+	if rpcRateLimited("203.0.113.5") {
+		t.Fatal("rpcRateLimit voll: ein anderes /24 ist mitgesperrt")
+	}
+	vollMachen(t, ipBurst, true)
+	vollMachen(t, rpcRateLimit, true)
+	if burstErlaubt("test-voll:192.0.2.5", 5, time.Minute) {
+		t.Fatal("ipBurst und grob voll: neues Netz nicht begrenzt")
+	}
+	if !rpcRateLimited("192.0.2.5") {
+		t.Fatal("rpcRateLimit und grob voll: neues Netz nicht begrenzt")
 	}
 	st := GrenzenJeAbsenderStand()
 	for _, name := range []string{"ip_burst", "rpc", "register"} {
 		if _, ok := st[name]; !ok {
 			t.Fatalf("Stand ohne %s: %v", name, st)
 		}
+	}
+	if n := st["rpc"].(map[string]interface{})["je_netz_gezaehlt"].(int64); n < int64(rpcRateLimitMax) {
+		t.Fatalf("Stand: je_netz_gezaehlt %d, erwartet mindestens %d", n, rpcRateLimitMax)
 	}
 }
 
@@ -375,24 +572,56 @@ func TestProveProxy_AbweisungBuchtKeineIP(t *testing.T) {
 	}
 }
 
-// Pruefung von #324, INFO-8 (M8): ist walletRateLimit voll, bekommt eine neue
-// Wallet 429 (fail-closed) -- und die Funktionen hinter den anderen Karten
-// bleiben offen.
+// Pruefung von #325, INFO-6: ist walletRateLimit voll (Wallets aus vielen
+// /64), zaehlt statt der Wallet das Netz des Absenders -- eine neue Wallet je
+// 15 s je /24 bzw. /48, ein anderes Netz bleibt offen. Ist auch grob voll,
+// bekommt eine neue Wallet 429 (fail-closed, Pruefung von #324, INFO-8, M8),
+// ohne die Grenze je IP zu buchen, und die anderen Karten bleiben offen.
 func TestProveProxy_VolleWalletKarte(t *testing.T) {
 	a := &APIServer{}
-	const ip = "198.51.100.73"
-	ipBurst.Delete("prove:" + ip)
-	t.Cleanup(func() { ipBurst.Delete("prove:" + ip) })
-	alt := walletRateLimit.max
-	walletRateLimit.max = walletRateLimit.anzahl.Load()
-	t.Cleanup(func() { walletRateLimit.max = alt })
-	if code := proveProxyAnfrage(a, ip+":1", fmt.Sprintf("0x%040x", 0xdef010)); code != http.StatusTooManyRequests {
-		t.Fatalf("volle Wallet-Karte: Status %d, erwartet 429", code)
+	ips := []string{"198.51.100.73", "198.51.100.74", "203.0.113.73", "192.0.2.73", "2001:db8:a:1::", "2001:db8:a:2::"}
+	netze := []string{"prove-wallet:198.51.100.0/24", "prove-wallet:203.0.113.0/24", "prove-wallet:192.0.2.0/24", "prove-wallet:2001:db8:a::/48"}
+	aufraeumen := func() {
+		for _, ip := range ips {
+			ipBurst.Delete("prove:" + ip)
+		}
+		for _, n := range netze {
+			walletRateLimit.Delete(n)
+		}
 	}
-	if _, ok := ipBurst.Load("prove:" + ip); ok {
-		t.Fatal("volle Wallet-Karte: die Grenze je IP wurde trotzdem gebucht")
+	aufraeumen()
+	t.Cleanup(aufraeumen)
+	wallet := func(i int) string { return fmt.Sprintf("0x%040x", 0xdef010+i) }
+	vollMachen(t, walletRateLimit, false)
+	if code := proveProxyAnfrage(a, "198.51.100.73:1", wallet(0)); code == http.StatusTooManyRequests {
+		t.Fatal("volle Wallet-Karte: eine neue Wallet aus einem freien Netz bekommt 429")
 	}
-	if ts, ok := registerRateLimit.Load("set-guardian:" + ip); ok && time.Since(ts.(time.Time)) < time.Minute {
+	if _, ok := walletRateLimit.m.Load("prove-wallet:" + wallet(0)); ok {
+		t.Fatal("volle Wallet-Karte: der Wallet-Schluessel steht trotzdem in der Karte")
+	}
+	if code := proveProxyAnfrage(a, "198.51.100.74:1", wallet(1)); code != http.StatusTooManyRequests {
+		t.Fatalf("volle Wallet-Karte: zweite neue Wallet aus demselben /24 binnen 15 s: Status %d, erwartet 429", code)
+	}
+	if _, ok := ipBurst.Load("prove:198.51.100.74"); ok {
+		t.Fatal("volle Wallet-Karte: abgewiesen, aber die Grenze je IP gebucht")
+	}
+	if code := proveProxyAnfrage(a, "[2001:db8:a:1::5]:1", wallet(2)); code == http.StatusTooManyRequests {
+		t.Fatal("volle Wallet-Karte: ein freies /48 bekommt 429")
+	}
+	if code := proveProxyAnfrage(a, "[2001:db8:a:2::5]:1", wallet(3)); code != http.StatusTooManyRequests {
+		t.Fatalf("volle Wallet-Karte: ein anderes /64 desselben /48 binnen 15 s: Status %d, erwartet 429", code)
+	}
+	if code := proveProxyAnfrage(a, "203.0.113.73:1", wallet(4)); code == http.StatusTooManyRequests {
+		t.Fatal("volle Wallet-Karte: ein anderes Netz ist mitgesperrt")
+	}
+	vollMachen(t, walletRateLimit, true)
+	if code := proveProxyAnfrage(a, "192.0.2.73:1", wallet(5)); code != http.StatusTooManyRequests {
+		t.Fatalf("Wallet-Karte und grob voll: Status %d, erwartet 429", code)
+	}
+	if _, ok := ipBurst.Load("prove:192.0.2.73"); ok {
+		t.Fatal("Wallet-Karte und grob voll: die Grenze je IP wurde trotzdem gebucht")
+	}
+	if ts, ok := registerRateLimit.Load("set-guardian:192.0.2.73"); ok && time.Since(ts.(time.Time)) < time.Minute {
 		t.Fatal("volle Wallet-Karte sperrt registerRateLimit")
 	}
 }
@@ -421,30 +650,65 @@ func TestBindungsGrenze_EigeneKarte(t *testing.T) {
 func TestBegrenzteKarte_HoechstzahlJeKarte(t *testing.T) {
 	st := GrenzenJeAbsenderStand()
 	for _, name := range []string{"ip_burst", "rpc", "register", "wallet", "bindung", "betreiber"} {
-		w, ok := st[name].(map[string]int64)
+		w, ok := st[name].(map[string]interface{})
 		if !ok {
 			t.Fatalf("Stand ohne %s: %v", name, st)
 		}
-		if w["hoechstens"] != grenzenSchluesselHoechstens {
-			t.Fatalf("%s: hoechstens %d, erwartet %d", name, w["hoechstens"], grenzenSchluesselHoechstens)
+		if w["hoechstens"] != int64(grenzenSchluesselHoechstens) {
+			t.Fatalf("%s: hoechstens %v, erwartet %d", name, w["hoechstens"], grenzenSchluesselHoechstens)
+		}
+		g, ok := w["grob"].(map[string]int64)
+		if !ok || g["hoechstens"] != grobHoechstens {
+			t.Fatalf("%s: grob %v, erwartet hoechstens %d", name, w["grob"], grobHoechstens)
 		}
 	}
 }
 
-// Pruefung von #325, INFO-8 (M19): ist bindungRateLimit voll, bekommt ein
-// neuer Absender 429, bevor der Handler laeuft (fail-closed).
+// Pruefung von #325, INFO-8 (M19) und #324, LOW-6: ist bindungRateLimit
+// voll, zaehlt ein neuer Absender unter seinem Netz -- nach einer abgelehnten
+// Bindung ist sein /24 bzw. /48 gesperrt, ein anderes Netz nicht. Ist auch
+// grob voll, bekommt ein neuer Absender 429, bevor der Handler laeuft
+// (fail-closed).
 func TestBindungsGrenze_VolleKarteSperrtNeueAbsender(t *testing.T) {
 	a := &APIServer{}
-	alt := bindungRateLimit.max
-	bindungRateLimit.max = bindungRateLimit.anzahl.Load()
-	t.Cleanup(func() { bindungRateLimit.max = alt })
+	netze := []string{"198.51.100.0/24", "203.0.113.0/24", "192.0.2.0/24", "2001:db8:a::/48", "2001:db8:b::/48"}
+	aufraeumen := func() {
+		for _, n := range netze {
+			bindungRateLimit.Delete("validator-bindung-fehl:" + n)
+		}
+	}
+	aufraeumen()
+	t.Cleanup(aufraeumen)
+	vollMachen(t, bindungRateLimit, false)
 	gerufen := false
-	h := a.bindungsGrenze(func(w http.ResponseWriter, r *http.Request) { gerufen = true })
-	r := httptest.NewRequest("POST", "/api/validator-bindung", nil)
-	r.RemoteAddr = "198.51.100.75:1"
-	w := httptest.NewRecorder()
-	h(w, r)
-	if w.Code != http.StatusTooManyRequests || gerufen {
-		t.Fatalf("volle Bindungskarte: Status %d, Handler gerufen %v -- erwartet 429 ohne Handler", w.Code, gerufen)
+	h := a.bindungsGrenze(func(w http.ResponseWriter, r *http.Request) {
+		gerufen = true
+		w.WriteHeader(http.StatusBadRequest)
+	})
+	posten := func(remote string) int {
+		gerufen = false
+		r := httptest.NewRequest("POST", "/api/validator-bindung", nil)
+		r.RemoteAddr = remote
+		w := httptest.NewRecorder()
+		h(w, r)
+		return w.Code
+	}
+	for _, f := range []struct{ erst, gleichesNetz, anderesNetz string }{
+		{"198.51.100.75:1", "198.51.100.76:1", "203.0.113.75:1"},
+		{"[2001:db8:a:1::1]:1", "[2001:db8:a:2::1]:1", "[2001:db8:b:1::1]:1"},
+	} {
+		if code := posten(f.erst); code != http.StatusBadRequest || !gerufen {
+			t.Fatalf("volle Bindungskarte: %s aus einem freien Netz: Status %d, Handler %v", f.erst, code, gerufen)
+		}
+		if code := posten(f.gleichesNetz); code != http.StatusTooManyRequests || gerufen {
+			t.Fatalf("volle Bindungskarte: %s nach Ablehnung im selben Netz: Status %d, Handler %v -- erwartet 429", f.gleichesNetz, code, gerufen)
+		}
+		if code := posten(f.anderesNetz); code != http.StatusBadRequest || !gerufen {
+			t.Fatalf("volle Bindungskarte: %s aus einem anderen Netz: Status %d, Handler %v", f.anderesNetz, code, gerufen)
+		}
+	}
+	vollMachen(t, bindungRateLimit, true)
+	if code := posten("192.0.2.75:1"); code != http.StatusTooManyRequests || gerufen {
+		t.Fatalf("Bindungskarte und grob voll: Status %d, Handler gerufen %v -- erwartet 429 ohne Handler", code, gerufen)
 	}
 }

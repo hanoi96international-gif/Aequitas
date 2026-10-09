@@ -44,7 +44,7 @@ func burstErlaubt(key string, max int, fenster time.Duration) bool {
 	now := time.Now()
 	v, ok := ipBurst.LoadOrStore(key, &ipBurstEintrag{})
 	if !ok {
-		return false // voll: ein neuer Absender wird begrenzt (begrenzte_karte.go)
+		return false // voll, auch je Netz: ein neuer Absender wird begrenzt (begrenzte_karte.go)
 	}
 	e := v.(*ipBurstEintrag)
 	e.mu.Lock()
