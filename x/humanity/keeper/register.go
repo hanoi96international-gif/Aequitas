@@ -31,11 +31,19 @@ var registerRateLimit = neueBegrenzteKarte("register", grenzenSchluesselHoechste
 // (Pruefung von #324, HIGH-1).
 var walletRateLimit = neueBegrenzteKarte("wallet", grenzenSchluesselHoechstens, func() any { return time.Now() })
 
-// bindungRateLimit: wie registerRateLimit, fuer die Validator-Bindung (je
-// Betreiber nach einer angenommenen Bindung, je IP nach einer abgelehnten).
-// Eigene Karte: oeffentliche Endpunkte, die registerRateLimit fuellen, sperren
-// die Bindung neuer Validatoren nicht (Pruefung von #324, LOW-6).
+// bindungRateLimit: wie registerRateLimit, fuer abgelehnte Validator-Bindungen
+// je IP. Eigene Karte: oeffentliche Endpunkte, die registerRateLimit fuellen,
+// sperren die Bindung neuer Validatoren nicht (Pruefung von #324, LOW-6).
+// Fuellen laesst sie sich mit ungueltigen Bindungen aus vielen Netzen
+// (200.000 /64); dann sind neue Absender hier gesperrt (docs/OFFEN.md).
 var bindungRateLimit = neueBegrenzteKarte("bindung", grenzenSchluesselHoechstens, func() any { return time.Now() })
+
+// betreiberRateLimit: je Betreiber eine angenommene Bindung je 30 s. Eigene
+// Karte, denn ihre Schluessel entstehen nur nach einer angenommenen, doppelt
+// unterschriebenen Bindung eines registrierten Menschen -- von aussen nicht
+// fuellbar. In bindungRateLimit galt bei voller Karte jeder Betreiber als
+// "gerade gebunden" (Pruefung von #325, LOW-1).
+var betreiberRateLimit = neueBegrenzteKarte("betreiber", grenzenSchluesselHoechstens, func() any { return time.Now() })
 
 // registerWalletLocks serializes the full registration flow (IsHuman check
 // → EVM registerWithSig call → Go-state RegisterHuman) per wallet.
@@ -99,12 +107,12 @@ func init() {
 	})
 }
 
-// sperrKartenAufraeumen: Eintraege von registerRateLimit, walletRateLimit und
-// bindungRateLimit,
+// sperrKartenAufraeumen: Eintraege von registerRateLimit, walletRateLimit,
+// bindungRateLimit und betreiberRateLimit,
 // deren Sperre abgelaufen ist, loeschen -- erst das schafft in einer vollen
 // Karte wieder Platz (begrenzte_karte.go).
 func sperrKartenAufraeumen(now time.Time) {
-	for _, karte := range []*begrenzteKarte{registerRateLimit, walletRateLimit, bindungRateLimit} {
+	for _, karte := range []*begrenzteKarte{registerRateLimit, walletRateLimit, bindungRateLimit, betreiberRateLimit} {
 		karte.Range(func(k, v interface{}) bool {
 			if now.Sub(v.(time.Time)) > 35*time.Second { // must exceed maximum rate limit window (30s)
 				karte.Delete(k)

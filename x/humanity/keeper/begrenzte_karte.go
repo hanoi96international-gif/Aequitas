@@ -23,7 +23,8 @@ import (
 // registerRateLimit bis zu zehn, in ipBurst bis zu fuenf), 20.000 bzw.
 // 40.000 Absender fuellen also eine Karte (Pruefung von #324, LOW-6;
 // docs/OFFEN.md). Die Validator-Bindung hat darum eine eigene Karte
-// (bindungRateLimit), ebenso die frei gewaehlten Wallets (walletRateLimit).
+// (bindungRateLimit), ebenso die frei gewaehlten Wallets (walletRateLimit)
+// und die Betreiber (betreiberRateLimit).
 // Abgewiesene neue Absender stehen je Karte in /api/health/combined
 // (grenzen_je_absender) und hoechstens einmal je Minute im Log.
 
@@ -126,5 +127,6 @@ func GrenzenJeAbsenderStand() map[string]interface{} {
 	for _, k := range begrenzteKarten {
 		out[k.name] = map[string]int64{"eintraege": k.anzahl.Load(), "hoechstens": k.max, "neue_abgelehnt": k.abgelehnt.Load()}
 	}
+	out["eigenes_gateway"] = gatewayStandFuerGrenzen()
 	return out
 }

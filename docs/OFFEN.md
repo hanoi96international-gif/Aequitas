@@ -124,10 +124,17 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
   einen Schlüssel – in `registerRateLimit` bis zu zehn, in `ipBurst` bis zu
   fünf. 20.000 bzw. 40.000 Absender (mit IPv6 je /64: ein bis zwei /48)
   füllen eine Karte, danach sind alle neuen Absender dieser Karte gesperrt,
-  solange der Angreifer etwa 3.300 Anfragen je Sekunde hält. Die
-  Validator-Bindung hat seit dem Folge-PR eine eigene Karte
-  (`bindungRateLimit`), die frei gewählten Wallets ebenso. Fix: ein Eintrag
-  je Absender mit den Werten je Funktion; bei voller Karte gröber zählen
+  solange der Angreifer etwa 3.300 Anfragen je Sekunde hält. Eigene Karten
+  haben seit #325 die Validator-Bindung (`bindungRateLimit`, Fehlversuche je
+  IP) und die frei gewählten Wallets, seit dem Folge-PR auch die Grenze je
+  Betreiber (`betreiberRateLimit`; ihre Schlüssel entstehen nur nach einer
+  angenommenen, unterschriebenen Bindung). Rest (Prüfung von #325, LOW-1
+  und INFO-6): `bindungRateLimit` füllen ungültige Bindungen aus 200.000 /64
+  (drei bis vier /48, 2.100–5.700 Anfragen je Sekunde zum Halten) – danach
+  bekommt jeder neue Absender bei der Bindung 429; `walletRateLimit` füllen
+  schon 8.000–17.000 /64 (12 Wallets je Minute und Absender) – danach
+  bekommt jede neue Wallet bei `/api/prove` 429. Fix: ein Eintrag je
+  Absender mit den Werten je Funktion; bei voller Karte gröber zählen
   (/48, /24) statt global zu sperren.
 - **Zwei anhängende Proxys** (Prüfung von #324, INFO-4/INFO-9): `clientIP`
   nimmt den letzten Eintrag von `X-Forwarded-For` – richtig hinter genau
@@ -149,7 +156,29 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
   Proof-Server je Wallet zählen lassen (der Knoten reicht sie signiert
   durch).
 
+- **Netzprüfung zweier Endpunkte hinter docker-proxy** (Prüfung von #325,
+  INFO-7): `/api/sign-validator-challenge` und `/api/snapshot` mit
+  `SNAPSHOT_RESTRICT_TO_PRIVATE_NETWORK` lassen nur private Quellen zu – das
+  Gateway des Docker-Netzes besteht diese Prüfung, und über docker-proxy
+  (IPv6, Hairpin) kommt jeder vom Gateway. Bewusst nicht geändert: genau so
+  erreicht auch der Betreiber auf dem Host (`curl 127.0.0.1:8080`) den
+  Knoten. Es schützen weiter das ausdrückliche Einschalten
+  (`ALLOW_SIGN_VALIDATOR_CHALLENGE`, `SNAPSHOT_RESTRICT_…`) und
+  `SNAPSHOT_TOKEN`; mit 8080 nur auf IPv4 (siehe unten) entfällt der Weg.
+
 ## Betrieb – bei dir
+- **Proxy nur im Docker-Netz** (Prüfung von #325, LOW-2): Der Knoten glaubt
+  `X-Forwarded-For` nie vom Gateway seines Docker-Netzes. Ein Proxy auf dem
+  Host selbst (Dienst, `network_mode: host`, über `127.0.0.1:8080` oder die
+  Container-IP) kommt aber genau von dort – dann zählen alle Nutzer unter
+  einer Adresse und bekommen schnell 429. Den Proxy darum als Container in
+  `aequitas-net` betreiben und den Knoten per Containername ansprechen (so
+  alle Caddyfiles in `deploy/`). Erkennbar in `/api/health/combined` →
+  `grenzen_je_absender.eigenes_gateway.xff_vom_gateway_verworfen` und im Log
+  (`X-Forwarded-For vom eigenen Gateway … verworfen`). Dieselbe Meldung löst
+  auch ein Client aus, der über docker-proxy (IPv6, Hairpin) kommt und den
+  Kopf selbst setzt – steigt der Zähler ohne Proxy auf dem Host, den
+  nächsten Punkt prüfen.
 - **docker-proxy auf `[::]:8080` prüfen** (Prüfung von #324, MEDIUM-5): auf
   C1 und C2 `ss -ltnp 'sport = :8080'`. Steht dort `docker-proxy` auf
   `[::]:8080`, erreichen IPv6-Clients den Knoten am Proxy vorbei vom

@@ -46,6 +46,11 @@ func TestClientIP_GatewayGlaubtKeinemKopf(t *testing.T) {
 	if got := anfrage("172.18.0.1:4000", "10.1.2.3"); got != "172.18.0.1" {
 		t.Fatalf("Gateway: clientIP = %q, erwartet die TCP-Adresse", got)
 	}
+	// Dieselbe Adresse in IPv4-in-IPv6-Schreibweise ist dasselbe Gateway
+	// (Pruefung von #325, INFO-8, M8).
+	if got := anfrage("[::ffff:172.18.0.1]:4000", "10.1.2.3"); got != "172.18.0.1" {
+		t.Fatalf("Gateway in ::ffff-Schreibweise: clientIP = %q, erwartet 172.18.0.1", got)
+	}
 	if got := anfrage("[fd00::1]:4000", "10.1.2.3"); got != "fd00::" {
 		t.Fatalf("IPv6-Gateway: clientIP = %q, erwartet das /64 der TCP-Adresse", got)
 	}
@@ -134,6 +139,11 @@ func TestGatewaysAusDateien(t *testing.T) {
 	if _, err := gatewaysAusDateien(filepath.Join(dir, "fehlt"), v6); err == nil {
 		t.Fatal("ohne IPv4-Tabelle kein Fehler")
 	}
+	// Die IPv6-Tabelle ist da, aber nicht lesbar: ein Fehler, kein stilles
+	// Weglassen des IPv6-Gateways (Pruefung von #325, INFO-3).
+	if _, err := gatewaysAusDateien(v4, dir); err == nil {
+		t.Fatal("unlesbare IPv6-Tabelle ohne Fehler")
+	}
 	if runtime.GOOS != "linux" {
 		return
 	}
@@ -144,6 +154,102 @@ func TestGatewaysAusDateien(t *testing.T) {
 	for k := range echt {
 		if net.ParseIP(k) == nil {
 			t.Fatalf("kein IP: %q", k)
+		}
+	}
+}
+
+// Pruefung von #325, LOW-2: verworfene Koepfe vom Gateway werden gezaehlt und
+// stehen im Stand -- ein Proxy auf dem Host faellt sonst nur als 429 auf.
+func TestClientIP_GatewayVerworfenGezaehlt(t *testing.T) {
+	gatewaysSetzen(t, testGateways)
+	vorher := xffVomGatewayVerworfen.Load()
+	r := httptest.NewRequest("POST", "/rpc", nil)
+	r.RemoteAddr = "172.18.0.1:4000"
+	r.Header.Set("X-Forwarded-For", "203.0.113.9")
+	for i := 0; i < 3; i++ {
+		clientIP(r)
+	}
+	if n := xffVomGatewayVerworfen.Load() - vorher; n != 3 {
+		t.Fatalf("%d verworfene Koepfe gezaehlt, erwartet 3", n)
+	}
+	r.RemoteAddr = "172.18.0.5:4000"
+	clientIP(r)
+	if n := xffVomGatewayVerworfen.Load() - vorher; n != 3 {
+		t.Fatal("ein Kopf vom eigenen Proxy wurde als verworfen gezaehlt")
+	}
+	st, ok := GrenzenJeAbsenderStand()["eigenes_gateway"].(map[string]interface{})
+	if !ok || st["routen_lesbar"] != true || st["xff_vom_gateway_verworfen"].(int64) < 3 {
+		t.Fatalf("Stand ohne eigenes_gateway: %v", st)
+	}
+}
+
+// Nicht lesbar steht im Stand.
+func TestEigeneGateways_NichtLesbarImStand(t *testing.T) {
+	gatewaysSetzen(t, func() (map[string]bool, error) { return nil, errors.New("kein /proc") })
+	kopfQuelleVertrauenswuerdig("172.18.0.5")
+	st := GrenzenJeAbsenderStand()["eigenes_gateway"].(map[string]interface{})
+	if st["routen_lesbar"] != false {
+		t.Fatalf("Stand meldet lesbare Routen: %v", st)
+	}
+}
+
+// Pruefung von #326, LOW-1: die Meldung bei verworfenem X-Forwarded-For vom
+// Gateway ist gedrosselt -- den Kopf setzt ein Client von aussen, jede
+// Anfrage eine Logzeile waere eine Logflut. Gezaehlt wird jede.
+func TestXffVomGateway_MeldungGedrosselt(t *testing.T) {
+	xffVomGatewayGemeldet.Store(0)
+	t.Cleanup(func() { xffVomGatewayGemeldet.Store(0) })
+	vorZaehler, vorMeldungen := xffVomGatewayVerworfen.Load(), xffVomGatewayMeldungen.Load()
+	for i := 0; i < 1000; i++ {
+		xffVomGatewayVerworfenMelden("172.18.0.1")
+	}
+	if n := xffVomGatewayVerworfen.Load() - vorZaehler; n != 1000 {
+		t.Fatalf("%d gezaehlt, erwartet 1000", n)
+	}
+	if n := xffVomGatewayMeldungen.Load() - vorMeldungen; n != 1 {
+		t.Fatalf("%d Meldungen fuer 1000 verworfene Koepfe binnen einer Minute, erwartet 1", n)
+	}
+	xffVomGatewayGemeldet.Store(time.Now().Unix() - 61)
+	for i := 0; i < 1000; i++ {
+		xffVomGatewayVerworfenMelden("172.18.0.1")
+	}
+	if n := xffVomGatewayMeldungen.Load() - vorMeldungen; n != 2 {
+		t.Fatalf("%d Meldungen nach einer Minute, erwartet 2", n)
+	}
+}
+
+// Pruefung von #326, INFO-4 (M9, M17): gemeldet wird jeder Wechsel lesbar <->
+// nicht lesbar, je einmal -- nicht jedes Lesen.
+func TestEigeneGateways_MeldungBeiJedemWechsel(t *testing.T) {
+	fehler := true
+	gatewaysSetzen(t, func() (map[string]bool, error) {
+		if fehler {
+			return nil, errors.New("kein /proc")
+		}
+		return map[string]bool{"172.18.0.1": true}, nil
+	})
+	gatewayGemeldet.Store(false)
+	t.Cleanup(func() { gatewayGemeldet.Store(false) })
+	vor := gatewayWechselMeldungen.Load()
+	lesen := func() {
+		gatewayCache.Store(nil)
+		eigeneGateways()
+	}
+	for i, schritt := range []struct {
+		fehler    bool
+		gemeldet  bool
+		meldungen int64
+	}{
+		{true, true, 1},   // nicht lesbar: gemeldet
+		{true, true, 1},   // weiter nicht lesbar: nicht noch einmal
+		{false, false, 2}, // wieder lesbar: gemeldet
+		{false, false, 2}, // weiter lesbar: nicht noch einmal
+		{true, true, 3},   // wieder nicht lesbar: gemeldet
+	} {
+		fehler = schritt.fehler
+		lesen()
+		if g, n := gatewayGemeldet.Load(), gatewayWechselMeldungen.Load()-vor; g != schritt.gemeldet || n != schritt.meldungen {
+			t.Fatalf("Schritt %d: gemeldet %v, Meldungen %d -- erwartet %v, %d", i, g, n, schritt.gemeldet, schritt.meldungen)
 		}
 	}
 }

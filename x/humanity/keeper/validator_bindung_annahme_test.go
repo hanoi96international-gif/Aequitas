@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 // Validator-Register, Schritt 2 (validator_bindung_annahme.go): Annahme und
@@ -335,5 +336,51 @@ func TestHandleValidatorBindung_Grenzen(t *testing.T) {
 	}
 	if _, ok := bindungRateLimit.Load("validator-bindung-fehl:192.0.2.26"); ok {
 		t.Fatal("503 als Fehlversuch gezaehlt")
+	}
+}
+
+// Pruefung von #325, LOW-1: ungueltige Bindungen aus vielen Netzen fuellen
+// bindungRateLimit. Die Grenze je Betreiber steht darum in einer eigenen
+// Karte -- sonst galt bei voller Karte jeder Betreiber als "gerade gebunden".
+func TestHandleValidatorBindung_BetreiberEigeneKarte(t *testing.T) {
+	validatorRegisterOverride.Store(1)
+	t.Cleanup(func() { validatorRegisterOverride.Store(0) })
+	betreiber, _ := neuerSchluessel(t)
+	knoten, _ := neuerSchluessel(t)
+	a := &APIServer{state: newTestState()}
+	a.state.annehmendAusdruecklich.Store(true)
+	alt := bindungRateLimit.max
+	bindungRateLimit.max = bindungRateLimit.anzahl.Load()
+	t.Cleanup(func() { bindungRateLimit.max = alt })
+	posten := func() *httptest.ResponseRecorder {
+		gut := bindungUnterschrieben(t, betreiber, knoten, nowUnix())
+		req := httptest.NewRequest(http.MethodPost, "/api/validator-bindung", bytes.NewReader(bindungsKoerper(t, gut)))
+		req.RemoteAddr = "192.0.2.31:1234"
+		rec := httptest.NewRecorder()
+		a.handleValidatorBindung(rec, req)
+		return rec
+	}
+	schluessel := "validator-bindung-betreiber:" + adrVon(betreiber)
+	betreiberRateLimit.Delete(schluessel)
+	t.Cleanup(func() { betreiberRateLimit.Delete(schluessel) })
+	// Ohne Datenbank endet die Bindung danach mit 400 -- entscheidend ist,
+	// dass die Grenze je Betreiber sie nicht vorher mit 429 abweist.
+	if rec := posten(); rec.Code == http.StatusTooManyRequests {
+		t.Fatalf("volle bindungRateLimit sperrt einen Betreiber, der nie gebunden hat: %s", rec.Body.String())
+	}
+	// Die Grenze je Betreiber gilt weiter -- in ihrer eigenen Karte.
+	betreiberRateLimit.Store(schluessel, time.Now())
+	if rec := posten(); rec.Code != http.StatusTooManyRequests || !strings.Contains(rec.Body.String(), "operator bound") {
+		t.Fatalf("Betreiber in betreiberRateLimit binnen 30 s: %d %s", rec.Code, rec.Body.String())
+	}
+	// Auch diese Karte schliesst, wenn sie voll ist (fail-closed) -- von
+	// aussen erreichbar ist das nicht, ihre Schluessel entstehen nur nach
+	// angenommenen Bindungen.
+	betreiberRateLimit.Delete(schluessel)
+	altB := betreiberRateLimit.max
+	betreiberRateLimit.max = betreiberRateLimit.anzahl.Load()
+	t.Cleanup(func() { betreiberRateLimit.max = altB })
+	if rec := posten(); rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("volle betreiberRateLimit: %d %s, erwartet 429", rec.Code, rec.Body.String())
 	}
 }

@@ -68,7 +68,11 @@ services:
       # Knoten ist nie die Quelle der Wahrheit; die Seeds sind es.
       AEQUITAS_DIVERGENZ_AUTORESYNC: "1"
     ports:
-      - "8080:8080"   # HTTP-API und Explorer
+      # HTTP-API und Explorer. Ein Proxy davor gehoert als Container in
+      # aequitas-net und spricht den Knoten als aequitas-node:8080 an -- von
+      # Host-Prozessen (und ueber 127.0.0.1:8080) glaubt der Knoten keinen
+      # X-Forwarded-For (docs/OFFEN.md, "Proxy nur im Docker-Netz").
+      - "8080:8080"
       - "4001:4001"   # P2P
     volumes:
       - waldata:/data/wal

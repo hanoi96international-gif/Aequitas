@@ -217,7 +217,7 @@ func TestHandleValidatorBindung_JeBetreiber_RealDB(t *testing.T) {
 	ip := "192.0.2.77"
 	t.Cleanup(func() {
 		bindungRateLimit.Delete("validator-bindung-fehl:" + ip)
-		bindungRateLimit.Delete("validator-bindung-betreiber:" + adrVon(op))
+		betreiberRateLimit.Delete("validator-bindung-betreiber:" + adrVon(op))
 	})
 	posten := func(tx Transaction) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(http.MethodPost, "/api/validator-bindung", bytes.NewReader(bindungsKoerper(t, tx)))
