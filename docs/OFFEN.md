@@ -107,22 +107,28 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
      `/api/health/combined` und enthält Wallet, Hash und rohe DB-Fehlertexte
      (keine Geheimnisse). Optional: öffentlich neutral, Details nur ins Log.
 8. **WAL nach einem Rollenwechsel ohne Deckungsprüfung** (Prüfung von
-   #322, INFO-15): Ein Beobachter liest das WAL nicht ein, die Datei bleibt
-   liegen. Startet ein abgestürzter Validator mit ungeflushten Sätzen erst
-   als Beobachter (spielt fremde Blöcke nach, `wal_seq` bleibt stehen) und
-   dann wieder als Validator, wendet `recoverFromWAL` die alten Sätze ohne
-   Deckungsprüfung auf den weitergelaufenen Stand an (PoC: Kontostand
-   −42,042, eine Zeile im Ausgang). Nur der umgestellte Knoten ist betroffen
-   – die anderen prüfen die Deckung beim Nachspielen und lehnten einen Block
-   mit dieser Zeile ab; der Workflow-Beobachter startet mit leerem WAL.
-   Fix: Ein Beobachter, dessen WAL nicht abgeglichene Sätze trägt (über der
-   Untergrenze, `seq` > `wal_seq` der Konten; rein lesend per
-   `wal.ReplayFile`), startet nicht (fail-closed), mit dem Hinweis, erst als
-   Validator wiederanlaufen zu lassen oder den Rest bewusst zu verwerfen;
-   ergänzend prüft `recoverFromWAL` die Deckung und parkt Sätze, die ins
-   Minus führten. Missbrauchstest wie der PoC. Bis dahin (Betrieb): einen
-   Validator mit WAL nie als Beobachter neu starten, ohne dass er vorher als
-   Validator sauber wiederangelaufen ist.
+   #322, INFO-15) – **erledigt (Zweig `claude/weiter-gehts-hklfhc-wal`):**
+   - Ein Beobachter, dessen WAL nicht abgeglichene Sätze trägt (über der
+     Untergrenze, `seq` > `wal_seq` von Absender oder Empfänger; rein lesend
+     per `wal.ReplayFile`), startet nicht: `main` beendet sich nach
+     `PruefeBeobachterWAL`, auch ohne `AEQUITAS_WAL_ENABLED`. Abhilfe laut
+     Meldung: erst als Validator wiederanlaufen lassen und sauber beenden –
+     oder den Rest bewusst verwerfen mit
+     `AEQUITAS_BEOBACHTER_WAL_VERWERFEN=1` (setzt die Untergrenze des
+     Wiederanlaufs auf das Dateiende; diese Überweisungen kommen nie in
+     einen Block).
+   - `recoverFromWAL` wendet keinen Satz an, der den Absender ins Minus
+     führte (Betrag + Gebühr), sondern legt ihn in `wal_geparkt` ab
+     (Degraded-Hinweis). Scheitert das Ablegen, scheitert der Wiederanlauf,
+     und der Schnellpfad bleibt aus.
+   - Bleibt offen: Sätze, die noch gedeckt sind, wendet ein Wiederanlauf
+     nach einer Beobachterzeit weiterhin an, verspätet; der Block mit ihnen
+     besteht die Prüfungen der anderen. Ebenso Zeilen, die schon vor dem
+     Wechsel in `pending_txs` lagen (ein Beobachter erzeugt sie nie), und
+     Sätze über der Marke des Speicherkorbs. Ein Validator, der mit
+     ausgeschaltetem WAL weiterläuft, hat dasselbe Problem wie der
+     Beobachter. Betrieb weiter: Rollen nur nach einem sauberen Ende
+     wechseln.
 
 ## Ratenbegrenzung – bekannte Lücken
 - **`X-Forwarded-For` hinter einem privaten TCP-Partner** (Prüfung von #319,

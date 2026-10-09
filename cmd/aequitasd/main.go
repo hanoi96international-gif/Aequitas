@@ -451,6 +451,14 @@ func main() {
 	}
 
 	chainState := keeper.NewChainState("/tmp/aequitas_state.json")
+	// Ein Beobachter mit nicht abgeglichenem WAL startet nicht: er spielte
+	// fremde Bloecke ohne diese Ueberweisungen nach, und ein spaeterer
+	// Wiederanlauf als Validator wendete sie auf den weitergelaufenen Stand
+	// an (beobachter_wal.go). Vor Blockchain, P2P und Sync.
+	if err := chainState.PruefeBeobachterWAL(); err != nil {
+		fmt.Printf("✗ %v\n", err)
+		os.Exit(1)
+	}
 	bc := keeper.NewBlockchain(p2pNode.GetNodeID(), chainState)
 	// Load individually-registered validator keys from DB into the DAG's
 	// authorized set so they survive node restarts without re-registration.
