@@ -175,7 +175,10 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
   `aequitas-net` betreiben und den Knoten per Containername ansprechen (so
   alle Caddyfiles in `deploy/`). Erkennbar in `/api/health/combined` →
   `grenzen_je_absender.eigenes_gateway.xff_vom_gateway_verworfen` und im Log
-  (`X-Forwarded-For vom eigenen Gateway … verworfen`).
+  (`X-Forwarded-For vom eigenen Gateway … verworfen`). Dieselbe Meldung löst
+  auch ein Client aus, der über docker-proxy (IPv6, Hairpin) kommt und den
+  Kopf selbst setzt – steigt der Zähler ohne Proxy auf dem Host, den
+  nächsten Punkt prüfen.
 - **docker-proxy auf `[::]:8080` prüfen** (Prüfung von #324, MEDIUM-5): auf
   C1 und C2 `ss -ltnp 'sport = :8080'`. Steht dort `docker-proxy` auf
   `[::]:8080`, erreichen IPv6-Clients den Knoten am Proxy vorbei vom

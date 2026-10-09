@@ -32,14 +32,18 @@ import (
 // 127.0.0.1:8080 oder die Container-IP -- kommt ebenfalls vom Gateway: dann
 // zaehlen alle Nutzer unter ihm (fail-closed, Pruefung von #325, LOW-2). Jede
 // verworfene Kopfzeile vom Gateway wird gezaehlt (grenzen_je_absender) und
-// hoechstens einmal je Minute gemeldet.
+// hoechstens einmal je Minute gemeldet. Ausloesen kann das auch ein Client,
+// der ueber docker-proxy (IPv6, Hairpin) kommt und den Kopf selbst setzt
+// (Pruefung von #325, INFO-2).
 //
-// Die Gateways stehen in /proc/net/route und /proc/net/ipv6_route, gelesen
-// hoechstens einmal je Minute -- ein Wechsel des Docker-Netzes zur Laufzeit
-// gilt also bis zu 60 s spaeter. Ist die IPv4-Tabelle nicht lesbar (oder die
-// IPv6-Tabelle da, aber nicht lesbar), gilt der Kopf nur noch von Loopback
-// (fail-closed: jeder andere Proxy zaehlt unter seiner eigenen Adresse); das
-// steht im Stand und wird bei jedem Wechsel gemeldet.
+// Die Gateways stehen in /proc/net/route und /proc/net/ipv6_route. Der
+// gelesene Stand gilt eine Minute -- ein Wechsel des Docker-Netzes zur
+// Laufzeit gilt also bis zu 60 s spaeter; laeuft er ab, lesen gleichzeitige
+// Anfragen die Tabellen je selbst (billig, durch die Verbindungen begrenzt).
+// Ist die IPv4-Tabelle nicht lesbar (oder die IPv6-Tabelle da, aber nicht
+// lesbar), gilt der Kopf nur noch von Loopback (fail-closed: jeder andere
+// Proxy zaehlt unter seiner eigenen Adresse); das steht im Stand (erst nach
+// dem ersten Lesen) und wird bei jedem Wechsel gemeldet.
 
 // eigeneGatewaysLesen: die Gateways der eigenen Routen, in der Schreibweise
 // von net.IP.String(). Variable fuer Tests.
@@ -105,10 +109,14 @@ type gatewayStand struct {
 var (
 	gatewayCache    atomic.Pointer[gatewayStand]
 	gatewayGemeldet atomic.Bool
-	// xffVomGatewayVerworfen: Anfragen vom Gateway mit X-Forwarded-For, deren
-	// Kopf nicht galt; xffVomGatewayGemeldet: Unix-Sekunde der letzten Meldung.
+	// xffVomGatewayVerworfen: Aufrufe von clientIP fuer Verbindungen vom
+	// Gateway mit X-Forwarded-For, deren Kopf nicht galt (eine Anfrage kann
+	// mehrere sein); xffVomGatewayGemeldet: Unix-Sekunde der letzten Meldung.
 	xffVomGatewayVerworfen atomic.Int64
 	xffVomGatewayGemeldet  atomic.Int64
+	// Zahl der Meldungen im Log -- fuer die Tests der Drossel.
+	xffVomGatewayMeldungen  atomic.Int64
+	gatewayWechselMeldungen atomic.Int64
 )
 
 // eigeneGateways: der Stand von hoechstens vor einer Minute.
@@ -121,8 +129,10 @@ func eigeneGateways() *gatewayStand {
 	gatewayCache.Store(st)
 	// Gemeldet wird jeder Wechsel: nicht lesbar -> lesbar -> nicht lesbar.
 	if err != nil && gatewayGemeldet.CompareAndSwap(false, true) {
+		gatewayWechselMeldungen.Add(1)
 		fmt.Printf("[GRENZE] ⚠ eigene Routen nicht lesbar (%v) -- X-Forwarded-For gilt nur noch von Loopback\n", err)
 	} else if err == nil && gatewayGemeldet.CompareAndSwap(true, false) {
+		gatewayWechselMeldungen.Add(1)
 		fmt.Println("[GRENZE] ✓ eigene Routen wieder lesbar -- X-Forwarded-For gilt wieder vom eigenen Proxy")
 	}
 	return st
@@ -152,12 +162,13 @@ func kopfQuelleVertrauenswuerdig(host string) bool {
 
 // xffVomGatewayVerworfenMelden: zaehlen und hoechstens einmal je Minute
 // melden -- ein Proxy auf dem Host faellt sonst nur als 429 auf (Pruefung
-// von #325, LOW-2).
+// von #325, LOW-2). Die Drossel ist eine Grenze: der Kopf kommt von aussen.
 func xffVomGatewayVerworfenMelden(gateway string) {
 	xffVomGatewayVerworfen.Add(1)
 	jetzt := time.Now().Unix()
 	if alt := xffVomGatewayGemeldet.Load(); jetzt-alt >= 60 && xffVomGatewayGemeldet.CompareAndSwap(alt, jetzt) {
-		fmt.Printf("[GRENZE] ⚠ X-Forwarded-For vom eigenen Gateway %s verworfen -- ein Proxy auf dem Host zaehlt alle Nutzer unter einer Adresse; den Proxy ins Docker-Netz legen (docs/OFFEN.md)\n", gateway)
+		xffVomGatewayMeldungen.Add(1)
+		fmt.Printf("[GRENZE] ⚠ X-Forwarded-For vom eigenen Gateway %s verworfen -- entweder ein Proxy auf dem Host (zaehlt alle Nutzer unter einer Adresse; ins Docker-Netz legen) oder ein Client ueber docker-proxy (IPv6, Hairpin; docker-proxy pruefen), siehe docs/OFFEN.md\n", gateway)
 	}
 }
 
