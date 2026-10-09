@@ -52,9 +52,12 @@ import (
 // direkte Anfrage der TCP-Adresse.
 //
 // VERTRAUEN. Ein Mitglied des Satzes bestimmt "fuer" selbst und kann so
-// beliebig viele Zaehler aufmachen -- dasselbe Vertrauen, das ihm die
-// Freiliste schon gibt (docs/OFFEN.md, Ratenbegrenzung; Pruefung von #319,
-// LOW-31). Darum nur der Satz, kein bloss zugelassener Validator.
+// beliebig viele Zaehler aufmachen (Pruefung von #319, LOW-31). Wo der
+// Knoten direkt erreichbar ist, gibt ihm die Freiliste dasselbe schon; hinter
+// einem Proxy (Caddy) stellt sie nie frei, dort ist der Nachweis ein
+// zusaetzliches Recht (INFO-38). Vertretbar, solange IPv6 nicht je /64 zaehlt
+// -- dasselbe erreicht jeder mit vielen IPv6-Adressen. Darum nur der aktuelle
+// Satz, kein bloss zugelassener Validator (docs/OFFEN.md, Ratenbegrenzung).
 //
 // Die Merkliste schuetzt nur vor doppelter Arbeit und vor mitgehoerten
 // Wiederholungen. Sie ist ein Ring fester Groesse; voll heisst: den aeltesten
@@ -119,8 +122,9 @@ func WeiterleitungNachweisStand() map[string]interface{} {
 		"anerkannt": weiterleitungAnerkannt.Load(),
 		"abgelehnt": abgelehnt,
 		"bedeutung": "Unterschriebene Weiterleitungen von Erneuerungen beim Zustaendigen. " +
-			"zeit: Uhren weichen mehr als 30 s ab; unbekannt: Folger nicht im Satz oder " +
-			"zugelassen, falsches Ziel oder Faelschung; wiederholung: schon gesehen.",
+			"zeit: Uhren weichen mehr als 30 s ab; unbekannt: Folger nicht im aktuellen Satz " +
+			"(auch ein zugelassener Validator, der noch nicht aufgenommen ist), falsches Ziel " +
+			"oder Faelschung; wiederholung: schon gesehen.",
 	}
 }
 

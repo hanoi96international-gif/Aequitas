@@ -844,8 +844,14 @@ func TestWeiterleitungNachweis_NurDerSatz(t *testing.T) {
 	leeren()
 	t.Cleanup(leeren)
 	koerper := `{"wallet":"0x00000000000000000000000000000000000000aa","issued_at":1}`
-	if !l.zugelassen(adresseVon(zugelassen)) || l.SatzMitglied(adresseVon(zugelassen)) {
-		t.Fatal("Vorbedingung: zugelassen, aber nicht im Satz")
+	// Wie in Wirklichkeit meldet er sich erst (Hallo) und ist damit Bewerber
+	// (Pruefung von #319, INFO-36).
+	l.Empfange(LeitNachricht{Art: leitArtHallo, Von: adresseVon(zugelassen), ZeitMs: time.Now().UnixMilli()}, time.Now())
+	l.mu.Lock()
+	_, bewerber := l.bewerber[adresseVon(zugelassen)]
+	l.mu.Unlock()
+	if !bewerber || !l.zugelassen(adresseVon(zugelassen)) || l.SatzMitglied(adresseVon(zugelassen)) {
+		t.Fatal("Vorbedingung: zugelassen und Bewerber, aber nicht im Satz")
 	}
 	unbekannt := weiterleitungAbgelehnt[grundUnbekannt].Load()
 	durch, n := 0, 2*burstNachweisPruefungJeIP
@@ -905,5 +911,126 @@ func TestBurstErstatten_GenauDieEigeneBuchung(t *testing.T) {
 	burstErstatten("test-erstatten-gibt-es-nicht", time.Now())
 	if n := burstZahl(key); n != 3 {
 		t.Fatalf("Erstattung einer fremden Zeit hat %d uebrig gelassen, erwartet 3", n)
+	}
+}
+
+// Nur der AKTUELLE Satz zaehlt (Pruefung von #319, INFO-36): ein Mitglied,
+// das gerade entfernt wurde (steht noch im Vorgaenger-Satz), und eine
+// Adresse, die ein Leiter nur in seinem Satz gezeigt hat, werden nicht
+// anerkannt.
+func TestWeiterleitungNachweis_NurDerAktuelleSatz(t *testing.T) {
+	alt, _ := crypto.GenerateKey()
+	gezeigt, _ := crypto.GenerateKey()
+	bleibt := "0x00000000000000000000000000000000000000b1"
+	cs := nachweisLeitung(t, adresseVon(alt), bleibt)
+	l := cs.leitung.Load()
+	koerper := `{"wallet":"0x00000000000000000000000000000000000000aa","issued_at":1}`
+	pruefe := func(k *ecdsa.PrivateKey, fuer string) string {
+		return cs.weiterleitungFuer(beimZustaendigen(t, k, fuer, nachweisIch, koerper, time.Now()), time.Now())
+	}
+	if got := pruefe(alt, "203.0.113.40"); got != adresseVon(alt)+"|203.0.113.40" {
+		t.Fatalf("Vorbedingung: Mitglied anerkannt, bekam %q", got)
+	}
+	l.mu.Lock()
+	l.aendere([]string{nachweisIch, bleibt}, "test: entfernt", time.Now())
+	vorher := l.enthaelt(l.vorher, adresseVon(alt))
+	l.gesehenSatz = normSatz([]string{nachweisIch, adresseVon(gezeigt)})
+	l.mu.Unlock()
+	if !vorher {
+		t.Fatal("Vorbedingung: das entfernte Mitglied steht im Vorgaenger-Satz")
+	}
+	if got := pruefe(alt, "203.0.113.41"); got != "" {
+		t.Fatalf("entferntes Mitglied (Vorgaenger-Satz) anerkannt: %q", got)
+	}
+	if got := pruefe(gezeigt, "203.0.113.42"); got != "" {
+		t.Fatalf("nur gezeigter Satz anerkannt: %q", got)
+	}
+	// Wieder aufgenommen: sofort anerkannt.
+	l.mu.Lock()
+	l.aendere([]string{nachweisIch, bleibt, adresseVon(alt)}, "test: aufgenommen", time.Now())
+	l.mu.Unlock()
+	if got := pruefe(alt, "203.0.113.43"); got != adresseVon(alt)+"|203.0.113.43" {
+		t.Fatalf("wieder aufgenommenes Mitglied nicht anerkannt: %q", got)
+	}
+}
+
+// Der Angriff aus der Pruefung von #319 (LOW-35): beim Zustaendigen steht
+// die Leitung (l.mu gehalten -- Empfange wartet darunter auf dag.mu,
+// waehrend ein Block erzeugt wird). Gueltige Weiterleitungen eines Folgers
+// warten nicht darauf: sie halten ihre Pruefbuchung nicht fest, kommen
+// alle durch und hinterlassen kein gebuchtes Budget.
+func TestWeiterleitungNachweis_KeinStauAnDerLeitung(t *testing.T) {
+	stagedGrantActivationOverride.Store(1)
+	t.Cleanup(func() { stagedGrantActivationOverride.Store(0) })
+	folger, _ := crypto.GenerateKey()
+	cs := nachweisLeitung(t, adresseVon(folger))
+	l := cs.leitung.Load()
+	h := (&APIServer{state: cs}).erneuerungsGrenze(func(w http.ResponseWriter, r *http.Request) {})
+	tcp := "198.51.100.150" // RemoteAddr aus beimZustaendigen
+	koerper := `{"wallet":"0x00000000000000000000000000000000000000aa","issued_at":1}`
+	n := burstNachweisPruefungJeIP + 100
+	var fuer []string
+	for i := 0; i < n; i++ {
+		fuer = append(fuer, fmt.Sprintf("203.0.%d.%d", 1+i/250, 1+i%250))
+	}
+	leeren := func() {
+		erneuerungsGrenzeLeeren(tcp)
+		ipBurst.Delete("liveness-renewal-pruefung:" + tcp)
+		for _, f := range fuer {
+			ipBurst.Delete("liveness-renewal-von:" + adresseVon(folger) + "|" + f)
+		}
+	}
+	leeren()
+	t.Cleanup(leeren)
+	var anfragen []*http.Request
+	for _, f := range fuer {
+		anfragen = append(anfragen, beimZustaendigen(t, folger, f, nachweisIch, koerper, time.Now()))
+	}
+
+	l.mu.Lock()
+	gesperrt := true
+	defer func() {
+		if gesperrt {
+			l.mu.Unlock()
+		}
+	}()
+	var begrenzt atomic.Int64
+	fertig := make(chan struct{})
+	go func() {
+		defer close(fertig)
+		var wg sync.WaitGroup
+		weiter := make(chan *http.Request)
+		for w := 0; w < 32; w++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for req := range weiter {
+					rec := httptest.NewRecorder()
+					h(rec, req)
+					if rec.Code == http.StatusTooManyRequests {
+						begrenzt.Add(1)
+					}
+				}
+			}()
+		}
+		for _, req := range anfragen {
+			weiter <- req
+		}
+		close(weiter)
+		wg.Wait()
+	}()
+	select {
+	case <-fertig:
+	case <-time.After(20 * time.Second):
+		l.mu.Unlock()
+		gesperrt = false
+		<-fertig
+		t.Fatal("gueltige Weiterleitungen warten auf l.mu")
+	}
+	if b := begrenzt.Load(); b != 0 {
+		t.Fatalf("%d gueltige Weiterleitungen begrenzt, waehrend die Leitung stand", b)
+	}
+	if b := burstZahl("liveness-renewal-pruefung:" + tcp); b != 0 {
+		t.Fatalf("gueltige Weiterleitungen haben %d Pruefungen gebucht hinterlassen", b)
 	}
 }

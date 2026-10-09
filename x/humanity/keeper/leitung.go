@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -318,6 +319,10 @@ type Leitung struct {
 	hash string
 	env  LeitUmgebung
 
+	// satzLesbar: dieselbe Menge wie satz, unveraenderlich und ohne l.mu
+	// lesbar (SatzMitglied). Nur setzeSatz schreibt sie.
+	satzLesbar atomic.Pointer[map[string]bool]
+
 	ichFaehig bool
 	faehig    map[string]bool   // angekuendigte Leiterfaehigkeit
 	urls      map[string]string // Adresse -> URL, aus signierten Nachrichten
@@ -393,6 +398,11 @@ func satzHashVon(term, version uint64, satz []string) string {
 // Nicht-Mitgliedern verfallen.
 func (l *Leitung) setzeSatz(satz []string, term, version uint64) {
 	l.satz = normSatz(satz)
+	lesbar := make(map[string]bool, len(l.satz))
+	for _, a := range l.satz {
+		lesbar[a] = true
+	}
+	l.satzLesbar.Store(&lesbar)
 	l.satzTerm, l.satzVersion = term, version
 	l.hash = satzHashVon(term, version, l.satz)
 	for a := range l.acks {
@@ -534,17 +544,26 @@ func (l *Leitung) speichern() {
 }
 
 // SatzMitglied: darf a an diesen Knoten weiterleiten (weiterleitung_nachweis.go)?
-// Nur ein Mitglied des Satzes, nie dieser Knoten selbst -- dieselbe Menge wie
-// die Freiliste (validatorIPsFrei). Ein bloss zugelassener Validator nicht:
-// wer einen Nachweis unterschreiben darf, bestimmt frei, unter welchem
-// Absender gezaehlt wird, und das Pruefbudget bucht gueltige Nachweise nicht
-// -- im offenen Betrieb ist jeder registrierte Mensch zugelassen (Pruefung
-// von #319, LOW-31). Fragt die Datenbank nicht: eine oeffentliche Anfrage
-// wartet nicht auf dag.mu (INFO-16).
+// Nur ein Mitglied des aktuellen Satzes, nie dieser Knoten selbst -- dieselbe
+// Menge wie die Freiliste (validatorIPsFrei). Kein bloss zugelassener
+// Validator, kein Bewerber, kein Mitglied des Vorgaenger- oder eines nur
+// gezeigten Satzes: wer einen Nachweis unterschreiben darf, bestimmt frei,
+// unter welchem Absender gezaehlt wird, und gueltige Nachweise bekommen ihre
+// Pruefbuchung zurueck -- im offenen Betrieb ist jeder registrierte Mensch
+// zugelassen (Pruefung von #319, LOW-31).
+//
+// OHNE l.mu (LOW-35): eine gueltige Weiterleitung haelt ihre Pruefbuchung,
+// bis diese Antwort da ist. l.mu wird unter Ein- und Ausgabe gehalten
+// (Empfange wartet darunter auf dag.mu, speichern schreibt in die
+// Datenbank); ein Stau dort liesse sonst gueltige Pruefungen das Budget
+// fuellen und ehrliche Coordinatoren in die Zaehlung des Folgers fallen.
+// l.ich aendert sich nach NeueLeitung nicht.
 func (l *Leitung) SatzMitglied(a string) bool {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return a != "" && a != l.ich && l.imSatz(a)
+	if a == "" || a == l.ich {
+		return false
+	}
+	m := l.satzLesbar.Load()
+	return m != nil && (*m)[a]
 }
 
 // Ich: die Adresse dieses Knotens.

@@ -142,19 +142,41 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
   zeigt `/api/health/combined` → `weiterleitung_nachweis` (dort auch
   Uhrabweichung und unbekannte Folger). Abhilfe: TLS zwischen Validatoren.
 - **Satzmitglieder bestimmen den Absender ihrer Weiterleitungen** (Prüfung
-  von #319, LOW-31; bewusste Annahme): Der Zuständige zählt eine
+  von #319, LOW-31 und INFO-38; bewusste Annahme): Der Zuständige zählt eine
   Erneuerung mit gültigem Nachweis unter (Folger, `fuer`), und `fuer` setzt
-  der Folger. Ein böswilliges Satzmitglied kann so beliebig viele Zähler
-  aufmachen, und gültige Nachweise buchen kein Prüfbudget – je Minute
-  erreicht es den Handler (ecrecover, Ed25519, Registerabfrage) so oft, wie
-  es Anfragen schickt. Das ist dasselbe Vertrauen, das ihm die Freiliste
-  schon gibt (LOW-3 oben), und ein Satzmitglied kann ohnehin Leiter werden.
-  Bloß zugelassene Validatoren außerhalb des Satzes werden seit #319 nicht
-  anerkannt (im offenen Betrieb ist jeder registrierte Mensch zugelassen);
-  ihre Weiterleitungen zählen unter ihrer Adresse, bis sie aufgenommen
-  sind. Fix, falls nötig: eine großzügige Grenze je Unterzeichner – mit dem
-  Nachteil, dass ein Angreifer mit vielen Adressen über einen ehrlichen
-  Folger dessen Grenze leeren kann, solange IPv6 nicht je /64 zählt.
+  der Folger. Ein böswilliges Mitglied des aktuellen Satzes kann so
+  beliebig viele Zähler aufmachen; gültige Nachweise bekommen ihre
+  Prüfbuchung zurück (netto kein Prüfbudget) – es erreicht den Handler
+  (ecrecover, Ed25519, Registerabfrage) so oft, wie es Anfragen schickt. Wo
+  der Knoten direkt auf :8080 erreichbar ist, gibt ihm die Freiliste
+  dasselbe schon (LOW-3 oben); hinter Caddy stellt die Freiliste nie frei,
+  dort ist der Nachweis ein zusätzliches Recht. Im offenen Betrieb kommt
+  jeder registrierte Mensch mit einem aufgeholten Knoten in den Satz (einer
+  je Mensch). Vertretbar, solange IPv6 nicht je /64 zählt – dasselbe
+  erreicht jeder mit vielen IPv6-Adressen. Fix, falls nötig: eine
+  großzügige Grenze je Unterzeichner – mit dem Nachteil, dass ein Angreifer
+  mit vielen Adressen über einen ehrlichen Folger dessen Grenze leeren
+  kann.
+- **Weiterleitende Validatoren außerhalb des Satzes** (Prüfung von #319,
+  INFO-37; gegenüber vorher keine Verschlechterung): Bloß zugelassene
+  Validatoren, Bewerber und gerade entfernte Mitglieder werden nicht
+  anerkannt. Ihre Weiterleitungen zählen beim Zuständigen unter ihrer
+  Adresse – 30 je Minute für alle ihre Coordinatoren, und ein Angreifer mit
+  einer Adresse sperrt darüber alle aus; der Folger selbst sieht nur die
+  429. Aufgenommen wird meist in Sekunden; dauerhaft draußen bleiben ein
+  zweiter Schlüssel desselben Menschen, ein Schlüssel ohne bekannten
+  Menschen, ein Knoten mehr als 50 Blöcke zurück und einer in der
+  Aufnahmesperre (10 min). Betrieb: Coordinatoren nur an Knoten richten,
+  die in `/api/health/combined` → `leitung` → `mitglied: true` zeigen. Fix:
+  ein Knoten außerhalb des Satzes leitet Erneuerungen nicht weiter, sondern
+  antwortet 503 mit Hinweis.
+- **Gleichzeitig offene gültige Prüfungen** (Prüfung von #319, LOW-35;
+  Rest): Auch eine gültige Weiterleitung belegt ihren Platz im Prüfbudget
+  des Folgers, bis sie geprüft ist (Körper lesen, ecrecover, Merkliste –
+  Mikrosekunden; die Satzprüfung wartet seit #319 auf keine Sperre). Nur
+  wer über einen Folger 600 Weiterleitungen im selben Augenblick beim
+  Zuständigen ankommen lässt (600 Adressen in einem Schwall), schiebt die
+  folgenden für diesen Augenblick in die Zählung des Folgers.
 - Die Freiliste wird etwa einmal je Minute neu aufgebaut: wer den Satz
   verlässt, bleibt bis zu 60 s frei, neue Mitglieder sind bis zu 60 s
   begrenzt.
