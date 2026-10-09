@@ -352,8 +352,9 @@ func merkeProveKlasse(respBody []byte) {
 //   - sonst -- auch mit gefaelschtem Kopf -- wie eine direkte Anfrage unter
 //     ihrer Adresse (Pruefung von #319, LOW-8).
 //
-// Den Nachweis prueft der Knoten hoechstens burstNachweisPruefungJeIP-mal je
-// Minute und Absender -- unabhaengig vom Direktzaehler.
+// Hoechstens burstNachweisPruefungJeIP Nachweise je Minute und Absender
+// werden geprueft oder sind gerade in Pruefung -- unabhaengig vom
+// Direktzaehler. Gueltige zaehlen danach nicht mehr mit.
 //
 // Vor der Aktivierung der Staffel nichts (der Handler antwortet 409).
 func (a *APIServer) erneuerungsGrenze(next http.HandlerFunc) http.HandlerFunc {
@@ -377,16 +378,21 @@ func (a *APIServer) erneuerungsGrenze(next http.HandlerFunc) http.HandlerFunc {
 			// Nachweis faellt dort hinein und sperrte sonst auch die
 			// gueltigen danach (Pruefung von #319, LOW-24). Ihre Kosten
 			// (Koerper lesen, ecrecover) deckelt eine eigene, grosszuegige
-			// Grenze je Absender -- gebucht wird nur ein ABGELEHNTER
-			// Nachweis: gueltige eines ehrlichen Folgers teilten sich das
-			// Budget sonst mit jedem, der ueber ihn kommt, und ein Angreifer
-			// mit 21 Adressen sperrte alle hinter ihm aus (MEDIUM-28).
+			// Grenze je Absender. Gebucht wird VOR der Pruefung -- ein
+			// Nachsehen ohne Buchung liess gleichzeitige Anfragen (langsamer
+			// Koerper) alle vorbei, bevor die erste buchte (LOW-30). Ein
+			// gueltiger Nachweis bekommt seine Buchung zurueck: sonst teilten
+			// sich die eines ehrlichen Folgers das Budget mit jedem, der ueber
+			// ihn kommt, und ein Angreifer mit 21 Adressen sperrte alle hinter
+			// ihm aus (MEDIUM-28).
 			fuer := ""
 			pruefung := "liveness-renewal-pruefung:" + absender
-			if !burstVoll(pruefung, burstNachweisPruefungJeIP, burstFenster) {
-				fuer = a.state.weiterleitungFuer(r, time.Now())
-				if fuer == "" && r.Header.Get(weiterleitungNachweisKopf) != "" {
-					burstErlaubt(pruefung, burstNachweisPruefungJeIP, burstFenster)
+			if r.Header.Get(weiterleitungNachweisKopf) != "" {
+				if gebucht, ok := burstBuchen(pruefung, burstNachweisPruefungJeIP, burstFenster); ok {
+					fuer = a.state.weiterleitungFuer(r, time.Now())
+					if fuer != "" {
+						burstErstatten(pruefung, gebucht)
+					}
 				}
 			}
 			if fuer != "" {

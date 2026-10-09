@@ -35,14 +35,22 @@ type ipBurstEintrag struct {
 // burstErlaubt meldet, ob fuer key noch eine Anfrage im Fenster frei ist, und
 // bucht sie, wenn ja.
 func burstErlaubt(key string, max int, fenster time.Duration) bool {
+	_, ok := burstBuchen(key, max, fenster)
+	return ok
+}
+
+// burstBuchen: wie burstErlaubt, liefert dazu den Zeitpunkt der Buchung (fuer
+// burstErstatten). Die Zeit wird unter der Sperre genommen, damit die
+// Eintraege der Reihe nach liegen.
+func burstBuchen(key string, max int, fenster time.Duration) (time.Time, bool) {
 	if max <= 0 {
-		return true
+		return time.Time{}, true
 	}
-	now := time.Now()
 	v, _ := ipBurst.LoadOrStore(key, &ipBurstEintrag{})
 	e := v.(*ipBurstEintrag)
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	now := time.Now()
 	// Verfallene vorne wegschneiden.
 	i := 0
 	for i < len(e.zeiten) && now.Sub(e.zeiten[i]) >= fenster {
@@ -52,33 +60,32 @@ func burstErlaubt(key string, max int, fenster time.Duration) bool {
 		e.zeiten = append(e.zeiten[:0], e.zeiten[i:]...)
 	}
 	if len(e.zeiten) >= max {
-		return false
+		return time.Time{}, false
 	}
 	e.zeiten = append(e.zeiten, now)
-	return true
+	return now, true
 }
 
-// burstVoll meldet, ob key sein Fenster schon ausgeschoepft hat -- ohne zu
-// buchen (erneuerungsGrenze: die Pruefbudget-Buchung kommt erst, wenn ein
-// Nachweis abgelehnt wurde).
-func burstVoll(key string, max int, fenster time.Duration) bool {
-	if max <= 0 {
-		return false
-	}
+// burstErstatten nimmt die Buchung von key zum Zeitpunkt zeit zurueck
+// (erneuerungsGrenze: das Pruefbudget wird VOR der Pruefung gebucht, damit
+// gleichzeitige Anfragen die Grenze nicht ueberholen, und ein gueltiger
+// Nachweis bekommt seine Buchung zurueck -- Pruefung von #319, LOW-30). Genau
+// diese, nicht die juengste: sonst verfiele eine fremde, aeltere Buchung
+// frueher. Ist sie schon verfallen, gibt es nichts zu erstatten.
+func burstErstatten(key string, zeit time.Time) {
 	v, ok := ipBurst.Load(key)
 	if !ok {
-		return false
+		return
 	}
 	e := v.(*ipBurstEintrag)
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	now, n := time.Now(), 0
-	for _, z := range e.zeiten {
-		if now.Sub(z) < fenster {
-			n++
+	for i := len(e.zeiten) - 1; i >= 0; i-- {
+		if e.zeiten[i].Equal(zeit) {
+			e.zeiten = append(e.zeiten[:i], e.zeiten[i+1:]...)
+			return
 		}
 	}
-	return n >= max
 }
 
 // ipBurstAufraeumen entfernt Schluessel ohne Eintrag im Fenster.
@@ -115,9 +122,10 @@ const (
 	// nachweislich von einem Validator kommen (weiterleitung_nachweis.go);
 	// alle anderen zaehlen hier mit.
 	burstErneuerungJeIP = 30
-	// Abgelehnte Weiterleitungsnachweise (weiterleitung_nachweis.go) je
-	// Absender, danach wird nicht mehr geprueft: deckelt nur die Kosten
-	// (Koerper lesen, ecrecover) gefaelschter Nachweise; gueltige buchen
-	// nichts.
+	// Pruefungen von Weiterleitungsnachweisen (weiterleitung_nachweis.go) je
+	// Absender, danach wird nicht mehr geprueft: deckelt die Kosten (Koerper
+	// lesen, ecrecover) gefaelschter Nachweise -- auch gleichzeitiger, denn
+	// gebucht wird vor der Pruefung. Ein gueltiger Nachweis bekommt seine
+	// Buchung zurueck.
 	burstNachweisPruefungJeIP = 600
 )

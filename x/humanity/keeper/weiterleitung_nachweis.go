@@ -38,8 +38,9 @@ import (
 // Wiederholung -- Pruefung von #319, MEDIUM-18) und sha256 des Koerpers.
 // Einen Koerper ueber weiterleitungKoerperMax unterschreibt er nicht
 // (zumLeiter antwortet 413). Der Zustaendige prueft
-//   - die Unterschrift passt zu einem Validator, den seine Leitung kennt
-//     (Mitglied des Satzes oder zugelassen, nicht er selbst),
+//   - die Unterschrift passt zu einem Mitglied des Satzes seiner Leitung
+//     (nicht er selbst, nicht ein bloss zugelassener Validator -- Pruefung
+//     von #319, LOW-31),
 //   - das Ziel ist er selbst (sonst gaelte ein mitgehoerter Nachweis bei
 //     jedem anderen Knoten noch einmal),
 //   - die Zeit liegt im Fenster der Leitungsnachrichten (30 s),
@@ -47,9 +48,13 @@ import (
 // Dann zaehlt er sie unter (Folger, fuer) -- mit derselben Grenze wie eine
 // direkte Anfrage. Es gibt keinen gemeinsamen Vorrat, den ein Angreifer
 // leeren koennte: wer ueber einen Folger kommt, verbraucht nur sein eigenes
-// Budget, und ein boeswilliger Validator nur das unter seinem eigenen Namen.
-// Alles andere -- auch ein gefaelschter Kopf -- zaehlt wie eine direkte
-// Anfrage der TCP-Adresse.
+// Budget. Alles andere -- auch ein gefaelschter Kopf -- zaehlt wie eine
+// direkte Anfrage der TCP-Adresse.
+//
+// VERTRAUEN. Ein Mitglied des Satzes bestimmt "fuer" selbst und kann so
+// beliebig viele Zaehler aufmachen -- dasselbe Vertrauen, das ihm die
+// Freiliste schon gibt (docs/OFFEN.md, Ratenbegrenzung; Pruefung von #319,
+// LOW-31). Darum nur der Satz, kein bloss zugelassener Validator.
 //
 // Die Merkliste schuetzt nur vor doppelter Arbeit und vor mitgehoerten
 // Wiederholungen. Sie ist ein Ring fester Groesse; voll heisst: den aeltesten
@@ -204,7 +209,7 @@ func (cs *ChainState) weiterleitungFuer(r *http.Request, jetzt time.Time) string
 		return weiterleitungAbweisen(grundUnbekannt)
 	}
 	folger := strings.ToLower(crypto.PubkeyToAddress(*pub).Hex())
-	if !l.KenntValidator(folger) {
+	if !l.SatzMitglied(folger) {
 		return weiterleitungAbweisen(grundUnbekannt)
 	}
 	// Der Hash, nicht die Unterschrift: eine Unterschrift laesst sich in eine

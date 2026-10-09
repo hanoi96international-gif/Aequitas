@@ -98,6 +98,20 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
   bleiben davon seit #319 (LOW-24) unberührt. Abgelehnte Nachweise je Grund
   zeigt `/api/health/combined` → `weiterleitung_nachweis` (dort auch
   Uhrabweichung und unbekannte Folger). Abhilfe: TLS zwischen Validatoren.
+- **Satzmitglieder bestimmen den Absender ihrer Weiterleitungen** (Prüfung
+  von #319, LOW-31; bewusste Annahme): Der Zuständige zählt eine
+  Erneuerung mit gültigem Nachweis unter (Folger, `fuer`), und `fuer` setzt
+  der Folger. Ein böswilliges Satzmitglied kann so beliebig viele Zähler
+  aufmachen, und gültige Nachweise buchen kein Prüfbudget – je Minute
+  erreicht es den Handler (ecrecover, Ed25519, Registerabfrage) so oft, wie
+  es Anfragen schickt. Das ist dasselbe Vertrauen, das ihm die Freiliste
+  schon gibt (LOW-3 oben), und ein Satzmitglied kann ohnehin Leiter werden.
+  Bloß zugelassene Validatoren außerhalb des Satzes werden seit #319 nicht
+  anerkannt (im offenen Betrieb ist jeder registrierte Mensch zugelassen);
+  ihre Weiterleitungen zählen unter ihrer Adresse, bis sie aufgenommen
+  sind. Fix, falls nötig: eine großzügige Grenze je Unterzeichner – mit dem
+  Nachteil, dass ein Angreifer mit vielen Adressen über einen ehrlichen
+  Folger dessen Grenze leeren kann, solange IPv6 nicht je /64 zählt.
 - Die Freiliste wird etwa einmal je Minute neu aufgebaut: wer den Satz
   verlässt, bleibt bis zu 60 s frei, neue Mitglieder sind bis zu 60 s
   begrenzt.

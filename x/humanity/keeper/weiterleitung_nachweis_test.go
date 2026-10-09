@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -222,7 +223,7 @@ func TestWeiterleitungNachweis_NurEchteWeiterleitungen(t *testing.T) {
 	if newTestState().weiterleitungFuer(beimZustaendigen(t, folger, "203.0.113.20", nachweisIch, koerper, ms(7)), jetzt) != "" {
 		t.Fatal("ohne Leitung anerkannt")
 	}
-	if cs.leitung.Load().KenntValidator(nachweisIch) {
+	if cs.leitung.Load().SatzMitglied(nachweisIch) {
 		t.Fatal("der Knoten selbst gilt als Weiterleiter")
 	}
 }
@@ -415,6 +416,11 @@ func TestWeiterleitungNachweis_FolgerNichtAusgesperrt(t *testing.T) {
 	}
 	if begrenztBeimZust.Load() == 0 {
 		t.Fatal("Gegenprobe: ohne Nachweis begrenzt der Zustaendige nichts -- der Test misst nicht, was er soll")
+	}
+	// Ohne Nachweis-Kopf wird nichts geprueft und nichts ins Pruefbudget
+	// gebucht (Pruefung von #319, INFO-34).
+	if n := burstZahl("liveness-renewal-pruefung:" + p.zustTCP); n != 0 {
+		t.Fatalf("Weiterleitungen ohne Nachweis haben %d Pruefungen gebucht", n)
 	}
 }
 
@@ -743,5 +749,161 @@ func TestWeiterleitungNachweis_GueltigeVerbrauchenKeinPruefbudget(t *testing.T) 
 	}
 	if n := p.begrenzt.Load(); n != 0 {
 		t.Fatalf("der Zustaendige hat %d Weiterleitungen begrenzt", n)
+	}
+}
+
+// warteLeser haelt den Koerper fest, bis frei geschlossen wird -- ein
+// langsamer Absender. Der erste Lesezugriff zaehlt in wartend.
+type warteLeser struct {
+	frei    <-chan struct{}
+	wartend *atomic.Int64
+	einmal  sync.Once
+}
+
+func (w *warteLeser) Read(p []byte) (int, error) {
+	w.einmal.Do(func() { w.wartend.Add(1) })
+	<-w.frei
+	return 0, io.EOF
+}
+
+// Der Angriff aus der Pruefung von #319 (LOW-30): viele gleichzeitige
+// Faelschungen von einer Adresse, jede mit langsamem Koerper. Gebucht wird vor
+// der Pruefung -- mehr als burstNachweisPruefungJeIP Pruefungen sind auch dann
+// nicht offen, wenn noch keine abgeschlossen ist. Vorher sahen alle nur nach,
+// ob das Budget voll ist, und kamen vorbei, bevor die erste buchte.
+func TestWeiterleitungNachweis_GleichzeitigBegrenzt(t *testing.T) {
+	stagedGrantActivationOverride.Store(1)
+	t.Cleanup(func() { stagedGrantActivationOverride.Store(0) })
+	folger, _ := crypto.GenerateKey()
+	cs := nachweisLeitung(t, adresseVon(folger))
+	h := (&APIServer{state: cs}).erneuerungsGrenze(func(w http.ResponseWriter, r *http.Request) {})
+	ip := "198.51.100.171"
+	leeren := func() { erneuerungsGrenzeLeeren(ip); ipBurst.Delete("liveness-renewal-pruefung:" + ip) }
+	leeren()
+	t.Cleanup(leeren)
+
+	frei := make(chan struct{})
+	var wartend, fertig atomic.Int64
+	var wg sync.WaitGroup
+	n := 3 * burstNachweisPruefungJeIP
+	kopf := fmt.Sprintf("%d;203.0.113.20;%s;%s", time.Now().UnixMilli(), strings.Repeat("ab", 16), strings.Repeat("00", 65))
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			req := httptest.NewRequest(http.MethodPost, nachweisPfad, &warteLeser{frei: frei, wartend: &wartend})
+			req.RemoteAddr = ip + ":4711"
+			req.Header.Set(weitergeleitetKopf, "1")
+			req.Header.Set(weiterleitungNachweisKopf, kopf)
+			h(httptest.NewRecorder(), req)
+			fertig.Add(1)
+		}()
+	}
+	// Jede Anfrage haengt entweder im Koerper (in der Pruefung) oder ist
+	// ohne Pruefung fertig.
+	bis := time.Now().Add(30 * time.Second)
+	for wartend.Load()+fertig.Load() < int64(n) {
+		if time.Now().After(bis) {
+			close(frei)
+			wg.Wait()
+			t.Fatalf("nach 30 s: %d in der Pruefung, %d fertig, von %d", wartend.Load(), fertig.Load(), n)
+		}
+		time.Sleep(time.Millisecond)
+	}
+	gleichzeitig := wartend.Load()
+	vorher := weiterleitungPruefungen.Load()
+	close(frei)
+	wg.Wait()
+	if gleichzeitig != int64(burstNachweisPruefungJeIP) {
+		t.Fatalf("%d Pruefungen gleichzeitig offen, erwartet genau %d", gleichzeitig, burstNachweisPruefungJeIP)
+	}
+	if d := weiterleitungPruefungen.Load() - vorher; d != int64(burstNachweisPruefungJeIP) {
+		t.Fatalf("%d Unterschriftspruefungen, erwartet %d", d, burstNachweisPruefungJeIP)
+	}
+	if b := burstZahl("liveness-renewal-pruefung:" + ip); b != burstNachweisPruefungJeIP {
+		t.Fatalf("Pruefbudget: %d gebucht, erwartet %d", b, burstNachweisPruefungJeIP)
+	}
+}
+
+// Der Angriff aus der Pruefung von #319 (LOW-31): ein bloss zugelassener
+// Validator (nicht im Satz) unterschreibt von einer Adresse Weiterleitungen
+// mit immer neuem Absender. Sein Nachweis gilt nicht -- alles zaehlt unter
+// seiner Adresse, und das Pruefbudget deckelt die Kosten. Gegenprobe: als
+// Mitglied des Satzes wird derselbe Nachweis anerkannt.
+func TestWeiterleitungNachweis_NurDerSatz(t *testing.T) {
+	stagedGrantActivationOverride.Store(1)
+	t.Cleanup(func() { stagedGrantActivationOverride.Store(0) })
+	zugelassen, _ := crypto.GenerateKey()
+	l := NeueLeitung(nachweisIch, "", []string{nachweisIch}, nachweisIch, true, LeitSpeicher{Term: 3, Leiter: nachweisIch}, testKonfig(),
+		LeitUmgebung{Zugelassen: func(a string) bool { return a == adresseVon(zugelassen) }}, time.Now())
+	cs := newTestState()
+	cs.leitung.Store(l)
+	h := (&APIServer{state: cs}).erneuerungsGrenze(func(w http.ResponseWriter, r *http.Request) {})
+	tcp := "198.51.100.150" // RemoteAddr aus beimZustaendigen
+	leeren := func() { erneuerungsGrenzeLeeren(tcp); ipBurst.Delete("liveness-renewal-pruefung:" + tcp) }
+	leeren()
+	t.Cleanup(leeren)
+	koerper := `{"wallet":"0x00000000000000000000000000000000000000aa","issued_at":1}`
+	if !l.zugelassen(adresseVon(zugelassen)) || l.SatzMitglied(adresseVon(zugelassen)) {
+		t.Fatal("Vorbedingung: zugelassen, aber nicht im Satz")
+	}
+	unbekannt := weiterleitungAbgelehnt[grundUnbekannt].Load()
+	durch, n := 0, 2*burstNachweisPruefungJeIP
+	for i := 0; i < n; i++ {
+		fuer := fmt.Sprintf("203.0.%d.%d", 1+i/250, 1+i%250)
+		w := httptest.NewRecorder()
+		h(w, beimZustaendigen(t, zugelassen, fuer, nachweisIch, koerper, time.Now()))
+		if w.Code != http.StatusTooManyRequests {
+			durch++
+		}
+	}
+	if durch != burstErneuerungJeIP {
+		t.Fatalf("ein zugelassener Validator ausserhalb des Satzes brachte %d durch, erwartet %d", durch, burstErneuerungJeIP)
+	}
+	if d := weiterleitungAbgelehnt[grundUnbekannt].Load() - unbekannt; d != int64(burstNachweisPruefungJeIP) {
+		t.Fatalf("%d als unbekannt abgelehnt, erwartet %d (Pruefbudget)", d, burstNachweisPruefungJeIP)
+	}
+	// Gegenprobe: im Satz gilt derselbe Nachweis.
+	cs2 := nachweisLeitung(t, adresseVon(zugelassen))
+	if got := cs2.weiterleitungFuer(beimZustaendigen(t, zugelassen, "203.0.113.20", nachweisIch, koerper, time.Now()), time.Now()); got != adresseVon(zugelassen)+"|203.0.113.20" {
+		t.Fatalf("Gegenprobe: Mitglied des Satzes nicht anerkannt (%q)", got)
+	}
+}
+
+// burstErstatten nimmt genau die eigene Buchung zurueck, nicht die juengste:
+// sonst verfiele eine fremde, aeltere frueher (Pruefung von #319, LOW-30).
+func TestBurstErstatten_GenauDieEigeneBuchung(t *testing.T) {
+	key := "test-erstatten"
+	ipBurst.Delete(key)
+	t.Cleanup(func() { ipBurst.Delete(key) })
+	var zeiten []time.Time
+	for i := 0; i < 3; i++ {
+		z, ok := burstBuchen(key, 3, time.Minute)
+		if !ok {
+			t.Fatalf("Buchung %d abgelehnt", i+1)
+		}
+		zeiten = append(zeiten, z)
+		time.Sleep(2 * time.Millisecond)
+	}
+	if _, ok := burstBuchen(key, 3, time.Minute); ok {
+		t.Fatal("vierte Buchung trotz Grenze 3")
+	}
+	burstErstatten(key, zeiten[1])
+	v, _ := ipBurst.Load(key)
+	e := v.(*ipBurstEintrag)
+	e.mu.Lock()
+	rest := append([]time.Time{}, e.zeiten...)
+	e.mu.Unlock()
+	if len(rest) != 2 || !rest[0].Equal(zeiten[0]) || !rest[1].Equal(zeiten[2]) {
+		t.Fatalf("nach Erstattung der mittleren Buchung: %v, erwartet %v und %v", rest, zeiten[0], zeiten[2])
+	}
+	if _, ok := burstBuchen(key, 3, time.Minute); !ok {
+		t.Fatal("nach der Erstattung ist kein Platz frei")
+	}
+	// Eine unbekannte oder schon verfallene Buchung: nichts geschieht.
+	burstErstatten(key, time.Unix(1, 0))
+	burstErstatten("test-erstatten-gibt-es-nicht", time.Now())
+	if n := burstZahl(key); n != 3 {
+		t.Fatalf("Erstattung einer fremden Zeit hat %d uebrig gelassen, erwartet 3", n)
 	}
 }

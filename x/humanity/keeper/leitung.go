@@ -533,20 +533,18 @@ func (l *Leitung) speichern() {
 	}
 }
 
-// KenntValidator: darf a an diesen Knoten weiterleiten (weiterleitung_nachweis.go)?
-// Mitglied des Satzes oder zugelassener Validator -- dieselbe Bedingung, unter
-// der Empfange Leitungsnachrichten hoert --, nie dieser Knoten selbst. Die
-// Zulassung wird ohne l.mu gefragt: eine oeffentliche Anfrage soll die
-// Leitung nicht festhalten, waehrend sie auf dag.mu wartet (Pruefung von
-// #319, INFO-16).
-func (l *Leitung) KenntValidator(a string) bool {
+// SatzMitglied: darf a an diesen Knoten weiterleiten (weiterleitung_nachweis.go)?
+// Nur ein Mitglied des Satzes, nie dieser Knoten selbst -- dieselbe Menge wie
+// die Freiliste (validatorIPsFrei). Ein bloss zugelassener Validator nicht:
+// wer einen Nachweis unterschreiben darf, bestimmt frei, unter welchem
+// Absender gezaehlt wird, und das Pruefbudget bucht gueltige Nachweise nicht
+// -- im offenen Betrieb ist jeder registrierte Mensch zugelassen (Pruefung
+// von #319, LOW-31). Fragt die Datenbank nicht: eine oeffentliche Anfrage
+// wartet nicht auf dag.mu (INFO-16).
+func (l *Leitung) SatzMitglied(a string) bool {
 	l.mu.Lock()
-	ich, imSatz, zugelassen := l.ich, l.imSatz(a), l.env.Zugelassen
-	l.mu.Unlock()
-	if a == "" || a == ich {
-		return false
-	}
-	return imSatz || zugelassen == nil || zugelassen(a)
+	defer l.mu.Unlock()
+	return a != "" && a != l.ich && l.imSatz(a)
 }
 
 // Ich: die Adresse dieses Knotens.
