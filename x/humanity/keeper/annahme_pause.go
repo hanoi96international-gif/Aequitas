@@ -30,6 +30,10 @@ import (
 //     auch wenn kleine Bloecke weiterlaufen (Deckel, Bremse) und 2 deshalb
 //     nicht greift.
 //
+//  4. solange mit AEQUITAS_LEITUNG=an die Leitung noch startet oder ihr Start
+//     gescheitert ist (leitungNichtBereit) -- ohne Leitung naehme ein Folger
+//     lokal an, statt an den Leiter weiterzuleiten.
+//
 // Alles ist wiederholbar ("gleich nochmal"), nicht endgueltig. Die Messung in
 // 2 beginnt beim Start des Knotens (AnnahmeMessungBeginnen, main.go -- vor dem
 // API-Server, wie der RPC-Weg ab processStartUnix misst), spaetestens mit dem
@@ -197,6 +201,26 @@ func (cs *ChainState) AnnahmeMessungBeginnen() {
 	cs.erzeugerSeit.CompareAndSwap(0, time.Now().Unix())
 }
 
+// leitungNichtBereit: AEQUITAS_LEITUNG=an, aber die Leitung ist (noch)
+// nicht da -- der Start laeuft noch oder ist gescheitert. Liest NUR die
+// Merker, nicht cs.leitung: versucht steht erst, wenn cs.leitung endgueltig
+// ist (StarteLeitung, defer), und gescheitert davor. Wer zuerst dies und erst
+// danach das Tor (cs.leitung) fragt, sieht darum nie "keine Leitung" an der
+// Umschaltkante (Pruefung von #329, Befund 1). Erst der Merker, dann die
+// Umgebung: nach dem Start liest der heisse Weg sie nicht mehr.
+func (cs *ChainState) leitungNichtBereit() error {
+	if !cs.leitungStartVersucht.Load() {
+		if leitungAn() {
+			return fmt.Errorf("%w: die Leitung dieses Knotens startet noch -- bitte in wenigen Sekunden erneut versuchen", ErrAnnahmePausiert)
+		}
+		return nil
+	}
+	if cs.leitungGescheitert.Load() {
+		return fmt.Errorf("%w: AEQUITAS_LEITUNG=an, aber die Leitung dieses Knotens laeuft nicht -- bitte einen anderen Knoten nutzen", ErrAnnahmePausiert)
+	}
+	return nil
+}
+
 // annahmePausiert: nil, wenn angenommen werden darf; zaehlt Ablehnungen.
 func (cs *ChainState) annahmePausiert() error {
 	err := cs.annahmePauseGrund()
@@ -224,8 +248,8 @@ func (cs *ChainState) annahmePauseGrund() error {
 	// nicht: eine kaputte Leitung haelt den Knoten nicht fuer immer an. Erst
 	// der Merker: nach dem Start (main ruft StarteLeitung immer) liest der
 	// heisse Weg die Umgebung nicht mehr.
-	if !cs.leitungStartVersucht.Load() && leitungAn() {
-		return fmt.Errorf("%w: die Leitung dieses Knotens startet noch -- bitte in wenigen Sekunden erneut versuchen", ErrAnnahmePausiert)
+	if err := cs.leitungNichtBereit(); err != nil {
+		return err
 	}
 	// Ein Beobachter erzeugt nie (ProduceBlock kehrt vor der Messung um):
 	// was er annaehme, kaeme in keinen Block (Pruefung von #318).
@@ -261,12 +285,14 @@ func (cs *ChainState) AnnahmePauseStand() map[string]interface{} {
 	}
 	return map[string]interface{}{
 		"bedeutung": "Annahme haelt an, solange der Ausgang von vor dem Start nicht verblockt ist oder seit " +
-			fmt.Sprint(admissionStallLimit()) + " s kein eigener Block entstand (annahme_pause.go) -- sonst passten die Auftraege eines Blocks zu keiner gemeinsamen Blockzeit.",
+			fmt.Sprint(admissionStallLimit()) + " s kein eigener Block entstand (annahme_pause.go) -- sonst passten die Auftraege eines Blocks zu keiner gemeinsamen Blockzeit -- " +
+			"und solange mit AEQUITAS_LEITUNG=an die Leitung startet oder nicht laeuft.",
 		"pausiert":  grund != "",
 		"grund":     grund,
 		"abgelehnt": annahmePausiertAbgelehnt.Load(),
 		"vor_start": cs.ausgangVorStartBis.Load() != 0,
-		// Leitung an, aber StarteLeitung noch nicht gelaufen.
-		"leitung_startet": !cs.leitungStartVersucht.Load() && leitungAn(),
+		// Leitung an, aber StarteLeitung noch nicht gelaufen bzw. gescheitert.
+		"leitung_startet":     !cs.leitungStartVersucht.Load() && leitungAn(),
+		"leitung_gescheitert": cs.leitungGescheitert.Load(),
 	}
 }

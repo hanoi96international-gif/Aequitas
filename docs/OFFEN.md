@@ -240,6 +240,13 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
   `SNAPSHOT_TOKEN`; mit 8080 nur auf IPv4 (siehe unten) entfällt der Weg.
 
 ## Betrieb – bei dir
+- **`AEQUITAS_LEITUNG=an` und gescheiterter Start** (seit #329, fail-closed):
+  Fehlt der Signierschlüssel oder ist `AEQUITAS_LEITUNG_GENESIS` ungültig,
+  nimmt der Knoten nichts an (wiederholbar abgelehnt), statt lokal
+  anzunehmen. Zu sehen in `/api/health/combined` → `leitung` →
+  `gescheitert: true` bzw. `annahme_pause` → `leitung_gescheitert`, im Log
+  `[LEITUNG] ✗`. Nach der Korrektur neu starten. Während des Starts (bis die
+  Leitung läuft) zeigt `annahme_pause` → `leitung_startet`.
 - **Proxy nur im Docker-Netz** (Prüfung von #325, LOW-2): Der Knoten glaubt
   `X-Forwarded-For` nie vom Gateway seines Docker-Netzes. Ein Proxy auf dem
   Host selbst (Dienst, `network_mode: host`, über `127.0.0.1:8080` oder die

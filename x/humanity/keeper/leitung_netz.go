@@ -210,10 +210,20 @@ func leiterFaehig(cs *ChainState) bool {
 // StarteLeitung baut die Leitung, wenn AEQUITAS_LEITUNG=an. Liefert nil sonst.
 func StarteLeitung(dag *BlockDAG, cs *ChainState, selfURL string) *Leitung {
 	// Erst NACH dem Bau (und dem Speichern in cs.leitung) gilt der Start als
-	// versucht -- auch wenn er scheitert: die Annahme-Pause bis dahin darf
-	// den Knoten nicht fuer immer anhalten (annahme_pause.go).
+	// versucht (annahme_pause.go, leitungNichtBereit). Scheitert er, obwohl
+	// die Leitung an ist (kein Schluessel, Genesis ungueltig), bleibt die
+	// Annahme angehalten: sonst naehme der Knoten lokal an, als gaebe es
+	// keine Leitung, waehrend im Netz ein Leiter annimmt (Pruefung von #329,
+	// Befund 2). Ausser beim Beobachter, der bewusst ohne Leitung laeuft.
+	// Gescheitert wird VOR versucht gesetzt.
 	if cs != nil {
-		defer cs.leitungStartVersucht.Store(true)
+		defer func() {
+			if leitungAn() && cs.leitung.Load() == nil && !beobachterModus() {
+				cs.leitungGescheitert.Store(true)
+				fmt.Println("[LEITUNG] ✗ AEQUITAS_LEITUNG=an, aber die Leitung laeuft nicht -- dieser Knoten nimmt nichts an, bis sie nach einer Korrektur startet")
+			}
+			cs.leitungStartVersucht.Store(true)
+		}()
 	}
 	StarteLeistungsnachweis(cs)
 	if !leitungAn() || dag == nil || cs == nil {
@@ -296,8 +306,14 @@ func StarteLeitung(dag *BlockDAG, cs *ChainState, selfURL string) *Leitung {
 	fmt.Printf("[LEITUNG] ✓ an: Satz %v (Version %v, %v Validatoren, Wahl %v), Term %d, Leiter %s, dieser Knoten %s (Mitglied %v, leiterfaehig %v), Wechsel alle %s\n",
 		st["satz"], st["satz_version"], st["validatoren"], st["mit_wahl"], l.Term(),
 		func() string { a, _ := l.Leiter(); return a }(), ich, st["mitglied"], faehig, cfg.WechselAlle)
-	SafeGoroutine("leitung-takt", func() { dag.leitungSchleife(l, cs) })
+	leitungTaktStarten(dag, l, cs)
 	return l
+}
+
+// leitungTaktStarten: der Takt der Leitung, eine Goroutine ohne Ende. Tests
+// ersetzen ihn, um den Start ohne liegenbleibende Goroutine zu pruefen.
+var leitungTaktStarten = func(dag *BlockDAG, l *Leitung, cs *ChainState) {
+	SafeGoroutine("leitung-takt", func() { dag.leitungSchleife(l, cs) })
 }
 
 // Keine Weiterleitungen (Audit 2026-09-29, H3): die Leitungsadressen setzt
@@ -787,6 +803,14 @@ func (cs *ChainState) LeitungStand() map[string]interface{} {
 		if beobachterModus() {
 			return map[string]interface{}{"an": false, "beobachter": true,
 				"bedeutung": "Beobachter (AEQUITAS_BEOBACHTER): keine Leitung, nimmt nichts an, erzeugt keine Bloecke -- darf in keinem Leitungs-Satz stehen."}
+		}
+		if cs.leitungGescheitert.Load() {
+			return map[string]interface{}{"an": false, "gescheitert": true,
+				"bedeutung": "AEQUITAS_LEITUNG=an, aber die Leitung ist nicht gestartet (Log [LEITUNG] ✗: Signierschluessel, " + leitungGenesisEnv + ") -- dieser Knoten nimmt nichts an, bis sie nach einer Korrektur startet."}
+		}
+		if !cs.leitungStartVersucht.Load() && leitungAn() {
+			return map[string]interface{}{"an": false, "startet": true,
+				"bedeutung": "Die Leitung startet noch -- bis dahin nimmt dieser Knoten nichts an."}
 		}
 		return map[string]interface{}{"an": false,
 			"bedeutung": "Rotierender Leiter aus -- es nimmt an, wer nicht ANNAHME_ROLLE=nur_lesend hat (siehe annahme_tor)."}

@@ -127,7 +127,7 @@ func annahmeRolleAusdruecklichAnnehmend() bool {
 func (cs *ChainState) nimmtUeberweisungenAn() bool {
 	// Ein Beobachter nimmt nie an (annahme_pause.go) -- auch der Stand sagt
 	// das (Pruefung von #322, INFO-10).
-	if cs.nurLesend.Load() || beobachterModus() {
+	if cs.nurLesend.Load() || beobachterModus() || cs.leitungNichtBereit() != nil {
 		return false
 	}
 	if l := cs.leitung.Load(); l != nil {
@@ -173,6 +173,13 @@ func (cs *ChainState) annahmeBeginnen(absender string, konten ...string) error {
 	}
 	if len(konten) == 0 {
 		konten = []string{absender}
+	}
+	// Die Leitung VOR dem Tor: das Tor liest cs.leitung, und wer es zuerst
+	// fragt, saehe an der Umschaltkante "keine Leitung" und danach "Start
+	// versucht" -- ein Folger naehme lokal an (Pruefung von #329, Befund 1).
+	if err := cs.leitungNichtBereit(); err != nil {
+		annahmePausiertAbgelehnt.Add(1)
+		return err
 	}
 	cs.annahmenLaufend.Add(1)
 	if err := cs.pruefeAnnahmeTorFuer(konten...); err != nil {
