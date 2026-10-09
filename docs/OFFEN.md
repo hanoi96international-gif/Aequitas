@@ -123,19 +123,27 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
   höchstens 200.000 Schlüssel. Ein Angreifer füllt eine davon mit wenigen
   Netzen – ein /48 hat 65.536 /64, `walletRateLimit` füllen schon
   8.000–17.000. Bisher war danach jeder neue Absender gesperrt. Seit dem
-  Folge-PR zählt ein neuer Absender bei voller Karte unter seinem Netz (IPv4
-  je /24, IPv6 je /48, in einer eigenen Karte mit höchstens 50.000 Netzen),
-  bei `/api/prove` zählt statt der Wallet das Netz des Absenders (eine neue
-  Wallet je 15 s je Netz). Rest, bewusst so: (a) Solange eine Karte voll ist,
-  teilen sich ehrliche Nutzer im Netz des Angreifers (/24, /48) dessen
-  Grenze. (b) Wer 50.000 /48 oder /24 hat (12,8 Mio. IPv4-Adressen, ein
-  großes Botnetz), füllt auch die Netzkarte – dann ist jedes neue Netz
-  gesperrt (fail-closed), wie bisher bei voller Karte. (c) Ein Absender
-  belegt weiter je Funktion einen Schlüssel (bis zu zehn in
-  `registerRateLimit`); ein Eintrag je Absender würde die Karten später
-  füllen, ändert an (a) und (b) aber nichts. Erkennbar in
-  `/api/health/combined` → `grenzen_je_absender.<karte>.je_netz_gezaehlt`
-  und `.grob`.
+  Folge-PR zählt ein neuer Absender bei voller Karte unter seinem Netz: IPv4
+  je /24, IPv6 je /48, über alle Funktionen der Karte, in einer eigenen
+  Karte mit höchstens 50.000 Netzen; von einem IPv6-/32 zählen höchstens 64
+  /48 je für sich, jedes weitere unter dem /32. Bei `/api/prove` zählt dann
+  statt der Wallet das Netz des Absenders. Rest, bewusst so:
+  (a) Solange eine Karte voll ist, teilen sich alle neuen Absender eines
+  Netzes eine Grenze, über die Funktionen hinweg (zum Beispiel `/api/humans`
+  und `/api/price-history` ein 30-s-Fenster je /24); eine einzige Adresse in
+  einem fremden /24 kann dessen Grenze aufbrauchen. (b) Wer Adressen in
+  50.000 verschiedenen /24 hat (gemietete Residential-Proxys, eine Adresse
+  je /24 genügt) oder rund 770 IPv6-/32, füllt auch die Netzkarte und hält
+  sie mit etwa 50.000 Anfragen je Minute – dann ist jedes neue Netz
+  gesperrt (fail-closed), wie bisher bei voller Karte. Weiter nur mit einer
+  Quote je IPv4-/16 (trifft große Provider) oder Verdrängen statt Sperren
+  (lockert die Grenze für den Angreifer). (c) Bei voller Wallet-Karte gilt
+  für neue Wallets die Grenze je Netz statt je Wallet: dieselbe neue Wallet
+  kommt aus drei Netzen binnen 15 s dreimal durch; es bleiben die Grenze je
+  IP bei `/api/prove` (12 je Minute) und die Bescheinigung, die der
+  Proof-Server verlangt. Speicher: die Netzkarten zusammen bis etwa
+  100 MB. Erkennbar in `/api/health/combined` →
+  `grenzen_je_absender.<karte>.je_netz_gezaehlt` und `.grob`.
 - **Zwei anhängende Proxys** (Prüfung von #324, INFO-4/INFO-9): `clientIP`
   nimmt den letzten Eintrag von `X-Forwarded-For` – richtig hinter genau
   einem Proxy (Caddy). Kommt ein zweiter davor (CDN, Load-Balancer), ist der

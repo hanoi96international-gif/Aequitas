@@ -146,6 +146,21 @@ func rpcRateLimited(ip string) bool {
 	return entry.count > rpcRateLimitMax
 }
 
+// rpcRateLimitAufraeumen: Eintraege, deren Fenster seit zwei Fenstern vorbei
+// ist, loeschen -- auch die je Netz (begrenzte_karte.go, Range).
+func rpcRateLimitAufraeumen(now time.Time) {
+	rpcRateLimit.Range(func(k, v interface{}) bool {
+		entry := v.(*rpcRateLimitEntry)
+		entry.mu.Lock()
+		stale := now.Sub(entry.windowStart) > 2*rpcRateLimitWindow
+		entry.mu.Unlock()
+		if stale {
+			rpcRateLimit.Delete(k)
+		}
+		return true
+	})
+}
+
 func init() {
 	// Periodically clean up expired rate-limit entries to prevent unbounded
 	// growth — mirrors registerRateLimit's own cleanup goroutine
@@ -162,17 +177,7 @@ func init() {
 			// permanently end this loop; the map would just grow unbounded from
 			// that point on with nothing to notice.
 			SafeCall("rpcRateLimit-cleanup-tick", func() {
-				now := time.Now()
-				rpcRateLimit.Range(func(k, v interface{}) bool {
-					entry := v.(*rpcRateLimitEntry)
-					entry.mu.Lock()
-					stale := now.Sub(entry.windowStart) > 2*rpcRateLimitWindow
-					entry.mu.Unlock()
-					if stale {
-						rpcRateLimit.Delete(k)
-					}
-					return true
-				})
+				rpcRateLimitAufraeumen(time.Now())
 			})
 		}
 	})

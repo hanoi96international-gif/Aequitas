@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -138,7 +139,8 @@ func TestBegrenzteKarte_ZahlNebenlaeufigJeNetz(t *testing.T) {
 }
 
 // Die Meldung einer vollen Karte ist gedrosselt: 1.000 abgewiesene und 1.000
-// je Netz gezaehlte neue Absender binnen einer Minute ergeben eine Zeile
+// je Netz gezaehlte neue Absender binnen einer Minute ergeben je eine Zeile
+// -- je Art ein eigener Zeitpunkt, die eine verdeckt die andere nicht
 // (Pruefung von #326, LOW-1, fuer begrenzteKarte).
 func TestBegrenzteKarte_MeldungGedrosselt(t *testing.T) {
 	k := &begrenzteKarte{name: "test", max: 0, grob: &begrenzteKarte{name: "test_grob", max: 1 << 30}}
@@ -149,15 +151,16 @@ func TestBegrenzteKarte_MeldungGedrosselt(t *testing.T) {
 	if a, g := k.abgelehnt.Load(), k.gegroebt.Load(); a != 1000 || g != 1000 {
 		t.Fatalf("abgelehnt %d, je Netz %d -- erwartet je 1000", a, g)
 	}
-	if n := k.meldungen.Load(); n != 1 {
-		t.Fatalf("%d Meldungen binnen einer Minute, erwartet 1", n)
+	if n := k.meldungen.Load(); n != 2 {
+		t.Fatalf("%d Meldungen binnen einer Minute, erwartet 2 (je Art eine)", n)
 	}
 	k.gemeldet.Store(time.Now().Unix() - 61)
 	for i := 0; i < 1000; i++ {
 		k.LoadOrStore(fmt.Sprintf("x:0x%d", i), i)
+		k.LoadOrStore(fmt.Sprintf("x:198.51.%d.1", i%250), i)
 	}
-	if n := k.meldungen.Load(); n != 2 {
-		t.Fatalf("%d Meldungen nach einer Minute, erwartet 2", n)
+	if n := k.meldungen.Load(); n != 3 {
+		t.Fatalf("%d Meldungen nach einer Minute, erwartet 3 (nur die abgelaufene Art neu)", n)
 	}
 }
 
@@ -174,26 +177,78 @@ func vollMachen(t *testing.T, k *begrenzteKarte, grob bool) {
 	}
 }
 
-// Das Netz eines Absenders: IPv4 je /24, IPv6 je /48, mit dem Zweck davor;
-// ohne Adresse keins.
+// Das Netz eines Absenders: IPv4 je /24, IPv6 je /48 mit seinem /32; der
+// Zweck zaehlt nicht mit. Ohne Adresse keins.
 func TestNetzSchluessel(t *testing.T) {
-	for key, want := range map[string]string{
-		"198.51.100.7":               "198.51.100.0/24",
-		"humans:198.51.100.7":        "humans:198.51.100.0/24",
-		"x:::ffff:198.51.100.7":      "x:198.51.100.0/24",
-		"2001:db8:a:1::":             "2001:db8:a::/48",
-		"prove:2001:db8:a:ffff::":    "prove:2001:db8:a::/48",
-		"validator-bindung-fehl:::1": "validator-bindung-fehl:::/48",
-		"rpc:2001:DB8:A:0:0:0:0:9":   "rpc:2001:db8:a::/48",
+	for key, want := range map[string][2]string{
+		"198.51.100.7":               {"198.51.100.0/24", ""},
+		"humans:198.51.100.7":        {"198.51.100.0/24", ""},
+		"x:::ffff:198.51.100.7":      {"198.51.100.0/24", ""},
+		"2001:db8:a:1::":             {"2001:db8:a::/48", "2001:db8::/32"},
+		"prove:2001:db8:a:ffff::":    {"2001:db8:a::/48", "2001:db8::/32"},
+		"validator-bindung-fehl:::1": {"::/48", "::/32"},
+		"rpc:2001:DB8:A:0:0:0:0:9":   {"2001:db8:a::/48", "2001:db8::/32"},
 	} {
-		if got, ok := netzSchluessel(key); !ok || got != want {
-			t.Errorf("netzSchluessel(%q) = %q, %v -- erwartet %q", key, got, ok, want)
+		if n, p, ok := netzSchluessel(key); !ok || n != want[0] || p != want[1] {
+			t.Errorf("netzSchluessel(%q) = %q, %q, %v -- erwartet %q, %q", key, n, p, ok, want[0], want[1])
 		}
 	}
 	for _, key := range []any{"prove-wallet:0xabc", "validator-bindung-betreiber:0xabc", "x", "", "x:", "a:b:198.51.100.7", "x:198.51.100.0/24", 42} {
-		if got, ok := netzSchluessel(key); ok {
-			t.Errorf("netzSchluessel(%v) = %q, erwartet keins", key, got)
+		if n, _, ok := netzSchluessel(key); ok {
+			t.Errorf("netzSchluessel(%v) = %q, erwartet keins", key, n)
 		}
+	}
+	for key, want := range map[string]string{"2001:db8:a::/48": "2001:db8::/32", "2001:db8:ffff::/48": "2001:db8::/32"} {
+		if p, ok := praefixVonNetz(key); !ok || p != want {
+			t.Errorf("praefixVonNetz(%q) = %q, %v", key, p, ok)
+		}
+	}
+	for _, key := range []any{"198.51.100.0/24", "2001:db8::/32", "2001:db8:a::", 7} {
+		if p, ok := praefixVonNetz(key); ok {
+			t.Errorf("praefixVonNetz(%v) = %q, erwartet keins", key, p)
+		}
+	}
+}
+
+// Missbrauch (Pruefung des Folge-PR, LOW-1): ein /32 hat 65.536 /48 und
+// fuellte allein jede Ueberlaufkarte. Jetzt zaehlen hoechstens grobJePraefix
+// /48 eines /32 je fuer sich, jedes weitere unter dem /32; ein anderes /32
+// und IPv4 sind davon frei. Wird ein /48 aufgeraeumt, hat sein /32 wieder
+// Platz.
+func TestBegrenzteKarte_JePraefixHoechstens(t *testing.T) {
+	k := &begrenzteKarte{name: "test", max: 0, grob: &begrenzteKarte{name: "test_grob", max: 1 << 30, praefixe: &sync.Map{}}}
+	for i := 0; i < grobJePraefix; i++ {
+		if v, ok := k.LoadOrStore(fmt.Sprintf("x:2001:db8:%x:1::", i), i); !ok || v != i {
+			t.Fatalf("/48 Nr. %d des /32 zaehlt nicht fuer sich (%v, %v)", i, v, ok)
+		}
+	}
+	if v, ok := k.LoadOrStore("x:2001:db8:ff00:1::", 1000); !ok || v != 1000 {
+		t.Fatalf("das /48 ueber der Quote bekommt keinen Eintrag des /32 (%v, %v)", v, ok)
+	}
+	if _, ok := k.grob.m.Load("2001:db8::/32"); !ok {
+		t.Fatal("ueber der Quote zaehlt nicht das /32")
+	}
+	if v, ok := k.LoadOrStore("x:2001:db8:ff01:1::", 1001); !ok || v != 1000 {
+		t.Fatalf("ein weiteres /48 desselben /32 zaehlt nicht unter dem /32 (%v, %v)", v, ok)
+	}
+	if v, ok := k.LoadOrStore("x:2001:db8:3:7::", 9); !ok || v != 3 {
+		t.Fatalf("ein /48 mit Eintrag zaehlt nicht mehr unter sich (%v, %v)", v, ok)
+	}
+	if v, ok := k.LoadOrStore("x:2001:db9:1:1::", 2000); !ok || v != 2000 {
+		t.Fatalf("ein anderes /32 ist mitbegrenzt (%v, %v)", v, ok)
+	}
+	if n := k.grob.anzahl.Load(); n != grobJePraefix+2 {
+		t.Fatalf("grob hat %d Eintraege, erwartet %d", n, grobJePraefix+2)
+	}
+	k.Delete("2001:db8:5::/48")
+	if v, ok := k.LoadOrStore("x:2001:db8:ff02:1::", 1002); !ok || v != 1002 {
+		t.Fatalf("nach dem Aufraeumen eines /48 hat das /32 keinen Platz (%v, %v)", v, ok)
+	}
+	k.Range(func(key, _ any) bool { k.Delete(key); return true })
+	leer := true
+	k.grob.praefixe.Range(func(_, _ any) bool { leer = false; return false })
+	if !leer || k.grob.anzahl.Load() != 0 {
+		t.Fatalf("nach dem Aufraeumen: %d Eintraege, Zaehler je /32 leer %v", k.grob.anzahl.Load(), leer)
 	}
 }
 
@@ -222,6 +277,12 @@ func TestBegrenzteKarte_VollZaehltJeNetz(t *testing.T) {
 	}
 	if v, ok := k.Load("x:198.51.100.200"); !ok || v != 6 {
 		t.Fatalf("voll: eine andere Adresse desselben /24 sieht den Eintrag nicht (%v, %v)", v, ok)
+	}
+	if _, ok := k.grob.m.Load("2001:db8:a::/48"); !ok {
+		t.Fatal("voll: das Netz zaehlt nicht unter seinem /48")
+	}
+	if v, ok := k.LoadOrStore("y:2001:db8:a:9::", 99); !ok || v != 3 {
+		t.Fatalf("voll: ein anderer Zweck desselben Netzes zaehlt nicht mit (%v, %v)", v, ok)
 	}
 	if _, ok := k.m.Load("x:2001:db8:a:3::"); ok {
 		t.Fatal("voll: das neue /64 steht in der vollen Karte")
@@ -294,7 +355,7 @@ func TestBegrenzteKarte_VollJeNetzGesperrt(t *testing.T) {
 // oder wenn auch grob voll ist, wird ein neuer Absender begrenzt.
 func TestBegrenzteKarte_VollBegrenztNeueAbsender(t *testing.T) {
 	aufraeumen := func() {
-		for _, k := range []string{"test-voll:alt", "test-voll:neu", "test-voll:198.51.100.0/24", "test-voll:203.0.113.0/24"} {
+		for _, k := range []string{"test-voll:alt", "test-voll:neu", "198.51.100.0/24", "203.0.113.0/24"} {
 			ipBurst.Delete(k)
 		}
 		for _, k := range []string{"198.51.100.201", "198.51.100.0/24", "203.0.113.0/24"} {
@@ -539,6 +600,44 @@ func TestSperrKartenAufraeumen(t *testing.T) {
 	}
 }
 
+// Pruefung des Folge-PR, LOW-2: die echten Aufraeumroutinen leeren auch die
+// Ueberlaufkarten -- sonst bliebe grob nach 50.000 je gesehenen Netzen fuer
+// immer voll, und jede spaetere volle Phase sperrte jedes neue Netz.
+func TestAufraeumen_AuchJeNetz(t *testing.T) {
+	jetzt := time.Now()
+	const alt, frisch = "198.51.100.0/24", "2001:db8:77::/48"
+	pruefen := func(k *begrenzteKarte, aufraeumen func()) {
+		t.Helper()
+		t.Cleanup(func() { k.grob.Delete(alt); k.grob.Delete(frisch) })
+		vorher := k.grob.anzahl.Load()
+		aufraeumen()
+		if _, ok := k.grob.m.Load(alt); ok {
+			t.Fatalf("%s: abgelaufenes Netz nicht geloescht", k.name)
+		}
+		if _, ok := k.grob.m.Load(frisch); !ok {
+			t.Fatalf("%s: frisches Netz geloescht", k.name)
+		}
+		if n := k.grob.anzahl.Load(); n > vorher-1 {
+			t.Fatalf("%s: grob %d nach dem Aufraeumen, vorher %d", k.name, n, vorher)
+		}
+	}
+	for _, k := range []*begrenzteKarte{registerRateLimit, walletRateLimit, bindungRateLimit} {
+		k.grob.Store(alt, jetzt.Add(-time.Minute))
+		k.grob.Store(frisch, jetzt)
+		pruefen(k, func() { sperrKartenAufraeumen(jetzt) })
+	}
+	ipBurst.grob.Store(alt, &ipBurstEintrag{zeiten: []time.Time{jetzt.Add(-2 * burstFenster)}})
+	ipBurst.grob.Store(frisch, &ipBurstEintrag{zeiten: []time.Time{jetzt}})
+	pruefen(ipBurst, func() { ipBurstAufraeumen(burstFenster) })
+	rpcRateLimit.grob.Store(alt, &rpcRateLimitEntry{windowStart: jetzt.Add(-3 * rpcRateLimitWindow)})
+	rpcRateLimit.grob.Store(frisch, &rpcRateLimitEntry{windowStart: jetzt})
+	pruefen(rpcRateLimit, func() { rpcRateLimitAufraeumen(jetzt) })
+	// Das /32 des aufgeraeumten /48 zaehlt mit.
+	if z, ok := rpcRateLimit.grob.praefixe.Load("2001:db8::/32"); !ok || z.(*atomic.Int64).Load() != 1 {
+		t.Fatalf("Zaehler des /32 nach dem Aufraeumen: %v", z)
+	}
+}
+
 func proveProxyAnfrage(a *APIServer, remote, wallet string) int {
 	body, _ := json.Marshal(map[string]string{"wallet": wallet, "bio": "1", "salt": "2"})
 	r := httptest.NewRequest("POST", "/api/prove", bytes.NewReader(body))
@@ -604,7 +703,7 @@ func TestProveProxy_AbweisungBuchtKeineIP(t *testing.T) {
 func TestProveProxy_VolleWalletKarte(t *testing.T) {
 	a := &APIServer{}
 	ips := []string{"198.51.100.73", "198.51.100.74", "203.0.113.73", "192.0.2.73", "2001:db8:a:1::", "2001:db8:a:2::"}
-	netze := []string{"prove-wallet:198.51.100.0/24", "prove-wallet:203.0.113.0/24", "prove-wallet:192.0.2.0/24", "prove-wallet:2001:db8:a::/48"}
+	netze := []string{"198.51.100.0/24", "203.0.113.0/24", "192.0.2.0/24", "2001:db8:a::/48"}
 	aufraeumen := func() {
 		for _, ip := range ips {
 			ipBurst.Delete("prove:" + ip)
@@ -682,8 +781,18 @@ func TestBegrenzteKarte_HoechstzahlJeKarte(t *testing.T) {
 			t.Fatalf("%s: hoechstens %v, erwartet %d", name, w["hoechstens"], grenzenSchluesselHoechstens)
 		}
 		g, ok := w["grob"].(map[string]int64)
+		if name == "betreiber" {
+			if ok {
+				t.Fatal("betreiber hat eine Ueberlaufkarte -- ihr Schluessel ist frei gewaehlter Text, kein Absender")
+			}
+			continue
+		}
 		if !ok || g["hoechstens"] != grobHoechstens {
 			t.Fatalf("%s: grob %v, erwartet hoechstens %d", name, w["grob"], grobHoechstens)
+		}
+		// Speicher: 50.000 Netze sind bis 54 MB je Karte (ip_burst).
+		if g["hoechstens"] > 50_000 {
+			t.Fatalf("%s: grob haelt %d Netze -- mehr, als der Speicher der Ueberlaufkarten erlaubt", name, g["hoechstens"])
 		}
 	}
 }
@@ -698,7 +807,7 @@ func TestBindungsGrenze_VolleKarteSperrtNeueAbsender(t *testing.T) {
 	netze := []string{"198.51.100.0/24", "203.0.113.0/24", "192.0.2.0/24", "2001:db8:a::/48", "2001:db8:b::/48"}
 	aufraeumen := func() {
 		for _, n := range netze {
-			bindungRateLimit.Delete("validator-bindung-fehl:" + n)
+			bindungRateLimit.Delete(n)
 		}
 	}
 	aufraeumen()

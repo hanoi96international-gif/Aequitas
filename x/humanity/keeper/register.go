@@ -21,21 +21,23 @@ import (
 )
 
 // registerRateLimit: Schluessel -> Zeitpunkt der letzten Anfrage, hoechstens
-// grenzenSchluesselHoechstens Schluessel. Voll gilt ein neuer Schluessel als
-// gerade gesperrt (begrenzte_karte.go).
+// grenzenSchluesselHoechstens Schluessel. Voll zaehlt ein neuer Absender
+// unter seinem Netz; erst ohne Platz auch dort gilt er als gerade gesperrt
+// (begrenzte_karte.go).
 var registerRateLimit = neueBegrenzteKarte("register", grenzenSchluesselHoechstens, func() any { return time.Now() })
 
 // walletRateLimit: wie registerRateLimit, fuer Schluessel, die der Aufrufer
-// waehlt (die Wallet in /api/prove). Eigene Karte: ist sie voll, sperrt das
+// waehlt (die Wallet in /api/prove). Eigene Karte: ist sie voll, trifft das
 // nur neue Wallets dort, nicht die Funktionen hinter registerRateLimit
-// (Pruefung von #324, HIGH-1).
+// (Pruefung von #324, HIGH-1) -- und die zaehlen dann je Netz des Absenders
+// statt je Wallet (handleProveProxy).
 var walletRateLimit = neueBegrenzteKarte("wallet", grenzenSchluesselHoechstens, func() any { return time.Now() })
 
 // bindungRateLimit: wie registerRateLimit, fuer abgelehnte Validator-Bindungen
 // je IP. Eigene Karte: oeffentliche Endpunkte, die registerRateLimit fuellen,
 // sperren die Bindung neuer Validatoren nicht (Pruefung von #324, LOW-6).
 // Fuellen laesst sie sich mit ungueltigen Bindungen aus vielen Netzen
-// (200.000 /64); dann sind neue Absender hier gesperrt (docs/OFFEN.md).
+// (200.000 /64); dann zaehlen neue Absender je Netz (docs/OFFEN.md).
 var bindungRateLimit = neueBegrenzteKarte("bindung", grenzenSchluesselHoechstens, func() any { return time.Now() })
 
 // betreiberRateLimit: je Betreiber eine angenommene Bindung je 30 s. Eigene
@@ -43,7 +45,8 @@ var bindungRateLimit = neueBegrenzteKarte("bindung", grenzenSchluesselHoechstens
 // unterschriebenen Bindung eines registrierten Menschen -- von aussen nicht
 // fuellbar. In bindungRateLimit galt bei voller Karte jeder Betreiber als
 // "gerade gebunden" (Pruefung von #325, LOW-1).
-var betreiberRateLimit = neueBegrenzteKarte("betreiber", grenzenSchluesselHoechstens, func() any { return time.Now() })
+// Ohne Netz: der Schluessel ist der Betreiber aus der Anfrage, keine Adresse.
+var betreiberRateLimit = neueBegrenzteKarteOhneNetz("betreiber", grenzenSchluesselHoechstens, func() any { return time.Now() })
 
 // registerWalletLocks serializes the full registration flow (IsHuman check
 // → EVM registerWithSig call → Go-state RegisterHuman) per wallet.
