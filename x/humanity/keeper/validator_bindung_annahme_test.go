@@ -1,12 +1,17 @@
 package keeper
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -382,5 +387,102 @@ func TestHandleValidatorBindung_BetreiberEigeneKarte(t *testing.T) {
 	t.Cleanup(func() { betreiberRateLimit.max = altB })
 	if rec := posten(); rec.Code != http.StatusTooManyRequests {
 		t.Fatalf("volle betreiberRateLimit: %d %s, erwartet 429", rec.Code, rec.Body.String())
+	}
+}
+
+// leseMelder meldet den ersten Read -- der Handler liest dann den Rumpf.
+type leseMelder struct {
+	r      io.Reader
+	einmal sync.Once
+	liest  chan<- struct{}
+}
+
+func (l *leseMelder) Read(p []byte) (int, error) {
+	l.einmal.Do(func() { l.liest <- struct{}{} })
+	return l.r.Read(p)
+}
+
+// Missbrauch (Pruefung von #326, B): vier Verbindungen schicken einen Teil
+// des Rumpfs und dann nichts mehr. Sie belegten alle Plaetze bis zum
+// ReadTimeout -- jede andere Bindung bekam 503. Jetzt belegt eine Anfrage
+// erst nach dem Lesen einen Platz.
+func TestHandleValidatorBindung_LangsamerRumpfHaeltKeinenPlatz(t *testing.T) {
+	validatorRegisterOverride.Store(1)
+	t.Cleanup(func() { validatorRegisterOverride.Store(0) })
+	a := &APIServer{state: newTestState()}
+	a.state.annehmendAusdruecklich.Store(true)
+	liest := make(chan struct{}, validatorBindungGleichzeitig)
+	var schreiber []*io.PipeWriter
+	var fertig sync.WaitGroup
+	t.Cleanup(func() {
+		for _, pw := range schreiber {
+			pw.CloseWithError(errors.New("abgebrochen"))
+		}
+		fertig.Wait()
+	})
+	for i := 0; i < validatorBindungGleichzeitig; i++ {
+		pr, pw := io.Pipe()
+		schreiber = append(schreiber, pw)
+		req := httptest.NewRequest(http.MethodPost, "/api/validator-bindung", &leseMelder{r: pr, liest: liest})
+		fertig.Add(1)
+		go func() {
+			defer fertig.Done()
+			a.handleValidatorBindung(httptest.NewRecorder(), req)
+		}()
+	}
+	for range schreiber {
+		select {
+		case <-liest:
+		case <-time.After(5 * time.Second):
+			t.Fatal("ein Handler liest seinen Rumpf nicht")
+		}
+	}
+	if n := validatorBindungLaufend.Load(); n != 0 {
+		t.Fatalf("%d langsame Ruempfe halten einen Platz", n)
+	}
+	betreiber, _ := neuerSchluessel(t)
+	knoten, _ := neuerSchluessel(t)
+	rec := httptest.NewRecorder()
+	gut := bindungUnterschrieben(t, betreiber, knoten, nowUnix())
+	a.handleValidatorBindung(rec, httptest.NewRequest(http.MethodPost, "/api/validator-bindung", bytes.NewReader(bindungsKoerper(t, gut))))
+	if rec.Code == http.StatusServiceUnavailable && strings.Contains(rec.Body.String(), "busy") {
+		t.Fatalf("langsame Ruempfe sperren jede Bindung: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+// Pruefung von #326, B: der Rumpf hat eine eigene Lese-Frist -- auch hinter
+// bindungsGrenze (statusMerker reicht die Verbindung durch). Danach 400, und
+// die IP gilt als Fehlversuch.
+func TestHandleValidatorBindung_LeseFrist(t *testing.T) {
+	validatorRegisterOverride.Store(1)
+	alt := validatorBindungLeseFrist
+	validatorBindungLeseFrist = 300 * time.Millisecond
+	t.Cleanup(func() {
+		validatorRegisterOverride.Store(0)
+		validatorBindungLeseFrist = alt
+		bindungRateLimit.Delete("validator-bindung-fehl:127.0.0.1")
+	})
+	bindungRateLimit.Delete("validator-bindung-fehl:127.0.0.1")
+	a := &APIServer{state: newTestState()}
+	srv := httptest.NewServer(a.bindungsGrenze(a.handleValidatorBindung))
+	defer srv.Close()
+	conn, err := net.Dial("tcp", srv.Listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	fmt.Fprintf(conn, "POST /api/validator-bindung HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\nContent-Length: 300\r\n\r\n{\"operator\":\"")
+	beginn := time.Now()
+	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
+	if err != nil {
+		t.Fatalf("keine Antwort binnen 5 s -- die Lese-Frist greift nicht: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest || time.Since(beginn) > 3*time.Second {
+		t.Fatalf("Status %d nach %v, erwartet 400 nach etwa 300 ms", resp.StatusCode, time.Since(beginn))
+	}
+	if _, ok := bindungRateLimit.Load("validator-bindung-fehl:127.0.0.1"); !ok {
+		t.Fatal("der abgebrochene Rumpf zaehlt nicht als Fehlversuch")
 	}
 }

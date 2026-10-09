@@ -272,3 +272,34 @@ func TestValidatorBinden_VorpruefungOhneSperre_RealDB(t *testing.T) {
 		t.Fatal("eine aeltere Bindung hat die Schreibsperre erreicht")
 	}
 }
+
+// Missbrauch (Pruefung von #326, A): ein Mensch, der gebunden hat, schickt
+// nach Ablauf der Sperre je Betreiber (30 s) weitere gueltige Bindungen. Die
+// Vorpruefung weist sie am Tagesabstand ab -- ohne die Schreibsperre; genau
+// am Abstand geht die naechste durch (nicht strenger als apply).
+func TestValidatorBinden_AbstandVorDerSperre_RealDB(t *testing.T) {
+	f := neuerRegisterFall(t)
+	f.cs.annehmendAusdruecklich.Store(true)
+	validatorBindungAbstandOverride.Store(3600)
+	op := f.betreiber()
+	k1, _ := neuerSchluessel(t)
+	k2, _ := neuerSchluessel(t)
+	if err := f.cs.ValidatorBinden(bindungUnterschrieben(t, op, k1, f.jetzt-60)); err != nil {
+		t.Fatal(err)
+	}
+	vorher := atomicPhasenStand.snapshotNs.Load()
+	err := f.cs.ValidatorBinden(bindungUnterschrieben(t, op, k2, f.jetzt))
+	if !istZustandsAblehnung(err) || !strings.Contains(err.Error(), "fruehestens") {
+		t.Fatalf("Bindung binnen des Abstands: %v", err)
+	}
+	if atomicPhasenStand.snapshotNs.Load() != vorher {
+		t.Fatal("eine Bindung binnen des Abstands hat die Schreibsperre erreicht")
+	}
+	validatorBindungAbstandOverride.Store(60)
+	if err := f.cs.ValidatorBinden(bindungUnterschrieben(t, op, k2, f.jetzt)); err != nil {
+		t.Fatalf("Bindung genau am Abstand: %v", err)
+	}
+	if s, _, _ := f.eintrag(op); s != adrVon(k2) {
+		t.Fatalf("Register: %s, erwartet %s", s, adrVon(k2))
+	}
+}
