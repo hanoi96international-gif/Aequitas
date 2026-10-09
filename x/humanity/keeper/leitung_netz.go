@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -750,6 +751,15 @@ func leiteWeiterMit(w http.ResponseWriter, r *http.Request, ziel string, body []
 
 // zumLeiter: Swap, Liquiditaet und Faucet nehmen an (annahme_tor.go) --
 // bei rotierendem Leiter gehoeren sie zu ihm wie Ueberweisungen.
+// zumLeiterRumpfHoechstens: so gross darf der Rumpf eines POST hinter
+// zumLeiter sein -- die groesste Grenze der Handler dahinter (64 KiB bei
+// Tausch, Liquiditaet und Faucet, readBodyLimited; die uebrigen 4 bis 8 KiB).
+const zumLeiterRumpfHoechstens = 64 << 10
+
+// zumLeiterLeseFrist: so lange darf das Lesen des Rumpfs dauern (der Server
+// erlaubt 30 s). Variable fuer Tests.
+var zumLeiterLeseFrist = 10 * time.Second
+
 func (a *APIServer) zumLeiter(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Die Nonce fuer Tausch und Liquiditaet kennt am frischesten, wer das
@@ -769,11 +779,27 @@ func (a *APIServer) zumLeiter(h http.HandlerFunc) http.HandlerFunc {
 			h(w, r)
 			return
 		}
-		body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+		// Hoechstens zumLeiterRumpfHoechstens, mit eigener Lese-Frist: vorher
+		// bis 1 MiB, still abgeschnitten, nur durch den ReadTimeout des
+		// Servers (30 s) begrenzt -- an jeder Route dahinter, auch vor ihrem
+		// Stichtag (Pruefung von #327, INFO-3). Die Frist wird nach dem Lesen
+		// geloescht, sonst liefe sie auf dem Hintergrund-Lesen der Verbindung
+		// ab, und net/http braeche deren Kontext ab -- auch fuer jede
+		// Folgeanfrage auf ihr (#327, LOW-1). Nach einem Fehler bleibt sie:
+		// net/http verwirft vor der Antwort den Rest des Rumpfs.
+		rc := http.NewResponseController(w)
+		_ = rc.SetReadDeadline(time.Now().Add(zumLeiterLeseFrist))
+		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, zumLeiterRumpfHoechstens))
 		if err != nil {
+			var zuGross *http.MaxBytesError
+			if errors.As(err, &zuGross) {
+				http.Error(w, `{"error":"request body too large"}`, http.StatusRequestEntityTooLarge)
+				return
+			}
 			http.Error(w, `{"error":"unlesbar"}`, http.StatusBadRequest)
 			return
 		}
+		_ = rc.SetReadDeadline(time.Time{})
 		zielAdr, ziel := a.state.weiterleitungsZielMitAdresse(r, anfrageKonten(r.URL.Path, body)...)
 		var nachweis http.Header
 		if ziel != "" && weiterleitungUnterschreiben(r.URL.Path) {

@@ -1,9 +1,11 @@
 package keeper
 
 import (
+	"bufio"
 	"crypto/ecdsa"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"sort"
@@ -335,6 +337,129 @@ func TestZumLeiter(t *testing.T) {
 	}
 	if got := rufe("GET"); got != "lokal:x" {
 		t.Fatalf("GET: %q", got)
+	}
+}
+
+// zumLeiterMitLeiter: ein Folger mit Leitung, dessen Leiter leiter ist.
+func zumLeiterMitLeiter(t *testing.T, leiter string, h http.HandlerFunc) http.HandlerFunc {
+	t.Helper()
+	cs := newTestState()
+	a := &APIServer{state: cs}
+	ich := "0x0000000000000000000000000000000000000002"
+	anderer := "0x0000000000000000000000000000000000000001"
+	l := NeueLeitung(ich, "", []string{ich, anderer}, anderer, true, LeitSpeicher{Term: 3, Leiter: anderer}, testKonfig(), LeitUmgebung{}, time.Now())
+	l.SetzeURL(anderer, leiter)
+	cs.leitung.Store(l)
+	return a.zumLeiter(h)
+}
+
+// Pruefung von #327, INFO-3: hinter zumLeiter las ein Knoten mit Leitung
+// jeden Rumpf bis 1 MiB, still abgeschnitten. Jetzt hoechstens
+// zumLeiterRumpfHoechstens -- genau so viel geht weiter, ein Byte mehr ist
+// 413, und weder Leiter noch Handler sehen ihn.
+func TestZumLeiter_RumpfGrenze(t *testing.T) {
+	var gesehen atomic.Int64
+	leiter := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		gesehen.Store(int64(len(b)))
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer leiter.Close()
+	h := zumLeiterMitLeiter(t, leiter.URL, func(w http.ResponseWriter, r *http.Request) {
+		t.Error("der Handler wurde gerufen, obwohl der Leiter zustaendig ist")
+	})
+	rufe := func(n int) int {
+		rec := httptest.NewRecorder()
+		h(rec, httptest.NewRequest(http.MethodPost, "/api/swap", strings.NewReader(strings.Repeat("x", n))))
+		return rec.Code
+	}
+	// 64 KiB: die groesste Grenze der Handler dahinter (readBodyLimited bei
+	// Tausch, Liquiditaet, Faucet) -- so viel muss durchgehen.
+	if code := rufe(64 << 10); code != http.StatusOK || gesehen.Load() != 64<<10 {
+		t.Fatalf("Rumpf von 64 KiB: Status %d, beim Leiter %d Byte", code, gesehen.Load())
+	}
+	gesehen.Store(-1)
+	if code := rufe(zumLeiterRumpfHoechstens + 1); code != http.StatusRequestEntityTooLarge || gesehen.Load() != -1 {
+		t.Fatalf("Rumpf ueber der Grenze: Status %d, beim Leiter %d Byte -- erwartet 413, nichts weitergeleitet", code, gesehen.Load())
+	}
+}
+
+// Pruefung von #327, INFO-3: der Rumpf hat hinter zumLeiter eine eigene
+// Lese-Frist (vorher nur der ReadTimeout des Servers, 30 s). Und sie wird nach
+// dem Lesen geloescht: dauert das Weiterleiten laenger, braeche sie sonst den
+// Kontext der Verbindung ab -- jede Folgeanfrage auf ihr kaeme mit
+// abgebrochenem Kontext an (#327, LOW-1).
+func TestZumLeiter_LeseFrist(t *testing.T) {
+	alt := zumLeiterLeseFrist
+	zumLeiterLeseFrist = 200 * time.Millisecond
+	t.Cleanup(func() { zumLeiterLeseFrist = alt })
+	leiter := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.Copy(io.Discard, r.Body)
+		time.Sleep(4 * zumLeiterLeseFrist) // langsamer Leiter
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer leiter.Close()
+	mux := http.NewServeMux()
+	// Ohne Konto (leerer Rumpf) bleibt die Anfrage beim Folger -- langsam.
+	mux.HandleFunc("/api/swap", zumLeiterMitLeiter(t, leiter.URL, func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(4 * zumLeiterLeseFrist)
+	}))
+	mux.HandleFunc("/kontext", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, "%v", r.Context().Err())
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	// Ein halber Rumpf: nach etwa der Frist 400.
+	conn, err := net.Dial("tcp", srv.Listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Fprintf(conn, "POST /api/swap HTTP/1.1\r\nHost: x\r\nContent-Length: 300\r\n\r\n{\"wallet\":\"")
+	beginn := time.Now()
+	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
+	conn.Close()
+	if err != nil {
+		t.Fatalf("keine Antwort binnen 5 s -- die Lese-Frist greift nicht: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest || time.Since(beginn) > 3*time.Second {
+		t.Fatalf("halber Rumpf: Status %d nach %v, erwartet 400 nach etwa 200 ms", resp.StatusCode, time.Since(beginn))
+	}
+
+	// Ein ganzer Rumpf, langsam weitergeleitet, und ein leerer, langsam beim
+	// Folger beantwortet -- bei ihm startet net/http das Hintergrund-Lesen
+	// schon vor dem Handler und loescht die Frist danach nicht mehr selbst.
+	// Danach je eine Folgeanfrage auf derselben Verbindung: ihr Kontext ist
+	// heil.
+	for _, koerper := range []string{`{"wallet":"0x0000000000000000000000000000000000000009"}`, ""} {
+		conn, err := net.Dial("tcp", srv.Listener.Addr().String())
+		if err != nil {
+			t.Fatal(err)
+		}
+		conn.SetDeadline(time.Now().Add(10 * time.Second))
+		leser := bufio.NewReader(conn)
+		fmt.Fprintf(conn, "POST /api/swap HTTP/1.1\r\nHost: x\r\nContent-Length: %d\r\n\r\n%s", len(koerper), koerper)
+		resp, err := http.ReadResponse(leser, nil)
+		if err != nil {
+			conn.Close()
+			t.Fatal(err)
+		}
+		io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+		fmt.Fprintf(conn, "GET /kontext HTTP/1.1\r\nHost: x\r\n\r\n")
+		resp, err = http.ReadResponse(leser, nil)
+		if err != nil {
+			conn.Close()
+			t.Fatalf("Rumpf %q: keine Antwort auf die Folgeanfrage derselben Verbindung: %v", koerper, err)
+		}
+		b, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		conn.Close()
+		if string(b) != "<nil>" {
+			t.Fatalf("Rumpf %q: Folgeanfrage auf derselben Verbindung mit Kontext %q -- die Lese-Frist ist stehengeblieben", koerper, b)
+		}
 	}
 }
 
