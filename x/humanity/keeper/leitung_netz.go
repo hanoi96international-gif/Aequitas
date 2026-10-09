@@ -209,6 +209,12 @@ func leiterFaehig(cs *ChainState) bool {
 
 // StarteLeitung baut die Leitung, wenn AEQUITAS_LEITUNG=an. Liefert nil sonst.
 func StarteLeitung(dag *BlockDAG, cs *ChainState, selfURL string) *Leitung {
+	// Erst NACH dem Bau (und dem Speichern in cs.leitung) gilt der Start als
+	// versucht -- auch wenn er scheitert: die Annahme-Pause bis dahin darf
+	// den Knoten nicht fuer immer anhalten (annahme_pause.go).
+	if cs != nil {
+		defer cs.leitungStartVersucht.Store(true)
+	}
 	StarteLeistungsnachweis(cs)
 	if !leitungAn() || dag == nil || cs == nil {
 		return nil

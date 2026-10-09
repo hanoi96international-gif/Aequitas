@@ -216,6 +216,17 @@ func (cs *ChainState) annahmePauseGrund() error {
 			return fmt.Errorf("%w: der Ausgang haengt (aelteste offene Zeile %d s alt) -- bitte in Kuerze erneut versuchen", ErrAnnahmePausiert, d)
 		}
 	}
+	// Leitung an, aber noch nicht gestartet: bis StarteLeitung gelaufen ist
+	// (main.go: nach Bootstrap, Resync und Block-Sync), ist cs.leitung nil
+	// und nimmtAnFuer() true -- ein Folger naehme lokal an, statt an den
+	// Leiter weiterzuleiten, und zwei Knoten naehmen zugleich an
+	// (docs/OFFEN.md; Pruefung von #322, INFO-7). Versucht genuegt, gelungen
+	// nicht: eine kaputte Leitung haelt den Knoten nicht fuer immer an. Erst
+	// der Merker: nach dem Start (main ruft StarteLeitung immer) liest der
+	// heisse Weg die Umgebung nicht mehr.
+	if !cs.leitungStartVersucht.Load() && leitungAn() {
+		return fmt.Errorf("%w: die Leitung dieses Knotens startet noch -- bitte in wenigen Sekunden erneut versuchen", ErrAnnahmePausiert)
+	}
 	// Ein Beobachter erzeugt nie (ProduceBlock kehrt vor der Messung um):
 	// was er annaehme, kaeme in keinen Block (Pruefung von #318).
 	if beobachterModus() {
@@ -255,5 +266,7 @@ func (cs *ChainState) AnnahmePauseStand() map[string]interface{} {
 		"grund":     grund,
 		"abgelehnt": annahmePausiertAbgelehnt.Load(),
 		"vor_start": cs.ausgangVorStartBis.Load() != 0,
+		// Leitung an, aber StarteLeitung noch nicht gelaufen.
+		"leitung_startet": !cs.leitungStartVersucht.Load() && leitungAn(),
 	}
 }

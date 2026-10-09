@@ -312,3 +312,74 @@ func TestBeobachter_LiestKeinWALEin_RealDB(t *testing.T) {
 		t.Fatalf("Beobachter hat das WAL angewandt: Kontostand %v (erwartet 1000), Ausgang %d -> %d, WAL %d -> %d Byte", dbFrom, vorher, nachher, vorherGroesse, groesse())
 	}
 }
+
+// Missbrauch (docs/OFFEN.md; Pruefung von #322, INFO-7): mit
+// AEQUITAS_LEITUNG=an ist cs.leitung bis StarteLeitung nil, und nimmtAnFuer()
+// meldet true -- ein Folger naehme beim Start lokal an, statt an den Leiter
+// weiterzuleiten, und zwei Knoten naehmen zugleich an. Bis der Start versucht
+// ist, haelt die Annahme auf jedem Weg an. Ein gescheiterter Start (kein
+// Signierschluessel) beendet die Pause trotzdem -- sonst hielte eine kaputte
+// Leitung den Knoten fuer immer an.
+func TestAnnahme_FolgerWartetAufLeitung(t *testing.T) {
+	t.Setenv("AEQUITAS_LEITUNG", "an")
+	t.Setenv("AEQUITAS_LEITUNG_GENESIS", "")
+	altGestartet := leistungGestartet.Swap(true) // keine Messung im Test
+	t.Cleanup(func() { leistungGestartet.Store(altGestartet) })
+	cs := newTestState()
+	w := "0x00000000000000000000000000000000000000e1"
+
+	// Ueberweisung, Tausch, Faucet, Unternehmen, Vormund, Erneuerung ...
+	err := cs.annahmeBeginnen(w)
+	if !errors.Is(err, ErrAnnahmePausiert) || !strings.Contains(err.Error(), "Leitung") {
+		t.Fatalf("Folger vor dem Start der Leitung nimmt an: %v", err)
+	}
+	if n := cs.annahmenLaufend.Load(); n != 0 {
+		t.Fatalf("abgelehnte Annahme zaehlt noch: %d", n)
+	}
+	// RPC (eth_sendRawTransaction) und Nonce-Reservierung fragen den Grund.
+	if cs.annahmePauseGrund() == nil {
+		t.Fatal("RPC-Weg: keine Pause vor dem Start der Leitung")
+	}
+	// Registrierung: ohne Leitung meldet nimmtAnFuer true, also greift die
+	// Pause auch dort.
+	a := &APIServer{state: cs}
+	ip := "198.51.100.232"
+	ipBurst.Delete("register:" + ip)
+	t.Cleanup(func() { ipBurst.Delete("register:" + ip) })
+	body := `{"wallet":"0x00000000000000000000000000000000000000ab","pA":["1","2"],"pB":[["1","2"],["3","4"]],"pC":["1","2"],"pubSignals":["1","2"],"signature":"0x01"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/register", strings.NewReader(body))
+	req.RemoteAddr = ip + ":4711"
+	rec := httptest.NewRecorder()
+	a.handleRegister(rec, req)
+	var resp RegisterResponse
+	json.NewDecoder(rec.Body).Decode(&resp)
+	if resp.Success || !strings.Contains(resp.Message, "Leitung") {
+		t.Fatalf("Registrierung vor dem Start der Leitung: %+v", resp)
+	}
+	if st := cs.AnnahmePauseStand(); st["leitung_startet"] != true || st["pausiert"] != true {
+		t.Fatalf("Stand meldet den Start nicht: %v", st)
+	}
+
+	// Start versucht, aber gescheitert (kein Signierschluessel): die Pause
+	// endet trotzdem.
+	if l := StarteLeitung(&BlockDAG{}, cs, ""); l != nil || cs.leitung.Load() != nil {
+		t.Fatal("Vorbedingung: ohne Signierschluessel keine Leitung")
+	}
+	if err := cs.annahmeBeginnen(w); err != nil {
+		t.Fatalf("nach dem (gescheiterten) Start noch angehalten: %v", err)
+	}
+	cs.annahmeEnde()
+	if st := cs.AnnahmePauseStand(); st["leitung_startet"] != false {
+		t.Fatalf("Stand meldet nach dem Start noch Warten: %v", st)
+	}
+}
+
+// Gegenprobe: ohne AEQUITAS_LEITUNG wartet niemand auf eine Leitung.
+func TestAnnahme_OhneLeitungKeinWarten(t *testing.T) {
+	t.Setenv("AEQUITAS_LEITUNG", "")
+	cs := newTestState()
+	if err := cs.annahmeBeginnen("0x00000000000000000000000000000000000000e2"); err != nil {
+		t.Fatalf("ohne Leitung angehalten: %v", err)
+	}
+	cs.annahmeEnde()
+}

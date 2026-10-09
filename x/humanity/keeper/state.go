@@ -221,6 +221,11 @@ type ChainState struct {
 	// leitung: rotierender Leiter (leitung.go); nil = aus, dann gilt allein
 	// nurLesend wie bisher.
 	leitung atomic.Pointer[Leitung]
+	// leitungStartVersucht: StarteLeitung ist gelaufen (gelungen oder nicht).
+	// Bis dahin haelt die Annahme mit AEQUITAS_LEITUNG=an an
+	// (annahmePauseGrund) -- leitung ist dann noch nil, und der Knoten naehme
+	// lokal an, statt an den Leiter weiterzuleiten.
+	leitungStartVersucht atomic.Bool
 	// annahmenLaufend zaehlt Annahmen, die das Tor passiert haben und noch
 	// nicht fertig sind -- der Leiter uebergibt erst, wenn es 0 ist.
 	annahmenLaufend atomic.Int64

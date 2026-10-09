@@ -64,14 +64,7 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
    `runAtomicDistributionWithOutbox`, `RegisterHumanAtomic` und
    `RegisterHuman` sowie `RetryRegistrationRecoveries` und der
    WAL-Wiederanlauf den Ausgang; Überweisungen sperrt `annahmeBeginnen`.)
-8. **Folger nimmt beim Start bis zu 30 s ohne Leitung an** (Prüfung von
-   #322, INFO-7; bestand schon vorher): Bis `StarteLeitung` läuft, ist
-   `cs.leitung` nil und `nimmtAnFuer()` true, auch mit `AEQUITAS_LEITUNG=an`;
-   Überweisung, Tausch und Faucet nehmen dann lokal an, statt
-   weiterzuleiten. Fix: pausieren, solange `leitungAn()` und der Start der
-   Leitung noch nicht versucht wurde (versucht, nicht gelungen -- sonst
-   hielte eine kaputte Leitung den Knoten für immer an).
-9. **WAL nach einem Rollenwechsel ohne Deckungsprüfung** (Prüfung von
+8. **WAL nach einem Rollenwechsel ohne Deckungsprüfung** (Prüfung von
    #322, INFO-15): Ein Beobachter liest das WAL nicht ein, die Datei bleibt
    liegen. Startet ein abgestürzter Validator mit ungeflushten Sätzen erst
    als Beobachter (spielt fremde Blöcke nach, `wal_seq` bleibt stehen) und
