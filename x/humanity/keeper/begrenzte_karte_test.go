@@ -137,6 +137,30 @@ func TestBegrenzteKarte_ZahlNebenlaeufigJeNetz(t *testing.T) {
 	}
 }
 
+// Die Meldung einer vollen Karte ist gedrosselt: 1.000 abgewiesene und 1.000
+// je Netz gezaehlte neue Absender binnen einer Minute ergeben eine Zeile
+// (Pruefung von #326, LOW-1, fuer begrenzteKarte).
+func TestBegrenzteKarte_MeldungGedrosselt(t *testing.T) {
+	k := &begrenzteKarte{name: "test", max: 0, grob: &begrenzteKarte{name: "test_grob", max: 1 << 30}}
+	for i := 0; i < 1000; i++ {
+		k.LoadOrStore(fmt.Sprintf("x:0x%d", i), i)
+		k.LoadOrStore(fmt.Sprintf("x:198.51.%d.1", i%250), i)
+	}
+	if a, g := k.abgelehnt.Load(), k.gegroebt.Load(); a != 1000 || g != 1000 {
+		t.Fatalf("abgelehnt %d, je Netz %d -- erwartet je 1000", a, g)
+	}
+	if n := k.meldungen.Load(); n != 1 {
+		t.Fatalf("%d Meldungen binnen einer Minute, erwartet 1", n)
+	}
+	k.gemeldet.Store(time.Now().Unix() - 61)
+	for i := 0; i < 1000; i++ {
+		k.LoadOrStore(fmt.Sprintf("x:0x%d", i), i)
+	}
+	if n := k.meldungen.Load(); n != 2 {
+		t.Fatalf("%d Meldungen nach einer Minute, erwartet 2", n)
+	}
+}
+
 // vollMachen: k gilt als voll -- mit grob auch seine Ueberlaufkarte.
 func vollMachen(t *testing.T, k *begrenzteKarte, grob bool) {
 	t.Helper()

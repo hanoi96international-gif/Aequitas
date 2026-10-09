@@ -65,6 +65,7 @@ type begrenzteKarte struct {
 	abgelehnt atomic.Int64
 	gegroebt  atomic.Int64 // Zugriffe neuer Absender, die unter ihrem Netz zaehlten
 	gemeldet  atomic.Int64 // Unix-Sekunde der letzten Meldung im Log
+	meldungen atomic.Int64 // Zahl der Meldungen -- fuer die Tests der Drossel
 }
 
 func neueBegrenzteKarte(name string, max int64, wertWennVoll func() any) *begrenzteKarte {
@@ -107,9 +108,12 @@ var begrenzteKarten []*begrenzteKarte
 
 func (k *begrenzteKarte) voll() bool { return k.anzahl.Load() >= k.max }
 
+// melden: hoechstens eine Zeile je Minute und Karte -- die Absender kommen
+// von aussen, jede Anfrage eine Zeile waere eine Logflut.
 func (k *begrenzteKarte) melden(text string) {
 	jetzt := time.Now().Unix()
 	if alt := k.gemeldet.Load(); jetzt-alt >= 60 && k.gemeldet.CompareAndSwap(alt, jetzt) {
+		k.meldungen.Add(1)
 		fmt.Printf("[GRENZE] ⚠ %s voll (%d Absender) -- %s\n", k.name, k.max, text)
 	}
 }
