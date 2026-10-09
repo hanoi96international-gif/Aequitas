@@ -46,6 +46,11 @@ func TestClientIP_GatewayGlaubtKeinemKopf(t *testing.T) {
 	if got := anfrage("172.18.0.1:4000", "10.1.2.3"); got != "172.18.0.1" {
 		t.Fatalf("Gateway: clientIP = %q, erwartet die TCP-Adresse", got)
 	}
+	// Dieselbe Adresse in IPv4-in-IPv6-Schreibweise ist dasselbe Gateway
+	// (Pruefung von #325, INFO-8, M8).
+	if got := anfrage("[::ffff:172.18.0.1]:4000", "10.1.2.3"); got != "172.18.0.1" {
+		t.Fatalf("Gateway in ::ffff-Schreibweise: clientIP = %q, erwartet 172.18.0.1", got)
+	}
 	if got := anfrage("[fd00::1]:4000", "10.1.2.3"); got != "fd00::" {
 		t.Fatalf("IPv6-Gateway: clientIP = %q, erwartet das /64 der TCP-Adresse", got)
 	}
@@ -134,6 +139,11 @@ func TestGatewaysAusDateien(t *testing.T) {
 	if _, err := gatewaysAusDateien(filepath.Join(dir, "fehlt"), v6); err == nil {
 		t.Fatal("ohne IPv4-Tabelle kein Fehler")
 	}
+	// Die IPv6-Tabelle ist da, aber nicht lesbar: ein Fehler, kein stilles
+	// Weglassen des IPv6-Gateways (Pruefung von #325, INFO-3).
+	if _, err := gatewaysAusDateien(v4, dir); err == nil {
+		t.Fatal("unlesbare IPv6-Tabelle ohne Fehler")
+	}
 	if runtime.GOOS != "linux" {
 		return
 	}
@@ -145,5 +155,40 @@ func TestGatewaysAusDateien(t *testing.T) {
 		if net.ParseIP(k) == nil {
 			t.Fatalf("kein IP: %q", k)
 		}
+	}
+}
+
+// Pruefung von #325, LOW-2: verworfene Koepfe vom Gateway werden gezaehlt und
+// stehen im Stand -- ein Proxy auf dem Host faellt sonst nur als 429 auf.
+func TestClientIP_GatewayVerworfenGezaehlt(t *testing.T) {
+	gatewaysSetzen(t, testGateways)
+	vorher := xffVomGatewayVerworfen.Load()
+	r := httptest.NewRequest("POST", "/rpc", nil)
+	r.RemoteAddr = "172.18.0.1:4000"
+	r.Header.Set("X-Forwarded-For", "203.0.113.9")
+	for i := 0; i < 3; i++ {
+		clientIP(r)
+	}
+	if n := xffVomGatewayVerworfen.Load() - vorher; n != 3 {
+		t.Fatalf("%d verworfene Koepfe gezaehlt, erwartet 3", n)
+	}
+	r.RemoteAddr = "172.18.0.5:4000"
+	clientIP(r)
+	if n := xffVomGatewayVerworfen.Load() - vorher; n != 3 {
+		t.Fatal("ein Kopf vom eigenen Proxy wurde als verworfen gezaehlt")
+	}
+	st, ok := GrenzenJeAbsenderStand()["eigenes_gateway"].(map[string]interface{})
+	if !ok || st["routen_lesbar"] != true || st["xff_vom_gateway_verworfen"].(int64) < 3 {
+		t.Fatalf("Stand ohne eigenes_gateway: %v", st)
+	}
+}
+
+// Nicht lesbar steht im Stand.
+func TestEigeneGateways_NichtLesbarImStand(t *testing.T) {
+	gatewaysSetzen(t, func() (map[string]bool, error) { return nil, errors.New("kein /proc") })
+	kopfQuelleVertrauenswuerdig("172.18.0.5")
+	st := GrenzenJeAbsenderStand()["eigenes_gateway"].(map[string]interface{})
+	if st["routen_lesbar"] != false {
+		t.Fatalf("Stand meldet lesbare Routen: %v", st)
 	}
 }

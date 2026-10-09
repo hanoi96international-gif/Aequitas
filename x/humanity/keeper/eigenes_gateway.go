@@ -3,7 +3,9 @@ package keeper
 import (
 	"bufio"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"io/fs"
 	"net"
 	"os"
 	"strings"
@@ -22,13 +24,22 @@ import (
 // der Gateway-Adresse des Docker-Netzes weiter (172.x.0.1). Dort setzt der
 // Client X-Forwarded-For selbst: jede Anfrage mit neuer Adresse ein neuer
 // Zaehler, bis die Karten der Grenzen voll sind und jeder neue Absender
-// gesperrt ist (begrenzte_karte.go). Der eigene Proxy ist nie das Gateway;
-// also gilt der Kopf von dort nie.
+// gesperrt ist (begrenzte_karte.go). Also gilt der Kopf vom Gateway nie.
 //
-// Die Gateways stehen in /proc/net/route und /proc/net/ipv6_route (gelesen
-// hoechstens einmal je Minute). Sind sie nicht lesbar, gilt der Kopf von
-// keiner Quelle (fail-closed: jeder Proxy zaehlt dann unter seiner eigenen
-// Adresse), mit einer Meldung.
+// Der eigene Proxy muss darum ein Container im selben Docker-Netz sein, der
+// den Knoten per Containername anspricht (so alle Caddyfiles in deploy/). Ein
+// Proxy auf dem Host selbst -- als Dienst, mit network_mode host, ueber
+// 127.0.0.1:8080 oder die Container-IP -- kommt ebenfalls vom Gateway: dann
+// zaehlen alle Nutzer unter ihm (fail-closed, Pruefung von #325, LOW-2). Jede
+// verworfene Kopfzeile vom Gateway wird gezaehlt (grenzen_je_absender) und
+// hoechstens einmal je Minute gemeldet.
+//
+// Die Gateways stehen in /proc/net/route und /proc/net/ipv6_route, gelesen
+// hoechstens einmal je Minute -- ein Wechsel des Docker-Netzes zur Laufzeit
+// gilt also bis zu 60 s spaeter. Ist die IPv4-Tabelle nicht lesbar (oder die
+// IPv6-Tabelle da, aber nicht lesbar), gilt der Kopf nur noch von Loopback
+// (fail-closed: jeder andere Proxy zaehlt unter seiner eigenen Adresse); das
+// steht im Stand und wird bei jedem Wechsel gemeldet.
 
 // eigeneGatewaysLesen: die Gateways der eigenen Routen, in der Schreibweise
 // von net.IP.String(). Variable fuer Tests.
@@ -37,8 +48,8 @@ var eigeneGatewaysLesen = func() (map[string]bool, error) {
 }
 
 // gatewaysAusDateien: die Gateways aus den Routentabellen von Linux. Die
-// IPv4-Tabelle muss lesbar sein; die IPv6-Tabelle ist optional (ein Kern ohne
-// IPv6 hat sie nicht).
+// IPv4-Tabelle muss lesbar sein; die IPv6-Tabelle darf fehlen (ein Kern ohne
+// IPv6 hat sie nicht), aber nicht kaputt sein.
 func gatewaysAusDateien(v4, v6 string) (map[string]bool, error) {
 	out := map[string]bool{}
 	if err := routenLesen(v4, 2, 8, func(feld string) net.IP {
@@ -50,13 +61,17 @@ func gatewaysAusDateien(v4, v6 string) (map[string]bool, error) {
 	}, out); err != nil {
 		return nil, err
 	}
-	_ = routenLesen(v6, 4, 32, func(feld string) net.IP {
+	if err := routenLesen(v6, 4, 32, func(feld string) net.IP {
 		b, err := hex.DecodeString(feld)
 		if err != nil || len(b) != 16 {
 			return nil
 		}
 		return net.IP(b)
-	}, out)
+	}, out); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		// Fehlt die Datei, hat der Kern kein IPv6. Jeder andere Fehler liesse
+		// ein IPv6-Gateway still weg (Pruefung von #325, INFO-3).
+		return nil, err
+	}
 	return out, nil
 }
 
@@ -90,6 +105,10 @@ type gatewayStand struct {
 var (
 	gatewayCache    atomic.Pointer[gatewayStand]
 	gatewayGemeldet atomic.Bool
+	// xffVomGatewayVerworfen: Anfragen vom Gateway mit X-Forwarded-For, deren
+	// Kopf nicht galt; xffVomGatewayGemeldet: Unix-Sekunde der letzten Meldung.
+	xffVomGatewayVerworfen atomic.Int64
+	xffVomGatewayGemeldet  atomic.Int64
 )
 
 // eigeneGateways: der Stand von hoechstens vor einer Minute.
@@ -100,8 +119,11 @@ func eigeneGateways() *gatewayStand {
 	g, err := eigeneGatewaysLesen()
 	st := &gatewayStand{gelesen: time.Now(), gateways: g, fehler: err}
 	gatewayCache.Store(st)
+	// Gemeldet wird jeder Wechsel: nicht lesbar -> lesbar -> nicht lesbar.
 	if err != nil && gatewayGemeldet.CompareAndSwap(false, true) {
-		fmt.Printf("[GRENZE] ⚠ eigene Routen nicht lesbar (%v) -- X-Forwarded-For gilt von keiner Quelle\n", err)
+		fmt.Printf("[GRENZE] ⚠ eigene Routen nicht lesbar (%v) -- X-Forwarded-For gilt nur noch von Loopback\n", err)
+	} else if err == nil && gatewayGemeldet.CompareAndSwap(true, false) {
+		fmt.Println("[GRENZE] ✓ eigene Routen wieder lesbar -- X-Forwarded-For gilt wieder vom eigenen Proxy")
 	}
 	return st
 }
@@ -121,5 +143,31 @@ func kopfQuelleVertrauenswuerdig(host string) bool {
 	if st.fehler != nil {
 		return false
 	}
-	return !st.gateways[ip.String()]
+	if st.gateways[ip.String()] {
+		xffVomGatewayVerworfenMelden(ip.String())
+		return false
+	}
+	return true
+}
+
+// xffVomGatewayVerworfenMelden: zaehlen und hoechstens einmal je Minute
+// melden -- ein Proxy auf dem Host faellt sonst nur als 429 auf (Pruefung
+// von #325, LOW-2).
+func xffVomGatewayVerworfenMelden(gateway string) {
+	xffVomGatewayVerworfen.Add(1)
+	jetzt := time.Now().Unix()
+	if alt := xffVomGatewayGemeldet.Load(); jetzt-alt >= 60 && xffVomGatewayGemeldet.CompareAndSwap(alt, jetzt) {
+		fmt.Printf("[GRENZE] ⚠ X-Forwarded-For vom eigenen Gateway %s verworfen -- ein Proxy auf dem Host zaehlt alle Nutzer unter einer Adresse; den Proxy ins Docker-Netz legen (docs/OFFEN.md)\n", gateway)
+	}
+}
+
+// gatewayStandFuerGrenzen: fuer GrenzenJeAbsenderStand.
+func gatewayStandFuerGrenzen() map[string]interface{} {
+	st := gatewayCache.Load()
+	out := map[string]interface{}{"xff_vom_gateway_verworfen": xffVomGatewayVerworfen.Load()}
+	if st != nil {
+		out["routen_lesbar"] = st.fehler == nil
+		out["gateways"] = len(st.gateways)
+	}
+	return out
 }

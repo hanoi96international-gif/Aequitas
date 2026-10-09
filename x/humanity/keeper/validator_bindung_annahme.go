@@ -264,7 +264,7 @@ func (a *APIServer) handleValidatorBindung(w http.ResponseWriter, r *http.Reques
 	// Je Betreiber eine angenommene Bindung je 30 s. Gesetzt wird der Platz
 	// erst nach der Annahme -- die braucht die Unterschrift des Betreibers,
 	// also kann kein Fremder ihn verbrauchen.
-	if ts, ok := bindungRateLimit.Load("validator-bindung-betreiber:" + betreiber); ok && time.Since(ts.(time.Time)) < validatorBindungSperre {
+	if ts, ok := betreiberRateLimit.Load("validator-bindung-betreiber:" + betreiber); ok && time.Since(ts.(time.Time)) < validatorBindungSperre {
 		jsonError(w, "this operator bound a key moments ago -- try again shortly", http.StatusTooManyRequests)
 		return
 	}
@@ -283,7 +283,7 @@ func (a *APIServer) handleValidatorBindung(w http.ResponseWriter, r *http.Reques
 		}
 		return
 	}
-	bindungRateLimit.Store("validator-bindung-betreiber:"+betreiber, time.Now())
+	betreiberRateLimit.Store("validator-bindung-betreiber:"+betreiber, time.Now())
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true, "operator": betreiber, "signing": strings.ToLower(req.Signing), "ts": req.Zeit,
 		// Angenommen heisst: im Ausgang des Leiters. Auf der Kette steht die

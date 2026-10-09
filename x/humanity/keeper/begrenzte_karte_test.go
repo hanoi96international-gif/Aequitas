@@ -300,7 +300,7 @@ func TestProveProxy_WalletSchluesselHinterDerIPGrenze(t *testing.T) {
 // gehen, frische bleiben, und die Zahl sinkt mit.
 func TestSperrKartenAufraeumen(t *testing.T) {
 	jetzt := time.Now()
-	for _, k := range []*begrenzteKarte{registerRateLimit, walletRateLimit, bindungRateLimit} {
+	for _, k := range []*begrenzteKarte{registerRateLimit, walletRateLimit, bindungRateLimit, betreiberRateLimit} {
 		k.Store("test-alt", jetzt.Add(-time.Minute))
 		k.Store("test-frisch", jetzt)
 		t.Cleanup(func() { k.Delete("test-alt"); k.Delete("test-frisch") })
@@ -420,7 +420,7 @@ func TestBindungsGrenze_EigeneKarte(t *testing.T) {
 // Pruefung von #324, INFO-8 (M12): jede Karte hat ihre Hoechstzahl.
 func TestBegrenzteKarte_HoechstzahlJeKarte(t *testing.T) {
 	st := GrenzenJeAbsenderStand()
-	for _, name := range []string{"ip_burst", "rpc", "register", "wallet", "bindung"} {
+	for _, name := range []string{"ip_burst", "rpc", "register", "wallet", "bindung", "betreiber"} {
 		w, ok := st[name].(map[string]int64)
 		if !ok {
 			t.Fatalf("Stand ohne %s: %v", name, st)
@@ -428,5 +428,23 @@ func TestBegrenzteKarte_HoechstzahlJeKarte(t *testing.T) {
 		if w["hoechstens"] != grenzenSchluesselHoechstens {
 			t.Fatalf("%s: hoechstens %d, erwartet %d", name, w["hoechstens"], grenzenSchluesselHoechstens)
 		}
+	}
+}
+
+// Pruefung von #325, INFO-8 (M19): ist bindungRateLimit voll, bekommt ein
+// neuer Absender 429, bevor der Handler laeuft (fail-closed).
+func TestBindungsGrenze_VolleKarteSperrtNeueAbsender(t *testing.T) {
+	a := &APIServer{}
+	alt := bindungRateLimit.max
+	bindungRateLimit.max = bindungRateLimit.anzahl.Load()
+	t.Cleanup(func() { bindungRateLimit.max = alt })
+	gerufen := false
+	h := a.bindungsGrenze(func(w http.ResponseWriter, r *http.Request) { gerufen = true })
+	r := httptest.NewRequest("POST", "/api/validator-bindung", nil)
+	r.RemoteAddr = "198.51.100.75:1"
+	w := httptest.NewRecorder()
+	h(w, r)
+	if w.Code != http.StatusTooManyRequests || gerufen {
+		t.Fatalf("volle Bindungskarte: Status %d, Handler gerufen %v -- erwartet 429 ohne Handler", w.Code, gerufen)
 	}
 }

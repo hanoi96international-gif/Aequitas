@@ -126,5 +126,6 @@ func GrenzenJeAbsenderStand() map[string]interface{} {
 	for _, k := range begrenzteKarten {
 		out[k.name] = map[string]int64{"eintraege": k.anzahl.Load(), "hoechstens": k.max, "neue_abgelehnt": k.abgelehnt.Load()}
 	}
+	out["eigenes_gateway"] = gatewayStandFuerGrenzen()
 	return out
 }
