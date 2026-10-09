@@ -3325,7 +3325,7 @@ func (cs *ChainState) RetryRegistrationRecoveries() int {
 		return 0
 	}
 	rows, err := cs.db.Query(`
-		SELECT id, wallet, evm_tx_hash, nullifier, pending_tx_json
+		SELECT id, wallet, evm_tx_hash, nullifier, pending_tx_json, created_at
 		FROM registration_recovery
 		WHERE recovered_at IS NULL
 		ORDER BY created_at ASC
@@ -3340,22 +3340,22 @@ func (cs *ChainState) RetryRegistrationRecoveries() int {
 		evmTxHash   string
 		nullifier   string
 		pendingJSON string
+		createdAt   int64
 	}
 	var records []rec
 	for rows.Next() {
 		var r rec
-		if scanErr := rows.Scan(&r.id, &r.wallet, &r.evmTxHash, &r.nullifier, &r.pendingJSON); scanErr == nil {
+		if scanErr := rows.Scan(&r.id, &r.wallet, &r.evmTxHash, &r.nullifier, &r.pendingJSON, &r.createdAt); scanErr == nil {
 			records = append(records, r)
 		}
 	}
 	rows.Close()
 
-	// Einmal je Durchlauf, wie register.go: die Pause gilt nur fuer den
-	// annehmenden Knoten (ein Folger registriert lokal weiter).
-	var pause error
-	if cs.nimmtAnFuer() {
-		pause = cs.annahmePauseGrund()
-	}
+	// Einmal je Durchlauf. Anders als /api/register (register.go) auf JEDEM
+	// Knoten, nicht nur auf dem annehmenden: was ein Knoten, der gerade
+	// nicht erzeugt, in seinen Ausgang legt, kommt in keinen Block
+	// (Pruefung von #322, INFO-2).
+	pause := cs.annahmePauseGrund()
 	recovered, geschlossen := 0, 0
 	for _, r := range records {
 		// Vor-EVM-Intent (evm_tx_hash = ''): die EVM hat diese Registrierung
@@ -3365,7 +3365,7 @@ func (cs *ChainState) RetryRegistrationRecoveries() int {
 		// und ohne EVM-Transaktion (Pruefung von #329, INFO-13). Jetzt wird er
 		// nur geschlossen, nie registriert: vorEVMIntentAufloesen.
 		if r.evmTxHash == "" {
-			switch cs.vorEVMIntentAufloesen(r.id, r.wallet, time.Now().Unix()) {
+			switch cs.vorEVMIntentAufloesen(r.id, r.wallet, r.createdAt, time.Now().Unix()) {
 			case vorEVMErledigt:
 				recovered++
 				geschlossen++
@@ -3376,9 +3376,7 @@ func (cs *ChainState) RetryRegistrationRecoveries() int {
 		}
 
 		// Wiederholen schreibt in den Ausgang: nicht, solange die Annahme
-		// pausiert -- genau wie /api/register (register.go) nur auf dem
-		// annehmenden Knoten (Pruefung von #322, INFO-2). Die Zeile bleibt
-		// fuer den naechsten Durchlauf liegen.
+		// pausiert. Die Zeile bleibt fuer den naechsten Durchlauf liegen.
 		if pause != nil {
 			continue
 		}
@@ -3496,25 +3494,23 @@ const (
 // (evm_tx_hash leer und noch offen), und UpdateRegistrationIntentEVMTxHash
 // oeffnet eine geschlossene Zeile wieder: ein spaet bestaetigter Intent geht
 // der Wiederholung nicht verloren.
-func (cs *ChainState) vorEVMIntentAufloesen(id int64, wallet string, jetzt int64) vorEVMErgebnis {
+func (cs *ChainState) vorEVMIntentAufloesen(id int64, wallet string, erstellt, jetzt int64) vorEVMErgebnis {
+	// Zu jung: nichts anfassen, auch keinen Hinweis fuer den Betreiber --
+	// eine gerade bestaetigte Registrierung zeigt im Spiegel schon den
+	// Menschen, bevor register.go den Hash vermerkt.
+	if jetzt-erstellt < vorEVMMindestAlterSek {
+		return vorEVMOffen
+	}
 	schliessen := func(grund string) bool {
 		res, err := cs.db.Exec(`UPDATE registration_recovery SET recovered_at=$1, last_error=$2
-			WHERE id=$3 AND evm_tx_hash='' AND recovered_at IS NULL AND created_at <= $4`,
-			jetzt, grund, id, jetzt-vorEVMMindestAlterSek)
+			WHERE id=$3 AND evm_tx_hash='' AND recovered_at IS NULL`,
+			jetzt, grund, id)
 		if err != nil {
 			fmt.Printf("[RECOVERY] ⚠ Vor-EVM-Intent id=%d (%s) nicht geschlossen: %v\n", id, wallet, err)
 			return false
 		}
 		n, err := res.RowsAffected()
 		return err == nil && n == 1
-	}
-	var erstellt int64
-	if err := cs.db.QueryRow(`SELECT created_at FROM registration_recovery WHERE id=$1`, id).Scan(&erstellt); err != nil {
-		fmt.Printf("[RECOVERY] ⚠ Vor-EVM-Intent id=%d nicht lesbar: %v\n", id, err)
-		return vorEVMOffen
-	}
-	if jetzt-erstellt < vorEVMMindestAlterSek {
-		return vorEVMOffen
 	}
 	if cs.IsHuman(wallet) {
 		if schliessen("pre-evm intent: wallet already human in go-state (block replay) — closed, nothing registered") {
@@ -3531,7 +3527,7 @@ func (cs *ChainState) vorEVMIntentAufloesen(id int64, wallet string, jetzt int64
 	}
 	if common.HexToHash(val) != (common.Hash{}) {
 		const grund = "pre-evm intent: EVM mirror shows wallet as human but go-state does not — manual review, NOT registered automatically"
-		if _, err := cs.db.Exec(`UPDATE registration_recovery SET last_error=$1 WHERE id=$2`, grund, id); err != nil {
+		if _, err := cs.db.Exec(`UPDATE registration_recovery SET last_error=$1 WHERE id=$2 AND evm_tx_hash='' AND recovered_at IS NULL`, grund, id); err != nil {
 			fmt.Printf("[RECOVERY] ⚠ last_error fuer Vor-EVM-Intent id=%d nicht gesetzt: %v\n", id, err)
 		}
 		if cs.BootstrapDegradedReason() == "" {

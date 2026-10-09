@@ -60,8 +60,9 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
    der Knoten erzeugt, helfen nur Resync oder Verwerfen.
    **Erledigt (Zweig `claude/weiter-gehts-hklfhc`):**
    `RetryRegistrationRecoveries` holt nach der EVM (Hash gesetzt) nichts
-   nach, solange `annahmePauseGrund()` auf dem annehmenden Knoten pausiert
-   (wie `/api/register`). Und (Prüfung von #329, INFO-13): Vor-EVM-Intents
+   nach, solange `annahmePauseGrund()` pausiert – auf jedem Knoten, nicht
+   nur dem annehmenden (was ein nicht erzeugender Knoten in den Ausgang legt,
+   kommt in keinen Block). Und (Prüfung von #329, INFO-13): Vor-EVM-Intents
    (`evm_tx_hash = ''`) registriert die Wiederholung **nie** mehr –
    `vorEVMIntentAufloesen` schließt sie nur: Go-Zustand hat den Menschen →
    erledigt; EVM-Spiegel zeigt ihn, Go nicht → bleibt offen für den
