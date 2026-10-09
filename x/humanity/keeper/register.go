@@ -31,6 +31,12 @@ var registerRateLimit = neueBegrenzteKarte("register", grenzenSchluesselHoechste
 // (Pruefung von #324, HIGH-1).
 var walletRateLimit = neueBegrenzteKarte("wallet", grenzenSchluesselHoechstens, func() any { return time.Now() })
 
+// bindungRateLimit: wie registerRateLimit, fuer die Validator-Bindung (je
+// Betreiber nach einer angenommenen Bindung, je IP nach einer abgelehnten).
+// Eigene Karte: oeffentliche Endpunkte, die registerRateLimit fuellen, sperren
+// die Bindung neuer Validatoren nicht (Pruefung von #324, LOW-6).
+var bindungRateLimit = neueBegrenzteKarte("bindung", grenzenSchluesselHoechstens, func() any { return time.Now() })
+
 // registerWalletLocks serializes the full registration flow (IsHuman check
 // → EVM registerWithSig call → Go-state RegisterHuman) per wallet.
 //
@@ -93,11 +99,12 @@ func init() {
 	})
 }
 
-// sperrKartenAufraeumen: Eintraege von registerRateLimit und walletRateLimit,
+// sperrKartenAufraeumen: Eintraege von registerRateLimit, walletRateLimit und
+// bindungRateLimit,
 // deren Sperre abgelaufen ist, loeschen -- erst das schafft in einer vollen
 // Karte wieder Platz (begrenzte_karte.go).
 func sperrKartenAufraeumen(now time.Time) {
-	for _, karte := range []*begrenzteKarte{registerRateLimit, walletRateLimit} {
+	for _, karte := range []*begrenzteKarte{registerRateLimit, walletRateLimit, bindungRateLimit} {
 		karte.Range(func(k, v interface{}) bool {
 			if now.Sub(v.(time.Time)) > 35*time.Second { // must exceed maximum rate limit window (30s)
 				karte.Delete(k)
@@ -148,14 +155,16 @@ func isPrivateOrLoopback(ipStr string) bool {
 //
 // X-Forwarded-For gilt nur, wenn die TCP-Verbindung von einer privaten oder
 // Loopback-Adresse kommt (der eigene Proxy) -- ein Client aus dem Netz darf
-// seine Adresse nicht selbst angeben. Und dann der LETZTE Eintrag der letzten
+// seine Adresse nicht selbst angeben --, und nie vom Gateway der eigenen
+// Routen, ueber das docker-proxy ohne Kopf weiterreicht
+// (kopfQuelleVertrauenswuerdig, eigenes_gateway.go). Und dann der LETZTE Eintrag der letzten
 // Kopfzeile: den hat der eigene Proxy angehaengt, die frueheren schreibt der
 // Client. Haengt ein Proxy an, statt zu ersetzen, waehlte sonst der Client
 // seinen Zaehler selbst (Pruefung von #319, LOW-3). Caddy ersetzt den Kopf
 // fuer fremde Clients; dort sind erster und letzter Eintrag gleich. Das gilt
 // fuer GENAU EINEN anhaengenden Proxy: stehen zwei hintereinander (etwa ein
 // CDN vor Caddy), ist der letzte Eintrag der vordere Proxy, und alle Nutzer
-// zaehlen unter ihm (docs/OFFEN.md, Betrieb).
+// zaehlen unter ihm (docs/OFFEN.md, Ratenbegrenzung).
 //
 // IPv6 zaehlt je /64 (absenderSchluessel): ein Anschluss bekommt mindestens
 // ein /64, und jede Adresse daraus einzeln zu zaehlen hiesse, ein Absender
@@ -166,7 +175,7 @@ func clientIP(r *http.Request) string {
 	if err != nil {
 		host = r.RemoteAddr
 	}
-	if werte := r.Header.Values("X-Forwarded-For"); len(werte) > 0 && isPrivateOrLoopback(host) {
+	if werte := r.Header.Values("X-Forwarded-For"); len(werte) > 0 && kopfQuelleVertrauenswuerdig(host) {
 		xff := werte[len(werte)-1]
 		letzter := strings.TrimSpace(xff[strings.LastIndexByte(xff, ',')+1:])
 		if ip, _, err := net.SplitHostPort(letzter); err == nil {

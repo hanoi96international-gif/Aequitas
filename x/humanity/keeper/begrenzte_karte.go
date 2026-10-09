@@ -18,7 +18,12 @@ import (
 // Voll heisst begrenzen: ein NEUER Absender wird abgewiesen, bis das
 // Aufraeumen Platz schafft (je nach Karte nach etwa ein bis zwei Minuten);
 // wer schon einen Eintrag hat, zaehlt weiter wie bisher. Mit IPv6 je /64
-// (clientIP) braucht ein Angreifer dafuer so viele Netze wie Eintraege.
+// (clientIP) braucht ein Angreifer dafuer viele Netze -- aber nicht so viele
+// wie Eintraege: ein Absender belegt je Funktion einen Schluessel (in
+// registerRateLimit bis zu zehn, in ipBurst bis zu fuenf), 20.000 bzw.
+// 40.000 Absender fuellen also eine Karte (Pruefung von #324, LOW-6;
+// docs/OFFEN.md). Die Validator-Bindung hat darum eine eigene Karte
+// (bindungRateLimit), ebenso die frei gewaehlten Wallets (walletRateLimit).
 // Abgewiesene neue Absender stehen je Karte in /api/health/combined
 // (grenzen_je_absender) und hoechstens einmal je Minute im Log.
 

@@ -259,7 +259,7 @@ func TestHandleValidatorBindung_Grenzen(t *testing.T) {
 	ips := []string{"192.0.2.21", "192.0.2.22", "192.0.2.23", "192.0.2.24", "192.0.2.25"}
 	t.Cleanup(func() {
 		for _, ip := range ips {
-			registerRateLimit.Delete("validator-bindung-fehl:" + ip)
+			bindungRateLimit.Delete("validator-bindung-fehl:" + ip)
 		}
 	})
 	posten := func(ip string, body []byte) *httptest.ResponseRecorder {
@@ -327,13 +327,13 @@ func TestHandleValidatorBindung_Grenzen(t *testing.T) {
 	hb := b.bindungsGrenze(b.handleValidatorBindung)
 	req := httptest.NewRequest(http.MethodPost, "/api/validator-bindung", bytes.NewReader(bindungsKoerper(t, gut)))
 	req.RemoteAddr = "192.0.2.26:1234"
-	t.Cleanup(func() { registerRateLimit.Delete("validator-bindung-fehl:192.0.2.26") })
+	t.Cleanup(func() { bindungRateLimit.Delete("validator-bindung-fehl:192.0.2.26") })
 	rec = httptest.NewRecorder()
 	hb(rec, req)
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("Folger: erwartet 503, bekam %d %s", rec.Code, rec.Body.String())
 	}
-	if _, ok := registerRateLimit.Load("validator-bindung-fehl:192.0.2.26"); ok {
+	if _, ok := bindungRateLimit.Load("validator-bindung-fehl:192.0.2.26"); ok {
 		t.Fatal("503 als Fehlversuch gezaehlt")
 	}
 }
