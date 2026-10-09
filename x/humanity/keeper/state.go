@@ -4574,6 +4574,11 @@ func (cs *ChainState) IsHuman(address string) bool {
 }
 
 func (cs *ChainState) RegisterHuman(address string) error {
+	// Ohne Ausgang und ohne Block -- auf einem Beobachter nie (Pruefung von
+	// #322, INFO-14; die Wiederholung sperrt schon vorher).
+	if err := beobachterOhneAusgang(); err != nil {
+		return err
+	}
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
 	// cs.mu-only path, never runs inside runAtomicWithOutbox, so there is no

@@ -284,6 +284,15 @@ func (cs *ChainState) initWALIfEnabled() {
 		fmt.Println("[WAL] AEQUITAS_WAL_ENABLED=1 but no DB connection — WAL fast path needs Postgres to reconcile into, skipping")
 		return
 	}
+	// Ein Beobachter liest das WAL nicht ein und oeffnet es nicht: der
+	// Wiederanlauf wendete Ueberweisungen an und schriebe sie (und den Korb)
+	// in pending_txs, an beobachterOhneAusgang vorbei -- Zeilen, die nie in
+	// einen Block kommen, und ein abweichender Stand (Pruefung von #322,
+	// LOW-13). Die Datei bleibt fuer einen spaeteren Rollenwechsel liegen.
+	if beobachterModus() {
+		fmt.Println("[WAL] ⚠ Beobachter (AEQUITAS_BEOBACHTER): WAL wird weder eingelesen noch geoeffnet -- ein Rest bleibt liegen")
+		return
+	}
 	applyWALTuningFromEnv()
 	path := os.Getenv("AEQUITAS_WAL_PATH")
 	if path == "" {

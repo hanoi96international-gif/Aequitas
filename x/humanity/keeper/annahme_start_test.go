@@ -6,6 +6,8 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -211,7 +213,7 @@ func TestBeobachter_HoltKeineRegistrierungNach_RealDB(t *testing.T) {
 	}
 	mit, ohne := "0x00000000000000000000000000000000000000d2", "0x00000000000000000000000000000000000000d3"
 	for _, f := range [][2]string{{mit, "0x" + strings.Repeat("d2", 32)}, {ohne, ""}} {
-		if _, err := cs.SaveRegistrationIntent(f[0], f[1], Transaction{Type: "register_human", Wallet: f[0]}); err != nil {
+		if _, err := cs.SaveRegistrationIntent(f[0], f[1], Transaction{Type: "register_human", Wallet: f[0], Nullifier: f[1]}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -230,5 +232,83 @@ func TestBeobachter_HoltKeineRegistrierungNach_RealDB(t *testing.T) {
 	beobachterAn.Store(false)
 	if n := cs.RetryRegistrationRecoveries(); n != 2 || !cs.IsHuman(mit) || !cs.IsHuman(ohne) {
 		t.Fatalf("Gegenprobe: %d nachgeholt, Mensch %v/%v", n, cs.IsHuman(mit), cs.IsHuman(ohne))
+	}
+}
+
+// Der Kern von LOW-9 mit Datenbank (Pruefung von #322, INFO-14): mit
+// Nullifier nimmt RegisterHumanAtomic den nebenlaeufigen Pfad, der Konto,
+// Nullifier und Ausgang selbst schreibt -- auf einem Beobachter nicht.
+// RegisterHuman (ohne Ausgang) ist ebenso gesperrt.
+func TestBeobachter_RegisterHumanAtomicMitNullifier_RealDB(t *testing.T) {
+	skipUnlessRealDBBenchEnv(t)
+	cs := testKnoten(t, "unused-beobachter-register-test.json")
+	if !cs.useDB {
+		t.Fatal("erwartet eine echte PostgreSQL-Verbindung")
+	}
+	w, w2 := "0x00000000000000000000000000000000000000d4", "0x00000000000000000000000000000000000000d5"
+	var vorher int
+	cs.db.QueryRow(`SELECT COUNT(*) FROM pending_txs`).Scan(&vorher)
+	setzeBeobachterFuerTest(t, true)
+	if err := cs.RegisterHumanAtomic(w, Transaction{Type: "register_human", Wallet: w, Nullifier: "0x" + strings.Repeat("d4", 32)}); !errors.Is(err, ErrAnnahmePausiert) {
+		t.Fatalf("Beobachter: RegisterHumanAtomic mit Nullifier = %v", err)
+	}
+	if err := cs.RegisterHuman(w2); !errors.Is(err, ErrAnnahmePausiert) {
+		t.Fatalf("Beobachter: RegisterHuman = %v", err)
+	}
+	var nachher int
+	cs.db.QueryRow(`SELECT COUNT(*) FROM pending_txs`).Scan(&nachher)
+	if nachher != vorher || cs.IsHuman(w) || cs.IsHuman(w2) {
+		t.Fatalf("Beobachter: Ausgang %d -> %d, Mensch %v/%v", vorher, nachher, cs.IsHuman(w), cs.IsHuman(w2))
+	}
+}
+
+// Missbrauch (Pruefung von #322, LOW-13): ein Knoten mit nicht geflushtem
+// WAL wird zum Beobachter. Er liest das WAL nicht ein -- keine Ueberweisung
+// angewandt, nichts in pending_txs, die Datei bleibt liegen.
+func TestBeobachter_LiestKeinWALEin_RealDB(t *testing.T) {
+	dir := t.TempDir()
+	walPath := filepath.Join(dir, "beobachter.wal")
+	truncateDistTestTables(t)
+	csA := newWALTestState(t, walPath)
+	from, to := distTestAddr(830), distTestAddr(831)
+	seedConcurrentTestAccount(t, csA, from, 1000, time.Now().Unix())
+	seedConcurrentTestAccount(t, csA, to, 0, time.Now().Unix())
+	if _, _, applied, err := csA.transferConcurrentWAL(from, to, 42, Transaction{Type: "transfer", Wallet: from, To: to, Amount: 42, TxHash: "0xbeobachterwal1"}); !applied || err != nil {
+		t.Fatalf("Vorbedingung: Ueberweisung ueber das WAL: applied=%v err=%v", applied, err)
+	}
+	csA.stopWALFlushWorkerForTest()
+	if err := csA.wal.Close(); err != nil {
+		t.Fatal(err)
+	}
+	var vorher int
+	csA.db.QueryRow(`SELECT COUNT(*) FROM pending_txs`).Scan(&vorher)
+	groesse := func() int64 {
+		st, err := os.Stat(walPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return st.Size()
+	}
+	vorherGroesse := groesse()
+
+	setzeBeobachterFuerTest(t, true)
+	csB := NewChainState("unused-wal-test.json")
+	t.Cleanup(func() {
+		if csB.db != nil {
+			csB.db.Close()
+		}
+	})
+	if csB.wal != nil {
+		t.Fatal("Beobachter hat das WAL geoeffnet")
+	}
+	time.Sleep(300 * time.Millisecond)
+	var dbFrom float64
+	if err := csB.db.QueryRow(`SELECT balance FROM chain_accounts WHERE lower(address) = $1`, from).Scan(&dbFrom); err != nil {
+		t.Fatal(err)
+	}
+	var nachher int
+	csB.db.QueryRow(`SELECT COUNT(*) FROM pending_txs`).Scan(&nachher)
+	if dbFrom != 1000 || nachher != vorher || groesse() != vorherGroesse {
+		t.Fatalf("Beobachter hat das WAL angewandt: Kontostand %v (erwartet 1000), Ausgang %d -> %d, WAL %d -> %d Byte", dbFrom, vorher, nachher, vorherGroesse, groesse())
 	}
 }
