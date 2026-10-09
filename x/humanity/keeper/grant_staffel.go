@@ -377,10 +377,17 @@ func (a *APIServer) erneuerungsGrenze(next http.HandlerFunc) http.HandlerFunc {
 			// Nachweis faellt dort hinein und sperrte sonst auch die
 			// gueltigen danach (Pruefung von #319, LOW-24). Ihre Kosten
 			// (Koerper lesen, ecrecover) deckelt eine eigene, grosszuegige
-			// Grenze je Absender.
+			// Grenze je Absender -- gebucht wird nur ein ABGELEHNTER
+			// Nachweis: gueltige eines ehrlichen Folgers teilten sich das
+			// Budget sonst mit jedem, der ueber ihn kommt, und ein Angreifer
+			// mit 21 Adressen sperrte alle hinter ihm aus (MEDIUM-28).
 			fuer := ""
-			if burstErlaubt("liveness-renewal-pruefung:"+absender, burstNachweisPruefungJeIP, burstFenster) {
+			pruefung := "liveness-renewal-pruefung:" + absender
+			if !burstVoll(pruefung, burstNachweisPruefungJeIP, burstFenster) {
 				fuer = a.state.weiterleitungFuer(r, time.Now())
+				if fuer == "" && r.Header.Get(weiterleitungNachweisKopf) != "" {
+					burstErlaubt(pruefung, burstNachweisPruefungJeIP, burstFenster)
+				}
 			}
 			if fuer != "" {
 				schluessel = "liveness-renewal-von:" + fuer

@@ -282,7 +282,7 @@ func TestWeiterleitungNachweis_MerklisteVerdraengt(t *testing.T) {
 // Zustaendige zaehlt jede Weiterleitung unter ihrem Absender -- ein
 // ehrlicher Coordinator hinter dem Folger kommt weiter durch.
 type folgerPaar struct {
-	zustURL            string
+	zustURL, zustTCP   string
 	folgerMux          http.Handler
 	folgerAdr          string
 	folgerDAG          *BlockDAG
@@ -332,7 +332,9 @@ func neuesFolgerPaar(t *testing.T, aktiv bool) *folgerPaar {
 	zustTCP := strings.TrimPrefix(zustSrv.URL, "http://")
 	zustTCP = zustTCP[:strings.LastIndex(zustTCP, ":")]
 	erneuerungsGrenzeLeeren(zustTCP)
-	t.Cleanup(func() { erneuerungsGrenzeLeeren(zustTCP) })
+	ipBurst.Delete("liveness-renewal-pruefung:" + zustTCP)
+	t.Cleanup(func() { erneuerungsGrenzeLeeren(zustTCP); ipBurst.Delete("liveness-renewal-pruefung:" + zustTCP) })
+	p.zustTCP = zustTCP
 
 	folgerLeitung := NeueLeitung(p.folgerAdr, "", []string{zustAdr, p.folgerAdr}, zustAdr, true, LeitSpeicher{Term: 3, Leiter: zustAdr},
 		testKonfig(), LeitUmgebung{}, time.Now())
@@ -710,5 +712,36 @@ func TestWeiterleitungNachweis_FreilisteMitNachweisGezaehlt(t *testing.T) {
 	mux.ServeHTTP(w, beimZustaendigen(t, folger, x, nachweisIch, `{"wallet":"0x00000000000000000000000000000000000000ff","issued_at":1}`, time.Now()))
 	if w.Code != http.StatusTooManyRequests {
 		t.Fatalf("Nachweis von der Freiliste: Anfrage %d nicht begrenzt (%d) -- die Freiliste ging vor", burstErneuerungJeIP+1, w.Code)
+	}
+}
+
+// Der Angriff aus der Pruefung von #319 (MEDIUM-28): 21 Absender schicken je
+// 30 beliebige Erneuerungen ueber einen ehrlichen Folger -- 630 gueltig
+// unterschriebene Weiterleitungen. Sie verbrauchen beim Zustaendigen kein
+// Pruefbudget (gebucht wird nur ein abgelehnter Nachweis), und ehrliche
+// Coordinatoren hinter dem Folger kommen danach durch.
+func TestWeiterleitungNachweis_GueltigeVerbrauchenKeinPruefbudget(t *testing.T) {
+	p := neuesFolgerPaar(t, true)
+	var angreifer []string
+	for i := 0; i < 21; i++ {
+		angreifer = append(angreifer, fmt.Sprintf("203.0.113.%d", 200+i))
+	}
+	ehrlich := []string{"198.51.100.210", "198.51.100.211", "198.51.100.212"}
+	p.leeren(t, append(angreifer, ehrlich...)...)
+	for _, ip := range angreifer {
+		for i := 0; i < burstErneuerungJeIP; i++ {
+			erneuerungUeberMux(t, p.folgerMux, ip, fmt.Sprintf(`{"wallet":"0x%040x","issued_at":1}`, i+1), false)
+		}
+	}
+	if n := burstZahl("liveness-renewal-pruefung:" + p.zustTCP); n != 0 {
+		t.Fatalf("gueltige Nachweise haben %d Pruefungen gebucht", n)
+	}
+	for _, ip := range ehrlich {
+		if w := erneuerungUeberMux(t, p.folgerMux, ip, `{"wallet":"0x00000000000000000000000000000000000000ee","issued_at":1}`, false); w.Code == http.StatusTooManyRequests {
+			t.Fatalf("ehrlicher Coordinator %s hinter dem Folger ausgesperrt: %s", ip, w.Body.String())
+		}
+	}
+	if n := p.begrenzt.Load(); n != 0 {
+		t.Fatalf("der Zustaendige hat %d Weiterleitungen begrenzt", n)
 	}
 }
