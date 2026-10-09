@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/lib/pq"
 )
 
 // Pruefung von #322, INFO-15: ein abgestuerzter Validator mit ungeflushtem
@@ -152,7 +154,7 @@ func TestBeobachter_WALRestStartetNicht_RealDB(t *testing.T) {
 	setzeBeobachterFuerTest(t, true)
 	csB := testKnoten(t, "unused-wal-test.json")
 	err := csB.PruefeBeobachterWAL()
-	if err == nil || !strings.Contains(err.Error(), "1 nicht abgeglichene") {
+	if err == nil || !strings.Contains(err.Error(), "2 Konten mit nicht abgeglichenen") {
 		t.Fatalf("Beobachter mit WAL-Rest: %v", err)
 	}
 	// Auch wenn nur der Empfaenger den Satz noch nicht enthaelt.
@@ -170,6 +172,14 @@ func TestBeobachter_WALRestStartetNicht_RealDB(t *testing.T) {
 	if err := csB.PruefeBeobachterWAL(); err == nil {
 		t.Fatal("ohne AEQUITAS_WAL_ENABLED startet der Beobachter mit WAL-Rest")
 	}
+	// Mehr Konten als die Grenze: fail-closed.
+	alt := beobachterWALHoechstensKonten
+	beobachterWALHoechstensKonten = 1
+	if err := csB.PruefeBeobachterWAL(); err == nil || !strings.Contains(err.Error(), "mehr als 1 Konten") {
+		beobachterWALHoechstensKonten = alt
+		t.Fatalf("Kontengrenze: %v", err)
+	}
+	beobachterWALHoechstensKonten = alt
 	// Ein Tippfehler verwirft nichts.
 	t.Setenv("AEQUITAS_BEOBACHTER_WAL_VERWERFEN", "ja")
 	if err := csB.PruefeBeobachterWAL(); err == nil || csB.walRecoveryFloor() != 0 {
@@ -270,5 +280,35 @@ func TestWAL_ParkenScheitertHaeltWiederanlauf_RealDB(t *testing.T) {
 	}
 	if b := speicherStand(t, cs, to); !b.IsZero() {
 		t.Fatalf("Empfaenger %s", b)
+	}
+}
+
+// Zwei Saetze desselben Kontos, nur der erste steht in Postgres (wal_seq 1):
+// der zweite ist offen -- massgeblich ist der hoechste Satz je Konto.
+func TestBeobachter_WALZweiterSatzOffen_RealDB(t *testing.T) {
+	walPath := filepath.Join(t.TempDir(), "zwei-saetze.wal")
+	truncateDistTestTables(t)
+	csA := newWALTestState(t, walPath)
+	untergrenzeZuruecksetzen(t, csA)
+	from, to := distTestAddr(844), distTestAddr(845)
+	seedConcurrentTestAccount(t, csA, from, 1000, time.Now().Unix())
+	seedConcurrentTestAccount(t, csA, to, 0, time.Now().Unix())
+	for i, h := range []string{"0xzweisaetze1", "0xzweisaetze2"} {
+		if _, _, applied, err := csA.transferConcurrentWAL(from, to, 1, Transaction{Type: "transfer", Wallet: from, To: to, Amount: 1, TxHash: h}); !applied || err != nil {
+			t.Fatalf("Vorbedingung %d: applied=%v err=%v", i, applied, err)
+		}
+	}
+	csA.stopWALFlushWorkerForTest()
+	if err := csA.wal.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := csA.db.Exec(`UPDATE chain_accounts SET wal_seq = 1 WHERE lower(address) = ANY($1)`, pq.Array([]string{from, to})); err != nil {
+		t.Fatal(err)
+	}
+	setzeBeobachterFuerTest(t, true)
+	t.Setenv("AEQUITAS_WAL_ENABLED", "")
+	csB := testKnoten(t, "unused-wal-test.json")
+	if err := csB.PruefeBeobachterWAL(); err == nil || !strings.Contains(err.Error(), "2 Konten") {
+		t.Fatalf("zweiter Satz offen, Beobachter: %v", err)
 	}
 }

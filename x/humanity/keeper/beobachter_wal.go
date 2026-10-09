@@ -32,8 +32,9 @@ import (
 //     ins Minus fuehrte; er landet in wal_geparkt fuer den Betreiber.
 
 // beobachterWALHoechstensKonten begrenzt, wie viele Konten die Pruefung
-// beim Start sammelt. Mehr: fail-closed, als waere der Rest offen.
-const beobachterWALHoechstensKonten = 1_000_000
+// beim Start sammelt (ein Eintrag je Konto). Mehr: fail-closed, als waere
+// der Rest offen.
+var beobachterWALHoechstensKonten = 1_000_000 // var: Tests senken sie
 
 // walPfad: wie initWALIfEnabled und markWALSupersededByStateReplacement.
 func walPfad() string {
@@ -54,7 +55,7 @@ func (cs *ChainState) PruefeBeobachterWAL() error {
 	if err == nil && offen == 0 {
 		return nil
 	}
-	grund := fmt.Sprintf("%d nicht abgeglichene Saetze", offen)
+	grund := fmt.Sprintf("%d Konten mit nicht abgeglichenen Saetzen", offen)
 	if err != nil {
 		grund = err.Error()
 	}
@@ -72,9 +73,11 @@ func (cs *ChainState) PruefeBeobachterWAL() error {
 		"oder den Rest bewusst verwerfen: AEQUITAS_BEOBACHTER_WAL_VERWERFEN=1 (diese Ueberweisungen gehen dann nie in einen Block)", walPfad(), grund)
 }
 
-// walRestOffen zaehlt die Saetze ueber der Untergrenze, deren Absender oder
-// Empfaenger sie laut chain_accounts.wal_seq noch nicht enthaelt. Liest die
-// Datei nur (wal.ReplayFile), schreibt nichts.
+// walRestOffen zaehlt die Konten, deren hoechster Satz ueber der
+// Untergrenze ueber ihrem chain_accounts.wal_seq liegt -- genau dann traegt
+// das WAL einen Satz, den Absender oder Empfaenger noch nicht enthalten.
+// Speicher: ein Eintrag je Konto (hoechstens beobachterWALHoechstensKonten),
+// nicht je Satz. Liest die Datei nur (wal.ReplayFile), schreibt nichts.
 func (cs *ChainState) walRestOffen(path string) (int, error) {
 	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
 		return 0, nil
@@ -90,12 +93,16 @@ func (cs *ChainState) walRestOffen(path string) (int, error) {
 		return n, nil
 	}
 	floor := cs.walRecoveryFloor()
-	type satz struct {
-		seq     uint64
-		von, an string
+	hoechster := make(map[string]uint64)
+	merken := func(konto string, seq uint64) error {
+		if _, da := hoechster[konto]; !da && len(hoechster) >= beobachterWALHoechstensKonten {
+			return fmt.Errorf("mehr als %d Konten im WAL-Rest", beobachterWALHoechstensKonten)
+		}
+		if seq > hoechster[konto] {
+			hoechster[konto] = seq
+		}
+		return nil
 	}
-	var saetze []satz
-	konten := make(map[string]struct{})
 	_, _, err := wal.ReplayFile(path, func(e wal.Entry) error {
 		if e.Seq <= floor {
 			return nil
@@ -104,48 +111,57 @@ func (cs *ChainState) walRestOffen(path string) (int, error) {
 		if err := json.Unmarshal(e.Payload, &rec); err != nil {
 			return fmt.Errorf("Satz %d nicht lesbar: %w", e.Seq, err)
 		}
-		von, an := strings.ToLower(rec.From), strings.ToLower(rec.To)
-		konten[von], konten[an] = struct{}{}, struct{}{}
-		if len(konten) > beobachterWALHoechstensKonten {
-			return fmt.Errorf("mehr als %d Konten im WAL-Rest", beobachterWALHoechstensKonten)
+		if err := merken(strings.ToLower(rec.From), e.Seq); err != nil {
+			return err
 		}
-		saetze = append(saetze, satz{e.Seq, von, an})
-		return nil
+		return merken(strings.ToLower(rec.To), e.Seq)
 	})
 	if err != nil {
 		return 0, fmt.Errorf("WAL %s: %w", path, err)
 	}
-	if len(saetze) == 0 {
+	if len(hoechster) == 0 {
 		return 0, nil
 	}
-	liste := make([]string, 0, len(konten))
-	for k := range konten {
+	liste := make([]string, 0, len(hoechster))
+	for k := range hoechster {
 		liste = append(liste, k)
 	}
 	stand := make(map[string]uint64, len(liste))
-	rows, err := cs.db.Query(`SELECT lower(address), COALESCE(wal_seq, 0) FROM chain_accounts WHERE lower(address) = ANY($1)`, pq.Array(liste))
+	const portion = 10_000
+	for i := 0; i < len(liste); i += portion {
+		teil := liste[i:min(i+portion, len(liste))]
+		if err := cs.walSeqLesen(teil, stand); err != nil {
+			return 0, err
+		}
+	}
+	offen := 0
+	for konto, seq := range hoechster {
+		if stand[konto] < seq {
+			offen++
+		}
+	}
+	return offen, nil
+}
+
+// walSeqLesen liest wal_seq der Konten in stand; fehlende Konten bleiben 0.
+func (cs *ChainState) walSeqLesen(konten []string, stand map[string]uint64) error {
+	rows, err := cs.db.Query(`SELECT lower(address), COALESCE(wal_seq, 0) FROM chain_accounts WHERE lower(address) = ANY($1)`, pq.Array(konten))
 	if err != nil {
-		return 0, fmt.Errorf("wal_seq nicht lesbar: %w", err)
+		return fmt.Errorf("wal_seq nicht lesbar: %w", err)
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var a string
 		var s int64
 		if err := rows.Scan(&a, &s); err != nil {
-			return 0, fmt.Errorf("wal_seq nicht lesbar: %w", err)
+			return fmt.Errorf("wal_seq nicht lesbar: %w", err)
 		}
 		stand[a] = uint64(s)
 	}
 	if err := rows.Err(); err != nil {
-		return 0, fmt.Errorf("wal_seq nicht lesbar: %w", err)
+		return fmt.Errorf("wal_seq nicht lesbar: %w", err)
 	}
-	offen := 0
-	for _, s := range saetze {
-		if stand[s.von] < s.seq || stand[s.an] < s.seq {
-			offen++
-		}
-	}
-	return offen, nil
+	return nil
 }
 
 // walSatzParken vermerkt einen Satz, den recoverFromWAL nicht anwendet.
