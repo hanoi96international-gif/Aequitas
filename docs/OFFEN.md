@@ -64,6 +64,14 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
    `runAtomicDistributionWithOutbox`, `RegisterHumanAtomic` und
    `RegisterHuman` sowie `RetryRegistrationRecoveries` und der
    WAL-Wiederanlauf den Ausgang; Überweisungen sperrt `annahmeBeginnen`.)
+   Dazu (Prüfung von #329, INFO-13): Auf jedem nicht annehmenden Knoten
+   (Folger, Leitung startet oder gescheitert) schreibt `/api/register` einen
+   Vor-EVM-Intent und löscht ihn nach der Ablehnung an der EVM-Übergabe;
+   scheitert das Löschen oder stürzt der Prozess dazwischen ab, registriert
+   `RetryRegistrationRecoveries` im Zweig `evm_tx_hash = ''` den Menschen
+   lokal per `RegisterHumanAtomic`, ohne Pause und ohne EVM-Transaktion
+   (der Kommentar dort sagt „leave pending“). Fix: diesen Zweig nur
+   schließen, nicht registrieren lassen.
 8. **WAL nach einem Rollenwechsel ohne Deckungsprüfung** (Prüfung von
    #322, INFO-15): Ein Beobachter liest das WAL nicht ein, die Datei bleibt
    liegen. Startet ein abgestürzter Validator mit ungeflushten Sätzen erst
@@ -244,8 +252,10 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
   Ist der Signierschlüssel (`RELAYER_PRIVATE_KEY`) ungültig – fehlt er,
   erzeugt der Knoten einen – oder `AEQUITAS_LEITUNG_GENESIS` ungültig, nimmt
   der Knoten nichts an (wiederholbar abgelehnt) und führt keine
-  Systemaufträge aus, statt lokal anzunehmen; registrieren und lesen geht
-  weiter wie auf einem Folger. Zu sehen in `/api/health/combined` → `leitung` →
+  Systemaufträge aus, statt lokal anzunehmen. Lesen geht weiter;
+  `/api/register` läuft wie auf einem Folger durch die Prüfungen und scheitert
+  erst an der EVM-Übergabe (`-32005`, Nonce unverbraucht) – registriert wird
+  nur am annehmenden Knoten (Prüfung von #329, INFO-12). Zu sehen in `/api/health/combined` → `leitung` →
   `gescheitert: true` bzw. `annahme_pause` → `leitung_gescheitert`, im Log
   `[LEITUNG] ✗`. Nach der Korrektur neu starten. Während des Starts (bis die
   Leitung läuft) zeigt `annahme_pause` → `leitung_startet`.

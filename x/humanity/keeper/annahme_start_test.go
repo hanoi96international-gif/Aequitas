@@ -642,6 +642,11 @@ func TestAnnahme_MerkerReihenfolge(t *testing.T) {
 		{"annahme_pause.go", "leitungNichtBereit", "cs.leitungStartVersucht.Load", "cs.leitungGescheitert.Load"},
 		{"evm_rpc.go", "sendRawTransaction", "s.state.annahmePauseGrund", "s.state.pruefeAnnahmeTorFuer"},
 		{"evm_rpc.go", "sendRawTransaction", "s.state.annahmePauseGrund", "s.reserveNoncePerItem"},
+		// Das Tor selbst und seine Nachbarn: erst der Merker, dann cs.leitung
+		// (Pruefung von #329, Befund 11).
+		{"annahme_tor.go", "nimmtAnFuer", "cs.leitungNichtBereit", "cs.leitung.Load"},
+		{"zustaendigkeit.go", "SystemauftraegeHier", "cs.leitungNichtBereit", "cs.leitung.Load"},
+		{"leitung_netz.go", "LeitungStand", "cs.leitungGescheitert.Load", "cs.leitung.Load"},
 	} {
 		st := aufrufStellen(t, f.datei, f.fn)
 		v, okV := st[f.vorher]
