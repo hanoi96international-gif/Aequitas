@@ -1,6 +1,6 @@
 module github.com/hanoi96international-gif/aequitas-chain/forschung/zk-gueltigkeit
 
-go 1.26.8
+go 1.26.9
 
 require (
 	github.com/consensys/gnark v0.16.3
