@@ -121,8 +121,8 @@ func burstErstatten(key string, zeit time.Time) {
 	}
 }
 
-// ipBurstAufraeumen entfernt Schluessel ohne Eintrag im Fenster (ipBurst und
-// erneuerungVon).
+// ipBurstAufraeumen entfernt Schluessel ohne Buchung im Fenster -- auch eine
+// erstattete zaehlt (zuletzt) -- aus ipBurst und erneuerungVon.
 func ipBurstAufraeumen(fenster time.Duration) {
 	now := time.Now()
 	for _, karte := range []*begrenzteKarte{ipBurst, erneuerungVon} {
@@ -156,7 +156,9 @@ const (
 	// viele Menschen, wie am Tag registriert werden (Pruefung #314, LOW-3).
 	// Weitergeleitete Erneuerungen mit gueltigem Nachweis zaehlen beim
 	// Zustaendigen unter (Folger, Absender) in erneuerungVon
-	// (weiterleitung_nachweis.go), alle anderen unter ihrer Verbindung.
+	// (weiterleitung_nachweis.go), alle anderen unter ihrer Verbindung --
+	// ausser weitergeleitete ohne gueltigen Nachweis von einem Knoten der
+	// Freiliste: die zaehlen gar nicht.
 	burstErneuerungJeIP = 30
 	// Pruefungen von Weiterleitungsnachweisen (weiterleitung_nachweis.go) je
 	// Absender, danach wird nicht mehr geprueft: deckelt die Kosten (Koerper

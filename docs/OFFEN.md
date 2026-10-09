@@ -150,15 +150,22 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
   neue weitergeleitete Erneuerungen 429, bis das Aufräumen Platz schafft –
   kein anderer Endpunkt. Vertretbar, weil ein Satzmitglied die Annahme als
   Leiter ohnehin anhalten kann (Verfügbarkeit hängt am Satz, nicht die
-  Richtigkeit). Auch Außenstehende füllen die Karte über einen ehrlichen
-  Folger, ein Schlüssel je Absendernetz (Prüfung von #319, INFO-41): rund
-  200.000 Netze (etwa drei /48) je ein bis zwei Minuten – teurer, als
+  Richtigkeit). Auch Außenstehende füllen die Karte über ehrliche Folger,
+  ein Schlüssel je Absendernetz und Folger (Prüfung von #319, INFO-41 und
+  INFO-46): rund 200.000 Netze geteilt durch die Zahl der Folger, über die
+  sie gehen, je ein bis zwei Minuten – ab etwa sieben Folgern billiger, als
   `ipBurst` zu füllen; dann bekommen neue weitergeleitete Erneuerungen 429,
-  direkte nicht. Fix, falls nötig: ein Schlüsselkontingent je Folger (etwa
-  Höchstzahl durch Größe des Satzes) – dann trifft ein Füllen nur den einen
-  Folger; eine Grenze je Unterzeichner hätte den Nachteil, dass ein
-  Angreifer mit vielen Netzen über einen ehrlichen Folger dessen Grenze
-  leeren kann.
+  direkte nicht. Ein Kontingent je Folger verteilt das nur (dieselben Netze
+  über alle Folger füllen alle Kontingente). Fix, falls nötig: je
+  `fuer`-Netz über alle Folger begrenzen oder bei voller Karte gröber zählen
+  (/48); eine Grenze je Unterzeichner hätte den Nachteil, dass ein Angreifer
+  mit vielen Netzen über einen ehrlichen Folger dessen Grenze leeren kann.
+- **Aufräumen: Prüfen und Löschen nicht unter einer Sperre** (Prüfung von
+  #319, INFO-48; bestand schon vorher, nur Theorie): `ipBurstAufraeumen`
+  entscheidet unter der Sperre des Eintrags und löscht danach; bucht genau
+  dazwischen jemand, geht höchstens diese eine Buchung mit dem Eintrag
+  verloren. Fix: unter der Sperre mit `CompareAndDelete` löschen und den
+  Eintrag als tot markieren (`burstBuchen` lädt dann neu).
 - **Weiterleitende Validatoren außerhalb des Satzes** (Prüfung von #319,
   INFO-37; gegenüber vorher keine Verschlechterung): Bloß zugelassene
   Validatoren, Bewerber und gerade entfernte Mitglieder werden nicht
@@ -188,7 +195,7 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
   heißt, neue Absender werden begrenzt. Ein Absender belegt aber je Funktion
   einen Schlüssel – in `registerRateLimit` bis zu zehn, in `ipBurst` bis zu
   sieben (mit Erneuerung und Prüfbudget aus #319). 20.000 bzw. etwa 28.600
-  Absender (mit IPv6 je /64: ein bis zwei /48)
+  Absender (mit IPv6 je /64: weniger als ein /48)
   füllen eine Karte, danach sind alle neuen Absender dieser Karte gesperrt,
   solange der Angreifer etwa 3.300 Anfragen je Sekunde hält. Die
   Validator-Bindung hat seit dem Folge-PR eine eigene Karte

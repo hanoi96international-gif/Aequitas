@@ -12,7 +12,8 @@ import (
 // ipBurst, rpcRateLimit und registerRateLimit fuehren je Absender einen
 // Eintrag. Die Eintraege verfallen (Aufraeumen jede Minute), ihre ZAHL war
 // aber nur durch Anfragerate mal Lebensdauer begrenzt: gemessen 228 B je
-// Schluessel, bei 5.000 neuen Adressen je Sekunde rund 137 MB allein in
+// Schluessel (ipBurst und erneuerungVon seit #319 mit zuletzt etwa 33 B
+// mehr), bei 5.000 neuen Adressen je Sekunde rund 137 MB allein in
 // ipBurst. Jetzt hat jede Karte eine feste Hoechstzahl.
 //
 // Voll heisst begrenzen: ein NEUER Absender wird abgewiesen, bis das

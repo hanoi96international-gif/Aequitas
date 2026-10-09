@@ -1267,3 +1267,47 @@ func TestAbsenderSchluessel_ZoneJeNetz(t *testing.T) {
 		t.Fatalf("absenderSchluessel(kein-ip) = %q", got)
 	}
 }
+
+// Die Gegenrichtung von LOW-39 (Pruefung von #319, INFO-45): ein erstatteter
+// Eintrag bleibt nur, solange seine letzte Buchung im Fenster liegt, und
+// abgewiesene Buchungen auf einen vollen Eintrag halten ihn nicht -- sonst
+// lebten Eintraege ohne Buchung ewig und hielten die Karte voll.
+func TestBurstAufraeumen_ErstatteterEintragVerfaellt(t *testing.T) {
+	const fenster = 200 * time.Millisecond
+	erstattet, voll := "test-erstattet-verfaellt", "test-voll-verfaellt"
+	ipBurst.Delete(erstattet)
+	ipBurst.Delete(voll)
+	t.Cleanup(func() { ipBurst.Delete(erstattet); ipBurst.Delete(voll) })
+	da := func(k string) bool { _, ok := ipBurst.m.Load(k); return ok }
+
+	z, ok := burstBuchen(erstattet, 1, fenster)
+	if !ok {
+		t.Fatal("Vorbedingung: Buchung")
+	}
+	burstErstatten(erstattet, z)
+	z2, ok := burstBuchen(voll, 1, fenster)
+	if !ok {
+		t.Fatal("Vorbedingung: Buchung")
+	}
+	ipBurstAufraeumen(fenster)
+	if !da(erstattet) || !da(voll) {
+		t.Fatal("im Fenster aufgeraeumt")
+	}
+	// Abgewiesene Buchungen auf den vollen Eintrag, solange sein Fenster
+	// laeuft.
+	for time.Since(z2) < fenster-50*time.Millisecond {
+		if _, ok := burstBuchen(voll, 1, fenster); ok {
+			t.Fatal("Buchung trotz Grenze 1")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	time.Sleep(time.Until(z.Add(fenster + 20*time.Millisecond)))
+	time.Sleep(time.Until(z2.Add(fenster + 20*time.Millisecond)))
+	ipBurstAufraeumen(fenster)
+	if da(erstattet) {
+		t.Fatal("erstatteter Eintrag nach dem Fenster nicht aufgeraeumt")
+	}
+	if da(voll) {
+		t.Fatal("abgewiesene Buchungen halten den Eintrag")
+	}
+}
