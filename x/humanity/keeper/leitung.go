@@ -685,6 +685,20 @@ func (l *Leitung) URLs() map[string]string {
 	return out
 }
 
+// SatzURLs: die URLs der Mitglieder des eigenen Satzes (ohne sich selbst) --
+// nicht die jedes zugelassenen Validators, der sich gemeldet hat.
+func (l *Leitung) SatzURLs() map[string]string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	out := map[string]string{}
+	for a, u := range l.urls {
+		if a != l.ich && l.imSatz(a) {
+			out[a] = u
+		}
+	}
+	return out
+}
+
 // SetzeFaehig: der eigene Leistungsnachweis hat sich geaendert.
 func (l *Leitung) SetzeFaehig(f bool) {
 	l.mu.Lock()

@@ -111,21 +111,19 @@ func init() {
 // real, valid block pushes and starving Primary/Contabo's catch-up sync of
 // data it needed, worsening the exact orphan-flood/cadence symptoms this
 // audit pass was trying to fix elsewhere.
+// Einmal geparst statt bei jedem Aufruf: clientIP und die Freiliste fragen
+// das auf dem Heissweg (Pruefung von #320, INFO-7).
+var privatOderLoopbackNetze = mussNetze(
+	"127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16",
+	"100.64.0.0/10", "::1/128", "fc00::/7",
+)
+
 func isPrivateOrLoopback(ipStr string) bool {
 	parsed := net.ParseIP(ipStr)
 	if parsed == nil {
 		return false
 	}
-	for _, cidr := range []string{
-		"127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16",
-		"100.64.0.0/10", "::1/128", "fc00::/7",
-	} {
-		_, ipnet, err := net.ParseCIDR(cidr)
-		if err == nil && ipnet.Contains(parsed) {
-			return true
-		}
-	}
-	return false
+	return inNetzen(parsed, privatOderLoopbackNetze)
 }
 
 func clientIP(r *http.Request) string {
