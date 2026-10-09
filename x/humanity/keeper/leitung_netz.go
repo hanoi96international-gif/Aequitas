@@ -200,10 +200,35 @@ func (cs *ChainState) leitungEntleert() bool {
 
 // --- Knoten-Anbindung ---------------------------------------------------------
 
+// leiterFaehig: darf dieser Knoten Leiter werden? Nicht nur lesend, mit
+// Leistungsnachweis -- und kein Beobachter: der erzeugt nie, als Leiter
+// hielte er die Annahme des ganzen Netzes an (Pruefung von #322, INFO-1).
+func leiterFaehig(cs *ChainState) bool {
+	return !cs.nurLesend.Load() && !beobachterModus() && leistungsnachweisErfuellt()
+}
+
 // StarteLeitung baut die Leitung, wenn AEQUITAS_LEITUNG=an. Liefert nil sonst.
 func StarteLeitung(dag *BlockDAG, cs *ChainState, selfURL string) *Leitung {
 	StarteLeistungsnachweis(cs)
 	if !leitungAn() || dag == nil || cs == nil {
+		return nil
+	}
+	if beobachterModus() {
+		// Ein Beobachter erzeugt nie: als Leiter (Startleiter, gespeichert,
+		// Notbetrieb) hielte er die Annahme des Netzes an, und in Stufe 2
+		// bekaeme er Konten zugeteilt. Ohne Leitung sehen die anderen ihn als
+		// ausgefallen (Pruefung von #322, INFO-6).
+		fmt.Println("[LEITUNG] Beobachter (AEQUITAS_BEOBACHTER) -- Leitung bleibt aus")
+		if dag.signingKey != nil {
+			ich := strings.ToLower(crypto.PubkeyToAddress(dag.signingKey.PublicKey).Hex())
+			if satz, _, err := leitungValidatorenAusUmgebung(os.Getenv(leitungGenesisEnv)); err == nil {
+				for _, a := range satz {
+					if a == ich {
+						fmt.Printf("[LEITUNG] ⚠ dieser Beobachter (%s) steht in %s -- die anderen halten ihn fuer ein Mitglied, das nie antwortet; aus dem Satz nehmen (Pruefung von #322, INFO-11)\n", ich, leitungGenesisEnv)
+					}
+				}
+			}
+		}
 		return nil
 	}
 	if dag.signingKey == nil {
@@ -250,7 +275,7 @@ func StarteLeitung(dag *BlockDAG, cs *ChainState, selfURL string) *Leitung {
 			return bestanden || unbekannt
 		},
 	}
-	faehig := !cs.nurLesend.Load() && leistungsnachweisErfuellt()
+	faehig := leiterFaehig(cs)
 	l := NeueLeitung(ich, selfURL, satz, start, faehig, cs.leitungLaden(), cfg, env, time.Now())
 	for a, u := range urls {
 		l.SetzeURL(a, u)
@@ -298,7 +323,7 @@ func (dag *BlockDAG) leitungSchleife(l *Leitung, cs *ChainState) {
 			}
 			if time.Since(letzteFaehigPruefung) > time.Minute {
 				letzteFaehigPruefung = time.Now()
-				l.SetzeFaehig(!cs.nurLesend.Load() && leistungsnachweisErfuellt())
+				l.SetzeFaehig(leiterFaehig(cs))
 				validatorIPsFrei(l)
 			}
 			dag.leitungVersenden(l, l.Takt(time.Now()), dag.leitungPeers)
@@ -753,6 +778,10 @@ func rpcSchreibt(body []byte) bool {
 func (cs *ChainState) LeitungStand() map[string]interface{} {
 	l := cs.leitung.Load()
 	if l == nil {
+		if beobachterModus() {
+			return map[string]interface{}{"an": false, "beobachter": true,
+				"bedeutung": "Beobachter (AEQUITAS_BEOBACHTER): keine Leitung, nimmt nichts an, erzeugt keine Bloecke -- darf in keinem Leitungs-Satz stehen."}
+		}
 		return map[string]interface{}{"an": false,
 			"bedeutung": "Rotierender Leiter aus -- es nimmt an, wer nicht ANNAHME_ROLLE=nur_lesend hat (siehe annahme_tor)."}
 	}

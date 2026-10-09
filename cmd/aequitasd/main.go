@@ -480,6 +480,10 @@ func main() {
 	// block was permanently skipped on a freshly-started secondary because the
 	// EVM engine hadn't been wired up yet when that block was replayed.
 	fmt.Println("── Starting API Server ──────────────────")
+	// Die Annahme-Pause misst ab hier, nicht erst ab dem ersten
+	// Erzeugungsversuch nach Bootstrap und Resync (annahme_pause.go): sonst
+	// naehmen die HTTP-Wege waehrend des Aufholens ohne Pause an.
+	chainState.AnnahmeMessungBeginnen()
 	api := keeper.NewAPIServer(bc, p2pNode, chainState)
 	keeper.SafeGoroutine("api.Start", func() { api.Start(apiPort()) })
 	fmt.Println()
@@ -912,6 +916,12 @@ func main() {
 				if os.Getenv("DISTRIBUTION_ENABLED") == "false" {
 					fmt.Println("[POOLS] Distribution disabled on this node (DISTRIBUTION_ENABLED=false)")
 					keeper.RecordDistributionOutcome("skipped", "DISTRIBUTION_ENABLED=false on this node")
+				} else if keeper.BeobachterModus() {
+					// Ein Beobachter verteilt nie selbst, er spielt die Runde
+					// des Erzeugers nach -- sonst ueberspraenge er dessen Runde
+					// und rechnete seine eigene nach (Pruefung von #322,
+					// LOW-4). Auch vor TryLockDistribution: nichts sperren.
+					keeper.RecordDistributionOutcome("skipped", "observer (AEQUITAS_BEOBACHTER)")
 				} else if syncIssue := distributionSyncHealthIssue(bc); syncIssue != "" {
 					// FIX (scale audit, SPOF): DistributeValidatorsPool weights every
 					// validator's reward by registered_nodes.blocks_produced read from

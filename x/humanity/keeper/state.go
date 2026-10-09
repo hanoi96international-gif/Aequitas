@@ -4574,6 +4574,11 @@ func (cs *ChainState) IsHuman(address string) bool {
 }
 
 func (cs *ChainState) RegisterHuman(address string) error {
+	// Ohne Ausgang und ohne Block -- auf einem Beobachter nie (Pruefung von
+	// #322, INFO-14; die Wiederholung sperrt schon vorher).
+	if err := beobachterOhneAusgang(); err != nil {
+		return err
+	}
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
 	// cs.mu-only path, never runs inside runAtomicWithOutbox, so there is no
@@ -4608,6 +4613,11 @@ func (cs *ChainState) RegisterHuman(address string) error {
 // slow path, unchanged from before this fast path existed. registerHumanConcurrent
 // self-gates on cs.db == nil, so this is a no-op for no-DB nodes.
 func (cs *ChainState) RegisterHumanAtomic(address string, pendingTx Transaction) error {
+	// Der nebenlaeufige Pfad schreibt Konto, Nullifier und Ausgang selbst,
+	// an runAtomicWithOutbox vorbei (Pruefung von #322, LOW-9).
+	if err := beobachterOhneAusgang(); err != nil {
+		return err
+	}
 	address = strings.ToLower(address)
 	// Eine gestaffelte Registrierung nimmt immer den gesperrten Pfad: der
 	// nebenlaeufige kennt nur den flachen Zuschuss (register_concurrent.go).
@@ -4747,6 +4757,9 @@ func (cs *ChainState) registerHumanMitZeitenLocked(ctx context.Context, address 
 // it. Wrapping both in one transaction means a failure at either step undoes
 // both.
 func (cs *ChainState) runAtomicWithOutbox(touchedAddrs []string, fullSnapshot bool, fn func(ctx context.Context) (Transaction, error)) error {
+	if err := beobachterOhneAusgang(); err != nil {
+		return err
+	}
 	if cs.db == nil {
 		// No DB configured — nothing to make atomic with. Every call site
 		// of TransferAtomic/SwapAtomic/etc. treats a non-nil error here as
@@ -4908,6 +4921,9 @@ func (cs *ChainState) runAtomicWithOutbox(touchedAddrs []string, fullSnapshot bo
 // full daily distribution, an outbox failure must roll back the whole
 // round, not be "rescued" by a queue that doesn't survive a restart.
 func (cs *ChainState) runAtomicDistributionWithOutbox(fn func(ctx context.Context) ([]Transaction, error)) error {
+	if err := beobachterOhneAusgang(); err != nil {
+		return err
+	}
 	if cs.db == nil {
 		// context.Background() is correct — see runAtomicWithOutbox's
 		// matching no-DB branch comment.

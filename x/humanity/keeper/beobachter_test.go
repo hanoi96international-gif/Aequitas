@@ -1,16 +1,17 @@
 package keeper
 
 import (
-	"sync"
 	"testing"
 )
 
+// setzeBeobachterFuerTest: die Umgebung ist danach gelesen (sync.Once), und
+// der Wert wird atomar gesetzt und zurueckgesetzt -- kein Neuzuweisen der
+// Once, kein ungeschuetztes bool (Pruefung von #322, INFO-3).
 func setzeBeobachterFuerTest(t *testing.T, an bool) {
 	t.Helper()
-	beobachterEinmal.Do(func() {})
-	alt := beobachterAn
-	beobachterAn = an
-	t.Cleanup(func() { beobachterAn = alt; beobachterEinmal = sync.Once{} })
+	beobachterModus()
+	alt := beobachterAn.Swap(an)
+	t.Cleanup(func() { beobachterAn.Store(alt) })
 }
 
 // Ein Beobachter erzeugt nie einen Block, auch wenn alles andere ihn liesse.
