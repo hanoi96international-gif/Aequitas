@@ -92,6 +92,27 @@ func TestBadOverrideKeepsTheProtection(t *testing.T) {
 	}
 }
 
+// Missbrauch (Pruefung von #318): AEQUITAS_ADMIT_STALL_SECONDS ohne
+// Obergrenze schaltete die Pause praktisch ab -- ein Knoten, der nicht
+// erzeugt und dessen Ausgang leer ist, naehme Tage lang an.
+func TestStallLimitHasACeiling(t *testing.T) {
+	for _, gross := range []string{"601", "86400", "9223372036854775807"} {
+		t.Setenv("AEQUITAS_ADMIT_STALL_SECONDS", gross)
+		if got := admissionStallLimit(); got != admissionStallHoechstens {
+			t.Errorf("override %q gave %d, want the ceiling %d", gross, got, admissionStallHoechstens)
+		}
+	}
+	t.Setenv("AEQUITAS_ADMIT_STALL_SECONDS", "600")
+	if got := admissionStallLimit(); got != 600 {
+		t.Errorf("override 600 gave %d, want 600 -- the ceiling itself is allowed", got)
+	}
+	t.Setenv("AEQUITAS_ADMIT_STALL_SECONDS", "86400")
+	withProducedAt(t, time.Now().Unix()-(admissionStallHoechstens+5))
+	if admissionRefusalReason() == "" {
+		t.Error("a stall beyond the ceiling was accepted under an override of one day")
+	}
+}
+
 func TestAdmissionStatsReportTheDecision(t *testing.T) {
 	withProducedAt(t, time.Now().Unix()-(admissionStallSeconds+5))
 	st := AdmissionStats()

@@ -45,6 +45,49 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
 5. Offener Betrieb (ohne `AUTHORIZED_VALIDATORS`) mit über 1.000
    Validatoren: fortgeschriebener statt neu gelesener Stand (Erzeugerprüfung
    und Anwesenheit).
+6. **Pausierter Leiter übergibt nicht** (Prüfung von #322, INFO-1; bestand
+   schon vorher): Ein Leiter, der nach einem Neustart wieder übernimmt,
+   pausiert bis zu seinem ersten eigenen Block; so lange lehnen die
+   Leiter-Wege netzweit wiederholbar ab, und bei zwei Validatoren ohne
+   `AEQUITAS_LEITUNG_ZWEI_WECHSELN` beendet kein Wechsel das. Fix: eine
+   Pause länger als `admissionStallLimit()` im Takt wie einen verlorenen
+   Leistungsnachweis behandeln, also übergeben. (Ein Beobachter baut seit #322
+   keine Leitung mehr auf und legt nichts in den Ausgang.)
+7. **Einträge in `pending_txs` ohne Annahme-Pause** (Prüfung von #322,
+   INFO-2; bestand schon vorher): `DoppelsignaturErkannt` (slashing.go,
+   ausgelöst von Peer-Blöcken) legt den Strafbeweis auch auf einem Beobachter
+   oder pausierten Knoten in den Ausgang; läuft `strafBeweisFrisch` ab, bevor
+   der Knoten erzeugt, helfen nur Resync oder Verwerfen.
+   `RetryRegistrationRecoveries` (alle 5 Minuten) prüft die Pause nicht. Fix:
+   die Wiederholung an `annahmePauseGrund()` koppeln. (Auf einem Beobachter
+   sperren seit #322 `beobachterOhneAusgang` in `runAtomicWithOutbox`,
+   `runAtomicDistributionWithOutbox`, `RegisterHumanAtomic` und
+   `RegisterHuman` sowie `RetryRegistrationRecoveries` und der
+   WAL-Wiederanlauf den Ausgang; Überweisungen sperrt `annahmeBeginnen`.)
+8. **Folger nimmt beim Start bis zu 30 s ohne Leitung an** (Prüfung von
+   #322, INFO-7; bestand schon vorher): Bis `StarteLeitung` läuft, ist
+   `cs.leitung` nil und `nimmtAnFuer()` true, auch mit `AEQUITAS_LEITUNG=an`;
+   Überweisung, Tausch und Faucet nehmen dann lokal an, statt
+   weiterzuleiten. Fix: pausieren, solange `leitungAn()` und der Start der
+   Leitung noch nicht versucht wurde (versucht, nicht gelungen -- sonst
+   hielte eine kaputte Leitung den Knoten für immer an).
+9. **WAL nach einem Rollenwechsel ohne Deckungsprüfung** (Prüfung von
+   #322, INFO-15): Ein Beobachter liest das WAL nicht ein, die Datei bleibt
+   liegen. Startet ein abgestürzter Validator mit ungeflushten Sätzen erst
+   als Beobachter (spielt fremde Blöcke nach, `wal_seq` bleibt stehen) und
+   dann wieder als Validator, wendet `recoverFromWAL` die alten Sätze ohne
+   Deckungsprüfung auf den weitergelaufenen Stand an (PoC: Kontostand
+   −42,042, eine Zeile im Ausgang). Nur der umgestellte Knoten ist betroffen
+   – die anderen prüfen die Deckung beim Nachspielen und lehnten einen Block
+   mit dieser Zeile ab; der Workflow-Beobachter startet mit leerem WAL.
+   Fix: Ein Beobachter, dessen WAL nicht abgeglichene Sätze trägt (über der
+   Untergrenze, `seq` > `wal_seq` der Konten; rein lesend per
+   `wal.ReplayFile`), startet nicht (fail-closed), mit dem Hinweis, erst als
+   Validator wiederanlaufen zu lassen oder den Rest bewusst zu verwerfen;
+   ergänzend prüft `recoverFromWAL` die Deckung und parkt Sätze, die ins
+   Minus führten. Missbrauchstest wie der PoC. Bis dahin (Betrieb): einen
+   Validator mit WAL nie als Beobachter neu starten, ohne dass er vorher als
+   Validator sauber wiederangelaufen ist.
 
 ## Ratenbegrenzung – bekannte Lücken
 - **Freiliste ohne Herkunftsnachweis** (Prüfung von #320, LOW-3; bestand
@@ -93,6 +136,11 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
   `erzeugerSchnittAb` (erst wenn `/api/status` → `erzeuger_ohne_bindung`
   leer ist), Staffel, strenges Nachrechnen. Nur geschlossener Betrieb
   (`AUTHORIZED_VALIDATORS`) ist für die Register-Stichtage freigegeben.
+- Ein Beobachter (`AEQUITAS_BEOBACHTER=1`) darf in keinem Leitungs-Satz
+  stehen (`AEQUITAS_LEITUNG_GENESIS` anderer Knoten, registrierter
+  Validator): er baut keine Leitung, die anderen hielten ihn für ein
+  Mitglied, das nie antwortet (bei zwei Validatoren nimmt dann niemand an).
+  Er warnt beim Start laut, wenn er seine Adresse im Genesis-Satz findet.
 - Freiliste der Ratenbegrenzung (#320): Validatoren, deren `SELF_URL` ein
   Name (`https://<domain>`) oder eine private/Tailscale-Adresse ist, werden
   nicht mehr freigestellt; ihre Weiterleitungen laufen beim Leiter in die
