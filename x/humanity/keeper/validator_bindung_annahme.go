@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"sync/atomic"
@@ -51,9 +52,11 @@ import (
 // jede weitergeleitete Anfrage mit der IP des Folgers an, und ein einziger
 // Fehlversuch sperrte alle Betreiber hinter diesem Folger); je Betreiber eine
 // angenommene Bindung je 30 s. Vor der Schreibsperre prueft eine Vorpruefung
-// ohne Sperre, ob der Betreiber Mensch und die Bindung neuer ist -- sonst
-// hielte jede Bindung eines Fremden die globale Sperre fuer mehrere
-// Datenbankrunden.
+// ohne Sperre, ob der Betreiber Mensch, die Bindung neuer und der
+// Tagesabstand eingehalten ist -- sonst hielte jede Bindung eines Fremden (und
+// jede weitere eines Menschen nach 30 s) die globale Sperre fuer mehrere
+// Datenbankrunden. Einen Platz belegt eine Anfrage erst, wenn ihr Rumpf
+// gelesen ist (mit eigener Lese-Frist).
 //
 // Vor dem Stichtag lehnen Selbstnachweis und Endpunkt ab: nichts aendert sich.
 
@@ -75,6 +78,10 @@ const (
 	// validatorBindungSperre: Fehlversuch je IP, angenommene Bindung je Betreiber.
 	validatorBindungSperre = 30 * time.Second
 )
+
+// validatorBindungLeseFrist: so lange darf das Lesen des Rumpfs dauern (der
+// Server erlaubt 30 s). Variable fuer Tests.
+var validatorBindungLeseFrist = 5 * time.Second
 
 var validatorBindungLaufend atomic.Int64
 
@@ -116,8 +123,9 @@ func kanonischeSignaturVersuch(sig string) string {
 	return sig
 }
 
-// bindungVorpruefen: ohne Schreibsperre -- ist der Betreiber Mensch, und ist
-// die Bindung neuer als seine bisherige? Nur ein Vorfilter: die verbindliche
+// bindungVorpruefen: ohne Schreibsperre -- ist der Betreiber Mensch, ist die
+// Bindung neuer als seine bisherige, und liegt sie den Tagesabstand nach
+// seiner letzten? Nur ein Vorfilter mit denselben Regeln: die verbindliche
 // Pruefung macht applyValidatorBindungLocked in der Transaktion. Ist etwas
 // nicht lesbar, entscheidet sie.
 func (cs *ChainState) bindungVorpruefen(betreiber, signing string, zeit int64) error {
@@ -143,6 +151,16 @@ func (cs *ChainState) bindungVorpruefen(betreiber, signing string, zeit int64) e
 	if err := cs.db.QueryRow(`SELECT signing_address, bindung_ts FROM validator_register WHERE operator_wallet = $1`,
 		betreiber).Scan(&bisherSigning, &bisherZeit); err == nil && !validatorNeuer(zeit, signing, bisherZeit, bisherSigning) {
 		return validatorZustand("%s hat schon eine Bindung von %d -- diese (%d) ist nicht neuer", kurzAdresse(betreiber), bisherZeit, zeit)
+	}
+	// Der Abstand zur letzten Bindung (Pruefung von #326, A): sonst erreichte
+	// ein Mensch nach Ablauf der Sperre je Betreiber (30 s) mit jeder neuen,
+	// gueltig unterschriebenen Bindung die Schreibsperre, bis apply sie am
+	// Abstand abweist -- aus vielen Netzen dauernd.
+	var letzte sql.NullInt64
+	if err := cs.db.QueryRow(`SELECT max(bindung_ts) FROM validator_verlauf WHERE operator_wallet = $1`,
+		betreiber).Scan(&letzte); err == nil && letzte.Valid && zeit < letzte.Int64+validatorBindungAbstand() {
+		return validatorZustand("%s hat zuletzt um %d gebunden -- die naechste Bindung fruehestens um %d (diese: %d)",
+			kurzAdresse(betreiber), letzte.Int64, letzte.Int64+validatorBindungAbstand(), zeit)
 	}
 	return nil
 }
@@ -242,13 +260,29 @@ func (a *APIServer) handleValidatorBindung(w http.ResponseWriter, r *http.Reques
 		jsonError(w, errValidatorRegisterSchlaeft.Error(), http.StatusConflict)
 		return
 	}
+	// Erst den Rumpf lesen, dann einen Platz belegen (Pruefung von #326, B):
+	// sonst hielten vier langsame Ruempfe alle Plaetze bis zum ReadTimeout,
+	// und keine Bindung kaeme mehr an. Die Frist gilt nur fuer das Lesen und
+	// wird danach geloescht: hinter zumLeiter (mit Leitung) ist der Rumpf
+	// schon gelesen, und eine stehengebliebene Frist liefe auf dem
+	// Hintergrund-Lesen der Verbindung ab -- net/http braeche den Kontext der
+	// Verbindung ab, auch fuer jede Folgeanfrage auf ihr (Pruefung von #327,
+	// LOW-1). Nach einem Fehler bleibt sie: net/http verwirft vor der Antwort
+	// den Rest des Rumpfs und hinge ohne Frist.
+	rc := http.NewResponseController(w)
+	_ = rc.SetReadDeadline(time.Now().Add(validatorBindungLeseFrist))
+	rumpf, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 4<<10))
+	if err != nil {
+		jsonError(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	_ = rc.SetReadDeadline(time.Time{})
 	if validatorBindungLaufend.Add(1) > validatorBindungGleichzeitig {
 		validatorBindungLaufend.Add(-1)
 		jsonError(w, "busy, try again shortly", http.StatusServiceUnavailable)
 		return
 	}
 	defer validatorBindungLaufend.Add(-1)
-	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
 	var req struct {
 		Operator          string `json:"operator"`
 		Signing           string `json:"signing"`
@@ -256,7 +290,7 @@ func (a *APIServer) handleValidatorBindung(w http.ResponseWriter, r *http.Reques
 		OperatorSignature string `json:"operator_signature"`
 		SigningSignature  string `json:"signing_signature"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.Unmarshal(rumpf, &req); err != nil {
 		jsonError(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
@@ -330,3 +364,6 @@ func (s *statusMerker) WriteHeader(code int) {
 	s.status = code
 	s.ResponseWriter.WriteHeader(code)
 }
+
+// Unwrap: fuer http.ResponseController (Lese-Frist im Handler).
+func (s *statusMerker) Unwrap() http.ResponseWriter { return s.ResponseWriter }

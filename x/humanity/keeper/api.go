@@ -907,6 +907,11 @@ func (w gzipResponseWriter) Write(b []byte) (int, error) {
 	return w.Writer.Write(b)
 }
 
+// Unwrap: http.NewResponseController -- die Lese-Frist von
+// /api/validator-bindung erreicht so auch Clients mit Accept-Encoding: gzip,
+// also jeden Browser (Pruefung von #327, LOW-2).
+func (w gzipResponseWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+
 // gzipMiddleware transparently compresses any response for a client that
 // advertises gzip support, EXCEPT /download/ paths (PDFs/APK are already
 // compressed formats — gzipping them again burns CPU for no size benefit,
@@ -982,6 +987,12 @@ func gzipMiddleware(next http.Handler) http.Handler {
 // panic in the synchronous request path is handled uniformly and logged the
 // same way every other recovered panic in this codebase is, rather than
 // relying solely on the stdlib's silent default behavior.
+// serverKette: die Huellen um den Mux, wie der Server sie nimmt -- eigene
+// Funktion, damit Tests durch dieselbe Kette laufen.
+func serverKette(mux http.Handler) http.Handler {
+	return recoverMiddleware(retryAfterMiddleware(ipZurDomainMiddleware(gzipMiddleware(mux))))
+}
+
 func recoverMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
@@ -1257,7 +1268,7 @@ func (a *APIServer) Start(port int) {
 	// re-validated, just transferred smaller.
 	srv := &http.Server{
 		Addr:         addr,
-		Handler:      recoverMiddleware(retryAfterMiddleware(ipZurDomainMiddleware(gzipMiddleware(mux)))),
+		Handler:      serverKette(mux),
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 60 * time.Second,
 		IdleTimeout:  120 * time.Second,
