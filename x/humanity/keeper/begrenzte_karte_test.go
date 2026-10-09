@@ -300,7 +300,7 @@ func TestProveProxy_WalletSchluesselHinterDerIPGrenze(t *testing.T) {
 // gehen, frische bleiben, und die Zahl sinkt mit.
 func TestSperrKartenAufraeumen(t *testing.T) {
 	jetzt := time.Now()
-	for _, k := range []*begrenzteKarte{registerRateLimit, walletRateLimit} {
+	for _, k := range []*begrenzteKarte{registerRateLimit, walletRateLimit, bindungRateLimit} {
 		k.Store("test-alt", jetzt.Add(-time.Minute))
 		k.Store("test-frisch", jetzt)
 		t.Cleanup(func() { k.Delete("test-alt"); k.Delete("test-frisch") })
@@ -314,6 +314,119 @@ func TestSperrKartenAufraeumen(t *testing.T) {
 		}
 		if n := k.anzahl.Load(); n > vorher-1 {
 			t.Fatalf("%s: Zahl %d nach dem Aufraeumen, vorher %d", k.name, n, vorher)
+		}
+	}
+}
+
+func proveProxyAnfrage(a *APIServer, remote, wallet string) int {
+	body, _ := json.Marshal(map[string]string{"wallet": wallet, "bio": "1", "salt": "2"})
+	r := httptest.NewRequest("POST", "/api/prove", bytes.NewReader(body))
+	r.RemoteAddr = remote
+	w := httptest.NewRecorder()
+	a.handleProveProxy(w, r)
+	return w.Code
+}
+
+// Pruefung von #324, INFO-7 und INFO-8 (M21): weder eine ungueltige Wallet
+// noch die Wiederholung derselben Wallet bucht die Grenze je IP -- sonst
+// zahlt die ganze Gruppe hinter einer Adresse fuer die Wiederholung eines
+// Einzelnen.
+func TestProveProxy_AbweisungBuchtKeineIP(t *testing.T) {
+	a := &APIServer{}
+	const ip = "198.51.100.72"
+	wallet := fmt.Sprintf("0x%040x", 0xdef001)
+	andere := fmt.Sprintf("0x%040x", 0xdef002)
+	for _, k := range []string{"prove:" + ip} {
+		ipBurst.Delete(k)
+	}
+	walletRateLimit.Delete("prove-wallet:" + wallet)
+	walletRateLimit.Delete("prove-wallet:" + andere)
+	t.Cleanup(func() {
+		ipBurst.Delete("prove:" + ip)
+		walletRateLimit.Delete("prove-wallet:" + wallet)
+		walletRateLimit.Delete("prove-wallet:" + andere)
+	})
+	for i := 0; i < 20; i++ {
+		if code := proveProxyAnfrage(a, ip+":1", "keine-wallet"); code != http.StatusBadRequest {
+			t.Fatalf("ungueltige Wallet: Status %d", code)
+		}
+	}
+	if _, ok := ipBurst.Load("prove:" + ip); ok {
+		t.Fatal("ungueltige Wallets haben die Grenze je IP gebucht")
+	}
+	if code := proveProxyAnfrage(a, ip+":1", wallet); code == http.StatusTooManyRequests {
+		t.Fatal("Vorbedingung: erste gueltige Anfrage begrenzt")
+	}
+	for i := 0; i < 20; i++ {
+		if code := proveProxyAnfrage(a, ip+":1", wallet); code != http.StatusTooManyRequests {
+			t.Fatalf("Wiederholung der Wallet binnen 15 s: Status %d, erwartet 429", code)
+		}
+	}
+	v, _ := ipBurst.Load("prove:" + ip)
+	e := v.(*ipBurstEintrag)
+	e.mu.Lock()
+	gebucht := len(e.zeiten)
+	e.mu.Unlock()
+	if gebucht != 1 {
+		t.Fatalf("die Grenze je IP hat %d Buchungen, erwartet 1 (die Wiederholungen buchen nicht)", gebucht)
+	}
+	if code := proveProxyAnfrage(a, ip+":1", andere); code == http.StatusTooManyRequests {
+		t.Fatal("eine andere Wallet derselben Adresse ist durch die Wiederholungen gesperrt")
+	}
+}
+
+// Pruefung von #324, INFO-8 (M8): ist walletRateLimit voll, bekommt eine neue
+// Wallet 429 (fail-closed) -- und die Funktionen hinter den anderen Karten
+// bleiben offen.
+func TestProveProxy_VolleWalletKarte(t *testing.T) {
+	a := &APIServer{}
+	const ip = "198.51.100.73"
+	ipBurst.Delete("prove:" + ip)
+	t.Cleanup(func() { ipBurst.Delete("prove:" + ip) })
+	alt := walletRateLimit.max
+	walletRateLimit.max = walletRateLimit.anzahl.Load()
+	t.Cleanup(func() { walletRateLimit.max = alt })
+	if code := proveProxyAnfrage(a, ip+":1", fmt.Sprintf("0x%040x", 0xdef010)); code != http.StatusTooManyRequests {
+		t.Fatalf("volle Wallet-Karte: Status %d, erwartet 429", code)
+	}
+	if _, ok := ipBurst.Load("prove:" + ip); ok {
+		t.Fatal("volle Wallet-Karte: die Grenze je IP wurde trotzdem gebucht")
+	}
+	if ts, ok := registerRateLimit.Load("set-guardian:" + ip); ok && time.Since(ts.(time.Time)) < time.Minute {
+		t.Fatal("volle Wallet-Karte sperrt registerRateLimit")
+	}
+}
+
+// Pruefung von #324, LOW-6: ist registerRateLimit voll (oeffentliche
+// Endpunkte), bleibt die Validator-Bindung offen -- sie hat eine eigene Karte.
+func TestBindungsGrenze_EigeneKarte(t *testing.T) {
+	a := &APIServer{}
+	alt := registerRateLimit.max
+	registerRateLimit.max = registerRateLimit.anzahl.Load()
+	t.Cleanup(func() { registerRateLimit.max = alt })
+	h := a.bindungsGrenze(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
+	r := httptest.NewRequest("POST", "/api/validator-bindung", nil)
+	r.RemoteAddr = "198.51.100.74:1"
+	w := httptest.NewRecorder()
+	h(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("volle registerRateLimit sperrt die Validator-Bindung: Status %d", w.Code)
+	}
+	if _, ok := registerRateLimit.m.Load("validator-bindung-fehl:198.51.100.74"); ok {
+		t.Fatal("Bindungsschluessel in registerRateLimit")
+	}
+}
+
+// Pruefung von #324, INFO-8 (M12): jede Karte hat ihre Hoechstzahl.
+func TestBegrenzteKarte_HoechstzahlJeKarte(t *testing.T) {
+	st := GrenzenJeAbsenderStand()
+	for _, name := range []string{"ip_burst", "rpc", "register", "wallet", "bindung"} {
+		w, ok := st[name].(map[string]int64)
+		if !ok {
+			t.Fatalf("Stand ohne %s: %v", name, st)
+		}
+		if w["hoechstens"] != grenzenSchluesselHoechstens {
+			t.Fatalf("%s: hoechstens %d, erwartet %d", name, w["hoechstens"], grenzenSchluesselHoechstens)
 		}
 	}
 }

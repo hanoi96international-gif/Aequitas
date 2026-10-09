@@ -3503,16 +3503,18 @@ func (a *APIServer) handleProveProxy(w http.ResponseWriter, r *http.Request) {
 	// sich nicht mehr gegenseitig. Die Grenze je IP kommt ZUERST: sonst legte
 	// jede Anfrage einen Wallet-Schluessel an, auch die abgewiesenen, und eine
 	// einzige IP fuellte die Karte (Pruefung von #324, HIGH-1).
-	if !burstErlaubt("prove:"+clientIP(r), burstProveJeIP, burstFenster) {
+	// Die Grenze je Wallet nur LESEN, bevor die IP gebucht wird: eine
+	// Wiederholung derselben Wallet verbraucht sonst einen Platz der ganzen
+	// Gruppe hinter der Adresse (Pruefung von #324, INFO-7). Gebucht wird die
+	// Wallet erst nach der IP-Grenze (HIGH-1).
+	walletKey := "prove-wallet:" + proveWallet
+	if ts, loaded := walletRateLimit.Load(walletKey); loaded && time.Since(ts.(time.Time)) < 15*time.Second {
 		jsonError(w, "rate limited, try again shortly", 429)
 		return
 	}
-	walletKey := "prove-wallet:" + proveWallet
-	if ts, loaded := walletRateLimit.Load(walletKey); loaded {
-		if time.Since(ts.(time.Time)) < 15*time.Second {
-			jsonError(w, "rate limited, try again shortly", 429)
-			return
-		}
+	if !burstErlaubt("prove:"+clientIP(r), burstProveJeIP, burstFenster) {
+		jsonError(w, "rate limited, try again shortly", 429)
+		return
 	}
 	walletRateLimit.Store(walletKey, time.Now())
 	if len(proofServerURLs()) == 0 {
