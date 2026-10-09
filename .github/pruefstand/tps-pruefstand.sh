@@ -117,7 +117,7 @@ echo "== $KONTEN Testkonten"
 WERK="$QUELLE/tools/contabo-loadtest"
 cp "$QUELLE/go.mod" "$QUELLE/go.sum" "$WERK/"
 mkdir -p /root/go-mod-cache
-docker run --rm $NIEDRIG -v "$WERK":/w -w /w -v /root/go-mod-cache:/go/pkg/mod golang:1.26.8-alpine \
+docker run --rm $NIEDRIG -v "$WERK":/w -w /w -v /root/go-mod-cache:/go/pkg/mod golang:1.26.9-alpine \
   sh -c "go build -o loadtest main.go && go run gen_accounts.go $KONTEN > accounts.csv"
 # Guthaben direkt in die Wegwerf-Datenbank: 100 AEQ (freie Adressen duerfen
 # hoechstens 250 halten).
@@ -133,7 +133,7 @@ if [ "$PHASE" = aufbau ]; then
   # (0,3 s je Anfrage, nacheinander) dauerte das ~11 Minuten je Generator,
   # und die Lastfenster der Generatoren lagen dadurch versetzt.
   echo "== Aufwaermen (lokal, alle Konten)"
-  docker run --rm --name pruefstand-last $NIEDRIG --network host -v "$WERK":/w -w /w golang:1.26.8-alpine \
+  docker run --rm --name pruefstand-last $NIEDRIG --network host -v "$WERK":/w -w /w golang:1.26.9-alpine \
     ./loadtest -accounts accounts.csv -rpc "http://127.0.0.1:$PORT/rpc" -status "http://127.0.0.1:$PORT/api/status" \
       -phase warmup 2>&1 | grep -vE '^warmup pair [0-9]+ ok|^\[monitor\]' | tail -5
   echo "Pruefknoten steht: 127.0.0.1:$PORT, $KONTEN Konten, aufgewaermt"; exit 0
@@ -201,7 +201,7 @@ FENSTER=45; [ "$PHASE" = alles ] && FENSTER=60
 ) > /dev/null 2>&1 &
 CPU_PID=$!
 if [ "$PHASE" = alles ]; then
-docker run --rm --name pruefstand-last $NIEDRIG --network host -v "$WERK":/w -w /w golang:1.26.8-alpine \
+docker run --rm --name pruefstand-last $NIEDRIG --network host -v "$WERK":/w -w /w golang:1.26.9-alpine \
   ./loadtest -accounts accounts.csv -rpc "http://127.0.0.1:$PORT/rpc" -status "http://127.0.0.1:$PORT/api/status" \
     -phase warmup,run -duration "$DAUER" -batch-size "$BUENDEL" 2>&1 \
   | grep -vE '^warmup pair [0-9]+ ok|^\[monitor\]' | tail -25
@@ -268,19 +268,19 @@ for n,fn in gruppen[:14]:
 PY
 echo "== CPU-Profil (20 s im Messfenster, oberste Posten)"
 if [ -s "$PROFIL/cpu.pb" ]; then
-  docker run --rm -v "$PROFIL":/p golang:1.26.8-alpine go tool pprof -top -nodecount=30 /p/cpu.pb 2>/dev/null | tail -32 || true
-  docker run --rm -v "$PROFIL":/p golang:1.26.8-alpine go tool pprof -top -cum -nodecount=30 /p/cpu.pb 2>/dev/null | tail -30 || true
+  docker run --rm -v "$PROFIL":/p golang:1.26.9-alpine go tool pprof -top -nodecount=30 /p/cpu.pb 2>/dev/null | tail -32 || true
+  docker run --rm -v "$PROFIL":/p golang:1.26.9-alpine go tool pprof -top -cum -nodecount=30 /p/cpu.pb 2>/dev/null | tail -30 || true
   # Ohne die Signatur-Wiederherstellung: wohin der Rest der Annahme-CPU geht
   # (Lauf 17: 245 us je Ueberweisung, davon nur ~70 us Signatur).
   echo "== CPU ohne Signatur (nur Knoten-Funktionen, kumuliert)"
-  docker run --rm -v "$PROFIL":/p golang:1.26.8-alpine go tool pprof -top -cum -nodecount=45 \
+  docker run --rm -v "$PROFIL":/p golang:1.26.9-alpine go tool pprof -top -cum -nodecount=45 \
     -focus='keeper\.' -ignore='secp256k1|types\.Sender|recoverPlain' /p/cpu.pb 2>/dev/null | tail -45 || true
 else
   echo "(kein Profil)"
 fi
 echo "== Allokationen seit Start (alloc_space, oberste Posten)"
 if [ -s "$PROFIL/allocs.pb" ]; then
-  docker run --rm -v "$PROFIL":/p golang:1.26.8-alpine go tool pprof -sample_index=alloc_space -top -nodecount=30 /p/allocs.pb 2>/dev/null | tail -32 || true
+  docker run --rm -v "$PROFIL":/p golang:1.26.9-alpine go tool pprof -sample_index=alloc_space -top -nodecount=30 /p/allocs.pb 2>/dev/null | tail -32 || true
 else
   echo "(kein Allokationsprofil)"
 fi
