@@ -3235,8 +3235,47 @@ func (cs *ChainState) UpdateRegistrationIntentEVMTxHash(id int64, txHash string)
 	// recovered_at zurueck: hat die Wiederholung den Intent als verworfen
 	// geschlossen, waehrend die EVM-Uebergabe noch lief, muss er wieder offen
 	// sein, falls RegisterHumanAtomic gleich scheitert (vorEVMIntentAufloesen).
-	_, err := cs.db.Exec(`UPDATE registration_recovery SET evm_tx_hash = $1, recovered_at = NULL, last_error = NULL WHERE id = $2`, txHash, id)
-	return err
+	res, err := cs.db.Exec(`UPDATE registration_recovery SET evm_tx_hash = $1, recovered_at = NULL, last_error = NULL WHERE id = $2`, txHash, id)
+	if err != nil {
+		return err
+	}
+	if n, err := res.RowsAffected(); err != nil || n != 1 {
+		return fmt.Errorf("registration intent %d not updated (%d rows, %v)", id, n, err)
+	}
+	return nil
+}
+
+// intentHashVermerken: UpdateRegistrationIntentEVMTxHash mit bis zu drei
+// Versuchen. Frueher verwarf register.go den Fehler (Pruefung #330, Befund
+// 2): scheiterten Vermerk und RegisterHumanAtomic an derselben DB-Stoerung,
+// lag eine bestaetigte Registrierung als Vor-EVM-Intent da, und "recovery is
+// queued" stimmte nicht. Gibt zurueck, ob die Zeile den Hash jetzt traegt.
+func (cs *ChainState) intentHashVermerken(id int64, txHash string) bool {
+	if id <= 0 || cs.db == nil {
+		return false
+	}
+	for versuch := 0; versuch < 3; versuch++ {
+		if versuch > 0 {
+			time.Sleep(time.Duration(versuch) * 100 * time.Millisecond)
+		}
+		err := cs.UpdateRegistrationIntentEVMTxHash(id, txHash)
+		if err == nil {
+			return true
+		}
+		fmt.Printf("[RECOVERY] ⚠ EVM-Hash %s nicht am Intent %d vermerkt (Versuch %d): %v\n", txHash, id, versuch+1, err)
+	}
+	return false
+}
+
+// bestaetigteRegistrierungSichern: nach bestaetigter EVM und gescheitertem
+// RegisterHumanAtomic. Traegt der Intent den Hash nicht (kein Intent oder
+// Vermerk gescheitert), eine eigene Zeile mit Hash -- nur die holt die
+// Wiederholung nach. Fehler heisst: NICHTS ist zum Nachholen vorgemerkt.
+func (cs *ChainState) bestaetigteRegistrierungSichern(hashVermerkt bool, wallet, txHash, nullifier string, tx Transaction) error {
+	if hashVermerkt {
+		return nil
+	}
+	return cs.SaveRegistrationRecovery(wallet, txHash, nullifier, tx)
 }
 
 // DeleteRegistrationIntent removes a pre-EVM intent when EVM submission fails —
@@ -3351,11 +3390,6 @@ func (cs *ChainState) RetryRegistrationRecoveries() int {
 	}
 	rows.Close()
 
-	// Einmal je Durchlauf. Anders als /api/register (register.go) auf JEDEM
-	// Knoten, nicht nur auf dem annehmenden: was ein Knoten, der gerade
-	// nicht erzeugt, in seinen Ausgang legt, kommt in keinen Block
-	// (Pruefung von #322, INFO-2).
-	pause := cs.annahmePauseGrund()
 	recovered, geschlossen := 0, 0
 	for _, r := range records {
 		// Vor-EVM-Intent (evm_tx_hash = ''): die EVM hat diese Registrierung
@@ -3365,7 +3399,7 @@ func (cs *ChainState) RetryRegistrationRecoveries() int {
 		// und ohne EVM-Transaktion (Pruefung von #329, INFO-13). Jetzt wird er
 		// nur geschlossen, nie registriert: vorEVMIntentAufloesen.
 		if r.evmTxHash == "" {
-			switch cs.vorEVMIntentAufloesen(r.id, r.wallet, r.createdAt, time.Now().Unix()) {
+			switch cs.vorEVMIntentAufloesen(r.id, r.wallet, r.nullifier, r.createdAt, time.Now().Unix()) {
 			case vorEVMErledigt:
 				recovered++
 				geschlossen++
@@ -3376,8 +3410,13 @@ func (cs *ChainState) RetryRegistrationRecoveries() int {
 		}
 
 		// Wiederholen schreibt in den Ausgang: nicht, solange die Annahme
-		// pausiert. Die Zeile bleibt fuer den naechsten Durchlauf liegen.
-		if pause != nil {
+		// pausiert. Anders als /api/register (register.go) auf JEDEM Knoten,
+		// nicht nur auf dem annehmenden: was ein Knoten, der gerade nicht
+		// erzeugt, in seinen Ausgang legt, kommt in keinen Block (Pruefung von
+		// #322, INFO-2). Je Zeile, nicht je Durchlauf -- eine Pause mitten im
+		// Durchlauf gilt sofort (Pruefung #330, Befund 5; liest nur Atomics).
+		// Die Zeile bleibt fuer den naechsten Durchlauf liegen.
+		if cs.annahmePauseGrund() != nil {
 			continue
 		}
 
@@ -3494,7 +3533,7 @@ const (
 // (evm_tx_hash leer und noch offen), und UpdateRegistrationIntentEVMTxHash
 // oeffnet eine geschlossene Zeile wieder: ein spaet bestaetigter Intent geht
 // der Wiederholung nicht verloren.
-func (cs *ChainState) vorEVMIntentAufloesen(id int64, wallet string, erstellt, jetzt int64) vorEVMErgebnis {
+func (cs *ChainState) vorEVMIntentAufloesen(id int64, wallet, nullifier string, erstellt, jetzt int64) vorEVMErgebnis {
 	// Zu jung: nichts anfassen, auch keinen Hinweis fuer den Betreiber --
 	// eine gerade bestaetigte Registrierung zeigt im Spiegel schon den
 	// Menschen, bevor register.go den Hash vermerkt.
@@ -3519,21 +3558,43 @@ func (cs *ChainState) vorEVMIntentAufloesen(id int64, wallet string, erstellt, j
 		}
 		return vorEVMOffen
 	}
-	slot := mappingSlot(common.HexToAddress(wallet).Bytes(), spiegelSlotIsHuman()).Hex()
-	val, err := cs.LoadStorageSlot(strings.ToLower(V7_CONTRACT_ADDR), slot)
+	// Eine Zeile mit Hash fuer dieselbe Wallet (register.go legt sie an, wenn
+	// der Vermerk am Intent scheiterte -- bestaetigteRegistrierungSichern)
+	// traegt alles, was die Wiederholung braucht: der Intent ist abgeloest.
+	var abgeloest bool
+	if err := cs.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM registration_recovery WHERE wallet=$1 AND evm_tx_hash<>'' AND id<>$2)`,
+		strings.ToLower(wallet), id).Scan(&abgeloest); err != nil {
+		fmt.Printf("[RECOVERY] ⚠ Vor-EVM-Intent id=%d nicht pruefbar: %v\n", id, err)
+		return vorEVMOffen
+	}
+	if abgeloest {
+		if schliessen("pre-evm intent: superseded by a recovery row carrying the EVM hash — closed, nothing registered here") {
+			return vorEVMVerworfen
+		}
+		return vorEVMOffen
+	}
+	beleg, err := cs.evmBelegtRegistrierung(wallet, nullifier)
 	if err != nil {
 		fmt.Printf("[RECOVERY] ⚠ Vor-EVM-Intent id=%d: EVM-Spiegel nicht lesbar (%v) -- bleibt liegen\n", id, err)
 		return vorEVMOffen
 	}
-	if common.HexToHash(val) != (common.Hash{}) {
-		const grund = "pre-evm intent: EVM mirror shows wallet as human but go-state does not — manual review, NOT registered automatically"
-		if _, err := cs.db.Exec(`UPDATE registration_recovery SET last_error=$1 WHERE id=$2 AND evm_tx_hash='' AND recovered_at IS NULL`, grund, id); err != nil {
+	if beleg != "" {
+		grund := "pre-evm intent: EVM storage shows a registration (" + beleg + ") but go-state does not — manual review, NOT registered automatically"
+		res, err := cs.db.Exec(`UPDATE registration_recovery SET last_error=$1 WHERE id=$2 AND evm_tx_hash='' AND recovered_at IS NULL`, grund, id)
+		if err != nil {
 			fmt.Printf("[RECOVERY] ⚠ last_error fuer Vor-EVM-Intent id=%d nicht gesetzt: %v\n", id, err)
+			return vorEVMOffen
+		}
+		// Nur wenn die Zeile noch ein offener Vor-EVM-Intent ist: hat
+		// register.go den Hash inzwischen vermerkt, ist es kein Fall fuer den
+		// Betreiber (Pruefung #330, Befund 6).
+		if n, err := res.RowsAffected(); err != nil || n != 1 {
+			return vorEVMOffen
 		}
 		if cs.BootstrapDegradedReason() == "" {
-			cs.SetBootstrapDegraded(fmt.Sprintf("registration_recovery: pre-EVM intent %d for %s needs manual review (EVM mirror human, go-state not) — check /api/admin/registration-recovery", id, wallet))
+			cs.SetBootstrapDegraded(fmt.Sprintf("registration_recovery: pre-EVM intent %d for %s needs manual review (EVM storage: %s, go-state not human) — check /api/admin/registration-recovery", id, wallet, beleg))
 		}
-		fmt.Printf("[RECOVERY] ✗ Vor-EVM-Intent id=%d: EVM-Spiegel zeigt %s als Mensch, Go nicht -- NICHT registriert, bitte pruefen\n", id, wallet)
+		fmt.Printf("[RECOVERY] ✗ Vor-EVM-Intent id=%d: EVM-Speicher belegt eine Registrierung von %s (%s), Go nicht -- NICHT registriert, bitte pruefen\n", id, wallet, beleg)
 		return vorEVMOffen
 	}
 	if schliessen("pre-evm intent: never confirmed on EVM — discarded, nothing registered; user must re-submit") {
@@ -3541,6 +3602,54 @@ func (cs *ChainState) vorEVMIntentAufloesen(id int64, wallet string, erstellt, j
 		return vorEVMVerworfen
 	}
 	return vorEVMOffen
+}
+
+// evmBelegtRegistrierung: zeigt der Speicher des Registervertrags eine
+// Registrierung von wallet? Gibt den belegenden Platz zurueck ("" = keiner).
+//
+// Nicht nur isHuman (Pruefung #330, Befund 1): diesen Platz schreibt auch Go
+// selbst (kontowerteFuerSpiegel, fuer jedes Konto, das gespiegelt wird, als
+// 0, solange Go es nicht fuer einen Menschen haelt) -- eine Ueberweisung an
+// die Wallet loeschte den Beleg einer bestaetigten Registrierung. commitmentOf,
+// nullifierOf und usedNullifiers schreibt bei einer Registrierung nur der
+// Vertrag (V7 9/28/8, V8 6/7/5; contracts/AequitasV7.sol, v8_slots.json).
+// usedNullifiers zaehlt nur, wenn es auf genau diese Wallet zeigt -- auf eine
+// andere heisst, ihre Transaktion waere am Vertrag gescheitert.
+func (cs *ChainState) evmBelegtRegistrierung(wallet, nullifier string) (string, error) {
+	vertrag := strings.ToLower(V7_CONTRACT_ADDR)
+	addr := common.HexToAddress(wallet)
+	commitmentOf, nullifierOf, usedNullifiers := int64(9), int64(28), int64(8)
+	if vertragV8() {
+		commitmentOf, nullifierOf, usedNullifiers = v8SlotCommitmentOf, v8SlotNullifierOf, v8SlotUsedNullifiers
+	}
+	for _, p := range []struct {
+		name string
+		slot int64
+	}{{"isHuman", spiegelSlotIsHuman()}, {"commitmentOf", commitmentOf}, {"nullifierOf", nullifierOf}} {
+		val, err := cs.LoadStorageSlot(vertrag, mappingSlot(addr.Bytes(), p.slot).Hex())
+		if err != nil {
+			return "", err
+		}
+		if common.HexToHash(val) != (common.Hash{}) {
+			return p.name, nil
+		}
+	}
+	if nullifier == "" {
+		return "", nil
+	}
+	nb, err := nullifierBytes32(nullifier)
+	if err != nil {
+		// Unlesbarer Nullifier: nicht verwerfen, was vielleicht bestaetigt ist.
+		return "", fmt.Errorf("nullifier %q: %w", nullifier, err)
+	}
+	val, err := cs.LoadStorageSlot(vertrag, mappingSlotBytes32(common.BytesToHash(nb[:]), usedNullifiers).Hex())
+	if err != nil {
+		return "", err
+	}
+	if common.HexToAddress(val) == addr && addr != (common.Address{}) {
+		return "usedNullifiers", nil
+	}
+	return "", nil
 }
 
 // ClearPendingTxs deletes the given pending_txs rows by id. Call only after

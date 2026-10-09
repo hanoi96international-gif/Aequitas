@@ -70,7 +70,29 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
    ein. Erst ab 10 Minuten Alter (sonst evtl. noch unterwegs); ein später
    gesetzter EVM-Hash öffnet einen verworfenen Intent wieder. Der Durchlauf
    liest höchstens 1.000 Zeilen. Tests: `registration_recovery_test.go`.
-   Offen bleibt hier nur der Strafbeweis-Teil (`DoppelsignaturErkannt`).
+   Seit der Prüfung von #330: Als Beleg einer bestätigten Registrierung
+   zählen auch `commitmentOf`, `nullifierOf` und `usedNullifiers` (= diese
+   Wallet), nicht nur `isHuman` (den überschreibt der Go-Spiegel). Scheitert
+   der Hash-Vermerk am Intent, legt `/api/register` eine eigene Zeile mit
+   Hash an. Offen bleibt hier der Strafbeweis-Teil (`DoppelsignaturErkannt`).
+   **Rest aus der Prüfung von #330** (Folge-PR):
+   - *LOW-3 Kopf-Blockade:* Der Durchlauf liest die 1.000 ältesten offenen
+     Zeilen. Zeilen, die nie geschlossen werden (Fälle für den Betreiber,
+     dauerhafte Fehler wie „nullifier already used by a different wallet“,
+     korruptes JSON), können jüngere Zeilen mit Hash dauerhaft verdrängen.
+     Von außen schwer zu erreichen (gültiger Beweis, Ratengrenzen, Zeilen
+     werden gelöscht oder verworfen). Fix: Zeilen mit Hash vorziehen bzw.
+     über `last_attempt_at` rotieren, Fälle für den Betreiber aus dem
+     Durchlauf nehmen.
+   - *LOW-4 Betreiberweg:* Für den Fall „EVM-Speicher belegt, Go nicht“ gibt
+     es keine Admin-Aktion (`/api/admin/registration-recovery` listet nur);
+     lösen derzeit nur per SQL. Fix: geprüfte Admin-Aktion oder Runbook.
+   - *INFO-7:* Der Degraded-Hinweis erscheint nur bei leerem Feld, und
+     `CountUnrecoveredRegistrations` ignoriert Scan-Fehler.
+   - *INFO-8 (bestand schon vorher):* „already registered“ wird über einen
+     Teilstring erkannt; besser typisierte Fehler.
+   - Ein Knoten, der nie wieder erzeugt (etwa ein früherer Leiter als
+     Folger), hält bestätigte Registrierungen in seiner Tabelle fest.
 8. **WAL nach einem Rollenwechsel ohne Deckungsprüfung** (Prüfung von
    #322, INFO-15): Ein Beobachter liest das WAL nicht ein, die Datei bleibt
    liegen. Startet ein abgestürzter Validator mit ungeflushten Sätzen erst
