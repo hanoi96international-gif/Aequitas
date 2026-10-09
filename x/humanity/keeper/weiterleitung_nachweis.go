@@ -193,8 +193,10 @@ func (cs *ChainState) weiterleitungFuer(r *http.Request, jetzt time.Time) string
 	if d := jetzt.Sub(time.UnixMilli(zeit)); d > leitungZeitfenster || d < -leitungZeitfenster {
 		return weiterleitungAbweisen(grundZeit)
 	}
-	ip := net.ParseIP(teile[1])
-	if ip == nil || ip.String() != teile[1] {
+	// fuer in genau der Schreibweise, unter der der Folger gezaehlt hat
+	// (clientIP: IPv4, IPv6 je /64) -- sonst haette ein Absender aus einem
+	// /64 beim Zustaendigen 2^64 Zaehler (Pruefung von #324).
+	if ip := net.ParseIP(teile[1]); ip == nil || ip.String() != teile[1] || absenderSchluessel(teile[1]) != teile[1] {
 		return weiterleitungAbweisen(grundFormat)
 	}
 	sig, err := hex.DecodeString(teile[3])

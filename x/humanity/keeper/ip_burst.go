@@ -1,6 +1,7 @@
 package keeper
 
 import (
+	"strings"
 	"sync"
 	"time"
 )
@@ -30,6 +31,25 @@ import (
 // Schluessel (begrenzte_karte.go).
 var ipBurst = neueBegrenzteKarte("ip_burst", grenzenSchluesselHoechstens, nil)
 
+// erneuerungVon: die Zaehler weitergeleiteter Erneuerungen
+// (erneuerungVonPraefix + "<folger>|<fuer>") in einer eigenen Karte. Den
+// Absender fuer bestimmt dort der unterschreibende Folger: ein boeswilliges
+// Mitglied des Satzes machte mit immer neuem fuer sonst ipBurst voll, und
+// voll sperrt dort jeden neuen Absender an jedem Endpunkt
+// (begrenzte_karte.go). So trifft es nur neue weitergeleitete Erneuerungen --
+// wie walletRateLimit (Pruefung von #324, HIGH-1).
+var erneuerungVon = neueBegrenzteKarte("erneuerung_weitergeleitet", grenzenSchluesselHoechstens, nil)
+
+const erneuerungVonPraefix = "liveness-renewal-von:"
+
+// burstKarte: in welcher Karte key zaehlt.
+func burstKarte(key string) *begrenzteKarte {
+	if strings.HasPrefix(key, erneuerungVonPraefix) {
+		return erneuerungVon
+	}
+	return ipBurst
+}
+
 type ipBurstEintrag struct {
 	mu     sync.Mutex
 	zeiten []time.Time
@@ -49,7 +69,7 @@ func burstBuchen(key string, max int, fenster time.Duration) (time.Time, bool) {
 	if max <= 0 {
 		return time.Time{}, true
 	}
-	v, ok := ipBurst.LoadOrStore(key, &ipBurstEintrag{})
+	v, ok := burstKarte(key).LoadOrStore(key, &ipBurstEintrag{})
 	if !ok {
 		return time.Time{}, false // voll: ein neuer Absender wird begrenzt (begrenzte_karte.go)
 	}
@@ -79,7 +99,7 @@ func burstBuchen(key string, max int, fenster time.Duration) (time.Time, bool) {
 // diese, nicht die juengste: sonst verfiele eine fremde, aeltere Buchung
 // frueher. Ist sie schon verfallen, gibt es nichts zu erstatten.
 func burstErstatten(key string, zeit time.Time) {
-	v, ok := ipBurst.Load(key)
+	v, ok := burstKarte(key).Load(key)
 	if !ok {
 		return
 	}
@@ -94,19 +114,22 @@ func burstErstatten(key string, zeit time.Time) {
 	}
 }
 
-// ipBurstAufraeumen entfernt Schluessel ohne Eintrag im Fenster.
+// ipBurstAufraeumen entfernt Schluessel ohne Eintrag im Fenster (ipBurst und
+// erneuerungVon).
 func ipBurstAufraeumen(fenster time.Duration) {
 	now := time.Now()
-	ipBurst.Range(func(k, v any) bool {
-		e := v.(*ipBurstEintrag)
-		e.mu.Lock()
-		leer := len(e.zeiten) == 0 || now.Sub(e.zeiten[len(e.zeiten)-1]) >= fenster
-		e.mu.Unlock()
-		if leer {
-			ipBurst.Delete(k)
-		}
-		return true
-	})
+	for _, karte := range []*begrenzteKarte{ipBurst, erneuerungVon} {
+		karte.Range(func(k, v any) bool {
+			e := v.(*ipBurstEintrag)
+			e.mu.Lock()
+			leer := len(e.zeiten) == 0 || now.Sub(e.zeiten[len(e.zeiten)-1]) >= fenster
+			e.mu.Unlock()
+			if leer {
+				karte.Delete(k)
+			}
+			return true
+		})
+	}
 }
 
 // Die Grenzen. Je Fenster von 60 s und Absender-IP:

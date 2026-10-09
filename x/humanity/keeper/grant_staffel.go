@@ -396,7 +396,7 @@ func (a *APIServer) erneuerungsGrenze(next http.HandlerFunc) http.HandlerFunc {
 				}
 			}
 			if fuer != "" {
-				schluessel = "liveness-renewal-von:" + fuer
+				schluessel = erneuerungVonPraefix + fuer
 			} else if rpcRateLimitFrei(r) {
 				next(w, r)
 				return

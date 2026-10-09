@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -28,7 +29,7 @@ const (
 func beimZustaendigen(t *testing.T, k *ecdsa.PrivateKey, fuer, ziel, koerper string, jetzt time.Time) *http.Request {
 	t.Helper()
 	beimFolger := httptest.NewRequest(http.MethodPost, nachweisPfad, strings.NewReader(koerper))
-	beimFolger.RemoteAddr = fuer + ":4711"
+	beimFolger.RemoteAddr = net.JoinHostPort(fuer, "4711")
 	h := weiterleitungNachweis(k, beimFolger, ziel, []byte(koerper), jetzt)
 	if h == nil {
 		t.Fatal("Vorbedingung: der Folger unterschreibt")
@@ -351,12 +352,12 @@ func (p *folgerPaar) leeren(t *testing.T, ips ...string) {
 	t.Helper()
 	erneuerungsGrenzeLeeren(ips...)
 	for _, ip := range ips {
-		ipBurst.Delete("liveness-renewal-von:" + p.folgerAdr + "|" + ip)
+		erneuerungVon.Delete("liveness-renewal-von:" + p.folgerAdr + "|" + ip)
 	}
 	t.Cleanup(func() {
 		erneuerungsGrenzeLeeren(ips...)
 		for _, ip := range ips {
-			ipBurst.Delete("liveness-renewal-von:" + p.folgerAdr + "|" + ip)
+			erneuerungVon.Delete("liveness-renewal-von:" + p.folgerAdr + "|" + ip)
 		}
 	})
 }
@@ -445,11 +446,11 @@ func TestWeiterleitungNachweis_ProAbsenderGezaehlt(t *testing.T) {
 		}
 	}
 	for _, s := range schluessel {
-		ipBurst.Delete(s)
+		burstKarte(s).Delete(s)
 	}
 	t.Cleanup(func() {
 		for _, s := range schluessel {
-			ipBurst.Delete(s)
+			burstKarte(s).Delete(s)
 		}
 	})
 	schicke := func(k *ecdsa.PrivateKey, fuer string, i int) int {
@@ -547,7 +548,7 @@ func TestWeiterleitungNachweis_GescheiterteSperrenGueltigeNicht(t *testing.T) {
 	leeren := func() {
 		erneuerungsGrenzeLeeren(tcp)
 		ipBurst.Delete("liveness-renewal-pruefung:" + tcp)
-		ipBurst.Delete(k)
+		burstKarte(k).Delete(k)
 	}
 	leeren()
 	t.Cleanup(leeren)
@@ -592,7 +593,7 @@ func TestErneuerung_AbsenderNormalisiertLokal(t *testing.T) {
 
 // burstZahl: Buchungen von key im Fenster (nur fuer Tests).
 func burstZahl(key string) int {
-	v, ok := ipBurst.Load(key)
+	v, ok := burstKarte(key).Load(key)
 	if !ok {
 		return 0
 	}
@@ -687,7 +688,7 @@ func TestWeiterleitungNachweis_AbsenderNormalisiert(t *testing.T) {
 	if n := p.beimZust.Load() - vorher; n != int64(burstErneuerungJeIP) {
 		t.Fatalf("%d Anfragen weitergeleitet, erwartet %d", n, burstErneuerungJeIP)
 	}
-	if n := burstZahl("liveness-renewal-von:" + p.folgerAdr + "|" + tcp); n != burstErneuerungJeIP {
+	if n := burstZahl(erneuerungVonPraefix + p.folgerAdr + "|" + tcp); n != burstErneuerungJeIP {
 		t.Fatalf("beim Zustaendigen %d unter (Folger, Proxy) gezaehlt, erwartet %d", n, burstErneuerungJeIP)
 	}
 	// Ein Absender, der keine IP ist (etwa ein Unix-Socket): 400, ohne
@@ -717,8 +718,8 @@ func TestWeiterleitungNachweis_FreilisteMitNachweisGezaehlt(t *testing.T) {
 	rpcRateLimitFreiListe.Store(&frei)
 	x := "203.0.113.153"
 	k := "liveness-renewal-von:" + adresseVon(folger) + "|" + x
-	ipBurst.Delete(k)
-	t.Cleanup(func() { ipBurst.Delete(k) })
+	burstKarte(k).Delete(k)
+	t.Cleanup(func() { burstKarte(k).Delete(k) })
 	for i := 0; i < burstErneuerungJeIP; i++ {
 		w := httptest.NewRecorder()
 		mux.ServeHTTP(w, beimZustaendigen(t, folger, x, nachweisIch, fmt.Sprintf(`{"wallet":"0x%040x","issued_at":%d}`, i+1, i+1), time.Now()))
@@ -989,7 +990,7 @@ func TestWeiterleitungNachweis_KeinStauAnDerLeitung(t *testing.T) {
 		erneuerungsGrenzeLeeren(tcp)
 		ipBurst.Delete("liveness-renewal-pruefung:" + tcp)
 		for _, f := range fuer {
-			ipBurst.Delete("liveness-renewal-von:" + adresseVon(folger) + "|" + f)
+			erneuerungVon.Delete("liveness-renewal-von:" + adresseVon(folger) + "|" + f)
 		}
 	}
 	leeren()
@@ -1044,5 +1045,108 @@ func TestWeiterleitungNachweis_KeinStauAnDerLeitung(t *testing.T) {
 	}
 	if b := burstZahl("liveness-renewal-pruefung:" + tcp); b != 0 {
 		t.Fatalf("gueltige Weiterleitungen haben %d Pruefungen gebucht hinterlassen", b)
+	}
+}
+
+// Missbrauch (Pruefung von #319 nach #324): ein boeswilliges Mitglied des
+// Satzes unterschreibt Weiterleitungen mit immer neuem Absender. Seine
+// Zaehler liegen in einer eigenen Karte -- ist sie voll, trifft das nur neue
+// weitergeleitete Erneuerungen, nicht jeden neuen Absender an jedem anderen
+// Endpunkt (ipBurst bleibt, wie es war).
+func TestWeiterleitungNachweis_EigeneKarteFuerWeitergeleitete(t *testing.T) {
+	stagedGrantActivationOverride.Store(1)
+	t.Cleanup(func() { stagedGrantActivationOverride.Store(0) })
+	boese, _ := crypto.GenerateKey()
+	cs := nachweisLeitung(t, adresseVon(boese))
+	h := (&APIServer{state: cs}).erneuerungsGrenze(func(w http.ResponseWriter, r *http.Request) {})
+	tcp := "198.51.100.150" // RemoteAddr aus beimZustaendigen
+	var fuer []string
+	for i := 0; i < 60; i++ {
+		fuer = append(fuer, fmt.Sprintf("203.0.114.%d", 1+i))
+	}
+	leeren := func() {
+		erneuerungsGrenzeLeeren(tcp)
+		ipBurst.Delete("liveness-renewal-pruefung:" + tcp)
+		ipBurst.Delete("register:198.51.100.199")
+		for _, f := range fuer {
+			erneuerungVon.Delete(erneuerungVonPraefix + adresseVon(boese) + "|" + f)
+		}
+	}
+	leeren()
+	altMax := erneuerungVon.max
+	erneuerungVon.max = erneuerungVon.anzahl.Load() + 50
+	t.Cleanup(func() { erneuerungVon.max = altMax; leeren() })
+	vorherBurst := ipBurst.anzahl.Load()
+	koerper := `{"wallet":"0x00000000000000000000000000000000000000aa","issued_at":1}`
+	durch := 0
+	for _, f := range fuer {
+		w := httptest.NewRecorder()
+		h(w, beimZustaendigen(t, boese, f, nachweisIch, koerper, time.Now()))
+		if w.Code != http.StatusTooManyRequests {
+			durch++
+		}
+	}
+	if durch != 50 {
+		t.Fatalf("%d neue weitergeleitete Absender durch, erwartet 50 (Karte voll)", durch)
+	}
+	if d := ipBurst.anzahl.Load() - vorherBurst; d > 1 {
+		t.Fatalf("weitergeleitete Erneuerungen haben %d Schluessel in ipBurst angelegt", d)
+	}
+	if !burstErlaubt("register:198.51.100.199", burstRegisterJeIP, burstFenster) {
+		t.Fatal("ein neuer Absender an einem anderen Endpunkt ist gesperrt")
+	}
+}
+
+// fuer muss in der Schreibweise stehen, unter der der Folger zaehlt
+// (clientIP: IPv6 je /64) -- eine einzelne IPv6-Adresse waere beim
+// Zustaendigen ein eigener Zaehler (Pruefung von #319 nach #324).
+func TestWeiterleitungNachweis_AbsenderJeNetz(t *testing.T) {
+	folger, _ := crypto.GenerateKey()
+	cs := nachweisLeitung(t, adresseVon(folger))
+	koerper := `{"wallet":"0x00000000000000000000000000000000000000aa","issued_at":1}`
+	format := weiterleitungAbgelehnt[grundFormat].Load()
+	if got := cs.weiterleitungFuer(beimZustaendigen(t, folger, "2001:db8:1:2::", nachweisIch, koerper, time.Now()), time.Now()); got != adresseVon(folger)+"|2001:db8:1:2::" {
+		t.Fatalf("IPv6 je /64 nicht anerkannt: %q", got)
+	}
+	// Ein ehrlicher Folger unterschreibt fuer einen IPv6-Client das /64.
+	beimFolger := httptest.NewRequest(http.MethodPost, nachweisPfad, strings.NewReader(koerper))
+	beimFolger.RemoteAddr = "[2001:db8:1:2::abcd]:4711"
+	h := weiterleitungNachweis(folger, beimFolger, nachweisIch, []byte(koerper), time.Now())
+	if h == nil || strings.Split(h.Get(weiterleitungNachweisKopf), ";")[1] != "2001:db8:1:2::" {
+		t.Fatalf("Folger unterschreibt nicht das /64: %v", h)
+	}
+	// Eine einzelne Adresse aus dem /64, gueltig unterschrieben (ein
+	// boeswilliges Mitglied): nicht anerkannt.
+	jetzt := time.Now()
+	nonce := strings.Repeat("cd", 16)
+	sig, err := crypto.Sign(weiterleitungHash(http.MethodPost, nachweisPfad, jetzt.UnixMilli(), "2001:db8:1:2::abcd", nachweisIch, nonce, []byte(koerper)), folger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	einzeln := httptest.NewRequest(http.MethodPost, nachweisPfad, strings.NewReader(koerper))
+	einzeln.Header.Set(weiterleitungNachweisKopf, fmt.Sprintf("%d;2001:db8:1:2::abcd;%s;%s", jetzt.UnixMilli(), nonce, hex.EncodeToString(sig)))
+	if got := cs.weiterleitungFuer(einzeln, jetzt); got != "" {
+		t.Fatalf("einzelne IPv6-Adresse als Absender anerkannt: %q", got)
+	}
+	if d := weiterleitungAbgelehnt[grundFormat].Load() - format; d != 1 {
+		t.Fatalf("%d als Format abgelehnt, erwartet 1", d)
+	}
+}
+
+// Das Aufraeumen leert auch die Karte der weitergeleiteten Erneuerungen --
+// sonst bliebe sie nach dem ersten Fuellen voll (begrenzte_karte.go).
+func TestBurstAufraeumen_AuchWeitergeleitete(t *testing.T) {
+	alt, frisch := erneuerungVonPraefix+"0xab|203.0.113.250", erneuerungVonPraefix+"0xab|203.0.113.251"
+	t.Cleanup(func() { erneuerungVon.Delete(alt); erneuerungVon.Delete(frisch) })
+	if !erneuerungVon.Store(alt, &ipBurstEintrag{zeiten: []time.Time{time.Now().Add(-2 * burstFenster)}}) ||
+		!erneuerungVon.Store(frisch, &ipBurstEintrag{zeiten: []time.Time{time.Now()}}) {
+		t.Fatal("Vorbedingung: Karte nimmt an")
+	}
+	ipBurstAufraeumen(burstFenster)
+	if _, ok := erneuerungVon.m.Load(alt); ok {
+		t.Fatal("verfallener weitergeleiteter Zaehler nicht aufgeraeumt")
+	}
+	if _, ok := erneuerungVon.m.Load(frisch); !ok {
+		t.Fatal("frischer weitergeleiteter Zaehler aufgeraeumt")
 	}
 }

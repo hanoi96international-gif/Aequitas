@@ -90,23 +90,16 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
    Validator sauber wiederangelaufen ist.
 
 ## Ratenbegrenzung – bekannte Lücken
-- **`clientIP` und IPv6** (Prüfung von #319, LOW-3; bestand schon vorher, gilt
-  für alle Grenzen je IP): Jede IPv6-Adresse hat einen eigenen Zähler – aus
-  einem /64 kamen 100 von 100 Anfragen durch. Fix: IPv6 je /64 zählen.
-- **`X-Forwarded-For` hinter einem privaten TCP-Partner** (ebenda):
-  `clientIP` nimmt den ersten Eintrag des Kopfes ungeprüft, sobald die
-  Verbindung von einer privaten Adresse kommt. Über Caddy ist das dicht
-  (Annahme: Caddy überschreibt den Kopf ohne `trusted_proxies`; Version auf
-  C1 prüfen). Offen ist es für andere Container im Docker-Netz und
-  vermutlich für `docker-proxy` bei Hairpin oder IPv6 auf dem
-  veröffentlichten Port – dort kamen 1000 von 1000 Anfragen mit rotierendem
-  Kopf durch. Fix: nur der Adresse des eigenen Proxys glauben (feste
-  Adresse statt „privat“) und den letzten, nicht den ersten Eintrag nehmen.
-- **`ipBurst` ohne feste Obergrenze** (Prüfung von #319, LOW-4; bestand schon
-  vorher): Die Einträge verfallen nach etwa 120 s (Aufräumen alle 60 s),
-  ihre Zahl ist aber nur durch Anfragerate × 120 s begrenzt – gemessen
-  228 B je Schlüssel, bei 5.000 Anfragen/s etwa 137 MB. Fix: Obergrenze für
-  die Zahl der Schlüssel; voll heißt begrenzen.
+- **`X-Forwarded-For` hinter einem privaten TCP-Partner** (Prüfung von #319,
+  LOW-3; seit #324 zählt der letzte Eintrag, IPv6 je /64, und jede Karte der
+  Grenzen je Absender hat eine feste Höchstzahl): `clientIP` glaubt dem Kopf
+  weiter, sobald die Verbindung von irgendeiner privaten Adresse kommt –
+  offen für andere Container im Docker-Netz und vermutlich für
+  `docker-proxy` bei Hairpin oder IPv6 auf dem veröffentlichten Port. Fix:
+  nur der Adresse des eigenen Proxys glauben (feste Adresse statt
+  „privat“). Betrieb: genau ein anhängender Proxy – stehen zwei
+  hintereinander (etwa ein CDN vor Caddy), ist der letzte Eintrag der
+  vordere Proxy, und alle Nutzer zählen unter ihm.
 - **Freiliste ohne Herkunftsnachweis** (Prüfung von #320, LOW-3; bestand
   schon vorher, seit #320 auf den Satz eingeengt): ein Satzmitglied kann
   jede öffentliche IP ankündigen und sie so von den Grenzen je IP
@@ -152,11 +145,16 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
   dasselbe schon (LOW-3 oben); hinter Caddy stellt die Freiliste nie frei,
   dort ist der Nachweis ein zusätzliches Recht. Im offenen Betrieb kommt
   jeder registrierte Mensch mit einem aufgeholten Knoten in den Satz (einer
-  je Mensch). Vertretbar, solange IPv6 nicht je /64 zählt – dasselbe
-  erreicht jeder mit vielen IPv6-Adressen. Fix, falls nötig: eine
-  großzügige Grenze je Unterzeichner – mit dem Nachteil, dass ein Angreifer
-  mit vielen Adressen über einen ehrlichen Folger dessen Grenze leeren
-  kann.
+  je Mensch). Seine Zähler liegen in einer eigenen Karte
+  (`erneuerung_weitergeleitet`, höchstens 200.000 Schlüssel; `fuer` nur in
+  der Schreibweise von `clientIP`, IPv6 je /64): füllt er sie, bekommen nur
+  neue weitergeleitete Erneuerungen 429, bis das Aufräumen Platz schafft –
+  kein anderer Endpunkt. Vertretbar, weil ein Satzmitglied die Annahme als
+  Leiter ohnehin anhalten kann (Verfügbarkeit hängt am Satz, nicht die
+  Richtigkeit). Fix, falls nötig: eine großzügige Grenze oder ein
+  Schlüsselkontingent je Unterzeichner – mit dem Nachteil, dass ein
+  Angreifer mit vielen Netzen über einen ehrlichen Folger dessen Grenze
+  leeren kann.
 - **Weiterleitende Validatoren außerhalb des Satzes** (Prüfung von #319,
   INFO-37; gegenüber vorher keine Verschlechterung): Bloß zugelassene
   Validatoren, Bewerber und gerade entfernte Mitglieder werden nicht
