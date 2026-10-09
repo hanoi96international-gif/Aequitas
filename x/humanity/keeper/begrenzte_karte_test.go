@@ -772,7 +772,7 @@ func TestBindungsGrenze_EigeneKarte(t *testing.T) {
 // Pruefung von #324, INFO-8 (M12): jede Karte hat ihre Hoechstzahl.
 func TestBegrenzteKarte_HoechstzahlJeKarte(t *testing.T) {
 	st := GrenzenJeAbsenderStand()
-	for _, name := range []string{"ip_burst", "rpc", "register", "wallet", "bindung", "betreiber"} {
+	for _, name := range []string{"ip_burst", "rpc", "register", "wallet", "bindung", "betreiber", "erneuerung_weitergeleitet"} {
 		w, ok := st[name].(map[string]interface{})
 		if !ok {
 			t.Fatalf("Stand ohne %s: %v", name, st)
@@ -781,9 +781,9 @@ func TestBegrenzteKarte_HoechstzahlJeKarte(t *testing.T) {
 			t.Fatalf("%s: hoechstens %v, erwartet %d", name, w["hoechstens"], grenzenSchluesselHoechstens)
 		}
 		g, ok := w["grob"].(map[string]int64)
-		if name == "betreiber" {
+		if name == "betreiber" || name == "erneuerung_weitergeleitet" {
 			if ok {
-				t.Fatal("betreiber hat eine Ueberlaufkarte -- ihr Schluessel ist frei gewaehlter Text, kein Absender")
+				t.Fatalf("%s hat eine Ueberlaufkarte -- ihr Schluessel traegt keine Adresse des Absenders", name)
 			}
 			continue
 		}
