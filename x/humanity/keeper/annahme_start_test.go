@@ -4,11 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"go/types"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -310,5 +316,343 @@ func TestBeobachter_LiestKeinWALEin_RealDB(t *testing.T) {
 	csB.db.QueryRow(`SELECT COUNT(*) FROM pending_txs`).Scan(&nachher)
 	if dbFrom != 1000 || nachher != vorher || groesse() != vorherGroesse {
 		t.Fatalf("Beobachter hat das WAL angewandt: Kontostand %v (erwartet 1000), Ausgang %d -> %d, WAL %d -> %d Byte", dbFrom, vorher, nachher, vorherGroesse, groesse())
+	}
+}
+
+// Missbrauch (docs/OFFEN.md; Pruefung von #322, INFO-7): mit
+// AEQUITAS_LEITUNG=an ist cs.leitung bis StarteLeitung nil, und nimmtAnFuer()
+// meldet true -- ein Folger naehme beim Start lokal an, statt an den Leiter
+// weiterzuleiten, und zwei Knoten naehmen zugleich an. Bis der Start versucht
+// ist, haelt jeder annehmende Weg an (die Ausgangsschreiber ohne Annahme
+// stehen in docs/OFFEN.md, Punkt 7), und es laufen keine Systemauftraege;
+// registriert wird wie auf einem Folger. Scheitert der Start (kein
+// Signierschluessel), bleibt es so -- fail-closed, mit eigenem Grund im
+// Stand (Pruefung von #329, Befund 2).
+func TestAnnahme_FolgerWartetAufLeitung(t *testing.T) {
+	t.Setenv("AEQUITAS_LEITUNG", "an")
+	t.Setenv("AEQUITAS_LEITUNG_GENESIS", "")
+	altGestartet := leistungGestartet.Swap(true) // keine Messung im Test
+	t.Cleanup(func() { leistungGestartet.Store(altGestartet) })
+	cs := newTestState()
+	w := "0x00000000000000000000000000000000000000e1"
+	pruefe := func(wort string) {
+		t.Helper()
+		// Ueberweisung, Tausch, Faucet, Unternehmen, Vormund, Erneuerung ...
+		err := cs.annahmeBeginnen(w)
+		if !errors.Is(err, ErrAnnahmePausiert) || !strings.Contains(err.Error(), wort) {
+			t.Fatalf("annahmeBeginnen: %v, erwartet Pause (%q)", err, wort)
+		}
+		if n := cs.annahmenLaufend.Load(); n != 0 {
+			t.Fatalf("abgelehnte Annahme zaehlt noch: %d", n)
+		}
+		// Validator-Bindung, Strafabrechnung.
+		if err := cs.annahmeBeginnenLeiter(); !errors.Is(err, ErrAnnahmePausiert) {
+			t.Fatalf("annahmeBeginnenLeiter: %v", err)
+		}
+		// RPC (eth_sendRawTransaction) und Nonce-Reservierung fragen den Grund.
+		if err := cs.annahmePauseGrund(); err == nil || !strings.Contains(err.Error(), wort) {
+			t.Fatalf("annahmePauseGrund: %v", err)
+		}
+		// Das Tor selbst: unabhaengig von der Reihenfolge der Aufrufer
+		// (Pruefung von #329, Befund 6).
+		if cs.nimmtAnFuer() || cs.nimmtAnFuer(w) {
+			t.Fatal("nimmtAnFuer meldet Annahme, obwohl die Leitung nicht bereit ist")
+		}
+		if err := cs.pruefeAnnahmeTorFuer(w); !errors.Is(err, ErrAnnahmePausiert) {
+			t.Fatalf("pruefeAnnahmeTorFuer: %v", err)
+		}
+		// Keine Systemauftraege (Pruefung von #329, INFO-8).
+		if grund := cs.SystemauftraegeHier(); !strings.Contains(grund, wort) {
+			t.Fatalf("SystemauftraegeHier: %q", grund)
+		}
+		// Registrierung: wie auf einem Folger lokal weiter (der Knoten nimmt
+		// nichts an, also verblockt er auch keinen Ausgang) -- bis zur EVM,
+		// die es im Test nicht gibt.
+		a := &APIServer{state: cs}
+		ip := "198.51.100.232"
+		ipBurst.Delete("register:" + ip)
+		t.Cleanup(func() { ipBurst.Delete("register:" + ip) })
+		body := `{"wallet":"0x00000000000000000000000000000000000000ab","pA":["1","2"],"pB":[["1","2"],["3","4"]],"pC":["1","2"],"pubSignals":["1","2"],"signature":"0x01"}`
+		req := httptest.NewRequest(http.MethodPost, "/api/register", strings.NewReader(body))
+		req.RemoteAddr = ip + ":4711"
+		rec := httptest.NewRecorder()
+		a.handleRegister(rec, req)
+		var resp RegisterResponse
+		json.NewDecoder(rec.Body).Decode(&resp)
+		if resp.Success || !strings.Contains(resp.Message, "EVM engine unavailable") {
+			t.Fatalf("Registrierung nicht wie auf einem Folger: %+v", resp)
+		}
+		if st := cs.AnnahmeTorStand(); st["nimmt_an"] != false {
+			t.Fatalf("Annahme-Tor meldet nimmt_an: %v", st)
+		}
+	}
+
+	pruefe("startet noch")
+	if st := cs.AnnahmePauseStand(); st["leitung_startet"] != true || st["pausiert"] != true {
+		t.Fatalf("Stand meldet den Start nicht: %v", st)
+	}
+	if st := cs.LeitungStand(); st["startet"] != true {
+		t.Fatalf("Leitungsstand meldet den Start nicht: %v", st)
+	}
+
+	// Start gescheitert (kein Signierschluessel): die Annahme bleibt zu.
+	if l := StarteLeitung(&BlockDAG{}, cs, ""); l != nil || cs.leitung.Load() != nil {
+		t.Fatal("Vorbedingung: ohne Signierschluessel keine Leitung")
+	}
+	pruefe("laeuft nicht")
+	if st := cs.AnnahmePauseStand(); st["leitung_startet"] != false || st["leitung_gescheitert"] != true {
+		t.Fatalf("Stand nach gescheitertem Start: %v", st)
+	}
+	if st := cs.LeitungStand(); st["gescheitert"] != true {
+		t.Fatalf("Leitungsstand meldet den gescheiterten Start nicht: %v", st)
+	}
+}
+
+// Gegenprobe: ohne AEQUITAS_LEITUNG wartet niemand auf eine Leitung, auch
+// nicht nach StarteLeitung (das main immer aufruft).
+func TestAnnahme_OhneLeitungKeinWarten(t *testing.T) {
+	t.Setenv("AEQUITAS_LEITUNG", "")
+	altGestartet := leistungGestartet.Swap(true)
+	t.Cleanup(func() { leistungGestartet.Store(altGestartet) })
+	cs := newTestState()
+	w := "0x00000000000000000000000000000000000000e2"
+	if err := cs.annahmeBeginnen(w); err != nil {
+		t.Fatalf("ohne Leitung angehalten: %v", err)
+	}
+	cs.annahmeEnde()
+	if l := StarteLeitung(&BlockDAG{}, cs, ""); l != nil {
+		t.Fatal("ohne AEQUITAS_LEITUNG eine Leitung gebaut")
+	}
+	if err := cs.annahmeBeginnen(w); err != nil || cs.leitungGescheitert.Load() {
+		t.Fatalf("ohne Leitung nach StarteLeitung angehalten: %v (gescheitert %v)", err, cs.leitungGescheitert.Load())
+	}
+	cs.annahmeEnde()
+}
+
+// Ein Beobachter laeuft bewusst ohne Leitung: kein gescheiterter Start (er
+// haelt aus eigenem Grund an).
+func TestAnnahme_BeobachterOhneLeitungNichtGescheitert(t *testing.T) {
+	t.Setenv("AEQUITAS_LEITUNG", "an")
+	t.Setenv("AEQUITAS_LEITUNG_GENESIS", "")
+	altGestartet := leistungGestartet.Swap(true)
+	t.Cleanup(func() { leistungGestartet.Store(altGestartet) })
+	setzeBeobachterFuerTest(t, true)
+	cs := newTestState()
+	StarteLeitung(&BlockDAG{}, cs, "")
+	if cs.leitungGescheitert.Load() {
+		t.Fatal("Beobachter gilt als gescheiterter Start")
+	}
+	if err := cs.annahmeBeginnen("0x00000000000000000000000000000000000000e3"); err == nil || !strings.Contains(err.Error(), "Beobachter") {
+		t.Fatalf("Beobachter: %v", err)
+	}
+}
+
+// folgerLeitungAufbau: AEQUITAS_LEITUNG=an mit einem Genesis-Satz, in dem die
+// kleinste Adresse (der Startleiter) jemand anders ist -- dieser Knoten ist
+// Folger. Der Takt startet nicht (keine Goroutine ohne Ende im Test), die
+// Freiliste wird wiederhergestellt.
+func folgerLeitungAufbau(t *testing.T) (*BlockDAG, func(dag *BlockDAG, l *Leitung, cs *ChainState)) {
+	t.Helper()
+	k, _ := crypto.GenerateKey()
+	ich := strings.ToLower(crypto.PubkeyToAddress(k.PublicKey).Hex())
+	leiter := "0x0000000000000000000000000000000000000001"
+	t.Setenv("AEQUITAS_LEITUNG", "an")
+	t.Setenv("AEQUITAS_LEITUNG_GENESIS", leiter+"=http://203.0.113.1:8080,"+ich+"=http://203.0.113.2:8080")
+	altGestartet := leistungGestartet.Swap(true)
+	altTakt := leitungTaktStarten
+	altFrei := rpcRateLimitFreiListe.Load()
+	t.Cleanup(func() {
+		leistungGestartet.Store(altGestartet)
+		leitungTaktStarten = altTakt
+		rpcRateLimitFreiListe.Store(altFrei)
+	})
+	return &BlockDAG{signingKey: k}, altTakt
+}
+
+// Der Erfolgsweg (Pruefung von #329, Befund 3): als Folger steht die Leitung
+// in cs.leitung, BEVOR der Start als versucht gilt (geprueft im Takt-Start,
+// der nach dem Speichern und vor der Rueckkehr laeuft), und die Annahme geht
+// danach an den Leiter (ErrNichtLeiter), nicht lokal.
+func TestAnnahme_FolgerMitLeitung(t *testing.T) {
+	dag, _ := folgerLeitungAufbau(t)
+	cs := newTestState()
+	taktGestartet := false
+	leitungTaktStarten = func(_ *BlockDAG, l *Leitung, c *ChainState) {
+		taktGestartet = true
+		if c.leitung.Load() != l {
+			t.Error("Takt startet, bevor die Leitung gespeichert ist")
+		}
+		if c.leitungStartVersucht.Load() {
+			t.Error("Start gilt als versucht, bevor er zurueckkehrt")
+		}
+	}
+	l := StarteLeitung(dag, cs, "")
+	if l == nil || cs.leitung.Load() != l || !taktGestartet {
+		t.Fatalf("Leitung nicht gebaut (l=%v, gespeichert=%v, Takt=%v)", l != nil, cs.leitung.Load() != nil, taktGestartet)
+	}
+	if !cs.leitungStartVersucht.Load() || cs.leitungGescheitert.Load() {
+		t.Fatalf("nach dem Start: versucht %v, gescheitert %v", cs.leitungStartVersucht.Load(), cs.leitungGescheitert.Load())
+	}
+	if err := cs.annahmeBeginnen("0x00000000000000000000000000000000000000e4"); !errors.Is(err, ErrNichtLeiter) {
+		t.Fatalf("Folger nach dem Start: %v, erwartet ErrNichtLeiter", err)
+	}
+}
+
+// Gegenprobe zu Befund 1 (Pruefung von #329): viele Annahmen laufen, waehrend
+// die Leitung startet. Keine einzige darf lokal angenommen werden -- weder vor
+// dem Start (Pause) noch danach (Folger). Die Umschaltkante selbst ist hier
+// zu schmal, um sie sicher zu treffen; die Reihenfolge, die sie schliesst,
+// prueft TestAnnahme_LeitungVorDemTor.
+func TestAnnahme_UmschaltkanteNimmtNichtAn(t *testing.T) {
+	dag, _ := folgerLeitungAufbau(t)
+	leitungTaktStarten = func(*BlockDAG, *Leitung, *ChainState) {}
+	w := "0x00000000000000000000000000000000000000e5"
+	for runde := 0; runde < 100; runde++ {
+		cs := newTestState()
+		var angenommen atomic.Int64
+		los := make(chan struct{})
+		var wg sync.WaitGroup
+		for g := 0; g < 32; g++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				<-los
+				for i := 0; i < 50; i++ {
+					if cs.annahmeBeginnen(w) == nil {
+						angenommen.Add(1)
+						cs.annahmeEnde()
+					}
+					if cs.annahmeBeginnenLeiter() == nil {
+						angenommen.Add(1)
+						cs.annahmeEnde()
+					}
+				}
+			}()
+		}
+		close(los)
+		StarteLeitung(dag, cs, "")
+		wg.Wait()
+		if n := angenommen.Load(); n != 0 {
+			t.Fatalf("Runde %d: %d Annahmen lokal auf dem Folger", runde, n)
+		}
+	}
+}
+
+// Befund 1 aus der Pruefung von #329, ohne Zufall: das Tor liest cs.leitung,
+// die Pause den Merker. Steht das Tor vorn, sieht eine Annahme an der
+// Umschaltkante "keine Leitung" und danach "Start versucht" und nimmt lokal
+// an. Darum fragt jeder annehmende Weg leitungNichtBereit, BEVOR er
+// cs.leitung liest (Syntaxbaum, nicht Textsuche).
+func TestAnnahme_LeitungVorDemTor(t *testing.T) {
+	for _, f := range []struct{ datei, fn, vorher, nachher string }{
+		{"annahme_tor.go", "annahmeBeginnen", "cs.leitungNichtBereit", "cs.pruefeAnnahmeTorFuer"},
+		{"validator_bindung_annahme.go", "annahmeBeginnenLeiter", "cs.leitungNichtBereit", "cs.leitung.Load"},
+		{"validator_bindung_annahme.go", "annahmeBeginnenLeiter", "cs.leitungNichtBereit", "cs.pruefeAnnahmeTorFuer"},
+	} {
+		datei, err := parser.ParseFile(token.NewFileSet(), f.datei, nil, 0)
+		if err != nil {
+			t.Fatalf("%s: %v", f.datei, err)
+		}
+		var rumpf []ast.Stmt
+		for _, d := range datei.Decls {
+			if fn, ok := d.(*ast.FuncDecl); ok && fn.Name.Name == f.fn {
+				rumpf = fn.Body.List
+			}
+		}
+		if rumpf == nil {
+			t.Fatalf("%s: %s nicht gefunden", f.datei, f.fn)
+		}
+		erste := func(aufruf string) int {
+			for i, st := range rumpf {
+				gefunden := false
+				ast.Inspect(st, func(n ast.Node) bool {
+					if c, ok := n.(*ast.CallExpr); ok && types.ExprString(c.Fun) == aufruf {
+						gefunden = true
+					}
+					return !gefunden
+				})
+				if gefunden {
+					return i
+				}
+			}
+			return -1
+		}
+		i, j := erste(f.vorher), erste(f.nachher)
+		if i < 0 || j < 0 || i >= j {
+			t.Errorf("%s: %s (Anweisung %d) muss vor %s (Anweisung %d) stehen", f.fn, f.vorher, i, f.nachher, j)
+		}
+		// ... und die Ablehnung kehrt zurueck (Pruefung von #329, Befund 6).
+		if i >= 0 {
+			wi, ok := rumpf[i].(*ast.IfStmt)
+			zurueck := false
+			if ok {
+				for _, st := range wi.Body.List {
+					if _, r := st.(*ast.ReturnStmt); r {
+						zurueck = true
+					}
+				}
+			}
+			if !zurueck {
+				t.Errorf("%s: die Anweisung mit %s kehrt bei Ablehnung nicht zurueck", f.fn, f.vorher)
+			}
+		}
+	}
+}
+
+// aufrufStellen: die erste Stelle jedes Aufrufs (als Text, etwa
+// "cs.leitung.Load") im Rumpf von fn in datei.
+func aufrufStellen(t *testing.T, datei, fn string) map[string]token.Pos {
+	t.Helper()
+	f, err := parser.ParseFile(token.NewFileSet(), datei, nil, 0)
+	if err != nil {
+		t.Fatalf("%s: %v", datei, err)
+	}
+	stellen := map[string]token.Pos{}
+	gefunden := false
+	for _, d := range f.Decls {
+		fd, ok := d.(*ast.FuncDecl)
+		if !ok || fd.Name.Name != fn {
+			continue
+		}
+		gefunden = true
+		ast.Inspect(fd.Body, func(n ast.Node) bool {
+			if c, ok := n.(*ast.CallExpr); ok {
+				k := types.ExprString(c.Fun)
+				if _, da := stellen[k]; !da {
+					stellen[k] = c.Pos()
+				}
+			}
+			return true
+		})
+	}
+	if !gefunden {
+		t.Fatalf("%s: %s nicht gefunden", datei, fn)
+	}
+	return stellen
+}
+
+// Befund 6 aus der Pruefung von #329: die Reihenfolgen, an denen das
+// Startfenster haengt. StarteLeitung setzt gescheitert VOR versucht (sonst
+// saehe ein Leser kurz "versucht, nicht gescheitert, keine Leitung");
+// leitungNichtBereit liest versucht VOR gescheitert (aus demselben Grund);
+// der RPC-Weg fragt die Pause vor dem Tor und vor der Nonce-Reservierung.
+func TestAnnahme_MerkerReihenfolge(t *testing.T) {
+	for _, f := range []struct{ datei, fn, vorher, nachher string }{
+		{"leitung_netz.go", "StarteLeitung", "cs.leitungGescheitert.Store", "cs.leitungStartVersucht.Store"},
+		{"annahme_pause.go", "leitungNichtBereit", "cs.leitungStartVersucht.Load", "cs.leitungGescheitert.Load"},
+		{"evm_rpc.go", "sendRawTransaction", "s.state.annahmePauseGrund", "s.state.pruefeAnnahmeTorFuer"},
+		{"evm_rpc.go", "sendRawTransaction", "s.state.annahmePauseGrund", "s.reserveNoncePerItem"},
+		// Das Tor selbst und seine Nachbarn: erst der Merker, dann cs.leitung
+		// (Pruefung von #329, Befund 11).
+		{"annahme_tor.go", "nimmtAnFuer", "cs.leitungNichtBereit", "cs.leitung.Load"},
+		{"zustaendigkeit.go", "SystemauftraegeHier", "cs.leitungNichtBereit", "cs.leitung.Load"},
+		{"leitung_netz.go", "LeitungStand", "cs.leitungGescheitert.Load", "cs.leitung.Load"},
+	} {
+		st := aufrufStellen(t, f.datei, f.fn)
+		v, okV := st[f.vorher]
+		n, okN := st[f.nachher]
+		if !okV || !okN || v >= n {
+			t.Errorf("%s: %s muss vor %s stehen (gefunden %v/%v)", f.fn, f.vorher, f.nachher, okV, okN)
+		}
 	}
 }

@@ -64,14 +64,15 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
    `runAtomicDistributionWithOutbox`, `RegisterHumanAtomic` und
    `RegisterHuman` sowie `RetryRegistrationRecoveries` und der
    WAL-Wiederanlauf den Ausgang; Überweisungen sperrt `annahmeBeginnen`.)
-8. **Folger nimmt beim Start bis zu 30 s ohne Leitung an** (Prüfung von
-   #322, INFO-7; bestand schon vorher): Bis `StarteLeitung` läuft, ist
-   `cs.leitung` nil und `nimmtAnFuer()` true, auch mit `AEQUITAS_LEITUNG=an`;
-   Überweisung, Tausch und Faucet nehmen dann lokal an, statt
-   weiterzuleiten. Fix: pausieren, solange `leitungAn()` und der Start der
-   Leitung noch nicht versucht wurde (versucht, nicht gelungen -- sonst
-   hielte eine kaputte Leitung den Knoten für immer an).
-9. **WAL nach einem Rollenwechsel ohne Deckungsprüfung** (Prüfung von
+   Dazu (Prüfung von #329, INFO-13): Auf jedem nicht annehmenden Knoten
+   (Folger, Leitung startet oder gescheitert) schreibt `/api/register` einen
+   Vor-EVM-Intent und löscht ihn nach der Ablehnung an der EVM-Übergabe;
+   scheitert das Löschen oder stürzt der Prozess dazwischen ab, registriert
+   `RetryRegistrationRecoveries` im Zweig `evm_tx_hash = ''` den Menschen
+   lokal per `RegisterHumanAtomic`, ohne Pause und ohne EVM-Transaktion
+   (der Kommentar dort sagt „leave pending“). Fix: diesen Zweig nur
+   schließen, nicht registrieren lassen.
+8. **WAL nach einem Rollenwechsel ohne Deckungsprüfung** (Prüfung von
    #322, INFO-15): Ein Beobachter liest das WAL nicht ein, die Datei bleibt
    liegen. Startet ein abgestürzter Validator mit ungeflushten Sätzen erst
    als Beobachter (spielt fremde Blöcke nach, `wal_seq` bleibt stehen) und
@@ -247,6 +248,17 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
   `SNAPSHOT_TOKEN`; mit 8080 nur auf IPv4 (siehe unten) entfällt der Weg.
 
 ## Betrieb – bei dir
+- **`AEQUITAS_LEITUNG=an` und gescheiterter Start** (seit #329, fail-closed):
+  Ist der Signierschlüssel (`RELAYER_PRIVATE_KEY`) ungültig – fehlt er,
+  erzeugt der Knoten einen – oder `AEQUITAS_LEITUNG_GENESIS` ungültig, nimmt
+  der Knoten nichts an (wiederholbar abgelehnt) und führt keine
+  Systemaufträge aus, statt lokal anzunehmen. Lesen geht weiter;
+  `/api/register` läuft wie auf einem Folger durch die Prüfungen und scheitert
+  erst an der EVM-Übergabe (`-32005`, Nonce unverbraucht) – registriert wird
+  nur am annehmenden Knoten (Prüfung von #329, INFO-12). Zu sehen in `/api/health/combined` → `leitung` →
+  `gescheitert: true` bzw. `annahme_pause` → `leitung_gescheitert`, im Log
+  `[LEITUNG] ✗`. Nach der Korrektur neu starten. Während des Starts (bis die
+  Leitung läuft) zeigt `annahme_pause` → `leitung_startet`.
 - **Proxy nur im Docker-Netz** (Prüfung von #325, LOW-2): Der Knoten glaubt
   `X-Forwarded-For` nie vom Gateway seines Docker-Netzes. Ein Proxy auf dem
   Host selbst (Dienst, `network_mode: host`, über `127.0.0.1:8080` oder die

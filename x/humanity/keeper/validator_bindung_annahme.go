@@ -82,6 +82,12 @@ var validatorBindungLaufend atomic.Int64
 // gehoert -- nur der Leiter nimmt an, oder ohne Leitung der eine Knoten, der
 // ausdruecklich als Annehmender eingestellt ist. Mit annahmeEnde abschliessen.
 func (cs *ChainState) annahmeBeginnenLeiter() error {
+	// Die Leitung VOR cs.leitung (annahmeBeginnen; Pruefung von #329,
+	// Befund 1).
+	if err := cs.leitungNichtBereit(); err != nil {
+		annahmePausiertAbgelehnt.Add(1)
+		return err
+	}
 	if cs.leitung.Load() == nil && !cs.annehmendAusdruecklich.Load() {
 		abgelehnteUeberweisungen.Add(1)
 		return errKeinAlleinigerAnnehmer

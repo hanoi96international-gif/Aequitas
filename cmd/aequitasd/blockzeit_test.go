@@ -211,3 +211,12 @@ func main() {
 		t.Fatal("Probe kaputt")
 	}
 }
+
+// Mit AEQUITAS_LEITUNG=an haelt die Annahme an, bis StarteLeitung gelaufen
+// ist (annahme_pause.go). main muss es darum immer aufrufen -- als eigene
+// Anweisung, nicht hinter einer Bedingung, die es auslassen koennte.
+func TestMain_StartetLeitung(t *testing.T) {
+	if direkterAufruf(mainAnweisungen(t), "keeper", "StarteLeitung") < 0 {
+		t.Fatal("main ruft keeper.StarteLeitung nicht als eigene Anweisung auf -- mit AEQUITAS_LEITUNG=an bliebe die Annahme angehalten")
+	}
+}
