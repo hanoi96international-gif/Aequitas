@@ -103,6 +103,14 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
      der Prozess dann zwischen EVM und eigener Zeile ab, ist nichts
      vorgemerkt. Fail-closed wäre: ablehnen, solange noch keine
      EVM-Transaktion lief.
+   - *3. Durchgang, INFO-1 (bestand schon vorher):* Zeilen mit NULL in
+     `nullifier` oder `pending_tx_json` scheitern beim Scan von
+     `RetryRegistrationRecoveries` und werden still übersprungen (zählen aber
+     zur Grenze). Die heutigen Schreiber legen kein NULL ab. Fix: `COALESCE`
+     im SELECT.
+   - *3. Durchgang, INFO-2 (bestand schon vorher):* Eine Panik in
+     `flushEVMMirrorDirty` beendet den Spiegel-Arbeiter dauerhaft. Fix:
+     `SafeCall` um jeden Takt.
    - *2. Durchgang, INFO-5:* Der Degraded-Grund steht im öffentlichen
      `/api/health/combined` und enthält Wallet, Hash und rohe DB-Fehlertexte
      (keine Geheimnisse). Optional: öffentlich neutral, Details nur ins Log.
