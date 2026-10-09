@@ -189,28 +189,39 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
 - Die Freiliste wird etwa einmal je Minute neu aufgebaut: wer den Satz
   verlässt, bleibt bis zu 60 s frei, neue Mitglieder sind bis zu 60 s
   begrenzt.
-- **Geteilte Karten der Grenzen je Absender** (Prüfung von #324, LOW-6;
-  `begrenzte_karte.go`): Seit #324 halten `registerRateLimit`, `ipBurst`,
-  `rpcRateLimit` und `walletRateLimit` je höchstens 200.000 Schlüssel; voll
-  heißt, neue Absender werden begrenzt. Ein Absender belegt aber je Funktion
-  einen Schlüssel – in `registerRateLimit` bis zu zehn, in `ipBurst` bis zu
-  sieben (mit Erneuerung und Prüfbudget aus #319). 20.000 bzw. etwa 28.600
-  Absender (mit IPv6 je /64: weniger als ein /48)
-  füllen eine Karte, danach sind alle neuen Absender dieser Karte gesperrt,
-  solange der Angreifer etwa 3.300 Anfragen je Sekunde hält. Eigene Karten
-  haben seit #325 die Validator-Bindung (`bindungRateLimit`, Fehlversuche je
-  IP) und die frei gewählten Wallets, seit dem Folge-PR auch die Grenze je
-  Betreiber (`betreiberRateLimit`; ihre Schlüssel entstehen nur nach einer
-  angenommenen, unterschriebenen Bindung) und mit #319 die weitergeleiteten
-  Erneuerungen, deren Absender der Folger bestimmt
-  (`erneuerung_weitergeleitet`). Rest (Prüfung von #325, LOW-1
-  und INFO-6): `bindungRateLimit` füllen ungültige Bindungen aus 200.000 /64
-  (drei bis vier /48, 2.100–5.700 Anfragen je Sekunde zum Halten) – danach
-  bekommt jeder neue Absender bei der Bindung 429; `walletRateLimit` füllen
-  schon 8.000–17.000 /64 (12 Wallets je Minute und Absender) – danach
-  bekommt jede neue Wallet bei `/api/prove` 429. Fix: ein Eintrag je
-  Absender mit den Werten je Funktion; bei voller Karte gröber zählen
-  (/48, /24) statt global zu sperren.
+- **Volle Karten der Grenzen je Absender** (Prüfung von #324, LOW-6, und
+  #325, INFO-6; `begrenzte_karte.go`): `registerRateLimit`, `ipBurst`,
+  `rpcRateLimit`, `walletRateLimit` und `bindungRateLimit` halten je
+  höchstens 200.000 Schlüssel. Ein Angreifer füllt eine davon mit wenigen
+  Netzen – ein Absender belegt je Funktion einen Schlüssel (in `ipBurst` mit
+  Erneuerung und Prüfbudget aus #319 bis zu sieben), ein /48 hat 65.536 /64,
+  `walletRateLimit` füllen schon 8.000–17.000. Bisher war danach jeder neue
+  Absender gesperrt. Seit dem
+  Folge-PR zählt ein neuer Absender bei voller Karte unter seinem Netz: IPv4
+  je /24, IPv6 je /48, über alle Funktionen der Karte, in einer eigenen
+  Karte mit höchstens 50.000 Netzen; von einem IPv6-/32 zählen höchstens 64
+  /48 je für sich, jedes weitere unter dem /32. Bei `/api/prove` zählt dann
+  statt der Wallet das Netz des Absenders. Rest, bewusst so:
+  (a) Solange eine Karte voll ist, teilen sich alle neuen Absender eines
+  Netzes eine Grenze, über die Funktionen hinweg (zum Beispiel `/api/humans`
+  und `/api/price-history` ein 30-s-Fenster je /24); eine einzige Adresse in
+  einem fremden /24 kann dessen Grenze aufbrauchen. (b) Wer Adressen in
+  50.000 verschiedenen /24 hat (gemietete Residential-Proxys, eine Adresse
+  je /24 genügt) oder rund 770 IPv6-/32, füllt auch die Netzkarte und hält
+  sie mit etwa 50.000 Anfragen je Minute – dann ist jedes neue Netz
+  gesperrt (fail-closed), wie bisher bei voller Karte. Weiter nur mit einer
+  Quote je IPv4-/16 (trifft große Provider) oder Verdrängen statt Sperren
+  (lockert die Grenze für den Angreifer). (c) Bei voller Wallet-Karte gilt
+  für neue Wallets die Grenze je Netz statt je Wallet: dieselbe neue Wallet
+  kommt aus drei Netzen binnen 15 s dreimal durch; es bleiben die Grenze je
+  IP bei `/api/prove` (12 je Minute) und die Bescheinigung, die der
+  Proof-Server verlangt. (d) Die weitergeleiteten Erneuerungen
+  (`erneuerung_weitergeleitet`, #319) haben keine Netzkarte: ihr Absender
+  steht im Nachweis des Folgers, nicht in der Verbindung; voll trifft dort
+  nur neue weitergeleitete Erneuerungen. Speicher: die Netzkarten zusammen
+  bis etwa 100 MB ohne Buchungen; jede Buchung im Fenster kostet etwa 24 B
+  dazu, gedeckelt durch die Anfragerate. Erkennbar in `/api/health/combined` →
+  `grenzen_je_absender.<karte>.je_netz_gezaehlt` und `.grob`.
 - **Zwei anhängende Proxys** (Prüfung von #324, INFO-4/INFO-9): `clientIP`
   nimmt den letzten Eintrag von `X-Forwarded-For` – richtig hinter genau
   einem Proxy (Caddy). Kommt ein zweiter davor (CDN, Load-Balancer), ist der
