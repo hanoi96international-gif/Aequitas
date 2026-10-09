@@ -192,3 +192,64 @@ func TestEigeneGateways_NichtLesbarImStand(t *testing.T) {
 		t.Fatalf("Stand meldet lesbare Routen: %v", st)
 	}
 }
+
+// Pruefung von #326, LOW-1: die Meldung bei verworfenem X-Forwarded-For vom
+// Gateway ist gedrosselt -- den Kopf setzt ein Client von aussen, jede
+// Anfrage eine Logzeile waere eine Logflut. Gezaehlt wird jede.
+func TestXffVomGateway_MeldungGedrosselt(t *testing.T) {
+	xffVomGatewayGemeldet.Store(0)
+	t.Cleanup(func() { xffVomGatewayGemeldet.Store(0) })
+	vorZaehler, vorMeldungen := xffVomGatewayVerworfen.Load(), xffVomGatewayMeldungen.Load()
+	for i := 0; i < 1000; i++ {
+		xffVomGatewayVerworfenMelden("172.18.0.1")
+	}
+	if n := xffVomGatewayVerworfen.Load() - vorZaehler; n != 1000 {
+		t.Fatalf("%d gezaehlt, erwartet 1000", n)
+	}
+	if n := xffVomGatewayMeldungen.Load() - vorMeldungen; n != 1 {
+		t.Fatalf("%d Meldungen fuer 1000 verworfene Koepfe binnen einer Minute, erwartet 1", n)
+	}
+	xffVomGatewayGemeldet.Store(time.Now().Unix() - 61)
+	for i := 0; i < 1000; i++ {
+		xffVomGatewayVerworfenMelden("172.18.0.1")
+	}
+	if n := xffVomGatewayMeldungen.Load() - vorMeldungen; n != 2 {
+		t.Fatalf("%d Meldungen nach einer Minute, erwartet 2", n)
+	}
+}
+
+// Pruefung von #326, INFO-4 (M9, M17): gemeldet wird jeder Wechsel lesbar <->
+// nicht lesbar, je einmal -- nicht jedes Lesen.
+func TestEigeneGateways_MeldungBeiJedemWechsel(t *testing.T) {
+	fehler := true
+	gatewaysSetzen(t, func() (map[string]bool, error) {
+		if fehler {
+			return nil, errors.New("kein /proc")
+		}
+		return map[string]bool{"172.18.0.1": true}, nil
+	})
+	gatewayGemeldet.Store(false)
+	t.Cleanup(func() { gatewayGemeldet.Store(false) })
+	vor := gatewayWechselMeldungen.Load()
+	lesen := func() {
+		gatewayCache.Store(nil)
+		eigeneGateways()
+	}
+	for i, schritt := range []struct {
+		fehler    bool
+		gemeldet  bool
+		meldungen int64
+	}{
+		{true, true, 1},   // nicht lesbar: gemeldet
+		{true, true, 1},   // weiter nicht lesbar: nicht noch einmal
+		{false, false, 2}, // wieder lesbar: gemeldet
+		{false, false, 2}, // weiter lesbar: nicht noch einmal
+		{true, true, 3},   // wieder nicht lesbar: gemeldet
+	} {
+		fehler = schritt.fehler
+		lesen()
+		if g, n := gatewayGemeldet.Load(), gatewayWechselMeldungen.Load()-vor; g != schritt.gemeldet || n != schritt.meldungen {
+			t.Fatalf("Schritt %d: gemeldet %v, Meldungen %d -- erwartet %v, %d", i, g, n, schritt.gemeldet, schritt.meldungen)
+		}
+	}
+}
