@@ -768,19 +768,21 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		// Seite des Flushs sich ein Rueckstau staut.
 		"wal_warteschlange": a.state.WALFlushQueueDepth(),
 		// Bloecke aus dem Speicher (speicherkorb.go, AEQUITAS_BLOCK_AUS_SPEICHER).
-		"speicherkorb":     a.state.SpeicherKorbStand(),
-		"wal_druck":        WALDruckStand(),
-		"admission":        AdmissionStats(),
-		"wal_writer":       wal.WriterStats(),
-		"wal_vornuller":    a.state.WALVornullerStand(),
-		"tx_index":         TxIndexStats(),
-		"receipt_flush":    a.blockchain.state.ReceiptFlushStand(),
-		"receipt_prune":    ReceiptPruneStand(),
-		"pending_leichen":  PendingLeichenStand(),
-		"tx_batch_cache":   a.blockchain.state.TxBatchCacheStand(),
-		"push_gzip":        GzipPushStand(),
-		"eigenlast_bremse": EigenlastBremseStand(),
-		"divergenz":        DivergenzStand(),
+		"speicherkorb": a.state.SpeicherKorbStand(),
+		"wal_druck":    WALDruckStand(),
+		"admission":    AdmissionStats(),
+		// Wie voll die Karten der Grenzen je Absender sind (begrenzte_karte.go).
+		"grenzen_je_absender": GrenzenJeAbsenderStand(),
+		"wal_writer":          wal.WriterStats(),
+		"wal_vornuller":       a.state.WALVornullerStand(),
+		"tx_index":            TxIndexStats(),
+		"receipt_flush":       a.blockchain.state.ReceiptFlushStand(),
+		"receipt_prune":       ReceiptPruneStand(),
+		"pending_leichen":     PendingLeichenStand(),
+		"tx_batch_cache":      a.blockchain.state.TxBatchCacheStand(),
+		"push_gzip":           GzipPushStand(),
+		"eigenlast_bremse":    EigenlastBremseStand(),
+		"divergenz":           DivergenzStand(),
 		// The request split, so the ~50ms per transfer that TransferAtomic does
 		// not account for can be subtracted out instead of guessed at. Read
 		// unaccounted_in_send_ms first; see rpc_phase_stats.go.
@@ -1979,16 +1981,20 @@ var (
 	// never expires — set it to permanently refuse a peer that has repeatedly
 	// attacked (e.g. PEER_PUSH_DENYLIST=178.105.186.119). Checked before the body
 	// is read.
-	blockPushIPDenylist = func() map[string]bool {
-		m := map[string]bool{}
-		for _, ip := range strings.Split(os.Getenv("PEER_PUSH_DENYLIST"), ",") {
-			if ip = strings.TrimSpace(ip); ip != "" {
-				m[ip] = true
-			}
-		}
-		return m
-	}()
+	blockPushIPDenylist = pushDenylist(os.Getenv("PEER_PUSH_DENYLIST"))
 )
+
+// pushDenylist liest PEER_PUSH_DENYLIST (durch Kommas getrennt) in der
+// Schreibweise von clientIP: ein IPv6-Eintrag sperrt sein /64.
+func pushDenylist(roh string) map[string]bool {
+	m := map[string]bool{}
+	for _, ip := range strings.Split(roh, ",") {
+		if ip = strings.TrimSpace(ip); ip != "" {
+			m[absenderSchluessel(ip)] = true
+		}
+	}
+	return m
+}
 
 // blockPushShouldDrop reports whether an inbound push from ip must be dropped
 // now without reading its body — either a permanent denylist entry or an open
@@ -3479,28 +3485,35 @@ func (a *APIServer) handleProveProxy(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "request must contain exactly one \"wallet\" field", http.StatusBadRequest)
 		return
 	}
-	if proveWallet != "" {
-		walletKey := "prove-wallet:" + proveWallet
-		if ts, loaded := registerRateLimit.Load(walletKey); loaded {
-			if time.Since(ts.(time.Time)) < 15*time.Second {
-				jsonError(w, "rate limited, try again shortly", 429)
-				return
-			}
-		}
-		registerRateLimit.Store(walletKey, time.Now())
+	// Eine gueltige Adresse, bevor sie ein Schluessel wird (Pruefung von
+	// #324, MEDIUM-2: der Schluessel war so lang wie der Rumpf, 64 KiB). Der
+	// Proof-Server verlangt sie ohnehin (server.js, /prove).
+	if !isValidWalletAddr(proveWallet) {
+		jsonError(w, "invalid wallet address", http.StatusBadRequest)
+		return
 	}
-	// FIX (Gesamtaudit 2026-06-28, P2-8): the wallet-keyed throttle above
+	// FIX (Gesamtaudit 2026-06-28, P2-8): the wallet-keyed throttle below
 	// doesn't stop an attacker rotating wallet addresses from a single
 	// browser/IP — each new wallet gets its own fresh 15s budget. This is
 	// the one layer that still sees the ORIGINAL caller's IP before the
 	// request collapses into this proxy's own outbound IP at the proof
 	// server, so add that as a second, independent key.
 	// Je IP ein Burst (ip_burst.go): Gruppen hinter einer Adresse blockieren
-	// sich nicht mehr gegenseitig; die Wallet-Grenze oben bleibt.
+	// sich nicht mehr gegenseitig. Die Grenze je IP kommt ZUERST: sonst legte
+	// jede Anfrage einen Wallet-Schluessel an, auch die abgewiesenen, und eine
+	// einzige IP fuellte die Karte (Pruefung von #324, HIGH-1).
 	if !burstErlaubt("prove:"+clientIP(r), burstProveJeIP, burstFenster) {
 		jsonError(w, "rate limited, try again shortly", 429)
 		return
 	}
+	walletKey := "prove-wallet:" + proveWallet
+	if ts, loaded := walletRateLimit.Load(walletKey); loaded {
+		if time.Since(ts.(time.Time)) < 15*time.Second {
+			jsonError(w, "rate limited, try again shortly", 429)
+			return
+		}
+	}
+	walletRateLimit.Store(walletKey, time.Now())
 	if len(proofServerURLs()) == 0 {
 		http.Error(w, `{"error":"no PROOF_SERVER_URL/PROOF_SERVER_URLS configured on this node"}`, 503)
 		return

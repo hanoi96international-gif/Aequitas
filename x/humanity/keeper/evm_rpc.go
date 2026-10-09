@@ -47,7 +47,9 @@ func evmRPCVerboseLog() bool {
 // cooldown-timestamp pattern used elsewhere in this codebase) since a
 // legitimate wallet/dashboard needs to make several RPC calls per page
 // load, not just one every few seconds.
-var rpcRateLimit sync.Map // ip -> *rpcRateLimitEntry
+// rpcRateLimit: ip -> *rpcRateLimitEntry, hoechstens
+// grenzenSchluesselHoechstens Absender (begrenzte_karte.go).
+var rpcRateLimit = neueBegrenzteKarte("rpc", grenzenSchluesselHoechstens, nil)
 
 type rpcRateLimitEntry struct {
 	mu          sync.Mutex
@@ -129,7 +131,10 @@ func rpcRateLimitMaxFromEnv() int {
 // rpcRateLimited reports whether ip has exceeded rpcRateLimitMax requests
 // within the current rpcRateLimitWindow, incrementing its counter either way.
 func rpcRateLimited(ip string) bool {
-	v, _ := rpcRateLimit.LoadOrStore(ip, &rpcRateLimitEntry{windowStart: time.Now()})
+	v, ok := rpcRateLimit.LoadOrStore(ip, &rpcRateLimitEntry{windowStart: time.Now()})
+	if !ok {
+		return true // voll: ein neuer Absender wird begrenzt (begrenzte_karte.go)
+	}
 	entry := v.(*rpcRateLimitEntry)
 	entry.mu.Lock()
 	defer entry.mu.Unlock()
