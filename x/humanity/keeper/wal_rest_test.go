@@ -10,9 +10,9 @@ import (
 	"github.com/lib/pq"
 )
 
-// Pruefung von #322, INFO-15: ein abgestuerzter Validator mit ungeflushtem
-// WAL-Satz laeuft erst als Beobachter (spielt fremde Bloecke ohne den Satz
-// nach), dann wieder als Validator.
+// Pruefung von #322, INFO-15, und von #331: ein Knoten mit ungeflushtem
+// WAL-Satz, der den Rest nicht einspielt (Beobachter, WAL aus, Wiederanlauf
+// gescheitert), darf nicht starten.
 
 // walRestAnlegen: Validator A ueberweist 42 ueber das WAL und "stuerzt ab",
 // bevor der Satz in Postgres steht.
@@ -20,9 +20,6 @@ func walRestAnlegen(t *testing.T, walPath string) (from, to string) {
 	t.Helper()
 	truncateDistTestTables(t)
 	csA := newWALTestState(t, walPath)
-	if _, err := csA.db.Exec(`DELETE FROM wal_geparkt`); err != nil {
-		t.Fatal(err)
-	}
 	untergrenzeZuruecksetzen(t, csA)
 	from, to = distTestAddr(840), distTestAddr(841)
 	seedConcurrentTestAccount(t, csA, from, 1000, time.Now().Unix())
@@ -79,56 +76,9 @@ func speicherStand(t *testing.T, cs *ChainState, addr string) Decimal {
 	return acc.Balance
 }
 
-// Der PoC: als Beobachter hat der Knoten Bloecke nachgespielt, die den
-// Absender leerten (wal_seq bleibt stehen). Der Wiederanlauf als Validator
-// wandte den alten Satz an: Kontostand -42,042 und eine Zeile im Ausgang.
-// Jetzt: geparkt, nicht angewandt, nichts im Ausgang.
-func TestWAL_WiederanlaufNachBeobachterParktUngedecktes_RealDB(t *testing.T) {
-	walPath := filepath.Join(t.TempDir(), "rollenwechsel.wal")
-	from, to := walRestAnlegen(t, walPath)
-	// Der Beobachter: ohne WAL (er liest es nicht ein).
-	t.Setenv("AEQUITAS_WAL_ENABLED", "")
-	csB0 := testKnoten(t, "unused-wal-test.json")
-	if csB0.wal != nil {
-		t.Fatal("Vorbedingung: Hilfsknoten ohne WAL")
-	}
-	// Was das Nachspielen fremder Bloecke als Beobachter schrieb: 42 deckt
-	// den Betrag, nicht aber Betrag und Gebuehr.
-	if _, err := csB0.db.Exec(`UPDATE chain_accounts SET balance = 42 WHERE lower(address) = $1`, from); err != nil {
-		t.Fatal(err)
-	}
-	var vorher int
-	csB0.db.QueryRow(`SELECT COUNT(*) FROM pending_txs`).Scan(&vorher)
-
-	for runde := 1; runde <= 2; runde++ { // zweiter Start: wieder geparkt, nicht doppelt
-		csC := newWALTestState(t, walPath)
-		if b := speicherStand(t, csC, from); b.Float() != 42 {
-			t.Fatalf("Runde %d: Absender im Speicher %s, erwartet 42", runde, b)
-		}
-		if b := speicherStand(t, csC, to); !b.IsZero() {
-			t.Fatalf("Runde %d: Empfaenger im Speicher %s -- Geld ohne Abbuchung", runde, b)
-		}
-		csC.FlushWALNow()
-		if b := dbStand(t, csC, from); b != 42 {
-			t.Fatalf("Runde %d: Absender in Postgres %v", runde, b)
-		}
-		var nachher, geparkt int
-		csC.db.QueryRow(`SELECT COUNT(*) FROM pending_txs`).Scan(&nachher)
-		csC.db.QueryRow(`SELECT COUNT(*) FROM wal_geparkt WHERE von = $1 AND an = $2 AND betrag = 42`, from, to).Scan(&geparkt)
-		if nachher != vorher || geparkt != 1 {
-			t.Fatalf("Runde %d: Ausgang %d -> %d, geparkt %d", runde, vorher, nachher, geparkt)
-		}
-		if !strings.Contains(csC.BootstrapDegradedReason(), "wal_geparkt") {
-			t.Fatalf("Runde %d: kein Hinweis fuer den Betreiber: %q", runde, csC.BootstrapDegradedReason())
-		}
-		csC.stopWALFlushWorkerForTest()
-		csC.wal.Close()
-	}
-}
-
-// Gegenprobe: im gewoehnlichen Wiederanlauf (Stand gedeckt) wird der Satz
-// angewandt wie bisher, nichts geparkt.
-func TestWAL_WiederanlaufGedecktWendetAn_RealDB(t *testing.T) {
+// Gegenprobe: der gewoehnliche Wiederanlauf als Validator spielt den Rest ein
+// und startet.
+func TestWALRest_ValidatorSpieltEinUndStartet_RealDB(t *testing.T) {
 	walPath := filepath.Join(t.TempDir(), "gewoehnlich.wal")
 	from, to := walRestAnlegen(t, walPath)
 	csC := newWALTestState(t, walPath)
@@ -138,30 +88,31 @@ func TestWAL_WiederanlaufGedecktWendetAn_RealDB(t *testing.T) {
 	if b := speicherStand(t, csC, from); b.Float() >= 1000-42 || b.IsNegative() {
 		t.Fatalf("Absender %s", b)
 	}
-	var geparkt int
-	csC.db.QueryRow(`SELECT COUNT(*) FROM wal_geparkt`).Scan(&geparkt)
-	if geparkt != 0 {
-		t.Fatalf("%d gedeckte Saetze geparkt", geparkt)
+	if err := csC.PruefeWALRest(); err != nil {
+		t.Fatalf("Validator mit eingespieltem Rest aufgehalten: %v", err)
 	}
 }
 
 // Ein Beobachter mit nicht abgeglichenem WAL startet nicht. Bewusstes
-// Verwerfen setzt die Untergrenze; der spaetere Validator wendet den Satz
-// dann nicht mehr an.
-func TestBeobachter_WALRestStartetNicht_RealDB(t *testing.T) {
+// Verwerfen gilt nur fuer genau den gemeldeten Stand (Kopf-seq) und setzt die
+// Untergrenze; der spaetere Validator wendet den Satz dann nicht mehr an, und
+// eine stehengebliebene Variable verwirft keinen neuen Rest (Pruefung #331,
+// Befund 5).
+func TestWALRest_BeobachterStartetNicht_RealDB(t *testing.T) {
 	walPath := filepath.Join(t.TempDir(), "beobachter-rest.wal")
 	from, to := walRestAnlegen(t, walPath)
 	setzeBeobachterFuerTest(t, true)
 	csB := testKnoten(t, "unused-wal-test.json")
-	err := csB.PruefeBeobachterWAL()
-	if err == nil || !strings.Contains(err.Error(), "2 Konten mit nicht abgeglichenen") {
+	err := csB.PruefeWALRest()
+	if err == nil || !strings.Contains(err.Error(), "2 Konten, bis seq 1") || !strings.Contains(err.Error(), "Beobachter") ||
+		!strings.Contains(err.Error(), "AEQUITAS_WAL_REST_VERWERFEN=1") {
 		t.Fatalf("Beobachter mit WAL-Rest: %v", err)
 	}
 	// Auch wenn nur der Empfaenger den Satz noch nicht enthaelt.
 	if _, err := csB.db.Exec(`UPDATE chain_accounts SET wal_seq = 1 WHERE lower(address) = $1`, from); err != nil {
 		t.Fatal(err)
 	}
-	if err := csB.PruefeBeobachterWAL(); err == nil {
+	if err := csB.PruefeWALRest(); err == nil {
 		t.Fatal("Beobachter startet, obwohl der Empfaenger den Satz nicht enthaelt")
 	}
 	if _, err := csB.db.Exec(`UPDATE chain_accounts SET wal_seq = 0 WHERE lower(address) = $1`, from); err != nil {
@@ -169,31 +120,34 @@ func TestBeobachter_WALRestStartetNicht_RealDB(t *testing.T) {
 	}
 	// Ohne AEQUITAS_WAL_ENABLED dasselbe: die Datei ueberlebt den Schalter.
 	t.Setenv("AEQUITAS_WAL_ENABLED", "")
-	if err := csB.PruefeBeobachterWAL(); err == nil {
+	if err := csB.PruefeWALRest(); err == nil {
 		t.Fatal("ohne AEQUITAS_WAL_ENABLED startet der Beobachter mit WAL-Rest")
 	}
 	// Mehr Konten als die Grenze: fail-closed.
-	alt := beobachterWALHoechstensKonten
-	beobachterWALHoechstensKonten = 1
-	if err := csB.PruefeBeobachterWAL(); err == nil || !strings.Contains(err.Error(), "mehr als 1 Konten") {
-		beobachterWALHoechstensKonten = alt
+	alt := walRestHoechstensKonten
+	walRestHoechstensKonten = 1
+	if err := csB.PruefeWALRest(); err == nil || !strings.Contains(err.Error(), "mehr als 1 Konten") {
+		walRestHoechstensKonten = alt
 		t.Fatalf("Kontengrenze: %v", err)
 	}
-	beobachterWALHoechstensKonten = alt
-	// Ein Tippfehler verwirft nichts.
-	t.Setenv("AEQUITAS_BEOBACHTER_WAL_VERWERFEN", "ja")
-	if err := csB.PruefeBeobachterWAL(); err == nil || csB.walRecoveryFloor() != 0 {
-		t.Fatalf("Tippfehler hat verworfen: %v, Untergrenze %d", err, csB.walRecoveryFloor())
+	walRestHoechstensKonten = alt
+	// Ein falscher Stand verwirft nichts.
+	for _, falsch := range []string{"ja", "true", "2"} {
+		t.Setenv("AEQUITAS_WAL_REST_VERWERFEN", falsch)
+		if err := csB.PruefeWALRest(); err == nil || csB.walRecoveryFloor() != 0 {
+			t.Fatalf("AEQUITAS_WAL_REST_VERWERFEN=%s hat verworfen: %v, Untergrenze %d", falsch, err, csB.walRecoveryFloor())
+		}
 	}
-	t.Setenv("AEQUITAS_BEOBACHTER_WAL_VERWERFEN", "1")
-	if err := csB.PruefeBeobachterWAL(); err != nil {
+	t.Setenv("AEQUITAS_WAL_REST_VERWERFEN", "1")
+	if err := csB.PruefeWALRest(); err != nil {
 		t.Fatalf("bewusst verworfen, startet trotzdem nicht: %v", err)
 	}
-	if csB.walRecoveryFloor() == 0 {
-		t.Fatal("Untergrenze nicht gesetzt")
+	if csB.walRecoveryFloor() != 1 {
+		t.Fatalf("Untergrenze %d, erwartet 1", csB.walRecoveryFloor())
 	}
 	// Spaeter wieder Validator: der verworfene Satz bleibt verworfen.
 	beobachterAn.Store(false)
+	t.Setenv("AEQUITAS_WAL_ENABLED", "1")
 	csC := newWALTestState(t, walPath)
 	if b := speicherStand(t, csC, from); b.Float() != 1000 {
 		t.Fatalf("verworfener Satz angewandt: Absender %s", b)
@@ -201,11 +155,68 @@ func TestBeobachter_WALRestStartetNicht_RealDB(t *testing.T) {
 	if b := speicherStand(t, csC, to); !b.IsZero() {
 		t.Fatalf("verworfener Satz angewandt: Empfaenger %s", b)
 	}
+	// Ein neuer Rest (seq 2) -- die stehengebliebene Variable (=1) verwirft ihn
+	// nicht.
+	if _, _, applied, err := csC.transferConcurrentWAL(from, to, 7, Transaction{Type: "transfer", Wallet: from, To: to, Amount: 7, TxHash: "0xwalrestneu"}); !applied || err != nil {
+		t.Fatalf("Vorbedingung: zweite Ueberweisung: applied=%v err=%v", applied, err)
+	}
+	csC.stopWALFlushWorkerForTest()
+	if err := csC.wal.Close(); err != nil {
+		t.Fatal(err)
+	}
+	setzeBeobachterFuerTest(t, true)
+	csD := testKnoten(t, "unused-wal-test.json")
+	if err := csD.PruefeWALRest(); err == nil || csD.walRecoveryFloor() != 1 {
+		t.Fatalf("stehengebliebene Variable hat einen neuen Rest verworfen: %v, Untergrenze %d", err, csD.walRecoveryFloor())
+	}
+}
+
+// Pruefung #331, Befund 3: ein Validator mit ausgeschaltetem WAL spielt den
+// Rest nicht ein -- der Absender stuende bei 1000 und koennte die schon
+// ueberwiesenen 42 ein zweites Mal ausgeben. Er startet nicht.
+func TestWALRest_ValidatorOhneWALStartetNicht_RealDB(t *testing.T) {
+	walPath := filepath.Join(t.TempDir(), "ohne-wal.wal")
+	from, _ := walRestAnlegen(t, walPath)
+	t.Setenv("AEQUITAS_WAL_ENABLED", "")
+	cs := testKnoten(t, "unused-wal-test.json")
+	if cs.wal != nil {
+		t.Fatal("Vorbedingung: WAL aus")
+	}
+	if b := speicherStand(t, cs, from); b.Float() != 1000 {
+		t.Fatalf("Vorbedingung: Rest nicht eingespielt, Absender %s", b)
+	}
+	if err := cs.PruefeWALRest(); err == nil || !strings.Contains(err.Error(), "ausgeschaltet") {
+		t.Fatalf("Validator ohne WAL mit Rest: %v", err)
+	}
+}
+
+// Pruefung #331, Befund 3: scheitert der Wiederanlauf (hier: der Empfaenger
+// fehlt in chain_accounts), lief der Knoten bisher ohne den Rest weiter.
+// Jetzt startet er nicht.
+func TestWALRest_WiederanlaufGescheitertStartetNicht_RealDB(t *testing.T) {
+	walPath := filepath.Join(t.TempDir(), "gescheitert.wal")
+	_, to := walRestAnlegen(t, walPath)
+	t.Setenv("AEQUITAS_WAL_ENABLED", "")
+	cs0 := testKnoten(t, "unused-wal-test.json")
+	if _, err := cs0.db.Exec(`DELETE FROM chain_accounts WHERE lower(address) = $1`, to); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("AEQUITAS_WAL_ENABLED", "1")
+	t.Setenv("AEQUITAS_WAL_PATH", walPath)
+	cs := testKnoten(t, "unused-wal-test.json")
+	if cs.wal != nil {
+		cs.stopWALFlushWorkerForTest()
+		cs.wal.Close()
+		t.Fatal("Vorbedingung: Wiederanlauf gelungen")
+	}
+	if err := cs.PruefeWALRest(); err == nil || !strings.Contains(err.Error(), "gescheitert") {
+		t.Fatalf("gescheiterter Wiederanlauf mit Rest: %v", err)
+	}
 }
 
 // Abgeglichen (geflusht) oder ohne Datei startet der Beobachter; ein
-// Validator wird nie aufgehalten.
-func TestBeobachter_WALAbgeglichenStartet_RealDB(t *testing.T) {
+// Validator mit offenem WAL wird nie aufgehalten.
+func TestWALRest_AbgeglichenStartet_RealDB(t *testing.T) {
 	walPath := filepath.Join(t.TempDir(), "abgeglichen.wal")
 	truncateDistTestTables(t)
 	csA := newWALTestState(t, walPath)
@@ -217,7 +228,7 @@ func TestBeobachter_WALAbgeglichenStartet_RealDB(t *testing.T) {
 		t.Fatalf("Vorbedingung: applied=%v err=%v", applied, err)
 	}
 	// Ein Validator mit Rest startet immer (er gleicht ihn ab).
-	if err := csA.PruefeBeobachterWAL(); err != nil {
+	if err := csA.PruefeWALRest(); err != nil {
 		t.Fatalf("Validator aufgehalten: %v", err)
 	}
 	csA.FlushWALNow()
@@ -230,11 +241,11 @@ func TestBeobachter_WALAbgeglichenStartet_RealDB(t *testing.T) {
 	}
 	setzeBeobachterFuerTest(t, true)
 	csB := testKnoten(t, "unused-wal-test.json")
-	if err := csB.PruefeBeobachterWAL(); err != nil {
+	if err := csB.PruefeWALRest(); err != nil {
 		t.Fatalf("abgeglichenes WAL haelt den Beobachter auf: %v", err)
 	}
 	t.Setenv("AEQUITAS_WAL_PATH", filepath.Join(t.TempDir(), "gibt-es-nicht.wal"))
-	if err := csB.PruefeBeobachterWAL(); err != nil {
+	if err := csB.PruefeWALRest(); err != nil {
 		t.Fatalf("ohne WAL-Datei: %v", err)
 	}
 	if _, err := os.Stat(walPath); err != nil {
@@ -242,50 +253,9 @@ func TestBeobachter_WALAbgeglichenStartet_RealDB(t *testing.T) {
 	}
 }
 
-// Laesst sich ein ungedeckter Satz nicht parken, scheitert der Wiederanlauf
-// (der Schnellpfad bleibt aus) -- er wird weder angewandt noch still
-// verloren.
-func TestWAL_ParkenScheitertHaeltWiederanlauf_RealDB(t *testing.T) {
-	walPath := filepath.Join(t.TempDir(), "parken-scheitert.wal")
-	from, to := walRestAnlegen(t, walPath)
-	t.Setenv("AEQUITAS_WAL_ENABLED", "")
-	cs0 := testKnoten(t, "unused-wal-test.json")
-	if _, err := cs0.db.Exec(`UPDATE chain_accounts SET balance = 0 WHERE lower(address) = $1`, from); err != nil {
-		t.Fatal(err)
-	}
-	for _, q := range []string{
-		`CREATE OR REPLACE FUNCTION wal_geparkt_sperre() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'gesperrt (Test)'; END $$ LANGUAGE plpgsql`,
-		`DROP TRIGGER IF EXISTS wal_geparkt_sperre ON wal_geparkt`,
-		`CREATE TRIGGER wal_geparkt_sperre BEFORE INSERT ON wal_geparkt FOR EACH ROW EXECUTE FUNCTION wal_geparkt_sperre()`,
-	} {
-		if _, err := cs0.db.Exec(q); err != nil {
-			t.Fatal(err)
-		}
-	}
-	t.Cleanup(func() {
-		if _, err := cs0.db.Exec(`DROP TRIGGER IF EXISTS wal_geparkt_sperre ON wal_geparkt`); err != nil {
-			t.Errorf("Trigger nicht entfernt: %v", err)
-		}
-	})
-	t.Setenv("AEQUITAS_WAL_ENABLED", "1")
-	t.Setenv("AEQUITAS_WAL_PATH", walPath)
-	cs := testKnoten(t, "unused-wal-test.json")
-	if cs.wal != nil {
-		cs.stopWALFlushWorkerForTest()
-		cs.wal.Close()
-		t.Fatal("Wiederanlauf trotz gescheitertem Parken gelungen")
-	}
-	if b := speicherStand(t, cs, from); !b.IsZero() {
-		t.Fatalf("Absender %s", b)
-	}
-	if b := speicherStand(t, cs, to); !b.IsZero() {
-		t.Fatalf("Empfaenger %s", b)
-	}
-}
-
 // Zwei Saetze desselben Kontos, nur der erste steht in Postgres (wal_seq 1):
 // der zweite ist offen -- massgeblich ist der hoechste Satz je Konto.
-func TestBeobachter_WALZweiterSatzOffen_RealDB(t *testing.T) {
+func TestWALRest_ZweiterSatzOffen_RealDB(t *testing.T) {
 	walPath := filepath.Join(t.TempDir(), "zwei-saetze.wal")
 	truncateDistTestTables(t)
 	csA := newWALTestState(t, walPath)
@@ -308,7 +278,7 @@ func TestBeobachter_WALZweiterSatzOffen_RealDB(t *testing.T) {
 	setzeBeobachterFuerTest(t, true)
 	t.Setenv("AEQUITAS_WAL_ENABLED", "")
 	csB := testKnoten(t, "unused-wal-test.json")
-	if err := csB.PruefeBeobachterWAL(); err == nil || !strings.Contains(err.Error(), "2 Konten") {
+	if err := csB.PruefeWALRest(); err == nil || !strings.Contains(err.Error(), "2 Konten") {
 		t.Fatalf("zweiter Satz offen, Beobachter: %v", err)
 	}
 }

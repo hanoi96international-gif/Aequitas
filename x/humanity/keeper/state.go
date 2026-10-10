@@ -1346,20 +1346,6 @@ ON registration_recovery(created_at) WHERE recovered_at IS NULL`)
 	// (Pruefung #330, 2. Durchgang, Befund 2).
 	dbExec(`CREATE INDEX IF NOT EXISTS idx_registration_recovery_wallet_hash
 ON registration_recovery(wallet) WHERE evm_tx_hash <> ''`)
-	// wal_geparkt: WAL-Saetze, die recoverFromWAL nicht angewandt hat, weil
-	// sie den Absender ins Minus fuehrten (beobachter_wal.go). Fuer den
-	// Betreiber; nichts liest sie automatisch.
-	dbExec(`CREATE TABLE IF NOT EXISTS wal_geparkt (
-seq BIGINT PRIMARY KEY,
-von TEXT NOT NULL,
-an TEXT NOT NULL,
-betrag DOUBLE PRECISION NOT NULL,
-gebuehr DOUBLE PRECISION NOT NULL,
-tx_hash TEXT NOT NULL,
-satz_json TEXT NOT NULL,
-grund TEXT NOT NULL,
-geparkt_at BIGINT NOT NULL
-)`)
 
 	// Pending block transactions — persisted so they survive node restarts.
 	// Without this, transfers via sendRawTransaction update Go-state/DB but

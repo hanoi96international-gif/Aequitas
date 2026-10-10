@@ -115,28 +115,33 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
      `/api/health/combined` und enthält Wallet, Hash und rohe DB-Fehlertexte
      (keine Geheimnisse). Optional: öffentlich neutral, Details nur ins Log.
 8. **WAL nach einem Rollenwechsel ohne Deckungsprüfung** (Prüfung von
-   #322, INFO-15) – **erledigt (Zweig `claude/weiter-gehts-hklfhc-wal`):**
-   - Ein Beobachter, dessen WAL nicht abgeglichene Sätze trägt (über der
-     Untergrenze, `seq` > `wal_seq` von Absender oder Empfänger; rein lesend
-     per `wal.ReplayFile`), startet nicht: `main` beendet sich nach
-     `PruefeBeobachterWAL`, auch ohne `AEQUITAS_WAL_ENABLED`. Abhilfe laut
-     Meldung: erst als Validator wiederanlaufen lassen und sauber beenden –
-     oder den Rest bewusst verwerfen mit
-     `AEQUITAS_BEOBACHTER_WAL_VERWERFEN=1` (setzt die Untergrenze des
-     Wiederanlaufs auf das Dateiende; diese Überweisungen kommen nie in
-     einen Block).
-   - `recoverFromWAL` wendet keinen Satz an, der den Absender ins Minus
-     führte (Betrag + Gebühr), sondern legt ihn in `wal_geparkt` ab
-     (Degraded-Hinweis). Scheitert das Ablegen, scheitert der Wiederanlauf,
-     und der Schnellpfad bleibt aus.
-   - Bleibt offen: Sätze, die noch gedeckt sind, wendet ein Wiederanlauf
-     nach einer Beobachterzeit weiterhin an, verspätet; der Block mit ihnen
-     besteht die Prüfungen der anderen. Ebenso Zeilen, die schon vor dem
-     Wechsel in `pending_txs` lagen (ein Beobachter erzeugt sie nie), und
-     Sätze über der Marke des Speicherkorbs. Ein Validator, der mit
-     ausgeschaltetem WAL weiterläuft, hat dasselbe Problem wie der
-     Beobachter. Betrieb weiter: Rollen nur nach einem sauberen Ende
-     wechseln.
+   #322, INFO-15) – **erledigt mit #331:** Ein Knoten, der den Rest seines
+   WAL nicht einspielt (Beobachter, `AEQUITAS_WAL_ENABLED` aus, Wiederanlauf
+   gescheitert, keine Datenbank), startet nicht, solange das WAL Sätze über
+   der Untergrenze trägt, die Absender oder Empfänger laut `wal_seq` nicht
+   enthalten (`PruefeWALRest`, `main` beendet sich). Ausweg: als Validator
+   mit eingeschaltetem WAL wiederanlaufen lassen, bis der Wiederanlauf
+   gelingt – oder den Rest einmalig verwerfen mit
+   `AEQUITAS_WAL_REST_VERWERFEN=<Kopf-seq aus der Meldung>` (eine
+   stehengebliebene Variable verwirft keinen neuen Rest). So wird ein alter
+   Satz nie auf einen weitergelaufenen Stand angewandt.
+   - Verworfen: das Parken ungedeckter Sätze im Wiederanlauf (Prüfung von
+     #331, Befunde 2 und 4): Wegen 9. (unten) traf es auch den gewöhnlichen
+     Absturz und verlor bestätigte Überweisungen.
+   - Betrieb: die WAL-Datei nie löschen (die Zählung begänne neu, neue Sätze
+     lägen unter der Untergrenze; Prüfung von #331, INFO-6). Ein Beobachter
+     mit `RESET_DB_STATE` und vorhandenem WAL startet nicht (leere
+     `chain_accounts`) – dann bewusst verwerfen (INFO-7).
+9. **HIGH: WAL-Wiederanlauf bucht doppelt** (Prüfung von #331, Befund 1;
+   bestand schon vorher, WAL ist produktiv an): Serielle Speicherungen
+   (`saveAccountToDBCtx`, Stapel-Speicherung) schreiben `balance` samt noch
+   nicht geflushter WAL-Deltas, aber nie `wal_seq`; `recoverFromWAL`
+   entscheidet allein über `wal_seq` und wendet eine Abbuchung nach einem
+   Absturz im Flush-Fenster ein zweites Mal an (PoC: 2104,1 → 1203,2). Fix
+   (eigener PR): `wal_seq` monoton mitschreiben – und die Ausgangszeile im
+   Wiederanlauf nicht mehr aus „Absender oder Empfänger noch nicht
+   angewandt“ ableiten, sonst ginge ohne Speicherkorb ein Transfer dem Netz
+   verloren.
 
 ## Ratenbegrenzung – bekannte Lücken
 - **`X-Forwarded-For` hinter einem privaten TCP-Partner** (Prüfung von #319,

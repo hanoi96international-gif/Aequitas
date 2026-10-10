@@ -221,25 +221,25 @@ func TestMain_StartetLeitung(t *testing.T) {
 	}
 }
 
-// Ein Beobachter mit WAL-Rest darf nicht starten (beobachter_wal.go): main
-// prueft das direkt nach NewChainState, vor Blockchain, P2P und Sync, und
-// beendet sich bei einem Fehler.
-func TestMain_BeobachterWALVorDemStart(t *testing.T) {
+// Ein Knoten mit nicht eingespieltem WAL-Rest darf nicht starten
+// (wal_rest.go): main prueft das direkt nach NewChainState, vor Blockchain,
+// P2P und Sync, und beendet sich bei einem Fehler.
+func TestMain_WALRestVorDemStart(t *testing.T) {
 	liste := mainAnweisungen(t)
-	pruefen := enthaeltAufruf(liste, "chainState", "PruefeBeobachterWAL")
+	pruefen := enthaeltAufruf(liste, "chainState", "PruefeWALRest")
 	if pruefen < 0 {
-		t.Fatal("main ruft chainState.PruefeBeobachterWAL nicht auf")
+		t.Fatal("main ruft chainState.PruefeWALRest nicht auf")
 	}
 	wenn, ok := liste[pruefen].(*ast.IfStmt)
 	if !ok || enthaeltAufruf(wenn.Body.List, "os", "Exit") < 0 {
-		t.Fatal("PruefeBeobachterWAL steht nicht in einem if, dessen Rumpf os.Exit aufruft")
+		t.Fatal("PruefeWALRest steht nicht in einem if, dessen Rumpf os.Exit aufruft")
 	}
 	for _, spaeter := range [][2]string{{"keeper", "NewBlockchain"}, {"p2pNode", "SetDAG"}, {"keeper", "NewAPIServer"}, {"", "StartHTTPBlockSync"}} {
 		if i := enthaeltAufruf(liste, spaeter[0], spaeter[1]); i >= 0 && i < pruefen {
-			t.Errorf("%s.%s steht vor PruefeBeobachterWAL", spaeter[0], spaeter[1])
+			t.Errorf("%s.%s steht vor PruefeWALRest", spaeter[0], spaeter[1])
 		}
 	}
 	if i := enthaeltAufruf(liste, "keeper", "NewChainState"); i < 0 || i > pruefen {
-		t.Error("PruefeBeobachterWAL steht nicht nach NewChainState")
+		t.Error("PruefeWALRest steht nicht nach NewChainState")
 	}
 }

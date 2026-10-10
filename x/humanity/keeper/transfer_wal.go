@@ -1601,7 +1601,6 @@ func (cs *ChainState) recoverFromWAL(path string) error {
 
 	reappliedCount := 0
 	supersededCount := 0
-	geparktCount := 0
 	readCount, truncated, err := wal.ReplayFile(path, func(entry wal.Entry) error {
 		if entry.Seq <= floor {
 			// Superseded by a wholesale state replacement — the per-account
@@ -1625,28 +1624,7 @@ func (cs *ChainState) recoverFromWAL(path string) error {
 			return fmt.Errorf("WAL record seq %d: unknown recipient %s", entry.Seq, rec.To)
 		}
 		// Der Absender zahlte Betrag + Gebuehr (Datensaetze vor dem 24.09.2026: 0).
-		belastung := NewDecimal(rec.Amount).Add(NewDecimal(rec.Gebuehr))
-		// Deckung (Pruefung von #322, INFO-15; beobachter_wal.go): im
-		// gewoehnlichen Wiederanlauf deckt der Stand jeden Satz, denn der
-		// Live-Pfad hat ihn in derselben Reihenfolge geprueft. Fuehrte er ins
-		// Minus, ist der Stand ohne ihn weitergelaufen (etwa als Beobachter
-		// nachgespielte Bloecke) -- nicht anwenden, nicht in den Ausgang,
-		// sondern fuer den Betreiber parken. Jeder andere Knoten wiese einen
-		// Block mit dieser Zeile ab.
-		seedWALSeq(fromAcc)
-		seedWALSeq(toAcc)
-		if fromAcc.WALSeq < entry.Seq && fromAcc.Balance.Sub(belastung).IsNegative() {
-			grund := fmt.Sprintf("Absender %s haette %s (Stand %s, Belastung %s)", rec.From, fromAcc.Balance.Sub(belastung), fromAcc.Balance, belastung)
-			if toAcc.WALSeq >= entry.Seq {
-				grund += "; Empfaenger enthaelt den Satz schon"
-			}
-			if err := cs.walSatzParken(entry.Seq, rec, entry.Payload, grund); err != nil {
-				return err
-			}
-			geparktCount++
-			return nil
-		}
-		fromApplied := applyFrom(fromAcc, entry.Seq, belastung.Float(), rec.At)
+		fromApplied := applyFrom(fromAcc, entry.Seq, NewDecimal(rec.Amount).Add(NewDecimal(rec.Gebuehr)).Float(), rec.At)
 		// NaechsteNonce einer signierten Ueberweisung: steigt nur, also ohne
 		// Blick auf WALSeq -- ein gespeicherter Stand, der sie schon enthaelt,
 		// bleibt unveraendert.
@@ -1716,10 +1694,7 @@ func (cs *ChainState) recoverFromWAL(path string) error {
 	}
 	if readCount > 0 {
 		fmt.Printf("[WAL] Read %d record(s) from %s: %d superseded by a state replacement (below recovery floor %d), %d already reflected in Postgres (skipped, idempotent), %d reapplied to in-memory state and queued for reconciliation (tail-truncated=%v means the process crashed mid-append on the last record, which is expected and already handled)\n",
-			readCount, path, supersededCount, floor, readCount-supersededCount-reappliedCount-geparktCount, reappliedCount, truncated)
-	}
-	if geparktCount > 0 {
-		fmt.Printf("[WAL] ✗ %d Satz/Saetze fuehrten ins Minus und wurden NICHT angewandt -- siehe Tabelle wal_geparkt\n", geparktCount)
+			readCount, path, supersededCount, floor, readCount-supersededCount-reappliedCount, reappliedCount, truncated)
 	}
 	return nil
 }

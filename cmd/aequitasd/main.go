@@ -451,11 +451,12 @@ func main() {
 	}
 
 	chainState := keeper.NewChainState("/tmp/aequitas_state.json")
-	// Ein Beobachter mit nicht abgeglichenem WAL startet nicht: er spielte
-	// fremde Bloecke ohne diese Ueberweisungen nach, und ein spaeterer
-	// Wiederanlauf als Validator wendete sie auf den weitergelaufenen Stand
-	// an (beobachter_wal.go). Vor Blockchain, P2P und Sync.
-	if err := chainState.PruefeBeobachterWAL(); err != nil {
+	// Kein Start mit einem WAL-Rest, den dieser Prozess nicht eingespielt hat
+	// (Beobachter, WAL aus, Wiederanlauf gescheitert): der Stand liefe ohne
+	// diese Ueberweisungen weiter, und ein spaeterer Wiederanlauf wendete sie
+	// auf den weitergelaufenen Stand an (wal_rest.go). Vor Blockchain, P2P
+	// und Sync.
+	if err := chainState.PruefeWALRest(); err != nil {
 		fmt.Printf("✗ %v\n", err)
 		os.Exit(1)
 	}
