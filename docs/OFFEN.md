@@ -103,26 +103,58 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
      der Prozess dann zwischen EVM und eigener Zeile ab, ist nichts
      vorgemerkt. Fail-closed wäre: ablehnen, solange noch keine
      EVM-Transaktion lief.
+   - *3. Durchgang, INFO-1 (bestand schon vorher):* Zeilen mit NULL in
+     `nullifier` oder `pending_tx_json` scheitern beim Scan von
+     `RetryRegistrationRecoveries` und werden still übersprungen (zählen aber
+     zur Grenze). Die heutigen Schreiber legen kein NULL ab. Fix: `COALESCE`
+     im SELECT.
+   - *3. Durchgang, INFO-2 (bestand schon vorher):* Eine Panik in
+     `flushEVMMirrorDirty` beendet den Spiegel-Arbeiter dauerhaft. Fix:
+     `SafeCall` um jeden Takt.
    - *2. Durchgang, INFO-5:* Der Degraded-Grund steht im öffentlichen
      `/api/health/combined` und enthält Wallet, Hash und rohe DB-Fehlertexte
      (keine Geheimnisse). Optional: öffentlich neutral, Details nur ins Log.
 8. **WAL nach einem Rollenwechsel ohne Deckungsprüfung** (Prüfung von
-   #322, INFO-15): Ein Beobachter liest das WAL nicht ein, die Datei bleibt
-   liegen. Startet ein abgestürzter Validator mit ungeflushten Sätzen erst
-   als Beobachter (spielt fremde Blöcke nach, `wal_seq` bleibt stehen) und
-   dann wieder als Validator, wendet `recoverFromWAL` die alten Sätze ohne
-   Deckungsprüfung auf den weitergelaufenen Stand an (PoC: Kontostand
-   −42,042, eine Zeile im Ausgang). Nur der umgestellte Knoten ist betroffen
-   – die anderen prüfen die Deckung beim Nachspielen und lehnten einen Block
-   mit dieser Zeile ab; der Workflow-Beobachter startet mit leerem WAL.
-   Fix: Ein Beobachter, dessen WAL nicht abgeglichene Sätze trägt (über der
-   Untergrenze, `seq` > `wal_seq` der Konten; rein lesend per
-   `wal.ReplayFile`), startet nicht (fail-closed), mit dem Hinweis, erst als
-   Validator wiederanlaufen zu lassen oder den Rest bewusst zu verwerfen;
-   ergänzend prüft `recoverFromWAL` die Deckung und parkt Sätze, die ins
-   Minus führten. Missbrauchstest wie der PoC. Bis dahin (Betrieb): einen
-   Validator mit WAL nie als Beobachter neu starten, ohne dass er vorher als
-   Validator sauber wiederangelaufen ist.
+   #322, INFO-15) – **erledigt mit #331:** Ein Knoten, der den Rest seines
+   WAL nicht einspielt (Beobachter, `AEQUITAS_WAL_ENABLED` aus, Wiederanlauf
+   gescheitert, keine Datenbank), startet nicht, solange das WAL Sätze über
+   der Untergrenze trägt, die Absender oder Empfänger laut `wal_seq` nicht
+   enthalten (`PruefeWALRest`, `main` beendet sich). Ausweg: als Validator
+   mit eingeschaltetem WAL wiederanlaufen lassen, bis der Wiederanlauf
+   gelingt – oder den Rest einmalig verwerfen mit
+   `AEQUITAS_WAL_REST_VERWERFEN=<Kopf-seq aus der Meldung>` (eine
+   stehengebliebene Variable verwirft keinen neuen Rest). So wird ein alter
+   Satz nie auf einen weitergelaufenen Stand angewandt.
+   - Verworfen: das Parken ungedeckter Sätze im Wiederanlauf (Prüfung von
+     #331, Befunde 2 und 4): Wegen 9. (unten) traf es auch den gewöhnlichen
+     Absturz und verlor bestätigte Überweisungen.
+   - Betrieb: die WAL-Datei nie löschen (die Zählung begänne neu, neue Sätze
+     lägen unter der Untergrenze; Prüfung von #331, INFO-6). Ein Beobachter
+     mit `RESET_DB_STATE` und vorhandenem WAL startet nicht (leere
+     `chain_accounts`) – dann bewusst verwerfen (INFO-7). Dasselbe gilt für
+     einen Validator, dessen Wiederanlauf nach dem Reset an „unknown sender“
+     scheitert, und für `RESYNC_FROM_SNAPSHOT`/Selbstheilung: Die Sperre
+     läuft vor dem Import, der den Rest per Untergrenze ohnehin überholte
+     (Prüfung von #331, 2. Durchgang, INFO-4). Fail-closed, lösbar mit
+     `AEQUITAS_WAL_REST_VERWERFEN=<Kopf>`.
+   - Ein gescheiterter Wiederanlauf sperrt den Start immer, auch wenn
+     `wal_seq` keinen Rest mehr zeigt (Merker; 2. Durchgang, Befund 1), und
+     ein geordnetes Beenden flusht das WAL (`FlushWALNow`, Befund 3).
+9. **HIGH: WAL-Wiederanlauf bucht doppelt** (Prüfung von #331, Befund 1;
+   bestand schon vorher, WAL ist produktiv an): Serielle Speicherungen
+   (`saveAccountToDBCtx`, Stapel-Speicherung) schreiben `balance` samt noch
+   nicht geflushter WAL-Deltas, aber nie `wal_seq`; `recoverFromWAL`
+   entscheidet allein über `wal_seq` und wendet eine Abbuchung nach einem
+   Absturz im Flush-Fenster ein zweites Mal an (PoC: 2104,1 → 1203,2).
+   Verwandt (HIGH, bestätigt im 2. Durchgang von #331): `flushWALBatch`
+   schreibt je Konto den aktuellen `WALSeq`, der Sätze späterer oder
+   parallel laufender Stapel einschließt; committen andere Stapel beide
+   Konten eines Satzes, dessen eigener Stapel noch offen ist, hält der
+   Wiederanlauf ihn für angewandt und schreibt keine Ausgangszeile (PoC:
+   seq1 S→R, seq2 S→X, seq3 X→U; seq2 fehlt dem Netz). Ohne Speicherkorb.
+   Fix (eigener PR): `wal_seq` monoton mitschreiben – und die Ausgangszeile
+   im Wiederanlauf über einen eigenen Vermerk je Satz nachweisen statt aus
+   „Absender oder Empfänger noch nicht angewandt“.
 
 ## Ratenbegrenzung – bekannte Lücken
 - **`X-Forwarded-For` hinter einem privaten TCP-Partner** (Prüfung von #319,
