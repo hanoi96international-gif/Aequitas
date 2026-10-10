@@ -39,21 +39,30 @@ func walRestAnlegen(t *testing.T, walPath string) (from, to string) {
 	return from, to
 }
 
-// untergrenzeZuruecksetzen: die Untergrenze des Wiederanlaufs steht in
-// chain_config, das truncateDistTestTables nicht leert -- vorher und nachher
-// loeschen, sonst sieht der naechste WAL-Test sie.
+// untergrenzeZuruecksetzen: Untergrenze und Uebergangsgrenze der
+// Ausgangs-Vermerke stehen in chain_config, die Vermerke in wal_ausgang --
+// beides leert truncateDistTestTables nicht, und jeder Test beginnt mit einer
+// frischen WAL-Datei bei Seq 1 (in Produktion werden Seqs nie wiederverwendet).
+// Vorher: Untergrenze weg, Uebergangsgrenze 0 (dieser Knoten vermerkt schon),
+// keine Vermerke; nachher alles weg.
 func untergrenzeZuruecksetzen(t *testing.T, cs *ChainState) {
 	t.Helper()
 	loeschen := func() error {
-		_, err := cs.db.Exec(`DELETE FROM chain_config WHERE key = $1`, walRecoveryFloorKey)
+		if _, err := cs.db.Exec(`DELETE FROM chain_config WHERE key = ANY($1)`, pq.Array([]string{walRecoveryFloorKey, walAusgangAbKey})); err != nil {
+			return err
+		}
+		_, err := cs.db.Exec(`DELETE FROM wal_ausgang`)
 		return err
 	}
 	if err := loeschen(); err != nil {
 		t.Fatal(err)
 	}
+	if err := cs.setConfigValueDB(walAusgangAbKey, "0"); err != nil {
+		t.Fatal(err)
+	}
 	t.Cleanup(func() {
 		if err := loeschen(); err != nil {
-			t.Errorf("Untergrenze nicht geloescht: %v", err)
+			t.Errorf("Untergrenzen/Vermerke nicht geloescht: %v", err)
 		}
 	})
 }
@@ -104,7 +113,7 @@ func TestWALRest_BeobachterStartetNicht_RealDB(t *testing.T) {
 	setzeBeobachterFuerTest(t, true)
 	csB := testKnoten(t, "unused-wal-test.json")
 	err := csB.PruefeWALRest()
-	if err == nil || !strings.Contains(err.Error(), "2 Konten, bis seq 1") || !strings.Contains(err.Error(), "Beobachter") ||
+	if err == nil || !strings.Contains(err.Error(), "2 Konten, 1 Saetze ohne Ausgangszeile, bis seq 1") || !strings.Contains(err.Error(), "Beobachter") ||
 		!strings.Contains(err.Error(), "AEQUITAS_WAL_REST_VERWERFEN=1") {
 		t.Fatalf("Beobachter mit WAL-Rest: %v", err)
 	}
@@ -225,8 +234,13 @@ func TestWALRest_WiederanlaufGescheitertStartetNicht_RealDB(t *testing.T) {
 	if _, err := cs.db.Exec(`UPDATE chain_accounts SET wal_seq = 1 WHERE lower(address) = $1`, from); err != nil {
 		t.Fatal(err)
 	}
+	// Auch der Ausgangs-Vermerk steht (wal_ausgang.go): es ist gar kein Rest
+	// mehr offen -- gesperrt wird allein wegen des Merkers.
+	if _, err := cs.db.Exec(`INSERT INTO wal_ausgang (seq) VALUES (1) ON CONFLICT DO NOTHING`); err != nil {
+		t.Fatal(err)
+	}
 	if rest, _, err := cs.walRestOffen(walPath); err != nil || rest != 0 {
-		t.Fatalf("Vorbedingung: kein Rest mehr laut wal_seq (%d, %v)", rest, err)
+		t.Fatalf("Vorbedingung: kein Rest mehr (%d, %v)", rest, err)
 	}
 	if err := cs.PruefeWALRest(); err == nil || !strings.Contains(err.Error(), "gescheitert") {
 		t.Fatalf("gescheiterter Wiederanlauf ohne Rest laut wal_seq: %v", err)

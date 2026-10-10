@@ -140,21 +140,41 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
    - Ein gescheiterter Wiederanlauf sperrt den Start immer, auch wenn
      `wal_seq` keinen Rest mehr zeigt (Merker; 2. Durchgang, Befund 1), und
      ein geordnetes Beenden flusht das WAL (`FlushWALNow`, Befund 3).
-9. **HIGH: WAL-Wiederanlauf bucht doppelt** (Prüfung von #331, Befund 1;
-   bestand schon vorher, WAL ist produktiv an): Serielle Speicherungen
-   (`saveAccountToDBCtx`, Stapel-Speicherung) schreiben `balance` samt noch
-   nicht geflushter WAL-Deltas, aber nie `wal_seq`; `recoverFromWAL`
-   entscheidet allein über `wal_seq` und wendet eine Abbuchung nach einem
-   Absturz im Flush-Fenster ein zweites Mal an (PoC: 2104,1 → 1203,2).
-   Verwandt (HIGH, bestätigt im 2. Durchgang von #331): `flushWALBatch`
-   schreibt je Konto den aktuellen `WALSeq`, der Sätze späterer oder
-   parallel laufender Stapel einschließt; committen andere Stapel beide
-   Konten eines Satzes, dessen eigener Stapel noch offen ist, hält der
-   Wiederanlauf ihn für angewandt und schreibt keine Ausgangszeile (PoC:
-   seq1 S→R, seq2 S→X, seq3 X→U; seq2 fehlt dem Netz). Ohne Speicherkorb.
-   Fix (eigener PR): `wal_seq` monoton mitschreiben – und die Ausgangszeile
-   im Wiederanlauf über einen eigenen Vermerk je Satz nachweisen statt aus
-   „Absender oder Empfänger noch nicht angewandt“.
+9. **HIGH: WAL-Wiederanlauf bucht doppelt / verliert Ausgangszeilen**
+   (Prüfung von #331, Befund 1 und 2. Durchgang Befund 2; bestand schon
+   vorher, WAL ist produktiv an) – **erledigt (`wal_ausgang.go`):**
+   - Serielle Speicherungen (`saveAccountToDBCtx` beide Wege,
+     `saveAccountsToDBBatch`) schreiben `wal_seq = GREATEST(alt,
+     acc.WALSeq)` mit – der Saldo aus dem Speicher enthält alle WAL-Sätze
+     bis dahin. Vorher buchte der Wiederanlauf sie nach einem Absturz ein
+     zweites Mal ab (PoC 2104,1 → 1203,2).
+   - `wal_ausgang` vermerkt je Satz, dass seine Ausgangszeile geschrieben
+     ist (in derselben Transaktion wie die Zeile, `flushWALBatch`; bleibt,
+     wenn ein Block die Zeile aufnimmt). Der Wiederanlauf holt für jeden
+     Satz ohne Vermerk die Zeile nach, auch wenn beide Salden ihn schon
+     enthalten (serielle Speicherung; Flush eines späteren oder parallelen
+     Stapels, der den aktuellen `WALSeq` schreibt). Nie eine zweite Zeile
+     bei Vermerk. Übergang: Sätze bis zur Grenze `wal_ausgang_ab_seq` (vom
+     ersten Wiederanlauf dieser Fassung auf das Dateiende gesetzt) nach der
+     alten Regel. Gekürzt mit der WAL-Kompaktierung und der Untergrenze;
+     höchstens 50 Mio. Vermerke werden geladen (sonst scheitert der
+     Wiederanlauf).
+   - Die Startsperre (`PruefeWALRest`) zählt auch Sätze ohne Vermerk als
+     offen (nicht bis zur Korb-Marke, nicht im Korb-Modus).
+   - Der Flush-Arbeiter startet erst nach gelungenem Wiederanlauf; ein
+     gescheiterter schreibt nichts mehr halb nach Postgres (Prüfung von
+     #331, 3. Durchgang, INFO-2). Die Meldung bei gescheitertem
+     Wiederanlauf ohne Rest rät nicht mehr zum Verwerfen (INFO-1).
+   - `seedWALSeq` scheitert bei einem Lesefehler, statt `wal_seq` 0
+     anzunehmen (und alles ein zweites Mal zu buchen).
+   - Bleibt: Wird die WAL-Datei samt Hochwassermarke gelöscht, beginnen
+     Seqs wieder bei 1, und alte Vermerke gälten für neue Sätze – dieselbe
+     Betriebsregel wie für die Untergrenze: Datei nie löschen.
+   - Bleibt: Läuft nach dieser Fassung wieder eine ältere (schreibt keine
+     Vermerke) und danach wieder diese, gelten die Sätze dazwischen als
+     „ohne Zeile“ und bekommen eine zweite. Betrieb: vor dem erneuten
+     Hochstufen `wal_ausgang_ab_seq` aus `chain_config` löschen – der
+     nächste Wiederanlauf setzt die Grenze dann neu aufs Dateiende.
 
 ## Ratenbegrenzung – bekannte Lücken
 - **`X-Forwarded-For` hinter einem privaten TCP-Partner** (Prüfung von #319,

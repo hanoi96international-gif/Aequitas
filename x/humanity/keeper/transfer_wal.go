@@ -2,7 +2,9 @@ package keeper
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -319,6 +321,10 @@ func (cs *ChainState) initWALIfEnabled() {
 		cs.korbBis.Store(ab)
 	}
 	cs.korbUebergangBis, cs.korbUebergang = marke, !korbAn && markeDa
+	// Bis zum Erfolg schreibt kein Flush-Arbeiter (walWiederanlaufLaeuft);
+	// scheitert der Wiederanlauf, bleibt die Schlange liegen, und main
+	// startet nicht (wal_rest.go).
+	cs.walWiederanlaufLaeuft.Store(true)
 	if err := cs.recoverFromWAL(path); err != nil {
 		cs.korb = nil
 		fmt.Printf("[WAL] ✗ recovery failed, WAL fast path stays DISABLED for this process: %v\n", err)
@@ -340,6 +346,9 @@ func (cs *ChainState) initWALIfEnabled() {
 		return
 	}
 	cs.wal = w
+	// Ab jetzt darf geflusht werden; starteWALKompaktierung (unten) startet
+	// den Arbeiter und damit den eingespielten Rest.
+	cs.walWiederanlaufLaeuft.Store(false)
 	setzePendingSeqQuelle(w.PeekSeq)
 	// Ohne das waechst die Datei unbegrenzt -- siehe wal_kompaktierung.go und
 	// den Vorfall vom 07.09.2026 (17 GB WAL, Platte zu 99 % voll, Knoten
@@ -704,7 +713,9 @@ func (cs *ChainState) enqueueWALFlushMitLocked(from, to string, tx Transaction, 
 	cs.walRohEingereihtLocked(it)
 	walWarteschlangeStand.Store(int64(len(cs.walFlushQueue)))
 	cs.walFlushMu.Unlock()
-	cs.ensureWALFlushWorkerStarted()
+	if !cs.walWiederanlaufLaeuft.Load() {
+		cs.ensureWALFlushWorkerStarted()
+	}
 }
 
 // WALFlushQueueDepth returns how many WAL-durable transfers are currently
@@ -1252,6 +1263,12 @@ ORDER BY v.ord`
 			tx.Rollback()
 			return fmt.Errorf("could not queue %d outbox tx(s) during WAL flush: %w", len(txJSONs), err)
 		}
+		// Dieselbe Transaktion: Zeile und Vermerk stehen zusammen oder gar
+		// nicht (wal_ausgang, docs/OFFEN.md Punkt 9).
+		if _, err := cs.dbExecCtx(ctx).Exec(walAusgangVermerkSQL, pq.Array(txSeqs)); err != nil {
+			tx.Rollback()
+			return fmt.Errorf("could not record %d outbox seq(s) during WAL flush: %w", len(txSeqs), err)
+		}
 	}
 	phOutboxExec = time.Since(phMark)
 	phMark = time.Now()
@@ -1538,6 +1555,10 @@ func (cs *ChainState) markWALSupersededByStateReplacement() {
 		fmt.Printf("[WAL] ⚠ could not persist recovery floor %d: %v\n", head, err)
 		return
 	}
+	// Vermerke unter der Untergrenze braucht kein Wiederanlauf mehr.
+	if err := cs.walAusgangKuerzen(head + 1); err != nil {
+		fmt.Printf("[WAL] ⚠ %v\n", err)
+	}
 	fmt.Printf("[WAL] ✓ Recovery floor set to seq %d — account state was just replaced wholesale, so every WAL record up to that point is superseded and will never be replayed again\n", head)
 }
 
@@ -1563,22 +1584,43 @@ func (cs *ChainState) recoverFromWAL(path string) error {
 	// replacement — see markWALSupersededByStateReplacement for the incident.
 	floor := cs.walRecoveryFloor()
 
+	// Wiederanlauf mit Vermerken (wal_ausgang.go): fuer Saetze ueber der
+	// Uebergangsgrenze entscheidet der Vermerk, ob die Ausgangszeile
+	// nachgeholt wird -- nicht wal_seq.
+	ausgangAb, ausgangAbDa, err := cs.walAusgangAb()
+	if err != nil {
+		return err
+	}
+	var vermerke walAusgangMenge
+	if ausgangAbDa {
+		if vermerke, err = cs.walAusgangVermerke(max(ausgangAb, floor)); err != nil {
+			return err
+		}
+	}
+
+	// seedWALSeq liest wal_seq aus Postgres. Frueher wurde ein Lesefehler
+	// verschluckt und WALSeq blieb 0 -- dann galt jeder Satz als nicht
+	// angewandt und wurde ein zweites Mal gebucht. Jetzt scheitert der
+	// Wiederanlauf (fail-closed; main startet dann nicht, wal_rest.go).
 	seeded := make(map[string]bool)
-	seedWALSeq := func(acc *AccountState) {
+	seedWALSeq := func(acc *AccountState) error {
 		if seeded[acc.Address] {
-			return
+			return nil
+		}
+		var seq int64
+		err := cs.db.QueryRow(`SELECT COALESCE(wal_seq,0) FROM chain_accounts WHERE lower(address) = $1`, acc.Address).Scan(&seq)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("wal_seq von %s nicht lesbar: %w", acc.Address, err)
 		}
 		seeded[acc.Address] = true
-		var seq int64
-		cs.db.QueryRow(`SELECT COALESCE(wal_seq,0) FROM chain_accounts WHERE lower(address) = $1`, acc.Address).Scan(&seq)
 		acc.WALSeq = uint64(seq)
+		return nil
 	}
 
 	// `at` is the recorded instant of the original transfer, NOT now — see
 	// walTransferRecord.At. Stamping nowUnix() here credited every recovered
 	// account with the entire outage as demurrage-free time.
 	applyFrom := func(acc *AccountState, seq uint64, amount float64, at int64) bool {
-		seedWALSeq(acc)
 		if acc.WALSeq >= seq {
 			return false
 		}
@@ -1589,7 +1631,6 @@ func (cs *ChainState) recoverFromWAL(path string) error {
 		return true
 	}
 	applyTo := func(acc *AccountState, seq uint64, amount float64, at int64) bool {
-		seedWALSeq(acc)
 		if acc.WALSeq >= seq {
 			return false
 		}
@@ -1605,7 +1646,10 @@ func (cs *ChainState) recoverFromWAL(path string) error {
 
 	reappliedCount := 0
 	supersededCount := 0
+	nachgeholtCount := 0
+	var hoechsteSeq uint64
 	readCount, truncated, err := wal.ReplayFile(path, func(entry wal.Entry) error {
+		hoechsteSeq = max(hoechsteSeq, entry.Seq)
 		if entry.Seq <= floor {
 			// Superseded by a wholesale state replacement — the per-account
 			// WALSeq test below cannot recognize this, because the resync
@@ -1626,6 +1670,11 @@ func (cs *ChainState) recoverFromWAL(path string) error {
 		toAcc, ok := cs.accounts.Get(rec.To)
 		if !ok {
 			return fmt.Errorf("WAL record seq %d: unknown recipient %s", entry.Seq, rec.To)
+		}
+		for _, acc := range [2]*AccountState{fromAcc, toAcc} {
+			if err := seedWALSeq(acc); err != nil {
+				return fmt.Errorf("WAL record seq %d: %w", entry.Seq, err)
+			}
 		}
 		// Der Absender zahlte Betrag + Gebuehr (Datensaetze vor dem 24.09.2026: 0).
 		fromApplied := applyFrom(fromAcc, entry.Seq, NewDecimal(rec.Amount).Add(NewDecimal(rec.Gebuehr)).Float(), rec.At)
@@ -1658,43 +1707,81 @@ func (cs *ChainState) recoverFromWAL(path string) error {
 		// pending_txs (der Korb-Flush schreibt keine). Jetzt nachholen --
 		// sonst kaeme es nie in einen Block. Das Nachgespielte (unten) geht
 		// den normalen Flush-Weg mit Zeile.
-		if cs.korbUebergang && entry.Seq > cs.korbUebergangBis && !fromApplied && !toApplied && cs.db != nil {
-			if err := cs.korbUebergangZeile(walRecordAlsTx(rec), entry.Seq); err != nil {
-				return fmt.Errorf("WAL record seq %d: Korb-Uebergang: %w", entry.Seq, err)
+		schonVerblockt := cs.korbUebergang && entry.Seq <= cs.korbUebergangBis
+		if !ausgangAbDa || entry.Seq <= ausgangAb {
+			// Alte Regel fuer Saetze ohne Vermerk (vor dieser Fassung
+			// geschrieben, wal_ausgang.go "UEBERGANG").
+			if cs.korbUebergang && entry.Seq > cs.korbUebergangBis && !fromApplied && !toApplied && cs.db != nil {
+				if err := cs.korbUebergangZeile(walRecordAlsTx(rec), entry.Seq); err != nil {
+					return fmt.Errorf("WAL record seq %d: Korb-Uebergang: %w", entry.Seq, err)
+				}
 			}
+			if fromApplied || toApplied {
+				reappliedCount++
+				if cs.db != nil {
+					// FIX (found via local crash-recovery drill, 2026-07-23): this used
+					// to append directly to cs.walFlushQueue instead of going through
+					// enqueueWALFlushLocked -- which also calls
+					// ensureWALFlushWorkerStarted(). Confirmed live in a local kill-9
+					// test: a record reapplied here (crash landed after a WAL append
+					// but before that item's periodic flush) stayed in-memory-correct
+					// forever but NEVER reached Postgres, because nothing else in a
+					// freshly-restarted, otherwise-idle process ever starts the flush
+					// worker on its own. Beyond the visible "Explorer/other-validator
+					// view never catches up" lag this file's top comment already
+					// documents, this is worse than that documented lag: a node whose
+					// OWN next block includes this transaction's outbox row would
+					// never mint it (row never reached pending_txs), while its
+					// StateRoot already reflects the recovered balance change -- a
+					// mismatch other nodes replaying only the transactions they
+					// actually received could not reproduce, i.e. a real, permanent
+					// fork risk for this validator, not just eventual-consistency lag.
+					// Beim Wiederanlauf ist der Datensatz per Definition haltbar --
+					// er kommt aus der Datei. Seine Seq ist die aus der Datei.
+					// Nach dem Ausschalten des Speicherkorbs: was bis zur Marke
+					// reicht, steht schon in einem Block.
+					cs.enqueueWALFlushMitLocked(rec.From, rec.To, walRecordAlsTx(rec), entry.Seq, schonVerblockt)
+				}
+			}
+			return nil
 		}
-		if fromApplied || toApplied {
-			reappliedCount++
+		// Mit Vermerk: die Ausgangszeile fehlt, wenn kein Vermerk da ist --
+		// auch wenn beide Konten den Satz schon enthalten (serielle
+		// Speicherung, Flush eines spaeteren Stapels). Im Korb-Modus traegt
+		// der Korb den Satz in einen Block; bis zur Marke steht er schon in
+		// einem.
+		zeileDa := vermerke.hat(entry.Seq)
+		ausgangFehlt := cs.korb == nil && !schonVerblockt && !zeileDa
+		if fromApplied || toApplied || ausgangFehlt {
+			if fromApplied || toApplied {
+				reappliedCount++
+			} else {
+				nachgeholtCount++
+			}
 			if cs.db != nil {
-				// FIX (found via local crash-recovery drill, 2026-07-23): this used
-				// to append directly to cs.walFlushQueue instead of going through
-				// enqueueWALFlushLocked -- which also calls
-				// ensureWALFlushWorkerStarted(). Confirmed live in a local kill-9
-				// test: a record reapplied here (crash landed after a WAL append
-				// but before that item's periodic flush) stayed in-memory-correct
-				// forever but NEVER reached Postgres, because nothing else in a
-				// freshly-restarted, otherwise-idle process ever starts the flush
-				// worker on its own. Beyond the visible "Explorer/other-validator
-				// view never catches up" lag this file's top comment already
-				// documents, this is worse than that documented lag: a node whose
-				// OWN next block includes this transaction's outbox row would
-				// never mint it (row never reached pending_txs), while its
-				// StateRoot already reflects the recovered balance change -- a
-				// mismatch other nodes replaying only the transactions they
-				// actually received could not reproduce, i.e. a real, permanent
-				// fork risk for this validator, not just eventual-consistency lag.
-				// Beim Wiederanlauf ist der Datensatz per Definition haltbar --
-				// er kommt aus der Datei. Seine Seq ist die aus der Datei.
-				// Nach dem Ausschalten des Speicherkorbs: was bis zur Marke
-				// reicht, steht schon in einem Block.
-				schonVerblockt := cs.korbUebergang && entry.Seq <= cs.korbUebergangBis
-				cs.enqueueWALFlushMitLocked(rec.From, rec.To, walRecordAlsTx(rec), entry.Seq, schonVerblockt)
+				// Mit Vermerk nie eine zweite Zeile -- auch nicht, wenn ein
+				// Konto den Satz (gegen die Erwartung) noch nicht enthaelt.
+				cs.enqueueWALFlushMitLocked(rec.From, rec.To, walRecordAlsTx(rec), entry.Seq, schonVerblockt || zeileDa)
 			}
 		}
 		return nil
 	})
 	if err != nil {
 		return fmt.Errorf("WAL replay failed: %w", err)
+	}
+	// Erster Wiederanlauf mit Vermerken: alles, was jetzt in der Datei steht,
+	// schrieb eine fruehere Fassung ohne Vermerk; ab hier vermerkt jeder
+	// Flush (wal_ausgang.go "UEBERGANG"). Scheitert das Setzen, scheitert der
+	// Wiederanlauf -- sonst gaelte beim naechsten Start die alte Regel auch
+	// fuer Saetze dieser Fassung.
+	if !ausgangAbDa {
+		if err := cs.setConfigValueDB(walAusgangAbKey, strconv.FormatUint(hoechsteSeq, 10)); err != nil {
+			return fmt.Errorf("WAL: Uebergangsgrenze %s=%d nicht gesetzt: %w", walAusgangAbKey, hoechsteSeq, err)
+		}
+		fmt.Printf("[WAL] Ausgangs-Vermerke ab Seq %d (Saetze bis dahin nach der alten Regel)\n", hoechsteSeq)
+	}
+	if nachgeholtCount > 0 {
+		fmt.Printf("[WAL] %d Satz/Saetze standen im Saldo, aber ohne Ausgangszeile -- Zeile wird nachgeholt (docs/OFFEN.md, Punkt 9)\n", nachgeholtCount)
 	}
 	if readCount > 0 {
 		fmt.Printf("[WAL] Read %d record(s) from %s: %d superseded by a state replacement (below recovery floor %d), %d already reflected in Postgres (skipped, idempotent), %d reapplied to in-memory state and queued for reconciliation (tail-truncated=%v means the process crashed mid-append on the last record, which is expected and already handled)\n",

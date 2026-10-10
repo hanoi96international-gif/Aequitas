@@ -131,6 +131,10 @@ func (cs *ChainState) walKompaktierungsRunde(_ uint64) uint64 {
 		return kopf
 	}
 	dauer := time.Since(start)
+	// Vermerke fuer Saetze, die die Datei nicht mehr traegt (wal_ausgang.go).
+	if err := cs.walAusgangKuerzen(bis); err != nil {
+		fmt.Printf("[WAL] ⚠ %v\n", err)
+	}
 	nachher := walDateiGroesse(cs.wal.Path())
 	walKompaktLaeufe.Add(1)
 	walKompaktLetzteSeq.Store(bis)

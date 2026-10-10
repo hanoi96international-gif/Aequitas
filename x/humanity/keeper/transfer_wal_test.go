@@ -1,10 +1,13 @@
 package keeper
 
 import (
+	"database/sql"
+	"errors"
 	"fmt"
 	"math"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -43,6 +46,14 @@ func newWALTestState(t *testing.T, walPath string) *ChainState {
 	}
 	t.Setenv("AEQUITAS_WAL_ENABLED", "1")
 	t.Setenv("AEQUITAS_WAL_PATH", walPath)
+	// Frische WAL-Datei = frischer Knoten: Seqs beginnen wieder bei 1. Die
+	// Vermerke (wal_ausgang) und die Uebergangsgrenze frueherer Tests liegen
+	// aber noch in der gemeinsamen Datenbank -- ein alter Vermerk fuer seq 1
+	// hiesse sonst "Ausgangszeile schon geschrieben" (wal_ausgang.go). In
+	// Produktion werden Seqs nie wiederverwendet.
+	if _, err := os.Stat(walPath); errors.Is(err, os.ErrNotExist) {
+		walTestVermerkeLeeren(t)
+	}
 	cs := NewChainState("unused-wal-test.json")
 	if !cs.useDB {
 		t.Fatal("expected a live PostgreSQL connection (cs.useDB == false) — check DATABASE_URL")
@@ -788,5 +799,25 @@ func TestWAL_FlushNowWartetAufLaufendenHintergrundFlush(t *testing.T) {
 	}
 	if zeilen != angewandt {
 		t.Fatalf("nach FlushWALNow %d Zeilen in pending_txs, erwartet %d", zeilen, angewandt)
+	}
+}
+
+// walTestVermerkeLeeren: Vermerke und Uebergangsgrenze aus der gemeinsamen
+// Test-Datenbank entfernen (siehe newWALTestState).
+func walTestVermerkeLeeren(t *testing.T) {
+	t.Helper()
+	db, err := sql.Open("postgres", os.Getenv("DATABASE_URL"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	for _, q := range []string{
+		`CREATE TABLE IF NOT EXISTS wal_ausgang (seq BIGINT PRIMARY KEY)`,
+		`DELETE FROM wal_ausgang`,
+		`DELETE FROM chain_config WHERE key = '` + walAusgangAbKey + `'`,
+	} {
+		if _, err := db.Exec(q); err != nil && !strings.Contains(err.Error(), "does not exist") {
+			t.Fatal(err)
+		}
 	}
 }

@@ -50,7 +50,8 @@ func (cs *ChainState) PruefeWALRest() error {
 		return nil
 	}
 	pfad := walPfad()
-	offen, kopf, err := cs.walRestOffen(pfad)
+	konten, ohneZeile, kopf, err := cs.walRestPruefen(pfad)
+	offen := konten + ohneZeile
 	// Ist der Wiederanlauf gescheitert, startet der Knoten nie -- auch wenn
 	// wal_seq keinen Rest mehr zeigt: ein Teil kann eingespielt und vom
 	// Flush-Arbeiter schon nach Postgres geschrieben sein, im Korb-Modus ohne
@@ -80,24 +81,26 @@ func (cs *ChainState) PruefeWALRest() error {
 		}
 		cs.markWALSupersededByStateReplacement()
 		if rest, _, err2 := cs.walRestOffen(pfad); err2 != nil || rest != 0 {
-			return fmt.Errorf("WAL %s: Rest (%d Konten) liess sich nicht verwerfen -- Knoten startet nicht", pfad, offen)
+			return fmt.Errorf("WAL %s: Rest (%s) liess sich nicht verwerfen -- Knoten startet nicht", pfad, walRestText(konten, ohneZeile))
 		}
 		if gescheitert != "" {
 			// Dieser Prozess hat einen halben Wiederanlauf hinter sich; erst der
 			// naechste Start ueberspringt den verworfenen Rest sauber.
 			return fmt.Errorf("WAL %s: Rest bis seq %s verworfen, aber der Wiederanlauf dieses Prozesses war gescheitert (%s) -- bitte neu starten (ohne AEQUITAS_WAL_REST_VERWERFEN)", pfad, soll, gescheitert)
 		}
-		fmt.Printf("[WAL] ⚠ WAL-Rest in %s bis seq %s bewusst verworfen (AEQUITAS_WAL_REST_VERWERFEN) -- %d Konten; diese Ueberweisungen wendet kein Wiederanlauf mehr an. Die Variable jetzt entfernen.\n", pfad, soll, offen)
+		fmt.Printf("[WAL] ⚠ WAL-Rest in %s bis seq %s bewusst verworfen (AEQUITAS_WAL_REST_VERWERFEN) -- %s; diese Ueberweisungen wendet kein Wiederanlauf mehr an. Die Variable jetzt entfernen.\n", pfad, soll, walRestText(konten, ohneZeile))
 		return nil
 	}
 	if offen == 0 {
-		return fmt.Errorf("WAL %s: %s -- Knoten startet nicht. Ursache beheben und neu starten; den Rest bewusst verwerfen: AEQUITAS_WAL_REST_VERWERFEN=%s", pfad, warum, soll)
+		// Gescheitert, aber nichts offen: Verwerfen aendert nichts (Pruefung
+		// von #331, 3. Durchgang, INFO-1).
+		return fmt.Errorf("WAL %s: %s -- Knoten startet nicht. Kein Rest offen: Ursache beheben und neu starten, notfalls AEQUITAS_WAL_ENABLED ausschalten", pfad, warum)
 	}
-	return fmt.Errorf("das WAL %s traegt nicht abgeglichene Ueberweisungen (%d Konten, bis seq %s), und %s. "+
+	return fmt.Errorf("das WAL %s traegt nicht abgeglichene Ueberweisungen (%s, bis seq %s), und %s. "+
 		"So liefe der Stand ohne sie weiter, und ein spaeterer Wiederanlauf wendete sie auf den weitergelaufenen Stand an. "+
 		"Ausweg: als Validator mit AEQUITAS_WAL_ENABLED=1 (ohne AEQUITAS_BEOBACHTER) starten, bis der Wiederanlauf gelingt, und sauber beenden -- "+
 		"oder den Rest bewusst verwerfen: AEQUITAS_WAL_REST_VERWERFEN=%s (nur fuer genau diesen Stand; diese Ueberweisungen gehen nie in einen Block). "+
-		"Die WAL-Datei in keinem Fall loeschen: die Zaehlung begaenne neu, und neue Saetze laegen unter der Untergrenze", pfad, offen, soll, warum, soll)
+		"Die WAL-Datei in keinem Fall loeschen: die Zaehlung begaenne neu, und neue Saetze laegen unter der Untergrenze", pfad, walRestText(konten, ohneZeile), soll, warum, soll)
 }
 
 // walRestOffen zaehlt die Konten, deren hoechster Satz ueber der
@@ -106,10 +109,21 @@ func (cs *ChainState) PruefeWALRest() error {
 // Speicher: ein Eintrag je Konto (hoechstens walRestHoechstensKonten),
 // nicht je Satz. Liest die Datei nur (wal.ReplayFile), schreibt nichts.
 func (cs *ChainState) walRestOffen(path string) (offen int, kopf uint64, err error) {
+	konten, ohneZeile, kopf, err := cs.walRestPruefen(path)
+	return konten + ohneZeile, kopf, err
+}
+
+// walRestPruefen: wie walRestOffen, getrennt nach Konten, deren Saldo einen
+// Satz nicht enthaelt, und Saetzen ohne Ausgangs-Vermerk (wal_ausgang.go):
+// auch ein Satz, den beide Salden schon enthalten, ist offen, solange seine
+// Ausgangszeile fehlt -- nur ein Wiederanlauf holt sie nach. Gezaehlt nur
+// ueber der Uebergangsgrenze, ohne Speicherkorb (der traegt die Saetze in
+// einen Block) und ueber dessen Marke (bis dahin stehen sie in Bloecken).
+func (cs *ChainState) walRestPruefen(path string) (konten, ohneZeile int, kopf uint64, err error) {
 	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
-		return 0, 0, nil
+		return 0, 0, 0, nil
 	} else if err != nil {
-		return 0, 0, fmt.Errorf("WAL %s nicht lesbar: %w", path, err)
+		return 0, 0, 0, fmt.Errorf("WAL %s nicht lesbar: %w", path, err)
 	}
 	if cs.db == nil {
 		// Ohne Datenbank weder Untergrenze noch wal_seq: jeder Satz zaehlt.
@@ -118,11 +132,30 @@ func (cs *ChainState) walRestOffen(path string) (offen int, kopf uint64, err err
 			return nil
 		})
 		if err != nil {
-			return 0, 0, err
+			return 0, 0, 0, err
 		}
-		return n, kopf, nil
+		return n, 0, kopf, nil
 	}
 	floor := cs.walRecoveryFloor()
+	ab, abDa, err := cs.walAusgangAb()
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	marke, markeDa, err := cs.speicherKorbMarkeLesen()
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	vermerkPruefen := abDa && !speicherKorbGewuenscht()
+	ohneVermerkAb := max(ab, floor)
+	if markeDa {
+		ohneVermerkAb = max(ohneVermerkAb, marke)
+	}
+	var vermerke walAusgangMenge
+	if vermerkPruefen {
+		if vermerke, err = cs.walAusgangVermerke(ohneVermerkAb); err != nil {
+			return 0, 0, 0, err
+		}
+	}
 	hoechster := make(map[string]uint64)
 	merken := func(konto string, seq uint64) error {
 		if _, da := hoechster[konto]; !da && len(hoechster) >= walRestHoechstensKonten {
@@ -142,16 +175,19 @@ func (cs *ChainState) walRestOffen(path string) (offen int, kopf uint64, err err
 		if err := json.Unmarshal(e.Payload, &rec); err != nil {
 			return fmt.Errorf("Satz %d nicht lesbar: %w", e.Seq, err)
 		}
+		if vermerkPruefen && e.Seq > ohneVermerkAb && !vermerke.hat(e.Seq) {
+			ohneZeile++
+		}
 		if err := merken(strings.ToLower(rec.From), e.Seq); err != nil {
 			return err
 		}
 		return merken(strings.ToLower(rec.To), e.Seq)
 	})
 	if err != nil {
-		return 0, 0, fmt.Errorf("WAL %s: %w", path, err)
+		return 0, 0, 0, fmt.Errorf("WAL %s: %w", path, err)
 	}
 	if len(hoechster) == 0 {
-		return 0, kopf, nil
+		return 0, ohneZeile, kopf, nil
 	}
 	liste := make([]string, 0, len(hoechster))
 	for k := range hoechster {
@@ -162,15 +198,15 @@ func (cs *ChainState) walRestOffen(path string) (offen int, kopf uint64, err err
 	for i := 0; i < len(liste); i += portion {
 		teil := liste[i:min(i+portion, len(liste))]
 		if err := cs.walSeqLesen(teil, stand); err != nil {
-			return 0, 0, err
+			return 0, 0, 0, err
 		}
 	}
 	for konto, seq := range hoechster {
 		if stand[konto] < seq {
-			offen++
+			konten++
 		}
 	}
-	return offen, kopf, nil
+	return konten, ohneZeile, kopf, nil
 }
 
 // walSeqLesen liest wal_seq der Konten in stand; fehlende Konten bleiben 0.
@@ -192,4 +228,13 @@ func (cs *ChainState) walSeqLesen(konten []string, stand map[string]uint64) erro
 		return fmt.Errorf("wal_seq nicht lesbar: %w", err)
 	}
 	return nil
+}
+
+// walRestText: "2 Konten" bzw. "2 Konten, 1 Satz ohne Ausgangszeile".
+func walRestText(konten, ohneZeile int) string {
+	t := fmt.Sprintf("%d Konten", konten)
+	if ohneZeile > 0 {
+		t += fmt.Sprintf(", %d Saetze ohne Ausgangszeile", ohneZeile)
+	}
+	return t
 }
