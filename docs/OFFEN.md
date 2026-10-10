@@ -131,17 +131,30 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
    - Betrieb: die WAL-Datei nie löschen (die Zählung begänne neu, neue Sätze
      lägen unter der Untergrenze; Prüfung von #331, INFO-6). Ein Beobachter
      mit `RESET_DB_STATE` und vorhandenem WAL startet nicht (leere
-     `chain_accounts`) – dann bewusst verwerfen (INFO-7).
+     `chain_accounts`) – dann bewusst verwerfen (INFO-7). Dasselbe gilt für
+     einen Validator, dessen Wiederanlauf nach dem Reset an „unknown sender“
+     scheitert, und für `RESYNC_FROM_SNAPSHOT`/Selbstheilung: Die Sperre
+     läuft vor dem Import, der den Rest per Untergrenze ohnehin überholte
+     (Prüfung von #331, 2. Durchgang, INFO-4). Fail-closed, lösbar mit
+     `AEQUITAS_WAL_REST_VERWERFEN=<Kopf>`.
+   - Ein gescheiterter Wiederanlauf sperrt den Start immer, auch wenn
+     `wal_seq` keinen Rest mehr zeigt (Merker; 2. Durchgang, Befund 1), und
+     ein geordnetes Beenden flusht das WAL (`FlushWALNow`, Befund 3).
 9. **HIGH: WAL-Wiederanlauf bucht doppelt** (Prüfung von #331, Befund 1;
    bestand schon vorher, WAL ist produktiv an): Serielle Speicherungen
    (`saveAccountToDBCtx`, Stapel-Speicherung) schreiben `balance` samt noch
    nicht geflushter WAL-Deltas, aber nie `wal_seq`; `recoverFromWAL`
    entscheidet allein über `wal_seq` und wendet eine Abbuchung nach einem
-   Absturz im Flush-Fenster ein zweites Mal an (PoC: 2104,1 → 1203,2). Fix
-   (eigener PR): `wal_seq` monoton mitschreiben – und die Ausgangszeile im
-   Wiederanlauf nicht mehr aus „Absender oder Empfänger noch nicht
-   angewandt“ ableiten, sonst ginge ohne Speicherkorb ein Transfer dem Netz
-   verloren.
+   Absturz im Flush-Fenster ein zweites Mal an (PoC: 2104,1 → 1203,2).
+   Verwandt (HIGH, bestätigt im 2. Durchgang von #331): `flushWALBatch`
+   schreibt je Konto den aktuellen `WALSeq`, der Sätze späterer oder
+   parallel laufender Stapel einschließt; committen andere Stapel beide
+   Konten eines Satzes, dessen eigener Stapel noch offen ist, hält der
+   Wiederanlauf ihn für angewandt und schreibt keine Ausgangszeile (PoC:
+   seq1 S→R, seq2 S→X, seq3 X→U; seq2 fehlt dem Netz). Ohne Speicherkorb.
+   Fix (eigener PR): `wal_seq` monoton mitschreiben – und die Ausgangszeile
+   im Wiederanlauf über einen eigenen Vermerk je Satz nachweisen statt aus
+   „Absender oder Empfänger noch nicht angewandt“.
 
 ## Ratenbegrenzung – bekannte Lücken
 - **`X-Forwarded-For` hinter einem privaten TCP-Partner** (Prüfung von #319,

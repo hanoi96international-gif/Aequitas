@@ -1052,6 +1052,12 @@ func main() {
 	case <-time.After(10 * time.Second):
 		fmt.Println("[WARN] Distribution goroutine did not stop in 10 seconds — forcing exit")
 	}
+	// Den WAL-Rest nach Postgres schreiben: sonst blieb nach jedem geordneten
+	// Beenden der Rest der letzten Flush-Takte liegen, und ein Start als
+	// Beobachter (oder mit ausgeschaltetem WAL) sperrte danach (wal_rest.go,
+	// Pruefung von #331, 2. Durchgang, Befund 3). Was waehrenddessen noch
+	// angenommen wird, bleibt im WAL und wird beim naechsten Start eingespielt.
+	chainState.FlushWALNow()
 	// SCALING_ARCHITECTURE.md Phase 3: pool-address credits are flushed to
 	// Postgres on a periodic background timer rather than synchronously per
 	// transfer (see pool_flush.go) — a clean shutdown (SIGINT/SIGTERM, e.g.

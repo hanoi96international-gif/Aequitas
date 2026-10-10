@@ -195,7 +195,7 @@ func TestWALRest_ValidatorOhneWALStartetNicht_RealDB(t *testing.T) {
 // Jetzt startet er nicht.
 func TestWALRest_WiederanlaufGescheitertStartetNicht_RealDB(t *testing.T) {
 	walPath := filepath.Join(t.TempDir(), "gescheitert.wal")
-	_, to := walRestAnlegen(t, walPath)
+	from, to := walRestAnlegen(t, walPath)
 	t.Setenv("AEQUITAS_WAL_ENABLED", "")
 	cs0 := testKnoten(t, "unused-wal-test.json")
 	if _, err := cs0.db.Exec(`DELETE FROM chain_accounts WHERE lower(address) = $1`, to); err != nil {
@@ -211,6 +211,31 @@ func TestWALRest_WiederanlaufGescheitertStartetNicht_RealDB(t *testing.T) {
 	}
 	if err := cs.PruefeWALRest(); err == nil || !strings.Contains(err.Error(), "gescheitert") {
 		t.Fatalf("gescheiterter Wiederanlauf mit Rest: %v", err)
+	}
+	if cs.walWiederanlaufFehler == "" {
+		t.Fatal("Merker fuer den gescheiterten Wiederanlauf nicht gesetzt")
+	}
+	// Pruefung #331, 2. Durchgang, Befund 1: auch wenn wal_seq keinen Rest
+	// mehr zeigt (ein Flush-Arbeiter hat einen halb eingespielten Rest
+	// geschrieben, im Korb-Modus ohne Ausgangszeile), startet der Knoten
+	// nicht.
+	if _, err := cs.db.Exec(`INSERT INTO chain_accounts (address, balance, wal_seq) VALUES ($1, 42, 1)`, to); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cs.db.Exec(`UPDATE chain_accounts SET wal_seq = 1 WHERE lower(address) = $1`, from); err != nil {
+		t.Fatal(err)
+	}
+	if rest, _, err := cs.walRestOffen(walPath); err != nil || rest != 0 {
+		t.Fatalf("Vorbedingung: kein Rest mehr laut wal_seq (%d, %v)", rest, err)
+	}
+	if err := cs.PruefeWALRest(); err == nil || !strings.Contains(err.Error(), "gescheitert") {
+		t.Fatalf("gescheiterter Wiederanlauf ohne Rest laut wal_seq: %v", err)
+	}
+	// Bewusst verwerfen setzt die Untergrenze, startet diesen Prozess aber
+	// trotzdem nicht -- erst der naechste Start ueberspringt sauber.
+	t.Setenv("AEQUITAS_WAL_REST_VERWERFEN", "1")
+	if err := cs.PruefeWALRest(); err == nil || !strings.Contains(err.Error(), "neu starten") || cs.walRecoveryFloor() != 1 {
+		t.Fatalf("Verwerfen nach gescheitertem Wiederanlauf: %v, Untergrenze %d", err, cs.walRecoveryFloor())
 	}
 }
 

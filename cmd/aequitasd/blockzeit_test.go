@@ -243,3 +243,26 @@ func TestMain_WALRestVorDemStart(t *testing.T) {
 		t.Error("PruefeWALRest steht nicht nach NewChainState")
 	}
 }
+
+// Beim geordneten Beenden schreibt main den WAL-Rest nach Postgres
+// (Pruefung von #331, 2. Durchgang, Befund 3) -- als eigene Anweisung nach
+// dem Warten auf das Signal.
+func TestMain_FlushtWALBeimBeenden(t *testing.T) {
+	liste := mainAnweisungen(t)
+	warten := -1
+	for i, st := range liste {
+		if es, ok := st.(*ast.ExprStmt); ok {
+			if u, ok := es.X.(*ast.UnaryExpr); ok && u.Op == token.ARROW {
+				if id, ok := u.X.(*ast.Ident); ok && id.Name == "quit" {
+					warten = i
+				}
+			}
+		}
+	}
+	if warten < 0 {
+		t.Fatal("<-quit nicht als Anweisung in main gefunden")
+	}
+	if i := direkterAufruf(liste, "chainState", "FlushWALNow"); i < 0 || i < warten {
+		t.Fatalf("chainState.FlushWALNow() nicht als eigene Anweisung nach <-quit (Index %d, <-quit %d)", i, warten)
+	}
+}

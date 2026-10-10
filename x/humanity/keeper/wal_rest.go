@@ -51,11 +51,18 @@ func (cs *ChainState) PruefeWALRest() error {
 	}
 	pfad := walPfad()
 	offen, kopf, err := cs.walRestOffen(pfad)
-	if err == nil && offen == 0 {
+	// Ist der Wiederanlauf gescheitert, startet der Knoten nie -- auch wenn
+	// wal_seq keinen Rest mehr zeigt: ein Teil kann eingespielt und vom
+	// Flush-Arbeiter schon nach Postgres geschrieben sein, im Korb-Modus ohne
+	// Ausgangszeile (Pruefung von #331, 2. Durchgang, Befund 1).
+	gescheitert := cs.walWiederanlaufFehler
+	if err == nil && offen == 0 && gescheitert == "" {
 		return nil
 	}
 	warum := "der Wiederanlauf des WAL ist gescheitert (siehe die [WAL]-Meldungen oben)"
 	switch {
+	case gescheitert != "":
+		warum = "der Wiederanlauf des WAL ist gescheitert: " + gescheitert
 	case beobachterModus():
 		warum = "ein Beobachter (AEQUITAS_BEOBACHTER) liest das WAL nicht ein"
 	case os.Getenv("AEQUITAS_WAL_ENABLED") != "1":
@@ -75,8 +82,16 @@ func (cs *ChainState) PruefeWALRest() error {
 		if rest, _, err2 := cs.walRestOffen(pfad); err2 != nil || rest != 0 {
 			return fmt.Errorf("WAL %s: Rest (%d Konten) liess sich nicht verwerfen -- Knoten startet nicht", pfad, offen)
 		}
+		if gescheitert != "" {
+			// Dieser Prozess hat einen halben Wiederanlauf hinter sich; erst der
+			// naechste Start ueberspringt den verworfenen Rest sauber.
+			return fmt.Errorf("WAL %s: Rest bis seq %s verworfen, aber der Wiederanlauf dieses Prozesses war gescheitert (%s) -- bitte neu starten (ohne AEQUITAS_WAL_REST_VERWERFEN)", pfad, soll, gescheitert)
+		}
 		fmt.Printf("[WAL] ⚠ WAL-Rest in %s bis seq %s bewusst verworfen (AEQUITAS_WAL_REST_VERWERFEN) -- %d Konten; diese Ueberweisungen wendet kein Wiederanlauf mehr an. Die Variable jetzt entfernen.\n", pfad, soll, offen)
 		return nil
+	}
+	if offen == 0 {
+		return fmt.Errorf("WAL %s: %s -- Knoten startet nicht. Ursache beheben und neu starten; den Rest bewusst verwerfen: AEQUITAS_WAL_REST_VERWERFEN=%s", pfad, warum, soll)
 	}
 	return fmt.Errorf("das WAL %s traegt nicht abgeglichene Ueberweisungen (%d Konten, bis seq %s), und %s. "+
 		"So liefe der Stand ohne sie weiter, und ein spaeterer Wiederanlauf wendete sie auf den weitergelaufenen Stand an. "+
