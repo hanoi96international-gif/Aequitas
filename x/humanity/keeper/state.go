@@ -1666,6 +1666,7 @@ func (cs *ChainState) resetDBStateForBootstrap() {
 		return
 	}
 	var failed []string
+	recoveryVorDemResetMelden(tx)
 	for _, table := range tables {
 		var exists bool
 		if err := tx.QueryRow(`SELECT to_regclass($1) IS NOT NULL`, "public."+table).Scan(&exists); err != nil {

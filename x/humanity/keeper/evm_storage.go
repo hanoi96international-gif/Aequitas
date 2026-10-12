@@ -3498,13 +3498,63 @@ func (cs *ChainState) RetryRegistrationRecoveries() int {
 	}
 
 	// Clear the degraded flag once no unrecovered records remain.
-	if (recovered > 0 || geschlossen > 0) && cs.CountUnrecoveredRegistrations() == 0 {
+	if (recovered > 0 || geschlossen > 0) && recoveryNichtsOffen(cs.CountUnrecoveredRegistrations()) {
 		cur := cs.BootstrapDegradedReason()
 		if strings.Contains(cur, "registration_recovery") {
 			cs.SetBootstrapDegraded("")
 		}
 	}
 	return recovered
+}
+
+// recoveryNichtsOffen: nur eine gelesene Null heisst "nichts offen" -- -1
+// (Lesefehler) nie, sonst verschwaende der Degraded-Grund (Pruefung #335,
+// INFO-3/M2).
+func recoveryNichtsOffen(n int) bool { return n == 0 }
+
+// registrationRecoveryHinweis: was /api/health/combined zu n offenen
+// Wiederholungen meldet; -1 heisst nicht lesbar (Warnung, nicht "alles gut").
+func registrationRecoveryHinweis(n int) (warnen bool, hinweis string) {
+	switch {
+	case n < 0:
+		return true, "registration_recovery is not readable — pending registration recoveries unknown; see the [RECOVERY] log"
+	case n > 0:
+		return true, fmt.Sprintf("%d registration(s) have EVM tx committed but Go-state not yet synced — "+
+			"background recovery is retrying; see /api/admin/registration-recovery", n)
+	}
+	return false, ""
+}
+
+// recoveryVorDemResetMelden: RESET_DB_STATE leert registration_recovery
+// (der Snapshot ist die Wahrheit des Netzes). Offene Zeilen mit EVM-Hash sind
+// Registrierungen, die der Nutzer als "recovery is queued" gemeldet bekam --
+// vorher Wallet und Hash ins Log, damit der Betreiber sie nachfassen kann
+// (Pruefung #335, LOW-1). Hoechstens 100 Zeilen, dazu die Gesamtzahl.
+func recoveryVorDemResetMelden(q interface {
+	Query(string, ...interface{}) (*sql.Rows, error)
+	QueryRow(string, ...interface{}) *sql.Row
+}) {
+	var n int
+	if err := q.QueryRow(`SELECT count(*) FROM registration_recovery WHERE recovered_at IS NULL AND evm_tx_hash <> ''`).Scan(&n); err != nil {
+		fmt.Printf("[DB-RESET] ⚠ offene Wiederholungen nicht zaehlbar: %v\n", err)
+		return
+	}
+	if n == 0 {
+		return
+	}
+	fmt.Printf("[ALERT] [DB-RESET] %d offene, auf der EVM bestaetigte Registrierung(en) in registration_recovery werden verworfen -- die Nutzer muessen sich neu registrieren:\n", n)
+	rows, err := q.Query(`SELECT wallet, evm_tx_hash FROM registration_recovery WHERE recovered_at IS NULL AND evm_tx_hash <> '' ORDER BY id LIMIT 100`)
+	if err != nil {
+		fmt.Printf("[DB-RESET] ⚠ offene Wiederholungen nicht lesbar: %v\n", err)
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var w, h string
+		if rows.Scan(&w, &h) == nil {
+			fmt.Printf("[DB-RESET]   wallet=%s evm_tx=%s\n", w, h)
+		}
+	}
 }
 
 // recoveryVersuchVermerken: ein Versuch an der Zeile, sie rueckt ans Ende.
@@ -3591,8 +3641,8 @@ func (cs *ChainState) vorEVMIntentAufloesen(id int64, wallet, nullifier string, 
 	// die Wiederholung braucht: der Intent ist abgeloest. Nur genau diese
 	// Zeile: juenger als der Intent (dieselbe Anfrage legt sie danach an),
 	// derselbe Nullifier, noch offen. Eine alte oder geschlossene Zeile
-	// derselben Wallet -- jede fruehere Registrierung hinterlaesst eine, und
-	// RESET_DB_STATE/CLEAR_REGISTRATIONS leeren die Tabelle nicht -- schloss
+	// derselben Wallet -- jede fruehere Registrierung hinterlaesst eine
+	// (RESET_DB_STATE/CLEAR_REGISTRATIONS leeren die Tabelle erst seit #335) -- schloss
 	// sonst eine bestaetigte Registrierung still (Pruefung #330, 2.
 	// Durchgang, Befund 1). Ist sie geschlossen, Go aber kein Mensch, geht es
 	// weiter zum Beleg.

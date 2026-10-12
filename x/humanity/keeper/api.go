@@ -623,20 +623,11 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 	}
 	// BRUTAL-P1-01: surface pending registration recoveries in health output.
 	registrationRecoveryCount := a.state.CountUnrecoveredRegistrations()
-	if registrationRecoveryCount < 0 {
+	if warnen, hinweis := registrationRecoveryHinweis(registrationRecoveryCount); warnen {
 		if status == "healthy" {
 			status = "warn"
 		}
-		notes = append(notes, "registration_recovery is not readable — pending registration recoveries unknown; see the [RECOVERY] log")
-	}
-	if registrationRecoveryCount > 0 {
-		if status == "healthy" {
-			status = "warn"
-		}
-		notes = append(notes, fmt.Sprintf(
-			"%d registration(s) have EVM tx committed but Go-state not yet synced — "+
-				"background recovery is retrying; see /api/admin/registration-recovery",
-			registrationRecoveryCount))
+		notes = append(notes, hinweis)
 	}
 	// Monster-Audit P1-01/P1-02: a chain_blocks write that keeps the DB
 	// consistent with in-memory GHOSTDAG/replay state failed persistently

@@ -85,51 +85,72 @@ func TestRecovery_LoeschwegeLeerenDieTabelle(t *testing.T) {
 	}
 }
 
-// INFO-4: mit Datenbank keine EVM-Transaktion ohne vorgemerkten Intent.
+// INFO-4: mit Datenbank keine EVM-Transaktion ohne vorgemerkten Intent --
+// registerOnV7 legt ihn ueber intentVorEVM an und kehrt bei Fehler vorher um.
 func TestRegister_OhneIntentKeineEVMTransaktion(t *testing.T) {
 	b := functionBodyFromSource(t, "register.go", "func (a *APIServer) registerOnV7(")
-	ablehnung := strings.Index(b, "registration temporarily unavailable: could not record the registration intent")
+	intent := strings.Index(b, "a.state.intentVorEVM(")
+	abbruch := strings.Index(b, "if intentErr != nil {\n\t\treturn \"\", intentErr")
 	senden := strings.Index(b, "evmRPC.sendRawTransaction(")
-	if ablehnung < 0 || senden < 0 || ablehnung > senden {
-		t.Fatalf("registerOnV7 lehnt bei fehlgeschlagenem Intent nicht vor der EVM-Transaktion ab (Ablehnung %d, Senden %d)", ablehnung, senden)
+	if intent < 0 || abbruch < 0 || senden < 0 || !(intent < abbruch && abbruch < senden) {
+		t.Fatalf("registerOnV7: Intent %d, Abbruch %d, Senden %d -- der Intent muss vor der EVM-Transaktion stehen und sein Fehler abbrechen", intent, abbruch, senden)
 	}
 }
 
-// Dasselbe fuer Vor-EVM-Intents, die liegen bleiben (hier: unlesbarer
-// Nullifier): sie ruecken nach einem Versuch ans Ende, ein juengerer, der
-// sich aufloesen laesst, kommt im zweiten Durchlauf dran.
-func TestRecovery_LiegendeVorEVMIntentsBlockierenNicht_RealDB(t *testing.T) {
-	cs := recoveryTestKnoten(t, "unused-recovery-vorevm-kopf-test.json")
-	alt := time.Now().Unix() - 7200
-	if _, err := cs.db.Exec(`INSERT INTO registration_recovery (wallet, evm_tx_hash, nullifier, pending_tx_json, created_at)
-		SELECT '0x' || lpad(to_hex(g + 9000), 40, '0'), '', 'kein-nullifier', '', $1 FROM generate_series(1, $2) g`,
-		alt, recoveryHoechstensJeDurchlauf); err != nil {
-		t.Fatal(err)
+// Pruefung #335, INFO-3 (M1): scheitert das Schreiben des Intents mit
+// Datenbank, lehnt intentVorEVM ab; ohne Datenbank bleibt es beim Hinweis.
+func TestRegister_IntentFehlerLehntAb_RealDB(t *testing.T) {
+	cs := recoveryTestKnoten(t, "unused-recovery-intent-test.json")
+	for _, q := range []string{
+		`CREATE OR REPLACE FUNCTION aeq_test_intent_fehler() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'Platte voll (Test)'; END $$ LANGUAGE plpgsql`,
+		`DROP TRIGGER IF EXISTS aeq_test_intent_fehler ON registration_recovery`,
+		`CREATE TRIGGER aeq_test_intent_fehler BEFORE INSERT ON registration_recovery FOR EACH ROW EXECUTE FUNCTION aeq_test_intent_fehler()`,
+	} {
+		if _, err := cs.db.Exec(q); err != nil {
+			t.Fatal(err)
+		}
 	}
-	id := vorEVMIntentAnlegen(t, cs, distTestAddr(2397), "", vorEVMMindestAlterSek+60)
-	cs.RetryRegistrationRecoveries()
-	if zu, _ := recoveryZeile(t, cs, id); zu {
-		t.Fatal("Vorbedingung: im ersten Durchlauf die aelteren")
+	weg := func() {
+		cs.db.Exec(`DROP TRIGGER IF EXISTS aeq_test_intent_fehler ON registration_recovery`)
+		cs.db.Exec(`DROP FUNCTION IF EXISTS aeq_test_intent_fehler()`)
 	}
-	cs.RetryRegistrationRecoveries()
-	if zu, _ := recoveryZeile(t, cs, id); !zu {
-		t.Fatal("der juengere Vor-EVM-Intent kam auch im zweiten Durchlauf nicht dran -- Kopf-Blockade")
+	t.Cleanup(weg)
+	w := distTestAddr(2395)
+	if id, err := cs.intentVorEVM(w, "", Transaction{Type: "register_human", Wallet: w}); err == nil || id != 0 {
+		t.Fatalf("Intent scheitert, trotzdem weiter: id=%d err=%v", id, err)
+	}
+	weg()
+	if id, err := cs.intentVorEVM(w, "", Transaction{Type: "register_human", Wallet: w}); err != nil || id <= 0 {
+		t.Fatalf("Intent geschrieben: id=%d err=%v", id, err)
+	}
+	ohneDB := &ChainState{}
+	if id, err := ohneDB.intentVorEVM(w, "", Transaction{}); err != nil || id != 0 {
+		t.Fatalf("ohne Datenbank: id=%d err=%v, erwartet 0 und kein Fehler", id, err)
 	}
 }
 
-// 3. Durchgang von #330, INFO-1: Zeilen mit NULL in nullifier und
-// pending_tx_json werden gelesen und versucht, nicht still uebersprungen.
-func TestRecovery_NullSpaltenWerdenVersucht_RealDB(t *testing.T) {
-	cs := recoveryTestKnoten(t, "unused-recovery-null-test.json")
-	var id int64
-	if err := cs.db.QueryRow(`INSERT INTO registration_recovery (wallet, evm_tx_hash, nullifier, pending_tx_json, created_at)
-		VALUES ($1, '0xnull', NULL, NULL, $2) RETURNING id`, distTestAddr(2396), time.Now().Unix()-3600).Scan(&id); err != nil {
-		t.Fatal(err)
+// Pruefung #335, INFO-3 (M2, M3): -1 (nicht lesbar) heisst weder "nichts
+// offen" noch "gesund".
+func TestRecovery_LesefehlerIstKeinGutfall(t *testing.T) {
+	if recoveryNichtsOffen(-1) || !recoveryNichtsOffen(0) || recoveryNichtsOffen(2) {
+		t.Fatal("recoveryNichtsOffen: nur eine gelesene Null ist nichts offen")
 	}
-	cs.RetryRegistrationRecoveries()
-	var n int
-	cs.db.QueryRow(`SELECT attempt_count FROM registration_recovery WHERE id=$1`, id).Scan(&n)
-	if n != 1 {
-		t.Fatalf("Zeile mit NULL-Spalten %d-mal versucht, erwartet 1", n)
+	if w, h := registrationRecoveryHinweis(-1); !w || !strings.Contains(h, "not readable") {
+		t.Fatalf("-1: warnen=%v %q", w, h)
+	}
+	if w, _ := registrationRecoveryHinweis(0); w {
+		t.Fatal("0 offen warnt")
+	}
+	if w, h := registrationRecoveryHinweis(3); !w || !strings.Contains(h, "3 registration(s)") {
+		t.Fatalf("3 offen: warnen=%v %q", w, h)
+	}
+}
+
+// Der Degraded-Grund faellt nur ueber recoveryNichtsOffen (M2 an der
+// Aufrufstelle).
+func TestRecovery_DegradedNurBeiGelesenerNull(t *testing.T) {
+	b := functionBodyFromSource(t, "evm_storage.go", "func (cs *ChainState) RetryRegistrationRecoveries(")
+	if !strings.Contains(b, "recoveryNichtsOffen(cs.CountUnrecoveredRegistrations())") {
+		t.Fatal("RetryRegistrationRecoveries loescht den Degraded-Grund nicht ueber recoveryNichtsOffen -- ein Lesefehler (-1) liesse ihn verschwinden")
 	}
 }
