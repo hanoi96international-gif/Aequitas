@@ -795,6 +795,12 @@ func TestBegrenzteKarte_HoechstzahlJeKarte(t *testing.T) {
 			t.Fatalf("%s: grob haelt %d Netze -- mehr, als der Speicher der Ueberlaufkarten erlaubt", name, g["hoechstens"])
 		}
 	}
+	// Quote je IPv6-/32 (Pruefung #328, 2. Durchgang, INFO-3): eine Lockerung
+	// fiele sonst keinem Test auf -- mit 1000 reichte wieder ein /32 fuer die
+	// ganze Netzkarte.
+	if grobJePraefix > 64 {
+		t.Fatalf("grobJePraefix %d: hoechstens 64 /48 je /32, sonst fuellen wenige /32 die Netzkarte", grobJePraefix)
+	}
 }
 
 // Pruefung von #325, INFO-8 (M19) und #324, LOW-6: ist bindungRateLimit
