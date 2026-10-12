@@ -543,7 +543,7 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 	// snapshot bootstrap/resync EVM-mirror migration here, instead of that
 	// only ever existing as a one-time startup log line — see
 	// SetBootstrapDegraded's own comment.
-	degradedReason := a.state.BootstrapDegradedReason()
+	degradedReason := oeffentlicherDegradedGrund(a.state.BootstrapDegradedReason())
 	// FIX (audit 2026-06-28 recheck 5, P2-1/P2-4): retry-queue depth/age
 	// used to live only in printf logs — surfaced here so a stuck backlog
 	// (proof-server unreachable, EVM mirror writes failing repeatedly) is
@@ -636,7 +636,7 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 	dagDegradedReason := a.blockchain.DegradedReason()
 	if dagDegraded {
 		status = "unhealthy"
-		notes = append(notes, "DAG degraded: "+dagDegradedReason)
+		notes = append(notes, "DAG degraded: "+oeffentlicherDegradedGrund(dagDegradedReason))
 	}
 	// Monster-Audit P1-04: surface synthetic-checkpoint trust-bootstrap mode
 	// instead of letting it run invisibly.
@@ -821,7 +821,7 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 			"healthy":                    status == "healthy", // kept for backward compatibility with existing callers
 			"degraded_reason":            degradedReason,
 			"dag_degraded":               dagDegraded,
-			"dag_degraded_reason":        dagDegradedReason,
+			"dag_degraded_reason":        oeffentlicherDegradedGrund(dagDegradedReason),
 			"checkpoint_trust_mode":      checkpointTrustMode,
 			"synthetic_checkpoint_count": syntheticCheckpointCount,
 			// Dieselbe Quelle wie /api/status. Zwei Endpunkte desselben Knotens,

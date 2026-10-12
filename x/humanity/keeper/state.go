@@ -11,6 +11,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"runtime/debug"
 	"sort"
@@ -630,6 +631,38 @@ func (cs *ChainState) SetBootstrapDegraded(reason string) {
 	cs.degradedMu.Lock()
 	cs.bootstrapDegradedReason = reason
 	cs.degradedMu.Unlock()
+	if reason != "" {
+		// Vollstaendig nur ins Log; oeffentlich geschwaerzt
+		// (oeffentlicherDegradedGrund).
+		fmt.Printf("[DEGRADED] %s\n", reason)
+	}
+}
+
+// degradedHex: Wallet-Adressen, Transaktions- und Block-Hashes im
+// Degraded-Grund: mit 0x (auch 0X) ab sechs Zeichen, ohne Praefix ab 32 --
+// kuerzer traefe es Woerter wie "decade" und gewoehnliche Zahlen.
+var degradedHex = regexp.MustCompile(`(?i)\b0x[0-9a-f]{6,}|\b[0-9a-f]{32,}\b`)
+
+// degradedZiffern: lange Dezimalzahlen -- Nullifier und Commitments (bis 77
+// Ziffern). Blockhoehen und IDs sind kuerzer (Pruefung #336, F1).
+var degradedZiffern = regexp.MustCompile(`\b[0-9]{16,}\b`)
+
+// oeffentlicherDegradedGrund: der Degraded-Grund fuer oeffentliche Endpunkte
+// (/api/health/combined, /api/wache). Er nannte Wallet, EVM-Hash und rohe
+// Fehlertexte einer Registrierung -- personenbezogen, und fuer einen
+// Monitor ohne Nutzen (Pruefung #330, 2. Durchgang, INFO-5). Geschwaerzt
+// werden Hex-Werte ab sechs Zeichen und Dezimalzahlen ab 16 Ziffern; die
+// Laenge ist begrenzt. Den vollen Text hat das Log ([DEGRADED]); fuer
+// registration_recovery zusaetzlich /api/admin/registration-recovery. Auch
+// fuer den DAG-Grund (dag_degraded_reason).
+func oeffentlicherDegradedGrund(r string) string {
+	r = degradedZiffern.ReplaceAllString(r, "…")
+	r = degradedHex.ReplaceAllString(r, "0x…")
+	const hoechstens = 300
+	if len(r) > hoechstens {
+		r = strings.ToValidUTF8(r[:hoechstens], "") + "…"
+	}
+	return r
 }
 
 // BootstrapDegradedReason returns the last recorded bootstrap-degraded

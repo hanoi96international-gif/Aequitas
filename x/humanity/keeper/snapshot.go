@@ -575,7 +575,9 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) (
 					`INSERT INTO nullifiers (nullifier, wallet_address) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
 					nullifier, strings.ToLower(wallet),
 				); err != nil {
-					return fmt.Errorf("saving nullifier %s: %w", nullifier, err)
+					// Ohne den Wert: der Fehler kann in einem oeffentlichen
+					// Degraded-Grund landen (Pruefung #336, F1).
+					return fmt.Errorf("saving nullifier: %w", err)
 				}
 			}
 			// FIX (audit recheck3, P1 — "Snapshot/Resync verliert Chain-seitige
