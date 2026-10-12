@@ -127,7 +127,7 @@ func annahmeRolleAusdruecklichAnnehmend() bool {
 func (cs *ChainState) nimmtUeberweisungenAn() bool {
 	// Ein Beobachter nimmt nie an (annahme_pause.go) -- auch der Stand sagt
 	// das (Pruefung von #322, INFO-10).
-	if cs.nurLesend.Load() || beobachterModus() {
+	if cs.nurLesend.Load() || beobachterModus() || cs.leitungNichtBereit() != nil {
 		return false
 	}
 	if l := cs.leitung.Load(); l != nil {
@@ -140,7 +140,12 @@ func (cs *ChainState) nimmtUeberweisungenAn() bool {
 // konten belastet? Stufe 2 (leitung_verteilt.go): jeder Validator fuer seine
 // Konten; ohne verteilte Annahme heisst das wie bisher "ist Leiter".
 func (cs *ChainState) nimmtAnFuer(konten ...string) bool {
-	if cs.nurLesend.Load() {
+	// Erst der Merker, dann cs.leitung (leitungNichtBereit): solange die
+	// Leitung startet oder ihr Start gescheitert ist, nimmt dieser Knoten
+	// nichts an -- gleich, in welcher Reihenfolge ein Aufrufer Tor und Pause
+	// fragt (Pruefung von #329, Befund 6). Wie ein Folger: die
+	// Registrierung laeuft dann lokal weiter (register.go).
+	if cs.nurLesend.Load() || cs.leitungNichtBereit() != nil {
 		return false
 	}
 	l := cs.leitung.Load()
@@ -173,6 +178,13 @@ func (cs *ChainState) annahmeBeginnen(absender string, konten ...string) error {
 	}
 	if len(konten) == 0 {
 		konten = []string{absender}
+	}
+	// Die Leitung VOR dem Tor: das Tor liest cs.leitung, und wer es zuerst
+	// fragt, saehe an der Umschaltkante "keine Leitung" und danach "Start
+	// versucht" -- ein Folger naehme lokal an (Pruefung von #329, Befund 1).
+	if err := cs.leitungNichtBereit(); err != nil {
+		annahmePausiertAbgelehnt.Add(1)
+		return err
 	}
 	cs.annahmenLaufend.Add(1)
 	if err := cs.pruefeAnnahmeTorFuer(konten...); err != nil {
@@ -216,6 +228,9 @@ func (cs *ChainState) pruefeAnnahmeTorFuer(konten ...string) error {
 		return nil
 	}
 	abgelehnteUeberweisungen.Add(1)
+	if err := cs.leitungNichtBereit(); err != nil {
+		return err
+	}
 	if !cs.nurLesend.Load() && cs.leitung.Load() != nil {
 		return ErrNichtLeiter
 	}

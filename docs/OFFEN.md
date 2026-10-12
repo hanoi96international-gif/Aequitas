@@ -58,36 +58,103 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
    ausgelöst von Peer-Blöcken) legt den Strafbeweis auch auf einem Beobachter
    oder pausierten Knoten in den Ausgang; läuft `strafBeweisFrisch` ab, bevor
    der Knoten erzeugt, helfen nur Resync oder Verwerfen.
-   `RetryRegistrationRecoveries` (alle 5 Minuten) prüft die Pause nicht. Fix:
-   die Wiederholung an `annahmePauseGrund()` koppeln. (Auf einem Beobachter
-   sperren seit #322 `beobachterOhneAusgang` in `runAtomicWithOutbox`,
-   `runAtomicDistributionWithOutbox`, `RegisterHumanAtomic` und
-   `RegisterHuman` sowie `RetryRegistrationRecoveries` und der
-   WAL-Wiederanlauf den Ausgang; Überweisungen sperrt `annahmeBeginnen`.)
-8. **Folger nimmt beim Start bis zu 30 s ohne Leitung an** (Prüfung von
-   #322, INFO-7; bestand schon vorher): Bis `StarteLeitung` läuft, ist
-   `cs.leitung` nil und `nimmtAnFuer()` true, auch mit `AEQUITAS_LEITUNG=an`;
-   Überweisung, Tausch und Faucet nehmen dann lokal an, statt
-   weiterzuleiten. Fix: pausieren, solange `leitungAn()` und der Start der
-   Leitung noch nicht versucht wurde (versucht, nicht gelungen -- sonst
-   hielte eine kaputte Leitung den Knoten für immer an).
-9. **WAL nach einem Rollenwechsel ohne Deckungsprüfung** (Prüfung von
-   #322, INFO-15): Ein Beobachter liest das WAL nicht ein, die Datei bleibt
-   liegen. Startet ein abgestürzter Validator mit ungeflushten Sätzen erst
-   als Beobachter (spielt fremde Blöcke nach, `wal_seq` bleibt stehen) und
-   dann wieder als Validator, wendet `recoverFromWAL` die alten Sätze ohne
-   Deckungsprüfung auf den weitergelaufenen Stand an (PoC: Kontostand
-   −42,042, eine Zeile im Ausgang). Nur der umgestellte Knoten ist betroffen
-   – die anderen prüfen die Deckung beim Nachspielen und lehnten einen Block
-   mit dieser Zeile ab; der Workflow-Beobachter startet mit leerem WAL.
-   Fix: Ein Beobachter, dessen WAL nicht abgeglichene Sätze trägt (über der
-   Untergrenze, `seq` > `wal_seq` der Konten; rein lesend per
-   `wal.ReplayFile`), startet nicht (fail-closed), mit dem Hinweis, erst als
-   Validator wiederanlaufen zu lassen oder den Rest bewusst zu verwerfen;
-   ergänzend prüft `recoverFromWAL` die Deckung und parkt Sätze, die ins
-   Minus führten. Missbrauchstest wie der PoC. Bis dahin (Betrieb): einen
-   Validator mit WAL nie als Beobachter neu starten, ohne dass er vorher als
-   Validator sauber wiederangelaufen ist.
+   **Erledigt (Zweig `claude/weiter-gehts-hklfhc`):**
+   `RetryRegistrationRecoveries` holt nach der EVM (Hash gesetzt) nichts
+   nach, solange `annahmePauseGrund()` pausiert – auf jedem Knoten, nicht
+   nur dem annehmenden (was ein nicht erzeugender Knoten in den Ausgang legt,
+   kommt in keinen Block). Und (Prüfung von #329, INFO-13): Vor-EVM-Intents
+   (`evm_tx_hash = ''`) registriert die Wiederholung **nie** mehr –
+   `vorEVMIntentAufloesen` schließt sie nur: Go-Zustand hat den Menschen →
+   erledigt; EVM-Spiegel zeigt ihn, Go nicht → bleibt offen für den
+   Betreiber (Degraded-Hinweis); sonst → verworfen, der Nutzer reicht neu
+   ein. Erst ab 10 Minuten Alter (sonst evtl. noch unterwegs); ein später
+   gesetzter EVM-Hash öffnet einen verworfenen Intent wieder. Der Durchlauf
+   liest höchstens 1.000 Zeilen. Tests: `registration_recovery_test.go`.
+   Seit der Prüfung von #330: Als Beleg einer bestätigten Registrierung
+   zählen auch `commitmentOf`, `nullifierOf` und `usedNullifiers` (= diese
+   Wallet), nicht nur `isHuman` (den überschreibt der Go-Spiegel). Scheitert
+   der Hash-Vermerk am Intent, legt `/api/register` eine eigene Zeile mit
+   Hash an. Offen bleibt hier der Strafbeweis-Teil (`DoppelsignaturErkannt`).
+   **Rest aus der Prüfung von #330** (Folge-PR):
+   - *LOW-3 Kopf-Blockade:* Der Durchlauf liest die 1.000 ältesten offenen
+     Zeilen. Zeilen, die nie geschlossen werden (Fälle für den Betreiber,
+     dauerhafte Fehler wie „nullifier already used by a different wallet“,
+     korruptes JSON), können jüngere Zeilen mit Hash dauerhaft verdrängen.
+     Von außen schwer zu erreichen (gültiger Beweis, Ratengrenzen, Zeilen
+     werden gelöscht oder verworfen). Fix: Zeilen mit Hash vorziehen bzw.
+     über `last_attempt_at` rotieren, Fälle für den Betreiber aus dem
+     Durchlauf nehmen.
+   - *LOW-4 Betreiberweg:* Für den Fall „EVM-Speicher belegt, Go nicht“ gibt
+     es keine Admin-Aktion (`/api/admin/registration-recovery` listet nur);
+     lösen derzeit nur per SQL. Fix: geprüfte Admin-Aktion oder Runbook.
+   - *INFO-7:* Der Degraded-Hinweis erscheint nur bei leerem Feld, und
+     `CountUnrecoveredRegistrations` ignoriert Scan-Fehler.
+   - *INFO-8 (bestand schon vorher):* „already registered“ wird über einen
+     Teilstring erkannt; besser typisierte Fehler.
+   - Ein Knoten, der nie wieder erzeugt (etwa ein früherer Leiter als
+     Folger), hält bestätigte Registrierungen in seiner Tabelle fest.
+   - *2. Durchgang, INFO-3 (bestand schon vorher):* `registration_recovery`
+     überlebt `CLEAR_REGISTRATIONS` und `RESET_DB_STATE`. Offene Zeilen mit
+     Hash von vor dem Wipe würden danach wieder registriert (nur der
+     Betreiber löst das aus). Fix: die Tabelle in `CLEAR_REGISTRATIONS`
+     aufnehmen, für `RESET_DB_STATE` bewusst entscheiden.
+   - *2. Durchgang, INFO-4 (bestand schon vorher):* Kann `/api/register` den
+     Intent nicht schreiben, läuft die Registrierung trotzdem weiter; stürzt
+     der Prozess dann zwischen EVM und eigener Zeile ab, ist nichts
+     vorgemerkt. Fail-closed wäre: ablehnen, solange noch keine
+     EVM-Transaktion lief.
+   - *3. Durchgang, INFO-1 (bestand schon vorher):* Zeilen mit NULL in
+     `nullifier` oder `pending_tx_json` scheitern beim Scan von
+     `RetryRegistrationRecoveries` und werden still übersprungen (zählen aber
+     zur Grenze). Die heutigen Schreiber legen kein NULL ab. Fix: `COALESCE`
+     im SELECT.
+   - *3. Durchgang, INFO-2 (bestand schon vorher):* Eine Panik in
+     `flushEVMMirrorDirty` beendet den Spiegel-Arbeiter dauerhaft. Fix:
+     `SafeCall` um jeden Takt.
+   - *2. Durchgang, INFO-5:* Der Degraded-Grund steht im öffentlichen
+     `/api/health/combined` und enthält Wallet, Hash und rohe DB-Fehlertexte
+     (keine Geheimnisse). Optional: öffentlich neutral, Details nur ins Log.
+8. **WAL nach einem Rollenwechsel ohne Deckungsprüfung** (Prüfung von
+   #322, INFO-15) – **erledigt mit #331:** Ein Knoten, der den Rest seines
+   WAL nicht einspielt (Beobachter, `AEQUITAS_WAL_ENABLED` aus, Wiederanlauf
+   gescheitert, keine Datenbank), startet nicht, solange das WAL Sätze über
+   der Untergrenze trägt, die Absender oder Empfänger laut `wal_seq` nicht
+   enthalten (`PruefeWALRest`, `main` beendet sich). Ausweg: als Validator
+   mit eingeschaltetem WAL wiederanlaufen lassen, bis der Wiederanlauf
+   gelingt – oder den Rest einmalig verwerfen mit
+   `AEQUITAS_WAL_REST_VERWERFEN=<Kopf-seq aus der Meldung>` (eine
+   stehengebliebene Variable verwirft keinen neuen Rest). So wird ein alter
+   Satz nie auf einen weitergelaufenen Stand angewandt.
+   - Verworfen: das Parken ungedeckter Sätze im Wiederanlauf (Prüfung von
+     #331, Befunde 2 und 4): Wegen 9. (unten) traf es auch den gewöhnlichen
+     Absturz und verlor bestätigte Überweisungen.
+   - Betrieb: die WAL-Datei nie löschen (die Zählung begänne neu, neue Sätze
+     lägen unter der Untergrenze; Prüfung von #331, INFO-6). Ein Beobachter
+     mit `RESET_DB_STATE` und vorhandenem WAL startet nicht (leere
+     `chain_accounts`) – dann bewusst verwerfen (INFO-7). Dasselbe gilt für
+     einen Validator, dessen Wiederanlauf nach dem Reset an „unknown sender“
+     scheitert, und für `RESYNC_FROM_SNAPSHOT`/Selbstheilung: Die Sperre
+     läuft vor dem Import, der den Rest per Untergrenze ohnehin überholte
+     (Prüfung von #331, 2. Durchgang, INFO-4). Fail-closed, lösbar mit
+     `AEQUITAS_WAL_REST_VERWERFEN=<Kopf>`.
+   - Ein gescheiterter Wiederanlauf sperrt den Start immer, auch wenn
+     `wal_seq` keinen Rest mehr zeigt (Merker; 2. Durchgang, Befund 1), und
+     ein geordnetes Beenden flusht das WAL (`FlushWALNow`, Befund 3).
+9. **HIGH: WAL-Wiederanlauf bucht doppelt** (Prüfung von #331, Befund 1;
+   bestand schon vorher, WAL ist produktiv an): Serielle Speicherungen
+   (`saveAccountToDBCtx`, Stapel-Speicherung) schreiben `balance` samt noch
+   nicht geflushter WAL-Deltas, aber nie `wal_seq`; `recoverFromWAL`
+   entscheidet allein über `wal_seq` und wendet eine Abbuchung nach einem
+   Absturz im Flush-Fenster ein zweites Mal an (PoC: 2104,1 → 1203,2).
+   Verwandt (HIGH, bestätigt im 2. Durchgang von #331): `flushWALBatch`
+   schreibt je Konto den aktuellen `WALSeq`, der Sätze späterer oder
+   parallel laufender Stapel einschließt; committen andere Stapel beide
+   Konten eines Satzes, dessen eigener Stapel noch offen ist, hält der
+   Wiederanlauf ihn für angewandt und schreibt keine Ausgangszeile (PoC:
+   seq1 S→R, seq2 S→X, seq3 X→U; seq2 fehlt dem Netz). Ohne Speicherkorb.
+   Fix (eigener PR): `wal_seq` monoton mitschreiben – und die Ausgangszeile
+   im Wiederanlauf über einen eigenen Vermerk je Satz nachweisen statt aus
+   „Absender oder Empfänger noch nicht angewandt“.
 
 ## Ratenbegrenzung – bekannte Lücken
 - **`X-Forwarded-For` hinter einem privaten TCP-Partner** (Prüfung von #319,
@@ -258,6 +325,17 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
   `SNAPSHOT_TOKEN`; mit 8080 nur auf IPv4 (siehe unten) entfällt der Weg.
 
 ## Betrieb – bei dir
+- **`AEQUITAS_LEITUNG=an` und gescheiterter Start** (seit #329, fail-closed):
+  Ist der Signierschlüssel (`RELAYER_PRIVATE_KEY`) ungültig – fehlt er,
+  erzeugt der Knoten einen – oder `AEQUITAS_LEITUNG_GENESIS` ungültig, nimmt
+  der Knoten nichts an (wiederholbar abgelehnt) und führt keine
+  Systemaufträge aus, statt lokal anzunehmen. Lesen geht weiter;
+  `/api/register` läuft wie auf einem Folger durch die Prüfungen und scheitert
+  erst an der EVM-Übergabe (`-32005`, Nonce unverbraucht) – registriert wird
+  nur am annehmenden Knoten (Prüfung von #329, INFO-12). Zu sehen in `/api/health/combined` → `leitung` →
+  `gescheitert: true` bzw. `annahme_pause` → `leitung_gescheitert`, im Log
+  `[LEITUNG] ✗`. Nach der Korrektur neu starten. Während des Starts (bis die
+  Leitung läuft) zeigt `annahme_pause` → `leitung_startet`.
 - **Proxy nur im Docker-Netz** (Prüfung von #325, LOW-2): Der Knoten glaubt
   `X-Forwarded-For` nie vom Gateway seines Docker-Netzes. Ein Proxy auf dem
   Host selbst (Dienst, `network_mode: host`, über `127.0.0.1:8080` oder die

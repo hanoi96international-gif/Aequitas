@@ -61,6 +61,7 @@ func newWALTestState(t *testing.T, walPath string) *ChainState {
 	// (100) when the full package suite runs in one process.
 	t.Cleanup(func() {
 		cs.stopWALFlushWorkerForTest()
+		cs.stopEVMMirrorFlushWorkerForTest() // liest Paketwerte, siehe evm_mirror_flush.go
 		// Close the WAL file too, after the flush worker has stopped using it.
 		// On Linux an open file can be unlinked, so leaving it open was
 		// invisible; on Windows it is not, and t.TempDir()'s RemoveAll fails
