@@ -64,6 +64,7 @@ func TestSustainedWAL_QueueConvergence(t *testing.T) {
 
 			walPath := fmt.Sprintf("/tmp/aequitas-sustained-%s.wal", cfg.name)
 			os.Remove(walPath)
+			walVermerkeFuerNeueDateiLeeren(t)
 			t.Setenv("AEQUITAS_WAL_ENABLED", "1")
 			t.Setenv("AEQUITAS_WAL_PATH", walPath)
 

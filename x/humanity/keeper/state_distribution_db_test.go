@@ -81,7 +81,7 @@ func truncateDistTestTables(t *testing.T) {
 	// makes the whole _RealDB set self-sufficient: hand it an empty database
 	// and it works.
 	ensureRealDBSchema(t, db)
-	if _, err := db.Exec(`TRUNCATE chain_accounts, chain_config, nullifiers, liquidity_pool, escrow_accounts, validator_register, validator_verlauf, registered_nodes, pending_txs CASCADE`); err != nil {
+	if _, err := db.Exec(`TRUNCATE chain_accounts, chain_config, nullifiers, liquidity_pool, escrow_accounts, validator_register, validator_verlauf, registered_nodes, pending_txs, wal_ausgang_vermerk CASCADE`); err != nil {
 		t.Fatalf("truncateDistTestTables: %v", err)
 	}
 }
@@ -95,7 +95,7 @@ var realDBSchemaOnce sync.Once
 // from whatever happened to run before them. Deliberately constructs a bare
 // ChainState rather than calling NewChainState: initDB only needs cs.db, and
 // the full constructor would start background goroutines a test does not want.
-func ensureRealDBSchema(t *testing.T, db *sql.DB) {
+func ensureRealDBSchema(t testing.TB, db *sql.DB) {
 	t.Helper()
 	realDBSchemaOnce.Do(func() {
 		(&ChainState{db: db, useDB: true}).initDB()

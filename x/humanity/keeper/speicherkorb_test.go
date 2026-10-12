@@ -504,3 +504,39 @@ func TestKorbPraefix_GleichDemKleinerenDeckel(t *testing.T) {
 		}
 	}
 }
+
+// Nach dem Ausschalten des Korbs ist die Marke weg. Was bis zu ihr verblockt
+// war, hat keinen Ausgangsvermerk -- die Untergrenze der Vermerke muss es
+// abdecken, sonst schriebe ein weiterer Start eine Zeile (wal_ausgang.go).
+func TestWALSpeicherkorb_AusschaltenNachBlock_AuchDerNaechsteStartNichtDoppelt(t *testing.T) {
+	truncateDistTestTables(t)
+	walPath := filepath.Join(t.TempDir(), "t.wal")
+	a := korbTestState(t, walPath, true)
+	from, to := distTestAddr(909), distTestAddr(910)
+	seedConcurrentTestAccount(t, a, from, 1000, time.Now().Unix())
+	seedConcurrentTestAccount(t, a, to, 0, time.Now().Unix())
+	korbUeberweisen(t, a, from, to, 2, "0xnaechster")
+	txs, ids, _, bis, _ := a.korbFuerBlock(100)
+	blk := &Block{Hash: fmt.Sprintf("korbtest-%d", time.Now().UnixNano()), Height: 1, Transactions: txs, Timestamp: time.Now().Unix()}
+	if err := a.SaveBlockMitKorb(blk, ids, bis); err != nil {
+		t.Fatal(err)
+	}
+	a.FlushWALNow()
+	korbAbsturz(t, a)
+	zaehle := func(cs *ChainState) int {
+		var n int
+		cs.db.QueryRow(`SELECT count(*) FROM pending_txs WHERE tx_json::json->>'tx_hash' LIKE '0xnaechster%'`).Scan(&n)
+		return n
+	}
+	b := korbTestState(t, walPath, false)
+	b.FlushWALNow()
+	if n := zaehle(b); n != 0 {
+		t.Fatalf("Ausschalten: %d Zeilen fuer verblockte Ueberweisungen", n)
+	}
+	korbAbsturz(t, b)
+	c := korbTestState(t, walPath, false)
+	c.FlushWALNow()
+	if n := zaehle(c); n != 0 {
+		t.Fatalf("naechster Start ohne Marke: %d Zeilen fuer verblockte Ueberweisungen -- sie kaemen doppelt in einen Block", n)
+	}
+}

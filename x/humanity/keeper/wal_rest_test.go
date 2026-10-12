@@ -104,7 +104,7 @@ func TestWALRest_BeobachterStartetNicht_RealDB(t *testing.T) {
 	setzeBeobachterFuerTest(t, true)
 	csB := testKnoten(t, "unused-wal-test.json")
 	err := csB.PruefeWALRest()
-	if err == nil || !strings.Contains(err.Error(), "2 Konten, bis seq 1") || !strings.Contains(err.Error(), "Beobachter") ||
+	if err == nil || !strings.Contains(err.Error(), "2 Konten, 1 Saetze ohne Ausgangszeile, bis seq 1") || !strings.Contains(err.Error(), "Beobachter") ||
 		!strings.Contains(err.Error(), "AEQUITAS_WAL_REST_VERWERFEN=1") {
 		t.Fatalf("Beobachter mit WAL-Rest: %v", err)
 	}
@@ -225,7 +225,7 @@ func TestWALRest_WiederanlaufGescheitertStartetNicht_RealDB(t *testing.T) {
 	if _, err := cs.db.Exec(`UPDATE chain_accounts SET wal_seq = 1 WHERE lower(address) = $1`, from); err != nil {
 		t.Fatal(err)
 	}
-	if rest, _, err := cs.walRestOffen(walPath); err != nil || rest != 0 {
+	if rest, _, _, err := cs.walRestOffen(walPath); err != nil || rest != 0 {
 		t.Fatalf("Vorbedingung: kein Rest mehr laut wal_seq (%d, %v)", rest, err)
 	}
 	if err := cs.PruefeWALRest(); err == nil || !strings.Contains(err.Error(), "gescheitert") {

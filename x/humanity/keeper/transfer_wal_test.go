@@ -43,6 +43,9 @@ func newWALTestState(t *testing.T, walPath string) *ChainState {
 	}
 	t.Setenv("AEQUITAS_WAL_ENABLED", "1")
 	t.Setenv("AEQUITAS_WAL_PATH", walPath)
+	if _, err := os.Stat(walPath); os.IsNotExist(err) {
+		walVermerkeFuerNeueDateiLeeren(t)
+	}
 	cs := NewChainState("unused-wal-test.json")
 	if !cs.useDB {
 		t.Fatal("expected a live PostgreSQL connection (cs.useDB == false) — check DATABASE_URL")

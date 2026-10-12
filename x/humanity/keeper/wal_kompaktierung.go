@@ -120,6 +120,14 @@ func (cs *ChainState) walKompaktierungsRunde(_ uint64) uint64 {
 	if bis == 0 {
 		return kopf // noch alles offen
 	}
+	// Unter bis steht alles in Postgres, mit Zeile und Vermerk: die Vermerke
+	// dort braucht kein Wiederanlauf mehr (wal_ausgang.go). Unabhaengig von
+	// der Dateigroesse, sonst wuechse die Tabelle bis zur ersten Kuerzung.
+	if cs.db != nil {
+		if err := cs.walVermerkAbAnheben(bis); err != nil {
+			fmt.Printf("[WAL] ⚠ Ausgangsvermerke unter Seq %d nicht geloescht: %v\n", bis, err)
+		}
+	}
 	vorher := walDateiGroesse(cs.wal.Path())
 	if vorher < walKompaktAbBytes {
 		return kopf

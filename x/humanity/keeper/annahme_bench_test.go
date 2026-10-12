@@ -41,6 +41,7 @@ func BenchmarkAnnahmeBuendelDB(b *testing.B) {
 	}
 	b.Setenv("AEQUITAS_WAL_ENABLED", "1")
 	b.Setenv("AEQUITAS_WAL_PATH", filepath.Join(b.TempDir(), "transfer.wal"))
+	walVermerkeFuerNeueDateiLeeren(b)
 	b.Setenv(speicherKorbEnv, "1")
 	b.Setenv(walFlushTeileEnv, "4")
 	cs := NewChainState("unused-annahme-bench.json")

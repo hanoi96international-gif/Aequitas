@@ -1413,6 +1413,10 @@ included_at BIGINT NOT NULL DEFAULT 0
 	// wal_seq: die Anwendungsreihenfolge -- siehe pending_reihenfolge.go.
 	dbExec(`ALTER TABLE pending_txs ADD COLUMN IF NOT EXISTS wal_seq BIGINT NOT NULL DEFAULT 0`)
 	dbExec(`CREATE INDEX IF NOT EXISTS idx_pending_txs_offen_seq ON pending_txs (wal_seq, id) WHERE included_at = 0`)
+	// Vermerk je WAL-Satz: seine Ausgangszeile ist geschrieben -- in derselben
+	// Transaktion wie die Zeile (wal_ausgang.go). Der Wiederanlauf liest ihn
+	// statt aus wal_seq der Konten auf die Zeile zu schliessen.
+	dbExec(`CREATE TABLE IF NOT EXISTS wal_ausgang_vermerk (seq BIGINT PRIMARY KEY)`)
 
 	dbExec(`CREATE TABLE IF NOT EXISTS pending_txs_dead_letter (
 id         BIGINT PRIMARY KEY,
@@ -2781,6 +2785,10 @@ func (cs *ChainState) saveAccountToDBInnerCtx(ctx context.Context, acc *AccountS
 	}
 	var result sql.Result
 	var err error
+	// Der Saldo traegt die WAL-Saetze bis acc.WALSeq -- auch noch nicht
+	// geflushte. Ohne wal_seq wendete der Wiederanlauf sie ein zweites Mal an
+	// (docs/OFFEN.md, Punkt 9a).
+	walSeq := cs.walSeqZumSpeichern(acc)
 	// FIX (atomic outbox): use cs.dbExecCtx(ctx) instead of cs.db directly —
 	// when the caller's operation has an active transaction, this write
 	// becomes part of it (committed or rolled back together with the
@@ -2808,10 +2816,10 @@ func (cs *ChainState) saveAccountToDBInnerCtx(ctx context.Context, acc *AccountS
 		// row). RETURNING version makes acc.Version reflect the row's ACTUAL
 		// resulting version unconditionally, so this self-corrects
 		// regardless of whether the row was new or already existed.
-		if err = cs.dbExecCtx(ctx).QueryRow(`INSERT INTO chain_accounts (address, balance, is_human, tusd_balance, lp_shares, last_activity_at, demurrage_14_day_warning_shown, faucet_claimed, version, grant_staged_rest, grant_staged_until, liveness_renewed_at, naechste_nonce, naechste_auftrag_nonce) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1, $9, $10, $11, $12, $13)
-ON CONFLICT (address) DO UPDATE SET balance = $2, is_human = $3, tusd_balance = $4, lp_shares = $5, last_activity_at = $6, demurrage_14_day_warning_shown = $7, faucet_claimed = $8, version = COALESCE(chain_accounts.version,0) + 1, grant_staged_rest = $9, grant_staged_until = $10, liveness_renewed_at = $11, naechste_nonce = $12, naechste_auftrag_nonce = $13
+		if err = cs.dbExecCtx(ctx).QueryRow(`INSERT INTO chain_accounts (address, balance, is_human, tusd_balance, lp_shares, last_activity_at, demurrage_14_day_warning_shown, faucet_claimed, version, grant_staged_rest, grant_staged_until, liveness_renewed_at, naechste_nonce, naechste_auftrag_nonce, wal_seq) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1, $9, $10, $11, $12, $13, $14)
+ON CONFLICT (address) DO UPDATE SET balance = $2, is_human = $3, tusd_balance = $4, lp_shares = $5, last_activity_at = $6, demurrage_14_day_warning_shown = $7, faucet_claimed = $8, version = COALESCE(chain_accounts.version,0) + 1, grant_staged_rest = $9, grant_staged_until = $10, liveness_renewed_at = $11, naechste_nonce = $12, naechste_auftrag_nonce = $13, wal_seq = GREATEST(chain_accounts.wal_seq, $14)
 RETURNING version`,
-			acc.Address, acc.Balance.Float(), acc.IsHuman, acc.TUsdBalance.Float(), acc.LPShares.Float(), acc.LastActivityAt, acc.Demurrage14DayWarningShown, acc.FaucetClaimed, acc.GrantStagedRest.Float(), acc.GrantStagedUntil, acc.LivenessRenewedAt, acc.NaechsteNonce, acc.NaechsteAuftragsNonce).Scan(&acc.Version); err != nil {
+			acc.Address, acc.Balance.Float(), acc.IsHuman, acc.TUsdBalance.Float(), acc.LPShares.Float(), acc.LastActivityAt, acc.Demurrage14DayWarningShown, acc.FaucetClaimed, acc.GrantStagedRest.Float(), acc.GrantStagedUntil, acc.LivenessRenewedAt, acc.NaechsteNonce, acc.NaechsteAuftragsNonce, walSeq).Scan(&acc.Version); err != nil {
 			fmt.Printf("[DB] Error saving account %s: %v\n", acc.Address, err)
 			return fmt.Errorf("could not save account %s: %w", acc.Address, err)
 		}
@@ -2823,9 +2831,9 @@ RETURNING version`,
 	} else {
 		// Optimistic locking: only update if version matches what we read.
 		// If another node updated in parallel, rows affected = 0 → conflict detected.
-		result, err = cs.dbExecCtx(ctx).Exec(`UPDATE chain_accounts SET balance = $2, is_human = $3, tusd_balance = $4, lp_shares = $5, last_activity_at = $6, demurrage_14_day_warning_shown = $7, faucet_claimed = $8, version = $9 + 1, grant_staged_rest = $10, grant_staged_until = $11, liveness_renewed_at = $12, naechste_nonce = $13, naechste_auftrag_nonce = $14
+		result, err = cs.dbExecCtx(ctx).Exec(`UPDATE chain_accounts SET balance = $2, is_human = $3, tusd_balance = $4, lp_shares = $5, last_activity_at = $6, demurrage_14_day_warning_shown = $7, faucet_claimed = $8, version = $9 + 1, grant_staged_rest = $10, grant_staged_until = $11, liveness_renewed_at = $12, naechste_nonce = $13, naechste_auftrag_nonce = $14, wal_seq = GREATEST(wal_seq, $15)
 WHERE address = $1 AND version = $9`,
-			acc.Address, acc.Balance.Float(), acc.IsHuman, acc.TUsdBalance.Float(), acc.LPShares.Float(), acc.LastActivityAt, acc.Demurrage14DayWarningShown, acc.FaucetClaimed, acc.Version, acc.GrantStagedRest.Float(), acc.GrantStagedUntil, acc.LivenessRenewedAt, acc.NaechsteNonce, acc.NaechsteAuftragsNonce)
+			acc.Address, acc.Balance.Float(), acc.IsHuman, acc.TUsdBalance.Float(), acc.LPShares.Float(), acc.LastActivityAt, acc.Demurrage14DayWarningShown, acc.FaucetClaimed, acc.Version, acc.GrantStagedRest.Float(), acc.GrantStagedUntil, acc.LivenessRenewedAt, acc.NaechsteNonce, acc.NaechsteAuftragsNonce, walSeq)
 		if err == nil {
 			if rows, _ := result.RowsAffected(); rows == 0 {
 				// Conflict: another node wrote a newer version. Reload DB version
@@ -2994,7 +3002,9 @@ func (cs *ChainState) saveAccountsToDBBatchCtx(ctx context.Context, accs []*Acco
 	naechsteNonces := make([]int64, len(sorted))
 	auftragsNonces := make([]int64, len(sorted))
 	expectedVersions := make([]int64, len(sorted))
+	walSeqs := make([]int64, len(sorted)) // siehe saveAccountToDBInnerCtx
 	for i, acc := range sorted {
+		walSeqs[i] = cs.walSeqZumSpeichern(acc)
 		addresses[i] = acc.Address
 		balances[i] = acc.Balance.Float()
 		isHumans[i] = acc.IsHuman
@@ -3015,9 +3025,10 @@ func (cs *ChainState) saveAccountsToDBBatchCtx(ctx context.Context, accs []*Acco
 		pq.Array(tusdBalances), pq.Array(lpShares), pq.Array(lastActivityAts),
 		pq.Array(demurrageWarnings), pq.Array(faucetClaimeds), pq.Array(expectedVersions),
 		pq.Array(staffelRests), pq.Array(staffelUntils), pq.Array(renewedAts), pq.Array(naechsteNonces), pq.Array(auftragsNonces),
+		pq.Array(walSeqs),
 	}
-	query := `WITH updates(address, balance, is_human, tusd_balance, lp_shares, last_activity_at, demurrage_14_day_warning_shown, faucet_claimed, expected_version, grant_staged_rest, grant_staged_until, liveness_renewed_at, naechste_nonce, naechste_auftrag_nonce) AS (
-	SELECT * FROM unnest($1::text[], $2::double precision[], $3::boolean[], $4::double precision[], $5::double precision[], $6::bigint[], $7::boolean[], $8::boolean[], $9::bigint[], $10::double precision[], $11::bigint[], $12::bigint[], $13::bigint[], $14::bigint[])
+	query := `WITH updates(address, balance, is_human, tusd_balance, lp_shares, last_activity_at, demurrage_14_day_warning_shown, faucet_claimed, expected_version, grant_staged_rest, grant_staged_until, liveness_renewed_at, naechste_nonce, naechste_auftrag_nonce, wal_seq) AS (
+	SELECT * FROM unnest($1::text[], $2::double precision[], $3::boolean[], $4::double precision[], $5::double precision[], $6::bigint[], $7::boolean[], $8::boolean[], $9::bigint[], $10::double precision[], $11::bigint[], $12::bigint[], $13::bigint[], $14::bigint[], $15::bigint[])
 ),
 upd AS (
 	UPDATE chain_accounts ca
@@ -3026,14 +3037,15 @@ upd AS (
 	    demurrage_14_day_warning_shown = u.demurrage_14_day_warning_shown,
 	    faucet_claimed = u.faucet_claimed, version = u.expected_version + 1,
 	    grant_staged_rest = u.grant_staged_rest, grant_staged_until = u.grant_staged_until, liveness_renewed_at = u.liveness_renewed_at,
-	    naechste_nonce = u.naechste_nonce, naechste_auftrag_nonce = u.naechste_auftrag_nonce
+	    naechste_nonce = u.naechste_nonce, naechste_auftrag_nonce = u.naechste_auftrag_nonce,
+	    wal_seq = GREATEST(ca.wal_seq, u.wal_seq)
 	FROM updates u
 	WHERE lower(ca.address) = lower(u.address) AND ca.version = u.expected_version
 	RETURNING ca.address, ca.version
 ),
 ins AS (
-	INSERT INTO chain_accounts (address, balance, is_human, tusd_balance, lp_shares, last_activity_at, demurrage_14_day_warning_shown, faucet_claimed, version, grant_staged_rest, grant_staged_until, liveness_renewed_at, naechste_nonce, naechste_auftrag_nonce)
-	SELECT address, balance, is_human, tusd_balance, lp_shares, last_activity_at, demurrage_14_day_warning_shown, faucet_claimed, 1, grant_staged_rest, grant_staged_until, liveness_renewed_at, naechste_nonce, naechste_auftrag_nonce
+	INSERT INTO chain_accounts (address, balance, is_human, tusd_balance, lp_shares, last_activity_at, demurrage_14_day_warning_shown, faucet_claimed, version, grant_staged_rest, grant_staged_until, liveness_renewed_at, naechste_nonce, naechste_auftrag_nonce, wal_seq)
+	SELECT address, balance, is_human, tusd_balance, lp_shares, last_activity_at, demurrage_14_day_warning_shown, faucet_claimed, 1, grant_staged_rest, grant_staged_until, liveness_renewed_at, naechste_nonce, naechste_auftrag_nonce, wal_seq
 	FROM updates
 	WHERE lower(address) NOT IN (SELECT lower(address) FROM upd) AND expected_version = 0
 	ON CONFLICT (address) DO UPDATE SET
@@ -3042,7 +3054,8 @@ ins AS (
 		demurrage_14_day_warning_shown = EXCLUDED.demurrage_14_day_warning_shown,
 		faucet_claimed = EXCLUDED.faucet_claimed, version = COALESCE(chain_accounts.version, 0) + 1,
 		grant_staged_rest = EXCLUDED.grant_staged_rest, grant_staged_until = EXCLUDED.grant_staged_until, liveness_renewed_at = EXCLUDED.liveness_renewed_at,
-		naechste_nonce = EXCLUDED.naechste_nonce, naechste_auftrag_nonce = EXCLUDED.naechste_auftrag_nonce
+		naechste_nonce = EXCLUDED.naechste_nonce, naechste_auftrag_nonce = EXCLUDED.naechste_auftrag_nonce,
+		wal_seq = GREATEST(chain_accounts.wal_seq, EXCLUDED.wal_seq)
 	RETURNING address, version
 )
 SELECT address, version FROM upd UNION ALL SELECT address, version FROM ins`
