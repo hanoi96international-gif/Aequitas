@@ -636,7 +636,7 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 	dagDegradedReason := a.blockchain.DegradedReason()
 	if dagDegraded {
 		status = "unhealthy"
-		notes = append(notes, "DAG degraded: "+dagDegradedReason)
+		notes = append(notes, "DAG degraded: "+oeffentlicherDegradedGrund(dagDegradedReason))
 	}
 	// Monster-Audit P1-04: surface synthetic-checkpoint trust-bootstrap mode
 	// instead of letting it run invisibly.
@@ -821,7 +821,7 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 			"healthy":                    status == "healthy", // kept for backward compatibility with existing callers
 			"degraded_reason":            degradedReason,
 			"dag_degraded":               dagDegraded,
-			"dag_degraded_reason":        dagDegradedReason,
+			"dag_degraded_reason":        oeffentlicherDegradedGrund(dagDegradedReason),
 			"checkpoint_trust_mode":      checkpointTrustMode,
 			"synthetic_checkpoint_count": syntheticCheckpointCount,
 			// Dieselbe Quelle wie /api/status. Zwei Endpunkte desselben Knotens,

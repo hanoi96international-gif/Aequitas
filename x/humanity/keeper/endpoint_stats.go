@@ -56,17 +56,24 @@ func (c *endpointCounter) note(remote string, n int) {
 	c.mu.Unlock()
 }
 
+// snapshot: oeffentlich (/api/health/combined) -- darum keine Adressen der
+// Aufrufer, nur wie viele es sind und wie viele davon lokal oder privat
+// (Peers im eigenen Netz, Lastgenerator). Die Liste nannte die IP jedes
+// Besuchers des Explorers (Pruefung #336, F2).
 func (c *endpointCounter) snapshot() map[string]interface{} {
 	c.mu.Lock()
-	callers := make(map[string]int64, len(c.callers))
-	for k, v := range c.callers {
-		callers[k] = v
+	anzahl, privat := len(c.callers), 0
+	for k := range c.callers {
+		if ip := net.ParseIP(k); ip != nil && (ip.IsLoopback() || ip.IsPrivate()) {
+			privat++
+		}
 	}
 	c.mu.Unlock()
 	return map[string]interface{}{
-		"calls":   c.calls.Load(),
-		"bytes":   c.bytes.Load(),
-		"callers": callers,
+		"calls":          c.calls.Load(),
+		"bytes":          c.bytes.Load(),
+		"callers_anzahl": anzahl,
+		"callers_privat": privat,
 	}
 }
 

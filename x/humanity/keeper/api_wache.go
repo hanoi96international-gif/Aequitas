@@ -110,7 +110,7 @@ func (a *APIServer) handleWache(w http.ResponseWriter, r *http.Request) {
 	dr := a.blockchain.degradedReason
 	a.blockchain.degradedMu.Unlock()
 	if dr != "" {
-		rot = append(rot, "DAG degraded: "+dr)
+		rot = append(rot, "DAG degraded: "+oeffentlicherDegradedGrund(dr))
 	}
 
 	// 6. Die Seeds antworten und sind gleichauf (Hoehe zum Zeitpunkt der Abfrage).
