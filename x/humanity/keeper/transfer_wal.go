@@ -1540,11 +1540,15 @@ func (cs *ChainState) markWALSupersededByStateReplacement() {
 			path = "aequitas_transfers.wal"
 		}
 		if _, err := os.Stat(path); err != nil {
-			// No WAL file at all — nothing to fence off; Ausgangsvermerke
-			// einer frueheren Datei gehoeren trotzdem nicht mehr zum Stand.
-			if err := cs.walVermerkeVerwerfen(0); err != nil {
-				fmt.Printf("[WAL] ⚠ Ausgangsvermerke nicht verworfen: %v\n", err)
-			}
+			// No WAL file at all (or not readable right now) — nothing to
+			// fence off, und NICHTS verwerfen: ein Stat-Fehler ist auch ein
+			// nicht eingehaengtes Volume oder fehlende Rechte. Die Datei kann
+			// wieder auftauchen; ohne wal_seq und Boden wendete der naechste
+			// Start dann alles doppelt an (Pruefung #332, 2. Durchgang,
+			// LOW-A). Eine wirklich neue Datei faengt die Startsperre ab
+			// (walVermerkeStimmigMitDatei); VERWERFEN laeuft dann ueber die
+			// leere Datei unten.
+			fmt.Printf("[WAL] ⚠ %s nicht lesbar (%v) -- kein Boden gesetzt, nichts verworfen\n", path, err)
 			return
 		}
 		if _, _, err := wal.ReplayFile(path, func(entry wal.Entry) error {

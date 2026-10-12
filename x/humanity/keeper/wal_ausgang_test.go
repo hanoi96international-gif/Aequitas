@@ -482,10 +482,15 @@ func TestWALAusgang_SpeicherungWartetAufHaltbarkeit_RealDB(t *testing.T) {
 	untergrenzeZuruecksetzen(t, cs)
 	altFrist := walSeqHaltbarFrist
 	walSeqHaltbarFrist = 150 * time.Millisecond
+	altPause := walSpeicherungPause
+	walSpeicherungPause = 400 * time.Millisecond
 	walSchnellpfadDefekt.Store(false)
+	walSpeicherungWartetNichtBis.Store(0)
 	t.Cleanup(func() {
 		walSeqHaltbarFrist = altFrist
+		walSpeicherungPause = altPause
 		walSchnellpfadDefekt.Store(false)
+		walSpeicherungWartetNichtBis.Store(0)
 	})
 	// Ein Stapel aus drei Konten, deren Saetze nie haltbar werden (Seq
 	// ueber dem Kopf): einmal warten, nicht dreimal.
@@ -510,10 +515,12 @@ func TestWALAusgang_SpeicherungWartetAufHaltbarkeit_RealDB(t *testing.T) {
 	if dauer >= 2*walSeqHaltbarFrist {
 		t.Fatalf("Stapel wartete %v -- einmal fuer den Stapel, nicht je Konto", dauer)
 	}
-	if !walSchnellpfadDefekt.Load() {
-		t.Fatal("ausgebliebene Haltbarkeit schliesst den schnellen Pfad nicht")
+	// Ein stockender Sync schliesst den schnellen Pfad nicht (2. Durchgang,
+	// LOW-B) -- das tut nur ein Sync-Fehler des Schreibers.
+	if walSchnellpfadDefekt.Load() {
+		t.Fatal("eine ausgebliebene Haltbarkeit hat den schnellen Pfad dauerhaft geschlossen")
 	}
-	// Danach wartet keine Speicherung mehr.
+	// Danach wartet eine Weile keine Speicherung.
 	cs.mu.Lock()
 	t0 = time.Now()
 	err = cs.saveAccountToDB(konten[0])
@@ -523,7 +530,61 @@ func TestWALAusgang_SpeicherungWartetAufHaltbarkeit_RealDB(t *testing.T) {
 		t.Fatal(err)
 	}
 	if dauer >= walSeqHaltbarFrist {
-		t.Fatalf("nach geschlossenem Pfad wartete die Speicherung %v", dauer)
+		t.Fatalf("in der Pause wartete die Speicherung %v", dauer)
+	}
+	// Nach der Pause wird wieder gewartet (heilt sich selbst).
+	time.Sleep(walSpeicherungPause)
+	cs.mu.Lock()
+	t0 = time.Now()
+	err = cs.saveAccountToDB(konten[0])
+	dauer = time.Since(t0)
+	cs.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dauer < walSeqHaltbarFrist {
+		t.Fatalf("nach der Pause wartete die Speicherung nur %v -- sie muss wieder auf die Haltbarkeit warten", dauer)
+	}
+}
+
+// 2. Durchgang, LOW-A: ist die WAL-Datei gerade nicht lesbar (Volume nicht
+// eingehaengt, Rechte), verwirft ein Zustandsersatz nichts -- sonst wendete
+// der naechste Start mit wieder erreichbarer Datei alles doppelt an.
+func TestWALAusgang_NichtLesbareDateiVerwirftNichts_RealDB(t *testing.T) {
+	langerFlushTakt(t)
+	truncateDistTestTables(t)
+	walPath := filepath.Join(t.TempDir(), "verschwunden.wal")
+	a := newWALTestState(t, walPath)
+	untergrenzeZuruecksetzen(t, a)
+	s, r := distTestAddr(884), distTestAddr(885)
+	seedConcurrentTestAccount(t, a, s, 1000, time.Now().Unix())
+	seedConcurrentTestAccount(t, a, r, 0, time.Now().Unix())
+	walUeberweisen(t, a, s, r, 100, "0xverschwunden")
+	a.FlushWALNow()
+	walAbsturz(t, a)
+	a.wal = nil
+	// Die Datei ist nicht erreichbar, solange der Zustand ersetzt wird.
+	t.Setenv("AEQUITAS_WAL_PATH", filepath.Join(t.TempDir(), "nicht-eingehaengt", "x.wal"))
+	a.markWALSupersededByStateReplacement()
+	var seq int64
+	a.db.QueryRow(`SELECT wal_seq FROM chain_accounts WHERE lower(address) = $1`, s).Scan(&seq)
+	if seq != 1 {
+		t.Fatalf("wal_seq nach dem Zustandsersatz ohne lesbare Datei %d, erwartet 1 (nichts verworfen)", seq)
+	}
+	var v int
+	a.db.QueryRow(`SELECT count(*) FROM wal_ausgang_vermerk`).Scan(&v)
+	if v != 1 {
+		t.Fatalf("%d Vermerke, erwartet 1 (nichts verworfen)", v)
+	}
+	// Die Datei ist wieder da: nichts doppelt.
+	t.Setenv("AEQUITAS_WAL_PATH", walPath)
+	b := newWALTestState(t, walPath)
+	b.FlushWALNow()
+	if got := dbStand(t, b, r); got != 100 {
+		t.Fatalf("Empfaenger %v, erwartet 100 -- doppelt angewandt", got)
+	}
+	if n := zeilenMitHash(t, b, "0xverschwunden"); n != 1 {
+		t.Fatalf("%d Zeilen, erwartet 1", n)
 	}
 }
 

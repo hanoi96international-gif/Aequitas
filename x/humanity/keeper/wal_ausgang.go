@@ -69,6 +69,9 @@ var walSeqHaltbarFrist = 2 * time.Second
 
 var (
 	walSeqOhneHaltbarkeit atomic.Int64
+	// walSpeicherungWartetNichtBis (UnixNano): nach einer ausgebliebenen
+	// Haltbarkeit warten Speicherungen bis dahin nicht (walSeqHaltbarAbwarten).
+	walSpeicherungWartetNichtBis atomic.Int64
 	// walAusgangNachgeholt: Zeilen, die der Wiederanlauf nachschrieb, weil
 	// der Vermerk fehlte, beide Salden den Satz aber schon trugen.
 	walAusgangNachgeholt atomic.Int64
@@ -79,24 +82,32 @@ var (
 // Aufrufer haelt die Sperre des Kontos oder cs.mu). Vorher muessen diese
 // Saetze haltbar sein -- sonst stuende nach einem Absturz eine Seq in
 // Postgres, die das WAL beim Neustart noch einmal vergibt. Wie der Flush:
-// kommt die Haltbarkeit nicht, wird trotzdem geschrieben, aber der schnelle
-// Pfad schliesst (walSchnellpfadDefekt), und danach wartet keine
-// Speicherung mehr (Pruefung #332, MEDIUM-2: sonst je Speicherung 2 s unter
-// cs.mu). Eine so geschriebene wal_seq ueber dem WAL-Kopf haelt der naechste
-// Start an (walVermerkeStimmigMitDatei, MEDIUM-1).
+// kommt die Haltbarkeit nicht, wird trotzdem geschrieben. Danach warten
+// Speicherungen walSpeicherungPause lang nicht (Pruefung #332, MEDIUM-2:
+// sonst je Speicherung 2 s unter cs.mu) und versuchen es dann wieder -- ein
+// voruebergehend stockender Sync schliesst nichts dauerhaft (2. Durchgang,
+// LOW-B; einen echten Sync-Fehler meldet der Schreiber, und der schliesst den
+// schnellen Pfad wie bisher). Eine so geschriebene wal_seq ueber dem WAL-Kopf
+// haelt der naechste Start an (walVermerkeStimmigMitDatei, MEDIUM-1).
 func (cs *ChainState) walSeqHaltbarAbwarten(seq uint64, wer string) {
 	w := cs.wal
 	if seq == 0 || w == nil || w.DurableSeq() >= seq || walSchnellpfadDefekt.Load() {
+		return
+	}
+	if time.Now().UnixNano() < walSpeicherungWartetNichtBis.Load() {
 		return
 	}
 	if w.WaitDurable(seq, walSeqHaltbarFrist) {
 		return
 	}
 	walSeqOhneHaltbarkeit.Add(1)
-	if !walSchnellpfadDefekt.Swap(true) {
-		fmt.Printf("[WAL] ✗ Speicherung (%s) wartet vergeblich auf die Haltbarkeit von Seq %d -- schneller Pfad geschlossen; wal_seq wird trotzdem geschrieben, ein Neustart prueft sie gegen den WAL-Kopf\n", wer, seq)
-	}
+	walSpeicherungWartetNichtBis.Store(time.Now().Add(walSpeicherungPause).UnixNano())
+	fmt.Printf("[WAL] ⚠ Speicherung (%s) wartet vergeblich auf die Haltbarkeit von Seq %d -- wal_seq wird trotzdem geschrieben, Speicherungen warten %v nicht; ein Neustart prueft wal_seq gegen den WAL-Kopf\n", wer, seq, walSpeicherungPause)
 }
+
+// walSpeicherungPause: so lange warten Speicherungen nach einer
+// ausgebliebenen Haltbarkeit nicht. var: Tests kuerzen sie.
+var walSpeicherungPause = time.Minute
 
 // walVermerkAbLesen: die Untergrenze; da=false, wenn sie nie gesetzt wurde.
 // Ein Lesefehler oder ein unlesbarer Wert ist ein Fehler (fail-closed): eine

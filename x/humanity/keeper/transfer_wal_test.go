@@ -46,6 +46,8 @@ func newWALTestState(t *testing.T, walPath string) *ChainState {
 	if _, err := os.Stat(walPath); os.IsNotExist(err) {
 		walVermerkeFuerNeueDateiLeeren(t)
 	}
+	// Prozessweite Merker eines frueheren Tests (wal_ausgang.go).
+	walSpeicherungWartetNichtBis.Store(0)
 	cs := NewChainState("unused-wal-test.json")
 	if !cs.useDB {
 		t.Fatal("expected a live PostgreSQL connection (cs.useDB == false) — check DATABASE_URL")
