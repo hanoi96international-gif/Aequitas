@@ -600,6 +600,11 @@ type ChainState struct {
 	// ALLE walFlushSem-Plaetze, zwei gleichzeitig verklemmten sich mit je
 	// einem Teil davon.
 	walFlushNowMu sync.Mutex
+	// walWiederanlaufFehler: warum der WAL-Wiederanlauf in diesem Prozess
+	// gescheitert ist ("" = nicht versucht oder gelungen). Gesetzt in
+	// NewChainState (initWALIfEnabled), gelesen von PruefeWALRest in main --
+	// derselbe Ablauf, keine Nebenlaeufigkeit (wal_rest.go).
+	walWiederanlaufFehler string
 }
 
 // validatorPenalty is one cached validator_penalties row — everything
