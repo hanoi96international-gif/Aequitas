@@ -221,6 +221,15 @@ type ChainState struct {
 	// leitung: rotierender Leiter (leitung.go); nil = aus, dann gilt allein
 	// nurLesend wie bisher.
 	leitung atomic.Pointer[Leitung]
+	// leitungStartVersucht: StarteLeitung ist gelaufen (gelungen oder nicht).
+	// Bis dahin haelt die Annahme mit AEQUITAS_LEITUNG=an an
+	// (leitungNichtBereit) -- leitung ist dann noch nil, und der Knoten naehme
+	// lokal an, statt an den Leiter weiterzuleiten. leitungGescheitert: an,
+	// aber nicht gebaut (kein Schluessel, Genesis ungueltig) -- dann bleibt
+	// die Annahme angehalten (fail-closed). Beide setzt nur StarteLeitung,
+	// gescheitert VOR versucht.
+	leitungStartVersucht atomic.Bool
+	leitungGescheitert   atomic.Bool
 	// annahmenLaufend zaehlt Annahmen, die das Tor passiert haben und noch
 	// nicht fertig sind -- der Leiter uebergibt erst, wenn es 0 ist.
 	annahmenLaufend atomic.Int64
@@ -457,6 +466,12 @@ type ChainState struct {
 	evmMirrorDirtyMu   sync.Mutex
 	evmMirrorDirty     map[evmMirrorDirtyKey]struct{}
 	evmMirrorFlushOnce sync.Once
+	// evmMirrorStopCh/evmMirrorWorkerDone: nur fuer
+	// stopEVMMirrorFlushWorkerForTest (evm_mirror_flush.go); in evmMirrorFlushOnce
+	// gesetzt, in Produktion nie geschlossen.
+	evmMirrorStopCh     chan struct{}
+	evmMirrorWorkerDone chan struct{}
+	evmMirrorStopOnce   sync.Once
 
 	// receiptBuf/receiptBufMu/receiptFlushOnce back SaveTxReceipt's deferred
 	// write -- same dirty-buffer-plus-periodic-worker shape as evmMirrorDirty
@@ -585,6 +600,11 @@ type ChainState struct {
 	// ALLE walFlushSem-Plaetze, zwei gleichzeitig verklemmten sich mit je
 	// einem Teil davon.
 	walFlushNowMu sync.Mutex
+	// walWiederanlaufFehler: warum der WAL-Wiederanlauf in diesem Prozess
+	// gescheitert ist ("" = nicht versucht oder gelungen). Gesetzt in
+	// NewChainState (initWALIfEnabled), gelesen von PruefeWALRest in main --
+	// derselbe Ablauf, keine Nebenlaeufigkeit (wal_rest.go).
+	walWiederanlaufFehler string
 }
 
 // validatorPenalty is one cached validator_penalties row — everything
@@ -1331,6 +1351,11 @@ last_error TEXT
 )`)
 	dbExec(`CREATE INDEX IF NOT EXISTS idx_registration_recovery_unrecovered
 ON registration_recovery(created_at) WHERE recovered_at IS NULL`)
+	// Fuer die Abloesung eines Vor-EVM-Intents (vorEVMIntentAufloesen): ohne
+	// ihn las jede Pruefung die ganze Tabelle, die je Registrierung waechst
+	// (Pruefung #330, 2. Durchgang, Befund 2).
+	dbExec(`CREATE INDEX IF NOT EXISTS idx_registration_recovery_wallet_hash
+ON registration_recovery(wallet) WHERE evm_tx_hash <> ''`)
 
 	// Pending block transactions — persisted so they survive node restarts.
 	// Without this, transfers via sendRawTransaction update Go-state/DB but

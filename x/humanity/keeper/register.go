@@ -919,9 +919,7 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 	// Step 3: Stamp the confirmed EVM tx hash on the intent so background retry
 	// knows the EVM part is done and only Go-state needs to be retried.
 	pendingRegTx.TxHash = txHash
-	if intentID > 0 {
-		a.state.UpdateRegistrationIntentEVMTxHash(intentID, txHash)
-	}
+	hashVermerkt := a.state.intentHashVermerken(intentID, txHash)
 
 	// Step 4: Sync Go-state + outbox atomically.
 	registered := false
@@ -939,7 +937,19 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 	if !registered {
 		// Step 5 (failure path): the intent already exists in registration_recovery
 		// with evm_tx_hash set — background RetryRegistrationRecoveries will keep
-		// retrying RegisterHumanAtomic until Go-state catches up.
+		// retrying RegisterHumanAtomic until Go-state catches up. Without the
+		// hash on the intent (no intent, or stamping failed) only a row of its
+		// own carries it; if even that fails, nothing is queued and the
+		// message must not claim otherwise (Pruefung #330, Befund 2).
+		if err := a.state.bestaetigteRegistrierungSichern(hashVermerkt, wallet, txHash, nullifierToStore, pendingRegTx); err != nil {
+			Log.Error("CRITICAL: RegisterHumanAtomic failed 3x after EVM success and NO recovery row could be written",
+				"wallet", wallet, "txHash", txHash, "intentID", intentID, "error", regErr, "recoveryErr", err)
+			a.state.SetBootstrapDegraded(fmt.Sprintf(
+				"registration_recovery: EVM tx %s registered %s on-chain but Go-state sync failed (%v) and NO recovery row could be written (%v) — manual action required",
+				txHash, wallet, regErr, err))
+			return "", fmt.Errorf("registration succeeded on-chain (tx %s) but failed to sync locally, and no recovery could be queued: %w — "+
+				"please contact the operator with this transaction hash", txHash, regErr)
+		}
 		Log.Error("CRITICAL: RegisterHumanAtomic failed 3x after EVM success — intent left for background retry",
 			"wallet", wallet, "txHash", txHash, "intentID", intentID, "error", regErr)
 		a.state.SetBootstrapDegraded(fmt.Sprintf(
