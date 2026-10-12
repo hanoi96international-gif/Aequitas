@@ -47,6 +47,10 @@ const (
 	walKompaktAbBytes = 512 << 20 // 512 MB
 )
 
+// walKompaktAbstand: Sicherheitsabstand zum Kopf (siehe
+// walKompaktierungsRunde). var: Tests senken ihn.
+var walKompaktAbstand = uint64(300000)
+
 var (
 	walKompaktLaeufe    atomic.Int64
 	walKompaktBytesFrei atomic.Int64
@@ -107,7 +111,7 @@ func (cs *ChainState) walKompaktierungsRunde(_ uint64) uint64 {
 	// Der Abstand deckt das Schreib-/Einreih-Fenster und jede Unschaerfe in
 	// der Tiefenmessung. Bei rund 5.000 Ueberweisungen je Sekunde entspricht
 	// er gut einer Minute Vorlauf -- weit mehr, als ein Flush je braucht.
-	const abstand = uint64(300000)
+	abstand := walKompaktAbstand
 	if kopf <= offen+abstand {
 		return kopf // noch zu jung zum Kuerzen
 	}
@@ -119,6 +123,14 @@ func (cs *ChainState) walKompaktierungsRunde(_ uint64) uint64 {
 	bis := walKuerzenBis(kopf, offen, abstand, cs.walRecoveryFloor(), cs.korb != nil, korbBis, offenMin, offenDa)
 	if bis == 0 {
 		return kopf // noch alles offen
+	}
+	// Unter bis steht alles in Postgres, mit Zeile und Vermerk: die Vermerke
+	// dort braucht kein Wiederanlauf mehr (wal_ausgang.go). Unabhaengig von
+	// der Dateigroesse, sonst wuechse die Tabelle bis zur ersten Kuerzung.
+	if cs.db != nil {
+		if err := cs.walVermerkAbAnheben(bis); err != nil {
+			fmt.Printf("[WAL] ⚠ Ausgangsvermerke unter Seq %d nicht geloescht: %v\n", bis, err)
+		}
 	}
 	vorher := walDateiGroesse(cs.wal.Path())
 	if vorher < walKompaktAbBytes {

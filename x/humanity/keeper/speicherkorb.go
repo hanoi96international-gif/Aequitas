@@ -1,7 +1,6 @@
 package keeper
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"sort"
@@ -402,6 +401,13 @@ func (cs *ChainState) speicherKorbNachWiederanlauf(peek uint64, korbAn, markeDa 
 		// gegen Doppelte geschuetzt, aber nicht gegen inzwischen Verblocktes).
 		cs.korbUebergang = false
 		if cs.db != nil {
+			// Bis zur Marke steht alles in Bloecken, ohne Ausgangsvermerk: die
+			// Untergrenze der Vermerke mitnehmen, bevor die Marke geht -- sonst
+			// schriebe ein spaeterer Wiederanlauf fuer diese Saetze eine Zeile
+			// (wal_ausgang.go).
+			if err := cs.walVermerkAbAnheben(cs.korbUebergangBis + 1); err != nil {
+				return fmt.Errorf("Korb-Marke nicht entfernt: %w", err)
+			}
 			if _, err := cs.db.Exec(`DELETE FROM chain_config WHERE key = $1`, speicherKorbMarke); err != nil {
 				return fmt.Errorf("Korb-Marke nicht entfernt: %w", err)
 			}
@@ -447,21 +453,6 @@ func (cs *ChainState) speicherKorbNachWiederanlauf(peek uint64, korbAn, markeDa 
 	}
 	fmt.Printf("[KORB] ✓ Bloecke aus dem Speicher -- %d Ueberweisung(en) aus dem WAL wieder im Korb, verblockt bis Seq %d\n", len(k.bereit), cs.korbBis.Load())
 	return nil
-}
-
-// korbUebergangZeile schreibt eine Ueberweisung, die nur im Korb stand, als
-// Zeile nach pending_txs -- hoechstens einmal, auch wenn der Uebergang durch
-// einen Absturz wiederholt wird.
-func (cs *ChainState) korbUebergangZeile(tx Transaction, seq uint64) error {
-	data, err := json.Marshal(tx)
-	if err != nil {
-		return err
-	}
-	_, err = cs.db.Exec(`INSERT INTO pending_txs (tx_json, created_at, wal_seq)
-SELECT $1::text, $2::bigint, $3::bigint
-WHERE NOT EXISTS (SELECT 1 FROM pending_txs WHERE wal_seq = $3::bigint AND tx_json = $1::text)`,
-		string(data), time.Now().Unix(), int64(seq))
-	return err
 }
 
 // korbFuerBlock stellt den Inhalt des naechsten eigenen Blocks zusammen:
