@@ -319,12 +319,13 @@ func (cs *ChainState) initWALIfEnabled() {
 		cs.korbBis.Store(ab)
 	}
 	cs.korbUebergangBis, cs.korbUebergang = marke, !korbAn && markeDa
-	if err := cs.recoverFromWAL(path); err != nil {
-		cs.korb = nil
-		fmt.Printf("[WAL] ✗ recovery failed, WAL fast path stays DISABLED for this process: %v\n", err)
-		cs.walWiederanlaufFehler = err.Error()
-		return
-	}
+	// Erst oeffnen (Open liest die Datei, kuerzt ein zerrissenes Ende und
+	// kennt die naechste Seq samt Hochwassermarke), dann pruefen, dann
+	// einspielen: Vermerke oder wal_seq ueber dem, was das WAL schon vergeben
+	// hat, heissen "Datei ersetzt/geloescht" oder "Saldo mit verlorenem Satz"
+	// -- und mit ihnen darf der Wiederanlauf gar nicht erst arbeiten
+	// (wal_ausgang.go; Pruefung #332, MEDIUM-1 und LOW-5). Angehaengt wird
+	// erst, wenn cs.wal gesetzt ist; ReplayFile liest nur.
 	w, err := wal.Open(path)
 	if err != nil {
 		cs.korb = nil
@@ -332,12 +333,17 @@ func (cs *ChainState) initWALIfEnabled() {
 		cs.walWiederanlaufFehler = err.Error()
 		return
 	}
-	// Vermerke ueber dem, was das WAL schon vergeben hat: die Datei wurde
-	// ersetzt oder geloescht (wal_ausgang.go). Fail-closed.
 	if err := cs.walVermerkeStimmigMitDatei(w.PeekSeq()); err != nil {
 		w.Close()
 		cs.korb = nil
 		fmt.Printf("[WAL] ✗ %v — WAL fast path stays DISABLED for this process\n", err)
+		cs.walWiederanlaufFehler = err.Error()
+		return
+	}
+	if err := cs.recoverFromWAL(path); err != nil {
+		w.Close()
+		cs.korb = nil
+		fmt.Printf("[WAL] ✗ recovery failed, WAL fast path stays DISABLED for this process: %v\n", err)
 		cs.walWiederanlaufFehler = err.Error()
 		return
 	}
@@ -1534,7 +1540,12 @@ func (cs *ChainState) markWALSupersededByStateReplacement() {
 			path = "aequitas_transfers.wal"
 		}
 		if _, err := os.Stat(path); err != nil {
-			return // no WAL file at all — nothing to fence off
+			// No WAL file at all — nothing to fence off; Ausgangsvermerke
+			// einer frueheren Datei gehoeren trotzdem nicht mehr zum Stand.
+			if err := cs.walVermerkeVerwerfen(0); err != nil {
+				fmt.Printf("[WAL] ⚠ Ausgangsvermerke nicht verworfen: %v\n", err)
+			}
+			return
 		}
 		if _, _, err := wal.ReplayFile(path, func(entry wal.Entry) error {
 			if entry.Seq > head {
@@ -1547,11 +1558,19 @@ func (cs *ChainState) markWALSupersededByStateReplacement() {
 		}
 	}
 	if head == 0 {
+		// Leere Datei: kein Boden noetig, aber fremde Vermerke weg (Pruefung
+		// #332, LOW-4 -- sonst sperrten sie jeden Start).
+		if err := cs.walVermerkeVerwerfen(0); err != nil {
+			fmt.Printf("[WAL] ⚠ Ausgangsvermerke nicht verworfen: %v\n", err)
+		}
 		return
 	}
 	if err := cs.setConfigValueDB(walRecoveryFloorKey, strconv.FormatUint(head, 10)); err != nil {
 		fmt.Printf("[WAL] ⚠ could not persist recovery floor %d: %v\n", head, err)
 		return
+	}
+	if err := cs.walVermerkeVerwerfen(head); err != nil {
+		fmt.Printf("[WAL] ⚠ Ausgangsvermerke bis %d nicht verworfen: %v\n", head, err)
 	}
 	fmt.Printf("[WAL] ✓ Recovery floor set to seq %d — account state was just replaced wholesale, so every WAL record up to that point is superseded and will never be replayed again\n", head)
 }
@@ -1715,10 +1734,21 @@ func (cs *ChainState) recoverFromWAL(path string) error {
 			// Beide Salden stehen schon in Postgres, nur die Zeile fehlt:
 			// jetzt schreiben, mit Vermerk -- sonst kaeme der Satz nie in
 			// einen Block, und der Stand dieses Knotens truege ihn trotzdem.
-			if err := cs.walAusgangNachholen(walRecordAlsTx(rec), entry.Seq); err != nil {
-				return fmt.Errorf("WAL record seq %d: Ausgangszeile nachholen: %w", entry.Seq, err)
+			// Steht er laut Block-Index schon in einem Block, nur der Vermerk.
+			verblockt, err := cs.walSatzVerblockt(rec.TxHash)
+			if err != nil {
+				return fmt.Errorf("WAL record seq %d: %w", entry.Seq, err)
 			}
-			walAusgangNachgeholt.Add(1)
+			if verblockt {
+				if err := cs.walNurVermerk(entry.Seq); err != nil {
+					return fmt.Errorf("WAL record seq %d: Vermerk: %w", entry.Seq, err)
+				}
+			} else {
+				if err := cs.walAusgangNachholen(walRecordAlsTx(rec), entry.Seq); err != nil {
+					return fmt.Errorf("WAL record seq %d: Ausgangszeile nachholen: %w", entry.Seq, err)
+				}
+				walAusgangNachgeholt.Add(1)
+			}
 		}
 		if fromApplied || toApplied {
 			reappliedCount++

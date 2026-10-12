@@ -1634,6 +1634,9 @@ func (cs *ChainState) resetDBStateForBootstrap() {
 		// redeploy, reintroducing isHuman/balanceOf entries this reset was
 		// supposed to remove.
 		"evm_upgrade_relationship_slots",
+		// Ausgangsvermerke gehoeren zur WAL-Datei vor dem Reset; danach
+		// sperrten sie den Start (wal_ausgang.go, Pruefung #332 LOW-4).
+		"wal_ausgang_vermerk",
 	}
 
 	fmt.Println("[DB-RESET] RESET_DB_STATE=true — truncating local secondary DB before snapshot bootstrap")
@@ -2788,7 +2791,8 @@ func (cs *ChainState) saveAccountToDBInnerCtx(ctx context.Context, acc *AccountS
 	// Der Saldo traegt die WAL-Saetze bis acc.WALSeq -- auch noch nicht
 	// geflushte. Ohne wal_seq wendete der Wiederanlauf sie ein zweites Mal an
 	// (docs/OFFEN.md, Punkt 9a).
-	walSeq := cs.walSeqZumSpeichern(acc)
+	walSeq := int64(acc.WALSeq)
+	cs.walSeqHaltbarAbwarten(acc.WALSeq, acc.Address)
 	// FIX (atomic outbox): use cs.dbExecCtx(ctx) instead of cs.db directly —
 	// when the caller's operation has an active transaction, this write
 	// becomes part of it (committed or rolled back together with the
@@ -3003,8 +3007,10 @@ func (cs *ChainState) saveAccountsToDBBatchCtx(ctx context.Context, accs []*Acco
 	auftragsNonces := make([]int64, len(sorted))
 	expectedVersions := make([]int64, len(sorted))
 	walSeqs := make([]int64, len(sorted)) // siehe saveAccountToDBInnerCtx
+	var hoechsteWALSeq uint64
 	for i, acc := range sorted {
-		walSeqs[i] = cs.walSeqZumSpeichern(acc)
+		walSeqs[i] = int64(acc.WALSeq)
+		hoechsteWALSeq = max(hoechsteWALSeq, acc.WALSeq)
 		addresses[i] = acc.Address
 		balances[i] = acc.Balance.Float()
 		isHumans[i] = acc.IsHuman
@@ -3020,6 +3026,9 @@ func (cs *ChainState) saveAccountsToDBBatchCtx(ctx context.Context, accs []*Acco
 		auftragsNonces[i] = acc.NaechsteAuftragsNonce
 		expectedVersions[i] = acc.Version
 	}
+	// Einmal fuer den ganzen Stapel warten, nicht je Konto (Pruefung #332,
+	// MEDIUM-2: bei haengendem Sync hielt ein Stapel cs.mu sonst N x 2 s).
+	cs.walSeqHaltbarAbwarten(hoechsteWALSeq, "Stapel")
 	args := []interface{}{
 		pq.Array(addresses), pq.Array(balances), pq.Array(isHumans),
 		pq.Array(tusdBalances), pq.Array(lpShares), pq.Array(lastActivityAts),

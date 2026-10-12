@@ -165,8 +165,16 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
      zurück den Schlüssel `wal_ausgang_vermerk_ab` löschen (die alte Fassung
      schreibt Zeilen ohne Vermerk; sonst schriebe der Wiederanlauf sie ein
      zweites Mal).
-   - **Offen:** Ein Sync-Fehler über 2 s (Speicherung schreibt dann trotzdem)
-     und der Verlust der WAL-Datei bleiben wie bisher Betreiberfälle.
+   - Nach der Prüfung von #332: `wal_seq` über dem WAL-Kopf sperrt den Start
+     vor dem Wiederanlauf (MEDIUM-1, LOW-5); nach der ersten ausgebliebenen
+     Haltbarkeit schließt der schnelle Pfad und keine Speicherung wartet mehr,
+     ein Stapel wartet einmal (MEDIUM-2); vor dem Nachholen einer Zeile der
+     Block-Index (MEDIUM-3, nur zusätzlich – der Index wird nachgezogen und
+     gekürzt, der Betriebshinweis oben bleibt nötig); `RESET_DB_STATE` leert
+     die Vermerke, Verwerfen/Zustandsersatz setzt Vermerke, Untergrenze und
+     `wal_seq` über dem Kopf zurück (LOW-4).
+   - **Offen:** Der Verlust der WAL-Datei bleibt ein Betreiberfall (fail-closed,
+     Ausweg `AEQUITAS_WAL_REST_VERWERFEN`).
 
 ## Ratenbegrenzung – bekannte Lücken
 - **`X-Forwarded-For` hinter einem privaten TCP-Partner** (Prüfung von #319,

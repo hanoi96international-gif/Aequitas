@@ -63,8 +63,9 @@ const walVermerkAbKey = "wal_ausgang_vermerk_ab"
 const walVermerkPortion = 10_000
 
 // walSeqHaltbarFrist: so lange wartet eine Speicherung auf die Haltbarkeit
-// der WAL-Saetze ihres Saldos -- dieselbe Frist wie flushWALBatch.
-const walSeqHaltbarFrist = 2 * time.Second
+// der WAL-Saetze ihres Saldos -- dieselbe Frist wie flushWALBatch. var: Tests
+// kuerzen sie.
+var walSeqHaltbarFrist = 2 * time.Second
 
 var (
 	walSeqOhneHaltbarkeit atomic.Int64
@@ -73,21 +74,28 @@ var (
 	walAusgangNachgeholt atomic.Int64
 )
 
-// walSeqZumSpeichern: die wal_seq, die eine Speicherung des Saldos von acc
-// mitschreibt. acc.WALSeq ist die hoechste Seq, deren Wirkung acc.Balance
-// traegt (der Aufrufer haelt die Sperre des Kontos oder cs.mu). Wie der
-// Flush: erst auf die Haltbarkeit warten; kommt sie nicht (Sync defekt),
-// trotzdem schreiben -- der schnelle Pfad ist dann ohnehin geschlossen.
-func (cs *ChainState) walSeqZumSpeichern(acc *AccountState) int64 {
-	seq := acc.WALSeq
-	if seq == 0 {
-		return 0
+// walSeqHaltbarAbwarten: eine Speicherung schreibt mit dem Saldo dessen
+// wal_seq (acc.WALSeq: die hoechste Seq, deren Wirkung der Saldo traegt; der
+// Aufrufer haelt die Sperre des Kontos oder cs.mu). Vorher muessen diese
+// Saetze haltbar sein -- sonst stuende nach einem Absturz eine Seq in
+// Postgres, die das WAL beim Neustart noch einmal vergibt. Wie der Flush:
+// kommt die Haltbarkeit nicht, wird trotzdem geschrieben, aber der schnelle
+// Pfad schliesst (walSchnellpfadDefekt), und danach wartet keine
+// Speicherung mehr (Pruefung #332, MEDIUM-2: sonst je Speicherung 2 s unter
+// cs.mu). Eine so geschriebene wal_seq ueber dem WAL-Kopf haelt der naechste
+// Start an (walVermerkeStimmigMitDatei, MEDIUM-1).
+func (cs *ChainState) walSeqHaltbarAbwarten(seq uint64, wer string) {
+	w := cs.wal
+	if seq == 0 || w == nil || w.DurableSeq() >= seq || walSchnellpfadDefekt.Load() {
+		return
 	}
-	if w := cs.wal; w != nil && !w.WaitDurable(seq, walSeqHaltbarFrist) {
-		walSeqOhneHaltbarkeit.Add(1)
-		fmt.Printf("[WAL] ⚠ Speicherung von %s schreibt wal_seq %d, obwohl das WAL sie nicht als haltbar bestaetigt hat\n", acc.Address, seq)
+	if w.WaitDurable(seq, walSeqHaltbarFrist) {
+		return
 	}
-	return int64(seq)
+	walSeqOhneHaltbarkeit.Add(1)
+	if !walSchnellpfadDefekt.Swap(true) {
+		fmt.Printf("[WAL] ✗ Speicherung (%s) wartet vergeblich auf die Haltbarkeit von Seq %d -- schneller Pfad geschlossen; wal_seq wird trotzdem geschrieben, ein Neustart prueft sie gegen den WAL-Kopf\n", wer, seq)
+	}
 }
 
 // walVermerkAbLesen: die Untergrenze; da=false, wenn sie nie gesetzt wurde.
@@ -255,5 +263,68 @@ func (cs *ChainState) walVermerkeStimmigMitDatei(naechste uint64) error {
 	if hoechster.Valid && uint64(hoechster.Int64) >= naechste {
 		return fmt.Errorf("Ausgangsvermerk fuer Seq %d, das WAL vergibt erst ab %d -- wurde die WAL-Datei ersetzt oder geloescht?", hoechster.Int64, naechste)
 	}
+	// Dasselbe fuer die Salden (Pruefung #332, MEDIUM-1): eine wal_seq, die
+	// das WAL noch einmal vergibt, liesse einen neuen Satz auf diesem Konto
+	// als "schon angewandt" gelten -- die Gegenseite bekaeme ihn, dieses
+	// Konto nicht. Entsteht, wenn eine Speicherung nach ausgebliebener
+	// Haltbarkeit schrieb und der Satz mit dem Absturz verloren ging.
+	var hoechsteKonto sql.NullInt64
+	if err := cs.db.QueryRow(`SELECT max(wal_seq) FROM chain_accounts`).Scan(&hoechsteKonto); err != nil {
+		return fmt.Errorf("wal_seq der Konten nicht lesbar: %w", err)
+	}
+	if hoechsteKonto.Valid && hoechsteKonto.Int64 > 0 && uint64(hoechsteKonto.Int64) >= naechste {
+		return fmt.Errorf("ein Konto traegt wal_seq %d, das WAL vergibt erst ab %d -- ein Saldo enthaelt einen Satz, den die Datei nicht hat (Datei ersetzt/geloescht oder Sync-Ausfall vor einem Absturz). Bewusst verwerfen: AEQUITAS_WAL_REST_VERWERFEN", hoechsteKonto.Int64, naechste)
+	}
 	return nil
+}
+
+// walVermerkeVerwerfen: nach einem Zustandsersatz oder bewussten Verwerfen
+// bis head (markWALSupersededByStateReplacement) gehoert nichts bis head mehr
+// zum Wiederanlauf. Vermerke weg, Untergrenze auf head+1 (auch abwaerts --
+// eine Untergrenze aus einer fremden Datei waere sonst nie mehr zu loesen),
+// wal_seq ueber head auf 0: unter dem Boden wird ohnehin nichts angewandt, und
+// eine hoehere wal_seq stammt aus einer anderen Zaehlung (Pruefung #332,
+// LOW-4: sonst drehte sich VERWERFEN im Kreis).
+func (cs *ChainState) walVermerkeVerwerfen(head uint64) error {
+	tx, err := cs.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`DELETE FROM wal_ausgang_vermerk`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`INSERT INTO chain_config (key, value) VALUES ($1, $2)
+ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, walVermerkAbKey, strconv.FormatUint(head+1, 10)); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`UPDATE chain_accounts SET wal_seq = 0 WHERE wal_seq > $1`, int64(head)); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// walSatzVerblockt: steht die Ueberweisung laut Block-Index schon in einem
+// Block? Nur ein zusaetzlicher Schutz vor dem Nachholen einer Zeile (der
+// Index wird nachgezogen und gekuerzt, ein fehlender Eintrag beweist nichts):
+// ein Rueckschritt auf eine Fassung ohne Vermerke, ohne den Schluessel zu
+// loeschen, schriebe sonst verblockte Ueberweisungen ein zweites Mal
+// (Pruefung #332, MEDIUM-3). Ein Lesefehler ist ein Fehler.
+func (cs *ChainState) walSatzVerblockt(txHash string) (bool, error) {
+	h := strings.ToLower(strings.TrimSpace(txHash))
+	if h == "" {
+		return false, nil
+	}
+	cs.ensureTxBlockIndexTable()
+	var da bool
+	if err := cs.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM chain_tx_block_index WHERE tx_hash = $1)`, h).Scan(&da); err != nil {
+		return false, fmt.Errorf("Block-Index nicht lesbar: %w", err)
+	}
+	return da, nil
+}
+
+// walNurVermerk: der Satz steht schon in einem Block, nur der Vermerk fehlt.
+func (cs *ChainState) walNurVermerk(seq uint64) error {
+	_, err := cs.db.Exec(`INSERT INTO wal_ausgang_vermerk (seq) VALUES ($1) ON CONFLICT DO NOTHING`, int64(seq))
+	return err
 }
