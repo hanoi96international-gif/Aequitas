@@ -307,6 +307,7 @@ func (cs *ChainState) initWALIfEnabled() {
 	marke, markeDa, markeErr := cs.speicherKorbMarkeLesen()
 	if markeErr != nil {
 		fmt.Printf("[WAL] ✗ %v — WAL fast path stays DISABLED for this process\n", markeErr)
+		cs.walWiederanlaufFehler = markeErr.Error()
 		return
 	}
 	if korbAn && markeDa {
@@ -321,18 +322,21 @@ func (cs *ChainState) initWALIfEnabled() {
 	if err := cs.recoverFromWAL(path); err != nil {
 		cs.korb = nil
 		fmt.Printf("[WAL] ✗ recovery failed, WAL fast path stays DISABLED for this process: %v\n", err)
+		cs.walWiederanlaufFehler = err.Error()
 		return
 	}
 	w, err := wal.Open(path)
 	if err != nil {
 		cs.korb = nil
 		fmt.Printf("[WAL] ✗ could not open %s, WAL fast path stays DISABLED for this process: %v\n", path, err)
+		cs.walWiederanlaufFehler = err.Error()
 		return
 	}
 	if err := cs.speicherKorbNachWiederanlauf(w.PeekSeq(), korbAn, markeDa); err != nil {
 		w.Close()
 		cs.korb = nil
 		fmt.Printf("[WAL] ✗ %v — WAL fast path stays DISABLED for this process\n", err)
+		cs.walWiederanlaufFehler = err.Error()
 		return
 	}
 	cs.wal = w

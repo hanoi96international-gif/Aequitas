@@ -58,38 +58,114 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
    ausgelöst von Peer-Blöcken) legt den Strafbeweis auch auf einem Beobachter
    oder pausierten Knoten in den Ausgang; läuft `strafBeweisFrisch` ab, bevor
    der Knoten erzeugt, helfen nur Resync oder Verwerfen.
-   `RetryRegistrationRecoveries` (alle 5 Minuten) prüft die Pause nicht. Fix:
-   die Wiederholung an `annahmePauseGrund()` koppeln. (Auf einem Beobachter
-   sperren seit #322 `beobachterOhneAusgang` in `runAtomicWithOutbox`,
-   `runAtomicDistributionWithOutbox`, `RegisterHumanAtomic` und
-   `RegisterHuman` sowie `RetryRegistrationRecoveries` und der
-   WAL-Wiederanlauf den Ausgang; Überweisungen sperrt `annahmeBeginnen`.)
-8. **Folger nimmt beim Start bis zu 30 s ohne Leitung an** (Prüfung von
-   #322, INFO-7; bestand schon vorher): Bis `StarteLeitung` läuft, ist
-   `cs.leitung` nil und `nimmtAnFuer()` true, auch mit `AEQUITAS_LEITUNG=an`;
-   Überweisung, Tausch und Faucet nehmen dann lokal an, statt
-   weiterzuleiten. Fix: pausieren, solange `leitungAn()` und der Start der
-   Leitung noch nicht versucht wurde (versucht, nicht gelungen -- sonst
-   hielte eine kaputte Leitung den Knoten für immer an).
-9. **WAL nach einem Rollenwechsel ohne Deckungsprüfung** (Prüfung von
-   #322, INFO-15): Ein Beobachter liest das WAL nicht ein, die Datei bleibt
-   liegen. Startet ein abgestürzter Validator mit ungeflushten Sätzen erst
-   als Beobachter (spielt fremde Blöcke nach, `wal_seq` bleibt stehen) und
-   dann wieder als Validator, wendet `recoverFromWAL` die alten Sätze ohne
-   Deckungsprüfung auf den weitergelaufenen Stand an (PoC: Kontostand
-   −42,042, eine Zeile im Ausgang). Nur der umgestellte Knoten ist betroffen
-   – die anderen prüfen die Deckung beim Nachspielen und lehnten einen Block
-   mit dieser Zeile ab; der Workflow-Beobachter startet mit leerem WAL.
-   Fix: Ein Beobachter, dessen WAL nicht abgeglichene Sätze trägt (über der
-   Untergrenze, `seq` > `wal_seq` der Konten; rein lesend per
-   `wal.ReplayFile`), startet nicht (fail-closed), mit dem Hinweis, erst als
-   Validator wiederanlaufen zu lassen oder den Rest bewusst zu verwerfen;
-   ergänzend prüft `recoverFromWAL` die Deckung und parkt Sätze, die ins
-   Minus führten. Missbrauchstest wie der PoC. Bis dahin (Betrieb): einen
-   Validator mit WAL nie als Beobachter neu starten, ohne dass er vorher als
-   Validator sauber wiederangelaufen ist.
+   **Erledigt (Zweig `claude/weiter-gehts-hklfhc`):**
+   `RetryRegistrationRecoveries` holt nach der EVM (Hash gesetzt) nichts
+   nach, solange `annahmePauseGrund()` pausiert – auf jedem Knoten, nicht
+   nur dem annehmenden (was ein nicht erzeugender Knoten in den Ausgang legt,
+   kommt in keinen Block). Und (Prüfung von #329, INFO-13): Vor-EVM-Intents
+   (`evm_tx_hash = ''`) registriert die Wiederholung **nie** mehr –
+   `vorEVMIntentAufloesen` schließt sie nur: Go-Zustand hat den Menschen →
+   erledigt; EVM-Spiegel zeigt ihn, Go nicht → bleibt offen für den
+   Betreiber (Degraded-Hinweis); sonst → verworfen, der Nutzer reicht neu
+   ein. Erst ab 10 Minuten Alter (sonst evtl. noch unterwegs); ein später
+   gesetzter EVM-Hash öffnet einen verworfenen Intent wieder. Der Durchlauf
+   liest höchstens 1.000 Zeilen. Tests: `registration_recovery_test.go`.
+   Seit der Prüfung von #330: Als Beleg einer bestätigten Registrierung
+   zählen auch `commitmentOf`, `nullifierOf` und `usedNullifiers` (= diese
+   Wallet), nicht nur `isHuman` (den überschreibt der Go-Spiegel). Scheitert
+   der Hash-Vermerk am Intent, legt `/api/register` eine eigene Zeile mit
+   Hash an. Offen bleibt hier der Strafbeweis-Teil (`DoppelsignaturErkannt`).
+   **Rest aus der Prüfung von #330** (Folge-PR):
+   - *LOW-3 Kopf-Blockade:* Der Durchlauf liest die 1.000 ältesten offenen
+     Zeilen. Zeilen, die nie geschlossen werden (Fälle für den Betreiber,
+     dauerhafte Fehler wie „nullifier already used by a different wallet“,
+     korruptes JSON), können jüngere Zeilen mit Hash dauerhaft verdrängen.
+     Von außen schwer zu erreichen (gültiger Beweis, Ratengrenzen, Zeilen
+     werden gelöscht oder verworfen). Fix: Zeilen mit Hash vorziehen bzw.
+     über `last_attempt_at` rotieren, Fälle für den Betreiber aus dem
+     Durchlauf nehmen.
+   - *LOW-4 Betreiberweg:* Für den Fall „EVM-Speicher belegt, Go nicht“ gibt
+     es keine Admin-Aktion (`/api/admin/registration-recovery` listet nur);
+     lösen derzeit nur per SQL. Fix: geprüfte Admin-Aktion oder Runbook.
+   - *INFO-7:* Der Degraded-Hinweis erscheint nur bei leerem Feld, und
+     `CountUnrecoveredRegistrations` ignoriert Scan-Fehler.
+   - *INFO-8 (bestand schon vorher):* „already registered“ wird über einen
+     Teilstring erkannt; besser typisierte Fehler.
+   - Ein Knoten, der nie wieder erzeugt (etwa ein früherer Leiter als
+     Folger), hält bestätigte Registrierungen in seiner Tabelle fest.
+   - *2. Durchgang, INFO-3 (bestand schon vorher):* `registration_recovery`
+     überlebt `CLEAR_REGISTRATIONS` und `RESET_DB_STATE`. Offene Zeilen mit
+     Hash von vor dem Wipe würden danach wieder registriert (nur der
+     Betreiber löst das aus). Fix: die Tabelle in `CLEAR_REGISTRATIONS`
+     aufnehmen, für `RESET_DB_STATE` bewusst entscheiden.
+   - *2. Durchgang, INFO-4 (bestand schon vorher):* Kann `/api/register` den
+     Intent nicht schreiben, läuft die Registrierung trotzdem weiter; stürzt
+     der Prozess dann zwischen EVM und eigener Zeile ab, ist nichts
+     vorgemerkt. Fail-closed wäre: ablehnen, solange noch keine
+     EVM-Transaktion lief.
+   - *3. Durchgang, INFO-1 (bestand schon vorher):* Zeilen mit NULL in
+     `nullifier` oder `pending_tx_json` scheitern beim Scan von
+     `RetryRegistrationRecoveries` und werden still übersprungen (zählen aber
+     zur Grenze). Die heutigen Schreiber legen kein NULL ab. Fix: `COALESCE`
+     im SELECT.
+   - *3. Durchgang, INFO-2 (bestand schon vorher):* Eine Panik in
+     `flushEVMMirrorDirty` beendet den Spiegel-Arbeiter dauerhaft. Fix:
+     `SafeCall` um jeden Takt.
+   - *2. Durchgang, INFO-5:* Der Degraded-Grund steht im öffentlichen
+     `/api/health/combined` und enthält Wallet, Hash und rohe DB-Fehlertexte
+     (keine Geheimnisse). Optional: öffentlich neutral, Details nur ins Log.
+8. **WAL nach einem Rollenwechsel ohne Deckungsprüfung** (Prüfung von
+   #322, INFO-15) – **erledigt mit #331:** Ein Knoten, der den Rest seines
+   WAL nicht einspielt (Beobachter, `AEQUITAS_WAL_ENABLED` aus, Wiederanlauf
+   gescheitert, keine Datenbank), startet nicht, solange das WAL Sätze über
+   der Untergrenze trägt, die Absender oder Empfänger laut `wal_seq` nicht
+   enthalten (`PruefeWALRest`, `main` beendet sich). Ausweg: als Validator
+   mit eingeschaltetem WAL wiederanlaufen lassen, bis der Wiederanlauf
+   gelingt – oder den Rest einmalig verwerfen mit
+   `AEQUITAS_WAL_REST_VERWERFEN=<Kopf-seq aus der Meldung>` (eine
+   stehengebliebene Variable verwirft keinen neuen Rest). So wird ein alter
+   Satz nie auf einen weitergelaufenen Stand angewandt.
+   - Verworfen: das Parken ungedeckter Sätze im Wiederanlauf (Prüfung von
+     #331, Befunde 2 und 4): Wegen 9. (unten) traf es auch den gewöhnlichen
+     Absturz und verlor bestätigte Überweisungen.
+   - Betrieb: die WAL-Datei nie löschen (die Zählung begänne neu, neue Sätze
+     lägen unter der Untergrenze; Prüfung von #331, INFO-6). Ein Beobachter
+     mit `RESET_DB_STATE` und vorhandenem WAL startet nicht (leere
+     `chain_accounts`) – dann bewusst verwerfen (INFO-7). Dasselbe gilt für
+     einen Validator, dessen Wiederanlauf nach dem Reset an „unknown sender“
+     scheitert, und für `RESYNC_FROM_SNAPSHOT`/Selbstheilung: Die Sperre
+     läuft vor dem Import, der den Rest per Untergrenze ohnehin überholte
+     (Prüfung von #331, 2. Durchgang, INFO-4). Fail-closed, lösbar mit
+     `AEQUITAS_WAL_REST_VERWERFEN=<Kopf>`.
+   - Ein gescheiterter Wiederanlauf sperrt den Start immer, auch wenn
+     `wal_seq` keinen Rest mehr zeigt (Merker; 2. Durchgang, Befund 1), und
+     ein geordnetes Beenden flusht das WAL (`FlushWALNow`, Befund 3).
+9. **HIGH: WAL-Wiederanlauf bucht doppelt** (Prüfung von #331, Befund 1;
+   bestand schon vorher, WAL ist produktiv an): Serielle Speicherungen
+   (`saveAccountToDBCtx`, Stapel-Speicherung) schreiben `balance` samt noch
+   nicht geflushter WAL-Deltas, aber nie `wal_seq`; `recoverFromWAL`
+   entscheidet allein über `wal_seq` und wendet eine Abbuchung nach einem
+   Absturz im Flush-Fenster ein zweites Mal an (PoC: 2104,1 → 1203,2).
+   Verwandt (HIGH, bestätigt im 2. Durchgang von #331): `flushWALBatch`
+   schreibt je Konto den aktuellen `WALSeq`, der Sätze späterer oder
+   parallel laufender Stapel einschließt; committen andere Stapel beide
+   Konten eines Satzes, dessen eigener Stapel noch offen ist, hält der
+   Wiederanlauf ihn für angewandt und schreibt keine Ausgangszeile (PoC:
+   seq1 S→R, seq2 S→X, seq3 X→U; seq2 fehlt dem Netz). Ohne Speicherkorb.
+   Fix (eigener PR): `wal_seq` monoton mitschreiben – und die Ausgangszeile
+   im Wiederanlauf über einen eigenen Vermerk je Satz nachweisen statt aus
+   „Absender oder Empfänger noch nicht angewandt“.
 
 ## Ratenbegrenzung – bekannte Lücken
+- **`X-Forwarded-For` hinter einem privaten TCP-Partner** (Prüfung von #319,
+  LOW-3; seit #324 zählt der letzte Eintrag, IPv6 je /64, und jede Karte der
+  Grenzen je Absender hat eine feste Höchstzahl): `clientIP` glaubt dem Kopf
+  weiter, sobald die Verbindung von irgendeiner privaten Adresse kommt –
+  offen für andere Container im Docker-Netz und vermutlich für
+  `docker-proxy` bei Hairpin oder IPv6 auf dem veröffentlichten Port. Fix:
+  nur der Adresse des eigenen Proxys glauben (feste Adresse statt
+  „privat“; das Gateway der eigenen Routen ist seit #325 ausgenommen).
+  Zwei anhängende Proxys: siehe unten.
 - **Freiliste ohne Herkunftsnachweis** (Prüfung von #320, LOW-3; bestand
   schon vorher, seit #320 auf den Satz eingeengt): ein Satzmitglied kann
   jede öffentliche IP ankündigen und sie so von den Grenzen je IP
@@ -114,6 +190,69 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
   eigenen Schnittstellen liegt (Hostrouten ausgenommen), und denselben
   Filter auf die beobachtete Quelle anwenden. In /32-Umgebungen das Pod- oder
   Knotennetz nie in `AEQUITAS_FREILISTE_NETZE` nennen.
+- **Weiterleitungen im Klartext** (Prüfung von #319, INFO-21): Wer zwischen
+  Folger und Zuständigem mithört (`http://IP:8080`) und den Ring der
+  Merkliste in unter 30 s mit 20.000 gültigen Weiterleitungen leert, kann
+  einen Nachweis noch einmal einspielen; er zählt dann unter dem Budget des
+  echten Coordinators. Verzögert er Weiterleitungen über das Zeitfenster
+  oder spielt sie vor dem Original ein, scheitern deren Nachweise und
+  zählen unter der Adresse des Folgers (30 je Minute); gültige Nachweise
+  bleiben davon seit #319 (LOW-24) unberührt. Abgelehnte Nachweise je Grund
+  zeigt `/api/health/combined` → `weiterleitung_nachweis` (dort auch
+  Uhrabweichung und unbekannte Folger). Abhilfe: TLS zwischen Validatoren.
+- **Satzmitglieder bestimmen den Absender ihrer Weiterleitungen** (Prüfung
+  von #319, LOW-31 und INFO-38; bewusste Annahme): Der Zuständige zählt eine
+  Erneuerung mit gültigem Nachweis unter (Folger, `fuer`), und `fuer` setzt
+  der Folger. Ein böswilliges Mitglied des aktuellen Satzes kann so
+  beliebig viele Zähler aufmachen; gültige Nachweise bekommen ihre
+  Prüfbuchung zurück (netto kein Prüfbudget) – es erreicht den Handler
+  (ecrecover, Ed25519, Registerabfrage) so oft, wie es Anfragen schickt. Wo
+  der Knoten direkt auf :8080 erreichbar ist, gibt ihm die Freiliste
+  dasselbe schon (LOW-3 oben); hinter Caddy stellt die Freiliste nie frei,
+  dort ist der Nachweis ein zusätzliches Recht. Im offenen Betrieb kommt
+  jeder registrierte Mensch mit einem aufgeholten Knoten in den Satz (einer
+  je Mensch). Seine Zähler liegen in einer eigenen Karte
+  (`erneuerung_weitergeleitet`, höchstens 200.000 Schlüssel; `fuer` nur in
+  der Schreibweise von `clientIP`, IPv6 je /64): füllt er sie, bekommen nur
+  neue weitergeleitete Erneuerungen 429, bis das Aufräumen Platz schafft –
+  kein anderer Endpunkt. Vertretbar, weil ein Satzmitglied die Annahme als
+  Leiter ohnehin anhalten kann (Verfügbarkeit hängt am Satz, nicht die
+  Richtigkeit). Auch Außenstehende füllen die Karte über ehrliche Folger,
+  ein Schlüssel je Absendernetz und Folger (Prüfung von #319, INFO-41 und
+  INFO-46): rund 200.000 Netze geteilt durch die Zahl der Folger, über die
+  sie gehen, je ein bis zwei Minuten – ab etwa sieben Folgern billiger, als
+  `ipBurst` zu füllen; dann bekommen neue weitergeleitete Erneuerungen 429,
+  direkte nicht. Ein Kontingent je Folger verteilt das nur (dieselben Netze
+  über alle Folger füllen alle Kontingente). Fix, falls nötig: je
+  `fuer`-Netz über alle Folger begrenzen oder bei voller Karte gröber zählen
+  (/48); eine Grenze je Unterzeichner hätte den Nachteil, dass ein Angreifer
+  mit vielen Netzen über einen ehrlichen Folger dessen Grenze leeren kann.
+- **Aufräumen: Prüfen und Löschen nicht unter einer Sperre** (Prüfung von
+  #319, INFO-48; bestand schon vorher, nur Theorie): `ipBurstAufraeumen`
+  entscheidet unter der Sperre des Eintrags und löscht danach; bucht genau
+  dazwischen jemand, geht höchstens diese eine Buchung mit dem Eintrag
+  verloren. Fix: unter der Sperre mit `CompareAndDelete` löschen und den
+  Eintrag als tot markieren (`burstBuchen` lädt dann neu).
+- **Weiterleitende Validatoren außerhalb des Satzes** (Prüfung von #319,
+  INFO-37; gegenüber vorher keine Verschlechterung): Bloß zugelassene
+  Validatoren, Bewerber und gerade entfernte Mitglieder werden nicht
+  anerkannt. Ihre Weiterleitungen zählen beim Zuständigen unter ihrer
+  Adresse – 30 je Minute für alle ihre Coordinatoren, und ein Angreifer mit
+  einer Adresse sperrt darüber alle aus; der Folger selbst sieht nur die
+  429. Aufgenommen wird meist in Sekunden; dauerhaft draußen bleiben ein
+  zweiter Schlüssel desselben Menschen, ein Schlüssel ohne bekannten
+  Menschen, ein Knoten mehr als 50 Blöcke zurück und einer in der
+  Aufnahmesperre (10 min). Betrieb: Coordinatoren nur an Knoten richten,
+  die in `/api/health/combined` → `leitung` → `mitglied: true` zeigen. Fix:
+  ein Knoten außerhalb des Satzes leitet Erneuerungen nicht weiter, sondern
+  antwortet 503 mit Hinweis.
+- **Gleichzeitig offene gültige Prüfungen** (Prüfung von #319, LOW-35;
+  Rest): Auch eine gültige Weiterleitung belegt ihren Platz im Prüfbudget
+  des Folgers, bis sie geprüft ist (Körper lesen, ecrecover, Merkliste –
+  Mikrosekunden; die Satzprüfung wartet seit #319 auf keine Sperre). Nur
+  wer über einen Folger 600 Weiterleitungen im selben Augenblick beim
+  Zuständigen ankommen lässt (600 Adressen in einem Schwall), schiebt die
+  folgenden für diesen Augenblick in die Zählung des Folgers.
 - Die Freiliste wird etwa einmal je Minute neu aufgebaut: wer den Satz
   verlässt, bleibt bis zu 60 s frei, neue Mitglieder sind bis zu 60 s
   begrenzt.
@@ -122,13 +261,16 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
   `rpcRateLimit` und `walletRateLimit` je höchstens 200.000 Schlüssel; voll
   heißt, neue Absender werden begrenzt. Ein Absender belegt aber je Funktion
   einen Schlüssel – in `registerRateLimit` bis zu zehn, in `ipBurst` bis zu
-  fünf. 20.000 bzw. 40.000 Absender (mit IPv6 je /64: ein bis zwei /48)
+  sieben (mit Erneuerung und Prüfbudget aus #319). 20.000 bzw. etwa 28.600
+  Absender (mit IPv6 je /64: weniger als ein /48)
   füllen eine Karte, danach sind alle neuen Absender dieser Karte gesperrt,
   solange der Angreifer etwa 3.300 Anfragen je Sekunde hält. Eigene Karten
   haben seit #325 die Validator-Bindung (`bindungRateLimit`, Fehlversuche je
   IP) und die frei gewählten Wallets, seit dem Folge-PR auch die Grenze je
   Betreiber (`betreiberRateLimit`; ihre Schlüssel entstehen nur nach einer
-  angenommenen, unterschriebenen Bindung). Rest (Prüfung von #325, LOW-1
+  angenommenen, unterschriebenen Bindung) und mit #319 die weitergeleiteten
+  Erneuerungen, deren Absender der Folger bestimmt
+  (`erneuerung_weitergeleitet`). Rest (Prüfung von #325, LOW-1
   und INFO-6): `bindungRateLimit` füllen ungültige Bindungen aus 200.000 /64
   (drei bis vier /48, 2.100–5.700 Anfragen je Sekunde zum Halten) – danach
   bekommt jeder neue Absender bei der Bindung 429; `walletRateLimit` füllen
@@ -146,8 +288,13 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
   `aequitas-net` hat kein IPv6; IPv6-Verbindungen an 80/443 nimmt
   docker-proxy an und reicht sie vom Gateway des Docker-Netzes an Caddy.
   Caddy setzt dann das Gateway als Absender – alle IPv6-Nutzer teilen sich
-  einen Zähler. Abhilfe im Betrieb (siehe unten): IPv6 im Docker-Netz
-  einschalten oder `"userland-proxy": false`.
+  einen Zähler. Das trifft auch Weiterleitungen (Prüfung von #319,
+  INFO-43): erreicht ein Folger den Zuständigen so, zählen er und jeder
+  IPv6-Angreifer unter dem Gateway; 600 gefälschte Nachweise leeren das
+  gemeinsame Prüfbudget, und alle gültigen Weiterleitungen fallen in 30 je
+  Minute. Abhilfe im Betrieb (siehe unten): IPv6 im Docker-Netz einschalten
+  oder `"userland-proxy": false`; Leitungs-URLs (`SELF_URL`) vor der
+  Staffel nur über IPv4.
 - **Proof-Server zählt einen Knoten als einen Absender** (Prüfung von #324,
   Nebenbefund): Der Proof-Server begrenzt je IP (`PROVE_RATE_MAX` = 30 je
   Minute, `server.js`) und sieht nur den Knoten. Der Knoten lässt 12 je
@@ -167,6 +314,17 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
   `SNAPSHOT_TOKEN`; mit 8080 nur auf IPv4 (siehe unten) entfällt der Weg.
 
 ## Betrieb – bei dir
+- **`AEQUITAS_LEITUNG=an` und gescheiterter Start** (seit #329, fail-closed):
+  Ist der Signierschlüssel (`RELAYER_PRIVATE_KEY`) ungültig – fehlt er,
+  erzeugt der Knoten einen – oder `AEQUITAS_LEITUNG_GENESIS` ungültig, nimmt
+  der Knoten nichts an (wiederholbar abgelehnt) und führt keine
+  Systemaufträge aus, statt lokal anzunehmen. Lesen geht weiter;
+  `/api/register` läuft wie auf einem Folger durch die Prüfungen und scheitert
+  erst an der EVM-Übergabe (`-32005`, Nonce unverbraucht) – registriert wird
+  nur am annehmenden Knoten (Prüfung von #329, INFO-12). Zu sehen in `/api/health/combined` → `leitung` →
+  `gescheitert: true` bzw. `annahme_pause` → `leitung_gescheitert`, im Log
+  `[LEITUNG] ✗`. Nach der Korrektur neu starten. Während des Starts (bis die
+  Leitung läuft) zeigt `annahme_pause` → `leitung_startet`.
 - **Proxy nur im Docker-Netz** (Prüfung von #325, LOW-2): Der Knoten glaubt
   `X-Forwarded-For` nie vom Gateway seines Docker-Netzes. Ein Proxy auf dem
   Host selbst (Dienst, `network_mode: host`, über `127.0.0.1:8080` oder die
@@ -221,6 +379,11 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
   stehen einmal je Mitglied im Log (`[LEITUNG] ⚠ … wird nicht von der
   Ratenbegrenzung freigestellt`). Anfragen mit `X-Forwarded-For`,
   `Forwarded` oder `X-Real-IP` sind nie freigestellt.
+- Staffel-Stichtag (#319, INFO-22): erst setzen, wenn **alle** Validatoren
+  eine Version mit unterschriebenen Weiterleitungen fahren. Ein alter Folger
+  unterschreibt nicht; steht der Zuständige hinter Caddy, zählt er dessen
+  Weiterleitungen unter der Adresse des Folgers, und ein einzelner Absender
+  sperrt dann alle Coordinatoren dahinter aus.
 - Außerdem aus `ERINNERUNG.md`: C2 / zweiter unabhängiger Betreiber,
   App 1.10.0 als Release, Altersmodell, `PROOF_SERVER_URLS` und
   `CHAIN_SERVICE_TOKEN` auf dem Server, Impressum und Datenschutz,

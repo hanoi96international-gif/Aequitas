@@ -209,6 +209,22 @@ func leiterFaehig(cs *ChainState) bool {
 
 // StarteLeitung baut die Leitung, wenn AEQUITAS_LEITUNG=an. Liefert nil sonst.
 func StarteLeitung(dag *BlockDAG, cs *ChainState, selfURL string) *Leitung {
+	// Erst NACH dem Bau (und dem Speichern in cs.leitung) gilt der Start als
+	// versucht (annahme_pause.go, leitungNichtBereit). Scheitert er, obwohl
+	// die Leitung an ist (kein Schluessel, Genesis ungueltig), bleibt die
+	// Annahme angehalten: sonst naehme der Knoten lokal an, als gaebe es
+	// keine Leitung, waehrend im Netz ein Leiter annimmt (Pruefung von #329,
+	// Befund 2). Ausser beim Beobachter, der bewusst ohne Leitung laeuft.
+	// Gescheitert wird VOR versucht gesetzt.
+	if cs != nil {
+		defer func() {
+			if leitungAn() && cs.leitung.Load() == nil && !beobachterModus() {
+				cs.leitungGescheitert.Store(true)
+				fmt.Println("[LEITUNG] ✗ AEQUITAS_LEITUNG=an, aber die Leitung laeuft nicht -- dieser Knoten nimmt nichts an, bis sie nach einer Korrektur startet")
+			}
+			cs.leitungStartVersucht.Store(true)
+		}()
+	}
 	StarteLeistungsnachweis(cs)
 	if !leitungAn() || dag == nil || cs == nil {
 		return nil
@@ -290,8 +306,14 @@ func StarteLeitung(dag *BlockDAG, cs *ChainState, selfURL string) *Leitung {
 	fmt.Printf("[LEITUNG] ✓ an: Satz %v (Version %v, %v Validatoren, Wahl %v), Term %d, Leiter %s, dieser Knoten %s (Mitglied %v, leiterfaehig %v), Wechsel alle %s\n",
 		st["satz"], st["satz_version"], st["validatoren"], st["mit_wahl"], l.Term(),
 		func() string { a, _ := l.Leiter(); return a }(), ich, st["mitglied"], faehig, cfg.WechselAlle)
-	SafeGoroutine("leitung-takt", func() { dag.leitungSchleife(l, cs) })
+	leitungTaktStarten(dag, l, cs)
 	return l
+}
+
+// leitungTaktStarten: der Takt der Leitung, eine Goroutine ohne Ende. Tests
+// ersetzen ihn, um den Start ohne liegenbleibende Goroutine zu pruefen.
+var leitungTaktStarten = func(dag *BlockDAG, l *Leitung, cs *ChainState) {
+	SafeGoroutine("leitung-takt", func() { dag.leitungSchleife(l, cs) })
 }
 
 // Keine Weiterleitungen (Audit 2026-09-29, H3): die Leitungsadressen setzt
@@ -546,12 +568,19 @@ func (cs *ChainState) weiterleitungDenkbar(r *http.Request) bool {
 }
 
 func (cs *ChainState) weiterleitungsZiel(r *http.Request, konten ...string) string {
+	_, u := cs.weiterleitungsZielMitAdresse(r, konten...)
+	return u
+}
+
+// weiterleitungsZielMitAdresse: dasselbe, dazu die Adresse des Ziels (fuer
+// den Nachweis, weiterleitung_nachweis.go).
+func (cs *ChainState) weiterleitungsZielMitAdresse(r *http.Request, konten ...string) (string, string) {
 	l := cs.leitung.Load()
 	if l == nil || r.Header.Get(weitergeleitetKopf) != "" {
-		return ""
+		return "", ""
 	}
 	if cs.nimmtAnFuer(konten...) {
-		return ""
+		return "", ""
 	}
 	var addr, u string
 	if len(konten) == 0 {
@@ -560,14 +589,14 @@ func (cs *ChainState) weiterleitungsZiel(r *http.Request, konten ...string) stri
 		addr, u = l.Zustaendig(konten[0])
 		for _, k := range konten[1:] {
 			if a, _ := l.Zustaendig(k); a != addr {
-				return ""
+				return "", ""
 			}
 		}
 	}
 	if addr == "" || u == "" || addr == l.ich {
-		return ""
+		return "", ""
 	}
-	return u
+	return addr, u
 }
 
 // anfrageKonten: welche Konten eine annehmende REST-Anfrage belastet.
@@ -654,6 +683,12 @@ var weiterleitungsKlient = &http.Client{Timeout: 20 * time.Second, CheckRedirect
 // Antwort zurueck. false = hat nicht geklappt, selbst bearbeiten (das Tor
 // antwortet dann mit einem wiederholbaren Fehler).
 func leiteWeiter(w http.ResponseWriter, r *http.Request, ziel string, body []byte) bool {
+	return leiteWeiterMit(w, r, ziel, body, nil)
+}
+
+// leiteWeiterMit: dasselbe mit zusaetzlichen Koepfen (der Nachweis,
+// weiterleitung_nachweis.go).
+func leiteWeiterMit(w http.ResponseWriter, r *http.Request, ziel string, body []byte, zusatz http.Header) bool {
 	req, err := http.NewRequest(r.Method, ziel+r.URL.RequestURI(), bytes.NewReader(body))
 	if err != nil {
 		return false
@@ -663,6 +698,9 @@ func leiteWeiter(w http.ResponseWriter, r *http.Request, ziel string, body []byt
 		req.Header.Set("Authorization", auth)
 	}
 	req.Header.Set(weitergeleitetKopf, "1")
+	for k, v := range zusatz {
+		req.Header[k] = v
+	}
 	resp, err := weiterleitungsKlient.Do(req)
 	if err != nil {
 		leitungWeiterleitungFehler.Add(1)
@@ -706,7 +744,32 @@ func (a *APIServer) zumLeiter(h http.HandlerFunc) http.HandlerFunc {
 			http.Error(w, `{"error":"unlesbar"}`, http.StatusBadRequest)
 			return
 		}
-		ziel := a.state.weiterleitungsZiel(r, anfrageKonten(r.URL.Path, body)...)
+		zielAdr, ziel := a.state.weiterleitungsZielMitAdresse(r, anfrageKonten(r.URL.Path, body)...)
+		var nachweis http.Header
+		if ziel != "" && weiterleitungUnterschreiben(r.URL.Path) {
+			// Was der Zustaendige nicht pruefen kann, wird nicht
+			// weitergeleitet: ein Koerper ueber seiner Lesegrenze oder eine
+			// Weiterleitung ohne Nachweis zaehlte dort unter der Adresse
+			// dieses Knotens, und ein Absender sperrte so alle hinter ihm aus
+			// (Pruefungen von #319, MEDIUM-18 und INFO-26). Ohne IP als
+			// Absender gibt es keinen Nachweis: gleich 400, ohne Datenbank
+			// (INFO-23, INFO-25).
+			if len(body) > weiterleitungKoerperMax {
+				http.Error(w, `{"error":"request body too large"}`, http.StatusRequestEntityTooLarge)
+				return
+			}
+			if net.ParseIP(clientIP(r)) == nil {
+				http.Error(w, `{"error":"sender address not determinable"}`, http.StatusBadRequest)
+				return
+			}
+			if a.blockchain != nil {
+				nachweis = weiterleitungNachweis(a.blockchain.GetSigningKey(), r, zielAdr, body, time.Now())
+			}
+			if nachweis == nil {
+				http.Error(w, `{"error":"cannot forward to the responsible node right now -- please retry shortly"}`, http.StatusServiceUnavailable)
+				return
+			}
+		}
 		if ziel == "" {
 			r.Body = io.NopCloser(bytes.NewReader(body))
 			h(w, r)
@@ -716,7 +779,7 @@ func (a *APIServer) zumLeiter(h http.HandlerFunc) http.HandlerFunc {
 			http.Error(w, `{"error":"rate limited"}`, http.StatusTooManyRequests)
 			return
 		}
-		if leiteWeiter(w, r, ziel, body) {
+		if leiteWeiterMit(w, r, ziel, body, nachweis) {
 			return
 		}
 		r.Body = io.NopCloser(bytes.NewReader(body))
@@ -735,11 +798,23 @@ func rpcSchreibt(body []byte) bool {
 
 // LeitungStand fuer /api/health/combined.
 func (cs *ChainState) LeitungStand() map[string]interface{} {
+	// Erst die Merker, dann cs.leitung -- sonst meldete eine Abfrage genau
+	// an der Umschaltkante "Rotierender Leiter aus" (Pruefung von #329,
+	// INFO-10).
+	versucht, gescheitert := cs.leitungStartVersucht.Load(), cs.leitungGescheitert.Load()
 	l := cs.leitung.Load()
 	if l == nil {
 		if beobachterModus() {
 			return map[string]interface{}{"an": false, "beobachter": true,
 				"bedeutung": "Beobachter (AEQUITAS_BEOBACHTER): keine Leitung, nimmt nichts an, erzeugt keine Bloecke -- darf in keinem Leitungs-Satz stehen."}
+		}
+		if gescheitert {
+			return map[string]interface{}{"an": false, "gescheitert": true,
+				"bedeutung": "AEQUITAS_LEITUNG=an, aber die Leitung ist nicht gestartet (Log [LEITUNG] ✗: Signierschluessel, " + leitungGenesisEnv + ") -- dieser Knoten nimmt nichts an, bis sie nach einer Korrektur startet."}
+		}
+		if !versucht && leitungAn() {
+			return map[string]interface{}{"an": false, "startet": true,
+				"bedeutung": "Die Leitung startet noch -- bis dahin nimmt dieser Knoten nichts an."}
 		}
 		return map[string]interface{}{"an": false,
 			"bedeutung": "Rotierender Leiter aus -- es nimmt an, wer nicht ANNAHME_ROLLE=nur_lesend hat (siehe annahme_tor)."}
