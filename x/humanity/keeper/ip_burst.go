@@ -38,7 +38,8 @@ var ipBurst = neueBegrenzteKarte("ip_burst", grenzenSchluesselHoechstens, nil)
 // voll sperrt dort jeden neuen Absender an jedem Endpunkt
 // (begrenzte_karte.go). So trifft es nur neue weitergeleitete Erneuerungen --
 // wie walletRateLimit (Pruefung von #324, HIGH-1).
-var erneuerungVon = neueBegrenzteKarte("erneuerung_weitergeleitet", grenzenSchluesselHoechstens, nil)
+// Ohne Netz: der Schluessel ist "<folger>|<fuer>", keine Adresse.
+var erneuerungVon = neueBegrenzteKarteOhneNetz("erneuerung_weitergeleitet", grenzenSchluesselHoechstens, nil)
 
 const erneuerungVonPraefix = "liveness-renewal-von:"
 
@@ -77,7 +78,7 @@ func burstBuchen(key string, max int, fenster time.Duration) (time.Time, bool) {
 	}
 	v, ok := burstKarte(key).LoadOrStore(key, &ipBurstEintrag{})
 	if !ok {
-		return time.Time{}, false // voll: ein neuer Absender wird begrenzt (begrenzte_karte.go)
+		return time.Time{}, false // voll, auch je Netz: ein neuer Absender wird begrenzt (begrenzte_karte.go)
 	}
 	e := v.(*ipBurstEintrag)
 	e.mu.Lock()
