@@ -1346,6 +1346,10 @@ last_error TEXT
 )`)
 	dbExec(`CREATE INDEX IF NOT EXISTS idx_registration_recovery_unrecovered
 ON registration_recovery(created_at) WHERE recovered_at IS NULL`)
+	// Reihenfolge des Durchlaufs (recoveryVersuchVermerken): sonst sortierte
+	// jeder Durchlauf alle offenen Zeilen.
+	dbExec(`CREATE INDEX IF NOT EXISTS idx_registration_recovery_reihenfolge
+ON registration_recovery((evm_tx_hash = ''), COALESCE(last_attempt_at, 0), created_at) WHERE recovered_at IS NULL`)
 	// Fuer die Abloesung eines Vor-EVM-Intents (vorEVMIntentAufloesen): ohne
 	// ihn las jede Pruefung die ganze Tabelle, die je Registrierung waechst
 	// (Pruefung #330, 2. Durchgang, Befund 2).
@@ -1634,6 +1638,11 @@ func (cs *ChainState) resetDBStateForBootstrap() {
 		// redeploy, reintroducing isHuman/balanceOf entries this reset was
 		// supposed to remove.
 		"evm_upgrade_relationship_slots",
+		// Offene Wiederholungen von vor dem Reset (Pruefung #330, 2.
+		// Durchgang, INFO-3): der Snapshot ist die Wahrheit des Netzes; eine
+		// alte Zeile mit Hash registrierte sonst einen Menschen nach, den der
+		// Snapshot nicht kennt.
+		"registration_recovery",
 		// Ausgangsvermerke gehoeren zur WAL-Datei vor dem Reset; danach
 		// sperrten sie den Start (wal_ausgang.go, Pruefung #332 LOW-4).
 		"wal_ausgang_vermerk",
@@ -1664,6 +1673,7 @@ func (cs *ChainState) resetDBStateForBootstrap() {
 		return
 	}
 	var failed []string
+	recoveryVorDemResetMelden(tx)
 	for _, table := range tables {
 		var exists bool
 		if err := tx.QueryRow(`SELECT to_regclass($1) IS NOT NULL`, "public."+table).Scan(&exists); err != nil {
@@ -1781,6 +1791,10 @@ func (cs *ChainState) clearRegistrationsFromDB() {
 		`DELETE FROM evm_nonces`,
 		`DELETE FROM evm_tx_receipts`,
 		`DELETE FROM pending_txs`,
+		// Offene Wiederholungen der geloeschten Registrierungen: sonst
+		// registrierte die Wiederholung sie danach wieder (Pruefung #330, 2.
+		// Durchgang, INFO-3).
+		`DELETE FROM registration_recovery`,
 		`DELETE FROM evm_contracts WHERE lower(address) = '` + v7Addr + `'`,
 		// CRITICAL FIX: evm_upgrade_relationship_slots was never cleared here.
 		// This table snapshots EVERY evm_storage row for V7 (see

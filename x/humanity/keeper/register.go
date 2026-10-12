@@ -895,9 +895,9 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 	// Step 1: Write a durable intent BEFORE submitting the EVM tx.
 	// If the process crashes after EVM commits but before SaveRegistrationRecovery
 	// is called, the intent is already there for background retry.
-	intentID, intentErr := a.state.SaveRegistrationIntent(wallet, nullifierToStore, pendingRegTx)
+	intentID, intentErr := a.state.intentVorEVM(wallet, nullifierToStore, pendingRegTx)
 	if intentErr != nil {
-		Log.Error("Could not write registration intent — proceeding without durable pre-EVM record", "err", intentErr)
+		return "", intentErr
 	}
 
 	// Step 2: Submit the EVM tx.
@@ -1473,4 +1473,24 @@ func bigInt2x2ToDecimalStrings(vals [2][2]*big.Int) [][]string {
 		}
 	}
 	return out
+}
+
+// intentVorEVM legt den Intent an, bevor die EVM-Transaktion laeuft. Mit
+// Datenbank fail-closed (Pruefung #330, 2. Durchgang, INFO-4): ohne Intent ist
+// nichts vorgemerkt -- stuerzte der Prozess zwischen EVM-Bestaetigung und
+// eigener Zeile ab, waere die Registrierung auf der EVM und nirgends sonst.
+// Noch lief keine EVM-Transaktion; der Nutzer reicht neu ein. Ohne Datenbank
+// (Tests, reiner Speicher) gibt es keinen Wiederanlauf, dort bleibt es beim
+// Hinweis (Intent-ID 0).
+func (cs *ChainState) intentVorEVM(wallet, nullifier string, tx Transaction) (int64, error) {
+	id, err := cs.SaveRegistrationIntent(wallet, nullifier, tx)
+	if err == nil {
+		return id, nil
+	}
+	if cs.db != nil {
+		Log.Error("Could not write registration intent — registration refused before any EVM transaction", "err", err)
+		return 0, fmt.Errorf("registration temporarily unavailable: could not record the registration intent, nothing was submitted — please retry")
+	}
+	Log.Error("Could not write registration intent — proceeding without durable pre-EVM record", "err", err)
+	return 0, nil
 }

@@ -3344,12 +3344,18 @@ func (cs *ChainState) RecordSyntheticCheckpointEvent(stubHash string, stubHeight
 
 // CountUnrecoveredRegistrations returns the number of registration_recovery
 // rows that have not yet been successfully replayed (recovered_at IS NULL).
+// Ist die Tabelle nicht lesbar, -1 (Pruefung #330, 2. Durchgang, INFO-7):
+// frueher 0 -- der Health-Hinweis verschwand, und der Degraded-Grund wurde
+// geloescht, als waere nichts mehr offen.
 func (cs *ChainState) CountUnrecoveredRegistrations() int {
 	if cs.db == nil {
 		return 0
 	}
 	var n int
-	cs.db.QueryRow(`SELECT COUNT(*) FROM registration_recovery WHERE recovered_at IS NULL`).Scan(&n)
+	if err := cs.db.QueryRow(`SELECT COUNT(*) FROM registration_recovery WHERE recovered_at IS NULL`).Scan(&n); err != nil {
+		fmt.Printf("[RECOVERY] ⚠ registration_recovery nicht zaehlbar: %v\n", err)
+		return -1
+	}
 	return n
 }
 
@@ -3364,10 +3370,10 @@ func (cs *ChainState) RetryRegistrationRecoveries() int {
 		return 0
 	}
 	rows, err := cs.db.Query(`
-		SELECT id, wallet, evm_tx_hash, nullifier, pending_tx_json, created_at
+		SELECT id, wallet, evm_tx_hash, COALESCE(nullifier, ''), COALESCE(pending_tx_json, ''), created_at
 		FROM registration_recovery
 		WHERE recovered_at IS NULL
-		ORDER BY created_at ASC
+		ORDER BY (evm_tx_hash = '') ASC, COALESCE(last_attempt_at, 0) ASC, created_at ASC
 		LIMIT $1`, recoveryHoechstensJeDurchlauf)
 	if err != nil {
 		fmt.Printf("[RECOVERY] RetryRegistrationRecoveries query failed: %v\n", err)
@@ -3384,8 +3390,14 @@ func (cs *ChainState) RetryRegistrationRecoveries() int {
 	var records []rec
 	for rows.Next() {
 		var r rec
+		// NULL in nullifier/pending_tx_json: COALESCE oben. Frueher scheiterte
+		// der Scan solcher Zeilen still -- sie zaehlten zur Grenze und kamen
+		// nie dran, und ohne Versuch rueckten sie auch nie ans Ende
+		// (Pruefung #330, 3. Durchgang, INFO-1).
 		if scanErr := rows.Scan(&r.id, &r.wallet, &r.evmTxHash, &r.nullifier, &r.pendingJSON, &r.createdAt); scanErr == nil {
 			records = append(records, r)
+		} else {
+			fmt.Printf("[RECOVERY] ⚠ Zeile nicht lesbar: %v\n", scanErr)
 		}
 	}
 	rows.Close()
@@ -3405,6 +3417,10 @@ func (cs *ChainState) RetryRegistrationRecoveries() int {
 				geschlossen++
 			case vorEVMVerworfen:
 				geschlossen++
+			default:
+				// Bleibt liegen: nach hinten, damit er juengere Zeilen nicht
+				// verdraengt (siehe recoveryVersuchVermerken).
+				cs.recoveryVersuchVermerken(r.id)
 			}
 			continue
 		}
@@ -3420,10 +3436,7 @@ func (cs *ChainState) RetryRegistrationRecoveries() int {
 			continue
 		}
 
-		if _, err := cs.db.Exec(`UPDATE registration_recovery SET attempt_count=attempt_count+1, last_attempt_at=$1 WHERE id=$2`,
-			time.Now().Unix(), r.id); err != nil {
-			fmt.Printf("[RECOVERY] ⚠ Could not update attempt_count for recovery id=%d (wallet %s): %v\n", r.id, r.wallet, err)
-		}
+		cs.recoveryVersuchVermerken(r.id)
 
 		// FIX (Brutal Audit P2-05): a corrupt pending_tx_json used to be
 		// silently swallowed (json.Unmarshal error suppressed with
@@ -3485,13 +3498,78 @@ func (cs *ChainState) RetryRegistrationRecoveries() int {
 	}
 
 	// Clear the degraded flag once no unrecovered records remain.
-	if (recovered > 0 || geschlossen > 0) && cs.CountUnrecoveredRegistrations() == 0 {
+	if (recovered > 0 || geschlossen > 0) && recoveryNichtsOffen(cs.CountUnrecoveredRegistrations()) {
 		cur := cs.BootstrapDegradedReason()
 		if strings.Contains(cur, "registration_recovery") {
 			cs.SetBootstrapDegraded("")
 		}
 	}
 	return recovered
+}
+
+// recoveryNichtsOffen: nur eine gelesene Null heisst "nichts offen" -- -1
+// (Lesefehler) nie, sonst verschwaende der Degraded-Grund (Pruefung #335,
+// INFO-3/M2).
+func recoveryNichtsOffen(n int) bool { return n == 0 }
+
+// registrationRecoveryHinweis: was /api/health/combined zu n offenen
+// Wiederholungen meldet; -1 heisst nicht lesbar (Warnung, nicht "alles gut").
+func registrationRecoveryHinweis(n int) (warnen bool, hinweis string) {
+	switch {
+	case n < 0:
+		return true, "registration_recovery is not readable — pending registration recoveries unknown; see the [RECOVERY] log"
+	case n > 0:
+		return true, fmt.Sprintf("%d registration(s) have EVM tx committed but Go-state not yet synced — "+
+			"background recovery is retrying; see /api/admin/registration-recovery", n)
+	}
+	return false, ""
+}
+
+// recoveryVorDemResetMelden: RESET_DB_STATE leert registration_recovery
+// (der Snapshot ist die Wahrheit des Netzes). Offene Zeilen mit EVM-Hash sind
+// Registrierungen, die der Nutzer als "recovery is queued" gemeldet bekam --
+// vorher Wallet und Hash ins Log, damit der Betreiber sie nachfassen kann
+// (Pruefung #335, LOW-1). Hoechstens 100 Zeilen, dazu die Gesamtzahl.
+func recoveryVorDemResetMelden(q interface {
+	Query(string, ...interface{}) (*sql.Rows, error)
+	QueryRow(string, ...interface{}) *sql.Row
+}) {
+	var n int
+	if err := q.QueryRow(`SELECT count(*) FROM registration_recovery WHERE recovered_at IS NULL AND evm_tx_hash <> ''`).Scan(&n); err != nil {
+		fmt.Printf("[DB-RESET] ⚠ offene Wiederholungen nicht zaehlbar: %v\n", err)
+		return
+	}
+	if n == 0 {
+		return
+	}
+	fmt.Printf("[ALERT] [DB-RESET] %d offene, auf der EVM bestaetigte Registrierung(en) in registration_recovery werden verworfen -- die Nutzer muessen sich neu registrieren:\n", n)
+	rows, err := q.Query(`SELECT wallet, evm_tx_hash FROM registration_recovery WHERE recovered_at IS NULL AND evm_tx_hash <> '' ORDER BY id LIMIT 100`)
+	if err != nil {
+		fmt.Printf("[DB-RESET] ⚠ offene Wiederholungen nicht lesbar: %v\n", err)
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var w, h string
+		if rows.Scan(&w, &h) == nil {
+			fmt.Printf("[DB-RESET]   wallet=%s evm_tx=%s\n", w, h)
+		}
+	}
+}
+
+// recoveryVersuchVermerken: ein Versuch an der Zeile, sie rueckt ans Ende.
+//
+// Reihenfolge des Durchlaufs (Pruefung #330, LOW-3, Kopf-Blockade): erst
+// Zeilen mit EVM-Hash (bestaetigte Registrierungen, die Go noch fehlen), dann
+// nie versuchte, dann die am laengsten nicht versuchten. Frueher die 1.000
+// aeltesten -- Zeilen, die nie geschlossen werden (Faelle fuer den Betreiber,
+// dauerhafte Fehler, korruptes JSON), verdraengten juengere mit Hash fuer
+// immer. Jetzt kommt jede offene Zeile an die Reihe, bestaetigte zuerst.
+func (cs *ChainState) recoveryVersuchVermerken(id int64) {
+	if _, err := cs.db.Exec(`UPDATE registration_recovery SET attempt_count=attempt_count+1, last_attempt_at=$1 WHERE id=$2`,
+		time.Now().Unix(), id); err != nil {
+		fmt.Printf("[RECOVERY] ⚠ Could not update attempt_count for recovery id=%d: %v\n", id, err)
+	}
 }
 
 // recoveryHoechstensJeDurchlauf begrenzt die Zeilen, die ein Durchlauf von
@@ -3563,8 +3641,8 @@ func (cs *ChainState) vorEVMIntentAufloesen(id int64, wallet, nullifier string, 
 	// die Wiederholung braucht: der Intent ist abgeloest. Nur genau diese
 	// Zeile: juenger als der Intent (dieselbe Anfrage legt sie danach an),
 	// derselbe Nullifier, noch offen. Eine alte oder geschlossene Zeile
-	// derselben Wallet -- jede fruehere Registrierung hinterlaesst eine, und
-	// RESET_DB_STATE/CLEAR_REGISTRATIONS leeren die Tabelle nicht -- schloss
+	// derselben Wallet -- jede fruehere Registrierung hinterlaesst eine
+	// (RESET_DB_STATE/CLEAR_REGISTRATIONS leeren die Tabelle erst seit #335) -- schloss
 	// sonst eine bestaetigte Registrierung still (Pruefung #330, 2.
 	// Durchgang, Befund 1). Ist sie geschlossen, Go aber kein Mensch, geht es
 	// weiter zum Beleg.

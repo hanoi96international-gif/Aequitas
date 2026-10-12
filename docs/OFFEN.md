@@ -76,38 +76,23 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
    der Hash-Vermerk am Intent, legt `/api/register` eine eigene Zeile mit
    Hash an. Offen bleibt hier der Strafbeweis-Teil (`DoppelsignaturErkannt`).
    **Rest aus der Prüfung von #330** (Folge-PR):
-   - *LOW-3 Kopf-Blockade:* Der Durchlauf liest die 1.000 ältesten offenen
-     Zeilen. Zeilen, die nie geschlossen werden (Fälle für den Betreiber,
-     dauerhafte Fehler wie „nullifier already used by a different wallet“,
-     korruptes JSON), können jüngere Zeilen mit Hash dauerhaft verdrängen.
-     Von außen schwer zu erreichen (gültiger Beweis, Ratengrenzen, Zeilen
-     werden gelöscht oder verworfen). Fix: Zeilen mit Hash vorziehen bzw.
-     über `last_attempt_at` rotieren, Fälle für den Betreiber aus dem
-     Durchlauf nehmen.
+   - **Erledigt (Zweig `claude/weiter-gehts-vm8979-wiederholung`):**
+     LOW-3 (Zeilen mit Hash zuerst, dann nach `last_attempt_at` – jede
+     versuchte Zeile rückt ans Ende, auch liegende Vor-EVM-Intents; Index
+     `idx_registration_recovery_reihenfolge`), INFO-7 (Zählung meldet bei
+     Lesefehler −1 und Health warnt, statt 0), INFO-3 (`CLEAR_REGISTRATIONS`
+     und `RESET_DB_STATE` leeren `registration_recovery`), INFO-4
+     (`/api/register` lehnt mit Datenbank ab, wenn der Intent nicht
+     geschrieben werden kann – vor jeder EVM-Transaktion), 3. Durchgang
+     INFO-1 (`COALESCE` für NULL-Spalten). Offen bleiben die Punkte unten.
    - *LOW-4 Betreiberweg:* Für den Fall „EVM-Speicher belegt, Go nicht“ gibt
      es keine Admin-Aktion (`/api/admin/registration-recovery` listet nur);
      lösen derzeit nur per SQL. Fix: geprüfte Admin-Aktion oder Runbook.
-   - *INFO-7:* Der Degraded-Hinweis erscheint nur bei leerem Feld, und
-     `CountUnrecoveredRegistrations` ignoriert Scan-Fehler.
+   - *INFO-7 (Rest):* Der Degraded-Hinweis erscheint nur bei leerem Feld.
    - *INFO-8 (bestand schon vorher):* „already registered“ wird über einen
      Teilstring erkannt; besser typisierte Fehler.
    - Ein Knoten, der nie wieder erzeugt (etwa ein früherer Leiter als
      Folger), hält bestätigte Registrierungen in seiner Tabelle fest.
-   - *2. Durchgang, INFO-3 (bestand schon vorher):* `registration_recovery`
-     überlebt `CLEAR_REGISTRATIONS` und `RESET_DB_STATE`. Offene Zeilen mit
-     Hash von vor dem Wipe würden danach wieder registriert (nur der
-     Betreiber löst das aus). Fix: die Tabelle in `CLEAR_REGISTRATIONS`
-     aufnehmen, für `RESET_DB_STATE` bewusst entscheiden.
-   - *2. Durchgang, INFO-4 (bestand schon vorher):* Kann `/api/register` den
-     Intent nicht schreiben, läuft die Registrierung trotzdem weiter; stürzt
-     der Prozess dann zwischen EVM und eigener Zeile ab, ist nichts
-     vorgemerkt. Fail-closed wäre: ablehnen, solange noch keine
-     EVM-Transaktion lief.
-   - *3. Durchgang, INFO-1 (bestand schon vorher):* Zeilen mit NULL in
-     `nullifier` oder `pending_tx_json` scheitern beim Scan von
-     `RetryRegistrationRecoveries` und werden still übersprungen (zählen aber
-     zur Grenze). Die heutigen Schreiber legen kein NULL ab. Fix: `COALESCE`
-     im SELECT.
    - *3. Durchgang, INFO-2 (bestand schon vorher):* Eine Panik in
      `flushEVMMirrorDirty` beendet den Spiegel-Arbeiter dauerhaft. Fix:
      `SafeCall` um jeden Takt.
