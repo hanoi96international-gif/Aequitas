@@ -2,6 +2,8 @@ package keeper
 
 import (
 	"fmt"
+	"os"
+	"runtime/debug"
 	"time"
 )
 
@@ -44,8 +46,30 @@ func (cs *ChainState) runPoolFlushWorker() {
 	ticker := time.NewTicker(poolFlushInterval)
 	defer ticker.Stop()
 	for range ticker.C {
-		cs.flushPoolAccountsIfDirty()
+		SafeCall("poolFlush", cs.poolFlushTakt)
 	}
+}
+
+// poolFlushNeustart: os.Exit, im Test ersetzbar.
+var poolFlushNeustart = os.Exit
+
+// poolFlushTakt: ein Takt des Arbeiters.
+func (cs *ChainState) poolFlushTakt() {
+	// Eine Panik mitten im Speichern kann accountSetXOR halb
+	// fortgeschrieben haben (saveAccountsToDBBatchCtx). Still
+	// weiterzulaufen hiesse, mit einem moeglicherweise falschen
+	// Zustand Bloecke zu bauen -- darum neu starten (wie der Totmann;
+	// Docker startet neu), der Zustand kommt dann aus der Datenbank
+	// (Pruefung #337).
+	defer func() {
+		if r := recover(); r != nil {
+			cs.poolFlushDirty.Store(true)
+			fmt.Printf("[POOL-FLUSH] ✗ Panik beim Speichern der Pool-Konten (%v) -- der Zustand kann halb angewandt sein; Neustart\n%s\n", r, debug.Stack())
+			os.Stdout.Sync()
+			poolFlushNeustart(9)
+		}
+	}()
+	cs.flushPoolAccountsIfDirty()
 }
 
 // flushPoolAccountsIfDirty is the actual flush, split out from

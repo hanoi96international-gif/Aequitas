@@ -56,17 +56,19 @@ func startThroughputReporter() {
 		var last int64
 		var peak int64
 		for range ticker.C {
-			now := appliedTransfers.Load()
-			delta := now - last
-			last = now
-			if delta <= 0 {
-				continue
-			}
-			if delta > peak {
-				peak = delta
-			}
-			fmt.Printf("[RPC] ⚡ %d transfers applied in the last second (peak %d/s, total %d)\n",
-				delta, peak, now)
+			SafeCall("rpcDurchsatz", func() {
+				now := appliedTransfers.Load()
+				delta := now - last
+				last = now
+				if delta <= 0 {
+					return
+				}
+				if delta > peak {
+					peak = delta
+				}
+				fmt.Printf("[RPC] ⚡ %d transfers applied in the last second (peak %d/s, total %d)\n",
+					delta, peak, now)
+			})
 		}
 	})
 }

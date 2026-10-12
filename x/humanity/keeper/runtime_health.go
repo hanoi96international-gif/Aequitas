@@ -99,25 +99,27 @@ func StartHeapWatcher() {
 		ticker := time.NewTicker(heapWatchInterval)
 		defer ticker.Stop()
 		for range ticker.C {
-			var m runtime.MemStats
-			runtime.ReadMemStats(&m)
-			heapMB := m.HeapAlloc / (1024 * 1024)
-			sysMB := m.Sys / (1024 * 1024)
-			if heapMB < heapWarnThresholdMB {
-				// Recovered — allow the next crossing to warn again rather
-				// than staying silent because an earlier peak was higher.
-				lastHeapWarnMB.Store(0)
-				continue
-			}
-			// Re-warn only every 256 MB, so a node sitting just above the
-			// threshold does not fill the log with the same line every minute.
-			if prev := lastHeapWarnMB.Load(); prev != 0 && heapMB < prev+256 {
-				continue
-			}
-			lastHeapWarnMB.Store(heapMB)
-			fmt.Printf("[MEM] ⚠ Heap at %d MB (process total %d MB from the OS), %d goroutines, %d GC cycles. "+
-				"Above the %d MB watch threshold — if this node restarts shortly after this line, it was almost certainly killed for memory, and this is the evidence that would otherwise not exist.\n",
-				heapMB, sysMB, runtime.NumGoroutine(), m.NumGC, heapWarnThresholdMB)
+			SafeCall("heapWache", func() {
+				var m runtime.MemStats
+				runtime.ReadMemStats(&m)
+				heapMB := m.HeapAlloc / (1024 * 1024)
+				sysMB := m.Sys / (1024 * 1024)
+				if heapMB < heapWarnThresholdMB {
+					// Recovered — allow the next crossing to warn again rather
+					// than staying silent because an earlier peak was higher.
+					lastHeapWarnMB.Store(0)
+					return
+				}
+				// Re-warn only every 256 MB, so a node sitting just above the
+				// threshold does not fill the log with the same line every minute.
+				if prev := lastHeapWarnMB.Load(); prev != 0 && heapMB < prev+256 {
+					return
+				}
+				lastHeapWarnMB.Store(heapMB)
+				fmt.Printf("[MEM] ⚠ Heap at %d MB (process total %d MB from the OS), %d goroutines, %d GC cycles. "+
+					"Above the %d MB watch threshold — if this node restarts shortly after this line, it was almost certainly killed for memory, and this is the evidence that would otherwise not exist.\n",
+					heapMB, sysMB, runtime.NumGoroutine(), m.NumGC, heapWarnThresholdMB)
+			})
 		}
 	}()
 }

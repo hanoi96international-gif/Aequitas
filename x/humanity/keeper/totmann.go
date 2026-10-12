@@ -79,82 +79,84 @@ func (dag *BlockDAG) StarteTotmannSchalter(peerURL string) {
 		var stehtSeit time.Time
 		var degradedSeit time.Time
 		for range ticker.C {
-			// DEGRADED HEILT NICHT VON SELBST. Schlaegt ein Schreibvorgang
-			// fehl, waehrend der Speicher der Platte voraus ist, haelt der
-			// Knoten die Produktion an und meldet woertlich "restart to
-			// recover" -- fuehrt den Neustart aber nicht aus. Am 07.09.2026
-			// verwarf C1 dadurch 13.051 Bloecke in zwoelf Minuten und
-			// produzierte eine Viertelstunde nichts; von aussen waren CPU,
-			// Speicher und Platte unauffaellig, nur das Log nannte den Grund.
-			// Ein Betreiber ohne Vorkenntnisse haette hier nichts gesehen.
-			if grund := dag.DegradedReason(); grund != "" {
-				if degradedSeit.IsZero() {
-					degradedSeit = time.Now()
-					fmt.Printf("[TOTMANN] ⚠ Knoten ist degraded (%s) — das heilt nicht von selbst; Neustart nach %s\n",
-						grund, totmannDegradedFrist)
-				} else if time.Since(degradedSeit) >= totmannDegradedFrist &&
-					totmannAusgeloest.CompareAndSwap(false, true) {
-					fmt.Printf("[TOTMANN] ✗ seit %s degraded (%s). Der Zustand sieht den Neustart selbst vor — er wird jetzt ausgefuehrt.\n",
-						time.Since(degradedSeit).Round(time.Second), grund)
-					os.Stdout.Sync()
-					time.Sleep(500 * time.Millisecond)
-					os.Exit(9)
+			SafeCall("totmann", func() {
+				// DEGRADED HEILT NICHT VON SELBST. Schlaegt ein Schreibvorgang
+				// fehl, waehrend der Speicher der Platte voraus ist, haelt der
+				// Knoten die Produktion an und meldet woertlich "restart to
+				// recover" -- fuehrt den Neustart aber nicht aus. Am 07.09.2026
+				// verwarf C1 dadurch 13.051 Bloecke in zwoelf Minuten und
+				// produzierte eine Viertelstunde nichts; von aussen waren CPU,
+				// Speicher und Platte unauffaellig, nur das Log nannte den Grund.
+				// Ein Betreiber ohne Vorkenntnisse haette hier nichts gesehen.
+				if grund := dag.DegradedReason(); grund != "" {
+					if degradedSeit.IsZero() {
+						degradedSeit = time.Now()
+						fmt.Printf("[TOTMANN] ⚠ Knoten ist degraded (%s) — das heilt nicht von selbst; Neustart nach %s\n",
+							grund, totmannDegradedFrist)
+					} else if time.Since(degradedSeit) >= totmannDegradedFrist &&
+						totmannAusgeloest.CompareAndSwap(false, true) {
+						fmt.Printf("[TOTMANN] ✗ seit %s degraded (%s). Der Zustand sieht den Neustart selbst vor — er wird jetzt ausgefuehrt.\n",
+							time.Since(degradedSeit).Round(time.Second), grund)
+						os.Stdout.Sync()
+						time.Sleep(500 * time.Millisecond)
+						os.Exit(9)
+					}
+					return
 				}
-				continue
-			}
-			degradedSeit = time.Time{}
-			eigene := dag.Height()
-			ankuenfte := dag.totalRawArrivalCount.Load()
-			if eigene != letzteHoehe {
-				letzteHoehe = eigene
-				letzteAnkuenfte = ankuenfte
-				stehtSeit = time.Time{}
-				continue
-			}
-			// AUFHOLEN IST KEIN EINFRIEREN. Der vorhandene Height-Stall-Check
-			// wartet aus gutem Grund 25 Minuten: ein echter Aufholvorgang hat
-			// am 03.07.2026 rund 20 gebraucht, und ihn abzuschiessen waere
-			// schlimmer als das Warten. Diese Schwelle darf nicht sinken.
-			//
-			// Der Unterschied liegt woanders: wer aufholt, EMPFAENGT dabei
-			// Bloecke. Der eingefrorene Knoten am 07.09. empfing nichts, log
-			// nichts und bewegte sich nicht -- nur HTTP antwortete noch.
-			// Kommen also weiter Bloecke an, ist dies ein langsamer, aber
-			// lebender Knoten und geht den Waechter nichts an.
-			if ankuenfte != letzteAnkuenfte {
-				letzteAnkuenfte = ankuenfte
-				stehtSeit = time.Time{}
-				continue
-			}
-			// Die eigene Hoehe steht. Zieht der Partner davon?
-			partner, ok := fetchPrimaryHeight(peerURL)
-			if !ok || partner-eigene < totmannMindestAbstand {
-				stehtSeit = time.Time{}
-				continue
-			}
-			if stehtSeit.IsZero() {
-				stehtSeit = time.Now()
-				totmannWarnungen.Add(1)
-				fmt.Printf("[TOTMANN] ⚠ eigene Hoehe steht bei %d, %s ist bei %d (%d voraus) — Beobachtung laeuft, Ende nach %s\n",
-					eigene, peerURL, partner, partner-eigene, totmannStillstand)
-				continue
-			}
-			if time.Since(stehtSeit) < totmannStillstand {
-				continue
-			}
-			if !totmannAusgeloest.CompareAndSwap(false, true) {
-				continue
-			}
-			fmt.Printf("[TOTMANN] ✗ Hoehe steht seit %s bei %d, waehrend %s bei %d ist (%d voraus). Der Knoten folgt der Kette nicht mehr und kann sich nicht selbst loesen.\n",
-				time.Since(stehtSeit).Round(time.Second), eigene, peerURL, partner, partner-eigene)
-			fmt.Println("[TOTMANN] Abzug ALLER Goroutinen — hier steht die Ursache, die beim Einfrieren am 07.09.2026 fehlte:")
-			puffer := make([]byte, 4<<20)
-			n := runtime.Stack(puffer, true)
-			fmt.Printf("%s\n", puffer[:n])
-			fmt.Println("[TOTMANN] Prozess wird beendet, damit Docker ihn neu startet.")
-			os.Stdout.Sync()
-			time.Sleep(500 * time.Millisecond) // dem Logtreiber Zeit geben
-			os.Exit(9)
+				degradedSeit = time.Time{}
+				eigene := dag.Height()
+				ankuenfte := dag.totalRawArrivalCount.Load()
+				if eigene != letzteHoehe {
+					letzteHoehe = eigene
+					letzteAnkuenfte = ankuenfte
+					stehtSeit = time.Time{}
+					return
+				}
+				// AUFHOLEN IST KEIN EINFRIEREN. Der vorhandene Height-Stall-Check
+				// wartet aus gutem Grund 25 Minuten: ein echter Aufholvorgang hat
+				// am 03.07.2026 rund 20 gebraucht, und ihn abzuschiessen waere
+				// schlimmer als das Warten. Diese Schwelle darf nicht sinken.
+				//
+				// Der Unterschied liegt woanders: wer aufholt, EMPFAENGT dabei
+				// Bloecke. Der eingefrorene Knoten am 07.09. empfing nichts, log
+				// nichts und bewegte sich nicht -- nur HTTP antwortete noch.
+				// Kommen also weiter Bloecke an, ist dies ein langsamer, aber
+				// lebender Knoten und geht den Waechter nichts an.
+				if ankuenfte != letzteAnkuenfte {
+					letzteAnkuenfte = ankuenfte
+					stehtSeit = time.Time{}
+					return
+				}
+				// Die eigene Hoehe steht. Zieht der Partner davon?
+				partner, ok := fetchPrimaryHeight(peerURL)
+				if !ok || partner-eigene < totmannMindestAbstand {
+					stehtSeit = time.Time{}
+					return
+				}
+				if stehtSeit.IsZero() {
+					stehtSeit = time.Now()
+					totmannWarnungen.Add(1)
+					fmt.Printf("[TOTMANN] ⚠ eigene Hoehe steht bei %d, %s ist bei %d (%d voraus) — Beobachtung laeuft, Ende nach %s\n",
+						eigene, peerURL, partner, partner-eigene, totmannStillstand)
+					return
+				}
+				if time.Since(stehtSeit) < totmannStillstand {
+					return
+				}
+				if !totmannAusgeloest.CompareAndSwap(false, true) {
+					return
+				}
+				fmt.Printf("[TOTMANN] ✗ Hoehe steht seit %s bei %d, waehrend %s bei %d ist (%d voraus). Der Knoten folgt der Kette nicht mehr und kann sich nicht selbst loesen.\n",
+					time.Since(stehtSeit).Round(time.Second), eigene, peerURL, partner, partner-eigene)
+				fmt.Println("[TOTMANN] Abzug ALLER Goroutinen — hier steht die Ursache, die beim Einfrieren am 07.09.2026 fehlte:")
+				puffer := make([]byte, 4<<20)
+				n := runtime.Stack(puffer, true)
+				fmt.Printf("%s\n", puffer[:n])
+				fmt.Println("[TOTMANN] Prozess wird beendet, damit Docker ihn neu startet.")
+				os.Stdout.Sync()
+				time.Sleep(500 * time.Millisecond) // dem Logtreiber Zeit geben
+				os.Exit(9)
+			})
 		}
 	})
 }

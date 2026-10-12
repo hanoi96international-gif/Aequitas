@@ -448,37 +448,43 @@ const proofServerVeraltetNach = 100
 
 func (a *APIServer) syncProofServerStatus() {
 	for {
-		if len(proofServerURLs()) == 0 {
-			time.Sleep(30 * time.Second)
-			continue
-		}
-		resp, err := doProofServerRequestFailover("GET", "/health", nil, 8*time.Second, nil)
-		gelesen := false
-		if err == nil {
-			body, _ := io.ReadAll(resp.Body)
-			resp.Body.Close()
-			var data map[string]interface{}
-			if json.Unmarshal(body, &data) == nil {
-				a.proofStatusMu.Lock()
-				a.proofServerStatus = data
-				a.proofStatusMu.Unlock()
-				proofServerZuletztOkUnix.Store(time.Now().Unix())
-				gelesen = true
-			}
-		}
-		if !gelesen && proofServerZuletztOkUnix.Load() > 0 && time.Now().Unix()-proofServerZuletztOkUnix.Load() > proofServerVeraltetNach {
-			// FIX 13.09.2026: der letzte gute Stand blieb fuer immer stehen --
-			// "reachable" war wahr, solange der Proof-Server IRGENDWANN seit dem
-			// Start geantwortet hatte. Am 12.09. waren beide Proof-Server tot,
-			// und nur weil die Knoten danach neu gestartet worden waren, zeigten
-			// sie es. Ein Proof-Server, der im Betrieb stirbt, haette weiter als
-			// erreichbar gegolten. Nach proofServerVeraltetNach ohne Antwort
-			// wird der Stand geleert.
-			a.proofStatusMu.Lock()
-			a.proofServerStatus = map[string]interface{}{}
-			a.proofStatusMu.Unlock()
-		}
+		// Je Runde abgesichert: eine Panik (etwa eine unerwartete Antwort des
+		// Proof-Servers) liess den Stand sonst fuer immer stehen.
+		SafeCall("proofServerStatus", a.proofServerStatusRunde)
 		time.Sleep(30 * time.Second)
+	}
+}
+
+// proofServerStatusRunde: eine Abfrage von /health des Proof-Servers.
+func (a *APIServer) proofServerStatusRunde() {
+	if len(proofServerURLs()) == 0 {
+		return
+	}
+	resp, err := doProofServerRequestFailover("GET", "/health", nil, 8*time.Second, nil)
+	gelesen := false
+	if err == nil {
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		var data map[string]interface{}
+		if json.Unmarshal(body, &data) == nil {
+			a.proofStatusMu.Lock()
+			a.proofServerStatus = data
+			a.proofStatusMu.Unlock()
+			proofServerZuletztOkUnix.Store(time.Now().Unix())
+			gelesen = true
+		}
+	}
+	if !gelesen && proofServerZuletztOkUnix.Load() > 0 && time.Now().Unix()-proofServerZuletztOkUnix.Load() > proofServerVeraltetNach {
+		// FIX 13.09.2026: der letzte gute Stand blieb fuer immer stehen --
+		// "reachable" war wahr, solange der Proof-Server IRGENDWANN seit dem
+		// Start geantwortet hatte. Am 12.09. waren beide Proof-Server tot,
+		// und nur weil die Knoten danach neu gestartet worden waren, zeigten
+		// sie es. Ein Proof-Server, der im Betrieb stirbt, haette weiter als
+		// erreichbar gegolten. Nach proofServerVeraltetNach ohne Antwort
+		// wird der Stand geleert.
+		a.proofStatusMu.Lock()
+		a.proofServerStatus = map[string]interface{}{}
+		a.proofStatusMu.Unlock()
 	}
 }
 

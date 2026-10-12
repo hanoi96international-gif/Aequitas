@@ -94,9 +94,10 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
      Teilstring erkannt; besser typisierte Fehler.
    - Ein Knoten, der nie wieder erzeugt (etwa ein früherer Leiter als
      Folger), hält bestätigte Registrierungen in seiner Tabelle fest.
-   - *3. Durchgang, INFO-2 (bestand schon vorher):* Eine Panik in
-     `flushEVMMirrorDirty` beendet den Spiegel-Arbeiter dauerhaft. Fix:
-     `SafeCall` um jeden Takt.
+   - ~~*3. Durchgang, INFO-2:*~~ **Erledigt (Zweig
+     `claude/weiter-gehts-vm8979-spiegel`):** Jeder Takt jedes
+     Hintergrund-Arbeiters (16, nicht nur der Spiegel) läuft in `SafeCall`;
+     `TestTakt_JederTaktInSafeCall` hält das für neue Takte fest.
    - ~~*2. Durchgang, INFO-5:*~~ **Erledigt:** `/api/health/combined` und
      `/api/wache` schwärzen Hex-Werte (Wallet, Hash) im Degraded-Grund und
      kürzen ihn; der volle Text steht im Log (`[DEGRADED]`).

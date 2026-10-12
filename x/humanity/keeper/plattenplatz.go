@@ -113,7 +113,9 @@ func plattenplatzUeberwachen(pfad string) {
 		t := time.NewTicker(plattenPruefIntervall)
 		defer t.Stop()
 		for range t.C {
-			pruefen()
+			SafeCall("plattenplatz", func() {
+				pruefen()
+			})
 		}
 	}()
 }

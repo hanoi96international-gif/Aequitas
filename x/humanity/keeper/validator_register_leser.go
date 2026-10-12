@@ -490,9 +490,11 @@ func (dag *BlockDAG) StarteErzeugerRegister() {
 			t := time.NewTicker(30 * time.Second)
 			defer t.Stop()
 			for range t.C {
-				if bald() {
-					SafeCall("erzeuger-register-auffrischen", dag.state.erzeugerRegisterAuffrischen)
-				}
+				SafeCall("erzeuger-register-auffrischen", func() {
+					if bald() {
+						dag.state.erzeugerRegisterAuffrischen()
+					}
+				})
 			}
 		})
 	})

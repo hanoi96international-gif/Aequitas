@@ -77,7 +77,9 @@ func (cs *ChainState) starteWALKompaktierung() {
 		for {
 			select {
 			case <-ticker.C:
-				kandidat = cs.walKompaktierungsRunde(kandidat)
+				// Je Runde abgesichert: eine Panik endete sonst die
+				// Kompaktierung fuer immer, und die Datei wuechse ohne Ende.
+				SafeCall("walKompaktierung", func() { kandidat = cs.walKompaktierungsRunde(kandidat) })
 			case <-cs.walFlushStopCh:
 				return
 			}

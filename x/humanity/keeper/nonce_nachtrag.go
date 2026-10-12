@@ -97,7 +97,9 @@ func (cs *ChainState) merkeNonceNachtrag(addr string, next uint64) {
 			t := time.NewTicker(nonceNachtragTakt)
 			defer t.Stop()
 			for range t.C {
-				cs.schreibeNonceNachtraege()
+				SafeCall("nonceNachtrag", func() {
+					cs.schreibeNonceNachtraege()
+				})
 			}
 		})
 	})

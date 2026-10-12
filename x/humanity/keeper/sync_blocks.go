@@ -2171,31 +2171,57 @@ func (dag *BlockDAG) syncWithNode(nodeURL string) {
 	// within one tick and can be included as a parent in the next
 	// ProduceBlock, enabling genuine multi-parent GHOSTDAG merges.
 	// (Old value was 6s — blocks arrived 6 ticks late, no merges.)
-	backoff := 1 * time.Second
-	ticks := 0
+	stand := &syncTaktStand{backoff: 1 * time.Second}
 	dag.doSyncOnce(nodeURL)
-	ticker := time.NewTicker(backoff)
+	ticker := time.NewTicker(stand.backoff)
 	defer ticker.Stop()
 	for range ticker.C {
-		ticks++
-		if ticks%validatorSyncInterval == 0 {
-			dag.syncValidatorsFromPeer(nodeURL)
-		}
-		if !dag.doSyncOnce(nodeURL) {
-			backoff *= 2
-			if backoff > 30*time.Second {
-				backoff = 30 * time.Second
-			}
-			ticker.Reset(backoff)
-			continue
-		}
-		// Reset backoff on success
-		if backoff > 1*time.Second {
-			backoff = 1 * time.Second
-			ticker.Reset(backoff)
-		}
+		// Je Takt abgesichert: eine Panik (etwa eine unerwartete Antwort
+		// dieses Peers) beendete sonst den Abgleich mit ihm fuer immer.
+		SafeCall("syncWithNode", func() {
+			stand.runde(
+				func() { dag.syncValidatorsFromPeer(nodeURL) },
+				func() bool { return dag.doSyncOnce(nodeURL) },
+				ticker.Reset,
+			)
+		})
 	} // end for range ticker.C
 } // end syncWithNode
+
+// syncTaktStand: Zaehler und Wartezeit des Abgleichs mit EINEM Peer.
+type syncTaktStand struct {
+	backoff time.Duration
+	ticks   int
+}
+
+// runde: ein Takt des Abgleichs. Scheitert er -- auch durch eine Panik, die
+// ein Peer mit einer unerwarteten Antwort ausloesen kann --, verdoppelt sich
+// die Wartezeit bis 30 s. Sonst bliebe ein Peer, der jede Antwort zur Panik
+// macht, bei einem Abruf je Sekunde, ohne Ende (Pruefung #337). Die Panik
+// selbst faengt der Aufrufer (SafeCall); das defer hier laeuft beim Abwickeln
+// vorher.
+func (st *syncTaktStand) runde(validatoren func(), abgleich func() bool, neuerTakt func(time.Duration)) {
+	gelungen := false
+	defer func() {
+		if gelungen {
+			if st.backoff > 1*time.Second {
+				st.backoff = 1 * time.Second
+				neuerTakt(st.backoff)
+			}
+			return
+		}
+		st.backoff *= 2
+		if st.backoff > 30*time.Second {
+			st.backoff = 30 * time.Second
+		}
+		neuerTakt(st.backoff)
+	}()
+	st.ticks++
+	if st.ticks%validatorSyncInterval == 0 {
+		validatoren()
+	}
+	gelungen = abgleich()
+}
 
 // ─── PEER DISCOVERY ──────────────────────────────────────────────────────────
 
@@ -3165,11 +3191,11 @@ func (dag *BlockDAG) armInitialSyncGate(syncFirst bool) {
 		ticker := time.NewTicker(syncTargetRefreshInterval)
 		defer ticker.Stop()
 		deadline := time.Now().Add(syncTargetRefreshMaxDuration)
-		for range ticker.C {
-			if time.Now().After(deadline) {
+		for jetzt := range ticker.C {
+			if jetzt.After(deadline) {
 				return
 			}
-			dag.fetchAndSetSyncTarget(seeds)
+			SafeCall("fetchAndSetSyncTarget", func() { dag.fetchAndSetSyncTarget(seeds) })
 		}
 	})
 }
