@@ -623,6 +623,12 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 	}
 	// BRUTAL-P1-01: surface pending registration recoveries in health output.
 	registrationRecoveryCount := a.state.CountUnrecoveredRegistrations()
+	if registrationRecoveryCount < 0 {
+		if status == "healthy" {
+			status = "warn"
+		}
+		notes = append(notes, "registration_recovery is not readable — pending registration recoveries unknown; see the [RECOVERY] log")
+	}
 	if registrationRecoveryCount > 0 {
 		if status == "healthy" {
 			status = "warn"

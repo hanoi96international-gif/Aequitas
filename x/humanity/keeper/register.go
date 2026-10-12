@@ -897,6 +897,16 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 	// is called, the intent is already there for background retry.
 	intentID, intentErr := a.state.SaveRegistrationIntent(wallet, nullifierToStore, pendingRegTx)
 	if intentErr != nil {
+		// Mit Datenbank fail-closed (Pruefung #330, 2. Durchgang, INFO-4):
+		// ohne Intent ist nichts vorgemerkt -- stuerzte der Prozess zwischen
+		// EVM-Bestaetigung und eigener Zeile ab, waere die Registrierung auf
+		// der EVM und nirgends sonst. Noch lief keine EVM-Transaktion; der
+		// Nutzer reicht neu ein. Ohne Datenbank (Tests, reiner Speicher) gibt
+		// es keinen Wiederanlauf, dort bleibt es beim Hinweis.
+		if a.state.db != nil {
+			Log.Error("Could not write registration intent — registration refused before any EVM transaction", "err", intentErr)
+			return "", fmt.Errorf("registration temporarily unavailable: could not record the registration intent, nothing was submitted — please retry")
+		}
 		Log.Error("Could not write registration intent — proceeding without durable pre-EVM record", "err", intentErr)
 	}
 
