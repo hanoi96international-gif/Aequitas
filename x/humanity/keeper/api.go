@@ -543,7 +543,7 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 	// snapshot bootstrap/resync EVM-mirror migration here, instead of that
 	// only ever existing as a one-time startup log line — see
 	// SetBootstrapDegraded's own comment.
-	degradedReason := a.state.BootstrapDegradedReason()
+	degradedReason := oeffentlicherDegradedGrund(a.state.BootstrapDegradedReason())
 	// FIX (audit 2026-06-28 recheck 5, P2-1/P2-4): retry-queue depth/age
 	// used to live only in printf logs — surfaced here so a stuck backlog
 	// (proof-server unreachable, EVM mirror writes failing repeatedly) is

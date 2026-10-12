@@ -11,6 +11,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"runtime/debug"
 	"sort"
@@ -630,6 +631,30 @@ func (cs *ChainState) SetBootstrapDegraded(reason string) {
 	cs.degradedMu.Lock()
 	cs.bootstrapDegradedReason = reason
 	cs.degradedMu.Unlock()
+	if reason != "" {
+		// Vollstaendig nur ins Log; oeffentlich geschwaerzt
+		// (oeffentlicherDegradedGrund).
+		fmt.Printf("[DEGRADED] %s\n", reason)
+	}
+}
+
+// degradedHex: Wallet-Adressen, Transaktions- und Block-Hashes im
+// Degraded-Grund.
+var degradedHex = regexp.MustCompile(`0x[0-9a-fA-F]{6,}`)
+
+// oeffentlicherDegradedGrund: der Degraded-Grund fuer oeffentliche Endpunkte
+// (/api/health/combined, /api/wache). Er nannte Wallet, EVM-Hash und rohe
+// Fehlertexte einer Registrierung -- personenbezogen, und fuer einen
+// Monitor ohne Nutzen (Pruefung #330, 2. Durchgang, INFO-5). Geschwaerzt
+// werden Hex-Werte ab sechs Zeichen; die Laenge ist begrenzt. Den vollen
+// Text hat das Log ([DEGRADED]) und der Admin-Weg.
+func oeffentlicherDegradedGrund(r string) string {
+	r = degradedHex.ReplaceAllString(r, "0x…")
+	const hoechstens = 300
+	if len(r) > hoechstens {
+		r = strings.ToValidUTF8(r[:hoechstens], "") + "…"
+	}
+	return r
 }
 
 // BootstrapDegradedReason returns the last recorded bootstrap-degraded

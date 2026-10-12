@@ -104,7 +104,7 @@ func (a *APIServer) handleWache(w http.ResponseWriter, r *http.Request) {
 
 	// 5. Nicht degraded.
 	if reason := a.state.BootstrapDegradedReason(); reason != "" {
-		rot = append(rot, "Knoten degraded: "+reason)
+		rot = append(rot, "Knoten degraded: "+oeffentlicherDegradedGrund(reason))
 	}
 	a.blockchain.degradedMu.Lock()
 	dr := a.blockchain.degradedReason

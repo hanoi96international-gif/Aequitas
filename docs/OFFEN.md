@@ -27,8 +27,9 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
   **überholt** und wird nicht weiterverfolgt.
 
 ## Code – danach
-1. **Komitee** (`getEpochCommittee`) aus derselben Menge wie die Belohnung
-   statt aus lokal bekannten Adressen.
+1. ~~**Komitee** (`getEpochCommittee`) aus derselben Menge wie die Belohnung
+   statt aus lokal bekannten Adressen.~~ **Erledigt** (`komitee_register.go`,
+   schlafend bis `erzeugerSchnittAb`; Commits 32b88cd9…d0f18980).
 2. **#310 H1:** Zulassung von Coordinatoren braucht einen Preis
    (eine Bindung kostet nichts) – vor dem Staffel-Stichtag.
 3. **Vor dem strengen Modus: Anwesenheit aus dem Vergangenheitskegel**
@@ -96,9 +97,9 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
    - *3. Durchgang, INFO-2 (bestand schon vorher):* Eine Panik in
      `flushEVMMirrorDirty` beendet den Spiegel-Arbeiter dauerhaft. Fix:
      `SafeCall` um jeden Takt.
-   - *2. Durchgang, INFO-5:* Der Degraded-Grund steht im öffentlichen
-     `/api/health/combined` und enthält Wallet, Hash und rohe DB-Fehlertexte
-     (keine Geheimnisse). Optional: öffentlich neutral, Details nur ins Log.
+   - ~~*2. Durchgang, INFO-5:*~~ **Erledigt:** `/api/health/combined` und
+     `/api/wache` schwärzen Hex-Werte (Wallet, Hash) im Degraded-Grund und
+     kürzen ihn; der volle Text steht im Log (`[DEGRADED]`).
 8. **WAL nach einem Rollenwechsel ohne Deckungsprüfung** (Prüfung von
    #322, INFO-15) – **erledigt mit #331:** Ein Knoten, der den Rest seines
    WAL nicht einspielt (Beobachter, `AEQUITAS_WAL_ENABLED` aus, Wiederanlauf
