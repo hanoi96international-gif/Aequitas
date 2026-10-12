@@ -407,25 +407,32 @@ func TestZumLeiter_LeseFrist(t *testing.T) {
 	mux.HandleFunc("/kontext", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "%v", r.Context().Err())
 	})
-	srv := httptest.NewServer(mux)
+	// Durch die Kette des Servers -- auch fuer Clients mit gzip (#327, LOW-2).
+	srv := httptest.NewServer(serverKette(mux))
 	defer srv.Close()
 
-	// Ein halber Rumpf: nach etwa der Frist 400.
-	conn, err := net.Dial("tcp", srv.Listener.Addr().String())
-	if err != nil {
-		t.Fatal(err)
-	}
-	fmt.Fprintf(conn, "POST /api/swap HTTP/1.1\r\nHost: x\r\nContent-Length: 300\r\n\r\n{\"wallet\":\"")
-	beginn := time.Now()
-	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
-	resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
-	conn.Close()
-	if err != nil {
-		t.Fatalf("keine Antwort binnen 5 s -- die Lese-Frist greift nicht: %v", err)
-	}
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusBadRequest || time.Since(beginn) > 3*time.Second {
-		t.Fatalf("halber Rumpf: Status %d nach %v, erwartet 400 nach etwa 200 ms", resp.StatusCode, time.Since(beginn))
+	// Ein halber Rumpf: nach etwa der Frist 400, mit und ohne gzip.
+	for _, kodierung := range []string{"", "gzip, deflate, br"} {
+		conn, err := net.Dial("tcp", srv.Listener.Addr().String())
+		if err != nil {
+			t.Fatal(err)
+		}
+		kopf := ""
+		if kodierung != "" {
+			kopf = "Accept-Encoding: " + kodierung + "\r\n"
+		}
+		fmt.Fprintf(conn, "POST /api/swap HTTP/1.1\r\nHost: x\r\n%sContent-Length: 300\r\n\r\n{\"wallet\":\"", kopf)
+		beginn := time.Now()
+		conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+		resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
+		conn.Close()
+		if err != nil {
+			t.Fatalf("Accept-Encoding %q: keine Antwort binnen 5 s -- die Lese-Frist greift nicht: %v", kodierung, err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest || time.Since(beginn) > 3*time.Second {
+			t.Fatalf("Accept-Encoding %q: halber Rumpf: Status %d nach %v, erwartet 400 nach etwa 200 ms", kodierung, resp.StatusCode, time.Since(beginn))
+		}
 	}
 
 	// Ein ganzer Rumpf, langsam weitergeleitet, und ein leerer, langsam beim
