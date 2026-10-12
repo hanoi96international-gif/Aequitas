@@ -74,8 +74,16 @@ func TestHTTP_PanikMeldungGedrosselt(t *testing.T) {
 			t.Fatalf("Status %d", rec.Code)
 		}
 	}
-	if n := strings.Count(aus.String(), "[PANIC RECOVERED]"); n != 1 {
-		t.Fatalf("%d Meldungen fuer 100 Paniken, erwartet 1", n)
+	if n := stacks(aus.String()); n != 1 {
+		t.Fatalf("%d Stacks fuer 100 Paniken, erwartet 1", n)
+	}
+	if n := strings.Count(aus.String(), "[PANIC RECOVERED]"); n != 1+panikZeilenJeAbstand {
+		t.Fatalf("%d Meldungen, erwartet %d", n, 1+panikZeilenJeAbstand)
+	}
+	// Eine spaetere Panik an einem anderen Pfad bleibt sichtbar (Methode und
+	// Pfad), auch ohne Stack -- sie wird nicht unter der ersten verdeckt.
+	if !strings.Contains(aus.String(), `GET "/api/x`+strings.Repeat("a", 30)+`"`) {
+		t.Fatal("spaetere Panik nicht sichtbar")
 	}
 	stand := PanikStand()
 	if stand["HTTP-Handler"] != 100 || len(stand) != 1 {

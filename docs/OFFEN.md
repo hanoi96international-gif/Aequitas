@@ -112,8 +112,9 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
      (Zweig `claude/weiter-gehts-vm8979-syncsperre`).
    - **Offen:** eine grobe Suche fand 31 weitere Stellen mit Aufrufen
      zwischen `Lock` und `Unlock` ohne `defer`, darunter der heiße
-     Überweisungspfad in `state.go` (4870, 4940, 5024, 5069: Schnappschuss
-     und Rückrollen unter `cs.mu.Lock`, über das öffentliche RPC erreichbar),
+     Überweisungspfad in `state.go` (4940, 5069: Schnappschuss und Rückrollen
+     unter `cs.mu.Lock`, über das öffentliche RPC erreichbar; 4870, 5024:
+     derselbe Weg ohne Datenbank),
      `ueberweisungsgebuehr.go:88`, `snapshot.go:817`, `evm_storage.go:359/
      401/490/4978`. Jede Stelle einzeln: in eine Funktion mit `defer`
      auslagern oder zeigen, dass dazwischen nichts paniert. Wegen des heißen

@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"bytes"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -28,22 +29,26 @@ func TestPanik_StackJeLabelGedrosselt(t *testing.T) {
 	for i := 0; i < 1000; i++ {
 		SafeCall("flut", func() { panic("immer wieder") })
 	}
-	if n := strings.Count(aus.String(), "[PANIC RECOVERED]"); n != 1 {
-		t.Fatalf("%d Meldungen fuer 1.000 Paniken, erwartet 1", n)
+	// Ein Stack, dazu hoechstens panikZeilenJeAbstand einzeilige Meldungen.
+	if n := stacks(aus.String()); n != 1 {
+		t.Fatalf("%d Stacks fuer 1.000 Paniken, erwartet 1", n)
+	}
+	if n := strings.Count(aus.String(), "[PANIC RECOVERED]"); n != 1+panikZeilenJeAbstand {
+		t.Fatalf("%d Meldungen fuer 1.000 Paniken, erwartet %d", n, 1+panikZeilenJeAbstand)
 	}
 	if got := PanikStand()["flut"]; got != 1000 {
 		t.Fatalf("gezaehlt %d, erwartet 1000", got)
 	}
 	// Ein anderes Label hat seine eigene erste Meldung.
 	SafeCall("anders", func() { panic("x") })
-	if n := strings.Count(aus.String(), "[PANIC RECOVERED]"); n != 2 {
-		t.Fatalf("%d Meldungen, erwartet 2", n)
+	if n := stacks(aus.String()); n != 2 {
+		t.Fatalf("%d Stacks, erwartet 2", n)
 	}
 	// Nach dem Abstand wieder ein Stack, mit der Zahl der unterdrueckten.
 	panikStackAbstand = 0
 	aus.Reset()
 	SafeCall("flut", func() { panic("immer wieder") })
-	if !strings.Contains(aus.String(), "insgesamt 1001, seit der letzten Meldung 999 ohne Stack") {
+	if !strings.Contains(aus.String(), fmt.Sprintf("insgesamt 1001, seit der letzten Meldung %d ohne jede Zeile", 1000-1-panikZeilenJeAbstand)) {
 		t.Fatalf("Zusammenfassung fehlt: %q", firstLine(aus.String()))
 	}
 }
@@ -67,6 +72,31 @@ func TestPanik_LabelTabelleBegrenzt(t *testing.T) {
 	}
 	if n := len(PanikStand()); n > panikLabelsMax+1 {
 		t.Fatalf("%d Labels, Grenze %d", n, panikLabelsMax)
+	}
+}
+
+// stacks: Zahl der Stack-Abzuege in der Ausgabe.
+func stacks(s string) int {
+	return strings.Count(s, " [running]:")
+}
+
+func TestPanik_WertGekuerzt(t *testing.T) {
+	var aus bytes.Buffer
+	altAus := panikAusgabe
+	panikZaehlerMu.Lock()
+	altZaehler := panikZaehler
+	panikZaehler = map[string]*panikStand{}
+	panikZaehlerMu.Unlock()
+	panikAusgabe = &aus
+	t.Cleanup(func() {
+		panikAusgabe = altAus
+		panikZaehlerMu.Lock()
+		panikZaehler = altZaehler
+		panikZaehlerMu.Unlock()
+	})
+	SafeCall("lang", func() { panic(strings.Repeat("g", 100_000)) })
+	if z := firstLine(aus.String()); len(z) > panikWertMax+200 {
+		t.Fatalf("Meldung %d Zeichen lang", len(z))
 	}
 }
 
