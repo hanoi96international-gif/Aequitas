@@ -125,21 +125,41 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
    - Ein gescheiterter Wiederanlauf sperrt den Start immer, auch wenn
      `wal_seq` keinen Rest mehr zeigt (Merker; 2. Durchgang, Befund 1), und
      ein geordnetes Beenden flusht das WAL (`FlushWALNow`, Befund 3).
-9. **HIGH: WAL-Wiederanlauf bucht doppelt** (Prüfung von #331, Befund 1;
-   bestand schon vorher, WAL ist produktiv an): Serielle Speicherungen
-   (`saveAccountToDBCtx`, Stapel-Speicherung) schreiben `balance` samt noch
-   nicht geflushter WAL-Deltas, aber nie `wal_seq`; `recoverFromWAL`
-   entscheidet allein über `wal_seq` und wendet eine Abbuchung nach einem
-   Absturz im Flush-Fenster ein zweites Mal an (PoC: 2104,1 → 1203,2).
-   Verwandt (HIGH, bestätigt im 2. Durchgang von #331): `flushWALBatch`
-   schreibt je Konto den aktuellen `WALSeq`, der Sätze späterer oder
-   parallel laufender Stapel einschließt; committen andere Stapel beide
-   Konten eines Satzes, dessen eigener Stapel noch offen ist, hält der
-   Wiederanlauf ihn für angewandt und schreibt keine Ausgangszeile (PoC:
-   seq1 S→R, seq2 S→X, seq3 X→U; seq2 fehlt dem Netz). Ohne Speicherkorb.
-   Fix (eigener PR): `wal_seq` monoton mitschreiben – und die Ausgangszeile
-   im Wiederanlauf über einen eigenen Vermerk je Satz nachweisen statt aus
-   „Absender oder Empfänger noch nicht angewandt“.
+9. **WAL-Wiederanlauf bucht doppelt / verliert Ausgangszeilen** (Prüfung
+   von #331, Befund 1 und 2. Durchgang; HIGH, bestand schon vorher).
+   **Erledigt (Zweig `claude/weiter-gehts-vm8979`, `wal_ausgang.go`):**
+   - (a) Jede serielle Speicherung (`saveAccountToDBInnerCtx`,
+     `saveAccountsToDBBatchCtx`) schreibt `wal_seq` monoton mit
+     (`GREATEST`), nachdem die WAL-Sätze ihres Saldos haltbar sind
+     (`walSeqZumSpeichern`, Frist 2 s wie der Flush).
+   - (b) Die Ausgangszeile hat einen eigenen Nachweis: `wal_ausgang_vermerk`
+     (eine Zeile je Satz), geschrieben in derselben Transaktion wie die Zeile
+     in `pending_txs`. Fehlt der Vermerk, schreibt der Wiederanlauf die Zeile
+     nach (`walAusgangNachholen`, mit Vermerk) – auch wenn beide Salden den
+     Satz schon tragen. Ein Vermerk überlebt die Zeile, ein schon verblockter
+     Satz bekommt also keine zweite.
+   - Untergrenze `wal_ausgang_vermerk_ab` (chain_config): darunter die alte
+     Regel. Gesetzt beim ersten Start mit dieser Fassung (Dateiende),
+     angehoben beim Ausschalten des Speicherkorbs (Marke + 1) und von jeder
+     Kompaktierungsrunde (`walKuerzenBis`, löscht die Vermerke darunter).
+   - Fail-closed: Untergrenze oder Vermerk über dem, was das WAL vergibt
+     (Datei ersetzt/gelöscht) → schneller Pfad aus, kein Start
+     (`PruefeWALRest`). `PruefeWALRest` zählt auch Sätze ohne Zeile
+     (über der Untergrenze, über der Korb-Marke).
+   - **Betrieb:** Vor einem Rückschritt auf eine Fassung ohne Vermerke und
+     zurück den Schlüssel `wal_ausgang_vermerk_ab` löschen (die alte Fassung
+     schreibt Zeilen ohne Vermerk; sonst schriebe der Wiederanlauf sie ein
+     zweites Mal).
+   - Nach der Prüfung von #332: `wal_seq` über dem WAL-Kopf sperrt den Start
+     vor dem Wiederanlauf (MEDIUM-1, LOW-5); nach der ersten ausgebliebenen
+     Haltbarkeit schließt der schnelle Pfad und keine Speicherung wartet mehr,
+     ein Stapel wartet einmal (MEDIUM-2); vor dem Nachholen einer Zeile der
+     Block-Index (MEDIUM-3, nur zusätzlich – der Index wird nachgezogen und
+     gekürzt, der Betriebshinweis oben bleibt nötig); `RESET_DB_STATE` leert
+     die Vermerke, Verwerfen/Zustandsersatz setzt Vermerke, Untergrenze und
+     `wal_seq` über dem Kopf zurück (LOW-4).
+   - **Offen:** Der Verlust der WAL-Datei bleibt ein Betreiberfall (fail-closed,
+     Ausweg `AEQUITAS_WAL_REST_VERWERFEN`).
 
 ## Ratenbegrenzung – bekannte Lücken
 - **`X-Forwarded-For` hinter einem privaten TCP-Partner** (Prüfung von #319,
