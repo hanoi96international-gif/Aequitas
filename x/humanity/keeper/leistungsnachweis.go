@@ -270,9 +270,11 @@ func StarteLeistungsnachweis(cs *ChainState) {
 	SafeGoroutine("leistung-nachmessen", func() {
 		for {
 			time.Sleep(10 * time.Minute)
-			if ok, _ := leistung.erfuellt(); !ok {
-				SafeCall("leistung-messen", messen)
-			}
+			SafeCall("leistung-messen", func() {
+				if ok, _ := leistung.erfuellt(); !ok {
+					messen()
+				}
+			})
 		}
 	})
 }

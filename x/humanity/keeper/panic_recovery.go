@@ -2,7 +2,11 @@ package keeper
 
 import (
 	"fmt"
+	"io"
+	"os"
 	"runtime/debug"
+	"sync"
+	"time"
 )
 
 // SafeGoroutine runs fn in a new goroutine with panic recovery, logging the
@@ -35,7 +39,7 @@ func SafeGoroutine(label string, fn func()) {
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				fmt.Printf("[PANIC RECOVERED] goroutine %q: %v\n%s\n", label, r, debug.Stack())
+				panikMelden("goroutine "+label, r)
 			}
 		}()
 		fn()
@@ -52,8 +56,74 @@ func SafeGoroutine(label string, fn func()) {
 func SafeCall(label string, fn func()) {
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Printf("[PANIC RECOVERED] %q: %v\n%s\n", label, r, debug.Stack())
+			panikMelden(label, r)
 		}
 	}()
 	fn()
+}
+
+// Meldungen abgefangener Paniken, je Label gedrosselt (Pruefung #337).
+//
+// Ein Takt, der bei JEDEM Lauf paniert, schrieb sonst jedes Mal einen vollen
+// Stack -- bis zu 20 je Sekunde (nonceNachtrag, 50 ms), je Peer einen je
+// Sekunde (syncWithNode, die Panik steuert der Peer). Das verdraengt in der
+// Log-Rotation binnen Sekunden genau den ersten Stack, auf den es ankommt,
+// und ohne Rotation faellt die Platte voll (dann lehnt plattenplatz.go
+// Ueberweisungen ab). Darum: der erste Stack sofort, danach hoechstens einer
+// je panikStackAbstand; dazwischen wird nur gezaehlt, und die naechste
+// Meldung nennt die Zahl.
+var (
+	panikStackAbstand           = time.Minute
+	panikAusgabe      io.Writer = os.Stdout
+	panikZaehlerMu    sync.Mutex
+	panikZaehler      = map[string]*panikStand{}
+)
+
+// panikLabelsMax: Labels sind feste Zeichenketten im Code; die Grenze haelt
+// die Tabelle trotzdem fest, falls einmal ein Label aus Daten entsteht.
+const panikLabelsMax = 256
+
+type panikStand struct {
+	letzterStack time.Time
+	unterdrueckt int64
+	gesamt       int64
+}
+
+func panikMelden(label string, r interface{}) {
+	panikZaehlerMu.Lock()
+	z, ok := panikZaehler[label]
+	if !ok {
+		if len(panikZaehler) >= panikLabelsMax {
+			label = "(weitere Labels)"
+			z = panikZaehler[label]
+		}
+		if z == nil {
+			z = &panikStand{}
+			panikZaehler[label] = z
+		}
+	}
+	z.gesamt++
+	jetzt := time.Now()
+	if !z.letzterStack.IsZero() && jetzt.Sub(z.letzterStack) < panikStackAbstand {
+		z.unterdrueckt++
+		panikZaehlerMu.Unlock()
+		return
+	}
+	unterdrueckt, gesamt := z.unterdrueckt, z.gesamt
+	z.unterdrueckt = 0
+	z.letzterStack = jetzt
+	panikZaehlerMu.Unlock()
+	fmt.Fprintf(panikAusgabe, "[PANIC RECOVERED] %q: %v (insgesamt %d, seit der letzten Meldung %d ohne Stack)\n%s\n",
+		label, r, gesamt, unterdrueckt, debug.Stack())
+}
+
+// PanikStand fuer die Diagnose: abgefangene Paniken je Label.
+func PanikStand() map[string]int64 {
+	panikZaehlerMu.Lock()
+	defer panikZaehlerMu.Unlock()
+	aus := make(map[string]int64, len(panikZaehler))
+	for k, v := range panikZaehler {
+		aus[k] = v.gesamt
+	}
+	return aus
 }
