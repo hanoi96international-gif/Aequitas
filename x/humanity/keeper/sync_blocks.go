@@ -1854,8 +1854,6 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 			}
 			// SECURITY (P0, launch audit 2026-07-03): see isTrustedSyncSource.
 			block.FromSync = dag.isTrustedSyncSource(nodeURL)
-			dag.mu.RLock()
-			_, exists := dag.blocks[block.Hash]
 			// FIX (audit 2026-07-06): skip a block that's already below our
 			// own finalized checkpoint before ever queueing it as an orphan —
 			// isFinalityViolation would reject it later anyway (block.go's
@@ -1867,8 +1865,7 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 			// pointless orphan/reject cycles per page. Harmless to skip here
 			// — a genuinely useful gap-fill within finalityHeightSlack of the
 			// checkpoint still passes this check unchanged.
-			violatesFinality := !exists && dag.isFinalityViolation(block)
-			dag.mu.RUnlock()
+			exists, violatesFinality := dag.bekanntOderUnterFinalitaet(block)
 			if exists {
 				bekanntThisPage++
 			}
@@ -2187,6 +2184,20 @@ func (dag *BlockDAG) syncWithNode(nodeURL string) {
 		})
 	} // end for range ticker.C
 } // end syncWithNode
+
+// bekanntOderUnterFinalitaet: liegt der Peer-Block schon vor, oder liegt er
+// unter dem eigenen finalisierten Checkpoint? Unter dag.mu (lesend), mit
+// defer: isFinalityViolation laeuft auf einem Block eines Peers, und eine
+// Panik darin liess die Lesesperre sonst liegen -- jeder spaetere
+// dag.mu.Lock() und danach jeder Leser stuende, der Knoten auch
+// (Pruefung #337, NIEDRIG). Vorher fing das recover der Sync-Goroutine die
+// Panik, die Sperre blieb trotzdem.
+func (dag *BlockDAG) bekanntOderUnterFinalitaet(block *Block) (exists, violatesFinality bool) {
+	dag.mu.RLock()
+	defer dag.mu.RUnlock()
+	_, exists = dag.blocks[block.Hash]
+	return exists, !exists && dag.isFinalityViolation(block)
+}
 
 // syncTaktStand: Zaehler und Wartezeit des Abgleichs mit EINEM Peer.
 type syncTaktStand struct {
