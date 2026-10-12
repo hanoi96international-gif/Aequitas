@@ -322,6 +322,27 @@ func (w *WAL) AppendAsync(payload []byte) (uint64, <-chan error, error) {
 // DurableSeq ist die hoechste Seq, deren Buendel synchronisiert ist.
 func (w *WAL) DurableSeq() uint64 { return w.durableSeq.Load() }
 
+// NaechsteSeqMindestens hebt die naechste Seq auf mindestens min. Fuer den
+// keeper direkt nach Open, vor dem ersten Append: Datei und Hochwassermarke
+// kennen nur, was haltbar wurde. Hat ein Verbraucher eine Seq schon
+// gespeichert, die nie auf die Platte kam (Absturz im Sammelfenster), darf
+// sie nicht ein zweites Mal vergeben werden. Die uebersprungenen Seqs gibt
+// es nicht -- niemand wartet auf sie, also gelten sie als haltbar.
+func (w *WAL) NaechsteSeqMindestens(min uint64) {
+	w.seqMu.Lock()
+	defer w.seqMu.Unlock()
+	if min <= w.nextSeq {
+		return
+	}
+	w.nextSeq = min
+	for {
+		alt := w.durableSeq.Load()
+		if alt >= min-1 || w.durableSeq.CompareAndSwap(alt, min-1) {
+			return
+		}
+	}
+}
+
 // PeekSeq nennt die naechste Seq, die vergeben wird -- ohne sie zu vergeben.
 // Alles, was vor diesem Aufruf angehaengt wurde, hat eine kleinere Seq.
 // Fuer die Reihenfolge der Block-Transaktionen (siehe pending_reihenfolge.go).

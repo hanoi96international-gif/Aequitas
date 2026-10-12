@@ -303,8 +303,12 @@ func TestRecovery_SpiegelLesefehlerLaesstLiegen_RealDB(t *testing.T) {
 func TestRecovery_DurchlaufBegrenzt_RealDB(t *testing.T) {
 	cs := recoveryTestKnoten(t, "unused-recovery-grenze-test.json")
 	n := recoveryHoechstensJeDurchlauf + 5
+	// Eigener Adressbereich (0xaeb0...): distTestAddr(n) ist 0x000...n, und
+	// Tests, die Menschen anlegen, hinterlassen deren isHuman im EVM-Spiegel
+	// (evm_storage leert truncateDistTestTables nicht) -- dann hiesse es
+	// "EVM belegt, Go nicht", und die Zeile bliebe zu Recht offen.
 	if _, err := cs.db.Exec(`INSERT INTO registration_recovery (wallet, evm_tx_hash, nullifier, pending_tx_json, created_at)
-		SELECT '0x' || lpad(to_hex(g), 40, '0'), '', '', '', $1 FROM generate_series(1, $2) g`,
+		SELECT '0xaeb0' || lpad(to_hex(g), 36, '0'), '', '', '', $1 FROM generate_series(1, $2) g`,
 		time.Now().Unix()-vorEVMMindestAlterSek-60, n); err != nil {
 		t.Fatal(err)
 	}

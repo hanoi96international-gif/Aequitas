@@ -10,7 +10,6 @@ import (
 	"os"
 	"sort"
 	"strconv"
-	"strings"
 	"sync/atomic"
 
 	"github.com/lib/pq"
@@ -312,11 +311,14 @@ func (cs *ChainState) initWALIfEnabled() {
 		cs.walWiederanlaufFehler = markeErr.Error()
 		return
 	}
+	boden, bodenErr := cs.walRecoveryFloorLesen()
+	if bodenErr != nil {
+		fmt.Printf("[WAL] ✗ %v — WAL fast path stays DISABLED for this process\n", bodenErr)
+		cs.walWiederanlaufFehler = bodenErr.Error()
+		return
+	}
 	if korbAn && markeDa {
-		ab := marke
-		if boden := cs.walRecoveryFloor(); boden > ab {
-			ab = boden
-		}
+		ab := max(marke, boden)
 		cs.korb = neuerSpeicherKorb(ab + 1)
 		cs.korbBis.Store(ab)
 	}
@@ -337,6 +339,20 @@ func (cs *ChainState) initWALIfEnabled() {
 		fmt.Printf("[WAL] ✗ could not open %s, WAL fast path stays DISABLED for this process: %v\n", path, err)
 		cs.walWiederanlaufFehler = err.Error()
 		return
+	}
+	// Keine Seq ein zweites Mal, die Postgres schon kennt (wal_ausgang.go
+	// "HALTBARKEIT"; Pruefung des Punkt-9-Fixes, M-1).
+	hoechste, err := cs.walSeqPostgresHoechste()
+	if err != nil {
+		w.Close()
+		cs.korb = nil
+		fmt.Printf("[WAL] ✗ %v — WAL fast path stays DISABLED for this process\n", err)
+		cs.walWiederanlaufFehler = err.Error()
+		return
+	}
+	if hoechste >= w.PeekSeq() {
+		fmt.Printf("[WAL] ⚠ Postgres kennt Seq %d, das WAL nur bis %d (gespeichert, nie haltbar) -- weiter ab %d\n", hoechste, w.PeekSeq()-1, hoechste+1)
+		w.NaechsteSeqMindestens(hoechste + 1)
 	}
 	if err := cs.speicherKorbNachWiederanlauf(w.PeekSeq(), korbAn, markeDa); err != nil {
 		w.Close()
@@ -1555,25 +1571,26 @@ func (cs *ChainState) markWALSupersededByStateReplacement() {
 		fmt.Printf("[WAL] ⚠ could not persist recovery floor %d: %v\n", head, err)
 		return
 	}
-	// Vermerke unter der Untergrenze braucht kein Wiederanlauf mehr.
-	if err := cs.walAusgangKuerzen(head + 1); err != nil {
-		fmt.Printf("[WAL] ⚠ %v\n", err)
-	}
 	fmt.Printf("[WAL] ✓ Recovery floor set to seq %d — account state was just replaced wholesale, so every WAL record up to that point is superseded and will never be replayed again\n", head)
 }
 
 // walRecoveryFloor reads the floor recorded by
 // markWALSupersededByStateReplacement (0 if never set).
 func (cs *ChainState) walRecoveryFloor() uint64 {
-	v := cs.getConfigValueDB(walRecoveryFloorKey)
-	if v == "" {
-		return 0
-	}
-	n, err := strconv.ParseUint(strings.TrimSpace(v), 10, 64)
-	if err != nil {
-		return 0
-	}
+	// Nur fuer die Kompaktierung: ein Lesefehler heisst dort "kein Boden",
+	// also hoechstens weniger kuerzen. Wiederanlauf, Korb und Startsperre
+	// lesen streng (walRecoveryFloorLesen).
+	n, _ := cs.walRecoveryFloorLesen()
 	return n
+}
+
+// walRecoveryFloorLesen liest die Untergrenze fail-closed: ein Lesefehler
+// hiesse sonst "Boden 0", und der Wiederanlauf spielte laengst ersetzte
+// Saetze noch einmal auf den Snapshot-Stand (Pruefung des Punkt-9-Fixes,
+// M-4).
+func (cs *ChainState) walRecoveryFloorLesen() (uint64, error) {
+	n, _, err := cs.configZahlLesen(walRecoveryFloorKey)
+	return n, err
 }
 
 func (cs *ChainState) recoverFromWAL(path string) error {
@@ -1582,18 +1599,26 @@ func (cs *ChainState) recoverFromWAL(path string) error {
 
 	// Records at or below the floor were superseded by a wholesale state
 	// replacement — see markWALSupersededByStateReplacement for the incident.
-	floor := cs.walRecoveryFloor()
+	floor, err := cs.walRecoveryFloorLesen()
+	if err != nil {
+		return err
+	}
 
 	// Wiederanlauf mit Vermerken (wal_ausgang.go): fuer Saetze ueber der
 	// Uebergangsgrenze entscheidet der Vermerk, ob die Ausgangszeile
-	// nachgeholt wird -- nicht wal_seq.
+	// nachgeholt wird -- nicht wal_seq. Bis "erledigt" ist nichts
+	// nachzuholen (kompaktiert bzw. verblockt, wal_ausgang.go "ERLEDIGT").
 	ausgangAb, ausgangAbDa, err := cs.walAusgangAb()
+	if err != nil {
+		return err
+	}
+	erledigt, err := cs.walAusgangErledigt()
 	if err != nil {
 		return err
 	}
 	var vermerke walAusgangMenge
 	if ausgangAbDa {
-		if vermerke, err = cs.walAusgangVermerke(max(ausgangAb, floor)); err != nil {
+		if vermerke, err = cs.walAusgangVermerke(max(ausgangAb, floor, erledigt)); err != nil {
 			return err
 		}
 	}
@@ -1749,8 +1774,8 @@ func (cs *ChainState) recoverFromWAL(path string) error {
 		// auch wenn beide Konten den Satz schon enthalten (serielle
 		// Speicherung, Flush eines spaeteren Stapels). Im Korb-Modus traegt
 		// der Korb den Satz in einen Block; bis zur Marke steht er schon in
-		// einem.
-		zeileDa := vermerke.hat(entry.Seq)
+		// einem. Bis "erledigt" ebenso, auch nachdem die Marke weg ist.
+		zeileDa := entry.Seq <= erledigt || vermerke.hat(entry.Seq)
 		ausgangFehlt := cs.korb == nil && !schonVerblockt && !zeileDa
 		if fromApplied || toApplied || ausgangFehlt {
 			if fromApplied || toApplied {

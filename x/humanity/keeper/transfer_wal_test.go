@@ -802,8 +802,9 @@ func TestWAL_FlushNowWartetAufLaufendenHintergrundFlush(t *testing.T) {
 	}
 }
 
-// walTestVermerkeLeeren: Vermerke und Uebergangsgrenze aus der gemeinsamen
-// Test-Datenbank entfernen (siehe newWALTestState).
+// walTestVermerkeLeeren: Vermerke, Uebergangsgrenze, "erledigt" und die
+// wal_seq der Konten aus der gemeinsamen Test-Datenbank entfernen (siehe
+// newWALTestState).
 func walTestVermerkeLeeren(t *testing.T) {
 	t.Helper()
 	db, err := sql.Open("postgres", os.Getenv("DATABASE_URL"))
@@ -814,7 +815,12 @@ func walTestVermerkeLeeren(t *testing.T) {
 	for _, q := range []string{
 		`CREATE TABLE IF NOT EXISTS wal_ausgang (seq BIGINT PRIMARY KEY)`,
 		`DELETE FROM wal_ausgang`,
-		`DELETE FROM chain_config WHERE key = '` + walAusgangAbKey + `'`,
+		`DELETE FROM chain_config WHERE key IN ('` + walAusgangAbKey + `', '` + walAusgangErledigtKey + `')`,
+		// Sonst hoebe der Start die erste Seq ueber die wal_seq frueherer
+		// Tests (walSeqPostgresHoechste) -- richtig fuer einen Knoten, der
+		// seine Datei verliert, aber nicht, was ein Test mit frischer Datei
+		// meint.
+		`UPDATE chain_accounts SET wal_seq = 0 WHERE wal_seq <> 0`,
 	} {
 		if _, err := db.Exec(q); err != nil && !strings.Contains(err.Error(), "does not exist") {
 			t.Fatal(err)

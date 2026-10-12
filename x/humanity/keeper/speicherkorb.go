@@ -341,15 +341,10 @@ func (cs *ChainState) SpeicherKorbStand() map[string]interface{} {
 // speicherKorbMarkeLesen liest die Marke aus chain_config. ok=false, wenn es
 // keine gibt (Korb war nie an).
 func (cs *ChainState) speicherKorbMarkeLesen() (uint64, bool, error) {
-	v, ok := cs.getConfigValueExistsDB(speicherKorbMarke)
-	if !ok || v == "" {
-		return 0, false, nil
-	}
-	n, err := strconv.ParseUint(v, 10, 64)
-	if err != nil {
-		return 0, false, fmt.Errorf("%s unlesbar (%q): %w", speicherKorbMarke, v, err)
-	}
-	return n, true, nil
+	// Streng: ein Lesefehler hiess frueher "keine Marke" -- dann setzte der
+	// Start sie neu ans Dateiende, und die Korb-Eintraege dazwischen kaemen
+	// nie in einen Block (Pruefung des Punkt-9-Fixes, M-4).
+	return cs.configZahlLesen(speicherKorbMarke)
 }
 
 // SaveBlockMitKorb speichert den Block, loescht die aufgenommenen
@@ -400,9 +395,27 @@ func (cs *ChainState) speicherKorbNachWiederanlauf(peek uint64, korbAn, markeDa 
 		// ab jetzt der alte Weg. Die Marke weg, sonst holte ein spaeterer
 		// Start dieselben Datensaetze noch einmal (die Abfrage dort ist zwar
 		// gegen Doppelte geschuetzt, aber nicht gegen inzwischen Verblocktes).
+		//
+		// Mit der Marke verschwaende das Wissen, dass bis dahin alles
+		// verblockt ist -- ohne Vermerk holte ein spaeterer Wiederanlauf fuer
+		// diese Saetze Zeilen nach, eine zweite Buchung im Block (Pruefung des
+		// Punkt-9-Fixes, H-1). Darum in derselben Transaktion "erledigt bis"
+		// heben (wal_ausgang.go "ERLEDIGT").
 		cs.korbUebergang = false
 		if cs.db != nil {
-			if _, err := cs.db.Exec(`DELETE FROM chain_config WHERE key = $1`, speicherKorbMarke); err != nil {
+			tx, err := cs.db.Begin()
+			if err != nil {
+				return fmt.Errorf("Korb-Marke nicht entfernt: %w", err)
+			}
+			if _, err := tx.Exec(walAusgangErledigtSQL, int64(cs.korbUebergangBis)); err != nil {
+				tx.Rollback()
+				return fmt.Errorf("Korb-Marke nicht entfernt (%s): %w", walAusgangErledigtKey, err)
+			}
+			if _, err := tx.Exec(`DELETE FROM chain_config WHERE key = $1`, speicherKorbMarke); err != nil {
+				tx.Rollback()
+				return fmt.Errorf("Korb-Marke nicht entfernt: %w", err)
+			}
+			if err := tx.Commit(); err != nil {
 				return fmt.Errorf("Korb-Marke nicht entfernt: %w", err)
 			}
 		}

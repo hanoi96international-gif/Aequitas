@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 // Audit 2026-08-16 (transfer/WAL/concurrency pass), finding WAL-SEQ.
@@ -154,4 +155,56 @@ func TestWAL_SeqRestartsAtOneWhenFileIsLost(t *testing.T) {
 		"chain_accounts.wal_seq and chain_config.wal_recovery_floor_seq still hold values up to 3 "+
 		"in Postgres — every subsequent flush is silently dropped by the monotonic UPSERT guard, and "+
 		"every subsequent crash-recovery record is silently skipped by the recovery floor.", seq)
+}
+
+// NaechsteSeqMindestens: der keeper hebt die naechste Seq nach dem Oeffnen
+// ueber alles, was Postgres schon kennt (gespeichert, nie haltbar). Danach
+// vergibt das WAL nur darueber, wartet auf keine uebersprungene Seq, und ein
+// kleinerer Wert senkt nichts.
+func TestWAL_NaechsteSeqMindestens(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "heben.wal")
+	w, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer w.Close()
+	if _, err := w.Append([]byte("eins")); err != nil {
+		t.Fatalf("Append: %v", err)
+	}
+	w.NaechsteSeqMindestens(5)
+	if p := w.PeekSeq(); p != 5 {
+		t.Fatalf("PeekSeq nach dem Heben = %d, erwartet 5", p)
+	}
+	if d := w.DurableSeq(); d != 4 {
+		t.Fatalf("DurableSeq nach dem Heben = %d, erwartet 4 (uebersprungene Seqs gibt es nicht)", d)
+	}
+	if !w.WaitDurable(3, time.Millisecond) {
+		t.Fatal("WaitDurable wartet auf eine uebersprungene Seq")
+	}
+	w.NaechsteSeqMindestens(2)
+	if p := w.PeekSeq(); p != 5 {
+		t.Fatalf("ein kleinerer Wert senkte die naechste Seq auf %d", p)
+	}
+	seq, err := w.Append([]byte("fuenf"))
+	if err != nil || seq != 5 {
+		t.Fatalf("Append nach dem Heben: seq %d, %v -- erwartet 5", seq, err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	var seqs []uint64
+	if _, _, err := ReplayFile(path, func(e Entry) error { seqs = append(seqs, e.Seq); return nil }); err != nil {
+		t.Fatalf("ReplayFile: %v", err)
+	}
+	if len(seqs) != 2 || seqs[0] != 1 || seqs[1] != 5 {
+		t.Fatalf("Datei traegt Seqs %v, erwartet [1 5]", seqs)
+	}
+	w2, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open nach dem Heben: %v", err)
+	}
+	defer w2.Close()
+	if p := w2.PeekSeq(); p != 6 {
+		t.Fatalf("nach erneutem Oeffnen PeekSeq = %d, erwartet 6", p)
+	}
 }

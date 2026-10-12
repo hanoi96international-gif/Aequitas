@@ -244,7 +244,7 @@ func TestWALAusgang_FremdeStapelDeckenSatz_RealDB(t *testing.T) {
 }
 
 // Der Flush vermerkt jede Ausgangszeile, und gekuerzt wird nur unter der
-// Grenze (Kompaktierung, Untergrenze).
+// Grenze der Kompaktierung -- nachdem "erledigt" darauf steht.
 func TestWALAusgang_VermerkUndKuerzen_RealDB(t *testing.T) {
 	walPath := filepath.Join(t.TempDir(), "vermerk.wal")
 	truncateDistTestTables(t)
@@ -269,18 +269,30 @@ func TestWALAusgang_VermerkUndKuerzen_RealDB(t *testing.T) {
 	if m, _ := cs.walAusgangVermerke(0); len(m) != 1 || !m.hat(3) {
 		t.Fatalf("nach dem Kuerzen unter 3: %v", m)
 	}
+	if e, err := cs.walAusgangErledigt(); err != nil || e != 2 {
+		t.Fatalf("erledigt nach dem Kuerzen unter 3: %d, %v -- erwartet 2", e, err)
+	}
+	// "erledigt" steigt nur.
+	if err := cs.walAusgangKuerzen(2); err != nil {
+		t.Fatal(err)
+	}
+	if e, _ := cs.walAusgangErledigt(); e != 2 {
+		t.Fatalf("erledigt sank auf %d", e)
+	}
 	// Grenze: mehr Vermerke als erlaubt -> der Wiederanlauf scheitert
 	// (fail-closed), statt den Speicher zu sprengen.
 	alt := walAusgangHoechstens
+	t.Cleanup(func() { walAusgangHoechstens = alt })
 	walAusgangHoechstens = 0
 	if _, err := cs.walAusgangVermerke(0); err == nil {
 		t.Fatal("Grenze der Vermerke greift nicht")
 	}
 	walAusgangHoechstens = alt
-	// Untergrenze (Zustandsersatz): alles bis zum Kopf faellt weg.
+	// Der Zustandsersatz kuerzt nicht (er laeuft unter cs.mu; die Untergrenze
+	// macht die Vermerke darunter ohnehin bedeutungslos).
 	cs.markWALSupersededByStateReplacement()
-	if m, _ := cs.walAusgangVermerke(0); len(m) != 0 {
-		t.Fatalf("nach dem Setzen der Untergrenze noch %v", m)
+	if m, _ := cs.walAusgangVermerke(0); len(m) != 1 {
+		t.Fatalf("Zustandsersatz hat gekuerzt: %v", m)
 	}
 }
 
@@ -365,7 +377,9 @@ func TestWALAusgang_GescheiterterWiederanlaufSchreibtNichts_RealDB(t *testing.T)
 
 // Die Startsperre zaehlt einen Satz ohne Ausgangszeile als offen, auch wenn
 // beide Salden ihn enthalten (Fall b) -- ein Beobachter holte die Zeile nie
-// nach. Bis zur Korb-Marke steht er in einem Block und zaehlt nicht.
+// nach. Bis "erledigt" (kompaktiert, verblockt) zaehlt er nicht. Den echten
+// Korb-Ablauf (an -> aus, Marke weg) prueft
+// TestWALAusgang_KorbAusZweiterNeustartKeineZweiteZeile_RealDB.
 func TestWALAusgang_SperreZaehltSatzOhneZeile_RealDB(t *testing.T) {
 	walPath := filepath.Join(t.TempDir(), "sperre-ohne-zeile.wal")
 	truncateDistTestTables(t)
@@ -399,12 +413,11 @@ func TestWALAusgang_SperreZaehltSatzOhneZeile_RealDB(t *testing.T) {
 	if err := cs.PruefeWALRest(); err == nil || !strings.Contains(err.Error(), "1 Saetze ohne Ausgangszeile") {
 		t.Fatalf("Beobachter mit Satz ohne Ausgangszeile: %v", err)
 	}
-	if err := cs.setConfigValueDB(speicherKorbMarke, "2"); err != nil {
+	if _, err := cs.db.Exec(walAusgangErledigtSQL, int64(2)); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { cs.db.Exec(`DELETE FROM chain_config WHERE key = $1`, speicherKorbMarke) })
 	if err := cs.PruefeWALRest(); err != nil {
-		t.Fatalf("bis zur Korb-Marke verblockt, trotzdem gesperrt: %v", err)
+		t.Fatalf("bis 2 erledigt, trotzdem gesperrt: %v", err)
 	}
 }
 

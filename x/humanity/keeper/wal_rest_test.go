@@ -48,7 +48,7 @@ func walRestAnlegen(t *testing.T, walPath string) (from, to string) {
 func untergrenzeZuruecksetzen(t *testing.T, cs *ChainState) {
 	t.Helper()
 	loeschen := func() error {
-		if _, err := cs.db.Exec(`DELETE FROM chain_config WHERE key = ANY($1)`, pq.Array([]string{walRecoveryFloorKey, walAusgangAbKey})); err != nil {
+		if _, err := cs.db.Exec(`DELETE FROM chain_config WHERE key = ANY($1)`, pq.Array([]string{walRecoveryFloorKey, walAusgangAbKey, walAusgangErledigtKey})); err != nil {
 			return err
 		}
 		_, err := cs.db.Exec(`DELETE FROM wal_ausgang`)

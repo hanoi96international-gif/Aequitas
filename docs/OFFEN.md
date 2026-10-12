@@ -156,25 +156,58 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
      Stapels, der den aktuellen `WALSeq` schreibt). Nie eine zweite Zeile
      bei Vermerk. Übergang: Sätze bis zur Grenze `wal_ausgang_ab_seq` (vom
      ersten Wiederanlauf dieser Fassung auf das Dateiende gesetzt) nach der
-     alten Regel. Gekürzt mit der WAL-Kompaktierung und der Untergrenze;
-     höchstens 50 Mio. Vermerke werden geladen (sonst scheitert der
-     Wiederanlauf).
+     alten Regel. Gekürzt mit der WAL-Kompaktierung; höchstens 50 Mio.
+     Vermerke werden geladen (sonst scheitert der Wiederanlauf).
+   - „Erledigt bis“ (`wal_ausgang_erledigt_bis`, steigt nur): Sätze bis
+     dahin brauchen nie eine neue Zeile. Die Kompaktierung hebt den Wert
+     vor dem Löschen der Vermerke (verlorene Umbenennung, alte Datei wieder
+     da), das Ausschalten des Speicherkorbs in derselben Transaktion, in
+     der die Marke verschwindet (sonst ab dem zweiten Start eine zweite
+     Zeile für Verblocktes; getrennte Prüfung, H-1 und M-3).
+   - Haltbarkeit: Serielle Speicherungen warten wie der Flush höchstens
+     2 s, bis die WAL-Deltas im Saldo auf der Platte sind (vorher konnte
+     ein Absturz eine nie haltbare Überweisung halb gebucht hinterlassen,
+     M-2, bestand schon). Nach dem Öffnen vergibt das WAL keine Seq, die
+     Postgres schon kennt (`wal_seq`, Vermerke, Untergrenze, „erledigt“,
+     Übergangsgrenze, Korb-Marke; M-1).
+   - Grenze, „erledigt“, Untergrenze und Korb-Marke werden fail-closed
+     gelesen (`configZahlLesen`; vorher hieß ein Lesefehler „nicht gesetzt“,
+     M-4).
    - Die Startsperre (`PruefeWALRest`) zählt auch Sätze ohne Vermerk als
-     offen (nicht bis zur Korb-Marke, nicht im Korb-Modus).
+     offen (nicht bis „erledigt“ oder zur Korb-Marke, nicht im Korb-Modus).
    - Der Flush-Arbeiter startet erst nach gelungenem Wiederanlauf; ein
      gescheiterter schreibt nichts mehr halb nach Postgres (Prüfung von
      #331, 3. Durchgang, INFO-2). Die Meldung bei gescheitertem
      Wiederanlauf ohne Rest rät nicht mehr zum Verwerfen (INFO-1).
    - `seedWALSeq` scheitert bei einem Lesefehler, statt `wal_seq` 0
      anzunehmen (und alles ein zweites Mal zu buchen).
-   - Bleibt: Wird die WAL-Datei samt Hochwassermarke gelöscht, beginnen
-     Seqs wieder bei 1, und alte Vermerke gälten für neue Sätze – dieselbe
-     Betriebsregel wie für die Untergrenze: Datei nie löschen.
+   - Betrieb: Die WAL-Datei nie löschen. Die Zählung beginnt danach zwar
+     über allem, was Postgres kennt, aber nicht geflushte Sätze darin sind
+     verloren.
    - Bleibt: Läuft nach dieser Fassung wieder eine ältere (schreibt keine
      Vermerke) und danach wieder diese, gelten die Sätze dazwischen als
      „ohne Zeile“ und bekommen eine zweite. Betrieb: vor dem erneuten
      Hochstufen `wal_ausgang_ab_seq` aus `chain_config` löschen – der
      nächste Wiederanlauf setzt die Grenze dann neu aufs Dateiende.
+   - Bleibt (getrennte Prüfung des Fixes, nicht blockierend):
+     - *Frist:* Kommt die Haltbarkeit nicht in 2 s (Sync defekt oder sehr
+       langsam), schreiben Flush und serielle Speicherung trotzdem; ein
+       Absturz genau dann kann eine Überweisung halb gebucht hinterlassen
+       (dieselbe Abwägung wie bisher im Flush; der Schnellpfad ist dann
+       zu). Fail-closed hieße: Konto bis zum Neustart sperren.
+     - *LOW-2:* Bis zu 50 Mio. Vermerke = bis 400 MB beim Start; darüber
+       endet auch `AEQUITAS_WAL_REST_VERWERFEN` (nur SQL hilft). Besser:
+       Datei und Vermerke als aufsteigende Folgen nebeneinander lesen.
+     - *LOW-3 (bestand):* Die Warteschlange des Wiederanlaufs ist
+       unbegrenzt; sie trägt jeden nachgeholten Satz.
+     - *LOW-4 (bestand):* Ist der Korb gewünscht, das WAL aber aus (oder
+       Beobachter), zählt die Startsperre keine Sätze ohne Vermerk.
+     - *INFO:* Überlappen alte und neue Instanz beim Redeploy (Abschluss-
+       Flush der alten nach dem Laden der Vermerke der neuen), entsteht eine
+       zweite Zeile (vorher an derselben Stelle eine Doppelbuchung).
+     - *Verzeichnis-fsync:* `TruncateBefore` synchronisiert das Verzeichnis
+       nach der Umbenennung nicht (auch nicht für die Hochwassermarke);
+       „erledigt“ und das Heben der Seq fangen die Folgen ab.
 
 ## Ratenbegrenzung – bekannte Lücken
 - **`X-Forwarded-For` hinter einem privaten TCP-Partner** (Prüfung von #319,

@@ -100,7 +100,7 @@ func (cs *ChainState) PruefeWALRest() error {
 		"So liefe der Stand ohne sie weiter, und ein spaeterer Wiederanlauf wendete sie auf den weitergelaufenen Stand an. "+
 		"Ausweg: als Validator mit AEQUITAS_WAL_ENABLED=1 (ohne AEQUITAS_BEOBACHTER) starten, bis der Wiederanlauf gelingt, und sauber beenden -- "+
 		"oder den Rest bewusst verwerfen: AEQUITAS_WAL_REST_VERWERFEN=%s (nur fuer genau diesen Stand; diese Ueberweisungen gehen nie in einen Block). "+
-		"Die WAL-Datei in keinem Fall loeschen: die Zaehlung begaenne neu, und neue Saetze laegen unter der Untergrenze", pfad, walRestText(konten, ohneZeile), soll, warum, soll)
+		"Die WAL-Datei in keinem Fall loeschen: diese Ueberweisungen gingen verloren", pfad, walRestText(konten, ohneZeile), soll, warum, soll)
 }
 
 // walRestOffen zaehlt die Konten, deren hoechster Satz ueber der
@@ -117,8 +117,9 @@ func (cs *ChainState) walRestOffen(path string) (offen int, kopf uint64, err err
 // Satz nicht enthaelt, und Saetzen ohne Ausgangs-Vermerk (wal_ausgang.go):
 // auch ein Satz, den beide Salden schon enthalten, ist offen, solange seine
 // Ausgangszeile fehlt -- nur ein Wiederanlauf holt sie nach. Gezaehlt nur
-// ueber der Uebergangsgrenze, ohne Speicherkorb (der traegt die Saetze in
-// einen Block) und ueber dessen Marke (bis dahin stehen sie in Bloecken).
+// ueber der Uebergangsgrenze und "erledigt" (wal_ausgang.go), ohne
+// Speicherkorb (der traegt die Saetze in einen Block) und ueber dessen Marke
+// (bis dahin stehen sie in Bloecken).
 func (cs *ChainState) walRestPruefen(path string) (konten, ohneZeile int, kopf uint64, err error) {
 	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
 		return 0, 0, 0, nil
@@ -136,8 +137,15 @@ func (cs *ChainState) walRestPruefen(path string) (konten, ohneZeile int, kopf u
 		}
 		return n, 0, kopf, nil
 	}
-	floor := cs.walRecoveryFloor()
+	floor, err := cs.walRecoveryFloorLesen()
+	if err != nil {
+		return 0, 0, 0, err
+	}
 	ab, abDa, err := cs.walAusgangAb()
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	erledigt, err := cs.walAusgangErledigt()
 	if err != nil {
 		return 0, 0, 0, err
 	}
@@ -146,7 +154,7 @@ func (cs *ChainState) walRestPruefen(path string) (konten, ohneZeile int, kopf u
 		return 0, 0, 0, err
 	}
 	vermerkPruefen := abDa && !speicherKorbGewuenscht()
-	ohneVermerkAb := max(ab, floor)
+	ohneVermerkAb := max(ab, floor, erledigt)
 	if markeDa {
 		ohneVermerkAb = max(ohneVermerkAb, marke)
 	}

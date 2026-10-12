@@ -2794,6 +2794,9 @@ func (cs *ChainState) saveAccountToDBInnerCtx(ctx context.Context, acc *AccountS
 		acc.Version++ // no-DB mode: mark as saved
 		return nil
 	}
+	// Der Saldo enthaelt die WAL-Deltas bis acc.WALSeq: erst schreiben, wenn
+	// sie auf der Platte sind (wal_ausgang.go "HALTBARKEIT").
+	cs.walHaltbarAbwarten(acc.WALSeq)
 	var result sql.Result
 	var err error
 	// FIX (atomic outbox): use cs.dbExecCtx(ctx) instead of cs.db directly —
@@ -2953,6 +2956,13 @@ func (cs *ChainState) saveAccountsToDBBatchCtx(ctx context.Context, accs []*Acco
 		}
 		return nil
 	}
+	// Wie saveAccountToDBInnerCtx: erst schreiben, wenn die WAL-Deltas in
+	// den Salden auf der Platte sind (wal_ausgang.go "HALTBARKEIT").
+	var hoechsteWALSeq uint64
+	for _, acc := range accs {
+		hoechsteWALSeq = max(hoechsteWALSeq, acc.WALSeq)
+	}
+	cs.walHaltbarAbwarten(hoechsteWALSeq)
 	// FIX (2026-07-23, 50k-TPS-goal investigation): this used to build a
 	// VALUES(...) list whose TEXT SIZE grows linearly with len(accs) — up
 	// to 1000 rows x 9 placeholders = 9000 individual $N parameters for a
