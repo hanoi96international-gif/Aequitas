@@ -91,7 +91,9 @@ func (cs *ChainState) StartTxBatchPruner() {
 			t := time.NewTicker(txBatchPruneInterval)
 			defer t.Stop()
 			for range t.C {
-				cs.pruneTxBatches()
+				SafeCall("txBatchPrune", func() {
+					cs.pruneTxBatches()
+				})
 			}
 		})
 	})

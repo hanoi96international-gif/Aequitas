@@ -857,12 +857,14 @@ func (cs *ChainState) runWALFlushWorker(takt time.Duration, viel int64) {
 			// Sind alle Plaetze belegt, wird nichts angehaengt -- keine
 			// unbegrenzte Zahl wartender Goroutinen; walFlushMaxQueueDepth
 			// bleibt die eigentliche Grenze der Warteschlange.
-			plaetze := 1
-			if walWarteschlangeStand.Load() >= viel {
-				plaetze = cap(cs.walFlushSem)
-			}
-			for i := 0; i < plaetze && cs.walFlushStarten(); i++ {
-			}
+			SafeCall("walFlushTakt", func() {
+				plaetze := 1
+				if walWarteschlangeStand.Load() >= viel {
+					plaetze = cap(cs.walFlushSem)
+				}
+				for i := 0; i < plaetze && cs.walFlushStarten(); i++ {
+				}
+			})
 		case <-cs.walFlushStopCh:
 			return
 		}

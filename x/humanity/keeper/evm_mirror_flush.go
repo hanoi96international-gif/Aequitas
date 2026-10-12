@@ -93,7 +93,9 @@ func (cs *ChainState) runEVMMirrorFlushWorker(stop <-chan struct{}) {
 		case <-stop:
 			return
 		case <-ticker.C:
-			cs.flushEVMMirrorDirty()
+			// Je Takt eigene Absicherung: eine Panik endete sonst den
+			// Arbeiter fuer immer, und der Spiegel bliebe still stehen.
+			SafeCall("evmMirrorFlush", cs.flushEVMMirrorDirty)
 		}
 	}
 }
@@ -155,7 +157,10 @@ func (cs *ChainState) flushEVMMirrorDirty() {
 			if stop > len(addrs) {
 				stop = len(addrs)
 			}
-			cs.flushEVMMirrorChunk(contractAddr, addrs[start:stop])
+			teil := addrs[start:stop]
+			// Ein Teil, der paniert, kostet nicht die uebrigen Adressen
+			// dieses Takts (die Menge ist oben schon geleert).
+			SafeCall("evmMirrorFlushChunk", func() { cs.flushEVMMirrorChunk(contractAddr, teil) })
 		}
 	}
 }

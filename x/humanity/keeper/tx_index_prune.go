@@ -102,7 +102,9 @@ func (cs *ChainState) starteTxIndexPrune() {
 			defer t.Stop()
 			cs.pruneTxIndex()
 			for range t.C {
-				cs.pruneTxIndex()
+				SafeCall("txIndexPrune", func() {
+					cs.pruneTxIndex()
+				})
 			}
 		})
 	})

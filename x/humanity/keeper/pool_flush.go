@@ -44,7 +44,9 @@ func (cs *ChainState) runPoolFlushWorker() {
 	ticker := time.NewTicker(poolFlushInterval)
 	defer ticker.Stop()
 	for range ticker.C {
-		cs.flushPoolAccountsIfDirty()
+		SafeCall("poolFlush", func() {
+			cs.flushPoolAccountsIfDirty()
+		})
 	}
 }
 

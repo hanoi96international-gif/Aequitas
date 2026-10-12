@@ -70,7 +70,9 @@ func (dag *BlockDAG) StartTipReannouncer() {
 		ticker := time.NewTicker(tipReannounceInterval)
 		defer ticker.Stop()
 		for range ticker.C {
-			dag.reannounceTipsIfStalled()
+			SafeCall("tipReannounce", func() {
+				dag.reannounceTipsIfStalled()
+			})
 		}
 	})
 }

@@ -2177,23 +2177,27 @@ func (dag *BlockDAG) syncWithNode(nodeURL string) {
 	ticker := time.NewTicker(backoff)
 	defer ticker.Stop()
 	for range ticker.C {
-		ticks++
-		if ticks%validatorSyncInterval == 0 {
-			dag.syncValidatorsFromPeer(nodeURL)
-		}
-		if !dag.doSyncOnce(nodeURL) {
-			backoff *= 2
-			if backoff > 30*time.Second {
-				backoff = 30 * time.Second
+		// Je Takt abgesichert: eine Panik (etwa eine unerwartete Antwort
+		// dieses Peers) beendete sonst den Abgleich mit ihm fuer immer.
+		SafeCall("syncWithNode", func() {
+			ticks++
+			if ticks%validatorSyncInterval == 0 {
+				dag.syncValidatorsFromPeer(nodeURL)
 			}
-			ticker.Reset(backoff)
-			continue
-		}
-		// Reset backoff on success
-		if backoff > 1*time.Second {
-			backoff = 1 * time.Second
-			ticker.Reset(backoff)
-		}
+			if !dag.doSyncOnce(nodeURL) {
+				backoff *= 2
+				if backoff > 30*time.Second {
+					backoff = 30 * time.Second
+				}
+				ticker.Reset(backoff)
+				return
+			}
+			// Reset backoff on success
+			if backoff > 1*time.Second {
+				backoff = 1 * time.Second
+				ticker.Reset(backoff)
+			}
+		})
 	} // end for range ticker.C
 } // end syncWithNode
 
@@ -3165,11 +3169,11 @@ func (dag *BlockDAG) armInitialSyncGate(syncFirst bool) {
 		ticker := time.NewTicker(syncTargetRefreshInterval)
 		defer ticker.Stop()
 		deadline := time.Now().Add(syncTargetRefreshMaxDuration)
-		for range ticker.C {
-			if time.Now().After(deadline) {
+		for jetzt := range ticker.C {
+			if jetzt.After(deadline) {
 				return
 			}
-			dag.fetchAndSetSyncTarget(seeds)
+			SafeCall("fetchAndSetSyncTarget", func() { dag.fetchAndSetSyncTarget(seeds) })
 		}
 	})
 }

@@ -198,26 +198,28 @@ func (dag *BlockDAG) StarteRueckstauMesser() {
 		t := time.NewTicker(rueckstauTakt)
 		defer t.Stop()
 		for range t.C {
-			vorher := rueckstauZugelassen.Load()
-			var offen, aelteste int64
-			ctx, abbrechen := context.WithTimeout(context.Background(), rueckstauMessFrist)
-			err := cs.db.QueryRowContext(ctx, `SELECT count(*), COALESCE(MIN(created_at), 0) FROM pending_txs WHERE included_at = 0`).Scan(&offen, &aelteste)
-			abbrechen()
-			if err != nil {
-				rueckstauMessFehler.Add(1)
-				continue
-			}
-			// Fuer annahme_pause.go: haengt der Ausgang?
-			aeltesteOffeneZeile.Store(aelteste)
-			// Mit Speicherkorb steht jede angenommene Schnellpfad-Ueberweisung
-			// dort, bis sie verblockt ist; die Flush-Warteschlange schreibt nur
-			// noch Kontostaende (speicherkorb.go). Sonst wartet sie auf ihre
-			// Zeile in pending_txs.
-			nochNichtImBlock := int64(cs.WALFlushQueueDepth())
-			if k := cs.korb; k != nil {
-				nochNichtImBlock = int64(k.laenge())
-			}
-			rueckstauMessungUebernehmen(offen+nochNichtImBlock, vorher)
+			SafeCall("rueckstauMesser", func() {
+				vorher := rueckstauZugelassen.Load()
+				var offen, aelteste int64
+				ctx, abbrechen := context.WithTimeout(context.Background(), rueckstauMessFrist)
+				err := cs.db.QueryRowContext(ctx, `SELECT count(*), COALESCE(MIN(created_at), 0) FROM pending_txs WHERE included_at = 0`).Scan(&offen, &aelteste)
+				abbrechen()
+				if err != nil {
+					rueckstauMessFehler.Add(1)
+					return
+				}
+				// Fuer annahme_pause.go: haengt der Ausgang?
+				aeltesteOffeneZeile.Store(aelteste)
+				// Mit Speicherkorb steht jede angenommene Schnellpfad-Ueberweisung
+				// dort, bis sie verblockt ist; die Flush-Warteschlange schreibt nur
+				// noch Kontostaende (speicherkorb.go). Sonst wartet sie auf ihre
+				// Zeile in pending_txs.
+				nochNichtImBlock := int64(cs.WALFlushQueueDepth())
+				if k := cs.korb; k != nil {
+					nochNichtImBlock = int64(k.laenge())
+				}
+				rueckstauMessungUebernehmen(offen+nochNichtImBlock, vorher)
+			})
 		}
 	})
 }

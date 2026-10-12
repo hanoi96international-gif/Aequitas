@@ -159,43 +159,45 @@ func (cs *ChainState) txIndexNachtraeger() {
 	t := time.NewTicker(txIndexNachtragTakt)
 	defer t.Stop()
 	for range t.C {
-		for i := 0; i < 8; i++ { // hoechstens acht je Takt -- der Schreiber soll nicht wieder ueberlaufen
-			if len(txIndexKanal()) > 0 {
-				break
-			}
-			txIndexNachtragMu.Lock()
-			if len(txIndexNachtrag) == 0 {
-				txIndexNachtragMu.Unlock()
-				break
-			}
-			e := txIndexNachtrag[0]
-			txIndexNachtrag = txIndexNachtrag[1:]
-			txIndexNachtragMu.Unlock()
-
-			b := cs.LoadBlockFromDBByHash(e.blockHash)
-			if b == nil || len(b.Transactions) == 0 {
-				e.versuche++
-				if e.versuche < 3 {
-					txIndexNachtragMu.Lock()
-					txIndexNachtrag = append(txIndexNachtrag, e)
-					txIndexNachtragMu.Unlock()
-				} else {
-					txIndexNachtragFehler.Add(1)
-					fmt.Printf("[TX-INDEX] ✗ Block #%d liess sich dreimal nicht aus der Datenbank laden -- nicht nachgetragen\n", e.height)
+		SafeCall("txIndexNachtrag", func() {
+			for i := 0; i < 8; i++ { // hoechstens acht je Takt -- der Schreiber soll nicht wieder ueberlaufen
+				if len(txIndexKanal()) > 0 {
+					break
 				}
-				continue
-			}
-			select {
-			case txIndexKanal() <- txIndexJob{height: b.Height, blockHash: b.Hash, txs: b.Transactions, zeit: b.Timestamp}:
-				txIndexNachgetragen.Add(1)
-			default:
-				// Inzwischen wieder voll: zurueck auf die Liste, naechster Takt.
 				txIndexNachtragMu.Lock()
-				txIndexNachtrag = append([]txIndexNachtragEintrag{e}, txIndexNachtrag...)
+				if len(txIndexNachtrag) == 0 {
+					txIndexNachtragMu.Unlock()
+					break
+				}
+				e := txIndexNachtrag[0]
+				txIndexNachtrag = txIndexNachtrag[1:]
 				txIndexNachtragMu.Unlock()
-				i = 8
+
+				b := cs.LoadBlockFromDBByHash(e.blockHash)
+				if b == nil || len(b.Transactions) == 0 {
+					e.versuche++
+					if e.versuche < 3 {
+						txIndexNachtragMu.Lock()
+						txIndexNachtrag = append(txIndexNachtrag, e)
+						txIndexNachtragMu.Unlock()
+					} else {
+						txIndexNachtragFehler.Add(1)
+						fmt.Printf("[TX-INDEX] ✗ Block #%d liess sich dreimal nicht aus der Datenbank laden -- nicht nachgetragen\n", e.height)
+					}
+					continue
+				}
+				select {
+				case txIndexKanal() <- txIndexJob{height: b.Height, blockHash: b.Hash, txs: b.Transactions, zeit: b.Timestamp}:
+					txIndexNachgetragen.Add(1)
+				default:
+					// Inzwischen wieder voll: zurueck auf die Liste, naechster Takt.
+					txIndexNachtragMu.Lock()
+					txIndexNachtrag = append([]txIndexNachtragEintrag{e}, txIndexNachtrag...)
+					txIndexNachtragMu.Unlock()
+					i = 8
+				}
 			}
-		}
+		})
 	}
 }
 
