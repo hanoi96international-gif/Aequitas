@@ -19,7 +19,6 @@ import (
 	"net/http/pprof"
 	"os"
 	"regexp"
-	"runtime/debug"
 	"sort"
 	"strconv"
 	"strings"
@@ -1000,7 +999,16 @@ func recoverMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if rec := recover(); rec != nil {
-				fmt.Printf("[PANIC RECOVERED] HTTP handler %s %s: %v\n%s\n", r.Method, r.URL.Path, rec, debug.Stack())
+				// Gedrosselt wie jede abgefangene Panik (panikMelden): wer je
+				// Anfrage eine Panik ausloest, flutete sonst das Log mit einem
+				// Stack je Anfrage. Festes Label -- der Pfad kommt vom
+				// Anrufer und wuerde die Label-Tabelle fuellen; er steht
+				// gekuerzt in der Meldung.
+				pfad := r.URL.Path
+				if len(pfad) > 120 {
+					pfad = pfad[:120] + "…"
+				}
+				panikMelden("HTTP-Handler", fmt.Sprintf("%s %q: %v", r.Method, pfad, rec))
 				http.Error(w, "internal server error", http.StatusInternalServerError)
 			}
 		}()

@@ -101,6 +101,25 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
    - ~~*2. Durchgang, INFO-5:*~~ **Erledigt:** `/api/health/combined` und
      `/api/wache` schwärzen Hex-Werte (Wallet, Hash) im Degraded-Grund und
      kürzen ihn; der volle Text steht im Log (`[DEGRADED]`).
+7b. **Sperren ohne `defer` mit Aufrufen dazwischen** (Prüfung von #337,
+   NIEDRIG; bestand schon vorher). Paniert etwas zwischen `Lock` und
+   `Unlock`, bleibt die Sperre liegen: ein HTTP-Handler (`recoverMiddleware`)
+   oder ein `SafeCall` fängt die Panik, aber `cs.mu`/`dag.mu` bleibt gesperrt
+   – der Knoten steht, statt neu zu starten, und der Totmann sieht das bei
+   einem einzelnen Validator nicht (kein Peer voraus).
+   - **Erledigt:** der Sync-Pfad (`bekanntOderUnterFinalitaet`, Block eines
+     Peers) und die Drosselung der HTTP-Panikmeldungen
+     (Zweig `claude/weiter-gehts-vm8979-syncsperre`).
+   - **Offen:** eine grobe Suche fand 31 weitere Stellen mit Aufrufen
+     zwischen `Lock` und `Unlock` ohne `defer`, darunter der heiße
+     Überweisungspfad in `state.go` (4940, 5069: Schnappschuss und Rückrollen
+     unter `cs.mu.Lock`, über das öffentliche RPC erreichbar; 4870, 5024:
+     derselbe Weg ohne Datenbank),
+     `ueberweisungsgebuehr.go:88`, `snapshot.go:817`, `evm_storage.go:359/
+     401/490/4978`. Jede Stelle einzeln: in eine Funktion mit `defer`
+     auslagern oder zeigen, dass dazwischen nichts paniert. Wegen des heißen
+     Pfads mit eigener Messung und eigener Prüfung, nicht nebenbei.
+
 8. **WAL nach einem Rollenwechsel ohne Deckungsprüfung** (Prüfung von
    #322, INFO-15) – **erledigt mit #331:** Ein Knoten, der den Rest seines
    WAL nicht einspielt (Beobachter, `AEQUITAS_WAL_ENABLED` aus, Wiederanlauf

@@ -70,8 +70,11 @@ func SafeCall(label string, fn func()) {
 // Log-Rotation binnen Sekunden genau den ersten Stack, auf den es ankommt,
 // und ohne Rotation faellt die Platte voll (dann lehnt plattenplatz.go
 // Ueberweisungen ab). Darum: der erste Stack sofort, danach hoechstens einer
-// je panikStackAbstand; dazwischen wird nur gezaehlt, und die naechste
-// Meldung nennt die Zahl.
+// je panikStackAbstand. Dazwischen eine Zeile ohne Stack (Label und Wert,
+// gekuerzt), hoechstens panikZeilenJeAbstand je Abstand -- sonst verdeckte
+// eine Panik, die jemand jede Minute ausloest, jede andere unter demselben
+// Label (Pruefung #338). Darueber wird nur gezaehlt; die naechste Meldung
+// nennt die Zahl.
 var (
 	panikStackAbstand           = time.Minute
 	panikAusgabe      io.Writer = os.Stdout
@@ -79,13 +82,21 @@ var (
 	panikZaehler      = map[string]*panikStand{}
 )
 
+// panikZeilenJeAbstand: einzeilige Meldungen je Label und Abstand.
+const panikZeilenJeAbstand = 60
+
+// panikWertMax: so lang darf der Panikwert in einer Meldung werden; er kann
+// Daten einer Anfrage enthalten.
+const panikWertMax = 512
+
 // panikLabelsMax: Labels sind feste Zeichenketten im Code; die Grenze haelt
 // die Tabelle trotzdem fest, falls einmal ein Label aus Daten entsteht.
 const panikLabelsMax = 256
 
 type panikStand struct {
 	letzterStack time.Time
-	unterdrueckt int64
+	zeilen       int64 // Zeilen ohne Stack seit letzterStack
+	unterdrueckt int64 // weder Stack noch Zeile
 	gesamt       int64
 }
 
@@ -104,17 +115,29 @@ func panikMelden(label string, r interface{}) {
 	}
 	z.gesamt++
 	jetzt := time.Now()
+	wert := fmt.Sprintf("%v", r)
+	if len(wert) > panikWertMax {
+		wert = wert[:panikWertMax] + "…"
+	}
 	if !z.letzterStack.IsZero() && jetzt.Sub(z.letzterStack) < panikStackAbstand {
-		z.unterdrueckt++
+		if z.zeilen >= panikZeilenJeAbstand {
+			z.unterdrueckt++
+			panikZaehlerMu.Unlock()
+			return
+		}
+		z.zeilen++
+		gesamt := z.gesamt
 		panikZaehlerMu.Unlock()
+		fmt.Fprintf(panikAusgabe, "[PANIC RECOVERED] %q: %s (insgesamt %d, Stack siehe erste Meldung)\n", label, wert, gesamt)
 		return
 	}
 	unterdrueckt, gesamt := z.unterdrueckt, z.gesamt
 	z.unterdrueckt = 0
+	z.zeilen = 0
 	z.letzterStack = jetzt
 	panikZaehlerMu.Unlock()
-	fmt.Fprintf(panikAusgabe, "[PANIC RECOVERED] %q: %v (insgesamt %d, seit der letzten Meldung %d ohne Stack)\n%s\n",
-		label, r, gesamt, unterdrueckt, debug.Stack())
+	fmt.Fprintf(panikAusgabe, "[PANIC RECOVERED] %q: %s (insgesamt %d, seit der letzten Meldung %d ohne jede Zeile)\n%s\n",
+		label, wert, gesamt, unterdrueckt, debug.Stack())
 }
 
 // PanikStand fuer die Diagnose: abgefangene Paniken je Label.
