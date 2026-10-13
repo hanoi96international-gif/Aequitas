@@ -990,8 +990,8 @@ func (l *Leitung) Takt(jetzt time.Time) []LeitNachricht {
 			// er den Satz, den dieser Leiter beim Antritt neu gestempelt hat
 			// -- sonst lehnte er die Uebergabe ab (SatzHash), und bei zwei
 			// haengen beide in Terms ohne Leiter (Nachpruefung, Befund A).
-			_, quittiert := l.acks[n]
-			if n != "" && l.lebt(n, jetzt) && quittiert {
+			q, quittiert := l.acks[n]
+			if n != "" && l.lebt(n, jetzt) && quittiert && jetzt.Sub(q) < l.cfg.LeaseDauer {
 				l.abschliessen = true
 				l.uebergabeAn = n
 				l.abschlussBeginnt(jetzt)

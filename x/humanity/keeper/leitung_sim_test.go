@@ -51,9 +51,11 @@ type simNetz struct {
 	// mit C, aber A nicht mit C. Genau dort entscheidet die Lease-Zusage
 	// (ein Folger, der dem Leiter bestaetigt hat, stimmt fuer niemand anderen).
 	gekappt map[[2]int]bool
-	cfg     LeitKonfig
-	start   string
-	faehig  map[string]bool
+	// einweg: Nachrichten von a an b gehen verloren (b an a nicht).
+	einweg map[[2]int]bool
+	cfg    LeitKonfig
+	start  string
+	faehig map[string]bool
 	// Mitgliedschaft: Genesis-Satz (nil = alle) und Zulassung (nil = alle).
 	genesis    []string
 	zugelassen map[string]bool
@@ -118,7 +120,7 @@ func (n *simNetz) verbunden(a, b int) bool {
 }
 
 func (n *simNetz) sende(von int, m LeitNachricht, an int, antwort bool) {
-	if n.r.Float64() < n.verlust {
+	if n.r.Float64() < n.verlust || n.einweg[[2]int{von, an}] {
 		return
 	}
 	verz := time.Duration(5+n.r.Intn(150)) * time.Millisecond

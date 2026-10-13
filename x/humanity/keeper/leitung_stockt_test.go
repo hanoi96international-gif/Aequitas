@@ -25,7 +25,7 @@ func TestLeitung3_StockenderLeiterGibtNachDerFristAb(t *testing.T) {
 	n.knoten[0].l.SetzeStockt(true)
 	// Seit dem Antritt sind erst 5 s vergangen: noch keine Abgabe.
 	n.laufe(10 * time.Second)
-	if i := n.annehmender(); i != 0 && n.knoten[0].l.Stand(n.uhr(0))["uebergabe_laeuft"] == true {
+	if i := n.annehmender(); i != 0 {
 		t.Fatalf("vor der Frist abgegeben (%d)", i)
 	}
 	n.laufe(30 * time.Second)
@@ -163,6 +163,31 @@ func TestLeitung2_RueckgabeErstNachQuittung(t *testing.T) {
 		if n.annehmender() < 0 {
 			t.Fatalf("seed %d: kein Leiter", seed)
 		}
+	}
+}
+
+// Hoert der Leiter den anderen (Hallo), aber der andere ihn nicht mehr
+// (einseitiger Verlust), ginge eine Uebergabe verloren -- bei zwei hinge der
+// Abgebende dann ohne Leiter. Abgegeben wird nur an einen, der eine frische
+// Lease quittiert hat.
+func TestLeitung2_KeineAbgabeOhneFrischeQuittung(t *testing.T) {
+	c := stockKonfig()
+	c.ZweiWechseln = true
+	n := neuesSimNetz(t, 2, 29, c)
+	n.einweg = map[[2]int]bool{}
+	n.laufe(30 * time.Second)
+	n.einweg[[2]int{0, 1}] = true
+	n.laufe(10 * time.Second) // laenger als LeaseDauer: die letzte Quittung ist alt
+	n.knoten[0].l.SetzeStockt(true)
+	n.laufe(60 * time.Second)
+	if st := n.knoten[0].l.Stand(n.uhr(0)); st["rolle"] != leitLeiter.String() {
+		t.Fatalf("an einen abgegeben, der die Lease nicht mehr bekommt: %v", st["rolle"])
+	}
+	// Die Verbindung heilt: jetzt quittiert er, und die Abgabe gelingt.
+	n.einweg = map[[2]int]bool{}
+	n.laufe(30 * time.Second)
+	if i := n.annehmender(); i != 1 {
+		t.Fatalf("nimmt %d an, erwartet 1", i)
 	}
 }
 
