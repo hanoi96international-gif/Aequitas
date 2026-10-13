@@ -2,9 +2,14 @@ package keeper
 
 import (
 	"context"
+	"database/sql"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/lib/pq"
 )
 
 // VALIDATOREN-BELOHNUNG AUS DER KETTE (Validator-Register Schritt 3, Teil 2;
@@ -28,9 +33,29 @@ import (
 // Voraussetzung, damit Validatoren ohne Liste zugelassen werden koennen.
 //
 // FENSTER. Gezaehlt werden die 24 Stunden bis anwesenheitRand vor der Runde.
-// Bloecke, die so alt sind, hat jeder Knoten, der dem Netz folgt; ganz
-// frische koennten bei Erzeuger und Nachspielendem verschieden angekommen
-// sein.
+//
+// KEGEL (OFFEN 3). Gezaehlt wird nicht jeder Block, den ein Knoten im Fenster
+// kennt, sondern nur der Vergangenheitskegel eines ANKERS: des nachgespielten
+// Blocks mit dem hoechsten Blue-Score in [Runde-10 min, Runde]. Der Anker steht
+// in jeder Gutschrift (Transaction.Anker). Der Kegel haengt nur an Hashes und
+// Eltern-Verweisen -- nicht daran, welche Bloecke ein Knoten gerade gesehen
+// hat (an der Finalitaetswand, frisch synchronisiert). Hat ein Knoten einen
+// Block mehr oder weniger, rechnet er trotzdem gleich; fehlt ihm einer IM
+// Kegel, rechnet er nicht nach (unsicher), statt falsch. Rote Bloecke zaehlen
+// mit -- auch sie sind unterschriebene Anwesenheit.
+//
+// Der Anker muss ein Vorfahr des Blocks sein, der die Gutschrift traegt
+// (Pruefung des Kegel-PR, HOCH 1): diese Geschichte hat jeder Nachspielende.
+// Ein erfundener Anker ist eine Abweichung, kein "unsicher" -- ueber
+// "unsicher" entscheidet nur die eigene Geschichte des Knotens, nie der
+// Erzeuger.
+//
+// OFFEN (HOCH 2 derselben Pruefung, Voraussetzung vor dem Einschalten): Den
+// Anker WAEHLT der Erzeuger, und sein Kegel haengt an den Eltern, nicht an
+// der Zeit. Ein Erzeuger mit einem eigenen Zweig, der fremde Bloecke nie als
+// Eltern nennt, koennte einen Anker mit kleinem Kegel nennen. Der Anker muss
+// darum noch deterministisch aus dem tragenden Block folgen (siehe
+// docs/OFFEN.md, Punkt 3).
 //
 // SCHALTER. Erst, wenn das ganze Fenster nach erzeugerSchnittAb liegt: ab
 // dann erzeugt nur, wer gebunden ist, und jeder Block hat einen Betreiber im
@@ -62,7 +87,26 @@ const (
 	// anwesenheitSchluesselGrenze: hoechstens so viele verschiedene
 	// Erzeugerschluessel im Fenster. Mehr ist ein Fehler, kein Abschneiden.
 	anwesenheitSchluesselGrenze = 1000
+	// validatorAnkerHoechstensAlt: der Anker liegt hoechstens so weit vor
+	// der Runde.
+	validatorAnkerHoechstensAlt int64 = 600
+	// anwesenheitKegelPuffer: so weit unter den Fensteranfang steigt der Kegel
+	// noch ab -- ein Kind darf bis zu 120 s vor seinem Elternblock liegen.
+	anwesenheitKegelPuffer int64 = 600
+	// kegelStapel: so viele Hashes je Abfrage.
+	kegelStapel = 2000
 )
+
+// anwesenheitKegelGrenze: so viele Bloecke liest die Kegelzaehlung hoechstens
+// (ein Tag bei einem Block je Sekunde sind 86.400; mehrere Validatoren bauen
+// je Takt mehrere). Variable nur fuer Tests.
+var anwesenheitKegelGrenze = 400_000
+
+// kegelVorratGrenze: so viele Zeilen haelt der Vorrat (Zeitraum plus
+// Nachschlagen) hoechstens. Der Vorrat haengt davon ab, was DIESER Knoten
+// sonst noch kennt (Seitenzweige, spaetere Bloecke) -- wird er zu gross,
+// ist das kein Urteil ueber den Anker, sondern kegelLuecke.
+func kegelVorratGrenze() int { return 2 * anwesenheitKegelGrenze }
 
 // validatorLohnAusKette: wird die Runde zur Zeit rundeAt aus der Kette
 // verteilt?
@@ -90,51 +134,322 @@ type betreiberMinuten struct {
 	minuten int64
 }
 
+// validatorAnkerWaehlen: der nachgespielte Block mit dem hoechsten Blue-Score
+// in [rundeAt-10 min, rundeAt]; "" = keiner. Nur der Erzeuger waehlt; wer
+// nachspielt, nimmt den Anker aus der Gutschrift.
+func validatorAnkerWaehlen(q sqlExecutor, rundeAt int64) (string, error) {
+	var h string
+	err := q.QueryRow(`SELECT hash FROM chain_blocks
+		WHERE timestamp <= $1 AND timestamp >= $2 AND COALESCE(replayed, true)
+		ORDER BY blue_score DESC, hash ASC LIMIT 1`, rundeAt, rundeAt-validatorAnkerHoechstensAlt).Scan(&h)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return h, err
+}
+
+// istBlockHash: 64 Hex-Zeichen, klein -- so speichert chain_blocks Hashes.
+// Ein Anker in anderer Schreibweise fuehrte sonst ins Leere.
+func istBlockHash(h string) bool {
+	if len(h) != 64 {
+		return false
+	}
+	for _, c := range h {
+		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
+			return false
+		}
+	}
+	return true
+}
+
+// ankerIstVorfahr: liegt anker im Vergangenheitskegel von eltern (den Eltern
+// des tragenden Blocks), abgestiegen bis zur Zeit grenze? vollstaendig =
+// false: dieser Knoten kennt einen Block auf dem Weg nicht (eigene Luecke)
+// oder sein Vorrat wurde zu gross -- dann ist "nicht gefunden" kein Urteil.
+// Eine Abfrage fuer den Zeitraum, Nachschlagen nur fuer Eltern ausserhalb.
+func ankerIstVorfahr(q sqlExecutor, eltern []string, anker string, grenze, bis int64) (gefunden, vollstaendig bool, err error) {
+	if len(eltern) == 0 {
+		return false, false, nil
+	}
+	type eintrag struct {
+		zeit   int64
+		eltern string
+	}
+	bloecke := map[string]eintrag{}
+	lies := func(rows *sql.Rows) error {
+		defer rows.Close()
+		for rows.Next() {
+			var h string
+			var e eintrag
+			if err := rows.Scan(&h, &e.zeit, &e.eltern); err != nil {
+				return err
+			}
+			bloecke[h] = e
+			if len(bloecke) > kegelVorratGrenze() {
+				return errKegelVorratZuGross
+			}
+		}
+		return rows.Err()
+	}
+	rows, err := q.Query(`SELECT hash, timestamp, parent_hashes FROM chain_blocks
+		WHERE timestamp >= $1 AND timestamp <= $2 LIMIT $3`, grenze, bis, kegelVorratGrenze()+1)
+	if err != nil {
+		return false, false, err
+	}
+	if err := lies(rows); err != nil {
+		if errors.Is(err, errKegelVorratZuGross) {
+			return false, false, nil
+		}
+		return false, false, err
+	}
+	gesehen := map[string]bool{}
+	var offen []string
+	for _, p := range eltern {
+		if !gesehen[p] {
+			gesehen[p] = true
+			offen = append(offen, p)
+		}
+	}
+	vollstaendig = true
+	for len(offen) > 0 {
+		var fehlt []string
+		for _, h := range offen {
+			if h == anker {
+				return true, true, nil
+			}
+			if _, ok := bloecke[h]; !ok {
+				fehlt = append(fehlt, h)
+			}
+		}
+		for i := 0; i < len(fehlt); i += kegelStapel {
+			j := i + kegelStapel
+			if j > len(fehlt) {
+				j = len(fehlt)
+			}
+			rows, err := q.Query(`SELECT hash, timestamp, parent_hashes FROM chain_blocks WHERE hash = ANY($1)`, pq.Array(fehlt[i:j]))
+			if err != nil {
+				return false, false, err
+			}
+			if err := lies(rows); err != nil {
+				if errors.Is(err, errKegelVorratZuGross) {
+					return false, false, nil
+				}
+				return false, false, err
+			}
+		}
+		var naechste []string
+		for _, h := range offen {
+			e, ok := bloecke[h]
+			if !ok {
+				vollstaendig = false // eigene Luecke; die anderen Wege weiter
+				continue
+			}
+			if e.zeit < grenze {
+				continue
+			}
+			var ph []string
+			if err := json.Unmarshal([]byte(e.eltern), &ph); err != nil {
+				return false, false, fmt.Errorf("Eltern von %s nicht lesbar: %w", kurzAdresse(h), err)
+			}
+			for _, p := range ph {
+				if !gesehen[p] {
+					gesehen[p] = true
+					naechste = append(naechste, p)
+				}
+			}
+			if len(gesehen) > kegelVorratGrenze() {
+				return false, false, nil
+			}
+		}
+		offen = naechste
+	}
+	return false, vollstaendig, nil
+}
+
+// validatorAnkerZeit: die Zeit des Ankers; gefunden = false: dieser Knoten
+// kennt ihn (noch) nicht als nachgespielten Block.
+func validatorAnkerZeit(q sqlExecutor, anker string) (zeit int64, gefunden bool, err error) {
+	err = q.QueryRow(`SELECT timestamp FROM chain_blocks WHERE hash = $1 AND COALESCE(replayed, true)`, anker).Scan(&zeit)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, false, nil
+	}
+	return zeit, err == nil, err
+}
+
+// kegelBlock: ein Block im Vergangenheitskegel.
+type kegelBlock struct {
+	proposer string
+	zeit     int64
+}
+
+// kegelStand: wie vollstaendig der Kegel gelesen wurde.
+type kegelStand int
+
+const (
+	kegelVollstaendig kegelStand = iota
+	// kegelLuecke: ein Block des Kegels fehlt in chain_blocks -- die
+	// Geschichte ist nicht ganz da (frisch aus einem Snapshot) -- oder der
+	// Vorrat dieses Knotens wurde zu gross. Kein Urteil ueber den Anker.
+	kegelLuecke
+	// kegelZuGross: mehr als anwesenheitKegelGrenze Bloecke.
+	kegelZuGross
+)
+
+// bloeckeImKegel: die Bloecke im Vergangenheitskegel des Ankers (der Anker
+// eingeschlossen) mit Zeit in [seit, bis). Abgestiegen wird bis
+// seit - anwesenheitKegelPuffer; was darunter liegt, wird nicht weiter
+// verfolgt. Haengt nur an Hashes -- jeder Knoten mit derselben Geschichte
+// liest denselben Kegel.
+//
+// EINE Abfrage fuer den Zeitraum, der Abstieg im Speicher: Ebene fuer Ebene
+// je eine Abfrage hiesse bei einer Kette mit meist einem Elternblock rund
+// 86.400 Abfragen fuer einen Tag -- unter cs.mu. Eltern ausserhalb des
+// Zeitraums (ein Kind darf vor seinem Elternblock liegen) werden einzeln
+// nachgeschlagen. Fehlt ein Block ganz: kegelLuecke.
+func bloeckeImKegel(q sqlExecutor, anker string, seit, bis int64) ([]kegelBlock, kegelStand, error) {
+	untergrenze := seit - anwesenheitKegelPuffer
+	ankerZeit, gefunden, err := validatorAnkerZeit(q, anker)
+	if err != nil {
+		return nil, kegelLuecke, fmt.Errorf("Kegel lesen: %w", err)
+	}
+	if !gefunden {
+		return nil, kegelLuecke, nil
+	}
+	type eintrag struct {
+		proposer string
+		zeit     int64
+		eltern   string
+	}
+	bloecke := map[string]eintrag{}
+	lies := func(rows *sql.Rows) error {
+		defer rows.Close()
+		for rows.Next() {
+			var h string
+			var e eintrag
+			if err := rows.Scan(&h, &e.proposer, &e.zeit, &e.eltern); err != nil {
+				return err
+			}
+			bloecke[h] = e
+			if len(bloecke) > kegelVorratGrenze() {
+				return errKegelVorratZuGross
+			}
+		}
+		return rows.Err()
+	}
+	rows, err := q.Query(`SELECT hash, proposer, timestamp, parent_hashes FROM chain_blocks
+		WHERE timestamp >= $1 AND timestamp <= $2 LIMIT $3`, untergrenze, ankerZeit+anwesenheitKegelPuffer, kegelVorratGrenze()+1)
+	if err != nil {
+		return nil, kegelLuecke, fmt.Errorf("Kegel lesen: %w", err)
+	}
+	if err := lies(rows); err != nil {
+		if errors.Is(err, errKegelVorratZuGross) {
+			return nil, kegelLuecke, nil
+		}
+		return nil, kegelLuecke, fmt.Errorf("Kegel lesen: %w", err)
+	}
+	gesehen := map[string]bool{anker: true}
+	offen := []string{anker}
+	var out []kegelBlock
+	for len(offen) > 0 {
+		// Was nicht im Zeitraum lag: einzeln nachschlagen.
+		var fehlt []string
+		for _, h := range offen {
+			if _, ok := bloecke[h]; !ok {
+				fehlt = append(fehlt, h)
+			}
+		}
+		for i := 0; i < len(fehlt); i += kegelStapel {
+			j := i + kegelStapel
+			if j > len(fehlt) {
+				j = len(fehlt)
+			}
+			rows, err := q.Query(`SELECT hash, proposer, timestamp, parent_hashes FROM chain_blocks WHERE hash = ANY($1)`, pq.Array(fehlt[i:j]))
+			if err != nil {
+				return nil, kegelLuecke, fmt.Errorf("Kegel lesen: %w", err)
+			}
+			if err := lies(rows); err != nil {
+				if errors.Is(err, errKegelVorratZuGross) {
+					return nil, kegelLuecke, nil
+				}
+				return nil, kegelLuecke, fmt.Errorf("Kegel lesen: %w", err)
+			}
+		}
+		var naechste []string
+		for _, h := range offen {
+			e, ok := bloecke[h]
+			if !ok {
+				return nil, kegelLuecke, nil // die Geschichte ist nicht ganz da
+			}
+			if e.zeit >= seit && e.zeit < bis {
+				out = append(out, kegelBlock{proposer: strings.ToLower(e.proposer), zeit: e.zeit})
+			}
+			if e.zeit < untergrenze {
+				continue
+			}
+			var ph []string
+			if err := json.Unmarshal([]byte(e.eltern), &ph); err != nil {
+				return nil, kegelLuecke, fmt.Errorf("Kegel: Eltern von %s nicht lesbar: %w", kurzAdresse(h), err)
+			}
+			for _, p := range ph {
+				if !gesehen[p] {
+					gesehen[p] = true
+					naechste = append(naechste, p)
+				}
+			}
+			if len(gesehen) > anwesenheitKegelGrenze {
+				return nil, kegelZuGross, nil
+			}
+		}
+		offen = naechste
+	}
+	return out, kegelVollstaendig, nil
+}
+
+var errKegelVorratZuGross = errors.New("Kegel-Vorrat zu gross")
+
 // validatorAnwesenheitAusKetteLocked: je menschlichem Betreiber die Zahl der
 // Minuten im Fenster der Runde, in denen ein Schluessel, den er zur Blockzeit
-// hielt, einen Block gebaut hat. Sortiert nach Wallet; Summe der Minuten.
+// hielt, einen Block IM KEGEL DES ANKERS gebaut hat. Sortiert nach Wallet;
+// Summe der Minuten. Bei kegelLuecke oder kegelZuGross keine Minuten.
 // Unter cs.mu, in der Transaktion von ctx (Erzeuger:
 // runAtomicDistributionWithOutbox, Nachspielender: replayTransactions).
-func (cs *ChainState) validatorAnwesenheitAusKetteLocked(ctx context.Context, rundeAt int64) ([]betreiberMinuten, int64, error) {
+func (cs *ChainState) validatorAnwesenheitAusKetteLocked(ctx context.Context, rundeAt int64, anker string) ([]betreiberMinuten, int64, kegelStand, error) {
 	if cs.db == nil {
-		return nil, 0, fmt.Errorf("keine Datenbank")
+		return nil, 0, kegelLuecke, fmt.Errorf("keine Datenbank")
 	}
 	q := cs.dbExecCtx(ctx)
 	seit, bis := anwesenheitsFenster(rundeAt)
+	kegel, stand, err := bloeckeImKegel(q, anker, seit, bis)
+	if err != nil || stand != kegelVollstaendig {
+		return nil, 0, stand, err
+	}
 	// Je Schluessel und Minute die frueheste Blockzeit -- sie entscheidet,
 	// wem die Minute gehoert.
-	rows, err := q.Query(`SELECT lower(proposer), timestamp / 60, MIN(timestamp) FROM chain_blocks
-		WHERE timestamp >= $1 AND timestamp < $2
-		GROUP BY 1, 2`, seit, bis)
-	if err != nil {
-		return nil, 0, fmt.Errorf("Bloecke des Fensters: %w", err)
-	}
 	type schluesselMinute struct {
 		signing string
 		minute  int64
 		zeit    int64
 	}
-	var bloecke []schluesselMinute
+	type schluesselUndMinute struct {
+		signing string
+		minute  int64
+	}
+	frueheste := map[schluesselUndMinute]*schluesselMinute{}
 	schluessel := map[string]bool{}
-	for rows.Next() {
-		var s schluesselMinute
-		if err := rows.Scan(&s.signing, &s.minute, &s.zeit); err != nil {
-			rows.Close()
-			return nil, 0, fmt.Errorf("Bloecke des Fensters: %w", err)
+	for _, b := range kegel {
+		if !schluessel[b.proposer] && len(schluessel) >= anwesenheitSchluesselGrenze {
+			// Haengt nur am Kegel: jeder Knoten mit demselben Anker sieht
+			// dasselbe -- ein Urteil, kein Lesefehler.
+			return nil, 0, kegelZuGross, nil
 		}
-		if !schluessel[s.signing] && len(schluessel) >= anwesenheitSchluesselGrenze {
-			rows.Close()
-			return nil, 0, fmt.Errorf("mehr als %d Erzeugerschluessel im Fenster", anwesenheitSchluesselGrenze)
+		schluessel[b.proposer] = true
+		k := schluesselUndMinute{b.proposer, b.zeit / 60}
+		if v := frueheste[k]; v == nil || b.zeit < v.zeit {
+			frueheste[k] = &schluesselMinute{signing: b.proposer, minute: b.zeit / 60, zeit: b.zeit}
 		}
-		schluessel[s.signing] = true
-		bloecke = append(bloecke, s)
 	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return nil, 0, fmt.Errorf("Bloecke des Fensters: %w", err)
-	}
-	if len(bloecke) == 0 {
-		return nil, 0, nil
+	if len(frueheste) == 0 {
+		return nil, 0, kegelVollstaendig, nil
 	}
 	liste := make([]string, 0, len(schluessel))
 	for s := range schluessel {
@@ -143,7 +458,7 @@ func (cs *ChainState) validatorAnwesenheitAusKetteLocked(ctx context.Context, ru
 	sort.Strings(liste)
 	zeilen, err := verlaufLesen(q, liste)
 	if err != nil {
-		return nil, 0, fmt.Errorf("Verlauf: %w", err)
+		return nil, 0, kegelVollstaendig, fmt.Errorf("Verlauf: %w", err)
 	}
 	betreiber := map[string]bool{}
 	for _, z := range zeilen {
@@ -162,7 +477,7 @@ func (cs *ChainState) validatorAnwesenheitAusKetteLocked(ctx context.Context, ru
 	}
 	st := &erzeugerStand{fenster: fensterAusIntervallen(bindungsIntervalle(zeilen), menschen, schluessel)}
 	minuten := map[string]map[int64]bool{}
-	for _, s := range bloecke {
+	for _, s := range frueheste {
 		wer := st.erzeugerFenster(s.signing, s.zeit)
 		if wer == "" {
 			continue
@@ -179,26 +494,7 @@ func (cs *ChainState) validatorAnwesenheitAusKetteLocked(ctx context.Context, ru
 		summe += int64(len(m))
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].wallet < out[j].wallet })
-	return out, summe, nil
-}
-
-// anwesenheitAbschnitt: das Fenster in Abschnitte dieser Laenge; jeder muss
-// Bloecke haben, damit ein Knoten die Runde nachrechnet.
-const anwesenheitAbschnitt int64 = 10 * 60
-
-// validatorFensterVollstaendigLocked: hat dieser Knoten Bloecke in jedem
-// Abschnitt des Fensters? Jeder Validator baut in jedem Takt einen Block --
-// ein leerer Abschnitt heisst: dieser Knoten hat ein Stueck nicht (frisch
-// aus einem Snapshot, neu aufgesetzt mit Luecke), oder die Kette stand; dann
-// sehen es alle gleich. Ohne Vollstaendigkeit rechnet er nicht nach.
-func (cs *ChainState) validatorFensterVollstaendigLocked(ctx context.Context, rundeAt int64) (bool, error) {
-	seit, bis := anwesenheitsFenster(rundeAt)
-	var abschnitte int64
-	if err := cs.dbExecCtx(ctx).QueryRow(`SELECT COUNT(DISTINCT (timestamp - $1) / $3) FROM chain_blocks
-		WHERE timestamp >= $1 AND timestamp < $2`, seit, bis, anwesenheitAbschnitt).Scan(&abschnitte); err != nil {
-		return false, err
-	}
-	return abschnitte >= (bis-seit)/anwesenheitAbschnitt, nil
+	return out, summe, kegelVollstaendig, nil
 }
 
 // ------------------------------------------------------------ Nachrechnen
@@ -209,10 +505,83 @@ type validatorRundePruefung struct {
 	unsicher bool
 	aktiv    bool
 	rundeAt  int64
+	anker    string
 	// Nur wenn aktiv und nicht unsicher: Wallet -> erwarteter Betrag (Mikro).
 	erwartet map[string]int64
 	n        int64
 	bedacht  map[string]int64
+	// urteil: nur zwischen validatorRundeBeginnenLocked und dem Aufrufer.
+	urteil error
+}
+
+// validatorRundeBeginnenLocked: die erste Gutschrift einer Runde -- Anker
+// pruefen und die Erwartung rechnen. Setzt r.unsicher (eigene Luecke,
+// eigener Lesefehler: kein Urteil, Pruefung von #Kegel MITTEL 4) oder
+// r.urteil (Abweichung) oder r.erwartet.
+func (cs *ChainState) validatorRundeBeginnenLocked(r *validatorRundePruefung, tx *Transaction, blockZeit int64) {
+	ctx := context.Background()
+	q := cs.dbExecCtx(ctx)
+	if q == nil || cs.db == nil {
+		r.unsicher = true
+		return
+	}
+	untergrenze := tx.DistributionAt - validatorAnkerHoechstensAlt
+	// 1. Vorfahr des tragenden Blocks? Abgestiegen bis unter die
+	// fruehestmoegliche Ankerzeit (Kinder duerfen vor ihren Eltern liegen).
+	gefunden, vollstaendig, err := ankerIstVorfahr(q, cs.nachrechnenEltern, tx.Anker,
+		untergrenze-anwesenheitKegelPuffer, sattAdd(blockZeit, anwesenheitKegelPuffer))
+	switch {
+	case err != nil:
+		fmt.Printf("[NACHRECHNEN] Validatoren-Runde: Vorfahren nicht lesbar (%v) -- nicht nachgerechnet\n", err)
+		r.unsicher = true
+		return
+	case !gefunden && vollstaendig:
+		r.urteil = nachrechnenAbweichung("validator_anker", blockZeit,
+			"Anker %s ist kein Vorfahr des Blocks", kurzAdresse(tx.Anker))
+		r.unsicher = true // die Gutschriften dieser Runde nicht weiter gegen eine Erwartung pruefen
+		return
+	case !gefunden:
+		r.unsicher = true // eigene Luecke
+		return
+	}
+	// 2. Zeit des Ankers.
+	ankerZeit, kenntAnker, err := validatorAnkerZeit(q, tx.Anker)
+	if err != nil || !kenntAnker {
+		// Vorfahr, aber (noch) nicht nachgespielt oder nicht lesbar.
+		r.unsicher = true
+		return
+	}
+	if ankerZeit > tx.DistributionAt || ankerZeit < untergrenze {
+		r.urteil = nachrechnenAbweichung("validator_anker", blockZeit,
+			"Anker %s (Zeit %d) liegt nicht in [%d, %d]", kurzAdresse(tx.Anker), ankerZeit,
+			untergrenze, tx.DistributionAt)
+		r.unsicher = true
+		return
+	}
+	// 3. Der Kegel.
+	betreiber, alle, stand, err := cs.validatorAnwesenheitAusKetteLocked(ctx, tx.DistributionAt, tx.Anker)
+	switch {
+	case err != nil:
+		fmt.Printf("[NACHRECHNEN] Validatoren-Runde: Kegel nicht lesbar (%v) -- nicht nachgerechnet\n", err)
+		r.unsicher = true
+	case stand == kegelZuGross:
+		// Der Erzeuger zahlt bei einem zu grossen Kegel nicht aus --
+		// derselbe Anker ergibt bei jedem denselben Kegel.
+		r.urteil = nachrechnenAbweichung("validator_kegel", blockZeit,
+			"Kegel des Ankers %s zu gross (mehr als %d Bloecke oder %d Schluessel)",
+			kurzAdresse(tx.Anker), anwesenheitKegelGrenze, anwesenheitSchluesselGrenze)
+		r.unsicher = true
+	case stand == kegelLuecke:
+		r.unsicher = true
+	default:
+		topf := NewDecimalFromMicro(cs.topfMikroLocked(validatorsPoolAddr)).Float()
+		r.erwartet = make(map[string]int64, len(betreiber))
+		for _, b := range betreiber {
+			if anteil := validatorAnteil(b.minuten, alle, topf); anteil > 0 {
+				r.erwartet[b.wallet] = NewDecimal(anteil).Micro()
+			}
+		}
+	}
 }
 
 func (r validatorRundePruefung) zurueck() validatorRundePruefung {
@@ -249,6 +618,15 @@ func (cs *ChainState) nachrechnenValidatorLocked(tx *Transaction, blockZeit int6
 		return nachrechnenAbweichung("validator_runde", blockZeit,
 			"Rundenzeit %d vor der Umstellung", tx.DistributionAt)
 	}
+	// Ab der Umstellung traegt jede Gutschrift ihren Anker (OFFEN 3).
+	if tx.Anker == "" {
+		return nachrechnenAbweichung("validator_ohne_anker", blockZeit,
+			"%s: Gutschrift ohne Anker", kurzAdresse(wallet))
+	}
+	if !istBlockHash(tx.Anker) {
+		return nachrechnenAbweichung("validator_anker", blockZeit,
+			"%s: Anker %q ist kein Blockhash", kurzAdresse(wallet), kurzAdresse(tx.Anker))
+	}
 	r := &cs.validatorRunde
 	if r.aktiv && r.rundeAt != tx.DistributionAt {
 		if err := nachrechnenAbweichung("validator_runde", blockZeit,
@@ -259,34 +637,19 @@ func (cs *ChainState) nachrechnenValidatorLocked(tx *Transaction, blockZeit int6
 			return err
 		}
 	}
+	if r.aktiv && r.anker != tx.Anker {
+		return nachrechnenAbweichung("validator_anker", blockZeit,
+			"zwei Anker in einer Runde (%s, %s)", kurzAdresse(r.anker), kurzAdresse(tx.Anker))
+	}
 	if !r.aktiv {
 		unsicher := r.unsicher
-		*r = validatorRundePruefung{aktiv: true, unsicher: unsicher, rundeAt: tx.DistributionAt, bedacht: make(map[string]int64)}
+		*r = validatorRundePruefung{aktiv: true, unsicher: unsicher, rundeAt: tx.DistributionAt, anker: tx.Anker, bedacht: make(map[string]int64)}
 		if !unsicher {
-			ctx := context.Background()
-			voll, err := cs.validatorFensterVollstaendigLocked(ctx, tx.DistributionAt)
-			if err == nil && !voll {
-				r.unsicher = true
-			} else {
-				var betreiber []betreiberMinuten
-				var alle int64
-				if err == nil {
-					betreiber, alle, err = cs.validatorAnwesenheitAusKetteLocked(ctx, tx.DistributionAt)
-				}
-				if err != nil {
-					r.unsicher = true
-					if aerr := nachrechnenAbweichung("validator_unlesbar", blockZeit, "%v", err); aerr != nil {
-						return aerr
-					}
-				} else {
-					topf := NewDecimalFromMicro(cs.topfMikroLocked(validatorsPoolAddr)).Float()
-					r.erwartet = make(map[string]int64, len(betreiber))
-					for _, b := range betreiber {
-						if anteil := validatorAnteil(b.minuten, alle, topf); anteil > 0 {
-							r.erwartet[b.wallet] = NewDecimal(anteil).Micro()
-						}
-					}
-				}
+			cs.validatorRundeBeginnenLocked(r, tx, blockZeit)
+			if r.urteil != nil {
+				err := r.urteil
+				r.urteil = nil
+				return err
 			}
 		}
 	}
@@ -348,9 +711,17 @@ func rundeAusKette(ausKette bool, rundeAt int64) int64 {
 	return 0
 }
 
+// ankerAusKette: der Anker fuer die Gutschrift, nur wenn aus der Kette.
+func ankerAusKette(ausKette bool, anker string) string {
+	if ausKette {
+		return anker
+	}
+	return ""
+}
+
 // validatorGutschrift: die Transaktion einer Validatoren-Gutschrift -- aus der
 // Kette mit der Rundenzeit, nach der jeder Knoten nachrechnet.
 func validatorGutschrift(s DistributionShare) Transaction {
 	return Transaction{Type: "validator_distribution", Wallet: s.Wallet, Amount: s.Amount,
-		FromDemurrageLost: s.DemurrageLost, DistributionAt: s.RundeAt}
+		FromDemurrageLost: s.DemurrageLost, DistributionAt: s.RundeAt, Anker: s.Anker}
 }

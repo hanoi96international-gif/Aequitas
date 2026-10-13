@@ -102,8 +102,13 @@ type Transaction struct {
 	// value once and uses it for both its own immediate state and this
 	// field, so secondaries replay the IDENTICAL value instead of any
 	// wall-clock reading of their own.
-	DistributionAt int64  `json:"distribution_at,omitempty"`
-	TxHash         string `json:"tx_hash"`
+	DistributionAt int64 `json:"distribution_at,omitempty"`
+	// Anker: bei validator_distribution aus der Kette der Block, aus dessen
+	// Vergangenheitskegel die Anwesenheit gezaehlt wurde (validator_lohn_kette.go).
+	// Steht im Block (tx_root), also unveraenderlich; jeder Nachspielende
+	// rechnet mit genau diesem Anker nach.
+	Anker  string `json:"anker,omitempty"`
+	TxHash string `json:"tx_hash"`
 	// Nullifier and Commitment are set on register_human TXs so secondary
 	// nodes can apply the registration to their local state when they receive
 	// the block — without needing a separate snapshot or state sync.
@@ -7344,6 +7349,11 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 	// schleife_uebrig: alle anderen Transaktionsarten und der Aufwand je
 	// Durchlauf (Buendelsuche, Verzweigung, Protokoll).
 	phMarkSchleife := time.Now()
+	// Die Eltern des Blocks fuer das Nachrechnen der Validatoren-Runde: der
+	// Anker einer Gutschrift muss ein Vorfahr DIESES Blocks sein
+	// (validator_lohn_kette.go). Unter cs.mu gesetzt und zurueckgesetzt.
+	dag.state.nachrechnenEltern = block.ParentHashes
+	defer func() { dag.state.nachrechnenEltern = nil }()
 	for txIdx := 0; txIdx < len(block.Transactions); txIdx++ {
 		tx := block.Transactions[txIdx]
 		if hardFailure {
