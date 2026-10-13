@@ -366,10 +366,11 @@ func (cs *ChainState) pruefeVerantwortlichLocked(u string, n *Auftragsnachweis) 
 		return fmt.Errorf("%w: kein Verantwortlicher im Nachweis", ErrUeberweisungNichtSigniert)
 	}
 	w := cs.wirt()
-	w.mu.Lock()
-	e := w.offenesUnternehmenLocked(strings.ToLower(u))
-	ok := e != nil && e.istVerantwortlich(strings.ToLower(n.Von2))
-	w.mu.Unlock()
+	var ok bool
+	w.mitSperre(func() {
+		e := w.offenesUnternehmenLocked(strings.ToLower(u))
+		ok = e != nil && e.istVerantwortlich(strings.ToLower(n.Von2))
+	})
 	if !ok {
 		return fmt.Errorf("%w: %s ist nicht verantwortlich fuer %s", ErrUeberweisungNichtSigniert, n.Von2, u)
 	}

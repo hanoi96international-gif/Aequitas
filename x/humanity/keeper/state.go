@@ -4973,8 +4973,7 @@ func (cs *ChainState) runAtomicWithOutbox(touchedAddrs []string, fullSnapshot bo
 		if rbErr := cs.restoreFromRollbackLocked(snap); rbErr != nil {
 			fmt.Printf("[ATOMIC] CRITICAL: rollback persistence failed after operation failure — memory/DB may now disagree: %v\n", rbErr)
 		}
-		ab.gesperrt = false
-		cs.mu.Unlock()
+		ab.entsperren()
 		if fnErr != nil {
 			return fnErr
 		}
@@ -4982,7 +4981,7 @@ func (cs *ChainState) runAtomicWithOutbox(touchedAddrs []string, fullSnapshot bo
 	}
 
 	phCommit := time.Now()
-	ab.abgeschlossen = true // ab hier entscheidet tx.Commit, nicht mehr die Panik-Rueckrollung
+	ab.imCommit = true // ab hier: eine Panik heisst Ausgang unbekannt -> Neustart
 	commitFehler := tx.Commit()
 	atomicPhasenStand.notiere(&atomicPhasenStand.commitNs, phCommit)
 	if err := commitFehler; err != nil {
@@ -4990,15 +4989,14 @@ func (cs *ChainState) runAtomicWithOutbox(touchedAddrs []string, fullSnapshot bo
 		if rbErr := cs.restoreFromRollbackLocked(snap); rbErr != nil {
 			fmt.Printf("[ATOMIC] CRITICAL: rollback persistence failed after commit failure — memory/DB may now disagree: %v\n", rbErr)
 		}
-		ab.gesperrt = false
-		cs.mu.Unlock()
+		ab.entsperren()
 		return fmt.Errorf("commit failed (state mutation rolled back): %w", err)
 	}
+	ab.abgeschlossen = true
 	cs.setActiveTx(nil)
 	atomicPhasenStand.notiere(&atomicPhasenStand.haltNs, phHalt)
 	atomicPhasenStand.laeufe.Add(1)
-	ab.gesperrt = false
-	cs.mu.Unlock()
+	ab.entsperren()
 	return nil
 }
 
@@ -5095,27 +5093,25 @@ func (cs *ChainState) runAtomicDistributionWithOutbox(fn func(ctx context.Contex
 		if rbErr := cs.restoreFromRollbackLocked(snap); rbErr != nil {
 			fmt.Printf("[ATOMIC] CRITICAL: distribution rollback persistence failed — memory/DB may now disagree: %v\n", rbErr)
 		}
-		ab.gesperrt = false
-		cs.mu.Unlock()
+		ab.entsperren()
 		if fnErr != nil {
 			return fnErr
 		}
 		return fmt.Errorf("outbox insert failed inside atomic distribution transaction (state mutation rolled back): %w", outboxErr)
 	}
 
-	ab.abgeschlossen = true
+	ab.imCommit = true
 	if err := tx.Commit(); err != nil {
 		cs.setActiveTx(nil)
 		if rbErr := cs.restoreFromRollbackLocked(snap); rbErr != nil {
 			fmt.Printf("[ATOMIC] CRITICAL: distribution rollback persistence failed after commit failure — memory/DB may now disagree: %v\n", rbErr)
 		}
-		ab.gesperrt = false
-		cs.mu.Unlock()
+		ab.entsperren()
 		return fmt.Errorf("commit failed (state mutation rolled back): %w", err)
 	}
+	ab.abgeschlossen = true
 	cs.setActiveTx(nil)
-	ab.gesperrt = false
-	cs.mu.Unlock()
+	ab.entsperren()
 	return nil
 }
 

@@ -57,9 +57,7 @@ type vorbehaltAuftrag struct {
 func (cs *ChainState) vorbehaltAuftragLocked(konto string) (vorbehaltAuftrag, bool, error) {
 	var a vorbehaltAuftrag
 	if cs.db == nil {
-		offeneVorbehalteMu.Lock()
-		o, ok := cs.vorbehalte[konto]
-		offeneVorbehalteMu.Unlock()
+		o, ok := cs.vorbehaltAusKarte(konto)
 		return vorbehaltAuftrag{o.wallet, o.art, o.betrag, o.betrag2, o.minOut}, ok, nil
 	}
 	err := cs.dbExecCtx(context.Background()).QueryRow(

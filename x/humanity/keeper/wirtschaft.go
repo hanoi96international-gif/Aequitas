@@ -312,6 +312,15 @@ func (w *wirtschaft) offenesUnternehmenLocked(addr string) *unternehmenEintrag {
 }
 
 // istUnternehmen: offenes Unternehmenskonto? (Konsens: nur aus dem Register.)
+// mitSperre: fn unter w.mu, freigegeben mit defer. Das Zuruecksetzen nach
+// einer Panik im atomaren Pfad (buchZurueck) wartet auf w.mu -- eine
+// liegengebliebene Sperre hielte dort den ganzen Knoten fest (Pruefung #339).
+func (w *wirtschaft) mitSperre(fn func()) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	fn()
+}
+
 func (w *wirtschaft) istUnternehmen(addr string) bool {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -659,9 +668,8 @@ func (cs *ChainState) gebuehrMitWirtschaft(from, to string, fromArt, toArt konto
 	switch fromArt {
 	case artMensch:
 		w := cs.wirt()
-		w.mu.Lock()
-		frei := math.Max(0, menschFreiAusgabenMonat-w.kontoLocked(from, jetzt).Ausgegeben)
-		w.mu.Unlock()
+		var frei float64
+		w.mitSperre(func() { frei = math.Max(0, menschFreiAusgabenMonat-w.kontoLocked(from, jetzt).Ausgegeben) })
 		return grundGebuehr(math.Max(0, amount-frei))
 	case artUnternehmen:
 		if toArt == artMensch {
@@ -715,7 +723,12 @@ func (cs *ChainState) nachUeberweisung(ctx context.Context, from, to string, fro
 		return nil
 	}
 	w := cs.wirt()
-	w.mu.Lock()
+	w.mitSperre(func() { cs.buchUeberweisungLocked(w, from, to, fromArt, toArt, amount, jetzt) })
+	return cs.speichereBuchCtx(ctx, from, to)
+}
+
+// buchUeberweisungLocked: der Buchungsteil von nachUeberweisung, unter w.mu.
+func (cs *ChainState) buchUeberweisungLocked(w *wirtschaft, from, to string, fromArt, toArt kontoart, amount float64, jetzt int64) {
 	fk := w.kontoLocked(from, jetzt)
 	tk := w.kontoLocked(to, jetzt)
 	fromU, toU := w.offenesUnternehmenLocked(from), w.offenesUnternehmenLocked(to)
@@ -757,8 +770,6 @@ func (cs *ChainState) nachUeberweisung(ctx context.Context, from, to string, fro
 	if toArt == artUnternehmen {
 		tk.Einnahmen += amount
 	}
-	w.mu.Unlock()
-	return cs.speichereBuchCtx(ctx, from, to)
 }
 
 // ausstiegsAbgabe: 2 % auf AEQ -> Stable. Abgabefrei ist, was das Konto
@@ -770,14 +781,14 @@ func (cs *ChainState) ausstiegsAbgabe(addr string, art kontoart, amountIn float6
 		return 0
 	}
 	w := cs.wirt()
-	w.mu.Lock()
-	k := w.kontoLocked(addr, jetzt)
-	rest := amountIn - math.Min(amountIn, math.Max(0, k.Eingezahlt))
-	frei := 0.0
-	if art == artMensch {
-		frei = math.Max(0, menschTauschFreiMonat-k.Getauscht)
-	}
-	w.mu.Unlock()
+	var rest, frei float64
+	w.mitSperre(func() {
+		k := w.kontoLocked(addr, jetzt)
+		rest = amountIn - math.Min(amountIn, math.Max(0, k.Eingezahlt))
+		if art == artMensch {
+			frei = math.Max(0, menschTauschFreiMonat-k.Getauscht)
+		}
+	})
 	return round6(math.Max(0, rest-frei) * ausstiegsAbgabeBps / 10_000)
 }
 
@@ -788,12 +799,12 @@ func (cs *ChainState) nachTausch(ctx context.Context, addr string, amountIn floa
 		return nil
 	}
 	w := cs.wirt()
-	w.mu.Lock()
-	k := w.kontoLocked(addr, jetzt)
-	aus := math.Min(amountIn, math.Max(0, k.Eingezahlt))
-	k.Eingezahlt = round6(k.Eingezahlt - aus)
-	k.Getauscht += amountIn - aus
-	w.mu.Unlock()
+	w.mitSperre(func() {
+		k := w.kontoLocked(addr, jetzt)
+		aus := math.Min(amountIn, math.Max(0, k.Eingezahlt))
+		k.Eingezahlt = round6(k.Eingezahlt - aus)
+		k.Getauscht += amountIn - aus
+	})
 	return cs.speichereBuchCtx(ctx, addr)
 }
 
@@ -803,10 +814,10 @@ func (cs *ChainState) nachEinzahlung(ctx context.Context, addr string, aeqErhalt
 		return nil
 	}
 	w := cs.wirt()
-	w.mu.Lock()
-	k := w.kontoLocked(addr, jetzt)
-	k.Eingezahlt = round6(k.Eingezahlt + aeqErhalten)
-	w.mu.Unlock()
+	w.mitSperre(func() {
+		k := w.kontoLocked(addr, jetzt)
+		k.Eingezahlt = round6(k.Eingezahlt + aeqErhalten)
+	})
 	return cs.speichereBuchCtx(ctx, addr)
 }
 
@@ -817,13 +828,12 @@ func (cs *ChainState) nachEinzahlung(ctx context.Context, addr string, aeqErhalt
 // Reihenfolge gelesen wie beim Nachspielen -- deterministisch.
 func (cs *ChainState) gruenderStand(unternehmen string) float64 {
 	w := cs.wirt()
-	w.mu.Lock()
-	e := w.unternehmen[unternehmen]
 	gruender := ""
-	if e != nil && len(e.Verantwortliche) > 0 {
-		gruender = e.Verantwortliche[0]
-	}
-	w.mu.Unlock()
+	w.mitSperre(func() {
+		if e := w.unternehmen[unternehmen]; e != nil && len(e.Verantwortliche) > 0 {
+			gruender = e.Verantwortliche[0]
+		}
+	})
 	if gruender == "" {
 		return 0
 	}
@@ -877,12 +887,12 @@ func (cs *ChainState) umlaufLocked(ctx context.Context, at int64) ([]Transaction
 		return nil, nil
 	}
 	w := cs.wirt()
-	w.mu.Lock()
 	sekunden := int64(86400)
-	if w.letzterUmlauf > 0 {
-		sekunden = at - w.letzterUmlauf
-	}
-	w.mu.Unlock()
+	w.mitSperre(func() {
+		if w.letzterUmlauf > 0 {
+			sekunden = at - w.letzterUmlauf
+		}
+	})
 	if sekunden <= 0 {
 		return nil, nil
 	}
@@ -943,9 +953,7 @@ func (cs *ChainState) umlaufLocked(ctx context.Context, at int64) ([]Transaction
 		}
 		txs = append(txs, Transaction{Type: "umlauf", Wallet: a, Amount: betrag, DistributionAt: at})
 	}
-	w.mu.Lock()
-	w.letzterUmlauf = at
-	w.mu.Unlock()
+	w.mitSperre(func() { w.letzterUmlauf = at })
 	cs.speichereLetztenUmlauf(ctx, at)
 	return txs, nil
 }
@@ -1003,12 +1011,7 @@ func (cs *ChainState) applyUmlaufDeltaLocked(ctx context.Context, wallet string,
 		return fmt.Errorf("umlauf: Grundeinkommen: %w", err)
 	}
 	w := cs.wirt()
-	w.mu.Lock()
-	if at > w.letzterUmlauf {
-		w.laufAt, w.laufVorher = at, w.letzterUmlauf
-		w.letzterUmlauf = at
-	}
-	w.mu.Unlock()
+	w.mitSperre(func() { w.umlaufZeitLocked(at) })
 	return nil
 }
 
@@ -1042,13 +1045,16 @@ func (cs *ChainState) umlaufZeitFortschreibenLocked(ctx context.Context, at int6
 		return
 	}
 	w := cs.wirt()
-	w.mu.Lock()
+	w.mitSperre(func() { w.umlaufZeitLocked(at) })
+	cs.speichereLetztenUmlauf(ctx, at)
+}
+
+// umlaufZeitLocked: die Umlaufzeit fortschreiben, unter w.mu.
+func (w *wirtschaft) umlaufZeitLocked(at int64) {
 	if at > w.letzterUmlauf {
 		w.laufAt, w.laufVorher = at, w.letzterUmlauf
 		w.letzterUmlauf = at
 	}
-	w.mu.Unlock()
-	cs.speichereLetztenUmlauf(ctx, at)
 }
 
 // ------------------------------------------------------------ Register (Konsens)
@@ -1116,18 +1122,23 @@ func (cs *ChainState) applyUnternehmenEroeffnenLocked(ctx context.Context, unter
 		return fmt.Errorf("unternehmen_eroeffnen: %s ist ein Mensch: %w", u, ErrZustandLehntAb)
 	}
 	w := cs.wirt()
-	w.mu.Lock()
-	if w.offenesUnternehmenLocked(u) != nil {
-		w.mu.Unlock()
-		return fmt.Errorf("unternehmen_eroeffnen: %s ist schon ein Unternehmen: %w", u, ErrZustandLehntAb)
+	var e *unternehmenEintrag
+	var err error
+	w.mitSperre(func() {
+		if w.offenesUnternehmenLocked(u) != nil {
+			err = fmt.Errorf("unternehmen_eroeffnen: %s ist schon ein Unternehmen: %w", u, ErrZustandLehntAb)
+			return
+		}
+		if len(w.unternehmenVon(m)) >= maxUnternehmenJeMensch {
+			err = fmt.Errorf("unternehmen_eroeffnen: %s ist schon fuer %d Unternehmen verantwortlich: %w", m, maxUnternehmenJeMensch, ErrZustandLehntAb)
+			return
+		}
+		e = &unternehmenEintrag{Adresse: u, Name: normName(name), Kategorie: kategorie, Verantwortliche: []string{m}, EroeffnetAm: at}
+		w.unternehmen[u] = e
+	})
+	if err != nil {
+		return err
 	}
-	if len(w.unternehmenVon(m)) >= maxUnternehmenJeMensch {
-		w.mu.Unlock()
-		return fmt.Errorf("unternehmen_eroeffnen: %s ist schon fuer %d Unternehmen verantwortlich: %w", m, maxUnternehmenJeMensch, ErrZustandLehntAb)
-	}
-	e := &unternehmenEintrag{Adresse: u, Name: normName(name), Kategorie: kategorie, Verantwortliche: []string{m}, EroeffnetAm: at}
-	w.unternehmen[u] = e
-	w.mu.Unlock()
 	return cs.speichereUnternehmen(ctx, e)
 }
 
@@ -1144,31 +1155,36 @@ func (cs *ChainState) applyUnternehmenMitinhaberLocked(ctx context.Context, unte
 		return err
 	}
 	w := cs.wirt()
-	w.mu.Lock()
-	e := w.offenesUnternehmenLocked(u)
-	switch {
-	case e == nil:
-		w.mu.Unlock()
-		return fmt.Errorf("unternehmen_mitinhaber: %s ist kein offenes Unternehmen: %w", u, ErrZustandLehntAb)
-	case e.istVerantwortlich(m):
-		w.mu.Unlock()
-		return fmt.Errorf("unternehmen_mitinhaber: %s ist schon verantwortlich: %w", m, ErrZustandLehntAb)
-	case len(e.Verantwortliche) >= maxVerantwortlicheJeUnt:
-		w.mu.Unlock()
-		return fmt.Errorf("unternehmen_mitinhaber: hoechstens %d Verantwortliche: %w", maxVerantwortlicheJeUnt, ErrZustandLehntAb)
-	case len(w.unternehmenVon(m)) >= maxUnternehmenJeMensch:
-		w.mu.Unlock()
-		return fmt.Errorf("unternehmen_mitinhaber: %s ist schon fuer %d Unternehmen verantwortlich: %w", m, maxUnternehmenJeMensch, ErrZustandLehntAb)
+	var cp unternehmenEintrag
+	var err error
+	w.mitSperre(func() {
+		e := w.offenesUnternehmenLocked(u)
+		switch {
+		case e == nil:
+			err = fmt.Errorf("unternehmen_mitinhaber: %s ist kein offenes Unternehmen: %w", u, ErrZustandLehntAb)
+			return
+		case e.istVerantwortlich(m):
+			err = fmt.Errorf("unternehmen_mitinhaber: %s ist schon verantwortlich: %w", m, ErrZustandLehntAb)
+			return
+		case len(e.Verantwortliche) >= maxVerantwortlicheJeUnt:
+			err = fmt.Errorf("unternehmen_mitinhaber: hoechstens %d Verantwortliche: %w", maxVerantwortlicheJeUnt, ErrZustandLehntAb)
+			return
+		case len(w.unternehmenVon(m)) >= maxUnternehmenJeMensch:
+			err = fmt.Errorf("unternehmen_mitinhaber: %s ist schon fuer %d Unternehmen verantwortlich: %w", m, maxUnternehmenJeMensch, ErrZustandLehntAb)
+			return
+		}
+		// Anhaengen, nicht sortieren: Verantwortliche[0] ist die Person, die
+		// eroeffnet hat (inGruendungLocked, gruenderStand). Bis 02.10.2026 stand
+		// hier sort.Strings -- ein Mitinhaber mit kleinerer Adresse wurde damit
+		// zum "Gruender", und eine zweite Firma der echten Gruenderin bekam
+		// innerhalb von zwoelf Monaten noch einmal die Gruendungsphase. Die
+		// Reihenfolge ist trotzdem deterministisch: Blockreihenfolge.
+		e.Verantwortliche = append(e.Verantwortliche, m)
+		cp = *e
+	})
+	if err != nil {
+		return err
 	}
-	// Anhaengen, nicht sortieren: Verantwortliche[0] ist die Person, die
-	// eroeffnet hat (inGruendungLocked, gruenderStand). Bis 02.10.2026 stand
-	// hier sort.Strings -- ein Mitinhaber mit kleinerer Adresse wurde damit
-	// zum "Gruender", und eine zweite Firma der echten Gruenderin bekam
-	// innerhalb von zwoelf Monaten noch einmal die Gruendungsphase. Die
-	// Reihenfolge ist trotzdem deterministisch: Blockreihenfolge.
-	e.Verantwortliche = append(e.Verantwortliche, m)
-	cp := *e
-	w.mu.Unlock()
 	return cs.speichereUnternehmen(ctx, &cp)
 }
 
@@ -1184,15 +1200,20 @@ func (cs *ChainState) applyUnternehmenSchliessenLocked(ctx context.Context, unte
 		return fmt.Errorf("unternehmen_schliessen: Konto haelt noch %.6f AEQ -- erst auszahlen: %w", acc.Balance.Float(), ErrZustandLehntAb)
 	}
 	w := cs.wirt()
-	w.mu.Lock()
-	e := w.offenesUnternehmenLocked(u)
-	if e == nil {
-		w.mu.Unlock()
-		return fmt.Errorf("unternehmen_schliessen: %s ist kein offenes Unternehmen: %w", u, ErrZustandLehntAb)
+	var cp unternehmenEintrag
+	var err error
+	w.mitSperre(func() {
+		e := w.offenesUnternehmenLocked(u)
+		if e == nil {
+			err = fmt.Errorf("unternehmen_schliessen: %s ist kein offenes Unternehmen: %w", u, ErrZustandLehntAb)
+			return
+		}
+		e.GeschlossenAm = at
+		cp = *e
+	})
+	if err != nil {
+		return err
 	}
-	e.GeschlossenAm = at
-	cp := *e
-	w.mu.Unlock()
 	return cs.speichereUnternehmen(ctx, &cp)
 }
 
@@ -1232,9 +1253,7 @@ func (cs *ChainState) speichereUnternehmen(ctx context.Context, e *unternehmenEi
 
 func (cs *ChainState) setzeBuchSeit(at int64) {
 	w := cs.wirt()
-	w.mu.Lock()
-	w.buchSeit = at
-	w.mu.Unlock()
+	w.mitSperre(func() { w.buchSeit = at })
 	if cs.db == nil {
 		return
 	}
@@ -1317,23 +1336,27 @@ func (cs *ChainState) speichereBuchCtx(ctx context.Context, adressen ...string) 
 	var werte []interface{}
 	var platz []string
 	vorige := ""
-	w.mu.Lock()
-	for _, a := range adressen {
-		if a == vorige {
-			continue
-		}
-		vorige = a
-		if k := w.buch[a]; k != nil {
-			b, err := json.Marshal(k)
-			if err != nil {
-				w.mu.Unlock()
-				return fmt.Errorf("buch %s: %w", a, err)
+	var fehler error
+	w.mitSperre(func() {
+		for _, a := range adressen {
+			if a == vorige {
+				continue
 			}
-			platz = append(platz, fmt.Sprintf("($%d,$%d)", len(werte)+1, len(werte)+2))
-			werte = append(werte, a, string(b))
+			vorige = a
+			if k := w.buch[a]; k != nil {
+				b, err := json.Marshal(k)
+				if err != nil {
+					fehler = fmt.Errorf("buch %s: %w", a, err)
+					return
+				}
+				platz = append(platz, fmt.Sprintf("($%d,$%d)", len(werte)+1, len(werte)+2))
+				werte = append(werte, a, string(b))
+			}
 		}
+	})
+	if fehler != nil {
+		return fehler
 	}
-	w.mu.Unlock()
 	if len(platz) == 0 {
 		return nil
 	}
@@ -1547,15 +1570,15 @@ func (cs *ChainState) unternehmenAusSnapshot(liste []*unternehmenEintrag) {
 		return
 	}
 	w := cs.wirt()
-	w.mu.Lock()
-	for _, e := range liste {
-		if e == nil {
-			continue
+	w.mitSperre(func() {
+		for _, e := range liste {
+			if e == nil {
+				continue
+			}
+			cp := *e
+			w.unternehmen[cp.Adresse] = &cp
 		}
-		cp := *e
-		w.unternehmen[cp.Adresse] = &cp
-	}
-	w.mu.Unlock()
+	})
 	for _, e := range liste {
 		if e != nil {
 			cs.speichereUnternehmen(context.Background(), e)

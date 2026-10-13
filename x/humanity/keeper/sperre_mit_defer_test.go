@@ -77,6 +77,10 @@ func sperrenOhneDefer(f *ast.File) []string {
 				}
 			}
 		}
+		// Doppelt freigegeben: eine Funktion mit `defer X.Unlock()` darf X
+		// nicht auch noch selbst freigeben (ausser in einer eigenen
+		// Funktionsliteral) -- das waere ein nicht abfangbarer Fatal-Fehler.
+		aus = append(aus, doppelteFreigaben(fd.Body, name)...)
 		ast.Inspect(fd.Body, func(n ast.Node) bool {
 			var liste []ast.Stmt
 			switch b := n.(type) {
@@ -105,6 +109,48 @@ func sperrenOhneDefer(f *ast.File) []string {
 	return aus
 }
 
+// doppelteFreigaben: je Sperre mit defer-Freigabe im Rumpf (ohne
+// Funktionsliterale) ein Eintrag "name (doppelt)", wenn sie dort auch direkt
+// freigegeben wird.
+func doppelteFreigaben(rumpf *ast.BlockStmt, name string) []string {
+	perDefer := map[string]bool{}
+	direkt := map[string]int{}
+	var gehe func(n ast.Node, imDefer bool)
+	gehe = func(n ast.Node, imDefer bool) {
+		ast.Inspect(n, func(m ast.Node) bool {
+			switch k := m.(type) {
+			case *ast.FuncLit:
+				if !imDefer {
+					return false
+				}
+			case *ast.DeferStmt:
+				gehe(k.Call, true)
+				return false
+			case *ast.CallExpr:
+				if sel, ok := k.Fun.(*ast.SelectorExpr); ok && (sel.Sel.Name == "Unlock" || sel.Sel.Name == "RUnlock") {
+					mu := ausdruck(sel.X)
+					if gepruefteSperre(mu) {
+						if imDefer {
+							perDefer[mu+"."+sel.Sel.Name] = true
+						} else {
+							direkt[mu+"."+sel.Sel.Name]++
+						}
+					}
+				}
+			}
+			return true
+		})
+	}
+	gehe(rumpf, false)
+	var aus []string
+	for k := range perDefer {
+		if direkt[k] > 0 {
+			aus = append(aus, name+" (doppelt)")
+		}
+	}
+	return aus
+}
+
 // sperrAufruf: "cs.mu"/"dag.mu"/"x.state.mu" und "Lock"/"RLock", sonst "".
 func sperrAufruf(st ast.Stmt) (string, string) {
 	e, ok := st.(*ast.ExprStmt)
@@ -120,10 +166,22 @@ func sperrAufruf(st ast.Stmt) (string, string) {
 		return "", ""
 	}
 	mu := ausdruck(sel.X)
-	if !(strings.HasSuffix(mu, "cs.mu") || strings.HasSuffix(mu, "dag.mu") || strings.HasSuffix(mu, "state.mu")) {
+	if !gepruefteSperre(mu) {
 		return "", ""
 	}
 	return mu, sel.Sel.Name
+}
+
+// gepruefteSperre: die Sperren, die die Regel abdeckt -- cs.mu, dag.mu (auch
+// als d.mu), x.state.mu, die Buchfuehrung (w.mu; das Zuruecksetzen nach einer
+// Panik wartet auf sie) und offeneVorbehalteMu.
+func gepruefteSperre(mu string) bool {
+	for _, endung := range []string{"cs.mu", "dag.mu", "state.mu"} {
+		if strings.HasSuffix(mu, endung) {
+			return true
+		}
+	}
+	return mu == "d.mu" || mu == "w.mu" || mu == "offeneVorbehalteMu"
 }
 
 func freigabeImDefer(st ast.Stmt, mu, art string) bool {
@@ -133,7 +191,7 @@ func freigabeImDefer(st ast.Stmt, mu, art string) bool {
 	}
 	// atomicAbschluss.beiPanik gibt die Sperre bei einer Panik frei (die
 	// regulaeren Wege entsperren selbst und markieren das).
-	if sel, ok := d.Call.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == "beiPanik" && art == "Lock" {
+	if sel, ok := d.Call.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == "beiPanik" && art == "Lock" && strings.HasSuffix(mu, "cs.mu") {
 		return true
 	}
 	frei := "Unlock"
@@ -218,6 +276,11 @@ func TestSperre_PruefungErkenntJedeForm(t *testing.T) {
 		`cs.mu.Lock(); defer cs.mu.RUnlock()`,      // falsche Freigabe
 		`cs.mu.RLock(); defer anders.mu.RUnlock()`, // andere Sperre
 		`if a { cs.mu.Lock(); arbeit(); cs.mu.Unlock() }`,
+		`d.mu.Lock(); d.computeGHOSTDAGState(b); d.mu.Unlock()`,
+		`w.mu.Lock(); arbeit(); w.mu.Unlock()`,
+		`offeneVorbehalteMu.Lock(); arbeit(); offeneVorbehalteMu.Unlock()`,
+		`cs.mu.Lock(); defer cs.mu.Unlock(); if a { cs.mu.Unlock() }`, // doppelt
+		`dag.mu.Lock(); defer ab.beiPanik()`,                          // beiPanik nur fuer cs.mu
 	}
 	erlaubt := []string{
 		`cs.mu.Lock(); defer cs.mu.Unlock(); arbeit()`,
@@ -225,6 +288,8 @@ func TestSperre_PruefungErkenntJedeForm(t *testing.T) {
 		`cs.mu.Lock(); defer func() { r := recover(); cs.mu.Unlock(); _ = r }()`,
 		`cs.mu.Lock(); defer ab.beiPanik()`,
 		`andere.sperre.Lock(); arbeit(); andere.sperre.Unlock()`,
+		`func() { cs.mu.Lock(); defer cs.mu.Unlock() }(); go func() { cs.mu.Lock(); defer cs.mu.Unlock() }()`,
+		`cs.mu.Lock(); defer func() { if r := recover(); r != nil { cs.mu.Unlock(); panic(r) }; cs.mu.Unlock() }()`,
 	}
 	pruefe := func(rumpf string) int {
 		f, err := parser.ParseFile(token.NewFileSet(), "p.go", "package p\nfunc f() {\n"+rumpf+"\n}\n", 0)

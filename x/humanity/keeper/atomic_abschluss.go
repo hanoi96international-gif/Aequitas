@@ -25,37 +25,60 @@ import (
 // Nach tx.Commit (abgeschlossen) wird nichts zurueckgerollt -- die Datenbank
 // traegt dann den neuen Stand, der Speicher auch.
 type atomicAbschluss struct {
-	cs            *ChainState
-	tx            *sql.Tx
-	snap          *blockRollbackSnapshot
-	gesperrt      bool
+	cs       *ChainState
+	tx       *sql.Tx
+	snap     *blockRollbackSnapshot
+	gesperrt bool
+	// imCommit: von tx.Commit bis zum Ende seiner Behandlung. Paniert es hier
+	// (im Treiber, oder beim Zurueckrollen nach einem gescheiterten Commit),
+	// ist der Ausgang der Transaktion unbekannt -- Neustart (Pruefung #339).
+	imCommit bool
+	// abgeschlossen: tx.Commit ist gelungen; die Datenbank traegt den neuen
+	// Stand, der Speicher auch -- nichts zurueckrollen.
 	abgeschlossen bool
 }
 
 // atomicNeustart: os.Exit, im Test ersetzbar.
 var atomicNeustart = os.Exit
 
+// entsperren: der regulaere Weg -- markiert und gibt frei, in einem Schritt.
+func (a *atomicAbschluss) entsperren() {
+	a.gesperrt = false
+	a.cs.mu.Unlock()
+}
+
+// beiPanik: als defer direkt nach cs.mu.Lock(). Laeuft bei jedem Verlassen;
+// war die Sperre regulaer freigegeben (entsperren), tut es nichts. Sonst ist
+// die Funktion abnormal verlassen worden -- durch eine Panik oder durch
+// runtime.Goexit (r == nil) -- und es wird aufgeraeumt. Der Neustart, wenn
+// noetig, geschieht UNTER der Sperre: sonst koennte eine andere Goroutine
+// den halben Zustand noch sehen oder speichern.
 func (a *atomicAbschluss) beiPanik() {
 	if !a.gesperrt {
-		return // regulaer entsperrt: nichts zu tun, auch eine spaetere Panik nicht
-	}
-	r := recover()
-	if r == nil {
 		return
 	}
-	if !a.abgeschlossen {
+	r := recover()
+	switch {
+	case a.abgeschlossen:
+		a.cs.setActiveTx(nil)
+	case a.imCommit:
+		fmt.Printf("[ATOMIC] ✗ Panik waehrend des Commits (%v) -- Ausgang der Transaktion unbekannt; Neustart\n%s\n", r, debug.Stack())
+		os.Stdout.Sync()
+		atomicNeustart(9)
+		a.cs.setActiveTx(nil)
+	default:
 		a.cs.setActiveTx(nil)
 		a.tx.Rollback()
 		if a.snap != nil && !a.zurueckrollen() {
 			fmt.Printf("[ATOMIC] ✗ Panik (%v) und das Zurueckrollen des Speichers gelang nicht -- Zustand unzuverlaessig; Neustart\n%s\n", r, debug.Stack())
+			os.Stdout.Sync()
 			atomicNeustart(9)
 		}
-	} else {
-		a.cs.setActiveTx(nil)
 	}
-	a.gesperrt = false
-	a.cs.mu.Unlock()
-	panic(r)
+	a.entsperren()
+	if r != nil {
+		panic(r)
+	}
 }
 
 // zurueckrollen: true, wenn der Speicher wieder dem Schnappschuss entspricht.
@@ -78,11 +101,15 @@ func (cs *ChainState) zustandAendern(label string, fn func()) {
 	cs.mu.Lock()
 	defer func() {
 		r := recover()
-		cs.mu.Unlock()
 		if r != nil {
+			// Unter der Sperre: niemand sonst sieht oder speichert den halben
+			// Zustand, bevor der Prozess endet (Pruefung #339).
 			fmt.Printf("[ZUSTAND] ✗ Panik in %s (%v) -- der Zustand kann halb geschrieben sein; Neustart\n%s\n", label, r, debug.Stack())
 			os.Stdout.Sync()
 			atomicNeustart(9)
+		}
+		cs.mu.Unlock()
+		if r != nil {
 			panic(r) // nur erreicht, wenn atomicNeustart im Test ersetzt ist
 		}
 	}()
