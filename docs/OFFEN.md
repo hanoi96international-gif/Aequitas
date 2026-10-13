@@ -249,12 +249,18 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
     - Stufe C: Komitee-Checkpoint (siehe oben).
       **Baustein 1 (Zweig `claude/weiter-gehts-vm8979-checkpoint`):**
       `checkpoint_zertifikat.go` – Format (Domäne, Chain-ID, Höhe, Hash,
-      Zeit), Unterschreiben, Prüfen gegen eine Komitee-Menge: mehr als 2/3,
-      jede Unterschrift passt zum Absender, nur Mitglieder, keiner doppelt,
-      höchstens `targetCommitteeSize` vor jeder Kryptographie. Schlafend,
-      nirgends angeschlossen. Als Nächstes: Unterschriften sammeln
-      (signiert, begrenzt, über die Leitungswege), Zertifikat als eigene
-      Transaktionsart in die Kette, dann Anker (#340) und Finalität daran.
+      Zeit, Epoche, Hash der Komitee-Menge), Unterschreiben, Prüfen gegen
+      eine Komitee-Menge: mindestens 4 Mitglieder, mehr als 2/3, kanonisch
+      (low-s, v 0/1, Kleinschrift, nach Absender sortiert), nur Mitglieder,
+      erst billige Prüfungen, dann Kryptographie. Schlafend, nirgends
+      angeschlossen.
+      **Vor dem Anschließen (Prüfung des Bausteins, HOCH):** das Komitee
+      zur Checkpoint-Zeit muss jeder Knoten gleich bestimmen (heute liest
+      der geschlossene Betrieb die eigene Liste); Hash/Höhe/Zeit müssen aus
+      einem lokal vorhandenen Block kommen, Zeit nahe der Einreichung und
+      streng monoton zum letzten Checkpoint. Danach: Unterschriften sammeln
+      (signiert, begrenzt), Zertifikat als eigene Transaktionsart in die
+      Kette, dann Anker (#340) und Finalität daran.
 
 ## Ratenbegrenzung – bekannte Lücken
 - **`X-Forwarded-For` hinter einem privaten TCP-Partner** (Prüfung von #319,
