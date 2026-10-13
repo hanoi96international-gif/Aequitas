@@ -32,6 +32,7 @@ type simKnoten struct {
 	gespeich  LeitSpeicher
 	ueberholt int
 	hatBlock  func(string) bool
+	entleert  func() bool
 }
 
 type simNetz struct {
@@ -81,7 +82,7 @@ func (n *simNetz) baue(i int) {
 	env := LeitUmgebung{
 		Hoehe:      func() int64 { return int64(n.jetzt / time.Second) },
 		HatBlock:   func(h string) bool { return k.hatBlock == nil || k.hatBlock(h) },
-		Entleert:   func() bool { return true },
+		Entleert:   func() bool { return k.entleert == nil || k.entleert() },
 		LetzterBlk: func() string { return fmt.Sprintf("blk-%s-%d", k.addr, n.jetzt/time.Second) },
 		Speichern:  func(s LeitSpeicher) { k.gespeich = s },
 		Ueberholt:  func(uint64) { k.ueberholt++ },

@@ -50,11 +50,9 @@ import (
 //   - keine Wahl, keine automatische Uebernahme;
 //   - der Leiter nimmt ohne Lease-Bestaetigung an (sonst stuende das Netz,
 //     sobald der ANDERE ausfaellt -- schlechter als heute);
-//   - ein planmaessiger Wechsel nur, wenn ausdruecklich eingeschaltet;
-//   - aber: ein Leiter, der keine eigenen Bloecke mehr erzeugt (stockt),
-//     gibt geordnet ab -- er haelt sonst die Annahme des ganzen Netzes an.
-//     Das ist eine Uebergabe, keine Uebernahme: der Abgebende hoert auf,
-//     bevor der andere anfaengt.
+//   - ein Wechsel nur, wenn ausdruecklich eingeschaltet -- auch der eines
+//     Leiters, der keine eigenen Bloecke mehr erzeugt (stockt): ohne Wahl
+//     heilt nichts eine Uebergabe, die verloren geht.
 // Wirkliche Ausfallsicherheit beginnt bei drei Validatoren.
 //
 // # WER MITGLIED IST: OHNE HANDLISTE
@@ -191,6 +189,9 @@ type LeitKonfig struct {
 	// Stufe 2: alle Mitglieder nehmen fuer ihre Konten an
 	// (leitung_verteilt.go). Nur mit Wahl (ab drei Validatoren).
 	Verteilt bool
+	// StockenFrist: so lange nach seinem Antritt darf ein Leiter stocken,
+	// bevor er abgibt (OFFEN 6).
+	StockenFrist time.Duration
 	// Ruhezeit: nach einem Term ohne geordnete Uebergabe (Wahl nach
 	// Ausfall) und nach dem Ausfall eines Mitglieds so lange warten, bis
 	// dessen letzte Bloecke angekommen sein koennen.
@@ -214,6 +215,8 @@ func leitVorgabe() LeitKonfig {
 		LebenszeichenAlle: 10 * time.Second,
 
 		Ruhezeit: 5 * time.Second,
+
+		StockenFrist: time.Minute,
 	}
 }
 
@@ -968,13 +971,17 @@ func (l *Leitung) Takt(jetzt time.Time) []LeitNachricht {
 		// Leistungsnachweis verloren: an einen leiterfaehigen abgeben, sobald
 		// einer lebt. Gibt es keinen, bleibt dieser Leiter (Notbetrieb).
 		//
-		// Stockt dieser Leiter (OFFEN 6), gibt er auch bei zwei Validatoren
-		// ohne ZweiWechseln ab, und notfalls an einen ohne Nachweis: ein
-		// Leiter, der keine Bloecke erzeugt, haelt die Annahme des ganzen
-		// Netzes an -- jeder lebende ist besser. Die Uebergabe ist dieselbe
-		// geordnete wie sonst (entleert, mit Blockhash): es gibt keinen
-		// Moment mit zwei Leitern, auch bei zwei Validatoren nicht.
-		if !l.abschliessen && !l.ichFaehig && (l.mitWahl() || l.cfg.ZweiWechseln || l.stockt) {
+		// Stockt dieser Leiter (OFFEN 6) -- und zwar laenger als
+		// StockenFrist, seit er Leiter ist --, gibt er ab, notfalls an einen
+		// ohne Nachweis: ein Leiter, der keine Bloecke erzeugt, haelt die
+		// Annahme des ganzen Netzes an. Die Frist gibt jedem neuen Leiter
+		// seine Chance; ohne sie gaben zwei stockende sich die Leitung im
+		// selben Takt zurueck, bevor eine Lease ankam (Pruefung des
+		// Leiter-PR, Befund 1). Bei zwei Validatoren nur mit ZweiWechseln
+		// (wie jeder Wechsel): ohne Wahl heilt dort nichts eine verlorene
+		// Uebergabe (Befunde 1, 3, 4).
+		abgeben := !l.nachweis || (l.stockt && jetzt.Sub(l.leiterSeit) >= l.cfg.StockenFrist)
+		if !l.abschliessen && abgeben && (l.mitWahl() || l.cfg.ZweiWechseln) {
 			n := l.nachfolger(l.ich, false)
 			if n == "" && l.stockt {
 				n = l.nachfolger(l.ich, true)
@@ -1177,13 +1184,13 @@ func (l *Leitung) Empfange(m LeitNachricht, jetzt time.Time) *LeitNachricht {
 		// seinen Term schon hochgezaehlt, als er schickte -- sein m.Term ist
 		// der ALTE (basis vor dem Hochzaehlen gebaut).
 		//
-		// Ohne eigenen Nachweis nur, wenn auch der Abgebende keinen
-		// ankuendigt (er stockt oder hat seinen verloren, OFFEN 6): sonst
-		// hinge er als Folger eines Terms, den niemand leitet -- er hat
-		// seinen Term schon hochgezaehlt und fuer diesen Knoten gestimmt.
-		// Ein Leiter ohne Nachweis ist nicht schlechter als der Abgebende;
-		// stockt er selbst, gibt er weiter.
-		if m.An == l.ich && m.Term == l.term && m.Von == l.leiter && m.SatzHash == l.hash && (l.effFaehig(jetzt) || !m.Faehig) {
+		// Auch ohne eigenen Nachweis (OFFEN 6): der Abgebende hat seinen
+		// Term schon hochgezaehlt und fuer diesen Knoten gestimmt -- lehnte
+		// er ab, hinge der Abgebende als Folger eines Terms, den niemand
+		// leitet (im Simulator gefunden; Pruefung des Leiter-PR, Befund 2:
+		// auch wenn der Abgebende sich erholt hat, bevor er sendet). Taugt
+		// dieser Knoten nicht, gibt er selbst wieder ab (Takt).
+		if m.An == l.ich && m.Term == l.term && m.Von == l.leiter && m.SatzHash == l.hash {
 			k := m
 			l.wartet = &k
 		}

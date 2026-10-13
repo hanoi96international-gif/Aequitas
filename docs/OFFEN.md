@@ -54,17 +54,23 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
    Pause länger als `admissionStallLimit()` im Takt wie einen verlorenen
    Leistungsnachweis behandeln, also übergeben. (Ein Beobachter baut seit #322
    keine Leitung mehr auf und legt nichts in den Ausgang.)
-   **Erledigt (Zweig `claude/weiter-gehts-vm8979-leiter`):** Hat ein Knoten,
-   der erzeugt, seit 2×`admissionStallLimit()` keinen eigenen Block
-   gespeichert (oder trägt ihn das Register nicht), gilt er als „stockt“
-   (`eigeneBloeckeStocken`, im Takt der Leitung): er kündigt sich als nicht
-   leiterfähig an und gibt als Leiter geordnet ab – auch bei zwei
-   Validatoren ohne `AEQUITAS_LEITUNG_ZWEI_WECHSELN`, notfalls an einen ohne
-   Nachweis. Ein Empfänger ohne Nachweis nimmt die Übergabe an, wenn der
-   Abgebende selbst keinen ankündigt (sonst hinge der Abgebende in einem
-   Term ohne Leiter). Bekannte Grenze (wie beim planmäßigen Wechsel):
-   stirbt der Empfänger genau beim Abgeben, nimmt bis zu seiner Rückkehr
-   keiner an; die Übergabe wird wiederholt. Tests: `leitung_stockt_test.go`.
+   **Erledigt ab drei Validatoren (Zweig `claude/weiter-gehts-vm8979-leiter`):**
+   Hat ein Knoten, der erzeugt, seit 2×`admissionStallLimit()` keinen
+   eigenen Block gespeichert (oder trägt ihn das Register nicht), gilt er
+   als „stockt“ (`eigeneBloeckeStocken`, im Takt der Leitung): er kündigt
+   sich als nicht leiterfähig an und gibt als Leiter nach `StockenFrist`
+   (1 min ab Antritt) geordnet ab, notfalls an einen ohne Nachweis. Der
+   Empfänger nimmt jede gültige Übergabe des amtierenden Leiters an (sonst
+   hing der Abgebende in einem Term ohne Leiter) und gibt selbst weiter,
+   wenn er nicht taugt. Tests: `leitung_stockt_test.go`, inkl.
+   Zufallslauf mit Lebendigkeit nach der Heilung.
+   **Offen bei zwei Validatoren** (getrennte Prüfung, Befunde 1/3/4/5):
+   ohne Wahl heilt nichts eine verlorene Übergabe – sie ist nicht
+   gespeichert (Neustart verliert sie), ein Empfänger ohne Block wartet
+   ohne Frist, und ein Speicherfehler schließt nicht ab. Darum dort
+   weiterhin nur mit `AEQUITAS_LEITUNG_ZWEI_WECHSELN`; vorher: Übergabe
+   (`offeneUebergabe`, `wartet`) in `LeitSpeicher`, Übergabe nur nach
+   erfolgreichem Speichern senden, eigenes `Stockt`-Flag in der Nachricht.
 7. **Einträge in `pending_txs` ohne Annahme-Pause** (Prüfung von #322,
    INFO-2; bestand schon vorher): `DoppelsignaturErkannt` (slashing.go,
    ausgelöst von Peer-Blöcken) legt den Strafbeweis auch auf einem Beobachter
