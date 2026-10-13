@@ -120,12 +120,12 @@ func (cs *ChainState) verlaufRelevant(addr string) bool {
 	if istSystemAdresse(addr) {
 		return false
 	}
-	var mensch bool
-	cs.mu.RLock()
-	if acc, ok := cs.accounts.Get(addr); ok {
-		mensch = acc.IsHuman
-	}
-	cs.mu.RUnlock()
+	mensch := func() bool {
+		cs.mu.RLock()
+		defer cs.mu.RUnlock()
+		acc, ok := cs.accounts.Get(addr)
+		return ok && acc.IsHuman
+	}()
 	if mensch {
 		return true
 	}
