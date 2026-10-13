@@ -2209,6 +2209,11 @@ func (dag *BlockDAG) BridgeHistoricalGap(peerURLs []string) {
 				continue
 			}
 			for _, b := range blocks {
+				// eltern_grenze.go: sonst legte die Bruecke fuer jeden
+				// fehlenden Elternteil einen Stumpf an -- unter dag.mu.
+				if b == nil || elternUngueltig(b) != "" {
+					continue
+				}
 				if !seen[b.Hash] {
 					seen[b.Hash] = true
 					candidates = append(candidates, b)
@@ -4871,6 +4876,12 @@ func (dag *BlockDAG) prefetchMergeSetFromDB(block *Block) {
 }
 
 func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
+	// eltern_grenze.go: vor allem anderen -- vor dem Kodieren, dem Hash, jeder
+	// Sperre und jedem Nachschlag.
+	if grund := elternUngueltig(block); grund != "" {
+		fmt.Printf("[DAG] ✗ Rejected peer block #%d: %s\n", block.Height, grund)
+		return false
+	}
 	// Einmal kodieren, dreimal brauchen (Hash pruefen, TxRoot, Speichern).
 	block.merkeTransaktionenJSON()
 	// FIX (2026-07-05 — permanent operational diagnostic, not a temp one):
@@ -4894,11 +4905,6 @@ func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
 	}
 	if dag.resyncInProgress.Load() {
 		return false // an in-process self-heal resync is atomically swapping account/DAG state right now — see resyncInProgress's field comment; the sender will redeliver, ordered sync fills the gap once the resync completes
-	}
-	// eltern_grenze.go: vor dem Hash, vor jeder Sperre, vor jedem Nachschlag.
-	if grund := elternUngueltig(block); grund != "" {
-		fmt.Printf("[DAG] ✗ Rejected peer block #%d: %s\n", block.Height, grund)
-		return false
 	}
 	// FIX (durable fix, 2026-07-04 — closes wasted-effort noise found live after
 	// a fresh checkpoint-seeded resync): a block at or below BootHeight is
@@ -6580,6 +6586,12 @@ func (dag *BlockDAG) safeStubBlueScoreLocked() int64 {
 // dag.blocks/dag.tips — safeStubBlueScoreLocked reads both to compute the
 // stub's BlueScore relative to cp's own.
 func (dag *BlockDAG) seedCheckpointParentStubsLocked(cp *Block) {
+	// eltern_grenze.go: kein Stumpf je Elternteil fuer einen Checkpoint, den
+	// kein ehrlicher Erzeuger gebaut haben kann.
+	if grund := elternUngueltig(cp); grund != "" {
+		fmt.Printf("[RESYNC] ✗ Checkpoint-Eltern nicht angelegt: %s\n", grund)
+		return
+	}
 	for _, parentHash := range cp.ParentHashes {
 		if parentHash == "" {
 			continue

@@ -2,7 +2,10 @@ package keeper
 
 import (
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/crypto"
@@ -67,5 +70,59 @@ func TestElternGrenze_ErzeugerBleibtDarunter(t *testing.T) {
 	}
 	if elternUngueltig(nil) != "" || elternUngueltig(&Block{ParentHashes: []string{"a", "b"}}) != "" {
 		t.Fatal("Gutfall abgewiesen")
+	}
+}
+
+// Die Bruecke (BridgeHistoricalGap) legt fuer fehlende Eltern Stuempfe an --
+// fuer einen Block mit zu vielen Eltern keinen einzigen.
+func TestElternGrenze_BrueckeLegtKeineStuempfeAn(t *testing.T) {
+	eltern := []string{}
+	for i := 0; i < peerElternGrenze+1; i++ {
+		eltern = append(eltern, fmt.Sprintf("%064x", i+1))
+	}
+	boese := &Block{Hash: "boese", Height: 5000, ParentHashes: eltern, Proposer: "0xabc"}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode([]*Block{boese})
+	}))
+	t.Cleanup(srv.Close)
+	echt := httpSyncClient
+	httpSyncClient = &http.Client{}
+	t.Cleanup(func() { httpSyncClient = echt })
+
+	dag := newOrphanTestDAG()
+	dag.state = &ChainState{}
+	dag.bootHeight = 10000
+	vorher := len(dag.blocks)
+	dag.BridgeHistoricalGap([]string{srv.URL})
+	if n := len(dag.blocks) - vorher; n != 0 {
+		t.Fatalf("%d Stuempfe fuer einen Block mit %d Eltern angelegt", n, len(eltern))
+	}
+	// Gegenprobe: derselbe Block mit einem Elternteil bekommt seinen Stumpf.
+	boese.ParentHashes = eltern[:1]
+	dag.BridgeHistoricalGap([]string{srv.URL})
+	if n := len(dag.blocks) - vorher; n != 1 {
+		t.Fatalf("Gutfall: %d Stuempfe, erwartet 1", n)
+	}
+}
+
+// Ebenso beim Checkpoint aus dem Schnappschuss.
+func TestElternGrenze_CheckpointLegtKeineStuempfeAn(t *testing.T) {
+	dag := newOrphanTestDAG()
+	eltern := []string{}
+	for i := 0; i < peerElternGrenze+1; i++ {
+		eltern = append(eltern, fmt.Sprintf("%064x", i+1))
+	}
+	vorher := len(dag.blocks)
+	dag.mu.Lock()
+	dag.seedCheckpointParentStubsLocked(&Block{Hash: "cp", Height: 100, ParentHashes: eltern})
+	dag.mu.Unlock()
+	if n := len(dag.blocks) - vorher; n != 0 {
+		t.Fatalf("%d Stuempfe angelegt", n)
+	}
+	dag.mu.Lock()
+	dag.seedCheckpointParentStubsLocked(&Block{Hash: "cp", Height: 100, ParentHashes: eltern[:2]})
+	dag.mu.Unlock()
+	if n := len(dag.blocks) - vorher; n != 2 {
+		t.Fatalf("Gutfall: %d Stuempfe, erwartet 2", n)
 	}
 }
