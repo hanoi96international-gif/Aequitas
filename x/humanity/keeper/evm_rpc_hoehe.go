@@ -50,14 +50,16 @@ func (s *EVMRPCServer) bloeckeAnHoehe(height int64) []*Block {
 	gesehen := map[string]bool{}
 	var out []*Block
 	if s.dag != nil {
-		s.dag.mu.Lock()
-		for _, b := range s.dag.blocks {
-			if b != nil && b.Height == height && b.Proposer != "synthetic-checkpoint" && !gesehen[b.Hash] {
-				gesehen[b.Hash] = true
-				out = append(out, b)
+		func() {
+			s.dag.mu.Lock()
+			defer s.dag.mu.Unlock()
+			for _, b := range s.dag.blocks {
+				if b != nil && b.Height == height && b.Proposer != "synthetic-checkpoint" && !gesehen[b.Hash] {
+					gesehen[b.Hash] = true
+					out = append(out, b)
+				}
 			}
-		}
-		s.dag.mu.Unlock()
+		}()
 		out = s.dag.hydratisiertAlle(out)
 	}
 	if s.state != nil && s.state.db != nil {

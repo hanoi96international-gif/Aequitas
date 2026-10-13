@@ -3514,13 +3514,18 @@ func (cs *ChainState) applyDemurrageLossLockedCtx(ctx context.Context, acc *Acco
 // documented write-lock contract.
 func (cs *ChainState) readAccount(address string, fn func(*AccountState)) {
 	address = strings.ToLower(address)
-	cs.mu.RLock()
-	if acc, ok := cs.accounts.Get(address); ok {
-		fn(acc)
-		cs.mu.RUnlock()
+	// fn laeuft unter der Lesesperre -- paniert es, gibt defer sie frei.
+	if func() bool {
+		cs.mu.RLock()
+		defer cs.mu.RUnlock()
+		acc, ok := cs.accounts.Get(address)
+		if ok {
+			fn(acc)
+		}
+		return ok
+	}() {
 		return
 	}
-	cs.mu.RUnlock()
 
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
@@ -7286,11 +7291,11 @@ func (cs *ChainState) GetLPShares(address string) (float64, float64) {
 	// cs.pool is guarded by the same lock; read it separately rather than
 	// widening readAccount's contract to cover non-account state.
 	cs.mu.RLock()
+	defer cs.mu.RUnlock()
 	total := 0.0
 	if cs.pool != nil {
 		total = cs.pool.TotalLPShares.Float()
 	}
-	cs.mu.RUnlock()
 	return mine, total
 }
 
@@ -8054,19 +8059,23 @@ func (cs *ChainState) StatusMetrics() StatusMetrics {
 		}
 	}
 
-	cs.mu.RLock()
-	humans := int(cs.humanCountLocked())
-	gini := cs.calcGiniLocked()
-	// No DB (unit tests) — fall back to the in-memory map while we already
-	// hold the read lock, rather than reaching for the write lock later.
-	if cs.db == nil {
-		for _, addr := range []string{validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr} {
-			if acc, ok := cs.accounts.Get(addr); ok {
-				pools[addr] = acc.Balance.Float()
+	var humans int
+	var gini float64
+	func() {
+		cs.mu.RLock()
+		defer cs.mu.RUnlock()
+		humans = int(cs.humanCountLocked())
+		gini = cs.calcGiniLocked()
+		// No DB (unit tests) — fall back to the in-memory map while we already
+		// hold the read lock, rather than reaching for the write lock later.
+		if cs.db == nil {
+			for _, addr := range []string{validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr} {
+				if acc, ok := cs.accounts.Get(addr); ok {
+					pools[addr] = acc.Balance.Float()
+				}
 			}
 		}
-	}
-	cs.mu.RUnlock()
+	}()
 
 	// Supply is humans x 1000 by protocol design (see TotalSupply) — derived
 	// here from the count we just read instead of taking the lock again.

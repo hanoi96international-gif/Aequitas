@@ -1811,9 +1811,12 @@ func (cs *ChainState) releaseNullifierLocked(ctx context.Context, nullifier stri
 }
 
 func (cs *ChainState) GetWalletByNullifier(nullifier string) string {
-	cs.mu.RLock()
-	w, ok := cs.nullifiers[nullifier]
-	cs.mu.RUnlock()
+	w, ok := func() (string, bool) {
+		cs.mu.RLock()
+		defer cs.mu.RUnlock()
+		w, ok := cs.nullifiers[nullifier]
+		return w, ok
+	}()
 	if ok {
 		return w
 	}

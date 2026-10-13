@@ -134,14 +134,18 @@ func (a *APIServer) handleHumanityCredential(w http.ResponseWriter, r *http.Requ
 func (cs *ChainState) GetNullifierByWallet(wallet string) string {
 	wallet = strings.ToLower(wallet)
 	// Fast path: in-memory cache
-	cs.mu.RLock()
-	for nullifier, w := range cs.nullifiers {
-		if w == wallet {
-			cs.mu.RUnlock()
-			return nullifier
+	if n := func() string {
+		cs.mu.RLock()
+		defer cs.mu.RUnlock()
+		for nullifier, w := range cs.nullifiers {
+			if w == wallet {
+				return nullifier
+			}
 		}
+		return ""
+	}(); n != "" {
+		return n
 	}
-	cs.mu.RUnlock()
 
 	// DB fallback
 	if cs.db == nil {

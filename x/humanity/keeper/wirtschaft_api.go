@@ -128,17 +128,18 @@ func (a *APIServer) handleWirtschaftKonto(w http.ResponseWriter, r *http.Request
 	}
 	cs := a.state
 	jetzt := time.Now().Unix()
-	cs.mu.RLock()
-	acc, da := cs.accounts.Get(addr)
 	var stand, abgabeStand, lpWert float64
 	istMensch := false
-	if da {
-		stand = acc.Balance.Float()
-		istMensch = acc.IsHuman
-		abgabeStand = cs.umlaufStandLocked(acc, jetzt)
-		lpWert = cs.lpValueLockedAEQ(acc)
-	}
-	cs.mu.RUnlock()
+	func() {
+		cs.mu.RLock()
+		defer cs.mu.RUnlock()
+		if acc, da := cs.accounts.Get(addr); da {
+			stand = acc.Balance.Float()
+			istMensch = acc.IsHuman
+			abgabeStand = cs.umlaufStandLocked(acc, jetzt)
+			lpWert = cs.lpValueLockedAEQ(acc)
+		}
+	}()
 	art := cs.kontoartVon(addr, istMensch)
 	antwort := map[string]interface{}{
 		"adresse": addr, "art": art.String(), "guthaben": stand,
@@ -198,12 +199,14 @@ func (a *APIServer) handleUnternehmenListe(w http.ResponseWriter, r *http.Reques
 		if !e.offen() {
 			continue
 		}
-		cs.mu.RLock()
-		var stand float64
-		if acc, ok := cs.accounts.Get(e.Adresse); ok {
-			stand = acc.Balance.Float()
-		}
-		cs.mu.RUnlock()
+		stand := func() float64 {
+			cs.mu.RLock()
+			defer cs.mu.RUnlock()
+			if acc, ok := cs.accounts.Get(e.Adresse); ok {
+				return acc.Balance.Float()
+			}
+			return 0
+		}()
 		wi := cs.wirt()
 		wi.mu.Lock()
 		k := wi.kontoLocked(e.Adresse, jetzt)

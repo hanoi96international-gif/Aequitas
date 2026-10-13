@@ -147,6 +147,11 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
      Schritten: reine Lesesperren zuerst (`defer RUnlock`), dann die
      Schreibstellen (Block-Nachspielen, Schnappschuss-Import) mit eigener
      Prüfung.
+   - **Erledigt (Zweig `claude/weiter-gehts-vm8979-sperren2`):** 16 Lese-
+     und kurze Stellen mit `defer` (u. a. `readAccount` – dort lief `fn`
+     unter der Lesesperre –, `GetBlockByHash/-Height`, `StatusMetrics`,
+     Wirtschafts-API, `bindungVorpruefen`). Test:
+     `TestReadAccount_PanikGibtSperreFrei`. Noch 29 Stellen.
 
 8. **WAL nach einem Rollenwechsel ohne Deckungsprüfung** (Prüfung von
    #322, INFO-15) – **erledigt mit #331:** Ein Knoten, der den Rest seines
@@ -209,6 +214,21 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
      `wal_seq` über dem Kopf zurück (LOW-4).
    - **Offen:** Der Verlust der WAL-Datei bleibt ein Betreiberfall (fail-closed,
      Ausweg `AEQUITAS_WAL_REST_VERWERFEN`).
+
+10. **GHOSTDAG-Werte sind nicht konsensfest; ein Erzeuger kann die Kette
+    aufblähen** (Untersuchung zu #340, HOCH 2). `blue_score`,
+    `selected_parent` stehen nicht im Blockhash; Startwerte kommen aus
+    Snapshot/Geschwistern von Peers und aus Stubs (lokale Spitze − 1),
+    `KNIGHTDAG_ACTIVATION_HEIGHT` ist je Knoten einstellbar. Es gibt keine
+    Konsensregel „höchstens ein Block je Slot und Erzeuger“: ein einzelner
+    Validator kann beliebig viele Blöcke mit je einem Elternblock signieren
+    und Höhe/Blue-Score der Hauptkette überholen. Für viele Validatoren
+    nötig: (a) Ratengrenze je Erzeuger als Konsensregel mit Prüfung und
+    Strafe, (b) ein **vom Komitee signierter Checkpoint** (mehr als 2/3 des
+    Registers signieren alle N Sekunden Höhe+Hash) als Anker für Belohnung
+    und Finalität – erst damit ist HOCH 2 aus #340 lösbar. Übergang
+    (Vermutung): Anker muss eine Mindestzahl verschiedener gebundener
+    Erzeuger in [D−600, D] im Kegel haben.
 
 ## Ratenbegrenzung – bekannte Lücken
 - **`X-Forwarded-For` hinter einem privaten TCP-Partner** (Prüfung von #319,

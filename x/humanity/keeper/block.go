@@ -1245,8 +1245,8 @@ func (dag *BlockDAG) AddAuthorizedValidator(addr string) {
 		return
 	}
 	dag.mu.Lock()
+	defer dag.mu.Unlock()
 	dag.nimmProduzentAufLocked(addr)
-	dag.mu.Unlock()
 }
 
 // nimmProduzentAufLocked ist der EINZIGE Weg in authorizedValidators nach dem
@@ -3801,15 +3801,16 @@ func (dag *BlockDAG) IsWithinOrphanGrace(block *Block) bool {
 	if block == nil {
 		return false
 	}
-	dag.mu.Lock() // ghostdagBlockLookup can cache-fill dag.blocks
-	var missingParent string
-	for _, ph := range block.ParentHashes {
-		if dag.ghostdagBlockLookup(ph, nil) == nil {
-			missingParent = ph
-			break
+	missingParent := func() string {
+		dag.mu.Lock() // ghostdagBlockLookup can cache-fill dag.blocks
+		defer dag.mu.Unlock()
+		for _, ph := range block.ParentHashes {
+			if dag.ghostdagBlockLookup(ph, nil) == nil {
+				return ph
+			}
 		}
-	}
-	dag.mu.Unlock()
+		return ""
+	}()
 	if missingParent == "" {
 		return false // not an orphan at all — rejected for some other reason
 	}
@@ -6368,9 +6369,11 @@ func (dag *BlockDAG) GetBlocksSince(minHeight int64, afterHash string, limit int
 // catching-up node waited. Falls back to the DB, outside the lock, exactly
 // like GetBlockByHeight already does.
 func (dag *BlockDAG) GetBlockByHash(hash string) *Block {
-	dag.mu.RLock()
-	b := dag.blocks[hash]
-	dag.mu.RUnlock()
+	b := func() *Block {
+		dag.mu.RLock()
+		defer dag.mu.RUnlock()
+		return dag.blocks[hash]
+	}()
 	if b != nil || dag.state == nil {
 		return dag.hydratisiert(b)
 	}
@@ -6391,17 +6394,19 @@ func (dag *BlockDAG) GetBlockByHash(hash string) *Block {
 // every batch request timed out. One RLock for the whole batch is contended at
 // most once, not 500 times.
 func (dag *BlockDAG) GetBlocksByHashesForPeer(hashes []string) []*Block {
-	dag.mu.RLock()
 	out := make([]*Block, 0, len(hashes))
 	var missing []string
-	for _, h := range hashes {
-		if b := dag.blocks[h]; b != nil && b.Proposer != "synthetic-checkpoint" {
-			out = append(out, b)
-		} else if b == nil {
-			missing = append(missing, h)
+	func() {
+		dag.mu.RLock()
+		defer dag.mu.RUnlock()
+		for _, h := range hashes {
+			if b := dag.blocks[h]; b != nil && b.Proposer != "synthetic-checkpoint" {
+				out = append(out, b)
+			} else if b == nil {
+				missing = append(missing, h)
+			}
 		}
-	}
-	dag.mu.RUnlock()
+	}()
 	// FIX (P0, merge-reliability audit 2026-07-03): see GetBlockByHash's
 	// matching fix — a hash pruneOldDAGBlocks already evicted from dag.blocks
 	// used to be silently omitted here (indistinguishable from "peer genuinely
@@ -6440,9 +6445,11 @@ func (dag *BlockDAG) GetBlockByHeight(height int64) *Block {
 	// canonicalBlockAtHeightLocked calls ghostdagBlockLookup, which can
 	// cache a DB-fetched block into dag.blocks — needs the write lock, not
 	// a read lock, for that mutation to be safe.
-	dag.mu.Lock()
-	best := dag.canonicalBlockAtHeightLocked(height)
-	dag.mu.Unlock()
+	best := func() *Block {
+		dag.mu.Lock()
+		defer dag.mu.Unlock()
+		return dag.canonicalBlockAtHeightLocked(height)
+	}()
 	if best != nil || dag.state == nil {
 		return dag.hydratisiert(best)
 	}

@@ -442,9 +442,12 @@ func (dag *BlockDAG) hatNachgespieltenBlock(hash string) bool {
 	if hash == "" {
 		return true
 	}
-	dag.mu.RLock()
-	_, da := dag.blocks[hash]
-	dag.mu.RUnlock()
+	da := func() bool {
+		dag.mu.RLock()
+		defer dag.mu.RUnlock()
+		_, da := dag.blocks[hash]
+		return da
+	}()
 	if !da {
 		return false
 	}

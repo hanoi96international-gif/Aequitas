@@ -135,10 +135,12 @@ func kanonischeSignaturVersuch(sig string) string {
 // Pruefung macht applyValidatorBindungLocked in der Transaktion. Ist etwas
 // nicht lesbar, entscheidet sie.
 func (cs *ChainState) bindungVorpruefen(betreiber, signing string, zeit int64) error {
-	cs.mu.RLock()
-	acc, bekannt := cs.accounts.Get(betreiber)
-	mensch := bekannt && acc.IsHuman
-	cs.mu.RUnlock()
+	bekannt, mensch := func() (bool, bool) {
+		cs.mu.RLock()
+		defer cs.mu.RUnlock()
+		acc, bekannt := cs.accounts.Get(betreiber)
+		return bekannt, bekannt && acc.IsHuman
+	}()
 	if !bekannt {
 		var h bool
 		switch err := cs.db.QueryRow(`SELECT is_human FROM chain_accounts WHERE lower(address) = $1`, betreiber).Scan(&h); {
