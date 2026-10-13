@@ -3791,6 +3791,9 @@ type DistributionShare struct {
 	// RundeAt: nur bei Validatoren aus der Kette (validator_lohn_kette.go) --
 	// die Rundenzeit, nach der jeder Knoten nachrechnet. Sonst 0.
 	RundeAt int64
+	// Anker: nur bei Validatoren aus der Kette -- der Block, aus dessen
+	// Vergangenheitskegel die Anwesenheit gezaehlt wurde.
+	Anker string
 }
 
 // DistributeValidatorsPool credits registered node operators proportional
@@ -3831,14 +3834,24 @@ func (cs *ChainState) distributeValidatorsPoolLocked(ctx context.Context, vertei
 	ausKette := validatorLohnAusKette(verteiltAm)
 	var nodes []string
 	var ketteMinuten []betreiberMinuten
+	var anker string
 	if ausKette {
+		// Anker und Kegel (OFFEN 3): gezaehlt wird nur, was vom Anker aus
+		// erreichbar ist -- dasselbe, was jeder Nachspielende mit demselben
+		// Anker zaehlt.
 		var err error
-		ketteMinuten, _, err = cs.validatorAnwesenheitAusKetteLocked(ctx, verteiltAm)
-		if err != nil {
+		anker, err = validatorAnkerWaehlen(cs.dbExecCtx(ctx), verteiltAm)
+		if err != nil || anker == "" {
+			fmt.Printf("[VALIDATORS] Kein Anker in den 10 Minuten vor der Runde -- Topf bleibt stehen (%v)\n", err)
+			return nil, nil
+		}
+		var stand kegelStand
+		ketteMinuten, _, stand, err = cs.validatorAnwesenheitAusKetteLocked(ctx, verteiltAm, anker)
+		if err != nil || stand != kegelVollstaendig {
 			// Der Topf bleibt stehen und geht in die naechste Runde; die
 			// Tagesrunde (Grundeinkommen) laeuft weiter. Ein Datenbankfehler
 			// bricht die Transaktion ohnehin ab und die Runde wird wiederholt.
-			fmt.Printf("[VALIDATORS] Anwesenheit aus der Kette nicht lesbar -- Topf bleibt stehen: %v\n", err)
+			fmt.Printf("[VALIDATORS] Anwesenheit aus dem Kegel nicht lesbar (Stand %d) -- Topf bleibt stehen: %v\n", stand, err)
 			return nil, nil
 		}
 		for _, b := range ketteMinuten {
@@ -3978,7 +3991,7 @@ func (cs *ChainState) distributeValidatorsPoolLocked(ctx context.Context, vertei
 			return nil, fmt.Errorf("could not save validator reward for %s: %w", wallet, err)
 		}
 		totalDistributed += share
-		shares = append(shares, DistributionShare{Wallet: wallet, Amount: share, DemurrageLost: lost.Float(), RundeAt: rundeAusKette(ausKette, verteiltAm)})
+		shares = append(shares, DistributionShare{Wallet: wallet, Amount: share, DemurrageLost: lost.Float(), RundeAt: rundeAusKette(ausKette, verteiltAm), Anker: ankerAusKette(ausKette, anker)})
 	}
 	// Zero pool only after all recipients are successfully written,
 	// and only if something was actually distributed (prevents destroying

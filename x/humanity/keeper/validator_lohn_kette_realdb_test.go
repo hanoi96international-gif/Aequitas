@@ -23,12 +23,31 @@ import (
 //   - KN, KU: den ganzen Tag -- kein Mensch bzw. kein Betreiber.
 //
 // Topf 90 -> A 15, B 30, C 45.
+//
+// Alle Bloecke haengen in einer Kette (nach Zeit), an ihrer Spitze der Anker
+// 30 s vor der Runde -- gezaehlt wird nur, was im Kegel des Ankers liegt.
 type lohnFall struct {
 	t              *testing.T
 	cs             *ChainState
 	rundeAt        int64
+	anker          string
 	a, b, c, n, r  string
 	ka, kb, kn, ku string
+}
+
+// lohnAnkerScore: hoeher als jeder echte Blue-Score in der Testdatenbank.
+const lohnAnkerScore = int64(1) << 50
+
+// verketten: alle 'lohn-%'-Bloecke nach Zeit zu einer Kette; der Anker ist
+// der juengste. Nach jedem Einfuegen von Bloecken neu aufrufen.
+func (f *lohnFall) verketten() {
+	f.t.Helper()
+	if _, err := f.cs.db.Exec(`WITH o AS (SELECT hash, lag(hash) OVER (ORDER BY timestamp, hash) AS vor
+		FROM chain_blocks WHERE hash LIKE 'lohn-%')
+		UPDATE chain_blocks c SET parent_hashes = CASE WHEN o.vor IS NULL THEN '[]' ELSE json_build_array(o.vor)::text END
+		FROM o WHERE c.hash = o.hash`); err != nil {
+		f.t.Fatal(err)
+	}
 }
 
 func neuerLohnFall(t *testing.T) *lohnFall {
@@ -76,12 +95,16 @@ func neuerLohnFall(t *testing.T) *lohnFall {
 		  SELECT 'lohn-kn-' || g, g, '[]', $1, $2 + g * 60 FROM generate_series(0, 1439) g`, []interface{}{f.kn, seit}},
 		{`INSERT INTO chain_blocks (hash, height, parent_hashes, proposer, timestamp)
 		  SELECT 'lohn-ku-' || g, g, '[]', $1, $2 + g * 60 FROM generate_series(0, 1439) g`, []interface{}{f.ku, seit}},
+		{`INSERT INTO chain_blocks (hash, height, parent_hashes, proposer, timestamp, blue_score)
+		  VALUES ('lohn-anker', 1, '[]', $1, $2, $3)`, []interface{}{f.ku, f.rundeAt - 30, lohnAnkerScore}},
 		{`INSERT INTO registered_nodes (wallet_address, signing_address, blocks_produced) VALUES ($1, $2, 1000000)`, []interface{}{f.r, f.ka}},
 	} {
 		if _, err := cs.db.Exec(q.sql, q.args...); err != nil {
 			t.Fatalf("%v", err)
 		}
 	}
+	f.anker = "lohn-anker"
+	f.verketten()
 	f.konten()
 	erzeugerSchnittOverride.Store(1)
 	t.Cleanup(func() { erzeugerSchnittOverride.Store(0) })
@@ -119,8 +142,8 @@ func (f *lohnFall) runde() map[string]float64 {
 	}
 	got := map[string]float64{}
 	for _, s := range shares {
-		if s.RundeAt != f.rundeAt {
-			f.t.Fatalf("Gutschrift fuer %s ohne Rundenzeit (%d)", s.Wallet, s.RundeAt)
+		if s.RundeAt != f.rundeAt || s.Anker != f.anker {
+			f.t.Fatalf("Gutschrift fuer %s: Rundenzeit %d, Anker %q", s.Wallet, s.RundeAt, s.Anker)
 		}
 		got[s.Wallet] = s.Amount
 	}
@@ -149,7 +172,7 @@ func (f *lohnFall) gutschriften(betraege map[string]float64, rundeAt int64) []Tr
 	var txs []Transaction
 	for _, w := range []string{f.a, f.b, f.c, f.r, f.n} {
 		if b, ok := betraege[w]; ok {
-			txs = append(txs, Transaction{Type: "validator_distribution", Wallet: w, Amount: b, DistributionAt: rundeAt})
+			txs = append(txs, Transaction{Type: "validator_distribution", Wallet: w, Amount: b, DistributionAt: rundeAt, Anker: f.anker})
 		}
 	}
 	return txs
@@ -161,10 +184,10 @@ func (f *lohnFall) gutschriften(betraege map[string]float64, rundeAt int64) []Tr
 func TestValidatorLohnAusKette_Verteilung_RealDB(t *testing.T) {
 	f := neuerLohnFall(t)
 	f.cs.mu.Lock()
-	minuten, summe, err := f.cs.validatorAnwesenheitAusKetteLocked(context.Background(), f.rundeAt)
+	minuten, summe, stand, err := f.cs.validatorAnwesenheitAusKetteLocked(context.Background(), f.rundeAt, f.anker)
 	f.cs.mu.Unlock()
-	if err != nil {
-		t.Fatal(err)
+	if err != nil || stand != kegelVollstaendig {
+		t.Fatal(stand, err)
 	}
 	got := map[string]int64{}
 	for _, m := range minuten {
@@ -191,7 +214,7 @@ func TestValidatorLohnAusKette_VorDerUmstellungWieBisher_RealDB(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(shares) != 1 || shares[0].Wallet != f.r || shares[0].RundeAt != 0 {
+	if len(shares) != 1 || shares[0].Wallet != f.r || shares[0].RundeAt != 0 || shares[0].Anker != "" {
 		t.Fatalf("vor der Umstellung %+v -- erwartet nur R aus registered_nodes, ohne Rundenzeit", shares)
 	}
 }
@@ -203,7 +226,8 @@ func TestValidatorLohnAusKette_Nachrechnen_RealDB(t *testing.T) {
 	ehrlich := map[string]float64{f.a: 15, f.b: 30, f.c: 45}
 	zu := f.rundeAt + 5
 	regeln := []string{"validator_anteil", "validator_kein_betreiber", "validator_doppelt", "validator_empfaenger",
-		"validator_ohne_runde", "validator_runde", "validator_kein_mensch", "validator_unlesbar"}
+		"validator_ohne_runde", "validator_runde", "validator_kein_mensch", "validator_unlesbar",
+		"validator_ohne_anker", "validator_anker", "validator_kegel"}
 	summe := func() int64 {
 		var s int64
 		for _, r := range regeln {
@@ -244,7 +268,7 @@ func TestValidatorLohnAusKette_Nachrechnen_RealDB(t *testing.T) {
 		{"validator_kein_betreiber", func() []Transaction { return f.gutschriften(mit(ehrlich, f.r, 1), f.rundeAt) }, zu},
 		{"validator_kein_mensch", func() []Transaction { return f.gutschriften(mit(ehrlich, f.n, 1), f.rundeAt) }, zu},
 		{"validator_doppelt", func() []Transaction {
-			return append(f.gutschriften(ehrlich, f.rundeAt), Transaction{Type: "validator_distribution", Wallet: f.a, Amount: 15, DistributionAt: f.rundeAt})
+			return append(f.gutschriften(ehrlich, f.rundeAt), Transaction{Type: "validator_distribution", Wallet: f.a, Amount: 15, DistributionAt: f.rundeAt, Anker: f.anker})
 		}, zu},
 		{"validator_empfaenger", func() []Transaction { return f.gutschriften(ohne(ehrlich, f.c), f.rundeAt) }, zu},
 		{"validator_ohne_runde", func() []Transaction { return f.gutschriften(ehrlich, 0) }, zu},
@@ -328,10 +352,11 @@ func TestValidatorLohnAusKette_WechselInDerMinuteZaehltEinmal_RealDB(t *testing.
 			t.Fatal(err)
 		}
 	}
+	f.verketten()
 	f.cs.mu.Lock()
 	f.cs.accounts.Set(d, &AccountState{Address: d, IsHuman: true})
 	err := f.cs.saveAccountToDB(&AccountState{Address: d, IsHuman: true})
-	minuten, _, aerr := f.cs.validatorAnwesenheitAusKetteLocked(context.Background(), f.rundeAt)
+	minuten, _, _, aerr := f.cs.validatorAnwesenheitAusKetteLocked(context.Background(), f.rundeAt, f.anker)
 	f.cs.mu.Unlock()
 	if err != nil || aerr != nil {
 		t.Fatal(err, aerr)
@@ -370,11 +395,179 @@ func TestValidatorLohnAusKette_UnlesbarLaesstTopfStehen_RealDB(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	f.verketten()
 	f.cs.mu.Lock()
 	shares, err := f.cs.distributeValidatorsPoolLocked(context.Background(), f.rundeAt)
 	f.cs.mu.Unlock()
 	if err != nil || len(shares) != 0 {
 		t.Fatalf("zu viele Schluessel: %d Anteile, Fehler %v -- erwartet: Topf bleibt stehen, kein Fehler", len(shares), err)
+	}
+	if got := stand(f.cs, validatorsPoolAddr); got != 90 {
+		t.Fatalf("Topf %.2f statt 90", got)
+	}
+}
+
+// ------------------------------------------------------- Anker und Kegel
+
+// Missbrauch des Ankers: ohne Anker, zwei Anker in einer Runde, ein Anker
+// ausserhalb der zehn Minuten vor der Runde (zu alt, in der Zukunft).
+func TestValidatorLohnAusKette_AnkerFaelschungen_RealDB(t *testing.T) {
+	f := neuerLohnFall(t)
+	for _, b := range []struct {
+		hash string
+		zeit int64
+	}{{"lohn-anker-zwei", f.rundeAt - 40}, {"lohn-anker-alt", f.rundeAt - 1200}, {"lohn-anker-spaet", f.rundeAt + 60}} {
+		if _, err := f.cs.db.Exec(`INSERT INTO chain_blocks (hash, height, parent_hashes, proposer, timestamp) VALUES ($1, 1, '[]', $2, $3)`,
+			b.hash, f.ku, b.zeit); err != nil {
+			t.Fatal(err)
+		}
+	}
+	f.verketten()
+	ehrlich := map[string]float64{f.a: 15, f.b: 30, f.c: 45}
+	zu := f.rundeAt + 5
+	mitAnker := func(txs []Transaction, i int, anker string) []Transaction {
+		txs[i].Anker = anker
+		return txs
+	}
+	for _, x := range []struct {
+		name, regel string
+		txs         []Transaction
+	}{
+		{"ohne Anker", "validator_ohne_anker", mitAnker(f.gutschriften(ehrlich, f.rundeAt), 0, "")},
+		{"zwei Anker", "validator_anker", mitAnker(f.gutschriften(ehrlich, f.rundeAt), 1, "lohn-anker-zwei")},
+		{"Anker zu alt", "validator_anker", mitAnker(mitAnker(mitAnker(f.gutschriften(ehrlich, f.rundeAt), 0, "lohn-anker-alt"), 1, "lohn-anker-alt"), 2, "lohn-anker-alt")},
+		{"Anker nach der Runde", "validator_anker", mitAnker(mitAnker(mitAnker(f.gutschriften(ehrlich, f.rundeAt), 0, "lohn-anker-spaet"), 1, "lohn-anker-spaet"), 2, "lohn-anker-spaet")},
+	} {
+		f.konten()
+		if n := f.nachrechnen(x.regel, zu, x.txs); n == 0 {
+			t.Fatalf("%s: nicht erkannt (%s)", x.name, x.regel)
+		}
+	}
+	// Ein anderer gueltiger Anker im Fenster ist kein Fehler: der Kegel von
+	// lohn-anker-zwei enthaelt hier dieselben Bloecke des Fensters.
+	f.konten()
+	alle := []string{"validator_anteil", "validator_kein_betreiber", "validator_empfaenger", "validator_anker", "validator_kegel"}
+	vorher := int64(0)
+	for _, r := range alle {
+		vorher += erhaltungZaehler(r)
+	}
+	txs := f.gutschriften(ehrlich, f.rundeAt)
+	for i := range txs {
+		txs[i].Anker = "lohn-anker-zwei"
+	}
+	f.nachrechnen("validator_anteil", zu, txs)
+	for _, r := range alle {
+		vorher -= erhaltungZaehler(r)
+	}
+	if vorher != 0 {
+		t.Fatalf("gueltiger zweiter Anker: %d Abweichungen", -vorher)
+	}
+}
+
+// Einen Anker, den dieser Knoten nicht kennt, rechnet er nicht nach (statt zu
+// raten) -- prueft aber weiter, dass nur Menschen bekommen.
+func TestValidatorLohnAusKette_UnbekannterAnkerUnsicher_RealDB(t *testing.T) {
+	f := neuerLohnFall(t)
+	f.anker = "lohn-gibt-es-nicht"
+	zu := f.rundeAt + 5
+	if n := f.nachrechnen("validator_anteil", zu, f.gutschriften(map[string]float64{f.a: 89}, f.rundeAt)); n != 0 {
+		t.Fatalf("mit unbekanntem Anker nachgerechnet (%d)", n)
+	}
+	f.konten()
+	if n := f.nachrechnen("validator_kein_mensch", zu, f.gutschriften(map[string]float64{f.n: 1}, f.rundeAt)); n == 0 {
+		t.Fatal("unbekannter Anker: Nicht-Mensch nicht erkannt")
+	}
+}
+
+// Gezaehlt wird nur der Kegel: Bloecke, die vom Anker aus nicht erreichbar
+// sind (ein Seitenzweig, den nur dieser Knoten kennt, oder ein spaet
+// eingereichter Block), aendern weder die Verteilung noch das Nachrechnen.
+// Genau das macht die Zaehlung bei jedem Knoten gleich.
+func TestValidatorLohnAusKette_NurDerKegelZaehlt_RealDB(t *testing.T) {
+	f := neuerLohnFall(t)
+	seit, _ := anwesenheitsFenster(f.rundeAt)
+	// KB baut in der zweiten Tageshaelfte -- aber nicht im Kegel.
+	if _, err := f.cs.db.Exec(`INSERT INTO chain_blocks (hash, height, parent_hashes, proposer, timestamp)
+		SELECT 'lohn-seite-' || g, g, '[]', $1, $2 + g * 60 FROM generate_series(0, 719) g`, f.kb, seit+12*3600); err != nil {
+		t.Fatal(err)
+	}
+	anteile := f.runde()
+	if anteile[f.a] != 15 || anteile[f.b] != 30 || anteile[f.c] != 45 || len(anteile) != 3 {
+		t.Fatalf("Anteile %v -- der Seitenzweig hat mitgezaehlt", anteile)
+	}
+	f.konten()
+	if n := f.nachrechnen("validator_anteil", f.rundeAt+5, f.gutschriften(map[string]float64{f.a: 15, f.b: 30, f.c: 45}, f.rundeAt)); n != 0 {
+		t.Fatalf("Nachrechnen mit Seitenzweig: %d Abweichungen", n)
+	}
+	// Gegenprobe: haengt der Zweig im Kegel, zaehlt er.
+	f.verketten()
+	f.konten()
+	if anteile := f.runde(); anteile[f.b] <= 30 {
+		t.Fatalf("Anteile %v -- der verkettete Zweig zaehlt nicht", anteile)
+	}
+}
+
+// Ein Kegel ueber der Grenze: der Erzeuger zahlt nicht aus, und wer es doch
+// tut, wird erkannt -- derselbe Anker ergibt bei jedem denselben Kegel.
+func TestValidatorLohnAusKette_KegelZuGross_RealDB(t *testing.T) {
+	f := neuerLohnFall(t)
+	seit, _ := anwesenheitsFenster(f.rundeAt)
+	var vorrat, kegel int
+	if err := f.cs.db.QueryRow(`SELECT count(*) FROM chain_blocks WHERE timestamp >= $1 AND timestamp <= $2`,
+		seit-anwesenheitKegelPuffer, f.rundeAt-30+anwesenheitKegelPuffer).Scan(&vorrat); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.cs.db.QueryRow(`SELECT count(*) FROM chain_blocks WHERE hash LIKE 'lohn-%' AND timestamp >= $1`,
+		seit-anwesenheitKegelPuffer).Scan(&kegel); err != nil {
+		t.Fatal(err)
+	}
+	alt := anwesenheitKegelGrenze
+	t.Cleanup(func() { anwesenheitKegelGrenze = alt })
+	anwesenheitKegelGrenze = kegel - 10 // der Kegel ist knapp zu gross, der Vorrat passt
+	if 2*anwesenheitKegelGrenze < vorrat {
+		t.Fatalf("Testdatenbank zu voll: %d Zeilen im Zeitraum, Kegel %d", vorrat, kegel)
+	}
+	if anteile := f.runde(); len(anteile) != 0 {
+		t.Fatalf("zu grosser Kegel ausgezahlt: %v", anteile)
+	}
+	if got := stand(f.cs, validatorsPoolAddr); got != 90 {
+		t.Fatalf("Topf %.2f statt 90", got)
+	}
+	f.konten()
+	if n := f.nachrechnen("validator_kegel", f.rundeAt+5, f.gutschriften(map[string]float64{f.a: 15, f.b: 30, f.c: 45}, f.rundeAt)); n == 0 {
+		t.Fatal("Auszahlung trotz zu grossem Kegel nicht erkannt")
+	}
+}
+
+// Wird der Vorrat DIESES Knotens zu gross (er kennt mehr Bloecke als andere),
+// ist das kein Urteil: der Erzeuger zahlt nicht aus, wer nachspielt, rechnet
+// nicht nach -- niemand wird zu Unrecht beschuldigt.
+func TestValidatorLohnAusKette_VorratZuGrossKeinUrteil_RealDB(t *testing.T) {
+	f := neuerLohnFall(t)
+	alt := anwesenheitKegelGrenze
+	t.Cleanup(func() { anwesenheitKegelGrenze = alt })
+	anwesenheitKegelGrenze = 100
+	if anteile := f.runde(); len(anteile) != 0 {
+		t.Fatalf("mit zu grossem Vorrat ausgezahlt: %v", anteile)
+	}
+	f.konten()
+	for _, regel := range []string{"validator_kegel", "validator_anteil"} {
+		if n := f.nachrechnen(regel, f.rundeAt+5, f.gutschriften(map[string]float64{f.a: 89}, f.rundeAt)); n != 0 {
+			t.Fatalf("zu grosser Vorrat: %s angeschlagen (%d)", regel, n)
+		}
+		f.konten()
+	}
+}
+
+// Kein Anker in den zehn Minuten vor der Runde: der Topf bleibt stehen.
+func TestValidatorLohnAusKette_OhneAnkerTopfBleibt_RealDB(t *testing.T) {
+	f := neuerLohnFall(t)
+	if _, err := f.cs.db.Exec(`DELETE FROM chain_blocks WHERE timestamp >= $1 AND timestamp <= $2`,
+		f.rundeAt-validatorAnkerHoechstensAlt, f.rundeAt); err != nil {
+		t.Fatal(err)
+	}
+	if anteile := f.runde(); len(anteile) != 0 {
+		t.Fatalf("ohne Anker ausgezahlt: %v", anteile)
 	}
 	if got := stand(f.cs, validatorsPoolAddr); got != 90 {
 		t.Fatalf("Topf %.2f statt 90", got)

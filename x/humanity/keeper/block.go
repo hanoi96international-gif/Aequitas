@@ -102,8 +102,13 @@ type Transaction struct {
 	// value once and uses it for both its own immediate state and this
 	// field, so secondaries replay the IDENTICAL value instead of any
 	// wall-clock reading of their own.
-	DistributionAt int64  `json:"distribution_at,omitempty"`
-	TxHash         string `json:"tx_hash"`
+	DistributionAt int64 `json:"distribution_at,omitempty"`
+	// Anker: bei validator_distribution aus der Kette der Block, aus dessen
+	// Vergangenheitskegel die Anwesenheit gezaehlt wurde (validator_lohn_kette.go).
+	// Steht im Block (tx_root), also unveraenderlich; jeder Nachspielende
+	// rechnet mit genau diesem Anker nach.
+	Anker  string `json:"anker,omitempty"`
+	TxHash string `json:"tx_hash"`
 	// Nullifier and Commitment are set on register_human TXs so secondary
 	// nodes can apply the registration to their local state when they receive
 	// the block — without needing a separate snapshot or state sync.

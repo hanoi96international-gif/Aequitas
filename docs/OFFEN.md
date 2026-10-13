@@ -37,9 +37,15 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
    `chain_blocks` im Fenster: ein Knoten mit einem Block mehr oder weniger –
    etwa an der Finalitätswand – rechnet anders und wiese im strengen Modus
    die Runde ab). Mit dem Kegel zählen nur Vorfahren des Ankers; fehlt einem
-   Knoten einer, rechnet er nicht nach statt falsch. Bausteine liegen in
-   `claude/weiter-gehts-r7rb9w-register3b` (`bloeckeImKegel`,
-   `validatorAnkerWaehlen`, Tests).
+   Knoten einer, rechnet er nicht nach statt falsch.
+   **Erledigt (Zweig `claude/weiter-gehts-vm8979-kegel`):** Der Erzeuger
+   wählt den Anker (höchster Blue-Score in den 10 Minuten vor der Runde),
+   jede Gutschrift trägt ihn (`anker`, im Block-Hash). Nachspielende zählen
+   den Kegel desselben Ankers; fehlt der Anker oder ein Block des Kegels,
+   rechnen sie nicht nach (Menschen- und Doppelprüfung bleiben). Abweichung:
+   kein Anker, zwei Anker in einer Runde, Anker außerhalb des Zeitraums,
+   Auszahlung trotz Kegel über 400.000 Blöcken. Ein zu großer lokaler Vorrat
+   ist kein Urteil. Tests: `validator_lohn_kette_realdb_test.go`.
 4. **Strenger Modus** spätestens mit der Staffel; Stichtag
    `nachrechnenStrengAbUnix`, sobald `/api/wirtschaft/regeln` über mehrere
    Runden 0 Abweichungen zeigt.
