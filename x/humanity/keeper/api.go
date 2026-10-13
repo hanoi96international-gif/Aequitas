@@ -2136,6 +2136,11 @@ func (a *APIServer) handleBlockPush(w http.ResponseWriter, r *http.Request) {
 	// it contains. action:"resend_full" makes the sender re-push the complete
 	// block at once, so a failed fetch costs one extra round trip and nothing
 	// else.
+	// eltern_grenze.go: vor dem Abruf des Koerpers beim Absender.
+	if elternUngueltig(&block) != "" {
+		w.Write([]byte(`{"ok":false,"reason":"invalid parents"}`))
+		return
+	}
 	if !a.ensureBlockBody(&block, r.Header.Get(txBatchSourceHeader)) {
 		w.Write([]byte(`{"ok":false,"reason":"transaction body unavailable","action":"resend_full","tx_batch":"` + txBatchCapabilityToken + `"}`))
 		return

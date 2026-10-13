@@ -2209,6 +2209,11 @@ func (dag *BlockDAG) BridgeHistoricalGap(peerURLs []string) {
 				continue
 			}
 			for _, b := range blocks {
+				// eltern_grenze.go: sonst legte die Bruecke fuer jeden
+				// fehlenden Elternteil einen Stumpf an -- unter dag.mu.
+				if b == nil || elternUngueltig(b) != "" {
+					continue
+				}
 				if !seen[b.Hash] {
 					seen[b.Hash] = true
 					candidates = append(candidates, b)
@@ -4871,6 +4876,12 @@ func (dag *BlockDAG) prefetchMergeSetFromDB(block *Block) {
 }
 
 func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
+	// eltern_grenze.go: vor allem anderen -- vor dem Kodieren, dem Hash, jeder
+	// Sperre und jedem Nachschlag.
+	if grund := elternUngueltig(block); grund != "" {
+		fmt.Printf("[DAG] ✗ Rejected peer block #%d: %s\n", block.Height, grund)
+		return false
+	}
 	// Einmal kodieren, dreimal brauchen (Hash pruefen, TxRoot, Speichern).
 	block.merkeTransaktionenJSON()
 	// FIX (2026-07-05 — permanent operational diagnostic, not a temp one):
@@ -6575,6 +6586,12 @@ func (dag *BlockDAG) safeStubBlueScoreLocked() int64 {
 // dag.blocks/dag.tips — safeStubBlueScoreLocked reads both to compute the
 // stub's BlueScore relative to cp's own.
 func (dag *BlockDAG) seedCheckpointParentStubsLocked(cp *Block) {
+	// eltern_grenze.go: kein Stumpf je Elternteil fuer einen Checkpoint, den
+	// kein ehrlicher Erzeuger gebaut haben kann.
+	if grund := elternUngueltig(cp); grund != "" {
+		fmt.Printf("[RESYNC] ✗ Checkpoint-Eltern nicht angelegt: %s\n", grund)
+		return
+	}
 	for _, parentHash := range cp.ParentHashes {
 		if parentHash == "" {
 			continue
@@ -8762,6 +8779,10 @@ func (dag *BlockDAG) maxParents() int {
 	v := 2 * dag.k()
 	if v < maxParentsPerBlock {
 		return maxParentsPerBlock
+	}
+	// Nie mehr, als jeder andere Knoten annimmt (eltern_grenze.go).
+	if v > peerElternGrenze {
+		return peerElternGrenze
 	}
 	return v
 }
