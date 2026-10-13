@@ -983,10 +983,15 @@ func (l *Leitung) Takt(jetzt time.Time) []LeitNachricht {
 		abgeben := !l.nachweis || (l.stockt && jetzt.Sub(l.leiterSeit) >= l.cfg.StockenFrist)
 		if !l.abschliessen && abgeben && (l.mitWahl() || l.cfg.ZweiWechseln) {
 			n := l.nachfolger(l.ich, false)
-			if n == "" && l.stockt {
+			if n == "" && l.stockt && jetzt.Sub(l.leiterSeit) >= l.cfg.StockenFrist {
 				n = l.nachfolger(l.ich, true)
 			}
-			if n != "" && l.lebt(n, jetzt) {
+			// Erst, wenn n eine Lease DIESES Terms quittiert hat: dann kennt
+			// er den Satz, den dieser Leiter beim Antritt neu gestempelt hat
+			// -- sonst lehnte er die Uebergabe ab (SatzHash), und bei zwei
+			// haengen beide in Terms ohne Leiter (Nachpruefung, Befund A).
+			_, quittiert := l.acks[n]
+			if n != "" && l.lebt(n, jetzt) && quittiert {
 				l.abschliessen = true
 				l.uebergabeAn = n
 				l.abschlussBeginnt(jetzt)

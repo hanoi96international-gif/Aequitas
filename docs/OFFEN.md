@@ -71,6 +71,12 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
    weiterhin nur mit `AEQUITAS_LEITUNG_ZWEI_WECHSELN`; vorher: Übergabe
    (`offeneUebergabe`, `wartet`) in `LeitSpeicher`, Übergabe nur nach
    erfolgreichem Speichern senden, eigenes `Stockt`-Flag in der Nachricht.
+   Schon vor diesem Zweig (Nachprüfung gemessen): mit Schalter endet bei zwei
+   eine Netztrennung während eines planmäßigen Wechsels in etwa 1 von 60
+   Zufallsläufen ohne Leiter.
+   Abgabe erst, wenn der Empfänger eine Lease DIESES Terms quittiert hat
+   (er kennt dann den neu gestempelten Satz) – sonst gaben zwei sich die
+   Leitung zurück und hingen in Terms ohne Leiter (Nachprüfung, Befund A).
 7. **Einträge in `pending_txs` ohne Annahme-Pause** (Prüfung von #322,
    INFO-2; bestand schon vorher): `DoppelsignaturErkannt` (slashing.go,
    ausgelöst von Peer-Blöcken) legt den Strafbeweis auch auf einem Beobachter

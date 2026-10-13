@@ -143,6 +143,48 @@ func TestLeitung2_BeideStockenDannErholung(t *testing.T) {
 	}
 }
 
+// Nachpruefung, Befund A: zwei mit ZweiWechseln, B ohne Nachweis; A stockt,
+// gibt an B ab und erholt sich. B gibt ihm die Leitung erst zurueck, wenn A
+// seine Lease quittiert hat -- es bleibt immer ein Leiter.
+func TestLeitung2_RueckgabeErstNachQuittung(t *testing.T) {
+	for seed := int64(60); seed < 80; seed++ {
+		c := stockKonfig()
+		c.ZweiWechseln = true
+		n := neuesSimNetz(t, 2, seed, c)
+		n.faehig = map[string]bool{n.knoten[0].addr: true}
+		for i := range n.knoten {
+			n.baue(i)
+		}
+		n.laufe(5 * time.Second)
+		n.knoten[0].l.SetzeStockt(true)
+		n.laufe(25 * time.Second)
+		n.knoten[0].l.SetzeStockt(false)
+		n.laufe(60 * time.Second)
+		if n.annehmender() < 0 {
+			t.Fatalf("seed %d: kein Leiter", seed)
+		}
+	}
+}
+
+// Nachpruefung, Befund B: alle ohne Nachweis und alle stocken -- die Frist
+// gilt auch hier, die Leitung flattert nicht.
+func TestLeitung3_OhneNachweisUndStockenKeinFlattern(t *testing.T) {
+	n := neuesSimNetz(t, 3, 28, stockKonfig())
+	n.faehig = map[string]bool{}
+	for i := range n.knoten {
+		n.baue(i)
+	}
+	n.laufe(5 * time.Second)
+	for _, k := range n.knoten {
+		k.l.SetzeStockt(true)
+	}
+	vorher := n.wechsel
+	n.laufe(120 * time.Second)
+	if w := n.wechsel - vorher; w > 8 {
+		t.Fatalf("%d Wechsel in 120 s", w)
+	}
+}
+
 // Ein stockender Folger wird bei einem Ausfall nicht gewaehlt.
 func TestLeitung3_StockenderWirdNichtLeiter(t *testing.T) {
 	n := neuesSimNetz(t, 3, 25, stockKonfig())
@@ -169,20 +211,30 @@ func TestLeitung3_StockenderWirdNichtLeiter(t *testing.T) {
 // Verlust. Nie zwei -- und nach der Heilung (alle da, keiner stockt) gibt
 // es wieder einen Leiter (Lebendigkeit, Pruefung des Leiter-PR).
 func TestLeitung_ZufallMitStocken(t *testing.T) {
-	for _, anzahl := range []int{3, 4} {
+	for _, anzahl := range []int{2, 3, 4} {
 		for seed := int64(200); seed < 220; seed++ {
 			c := stockKonfig()
 			c.WechselAlle = 45 * time.Second
+			c.ZweiWechseln = true // bei zwei: nur mit Schalter wird gewechselt
 			n := neuesSimNetz(t, anzahl, seed, c)
 			n.verlust = 0.1
 			for runde := 0; runde < 30; runde++ {
 				i := n.r.Intn(anzahl)
-				switch n.r.Intn(5) {
+				switch n.r.Intn(7) {
+				case 5:
+					n.knoten[i].l.SetzeFaehig(false)
+				case 6:
+					n.knoten[i].l.SetzeFaehig(true)
 				case 0:
 					n.knoten[i].l.SetzeStockt(true)
 				case 1:
 					n.knoten[i].l.SetzeStockt(false)
 				case 2:
+					if anzahl == 2 {
+						// Bei zwei verliert ein Neustart eine offene Uebergabe
+						// (bekannte Grenze, docs/OFFEN.md) -- hier nicht.
+						continue
+					}
 					n.knoten[i].an = false
 				case 3:
 					if !n.knoten[i].an {
@@ -190,6 +242,11 @@ func TestLeitung_ZufallMitStocken(t *testing.T) {
 						n.baue(i)
 					}
 				case 4:
+					if anzahl == 2 {
+						// Trennung mit planmaessigem Wechsel bei zwei: auch
+						// ohne Stocken bekannte Grenze (ohne Wahl) -- hier nicht.
+						continue
+					}
 					n.gruppe = map[int]int{}
 					for j := range n.knoten {
 						n.gruppe[j] = n.r.Intn(2)
@@ -204,6 +261,7 @@ func TestLeitung_ZufallMitStocken(t *testing.T) {
 					n.baue(i)
 				}
 				k.l.SetzeStockt(false)
+				k.l.SetzeFaehig(true)
 			}
 			n.laufe(3 * time.Minute)
 			if n.annehmender() < 0 {
