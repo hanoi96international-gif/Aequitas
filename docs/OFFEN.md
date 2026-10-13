@@ -270,9 +270,27 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
       und `checkpointImTragendenBlock`: Bezugszeit = Zeit des tragenden
       Blocks, Checkpoint-Block muss in dessen Vergangenheit liegen
       (statt „hier nachgespielt“), eigene Lücke → Ablehnung. Schlafend.
-      Damit erledigt: Bezugszeit und Vergangenheit. Offen bleiben:
-      Komitee-Stand aus der Vergangenheit, konsensfeste Liste,
-      Unterschreib-Regel, Komitee-Cache, Speicher des letzten Checkpoints.
+      Prüfung Baustein 3 umgesetzt: Kryptographie vor der DB-Suche,
+      Grenzen vor dem Lesen (Besuche, Eltern-Verweise, Ebenen),
+      `errCheckpointNichtPruefbar` getrennt von „ungültig“, Definition
+      „Vorfahr über Blöcke mit Zeit ≥ Grenze“ festgeschrieben.
+      **Blocker vor dem Anschluss als Konsensregel:**
+      1. KRITISCH: Komitee-Stand ist lokal (30-s-Takt, Wanduhr,
+         Lesefehler, Umgebungsliste) – muss aus dem Register-Stand in der
+         Vergangenheit des tragenden Blocks kommen, Liste konsensfest.
+      2. „Letzter“ Checkpoint: der jüngste in der Vergangenheit des
+         tragenden Blocks, im Zustand (StateRoot), nicht lokal zuletzt
+         gesehen.
+      3. „Nicht prüfbar“ im Nachspielen: zurückstellen/nachladen, nie
+         ungültig, nie angenommen.
+      4. Snapshot-Grenze: Snapshot muss die Köpfe der letzten 720 s bzw.
+         den letzten Checkpoint mitbringen; Knoten ohne DB.
+      5. Suche außerhalb von `dag.mu` (inhaltsadressiert) oder als
+         rekursives CTE; Ebenen = Abfragen (bis 1024).
+      6. Breiter Kegel kann Checkpoints abschalten: Suche entlang der
+         Selected-Parent-Kette bzw. Checkpoint als direkter Elternteil.
+      7. Transaktionssicht: derselbe `sqlExecutor` wie das Nachspielen.
+      8. Unterschreib-Regel, Komitee-Cache je (Stand, Epoche).
       **Vor dem Anschluss als Konsensregel (Prüfung Baustein 2, HOCH):**
       dann wäre jede lokale Abweichung ein Split. Nötig: Bezugszeit = Zeit
       des tragenden Blocks; statt „hier nachgespielt“ „in der Vergangenheit

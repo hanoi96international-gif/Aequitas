@@ -150,14 +150,29 @@ func (dag *BlockDAG) festeErzeugerListe() map[string]bool {
 	return dag.produzentenFest
 }
 
+// errCheckpointNichtPruefbar: dieser Knoten kann den Checkpoint gerade nicht
+// beurteilen (eigene Luecke, Lesefehler, kein Zustand) -- im Konsens hiesse
+// das "zurueckstellen, nachladen, erneut versuchen", nie "ungueltig" und nie
+// "angenommen" (Pruefung von Baustein 3, HOCH).
+var errCheckpointNichtPruefbar = errors.New("Checkpoint hier nicht pruefbar")
+
 // checkpointImTragendenBlock: die Pruefung, wie sie als Konsensregel
 // laufen muss (OFFEN 10, Baustein 3) -- ohne lokalen Zustand ausser der
 // Geschichte: Bezugszeit ist die Zeit des tragenden Blocks (dessen
 // Zeitstempelpruefung lief vorher), und statt "hier nachgespielt" muss der
-// Checkpoint-Block in der Vergangenheit des tragenden Blocks liegen. Eine
-// eigene Luecke oder die Suchgrenze: Ablehnung (dieser Knoten kann es nicht
-// pruefen -- wer einen frischen Block nachspielt, hat dessen juengste
-// Vergangenheit). Der Komitee-Stand ist noch der lokale (OFFEN).
+// Checkpoint-Block in der Vergangenheit des tragenden Blocks liegen
+// (vorfahrSuchen). Der Checkpoint-Block darf hoechstens
+// checkpointHoechstensAlt vor und -- wie jeder Vorfahr je Stufe --
+// hoechstens zeitstempelRueckToleranz nach dem tragenden Block datiert sein.
+//
+// Reihenfolge: Form, Zahl, Stichtag, Zeiten, Monotonie (billig) -- dann
+// Komitee und Unterschriften (hoechstens 100 Recoveries; die Unterschriften
+// binden Hash, Hoehe und Zeit) -- erst zuletzt die Suche in der Datenbank.
+// So loest nur ein echtes Quorum-Zertifikat die teure Suche aus.
+//
+// Fehler, die nur diesen Knoten betreffen (Luecke, Lesefehler, kein Stand),
+// sind errCheckpointNichtPruefbar. NOCH LOKAL und vor dem Anschluss offen
+// (docs/OFFEN.md): Komitee-Stand, "letzter" Checkpoint.
 func (dag *BlockDAG) checkpointImTragendenBlock(z CheckpointZertifikat, letzter *KettenCheckpoint, tragenderEltern []string, tragenderZeit int64, lies kopfLeser) error {
 	if err := z.gueltig(); err != nil {
 		return err
@@ -168,10 +183,8 @@ func (dag *BlockDAG) checkpointImTragendenBlock(z CheckpointZertifikat, letzter 
 	if !erzeugerSchnittAktiv(z.Zeit) {
 		return fmt.Errorf("Checkpoint vor erzeugerSchnittAb")
 	}
-	// Der Checkpoint liegt vor dem tragenden Block -- aber hoechstens
-	// checkpointHoechstensAlt.
 	if z.Zeit > tragenderZeit+zeitstempelRueckToleranz {
-		return fmt.Errorf("Checkpoint-Zeit %d nach dem tragenden Block (%d)", z.Zeit, tragenderZeit)
+		return fmt.Errorf("Checkpoint-Zeit %d mehr als %d s nach dem tragenden Block (%d)", z.Zeit, zeitstempelRueckToleranz, tragenderZeit)
 	}
 	if tragenderZeit-z.Zeit > checkpointHoechstensAlt {
 		return fmt.Errorf("Checkpoint %d s vor dem tragenden Block (hoechstens %d)", tragenderZeit-z.Zeit, checkpointHoechstensAlt)
@@ -179,12 +192,24 @@ func (dag *BlockDAG) checkpointImTragendenBlock(z CheckpointZertifikat, letzter 
 	if letzter != nil && z.Zeit <= letzter.Zeit {
 		return fmt.Errorf("Checkpoint (Zeit %d) nicht nach dem letzten (Zeit %d)", z.Zeit, letzter.Zeit)
 	}
+	if dag.state == nil {
+		return fmt.Errorf("%w: kein Zustand", errCheckpointNichtPruefbar)
+	}
+	komitee, err := checkpointKomitee(dag.state.erzeugerRegister.Load(), z.Zeit, dag.festeErzeugerListe())
+	if err != nil {
+		return fmt.Errorf("%w: %v", errCheckpointNichtPruefbar, err)
+	}
+	if err := pruefeZertifikat(z, komitee); err != nil {
+		return err
+	}
 	kopf, gefunden, vollstaendig, err := vorfahrSuchen(lies, tragenderEltern, z.Hash, z.Zeit-checkpointHoechstensAlt)
 	switch {
+	case errors.Is(err, errVorfahrZuGross):
+		return fmt.Errorf("Vergangenheit des tragenden Blocks zu gross: %w", err)
 	case err != nil:
-		return fmt.Errorf("Vorfahren nicht lesbar: %w", err)
+		return fmt.Errorf("%w: Vorfahren nicht lesbar: %v", errCheckpointNichtPruefbar, err)
 	case !gefunden && !vollstaendig:
-		return fmt.Errorf("Vergangenheit des tragenden Blocks hier unvollstaendig")
+		return fmt.Errorf("%w: Vergangenheit des tragenden Blocks hier unvollstaendig", errCheckpointNichtPruefbar)
 	case !gefunden:
 		return fmt.Errorf("Block %s liegt nicht in der Vergangenheit des tragenden Blocks", kurzAdresse(z.Hash))
 	}
@@ -192,12 +217,5 @@ func (dag *BlockDAG) checkpointImTragendenBlock(z CheckpointZertifikat, letzter 
 		return fmt.Errorf("Checkpoint (Hoehe %d, Zeit %d) passt nicht zum Block (Hoehe %d, Zeit %d)",
 			z.Hoehe, z.Zeit, kopf.hoehe, kopf.zeit)
 	}
-	if dag.state == nil {
-		return errors.New("kein Zustand")
-	}
-	komitee, err := checkpointKomitee(dag.state.erzeugerRegister.Load(), z.Zeit, dag.festeErzeugerListe())
-	if err != nil {
-		return err
-	}
-	return pruefeZertifikat(z, komitee)
+	return nil
 }

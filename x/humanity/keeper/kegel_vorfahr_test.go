@@ -9,9 +9,10 @@ import (
 
 // speicherKette: Koepfe im Speicher, mit Zaehler der gelesenen Hashes.
 type speicherKette struct {
-	k       map[string]blockKopf
-	gelesen int
-	fehler  error
+	k        map[string]blockKopf
+	gelesen  int
+	abfragen int
+	fehler   error
 }
 
 func (s *speicherKette) leser() kopfLeser {
@@ -20,6 +21,7 @@ func (s *speicherKette) leser() kopfLeser {
 			return nil, s.fehler
 		}
 		s.gelesen += len(hashes)
+		s.abfragen++
 		out := map[string]blockKopf{}
 		for _, h := range hashes {
 			if k, ok := s.k[h]; ok {
@@ -104,11 +106,11 @@ func TestVorfahrSuchen_Grenze(t *testing.T) {
 			s.k[ebene(e, i)] = blockKopf{hoehe: int64(e), zeit: 1_800_000_000 + int64(e), eltern: eltern}
 		}
 	}
-	_, ja, voll, err := vorfahrSuchen(s.leser(), []string{ebene(11, 0)}, "nicht-da", 0)
-	if err != nil || ja || voll {
-		t.Fatalf("ueber der Grenze: gefunden=%v vollstaendig=%v err=%v", ja, voll, err)
+	_, ja, _, err := vorfahrSuchen(s.leser(), []string{ebene(11, 0)}, "nicht-da", 0)
+	if !errors.Is(err, errVorfahrZuGross) || ja {
+		t.Fatalf("ueber der Grenze: gefunden=%v err=%v", ja, err)
 	}
-	if s.gelesen > vorfahrBesuchsGrenze+256*256 {
+	if s.gelesen > vorfahrBesuchsGrenze {
 		t.Fatalf("%d Koepfe gelesen -- Grenze %d", s.gelesen, vorfahrBesuchsGrenze)
 	}
 }
@@ -159,5 +161,150 @@ func TestCheckpointImTragendenBlock(t *testing.T) {
 	err := f.dag.checkpointImTragendenBlock(z, nil, tragend, tragZeit, s.leser())
 	if err == nil || !strings.Contains(err.Error(), "unvollstaendig") {
 		t.Fatalf("Luecke: %v", err)
+	}
+}
+
+// Eine lange schmale Kette: hoechstens vorfahrEbenenGrenze Abfrage-Runden.
+func TestVorfahrSuchen_Ebenengrenze(t *testing.T) {
+	alt := vorfahrEbenenGrenze
+	vorfahrEbenenGrenze = 64
+	t.Cleanup(func() { vorfahrEbenenGrenze = alt })
+	s := lineareKette(500, 1_800_000_000)
+	_, ja, _, err := vorfahrSuchen(s.leser(), []string{hx(500)}, hx(1), 0)
+	if !errors.Is(err, errVorfahrZuGross) || ja {
+		t.Fatalf("lange Kette: gefunden=%v err=%v", ja, err)
+	}
+	if s.abfragen > vorfahrEbenenGrenze {
+		t.Fatalf("%d Abfragen, Grenze %d", s.abfragen, vorfahrEbenenGrenze)
+	}
+	// Innerhalb der Ebenengrenze: gefunden.
+	if _, ja, _, err := vorfahrSuchen(s.leser(), []string{hx(500)}, hx(500-vorfahrEbenenGrenze+1), 0); !ja || err != nil {
+		t.Fatalf("innerhalb der Ebenengrenze: %v %v", ja, err)
+	}
+}
+
+// Eltern-Verweise werden gezaehlt, bevor sie expandiert werden.
+func TestVorfahrSuchen_Elterngrenze(t *testing.T) {
+	alt := vorfahrElternGrenze
+	vorfahrElternGrenze = 100
+	t.Cleanup(func() { vorfahrElternGrenze = alt })
+	s := &speicherKette{k: map[string]blockKopf{}}
+	var eltern []string
+	for i := 0; i < 200; i++ {
+		eltern = append(eltern, hx(10_000+i))
+	}
+	s.k[hx(1)] = blockKopf{hoehe: 2, zeit: 1_800_000_000, eltern: eltern}
+	if _, _, _, err := vorfahrSuchen(s.leser(), []string{hx(1)}, "nicht-da", 0); !errors.Is(err, errVorfahrZuGross) {
+		t.Fatalf("Elterngrenze: %v", err)
+	}
+	// Mehr als peerElternGrenze direkte Eltern: sofort.
+	viele := make([]string, peerElternGrenze+1)
+	for i := range viele {
+		viele[i] = hx(20_000 + i)
+	}
+	if _, _, _, err := vorfahrSuchen(s.leser(), viele, "x", 0); !errors.Is(err, errVorfahrZuGross) {
+		t.Fatalf("zu viele direkte Eltern: %v", err)
+	}
+}
+
+// Eine rueckdatierte Zwischenkette schneidet einen echten Vorfahr ab --
+// fuer jeden Knoten gleich (Definition "ueber Bloecke mit Zeit >= grenze").
+func TestVorfahrSuchen_RueckdatierteKette(t *testing.T) {
+	const z = int64(1_800_000_000)
+	s := &speicherKette{k: map[string]blockKopf{hx(1): {hoehe: 1, zeit: z}}}
+	vor, zeit := hx(1), z
+	for i := 2; i <= 8; i++ {
+		zeit -= zeitstempelRueckToleranz
+		s.k[hx(i)] = blockKopf{hoehe: int64(i), zeit: zeit, eltern: []string{vor}}
+		vor = hx(i)
+	}
+	if _, ja, voll, err := vorfahrSuchen(s.leser(), []string{vor}, hx(1), z-checkpointHoechstensAlt); ja || !voll || err != nil {
+		t.Fatalf("rueckdatierte Kette: gefunden=%v vollstaendig=%v err=%v", ja, voll, err)
+	}
+}
+
+func TestCheckpointImTragendenBlock_Grenzen(t *testing.T) {
+	f := neuerBindungFall(t)
+	start := bindungZeit - 500
+	s := lineareKette(600, start)
+	z := f.zertifikat(t, 500, hx(500), bindungZeit, f.keys[:3])
+	tragend := []string{hx(600)}
+	for zeit, ok := range map[int64]bool{
+		bindungZeit + checkpointHoechstensAlt:      true,
+		bindungZeit + checkpointHoechstensAlt + 1:  false,
+		bindungZeit - zeitstempelRueckToleranz:     true,
+		bindungZeit - zeitstempelRueckToleranz - 1: false,
+	} {
+		if err := f.dag.checkpointImTragendenBlock(z, nil, tragend, zeit, s.leser()); (err == nil) != ok {
+			t.Fatalf("tragender Block Blockzeit%+d: %v, erwartet ok=%v", zeit-bindungZeit, err, ok)
+		}
+	}
+	// Monotonie: Wiederholung und aelterer nach neuerem.
+	for _, l := range []*KettenCheckpoint{{Zeit: bindungZeit}, {Zeit: bindungZeit + 1}} {
+		if f.dag.checkpointImTragendenBlock(z, l, tragend, bindungZeit+5, s.leser()) == nil {
+			t.Fatalf("nach letztem %+v angenommen", *l)
+		}
+	}
+}
+
+// Ein gefaelschtes oder unvollstaendiges Zertifikat loest die Suche in der
+// Datenbank gar nicht erst aus.
+func TestCheckpointImTragendenBlock_KryptoVorSuche(t *testing.T) {
+	f := neuerBindungFall(t)
+	s := lineareKette(600, bindungZeit-500)
+	z := f.zertifikat(t, 500, hx(500), bindungZeit, f.keys[:3])
+	z.Unterschriften[0].Sig = z.Unterschriften[1].Sig // gefaelscht
+	if f.dag.checkpointImTragendenBlock(z, nil, []string{hx(600)}, bindungZeit+5, s.leser()) == nil {
+		t.Fatal("gefaelschte Unterschrift angenommen")
+	}
+	if s.abfragen != 0 {
+		t.Fatalf("%d Abfragen fuer ein gefaelschtes Zertifikat", s.abfragen)
+	}
+}
+
+// Was nur diesen Knoten betrifft, ist "nicht pruefbar", nicht "ungueltig";
+// eine Grenze bei vollstaendigen Daten ist ein Urteil.
+func TestCheckpointImTragendenBlock_NichtPruefbar(t *testing.T) {
+	f := neuerBindungFall(t)
+	s := lineareKette(600, bindungZeit-500)
+	z := f.zertifikat(t, 500, hx(500), bindungZeit, f.keys[:3])
+	tragend := []string{hx(600)}
+	s.fehler = errors.New("DB weg")
+	if err := f.dag.checkpointImTragendenBlock(z, nil, tragend, bindungZeit+5, s.leser()); !errors.Is(err, errCheckpointNichtPruefbar) {
+		t.Fatalf("Lesefehler: %v", err)
+	}
+	s.fehler = nil
+	delete(s.k, hx(550))
+	if err := f.dag.checkpointImTragendenBlock(z, nil, tragend, bindungZeit+5, s.leser()); !errors.Is(err, errCheckpointNichtPruefbar) {
+		t.Fatalf("Luecke: %v", err)
+	}
+	f.dag.state.erzeugerRegister.Store(nil)
+	if err := f.dag.checkpointImTragendenBlock(z, nil, tragend, bindungZeit+5, s.leser()); !errors.Is(err, errCheckpointNichtPruefbar) {
+		t.Fatalf("ohne Stand: %v", err)
+	}
+	f2 := neuerBindungFall(t)
+	s2 := lineareKette(600, bindungZeit-500)
+	z2 := f2.zertifikat(t, 500, hx(500), bindungZeit, f2.keys[:3])
+	alt := vorfahrBesuchsGrenze
+	vorfahrBesuchsGrenze = 10
+	t.Cleanup(func() { vorfahrBesuchsGrenze = alt })
+	err := f2.dag.checkpointImTragendenBlock(z2, nil, []string{hx(600)}, bindungZeit+5, s2.leser())
+	if err == nil || errors.Is(err, errCheckpointNichtPruefbar) {
+		t.Fatalf("Grenze bei vollstaendigen Daten muss ein Urteil sein: %v", err)
+	}
+}
+
+// Gleiche Geschichte, gleiche Eltern-Reihenfolge: gleiches Urteil, auch an
+// der Grenze (die Reihenfolge steht im Blockhash).
+func TestVorfahrSuchen_GleichesUrteil(t *testing.T) {
+	alt := vorfahrBesuchsGrenze
+	vorfahrBesuchsGrenze = 30
+	t.Cleanup(func() { vorfahrBesuchsGrenze = alt })
+	for lauf := 0; lauf < 5; lauf++ {
+		s := lineareKette(100, 1_800_000_000)
+		_, ja, voll, err := vorfahrSuchen(s.leser(), []string{hx(100), hx(99)}, hx(75), 0)
+		if !ja || !voll || err != nil {
+			t.Fatalf("Lauf %d: %v %v %v", lauf, ja, voll, err)
+		}
 	}
 }

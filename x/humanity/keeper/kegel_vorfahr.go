@@ -14,20 +14,35 @@ import (
 // Ob ein Block ein Vorfahr eines anderen ist, haengt nur an Hashes und
 // Eltern-Verweisen -- jeder Knoten mit derselben Geschichte urteilt gleich,
 // anders als "von diesem Knoten nachgespielt" (Replay-Status, Neustart,
-// Pruning). Abgestiegen wird von den Eltern des tragenden Blocks bis zur
-// Zeit grenze; was darunter liegt, wird nicht weiter verfolgt (ein Kind darf
-// hoechstens zeitstempelRueckToleranz vor seinem Elternblock liegen).
+// Pruning). Die Reihenfolge der Eltern steht im Blockhash, also auch die
+// Reihenfolge der Suche und der Punkt, an dem eine Grenze greift.
 //
-// Begrenzt: hoechstens vorfahrBesuchsGrenze besuchte Bloecke, Nachschlagen in
-// Stapeln. Fehlt ein Block auf dem Weg (eigene Luecke) oder wird die Grenze
-// erreicht: vollstaendig = false -- der Aufrufer darf dann nicht "kein
-// Vorfahr" schliessen.
+// DEFINITION (keine Naeherung): "Vorfahr ueber Bloecke mit Zeit >= grenze".
+// Abgestiegen wird nur ueber Bloecke, deren eigene Zeit mindestens grenze
+// ist. Ein echter Vorfahr hinter einer rueckdatierten Zwischenkette (ein Kind
+// darf je Stufe bis zu zeitstempelRueckToleranz vor seinem Elternblock
+// liegen; nach sechs solchen Stufen faellt ein Zwischenblock unter die
+// Grenze) zaehlt nicht -- fuer jeden Knoten gleich.
+//
+// Begrenzt (Pruefung von Baustein 3): hoechstens vorfahrBesuchsGrenze
+// besuchte Bloecke, vorfahrElternGrenze gelesene Eltern-Verweise und
+// vorfahrEbenenGrenze Ebenen (= Abfrage-Runden) -- jede Grenze VOR dem
+// Lesen geprueft, nicht danach. Fehlt ein Block auf dem Weg (eigene Luecke):
+// vollstaendig = false -- der Aufrufer darf dann nicht "kein Vorfahr"
+// schliessen. Eine Grenze bei vollstaendigen Daten ist deterministisch
+// (errVorfahrZuGross).
 
 const vorfahrStapel = 1000
 
-// vorfahrBesuchsGrenze: hoechstens so viele besuchte Bloecke. Variable nur
-// fuer Tests.
-var vorfahrBesuchsGrenze = 50_000
+// Grenzen der Suche. Variablen nur fuer Tests.
+var (
+	vorfahrBesuchsGrenze = 50_000
+	vorfahrElternGrenze  = 200_000
+	// Ebenen: eine Abfrage-Runde je Ebene. 1024 deckt checkpointHoechstensAlt
+	// bei einem Block je Sekunde mit Reserve; bei schnellerem Takt muss der
+	// tragende Block einen juengeren Checkpoint nennen.
+	vorfahrEbenenGrenze = 1024
+)
 
 // blockKopf: was die Vorfahren-Suche je Block braucht.
 type blockKopf struct {
@@ -43,8 +58,12 @@ var errVorfahrZuGross = errors.New("Vorfahren-Suche ueber der Grenze")
 
 // vorfahrSuchen: liegt ziel im Vergangenheitskegel von eltern (ziel selbst
 // eingeschlossen, wenn es unter eltern ist)? kopf: der Kopf von ziel, wenn
-// gefunden.
+// gefunden. err == errVorfahrZuGross: eine Grenze griff (deterministisch);
+// sonstige Fehler: Lesefehler (nicht pruefbar).
 func vorfahrSuchen(lies kopfLeser, eltern []string, ziel string, grenze int64) (kopf blockKopf, gefunden, vollstaendig bool, err error) {
+	if len(eltern) > peerElternGrenze {
+		return blockKopf{}, false, false, errVorfahrZuGross
+	}
 	gesehen := make(map[string]bool, len(eltern))
 	var offen []string
 	for _, p := range eltern {
@@ -54,42 +73,48 @@ func vorfahrSuchen(lies kopfLeser, eltern []string, ziel string, grenze int64) (
 		}
 	}
 	vollstaendig = true
-	for len(offen) > 0 {
-		koepfe := make(map[string]blockKopf, len(offen))
+	elternGelesen := 0
+	for ebene := 0; len(offen) > 0; ebene++ {
+		if ebene >= vorfahrEbenenGrenze {
+			return blockKopf{}, false, false, errVorfahrZuGross
+		}
+		var naechste []string
+		// Stapelweise lesen und gleich verarbeiten -- keine ganze Ebene
+		// im Speicher.
 		for i := 0; i < len(offen); i += vorfahrStapel {
 			j := i + vorfahrStapel
 			if j > len(offen) {
 				j = len(offen)
 			}
-			teil, err := lies(offen[i:j])
+			koepfe, err := lies(offen[i:j])
 			if err != nil {
 				return blockKopf{}, false, false, err
 			}
-			for h, k := range teil {
-				koepfe[h] = k
-			}
-		}
-		var naechste []string
-		for _, h := range offen {
-			k, ok := koepfe[h]
-			if !ok {
-				vollstaendig = false // eigene Luecke; die anderen Wege weiter
-				continue
-			}
-			if h == ziel {
-				return k, true, true, nil
-			}
-			if k.zeit < grenze {
-				continue
-			}
-			for _, p := range k.eltern {
-				if !gesehen[p] {
-					gesehen[p] = true
-					naechste = append(naechste, p)
+			for _, h := range offen[i:j] {
+				k, ok := koepfe[h]
+				if !ok {
+					vollstaendig = false // eigene Luecke; die anderen Wege weiter
+					continue
 				}
-			}
-			if len(gesehen) > vorfahrBesuchsGrenze {
-				return blockKopf{}, false, false, nil
+				if h == ziel {
+					return k, true, true, nil
+				}
+				if k.zeit < grenze {
+					continue
+				}
+				elternGelesen += len(k.eltern)
+				if elternGelesen > vorfahrElternGrenze {
+					return blockKopf{}, false, false, errVorfahrZuGross
+				}
+				for _, p := range k.eltern {
+					if !gesehen[p] {
+						if len(gesehen) >= vorfahrBesuchsGrenze {
+							return blockKopf{}, false, false, errVorfahrZuGross
+						}
+						gesehen[p] = true
+						naechste = append(naechste, p)
+					}
+				}
 			}
 		}
 		offen = naechste
