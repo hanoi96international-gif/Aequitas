@@ -265,6 +265,14 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
       aufblähbar), billige Prüfungen vor Sperre und Nachschlag, nur der
       Block-Kopf aus dem Speicher. Ein anderer Stand ergibt einen anderen
       Komitee-Hash → Ablehnung. Schlafend.
+      **Baustein 3 (Zweig `claude/weiter-gehts-vm8979-checkpoint3`):**
+      `kegel_vorfahr.go` (`vorfahrSuchen`, begrenzt, Lücke → kein Urteil)
+      und `checkpointImTragendenBlock`: Bezugszeit = Zeit des tragenden
+      Blocks, Checkpoint-Block muss in dessen Vergangenheit liegen
+      (statt „hier nachgespielt“), eigene Lücke → Ablehnung. Schlafend.
+      Damit erledigt: Bezugszeit und Vergangenheit. Offen bleiben:
+      Komitee-Stand aus der Vergangenheit, konsensfeste Liste,
+      Unterschreib-Regel, Komitee-Cache, Speicher des letzten Checkpoints.
       **Vor dem Anschluss als Konsensregel (Prüfung Baustein 2, HOCH):**
       dann wäre jede lokale Abweichung ein Split. Nötig: Bezugszeit = Zeit
       des tragenden Blocks; statt „hier nachgespielt“ „in der Vergangenheit
