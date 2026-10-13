@@ -1616,9 +1616,11 @@ func NewBlockchain(nodeID string, state *ChainState) *BlockDAG {
 				}
 
 				for i, b := range blocks {
-					d.mu.Lock()
-					d.computeGHOSTDAGState(b)
-					d.mu.Unlock()
+					func() {
+						d.mu.Lock()
+						defer d.mu.Unlock()
+						d.computeGHOSTDAGState(b)
+					}()
 					// DB write happens outside the lock — SaveGHOSTDAGStateBatch
 					// only reads fields set above by computeGHOSTDAGState; the
 					// same fields AddPeerBlock would compute to identical values

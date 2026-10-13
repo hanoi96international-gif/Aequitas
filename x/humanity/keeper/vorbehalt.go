@@ -119,18 +119,32 @@ type offenerVorbehalt struct {
 // einem Vorbehaltskonto, das es so nicht gab); eine zurueckgerollte Loeschung
 // fehlte in der Karte, und der Vorbehalt blieb bis zum Neustart liegen. Die
 // Karte gilt nur noch ohne Datenbank (Tests, Entwicklungsknoten).
+// mitVorbehaltSperre: fn unter offeneVorbehalteMu, freigegeben mit defer --
+// das Zuruecksetzen nach einer Panik wartet auf diese Sperre (Pruefung #339).
+func mitVorbehaltSperre(fn func()) {
+	offeneVorbehalteMu.Lock()
+	defer offeneVorbehalteMu.Unlock()
+	fn()
+}
+
+// vorbehaltAusKarte: der Eintrag ohne Datenbank.
+func (cs *ChainState) vorbehaltAusKarte(konto string) (o offenerVorbehalt, ok bool) {
+	mitVorbehaltSperre(func() { o, ok = cs.vorbehalte[konto] })
+	return o, ok
+}
+
 func (cs *ChainState) vorbehaltOffen(ctx context.Context, konto string, o *offenerVorbehalt) error {
 	if cs.db == nil {
-		offeneVorbehalteMu.Lock()
-		if cs.vorbehalte == nil {
-			cs.vorbehalte = map[string]offenerVorbehalt{}
-		}
-		if o != nil {
-			cs.vorbehalte[konto] = *o
-		} else {
-			delete(cs.vorbehalte, konto)
-		}
-		offeneVorbehalteMu.Unlock()
+		mitVorbehaltSperre(func() {
+			if cs.vorbehalte == nil {
+				cs.vorbehalte = map[string]offenerVorbehalt{}
+			}
+			if o != nil {
+				cs.vorbehalte[konto] = *o
+			} else {
+				delete(cs.vorbehalte, konto)
+			}
+		})
 		return nil
 	}
 	var err error
@@ -496,9 +510,7 @@ const vorbehaltAbarbeitenGrenze = 1000
 // Transaktion von ctx, wenn es eine gibt), ohne Datenbank aus der Karte.
 func (cs *ChainState) offenerVorbehaltCtx(ctx context.Context, konto string) (offenerVorbehalt, bool, error) {
 	if cs.db == nil {
-		offeneVorbehalteMu.Lock()
-		o, ok := cs.vorbehalte[konto]
-		offeneVorbehalteMu.Unlock()
+		o, ok := cs.vorbehaltAusKarte(konto)
 		return o, ok, nil
 	}
 	var o offenerVorbehalt
@@ -517,12 +529,12 @@ func (cs *ChainState) offenerVorbehaltCtx(ctx context.Context, konto string) (of
 // offeneVorbehaltKonten: die offenen Vorbehaltskonten, sortiert, begrenzt.
 func (cs *ChainState) offeneVorbehaltKonten() ([]string, error) {
 	if cs.db == nil {
-		offeneVorbehalteMu.Lock()
 		var konten []string
-		for v := range cs.vorbehalte {
-			konten = append(konten, v)
-		}
-		offeneVorbehalteMu.Unlock()
+		mitVorbehaltSperre(func() {
+			for v := range cs.vorbehalte {
+				konten = append(konten, v)
+			}
+		})
 		sort.Strings(konten)
 		if len(konten) > vorbehaltAbarbeitenGrenze {
 			konten = konten[:vorbehaltAbarbeitenGrenze]
@@ -549,9 +561,7 @@ func (cs *ChainState) offeneVorbehaltKonten() ([]string, error) {
 func (cs *ChainState) VorbehaltStand() map[string]interface{} {
 	n := -1
 	if cs.db == nil {
-		offeneVorbehalteMu.Lock()
-		n = len(cs.vorbehalte)
-		offeneVorbehalteMu.Unlock()
+		mitVorbehaltSperre(func() { n = len(cs.vorbehalte) })
 	} else if err := cs.db.QueryRow(`SELECT COUNT(*) FROM vorbehalte_offen`).Scan(&n); err != nil {
 		n = -1 // unlesbar
 	}

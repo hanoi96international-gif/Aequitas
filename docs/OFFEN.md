@@ -110,15 +110,20 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
    - **Erledigt:** der Sync-Pfad (`bekanntOderUnterFinalitaet`, Block eines
      Peers) und die Drosselung der HTTP-Panikmeldungen
      (Zweig `claude/weiter-gehts-vm8979-syncsperre`).
-   - **Offen:** eine grobe Suche fand 31 weitere Stellen mit Aufrufen
-     zwischen `Lock` und `Unlock` ohne `defer`, darunter der heiße
-     Überweisungspfad in `state.go` (4940, 5069: Schnappschuss und Rückrollen
-     unter `cs.mu.Lock`, über das öffentliche RPC erreichbar; 4870, 5024:
-     derselbe Weg ohne Datenbank),
-     `ueberweisungsgebuehr.go:88`, `snapshot.go:817`, `evm_storage.go:359/
-     401/490/4978`. Jede Stelle einzeln: in eine Funktion mit `defer`
-     auslagern oder zeigen, dass dazwischen nichts paniert. Wegen des heißen
-     Pfads mit eigener Messung und eigener Prüfung, nicht nebenbei.
+   - **Erledigt (Zweig `claude/weiter-gehts-vm8979-sperren`):**
+     `runAtomicWithOutbox` und `runAtomicDistributionWithOutbox` (heißer
+     Überweisungspfad, öffentliches RPC): eine Panik in `fn` rollt jetzt wie
+     der Fehlerpfad zurück (Transaktion, Speicher aus dem Schnappschuss,
+     `activeTx`), gibt `cs.mu` frei und geht weiter nach oben; scheitert das
+     Zurückrollen, Neustart. `gebuehrenInsGrundeinkommen` über
+     `zustandAendern` (Panik → Sperre frei, Neustart).
+   - **Regel als Test:** `TestSperre_ImmerMitDefer` – nach jedem
+     `Lock`/`RLock` auf `cs.mu`, `dag.mu`, `x.state.mu` folgt ein passendes
+     `defer`. Die übrigen 45 Stellen stehen je Datei und Funktion in
+     `sperreOhneDefer`; die Liste darf nur kürzer werden. Abbau in eigenen
+     Schritten: reine Lesesperren zuerst (`defer RUnlock`), dann die
+     Schreibstellen (Block-Nachspielen, Schnappschuss-Import) mit eigener
+     Prüfung.
 
 8. **WAL nach einem Rollenwechsel ohne Deckungsprüfung** (Prüfung von
    #322, INFO-15) – **erledigt mit #331:** Ein Knoten, der den Rest seines

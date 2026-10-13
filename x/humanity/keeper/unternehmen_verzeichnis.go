@@ -139,22 +139,27 @@ func (cs *ChainState) applyUnternehmenVerzeichnisLocked(ctx context.Context, unt
 		return fmt.Errorf("unternehmen_verzeichnis: Text nicht normalisiert: %w", ErrZustandLehntAb)
 	}
 	w := cs.wirt()
-	w.mu.Lock()
-	e := w.offenesUnternehmenLocked(u)
-	switch {
-	case e == nil:
-		w.mu.Unlock()
-		return fmt.Errorf("unternehmen_verzeichnis: %s ist kein offenes Unternehmen: %w", u, ErrZustandLehntAb)
-	case !e.istVerantwortlich(v):
-		w.mu.Unlock()
-		return fmt.Errorf("unternehmen_verzeichnis: %s ist nicht verantwortlich: %w", v, ErrZustandLehntAb)
-	case zeit <= e.VerzeichnisZeit:
-		w.mu.Unlock()
-		return fmt.Errorf("unternehmen_verzeichnis: Unterschrift aelter als der bisherige Eintrag: %w", ErrZustandLehntAb)
+	var cp *unternehmenEintrag
+	var err error
+	w.mitSperre(func() {
+		e := w.offenesUnternehmenLocked(u)
+		switch {
+		case e == nil:
+			err = fmt.Errorf("unternehmen_verzeichnis: %s ist kein offenes Unternehmen: %w", u, ErrZustandLehntAb)
+			return
+		case !e.istVerantwortlich(v):
+			err = fmt.Errorf("unternehmen_verzeichnis: %s ist nicht verantwortlich: %w", v, ErrZustandLehntAb)
+			return
+		case zeit <= e.VerzeichnisZeit:
+			err = fmt.Errorf("unternehmen_verzeichnis: Unterschrift aelter als der bisherige Eintrag: %w", ErrZustandLehntAb)
+			return
+		}
+		e.Ort, e.Annahme, e.Webseite, e.VerzeichnisZeit = ort, annahme, web, zeit
+		cp = e.kopie()
+	})
+	if err != nil {
+		return err
 	}
-	e.Ort, e.Annahme, e.Webseite, e.VerzeichnisZeit = ort, annahme, web, zeit
-	cp := e.kopie()
-	w.mu.Unlock()
 	return cs.speichereUnternehmen(ctx, cp)
 }
 
@@ -179,30 +184,34 @@ func (cs *ChainState) applyUnternehmenBuergschaftLocked(ctx context.Context, unt
 		return err
 	}
 	w := cs.wirt()
-	w.mu.Lock()
-	e := w.offenesUnternehmenLocked(u)
-	if e == nil {
-		w.mu.Unlock()
-		return fmt.Errorf("unternehmen_buergschaft: %s ist kein offenes Unternehmen: %w", u, ErrZustandLehntAb)
-	}
-	if e.istVerantwortlich(m) {
-		w.mu.Unlock()
-		return fmt.Errorf("unternehmen_buergschaft: Verantwortliche buergen nicht fuer sich selbst: %w", ErrZustandLehntAb)
-	}
-	if err := w.buergschaftErlaubtLocked(u, m, at); err != nil {
-		w.mu.Unlock()
+	var cp *unternehmenEintrag
+	var err error
+	w.mitSperre(func() {
+		e := w.offenesUnternehmenLocked(u)
+		if e == nil {
+			err = fmt.Errorf("unternehmen_buergschaft: %s ist kein offenes Unternehmen: %w", u, ErrZustandLehntAb)
+			return
+		}
+		if e.istVerantwortlich(m) {
+			err = fmt.Errorf("unternehmen_buergschaft: Verantwortliche buergen nicht fuer sich selbst: %w", ErrZustandLehntAb)
+			return
+		}
+		if err = w.buergschaftErlaubtLocked(u, m, at); err != nil {
+			return
+		}
+		frisch := e.Buergen[:0:0]
+		for _, b := range e.Buergen {
+			if at-b.At < buergschaftFensterSek {
+				frisch = append(frisch, b)
+			}
+		}
+		e.Buergen = append(frisch, buergeEintrag{M: m, At: at})
+		e.BuergenAnzahl++
+		cp = e.kopie()
+	})
+	if err != nil {
 		return err
 	}
-	frisch := e.Buergen[:0:0]
-	for _, b := range e.Buergen {
-		if at-b.At < buergschaftFensterSek {
-			frisch = append(frisch, b)
-		}
-	}
-	e.Buergen = append(frisch, buergeEintrag{M: m, At: at})
-	e.BuergenAnzahl++
-	cp := e.kopie()
-	w.mu.Unlock()
 	return cs.speichereUnternehmen(ctx, cp)
 }
 
@@ -262,39 +271,44 @@ func (cs *ChainState) applyUnternehmenAustretenLocked(ctx context.Context, unter
 		return fmt.Errorf("unternehmen_austreten: ungueltige Adressen: %w", ErrZustandLehntAb)
 	}
 	w := cs.wirt()
-	w.mu.Lock()
-	e := w.offenesUnternehmenLocked(u)
-	switch {
-	case e == nil:
-		w.mu.Unlock()
-		return fmt.Errorf("unternehmen_austreten: %s ist kein offenes Unternehmen: %w", u, ErrZustandLehntAb)
-	case !e.istVerantwortlich(m):
-		w.mu.Unlock()
-		return fmt.Errorf("unternehmen_austreten: %s ist nicht verantwortlich: %w", m, ErrZustandLehntAb)
-	case e.Verantwortliche[0] == m:
-		w.mu.Unlock()
-		return fmt.Errorf("unternehmen_austreten: die Gruenderin tritt nicht aus, sie schliesst: %w", ErrZustandLehntAb)
-	case zeit <= e.Austritte[m]:
-		w.mu.Unlock()
-		return fmt.Errorf("unternehmen_austreten: Unterschrift nicht neuer als der letzte Austritt: %w", ErrZustandLehntAb)
-	}
-	rest := make([]string, 0, len(e.Verantwortliche)-1)
-	for _, v := range e.Verantwortliche {
-		if v != m {
-			rest = append(rest, v)
+	var cp *unternehmenEintrag
+	var err error
+	w.mitSperre(func() {
+		e := w.offenesUnternehmenLocked(u)
+		switch {
+		case e == nil:
+			err = fmt.Errorf("unternehmen_austreten: %s ist kein offenes Unternehmen: %w", u, ErrZustandLehntAb)
+			return
+		case !e.istVerantwortlich(m):
+			err = fmt.Errorf("unternehmen_austreten: %s ist nicht verantwortlich: %w", m, ErrZustandLehntAb)
+			return
+		case e.Verantwortliche[0] == m:
+			err = fmt.Errorf("unternehmen_austreten: die Gruenderin tritt nicht aus, sie schliesst: %w", ErrZustandLehntAb)
+			return
+		case zeit <= e.Austritte[m]:
+			err = fmt.Errorf("unternehmen_austreten: Unterschrift nicht neuer als der letzte Austritt: %w", ErrZustandLehntAb)
+			return
 		}
-	}
-	e.Verantwortliche = rest
-	frisch := make(map[string]int64, len(e.Austritte)+1)
-	for a, z := range e.Austritte {
-		if at-z < austrittMerkenSek {
-			frisch[a] = z
+		rest := make([]string, 0, len(e.Verantwortliche)-1)
+		for _, v := range e.Verantwortliche {
+			if v != m {
+				rest = append(rest, v)
+			}
 		}
+		e.Verantwortliche = rest
+		frisch := make(map[string]int64, len(e.Austritte)+1)
+		for a, z := range e.Austritte {
+			if at-z < austrittMerkenSek {
+				frisch[a] = z
+			}
+		}
+		frisch[m] = zeit
+		e.Austritte = frisch
+		cp = e.kopie()
+	})
+	if err != nil {
+		return err
 	}
-	frisch[m] = zeit
-	e.Austritte = frisch
-	cp := e.kopie()
-	w.mu.Unlock()
 	return cs.speichereUnternehmen(ctx, cp)
 }
 

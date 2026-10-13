@@ -78,30 +78,34 @@ func (cs *ChainState) pruefeUmlaufLocked(wallet string, betrag float64, at int64
 	streng := liegegeldStreng() || lpNoetig
 	art := cs.kontoartVon(wallet, acc.IsHuman)
 	w := cs.wirt()
-	w.mu.Lock()
 	var vorher int64
-	switch {
-	case at > w.letzterUmlauf:
-		vorher = w.letzterUmlauf
-	case at == w.laufAt:
-		vorher = w.laufVorher
-	default:
-		w.mu.Unlock()
+	zeitraumBekannt, fensterVoll := true, true
+	w.mitSperre(func() {
+		switch {
+		case at > w.letzterUmlauf:
+			vorher = w.letzterUmlauf
+		case at == w.laufAt:
+			vorher = w.laufVorher
+		default:
+			zeitraumBekannt = false
+			return
+		}
+		fensterVoll = art != artUnternehmen || w.fensterVollLocked(at)
+	})
+	if !zeitraumBekannt {
 		liegegeldUebersprungen.Add(1)
 		if lpNoetig {
 			return fmt.Errorf("umlauf %s: Zeitraum unbekannt, LP-Anteile werden nicht aufgeloest: %w", wallet, ErrZustandLehntAb)
 		}
 		return nil // ein aelterer Lauf: Zeitraum unbekannt
 	}
-	if art == artUnternehmen && !w.fensterVollLocked(at) {
-		w.mu.Unlock()
+	if !fensterVoll {
 		liegegeldUebersprungen.Add(1)
 		if lpNoetig {
 			return fmt.Errorf("umlauf %s: Umsatzfenster unvollstaendig, LP-Anteile werden nicht aufgeloest: %w", wallet, ErrZustandLehntAb)
 		}
 		return nil
 	}
-	w.mu.Unlock()
 
 	sekunden := int64(86400)
 	if vorher > 0 {
