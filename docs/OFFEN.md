@@ -254,6 +254,17 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
       (low-s, v 0/1, Kleinschrift, nach Absender sortiert), nur Mitglieder,
       erst billige Prüfungen, dann Kryptographie. Schlafend, nirgends
       angeschlossen.
+      **Baustein 2 (Zweig `claude/weiter-gehts-vm8979-komitee2`):**
+      `checkpoint_bindung.go` – Komitee zur Checkpoint-Zeit aus dem
+      Register-Stand (`checkpointKomitee`, wie `komiteeAusRegister`, für
+      jede Zeit, ohne Nebenwirkung); `checkpointGegenKette`: Block hier
+      nachgespielt, Höhe/Zeit passen zum Block, höchstens 600 s alt, nicht
+      aus der Zukunft, streng nach dem letzten Checkpoint, Komitee zur
+      Blockzeit. Ein anderer Stand ergibt einen anderen Komitee-Hash →
+      Ablehnung statt stiller Spaltung. Schlafend.
+      Offen: Unterschriften sammeln, Zertifikat als Transaktionsart,
+      Speicher des letzten Checkpoints; geschlossener Betrieb verlangt
+      dieselbe `AUTHORIZED_VALIDATORS`-Liste auf allen Knoten.
       **Vor dem Anschließen (Prüfung des Bausteins, HOCH):** das Komitee
       zur Checkpoint-Zeit muss jeder Knoten gleich bestimmen (heute liest
       der geschlossene Betrieb die eigene Liste); Hash/Höhe/Zeit müssen aus
