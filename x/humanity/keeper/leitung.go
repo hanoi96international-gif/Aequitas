@@ -50,7 +50,11 @@ import (
 //   - keine Wahl, keine automatische Uebernahme;
 //   - der Leiter nimmt ohne Lease-Bestaetigung an (sonst stuende das Netz,
 //     sobald der ANDERE ausfaellt -- schlechter als heute);
-//   - ein planmaessiger Wechsel nur, wenn ausdruecklich eingeschaltet.
+//   - ein planmaessiger Wechsel nur, wenn ausdruecklich eingeschaltet;
+//   - aber: ein Leiter, der keine eigenen Bloecke mehr erzeugt (stockt),
+//     gibt geordnet ab -- er haelt sonst die Annahme des ganzen Netzes an.
+//     Das ist eine Uebergabe, keine Uebernahme: der Abgebende hoert auf,
+//     bevor der andere anfaengt.
 // Wirkliche Ausfallsicherheit beginnt bei drei Validatoren.
 //
 // # WER MITGLIED IST: OHNE HANDLISTE
@@ -323,9 +327,17 @@ type Leitung struct {
 	// lesbar (SatzMitglied). Nur setzeSatz schreibt sie.
 	satzLesbar atomic.Pointer[map[string]bool]
 
+	// ichFaehig = nachweis && !stockt: was dieser Knoten ankuendigt.
 	ichFaehig bool
-	faehig    map[string]bool   // angekuendigte Leiterfaehigkeit
-	urls      map[string]string // Adresse -> URL, aus signierten Nachrichten
+	// nachweis: der Leistungsnachweis (SetzeFaehig).
+	nachweis bool
+	// stockt: dieser Knoten erzeugt, hat aber seit 2*admissionStallLimit()
+	// keinen eigenen Block gespeichert (SetzeStockt) -- seine Annahme ist
+	// angehalten (annahme_pause.go). Als Leiter lehnten die Leiter-Wege dann
+	// netzweit ab; er gibt ab wie ohne Leistungsnachweis (OFFEN 6).
+	stockt bool
+	faehig map[string]bool   // angekuendigte Leiterfaehigkeit
+	urls   map[string]string // Adresse -> URL, aus signierten Nachrichten
 
 	// Mitgliedschaft (siehe Kopf).
 	satzTerm        uint64
@@ -441,8 +453,8 @@ func NeueLeitung(ich, url string, satz []string, startLeiter string, faehig bool
 	gespeichert LeitSpeicher, cfg LeitKonfig, env LeitUmgebung, jetzt time.Time) *Leitung {
 	l := &Leitung{
 		cfg: cfg, ich: strings.ToLower(ich), url: url, env: env,
-		ichFaehig: faehig,
-		faehig:    map[string]bool{}, urls: map[string]string{},
+		ichFaehig: faehig, nachweis: faehig,
+		faehig: map[string]bool{}, urls: map[string]string{},
 		acks: map[string]time.Time{}, ackSatz: map[string]string{}, lebendBei: map[string][]string{}, stimmen: map[string]bool{}, gehoert: map[string]time.Time{},
 		bewerber: map[string]bewerberInfo{}, gesperrt: map[string]time.Time{},
 		gestartet: jetzt, letzteLease: jetzt,
@@ -739,8 +751,25 @@ func (l *Leitung) SatzURLs() map[string]string {
 func (l *Leitung) SetzeFaehig(f bool) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	l.ichFaehig = f
-	l.faehig[l.ich] = f
+	l.nachweis = f
+	l.faehigNeu()
+}
+
+// SetzeStockt: erzeugt dieser Knoten gerade keine eigenen Bloecke (siehe
+// Feld stockt)?
+func (l *Leitung) SetzeStockt(s bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.stockt == s {
+		return
+	}
+	l.stockt = s
+	l.faehigNeu()
+}
+
+func (l *Leitung) faehigNeu() {
+	l.ichFaehig = l.nachweis && !l.stockt
+	l.faehig[l.ich] = l.ichFaehig
 }
 
 // SetzeURL fuer einen Validator aus der Konfiguration.
@@ -938,8 +967,19 @@ func (l *Leitung) Takt(jetzt time.Time) []LeitNachricht {
 		}
 		// Leistungsnachweis verloren: an einen leiterfaehigen abgeben, sobald
 		// einer lebt. Gibt es keinen, bleibt dieser Leiter (Notbetrieb).
-		if !l.abschliessen && !l.ichFaehig && (l.mitWahl() || l.cfg.ZweiWechseln) {
-			if n := l.nachfolger(l.ich, false); n != "" && l.lebt(n, jetzt) {
+		//
+		// Stockt dieser Leiter (OFFEN 6), gibt er auch bei zwei Validatoren
+		// ohne ZweiWechseln ab, und notfalls an einen ohne Nachweis: ein
+		// Leiter, der keine Bloecke erzeugt, haelt die Annahme des ganzen
+		// Netzes an -- jeder lebende ist besser. Die Uebergabe ist dieselbe
+		// geordnete wie sonst (entleert, mit Blockhash): es gibt keinen
+		// Moment mit zwei Leitern, auch bei zwei Validatoren nicht.
+		if !l.abschliessen && !l.ichFaehig && (l.mitWahl() || l.cfg.ZweiWechseln || l.stockt) {
+			n := l.nachfolger(l.ich, false)
+			if n == "" && l.stockt {
+				n = l.nachfolger(l.ich, true)
+			}
+			if n != "" && l.lebt(n, jetzt) {
 				l.abschliessen = true
 				l.uebergabeAn = n
 				l.abschlussBeginnt(jetzt)
@@ -1136,7 +1176,14 @@ func (l *Leitung) Empfange(m LeitNachricht, jetzt time.Time) *LeitNachricht {
 		// Nur vom Leiter des laufenden Terms, nur an mich. Der Absender hat
 		// seinen Term schon hochgezaehlt, als er schickte -- sein m.Term ist
 		// der ALTE (basis vor dem Hochzaehlen gebaut).
-		if m.An == l.ich && m.Term == l.term && m.Von == l.leiter && m.SatzHash == l.hash && l.effFaehig(jetzt) {
+		//
+		// Ohne eigenen Nachweis nur, wenn auch der Abgebende keinen
+		// ankuendigt (er stockt oder hat seinen verloren, OFFEN 6): sonst
+		// hinge er als Folger eines Terms, den niemand leitet -- er hat
+		// seinen Term schon hochgezaehlt und fuer diesen Knoten gestimmt.
+		// Ein Leiter ohne Nachweis ist nicht schlechter als der Abgebende;
+		// stockt er selbst, gibt er weiter.
+		if m.An == l.ich && m.Term == l.term && m.Von == l.leiter && m.SatzHash == l.hash && (l.effFaehig(jetzt) || !m.Faehig) {
 			k := m
 			l.wartet = &k
 		}
@@ -1280,6 +1327,7 @@ func (l *Leitung) Stand(jetzt time.Time) map[string]interface{} {
 		"mitglied":         l.imSatz(l.ich),
 		"mit_wahl":         l.mitWahl(),
 		"leiterfaehig":     l.ichFaehig,
+		"stockt":           l.stockt,
 		"notbetrieb":       l.notbetrieb(jetzt),
 		"uebergabe_laeuft": l.abschliessen || l.offeneUebergabe != nil || l.wartet != nil,
 		"satz_hash":        l.hash,

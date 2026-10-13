@@ -276,6 +276,29 @@ func (cs *ChainState) annahmePauseGrund() error {
 	return nil
 }
 
+// eigeneBloeckeStocken: dieser Knoten erzeugt (die Messung in 2 laeuft),
+// hat aber seit 2*admissionStallLimit() keinen eigenen Block gespeichert --
+// die Annahme ist also schon laenger als admissionStallLimit() angehalten --
+// oder sein Schluessel darf laut Register nicht erzeugen. Die Leitung gibt
+// dann ab (leitung.go, stockt; OFFEN 6): ein Leiter, der keine Bloecke
+// erzeugt, haelt sonst die Annahme des ganzen Netzes an.
+func (cs *ChainState) eigeneBloeckeStocken(jetzt int64) bool {
+	if cs == nil {
+		return false
+	}
+	if cs.nichtImRegister.Load() {
+		return true
+	}
+	seit := cs.erzeugerSeit.Load()
+	if seit == 0 {
+		return false // erzeugt nicht (oder noch nie versucht)
+	}
+	if l := cs.letzterEigenerBlock.Load(); l > seit {
+		seit = l
+	}
+	return jetzt-seit >= 2*admissionStallLimit()
+}
+
 // AnnahmePauseStand: fuer /api/health/combined.
 func (cs *ChainState) AnnahmePauseStand() map[string]interface{} {
 	grund := ""
