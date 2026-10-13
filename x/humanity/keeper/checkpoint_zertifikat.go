@@ -131,8 +131,12 @@ func (c KettenCheckpoint) gueltig() error {
 func (c KettenCheckpoint) signierHash() []byte { return c.signierHashFuer(checkpointChainID) }
 
 func (c KettenCheckpoint) signierHashFuer(chainID int64) []byte {
-	h := sha256.Sum256([]byte(fmt.Sprintf("%s|%d|%d|%s|%d|%d|%s",
-		checkpointDomaene, chainID, c.Hoehe, c.Hash, c.Zeit, c.Epoche, c.Komitee)))
+	// Slot-Laenge und Slot stehen im Inhalt: eine spaetere Aenderung der
+	// Slot-Laenge macht alte Unterschriften nicht rueckwirkend zu
+	// "Doppelsignaturen" (Pruefung von Baustein 5).
+	h := sha256.Sum256([]byte(fmt.Sprintf("%s|%d|%d|%s|%d|%d|%s|slot=%d/%d",
+		checkpointDomaene, chainID, c.Hoehe, c.Hash, c.Zeit, c.Epoche, c.Komitee,
+		c.Zeit/checkpointSlotLaenge, checkpointSlotLaenge)))
 	return h[:]
 }
 
