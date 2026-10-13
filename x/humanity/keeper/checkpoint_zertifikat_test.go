@@ -11,7 +11,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
-func checkpointKomitee(t *testing.T, n int) ([]*ecdsa.PrivateKey, map[string]bool) {
+func testKomiteeSchluessel(t *testing.T, n int) ([]*ecdsa.PrivateKey, map[string]bool) {
 	t.Helper()
 	var keys []*ecdsa.PrivateKey
 	komitee := map[string]bool{}
@@ -46,7 +46,7 @@ func zertifikatVon(t *testing.T, c KettenCheckpoint, keys []*ecdsa.PrivateKey) C
 
 func TestCheckpointZertifikat_Quorum(t *testing.T) {
 	for _, f := range []struct{ n, ja, nein int }{{4, 3, 2}, {6, 5, 4}, {7, 5, 4}, {10, 7, 6}} {
-		keys, komitee := checkpointKomitee(t, f.n)
+		keys, komitee := testKomiteeSchluessel(t, f.n)
 		c := testCheckpointFuer(komitee)
 		if err := pruefeZertifikat(zertifikatVon(t, c, keys[:f.ja]), komitee); err != nil {
 			t.Fatalf("%d von %d: %v", f.ja, f.n, err)
@@ -67,7 +67,7 @@ func TestCheckpointZertifikat_Quorum(t *testing.T) {
 // der er (fast) allein war.
 func TestCheckpointZertifikat_KleinesKomitee(t *testing.T) {
 	for n := 0; n < checkpointMindestKomitee; n++ {
-		keys, komitee := checkpointKomitee(t, n)
+		keys, komitee := testKomiteeSchluessel(t, n)
 		if pruefeZertifikat(zertifikatVon(t, testCheckpointFuer(komitee), keys), komitee) == nil {
 			t.Fatalf("Komitee mit %d Mitgliedern hat bestaetigt", n)
 		}
@@ -76,8 +76,8 @@ func TestCheckpointZertifikat_KleinesKomitee(t *testing.T) {
 
 // Missbrauch: jede Faelschung, Wiederholung und fremde Unterschrift.
 func TestCheckpointZertifikat_Faelschungen(t *testing.T) {
-	keys, komitee := checkpointKomitee(t, 4)
-	fremd, _ := checkpointKomitee(t, 1)
+	keys, komitee := testKomiteeSchluessel(t, 4)
+	fremd, _ := testKomiteeSchluessel(t, 1)
 	c := testCheckpointFuer(komitee)
 	ok := zertifikatVon(t, c, keys[:3])
 	kopie := func() CheckpointZertifikat {
@@ -143,7 +143,7 @@ func TestCheckpointZertifikat_Faelschungen(t *testing.T) {
 	}
 	// Ein Knoten mit einer anderen Sicht auf das Komitee urteilt nicht
 	// still anders, sondern lehnt ab (Komitee-Hash).
-	_, anderes := checkpointKomitee(t, 4)
+	_, anderes := testKomiteeSchluessel(t, 4)
 	if pruefeZertifikat(ok, anderes) == nil {
 		t.Fatal("andere Komitee-Sicht hat bestaetigt")
 	}
@@ -176,7 +176,7 @@ func TestCheckpointZertifikat_Domaene(t *testing.T) {
 	if got := "0x" + big.NewInt(checkpointChainID).Text(16); got != chainIDHex {
 		t.Fatalf("Chain-ID %s passt nicht zu %s", got, chainIDHex)
 	}
-	keys, komitee := checkpointKomitee(t, 4)
+	keys, komitee := testKomiteeSchluessel(t, 4)
 	c := testCheckpointFuer(komitee)
 	mitSig := func(sign func(*ecdsa.PrivateKey) []byte) CheckpointZertifikat {
 		z := CheckpointZertifikat{KettenCheckpoint: c}
@@ -224,7 +224,7 @@ func TestCheckpointZertifikat_Domaene(t *testing.T) {
 // Was vor der ersten Recovery abgewiesen wird, kostet keine Kryptographie:
 // zu wenige Unterschriften, Nicht-Mitglieder, falsche Laenge.
 func TestCheckpointZertifikat_BilligVorTeuer(t *testing.T) {
-	keys, komitee := checkpointKomitee(t, 10)
+	keys, komitee := testKomiteeSchluessel(t, 10)
 	c := testCheckpointFuer(komitee)
 	// 9 Mitglieder mit Muell-Unterschriften (richtige Form): die Form ist
 	// kanonisch, also erst die Recovery entscheidet -- aber 6 Eintraege
@@ -243,7 +243,7 @@ func TestCheckpointZertifikat_BilligVorTeuer(t *testing.T) {
 // Formfehler, die mit dazu passenden echten Unterschriften kommen: nur die
 // Formpruefung haelt sie auf (nicht erst die Recovery).
 func TestCheckpointZertifikat_FormfehlerMitEchtenUnterschriften(t *testing.T) {
-	keys, komitee := checkpointKomitee(t, 4)
+	keys, komitee := testKomiteeSchluessel(t, 4)
 	roh := func(c KettenCheckpoint) CheckpointZertifikat {
 		z := CheckpointZertifikat{KettenCheckpoint: c}
 		for _, k := range keys[:3] {
@@ -275,9 +275,9 @@ func TestCheckpointZertifikat_FormfehlerMitEchtenUnterschriften(t *testing.T) {
 // lehnt ab, auch wenn alle Unterschreibenden auch bei ihm Mitglieder sind und
 // das Quorum erreicht ist: das Zertifikat gilt fuer genau eine Menge.
 func TestCheckpointZertifikat_AndereSichtLehntAb(t *testing.T) {
-	keys, komitee := checkpointKomitee(t, 4)
+	keys, komitee := testKomiteeSchluessel(t, 4)
 	z := zertifikatVon(t, testCheckpointFuer(komitee), keys)
-	_, extra := checkpointKomitee(t, 1)
+	_, extra := testKomiteeSchluessel(t, 1)
 	groesser := map[string]bool{}
 	for a := range komitee {
 		groesser[a] = true

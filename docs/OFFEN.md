@@ -254,6 +254,25 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
       (low-s, v 0/1, Kleinschrift, nach Absender sortiert), nur Mitglieder,
       erst billige Prüfungen, dann Kryptographie. Schlafend, nirgends
       angeschlossen.
+      **Baustein 2 (Zweig `claude/weiter-gehts-vm8979-komitee2`):**
+      `checkpoint_bindung.go` – Komitee zur Checkpoint-Zeit aus dem
+      Register-Stand (`checkpointKomitee`, wie `komiteeAusRegister`, für
+      jede Zeit, ohne Nebenwirkung); `checkpointGegenKette`: Block hier
+      nachgespielt, Höhe/Zeit passen zum Block, höchstens 600 s alt, nicht
+      aus der Zukunft, streng nach dem letzten Checkpoint, Komitee zur
+      Blockzeit, nur Listen-Schlüssel (nicht der eigene), erst ab
+      `erzeugerSchnittAb`, Monotonie nur über die Zeit (die Höhe ist
+      aufblähbar), billige Prüfungen vor Sperre und Nachschlag, nur der
+      Block-Kopf aus dem Speicher. Ein anderer Stand ergibt einen anderen
+      Komitee-Hash → Ablehnung. Schlafend.
+      **Vor dem Anschluss als Konsensregel (Prüfung Baustein 2, HOCH):**
+      dann wäre jede lokale Abweichung ein Split. Nötig: Bezugszeit = Zeit
+      des tragenden Blocks; statt „hier nachgespielt“ „in der Vergangenheit
+      des tragenden Blocks“; Komitee-Stand aus dieser Vergangenheit;
+      konsensfeste Liste im geschlossenen Betrieb; Unterschreib-Regel (nur
+      Blöcke des eigenen Zweigs); Komitee je (Stand, Epoche) merken;
+      dauerhafter Speicher des letzten Checkpoints; im offenen Betrieb
+      Zufall für die Rangfolge.
       **Vor dem Anschließen (Prüfung des Bausteins, HOCH):** das Komitee
       zur Checkpoint-Zeit muss jeder Knoten gleich bestimmen (heute liest
       der geschlossene Betrieb die eigene Liste); Hash/Höhe/Zeit müssen aus
