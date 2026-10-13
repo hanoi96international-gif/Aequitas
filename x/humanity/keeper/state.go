@@ -4937,9 +4937,9 @@ func (cs *ChainState) runAtomicWithOutbox(touchedAddrs []string, fullSnapshot bo
 	// Messpunkte, siehe atomic_phasen.go: erst wenn bekannt ist, WOFUER die
 	// globale Sperre gehalten wird, laesst sich sagen, was ihr Verengen bringt.
 	phWarten := time.Now()
-	cs.mu.Lock()
 	ab := &atomicAbschluss{cs: cs, tx: tx, gesperrt: true}
-	defer ab.beiPanik()
+	cs.mu.Lock()
+	defer ab.beiPanik() // gibt cs.mu bei einer Panik frei, siehe atomicAbschluss
 	atomicPhasenStand.notiere(&atomicPhasenStand.wartenNs, phWarten)
 	phHalt := time.Now()
 	cs.setActiveTx(tx)
@@ -5073,9 +5073,9 @@ func (cs *ChainState) runAtomicDistributionWithOutbox(fn func(ctx context.Contex
 	// commit/rollback decision instead of being released beforehand, so no
 	// concurrent operation can observe the new memory state and write
 	// against cs.db while this transaction's fate is still undecided.
-	cs.mu.Lock()
 	ab := &atomicAbschluss{cs: cs, tx: tx, gesperrt: true}
-	defer ab.beiPanik()
+	cs.mu.Lock()
+	defer ab.beiPanik() // gibt cs.mu bei einer Panik frei, siehe atomicAbschluss
 	cs.setActiveTx(tx)
 	snap := cs.snapshotForRollbackLocked(nil, true, chainConfig)
 	ab.snap = snap

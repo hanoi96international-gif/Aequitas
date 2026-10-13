@@ -85,20 +85,20 @@ func (cs *ChainState) gebuehrenInsGrundeinkommen(summe float64) {
 		return
 	}
 	t0 := time.Now()
-	cs.mu.Lock()
-	tuGebuehrSperre.seit(t0)
-	cs.ensureAccountLoadedCtx(context.Background(), ubiPoolAddr)
-	ubiAcc, ok := cs.accounts.Get(ubiPoolAddr)
-	if !ok {
-		ubiAcc = &AccountState{Address: ubiPoolAddr}
-		cs.accounts.Set(ubiPoolAddr, ubiAcc)
-	}
-	ubiAcc.Balance = ubiAcc.Balance.Add(NewDecimal(summe))
-	cs.updateAccountLeafLocked(ubiAcc)
-	if cs.useDB {
-		cs.markPoolAccountsDirtyLocked()
-	}
-	cs.mu.Unlock()
+	cs.zustandAendern("gebuehrenInsGrundeinkommen", func() {
+		tuGebuehrSperre.seit(t0)
+		cs.ensureAccountLoadedCtx(context.Background(), ubiPoolAddr)
+		ubiAcc, ok := cs.accounts.Get(ubiPoolAddr)
+		if !ok {
+			ubiAcc = &AccountState{Address: ubiPoolAddr}
+			cs.accounts.Set(ubiPoolAddr, ubiAcc)
+		}
+		ubiAcc.Balance = ubiAcc.Balance.Add(NewDecimal(summe))
+		cs.updateAccountLeafLocked(ubiAcc)
+		if cs.useDB {
+			cs.markPoolAccountsDirtyLocked()
+		}
+	})
 	gebuehrenGutgeschriebenMicro.Add(NewDecimal(summe).Micro())
 	if cs.useDB {
 		cs.FlushPoolAccountsNow()

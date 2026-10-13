@@ -67,3 +67,24 @@ func (a *atomicAbschluss) zurueckrollen() (ok bool) {
 	}()
 	return a.cs.restoreFromRollbackLocked(a.snap) == nil
 }
+
+// zustandAendern: fn unter cs.mu, fuer Aenderungen OHNE Schnappschuss.
+// Paniert fn, kann der Zustand halb geschrieben sein (etwa ein Kontostand
+// ohne seinen Blattwert in accountSetXOR) -- und es gibt kein Zurueck. Dann
+// Sperre frei und Neustart; der Zustand kommt aus der Datenbank. Still
+// weiterzulaufen hiesse, mit einem falschen Zustand Bloecke zu bauen
+// (OFFEN 7b).
+func (cs *ChainState) zustandAendern(label string, fn func()) {
+	cs.mu.Lock()
+	defer func() {
+		r := recover()
+		cs.mu.Unlock()
+		if r != nil {
+			fmt.Printf("[ZUSTAND] ✗ Panik in %s (%v) -- der Zustand kann halb geschrieben sein; Neustart\n%s\n", label, r, debug.Stack())
+			os.Stdout.Sync()
+			atomicNeustart(9)
+			panic(r) // nur erreicht, wenn atomicNeustart im Test ersetzt ist
+		}
+	}()
+	fn()
+}

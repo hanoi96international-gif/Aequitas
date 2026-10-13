@@ -181,3 +181,34 @@ func TestAtomic_PanikNachCommitRolltNichtZurueck(t *testing.T) {
 		t.Fatal("Sperre bleibt liegen")
 	}
 }
+
+// zustandAendern: eine Panik gibt die Sperre frei und startet neu -- der
+// Zustand kann halb geschrieben sein, und es gibt keinen Schnappschuss.
+func TestZustandAendern_PanikGibtFreiUndStartetNeu(t *testing.T) {
+	alt := atomicNeustart
+	code := -1
+	atomicNeustart = func(c int) { code = c }
+	t.Cleanup(func() { atomicNeustart = alt })
+
+	cs := &ChainState{accounts: newShardedAccounts()}
+	weiter := func() (r interface{}) {
+		defer func() { r = recover() }()
+		cs.zustandAendern("test", func() { panic("halb geschrieben") })
+		return nil
+	}()
+	if weiter == nil || code != 9 {
+		t.Fatalf("Panik %v, Neustart-Code %d", weiter, code)
+	}
+	if !cs.mu.TryLock() {
+		t.Fatal("cs.mu bleibt gesperrt")
+	}
+	cs.mu.Unlock()
+	// Gutfall: kein Neustart, Sperre frei.
+	code = -1
+	lief := false
+	cs.zustandAendern("test", func() { lief = true })
+	if !lief || code != -1 || !cs.mu.TryLock() {
+		t.Fatal("Gutfall")
+	}
+	cs.mu.Unlock()
+}
