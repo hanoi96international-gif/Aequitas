@@ -16,7 +16,11 @@ func TestReadAccount_PanikGibtSperreFrei(t *testing.T) {
 	cs.accounts.Set(adr, &AccountState{Address: adr, Balance: NewDecimal(1)})
 	cs.mu.Unlock()
 	func() {
-		defer func() { _ = recover() }()
+		defer func() {
+			if recover() == nil {
+				t.Fatal("fn wurde nicht aufgerufen -- der Test prueft nichts")
+			}
+		}()
 		cs.readAccount(adr, func(*AccountState) { panic("Fehler im Aufrufer") })
 	}()
 	if !cs.mu.TryLock() {
