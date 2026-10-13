@@ -4868,6 +4868,7 @@ func (cs *ChainState) runAtomicWithOutbox(touchedAddrs []string, fullSnapshot bo
 		// branch never sets cs.activeTx, so there is no transaction for fn
 		// to join regardless of what ctx carries.
 		cs.mu.Lock()
+		defer cs.mu.Unlock() // auch bei einer Panik in fn (OFFEN 7b)
 		pendingTx, err := fn(context.Background())
 		if err == nil {
 			err = cs.merkeAuftragsNonceLocked(context.Background(), pendingTx)
@@ -4875,7 +4876,6 @@ func (cs *ChainState) runAtomicWithOutbox(touchedAddrs []string, fullSnapshot bo
 		if err == nil && cs.ausgangOhneDB != nil {
 			cs.ausgangOhneDB(pendingTx)
 		}
-		cs.mu.Unlock()
 		return err
 	}
 
@@ -4938,11 +4938,14 @@ func (cs *ChainState) runAtomicWithOutbox(touchedAddrs []string, fullSnapshot bo
 	// globale Sperre gehalten wird, laesst sich sagen, was ihr Verengen bringt.
 	phWarten := time.Now()
 	cs.mu.Lock()
+	ab := &atomicAbschluss{cs: cs, tx: tx, gesperrt: true}
+	defer ab.beiPanik()
 	atomicPhasenStand.notiere(&atomicPhasenStand.wartenNs, phWarten)
 	phHalt := time.Now()
 	cs.setActiveTx(tx)
 	phSnap := time.Now()
 	snap := cs.snapshotForRollbackLocked(touchedAddrs, fullSnapshot, chainConfig)
+	ab.snap = snap
 	atomicPhasenStand.notiere(&atomicPhasenStand.snapshotNs, phSnap)
 	// See processTransferBatch's own (now-historical) comment for why
 	// building ctx from cs.activeTx here, with cs.mu held throughout, is
@@ -4970,6 +4973,7 @@ func (cs *ChainState) runAtomicWithOutbox(touchedAddrs []string, fullSnapshot bo
 		if rbErr := cs.restoreFromRollbackLocked(snap); rbErr != nil {
 			fmt.Printf("[ATOMIC] CRITICAL: rollback persistence failed after operation failure — memory/DB may now disagree: %v\n", rbErr)
 		}
+		ab.gesperrt = false
 		cs.mu.Unlock()
 		if fnErr != nil {
 			return fnErr
@@ -4978,6 +4982,7 @@ func (cs *ChainState) runAtomicWithOutbox(touchedAddrs []string, fullSnapshot bo
 	}
 
 	phCommit := time.Now()
+	ab.abgeschlossen = true // ab hier entscheidet tx.Commit, nicht mehr die Panik-Rueckrollung
 	commitFehler := tx.Commit()
 	atomicPhasenStand.notiere(&atomicPhasenStand.commitNs, phCommit)
 	if err := commitFehler; err != nil {
@@ -4985,12 +4990,14 @@ func (cs *ChainState) runAtomicWithOutbox(touchedAddrs []string, fullSnapshot bo
 		if rbErr := cs.restoreFromRollbackLocked(snap); rbErr != nil {
 			fmt.Printf("[ATOMIC] CRITICAL: rollback persistence failed after commit failure — memory/DB may now disagree: %v\n", rbErr)
 		}
+		ab.gesperrt = false
 		cs.mu.Unlock()
 		return fmt.Errorf("commit failed (state mutation rolled back): %w", err)
 	}
 	cs.setActiveTx(nil)
 	atomicPhasenStand.notiere(&atomicPhasenStand.haltNs, phHalt)
 	atomicPhasenStand.laeufe.Add(1)
+	ab.gesperrt = false
 	cs.mu.Unlock()
 	return nil
 }
@@ -5022,13 +5029,13 @@ func (cs *ChainState) runAtomicDistributionWithOutbox(fn func(ctx context.Contex
 		// context.Background() is correct — see runAtomicWithOutbox's
 		// matching no-DB branch comment.
 		cs.mu.Lock()
+		defer cs.mu.Unlock() // auch bei einer Panik in fn (OFFEN 7b)
 		txs, err := fn(context.Background())
 		if err == nil && cs.ausgangOhneDB != nil {
 			for _, t := range txs {
 				cs.ausgangOhneDB(t)
 			}
 		}
-		cs.mu.Unlock()
 		return err
 	}
 
@@ -5067,8 +5074,11 @@ func (cs *ChainState) runAtomicDistributionWithOutbox(fn func(ctx context.Contex
 	// concurrent operation can observe the new memory state and write
 	// against cs.db while this transaction's fate is still undecided.
 	cs.mu.Lock()
+	ab := &atomicAbschluss{cs: cs, tx: tx, gesperrt: true}
+	defer ab.beiPanik()
 	cs.setActiveTx(tx)
 	snap := cs.snapshotForRollbackLocked(nil, true, chainConfig)
+	ab.snap = snap
 	txs, fnErr := fn(withTx(context.Background(), tx))
 	var outboxErr error
 	if fnErr == nil {
@@ -5085,6 +5095,7 @@ func (cs *ChainState) runAtomicDistributionWithOutbox(fn func(ctx context.Contex
 		if rbErr := cs.restoreFromRollbackLocked(snap); rbErr != nil {
 			fmt.Printf("[ATOMIC] CRITICAL: distribution rollback persistence failed — memory/DB may now disagree: %v\n", rbErr)
 		}
+		ab.gesperrt = false
 		cs.mu.Unlock()
 		if fnErr != nil {
 			return fnErr
@@ -5092,15 +5103,18 @@ func (cs *ChainState) runAtomicDistributionWithOutbox(fn func(ctx context.Contex
 		return fmt.Errorf("outbox insert failed inside atomic distribution transaction (state mutation rolled back): %w", outboxErr)
 	}
 
+	ab.abgeschlossen = true
 	if err := tx.Commit(); err != nil {
 		cs.setActiveTx(nil)
 		if rbErr := cs.restoreFromRollbackLocked(snap); rbErr != nil {
 			fmt.Printf("[ATOMIC] CRITICAL: distribution rollback persistence failed after commit failure — memory/DB may now disagree: %v\n", rbErr)
 		}
+		ab.gesperrt = false
 		cs.mu.Unlock()
 		return fmt.Errorf("commit failed (state mutation rolled back): %w", err)
 	}
 	cs.setActiveTx(nil)
+	ab.gesperrt = false
 	cs.mu.Unlock()
 	return nil
 }
