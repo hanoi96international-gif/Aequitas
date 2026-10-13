@@ -291,6 +291,13 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
          Selected-Parent-Kette bzw. Checkpoint als direkter Elternteil.
       7. Transaktionssicht: derselbe `sqlExecutor` wie das Nachspielen.
       8. Unterschreib-Regel, Komitee-Cache je (Stand, Epoche).
+      **Baustein 5, Mitglieds-Seite (Zweig `claude/weiter-gehts-vm8979-fahrplan`):**
+      `checkpointMitunterschreiben` – unterschreibt nur eigene Sicht,
+      je Slot (60 s) höchstens einen Block, nie einen älteren Slot,
+      dauerhaft gemerkt vor der Unterschrift. Offen: Vorschlag durch den
+      Leiter, Sammeln, Zertifikat-Transaktion.
+      **Fahrplan:** `docs/CHECKPOINT_FAHRPLAN.md` (mit den Entscheidungen
+      für den Betreiber).
       **Vor dem Anschluss als Konsensregel (Prüfung Baustein 2, HOCH):**
       dann wäre jede lokale Abweichung ein Split. Nötig: Bezugszeit = Zeit
       des tragenden Blocks; statt „hier nachgespielt“ „in der Vergangenheit
