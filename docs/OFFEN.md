@@ -46,6 +46,26 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
    kein Anker, zwei Anker in einer Runde, Anker außerhalb des Zeitraums,
    Auszahlung trotz Kegel über 400.000 Blöcken. Ein zu großer lokaler Vorrat
    ist kein Urteil. Tests: `validator_lohn_kette_realdb_test.go`.
+   Getrennte Prüfung (Kegel-PR): HOCH 1 behoben – der Anker muss Vorfahr
+   des tragenden Blocks sein (`ankerIstVorfahr`, Eltern aus
+   `replayTransactions`), ein erfundener oder fremder Anker ist eine
+   Abweichung; „unsicher“ nur bei eigener Lücke. MITTEL 4 behoben – eigene
+   Lesefehler machen unsicher, kein Urteil; zu viele Schlüssel ist ein
+   Kegel-Urteil. **Offen vor dem Einschalten (Schalter bleibt aus):**
+   - **HOCH 2:** Den Anker wählt der Erzeuger. Ein Erzeuger mit eigenem
+     Zweig (der fremde Blöcke nie als Eltern nennt) kann einen Anker mit
+     kleinem Kegel nennen. Der Anker muss deterministisch aus dem tragenden
+     Block folgen (z. B. Fensteranteil des Kegels des tragenden Blocks =
+     Fensteranteil des Ankerkegels verlangen; dann müssen Erzeuger ihren
+     Block so bauen, dass spät eingehängte Fensterblöcke nicht hineinfallen)
+     – oder die Anwesenheit wird beim Nachspielen fortlaufend gezählt.
+   - **MITTEL 3:** 400.000 Blöcke reichen bei 1 s Takt für etwa 5
+     Validatoren. Für viele Validatoren: fortgeschriebene Zählung (Minuten
+     je Schlüssel beim Nachspielen) statt Kegel-Lesen einmal am Tag – hängt
+     mit Punkt 5 zusammen.
+   - NIEDRIG: Kegel-Ergebnis je (Runde, Anker) zwischenspeichern; Abstieg
+     unter die Untergrenze; RealDB-Tests setzen die nachträglichen Spalten
+     voraus.
 4. **Strenger Modus** spätestens mit der Staffel; Stichtag
    `nachrechnenStrengAbUnix`, sobald `/api/wirtschaft/regeln` über mehrere
    Runden 0 Abweichungen zeigt.

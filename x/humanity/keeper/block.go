@@ -7349,6 +7349,11 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 	// schleife_uebrig: alle anderen Transaktionsarten und der Aufwand je
 	// Durchlauf (Buendelsuche, Verzweigung, Protokoll).
 	phMarkSchleife := time.Now()
+	// Die Eltern des Blocks fuer das Nachrechnen der Validatoren-Runde: der
+	// Anker einer Gutschrift muss ein Vorfahr DIESES Blocks sein
+	// (validator_lohn_kette.go). Unter cs.mu gesetzt und zurueckgesetzt.
+	dag.state.nachrechnenEltern = block.ParentHashes
+	defer func() { dag.state.nachrechnenEltern = nil }()
 	for txIdx := 0; txIdx < len(block.Transactions); txIdx++ {
 		tx := block.Transactions[txIdx]
 		if hardFailure {

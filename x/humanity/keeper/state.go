@@ -203,6 +203,9 @@ type ChainState struct {
 	// validatorRunde: dasselbe fuer die Validatoren-Runde aus der Kette
 	// (validator_lohn_kette.go).
 	validatorRunde validatorRundePruefung
+	// nachrechnenEltern: die Eltern des Blocks, den replayTransactions gerade
+	// nachspielt (unter cs.mu); nil ausserhalb.
+	nachrechnenEltern []string
 	// freigaben: Staffel-Freigaben der laufenden Runde (nachrechnen_freigabe.go).
 	freigaben freigabeRunde
 	// kappungsKandidaten: Konten, die ueber der Grenze liegen koennten und

@@ -2,10 +2,15 @@ package keeper
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/lib/pq"
 )
 
 // Validatoren-Belohnung aus der Kette (validator_lohn_kette.go), mit echter
@@ -27,10 +32,14 @@ import (
 // Alle Bloecke haengen in einer Kette (nach Zeit), an ihrer Spitze der Anker
 // 30 s vor der Runde -- gezaehlt wird nur, was im Kegel des Ankers liegt.
 type lohnFall struct {
-	t              *testing.T
-	cs             *ChainState
-	rundeAt        int64
-	anker          string
+	t       *testing.T
+	cs      *ChainState
+	rundeAt int64
+	anker   string
+	// eltern: die Eltern des tragenden Blocks beim Nachrechnen; nil = der Anker.
+	eltern []string
+	// hexe: Bloecke mit echtem Hash (Anker muessen Blockhashes sein).
+	hexe           []string
 	a, b, c, n, r  string
 	ka, kb, kn, ku string
 }
@@ -38,14 +47,22 @@ type lohnFall struct {
 // lohnAnkerScore: hoeher als jeder echte Blue-Score in der Testdatenbank.
 const lohnAnkerScore = int64(1) << 50
 
+// hexHash: ein echter Blockhash fuer name, als Testblock vermerkt.
+func (f *lohnFall) hexHash(name string) string {
+	h := sha256.Sum256([]byte("lohn-test-" + name))
+	x := hex.EncodeToString(h[:])
+	f.hexe = append(f.hexe, x)
+	return x
+}
+
 // verketten: alle 'lohn-%'-Bloecke nach Zeit zu einer Kette; der Anker ist
 // der juengste. Nach jedem Einfuegen von Bloecken neu aufrufen.
 func (f *lohnFall) verketten() {
 	f.t.Helper()
 	if _, err := f.cs.db.Exec(`WITH o AS (SELECT hash, lag(hash) OVER (ORDER BY timestamp, hash) AS vor
-		FROM chain_blocks WHERE hash LIKE 'lohn-%')
+		FROM chain_blocks WHERE hash LIKE 'lohn-%' OR hash = ANY($1))
 		UPDATE chain_blocks c SET parent_hashes = CASE WHEN o.vor IS NULL THEN '[]' ELSE json_build_array(o.vor)::text END
-		FROM o WHERE c.hash = o.hash`); err != nil {
+		FROM o WHERE c.hash = o.hash`, pq.Array(f.hexe)); err != nil {
 		f.t.Fatal(err)
 	}
 }
@@ -72,7 +89,10 @@ func neuerLohnFall(t *testing.T) *lohnFall {
 			t.Fatal(err)
 		}
 	}
-	t.Cleanup(func() { cs.db.Exec(`DELETE FROM chain_blocks WHERE hash LIKE 'lohn-%'`) })
+	t.Cleanup(func() {
+		cs.db.Exec(`DELETE FROM chain_blocks WHERE hash LIKE 'lohn-%' OR hash = ANY($1)`, pq.Array(f.hexe))
+	})
+	anker := f.hexHash("anker")
 	seit, bis := anwesenheitsFenster(f.rundeAt)
 	lange := seit - 10*86400
 	verlaufEintrag(t, cs, f.a, f.ka, lange)
@@ -96,14 +116,14 @@ func neuerLohnFall(t *testing.T) *lohnFall {
 		{`INSERT INTO chain_blocks (hash, height, parent_hashes, proposer, timestamp)
 		  SELECT 'lohn-ku-' || g, g, '[]', $1, $2 + g * 60 FROM generate_series(0, 1439) g`, []interface{}{f.ku, seit}},
 		{`INSERT INTO chain_blocks (hash, height, parent_hashes, proposer, timestamp, blue_score)
-		  VALUES ('lohn-anker', 1, '[]', $1, $2, $3)`, []interface{}{f.ku, f.rundeAt - 30, lohnAnkerScore}},
+		  VALUES ($4, 1, '[]', $1, $2, $3)`, []interface{}{f.ku, f.rundeAt - 30, lohnAnkerScore, anker}},
 		{`INSERT INTO registered_nodes (wallet_address, signing_address, blocks_produced) VALUES ($1, $2, 1000000)`, []interface{}{f.r, f.ka}},
 	} {
 		if _, err := cs.db.Exec(q.sql, q.args...); err != nil {
 			t.Fatalf("%v", err)
 		}
 	}
-	f.anker = "lohn-anker"
+	f.anker = anker
 	f.verketten()
 	f.konten()
 	erzeugerSchnittOverride.Store(1)
@@ -157,6 +177,11 @@ func (f *lohnFall) nachrechnen(regel string, blockZeit int64, txs []Transaction)
 	vorher := erhaltungZaehler(regel)
 	f.cs.mu.Lock()
 	defer f.cs.mu.Unlock()
+	f.cs.nachrechnenEltern = f.eltern
+	if f.eltern == nil {
+		f.cs.nachrechnenEltern = []string{f.anker}
+	}
+	defer func() { f.cs.nachrechnenEltern = nil }()
 	for i := range txs {
 		if err := f.cs.nachrechnenTxLocked(&txs[i], blockZeit); err != nil {
 			f.t.Fatal(err)
@@ -413,10 +438,11 @@ func TestValidatorLohnAusKette_UnlesbarLaesstTopfStehen_RealDB(t *testing.T) {
 // ausserhalb der zehn Minuten vor der Runde (zu alt, in der Zukunft).
 func TestValidatorLohnAusKette_AnkerFaelschungen_RealDB(t *testing.T) {
 	f := neuerLohnFall(t)
+	zwei, alt, spaet := f.hexHash("anker-zwei"), f.hexHash("anker-alt"), f.hexHash("anker-spaet")
 	for _, b := range []struct {
 		hash string
 		zeit int64
-	}{{"lohn-anker-zwei", f.rundeAt - 40}, {"lohn-anker-alt", f.rundeAt - 1200}, {"lohn-anker-spaet", f.rundeAt + 60}} {
+	}{{zwei, f.rundeAt - 40}, {alt, f.rundeAt - 1200}, {spaet, f.rundeAt + 60}} {
 		if _, err := f.cs.db.Exec(`INSERT INTO chain_blocks (hash, height, parent_hashes, proposer, timestamp) VALUES ($1, 1, '[]', $2, $3)`,
 			b.hash, f.ku, b.zeit); err != nil {
 			t.Fatal(err)
@@ -434,9 +460,11 @@ func TestValidatorLohnAusKette_AnkerFaelschungen_RealDB(t *testing.T) {
 		txs         []Transaction
 	}{
 		{"ohne Anker", "validator_ohne_anker", mitAnker(f.gutschriften(ehrlich, f.rundeAt), 0, "")},
-		{"zwei Anker", "validator_anker", mitAnker(f.gutschriften(ehrlich, f.rundeAt), 1, "lohn-anker-zwei")},
-		{"Anker zu alt", "validator_anker", mitAnker(mitAnker(mitAnker(f.gutschriften(ehrlich, f.rundeAt), 0, "lohn-anker-alt"), 1, "lohn-anker-alt"), 2, "lohn-anker-alt")},
-		{"Anker nach der Runde", "validator_anker", mitAnker(mitAnker(mitAnker(f.gutschriften(ehrlich, f.rundeAt), 0, "lohn-anker-spaet"), 1, "lohn-anker-spaet"), 2, "lohn-anker-spaet")},
+		{"zwei Anker", "validator_anker", mitAnker(f.gutschriften(ehrlich, f.rundeAt), 1, zwei)},
+		{"Anker zu alt", "validator_anker", mitAnker(mitAnker(mitAnker(f.gutschriften(ehrlich, f.rundeAt), 0, alt), 1, alt), 2, alt)},
+		{"Anker kein Blockhash", "validator_anker", mitAnker(f.gutschriften(ehrlich, f.rundeAt), 0, "LOHN-ANKER")},
+		{"Anker gross geschrieben", "validator_anker", mitAnker(mitAnker(mitAnker(f.gutschriften(ehrlich, f.rundeAt), 0, strings.ToUpper(f.anker)), 1, strings.ToUpper(f.anker)), 2, strings.ToUpper(f.anker))},
+		{"Anker nach der Runde", "validator_anker", mitAnker(mitAnker(mitAnker(f.gutschriften(ehrlich, f.rundeAt), 0, spaet), 1, spaet), 2, spaet)},
 	} {
 		f.konten()
 		if n := f.nachrechnen(x.regel, zu, x.txs); n == 0 {
@@ -453,7 +481,7 @@ func TestValidatorLohnAusKette_AnkerFaelschungen_RealDB(t *testing.T) {
 	}
 	txs := f.gutschriften(ehrlich, f.rundeAt)
 	for i := range txs {
-		txs[i].Anker = "lohn-anker-zwei"
+		txs[i].Anker = zwei
 	}
 	f.nachrechnen("validator_anteil", zu, txs)
 	for _, r := range alle {
@@ -464,18 +492,45 @@ func TestValidatorLohnAusKette_AnkerFaelschungen_RealDB(t *testing.T) {
 	}
 }
 
-// Einen Anker, den dieser Knoten nicht kennt, rechnet er nicht nach (statt zu
-// raten) -- prueft aber weiter, dass nur Menschen bekommen.
-func TestValidatorLohnAusKette_UnbekannterAnkerUnsicher_RealDB(t *testing.T) {
+// Ein erfundener Anker, oder einer, der kein Vorfahr des tragenden Blocks
+// ist, ist eine Abweichung -- KEIN "unsicher": sonst schaltete der Erzeuger
+// das Nachrechnen mit einem Hash ab, den es nicht gibt (Pruefung des
+// Kegel-PR, HOCH 1), und naehme den ganzen Topf.
+func TestValidatorLohnAusKette_ErfundenerAnkerIstAbweichung_RealDB(t *testing.T) {
 	f := neuerLohnFall(t)
-	f.anker = "lohn-gibt-es-nicht"
 	zu := f.rundeAt + 5
+	echt := f.anker
+	f.anker = f.hexHash("gibt-es-nicht")
+	f.eltern = []string{echt}
+	if n := f.nachrechnen("validator_anker", zu, f.gutschriften(map[string]float64{f.a: 90}, f.rundeAt)); n == 0 {
+		t.Fatal("erfundener Anker nicht erkannt")
+	}
+	// Ein echter Block, aber nicht Vorfahr des tragenden Blocks.
+	f.konten()
+	f.anker = echt
+	f.eltern = []string{"lohn-kb-rand-0"}
+	if n := f.nachrechnen("validator_anker", zu, f.gutschriften(map[string]float64{f.a: 15, f.b: 30, f.c: 45}, f.rundeAt)); n == 0 {
+		t.Fatal("Anker ausserhalb der Vorfahren nicht erkannt")
+	}
+}
+
+// Fehlt DIESEM Knoten ein Block auf dem Weg zum Anker (eigene Luecke),
+// rechnet er nicht nach -- prueft aber weiter, dass nur Menschen bekommen.
+// Ueber "unsicher" entscheidet die eigene Geschichte, nicht der Erzeuger.
+func TestValidatorLohnAusKette_EigeneLueckeUnsicher_RealDB(t *testing.T) {
+	f := neuerLohnFall(t)
+	zu := f.rundeAt + 5
+	f.eltern = []string{f.hexHash("eltern-fehlen-hier")}
+	if n := f.nachrechnen("validator_anker", zu, f.gutschriften(map[string]float64{f.a: 89}, f.rundeAt)); n != 0 {
+		t.Fatalf("mit eigener Luecke geurteilt (%d)", n)
+	}
+	f.konten()
 	if n := f.nachrechnen("validator_anteil", zu, f.gutschriften(map[string]float64{f.a: 89}, f.rundeAt)); n != 0 {
-		t.Fatalf("mit unbekanntem Anker nachgerechnet (%d)", n)
+		t.Fatalf("mit eigener Luecke nachgerechnet (%d)", n)
 	}
 	f.konten()
 	if n := f.nachrechnen("validator_kein_mensch", zu, f.gutschriften(map[string]float64{f.n: 1}, f.rundeAt)); n == 0 {
-		t.Fatal("unbekannter Anker: Nicht-Mensch nicht erkannt")
+		t.Fatal("eigene Luecke: Nicht-Mensch nicht erkannt")
 	}
 }
 
