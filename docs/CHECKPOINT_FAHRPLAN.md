@@ -19,21 +19,30 @@ Blue-Score aufblähen; Untersuchung zu #340).
 
 Fast. Das Register ist so gebaut (`spaet_eingehaengt.go`,
 `validator_register_leser.go`), dass ein Urteil zur Zeit t nur an Bindungen
-hängt, die mindestens `erzeugerFrist` (2 h) älter sind. Die Bindung steht
-höchstens 1 h nach ihrem Zeitpunkt in einem Block, und ein Block mit Bindung,
-der über 30 min zu spät kommt, wird abgewiesen. Also kennt jeder Knoten, der
-dem Netz folgt, zur Zeit t dieselben wirksamen Bindungen. Der Status
-„Mensch“ wird im Betrieb nur gesetzt, nie entzogen (einzige Ausnahme:
-Zurücksetzen des ganzen Zustands).
+hängt, die mindestens `erzeugerFrist` (2 h) älter sind (auch das Ende einer
+Bindung wirkt 2 h später). Die Bindung steht höchstens 1 h nach ihrem
+Zeitpunkt in einem Block, und ein Block mit Bindung, der über 30 min hinter
+den eigenen Spitzen liegt, wird abgewiesen. Das ist eine starke Annahme,
+aber kein Beweis: die Grenze misst an den lokalen Spitzen, Knoten können
+einen Block genau an der Grenze verschieden behandeln, und Geschichte vom
+vertrauten Seed (FromSync) ist ausgenommen.
 
-Lokal bleiben drei Dinge:
+Der Status „Mensch“ wird im Betrieb nur gesetzt; entzogen wird er nur beim
+Zurücksetzen des ganzen Zustands und mit `CLEAR_REGISTRATIONS`. Das Register
+liest den heutigen Status, nicht den zur Zeit t – unschädlich nur, solange
+er nie entzogen wird.
+
+Lokal bleiben vier Dinge:
 
 1. **Die geschlossene Liste** (`AUTHORIZED_VALIDATORS`) kommt aus der
    Umgebung jedes Knotens. Verschiedene Listen ergeben verschiedene Komitees.
    → Baustein 4.
 2. **Lesefehler** des Register-Stands: heute „nicht prüfbar“ (richtig);
    beim Nachspielen muss das „zurückstellen“ heißen (Baustein 7).
-3. **Auffrischtakt** des Stands (30 s bzw. nach jedem Block mit Bindung):
+3. **Grenzfälle an der 30-Minuten-Grenze** für spät eingehängte Blöcke mit
+   Bindung (siehe oben): beim Unterschreiben nur ein anderer Komitee-Hash
+   (Ablehnung), als Konsensregel eine Spaltung. Vor Baustein 6 klären.
+4. **Auffrischtakt** des Stands (30 s bzw. nach jedem Block mit Bindung):
    unschädlich, weil Bindungen erst 2 h später wirken – aber nur, solange
    der Stand nach jedem nachgespielten Block mit Bindung neu gelesen wird.
    Test dafür in Baustein 7.
@@ -66,14 +75,28 @@ jeder selbst, sondern:
 - Der **Leiter** (`leitung.go`, ab drei Validatoren gewählt) schlägt je Slot
   (z. B. alle 60 s) einen Block vor: einen eigenen, nachgespielten Block, der
   mindestens `zeitstempelRueckToleranz` alt ist.
-- Ein **Mitglied unterschreibt** nur, wenn:
-  - der Block bei ihm nachgespielt ist und in der Vergangenheit seiner
-    eigenen Spitzen liegt;
-  - seine Zeit nach dem letzten Checkpoint liegt, den es unterschrieben hat;
+- Ein **Mitglied unterschreibt** nur (umgesetzt in
+  `checkpoint_unterschreiben.go`), wenn:
+  - der Block bei ihm nachgespielt ist;
+  - sein Slot nicht vor dem zuletzt unterschriebenen liegt;
   - es für diesen Slot noch **keinen anderen** Block unterschrieben hat
-    (dauerhaft gespeichert, sonst könnte ein Neustart zwei Unterschriften
-    für einen Slot erzeugen – das wäre Doppelsignieren und strafbar wie
-    `slash_equivocation`).
+    (dauerhaft gespeichert, bevor die Unterschrift herausgeht);
+  - der Block nach dem Start des eigenen Prozesses entstand (Startsperre:
+    schützt auch, wenn der Merker verloren geht – neue Datenbank,
+    Snapshot, Restore).
+- **Doppelsignieren** ist festgelegt als: gleiche Kette, gleicher Slot
+  (Slot-Länge steht im unterschriebenen Inhalt), verschiedener Blockhash.
+  „Älterer Slot nach jüngerem“ ist nicht beweisbar und nie strafbar.
+- **Noch offen** (Prüfung von Baustein 5):
+  - Vorschläge vom Leiter unterschreiben lassen und prüfen – sonst
+    verbraucht jeder, der die Funktion erreicht, den Slot zuerst.
+  - Ein böswilliger Leiter kann Slots verbrauchen (jedem Mitglied einen
+    anderen Block schicken): Leiterwechsel nach k Slots ohne Zertifikat,
+    zwei Vorschläge desselben Leiters im selben Slot als Beweis sammeln.
+  - Der vorgeschlagene Block muss den letzten zertifizierten Checkpoint in
+    seiner Vergangenheit haben (sonst bilden Checkpoints keine Kette) und
+    in der Vergangenheit der eigenen Spitzen liegen.
+  - Betrieb: nie zwei Prozesse mit demselben Signierschlüssel zugleich.
 - Der Leiter sammelt die Unterschriften (signierte Nachrichten über die
   Leitungswege, je Absender eine, begrenzt) und legt das Zertifikat bei
   Quorum als Transaktion in einen Block.

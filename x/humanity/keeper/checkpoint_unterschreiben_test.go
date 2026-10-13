@@ -210,3 +210,86 @@ func TestCheckpointMitunterschreiben_Gleichzeitig_RealDB(t *testing.T) {
 }
 
 func cpHash(n int) string { return fmt.Sprintf("%064x", n) }
+
+// Verlorener Merker (Tabelle geloescht, neue Datenbank): die Startsperre
+// verhindert trotzdem eine zweite Unterschrift fuer denselben Slot -- der
+// neue Prozess unterschreibt nur Bloecke nach seinem Start.
+func TestCheckpointMitunterschreiben_StartsperreNachMerkerverlust_RealDB(t *testing.T) {
+	f := neuerUnterschriftFall(t, true)
+	b1 := f.blocks[1]
+	jetzt := b1.Timestamp + 200
+	if _, err := f.dag.checkpointMitunterschreiben(f.vorschlag(t, b1), jetzt); err != nil {
+		t.Fatal(err)
+	}
+	// Neustart mit verlorenem Merker.
+	if _, err := f.dag.state.db.Exec(`DROP TABLE checkpoint_unterschriften`); err != nil {
+		t.Fatal(err)
+	}
+	checkpointTabelleDa.Delete(f.dag.state.db)
+	alt := checkpointProzessStart.Load()
+	checkpointProzessStart.Store(jetzt)
+	t.Cleanup(func() { checkpointProzessStart.Store(alt) })
+	anders := &Block{Hash: cpHash(8100), Height: b1.Height, Timestamp: b1.Timestamp + 2}
+	f.dag.blocks[anders.Hash] = anders
+	f.dag.replayedBlocks[anders.Hash] = true
+	if _, err := f.dag.checkpointMitunterschreiben(f.vorschlag(t, anders), jetzt+1); err == nil {
+		t.Fatal("nach verlorenem Merker zweiter Block im selben Slot unterschrieben")
+	}
+	// Ein Block nach dem Start geht wieder.
+	spaeter := &Block{Hash: cpHash(8200), Height: 900, Timestamp: jetzt + 10}
+	f.dag.blocks[spaeter.Hash] = spaeter
+	f.dag.replayedBlocks[spaeter.Hash] = true
+	if _, err := f.dag.checkpointMitunterschreiben(f.vorschlag(t, spaeter), spaeter.Timestamp+200); err != nil {
+		t.Fatalf("Block nach dem Start: %v", err)
+	}
+}
+
+// Eine Uhr, die hinter die juengste unterschriebene Blockzeit zurueckspringt,
+// unterschreibt nichts.
+func TestCheckpointMitunterschreiben_UhrZurueck_RealDB(t *testing.T) {
+	f := neuerUnterschriftFall(t, true)
+	b2 := f.blocks[2]
+	if _, err := f.dag.checkpointMitunterschreiben(f.vorschlag(t, b2), b2.Timestamp+200); err != nil {
+		t.Fatal(err)
+	}
+	// Ein spaeterer Slot, aber die Uhr steht vor der gemerkten Blockzeit.
+	x := &Block{Hash: cpHash(8300), Height: 950, Timestamp: b2.Timestamp + checkpointSlotLaenge}
+	f.dag.blocks[x.Hash] = x
+	f.dag.replayedBlocks[x.Hash] = true
+	if _, err := f.dag.checkpointMitunterschreiben(f.vorschlag(t, x), b2.Timestamp-1); err == nil {
+		t.Fatal("mit zurueckgesprungener Uhr unterschrieben")
+	}
+}
+
+// Weitere Ablehnungen ohne Datenbank: kleines Komitee, kein oder fehlerhafter
+// Register-Stand, Block aus der Zukunft, Block vor dem Prozessstart.
+func TestCheckpointMitunterschreiben_WeitereRegeln(t *testing.T) {
+	f := neuerUnterschriftFall(t, false)
+	b := f.blocks[0]
+	v := f.vorschlag(t, b)
+	jetzt := b.Timestamp + 200
+	pruefe := func(name, teil string) {
+		t.Helper()
+		if _, err := f.dag.checkpointMitunterschreiben(v, jetzt); err == nil || !strings.Contains(err.Error(), teil) {
+			t.Fatalf("%s: %v", name, err)
+		}
+	}
+	if _, err := f.dag.checkpointMitunterschreiben(v, b.Timestamp-10); err == nil {
+		t.Fatal("Block aus der Zukunft unterschrieben")
+	}
+	alt := checkpointProzessStart.Load()
+	checkpointProzessStart.Store(b.Timestamp)
+	pruefe("vor dem Prozessstart", "Startsperre")
+	checkpointProzessStart.Store(alt)
+	st := f.dag.state.erzeugerRegister.Load()
+	f.dag.state.erzeugerRegister.Store(&erzeugerStand{fenster: st.fenster, fehler: errors.New("Lesefehler")})
+	pruefe("Lesefehler", "Komitee nicht bestimmbar")
+	f.dag.state.erzeugerRegister.Store(nil)
+	pruefe("kein Stand", "Komitee nicht bestimmbar")
+	klein := map[string][]zeitfenster{}
+	for _, a := range f.adr[:3] {
+		klein[a] = st.fenster[a]
+	}
+	f.dag.state.erzeugerRegister.Store(&erzeugerStand{fenster: klein})
+	pruefe("Komitee mit 3", "bestaetigt nichts")
+}
