@@ -4895,6 +4895,11 @@ func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
 	if dag.resyncInProgress.Load() {
 		return false // an in-process self-heal resync is atomically swapping account/DAG state right now — see resyncInProgress's field comment; the sender will redeliver, ordered sync fills the gap once the resync completes
 	}
+	// eltern_grenze.go: vor dem Hash, vor jeder Sperre, vor jedem Nachschlag.
+	if grund := elternUngueltig(block); grund != "" {
+		fmt.Printf("[DAG] ✗ Rejected peer block #%d: %s\n", block.Height, grund)
+		return false
+	}
 	// FIX (durable fix, 2026-07-04 — closes wasted-effort noise found live after
 	// a fresh checkpoint-seeded resync): a block at or below BootHeight is
 	// already fully accounted for by the snapshot/checkpoint this node just
@@ -8762,6 +8767,10 @@ func (dag *BlockDAG) maxParents() int {
 	v := 2 * dag.k()
 	if v < maxParentsPerBlock {
 		return maxParentsPerBlock
+	}
+	// Nie mehr, als jeder andere Knoten annimmt (eltern_grenze.go).
+	if v > peerElternGrenze {
+		return peerElternGrenze
 	}
 	return v
 }

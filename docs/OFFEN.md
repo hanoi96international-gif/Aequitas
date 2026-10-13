@@ -229,6 +229,24 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
     und Finalität – erst damit ist HOCH 2 aus #340 lösbar. Übergang
     (Vermutung): Anker muss eine Mindestzahl verschiedener gebundener
     Erzeuger in [D−600, D] im Kegel haben.
+    **Erledigt (Zweig `claude/weiter-gehts-vm8979-eltern`):** Peer-Blöcke
+    mit mehr als 256 oder doppelten Eltern werden vor Hash, Sperre und
+    jedem Nachschlag abgewiesen (`eltern_grenze.go`); der Erzeuger bleibt
+    darunter. Vorher band ein Block mit zehntausenden Eltern `dag.mu`.
+    **Plan Ratengrenze** (Untersuchung 13.10.):
+    - Stufe A: Block von P muss einen Zeitstempel ≥ jedem eigenen
+      Elternblock + 1 s haben (in AddPeerBlock nach
+      `zeitstempelRueckdatiert` und in ProduceBlock vor dem Signieren,
+      dieselbe Funktion), Stichtag an der Elternzeit, schlafend.
+      Voraussetzung vor dem Einschalten: `ENABLE_MULTI_BLOCK_TICK` aus bzw.
+      Zusatzblöcke nur bei neuer Sekunde, `BLOCK_TIME_MS ≥ 1000` – beides
+      erzeugt heute ehrlich mehrere eigene Blöcke je Sekunde. Grenzen:
+      Stoß von ~241 Blöcken (±120 s Toleranz) > Finalitätstiefe 50;
+      mehrere Schlüssel abwechselnd umgehen A.
+    - Stufe B: je Block eine Tabelle Erzeuger → jüngste Blockzeit im Kegel
+      (Maximum über die Eltern, auf ein Zeitfenster beschnitten) – fängt
+      auch abwechselnde Schlüssel; engere Zeit-Toleranz auf eigenen Eltern.
+    - Stufe C: Komitee-Checkpoint (siehe oben).
 
 ## Ratenbegrenzung – bekannte Lücken
 - **`X-Forwarded-For` hinter einem privaten TCP-Partner** (Prüfung von #319,
