@@ -54,6 +54,29 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
    Pause länger als `admissionStallLimit()` im Takt wie einen verlorenen
    Leistungsnachweis behandeln, also übergeben. (Ein Beobachter baut seit #322
    keine Leitung mehr auf und legt nichts in den Ausgang.)
+   **Erledigt ab drei Validatoren (Zweig `claude/weiter-gehts-vm8979-leiter`):**
+   Hat ein Knoten, der erzeugt, seit 2×`admissionStallLimit()` keinen
+   eigenen Block gespeichert (oder trägt ihn das Register nicht), gilt er
+   als „stockt“ (`eigeneBloeckeStocken`, im Takt der Leitung): er kündigt
+   sich als nicht leiterfähig an und gibt als Leiter nach `StockenFrist`
+   (1 min ab Antritt) geordnet ab, notfalls an einen ohne Nachweis. Der
+   Empfänger nimmt jede gültige Übergabe des amtierenden Leiters an (sonst
+   hing der Abgebende in einem Term ohne Leiter) und gibt selbst weiter,
+   wenn er nicht taugt. Tests: `leitung_stockt_test.go`, inkl.
+   Zufallslauf mit Lebendigkeit nach der Heilung.
+   **Offen bei zwei Validatoren** (getrennte Prüfung, Befunde 1/3/4/5):
+   ohne Wahl heilt nichts eine verlorene Übergabe – sie ist nicht
+   gespeichert (Neustart verliert sie), ein Empfänger ohne Block wartet
+   ohne Frist, und ein Speicherfehler schließt nicht ab. Darum dort
+   weiterhin nur mit `AEQUITAS_LEITUNG_ZWEI_WECHSELN`; vorher: Übergabe
+   (`offeneUebergabe`, `wartet`) in `LeitSpeicher`, Übergabe nur nach
+   erfolgreichem Speichern senden, eigenes `Stockt`-Flag in der Nachricht.
+   Schon vor diesem Zweig (Nachprüfung gemessen): mit Schalter endet bei zwei
+   eine Netztrennung während eines planmäßigen Wechsels in etwa 1 von 60
+   Zufallsläufen ohne Leiter.
+   Abgabe erst, wenn der Empfänger eine Lease DIESES Terms quittiert hat
+   (er kennt dann den neu gestempelten Satz) – sonst gaben zwei sich die
+   Leitung zurück und hingen in Terms ohne Leiter (Nachprüfung, Befund A).
 7. **Einträge in `pending_txs` ohne Annahme-Pause** (Prüfung von #322,
    INFO-2; bestand schon vorher): `DoppelsignaturErkannt` (slashing.go,
    ausgelöst von Peer-Blöcken) legt den Strafbeweis auch auf einem Beobachter

@@ -343,6 +343,9 @@ func (dag *BlockDAG) leitungSchleife(l *Leitung, cs *ChainState) {
 				cs.KappungenAbarbeiten()
 				cs.VorbehalteAbarbeiten()
 			}
+			// Erzeugt dieser Knoten keine eigenen Bloecke mehr, ist er nicht
+			// leiterfaehig -- in jedem Takt, nicht erst nach einer Minute.
+			l.SetzeStockt(cs.eigeneBloeckeStocken(time.Now().Unix()))
 			if time.Since(letzteFaehigPruefung) > time.Minute {
 				letzteFaehigPruefung = time.Now()
 				l.SetzeFaehig(leiterFaehig(cs))
