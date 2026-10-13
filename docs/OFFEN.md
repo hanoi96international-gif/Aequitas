@@ -265,6 +265,32 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
       aufblähbar), billige Prüfungen vor Sperre und Nachschlag, nur der
       Block-Kopf aus dem Speicher. Ein anderer Stand ergibt einen anderen
       Komitee-Hash → Ablehnung. Schlafend.
+      **Baustein 3 (Zweig `claude/weiter-gehts-vm8979-checkpoint3`):**
+      `kegel_vorfahr.go` (`vorfahrSuchen`, begrenzt, Lücke → kein Urteil)
+      und `checkpointImTragendenBlock`: Bezugszeit = Zeit des tragenden
+      Blocks, Checkpoint-Block muss in dessen Vergangenheit liegen
+      (statt „hier nachgespielt“), eigene Lücke → Ablehnung. Schlafend.
+      Prüfung Baustein 3 umgesetzt: Kryptographie vor der DB-Suche,
+      Grenzen vor dem Lesen (Besuche, Eltern-Verweise, Ebenen),
+      `errCheckpointNichtPruefbar` getrennt von „ungültig“, Definition
+      „Vorfahr über Blöcke mit Zeit ≥ Grenze“ festgeschrieben.
+      **Blocker vor dem Anschluss als Konsensregel:**
+      1. KRITISCH: Komitee-Stand ist lokal (30-s-Takt, Wanduhr,
+         Lesefehler, Umgebungsliste) – muss aus dem Register-Stand in der
+         Vergangenheit des tragenden Blocks kommen, Liste konsensfest.
+      2. „Letzter“ Checkpoint: der jüngste in der Vergangenheit des
+         tragenden Blocks, im Zustand (StateRoot), nicht lokal zuletzt
+         gesehen.
+      3. „Nicht prüfbar“ im Nachspielen: zurückstellen/nachladen, nie
+         ungültig, nie angenommen.
+      4. Snapshot-Grenze: Snapshot muss die Köpfe der letzten 720 s bzw.
+         den letzten Checkpoint mitbringen; Knoten ohne DB.
+      5. Suche außerhalb von `dag.mu` (inhaltsadressiert) oder als
+         rekursives CTE; Ebenen = Abfragen (bis 1024).
+      6. Breiter Kegel kann Checkpoints abschalten: Suche entlang der
+         Selected-Parent-Kette bzw. Checkpoint als direkter Elternteil.
+      7. Transaktionssicht: derselbe `sqlExecutor` wie das Nachspielen.
+      8. Unterschreib-Regel, Komitee-Cache je (Stand, Epoche).
       **Vor dem Anschluss als Konsensregel (Prüfung Baustein 2, HOCH):**
       dann wäre jede lokale Abweichung ein Split. Nötig: Bezugszeit = Zeit
       des tragenden Blocks; statt „hier nachgespielt“ „in der Vergangenheit
