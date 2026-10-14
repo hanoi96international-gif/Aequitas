@@ -623,6 +623,9 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) (
 				if err := pruefeSnapshotKonfig(key, val); err != nil {
 					return fmt.Errorf("snapshot config %s: %w", key, err)
 				}
+				if !snapshotKonfigUebernehmen(key, nowUnix()) {
+					continue
+				}
 				if existing := cs.getConfigValue(key); existing == "" {
 					if err := cs.setConfigValueCtx(ctx, key, val); err != nil {
 						return fmt.Errorf("setting config %s: %w", key, err)
@@ -1021,6 +1024,9 @@ func (cs *ChainState) ResyncFromSnapshotURL(peerURL, expectedSignerHex string) (
 	for key, val := range snap.ChainConfig {
 		if err := pruefeSnapshotKonfig(key, val); err != nil {
 			return fail(fmt.Errorf("resync: config %q: %w", key, err))
+		}
+		if !snapshotKonfigUebernehmen(key, nowUnix()) {
+			continue
 		}
 		if err := cs.setConfigValueCtx(ctx, key, val); err != nil {
 			return fail(fmt.Errorf("resync: could not set config %q: %w", key, err))

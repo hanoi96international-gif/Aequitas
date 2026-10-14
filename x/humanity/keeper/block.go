@@ -5557,6 +5557,13 @@ func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
 			dag.mu.Unlock()
 			return false
 		}
+		// Das Zertifikat nur an checkpoint_zertifikat (checkpoint_tx.go) --
+		// sonst Ballast in jeder Transaktion.
+		if err := checkpointFeldErlaubt(&tx); err != nil {
+			fmt.Printf("[DAG] ✗ Rejected peer block #%d: %v\n", block.Height, err)
+			dag.mu.Unlock()
+			return false
+		}
 	}
 
 	// FIX (durable fix, 2026-07-04 — closes the two-phase block-save gap that
@@ -7387,6 +7394,11 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 	phMarkSchleife := time.Now()
 	checkpointTxe := 0
 	for txIdx := 0; txIdx < len(block.Transactions); txIdx++ {
+		if err := checkpointFeldErlaubt(&block.Transactions[txIdx]); err != nil {
+			fmt.Printf("[REPLAY] ✗ %v (block #%d) — rolling back whole block\n", err, block.Height)
+			hardFailure = true
+			break
+		}
 		tx := block.Transactions[txIdx]
 		if hardFailure {
 			break // stop applying further TXs once we know this block is being rolled back

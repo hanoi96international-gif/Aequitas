@@ -301,3 +301,80 @@ func TestCheckpointTx_SnapshotTraegtLetzten_RealDB(t *testing.T) {
 		t.Fatalf("Snapshot ohne letzten Checkpoint: %+v", snap)
 	}
 }
+
+// F1: das Feld Checkpoint an einer anderen Transaktion macht den Block
+// ungueltig -- auch vor dem Stichtag (Ballast, verschiedene Urteile).
+func TestCheckpointFeld_NurAnCheckpointTx_RealDB(t *testing.T) {
+	f := neuerVorschlagFall(t, true)
+	z := f.zertFuer(t, f.blocks[1])
+	tr := Transaction{Type: "transfer", Wallet: f.adr[0], To: f.adr[1], Amount: 1, TxHash: "0x01", Checkpoint: &z}
+	if checkpointFeldErlaubt(&tr) == nil {
+		t.Fatal("Checkpoint an transfer erlaubt")
+	}
+	ok := neueCheckpointTx(z)
+	if checkpointFeldErlaubt(&ok) != nil || checkpointFeldErlaubt(&Transaction{Type: "transfer"}) != nil {
+		t.Fatal("erlaubte Formen abgewiesen")
+	}
+	d := f.dag
+	d.bootHeight = 0
+	d.replayFailures = make(map[string]replayFailureState)
+	d.stateRootMismatches = map[string]int{}
+	d.stateRootMismatchLastAt = map[string]int64{}
+	b := &Block{Height: 950, Hash: cpHash(9500), Timestamp: f.blocks[1].Timestamp + 200, ParentHashes: []string{f.blocks[1].Hash}, Transactions: []Transaction{tr}}
+	if d.replayTransactions(b, true) {
+		t.Fatal("Block mit Checkpoint an einer Ueberweisung nachgespielt")
+	}
+}
+
+// F5: hoechstens ein checkpoint_zertifikat je Block -- der zweite geht in
+// den naechsten.
+func TestCheckpointTx_HoechstensEinerJeBlock(t *testing.T) {
+	f := neuerVorschlagFall(t, false)
+	checkpointTxAn(t)
+	a := neueCheckpointTx(f.zertFuer(t, f.blocks[1]))
+	b := neueCheckpointTx(f.zertFuer(t, f.blocks[2]))
+	jetzt := f.blocks[2].Timestamp + 200
+	n, _, err := blockZeitPraefix([]Transaction{a, b}, jetzt, jetzt-1)
+	if err != nil || n != 1 {
+		t.Fatalf("zwei Checkpoints: %d %v", n, err)
+	}
+	if checkpointTxGrenze([]Transaction{{Type: "transfer"}, a, {Type: "transfer"}, b, a}) != 3 {
+		t.Fatal("Grenze falsch")
+	}
+}
+
+// F4: liegt der letzte Checkpoint zu weit zurueck fuer die Suche, gilt der
+// neue trotzdem (Zeit-Monotonie) -- sonst rueckte der Wert nie mehr vor.
+func TestApplyCheckpointTx_LetzterWeitZurueck_RealDB(t *testing.T) {
+	f := neuerVorschlagFall(t, true)
+	checkpointTxAn(t)
+	ctx := context.Background()
+	b0, b2 := f.blocks[0], f.blocks[2]
+	if err := f.dag.state.setConfigValueDB(letzterCheckpointSchluessel, letzterCheckpointWert(f.vorschlag(t, b0))); err != nil {
+		t.Fatal(err)
+	}
+	alt := vorfahrEbenenGrenze
+	vorfahrEbenenGrenze = 1 // b2 -> b1 -> b0: zwei Ebenen
+	t.Cleanup(func() { vorfahrEbenenGrenze = alt })
+	tx := neueCheckpointTx(f.zertFuer(t, b2))
+	if err := f.dag.applyCheckpointTxLocked(ctx, &tx, []string{b2.Hash}, b2.Timestamp+200, f.koepfe.leser()); err != nil {
+		t.Fatalf("weit zurueck: %v", err)
+	}
+	if v := f.dag.state.getConfigValueDB(letzterCheckpointSchluessel); v != letzterCheckpointWert(tx.Checkpoint.KettenCheckpoint) {
+		t.Fatalf("letzter: %q", v)
+	}
+}
+
+// F8: vor dem Stichtag uebernimmt ein Snapshot keinen letzten Checkpoint.
+func TestSnapshotKonfigUebernehmen(t *testing.T) {
+	if snapshotKonfigUebernehmen(letzterCheckpointSchluessel, 100) {
+		t.Fatal("vor dem Stichtag uebernommen")
+	}
+	if !snapshotKonfigUebernehmen("last_ubi_at", 100) {
+		t.Fatal("anderer Schluessel nicht uebernommen")
+	}
+	checkpointTxAn(t)
+	if !snapshotKonfigUebernehmen(letzterCheckpointSchluessel, 100) {
+		t.Fatal("nach dem Stichtag nicht uebernommen")
+	}
+}

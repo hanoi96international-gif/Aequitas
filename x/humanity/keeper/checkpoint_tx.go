@@ -3,6 +3,7 @@ package keeper
 import (
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -41,12 +42,20 @@ import (
 //   - Nicht pruefbar (Luecke, Lesefehler): Block zurueckgestellt (der
 //     bestehende Weg ueber die Wiederholung, softRetry), nie angenommen.
 //
-// BEKANNTE GRENZE (vor einem Verbraucher des letzten Checkpoints zu
-// schliessen, docs/CHECKPOINT_FAHRPLAN.md): der Leiter setzt den Wert schon
-// beim Einreichen (wie jede Annahme). Wird die Transaktion beim Nachspielen
-// uebersprungen (zu alt, andere Reihenfolge), weicht sein Wert ab, bis der
-// naechste Checkpoint ueberall gilt -- die StateRoot meldet das (Warnung),
-// heute haengt an dem Wert nichts.
+// STICHTAG ERST SETZEN, WENN DIESE SPERREN GELOEST SIND (Pruefung von
+// Baustein 6; docs/CHECKPOINT_FAHRPLAN.md):
+//   1. Komitee konsensfest (HOCH): checkpointImTragendenBlock liest den
+//      aktuellen Register-Stand und die lokale Liste, nicht den Stand des
+//      tragenden Blocks -- verschiedene Staende spalten.
+//   2. Zeitfrist (MITTEL): die Gesamtfrist der Suche macht "nicht pruefbar"
+//      vom Knoten abhaengig; nach der Wiederholungsfrist verwirft ein
+//      langsamer Knoten, was ein schneller annimmt -- dort nachladen statt
+//      verwerfen.
+//   3. Erzeuger wendet an (MITTEL): der Leiter setzt den Wert schon beim
+//      Einreichen. Wird die Transaktion beim Nachspielen uebersprungen,
+//      weicht sein Wert ab (StateRoot-Abweichung, ein Resync uebernaehme
+//      ihn) -- der Erzeuger muss Checkpoint-Transaktionen erst beim Bauen
+//      des Blocks mit dessen Zeit anwenden.
 //
 // Der letzte Checkpoint steht in chain_config (letzterCheckpointSchluessel)
 // und geht -- nur wenn gesetzt -- in die StateRoot ein (stateRootLocked);
@@ -143,7 +152,11 @@ func (dag *BlockDAG) applyCheckpointTxLocked(ctx context.Context, tx *Transactio
 	if cs == nil || cs.db == nil {
 		return fmt.Errorf("%w: keine Datenbank", errCheckpointNichtPruefbar)
 	}
-	letzter, err := letzterCheckpointLesen(cs.getConfigValueCtx(ctx, letzterCheckpointSchluessel))
+	roh, err := letzterCheckpointRoh(ctx, cs)
+	if err != nil {
+		return fmt.Errorf("%w: %v", errCheckpointNichtPruefbar, err)
+	}
+	letzter, err := letzterCheckpointLesen(roh)
 	if err != nil {
 		return fmt.Errorf("%w: %v", errCheckpointNichtPruefbar, err)
 	}
@@ -165,7 +178,12 @@ func (dag *BlockDAG) applyCheckpointTxLocked(ctx context.Context, tx *Transactio
 	if letzter != nil {
 		_, gefunden, vollstaendig, err := vorfahrSuchen(lies, []string{z.Hash}, letzter.Hash, letzter.Zeit)
 		switch {
-		case err != nil && !errors.Is(err, errVorfahrZuGross):
+		case errors.Is(err, errVorfahrZuGross):
+			// Der letzte liegt zu weit zurueck (etwa nach langem Ausfall der
+			// Leitung): die Zeit-Monotonie oben genuegt -- sonst rueckte der
+			// Wert nie mehr vor, jeder spaetere Abstand waere noch groesser
+			// (Pruefung von Baustein 6, F4).
+		case err != nil:
 			return fmt.Errorf("%w: Vorfahren nicht lesbar: %v", errCheckpointNichtPruefbar, err)
 		case err == nil && !gefunden && !vollstaendig:
 			return fmt.Errorf("%w: Vergangenheit unvollstaendig", errCheckpointNichtPruefbar)
@@ -193,7 +211,11 @@ func (dag *BlockDAG) checkpointTxEinreichen(z CheckpointZertifikat, jetzt int64)
 	}
 	defer cs.annahmeEnde()
 	return cs.runAtomicWithOutbox(nil, false, func(ctx context.Context) (Transaction, error) {
-		letzter, err := letzterCheckpointLesen(cs.getConfigValueCtx(ctx, letzterCheckpointSchluessel))
+		roh, err := letzterCheckpointRoh(ctx, cs)
+		if err != nil {
+			return Transaction{}, err
+		}
+		letzter, err := letzterCheckpointLesen(roh)
 		if err != nil {
 			return Transaction{}, err
 		}
@@ -205,6 +227,12 @@ func (dag *BlockDAG) checkpointTxEinreichen(z CheckpointZertifikat, jetzt int64)
 		}
 		return tx, nil
 	})
+}
+
+// snapshotKonfigUebernehmen: vor dem Stichtag wird ein letzter Checkpoint
+// aus einem Snapshot nicht uebernommen (Pruefung von Baustein 6, F8).
+func snapshotKonfigUebernehmen(key string, jetzt int64) bool {
+	return key != letzterCheckpointSchluessel || checkpointTxAktiv(jetzt)
 }
 
 // pruefeSnapshotKonfig: ein Wert aus dem Snapshot, den die StateRoot liest,
@@ -227,3 +255,38 @@ func checkpointZustand(format string, args ...interface{}) error {
 // checkpointReplayLeser: Koepfe fuer das Nachspielen, aus der Transaktion
 // des Nachspielens. Tests ersetzen ihn.
 var checkpointReplayLeser = func(q sqlExecutor) kopfLeser { return kopfLeserDB(q) }
+
+// letzterCheckpointRoh: der Wert aus chain_config in der Sicht von ctx --
+// mit Fehler (getConfigValueCtx verschluckt ihn; dann fehlte die Pruefung
+// der Reihenfolge, Pruefung von Baustein 6, F7). "" = noch keiner.
+func letzterCheckpointRoh(ctx context.Context, cs *ChainState) (string, error) {
+	var v string
+	err := cs.dbExecCtx(ctx).QueryRow(`SELECT value FROM chain_config WHERE key = $1`, letzterCheckpointSchluessel).Scan(&v)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return v, err
+}
+
+// checkpointFeldErlaubt: das Feld Checkpoint nur an checkpoint_zertifikat.
+func checkpointFeldErlaubt(tx *Transaction) error {
+	if tx.Checkpoint != nil && tx.Type != checkpointTxArt {
+		return fmt.Errorf("%s traegt ein Checkpoint-Zertifikat", tx.Type)
+	}
+	return nil
+}
+
+// checkpointTxGrenze: wie viele Transaktionen vom Anfang ein Block tragen
+// kann, ohne ein zweites checkpoint_zertifikat.
+func checkpointTxGrenze(txs []Transaction) int {
+	n := 0
+	for i := range txs {
+		if txs[i].Type == checkpointTxArt {
+			n++
+			if n > 1 {
+				return i
+			}
+		}
+	}
+	return len(txs)
+}

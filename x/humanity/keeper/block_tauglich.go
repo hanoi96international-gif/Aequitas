@@ -296,6 +296,12 @@ func blockZeitFuer(txs []Transaction, jetzt, elternZeit int64) (int64, error) {
 // lag). Fehler nur, wenn schon die erste Transaktion zu keiner Zeit zwischen
 // den Eltern und jetzt passt -- dann entsteht kein Block.
 func blockZeitPraefix(txs []Transaction, jetzt, elternZeit int64) (int, int64, error) {
+	// Hoechstens ein checkpoint_zertifikat je Block (checkpoint_tx.go): ab
+	// dem zweiten in den naechsten Block -- sonst wiese jeder andere Knoten
+	// den Block ab.
+	if n := checkpointTxGrenze(txs); n < len(txs) {
+		txs = txs[:n]
+	}
 	if t, err := blockZeitFuer(txs, jetzt, elternZeit); err == nil {
 		return len(txs), t, nil
 	}

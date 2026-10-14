@@ -154,11 +154,26 @@ nicht prüfbar: Wiederholung. Der letzte Checkpoint steht in `chain_config`
 mit zurückgerollt, im Snapshot getragen und beim Resync gesetzt bzw.
 gelöscht.
 
-**Bekannte Grenze** (vor dem ersten Verbraucher zu schließen): der Leiter
-setzt den Wert schon beim Einreichen. Wird die Transaktion beim Nachspielen
-übersprungen, weicht sein Wert ab, bis der nächste Checkpoint überall gilt
-(StateRoot-Warnung). Lösung: der Erzeuger wendet Checkpoint-Transaktionen
-erst beim Bauen des Blocks an, mit dessen Zeit.
+Das Feld `checkpoint` an jeder anderen Transaktion macht einen Block
+ungültig (schon jetzt); der Erzeuger nimmt höchstens eine
+Checkpoint-Transaktion je Block; liegt der letzte für die Suche zu weit
+zurück, genügt die Zeit-Monotonie; vor dem Stichtag übernimmt kein Snapshot
+einen letzten Checkpoint.
+
+**Stichtag erst setzen, wenn diese Sperren gelöst sind** (Prüfung von
+Baustein 6):
+
+1. **Komitee konsensfest (HOCH):** `checkpointImTragendenBlock` liest den
+   aktuellen Register-Stand und die lokale Liste, nicht den Stand des
+   tragenden Blocks – verschiedene Stände spalten.
+2. **Zeitfrist (MITTEL):** die Gesamtfrist der Suche macht „nicht prüfbar“
+   vom Knoten abhängig; nach der Wiederholungsfrist verwirft ein langsamer
+   Knoten, was ein schneller annimmt – dort nachladen statt verwerfen
+   (Baustein 7).
+3. **Erzeuger wendet an (MITTEL):** der Leiter setzt den Wert schon beim
+   Einreichen. Wird die Transaktion übersprungen, weicht sein Wert ab
+   (StateRoot-Abweichung, ein Resync übernähme ihn) – der Erzeuger muss
+   Checkpoint-Transaktionen erst beim Bauen des Blocks anwenden.
 
 Ursprünglicher Plan:
 
