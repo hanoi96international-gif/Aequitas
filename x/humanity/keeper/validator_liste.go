@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync/atomic"
 )
 
 // KONSENSFESTE VALIDATORENLISTE (OFFEN 10, Stufe C, Baustein 4, Weg (b);
@@ -68,9 +69,29 @@ func pruefeValidatorListe(fest map[string]bool, soll string) error {
 // trotzdem ins Komitee (erzeugerFestListe) und hat damit ein anderes als
 // die anderen: laute Warnung (Checkpoints lehnen ihn dann ab).
 func validatorListeBeimStart(fest map[string]bool, self string) error {
-	soll := os.Getenv(validatorListeHashEnv)
+	return validatorListePruefenUndMerken(fest, self, os.Getenv(validatorListeHashEnv), nowUnix())
+}
+
+// validatorListeFestgeschrieben: die Liste ist beim Start gegen
+// AUTHORIZED_VALIDATORS_HASH geprueft (checkpoint_tx.go verlangt das).
+var validatorListeFestgeschrieben atomic.Bool
+
+func validatorListePruefenUndMerken(fest map[string]bool, self, soll string, jetzt int64) error {
 	if err := pruefeValidatorListe(fest, soll); err != nil {
 		return err
+	}
+	festgeschrieben := len(fest) > 0 && strings.TrimSpace(soll) != ""
+	validatorListeFestgeschrieben.Store(festgeschrieben)
+	// Ab dem Stichtag der Checkpoints in der Kette bestimmt die Liste das
+	// Komitee -- ohne Hash oder ohne die eigene Adresse saehe dieser Knoten
+	// ein anderes als die anderen.
+	if checkpointTxAktiv(jetzt) && len(fest) > 0 {
+		if !festgeschrieben {
+			return fmt.Errorf("Checkpoints in der Kette sind aktiv: %s muss gesetzt sein", validatorListeHashEnv)
+		}
+		if self != "" && !fest[self] {
+			return fmt.Errorf("Checkpoints in der Kette sind aktiv: eigene Signieradresse %s fehlt in AUTHORIZED_VALIDATORS", self)
+		}
 	}
 	if h := validatorListeHash(fest); h != "" {
 		if strings.TrimSpace(soll) == "" {

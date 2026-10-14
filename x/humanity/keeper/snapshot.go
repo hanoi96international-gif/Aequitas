@@ -61,7 +61,11 @@ type StateSnapshot struct {
 	// Verlauf der Bindungen (validator_register.go, validator_verlauf) --
 	// jede Zeile mit beiden Unterschriften. omitempty wie oben.
 	ValidatorVerlauf []SnapshotValidator `json:"validator_verlauf,omitempty"`
-	Signature        string              `json:"signature,omitempty"` // ECDSA over SHA256(JSON without this field)
+	// Koepfe: ab dem Stichtag der Checkpoint-Transaktionen die Blockkoepfe
+	// der letzten Minuten (snapshot_koepfe.go). omitempty: bisherige
+	// Snapshots bleiben byte-gleich.
+	Koepfe    []SnapshotKopf `json:"koepfe,omitempty"`
+	Signature string         `json:"signature,omitempty"` // ECDSA over SHA256(JSON without this field)
 }
 
 type SnapshotBioRegistration struct {
@@ -230,6 +234,16 @@ func (cs *ChainState) ExportSnapshot(signingKey *ecdsa.PrivateKey, height int64,
 		if val := cs.getConfigValueDB(key); val != "" {
 			snap.ChainConfig[key] = val
 		}
+	}
+
+	// Koepfe fuer die Vorfahren-Suche (snapshot_koepfe.go), nur ab dem
+	// Stichtag. Ein Lesefehler laesst sie weg: der Snapshot bleibt nutzbar,
+	// ein frischer Knoten wiederholt dann Checkpoint-Bloecke, bis er die
+	// Koepfe nachgeladen hat.
+	if koepfe, err := cs.snapshotKoepfeExport(snap.Timestamp); err != nil {
+		fmt.Printf("[SNAPSHOT] ⚠ Blockkoepfe nicht exportiert: %v\n", err)
+	} else {
+		snap.Koepfe = koepfe
 	}
 
 	if signingKey != nil {
@@ -611,6 +625,9 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) (
 			}
 			// Validator-Register ergaenzend; die Unterschriften sind oben vor
 			// der Sperre geprueft, ein falscher Eintrag verwirft den Import.
+			if err := snapshotKoepfeImportieren(tx, snap.Koepfe, nowUnix()); err != nil {
+				return fmt.Errorf("saving block heads: %w", err)
+			}
 			if err := validatorenImportieren(tx, snap.Validatoren, false, validatorenBis); err != nil {
 				return fmt.Errorf("saving validator register: %w", err)
 			}
@@ -1003,6 +1020,9 @@ func (cs *ChainState) ResyncFromSnapshotURL(peerURL, expectedSignerHex string) (
 		}
 	}
 	// Validator-Register ersetzend; Unterschriften oben vor der Sperre geprueft.
+	if err := snapshotKoepfeImportieren(tx, snap.Koepfe, nowUnix()); err != nil {
+		return fail(fmt.Errorf("resync: block heads: %w", err))
+	}
 	if err := validatorenImportieren(tx, snap.Validatoren, true, validatorenBis); err != nil {
 		return fail(fmt.Errorf("resync: validator register: %w", err))
 	}

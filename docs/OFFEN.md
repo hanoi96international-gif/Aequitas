@@ -305,9 +305,11 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
       letzter Checkpoint dauerhaft je Knoten.
       **Baustein 6 (`checkpoint_tx.go`, schlafend bis `checkpointTxAb`):**
       Zertifikat als Transaktion, letzter Checkpoint im Zustand und in der
-      StateRoot. Offen: Erzeuger wendet erst beim Bauen an (bekannte
-      Grenze im Fahrplan), Obergrenze über Leiterwechsel hinweg, Snapshot
-      der Köpfe (Baustein 8), Stichtag setzen.
+      StateRoot. Stichtag-Sperren gelöst (Erzeuger wendet beim eigenen
+      Block an, keine Zeitfrist im Konsens, Liste festgeschrieben);
+      Baustein 8 (Köpfe im Snapshot) umgesetzt. Offen: Stichtag setzen
+      (braucht vier Validatoren, siehe Fahrplan „Einschalten“), Obergrenze
+      über Leiterwechsel hinweg, Restrisiko 30-Minuten-Grenze.
       **Fahrplan:** `docs/CHECKPOINT_FAHRPLAN.md` (mit den Entscheidungen
       für den Betreiber).
       **Vor dem Anschluss als Konsensregel (Prüfung Baustein 2, HOCH):**

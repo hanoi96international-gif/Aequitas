@@ -131,7 +131,9 @@ func vorfahrSuchen(lies kopfLeser, eltern []string, ziel string, grenze int64) (
 // kopfLeserDB: die Koepfe aus chain_blocks.
 func kopfLeserDB(q sqlExecutor) kopfLeser {
 	return func(hashes []string) (map[string]blockKopf, error) {
-		const frage = `SELECT hash, height, timestamp, parent_hashes FROM chain_blocks WHERE hash = ANY($1)`
+		// chain_blocks und die Koepfe aus einem Snapshot (snapshot_koepfe.go).
+		const frage = `SELECT hash, height, timestamp, parent_hashes FROM chain_blocks WHERE hash = ANY($1)
+			UNION ALL SELECT hash, height, timestamp, parent_hashes FROM kopf_vorrat WHERE hash = ANY($1)`
 		var rows *sql.Rows
 		var err error
 		// Mit Zeitgrenze, wo moeglich (Pruefung von 5b, NIEDRIG 4): eine

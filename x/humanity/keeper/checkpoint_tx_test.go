@@ -182,33 +182,50 @@ func TestApplyCheckpointTx_RealDB(t *testing.T) {
 	}
 }
 
-// Leiter: vor dem Stichtag traegt er nichts ein; danach setzt er den
-// letzten Checkpoint und legt die Transaktion in den Ausgang -- ein
-// aelterer danach wird abgewiesen.
+// Leiter: vor dem Stichtag traegt er nichts ein; danach legt er die
+// Transaktion in den Ausgang, OHNE den Zustand zu aendern -- der gilt erst
+// mit dem eigenen Block, nach der Regel des Nachspielens (Stichtag-Sperre
+// 3): zu alt fuer den eigenen Block heisst unveraendert, wie bei jedem
+// anderen.
 func TestCheckpointTxEinreichen_RealDB(t *testing.T) {
 	f := neuerVorschlagFall(t, true)
 	f.dag.state.annehmendAusdruecklich.Store(true)
 	t.Cleanup(func() { f.dag.state.annehmendAusdruecklich.Store(false) })
+	alt := checkpointReplayLeser
+	checkpointReplayLeser = func(sqlExecutor) kopfLeser { return f.koepfe.leser() }
+	t.Cleanup(func() { checkpointReplayLeser = alt })
 	if _, err := f.dag.state.db.Exec(`DELETE FROM chain_config WHERE key = $1`, letzterCheckpointSchluessel); err != nil {
 		t.Fatal(err)
 	}
+	lesen := func() string { return f.dag.state.getConfigValueDB(letzterCheckpointSchluessel) }
 	z1, z2 := f.zertFuer(t, f.blocks[1]), f.zertFuer(t, f.blocks[2])
 	if err := f.dag.checkpointTxEinreichen(z2, z2.Zeit+200); err != nil {
 		t.Fatal(err)
 	}
-	if v := f.dag.state.getConfigValueDB(letzterCheckpointSchluessel); v != "" {
-		t.Fatalf("vor dem Stichtag gesetzt: %q", v)
+	var n int
+	if f.dag.state.db.QueryRow(`SELECT COUNT(*) FROM pending_txs WHERE tx_json LIKE '%checkpoint_zertifikat%'`).Scan(&n); n != 0 {
+		t.Fatalf("vor dem Stichtag im Ausgang: %d", n)
 	}
 	checkpointTxAn(t)
 	if err := f.dag.checkpointTxEinreichen(z2, z2.Zeit+200); err != nil {
 		t.Fatal(err)
 	}
-	if v := f.dag.state.getConfigValueDB(letzterCheckpointSchluessel); v != letzterCheckpointWert(z2.KettenCheckpoint) {
-		t.Fatalf("letzter: %q", v)
+	if lesen() != "" {
+		t.Fatalf("beim Einreichen gesetzt: %q", lesen())
 	}
-	var n int
 	if err := f.dag.state.db.QueryRow(`SELECT COUNT(*) FROM pending_txs WHERE tx_json LIKE '%checkpoint_zertifikat%'`).Scan(&n); err != nil || n != 1 {
 		t.Fatalf("Ausgang: %d %v", n, err)
+	}
+	tx := neueCheckpointTx(z2)
+	// Eigener Block zu spaet: unveraendert (wie jeder Nachspielende).
+	f.dag.checkpointImEigenenBlockAnwenden(&Block{Height: 960, Timestamp: z2.Zeit + checkpointHoechstensAlt + 1, ParentHashes: []string{z2.Hash}, Transactions: []Transaction{tx}})
+	if lesen() != "" {
+		t.Fatalf("zu alter eigener Block gesetzt: %q", lesen())
+	}
+	// Eigener Block rechtzeitig: gesetzt.
+	f.dag.checkpointImEigenenBlockAnwenden(&Block{Height: 961, Timestamp: z2.Zeit + 200, ParentHashes: []string{z2.Hash}, Transactions: []Transaction{{Type: "transfer"}, tx}})
+	if lesen() != letzterCheckpointWert(z2.KettenCheckpoint) {
+		t.Fatalf("eigener Block: %q", lesen())
 	}
 	if err := f.dag.checkpointTxEinreichen(z1, z1.Zeit+200); !istZustandsAblehnung(err) {
 		t.Fatalf("aelterer: %v", err)
@@ -376,5 +393,49 @@ func TestSnapshotKonfigUebernehmen(t *testing.T) {
 	checkpointTxAn(t)
 	if !snapshotKonfigUebernehmen(letzterCheckpointSchluessel, 100) {
 		t.Fatal("nach dem Stichtag nicht uebernommen")
+	}
+}
+
+// Stichtag-Sperre 1: ab dem Stichtag startet ein Knoten mit Liste nur mit
+// festgeschriebenem Hash und mit der eigenen Adresse darin; ohne Hash ist
+// eine Checkpoint-Transaktion nicht pruefbar.
+func TestCheckpointTx_ListeFestgeschrieben(t *testing.T) {
+	a, b := "0x"+strings.Repeat("1", 40), "0x"+strings.Repeat("2", 40)
+	fest := map[string]bool{a: true, b: true}
+	h := validatorListeHash(fest)
+	t.Cleanup(func() { validatorListeFestgeschrieben.Store(false) })
+	if err := validatorListePruefenUndMerken(fest, a, "", 100); err != nil || validatorListeFestgeschrieben.Load() {
+		t.Fatalf("vor dem Stichtag ohne Hash: %v", err)
+	}
+	checkpointTxAn(t)
+	if validatorListePruefenUndMerken(fest, a, "", 100) == nil {
+		t.Fatal("ab dem Stichtag ohne Hash gestartet")
+	}
+	if validatorListePruefenUndMerken(fest, "0x"+strings.Repeat("3", 40), h, 100) == nil {
+		t.Fatal("ab dem Stichtag ohne eigene Adresse gestartet")
+	}
+	if err := validatorListePruefenUndMerken(fest, a, h, 100); err != nil || !validatorListeFestgeschrieben.Load() {
+		t.Fatalf("festgeschrieben: %v", err)
+	}
+	if err := validatorListePruefenUndMerken(nil, a, "", 100); err != nil {
+		t.Fatalf("offener Betrieb ohne Liste: %v", err)
+	}
+
+	f := neuerVorschlagFall(t, true)
+	f.dag.produzentenFest = map[string]bool{}
+	for _, x := range f.adr {
+		f.dag.produzentenFest[x] = true
+	}
+	tx := neueCheckpointTx(f.zertFuer(t, f.blocks[1]))
+	validatorListeFestgeschrieben.Store(false)
+	if err := f.dag.applyCheckpointTxLocked(context.Background(), &tx, []string{f.blocks[1].Hash}, f.blocks[1].Timestamp+200, f.koepfe.leser()); !errors.Is(err, errCheckpointNichtPruefbar) {
+		t.Fatalf("Liste ohne Hash: %v", err)
+	}
+	validatorListeFestgeschrieben.Store(true)
+	if _, err := f.dag.state.db.Exec(`DELETE FROM chain_config WHERE key = $1`, letzterCheckpointSchluessel); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.dag.applyCheckpointTxLocked(context.Background(), &tx, []string{f.blocks[1].Hash}, f.blocks[1].Timestamp+200, f.koepfe.leser()); err != nil {
+		t.Fatalf("Liste festgeschrieben: %v", err)
 	}
 }

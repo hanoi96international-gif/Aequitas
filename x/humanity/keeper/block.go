@@ -3598,6 +3598,16 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 	// a value LoadBlocksFromDB already reconstructs from chain_blocks' own max, so
 	// this config key is a fast-path hint, not the source of truth. Losing at most
 	// the last block's write on an ill-timed crash is harmless and self-corrects.
+	// checkpoint_tx.go: der eigene Block traegt ein Zertifikat -- anwenden
+	// wie beim Nachspielen. Eigene Goroutine: dag.mu ist gehalten, das
+	// Anwenden braucht cs.mu.
+	for i := range block.Transactions {
+		if block.Transactions[i].Type == checkpointTxArt {
+			eigener := block
+			SafeGoroutine("checkpoint-eigener-block", func() { dag.checkpointImEigenenBlockAnwenden(eigener) })
+			break
+		}
+	}
 	heightVal := dag.height
 	SafeGoroutine("ProduceBlock-post-persist", func() {
 		dag.state.IncrementBlockCount(proposer)
@@ -8134,7 +8144,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			}
 			ctx := withTx(context.Background(), dbTx)
 			ctp := tx
-			if err := dag.applyCheckpointTxLocked(ctx, &ctp, block.ParentHashes, block.Timestamp, mitGesamtfrist(checkpointReplayLeser(dbTx), checkpointSuchFrist)); err != nil {
+			if err := dag.applyCheckpointTxLocked(ctx, &ctp, block.ParentHashes, block.Timestamp, checkpointReplayLeser(dbTx)); err != nil {
 				if istZustandsAblehnung(err) {
 					fmt.Printf("[REPLAY] ⚠ %v (block #%d) — uebersprungen\n", err, block.Height)
 					continue

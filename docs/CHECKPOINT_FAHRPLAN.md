@@ -160,20 +160,40 @@ Checkpoint-Transaktion je Block; liegt der letzte für die Suche zu weit
 zurück, genügt die Zeit-Monotonie; vor dem Stichtag übernimmt kein Snapshot
 einen letzten Checkpoint.
 
-**Stichtag erst setzen, wenn diese Sperren gelöst sind** (Prüfung von
-Baustein 6):
+**Sperren für den Stichtag – gelöst** (14.10.2026):
 
-1. **Komitee konsensfest (HOCH):** `checkpointImTragendenBlock` liest den
-   aktuellen Register-Stand und die lokale Liste, nicht den Stand des
-   tragenden Blocks – verschiedene Stände spalten.
-2. **Zeitfrist (MITTEL):** die Gesamtfrist der Suche macht „nicht prüfbar“
-   vom Knoten abhängig; nach der Wiederholungsfrist verwirft ein langsamer
-   Knoten, was ein schneller annimmt – dort nachladen statt verwerfen
-   (Baustein 7).
-3. **Erzeuger wendet an (MITTEL):** der Leiter setzt den Wert schon beim
-   Einreichen. Wird die Transaktion übersprungen, weicht sein Wert ab
-   (StateRoot-Abweichung, ein Resync übernähme ihn) – der Erzeuger muss
-   Checkpoint-Transaktionen erst beim Bauen des Blocks anwenden.
+1. **Komitee konsensfest:** das Komitee zur Zeit t hängt nur an Bindungen,
+   die mindestens `erzeugerFrist` vor t liegen und höchstens 1 h nach ihrem
+   Zeitpunkt in einem Block stehen – der aktuelle Stand, zur Zeit t
+   ausgewertet, ist der des tragenden Blocks. Die Liste muss
+   festgeschrieben sein: ohne `AUTHORIZED_VALIDATORS_HASH` gilt eine
+   Checkpoint-Transaktion als nicht prüfbar, und ab dem Stichtag startet ein
+   Knoten mit Liste ohne Hash (oder ohne die eigene Adresse darin) nicht.
+   **Restrisiko** wie bei der Erzeugerprüfung selbst: ein Block mit Bindung
+   genau an der 30-Minuten-Grenze (`spaet_eingehaengt.go`).
+2. **Keine Zeitfrist im Konsens:** beim Nachspielen nur die festen
+   Zählgrenzen der Suche; eine Abfrage, die in ihre Zeitgrenze läuft, ist
+   ein vorübergehender Fehler und wird wiederholt.
+3. **Erzeuger wendet an:** der Leiter setzt den Wert nicht beim Einreichen,
+   sondern nach dem Speichern des eigenen Blocks, nach der Regel des
+   Nachspielens (`checkpointImEigenenBlockAnwenden`).
+
+### 8. Snapshot – umgesetzt (`snapshot_koepfe.go`)
+
+Ab dem Stichtag trägt der Snapshot die Blockköpfe der letzten 20 Minuten
+(höchstens 5000); der Import legt sie in `kopf_vorrat`, die Vorfahren-Suche
+liest `chain_blocks` und `kopf_vorrat`. Ein frisch aufgesetzter Validator
+kann Checkpoints so sofort prüfen.
+
+### Einschalten (Betreiber)
+
+1. Mindestens **vier** Validatoren nach `docs/VALIDATOREN_HINZUFUEGEN.md`,
+   Liste mit `AUTHORIZED_VALIDATORS_HASH` festgeschrieben, `AEQUITAS_LEITUNG=an`.
+2. Auf allen `AEQUITAS_CHECKPOINTS=an` und beobachten:
+   `/api/health/combined` → `checkpoint` (Zertifikate steigen je Minute).
+3. Erst wenn das stabil läuft: `checkpointTxAbUnix` in `checkpoint_tx.go`
+   per PR auf einen Zeitpunkt einige Stunden in der Zukunft setzen, auf
+   allen Validatoren ausrollen, bevor er erreicht ist.
 
 Ursprünglicher Plan:
 
