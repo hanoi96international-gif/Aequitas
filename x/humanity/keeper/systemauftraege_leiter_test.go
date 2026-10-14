@@ -56,6 +56,15 @@ func TestVerteilungHeuteOffen(t *testing.T) {
 	if VerteilungHeuteOffen(heute.Add(time.Minute).Unix(), heute.Add(time.Hour), berlin) {
 		t.Fatal("heute schon gelaufen: nicht offen")
 	}
+	// Retry ueber Mitternacht: Runde am 14. um 00:10 gehoert zum Termin des
+	// 13.; am 14. um 20:00 ist der neue Termin offen.
+	nachMitternacht := time.Date(2026, 10, 14, 0, 10, 0, 0, berlin)
+	if !VerteilungHeuteOffen(nachMitternacht.Unix(), heute, berlin) {
+		t.Fatal("Runde um 00:10: der Termin am selben Kalendertag um 20:00 muss offen sein")
+	}
+	if VerteilungHeuteOffen(nachMitternacht.Unix(), nachMitternacht.Add(time.Hour), berlin) {
+		t.Fatal("vor 20:00 gehoert jetzt noch zum selben Termin")
+	}
 	if VerteilungHeuteOffen(0, heute, berlin) {
 		t.Fatal("ohne letzte Verteilung entscheidet TryLockDistribution")
 	}

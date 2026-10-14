@@ -182,15 +182,24 @@ func (cs *ChainState) SystemauftraegeHier() string {
 	return "verteilter Term, dieser Knoten ist nicht der Leiter"
 }
 
-// VerteilungHeuteOffen: lief die letzte taegliche Verteilung (lastUBIAt) an
-// einem frueheren Kalendertag als jetzt (in loc)? Dann ist die heutige noch
-// offen, auch wenn TryLockDistribution sie wegen der 23-h-55-min-Frist noch
-// abweist -- etwa weil gestern ein Retry erst um 20:15 lief (Pruefung von
-// #354). Der Aufrufer prueft dann bald erneut, statt einen Tag zu
-// ueberspringen.
+// VerteilungHeuteOffen: gehoert die letzte taegliche Verteilung (lastUBIAt)
+// zu einem frueheren 20:00-Termin (in loc) als jetzt? Dann ist der aktuelle
+// noch offen, auch wenn TryLockDistribution ihn wegen der 23-h-55-min-Frist
+// noch abweist -- etwa weil gestern ein Retry erst um 20:15 lief (Pruefung
+// von #354). Gezaehlt wird nach Termin, nicht nach Kalendertag: eine Runde
+// um 00:10 gehoert noch zum Termin des Vortags (Nachpruefung von #354). Der
+// Aufrufer prueft dann bald erneut, statt einen Tag zu ueberspringen.
 func VerteilungHeuteOffen(lastUBIAt int64, jetzt time.Time, loc *time.Location) bool {
 	if lastUBIAt <= 0 {
 		return false
 	}
-	return time.Unix(lastUBIAt, 0).In(loc).Format("2006-01-02") != jetzt.In(loc).Format("2006-01-02")
+	return verteilTermin(time.Unix(lastUBIAt, 0).In(loc)) != verteilTermin(jetzt.In(loc))
+}
+
+// verteilTermin: der Tag des letzten 20:00-Termins bis t.
+func verteilTermin(t time.Time) string {
+	if t.Hour() < 20 {
+		t = t.AddDate(0, 0, -1)
+	}
+	return t.Format("2006-01-02")
 }
