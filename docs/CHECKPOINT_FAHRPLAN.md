@@ -191,7 +191,10 @@ einen letzten Checkpoint.
    Ist die Transaktion im Probelauf nicht prüfbar (Lesefehler, Frist), kommt
    sie nicht in den Block (ihre Zeile wird verbraucht, der Leiter schlägt
    den nächsten vor). Scheitert das Schreiben, wird auch der Block nicht
-   gespeichert; die Aufträge bleiben in der Schlange.
+   gespeichert; die Aufträge bleiben in der Schlange. **Beobachten:** hält
+   etwas die Zeile dauerhaft (Snapshot-Import, Resync, hängende Sitzung),
+   scheitert jeder Checkpoint-Block, solange die Transaktion offen ist –
+   `[BLOCK] ⚠ Could not persist` mit `letzter Checkpoint` im Log.
 
 ### 8. Snapshot – umgesetzt (`snapshot_koepfe.go`)
 
