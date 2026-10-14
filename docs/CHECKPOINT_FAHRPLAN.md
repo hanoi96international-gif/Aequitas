@@ -112,9 +112,18 @@ jeder selbst, sondern:
     Mitglieder gespeichert (begrenzt durch das Komitee); Wiederholungen und
     Fälschungen im Namen schon gezählter Mitglieder kosten keine Recovery.
     Bei Quorum ein Zertifikat, das `pruefeZertifikat` besteht.
-- **Noch offen** vor dem Anschließen:
-  - Leitungswege: Nachrichten für Vorschlag und Unterschrift, Rate-Limit je
-    Absender.
+- **Leitungswege** (umgesetzt in `checkpoint_netz.go`, Schalter
+  `AEQUITAS_CHECKPOINTS=an`, noch keine Konsensregel): der Leiter wählt je
+  Slot einen 150–600 s alten Block (den ersten Eltern seines jüngsten
+  entlang), schickt den Vorschlag an die Komiteemitglieder
+  (`POST /api/checkpoint`), sammelt die Unterschriften, nimmt das Zertifikat
+  bei Quorum an und verteilt es; jedes Mitglied prüft es selbst und
+  speichert es als letzten Checkpoint (`checkpoint_zertifikate`, übersteht
+  Neustarts). Grenzen: 64 KiB, 4 gleichzeitig (sonst 503), Ratenbegrenzung
+  je IP wie `/api/leitung`. Stand unter `/api/health/combined` → `checkpoint`.
+  Ein Leiter ohne Zertifikate gibt die Leitung (noch) nicht ab – gemeldet,
+  nicht befolgt, bis Baustein 6.
+- **Noch offen** vor der Konsensregel:
   - Jeder neue Amtsantritt setzt die Frist von `checkpointLeiterStockt` neu –
     eine Folge böswilliger Leiter könnte so lange blockieren: eine
     Obergrenze über Leiterwechsel hinweg (z. B. Frist ab dem letzten

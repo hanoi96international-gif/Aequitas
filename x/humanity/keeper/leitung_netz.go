@@ -307,6 +307,7 @@ func StarteLeitung(dag *BlockDAG, cs *ChainState, selfURL string) *Leitung {
 		st["satz"], st["satz_version"], st["validatoren"], st["mit_wahl"], l.Term(),
 		func() string { a, _ := l.Leiter(); return a }(), ich, st["mitglied"], faehig, cfg.WechselAlle)
 	leitungTaktStarten(dag, l, cs)
+	checkpointNetzStarten(dag, l)
 	return l
 }
 

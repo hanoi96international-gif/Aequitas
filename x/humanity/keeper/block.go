@@ -317,6 +317,11 @@ type BlockDAG struct {
 	// letzterEigenerBlock: Hash des zuletzt gespeicherten eigenen Blocks --
 	// der Leiter nennt ihn bei der Uebergabe (leitung.go).
 	letzterEigenerBlock atomic.Value
+	// Checkpoints (checkpoint_netz.go): der juengste angenommene, und was die
+	// Leiter-Schleife meldet.
+	checkpointLetzter   atomic.Pointer[CheckpointZertifikat]
+	checkpointLetzterMu sync.Mutex
+	checkpointStand     checkpointStandDaten
 
 	// jemalsAufgeholt: hat dieser Prozess je alle Seeds sauber eingeholt?
 	// Entscheidet, ob der Notausstieg des Sync-Tors gelten darf -- siehe die
