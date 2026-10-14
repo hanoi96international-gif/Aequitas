@@ -495,6 +495,10 @@ func (dag *BlockDAG) checkpointRunde(ich string, term uint64, urls map[string]st
 	if err := dag.checkpointZertifikatAnnehmen(*z, jetzt); err != nil {
 		return nil, fmt.Errorf("eigenes Zertifikat: %v", err)
 	}
+	// Ab checkpointTxAb in die Kette (Baustein 6); davor nichts.
+	if err := dag.checkpointTxEinreichen(*z, jetzt); err != nil {
+		fmt.Printf("[CHECKPOINT] ⚠ Zertifikat nicht in die Kette: %v\n", err)
+	}
 	for _, u := range ziele {
 		wg.Add(1)
 		go func(u string) {

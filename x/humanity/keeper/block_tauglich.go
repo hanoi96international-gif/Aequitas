@@ -132,6 +132,8 @@ func auftragsFenster(tx *Transaction, jetzt int64) zeitFenster {
 		f.eng(sattAdd(tx.BuchAt, -60), sattAdd(tx.BuchAt, 7*86400))
 	}
 	switch tx.Type {
+	case checkpointTxArt:
+		f.eng(checkpointTxAb(), math.MaxInt64)
 	case "slash_equivocation":
 		// strafe_abrechnung.go: ab registerLeserAb nur frische Beweise (vor dem
 		// Stichtag gilt keine Grenze, und eine Zeit danach waehlt der Erzeuger
@@ -199,6 +201,15 @@ func blockTauglich(tx *Transaction, blockZeit int64) error {
 		return fmt.Errorf("%s gebucht um %d, Block %d (Nachspielende naehmen die Blockzeit)", tx.Type, tx.BuchAt, blockZeit)
 	}
 	switch tx.Type {
+	case checkpointTxArt:
+		// checkpoint_tx.go: erst ab dem Stichtag. Zu alt ist kein Grund zum
+		// Abweisen (uebersprungen) -- sonst stuende die Erzeugung.
+		if !checkpointTxAktiv(blockZeit) {
+			return fmt.Errorf("checkpoint_zertifikat vor dem Stichtag (Block %d)", blockZeit)
+		}
+		if tx.Checkpoint == nil {
+			return fmt.Errorf("checkpoint_zertifikat ohne Zertifikat")
+		}
 	case "slash_equivocation":
 		if err := beweisFrischPruefen(tx.DetectedAt, blockZeit); err != nil {
 			return err
@@ -285,6 +296,12 @@ func blockZeitFuer(txs []Transaction, jetzt, elternZeit int64) (int64, error) {
 // lag). Fehler nur, wenn schon die erste Transaktion zu keiner Zeit zwischen
 // den Eltern und jetzt passt -- dann entsteht kein Block.
 func blockZeitPraefix(txs []Transaction, jetzt, elternZeit int64) (int, int64, error) {
+	// Hoechstens ein checkpoint_zertifikat je Block (checkpoint_tx.go): ab
+	// dem zweiten in den naechsten Block -- sonst wiese jeder andere Knoten
+	// den Block ab.
+	if n := checkpointTxGrenze(txs); n < len(txs) {
+		txs = txs[:n]
+	}
 	if t, err := blockZeitFuer(txs, jetzt, elternZeit); err == nil {
 		return len(txs), t, nil
 	}

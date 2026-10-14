@@ -7549,13 +7549,14 @@ func (cs *ChainState) StateRoot() string {
 	// cs.activeTx itself.
 	t0 := time.Now()
 	lastUBIAt := cs.getConfigValueDB("last_ubi_at")
+	letzterCP := cs.getConfigValueDB(letzterCheckpointSchluessel)
 	tuStateRootDB.seit(t0)
 	t1 := time.Now()
 	cs.mu.RLock()
 	defer cs.mu.RUnlock()
 	tuStateRootSperre.seit(t1)
 	defer tuStateRootHash.seit(time.Now())
-	return cs.stateRootLocked(lastUBIAt)
+	return cs.stateRootLocked(lastUBIAt, letzterCP)
 }
 
 // stateRootLocked is StateRoot's body, for callers that already hold cs.mu
@@ -7569,7 +7570,10 @@ func (cs *ChainState) StateRoot() string {
 // the time it needs this, accepts that one extra blocking DB read during
 // its critical section, matching the same tradeoff every atomic operation
 // in this file already makes (see runAtomicWithOutbox).
-func (cs *ChainState) stateRootLocked(lastUBIAt string) string {
+//
+// letzterCP: der letzte Checkpoint der Kette (checkpoint_tx.go), "" ohne --
+// dann bleibt die Wurzel byte-gleich.
+func (cs *ChainState) stateRootLocked(lastUBIAt, letzterCP string) string {
 	// O(1) in the account/nullifier count: both sets are summarized by their
 	// incremental XOR accumulators (see ChainState.accountSetXOR). The OLD
 	// implementation iterated cs.accounts and cs.nullifiers here — correct
@@ -7614,6 +7618,10 @@ func (cs *ChainState) stateRootLocked(lastUBIAt string) string {
 	}
 	// Include last UBI distribution timestamp (pre-fetched before RLock — P1-1).
 	fmt.Fprintf(&sb, "|ubi:%s", lastUBIAt)
+	if letzterCP != "" {
+		sb.WriteString("|checkpoint:")
+		sb.WriteString(letzterCP)
+	}
 	hash := sha256.Sum256([]byte(sb.String()))
 	return hex.EncodeToString(hash[:])
 }
@@ -7649,7 +7657,9 @@ type StateRootComponents struct {
 	// Ebenso fuer das Validator-Register.
 	ValidatorSetXOR string `json:"validator_set_xor"`
 	LastUBIAt       string `json:"last_ubi_at"`
-	StateRoot       string `json:"state_root"`
+	// LetzterCheckpoint: nur gesetzt ab checkpointTxAb (checkpoint_tx.go).
+	LetzterCheckpoint string `json:"letzter_checkpoint,omitempty"`
+	StateRoot         string `json:"state_root"`
 }
 
 // StateRootComponentBreakdown returns the same inputs stateRootLocked hashes,
@@ -7658,13 +7668,15 @@ type StateRootComponents struct {
 // own P1-1 comment describes.
 func (cs *ChainState) StateRootComponentBreakdown() StateRootComponents {
 	lastUBIAt := cs.getConfigValueDB("last_ubi_at")
+	letzterCP := cs.getConfigValueDB(letzterCheckpointSchluessel)
 	cs.mu.RLock()
 	defer cs.mu.RUnlock()
 	out := StateRootComponents{
-		AccountSetXOR:   hex.EncodeToString(cs.accountSetXOR[:]),
-		NullifierSetXOR: hex.EncodeToString(cs.nullifierSetXOR[:]),
-		LastUBIAt:       lastUBIAt,
-		StateRoot:       cs.stateRootLocked(lastUBIAt),
+		AccountSetXOR:     hex.EncodeToString(cs.accountSetXOR[:]),
+		NullifierSetXOR:   hex.EncodeToString(cs.nullifierSetXOR[:]),
+		LastUBIAt:         lastUBIAt,
+		LetzterCheckpoint: letzterCP,
+		StateRoot:         cs.stateRootLocked(lastUBIAt, letzterCP),
 	}
 	if cs.pool != nil {
 		out.PoolReserveAEQ = cs.pool.ReserveAEQ.Micro()
@@ -8238,7 +8250,7 @@ type configValueSnapshot struct {
 // stateRootRelevantConfigKeys lists every chain_config key StateRoot()
 // reads. Kept as a single list so snapshotForRollback/restoreFromRollback
 // can't drift out of sync with StateRoot as new keys are added there.
-var stateRootRelevantConfigKeys = []string{"last_ubi_at"}
+var stateRootRelevantConfigKeys = []string{"last_ubi_at", letzterCheckpointSchluessel}
 
 // blockTouchedAddresses returns the wallets a block's transactions can
 // mutate, and whether a full-account snapshot is needed instead. A

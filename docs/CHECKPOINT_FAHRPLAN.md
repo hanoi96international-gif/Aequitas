@@ -143,6 +143,40 @@ jeder selbst, sondern:
 
 ### 6. Zertifikat in die Kette, „letzter Checkpoint“ im Zustand
 
+**Umgesetzt** (`checkpoint_tx.go`, schlafend bis `checkpointTxAb`, heute nie):
+Transaktion `checkpoint_zertifikat` (nur Type, TxHash aus dem Inhalt,
+Zertifikat), höchstens eine je Block; der Leiter reicht sie nach dem Quorum
+ein. Beim Nachspielen prüft jeder Knoten `checkpointImTragendenBlock` und
+dass der bisherige letzte in der Vergangenheit liegt. Form oder Zertifikat
+falsch: Block ungültig; zu alt, nicht jünger, kein Nachfolger: übersprungen;
+nicht prüfbar: Wiederholung. Der letzte Checkpoint steht in `chain_config`
+(`letzter_checkpoint`), geht nur wenn gesetzt in die StateRoot ein und wird
+mit zurückgerollt, im Snapshot getragen und beim Resync gesetzt bzw.
+gelöscht.
+
+Das Feld `checkpoint` an jeder anderen Transaktion macht einen Block
+ungültig (schon jetzt); der Erzeuger nimmt höchstens eine
+Checkpoint-Transaktion je Block; liegt der letzte für die Suche zu weit
+zurück, genügt die Zeit-Monotonie; vor dem Stichtag übernimmt kein Snapshot
+einen letzten Checkpoint.
+
+**Stichtag erst setzen, wenn diese Sperren gelöst sind** (Prüfung von
+Baustein 6):
+
+1. **Komitee konsensfest (HOCH):** `checkpointImTragendenBlock` liest den
+   aktuellen Register-Stand und die lokale Liste, nicht den Stand des
+   tragenden Blocks – verschiedene Stände spalten.
+2. **Zeitfrist (MITTEL):** die Gesamtfrist der Suche macht „nicht prüfbar“
+   vom Knoten abhängig; nach der Wiederholungsfrist verwirft ein langsamer
+   Knoten, was ein schneller annimmt – dort nachladen statt verwerfen
+   (Baustein 7).
+3. **Erzeuger wendet an (MITTEL):** der Leiter setzt den Wert schon beim
+   Einreichen. Wird die Transaktion übersprungen, weicht sein Wert ab
+   (StateRoot-Abweichung, ein Resync übernähme ihn) – der Erzeuger muss
+   Checkpoint-Transaktionen erst beim Bauen des Blocks anwenden.
+
+Ursprünglicher Plan:
+
 - Transaktionsart `checkpoint_zertifikat`. Gültig nach
   `checkpointImTragendenBlock` (Baustein 3) – mit dem Komitee aus Baustein 4.
 - Der **letzte Checkpoint** ist Zustand (geht in die StateRoot): der jüngste
