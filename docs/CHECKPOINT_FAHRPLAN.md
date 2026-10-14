@@ -49,7 +49,14 @@ Lokal bleiben vier Dinge:
 
 ## Die nächsten Bausteine, in dieser Reihenfolge
 
-### 4. Konsensfeste Liste (Betreiber-Entscheidung nötig)
+### 4. Konsensfeste Liste – Weg (b) umgesetzt (`validator_liste.go`)
+
+Entschieden: (b) für den geschlossenen Betrieb. Umgesetzt:
+`AUTHORIZED_VALIDATORS_HASH` schreibt den Hash der Liste fest – passt die
+Liste nicht, startet der Knoten nicht; jede Leitungs-Nachricht trägt den
+Hash, Knoten mit anderer Liste hören nicht aufeinander; `/api/status` zeigt
+`validator_liste_hash`. Anleitung: `docs/VALIDATOREN_HINZUFUEGEN.md`.
+(a) bleibt Aufgabe vor dem offenen Betrieb.
 
 Im geschlossenen Betrieb müssen alle Knoten dieselbe Liste haben. Zwei Wege:
 
@@ -160,7 +167,7 @@ sonst ist ein frisch aufgesetzter Knoten bis dahin „nicht prüfbar“.
 
 ## Was ich vom Betreiber brauche
 
-1. Entscheidung Baustein 4: (b) Liste per Hash – oder gleich (a) in der Kette.
-2. Slot-Länge für Checkpoints (Vorschlag 60 s).
-3. Ab wann mehr als ein Validator laufen soll (C2 ist vorbereitet, aber aus;
-   Checkpoints brauchen mindestens 4 Validatoren).
+Entschieden am 14.10.2026 („Alles umsetzen“): (b) Liste per Hash, Slot
+60 s. Weitere Validatoren: Anleitung `docs/VALIDATOREN_HINZUFUEGEN.md`;
+Server und Betreiber für Validator 2–4 muss der Betreiber stellen
+(C2 ist vorbereitet, aber aus; Checkpoints brauchen mindestens 4).

@@ -1469,6 +1469,10 @@ func NewBlockchain(nodeID string, state *ChainState) *BlockDAG {
 		fmt.Printf("[SICHERHEIT] Blockproduzenten abschliessend festgelegt: %d Adresse(n) aus AUTHORIZED_VALIDATORS\n",
 			len(dag.produzentenFest))
 	}
+	if err := validatorListeBeimStart(dag.produzentenFest); err != nil {
+		fmt.Printf("[SICHERHEIT] ✗ FATAL: %v -- Knoten startet nicht (sonst andere Komitees als die anderen Validatoren)\n", err)
+		os.Exit(1)
+	}
 
 	dag.createGenesisBlock()
 
