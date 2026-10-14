@@ -41,5 +41,5 @@ jobs:
           [[ "$SEIT" =~ ^[0-9]+[smh]$ ]] && [[ "$ZEILEN" =~ ^[0-9]{1,4}$ ]] || { echo "::error::Parameter unzulaessig"; exit 1; }
           # Muster per Base64, damit kein Zeichen darin die entfernte Shell erreicht.
           M64="$(printf '%s' "$MUSTER" | base64 -w0)"
-          ssh -o BatchMode=yes root@$C1 "M=\$(printf '%s' '$M64' | base64 -d); echo \"##### C1 $CONTAINER: '\$M' seit $SEIT #####\"; docker logs --since '$SEIT' --timestamps '$CONTAINER' 2>&1 | grep -E -- \"\$M\" | tail -n '$ZEILEN' | cut -c1-500 | grep -viE 'private_key|secret|passw|token=' ; echo \"treffer gesamt: \$(docker logs --since '$SEIT' '$CONTAINER' 2>&1 | grep -cE -- \"\$M\")\""
+          ssh -o BatchMode=yes root@$C1 "M=\$(printf '%s' '$M64' | base64 -d); echo \"##### C1 $CONTAINER: '\$M' seit $SEIT #####\"; docker logs --since '$SEIT' --timestamps '$CONTAINER' 2>&1 | grep -E -- \"\$M\" | tail -n '$ZEILEN' | cut -c1-500 | grep -viE 'private_key|secret|passw|token=' | sed -E 's/0x[0-9a-fA-F]{64}([^0-9a-fA-F]|$)/0x<geschwaerzt>\1/g; s/CAES[A-Za-z0-9+\/]{40,}=*/<geschwaerzt>/g' ; echo \"treffer gesamt: \$(docker logs --since '$SEIT' '$CONTAINER' 2>&1 | grep -cE -- \"\$M\")\""
           echo "Kette: $(curl -s -m 10 http://$C1:8080/api/status | jq -c '{height, total_humans, git_commit}')"

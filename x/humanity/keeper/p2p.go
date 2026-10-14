@@ -144,24 +144,14 @@ func loadOrCreateKey() (crypto.PrivKey, error) {
 		}
 	}
 
-	fmt.Println("⚠ No NODE_KEY found – generating new key...")
 	priv, _, err := crypto.GenerateKeyPairWithReader(crypto.Ed25519, -1, rand.Reader)
 	if err != nil {
 		return nil, err
 	}
 
-	keyBytes, err := crypto.MarshalPrivateKey(priv)
-	if err != nil {
-		return nil, err
-	}
-	encoded := base64.StdEncoding.EncodeToString(keyBytes)
-	// Fix 9: NODE_KEY is visible in hosted log dashboards even on stderr.
-	// Operators must treat it as a secret and move it to a NODE_KEY env var.
-	fmt.Fprintln(os.Stderr, "════════════════════════════════════════")
-	fmt.Fprintln(os.Stderr, "⚠ WARNING: NODE_KEY is visible in hosted log dashboards. Treat this as a secret.")
-	fmt.Fprintln(os.Stderr, "SAVE THIS AS NODE_KEY ENVIRONMENT VAR, then restart the service:")
-	fmt.Fprintln(os.Stderr, encoded)
-	fmt.Fprintln(os.Stderr, "════════════════════════════════════════")
+	// Den Schluessel NIE ausgeben (schluessel_erzeugen.go): er gilt nur fuer
+	// diesen Prozess. Feste Schluessel kommen aus `aequitasd schluessel`.
+	fmt.Fprintln(os.Stderr, "⚠ Kein NODE_KEY gesetzt -- voruebergehende P2P-Identitaet nur fuer diesen Prozess (aequitasd schluessel)")
 
 	return priv, nil
 }

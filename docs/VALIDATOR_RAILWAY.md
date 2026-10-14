@@ -103,15 +103,22 @@ dich als dritten Validator.
 
 ## 5. Erster Start und Schlüssel sichern
 
-1. **Deploy** klicken (oder er startet nach dem Setzen der Variablen von
-   selbst).
-2. **Deployments** → **View Logs**. Beim ersten Start steht dort je eine
-   Zeile `SET THIS AS RELAYER_PRIVATE_KEY …` und
-   `SAVE THIS AS NODE_KEY …`, jeweils mit dem Wert in der Zeile darunter.
-3. Beide Werte **sofort** unter **Variables** eintragen. Sie sind geheim
+1. **Vorher die Schlüssel erzeugen**, auf deinem eigenen Rechner mit Docker
+   (seit 14.10.2026 druckt der Knoten keine privaten Schlüssel mehr ins Log):
+
+   ```bash
+   git clone https://github.com/hanoi96international-gif/Aequitas.git && cd Aequitas
+   go run ./cmd/aequitasd schluessel          # mit Go
+   # oder: docker build -t aequitas . && docker run --rm aequitas ./aequitasd schluessel
+   ```
+
+   Das gibt zwei Zeilen aus, `RELAYER_PRIVATE_KEY=…` und `NODE_KEY=…`.
+2. Beide Werte **sofort** unter **Variables** eintragen. Sie sind geheim
    und gehören nirgends sonst hin. Ohne sie bekommt der Knoten bei jedem
    Neustart eine neue Identität, und das Netz hält ihn für jemand anderen.
-   Railway startet den Dienst danach neu.
+   Fehlen sie, warnt das Log (`Kein RELAYER_PRIVATE_KEY gesetzt`).
+3. **Deploy** klicken (oder er startet nach dem Setzen der Variablen von
+   selbst).
 4. Der Knoten lädt jetzt den Zustand des Netzes (Snapshot, signiert) von
    C1/C2 und holt die Blöcke nach. Im Log erscheinen
    `[BOOTSTRAP] Fresh node — importing state from …`, dann

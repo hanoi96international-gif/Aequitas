@@ -87,39 +87,13 @@ else
 fi
 
 schritt "4/6 Bauen und starten (dauert beim ersten Mal etwa 10 Minuten)"
-GIT_COMMIT="$(git rev-parse --short=7 HEAD 2>/dev/null || echo unknown)" docker compose up -d --build
+GIT_COMMIT="$(git rev-parse --short=7 HEAD 2>/dev/null || echo unknown)" docker compose build
 
-# Eigene Schluessel des Knotens dauerhaft machen. Ohne das bekaeme der Knoten
-# bei jedem Neustart eine neue Identitaet, und das Netz saehe ihn als jemand
-# anderen. Der Knoten druckt beide beim ersten Start genau einmal ins Log.
-setze() { # setze NAME WERT
-  local tmp; tmp="$(mktemp)"
-  grep -vE "^$1=" .env > "$tmp" || true
-  printf '%s=%s\n' "$1" "$2" >> "$tmp"
-  install -m 600 "$tmp" .env; rm -f "$tmp"
-}
-fehlt() { ! grep -qE "^$1=.+" .env; }
-if fehlt RELAYER_PRIVATE_KEY || fehlt NODE_KEY; then
-  echo "Warte auf die Schluessel des Knotens ..."
-  for i in $(seq 1 60); do
-    LOG="$(docker compose logs --no-color node 2>/dev/null || true)"
-    RK="$(printf '%s\n' "$LOG" | grep -A1 'SET THIS AS RELAYER_PRIVATE_KEY' | grep -oE '0x[0-9a-f]{64}' | tail -1 || true)"
-    NK="$(printf '%s\n' "$LOG" | grep -A1 'SAVE THIS AS NODE_KEY' | tail -1 | grep -oE '[A-Za-z0-9+/=]{40,}' | tail -1 || true)"
-    if { ! fehlt RELAYER_PRIVATE_KEY || [ -n "$RK" ]; } && { ! fehlt NODE_KEY || [ -n "$NK" ]; }; then break; fi
-    sleep 5
-  done
-  if fehlt RELAYER_PRIVATE_KEY; then
-    [ -n "$RK" ] || { rot "Der Knoten hat keinen Signierschluessel gemeldet. Log ansehen: docker compose logs node"; exit 1; }
-    setze RELAYER_PRIVATE_KEY "$RK"
-  fi
-  if fehlt NODE_KEY; then
-    [ -n "$NK" ] || { rot "Der Knoten hat keinen P2P-Schluessel gemeldet. Log ansehen: docker compose logs node"; exit 1; }
-    setze NODE_KEY "$NK"
-  fi
-  unset RK NK LOG
-  gruen "Schluessel dauerhaft in .env eingetragen -- Neustart mit fester Identitaet"
-  docker compose up -d node
-fi
+# Eigene Schluessel des Knotens dauerhaft machen, VOR dem ersten Start: ohne
+# sie bekaeme der Knoten bei jedem Neustart eine neue Identitaet. Erzeugt
+# werden sie von `aequitasd schluessel` direkt in die .env -- nie ins Log.
+bash ./schluessel-eintragen.sh .env
+GIT_COMMIT="$(git rev-parse --short=7 HEAD 2>/dev/null || echo unknown)" docker compose up -d
 
 schritt "5/6 Pruefen"
 ADDR=""
