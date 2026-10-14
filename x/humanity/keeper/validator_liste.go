@@ -25,6 +25,9 @@ import (
 //   - Checkpoint-Zertifikate tragen schon den Komitee-Hash; eine andere
 //     Liste ergibt ein anderes Komitee und damit Ablehnung.
 //
+// Schutz gegen Fehlkonfiguration, nicht gegen Bosheit: den Hash meldet jeder
+// selbst; ein boeswilliger Validator meldet einfach den richtigen.
+//
 // Eine neue Liste heisst: auf allen Validatoren gleichzeitig Liste und Hash
 // tauschen (docs/VALIDATOREN_HINZUFUEGEN.md). Vor dem offenen Betrieb wird
 // das durch eine Liste in der Kette ersetzt (Weg (a)).
@@ -60,8 +63,11 @@ func pruefeValidatorListe(fest map[string]bool, soll string) error {
 }
 
 // validatorListeBeimStart: Meldung und Pruefung beim Start. Fehler: der
-// Aufrufer startet nicht.
-func validatorListeBeimStart(fest map[string]bool) error {
+// Aufrufer startet nicht. self: die eigene Signieradresse -- steht sie
+// nicht in der festgeschriebenen Liste, zaehlt dieser Knoten sich selbst
+// trotzdem ins Komitee (erzeugerFestListe) und hat damit ein anderes als
+// die anderen: laute Warnung (Checkpoints lehnen ihn dann ab).
+func validatorListeBeimStart(fest map[string]bool, self string) error {
 	soll := os.Getenv(validatorListeHashEnv)
 	if err := pruefeValidatorListe(fest, soll); err != nil {
 		return err
@@ -71,6 +77,9 @@ func validatorListeBeimStart(fest map[string]bool) error {
 			fmt.Printf("[SICHERHEIT] Validatorenliste NICHT festgeschrieben -- auf jedem Validator %s=%s setzen\n", validatorListeHashEnv, h)
 		} else {
 			fmt.Printf("[SICHERHEIT] ✓ Validatorenliste festgeschrieben (Hash %s)\n", h)
+		}
+		if self != "" && !fest[self] {
+			fmt.Printf("[SICHERHEIT] ⚠ eigene Signieradresse %s steht NICHT in AUTHORIZED_VALIDATORS -- dieser Knoten sieht ein anderes Komitee als die anderen\n", self)
 		}
 	}
 	return nil

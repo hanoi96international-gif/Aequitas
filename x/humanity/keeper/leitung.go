@@ -1136,17 +1136,18 @@ func (l *Leitung) Empfange(m LeitNachricht, jetzt time.Time) *LeitNachricht {
 	if m.Von == l.ich || m.Von == "" {
 		return nil
 	}
-	// Andere Validatorenliste: weder gehoert noch gezaehlt -- sonst bestimmten
-	// Knoten mit verschiedenen Listen gemeinsam Leiter und Satz.
-	if m.Liste != l.liste {
-		l.listeAbgewiesen++
-		return nil
-	}
 	// Gehoert wird auf Mitglieder und registrierte Validatoren. Den Satz
 	// vergleicht jede Nachrichtenart selbst: Leases bringen ihren Satz mit,
 	// Stimmen zaehlen nur von Mitgliedern des eigenen, eine Quittung nur mit
 	// demselben Satz.
 	if !l.imSatz(m.Von) && !l.zugelassen(m.Von) {
+		return nil
+	}
+	// Andere Validatorenliste: weder gehoert noch gezaehlt -- sonst bestimmten
+	// Knoten mit verschiedenen Listen gemeinsam Leiter und Satz. Gezaehlt
+	// erst nach der Zulassung: ein Fremder blaeht den Zaehler nicht auf.
+	if m.Liste != l.liste {
+		l.listeAbgewiesen++
 		return nil
 	}
 	if m.URL != "" {

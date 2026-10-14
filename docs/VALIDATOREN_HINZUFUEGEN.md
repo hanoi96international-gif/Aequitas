@@ -14,18 +14,26 @@ Beobachter. Er schickt dir seine **Signieradresse** (`0x…`, 40 Hex-Zeichen).
 ## 2. Neue Liste und ihr Hash
 
 Die Liste sind die Signieradressen **aller** Blockproduzenten, mit Komma
-getrennt. Der Hash ist sha256 über die klein geschriebenen, sortierten
-Adressen, mit Komma verbunden:
+getrennt – **auch die eigene** jedes Validators. Der Hash ist sha256 über die
+gültigen, klein geschriebenen, sortierten Adressen ohne Doppelte, mit Komma
+verbunden:
 
 ```bash
 LISTE="0xAAA…,0xBBB…,0xCCC…,0xDDD…"
-echo "$LISTE" | tr ',' '\n' | tr 'A-F' 'a-f' | sed 's/^ *//;s/ *$//' | sort | paste -sd, | tr -d '\n' | sha256sum | cut -d' ' -f1
+echo "$LISTE" | tr ',' '\n' | tr 'A-FX' 'a-fx' | sed 's/^ *//;s/ *$//' \
+  | grep -E '^0x[0-9a-f]{40}$' | LC_ALL=C sort -u | paste -sd, | tr -d '\n' \
+  | sha256sum | cut -d' ' -f1
 ```
 
-Gegenprobe: ein Knoten mit dieser Liste, aber ohne festgeschriebenen Hash,
-druckt beim Start `Validatorenliste NICHT festgeschrieben -- auf jedem
-Validator AUTHORIZED_VALIDATORS_HASH=… setzen`, und `/api/status` zeigt ihn
-als `validator_liste_hash`.
+**Maßgeblich ist der Wert des Knotens selbst:** mit der neuen Liste, aber
+noch ohne festgeschriebenen Hash gestartet, druckt er `Validatorenliste NICHT
+festgeschrieben -- auf jedem Validator AUTHORIZED_VALIDATORS_HASH=… setzen`,
+und `/api/status` zeigt ihn als `validator_liste_hash`. Weicht die Formel
+davon ab, gilt der Wert des Knotens (ungültige Einträge verwirft er still –
+dann die Liste prüfen).
+
+Der Hash schützt gegen Fehlkonfiguration (Tippfehler, vergessene Adresse),
+nicht gegen einen böswilligen Validator – den Hash meldet jeder selbst.
 
 ## 3. Auf allen Validatoren gleichzeitig setzen
 

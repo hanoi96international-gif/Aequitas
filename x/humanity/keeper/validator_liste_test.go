@@ -113,3 +113,25 @@ func TestLeitung_AndereListeHoertNiemand(t *testing.T) {
 		}
 	}
 }
+
+// Ein Fremder (nicht im Satz, nicht zugelassen) mit anderer Liste zaehlt
+// nicht als Abweisung -- der Zaehler bleibt ein Signal fuer Betreiber.
+func TestLeitung_FremderZaehltNicht(t *testing.T) {
+	n := neuesSimNetz(t, 3, 5, satzTestKonfig())
+	n.zugelassen = map[string]bool{n.knoten[0].addr: true, n.knoten[1].addr: true, n.knoten[2].addr: true}
+	for i := range n.knoten {
+		n.baue(i)
+		n.knoten[i].l.SetzeListe(strings.Repeat("d", 64))
+	}
+	l := n.knoten[0].l
+	for i := 0; i < 50; i++ {
+		l.Empfange(LeitNachricht{Art: leitArtHallo, Von: "0x" + strings.Repeat("9", 40), Liste: strings.Repeat("e", 64)}, n.uhr(0))
+	}
+	if st := l.Stand(n.uhr(0)); st["liste_abgewiesen"].(uint64) != 0 {
+		t.Fatalf("Fremder gezaehlt: %v", st["liste_abgewiesen"])
+	}
+	l.Empfange(LeitNachricht{Art: leitArtHallo, Von: n.knoten[1].addr, Liste: strings.Repeat("e", 64)}, n.uhr(0))
+	if st := l.Stand(n.uhr(0)); st["liste_abgewiesen"].(uint64) != 1 {
+		t.Fatalf("Mitglied mit anderer Liste nicht gezaehlt: %v", st["liste_abgewiesen"])
+	}
+}
