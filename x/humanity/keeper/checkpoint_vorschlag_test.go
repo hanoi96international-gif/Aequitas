@@ -33,7 +33,7 @@ func hohesS01(roh []byte) []byte {
 func neuerVorschlagFall(t *testing.T, mitDB bool) *vorschlagFall {
 	t.Helper()
 	checkpointNachfolgerMu.Lock()
-	checkpointNachfolgerUrteile = map[[2]string]bool{}
+	checkpointNachfolgerUrteile = map[checkpointNachfolgerSchluessel]bool{}
 	checkpointNachfolgerMu.Unlock()
 	f := &vorschlagFall{unterschriftFall: neuerUnterschriftFall(t, mitDB), koepfe: &speicherKette{k: map[string]blockKopf{}}}
 	for i, b := range f.blocks {
@@ -147,7 +147,7 @@ func TestCheckpointVorschlagAnnehmen_Regeln(t *testing.T) {
 		"ohne Leser":            {v, f.adr[1], &letzter, nil},
 	} {
 		checkpointNachfolgerMu.Lock()
-		checkpointNachfolgerUrteile = map[[2]string]bool{} // jeder Fall sucht selbst
+		checkpointNachfolgerUrteile = map[checkpointNachfolgerSchluessel]bool{} // jeder Fall sucht selbst
 		checkpointNachfolgerMu.Unlock()
 		if _, err := f.dag.checkpointVorschlagAnnehmen(x.v, x.leiter, 7, x.letzter, x.lies, jetzt); err == nil || strings.Contains(err.Error(), "Datenbank") {
 			t.Fatalf("%s: %v -- erwartet eine Ablehnung vor dem Merker", name, err)
@@ -525,5 +525,32 @@ func TestCheckpointSammler_NachQuorum(t *testing.T) {
 	z2, err := s.hinzu(falsch)
 	if err != nil || z2 == nil || pruefeZertifikat(*z2, komitee) != nil {
 		t.Fatalf("nach Quorum: %v", err)
+	}
+}
+
+// Eine Grenze der Suche wird als Ablehnung gemerkt: die Wiederholung sucht
+// nicht noch einmal. Ein anderer letzter Checkpoint (andere Zeit) sucht neu.
+func TestCheckpointNachfolger_GrenzeGemerkt(t *testing.T) {
+	checkpointNachfolgerMu.Lock()
+	checkpointNachfolgerUrteile = map[checkpointNachfolgerSchluessel]bool{}
+	checkpointNachfolgerMu.Unlock()
+	alt := vorfahrEbenenGrenze
+	vorfahrEbenenGrenze = 3
+	t.Cleanup(func() { vorfahrEbenenGrenze = alt })
+	k := lineareKette(20, 1000)
+	letzter := KettenCheckpoint{Hash: hx(1), Zeit: 1001}
+	for i := 0; i < 10; i++ {
+		gefunden, err := checkpointNachfolger(k.leser(), hx(20), letzter)
+		if err != nil || gefunden {
+			t.Fatalf("Grenze: %v %v", gefunden, err)
+		}
+	}
+	if k.abfragen != 3 {
+		t.Fatalf("%d Abfragen fuer 10 gleiche Suchen", k.abfragen)
+	}
+	vorfahrEbenenGrenze = alt
+	letzter.Zeit = 1000
+	if gefunden, err := checkpointNachfolger(k.leser(), hx(20), letzter); err != nil || !gefunden {
+		t.Fatalf("andere Grenze: %v %v", gefunden, err)
 	}
 }

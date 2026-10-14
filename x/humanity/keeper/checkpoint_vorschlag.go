@@ -236,24 +236,32 @@ func (dag *BlockDAG) checkpointVorschlagAnnehmen(v CheckpointVorschlag, leiter s
 	return dag.checkpointMitunterschreiben(v.KettenCheckpoint, jetzt)
 }
 
-// checkpointNachfolgerUrteile: gemerkte Urteile der Vorfahren-Suche. Das
-// Urteil haengt nur an Hashes (die Eltern stehen im Blockhash) -- gemerkt
-// wird nur, was bei vollstaendigen Daten feststand. Begrenzt: bei
-// checkpointNachfolgerGrenze Eintraegen wird geleert.
+// checkpointNachfolgerUrteile: gemerkte Urteile der Vorfahren-Suche je
+// (Block, letzter Checkpoint, dessen Zeit = Grenze der Suche). Das Urteil
+// haengt nur an Hashes (die Eltern stehen im Blockhash). Gemerkt wird, was
+// bei vollstaendigen Daten feststand, und das Erreichen einer Grenze (als
+// "nicht gefunden" -- eine Ablehnung, fail-closed; sonst erzwingt jede
+// Wiederholung die volle Suche). Luecken und Lesefehler werden nicht
+// gemerkt. Begrenzt: bei checkpointNachfolgerGrenze Eintraegen wird geleert.
 var (
 	checkpointNachfolgerMu      sync.Mutex
-	checkpointNachfolgerUrteile = map[[2]string]bool{}
+	checkpointNachfolgerUrteile = map[checkpointNachfolgerSchluessel]bool{}
 )
 
 const checkpointNachfolgerGrenze = 256
 
+type checkpointNachfolgerSchluessel struct {
+	hash, letzter string
+	grenze        int64
+}
+
 var errCheckpointLueckeVorfahren = errors.New("Vorfahren unvollstaendig")
 
 // checkpointNachfolger: liegt letzter in der Vergangenheit von hash?
-// Fehler: nicht pruefbar (Lesefehler, Luecke, Grenze) -- heisst fuer den
-// Aufrufer keine Unterschrift und wird nicht gemerkt.
+// Fehler: nicht pruefbar (Lesefehler, Luecke) -- heisst fuer den Aufrufer
+// keine Unterschrift und wird nicht gemerkt.
 func checkpointNachfolger(lies kopfLeser, hash string, letzter KettenCheckpoint) (bool, error) {
-	schluessel := [2]string{hash, letzter.Hash}
+	schluessel := checkpointNachfolgerSchluessel{hash, letzter.Hash, letzter.Zeit}
 	checkpointNachfolgerMu.Lock()
 	urteil, da := checkpointNachfolgerUrteile[schluessel]
 	checkpointNachfolgerMu.Unlock()
@@ -262,14 +270,16 @@ func checkpointNachfolger(lies kopfLeser, hash string, letzter KettenCheckpoint)
 	}
 	_, gefunden, vollstaendig, err := vorfahrSuchen(lies, []string{hash}, letzter.Hash, letzter.Zeit)
 	switch {
-	case err != nil: // auch die Grenze: nicht gemerkt, keine Unterschrift
+	case errors.Is(err, errVorfahrZuGross):
+		gefunden = false // gemerkt: auch die Wiederholung wird abgewiesen
+	case err != nil:
 		return false, err
 	case !vollstaendig && !gefunden:
 		return false, errCheckpointLueckeVorfahren
 	}
 	checkpointNachfolgerMu.Lock()
 	if len(checkpointNachfolgerUrteile) >= checkpointNachfolgerGrenze {
-		checkpointNachfolgerUrteile = map[[2]string]bool{}
+		checkpointNachfolgerUrteile = map[checkpointNachfolgerSchluessel]bool{}
 	}
 	checkpointNachfolgerUrteile[schluessel] = gefunden
 	checkpointNachfolgerMu.Unlock()
