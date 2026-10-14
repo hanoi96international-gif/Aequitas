@@ -1797,7 +1797,7 @@ func loadOrCreateRelayerKey() (key *ecdsa.PrivateKey, wasGenerated bool, err err
 	fmt.Fprintln(os.Stderr, "════════════════════════════════════════")
 	fmt.Fprintln(os.Stderr, "⚠ Kein RELAYER_PRIVATE_KEY gesetzt -- voruebergehender Signierschluessel nur fuer diesen Prozess.")
 	fmt.Fprintln(os.Stderr, "⚠ Nach einem Neustart ist die Identitaet eine andere. Feste Schluessel erzeugen:")
-	fmt.Fprintln(os.Stderr, "⚠   docker compose run --rm --no-deps node ./aequitasd schluessel >> .env")
+	fmt.Fprintln(os.Stderr, "⚠   cd deploy/validator && bash schluessel-eintragen.sh .env")
 	fmt.Fprintf(os.Stderr, "Adresse dieses voruebergehenden Schluessels: %s\n", addr)
 	fmt.Fprintln(os.Stderr, "════════════════════════════════════════")
 	return key, true, nil

@@ -18,7 +18,7 @@ if ! fehlt RELAYER_PRIVATE_KEY && ! fehlt NODE_KEY; then
   exit 0
 fi
 umask 077
-NEU="$(mktemp)"; trap 'rm -f "$NEU" "$NEU.env"' EXIT
+NEU="$(mktemp "$(dirname "$ENVF")/.schluessel.XXXXXX")"; trap 'rm -f "$NEU" "$NEU.env"' EXIT
 docker compose run --rm --no-deps -T node ./aequitasd schluessel > "$NEU"
 grep -qE '^RELAYER_PRIVATE_KEY=0x[0-9a-f]{64}$' "$NEU" && grep -qE '^NODE_KEY=[A-Za-z0-9+/=]{40,}$' "$NEU" \
   || { echo "aequitasd schluessel hat keine gueltigen Schluessel geliefert" >&2; exit 1; }

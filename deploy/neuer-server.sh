@@ -123,8 +123,7 @@ echo
 echo "Schluessel: in $VAL_ENV (nur root lesbar, nicht ausgegeben)"
 echo
 echo "FERTIG. Naechste Schritte:"
-echo "  1. RELAYER_PRIVATE_KEY und NODE_KEY aus dem Log in $VAL_ENV eintragen,"
-echo "     dann: cd $REPO/deploy/validator && docker compose up -d"
+echo "  1. Die Schluessel stehen schon in $VAL_ENV (nur root lesbar) -- sichern, nie ausgeben."
 echo "  2. Aufholen beobachten: docker compose -f $REPO/deploy/validator/docker-compose.yml logs -f node"
 echo "  3. Selbstpruefung: curl -s http://$IP:8080/api/wache"
 echo "  4. Root-Passwort aendern: passwd"
