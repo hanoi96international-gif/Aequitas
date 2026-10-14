@@ -7,6 +7,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 )
 
 func checkpointTxAn(t *testing.T) {
@@ -218,12 +219,22 @@ func TestCheckpointTxEinreichen_RealDB(t *testing.T) {
 	}
 	tx := neueCheckpointTx(z2)
 	// Eigener Block zu spaet: unveraendert (wie jeder Nachspielende).
-	f.dag.checkpointImEigenenBlockAnwenden(&Block{Height: 960, Timestamp: z2.Zeit + checkpointHoechstensAlt + 1, ParentHashes: []string{z2.Hash}, Transactions: []Transaction{tx}})
+	zuSpaet := &Block{Height: 960, Timestamp: z2.Zeit + checkpointHoechstensAlt + 1, ParentHashes: []string{z2.Hash}, Transactions: []Transaction{tx}}
+	v := f.dag.checkpointVorschau(zuSpaet.Transactions, zuSpaet.ParentHashes, zuSpaet.Timestamp)
+	if v.geaendert || v.unklar || v.index != 0 {
+		t.Fatalf("zu alter eigener Block: %+v", v)
+	}
+	f.dag.checkpointImEigenenBlockAnwenden(zuSpaet, v)
 	if lesen() != "" {
 		t.Fatalf("zu alter eigener Block gesetzt: %q", lesen())
 	}
 	// Eigener Block rechtzeitig: gesetzt.
-	f.dag.checkpointImEigenenBlockAnwenden(&Block{Height: 961, Timestamp: z2.Zeit + 200, ParentHashes: []string{z2.Hash}, Transactions: []Transaction{{Type: "transfer"}, tx}})
+	recht := &Block{Height: 961, Timestamp: z2.Zeit + 200, ParentHashes: []string{z2.Hash}, Transactions: []Transaction{{Type: "transfer"}, tx}}
+	v = f.dag.checkpointVorschau(recht.Transactions, recht.ParentHashes, recht.Timestamp)
+	if !v.geaendert || v.index != 1 {
+		t.Fatalf("Vorschau: %+v", v)
+	}
+	f.dag.checkpointImEigenenBlockAnwenden(recht, v)
 	if lesen() != letzterCheckpointWert(z2.KettenCheckpoint) {
 		t.Fatalf("eigener Block: %q", lesen())
 	}
@@ -456,19 +467,88 @@ func TestCheckpointTx_ErzeugerRootGleichNachspielen_RealDB(t *testing.T) {
 	tx := neueCheckpointTx(f.zertFuer(t, b1))
 	vorher := cs.StateRoot()
 	// Zu alt: keine Aenderung, die Root bleibt.
-	if _, ok := f.dag.checkpointVorschau([]Transaction{tx}, []string{b1.Hash}, b1.Timestamp+checkpointHoechstensAlt+1); ok {
-		t.Fatal("Vorschau fuer einen zu alten Checkpoint")
+	if v := f.dag.checkpointVorschau([]Transaction{tx}, []string{b1.Hash}, b1.Timestamp+checkpointHoechstensAlt+1); v.geaendert || v.unklar {
+		t.Fatalf("Vorschau fuer einen zu alten Checkpoint: %+v", v)
 	}
-	neu, ok := f.dag.checkpointVorschau([]Transaction{{Type: "transfer"}, tx}, []string{b1.Hash}, b1.Timestamp+200)
-	if !ok || neu != letzterCheckpointWert(tx.Checkpoint.KettenCheckpoint) {
-		t.Fatalf("Vorschau: %q %v", neu, ok)
+	v := f.dag.checkpointVorschau([]Transaction{{Type: "transfer"}, tx}, []string{b1.Hash}, b1.Timestamp+200)
+	if !v.geaendert || v.neu != letzterCheckpointWert(tx.Checkpoint.KettenCheckpoint) {
+		t.Fatalf("Vorschau: %+v", v)
 	}
 	if cs.StateRoot() != vorher {
 		t.Fatal("Vorschau hat den Zustand geaendert")
 	}
-	erzeuger := cs.stateRootMitCheckpoint(neu)
-	f.dag.checkpointImEigenenBlockAnwenden(&Block{Height: 970, Timestamp: b1.Timestamp + 200, ParentHashes: []string{b1.Hash}, Transactions: []Transaction{tx}})
+	erzeuger := cs.stateRootMitCheckpoint(v.neu)
+	f.dag.checkpointImEigenenBlockAnwenden(&Block{Height: 970, Timestamp: b1.Timestamp + 200, ParentHashes: []string{b1.Hash}, Transactions: []Transaction{tx}}, v)
 	if nach := cs.StateRoot(); nach != erzeuger || nach == vorher {
 		t.Fatalf("Erzeuger %s, nach dem Anwenden %s", erzeuger, nach)
+	}
+}
+
+// Missbrauch/Fehler: ist der Checkpoint hier gerade nicht pruefbar (Kopf
+// nicht lesbar, Frist abgelaufen), meldet die Vorschau "unklar" -- die
+// Transaktion kommt nicht in den Block, statt dass andere anwenden, was der
+// Erzeuger nicht weiss. Scheitert das Setzen nach der Vorschau, haelt der
+// Knoten die Produktion an.
+func TestCheckpointTx_VorschauUnklarUndSetzenScheitert_RealDB(t *testing.T) {
+	f := neuerVorschlagFall(t, true)
+	checkpointTxAn(t)
+	alt := checkpointReplayLeser
+	t.Cleanup(func() { checkpointReplayLeser = alt })
+	cs := f.dag.state
+	if _, err := cs.db.Exec(`DELETE FROM chain_config WHERE key = $1`, letzterCheckpointSchluessel); err != nil {
+		t.Fatal(err)
+	}
+	b1 := f.blocks[1]
+	tx := neueCheckpointTx(f.zertFuer(t, b1))
+	txs := []Transaction{{Type: "transfer"}, tx}
+
+	// Kopf nicht lesbar: unklar, mit der Stelle der Transaktion.
+	checkpointReplayLeser = func(sqlExecutor) kopfLeser {
+		return func([]string) (map[string]blockKopf, error) { return nil, errors.New("DB weg") }
+	}
+	if v := f.dag.checkpointVorschau(txs, []string{b1.Hash}, b1.Timestamp+200); !v.unklar || v.geaendert || v.index != 1 {
+		t.Fatalf("Lesefehler: %+v", v)
+	}
+	// Frist abgelaufen: unklar, auch wenn der Leser gesund ist.
+	checkpointReplayLeser = func(sqlExecutor) kopfLeser { return f.koepfe.leser() }
+	altFrist := checkpointVorschauFrist
+	checkpointVorschauFrist = -time.Second
+	v := f.dag.checkpointVorschau(txs, []string{b1.Hash}, b1.Timestamp+200)
+	checkpointVorschauFrist = altFrist
+	if !v.unklar || v.geaendert {
+		t.Fatalf("Frist: %+v", v)
+	}
+
+	// Gesund: geaendert. Dann haelt ein anderer die Zeile -- das Setzen
+	// scheitert an lock_timeout, der Knoten ist degraded.
+	v = f.dag.checkpointVorschau(txs, []string{b1.Hash}, b1.Timestamp+200)
+	if !v.geaendert {
+		t.Fatalf("gesund: %+v", v)
+	}
+	if err := cs.setConfigValueCtx(context.Background(), letzterCheckpointSchluessel, "0:0:"+strings.Repeat("0", 64)); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		cs.db.Exec(`DELETE FROM chain_config WHERE key = $1`, letzterCheckpointSchluessel)
+	})
+	sperre, err := cs.db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sperre.Exec(`SELECT 1 FROM chain_config WHERE key = $1 FOR UPDATE`, letzterCheckpointSchluessel); err != nil {
+		sperre.Rollback()
+		t.Fatal(err)
+	}
+	f.dag.checkpointImEigenenBlockAnwenden(&Block{Height: 971, Timestamp: b1.Timestamp + 200, ParentHashes: []string{b1.Hash}, Transactions: txs}, v)
+	sperre.Rollback()
+	f.dag.degradedMu.Lock()
+	grund := f.dag.degradedReason
+	f.dag.degradedReason = ""
+	f.dag.degradedMu.Unlock()
+	if !strings.Contains(grund, "nicht gesetzt") {
+		t.Fatalf("Setzen gescheitert, aber nicht degraded: %q", grund)
+	}
+	if got := cs.getConfigValueDB(letzterCheckpointSchluessel); got == v.neu {
+		t.Fatal("trotz Sperre gesetzt")
 	}
 }

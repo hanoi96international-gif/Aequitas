@@ -182,8 +182,14 @@ einen letzten Checkpoint.
 3. **Erzeuger wendet an:** der Leiter setzt den Wert nicht beim Einreichen,
    sondern direkt nach dem Speichern des eigenen Blocks (noch unter
    `dag.mu`, kein fremder Block dazwischen), nach der Regel des
-   Nachspielens (`checkpointImEigenenBlockAnwenden`); seine StateRoot rechnet
-   er vorher mit genau diesem Wert (Probelauf `checkpointVorschau`).
+   Nachspielens. Die Suche läuft einmal, im Probelauf `checkpointVorschau`
+   mit Blockzeit und Eltern (Frist 3 s unter `dag.mu`); seine StateRoot
+   rechnet er mit dessen Ergebnis, und `checkpointImEigenenBlockAnwenden`
+   setzt genau diesen Wert – keine zweite Suche, die anders ausgehen könnte.
+   Ist die Transaktion im Probelauf nicht prüfbar (Lesefehler, Frist), kommt
+   sie nicht in den Block (ihre Zeile wird verbraucht, der Leiter schlägt
+   den nächsten vor). Scheitert das Setzen, hält der Knoten die Produktion
+   an (degraded), statt mit abweichender StateRoot weiterzulaufen.
 
 ### 8. Snapshot – umgesetzt (`snapshot_koepfe.go`)
 

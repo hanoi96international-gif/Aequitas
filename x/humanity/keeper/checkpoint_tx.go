@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
+	"time"
 )
 
 // ZERTIFIKAT IN DIE KETTE, "LETZTER CHECKPOINT" IM ZUSTAND (OFFEN 10, Stufe C,
@@ -239,35 +240,33 @@ func (dag *BlockDAG) checkpointTxEinreichen(z CheckpointZertifikat, jetzt int64)
 }
 
 // checkpointImEigenenBlockAnwenden: der Erzeuger spielt seinen eigenen
-// Block nicht nach -- fuer Checkpoint-Transaktionen tut er hier genau das,
-// mit Eltern und Zeit dieses Blocks, direkt nach dem Speichern (ProduceBlock
-// haelt noch dag.mu: kein fremder Block dazwischen). So hat er denselben
-// letzten Checkpoint wie jeder andere: uebersprungen, wenn alle
-// ueberspringen. Ein Fehler laesst den Wert unveraendert (der naechste
-// Checkpoint gleicht an) und wird gemeldet.
-func (dag *BlockDAG) checkpointImEigenenBlockAnwenden(block *Block) {
+// Block nicht nach -- fuer eine Checkpoint-Transaktion setzt er hier den
+// Wert, den die Vorschau (checkpointVorschau) fuer genau diesen Block
+// ermittelt hat und mit dem seine StateRoot gerechnet ist, direkt nach dem
+// Speichern (ProduceBlock haelt noch dag.mu und replayMu: kein fremder Block
+// dazwischen). Keine zweite Suche: die koennte anders ausgehen als die
+// Vorschau (Nachpruefung der Stichtag-Sperren, MITTEL). Scheitert das
+// Setzen, weicht die eigene StateRoot ab -- der Knoten haelt die
+// Produktion an (degraded, wie P1-05).
+func (dag *BlockDAG) checkpointImEigenenBlockAnwenden(block *Block, v checkpointVorschauErgebnis) {
 	cs := dag.state
-	if cs == nil || cs.db == nil {
+	if cs == nil || cs.db == nil || !v.geaendert {
 		return
 	}
-	for i := range block.Transactions {
-		if block.Transactions[i].Type != checkpointTxArt {
-			continue
+	err := cs.checkpointInDBTx(func(ctx context.Context, _ *sql.Tx) error {
+		return cs.setConfigValueCtx(ctx, letzterCheckpointSchluessel, v.neu)
+	}, true)
+	if err != nil {
+		grund := fmt.Sprintf("letzter Checkpoint im eigenen Block #%d nicht gesetzt: %v", block.Height, err)
+		fmt.Printf("[CHECKPOINT] ✗ %s -- Produktion angehalten\n", grund)
+		dag.degradedMu.Lock()
+		if dag.degradedReason == "" {
+			dag.degradedReason = grund
 		}
-		tx := block.Transactions[i]
-		err := cs.checkpointInDBTx(func(ctx context.Context, dbTx *sql.Tx) error {
-			return dag.applyCheckpointTxLocked(ctx, &tx, block.ParentHashes, block.Timestamp, checkpointReplayLeser(dbTx))
-		}, true)
-		switch {
-		case err == nil:
-			fmt.Printf("[CHECKPOINT] ✓ eigener Block #%d: Checkpoint %s gilt\n", block.Height, kurzAdresse(tx.Checkpoint.Hash))
-		case istZustandsAblehnung(err):
-			fmt.Printf("[CHECKPOINT] ⚠ eigener Block #%d: %v -- uebersprungen wie bei jedem Nachspielenden\n", block.Height, err)
-		default:
-			fmt.Printf("[CHECKPOINT] ✗ eigener Block #%d: %v -- letzter Checkpoint unveraendert\n", block.Height, err)
-		}
-		return // hoechstens eine je Block
+		dag.degradedMu.Unlock()
+		return
 	}
+	fmt.Printf("[CHECKPOINT] ✓ eigener Block #%d: letzter Checkpoint %s\n", block.Height, v.neu)
 }
 
 // snapshotKonfigUebernehmen: vor dem Stichtag wird ein letzter Checkpoint
@@ -356,32 +355,67 @@ func (cs *ChainState) checkpointInDBTx(fn func(ctx context.Context, dbTx *sql.Tx
 	return dbTx.Commit()
 }
 
+// checkpointVorschauFrist: so lange darf die Vorschau unter dag.mu suchen.
+// Laenger: die Transaktion kommt nicht in den Block -- nicht
+// konsensrelevant, der Leiter schlaegt den naechsten vor.
+var checkpointVorschauFrist = 3 * time.Second
+
+// checkpointVorschauErgebnis: index -1 = keine Checkpoint-Transaktion.
+// geaendert: neu ist der letzte Checkpoint nach dem Block. unklar: hier
+// gerade nicht pruefbar (kein Zustandsurteil) -- die Transaktion muss aus
+// dem Block, sonst wendeten andere an, was dieser Knoten nicht weiss.
+type checkpointVorschauErgebnis struct {
+	index     int
+	neu       string
+	geaendert bool
+	unklar    bool
+}
+
 // checkpointVorschau: traegt txs eine Checkpoint-Transaktion, der letzte
 // Checkpoint, den jeder Nachspielende nach einem Block mit diesen Eltern und
-// dieser Zeit hat (Probelauf, nichts gespeichert). ok = false: kein
-// Checkpoint im Block oder keine Aenderung.
-func (dag *BlockDAG) checkpointVorschau(txs []Transaction, eltern []string, zeit int64) (string, bool) {
+// dieser Zeit hat (Probelauf, nichts gespeichert). Die Suche ist durch
+// checkpointVorschauFrist begrenzt.
+func (dag *BlockDAG) checkpointVorschau(txs []Transaction, eltern []string, zeit int64) checkpointVorschauErgebnis {
+	v := checkpointVorschauErgebnis{index: -1}
 	cs := dag.state
 	if cs == nil || cs.db == nil {
-		return "", false
+		return v
 	}
 	for i := range txs {
 		if txs[i].Type != checkpointTxArt {
 			continue
 		}
+		v.index = i
 		tx := txs[i]
-		var neu string
+		ende := time.Now().Add(checkpointVorschauFrist)
 		err := cs.checkpointInDBTx(func(ctx context.Context, dbTx *sql.Tx) error {
-			if err := dag.applyCheckpointTxLocked(ctx, &tx, eltern, zeit, checkpointReplayLeser(dbTx)); err != nil {
+			innen := checkpointReplayLeser(dbTx)
+			lies := func(hashes []string) (map[string]blockKopf, error) {
+				if time.Now().After(ende) {
+					return nil, errors.New("Vorschau-Frist abgelaufen")
+				}
+				return innen(hashes)
+			}
+			if err := dag.applyCheckpointTxLocked(ctx, &tx, eltern, zeit, lies); err != nil {
 				return err
 			}
 			var e error
-			neu, e = letzterCheckpointRoh(ctx, cs)
+			v.neu, e = letzterCheckpointRoh(ctx, cs)
 			return e
 		}, false)
-		return neu, err == nil
+		switch {
+		case err == nil:
+			v.geaendert = true
+		case istZustandsAblehnung(err):
+			// Jeder Nachspielende ueberspringt sie ebenso: im Block lassen.
+			v.neu = ""
+		default:
+			v.neu = ""
+			v.unklar = true
+		}
+		return v
 	}
-	return "", false
+	return v
 }
 
 // stateRootMitCheckpoint: die StateRoot mit diesem letzten Checkpoint.

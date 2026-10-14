@@ -3342,8 +3342,17 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 	// checkpoint_tx.go: traegt der Block ein Zertifikat, rechnet der Erzeuger
 	// seine StateRoot mit dem letzten Checkpoint, den jeder Nachspielende
 	// danach hat (Probelauf mit Blockzeit und Eltern dieses Blocks).
-	if neu, ok := dag.checkpointVorschau(txs, parentHashes, blockZeit); ok {
-		stateRoot = dag.state.stateRootMitCheckpoint(neu)
+	// Ist sie hier gerade nicht pruefbar, kommt sie nicht in den Block (ihre
+	// Zeile wird mit dem Block verbraucht): sonst wendeten andere an, was
+	// dieser Knoten nicht weiss. Nur sie -- ein Abschneiden ab ihr hielte
+	// alles dahinter auf, solange die Pruefung hier scheitert.
+	cpVorschau := dag.checkpointVorschau(txs, parentHashes, blockZeit)
+	if cpVorschau.unklar {
+		fmt.Printf("[CHECKPOINT] ⚠ Checkpoint-Transaktion hier nicht pruefbar -- nicht in diesen Block\n")
+		txs = append(txs[:cpVorschau.index:cpVorschau.index], txs[cpVorschau.index+1:]...)
+	}
+	if cpVorschau.geaendert {
+		stateRoot = dag.state.stateRootMitCheckpoint(cpVorschau.neu)
 	}
 	block := &Block{
 		Height:       maxParentHeight + 1,
@@ -3604,11 +3613,11 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 	// a value LoadBlocksFromDB already reconstructs from chain_blocks' own max, so
 	// this config key is a fast-path hint, not the source of truth. Losing at most
 	// the last block's write on an ill-timed crash is harmless and self-corrects.
-	// checkpoint_tx.go: der eigene Block traegt ein Zertifikat -- jetzt
-	// anwenden wie beim Nachspielen, noch unter dag.mu (kein fremder Block
+	// checkpoint_tx.go: der eigene Block traegt ein Zertifikat -- jetzt den
+	// Wert der Vorschau setzen, noch unter dag.mu (kein fremder Block
 	// dazwischen). Nur die Datenbank, nicht cs.mu (keine neue
 	// Sperrreihenfolge); die Zeile ist mit Zeitgrenze gesperrt.
-	dag.checkpointImEigenenBlockAnwenden(block)
+	dag.checkpointImEigenenBlockAnwenden(block, cpVorschau)
 	heightVal := dag.height
 	SafeGoroutine("ProduceBlock-post-persist", func() {
 		dag.state.IncrementBlockCount(proposer)
