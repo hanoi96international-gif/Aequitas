@@ -191,7 +191,11 @@ type Block struct {
 	// auf nil (Ausduennung, hydratisiert).
 	txsJSON     []byte `json:"-"`
 	txsJSONFuer int    `json:"-"`
-	Signature   string `json:"signature,omitempty"`
+	// letzterCheckpointNeu: nur beim Erzeuger -- der letzte Checkpoint nach
+	// diesem Block (checkpointVorschau), in DERSELBEN Datenbank-Transaktion
+	// geschrieben wie der Block (checkpointMitSpeichern). Nicht serialisiert.
+	letzterCheckpointNeu string `json:"-"`
+	Signature            string `json:"signature,omitempty"`
 	// ProducedAtMs is a millisecond-precision production wall-clock
 	// timestamp, set once by ProduceBlock and transmitted to peers —
 	// deliberately NOT covered by calculateBlockHash (an explicit field list,
@@ -3364,6 +3368,9 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 		StateRoot:    stateRoot,
 		ProducedAtMs: time.Now().UnixMilli(),
 	}
+	if cpVorschau.geaendert {
+		block.letzterCheckpointNeu = cpVorschau.neu
+	}
 	// Declare the body digest explicitly (roadmap step 4, tx_batch.go). This does
 	// not change the hash — with a body attached, calculateBlockHash derives the
 	// root from the transactions and ignores this field entirely, exactly as it
@@ -3613,11 +3620,6 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 	// a value LoadBlocksFromDB already reconstructs from chain_blocks' own max, so
 	// this config key is a fast-path hint, not the source of truth. Losing at most
 	// the last block's write on an ill-timed crash is harmless and self-corrects.
-	// checkpoint_tx.go: der eigene Block traegt ein Zertifikat -- jetzt den
-	// Wert der Vorschau setzen, noch unter dag.mu (kein fremder Block
-	// dazwischen). Nur die Datenbank, nicht cs.mu (keine neue
-	// Sperrreihenfolge); die Zeile ist mit Zeitgrenze gesperrt.
-	dag.checkpointImEigenenBlockAnwenden(block, cpVorschau)
 	heightVal := dag.height
 	SafeGoroutine("ProduceBlock-post-persist", func() {
 		dag.state.IncrementBlockCount(proposer)

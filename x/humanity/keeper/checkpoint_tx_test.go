@@ -224,7 +224,9 @@ func TestCheckpointTxEinreichen_RealDB(t *testing.T) {
 	if v.geaendert || v.unklar || v.index != 0 {
 		t.Fatalf("zu alter eigener Block: %+v", v)
 	}
-	f.dag.checkpointImEigenenBlockAnwenden(zuSpaet, v)
+	if v.geaendert {
+		t.Fatal("zu alt und trotzdem geaendert")
+	}
 	if lesen() != "" {
 		t.Fatalf("zu alter eigener Block gesetzt: %q", lesen())
 	}
@@ -234,7 +236,12 @@ func TestCheckpointTxEinreichen_RealDB(t *testing.T) {
 	if !v.geaendert || v.index != 1 {
 		t.Fatalf("Vorschau: %+v", v)
 	}
-	f.dag.checkpointImEigenenBlockAnwenden(recht, v)
+	recht.Hash = "cp-einreichen-" + strings.Repeat("a", 50)
+	recht.letzterCheckpointNeu = v.neu
+	t.Cleanup(func() { f.dag.state.db.Exec(`DELETE FROM chain_blocks WHERE hash = $1`, recht.Hash) })
+	if err := f.dag.state.SaveBlockWithPendingTxsAtomic(recht, nil); err != nil {
+		t.Fatal(err)
+	}
 	if lesen() != letzterCheckpointWert(z2.KettenCheckpoint) {
 		t.Fatalf("eigener Block: %q", lesen())
 	}
@@ -478,7 +485,11 @@ func TestCheckpointTx_ErzeugerRootGleichNachspielen_RealDB(t *testing.T) {
 		t.Fatal("Vorschau hat den Zustand geaendert")
 	}
 	erzeuger := cs.stateRootMitCheckpoint(v.neu)
-	f.dag.checkpointImEigenenBlockAnwenden(&Block{Height: 970, Timestamp: b1.Timestamp + 200, ParentHashes: []string{b1.Hash}, Transactions: []Transaction{tx}}, v)
+	eigen := &Block{Hash: "cp-erzeuger-" + strings.Repeat("b", 52), Height: 970, Timestamp: b1.Timestamp + 200, ParentHashes: []string{b1.Hash}, Transactions: []Transaction{tx}, letzterCheckpointNeu: v.neu}
+	t.Cleanup(func() { cs.db.Exec(`DELETE FROM chain_blocks WHERE hash = $1`, eigen.Hash) })
+	if err := cs.SaveBlockWithPendingTxsAtomic(eigen, nil); err != nil {
+		t.Fatal(err)
+	}
 	if nach := cs.StateRoot(); nach != erzeuger || nach == vorher {
 		t.Fatalf("Erzeuger %s, nach dem Anwenden %s", erzeuger, nach)
 	}
@@ -519,8 +530,10 @@ func TestCheckpointTx_VorschauUnklarUndSetzenScheitert_RealDB(t *testing.T) {
 		t.Fatalf("Frist: %+v", v)
 	}
 
-	// Gesund: geaendert. Dann haelt ein anderer die Zeile -- das Setzen
-	// scheitert an lock_timeout, der Knoten ist degraded.
+	// Gesund: geaendert. Dann haelt ein anderer die Zeile -- das Speichern
+	// scheitert an lock_timeout, und zwar Block UND Wert zusammen: kein
+	// Zustand, in dem der Block da ist und der Wert fehlt (auch nicht nach
+	// einem Neustart).
 	v = f.dag.checkpointVorschau(txs, []string{b1.Hash}, b1.Timestamp+200)
 	if !v.geaendert {
 		t.Fatalf("gesund: %+v", v)
@@ -531,6 +544,8 @@ func TestCheckpointTx_VorschauUnklarUndSetzenScheitert_RealDB(t *testing.T) {
 	t.Cleanup(func() {
 		cs.db.Exec(`DELETE FROM chain_config WHERE key = $1`, letzterCheckpointSchluessel)
 	})
+	eigen := &Block{Hash: "cp-gesperrt-" + strings.Repeat("c", 52), Height: 971, Timestamp: b1.Timestamp + 200, ParentHashes: []string{b1.Hash}, Transactions: txs, letzterCheckpointNeu: v.neu}
+	t.Cleanup(func() { cs.db.Exec(`DELETE FROM chain_blocks WHERE hash = $1`, eigen.Hash) })
 	sperre, err := cs.db.Begin()
 	if err != nil {
 		t.Fatal(err)
@@ -539,16 +554,29 @@ func TestCheckpointTx_VorschauUnklarUndSetzenScheitert_RealDB(t *testing.T) {
 		sperre.Rollback()
 		t.Fatal(err)
 	}
-	f.dag.checkpointImEigenenBlockAnwenden(&Block{Height: 971, Timestamp: b1.Timestamp + 200, ParentHashes: []string{b1.Hash}, Transactions: txs}, v)
-	sperre.Rollback()
-	f.dag.degradedMu.Lock()
-	grund := f.dag.degradedReason
-	f.dag.degradedReason = ""
-	f.dag.degradedMu.Unlock()
-	if !strings.Contains(grund, "nicht gesetzt") {
-		t.Fatalf("Setzen gescheitert, aber nicht degraded: %q", grund)
+	for name, speichern := range map[string]func() error{
+		"atomar": func() error { return cs.SaveBlockWithPendingTxsAtomic(eigen, nil) },
+		"korb":   func() error { return cs.SaveBlockMitKorb(eigen, nil, 0) },
+	} {
+		if err := speichern(); err == nil {
+			sperre.Rollback()
+			t.Fatalf("%s: trotz Sperre gespeichert", name)
+		}
+		var n int
+		if err := cs.db.QueryRow(`SELECT COUNT(*) FROM chain_blocks WHERE hash = $1`, eigen.Hash).Scan(&n); err != nil || n != 0 {
+			sperre.Rollback()
+			t.Fatalf("%s: Block ohne Wert gespeichert (%d, %v)", name, n, err)
+		}
 	}
+	sperre.Rollback()
 	if got := cs.getConfigValueDB(letzterCheckpointSchluessel); got == v.neu {
 		t.Fatal("trotz Sperre gesetzt")
+	}
+	// Ohne Sperre: Block und Wert zusammen.
+	if err := cs.SaveBlockWithPendingTxsAtomic(eigen, nil); err != nil {
+		t.Fatal(err)
+	}
+	if got := cs.getConfigValueDB(letzterCheckpointSchluessel); got != v.neu {
+		t.Fatalf("mit dem Block: %q", got)
 	}
 }

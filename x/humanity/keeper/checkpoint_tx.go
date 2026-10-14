@@ -59,8 +59,8 @@ import (
 //      ihre Zeitgrenze laeuft, ist ein voruebergehender Fehler und wird
 //      wiederholt.
 //   3. (GELOEST) Erzeuger wendet an: der Leiter setzt den Wert nicht mehr
-//      beim Einreichen, sondern nach dem Speichern des eigenen Blocks nach
-//      der Regel des Nachspielens (checkpointImEigenenBlockAnwenden).
+//      beim Einreichen, sondern mit dem eigenen Block (gleiche DB-Transaktion) nach
+//      der Regel des Nachspielens (checkpointVorschau, checkpointMitSpeichern).
 //
 // Der letzte Checkpoint steht in chain_config (letzterCheckpointSchluessel)
 // und geht -- nur wenn gesetzt -- in die StateRoot ein (stateRootLocked);
@@ -233,40 +233,33 @@ func (dag *BlockDAG) checkpointTxEinreichen(z CheckpointZertifikat, jetzt int64)
 			return Transaction{}, checkpointZustand("Checkpoint (Zeit %d) nicht nach dem letzten (Zeit %d)", z.Zeit, letzter.Zeit)
 		}
 		// KEIN Setzen hier (Stichtag-Sperre 3): der Zustand aendert sich erst
-		// mit dem eigenen Block (checkpointImEigenenBlockAnwenden), nach
+		// mit dem eigenen Block (checkpointMitSpeichern), nach
 		// derselben Regel wie beim Nachspielen.
 		return tx, nil
 	})
 }
 
-// checkpointImEigenenBlockAnwenden: der Erzeuger spielt seinen eigenen
-// Block nicht nach -- fuer eine Checkpoint-Transaktion setzt er hier den
-// Wert, den die Vorschau (checkpointVorschau) fuer genau diesen Block
-// ermittelt hat und mit dem seine StateRoot gerechnet ist, direkt nach dem
-// Speichern (ProduceBlock haelt noch dag.mu und replayMu: kein fremder Block
-// dazwischen). Keine zweite Suche: die koennte anders ausgehen als die
-// Vorschau (Nachpruefung der Stichtag-Sperren, MITTEL). Scheitert das
-// Setzen, weicht die eigene StateRoot ab -- der Knoten haelt die
-// Produktion an (degraded, wie P1-05).
-func (dag *BlockDAG) checkpointImEigenenBlockAnwenden(block *Block, v checkpointVorschauErgebnis) {
-	cs := dag.state
-	if cs == nil || cs.db == nil || !v.geaendert {
-		return
+// checkpointMitSpeichern: der Erzeuger spielt seinen eigenen Block nicht
+// nach -- traegt der Block ein Zertifikat, schreibt er den Wert, den die
+// Vorschau (checkpointVorschau) fuer genau diesen Block ermittelt hat und
+// mit dem seine StateRoot gerechnet ist, in DERSELBEN Transaktion wie den
+// Block. Keine zweite Suche, die anders ausgehen koennte, und kein Zustand,
+// in dem der Block gespeichert, der Wert aber verloren ist (auch nicht nach
+// einem Neustart): scheitert das, gibt es weder Block noch Wert, und die
+// Auftraege bleiben in der Schlange (Nachpruefung der Stichtag-Sperren).
+// ProduceBlock haelt replayMu und dag.mu von der Vorschau bis hier.
+func checkpointMitSpeichern(tx *sql.Tx, block *Block) error {
+	if block.letzterCheckpointNeu == "" {
+		return nil
 	}
-	err := cs.checkpointInDBTx(func(ctx context.Context, _ *sql.Tx) error {
-		return cs.setConfigValueCtx(ctx, letzterCheckpointSchluessel, v.neu)
-	}, true)
-	if err != nil {
-		grund := fmt.Sprintf("letzter Checkpoint im eigenen Block #%d nicht gesetzt: %v", block.Height, err)
-		fmt.Printf("[CHECKPOINT] ✗ %s -- Produktion angehalten\n", grund)
-		dag.degradedMu.Lock()
-		if dag.degradedReason == "" {
-			dag.degradedReason = grund
-		}
-		dag.degradedMu.Unlock()
-		return
+	if _, err := tx.Exec(`SET LOCAL lock_timeout = '2s'`); err != nil {
+		return fmt.Errorf("letzter Checkpoint: %w", err)
 	}
-	fmt.Printf("[CHECKPOINT] ✓ eigener Block #%d: letzter Checkpoint %s\n", block.Height, v.neu)
+	if _, err := tx.Exec(`INSERT INTO chain_config (key, value) VALUES ($1, $2)
+ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, letzterCheckpointSchluessel, block.letzterCheckpointNeu); err != nil {
+		return fmt.Errorf("letzter Checkpoint: %w", err)
+	}
+	return nil
 }
 
 // snapshotKonfigUebernehmen: vor dem Stichtag wird ein letzter Checkpoint

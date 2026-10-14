@@ -184,12 +184,14 @@ einen letzten Checkpoint.
    `dag.mu`, kein fremder Block dazwischen), nach der Regel des
    Nachspielens. Die Suche läuft einmal, im Probelauf `checkpointVorschau`
    mit Blockzeit und Eltern (Frist 3 s unter `dag.mu`); seine StateRoot
-   rechnet er mit dessen Ergebnis, und `checkpointImEigenenBlockAnwenden`
-   setzt genau diesen Wert – keine zweite Suche, die anders ausgehen könnte.
+   rechnet er mit dessen Ergebnis, und genau dieser Wert wird in derselben
+   Datenbank-Transaktion wie der Block geschrieben (`checkpointMitSpeichern`)
+   – keine zweite Suche, die anders ausgehen könnte, und kein gespeicherter
+   Block ohne Wert, auch nicht nach einem Neustart.
    Ist die Transaktion im Probelauf nicht prüfbar (Lesefehler, Frist), kommt
    sie nicht in den Block (ihre Zeile wird verbraucht, der Leiter schlägt
-   den nächsten vor). Scheitert das Setzen, hält der Knoten die Produktion
-   an (degraded), statt mit abweichender StateRoot weiterzulaufen.
+   den nächsten vor). Scheitert das Schreiben, wird auch der Block nicht
+   gespeichert; die Aufträge bleiben in der Schlange.
 
 ### 8. Snapshot – umgesetzt (`snapshot_koepfe.go`)
 

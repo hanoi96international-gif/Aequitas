@@ -4164,7 +4164,7 @@ func (cs *ChainState) SaveBlockWithPendingTxsAtomic(block *Block, ids []int64) e
 	if err != nil {
 		return err
 	}
-	if len(ids) == 0 {
+	if len(ids) == 0 && block.letzterCheckpointNeu == "" {
 		if _, err := cs.db.Exec(blockZeileInsertSQL, args...); err != nil {
 			return fmt.Errorf("save block (fast path): %w", err)
 		}
@@ -4227,6 +4227,10 @@ func (cs *ChainState) SaveBlockWithPendingTxsAtomic(block *Block, ids []int64) e
 			rollback()
 			return fmt.Errorf("clear pending txs: %w", err)
 		}
+	}
+	if err := checkpointMitSpeichern(tx, block); err != nil {
+		rollback()
+		return err
 	}
 
 	if err := tx.Commit(); err != nil {

@@ -384,6 +384,10 @@ ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, speicherKorbMarke, strc
 		tx.Rollback()
 		return fmt.Errorf("korb-marke: %w", err)
 	}
+	if err := checkpointMitSpeichern(tx, block); err != nil {
+		tx.Rollback()
+		return err
+	}
 	if err := tx.Commit(); err != nil {
 		tx.Rollback()
 		return fmt.Errorf("commit: %w", err)
