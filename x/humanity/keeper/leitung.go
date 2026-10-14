@@ -268,6 +268,17 @@ type LeitUmgebung struct {
 	// wenn seine letzte Leistungsprobe gescheitert ist (leistungsprobe.go).
 	// nil = alle.
 	Zuteilbar func(addr string) bool
+	// NieLeiter: dieser Knoten darf nie Leiter sein (nur lesend, Beobachter;
+	// Beta-Pruefung 14.10.2026, BLOCKER). Als Leiter naehme er nichts an
+	// (annahme_tor.go) -- und das ganze Netz stuende. Auch nicht im
+	// Notbetrieb, nicht als Start-Leiter, nicht nach einem Neustart. Live
+	// gelesen: die Rolle kann sich zur Laufzeit aendern. nil = darf.
+	NieLeiter func() bool
+}
+
+// nieLeiter: siehe LeitUmgebung.NieLeiter.
+func (l *Leitung) nieLeiter() bool {
+	return l.env.NieLeiter != nil && l.env.NieLeiter()
 }
 
 // LeitSpeicher: was einen Neustart ueberleben muss. Ohne votedFor koennte ein
@@ -503,7 +514,7 @@ func NeueLeitung(ich, url string, satz []string, startLeiter string, faehig bool
 		l.leiter = gespeichert.Leiter
 		l.warLeiter = gespeichert.WarLeiter
 	}
-	if l.leiter == l.ich && l.imSatz(l.ich) {
+	if l.leiter == l.ich && l.imSatz(l.ich) && !l.nieLeiter() {
 		// Wieder aufnehmen -- auch ohne Leistungsnachweis: dann gibt er ab,
 		// sobald ein leiterfaehiger lebt (Takt). Bei zwei Validatoren stuende
 		// das Netz sonst ganz. Bei drei und mehr nimmt er trotzdem erst an,
@@ -861,6 +872,9 @@ func (l *Leitung) waehlbar(m LeitNachricht, jetzt time.Time) bool {
 
 // effFaehig: darf dieser Knoten JETZT Leiter werden?
 func (l *Leitung) effFaehig(jetzt time.Time) bool {
+	if l.nieLeiter() {
+		return false
+	}
 	return l.ichFaehig || l.notbetrieb(jetzt)
 }
 
@@ -996,10 +1010,14 @@ func (l *Leitung) Takt(jetzt time.Time) []LeitNachricht {
 		// Leiter-PR, Befund 1). Bei zwei Validatoren nur mit ZweiWechseln
 		// (wie jeder Wechsel): ohne Wahl heilt dort nichts eine verlorene
 		// Uebergabe (Befunde 1, 3, 4).
-		abgeben := !l.nachweis || (l.stockt && jetzt.Sub(l.leiterSeit) >= l.cfg.StockenFrist)
-		if !l.abschliessen && abgeben && (l.mitWahl() || l.cfg.ZweiWechseln) {
+		//
+		// Darf er nie leiten (NieLeiter, etwa eine Uebergabe an ihn im
+		// Notbetrieb), gibt er sofort ab, notfalls an einen ohne Nachweis.
+		nie := l.nieLeiter()
+		abgeben := nie || !l.nachweis || (l.stockt && jetzt.Sub(l.leiterSeit) >= l.cfg.StockenFrist)
+		if !l.abschliessen && abgeben && (l.mitWahl() || l.cfg.ZweiWechseln || nie) {
 			n := l.nachfolger(l.ich, false)
-			if n == "" && l.stockt && jetzt.Sub(l.leiterSeit) >= l.cfg.StockenFrist {
+			if n == "" && (nie || (l.stockt && jetzt.Sub(l.leiterSeit) >= l.cfg.StockenFrist)) {
 				n = l.nachfolger(l.ich, true)
 			}
 			// Erst, wenn n eine Lease DIESES Terms quittiert hat: dann kennt

@@ -145,7 +145,15 @@ func annahmeKonto(tx *Transaction) string {
 // SystemauftraegeHier: leer, wenn dieser Knoten Systemauftraege (taegliche
 // Verteilung, Treuhand nach Inaktivitaet, Umlauf) ausfuehren darf; sonst der
 // Grund. Sie belasten die Toepfe -- im verteilten Term gehoeren die dem
-// Leiter. Ohne verteilten Term aendert sich nichts (wie bisher).
+// Leiter.
+//
+// Mit Leitung auch OHNE verteilten Term nur der Leiter mit gueltiger Lease
+// (Beta-Pruefung 14.10.2026, HOCH): vorher verteilte in Stufe 1 jeder
+// Knoten, und gegen doppelte Auszahlung schuetzte nur die LOKALE Sperre
+// (TryLockDistribution) -- mit mehreren Validatoren zahlte jeder aus
+// denselben Toepfen. Fail-closed: Lease unklar heisst keine Verteilung; der
+// Aufrufer prueft nach distributionHealthRetryInterval erneut. Ohne Leitung
+// (ein Knoten) wie bisher.
 func (cs *ChainState) SystemauftraegeHier() string {
 	// Leitung an, aber (noch) nicht da: keine Systemauftraege -- sonst hielte
 	// sich ein Knoten mit gescheitertem Start im verteilten Term als einziger
@@ -162,7 +170,10 @@ func (cs *ChainState) SystemauftraegeHier() string {
 	verteilt := l.verteiltImTerm()
 	l.mu.Unlock()
 	if !verteilt {
-		return ""
+		if cs.nimmtUeberweisungenAn() {
+			return ""
+		}
+		return "Leitung an, dieser Knoten ist nicht der Leiter mit gueltiger Lease"
 	}
 	if cs.nimmtAnFuer(ubiPoolAddr) {
 		return ""
