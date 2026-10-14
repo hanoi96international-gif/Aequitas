@@ -117,6 +117,10 @@ type LeitNachricht struct {
 	BlockHash string `json:"block_hash,omitempty"`
 	Faehig    bool   `json:"faehig"`
 	SatzHash  string `json:"satz_hash"`
+	// Liste: Hash der geschlossenen Validatorenliste des Absenders
+	// (validator_liste.go). Nur Validatoren mit derselben Liste hoeren
+	// aufeinander.
+	Liste string `json:"liste,omitempty"`
 	// Stand des Satzes des Absenders: Stempel (Amtszeit, in der ein Leiter ihn
 	// zuletzt bestaetigt hat) und Version. Siehe "Wer Mitglied ist".
 	SatzTerm    uint64 `json:"satz_term"`
@@ -324,7 +328,11 @@ type Leitung struct {
 	url  string
 	satz []string // sortierte Validator-Adressen (alle, mit Stimmrecht)
 	hash string
-	env  LeitUmgebung
+	// liste: Hash der eigenen geschlossenen Validatorenliste ("" = keine);
+	// listeAbgewiesen zaehlt Nachrichten mit anderer Liste.
+	liste           string
+	listeAbgewiesen uint64
+	env             LeitUmgebung
 
 	// satzLesbar: dieselbe Menge wie satz, unveraenderlich und ohne l.mu
 	// lesbar (SatzMitglied). Nur setzeSatz schreibt sie.
@@ -716,6 +724,14 @@ func (l *Leitung) Leiter() (string, string) {
 	return l.leiter, l.urls[l.leiter]
 }
 
+// SetzeListe: der Hash der eigenen geschlossenen Validatorenliste
+// (validator_liste.go). Vor dem ersten Takt.
+func (l *Leitung) SetzeListe(h string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.liste = h
+}
+
 // Term liefert die aktuelle Amtszeit.
 func (l *Leitung) Term() uint64 {
 	l.mu.Lock()
@@ -786,7 +802,7 @@ func (l *Leitung) SetzeURL(addr, url string) {
 
 func (l *Leitung) basis(art string, jetzt time.Time) LeitNachricht {
 	return LeitNachricht{Art: art, Term: l.term, Von: l.ich, URL: l.url, ZeitMs: jetzt.UnixMilli(),
-		Hoehe: l.hoehe(), Faehig: l.ichFaehig, SatzHash: l.hash,
+		Hoehe: l.hoehe(), Faehig: l.ichFaehig, SatzHash: l.hash, Liste: l.liste,
 		SatzTerm: l.satzTerm, SatzVersion: l.satzVersion}
 }
 
@@ -1127,6 +1143,13 @@ func (l *Leitung) Empfange(m LeitNachricht, jetzt time.Time) *LeitNachricht {
 	if !l.imSatz(m.Von) && !l.zugelassen(m.Von) {
 		return nil
 	}
+	// Andere Validatorenliste: weder gehoert noch gezaehlt -- sonst bestimmten
+	// Knoten mit verschiedenen Listen gemeinsam Leiter und Satz. Gezaehlt
+	// erst nach der Zulassung: ein Fremder blaeht den Zaehler nicht auf.
+	if m.Liste != l.liste {
+		l.listeAbgewiesen++
+		return nil
+	}
 	if m.URL != "" {
 		l.urls[m.Von] = m.URL
 	}
@@ -1343,6 +1366,8 @@ func (l *Leitung) Stand(jetzt time.Time) map[string]interface{} {
 		"notbetrieb":       l.notbetrieb(jetzt),
 		"uebergabe_laeuft": l.abschliessen || l.offeneUebergabe != nil || l.wartet != nil,
 		"satz_hash":        l.hash,
+		"liste":            l.liste,
+		"liste_abgewiesen": l.listeAbgewiesen,
 		"verteilt":         l.standVerteilt(jetzt),
 	}
 }
