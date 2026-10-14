@@ -70,3 +70,28 @@ func TestLeitung_NieLeiter_LaufzeitWechselGibtAb(t *testing.T) {
 		t.Fatal("zwei Leiter gleichzeitig")
 	}
 }
+
+// Zwei Validatoren ohne Wahl (Pruefung von #354, MITTEL): ist der Start-
+// oder gespeicherte Leiter nur lesend, muss der andere die Leitung bekommen.
+func TestLeitung_NieLeiter_ZweiValidatoren(t *testing.T) {
+	for _, neustart := range []bool{false, true} {
+		n := neuesSimNetz(t, 2, 34, testKonfig())
+		if neustart {
+			n.laufe(10 * time.Second)
+			if i := n.annehmender(); i != 0 {
+				t.Fatalf("Startleiter 0 erwartet, nimmt %d an", i)
+			}
+		}
+		n.nieLeiter = map[string]bool{n.knoten[0].addr: true}
+		for i := range n.knoten {
+			n.baue(i)
+		}
+		n.laufe(60 * time.Second)
+		if i := n.annehmender(); i != 1 {
+			t.Fatalf("neustart=%v: Knoten 1 soll annehmen, nimmt %d an", neustart, i)
+		}
+		if n.knoten[0].l.DarfAnnehmen(n.uhr(0)) {
+			t.Fatalf("neustart=%v: nur lesender Knoten nimmt an", neustart)
+		}
+	}
+}

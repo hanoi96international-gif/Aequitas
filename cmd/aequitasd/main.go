@@ -1008,6 +1008,14 @@ func main() {
 				} else {
 					fmt.Printf("[POOLS] Distribution already ran within the last 24h on this or another node — skipping\n")
 					keeper.RecordDistributionOutcome("ran_elsewhere", "another node already distributed within the last 24h")
+					// Lief die letzte Runde GESTERN, nur spaeter als 20:00 (ein
+					// Retry wegen Sync oder fehlender Lease, Pruefung von #354),
+					// ist sie noch keine 23 h 55 min her -- ohne erneute Pruefung
+					// fiele der heutige Tag ganz aus. Also bald wieder pruefen,
+					// bis die Frist um ist. Lief sie heute, gilt morgen.
+					if keeper.VerteilungHeuteOffen(chainState.GetLastUBIAt(), time.Now(), berlin) {
+						retrySoon = true
+					}
 				}
 				if retrySoon {
 					firstTarget = time.Now().Add(distributionHealthRetryInterval)

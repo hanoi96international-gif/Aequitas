@@ -40,3 +40,23 @@ func TestSystemauftraege_NurLeiterMitLease(t *testing.T) {
 		t.Fatal("nur lesender Leiter fuehrt Systemauftraege aus")
 	}
 }
+
+// Fehlerfall (Pruefung von #354): lief die Verteilung gestern erst um 20:15
+// (Retry), darf heute um 20:00 kein Tag ausfallen.
+func TestVerteilungHeuteOffen(t *testing.T) {
+	berlin, err := time.LoadLocation("Europe/Berlin")
+	if err != nil {
+		t.Skip("keine Zeitzonendaten")
+	}
+	gestern := time.Date(2026, 10, 13, 20, 15, 0, 0, berlin)
+	heute := time.Date(2026, 10, 14, 20, 0, 0, 0, berlin)
+	if !VerteilungHeuteOffen(gestern.Unix(), heute, berlin) {
+		t.Fatal("gestern 20:15, heute 20:00: heute muss noch offen sein")
+	}
+	if VerteilungHeuteOffen(heute.Add(time.Minute).Unix(), heute.Add(time.Hour), berlin) {
+		t.Fatal("heute schon gelaufen: nicht offen")
+	}
+	if VerteilungHeuteOffen(0, heute, berlin) {
+		t.Fatal("ohne letzte Verteilung entscheidet TryLockDistribution")
+	}
+}

@@ -514,7 +514,12 @@ func NeueLeitung(ich, url string, satz []string, startLeiter string, faehig bool
 		l.leiter = gespeichert.Leiter
 		l.warLeiter = gespeichert.WarLeiter
 	}
-	if l.leiter == l.ich && l.imSatz(l.ich) && !l.nieLeiter() {
+	// Auch ein Knoten, der nie leiten darf (NieLeiter), nimmt die Rolle hier
+	// wieder auf: nur als Leiter kann er sie ordentlich abgeben (Takt, nach
+	// gut einem Takt). Liesse er sie liegen, bliebe er l.leiter -- bei zwei
+	// Validatoren ohne Wahl wuerde der andere nie Leiter (Pruefung von
+	// #354, MITTEL). Annehmen kann er in der Zeit nichts (annahme_tor.go).
+	if l.leiter == l.ich && l.imSatz(l.ich) {
 		// Wieder aufnehmen -- auch ohne Leistungsnachweis: dann gibt er ab,
 		// sobald ein leiterfaehiger lebt (Takt). Bei zwei Validatoren stuende
 		// das Netz sonst ganz. Bei drei und mehr nimmt er trotzdem erst an,

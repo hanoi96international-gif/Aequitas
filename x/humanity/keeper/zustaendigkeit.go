@@ -38,6 +38,7 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
+	"time"
 )
 
 // verteilteAnnahmeAbUnix: ab dieser Zeit nimmt jeder Validator fuer seine
@@ -179,4 +180,17 @@ func (cs *ChainState) SystemauftraegeHier() string {
 		return ""
 	}
 	return "verteilter Term, dieser Knoten ist nicht der Leiter"
+}
+
+// VerteilungHeuteOffen: lief die letzte taegliche Verteilung (lastUBIAt) an
+// einem frueheren Kalendertag als jetzt (in loc)? Dann ist die heutige noch
+// offen, auch wenn TryLockDistribution sie wegen der 23-h-55-min-Frist noch
+// abweist -- etwa weil gestern ein Retry erst um 20:15 lief (Pruefung von
+// #354). Der Aufrufer prueft dann bald erneut, statt einen Tag zu
+// ueberspringen.
+func VerteilungHeuteOffen(lastUBIAt int64, jetzt time.Time, loc *time.Location) bool {
+	if lastUBIAt <= 0 {
+		return false
+	}
+	return time.Unix(lastUBIAt, 0).In(loc).Format("2006-01-02") != jetzt.In(loc).Format("2006-01-02")
 }
