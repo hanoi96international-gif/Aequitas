@@ -160,20 +160,60 @@ Checkpoint-Transaktion je Block; liegt der letzte für die Suche zu weit
 zurück, genügt die Zeit-Monotonie; vor dem Stichtag übernimmt kein Snapshot
 einen letzten Checkpoint.
 
-**Stichtag erst setzen, wenn diese Sperren gelöst sind** (Prüfung von
-Baustein 6):
+**Sperren für den Stichtag – gelöst** (14.10.2026):
 
-1. **Komitee konsensfest (HOCH):** `checkpointImTragendenBlock` liest den
-   aktuellen Register-Stand und die lokale Liste, nicht den Stand des
-   tragenden Blocks – verschiedene Stände spalten.
-2. **Zeitfrist (MITTEL):** die Gesamtfrist der Suche macht „nicht prüfbar“
-   vom Knoten abhängig; nach der Wiederholungsfrist verwirft ein langsamer
-   Knoten, was ein schneller annimmt – dort nachladen statt verwerfen
-   (Baustein 7).
-3. **Erzeuger wendet an (MITTEL):** der Leiter setzt den Wert schon beim
-   Einreichen. Wird die Transaktion übersprungen, weicht sein Wert ab
-   (StateRoot-Abweichung, ein Resync übernähme ihn) – der Erzeuger muss
-   Checkpoint-Transaktionen erst beim Bauen des Blocks anwenden.
+1. **Komitee konsensfest:** das Komitee zur Zeit t hängt nur an Bindungen,
+   die mindestens `erzeugerFrist` vor t liegen und höchstens 1 h nach ihrem
+   Zeitpunkt in einem Block stehen – der aktuelle Stand, zur Zeit t
+   ausgewertet, ist der des tragenden Blocks. Die Liste muss
+   festgeschrieben sein: ohne `AUTHORIZED_VALIDATORS_HASH` gilt eine
+   Checkpoint-Transaktion als nicht prüfbar, und ab dem Stichtag startet ein
+   Knoten mit Liste ohne Hash (oder ohne die eigene Adresse darin) nicht.
+   **Restrisiken:** ein Block mit Bindung genau an der 30-Minuten-Grenze
+   (`spaet_eingehaengt.go`, wie bei der Erzeugerprüfung selbst); der DAG
+   spielt nicht streng in Zeitordnung nach – ein Knoten, der den tragenden
+   Block vor dem Geschwisterblock mit der Bindung nachspielt, überspringt
+   die Transaktion (nur der Wert weicht ab, bis der nächste gilt). Die
+   Liste wird nur beim Start geprüft: der Hash muss vor dem Stichtag
+   überall gesetzt sein.
+2. **Keine Zeitfrist im Konsens:** beim Nachspielen nur die festen
+   Zählgrenzen der Suche; eine Abfrage, die in ihre Zeitgrenze läuft, ist
+   ein vorübergehender Fehler und wird wiederholt.
+3. **Erzeuger wendet an:** der Leiter setzt den Wert nicht beim Einreichen,
+   sondern direkt nach dem Speichern des eigenen Blocks (noch unter
+   `dag.mu`, kein fremder Block dazwischen), nach der Regel des
+   Nachspielens. Die Suche läuft einmal, im Probelauf `checkpointVorschau`
+   mit Blockzeit und Eltern (Frist 3 s unter `dag.mu`); seine StateRoot
+   rechnet er mit dessen Ergebnis, und genau dieser Wert wird in derselben
+   Datenbank-Transaktion wie der Block geschrieben (`checkpointMitSpeichern`)
+   – keine zweite Suche, die anders ausgehen könnte, und kein gespeicherter
+   Block ohne Wert, auch nicht nach einem Neustart.
+   Ist die Transaktion im Probelauf nicht prüfbar (Lesefehler, Frist), kommt
+   sie nicht in den Block (ihre Zeile wird verbraucht, der Leiter schlägt
+   den nächsten vor). Scheitert das Schreiben, wird auch der Block nicht
+   gespeichert; die Aufträge bleiben in der Schlange. **Beobachten:** hält
+   etwas die Zeile dauerhaft (Snapshot-Import, Resync, hängende Sitzung),
+   scheitert jeder Checkpoint-Block, solange die Transaktion offen ist –
+   `[BLOCK] ⚠ Could not persist` mit `letzter Checkpoint` im Log.
+
+### 8. Snapshot – umgesetzt (`snapshot_koepfe.go`)
+
+Ab dem Stichtag trägt der Snapshot die Blockköpfe der letzten 20 Minuten
+(höchstens 5000); der Import legt sie in `kopf_vorrat`, die Vorfahren-Suche
+liest `chain_blocks` und – nur für Blöcke, die dort fehlen – `kopf_vorrat`.
+Ein Resync ersetzt den Vorrat, ein Import löscht Köpfe älter als das
+Fenster; mehr Köpfe als die Grenze heißt keine Köpfe statt abgeschnitten. Ein frisch aufgesetzter Validator
+kann Checkpoints so sofort prüfen.
+
+### Einschalten (Betreiber)
+
+1. Mindestens **vier** Validatoren nach `docs/VALIDATOREN_HINZUFUEGEN.md`,
+   Liste mit `AUTHORIZED_VALIDATORS_HASH` festgeschrieben, `AEQUITAS_LEITUNG=an`.
+2. Auf allen `AEQUITAS_CHECKPOINTS=an` und beobachten:
+   `/api/health/combined` → `checkpoint` (Zertifikate steigen je Minute).
+3. Erst wenn das stabil läuft: `checkpointTxAbUnix` in `checkpoint_tx.go`
+   per PR auf einen Zeitpunkt einige Stunden in der Zukunft setzen, auf
+   allen Validatoren ausrollen, bevor er erreicht ist.
 
 Ursprünglicher Plan:
 

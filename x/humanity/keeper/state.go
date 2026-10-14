@@ -1491,6 +1491,17 @@ transactions  TEXT NOT NULL DEFAULT '[]',
 created_at    TIMESTAMP DEFAULT NOW()
 )`)
 	dbExec(`CREATE INDEX IF NOT EXISTS idx_chain_blocks_height ON chain_blocks (height)`)
+	// Koepfe vor einem Snapshot fuer die Vorfahren-Suche (snapshot_koepfe.go).
+	dbExec(`CREATE TABLE IF NOT EXISTS kopf_vorrat (
+hash          TEXT PRIMARY KEY,
+height        BIGINT NOT NULL,
+timestamp     BIGINT NOT NULL,
+parent_hashes TEXT NOT NULL
+)`)
+	{
+		var n int
+		kopfVorratDa.Store(cs.db.QueryRow(`SELECT COUNT(*) FROM (SELECT 1 FROM kopf_vorrat LIMIT 1) x`).Scan(&n) == nil)
+	}
 	// Fuer die taegliche Anwesenheit der Validatoren (validator_anwesenheit.go):
 	// ein Tag Bloecke, ohne die ganze Tabelle zu lesen.
 	dbExec(`CREATE INDEX IF NOT EXISTS idx_chain_blocks_timestamp ON chain_blocks (timestamp)`)

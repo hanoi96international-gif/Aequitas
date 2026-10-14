@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"github.com/lib/pq"
@@ -36,6 +37,11 @@ import (
 // (errVorfahrZuGross).
 
 const vorfahrStapel = 1000
+
+// kopfVorratDa: die Tabelle kopf_vorrat ist angelegt (initDB). Ohne sie
+// liest die Suche nur chain_blocks -- eine fehlende Tabelle darf die Suche
+// nicht scheitern lassen.
+var kopfVorratDa atomic.Bool
 
 // kopfLeserFrist: Zeitgrenze je Abfrage der Koepfe.
 const kopfLeserFrist = 5 * time.Second
@@ -131,7 +137,14 @@ func vorfahrSuchen(lies kopfLeser, eltern []string, ziel string, grenze int64) (
 // kopfLeserDB: die Koepfe aus chain_blocks.
 func kopfLeserDB(q sqlExecutor) kopfLeser {
 	return func(hashes []string) (map[string]blockKopf, error) {
-		const frage = `SELECT hash, height, timestamp, parent_hashes FROM chain_blocks WHERE hash = ANY($1)`
+		// chain_blocks und die Koepfe aus einem Snapshot (snapshot_koepfe.go).
+		// chain_blocks hat Vorrang: ein Kopf aus kopf_vorrat zaehlt nur,
+		// wenn der Block selbst fehlt.
+		frage := `SELECT hash, height, timestamp, parent_hashes FROM chain_blocks WHERE hash = ANY($1)`
+		if kopfVorratDa.Load() {
+			frage += ` UNION ALL SELECT k.hash, k.height, k.timestamp, k.parent_hashes FROM kopf_vorrat k
+			WHERE k.hash = ANY($1) AND NOT EXISTS (SELECT 1 FROM chain_blocks c WHERE c.hash = k.hash)`
+		}
 		var rows *sql.Rows
 		var err error
 		// Mit Zeitgrenze, wo moeglich (Pruefung von 5b, NIEDRIG 4): eine

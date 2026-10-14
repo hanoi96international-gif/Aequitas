@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
+	"time"
 )
 
 // ZERTIFIKAT IN DIE KETTE, "LETZTER CHECKPOINT" IM ZUSTAND (OFFEN 10, Stufe C,
@@ -44,18 +45,22 @@ import (
 //
 // STICHTAG ERST SETZEN, WENN DIESE SPERREN GELOEST SIND (Pruefung von
 // Baustein 6; docs/CHECKPOINT_FAHRPLAN.md):
-//   1. Komitee konsensfest (HOCH): checkpointImTragendenBlock liest den
-//      aktuellen Register-Stand und die lokale Liste, nicht den Stand des
-//      tragenden Blocks -- verschiedene Staende spalten.
-//   2. Zeitfrist (MITTEL): die Gesamtfrist der Suche macht "nicht pruefbar"
-//      vom Knoten abhaengig; nach der Wiederholungsfrist verwirft ein
-//      langsamer Knoten, was ein schneller annimmt -- dort nachladen statt
-//      verwerfen.
-//   3. Erzeuger wendet an (MITTEL): der Leiter setzt den Wert schon beim
-//      Einreichen. Wird die Transaktion beim Nachspielen uebersprungen,
-//      weicht sein Wert ab (StateRoot-Abweichung, ein Resync uebernaehme
-//      ihn) -- der Erzeuger muss Checkpoint-Transaktionen erst beim Bauen
-//      des Blocks mit dessen Zeit anwenden.
+//   1. (GELOEST, mit Restrisiko) Komitee konsensfest: das Komitee zur Zeit t
+//      haengt nur an Bindungen, die mindestens erzeugerFrist vor t liegen und
+//      hoechstens 1 h nach ihrem Zeitpunkt in einem Block stehen -- der
+//      aktuelle Stand, zur Zeit t ausgewertet, ist der Stand des tragenden
+//      Blocks. Die Liste muss festgeschrieben sein (validator_liste.go):
+//      ohne Hash gilt eine Checkpoint-Transaktion als nicht pruefbar, und
+//      ab dem Stichtag startet ein Knoten mit Liste ohne Hash nicht.
+//      RESTRISIKO (wie bei der Erzeugerpruefung selbst): ein Block mit
+//      Bindung genau an der 30-Minuten-Grenze (spaet_eingehaengt.go).
+//   2. (GELOEST) Zeitfrist: beim Nachspielen nur die festen Zaehlgrenzen
+//      der Suche (deterministisch), keine Gesamtfrist; eine Abfrage, die in
+//      ihre Zeitgrenze laeuft, ist ein voruebergehender Fehler und wird
+//      wiederholt.
+//   3. (GELOEST) Erzeuger wendet an: der Leiter setzt den Wert nicht mehr
+//      beim Einreichen, sondern mit dem eigenen Block (gleiche DB-Transaktion) nach
+//      der Regel des Nachspielens (checkpointVorschau, checkpointMitSpeichern).
 //
 // Der letzte Checkpoint steht in chain_config (letzterCheckpointSchluessel)
 // und geht -- nur wenn gesetzt -- in die StateRoot ein (stateRootLocked);
@@ -152,6 +157,11 @@ func (dag *BlockDAG) applyCheckpointTxLocked(ctx context.Context, tx *Transactio
 	if cs == nil || cs.db == nil {
 		return fmt.Errorf("%w: keine Datenbank", errCheckpointNichtPruefbar)
 	}
+	// Das Komitee haengt an der Liste: nur festgeschrieben ist sie auf
+	// jedem Knoten gleich (Stichtag-Sperre 1).
+	if len(dag.produzentenFest) > 0 && !validatorListeFestgeschrieben.Load() {
+		return fmt.Errorf("%w: Validatorenliste nicht festgeschrieben (%s)", errCheckpointNichtPruefbar, validatorListeHashEnv)
+	}
 	roh, err := letzterCheckpointRoh(ctx, cs)
 	if err != nil {
 		return fmt.Errorf("%w: %v", errCheckpointNichtPruefbar, err)
@@ -222,11 +232,34 @@ func (dag *BlockDAG) checkpointTxEinreichen(z CheckpointZertifikat, jetzt int64)
 		if letzter != nil && z.Zeit <= letzter.Zeit {
 			return Transaction{}, checkpointZustand("Checkpoint (Zeit %d) nicht nach dem letzten (Zeit %d)", z.Zeit, letzter.Zeit)
 		}
-		if err := cs.setConfigValueCtx(ctx, letzterCheckpointSchluessel, letzterCheckpointWert(z.KettenCheckpoint)); err != nil {
-			return Transaction{}, err
-		}
+		// KEIN Setzen hier (Stichtag-Sperre 3): der Zustand aendert sich erst
+		// mit dem eigenen Block (checkpointMitSpeichern), nach
+		// derselben Regel wie beim Nachspielen.
 		return tx, nil
 	})
+}
+
+// checkpointMitSpeichern: der Erzeuger spielt seinen eigenen Block nicht
+// nach -- traegt der Block ein Zertifikat, schreibt er den Wert, den die
+// Vorschau (checkpointVorschau) fuer genau diesen Block ermittelt hat und
+// mit dem seine StateRoot gerechnet ist, in DERSELBEN Transaktion wie den
+// Block. Keine zweite Suche, die anders ausgehen koennte, und kein Zustand,
+// in dem der Block gespeichert, der Wert aber verloren ist (auch nicht nach
+// einem Neustart): scheitert das, gibt es weder Block noch Wert, und die
+// Auftraege bleiben in der Schlange (Nachpruefung der Stichtag-Sperren).
+// ProduceBlock haelt replayMu und dag.mu von der Vorschau bis hier.
+func checkpointMitSpeichern(tx *sql.Tx, block *Block) error {
+	if block.letzterCheckpointNeu == "" {
+		return nil
+	}
+	if _, err := tx.Exec(`SET LOCAL lock_timeout = '2s'`); err != nil {
+		return fmt.Errorf("letzter Checkpoint: %w", err)
+	}
+	if _, err := tx.Exec(`INSERT INTO chain_config (key, value) VALUES ($1, $2)
+ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, letzterCheckpointSchluessel, block.letzterCheckpointNeu); err != nil {
+		return fmt.Errorf("letzter Checkpoint: %w", err)
+	}
+	return nil
 }
 
 // snapshotKonfigUebernehmen: vor dem Stichtag wird ein letzter Checkpoint
@@ -289,4 +322,99 @@ func checkpointTxGrenze(txs []Transaction) int {
 		}
 	}
 	return len(txs)
+}
+
+// checkpointInDBTx: fn in einer eigenen Datenbank-Transaktion; die Zeile des
+// letzten Checkpoints mit Zeitgrenze gesperrt (gegen ein gleichzeitiges
+// Nachspielen). behalten: Commit, sonst Rollback (Probelauf).
+func (cs *ChainState) checkpointInDBTx(fn func(ctx context.Context, dbTx *sql.Tx) error, behalten bool) error {
+	dbTx, err := cs.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer dbTx.Rollback()
+	if _, err := dbTx.Exec(`SET LOCAL lock_timeout = '2s'`); err != nil {
+		return err
+	}
+	if _, err := dbTx.Exec(`SELECT 1 FROM chain_config WHERE key = $1 FOR UPDATE`, letzterCheckpointSchluessel); err != nil {
+		return err
+	}
+	if err := fn(withTx(context.Background(), dbTx), dbTx); err != nil {
+		return err
+	}
+	if !behalten {
+		return nil
+	}
+	return dbTx.Commit()
+}
+
+// checkpointVorschauFrist: so lange darf die Vorschau unter dag.mu suchen.
+// Laenger: die Transaktion kommt nicht in den Block -- nicht
+// konsensrelevant, der Leiter schlaegt den naechsten vor.
+var checkpointVorschauFrist = 3 * time.Second
+
+// checkpointVorschauErgebnis: index -1 = keine Checkpoint-Transaktion.
+// geaendert: neu ist der letzte Checkpoint nach dem Block. unklar: hier
+// gerade nicht pruefbar (kein Zustandsurteil) -- die Transaktion muss aus
+// dem Block, sonst wendeten andere an, was dieser Knoten nicht weiss.
+type checkpointVorschauErgebnis struct {
+	index     int
+	neu       string
+	geaendert bool
+	unklar    bool
+}
+
+// checkpointVorschau: traegt txs eine Checkpoint-Transaktion, der letzte
+// Checkpoint, den jeder Nachspielende nach einem Block mit diesen Eltern und
+// dieser Zeit hat (Probelauf, nichts gespeichert). Die Suche ist durch
+// checkpointVorschauFrist begrenzt.
+func (dag *BlockDAG) checkpointVorschau(txs []Transaction, eltern []string, zeit int64) checkpointVorschauErgebnis {
+	v := checkpointVorschauErgebnis{index: -1}
+	cs := dag.state
+	if cs == nil || cs.db == nil {
+		return v
+	}
+	for i := range txs {
+		if txs[i].Type != checkpointTxArt {
+			continue
+		}
+		v.index = i
+		tx := txs[i]
+		ende := time.Now().Add(checkpointVorschauFrist)
+		err := cs.checkpointInDBTx(func(ctx context.Context, dbTx *sql.Tx) error {
+			innen := checkpointReplayLeser(dbTx)
+			lies := func(hashes []string) (map[string]blockKopf, error) {
+				if time.Now().After(ende) {
+					return nil, errors.New("Vorschau-Frist abgelaufen")
+				}
+				return innen(hashes)
+			}
+			if err := dag.applyCheckpointTxLocked(ctx, &tx, eltern, zeit, lies); err != nil {
+				return err
+			}
+			var e error
+			v.neu, e = letzterCheckpointRoh(ctx, cs)
+			return e
+		}, false)
+		switch {
+		case err == nil:
+			v.geaendert = true
+		case istZustandsAblehnung(err):
+			// Jeder Nachspielende ueberspringt sie ebenso: im Block lassen.
+			v.neu = ""
+		default:
+			v.neu = ""
+			v.unklar = true
+		}
+		return v
+	}
+	return v
+}
+
+// stateRootMitCheckpoint: die StateRoot mit diesem letzten Checkpoint.
+func (cs *ChainState) stateRootMitCheckpoint(letzterCP string) string {
+	lastUBIAt := cs.getConfigValueDB("last_ubi_at")
+	cs.mu.RLock()
+	defer cs.mu.RUnlock()
+	return cs.stateRootLocked(lastUBIAt, letzterCP)
 }

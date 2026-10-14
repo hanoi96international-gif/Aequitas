@@ -191,7 +191,11 @@ type Block struct {
 	// auf nil (Ausduennung, hydratisiert).
 	txsJSON     []byte `json:"-"`
 	txsJSONFuer int    `json:"-"`
-	Signature   string `json:"signature,omitempty"`
+	// letzterCheckpointNeu: nur beim Erzeuger -- der letzte Checkpoint nach
+	// diesem Block (checkpointVorschau), in DERSELBEN Datenbank-Transaktion
+	// geschrieben wie der Block (checkpointMitSpeichern). Nicht serialisiert.
+	letzterCheckpointNeu string `json:"-"`
+	Signature            string `json:"signature,omitempty"`
 	// ProducedAtMs is a millisecond-precision production wall-clock
 	// timestamp, set once by ProduceBlock and transmitted to peers —
 	// deliberately NOT covered by calculateBlockHash (an explicit field list,
@@ -3339,6 +3343,21 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 		blockZeitZurueck.Add(1)
 		fmt.Printf("[BLOCK] ⏪ Blockzeit %d statt %d: die Auftraege dieses Blocks wurden frueher angenommen (block_tauglich.go)\n", blockZeit, jetztUnix)
 	}
+	// checkpoint_tx.go: traegt der Block ein Zertifikat, rechnet der Erzeuger
+	// seine StateRoot mit dem letzten Checkpoint, den jeder Nachspielende
+	// danach hat (Probelauf mit Blockzeit und Eltern dieses Blocks).
+	// Ist sie hier gerade nicht pruefbar, kommt sie nicht in den Block (ihre
+	// Zeile wird mit dem Block verbraucht): sonst wendeten andere an, was
+	// dieser Knoten nicht weiss. Nur sie -- ein Abschneiden ab ihr hielte
+	// alles dahinter auf, solange die Pruefung hier scheitert.
+	cpVorschau := dag.checkpointVorschau(txs, parentHashes, blockZeit)
+	if cpVorschau.unklar {
+		fmt.Printf("[CHECKPOINT] ⚠ Checkpoint-Transaktion hier nicht pruefbar -- nicht in diesen Block\n")
+		txs = append(txs[:cpVorschau.index:cpVorschau.index], txs[cpVorschau.index+1:]...)
+	}
+	if cpVorschau.geaendert {
+		stateRoot = dag.state.stateRootMitCheckpoint(cpVorschau.neu)
+	}
 	block := &Block{
 		Height:       maxParentHeight + 1,
 		Timestamp:    blockZeit,
@@ -3348,6 +3367,9 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 		Transactions: txs,
 		StateRoot:    stateRoot,
 		ProducedAtMs: time.Now().UnixMilli(),
+	}
+	if cpVorschau.geaendert {
+		block.letzterCheckpointNeu = cpVorschau.neu
 	}
 	// Declare the body digest explicitly (roadmap step 4, tx_batch.go). This does
 	// not change the hash — with a body attached, calculateBlockHash derives the
@@ -8134,7 +8156,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			}
 			ctx := withTx(context.Background(), dbTx)
 			ctp := tx
-			if err := dag.applyCheckpointTxLocked(ctx, &ctp, block.ParentHashes, block.Timestamp, mitGesamtfrist(checkpointReplayLeser(dbTx), checkpointSuchFrist)); err != nil {
+			if err := dag.applyCheckpointTxLocked(ctx, &ctp, block.ParentHashes, block.Timestamp, checkpointReplayLeser(dbTx)); err != nil {
 				if istZustandsAblehnung(err) {
 					fmt.Printf("[REPLAY] ⚠ %v (block #%d) — uebersprungen\n", err, block.Height)
 					continue
