@@ -226,7 +226,7 @@ func (cs *ChainState) ExportSnapshot(signingKey *ecdsa.PrivateKey, height int64,
 	// above — this read must use the plain DB-only variant, never
 	// cs.dbExec()/cs.activeTx.
 	snap.ChainConfig = map[string]string{}
-	for _, key := range []string{"last_ubi_at", "last_validators_at", "last_lp_at", "last_treasury_at"} {
+	for _, key := range []string{"last_ubi_at", "last_validators_at", "last_lp_at", "last_treasury_at", letzterCheckpointSchluessel} {
 		if val := cs.getConfigValueDB(key); val != "" {
 			snap.ChainConfig[key] = val
 		}
@@ -620,6 +620,9 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) (
 			// Import chain_config timing values. Do NOT overwrite if already set —
 			// the primary's live value takes precedence over the snapshot's snapshot-time value.
 			for key, val := range snap.ChainConfig {
+				if err := pruefeSnapshotKonfig(key, val); err != nil {
+					return fmt.Errorf("snapshot config %s: %w", key, err)
+				}
 				if existing := cs.getConfigValue(key); existing == "" {
 					if err := cs.setConfigValueCtx(ctx, key, val); err != nil {
 						return fmt.Errorf("setting config %s: %w", key, err)
@@ -1008,7 +1011,17 @@ func (cs *ChainState) ResyncFromSnapshotURL(peerURL, expectedSignerHex string) (
 	// merge mode which never overwrites an existing key. setConfigValue now
 	// routes through cs.dbExec() too (audit recheck3, P0 #2), so this joins
 	// the same transaction instead of auto-committing separately.
+	// Der letzte Checkpoint geht in die StateRoot: fehlt er im Snapshot,
+	// darf kein eigener alter Wert stehen bleiben.
+	if _, da := snap.ChainConfig[letzterCheckpointSchluessel]; !da {
+		if err := cs.setConfigValueCtx(ctx, letzterCheckpointSchluessel, ""); err != nil {
+			return fail(fmt.Errorf("resync: could not clear %s: %w", letzterCheckpointSchluessel, err))
+		}
+	}
 	for key, val := range snap.ChainConfig {
+		if err := pruefeSnapshotKonfig(key, val); err != nil {
+			return fail(fmt.Errorf("resync: config %q: %w", key, err))
+		}
 		if err := cs.setConfigValueCtx(ctx, key, val); err != nil {
 			return fail(fmt.Errorf("resync: could not set config %q: %w", key, err))
 		}

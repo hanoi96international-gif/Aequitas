@@ -302,8 +302,12 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
       Slot-Verbrauch; Leiterwechsel nach 5 leeren Slots (gemeldet).
       **Baustein 5b (`checkpoint_netz.go`, `AEQUITAS_CHECKPOINTS=an`):**
       Vorschlag, Unterschriften und Zertifikat über `/api/checkpoint`;
-      letzter Checkpoint dauerhaft je Knoten. Offen: Obergrenze über
-      Leiterwechsel hinweg, Zertifikat-Transaktion (Baustein 6).
+      letzter Checkpoint dauerhaft je Knoten.
+      **Baustein 6 (`checkpoint_tx.go`, schlafend bis `checkpointTxAb`):**
+      Zertifikat als Transaktion, letzter Checkpoint im Zustand und in der
+      StateRoot. Offen: Erzeuger wendet erst beim Bauen an (bekannte
+      Grenze im Fahrplan), Obergrenze über Leiterwechsel hinweg, Snapshot
+      der Köpfe (Baustein 8), Stichtag setzen.
       **Fahrplan:** `docs/CHECKPOINT_FAHRPLAN.md` (mit den Entscheidungen
       für den Betreiber).
       **Vor dem Anschluss als Konsensregel (Prüfung Baustein 2, HOCH):**

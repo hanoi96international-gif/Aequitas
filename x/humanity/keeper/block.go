@@ -89,6 +89,9 @@ type Transaction struct {
 	// Treuhand, Unternehmen) -- das Gegenstueck zu Roh (auftrag_nachweis.go).
 	// omitempty: aeltere Bloecke behalten ihren Hash.
 	Nachweis *Auftragsnachweis `json:"nachweis,omitempty"`
+	// Checkpoint: bei checkpoint_zertifikat das Zertifikat des Komitees
+	// (checkpoint_tx.go). omitempty: aeltere Bloecke behalten ihren Hash.
+	Checkpoint *CheckpointZertifikat `json:"checkpoint,omitempty"`
 	// Vorbehalt: Stufe 2, Tausch und Liquiditaet in zwei Schritten
 	// (vorbehalt.go). omitempty: aeltere Bloecke behalten ihren Hash.
 	Vorbehalt *VorbehaltAngaben `json:"vorbehalt,omitempty"`
@@ -1316,6 +1319,8 @@ func bekannteTxArt(typ string, blockZeit int64) bool {
 		return true
 	case "validator_bindung": // validator_register.go, schlafend bis zum Stichtag
 		return validatorRegisterAktiv(blockZeit)
+	case checkpointTxArt: // checkpoint_tx.go, schlafend bis checkpointTxAb
+		return checkpointTxAktiv(blockZeit)
 	case "slash_abrechnung": // strafe_abrechnung.go, schlafend bis registerLeserAb
 		return registerLeserAktiv(blockZeit)
 	case "vorbehalt", "vorbehalt_ausfuehrung", "kappung":
@@ -7380,6 +7385,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 	// schleife_uebrig: alle anderen Transaktionsarten und der Aufwand je
 	// Durchlauf (Buendelsuche, Verzweigung, Protokoll).
 	phMarkSchleife := time.Now()
+	checkpointTxe := 0
 	for txIdx := 0; txIdx < len(block.Transactions); txIdx++ {
 		tx := block.Transactions[txIdx]
 		if hardFailure {
@@ -8103,6 +8109,30 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			}
 			fmt.Printf("[REPLAY] ✓ Validator %s an Betreiber %s gebunden (block #%d)\n", kurzAdresse(tx.To), kurzAdresse(tx.Wallet), block.Height)
 
+		case checkpointTxArt:
+			// checkpoint_tx.go. Hoechstens eine je Block; Form, Zertifikat
+			// und Stichtag machen bei einem Verstoss den Block ungueltig (nicht
+			// pruefbar: Wiederholung); die Reihenfolge der Checkpoints
+			// ueberspringt nur.
+			checkpointTxe++
+			if checkpointTxe > 1 {
+				fmt.Printf("[REPLAY] ✗ zweites checkpoint_zertifikat im Block #%d — rolling back whole block\n", block.Height)
+				hardFailure = true
+				continue
+			}
+			ctx := withTx(context.Background(), dbTx)
+			ctp := tx
+			if err := dag.applyCheckpointTxLocked(ctx, &ctp, block.ParentHashes, block.Timestamp, mitGesamtfrist(checkpointReplayLeser(dbTx), checkpointSuchFrist)); err != nil {
+				if istZustandsAblehnung(err) {
+					fmt.Printf("[REPLAY] ⚠ %v (block #%d) — uebersprungen\n", err, block.Height)
+					continue
+				}
+				fmt.Printf("[REPLAY] ✗ %v (block #%d) — rolling back whole block\n", err, block.Height)
+				hardFailure = true
+				continue
+			}
+			fmt.Printf("[REPLAY] ✓ Checkpoint %s (Hoehe %d) in die Kette (block #%d)\n", kurzAdresse(ctp.Checkpoint.Hash), ctp.Checkpoint.Hoehe, block.Height)
+
 		case "slash_equivocation":
 			// tx.Wallet = signer (signing address of the equivocating validator)
 			// tx.BlockAHash/BlockBHash = the conflicting evidence pair
@@ -8294,7 +8324,8 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 		// dieselbe Transaktion, aber nur, solange es das Feld gibt.
 		phMarkRoot := time.Now()
 		localRoot := dag.state.stateRootLocked(
-			dag.state.getConfigValueCtx(withTx(context.Background(), dbTx), "last_ubi_at"))
+			dag.state.getConfigValueCtx(withTx(context.Background(), dbTx), "last_ubi_at"),
+			dag.state.getConfigValueCtx(withTx(context.Background(), dbTx), letzterCheckpointSchluessel))
 		merkeReplayPhase(&rpStateRootNanos, phMarkRoot)
 		phBlock.stateroot = time.Since(phMarkRoot)
 		if block.StateRoot != localRoot {

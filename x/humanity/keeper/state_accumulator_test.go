@@ -121,15 +121,15 @@ func TestStateRootAccumulator_MatchesFullRecompute(t *testing.T) {
 	assertMatch("release 111111111111111111")
 
 	// StateRoot must be deterministic and non-empty.
-	r1 := cs.stateRootLocked("123")
-	r2 := cs.stateRootLocked("123")
+	r1 := cs.stateRootLocked("123", "")
+	r2 := cs.stateRootLocked("123", "")
 	if r1 != r2 || r1 == "" {
 		t.Fatalf("StateRoot not deterministic/non-empty: %q vs %q", r1, r2)
 	}
 	// Changing a balance must change the root.
 	a.Balance = NewDecimal(999)
 	_ = cs.saveAccountToDB(a)
-	if cs.stateRootLocked("123") == r1 {
+	if cs.stateRootLocked("123", "") == r1 {
 		t.Fatal("StateRoot unchanged after a balance change")
 	}
 }
@@ -157,7 +157,7 @@ func TestStateRootAccumulator_OrderIndependence(t *testing.T) {
 	if a.nullifierSetXOR != b.nullifierSetXOR {
 		t.Fatal("nullifierSetXOR depends on insertion order")
 	}
-	if a.stateRootLocked("0") != b.stateRootLocked("0") {
+	if a.stateRootLocked("0", "") != b.stateRootLocked("0", "") {
 		t.Fatal("StateRoot depends on insertion order")
 	}
 }
@@ -174,7 +174,7 @@ func TestStateRootAccumulator_Rollback(t *testing.T) {
 
 	preAcc := cs.accountSetXOR
 	preNull := cs.nullifierSetXOR
-	preRoot := cs.stateRootLocked("0")
+	preRoot := cs.stateRootLocked("0", "")
 
 	// Snapshot as replayTransactions would: 0xaaa exists, 0xbbb will be created.
 	snap := cs.snapshotForRollbackLocked([]string{"0xaaa", "0xbbb"}, false, map[string]configValueSnapshot{})
@@ -208,7 +208,7 @@ func TestStateRootAccumulator_Rollback(t *testing.T) {
 	if cs.accountSetXOR != referenceAccountXOR(cs) {
 		t.Fatal("accountSetXOR != full recompute of restored accounts")
 	}
-	if cs.stateRootLocked("0") != preRoot {
+	if cs.stateRootLocked("0", "") != preRoot {
 		t.Fatal("StateRoot not restored after rollback")
 	}
 }

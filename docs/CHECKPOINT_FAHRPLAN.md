@@ -143,6 +143,25 @@ jeder selbst, sondern:
 
 ### 6. Zertifikat in die Kette, „letzter Checkpoint“ im Zustand
 
+**Umgesetzt** (`checkpoint_tx.go`, schlafend bis `checkpointTxAb`, heute nie):
+Transaktion `checkpoint_zertifikat` (nur Type, TxHash aus dem Inhalt,
+Zertifikat), höchstens eine je Block; der Leiter reicht sie nach dem Quorum
+ein. Beim Nachspielen prüft jeder Knoten `checkpointImTragendenBlock` und
+dass der bisherige letzte in der Vergangenheit liegt. Form oder Zertifikat
+falsch: Block ungültig; zu alt, nicht jünger, kein Nachfolger: übersprungen;
+nicht prüfbar: Wiederholung. Der letzte Checkpoint steht in `chain_config`
+(`letzter_checkpoint`), geht nur wenn gesetzt in die StateRoot ein und wird
+mit zurückgerollt, im Snapshot getragen und beim Resync gesetzt bzw.
+gelöscht.
+
+**Bekannte Grenze** (vor dem ersten Verbraucher zu schließen): der Leiter
+setzt den Wert schon beim Einreichen. Wird die Transaktion beim Nachspielen
+übersprungen, weicht sein Wert ab, bis der nächste Checkpoint überall gilt
+(StateRoot-Warnung). Lösung: der Erzeuger wendet Checkpoint-Transaktionen
+erst beim Bauen des Blocks an, mit dessen Zeit.
+
+Ursprünglicher Plan:
+
 - Transaktionsart `checkpoint_zertifikat`. Gültig nach
   `checkpointImTragendenBlock` (Baustein 3) – mit dem Komitee aus Baustein 4.
 - Der **letzte Checkpoint** ist Zustand (geht in die StateRoot): der jüngste
