@@ -369,3 +369,19 @@ func TestCheckpointWahl(t *testing.T) {
 		t.Fatalf("alles zu alt: %s", got)
 	}
 }
+
+func TestMitGesamtfrist(t *testing.T) {
+	k := lineareKette(30, 1000)
+	lies := mitGesamtfrist(k.leser(), 0)
+	if _, err := lies([]string{hx(1)}); err != nil {
+		t.Fatalf("erster Aufruf: %v", err)
+	}
+	time.Sleep(time.Millisecond)
+	if _, err := lies([]string{hx(1)}); !errors.Is(err, errSuchFristAbgelaufen) {
+		t.Fatalf("nach der Frist: %v", err)
+	}
+	// In der Suche: abgelaufen heisst nicht pruefbar, nie "kein Vorfahr".
+	if _, err := checkpointNachfolger(mitGesamtfrist(k.leser(), 0), hx(30), KettenCheckpoint{Hash: hx(1), Zeit: 1001}); err == nil {
+		t.Fatal("abgelaufene Suche als Urteil gewertet")
+	}
+}

@@ -69,7 +69,10 @@ const (
 	checkpointWahlMindestAlt = 150
 	checkpointRumpfGrenze    = 64 << 10
 	checkpointLeseFrist      = 5 * time.Second
-	checkpointAufbewahren    = 1440 // ein Tag bei einem je Minute
+	// checkpointSuchFrist: Gesamtfrist der Vorfahren-Suche bei der Annahme
+	// (sie laeuft unter checkpointLetzterMu).
+	checkpointSuchFrist   = 10 * time.Second
+	checkpointAufbewahren = 1440 // ein Tag bei einem je Minute
 )
 
 func checkpointsAn() bool {
@@ -162,7 +165,7 @@ func (dag *BlockDAG) checkpointZertifikatAnnehmen(z CheckpointZertifikat, jetzt 
 		return errors.New("keine Datenbank")
 	}
 	if letzter != nil {
-		gefunden, err := checkpointNachfolger(checkpointKopfLeser(dag), z.Hash, *letzter)
+		gefunden, err := checkpointNachfolger(mitGesamtfrist(checkpointKopfLeser(dag), checkpointSuchFrist), z.Hash, *letzter)
 		if err != nil {
 			return fmt.Errorf("Vorfahren nicht pruefbar: %v", err)
 		}
@@ -190,7 +193,9 @@ func (dag *BlockDAG) checkpointZertifikatAnnehmen(z CheckpointZertifikat, jetzt 
 		}
 	}
 	// Aufbewahren: die juengsten checkpointAufbewahren.
-	dag.state.db.ExecContext(ctx, `DELETE FROM checkpoint_zertifikate WHERE zeit < (SELECT zeit FROM checkpoint_zertifikate ORDER BY zeit DESC OFFSET $1 LIMIT 1)`, checkpointAufbewahren-1)
+	if _, err := dag.state.db.ExecContext(ctx, `DELETE FROM checkpoint_zertifikate WHERE zeit < (SELECT zeit FROM checkpoint_zertifikate ORDER BY zeit DESC OFFSET $1 LIMIT 1)`, checkpointAufbewahren-1); err != nil {
+		fmt.Printf("[CHECKPOINT] ⚠ alte Zertifikate nicht geloescht: %v\n", err)
+	}
 	dag.checkpointLetzter.Store(zertifikatKopie(&z))
 	return nil
 }
@@ -511,4 +516,21 @@ func checkpointZielGueltig(roh string) bool {
 		return false
 	}
 	return u.Scheme == "http" || u.Scheme == "https"
+}
+
+var errSuchFristAbgelaufen = errors.New("Gesamtfrist der Vorfahren-Suche abgelaufen")
+
+// mitGesamtfrist: der Leser scheitert, sobald frist seit dem ersten Aufruf
+// vorbei ist -- die Suche (bis zu vorfahrEbenenGrenze Abfragen) haelt dann
+// keine Sperre laenger. Ein Fehler ist "nicht pruefbar", nie "kein Vorfahr".
+func mitGesamtfrist(lies kopfLeser, frist time.Duration) kopfLeser {
+	var ende time.Time
+	return func(h []string) (map[string]blockKopf, error) {
+		if ende.IsZero() {
+			ende = time.Now().Add(frist)
+		} else if time.Now().After(ende) {
+			return nil, errSuchFristAbgelaufen
+		}
+		return lies(h)
+	}
 }

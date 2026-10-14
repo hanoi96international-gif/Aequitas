@@ -50,6 +50,11 @@ Dann neu starten. **Passt die Liste nicht zum Hash, startet der Knoten nicht**
 Start auf, nicht später als Spaltung. Knoten mit verschiedenen Listen hören
 in der Leitung nicht aufeinander.
 
+Die URLs der Validatoren (`SELF_URL`, `AEQUITAS_LEITUNG_GENESIS`) als
+`http://IP:8080`, nicht mit DNS-Namen: Leitung und Checkpoints erkennen
+Validatoren an der IP; mit Namen bekommt ein Validator für `/api/checkpoint`
+403 und zeichnet nicht mit.
+
 Nur auf den Validatoren, mit denen eine Kette neu beginnt, zusätzlich
 `AEQUITAS_LEITUNG_GENESIS` (siehe Kopf von `leitung_netz.go`). Wer später
 dazukommt, braucht es nicht: er meldet sich und wird aufgenommen.
