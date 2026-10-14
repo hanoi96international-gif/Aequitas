@@ -2178,7 +2178,13 @@ func (dag *BlockDAG) syncWithNode(nodeURL string) {
 		SafeCall("syncWithNode", func() {
 			stand.runde(
 				func() { dag.syncValidatorsFromPeer(nodeURL) },
-				func() bool { return dag.doSyncOnce(nodeURL) },
+				func() bool {
+					ok := dag.doSyncOnce(nodeURL)
+					if ok {
+						dag.state.peerMerken(nodeURL, time.Now()) // peer_vorrat.go
+					}
+					return ok
+				},
 				ticker.Reset,
 			)
 		})
@@ -2540,6 +2546,10 @@ func (dag *BlockDAG) StartPeerDiscovery(selfURL string) {
 		dag.startSyncForPeer(peer)
 		fmt.Printf("[PEERS] Static peer: %s\n", peer)
 	}
+
+	// Gemerkte Peers (peer_vorrat.go): ohne sie faende ein Neustart ohne
+	// erreichbaren Seed niemanden. Nie als trustedSeeds.
+	dag.gemerktePeersZiehen(selfURL)
 
 	if len(seeds) > 0 {
 		for _, seed := range seeds {
