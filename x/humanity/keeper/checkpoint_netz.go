@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
@@ -42,13 +43,15 @@ import (
 //
 // # GRENZEN
 //
-// Rumpf hoechstens 64 KiB; hoechstens checkpointGleichzeitig Anfragen in
-// Arbeit (sonst 503); die Ratenbegrenzung je IP wie /api/leitung
-// (Validatoren sind frei, Fremde begrenzt). Ein Vorschlag kostet Fremde
-// nichts: er scheitert an der Leiter-Sicht, bevor gerechnet wird
-// (checkpointVorschlagAnnehmen). Ein Zertifikat kostet bis zu einer Recovery
-// je Unterschrift -- erst nach den billigen Pruefungen
-// (checkpointGegenKette).
+// Nur Validatoren (IP in der Freiliste der Leitung, rpc_frei.go) erreichen
+// /api/checkpoint -- Fremde bekommen 403, bevor gelesen wird (Pruefung von
+// 5b, MITTEL 1). Rumpf hoechstens 64 KiB, mit Lesefrist gelesen, BEVOR ein
+// Platz belegt wird (sonst hielten vier langsame Ruempfe alle Plaetze);
+// hoechstens checkpointGleichzeitig in Arbeit (sonst 503). Erst nach dem
+// Laden des letzten Checkpoints (checkpointBereit) wird geantwortet -- sonst
+// fehlte die Kettenpruefung (MITTEL 2). Datenbank-Abfragen mit Zeitgrenze.
+// Ziele des Leiters nur http(s) mit Host. Die Tabelle haelt die juengsten
+// checkpointAufbewahren Zertifikate.
 //
 // # WAS NICHT GESCHIEHT
 //
@@ -65,6 +68,8 @@ const (
 	checkpointWahlSchritte   = 5000
 	checkpointWahlMindestAlt = 150
 	checkpointRumpfGrenze    = 64 << 10
+	checkpointLeseFrist      = 5 * time.Second
+	checkpointAufbewahren    = 1440 // ein Tag bei einem je Minute
 )
 
 func checkpointsAn() bool {
@@ -86,7 +91,9 @@ func checkpointZertifikatTabelle(db *sql.DB) error {
 	if _, da := checkpointZertTabelleDa.Load(db); da {
 		return nil
 	}
-	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS checkpoint_zertifikate (
+	ctx, abbrechen := context.WithTimeout(context.Background(), 5*time.Second)
+	defer abbrechen()
+	_, err := db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS checkpoint_zertifikate (
 		zeit  BIGINT PRIMARY KEY,
 		hash  TEXT NOT NULL,
 		hoehe BIGINT NOT NULL,
@@ -107,8 +114,10 @@ func (dag *BlockDAG) checkpointLetzterLaden() error {
 	if err := checkpointZertifikatTabelle(db); err != nil {
 		return err
 	}
+	ctx, abbrechen := context.WithTimeout(context.Background(), 5*time.Second)
+	defer abbrechen()
 	var daten string
-	err := db.QueryRow(`SELECT daten FROM checkpoint_zertifikate ORDER BY zeit DESC LIMIT 1`).Scan(&daten)
+	err := db.QueryRowContext(ctx, `SELECT daten FROM checkpoint_zertifikate ORDER BY zeit DESC LIMIT 1`).Scan(&daten)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
@@ -135,7 +144,13 @@ func (dag *BlockDAG) letzterCheckpoint() *KettenCheckpoint {
 // Checkpoint speichern. Geprueft wie jedes fremde: Kette, Komitee,
 // Unterschriften, und es muss den bisherigen letzten in seiner
 // Vergangenheit haben.
+//
+// Ganz unter checkpointLetzterMu (Pruefung von 5b, NIEDRIG 3): zwei
+// gleichzeitige Zertifikate auf verschiedenen Zweigen bestuenden sonst beide
+// die Pruefung gegen denselben letzten.
 func (dag *BlockDAG) checkpointZertifikatAnnehmen(z CheckpointZertifikat, jetzt int64) error {
+	dag.checkpointLetzterMu.Lock()
+	defer dag.checkpointLetzterMu.Unlock()
 	letzter := dag.letzterCheckpoint()
 	if letzter != nil && z.Hash == letzter.Hash {
 		return nil // schon da
@@ -161,16 +176,22 @@ func (dag *BlockDAG) checkpointZertifikatAnnehmen(z CheckpointZertifikat, jetzt 
 	daten, _ := json.Marshal(z)
 	ctx, abbrechen := context.WithTimeout(context.Background(), 5*time.Second)
 	defer abbrechen()
-	if _, err := dag.state.db.ExecContext(ctx, `INSERT INTO checkpoint_zertifikate (zeit, hash, hoehe, daten) VALUES ($1, $2, $3, $4) ON CONFLICT (zeit) DO NOTHING`,
-		z.Zeit, z.Hash, z.Hoehe, string(daten)); err != nil {
+	res, err := dag.state.db.ExecContext(ctx, `INSERT INTO checkpoint_zertifikate (zeit, hash, hoehe, daten) VALUES ($1, $2, $3, $4) ON CONFLICT (zeit) DO NOTHING`,
+		z.Zeit, z.Hash, z.Hoehe, string(daten))
+	if err != nil {
 		return fmt.Errorf("nicht speicherbar: %w", err)
 	}
-	dag.checkpointLetzterMu.Lock()
-	defer dag.checkpointLetzterMu.Unlock()
-	if alt := dag.checkpointLetzter.Load(); alt == nil || z.Zeit > alt.Zeit {
-		k := zertifikatKopie(&z)
-		dag.checkpointLetzter.Store(k)
+	if n, err := res.RowsAffected(); err != nil || n != 1 {
+		// Schon gespeichert: derselbe Checkpoint (etwa nach einem Neustart
+		// erneut empfangen) ist in Ordnung, ein anderer zur selben Zeit nicht.
+		var hash string
+		if err := dag.state.db.QueryRowContext(ctx, `SELECT hash FROM checkpoint_zertifikate WHERE zeit = $1`, z.Zeit).Scan(&hash); err != nil || hash != z.Hash {
+			return fmt.Errorf("Zeit %d schon mit einem anderen Checkpoint belegt", z.Zeit)
+		}
 	}
+	// Aufbewahren: die juengsten checkpointAufbewahren.
+	dag.state.db.ExecContext(ctx, `DELETE FROM checkpoint_zertifikate WHERE zeit < (SELECT zeit FROM checkpoint_zertifikate ORDER BY zeit DESC OFFSET $1 LIMIT 1)`, checkpointAufbewahren-1)
+	dag.checkpointLetzter.Store(zertifikatKopie(&z))
 	return nil
 }
 
@@ -189,14 +210,30 @@ func (a *APIServer) handleCheckpoint(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"Checkpoints aus"}`, http.StatusNotFound)
 		return
 	}
+	if !a.blockchain.checkpointBereit.Load() {
+		http.Error(w, `{"error":"letzter Checkpoint nicht geladen"}`, http.StatusServiceUnavailable)
+		return
+	}
 	if r.Method != http.MethodPost {
 		http.Error(w, `{"error":"POST"}`, http.StatusMethodNotAllowed)
 		return
 	}
-	if !rpcRateLimitFrei(r) && rpcRateLimited(clientIP(r)) {
-		http.Error(w, `{"error":"rate limited"}`, http.StatusTooManyRequests)
+	// Nur der Leiter ruft das legitim auf: Fremde nie (vor dem Lesen).
+	if !rpcRateLimitFrei(r) {
+		http.Error(w, `{"error":"nur Validatoren"}`, http.StatusForbidden)
 		return
 	}
+	// Erst lesen (mit Frist), dann einen Platz belegen -- wie
+	// handleValidatorBindung (Pruefung von #326, B). Nach einem Fehler
+	// bleibt die Frist (net/http verwirft den Rest des Rumpfs).
+	rc := http.NewResponseController(w)
+	_ = rc.SetReadDeadline(time.Now().Add(checkpointLeseFrist))
+	rumpf, err := io.ReadAll(http.MaxBytesReader(w, r.Body, checkpointRumpfGrenze))
+	if err != nil {
+		http.Error(w, `{"error":"unlesbar"}`, http.StatusBadRequest)
+		return
+	}
+	_ = rc.SetReadDeadline(time.Time{})
 	select {
 	case checkpointInArbeit <- struct{}{}:
 		defer func() { <-checkpointInArbeit }()
@@ -205,8 +242,7 @@ func (a *APIServer) handleCheckpoint(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var m CheckpointNachricht
-	dec := json.NewDecoder(io.LimitReader(r.Body, checkpointRumpfGrenze))
-	if err := dec.Decode(&m); err != nil {
+	if err := json.Unmarshal(rumpf, &m); err != nil {
 		http.Error(w, `{"error":"unlesbar"}`, http.StatusBadRequest)
 		return
 	}
@@ -312,6 +348,7 @@ var checkpointNetzStarten = func(dag *BlockDAG, l *Leitung) {
 		fmt.Printf("[CHECKPOINT] ✗ letzter Checkpoint nicht lesbar: %v -- Checkpoints bleiben aus\n", err)
 		return
 	}
+	dag.checkpointBereit.Store(true)
 	fmt.Println("[CHECKPOINT] ✓ an (noch keine Konsensregel)")
 	SafeGoroutine("checkpoint-leiter", func() {
 		t := time.NewTicker(5 * time.Second)
@@ -420,7 +457,7 @@ func (dag *BlockDAG) checkpointRunde(ich string, term uint64, urls map[string]st
 	// Ziele: Komiteemitglieder mit bekannter URL.
 	ziele := map[string]string{}
 	for a, u := range urls {
-		if u != "" && a != ich && sammler.komitee[a] && len(ziele) < checkpointHoechstZiele {
+		if a != ich && sammler.komitee[a] && checkpointZielGueltig(u) && len(ziele) < checkpointHoechstZiele {
 			ziele[a] = strings.TrimRight(u, "/")
 		}
 	}
@@ -463,4 +500,15 @@ func (dag *BlockDAG) checkpointRunde(ich string, term uint64, urls map[string]st
 	}
 	wg.Wait()
 	return z, nil
+}
+
+// checkpointZielGueltig: nur http(s) mit Host, ohne Nutzerdaten, Abfrage
+// oder Fragment. (Welche Hosts erlaubt sind, regelt die Leitung beim
+// Setzen der URL -- OFFEN: zentral nur oeffentliche oder freigegebene.)
+func checkpointZielGueltig(roh string) bool {
+	u, err := url.Parse(roh)
+	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+		return false
+	}
+	return u.Scheme == "http" || u.Scheme == "https"
 }

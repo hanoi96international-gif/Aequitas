@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -47,7 +48,7 @@ func neuerNetzFall(t *testing.T) *netzFall {
 		f.knoten = append(f.knoten, d)
 	}
 	for i, a := range f.adr {
-		f.urls[a] = fmt.Sprintf("knoten%d", i)
+		f.urls[a] = fmt.Sprintf("http://knoten%d", i)
 	}
 	return f
 }
@@ -59,7 +60,7 @@ func (f *netzFall) senden(jetzt int64) checkpointSender {
 			return nil, errors.New("aus")
 		}
 		var i int
-		fmt.Sscanf(url, "knoten%d", &i)
+		fmt.Sscanf(url, "http://knoten%d", &i)
 		antw, _, err := f.knoten[i].checkpointEmpfangen(m, f.adr[0], 7, jetzt)
 		if err != nil {
 			return nil, err
@@ -127,11 +128,11 @@ func TestCheckpointRunde_NurNachfolger_RealDB(t *testing.T) {
 // Zertifikat, niemand speichert etwas.
 func TestCheckpointRunde_Ausfall_RealDB(t *testing.T) {
 	f := neuerNetzFall(t)
-	f.aus["knoten3"] = true
+	f.aus["http://knoten3"] = true
 	if z, err := f.runde(t, f.blocks[1]); err != nil || z == nil {
 		t.Fatalf("einer aus: %v %v", z, err)
 	}
-	f.aus["knoten2"] = true
+	f.aus["http://knoten2"] = true
 	z, err := f.runde(t, f.blocks[2])
 	if err != nil || z != nil {
 		t.Fatalf("zwei aus: %v %v", z, err)
@@ -195,14 +196,19 @@ func TestCheckpointEmpfangen_Art(t *testing.T) {
 
 func TestHandleCheckpoint_Grenzen(t *testing.T) {
 	cs := &ChainState{}
-	a := &APIServer{state: cs, blockchain: newOrphanTestDAG()}
-	frage := func(methode, rumpf string) int {
+	dag := newOrphanTestDAG()
+	a := &APIServer{state: cs, blockchain: dag}
+	alt := rpcRateLimitFreiListe.Load()
+	t.Cleanup(func() { rpcRateLimitFreiListe.Store(alt) })
+	rpcRateLimitFreiErgaenzen([]string{"10.9.8.7"})
+	frageVon := func(ip, methode, rumpf string) int {
 		req := httptest.NewRequest(methode, "/api/checkpoint", strings.NewReader(rumpf))
-		req.RemoteAddr = "10.9.8.7:1234"
+		req.RemoteAddr = ip + ":1234"
 		w := httptest.NewRecorder()
 		a.handleCheckpoint(w, req)
 		return w.Code
 	}
+	frage := func(methode, rumpf string) int { return frageVon("10.9.8.7", methode, rumpf) }
 	t.Setenv(checkpointsEnv, "")
 	if c := frage("POST", "{}"); c != http.StatusNotFound {
 		t.Fatalf("aus: %d", c)
@@ -212,8 +218,18 @@ func TestHandleCheckpoint_Grenzen(t *testing.T) {
 		t.Fatalf("ohne Leitung: %d", c)
 	}
 	cs.leitung.Store(NeueLeitung("0x"+strings.Repeat("1", 40), "", []string{"0x" + strings.Repeat("1", 40)}, "", true, LeitSpeicher{}, testKonfig(), LeitUmgebung{}, time.Now()))
+	// Letzter Checkpoint nicht geladen: keine Antwort (sonst fehlte die
+	// Kettenpruefung).
+	if c := frage("POST", "{}"); c != http.StatusServiceUnavailable {
+		t.Fatalf("nicht bereit: %d", c)
+	}
+	dag.checkpointBereit.Store(true)
 	if c := frage("GET", ""); c != http.StatusMethodNotAllowed {
 		t.Fatalf("GET: %d", c)
+	}
+	// Fremde (nicht in der Freiliste) nie -- auch nicht mit gueltigem Rumpf.
+	if c := frageVon("10.9.8.8", "POST", `{"art":"x"}`); c != http.StatusForbidden {
+		t.Fatalf("Fremder: %d", c)
 	}
 	if c := frage("POST", `{"art":"x"}`); c != http.StatusBadRequest {
 		t.Fatalf("Art: %d", c)
@@ -231,6 +247,101 @@ func TestHandleCheckpoint_Grenzen(t *testing.T) {
 	}
 	if c != http.StatusServiceUnavailable {
 		t.Fatalf("ausgelastet: %d", c)
+	}
+}
+
+// langsamRumpf: liefert nie etwas, bis zu.
+type langsamRumpf struct{ zu chan struct{} }
+
+func (l langsamRumpf) Read([]byte) (int, error) { <-l.zu; return 0, io.EOF }
+
+// Vier haengende Ruempfe belegen keinen Platz: eine fuenfte Anfrage wird
+// trotzdem bearbeitet (Pruefung von 5b, MITTEL 1).
+func TestHandleCheckpoint_LangsameRuempfe(t *testing.T) {
+	cs := &ChainState{}
+	dag := newOrphanTestDAG()
+	dag.checkpointBereit.Store(true)
+	a := &APIServer{state: cs, blockchain: dag}
+	alt := rpcRateLimitFreiListe.Load()
+	t.Cleanup(func() { rpcRateLimitFreiListe.Store(alt) })
+	rpcRateLimitFreiErgaenzen([]string{"10.9.8.7"})
+	t.Setenv(checkpointsEnv, "an")
+	cs.leitung.Store(NeueLeitung("0x"+strings.Repeat("1", 40), "", []string{"0x" + strings.Repeat("1", 40)}, "", true, LeitSpeicher{}, testKonfig(), LeitUmgebung{}, time.Now()))
+	zu := make(chan struct{})
+	var wg sync.WaitGroup
+	for i := 0; i < checkpointGleichzeitig; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			req := httptest.NewRequest("POST", "/api/checkpoint", langsamRumpf{zu})
+			req.RemoteAddr = "10.9.8.7:1"
+			a.handleCheckpoint(httptest.NewRecorder(), req)
+		}()
+	}
+	time.Sleep(100 * time.Millisecond)
+	req := httptest.NewRequest("POST", "/api/checkpoint", strings.NewReader(`{"art":"x"}`))
+	req.RemoteAddr = "10.9.8.7:1"
+	w := httptest.NewRecorder()
+	a.handleCheckpoint(w, req)
+	close(zu)
+	wg.Wait()
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("fuenfte Anfrage: %d -- erwartet bearbeitet (400 fuer Art x), nicht 503", w.Code)
+	}
+}
+
+// Zwei gleichzeitige gueltige Zertifikate auf verschiedenen Zweigen (b2 und
+// der Seitenblock, beide nach b0): nur eines wird letzter, und das andere
+// wird abgewiesen -- die Kette bricht nicht (Pruefung von 5b, NIEDRIG 3).
+func TestCheckpointZertifikat_GleichzeitigeZweige_RealDB(t *testing.T) {
+	f := neuerNetzFall(t)
+	if z, err := f.runde(t, f.blocks[0]); err != nil || z == nil {
+		t.Fatalf("Runde 0: %v %v", z, err)
+	}
+	zert := func(b *Block) CheckpointZertifikat {
+		c := f.vorschlag(t, b)
+		z := CheckpointZertifikat{KettenCheckpoint: c}
+		for _, k := range f.keys[:3] {
+			u, _ := checkpointUnterschreiben(c, k)
+			z.Unterschriften = append(z.Unterschriften, u)
+		}
+		zertifikatOrdnen(&z)
+		return z
+	}
+	// b1 statt b2, damit der Seitenblock (Eltern b0) und b1 (Eltern b0)
+	// zwei Zweige nach b0 sind und keiner Vorfahr des anderen.
+	z1, z2 := zert(f.blocks[1]), zert(f.seite)
+	jetzt := f.seite.Timestamp + 200
+	d := f.knoten[2]
+	var wg sync.WaitGroup
+	var ok sync.Map
+	for i, z := range []CheckpointZertifikat{z1, z2} {
+		wg.Add(1)
+		go func(i int, z CheckpointZertifikat) {
+			defer wg.Done()
+			if err := d.checkpointZertifikatAnnehmen(z, jetzt); err == nil {
+				ok.Store(i, true)
+			}
+		}(i, z)
+	}
+	wg.Wait()
+	n := 0
+	ok.Range(func(any, any) bool { n++; return true })
+	if n == 2 {
+		t.Fatal("beide Zweige angenommen -- Kette gebrochen")
+	}
+}
+
+func TestCheckpointZielGueltig(t *testing.T) {
+	for _, u := range []string{"http://1.2.3.4:8080", "https://knoten.example"} {
+		if !checkpointZielGueltig(u) {
+			t.Fatalf("%s abgewiesen", u)
+		}
+	}
+	for _, u := range []string{"", "knoten0", "file:///etc/passwd", "gopher://x", "http://", "http://a@b", "http://x/?y=1", "http://x#y", "ftp://x"} {
+		if checkpointZielGueltig(u) {
+			t.Fatalf("%s angenommen", u)
+		}
 	}
 }
 

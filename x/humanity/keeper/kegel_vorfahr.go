@@ -1,9 +1,12 @@
 package keeper
 
 import (
+	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/lib/pq"
 )
@@ -33,6 +36,9 @@ import (
 // (errVorfahrZuGross).
 
 const vorfahrStapel = 1000
+
+// kopfLeserFrist: Zeitgrenze je Abfrage der Koepfe.
+const kopfLeserFrist = 5 * time.Second
 
 // Grenzen der Suche. Variablen nur fuer Tests.
 var (
@@ -125,7 +131,20 @@ func vorfahrSuchen(lies kopfLeser, eltern []string, ziel string, grenze int64) (
 // kopfLeserDB: die Koepfe aus chain_blocks.
 func kopfLeserDB(q sqlExecutor) kopfLeser {
 	return func(hashes []string) (map[string]blockKopf, error) {
-		rows, err := q.Query(`SELECT hash, height, timestamp, parent_hashes FROM chain_blocks WHERE hash = ANY($1)`, pq.Array(hashes))
+		const frage = `SELECT hash, height, timestamp, parent_hashes FROM chain_blocks WHERE hash = ANY($1)`
+		var rows *sql.Rows
+		var err error
+		// Mit Zeitgrenze, wo moeglich (Pruefung von 5b, NIEDRIG 4): eine
+		// haengende Datenbank haelt sonst Plaetze ohne Grenze.
+		if qc, ok := q.(interface {
+			QueryContext(context.Context, string, ...interface{}) (*sql.Rows, error)
+		}); ok {
+			ctx, abbrechen := context.WithTimeout(context.Background(), kopfLeserFrist)
+			defer abbrechen()
+			rows, err = qc.QueryContext(ctx, frage, pq.Array(hashes))
+		} else {
+			rows, err = q.Query(frage, pq.Array(hashes))
+		}
 		if err != nil {
 			return nil, err
 		}

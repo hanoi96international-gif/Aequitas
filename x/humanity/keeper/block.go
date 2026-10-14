@@ -322,6 +322,9 @@ type BlockDAG struct {
 	checkpointLetzter   atomic.Pointer[CheckpointZertifikat]
 	checkpointLetzterMu sync.Mutex
 	checkpointStand     checkpointStandDaten
+	// checkpointBereit: der letzte Checkpoint ist geladen -- vorher
+	// antwortet /api/checkpoint nicht (sonst fehlte die Kettenpruefung).
+	checkpointBereit atomic.Bool
 
 	// jemalsAufgeholt: hat dieser Prozess je alle Seeds sauber eingeholt?
 	// Entscheidet, ob der Notausstieg des Sync-Tors gelten darf -- siehe die
