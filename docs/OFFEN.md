@@ -299,9 +299,11 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
       Leiter unterschrieben und dauerhaft je Slot gemerkt; Mitglied nimmt
       nur den Leiter seiner Sicht an, verlangt den letzten Checkpoint in der
       Vergangenheit; Sammler je Mitglied eine Unterschrift; Beweis für
-      Slot-Verbrauch; Leiterwechsel nach 5 leeren Slots. Offen:
-      Leitungswege mit Rate-Limit, Obergrenze über Leiterwechsel hinweg,
-      Zertifikat-Transaktion (Baustein 6).
+      Slot-Verbrauch; Leiterwechsel nach 5 leeren Slots (gemeldet).
+      **Baustein 5b (`checkpoint_netz.go`, `AEQUITAS_CHECKPOINTS=an`):**
+      Vorschlag, Unterschriften und Zertifikat über `/api/checkpoint`;
+      letzter Checkpoint dauerhaft je Knoten. Offen: Obergrenze über
+      Leiterwechsel hinweg, Zertifikat-Transaktion (Baustein 6).
       **Fahrplan:** `docs/CHECKPOINT_FAHRPLAN.md` (mit den Entscheidungen
       für den Betreiber).
       **Vor dem Anschluss als Konsensregel (Prüfung Baustein 2, HOCH):**
