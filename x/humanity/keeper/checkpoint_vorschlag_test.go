@@ -3,6 +3,7 @@ package keeper
 import (
 	"encoding/hex"
 	"errors"
+	"math/big"
 	"strings"
 	"sync"
 	"testing"
@@ -18,8 +19,22 @@ type vorschlagFall struct {
 	seite  *Block
 }
 
+// hohesS01: dieselbe Unterschrift mit s -> n-s und v 0/1 gekippt -- die
+// zweite gueltige Schreibweise (nicht kanonisch).
+func hohesS01(roh []byte) []byte {
+	hoch := append([]byte(nil), roh...)
+	s := new(big.Int).SetBytes(hoch[32:64])
+	s.Sub(crypto.S256().Params().N, s)
+	s.FillBytes(hoch[32:64])
+	hoch[64] ^= 1
+	return hoch
+}
+
 func neuerVorschlagFall(t *testing.T, mitDB bool) *vorschlagFall {
 	t.Helper()
+	checkpointNachfolgerMu.Lock()
+	checkpointNachfolgerUrteile = map[[2]string]bool{}
+	checkpointNachfolgerMu.Unlock()
 	f := &vorschlagFall{unterschriftFall: neuerUnterschriftFall(t, mitDB), koepfe: &speicherKette{k: map[string]blockKopf{}}}
 	for i, b := range f.blocks {
 		var eltern []string
@@ -67,7 +82,7 @@ func TestPruefeVorschlag(t *testing.T) {
 	// Hohes s: zweite Schreibweise derselben Unterschrift.
 	roh, _ := hex.DecodeString(v.Sig)
 	hoch := v
-	hoch.Sig = hex.EncodeToString(hohesS(roh))
+	hoch.Sig = hex.EncodeToString(hohesS01(roh))
 	// Die Unterschrift eines Mitglieds unter den Checkpoint gilt nicht als
 	// Vorschlag (eigene Domaene).
 	quer := v
@@ -131,6 +146,9 @@ func TestCheckpointVorschlagAnnehmen_Regeln(t *testing.T) {
 		"Lesefehler":            {v, f.adr[1], &letzter, kaputt.leser()},
 		"ohne Leser":            {v, f.adr[1], &letzter, nil},
 	} {
+		checkpointNachfolgerMu.Lock()
+		checkpointNachfolgerUrteile = map[[2]string]bool{} // jeder Fall sucht selbst
+		checkpointNachfolgerMu.Unlock()
 		if _, err := f.dag.checkpointVorschlagAnnehmen(x.v, x.leiter, 7, x.letzter, x.lies, jetzt); err == nil || strings.Contains(err.Error(), "Datenbank") {
 			t.Fatalf("%s: %v -- erwartet eine Ablehnung vor dem Merker", name, err)
 		}
@@ -200,11 +218,13 @@ func TestCheckpointVorschlagDoppelt(t *testing.T) {
 	andererLeiter, _ := checkpointVorschlagen(b.KettenCheckpoint, 7, f.keys[2])
 	gefaelscht := b
 	gefaelscht.Sig = andererLeiter.Sig
+	andereAmtszeit, _ := checkpointVorschlagen(b.KettenCheckpoint, 8, f.keys[1])
 	for name, x := range map[string]CheckpointVorschlag{
-		"derselbe":       a,
-		"anderer Slot":   andererSlot,
-		"anderer Leiter": andererLeiter,
-		"gefaelscht":     gefaelscht,
+		"derselbe":        a,
+		"anderer Slot":    andererSlot,
+		"anderer Leiter":  andererLeiter,
+		"gefaelscht":      gefaelscht,
+		"andere Amtszeit": andereAmtszeit,
 	} {
 		if checkpointVorschlagDoppelt(a, x) {
 			t.Fatalf("%s: als Beweis gewertet", name)
@@ -253,7 +273,7 @@ func TestCheckpointSammler(t *testing.T) {
 	falscherVon.Von = f.adr[3]
 	roh, _ := hex.DecodeString(unter(2).Sig)
 	hoch := unter(2)
-	hoch.Sig = hex.EncodeToString(hohesS(roh))
+	hoch.Sig = hex.EncodeToString(hohesS01(roh))
 	for name, u := range map[string]CheckpointUnterschrift{
 		"fremd": aussen, "anderer Block": andererBlock, "falscher Absender": falscherVon, "hohes s": hoch,
 	} {
@@ -301,7 +321,7 @@ func TestCheckpointSammler_Gleichzeitig(t *testing.T) {
 	}
 	var wg sync.WaitGroup
 	var mu sync.Mutex
-	gesehen := map[*CheckpointZertifikat]bool{}
+	gesehen := map[string]bool{}
 	for r := 0; r < 8; r++ {
 		for i := range f.keys {
 			wg.Add(1)
@@ -313,8 +333,12 @@ func TestCheckpointSammler_Gleichzeitig(t *testing.T) {
 					t.Error(err)
 				}
 				if z != nil {
+					var von []string
+					for _, x := range z.Unterschriften {
+						von = append(von, x.Von)
+					}
 					mu.Lock()
-					gesehen[z] = true
+					gesehen[strings.Join(von, ",")] = true
 					mu.Unlock()
 				}
 			}(i)
@@ -325,8 +349,181 @@ func TestCheckpointSammler_Gleichzeitig(t *testing.T) {
 		t.Fatalf("%d verschiedene Zertifikate", len(gesehen))
 	}
 	for z := range gesehen {
-		if len(z.Unterschriften) != checkpointQuorum(len(komitee)) {
-			t.Fatalf("%d Unterschriften", len(z.Unterschriften))
+		if n := len(strings.Split(z, ",")); n != checkpointQuorum(len(komitee)) {
+			t.Fatalf("%d Unterschriften", n)
 		}
+	}
+}
+
+// Die Reihenfolge: ein Vorschlag eines Fremden kostet kein Komitee (hier
+// waere es nicht bestimmbar) -- er scheitert vorher an der Leiter-Sicht,
+// am Alter oder am Nachspielen.
+func TestCheckpointVorschlagAnnehmen_BilligZuerst(t *testing.T) {
+	f := neuerVorschlagFall(t, false)
+	b2 := f.blocks[2]
+	jetzt := b2.Timestamp + 200
+	v := f.leiterVorschlag(t, b2)
+	f.dag.state.erzeugerRegister.Store(nil)
+	unbekannt := v
+	unbekannt.Hash = cpHash(9999)
+	for name, x := range map[string]struct {
+		v      CheckpointVorschlag
+		leiter string
+		term   uint64
+		jetzt  int64
+	}{
+		"fremder Leiter": {v, f.adr[2], 7, jetzt},
+		"alte Amtszeit":  {v, f.adr[1], 6, jetzt},
+		"zu alt":         {v, f.adr[1], 7, b2.Timestamp + checkpointHoechstensAlt + 1},
+		"zu frisch":      {v, f.adr[1], 7, b2.Timestamp + 1},
+		"unbekannt":      {unbekannt, f.adr[1], 7, jetzt},
+	} {
+		_, err := f.dag.checkpointVorschlagAnnehmen(x.v, x.leiter, x.term, nil, nil, x.jetzt)
+		if err == nil || strings.Contains(err.Error(), "Komitee") {
+			t.Fatalf("%s: %v -- erwartet eine Ablehnung vor dem Komitee", name, err)
+		}
+	}
+	if _, err := f.dag.checkpointVorschlagAnnehmen(v, f.adr[1], 7, nil, nil, jetzt); err == nil || !strings.Contains(err.Error(), "Komitee") {
+		t.Fatalf("gueltiger Vorschlag: %v", err)
+	}
+}
+
+// Ein wiederholter Vorschlag sucht die Vorfahren nicht noch einmal -- auch
+// nicht, wenn er abgewiesen wurde. Ein Lesefehler wird nicht gemerkt.
+func TestCheckpointVorschlagAnnehmen_WiederholungSuchtNicht(t *testing.T) {
+	f := neuerVorschlagFall(t, false)
+	b0, b2 := f.blocks[0], f.blocks[2]
+	jetzt := b2.Timestamp + 200
+	letzter := f.vorschlag(t, b0)
+	v := f.leiterVorschlag(t, b2)
+	kaputt := &speicherKette{fehler: errors.New("Lesefehler")}
+	if _, err := f.dag.checkpointVorschlagAnnehmen(v, f.adr[1], 7, &letzter, kaputt.leser(), jetzt); err == nil || !strings.Contains(err.Error(), "nicht pruefbar") {
+		t.Fatalf("Lesefehler: %v", err)
+	}
+	for i := 0; i < 20; i++ {
+		f.dag.checkpointVorschlagAnnehmen(v, f.adr[1], 7, &letzter, f.koepfe.leser(), jetzt)
+	}
+	if f.koepfe.abfragen == 0 || f.koepfe.abfragen > 3 {
+		t.Fatalf("%d Abfragen fuer 20 gleiche Vorschlaege", f.koepfe.abfragen)
+	}
+	vorher := f.koepfe.abfragen
+	nichtVorfahr := f.vorschlag(t, f.blocks[1])
+	seite := f.leiterVorschlag(t, f.seite)
+	for i := 0; i < 20; i++ {
+		if _, err := f.dag.checkpointVorschlagAnnehmen(seite, f.adr[1], 7, &nichtVorfahr, f.koepfe.leser(), jetzt); err == nil || !strings.Contains(err.Error(), "nicht in der Vergangenheit") {
+			t.Fatalf("Seitenblock: %v", err)
+		}
+	}
+	if d := f.koepfe.abfragen - vorher; d == 0 || d > 3 {
+		t.Fatalf("%d Abfragen fuer 20 gleiche abgewiesene Vorschlaege", d)
+	}
+}
+
+// Leiter-Seite ohne Datenbank: jede Ablehnung vor dem Merker.
+func TestCheckpointVorschlagErstellen_Regeln(t *testing.T) {
+	f := neuerVorschlagFall(t, false)
+	b2 := f.blocks[2]
+	jetzt := b2.Timestamp + 200
+	if _, _, err := f.dag.checkpointVorschlagErstellen(b2.Hash, 7, jetzt); err == nil || !strings.Contains(err.Error(), "Datenbank") {
+		t.Fatalf("ohne Datenbank: %v", err)
+	}
+	for name, x := range map[string]struct {
+		hash  string
+		jetzt int64
+	}{
+		"unbekannt": {cpHash(9999), jetzt},
+		"zu frisch": {b2.Hash, b2.Timestamp + 1},
+		"zu alt":    {b2.Hash, b2.Timestamp + checkpointHoechstensAlt + 1},
+	} {
+		if _, _, err := f.dag.checkpointVorschlagErstellen(x.hash, 7, x.jetzt); err == nil || strings.Contains(err.Error(), "Datenbank") {
+			t.Fatalf("%s: %v", name, err)
+		}
+	}
+	k, _ := crypto.GenerateKey()
+	f.dag.signingKey = k
+	f.dag.selfProposer = strings.ToLower(crypto.PubkeyToAddress(k.PublicKey).Hex())
+	if _, _, err := f.dag.checkpointVorschlagErstellen(b2.Hash, 7, jetzt); err == nil || !strings.Contains(err.Error(), "nicht im Komitee") {
+		t.Fatalf("Leiter ausserhalb: %v", err)
+	}
+	f.dag.signingKey = nil
+	if _, _, err := f.dag.checkpointVorschlagErstellen(b2.Hash, 7, jetzt); err == nil {
+		t.Fatal("ohne Schluessel vorgeschlagen")
+	}
+	alt := checkpointProzessStart.Load()
+	checkpointProzessStart.Store(b2.Timestamp)
+	t.Cleanup(func() { checkpointProzessStart.Store(alt) })
+	f.dag.signingKey, f.dag.selfProposer = f.keys[0], f.adr[0]
+	if _, _, err := f.dag.checkpointVorschlagErstellen(b2.Hash, 7, jetzt); err == nil || !strings.Contains(err.Error(), "Start") {
+		t.Fatalf("vor dem Prozessstart: %v", err)
+	}
+}
+
+// Leiter-Seite mit Datenbank: der ganze Weg (Vorschlag, Unterschriften der
+// Mitglieder, Zertifikat), und je Slot nur ein Block -- auch nach einem
+// Neustart an derselben Datenbank. So entsteht nie ein Beweis gegen einen
+// ehrlichen Leiter.
+func TestCheckpointVorschlagErstellen_RealDB(t *testing.T) {
+	f := neuerVorschlagFall(t, true)
+	b2 := f.blocks[2]
+	jetzt := b2.Timestamp + 200
+	v, s, err := f.dag.checkpointVorschlagErstellen(b2.Hash, 7, jetzt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	komitee, _ := checkpointKomitee(f.dag.state.erzeugerRegister.Load(), b2.Timestamp, nil)
+	if err := pruefeVorschlag(v, f.adr[0], 7, komitee); err != nil {
+		t.Fatalf("eigener Vorschlag: %v", err)
+	}
+	var z *CheckpointZertifikat
+	for _, k := range f.keys[:3] {
+		u, _ := checkpointUnterschreiben(v.KettenCheckpoint, k)
+		if z, err = s.hinzu(u); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if z == nil || pruefeZertifikat(*z, komitee) != nil {
+		t.Fatal("kein gueltiges Zertifikat")
+	}
+	// Derselbe Block nochmal: derselbe Vorschlag.
+	if w, _, err := f.dag.checkpointVorschlagErstellen(b2.Hash, 7, jetzt+1); err != nil || w.Hash != v.Hash {
+		t.Fatalf("Wiederholung: %v", err)
+	}
+	// Ein anderer Block im selben Slot -- auch nach einem Neustart.
+	neu := newOrphanTestDAG()
+	neu.state, neu.signingKey, neu.selfProposer = f.dag.state, f.dag.signingKey, f.dag.selfProposer
+	neu.blocks, neu.replayedBlocks = f.dag.blocks, f.dag.replayedBlocks
+	for _, d := range []*BlockDAG{f.dag, neu} {
+		w, _, err := d.checkpointVorschlagErstellen(f.seite.Hash, 7, jetzt)
+		if !errors.Is(err, errCheckpointSlotBelegt) {
+			t.Fatalf("zweiter Block im Slot: %v", err)
+		}
+		if checkpointVorschlagDoppelt(v, w) {
+			t.Fatal("Beweis gegen den ehrlichen Leiter")
+		}
+	}
+}
+
+// Nach dem Zertifikat kostet eine Faelschung im Namen eines Mitglieds keine
+// Recovery mehr und aendert nichts; das gelieferte Zertifikat ist eine
+// Kopie.
+func TestCheckpointSammler_NachQuorum(t *testing.T) {
+	f := neuerVorschlagFall(t, false)
+	c := f.vorschlag(t, f.blocks[1])
+	komitee, _ := checkpointKomitee(f.dag.state.erzeugerRegister.Load(), c.Zeit, nil)
+	s, _ := neuerCheckpointSammler(c, komitee)
+	var z *CheckpointZertifikat
+	for _, k := range f.keys[:3] {
+		u, _ := checkpointUnterschreiben(c, k)
+		z, _ = s.hinzu(u)
+	}
+	if z == nil {
+		t.Fatal("kein Zertifikat")
+	}
+	z.Unterschriften[0].Sig = "kaputt"
+	falsch, _ := checkpointUnterschreiben(f.vorschlag(t, f.blocks[2]), f.keys[3])
+	falsch.Von = f.adr[3]
+	z2, err := s.hinzu(falsch)
+	if err != nil || z2 == nil || pruefeZertifikat(*z2, komitee) != nil {
+		t.Fatalf("nach Quorum: %v", err)
 	}
 }

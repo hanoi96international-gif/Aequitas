@@ -80,6 +80,61 @@ func checkpointVorschlagen(c KettenCheckpoint, term uint64, key *ecdsa.PrivateKe
 	return v, nil
 }
 
+// checkpointVorschlagErstellen: Leiter-Seite. Der Vorschlag fuer den hier
+// nachgespielten Block hash in Amtszeit term, und der Sammler fuer die
+// Unterschriften. Wie bei den Mitgliedern: je Slot hoechstens ein Block,
+// dauerhaft gemerkt (checkpoint_vorschlaege), BEVOR der Vorschlag
+// herausgeht, und nur Bloecke nach dem Start dieses Prozesses -- ein
+// ehrlicher Leiter liefert so nie einen Beweis gegen sich
+// (checkpointVorschlagDoppelt), auch nicht nach einem Neustart.
+func (dag *BlockDAG) checkpointVorschlagErstellen(hash string, term uint64, jetzt int64) (CheckpointVorschlag, *checkpointSammler, error) {
+	nein := func(f string, a ...interface{}) (CheckpointVorschlag, *checkpointSammler, error) {
+		return CheckpointVorschlag{}, nil, fmt.Errorf(f, a...)
+	}
+	if dag.signingKey == nil || dag.selfProposer == "" {
+		return nein("kein Signierschluessel")
+	}
+	hoehe, zeit, da := dag.nachgespielterBlockKopf(hash)
+	if !da {
+		return nein("Block %s hier nicht nachgespielt", kurzAdresse(hash))
+	}
+	if !erzeugerSchnittAktiv(zeit) {
+		return nein("vor erzeugerSchnittAb")
+	}
+	if zeit <= checkpointProzessStart.Load() {
+		return nein("Block vor dem Start dieses Prozesses")
+	}
+	if alter := jetzt - zeit; alter < zeitstempelRueckToleranz || alter > checkpointHoechstensAlt {
+		return nein("Block %d s alt -- vorgeschlagen wird zwischen %d und %d s", alter, zeitstempelRueckToleranz, checkpointHoechstensAlt)
+	}
+	if dag.state == nil {
+		return nein("kein Zustand")
+	}
+	komitee, err := checkpointKomitee(dag.state.erzeugerRegister.Load(), zeit, dag.festeErzeugerListe())
+	if err != nil {
+		return nein("Komitee nicht bestimmbar: %v", err)
+	}
+	if !komitee[dag.selfProposer] {
+		return nein("Leiter nicht im Komitee zur Blockzeit")
+	}
+	c := neuerCheckpoint(hoehe, hash, zeit, komitee)
+	s, err := neuerCheckpointSammler(c, komitee)
+	if err != nil {
+		return nein("%v", err)
+	}
+	if dag.state.db == nil {
+		return nein("keine Datenbank -- ohne dauerhaften Merker kein Vorschlag")
+	}
+	if err := dag.checkpointSlotMerken(checkpointMerkerVorschlag, c); err != nil {
+		return CheckpointVorschlag{}, nil, err
+	}
+	v, err := checkpointVorschlagen(c, term, dag.signingKey)
+	if err != nil {
+		return CheckpointVorschlag{}, nil, err
+	}
+	return v, s, nil
+}
+
 // vorschlagUnterschriftGueltig: kanonisch und vom genannten Leiter.
 func vorschlagUnterschriftGueltig(v CheckpointVorschlag) error {
 	if !istKanonischeAdresse(v.Leiter) {
@@ -121,12 +176,40 @@ func pruefeVorschlag(v CheckpointVorschlag, leiter string, term uint64, komitee 
 // Leiters. leiter/term: die eigene Sicht der Leitung. letzter: der juengste
 // zertifizierte Checkpoint, den dieses Mitglied kennt (nil: keiner). lies:
 // Koepfe fuer die Vorfahren-Suche.
+//
+// Reihenfolge (Pruefung des Bausteins, MITTEL 1/2): erst alles ohne
+// Rechenaufwand (Format, Leiter und Amtszeit der eigenen Sicht, Stichtag,
+// Startsperre, Alter, im Speicher nachgespielt), dann das Komitee, dann die
+// Recovery, zuletzt die Vorfahren-Suche -- deren Urteil wird je (Block,
+// letzter Checkpoint) begrenzt gemerkt, ein wiederholter Vorschlag sucht
+// nicht noch einmal.
 func (dag *BlockDAG) checkpointVorschlagAnnehmen(v CheckpointVorschlag, leiter string, term uint64, letzter *KettenCheckpoint, lies kopfLeser, jetzt int64) (CheckpointUnterschrift, error) {
 	nein := func(f string, a ...interface{}) (CheckpointUnterschrift, error) {
 		return CheckpointUnterschrift{}, fmt.Errorf(f, a...)
 	}
 	if err := v.gueltig(); err != nil {
 		return nein("Vorschlag ungueltig: %v", err)
+	}
+	if leiter == "" || v.Leiter != leiter {
+		return nein("Vorschlag von %s, Leiter ist %s", kurzAdresse(v.Leiter), kurzAdresse(leiter))
+	}
+	if v.Term != term {
+		return nein("Vorschlag aus Amtszeit %d, aktuell %d", v.Term, term)
+	}
+	if !erzeugerSchnittAktiv(v.Zeit) {
+		return nein("vor erzeugerSchnittAb")
+	}
+	if v.Zeit <= checkpointProzessStart.Load() {
+		return nein("Block vor dem Start dieses Prozesses")
+	}
+	if alter := jetzt - v.Zeit; alter < zeitstempelRueckToleranz || alter > checkpointHoechstensAlt {
+		return nein("Block %d s alt -- unterschrieben wird zwischen %d und %d s", alter, zeitstempelRueckToleranz, checkpointHoechstensAlt)
+	}
+	if letzter != nil && (v.Zeit <= letzter.Zeit || v.Hoehe <= letzter.Hoehe) {
+		return nein("Vorschlag (Zeit %d) nicht juenger als der letzte Checkpoint (Zeit %d)", v.Zeit, letzter.Zeit)
+	}
+	if _, _, da := dag.nachgespielterBlockKopf(v.Hash); !da {
+		return nein("Block %s hier nicht nachgespielt", kurzAdresse(v.Hash))
 	}
 	if dag.state == nil {
 		return nein("kein Zustand")
@@ -139,18 +222,13 @@ func (dag *BlockDAG) checkpointVorschlagAnnehmen(v CheckpointVorschlag, leiter s
 		return CheckpointUnterschrift{}, err
 	}
 	if letzter != nil {
-		if v.Zeit <= letzter.Zeit || v.Hoehe <= letzter.Hoehe {
-			return nein("Vorschlag (Zeit %d) nicht juenger als der letzte Checkpoint (Zeit %d)", v.Zeit, letzter.Zeit)
-		}
 		if lies == nil {
 			return nein("Vorfahren nicht pruefbar")
 		}
-		_, gefunden, vollstaendig, err := vorfahrSuchen(lies, []string{v.Hash}, letzter.Hash, letzter.Zeit)
+		gefunden, err := checkpointNachfolger(lies, v.Hash, *letzter)
 		switch {
 		case err != nil:
 			return nein("Vorfahren nicht pruefbar: %v", err)
-		case !vollstaendig:
-			return nein("Vorfahren unvollstaendig -- nicht pruefbar")
 		case !gefunden:
 			return nein("letzter Checkpoint %s nicht in der Vergangenheit des Vorschlags", kurzAdresse(letzter.Hash))
 		}
@@ -158,11 +236,54 @@ func (dag *BlockDAG) checkpointVorschlagAnnehmen(v CheckpointVorschlag, leiter s
 	return dag.checkpointMitunterschreiben(v.KettenCheckpoint, jetzt)
 }
 
+// checkpointNachfolgerUrteile: gemerkte Urteile der Vorfahren-Suche. Das
+// Urteil haengt nur an Hashes (die Eltern stehen im Blockhash) -- gemerkt
+// wird nur, was bei vollstaendigen Daten feststand. Begrenzt: bei
+// checkpointNachfolgerGrenze Eintraegen wird geleert.
+var (
+	checkpointNachfolgerMu      sync.Mutex
+	checkpointNachfolgerUrteile = map[[2]string]bool{}
+)
+
+const checkpointNachfolgerGrenze = 256
+
+var errCheckpointLueckeVorfahren = errors.New("Vorfahren unvollstaendig")
+
+// checkpointNachfolger: liegt letzter in der Vergangenheit von hash?
+// Fehler: nicht pruefbar (Lesefehler, Luecke, Grenze) -- heisst fuer den
+// Aufrufer keine Unterschrift und wird nicht gemerkt.
+func checkpointNachfolger(lies kopfLeser, hash string, letzter KettenCheckpoint) (bool, error) {
+	schluessel := [2]string{hash, letzter.Hash}
+	checkpointNachfolgerMu.Lock()
+	urteil, da := checkpointNachfolgerUrteile[schluessel]
+	checkpointNachfolgerMu.Unlock()
+	if da {
+		return urteil, nil
+	}
+	_, gefunden, vollstaendig, err := vorfahrSuchen(lies, []string{hash}, letzter.Hash, letzter.Zeit)
+	switch {
+	case err != nil: // auch die Grenze: nicht gemerkt, keine Unterschrift
+		return false, err
+	case !vollstaendig && !gefunden:
+		return false, errCheckpointLueckeVorfahren
+	}
+	checkpointNachfolgerMu.Lock()
+	if len(checkpointNachfolgerUrteile) >= checkpointNachfolgerGrenze {
+		checkpointNachfolgerUrteile = map[[2]string]bool{}
+	}
+	checkpointNachfolgerUrteile[schluessel] = gefunden
+	checkpointNachfolgerMu.Unlock()
+	return gefunden, nil
+}
+
 // checkpointVorschlagDoppelt: zwei gueltig unterschriebene Vorschlaege
-// desselben Leiters fuer denselben Slot mit verschiedenem Block -- Beweis
-// fuer Slot-Verbrauch.
+// desselben Leiters in derselben Amtszeit fuer denselben Slot mit
+// verschiedenem Block -- Beweis fuer Slot-Verbrauch. Verschiedene Amtszeiten
+// zaehlen nicht (Wiederwahl). Ein ehrlicher Leiter erzeugt keinen solchen
+// Beweis: checkpointVorschlagErstellen merkt den Slot dauerhaft vor dem
+// Versand. Strafbar erst, wenn die Leiter-Seite angeschlossen ist.
 func checkpointVorschlagDoppelt(a, b CheckpointVorschlag) bool {
-	if a.Leiter != b.Leiter || a.Hash == b.Hash {
+	if a.Leiter != b.Leiter || a.Term != b.Term || a.Hash == b.Hash {
 		return false
 	}
 	if checkpointSlot(a.Zeit) != checkpointSlot(b.Zeit) {
@@ -215,16 +336,32 @@ func neuerCheckpointSammler(c KettenCheckpoint, komitee map[string]bool) (*check
 	return &checkpointSammler{c: c, komitee: k, sigs: map[string]CheckpointUnterschrift{}}, nil
 }
 
-// hinzu: eine Unterschrift annehmen. Liefert das Zertifikat, sobald das
-// Quorum erreicht ist (danach jedes Mal dasselbe).
+// hinzu: eine Unterschrift annehmen. Liefert das Zertifikat (eine Kopie),
+// sobald das Quorum erreicht ist (danach jedes Mal).
+//
+// Reihenfolge (Pruefung, NIEDRIG 4): Form und Mitgliedschaft, dann unter der
+// Sperre "schon fertig" / "schon gezaehlt" -- erst danach die Recovery. Eine
+// Wiederholung oder eine Faelschung im Namen eines gezaehlten Mitglieds
+// kostet keine Recovery.
 func (s *checkpointSammler) hinzu(u CheckpointUnterschrift) (*CheckpointZertifikat, error) {
-	// Billig und ohne Sperre: Form und Mitgliedschaft.
 	if !istKanonischeAdresse(u.Von) || !s.komitee[u.Von] {
 		return nil, fmt.Errorf("%w: %s", errSammlerFremd, kurzAdresse(u.Von))
 	}
 	sig, ok := kanonischeSig(u.Sig)
 	if !ok {
 		return nil, fmt.Errorf("Unterschrift von %s nicht kanonisch", kurzAdresse(u.Von))
+	}
+	s.mu.Lock()
+	fertig, gezaehlt := s.fertig, false
+	if fertig == nil {
+		_, gezaehlt = s.sigs[u.Von]
+	}
+	s.mu.Unlock()
+	if fertig != nil {
+		return zertifikatKopie(fertig), nil
+	}
+	if gezaehlt {
+		return nil, nil
 	}
 	pub, err := crypto.SigToPub(s.c.signierHash(), sig)
 	if err != nil || strings.ToLower(crypto.PubkeyToAddress(*pub).Hex()) != u.Von {
@@ -233,7 +370,7 @@ func (s *checkpointSammler) hinzu(u CheckpointUnterschrift) (*CheckpointZertifik
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.fertig != nil {
-		return s.fertig, nil
+		return zertifikatKopie(s.fertig), nil
 	}
 	if _, da := s.sigs[u.Von]; !da {
 		s.sigs[u.Von] = u
@@ -250,5 +387,11 @@ func (s *checkpointSammler) hinzu(u CheckpointUnterschrift) (*CheckpointZertifik
 		return nil, fmt.Errorf("gesammeltes Zertifikat ungueltig: %v", err)
 	}
 	s.fertig = &z
-	return s.fertig, nil
+	return zertifikatKopie(s.fertig), nil
+}
+
+func zertifikatKopie(z *CheckpointZertifikat) *CheckpointZertifikat {
+	k := *z
+	k.Unterschriften = append([]CheckpointUnterschrift(nil), z.Unterschriften...)
+	return &k
 }

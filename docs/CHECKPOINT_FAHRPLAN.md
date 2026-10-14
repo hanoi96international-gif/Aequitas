@@ -87,19 +87,43 @@ jeder selbst, sondern:
 - **Doppelsignieren** ist festgelegt als: gleiche Kette, gleicher Slot
   (Slot-Länge steht im unterschriebenen Inhalt), verschiedener Blockhash.
   „Älterer Slot nach jüngerem“ ist nicht beweisbar und nie strafbar.
-- **Noch offen** (Prüfung von Baustein 5):
-  - Vorschläge vom Leiter unterschreiben lassen und prüfen – sonst
-    verbraucht jeder, der die Funktion erreicht, den Slot zuerst.
-  - Ein böswilliger Leiter kann Slots verbrauchen (jedem Mitglied einen
-    anderen Block schicken): Leiterwechsel nach k Slots ohne Zertifikat,
-    zwei Vorschläge desselben Leiters im selben Slot als Beweis sammeln.
-  - Der vorgeschlagene Block muss den letzten zertifizierten Checkpoint in
-    seiner Vergangenheit haben (sonst bilden Checkpoints keine Kette) und
-    in der Vergangenheit der eigenen Spitzen liegen.
+- **Leiter-Seite** (umgesetzt in `checkpoint_vorschlag.go`, schlafend):
+  - Der Leiter unterschreibt seinen Vorschlag (eigene Domäne, Amtszeit
+    darin) und merkt den Slot dauerhaft, bevor der Vorschlag herausgeht –
+    je Slot ein Block, auch nach einem Neustart; Startsperre wie bei den
+    Mitgliedern.
+  - Ein Mitglied nimmt nur den Vorschlag des Leiters **seiner** Sicht
+    (Adresse und Amtszeit) an, der zur Blockzeit selbst im Komitee ist.
+    Eine Fälschung verbraucht keinen Slot.
+  - Reihenfolge: erst alles ohne Rechenaufwand (Leiter, Amtszeit, Alter,
+    nachgespielt), dann Komitee, dann Recovery, zuletzt die Vorfahren-Suche;
+    deren Urteil wird begrenzt gemerkt (Wiederholungen suchen nicht neu).
+    Eine Wiederholung desselben Vorschlags wird ohne Tabellensperre erkannt.
+  - **Kette:** der Block muss jünger sein und den letzten zertifizierten
+    Checkpoint in seiner Vergangenheit haben; nicht prüfbar heißt keine
+    Unterschrift.
+  - **Slot-Verbrauch:** zwei gültig unterschriebene Vorschläge desselben
+    Leiters in derselben Amtszeit für denselben Slot mit verschiedenem Block
+    sind ein Beweis (`checkpointVorschlagDoppelt`); ein ehrlicher Leiter
+    erzeugt ihn wegen des Merkers nie. `checkpointLeiterStockt` meldet nach
+    5 leeren Slots über das Höchstalter hinaus, dass die Leitung wechseln
+    soll.
+  - **Sammeln:** je Mitglied eine Unterschrift, beim Eingang geprüft, nur
+    Mitglieder gespeichert (begrenzt durch das Komitee); Wiederholungen und
+    Fälschungen im Namen schon gezählter Mitglieder kosten keine Recovery.
+    Bei Quorum ein Zertifikat, das `pruefeZertifikat` besteht.
+- **Noch offen** vor dem Anschließen:
+  - Leitungswege: Nachrichten für Vorschlag und Unterschrift, Rate-Limit je
+    Absender.
+  - Jeder neue Amtsantritt setzt die Frist von `checkpointLeiterStockt` neu –
+    eine Folge böswilliger Leiter könnte so lange blockieren: eine
+    Obergrenze über Leiterwechsel hinweg (z. B. Frist ab dem letzten
+    Zertifikat, nicht ab dem Amtsantritt, sobald die Leitung ≥ 4 hat).
+  - Der Beweis für Slot-Verbrauch wird erst strafbar, wenn die Leiter-Seite
+    angeschlossen ist.
   - Betrieb: nie zwei Prozesse mit demselben Signierschlüssel zugleich.
-- Der Leiter sammelt die Unterschriften (signierte Nachrichten über die
-  Leitungswege, je Absender eine, begrenzt) und legt das Zertifikat bei
-  Quorum als Transaktion in einen Block.
+- Der Leiter legt das Zertifikat bei Quorum als Transaktion in einen Block
+  (Baustein 6).
 
 ### 6. Zertifikat in die Kette, „letzter Checkpoint“ im Zustand
 

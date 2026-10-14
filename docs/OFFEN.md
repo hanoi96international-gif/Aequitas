@@ -294,8 +294,14 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
       **Baustein 5, Mitglieds-Seite (Zweig `claude/weiter-gehts-vm8979-fahrplan`):**
       `checkpointMitunterschreiben` – unterschreibt nur eigene Sicht,
       je Slot (60 s) höchstens einen Block, nie einen älteren Slot,
-      dauerhaft gemerkt vor der Unterschrift. Offen: Vorschlag durch den
-      Leiter, Sammeln, Zertifikat-Transaktion.
+      dauerhaft gemerkt vor der Unterschrift.
+      **Baustein 5, Leiter-Seite (`checkpoint_vorschlag.go`):** Vorschlag vom
+      Leiter unterschrieben und dauerhaft je Slot gemerkt; Mitglied nimmt
+      nur den Leiter seiner Sicht an, verlangt den letzten Checkpoint in der
+      Vergangenheit; Sammler je Mitglied eine Unterschrift; Beweis für
+      Slot-Verbrauch; Leiterwechsel nach 5 leeren Slots. Offen:
+      Leitungswege mit Rate-Limit, Obergrenze über Leiterwechsel hinweg,
+      Zertifikat-Transaktion (Baustein 6).
       **Fahrplan:** `docs/CHECKPOINT_FAHRPLAN.md` (mit den Entscheidungen
       für den Betreiber).
       **Vor dem Anschluss als Konsensregel (Prüfung Baustein 2, HOCH):**
