@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math/big"
 	"os"
 	"runtime/debug"
@@ -1783,6 +1784,12 @@ func checkpointIsIncoherent(finalizedHeight, syncedHeight int64) bool {
 // sync_blocks.go's registerAndDiscover) — auto-generation exists as a
 // zero-config fallback, not the recommended flow.
 func loadOrCreateRelayerKey() (key *ecdsa.PrivateKey, wasGenerated bool, err error) {
+	return loadOrCreateRelayerKeyNach(os.Stderr)
+}
+
+// loadOrCreateRelayerKeyNach: Meldungen nach w (Tests pruefen sie, ohne
+// os.Stderr umzuhaengen).
+func loadOrCreateRelayerKeyNach(w io.Writer) (key *ecdsa.PrivateKey, wasGenerated bool, err error) {
 	if pkHex := strings.TrimPrefix(os.Getenv("RELAYER_PRIVATE_KEY"), "0x"); pkHex != "" {
 		key, err = crypto.HexToECDSA(pkHex)
 		return key, false, err
@@ -1794,12 +1801,12 @@ func loadOrCreateRelayerKey() (key *ecdsa.PrivateKey, wasGenerated bool, err err
 	// Den Schluessel NIE ausgeben (schluessel_erzeugen.go): er gilt nur fuer
 	// diesen Prozess. Feste Schluessel kommen aus `aequitasd schluessel`.
 	addr := strings.ToLower(crypto.PubkeyToAddress(key.PublicKey).Hex())
-	fmt.Fprintln(os.Stderr, "════════════════════════════════════════")
-	fmt.Fprintln(os.Stderr, "⚠ Kein RELAYER_PRIVATE_KEY gesetzt -- voruebergehender Signierschluessel nur fuer diesen Prozess.")
-	fmt.Fprintln(os.Stderr, "⚠ Nach einem Neustart ist die Identitaet eine andere. Feste Schluessel erzeugen:")
-	fmt.Fprintln(os.Stderr, "⚠   cd deploy/validator && bash schluessel-eintragen.sh .env")
-	fmt.Fprintf(os.Stderr, "Adresse dieses voruebergehenden Schluessels: %s\n", addr)
-	fmt.Fprintln(os.Stderr, "════════════════════════════════════════")
+	fmt.Fprintln(w, "════════════════════════════════════════")
+	fmt.Fprintln(w, "⚠ Kein RELAYER_PRIVATE_KEY gesetzt -- voruebergehender Signierschluessel nur fuer diesen Prozess.")
+	fmt.Fprintln(w, "⚠ Nach einem Neustart ist die Identitaet eine andere. Feste Schluessel erzeugen:")
+	fmt.Fprintln(w, "⚠   cd deploy/validator && bash schluessel-eintragen.sh .env")
+	fmt.Fprintf(w, "Adresse dieses voruebergehenden Schluessels: %s\n", addr)
+	fmt.Fprintln(w, "════════════════════════════════════════")
 	return key, true, nil
 }
 

@@ -131,14 +131,20 @@ type P2PNode struct {
 }
 
 func loadOrCreateKey() (crypto.PrivKey, error) {
+	return loadOrCreateKeyNach(os.Stdout, os.Stderr)
+}
+
+// loadOrCreateKeyNach: Meldungen nach aus bzw. fehler (Tests pruefen sie,
+// ohne os.Stdout umzuhaengen).
+func loadOrCreateKeyNach(aus, fehler io.Writer) (crypto.PrivKey, error) {
 	if keyStr := os.Getenv("NODE_KEY"); keyStr != "" {
 		keyBytes, err := base64.StdEncoding.DecodeString(keyStr)
 		if err != nil {
-			fmt.Printf("⚠ NODE_KEY is set but invalid base64: %v — generating new key\n", err)
+			fmt.Fprintf(aus, "⚠ NODE_KEY is set but invalid base64: %v — generating new key\n", err)
 		} else {
 			priv, err := crypto.UnmarshalPrivateKey(keyBytes)
 			if err == nil {
-				fmt.Println("✓ Node key loaded from environment")
+				fmt.Fprintln(aus, "✓ Node key loaded from environment")
 				return priv, nil
 			}
 		}
@@ -151,7 +157,7 @@ func loadOrCreateKey() (crypto.PrivKey, error) {
 
 	// Den Schluessel NIE ausgeben (schluessel_erzeugen.go): er gilt nur fuer
 	// diesen Prozess. Feste Schluessel kommen aus `aequitasd schluessel`.
-	fmt.Fprintln(os.Stderr, "⚠ Kein NODE_KEY gesetzt -- voruebergehende P2P-Identitaet nur fuer diesen Prozess (aequitasd schluessel)")
+	fmt.Fprintln(fehler, "⚠ Kein NODE_KEY gesetzt -- voruebergehende P2P-Identitaet nur fuer diesen Prozess (aequitasd schluessel)")
 
 	return priv, nil
 }

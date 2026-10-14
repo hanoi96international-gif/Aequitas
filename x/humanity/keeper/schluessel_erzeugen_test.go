@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/hex"
-	"io"
-	"os"
 	"strings"
 	"testing"
 
@@ -38,52 +36,31 @@ func TestSchluesselAusgeben_LadbarUndNurZweiZeilen(t *testing.T) {
 	}
 }
 
-// fangeAusgabe: was f nach Stdout und Stderr schreibt.
-func fangeAusgabe(t *testing.T, f func()) string {
-	t.Helper()
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	altOut, altErr := os.Stdout, os.Stderr
-	os.Stdout, os.Stderr = w, w
-	fertig := make(chan string)
-	go func() { b, _ := io.ReadAll(r); fertig <- string(b) }()
-	f()
-	os.Stdout, os.Stderr = altOut, altErr
-	w.Close()
-	return <-fertig
-}
-
 // Missbrauch (Beta-Pruefung 14.10.2026): ohne gesetzte Schluessel erzeugt
 // der Knoten voruebergehende -- und schreibt sie in KEINER Form ins Log.
 func TestSchluessel_NieImLog(t *testing.T) {
 	t.Setenv("RELAYER_PRIVATE_KEY", "")
 	t.Setenv("NODE_KEY", "")
-	var rk []byte
-	log := fangeAusgabe(t, func() {
-		k, erzeugt, err := loadOrCreateRelayerKey()
-		if err != nil || !erzeugt {
-			t.Errorf("kein voruebergehender Schluessel: %v", err)
-			return
-		}
-		rk = ethcrypto.FromECDSA(k)
-	})
-	if len(rk) == 0 || strings.Contains(strings.ToLower(log), hex.EncodeToString(rk)) {
+	var b bytes.Buffer
+	k, erzeugt, err := loadOrCreateRelayerKeyNach(&b)
+	if err != nil || !erzeugt {
+		t.Fatalf("kein voruebergehender Schluessel: %v", err)
+	}
+	rk := ethcrypto.FromECDSA(k)
+	log := b.String()
+	if !strings.Contains(log, "Kein RELAYER_PRIVATE_KEY") {
+		t.Fatalf("keine Warnung: %q", log)
+	}
+	if strings.Contains(strings.ToLower(log), hex.EncodeToString(rk)) {
 		t.Fatal("Signierschluessel im Log")
 	}
-	var nk []byte
-	log = fangeAusgabe(t, func() {
-		k, err := loadOrCreateKey()
-		if err != nil {
-			t.Error(err)
-			return
-		}
-		nk, _ = p2pcrypto.MarshalPrivateKey(k)
-	})
-	if len(nk) == 0 {
-		t.Fatal("kein P2P-Schluessel")
+	var aus, fehler bytes.Buffer
+	pk, err := loadOrCreateKeyNach(&aus, &fehler)
+	if err != nil {
+		t.Fatal(err)
 	}
+	nk, _ := p2pcrypto.MarshalPrivateKey(pk)
+	log = aus.String() + fehler.String()
 	for _, teil := range []string{"SAVE THIS", "SET THIS"} {
 		if strings.Contains(log, teil) {
 			t.Fatalf("alte Ausgabe %q im Log", teil)
