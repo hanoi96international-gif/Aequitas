@@ -324,6 +324,16 @@ func detectMemoryLimitBytes() int64 {
 }
 
 func main() {
+	// `aequitasd schluessel`: feste Schluessel fuer einen neuen Knoten auf
+	// die Standardausgabe, nichts sonst (schluessel_erzeugen.go) -- vor dem
+	// Banner, das sonst mit in die .env liefe.
+	if len(os.Args) > 1 && os.Args[1] == "schluessel" {
+		if err := keeper.SchluesselAusgeben(os.Stdout); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 	// Vor dem Banner, damit die ausgegebene Blockzeit die tatsaechliche ist
 	// und nicht die Vorgabe -- und vor TuneProposerBreakerForBlockTime und
 	// TuneFinalitySlackForBlockTime weiter unten, die daraus ihre Schwellen

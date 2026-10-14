@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math/big"
 	"os"
 	"runtime/debug"
@@ -1472,7 +1473,7 @@ func NewBlockchain(nodeID string, state *ChainState) *BlockDAG {
 		dag.selfProposer = selfAddr
 		dag.authorizedValidators[selfAddr] = true
 		if generated {
-			fmt.Printf("✓ Block signing enabled (auto-generated key — see SAVE THIS warning above), proposer addr: %s\n", selfAddr)
+			fmt.Printf("✓ Block signing enabled (voruebergehender Schluessel, siehe Warnung oben), proposer addr: %s\n", selfAddr)
 		} else {
 			fmt.Printf("✓ Block signing enabled (RELAYER_PRIVATE_KEY loaded), proposer addr: %s\n", selfAddr)
 		}
@@ -1783,6 +1784,12 @@ func checkpointIsIncoherent(finalizedHeight, syncedHeight int64) bool {
 // sync_blocks.go's registerAndDiscover) — auto-generation exists as a
 // zero-config fallback, not the recommended flow.
 func loadOrCreateRelayerKey() (key *ecdsa.PrivateKey, wasGenerated bool, err error) {
+	return loadOrCreateRelayerKeyNach(os.Stderr)
+}
+
+// loadOrCreateRelayerKeyNach: Meldungen nach w (Tests pruefen sie, ohne
+// os.Stderr umzuhaengen).
+func loadOrCreateRelayerKeyNach(w io.Writer) (key *ecdsa.PrivateKey, wasGenerated bool, err error) {
 	if pkHex := strings.TrimPrefix(os.Getenv("RELAYER_PRIVATE_KEY"), "0x"); pkHex != "" {
 		key, err = crypto.HexToECDSA(pkHex)
 		return key, false, err
@@ -1791,16 +1798,15 @@ func loadOrCreateRelayerKey() (key *ecdsa.PrivateKey, wasGenerated bool, err err
 	if err != nil {
 		return nil, false, err
 	}
-	encoded := hex.EncodeToString(crypto.FromECDSA(key))
+	// Den Schluessel NIE ausgeben (schluessel_erzeugen.go): er gilt nur fuer
+	// diesen Prozess. Feste Schluessel kommen aus `aequitasd schluessel`.
 	addr := strings.ToLower(crypto.PubkeyToAddress(key.PublicKey).Hex())
-	fmt.Fprintln(os.Stderr, "════════════════════════════════════════")
-	fmt.Fprintln(os.Stderr, "⚠ No RELAYER_PRIVATE_KEY found — generated a new one.")
-	fmt.Fprintln(os.Stderr, "⚠ This key is visible in hosted log dashboards. Treat it as a secret.")
-	fmt.Fprintln(os.Stderr, "⚠ SAVE IT NOW — if this process restarts before you do, your validator")
-	fmt.Fprintln(os.Stderr, "⚠ identity changes and any pending authorization/rewards binding is lost.")
-	fmt.Fprintf(os.Stderr, "SET THIS AS RELAYER_PRIVATE_KEY, then restart the service:\n0x%s\n", encoded)
-	fmt.Fprintf(os.Stderr, "Its address (for RELAYER_ADDRESS / NODE_OPERATOR_WALLET, if this is also your verified-human wallet): %s\n", addr)
-	fmt.Fprintln(os.Stderr, "════════════════════════════════════════")
+	fmt.Fprintln(w, "════════════════════════════════════════")
+	fmt.Fprintln(w, "⚠ Kein RELAYER_PRIVATE_KEY gesetzt -- voruebergehender Signierschluessel nur fuer diesen Prozess.")
+	fmt.Fprintln(w, "⚠ Nach einem Neustart ist die Identitaet eine andere. Feste Schluessel erzeugen:")
+	fmt.Fprintln(w, "⚠   cd deploy/validator && bash schluessel-eintragen.sh .env")
+	fmt.Fprintf(w, "Adresse dieses voruebergehenden Schluessels: %s\n", addr)
+	fmt.Fprintln(w, "════════════════════════════════════════")
 	return key, true, nil
 }
 

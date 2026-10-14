@@ -67,16 +67,16 @@ SELF_URL=http://$IP:8080
 NODE_OPERATOR_WALLET=$WALLET
 CHAIN_SERVICE_TOKEN=$(zufall)
 PROOF_SERVER_URLS=http://aequitas-proof-server:3000
-# Werden beim ersten Start erzeugt und EINMAL ins Log gedruckt ("SAVE THIS AS").
-# Danach hier eintragen und neu starten, sonst neue Identitaet bei jedem Neustart.
-RELAYER_PRIVATE_KEY=
-NODE_KEY=
+# RELAYER_PRIVATE_KEY und NODE_KEY traegt schluessel-eintragen.sh vor dem
+# ersten Start ein (nie ins Log).
 EOF
   umask 022
 fi
 set -a; . "$VAL_ENV"; set +a
 cd "$REPO/deploy/validator"
-GIT_COMMIT="$(git -C "$REPO" rev-parse --short HEAD)" docker compose up -d --build
+GIT_COMMIT="$(git -C "$REPO" rev-parse --short HEAD)" docker compose build
+bash ./schluessel-eintragen.sh "$VAL_ENV"
+GIT_COMMIT="$(git -C "$REPO" rev-parse --short HEAD)" docker compose up -d
 
 log "4/5 Proof-Server"
 for i in $(seq 1 60); do
@@ -120,12 +120,10 @@ echo "Knoten lokal:  $(curl -s http://127.0.0.1:8080/api/status | grep -oE '"hei
 echo "Netz (Seeds):  $(curl -s https://aequitas.digital/api/status | grep -oE '"height":[0-9]+' || echo 'nicht erreichbar')"
 echo "Proof-Server:  $(docker exec aequitas-node wget -qO- http://aequitas-proof-server:3000/health 2>/dev/null | head -c 120 || echo 'noch nicht bereit')"
 echo
-echo "Schluessel aus dem Log (falls schon erzeugt):"
-docker logs aequitas-node 2>&1 | grep -A2 "SAVE THIS AS" || echo "  noch keine -- spaeter: docker logs aequitas-node 2>&1 | grep -A2 'SAVE THIS AS'"
+echo "Schluessel: in $VAL_ENV (nur root lesbar, nicht ausgegeben)"
 echo
 echo "FERTIG. Naechste Schritte:"
-echo "  1. RELAYER_PRIVATE_KEY und NODE_KEY aus dem Log in $VAL_ENV eintragen,"
-echo "     dann: cd $REPO/deploy/validator && docker compose up -d"
+echo "  1. Die Schluessel stehen schon in $VAL_ENV (nur root lesbar) -- sichern, nie ausgeben."
 echo "  2. Aufholen beobachten: docker compose -f $REPO/deploy/validator/docker-compose.yml logs -f node"
 echo "  3. Selbstpruefung: curl -s http://$IP:8080/api/wache"
 echo "  4. Root-Passwort aendern: passwd"

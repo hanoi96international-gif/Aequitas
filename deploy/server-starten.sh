@@ -46,23 +46,12 @@ setze BOOTSTRAP_SIGNER "0x1a37dcdaa42cf3f7e1f6e41379961f40df44a4e3"
 # anderen Knoten bei der Anmeldung mit, damit sie ihn als Validator annehmen.
 setze NODE_OPERATOR_BINDING_SIGNATURE "0x4ca84728f6d471ab2d499129a540a2e4ca6521e3e95a09bb0d0cc810699553e756dd885edaad3027c9a91b8438abd17c1f08ca9db520ebaaf86e2f41f5f91cf21b"
 
+# Feste Schluessel VOR dem Start, direkt in die .env -- nie ins Log
+# (schluessel-eintragen.sh).
+GIT_COMMIT="$(git -C /root/Aequitas rev-parse --short HEAD)" docker compose build node
+bash ./schluessel-eintragen.sh "$ENVF"
 GIT_COMMIT="$(git -C /root/Aequitas rev-parse --short HEAD)" docker compose up -d --force-recreate node
-echo "gestartet; warte auf den NODE_KEY des ersten Starts"
-
-# Beim ersten Start erzeugt der Knoten seinen P2P-Schluessel und druckt ihn
-# einmal. Er kommt in die .env (sonst neue Identitaet bei jedem Neustart).
-if ! grep -q '^NODE_KEY=' "$ENVF"; then
-  for i in $(seq 1 60); do
-    K="$(docker logs aequitas-node 2>&1 | grep -A1 'SAVE THIS AS NODE_KEY' | tail -1 | tr -d '[:space:]')"
-    if [ -n "$K" ] && [ "${#K}" -gt 40 ]; then
-      echo "NODE_KEY=$K" >> "$ENVF"
-      echo "NODE_KEY gesichert (nicht ausgegeben); Knoten neu starten, damit er ihn liest"
-      docker compose up -d --force-recreate node
-      break
-    fi
-    sleep 2
-  done
-fi
+echo "gestartet"
 
 echo "=== warte auf die API (bis 5 min) ==="
 for i in $(seq 1 150); do
