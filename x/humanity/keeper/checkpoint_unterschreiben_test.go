@@ -35,7 +35,7 @@ func neuerUnterschriftFall(t *testing.T, mitDB bool) *unterschriftFall {
 		if !cs.useDB {
 			t.Fatal("erwartet eine echte PostgreSQL-Verbindung")
 		}
-		if _, err := cs.db.Exec(`DROP TABLE IF EXISTS checkpoint_unterschriften`); err != nil {
+		if _, err := cs.db.Exec(`DROP TABLE IF EXISTS checkpoint_unterschriften, checkpoint_vorschlaege`); err != nil {
 			t.Fatal(err)
 		}
 		f.dag.state = cs
@@ -225,7 +225,7 @@ func TestCheckpointMitunterschreiben_StartsperreNachMerkerverlust_RealDB(t *test
 	if _, err := f.dag.state.db.Exec(`DROP TABLE checkpoint_unterschriften`); err != nil {
 		t.Fatal(err)
 	}
-	checkpointTabelleDa.Delete(f.dag.state.db)
+	checkpointTabelleDa.Delete(checkpointTabelle{f.dag.state.db, checkpointMerkerUnterschrift})
 	alt := checkpointProzessStart.Load()
 	checkpointProzessStart.Store(jetzt)
 	t.Cleanup(func() { checkpointProzessStart.Store(alt) })

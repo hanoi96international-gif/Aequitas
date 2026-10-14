@@ -61,23 +61,34 @@ func init() { checkpointProzessStart.Store(time.Now().Unix()) }
 
 func checkpointSlot(zeit int64) int64 { return zeit / checkpointSlotLaenge }
 
-// checkpointTabelleDa: je Datenbank einmal angelegt.
+// checkpointTabelleDa: je Datenbank und Tabelle einmal angelegt.
 var checkpointTabelleDa sync.Map
 
-// checkpointUnterschriftTabelle: der dauerhafte Merker je Slot (einmal je
-// Datenbank angelegt, nicht in jedem Aufruf).
-func checkpointUnterschriftTabelle(db *sql.DB) error {
-	if _, da := checkpointTabelleDa.Load(db); da {
+// Die dauerhaften Merker je Slot: was dieses Mitglied unterschrieben und was
+// dieser Leiter vorgeschlagen hat. Namen nur aus dem Code.
+const (
+	checkpointMerkerUnterschrift = "checkpoint_unterschriften"
+	checkpointMerkerVorschlag    = "checkpoint_vorschlaege"
+)
+
+type checkpointTabelle struct {
+	db      *sql.DB
+	tabelle string
+}
+
+// checkpointMerkerTabelle: einmal je Datenbank und Tabelle angelegt.
+func checkpointMerkerTabelle(db *sql.DB, tabelle string) error {
+	if _, da := checkpointTabelleDa.Load(checkpointTabelle{db, tabelle}); da {
 		return nil
 	}
-	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS checkpoint_unterschriften (
+	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS ` + tabelle + ` (
 		slot  BIGINT PRIMARY KEY,
 		hash  TEXT NOT NULL,
 		hoehe BIGINT NOT NULL,
 		zeit  BIGINT NOT NULL
 	)`)
 	if err == nil {
-		checkpointTabelleDa.Store(db, true)
+		checkpointTabelleDa.Store(checkpointTabelle{db, tabelle}, true)
 	}
 	return err
 }
@@ -129,7 +140,7 @@ func (dag *BlockDAG) checkpointMitunterschreiben(v KettenCheckpoint, jetzt int64
 	if dag.state.db == nil {
 		return nein("keine Datenbank -- ohne dauerhaften Merker keine Unterschrift")
 	}
-	if err := dag.checkpointSlotMerken(v, jetzt); err != nil {
+	if err := dag.checkpointSlotMerken(checkpointMerkerUnterschrift, v); err != nil {
 		return CheckpointUnterschrift{}, err
 	}
 	return checkpointUnterschreiben(v, dag.signingKey)
@@ -137,15 +148,28 @@ func (dag *BlockDAG) checkpointMitunterschreiben(v KettenCheckpoint, jetzt int64
 
 var errCheckpointSlotBelegt = errors.New("Slot schon fuer einen anderen Block unterschrieben")
 
-// checkpointSlotMerken: den Slot dauerhaft fuer diesen Block belegen. Den
-// selben Slot schuetzt schon der Primaerschluessel (die zweite Einfuegung
-// scheitert); die Sperre der Tabelle schuetzt die Reihenfolge der Slots
-// (zwei gleichzeitige Anfragen fuer verschiedene Slots sehen sonst beide
-// keinen juengeren). nil: unterschreiben erlaubt.
-func (dag *BlockDAG) checkpointSlotMerken(v KettenCheckpoint, jetzt int64) error {
+// checkpointSlotMerken: den Slot in tabelle dauerhaft fuer diesen Block
+// belegen. Den selben Slot schuetzt schon der Primaerschluessel (die zweite
+// Einfuegung scheitert); die Sperre der Tabelle schuetzt die Reihenfolge der
+// Slots (zwei gleichzeitige Anfragen fuer verschiedene Slots sehen sonst
+// beide keinen juengeren). nil: unterschreiben erlaubt.
+//
+// Derselbe Vorschlag nochmal (Wiederholung): ohne Tabellensperre erkannt --
+// ein wiederholter Vorschlag haelt ehrliche Anfragen nicht auf.
+func (dag *BlockDAG) checkpointSlotMerken(tabelle string, v KettenCheckpoint) error {
 	db := dag.state.db
-	if err := checkpointUnterschriftTabelle(db); err != nil {
+	if err := checkpointMerkerTabelle(db, tabelle); err != nil {
 		return fmt.Errorf("Merker nicht anlegbar: %w", err)
+	}
+	slot := checkpointSlot(v.Zeit)
+	{
+		ctx, abbrechen := context.WithTimeout(context.Background(), 2*time.Second)
+		var hash string
+		err := db.QueryRowContext(ctx, `SELECT hash FROM `+tabelle+` WHERE slot = $1`, slot).Scan(&hash)
+		abbrechen()
+		if err == nil && hash == v.Hash {
+			return nil // derselbe Vorschlag: dieselbe Unterschrift
+		}
 	}
 	ctx, abbrechen := context.WithTimeout(context.Background(), 5*time.Second)
 	defer abbrechen()
@@ -157,12 +181,11 @@ func (dag *BlockDAG) checkpointSlotMerken(v KettenCheckpoint, jetzt int64) error
 	if _, err := tx.ExecContext(ctx, `SET LOCAL lock_timeout = '2s'`); err != nil {
 		return fmt.Errorf("Merker nicht sperrbar: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, `LOCK TABLE checkpoint_unterschriften IN EXCLUSIVE MODE`); err != nil {
+	if _, err := tx.ExecContext(ctx, `LOCK TABLE `+tabelle+` IN EXCLUSIVE MODE`); err != nil {
 		return fmt.Errorf("Merker nicht sperrbar: %w", err)
 	}
-	slot := checkpointSlot(v.Zeit)
 	var hash string
-	switch err := tx.QueryRowContext(ctx, `SELECT hash FROM checkpoint_unterschriften WHERE slot = $1`, slot).Scan(&hash); {
+	switch err := tx.QueryRowContext(ctx, `SELECT hash FROM `+tabelle+` WHERE slot = $1`, slot).Scan(&hash); {
 	case err == nil:
 		if hash != v.Hash {
 			return fmt.Errorf("%w (Slot %d: %s)", errCheckpointSlotBelegt, slot, kurzAdresse(hash))
@@ -172,13 +195,13 @@ func (dag *BlockDAG) checkpointSlotMerken(v KettenCheckpoint, jetzt int64) error
 		return fmt.Errorf("Merker nicht lesbar: %w", err)
 	}
 	var juengster sql.NullInt64
-	if err := tx.QueryRowContext(ctx, `SELECT MAX(slot) FROM checkpoint_unterschriften`).Scan(&juengster); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT MAX(slot) FROM `+tabelle).Scan(&juengster); err != nil {
 		return fmt.Errorf("Merker nicht lesbar: %w", err)
 	}
 	if juengster.Valid && slot < juengster.Int64 {
 		return fmt.Errorf("Slot %d liegt vor dem schon unterschriebenen Slot %d", slot, juengster.Int64)
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO checkpoint_unterschriften (slot, hash, hoehe, zeit) VALUES ($1, $2, $3, $4)`,
+	if _, err := tx.ExecContext(ctx, `INSERT INTO `+tabelle+` (slot, hash, hoehe, zeit) VALUES ($1, $2, $3, $4)`,
 		slot, v.Hash, v.Hoehe, v.Zeit); err != nil {
 		return fmt.Errorf("Merker nicht schreibbar: %w", err)
 	}
