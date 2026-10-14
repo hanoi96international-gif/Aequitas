@@ -169,20 +169,29 @@ einen letzten Checkpoint.
    festgeschrieben sein: ohne `AUTHORIZED_VALIDATORS_HASH` gilt eine
    Checkpoint-Transaktion als nicht prüfbar, und ab dem Stichtag startet ein
    Knoten mit Liste ohne Hash (oder ohne die eigene Adresse darin) nicht.
-   **Restrisiko** wie bei der Erzeugerprüfung selbst: ein Block mit Bindung
-   genau an der 30-Minuten-Grenze (`spaet_eingehaengt.go`).
+   **Restrisiken:** ein Block mit Bindung genau an der 30-Minuten-Grenze
+   (`spaet_eingehaengt.go`, wie bei der Erzeugerprüfung selbst); der DAG
+   spielt nicht streng in Zeitordnung nach – ein Knoten, der den tragenden
+   Block vor dem Geschwisterblock mit der Bindung nachspielt, überspringt
+   die Transaktion (nur der Wert weicht ab, bis der nächste gilt). Die
+   Liste wird nur beim Start geprüft: der Hash muss vor dem Stichtag
+   überall gesetzt sein.
 2. **Keine Zeitfrist im Konsens:** beim Nachspielen nur die festen
    Zählgrenzen der Suche; eine Abfrage, die in ihre Zeitgrenze läuft, ist
    ein vorübergehender Fehler und wird wiederholt.
 3. **Erzeuger wendet an:** der Leiter setzt den Wert nicht beim Einreichen,
-   sondern nach dem Speichern des eigenen Blocks, nach der Regel des
-   Nachspielens (`checkpointImEigenenBlockAnwenden`).
+   sondern direkt nach dem Speichern des eigenen Blocks (noch unter
+   `dag.mu`, kein fremder Block dazwischen), nach der Regel des
+   Nachspielens (`checkpointImEigenenBlockAnwenden`); seine StateRoot rechnet
+   er vorher mit genau diesem Wert (Probelauf `checkpointVorschau`).
 
 ### 8. Snapshot – umgesetzt (`snapshot_koepfe.go`)
 
 Ab dem Stichtag trägt der Snapshot die Blockköpfe der letzten 20 Minuten
 (höchstens 5000); der Import legt sie in `kopf_vorrat`, die Vorfahren-Suche
-liest `chain_blocks` und `kopf_vorrat`. Ein frisch aufgesetzter Validator
+liest `chain_blocks` und – nur für Blöcke, die dort fehlen – `kopf_vorrat`.
+Ein Resync ersetzt den Vorrat, ein Import löscht Köpfe älter als das
+Fenster; mehr Köpfe als die Grenze heißt keine Köpfe statt abgeschnitten. Ein frisch aufgesetzter Validator
 kann Checkpoints so sofort prüfen.
 
 ### Einschalten (Betreiber)

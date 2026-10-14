@@ -439,3 +439,36 @@ func TestCheckpointTx_ListeFestgeschrieben(t *testing.T) {
 		t.Fatalf("Liste festgeschrieben: %v", err)
 	}
 }
+
+// Die StateRoot des Erzeugers fuer einen Checkpoint-Block ist die, die jeder
+// Nachspielende danach hat -- auch wenn die Transaktion uebersprungen wird.
+func TestCheckpointTx_ErzeugerRootGleichNachspielen_RealDB(t *testing.T) {
+	f := neuerVorschlagFall(t, true)
+	checkpointTxAn(t)
+	alt := checkpointReplayLeser
+	checkpointReplayLeser = func(sqlExecutor) kopfLeser { return f.koepfe.leser() }
+	t.Cleanup(func() { checkpointReplayLeser = alt })
+	cs := f.dag.state
+	if _, err := cs.db.Exec(`DELETE FROM chain_config WHERE key = $1`, letzterCheckpointSchluessel); err != nil {
+		t.Fatal(err)
+	}
+	b1 := f.blocks[1]
+	tx := neueCheckpointTx(f.zertFuer(t, b1))
+	vorher := cs.StateRoot()
+	// Zu alt: keine Aenderung, die Root bleibt.
+	if _, ok := f.dag.checkpointVorschau([]Transaction{tx}, []string{b1.Hash}, b1.Timestamp+checkpointHoechstensAlt+1); ok {
+		t.Fatal("Vorschau fuer einen zu alten Checkpoint")
+	}
+	neu, ok := f.dag.checkpointVorschau([]Transaction{{Type: "transfer"}, tx}, []string{b1.Hash}, b1.Timestamp+200)
+	if !ok || neu != letzterCheckpointWert(tx.Checkpoint.KettenCheckpoint) {
+		t.Fatalf("Vorschau: %q %v", neu, ok)
+	}
+	if cs.StateRoot() != vorher {
+		t.Fatal("Vorschau hat den Zustand geaendert")
+	}
+	erzeuger := cs.stateRootMitCheckpoint(neu)
+	f.dag.checkpointImEigenenBlockAnwenden(&Block{Height: 970, Timestamp: b1.Timestamp + 200, ParentHashes: []string{b1.Hash}, Transactions: []Transaction{tx}})
+	if nach := cs.StateRoot(); nach != erzeuger || nach == vorher {
+		t.Fatalf("Erzeuger %s, nach dem Anwenden %s", erzeuger, nach)
+	}
+}

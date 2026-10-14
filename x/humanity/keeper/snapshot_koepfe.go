@@ -44,7 +44,7 @@ func (cs *ChainState) snapshotKoepfeExport(jetzt int64) ([]SnapshotKopf, error) 
 		return nil, nil
 	}
 	rows, err := cs.db.Query(`SELECT hash, height, timestamp, parent_hashes FROM chain_blocks
-		WHERE timestamp >= $1 ORDER BY timestamp DESC, hash LIMIT $2`, jetzt-snapshotKopfFenster, snapshotKopfGrenze)
+		WHERE timestamp >= $1 ORDER BY timestamp DESC, hash LIMIT $2`, jetzt-snapshotKopfFenster, snapshotKopfGrenze+1)
 	if err != nil {
 		return nil, err
 	}
@@ -61,7 +61,15 @@ func (cs *ChainState) snapshotKoepfeExport(jetzt int64) ([]SnapshotKopf, error) 
 		}
 		out = append(out, k)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	// Mehr als die Grenze: nicht still abschneiden (es fehlten genau die
+	// aeltesten, die die Suche braucht) -- dann keine Koepfe.
+	if len(out) > snapshotKopfGrenze {
+		return nil, fmt.Errorf("mehr als %d Koepfe in %d s", snapshotKopfGrenze, snapshotKopfFenster)
+	}
+	return out, nil
 }
 
 // pruefeSnapshotKoepfe: Form und Grenzen.
@@ -85,13 +93,22 @@ func pruefeSnapshotKoepfe(koepfe []SnapshotKopf) error {
 	return nil
 }
 
-// snapshotKoepfeImportieren: in kopf_vorrat (vorhandene bleiben). Vor dem
-// Stichtag nichts.
-func snapshotKoepfeImportieren(tx *sql.Tx, koepfe []SnapshotKopf, jetzt int64) error {
-	if len(koepfe) == 0 || !checkpointTxAktiv(jetzt) {
+// snapshotKoepfeImportieren: in kopf_vorrat. ersetzen (Resync): der alte
+// Vorrat geht ganz; sonst nur, was aelter als das Fenster vor jetzt ist --
+// der Vorrat bleibt begrenzt, und Koepfe eines frueheren Snapshots wirken
+// nicht ewig. Vor dem Stichtag nichts.
+func snapshotKoepfeImportieren(tx *sql.Tx, koepfe []SnapshotKopf, jetzt int64, ersetzen bool) error {
+	if !checkpointTxAktiv(jetzt) {
 		return nil
 	}
 	if err := pruefeSnapshotKoepfe(koepfe); err != nil {
+		return err
+	}
+	if ersetzen {
+		if _, err := tx.Exec(`DELETE FROM kopf_vorrat`); err != nil {
+			return err
+		}
+	} else if _, err := tx.Exec(`DELETE FROM kopf_vorrat WHERE timestamp < $1`, jetzt-snapshotKopfFenster-checkpointHoechstensAlt); err != nil {
 		return err
 	}
 	for _, k := range koepfe {

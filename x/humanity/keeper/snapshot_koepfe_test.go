@@ -41,6 +41,10 @@ func TestSnapshotKoepfe_RealDB(t *testing.T) {
 	if _, err := cs.db.Exec(`DELETE FROM kopf_vorrat`); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := cs.db.Exec(`DELETE FROM chain_blocks WHERE hash = $1`, cpHash(71)); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { cs.db.Exec(`DELETE FROM chain_blocks WHERE hash = $1`, cpHash(71)) })
 	if _, err := cs.db.Exec(`INSERT INTO chain_blocks (hash, height, parent_hashes, proposer, timestamp) VALUES ($1, 7, '["`+cpHash(70)+`"]', 'x', 1000)`, cpHash(71)); err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +61,7 @@ func TestSnapshotKoepfe_RealDB(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := snapshotKoepfeImportieren(tx, fremd, 1100); err != nil {
+	if err := snapshotKoepfeImportieren(tx, fremd, 1100, false); err != nil {
 		t.Fatal(err)
 	}
 	if err := tx.Commit(); err != nil {
@@ -70,9 +74,50 @@ func TestSnapshotKoepfe_RealDB(t *testing.T) {
 	// Vor dem Stichtag kein Import.
 	checkpointTxOverride.Store(1 << 40)
 	tx, _ = cs.db.Begin()
-	snapshotKoepfeImportieren(tx, []SnapshotKopf{{Hash: cpHash(81), Hoehe: 5, Zeit: 900}}, 1100)
+	snapshotKoepfeImportieren(tx, []SnapshotKopf{{Hash: cpHash(81), Hoehe: 5, Zeit: 900}}, 1100, false)
 	tx.Commit()
 	if koepfe, _ := kopfLeserDB(cs.db)([]string{cpHash(81)}); len(koepfe) != 0 {
 		t.Fatal("vor dem Stichtag importiert")
+	}
+}
+
+// chain_blocks hat Vorrang vor kopf_vorrat; ein Resync ersetzt den Vorrat;
+// ohne Tabelle liest die Suche nur chain_blocks.
+func TestSnapshotKoepfe_VorrangUndAufraeumen_RealDB(t *testing.T) {
+	f := neuerVorschlagFall(t, true)
+	cs := f.dag.state
+	checkpointTxAn(t)
+	for _, q := range []string{`DELETE FROM kopf_vorrat`, `DELETE FROM chain_blocks WHERE hash = '` + cpHash(91) + `'`} {
+		if _, err := cs.db.Exec(q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Cleanup(func() { cs.db.Exec(`DELETE FROM chain_blocks WHERE hash = $1`, cpHash(91)) })
+	if _, err := cs.db.Exec(`INSERT INTO chain_blocks (hash, height, parent_hashes, proposer, timestamp) VALUES ($1, 9, '["`+cpHash(90)+`"]', 'x', 1000)`, cpHash(91)); err != nil {
+		t.Fatal(err)
+	}
+	importiere := func(k []SnapshotKopf, ersetzen bool) {
+		tx, _ := cs.db.Begin()
+		if err := snapshotKoepfeImportieren(tx, k, 1100, ersetzen); err != nil {
+			t.Fatal(err)
+		}
+		tx.Commit()
+	}
+	// Falscher Kopf fuer einen Block, den chain_blocks hat: zaehlt nicht.
+	importiere([]SnapshotKopf{{Hash: cpHash(91), Hoehe: 9, Zeit: 1000, Eltern: []string{cpHash(55)}}, {Hash: cpHash(92), Hoehe: 3, Zeit: 1000}}, false)
+	k, err := kopfLeserDB(cs.db)([]string{cpHash(91)})
+	if err != nil || k[cpHash(91)].eltern[0] != cpHash(90) {
+		t.Fatalf("Vorrang: %+v %v", k, err)
+	}
+	// Resync ersetzt den Vorrat.
+	importiere(nil, true)
+	if k, _ := kopfLeserDB(cs.db)([]string{cpHash(92)}); len(k) != 0 {
+		t.Fatal("Resync hat den alten Vorrat behalten")
+	}
+	// Ohne Tabelle (Anlegen gescheitert): nur chain_blocks, kein Fehler.
+	kopfVorratDa.Store(false)
+	t.Cleanup(func() { kopfVorratDa.Store(true) })
+	if k, err := kopfLeserDB(cs.db)([]string{cpHash(91)}); err != nil || len(k) != 1 {
+		t.Fatalf("ohne kopf_vorrat: %+v %v", k, err)
 	}
 }

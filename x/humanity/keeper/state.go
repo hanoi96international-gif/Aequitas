@@ -1498,6 +1498,10 @@ height        BIGINT NOT NULL,
 timestamp     BIGINT NOT NULL,
 parent_hashes TEXT NOT NULL
 )`)
+	{
+		var n int
+		kopfVorratDa.Store(cs.db.QueryRow(`SELECT COUNT(*) FROM (SELECT 1 FROM kopf_vorrat LIMIT 1) x`).Scan(&n) == nil)
+	}
 	// Fuer die taegliche Anwesenheit der Validatoren (validator_anwesenheit.go):
 	// ein Tag Bloecke, ohne die ganze Tabelle zu lesen.
 	dbExec(`CREATE INDEX IF NOT EXISTS idx_chain_blocks_timestamp ON chain_blocks (timestamp)`)

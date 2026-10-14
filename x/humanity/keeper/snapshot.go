@@ -625,7 +625,7 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) (
 			}
 			// Validator-Register ergaenzend; die Unterschriften sind oben vor
 			// der Sperre geprueft, ein falscher Eintrag verwirft den Import.
-			if err := snapshotKoepfeImportieren(tx, snap.Koepfe, nowUnix()); err != nil {
+			if err := snapshotKoepfeImportieren(tx, snap.Koepfe, nowUnix(), false); err != nil {
 				return fmt.Errorf("saving block heads: %w", err)
 			}
 			if err := validatorenImportieren(tx, snap.Validatoren, false, validatorenBis); err != nil {
@@ -1020,7 +1020,7 @@ func (cs *ChainState) ResyncFromSnapshotURL(peerURL, expectedSignerHex string) (
 		}
 	}
 	// Validator-Register ersetzend; Unterschriften oben vor der Sperre geprueft.
-	if err := snapshotKoepfeImportieren(tx, snap.Koepfe, nowUnix()); err != nil {
+	if err := snapshotKoepfeImportieren(tx, snap.Koepfe, nowUnix(), true); err != nil {
 		return fail(fmt.Errorf("resync: block heads: %w", err))
 	}
 	if err := validatorenImportieren(tx, snap.Validatoren, true, validatorenBis); err != nil {

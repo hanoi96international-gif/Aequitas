@@ -3339,6 +3339,12 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 		blockZeitZurueck.Add(1)
 		fmt.Printf("[BLOCK] ⏪ Blockzeit %d statt %d: die Auftraege dieses Blocks wurden frueher angenommen (block_tauglich.go)\n", blockZeit, jetztUnix)
 	}
+	// checkpoint_tx.go: traegt der Block ein Zertifikat, rechnet der Erzeuger
+	// seine StateRoot mit dem letzten Checkpoint, den jeder Nachspielende
+	// danach hat (Probelauf mit Blockzeit und Eltern dieses Blocks).
+	if neu, ok := dag.checkpointVorschau(txs, parentHashes, blockZeit); ok {
+		stateRoot = dag.state.stateRootMitCheckpoint(neu)
+	}
 	block := &Block{
 		Height:       maxParentHeight + 1,
 		Timestamp:    blockZeit,
@@ -3598,16 +3604,11 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 	// a value LoadBlocksFromDB already reconstructs from chain_blocks' own max, so
 	// this config key is a fast-path hint, not the source of truth. Losing at most
 	// the last block's write on an ill-timed crash is harmless and self-corrects.
-	// checkpoint_tx.go: der eigene Block traegt ein Zertifikat -- anwenden
-	// wie beim Nachspielen. Eigene Goroutine: dag.mu ist gehalten, das
-	// Anwenden braucht cs.mu.
-	for i := range block.Transactions {
-		if block.Transactions[i].Type == checkpointTxArt {
-			eigener := block
-			SafeGoroutine("checkpoint-eigener-block", func() { dag.checkpointImEigenenBlockAnwenden(eigener) })
-			break
-		}
-	}
+	// checkpoint_tx.go: der eigene Block traegt ein Zertifikat -- jetzt
+	// anwenden wie beim Nachspielen, noch unter dag.mu (kein fremder Block
+	// dazwischen). Nur die Datenbank, nicht cs.mu (keine neue
+	// Sperrreihenfolge); die Zeile ist mit Zeitgrenze gesperrt.
+	dag.checkpointImEigenenBlockAnwenden(block)
 	heightVal := dag.height
 	SafeGoroutine("ProduceBlock-post-persist", func() {
 		dag.state.IncrementBlockCount(proposer)

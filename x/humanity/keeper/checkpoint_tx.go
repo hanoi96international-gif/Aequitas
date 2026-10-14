@@ -240,10 +240,11 @@ func (dag *BlockDAG) checkpointTxEinreichen(z CheckpointZertifikat, jetzt int64)
 
 // checkpointImEigenenBlockAnwenden: der Erzeuger spielt seinen eigenen
 // Block nicht nach -- fuer Checkpoint-Transaktionen tut er hier genau das,
-// mit Eltern und Zeit dieses Blocks und unter cs.mu wie das Nachspielen.
-// So hat er denselben letzten Checkpoint wie jeder andere: uebersprungen,
-// wenn alle ueberspringen. Ein Fehler laesst den Wert unveraendert (der
-// naechste Checkpoint gleicht an) und wird gemeldet.
+// mit Eltern und Zeit dieses Blocks, direkt nach dem Speichern (ProduceBlock
+// haelt noch dag.mu: kein fremder Block dazwischen). So hat er denselben
+// letzten Checkpoint wie jeder andere: uebersprungen, wenn alle
+// ueberspringen. Ein Fehler laesst den Wert unveraendert (der naechste
+// Checkpoint gleicht an) und wird gemeldet.
 func (dag *BlockDAG) checkpointImEigenenBlockAnwenden(block *Block) {
 	cs := dag.state
 	if cs == nil || cs.db == nil {
@@ -254,20 +255,9 @@ func (dag *BlockDAG) checkpointImEigenenBlockAnwenden(block *Block) {
 			continue
 		}
 		tx := block.Transactions[i]
-		err := func() error {
-			cs.mu.Lock()
-			defer cs.mu.Unlock()
-			dbTx, err := cs.db.Begin()
-			if err != nil {
-				return err
-			}
-			defer dbTx.Rollback()
-			ctx := withTx(context.Background(), dbTx)
-			if err := dag.applyCheckpointTxLocked(ctx, &tx, block.ParentHashes, block.Timestamp, checkpointReplayLeser(dbTx)); err != nil {
-				return err
-			}
-			return dbTx.Commit()
-		}()
+		err := cs.checkpointInDBTx(func(ctx context.Context, dbTx *sql.Tx) error {
+			return dag.applyCheckpointTxLocked(ctx, &tx, block.ParentHashes, block.Timestamp, checkpointReplayLeser(dbTx))
+		}, true)
 		switch {
 		case err == nil:
 			fmt.Printf("[CHECKPOINT] ✓ eigener Block #%d: Checkpoint %s gilt\n", block.Height, kurzAdresse(tx.Checkpoint.Hash))
@@ -340,4 +330,64 @@ func checkpointTxGrenze(txs []Transaction) int {
 		}
 	}
 	return len(txs)
+}
+
+// checkpointInDBTx: fn in einer eigenen Datenbank-Transaktion; die Zeile des
+// letzten Checkpoints mit Zeitgrenze gesperrt (gegen ein gleichzeitiges
+// Nachspielen). behalten: Commit, sonst Rollback (Probelauf).
+func (cs *ChainState) checkpointInDBTx(fn func(ctx context.Context, dbTx *sql.Tx) error, behalten bool) error {
+	dbTx, err := cs.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer dbTx.Rollback()
+	if _, err := dbTx.Exec(`SET LOCAL lock_timeout = '2s'`); err != nil {
+		return err
+	}
+	if _, err := dbTx.Exec(`SELECT 1 FROM chain_config WHERE key = $1 FOR UPDATE`, letzterCheckpointSchluessel); err != nil {
+		return err
+	}
+	if err := fn(withTx(context.Background(), dbTx), dbTx); err != nil {
+		return err
+	}
+	if !behalten {
+		return nil
+	}
+	return dbTx.Commit()
+}
+
+// checkpointVorschau: traegt txs eine Checkpoint-Transaktion, der letzte
+// Checkpoint, den jeder Nachspielende nach einem Block mit diesen Eltern und
+// dieser Zeit hat (Probelauf, nichts gespeichert). ok = false: kein
+// Checkpoint im Block oder keine Aenderung.
+func (dag *BlockDAG) checkpointVorschau(txs []Transaction, eltern []string, zeit int64) (string, bool) {
+	cs := dag.state
+	if cs == nil || cs.db == nil {
+		return "", false
+	}
+	for i := range txs {
+		if txs[i].Type != checkpointTxArt {
+			continue
+		}
+		tx := txs[i]
+		var neu string
+		err := cs.checkpointInDBTx(func(ctx context.Context, dbTx *sql.Tx) error {
+			if err := dag.applyCheckpointTxLocked(ctx, &tx, eltern, zeit, checkpointReplayLeser(dbTx)); err != nil {
+				return err
+			}
+			var e error
+			neu, e = letzterCheckpointRoh(ctx, cs)
+			return e
+		}, false)
+		return neu, err == nil
+	}
+	return "", false
+}
+
+// stateRootMitCheckpoint: die StateRoot mit diesem letzten Checkpoint.
+func (cs *ChainState) stateRootMitCheckpoint(letzterCP string) string {
+	lastUBIAt := cs.getConfigValueDB("last_ubi_at")
+	cs.mu.RLock()
+	defer cs.mu.RUnlock()
+	return cs.stateRootLocked(lastUBIAt, letzterCP)
 }
