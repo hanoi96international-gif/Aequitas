@@ -293,6 +293,7 @@ func StarteLeitung(dag *BlockDAG, cs *ChainState, selfURL string) *Leitung {
 	}
 	faehig := leiterFaehig(cs)
 	l := NeueLeitung(ich, selfURL, satz, start, faehig, cs.leitungLaden(), cfg, env, time.Now())
+	l.SetzeListe(validatorListeHash(dag.produzentenFest))
 	for a, u := range urls {
 		l.SetzeURL(a, u)
 	}
