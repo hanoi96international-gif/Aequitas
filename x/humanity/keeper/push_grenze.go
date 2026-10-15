@@ -89,11 +89,16 @@ func (dag *BlockDAG) kopfVorAbruf(b *Block) kopfUrteil {
 	if err != nil || strings.ToLower(crypto.PubkeyToAddress(*pub).Hex()) != strings.ToLower(b.Proposer) {
 		return kopfGefaelscht
 	}
-	dag.mu.RLock()
-	erlaubt := dag.erzeugerErlaubt(strings.ToLower(b.Proposer), b.Timestamp)
-	dag.mu.RUnlock()
-	if !erlaubt {
+	if !dag.erzeugerErlaubtLesend(strings.ToLower(b.Proposer), b.Timestamp) {
 		return kopfUnbekannt
 	}
 	return kopfGueltig
+}
+
+// erzeugerErlaubtLesend: erzeugerErlaubt unter der Lesesperre (mit defer,
+// sperre_mit_defer_test.go).
+func (dag *BlockDAG) erzeugerErlaubtLesend(proposer string, zeit int64) bool {
+	dag.mu.RLock()
+	defer dag.mu.RUnlock()
+	return dag.erzeugerErlaubt(proposer, zeit)
 }
