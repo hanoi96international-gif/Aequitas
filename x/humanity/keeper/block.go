@@ -316,13 +316,13 @@ type BlockDAG struct {
 	// einmal zugleich (validatorAbgleichAnstossen).
 	validatorAbgleichLaeuft  atomic.Bool
 	validatorAbgleichNochmal atomic.Bool
-	blocks map[string]*Block
-	tips   map[string]bool
-	mu     sync.RWMutex
-	state  *ChainState
-	evm    *EVMEngine // set by EVMRPCServer after construction; used by replayTransactions for ZK proof verification
-	nodeID string
-	height int64
+	blocks                   map[string]*Block
+	tips                     map[string]bool
+	mu                       sync.RWMutex
+	state                    *ChainState
+	evm                      *EVMEngine // set by EVMRPCServer after construction; used by replayTransactions for ZK proof verification
+	nodeID                   string
+	height                   int64
 
 	// vorlauf: der Ausgangskorb fuer den naechsten Block, siehe vorlader.go.
 	vorlauf vorlader
