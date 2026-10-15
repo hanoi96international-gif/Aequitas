@@ -23,20 +23,31 @@ jeweiligen PR.
 | `/prove`: das gemeinsame IP-Budget ließ sich mit unbescheinigten Anfragen leeren. Es zählt jetzt erst nach der Bescheinigung; höchstens 17 Signaturen. | MITTEL | proof-server #13 |
 | Proof-Server: Node 20 (ohne Sicherheitsupdates) auf 22; `npm audit` meldet 0 offene Befunde. | MITTEL | proof-server #13 |
 
-**In Prüfung:** App #31. Er bringt eine Zeitgrenze für jede Anfrage, nur
-noch https, keine verschluckten fatalen Fehler, Keystore-Passwörter nicht
-mehr in der Prozessliste und keine Injection im Release-Workflow.
+| App: Zeitgrenze für jede Anfrage (20/40/240 s), nur https, fatale Fehler werden nicht mehr verschluckt, Keystore-Passwörter nicht in der Prozessliste, keine Injection im Release-Workflow | MITTEL | App #31 |
+| Ein nur lesender Knoten kann nie mehr Leiter werden; Systemaufträge (tägliche Verteilung) laufen nur beim Leiter mit Lease; kein Verteilungstag fällt aus | BLOCKER | Aequitas #354 |
+
+**In Prüfung (15.10.2026):**
+
+| Befund | Schwere | PR |
+|---|---|---|
+| Gemerkte Peers über Neustarts, Leitungsmitglieder als Sync-Peers (höchstens 4 Plätze), ein Abgleich gibt seinen Platz nach Fehlschlägen frei | BLOCKER | Aequitas #355 |
+| `/api/blocks/push`: Obergrenze 8 bzw. 2 je IP, jede Ablehnung zählt, Kopfprüfung vor dem Abruf | HOCH | Aequitas #356 |
+| SSRF über URLs aus der Leitung (Weiterleitung gab Loopback-Antworten zurück) | MITTEL | Aequitas #356 |
+| Verklemmung zwischen Datenbank-Pool und `cs.mu`: der Knoten stand bei 20 gleichzeitigen Aufträgen | HOCH | Aequitas #356 |
+| Lesefrist auf dem libp2p-Stream; Validator-Abgleich gebündelt; Kopfgrenze im Snapshot 20 000 | MITTEL | Aequitas #356 |
+| 183 Workflows nur noch mit `contents: read` | NIEDRIG | Aequitas #357 |
+| go-ethereum v1.13 → v1.17 mit Konsens-Vergleichstest (die govulncheck-Ausnahmen laufen am 20.10. ab) | MITTEL | in Arbeit |
 
 ## 2. Im Code offen
 
 | Befund | Schwere | Anmerkung |
 |---|---|---|
 | Der Modus („test“/„real“) steht nicht in der Bescheinigung; der Proof-Server kann eine Test-Bescheinigung nicht ablehnen. | HOCH | betrifft drei Repos (Coordinator, Proof-Server, Kette), eigener PR |
-| `ANNAHME_ROLLE=nur_lesend` hält einen neuen Leiter vom Annehmen ab. | BLOCKER für mehr Validatoren | Plan in Arbeit (Dezentral) |
-| Seeds nur C1; Peers werden nicht gespeichert; Leitung-URLs zählen nicht als Sync-Peers. | BLOCKER für mehr Validatoren | Plan in Arbeit |
-| Tägliche Verteilung und Systemaufträge laufen auf jedem Knoten. | HOCH | Plan in Arbeit |
-| FromSync-Ausnahmen in Prüfungen | MITTEL | Plan in Arbeit |
-| Keine Tests mit 4 oder mehr Knoten | HOCH | Plan in Arbeit |
+| **Alte Überweisungen lassen sich wiederholen:** Der Neustart (V8, Genesis 30.09.) behielt die EVM-Chain-ID 1926, und die Nonces beginnen wieder bei 0. Eine signierte EVM-Überweisung der alten Kette wird gültig, sobald die Nonce der Wallet den alten Wert erreicht. | HOCH | **Entscheidung des Betreibers** (siehe 3.) |
+| StateRoot-Abweichung wird nur geloggt, der Block angenommen. Im DAG mit mehreren Produzenten ergeben Geschwister immer verschiedene Roots, ein hartes Abweisen hielte den Sync an. | MITTEL | tragbar nur bei geschlossener Produzentenliste |
+| FromSync-Ausnahmen (Sperre, Finalität) über Seed-Verbindungen ohne TLS | MITTEL | Stichtag nötig (Konsens), nach den Peers |
+| Keine echten Tests mit 4 oder mehr Knoten (Simulationen gibt es) | HOCH | offen |
+| `checkpointVorschau` läuft unter `dag.mu` (bis über 5 s je Checkpoint-Block) | MITTEL | erst ab dem Checkpoint-Stichtag |
 | Snapshot und Autoheal vertrauen C1 | MITTEL | erst mit mehreren Unterzeichnern lösbar |
 | Deploy ohne Rücknahme auf das vorige Image (Kette); der Deploy prüft weniger als die CI | MITTEL | |
 | GitHub Actions nicht auf SHA gepinnt | NIEDRIG | |
@@ -53,7 +64,7 @@ mehr in der Prozessliste und keine Injection im Release-Workflow.
 Diese Punkte kann kein Code-Änderung erledigen. Sie stehen hier in der
 Reihenfolge, in der sie gemacht werden sollten.
 
-1. **Umgebung `produktion` scharf machen** (Blocker 17), in allen vier Repos:
+1. **Umgebung `produktion` scharf machen** (Blocker 17), in allen vier Repos. Der Proof-Server-Deploy vom 14.10. lief ohne Freigabe durch, dort sind also noch keine Prüfer eingetragen.
    - In Settings → Environments → `produktion` Prüfer eintragen.
    - Die SSH-Secrets (`BOX_SSH_KEY`, `CONTABO_SSH_KEY`, `MATCHING_SERVICE_SSH_KEY` …) dort als Environment-Secrets anlegen und die Repo-Secrets löschen.
    - Erst dann wirkt die Sperre aus biometric #46 und proof-server #12.
@@ -73,9 +84,13 @@ Reihenfolge, in der sie gemacht werden sollten.
    - Erst ab vier bestätigen Checkpoints etwas.
 7. **Strenges Nachrechnen** (`nachrechnenStrengAbUnix`): Sobald `/api/wirtschaft/regeln` über längere Zeit null Abweichungen zeigt, den Stichtag per PR setzen, **bevor** ein zweiter unabhängiger Produzent zugelassen wird. Ohne ihn könnte ein fremder Produzent Geld erzeugen.
 8. **Checkpoint-Stichtag** (`checkpointTxAbUnix`): erst mit vier oder mehr Validatoren, nach dem Abschnitt „Einschalten“ in `CHECKPOINT_FAHRPLAN.md`.
-9. **Sybil über das Gerätegeheimnis** (`ALLOW_DEVICE_SECRET_REGISTER`): Solange die Registrierung ohne Gesicht erlaubt ist, kann ein Mensch mit mehreren Geräten mehrfach registrieren. Entscheiden, ob die Beta das zulässt.
-10. **Trusted Setup:** Der Beweisschlüssel hat nur einen Beitrag. Eine Zeremonie mit mehreren unabhängigen Beiträgen vor echten Werten.
-11. **Server:**
+9. **Wiederholung alter Überweisungen** (Chain-ID 1926 auf alter und neuer Kette). Mögliche Wege:
+   - **(a) neue Chain-ID ab einem Stichtag.** Das ist der Standardweg: Alte Signaturen werden ungültig. Dafür müssen MetaMask-Nutzer das Netz neu einrichten, die App bekommt eine neue Kennung, und der Domain-Separator des V8-Vertrags (Chain-ID 1926, immutable) verlangt einen neuen Vertrag oder eine Übergangsregel.
+   - **(b) eine Nonce-Untergrenze für EVM-Überweisungen.** Konsens-relevant, ändert aber Vertragsadressen nicht, wenn sie nur für Überweisungen gilt.
+   - **(c) nichts tun.** Vertretbar nur, wenn keine Wallet der alten Kette weiterverwendet wird.
+10. **Sybil über das Gerätegeheimnis** (`ALLOW_DEVICE_SECRET_REGISTER`): Solange die Registrierung ohne Gesicht erlaubt ist, kann ein Mensch mit mehreren Geräten mehrfach registrieren. Entscheiden, ob die Beta das zulässt.
+11. **Trusted Setup:** Der Beweisschlüssel hat nur einen Beitrag. Eine Zeremonie mit mehreren unabhängigen Beiträgen vor echten Werten.
+12. **Server:**
     - Port 8080 nur hinter dem Proxy öffentlich.
     - Log-Rotation für alle Container (Docker `max-size`).
     - Root-Passwort und SSH nur mit Schlüssel.
