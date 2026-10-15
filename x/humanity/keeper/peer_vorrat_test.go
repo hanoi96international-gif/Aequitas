@@ -17,7 +17,9 @@ func TestPeerVorrat_GrenzenUndFilter_RealDB(t *testing.T) {
 	cs.peerVorratTabelle()
 	cs.db.Exec(`DELETE FROM bekannte_peers`)
 	t.Cleanup(func() { cs.db.Exec(`DELETE FROM bekannte_peers`) })
-	peerVorratGeschrieben.Range(func(k, _ any) bool { peerVorratGeschrieben.Delete(k); return true })
+	peerVorratGeschriebenMu.Lock()
+	peerVorratGeschrieben = map[string]time.Time{}
+	peerVorratGeschriebenMu.Unlock()
 
 	jetzt := time.Unix(2_000_000_000, 0)
 	// Flut: 1000 verschiedene oeffentliche URLs -- es bleiben 64.
@@ -95,5 +97,56 @@ func TestLeitung_MitgliedURLsNurSatzOhneSelbst(t *testing.T) {
 	got := l.MitgliedURLs()
 	if len(got) != 1 || got[0] != "http://8.8.8.8:8080" {
 		t.Fatalf("MitgliedURLs: %v", got)
+	}
+}
+
+// Missbrauch (Pruefung der gemerkten Peers, MITTEL): ein Leiter, der die
+// URLs reihum wechselt, belegt hoechstens leitungPeerPlaetze Abgleiche.
+func TestLeitungPeers_HoechstensVierPlaetze(t *testing.T) {
+	alt := leitungSyncStarten
+	t.Cleanup(func() { leitungSyncStarten = alt })
+	leitungSyncStarten = func(dag *BlockDAG, u string) {
+		dag.syncPeerMu.Lock()
+		dag.activeSyncPeers[u] = true
+		dag.syncPeerMu.Unlock()
+	}
+	leitungPeersMu.Lock()
+	leitungPeers = map[string]bool{}
+	leitungPeersMu.Unlock()
+	dag := &BlockDAG{activeSyncPeers: map[string]bool{}, trustedSeeds: map[string]bool{}}
+	for runde := 0; runde < 25; runde++ {
+		var urls []string
+		for i := 0; i < 20; i++ {
+			urls = append(urls, fmt.Sprintf("http://8.8.%d.%d:8080", runde, i))
+		}
+		dag.leitungPeersStarten(urls)
+	}
+	if n := len(dag.activeSyncPeers); n != leitungPeerPlaetze {
+		t.Fatalf("%d Abgleiche aus der Leitung, Grenze %d", n, leitungPeerPlaetze)
+	}
+	// Endet einer (syncPeerAufgebenNach), wird der Platz wieder frei.
+	for u := range dag.activeSyncPeers {
+		delete(dag.activeSyncPeers, u)
+		break
+	}
+	dag.leitungPeersStarten([]string{"http://8.8.200.1:8080"})
+	if !dag.activeSyncPeers["http://8.8.200.1:8080"] {
+		t.Fatal("freier Platz wird nicht wieder vergeben")
+	}
+}
+
+// Ein Abgleich, der dauernd scheitert, zaehlt seine Fehlschlaege -- die
+// Grundlage dafuer, dass syncWithNode endet und den Platz freigibt.
+func TestSyncTakt_FehlFolge(t *testing.T) {
+	st := &syncTaktStand{backoff: time.Second}
+	for i := 0; i < syncPeerAufgebenNach; i++ {
+		st.runde(func() {}, func() bool { return false }, func(time.Duration) {})
+	}
+	if st.fehlFolge != syncPeerAufgebenNach {
+		t.Fatalf("fehlFolge %d", st.fehlFolge)
+	}
+	st.runde(func() {}, func() bool { return true }, func(time.Duration) {})
+	if st.fehlFolge != 0 {
+		t.Fatal("ein gelungener Takt setzt die Folge nicht zurueck")
 	}
 }

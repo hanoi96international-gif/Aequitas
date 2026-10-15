@@ -33,15 +33,47 @@ const (
 	leitungPeersAlle         = 2 * time.Minute
 )
 
+// leitungPeerPlaetze: hoechstens so viele Abgleiche gehen auf URLs aus der
+// Leitung zurueck (die setzt jedes Mitglied selbst, der Leiter fuer alle).
+const leitungPeerPlaetze = 4
+
 var (
-	peerVorratTabelleEinmal sync.Once
-	peerVorratGeschrieben   sync.Map // url -> time.Time
+	peerVorratTabelleMu sync.Mutex
+	peerVorratTabelleDa bool
+	// peerVorratGeschrieben: url -> letzter Schreibzeitpunkt; hart begrenzt.
+	peerVorratGeschriebenMu sync.Mutex
+	peerVorratGeschrieben   = map[string]time.Time{}
+
+	leitungPeersMu sync.Mutex
+	leitungPeers   = map[string]bool{}
 )
 
+// peerVorratTabelle: anlegen, bis es einmal gelang (ein Fehler wird beim
+// naechsten Mal wiederholt, statt das Merken still abzuschalten).
 func (cs *ChainState) peerVorratTabelle() {
-	peerVorratTabelleEinmal.Do(func() {
-		cs.db.Exec(`CREATE TABLE IF NOT EXISTS bekannte_peers (url TEXT PRIMARY KEY, zuletzt BIGINT NOT NULL)`)
-	})
+	peerVorratTabelleMu.Lock()
+	defer peerVorratTabelleMu.Unlock()
+	if peerVorratTabelleDa {
+		return
+	}
+	if _, err := cs.db.Exec(`CREATE TABLE IF NOT EXISTS bekannte_peers (url TEXT PRIMARY KEY, zuletzt BIGINT NOT NULL)`); err == nil {
+		peerVorratTabelleDa = true
+	}
+}
+
+// peerVorratSchreibenFaellig: Schreibabstand je URL; die Merkliste bleibt
+// unter 4 * peerVorratGrenze Eintraegen.
+func peerVorratSchreibenFaellig(url string, jetzt time.Time) bool {
+	peerVorratGeschriebenMu.Lock()
+	defer peerVorratGeschriebenMu.Unlock()
+	if v, ok := peerVorratGeschrieben[url]; ok && jetzt.Sub(v) < peerVorratSchreibAbstand {
+		return false
+	}
+	if len(peerVorratGeschrieben) >= 4*peerVorratGrenze {
+		peerVorratGeschrieben = map[string]time.Time{}
+	}
+	peerVorratGeschrieben[url] = jetzt
+	return true
 }
 
 // peerMerken: mit url ist gerade ein Abgleich gelungen.
@@ -53,10 +85,9 @@ func (cs *ChainState) peerMerken(url string, jetzt time.Time) {
 	if len(url) > 256 || !isAllowedPeerURL(url) {
 		return
 	}
-	if v, ok := peerVorratGeschrieben.Load(url); ok && jetzt.Sub(v.(time.Time)) < peerVorratSchreibAbstand {
+	if !peerVorratSchreibenFaellig(url, jetzt) {
 		return
 	}
-	peerVorratGeschrieben.Store(url, jetzt)
 	cs.peerVorratTabelle()
 	cs.db.Exec(`INSERT INTO bekannte_peers (url, zuletzt) VALUES ($1, $2)
 ON CONFLICT (url) DO UPDATE SET zuletzt = EXCLUDED.zuletzt`, url, jetzt.Unix())
@@ -129,10 +160,47 @@ func (dag *BlockDAG) leitungPeersZiehen(l *Leitung) {
 		for ; ; <-ticker.C {
 			// Je Takt abgesichert (takt_abgesichert_test.go).
 			SafeCall("leitung-peers", func() {
-				for _, u := range l.MitgliedURLs() {
-					dag.startSyncForPeer(u)
-				}
+				dag.leitungPeersStarten(l.MitgliedURLs())
 			})
 		}
 	})
+}
+
+// leitungSyncStarten: startSyncForPeer; Tests ersetzen ihn (kein Netz).
+var leitungSyncStarten = (*BlockDAG).startSyncForPeer
+
+// leitungPeersStarten: Abgleiche fuer URLs aus der Leitung -- hoechstens
+// leitungPeerPlaetze zugleich. Beendete Abgleiche (syncPeerAufgebenNach)
+// geben ihren Platz frei.
+func (dag *BlockDAG) leitungPeersStarten(urls []string) {
+	leitungPeersMu.Lock()
+	defer leitungPeersMu.Unlock()
+	dag.syncPeerMu.Lock()
+	for u := range leitungPeers {
+		if !dag.activeSyncPeers[u] {
+			delete(leitungPeers, u)
+		}
+	}
+	dag.syncPeerMu.Unlock()
+	for _, u := range urls {
+		if len(leitungPeers) >= leitungPeerPlaetze {
+			return
+		}
+		if leitungPeers[u] || dag.isTrustedSyncSource(u) {
+			continue
+		}
+		dag.syncPeerMu.Lock()
+		schon := dag.activeSyncPeers[u]
+		dag.syncPeerMu.Unlock()
+		if schon {
+			continue // laeuft ohnehin (Seed, Anmeldung, Vorrat)
+		}
+		leitungSyncStarten(dag, u)
+		dag.syncPeerMu.Lock()
+		gestartet := dag.activeSyncPeers[u]
+		dag.syncPeerMu.Unlock()
+		if gestartet {
+			leitungPeers[u] = true
+		}
+	}
 }
