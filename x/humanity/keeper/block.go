@@ -316,13 +316,17 @@ type BlockDAG struct {
 	// (peer_vorrat.go, leitungPeersStarten); je DAG.
 	leitungURLPeersMu sync.Mutex
 	leitungURLPeers   map[string]bool
-	blocks            map[string]*Block
-	tips              map[string]bool
-	mu                sync.RWMutex
-	state             *ChainState
-	evm               *EVMEngine // set by EVMRPCServer after construction; used by replayTransactions for ZK proof verification
-	nodeID            string
-	height            int64
+	// validatorAbgleich*: syncValidatorsFromAllPeers laeuft hoechstens
+	// einmal zugleich (validatorAbgleichAnstossen).
+	validatorAbgleichLaeuft  atomic.Bool
+	validatorAbgleichNochmal atomic.Bool
+	blocks                   map[string]*Block
+	tips                     map[string]bool
+	mu                       sync.RWMutex
+	state                    *ChainState
+	evm                      *EVMEngine // set by EVMRPCServer after construction; used by replayTransactions for ZK proof verification
+	nodeID                   string
+	height                   int64
 
 	// vorlauf: der Ausgangskorb fuer den naechsten Block, siehe vorlader.go.
 	vorlauf vorlader
@@ -5306,7 +5310,7 @@ func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
 				// If this proposer registered with any of them (but not with us),
 				// AddAuthorizedValidator will add them and the next sync cycle will
 				// accept their blocks — no manual AUTHORIZED_VALIDATORS config needed.
-				SafeGoroutine("syncValidatorsFromAllPeers", dag.syncValidatorsFromAllPeers)
+				dag.validatorAbgleichAnstossen()
 			}
 			return false
 		}

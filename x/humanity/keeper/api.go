@@ -2088,17 +2088,28 @@ func (a *APIServer) handleBlockPush(w http.ResponseWriter, r *http.Request) {
 	// Sender lernt daraus, dass er den Rumpf gepackt mitschicken darf.
 	// Siehe push_gzip.go.
 	w.Header().Set(gzipPushHeader, gzipPushToken)
+	// push_grenze.go: feste Obergrenze gleichzeitig gelesener Ruempfe.
+	frei, platz := blockPushPlatz(ip)
+	if !platz {
+		w.Header().Set("Retry-After", "1")
+		pushError(w, http.StatusServiceUnavailable, "busy")
+		return
+	}
+	defer frei()
 	body, tooLarge, err := readPushBody(w, r, maxBlockStreamBytes)
 	if tooLarge {
+		blockPushRecordOutcome(ip, false)
 		jsonError(w, "request body too large", http.StatusRequestEntityTooLarge)
 		return
 	}
 	if err != nil {
+		blockPushRecordOutcome(ip, false)
 		pushError(w, http.StatusBadRequest, "read error")
 		return
 	}
 	var block Block
 	if err := json.Unmarshal(body, &block); err != nil {
+		blockPushRecordOutcome(ip, false)
 		pushError(w, http.StatusBadRequest, "invalid block JSON")
 		return
 	}
@@ -2141,8 +2152,23 @@ func (a *APIServer) handleBlockPush(w http.ResponseWriter, r *http.Request) {
 	// else.
 	// eltern_grenze.go: vor dem Abruf des Koerpers beim Absender.
 	if elternUngueltig(&block) != "" {
+		blockPushRecordOutcome(ip, false)
 		w.Write([]byte(`{"ok":false,"reason":"invalid parents"}`))
 		return
+	}
+	// push_grenze.go: einen Rumpf von aussen nur fuer einen echten Kopf holen.
+	if a.blockchain.state.NeedsTxBatch(&block) {
+		switch a.blockchain.kopfVorAbruf(&block) {
+		case kopfGefaelscht:
+			blockPushRecordOutcome(ip, false)
+			w.Write([]byte(`{"ok":false,"reason":"invalid header"}`))
+			return
+		case kopfUnbekannt:
+			// Echt signiert, nur hier noch nicht bekannt: vollstaendig
+			// schicken lassen -- dann entscheidet AddPeerBlock wie bisher.
+			w.Write([]byte(`{"ok":false,"reason":"unknown proposer","action":"resend_full","tx_batch":"` + txBatchCapabilityToken + `"}`))
+			return
+		}
 	}
 	if !a.ensureBlockBody(&block, r.Header.Get(txBatchSourceHeader)) {
 		w.Write([]byte(`{"ok":false,"reason":"transaction body unavailable","action":"resend_full","tx_batch":"` + txBatchCapabilityToken + `"}`))
