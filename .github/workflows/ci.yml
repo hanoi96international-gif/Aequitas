@@ -8,6 +8,9 @@ on:
   push:
     branches-ignore: [master, main]
   pull_request:
+  # Pforte vor jedem Deploy (deploy-c1-dann-c2.yml): dieselben Pruefungen
+  # wie im PR -- race, db-tests, govulncheck, Docker-Image -- nicht weniger.
+  workflow_call:
 
 # Nur lesen (Beta-Pruefung 15.10.2026): dieser Workflow schreibt nichts
 # ins Repo; die Voreinstellung des Tokens soll nicht mehr gelten.
