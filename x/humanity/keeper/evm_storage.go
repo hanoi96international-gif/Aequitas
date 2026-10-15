@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/lib/pq"
 )
@@ -1176,8 +1175,7 @@ func (e *EVMEngine) PersistContractStorage(contractAddr common.Address) {
 // NewPersistentStateDB creates a StateDB loaded from PostgreSQL.
 // Used by tests and legacy code. For production use EVMEngine.newStateDB().
 func NewPersistentStateDB(cs *ChainState) (*state.StateDB, error) {
-	memDB := rawdb.NewMemoryDatabase()
-	sdb, err := state.New(common.Hash{}, state.NewDatabase(memDB), nil)
+	sdb, db, err := neueSpeicherStateDB()
 	if err != nil {
 		return nil, err
 	}
@@ -1192,7 +1190,7 @@ func NewPersistentStateDB(cs *ChainState) (*state.StateDB, error) {
 		// to get the AEQ float value before converting to wei. Using
 		// int64(acc.Balance) directly would re-interpret micro-AEQ as whole-AEQ
 		// and multiply by 1e18 a second time, overstating balances by 1e6×.
-		sdb.SetBalance(addr, evmBalanceWei(acc.Address, acc.Balance.Float()))
+		setzeGuthaben(sdb, addr, evmBalanceWei(acc.Address, acc.Balance.Float()))
 	}
 
 	for _, addrStr := range cs.GetAllContracts() {
@@ -1201,7 +1199,7 @@ func NewPersistentStateDB(cs *ChainState) (*state.StateDB, error) {
 		if err != nil || len(code) == 0 {
 			continue
 		}
-		sdb.SetCode(addr, code)
+		setzeCode(sdb, addr, code)
 		fmt.Printf("[EVM] Loaded contract: %s (%d bytes)\n", addrStr, len(code))
 
 		if cs.db != nil {
@@ -1218,8 +1216,13 @@ func NewPersistentStateDB(cs *ChainState) (*state.StateDB, error) {
 		}
 	}
 
-	sdb.Commit(0, false)
-	return sdb, nil
+	// Nach dem Commit ist eine StateDB nicht mehr lesbar (go-ethereum
+	// v1.14+): frisch auf der Wurzel oeffnen.
+	root, err := evmFestschreiben(sdb)
+	if err != nil {
+		return nil, err
+	}
+	return oeffneStateDB(root, db)
 }
 
 // SaveBioRegistration links a ZK proof commitment to the wallet that
