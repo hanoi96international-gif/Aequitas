@@ -76,11 +76,17 @@ func TestKonsensEVM_VertraegeOhneAbweichendeOpcodes(t *testing.T) {
 			op := body[i]
 			if op == 0x55 {
 				// SSTORE ist ueberall; abweichend war nur ein SSTORE, bevor
-				// der Vertrag im Aufruf ueberhaupt Speicher gelesen hat. Bei
-				// V7/V8 prueft jede schreibende Funktion vorher Zustand
-				// (require auf isHuman, Registrar, Nonce ...); die Wege
-				// laufen im Knotenmuster des Golden-Tests auf v1.13.0 und
-				// v1.17.8 gleich.
+				// der Vertrag im Aufruf ueberhaupt Speicher gelesen hat
+				// (v1.13.0: Panik, v1.17: normales Gas). Beleg, dass das V7
+				// und V8 nicht trifft: konsens_evm_knotenaufruf_test.go ruft
+				// jeden Selektor, den checkPersistedCallAllowed zulaesst
+				// (V7: transfer, balanceOf, allowance, totalSupply, name,
+				// symbol, decimals, registerWithSig 13b81eb0; V8:
+				// registerWithSig 60529762), wie CallContract auf -- je
+				// Aufruf frische StateDB, also leere Zugriffsliste -- im
+				// Gutfall und im Revert-Fall. Die Zeilen "knotenaufruf/..."
+				// der Golden-Datei sind auf v1.13.0 erzeugt (keine Panik) und
+				// auf v1.17.8 byte-gleich, ohne Ausnahme.
 				sstores++
 			} else if n, ok := abweichend[op]; ok {
 				t.Errorf("%s: Opcode %s (0x%02x) an Stelle %d", name, n, op, i)

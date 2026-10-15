@@ -903,3 +903,81 @@ bn/bio/pa-x-ab-p klasse=ok gas=29531541 ret=000000000000000000000000000000000000
 bn/bio/pc-nicht-auf-kurve klasse=ok gas=29531541 ret=0000000000000000000000000000000000000000000000000000000000000000 logs=-
 bn/bio/pa-unendlich klasse=ok gas=195773 ret=0000000000000000000000000000000000000000000000000000000000000000 logs=-
 bn/wurzel=a7a786d4fa13e1889096bba89767b1a1bb14ad52118ddf5c46cb060239d83af6
+knotenaufruf/v7/start mock=0x178b1066090d5c181c47ce517e311bbf3419a6d4 code=cc20fd988b32fcfae0f2b7d7759dfa16e33c4e65b9bb995fba3d008d173b5bb7 speicher slots=9 hash=8a35fd27fda65b12299ba82284aefe8a
+knotenaufruf/v7/name() klasse=ok gas=460 ret=000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000084165717569746173000000000000000000000000000000000000000000000000 logs=-
+knotenaufruf/v7/name() festgeschrieben=8eb5c8ac3585a9ded67aeb57f8324399518031d3456b296de6a4dcc7506cc73e speicher slots=9 hash=8a35fd27fda65b12299ba82284aefe8a
+knotenaufruf/v7/symbol() klasse=ok gas=437 ret=000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000034145510000000000000000000000000000000000000000000000000000000000 logs=-
+knotenaufruf/v7/symbol() festgeschrieben=8eb5c8ac3585a9ded67aeb57f8324399518031d3456b296de6a4dcc7506cc73e speicher slots=9 hash=8a35fd27fda65b12299ba82284aefe8a
+knotenaufruf/v7/decimals() klasse=ok gas=271 ret=0000000000000000000000000000000000000000000000000000000000000012 logs=-
+knotenaufruf/v7/decimals() festgeschrieben=8eb5c8ac3585a9ded67aeb57f8324399518031d3456b296de6a4dcc7506cc73e speicher slots=9 hash=8a35fd27fda65b12299ba82284aefe8a
+knotenaufruf/v7/totalSupply() klasse=ok gas=2417 ret=0000000000000000000000000000000000000000000000000000000000000000 logs=-
+knotenaufruf/v7/totalSupply() festgeschrieben=8eb5c8ac3585a9ded67aeb57f8324399518031d3456b296de6a4dcc7506cc73e speicher slots=9 hash=8a35fd27fda65b12299ba82284aefe8a
+knotenaufruf/v7/registerWithSig-gut klasse=ok gas=266726 ret= logs=2:ea8a7bff4501f0e38c0fe68e
+knotenaufruf/v7/registerWithSig-gut festgeschrieben=204ee5f2cb2ef83898ad303795bb47b4904471fc451a4ad095fa669a7347086a speicher slots=20 hash=2759cd6e5cbaf476382363bed245f9e0
+knotenaufruf/v7/registerWithSig-wiederholt klasse=revert gas=3300 ret=08c379a000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000012416c726561647920726567697374657265640000000000000000000000000000 logs=-
+#knotenaufruf/v7/registerWithSig-wiederholt fehler="execution reverted" grund="Already registered"
+knotenaufruf/v7/registerWithSig-fremde-unterschrift klasse=revert gas=14225 ret=08c379a000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000011496e76616c6964207369676e6174757265000000000000000000000000000000 logs=-
+#knotenaufruf/v7/registerWithSig-fremde-unterschrift fehler="execution reverted" grund="Invalid signature"
+knotenaufruf/v7/registerWithSig-falscher-beweis klasse=revert gas=223395 ret=08c379a00000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000d496e76616c69642070726f6f6600000000000000000000000000000000000000 logs=-
+#knotenaufruf/v7/registerWithSig-falscher-beweis fehler="execution reverted" grund="Invalid proof"
+knotenaufruf/v7/registerWithSig-kein-relayer zulassung=abgelehnt
+#knotenaufruf/v7/registerWithSig-kein-relayer fehler="registerWithSig must be called via /api/register (direct calls bypass Go-state updates)"
+knotenaufruf/v7/registerWithSig-bob klasse=ok gas=226926 ret= logs=2:7fb1ec094dd28050b922f3ec
+knotenaufruf/v7/registerWithSig-bob festgeschrieben=d7a93c63d515ec0e204d3a48b10bda286d3f3e89838323de354ea08d28ff9c37 speicher slots=29 hash=914a2a55fafdb21fc723b03eda724bd3
+knotenaufruf/v7/balanceOf-gut klasse=ok gas=2599 ret=00000000000000000000000000000000000000000000003635c9adc5dea00000 logs=-
+knotenaufruf/v7/balanceOf-gut festgeschrieben=f65a9da3ad843358da15f3cc8561e9473442f3f4cbaf38eb6fb7bc2887a7eb1c speicher slots=29 hash=914a2a55fafdb21fc723b03eda724bd3
+knotenaufruf/v7/balanceOf-keine-adresse klasse=revert gas=334 ret= logs=-
+#knotenaufruf/v7/balanceOf-keine-adresse fehler="execution reverted" grund=""
+knotenaufruf/v7/balanceOf-ohne-argument klasse=revert gas=269 ret= logs=-
+#knotenaufruf/v7/balanceOf-ohne-argument fehler="execution reverted" grund=""
+knotenaufruf/v7/allowance-nicht-im-vertrag klasse=revert gas=255 ret= logs=-
+#knotenaufruf/v7/allowance-nicht-im-vertrag fehler="execution reverted" grund=""
+knotenaufruf/v7/transfer-gut klasse=ok gas=66920 ret=0000000000000000000000000000000000000000000000000000000000000001 logs=3:988f0a3388c4e560e4395c7a
+knotenaufruf/v7/transfer-gut festgeschrieben=4b4f7233bb414dc41e00a97aed77552d5eb6eb6cec73d424f508b3c2be668a7c speicher slots=30 hash=0e6905c2578c86800d3a5acf75ea2f22
+knotenaufruf/v7/transfer-kein-mensch klasse=revert gas=2712 ret=08c379a0000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000094e6f742068756d616e0000000000000000000000000000000000000000000000 logs=-
+#knotenaufruf/v7/transfer-kein-mensch fehler="execution reverted" grund="Not human"
+knotenaufruf/v7/transfer-zu-viel klasse=revert gas=4884 ret=08c379a000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000014496e73756666696369656e742062616c616e6365000000000000000000000000 logs=-
+#knotenaufruf/v7/transfer-zu-viel fehler="execution reverted" grund="Insufficient balance"
+knotenaufruf/v7/transfer-an-sich-selbst klasse=revert gas=4976 ret=08c379a000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000011496e76616c696420726563697069656e74000000000000000000000000000000 logs=-
+#knotenaufruf/v7/transfer-an-sich-selbst fehler="execution reverted" grund="Invalid recipient"
+knotenaufruf/v7/transfer-bob-alice klasse=ok gas=51576 ret=0000000000000000000000000000000000000000000000000000000000000001 logs=5:2b05da5d8cf9d5d6172bab58
+knotenaufruf/v7/transfer-bob-alice festgeschrieben=c1adc6f9914c89910ace8e3317df97e9c579ad11f673481b519669de4226821d speicher slots=30 hash=98ac6fe31ad850f6f19f63815cd05540
+knotenaufruf/v7/balanceOf-bob klasse=ok gas=2599 ret=00000000000000000000000000000000000000000000003634666821a62f04e1 logs=-
+knotenaufruf/v7/balanceOf-bob festgeschrieben=5f248647e7cc63e0936e111e4fdfced27a5a9369510b807e4093c390e571f5a0 speicher slots=30 hash=98ac6fe31ad850f6f19f63815cd05540
+knotenaufruf/v7/totalSupply()-ende klasse=ok gas=2417 ret=00000000000000000000000000000000000000000000006c6b935b8bbd400000 logs=-
+knotenaufruf/v7/totalSupply()-ende festgeschrieben=e93710a804b3723a2570d74cf3250f5b4eb64439396e27968def6d8c0dac088d speicher slots=30 hash=98ac6fe31ad850f6f19f63815cd05540
+knotenaufruf/v7/name()-mit-wert klasse=revert gas=43 ret= logs=-
+#knotenaufruf/v7/name()-mit-wert fehler="execution reverted" grund=""
+knotenaufruf/v7/name()-mit-wert-ueber-callcontract abgelehnt=true
+knotenaufruf/v7/symbol()-mit-wert klasse=revert gas=43 ret= logs=-
+#knotenaufruf/v7/symbol()-mit-wert fehler="execution reverted" grund=""
+knotenaufruf/v7/symbol()-mit-wert-ueber-callcontract abgelehnt=true
+knotenaufruf/v7/decimals()-mit-wert klasse=revert gas=43 ret= logs=-
+#knotenaufruf/v7/decimals()-mit-wert fehler="execution reverted" grund=""
+knotenaufruf/v7/decimals()-mit-wert-ueber-callcontract abgelehnt=true
+knotenaufruf/v7/totalSupply()-mit-wert klasse=revert gas=43 ret= logs=-
+#knotenaufruf/v7/totalSupply()-mit-wert fehler="execution reverted" grund=""
+knotenaufruf/v7/totalSupply()-mit-wert-ueber-callcontract abgelehnt=true
+knotenaufruf/v7/claimUBI-nicht-zugelassen zulassung=abgelehnt
+#knotenaufruf/v7/claimUBI-nicht-zugelassen fehler="selector 1a880ded not supported for persisting calls — use /api/* endpoints"
+knotenaufruf/v8/start code=72ac9b799cfbcbf6f1d9653f772e203978cf82194546cee55fea5549c9cfa21e speicher slots=1 hash=dd3e07f9920ac9ae479e453c7460ee43
+knotenaufruf/v8/registerWithSig-fremde-unterschrift klasse=revert gas=21555 ret=08c379a00000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000001556383a20696e76616c6964207369676e61747572650000000000000000000000 logs=-
+#knotenaufruf/v8/registerWithSig-fremde-unterschrift fehler="execution reverted" grund="V8: invalid signature"
+knotenaufruf/v8/registerWithSig-falscher-beweis klasse=revert gas=27626 ret=08c379a00000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000001156383a20696e76616c69642070726f6f66000000000000000000000000000000 logs=-
+#knotenaufruf/v8/registerWithSig-falscher-beweis fehler="execution reverted" grund="V8: invalid proof"
+knotenaufruf/v8/registerWithSig-kein-relayer zulassung=abgelehnt
+#knotenaufruf/v8/registerWithSig-kein-relayer fehler="registerWithSig must be called via /api/register (direct calls bypass Go-state updates)"
+knotenaufruf/v8/registerWithSig-gut klasse=ok gas=176684 ret= logs=1:32250734614235f612339259
+knotenaufruf/v8/registerWithSig-gut festgeschrieben=e22701fa339793731ff74fdaa2e4a850c68fc75fac79cbdac303a065aad71a9b speicher slots=8 hash=8df893c8ea791ce06a3f69831fe55a9a
+knotenaufruf/v8/registerWithSig-wiederholt klasse=revert gas=7675 ret=08c379a00000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000001656383a20616c7265616479207265676973746572656400000000000000000000 logs=-
+#knotenaufruf/v8/registerWithSig-wiederholt fehler="execution reverted" grund="V8: already registered"
+knotenaufruf/v8/registerWithSig-bob klasse=ok gas=156784 ret= logs=1:081193150d44dc50d5757e08
+knotenaufruf/v8/registerWithSig-bob festgeschrieben=602b4bd229224d39f1b6e8529ba8eeaa4bc502e0a263e31dc9812f1219ca174b speicher slots=14 hash=ea8013b693ec01148253f75fdd0ac2b1
+knotenaufruf/v8/registerWithSig-nullifier-doppelt klasse=revert gas=12323 ret=08c379a00000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000001256383a206e756c6c696669657220757365640000000000000000000000000000 logs=-
+#knotenaufruf/v8/registerWithSig-nullifier-doppelt fehler="execution reverted" grund="V8: nullifier used"
+knotenaufruf/v8/name()-nicht-zugelassen zulassung=abgelehnt
+#knotenaufruf/v8/name()-nicht-zugelassen fehler="selector 06fdde03 not supported for persisting calls — use /api/* endpoints"
+knotenaufruf/v8/totalSupply()-nicht-zugelassen zulassung=abgelehnt
+#knotenaufruf/v8/totalSupply()-nicht-zugelassen fehler="selector 18160ddd not supported for persisting calls — use /api/* endpoints"
+knotenaufruf/v8/transfer-nicht-zugelassen zulassung=abgelehnt
+#knotenaufruf/v8/transfer-nicht-zugelassen fehler="selector a9059cbb not supported for persisting calls — use /api/* endpoints"

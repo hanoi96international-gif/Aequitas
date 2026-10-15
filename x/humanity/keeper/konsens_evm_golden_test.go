@@ -814,6 +814,7 @@ func TestKonsensEVM_GoldenWerte(t *testing.T) {
 	konsensVertraege(t, b)
 	konsensUeberweisungen(t, b)
 	konsensBN254(t, b)
+	konsensKnotenaufrufe(t, b)
 	pruefeGolden(t, "konsens_evm_golden.txt", b)
 }
 
