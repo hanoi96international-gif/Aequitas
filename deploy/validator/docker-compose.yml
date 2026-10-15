@@ -18,6 +18,14 @@ services:
     image: postgres:16-alpine
     container_name: aequitas-postgres
     restart: unless-stopped
+    # Begrenzte Protokolle und keine Rechteausweitung im Container
+    # (Beta-Pruefung 15.10.2026): ohne max-size wuchs das json-Log eines
+    # Containers ohne Grenze, bis die Platte voll war.
+    logging:
+      driver: json-file
+      options: { max-size: "50m", max-file: "5" }
+    security_opt:
+      - no-new-privileges:true
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD in .env setzen}
@@ -47,6 +55,14 @@ services:
     image: aequitas-node:local
     container_name: aequitas-node
     restart: unless-stopped
+    # Begrenzte Protokolle und keine Rechteausweitung im Container
+    # (Beta-Pruefung 15.10.2026): ohne max-size wuchs das json-Log eines
+    # Containers ohne Grenze, bis die Platte voll war.
+    logging:
+      driver: json-file
+      options: { max-size: "50m", max-file: "5" }
+    security_opt:
+      - no-new-privileges:true
     depends_on:
       postgres:
         condition: service_healthy
