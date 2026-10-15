@@ -60,6 +60,11 @@ on:
         required: false
         default: "60s"
 
+# Nur lesen (Beta-Pruefung 15.10.2026): dieser Workflow schreibt nichts
+# ins Repo; die Voreinstellung des Tokens soll nicht mehr gelten.
+permissions:
+  contents: read
+
 jobs:
   sweep:
     runs-on: ubuntu-latest

@@ -21,6 +21,11 @@ on:
         required: false
         default: "https://github.com/hanoi96international-gif/Aequitas-App/releases/download/app-v1.4.1/app-release.apk"
 
+# Nur lesen (Beta-Pruefung 15.10.2026): dieser Workflow schreibt nichts
+# ins Repo; die Voreinstellung des Tokens soll nicht mehr gelten.
+permissions:
+  contents: read
+
 jobs:
   c1:
     runs-on: ubuntu-latest

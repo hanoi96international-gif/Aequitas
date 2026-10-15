@@ -6,6 +6,11 @@ on:
     inputs:
       container: {description: "Container, dessen Log gezeigt wird (leer = keiner)", required: false, default: "proof-server"}
       zeilen: {description: "letzte N Logzeilen", required: false, default: "40"}
+# Nur lesen (Beta-Pruefung 15.10.2026): dieser Workflow schreibt nichts
+# ins Repo; die Voreinstellung des Tokens soll nicht mehr gelten.
+permissions:
+  contents: read
+
 jobs:
   s:
     strategy:

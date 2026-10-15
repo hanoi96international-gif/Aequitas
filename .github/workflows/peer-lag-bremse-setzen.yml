@@ -35,6 +35,11 @@ on:
         default: contabo2
         type: choice
         options: [contabo1, contabo2, beide]
+# Nur lesen (Beta-Pruefung 15.10.2026): dieser Workflow schreibt nichts
+# ins Repo; die Voreinstellung des Tokens soll nicht mehr gelten.
+permissions:
+  contents: read
+
 jobs:
   set:
     strategy:

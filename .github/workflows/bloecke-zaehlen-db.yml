@@ -4,6 +4,11 @@ on:
     inputs:
       von: {description: "Hoehe ab (exklusiv)", required: true}
       bis: {description: "Hoehe bis (inklusiv)", required: true}
+# Nur lesen (Beta-Pruefung 15.10.2026): dieser Workflow schreibt nichts
+# ins Repo; die Voreinstellung des Tokens soll nicht mehr gelten.
+permissions:
+  contents: read
+
 jobs:
   z:
     strategy: {matrix: {box: [{name: "C1", host: "alter-c1-abgeschaltet.invalid", secret: "C1"}, {name: "C2", host: "194.163.188.71", secret: "C2"}]}}

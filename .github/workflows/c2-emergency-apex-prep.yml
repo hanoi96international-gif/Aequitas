@@ -7,6 +7,11 @@ name: C2 Not-Frontend Apex-Standby (ohne DNS)
 on:
   workflow_dispatch:
 
+# Nur lesen (Beta-Pruefung 15.10.2026): dieser Workflow schreibt nichts
+# ins Repo; die Voreinstellung des Tokens soll nicht mehr gelten.
+permissions:
+  contents: read
+
 jobs:
   prep:
     runs-on: ubuntu-latest

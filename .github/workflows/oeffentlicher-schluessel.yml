@@ -4,6 +4,11 @@ name: Oeffentlichen Teil von CONTABO_SSH_KEY ausgeben
 # ist nicht geheim; der private verlaesst den Runner nicht.
 on:
   workflow_dispatch:
+# Nur lesen (Beta-Pruefung 15.10.2026): dieser Workflow schreibt nichts
+# ins Repo; die Voreinstellung des Tokens soll nicht mehr gelten.
+permissions:
+  contents: read
+
 jobs:
   ausgeben:
     runs-on: ubuntu-latest

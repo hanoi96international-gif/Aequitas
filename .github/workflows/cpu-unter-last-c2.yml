@@ -15,6 +15,11 @@ on:
         required: false
         default: "60"
 
+# Nur lesen (Beta-Pruefung 15.10.2026): dieser Workflow schreibt nichts
+# ins Repo; die Voreinstellung des Tokens soll nicht mehr gelten.
+permissions:
+  contents: read
+
 jobs:
   messen:
     runs-on: ubuntu-latest

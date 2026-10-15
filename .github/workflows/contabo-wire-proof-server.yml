@@ -37,6 +37,11 @@ on:
         type: choice
         options: [contabo1, contabo2]
 
+# Nur lesen (Beta-Pruefung 15.10.2026): dieser Workflow schreibt nichts
+# ins Repo; die Voreinstellung des Tokens soll nicht mehr gelten.
+permissions:
+  contents: read
+
 jobs:
   wire:
     runs-on: ubuntu-latest
