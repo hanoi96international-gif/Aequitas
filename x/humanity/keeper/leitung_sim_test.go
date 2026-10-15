@@ -59,6 +59,8 @@ type simNetz struct {
 	// Mitgliedschaft: Genesis-Satz (nil = alle) und Zulassung (nil = alle).
 	genesis    []string
 	zugelassen map[string]bool
+	// nieLeiter: Knoten, die nie Leiter sein duerfen (nur lesend).
+	nieLeiter map[string]bool
 	// Messwerte
 	zweiLeiter bool
 	leiterZeit time.Duration
@@ -92,6 +94,7 @@ func (n *simNetz) baue(i int) {
 	if n.zugelassen != nil {
 		env.Zugelassen = func(a string) bool { return n.zugelassen[a] }
 	}
+	env.NieLeiter = func() bool { return n.nieLeiter[k.addr] }
 	faehig := n.faehig == nil || n.faehig[k.addr]
 	genesis := n.genesis
 	if genesis == nil {

@@ -38,6 +38,7 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
+	"time"
 )
 
 // verteilteAnnahmeAbUnix: ab dieser Zeit nimmt jeder Validator fuer seine
@@ -145,7 +146,15 @@ func annahmeKonto(tx *Transaction) string {
 // SystemauftraegeHier: leer, wenn dieser Knoten Systemauftraege (taegliche
 // Verteilung, Treuhand nach Inaktivitaet, Umlauf) ausfuehren darf; sonst der
 // Grund. Sie belasten die Toepfe -- im verteilten Term gehoeren die dem
-// Leiter. Ohne verteilten Term aendert sich nichts (wie bisher).
+// Leiter.
+//
+// Mit Leitung auch OHNE verteilten Term nur der Leiter mit gueltiger Lease
+// (Beta-Pruefung 14.10.2026, HOCH): vorher verteilte in Stufe 1 jeder
+// Knoten, und gegen doppelte Auszahlung schuetzte nur die LOKALE Sperre
+// (TryLockDistribution) -- mit mehreren Validatoren zahlte jeder aus
+// denselben Toepfen. Fail-closed: Lease unklar heisst keine Verteilung; der
+// Aufrufer prueft nach distributionHealthRetryInterval erneut. Ohne Leitung
+// (ein Knoten) wie bisher.
 func (cs *ChainState) SystemauftraegeHier() string {
 	// Leitung an, aber (noch) nicht da: keine Systemauftraege -- sonst hielte
 	// sich ein Knoten mit gescheitertem Start im verteilten Term als einziger
@@ -162,10 +171,35 @@ func (cs *ChainState) SystemauftraegeHier() string {
 	verteilt := l.verteiltImTerm()
 	l.mu.Unlock()
 	if !verteilt {
-		return ""
+		if cs.nimmtUeberweisungenAn() {
+			return ""
+		}
+		return "Leitung an, dieser Knoten ist nicht der Leiter mit gueltiger Lease"
 	}
 	if cs.nimmtAnFuer(ubiPoolAddr) {
 		return ""
 	}
 	return "verteilter Term, dieser Knoten ist nicht der Leiter"
+}
+
+// VerteilungHeuteOffen: gehoert die letzte taegliche Verteilung (lastUBIAt)
+// zu einem frueheren 20:00-Termin (in loc) als jetzt? Dann ist der aktuelle
+// noch offen, auch wenn TryLockDistribution ihn wegen der 23-h-55-min-Frist
+// noch abweist -- etwa weil gestern ein Retry erst um 20:15 lief (Pruefung
+// von #354). Gezaehlt wird nach Termin, nicht nach Kalendertag: eine Runde
+// um 00:10 gehoert noch zum Termin des Vortags (Nachpruefung von #354). Der
+// Aufrufer prueft dann bald erneut, statt einen Tag zu ueberspringen.
+func VerteilungHeuteOffen(lastUBIAt int64, jetzt time.Time, loc *time.Location) bool {
+	if lastUBIAt <= 0 {
+		return false
+	}
+	return verteilTermin(time.Unix(lastUBIAt, 0).In(loc)) != verteilTermin(jetzt.In(loc))
+}
+
+// verteilTermin: der Tag des letzten 20:00-Termins bis t.
+func verteilTermin(t time.Time) string {
+	if t.Hour() < 20 {
+		t = t.AddDate(0, 0, -1)
+	}
+	return t.Format("2006-01-02")
 }
