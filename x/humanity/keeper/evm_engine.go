@@ -9,10 +9,10 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/holiman/uint256"
 )
 
 // weiPerAEQ is 10^18, the fixed AEQ-to-wei scaling factor. Performance audit
@@ -155,8 +155,8 @@ func chainConfigFuer(ts uint64) *params.ChainConfig {
 // buried global clock read that would need to be hunted down.
 func blockContext(ts uint64) vm.BlockContext {
 	return vm.BlockContext{
-		CanTransfer: func(_ vm.StateDB, _ common.Address, _ *big.Int) bool { return true },
-		Transfer:    func(_ vm.StateDB, _, _ common.Address, _ *big.Int) {},
+		CanTransfer: func(_ vm.StateDB, _ common.Address, _ *uint256.Int) bool { return true },
+		Transfer:    func(_ vm.StateDB, _, _ common.Address, _ *uint256.Int, _ *params.Rules) {},
 		GetHash:     func(_ uint64) common.Hash { return common.Hash{} },
 		Coinbase:    common.Address{},
 		BlockNumber: big.NewInt(1), // P2-8: fixed — AequitasV7 uses block.timestamp not block.number; wall-clock is non-deterministic between nodes
@@ -164,6 +164,16 @@ func blockContext(ts uint64) vm.BlockContext {
 		Difficulty:  big.NewInt(0),
 		GasLimit:    30_000_000,
 		BaseFee:     big.NewInt(0),
+		// Seit go-ethereum v1.14 gelten Shanghai/Cancun/Prague... nur mit
+		// "Merge" (Random != nil, params.ChainConfig.Rules). Ohne Random
+		// fielen PUSH0, MCOPY, TSTORE usw. still weg -- genau die Opcodes,
+		// mit denen V7/V8 kompiliert sind (konsens_evm_golden_test.go). In
+		// v1.13.0 galten sie auch ohne Merge. PREVRANDAO liefert damit 0
+		// (v1.13.0: Panik ueber den nil-Zeiger), BLOBBASEFEE liefert 0
+		// (v1.13.0: ungueltiger Opcode); kein Vertrag der Kette benutzt
+		// einen von beiden (TestKonsensEVM_VertraegeOhneAbweichendeOpcodes).
+		Random:      &common.Hash{},
+		BlobBaseFee: big.NewInt(0),
 	}
 }
 
@@ -187,9 +197,7 @@ func blockContext(ts uint64) vm.BlockContext {
 // already-completed-for-this-chain's-two-contracts operation where the
 // full-load cost has never mattered and isn't worth touching.
 func (e *EVMEngine) newStateDB(onlyAddrs ...common.Address) (*state.StateDB, state.Database, error) {
-	memDB := rawdb.NewMemoryDatabase()
-	db := state.NewDatabase(memDB)
-	sdb, err := state.New(common.Hash{}, db, nil)
+	sdb, db, err := neueSpeicherStateDB()
 	if err != nil {
 		return nil, nil, err
 	}
@@ -217,7 +225,7 @@ func (e *EVMEngine) newStateDB(onlyAddrs ...common.Address) (*state.StateDB, sta
 		// Use .Float() to get the real AEQ value, then convert to wei (×1e18).
 		// The previous code used big.NewInt(int64(acc.Balance)) which treated the
 		// raw micro-unit integer as whole-AEQ, producing balances 1e6× too high.
-		sdb.SetBalance(addr, evmBalanceWei(acc.Address, acc.Balance.Float()))
+		setzeGuthaben(sdb, addr, evmBalanceWei(acc.Address, acc.Balance.Float()))
 	}
 
 	// Load all contract bytecodes and storage. Performance audit 2026-07-06:
@@ -235,7 +243,7 @@ func (e *EVMEngine) newStateDB(onlyAddrs ...common.Address) (*state.StateDB, sta
 		if err != nil || len(code) == 0 {
 			continue
 		}
-		sdb.SetCode(addr, code)
+		setzeCode(sdb, addr, code)
 
 		// Load storage slots
 		if e.chainState.db != nil {
@@ -270,9 +278,7 @@ func (e *EVMEngine) newStateDBLocked(onlyAddrs ...common.Address) (*state.StateD
 	if len(onlyAddrs) == 0 {
 		return nil, nil, fmt.Errorf("newStateDBLocked: at least one address required")
 	}
-	memDB := rawdb.NewMemoryDatabase()
-	db := state.NewDatabase(memDB)
-	sdb, err := state.New(common.Hash{}, db, nil)
+	sdb, db, err := neueSpeicherStateDB()
 	if err != nil {
 		return nil, nil, err
 	}
@@ -283,7 +289,7 @@ func (e *EVMEngine) newStateDBLocked(onlyAddrs ...common.Address) (*state.StateD
 	}
 	for _, acc := range e.chainState.getAccountsForAddressesLocked(addrStrs) {
 		addr := common.HexToAddress(acc.Address)
-		sdb.SetBalance(addr, evmBalanceWei(acc.Address, acc.Balance.Float()))
+		setzeGuthaben(sdb, addr, evmBalanceWei(acc.Address, acc.Balance.Float()))
 	}
 
 	// Contract code/storage loading is plain DB I/O — GetAllContracts/
@@ -294,7 +300,7 @@ func (e *EVMEngine) newStateDBLocked(onlyAddrs ...common.Address) (*state.StateD
 		if err != nil || len(code) == 0 {
 			continue
 		}
-		sdb.SetCode(addr, code)
+		setzeCode(sdb, addr, code)
 		if e.chainState.db != nil {
 			rows, err := e.chainState.db.Query(
 				`SELECT slot, value FROM evm_storage WHERE address = $1`, addrStr)
@@ -332,7 +338,7 @@ func (e *EVMEngine) DeployContract(from common.Address, bytecode []byte, value *
 		}
 	}()
 
-	sdb, _, err := e.newStateDB()
+	sdb, db, err := e.newStateDB()
 	if err != nil {
 		return common.Address{}, nil, fmt.Errorf("stateDB: %w", err)
 	}
@@ -356,23 +362,26 @@ func (e *EVMEngine) DeployContract(from common.Address, bytecode []byte, value *
 	// offset but touches a rarely-exercised, already-completed code path
 	// for no live consensus or fund-safety benefit.
 	nonce := e.chainState.LoadNonce(strings.ToLower(from.Hex()))
-	sdb.SetNonce(from, nonce)
+	setzeNonce(sdb, from, nonce)
 
-	txCtx := vm.TxContext{Origin: from, GasPrice: big.NewInt(0)}
-	evm := vm.NewEVM(blockContext(ts), txCtx, sdb, chainConfigFuer(ts), vm.Config{})
+	evm := neueKnotenEVM(ts, from, sdb)
 
-	_, contractAddr, _, err = evm.Create(
-		vm.AccountRef(from),
-		bytecode,
-		30_000_000,
-		value,
-	)
+	_, contractAddr, _, err = evmErzeugen(evm, from, bytecode, 30_000_000, value)
 	if err != nil {
 		return common.Address{}, nil, fmt.Errorf("deploy failed: %w", err)
 	}
 
-	// Commit to get runtime code into trie
-	sdb.Commit(0, false)
+	// Commit to get runtime code into trie. Nach dem Commit ist die StateDB
+	// laut go-ethereum nicht mehr verlaesslich lesbar (seit v1.14 auch
+	// tatsaechlich) -- gelesen wird aus einer frisch geoeffneten auf der
+	// Wurzel, wie in CallContract.
+	root, commitErr := evmFestschreiben(sdb)
+	if commitErr != nil {
+		return common.Address{}, nil, fmt.Errorf("deploy commit failed: %w", commitErr)
+	}
+	if sdb, err = oeffneStateDB(root, db); err != nil {
+		return common.Address{}, nil, fmt.Errorf("deploy reopen failed: %w", err)
+	}
 
 	// Read runtime bytecode directly from stateDB after commit
 	runtimeCode := sdb.GetCode(contractAddr)
@@ -391,7 +400,7 @@ func (e *EVMEngine) DeployContract(from common.Address, bytecode []byte, value *
 	// causing every subsequent tx from the same sender to fail with "nonce too low".
 
 	// P2-8: Persist ALL storage slots from stateDB to PostgreSQL.
-	// go-ethereum v1.13.0 StateDB does not expose a public ForEachStorage
+	// go-ethereum StateDB does not expose a public ForEachStorage
 	// iterator, so we probe slots explicitly.
 	//
 	// Strategy: V7 uses two layout zones:
@@ -593,17 +602,10 @@ func (e *EVMEngine) CallContractLocked(from, to common.Address, data []byte, val
 		return nil, fmt.Errorf("no code at %s", to.Hex())
 	}
 
-	txCtx := vm.TxContext{Origin: from, GasPrice: big.NewInt(0)}
-	evm := vm.NewEVM(blockContext(ts), txCtx, sdb, chainConfigFuer(ts), vm.Config{})
+	evm := neueKnotenEVM(ts, from, sdb)
 
 	var execErr error
-	ret, _, execErr = evm.Call(
-		vm.AccountRef(from),
-		to,
-		data,
-		30_000_000,
-		value,
-	)
+	ret, _, execErr = evmAufrufen(evm, from, to, data, 30_000_000, value)
 	if execErr != nil {
 		reason := decodeRevertReason(ret)
 		if reason != "" {
@@ -690,17 +692,10 @@ func (e *EVMEngine) CallContract(from, to common.Address, data []byte, value *bi
 		preAddrs, releasedNullifiers = extractPreCallEntities(sdb, to, from, data)
 	}
 
-	txCtx := vm.TxContext{Origin: from, GasPrice: big.NewInt(0)}
-	evm := vm.NewEVM(blockContext(ts), txCtx, sdb, chainConfigFuer(ts), vm.Config{})
+	evm := neueKnotenEVM(ts, from, sdb)
 
 	var execErr error
-	ret, _, execErr = evm.Call(
-		vm.AccountRef(from),
-		to,
-		data,
-		30_000_000,
-		value,
-	)
+	ret, _, execErr = evmAufrufen(evm, from, to, data, 30_000_000, value)
 	if execErr != nil {
 		reason := decodeRevertReason(ret)
 		if reason != "" {
@@ -718,7 +713,7 @@ func (e *EVMEngine) CallContract(from, to common.Address, data []byte, value *bi
 	// IMPORTANT: per go-ethereum docs, sdb is no longer reliable for reads
 	// after Commit() — we must open a fresh StateDB on the returned root
 	// to safely dump and persist the resulting storage.
-	root, commitErr := sdb.Commit(0, false)
+	root, commitErr := evmFestschreiben(sdb)
 	if commitErr != nil {
 		fmt.Printf("[EVM] revert Commit failed: %v\n", commitErr)
 	} else {
@@ -1041,7 +1036,7 @@ func (e *EVMEngine) dumpAndPersistStorageWithNullifier(root common.Hash, db stat
 	}
 	if len(releasedNullifiers) > 0 && !vertragV8() {
 		addrStr := strings.ToLower(addr.Hex())
-		if freshDB, err := state.New(root, db, nil); err == nil {
+		if freshDB, err := oeffneStateDB(root, db); err == nil {
 			for _, n := range releasedNullifiers {
 				key := common.BytesToHash(n[:])
 				for _, base := range []int64{8, 29} { // usedNullifiers, grantIssuedTo
@@ -1055,7 +1050,7 @@ func (e *EVMEngine) dumpAndPersistStorageWithNullifier(root common.Hash, db stat
 		addrStr := strings.ToLower(addr.Hex())
 		nullKey := common.BytesToHash(calldataNullifier[:])
 		if nullKey != (common.Hash{}) {
-			freshDB2, err2 := state.New(root, db, nil)
+			freshDB2, err2 := oeffneStateDB(root, db)
 			if err2 == nil {
 				nullSlot := mappingSlotBytes32(nullKey, nullifierBasis)
 				val := freshDB2.GetState(addr, nullSlot)
@@ -1081,7 +1076,7 @@ func (e *EVMEngine) dumpAndPersistStorageWithNullifier(root common.Hash, db stat
 }
 
 func (e *EVMEngine) dumpAndPersistStorage(root common.Hash, db state.Database, addr common.Address, touchedAddrs []common.Address, touchedCommitments []*big.Int) {
-	freshDB, err := state.New(root, db, nil)
+	freshDB, err := oeffneStateDB(root, db)
 	if err != nil {
 		fmt.Printf("[EVM] revert Could not open committed state for persistence: %v\n", err)
 		return

@@ -88,6 +88,11 @@ func (s *EVMRPCServer) preReserveBatchNonces(precomputed []*precomputedSendTx, p
 		if p == nil || p.err != nil || p.tx == nil || p.sender == "" {
 			continue
 		}
+		// Typ 3 und 4 lehnt sendRawTransaction ab (annahme_typ.go): keine
+		// Nonce dafuer verbrauchen.
+		if !annahmeTypErlaubt(p.tx) {
+			continue
+		}
 		// Dieselbe Chain-ID-Pruefung wie sendRawTransaction VOR seiner
 		// Reservierung (chain_id_wechsel.go) -- sonst verbraennten alte
 		// 1926-Ueberweisungen eines Opfers nach dem Stichtag dessen Nonces

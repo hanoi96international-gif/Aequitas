@@ -16,6 +16,11 @@ package keeper
 // denselben Fehlern. Nur crypto.Ecrecover ist ersetzt. Die Hashes rechnet
 // weiter go-ethereum (Signer.Hash).
 //
+// Beim Update auf go-ethereum v1.17.8 bewusst beibehalten: der Knoten
+// entscheidet weiter nach den Regeln von v1.13.0. Transaktionen vom Typ 4
+// (EIP-7702), die v1.17 einlesen kann, lehnt er wie bisher ab
+// (ErrTxTypeNotSupported); konsens_evm_golden_test.go haelt das fest.
+//
 // Ob das gleich bleibt, prueft absender_schnell_test.go gegen types.Sender:
 // alle Transaktionsarten, fremde Chain-IDs, ungeschuetzte, hohes S, kaputte
 // V-Werte, Zufallssignaturen. Weicht etwas ab, ist der Test rot -- eine

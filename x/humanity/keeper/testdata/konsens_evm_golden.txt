@@ -1,0 +1,983 @@
+chainconfig chainid=1926 homestead=0 eip150=0 eip155=0 eip158=0 byzantium=0 constantinople=0 petersburg=0 istanbul=0 berlin=0 london=0 shanghai=0 cancun=0 prague=aus
+op/00 klasse=ok gas=48 ret= logs=-
+op/00 wurzel=75f90f9f29535b9c068d1f473f1d20160e335720285d58244b89c54e0e90272b speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/01 klasse=ok gas=51 ret= logs=-
+op/01 wurzel=be670562dea4b7ff32086557d6c7829339cb8f5e6a9b5a9fb306e02e65e15162 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/02 klasse=ok gas=53 ret= logs=-
+op/02 wurzel=30b79cc80b19c356b755aa4990e31855ed087ba361c1521b82a5151f905d5121 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/03 klasse=ok gas=51 ret= logs=-
+op/03 wurzel=49ea0ffe41743a1621d24afa3357466780a3c763c72b3f906530fc7f67412de3 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/04 klasse=ok gas=53 ret= logs=-
+op/04 wurzel=fc44d5e94393851f5e3d50ba08c0bcd5f2a5d37c46d13e882cc4c25ab6291926 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/05 klasse=ok gas=53 ret= logs=-
+op/05 wurzel=59ea6f6f4539cdfe09be9189bed08f3a48afaa30d3ba33d272506e076159db2f speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/06 klasse=ok gas=53 ret= logs=-
+op/06 wurzel=699215d29090bb595c8d11aabe94c508a3526500b2b3a7ad4d570b8b24bda0d1 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/07 klasse=ok gas=53 ret= logs=-
+op/07 wurzel=b285700ff0e0d0e372e05ed58dad3cf7eb363c51f77ba050cf000f65302ec349 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/08 klasse=ok gas=56 ret= logs=-
+op/08 wurzel=7435d78d53d7baf2ca96b9c739dead8af192e894ac87c419c46b2f150fcaf9a5 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/09 klasse=ok gas=56 ret= logs=-
+op/09 wurzel=cc209c367ac3fea66bee51b42a47f6ff211ddfc9d361f62b221c11acec0ebc84 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/0a klasse=ok gas=108 ret= logs=-
+op/0a wurzel=2bc8cde26dd85420e6c3294243e042466b29d687e93a0dc261e50ba5424ccb7e speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/0b klasse=ok gas=53 ret= logs=-
+op/0b wurzel=8acd3215805927e9c1cd2eb658ef81179332a7a5be9c665f1281b8fe01cae65f speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/0c klasse=abbruch gas=1000000 ret= logs=-
+#op/0c fehler="invalid opcode: opcode 0xc not defined" grund=""
+op/0c wurzel=e1b6c7af209f78ec6d50ce4706096a6a19fe9682aba28ae0dd0d5e540c5d41e2 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/0d klasse=abbruch gas=1000000 ret= logs=-
+#op/0d fehler="invalid opcode: opcode 0xd not defined" grund=""
+op/0d wurzel=fbfd2569f6a01dbbd418701d61bf63a5bf1261ad506bccfc83fa2c80fa5185d9 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/0e klasse=abbruch gas=1000000 ret= logs=-
+#op/0e fehler="invalid opcode: opcode 0xe not defined" grund=""
+op/0e wurzel=c7836e362f6dfa0fad6be6d74291caeaa560d118d1a51307fbef0509ec49c55b speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/0f klasse=abbruch gas=1000000 ret= logs=-
+#op/0f fehler="invalid opcode: opcode 0xf not defined" grund=""
+op/0f wurzel=a8f3ea5dd243325dd9405fbd5b80d93efc95c71fa14bea198037b0075956ff1f speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/10 klasse=ok gas=51 ret= logs=-
+op/10 wurzel=c3b21d57e960e42d417857ddf947db47f7447ba4041358606aaeb320e7023742 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/11 klasse=ok gas=51 ret= logs=-
+op/11 wurzel=ca15a7c308b25e8d73bfb52b4e9e4626cd68ae8e6fc3a15672646c2bdbd0f4cb speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/12 klasse=ok gas=51 ret= logs=-
+op/12 wurzel=2a3d8cfb004084a63b84cc585a819fb57bd91b5c6000f385fba353c64d80d3d0 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/13 klasse=ok gas=51 ret= logs=-
+op/13 wurzel=62857d80b89f9db6eab10be8b819737f6229804f0da81657a04d2e0e3f99d275 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/14 klasse=ok gas=51 ret= logs=-
+op/14 wurzel=f7a4f7e445d1aef04a5e81f26788225e0b07aa4c6660eb954cdb9a73ec8199be speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/15 klasse=ok gas=51 ret= logs=-
+op/15 wurzel=999a3f7488eada70ba7a3791890253a27d5439efdccfa6e7992743fe16695776 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/16 klasse=ok gas=51 ret= logs=-
+op/16 wurzel=dca0c957412607a9f19d94b15cdf39ae21a53392cccb4e176e93e9fa0d2194b5 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/17 klasse=ok gas=51 ret= logs=-
+op/17 wurzel=dc113937cb39090faa85ab207f410492def7027c647ae27a7e13c6b8895de1fa speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/18 klasse=ok gas=51 ret= logs=-
+op/18 wurzel=8cc6b2fcfbc6ec5c4cab4ac62d59d4f62ac12e7e5fe76e65f3494a074fefaefe speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/19 klasse=ok gas=51 ret= logs=-
+op/19 wurzel=b030845c5462f81802b13c4173bca45332526554f662cf2588be47101480c2ff speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/1a klasse=ok gas=51 ret= logs=-
+op/1a wurzel=2f4e1054ed1a6d163d9cebde24858ea4551161d457b0209e32d7022dcc5a5433 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/1b klasse=ok gas=51 ret= logs=-
+op/1b wurzel=b71e69ba64a45ea3b63a2671e090b9284da00ea63afbc94d8a85eea6ab0a9b88 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/1c klasse=ok gas=51 ret= logs=-
+op/1c wurzel=03b3011d3623b19f4307d68ef075a4455eb9ae5e4c59202c38e29f5b0b03565e speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/1d klasse=ok gas=51 ret= logs=-
+op/1d wurzel=8601aa15f8d24a071fab47baa78e4b083966d1a235d138eac65a8339191a30c8 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/1e klasse=abbruch gas=1000000 ret= logs=-
+#op/1e fehler="invalid opcode: opcode 0x1e not defined" grund=""
+op/1e wurzel=99003cfb7871742c64633e66c137f840676112bd2954fbd6425af043b9737df7 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/1f klasse=abbruch gas=1000000 ret= logs=-
+#op/1f fehler="invalid opcode: opcode 0x1f not defined" grund=""
+op/1f wurzel=532f712de503f90950eb697515237574c5c0f8e407b0860dfd214d30f5cfcf7a speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/20 klasse=ok gas=87 ret= logs=-
+op/20 wurzel=3409a7998941da833651efbb015d10c11b00bd9bb01d99859f8acb350ff04713 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/21 klasse=abbruch gas=1000000 ret= logs=-
+#op/21 fehler="invalid opcode: opcode 0x21 not defined" grund=""
+op/21 wurzel=382f685e3447c698927f5d7350fff600d7e8e66bced5b4cf84f526f8c1a13c51 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/22 klasse=abbruch gas=1000000 ret= logs=-
+#op/22 fehler="invalid opcode: opcode 0x22 not defined" grund=""
+op/22 wurzel=8379ea7239de1295cbafd6a3ed05418f8747d91a723e9603f78aaf1c79511a75 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/23 klasse=abbruch gas=1000000 ret= logs=-
+#op/23 fehler="invalid opcode: opcode 0x23 not defined" grund=""
+op/23 wurzel=2f3b5d81078e926a0bc937605f696a669224e3ae6a4d501136c3068c6c7068b8 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/24 klasse=abbruch gas=1000000 ret= logs=-
+#op/24 fehler="invalid opcode: opcode 0x24 not defined" grund=""
+op/24 wurzel=41d0ed6185dfe9129a24e1948a45bc700b28181109ff94d11ad33f29e48c18b6 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/25 klasse=abbruch gas=1000000 ret= logs=-
+#op/25 fehler="invalid opcode: opcode 0x25 not defined" grund=""
+op/25 wurzel=5ca22af05913408b3c8e34bec0ac741c1a89d080d26c4012bb8bf49c4a72e79f speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/26 klasse=abbruch gas=1000000 ret= logs=-
+#op/26 fehler="invalid opcode: opcode 0x26 not defined" grund=""
+op/26 wurzel=aeabd88e4b1a2edbff35fac6d6767e9fb5f8044e60edc208f1cb7cb1cd797d0d speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/27 klasse=abbruch gas=1000000 ret= logs=-
+#op/27 fehler="invalid opcode: opcode 0x27 not defined" grund=""
+op/27 wurzel=0975a6315091ada6c8c4a4f2f418ab858cfff7cdfb5375e867ac1b4122d0792f speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/28 klasse=abbruch gas=1000000 ret= logs=-
+#op/28 fehler="invalid opcode: opcode 0x28 not defined" grund=""
+op/28 wurzel=65462d57919ae1b0d23da01ff8b0ecd28c75e001a7440cd871681b61c7baccbf speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/29 klasse=abbruch gas=1000000 ret= logs=-
+#op/29 fehler="invalid opcode: opcode 0x29 not defined" grund=""
+op/29 wurzel=5063f9bc1d7d41ba4320888874fa25b0924b5e3610e06c5b434bd697ea57376b speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/2a klasse=abbruch gas=1000000 ret= logs=-
+#op/2a fehler="invalid opcode: opcode 0x2a not defined" grund=""
+op/2a wurzel=c7547f97df44ad3750bef630f26d015c2d297fa332099f4de8c8ee20f0078f8a speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/2b klasse=abbruch gas=1000000 ret= logs=-
+#op/2b fehler="invalid opcode: opcode 0x2b not defined" grund=""
+op/2b wurzel=b1cd5c7ffbd60af7f257eeddffa8e4a648626600a4c299f7a266b337388ec9e3 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/2c klasse=abbruch gas=1000000 ret= logs=-
+#op/2c fehler="invalid opcode: opcode 0x2c not defined" grund=""
+op/2c wurzel=57d51aaacacd15de290b49ef4d78ff969b6b366c1cfffa1a8193b5f7251a06fc speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/2d klasse=abbruch gas=1000000 ret= logs=-
+#op/2d fehler="invalid opcode: opcode 0x2d not defined" grund=""
+op/2d wurzel=9f84abce756d7169b4c355ffaca9be38d8c009c0039d0e5564c1a6f264d02046 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/2e klasse=abbruch gas=1000000 ret= logs=-
+#op/2e fehler="invalid opcode: opcode 0x2e not defined" grund=""
+op/2e wurzel=79e12894f125d348754da530cd603cc4ede27327c7ca934abf5f160f9ad9ac6a speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/2f klasse=abbruch gas=1000000 ret= logs=-
+#op/2f fehler="invalid opcode: opcode 0x2f not defined" grund=""
+op/2f wurzel=6da1c2d9604d6ed3dfbda25c7fe8189410e79ce6faf300edb9e326c7d3c0832d speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/30 klasse=ok gas=50 ret= logs=-
+op/30 wurzel=64955001113d2655c9852247161b6263f5239c2febc24e0385cf30772402f0f2 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/31 klasse=ok gas=2648 ret= logs=-
+op/31 wurzel=cc4ddcb36669accac00fe030baf970157a2b990f2b24793534aeede6494f92e0 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/32 klasse=ok gas=50 ret= logs=-
+op/32 wurzel=1503cda733c69666e10eba2656ce869cd5b889e81698d5094aebefdb282242fe speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/33 klasse=ok gas=50 ret= logs=-
+op/33 wurzel=01a84485998002914c645cb62e7aeb55229cde6754943dffc6af4fb43d82f4cf speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/34 klasse=ok gas=50 ret= logs=-
+op/34 wurzel=a5177ca51ed89e0ca8023e5919a727009cd63139e14c9967fc068c58e0ab0b28 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/35 klasse=ok gas=51 ret= logs=-
+op/35 wurzel=2ad9ffe7ad5494d08055c3dc4da85ea9b0a84d95e89820fd2e90de470683d36b speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/36 klasse=ok gas=50 ret= logs=-
+op/36 wurzel=09776ce73942ef1be1d43a2060b3bf292bc7f0adba97e58eb4096a392d979fbe speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/37 klasse=ok gas=57 ret= logs=-
+op/37 wurzel=744e3e4c44eab9a4314e37adf4999e4ffad3ba2cb8b63ed0b01eb9e727f83988 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/38 klasse=ok gas=50 ret= logs=-
+op/38 wurzel=3def713d701bcf1060c51234f356d6de1aae3610870767b9bcf4ae0c9d3b92c2 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/39 klasse=ok gas=57 ret= logs=-
+op/39 wurzel=d9c7c942b3363b837a16329913f020b989ab92e872318a5d5e9e4bd0f5021387 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/3a klasse=ok gas=50 ret= logs=-
+op/3a wurzel=8b91b721c2fcf71c049172a5630113af2706483e72deebdeea8f05789914b133 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/3b klasse=ok gas=2648 ret= logs=-
+op/3b wurzel=983c3ec75aba0c37bf943eb1b52d4d8a9af6ba56441a60f517d418e0b35bfa13 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/3c klasse=ok gas=2654 ret= logs=-
+op/3c wurzel=68bdc5aae7c70343a2a98906f0d36bc8473cef53ba1af37f68ba167f09000a49 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/3d klasse=ok gas=50 ret= logs=-
+op/3d wurzel=c4d03a3f00671761f023a3de2a8de7dac0fdef5f20df76a2a2c371fe0cf999d8 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/3e klasse=abbruch gas=1000000 ret= logs=-
+#op/3e fehler="return data out of bounds" grund=""
+op/3e wurzel=337d9c7ec8b55fd3d37c774252c0107580ef793def53e5172f1d0633eef77ab5 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/3f klasse=ok gas=2648 ret= logs=-
+op/3f wurzel=0b735adf6e4182e4e31eba5fc87ff304c7bff33de75052f86ffc8aadc1144130 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/40 klasse=ok gas=68 ret= logs=-
+op/40 wurzel=150a10ac4bc54e7e68b7ee0f1067a9e10f34dc61c26e2affd44ad7e46b0af085 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/41 klasse=ok gas=50 ret= logs=-
+op/41 wurzel=94d19456a149684af8272f7f57444e9b552e614536b3560b01c865b5fec8c93a speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/42 klasse=ok gas=50 ret= logs=-
+op/42 wurzel=11ca28b82c06d28f210a44cf7e29b169871d564826da89499bb8adae72e48d1d speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/43 klasse=ok gas=50 ret= logs=-
+op/43 wurzel=152a9aa0b83cf77971342388ac072945bb17b7b39c5380e593c117ff586e6f50 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/44 klasse=panik gas=1000000 ret= logs=-
+#op/44 fehler="panik: runtime error: invalid memory address or nil pointer dereference" grund=""
+op/45 klasse=ok gas=50 ret= logs=-
+op/45 wurzel=fa0c750e425402b29968d1c6f53e458e386720e4d7c66c225433be3392a8db31 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/46 klasse=ok gas=50 ret= logs=-
+op/46 wurzel=6edeec66f06cf948690055114329b4d04b59eb637df09956d5576d7a7020931c speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/47 klasse=ok gas=53 ret= logs=-
+op/47 wurzel=5dc7ff68eda296795fa32442d0ac8b6f5f27f642acaf9d7ded7a1f21d7de2374 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/48 klasse=ok gas=50 ret= logs=-
+op/48 wurzel=e57b1359fa915b20f1488df351ac4687c7cb159d9e14e880f8d2a0753eee81fe speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/49 klasse=ok gas=51 ret= logs=-
+op/49 wurzel=5facbb5e816d3ddd4f71b2085d99da2f7719b7379aa77264a5470c8c6ce4ae67 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/4a klasse=abbruch gas=1000000 ret= logs=-
+#op/4a fehler="invalid opcode: opcode 0x4a not defined" grund=""
+op/4a wurzel=1dd697e64c8d478b6dc70f7251dbc16de2c2417ce61adc91f9c16c0b67adac81 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/4b klasse=abbruch gas=1000000 ret= logs=-
+#op/4b fehler="invalid opcode: opcode 0x4b not defined" grund=""
+op/4b wurzel=037b2b6e6f15c5767532c2faea344ceb490347a6dd3b10cedacc8ac9b6025401 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/4c klasse=abbruch gas=1000000 ret= logs=-
+#op/4c fehler="invalid opcode: opcode 0x4c not defined" grund=""
+op/4c wurzel=2c436b0d44633acc8c549a391678d0e20f98fab385df439ea5a87b334a905ff0 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/4d klasse=abbruch gas=1000000 ret= logs=-
+#op/4d fehler="invalid opcode: opcode 0x4d not defined" grund=""
+op/4d wurzel=f6ea490363f8fff8a8066863096f5faa586bcc8c1f65c3301fd90a4d7e7b35ef speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/4e klasse=abbruch gas=1000000 ret= logs=-
+#op/4e fehler="invalid opcode: opcode 0x4e not defined" grund=""
+op/4e wurzel=4cab773ae8bf8e3118952dba1cfee61e0edac44f92990eba727154ab2ed2d818 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/4f klasse=abbruch gas=1000000 ret= logs=-
+#op/4f fehler="invalid opcode: opcode 0x4f not defined" grund=""
+op/4f wurzel=2fad0c6f1ebc6125d615a6b1b87c819e08111c32122da265c054170de90a469f speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/50 klasse=ok gas=50 ret= logs=-
+op/50 wurzel=fd3ebcfd544e65310023f34bd0c5c41abdb6dddeaa1457d541c4f14d9332f517 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/51 klasse=ok gas=57 ret= logs=-
+op/51 wurzel=11729eee247f5446e76a28004840b54f2b911188b6e5ceb4dff8e602aa8d7228 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/52 klasse=ok gas=57 ret= logs=-
+op/52 wurzel=62685381833631d29315e425da0a74c5f47a81aef54cbedb1bbbdaa8bbc4b04f speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/53 klasse=ok gas=54 ret= logs=-
+op/53 wurzel=f1d90b59f3b4ab8b04b6577f19b372d688e4b082ab4aebbfa617ad0883d4ae3b speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/54 klasse=ok gas=2148 ret= logs=-
+op/54 wurzel=312a21a8073f94cc2e7aa0f08f1862bd3d3170992779e386a3a31e51a7948428 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/55 klasse=panik gas=1000000 ret= logs=-
+#op/55 fehler="panik: impossible case: address was not present in access list during sstore op" grund=""
+op/56 klasse=abbruch gas=1000000 ret= logs=-
+#op/56 fehler="invalid jump destination" grund=""
+op/56 wurzel=8fbaa220de1a6e98ac0fdd3580ff18db6d70d61d7e3ada71cff03a6af13d4188 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/57 klasse=abbruch gas=1000000 ret= logs=-
+#op/57 fehler="invalid jump destination" grund=""
+op/57 wurzel=9784ec2ea1fef122e3d989e0e1503c499e26504dfb78ed63bf15b68abe2aa5ce speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/58 klasse=ok gas=50 ret= logs=-
+op/58 wurzel=20d4fb29ac685a170d11f31da40d7f5c45482f7e987dddd98f2c9fe5d51ba6a7 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/59 klasse=ok gas=50 ret= logs=-
+op/59 wurzel=503b156e628f0be57e23df3d450ab952319b8ed3dfb17bde3ef8e7cce41c5bb8 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/5a klasse=ok gas=50 ret= logs=-
+op/5a wurzel=987e81473f1d91da973a339de572099a476da3525ac3a1d63f7f8bca7aa99e1e speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/5b klasse=ok gas=49 ret= logs=-
+op/5b wurzel=21a18c243bf47dcc89142a15c2004a1c84ac90ddcdb1076b16e7ee67bc28716b speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/5c klasse=ok gas=148 ret= logs=-
+op/5c wurzel=d178c947acee76e0d4fad319989f997e1ebf1cb668cf853ebfe5194ebdf846e0 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/5d klasse=ok gas=148 ret= logs=-
+op/5d wurzel=34cad97377297e37dc29a419f12623eb3e8bc26fb7d17f48940e46fdca80bda7 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/5e klasse=ok gas=57 ret= logs=-
+op/5e wurzel=2521b0d3830714e4dba88c45d1b08ed04053844c10045c4a70e31a8b7ee18fe1 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/5f klasse=ok gas=50 ret= logs=-
+op/5f wurzel=09b9a443d9e5fc2e9d1025e975ea9cbcbe346a1c20970cd9435cfa0f682e4355 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/60 klasse=ok gas=51 ret= logs=-
+op/60 wurzel=84379bf5c22a25b1adf6be117255b34d0b6558fe621c92f587d21329f70ffebd speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/61 klasse=ok gas=51 ret= logs=-
+op/61 wurzel=805648aa88ea2ec2014f84909d22fac2441085fefc0557bdf687b2dbf8e5c9d6 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/62 klasse=ok gas=51 ret= logs=-
+op/62 wurzel=679445577cdb3c7e906d7c7c9d353ffcc4b4e483c9073ee91e8cf40e91d77bdd speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/63 klasse=ok gas=51 ret= logs=-
+op/63 wurzel=b6e1990d7457e0e73850bafd84977b142fb940d0ab10609b4a1d94a554e4fd2d speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/64 klasse=ok gas=51 ret= logs=-
+op/64 wurzel=d79c6f8b5bf24611cd10abd1a7e4dc441367c5c9fc765f913b12f8a8a487d8c5 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/65 klasse=ok gas=51 ret= logs=-
+op/65 wurzel=4eae3c410127da114debbd547bc1a7647e139d943559f67294d586752b765dfa speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/66 klasse=ok gas=51 ret= logs=-
+op/66 wurzel=768b655e781be5a3310ae826393357bfba1d09f554b64e58d9eb558d4cec0dd0 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/67 klasse=ok gas=51 ret= logs=-
+op/67 wurzel=be929ad17b911e64e6b831499e697b35d9f7354be730d6d53604d83d35d64175 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/68 klasse=ok gas=51 ret= logs=-
+op/68 wurzel=3a050314b5e0edcc7219053b9ecb0050d1f6c48ccc232724048695a02ddd5582 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/69 klasse=ok gas=51 ret= logs=-
+op/69 wurzel=eeea4f48f88c7886fc4d5d5b04e44e4dbd6bf2e24ec3d92b214518d3f6250efa speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/6a klasse=ok gas=51 ret= logs=-
+op/6a wurzel=914fddaea7c0fc1e42bb61b7ad67f7c3216a4d2d2ffa1b10f55be0ad79d50d31 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/6b klasse=ok gas=51 ret= logs=-
+op/6b wurzel=bf1044ca14f94d7050e198143f9841008d7240ae0579b96c0fbf1d86746d7f10 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/6c klasse=ok gas=51 ret= logs=-
+op/6c wurzel=077a99dafd14b929e34b3af016ae61c9e57e4b4ffca2c6f28c98dbc9022f6012 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/6d klasse=ok gas=51 ret= logs=-
+op/6d wurzel=597e1877791a7d21ba077978d8adaaf225b9021e642e9bf347c5844ed1a6e0aa speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/6e klasse=ok gas=51 ret= logs=-
+op/6e wurzel=69e1e20f52b3efa49e23d3ef691602453e4e0f6807db3e40fc03a46a4e366fd6 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/6f klasse=ok gas=51 ret= logs=-
+op/6f wurzel=4b3304311988791b496237534623e08030c50a1ce8fd371e6930760757222dad speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/70 klasse=ok gas=51 ret= logs=-
+op/70 wurzel=aaace18646ac721035cf545606467cabab072e925e84d463fc92e0eea1dee215 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/71 klasse=ok gas=51 ret= logs=-
+op/71 wurzel=c98d1359316d8f4d4ccf2a296ffa36ed0c0b7d99cfcf292ab448990c7c59430a speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/72 klasse=ok gas=51 ret= logs=-
+op/72 wurzel=5c9c53ef2031ea2f77364cbeb3e0034761d9e12869c928cd1321442fa3ff841a speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/73 klasse=ok gas=51 ret= logs=-
+op/73 wurzel=ee32eefe28625c3a7de876de2d3de4f5672ecb11bf4c75cb17681daf0da4432a speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/74 klasse=ok gas=51 ret= logs=-
+op/74 wurzel=dd52cc47e2fdae66c0f88672ae2ec481ae7effbba78bc0e5af15aa0f00b90db8 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/75 klasse=ok gas=51 ret= logs=-
+op/75 wurzel=0935e6ff1ee68f2bda534fa02a545f79ce7d25ff70dce56b5629e8d0400e247f speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/76 klasse=ok gas=51 ret= logs=-
+op/76 wurzel=3486572543f1c1c44045ff4bfca9a29161bb805e98e814329f156e525419c47f speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/77 klasse=ok gas=51 ret= logs=-
+op/77 wurzel=b1b427fe2f681285f90aa03cc06536198c8dc24fbdabb62015a0ca04ac163b9d speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/78 klasse=ok gas=51 ret= logs=-
+op/78 wurzel=27c41ec1fc1b4bc80ee7ba48585de581a841a16104a325d05b24adbbcbd611e1 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/79 klasse=ok gas=51 ret= logs=-
+op/79 wurzel=667d0635ac41a5daf8f241d5c466b0a432c69c356b00d414043a58777b8d3f9b speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/7a klasse=ok gas=51 ret= logs=-
+op/7a wurzel=e8e5639fd8c4be8db23999eb92c70ed3864aedbfab82b835244bc4f0f861cd66 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/7b klasse=ok gas=51 ret= logs=-
+op/7b wurzel=be2e017d163ab2857a14538ff5e82c3530469f46402f13d1286aca1f195714b9 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/7c klasse=ok gas=51 ret= logs=-
+op/7c wurzel=021cb947c0fa6e5443ada5aba8fb75c28ca966cea4d859666fe69043677611d4 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/7d klasse=ok gas=51 ret= logs=-
+op/7d wurzel=7c4bde002cbf971d5d60d37cdfad45f295939b63521a0ab77da0db89fcb3c5e6 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/7e klasse=ok gas=51 ret= logs=-
+op/7e wurzel=50d85d0ab1ef61054adf9e8542741b56a6bd9ce5cf2d4b63b30f37042a90bf48 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/7f klasse=ok gas=51 ret= logs=-
+op/7f wurzel=2ae5814d0fd046428a16a07aadbc5ea97e165d8720bb375a0fbd1e8dcd9b61ed speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/80 klasse=ok gas=51 ret= logs=-
+op/80 wurzel=35a55259e84df6a194942ccdd93077dfdbb33de3e6ff7fe09f51cf9f377b78b4 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/81 klasse=ok gas=51 ret= logs=-
+op/81 wurzel=10a035007e317c627f7d1a5fd86af94e60ddd7450c70a5abf7a3da4244686a90 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/82 klasse=ok gas=51 ret= logs=-
+op/82 wurzel=6c46f44b508253e03207efdd8f95c2461411a7729bee99e4b7b0c222e03ecb79 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/83 klasse=ok gas=51 ret= logs=-
+op/83 wurzel=541f78814dc76f4833f7656b12b3cfaca01c005be999dfd8a46c624521bcae7f speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/84 klasse=ok gas=51 ret= logs=-
+op/84 wurzel=ea6a50eb71f98eede5729d94e839b7af5d17b1a4f8672f76972c0952bbe860bf speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/85 klasse=ok gas=51 ret= logs=-
+op/85 wurzel=c151fb7b25643650dc757d31a76489d894116d0c50912e0dc04903914a9c37c7 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/86 klasse=ok gas=51 ret= logs=-
+op/86 wurzel=407f3dbf37f0cd9b2f17588d7f438b5a96e9fb0ba3007aec92e16e490324c17b speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/87 klasse=ok gas=51 ret= logs=-
+op/87 wurzel=b651fb8fae3be18ffdfab999d13015c2747e0026984eb4cc9cf976ee9bfd0848 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/88 klasse=ok gas=51 ret= logs=-
+op/88 wurzel=46beac3ed5e32c6e79e4f9951384c4d3abffdfadfd6292aafd0cfa51b9ef162b speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/89 klasse=ok gas=51 ret= logs=-
+op/89 wurzel=6862e36195e49425c0e37cf6e9e5efaab2293b2bb3251e315f3daf5df2f47477 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/8a klasse=ok gas=51 ret= logs=-
+op/8a wurzel=12382c7127d27ef68183d2e1461cf010340a0e540b06133219c9f9fce7137b81 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/8b klasse=ok gas=51 ret= logs=-
+op/8b wurzel=8b46ad4723179da6dd11893414ec2e5eb59e741d65f6834f1e278f83074cc36f speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/8c klasse=ok gas=51 ret= logs=-
+op/8c wurzel=496a692518275fca81f2c61c8db3615c1496d66f6582aee36a14d2e5e50f88c4 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/8d klasse=ok gas=51 ret= logs=-
+op/8d wurzel=01407858f2a7a9c66b1f6262cd74e592e2010a952561b247cce2263571d35e73 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/8e klasse=ok gas=51 ret= logs=-
+op/8e wurzel=889e215cab68e1f406c1cfabb943f19a97959b7fcbfaa8aab291512827565417 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/8f klasse=ok gas=51 ret= logs=-
+op/8f wurzel=d305e48268b8cfd66887ed26aac2036d3ad225f703f73040713bb2254298ed54 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/90 klasse=ok gas=51 ret= logs=-
+op/90 wurzel=2dcee4fad8f8a3b7a439dd4971fd482d2b82398d03d90339160e46b6118fdcf0 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/91 klasse=ok gas=51 ret= logs=-
+op/91 wurzel=ca1c0b6da103bc1afcd0427d6cf1967d5927843654e3487e478029161c489f63 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/92 klasse=ok gas=51 ret= logs=-
+op/92 wurzel=011b3591b2672d4c8abade87478336145368c78f421bc244c800c3ae84373d58 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/93 klasse=ok gas=51 ret= logs=-
+op/93 wurzel=92a19119ab904fbf906020089e27b0e1777c2741e0b63ca54520db0240962556 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/94 klasse=ok gas=51 ret= logs=-
+op/94 wurzel=1c36285a73df7cba7c16eb7dea6e510a61a2409f1633198a86ebb75c96ade690 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/95 klasse=ok gas=51 ret= logs=-
+op/95 wurzel=004014be787a6e0d05a374efe3c6fbf7a8d516d0abd15fd2deb1e10c6c01d4f1 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/96 klasse=ok gas=51 ret= logs=-
+op/96 wurzel=6d34397ad5fb3e60061ec93558f4dfc98645d005723f8c00cda6119c384b84a7 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/97 klasse=ok gas=51 ret= logs=-
+op/97 wurzel=78eb97478e8243550ae6945bd5e7534f02c5f50ca6673dd7353095fd040ebce0 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/98 klasse=ok gas=51 ret= logs=-
+op/98 wurzel=f784c724fca0017781802fdeb32a4d7ded2d4f4061a6c7581e32abc4a37b4350 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/99 klasse=ok gas=51 ret= logs=-
+op/99 wurzel=f90e55a6b315960e73aeacc9e85f09a2a582216544909a1aabd5352d4bea2a88 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/9a klasse=ok gas=51 ret= logs=-
+op/9a wurzel=e9bab81332345f6068bcbe65e5d7efd838f3489726bdb8f5d05dfc2a24018577 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/9b klasse=ok gas=51 ret= logs=-
+op/9b wurzel=6d0acfca0e51756e44c47911a284cc1b42701105566bf82fc319ad322c70834e speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/9c klasse=ok gas=51 ret= logs=-
+op/9c wurzel=438f873fdab7805a70ca6ab6ae708125cabed93d78f7b5ebb4bd47b4957945c4 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/9d klasse=ok gas=51 ret= logs=-
+op/9d wurzel=b9826c0579790d7c9c54eecc1857978ab6530712001009191374df7c2c1e7706 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/9e klasse=ok gas=51 ret= logs=-
+op/9e wurzel=c1bfe7decdfa9bdc0ec6a9b56485126c1406d5669637f952323941d08f852001 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/9f klasse=abbruch gas=1000000 ret= logs=-
+#op/9f fehler="stack underflow (16 <=> 17)" grund=""
+op/9f wurzel=28d978b9198839dd08a9ea5a8f7e53ea6c05395125dd84bf302a8bb23e3d1da0 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/a0 klasse=ok gas=434 ret= logs=1:6e4a3d89212a7b6d22b59e3c
+op/a0 wurzel=03290d26359c6e919c947546600c0686166004a1f85cec023fc8a55e7246aeaa speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/a1 klasse=ok gas=809 ret= logs=1:bc6ef0643ca4430ab80eeec9
+op/a1 wurzel=f50bf5325b2b4918ef4b4b3268ccd66bac28ebb33f202b0a8146df6c927b42a3 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/a2 klasse=ok gas=1184 ret= logs=1:d364f04dd43a069844d2c701
+op/a2 wurzel=1406430c64230dcc25181b0a7285a45a115c784d504533aa1b37bb30d8560367 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/a3 klasse=ok gas=1559 ret= logs=1:e4f038e9d6bdc17569c66be1
+op/a3 wurzel=70b89274e1c7a1f3355c9a90943089e277d88ccc8d5fb53a62bfce39c241306a speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/a4 klasse=ok gas=1934 ret= logs=1:e8f9956e496a3ce4415d5f5d
+op/a4 wurzel=acf642d747ac5dda1256d82ed79665001f3b66fb334aa920364362f994d1d7f9 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/a5 klasse=abbruch gas=1000000 ret= logs=-
+#op/a5 fehler="invalid opcode: opcode 0xa5 not defined" grund=""
+op/a5 wurzel=f3855ced27bf7fb340e0f5b0f265093e4e456685911cb434f9229f566e139f42 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/a6 klasse=abbruch gas=1000000 ret= logs=-
+#op/a6 fehler="invalid opcode: opcode 0xa6 not defined" grund=""
+op/a6 wurzel=826455e83b930419ab893994b9589641123039cc5918f1460e8a49bb43bd7beb speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/a7 klasse=abbruch gas=1000000 ret= logs=-
+#op/a7 fehler="invalid opcode: opcode 0xa7 not defined" grund=""
+op/a7 wurzel=4e198e9bd051ab608e9f6c902586887d4c1b23feb7119a9df242298651c4b7c2 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/a8 klasse=abbruch gas=1000000 ret= logs=-
+#op/a8 fehler="invalid opcode: opcode 0xa8 not defined" grund=""
+op/a8 wurzel=a0b777fa5d1850ebb61f9db69c62f454c1e55e4f8846f1e268136c6b73a90c19 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/a9 klasse=abbruch gas=1000000 ret= logs=-
+#op/a9 fehler="invalid opcode: opcode 0xa9 not defined" grund=""
+op/a9 wurzel=ceb97678f5d6092d9325ddb6a302e4275aa56005eeab346ff833ec03d9ae0a98 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/aa klasse=abbruch gas=1000000 ret= logs=-
+#op/aa fehler="invalid opcode: opcode 0xaa not defined" grund=""
+op/aa wurzel=f84d3db5522619cc05b12f0d24f6be674cef69e56798b3a5b4cf5da756a3014a speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/ab klasse=abbruch gas=1000000 ret= logs=-
+#op/ab fehler="invalid opcode: opcode 0xab not defined" grund=""
+op/ab wurzel=446be8f30c0e81dfb32b20c56e3d89916bb1aa469b9bacfaebf44195d1ae6346 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/ac klasse=abbruch gas=1000000 ret= logs=-
+#op/ac fehler="invalid opcode: opcode 0xac not defined" grund=""
+op/ac wurzel=12423b645ceaa6ea74b38f7cd8039c77364d4d090833f1cdd8c251df199f2cdc speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/ad klasse=abbruch gas=1000000 ret= logs=-
+#op/ad fehler="invalid opcode: opcode 0xad not defined" grund=""
+op/ad wurzel=33bcd31c079ff6dcf36bfe6c61e0d94204d52e021971292f08048bd0c20f3ea3 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/ae klasse=abbruch gas=1000000 ret= logs=-
+#op/ae fehler="invalid opcode: opcode 0xae not defined" grund=""
+op/ae wurzel=41d2838c9fcbe71bd59bd9afe4b0732907d2552f5d02ca2f496d362a49cd8b71 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/af klasse=abbruch gas=1000000 ret= logs=-
+#op/af fehler="invalid opcode: opcode 0xaf not defined" grund=""
+op/af wurzel=bfbbc49dc21cd0a5a1be427ed679d079b9ffaa19c7b7f7c965f45553d421eea7 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/b0 klasse=abbruch gas=1000000 ret= logs=-
+#op/b0 fehler="invalid opcode: opcode 0xb0 not defined" grund=""
+op/b0 wurzel=91da2f8e2302dfa10ae78b7f5f922826ae831f0170799994e5040823b278cfd7 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/b1 klasse=abbruch gas=1000000 ret= logs=-
+#op/b1 fehler="invalid opcode: opcode 0xb1 not defined" grund=""
+op/b1 wurzel=68c6ca08f690c3dbde64b1910bc0acbb2c821b712619f671a25c6c5308a00494 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/b2 klasse=abbruch gas=1000000 ret= logs=-
+#op/b2 fehler="invalid opcode: opcode 0xb2 not defined" grund=""
+op/b2 wurzel=f69cd749dc18386be5b35891aec979a90ce23a011a847a174aa04d7a30ba73fa speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/b3 klasse=abbruch gas=1000000 ret= logs=-
+#op/b3 fehler="invalid opcode: opcode 0xb3 not defined" grund=""
+op/b3 wurzel=4b61bb18429323f7a710787cf50b284dbcb0ee5671f338f430c2ad83776449c1 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/b4 klasse=abbruch gas=1000000 ret= logs=-
+#op/b4 fehler="invalid opcode: opcode 0xb4 not defined" grund=""
+op/b4 wurzel=4a1eff689f13c221823bfc0ceb1121fbdfddcc7d03d6269572243d7c4f387101 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/b5 klasse=abbruch gas=1000000 ret= logs=-
+#op/b5 fehler="invalid opcode: opcode 0xb5 not defined" grund=""
+op/b5 wurzel=6bdebc6bb54e390f24c671529584c89bbcbb2e0f8ff4dbcb36944323dc11466b speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/b6 klasse=abbruch gas=1000000 ret= logs=-
+#op/b6 fehler="invalid opcode: opcode 0xb6 not defined" grund=""
+op/b6 wurzel=7d99ec46cadbe284862d1fd20c4f45fb5afc976211122d0c7ad8c45d44c22f60 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/b7 klasse=abbruch gas=1000000 ret= logs=-
+#op/b7 fehler="invalid opcode: opcode 0xb7 not defined" grund=""
+op/b7 wurzel=8d7aa8cf052d69097387ebdd687272fead7ebc0cfef8e467949f68cadb6f3c5a speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/b8 klasse=abbruch gas=1000000 ret= logs=-
+#op/b8 fehler="invalid opcode: opcode 0xb8 not defined" grund=""
+op/b8 wurzel=f52a8aa274f461f2f867518e864b1616cac1e7c38ac21916a60449431859daa3 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/b9 klasse=abbruch gas=1000000 ret= logs=-
+#op/b9 fehler="invalid opcode: opcode 0xb9 not defined" grund=""
+op/b9 wurzel=f5162f2bf5401221c50e5b9a71354f5339e49426d53a53d65f0dbfa94c83183b speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/ba klasse=abbruch gas=1000000 ret= logs=-
+#op/ba fehler="invalid opcode: opcode 0xba not defined" grund=""
+op/ba wurzel=c235cb68d64c2b0e05b176bb0097b9e89186dfa47498d54b7e782aee8fd1eca3 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/bb klasse=abbruch gas=1000000 ret= logs=-
+#op/bb fehler="invalid opcode: opcode 0xbb not defined" grund=""
+op/bb wurzel=32333db0af421a011c724f59d85ee91ba02912490cb29c5b4ccdc3ea90f209eb speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/bc klasse=abbruch gas=1000000 ret= logs=-
+#op/bc fehler="invalid opcode: opcode 0xbc not defined" grund=""
+op/bc wurzel=8bea2660da98d80f2770fb044feffc4e64b537dd4466e89ffd513e6d0133bd10 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/bd klasse=abbruch gas=1000000 ret= logs=-
+#op/bd fehler="invalid opcode: opcode 0xbd not defined" grund=""
+op/bd wurzel=0b6f07b422ab2cead7eaf29861097a7d11dd7038b6f30498dd5f3edc4dda0367 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/be klasse=abbruch gas=1000000 ret= logs=-
+#op/be fehler="invalid opcode: opcode 0xbe not defined" grund=""
+op/be wurzel=63fb6c98b12b035686056c05e2e806ac4b358bcd90fbccdd20978aef55997f76 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/bf klasse=abbruch gas=1000000 ret= logs=-
+#op/bf fehler="invalid opcode: opcode 0xbf not defined" grund=""
+op/bf wurzel=1d48da4ba9613c18f25f110655c99c6445762c71e90d0a8bb61389cd00985af7 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/c0 klasse=abbruch gas=1000000 ret= logs=-
+#op/c0 fehler="invalid opcode: opcode 0xc0 not defined" grund=""
+op/c0 wurzel=fa22d29dad4a9382cd286df3fdc96ce5d332c68eef87cd3fe60e5a7aa8fb8a2b speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/c1 klasse=abbruch gas=1000000 ret= logs=-
+#op/c1 fehler="invalid opcode: opcode 0xc1 not defined" grund=""
+op/c1 wurzel=db5dba6b79a51cdbd1fe0ec401f83bde9337330bb8be71681e371b7d376363f1 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/c2 klasse=abbruch gas=1000000 ret= logs=-
+#op/c2 fehler="invalid opcode: opcode 0xc2 not defined" grund=""
+op/c2 wurzel=a958f987a331677104e3df7fb006d57699d2644ae3ebb944bdebc268ceb13f7b speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/c3 klasse=abbruch gas=1000000 ret= logs=-
+#op/c3 fehler="invalid opcode: opcode 0xc3 not defined" grund=""
+op/c3 wurzel=08032d83bc1947c9052936853ed0a62165aa4fc2618ca9971ad6342de9c6504f speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/c4 klasse=abbruch gas=1000000 ret= logs=-
+#op/c4 fehler="invalid opcode: opcode 0xc4 not defined" grund=""
+op/c4 wurzel=fc64fb10b8c37dead152b89b6dd4611bbf1530f2e3c342f0cc6a7567b009a590 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/c5 klasse=abbruch gas=1000000 ret= logs=-
+#op/c5 fehler="invalid opcode: opcode 0xc5 not defined" grund=""
+op/c5 wurzel=99279dadadbbf96bfa4097653d2c7266b1da7aecd62a1355eb012416be235a6e speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/c6 klasse=abbruch gas=1000000 ret= logs=-
+#op/c6 fehler="invalid opcode: opcode 0xc6 not defined" grund=""
+op/c6 wurzel=844cd098e7df5460598257bc322a50bd3ef3de0804ed4e33bb99780890016191 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/c7 klasse=abbruch gas=1000000 ret= logs=-
+#op/c7 fehler="invalid opcode: opcode 0xc7 not defined" grund=""
+op/c7 wurzel=563eca115e6afc9020ce407f293b634b5ae15bde86f667329ad394d225494b91 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/c8 klasse=abbruch gas=1000000 ret= logs=-
+#op/c8 fehler="invalid opcode: opcode 0xc8 not defined" grund=""
+op/c8 wurzel=54a9671465272af787eae6689cf23ad31cf5fc8b2add63d87364d41ac88112af speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/c9 klasse=abbruch gas=1000000 ret= logs=-
+#op/c9 fehler="invalid opcode: opcode 0xc9 not defined" grund=""
+op/c9 wurzel=8f6cef946122f96af50798fbcf5b1eb092f8ecd825c0ff2757656fd6875b03fe speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/ca klasse=abbruch gas=1000000 ret= logs=-
+#op/ca fehler="invalid opcode: opcode 0xca not defined" grund=""
+op/ca wurzel=0013cdb3623153438fde36077aecbecaecd6d6e2649131578f5c822ec770d6cd speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/cb klasse=abbruch gas=1000000 ret= logs=-
+#op/cb fehler="invalid opcode: opcode 0xcb not defined" grund=""
+op/cb wurzel=cdb5c8a55cf68ea7f0da2e24dc4f7cfeaee0b5fa6404745ea4c459c03bc39c6f speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/cc klasse=abbruch gas=1000000 ret= logs=-
+#op/cc fehler="invalid opcode: opcode 0xcc not defined" grund=""
+op/cc wurzel=05239ff5ac0d2a3fc0dddf2533d85fc418e2117d9a27671ebb5aa5243d7b4b96 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/cd klasse=abbruch gas=1000000 ret= logs=-
+#op/cd fehler="invalid opcode: opcode 0xcd not defined" grund=""
+op/cd wurzel=2f8a26c31c4514c9258dd2bcaa8b4e2b784186a07b7531a93b0243afcd9cd4b8 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/ce klasse=abbruch gas=1000000 ret= logs=-
+#op/ce fehler="invalid opcode: opcode 0xce not defined" grund=""
+op/ce wurzel=ab3df3749821999a54775e32dd98cc07195708d8e39bfbaaa42e8ca6a049799f speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/cf klasse=abbruch gas=1000000 ret= logs=-
+#op/cf fehler="invalid opcode: opcode 0xcf not defined" grund=""
+op/cf wurzel=7f5236f90d22698b2a1a881cf3bad6e04bff2d4abbdc7638926b1f246513dff5 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/d0 klasse=abbruch gas=1000000 ret= logs=-
+#op/d0 fehler="invalid opcode: opcode 0xd0 not defined" grund=""
+op/d0 wurzel=151af86a3e378b6978da50979644eedea47b2a00e40351464668237cc8e428a5 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/d1 klasse=abbruch gas=1000000 ret= logs=-
+#op/d1 fehler="invalid opcode: opcode 0xd1 not defined" grund=""
+op/d1 wurzel=443221949428e88d02d08b7e44be866f402da51715a430a12eeba3098a64c12b speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/d2 klasse=abbruch gas=1000000 ret= logs=-
+#op/d2 fehler="invalid opcode: opcode 0xd2 not defined" grund=""
+op/d2 wurzel=8e7d358a5e4b58157ee5e8e60361033c5b63564f5ea607a758f23c0f1719d8fa speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/d3 klasse=abbruch gas=1000000 ret= logs=-
+#op/d3 fehler="invalid opcode: opcode 0xd3 not defined" grund=""
+op/d3 wurzel=00ef8c5fe35c9573d8e40427bc529d30e71248383741b0b0bdd8f310779b7fba speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/d4 klasse=abbruch gas=1000000 ret= logs=-
+#op/d4 fehler="invalid opcode: opcode 0xd4 not defined" grund=""
+op/d4 wurzel=e50184f063d9e7670dec2168c8572775610e02670fc300a06c54a00e21194960 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/d5 klasse=abbruch gas=1000000 ret= logs=-
+#op/d5 fehler="invalid opcode: opcode 0xd5 not defined" grund=""
+op/d5 wurzel=800ee70095a5d090eaee35727bfea80b290e15ccb1bb1ee6bbaca366d964d039 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/d6 klasse=abbruch gas=1000000 ret= logs=-
+#op/d6 fehler="invalid opcode: opcode 0xd6 not defined" grund=""
+op/d6 wurzel=f9536dbe7bb3ea26427fd0cfc8dde820e2706d917552cf47e31ae707ed279956 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/d7 klasse=abbruch gas=1000000 ret= logs=-
+#op/d7 fehler="invalid opcode: opcode 0xd7 not defined" grund=""
+op/d7 wurzel=a9db2bfc977eedf566973a12f92296c4502fca47ce8311caae12afa24db92c4f speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/d8 klasse=abbruch gas=1000000 ret= logs=-
+#op/d8 fehler="invalid opcode: opcode 0xd8 not defined" grund=""
+op/d8 wurzel=af311e033d824062de609a44d2f3f6eb516b58069bbf0e61161cb5ca003a5a54 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/d9 klasse=abbruch gas=1000000 ret= logs=-
+#op/d9 fehler="invalid opcode: opcode 0xd9 not defined" grund=""
+op/d9 wurzel=c8395ad35afeaca586582bbfd891d0db3bf07a8c8044169e4f91e62c4c4ba732 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/da klasse=abbruch gas=1000000 ret= logs=-
+#op/da fehler="invalid opcode: opcode 0xda not defined" grund=""
+op/da wurzel=637a70bc252172543d10aab094930cd22a0614948fbf1365f4e222dc3b20efc3 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/db klasse=abbruch gas=1000000 ret= logs=-
+#op/db fehler="invalid opcode: opcode 0xdb not defined" grund=""
+op/db wurzel=6a57cd9512c87a0be36777f2f9229274643c2067a81d3f66999beaa0a02ad0e9 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/dc klasse=abbruch gas=1000000 ret= logs=-
+#op/dc fehler="invalid opcode: opcode 0xdc not defined" grund=""
+op/dc wurzel=34bbec4687d9fdf0de8927f13628f40dc7daa70f29d4d48b5a8f8ee5baeb4601 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/dd klasse=abbruch gas=1000000 ret= logs=-
+#op/dd fehler="invalid opcode: opcode 0xdd not defined" grund=""
+op/dd wurzel=e99bed29b54a61a12b17afd77cf409b3f06cbe60f67f7b1ec7573280fae643b7 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/de klasse=abbruch gas=1000000 ret= logs=-
+#op/de fehler="invalid opcode: opcode 0xde not defined" grund=""
+op/de wurzel=8c57d9c38117973fff40af15a2a188dd4dafa0a9ebc62c164bcf19a3a9dee604 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/df klasse=abbruch gas=1000000 ret= logs=-
+#op/df fehler="invalid opcode: opcode 0xdf not defined" grund=""
+op/df wurzel=eef0e61279b79ed62e3956bead5edb36c54bf8bcbeb61b92792eecaa8630a440 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/e0 klasse=abbruch gas=1000000 ret= logs=-
+#op/e0 fehler="invalid opcode: opcode 0xe0 not defined" grund=""
+op/e0 wurzel=c5e8b0c0c08dbd283a09ae334f4cbe8b215cdabbc295bac71269e72a829c8ec8 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/e1 klasse=abbruch gas=1000000 ret= logs=-
+#op/e1 fehler="invalid opcode: opcode 0xe1 not defined" grund=""
+op/e1 wurzel=104b5fd493a1bb06b5ef7a0a55b8df7f7f8b8535b89a4a2ad3cabb8cbe632eb7 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/e2 klasse=abbruch gas=1000000 ret= logs=-
+#op/e2 fehler="invalid opcode: opcode 0xe2 not defined" grund=""
+op/e2 wurzel=9fabab80c08336b99755be1960259674b8682930230074097a6db8876244a715 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/e3 klasse=abbruch gas=1000000 ret= logs=-
+#op/e3 fehler="invalid opcode: opcode 0xe3 not defined" grund=""
+op/e3 wurzel=a9db49d5d9de50222b1e99c30af1d6a4b8a9930cc0e42f63d72b2c7e2a5ff31a speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/e4 klasse=abbruch gas=1000000 ret= logs=-
+#op/e4 fehler="invalid opcode: opcode 0xe4 not defined" grund=""
+op/e4 wurzel=7379f8d9d1c2861a7272be3d3fd31d18435b02e82ad250284a98127fdf045e16 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/e5 klasse=abbruch gas=1000000 ret= logs=-
+#op/e5 fehler="invalid opcode: opcode 0xe5 not defined" grund=""
+op/e5 wurzel=28057617c97ed73d70cb5e94b80117489e31cc2a9257c61a4b9e932451a42ede speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/e6 klasse=abbruch gas=1000000 ret= logs=-
+#op/e6 fehler="invalid opcode: opcode 0xe6 not defined" grund=""
+op/e6 wurzel=16f2682630a780e9de1870c8a61ad85494a1c42ac1d286248857f1cacd56947f speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/e7 klasse=abbruch gas=1000000 ret= logs=-
+#op/e7 fehler="invalid opcode: opcode 0xe7 not defined" grund=""
+op/e7 wurzel=78c6c3e9d09e8994a6efdb939adc2c306f5176299275001575ca84c7a93f96e2 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/e8 klasse=abbruch gas=1000000 ret= logs=-
+#op/e8 fehler="invalid opcode: opcode 0xe8 not defined" grund=""
+op/e8 wurzel=e332ea42e1faf0fb6875928d2bd1812c103a31af8f30b180859391292d5c8ce1 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/e9 klasse=abbruch gas=1000000 ret= logs=-
+#op/e9 fehler="invalid opcode: opcode 0xe9 not defined" grund=""
+op/e9 wurzel=018969c6d2816851885afe24e30f442ef1c8871d7faca3e202e9280f29447096 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/ea klasse=abbruch gas=1000000 ret= logs=-
+#op/ea fehler="invalid opcode: opcode 0xea not defined" grund=""
+op/ea wurzel=41173bbdf10233fb0a6eec0d747a00911948b1a62ff01ffa54161d23637cd9bc speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/eb klasse=abbruch gas=1000000 ret= logs=-
+#op/eb fehler="invalid opcode: opcode 0xeb not defined" grund=""
+op/eb wurzel=97e61733831637c8f06be56e434f75b0559b01da7f22dd0bc118d878bda95e5c speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/ec klasse=abbruch gas=1000000 ret= logs=-
+#op/ec fehler="invalid opcode: opcode 0xec not defined" grund=""
+op/ec wurzel=daafd856c042aa34840a63175b144b3ffe5be3efd3f6a5e60bef8f6a7d957a63 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/ed klasse=abbruch gas=1000000 ret= logs=-
+#op/ed fehler="invalid opcode: opcode 0xed not defined" grund=""
+op/ed wurzel=76e51261379aec7406009f13d1b9b1fdae43dd09f0d80728d31d2e78a61fccd6 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/ee klasse=abbruch gas=1000000 ret= logs=-
+#op/ee fehler="invalid opcode: opcode 0xee not defined" grund=""
+op/ee wurzel=98ef8ba47121ec0f5206743de6916d9fcd16221733063005e6bd5d600afb2702 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/ef klasse=abbruch gas=1000000 ret= logs=-
+#op/ef fehler="invalid opcode: opcode 0xef not defined" grund=""
+op/ef wurzel=d810d4e2028f5cb953cdc2c04acacfd304c3e2b23b9f0b9f43eb606054fd4ea7 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/f0 klasse=ok gas=32053 ret= logs=-
+op/f0 wurzel=33ef5095b8ae10254dca3ed17f6b84778b01480f17f0d8403d0d17613804ae4e speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/f1 klasse=ok gas=36652 ret= logs=-
+op/f1 wurzel=f56a63c887b57485b49dd5cd95960fc0c42668593f7bf63787e01fc63a9f49a6 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/f2 klasse=ok gas=11652 ret= logs=-
+op/f2 wurzel=33cb8ce7e8e09d562bc529690eac5aa8f62480ae85d832c553e54295ecb34ded speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/f3 klasse=ok gas=51 ret=00 logs=-
+op/f3 wurzel=0a3c663ba317b4ebd1a2a946108e8df4148efb468e8fcf7bf72cb089a2ffd65c speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/f4 klasse=ok gas=2652 ret= logs=-
+op/f4 wurzel=0f826df6338fff6ed69c1913e6d9fc2325c3e81a9b51142340da653cc9f72119 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/f5 klasse=ok gas=32059 ret= logs=-
+op/f5 wurzel=f8ed619357cbfb14d4b72b6bfd3ff9a9c7f72f41b5bfe108484c986c619837ed speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/f6 klasse=abbruch gas=1000000 ret= logs=-
+#op/f6 fehler="invalid opcode: opcode 0xf6 not defined" grund=""
+op/f6 wurzel=31912a290c41e534058e3ca371e18a2c11a929db8025f4e0cef54d44947a06f4 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/f7 klasse=abbruch gas=1000000 ret= logs=-
+#op/f7 fehler="invalid opcode: opcode 0xf7 not defined" grund=""
+op/f7 wurzel=9908fe32613b188ace02f60848ea273c19a07803be7d0b33d7e6aca1801c391b speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/f8 klasse=abbruch gas=1000000 ret= logs=-
+#op/f8 fehler="invalid opcode: opcode 0xf8 not defined" grund=""
+op/f8 wurzel=915b2294b289135e5f6fbeb602f1439140c164d5f7ef4e72ea0b4fb0e76057dd speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/f9 klasse=abbruch gas=1000000 ret= logs=-
+#op/f9 fehler="invalid opcode: opcode 0xf9 not defined" grund=""
+op/f9 wurzel=9a4d26acc022724b6dd7ebe3833e95ace3f3ee81811db2c7820bd7e52fe0e012 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/fa klasse=ok gas=2652 ret= logs=-
+op/fa wurzel=eca718f518271ce3f31302067d18215840416b976b50f891104024565fac1537 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/fb klasse=abbruch gas=1000000 ret= logs=-
+#op/fb fehler="invalid opcode: opcode 0xfb not defined" grund=""
+op/fb wurzel=241f5a3e0ed1727fe4bbe51b66275fe7906b5264d82f7c65e9aa0b32795639f7 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/fc klasse=abbruch gas=1000000 ret= logs=-
+#op/fc fehler="invalid opcode: opcode 0xfc not defined" grund=""
+op/fc wurzel=f27ebfc2135cd65e2023f0e631ac26922b26e805a63b186a0cd1c1d08f0f88f9 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/fd klasse=revert gas=51 ret=00 logs=-
+#op/fd fehler="execution reverted" grund=""
+op/fd wurzel=592f41baa15c68a2ff7c641a808aa6bf48730af52b0e9af0c9027a05bb0d4756 speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/fe klasse=abbruch gas=1000000 ret= logs=-
+#op/fe fehler="invalid opcode: INVALID" grund=""
+op/fe wurzel=ee8bc462f01060a39a27206aa808123bce101acbbb107f28071a2e375d215bcc speicher=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 code=66
+op/ff klasse=ok gas=7648 ret= logs=-
+op/ff wurzel=a6b5d50f7b3c39b969c2fe8fed091939c674fef49b4826309cb6994361e39b71 speicher=0000000000000000000000000000000000000000000000000000000000000000 code=0
+pc/01/eigen/ecrecover-gueltig klasse=ok gas=3000 ret=00000000000000000000000019e7e376e7c213b7e7e7e46cc70a5dd086daff2a logs=-
+pc/01/eigen/ecrecover-v29 klasse=ok gas=3000 ret= logs=-
+pc/02/eigen/sha256-abc klasse=ok gas=72 ret=ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad logs=-
+pc/03/eigen/ripemd-abc klasse=ok gas=720 ret=0000000000000000000000008eb208f7e05d987a9b044a8e98c6b087f15a0bfc logs=-
+pc/04/eigen/identitaet klasse=ok gas=18 ret=6165717569746173 logs=-
+pc/08/eigen/pairing-leer klasse=ok gas=45000 ret=0000000000000000000000000000000000000000000000000000000000000001 logs=-
+pc/0a/eigen/punktauswertung-nullen klasse=abbruch gas=10000000 ret= logs=-
+#pc/0a/eigen/punktauswertung-nullen fehler="mismatched versioned hash" grund=""
+pc/01/ecRecover/CallEcrecoverUnrecoverableKey klasse=ok gas=3000 ret= logs=-
+pc/05/modexp_eip2565/eip_example1 klasse=ok gas=1360 ret=0000000000000000000000000000000000000000000000000000000000000001 logs=-
+pc/05/modexp_eip2565/eip_example2 klasse=ok gas=1360 ret=0000000000000000000000000000000000000000000000000000000000000000 logs=-
+pc/05/modexp_eip2565/nagydani-1-square klasse=ok gas=200 ret=60008f1614cc01dcfb6bfb09c625cf90b47d4468db81b5f8b7a39d42f332eab9b2da8f2d95311648a8f243f4bb13cfb3d8f7f2a3c014122ebb3ed41b02783adc logs=-
+pc/05/modexp_eip2565/nagydani-1-qube klasse=ok gas=200 ret=4834a46ba565db27903b1c720c9d593e84e4cbd6ad2e64b31885d944f68cd801f92225a8961c952ddf2797fa4701b330c85c4b363798100b921a1a22a46a7fec logs=-
+pc/05/modexp_eip2565/nagydani-1-pow0x10001 klasse=ok gas=341 ret=c36d804180c35d4426b57b50c5bfcca5c01856d104564cd513b461d3c8b8409128a5573e416d0ebe38f5f736766d9dc27143e4da981dfa4d67f7dc474cbee6d2 logs=-
+pc/06/bn256Add/chfast1 klasse=ok gas=150 ret=2243525c5efd4b9c3d3c45ac0ca3fe4dd85e830a4ce6b65fa1eeaee202839703301d1d33be6da8e509df21cc35964723180eed7532537db9ae5e7d48f195c915 logs=-
+pc/06/bn256Add/chfast2 klasse=ok gas=150 ret=2bd3e6d0f3b142924f5ca7b49ce5b9d54c4703d7ae5648e61d02268b1a0a9fb721611ce0a6af85915e2f1d70300909ce2e49dfad4a4619c8390cae66cefdb204 logs=-
+pc/06/bn256Add/cdetrio1 klasse=ok gas=150 ret=00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 logs=-
+pc/06/bn256Add/cdetrio2 klasse=ok gas=150 ret=00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 logs=-
+pc/07/bn256ScalarMul/chfast1 klasse=ok gas=6000 ret=070a8d6a982153cae4be29d434e8faef8a47b274a053f5a4ee2a6c9c13c31e5c031b8ce914eba3a9ffb989f9cdd5b0f01943074bf4f0f315690ec3cec6981afc logs=-
+pc/07/bn256ScalarMul/chfast2 klasse=ok gas=6000 ret=025a6f4181d2b4ea8b724290ffb40156eb0adb514c688556eb79cdea0752c2bb2eff3f31dea215f1eb86023a133a996eb6300b44da664d64251d05381bb8a02e logs=-
+pc/07/bn256ScalarMul/chfast3 klasse=ok gas=6000 ret=14789d0d4a730b354403b5fac948113739e276c23e0258d8596ee72f9cd9d3230af18a63153e0ec25ff9f2951dd3fa90ed0197bfef6e2a1a62b5095b9d2b4a27 logs=-
+pc/07/bn256ScalarMul/cdetrio1 klasse=ok gas=6000 ret=2cde5879ba6f13c0b5aa4ef627f159a3347df9722efce88a9afbb20b763b4c411aa7e43076f6aee272755a7f9b84832e71559ba0d2e0b17d5f9f01755e5b0d11 logs=-
+pc/08/bn256Pairing/jeff1 klasse=ok gas=113000 ret=0000000000000000000000000000000000000000000000000000000000000001 logs=-
+pc/08/bn256Pairing/jeff2 klasse=ok gas=113000 ret=0000000000000000000000000000000000000000000000000000000000000001 logs=-
+pc/08/bn256Pairing/jeff3 klasse=ok gas=113000 ret=0000000000000000000000000000000000000000000000000000000000000001 logs=-
+pc/08/bn256Pairing/jeff4 klasse=ok gas=147000 ret=0000000000000000000000000000000000000000000000000000000000000001 logs=-
+pc/09/blake2F/vector 4 klasse=ok gas=0 ret=08c9bcf367e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d282e6ad7f520e511f6c3e2b8c68059b9442be0454267ce079217e1319cde05b logs=-
+pc/09/blake2F/vector 5 klasse=ok gas=12 ret=ba80a53f981c4d0d6a2797b69f12f6e94c212f14685ac4b74b12bb6fdbffa2d17d87c5392aab792dc252d5de4533cc9518d38aa8dbf1925ab92386edd4009923 logs=-
+pc/09/blake2F/vector 6 klasse=ok gas=12 ret=75ab69d3190a562c51aef8d88f1c2775876944407270c42c9844252c26d2875298743e7f6d5ea2f2d3e8d226039cd31b4e426ac4f2d3d666a610c2116fde4735 logs=-
+pc/09/blake2F/vector 7 klasse=ok gas=1 ret=b63a380cb2897d521994a85234ee2c181b5f844d2c624c002677e9703449d2fba551b3a8333bcdf5f2f7e08993d53923de3d64fcc68c034e717b9293fed7a421 logs=-
+pc/09/fail-blake2f/vector 0: empty input klasse=abbruch gas=10000000 ret= logs=-
+#pc/09/fail-blake2f/vector 0: empty input fehler="invalid input length" grund=""
+pc/09/fail-blake2f/vector 1: less than 213 bytes input klasse=abbruch gas=10000000 ret= logs=-
+#pc/09/fail-blake2f/vector 1: less than 213 bytes input fehler="invalid input length" grund=""
+pc/0a/pointEvaluation/pointEvaluation1 klasse=ok gas=50000 ret=000000000000000000000000000000000000000000000000000000000000100073eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001 logs=-
+pc/00b/spaeterer-fork klasse=ok gas=0 ret= logs=-
+pc/00c/spaeterer-fork klasse=ok gas=0 ret= logs=-
+pc/00d/spaeterer-fork klasse=ok gas=0 ret= logs=-
+pc/00e/spaeterer-fork klasse=ok gas=0 ret= logs=-
+pc/00f/spaeterer-fork klasse=ok gas=0 ret= logs=-
+pc/010/spaeterer-fork klasse=ok gas=0 ret= logs=-
+pc/011/spaeterer-fork klasse=ok gas=0 ret= logs=-
+pc/012/spaeterer-fork klasse=ok gas=0 ret= logs=-
+pc/013/spaeterer-fork klasse=ok gas=0 ret= logs=-
+pc/100/spaeterer-fork klasse=ok gas=0 ret= logs=-
+pc/wurzel=dbd7e853409b08d0ac09e99c04b5f19a487adb9a462ed568c45598af2f04a102
+deploy/mock-verifier adresse=0x178b1066090d5c181c47ce517e311bbf3419a6d4 gas=106056 codehash=29c0aa61fb7b7e22034072e435659c1cca356793509ef7c6769edae011524b36 logs=-
+deploy/v8 adresse=0x7e607f4dda6e38414691d8b74dced661765ab40a gas=981351 codehash=72ac9b799cfbcbf6f1d9653f772e203978cf82194546cee55fea5549c9cfa21e logs=-
+deploy/v7-mock adresse=0xc79e0db320696ad16162933da87eec6a3c0525bf gas=2689997 codehash=cc20fd988b32fcfae0f2b7d7759dfa16e33c4e65b9bb995fba3d008d173b5bb7 logs=-
+deploy/v7-bioverifier adresse=0x68310823ac65db03bcdd336de9a486eb9c18bd9a gas=2689997 codehash=0405f9329cf538f92263a187f3143b542ddd5cd8c737bf2a3a83587b64d7a4f5 logs=-
+deploy/scratch adresse=0xee06eabdecf0fdf3956fd1938f6dd1ff104aca13 gas=56903 codehash=ecc6e4d24795edb812c209f6935875a8c9faeba197cecdfa694a4bad03edc8d4 logs=-
+v8/name() klasse=ok gas=459 ret=000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000084165717569746173000000000000000000000000000000000000000000000000 logs=-
+v8/symbol() klasse=ok gas=524 ret=000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000034145510000000000000000000000000000000000000000000000000000000000 logs=-
+v8/eip712Domain() klasse=ok gas=1168 ret=1f0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000e0000000000000000000000000000000000000000000000000000000000000012000000000000000000000000000000000000000000000000000000000000007860000000000000000000000007e607f4dda6e38414691d8b74dced661765ab40a89654bb870598e4d718a433a7d674b5ddd48f78cb6eecd489c01d69fa8e8954f000000000000000000000000000000000000000000000000000000000000016000000000000000000000000000000000000000000000000000000000000000084165717569746173000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000138000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 logs=-
+v8/verifier() klasse=ok gas=327 ret=000000000000000000000000178b1066090d5c181c47ce517e311bbf3419a6d4 logs=-
+v8/NETZ_SALT() klasse=ok gas=261 ret=89654bb870598e4d718a433a7d674b5ddd48f78cb6eecd489c01d69fa8e8954f logs=-
+v8/totalSupply() klasse=ok gas=2339 ret=0000000000000000000000000000000000000000000000000000000000000000 logs=-
+v8/isRegistrar(reg) klasse=ok gas=617 ret=0000000000000000000000000000000000000000000000000000000000000001 logs=-
+v8/register-kein-registrar klasse=revert gas=3199 ret=08c379a00000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000001d56383a2063616c6c6572206973206e6f74206120726567697374726172000000 logs=-
+#v8/register-kein-registrar fehler="execution reverted" grund="V8: caller is not a registrar"
+v8/register-falscher-beweis klasse=revert gas=21109 ret=08c379a00000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000001156383a20696e76616c69642070726f6f66000000000000000000000000000000 logs=-
+#v8/register-falscher-beweis fehler="execution reverted" grund="V8: invalid proof"
+v8/register-fremde-unterschrift klasse=revert gas=19555 ret=08c379a00000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000001556383a20696e76616c6964207369676e61747572650000000000000000000000 logs=-
+#v8/register-fremde-unterschrift fehler="execution reverted" grund="V8: invalid signature"
+v8/register-frist-zu-weit klasse=revert gas=5797 ret=08c379a00000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000001456383a20646561646c696e6520746f6f20666172000000000000000000000000 logs=-
+#v8/register-frist-zu-weit fehler="execution reverted" grund="V8: deadline too far"
+v8/register-gut klasse=ok gas=170167 ret= logs=1:19f546c4bcb68dbef16c40a6
+v8/register-wiederholt klasse=revert gas=1675 ret=08c379a00000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000001656383a20616c7265616479207265676973746572656400000000000000000000 logs=-
+#v8/register-wiederholt fehler="execution reverted" grund="V8: already registered"
+v8/register-nach-frist klasse=revert gas=1675 ret=08c379a00000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000001656383a20616c7265616479207265676973746572656400000000000000000000 logs=-
+#v8/register-nach-frist fehler="execution reverted" grund="V8: already registered"
+v8/isHuman(address) klasse=ok gas=594 ret=0000000000000000000000000000000000000000000000000000000000000001 logs=-
+v8/balanceOf(address) klasse=ok gas=2627 ret=0000000000000000000000000000000000000000000000000000000000000000 logs=-
+v8/nonces(address) klasse=ok gas=561 ret=0000000000000000000000000000000000000000000000000000000000000001 logs=-
+v8/transfer klasse=revert gas=502 ret=08c379a00000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000002356383a207472616e7366657220697320626f6f6b65642062792074686520636861696e0000000000000000000000000000000000000000000000000000000000 logs=-
+#v8/transfer fehler="execution reverted" grund="V8: transfer is booked by the chain"
+v7/name() klasse=ok gas=460 ret=000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000084165717569746173000000000000000000000000000000000000000000000000 logs=-
+v7/symbol() klasse=ok gas=437 ret=000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000034145510000000000000000000000000000000000000000000000000000000000 logs=-
+v7/decimals() klasse=ok gas=271 ret=0000000000000000000000000000000000000000000000000000000000000012 logs=-
+v7/totalSupply() klasse=ok gas=2417 ret=0000000000000000000000000000000000000000000000000000000000000000 logs=-
+v7/getStats() klasse=ok gas=10370 ret=00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000003635c9adc5dea00000000000000000000000000000000000000000000000000a968163f0a57b40000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 logs=-
+v7/fairShare() klasse=ok gas=388 ret=00000000000000000000000000000000000000000000003635c9adc5dea00000 logs=-
+v7/wealthCap() klasse=ok gas=2135 ret=000000000000000000000000000000000000000000000a968163f0a57b400000 logs=-
+v7/currentPhase() klasse=ok gas=1682 ret=0000000000000000000000000000000000000000000000000000000000000000 logs=-
+v7/register-alice klasse=ok gas=253726 ret= logs=2:40ef16f9408684ef5fed70d4
+v7/register-alice-wiederholt klasse=revert gas=1300 ret=08c379a000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000012416c726561647920726567697374657265640000000000000000000000000000 logs=-
+#v7/register-alice-wiederholt fehler="execution reverted" grund="Already registered"
+v7/register-falsche-unterschrift klasse=revert gas=11725 ret=08c379a000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000011496e76616c6964207369676e6174757265000000000000000000000000000000 logs=-
+#v7/register-falsche-unterschrift fehler="execution reverted" grund="Invalid signature"
+v7/register-falscher-beweis klasse=revert gas=210395 ret=08c379a00000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000d496e76616c69642070726f6f6600000000000000000000000000000000000000 logs=-
+#v7/register-falscher-beweis fehler="execution reverted" grund="Invalid proof"
+v7/register-bob klasse=ok gas=213926 ret= logs=2:741be9ddc0deb71aec4b8aa5
+v7/calcFee klasse=ok gas=1554 ret=000000000000000000000000000000000000000000000000016345785d8a0000 logs=-
+v7/transfer-alice-bob klasse=ok gas=34520 ret=0000000000000000000000000000000000000000000000000000000000000001 logs=3:f4d57c2fddeb3599bc9bac41
+v7/transfer-mallory klasse=revert gas=2712 ret=08c379a0000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000094e6f742068756d616e0000000000000000000000000000000000000000000000 logs=-
+#v7/transfer-mallory fehler="execution reverted" grund="Not human"
+v7/transfer-zu-viel klasse=revert gas=884 ret=08c379a000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000014496e73756666696369656e742062616c616e6365000000000000000000000000 logs=-
+#v7/transfer-zu-viel fehler="execution reverted" grund="Insufficient balance"
+v7/balanceOf/0x19e7e3 klasse=ok gas=599 ret=000000000000000000000000000000000000000000000035ab028ac154b80000 logs=-
+v7/claimableUBI/0x19e7e3 klasse=ok gas=1316 ret=0000000000000000000000000000000000000000000000000000000000000000 logs=-
+v7/balanceOf/0x756410 klasse=ok gas=599 ret=000000000000000000000000000000000000000000000036bf2d8b520afe0000 logs=-
+v7/claimableUBI/0x756410 klasse=ok gas=1316 ret=0000000000000000000000000000000000000000000000000000000000000000 logs=-
+v7/accumulateUBI klasse=revert gas=1028 ret=08c379a000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000024446973747269627574696f6e2062656c6f77206d696e696d756d207468726573686f6c6400000000000000000000000000000000000000000000000000000000 logs=-
+#v7/accumulateUBI fehler="execution reverted" grund="Distribution below minimum threshold"
+v7/claimUBI-bob klasse=revert gas=3458 ret=08c379a0000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000104e6f7468696e6720746f20636c61696d00000000000000000000000000000000 logs=-
+#v7/claimUBI-bob fehler="execution reverted" grund="Nothing to claim"
+v7/proposeGuardian klasse=ok gas=55633 ret= logs=1:20d406e4ab13cb3cac9450bc
+v7/confirmGuardian-zu-frueh klasse=revert gas=1009 ret=08c379a00000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000f54696d656c6f636b206163746976650000000000000000000000000000000000 logs=-
+#v7/confirmGuardian-zu-frueh fehler="execution reverted" grund="Timelock active"
+v7/confirmGuardian klasse=ok gas=44382 ret= logs=1:1701113f51f1056c59241c4c
+v7/guardianConfirmAlive klasse=ok gas=4752 ret= logs=1:e3c39c712e99583e3b4e2322
+v7/applyDemurrage-bob klasse=ok gas=6173 ret= logs=2:28fb463bb264f3725f4a7801
+v7/applyWealthCap-bob klasse=ok gas=3213 ret= logs=-
+v7/triggerEscrow-bob klasse=ok gas=54545 ret= logs=4:68065bbf540166e0e1652db3
+v7/confirmAlive-bob klasse=ok gas=32944 ret= logs=4:c05fc2a7e7c8ff2c238d850c
+v7/revokeGuardian klasse=ok gas=3282 ret= logs=1:f79c4595a84dc28616aa2200
+v7/getStats-ende klasse=ok gas=4900 ret=00000000000000000000000000000000000000000000006c6b935b8bbd4000000000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000003635c9adc5dea00000000000000000000000000000000000000000000000000a968163f0a57b40000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 logs=-
+v7echt/register-platzhalter klasse=revert gas=4853682 ret=08c379a00000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000d496e76616c69642070726f6f6600000000000000000000000000000000000000 logs=-
+#v7echt/register-platzhalter fehler="execution reverted" grund="Invalid proof"
+bio/verifyProof-klein klasse=ok gas=203273 ret=0000000000000000000000000000000000000000000000000000000000000000 logs=-
+bio/verifyProof-zu-gross klasse=ok gas=739 ret=0000000000000000000000000000000000000000000000000000000000000000 logs=-
+bio/verifyProof-kein-kurvenpunkt klasse=ok gas=4922166 ret=0000000000000000000000000000000000000000000000000000000000000000 logs=-
+scratch/set klasse=ok gas=22481 ret= logs=-
+scratch/foo-bob klasse=ok gas=507 ret=000000000000000000000000000000000000000000000000000000000000002a logs=-
+scratch/foo-alice klasse=ok gas=2507 ret=0000000000000000000000000000000000000000000000000000000000000000 logs=-
+vertraege/zwischenwurzel=78c91db6b02e9d1600e7aedb2d85c2e664a520971cc86534a3603f5977b1c48e
+vertraege/bio speicherwurzel=56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421 nonce=0 codehash=d746d06de966ce78b93426abefdda24a463aaedc49becdbc66802aef47db6db7
+vertraege/mock speicherwurzel=821e2556a290c86405f8160a2d662042a431ba456b9db265c79bb837c04be5f0 nonce=1 codehash=29c0aa61fb7b7e22034072e435659c1cca356793509ef7c6769edae011524b36
+vertraege/scratch speicherwurzel=10561b3e6cc73b45244a1acb84c3236ae1ad070940ab42f35565ca24f4ededf2 nonce=1 codehash=ecc6e4d24795edb812c209f6935875a8c9faeba197cecdfa694a4bad03edc8d4
+vertraege/v7 speicherwurzel=f7c2d3c2122d58f23c6ba3a789dc455b20eec9eeb239da657237f52675481566 nonce=1 codehash=cc20fd988b32fcfae0f2b7d7759dfa16e33c4e65b9bb995fba3d008d173b5bb7
+vertraege/v7echt speicherwurzel=ab5af09f5bde2ccba892b4e1f6d679407f8c85aa466d24610f9c9ba2e9ae1bc6 nonce=1 codehash=0405f9329cf538f92263a187f3143b542ddd5cd8c737bf2a3a83587b64d7a4f5
+vertraege/v8 speicherwurzel=26fa34f5e1d214d5c76e2bcdfe573394f010b02ddcd60ba64244afa8dc89097d nonce=1 codehash=72ac9b799cfbcbf6f1d9653f772e203978cf82194546cee55fea5549c9cfa21e
+konto/0x19e7e376e7c213b7e7e7e46cc70a5dd086daff2a guthaben=100500000000000000000 nonce=0
+konto/0x7564105e977516c53be337314c7e53838967bdac guthaben=200500000000000000000 nonce=0
+konto/0x1563915e194d8cfba1943570603f7606a3115508 guthaben=300500000000000000000 nonce=0
+konto/0x5cbdd86a2fa8dc4bddd8a8f69dba48572eec07fb guthaben=400500000000000000000 nonce=0
+konto/0x00000000000000000000000000000000000d0e01 guthaben=0 nonce=5
+vertraege/festgeschrieben=78c91db6b02e9d1600e7aedb2d85c2e664a520971cc86534a3603f5977b1c48e slots=f0d825e6ab3f16cb7ab04b04c21c8423232130058aff6da96ab231a77a48fdb1
+vertraege/wiedergeoeffnet slots=f0d825e6ab3f16cb7ab04b04c21c8423232130058aff6da96ab231a77a48fdb1 code-v7=12423
+knotenmuster/balanceOf-alice klasse=ok gas=2599 ret=000000000000000000000000000000000000000000000035ab028ac154b80000 logs=-
+knotenmuster/getStats klasse=ok gas=22900 ret=00000000000000000000000000000000000000000000006c6b935b8bbd4000000000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000003635c9adc5dea00000000000000000000000000000000000000000000000000a968163f0a57b40000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 logs=-
+knotenmuster/claimableUBI-bob klasse=ok gas=5316 ret=0000000000000000000000000000000000000000000000000000000000000000 logs=-
+knotenmuster/transfer-alice-bob klasse=ok gas=51476 ret=0000000000000000000000000000000000000000000000000000000000000001 logs=5:1965d43d5f1c6bbc8decaf68
+knotenmuster/transfer-bob-mallory klasse=ok gas=35197 ret=0000000000000000000000000000000000000000000000000000000000000001 logs=3:8621839b129987fa0cf83dfb
+knotenmuster/confirmAlive-alice klasse=ok gas=4334 ret= logs=1:bf203fbf1c0a356581d29d01
+knotenmuster/proposeGuardian-bob klasse=ok gas=55633 ret= logs=1:4f69b6dda9fe124e40bdd8de
+knotenmuster/register-mallory klasse=revert gas=193481 ret=08c379a00000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000d496e76616c69642070726f6f6600000000000000000000000000000000000000 logs=-
+#knotenmuster/register-mallory fehler="execution reverted" grund="Invalid proof"
+knotenmuster/name klasse=ok gas=460 ret=000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000084165717569746173000000000000000000000000000000000000000000000000 logs=-
+knotenmuster/zwischenwurzel=e484a079d2086d5dc57bcdca71e216cca46f9b79e37e33e08da13f9d3713d687 speicherwurzel=44b2f9cdebca577fe943e63149d406968a42c964b044270a26a3f4b547191b8e
+knotenmuster/festgeschrieben=e484a079d2086d5dc57bcdca71e216cca46f9b79e37e33e08da13f9d3713d687 slots=60e9a9b3c2c36bff73eee90a880e1bf662300cfd11dbf6b5e7d8a92343a0ede0
+ueb/dynamisch-a-b roh=0x02f86c82078680010282520894db2430b4e9ac14be6554d3942822be74811a1af9888ac7230489e8000080c001a06039c7c3679a3947a02c242d4c7fe4e99cb2b781e387077df5978f8e6fa07386a0333df00af0f1e7832e4a043524352f234598f0ba93fb3325467675de34dc46c9
+ueb/dynamisch-a-b hash=0x76a381a4b94387497f43f737d38a9d6a9278830f869645136fe8635d25ab25fa
+ueb/dynamisch-a-b pruefung=ok nonce=0
+ueb/dynamisch-a-b absender=0xe1fae9b4fab2f5726677ecfa912d96b0b683e6a9 fehler=false typ=2
+ueb/legacy-a-c roh=0xf869018082520894ae72a48c1a36bd18af168541c53037965d26e4a88822b1c8c1227a000080820f2fa064e80e56fc62798866b5763641b693d0936874458635158e050da5be0aa04503a021674108763436d72b00c0bfc00e69a1f564111411e4909915907c591b9b2c47
+ueb/legacy-a-c hash=0x3525f2b6f1ba31e8221fbe5c79ab3fad08f63fadddf267389e545a72b3d5bc97
+ueb/legacy-a-c pruefung=ok nonce=1
+ueb/legacy-a-c absender=0xe1fae9b4fab2f5726677ecfa912d96b0b683e6a9 fehler=false typ=0
+ueb/zugriffsliste-b-c roh=0x01f8a4820786800182520894ae72a48c1a36bd18af168541c53037965d26e4a8880de0b6b3a764000080f838f794e1fae9b4fab2f5726677ecfa912d96b0b683e6a9e1a0010000000000000000000000000000000000000000000000000000000000000001a02d27b6e5d94b54f946ff618e546471082b1146c7d1523b1b6cd701214c487059a00901d7f969b92d3464dfb9a06b1a177cf4c0a718d5dafc44acb1c5daf7278e44
+ueb/zugriffsliste-b-c hash=0x298105ba07b7993f976327846172f0f4a7f439adc35defbe9e8a2e99a4aa7c1c
+ueb/zugriffsliste-b-c pruefung=ok nonce=0
+ueb/zugriffsliste-b-c absender=0xdb2430b4e9ac14be6554d3942822be74811a1af9 fehler=false typ=1
+ueb/v7-transfer-c-a roh=0x02f8a982078680010182ea609420d271028f32577fcd07b4583a8e0e4ebbdb4f7880b844a9059cbb000000000000000000000000e1fae9b4fab2f5726677ecfa912d96b0b683e6a90000000000000000000000000000000000000000000000000a688906bd8b0000c080a0397040db5eadc9163572c7a82cc2452c572ac5fa9399d6f148ae6ed5a5db87fca0405e8e5756b654c369d26531de89c6fc4bedcc76ec675ca56f300da2f047f2d9
+ueb/v7-transfer-c-a hash=0x30cc19c551e4558050b40ce9bcb2417b6d91cf28d6459f48844c9e9bd2673126
+ueb/v7-transfer-c-a pruefung=ok nonce=0
+ueb/v7-transfer-c-a absender=0xae72a48c1a36bd18af168541c53037965d26e4a8 fehler=false typ=2
+ueb/blob-a-b roh=0x03f88f82078602010282520894db2430b4e9ac14be6554d3942822be74811a1af9880de0b6b3a764000080c001e1a0010000000000000000000000000000000000000000000000000000000000000001a0c1273bfb514569d8b0a74f768fa0151b7a5d472e07b1f6435b5c281130040a9da05724875269805ab3ea06dee0ad6057f692628e475ac03d14ef8dcef3eb7de608
+ueb/blob-a-b hash=0xedd4fbb86892dbefc60d01ddef4b9f774013560bcbb8cad7cf7b64b775f5c9a5
+ueb/blob-a-b pruefung=ok nonce=2
+ueb/blob-a-b absender=0xe1fae9b4fab2f5726677ecfa912d96b0b683e6a9 fehler=false typ=3
+ueb/ungeschuetzt-a-b roh=0xf867038082520894db2430b4e9ac14be6554d3942822be74811a1af9880de0b6b3a7640000801ca0a4eba40dc9cfaedcc6cd165b80d578cc6e6611343a4fcf5d090719b40064741ea05ce4ddc1ae887a13360054a0cd888701ba2069b03ad2025a23156bbc5452f9be
+ueb/ungeschuetzt-a-b hash=0x40c97dbb50bbcd83b5e1810d73515dd5053058aa9d99c35b8cb7eb4c6e97c6a9
+ueb/ungeschuetzt-a-b pruefung=abgelehnt
+#ueb/ungeschuetzt-a-b fehler="Ueberweisung nicht vom Absender signiert: Chain-ID 0 statt 1926"
+ueb/ungeschuetzt-a-b absender=0xe1fae9b4fab2f5726677ecfa912d96b0b683e6a9 fehler=false typ=0
+ueb/fremde-chainid roh=0x02f86a0103010282520894db2430b4e9ac14be6554d3942822be74811a1af9880de0b6b3a764000080c080a0063ec42b9732dcc753929e7a9371f360fcd51396b35799379cf0a19939944419a05fc5bf6bce0d2d7db9877eed47b1f9871248849a69793913148a6af1f6ab419d
+ueb/fremde-chainid hash=0xeb2c481f54c75db9ed84f4ce5d0141d503853452834ae616d3f7721bd96d0a75
+ueb/fremde-chainid pruefung=abgelehnt
+#ueb/fremde-chainid fehler="Ueberweisung nicht vom Absender signiert: Rohform unlesbar: Cannot recover sender: transaction type not supported"
+ueb/fremde-chainid absender=0x0000000000000000000000000000000000000000 fehler=true typ=2
+ueb/typ4-setcode roh=0x04f88a82078680010282ea6094db2430b4e9ac14be6554d3942822be74811a1af9880de0b6b3a764000080c0dddc82078694db2430b4e9ac14be6554d3942822be74811a1af98080010180a0b00f1fcd18c1537f478265e1833f7ad4e9f48895dd162f3be81b5c72f42ad478a0356d2d9b5119e731ca40888afd98c277974e5ac715a4f214d4048636b39f2c5e
+ueb/typ4-setcode hash=0x2194378e0d1a5cce4318adf2685fe0bba0d32c76f10bc1a64e3275c808c093f6
+ueb/typ4-setcode pruefung=abgelehnt
+#ueb/typ4-setcode fehler="Ueberweisung nicht vom Absender signiert: Rohform unlesbar: Invalid transaction: transaction type not supported"
+ueb/typ4-setcode nicht-lesbar
+#ueb/typ4-setcode lesefehler="Invalid transaction: transaction type not supported"
+ueb/hohes-s roh=0x02f86c82078680010282520894db2430b4e9ac14be6554d3942822be74811a1af9888ac7230489e8000080c080a06039c7c3679a3947a02c242d4c7fe4e99cb2b781e387077df5978f8e6fa07386a0ccc20ff50f0e187cd1b5fbcadbcad0db7515ec2c1b4d6d16795be8ae9b59fa78
+ueb/hohes-s hash=0x76a381a4b94387497f43f737d38a9d6a9278830f869645136fe8635d25ab25fa
+ueb/hohes-s pruefung=abgelehnt
+#ueb/hohes-s fehler="Ueberweisung nicht vom Absender signiert: Rohform unlesbar: Cannot recover sender: transaction type not supported"
+ueb/hohes-s absender=0x0000000000000000000000000000000000000000 fehler=true typ=2
+ueb/fremder-absender roh=0x02f86c82078680010282520894db2430b4e9ac14be6554d3942822be74811a1af9888ac7230489e8000080c001a06039c7c3679a3947a02c242d4c7fe4e99cb2b781e387077df5978f8e6fa07386a0333df00af0f1e7832e4a043524352f234598f0ba93fb3325467675de34dc46c9
+ueb/fremder-absender hash=0x76a381a4b94387497f43f737d38a9d6a9278830f869645136fe8635d25ab25fa
+ueb/fremder-absender pruefung=abgelehnt
+#ueb/fremder-absender fehler="Ueberweisung nicht vom Absender signiert: signiert von 0xe1fae9b4fab2f5726677ecfa912d96b0b683e6a9, im Block steht 0xae72a48c1a36bd18af168541c53037965d26e4a8"
+ueb/fremder-absender absender=0xe1fae9b4fab2f5726677ecfa912d96b0b683e6a9 fehler=false typ=2
+ueb/rohform-abgeschnitten roh=0x02f86c82078680010282520894db2430b4e9ac14be6554d3942822be74811a1af9888ac7230489e8000080c001a06039c7c3679a3947a02c242d4c7fe4e99cb2b781e387077df5978f8e6fa07386a0333df00af0f1e7832e4a043524352f234598f0ba93fb3325467675de34dc46
+ueb/rohform-abgeschnitten hash=0x76a381a4b94387497f43f737d38a9d6a9278830f869645136fe8635d25ab25fa
+ueb/rohform-abgeschnitten pruefung=abgelehnt
+#ueb/rohform-abgeschnitten fehler="Ueberweisung nicht vom Absender signiert: Rohform unlesbar: Invalid transaction: rlp: value size exceeds available input length"
+ueb/rohform-abgeschnitten nicht-lesbar
+#ueb/rohform-abgeschnitten lesefehler="Invalid transaction: rlp: value size exceeds available input length"
+ueb/rohform-angehaengt roh=0x02f86c82078680010282520894db2430b4e9ac14be6554d3942822be74811a1af9888ac7230489e8000080c001a06039c7c3679a3947a02c242d4c7fe4e99cb2b781e387077df5978f8e6fa07386a0333df00af0f1e7832e4a043524352f234598f0ba93fb3325467675de34dc46c900
+ueb/rohform-angehaengt hash=0x76a381a4b94387497f43f737d38a9d6a9278830f869645136fe8635d25ab25fa
+ueb/rohform-angehaengt pruefung=abgelehnt
+#ueb/rohform-angehaengt fehler="Ueberweisung nicht vom Absender signiert: Rohform unlesbar: Invalid transaction: rlp: input contains more than one value"
+ueb/rohform-angehaengt nicht-lesbar
+#ueb/rohform-angehaengt lesefehler="Invalid transaction: rlp: input contains more than one value"
+knoten/start stateroot=33a398d63bfe82d8b59cbec12d840576c4e781c3e21aeeb6fd94263776b705ce
+knoten/block1 angenommen=true stateroot=13943f905b9b14494ac562ab7d254ea1a0e22847393231a77b9570b57a2744bd
+knoten/block1 0xe1fae9b4fab2f5726677ecfa912d96b0b683e6a9 guthaben=987500000 naechste-nonce=2
+knoten/block1 0xdb2430b4e9ac14be6554d3942822be74811a1af9 guthaben=510000000 naechste-nonce=0
+knoten/block1 0xae72a48c1a36bd18af168541c53037965d26e4a8 guthaben=2750000 naechste-nonce=0
+knoten/block2 angenommen=true stateroot=de7957c380f582d082b415d3397d30a5ee50a6880f61dde055b1feaca06a8372
+knoten/block2 0xe1fae9b4fab2f5726677ecfa912d96b0b683e6a9 guthaben=988250000 naechste-nonce=2
+knoten/block2 0xdb2430b4e9ac14be6554d3942822be74811a1af9 guthaben=509000000 naechste-nonce=1
+knoten/block2 0xae72a48c1a36bd18af168541c53037965d26e4a8 guthaben=3000000 naechste-nonce=1
+knoten/block3 angenommen=false stateroot=de7957c380f582d082b415d3397d30a5ee50a6880f61dde055b1feaca06a8372
+knoten/block3 0xe1fae9b4fab2f5726677ecfa912d96b0b683e6a9 guthaben=988250000 naechste-nonce=2
+knoten/block3 0xdb2430b4e9ac14be6554d3942822be74811a1af9 guthaben=509000000 naechste-nonce=1
+knoten/block3 0xae72a48c1a36bd18af168541c53037965d26e4a8 guthaben=3000000 naechste-nonce=1
+knoten/block4 angenommen=true stateroot=822cebd27309c648ad5a25c77dd544c44d99c477ad5f5d8f311a3f0a770affc8
+knoten/block4 0xe1fae9b4fab2f5726677ecfa912d96b0b683e6a9 guthaben=987250000 naechste-nonce=3
+knoten/block4 0xdb2430b4e9ac14be6554d3942822be74811a1af9 guthaben=510000000 naechste-nonce=1
+knoten/block4 0xae72a48c1a36bd18af168541c53037965d26e4a8 guthaben=3000000 naechste-nonce=1
+knoten/block5 angenommen=false stateroot=822cebd27309c648ad5a25c77dd544c44d99c477ad5f5d8f311a3f0a770affc8
+knoten/block5 0xe1fae9b4fab2f5726677ecfa912d96b0b683e6a9 guthaben=987250000 naechste-nonce=3
+knoten/block5 0xdb2430b4e9ac14be6554d3942822be74811a1af9 guthaben=510000000 naechste-nonce=1
+knoten/block5 0xae72a48c1a36bd18af168541c53037965d26e4a8 guthaben=3000000 naechste-nonce=1
+knoten/block6 angenommen=false stateroot=822cebd27309c648ad5a25c77dd544c44d99c477ad5f5d8f311a3f0a770affc8
+knoten/block6 0xe1fae9b4fab2f5726677ecfa912d96b0b683e6a9 guthaben=987250000 naechste-nonce=3
+knoten/block6 0xdb2430b4e9ac14be6554d3942822be74811a1af9 guthaben=510000000 naechste-nonce=1
+knoten/block6 0xae72a48c1a36bd18af168541c53037965d26e4a8 guthaben=3000000 naechste-nonce=1
+bn/06/add/nicht-auf-kurve klasse=abbruch gas=10000000 ret= logs=-
+#bn/06/add/nicht-auf-kurve fehler="bn256: malformed point" grund=""
+bn/06/add/x-gleich-p-plus-1 klasse=abbruch gas=10000000 ret= logs=-
+#bn/06/add/x-gleich-p-plus-1 fehler="bn256: coordinate exceeds modulus" grund=""
+bn/06/add/y-gleich-p klasse=abbruch gas=10000000 ret= logs=-
+#bn/06/add/y-gleich-p fehler="bn256: coordinate equals modulus" grund=""
+bn/06/add/kurz-64 klasse=ok gas=150 ret=00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000002 logs=-
+bn/06/add/leer klasse=ok gas=150 ret=00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 logs=-
+bn/06/add/lang-200 klasse=ok gas=150 ret=030644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd315ed738c0e0a7c92e7845f96b2ae9c0a68a6a449e3538fc7ff3ebf7a5a18a2c4 logs=-
+bn/06/add/unendlich-plus-g1 klasse=ok gas=150 ret=00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000002 logs=-
+bn/07/mul/nicht-auf-kurve klasse=abbruch gas=10000000 ret= logs=-
+#bn/07/mul/nicht-auf-kurve fehler="bn256: malformed point" grund=""
+bn/07/mul/x-gleich-p klasse=abbruch gas=10000000 ret= logs=-
+#bn/07/mul/x-gleich-p fehler="bn256: coordinate equals modulus" grund=""
+bn/07/mul/skalar-r-plus-1 klasse=ok gas=6000 ret=00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000002 logs=-
+bn/07/mul/skalar-max klasse=ok gas=6000 ret=2f588cffe99db877a4434b598ab28f81e0522910ea52b45f0adaa772b2d5d35212f42fa8fd34fb1b33d8c6a718b6590198389b26fc9d8808d971f8b009777a97 logs=-
+bn/07/mul/leer klasse=ok gas=6000 ret=00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 logs=-
+bn/07/mul/kurz-80 klasse=ok gas=6000 ret=00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 logs=-
+bn/08/pair/laenge-191 klasse=abbruch gas=10000000 ret= logs=-
+#bn/08/pair/laenge-191 fehler="bad elliptic curve pairing size" grund=""
+bn/08/pair/laenge-193 klasse=abbruch gas=10000000 ret= logs=-
+#bn/08/pair/laenge-193 fehler="bad elliptic curve pairing size" grund=""
+bn/08/pair/g1-nicht-auf-kurve klasse=abbruch gas=10000000 ret= logs=-
+#bn/08/pair/g1-nicht-auf-kurve fehler="bn256: malformed point" grund=""
+bn/08/pair/g1-x-gleich-p-plus-1 klasse=abbruch gas=10000000 ret= logs=-
+#bn/08/pair/g1-x-gleich-p-plus-1 fehler="bn256: coordinate exceeds modulus" grund=""
+bn/08/pair/g2-nicht-auf-kurve klasse=abbruch gas=10000000 ret= logs=-
+#bn/08/pair/g2-nicht-auf-kurve fehler="bn256: malformed point" grund=""
+bn/08/pair/g2-koordinate-ab-p klasse=abbruch gas=10000000 ret= logs=-
+#bn/08/pair/g2-koordinate-ab-p fehler="bn256: coordinate exceeds modulus" grund=""
+bn/08/pair/g2-ausserhalb-untergruppe klasse=abbruch gas=10000000 ret= logs=-
+#bn/08/pair/g2-ausserhalb-untergruppe fehler="bn256: malformed point" grund=""
+bn/08/pair/g2-unendlich klasse=ok gas=79000 ret=0000000000000000000000000000000000000000000000000000000000000001 logs=-
+bn/08/pair/g1-unendlich klasse=ok gas=79000 ret=0000000000000000000000000000000000000000000000000000000000000001 logs=-
+bn/08/pair/einzeln-ungleich-1 klasse=ok gas=79000 ret=0000000000000000000000000000000000000000000000000000000000000000 logs=-
+bn/08/pair/zwei-paare-gleich-1 klasse=ok gas=113000 ret=0000000000000000000000000000000000000000000000000000000000000001 logs=-
+bn/08/pair/untergruppe-zweites-paar klasse=abbruch gas=10000000 ret= logs=-
+#bn/08/pair/untergruppe-zweites-paar fehler="bn256: malformed point" grund=""
+bn/bio/g2-ausserhalb-untergruppe klasse=ok gas=29531659 ret=0000000000000000000000000000000000000000000000000000000000000000 logs=-
+bn/bio/g2-koordinate-ab-p klasse=ok gas=29531541 ret=0000000000000000000000000000000000000000000000000000000000000000 logs=-
+bn/bio/pa-x-ab-p klasse=ok gas=29531541 ret=0000000000000000000000000000000000000000000000000000000000000000 logs=-
+bn/bio/pc-nicht-auf-kurve klasse=ok gas=29531541 ret=0000000000000000000000000000000000000000000000000000000000000000 logs=-
+bn/bio/pa-unendlich klasse=ok gas=195773 ret=0000000000000000000000000000000000000000000000000000000000000000 logs=-
+bn/wurzel=a7a786d4fa13e1889096bba89767b1a1bb14ad52118ddf5c46cb060239d83af6
+knotenaufruf/v7/start mock=0x178b1066090d5c181c47ce517e311bbf3419a6d4 code=cc20fd988b32fcfae0f2b7d7759dfa16e33c4e65b9bb995fba3d008d173b5bb7 speicher slots=9 hash=8a35fd27fda65b12299ba82284aefe8a
+knotenaufruf/v7/name() klasse=ok gas=460 ret=000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000084165717569746173000000000000000000000000000000000000000000000000 logs=-
+knotenaufruf/v7/name() festgeschrieben=8eb5c8ac3585a9ded67aeb57f8324399518031d3456b296de6a4dcc7506cc73e speicher slots=9 hash=8a35fd27fda65b12299ba82284aefe8a
+knotenaufruf/v7/symbol() klasse=ok gas=437 ret=000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000034145510000000000000000000000000000000000000000000000000000000000 logs=-
+knotenaufruf/v7/symbol() festgeschrieben=8eb5c8ac3585a9ded67aeb57f8324399518031d3456b296de6a4dcc7506cc73e speicher slots=9 hash=8a35fd27fda65b12299ba82284aefe8a
+knotenaufruf/v7/decimals() klasse=ok gas=271 ret=0000000000000000000000000000000000000000000000000000000000000012 logs=-
+knotenaufruf/v7/decimals() festgeschrieben=8eb5c8ac3585a9ded67aeb57f8324399518031d3456b296de6a4dcc7506cc73e speicher slots=9 hash=8a35fd27fda65b12299ba82284aefe8a
+knotenaufruf/v7/totalSupply() klasse=ok gas=2417 ret=0000000000000000000000000000000000000000000000000000000000000000 logs=-
+knotenaufruf/v7/totalSupply() festgeschrieben=8eb5c8ac3585a9ded67aeb57f8324399518031d3456b296de6a4dcc7506cc73e speicher slots=9 hash=8a35fd27fda65b12299ba82284aefe8a
+knotenaufruf/v7/registerWithSig-gut klasse=ok gas=266726 ret= logs=2:ea8a7bff4501f0e38c0fe68e
+knotenaufruf/v7/registerWithSig-gut festgeschrieben=204ee5f2cb2ef83898ad303795bb47b4904471fc451a4ad095fa669a7347086a speicher slots=20 hash=2759cd6e5cbaf476382363bed245f9e0
+knotenaufruf/v7/registerWithSig-wiederholt klasse=revert gas=3300 ret=08c379a000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000012416c726561647920726567697374657265640000000000000000000000000000 logs=-
+#knotenaufruf/v7/registerWithSig-wiederholt fehler="execution reverted" grund="Already registered"
+knotenaufruf/v7/registerWithSig-fremde-unterschrift klasse=revert gas=14225 ret=08c379a000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000011496e76616c6964207369676e6174757265000000000000000000000000000000 logs=-
+#knotenaufruf/v7/registerWithSig-fremde-unterschrift fehler="execution reverted" grund="Invalid signature"
+knotenaufruf/v7/registerWithSig-falscher-beweis klasse=revert gas=223395 ret=08c379a00000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000d496e76616c69642070726f6f6600000000000000000000000000000000000000 logs=-
+#knotenaufruf/v7/registerWithSig-falscher-beweis fehler="execution reverted" grund="Invalid proof"
+knotenaufruf/v7/registerWithSig-kein-relayer zulassung=abgelehnt
+#knotenaufruf/v7/registerWithSig-kein-relayer fehler="registerWithSig must be called via /api/register (direct calls bypass Go-state updates)"
+knotenaufruf/v7/registerWithSig-bob klasse=ok gas=226926 ret= logs=2:7fb1ec094dd28050b922f3ec
+knotenaufruf/v7/registerWithSig-bob festgeschrieben=d7a93c63d515ec0e204d3a48b10bda286d3f3e89838323de354ea08d28ff9c37 speicher slots=29 hash=914a2a55fafdb21fc723b03eda724bd3
+knotenaufruf/v7/balanceOf-gut klasse=ok gas=2599 ret=00000000000000000000000000000000000000000000003635c9adc5dea00000 logs=-
+knotenaufruf/v7/balanceOf-gut festgeschrieben=f65a9da3ad843358da15f3cc8561e9473442f3f4cbaf38eb6fb7bc2887a7eb1c speicher slots=29 hash=914a2a55fafdb21fc723b03eda724bd3
+knotenaufruf/v7/balanceOf-keine-adresse klasse=revert gas=334 ret= logs=-
+#knotenaufruf/v7/balanceOf-keine-adresse fehler="execution reverted" grund=""
+knotenaufruf/v7/balanceOf-ohne-argument klasse=revert gas=269 ret= logs=-
+#knotenaufruf/v7/balanceOf-ohne-argument fehler="execution reverted" grund=""
+knotenaufruf/v7/allowance-nicht-im-vertrag klasse=revert gas=255 ret= logs=-
+#knotenaufruf/v7/allowance-nicht-im-vertrag fehler="execution reverted" grund=""
+knotenaufruf/v7/transfer-gut klasse=ok gas=66920 ret=0000000000000000000000000000000000000000000000000000000000000001 logs=3:988f0a3388c4e560e4395c7a
+knotenaufruf/v7/transfer-gut festgeschrieben=4b4f7233bb414dc41e00a97aed77552d5eb6eb6cec73d424f508b3c2be668a7c speicher slots=30 hash=0e6905c2578c86800d3a5acf75ea2f22
+knotenaufruf/v7/transfer-kein-mensch klasse=revert gas=2712 ret=08c379a0000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000094e6f742068756d616e0000000000000000000000000000000000000000000000 logs=-
+#knotenaufruf/v7/transfer-kein-mensch fehler="execution reverted" grund="Not human"
+knotenaufruf/v7/transfer-zu-viel klasse=revert gas=4884 ret=08c379a000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000014496e73756666696369656e742062616c616e6365000000000000000000000000 logs=-
+#knotenaufruf/v7/transfer-zu-viel fehler="execution reverted" grund="Insufficient balance"
+knotenaufruf/v7/transfer-an-sich-selbst klasse=revert gas=4976 ret=08c379a000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000011496e76616c696420726563697069656e74000000000000000000000000000000 logs=-
+#knotenaufruf/v7/transfer-an-sich-selbst fehler="execution reverted" grund="Invalid recipient"
+knotenaufruf/v7/transfer-bob-alice klasse=ok gas=51576 ret=0000000000000000000000000000000000000000000000000000000000000001 logs=5:2b05da5d8cf9d5d6172bab58
+knotenaufruf/v7/transfer-bob-alice festgeschrieben=c1adc6f9914c89910ace8e3317df97e9c579ad11f673481b519669de4226821d speicher slots=30 hash=98ac6fe31ad850f6f19f63815cd05540
+knotenaufruf/v7/balanceOf-bob klasse=ok gas=2599 ret=00000000000000000000000000000000000000000000003634666821a62f04e1 logs=-
+knotenaufruf/v7/balanceOf-bob festgeschrieben=5f248647e7cc63e0936e111e4fdfced27a5a9369510b807e4093c390e571f5a0 speicher slots=30 hash=98ac6fe31ad850f6f19f63815cd05540
+knotenaufruf/v7/totalSupply()-ende klasse=ok gas=2417 ret=00000000000000000000000000000000000000000000006c6b935b8bbd400000 logs=-
+knotenaufruf/v7/totalSupply()-ende festgeschrieben=e93710a804b3723a2570d74cf3250f5b4eb64439396e27968def6d8c0dac088d speicher slots=30 hash=98ac6fe31ad850f6f19f63815cd05540
+knotenaufruf/v7/name()-mit-wert klasse=revert gas=43 ret= logs=-
+#knotenaufruf/v7/name()-mit-wert fehler="execution reverted" grund=""
+knotenaufruf/v7/name()-mit-wert-ueber-callcontract abgelehnt=true
+knotenaufruf/v7/symbol()-mit-wert klasse=revert gas=43 ret= logs=-
+#knotenaufruf/v7/symbol()-mit-wert fehler="execution reverted" grund=""
+knotenaufruf/v7/symbol()-mit-wert-ueber-callcontract abgelehnt=true
+knotenaufruf/v7/decimals()-mit-wert klasse=revert gas=43 ret= logs=-
+#knotenaufruf/v7/decimals()-mit-wert fehler="execution reverted" grund=""
+knotenaufruf/v7/decimals()-mit-wert-ueber-callcontract abgelehnt=true
+knotenaufruf/v7/totalSupply()-mit-wert klasse=revert gas=43 ret= logs=-
+#knotenaufruf/v7/totalSupply()-mit-wert fehler="execution reverted" grund=""
+knotenaufruf/v7/totalSupply()-mit-wert-ueber-callcontract abgelehnt=true
+knotenaufruf/v7/claimUBI-nicht-zugelassen zulassung=abgelehnt
+#knotenaufruf/v7/claimUBI-nicht-zugelassen fehler="selector 1a880ded not supported for persisting calls — use /api/* endpoints"
+knotenaufruf/v8/start code=72ac9b799cfbcbf6f1d9653f772e203978cf82194546cee55fea5549c9cfa21e speicher slots=1 hash=dd3e07f9920ac9ae479e453c7460ee43
+knotenaufruf/v8/registerWithSig-fremde-unterschrift klasse=revert gas=21555 ret=08c379a00000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000001556383a20696e76616c6964207369676e61747572650000000000000000000000 logs=-
+#knotenaufruf/v8/registerWithSig-fremde-unterschrift fehler="execution reverted" grund="V8: invalid signature"
+knotenaufruf/v8/registerWithSig-falscher-beweis klasse=revert gas=27626 ret=08c379a00000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000001156383a20696e76616c69642070726f6f66000000000000000000000000000000 logs=-
+#knotenaufruf/v8/registerWithSig-falscher-beweis fehler="execution reverted" grund="V8: invalid proof"
+knotenaufruf/v8/registerWithSig-kein-relayer zulassung=abgelehnt
+#knotenaufruf/v8/registerWithSig-kein-relayer fehler="registerWithSig must be called via /api/register (direct calls bypass Go-state updates)"
+knotenaufruf/v8/registerWithSig-gut klasse=ok gas=176684 ret= logs=1:32250734614235f612339259
+knotenaufruf/v8/registerWithSig-gut festgeschrieben=e22701fa339793731ff74fdaa2e4a850c68fc75fac79cbdac303a065aad71a9b speicher slots=8 hash=8df893c8ea791ce06a3f69831fe55a9a
+knotenaufruf/v8/registerWithSig-wiederholt klasse=revert gas=7675 ret=08c379a00000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000001656383a20616c7265616479207265676973746572656400000000000000000000 logs=-
+#knotenaufruf/v8/registerWithSig-wiederholt fehler="execution reverted" grund="V8: already registered"
+knotenaufruf/v8/registerWithSig-bob klasse=ok gas=156784 ret= logs=1:081193150d44dc50d5757e08
+knotenaufruf/v8/registerWithSig-bob festgeschrieben=602b4bd229224d39f1b6e8529ba8eeaa4bc502e0a263e31dc9812f1219ca174b speicher slots=14 hash=ea8013b693ec01148253f75fdd0ac2b1
+knotenaufruf/v8/registerWithSig-nullifier-doppelt klasse=revert gas=12323 ret=08c379a00000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000001256383a206e756c6c696669657220757365640000000000000000000000000000 logs=-
+#knotenaufruf/v8/registerWithSig-nullifier-doppelt fehler="execution reverted" grund="V8: nullifier used"
+knotenaufruf/v8/name()-nicht-zugelassen zulassung=abgelehnt
+#knotenaufruf/v8/name()-nicht-zugelassen fehler="selector 06fdde03 not supported for persisting calls — use /api/* endpoints"
+knotenaufruf/v8/totalSupply()-nicht-zugelassen zulassung=abgelehnt
+#knotenaufruf/v8/totalSupply()-nicht-zugelassen fehler="selector 18160ddd not supported for persisting calls — use /api/* endpoints"
+knotenaufruf/v8/transfer-nicht-zugelassen zulassung=abgelehnt
+#knotenaufruf/v8/transfer-nicht-zugelassen fehler="selector a9059cbb not supported for persisting calls — use /api/* endpoints"

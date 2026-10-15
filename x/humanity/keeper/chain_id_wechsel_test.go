@@ -12,7 +12,6 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/rlp"
 )
@@ -324,7 +323,7 @@ func TestChainIDWechsel_V8DomaeneVorUndNach(t *testing.T) {
 	p := neuerV8Pruefstand(t, []common.Address{reg}, testSalt)
 	var seps []common.Hash
 	for _, z := range []int64{ab - 1, ab} {
-		p.evm = vm.NewEVM(blockContext(uint64(z)), vm.TxContext{Origin: alice, GasPrice: big.NewInt(0)}, p.sdb, chainConfigFuer(uint64(z)), vm.Config{})
+		p.evm = neueKnotenEVM(uint64(z), alice, p.sdb)
 		ret, err := p.aufruf(alice, sel("3644e515")) // DOMAIN_SEPARATOR()
 		want := v8DomainSeparator(chainIDFuer(z), p.vertrag, testSalt)
 		if err != nil || common.BytesToHash(ret) != want {
