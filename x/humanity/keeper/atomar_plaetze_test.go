@@ -21,6 +21,7 @@ func TestAtomarPlatzZahl(t *testing.T) {
 // eine Verbindung braucht (wie Nachspielen und WAL-Flush). Vorher stand der
 // Knoten: alle Verbindungen warteten auf cs.mu.
 func TestAtomar_KeineVerklemmungMitPool_RealDB(t *testing.T) {
+	skipUnlessRealDBBenchEnv(t)
 	cs := testKnoten(t, "unused-atomar-plaetze.json")
 	if !cs.useDB {
 		t.Fatal("erwartet eine echte PostgreSQL-Verbindung")
@@ -75,6 +76,7 @@ func TestAtomar_KeineVerklemmungMitPool_RealDB(t *testing.T) {
 // Sind alle Plaetze belegt, wartet ein Auftrag hoechstens atomarWarteFrist
 // und bekommt dann ErrAnnahmePausiert (503) -- kein Stau ohne Grenze.
 func TestAtomar_WarteFrist_RealDB(t *testing.T) {
+	skipUnlessRealDBBenchEnv(t)
 	cs := testKnoten(t, "unused-atomar-frist.json")
 	if !cs.useDB {
 		t.Fatal("erwartet eine echte PostgreSQL-Verbindung")
