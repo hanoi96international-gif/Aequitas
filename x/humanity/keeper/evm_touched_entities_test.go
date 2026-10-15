@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/crypto"
 )
@@ -100,7 +99,7 @@ func TestExtractPreCallEntities_FindsStorageOnlyParties(t *testing.T) {
 
 	newState := func(t *testing.T) *state.StateDB {
 		t.Helper()
-		sdb, err := state.New(common.Hash{}, state.NewDatabase(rawdb.NewMemoryDatabase()), nil)
+		sdb, _, err := neueSpeicherStateDB()
 		if err != nil {
 			t.Fatalf("state.New: %v", err)
 		}

@@ -6,9 +6,6 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/rawdb"
-	"github.com/ethereum/go-ethereum/core/state"
-	"github.com/ethereum/go-ethereum/core/vm"
 )
 
 // scratchGetterInitcode is the deployed initcode of a trivial scratch
@@ -40,18 +37,15 @@ const scratchGetterInitcode = "6080604052348015600e575f5ffd5b5061011c8061001c5f3
 func TestNewStateDBPattern_UnsetMappingKeyReturnsZeroNotRevert(t *testing.T) {
 	// Deploy the scratch contract once, in a throwaway StateDB, purely to
 	// get real deployed runtime code (hand-assembling it isn't worth it).
-	memDB := rawdb.NewMemoryDatabase()
-	db := state.NewDatabase(memDB)
-	deployerSdb, err := state.New(common.Hash{}, db, nil)
+	deployerSdb, _, err := neueSpeicherStateDB()
 	if err != nil {
 		t.Fatal(err)
 	}
 	deployer := common.HexToAddress("0x1111111111111111111111111111111111111111")
-	deployerSdb.SetNonce(deployer, 0)
+	setzeNonce(deployerSdb, deployer, 0)
 	initcode, _ := hex.DecodeString(scratchGetterInitcode)
-	txCtx := vm.TxContext{Origin: deployer, GasPrice: big.NewInt(0)}
-	evm := vm.NewEVM(blockContext(1), txCtx, deployerSdb, chainConfig(), vm.Config{})
-	_, contractAddr, _, err := evm.Create(vm.AccountRef(deployer), initcode, 30_000_000, big.NewInt(0))
+	evm := neueKnotenEVM(1, deployer, deployerSdb)
+	_, contractAddr, _, err := evmErzeugen(evm, deployer, initcode, 30_000_000, big.NewInt(0))
 	if err != nil {
 		t.Fatalf("deploy failed: %v", err)
 	}
@@ -64,13 +58,11 @@ func TestNewStateDBPattern_UnsetMappingKeyReturnsZeroNotRevert(t *testing.T) {
 	// StateDB, SetCode for the contract, and SetState only for the ONE row
 	// that "exists in evm_storage" (a direct Go-level mutation, exactly
 	// like evm_engine.go's storage-loading loop — never an EVM opcode).
-	freshMemDB := rawdb.NewMemoryDatabase()
-	freshDB := state.NewDatabase(freshMemDB)
-	sdb, err := state.New(common.Hash{}, freshDB, nil)
+	sdb, _, err := neueSpeicherStateDB()
 	if err != nil {
 		t.Fatal(err)
 	}
-	sdb.SetCode(contractAddr, runtimeCode)
+	setzeCode(sdb, contractAddr, runtimeCode)
 
 	knownAddr := common.HexToAddress("0x2222222222222222222222222222222222222222")
 	unknownAddr := common.HexToAddress("0x3333333333333333333333333333333333333333")
@@ -81,9 +73,8 @@ func TestNewStateDBPattern_UnsetMappingKeyReturnsZeroNotRevert(t *testing.T) {
 	callGetter := func(addr common.Address) ([]byte, error) {
 		data := append(append([]byte{}, fooSel...), make([]byte, 32)...)
 		copy(data[4+12:4+32], addr.Bytes())
-		txCtx := vm.TxContext{Origin: deployer, GasPrice: big.NewInt(0)}
-		evm := vm.NewEVM(blockContext(1), txCtx, sdb, chainConfig(), vm.Config{})
-		ret, _, callErr := evm.Call(vm.AccountRef(deployer), contractAddr, data, 30_000_000, big.NewInt(0))
+		evm := neueKnotenEVM(1, deployer, sdb)
+		ret, _, callErr := evmAufrufen(evm, deployer, contractAddr, data, 30_000_000, big.NewInt(0))
 		return ret, callErr
 	}
 

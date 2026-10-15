@@ -12,7 +12,6 @@ import (
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -52,14 +51,14 @@ func v8Schluessel(t *testing.T, hexKey string) (*ecdsa.PrivateKey, common.Addres
 
 func neuerV8Pruefstand(t *testing.T, registrare []common.Address, salt common.Hash) *v8Pruefstand {
 	t.Helper()
-	sdb, err := state.New(common.Hash{}, state.NewDatabase(rawdb.NewMemoryDatabase()), nil)
+	sdb, _, err := neueSpeicherStateDB()
 	if err != nil {
 		t.Fatal(err)
 	}
 	deployer := common.HexToAddress("0x00000000000000000000000000000000000d0e01")
-	evm := vm.NewEVM(blockContext(1_790_000_000), vm.TxContext{Origin: deployer, GasPrice: big.NewInt(0)}, sdb, chainConfig(), vm.Config{})
+	evm := neueKnotenEVM(1_790_000_000, deployer, sdb)
 	mock, _ := hex.DecodeString(mockGroth16VerifierBytecode)
-	_, verifier, _, err := evm.Create(vm.AccountRef(deployer), mock, 30_000_000, big.NewInt(0))
+	_, verifier, _, err := evmErzeugen(evm, deployer, mock, 30_000_000, big.NewInt(0))
 	if err != nil {
 		t.Fatalf("Verifier: %v", err)
 	}
@@ -68,7 +67,7 @@ func neuerV8Pruefstand(t *testing.T, registrare []common.Address, salt common.Ha
 		t.Fatal(err)
 	}
 	code, _ := hex.DecodeString(V8ContractBytecode)
-	_, v8, _, err := evm.Create(vm.AccountRef(deployer), append(code, args...), 30_000_000, big.NewInt(0))
+	_, v8, _, err := evmErzeugen(evm, deployer, append(code, args...), 30_000_000, big.NewInt(0))
 	if err != nil {
 		t.Fatalf("V8 deploy (Konstruktor-Kodierung aus Go): %v", err)
 	}
@@ -76,7 +75,7 @@ func neuerV8Pruefstand(t *testing.T, registrare []common.Address, salt common.Ha
 }
 
 func (p *v8Pruefstand) aufruf(von common.Address, data []byte) ([]byte, error) {
-	ret, _, err := p.evm.Call(vm.AccountRef(von), p.vertrag, data, 5_000_000, big.NewInt(0))
+	ret, _, err := evmAufrufen(p.evm, von, p.vertrag, data, 5_000_000, big.NewInt(0))
 	if err != nil {
 		if r := decodeRevertReason(ret); r != "" {
 			return nil, &revertFehler{r}
@@ -400,12 +399,12 @@ func TestEVM_CancunZeichenketten(t *testing.T) {
 	}
 	code, _ := hex.DecodeString(V7ContractBytecode)
 	arg := common.LeftPadBytes(p.vertrag.Bytes(), 32) // irgendeine Adresse mit Code
-	_, v7, _, err := p.evm.Create(vm.AccountRef(reg), append(code, arg...), 30_000_000, big.NewInt(0))
+	_, v7, _, err := evmErzeugen(p.evm, reg, append(code, arg...), 30_000_000, big.NewInt(0))
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, s := range []string{"06fdde03", "95d89b41"} {
-		ret, _, err := p.evm.Call(vm.AccountRef(reg), v7, sel(s), 1_000_000, big.NewInt(0))
+		ret, _, err := evmAufrufen(p.evm, reg, v7, sel(s), 1_000_000, big.NewInt(0))
 		if err != nil || len(ret) != 96 {
 			t.Errorf("V7 %s: %v (%d Byte)", s, err, len(ret))
 		}

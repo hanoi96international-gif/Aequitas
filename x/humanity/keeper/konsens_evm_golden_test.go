@@ -82,32 +82,80 @@ func pruefeGolden(t *testing.T, datei string, b *goldenBuch) {
 		t.Fatalf("Golden-Datei fehlt: %v", err)
 	}
 	soll := strings.Split(strings.TrimRight(string(roh), "\n"), "\n")
-	ist := b.zeilen
-	if len(soll) != len(ist) {
-		t.Errorf("%s: %d Zeilen erwartet, %d erzeugt", datei, len(soll), len(ist))
+	vergleicheGolden(t, datei, soll, b.zeilen, konsensBekannteAbweichungen[datei])
+}
+
+// goldenSchluessel: der Teil einer Zeile vor dem ersten "=" (z. B.
+// "op/44 klasse"), sonst die ganze Zeile.
+func goldenSchluessel(z string) string {
+	if i := strings.Index(z, "="); i >= 0 {
+		return z[:i]
+	}
+	return z
+}
+
+func goldenKarte(t *testing.T, zeilen []string) (map[string]string, []string) {
+	t.Helper()
+	m := make(map[string]string, len(zeilen))
+	var reihe []string
+	for _, z := range zeilen {
+		k := goldenSchluessel(z)
+		if _, doppelt := m[k]; doppelt {
+			t.Fatalf("Golden-Schluessel doppelt: %q", k)
+		}
+		m[k] = z
+		reihe = append(reihe, k)
+	}
+	return m, reihe
+}
+
+// vergleicheGolden vergleicht Zeile fuer Zeile ueber den Schluessel. Eine
+// Abweichung ist nur erlaubt, wenn sie in bekannt steht -- mit genau der
+// Zeile, die jetzt herauskommen muss ("" = Zeile entfaellt). Eine bekannte
+// Abweichung, die nicht (mehr) auftritt, ist ebenfalls ein Fehler, damit die
+// Liste nicht veraltet.
+func vergleicheGolden(t *testing.T, datei string, soll, ist []string, bekannt map[string]bekannteAbweichung) {
+	t.Helper()
+	sollM, sollR := goldenKarte(t, soll)
+	istM, istR := goldenKarte(t, ist)
+	alle := append([]string{}, sollR...)
+	for _, k := range istR {
+		if _, ok := sollM[k]; !ok {
+			alle = append(alle, k)
+		}
 	}
 	harte := 0
-	for i := 0; i < len(soll) || i < len(ist); i++ {
-		var s, w string
-		if i < len(soll) {
-			s = soll[i]
-		}
-		if i < len(ist) {
-			w = ist[i]
-		}
+	genutzt := map[string]bool{}
+	for _, k := range alle {
+		s, w := sollM[k], istM[k]
 		if s == w {
 			continue
 		}
-		if strings.HasPrefix(s, "#") && strings.HasPrefix(w, "#") {
+		if ab, ok := bekannt[k]; ok {
+			genutzt[k] = true
+			if ab.jetzt == w {
+				t.Logf("bekannte Abweichung %q (%s)", k, ab.grund)
+				continue
+			}
+			harte++
+			t.Errorf("%s: bekannte Abweichung %q liefert etwas anderes:\n  erwartet jetzt: %s\n  erhalten:       %s", datei, k, ab.jetzt, w)
+			continue
+		}
+		if strings.HasPrefix(k, "#") {
 			t.Logf("Auskunft weicht ab (kein Konsens-Unterschied):\n  vorher: %s\n  jetzt:  %s", s, w)
 			continue
 		}
 		harte++
-		if harte <= 60 {
-			t.Errorf("Zeile %d weicht ab:\n  erwartet: %s\n  erhalten: %s", i+1, s, w)
+		if harte <= 80 {
+			t.Errorf("%s: %q weicht ab:\n  v1.13.0: %s\n  jetzt:   %s", datei, k, s, w)
 		}
 	}
-	if harte > 60 {
+	for k := range bekannt {
+		if !genutzt[k] {
+			t.Errorf("%s: bekannte Abweichung %q tritt nicht mehr auf -- aus der Liste nehmen", datei, k)
+		}
+	}
+	if harte > 80 {
 		t.Errorf("... insgesamt %d abweichende Zeilen", harte)
 	}
 }
@@ -500,6 +548,55 @@ func konsensVertraege(t *testing.T, b *goldenBuch) {
 		t.Fatal(err)
 	}
 	b.add("vertraege/wiedergeoeffnet slots=%s code-v7=%d", slots(frisch), len(frisch.GetCode(v7)))
+
+	// ── Das Muster von newStateDB: eine frische StateDB, Vertragscode per
+	// SetCode (nicht per CREATE, also auch nicht in der Zugriffsliste),
+	// Speicher per SetState aus der Datenbank, Guthaben aus dem Go-Zustand --
+	// und darauf die Aufrufe, wie CallContract sie macht (je Aufruf eine neue
+	// EVM, nie festgeschrieben, ausser beim persistierenden Aufruf).
+	knotenSdb, knotenDB, err := neueSpeicherStateDB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, a := range []common.Address{alice, bob, mallory, reg} {
+		setzeGuthaben(knotenSdb, a, evmBalanceWei(a.Hex(), float64(100*(i+1))+0.5))
+	}
+	setzeCode(knotenSdb, v7, frisch.GetCode(v7))
+	setzeCode(knotenSdb, verifier, frisch.GetCode(verifier))
+	kopiere := func(slot common.Hash) {
+		if v := frisch.GetState(v7, slot); v != (common.Hash{}) {
+			knotenSdb.SetState(v7, slot, v)
+		}
+	}
+	for i := int64(0); i < 40; i++ {
+		kopiere(common.BigToHash(big.NewInt(i)))
+	}
+	for _, a := range []common.Address{alice, bob} {
+		for _, base := range []int64{4, 5, 6, 9, 10, 11, 12, 13, 14, 15, 16, 27, 28} {
+			kopiere(mappingSlot(a.Bytes(), base))
+		}
+	}
+	k := &evmLauf{b: b, sdb: knotenSdb}
+	t2 := ts + 1003*tag
+	k.aufruf("knotenmuster/balanceOf-alice", t2, reg, v7, aufrufDaten("balanceOf(address)", alice), 30_000_000)
+	k.aufruf("knotenmuster/getStats", t2, reg, v7, selektor("getStats()"), 30_000_000)
+	k.aufruf("knotenmuster/claimableUBI-bob", t2, reg, v7, aufrufDaten("claimableUBI(address)", bob), 30_000_000)
+	k.aufruf("knotenmuster/transfer-alice-bob", t2, alice, v7, aufrufDaten("transfer(address,uint256)", bob, zehn), 30_000_000)
+	k.aufruf("knotenmuster/transfer-bob-mallory", t2, bob, v7, aufrufDaten("transfer(address,uint256)", mallory, zehn), 30_000_000)
+	k.aufruf("knotenmuster/confirmAlive-alice", t2, alice, v7, selektor("confirmAlive()"), 30_000_000)
+	k.aufruf("knotenmuster/proposeGuardian-bob", t2, bob, v7, aufrufDaten("proposeGuardian(address)", alice), 30_000_000)
+	k.aufruf("knotenmuster/register-mallory", t2, reg, v7, v7RegistrierDaten(t, malloryKey, mallory, v7, big.NewInt(13), big.NewInt(23), v8TestMarker), 30_000_000)
+	k.aufruf("knotenmuster/name", t2, reg, v7, selektor("name()"), 30_000_000)
+	b.add("knotenmuster/zwischenwurzel=%x speicherwurzel=%x", evmZwischenwurzel(knotenSdb), knotenSdb.GetStorageRoot(v7))
+	kRoot, err := evmFestschreiben(knotenSdb)
+	if err != nil {
+		t.Fatal(err)
+	}
+	kFrisch, err := oeffneStateDB(kRoot, knotenDB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b.add("knotenmuster/festgeschrieben=%x slots=%s", kRoot, slots(kFrisch))
 }
 
 // ─── 4. Signierte Ueberweisungen und StateRoot des Knotens ───────────────────
