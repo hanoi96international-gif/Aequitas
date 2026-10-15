@@ -1256,6 +1256,11 @@ func decodeRohTransaktion(rawHex string) (*types.Transaction, error) {
 			return nil, fmt.Errorf("Invalid transaction: %v", binErr)
 		}
 	}
+	// Byte-gleich zu v1.13 (annahme_typ.go): was v1.13 nicht lesen konnte,
+	// ist auch hier unlesbar -- bei der Annahme UND beim Nachspielen.
+	if err := rohSidecarAlsV113(t); err != nil {
+		return nil, fmt.Errorf("Invalid transaction: %v", err)
+	}
 	return t, nil
 }
 
@@ -1347,6 +1352,10 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage, pre *precomp
 		}
 		tx = t
 		senderAddr = sender
+	}
+	// Nur Typ 0, 1 und 2 (annahme_typ.go) -- vor jeder Nonce-Reservierung.
+	if !annahmeTypErlaubt(tx) {
+		return nil, &RPCError{Code: -32000, Message: types.ErrTxTypeNotSupported.Error()}
 	}
 	// Aus einem Protokoll-Topf sendet niemand -- auch nicht ueber einen
 	// Vertragsaufruf (annahme_tor.go, pruefeAbsenderKeinTopf).

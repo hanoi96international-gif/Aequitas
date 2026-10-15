@@ -87,6 +87,11 @@ func (s *EVMRPCServer) preReserveBatchNonces(precomputed []*precomputedSendTx, p
 		if p == nil || p.err != nil || p.tx == nil || p.sender == "" {
 			continue
 		}
+		// Typ 3 und 4 lehnt sendRawTransaction ab (annahme_typ.go): keine
+		// Nonce dafuer verbrauchen.
+		if !annahmeTypErlaubt(p.tx) {
+			continue
+		}
 		// Nur fuer Absender, die dieser Knoten annimmt (Stufe 2: der
 		// Zustaendige; sonst der Leiter) -- sonst verbrennt die Reservierung
 		// Nonces, die das Tor danach ablehnt.
