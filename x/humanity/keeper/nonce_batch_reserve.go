@@ -82,10 +82,22 @@ func (s *EVMRPCServer) preReserveBatchNonces(precomputed []*precomputedSendTx, p
 	// contiguous, so it must not be disturbed.
 	order := make([]string, 0, 4)
 	bySender := make(map[string][]*precomputedSendTx, 4)
+	jetzt := nowUnix()
 	for _, i := range pending {
 		p := precomputed[i]
 		if p == nil || p.err != nil || p.tx == nil || p.sender == "" {
 			continue
+		}
+		// Dieselbe Chain-ID-Pruefung wie sendRawTransaction VOR seiner
+		// Reservierung (chain_id_wechsel.go) -- sonst verbraennten alte
+		// 1926-Ueberweisungen eines Opfers nach dem Stichtag dessen Nonces
+		// (Sicherheitspruefung #360, Befund 2). Abgelehnt wird weiterhin in
+		// sendRawTransaction.
+		if p.tx.Protected() {
+			_, _, ueb := ueberweisungAusRoh(p.tx)
+			if chainIDAnnahmePruefen(p.tx.ChainId(), ueb, jetzt) != nil {
+				continue
+			}
 		}
 		// Nur fuer Absender, die dieser Knoten annimmt (Stufe 2: der
 		// Zustaendige; sonst der Leiter) -- sonst verbrennt die Reservierung

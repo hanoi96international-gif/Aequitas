@@ -176,10 +176,21 @@ func chainIDAnnahmePruefen(cid *big.Int, ueberweisung bool, jetzt int64) error {
 // bei 7.000 Ueberweisungen unter der Sperre des Blockbaus zu viel.
 // TestChainIDWechsel_RohChainIDWieDekodiert haelt es gleich zur vollen
 // Dekodierung.
+//
+// Eine typisierte Transaktion als RLP-String verpackt (erstes Byte
+// 0x80-0xbf) nimmt decodeRohTransaktion ueber den rlp.DecodeBytes-Rueckfall
+// ebenfalls an; die Schnelllesung kennt diese Form nicht. Fuer sie wird voll
+// dekodiert -- sonst haette sie kein Chain-ID-Fenster, der Erzeuger legte
+// eine 1926-Ueberweisung in einen Block ab dem Stichtag, und jeder andere
+// Knoten wiese ihn ab (Sicherheitspruefung #360, Befund 1). Kanonische
+// Formen erreichen diesen Weg nie.
 func rohChainID(roh string) (int64, bool) {
 	b, err := hex.DecodeString(strings.TrimPrefix(roh, "0x"))
 	if err != nil || len(b) == 0 {
 		return 0, false
+	}
+	if b[0] >= 0x80 && b[0] < 0xc0 {
+		return rohChainIDVoll(roh)
 	}
 	if b[0] >= 0xc0 {
 		// Legacy: [nonce, gasPrice, gas, to, value, data, v, r, s]
@@ -224,6 +235,20 @@ func rohChainID(roh string) (int64, bool) {
 	}
 	cid := new(big.Int).SetBytes(cidRoh)
 	if !cid.IsInt64() {
+		return 0, false
+	}
+	return cid.Int64(), true
+}
+
+// rohChainIDVoll: wie rohChainID, aber ueber die volle Dekodierung --
+// dieselbe, die pruefeUeberweisungsRoh beim Nachspielen nutzt.
+func rohChainIDVoll(roh string) (int64, bool) {
+	t, err := decodeRohTransaktion(roh)
+	if err != nil || !t.Protected() {
+		return 0, false
+	}
+	cid := t.ChainId()
+	if cid == nil || !cid.IsInt64() {
 		return 0, false
 	}
 	return cid.Int64(), true

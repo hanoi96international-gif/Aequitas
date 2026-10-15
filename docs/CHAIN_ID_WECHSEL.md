@@ -28,6 +28,22 @@ Zwischen `Ab − 600 s` und `Ab` nimmt der Knoten **keine Überweisungen** an
 Block mit der Zeit `Ab − 1` (`block_tauglich.go`, wie nach einem Absturz).
 Nie bekommt sie einen Block ab `Ab`. Gibt es schon einen Block ab `Ab`, baut
 der Knoten keinen Block mehr (fail-closed). Dann hilft: Resync vom Seed.
+Das passiert nur bei einem Ausfall oder Neustart rund um den Stichtag oder
+wenn eine Uhr mehr als etwa 600 s abweicht.
+
+**Restfenster nach dem Stichtag:** Der Konsens lässt Blockzeiten bis 120 s
+vor dem neuesten Elternblock zu (`zeitstempelRueckToleranz`). Ein böswilliger
+Validator kann deshalb noch etwa 2 Minuten nach dem Stichtag alte
+1926-Überweisungen in Blöcke mit einer Zeit vor `Ab` legen. Neues Geld
+entsteht dabei nicht: Signatur und Nonce prüft jeder Knoten gegen den
+gemeinsamen Zustand, und jede dieser Überweisungen kann nur einmal laufen.
+Wer eine alte, noch nicht verbrauchte Überweisung signiert hat, sollte sie
+vor dem Stichtag mit einer neuen Überweisung derselben Nonce ersetzen.
+
+Die Form der Einreichung ändert daran nichts. Auch eine typisierte
+Transaktion, die als RLP-String verpackt eingereicht wird, bekommt das
+richtige Zeitfenster (`rohChainID` dekodiert sie voll). Im Bündel reserviert
+der Knoten keine Nonce, bevor die Chain-ID geprüft ist.
 
 `/api/status` hat das neue Feld `chain_id_wechsel_ab`. Es nennt die Unix-Zeit
 des Stichtags oder 0, solange der Wechsel schläft.

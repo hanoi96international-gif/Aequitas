@@ -14,6 +14,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/rlp"
 )
 
 // Chain-ID-Wechsel (chain_id_wechsel.go): Gutfall, Missbrauch, und dass
@@ -480,6 +481,105 @@ func TestChainIDWechsel_RohChainIDWieDekodiert(t *testing.T) {
 		}
 		if got != want || gotOK != wantOK {
 			t.Errorf("%.20s: schnell (%d, %v), dekodiert (%d, %v)", r, got, gotOK, want, wantOK)
+		}
+	}
+}
+
+// umhuellt: dieselbe signierte Transaktion als RLP-String verpackt -- die
+// Form, die decodeRohTransaktion ueber den rlp.DecodeBytes-Rueckfall auch
+// annimmt.
+func umhuellt(t *testing.T, roh string) string {
+	t.Helper()
+	tx, err := decodeRohTransaktion(roh)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := rlp.EncodeToBytes(tx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b[0] < 0x80 || b[0] >= 0xc0 {
+		t.Fatalf("keine umhuellte Form: %x", b[0])
+	}
+	return "0x" + common.Bytes2Hex(b)
+}
+
+// MISSBRAUCH (Sicherheitspruefung #360, Befund 1): eine 1926-Ueberweisung,
+// als RLP-String verpackt eingereicht, bekommt dasselbe Chain-ID-Fenster wie
+// in kanonischer Form -- der Erzeuger legt sie nie in einen Block ab dem
+// Stichtag, den jeder andere Knoten abweisen wuerde.
+func TestChainIDWechsel_UmhuellteFormHatFenster(t *testing.T) {
+	ab := nowUnix() + 3600
+	wechselAb(t, ab)
+	a, b := neuerTestSchluessel(t), neuerTestSchluessel(t)
+	for _, kette := range []int64{1926, chainIDNeuWert} {
+		tx := signiere(t, a, b.addr, aeqWei(1), 1, kette)
+		tx.Roh = umhuellt(t, tx.Roh)
+		if cid, ok := rohChainID(tx.Roh); !ok || cid != kette {
+			t.Fatalf("umhuellt: (%d, %v) statt %d", cid, ok, kette)
+		}
+		f, ok := chainIDFenster(&tx)
+		if !ok {
+			t.Fatalf("Chain-ID %d umhuellt: kein Fenster", kette)
+		}
+		nachspiel := func(z int64) error { _, err := pruefeUeberweisungsRoh(&tx, z); return err }
+		// Erzeuger (Fenster) und Nachspielender sind sich an beiden Seiten
+		// des Stichtags einig.
+		for _, z := range []int64{ab - 1, ab} {
+			imFenster := z >= f.von && z <= f.bis
+			if (chainIDTauglich(&tx, z) == nil) != imFenster {
+				t.Fatalf("Chain-ID %d, Zeit %d: Tauglich passt nicht zum Fenster", kette, z)
+			}
+			if (nachspiel(z) == nil) != imFenster {
+				t.Fatalf("Chain-ID %d, Zeit %d: Erzeuger und Nachspielender uneins (%v)", kette, z, nachspiel(z))
+			}
+		}
+	}
+	// Ungeschuetzt und Muell umhuellt bleiben ohne Chain-ID.
+	for _, r := range []string{"0x80", "0x81ff", "0x8102"} {
+		if _, ok := rohChainID(r); ok {
+			t.Fatalf("%s: Chain-ID gelesen", r)
+		}
+	}
+}
+
+// MISSBRAUCH (Sicherheitspruefung #360, Befund 2): nach dem Stichtag reicht
+// jemand gesammelte alte 1926-Ueberweisungen eines Opfers als Buendel mit
+// fortlaufenden Noncen ein. Sie werden abgelehnt -- und duerfen dabei keine
+// Nonce des Opfers verbrauchen.
+func TestChainIDWechsel_BuendelVerbrenntKeineNoncen(t *testing.T) {
+	wechselAb(t, nowUnix()-100)
+	s := newReserveTestServer(t)
+	a, b := neuerTestSchluessel(t), neuerTestSchluessel(t)
+	var buendel []*precomputedSendTx
+	for n := uint64(0); n < 3; n++ {
+		roh := signiere(t, a, b.addr, aeqWei(1), n, 1926).Roh
+		tx, err := decodeRohTransaktion(roh)
+		if err != nil {
+			t.Fatal(err)
+		}
+		buendel = append(buendel, &precomputedSendTx{tx: tx, sender: a.addr})
+	}
+	s.preReserveBatchNonces(buendel, allIndexes(len(buendel)))
+	for i, p := range buendel {
+		if p.nonceReserved {
+			t.Fatalf("Eintrag %d: Nonce fuer eine abgelehnte 1926-Ueberweisung reserviert", i)
+		}
+	}
+	if got := s.nonceShardFor(a.addr).nonces[a.addr]; got != 0 {
+		t.Fatalf("Nonce des Opfers auf %d verschoben", got)
+	}
+
+	// Gutfall: dieselben Ueberweisungen mit der neuen ID werden reserviert.
+	var neu []*precomputedSendTx
+	for n := uint64(0); n < 3; n++ {
+		tx, _ := decodeRohTransaktion(signiere(t, a, b.addr, aeqWei(1), n, chainIDNeuWert).Roh)
+		neu = append(neu, &precomputedSendTx{tx: tx, sender: a.addr})
+	}
+	s.preReserveBatchNonces(neu, allIndexes(len(neu)))
+	for i, p := range neu {
+		if !p.nonceReserved {
+			t.Fatalf("Eintrag %d mit neuer ID nicht reserviert", i)
 		}
 	}
 }
