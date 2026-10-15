@@ -438,7 +438,7 @@ func TestChainIDWechsel_RPCMeldetNeueID(t *testing.T) {
 		t.Fatalf("net_version %v %v", v, e)
 	}
 	st := statusNotstand(1)
-	if st["chain_evm_id"] != chainIDNeuWert || st["chain_id_wechsel_ab"] != chainIDWechselAb() {
+	if st["chain_evm_id"] != int(chainIDNeuWert) || st["chain_id_wechsel_ab"] != chainIDWechselAb() {
 		t.Fatalf("Status %v", st)
 	}
 	if chainConfig().ChainID.Int64() != chainIDNeuWert {

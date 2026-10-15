@@ -1429,7 +1429,7 @@ func (a *APIServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 		"bio_verifier": BIO_VERIFIER_ADDR,
 		// Die Chain-ID, die jetzt gilt (chain_id_wechsel.go), und ab wann die
 		// neue gilt (Unix-Zeit; 0 = kein Wechsel geplant).
-		"chain_evm_id":        chainIDJetzt(),
+		"chain_evm_id":        int(chainIDJetzt()),
 		"chain_id_wechsel_ab": ChainIDWechselAbFuerStatus(),
 		// Aendert sich nur beim Neustart der Kette bei null (genesis.json);
 		// eine App mit gespeicherten Staenden erkennt daran ein neues Netz
