@@ -26,6 +26,11 @@ name: Recover Contabo1 -- finish disk cleanup + restart node (manual)
 on:
   workflow_dispatch: {}
 
+# Nur lesen (Beta-Pruefung 15.10.2026): dieser Workflow schreibt nichts
+# ins Repo; die Voreinstellung des Tokens soll nicht mehr gelten.
+permissions:
+  contents: read
+
 jobs:
   recover:
     runs-on: ubuntu-latest

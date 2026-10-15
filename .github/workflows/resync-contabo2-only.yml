@@ -54,6 +54,11 @@ on:
         required: true
         default: "0x3066639af1653325100c1074a9696612dbdc42dc"
 
+# Nur lesen (Beta-Pruefung 15.10.2026): dieser Workflow schreibt nichts
+# ins Repo; die Voreinstellung des Tokens soll nicht mehr gelten.
+permissions:
+  contents: read
+
 jobs:
   contabo2:
     runs-on: ubuntu-latest

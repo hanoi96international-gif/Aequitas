@@ -28,6 +28,11 @@ name: Remove Contabo1's snapshot source from its env FILE
 on:
   workflow_dispatch:
 
+# Nur lesen (Beta-Pruefung 15.10.2026): dieser Workflow schreibt nichts
+# ins Repo; die Voreinstellung des Tokens soll nicht mehr gelten.
+permissions:
+  contents: read
+
 jobs:
   fix:
     runs-on: ubuntu-latest

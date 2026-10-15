@@ -33,6 +33,11 @@ name: Enable WAL + Multi-Block-Tick on Contabo2 (manual, one node only)
 on:
   workflow_dispatch: {}
 
+# Nur lesen (Beta-Pruefung 15.10.2026): dieser Workflow schreibt nichts
+# ins Repo; die Voreinstellung des Tokens soll nicht mehr gelten.
+permissions:
+  contents: read
+
 jobs:
   enable:
     runs-on: ubuntu-latest

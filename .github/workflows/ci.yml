@@ -9,6 +9,11 @@ on:
     branches-ignore: [master, main]
   pull_request:
 
+# Nur lesen (Beta-Pruefung 15.10.2026): dieser Workflow schreibt nichts
+# ins Repo; die Voreinstellung des Tokens soll nicht mehr gelten.
+permissions:
+  contents: read
+
 jobs:
   # A step that forwards a variable over SSH which nothing ever sets fails on
   # the live node, not here -- see scripts/lint_workflow_envs.py for the two

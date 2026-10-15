@@ -26,6 +26,11 @@ on:
         description: "Why the normal gated deploy cannot be used"
         required: true
 
+# Nur lesen (Beta-Pruefung 15.10.2026): dieser Workflow schreibt nichts
+# ins Repo; die Voreinstellung des Tokens soll nicht mehr gelten.
+permissions:
+  contents: read
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
