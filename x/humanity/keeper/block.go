@@ -312,6 +312,10 @@ type peerChallenge struct {
 }
 
 type BlockDAG struct {
+	// leitungPeers: Abgleiche, die auf URLs aus der Leitung zurueckgehen
+	// (peer_vorrat.go, leitungPeersStarten); je DAG.
+	leitungURLPeersMu sync.Mutex
+	leitungURLPeers   map[string]bool
 	// validatorAbgleich*: syncValidatorsFromAllPeers laeuft hoechstens
 	// einmal zugleich (validatorAbgleichAnstossen).
 	validatorAbgleichLaeuft  atomic.Bool

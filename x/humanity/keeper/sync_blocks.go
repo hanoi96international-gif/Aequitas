@@ -2195,20 +2195,47 @@ func (dag *BlockDAG) syncWithNode(nodeURL string) {
 	// ProduceBlock, enabling genuine multi-parent GHOSTDAG merges.
 	// (Old value was 6s — blocks arrived 6 ticks late, no merges.)
 	stand := &syncTaktStand{backoff: 1 * time.Second}
-	dag.doSyncOnce(nodeURL)
+	if dag.doSyncOnce(nodeURL) {
+		dag.state.peerMerken(nodeURL, time.Now()) // peer_vorrat.go
+	}
 	ticker := time.NewTicker(stand.backoff)
 	defer ticker.Stop()
-	for range ticker.C {
-		// Je Takt abgesichert: eine Panik (etwa eine unerwartete Antwort
-		// dieses Peers) beendete sonst den Abgleich mit ihm fuer immer.
-		SafeCall("syncWithNode", func() {
-			stand.runde(
-				func() { dag.syncValidatorsFromPeer(nodeURL) },
-				func() bool { return dag.doSyncOnce(nodeURL) },
-				ticker.Reset,
-			)
-		})
-	} // end for range ticker.C
+	// aufgeben: endet der Abgleich (syncPeerAufgebenNach), gibt er seinen
+	// Platz frei. Ueber einen eigenen Kanal, damit der Takt selbst nur
+	// SafeCall bleibt (takt_abgesichert_test.go).
+	aufgeben := make(chan struct{})
+	beendet := false
+	for {
+		select {
+		case <-aufgeben:
+			return
+		case <-ticker.C:
+			// Je Takt abgesichert: eine Panik (etwa eine unerwartete Antwort
+			// dieses Peers) beendete sonst den Abgleich mit ihm fuer immer.
+			SafeCall("syncWithNode", func() {
+				if beendet {
+					return
+				}
+				if stand.fehlFolge >= syncPeerAufgebenNach && !dag.isTrustedSyncSource(nodeURL) {
+					fmt.Printf("[PEERS] Abgleich mit %s nach %d gescheiterten Takten beendet (Platz frei)\n", nodeURL, stand.fehlFolge)
+					beendet = true
+					close(aufgeben)
+					return
+				}
+				stand.runde(
+					func() { dag.syncValidatorsFromPeer(nodeURL) },
+					func() bool {
+						ok := dag.doSyncOnce(nodeURL)
+						if ok {
+							dag.state.peerMerken(nodeURL, time.Now()) // peer_vorrat.go
+						}
+						return ok
+					},
+					ticker.Reset,
+				)
+			})
+		}
+	} // end for
 } // end syncWithNode
 
 // bekanntOderUnterFinalitaet: liegt der Peer-Block schon vor, oder liegt er
@@ -2229,7 +2256,17 @@ func (dag *BlockDAG) bekanntOderUnterFinalitaet(block *Block) (exists, violatesF
 type syncTaktStand struct {
 	backoff time.Duration
 	ticks   int
+	// fehlFolge: Takte ohne gelungenen Abgleich in Folge.
+	fehlFolge int
 }
+
+// syncPeerAufgebenNach: so viele gescheiterte Takte in Folge (mit 30 s
+// Abstand gut zehn Minuten), dann endet der Abgleich mit einem Peer, der
+// kein Seed ist, und gibt seinen Platz in maxSyncPeers frei (Pruefung der
+// gemerkten Peers, MITTEL: vorher endete syncWithNode nie, wechselnde URLs
+// belegten so alle Plaetze). Kommt der Peer wieder, meldet er sich neu an
+// oder kommt ueber Leitung bzw. Vorrat zurueck.
+const syncPeerAufgebenNach = 20
 
 // runde: ein Takt des Abgleichs. Scheitert er -- auch durch eine Panik, die
 // ein Peer mit einer unerwarteten Antwort ausloesen kann --, verdoppelt sich
@@ -2241,12 +2278,14 @@ func (st *syncTaktStand) runde(validatoren func(), abgleich func() bool, neuerTa
 	gelungen := false
 	defer func() {
 		if gelungen {
+			st.fehlFolge = 0
 			if st.backoff > 1*time.Second {
 				st.backoff = 1 * time.Second
 				neuerTakt(st.backoff)
 			}
 			return
 		}
+		st.fehlFolge++
 		st.backoff *= 2
 		if st.backoff > 30*time.Second {
 			st.backoff = 30 * time.Second
@@ -2566,6 +2605,10 @@ func (dag *BlockDAG) StartPeerDiscovery(selfURL string) {
 		dag.startSyncForPeer(peer)
 		fmt.Printf("[PEERS] Static peer: %s\n", peer)
 	}
+
+	// Gemerkte Peers (peer_vorrat.go): ohne sie faende ein Neustart ohne
+	// erreichbaren Seed niemanden. Nie als trustedSeeds.
+	dag.gemerktePeersZiehen(selfURL)
 
 	if len(seeds) > 0 {
 		for _, seed := range seeds {
