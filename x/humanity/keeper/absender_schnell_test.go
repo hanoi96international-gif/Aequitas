@@ -191,3 +191,40 @@ func TestDecodeAndRecoverSender_NutztSchnellenWeg(t *testing.T) {
 		t.Fatalf("Referenz: %s, %v", alt.Hex(), err)
 	}
 }
+
+// Missbrauch: Typ 4 (EIP-7702, SetCode). go-ethereum v1.17 liest ihn ein und
+// types.Sender stellt seinen Absender her; der Knoten entscheidet weiter nach
+// den Regeln von v1.13.0 und lehnt ihn ab -- bei der Annahme
+// (absenderWiederherstellen) wie beim Nachspielen (pruefeUeberweisungsRoh).
+func TestAbsenderWiederherstellen_Typ4WirdAbgelehnt(t *testing.T) {
+	k, _ := crypto.GenerateKey()
+	absender := crypto.PubkeyToAddress(k.PublicKey)
+	an := common.HexToAddress(testRecipientHex)
+	auth, err := types.SignSetCode(k, types.SetCodeAuthorization{ChainID: *uint256.NewInt(1926), Address: an, Nonce: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx, err := types.SignNewTx(k, types.LatestSignerForChainID(big.NewInt(1926)), &types.SetCodeTx{
+		ChainID: uint256.NewInt(1926), Nonce: 0, To: an, Value: uint256.NewInt(1e18), Gas: 60000,
+		GasTipCap: uint256.NewInt(1), GasFeeCap: uint256.NewInt(2), AuthList: []types.SetCodeAuthorization{auth},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := tx.MarshalBinary()
+	gelesen := new(types.Transaction)
+	if err := gelesen.UnmarshalBinary(raw); err != nil {
+		t.Fatalf("v1.17 muss Typ 4 einlesen: %v", err)
+	}
+	if a, err := types.Sender(types.LatestSignerForChainID(big.NewInt(1926)), gelesen); err != nil || a != absender {
+		t.Fatalf("Vorbedingung: types.Sender stellt den Absender her (%s, %v)", a.Hex(), err)
+	}
+	if a, err := absenderWiederherstellen(gelesen); err != types.ErrTxTypeNotSupported {
+		t.Fatalf("Typ 4 nicht abgelehnt: (%s, %v)", a.Hex(), err)
+	}
+	ueb := Transaction{Type: "transfer", Wallet: adresseKlein(absender), To: adresseKlein(an),
+		Amount: betragAusWei(big.NewInt(1e18)), TxHash: tx.Hash().Hex(), Roh: "0x" + common.Bytes2Hex(raw)}
+	if _, err := pruefeUeberweisungsRoh(&ueb); err == nil {
+		t.Fatal("Typ 4 beim Nachspielen angenommen")
+	}
+}

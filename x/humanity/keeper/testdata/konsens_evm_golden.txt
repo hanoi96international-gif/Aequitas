@@ -859,3 +859,47 @@ knoten/block6 angenommen=false stateroot=822cebd27309c648ad5a25c77dd544c44d99c47
 knoten/block6 0xe1fae9b4fab2f5726677ecfa912d96b0b683e6a9 guthaben=987250000 naechste-nonce=3
 knoten/block6 0xdb2430b4e9ac14be6554d3942822be74811a1af9 guthaben=510000000 naechste-nonce=1
 knoten/block6 0xae72a48c1a36bd18af168541c53037965d26e4a8 guthaben=3000000 naechste-nonce=1
+bn/06/add/nicht-auf-kurve klasse=abbruch gas=10000000 ret= logs=-
+#bn/06/add/nicht-auf-kurve fehler="bn256: malformed point" grund=""
+bn/06/add/x-gleich-p-plus-1 klasse=abbruch gas=10000000 ret= logs=-
+#bn/06/add/x-gleich-p-plus-1 fehler="bn256: coordinate exceeds modulus" grund=""
+bn/06/add/y-gleich-p klasse=abbruch gas=10000000 ret= logs=-
+#bn/06/add/y-gleich-p fehler="bn256: coordinate equals modulus" grund=""
+bn/06/add/kurz-64 klasse=ok gas=150 ret=00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000002 logs=-
+bn/06/add/leer klasse=ok gas=150 ret=00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 logs=-
+bn/06/add/lang-200 klasse=ok gas=150 ret=030644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd315ed738c0e0a7c92e7845f96b2ae9c0a68a6a449e3538fc7ff3ebf7a5a18a2c4 logs=-
+bn/06/add/unendlich-plus-g1 klasse=ok gas=150 ret=00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000002 logs=-
+bn/07/mul/nicht-auf-kurve klasse=abbruch gas=10000000 ret= logs=-
+#bn/07/mul/nicht-auf-kurve fehler="bn256: malformed point" grund=""
+bn/07/mul/x-gleich-p klasse=abbruch gas=10000000 ret= logs=-
+#bn/07/mul/x-gleich-p fehler="bn256: coordinate equals modulus" grund=""
+bn/07/mul/skalar-r-plus-1 klasse=ok gas=6000 ret=00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000002 logs=-
+bn/07/mul/skalar-max klasse=ok gas=6000 ret=2f588cffe99db877a4434b598ab28f81e0522910ea52b45f0adaa772b2d5d35212f42fa8fd34fb1b33d8c6a718b6590198389b26fc9d8808d971f8b009777a97 logs=-
+bn/07/mul/leer klasse=ok gas=6000 ret=00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 logs=-
+bn/07/mul/kurz-80 klasse=ok gas=6000 ret=00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 logs=-
+bn/08/pair/laenge-191 klasse=abbruch gas=10000000 ret= logs=-
+#bn/08/pair/laenge-191 fehler="bad elliptic curve pairing size" grund=""
+bn/08/pair/laenge-193 klasse=abbruch gas=10000000 ret= logs=-
+#bn/08/pair/laenge-193 fehler="bad elliptic curve pairing size" grund=""
+bn/08/pair/g1-nicht-auf-kurve klasse=abbruch gas=10000000 ret= logs=-
+#bn/08/pair/g1-nicht-auf-kurve fehler="bn256: malformed point" grund=""
+bn/08/pair/g1-x-gleich-p-plus-1 klasse=abbruch gas=10000000 ret= logs=-
+#bn/08/pair/g1-x-gleich-p-plus-1 fehler="bn256: coordinate exceeds modulus" grund=""
+bn/08/pair/g2-nicht-auf-kurve klasse=abbruch gas=10000000 ret= logs=-
+#bn/08/pair/g2-nicht-auf-kurve fehler="bn256: malformed point" grund=""
+bn/08/pair/g2-koordinate-ab-p klasse=abbruch gas=10000000 ret= logs=-
+#bn/08/pair/g2-koordinate-ab-p fehler="bn256: coordinate exceeds modulus" grund=""
+bn/08/pair/g2-ausserhalb-untergruppe klasse=abbruch gas=10000000 ret= logs=-
+#bn/08/pair/g2-ausserhalb-untergruppe fehler="bn256: malformed point" grund=""
+bn/08/pair/g2-unendlich klasse=ok gas=79000 ret=0000000000000000000000000000000000000000000000000000000000000001 logs=-
+bn/08/pair/g1-unendlich klasse=ok gas=79000 ret=0000000000000000000000000000000000000000000000000000000000000001 logs=-
+bn/08/pair/einzeln-ungleich-1 klasse=ok gas=79000 ret=0000000000000000000000000000000000000000000000000000000000000000 logs=-
+bn/08/pair/zwei-paare-gleich-1 klasse=ok gas=113000 ret=0000000000000000000000000000000000000000000000000000000000000001 logs=-
+bn/08/pair/untergruppe-zweites-paar klasse=abbruch gas=10000000 ret= logs=-
+#bn/08/pair/untergruppe-zweites-paar fehler="bn256: malformed point" grund=""
+bn/bio/g2-ausserhalb-untergruppe klasse=ok gas=29531659 ret=0000000000000000000000000000000000000000000000000000000000000000 logs=-
+bn/bio/g2-koordinate-ab-p klasse=ok gas=29531541 ret=0000000000000000000000000000000000000000000000000000000000000000 logs=-
+bn/bio/pa-x-ab-p klasse=ok gas=29531541 ret=0000000000000000000000000000000000000000000000000000000000000000 logs=-
+bn/bio/pc-nicht-auf-kurve klasse=ok gas=29531541 ret=0000000000000000000000000000000000000000000000000000000000000000 logs=-
+bn/bio/pa-unendlich klasse=ok gas=195773 ret=0000000000000000000000000000000000000000000000000000000000000000 logs=-
+bn/wurzel=a7a786d4fa13e1889096bba89767b1a1bb14ad52118ddf5c46cb060239d83af6

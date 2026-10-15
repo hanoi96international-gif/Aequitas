@@ -744,6 +744,66 @@ func konsensUeberweisungen(t *testing.T, b *goldenBuch) {
 	}
 }
 
+// ─── 5. bn254-Fehlerfaelle (BioVerifier beim Nachspielen) ────────────────────
+
+// Beim Nachspielen fuehrt jeder Knoten BioVerifier.verifyProof aus, und das
+// laeuft ueber die bn254-Vorkompilate 0x06-0x08. Deren Implementierung hat
+// go-ethereum gewechselt (cloudflare -> gnark); hier die Faelle, in denen
+// Implementierungen am ehesten auseinanderlaufen: Punkt nicht auf der Kurve,
+// Koordinate >= p, G2 ausserhalb der Untergruppe, falsche Laenge, leer.
+func konsensBN254(t *testing.T, b *goldenBuch) {
+	ts := uint64(1_790_000_000)
+	von := common.HexToAddress("0x0000000000000000000000000000000000000a11")
+	sdb, _, err := neueSpeicherStateDB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	l := &evmLauf{b: b, sdb: sdb}
+	for _, v := range konsensBN254Vektoren {
+		in, err := hex.DecodeString(v.eingabe)
+		if err != nil {
+			t.Fatalf("%s: %v", v.name, err)
+		}
+		l.aufruf(fmt.Sprintf("bn/%02x/%s", v.adresse, v.name), ts, von, common.BytesToAddress([]byte{v.adresse}), in, 10_000_000)
+	}
+	// Dieselben Faelle durch den echten BioVerifier.
+	bio := common.HexToAddress(BIO_VERIFIER_ADDR)
+	bioCode, _ := hex.DecodeString(BioVerifierRuntimeBytecode)
+	setzeCode(sdb, bio, bioCode)
+	bioABI, err := abi.JSON(strings.NewReader(bioVerifierABI))
+	if err != nil {
+		t.Fatal(err)
+	}
+	z := func(s string) *big.Int { v, _ := new(big.Int).SetString(s, 10); return v }
+	pFeld := z("21888242871839275222246405745257275088696311157297823662689037894645226208583")
+	g1, g2 := bn254Punkte()
+	aussen := [2][2]*big.Int{
+		{z(konsensG2AusserhalbUntergruppe[0][0]), z(konsensG2AusserhalbUntergruppe[0][1])},
+		{z(konsensG2AusserhalbUntergruppe[1][0]), z(konsensG2AusserhalbUntergruppe[1][1])},
+	}
+	g2ZuGross := [2][2]*big.Int{{g2[0][0], new(big.Int).Add(g2[0][1], pFeld)}, g2[1]}
+	pub := [2]*big.Int{big.NewInt(1001), big.NewInt(2001)}
+	faelle := []struct {
+		name   string
+		pA, pC [2]*big.Int
+		pB     [2][2]*big.Int
+	}{
+		{"g2-ausserhalb-untergruppe", g1, g1, aussen},
+		{"g2-koordinate-ab-p", g1, g1, g2ZuGross},
+		{"pa-x-ab-p", [2]*big.Int{new(big.Int).Add(big.NewInt(1), pFeld), big.NewInt(2)}, g1, g2},
+		{"pc-nicht-auf-kurve", g1, [2]*big.Int{big.NewInt(1), big.NewInt(3)}, g2},
+		{"pa-unendlich", [2]*big.Int{big.NewInt(0), big.NewInt(0)}, g1, g2},
+	}
+	for _, f := range faelle {
+		d, err := bioABI.Pack("verifyProof", f.pA, f.pB, f.pC, pub)
+		if err != nil {
+			t.Fatal(err)
+		}
+		l.aufruf("bn/bio/"+f.name, ts, von, bio, d, 30_000_000)
+	}
+	b.add("bn/wurzel=%x", evmZwischenwurzel(sdb))
+}
+
 // ─── Test ─────────────────────────────────────────────────────────────────────
 
 func TestKonsensEVM_GoldenWerte(t *testing.T) {
@@ -753,6 +813,7 @@ func TestKonsensEVM_GoldenWerte(t *testing.T) {
 	konsensVorkompilate(t, b)
 	konsensVertraege(t, b)
 	konsensUeberweisungen(t, b)
+	konsensBN254(t, b)
 	pruefeGolden(t, "konsens_evm_golden.txt", b)
 }
 
