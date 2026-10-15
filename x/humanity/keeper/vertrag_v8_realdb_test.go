@@ -70,14 +70,14 @@ func TestV8Deploy_RealDB(t *testing.T) {
 	c, n := big.NewInt(1001), big.NewInt(2001)
 	deadline := int64(4_000_000_000) // ausserhalb von "jetzt + 1 Tag"
 	_, err = evm.CallContract(reg, v8Addr, v8Anfrage(t, alice, c, n, deadline,
-		v8Unterschrift(t, aliceKey, v8RegisterDigest(v8Addr, v8NetzSalt(), alice, c, n, big.NewInt(0), big.NewInt(deadline))), v8TestMarker), big.NewInt(0), false)
+		v8Unterschrift(t, aliceKey, v8RegisterDigest(chainIDFuer(nowUnix()), v8Addr, v8NetzSalt(), alice, c, n, big.NewInt(0), big.NewInt(deadline))), v8TestMarker), big.NewInt(0), false)
 	if err == nil || !strings.Contains(err.Error(), "deadline too far") {
 		t.Fatalf("Frist ueber einen Tag muss der Vertrag ablehnen: %v", err)
 	}
 	// Frist innerhalb eines Tages, nach der Uhr des Knotens.
 	deadline = time.Now().Unix() + 600
 	gute := v8Anfrage(t, alice, c, n, deadline,
-		v8Unterschrift(t, aliceKey, v8RegisterDigest(v8Addr, v8NetzSalt(), alice, c, n, big.NewInt(0), big.NewInt(deadline))), v8TestMarker)
+		v8Unterschrift(t, aliceKey, v8RegisterDigest(chainIDFuer(nowUnix()), v8Addr, v8NetzSalt(), alice, c, n, big.NewInt(0), big.NewInt(deadline))), v8TestMarker)
 	bisZumBeweis := func(von common.Address) bool {
 		_, err := evm.CallContract(von, v8Addr, gute, big.NewInt(0), false)
 		return err != nil && strings.Contains(err.Error(), "V8: invalid proof")
@@ -93,7 +93,7 @@ func TestV8Deploy_RealDB(t *testing.T) {
 		t.Fatal("nur der eigene Relayer ist Registrar")
 	}
 	fremd := v8Anfrage(t, alice, c, n, deadline,
-		v8Unterschrift(t, aliceKey, v8RegisterDigest(v8Addr, testSalt, alice, c, n, big.NewInt(0), big.NewInt(deadline))), v8TestMarker)
+		v8Unterschrift(t, aliceKey, v8RegisterDigest(chainIDFuer(nowUnix()), v8Addr, testSalt, alice, c, n, big.NewInt(0), big.NewInt(deadline))), v8TestMarker)
 	if _, err := evm.CallContract(reg, v8Addr, fremd, big.NewInt(0), false); err == nil || !strings.Contains(err.Error(), "invalid signature") {
 		t.Fatalf("Signatur mit fremdem Netz-Salt muss scheitern: %v", err)
 	}

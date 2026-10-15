@@ -36,14 +36,14 @@ func TestAbsenderCache_EinmalWiederherstellenNieVerwechseln(t *testing.T) {
 	// unter A's Namen.
 	gefaelscht := txB
 	gefaelscht.Wallet = a.addr
-	if _, err := pruefeUeberweisungsRoh(&gefaelscht); !errors.Is(err, ErrUeberweisungNichtSigniert) {
+	if _, err := pruefeUeberweisungsRoh(&gefaelscht, nowUnix()); !errors.Is(err, ErrUeberweisungNichtSigniert) {
 		t.Fatalf("gefaelschter Absender mit warmem Cache angenommen: %v", err)
 	}
 	// Und ein gefaelschtes TxHash-Feld trifft keinen Cache-Eintrag: der
 	// Schluessel ist der Hash der Bytes.
 	gefaelscht = txB
 	gefaelscht.TxHash = txA.TxHash
-	if _, err := pruefeUeberweisungsRoh(&gefaelscht); !errors.Is(err, ErrUeberweisungNichtSigniert) {
+	if _, err := pruefeUeberweisungsRoh(&gefaelscht, nowUnix()); !errors.Is(err, ErrUeberweisungNichtSigniert) {
 		t.Fatalf("fremdes TxHash-Feld angenommen: %v", err)
 	}
 }

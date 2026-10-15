@@ -7409,7 +7409,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 		// 26.09.2026: 1.772 Konten mit hoeherer Nonce auf dem Annehmenden
 		// (nonce-angleich-c2.yml). Abgelehnt wird im Vorlauf nichts.
 		phMarkNonce := time.Now()
-		if err := dag.state.setzeVorlaufNoncenLocked(withTx(context.Background(), dbTx), block.Transactions, kontenSammlung); err != nil {
+		if err := dag.state.setzeVorlaufNoncenLocked(withTx(context.Background(), dbTx), block.Transactions, block.Timestamp, kontenSammlung); err != nil {
 			fmt.Printf("[REPLAY] ✗ Block #%d: Vorlauf-Nonces: %v\n", block.Height, err)
 			hardFailure = true
 		}

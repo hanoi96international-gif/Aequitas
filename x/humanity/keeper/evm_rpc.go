@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math/big"
@@ -327,7 +328,9 @@ const txMetaShardCount = 64
 // wieder auseinanderlaufen koennen.
 const gasProTx uint64 = 21000
 
-// chainIDHex ist dieselbe Kennung, die eth_chainId meldet.
+// chainIDHex: die Chain-ID der V8-Genesis (eingefroreneChainID), fest --
+// checkpointChainID haengt daran. Was eth_chainId JETZT meldet, sagt
+// chainIDHexFuer(nowUnix()) (chain_id_wechsel.go).
 const chainIDHex = "0x786" // 1926
 
 // mussJSON verpackt einen String als JSON-Rohwert. Nur fuer den
@@ -785,10 +788,11 @@ func (s *EVMRPCServer) dispatch(method string, params []json.RawMessage, pre *pr
 	switch method {
 
 	case "eth_chainId":
-		return "0x786", nil // 1926
+		// Vor dem Stichtag 0x786 (1926), ab ihm 0x125e602 (chain_id_wechsel.go).
+		return chainIDHexFuer(nowUnix()), nil
 
 	case "net_version":
-		return "1926", nil
+		return strconv.FormatInt(chainIDJetzt(), 10), nil
 
 	case "eth_blockNumber":
 		block := s.dag.LatestBlock()
@@ -1225,7 +1229,9 @@ func decodeAndRecoverSender(rawHex string) (tx *types.Transaction, senderAddr st
 	var sErr error
 	// Dieselben Regeln wie types.Sender(LatestSignerForChainID(1926)), mit
 	// Rueckfall auf EIP155Signer -- nur mit schnellerer Kurvenrechnung
-	// (absender_schnell.go).
+	// (absender_schnell.go). Eine mit der neuen ID signierte Transaktion
+	// laeuft gegen deren Signer; ob sie gilt, entscheidet der Aufrufer
+	// (chain_id_wechsel.go).
 	mitSignaturPlatz(func() {
 		sender, sErr = absenderWiederherstellen(t)
 	})
@@ -1363,15 +1369,31 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage, pre *precomp
 	// Nonce muss gegen den GEMEINSAMEN Zustand gueltig sein -- sonst wuerde
 	// jeder andere Validator den naechsten Block dieses Knotens verwerfen.
 	// Vor der Reservierung, damit eine abgelehnte Nonce nichts verbraucht.
-	mitRoh := s.state != nil && signierteUeberweisungenAufnehmen(nowUnix())
+	annahmeJetzt := nowUnix()
+	// Chain-ID-Wechsel (chain_id_wechsel.go): eine geschuetzte Transaktion
+	// nur mit der ID, die jetzt gilt -- Ueberweisungen mit 1926 nur bis zur
+	// Pause vor dem Stichtag, mit der neuen ID erst ab ihm, dazwischen
+	// wiederholbar abgelehnt. absenderWiederherstellen stellt beide IDs
+	// wieder her; gueltig macht sie erst diese Pruefung (und beim
+	// Nachspielen pruefeUeberweisungsRoh gegen die Blockzeit).
+	if tx.Protected() {
+		_, _, istUeberweisung := ueberweisungAusRoh(tx)
+		if err := chainIDAnnahmePruefen(tx.ChainId(), istUeberweisung, annahmeJetzt); err != nil {
+			if errors.Is(err, ErrAnnahmePausiert) {
+				return nil, &RPCError{Code: -32005, Message: err.Error()}
+			}
+			return nil, &RPCError{Code: -32000, Message: strings.TrimPrefix(err.Error(), ErrChainIDFalsch.Error()+": ")}
+		}
+	}
+	mitRoh := s.state != nil && signierteUeberweisungenAufnehmen(annahmeJetzt)
 	if mitRoh {
-		// Nur Transaktionen mit Chain-ID 1926. LatestSignerForChainID stellt
-		// auch den Absender alter, ungeschuetzter Transaktionen (vor
-		// EIP-155) wieder her -- die Blockpruefung verlangt aber Chain-ID
-		// 1926 (pruefeUeberweisungsRoh). Angenommen, haette jeder andere
-		// Validator den naechsten Block dieses Knotens verworfen.
-		if cid := tx.ChainId(); !tx.Protected() || cid == nil || cid.Cmp(aequitasChainID) != 0 {
-			return nil, &RPCError{Code: -32000, Message: "transaction must be replay-protected with chain id 1926 (EIP-155)"}
+		// Nur geschuetzte Transaktionen (EIP-155). LatestSignerForChainID
+		// stellt auch den Absender alter, ungeschuetzter Transaktionen (vor
+		// EIP-155) wieder her -- die Blockpruefung verlangt aber die
+		// Chain-ID der Blockzeit (pruefeUeberweisungsRoh). Angenommen, haette
+		// jeder andere Validator den naechsten Block dieses Knotens verworfen.
+		if !tx.Protected() {
+			return nil, &RPCError{Code: -32000, Message: fmt.Sprintf("transaction must be replay-protected with chain id %d (EIP-155)", chainIDWertFuer(annahmeJetzt))}
 		}
 		if err := s.state.pruefeAnnahmeNonce(senderAddr, tx.Nonce()); err != nil {
 			return nil, &RPCError{Code: -32000, Message: err.Error()}
@@ -2074,7 +2096,7 @@ func (s *EVMRPCServer) getTransactionByHash(params []json.RawMessage) (interface
 		"gasPrice": "0x0",
 		"input":    inputField,
 		"type":     typFeld,
-		"chainId":  chainIDHex,
+		"chainId":  chainIDHexFuer(nowUnix()),
 	}
 	if typFeld == "0x2" {
 		ergebnis["maxFeePerGas"] = "0x0"

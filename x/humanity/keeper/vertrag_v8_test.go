@@ -253,14 +253,14 @@ func TestV8_DigestGleichDemVertrag(t *testing.T) {
 	p := neuerV8Pruefstand(t, []common.Address{reg}, testSalt)
 
 	ret, err := p.aufruf(alice, sel("3644e515")) // DOMAIN_SEPARATOR()
-	if err != nil || common.BytesToHash(ret) != v8DomainSeparator(p.vertrag, testSalt) {
-		t.Fatalf("DOMAIN_SEPARATOR: Vertrag %x, Go %s (%v)", ret, v8DomainSeparator(p.vertrag, testSalt).Hex(), err)
+	if err != nil || common.BytesToHash(ret) != v8DomainSeparator(chainIDFuer(nowUnix()), p.vertrag, testSalt) {
+		t.Fatalf("DOMAIN_SEPARATOR: Vertrag %x, Go %s (%v)", ret, v8DomainSeparator(chainIDFuer(nowUnix()), p.vertrag, testSalt).Hex(), err)
 	}
 	c, n, d := big.NewInt(1001), big.NewInt(2001), big.NewInt(1_790_000_600)
 	arg := append(append(append(common.LeftPadBytes(alice.Bytes(), 32), common.LeftPadBytes(c.Bytes(), 32)...),
 		common.LeftPadBytes(n.Bytes(), 32)...), common.LeftPadBytes(d.Bytes(), 32)...)
 	ret, err = p.aufruf(alice, append(sel("7694154f"), arg...)) // registrationDigest(address,uint256,uint256,uint256)
-	want := v8RegisterDigest(p.vertrag, testSalt, alice, c, n, big.NewInt(0), d)
+	want := v8RegisterDigest(chainIDFuer(nowUnix()), p.vertrag, testSalt, alice, c, n, big.NewInt(0), d)
 	if err != nil || common.BytesToHash(ret) != want {
 		t.Fatalf("registrationDigest: Vertrag %x, Go %s (%v)", ret, want.Hex(), err)
 	}
@@ -283,8 +283,8 @@ func TestV8_GoSignaturWirdVomVertragAngenommen_UndSlotsStimmen(t *testing.T) {
 
 	c, n := big.NewInt(1001), big.NewInt(2001)
 	deadline := int64(1_790_000_600)
-	sig := v8Unterschrift(t, aliceKey, v8RegisterDigest(p.vertrag, testSalt, alice, c, n, big.NewInt(0), big.NewInt(deadline)))
-	if err := v8SignaturPruefen(v8RegisterDigest(p.vertrag, testSalt, alice, c, n, big.NewInt(0), big.NewInt(deadline)), sig, alice); err != nil {
+	sig := v8Unterschrift(t, aliceKey, v8RegisterDigest(chainIDFuer(nowUnix()), p.vertrag, testSalt, alice, c, n, big.NewInt(0), big.NewInt(deadline)))
+	if err := v8SignaturPruefen(v8RegisterDigest(chainIDFuer(nowUnix()), p.vertrag, testSalt, alice, c, n, big.NewInt(0), big.NewInt(deadline)), sig, alice); err != nil {
 		t.Fatalf("Go lehnt die eigene Signatur ab: %v", err)
 	}
 	data := v8Anfrage(t, alice, c, n, deadline, sig, v8TestMarker)
@@ -324,7 +324,7 @@ func TestV8_NonceIstImmerNull(t *testing.T) {
 	p := neuerV8Pruefstand(t, []common.Address{reg}, testSalt)
 	deadline := int64(1_790_000_600)
 	anfrage := func(c, n, nonce int64) []byte {
-		d := v8RegisterDigest(p.vertrag, testSalt, alice, big.NewInt(c), big.NewInt(n), big.NewInt(nonce), big.NewInt(deadline))
+		d := v8RegisterDigest(chainIDFuer(nowUnix()), p.vertrag, testSalt, alice, big.NewInt(c), big.NewInt(n), big.NewInt(nonce), big.NewInt(deadline))
 		return v8Anfrage(t, alice, big.NewInt(c), big.NewInt(n), deadline, v8Unterschrift(t, aliceKey, d), v8TestMarker)
 	}
 	if _, err := p.aufruf(reg, anfrage(1001, 2001, 0)); err != nil {
@@ -344,7 +344,7 @@ func TestV8_Missbrauch_VertragUndGoLehnenGleichAb(t *testing.T) {
 	p := neuerV8Pruefstand(t, []common.Address{reg}, testSalt)
 	c, n := big.NewInt(1001), big.NewInt(2001)
 	deadline := int64(1_790_000_600)
-	digest := v8RegisterDigest(p.vertrag, testSalt, alice, c, n, big.NewInt(0), big.NewInt(deadline))
+	digest := v8RegisterDigest(chainIDFuer(nowUnix()), p.vertrag, testSalt, alice, c, n, big.NewInt(0), big.NewInt(deadline))
 	gut := v8Unterschrift(t, aliceKey, digest)
 
 	// Hohes s: gueltige Signatur, formbarer Zwilling.
@@ -354,7 +354,7 @@ func TestV8_Missbrauch_VertragUndGoLehnenGleichAb(t *testing.T) {
 	copy(hoch[32:64], common.LeftPadBytes(new(big.Int).Sub(nN, s).Bytes(), 32))
 	hoch[64] ^= 1 // 27 <-> 28
 
-	anderesNetz := v8Unterschrift(t, aliceKey, v8RegisterDigest(p.vertrag, crypto.Keccak256Hash([]byte("aequitas-1926-1800000000")), alice, c, n, big.NewInt(0), big.NewInt(deadline)))
+	anderesNetz := v8Unterschrift(t, aliceKey, v8RegisterDigest(chainIDFuer(nowUnix()), p.vertrag, crypto.Keccak256Hash([]byte("aequitas-1926-1800000000")), alice, c, n, big.NewInt(0), big.NewInt(deadline)))
 	vonMallory := v8Unterschrift(t, malloryKey, digest)
 	vNull := append([]byte(nil), gut...)
 	vNull[64] -= 27
@@ -417,7 +417,7 @@ func TestEVM_CancunZeichenketten(t *testing.T) {
 func v8TestTx(t *testing.T, key *ecdsa.PrivateKey, wallet common.Address, frist, at int64, salt common.Hash, nonce int64) Transaction {
 	t.Helper()
 	c, n := big.NewInt(1001), big.NewInt(2001)
-	d := v8RegisterDigest(common.HexToAddress(V7_CONTRACT_ADDR), salt, wallet, c, n, big.NewInt(nonce), big.NewInt(frist))
+	d := v8RegisterDigest(chainIDFuer(nowUnix()), common.HexToAddress(V7_CONTRACT_ADDR), salt, wallet, c, n, big.NewInt(nonce), big.NewInt(frist))
 	return Transaction{
 		Type: "register_human", Wallet: strings.ToLower(wallet.Hex()),
 		PubSignals:  []string{c.String(), n.String()},
@@ -530,7 +530,7 @@ func TestV8_GoldenVektorMitDerApp(t *testing.T) {
 	if salt.Hex() != "0x89654bb870598e4d718a433a7d674b5ddd48f78cb6eecd489c01d69fa8e8954f" {
 		t.Fatalf("Salt: %s", salt.Hex())
 	}
-	digest := v8RegisterDigest(common.HexToAddress(V7_CONTRACT_ADDR), salt, human,
+	digest := v8RegisterDigest(chainIDFuer(nowUnix()), common.HexToAddress(V7_CONTRACT_ADDR), salt, human,
 		big.NewInt(1001), big.NewInt(2001), big.NewInt(0), big.NewInt(1_790_000_600))
 	if digest.Hex() != "0x0cfd835d1262f048ab9e759f064e7d6ebfb747599e40a606e5cd84dc13cc1804" {
 		t.Fatalf("Digest weicht von ethers ab: %s", digest.Hex())

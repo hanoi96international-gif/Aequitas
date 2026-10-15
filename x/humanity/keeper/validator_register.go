@@ -148,9 +148,11 @@ func validatorRegisterAktiv(blockZeit int64) bool {
 // unterschreiben. Anders als jeder bisherige Satz -- eine Unterschrift fuer
 // /api/peers/register ("authorize validator <adresse>") gilt hier nicht --,
 // und mit der Chain-ID: eine Bindung aus einem Testnetz gilt hier nicht.
+// Eingefroren auf 1926 (eingefroreneChainID), auch nach dem Chain-ID-Wechsel
+// (chain_id_wechsel.go): gespeicherte Bindungen werden erneut geprueft.
 func validatorBindungNachricht(signing, betreiber string, zeit int64) string {
 	return fmt.Sprintf("Aequitas: bind validator %s to operator %s chain:%d ts:%d",
-		strings.ToLower(signing), strings.ToLower(betreiber), aequitasChainID.Int64(), zeit)
+		strings.ToLower(signing), strings.ToLower(betreiber), eingefroreneChainID, zeit)
 }
 
 // kanonischeAdresse: 0x + 40 Hex-Ziffern, klein. Eine Bindung hat genau eine

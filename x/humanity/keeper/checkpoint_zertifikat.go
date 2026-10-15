@@ -53,6 +53,8 @@ import (
 const (
 	checkpointDomaene = "Aequitas Checkpoint v1"
 	// checkpointChainID: dieselbe Kette wie chainIDHex (evm_rpc.go).
+	// Eingefroren auf die Chain-ID der Genesis, auch nach dem
+	// Chain-ID-Wechsel (chain_id_wechsel.go) -- bewusst ein eigenes Literal.
 	checkpointChainID int64 = 1926
 	// checkpointMindestKomitee: kleinere Komitees bestaetigen nichts.
 	checkpointMindestKomitee = 4

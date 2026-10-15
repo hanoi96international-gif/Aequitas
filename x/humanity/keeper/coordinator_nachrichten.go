@@ -28,22 +28,26 @@ import (
 
 const livenessRenewalDomain = "aequitas-liveness-renewal-v2"
 
+// Die Chain-ID in den drei Saetzen bleibt eingefroren (eingefroreneChainID,
+// 1926), auch nach dem Chain-ID-Wechsel (chain_id_wechsel.go): gespeicherte
+// Freigaben und Bescheinigungen werden erneut geprueft.
+
 // coordinatorBesitzNachricht: was der Coordinator-Schluessel fuer den
 // Menschen unterschreibt (v2).
 func coordinatorBesitzNachricht(mensch string) string {
-	return fmt.Sprintf("Aequitas: coordinator key for human %s chain:%d", strings.ToLower(strings.TrimSpace(mensch)), aequitasChainID.Int64())
+	return fmt.Sprintf("Aequitas: coordinator key for human %s chain:%d", strings.ToLower(strings.TrimSpace(mensch)), eingefroreneChainID)
 }
 
 // coordinatorFreigabeNachricht: was der Mensch fuer seinen Schluessel
 // unterschreibt (v2).
 func coordinatorFreigabeNachricht(schluessel string) string {
-	return fmt.Sprintf("Aequitas: authorize coordinator %s chain:%d", strings.ToLower(strings.TrimSpace(schluessel)), aequitasChainID.Int64())
+	return fmt.Sprintf("Aequitas: authorize coordinator %s chain:%d", strings.ToLower(strings.TrimSpace(schluessel)), eingefroreneChainID)
 }
 
 // erneuerungsNachricht: was der Coordinator fuer eine Erneuerung
 // unterschreibt (v2).
 func erneuerungsNachricht(wallet string, issuedAt int64) string {
-	return fmt.Sprintf("%s|chain:%d|%s|%d", livenessRenewalDomain, aequitasChainID.Int64(), wallet, issuedAt)
+	return fmt.Sprintf("%s|chain:%d|%s|%d", livenessRenewalDomain, eingefroreneChainID, wallet, issuedAt)
 }
 
 // Die alten Saetze ohne Chain-ID -- nur fuer die Eintragung im Uebergang.
