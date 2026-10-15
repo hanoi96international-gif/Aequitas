@@ -74,6 +74,11 @@ func retryAfterMiddleware(next http.Handler) http.Handler {
 // netzKennung: "aequitas-<chainID>-<genesis-unix>". Einmal je Prozess
 // gelesen -- /api/status wird oft abgefragt, genesis.json aendert sich nur mit
 // einem Neustart der Kette (und damit des Knotens).
+//
+// EINGEFROREN auf die Chain-ID der Genesis (eingefroreneChainID, 1926),
+// auch nach dem Chain-ID-Wechsel (chain_id_wechsel.go): daraus folgt
+// v8NetzSalt, und NETZ_SALT steht unveraenderlich im V8-Vertrag
+// (contracts/AequitasV8.sol). TestChainIDWechsel_NetzKennungEingefroren.
 var netzKennung = sync.OnceValue(func() string {
-	return fmt.Sprintf("aequitas-%d-%d", aequitasChainID.Int64(), genesisTimestamp())
+	return fmt.Sprintf("aequitas-%d-%d", eingefroreneChainID, genesisTimestamp())
 })

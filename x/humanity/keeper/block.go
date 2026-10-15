@@ -312,13 +312,21 @@ type peerChallenge struct {
 }
 
 type BlockDAG struct {
-	blocks map[string]*Block
-	tips   map[string]bool
-	mu     sync.RWMutex
-	state  *ChainState
-	evm    *EVMEngine // set by EVMRPCServer after construction; used by replayTransactions for ZK proof verification
-	nodeID string
-	height int64
+	// leitungPeers: Abgleiche, die auf URLs aus der Leitung zurueckgehen
+	// (peer_vorrat.go, leitungPeersStarten); je DAG.
+	leitungURLPeersMu sync.Mutex
+	leitungURLPeers   map[string]bool
+	// validatorAbgleich*: syncValidatorsFromAllPeers laeuft hoechstens
+	// einmal zugleich (validatorAbgleichAnstossen).
+	validatorAbgleichLaeuft  atomic.Bool
+	validatorAbgleichNochmal atomic.Bool
+	blocks                   map[string]*Block
+	tips                     map[string]bool
+	mu                       sync.RWMutex
+	state                    *ChainState
+	evm                      *EVMEngine // set by EVMRPCServer after construction; used by replayTransactions for ZK proof verification
+	nodeID                   string
+	height                   int64
 
 	// vorlauf: der Ausgangskorb fuer den naechsten Block, siehe vorlader.go.
 	vorlauf vorlader
@@ -5302,7 +5310,7 @@ func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
 				// If this proposer registered with any of them (but not with us),
 				// AddAuthorizedValidator will add them and the next sync cycle will
 				// accept their blocks — no manual AUTHORIZED_VALIDATORS config needed.
-				SafeGoroutine("syncValidatorsFromAllPeers", dag.syncValidatorsFromAllPeers)
+				dag.validatorAbgleichAnstossen()
 			}
 			return false
 		}
@@ -7409,7 +7417,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 		// 26.09.2026: 1.772 Konten mit hoeherer Nonce auf dem Annehmenden
 		// (nonce-angleich-c2.yml). Abgelehnt wird im Vorlauf nichts.
 		phMarkNonce := time.Now()
-		if err := dag.state.setzeVorlaufNoncenLocked(withTx(context.Background(), dbTx), block.Transactions, kontenSammlung); err != nil {
+		if err := dag.state.setzeVorlaufNoncenLocked(withTx(context.Background(), dbTx), block.Transactions, block.Timestamp, kontenSammlung); err != nil {
 			fmt.Printf("[REPLAY] ✗ Block #%d: Vorlauf-Nonces: %v\n", block.Height, err)
 			hardFailure = true
 		}

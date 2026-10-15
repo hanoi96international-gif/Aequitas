@@ -520,7 +520,7 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 		if cErr != nil || nErr != nil {
 			return "", fmt.Errorf("registration rejected: public signals must be decimal field elements")
 		}
-		digest := v8RegisterDigest(common.HexToAddress(V7_CONTRACT_ADDR), v8NetzSalt(), claimedHuman,
+		digest := v8RegisterDigest(chainIDFuer(annahmeZeit), common.HexToAddress(V7_CONTRACT_ADDR), v8NetzSalt(), claimedHuman,
 			commitmentV8, nullifierV8, big.NewInt(0), big.NewInt(req.Deadline))
 		if err := v8SignaturPruefen(digest, sigBytes, claimedHuman); err != nil {
 			return "", fmt.Errorf("registration rejected: %w", err)
@@ -821,7 +821,8 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 		Data:     calldata,
 	})
 
-	signer := types.NewEIP155Signer(big.NewInt(1926))
+	// Die Chain-ID, die die Annahme jetzt verlangt (chain_id_wechsel.go).
+	signer := types.NewEIP155Signer(chainIDFuer(nowUnix()))
 	signedTx, err := types.SignTx(tx, signer, relayerKey)
 	if err != nil {
 		return "", fmt.Errorf("relayer signing failed: %w", err)
@@ -1357,7 +1358,8 @@ func validRegisterSignature(contractAddr, claimedHuman common.Address, commitmen
 	}
 	nullKey := common.BigToHash(nullBigSig)
 	packed := make([]byte, 0, 32+20+8+32+32)
-	packed = append(packed, common.LeftPadBytes(big.NewInt(1926).Bytes(), 32)...)
+	// block.chainid des V7-Laufs gleich danach (chainConfigFuer, jetzt).
+	packed = append(packed, common.LeftPadBytes(chainIDFuer(nowUnix()).Bytes(), 32)...)
 	packed = append(packed, contractAddr.Bytes()...)
 	packed = append(packed, []byte("register")...)
 	packed = append(packed, common.LeftPadBytes(commitment.Bytes(), 32)...)

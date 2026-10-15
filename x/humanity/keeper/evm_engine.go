@@ -3,6 +3,7 @@ package keeper
 import (
 	"encoding/hex"
 	"fmt"
+	"math"
 	"math/big"
 	"strings"
 	"time"
@@ -105,11 +106,23 @@ func NewEVMEngine(cs *ChainState) (*EVMEngine, error) {
 // benutzt). Die EVM laeuft nur auf dem annehmenden Knoten (Relayer-Aufruf,
 // eth_call); nachspielende Knoten fuehren sie nicht aus, der Konsens haengt
 // nicht daran. Test: TestEVM_CancunZeichenketten.
-func chainConfig() *params.ChainConfig {
+//
+// ChainID (block.chainid) nach der Zeit des Aufrufs (chain_id_wechsel.go):
+// damit passt die EIP-712-Domaene von V8 und der V7-Registrierungshash zu
+// der ID, mit der die Wallet zur selben Zeit unterschreibt.
+func chainConfig() *params.ChainConfig { return chainConfigFuer(uint64(nowUnix())) }
+
+// chainConfigFuer: die Konfiguration fuer einen EVM-Lauf mit block.timestamp
+// ts.
+func chainConfigFuer(ts uint64) *params.ChainConfig {
 	shanghai := uint64(0)
 	cancun := uint64(0)
+	zeit := int64(math.MaxInt64)
+	if ts <= math.MaxInt64 {
+		zeit = int64(ts)
+	}
 	return &params.ChainConfig{
-		ChainID:             big.NewInt(1926),
+		ChainID:             chainIDFuer(zeit),
 		HomesteadBlock:      big.NewInt(0),
 		EIP150Block:         big.NewInt(0),
 		EIP155Block:         big.NewInt(0),

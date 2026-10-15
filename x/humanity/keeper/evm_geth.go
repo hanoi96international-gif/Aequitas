@@ -50,7 +50,7 @@ func oeffneStateDB(root common.Hash, db state.Database) (*state.StateDB, error) 
 // neueKnotenEVM: die EVM mit den Regeln des Knotens (chainConfig,
 // blockContext) fuer einen Aufruf mit Absender origin zur Zeit ts.
 func neueKnotenEVM(ts uint64, origin common.Address, sdb *state.StateDB) *vm.EVM {
-	evm := vm.NewEVM(blockContext(ts), sdb, chainConfig(), vm.Config{})
+	evm := vm.NewEVM(blockContext(ts), sdb, chainConfigFuer(ts), vm.Config{})
 	evm.SetTxContext(vm.TxContext{Origin: origin, GasPrice: new(uint256.Int)})
 	return evm
 }

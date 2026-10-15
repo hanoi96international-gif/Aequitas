@@ -39,84 +39,115 @@ import (
 	"github.com/hanoi96international-gif/aequitas-chain/x/humanity/secp"
 )
 
+// absenderKette: die Signer einer Chain-ID.
+type absenderKette struct {
+	id     *big.Int
+	idMul  *big.Int
+	signer types.Signer
+	eip155 types.Signer
+}
+
+func neueAbsenderKette(id int64) *absenderKette {
+	cid := big.NewInt(id)
+	return &absenderKette{
+		id:     cid,
+		idMul:  new(big.Int).Mul(cid, big.NewInt(2)),
+		signer: types.NewCancunSigner(cid),
+		eip155: types.NewEIP155Signer(cid),
+	}
+}
+
 var (
-	absenderChainID    = big.NewInt(1926)
-	absenderChainIDMul = new(big.Int).Mul(absenderChainID, big.NewInt(2))
-	absenderSigner     = types.NewCancunSigner(absenderChainID)
-	absenderEIP155     = types.NewEIP155Signer(absenderChainID)
-	big8Absender       = big.NewInt(8)
-	big27Absender      = big.NewInt(27)
+	// Chain-ID-Wechsel (chain_id_wechsel.go): Signer fuer beide IDs. Welche
+	// zur Blockzeit GILT, entscheidet allein der Stichtag -- in
+	// pruefeUeberweisungsRoh und an der Annahme, nie hier.
+	absenderAlt   = neueAbsenderKette(chainIDAltWert)
+	absenderNeu   = neueAbsenderKette(chainIDNeuWert)
+	big8Absender  = big.NewInt(8)
+	big27Absender = big.NewInt(27)
 )
 
+// absenderKetteFuer: die neue ID nur, wenn die Transaktion sie traegt; jede
+// andere (1926, fremde, ungeschuetzte) laeuft wie bisher gegen 1926 -- mit
+// denselben Fehlern wie bisher.
+func absenderKetteFuer(tx *types.Transaction) *absenderKette {
+	if istChainID(tx.ChainId(), chainIDNeuWert) {
+		return absenderNeu
+	}
+	return absenderAlt
+}
+
 // absenderWiederherstellen: wie decodeAndRecoverSender bisher --
-// types.Sender(LatestSignerForChainID(1926)) und, scheitert das,
-// types.Sender(NewEIP155Signer(1926)), dessen Fehler dann gilt.
+// types.Sender(LatestSignerForChainID(id)) und, scheitert das,
+// types.Sender(NewEIP155Signer(id)), dessen Fehler dann gilt. id ist 1926
+// oder, nur fuer eine damit signierte Transaktion, die neue ID.
 func absenderWiederherstellen(tx *types.Transaction) (common.Address, error) {
-	a, err := absenderCancun(tx)
+	k := absenderKetteFuer(tx)
+	a, err := k.absenderCancun(tx)
 	if err == nil {
 		return a, nil
 	}
-	return absenderEIP155Sig(tx)
+	return k.absenderEIP155Sig(tx)
 }
 
 // cancunSigner.Sender
-func absenderCancun(tx *types.Transaction) (common.Address, error) {
+func (k *absenderKette) absenderCancun(tx *types.Transaction) (common.Address, error) {
 	if tx.Type() != types.BlobTxType {
-		return absenderLondon(tx)
+		return k.absenderLondon(tx)
 	}
 	V, R, S := tx.RawSignatureValues()
 	V = new(big.Int).Add(V, big27Absender)
-	if tx.ChainId().Cmp(absenderChainID) != 0 {
-		return common.Address{}, fmt.Errorf("%w: have %d want %d", types.ErrInvalidChainId, tx.ChainId(), absenderChainID)
+	if tx.ChainId().Cmp(k.id) != 0 {
+		return common.Address{}, fmt.Errorf("%w: have %d want %d", types.ErrInvalidChainId, tx.ChainId(), k.id)
 	}
-	return absenderPlain(absenderSigner.Hash(tx), R, S, V)
+	return absenderPlain(k.signer.Hash(tx), R, S, V)
 }
 
 // londonSigner.Sender
-func absenderLondon(tx *types.Transaction) (common.Address, error) {
+func (k *absenderKette) absenderLondon(tx *types.Transaction) (common.Address, error) {
 	if tx.Type() != types.DynamicFeeTxType {
-		return absenderEIP2930(tx)
+		return k.absenderEIP2930(tx)
 	}
 	V, R, S := tx.RawSignatureValues()
 	V = new(big.Int).Add(V, big27Absender)
-	if tx.ChainId().Cmp(absenderChainID) != 0 {
-		return common.Address{}, fmt.Errorf("%w: have %d want %d", types.ErrInvalidChainId, tx.ChainId(), absenderChainID)
+	if tx.ChainId().Cmp(k.id) != 0 {
+		return common.Address{}, fmt.Errorf("%w: have %d want %d", types.ErrInvalidChainId, tx.ChainId(), k.id)
 	}
-	return absenderPlain(absenderSigner.Hash(tx), R, S, V)
+	return absenderPlain(k.signer.Hash(tx), R, S, V)
 }
 
 // eip2930Signer.Sender
-func absenderEIP2930(tx *types.Transaction) (common.Address, error) {
+func (k *absenderKette) absenderEIP2930(tx *types.Transaction) (common.Address, error) {
 	V, R, S := tx.RawSignatureValues()
 	switch tx.Type() {
 	case types.LegacyTxType:
-		return absenderEIP155Sig(tx)
+		return k.absenderEIP155Sig(tx)
 	case types.AccessListTxType:
 		V = new(big.Int).Add(V, big27Absender)
 	default:
 		return common.Address{}, types.ErrTxTypeNotSupported
 	}
-	if tx.ChainId().Cmp(absenderChainID) != 0 {
-		return common.Address{}, fmt.Errorf("%w: have %d want %d", types.ErrInvalidChainId, tx.ChainId(), absenderChainID)
+	if tx.ChainId().Cmp(k.id) != 0 {
+		return common.Address{}, fmt.Errorf("%w: have %d want %d", types.ErrInvalidChainId, tx.ChainId(), k.id)
 	}
-	return absenderPlain(absenderSigner.Hash(tx), R, S, V)
+	return absenderPlain(k.signer.Hash(tx), R, S, V)
 }
 
 // EIP155Signer.Sender
-func absenderEIP155Sig(tx *types.Transaction) (common.Address, error) {
+func (k *absenderKette) absenderEIP155Sig(tx *types.Transaction) (common.Address, error) {
 	if tx.Type() != types.LegacyTxType {
 		return common.Address{}, types.ErrTxTypeNotSupported
 	}
 	if !tx.Protected() {
 		return absenderHomestead(tx)
 	}
-	if tx.ChainId().Cmp(absenderChainID) != 0 {
-		return common.Address{}, fmt.Errorf("%w: have %d want %d", types.ErrInvalidChainId, tx.ChainId(), absenderChainID)
+	if tx.ChainId().Cmp(k.id) != 0 {
+		return common.Address{}, fmt.Errorf("%w: have %d want %d", types.ErrInvalidChainId, tx.ChainId(), k.id)
 	}
 	V, R, S := tx.RawSignatureValues()
-	V = new(big.Int).Sub(V, absenderChainIDMul)
+	V = new(big.Int).Sub(V, k.idMul)
 	V.Sub(V, big8Absender)
-	return absenderPlain(absenderEIP155.Hash(tx), R, S, V)
+	return absenderPlain(k.eip155.Hash(tx), R, S, V)
 }
 
 // HomesteadSigner.Sender

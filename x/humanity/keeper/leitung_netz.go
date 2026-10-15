@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"bytes"
+	"context"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -298,6 +299,8 @@ func StarteLeitung(dag *BlockDAG, cs *ChainState, selfURL string) *Leitung {
 	for a, u := range urls {
 		l.SetzeURL(a, u)
 	}
+	// Die Mitglieder als Sync-Peers (peer_vorrat.go) -- nicht nur die Seeds.
+	dag.leitungPeersZiehen(l)
 	validatorIPsFrei(l)
 
 	cs.leitung.Store(l)
@@ -325,7 +328,23 @@ var leitungTaktStarten = func(dag *BlockDAG, l *Leitung, cs *ChainState) {
 // Adresse weiterreichen.
 func ohneUmleitung(req *http.Request, via []*http.Request) error { return http.ErrUseLastResponse }
 
-var leitungKlient = &http.Client{Timeout: 3 * time.Second, CheckRedirect: ohneUmleitung}
+// leitungDial: pinningDialer -- ausser in Tests, deren Gegenstellen
+// (httptest) auf 127.0.0.1 laufen (leitung_dial_test.go).
+var leitungDialLokal atomic.Bool
+
+func leitungDial(ctx context.Context, network, addr string) (net.Conn, error) {
+	if leitungDialLokal.Load() {
+		return (&net.Dialer{Timeout: 5 * time.Second}).DialContext(ctx, network, addr)
+	}
+	return pinningDialer(ctx, network, addr)
+}
+
+// leitungKlient und weiterleitungsKlient: die Ziel-URLs setzt jedes Mitglied
+// fuer sich (m.URL) und der Leiter fuer alle (m.URLs) -- ungeprueft gingen
+// Anfragen an Loopback und private Adressen, die Weiterleitung lieferte die
+// Antwort sogar zurueck (Beta-Pruefung 15.10.2026, SSRF). pinningDialer: nur
+// oeffentliche Adressen, DNS einmal aufgeloest.
+var leitungKlient = &http.Client{Timeout: 3 * time.Second, Transport: &http.Transport{DialContext: leitungDial}, CheckRedirect: ohneUmleitung}
 
 var (
 	leitungWeitergeleitet      atomic.Int64
@@ -686,7 +705,7 @@ func rpcKonten(body []byte) []string {
 	return out
 }
 
-var weiterleitungsKlient = &http.Client{Timeout: 20 * time.Second, CheckRedirect: ohneUmleitung}
+var weiterleitungsKlient = &http.Client{Timeout: 20 * time.Second, Transport: &http.Transport{DialContext: leitungDial}, CheckRedirect: ohneUmleitung}
 
 // leiteWeiter schickt die Anfrage unveraendert an den Leiter und gibt dessen
 // Antwort zurueck. false = hat nicht geklappt, selbst bearbeiten (das Tor
@@ -1149,5 +1168,5 @@ func (dag *BlockDAG) validatorRegisterNachfragen() {
 	if jetzt-alt < 30 || !validatorRegisterZuletzt.CompareAndSwap(alt, jetzt) {
 		return
 	}
-	SafeGoroutine("leitung-register", dag.syncValidatorsFromAllPeers)
+	dag.validatorAbgleichAnstossen()
 }

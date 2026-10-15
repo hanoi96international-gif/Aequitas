@@ -12,6 +12,11 @@ name: Rollback WAL + Multi-Block-Tick on Contabo2 (manual)
 on:
   workflow_dispatch: {}
 
+# Nur lesen (Beta-Pruefung 15.10.2026): dieser Workflow schreibt nichts
+# ins Repo; die Voreinstellung des Tokens soll nicht mehr gelten.
+permissions:
+  contents: read
+
 jobs:
   rollback:
     runs-on: ubuntu-latest

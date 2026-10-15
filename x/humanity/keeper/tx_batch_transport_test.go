@@ -2,12 +2,16 @@ package keeper
 
 import (
 	"bytes"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/ethereum/go-ethereum/crypto"
 )
 
 // newTxBatchTestDAG builds the minimal DAG the by-reference transport needs:
@@ -296,8 +300,23 @@ func TestHandleBlockPush_UnreachableBodyAsksForAResendInsteadOfAcceptingAnEmptyB
 	// No peers registered, so there is nowhere to fetch the body from.
 	dag := newTxBatchTestDAG()
 
-	stripped := &Block{Height: 77, Timestamp: 3, ParentHashes: []string{"p"}, Proposer: "0xp", TxRoot: txBatchRoot(txs)}
+	// Echt signiert von einem erlaubten Erzeuger: seit push_grenze.go holt
+	// der Knoten fuer einen gefaelschten Kopf gar keinen Rumpf mehr -- hier
+	// geht es um den echten Kopf, dessen Rumpf nicht zu bekommen ist.
+	k, _ := crypto.GenerateKey()
+	proposer := strings.ToLower(crypto.PubkeyToAddress(k.PublicKey).Hex())
+	if dag.authorizedValidators == nil {
+		dag.authorizedValidators = map[string]bool{}
+	}
+	dag.authorizedValidators[proposer] = true
+	stripped := &Block{Height: 77, Timestamp: 3, ParentHashes: []string{strings.Repeat("a", 64)}, Proposer: proposer, TxRoot: txBatchRoot(txs)}
 	stripped.Hash = calculateBlockHash(stripped)
+	hb, _ := hex.DecodeString(stripped.Hash)
+	sig, err := crypto.Sign(hb, k)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stripped.Signature = hex.EncodeToString(sig)
 	payload, err := json.Marshal(stripped)
 	if err != nil {
 		t.Fatalf("marshal: %v", err)

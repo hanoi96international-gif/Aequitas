@@ -9,6 +9,11 @@ on:
     inputs:
       sql: {description: "Leseabfrage (SQL)", required: true}
       box: {description: "beide | C1 | C2", required: false, default: "beide"}
+# Nur lesen (Beta-Pruefung 15.10.2026): dieser Workflow schreibt nichts
+# ins Repo; die Voreinstellung des Tokens soll nicht mehr gelten.
+permissions:
+  contents: read
+
 jobs:
   q:
     strategy:

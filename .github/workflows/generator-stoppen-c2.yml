@@ -13,6 +13,11 @@ on:
         description: "true = haengende Generatorcontainer beenden"
         default: "true"
 
+# Nur lesen (Beta-Pruefung 15.10.2026): dieser Workflow schreibt nichts
+# ins Repo; die Voreinstellung des Tokens soll nicht mehr gelten.
+permissions:
+  contents: read
+
 jobs:
   stoppen:
     runs-on: ubuntu-latest

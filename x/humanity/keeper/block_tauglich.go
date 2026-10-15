@@ -124,6 +124,13 @@ func auftragsFenster(tx *Transaction, jetzt int64) zeitFenster {
 			f.eng(sattAdd(z, -nachweisHoechstensVoraus), sattAdd(z, nachweisHoechstensAlt))
 		}
 	}
+	// chain_id_wechsel.go: eine Ueberweisung mit 1926 nur in Bloecke vor dem
+	// Stichtag, mit der neuen ID nur ab ihm. Liegt beim Stichtag noch eine
+	// 1926-Ueberweisung im Ausgang (angenommen vor der Pause), traegt der
+	// Block die spaeteste Zeit davor -- wie nach einem Absturz.
+	if g, ok := chainIDFenster(tx); ok {
+		f.eng(g.von, g.bis)
+	}
 	// wirtschaft.go (buchZeitBeimNachspielen): der Nachspielende nimmt BuchAt
 	// nur, wenn es hoechstens 60 s nach und hoechstens 7 Tage vor dem Block
 	// liegt -- sonst still die Blockzeit, und Gebuehren und Liegegeld-Uhren
@@ -196,6 +203,9 @@ func blockTauglich(tx *Transaction, blockZeit int64) error {
 				return fmt.Errorf("%s unterschrieben um %d, Block %d (Fenster -%ds/+%ds)", tx.Type, z, blockZeit, nachweisHoechstensAlt, nachweisHoechstensVoraus)
 			}
 		}
+	}
+	if err := chainIDTauglich(tx, blockZeit); err != nil {
+		return err
 	}
 	if tx.BuchAt > 0 && wirtschaftAktiv(tx.BuchAt) && buchZeitBeimNachspielen(tx.BuchAt, blockZeit) != tx.BuchAt {
 		return fmt.Errorf("%s gebucht um %d, Block %d (Nachspielende naehmen die Blockzeit)", tx.Type, tx.BuchAt, blockZeit)

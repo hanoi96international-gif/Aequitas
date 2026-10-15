@@ -52,7 +52,7 @@ func TestAnnahmeTyp_SidecarV1UnlesbarWieV113(t *testing.T) {
 	if _, _, _, err := decodeAndRecoverSender(ueb.Roh); err == nil {
 		t.Fatal("Sidecar v1: Absender wiederhergestellt")
 	}
-	if _, err := pruefeUeberweisungsRoh(&ueb); err == nil {
+	if _, err := pruefeUeberweisungsRoh(&ueb, nowUnix()); err == nil {
 		t.Fatal("Sidecar v1 beim Nachspielen angenommen -- alte Validatoren verwerfen den Block")
 	}
 

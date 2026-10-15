@@ -440,12 +440,12 @@ func konsensVertraege(t *testing.T, b *goldenBuch) {
 	l.aufruf("v8/isRegistrar(reg)", ts, reg, v8, aufrufDaten("isRegistrar(address)", reg), 5_000_000)
 	c, n := big.NewInt(1001), big.NewInt(2001)
 	frist := int64(ts) + 600
-	gut := v8Anfrage(t, alice, c, n, frist, v8Unterschrift(t, aliceKey, v8RegisterDigest(v8, testSalt, alice, c, n, big.NewInt(0), big.NewInt(frist))), v8TestMarker)
+	gut := v8Anfrage(t, alice, c, n, frist, v8Unterschrift(t, aliceKey, v8RegisterDigest(big.NewInt(1926), v8, testSalt, alice, c, n, big.NewInt(0), big.NewInt(frist))), v8TestMarker)
 	l.aufruf("v8/register-kein-registrar", ts, mallory, v8, gut, 5_000_000)
-	l.aufruf("v8/register-falscher-beweis", ts, reg, v8, v8Anfrage(t, alice, c, n, frist, v8Unterschrift(t, aliceKey, v8RegisterDigest(v8, testSalt, alice, c, n, big.NewInt(0), big.NewInt(frist))), 0xBAD), 5_000_000)
-	l.aufruf("v8/register-fremde-unterschrift", ts, reg, v8, v8Anfrage(t, alice, c, n, frist, v8Unterschrift(t, malloryKey, v8RegisterDigest(v8, testSalt, alice, c, n, big.NewInt(0), big.NewInt(frist))), v8TestMarker), 5_000_000)
+	l.aufruf("v8/register-falscher-beweis", ts, reg, v8, v8Anfrage(t, alice, c, n, frist, v8Unterschrift(t, aliceKey, v8RegisterDigest(big.NewInt(1926), v8, testSalt, alice, c, n, big.NewInt(0), big.NewInt(frist))), 0xBAD), 5_000_000)
+	l.aufruf("v8/register-fremde-unterschrift", ts, reg, v8, v8Anfrage(t, alice, c, n, frist, v8Unterschrift(t, malloryKey, v8RegisterDigest(big.NewInt(1926), v8, testSalt, alice, c, n, big.NewInt(0), big.NewInt(frist))), v8TestMarker), 5_000_000)
 	weit := int64(ts) + 3*int64(tag)
-	l.aufruf("v8/register-frist-zu-weit", ts, reg, v8, v8Anfrage(t, alice, c, n, weit, v8Unterschrift(t, aliceKey, v8RegisterDigest(v8, testSalt, alice, c, n, big.NewInt(0), big.NewInt(weit))), v8TestMarker), 5_000_000)
+	l.aufruf("v8/register-frist-zu-weit", ts, reg, v8, v8Anfrage(t, alice, c, n, weit, v8Unterschrift(t, aliceKey, v8RegisterDigest(big.NewInt(1926), v8, testSalt, alice, c, n, big.NewInt(0), big.NewInt(weit))), v8TestMarker), 5_000_000)
 	l.aufruf("v8/register-gut", ts, reg, v8, gut, 5_000_000)
 	l.aufruf("v8/register-wiederholt", ts, reg, v8, gut, 5_000_000)
 	l.aufruf("v8/register-nach-frist", ts+700, reg, v8, gut, 5_000_000)
@@ -704,7 +704,7 @@ func konsensUeberweisungen(t *testing.T, b *goldenBuch) {
 		b.add("ueb/%s roh=%s", f.name, f.tx.Roh)
 		b.add("ueb/%s hash=%s", f.name, f.tx.TxHash)
 		tx := f.tx
-		nonce, err := pruefeUeberweisungsRoh(&tx)
+		nonce, err := pruefeUeberweisungsRoh(&tx, nowUnix())
 		if err != nil {
 			b.add("ueb/%s pruefung=abgelehnt", f.name)
 			b.add("#ueb/%s fehler=%q", f.name, err.Error())

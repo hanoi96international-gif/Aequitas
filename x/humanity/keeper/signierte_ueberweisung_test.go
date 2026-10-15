@@ -90,7 +90,7 @@ func TestSignierteUeberweisung_EchteWirdAngenommen(t *testing.T) {
 		"einfach": signiere(t, a, b.addr, aeqWei(5), 7, 1926),
 		"v7":      signiereV7(t, a, b.addr, aeqWei(5), 7),
 	} {
-		n, err := pruefeUeberweisungsRoh(&tx)
+		n, err := pruefeUeberweisungsRoh(&tx, nowUnix())
 		if err != nil {
 			t.Fatalf("%s: echte Ueberweisung abgelehnt: %v", name, err)
 		}
@@ -122,7 +122,7 @@ func TestSignierteUeberweisung_FaelschungenWerdenAbgelehnt(t *testing.T) {
 	}
 	for name, bau := range faelle {
 		tx := bau()
-		if _, err := pruefeUeberweisungsRoh(&tx); !errors.Is(err, ErrUeberweisungNichtSigniert) {
+		if _, err := pruefeUeberweisungsRoh(&tx, nowUnix()); !errors.Is(err, ErrUeberweisungNichtSigniert) {
 			t.Fatalf("%s: nicht abgelehnt (err=%v)", name, err)
 		}
 	}

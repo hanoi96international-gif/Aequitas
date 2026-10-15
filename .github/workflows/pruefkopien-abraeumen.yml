@@ -3,6 +3,11 @@ name: Liegengebliebene Backup-Pruefkopien abraeumen (aequitas_restore_check_*)
 # selbst zu Beginn jedes Laufs ab. Loescht NUR Datenbanken, deren Name mit
 # aequitas_restore_check_ beginnt -- Pruefkopien von Dumps, nie die Kette.
 on: {workflow_dispatch: {}}
+# Nur lesen (Beta-Pruefung 15.10.2026): dieser Workflow schreibt nichts
+# ins Repo; die Voreinstellung des Tokens soll nicht mehr gelten.
+permissions:
+  contents: read
+
 jobs:
   d:
     strategy: {max-parallel: 1, matrix: {box: [{name: "C2", host: "194.163.188.71", secret: "C2"}, {name: "C1", host: "alter-c1-abgeschaltet.invalid", secret: "C1"}]}}

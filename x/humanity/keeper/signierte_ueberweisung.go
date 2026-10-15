@@ -19,8 +19,8 @@ package keeper
 //  1. Jede Ueberweisung traegt ihre signierte Rohform (Transaction.Roh).
 //  2. Jeder Validator prueft beim Nachspielen, vorab und parallel fuer den
 //     ganzen Block (das ist zugleich Stufe 1.2): Absender aus der Signatur ==
-//     Wallet, Empfaenger und Betrag == was signiert wurde, Chain-ID 1926,
-//     keccak(Roh) == TxHash.
+//     Wallet, Empfaenger und Betrag == was signiert wurde, die Chain-ID der
+//     Blockzeit (chainIDFuer, chain_id_wechsel.go), keccak(Roh) == TxHash.
 //  3. Schutz gegen das erneute Einreichen im GEMEINSAMEN Zustand: jedes Konto
 //     fuehrt NaechsteNonce. Eine Ueberweisung braucht nonce >= NaechsteNonce,
 //     danach gilt NaechsteNonce = nonce + 1. Wallets, die schon Nonces ueber 0
@@ -100,9 +100,6 @@ func signierteUeberweisungenAufnehmen(jetzt int64) bool {
 // Absender so nicht unterschrieben hat (oder deren Nonce verbraucht ist).
 var ErrUeberweisungNichtSigniert = errors.New("Ueberweisung nicht vom Absender signiert")
 
-// aequitasChainID: die Chain-ID, gegen die signiert sein muss.
-var aequitasChainID = big.NewInt(1926)
-
 // betragAusWei rechnet genau so um wie sendRawTransaction -- dieselbe
 // Rechnung, damit der Vergleich mit Transaction.Amount bitgenau ist.
 func betragAusWei(wei *big.Int) float64 {
@@ -134,8 +131,9 @@ func ueberweisungAusRoh(t *types.Transaction) (to string, betrag float64, ok boo
 
 // pruefeUeberweisungsRoh prueft eine einzelne Ueberweisung gegen ihre
 // signierte Rohform und gibt deren Nonce zurueck. Zustandslos und damit
-// beliebig parallel ausfuehrbar.
-func pruefeUeberweisungsRoh(tx *Transaction) (uint64, error) {
+// beliebig parallel ausfuehrbar. blockZeit: die Zeit des Blocks, der sie
+// traegt -- nach ihr richtet sich die Chain-ID (chain_id_wechsel.go).
+func pruefeUeberweisungsRoh(tx *Transaction, blockZeit int64) (uint64, error) {
 	if tx.Roh == "" {
 		return 0, fmt.Errorf("%w: keine Rohform (TxHash %s)", ErrUeberweisungNichtSigniert, tx.TxHash)
 	}
@@ -143,8 +141,8 @@ func pruefeUeberweisungsRoh(tx *Transaction) (uint64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("%w: Rohform unlesbar: %v", ErrUeberweisungNichtSigniert, err)
 	}
-	if cid := t.ChainId(); cid == nil || cid.Cmp(aequitasChainID) != 0 {
-		return 0, fmt.Errorf("%w: Chain-ID %v statt 1926", ErrUeberweisungNichtSigniert, cid)
+	if cid := t.ChainId(); !chainIDGiltFuer(cid, blockZeit) {
+		return 0, fmt.Errorf("%w: Chain-ID %v statt %d", ErrUeberweisungNichtSigniert, cid, chainIDWertFuer(blockZeit))
 	}
 	if absender != strings.ToLower(strings.TrimSpace(tx.Wallet)) {
 		return 0, fmt.Errorf("%w: signiert von %s, im Block steht %s", ErrUeberweisungNichtSigniert, absender, tx.Wallet)
@@ -207,8 +205,8 @@ type ueberweisungsNonce struct {
 // parallel gegen ihre Rohform (Stufe 1.2: jede Signatur einmal, auf allen
 // Kernen). Die Rueckgabe steht in Blockreihenfolge. Bei mehreren Fehlern wird
 // der mit dem kleinsten Index gemeldet, damit jeder Knoten dieselbe Meldung
-// schreibt.
-func pruefeUeberweisungenImBlock(txs []Transaction) ([]ueberweisungsNonce, error) {
+// schreibt. blockZeit: block.Timestamp (Chain-ID, chain_id_wechsel.go).
+func pruefeUeberweisungenImBlock(txs []Transaction, blockZeit int64) ([]ueberweisungsNonce, error) {
 	var idx []int
 	for i := range txs {
 		if txs[i].Type == "transfer" {
@@ -236,7 +234,7 @@ func pruefeUeberweisungenImBlock(txs []Transaction) ([]ueberweisungsNonce, error
 					return
 				}
 				tx := &txs[idx[k]]
-				n, err := pruefeUeberweisungsRoh(tx)
+				n, err := pruefeUeberweisungsRoh(tx, blockZeit)
 				out[k] = ueberweisungsNonce{idx: idx[k], absender: strings.ToLower(strings.TrimSpace(tx.Wallet)), nonce: n}
 				fehler[k] = err
 			}
@@ -306,14 +304,14 @@ func (cs *ChainState) setzeNaechsteNoncenLocked(ctx context.Context, neu map[str
 // NaechsteNonce wie die Annahme -- jede Ueberweisung mit gueltiger Rohform
 // hebt die Nonce ihres Absenders, nie herunter. Ungueltige oder fehlende
 // Rohformen bleiben ohne Wirkung und ohne Ablehnung: im Vorlauf ist die
-// Rohform noch freiwillig. cs.mu gehalten.
-func (cs *ChainState) setzeVorlaufNoncenLocked(ctx context.Context, txs []Transaction, sammler *kontenSammler) error {
+// Rohform noch freiwillig. blockZeit: block.Timestamp. cs.mu gehalten.
+func (cs *ChainState) setzeVorlaufNoncenLocked(ctx context.Context, txs []Transaction, blockZeit int64, sammler *kontenSammler) error {
 	neu := map[string]int64{}
 	for i := range txs {
 		if txs[i].Type != "transfer" || txs[i].Roh == "" {
 			continue
 		}
-		n, err := pruefeUeberweisungsRoh(&txs[i])
+		n, err := pruefeUeberweisungsRoh(&txs[i], blockZeit)
 		if err != nil {
 			continue
 		}

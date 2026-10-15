@@ -38,7 +38,7 @@ import (
 
 const vorfahrStapel = 1000
 
-// kopfVorratDa: die Tabelle kopf_vorrat ist angelegt (initDB). Ohne sie
+// kopfVorratDa: kopf_vorrat ist angelegt und traegt Koepfe (initDB, Import). Ohne sie
 // liest die Suche nur chain_blocks -- eine fehlende Tabelle darf die Suche
 // nicht scheitern lassen.
 var kopfVorratDa atomic.Bool

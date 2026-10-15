@@ -224,7 +224,7 @@ func TestAbsenderWiederherstellen_Typ4WirdAbgelehnt(t *testing.T) {
 	}
 	ueb := Transaction{Type: "transfer", Wallet: adresseKlein(absender), To: adresseKlein(an),
 		Amount: betragAusWei(big.NewInt(1e18)), TxHash: tx.Hash().Hex(), Roh: "0x" + common.Bytes2Hex(raw)}
-	if _, err := pruefeUeberweisungsRoh(&ueb); err == nil {
+	if _, err := pruefeUeberweisungsRoh(&ueb, nowUnix()); err == nil {
 		t.Fatal("Typ 4 beim Nachspielen angenommen")
 	}
 }

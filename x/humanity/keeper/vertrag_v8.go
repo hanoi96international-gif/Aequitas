@@ -249,12 +249,17 @@ func v8NetzSalt() common.Hash {
 
 func wort(b []byte) []byte { return common.LeftPadBytes(b, 32) }
 
-func v8DomainSeparator(vertragAddr common.Address, salt common.Hash) common.Hash {
+// v8DomainSeparator: wie AequitasV8.DOMAIN_SEPARATOR() mit block.chainid =
+// chainID. Die Chain-ID folgt der Zeit (chain_id_wechsel.go): bei der
+// Annahme chainIDFuer(Annahmezeit), beim Nachspielen chainIDFuer(RegAt) --
+// genau die ID, die die EVM des Annehmenden zu dieser Zeit als block.chainid
+// hatte. Das Salz bleibt eingefroren (v8NetzSalt).
+func v8DomainSeparator(chainID *big.Int, vertragAddr common.Address, salt common.Hash) common.Hash {
 	return crypto.Keccak256Hash(
 		v8DomainTypeHash.Bytes(),
 		v8NameHash.Bytes(),
 		v8VersionHash.Bytes(),
-		wort(aequitasChainID.Bytes()),
+		wort(chainID.Bytes()),
 		wort(vertragAddr.Bytes()),
 		salt.Bytes(),
 	)
@@ -262,7 +267,7 @@ func v8DomainSeparator(vertragAddr common.Address, salt common.Hash) common.Hash
 
 // v8RegisterDigest: der Digest, den die Wallet `human` unterschreibt --
 // byte-gleich zu AequitasV8._registerDigest (TestV8_DigestGleichDemVertrag).
-func v8RegisterDigest(vertragAddr common.Address, salt common.Hash, human common.Address, commitment, nullifier, nonce, deadline *big.Int) common.Hash {
+func v8RegisterDigest(chainID *big.Int, vertragAddr common.Address, salt common.Hash, human common.Address, commitment, nullifier, nonce, deadline *big.Int) common.Hash {
 	structHash := crypto.Keccak256Hash(
 		v8RegisterTypeHash.Bytes(),
 		wort(human.Bytes()),
@@ -271,7 +276,7 @@ func v8RegisterDigest(vertragAddr common.Address, salt common.Hash, human common
 		wort(nonce.Bytes()),
 		wort(deadline.Bytes()),
 	)
-	return crypto.Keccak256Hash([]byte{0x19, 0x01}, v8DomainSeparator(vertragAddr, salt).Bytes(), structHash.Bytes())
+	return crypto.Keccak256Hash([]byte{0x19, 0x01}, v8DomainSeparator(chainID, vertragAddr, salt).Bytes(), structHash.Bytes())
 }
 
 // v8SignaturPruefen: dieselbe strenge Pruefung wie AequitasV8._recover --
@@ -376,7 +381,7 @@ func pruefeRegistrierungV8(tx Transaction, blockZeit int64) error {
 		return errors.New("Signatur ist kein Hex")
 	}
 	human := common.HexToAddress(wallet)
-	digest := v8RegisterDigest(common.HexToAddress(V7_CONTRACT_ADDR), v8NetzSalt(), human,
+	digest := v8RegisterDigest(chainIDFuer(tx.RegAt), common.HexToAddress(V7_CONTRACT_ADDR), v8NetzSalt(), human,
 		commitment, nullifier, big.NewInt(0), big.NewInt(tx.RegFrist))
 	return v8SignaturPruefen(digest, sig, human)
 }

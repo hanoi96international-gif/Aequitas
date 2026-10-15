@@ -119,14 +119,15 @@ func (dag *BlockDAG) TryLatestBlock() (*Block, bool) {
 // in die Antwort.
 func statusNotstand(hoehe int64) map[string]interface{} {
 	return map[string]interface{}{
-		"height":            hoehe,
-		"stand_veraltet":    true,
-		"stand_hinweis":     "Knoten beschaeftigt, noch kein vollstaendiger Stand seit dem Start",
-		"chain_id":          "aequitas-1",
-		"chain_evm_id":      1926,
-		"netz_kennung":      netzKennung(),
-		"register_vertrag":  vertragVersion(),
-		"register_contract": V7_CONTRACT_ADDR,
-		"contract_v7":       V7_CONTRACT_ADDR,
+		"height":              hoehe,
+		"stand_veraltet":      true,
+		"stand_hinweis":       "Knoten beschaeftigt, noch kein vollstaendiger Stand seit dem Start",
+		"chain_id":            "aequitas-1",
+		"chain_evm_id":        int(chainIDJetzt()),
+		"chain_id_wechsel_ab": ChainIDWechselAbFuerStatus(),
+		"netz_kennung":        netzKennung(),
+		"register_vertrag":    vertragVersion(),
+		"register_contract":   V7_CONTRACT_ADDR,
+		"contract_v7":         V7_CONTRACT_ADDR,
 	}
 }

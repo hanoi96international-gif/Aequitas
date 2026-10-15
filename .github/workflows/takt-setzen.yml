@@ -19,6 +19,11 @@ on:
         description: "Takt in Millisekunden (200..30000). Leer = zurueck auf die Vorgabe 1000."
         required: false
         default: "500"
+# Nur lesen (Beta-Pruefung 15.10.2026): dieser Workflow schreibt nichts
+# ins Repo; die Voreinstellung des Tokens soll nicht mehr gelten.
+permissions:
+  contents: read
+
 jobs:
   set:
     strategy:
