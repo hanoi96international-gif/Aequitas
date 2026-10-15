@@ -298,6 +298,8 @@ func StarteLeitung(dag *BlockDAG, cs *ChainState, selfURL string) *Leitung {
 	for a, u := range urls {
 		l.SetzeURL(a, u)
 	}
+	// Die Mitglieder als Sync-Peers (peer_vorrat.go) -- nicht nur die Seeds.
+	dag.leitungPeersZiehen(l)
 	validatorIPsFrei(l)
 
 	cs.leitung.Store(l)

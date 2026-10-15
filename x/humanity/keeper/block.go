@@ -312,13 +312,17 @@ type peerChallenge struct {
 }
 
 type BlockDAG struct {
-	blocks map[string]*Block
-	tips   map[string]bool
-	mu     sync.RWMutex
-	state  *ChainState
-	evm    *EVMEngine // set by EVMRPCServer after construction; used by replayTransactions for ZK proof verification
-	nodeID string
-	height int64
+	// leitungPeers: Abgleiche, die auf URLs aus der Leitung zurueckgehen
+	// (peer_vorrat.go, leitungPeersStarten); je DAG.
+	leitungURLPeersMu sync.Mutex
+	leitungURLPeers   map[string]bool
+	blocks            map[string]*Block
+	tips              map[string]bool
+	mu                sync.RWMutex
+	state             *ChainState
+	evm               *EVMEngine // set by EVMRPCServer after construction; used by replayTransactions for ZK proof verification
+	nodeID            string
+	height            int64
 
 	// vorlauf: der Ausgangskorb fuer den naechsten Block, siehe vorlader.go.
 	vorlauf vorlader
