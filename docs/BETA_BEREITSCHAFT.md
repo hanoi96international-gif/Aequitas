@@ -1,4 +1,4 @@
-# Beta-Bereitschaft — Prüfung vom 14.10.2026
+# Beta-Bereitschaft — Prüfung vom 14.10.2026, Stand 15.10.2026
 
 Geprüft wurden alle vier Repos: Kette, App, Biometrie und Proof-Server. Die
 Fragen waren: funktioniert es, ist es sicher, ist es schnell, und ist der Weg
@@ -26,24 +26,28 @@ jeweiligen PR.
 | App: Zeitgrenze für jede Anfrage (20/40/240 s), nur https, fatale Fehler werden nicht mehr verschluckt, Keystore-Passwörter nicht in der Prozessliste, keine Injection im Release-Workflow | MITTEL | App #31 |
 | Ein nur lesender Knoten kann nie mehr Leiter werden; Systemaufträge (tägliche Verteilung) laufen nur beim Leiter mit Lease; kein Verteilungstag fällt aus | BLOCKER | Aequitas #354 |
 
-**In Prüfung (15.10.2026):**
-
-| Befund | Schwere | PR |
-|---|---|---|
 | Gemerkte Peers über Neustarts, Leitungsmitglieder als Sync-Peers (höchstens 4 Plätze), ein Abgleich gibt seinen Platz nach Fehlschlägen frei | BLOCKER | Aequitas #355 |
 | `/api/blocks/push`: Obergrenze 8 bzw. 2 je IP, jede Ablehnung zählt, Kopfprüfung vor dem Abruf | HOCH | Aequitas #356 |
 | SSRF über URLs aus der Leitung (Weiterleitung gab Loopback-Antworten zurück) | MITTEL | Aequitas #356 |
 | Verklemmung zwischen Datenbank-Pool und `cs.mu`: der Knoten stand bei 20 gleichzeitigen Aufträgen | HOCH | Aequitas #356 |
 | Lesefrist auf dem libp2p-Stream; Validator-Abgleich gebündelt; Kopfgrenze im Snapshot 20 000 | MITTEL | Aequitas #356 |
 | 183 Workflows nur noch mit `contents: read` | NIEDRIG | Aequitas #357 |
-| go-ethereum v1.13 → v1.17 mit Konsens-Vergleichstest (die govulncheck-Ausnahmen laufen am 20.10. ab) | MITTEL | in Arbeit |
+| Chain-ID-Wechsel 1926 → 19260930 gegen die Wiederholung alter Überweisungen, **schlafend** (Stichtag `chainIDWechselAbUnix`). Die Prüfung fand zwei Lücken, beide behoben: eine als RLP-String verpackte Transaktion bekam kein Zeitfenster, und im Bündel wurden Nonces vor der Chain-ID-Prüfung reserviert. | HOCH | Aequitas #360 |
+
+**In Prüfung (15.10.2026):**
+
+| Befund | Schwere | PR |
+|---|---|---|
+| go-ethereum v1.13 → v1.17.8 mit Konsens-Vergleichstest (Golden-Werte aus v1.13). Die Prüfung fand eine Spaltungslücke: Typ 3 im Sidecar-Format v1 lasen nur neue Knoten. Behoben: Typ 3 und 4 werden nie angenommen. Offen ist noch der Beleg, dass das geänderte SSTORE-Verhalten keinen V7-Aufruf trifft. **Alle Validatoren müssen zugleich umstellen.** | MITTEL | Aequitas #359 |
 
 ## 2. Im Code offen
 
 | Befund | Schwere | Anmerkung |
 |---|---|---|
 | Der Modus („test“/„real“) steht nicht in der Bescheinigung; der Proof-Server kann eine Test-Bescheinigung nicht ablehnen. | HOCH | betrifft drei Repos (Coordinator, Proof-Server, Kette), eigener PR |
-| **Alte Überweisungen lassen sich wiederholen:** Der Neustart (V8, Genesis 30.09.) behielt die EVM-Chain-ID 1926, und die Nonces beginnen wieder bei 0. Eine signierte EVM-Überweisung der alten Kette wird gültig, sobald die Nonce der Wallet den alten Wert erreicht. | HOCH | **Entscheidung des Betreibers** (siehe 3.) |
+| Chain-ID-Wechsel einschalten: Zuerst müssen App, Web (`assets/dapp.js`, Explorer, Landing) und drei Workflows die neue ID kennen; erst danach kommt der Stichtag per PR (`docs/CHAIN_ID_WECHSEL.md`). Bis dahin bleibt die Wiederholung alter Überweisungen möglich. | HOCH | entschieden: neue Chain-ID |
+| `pinningDialer` kennt CGNAT (100.64/10) und NAT64 nicht als privat | NIEDRIG | |
+| Push-Plätze (8) lassen sich mit langsamen Anfragen belegen | MITTEL | Frist begrenzt es |
 | StateRoot-Abweichung wird nur geloggt, der Block angenommen. Im DAG mit mehreren Produzenten ergeben Geschwister immer verschiedene Roots, ein hartes Abweisen hielte den Sync an. | MITTEL | tragbar nur bei geschlossener Produzentenliste |
 | FromSync-Ausnahmen (Sperre, Finalität) über Seed-Verbindungen ohne TLS | MITTEL | Stichtag nötig (Konsens), nach den Peers |
 | Keine echten Tests mit 4 oder mehr Knoten (Simulationen gibt es) | HOCH | offen |
@@ -84,10 +88,10 @@ Reihenfolge, in der sie gemacht werden sollten.
    - Erst ab vier bestätigen Checkpoints etwas.
 7. **Strenges Nachrechnen** (`nachrechnenStrengAbUnix`): Sobald `/api/wirtschaft/regeln` über längere Zeit null Abweichungen zeigt, den Stichtag per PR setzen, **bevor** ein zweiter unabhängiger Produzent zugelassen wird. Ohne ihn könnte ein fremder Produzent Geld erzeugen.
 8. **Checkpoint-Stichtag** (`checkpointTxAbUnix`): erst mit vier oder mehr Validatoren, nach dem Abschnitt „Einschalten“ in `CHECKPOINT_FAHRPLAN.md`.
-9. **Wiederholung alter Überweisungen** (Chain-ID 1926 auf alter und neuer Kette). Mögliche Wege:
-   - **(a) neue Chain-ID ab einem Stichtag.** Das ist der Standardweg: Alte Signaturen werden ungültig. Dafür müssen MetaMask-Nutzer das Netz neu einrichten, die App bekommt eine neue Kennung, und der Domain-Separator des V8-Vertrags (Chain-ID 1926, immutable) verlangt einen neuen Vertrag oder eine Übergangsregel.
-   - **(b) eine Nonce-Untergrenze für EVM-Überweisungen.** Konsens-relevant, ändert aber Vertragsadressen nicht, wenn sie nur für Überweisungen gilt.
-   - **(c) nichts tun.** Vertretbar nur, wenn keine Wallet der alten Kette weiterverwendet wird.
+9. **Chain-ID-Wechsel** (entschieden: neue Chain-ID 19260930):
+   - In ethereum-lists/chains prüfen, ob die ID frei ist, und sie dort eintragen.
+   - Nach den App- und Web-PRs einen Stichtag wählen und ankündigen: MetaMask-Nutzer müssen das Netz neu einrichten.
+   - Den Ablauf beschreibt `docs/CHAIN_ID_WECHSEL.md`.
 10. **Sybil über das Gerätegeheimnis** (`ALLOW_DEVICE_SECRET_REGISTER`): Solange die Registrierung ohne Gesicht erlaubt ist, kann ein Mensch mit mehreren Geräten mehrfach registrieren. Entscheiden, ob die Beta das zulässt.
 11. **Trusted Setup:** Der Beweisschlüssel hat nur einen Beitrag. Eine Zeremonie mit mehreren unabhängigen Beiträgen vor echten Werten.
 12. **Server:**
