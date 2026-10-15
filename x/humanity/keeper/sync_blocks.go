@@ -375,6 +375,32 @@ func (dag *BlockDAG) syncValidatorsFromPeer(peerURL string) {
 // active sync peer. Called immediately when an unknown proposer is detected so
 // the registration propagates within the current sync cycle rather than
 // waiting up to validatorSyncInterval.
+// validatorAbgleichAnstossen: syncValidatorsFromAllPeers in einer eigenen
+// Goroutine -- hoechstens eine zugleich (Tempo-Pruefung 15.10.2026). Vorher
+// startete jeder Block mit frischem, echt signiertem Schluessel einen
+// eigenen Abgleich mit allen Peers; die Drosselkarte wurde bei 500
+// Eintraegen geleert. Laeuft schon einer, wird er danach genau einmal
+// wiederholt (ein Anstoss in der Zwischenzeit geht nicht verloren).
+func (dag *BlockDAG) validatorAbgleichAnstossen() {
+	dag.validatorAbgleichNochmal.Store(true)
+	if !dag.validatorAbgleichLaeuft.CompareAndSwap(false, true) {
+		return
+	}
+	SafeGoroutine("syncValidatorsFromAllPeers", func() {
+		for {
+			for dag.validatorAbgleichNochmal.Swap(false) {
+				dag.syncValidatorsFromAllPeers()
+			}
+			dag.validatorAbgleichLaeuft.Store(false)
+			// Kam zwischen dem letzten Swap und dem Store ein Anstoss, holt
+			// diese Goroutine ihn nach -- sonst ginge er verloren.
+			if !dag.validatorAbgleichNochmal.Load() || !dag.validatorAbgleichLaeuft.CompareAndSwap(false, true) {
+				return
+			}
+		}
+	})
+}
+
 func (dag *BlockDAG) syncValidatorsFromAllPeers() {
 	dag.syncPeerMu.Lock()
 	peers := make([]string, 0, len(dag.activeSyncPeers)+len(dag.trustedSeeds))

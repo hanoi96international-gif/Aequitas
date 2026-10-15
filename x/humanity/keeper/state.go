@@ -1500,7 +1500,9 @@ parent_hashes TEXT NOT NULL
 )`)
 	{
 		var n int
-		kopfVorratDa.Store(cs.db.QueryRow(`SELECT COUNT(*) FROM (SELECT 1 FROM kopf_vorrat LIMIT 1) x`).Scan(&n) == nil)
+		// Nur mit Eintraegen (Tempo-Pruefung 15.10.2026): COUNT liefert immer
+		// eine Zeile, der Schalter war sonst immer an.
+		kopfVorratDa.Store(cs.db.QueryRow(`SELECT COUNT(*) FROM (SELECT 1 FROM kopf_vorrat LIMIT 1) x`).Scan(&n) == nil && n > 0)
 	}
 	// Fuer die taegliche Anwesenheit der Validatoren (validator_anwesenheit.go):
 	// ein Tag Bloecke, ohne die ganze Tabelle zu lesen.
@@ -4932,6 +4934,8 @@ func (cs *ChainState) runAtomicWithOutbox(touchedAddrs []string, fullSnapshot bo
 		chainConfig[key] = configValueSnapshot{value: value, existed: existed}
 	}
 
+	// atomar_plaetze.go: erst ein Platz, dann die Verbindung.
+	defer cs.atomarPlatz()()
 	tx, err := cs.db.Begin()
 	if err != nil {
 		return fmt.Errorf("could not begin atomic transaction: %w", err)
@@ -5077,6 +5081,8 @@ func (cs *ChainState) runAtomicDistributionWithOutbox(fn func(ctx context.Contex
 		chainConfig[key] = configValueSnapshot{value: value, existed: existed}
 	}
 
+	// atomar_plaetze.go: erst ein Platz, dann die Verbindung.
+	defer cs.atomarPlatz()()
 	tx, err := cs.db.Begin()
 	if err != nil {
 		return fmt.Errorf("could not begin atomic distribution transaction: %w", err)

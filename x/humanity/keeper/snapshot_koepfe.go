@@ -25,8 +25,11 @@ import (
 
 const (
 	snapshotKopfFenster = 2 * checkpointHoechstensAlt
-	snapshotKopfGrenze  = 5000
-	snapshotHashLaenge  = 128
+	// Bei etwa einem Block je Validator und Sekunde und 1200 s Fenster
+	// reicht das fuer 16 Validatoren (Tempo-Pruefung 15.10.2026: mit 5000
+	// gab es ab 5 Validatoren gar keine Koepfe mehr). Etwa 300 Bytes je Kopf.
+	snapshotKopfGrenze = 20000
+	snapshotHashLaenge = 128
 )
 
 // SnapshotKopf: ein Blockkopf fuer die Vorfahren-Suche.
@@ -117,6 +120,12 @@ func snapshotKoepfeImportieren(tx *sql.Tx, koepfe []SnapshotKopf, jetzt int64, e
 			ON CONFLICT (hash) DO NOTHING`, k.Hash, k.Hoehe, k.Zeit, string(eltern)); err != nil {
 			return err
 		}
+	}
+	if len(koepfe) > 0 {
+		// Die Vorfahren-Suche liest kopf_vorrat erst, wenn dort etwas steht
+		// (kegel_vorfahr.go). Schlaegt der Commit fehl, kostet das nur eine
+		// leere Teilabfrage.
+		kopfVorratDa.Store(true)
 	}
 	return nil
 }

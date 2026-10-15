@@ -419,7 +419,9 @@ func (dag *BlockDAG) checkpointTakt(l *Leitung, jetzt int64) {
 // Antwort (begrenzt). Tests ersetzen ihn.
 type checkpointSender func(url string, m CheckpointNachricht) ([]byte, error)
 
-var checkpointKlient = &http.Client{Timeout: 3 * time.Second, CheckRedirect: ohneUmleitung}
+// checkpointKlient: Ziel-URLs kommen aus signierten Leitungsnachrichten --
+// SSRF-Schutz wie kandidatKlient (Beta-Pruefung 15.10.2026, MITTEL).
+var checkpointKlient = &http.Client{Timeout: 3 * time.Second, Transport: &http.Transport{DialContext: leitungDial}, CheckRedirect: ohneUmleitung}
 
 func checkpointSenden(url string, m CheckpointNachricht) ([]byte, error) {
 	b, _ := json.Marshal(m)

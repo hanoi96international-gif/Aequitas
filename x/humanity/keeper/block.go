@@ -312,6 +312,10 @@ type peerChallenge struct {
 }
 
 type BlockDAG struct {
+	// validatorAbgleich*: syncValidatorsFromAllPeers laeuft hoechstens
+	// einmal zugleich (validatorAbgleichAnstossen).
+	validatorAbgleichLaeuft  atomic.Bool
+	validatorAbgleichNochmal atomic.Bool
 	blocks map[string]*Block
 	tips   map[string]bool
 	mu     sync.RWMutex
@@ -5302,7 +5306,7 @@ func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
 				// If this proposer registered with any of them (but not with us),
 				// AddAuthorizedValidator will add them and the next sync cycle will
 				// accept their blocks — no manual AUTHORIZED_VALIDATORS config needed.
-				SafeGoroutine("syncValidatorsFromAllPeers", dag.syncValidatorsFromAllPeers)
+				dag.validatorAbgleichAnstossen()
 			}
 			return false
 		}

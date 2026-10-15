@@ -274,12 +274,19 @@ func parseIncomingBlock(r io.Reader) (*Block, error) {
 	return &block, nil
 }
 
+// blockStreamLesefrist: so lange darf ein Peer fuer einen Block brauchen.
+const blockStreamLesefrist = 60 * time.Second
+
 // handleBlockStream — receive blocks from peers
 func (n *P2PNode) handleBlockStream(s network.Stream) {
 	defer s.Close()
 	if n.dag == nil {
 		return
 	}
+	// Lesefrist (Beta-Pruefung 15.10.2026, Tempo): ohne sie haelt ein Peer,
+	// der langsam oder gar nicht schreibt, den Stream und seinen Speicher
+	// unbegrenzt. 32 MB brauchen auch auf schwacher Leitung keine 60 s.
+	_ = s.SetReadDeadline(time.Now().Add(blockStreamLesefrist))
 
 	block, err := parseIncomingBlock(s)
 	if err != nil {
