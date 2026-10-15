@@ -10,6 +10,7 @@ import (
 // Missbrauch und Grenzen (Beta-Pruefung 14.10.2026): gemerkte Peers sind
 // begrenzt, verfallen, gehen durch den SSRF-Filter und werden nie Seeds.
 func TestPeerVorrat_GrenzenUndFilter_RealDB(t *testing.T) {
+	skipUnlessRealDBBenchEnv(t)
 	cs := testKnoten(t, "unused-peer-vorrat.json")
 	if !cs.useDB {
 		t.Fatal("erwartet eine echte PostgreSQL-Verbindung")
@@ -71,6 +72,7 @@ func TestPeerVorrat_GrenzenUndFilter_RealDB(t *testing.T) {
 // Gemerkte Peers werden nie trustedSeeds (ihre Bloecke bekaemen sonst die
 // FromSync-Ausnahmen).
 func TestPeerVorrat_NieSeed_RealDB(t *testing.T) {
+	skipUnlessRealDBBenchEnv(t)
 	cs := testKnoten(t, "unused-peer-vorrat-seed.json")
 	if !cs.useDB {
 		t.Fatal("erwartet eine echte PostgreSQL-Verbindung")
@@ -110,9 +112,6 @@ func TestLeitungPeers_HoechstensVierPlaetze(t *testing.T) {
 		dag.activeSyncPeers[u] = true
 		dag.syncPeerMu.Unlock()
 	}
-	leitungPeersMu.Lock()
-	leitungPeers = map[string]bool{}
-	leitungPeersMu.Unlock()
 	dag := &BlockDAG{activeSyncPeers: map[string]bool{}, trustedSeeds: map[string]bool{}}
 	for runde := 0; runde < 25; runde++ {
 		var urls []string

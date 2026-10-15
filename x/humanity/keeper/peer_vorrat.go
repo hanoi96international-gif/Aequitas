@@ -43,9 +43,6 @@ var (
 	// peerVorratGeschrieben: url -> letzter Schreibzeitpunkt; hart begrenzt.
 	peerVorratGeschriebenMu sync.Mutex
 	peerVorratGeschrieben   = map[string]time.Time{}
-
-	leitungPeersMu sync.Mutex
-	leitungPeers   = map[string]bool{}
 )
 
 // peerVorratTabelle: anlegen, bis es einmal gelang (ein Fehler wird beim
@@ -173,8 +170,12 @@ var leitungSyncStarten = (*BlockDAG).startSyncForPeer
 // leitungPeerPlaetze zugleich. Beendete Abgleiche (syncPeerAufgebenNach)
 // geben ihren Platz frei.
 func (dag *BlockDAG) leitungPeersStarten(urls []string) {
-	leitungPeersMu.Lock()
-	defer leitungPeersMu.Unlock()
+	dag.leitungURLPeersMu.Lock()
+	defer dag.leitungURLPeersMu.Unlock()
+	if dag.leitungURLPeers == nil {
+		dag.leitungURLPeers = map[string]bool{}
+	}
+	leitungPeers := dag.leitungURLPeers
 	dag.syncPeerMu.Lock()
 	for u := range leitungPeers {
 		if !dag.activeSyncPeers[u] {
