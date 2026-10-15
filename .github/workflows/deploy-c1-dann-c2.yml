@@ -1,6 +1,6 @@
 name: Deploy -- erst C1 (netcup, Primary), dann C2
 # Ein Push auf main rollt den Knoten in fester Reihenfolge aus:
-#   1. Tests
+#   1. Die volle CI (ci.yml)
 #   2. C1 (188.172.229.121, Primary): bauen, neu starten, pruefen
 #      (antwortet, Hoehe steigt, nimmt_an=true)
 #   3. NUR WENN 2 gruen ist: C2 (194.163.188.71) zieht nach
@@ -30,24 +30,14 @@ env:
   # nachziehen. Zurueck auf "ja", sobald C2 wieder Validator ist.
   C2_AKTIV: "nein"
 jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-go@v6
-        with:
-          go-version-file: go.mod
-      - run: go build ./cmd/aequitasd
-      - run: go vet ./...
-      - run: go test ./...
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 22
-      - run: npm ci
-      - run: npx hardhat test
+  # Die volle CI (ci.yml) als Pforte: bis zum 15.10.2026 lief hier nur
+  # go test ohne -race, ohne Datenbank und ohne govulncheck -- der Deploy
+  # pruefte weniger als jeder PR (Beta-Pruefung, MITTEL).
+  ci:
+    uses: ./.github/workflows/ci.yml
 
   c1:
-    needs: test
+    needs: ci
     runs-on: ubuntu-latest
     environment: produktion
     timeout-minutes: 60
@@ -78,9 +68,26 @@ jobs:
           ssh-keygen -lf ~/.ssh/kh1 | awk '{print $2}' | grep -qx 'SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA' || { echo "::error::Host-Schluessel von C1 passt nicht"; exit 1; }
           cat ~/.ssh/kh1 >> ~/.ssh/known_hosts
       - name: C1 ausrollen
+        id: ausrollen
         run: ssh -o BatchMode=yes -o ServerAliveInterval=30 root@$C1 'bash -s' < deploy/deploy-c1.sh
       - name: C1 lebt und die Hoehe steigt
+        id: hoehe
         run: bash deploy/pruefe-knoten.sh http://$C1:8080
+      # Ruecknahme (Beta-Pruefung, MITTEL): scheitert das Ausrollen oder
+      # steigt die Hoehe nicht, laeuft wieder das Image, das VOR diesem
+      # Deploy lief (deploy-c1.sh merkt es sich als aequitas-node:vorher).
+      # Der Job bleibt rot -- die Ursache muss trotzdem geklaert werden --,
+      # aber die Kette steht nicht still, bis jemand eingreift. C2 zieht
+      # nicht nach (needs: c1).
+      - name: C1 zurueck auf das vorige Image
+        id: zurueck
+        if: failure() && (steps.ausrollen.outcome == 'failure' || steps.hoehe.outcome == 'failure')
+        run: ssh -o BatchMode=yes -o ServerAliveInterval=30 root@$C1 'bash -s' < deploy/rueckrollen-c1.sh
+      - name: C1 lebt nach der Ruecknahme
+        if: failure() && steps.zurueck.outcome == 'success'
+        run: |
+          bash deploy/pruefe-knoten.sh http://$C1:8080
+          echo "::error::Deploy gescheitert, C1 laeuft wieder auf dem vorigen Image -- Ursache klaeren"
 
   c2:
     needs: c1

@@ -10,6 +10,19 @@ set -euo pipefail
 ENVF=/root/Aequitas/deploy/validator/.env
 grep -qx 'ANNAHME_ROLLE=annehmend' "$ENVF" || { echo "ABBRUCH: ANNAHME_ROLLE=annehmend fehlt in $ENVF"; exit 1; }
 
+# Ruecknahme (deploy/rueckrollen-c1.sh): das Image, das JETZT laeuft, als
+# aequitas-node:vorher merken -- vom laufenden Container, nicht vom Tag
+# :local (der kann nach einem gescheiterten Lauf schon neuer sein). Laeuft
+# kein Knoten, gibt es nichts zurueckzunehmen, und ein altes :vorher wird
+# entfernt, damit nie ein noch aelteres Image zurueckkommt.
+if LAUFEND=$(docker inspect aequitas-node --format '{{.Image}}' 2>/dev/null) && [ -n "$LAUFEND" ]; then
+  docker tag "$LAUFEND" aequitas-node:vorher
+  echo "Ruecknahme moeglich auf: $LAUFEND"
+else
+  docker image rm aequitas-node:vorher >/dev/null 2>&1 || true
+  echo "Kein laufender Knoten -- keine Ruecknahme moeglich"
+fi
+
 cd /root/Aequitas
 git fetch -q origin main
 git reset -q --hard origin/main
