@@ -4934,8 +4934,12 @@ func (cs *ChainState) runAtomicWithOutbox(touchedAddrs []string, fullSnapshot bo
 		chainConfig[key] = configValueSnapshot{value: value, existed: existed}
 	}
 
-	// atomar_plaetze.go: erst ein Platz, dann die Verbindung.
-	defer cs.atomarPlatz()()
+	// atomar_plaetze.go: erst ein Platz (mit Frist), dann die Verbindung.
+	platzFrei, err := cs.atomarPlatzMitFrist()
+	if err != nil {
+		return err
+	}
+	defer platzFrei()
 	tx, err := cs.db.Begin()
 	if err != nil {
 		return fmt.Errorf("could not begin atomic transaction: %w", err)

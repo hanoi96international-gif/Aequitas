@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -68,5 +69,39 @@ func TestAtomar_KeineVerklemmungMitPool_RealDB(t *testing.T) {
 	case <-ende:
 	case <-time.After(60 * time.Second):
 		t.Fatal("atomare Auftraege laufen nach Freigabe von cs.mu nicht ab")
+	}
+}
+
+// Sind alle Plaetze belegt, wartet ein Auftrag hoechstens atomarWarteFrist
+// und bekommt dann ErrAnnahmePausiert (503) -- kein Stau ohne Grenze.
+func TestAtomar_WarteFrist_RealDB(t *testing.T) {
+	cs := testKnoten(t, "unused-atomar-frist.json")
+	if !cs.useDB {
+		t.Fatal("erwartet eine echte PostgreSQL-Verbindung")
+	}
+	cs.atomarPlaetzeAnlegen()
+	if atomarPlaetze == nil {
+		t.Fatal("keine Plaetze angelegt")
+	}
+	alt := atomarWarteFrist
+	atomarWarteFrist = 200 * time.Millisecond
+	t.Cleanup(func() { atomarWarteFrist = alt })
+	var belegt int
+	for len(atomarPlaetze) < cap(atomarPlaetze) {
+		atomarPlaetze <- struct{}{}
+		belegt++
+	}
+	t.Cleanup(func() {
+		for ; belegt > 0; belegt-- {
+			<-atomarPlaetze
+		}
+	})
+	start := time.Now()
+	err := cs.runAtomicWithOutbox(nil, false, func(ctx context.Context) (Transaction, error) { return Transaction{}, nil })
+	if !errors.Is(err, ErrAnnahmePausiert) {
+		t.Fatalf("voll: %v, erwartet ErrAnnahmePausiert", err)
+	}
+	if d := time.Since(start); d > 2*time.Second {
+		t.Fatalf("wartete %s statt der Frist", d)
 	}
 }

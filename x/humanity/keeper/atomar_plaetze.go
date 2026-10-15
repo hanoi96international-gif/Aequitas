@@ -14,7 +14,11 @@ package keeper
 // Darum warten Auftraege VOR Begin auf einen von atomarPlatzZahl Plaetzen,
 // und dem Pool bleiben atomarReserve Verbindungen fuer die, die cs.mu halten.
 
-import "sync"
+import (
+	"fmt"
+	"sync"
+	"time"
+)
 
 const atomarReserve = 4
 
@@ -35,17 +39,46 @@ func atomarPlatzZahl(maxOpen int) int {
 	return 1
 }
 
-// atomarPlatz: vor cs.db.Begin() eines atomaren Auftrags aufrufen; die
-// zurueckgegebene Funktion nach Commit/Rollback.
-func (cs *ChainState) atomarPlatz() func() {
+// atomarWarteFrist: so lange wartet ein Auftrag auf einen Platz, dann
+// ErrAnnahmePausiert (503) statt eines Staus ohne Grenze (Nachpruefung der
+// Eingaenge, NIEDRIG). Der Aufrufer versucht es spaeter erneut.
+var atomarWarteFrist = 10 * time.Second
+
+// atomarPlatzMitFrist: wie atomarPlatz, aber hoechstens atomarWarteFrist.
+func (cs *ChainState) atomarPlatzMitFrist() (func(), error) {
 	if cs.db == nil {
-		return func() {}
+		return func() {}, nil
 	}
+	cs.atomarPlaetzeAnlegen()
+	if atomarPlaetze == nil {
+		return func() {}, nil
+	}
+	t := time.NewTimer(atomarWarteFrist)
+	defer t.Stop()
+	select {
+	case atomarPlaetze <- struct{}{}:
+		return func() { <-atomarPlaetze }, nil
+	case <-t.C:
+		return nil, fmt.Errorf("%w: zu viele gleichzeitige Auftraege -- bitte gleich erneut versuchen", ErrAnnahmePausiert)
+	}
+}
+
+func (cs *ChainState) atomarPlaetzeAnlegen() {
 	atomarPlaetzeEinmal.Do(func() {
 		if n := atomarPlatzZahl(cs.db.Stats().MaxOpenConnections); n > 0 {
 			atomarPlaetze = make(chan struct{}, n)
 		}
 	})
+}
+
+// atomarPlatz: vor cs.db.Begin() eines atomaren Auftrags aufrufen; die
+// zurueckgegebene Funktion nach Commit/Rollback. Ohne Frist -- fuer die
+// taegliche Verteilung, die nicht ausfallen soll.
+func (cs *ChainState) atomarPlatz() func() {
+	if cs.db == nil {
+		return func() {}
+	}
+	cs.atomarPlaetzeAnlegen()
 	if atomarPlaetze == nil {
 		return func() {}
 	}
