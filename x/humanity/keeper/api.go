@@ -1427,7 +1427,10 @@ func (a *APIServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 		"contract_v7":            V7_CONTRACT_ADDR,
 		// P3-8: V5/V6 legacy addresses removed from status — minimise attack surface.
 		"bio_verifier": BIO_VERIFIER_ADDR,
-		"chain_evm_id": 1926,
+		// Die Chain-ID, die jetzt gilt (chain_id_wechsel.go), und ab wann die
+		// neue gilt (Unix-Zeit; 0 = kein Wechsel geplant).
+		"chain_evm_id":        int(chainIDJetzt()),
+		"chain_id_wechsel_ab": ChainIDWechselAbFuerStatus(),
 		// Aendert sich nur beim Neustart der Kette bei null (genesis.json);
 		// eine App mit gespeicherten Staenden erkennt daran ein neues Netz
 		// (api_app_grundlagen.go).

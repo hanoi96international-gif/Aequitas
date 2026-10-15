@@ -72,7 +72,7 @@ func pruefeSignaturenJetzt(block *Block) *signaturVorab {
 func (v *signaturVorab) rechnen(block *Block) {
 	defer close(v.fertig)
 	start := time.Now()
-	v.ueberweisungen, v.ueberwErr = pruefeUeberweisungenImBlock(block.Transactions)
+	v.ueberweisungen, v.ueberwErr = pruefeUeberweisungenImBlock(block.Transactions, block.Timestamp)
 	v.auftraege, v.auftragErr = pruefeAuftraegeImBlock(block.Transactions, block.Timestamp)
 	v.dauer = time.Since(start)
 }

@@ -145,7 +145,7 @@ func TestStufe1_VorlaufNachspielenSetztNonceWieAnnahme(t *testing.T) {
 		ohneRoh,
 	}
 	cs.mu.Lock()
-	err := cs.setzeVorlaufNoncenLocked(context.Background(), txs, nil)
+	err := cs.setzeVorlaufNoncenLocked(context.Background(), txs, nowUnix(), nil)
 	cs.mu.Unlock()
 	if err != nil {
 		t.Fatalf("Vorlauf-Nonces: %v", err)
