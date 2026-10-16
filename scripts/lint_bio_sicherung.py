@@ -122,6 +122,29 @@ with tempfile.TemporaryDirectory() as tmp:
             f(f"backup-biometrie.sh ruft vor der Empfaengerpruefung auf: {marke.read_text().split()}")
             marke.unlink()
 
+# Pruefung von #382 (F1-F3): festgenagelter Host-Schluessel nur als ed25519,
+# Image per Digest, keine Fehlertexte der Datenbank ins oeffentliche Log.
+wf_text = WF.read_text()
+if "ssh-keyscan -t ed25519" not in wf_text or 'grep -c . ~/.ssh/kh_all)" = 1' not in wf_text:
+    f("Host-Schluessel: nur ed25519 und genau eine Zeile, sonst reicht ein fremder ecdsa/rsa-Schluessel")
+skript = SKRIPT.read_text()
+m = re.search(r"^PG_IMAGE=(\S+)$", skript, re.M)
+if not m or not re.search(r"@sha256:[0-9a-f]{64}$", m.group(1)):
+    f("PG_IMAGE muss per Digest (@sha256:...) festgenagelt sein")
+logisch = skript.replace("\\\n", " ")
+for zeile in logisch.splitlines():
+    z = zeile.strip()
+    if z.startswith("#"):
+        continue
+    # Aufrufe, nicht Meldungen: pg_dump/pg_restore als Befehl (nach exec,
+    # docker exec ... oder am Zeilenanfang), nicht in einem echo-Text.
+    ohne_echo = re.sub(r'echo "[^"]*"', "", z)
+    if re.search(r"(^|exec |\s)(pg_dump|pg_restore)\s", ohne_echo) and "2>>\"$FEHLERLOG\"" not in z:
+        f(f"pg_dump/pg_restore ohne 2>>\"$FEHLERLOG\": {z[:70]!r}")
+for m3 in re.finditer(r"^(kette|pq)\(\) \{.*$", skript, re.M):
+    if "2>>\"$FEHLERLOG\"" not in m3.group(0) or "VERBOSITY=terse" not in m3.group(0):
+        f(f"{m3.group(1)}(): psql-Fehler muessen in $FEHLERLOG, nicht ins Log")
+
 for x in fehler:
     print(f"::error::{x}")
 print(f"{len(fehler)} Verstoesse")

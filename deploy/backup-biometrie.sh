@@ -67,7 +67,10 @@ SUMMARY="$BASIS/bio-latest.summary"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 WORK="$BASIS/klartext.$STAMP"
 PRUEF="bio-restore-pruefung-$STAMP"
-PG_IMAGE=postgres:16-alpine
+# Per Digest festgenagelt (Pruefung von #382, F2): dieses Image bekommt die
+# DATABASE_URL des Knotens und den Klartext -- ein ausgetauschtes Tag duerfte
+# das nie erreichen. Neuer Digest: docker buildx imagetools inspect postgres:16-alpine
+PG_IMAGE=postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
 # Grenzen (AGENTS.md Frage 2).
 MAX_PG_BYTES=$((300 * 1024 * 1024))     # je Postgres-Dump (komprimiert)
 MAX_KLARTEXT=$((1024 * 1024 * 1024))    # alles zusammen vor dem Verschluesseln
@@ -78,7 +81,8 @@ aufraeumen() {
   docker rm -f "$PRUEF" >/dev/null 2>&1 || true
   rm -rf "$WORK" "$ZIEL.tmp"
 }
-trap aufraeumen EXIT INT TERM
+trap aufraeumen EXIT
+trap 'aufraeumen; exit 1' INT TERM HUP
 
 mkdir -p "$BASIS" && chmod 700 "$BASIS"
 # Eine Datei aus einem frueheren Lauf darf nicht als die heutige gelten.
@@ -100,13 +104,19 @@ command -v python3 >/dev/null || { echo "::error::python3 fehlt auf der Box (SQL
 # age aus dem Paket der Distribution, nicht per curl|sh.
 if ! command -v age >/dev/null; then
   echo "age fehlt -- installiere das Distributionspaket"
-  DEBIAN_FRONTEND=noninteractive timeout 300 apt-get update -qq >/dev/null
-  DEBIAN_FRONTEND=noninteractive timeout 300 apt-get install -y -qq --no-install-recommends age >/dev/null
+  DEBIAN_FRONTEND=noninteractive timeout 300 apt-get update -qq >/dev/null </dev/null
+  DEBIAN_FRONTEND=noninteractive timeout 300 apt-get install -y -qq --no-install-recommends age >/dev/null </dev/null
 fi
 command -v age >/dev/null || { echo "::error::age nicht installierbar."; exit 1; }
 echo "age: $(age --version 2>/dev/null | head -1)"
 
 mkdir -m 700 "$WORK" "$WORK/coordinator" "$WORK/matching"
+# Fehlertexte von pg_dump/pg_restore/psql koennen Werte zeigen (DETAIL: Key
+# (hash)=..., CONTEXT: COPY ... line N: "..."). Das Log dieses Repos ist
+# oeffentlich (Pruefung von #382, F3): stderr der Datenbankwerkzeuge geht in
+# eine 0600-Datei auf der Box, ins Log nur eine allgemeine Meldung.
+FEHLERLOG="$BASIS/letzter-fehler.log"
+: > "$FEHLERLOG"; chmod 600 "$FEHLERLOG"
 
 # --- 2a. Biometrische Tabellen der Kette -------------------------------------
 DATABASE_URL="$(docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | grep -E '^DATABASE_URL=' | head -1 | cut -d= -f2- || true)"
@@ -120,7 +130,7 @@ NET="$(docker inspect aequitas-node --format '{{range $n,$v := .NetworkSettings.
 echo "kette: $(printf '%s' "$DATABASE_URL" | sed -E 's#^[a-z]+://([^@]*@)?##; s#\?.*$##')"
 # DATABASE_URL geht per -e NAME aus der Umgebung in den Container, nicht als
 # Argument -- sonst stuende das Passwort in ps.
-kette() { docker run --rm --network "$NET" -e DATABASE_URL "$PG_IMAGE" sh -c 'exec psql "$DATABASE_URL" -t -A -v ON_ERROR_STOP=1 -c "$1"' sh "$1"; }
+kette() { docker run --rm --network "$NET" -e DATABASE_URL "$PG_IMAGE" sh -c 'exec psql "$DATABASE_URL" -t -A -v ON_ERROR_STOP=1 -v VERBOSITY=terse -c "$1"' sh "$1" 2>>"$FEHLERLOG"; }
 
 BIO_TABELLEN="mpc_shares bio_hashes bio_registrations bio_registrations_bio_hash_dedup_backup registration_recovery"
 VORHANDEN="$(kette "SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename IN ('$(echo "$BIO_TABELLEN" | sed "s/ /','/g")') ORDER BY 1")"
@@ -129,10 +139,16 @@ LIVE_KETTE_BIO="$(kette "SELECT count(*) FROM bio_hashes")"
 case "$LIVE_KETTE_BIO" in ''|*[!0-9]*) echo "::error::Zaehlung bio_hashes (Kette) unlesbar. Abbruch."; exit 1 ;; esac
 T_ARGS=()
 for t in $VORHANDEN; do T_ARGS+=(-t "public.$t"); done
+# Platz VOR dem Schreiben (Pruefung von #382, F4): geschaetzt wird die
+# unkomprimierte Groesse aller Quellen; gebraucht wird sie bis zu dreimal
+# (Dump, Rueckspielprobe liegt im tmpfs, tar|age-Ergebnis) plus Archivkopie.
+# Reicht der Platz dafuer und fuer 2 GB Reserve des Validators nicht: Abbruch.
+SCHAETZ_KETTE="$(kette "SELECT coalesce(sum(pg_total_relation_size(c.oid)),0) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relname IN ('$(echo $VORHANDEN | sed "s/ /','/g")')")"
 echo "kette: Tabellen $(echo $VORHANDEN | tr '\n' ' '), bio_hashes vorher=$LIVE_KETTE_BIO"
 timeout 600 docker run --rm --network "$NET" -e DATABASE_URL "$PG_IMAGE" \
   sh -c 'exec pg_dump "$DATABASE_URL" -Fc --no-owner --no-acl "$@"' sh "${T_ARGS[@]}" \
-  > "$WORK/kette-bio.dump"
+  > "$WORK/kette-bio.dump" 2>>"$FEHLERLOG" \
+  || { echo "::error::pg_dump (Kette) gescheitert -- Einzelheiten nur auf der Box in $FEHLERLOG. Abbruch."; exit 1; }
 
 # --- 2b. Proof-Server (eigener Postgres) --------------------------------------
 docker inspect proof-postgres >/dev/null 2>&1 || { echo "::error::Container proof-postgres fehlt auf dieser Box. Abbruch."; exit 1; }
@@ -140,11 +156,26 @@ PROOF_DB="$(docker inspect proof-postgres --format '{{range .Config.Env}}{{print
 PROOF_DB="${PROOF_DB:-aequitas_proof}"
 case "$PROOF_DB" in *[!a-z0-9_]*) echo "::error::Unerwarteter Datenbankname in proof-postgres. Abbruch."; exit 1 ;; esac
 # Im Container ueber den lokalen Socket (trust) -- kein Passwort noetig.
-LIVE_PROOF_BIO="$(docker exec proof-postgres psql -U postgres -d "$PROOF_DB" -t -A -c "SELECT count(*) FROM bio_hashes")"
+LIVE_PROOF_BIO="$(docker exec proof-postgres psql -U postgres -d "$PROOF_DB" -t -A -v VERBOSITY=terse -c "SELECT count(*) FROM bio_hashes" 2>>"$FEHLERLOG")"
 case "$LIVE_PROOF_BIO" in ''|*[!0-9]*) echo "::error::Zaehlung bio_hashes (Proof) unlesbar. Abbruch."; exit 1 ;; esac
 echo "proof: Datenbank $PROOF_DB, bio_hashes vorher=$LIVE_PROOF_BIO"
+SCHAETZ_PROOF="$(docker exec proof-postgres psql -U postgres -d "$PROOF_DB" -t -A -v VERBOSITY=terse -c "SELECT pg_database_size(current_database())" 2>>"$FEHLERLOG")"
+SCHAETZ_SQLITE="$(du -scb /root/coordinator-daten/*.db /root/aequitas-matching-data/*.db 2>/dev/null | tail -1 | awk '{print $1}')"
+for v in "$SCHAETZ_KETTE" "$SCHAETZ_PROOF" "${SCHAETZ_SQLITE:-0}"; do
+  case "$v" in ''|*[!0-9]*) echo "::error::Groessenschaetzung unlesbar. Abbruch."; exit 1 ;; esac
+done
+SCHAETZ=$((SCHAETZ_KETTE + SCHAETZ_PROOF + ${SCHAETZ_SQLITE:-0}))
+if [ "$SCHAETZ" -gt "$MAX_KLARTEXT" ]; then
+  echo "::error::Quellen zusammen etwa $SCHAETZ Bytes (> 1 GB) -- Sicherung gehoert in einen Objektspeicher. Abbruch."; exit 1
+fi
+FREI_KB="$(df -Pk "$BASIS" | awk 'NR==2 {print $4}')"
+BRAUCHT_KB=$(( (3 * SCHAETZ) / 1024 + MIN_FREI_KB ))
+if [ "$FREI_KB" -lt "$BRAUCHT_KB" ]; then
+  echo "::error::Nur ${FREI_KB} KB frei, gebraucht etwa ${BRAUCHT_KB} KB (3 x Quellen + 2 GB Reserve). Abbruch."; exit 1
+fi
 timeout 600 docker exec proof-postgres pg_dump -U postgres -d "$PROOF_DB" -Fc --no-owner --no-acl \
-  > "$WORK/proof.dump"
+  > "$WORK/proof.dump" 2>>"$FEHLERLOG" \
+  || { echo "::error::pg_dump (Proof) gescheitert -- Einzelheiten nur auf der Box in $FEHLERLOG. Abbruch."; exit 1; }
 
 for d in kette-bio proof; do
   S="$(stat -c %s "$WORK/$d.dump")"
@@ -214,12 +245,12 @@ for i in $(seq 1 60); do
   sleep 1
 done
 [ "$bereit" = 1 ] || { echo "::error::Pruef-Postgres startet nicht. Abbruch."; exit 1; }
-pq() { docker exec "$PRUEF" psql -h 127.0.0.1 -U postgres -d "$1" -t -A -v ON_ERROR_STOP=1 -c "$2"; }
+pq() { docker exec "$PRUEF" psql -h 127.0.0.1 -U postgres -d "$1" -t -A -v ON_ERROR_STOP=1 -v VERBOSITY=terse -c "$2" 2>>"$FEHLERLOG"; }
 for d in kette-bio proof; do
   db="${d//-/_}"
   pq postgres "CREATE DATABASE $db" >/dev/null
   timeout 300 docker exec "$PRUEF" pg_restore -h 127.0.0.1 -U postgres --no-owner --no-acl --exit-on-error \
-    -d "$db" "/in/$d.dump" || { echo "::error::$d.dump laesst sich nicht zurueckspielen. Abbruch."; exit 1; }
+    -d "$db" "/in/$d.dump" 2>>"$FEHLERLOG" || { echo "::error::$d.dump laesst sich nicht zurueckspielen -- Einzelheiten nur auf der Box in $FEHLERLOG. Abbruch."; exit 1; }
 done
 R_KETTE_BIO="$(pq kette_bio "SELECT count(*) FROM bio_hashes")"
 R_PROOF_BIO="$(pq proof "SELECT count(*) FROM bio_hashes")"
@@ -276,6 +307,11 @@ cat "$SUMMARY"
 
 # Verschluesselte Kopien auf der Box: die letzten 7 (ohne Schluessel wertlos).
 mkdir -p "$BASIS/archiv"
-cp "$ZIEL" "$BASIS/archiv/bio-$STAMP.tar.age"
+FREI_KB="$(df -Pk "$BASIS" | awk 'NR==2 {print $4}')"
+if [ "$FREI_KB" -lt $(( GROESSE / 1024 + MIN_FREI_KB )) ]; then
+  echo "::warning::Zu wenig Platz fuer die Archivkopie auf der Box -- uebersprungen (die Sicherung selbst ist fertig)."
+else
+  cp "$ZIEL" "$BASIS/archiv/bio-$STAMP.tar.age"
+fi
 ls -1t "$BASIS"/archiv/bio-*.tar.age 2>/dev/null | tail -n +8 | xargs -r rm -f
 echo "verschluesselt: $ZIEL ($GROESSE Bytes), Klartext geloescht"
