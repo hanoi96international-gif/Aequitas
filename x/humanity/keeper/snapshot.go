@@ -10,10 +10,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/ethereum/go-ethereum/crypto"
@@ -319,6 +321,24 @@ func retryWhileRateLimited(attempts int, wait time.Duration, fetch func() (*Stat
 	return nil, fmt.Errorf("peer kept rate limiting the snapshot fetch across %d attempts: %w", attempts, err)
 }
 
+// snapshotDialLokal (Snapshot-Abruf und Checkpoint-Bloecke beim Resync):
+// nur fuer Tests, deren Knoten auf 127.0.0.x lauschen
+// (vier_knoten_realdb_test.go) -- wie leitungDialLokal. Im Betrieb nie
+// gesetzt: dann waehlt der Snapshot-Abruf ausschliesslich ueber
+// pinningDialer (SSRF-Schutz). Ein eigener Schalter, nicht leitungDialLokal:
+// den setzt leitung_dial_test.go per init() fuer das ganze Testpaket, und
+// Tests, die den Schutz beim Snapshot-Abruf erwarten, sollen ihn behalten.
+// Keine Pruefung am Snapshot (Signatur, Alter, Register, Rueckschritt)
+// haengt an diesem Schalter, nur die Wahl der Zieladresse.
+var snapshotDialLokal atomic.Bool
+
+func snapshotDial(ctx context.Context, network, addr string) (net.Conn, error) {
+	if snapshotDialLokal.Load() {
+		return (&net.Dialer{Timeout: 10 * time.Second}).DialContext(ctx, network, addr)
+	}
+	return pinningDialer(ctx, network, addr)
+}
+
 func fetchAndValidateSnapshot(peerURL, expectedSignerHex string) (*StateSnapshot, error) {
 	// F18-FIX: use redirect-blocking client with IP validation to prevent
 	// SSRF if BOOTSTRAP_SNAPSHOT_URL is set to a private/cloud-metadata IP.
@@ -327,7 +347,7 @@ func fetchAndValidateSnapshot(peerURL, expectedSignerHex string) (*StateSnapshot
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse
 		},
-		Transport: &http.Transport{DialContext: pinningDialer},
+		Transport: &http.Transport{DialContext: snapshotDial},
 	}
 
 	req, reqErr := http.NewRequest("GET", peerURL, nil)
@@ -1184,7 +1204,7 @@ func fetchAndVerifyBlockFromPeer(baseURL string, height int64) (*Block, error) {
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse
 		},
-		Transport: &http.Transport{DialContext: pinningDialer},
+		Transport: &http.Transport{DialContext: snapshotDial},
 	}
 	resp, err := client.Get(fmt.Sprintf("%s/api/block?height=%d", strings.TrimRight(baseURL, "/"), height))
 	if err != nil {
@@ -1282,7 +1302,7 @@ func fetchAndVerifySiblingsAtHeight(baseURL string, height int64) ([]*Block, err
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse
 		},
-		Transport: &http.Transport{DialContext: pinningDialer},
+		Transport: &http.Transport{DialContext: snapshotDial},
 	}
 	resp, err := client.Get(fmt.Sprintf("%s/api/blocks?min_height=%d&limit=500", strings.TrimRight(baseURL, "/"), height-1))
 	if err != nil {

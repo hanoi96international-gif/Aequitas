@@ -2616,6 +2616,27 @@ func (dag *BlockDAG) SyncDiagnostics() []PeerSyncDiagnostics {
 	return result
 }
 
+// trustedSeedsSetzen liest PEER_NODES und PRIMARY_NODE_URL(S) und setzt
+// daraus den Vertrauensanker fuer FromSync (trustedSeeds) -- vollstaendig
+// ersetzend. Aus StartPeerDiscovery herausgeloest, damit
+// vier_knoten_realdb_test.go genau diesen Weg nimmt, ohne die endlosen
+// Sync-Goroutinen von StartPeerDiscovery zu starten. selfURL ist schon
+// normalisiert.
+func (dag *BlockDAG) trustedSeedsSetzen(selfURL string) (staticP, seeds []string) {
+	staticP = staticPeers(selfURL)
+	seeds = seedURLs(selfURL)
+	dag.syncPeerMu.Lock()
+	dag.trustedSeeds = make(map[string]bool, len(staticP)+len(seeds))
+	for _, p := range staticP {
+		dag.trustedSeeds[p] = true
+	}
+	for _, s := range seeds {
+		dag.trustedSeeds[s] = true
+	}
+	dag.syncPeerMu.Unlock()
+	return staticP, seeds
+}
+
 func (dag *BlockDAG) StartPeerDiscovery(selfURL string) {
 	selfURL = strings.TrimRight(NormalizeNodeURL(selfURL), "/")
 
@@ -2643,20 +2664,10 @@ func (dag *BlockDAG) StartPeerDiscovery(selfURL string) {
 	}
 
 	// Seed from explicit PEER_NODES (backwards compat + manual override)
-	staticP := staticPeers(selfURL)
-	seeds := seedURLs(selfURL)
 	// Populate the FromSync trust anchor before starting any sync goroutine
 	// below that could read it (dag.startSyncForPeer / registerAndDiscover
 	// spawn the goroutines that eventually call isTrustedSyncSource).
-	dag.syncPeerMu.Lock()
-	dag.trustedSeeds = make(map[string]bool, len(staticP)+len(seeds))
-	for _, p := range staticP {
-		dag.trustedSeeds[p] = true
-	}
-	for _, s := range seeds {
-		dag.trustedSeeds[s] = true
-	}
-	dag.syncPeerMu.Unlock()
+	staticP, seeds := dag.trustedSeedsSetzen(selfURL)
 
 	for _, peer := range staticP {
 		GlobalPeerRegistry.Register(peer)
