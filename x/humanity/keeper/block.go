@@ -5412,7 +5412,9 @@ func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
 	// circuit-breaker already decided this exact ancestor should be trusted
 	// enough to re-fetch — silently reintroducing the same class of merge-stall
 	// SelfFetched was added to close, just one gate later.
-	if dag.state != nil && !block.FromSync && !block.SelfFetched {
+	// Ab dem FromSync-Stichtag auch fuer FromSync/SelfFetched, ausser eine
+	// Waise wartet auf genau diesen Block (fromsync_stichtag.go, Stelle 1).
+	if dag.state != nil && !dag.sperrpruefungEntfaellt(block) {
 		if suspended, reason := dag.state.IsValidatorSuspended(proposer, block.Timestamp); suspended {
 			fmt.Printf("[SLASHING] ✗ Rejected block #%d from %s: %s\n", block.Height, proposer, reason)
 			dag.mu.Unlock()
@@ -5822,7 +5824,8 @@ func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
 	// second block from the same proposer for the same parent set is found.
 	// Runs under dag.mu (checkAndIndexEquivocation requires it) and spawns a
 	// goroutine for the DB work so it doesn't delay block acceptance.
-	if conflict, isEquivocation := dag.checkAndIndexEquivocation(block); isEquivocation && dag.state != nil && !block.FromSync &&
+	if conflict, isEquivocation := dag.checkAndIndexEquivocation(block); isEquivocation && dag.state != nil && !fromSyncAusnahme(block) &&
+		// fromsync_stichtag.go: ab dem Stichtag straft auch ein Seed-Block.
 		// Activation cutoff: evidence anchored before equivocationSlashingActivationUnix
 		// is indexed (above) but never penalized — otherwise a fresh node replaying
 		// history re-punishes the pre-feature incident chaos that long-running nodes

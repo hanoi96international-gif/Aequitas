@@ -49,7 +49,7 @@ jeweiligen PR.
 | `pinningDialer` kennt CGNAT (100.64/10) und NAT64 nicht als privat | NIEDRIG | |
 | Push-Plätze (8) lassen sich mit langsamen Anfragen belegen | MITTEL | Frist begrenzt es |
 | StateRoot-Abweichung wird nur geloggt, der Block angenommen. Im DAG mit mehreren Produzenten ergeben Geschwister immer verschiedene Roots, ein hartes Abweisen hielte den Sync an. | MITTEL | tragbar nur bei geschlossener Produzentenliste |
-| FromSync-Ausnahmen (Sperre, Finalität) über Seed-Verbindungen ohne TLS | MITTEL | Stichtag nötig (Konsens), nach den Peers |
+| FromSync-Ausnahmen (Sperre, Finalität) über Seed-Verbindungen ohne TLS | MITTEL | schlafender Stichtag im Code (`fromsync_stichtag.go`); einschalten per PR nach `docs/FROMSYNC_STICHTAG.md` |
 | Keine echten Tests mit 4 oder mehr Knoten (Simulationen gibt es) | HOCH | teilweise: `TestVierKnoten_RealDB` (4 Instanzen, eigene Datenbanken, HTTP-Push/-Sync, Leitung, Ausfall und Rueckkehr, Faelschungen). Nicht abgedeckt: Snapshot-Resync ueber Loopback, libp2p, Trusted Seeds; paketweite Zaehler (Replay-Mauer, Ahnen-Leerlauf, Push-Plaetze) teilen sich die Instanzen -- siehe Dateikopf |
 | Replay-Mauer zaehlt je HOEHE, nicht je Block: drei abgewiesene Bloecke derselben Hoehe loesen Selbstheilung samt `os.Exit` aus (`replay_mauer.go:59`, `autoheal.go:439`) -- ein zugelassener, boesartiger Erzeuger braucht dafuer drei Pushes | MITTEL | offen (Konsens/Verfuegbarkeit, eigener PR) |
 | Ahnen-Leerlauf zaehlt Netzfehler als leere Runde, obwohl der Kommentar das Gegenteil sagt (`sync_blocks.go:1040` vs. `:1101`), und zaehlt prozessweit ueber alle Peers (`ahnen_unerreichbar.go:46`); Ende ist ebenfalls `os.Exit` | NIEDRIG | offen |
