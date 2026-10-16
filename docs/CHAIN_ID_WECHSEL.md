@@ -83,19 +83,45 @@ Test: `TestChainIDWechsel_EingefrorenesBleibt`.
 **Vor dem Festlegen:** In
 [ethereum-lists/chains](https://github.com/ethereum-lists/chains) prüfen,
 dass 19260930 frei ist. Am besten die ID dort eintragen.
+Geprüft am 16.10.2026 (Stand `9073ce8`, 15.10.2026): keine
+`eip155-19260930.json`, kein Eintrag mit `chainId` 19260930, kein Name
+„Aequitas“ — frei. (1926 steht dort übrigens auch nicht.) Vor dem
+Stichtags-PR erneut prüfen.
 
-## Offen außerhalb dieses PRs
+## Clients (Zweig `claude/weiter-gehts-vm8979-chainid-clients`)
 
-- **App (Aequitas-App):** `lib/config.ts` und `lib/signer.ts` sowie die
-  Prüfung des Netzes vor dem Signieren (`chain_evm_id`). EIP-712 für V8 liest
-  `eip712Domain()` am Vertrag; damit folgt `chainId` von selbst. Dazu
-  Zahlungslinks (`zahlungslink`) und das WalletConnect-Netz. Die
-  Tests auf beide IDs umstellen.
-- **Web/Explorer** (`x/humanity/keeper/assets/dapp.js`, `explorer.js`,
-  `explorer.html`, `landing.js`, `aequitas-dapp.html`): `wallet_addEthereumChain`
-  und Chain-Prüfung auf die ID aus `/api/status`. Landing-Texte
-  („Chain ID 1926“ in `landing.go`) anpassen.
-- **Workflows:** `pruefstand-live.yml:130`, `contabo1-serve-domain.yml:170-182`,
-  `contabo2-api-route.yml:86` prüfen fest auf 0x786/1926. Sie müssen ab `Ab`
-  die ID aus `chain_evm_id` bzw. beide IDs zulassen.
+Grundsatz überall: Die Chain-ID zum Signieren kommt live vom Knoten
+(`/api/status` `chain_evm_id` **und** `/rpc` `eth_chainId`, beide gleich) und
+gilt nur, wenn sie genau 1926 oder 19260930 ist (19260930 nur mit
+`chain_id_wechsel_ab` > 0). Unerreichbar, ungültig oder uneinig → es wird
+nicht signiert. Kein Rückfall auf eine eingebaute Zahl.
+Zusätzlich gegen die Geräte- bzw. Serveruhr (Toleranz 300 s): 1926 gilt
+nicht mehr ab `Ab + 300 s`, 19260930 nicht vor `Ab − 300 s` — für jede
+Unterschrift und in den Workflows. Abfragen haben eine Zeitgrenze, die auch
+das Lesen der Antwort umfasst.
+
+- **App (Aequitas-App):** `lib/kette.ts`, `lib/ketteLive.ts`; Überweisung
+  (eigener Schlüssel und WalletConnect), EIP-712 V8, V7-Nachricht,
+  Netzeinrichtung in der Wallet, Zahlungslinks (lesen: beide IDs; Kasse:
+  live). In der Pause vor dem Stichtag keine Überweisung (Hinweis).
+- **Web:** `assets/dapp.js` (Überweisung mit `chainId` im Auftrag),
+  `assets/explorer.js` (MetaMask/WalletConnect beide IDs, V7/V8 mit der live
+  gemeldeten ID, Texte über `.aeq-cid`), `explorer.html`,
+  `aequitas-dapp.html`; `landing.js`/`landing.go` neutral ohne ID.
+  Prüfvektor für 19260930: `TestV8_GoldenVektorNeueChainID` (Go),
+  `test/Explorer_registerV8.ts`, App `registerV8.test.ts`.
+- **Workflows:** `pruefstand-live.yml`, `contabo1-serve-domain.yml`,
+  `contabo2-api-route.yml`: `eth_chainId` muss zu `chain_evm_id` desselben
+  Knotens passen (1926 oder 19260930 mit Stichtag), sonst rot/Abbruch.
+
+## Offen
+
 - `tools/coordinator-signieren.html` bleibt bei `chain:1926` (eingefroren).
+- `tools/contabo-loadtest/main.go` signiert fest mit 1926 (Messwerkzeug,
+  kein Client): nach dem Stichtag auf 19260930 umstellen oder live lesen.
+- Betriebshandbücher aus `build/generate_*_guides.py` /
+  `build/patch_pdf_langs.py` nennen „Chain ID 1926“: vor der Ankündigung
+  neu erzeugen.
+- Nach dem Stichtag (alle Wallets umgestellt): in einem eigenen Release
+  1926 aus der App-Liste, AppKit-`defaultNetwork` und den Web-Listen
+  streichen.

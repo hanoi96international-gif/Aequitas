@@ -75,7 +75,7 @@ jobs:
           # Seit 26.09.2026: der neue C1 (netcup) ist Primary und nimmt an,
           # C2 ist nur_lesend.
           KNOTEN="C1=188.172.229.121=proof1=true C2=194.163.188.71=proof2=false"
-          declare -A API RPC IP PH SOLLAN HOEHE COMMIT
+          declare -A API RPC IP PH SOLLAN HOEHE COMMIT EVMID WAB
           NAMEN=""
           for E in $KNOTEN; do
             IFS== read -r N I P A <<< "$E"
@@ -97,6 +97,9 @@ jobs:
             S=$(get "${API[$K]}/status")
             H=$(echo "$S" | jq_ '.height // empty'); G=$(echo "$S" | jq_ '.git_commit // empty')
             HOEHE[$K]=${H:-0}; COMMIT[$K]=${G:-?}
+            # Chain-ID-Wechsel (docs/CHAIN_ID_WECHSEL.md): chain_evm_id ist 1926
+            # oder -- ab dem Stichtag chain_id_wechsel_ab -- 19260930.
+            EVMID[$K]=$(echo "$S" | jq_ '.chain_evm_id // empty'); WAB[$K]=$(echo "$S" | jq_ '.chain_id_wechsel_ab // empty')
             if [ -n "$H" ]; then ok "$K ${API[$K]}/status: Hoehe $H, Commit ${G:-?}"; else rot "$K ${API[$K]}/status antwortet nicht: $(echo "$S" | head -c 120)"; fi
             W=$(code "http://${IP[$K]}:8080/api/wache")
             if [ "$W" = 200 ]; then ok "$K /api/wache 200"; else rot "$K /api/wache HTTP $W: $(get "http://${IP[$K]}:8080/api/wache" | head -c 600)"; fi
@@ -125,12 +128,27 @@ jobs:
           done
 
           echo "===== RPC ====="
+          # eth_chainId muss zu chain_evm_id DESSELBEN Knotens passen, und die
+          # ID muss eine der beiden des Netzes sein: 1926 (0x786) oder 19260930
+          # (0x125e602, nur mit gesetztem Stichtag chain_id_wechsel_ab > 0).
+          # Alle Knoten melden dieselbe ID.
           for K in $NAMEN; do
             CI=$(get -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}' "${RPC[$K]}" | jq_ '.result // empty')
-            [ "$CI" = 0x786 ] && ok "$K eth_chainId 0x786" || rot "$K eth_chainId '$CI'"
+            # Gegen die Uhr (Toleranz 300 s): 1926 nur ohne Stichtag oder vor
+            # Stichtag + 300 s, 19260930 nur ab Stichtag - 300 s.
+            ERW=""; JETZT=$(date +%s); TOL=300; WABN=${WAB[$K]:-0}
+            if ! [[ "$WABN" =~ ^[0-9]+$ ]]; then WABN=ungueltig; fi
+            if [ "${EVMID[$K]}" = 1926 ] && [ "$WABN" = 0 ]; then ERW=0x786; fi
+            if [ "${EVMID[$K]}" = 1926 ] && [ "$WABN" != ungueltig ] && [ "$WABN" -gt 0 ] && [ "$JETZT" -lt $((WABN + TOL)) ]; then ERW=0x786; fi
+            if [ "${EVMID[$K]}" = 19260930 ] && [ "$WABN" != ungueltig ] && [ "$WABN" -gt 0 ] && [ "$JETZT" -ge $((WABN - TOL)) ]; then ERW=0x125e602; fi
+            if [ -n "$ERW" ] && [ "$CI" = "$ERW" ]; then ok "$K eth_chainId $CI (= chain_evm_id ${EVMID[$K]})"; else rot "$K eth_chainId '$CI', chain_evm_id '${EVMID[$K]}', chain_id_wechsel_ab '${WAB[$K]}'"; fi
             BN=$(get -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","id":2,"method":"eth_blockNumber","params":[]}' "${RPC[$K]}" | jq_ '.result // empty')
             [ -n "$BN" ] && ok "$K eth_blockNumber $BN" || rot "$K eth_blockNumber leer"
           done
+          IDS=$(for K in $NAMEN; do echo "${EVMID[$K]:-leer}"; done | sort -u)
+          if echo "$IDS" | grep -qx leer; then rot "nicht jeder Knoten meldet eine Chain-ID: $(for K in $NAMEN; do printf '%s=%s ' "$K" "${EVMID[$K]:-leer}"; done)"
+          elif [ "$(echo "$IDS" | wc -l)" = 1 ]; then ok "alle melden dieselbe Chain-ID ($IDS)"
+          else rot "verschiedene Chain-IDs: $(for K in $NAMEN; do printf '%s=%s ' "$K" "${EVMID[$K]}"; done)"; fi
 
           echo "===== Annahme-Tor (wertloser Platzhalter, keine Transaktion) ====="
           for K in $NAMEN; do

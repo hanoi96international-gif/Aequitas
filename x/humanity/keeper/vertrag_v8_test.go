@@ -543,3 +543,31 @@ func TestV8_GoldenVektorMitDerApp(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestV8_GoldenVektorNeueChainID: derselbe Pruefvektor mit der Chain-ID
+// nach dem Wechsel (chainIDNeuWert, chain_id_wechsel.go). App
+// (src/domain/__tests__/registerV8.test.ts) und Website
+// (test/Explorer_registerV8.ts) pruefen dieselben Bytes -- so unterschreiben
+// beide nach dem Stichtag genau das, was jeder Knoten mit chainIDFuer(RegAt)
+// prueft. Eine 1926-Unterschrift besteht die neue Domaene nicht.
+func TestV8_GoldenVektorNeueChainID(t *testing.T) {
+	key, human := v8Schluessel(t, testKeyAlice)
+	salt := crypto.Keccak256Hash([]byte("aequitas-1926-1790000000")) // Netzkennung eingefroren
+	digest := v8RegisterDigest(big.NewInt(chainIDNeuWert), common.HexToAddress(V7_CONTRACT_ADDR), salt, human,
+		big.NewInt(1001), big.NewInt(2001), big.NewInt(0), big.NewInt(1_790_000_600))
+	if digest.Hex() != "0x7e1718f2076ab61ab691b4c469089eadca8e2e78f2219e2aa8e35989e0038953" {
+		t.Fatalf("Digest weicht von ethers ab: %s", digest.Hex())
+	}
+	sig := v8Unterschrift(t, key, digest)
+	want := "4616f2684cba8c7e02a48639f296f981b2a16c43ae47b4917041ca8beedb0f3347531350344bf14880c2a854c8602d8b2666b4e69cd219f936dff02cdde9f7651c"
+	if hex.EncodeToString(sig) != want {
+		t.Fatalf("Signatur weicht von ethers ab: %x", sig)
+	}
+	if err := v8SignaturPruefen(digest, sig, human); err != nil {
+		t.Fatal(err)
+	}
+	alt, _ := hex.DecodeString("9d5387fee26b5ec00237ff732f68821b31744e07c81b8b815f048c1c9ad8965d4032040a16fbf1ef18bd9c24bbdab9c76df4c03fa8637ce003f18a4dc4d05cd31c")
+	if err := v8SignaturPruefen(digest, alt, human); err == nil {
+		t.Fatal("1926-Unterschrift besteht die Domaene mit 19260930")
+	}
+}

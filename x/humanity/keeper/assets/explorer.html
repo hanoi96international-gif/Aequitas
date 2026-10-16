@@ -8,7 +8,7 @@
 <meta name="google" content="notranslate">
 <meta name="translation" content="notranslate">
 <title data-i18n="x-aequitas-proof-of-humanity-chain">Aequitas — Proof of Humanity Chain</title>
-<meta name="description" content="Aequitas Chain — a Proof of Humanity blockchain with built-in Universal Basic Income, demurrage, and wealth cap. Chain ID 1926.">
+<meta name="description" content="Aequitas Chain — a Proof of Humanity blockchain with built-in Universal Basic Income, demurrage, and wealth cap.">
 <meta name="theme-color" content="#0B0D14">
 <link rel="canonical" href="https://aequitas.digital/explorer">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
@@ -213,7 +213,7 @@
   <div class="ic">
     <div class="ic-title" data-i18n="reg-details">Registration Details</div>
     <div class="ic-row"><span class="ic-key" data-i18n="k-network">Network</span><span class="ic-val p" data-i18n="x-aequitas-chain-blockdag">Aequitas Chain (BlockDAG)</span></div>
-    <div class="ic-row"><span class="ic-key" data-i18n="k-chainid">Chain ID</span><span class="ic-val b">1926 (0x786)</span></div>
+    <div class="ic-row"><span class="ic-key" data-i18n="k-chainid">Chain ID</span><span class="ic-val b"><span class="aeq-cid-voll">—</span></span></div>
     <div class="ic-row"><span class="ic-key" data-i18n="k-grant">UBI Grant</span><span class="ic-val go" data-i18n="x-1-000-aeq-per-human">1,000 AEQ per human</span></div>
     <div class="ic-row"><span class="ic-key" data-i18n="k-fee">Gas Fee</span><span class="ic-val g" data-i18n="free">0.1% protocol fee — no EVM gas</span></div>
     <div class="ic-row"><span class="ic-key" data-i18n="k-limit">Registrations</span><span class="ic-val" data-i18n="k-limit-v">Once per person · permanent · immutable</span></div>
@@ -999,7 +999,7 @@
   <div class="nc">
     <div class="nc-title" data-i18n="tech-title">Technical Specifications</div>
     <table class="spect">
-      <tr><td data-i18n="k-chainid">Chain ID</td><td>1926 (0x786)</td></tr>
+      <tr><td data-i18n="k-chainid">Chain ID</td><td><span class="aeq-cid-voll">—</span></td></tr>
       <tr><td data-i18n="x-architecture">Architecture</td><td style="color:var(--purple)" data-i18n="x-blockdag-directed-acyclic-graph">BlockDAG (Directed Acyclic Graph)</td></tr>
       <tr><td data-i18n="x-evm-compatible">EVM Compatible</td><td style="color:var(--green)" data-i18n="evm-yes">Yes — JSON-RPC /rpc · MetaMask compatible</td></tr>
       <tr><td data-i18n="k-btime">Block Time</td><td id="k-btime-val">—</td></tr>
@@ -1020,7 +1020,7 @@
     <table class="spect">
       <tr><td data-i18n="k-chain">Chain Name</td><td style="color:var(--gold)" data-i18n="x-aequitas-chain">Aequitas Chain</td></tr>
       <tr><td>RPC URL</td><td style="color:var(--blue);font-size:0.71rem" data-i18n="x-https-aequitas-digital-rpc">https://aequitas.digital/rpc</td></tr>
-      <tr><td data-i18n="k-chainid">Chain ID</td><td style="color:var(--gold)">1926</td></tr>
+      <tr><td data-i18n="k-chainid">Chain ID</td><td style="color:var(--gold)"><span class="aeq-cid">—</span></td></tr>
       <tr><td data-i18n="k-symbol">Symbol</td><td style="color:var(--gold)">AEQ</td></tr>
       <tr><td data-i18n="k-dec">Decimals</td><td>18</td></tr>
     </table>
@@ -1116,7 +1116,7 @@
         <div style="font-size:1.5rem;margin-bottom:10px">&#128187;</div>
         <div style="font-size:0.86rem;font-weight:700;color:var(--text);margin-bottom:8px" data-i18n="path-dev-title">I am a Developer</div>
         <div style="font-size:0.79rem;color:var(--muted);line-height:1.75;margin-bottom:14px" data-i18n="path-dev-desc">I want to build on Aequitas, integrate the API, or contribute to the protocol.</div>
-        <div style="font-size:0.77rem;color:var(--gold);font-weight:600;line-height:1.9" data-i18n="path-dev-steps">1. EVM-compatible JSON-RPC<br>2. Chain ID: 1926 · RPC: /rpc<br>3. OpenAPI: /api/* endpoints<br>4. Metrics: /metrics (Prometheus)</div>
+        <div style="font-size:0.77rem;color:var(--gold);font-weight:600;line-height:1.9" data-i18n="path-dev-steps">1. EVM-compatible JSON-RPC<br>2. Chain ID: <span class="aeq-cid">—</span> · RPC: /rpc<br>3. OpenAPI: /api/* endpoints<br>4. Metrics: /metrics (Prometheus)</div>
       </div>
     </div>
   </div>
@@ -1299,7 +1299,7 @@
   <!-- V7 INTRO CARD -->
   <div class="idx" style="margin-bottom:12px;background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(6,182,212,0.04));border-color:rgba(139,92,246,0.25)">
     <div class="idx-title" data-i18n="v7-intro-title">What is AequitasV8?</div>
-    <div style="font-size:0.81rem;color:var(--muted);line-height:1.9;margin-bottom:14px" data-i18n="v7-intro-text">AequitasV7 is the central smart contract of the Aequitas protocol. It defines the economic rules — the registration grant, the wealth cap, demurrage, the UBI accounting — and holds the nullifier registry that makes "one human, one registration" enforceable. It is deployed immutably on Aequitas Chain (ID 1926). Live transfers are settled by the chain layer against that rulebook, which is what makes them sub-second with no EVM gas (0.1% protocol fee).</div>
+    <div style="font-size:0.81rem;color:var(--muted);line-height:1.9;margin-bottom:14px" data-i18n="v7-intro-text">AequitasV7 is the central smart contract of the Aequitas protocol. It defines the economic rules — the registration grant, the wealth cap, demurrage, the UBI accounting — and holds the nullifier registry that makes "one human, one registration" enforceable. It is deployed immutably on Aequitas Chain (ID <span class="aeq-cid">—</span>). Live transfers are settled by the chain layer against that rulebook, which is what makes them sub-second with no EVM gas (0.1% protocol fee).</div>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
       <div style="background:var(--card);border:1px solid var(--border);border-radius:6px;padding:10px;text-align:center">
         <div style="font-size:0.95rem;font-weight:700;color:var(--purple);font-family:var(--font-display)">6</div>
@@ -1319,7 +1319,7 @@
   <div class="idx" style="margin-bottom:12px">
     <div class="idx-title" data-i18n="ca-title">Contract Addresses</div>
     <div style="font-size:0.81rem;color:var(--muted);line-height:1.9;margin-bottom:12px" data-i18n="ca-desc">AequitasV7 exposes the on-chain registry surface (nullifiers, registrations, wealth-cap and demurrage parameters). Balances, registration, and fees are enforced by the Go L1; the contract is the EVM interface, not the sole source of truth. Live transfers settle in the chain layer: the node intercepts the ERC-20 call before the EVM and applies it to the Go ledger — sub-second, no EVM gas, 0.1% protocol fee.<br><br>The BioVerifier contract receives Groth16 zero-knowledge proofs generated entirely on the user's Android device. It verifies mathematically on-chain in ~10 ms that the submitted nullifier was correctly derived from a secret the registrant holds, and the chain refuses any nullifier it has already seen — without ever learning their name, identity, or biometric data. That rules out a second registration from the same identity source (Beta: the nullifier is face-bound and the proof server requires the matching quorum's signed attestation). Registration needs no EVM gas; transfers carry a 0.1% protocol fee — the proof is what leaves the device.<br><br>What is new here: the rules and the identity-source nullifier registry sit in a contract the operator cannot casually rewrite, and the code that carries them out is open source and reproducible from this repository. All of it can be checked by anyone. What still requires trust is the operation of the nodes themselves, and the honest way to reduce that is more independent validators, not a stronger sentence here.</div>
-    <div class="hlbox" data-i18n="ca-text">Chain: Aequitas Chain (Chain ID: 1926 · 0x786)<br>RPC: __RPC__<br><br>BioVerifier: 0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2<br>AequitasV8 (Main): 0x20D271028f32577FCd07b4583A8e0E4eBBdB4F78</div>
+    <div class="hlbox" data-i18n="ca-text">Chain: Aequitas Chain (Chain ID: <span class="aeq-cid-voll">—</span>)<br>RPC: __RPC__<br><br>BioVerifier: 0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2<br>AequitasV8 (Main): 0x20D271028f32577FCd07b4583A8e0E4eBBdB4F78</div>
   </div>
   <div class="idx" style="margin-bottom:12px">
     <div class="idx-title" data-i18n="poa-title">1. PROOF OF ALIVE</div>
@@ -1350,7 +1350,7 @@
   </div>
   <div class="idx" style="margin-bottom:12px;background:linear-gradient(135deg,rgba(6,182,212,0.06),rgba(13,8,32,0.9));border-color:rgba(6,182,212,0.2)">
     <div class="idx-title" style="color:var(--teal)" data-i18n="x-open-source-chain-logic">Open Source Chain Logic</div>
-    <div style="font-size:0.79rem;color:var(--muted);line-height:1.9">The Aequitas chain core — consensus engine, state machine, redistribution logic, wealth cap formula, and ZK proof verification — is written in Go. The redistribution algorithms (CalcGini, enforceWealthCap, DistributeUBIPool, settleDemurrage) are open for review.<br><br>Smart contract source code for AequitasV7 and BioVerifier is embedded in the chain binary and verifiable via the contract addresses above. Chain ID 1926, RPC: <span style="color:var(--teal);font-family:var(--font-mono)">https://aequitas.digital/rpc</span></div>
+    <div style="font-size:0.79rem;color:var(--muted);line-height:1.9">The Aequitas chain core — consensus engine, state machine, redistribution logic, wealth cap formula, and ZK proof verification — is written in Go. The redistribution algorithms (CalcGini, enforceWealthCap, DistributeUBIPool, settleDemurrage) are open for review.<br><br>Smart contract source code for AequitasV7 and BioVerifier is embedded in the chain binary and verifiable via the contract addresses above. Chain ID <span class="aeq-cid">—</span>, RPC: <span style="color:var(--teal);font-family:var(--font-mono)">https://aequitas.digital/rpc</span></div>
     <div style="margin-top:12px;padding:10px 14px;background:rgba(6,182,212,0.06);border:1px solid rgba(6,182,212,0.15);border-radius:6px;font-size:0.77rem;color:var(--teal);font-family:var(--font-mono)">
       /metrics — Prometheus endpoint (gini, humans, pools, block height)<br>
       /api/gini/history — Gini snapshots after each UBI distribution<br>
@@ -1395,7 +1395,7 @@
     <a href="https://x.com/AequitasMoney" target="_blank" rel="noopener noreferrer">X</a>
     <a href="https://t.me/aequitasmoney" target="_blank" rel="noopener noreferrer">Telegram</a>
   </div>
-  <p><span data-i18n="x-aequitas-chain">Aequitas Chain</span> · <span data-i18n="k-chainid">Chain ID</span> 1926 · <span>aequitas.digital</span> · <span data-i18n="foot-launched">Restarted at zero on 30 Sep 2026</span> · <span data-i18n="foot-phase">Beta</span><!--LEGAL_LINKS--></p>
+  <p><span data-i18n="x-aequitas-chain">Aequitas Chain</span> · <span data-i18n="k-chainid">Chain ID</span> <span class="aeq-cid">—</span> · <span>aequitas.digital</span> · <span data-i18n="foot-launched">Restarted at zero on 30 Sep 2026</span> · <span data-i18n="foot-phase">Beta</span><!--LEGAL_LINKS--></p>
   <p class="footer-quote">"<em data-i18n="foot-quote">Money exists because people exist. Nothing more, nothing less.</em>"</p>
 </footer>
 

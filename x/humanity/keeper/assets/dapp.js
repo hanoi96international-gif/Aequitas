@@ -12,7 +12,29 @@
 // already does (plain '/api/...' throughout explorer.js) — match it, so the
 // dApp always reports the state of the node the user actually connected to.
 const API          = '/api';
-const CHAIN_ID     = '0x786';  // 1926
+// Chain-ID: NICHT fest. Die Kette wechselt zu einem Stichtag von 1926 auf
+// 19260930 (docs/CHAIN_ID_WECHSEL.md). Die Seite nimmt die ID, die dieser
+// Knoten live meldet (/api/status chain_evm_id und /rpc eth_chainId, beide
+// gleich) -- und nur 1926 oder 19260930. Alles andere: nichts senden.
+const AEQ_CHAIN_IDS = [1926, 19260930];
+const AEQ_WECHSEL_PAUSE_S = 600; // wie chainIDWechselPause am Knoten
+const AEQ_UHR_TOLERANZ_S = 300;  // Spielraum der Geraeteuhr gegen den Stichtag
+const AEQ_FRIST_MS = 15000;      // Zeitgrenze je Abfrage, samt Lesen der Antwort
+
+// fetch + JSON mit Zeitgrenze (AbortController), die auch das Lesen gilt.
+async function aeqHoleJson(url, init) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), AEQ_FRIST_MS);
+  try {
+    const r = await fetch(url, Object.assign({}, init || {}, { signal: ctrl.signal }));
+    if (!r.ok) return null;
+    const text = await r.text();
+    if (text.length > 65536) return null;
+    return JSON.parse(text);
+  } finally {
+    clearTimeout(t);
+  }
+}
 const V7           = '0x20D271028f32577FCd07b4583A8e0E4eBBdB4F78';
 
 // ── STATE ────────────────────────────────────────────────────────────────────
@@ -46,20 +68,69 @@ async function connectWallet() {
   try {
     const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
     wallet = accounts[0];
-    await ensureChain();
+    // Netz anbieten; scheitert es, bleibt die Wallet verbunden -- jede
+    // Ueberweisung prueft die Kette ohnehin erneut (doSend).
+    try { await ensureChain(false); } catch (e) { console.error(e); }
     onWalletConnected();
   } catch(e) { console.error(e); }
 }
 
-async function ensureChain() {
-  const chainHex = await window.ethereum.request({ method: 'eth_chainId' });
-  if (chainHex !== CHAIN_ID) await addToMetaMask();
+// Die Chain-ID, die der Knoten jetzt meldet -- geprueft, sonst Fehler.
+// ueberweisung: in der Pause vor dem Stichtag nimmt der Knoten keine
+// Ueberweisung an; dann gar nicht erst unterschreiben lassen.
+async function aeqChainId(ueberweisung) {
+  const rpcAnfrage = { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_chainId', params: [] }) };
+  let st, rpc;
+  try {
+    [st, rpc] = await Promise.all([
+      aeqHoleJson(API + '/status'),
+      aeqHoleJson('/rpc', rpcAnfrage),
+    ]);
+  } catch (e) { st = null; rpc = null; }
+  const id = st && st.chain_evm_id;
+  const ab = st && (st.chain_id_wechsel_ab ?? 0);
+  if (!AEQ_CHAIN_IDS.includes(id) || !Number.isSafeInteger(ab) || ab < 0 || (id === 19260930 && ab === 0) ||
+      !rpc || typeof rpc.result !== 'string' || rpc.result.toLowerCase() !== aeqChainHex(id)) {
+    throw new Error('Aequitas network not confirmed (chain ID from the node missing or unknown) — nothing was signed. Please try again.');
+  }
+  // Gegen die Geraeteuhr: 1926 nicht mehr ab Stichtag + 300 s, 19260930
+  // nicht vor Stichtag - 300 s (veraltete oder gefaelschte Meldung).
+  const jetzt = Date.now() / 1000;
+  if ((id === 1926 && ab > 0 && jetzt >= ab + AEQ_UHR_TOLERANZ_S) || (id === 19260930 && jetzt < ab - AEQ_UHR_TOLERANZ_S)) {
+    throw new Error('Aequitas network not confirmed (chain ID does not match the switch date) — nothing was signed. Please check the device clock and try again.');
+  }
+  if (ueberweisung && id === 1926 && ab > 0 && Date.now() / 1000 >= ab - AEQ_WECHSEL_PAUSE_S) {
+    throw new Error('The Aequitas network is switching its chain ID. Transfers are paused for a few minutes — please try again afterwards.');
+  }
+  return id;
 }
 
-async function addToMetaMask() {
+function aeqChainHex(id) { return '0x' + id.toString(16); }
+
+// Bringt MetaMask auf die Kette, die der Knoten jetzt meldet, und prueft
+// danach nach. Gibt die Chain-ID zurueck; wirft, wenn die Wallet woanders
+// steht (fail-closed).
+async function ensureChain(ueberweisung) {
+  const id = await aeqChainId(ueberweisung);
+  const ziel = aeqChainHex(id);
+  const ist = await window.ethereum.request({ method: 'eth_chainId' });
+  if (String(ist).toLowerCase() !== ziel) {
+    await addToMetaMask(id);
+    const danach = await window.ethereum.request({ method: 'eth_chainId' });
+    if (String(danach).toLowerCase() !== ziel) throw new Error('Please switch MetaMask to Aequitas Chain (chain ID ' + id + ').');
+  }
+  return id;
+}
+
+async function addToMetaMask(bekannt) {
+  let id = bekannt;
+  try {
+    if (!AEQ_CHAIN_IDS.includes(id)) id = await aeqChainId(false);
+  } catch (e) { alert(e.message); return; }
   try {
     await window.ethereum.request({ method: 'wallet_addEthereumChain', params: [{
-      chainId: CHAIN_ID,
+      chainId: aeqChainHex(id),
       chainName: 'Aequitas Chain',
       nativeCurrency: { name: 'Aequitas', symbol: 'AEQ', decimals: 18 },
       // FIX (audit 2026-08-16): same class as this file's own API_BASE fix
@@ -69,6 +140,10 @@ async function addToMetaMask() {
       rpcUrls: [window.location.origin + '/rpc'],
       blockExplorerUrls: [window.location.origin],
     }]});
+  } catch(e) { console.error(e); }
+  // Kennt MetaMask das Netz schon, schaltet addEthereumChain nicht um.
+  try {
+    await window.ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: aeqChainHex(id) }] });
   } catch(e) { console.error(e); }
 }
 
@@ -141,6 +216,9 @@ async function loadStatus() {
   try {
     const d = await api('/status');
     document.getElementById('h-height').textContent  = d.height ? '#' + d.height.toLocaleString() : '—';
+    // Die Chain-ID, die der Knoten meldet -- nur eine der beiden des Netzes.
+    const cidEl = document.getElementById('h-chainid');
+    if (cidEl) cidEl.textContent = AEQ_CHAIN_IDS.includes(d.chain_evm_id) ? String(d.chain_evm_id) : '—';
     // FIX (launch audit 2026-08-15): total_humans is a COUNT of people, not an
     // AEQ amount, but it was routed through fmtAEQ — the currency formatter.
     // That rendered the "Verified Humans" tile as "15.0000" today, and would
@@ -400,8 +478,11 @@ async function doSend() {
   if (amtWei === null || amtWei <= 0n) { setStatus('send-status', 'Enter an amount', 'err'); return; }
   setStatus('send-status', 'Confirm in MetaMask…', 'info');
   try {
+    // Chain-ID live vom Knoten, Wallet darauf geschaltet, und ausdruecklich
+    // im Auftrag: steht MetaMask doch woanders, lehnt sie ab statt dort zu senden.
+    const cid = await ensureChain(true);
     const value = '0x' + amtWei.toString(16);
-    const txHash = await window.ethereum.request({ method: 'eth_sendTransaction', params: [{ from: wallet, to, value }] });
+    const txHash = await window.ethereum.request({ method: 'eth_sendTransaction', params: [{ from: wallet, to, value, chainId: aeqChainHex(cid) }] });
     setStatus('send-status', '✓ Sent! Tx: ' + txHash.slice(0, 12) + '…', 'ok');
     document.getElementById('send-to').value = '';
     document.getElementById('send-amount').value = '';
@@ -467,7 +548,7 @@ function wireEvents() {
   document.getElementById('swap-btn').addEventListener('click', doSwap);
 
   document.getElementById('send-btn').addEventListener('click', doSend);
-  document.getElementById('add-network-btn').addEventListener('click', addToMetaMask);
+  document.getElementById('add-network-btn').addEventListener('click', () => addToMetaMask());
   document.getElementById('faucet-btn').addEventListener('click', doFaucet);
 
   document.querySelectorAll('.nav-btn[data-tab]').forEach(btn => {
