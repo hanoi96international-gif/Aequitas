@@ -1,5 +1,47 @@
 const PS = '/api'; // proof calls proxied via /api/prove on this node (avoids browser CORS)
-const CID = '0x786';
+// CHAIN-ID-BEGIN -- die EVM-Chain-ID ist NICHT fest. Die Kette wechselt zu
+// einem Stichtag von 1926 auf 19260930 (docs/CHAIN_ID_WECHSEL.md). Signiert
+// und ins Wallet eingetragen wird nur die ID, die dieser Knoten live meldet
+// (/api/status chain_evm_id UND /rpc eth_chainId, beide gleich) -- und nur
+// 1926 oder 19260930. Unerreichbar, unbekannt, uneinig: nichts signieren.
+// Eingefroren bleibt die 1926 in der Netzkennung aequitas-1926-<genesis>
+// (V8-Block unten). Getestet in test/Explorer_registerV8.ts.
+const AEQ_CHAIN_IDS = [1926, 19260930];
+
+// Prueft chain_evm_id/chain_id_wechsel_ab aus /api/status und das Ergebnis
+// von eth_chainId; gibt die ID oder null.
+function aeqChainIdPruefen(status, rpcErgebnis) {
+  if (!status || typeof status !== 'object') return null;
+  const id = status.chain_evm_id;
+  const ab = status.chain_id_wechsel_ab === undefined || status.chain_id_wechsel_ab === null ? 0 : status.chain_id_wechsel_ab;
+  if (!AEQ_CHAIN_IDS.includes(id)) return null;
+  if (!Number.isSafeInteger(ab) || ab < 0) return null;
+  if (id === 19260930 && ab === 0) return null; // neue ID ohne Stichtag: widerspruechlich
+  if (typeof rpcErgebnis !== 'string' || rpcErgebnis.toLowerCase() !== aeqChainHex(id)) return null;
+  return id;
+}
+
+function aeqChainHex(id) {
+  if (!AEQ_CHAIN_IDS.includes(id)) throw new Error('chain id not in the Aequitas network');
+  return '0x' + id.toString(16);
+}
+
+const AEQ_NICHT_BESTAETIGT = 'Aequitas network not confirmed (chain ID from the node missing or unknown) — nothing was signed. Please try again.';
+
+async function aeqChainId() {
+  let st = null, rpc = null;
+  try {
+    [st, rpc] = await Promise.all([
+      fetch('/api/status').then(r => r.ok ? r.json() : null),
+      fetch('/rpc', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_chainId', params: [] }) }).then(r => r.ok ? r.json() : null),
+    ]);
+  } catch (e) { /* unten: fail-closed */ }
+  const id = aeqChainIdPruefen(st, rpc && rpc.result);
+  if (id === null) throw new Error(AEQ_NICHT_BESTAETIGT);
+  return id;
+}
+// CHAIN-ID-END
 const V7_CONTRACT = '0x20D271028f32577FCd07b4583A8e0E4eBBdB4F78';
 const WC_PROJECT_ID = '32365adb6cf733a385948841ad399cf9';
 let waddr = '', proofData = null, curLang = 'en';
@@ -292,7 +334,7 @@ en:{
   'k-lang':'Language','k-src':'Source','evm-yes':'Yes — JSON-RPC /rpc · MetaMask compatible',
   'proto-label':'Aequitas V8 Protocol — Technical Documentation',
   'ca-title':'Contract Addresses',
-  'ca-text':'Chain: Aequitas Chain (Chain ID: 1926 · 0x786)<br>RPC: __RPC__<br><br>BioVerifier: 0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2<br>AequitasV8 (Main): 0x20D271028f32577FCd07b4583A8e0E4eBBdB4F78',
+  'ca-text':'Chain: Aequitas Chain (Chain ID: <span class="aeq-cid-voll">—</span>)<br>RPC: __RPC__<br><br>BioVerifier: 0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2<br>AequitasV8 (Main): 0x20D271028f32577FCd07b4583A8e0E4eBBdB4F78',
   'ca-desc':'AequitasV8 holds the register of humans: every nullifier and every commitment exactly once, and who is a registered human. It also shows balances to wallets (ERC-20 view). Everything else — balances, basic income, wealth cap, levies, fees — is booked by the chain itself (Go L1): a transfer to the contract is intercepted before the EVM and booked there, in under a second, no EVM gas, 0.1% fee.<br><br>A registration needs three things: a Groth16 zero-knowledge proof created on the phone, the signed attestations of the face check, and the person\'s own signature (EIP-712) over exactly this proof, this network and a deadline. The BioVerifier contract checks the proof on-chain in about 10 ms, and the chain refuses any nullifier it has already seen — without ever learning a name, an identity or biometric data.<br><br>What is new here: the register has no owner, no admin function and no upgrade path, and the code that carries it out is open source and reproducible from this repository. What still requires trust is the operation of the nodes themselves, and the honest way to reduce that is more independent validators and verifiers, not a stronger sentence here.',
   'poa-title':'1. PROOF OF ALIVE','poa-text':'<p>What happens to AEQ when people die or disappear? In Bitcoin, millions of BTC are permanently lost. In Aequitas, if someone is inactive for an extended period, their AEQ eventually returns to the community through the UBI pool.</p>',
   'poa-box':'Year 0-2: Normal usage<br>Year 2: Warning 1 — Guardian can respond<br>Year 2 + 60 days: Warning 2<br>Year 2 + 120 days: Warning 3<br>Year 2 + 180 days (2.5 years total, day 910): AEQ goes to PERSONAL ESCROW<br>Year 4 (day ~1460): If still inactive — returns to UBI Pool',
@@ -350,7 +392,7 @@ en:{
   'faq-q3':'What happens if I lose my phone?','faq-a3':'Your AEQ remains in your wallet — it is tied to your private key, not your phone. You can still access your wallet via MetaMask with your seed phrase. Your registration is tied to your face, not to the device, so a new phone does not cost you your registration.',
   'path-title':'Choose Your Path','path-human-title':'I am a Human','path-human-desc':'I want to register, receive 1,000 AEQ, and join the basic income network.','path-human-steps':'1. Download the Aequitas Android App<br>2. Take the short live face check in the app<br>3. Connect MetaMask<br>4. Receive 1,000 AEQ once the check passes',
   'path-node-title':'I am a Node Operator','path-node-desc':'I want to run a full node, participate in block production, and earn from the 40% validator pool.','path-node-steps':'1. Register as a human in the app (required)<br>2. Rent a small Linux server<br>3. Paste one command — it asks only for your wallet address<br>4. Scan the QR code with the app<br>5. Once admitted as a block producer: a daily share of the validator pool',
-  'path-dev-title':'I am a Developer','path-dev-desc':'I want to build on Aequitas, integrate the API, or contribute to the protocol.','path-dev-steps':'1. EVM-compatible JSON-RPC<br>2. Chain ID: 1926 · RPC: /rpc<br>3. OpenAPI: /api/* endpoints<br>4. Metrics: /metrics (Prometheus)',
+  'path-dev-title':'I am a Developer','path-dev-desc':'I want to build on Aequitas, integrate the API, or contribute to the protocol.','path-dev-steps':'1. EVM-compatible JSON-RPC<br>2. Chain ID: <span class="aeq-cid">—</span> · RPC: /rpc<br>3. OpenAPI: /api/* endpoints<br>4. Metrics: /metrics (Prometheus)',
   'story-flow-title':'AEQ Token Flow Diagram','story-topo-title':'Network Topology — Current State',
   'swap-price-title':'AEQ / tUSD — Live Price','swap-price-desc':'Real-time price derived from pool reserves (x·y=k). Updates every 8 seconds as new pool data arrives.','swap-price-empty':'No pool data yet — add liquidity to see the price chart.',
   'k-zkp':'ZKP System','k-hash':'Hash System','k-sybil-prot':'Sybil Protection',
@@ -636,7 +678,7 @@ de:{
   'tech-title':'Technische Spezifikationen','mm-config':'MetaMask-Konfiguration',
   'k-lang':'Sprache','k-src':'Quellcode','evm-yes':'Ja — JSON-RPC /rpc · MetaMask-kompatibel',
   'proto-label':'Aequitas V8 Protokoll — Technische Dokumentation',
-  'ca-title':'Contract- & Netzwerk-Adressen','ca-text':'Chain: Aequitas Chain (Chain ID: 1926 · 0x786)<br>RPC: __RPC__<br><br>BioVerifier (Groth16 On-Chain-Verifier): 0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2<br>AequitasV8 (Haupt-Contract): 0x20D271028f32577FCd07b4583A8e0E4eBBdB4F78',
+  'ca-title':'Contract- & Netzwerk-Adressen','ca-text':'Chain: Aequitas Chain (Chain ID: <span class="aeq-cid-voll">—</span>)<br>RPC: __RPC__<br><br>BioVerifier (Groth16 On-Chain-Verifier): 0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2<br>AequitasV8 (Haupt-Contract): 0x20D271028f32577FCd07b4583A8e0E4eBBdB4F78',
   'ca-desc':'AequitasV8 führt das Register der Menschen: jeden Nullifier und jedes Commitment genau einmal, und wer ein registrierter Mensch ist. Außerdem zeigt es Wallets die Kontostände (ERC-20-Ansicht). Alles andere — Kontostände, Grundeinkommen, Vermögensgrenze, Abgaben, Gebühren — bucht die Kette selbst (Go L1): Eine Überweisung an den Vertrag wird vor der EVM abgefangen und dort gebucht, in unter einer Sekunde, ohne EVM-Gas, mit 0,1 % Gebühr.<br><br>Eine Registrierung braucht dreierlei: einen Groth16-Zero-Knowledge-Beweis, der auf dem Handy entsteht, die unterschriebenen Bescheinigungen der Gesichtsprüfung und die eigene Unterschrift des Menschen (EIP-712) über genau diesen Beweis, dieses Netz und eine Frist. Der BioVerifier-Vertrag prüft den Beweis in etwa 10 ms auf der Kette, und die Kette weist jeden Nullifier ab, den sie schon kennt — ohne je einen Namen, eine Identität oder biometrische Daten zu erfahren.<br><br>Was hier neu ist: Das Register hat keinen Eigentümer, keine Admin-Funktion und keinen Upgrade-Pfad, und der Code, der es ausführt, ist offen und aus diesem Repository nachbaubar. Vertrauen braucht es weiterhin für den Betrieb der Knoten selbst — und der ehrliche Weg, das zu verringern, sind mehr unabhängige Validatoren und Verifier, nicht ein stärkerer Satz an dieser Stelle.',
   'h-what':'Was ist ein verifizierter Mensch?','h-what-t':'Ein verifizierter Mensch ist eine Wallet-Adresse, für die nachgewiesen ist, dass sie zu jemandem gehört, dessen Gesicht nicht bereits registriert ist. Unabhängige Vergleichsdienste müssen mehrheitlich zustimmen, und auf die Kette gelangt nur ein Groth16-ZK-Beweis — kein Bild und keine Vorlage. <strong style="color:var(--gold)">Bis zum 23.08.2026 wurde damit ein Gerät verifiziert, nicht ein Mensch; das ist nicht mehr so.</strong>',
   'h-zkp':'Zero-Knowledge-Proof-System','h-zkp-t':'Aequitas nutzt Groth16 auf BN128 — dieselbe Kurve wie Ethereum und Zcash. Beweis: ~200 Byte. Prüfung: ~10 ms. commitment = Poseidon(bioHash, wallet, deviceSalt), nullifier = Poseidon(bioHash). Der Nullifier stammt vom Gesicht, nicht vom Telefon: ein zweites Gerät hilft demselben Menschen nicht zu einer zweiten Anmeldung, und ein verlorenes Telefon kostet die Registrierung nicht. Poseidon statt Multiplikation, weil der Nullifier der früheren Schaltung umkehrbar war — jeder hätte daraus den bioHash zurückrechnen können.',
@@ -709,7 +751,7 @@ de:{
   'faq-q3':'Was passiert, wenn ich mein Handy verliere?','faq-a3':'Ihre AEQ bleiben in Ihrem Wallet — sie hängen an Ihrem privaten Schlüssel, nicht an Ihrem Handy. Sie erreichen Ihr Wallet weiterhin über MetaMask mit Ihrer Seed-Phrase. Ihre Registrierung hängt an Ihrem Gesicht, nicht am Gerät; ein neues Handy kostet Sie also nicht Ihre Registrierung.',
   'path-title':'Wählen Sie Ihren Weg','path-human-title':'Ich bin ein Mensch','path-human-desc':'Ich möchte mich registrieren, 1.000 AEQ erhalten und dem Grundeinkommensnetzwerk beitreten.','path-human-steps':'1. Aequitas Android App herunterladen<br>2. In der App die kurze Live-Gesichtsprüfung machen<br>3. MetaMask verbinden<br>4. 1.000 AEQ erhalten, sobald die Prüfung bestanden ist',
   'path-node-title':'Ich bin ein Node-Betreiber','path-node-desc':'Ich möchte einen vollständigen Node betreiben, an der Blockproduktion teilnehmen und aus dem 40%-Validator-Pool verdienen.','path-node-steps':'1. In der App als Mensch registrieren (erforderlich)<br>2. Einen kleinen Linux-Server mieten<br>3. Einen Befehl einfügen — er fragt nur nach Ihrer Wallet-Adresse<br>4. Den QR-Code mit der App scannen<br>5. Nach der Aufnahme als Blockproduzent: täglich ein Anteil am Validator-Pool',
-  'path-dev-title':'Ich bin ein Entwickler','path-dev-desc':'Ich möchte auf Aequitas aufbauen, die API integrieren oder zum Protokoll beitragen.','path-dev-steps':'1. EVM-kompatibler JSON-RPC<br>2. Chain ID: 1926 · RPC: /rpc<br>3. OpenAPI: /api/* Endpunkte<br>4. Metriken: /metrics (Prometheus)',
+  'path-dev-title':'Ich bin ein Entwickler','path-dev-desc':'Ich möchte auf Aequitas aufbauen, die API integrieren oder zum Protokoll beitragen.','path-dev-steps':'1. EVM-kompatibler JSON-RPC<br>2. Chain ID: <span class="aeq-cid">—</span> · RPC: /rpc<br>3. OpenAPI: /api/* Endpunkte<br>4. Metriken: /metrics (Prometheus)',
   'story-flow-title':'AEQ Token-Flussdiagramm','story-topo-title':'Netzwerktopologie — Aktueller Zustand',
   'swap-price-title':'AEQ / tUSD — Live-Preis','swap-price-desc':'Echtzeit-Preis aus Pool-Reserven (x·y=k). Aktualisiert alle 8 Sekunden mit neuen Pool-Daten.','swap-price-empty':'Noch keine Pool-Daten — Liquidität hinzufügen, um das Preisdiagramm zu sehen.',
   'k-zkp':'ZKP-System','k-hash':'Hash-System','k-sybil-prot':'Sybil-Schutz',
@@ -1030,7 +1072,7 @@ es:{
   'tech-title':'Especificaciones Técnicas','mm-config':'Configuración MetaMask',
   'k-lang':'Idioma','k-src':'Código Fuente','evm-yes':'Sí — JSON-RPC /rpc · Compatible con MetaMask',
   'proto-label':'Protocolo Aequitas V8 — Documentación Técnica',
-  'ca-title':'Contratos y Direcciones de Red','ca-text':'Cadena: Aequitas Chain (ID: 1926 · 0x786)<br>RPC: __RPC__<br><br>BioVerifier (verificador Groth16 on-chain): 0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2<br>AequitasV8 (contrato principal): 0x20D271028f32577FCd07b4583A8e0E4eBBdB4F78',
+  'ca-title':'Contratos y Direcciones de Red','ca-text':'Cadena: Aequitas Chain (ID: <span class="aeq-cid-voll">—</span>)<br>RPC: __RPC__<br><br>BioVerifier (verificador Groth16 on-chain): 0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2<br>AequitasV8 (contrato principal): 0x20D271028f32577FCd07b4583A8e0E4eBBdB4F78',
   'ca-desc':'AequitasV8 lleva el registro de las personas: cada nullifier y cada commitment exactamente una vez, y quién es una persona registrada. Además muestra los saldos a las carteras (vista ERC-20). Todo lo demás — saldos, renta básica, límite de riqueza, gravámenes, comisiones — lo contabiliza la propia cadena (Go L1): una transferencia al contrato se intercepta antes de la EVM y se contabiliza allí, en menos de un segundo, sin gas EVM, con una comisión del 0,1 %.<br><br>Un registro necesita tres cosas: una prueba de conocimiento cero Groth16 creada en el móvil, las atestaciones firmadas de la comprobación facial y la firma propia de la persona (EIP-712) sobre exactamente esta prueba, esta red y un plazo. El contrato BioVerifier comprueba la prueba en la cadena en unos 10 ms, y la cadena rechaza cualquier nullifier que ya conozca — sin conocer nunca un nombre, una identidad ni datos biométricos.<br><br>Lo nuevo aquí: el registro no tiene propietario, ni función de administración, ni vía de actualización, y el código que lo ejecuta es abierto y reproducible desde este repositorio. Lo que aún requiere confianza es el funcionamiento de los propios nodos, y la forma honesta de reducirla son más validadores y verificadores independientes, no una frase más fuerte aquí.',
   'h-what':'¿Qué es un Humano Verificado?','h-what-t':'Un Humano Verificado es una dirección wallet para la que se ha demostrado que pertenece a alguien cuyo rostro no está ya registrado. Servicios de comparación independientes deben coincidir por quórum, y a la cadena solo llega una prueba ZK Groth16 — ninguna imagen y ninguna plantilla. <strong style="color:var(--gold)">Hasta el 23-08-2026 esto verificaba un dispositivo y no una persona; ya no es así.</strong>',
   'h-zkp':'Sistema de Prueba ZK','h-zkp-t':'Aequitas usa Groth16 en BN128 — la misma curva que Ethereum y Zcash. Prueba: ~200 bytes. Verificación: ~10 ms. commitment = Poseidon(bioHash, wallet, deviceSalt), nullifier = Poseidon(bioHash). El nulificador procede del rostro, no del teléfono: un segundo dispositivo no permite a la misma persona registrarse otra vez, y perder el teléfono no cuesta el registro. Se usa Poseidon en lugar de una multiplicación porque el nulificador del circuito anterior era invertible: cualquiera podía recuperar el bioHash a partir de él.',
@@ -1057,7 +1099,7 @@ es:{
   'faq-q3':'¿Qué pasa si pierdo mi teléfono?','faq-a3':'Sus AEQ permanecen en su cartera — están ligados a su clave privada, no a su teléfono. Puede seguir accediendo a su cartera con MetaMask y su frase semilla. Su registro está ligado a su rostro, no al dispositivo, así que un teléfono nuevo no le hace perder el registro.',
   'path-title':'Elija su camino','path-human-title':'Soy un Humano','path-human-desc':'Quiero registrarme, recibir 1.000 AEQ y unirme a la red de ingreso básico.','path-human-steps':'1. Descargue la app Aequitas para Android<br>2. Haga la breve verificación facial en vivo en la app<br>3. Conecte MetaMask<br>4. Reciba 1.000 AEQ en cuanto se supere la verificación',
   'path-node-title':'Soy un Operador de Nodo','path-node-desc':'Quiero ejecutar un nodo completo, participar en la producción de bloques y ganar del pool de validadores del 40%.','path-node-steps':'1. Regístrese como persona en la app (obligatorio)<br>2. Alquile un pequeño servidor Linux<br>3. Pegue un comando: solo pide su dirección de wallet<br>4. Escanee el código QR con la app<br>5. Una vez admitido como productor de bloques: una parte diaria del fondo de validadores',
-  'path-dev-title':'Soy un Desarrollador','path-dev-desc':'Quiero construir sobre Aequitas, integrar la API o contribuir al protocolo.','path-dev-steps':'1. JSON-RPC compatible con EVM<br>2. Chain ID: 1926 · RPC: /rpc<br>3. OpenAPI: /api/* endpoints<br>4. Métricas: /metrics (Prometheus)',
+  'path-dev-title':'Soy un Desarrollador','path-dev-desc':'Quiero construir sobre Aequitas, integrar la API o contribuir al protocolo.','path-dev-steps':'1. JSON-RPC compatible con EVM<br>2. Chain ID: <span class="aeq-cid">—</span> · RPC: /rpc<br>3. OpenAPI: /api/* endpoints<br>4. Métricas: /metrics (Prometheus)',
   'story-flow-title':'Diagrama de Flujo del Token AEQ','story-topo-title':'Topología de Red — Estado Actual',
   'swap-price-title':'AEQ / tUSD — Precio en Vivo','swap-price-desc':'Precio en tiempo real derivado de las reservas del pool (x·y=k). Se actualiza cada 8 segundos con nuevos datos del pool.','swap-price-empty':'Sin datos del pool aún — añade liquidez para ver el gráfico de precios.',
   'k-zkp':'Sistema ZKP','k-hash':'Sistema Hash','k-sybil-prot':'Protección Sybil',
@@ -1335,7 +1377,7 @@ ru:{
   'tech-title':'Технические Характеристики','mm-config':'Конфигурация MetaMask',
   'k-lang':'Язык','k-src':'Исходный Код','evm-yes':'Да — JSON-RPC /rpc · Совместимо с MetaMask',
   'proto-label':'Протокол Aequitas V8 — Техническая Документация',
-  'ca-title':'Адреса Контрактов','ca-text':'Цепь: Aequitas Chain (ID: 1926 · 0x786)<br>RPC: __RPC__<br><br>BioVerifier: 0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2<br>AequitasV8: 0x20D271028f32577FCd07b4583A8e0E4eBBdB4F78',
+  'ca-title':'Адреса Контрактов','ca-text':'Цепь: Aequitas Chain (ID: <span class="aeq-cid-voll">—</span>)<br>RPC: __RPC__<br><br>BioVerifier: 0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2<br>AequitasV8: 0x20D271028f32577FCd07b4583A8e0E4eBBdB4F78',
   'ca-desc':'AequitasV8 ведёт реестр людей: каждый nullifier и каждый commitment ровно один раз и кто является зарегистрированным человеком. Кроме того, он показывает кошелькам балансы (ERC-20-представление). Всё остальное — балансы, базовый доход, предел богатства, сборы, комиссии — учитывает сама цепочка (Go L1): перевод на контракт перехватывается до EVM и учитывается там, меньше чем за секунду, без газа EVM, с комиссией 0,1 %.<br><br>Для регистрации нужно три вещи: доказательство с нулевым разглашением Groth16, созданное на телефоне, подписанные подтверждения проверки лица и собственная подпись человека (EIP-712) именно под этим доказательством, этой сетью и сроком. Контракт BioVerifier проверяет доказательство в цепочке примерно за 10 мс, а цепочка отклоняет любой уже известный ей nullifier — никогда не узнавая ни имени, ни личности, ни биометрических данных.<br><br>Новое здесь: у реестра нет владельца, нет функций администратора и нет пути обновления, а код, который его исполняет, открыт и воспроизводим из этого репозитория. Доверие по-прежнему требуется к работе самих узлов, и честный способ его уменьшить — больше независимых валидаторов и верификаторов, а не более громкая фраза здесь.',
   'poa-title':'1. ДОКАЗАТЕЛЬСТВО ЖИЗНИ — Восстановление Неактивных Балансов','poa-text':'<p>Что происходит с AEQ когда люди умирают или становятся недееспособными? В Bitcoin потерянные кошельки означают навсегда потерянный объём. Aequitas решает это через многоуровневую систему: если кошелёк не проявляет активности в течение длительного периода, его баланс постепенно возвращается сообществу через пул UBI.</p>',
   'poa-box':'Год 0–2: Обычное использование — без ограничений<br>Год 2: Предупреждение 1 — Guardian может ответить от имени<br>Год 2+60д: Предупреждение 2 — нарастающая срочность<br>Год 2+120д: Предупреждение 3 — последнее уведомление<br>Год 2+180д: AEQ перемещён в личный ЭСКРОУ (ещё восстановимо)<br>Год 4: При сохранении бездействия — ЭСКРОУ в Пул UBI',
@@ -1402,7 +1444,7 @@ ru:{
   'faq-q3':'Что произойдёт, если я потеряю телефон?','faq-a3':'Ваши AEQ остаются в вашем кошельке — они привязаны к вашему приватному ключу, а не к телефону. Вы по-прежнему можете открыть кошелёк в MetaMask с помощью seed-фразы. Ваша регистрация привязана к вашему лицу, а не к устройству, поэтому новый телефон не лишает вас регистрации.',
   'path-title':'Выберите Свой Путь','path-human-title':'Я Человек','path-human-desc':'Хочу зарегистрироваться, получить 1 000 AEQ и присоединиться к сети базового дохода.','path-human-steps':'1. Скачайте Android-приложение Aequitas<br>2. Пройдите в приложении короткую живую проверку лица<br>3. Подключите MetaMask<br>4. Получите 1 000 AEQ после успешной проверки',
   'path-node-title':'Я Оператор Ноды','path-node-desc':'Хочу запустить полную ноду, участвовать в производстве блоков и зарабатывать из 40%-ного пула валидаторов.','path-node-steps':'1. Зарегистрируйтесь как человек в приложении (обязательно)<br>2. Арендуйте небольшой Linux-сервер<br>3. Вставьте одну команду — она спросит только адрес кошелька<br>4. Отсканируйте QR-код в приложении<br>5. После приёма в производители блоков: ежедневная доля пула валидаторов',
-  'path-dev-title':'Я Разработчик','path-dev-desc':'Хочу создавать на базе Aequitas, интегрировать API или вносить вклад в протокол.','path-dev-steps':'1. EVM-совместимый JSON-RPC<br>2. Chain ID: 1926 · RPC: /rpc<br>3. OpenAPI: /api/* эндпоинты<br>4. Метрики: /metrics (Prometheus)',
+  'path-dev-title':'Я Разработчик','path-dev-desc':'Хочу создавать на базе Aequitas, интегрировать API или вносить вклад в протокол.','path-dev-steps':'1. EVM-совместимый JSON-RPC<br>2. Chain ID: <span class="aeq-cid">—</span> · RPC: /rpc<br>3. OpenAPI: /api/* эндпоинты<br>4. Метрики: /metrics (Prometheus)',
   'story-flow-title':'Схема движения токена AEQ','story-topo-title':'Топология Сети — Текущее Состояние',
   'swap-price-title':'AEQ / tUSD — Живая Цена','swap-price-desc':'Цена в реальном времени из резервов пула (x·y=k). Обновляется каждые 8 секунд с новыми данными пула.','swap-price-empty':'Данных пула ещё нет — добавьте ликвидность для просмотра графика цены.',
   'k-zkp':'ZKP-Система','k-hash':'Хеш-Система','k-sybil-prot':'Защита от Sybil',
@@ -1681,7 +1723,7 @@ zh:{
   'tech-title':'技术规格','mm-config':'MetaMask配置',
   'k-lang':'语言','k-src':'源代码','evm-yes':'是 — JSON-RPC /rpc · MetaMask兼容',
   'proto-label':'Aequitas V8协议——技术文档',
-  'ca-title':'合约地址','ca-text':'链：Aequitas Chain（链ID：1926 · 0x786）<br>RPC：__RPC__<br><br>BioVerifier：0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2<br>AequitasV8：0x20D271028f32577FCd07b4583A8e0E4eBBdB4F78',
+  'ca-title':'合约地址','ca-text':'链：Aequitas Chain（链ID：<span class="aeq-cid-voll">—</span>）<br>RPC：__RPC__<br><br>BioVerifier：0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2<br>AequitasV8：0x20D271028f32577FCd07b4583A8e0E4eBBdB4F78',
   'ca-desc':'AequitasV8 维护人的登记册：每个 nullifier 和每个 commitment 只出现一次，以及谁是已注册的人。它还向钱包显示余额（ERC-20 视图）。其余一切——余额、基本收入、财富上限、征费、手续费——都由链本身记账（Go L1）：发往合约的转账在进入 EVM 之前被拦截并在链上记账，不到一秒，无 EVM gas，手续费 0.1%。<br><br>一次注册需要三样东西：在手机上生成的 Groth16 零知识证明、人脸检查的签名证明，以及本人对正是这份证明、这个网络和一个期限的签名（EIP-712）。BioVerifier 合约在链上约 10 毫秒内验证该证明，链会拒绝任何它已见过的 nullifier——且从不获知姓名、身份或生物特征数据。<br><br>这里的新意在于：登记册没有所有者、没有管理员功能、没有升级途径，执行它的代码是开源的，可从本仓库复现。仍需信任的是节点本身的运行，而减少这种信任的诚实办法是更多独立的验证节点和核验节点，而不是在这里写一句更强硬的话。',
   'poa-title':'1. 生存证明 — 非活跃余额恢复','poa-text':'<p>当人们死亡或永久失去行为能力时AEQ会怎样？在比特币中，丢失的钱包意味着永久丢失的供应量。Aequitas通过多阶段非活跃恢复系统解决这个问题：如果一个钱包长时间没有活动，其余额会逐渐通过UBI池返回社区。</p>',
   'poa-box':'第0–2年：正常使用 — 无限制<br>第2年：警告1 — 监护人可以代表回应<br>第2年+60天：警告2 — 紧迫性增加<br>第2年+120天：警告3 — 最终通知<br>第2年+180天：AEQ移至个人托管（仍可恢复）<br>第4年：如果仍不活跃 — 托管释放至UBI池',
@@ -1748,7 +1790,7 @@ zh:{
   'faq-q3':'如果我丢失手机会怎样？','faq-a3':'您的 AEQ 仍在您的钱包中——它与您的私钥绑定，而不是与手机绑定。您仍可通过 MetaMask 和助记词访问钱包。您的注册与您的面部绑定，而不是与设备绑定，因此换新手机不会让您失去注册。',
   'path-title':'选择您的路径','path-human-title':'我是人类','path-human-desc':'我想注册、获得1,000 AEQ并加入基本收入网络。','path-human-steps':'1. 下载 Aequitas 安卓应用<br>2. 在应用中完成简短的实时人脸检查<br>3. 连接 MetaMask<br>4. 检查通过后获得 1,000 AEQ',
   'path-node-title':'我是节点运营商','path-node-desc':'我想运行完整节点，参与区块生产，并从40%验证者池中获利。','path-node-steps':'1. 在应用中注册为人类（必需）<br>2. 租一台小型 Linux 服务器<br>3. 粘贴一条命令——它只询问你的钱包地址<br>4. 用应用扫描二维码<br>5. 被接纳为区块生产者后：每天获得验证者池的一份',
-  'path-dev-title':'我是开发者','path-dev-desc':'我想在Aequitas上构建，集成API，或为协议做贡献。','path-dev-steps':'1. EVM兼容JSON-RPC<br>2. 链ID: 1926 · RPC: /rpc<br>3. OpenAPI: /api/* 端点<br>4. 指标: /metrics (Prometheus)',
+  'path-dev-title':'我是开发者','path-dev-desc':'我想在Aequitas上构建，集成API，或为协议做贡献。','path-dev-steps':'1. EVM兼容JSON-RPC<br>2. 链ID: <span class="aeq-cid">—</span> · RPC: /rpc<br>3. OpenAPI: /api/* 端点<br>4. 指标: /metrics (Prometheus)',
   'story-flow-title':'AEQ代币流向图','story-topo-title':'网络拓扑——当前状态',
   'swap-price-title':'AEQ / tUSD — 实时价格','swap-price-desc':'从池储备（x·y=k）实时派生的价格。每8秒更新一次。','swap-price-empty':'暂无池数据——添加流动性以查看价格图表。',
   'k-zkp':'ZKP系统','k-hash':'哈希系统','k-sybil-prot':'女巫攻击防护',
@@ -2022,7 +2064,7 @@ id:{
   'tech-title':'Spesifikasi Teknis','mm-config':'Konfigurasi MetaMask',
   'k-lang':'Bahasa','k-src':'Kode Sumber','evm-yes':'Ya — JSON-RPC /rpc · Kompatibel MetaMask',
   'proto-label':'Protokol Aequitas V8 — Dokumentasi Teknis',
-  'ca-title':'Alamat Kontrak','ca-text':'Rantai: Aequitas Chain (ID: 1926 · 0x786)<br>RPC: __RPC__<br><br>BioVerifier: 0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2<br>AequitasV8: 0x20D271028f32577FCd07b4583A8e0E4eBBdB4F78',
+  'ca-title':'Alamat Kontrak','ca-text':'Rantai: Aequitas Chain (ID: <span class="aeq-cid-voll">—</span>)<br>RPC: __RPC__<br><br>BioVerifier: 0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2<br>AequitasV8: 0x20D271028f32577FCd07b4583A8e0E4eBBdB4F78',
   'ca-desc':'AequitasV8 menyimpan register manusia: setiap nullifier dan setiap commitment tepat satu kali, serta siapa manusia yang terdaftar. Selain itu, ia menampilkan saldo ke dompet (tampilan ERC-20). Semua yang lain — saldo, pendapatan dasar, batas kekayaan, pungutan, biaya — dibukukan oleh chain sendiri (Go L1): transfer ke kontrak dicegat sebelum EVM dan dibukukan di sana, dalam kurang dari sedetik, tanpa gas EVM, biaya 0,1%.<br><br>Sebuah pendaftaran butuh tiga hal: bukti zero-knowledge Groth16 yang dibuat di ponsel, pengesahan bertanda tangan dari pemeriksaan wajah, dan tanda tangan orang itu sendiri (EIP-712) atas tepat bukti ini, jaringan ini, dan tenggat waktu. Kontrak BioVerifier memeriksa bukti di chain dalam sekitar 10 ms, dan chain menolak nullifier apa pun yang sudah dikenalnya — tanpa pernah mengetahui nama, identitas, atau data biometrik.<br><br>Yang baru di sini: register ini tidak punya pemilik, fungsi admin, maupun jalur upgrade, dan kode yang menjalankannya terbuka serta dapat dibangun ulang dari repositori ini. Yang masih memerlukan kepercayaan adalah operasi node itu sendiri, dan cara jujur menguranginya adalah lebih banyak validator dan verifier independen, bukan kalimat yang lebih keras di sini.',
   'poa-title':'1. BUKTI KEHIDUPAN — Pemulihan Saldo Tidak Aktif','poa-text':'<p>Apa yang terjadi dengan AEQ ketika orang meninggal atau menjadi tidak mampu secara permanen? Di Bitcoin, dompet yang hilang berarti pasokan yang hilang selamanya. Aequitas menyelesaikan ini melalui sistem pemulihan ketidakaktifan multi-tahap: jika dompet tidak menunjukkan aktivitas untuk jangka waktu yang lama, saldonya secara bertahap dikembalikan ke komunitas melalui pool UBI.</p>',
   'poa-box':'Tahun 0–2: Penggunaan normal — tanpa batasan<br>Tahun 2: Peringatan 1 — Guardian dapat merespons atas nama<br>Tahun 2+60h: Peringatan 2 — urgensi meningkat<br>Tahun 2+120h: Peringatan 3 — pemberitahuan terakhir<br>Tahun 2+180h: AEQ dipindahkan ke ESCROW pribadi (masih dapat dipulihkan)<br>Tahun 4: Jika masih tidak aktif — ESCROW dirilis ke Pool UBI',
@@ -2089,7 +2131,7 @@ id:{
   'faq-q3':'Apa yang terjadi jika saya kehilangan ponsel?','faq-a3':'AEQ Anda tetap di dompet Anda — terikat pada kunci privat Anda, bukan pada ponsel. Anda tetap bisa mengakses dompet lewat MetaMask dengan frasa pemulihan. Pendaftaran Anda terikat pada wajah Anda, bukan pada perangkat, jadi ponsel baru tidak membuat Anda kehilangan pendaftaran.',
   'path-title':'Pilih Jalur Anda','path-human-title':'Saya adalah Manusia','path-human-desc':'Saya ingin mendaftar, menerima 1.000 AEQ, dan bergabung dengan jaringan penghasilan dasar.','path-human-steps':'1. Unduh aplikasi Android Aequitas<br>2. Lakukan pemeriksaan wajah langsung yang singkat di aplikasi<br>3. Hubungkan MetaMask<br>4. Terima 1.000 AEQ setelah pemeriksaan lolos',
   'path-node-title':'Saya adalah Operator Node','path-node-desc':'Saya ingin menjalankan node penuh, berpartisipasi dalam produksi blok, dan menghasilkan dari pool validator 40%.','path-node-steps':'1. Daftar sebagai manusia di aplikasi (wajib)<br>2. Sewa server Linux kecil<br>3. Tempel satu perintah — hanya menanyakan alamat wallet Anda<br>4. Pindai kode QR dengan aplikasi<br>5. Setelah diterima sebagai produsen blok: bagian harian dari pool validator',
-  'path-dev-title':'Saya adalah Pengembang','path-dev-desc':'Saya ingin membangun di Aequitas, mengintegrasikan API, atau berkontribusi pada protokol.','path-dev-steps':'1. JSON-RPC kompatibel EVM<br>2. Chain ID: 1926 · RPC: /rpc<br>3. OpenAPI: /api/* endpoints<br>4. Metrik: /metrics (Prometheus)',
+  'path-dev-title':'Saya adalah Pengembang','path-dev-desc':'Saya ingin membangun di Aequitas, mengintegrasikan API, atau berkontribusi pada protokol.','path-dev-steps':'1. JSON-RPC kompatibel EVM<br>2. Chain ID: <span class="aeq-cid">—</span> · RPC: /rpc<br>3. OpenAPI: /api/* endpoints<br>4. Metrik: /metrics (Prometheus)',
   'story-flow-title':'Diagram Aliran Token AEQ','story-topo-title':'Topologi Jaringan — Status Saat Ini',
   'swap-price-title':'AEQ / tUSD — Harga Live','swap-price-desc':'Harga real-time dari cadangan pool (x·y=k). Diperbarui setiap 8 detik dengan data pool terbaru.','swap-price-empty':'Belum ada data pool — tambahkan likuiditas untuk melihat grafik harga.',
   'k-zkp':'Sistem ZKP','k-hash':'Sistem Hash','k-sybil-prot':'Perlindungan Sybil',
@@ -2364,7 +2406,7 @@ it:{
   'tech-title':'Specifiche Tecniche','mm-config':'Configurazione MetaMask',
   'k-lang':'Lingua','k-src':'Codice Sorgente','evm-yes':'Sì — JSON-RPC /rpc · Compatibile MetaMask',
   'proto-label':'Protocollo Aequitas V8 — Documentazione Tecnica',
-  'ca-title':'Indirizzi Contratto','ca-text':'Chain: Aequitas Chain (ID: 1926 · 0x786)<br>RPC: __RPC__<br><br>BioVerifier: 0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2<br>AequitasV8 (Principale): 0x20D271028f32577FCd07b4583A8e0E4eBBdB4F78',
+  'ca-title':'Indirizzi Contratto','ca-text':'Chain: Aequitas Chain (ID: <span class="aeq-cid-voll">—</span>)<br>RPC: __RPC__<br><br>BioVerifier: 0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2<br>AequitasV8 (Principale): 0x20D271028f32577FCd07b4583A8e0E4eBBdB4F78',
   'ca-desc':'AequitasV8 tiene il registro delle persone: ogni nullifier e ogni commitment esattamente una volta, e chi è una persona registrata. Inoltre mostra i saldi ai wallet (vista ERC-20). Tutto il resto — saldi, reddito di base, tetto alla ricchezza, prelievi, commissioni — lo contabilizza la catena stessa (Go L1): un trasferimento al contratto viene intercettato prima della EVM e contabilizzato lì, in meno di un secondo, senza gas EVM, con commissione dello 0,1 %.<br><br>Una registrazione richiede tre cose: una prova a conoscenza zero Groth16 creata sul telefono, le attestazioni firmate del controllo del volto e la firma della persona stessa (EIP-712) su esattamente questa prova, questa rete e una scadenza. Il contratto BioVerifier verifica la prova sulla catena in circa 10 ms, e la catena rifiuta qualsiasi nullifier già visto — senza mai conoscere un nome, un’identità o dati biometrici.<br><br>La novità qui: il registro non ha proprietario, né funzione di amministrazione, né percorso di aggiornamento, e il codice che lo esegue è aperto e riproducibile da questo repository. Ciò che richiede ancora fiducia è il funzionamento dei nodi stessi, e il modo onesto per ridurla sono più validatori e verificatori indipendenti, non una frase più forte qui.',
   'poa-title':'1. PROVA DI VITA — Recupero Saldi Inattivi','poa-text':'<p>Cosa succede all\'AEQ quando le persone muoiono o diventano permanentemente incapaci? In Bitcoin, i portafogli persi significano fornitura persa permanentemente. Aequitas risolve questo con un sistema di recupero dell\'inattività a più fasi: se un portafoglio non mostra attività per un periodo prolungato, il suo saldo viene gradualmente restituito alla comunità attraverso il pool UBI.</p>',
   'poa-box':'Anno 0–2: Uso normale — nessuna restrizione<br>Anno 2: Avviso 1 — il Guardian può rispondere a nome<br>Anno 2+60g: Avviso 2 — urgenza crescente<br>Anno 2+120g: Avviso 3 — avviso finale<br>Anno 2+180g: AEQ spostato in ESCROW personale (ancora recuperabile)<br>Anno 4: Se ancora inattivo — ESCROW rilasciato al Pool UBI',
@@ -2431,7 +2473,7 @@ it:{
   'faq-q3':'Cosa succede se perdo il telefono?','faq-a3':'I Suoi AEQ restano nel Suo wallet — sono legati alla Sua chiave privata, non al telefono. Può continuare ad accedere al wallet con MetaMask e la Sua seed phrase. La Sua registrazione è legata al Suo volto, non al dispositivo: un telefono nuovo non Le fa perdere la registrazione.',
   'path-title':'Scelga il Suo percorso','path-human-title':'Sono un Umano','path-human-desc':'Voglio registrarmi, ricevere 1.000 AEQ e unirmi alla rete di reddito di base.','path-human-steps':'1. Scarichi l’app Android Aequitas<br>2. Faccia nell’app il breve controllo del volto dal vivo<br>3. Colleghi MetaMask<br>4. Riceva 1.000 AEQ appena il controllo è superato',
   'path-node-title':'Sono un Operatore di Node','path-node-desc':'Voglio eseguire un node completo, partecipare alla produzione di blocchi e guadagnare dal pool validatori del 40%.','path-node-steps':'1. Registrati come persona nell’app (obbligatorio)<br>2. Prendi in affitto un piccolo server Linux<br>3. Incolla un comando: chiede solo l’indirizzo del tuo wallet<br>4. Scansiona il codice QR con l’app<br>5. Una volta ammesso come produttore di blocchi: una quota giornaliera del pool dei validatori',
-  'path-dev-title':'Sono uno Sviluppatore','path-dev-desc':'Voglio costruire su Aequitas, integrare l\'API o contribuire al protocollo.','path-dev-steps':'1. JSON-RPC compatibile EVM<br>2. Chain ID: 1926 · RPC: /rpc<br>3. OpenAPI: /api/* endpoint<br>4. Metriche: /metrics (Prometheus)',
+  'path-dev-title':'Sono uno Sviluppatore','path-dev-desc':'Voglio costruire su Aequitas, integrare l\'API o contribuire al protocollo.','path-dev-steps':'1. JSON-RPC compatibile EVM<br>2. Chain ID: <span class="aeq-cid">—</span> · RPC: /rpc<br>3. OpenAPI: /api/* endpoint<br>4. Metriche: /metrics (Prometheus)',
   'story-flow-title':'Diagramma di Flusso Token AEQ','story-topo-title':'Topologia di Rete — Stato Attuale',
   'swap-price-title':'AEQ / tUSD — Prezzo Live','swap-price-desc':'Prezzo in tempo reale derivato dalle riserve del pool (x·y=k). Si aggiorna ogni 8 secondi con nuovi dati.','swap-price-empty':'Nessun dato del pool ancora — aggiungi liquidità per vedere il grafico dei prezzi.',
   'k-zkp':'Sistema ZKP','k-hash':'Sistema Hash','k-sybil-prot':'Protezione Sybil',
@@ -2719,7 +2761,7 @@ tr:{
   'tech-title':'Teknik Özellikler','mm-config':'MetaMask Yapılandırması',
   'k-lang':'Dil','k-src':'Kaynak Kodu','evm-yes':'Evet — JSON-RPC /rpc · MetaMask uyumlu',
   'proto-label':'Aequitas V8 Protokolü — Teknik Dokümantasyon',
-  'ca-title':'Sözleşme Adresleri','ca-text':'Zincir: Aequitas Chain (Zincir ID: 1926 · 0x786)<br>RPC: __RPC__<br><br>BioVerifier: 0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2<br>AequitasV8 (Ana): 0x20D271028f32577FCd07b4583A8e0E4eBBdB4F78',
+  'ca-title':'Sözleşme Adresleri','ca-text':'Zincir: Aequitas Chain (Zincir ID: <span class="aeq-cid-voll">—</span>)<br>RPC: __RPC__<br><br>BioVerifier: 0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2<br>AequitasV8 (Ana): 0x20D271028f32577FCd07b4583A8e0E4eBBdB4F78',
   'ca-desc':'AequitasV8 insanların kaydını tutar: her nullifier ve her commitment tam olarak bir kez, ve kimin kayıtlı insan olduğu. Ayrıca cüzdanlara bakiyeleri gösterir (ERC-20 görünümü). Geri kalan her şeyi — bakiyeler, temel gelir, servet sınırı, kesintiler, ücretler — zincirin kendisi kaydeder (Go L1): sözleşmeye yapılan bir transfer EVM’den önce yakalanır ve orada, bir saniyeden kısa sürede, EVM gazı olmadan, %0,1 ücretle kaydedilir.<br><br>Bir kayıt üç şey gerektirir: telefonda oluşturulan bir Groth16 sıfır bilgi kanıtı, yüz kontrolünün imzalı onayları ve kişinin tam olarak bu kanıt, bu ağ ve bir süre üzerindeki kendi imzası (EIP-712). BioVerifier sözleşmesi kanıtı zincirde yaklaşık 10 ms’de doğrular ve zincir daha önce gördüğü her nullifier’ı reddeder — asla bir isim, kimlik ya da biyometrik veri öğrenmeden.<br><br>Burada yeni olan: kaydın sahibi, yönetici işlevi ve güncelleme yolu yoktur; onu çalıştıran kod açıktır ve bu depodan yeniden üretilebilir. Güven gerektiren şey hâlâ düğümlerin işletilmesidir; bunu azaltmanın dürüst yolu daha fazla bağımsız doğrulayıcı ve verifier’dır, burada daha güçlü bir cümle değil.',
   'poa-title':'1. HAYAT KANITI — Hareketsiz Bakiye Kurtarma','poa-text':'<p>İnsanlar ölünce veya kalıcı olarak yetersiz hale gelince AEQ\'ya ne olur? Bitcoin\'de kaybedilen cüzdanlar, kalıcı olarak kaybedilen arz anlamına gelir. Aequitas bunu çok aşamalı bir hareketsizlik kurtarma sistemiyle çözer.</p>',
   'poa-box':'Yıl 0–2: Normal kullanım — kısıtlama yok<br>Yıl 2: Uyarı 1 — Vasi adına yanıt verebilir<br>Yıl 2+60g: Uyarı 2 — artan aciliyet<br>Yıl 2+120g: Uyarı 3 — son bildirim<br>Yıl 2+180g: AEQ kişisel EMANET\'e taşındı (hâlâ kurtarılabilir)<br>Yıl 4: Hâlâ hareketsizse — EMANET UBI Havuzuna serbest bırakıldı',
@@ -2779,7 +2821,7 @@ tr:{
   'faq-q3':'Telefonumu kaybedersem ne olur?','faq-a3':'AEQ\'leriniz cüzdanınızda kalır — telefonunuza değil, özel anahtarınıza bağlıdır. Cüzdanınıza MetaMask ve kurtarma ifadenizle erişmeye devam edebilirsiniz. Kaydınız cihaza değil yüzünüze bağlıdır; yeni bir telefon kaydınızı kaybettirmez.',
   'path-title':'Yolunuzu Seçin','path-human-title':'Ben bir İnsanım','path-human-desc':'Kayıt olmak, 1.000 AEQ almak ve temel gelir ağına katılmak istiyorum.','path-human-steps':'1. Aequitas Android uygulamasını indirin<br>2. Uygulamada kısa canlı yüz kontrolünü yapın<br>3. MetaMask\'i bağlayın<br>4. Kontrol geçince 1.000 AEQ alın',
   'path-node-title':'Ben bir Node Operatörüyüm','path-node-desc':'Tam bir node çalıştırmak, blok üretimine katılmak ve %40 doğrulayıcı havuzundan kazanmak istiyorum.','path-node-steps':'1. Uygulamada insan olarak kaydolun (zorunlu)<br>2. Küçük bir Linux sunucu kiralayın<br>3. Tek bir komut yapıştırın — yalnızca cüzdan adresinizi sorar<br>4. QR kodu uygulamayla tarayın<br>5. Blok üreticisi olarak kabul edildikten sonra: doğrulayıcı havuzundan günlük pay',
-  'path-dev-title':'Ben bir Geliştiriciyim','path-dev-desc':'Aequitas üzerinde inşa etmek, API\'yi entegre etmek veya protokole katkıda bulunmak istiyorum.','path-dev-steps':'1. EVM uyumlu JSON-RPC<br>2. Chain ID: 1926 · RPC: /rpc<br>3. OpenAPI: /api/* uç noktaları<br>4. Metrikler: /metrics (Prometheus)',
+  'path-dev-title':'Ben bir Geliştiriciyim','path-dev-desc':'Aequitas üzerinde inşa etmek, API\'yi entegre etmek veya protokole katkıda bulunmak istiyorum.','path-dev-steps':'1. EVM uyumlu JSON-RPC<br>2. Chain ID: <span class="aeq-cid">—</span> · RPC: /rpc<br>3. OpenAPI: /api/* uç noktaları<br>4. Metrikler: /metrics (Prometheus)',
   'story-flow-title':'AEQ Token Akış Şeması','story-topo-title':'Ağ Topolojisi — Mevcut Durum',
   'swap-price-title':'AEQ / tUSD — Canlı Fiyat','swap-price-desc':'Havuz rezervlerinden gerçek zamanlı fiyat (x·y=k). Her 8 saniyede yeni havuz verileriyle güncellenir.','swap-price-empty':'Henüz havuz verisi yok — fiyat grafiğini görmek için likidite ekleyin.',
   'k-zkp':'ZKP Sistemi','k-hash':'Hash Sistemi','k-sybil-prot':'Sybil Koruması',
@@ -3066,7 +3108,7 @@ fr:{
   'k-lang':'Langue','k-src':'Source','evm-yes':'Oui — JSON-RPC /rpc · Compatible MetaMask',
   'proto-label':'Protocole Aequitas V8 — Documentation technique',
   'ca-title':'Adresses des contrats',
-  'ca-text':'Chaîne : Aequitas Chain (Chain ID : 1926 · 0x786)<br>RPC : __RPC__<br><br>BioVerifier : 0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2<br>AequitasV8 : 0x20D271028f32577FCd07b4583A8e0E4eBBdB4F78',
+  'ca-text':'Chaîne : Aequitas Chain (Chain ID : <span class="aeq-cid-voll">—</span>)<br>RPC : __RPC__<br><br>BioVerifier : 0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2<br>AequitasV8 : 0x20D271028f32577FCd07b4583A8e0E4eBBdB4F78',
   'ca-desc':'AequitasV8 tient le registre des personnes : chaque nullifier et chaque commitment exactement une fois, et qui est une personne inscrite. Il affiche aussi les soldes aux portefeuilles (vue ERC-20). Tout le reste — soldes, revenu de base, plafond de richesse, prélèvements, frais — est comptabilisé par la chaîne elle-même (Go L1) : un virement vers le contrat est intercepté avant l’EVM et comptabilisé là, en moins d’une seconde, sans gaz EVM, avec 0,1 % de frais.<br><br>Une inscription exige trois choses : une preuve à divulgation nulle Groth16 créée sur le téléphone, les attestations signées du contrôle facial et la signature propre de la personne (EIP-712) sur exactement cette preuve, ce réseau et un délai. Le contrat BioVerifier vérifie la preuve sur la chaîne en environ 10 ms, et la chaîne refuse tout nullifier déjà vu — sans jamais apprendre un nom, une identité ou des données biométriques.<br><br>Ce qui est nouveau ici : le registre n’a ni propriétaire, ni fonction d’administration, ni voie de mise à niveau, et le code qui l’exécute est ouvert et reproductible depuis ce dépôt. Ce qui demande encore de la confiance, c’est l’exploitation des nœuds eux-mêmes, et la manière honnête de la réduire, ce sont davantage de validateurs et de vérificateurs indépendants, pas une phrase plus forte ici.',
   'poa-title':'1. PREUVE DE VIE','poa-text':'<p>Quand les gens décèdent, leurs AEQ retournent progressivement à la communauté via le pool UBI plutôt que d\'être perdus comme dans Bitcoin.</p>',
   'poa-box':'Années 0–2 : Utilisation normale<br>Année 2 : Avertissement 1 — Gardien peut répondre<br>Année 2+60j : Avertissement 2<br>Année 2+120j : Avertissement 3<br>Année 2+180j : AEQ en séquestre personnel<br>Année 4 : Si inactif — retourne au Pool UBI',
@@ -3126,7 +3168,7 @@ fr:{
   'faq-q3':'Que se passe-t-il si je perds mon téléphone ?','faq-a3':'Vos AEQ restent dans votre portefeuille — ils sont liés à votre clé privée, pas à votre téléphone. Vous pouvez toujours accéder à votre portefeuille via MetaMask avec votre phrase de récupération. Votre inscription est liée à votre visage, pas à l’appareil : un nouveau téléphone ne vous fait pas perdre votre inscription.',
   'path-title':'Choisissez Votre Voie','path-human-title':'Je suis un Humain','path-human-desc':'Je veux m\'inscrire, recevoir 1 000 AEQ et rejoindre le réseau de revenu de base.','path-human-steps':'1. Téléchargez l’app Android Aequitas<br>2. Faites le court contrôle facial en direct dans l’app<br>3. Connectez MetaMask<br>4. Recevez 1 000 AEQ dès que le contrôle est réussi',
   'path-node-title':'Je suis un Opérateur de Nœud','path-node-desc':'Je veux exécuter un nœud complet, participer à la production de blocs et gagner du pool de validateurs à 40%.','path-node-steps':'1. S’inscrire comme humain dans l’app (obligatoire)<br>2. Louer un petit serveur Linux<br>3. Coller une commande — elle ne demande que votre adresse de portefeuille<br>4. Scanner le code QR avec l’app<br>5. Une fois admis comme producteur de blocs : une part quotidienne du pool des validateurs',
-  'path-dev-title':'Je suis un Développeur','path-dev-desc':'Je veux construire sur Aequitas, intégrer l\'API ou contribuer au protocole.','path-dev-steps':'1. JSON-RPC compatible EVM<br>2. Chain ID: 1926 · RPC: /rpc<br>3. OpenAPI: /api/* endpoints<br>4. Métriques: /metrics (Prometheus)',
+  'path-dev-title':'Je suis un Développeur','path-dev-desc':'Je veux construire sur Aequitas, intégrer l\'API ou contribuer au protocole.','path-dev-steps':'1. JSON-RPC compatible EVM<br>2. Chain ID: <span class="aeq-cid">—</span> · RPC: /rpc<br>3. OpenAPI: /api/* endpoints<br>4. Métriques: /metrics (Prometheus)',
   'story-flow-title':'Diagramme de Flux du Token AEQ','story-topo-title':'Topologie Réseau — État Actuel',
   'swap-price-title':'AEQ / tUSD — Prix en Direct','swap-price-desc':'Prix en temps réel dérivé des réserves du pool (x·y=k). Mis à jour toutes les 8 secondes.','swap-price-empty':'Pas encore de données de pool — ajoutez de la liquidité pour voir le graphique de prix.',
   'k-zkp':'Système ZKP','k-hash':'Système de Hachage','k-sybil-prot':'Protection Sybil',
@@ -3413,7 +3455,7 @@ pt:{
   'k-lang':'Idioma','k-src':'Fonte','evm-yes':'Sim — JSON-RPC /rpc · Compatível MetaMask',
   'proto-label':'Protocolo Aequitas V8 — Documentação Técnica',
   'ca-title':'Endereços dos Contratos',
-  'ca-text':'Cadeia: Aequitas Chain (Chain ID: 1926 · 0x786)<br>RPC: __RPC__<br><br>BioVerifier: 0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2<br>AequitasV8: 0x20D271028f32577FCd07b4583A8e0E4eBBdB4F78',
+  'ca-text':'Cadeia: Aequitas Chain (Chain ID: <span class="aeq-cid-voll">—</span>)<br>RPC: __RPC__<br><br>BioVerifier: 0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2<br>AequitasV8: 0x20D271028f32577FCd07b4583A8e0E4eBBdB4F78',
   'ca-desc':'O AequitasV8 mantém o registo das pessoas: cada nullifier e cada commitment exatamente uma vez, e quem é uma pessoa registada. Além disso, mostra os saldos às carteiras (vista ERC-20). Tudo o resto — saldos, rendimento básico, limite de riqueza, taxas sobre dinheiro parado, comissões — é contabilizado pela própria cadeia (Go L1): uma transferência para o contrato é intercetada antes da EVM e contabilizada ali, em menos de um segundo, sem gás EVM, com taxa de 0,1 %.<br><br>Um registo precisa de três coisas: uma prova de conhecimento zero Groth16 criada no telemóvel, as atestações assinadas da verificação facial e a assinatura da própria pessoa (EIP-712) sobre exatamente esta prova, esta rede e um prazo. O contrato BioVerifier verifica a prova na cadeia em cerca de 10 ms, e a cadeia recusa qualquer nullifier que já conheça — sem nunca saber um nome, uma identidade ou dados biométricos.<br><br>O que é novo aqui: o registo não tem dono, nem função de administração, nem caminho de atualização, e o código que o executa é aberto e reproduzível a partir deste repositório. O que ainda exige confiança é o funcionamento dos próprios nós, e a forma honesta de o reduzir são mais validadores e verificadores independentes, não uma frase mais forte aqui.',
   'poa-title':'1. PROVA DE VIDA','poa-text':'<p>AEQ de pessoas falecidas retorna gradualmente à comunidade via pool UBI, em vez de ser perdido para sempre como no Bitcoin.</p>',
   'poa-box':'Anos 0–2: Uso normal<br>Ano 2: Aviso 1 — Guardião pode responder<br>Ano 2+60d: Aviso 2<br>Ano 2+120d: Aviso 3<br>Ano 2+180d: AEQ em custódia pessoal<br>Ano 4: Se inativo — retorna ao Pool UBI',
@@ -3473,7 +3515,7 @@ pt:{
   'faq-q3':'O que acontece se perder o telemóvel?','faq-a3':'Os seus AEQ ficam na sua carteira — estão ligados à sua chave privada, não ao telemóvel. Pode continuar a aceder à carteira com o MetaMask e a sua frase-semente. O seu registo está ligado ao seu rosto, não ao dispositivo, por isso um telemóvel novo não o faz perder o registo.',
   'path-title':'Escolha o Seu Caminho','path-human-title':'Sou um Humano','path-human-desc':'Quero registar-me, receber 1.000 AEQ e juntar-me à rede de rendimento básico.','path-human-steps':'1. Descarregue a app Android Aequitas<br>2. Faça na app a breve verificação facial ao vivo<br>3. Ligue o MetaMask<br>4. Receba 1.000 AEQ assim que a verificação for aprovada',
   'path-node-title':'Sou um Operador de Node','path-node-desc':'Quero executar um node completo, participar na produção de blocos e ganhar do pool de validadores de 40%.','path-node-steps':'1. Registe-se como pessoa na app (obrigatório)<br>2. Alugue um pequeno servidor Linux<br>3. Cole um comando — só pede o endereço da sua carteira<br>4. Leia o código QR com a app<br>5. Depois de admitido como produtor de blocos: uma parte diária do fundo de validadores',
-  'path-dev-title':'Sou um Desenvolvedor','path-dev-desc':'Quero construir no Aequitas, integrar a API ou contribuir para o protocolo.','path-dev-steps':'1. JSON-RPC compatível com EVM<br>2. Chain ID: 1926 · RPC: /rpc<br>3. OpenAPI: /api/* endpoints<br>4. Métricas: /metrics (Prometheus)',
+  'path-dev-title':'Sou um Desenvolvedor','path-dev-desc':'Quero construir no Aequitas, integrar a API ou contribuir para o protocolo.','path-dev-steps':'1. JSON-RPC compatível com EVM<br>2. Chain ID: <span class="aeq-cid">—</span> · RPC: /rpc<br>3. OpenAPI: /api/* endpoints<br>4. Métricas: /metrics (Prometheus)',
   'story-flow-title':'Diagrama de Fluxo do Token AEQ','story-topo-title':'Topologia de Rede — Estado Atual',
   'swap-price-title':'AEQ / tUSD — Preço ao Vivo','swap-price-desc':'Preço em tempo real derivado das reservas do pool (x·y=k). Atualizado a cada 8 segundos.','swap-price-empty':'Sem dados do pool ainda — adicione liquidez para ver o gráfico de preços.',
   'k-zkp':'Sistema ZKP','k-hash':'Sistema Hash','k-sybil-prot':'Proteção Sybil',
@@ -3758,7 +3800,7 @@ ar:{
   'k-lang':'اللغة','k-src':'المصدر','evm-yes':'نعم — JSON-RPC /rpc · متوافق مع MetaMask',
   'proto-label':'بروتوكول Aequitas V8 — وثائق تقنية',
   'ca-title':'عناوين العقود',
-  'ca-text':'السلسلة: Aequitas Chain (Chain ID: 1926 · 0x786)<br>RPC: __RPC__<br><br>BioVerifier: 0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2<br>AequitasV8: 0x20D271028f32577FCd07b4583A8e0E4eBBdB4F78',
+  'ca-text':'السلسلة: Aequitas Chain (Chain ID: <span class="aeq-cid-voll">—</span>)<br>RPC: __RPC__<br><br>BioVerifier: 0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2<br>AequitasV8: 0x20D271028f32577FCd07b4583A8e0E4eBBdB4F78',
   'ca-desc':'يحتفظ AequitasV8 بسجل البشر: كل nullifier وكل commitment مرة واحدة فقط، ومن هو إنسان مسجَّل. كما يعرض الأرصدة للمحافظ (عرض ERC-20). وكل ما عدا ذلك — الأرصدة والدخل الأساسي وحد الثروة والرسوم والاقتطاعات — تقيّده السلسلة نفسها (Go L1): التحويل إلى العقد يُعترض قبل EVM ويُقيَّد هناك في أقل من ثانية، بلا غاز EVM، ورسوم 0.1%.<br><br>يحتاج التسجيل إلى ثلاثة أشياء: إثبات معرفة صفرية Groth16 يُنشأ على الهاتف، وشهادات موقَّعة من فحص الوجه، وتوقيع الشخص نفسه (EIP-712) على هذا الإثبات بعينه وهذه الشبكة ومهلة زمنية. يتحقق عقد BioVerifier من الإثبات على السلسلة في نحو 10 ميلي ثانية، وترفض السلسلة أي nullifier رأته من قبل — دون أن تعرف أبدًا اسمًا أو هوية أو بيانات حيوية.<br><br>الجديد هنا: ليس للسجل مالك ولا وظيفة إدارة ولا مسار ترقية، والشيفرة التي تنفّذه مفتوحة ويمكن إعادة بنائها من هذا المستودع. ما زال تشغيل العقد نفسها يتطلب الثقة، والطريقة الصادقة لتقليل ذلك هي المزيد من المدقّقين والمحقِّقين المستقلين، لا جملة أقوى هنا.',
   'poa-title':'1. إثبات الحياة','poa-text':'<p>عند وفاة الأشخاص، تعود AEQ الخاصة بهم تدريجياً إلى المجتمع عبر مجمع UBI بدلاً من ضياعها للأبد.</p>',
   'poa-box':'السنوات 0–2: استخدام طبيعي<br>السنة 2: تحذير 1 — الحارس يمكنه الرد<br>السنة 2+60 يوم: تحذير 2<br>السنة 2+120 يوم: تحذير 3<br>السنة 2+180 يوم: AEQ في ضمان شخصي<br>السنة 4: إذا لا يزال خاملاً — يعود لمجمع UBI',
@@ -3818,7 +3860,7 @@ ar:{
   'faq-q3':'ماذا يحدث إذا فقدت هاتفي؟','faq-a3':'تبقى AEQ في محفظتك — فهي مرتبطة بمفتاحك الخاص لا بهاتفك. يمكنك الوصول إلى محفظتك عبر MetaMask بعبارة الاسترداد. تسجيلك مرتبط بوجهك لا بالجهاز، لذلك لا يُفقدك الهاتف الجديد تسجيلك.',
   'path-title':'اختر مسارك','path-human-title':'أنا إنسان','path-human-desc':'أريد التسجيل وتلقي 1,000 AEQ والانضمام إلى شبكة الدخل الأساسي.','path-human-steps':'1. نزّل تطبيق Aequitas لأندرويد<br>2. أجرِ فحص الوجه الحي القصير في التطبيق<br>3. اربط MetaMask<br>4. استلم 1,000 AEQ فور اجتياز الفحص',
   'path-node-title':'أنا مشغّل عقدة','path-node-desc':'أريد تشغيل عقدة كاملة والمشاركة في إنتاج الكتل والكسب من مجموعة المتحققين 40%.','path-node-steps':'1. سجّل كإنسان في التطبيق (مطلوب)<br>2. استأجر خادم لينكس صغيراً<br>3. الصق أمراً واحداً — يسأل فقط عن عنوان محفظتك<br>4. امسح رمز QR بالتطبيق<br>5. بعد قبولك منتجاً للكتل: حصة يومية من صندوق المدققين',
-  'path-dev-title':'أنا مطوّر','path-dev-desc':'أريد البناء على Aequitas أو دمج API أو المساهمة في البروتوكول.','path-dev-steps':'1. JSON-RPC متوافق مع EVM<br>2. معرّف السلسلة: 1926 · RPC: /rpc<br>3. OpenAPI: /api/* نقاط النهاية<br>4. المقاييس: /metrics (Prometheus)',
+  'path-dev-title':'أنا مطوّر','path-dev-desc':'أريد البناء على Aequitas أو دمج API أو المساهمة في البروتوكول.','path-dev-steps':'1. JSON-RPC متوافق مع EVM<br>2. معرّف السلسلة: <span class="aeq-cid">—</span> · RPC: /rpc<br>3. OpenAPI: /api/* نقاط النهاية<br>4. المقاييس: /metrics (Prometheus)',
   'story-flow-title':'مخطط تدفق رمز AEQ','story-topo-title':'طوبولوجيا الشبكة — الحالة الراهنة',
   'swap-price-title':'AEQ / tUSD — السعر المباشر','swap-price-desc':'سعر فوري مشتق من احتياطيات المجموعة (x·y=k). يتحدث كل 8 ثوانٍ.','swap-price-empty':'لا توجد بيانات مجموعة بعد — أضف سيولة لرؤية مخطط السعر.',
   'k-zkp':'نظام ZKP','k-hash':'نظام التجزئة','k-sybil-prot':'حماية سيبل',
@@ -4103,7 +4145,7 @@ hi:{
   'k-lang':'भाषा','k-src':'स्रोत','evm-yes':'हाँ — JSON-RPC /rpc · MetaMask संगत',
   'proto-label':'Aequitas V8 प्रोटोकॉल — तकनीकी दस्तावेज़ीकरण',
   'ca-title':'अनुबंध पते',
-  'ca-text':'चेन: Aequitas Chain (Chain ID: 1926 · 0x786)<br>RPC: __RPC__<br><br>BioVerifier: 0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2<br>AequitasV8: 0x20D271028f32577FCd07b4583A8e0E4eBBdB4F78',
+  'ca-text':'चेन: Aequitas Chain (Chain ID: <span class="aeq-cid-voll">—</span>)<br>RPC: __RPC__<br><br>BioVerifier: 0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2<br>AequitasV8: 0x20D271028f32577FCd07b4583A8e0E4eBBdB4F78',
   'ca-desc':'AequitasV8 मनुष्यों का रजिस्टर रखता है: हर nullifier और हर commitment ठीक एक बार, और कौन पंजीकृत मनुष्य है। साथ ही यह वॉलेट को शेष राशि दिखाता है (ERC-20 दृश्य)। बाकी सब — शेष राशि, बुनियादी आय, संपत्ति सीमा, लेवी, शुल्क — चेन खुद दर्ज करती है (Go L1): अनुबंध को भेजा गया ट्रांसफ़र EVM से पहले रोका जाता है और वहीं दर्ज होता है, एक सेकंड से कम में, बिना EVM गैस, 0.1% शुल्क के साथ।<br><br>एक पंजीकरण के लिए तीन चीज़ें चाहिए: फ़ोन पर बना Groth16 शून्य-ज्ञान प्रमाण, चेहरा जाँच के हस्ताक्षरित प्रमाणपत्र, और इसी प्रमाण, इसी नेटवर्क और एक समय-सीमा पर व्यक्ति का अपना हस्ताक्षर (EIP-712)। BioVerifier अनुबंध चेन पर लगभग 10 ms में प्रमाण जाँचता है, और चेन पहले देखा गया हर nullifier अस्वीकार करती है — कभी कोई नाम, पहचान या बायोमेट्रिक डेटा जाने बिना।<br><br>यहाँ नया क्या है: रजिस्टर का कोई मालिक, कोई एडमिन फ़ंक्शन और कोई अपग्रेड मार्ग नहीं है, और उसे चलाने वाला कोड खुला है और इस रिपॉज़िटरी से दोबारा बनाया जा सकता है। भरोसा अब भी नोड्स के संचालन पर चाहिए, और उसे घटाने का ईमानदार तरीका अधिक स्वतंत्र वैलिडेटर और वेरिफ़ायर हैं, यहाँ कोई ज़्यादा ज़ोरदार वाक्य नहीं।',
   'poa-title':'1. जीवन का प्रमाण','poa-text':'<p>जब लोग मरते हैं, उनका AEQ धीरे-धीरे UBI पूल के माध्यम से समुदाय को वापस जाता है, बजाय Bitcoin की तरह हमेशा के लिए खोने के।</p>',
   'poa-box':'वर्ष 0–2: सामान्य उपयोग<br>वर्ष 2: चेतावनी 1 — Guardian जवाब दे सकता है<br>वर्ष 2+60 दिन: चेतावनी 2<br>वर्ष 2+120 दिन: चेतावनी 3<br>वर्ष 2+180 दिन: AEQ व्यक्तिगत एस्क्रो में<br>वर्ष 4: निष्क्रिय रहने पर — UBI पूल में वापस',
@@ -4163,7 +4205,7 @@ hi:{
   'faq-q3':'अगर मैं अपना फोन खो दूं तो क्या होगा?','faq-a3':'आपके AEQ आपके वॉलेट में रहते हैं — वे आपकी निजी कुंजी से जुड़े हैं, फ़ोन से नहीं। आप अपने सीड फ़्रेज़ के साथ MetaMask से वॉलेट तक पहुँच सकते हैं। आपका पंजीकरण आपके चेहरे से जुड़ा है, डिवाइस से नहीं, इसलिए नया फ़ोन लेने से आपका पंजीकरण नहीं जाता।',
   'path-title':'अपना रास्ता चुनें','path-human-title':'मैं एक मानव हूं','path-human-desc':'मैं पंजीकरण करना, 1,000 AEQ प्राप्त करना और बेसिक इनकम नेटवर्क में शामिल होना चाहता/चाहती हूं।','path-human-steps':'1. Aequitas Android ऐप डाउनलोड करें<br>2. ऐप में छोटी लाइव चेहरा जाँच करें<br>3. MetaMask कनेक्ट करें<br>4. जाँच पास होते ही 1,000 AEQ पाएँ',
   'path-node-title':'मैं एक नोड ऑपरेटर हूं','path-node-desc':'मैं पूर्ण नोड चलाना, ब्लॉक उत्पादन में भाग लेना और 40% वैलिडेटर पूल से कमाना चाहता/चाहती हूं।','path-node-steps':'1. ऐप में मनुष्य के रूप में पंजीकरण करें (आवश्यक)<br>2. एक छोटा Linux सर्वर किराये पर लें<br>3. एक कमांड चिपकाएँ — यह केवल आपका वॉलेट पता पूछती है<br>4. ऐप से QR कोड स्कैन करें<br>5. ब्लॉक उत्पादक के रूप में शामिल होने के बाद: वैलिडेटर पूल से रोज़ाना हिस्सा',
-  'path-dev-title':'मैं एक डेवलपर हूं','path-dev-desc':'मैं Aequitas पर निर्माण करना, API को एकीकृत करना या प्रोटोकॉल में योगदान देना चाहता/चाहती हूं।','path-dev-steps':'1. EVM-संगत JSON-RPC<br>2. Chain ID: 1926 · RPC: /rpc<br>3. OpenAPI: /api/* एंडपॉइंट<br>4. मेट्रिक्स: /metrics (Prometheus)',
+  'path-dev-title':'मैं एक डेवलपर हूं','path-dev-desc':'मैं Aequitas पर निर्माण करना, API को एकीकृत करना या प्रोटोकॉल में योगदान देना चाहता/चाहती हूं।','path-dev-steps':'1. EVM-संगत JSON-RPC<br>2. Chain ID: <span class="aeq-cid">—</span> · RPC: /rpc<br>3. OpenAPI: /api/* एंडपॉइंट<br>4. मेट्रिक्स: /metrics (Prometheus)',
   'story-flow-title':'AEQ टोकन प्रवाह आरेख','story-topo-title':'नेटवर्क टोपोलॉजी — वर्तमान स्थिति',
   'swap-price-title':'AEQ / tUSD — लाइव मूल्य','swap-price-desc':'पूल रिज़र्व से रियल-टाइम मूल्य (x·y=k)। हर 8 सेकंड में नए पूल डेटा के साथ अपडेट।','swap-price-empty':'अभी पूल डेटा नहीं — मूल्य चार्ट देखने के लिए लिक्विडिटी जोड़ें।',
   'k-zkp':'ZKP सिस्टम','k-hash':'हैश सिस्टम','k-sybil-prot':'Sybil सुरक्षा',
@@ -4263,6 +4305,7 @@ function setLang(lang) {
   // setLang() just overwrote innerHTML from the raw T[lang] dictionary
   // entry, which always contains the literal token, not a resolved value.
   applyBlockTime(lastKnownBlockTime);
+  applyChainId(lastKnownChainId);
   applyRpcUrl(); // same reasoning, see applyRpcUrl's own comment — no API data needed, so no guard to trip on
 }
 
@@ -4314,6 +4357,19 @@ function applyBlockTime(blockTimeSeconds) {
 // __RPC__ sitting there as literal, visible text — unlike the block-time
 // phrase, this value needs no API data at all, so it must not share that
 // guard.
+// Chain-ID in Texten: <span class="aeq-cid"> / <span class="aeq-cid-voll">
+// (mit Hex) in den Uebersetzungen und in explorer.html. Gefuellt mit der ID,
+// die /api/status meldet (loadStatus) -- nur 1926 oder 19260930, sonst "—".
+// Nach dem Wechsel zeigt die Seite so von selbst die neue ID.
+let lastKnownChainId = null;
+function applyChainId(id) {
+  lastKnownChainId = AEQ_CHAIN_IDS.includes(id) ? id : null;
+  const kurz = lastKnownChainId ? String(lastKnownChainId) : '—';
+  const voll = lastKnownChainId ? lastKnownChainId + ' · ' + aeqChainHex(lastKnownChainId) : '—';
+  document.querySelectorAll('.aeq-cid').forEach(function(el) { el.textContent = kurz; });
+  document.querySelectorAll('.aeq-cid-voll').forEach(function(el) { el.textContent = voll; });
+}
+
 function applyRpcUrl() {
   const rpcUrl = window.location.origin + '/rpc';
   document.querySelectorAll('[data-i18n]').forEach(function(el) {
@@ -4346,13 +4402,19 @@ function avatarColor(a) {
   return c[parseInt((a || '0x00').slice(2, 4), 16) % c.length];
 }
 
-async function addToMetaMask() {
+async function addToMetaMask(bekannt) {
   if (!window.ethereum) { addLog('🦊 MetaMask not found — <a href="https://metamask.io/download/" target="_blank" style="color:var(--gold)">install MetaMask</a> to use this feature.', 'warn', true); return; }
+  // Die Chain-ID, die der Knoten jetzt meldet (CHAIN-ID-Block oben).
+  let id = bekannt;
+  try {
+    if (!AEQ_CHAIN_IDS.includes(id)) id = await aeqChainId();
+  } catch (e) { addLog(e.message, 'err'); return; }
+  const cidHex = aeqChainHex(id);
   try {
     await window.ethereum.request({
       method: 'wallet_addEthereumChain',
       params: [{
-        chainId: CID,
+        chainId: cidHex,
         chainName: 'Aequitas Chain',
         // AEQ is declared here as the chain's native currency (like ETH on
         // Ethereum) — MetaMask shows this automatically in the main
@@ -4394,7 +4456,7 @@ async function addToMetaMask() {
   try {
     await window.ethereum.request({
       method: 'wallet_switchEthereumChain',
-      params: [{ chainId: CID }]
+      params: [{ chainId: cidHex }]
     });
   } catch (e) { console.error('MetaMask network switch error:', e); }
 }
@@ -4590,7 +4652,7 @@ function renderTopologySVG(svg, nodes) {
   let svgHtml = '<rect width="' + W + '" height="' + H + '" fill="rgba(255,255,255,0.03)" rx="10"/>' +
     '<rect x="' + (W / 2 - 75) + '" y="10" width="150" height="38" rx="8" fill="rgba(146,64,14,0.06)" stroke="#92400E" stroke-width="1"/>' +
     '<text x="' + hubX + '" y="27" text-anchor="middle" font-size="9" font-weight="700" fill="rgba(240,180,41,0.9)">MetaMask / Users</text>' +
-    '<text x="' + hubX + '" y="41" text-anchor="middle" font-size="7.5" fill="rgba(136,146,164,0.9)">JSON-RPC &#183; Chain ID 1926</text>' +
+    '<text x="' + hubX + '" y="41" text-anchor="middle" font-size="7.5" fill="rgba(136,146,164,0.9)">JSON-RPC' + (lastKnownChainId ? ' &#183; Chain ID ' + lastKnownChainId : '') + '</text>' +
     '<ellipse cx="' + hubX + '" cy="' + hubY + '" rx="70" ry="28" fill="rgba(107,70,193,0.08)" stroke="rgba(107,70,193,0.3)" stroke-width="1" stroke-dasharray="4,3"/>' +
     '<text x="' + hubX + '" y="' + (hubY - 4) + '" text-anchor="middle" font-size="9" fill="rgba(155,114,246,0.9)">P2P libp2p</text>' +
     '<text x="' + hubX + '" y="' + (hubY + 10) + '" text-anchor="middle" font-size="8" fill="rgba(136,146,164,0.9)">BlockDAG sync &#183; GHOSTDAG merge</text>' +
@@ -4688,6 +4750,7 @@ async function loadStatus() {
     // locales, k-btime-val in the Technical Specifications table) — see
     // applyBlockTime's own comment.
     applyBlockTime(d.block_time);
+    applyChainId(d.chain_evm_id);
     document.getElementById('s-humans').textContent = fmt(d.total_humans);
     document.getElementById('s-supply').textContent = d.total_supply || '—';
     document.getElementById('s-index').textContent = fmt(d.index);
@@ -7461,7 +7524,10 @@ function walletLog(msg, type, allowHTML) {
 // personal_sign call sites just need a provider reference, not a rewrite.
 // optionalChains (not chains) is used for the Aequitas chain id: making it
 // a hard-required namespace would make many general-purpose mobile wallets
-// reject the pairing outright since they don't pre-recognize chain 1926.
+// reject the pairing outright since they don't pre-recognize the Aequitas
+// chain. Both chain IDs of the network (1926 before, 19260930 from the
+// switch on) are offered; which one is signed for is decided per request by
+// the ID the node reports (CHAIN-ID block).
 async function getWalletConnectProvider() {
   if (wcProvider) return wcProvider;
   if (!window.WalletConnectEthereumProvider) {
@@ -7469,12 +7535,12 @@ async function getWalletConnectProvider() {
   }
   wcProvider = await window.WalletConnectEthereumProvider.init({
     projectId: WC_PROJECT_ID,
-    optionalChains: [1926],
+    optionalChains: AEQ_CHAIN_IDS.slice(),
     // FIX (audit 2026-08-16): same fix as addToMetaMask above — see its
     // comment. window.location.origin is the node this page is actually
     // talking to, which is what WalletConnect should read chain state from
     // too.
-    rpcMap: { 1926: window.location.origin + '/rpc' },
+    rpcMap: { 1926: window.location.origin + '/rpc', 19260930: window.location.origin + '/rpc' },
     showQrModal: true,
     metadata: {
       name: 'Aequitas',
@@ -7604,8 +7670,11 @@ function v8Feldwert(name, s) {
   return x;
 }
 
-function v8TypedData(kennung, human, pubSignals, deadline) {
+// chainId: die ID, die der Knoten jetzt meldet (aeqChainId), nur 1926 oder
+// 19260930. Die 1926 in der Netzkennung ist EINGEFROREN und bleibt.
+function v8TypedData(kennung, human, pubSignals, deadline, chainId) {
   if (typeof kennung !== 'string' || !/^aequitas-1926-\d{1,12}$/.test(kennung)) throw new Error('network id missing or invalid');
+  if (!AEQ_CHAIN_IDS.includes(chainId)) throw new Error('chain id not in the Aequitas network');
   if (!ethers.isAddress(human)) throw new Error('wallet invalid');
   if (!Array.isArray(pubSignals) || pubSignals.length < 2) throw new Error('public signals missing');
   if (!Number.isSafeInteger(deadline) || deadline <= 0) throw new Error('deadline invalid');
@@ -7613,7 +7682,7 @@ function v8TypedData(kennung, human, pubSignals, deadline) {
     domain: {
       name: 'Aequitas',
       version: '8',
-      chainId: 1926,
+      chainId,
       verifyingContract: V7_CONTRACT, // V8 liegt an der V7-Adresse
       salt: ethers.keccak256(ethers.toUtf8Bytes(kennung)),
     },
@@ -7644,8 +7713,8 @@ function v8Signatur(td, roh) {
   return sig;
 }
 
-async function v8Unterschreiben(provider, kennung, human, pubSignals, deadline) {
-  const td = v8TypedData(kennung, human, pubSignals, deadline);
+async function v8Unterschreiben(provider, kennung, human, pubSignals, deadline, chainId) {
+  const td = v8TypedData(kennung, human, pubSignals, deadline, chainId);
   const payload = ethers.TypedDataEncoder.getPayload(td.domain, td.types, td.message);
   const roh = await provider.request({ method: 'eth_signTypedData_v4', params: [human, JSON.stringify(payload)] });
   return v8Signatur(td, roh);
@@ -7698,6 +7767,21 @@ async function doRegister() {
       return;
     }
 
+    // Chain-ID live vom Knoten, direkt vor der Unterschrift (CHAIN-ID-Block).
+    let chainId;
+    try {
+      chainId = await aeqChainId();
+    } catch (e) {
+      addLog('Error: ' + e.message, 'err');
+      document.getElementById('btn-reg').disabled = false;
+      return;
+    }
+    // MetaMask unterschreibt EIP-712 nur fuer ihr aktives Netz.
+    if (activeProvider() === window.ethereum && window.ethereum) {
+      const ist = await window.ethereum.request({ method: 'eth_chainId' });
+      if (String(ist).toLowerCase() !== aeqChainHex(chainId)) await addToMetaMask(chainId);
+    }
+
     let signature;
     let deadline;
     if (vertrag === 'v8') {
@@ -7709,13 +7793,14 @@ async function doRegister() {
       }
       deadline = Math.floor(Date.now() / 1000) + V8_FRIST_S;
       addLog('Please sign the registration in your wallet (EIP-712, valid 30 min, no gas, no cost)...', 'info');
-      signature = await v8Unterschreiben(activeProvider(), st.netz_kennung, waddr, proofData.pubSignals, deadline);
+      signature = await v8Unterschreiben(activeProvider(), st.netz_kennung, waddr, proofData.pubSignals, deadline, chainId);
     } else {
       // Build the EXACT same hash the contract computes:
       // keccak256(abi.encodePacked(block.chainid, address(this), "register", commitment, nullifier))
+      // block.chainid = die ID, die jetzt gilt (register.go, chainIDFuer(nowUnix())).
       const messageHash = ethers.solidityPackedKeccak256(
         ['uint256', 'address', 'string', 'uint256', 'bytes32'],
-        [1926, V7_CONTRACT, 'register', commitment, '0x' + nullifier]
+        [chainId, V7_CONTRACT, 'register', commitment, '0x' + nullifier]
       );
 
       addLog('Please sign the message in your wallet to prove this wallet is yours (no gas, no cost)...', 'info');

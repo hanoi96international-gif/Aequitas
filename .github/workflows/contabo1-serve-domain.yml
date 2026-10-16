@@ -169,11 +169,18 @@ jobs:
             height=$(echo "$status" | grep -o '"height"[[:space:]]*:[[:space:]]*[0-9]*' | head -1 | grep -o '[0-9]*$' || true)
             humans=$(echo "$status" | grep -o '"total_humans"[[:space:]]*:[[:space:]]*[0-9]*' | head -1 | grep -o '[0-9]*$' || true)
             evmid=$(echo "$status" | grep -o '"chain_evm_id"[[:space:]]*:[[:space:]]*[0-9]*' | head -1 | grep -o '[0-9]*$' || true)
+            wab=$(echo "$status" | grep -o '"chain_id_wechsel_ab"[[:space:]]*:[[:space:]]*[0-9]*' | head -1 | grep -o '[0-9]*$' || true)
             echo "height=${height:-?} total_humans=${humans:-?} chain_evm_id=${evmid:-?}"
             [ -n "$height" ] && [ "$height" -ge 1000000 ] \
               || { echo "WRONG CHAIN: height '${height:-<none>}' — the domain is not serving this validator"; exit 1; }
-            [ "$evmid" = "1926" ] \
-              || { echo "WRONG CHAIN: chain_evm_id '${evmid:-<none>}' (expected 1926)"; exit 1; }
+            # Chain-ID-Wechsel (docs/CHAIN_ID_WECHSEL.md): 1926 bis zum
+            # Stichtag, danach 19260930 -- die nur mit gesetztem
+            # chain_id_wechsel_ab. Jede andere ID ist eine fremde Kette.
+            cidhex=""
+            if [ "$evmid" = "1926" ]; then cidhex=0x786; fi
+            if [ "$evmid" = "19260930" ] && [ "${wab:-0}" -gt 0 ]; then cidhex=0x125e602; fi
+            [ -n "$cidhex" ] \
+              || { echo "WRONG CHAIN: chain_evm_id '${evmid:-<none>}', chain_id_wechsel_ab '${wab:-<none>}' (expected 1926, or 19260930 after the switch)"; exit 1; }
 
             # The three endpoints the shipped app hardcodes (app repo,
             # lib/config.ts): API_BASE, RPC_URL, WEBAPP. All three, not just the
@@ -183,8 +190,9 @@ jobs:
               -H 'Content-Type: application/json' \
               -d '{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}' || true)
             echo "$rpc"
-            echo "$rpc" | grep -q '"result":"0x786"' \
-              || { echo "RPC did not answer chain id 0x786 (1926)"; exit 1; }
+            # Dieselbe ID wie /api/status desselben Hosts.
+            echo "$rpc" | grep -q "\"result\":\"$cidhex\"" \
+              || { echo "RPC did not answer chain id $cidhex ($evmid, from /api/status)"; exit 1; }
 
             echo "=== landing page ==="
             lp=$(curl -s -o /dev/null -w '%{http_code}' -m 10 https://aequitas.digital/ || true)
