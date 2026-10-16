@@ -59,9 +59,9 @@ jobs:
       # 23.09.2026 lief hier das Binary, das zuletzt irgendein anderer Lauf
       # gebaut hatte -- eine Korrektur am Generator (hier: kein Aussortieren
       # vor der Befuellung) kam damit nie an.
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: Aktuelle Generator-Quelle nach Contabo2
-        uses: appleboy/scp-action@v1.0.0
+        uses: appleboy/scp-action@ff85246acaad7bdce478db94a363cd2bf7c90345 # v1.0.0
         with:
           host: 194.163.188.71
           username: root
@@ -70,7 +70,7 @@ jobs:
           source: "tools/contabo-loadtest/main.go,tools/contabo-loadtest/gen_accounts.go,go.mod,go.sum"
           target: "/root/contabo-loadtest"
       - name: Generator neu bauen
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
         with:
           host: 194.163.188.71
           username: root
@@ -93,7 +93,7 @@ jobs:
             echo "generator rebuilt: $(stat -c %y ./loadtest)"
 
       - name: Fund the unfunded accounts on Contabo2
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
         with:
           host: 194.163.188.71
           username: root

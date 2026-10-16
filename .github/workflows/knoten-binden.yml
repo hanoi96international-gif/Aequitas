@@ -45,7 +45,7 @@ jobs:
       adresse: ${{ steps.link.outputs.adresse }}
       wallet: ${{ steps.link.outputs.wallet }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: Eingabe pruefen
         id: eingabe
         env:
@@ -106,7 +106,7 @@ jobs:
             echo "$LINK"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: qr-code
           path: qr/aequitas-knoten-binden.png
@@ -118,7 +118,7 @@ jobs:
     environment: produktion
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: Auf die Bestaetigung in der App warten
         env:
           ADR: ${{ needs.code.outputs.adresse }}

@@ -44,7 +44,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: produktion
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Refuse unless DNS already points at Contabo2
         env:
@@ -69,7 +69,7 @@ jobs:
           exit 1
 
       - name: Copy the Caddy config
-        uses: appleboy/scp-action@v0.1.7
+        uses: appleboy/scp-action@917f8b81dfc1ccd331fef9e2d61bdc6c8be94634 # v0.1.7
         with:
           host: 194.163.188.71
           username: root
@@ -80,7 +80,7 @@ jobs:
           strip_components: 1
 
       - name: Install, validate, reload
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
         env:
           HOSTNAME_INPUT: ${{ inputs.hostname }}
         with:
