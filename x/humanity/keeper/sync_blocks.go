@@ -1914,6 +1914,15 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 				// branch is unreachable by construction. It only ever
 				// corrects the streak of a non-seed peer, whose value feeds
 				// SyncDiagnostics rather than any gate.
+				//
+				// AB DEM FROMSYNC-STICHTAG (fromsync_stichtag.go) gilt das
+				// nicht mehr fuer Bloecke ab dem Stichtag: dann ist der Zweig
+				// auch fuer einen Seed erreichbar, und ein Seed, der nur
+				// Bloecke unter der eigenen Finalitaet liefert, zaehlt nicht
+				// als sauber. Das ist gewollt -- es ist die Signatur einer
+				// Gabel --, kann aber das Sync-Tor (hasCaughtUpWithAllPeers)
+				// gegen diesen Seed geschlossen halten. Siehe
+				// docs/FROMSYNC_STICHTAG.md, "Was danach anders ist".
 				sawUnmergedBlocks = true
 				continue
 			}

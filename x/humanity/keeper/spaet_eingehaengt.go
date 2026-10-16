@@ -70,7 +70,7 @@ const spaetEingehaengtGrenze int64 = 30 * 60
 // spitze liefert die neueste Blockzeit unter den Spitzen dieses Knotens
 // (0: keine); gefragt nur, wenn der Block eine solche Transaktion traegt.
 func spaetEingehaengt(block *Block, spitze func() int64) string {
-	if block.FromSync {
+	if fromSyncAusnahme(block) { // ab dem FromSync-Stichtag nicht mehr (fromsync_stichtag.go)
 		return ""
 	}
 	for i := range block.Transactions {

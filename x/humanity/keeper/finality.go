@@ -507,8 +507,10 @@ func (cs *ChainState) ResetFinalizedCheckpointCtx(ctx context.Context) error {
 // that legitimate gap-fills within the finality window are never blocked.
 // Must be called with dag.mu held (reads dag.state but not dag.blocks).
 func (dag *BlockDAG) isFinalityViolation(block *Block) bool {
-	if block.IsGenesis || block.FromSync {
-		return false // never a finality violation for genesis or HTTP-SYNC canonical replay
+	if block.IsGenesis || fromSyncAusnahme(block) {
+		// genesis, or HTTP-SYNC canonical replay from a seed -- the latter only
+		// before the FromSync cut-off (fromsync_stichtag.go).
+		return false
 	}
 	// FIX (audit 2026-07-06, definitive root cause of a 3-node non-merging
 	// incident): SelfFetched used to unconditionally exempt here, even
