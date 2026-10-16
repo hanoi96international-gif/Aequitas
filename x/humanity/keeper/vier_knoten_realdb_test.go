@@ -77,11 +77,9 @@ import (
 //     nicht mehr paketweit -- kein Sonderfall mehr. pruefeFalscheBloecke
 //     ersetzt die Heilung (os.Exit) durch einen Zaehler und verlangt, dass
 //     Angriffsbloecke sie nie ausloesen.
-//   - ahnen_unerreichbar.go:46 (ahnenLeerlaufFolgen): Runden ohne beschaffte
-//     Vorfahren, ebenfalls mit os.Exit am Ende; im Prozess vierfach so schnell
-//     voll. Mit vierDial (keine "busy"-Pushes, also kaum Waisen) wurde er in
-//     keinem Lauf erreicht; ohne vierDial beendete er den ersten Versuch
-//     nach zehn Sekunden.
+//   - Der Ahnen-Leerlauf zaehlt seit 16.10.2026 je Knoten und je Peer
+//     (dag.ahnenLeerlauf), nur vollstaendige Antworten, und heilt nur fuer
+//     eingetragene Seeds -- kein Sonderfall mehr.
 //   - sync_blocks.go:225, tx_batch_transport.go:220 (httpSyncClient,
 //     txBatchClient), leitung_netz.go:347 (leitungKlient): ein Klient fuer
 //     alle -- siehe oben.

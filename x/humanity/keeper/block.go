@@ -1018,6 +1018,9 @@ type BlockDAG struct {
 	// replayMauer zaehlt, wie oft derselbe Block beim Nachspielen scheitert
 	// (replay_mauer.go). Je Knoten, nicht paketweit.
 	replayMauer replayMauer
+	// ahnenLeerlauf zaehlt je Peer Runden ohne beschafften Vorfahren
+	// (ahnen_unerreichbar.go).
+	ahnenLeerlauf ahnenLeerlauf
 	// orphanFirstSeen/orphanLastAttempt back orphan TTL + per-hash fetch
 	// cooldown — see queueOrphan's "abandon" comment and fetchMissingAncestors'
 	// cooldown skip for why both exist.
@@ -6421,7 +6424,7 @@ func (dag *BlockDAG) GetBlocksSince(minHeight int64, afterHash string, limit int
 		finalizedHeight, _ := dag.state.GetFinalizedCheckpoint()
 		cutoff := finalizedHeight - dag.pruneBuffer()
 		if cutoff > 0 && minHeight < cutoff {
-			dbBlocks, err := dag.state.LoadBlocksSinceFromDB(minHeight, afterHash, limit)
+			dbBlocks, err := dag.state.LoadNachgespielteBlocksSinceFromDB(minHeight, afterHash, limit)
 			if err == nil {
 				return dbBlocks
 			}
@@ -6454,7 +6457,7 @@ func (dag *BlockDAG) GetBlockByHash(hash string) *Block {
 	if b != nil || dag.state == nil {
 		return dag.hydratisiert(b)
 	}
-	return dag.state.LoadBlockFromDBByHash(hash)
+	return dag.state.LoadNachgespieltenBlockFromDBByHash(hash)
 }
 
 // GetBlocksByHashesForPeer resolves many hashes under a SINGLE RLock and omits
@@ -6491,7 +6494,7 @@ func (dag *BlockDAG) GetBlocksByHashesForPeer(hashes []string) []*Block {
 	// relies on to resolve orphaned ancestors during catch-up. Fall back to
 	// the DB for whatever wasn't found in memory, outside the lock.
 	if len(missing) > 0 && dag.state != nil {
-		if dbBlocks, err := dag.state.LoadBlocksByHashesFromDB(missing); err == nil {
+		if dbBlocks, err := dag.state.LoadNachgespielteBlocksByHashesFromDB(missing); err == nil {
 			out = append(out, dbBlocks...)
 		}
 	}
@@ -6537,7 +6540,7 @@ func (dag *BlockDAG) GetBlockByHeight(height int64) *Block {
 	// yet). Fall back to the DB's own best-effort selection (chain_blocks
 	// retains everything pruneOldDAGBlocks removes from memory), outside the
 	// lock since this is a query, not a mutation.
-	return dag.state.LoadBlockFromDBByHeight(height)
+	return dag.state.LoadNachgespieltenBlockFromDBByHeight(height)
 }
 
 // canonicalBlockAtHeightLocked returns the canonical block at height by

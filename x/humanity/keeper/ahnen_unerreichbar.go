@@ -2,7 +2,7 @@ package keeper
 
 import (
 	"fmt"
-	"sync/atomic"
+	"sync"
 )
 
 // Wenn der Peer die fehlenden Eltern nicht liefern KANN, ist Warten sinnlos.
@@ -41,37 +41,94 @@ import (
 // nicht. Mehrere Runden hintereinander ohne einen einzigen Treffer heissen,
 // dass er ihn nicht hat und nicht bekommen wird. Jeder erfolgreiche Abruf
 // setzt zurueck.
+//
+// # WAS ZAEHLT UND WER HEILEN DARF (Pruefung 16.10.2026)
+//
+// Bis dahin zaehlte ein prozessweiter Zaehler jede Runde ohne Treffer --
+// auch Runden, in denen jeder Abruf mit einem Netzfehler scheiterte, und
+// ueber alle Peers zusammen. Sync-Peers koennen sich selbst eintragen: ein
+// boeswilliger Peer, der fuenfmal leer antwortete, loeste damit die Heilung
+// aus (Resync aus dem Snapshot, notfalls os.Exit). Jetzt:
+//
+//   - Gezaehlt wird nur eine Runde mit mindestens einer vollstaendigen
+//     Antwort (kein Netzfehler, nicht abgeschnitten) und keinem Treffer.
+//     Netzfehler und abgeschnittene Antworten sagen nichts darueber, ob der
+//     Peer die Bloecke hat.
+//   - Je Peer, je Knoten (dag.ahnenLeerlauf). Ein Treffer bei Peer A setzt
+//     Peer B nicht zurueck.
+//   - Heilen nur, wenn ein eingetragener Seed (isTrustedSyncSource) die
+//     Historie nicht liefert. Ein anderer Peer ohne Historie ist schlicht
+//     kein Nutzen -- daraufhin den eigenen Zustand zu ersetzen, waere ein
+//     Angriffsweg.
 const ahnenLeerlaufSchwelle = 5
 
-var ahnenLeerlaufFolgen atomic.Int64
+// ahnenLeerlaufMaxPeers begrenzt die Zaehlung je Knoten. Voll: alles neu.
+const ahnenLeerlaufMaxPeers = 64
 
-// merkeAhnenLeerlauf zaehlt eine Runde ohne einen einzigen beschafften
-// Vorfahren und meldet, ob die Lage aussichtslos ist.
-func merkeAhnenLeerlauf() (aussichtslos bool, folgen int64) {
-	f := ahnenLeerlaufFolgen.Add(1)
+type ahnenLeerlauf struct {
+	mu     sync.Mutex
+	folgen map[string]int64
+}
+
+// merkeLeerlauf zaehlt fuer nodeURL eine Runde ohne einen einzigen
+// beschafften Vorfahren und meldet, ob die Schwelle erreicht ist.
+func (a *ahnenLeerlauf) merkeLeerlauf(nodeURL string) (aussichtslos bool, folgen int64) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.folgen == nil || (len(a.folgen) >= ahnenLeerlaufMaxPeers && a.folgen[nodeURL] == 0) {
+		a.folgen = make(map[string]int64)
+	}
+	a.folgen[nodeURL]++
+	f := a.folgen[nodeURL]
 	return f >= ahnenLeerlaufSchwelle, f
 }
 
-// merkeAhnenErfolg setzt zurueck -- der Peer liefert.
-func merkeAhnenErfolg() { ahnenLeerlaufFolgen.Store(0) }
+// merkeErfolg setzt nodeURL zurueck -- der Peer liefert.
+func (a *ahnenLeerlauf) merkeErfolg(nodeURL string) {
+	a.mu.Lock()
+	delete(a.folgen, nodeURL)
+	a.mu.Unlock()
+}
 
 // AhnenLeerlaufStand zeigt den Zaehler in /api/health/combined.
-func AhnenLeerlaufStand() map[string]interface{} {
+func (dag *BlockDAG) AhnenLeerlaufStand() map[string]interface{} {
+	var hoechste int64
+	je := map[string]int64{}
+	if dag != nil {
+		dag.ahnenLeerlauf.mu.Lock()
+		for u, f := range dag.ahnenLeerlauf.folgen {
+			je[u] = f
+			if f > hoechste {
+				hoechste = f
+			}
+		}
+		dag.ahnenLeerlauf.mu.Unlock()
+	}
 	return map[string]interface{}{
-		"folgen":   ahnenLeerlaufFolgen.Load(),
+		"folgen":   hoechste,
+		"je_peer":  je,
 		"schwelle": ahnenLeerlaufSchwelle,
-		"bedeutung": "Runden hintereinander, in denen der Peer KEINEN der angefragten " +
-			"Elternbloecke liefern konnte. Ab der Schwelle gilt das Aufholen als " +
-			"aussichtslos und die Heilung wird ausgeloest -- weiter zu warten haette " +
-			"keinen Zweck, weil der Peer die Historie gar nicht mehr hat",
+		"bedeutung": "Runden hintereinander, in denen ein Peer vollstaendig antwortete, aber KEINEN " +
+			"der angefragten Elternbloecke liefern konnte (Netzfehler zaehlen nicht). Ab der " +
+			"Schwelle gilt das Aufholen von diesem Peer als aussichtslos; geheilt wird nur, " +
+			"wenn es ein eingetragener Seed ist",
 	}
 }
 
-// loeseHeilungWegenUnerreichbarerAhnenAus startet die Selbstheilung.
+// loeseHeilungWegenUnerreichbarerAhnenAus startet die Selbstheilung -- nur
+// fuer einen eingetragenen Seed (siehe oben).
 func (dag *BlockDAG) loeseHeilungWegenUnerreichbarerAhnenAus(nodeURL string, folgen int64) {
+	if !dag.isTrustedSyncSource(nodeURL) {
+		fmt.Printf("[HTTP-SYNC] %s lieferte in %d Runden keinen der angefragten Vorfahren -- "+
+			"kein eingetragener Seed, keine Heilung\n", nodeURL, folgen)
+		return
+	}
 	grund := fmt.Sprintf("%s returned none of the requested ancestor blocks in %d rounds "+
 		"while orphans keep arriving — it no longer holds the history this node needs, "+
 		"so catching up from it is impossible", nodeURL, folgen)
 	fmt.Printf("[HTTP-SYNC] ⛑ %s — triggering self-heal\n", grund)
-	SafeGoroutine("ahnenLeerlaufHeilung", func() { dag.triggerAutoResync(grund) })
+	SafeGoroutine("ahnenLeerlaufHeilung", func() { ahnenLeerlaufHeilen(dag, grund) })
 }
+
+// ahnenLeerlaufHeilen: Variable nur, damit Tests den Resync ersetzen.
+var ahnenLeerlaufHeilen = func(dag *BlockDAG, grund string) { dag.triggerAutoResync(grund) }

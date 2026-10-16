@@ -755,7 +755,7 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		// Steckt der Knoten an einem Block fest, den er nicht nachspielen kann?
 		"replay_mauer": a.blockchain.ReplayMauerStand(),
 		// Liefert der Peer die fehlenden Elternbloecke ueberhaupt noch?
-		"ahnen_leerlauf": AhnenLeerlaufStand(),
+		"ahnen_leerlauf": a.blockchain.AhnenLeerlaufStand(),
 		// Whether the database connection pool is the constraint — wait_count
 		// and wait_total_ms answer that directly, instead of inferring it from
 		// a throughput number that swings by 2x between runs. See DBPoolStats.

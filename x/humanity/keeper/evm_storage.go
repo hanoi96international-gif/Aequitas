@@ -3935,6 +3935,22 @@ func (cs *ChainState) ensureTxRootColumn() {
 	cs.txRootSpalteDa.Store(true)
 }
 
+// nurNachgespieltSQL: der Zusatz fuer Abfragen, die Bloecke NACH AUSSEN
+// geben (Peers, RPC, Explorer). SaveBlockToDB legt den Kopf eines Blocks
+// VOR seinem Nachspielen mit replayed = false an und loescht ihn nach einem
+// Fehlschlag wieder (block.go, AddPeerBlock). In diesem Fenster lieferte
+// ein Seed einen Block, den er selbst nicht angenommen hat, an Nachholende
+// aus -- dort galt er dann als FromSync, also als vom Seed gefuehrt
+// (Pruefung von #375). Interne Wege (Finalitaet, Ausduennen, Tx-Index,
+// Start) lesen weiter alles.
+func (cs *ChainState) nurNachgespieltSQL(nur bool) string {
+	if !nur {
+		return ""
+	}
+	cs.ensureReplayedColumn()
+	return " AND replayed"
+}
+
 // MarkBlockReplayed flips chain_blocks.replayed to true for hash. Called via
 // cs.dbExecCtx(ctx) so it joins the SAME dbTx as the account mutations replay
 // just made (replayTransactions calls this right before
@@ -4520,6 +4536,15 @@ func (cs *ChainState) LoadUnreplayedBlocksFromDB() ([]*Block, error) {
 // GetBlockByHeight does. Returns nil if no real (non-stub) block exists at
 // this height.
 func (cs *ChainState) LoadBlockFromDBByHeight(height int64) *Block {
+	return cs.loadBlockFromDBByHeight(height, false)
+}
+
+// LoadNachgespieltenBlockFromDBByHeight: nur nachgespielte Bloecke.
+func (cs *ChainState) LoadNachgespieltenBlockFromDBByHeight(height int64) *Block {
+	return cs.loadBlockFromDBByHeight(height, true)
+}
+
+func (cs *ChainState) loadBlockFromDBByHeight(height int64, nurNachgespielt bool) *Block {
 	if cs.db == nil {
 		return nil
 	}
@@ -4529,7 +4554,7 @@ func (cs *ChainState) LoadBlockFromDBByHeight(height int64) *Block {
 	                 signature, transactions, COALESCE(transactions_z, ''::bytea),
 	                 COALESCE(selected_parent,''), COALESCE(blue_score,0), COALESCE(blues,'[]'),
 	                 COALESCE(tx_root,'')
-	          FROM chain_blocks WHERE height = $1`, height)
+	          FROM chain_blocks WHERE height = $1`+cs.nurNachgespieltSQL(nurNachgespielt), height)
 	if err != nil {
 		return nil
 	}
@@ -4626,6 +4651,15 @@ func (cs *ChainState) BlockExistsInDB(hash string) bool {
 }
 
 func (cs *ChainState) LoadBlockFromDBByHash(hash string) *Block {
+	return cs.loadBlockFromDBByHash(hash, false)
+}
+
+// LoadNachgespieltenBlockFromDBByHash: nur ein nachgespielter Block.
+func (cs *ChainState) LoadNachgespieltenBlockFromDBByHash(hash string) *Block {
+	return cs.loadBlockFromDBByHash(hash, true)
+}
+
+func (cs *ChainState) loadBlockFromDBByHash(hash string, nurNachgespielt bool) *Block {
 	if cs.db == nil {
 		return nil
 	}
@@ -4635,7 +4669,7 @@ func (cs *ChainState) LoadBlockFromDBByHash(hash string) *Block {
 	                 signature, transactions, COALESCE(transactions_z, ''::bytea),
 	                 COALESCE(selected_parent,''), COALESCE(blue_score,0), COALESCE(blues,'[]'),
 	                 COALESCE(tx_root,'')
-	          FROM chain_blocks WHERE hash = $1`, hash)
+	          FROM chain_blocks WHERE hash = $1`+cs.nurNachgespieltSQL(nurNachgespielt), hash)
 	var b Block
 	var parentHashesRaw, txsRaw, bluesRaw string
 	var txsZ []byte
@@ -4682,6 +4716,15 @@ const dbSinceFetchWindow = 512
 // /api/blocks?min_height= could ever serve a range below that eviction
 // point, even though chain_blocks (here) has always retained it in full.
 func (cs *ChainState) LoadBlocksSinceFromDB(minHeight int64, afterHash string, limit int) ([]*Block, error) {
+	return cs.loadBlocksSinceFromDB(minHeight, afterHash, limit, false)
+}
+
+// LoadNachgespielteBlocksSinceFromDB: nur nachgespielte Bloecke.
+func (cs *ChainState) LoadNachgespielteBlocksSinceFromDB(minHeight int64, afterHash string, limit int) ([]*Block, error) {
+	return cs.loadBlocksSinceFromDB(minHeight, afterHash, limit, true)
+}
+
+func (cs *ChainState) loadBlocksSinceFromDB(minHeight int64, afterHash string, limit int, nurNachgespielt bool) ([]*Block, error) {
 	if cs.db == nil {
 		return nil, nil
 	}
@@ -4710,7 +4753,7 @@ func (cs *ChainState) LoadBlocksSinceFromDB(minHeight int64, afterHash string, l
 	                 signature, COALESCE(selected_parent,''), COALESCE(blue_score,0), COALESCE(blues,'[]'),
 	                 COALESCE(tx_root,'')
 	          FROM chain_blocks
-	          WHERE height >= $1 AND proposer != 'synthetic-checkpoint'
+	          WHERE height >= $1 AND proposer != 'synthetic-checkpoint'`+cs.nurNachgespieltSQL(nurNachgespielt)+`
 	          ORDER BY height ASC, blue_score DESC, hash ASC
 	          LIMIT $2`, minHeight, fetchLimit)
 	if err != nil {
@@ -4826,6 +4869,16 @@ func (cs *ChainState) ladeRuempfeAusDB(hashes []string) (map[string]blockRumpfRo
 }
 
 func (cs *ChainState) LoadBlocksByHashesFromDB(hashes []string) ([]*Block, error) {
+	return cs.loadBlocksByHashesFromDB(hashes, false)
+}
+
+// LoadNachgespielteBlocksByHashesFromDB: wie LoadBlocksByHashesFromDB, aber
+// nur Bloecke, deren Nachspielen committet ist (sqlNurNachgespielt).
+func (cs *ChainState) LoadNachgespielteBlocksByHashesFromDB(hashes []string) ([]*Block, error) {
+	return cs.loadBlocksByHashesFromDB(hashes, true)
+}
+
+func (cs *ChainState) loadBlocksByHashesFromDB(hashes []string, nurNachgespielt bool) ([]*Block, error) {
 	if cs.db == nil || len(hashes) == 0 {
 		return nil, nil
 	}
@@ -4836,7 +4889,7 @@ func (cs *ChainState) LoadBlocksByHashesFromDB(hashes []string) ([]*Block, error
 	                 COALESCE(selected_parent,''), COALESCE(blue_score,0), COALESCE(blues,'[]'),
 	                 COALESCE(tx_root,'')
 	          FROM chain_blocks
-	          WHERE hash = ANY($1) AND proposer != 'synthetic-checkpoint'`, pq.Array(hashes))
+	          WHERE hash = ANY($1) AND proposer != 'synthetic-checkpoint'`+cs.nurNachgespieltSQL(nurNachgespielt), pq.Array(hashes))
 	if err != nil {
 		return nil, fmt.Errorf("LoadBlocksByHashesFromDB query failed: %w", err)
 	}

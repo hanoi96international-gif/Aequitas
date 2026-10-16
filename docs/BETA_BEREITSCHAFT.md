@@ -41,6 +41,8 @@ jeweiligen PR.
 | `pinningDialer`/`isAllowedPeerURL`: CGNAT (außer vom Betreiber genannt), NAT64 und Sonderbereiche werden nicht mehr gewählt | NIEDRIG | Aequitas #376 |
 | Biometrie-Workflows: `inputs.*` über `env` statt direkt in `run:` | NIEDRIG | biometric #56 |
 | Coordinator: alle Grenzen je IPv6-/64 (vorher je Einzeladresse: ein /64 umging `/register` ganz); offene Challenges je Netz (10) und je /48 (100), Obergrenze 100 000; X-Forwarded-For auch hinter Provider-NAT-Proxy. **Wirkt erst nach dem Coordinator-Deploy** (`deploy-coordinator-to-box.yml`, von Hand). | MITTEL | biometric #57 |
+| Seed liefert nur nachgespielte Blöcke aus: Ein gepushter Block stand vor dem Nachspielen schon in `chain_blocks` und ging über `/api/blocks`, `/api/block`, `/api/blocks/by-hash` und RPC an Nachholende, die ihn dann als vom Seed geführt (`FromSync`) behandelten. | NIEDRIG | Aequitas #378 |
+| Ahnen-Leerlauf: Netzfehler zählten als leere Runde, der Zähler galt prozessweit für alle Peers, und ein selbst eingetragener Peer konnte mit leeren Antworten Resync samt Neustart auslösen. Jetzt nur vollständige Antworten, je Peer und je Knoten; heilen nur, wenn ein eingetragener Seed die Historie nicht liefert. | MITTEL | Aequitas #378 |
 
 **In Prüfung (15.10.2026):**
 
@@ -55,9 +57,7 @@ jeweiligen PR.
 | Push-Plätze (8) lassen sich mit langsamen Anfragen belegen | MITTEL | Frist begrenzt es |
 | StateRoot-Abweichung wird nur geloggt, der Block angenommen. Im DAG mit mehreren Produzenten ergeben Geschwister immer verschiedene Roots, ein hartes Abweisen hielte den Sync an. | MITTEL | tragbar nur bei geschlossener Produzentenliste |
 | FromSync-Ausnahmen (Sperre, Finalität) über Seed-Verbindungen ohne TLS | MITTEL | schlafender Stichtag im Code (`fromsync_stichtag.go`); einschalten per PR nach `docs/FROMSYNC_STICHTAG.md` |
-| Keine echten Tests mit 4 oder mehr Knoten (Simulationen gibt es) | HOCH | teilweise: `TestVierKnoten_RealDB` (4 Instanzen, eigene Datenbanken, HTTP-Push/-Sync, Leitung, Ausfall und Rueckkehr, Faelschungen). Nicht abgedeckt: Snapshot-Resync ueber Loopback, libp2p, Trusted Seeds; paketweite Zaehler (Ahnen-Leerlauf, Push-Plaetze) teilen sich die Instanzen; die Replay-Mauer zaehlt seit #375 je Knoten -- siehe Dateikopf |
-| Ahnen-Leerlauf zaehlt Netzfehler als leere Runde, obwohl der Kommentar das Gegenteil sagt (`sync_blocks.go:1040` vs. `:1101`), und zaehlt prozessweit ueber alle Peers (`ahnen_unerreichbar.go:46`); Ende ist ebenfalls `os.Exit` | NIEDRIG | offen |
-| Ein gepushter Block steht beim Seed schon vor dem Nachspielen in `chain_blocks` und wird erst nach dem Fehlschlag gelöscht. In diesem Fenster kann `GetBlocksByHashesForPeer` ihn an Nachholende ausliefern (dort `FromSync`). Fund aus der Prüfung von #375; der Seed sollte nur nachgespielte Blöcke ausliefern. | NIEDRIG | offen |
+| Keine echten Tests mit 4 oder mehr Knoten (Simulationen gibt es) | HOCH | teilweise: `TestVierKnoten_RealDB` (4 Instanzen, eigene Datenbanken, HTTP-Push/-Sync, Leitung, Ausfall und Rueckkehr, Faelschungen). Nicht abgedeckt: Snapshot-Resync ueber Loopback, libp2p, Trusted Seeds; paketweite Zaehler (Push-Plaetze) teilen sich die Instanzen; die Replay-Mauer zaehlt seit #375 je Knoten -- siehe Dateikopf |
 | `checkpointVorschau` läuft unter `dag.mu` (bis über 5 s je Checkpoint-Block) | MITTEL | erst ab dem Checkpoint-Stichtag |
 | Snapshot und Autoheal vertrauen C1 | MITTEL | erst mit mehreren Unterzeichnern lösbar |
 | App: Polling statt Ereignisse, kein Offline-Zustand | NIEDRIG | |
