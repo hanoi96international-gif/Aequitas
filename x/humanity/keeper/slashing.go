@@ -285,7 +285,20 @@ func (cs *ChainState) loadPenaltyCacheLockedCtx(ctx context.Context) {
 	// unconditionally (falls back to cs.db when no transaction is active);
 	// this closes the same hazard class for any call path that reaches
 	// this cache load while cs.mu+cs.activeTx are already held.
-	rows, err := cs.dbExecCtx(ctx).Query(`SELECT signing_address, banned, suspended_until, last_offense_at FROM validator_penalties`)
+	// Nur die Transaktion aus ctx, nie der Rueckfall auf cs.activeTx
+	// (Datenrennen, gefunden vom Vier-Knoten-Test unter -race,
+	// vier_knoten_realdb_test.go): der einzige Aufrufer ist
+	// IsValidatorSuspended aus AddPeerBlock, unter dag.mu, OHNE cs.mu --
+	// waehrend der Ueberweisungs-Buendler unter cs.mu cs.activeTx setzt.
+	// dbExecCtx las das Feld dann ungeschuetzt. Eine Transaktion gab es fuer
+	// diese Ladung nie (siehe loadPenaltyCacheLocked); der Waechter in
+	// dbExecCtx reichte fremden Goroutinen ohnehin den Pool. Das Ergebnis ist
+	// also dasselbe, nur ohne das ungeschuetzte Lesen.
+	var q sqlExecutor = cs.db
+	if tx := txFromContext(ctx); tx != nil {
+		q = tx
+	}
+	rows, err := q.Query(`SELECT signing_address, banned, suspended_until, last_offense_at FROM validator_penalties`)
 	if err != nil {
 		return
 	}
