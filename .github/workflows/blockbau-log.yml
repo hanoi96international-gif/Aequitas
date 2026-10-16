@@ -31,7 +31,7 @@ jobs:
     environment: produktion
     steps:
       - name: Log-Ausschnitt
-        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         env:
           # Beim Push gibt es keine Eingaben: dann C2 (seit 24.09.2026 der annehmende Knoten), die letzten 45 Minuten.
           SEIT: ${{ inputs.seit || '45m' }}

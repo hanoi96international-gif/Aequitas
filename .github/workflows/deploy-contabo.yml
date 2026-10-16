@@ -1,4 +1,4 @@
-﻿name: Deploy to Contabo VPS
+name: Deploy to Contabo VPS
 
 on:
   # CONTABO1 IST SEIT DEM 24.09.2026 ABGESCHALTET (Abo nicht verlaengert; die
@@ -118,7 +118,7 @@ jobs:
           done
           echo "Contabo2 still unreachable after 10 min — proceeding anyway (fail-open)"
       - name: Deploy to Contabo
-        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         with:
           host: alter-c1-abgeschaltet.invalid
           username: root

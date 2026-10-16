@@ -36,7 +36,7 @@ jobs:
     environment: produktion
     steps:
       - name: Vorher-Zustand beider Boxen
-        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         with:
           host: alter-c1-abgeschaltet.invalid
           username: root
@@ -56,7 +56,7 @@ jobs:
             curl -s --max-time 15 http://194.163.188.71:8080/api/pool; echo
 
       - name: Freigeben, korrigieren, wieder verriegeln
-        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         with:
           host: alter-c1-abgeschaltet.invalid
           username: root
@@ -128,7 +128,7 @@ jobs:
 
       - name: Nachher -- und ob beide Boxen sich einig sind
         if: always()
-        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         with:
           host: alter-c1-abgeschaltet.invalid
           username: root
