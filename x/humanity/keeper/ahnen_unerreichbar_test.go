@@ -91,7 +91,9 @@ func ahnenTestDAG(t *testing.T, seed string) *BlockDAG {
 	if seed != "" {
 		dag.trustedSeeds[seed] = true
 	}
-	dag.orphans["0xfehlender-elternblock"] = []*Block{{Hash: "0xwaise", Height: 10, Proposer: "0xabc"}}
+	// Die Waise kam vom Seed: der Seed fuehrt ihr Kind, muesste also den
+	// Elternblock haben.
+	dag.orphans["0xfehlender-elternblock"] = []*Block{{Hash: "0xwaise", Height: 10, Proposer: "0xabc", FromSync: true}}
 	return dag
 }
 
@@ -154,5 +156,28 @@ func TestAhnenLeerlauf_FremderPeerHeiltNicht(t *testing.T) {
 	}
 	if heilungen.Load() != 0 {
 		t.Fatalf("fremder Peer loeste %d Heilungen aus", heilungen.Load())
+	}
+}
+
+// MISSBRAUCH (Pruefung von #380, F2): ein zugelassener Validator haelt einen
+// Elternblock zurueck und pusht nur dessen Kinder. Der ehrliche Seed
+// antwortet vollstaendig und leer -- das darf nicht zur Heilung fuehren.
+func TestAhnenLeerlauf_ZurueckgehaltenerElternblockHeiltNicht(t *testing.T) {
+	heilungen := heilungenZaehlen(t)
+	var antwort atomic.Value
+	antwort.Store("leer")
+	srv := ahnenTestPeer(t, &antwort)
+	dag := ahnenTestDAG(t, srv.URL)
+	// Kind per Push: FromSync = false.
+	dag.orphans["0xfehlender-elternblock"] = []*Block{{Hash: "0xgepusht", Height: 10, Proposer: "0xb0e5e"}}
+	for i := 0; i < 3*ahnenLeerlaufSchwelle; i++ {
+		rundeAbrufen(dag, srv.URL)
+	}
+	time.Sleep(200 * time.Millisecond)
+	if f := dag.AhnenLeerlaufStand()["folgen"].(int64); f != 0 {
+		t.Fatalf("leere Runden ohne Seed-Waise gezaehlt: folgen=%d", f)
+	}
+	if heilungen.Load() != 0 {
+		t.Fatalf("zurueckgehaltener Elternblock loeste %d Heilungen aus", heilungen.Load())
 	}
 }

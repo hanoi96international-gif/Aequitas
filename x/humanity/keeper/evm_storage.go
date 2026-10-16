@@ -3943,6 +3943,10 @@ func (cs *ChainState) ensureTxRootColumn() {
 // aus -- dort galt er dann als FromSync, also als vom Seed gefuehrt
 // (Pruefung von #375). Interne Wege (Finalitaet, Ausduennen, Tx-Index,
 // Start) lesen weiter alles.
+//
+// Dasselbe gilt fuer dag.blocks: die Vorab-Ladewege holen einen Block mit
+// replayed = false in den Speicher (Block.NichtNachgespielt); dag.nachAussen
+// haelt ihn dort zurueck.
 func (cs *ChainState) nurNachgespieltSQL(nur bool) string {
 	if !nur {
 		return ""
@@ -4665,21 +4669,24 @@ func (cs *ChainState) loadBlockFromDBByHash(hash string, nurNachgespielt bool) *
 	}
 	cs.ensureGHOSTDAGColumns()
 	cs.ensureTxRootColumn()
+	cs.ensureReplayedColumn()
 	row := cs.db.QueryRow(`SELECT hash, height, parent_hashes, proposer, timestamp, humans, state_root,
 	                 signature, transactions, COALESCE(transactions_z, ''::bytea),
 	                 COALESCE(selected_parent,''), COALESCE(blue_score,0), COALESCE(blues,'[]'),
-	                 COALESCE(tx_root,'')
+	                 COALESCE(tx_root,''), replayed
 	          FROM chain_blocks WHERE hash = $1`+cs.nurNachgespieltSQL(nurNachgespielt), hash)
 	var b Block
 	var parentHashesRaw, txsRaw, bluesRaw string
 	var txsZ []byte
+	var nachgespielt bool
 	if err := row.Scan(
 		&b.Hash, &b.Height, &parentHashesRaw, &b.Proposer, &b.Timestamp,
 		&b.Humans, &b.StateRoot, &b.Signature, &txsRaw, &txsZ,
-		&b.SelectedParent, &b.BlueScore, &bluesRaw, &b.TxRoot,
+		&b.SelectedParent, &b.BlueScore, &bluesRaw, &b.TxRoot, &nachgespielt,
 	); err != nil {
 		return nil
 	}
+	b.NichtNachgespielt = !nachgespielt
 	_ = json.Unmarshal([]byte(parentHashesRaw), &b.ParentHashes)
 	// Either stored form, and a failure is REPORTED rather than discarded — see
 	// LoadBlocksFromDB above for why error-checking the plain column ALONE is what
@@ -4884,10 +4891,11 @@ func (cs *ChainState) loadBlocksByHashesFromDB(hashes []string, nurNachgespielt 
 	}
 	cs.ensureGHOSTDAGColumns()
 	cs.ensureTxRootColumn()
+	cs.ensureReplayedColumn()
 	rows, err := cs.db.Query(`SELECT hash, height, parent_hashes, proposer, timestamp, humans, state_root,
 	                 signature, transactions, COALESCE(transactions_z, ''::bytea),
 	                 COALESCE(selected_parent,''), COALESCE(blue_score,0), COALESCE(blues,'[]'),
-	                 COALESCE(tx_root,'')
+	                 COALESCE(tx_root,''), replayed
 	          FROM chain_blocks
 	          WHERE hash = ANY($1) AND proposer != 'synthetic-checkpoint'`+cs.nurNachgespieltSQL(nurNachgespielt), pq.Array(hashes))
 	if err != nil {
@@ -4899,13 +4907,15 @@ func (cs *ChainState) loadBlocksByHashesFromDB(hashes []string, nurNachgespielt 
 		var b Block
 		var parentHashesRaw, txsRaw, bluesRaw string
 		var txsZ []byte
+		var nachgespielt bool
 		if err := rows.Scan(
 			&b.Hash, &b.Height, &parentHashesRaw, &b.Proposer, &b.Timestamp,
 			&b.Humans, &b.StateRoot, &b.Signature, &txsRaw, &txsZ,
-			&b.SelectedParent, &b.BlueScore, &bluesRaw, &b.TxRoot,
+			&b.SelectedParent, &b.BlueScore, &bluesRaw, &b.TxRoot, &nachgespielt,
 		); err != nil {
 			continue
 		}
+		b.NichtNachgespielt = !nachgespielt
 		_ = json.Unmarshal([]byte(parentHashesRaw), &b.ParentHashes)
 		// A block whose transaction list will not parse must NOT come back
 		// looking like an empty block: replaying it would silently drop every

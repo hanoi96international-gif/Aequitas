@@ -1142,7 +1142,9 @@ func (dag *BlockDAG) fetchMissingAncestors(nodeURL string) {
 			// (TRUNCATE chain_blocks in snapshot.go), und dann ist Aufholen
 			// von ihm aus unmoeglich. Siehe ahnen_unerreichbar.go.
 			// Netzfehler und abgeschnittene Antworten zaehlen nicht.
-			if vollstaendigGeantwortet {
+			// Und nur, wenn ein Seed die Kinder dieser Eltern selbst geliefert
+			// hat -- nicht ein Push (Pruefung von #380, F2).
+			if vollstaendigGeantwortet && dag.seedFuehrtWaiseAuf(pending) {
 				if aussichtslos, folgen := dag.ahnenLeerlauf.merkeLeerlauf(nodeURL); aussichtslos {
 					dag.loeseHeilungWegenUnerreichbarerAhnenAus(nodeURL, folgen)
 				}

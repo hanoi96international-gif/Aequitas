@@ -56,6 +56,14 @@ import (
 //     Peer die Bloecke hat.
 //   - Je Peer, je Knoten (dag.ahnenLeerlauf). Ein Treffer bei Peer A setzt
 //     Peer B nicht zurueck.
+//   - Gezaehlt wird eine Runde nur, wenn auf einen der angefragten Hashes
+//     eine Waise wartet, die selbst von einem eingetragenen Seed kam
+//     (FromSync). Hat der Seed das Kind geliefert, fuehrt er den Elternblock
+//     -- fehlt er ihm, ist seine Historie wirklich weg. Kinder aus einem
+//     Push zaehlen nicht: ein zugelassener Validator, der einen Elternblock
+//     zurueckhaelt und nur die Kinder schickt, liess sonst den ehrlichen
+//     Seed fuenfmal leer antworten und loeste die Heilung aus (Pruefung von
+//     #380, F2).
 //   - Heilen nur, wenn ein eingetragener Seed (isTrustedSyncSource) die
 //     Historie nicht liefert. Ein anderer Peer ohne Historie ist schlicht
 //     kein Nutzen -- daraufhin den eigenen Zustand zu ersetzen, waere ein
@@ -132,3 +140,18 @@ func (dag *BlockDAG) loeseHeilungWegenUnerreichbarerAhnenAus(nodeURL string, fol
 
 // ahnenLeerlaufHeilen: Variable nur, damit Tests den Resync ersetzen.
 var ahnenLeerlaufHeilen = func(dag *BlockDAG, grund string) { dag.triggerAutoResync(grund) }
+
+// seedFuehrtWaiseAuf: wartet auf einen dieser Hashes eine Waise, die von
+// einem eingetragenen Seed kam? Siehe oben.
+func (dag *BlockDAG) seedFuehrtWaiseAuf(hashes []string) bool {
+	dag.orphansMu.Lock()
+	defer dag.orphansMu.Unlock()
+	for _, h := range hashes {
+		for _, w := range dag.orphans[h] {
+			if w != nil && w.FromSync {
+				return true
+			}
+		}
+	}
+	return false
+}

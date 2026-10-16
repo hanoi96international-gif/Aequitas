@@ -75,3 +75,70 @@ func TestSeed_LiefertNurNachgespielte_RealDB(t *testing.T) {
 	}
 	pruefe("nach dem Nachspielen", true)
 }
+
+// MISSBRAUCH (Pruefung von #380, F1): kommt das Kind Y an, waehrend X noch
+// nachgespielt wird, holt prefetchParentsFromDB den Kopf von X aus der DB in
+// den Speicher. Von dort darf er nicht nach aussen gehen, bis das
+// Nachspielen gelungen ist.
+func TestSeed_VorabGeladenerKopfBleibtDrinnen_RealDB(t *testing.T) {
+	skipUnlessRealDBBenchEnv(t)
+	truncateDistTestTables(t)
+	cs := testKnoten(t, "unused-seed-vorab.json")
+	if !cs.useDB {
+		t.Fatal("keine Datenbank")
+	}
+	dag := newOrphanTestDAG()
+	dag.state = cs
+	dag.replayedBlocks = map[string]bool{}
+
+	x := &Block{
+		Hash:      fmt.Sprintf("0xvorab%d", time.Now().UnixNano()),
+		Height:    int64(8_000_000 + time.Now().UnixNano()%1_000_000),
+		Proposer:  "0x000000000000000000000000000000000000beef",
+		Timestamp: time.Now().Unix(),
+	}
+	t.Cleanup(func() { _ = cs.DeleteBlockFromDB(x.Hash) })
+	if err := cs.SaveBlockToDB(x, false); err != nil {
+		t.Fatalf("SaveBlockToDB: %v", err)
+	}
+	dag.prefetchParentsFromDB(&Block{Hash: "0xkind", ParentHashes: []string{x.Hash}})
+	dag.mu.RLock()
+	imSpeicher := dag.blocks[x.Hash]
+	dag.mu.RUnlock()
+	if imSpeicher == nil || !imSpeicher.NichtNachgespielt {
+		t.Fatalf("Vorbedingung: X liegt markiert im Speicher (%v)", imSpeicher)
+	}
+
+	geliefert := func() map[string]bool {
+		seit := false
+		for _, b := range dag.GetBlocksSince(x.Height-1, "", 10) {
+			if b.Hash == x.Hash {
+				seit = true
+			}
+		}
+		return map[string]bool{
+			"GetBlocksByHashesForPeer": len(dag.GetBlocksByHashesForPeer([]string{x.Hash})) > 0,
+			"GetBlockByHash":           dag.GetBlockByHash(x.Hash) != nil,
+			"GetBlockByHeight":         dag.GetBlockByHeight(x.Height) != nil,
+			"GetBlocksSince":           seit,
+		}
+	}
+	for weg, da := range geliefert() {
+		if da {
+			t.Errorf("vor dem Nachspielen: %s liefert X aus dem Speicher", weg)
+		}
+	}
+	// Das Nachspielen gelingt: MarkBlockReplayed und replayedBlocks (wie
+	// replayTransactions).
+	if err := cs.MarkBlockReplayed(context.Background(), x.Hash); err != nil {
+		t.Fatal(err)
+	}
+	dag.replayedMu.Lock()
+	dag.replayedBlocks[x.Hash] = true
+	dag.replayedMu.Unlock()
+	for weg, da := range geliefert() {
+		if !da && weg != "GetBlockByHeight" { // Hoehe: kanonische Wahl braucht Spitzen
+			t.Errorf("nach dem Nachspielen: %s liefert X nicht", weg)
+		}
+	}
+}

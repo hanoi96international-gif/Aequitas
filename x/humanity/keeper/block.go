@@ -303,6 +303,12 @@ type Block struct {
 	// losing that block's state effects with no error anywhere. Never
 	// serialized; only meaningful as loaded from the DB at startup.
 	Replayed bool `json:"-"`
+	// NichtNachgespielt: aus einer chain_blocks-Zeile mit replayed = false
+	// geladen (Vorab-Laden der Eltern, GHOSTDAG-Nachschlagen, Start). Ein
+	// solcher Block kann in dag.blocks stehen, bevor -- oder ohne dass -- er
+	// nachgespielt ist. Nach aussen geht er erst, wenn replayedBlocks ihn
+	// fuehrt (dag.nachAussen). Nie aus JSON.
+	NichtNachgespielt bool `json:"-"`
 }
 
 // peerChallenge holds a one-time challenge issued to a registering peer.
@@ -1566,6 +1572,8 @@ func NewBlockchain(nodeID string, state *ChainState) *BlockDAG {
 			// repairUnreplayedBlocks() instead of trusting it.
 			if b.Replayed {
 				dag.replayedBlocks[b.Hash] = true
+			} else {
+				b.NichtNachgespielt = true
 			}
 			// else: leave it out of replayedBlocks. Not appended to
 			// unreplayedAtBoot here — LoadUnreplayedBlocksFromDB below finds
@@ -6431,7 +6439,14 @@ func (dag *BlockDAG) GetBlocksSince(minHeight int64, afterHash string, limit int
 			fmt.Printf("[BLOCK] GetBlocksSince: DB fallback failed for min_height=%d: %v — serving in-memory window instead (likely incomplete for this range)\n", minHeight, err)
 		}
 	}
-	return dag.hydratisiertAlle(selectBlocksSince(dag.GetBlocks(), minHeight, afterHash, limit))
+	alle := dag.GetBlocks()
+	nachAussen := alle[:0:0]
+	for _, b := range alle {
+		if dag.nachAussen(b) {
+			nachAussen = append(nachAussen, b)
+		}
+	}
+	return dag.hydratisiertAlle(selectBlocksSince(nachAussen, minHeight, afterHash, limit))
 }
 
 // GetBlockByHash returns the block with the given hash, or nil if unknown.
@@ -6454,6 +6469,9 @@ func (dag *BlockDAG) GetBlockByHash(hash string) *Block {
 		defer dag.mu.RUnlock()
 		return dag.blocks[hash]
 	}()
+	if b != nil && !dag.nachAussen(b) {
+		b = nil // noch nicht nachgespielt: nur, was die DB als nachgespielt fuehrt
+	}
 	if b != nil || dag.state == nil {
 		return dag.hydratisiert(b)
 	}
@@ -6481,7 +6499,11 @@ func (dag *BlockDAG) GetBlocksByHashesForPeer(hashes []string) []*Block {
 		defer dag.mu.RUnlock()
 		for _, h := range hashes {
 			if b := dag.blocks[h]; b != nil && b.Proposer != "synthetic-checkpoint" {
-				out = append(out, b)
+				if dag.nachAussen(b) {
+					out = append(out, b)
+				} else {
+					missing = append(missing, h) // DB, nur nachgespielt
+				}
 			} else if b == nil {
 				missing = append(missing, h)
 			}
@@ -6530,6 +6552,9 @@ func (dag *BlockDAG) GetBlockByHeight(height int64) *Block {
 		defer dag.mu.Unlock()
 		return dag.canonicalBlockAtHeightLocked(height)
 	}()
+	if best != nil && !dag.nachAussen(best) {
+		best = nil
+	}
 	if best != nil || dag.state == nil {
 		return dag.hydratisiert(best)
 	}
@@ -10340,4 +10365,22 @@ func (dag *BlockDAG) retryAndFlushSoftRetry() {
 			fmt.Printf("[GHOSTDAG] Soft-retry succeeded for block #%d (%s...)\n", b.Height, b.Hash[:16])
 		}
 	}
+}
+
+// nachAussen: darf dieser Block an Peers, RPC oder Explorer gehen? Nein,
+// solange er aus einer Zeile mit replayed = false geladen und seither nicht
+// nachgespielt wurde (Block.NichtNachgespielt, Pruefung von #380, F1).
+// Kann unter dag.mu gerufen werden (Reihenfolge dag.mu -> replayedMu wie in
+// collectUnreplayedAncestors).
+func (dag *BlockDAG) nachAussen(b *Block) bool {
+	if b == nil {
+		return false
+	}
+	if !b.NichtNachgespielt {
+		return true
+	}
+	dag.replayedMu.Lock()
+	ok := dag.replayedBlocks[b.Hash]
+	dag.replayedMu.Unlock()
+	return ok
 }
