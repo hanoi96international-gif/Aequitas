@@ -1068,12 +1068,19 @@ func (dag *BlockDAG) fetchMissingAncestors(nodeURL string) {
 			return // every pending hash is either known now or on cooldown
 		}
 		fetchedThisRound := 0
+		// Hat der Peer in dieser Runde mindestens einmal vollstaendig
+		// geantwortet? Nur dann sagt "kein Treffer" etwas ueber ihn aus
+		// (ahnen_unerreichbar.go).
+		vollstaendigGeantwortet := false
 		for i := 0; i < len(pending); i += maxBatchSize {
 			chunk := pending[i:min(i+maxBatchSize, len(pending))]
 			blocks, truncated, err := dag.fetchBlocksByHashesAdaptive(nodeURL, chunk)
 			if err != nil {
 				fmt.Printf("[HTTP-SYNC] ✗ Could not batch-fetch %d missing ancestor(s) from %s: %v\n", len(chunk), nodeURL, err)
 				continue // network failure — don't count as genuine peer confirmation
+			}
+			if !truncated {
+				vollstaendigGeantwortet = true
 			}
 			// Count an attempt only for hashes the peer confirmed it does NOT have
 			// (i.e. the fetch succeeded but the hash was absent from the response).
@@ -1134,12 +1141,17 @@ func (dag *BlockDAG) fetchMissingAncestors(nodeURL string) {
 			// letzten Resync haelt er nur noch die juengsten Bloecke
 			// (TRUNCATE chain_blocks in snapshot.go), und dann ist Aufholen
 			// von ihm aus unmoeglich. Siehe ahnen_unerreichbar.go.
-			if aussichtslos, folgen := merkeAhnenLeerlauf(); aussichtslos {
-				dag.loeseHeilungWegenUnerreichbarerAhnenAus(nodeURL, folgen)
+			// Netzfehler und abgeschnittene Antworten zaehlen nicht.
+			// Und nur, wenn ein Seed die Kinder dieser Eltern selbst geliefert
+			// hat -- nicht ein Push (Pruefung von #380, F2).
+			if vollstaendigGeantwortet && dag.seedFuehrtWaiseAuf(pending) {
+				if aussichtslos, folgen := dag.ahnenLeerlauf.merkeLeerlauf(nodeURL); aussichtslos {
+					dag.loeseHeilungWegenUnerreichbarerAhnenAus(nodeURL, folgen)
+				}
 			}
 			return // peer had none of the currently-pending hashes (yet) — stop for this cycle
 		}
-		merkeAhnenErfolg()
+		dag.ahnenLeerlauf.merkeErfolg(nodeURL)
 	}
 }
 
