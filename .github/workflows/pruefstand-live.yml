@@ -45,8 +45,16 @@ jobs:
     # falls er doch antwortet (dann laeuft dort eine Kette ausserhalb des
     # Netzes). C2s DIENSTE (Coordinator, Vergleichsdienst proof2 -- Teil des
     # Quorums --, Proof-Server) weiter wie bisher. Nach der Neueinrichtung "ja".
+    #
+    # C2_DIENSTE_AKTIV: seit dem 03.10.2026 ist die ganze C2-Box aus, also
+    # auch Coordinator, Vergleichsdienst und Proof-Server unter proof2. Der
+    # Coordinator auf C1 hat Quorum 1 mit dem Vergleichsdienst auf C1.
+    # Solange "nein", werden die Dienste unter proof2 nicht geprueft (sonst
+    # ist der Pruefstand dauerhaft rot und zeigt echte Fehler nicht mehr).
+    # Zurueck auf "ja", sobald dort wieder Dienste laufen.
     env:
       C2_AKTIV: "nein"
+      C2_DIENSTE_AKTIV: "nein"
     steps:
       - name: Pruefen
         env:
@@ -83,6 +91,11 @@ jobs:
             API[$N]=https://$P.aequitas.digital/api; RPC[$N]=https://$P.aequitas.digital/rpc
           done
           DIENSTE="$NAMEN"
+          case "$C2_DIENSTE_AKTIV" in ja|nein) ;; *) rot "C2_DIENSTE_AKTIV='$C2_DIENSTE_AKTIV' -- erwartet ja oder nein"; C2_DIENSTE_AKTIV=ja;; esac
+          if [ "$C2_DIENSTE_AKTIV" = nein ]; then
+            DIENSTE=$(for N in $DIENSTE; do [ "$N" != C2 ] && echo "$N"; done | xargs)
+            info "Dienste unter proof2 nicht geprueft (C2_DIENSTE_AKTIV=nein, C2-Box seit 03.10.2026 aus)"
+          fi
           case "$C2_AKTIV" in ja|nein) ;; *) rot "C2_AKTIV='$C2_AKTIV' -- erwartet ja oder nein"; C2_AKTIV=ja;; esac
           if [ "$C2_AKTIV" = nein ]; then
             NAMEN=$(for N in $NAMEN; do [ "$N" != C2 ] && echo "$N"; done | xargs)
