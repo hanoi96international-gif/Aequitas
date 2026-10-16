@@ -451,7 +451,7 @@ func fetchAndValidateSnapshot(peerURL, expectedSignerHex string) (*StateSnapshot
 // and bio-registrations are not overwritten, so it is safe to call on
 // partially-populated state (e.g. after a crash mid-import) without
 // regressing balances. Verifies the snapshot signature against
-// expectedSignerHex if non-empty.
+// expectedSignerHex, which is mandatory (empty -> error, nothing fetched).
 //
 // FIX (audit recheck2, P1 #9): this merge-only behavior is exactly right for
 // a fresh node bootstrapping (nothing to lose by only ever adding), but is
@@ -467,6 +467,13 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) (
 			cs.erzeugerRegisterAuffrischen()
 		}
 	}()
+	// Ohne erwarteten Unterzeichner keine Pruefung der Signatur
+	// (fetchAndValidateSnapshot) -- dann gaebe jeder, der die Adresse
+	// beantwortet, Konten und Menschen vor. main.go verweigert das schon;
+	// hier zusaetzlich, damit kein kuenftiger Aufrufer es vergisst.
+	if strings.TrimSpace(expectedSignerHex) == "" {
+		return fmt.Errorf("snapshot import requires BOOTSTRAP_SIGNER — refusing to merge state from an unverified source")
+	}
 	local := cs.TotalHumans()
 	if local > 0 {
 		fmt.Printf("[SNAPSHOT] Merging into existing state (%d humans local) — adding missing entries\n", local)
