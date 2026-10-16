@@ -31,7 +31,7 @@ jobs:
             a=$(dig +short A $n | tail -1); echo "$n -> $a"
             [ "$a" = "194.163.188.71" ] || { echo "FEHLER: $n zeigt nicht auf C2"; exit 1; }
           done
-      - uses: appleboy/ssh-action@v1.0.3
+      - uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
         with:
           host: 194.163.188.71
           username: root

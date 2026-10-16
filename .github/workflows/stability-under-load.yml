@@ -93,9 +93,9 @@ jobs:
       # happened to be sitting on the box, so a change to the generator measured
       # nothing until someone remembered to dispatch loadtest-run-contabo2.yml
       # first -- and a stale binary is invisible in the output.
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: Copy the current generator source to Contabo2
-        uses: appleboy/scp-action@v1.0.0
+        uses: appleboy/scp-action@ff85246acaad7bdce478db94a363cd2bf7c90345 # v1.0.0
         with:
           host: 194.163.188.71
           username: root
@@ -105,7 +105,7 @@ jobs:
           target: "/root/contabo-loadtest"
 
       - name: Rebuild the generator
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
         with:
           host: 194.163.188.71
           username: root
@@ -161,7 +161,7 @@ jobs:
 
       - name: Start the load on Contabo1 (returns immediately)
         if: ${{ inputs.beide_generatoren == 'ja' }}
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
         with:
           host: alter-c1-abgeschaltet.invalid
           username: root
@@ -198,7 +198,7 @@ jobs:
           MINBAL: ${{ inputs.min_balance_wei }}
 
       - name: Start the load on Contabo2 (returns immediately)
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
         with:
           host: 194.163.188.71
           username: root
@@ -395,7 +395,7 @@ jobs:
 
       - name: What the generator and the boxes reported
         if: always()
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
         with:
           host: 194.163.188.71
           username: root
@@ -428,7 +428,7 @@ jobs:
       # auf C1 -- der Bericht oben las bis dahin nur C2.
       - name: Was Contabo1 (der annehmende Knoten) meldet
         if: always() && inputs.ziele == 'c1'
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
         with:
           host: alter-c1-abgeschaltet.invalid
           username: root

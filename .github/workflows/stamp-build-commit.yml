@@ -42,7 +42,7 @@ jobs:
             script: /root/deploy_safe_c2.sh
     steps:
       - name: Patch ${{ matrix.box }} (${{ matrix.script }})
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
         with:
           host: ${{ matrix.host }}
           username: root

@@ -53,9 +53,9 @@ jobs:
     runs-on: ubuntu-latest
     environment: produktion
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
           go-version-file: go.mod
           cache: true
@@ -96,7 +96,7 @@ jobs:
           echo "PARTY1_SHA=$B" >> "$GITHUB_ENV"
 
       - name: Assert Contabo1 is still the lower address (party 0)
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
         with:
           host: alter-c1-abgeschaltet.invalid
           username: root
@@ -116,7 +116,7 @@ jobs:
             mkdir -p /root/aequitas-mpc
 
       - name: Assert Contabo2 is still the higher address (party 1)
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
         with:
           host: 194.163.188.71
           username: root
@@ -134,7 +134,7 @@ jobs:
             mkdir -p /root/aequitas-mpc
 
       - name: Send party 0 to Contabo1 ONLY
-        uses: appleboy/scp-action@v0.1.7
+        uses: appleboy/scp-action@917f8b81dfc1ccd331fef9e2d61bdc6c8be94634 # v0.1.7
         with:
           host: alter-c1-abgeschaltet.invalid
           username: root
@@ -145,7 +145,7 @@ jobs:
           strip_components: 1
 
       - name: Send party 1 to Contabo2 ONLY
-        uses: appleboy/scp-action@v0.1.7
+        uses: appleboy/scp-action@917f8b81dfc1ccd331fef9e2d61bdc6c8be94634 # v0.1.7
         with:
           host: 194.163.188.71
           username: root
@@ -156,7 +156,7 @@ jobs:
           strip_components: 1
 
       - name: Verify Contabo1 has party 0 and NOT party 1
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
         with:
           host: alter-c1-abgeschaltet.invalid
           username: root
@@ -180,7 +180,7 @@ jobs:
             echo "OK"
 
       - name: Verify Contabo2 has party 1 and NOT party 0
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
         with:
           host: 194.163.188.71
           username: root

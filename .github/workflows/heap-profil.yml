@@ -29,7 +29,7 @@ jobs:
     environment: produktion
     steps:
       - name: Profil auf ${{ matrix.box.name }} ziehen
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
         with:
           host: ${{ matrix.box.host }}
           username: root
@@ -58,7 +58,7 @@ jobs:
         env:
           ART: ${{ inputs.art }}
       - name: Profil vom Server holen
-        uses: nicklasfrahm/scp-action@main
+        uses: nicklasfrahm/scp-action@704793d454ed4c14a0dd1682836302a1ee98ffc2 # main
         with:
           direction: download
           host: ${{ matrix.box.host }}
@@ -68,7 +68,7 @@ jobs:
           source: "/root/profil/${{ inputs.art }}.pb.gz"
           target: "${{ matrix.box.name }}-${{ inputs.art }}.pb.gz"
       - name: Binary vom Server holen
-        uses: nicklasfrahm/scp-action@main
+        uses: nicklasfrahm/scp-action@704793d454ed4c14a0dd1682836302a1ee98ffc2 # main
         continue-on-error: true
         with:
           direction: download
@@ -78,7 +78,7 @@ jobs:
           insecure_ignore_fingerprint: true
           source: "/root/profil/aequitasd"
           target: "${{ matrix.box.name }}-aequitasd"
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: heap-${{ matrix.box.name }}
           path: |
