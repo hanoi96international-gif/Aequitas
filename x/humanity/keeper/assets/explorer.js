@@ -7,10 +7,15 @@ const PS = '/api'; // proof calls proxied via /api/prove on this node (avoids br
 // Eingefroren bleibt die 1926 in der Netzkennung aequitas-1926-<genesis>
 // (V8-Block unten). Getestet in test/Explorer_registerV8.ts.
 const AEQ_CHAIN_IDS = [1926, 19260930];
+const AEQ_UHR_TOLERANZ_S = 300; // Spielraum der Geraeteuhr gegen den Stichtag
+const AEQ_FRIST_MS = 15000;     // Zeitgrenze je Abfrage, samt Lesen der Antwort
 
 // Prueft chain_evm_id/chain_id_wechsel_ab aus /api/status und das Ergebnis
-// von eth_chainId; gibt die ID oder null.
-function aeqChainIdPruefen(status, rpcErgebnis) {
+// von eth_chainId, dazu gegen die Uhr des Geraets: 1926 nicht mehr ab
+// Stichtag + 300 s, 19260930 nicht vor Stichtag - 300 s (veraltete oder
+// gefaelschte Meldung). Gibt die ID oder null.
+function aeqChainIdPruefen(status, rpcErgebnis, jetztS) {
+  const jetzt = jetztS === undefined ? Math.floor(Date.now() / 1000) : jetztS;
   if (!status || typeof status !== 'object') return null;
   const id = status.chain_evm_id;
   const ab = status.chain_id_wechsel_ab === undefined || status.chain_id_wechsel_ab === null ? 0 : status.chain_id_wechsel_ab;
@@ -18,7 +23,25 @@ function aeqChainIdPruefen(status, rpcErgebnis) {
   if (!Number.isSafeInteger(ab) || ab < 0) return null;
   if (id === 19260930 && ab === 0) return null; // neue ID ohne Stichtag: widerspruechlich
   if (typeof rpcErgebnis !== 'string' || rpcErgebnis.toLowerCase() !== aeqChainHex(id)) return null;
+  if (!Number.isFinite(jetzt)) return null;
+  if (id === 1926 && ab > 0 && jetzt >= ab + AEQ_UHR_TOLERANZ_S) return null;
+  if (id === 19260930 && jetzt < ab - AEQ_UHR_TOLERANZ_S) return null;
   return id;
+}
+
+// fetch + JSON mit Zeitgrenze (AbortController), die auch das Lesen gilt.
+async function aeqHoleJson(url, init) {
+  const ctrl = new AbortController();
+  const t = setTimeout(function() { ctrl.abort(); }, AEQ_FRIST_MS);
+  try {
+    const r = await fetch(url, Object.assign({}, init || {}, { signal: ctrl.signal }));
+    if (!r.ok) return null;
+    const text = await r.text();
+    if (text.length > 65536) return null;
+    return JSON.parse(text);
+  } finally {
+    clearTimeout(t);
+  }
 }
 
 function aeqChainHex(id) {
@@ -32,9 +55,9 @@ async function aeqChainId() {
   let st = null, rpc = null;
   try {
     [st, rpc] = await Promise.all([
-      fetch('/api/status').then(r => r.ok ? r.json() : null),
-      fetch('/rpc', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_chainId', params: [] }) }).then(r => r.ok ? r.json() : null),
+      aeqHoleJson('/api/status'),
+      aeqHoleJson('/rpc', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_chainId', params: [] }) }),
     ]);
   } catch (e) { /* unten: fail-closed */ }
   const id = aeqChainIdPruefen(st, rpc && rpc.result);

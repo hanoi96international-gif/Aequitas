@@ -134,16 +134,21 @@ jobs:
           # Alle Knoten melden dieselbe ID.
           for K in $NAMEN; do
             CI=$(get -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}' "${RPC[$K]}" | jq_ '.result // empty')
-            ERW=""
-            case "${EVMID[$K]}" in
-              1926) ERW=0x786 ;;
-              19260930) case "${WAB[$K]}" in ''|0|*[!0-9]*) ;; *) ERW=0x125e602 ;; esac ;;
-            esac
+            # Gegen die Uhr (Toleranz 300 s): 1926 nur ohne Stichtag oder vor
+            # Stichtag + 300 s, 19260930 nur ab Stichtag - 300 s.
+            ERW=""; JETZT=$(date +%s); TOL=300; WABN=${WAB[$K]:-0}
+            if ! [[ "$WABN" =~ ^[0-9]+$ ]]; then WABN=ungueltig; fi
+            if [ "${EVMID[$K]}" = 1926 ] && [ "$WABN" = 0 ]; then ERW=0x786; fi
+            if [ "${EVMID[$K]}" = 1926 ] && [ "$WABN" != ungueltig ] && [ "$WABN" -gt 0 ] && [ "$JETZT" -lt $((WABN + TOL)) ]; then ERW=0x786; fi
+            if [ "${EVMID[$K]}" = 19260930 ] && [ "$WABN" != ungueltig ] && [ "$WABN" -gt 0 ] && [ "$JETZT" -ge $((WABN - TOL)) ]; then ERW=0x125e602; fi
             if [ -n "$ERW" ] && [ "$CI" = "$ERW" ]; then ok "$K eth_chainId $CI (= chain_evm_id ${EVMID[$K]})"; else rot "$K eth_chainId '$CI', chain_evm_id '${EVMID[$K]}', chain_id_wechsel_ab '${WAB[$K]}'"; fi
             BN=$(get -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","id":2,"method":"eth_blockNumber","params":[]}' "${RPC[$K]}" | jq_ '.result // empty')
             [ -n "$BN" ] && ok "$K eth_blockNumber $BN" || rot "$K eth_blockNumber leer"
           done
-          [ "$(for K in $NAMEN; do echo "${EVMID[$K]}"; done | sort -u | wc -l)" = 1 ] && ok "alle melden dieselbe Chain-ID" || rot "verschiedene Chain-IDs: $(for K in $NAMEN; do printf '%s=%s ' "$K" "${EVMID[$K]}"; done)"
+          IDS=$(for K in $NAMEN; do echo "${EVMID[$K]:-leer}"; done | sort -u)
+          if echo "$IDS" | grep -qx leer; then rot "nicht jeder Knoten meldet eine Chain-ID: $(for K in $NAMEN; do printf '%s=%s ' "$K" "${EVMID[$K]:-leer}"; done)"
+          elif [ "$(echo "$IDS" | wc -l)" = 1 ]; then ok "alle melden dieselbe Chain-ID ($IDS)"
+          else rot "verschiedene Chain-IDs: $(for K in $NAMEN; do printf '%s=%s ' "$K" "${EVMID[$K]}"; done)"; fi
 
           echo "===== Annahme-Tor (wertloser Platzhalter, keine Transaktion) ====="
           for K in $NAMEN; do

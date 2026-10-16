@@ -156,9 +156,20 @@ describe("explorer.js: V8-Registrierung (EIP-712)", () => {
 
   it("aeqChainIdPruefen: Status und eth_chainId muessen dieselbe ID der Liste melden", () => {
     const AB = 1_800_000_000;
-    assert.equal(V8.aeqChainIdPruefen({ chain_evm_id: 1926, chain_id_wechsel_ab: 0 }, "0x786"), 1926);
-    assert.equal(V8.aeqChainIdPruefen({ chain_evm_id: 1926 }, "0x786"), 1926);
-    assert.equal(V8.aeqChainIdPruefen({ chain_evm_id: 19260930, chain_id_wechsel_ab: AB }, "0x125E602"), 19260930);
+    const VOR = AB - 3600, NACH = AB + 3600;
+    assert.equal(V8.aeqChainIdPruefen({ chain_evm_id: 1926, chain_id_wechsel_ab: 0 }, "0x786", NACH), 1926);
+    assert.equal(V8.aeqChainIdPruefen({ chain_evm_id: 1926 }, "0x786", NACH), 1926);
+    assert.equal(V8.aeqChainIdPruefen({ chain_evm_id: 1926, chain_id_wechsel_ab: AB }, "0x786", VOR), 1926);
+    assert.equal(V8.aeqChainIdPruefen({ chain_evm_id: 19260930, chain_id_wechsel_ab: AB }, "0x125E602", NACH), 19260930);
+    // Toleranz der Geraeteuhr: 300 s.
+    assert.equal(V8.aeqChainIdPruefen({ chain_evm_id: 1926, chain_id_wechsel_ab: AB }, "0x786", AB + 299), 1926);
+    assert.equal(V8.aeqChainIdPruefen({ chain_evm_id: 19260930, chain_id_wechsel_ab: AB }, "0x125e602", AB - 300), 19260930);
+    // Missbrauch gegen die Uhr: 1926 nach dem Stichtag, 19260930 weit davor.
+    assert.equal(V8.aeqChainIdPruefen({ chain_evm_id: 1926, chain_id_wechsel_ab: AB }, "0x786", AB + 300), null);
+    assert.equal(V8.aeqChainIdPruefen({ chain_evm_id: 1926, chain_id_wechsel_ab: AB }, "0x786", AB + 86400), null);
+    assert.equal(V8.aeqChainIdPruefen({ chain_evm_id: 19260930, chain_id_wechsel_ab: AB }, "0x125e602", AB - 301), null);
+    assert.equal(V8.aeqChainIdPruefen({ chain_evm_id: 19260930, chain_id_wechsel_ab: AB }, "0x125e602", AB - 30 * 86400), null);
+    assert.equal(V8.aeqChainIdPruefen({ chain_evm_id: 1926 }, "0x786", NaN), null);
     for (const [st, rpc] of [
       [{ chain_evm_id: 1926 }, "0x125e602"], // uneinig
       [{ chain_evm_id: 19260930, chain_id_wechsel_ab: AB }, "0x786"], // uneinig
@@ -170,7 +181,7 @@ describe("explorer.js: V8-Registrierung (EIP-712)", () => {
       [{ chain_evm_id: 1926 }, undefined], // RPC ohne Ergebnis
       [null, "0x786"], // Knoten unerreichbar
     ] as const) {
-      assert.equal(V8.aeqChainIdPruefen(st, rpc), null, JSON.stringify(st) + " " + rpc);
+      assert.equal(V8.aeqChainIdPruefen(st, rpc, NACH), null, JSON.stringify(st) + " " + rpc);
     }
     assert.equal(V8.aeqChainHex(19260930), "0x125e602");
     assert.throws(() => V8.aeqChainHex(1));

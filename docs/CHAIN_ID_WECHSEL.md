@@ -95,6 +95,10 @@ Grundsatz überall: Die Chain-ID zum Signieren kommt live vom Knoten
 gilt nur, wenn sie genau 1926 oder 19260930 ist (19260930 nur mit
 `chain_id_wechsel_ab` > 0). Unerreichbar, ungültig oder uneinig → es wird
 nicht signiert. Kein Rückfall auf eine eingebaute Zahl.
+Zusätzlich gegen die Geräte- bzw. Serveruhr (Toleranz 300 s): 1926 gilt
+nicht mehr ab `Ab + 300 s`, 19260930 nicht vor `Ab − 300 s` — für jede
+Unterschrift und in den Workflows. Abfragen haben eine Zeitgrenze, die auch
+das Lesen der Antwort umfasst.
 
 - **App (Aequitas-App):** `lib/kette.ts`, `lib/ketteLive.ts`; Überweisung
   (eigener Schlüssel und WalletConnect), EIP-712 V8, V7-Nachricht,

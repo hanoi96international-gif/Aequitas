@@ -523,6 +523,27 @@ func TestV7_BleibtUnveraendert(t *testing.T) {
 // Eingaben genau diesen Digest und diese Signatur. Go ist oben gegen den
 // Vertrag geprueft; stimmt Go hier mit ethers ueberein, unterschreibt die App
 // das, was Kette und Vertrag erwarten.
+func TestV8_GoldenVektorMitDerApp(t *testing.T) {
+	key, human := v8Schluessel(t, testKeyAlice)
+	salt := crypto.Keccak256Hash([]byte("aequitas-1926-1790000000"))
+	if salt.Hex() != "0x89654bb870598e4d718a433a7d674b5ddd48f78cb6eecd489c01d69fa8e8954f" {
+		t.Fatalf("Salt: %s", salt.Hex())
+	}
+	digest := v8RegisterDigest(chainIDFuer(nowUnix()), common.HexToAddress(V7_CONTRACT_ADDR), salt, human,
+		big.NewInt(1001), big.NewInt(2001), big.NewInt(0), big.NewInt(1_790_000_600))
+	if digest.Hex() != "0x0cfd835d1262f048ab9e759f064e7d6ebfb747599e40a606e5cd84dc13cc1804" {
+		t.Fatalf("Digest weicht von ethers ab: %s", digest.Hex())
+	}
+	sig := v8Unterschrift(t, key, digest)
+	want := "9d5387fee26b5ec00237ff732f68821b31744e07c81b8b815f048c1c9ad8965d4032040a16fbf1ef18bd9c24bbdab9c76df4c03fa8637ce003f18a4dc4d05cd31c"
+	if hex.EncodeToString(sig) != want {
+		t.Fatalf("Signatur weicht von ethers ab: %x", sig)
+	}
+	if err := v8SignaturPruefen(digest, sig, human); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // TestV8_GoldenVektorNeueChainID: derselbe Pruefvektor mit der Chain-ID
 // nach dem Wechsel (chainIDNeuWert, chain_id_wechsel.go). App
 // (src/domain/__tests__/registerV8.test.ts) und Website
@@ -548,26 +569,5 @@ func TestV8_GoldenVektorNeueChainID(t *testing.T) {
 	alt, _ := hex.DecodeString("9d5387fee26b5ec00237ff732f68821b31744e07c81b8b815f048c1c9ad8965d4032040a16fbf1ef18bd9c24bbdab9c76df4c03fa8637ce003f18a4dc4d05cd31c")
 	if err := v8SignaturPruefen(digest, alt, human); err == nil {
 		t.Fatal("1926-Unterschrift besteht die Domaene mit 19260930")
-	}
-}
-
-func TestV8_GoldenVektorMitDerApp(t *testing.T) {
-	key, human := v8Schluessel(t, testKeyAlice)
-	salt := crypto.Keccak256Hash([]byte("aequitas-1926-1790000000"))
-	if salt.Hex() != "0x89654bb870598e4d718a433a7d674b5ddd48f78cb6eecd489c01d69fa8e8954f" {
-		t.Fatalf("Salt: %s", salt.Hex())
-	}
-	digest := v8RegisterDigest(chainIDFuer(nowUnix()), common.HexToAddress(V7_CONTRACT_ADDR), salt, human,
-		big.NewInt(1001), big.NewInt(2001), big.NewInt(0), big.NewInt(1_790_000_600))
-	if digest.Hex() != "0x0cfd835d1262f048ab9e759f064e7d6ebfb747599e40a606e5cd84dc13cc1804" {
-		t.Fatalf("Digest weicht von ethers ab: %s", digest.Hex())
-	}
-	sig := v8Unterschrift(t, key, digest)
-	want := "9d5387fee26b5ec00237ff732f68821b31744e07c81b8b815f048c1c9ad8965d4032040a16fbf1ef18bd9c24bbdab9c76df4c03fa8637ce003f18a4dc4d05cd31c"
-	if hex.EncodeToString(sig) != want {
-		t.Fatalf("Signatur weicht von ethers ab: %x", sig)
-	}
-	if err := v8SignaturPruefen(digest, sig, human); err != nil {
-		t.Fatal(err)
 	}
 }

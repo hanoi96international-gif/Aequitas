@@ -18,6 +18,23 @@ const API          = '/api';
 // gleich) -- und nur 1926 oder 19260930. Alles andere: nichts senden.
 const AEQ_CHAIN_IDS = [1926, 19260930];
 const AEQ_WECHSEL_PAUSE_S = 600; // wie chainIDWechselPause am Knoten
+const AEQ_UHR_TOLERANZ_S = 300;  // Spielraum der Geraeteuhr gegen den Stichtag
+const AEQ_FRIST_MS = 15000;      // Zeitgrenze je Abfrage, samt Lesen der Antwort
+
+// fetch + JSON mit Zeitgrenze (AbortController), die auch das Lesen gilt.
+async function aeqHoleJson(url, init) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), AEQ_FRIST_MS);
+  try {
+    const r = await fetch(url, Object.assign({}, init || {}, { signal: ctrl.signal }));
+    if (!r.ok) return null;
+    const text = await r.text();
+    if (text.length > 65536) return null;
+    return JSON.parse(text);
+  } finally {
+    clearTimeout(t);
+  }
+}
 const V7           = '0x20D271028f32577FCd07b4583A8e0E4eBBdB4F78';
 
 // ── STATE ────────────────────────────────────────────────────────────────────
@@ -67,8 +84,8 @@ async function aeqChainId(ueberweisung) {
   let st, rpc;
   try {
     [st, rpc] = await Promise.all([
-      fetch(API + '/status').then(r => r.ok ? r.json() : null),
-      fetch('/rpc', rpcAnfrage).then(r => r.ok ? r.json() : null),
+      aeqHoleJson(API + '/status'),
+      aeqHoleJson('/rpc', rpcAnfrage),
     ]);
   } catch (e) { st = null; rpc = null; }
   const id = st && st.chain_evm_id;
@@ -76,6 +93,12 @@ async function aeqChainId(ueberweisung) {
   if (!AEQ_CHAIN_IDS.includes(id) || !Number.isSafeInteger(ab) || ab < 0 || (id === 19260930 && ab === 0) ||
       !rpc || typeof rpc.result !== 'string' || rpc.result.toLowerCase() !== aeqChainHex(id)) {
     throw new Error('Aequitas network not confirmed (chain ID from the node missing or unknown) — nothing was signed. Please try again.');
+  }
+  // Gegen die Geraeteuhr: 1926 nicht mehr ab Stichtag + 300 s, 19260930
+  // nicht vor Stichtag - 300 s (veraltete oder gefaelschte Meldung).
+  const jetzt = Date.now() / 1000;
+  if ((id === 1926 && ab > 0 && jetzt >= ab + AEQ_UHR_TOLERANZ_S) || (id === 19260930 && jetzt < ab - AEQ_UHR_TOLERANZ_S)) {
+    throw new Error('Aequitas network not confirmed (chain ID does not match the switch date) — nothing was signed. Please check the device clock and try again.');
   }
   if (ueberweisung && id === 1926 && ab > 0 && Date.now() / 1000 >= ab - AEQ_WECHSEL_PAUSE_S) {
     throw new Error('The Aequitas network is switching its chain ID. Transfers are paused for a few minutes — please try again afterwards.');
