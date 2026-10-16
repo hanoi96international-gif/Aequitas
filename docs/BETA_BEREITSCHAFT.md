@@ -43,7 +43,8 @@ jeweiligen PR.
 | Coordinator: alle Grenzen je IPv6-/64 (vorher je Einzeladresse: ein /64 umging `/register` ganz); offene Challenges je Netz (10) und je /48 (100), Obergrenze 100 000; X-Forwarded-For auch hinter Provider-NAT-Proxy. **Wirkt erst nach dem Coordinator-Deploy** (`deploy-coordinator-to-box.yml`, von Hand). | MITTEL | biometric #57 |
 | Seed liefert nur nachgespielte Blöcke aus: Ein gepushter Block stand vor dem Nachspielen schon in `chain_blocks` und ging über `/api/blocks`, `/api/block`, `/api/blocks/by-hash` und RPC an Nachholende, die ihn dann als vom Seed geführt (`FromSync`) behandelten. | NIEDRIG | Aequitas #380 |
 | Ahnen-Leerlauf: Netzfehler zählten als leere Runde, der Zähler galt prozessweit für alle Peers, und ein selbst eingetragener Peer konnte mit leeren Antworten Resync samt Neustart auslösen. Jetzt nur vollständige Antworten, je Peer und je Knoten; heilen nur, wenn ein eingetragener Seed die Historie nicht liefert. | MITTEL | Aequitas #380 |
-| Push-Plätze: Wer einen der 8 Plätze belegt, muss mit mindestens 32 KiB/s senden (nach 5 s Anlauf); vorher hielt nur die ReadTimeout von 30 s einen tropfenden Push, und vier Adressen belegten alle Plätze. Der Abbruch zählt im Flutschutz je /64. | MITTEL | Aequitas #381 |
+| Push-Plätze: Wer einen der 8 Plätze belegt, muss mit mindestens 32 KiB/s senden (nach 5 s Anlauf), und kein Push hält einen Platz länger als 10 s; nach dem Rumpf liegt keine Frist mehr auf der Verbindung (sonst brach net/http den Kontext folgender Keep-Alive-Anfragen ab). Vorher hielt nur die ReadTimeout von 30 s einen tropfenden Push, und vier Adressen belegten alle Plätze. Der Abbruch zählt im Flutschutz je /64. | MITTEL | Aequitas #381 |
+| App: Abfragen ruhen im Hintergrund und bei unsichtbarem Tab, laufen nie parallel, verlängern die Pause bei Fehlschlägen bis 2 min und zeigen einen Offline-Hinweis (vorher `setInterval` ohne Rücksicht auf Knoten und Akku). | NIEDRIG | Aequitas-App #33 |
 
 **In Prüfung (15.10.2026):**
 
@@ -60,7 +61,6 @@ jeweiligen PR.
 | Keine echten Tests mit 4 oder mehr Knoten (Simulationen gibt es) | HOCH | teilweise: `TestVierKnoten_RealDB` (4 Instanzen, eigene Datenbanken, HTTP-Push/-Sync, Leitung, Ausfall und Rueckkehr, Faelschungen). Nicht abgedeckt: Snapshot-Resync ueber Loopback, libp2p, Trusted Seeds; paketweite Zaehler (Push-Plaetze) teilen sich die Instanzen; die Replay-Mauer zaehlt seit #375 je Knoten -- siehe Dateikopf |
 | `checkpointVorschau` läuft unter `dag.mu` (bis über 5 s je Checkpoint-Block) | MITTEL | erst ab dem Checkpoint-Stichtag |
 | Snapshot und Autoheal vertrauen C1 | MITTEL | erst mit mehreren Unterzeichnern lösbar |
-| App: Polling statt Ereignisse, kein Offline-Zustand | NIEDRIG | |
 | App: bio/salt gehen an den Knoten, den die App gerade nutzt | MITTEL | durch „nur https“ entschärft |
 | Proof-Server: ein `console.warn` je abgewiesener Anfrage | NIEDRIG | |
 | Videozerlegung ohne Sandbox; 160 MiB Upload | MITTEL | |
