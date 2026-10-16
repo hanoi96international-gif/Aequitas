@@ -1916,8 +1916,9 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 				// SyncDiagnostics rather than any gate.
 				//
 				// AB DEM FROMSYNC-STICHTAG (fromsync_stichtag.go) gilt das
-				// nicht mehr fuer Bloecke ab dem Stichtag: dann ist der Zweig
-				// auch fuer einen Seed erreichbar, und ein Seed, der nur
+				// nicht mehr: fuer Bloecke ab dem Stichtag, und ab Empfangszeit
+				// Ab fuer jeden FromSync-Block (Stelle 2, Befund F2). Dann ist
+				// der Zweig auch fuer einen Seed erreichbar, und ein Seed, der nur
 				// Bloecke unter der eigenen Finalitaet liefert, zaehlt nicht
 				// als sauber. Das ist gewollt -- es ist die Signatur einer
 				// Gabel --, kann aber das Sync-Tor (hasCaughtUpWithAllPeers)

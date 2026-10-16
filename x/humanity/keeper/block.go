@@ -5412,8 +5412,9 @@ func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
 	// circuit-breaker already decided this exact ancestor should be trusted
 	// enough to re-fetch — silently reintroducing the same class of merge-stall
 	// SelfFetched was added to close, just one gate later.
-	// Ab dem FromSync-Stichtag auch fuer FromSync/SelfFetched (fromsync_stichtag.go).
-	if dag.state != nil && !selbstGeholtOhneSperre(block) {
+	// Ab dem FromSync-Stichtag auch fuer FromSync/SelfFetched, ausser eine
+	// Waise wartet auf genau diesen Block (fromsync_stichtag.go, Stelle 1).
+	if dag.state != nil && !dag.sperrpruefungEntfaellt(block) {
 		if suspended, reason := dag.state.IsValidatorSuspended(proposer, block.Timestamp); suspended {
 			fmt.Printf("[SLASHING] ✗ Rejected block #%d from %s: %s\n", block.Height, proposer, reason)
 			dag.mu.Unlock()
