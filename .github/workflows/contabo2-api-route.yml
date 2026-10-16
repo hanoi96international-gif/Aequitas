@@ -87,8 +87,21 @@ jobs:
             pruef https://proof2.aequitas.digital/coordinator/health 200
             pruef https://proof2.aequitas.digital/api/status 200
             pruef https://proof2.aequitas.digital/api/wache 200
-            rc=$(curl -s --max-time 20 -X POST https://proof2.aequitas.digital/rpc -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}')
-            if echo "$rc" | grep -q '"0x786"'; then echo "  ok   /rpc eth_chainId -> 0x786"; else echo "  FEHL /rpc -> $rc"; fehl=1; fi
+            # Chain-ID-Wechsel (docs/CHAIN_ID_WECHSEL.md): eth_chainId muss zu
+            # chain_evm_id desselben Knotens passen -- 1926 (0x786) oder, mit
+            # gesetztem Stichtag chain_id_wechsel_ab, 19260930 (0x125e602).
+            st=$(curl -s --max-time 20 https://proof2.aequitas.digital/api/status || true)
+            evmid=$(echo "$st" | grep -o '"chain_evm_id"[[:space:]]*:[[:space:]]*[0-9]*' | head -1 | grep -o '[0-9]*$' || true)
+            wab=$(echo "$st" | grep -o '"chain_id_wechsel_ab"[[:space:]]*:[[:space:]]*[0-9]*' | head -1 | grep -o '[0-9]*$' || true)
+            # Gegen die Uhr (Toleranz 300 s): 1926 nur ohne Stichtag oder vor
+            # Stichtag + 300 s, 19260930 nur ab Stichtag - 300 s.
+            jetzt=$(date +%s); tol=300; wabn=${wab:-0}
+            cidhex=""
+            if [ "$evmid" = "1926" ] && [ "$wabn" -eq 0 ]; then cidhex=0x786; fi
+            if [ "$evmid" = "1926" ] && [ "$wabn" -gt 0 ] && [ "$jetzt" -lt $((wabn + tol)) ]; then cidhex=0x786; fi
+            if [ "$evmid" = "19260930" ] && [ "$wabn" -gt 0 ] && [ "$jetzt" -ge $((wabn - tol)) ]; then cidhex=0x125e602; fi
+            rc=$(curl -s --max-time 20 -X POST https://proof2.aequitas.digital/rpc -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}' || true)
+            if [ -n "$cidhex" ] && echo "$rc" | grep -q "\"result\":\"$cidhex\""; then echo "  ok   /rpc eth_chainId -> $cidhex (chain_evm_id $evmid)"; else echo "  FEHL /rpc -> $rc (chain_evm_id '${evmid}', chain_id_wechsel_ab '${wab}')"; fehl=1; fi
             if [ "$fehl" = 1 ]; then
               echo "Etwas antwortet nicht wie erwartet -- Sicherung zurueck"
               cp "$SICHERUNG" "$ALT"
