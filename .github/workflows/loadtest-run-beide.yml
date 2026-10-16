@@ -95,10 +95,10 @@ jobs:
     runs-on: ubuntu-latest
     environment: produktion
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Konten-CSV von C2 holen (nur fuer C1 noetig, harmlos fuer C2)
-        uses: nicklasfrahm/scp-action@main
+        uses: nicklasfrahm/scp-action@704793d454ed4c14a0dd1682836302a1ee98ffc2 # main
         with:
           direction: download
           host: 194.163.188.71
@@ -109,7 +109,7 @@ jobs:
           target: "konten.csv"
 
       - name: Quelltext und CSV auf ${{ matrix.box.name }} kopieren
-        uses: appleboy/scp-action@v1.0.0
+        uses: appleboy/scp-action@ff85246acaad7bdce478db94a363cd2bf7c90345 # v1.0.0
         with:
           host: ${{ matrix.box.host }}
           username: root
@@ -121,7 +121,7 @@ jobs:
           overwrite: true
 
       - name: Bauen und laden auf ${{ matrix.box.name }} (Konten-Teil ${{ matrix.box.teil }})
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
         with:
           host: ${{ matrix.box.host }}
           username: root

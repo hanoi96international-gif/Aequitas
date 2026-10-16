@@ -67,7 +67,7 @@ jobs:
     environment: produktion
     steps:
       - name: Resync Contabo1 from the trusted primary
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
         with:
           host: alter-c1-abgeschaltet.invalid
           username: root
@@ -114,7 +114,7 @@ jobs:
     environment: produktion
     steps:
       - name: Resync Contabo2 from the trusted primary
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
         with:
           host: 194.163.188.71
           username: root

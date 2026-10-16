@@ -26,7 +26,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: produktion
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Where does the domain point today
         run: |
@@ -47,7 +47,7 @@ jobs:
           echo ""
 
       - name: Rehearse the box-side preconditions
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
         with:
           host: alter-c1-abgeschaltet.invalid
           username: root

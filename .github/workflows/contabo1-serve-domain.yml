@@ -40,7 +40,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: produktion
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Refuse unless DNS already points at Contabo1
         run: |
@@ -71,7 +71,7 @@ jobs:
           exit 1
 
       - name: Install the Caddy config
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
         with:
           host: alter-c1-abgeschaltet.invalid
           username: root
@@ -109,7 +109,7 @@ jobs:
             docker exec proof-caddy sh -c "cat /etc/caddy/Caddyfile"
 
       - name: Copy and reload
-        uses: appleboy/scp-action@v0.1.7
+        uses: appleboy/scp-action@917f8b81dfc1ccd331fef9e2d61bdc6c8be94634 # v0.1.7
         with:
           host: alter-c1-abgeschaltet.invalid
           username: root
@@ -120,7 +120,7 @@ jobs:
           strip_components: 1
 
       - name: Validate and apply
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
         with:
           host: alter-c1-abgeschaltet.invalid
           username: root

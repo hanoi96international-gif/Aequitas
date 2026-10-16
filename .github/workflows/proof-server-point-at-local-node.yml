@@ -43,7 +43,7 @@ jobs:
     steps:
       - name: Repoint Contabo1
         if: ${{ inputs.box == 'contabo1' }}
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
         with:
           host: alter-c1-abgeschaltet.invalid
           username: root
@@ -121,7 +121,7 @@ jobs:
 
       - name: Repoint Contabo2
         if: ${{ inputs.box == 'contabo2' }}
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
         with:
           host: 194.163.188.71
           username: root
