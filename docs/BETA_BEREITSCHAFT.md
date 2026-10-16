@@ -1,4 +1,4 @@
-# Beta-Bereitschaft — Prüfung vom 14.10.2026, Stand 15.10.2026
+# Beta-Bereitschaft — Prüfung vom 14.10.2026, Stand 16.10.2026
 
 Geprüft wurden alle vier Repos: Kette, App, Biometrie und Proof-Server. Die
 Fragen waren: funktioniert es, ist es sicher, ist es schnell, und ist der Weg
@@ -34,6 +34,11 @@ jeweiligen PR.
 | 183 Workflows nur noch mit `contents: read` | NIEDRIG | Aequitas #357 |
 | Chain-ID-Wechsel 1926 → 19260930 gegen die Wiederholung alter Überweisungen, **schlafend** (Stichtag `chainIDWechselAbUnix`). Die Prüfung fand zwei Lücken, beide behoben: eine als RLP-String verpackte Transaktion bekam kein Zeitfenster, und im Bündel wurden Nonces vor der Chain-ID-Prüfung reserviert. | HOCH | Aequitas #360 |
 | Replay-Mauer: drei abgewiesene Blöcke derselben Höhe lösten Selbstheilung samt `os.Exit` aus, auch Blöcke, die nur ein böswilliger Erzeuger führt. Jetzt zählt sie je Block und je Knoten, mit höchstens 64 Einträgen. Geheilt wird nur noch mit Beleg, dass das Netz den Block führt: Er kam vom Seed, oder ein anderer Erzeuger hat darauf gebaut. Missbrauch steht im Vier-Knoten-Test. | MITTEL | Aequitas #375 |
+| Der Betriebsmodus („test“/„real“) steht in der Bescheinigung (Form v2); der Proof-Server zählt nur den erwarteten Modus, eine einzige Test-Aussage weist die Anfrage ab. | HOCH | proof-server #14, #18; biometric #55 |
+| Chain-ID-Wechsel: App, Web (`explorer.js`, `dapp.js`) und Workflows lesen die ID vom Knoten und prüfen sie gegen die Uhr. Offen ist nur noch der Stichtag (Betreiber, Abschnitt 3 Punkt 9). | HOCH | Aequitas #370, App #32 |
+| Deploy: volle CI als Pforte, Rücknahme auf das vorige Image | MITTEL | Aequitas #362 |
+| GitHub Actions auf Commit-SHAs gepinnt, Dependabot hält sie aktuell | NIEDRIG | Aequitas #364, biometric #49, proof-server #15 |
+| `pinningDialer`/`isAllowedPeerURL`: CGNAT (außer vom Betreiber genannt), NAT64 und Sonderbereiche werden nicht mehr gewählt | NIEDRIG | Aequitas #376 |
 
 **In Prüfung (15.10.2026):**
 
@@ -45,18 +50,15 @@ jeweiligen PR.
 
 | Befund | Schwere | Anmerkung |
 |---|---|---|
-| Der Modus („test“/„real“) steht nicht in der Bescheinigung; der Proof-Server kann eine Test-Bescheinigung nicht ablehnen. | HOCH | betrifft drei Repos (Coordinator, Proof-Server, Kette), eigener PR |
-| Chain-ID-Wechsel einschalten: Zuerst müssen App, Web (`assets/dapp.js`, Explorer, Landing) und drei Workflows die neue ID kennen; erst danach kommt der Stichtag per PR (`docs/CHAIN_ID_WECHSEL.md`). Bis dahin bleibt die Wiederholung alter Überweisungen möglich. | HOCH | entschieden: neue Chain-ID |
 | Push-Plätze (8) lassen sich mit langsamen Anfragen belegen | MITTEL | Frist begrenzt es |
 | StateRoot-Abweichung wird nur geloggt, der Block angenommen. Im DAG mit mehreren Produzenten ergeben Geschwister immer verschiedene Roots, ein hartes Abweisen hielte den Sync an. | MITTEL | tragbar nur bei geschlossener Produzentenliste |
 | FromSync-Ausnahmen (Sperre, Finalität) über Seed-Verbindungen ohne TLS | MITTEL | schlafender Stichtag im Code (`fromsync_stichtag.go`); einschalten per PR nach `docs/FROMSYNC_STICHTAG.md` |
 | Keine echten Tests mit 4 oder mehr Knoten (Simulationen gibt es) | HOCH | teilweise: `TestVierKnoten_RealDB` (4 Instanzen, eigene Datenbanken, HTTP-Push/-Sync, Leitung, Ausfall und Rueckkehr, Faelschungen). Nicht abgedeckt: Snapshot-Resync ueber Loopback, libp2p, Trusted Seeds; paketweite Zaehler (Ahnen-Leerlauf, Push-Plaetze) teilen sich die Instanzen; die Replay-Mauer zaehlt seit #375 je Knoten -- siehe Dateikopf |
 | Ahnen-Leerlauf zaehlt Netzfehler als leere Runde, obwohl der Kommentar das Gegenteil sagt (`sync_blocks.go:1040` vs. `:1101`), und zaehlt prozessweit ueber alle Peers (`ahnen_unerreichbar.go:46`); Ende ist ebenfalls `os.Exit` | NIEDRIG | offen |
+| Ein gepushter Block steht beim Seed schon vor dem Nachspielen in `chain_blocks` und wird erst nach dem Fehlschlag gelöscht. In diesem Fenster kann `GetBlocksByHashesForPeer` ihn an Nachholende ausliefern (dort `FromSync`). Fund aus der Prüfung von #375; der Seed sollte nur nachgespielte Blöcke ausliefern. | NIEDRIG | offen |
 | `checkpointVorschau` läuft unter `dag.mu` (bis über 5 s je Checkpoint-Block) | MITTEL | erst ab dem Checkpoint-Stichtag |
 | Snapshot und Autoheal vertrauen C1 | MITTEL | erst mit mehreren Unterzeichnern lösbar |
-| Deploy ohne Rücknahme auf das vorige Image (Kette); der Deploy prüft weniger als die CI | MITTEL | |
-| GitHub Actions nicht auf SHA gepinnt | NIEDRIG | |
-| `${{ inputs.* }}` direkt in `run:` (begrenzt durch `choice`) | NIEDRIG | Biometrie-Workflows |
+| `${{ inputs.* }}` direkt in `run:` (begrenzt durch `choice`) | NIEDRIG | Biometrie-Workflows; in Prüfung: biometric #56 |
 | App: Polling statt Ereignisse, kein Offline-Zustand | NIEDRIG | |
 | App: bio/salt gehen an den Knoten, den die App gerade nutzt | MITTEL | durch „nur https“ entschärft |
 | `/challenge`: etwa 340 IPv4-Adressen füllen die Obergrenze (Verfügbarkeit) | MITTEL | |
