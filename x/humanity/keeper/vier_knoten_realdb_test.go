@@ -432,8 +432,19 @@ func (n *vierKnotenNetz) starte(t *testing.T, k *vierKnoten) {
 	// seine ID), auf einem freien Port und OHNE Start(): er waehlt sich nie
 	// bei den oeffentlichen Bootstrap-Knoten ein. Bloecke laufen in diesem
 	// Test ausschliesslich ueber HTTP, den Weg, um den es geht.
-	t.Setenv("P2P_LISTEN_PORT", fmt.Sprint(freierPort(t)))
-	p2p, err := NewP2PNode()
+	//
+	// Zwischen freierPort und dem Binden kann ein anderer Listener den Port
+	// nehmen (gesehen in CI: der HTTP-Server eines anderen Knotens auf
+	// 127.0.0.13 mit derselben Nummer) -- dann mit neuem Port noch einmal.
+	var p2p *P2PNode
+	var err error
+	for versuch := 0; ; versuch++ {
+		t.Setenv("P2P_LISTEN_PORT", fmt.Sprint(freierPort(t)))
+		p2p, err = NewP2PNode()
+		if err == nil || versuch >= 4 || !strings.Contains(err.Error(), "address already in use") {
+			break
+		}
+	}
 	if err != nil {
 		t.Fatalf("Knoten %d: P2P: %v", k.i, err)
 	}
@@ -559,9 +570,12 @@ func vierDial(ctx context.Context, network, addr string) (net.Conn, error) {
 	return d.DialContext(ctx, network, addr)
 }
 
+// freierPort: ein Port, der auf ALLEN Adressen frei ist -- libp2p bindet
+// 0.0.0.0, und die HTTP-Server der Knoten liegen auf 127.0.0.11..14. Ein nur
+// auf 127.0.0.1 geprueft freier Port konnte dort schon belegt sein.
 func freierPort(t *testing.T) int {
 	t.Helper()
-	l, err := net.Listen("tcp", "127.0.0.1:0")
+	l, err := net.Listen("tcp4", "0.0.0.0:0")
 	if err != nil {
 		t.Fatal(err)
 	}

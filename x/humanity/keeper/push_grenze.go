@@ -15,11 +15,23 @@ package keeper
 //     Proposer signiert sein, BEVOR ein Rumpf von aussen geholt wird.
 //   - Jede Ablehnung zaehlt im Flutschutz je IP (blockPushRecordOutcome),
 //     nicht nur die nach AddPeerBlock.
+//   - pushMitLeseFrist (Beta-Pruefung, MITTEL): wer einen Platz belegt, muss
+//     auch senden. Bis dahin hielt nur die ReadTimeout des Servers (30 s)
+//     einen Platz; vier Adressen mit je zwei tropfenden Anfragen belegten
+//     alle acht und wiederholten das beliebig -- jeder echte Push bekam 503.
+//     Jetzt verlaengert jedes empfangene Byte die Lesefrist nur so weit, wie
+//     es bei pushMindestRate dauern darf, nach einem Anlauf von
+//     pushLeseAnlauf, und nie ueber pushLeseHoechstens (10 s) hinaus. Ein
+//     Tropfen verliert seinen Platz nach rund 5 s, jeder Push nach spaetestens
+//     10 s, und der Abbruch zaehlt im Flutschutz seiner IP (je /64).
 
 import (
 	"encoding/hex"
+	"io"
+	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -101,4 +113,61 @@ func (dag *BlockDAG) erzeugerErlaubtLesend(proposer string, zeit int64) bool {
 	dag.mu.RLock()
 	defer dag.mu.RUnlock()
 	return dag.erzeugerErlaubt(proposer, zeit)
+}
+
+// Mindestrate beim Lesen eines Pushes. var: Tests verkuerzen sie.
+//
+// pushLeseHoechstens deckelt die Frist absolut (Pruefung von #381, F1): ohne
+// Deckel ersetzte die wachsende Frist die ReadTimeout des Servers, und wer
+// knapp ueber der Mindestrate 32 MB schickte, hielt einen Platz ~17 min.
+// Ehrliche Pusher geben nach 3 s auf (HTTPBroadcastBlock) -- 10 s kosten
+// niemanden etwas.
+var (
+	pushLeseAnlauf     = 5 * time.Second
+	pushMindestRate    = int64(32 << 10) // Byte je Sekunde
+	pushLeseHoechstens = 10 * time.Second
+)
+
+// pushLeseFrist: Lesefrist, die mit jedem empfangenen Byte waechst -- aber
+// nur um die Zeit, die es bei pushMindestRate dauern darf.
+type pushLeseFrist struct {
+	io.ReadCloser
+	rc    *http.ResponseController
+	start time.Time
+	n     int64
+}
+
+// pushMitLeseFrist setzt die Frist auf r.Body. Unterstuetzt der Writer keine
+// Lesefrist (ErrNotSupported), bleibt die ReadTimeout des Servers.
+func pushMitLeseFrist(w http.ResponseWriter, r *http.Request) {
+	f := &pushLeseFrist{ReadCloser: r.Body, rc: http.NewResponseController(w), start: time.Now()}
+	f.verlaengern()
+	r.Body = f
+}
+
+func (f *pushLeseFrist) verlaengern() {
+	erlaubt := pushLeseAnlauf + time.Duration(f.n*int64(time.Second)/pushMindestRate)
+	if erlaubt > pushLeseHoechstens {
+		erlaubt = pushLeseHoechstens
+	}
+	_ = f.rc.SetReadDeadline(f.start.Add(erlaubt))
+}
+
+// Read verlaengert die Frist nur, solange der Rumpf noch nicht zu Ende ist.
+// Mit dem letzten Byte (io.EOF) startet net/http ein Hintergrund-Lesen auf
+// der Verbindung; eine Frist darauf liefe ab, waehrend der Handler noch
+// arbeitet, und braeche den Kontext der GANZEN Verbindung ab -- hinter Caddy
+// auch die folgenden Anfragen anderer Nutzer (Pruefung von #381, F2). Darum
+// wird sie bei io.EOF aufgehoben, wie net/http es selbst taete. Bei anderen
+// Fehlern bleibt sie: die Verbindung ist ohnehin verloren.
+func (f *pushLeseFrist) Read(p []byte) (int, error) {
+	n, err := f.ReadCloser.Read(p)
+	f.n += int64(n)
+	switch {
+	case err == io.EOF:
+		_ = f.rc.SetReadDeadline(time.Time{})
+	case err == nil && n > 0:
+		f.verlaengern()
+	}
+	return n, err
 }
