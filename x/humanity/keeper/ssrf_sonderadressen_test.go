@@ -66,6 +66,13 @@ func TestSSRF_NichtOeffentlich(t *testing.T) {
 			t.Errorf("oeffentliche Adresse %s abgewiesen", a)
 		}
 	}
+	// IPv6 mit Zone: kein IP-Literal fuer net.ParseIP, darf trotzdem nie
+	// als Name durchgehen (Pruefung von #376).
+	for _, u := range []string{"https://[fe80::1%25eth0]:8080", "http://[fe80::1%25eth0]:8080", "https://[fe80::1%25eth0]"} {
+		if isAllowedPeerURL(u) {
+			t.Errorf("isAllowedPeerURL laesst %s durch", u)
+		}
+	}
 	if !nichtOeffentlich(nil) {
 		t.Error("nil gilt als oeffentlich")
 	}

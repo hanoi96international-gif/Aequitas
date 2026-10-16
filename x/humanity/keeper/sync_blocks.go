@@ -3060,6 +3060,12 @@ func isAllowedPeerURL(rawURL string) bool {
 	if host == "" || host == "0.0.0.0" || host == "[::]" {
 		return false
 	}
+	// IPv6 mit Zone (fe80::1%eth0): net.ParseIP liest das nicht, die Adresse
+	// fiele sonst in den Namenszweig und bestuende mit https. Eine Zone
+	// meint immer eine lokale Schnittstelle.
+	if strings.Contains(host, "%") {
+		return false
+	}
 
 	// Literal IP: allow HTTP or HTTPS as long as the IP is public.
 	if ip := net.ParseIP(host); ip != nil {
