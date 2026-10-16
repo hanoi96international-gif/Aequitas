@@ -188,6 +188,42 @@ func (pr *PeerRegistry) AllPeers() []string {
 
 // ─── BLOCK SYNC ──────────────────────────────────────────────────────────────
 
+// cgnatNetz: RFC 6598 (100.64.0.0/10). Weder privat nach net.IP.IsPrivate
+// noch oeffentlich: Provider-NAT, Tailscale -- und bei manchen Clouds
+// interne Dienste (Alibaba-Metadaten 100.100.100.200).
+var cgnatNetz = mussNetze("100.64.0.0/10")
+
+// nichtOeffentlich: zu dieser Adresse waehlt der Knoten nie (SSRF-Schutz fuer
+// pinningDialer und isAllowedPeerURL).
+//
+// Bis 16.10.2026 prueften beide nur Loopback, privat, Link-Local, Multicast
+// und unspezifiziert. Durch rutschten CGNAT (100.64/10) und die
+// Uebersetzungs- und Sonderbereiche -- NAT64 (64:ff9b::/96, 64:ff9b:1::/48)
+// fuehrt auf einem Host mit NAT64-Gateway zu JEDER IPv4-Adresse, auch
+// 10.0.0.1 oder 127.0.0.1 hinter dem Gateway; dazu 0/8, 198.18/15, 240/4,
+// Broadcast, 6to4, Teredo (sonderNetze, leitung_netz.go).
+//
+// CGNAT bleibt waehlbar, wenn der Betreiber das Netz in
+// AEQUITAS_FREILISTE_NETZE nennt (Validatoren im selben Tailscale-Netz) --
+// nur CGNAT: ein dort genanntes RFC-1918-Netz oeffnet den Dialer nicht, das
+// war nie waehlbar und bleibt es.
+func nichtOeffentlich(ip net.IP) bool {
+	if ip == nil || ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() ||
+		ip.IsMulticast() || ip.IsUnspecified() {
+		return true
+	}
+	if v4 := ip.To4(); v4 != nil && v4.Equal(net.IPv4bcast) {
+		return true
+	}
+	if inNetzen(ip, sonderNetze) {
+		return true
+	}
+	if inNetzen(ip, cgnatNetz) {
+		return !inNetzen(ip, freilisteNetze())
+	}
+	return false
+}
+
 // pinningDialer resolves the hostname once, verifies all IPs are public,
 // then connects directly to the first IP — bypassing any subsequent DNS
 // re-resolution that DNS-rebinding attacks rely on.
@@ -201,7 +237,7 @@ func pinningDialer(ctx context.Context, network, addr string) (net.Conn, error) 
 	// public IPs because the minimal resolver doesn't handle PTR/A lookups
 	// for already-resolved addresses the same way on all platforms.
 	if ip := net.ParseIP(host); ip != nil {
-		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsMulticast() || ip.IsUnspecified() {
+		if nichtOeffentlich(ip) {
 			return nil, fmt.Errorf("connection to private/loopback IP rejected: %s", host)
 		}
 		d := &net.Dialer{Timeout: 10 * time.Second}
@@ -214,7 +250,7 @@ func pinningDialer(ctx context.Context, network, addr string) (net.Conn, error) 
 	}
 	for _, ip := range ips {
 		parsed := net.ParseIP(ip)
-		if parsed == nil || parsed.IsLoopback() || parsed.IsPrivate() || parsed.IsLinkLocalUnicast() || parsed.IsMulticast() || parsed.IsUnspecified() {
+		if nichtOeffentlich(parsed) {
 			return nil, fmt.Errorf("DNS resolved to private/loopback address %s for host %s", ip, host)
 		}
 	}
@@ -3027,7 +3063,7 @@ func isAllowedPeerURL(rawURL string) bool {
 
 	// Literal IP: allow HTTP or HTTPS as long as the IP is public.
 	if ip := net.ParseIP(host); ip != nil {
-		return !ip.IsLoopback() && !ip.IsPrivate() && !ip.IsLinkLocalUnicast() && !ip.IsMulticast() && !ip.IsUnspecified()
+		return !nichtOeffentlich(ip)
 	}
 
 	// Hostname: require HTTPS to prevent DNS-rebinding attacks.

@@ -47,7 +47,6 @@ jeweiligen PR.
 |---|---|---|
 | Der Modus („test“/„real“) steht nicht in der Bescheinigung; der Proof-Server kann eine Test-Bescheinigung nicht ablehnen. | HOCH | betrifft drei Repos (Coordinator, Proof-Server, Kette), eigener PR |
 | Chain-ID-Wechsel einschalten: Zuerst müssen App, Web (`assets/dapp.js`, Explorer, Landing) und drei Workflows die neue ID kennen; erst danach kommt der Stichtag per PR (`docs/CHAIN_ID_WECHSEL.md`). Bis dahin bleibt die Wiederholung alter Überweisungen möglich. | HOCH | entschieden: neue Chain-ID |
-| `pinningDialer` kennt CGNAT (100.64/10) und NAT64 nicht als privat | NIEDRIG | |
 | Push-Plätze (8) lassen sich mit langsamen Anfragen belegen | MITTEL | Frist begrenzt es |
 | StateRoot-Abweichung wird nur geloggt, der Block angenommen. Im DAG mit mehreren Produzenten ergeben Geschwister immer verschiedene Roots, ein hartes Abweisen hielte den Sync an. | MITTEL | tragbar nur bei geschlossener Produzentenliste |
 | FromSync-Ausnahmen (Sperre, Finalität) über Seed-Verbindungen ohne TLS | MITTEL | schlafender Stichtag im Code (`fromsync_stichtag.go`); einschalten per PR nach `docs/FROMSYNC_STICHTAG.md` |
