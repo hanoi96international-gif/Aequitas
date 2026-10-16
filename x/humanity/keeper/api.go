@@ -2099,6 +2099,8 @@ func (a *APIServer) handleBlockPush(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer frei()
+	// Wer einen Platz belegt, muss auch senden (push_grenze.go).
+	pushMitLeseFrist(w, r)
 	body, tooLarge, err := readPushBody(w, r, maxBlockStreamBytes)
 	if tooLarge {
 		blockPushRecordOutcome(ip, false)
