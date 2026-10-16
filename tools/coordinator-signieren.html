@@ -67,7 +67,7 @@
 <body>
 <main>
   <h1>Coordinator eintragen</h1>
-  <p class="unter">Unterschreibt die Autorisierung für die beiden eigenen Coordinatoren und
+  <p class="unter">Unterschreibt die Autorisierung für den eigenen Coordinator und
      baut daraus den fertigen Befehl.</p>
 
   <div class="hinweis">
@@ -86,18 +86,21 @@
   <section id="karten"></section>
 
   <footer>
-    <p>Beide Eintragungen gehen an <em>beide</em> Knoten — das Register ist knotenlokal
-       und wird nicht repliziert. Das erledigt das Skript.</p>
-    <p>Danach sollte <code>/api/coordinators</code> auf jedem Knoten zwei Einträge zeigen.</p>
+    <p>Die Eintragung geht an <em>jeden</em> Knoten in <code>KNOTEN</code> — das Register ist
+       knotenlokal und wird nicht repliziert. Das erledigt das Skript. Kommt ein weiterer
+       Validator dazu, dieselbe Unterschrift auch dort eintragen.</p>
+    <p>Danach sollte <code>/api/coordinators</code> auf jedem Knoten den Schlüssel
+       <code>d3c46a77…</code> zeigen.</p>
   </footer>
 </main>
 
 <script>
+// Stand 16.10.2026: nur der Coordinator auf C1 (netcup) laeuft. Die alten
+// Schluessel ac9c5052... (Contabo1, abgeschaltet) und 1f14063c... (C2, aus)
+// sind entfernt; die Vergleichsdienste nehmen nur noch d3c46a77... an.
 const BOXEN = [
-  { name:"Coordinator C1", ort:"173.249.37.118",
-    pub:"ac9c50522cfb59ac4da5d24780e6a87f68874e49d299a762832251836a3ae4ae" },
-  { name:"Coordinator C2", ort:"194.163.188.71",
-    pub:"1f14063c514b8dbf6917da57b268dc7c3be44cd577835e23a42b42f405fc67c6" },
+  { name:"Coordinator C1", ort:"188.172.229.121",
+    pub:"d3c46a772f2c40e533f6abd5781d0c39cdcda9ba3df63e909ebd729d2e2aebbf" },
 ];
 
 let konto = null;
