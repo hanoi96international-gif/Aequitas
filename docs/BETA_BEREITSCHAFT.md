@@ -41,8 +41,8 @@ jeweiligen PR.
 | `pinningDialer`/`isAllowedPeerURL`: CGNAT (außer vom Betreiber genannt), NAT64 und Sonderbereiche werden nicht mehr gewählt | NIEDRIG | Aequitas #376 |
 | Biometrie-Workflows: `inputs.*` über `env` statt direkt in `run:` | NIEDRIG | biometric #56 |
 | Coordinator: alle Grenzen je IPv6-/64 (vorher je Einzeladresse: ein /64 umging `/register` ganz); offene Challenges je Netz (10) und je /48 (100), Obergrenze 100 000; X-Forwarded-For auch hinter Provider-NAT-Proxy. **Wirkt erst nach dem Coordinator-Deploy** (`deploy-coordinator-to-box.yml`, von Hand). | MITTEL | biometric #57 |
-| Seed liefert nur nachgespielte Blöcke aus: Ein gepushter Block stand vor dem Nachspielen schon in `chain_blocks` und ging über `/api/blocks`, `/api/block`, `/api/blocks/by-hash` und RPC an Nachholende, die ihn dann als vom Seed geführt (`FromSync`) behandelten. | NIEDRIG | Aequitas #378 |
-| Ahnen-Leerlauf: Netzfehler zählten als leere Runde, der Zähler galt prozessweit für alle Peers, und ein selbst eingetragener Peer konnte mit leeren Antworten Resync samt Neustart auslösen. Jetzt nur vollständige Antworten, je Peer und je Knoten; heilen nur, wenn ein eingetragener Seed die Historie nicht liefert. | MITTEL | Aequitas #378 |
+| Seed liefert nur nachgespielte Blöcke aus: Ein gepushter Block stand vor dem Nachspielen schon in `chain_blocks` und ging über `/api/blocks`, `/api/block`, `/api/blocks/by-hash` und RPC an Nachholende, die ihn dann als vom Seed geführt (`FromSync`) behandelten. | NIEDRIG | Aequitas #380 |
+| Ahnen-Leerlauf: Netzfehler zählten als leere Runde, der Zähler galt prozessweit für alle Peers, und ein selbst eingetragener Peer konnte mit leeren Antworten Resync samt Neustart auslösen. Jetzt nur vollständige Antworten, je Peer und je Knoten; heilen nur, wenn ein eingetragener Seed die Historie nicht liefert. | MITTEL | Aequitas #380 |
 
 **In Prüfung (15.10.2026):**
 
