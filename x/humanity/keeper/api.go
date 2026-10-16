@@ -753,7 +753,7 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		"batcher_phasen":      BatcherPhasenStand(),
 		"batcher_kanal":       BatcherKanalStand(),
 		// Steckt der Knoten an einem Block fest, den er nicht nachspielen kann?
-		"replay_mauer": ReplayMauerStand(),
+		"replay_mauer": a.blockchain.ReplayMauerStand(),
 		// Liefert der Peer die fehlenden Elternbloecke ueberhaupt noch?
 		"ahnen_leerlauf": AhnenLeerlaufStand(),
 		// Whether the database connection pool is the constraint — wait_count

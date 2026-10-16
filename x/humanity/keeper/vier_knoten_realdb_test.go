@@ -73,10 +73,10 @@ import (
 //     bleibt geteilt, also strenger als im Betrieb.
 //   - api.go:2005 (blockPushBreaker, je IP): der Angreifer schiebt von einer
 //     eigenen IP (angreiferKlient).
-//   - replay_mauer.go:54 (replayMauerStand): drei Abweisungen derselben Hoehe
-//     in Folge loesen die Selbstheilung samt os.Exit (autoheal.go:439) aus --
-//     im Prozess zaehlen alle vier zusammen. Darum gehen Bloecke, die erst
-//     beim Nachspielen scheitern, an je zwei Knoten (siehe pruefeFalscheBloecke).
+//   - Die Replay-Mauer zaehlt seit 16.10.2026 je Knoten (dag.replayMauer),
+//     nicht mehr paketweit -- kein Sonderfall mehr. pruefeFalscheBloecke
+//     ersetzt die Heilung (os.Exit) durch einen Zaehler und verlangt, dass
+//     Angriffsbloecke sie nie ausloesen.
 //   - ahnen_unerreichbar.go:46 (ahnenLeerlaufFolgen): Runden ohne beschaffte
 //     Vorfahren, ebenfalls mit os.Exit am Ende; im Prozess vierfach so schnell
 //     voll. Mit vierDial (keine "busy"-Pushes, also kaum Waisen) wurde er in
@@ -992,15 +992,10 @@ func (n *vierKnotenNetz) pruefeFalscheBloecke(t *testing.T) {
 		bau   func() *Block
 		ziele []*vierKnoten
 		// replay: der Kopf ist echt, abgewiesen wird erst beim Nachspielen.
-		// Diese Abweisungen zaehlen in der PAKETWEITEN Replay-Mauer
-		// (replay_mauer.go:46/59): drei Abweisungen in Folge bei derselben
-		// HOEHE -- auch verschiedener Bloecke -- loesen die Selbstheilung samt
-		// os.Exit aus, und der abgewiesene Block wird nach jedem
-		// angenommenen Block erneut versucht (Soft-Retry, block.go:5765). Im
-		// Betrieb zaehlt jeder Prozess fuer sich; hier zaehlen alle vier in
-		// denselben Zaehler. Darum geht jeder solche Block an genau zwei
-		// Knoten, und die beiden Faelle liegen auf verschiedenen Hoehen: so
-		// kommen hoechstens zwei Abweisungen derselben Hoehe hintereinander.
+		// Diese Abweisungen zaehlen in der Replay-Mauer (replay_mauer.go).
+		// Der Angreifer schiebt jeden solchen Block replayMauerSchwelle-mal an
+		// jeden Knoten; die Heilung darf trotzdem nie anspringen, weil kein
+		// Seed und kein anderer Erzeuger den Block fuehrt.
 		replay bool
 		b      *Block
 	}
@@ -1010,23 +1005,39 @@ func (n *vierKnotenNetz) pruefeFalscheBloecke(t *testing.T) {
 		{name: "falscher Erzeuger (zugelassene Adresse, fremde Signatur)", ziele: n.ks,
 			bau: func() *Block { return vierBlock(t, fremd, n.ks[1].addr, eltern, []Transaction{diebstahl}) }},
 		{name: "nach dem Signieren veraendert", ziele: n.ks, bau: func() *Block { return manipuliert }},
-		{name: "zugelassener Erzeuger, Ueberweisung nicht vom Absender signiert", ziele: n.ks[:2], replay: true,
+		{name: "zugelassener Erzeuger, Ueberweisung nicht vom Absender signiert", ziele: n.ks, replay: true,
 			bau: func() *Block { return vierBlock(t, n.boese, boeseAddr, aktuelleEltern(), []Transaction{diebstahl}) }},
-		{name: "zugelassener Erzeuger, verbrauchte Ueberweisung wiederholt", ziele: n.ks[2:], replay: true,
+		{name: "zugelassener Erzeuger, verbrauchte Ueberweisung wiederholt", ziele: n.ks, replay: true,
 			bau: func() *Block { return vierBlock(t, n.boese, boeseAddr, aktuelleEltern(), []Transaction{wiederholt}) }},
 	}
+	// Die Heilung endet in os.Exit -- hier nur zaehlen. Kein Angriffsblock
+	// darf sie ausloesen.
+	var heilungen atomic.Int64
+	vorherHeilen := replayMauerHeilen
+	replayMauerHeilen = func(_ *BlockDAG, grund string) {
+		heilungen.Add(1)
+		t.Errorf("Replay-Mauer heilt nach einem Angriffsblock: %s", grund)
+	}
+	defer func() { replayMauerHeilen = vorherHeilen }()
+
 	for _, f := range faelle {
 		f.b = f.bau()
+		versuche := 1
+		if f.replay {
+			versuche = replayMauerSchwelle
+		}
 		for _, k := range f.ziele {
-			ok, grund := vierSchiebe(t, k.srv.URL, f.b)
-			if ok {
-				t.Fatalf("%s: Knoten %d hat den Block angenommen", f.name, k.i)
+			for v := 0; v < versuche; v++ {
+				ok, grund := vierSchiebe(t, k.srv.URL, f.b)
+				if ok {
+					t.Fatalf("%s: Knoten %d hat den Block angenommen", f.name, k.i)
+				}
+				_, dag, _ := k.teile()
+				if dag.hasBlockInMemory(f.b.Hash) {
+					t.Fatalf("%s: Knoten %d fuehrt den Block (%s) trotz Ablehnung", f.name, k.i, grund)
+				}
+				t.Logf("%s: Knoten %d lehnt ab (%s)", f.name, k.i, grund)
 			}
-			_, dag, _ := k.teile()
-			if dag.hasBlockInMemory(f.b.Hash) {
-				t.Fatalf("%s: Knoten %d fuehrt den Block (%s) trotz Ablehnung", f.name, k.i, grund)
-			}
-			t.Logf("%s: Knoten %d lehnt ab (%s)", f.name, k.i, grund)
 		}
 		if f.replay {
 			// Ehrliche Bloecke setzen die Mauer zurueck (merkeBlockErfolg)
@@ -1037,6 +1048,56 @@ func (n *vierKnotenNetz) pruefeFalscheBloecke(t *testing.T) {
 	}
 
 	nachher := n.pruefeGleichstand(t, "nach den Faelschungen")
+	// loeseHeilungAus prueft den Beleg in einer eigenen Goroutine.
+	time.Sleep(500 * time.Millisecond)
+	if h := heilungen.Load(); h != 0 {
+		t.Fatalf("Replay-Mauer hat %d-mal geheilt", h)
+	}
+
+	// MISSBRAUCH der Replay-Mauer (bis 16.10.2026 je HOEHE gezaehlt): der
+	// zugelassene Erzeuger schiebt replayMauerSchwelle VERSCHIEDENE Bloecke
+	// derselben Hoehe an jeden Knoten, ohne ehrlichen Block dazwischen. Der
+	// alte Zaehler loeste damit Heilung samt os.Exit aus.
+	mauerEltern := aktuelleEltern()
+	varianten := [][]Transaction{{diebstahl}, {wiederholt}, {diebstahl, wiederholt}}
+	vorAbweisungen := make([]int64, len(n.ks))
+	for i, k := range n.ks {
+		_, d, _ := k.teile()
+		vorAbweisungen[i] = d.replayMauer.abweisungen.Load()
+	}
+	var mauerBloecke []*Block
+	for _, txs := range varianten[:replayMauerSchwelle] {
+		b := vierBlock(t, n.boese, boeseAddr, mauerEltern, txs)
+		mauerBloecke = append(mauerBloecke, b)
+		for _, k := range n.ks {
+			if ok, _ := vierSchiebe(t, k.srv.URL, b); ok {
+				t.Fatalf("Mauer-Angriff: Knoten %d hat Block #%d angenommen", k.i, b.Height)
+			}
+		}
+	}
+	for i := 1; i < len(mauerBloecke); i++ {
+		if mauerBloecke[i].Height != mauerBloecke[0].Height || mauerBloecke[i].Hash == mauerBloecke[0].Hash {
+			t.Fatalf("Mauer-Angriff braucht verschiedene Bloecke derselben Hoehe: #%d %s vs #%d %s",
+				mauerBloecke[0].Height, mauerBloecke[0].Hash, mauerBloecke[i].Height, mauerBloecke[i].Hash)
+		}
+	}
+	time.Sleep(500 * time.Millisecond) // loeseHeilungAus laeuft in einer Goroutine
+	// Gegenprobe: jeder Knoten hat sie wirklich beim Nachspielen abgewiesen
+	// -- sonst bewiese "keine Heilung" nichts.
+	for i, k := range n.ks {
+		_, d, _ := k.teile()
+		if neu := d.replayMauer.abweisungen.Load() - vorAbweisungen[i]; neu < replayMauerSchwelle {
+			t.Fatalf("Mauer-Angriff: Knoten %d wies nur %d Bloecke beim Nachspielen ab, erwartet %d -- "+
+				"der Test zeigt den Angriff nicht", k.i, neu, replayMauerSchwelle)
+		}
+	}
+	if h := heilungen.Load(); h != 0 {
+		t.Fatalf("Mauer-Angriff: Replay-Mauer hat %d-mal geheilt", h)
+	}
+	t.Logf("Mauer-Angriff: %d verschiedene Bloecke der Hoehe %d an jedem Knoten abgewiesen, keine Heilung",
+		len(mauerBloecke), mauerBloecke[0].Height)
+	n.ueberweisen(t, 1)
+	nachher = n.pruefeGleichstand(t, "nach dem Mauer-Angriff")
 	// Kein Knoten hat irgendetwas vom Angreifer verbucht: das Opfer verlor nur
 	// durch eigene, echte Ueberweisungen, der Angreifer bekam nichts.
 	for i, k := range n.ks {

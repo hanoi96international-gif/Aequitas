@@ -1015,6 +1015,9 @@ type BlockDAG struct {
 	// silently dropped forever, along with everything built on top of it.
 	orphans   map[string][]*Block
 	orphansMu sync.Mutex
+	// replayMauer zaehlt, wie oft derselbe Block beim Nachspielen scheitert
+	// (replay_mauer.go). Je Knoten, nicht paketweit.
+	replayMauer replayMauer
 	// orphanFirstSeen/orphanLastAttempt back orphan TTL + per-hash fetch
 	// cooldown — see queueOrphan's "abandon" comment and fetchMissingAncestors'
 	// cooldown skip for why both exist.
@@ -8307,11 +8310,11 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 		}
 		fmt.Printf("[REPLAY] ✗ Block #%d rolled back due to a genuine state-inconsistency failure — block rejected\n", block.Height)
 		// Zaehlen, ob DERSELBE Block wieder und wieder scheitert. Dann ist
-		// dieser Knoten zugemauert und kommt ohne Resync nicht weiter --
-		// siehe replay_mauer.go. Die Heilung laeuft in einer eigenen
+		// dieser Knoten zugemauert und kommt ohne Resync nicht weiter, sofern
+		// das Netz den Block fuehrt -- siehe replay_mauer.go. Die Heilung laeuft in einer eigenen
 		// Goroutine, weil hier die globale Zustandssperre gehalten wird.
-		if mauer, folgen := merkeBlockAbweisung(block.Height); mauer {
-			dag.loeseHeilungAus(block.Height, folgen)
+		if mauer, folgen := dag.replayMauer.merkeBlockAbweisung(block.Hash, block.Height); mauer {
+			dag.loeseHeilungAus(block, folgen)
 		}
 		return false
 	}
@@ -8343,8 +8346,8 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			for _, n := range claimedNullifiers {
 				dag.state.releaseNullifierLocked(context.Background(), n)
 			}
-			if mauer, folgen := merkeBlockAbweisung(block.Height); mauer {
-				dag.loeseHeilungAus(block.Height, folgen)
+			if mauer, folgen := dag.replayMauer.merkeBlockAbweisung(block.Hash, block.Height); mauer {
+				dag.loeseHeilungAus(block, folgen)
 			}
 			return false
 		}
@@ -8599,7 +8602,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 		dag.replayedBlocks = make(map[string]bool, 1000)
 	}
 	// Der Knoten kommt voran -- die Mauer-Zaehlung zuruecksetzen.
-	merkeBlockErfolg()
+	dag.replayMauer.merkeBlockErfolg()
 	dag.replayedBlocks[block.Hash] = true
 	dag.replayedMu.Unlock()
 	return true

@@ -33,6 +33,7 @@ jeweiligen PR.
 | Lesefrist auf dem libp2p-Stream; Validator-Abgleich gebündelt; Kopfgrenze im Snapshot 20 000 | MITTEL | Aequitas #356 |
 | 183 Workflows nur noch mit `contents: read` | NIEDRIG | Aequitas #357 |
 | Chain-ID-Wechsel 1926 → 19260930 gegen die Wiederholung alter Überweisungen, **schlafend** (Stichtag `chainIDWechselAbUnix`). Die Prüfung fand zwei Lücken, beide behoben: eine als RLP-String verpackte Transaktion bekam kein Zeitfenster, und im Bündel wurden Nonces vor der Chain-ID-Prüfung reserviert. | HOCH | Aequitas #360 |
+| Replay-Mauer: drei abgewiesene Blöcke derselben Höhe lösten Selbstheilung samt `os.Exit` aus, auch Blöcke, die nur ein böswilliger Erzeuger führt. Jetzt zählt sie je Block und je Knoten, mit höchstens 64 Einträgen. Geheilt wird nur noch mit Beleg, dass das Netz den Block führt: Er kam vom Seed, oder ein anderer Erzeuger hat darauf gebaut. Missbrauch steht im Vier-Knoten-Test. | MITTEL | Aequitas #375 |
 
 **In Prüfung (15.10.2026):**
 
@@ -50,8 +51,7 @@ jeweiligen PR.
 | Push-Plätze (8) lassen sich mit langsamen Anfragen belegen | MITTEL | Frist begrenzt es |
 | StateRoot-Abweichung wird nur geloggt, der Block angenommen. Im DAG mit mehreren Produzenten ergeben Geschwister immer verschiedene Roots, ein hartes Abweisen hielte den Sync an. | MITTEL | tragbar nur bei geschlossener Produzentenliste |
 | FromSync-Ausnahmen (Sperre, Finalität) über Seed-Verbindungen ohne TLS | MITTEL | schlafender Stichtag im Code (`fromsync_stichtag.go`); einschalten per PR nach `docs/FROMSYNC_STICHTAG.md` |
-| Keine echten Tests mit 4 oder mehr Knoten (Simulationen gibt es) | HOCH | teilweise: `TestVierKnoten_RealDB` (4 Instanzen, eigene Datenbanken, HTTP-Push/-Sync, Leitung, Ausfall und Rueckkehr, Faelschungen). Nicht abgedeckt: Snapshot-Resync ueber Loopback, libp2p, Trusted Seeds; paketweite Zaehler (Replay-Mauer, Ahnen-Leerlauf, Push-Plaetze) teilen sich die Instanzen -- siehe Dateikopf |
-| Replay-Mauer zaehlt je HOEHE, nicht je Block: drei abgewiesene Bloecke derselben Hoehe loesen Selbstheilung samt `os.Exit` aus (`replay_mauer.go:59`, `autoheal.go:439`) -- ein zugelassener, boesartiger Erzeuger braucht dafuer drei Pushes | MITTEL | offen (Konsens/Verfuegbarkeit, eigener PR) |
+| Keine echten Tests mit 4 oder mehr Knoten (Simulationen gibt es) | HOCH | teilweise: `TestVierKnoten_RealDB` (4 Instanzen, eigene Datenbanken, HTTP-Push/-Sync, Leitung, Ausfall und Rueckkehr, Faelschungen). Nicht abgedeckt: Snapshot-Resync ueber Loopback, libp2p, Trusted Seeds; paketweite Zaehler (Ahnen-Leerlauf, Push-Plaetze) teilen sich die Instanzen; die Replay-Mauer zaehlt seit #375 je Knoten -- siehe Dateikopf |
 | Ahnen-Leerlauf zaehlt Netzfehler als leere Runde, obwohl der Kommentar das Gegenteil sagt (`sync_blocks.go:1040` vs. `:1101`), und zaehlt prozessweit ueber alle Peers (`ahnen_unerreichbar.go:46`); Ende ist ebenfalls `os.Exit` | NIEDRIG | offen |
 | `checkpointVorschau` läuft unter `dag.mu` (bis über 5 s je Checkpoint-Block) | MITTEL | erst ab dem Checkpoint-Stichtag |
 | Snapshot und Autoheal vertrauen C1 | MITTEL | erst mit mehreren Unterzeichnern lösbar |
