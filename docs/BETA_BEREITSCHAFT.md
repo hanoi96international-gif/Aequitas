@@ -39,6 +39,8 @@ jeweiligen PR.
 | Deploy: volle CI als Pforte, Rücknahme auf das vorige Image | MITTEL | Aequitas #362 |
 | GitHub Actions auf Commit-SHAs gepinnt, Dependabot hält sie aktuell | NIEDRIG | Aequitas #364, biometric #49, proof-server #15 |
 | `pinningDialer`/`isAllowedPeerURL`: CGNAT (außer vom Betreiber genannt), NAT64 und Sonderbereiche werden nicht mehr gewählt | NIEDRIG | Aequitas #376 |
+| Biometrie-Workflows: `inputs.*` über `env` statt direkt in `run:` | NIEDRIG | biometric #56 |
+| Coordinator: alle Grenzen je IPv6-/64 (vorher je Einzeladresse: ein /64 umging `/register` ganz); offene Challenges je Netz (10) und je /48 (100), Obergrenze 100 000; X-Forwarded-For auch hinter Provider-NAT-Proxy. **Wirkt erst nach dem Coordinator-Deploy** (`deploy-coordinator-to-box.yml`, von Hand). | MITTEL | biometric #57 |
 
 **In Prüfung (15.10.2026):**
 
@@ -58,10 +60,8 @@ jeweiligen PR.
 | Ein gepushter Block steht beim Seed schon vor dem Nachspielen in `chain_blocks` und wird erst nach dem Fehlschlag gelöscht. In diesem Fenster kann `GetBlocksByHashesForPeer` ihn an Nachholende ausliefern (dort `FromSync`). Fund aus der Prüfung von #375; der Seed sollte nur nachgespielte Blöcke ausliefern. | NIEDRIG | offen |
 | `checkpointVorschau` läuft unter `dag.mu` (bis über 5 s je Checkpoint-Block) | MITTEL | erst ab dem Checkpoint-Stichtag |
 | Snapshot und Autoheal vertrauen C1 | MITTEL | erst mit mehreren Unterzeichnern lösbar |
-| `${{ inputs.* }}` direkt in `run:` (begrenzt durch `choice`) | NIEDRIG | Biometrie-Workflows; in Prüfung: biometric #56 |
 | App: Polling statt Ereignisse, kein Offline-Zustand | NIEDRIG | |
 | App: bio/salt gehen an den Knoten, den die App gerade nutzt | MITTEL | durch „nur https“ entschärft |
-| `/challenge`: etwa 340 IPv4-Adressen füllen die Obergrenze (Verfügbarkeit) | MITTEL | |
 | Proof-Server: ein `console.warn` je abgewiesener Anfrage | NIEDRIG | |
 | Videozerlegung ohne Sandbox; 160 MiB Upload | MITTEL | |
 | Deepfake-Schutz schwach | HOCH | Forschung, kein schneller Fix |
