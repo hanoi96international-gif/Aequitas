@@ -91,6 +91,9 @@ import (
 //     die Resync-Schwelle, keine Pruefung.
 //   - leistungsnachweis.go:249/257 (leistungGestartet): nur einmal je Prozess
 //     gemessen; der Test setzt leistung.zwang wie AEQUITAS_LEITER_FAEHIG=ja.
+//   - status_ohne_sperre.go:52 (statusZwischenspeicher): der "letzte gute"
+//     /api/status ist paketweit -- ein beschaeftigter Knoten meldet dann den
+//     Stand eines anderen. Der Test nimmt nur frisch gebaute Antworten.
 //   - zustand_ablehnung.go:72, annahme_tor.go:100: reine Zaehler.
 //
 // NICHT ABGEDECKT:
@@ -251,6 +254,7 @@ func neuesVierKnotenNetz(t *testing.T) *vierKnotenNetz {
 	httpSyncClient = &http.Client{Timeout: 30 * time.Second, CheckRedirect: ohneUmleitung,
 		Transport: &http.Transport{DialContext: vierDial, MaxIdleConnsPerHost: 4}}
 	txBatchClient = httpSyncClient
+	altDial := leitungDialLokal.Load() // leitung_dial_test.go setzt es per init()
 	leitungDialLokal.Store(true)
 	echtTakt := leitungTaktStarten
 
@@ -373,7 +377,7 @@ func neuesVierKnotenNetz(t *testing.T) *vierKnotenNetz {
 		}
 		leitungTaktStarten = echtTakt
 		httpSyncClient, txBatchClient = echtSync, echtBatch
-		leitungDialLokal.Store(false)
+		leitungDialLokal.Store(altDial)
 		leistung.mu.Lock()
 		leistung.zwang = altZwang
 		leistung.mu.Unlock()
@@ -806,20 +810,39 @@ func (n *vierKnotenNetz) alleUeberweisungenVerbucht(st vierStand) bool {
 
 // ------------------------------------------------------------- (d)
 
-func (n *vierKnotenNetz) pruefeValidatorlisteGleich(t *testing.T) {
+// frischerStatus: /api/status, aber nur eine frisch gebaute Antwort. Ist der
+// Knoten beschaeftigt, liefert handleStatus den letzten guten Stand aus einem
+// PAKETWEITEN Zwischenspeicher (status_ohne_sperre.go:52) -- im selben Prozess
+// kann das der Stand eines anderen Knotens oder eines frueheren Tests sein.
+func frischerStatus(t *testing.T, k *vierKnoten) map[string]interface{} {
 	t.Helper()
-	var erster string
-	for i, k := range n.ks {
+	ende := time.Now().Add(30 * time.Second)
+	for {
 		resp, err := httpSyncClient.Get(k.srv.URL + "/api/status")
 		if err != nil {
-			t.Fatalf("Knoten %d /api/status: %v", i, err)
+			t.Fatalf("Knoten %d /api/status: %v", k.i, err)
 		}
 		var st map[string]interface{}
 		err = json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&st)
 		resp.Body.Close()
 		if err != nil {
-			t.Fatalf("Knoten %d /api/status: %v", i, err)
+			t.Fatalf("Knoten %d /api/status: %v", k.i, err)
 		}
+		if veraltet, _ := st["stand_veraltet"].(bool); !veraltet {
+			return st
+		}
+		if time.Now().After(ende) {
+			t.Fatalf("Knoten %d liefert 30 s lang nur den zwischengespeicherten Stand", k.i)
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+}
+
+func (n *vierKnotenNetz) pruefeValidatorlisteGleich(t *testing.T) {
+	t.Helper()
+	var erster string
+	for i, k := range n.ks {
+		st := frischerStatus(t, k)
 		h, _ := st["validator_liste_hash"].(string)
 		if h == "" {
 			t.Fatalf("Knoten %d meldet keinen validator_liste_hash: %v", i, st)
