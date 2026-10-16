@@ -84,7 +84,7 @@ Reihenfolge, in der sie gemacht werden sollten.
 4. **Externe Überwachung:**
    - Ein Dienst außerhalb von C1 fragt `/api/status` (Höhe steigt), `/matching/health` und `/health` des Proof-Servers ab und alarmiert.
    - Heute merkt niemand einen Ausfall von außen.
-5. **Sicherung außerhalb der Box:** Die Biometrie- und Proof-Datenbanken liegen nur auf C1. Täglich verschlüsselt auf einen zweiten Ort sichern und das Zurückspielen einmal üben (DR-Runbook).
+5. **Sicherung außerhalb der Box:** Die Biometrie- und Proof-Datenbanken liegen nur auf C1. Täglich verschlüsselt auf einen zweiten Ort sichern und das Zurückspielen einmal üben (DR-Runbook). Workflow und Skript stehen bereit; offen sind das Secret `BIO_BACKUP_AGE_RECIPIENT` und die Übung (`docs/BIOMETRIE_SICHERUNG.md`).
 6. **Mehr Validatoren** (`docs/VALIDATOREN_HINZUFUEGEN.md`):
    - Server und Betreiber kommen von dir.
    - Erst ab drei Validatoren wählt die Leitung bei Ausfall selbst einen neuen Leiter.

@@ -1,0 +1,139 @@
+name: Biometrie- und Proof-Datenbanken sichern (verschluesselt)
+
+# WARUM. backup-ledger.yml lagert den Zustand der Kette aus, aber absichtlich
+# OHNE die Zeilen der biometrischen Tabellen -- das Repo ist oeffentlich, jedes
+# Artefakt fuer jeden angemeldeten GitHub-Nutzer lesbar. Die Biometrie- und
+# Proof-Datenbanken lagen damit nur auf C1 (docs/BETA_BEREITSCHAFT.md,
+# Betreiber-Punkt 5).
+#
+# WAS DIESER WORKFLOW TUT. Auf C1 (deploy/backup-biometrie.sh): biometrische
+# Tabellen der Kette, Proof-Server-Datenbank, SQLite des Coordinators und des
+# Vergleichsdienstes konsistent kopieren, jede Kopie pruefen (Wiederherstellung
+# bzw. PRAGMA integrity_check), alles AUF DER BOX mit age an einen
+# oeffentlichen Schluessel verschluesseln und den Klartext loeschen. Hierher
+# kommt nur die .age-Datei; sie wird 30 Tage als Artefakt gehalten.
+#
+# NUR DER OEFFENTLICHE SCHLUESSEL ERREICHT GITHUB. Secret
+# BIO_BACKUP_AGE_RECIPIENT = age1... (age-keygen, offline). Der private
+# Schluessel liegt nur beim Betreiber; ohne ihn ist das Artefakt Rauschen.
+# Fehlt das Secret oder ist es kein age1-Schluessel: rot, nichts hochgeladen.
+# Einrichtung und Wiederherstellungsuebung: docs/BIOMETRIE_SICHERUNG.md.
+#
+# FREIGABE. Wie jeder Server-Workflow in der Umgebung `produktion`
+# (docs/SERVER_FREIGABE.md). Mit Pflicht-Freigabe wartet auch der naechtliche
+# Lauf auf einen Klick -- das ist gewollt: ohne Freigabe kommt niemand an den
+# C1-Schluessel.
+
+on:
+  schedule:
+    # 02:43 UTC: krumme Minute, vor backup-ledger (03:17), damit nicht zwei
+    # Sicherungen zugleich auf dem Validator laufen.
+    - cron: "43 2 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: backup-biometrie
+  cancel-in-progress: false
+
+# Nur lesen: dieser Workflow schreibt nichts ins Repo.
+permissions:
+  contents: read
+
+jobs:
+  sichern:
+    runs-on: ubuntu-latest
+    environment: produktion
+    timeout-minutes: 25
+    steps:
+      - name: Empfaenger pruefen (fail-closed)
+        # Vor jedem Kontakt zur Box: ohne gueltigen oeffentlichen age-Schluessel
+        # wird nichts gesichert und nichts hochgeladen. Der Wert wird nie
+        # ausgegeben.
+        env:
+          R: ${{ secrets.BIO_BACKUP_AGE_RECIPIENT }}
+        run: |
+          set -eu
+          if [ -z "${R:-}" ]; then
+            echo "::error title=BIO_BACKUP_AGE_RECIPIENT fehlt::Betreiber-Schritt: offline 'age-keygen -o bio-backup.key' ausfuehren, den privaten Schluessel offline verwahren und NUR die Zeile 'Public key: age1...' als Secret BIO_BACKUP_AGE_RECIPIENT in der Umgebung produktion eintragen (docs/BIOMETRIE_SICHERUNG.md). Bis dahin wird nichts gesichert."
+            exit 1
+          fi
+          # Ganzer Wert, nicht zeilenweise: age1 + 58 Zeichen Bech32 (ohne 1, b, i, o).
+          REST="${R#age1}"
+          if [ "$REST" = "$R" ] || [ "${#R}" -ne 62 ] || case "$REST" in *[!qpzry9x8gf2tvdw0s3jn54khce6mua7l]*) true ;; *) false ;; esac; then
+            echo "::error title=BIO_BACKUP_AGE_RECIPIENT ungueltig::Das Secret ist kein oeffentlicher age-Schluessel (age1..., 62 Zeichen). Nie den privaten Schluessel (AGE-SECRET-KEY-...) eintragen! Siehe docs/BIOMETRIE_SICHERUNG.md. Nichts gesichert."
+            exit 1
+          fi
+          echo "Empfaenger: gueltiger age1-Schluessel gesetzt"
+
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          sparse-checkout: deploy/backup-biometrie.sh
+          sparse-checkout-cone-mode: false
+
+      - name: Schluessel und Host-Pruefung
+        env:
+          KEY: ${{ secrets.CONTABO_SSH_KEY }}
+          HOST: 188.172.229.121
+          FP: "SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA"
+        run: |
+          set -eu
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan "$HOST" 2>/dev/null > ~/.ssh/kh_all
+          ssh-keygen -lf ~/.ssh/kh_all | awk '{print $2}' | grep -qx "$FP" || { echo "::error::Host-Schluessel von $HOST passt nicht"; exit 1; }
+          cp ~/.ssh/kh_all ~/.ssh/known_hosts
+
+      - name: Sichern, pruefen und verschluesseln auf C1
+        timeout-minutes: 15
+        env:
+          BIO_BACKUP_AGE_RECIPIENT: ${{ secrets.BIO_BACKUP_AGE_RECIPIENT }}
+        run: |
+          set -euo pipefail
+          # Wert als export-Zeile vor dem Skript ueber stdin -- nicht auf die
+          # Befehlszeile der Box, wo ps ihn zeigen wuerde.
+          {
+            printf 'export BIO_BACKUP_AGE_RECIPIENT=%q\n' "$BIO_BACKUP_AGE_RECIPIENT"
+            cat deploy/backup-biometrie.sh
+          } | ssh -o BatchMode=yes root@188.172.229.121 'bash -s'
+
+      - name: Verschluesselte Datei abholen und pruefen
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          scp -o BatchMode=yes root@188.172.229.121:/root/bio-sicherung/bio-latest.tar.age bio-c1.tar.age
+          scp -o BatchMode=yes root@188.172.229.121:/root/bio-sicherung/bio-latest.summary bio-c1.summary
+          # Nie etwas anderes als age-Chiffrat hochladen.
+          [ "$(head -c 21 bio-c1.tar.age)" = "age-encryption.org/v1" ] || { echo "::error::Abgeholte Datei ist keine age-Datei -- nichts hochgeladen."; rm -f bio-c1.tar.age; exit 1; }
+          GROESSE=$(stat -c %s bio-c1.tar.age)
+          if [ "$GROESSE" -gt $((500 * 1024 * 1024)) ]; then
+            echo "::error::bio-c1.tar.age ist $GROESSE Bytes (> 500 MB) -- nichts hochgeladen."; rm -f bio-c1.tar.age; exit 1
+          fi
+          SOLL=$(grep -E '^age_sha256=' bio-c1.summary | cut -d= -f2)
+          IST=$(sha256sum bio-c1.tar.age | awk '{print $1}')
+          [ -n "$SOLL" ] && [ "$SOLL" = "$IST" ] || { echo "::error::Pruefsumme passt nicht zur Box -- nichts hochgeladen."; rm -f bio-c1.tar.age; exit 1; }
+          echo "abgeholt: $GROESSE Bytes, sha256 $IST"
+
+      - name: Zusammenfassung
+        run: |
+          {
+            echo "### Biometrie-Sicherung C1 (age-verschluesselt)"
+            echo ""
+            echo '```'
+            grep -E '^[a-z_0-9]+=' bio-c1.summary | head -20
+            echo '```'
+            echo ""
+            echo "Artefakt: nur bio-c1.tar.age, 30 Tage. Entschluesseln nur mit dem offline verwahrten Schluessel (docs/BIOMETRIE_SICHERUNG.md)."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Als Artefakt hochladen (nur .age)
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: biometrie-c1-${{ github.run_id }}
+          path: bio-c1.tar.age
+          retention-days: 30
+          compression-level: 0
+          if-no-files-found: error
+
+      - name: SSH-Schluessel vom Runner entfernen
+        if: always()
+        run: rm -f ~/.ssh/id_ed25519
