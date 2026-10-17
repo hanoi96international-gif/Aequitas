@@ -42,6 +42,9 @@ jobs:
       # Kein Workflow spricht einen abgeschalteten Server an (alte IPs werden
       # neu vergeben). Kopf von scripts/lint_alte_hosts.py.
       - run: python3 scripts/lint_alte_hosts.py
+      # Die Biometrie-Sicherung laedt nur age-Chiffrat hoch und bricht ohne
+      # oeffentlichen Empfaenger ab. Kopf von scripts/lint_bio_sicherung.py.
+      - run: python3 scripts/lint_bio_sicherung.py
 
   test:
     runs-on: ubuntu-latest
