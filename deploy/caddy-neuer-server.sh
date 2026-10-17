@@ -38,6 +38,7 @@ if [ "${NEU_ANLEGEN:-0}" = 1 ] && docker ps -a --format '{{.Names}}' | grep -qx 
     for m in "$CF:/etc/caddy/Caddyfile" "caddy_data:/data" "caddy_config:/config"; do
       case " $MOUNTS " in *" $m "*) ;; *) echo "::error::aequitas-caddy hat $m nicht ($MOUNTS) -- nicht neu angelegt"; exit 1 ;; esac
     done
+    [ -f "$CF" ] && cp -a "$CF" "$CF.bak-$(date +%s)"
     docker rm -f aequitas-caddy >/dev/null
     echo "  aequitas-caddy wird mit Log-Rotation neu angelegt"
   fi
