@@ -2786,7 +2786,7 @@ func (a *APIServer) handleUI(w http.ResponseWriter, r *http.Request) {
 	// explorerHTMLVersioned (not the raw explorerHTML) — see its own comment
 	// in api_html.go for why: it points at content-hashed CSS/JS URLs so a
 	// browser that cached last deploy's assets fetches this deploy's instead.
-	fmt.Fprint(w, mitFussLinks(explorerHTMLVersioned, ` · <a href="/grundpfeiler" style="color:inherit">Grundpfeiler</a>`,
+	fmt.Fprint(w, mitFussLinks(mitChainIDHinweis(explorerHTMLVersioned, nowUnix()), ` · <a href="/grundpfeiler" style="color:inherit">Grundpfeiler</a>`,
 		` · <a href="/impressum" style="color:inherit">Impressum</a> · <a href="/datenschutz" style="color:inherit">Datenschutz</a>`))
 }
 
@@ -4092,7 +4092,7 @@ func (a *APIServer) handleAppDownload(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *APIServer) handleLanding(w http.ResponseWriter, r *http.Request) {
-	a.schreibeLandingSeite(w, r, landingHTML)
+	a.schreibeLandingSeite(w, r, mitChainIDHinweis(landingHTML, nowUnix()))
 }
 
 // schreibeLandingSeite: Startseite und ihre Unterseiten (seiten.go) teilen

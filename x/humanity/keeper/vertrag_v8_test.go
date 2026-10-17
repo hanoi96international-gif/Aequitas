@@ -4,6 +4,7 @@ import (
 	"crypto/ecdsa"
 	"encoding/hex"
 	"encoding/json"
+	"math"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -247,6 +248,9 @@ func TestV8Slots_GleichDerTabelle(t *testing.T) {
 // ─── Go gegen den echten Vertrag ────────────────────────────────────────────
 
 func TestV8_DigestGleichDemVertrag(t *testing.T) {
+	// Prueft den Weg vor dem Chain-ID-Wechsel (signiert mit 1926), unabhaengig
+	// vom Datum des Testlaufs; danach: TestChainIDWechsel_*, *NeueChainID.
+	wechselAb(t, math.MaxInt64)
 	_, reg := v8Schluessel(t, testKeyRegistrar)
 	_, alice := v8Schluessel(t, testKeyAlice)
 	p := neuerV8Pruefstand(t, []common.Address{reg}, testSalt)
@@ -270,6 +274,9 @@ func TestV8_DigestGleichDemVertrag(t *testing.T) {
 }
 
 func TestV8_GoSignaturWirdVomVertragAngenommen_UndSlotsStimmen(t *testing.T) {
+	// Prueft den Weg vor dem Chain-ID-Wechsel (signiert mit 1926), unabhaengig
+	// vom Datum des Testlaufs; danach: TestChainIDWechsel_*, *NeueChainID.
+	wechselAb(t, math.MaxInt64)
 	_, reg := v8Schluessel(t, testKeyRegistrar)
 	aliceKey, alice := v8Schluessel(t, testKeyAlice)
 	p := neuerV8Pruefstand(t, []common.Address{reg}, testSalt)
@@ -315,6 +322,9 @@ func TestV8_GoSignaturWirdVomVertragAngenommen_UndSlotsStimmen(t *testing.T) {
 }
 
 func TestV8_NonceIstImmerNull(t *testing.T) {
+	// Prueft den Weg vor dem Chain-ID-Wechsel (signiert mit 1926), unabhaengig
+	// vom Datum des Testlaufs; danach: TestChainIDWechsel_*, *NeueChainID.
+	wechselAb(t, math.MaxInt64)
 	// vertrag_v8.go verlangt beim Nachspielen Nonce 0. Das stimmt nur, weil
 	// eine Wallet in V8 hoechstens einmal Mensch wird: der zweite Versuch
 	// scheitert im Vertrag, egal mit welcher Nonce.
@@ -337,6 +347,9 @@ func TestV8_NonceIstImmerNull(t *testing.T) {
 }
 
 func TestV8_Missbrauch_VertragUndGoLehnenGleichAb(t *testing.T) {
+	// Prueft den Weg vor dem Chain-ID-Wechsel (signiert mit 1926), unabhaengig
+	// vom Datum des Testlaufs; danach: TestChainIDWechsel_*, *NeueChainID.
+	wechselAb(t, math.MaxInt64)
 	_, reg := v8Schluessel(t, testKeyRegistrar)
 	aliceKey, alice := v8Schluessel(t, testKeyAlice)
 	malloryKey, mallory := v8Schluessel(t, testKeyMallory)
@@ -426,6 +439,9 @@ func v8TestTx(t *testing.T, key *ecdsa.PrivateKey, wallet common.Address, frist,
 }
 
 func TestV8Nachspielen_JederKnotenPrueftDieZustimmung(t *testing.T) {
+	// Prueft den Weg vor dem Chain-ID-Wechsel (signiert mit 1926), unabhaengig
+	// vom Datum des Testlaufs; danach: TestChainIDWechsel_*, *NeueChainID.
+	wechselAb(t, math.MaxInt64)
 	aliceKey, alice := v8Schluessel(t, testKeyAlice)
 	malloryKey, _ := v8Schluessel(t, testKeyMallory)
 	salt := v8NetzSalt()
@@ -524,6 +540,9 @@ func TestV7_BleibtUnveraendert(t *testing.T) {
 // Vertrag geprueft; stimmt Go hier mit ethers ueberein, unterschreibt die App
 // das, was Kette und Vertrag erwarten.
 func TestV8_GoldenVektorMitDerApp(t *testing.T) {
+	// Prueft den Weg vor dem Chain-ID-Wechsel (signiert mit 1926), unabhaengig
+	// vom Datum des Testlaufs; danach: TestChainIDWechsel_*, *NeueChainID.
+	wechselAb(t, math.MaxInt64)
 	key, human := v8Schluessel(t, testKeyAlice)
 	salt := crypto.Keccak256Hash([]byte("aequitas-1926-1790000000"))
 	if salt.Hex() != "0x89654bb870598e4d718a433a7d674b5ddd48f78cb6eecd489c01d69fa8e8954f" {

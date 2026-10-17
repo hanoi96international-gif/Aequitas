@@ -17,6 +17,9 @@ func sendeRoh(t *testing.T, srv *EVMRPCServer, roh string) *RPCError {
 // Ohne synchronen Postgres-Umlauf reserviert -- und trotzdem bucht dieselbe
 // signierte Ueberweisung nie zweimal.
 func TestNonceNachtrag_WiederholungScheitertOhneUmlauf(t *testing.T) {
+	// Prueft den Weg vor dem Chain-ID-Wechsel (signiert mit 1926), unabhaengig
+	// vom Datum des Testlaufs; danach: TestChainIDWechsel_*, *NeueChainID.
+	wechselAb(t, math.MaxInt64)
 	signierteUeberweisungenOverride.Store(1)
 	t.Cleanup(func() { signierteUeberweisungenOverride.Store(math.MaxInt64) })
 	noteBlockProduced()
@@ -50,6 +53,9 @@ func TestNonceNachtrag_WiederholungScheitertOhneUmlauf(t *testing.T) {
 // Nonce nicht, die Kette schon. Die Wallet fragt die Kette und schickt die
 // naechste -- sie muss angenommen werden, eine verbrauchte nicht.
 func TestNonceNachtrag_NachNeustartGiltDieKette(t *testing.T) {
+	// Prueft den Weg vor dem Chain-ID-Wechsel (signiert mit 1926), unabhaengig
+	// vom Datum des Testlaufs; danach: TestChainIDWechsel_*, *NeueChainID.
+	wechselAb(t, math.MaxInt64)
 	signierteUeberweisungenOverride.Store(1)
 	t.Cleanup(func() { signierteUeberweisungenOverride.Store(math.MaxInt64) })
 	noteBlockProduced()

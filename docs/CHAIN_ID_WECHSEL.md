@@ -1,8 +1,11 @@
 # Chain-ID-Wechsel 1926 → 19260930 (0x125E602)
 
-Stand: 15.10.2026. Der Betreiber hat den Wechsel entschieden. Im Code ist er
-**schlafend** (`chainIDWechselAbUnix = math.MaxInt64`,
-`x/humanity/keeper/chain_id_wechsel.go`).
+Stand: 17.10.2026. Der Stichtag ist **gesetzt**:
+`chainIDWechselAbUnix = 1793059200` = **27.10.2026, 00:00:00 UTC**
+(`x/humanity/keeper/chain_id_wechsel.go`). Annahmepause ab 26.10.2026,
+23:50 UTC. App 1.11.0 (liest die ID live) ist das Release dazu; die
+Startseite kündigt den Wechsel an (`chain_id_hinweis.go`, bis 14 Tage danach).
+Rückweg nur **vor** `Ab`: wieder `math.MaxInt64`, ausrollen.
 
 ## Warum
 
@@ -49,6 +52,38 @@ der Knoten keine Nonce, bevor die Chain-ID geprüft ist.
 des Stichtags oder 0, solange der Wechsel schläft.
 
 Alte Blöcke spielen unverändert nach: Ihre Blockzeit liegt vor `Ab`.
+
+## Am Stichtag (27.10.2026) -- Betrieb mit einem Validator
+
+Solange C1 der einzige Validator ist, gibt es keinen Seed, von dem er sich
+heilen könnte. Der Schutz ist deshalb Vorbeugung:
+
+1. **Deploy-Stopp 26.10.2026 23:00 bis 27.10.2026 01:00 UTC.** Kein Merge
+   auf `main` (jeder Merge startet C1 über `deploy-c1-dann-c2.yml` neu), kein
+   Neustart, keine Workflows, die Container anfassen. Grund: Ein Neustart
+   über den Stichtag hinweg mit noch offenen 1926-Überweisungen im Ausgang ist
+   der einzige Weg in den Stillstand unten.
+2. **Vorher prüfen (26.10., bis 23:00 UTC):** `/api/status` meldet
+   `chain_id_wechsel_ab = 1793059200` auf jedem Knoten (auch Leseknoten);
+   die App-Version 1.11.0 ist das neueste Release.
+3. **Ab 23:50 UTC** nimmt C1 keine Überweisungen an (`-32005`, wiederholbar).
+   Der Ausgang leert sich in dieser Zeit (Blöcke alle paar Sekunden); was
+   beim Stichtag noch darin liegt, bekommt die Blockzeit `Ab − 1`.
+4. **Nach 00:00 UTC beobachten:** Höhe steigt (`/api/status`), `eth_chainId`
+   meldet `0x125e602`, im Log kein `[BLOCK] ✗ Kein Block`.
+
+**Wenn C1 trotzdem steht** (`[BLOCK] ✗ Kein Block ... Resync vom Seed,
+Ausgang verwerfen`): Eine 1926-Überweisung im Ausgang passt in keinen Block
+mehr. Den Ausgang einfach zu leeren reicht **nicht** -- C1 hat diese
+Überweisungen beim Annehmen schon in seinen Zustand übernommen und würde
+danach eine StateRoot erzeugen, die kein anderer Knoten nachrechnet. Weg:
+`chainIDWechselAbUnix` lässt sich nach `Ab` nicht zurücknehmen (es gäbe
+schon Blöcke ab `Ab`). Stattdessen C1 auf den letzten Stand vor dem
+Stillstand zurücksetzen: Läuft bis dahin ein zweiter Validator, per Resync
+von ihm (`recover-contabo1-resync.yml`); sonst aus der Ledger-Sicherung
+(`backup-ledger.yml`) mit leerem Ausgang. Danach die betroffenen Nutzer
+bitten, die Überweisung mit der neuen ID erneut zu senden. Das ist ein Eingriff des Betreibers mit
+Datenverlust der nicht eingeschlossenen Überweisungen -- deshalb Punkt 1.
 
 ## Was eingefroren bleibt (immer 1926)
 
@@ -117,8 +152,8 @@ das Lesen der Antwort umfasst.
 ## Offen
 
 - `tools/coordinator-signieren.html` bleibt bei `chain:1926` (eingefroren).
-- `tools/contabo-loadtest/main.go` signiert fest mit 1926 (Messwerkzeug,
-  kein Client): nach dem Stichtag auf 19260930 umstellen oder live lesen.
+- `tools/contabo-loadtest/main.go` liest die ID jetzt live (`eth_chainId`,
+  nur 1926 oder 19260930). Um den Stichtag keine Lasttests fahren.
 - Betriebshandbücher aus `build/generate_*_guides.py` /
   `build/patch_pdf_langs.py` nennen „Chain ID 1926“: vor der Ankündigung
   neu erzeugen.

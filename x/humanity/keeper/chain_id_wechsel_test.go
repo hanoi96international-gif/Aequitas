@@ -28,10 +28,12 @@ func wechselAb(t *testing.T, ab int64) {
 
 // SCHLAFEND: der Stichtag im Code ist math.MaxInt64, und dann ist alles
 // byte-gleich zu vorher -- jede Blockzeit, jede Annahmezeit, jede Antwort.
+//
+// Seit der Stichtag gesetzt ist (17.10.2026), prueft der Test den schlafenden
+// Zustand ueber den Override -- er beschreibt das Verhalten ohne Stichtag,
+// nicht den Inhalt der Konstante.
 func TestChainIDWechsel_SchlafendByteGleich(t *testing.T) {
-	if chainIDWechselAbUnix != math.MaxInt64 {
-		t.Fatalf("dieser PR ist schlafend: chainIDWechselAbUnix = %d", chainIDWechselAbUnix)
-	}
+	wechselAb(t, math.MaxInt64)
 	if chainIDWechselGeplant() || ChainIDWechselAbFuerStatus() != 0 {
 		t.Fatal("schlafend, aber ein Wechsel gilt als geplant")
 	}

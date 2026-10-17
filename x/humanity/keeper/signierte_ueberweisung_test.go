@@ -84,6 +84,9 @@ func signiereV7(t *testing.T, von testSchluessel, an string, wei *big.Int, nonce
 }
 
 func TestSignierteUeberweisung_EchteWirdAngenommen(t *testing.T) {
+	// Prueft den Weg vor dem Chain-ID-Wechsel (signiert mit 1926), unabhaengig
+	// vom Datum des Testlaufs; danach: TestChainIDWechsel_*, *NeueChainID.
+	wechselAb(t, math.MaxInt64)
 	a := neuerTestSchluessel(t)
 	b := neuerTestSchluessel(t)
 	for name, tx := range map[string]Transaction{
@@ -159,6 +162,9 @@ func kontoVon(t *testing.T, cs *ChainState, a string) AccountState {
 }
 
 func TestSignierteUeberweisung_NachspielenPrueftUndSetztNonce(t *testing.T) {
+	// Prueft den Weg vor dem Chain-ID-Wechsel (signiert mit 1926), unabhaengig
+	// vom Datum des Testlaufs; danach: TestChainIDWechsel_*, *NeueChainID.
+	wechselAb(t, math.MaxInt64)
 	a := neuerTestSchluessel(t)
 	b := neuerTestSchluessel(t)
 	dag, cs := nachspielKnoten(t, map[string]float64{a.addr: 1000})
@@ -211,6 +217,9 @@ func TestSignierteUeberweisung_GefaelschterBlockAendertNichts(t *testing.T) {
 }
 
 func TestSignierteUeberweisung_NoncenImBlockMuessenSteigen(t *testing.T) {
+	// Prueft den Weg vor dem Chain-ID-Wechsel (signiert mit 1926), unabhaengig
+	// vom Datum des Testlaufs; danach: TestChainIDWechsel_*, *NeueChainID.
+	wechselAb(t, math.MaxInt64)
 	a := neuerTestSchluessel(t)
 	b := neuerTestSchluessel(t)
 	c := neuerTestSchluessel(t)
@@ -265,6 +274,9 @@ func TestAccountLeaf_NaechsteNonceNurWennGesetzt(t *testing.T) {
 }
 
 func TestSignierteUeberweisung_AnnahmeSetztDieselbeNonceWieNachspielen(t *testing.T) {
+	// Prueft den Weg vor dem Chain-ID-Wechsel (signiert mit 1926), unabhaengig
+	// vom Datum des Testlaufs; danach: TestChainIDWechsel_*, *NeueChainID.
+	wechselAb(t, math.MaxInt64)
 	signierteUeberweisungenOverride.Store(1)
 	t.Cleanup(func() { signierteUeberweisungenOverride.Store(math.MaxInt64) })
 	a := neuerTestSchluessel(t)

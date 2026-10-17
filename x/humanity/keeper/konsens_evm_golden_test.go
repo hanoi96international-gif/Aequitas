@@ -35,6 +35,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"math"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -807,6 +808,11 @@ func konsensBN254(t *testing.T, b *goldenBuch) {
 // ─── Test ─────────────────────────────────────────────────────────────────────
 
 func TestKonsensEVM_GoldenWerte(t *testing.T) {
+	// Die Golden-Werte stammen aus v1.13.0 und vergleichen die EVM, nicht den
+	// Chain-ID-Wechsel: ihre Blockzeiten (bis ts + 1003 Tage) liegen nach dem
+	// Stichtag, die Unterschriften darin sind mit 1926 gemacht. Deshalb ohne
+	// Stichtag -- den Wechsel pruefen die TestChainIDWechsel_*-Tests.
+	wechselAb(t, math.MaxInt64)
 	b := &goldenBuch{}
 	b.add("chainconfig %s", konsensChainConfigText())
 	konsensOpcodes(t, b)
