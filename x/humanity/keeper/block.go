@@ -3056,35 +3056,7 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 	// itself is left in dag.tips untouched (only this call's parent
 	// candidates are filtered) since nothing here owns broader tip pruning.
 	finalizedHeight, _ := dag.state.GetFinalizedCheckpoint()
-	type tipEntry struct {
-		hash      string
-		blueScore int64
-	}
-	allTips := make([]tipEntry, 0, len(dag.tips))
-	for hash := range dag.tips {
-		score := int64(0)
-		if b, ok := dag.blocks[hash]; ok {
-			if finalizedHeight > 0 && b.Height < finalizedHeight {
-				continue
-			}
-			score = b.BlueScore
-		}
-		allTips = append(allTips, tipEntry{hash, score})
-	}
-	sort.Slice(allTips, func(i, j int) bool {
-		if allTips[i].blueScore != allTips[j].blueScore {
-			return allTips[i].blueScore > allTips[j].blueScore
-		}
-		return allTips[i].hash < allTips[j].hash
-	})
-	if len(allTips) > dag.maxParents() {
-		allTips = allTips[:dag.maxParents()]
-	}
-	parentHashes := make([]string, len(allTips))
-	for i, te := range allTips {
-		parentHashes[i] = te.hash
-	}
-	sort.Strings(parentHashes) // deterministic ordering for block hash
+	parentHashes := dag.elternAusSpitzenLocked(finalizedHeight)
 
 	// Height = max parent height + 1
 	maxParentHeight := int64(0)
@@ -6174,9 +6146,16 @@ func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
 // timestamp of the last accepted peer block (0 if none yet this process) —
 // both exposed via /api/health/combined (Gesamtaudit 2026-06-28, P2-4/P3-7).
 func (dag *BlockDAG) TipsCount() int {
+	finalized := dag.finalisierteHoeheFuerSpitzen()
 	dag.mu.RLock()
 	defer dag.mu.RUnlock()
-	return len(dag.tips)
+	n := 0
+	for hash := range dag.tips {
+		if !dag.spitzeToterZweigLocked(hash, finalized) {
+			n++
+		}
+	}
+	return n
 }
 
 // SyntheticCheckpointCount (audit P1-04) reports how many synthetic-checkpoint
@@ -6905,14 +6884,88 @@ func (dag *BlockDAG) TotalBlocks() int {
 	return len(dag.blocks)
 }
 
+// GetTips: die lebenden Spitzen -- ohne tote Zweige unter dem finalisierten
+// Checkpoint (spitzeToterZweigLocked), dieselben, die ProduceBlock als Eltern
+// auslaesst. Gemeldet ueber /api/status (TipsCount) und neu angeboten von
+// tip_reannounce.go; eine Spitze, auf die nie wieder jemand baut, ist dort
+// nur Rauschen.
 func (dag *BlockDAG) GetTips() []string {
+	finalized := dag.finalisierteHoeheFuerSpitzen()
 	dag.mu.RLock()
 	defer dag.mu.RUnlock()
 	tips := make([]string, 0, len(dag.tips))
 	for hash := range dag.tips {
+		if dag.spitzeToterZweigLocked(hash, finalized) {
+			continue
+		}
 		tips = append(tips, hash)
 	}
 	return tips
+}
+
+// elternAusSpitzenLocked: die Eltern eines neuen eigenen Blocks (ProduceBlock,
+// siehe dort): alle Spitzen ausser toten Zweigen (spitzeToterZweigLocked),
+// die mit der hoechsten BlueScore zuerst, gekappt auf maxParents, dann nach
+// Hash sortiert. Unveraendert aus ProduceBlock herausgezogen, damit dieselbe
+// Regel fuer die gemeldeten Spitzen (GetTips) pruefbar ist. Unter dag.mu.
+func (dag *BlockDAG) elternAusSpitzenLocked(finalizedHeight int64) []string {
+	type tipEntry struct {
+		hash      string
+		blueScore int64
+	}
+	allTips := make([]tipEntry, 0, len(dag.tips))
+	for hash := range dag.tips {
+		if dag.spitzeToterZweigLocked(hash, finalizedHeight) {
+			continue
+		}
+		score := int64(0)
+		if b, ok := dag.blocks[hash]; ok {
+			score = b.BlueScore
+		}
+		allTips = append(allTips, tipEntry{hash, score})
+	}
+	sort.Slice(allTips, func(i, j int) bool {
+		if allTips[i].blueScore != allTips[j].blueScore {
+			return allTips[i].blueScore > allTips[j].blueScore
+		}
+		return allTips[i].hash < allTips[j].hash
+	})
+	if len(allTips) > dag.maxParents() {
+		allTips = allTips[:dag.maxParents()]
+	}
+	parentHashes := make([]string, len(allTips))
+	for i, te := range allTips {
+		parentHashes[i] = te.hash
+	}
+	sort.Strings(parentHashes) // deterministic ordering for block hash
+	return parentHashes
+}
+
+// spitzeToterZweigLocked: die Regel, nach der ProduceBlock eine Spitze nicht
+// als Elternteil nimmt (siehe dort, FIX P0 2026-07-10): ihr Block liegt im
+// Speicher-DAG unter dem finalisierten Checkpoint -- ein toter Zweig, der nie
+// wieder kanonisch wird. Eine Spitze ohne Block im Speicher faellt NICHT
+// darunter, genau wie in ProduceBlock. Unter dag.mu (lesend genuegt).
+//
+// Die Spitze bleibt in dag.tips; nur Eltern-Auswahl und Meldung lassen sie
+// aus. Die Eltern-Auswahl ist damit byte-gleich zu vorher.
+func (dag *BlockDAG) spitzeToterZweigLocked(hash string, finalizedHeight int64) bool {
+	if finalizedHeight <= 0 {
+		return false
+	}
+	b, ok := dag.blocks[hash]
+	return ok && b.Height < finalizedHeight
+}
+
+// finalisierteHoeheFuerSpitzen: die finalisierte Hoehe fuer
+// spitzeToterZweigLocked, vor dag.mu gelesen (eigene Sperre finalizedMu).
+// Ohne Zustand 0 -- dann gilt keine Spitze als tot.
+func (dag *BlockDAG) finalisierteHoeheFuerSpitzen() int64 {
+	if dag.state == nil {
+		return 0
+	}
+	h, _ := dag.state.GetFinalizedCheckpoint()
+	return h
 }
 
 // replayTransactions applies all TX types from a peer block to the local
