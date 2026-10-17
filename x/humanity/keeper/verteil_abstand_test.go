@@ -137,13 +137,21 @@ func TestVerteilungAbstandFreiAb_RealDB(t *testing.T) {
 	if frei, err := cs.VerteilungAbstandFreiAb(); err != nil || frei != 1792000000+24*3600 {
 		t.Fatalf("frei=%d err=%v, want Marke + 24 h", frei, err)
 	}
-	for _, kaputt := range []string{"kaputt", "-5", "1792000000x"} {
+	for _, kaputt := range []string{"kaputt", "1792000000x", "1.79e9"} {
 		if err := cs.setConfigValueDB("last_distribution_round_at", kaputt); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := cs.VerteilungAbstandFreiAb(); err == nil {
 			t.Fatalf("Marke %q: Fehler erwartet (fail-closed)", kaputt)
 		}
+	}
+	// Negativ ist von der Kette schreibbar und gilt wie beim Nachspielen als
+	// "nie gelaufen" -- Erzeuger und Nachspielen lesen gleich.
+	if err := cs.setConfigValueDB("last_distribution_round_at", "-5"); err != nil {
+		t.Fatal(err)
+	}
+	if frei, err := cs.VerteilungAbstandFreiAb(); err != nil || frei != 1790964000+24*3600 {
+		t.Fatalf("Marke -5: frei=%d err=%v, want nur last_ubi_at + 24 h", frei, err)
 	}
 	if err := cs.setConfigValueDB("last_distribution_round_at", "1792000000"); err != nil {
 		t.Fatal(err)
