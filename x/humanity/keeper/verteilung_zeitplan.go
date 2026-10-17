@@ -238,8 +238,18 @@ func verteilMarkenLesen(q zeileLeser) (runde, auszahlung int64, err error) {
 			return 0, nil
 		}
 		t, err := strconv.ParseInt(v, 10, 64)
-		if err != nil || t < 0 {
+		if err != nil {
 			return 0, fmt.Errorf("%s hat keinen gueltigen Zeitpunkt (%q)", key, v)
+		}
+		// Negativ = nie gelaufen (0), genau wie vorher beim Nachspielen
+		// (distributionRoundToSkip verlangt > 0). Kein Fehler: ein negativer
+		// Wert ist von der Kette selbst schreibbar (DistributionAt einer
+		// ubi_distribution_finalize wird nicht begrenzt). Waere er ein
+		// Fehler, stuende jeder Knoten vor dem naechsten Block mit einer
+		// Ausschuettung (Sicherheitspruefung, Befund mittel). Unlesbar ist
+		// nur, was die Kette nie schreibt (sie schreibt immer %d).
+		if t < 0 {
+			return 0, nil
 		}
 		return t, nil
 	}

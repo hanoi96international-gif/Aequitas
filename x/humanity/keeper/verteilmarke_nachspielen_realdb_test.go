@@ -42,7 +42,7 @@ func TestReplay_VerteilungsmarkeUnlesbar_RealDB(t *testing.T) {
 	}
 	marke := func() string { return cs.getConfigValueDB("last_distribution_round_at") }
 
-	for i, kaputt := range []string{"kaputt", "-5", "1792000000x"} {
+	for i, kaputt := range []string{"kaputt", "1792000000x", "1.79e9"} {
 		if err := cs.setConfigValueDB("last_distribution_round_at", kaputt); err != nil {
 			t.Fatal(err)
 		}
@@ -61,6 +61,41 @@ func TestReplay_VerteilungsmarkeUnlesbar_RealDB(t *testing.T) {
 	}
 	if dag.replayTransactions(runde(10), true) {
 		t.Fatal("last_ubi_at unlesbar: Block angewandt, want abgelehnt (fail-closed)")
+	}
+	if err := cs.setConfigValueDB("last_ubi_at", "0"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Nach einer Ablehnung heilt der Block, sobald die Marke wieder lesbar
+	// ist: nicht als nachgespielt vermerkt, der naechste Versuch wendet ihn an.
+	dag.replayedMu.Lock()
+	_, fehlVermerkt := dag.replayFailures[runde(1).Hash]
+	schonNachgespielt := dag.replayedBlocks[runde(1).Hash]
+	dag.replayedMu.Unlock()
+	if !fehlVermerkt || schonNachgespielt {
+		t.Fatalf("abgelehnter Block: replayFailures=%v replayed=%v, want true false", fehlVermerkt, schonNachgespielt)
+	}
+	if err := cs.setConfigValueDB("last_distribution_round_at", strconv.FormatInt(jetzt-2*86400, 10)); err != nil {
+		t.Fatal(err)
+	}
+	if !dag.replayTransactions(runde(1), true) {
+		t.Fatal("abgelehnter Block nach Heilung der Marke nicht angewandt")
+	}
+	if got := marke(); got != strconv.FormatInt(jetzt, 10) {
+		t.Fatalf("nach Heilung: Marke %q, want %d", got, jetzt)
+	}
+
+	// MISSBRAUCH (Befund mittel): ein negativer Zeitpunkt ist von der Kette
+	// schreibbar (ubi_distribution_finalize mit DistributionAt -1). Er darf
+	// keinen Knoten anhalten -- er gilt wie vorher als "nie gelaufen".
+	if err := cs.setConfigValueDB("last_distribution_round_at", "1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := cs.setConfigValueDB("last_ubi_at", "-1"); err != nil {
+		t.Fatal(err)
+	}
+	if !dag.replayTransactions(runde(15), true) {
+		t.Fatal("last_ubi_at = -1: Knoten steht (Block abgelehnt), want nachgespielt")
 	}
 	if err := cs.setConfigValueDB("last_ubi_at", "0"); err != nil {
 		t.Fatal(err)
