@@ -247,7 +247,9 @@ func (dag *BlockDAG) checkpointTxEinreichen(z CheckpointZertifikat, jetzt int64)
 // in dem der Block gespeichert, der Wert aber verloren ist (auch nicht nach
 // einem Neustart): scheitert das, gibt es weder Block noch Wert, und die
 // Auftraege bleiben in der Schlange (Nachpruefung der Stichtag-Sperren).
-// ProduceBlock haelt replayMu und dag.mu von der Vorschau bis hier.
+// ProduceBlock haelt replayMu von der Vorschau bis hier; dag.mu gibt es nur
+// fuer die Suche frei und prueft danach, dass sich nichts geaendert hat, worauf
+// Vorschau und Block bauen (checkpointVorschauOhneDAGSperre).
 func checkpointMitSpeichern(tx *sql.Tx, block *Block) error {
 	if block.letzterCheckpointNeu == "" {
 		return nil
@@ -348,7 +350,8 @@ func (cs *ChainState) checkpointInDBTx(fn func(ctx context.Context, dbTx *sql.Tx
 	return dbTx.Commit()
 }
 
-// checkpointVorschauFrist: so lange darf die Vorschau unter dag.mu suchen.
+// checkpointVorschauFrist: so lange darf die Vorschau suchen (ohne dag.mu,
+// aber unter replayMu -- so lange wartet das Nachspielen fremder Bloecke).
 // Laenger: die Transaktion kommt nicht in den Block -- nicht
 // konsensrelevant, der Leiter schlaegt den naechsten vor.
 var checkpointVorschauFrist = 3 * time.Second
@@ -357,11 +360,112 @@ var checkpointVorschauFrist = 3 * time.Second
 // geaendert: neu ist der letzte Checkpoint nach dem Block. unklar: hier
 // gerade nicht pruefbar (kein Zustandsurteil) -- die Transaktion muss aus
 // dem Block, sonst wendeten andere an, was dieser Knoten nicht weiss.
+// basis: der letzte Checkpoint, von dem die Vorschau ausging.
 type checkpointVorschauErgebnis struct {
 	index     int
 	neu       string
+	basis     string
 	geaendert bool
 	unklar    bool
+}
+
+// checkpointVorschauOhneDAGSperre: checkpointVorschau fuer ProduceBlock, ohne
+// dag.mu waehrend der Suche (bis checkpointVorschauFrist; vorher hielt sie
+// die Schreibsperre so lange, und jeder API-Leser und AddPeerBlock stand).
+//
+// Der Aufrufer haelt replayMu und die Schreibsperre dag.mu; beides haelt er
+// auch bei der Rueckkehr wieder (auch nach einer Panik in der Suche). Ohne
+// Checkpoint-Transaktion wird dag.mu nicht freigegeben -- jeder andere Block
+// entsteht genau wie bisher.
+//
+// Das Ergebnis haengt nur an den uebergebenen Eltern und der Blockzeit (die
+// der Block traegt), am letzten Checkpoint (basis) und an Kopfzeilen, die
+// ihr Hash festlegt. Waehrend dag.mu frei ist, laeuft kein Nachspielen
+// (replayMu). Danach wird unter dag.mu geprueft, was sich trotzdem
+// geaendert haben kann; schlaegt eine Pruefung fehl -- oder ist sie selbst
+// nicht moeglich --, ist abbruch gesetzt: kein Block in diesem Takt
+// (fail-closed). Abgebrochen, nicht nur die Transaktion entfernt, weil die
+// Aenderung auch die schon gerechnete StateRoot oder die Eltern betrifft:
+//   - eine Neusynchronisation lief oder laeuft (resyncInProgress; sie ersetzt
+//     dag.blocks -- die Eltern waeren weg),
+//   - der Knoten ist degradiert,
+//   - WithBlockProductionPaused lief (Verteilung: Zustand ohne die
+//     Transaktionen dieses Blocks geaendert),
+//   - ein Elternteil fehlt in dag.blocks oder wurde ersetzt,
+//   - der letzte Checkpoint in der Datenbank ist nicht mehr basis (oder
+//     nicht lesbar).
+//
+// Keine Goroutine, keine Map; die Kopie der Eltern ist durch maxParents
+// begrenzt.
+func (dag *BlockDAG) checkpointVorschauOhneDAGSperre(txs []Transaction, eltern []string, zeit int64) (v checkpointVorschauErgebnis, abbruch string) {
+	cs := dag.state
+	if cs == nil || cs.db == nil || !hatCheckpointTx(txs) {
+		// Wie bisher: ohne Datenbank oder Zertifikat keine Suche.
+		return dag.checkpointVorschau(txs, eltern, zeit), ""
+	}
+	pauseGen := dag.produktionsPauseGen.Load()
+	elternVorher := make([]*Block, len(eltern))
+	for i, h := range eltern {
+		elternVorher[i] = dag.blocks[h]
+	}
+	func() {
+		dag.mu.Unlock()
+		defer dag.mu.Lock()
+		v = dag.checkpointVorschau(txs, eltern, zeit)
+	}()
+	switch {
+	case dag.resyncInProgress.Load():
+		return v, "Neusynchronisation"
+	case dag.degradedGrund() != "":
+		return v, "Knoten degradiert"
+	case dag.produktionsPauseGen.Load() != pauseGen:
+		return v, "Produktionspause (Verteilung)"
+	}
+	for i, h := range eltern {
+		if b := dag.blocks[h]; b == nil || b != elternVorher[i] {
+			return v, "Elternteil " + kurzAdresse(h) + " ersetzt oder fehlt"
+		}
+	}
+	if v.unklar || v.index < 0 {
+		// unklar: die Transaktion geht ohnehin aus dem Block.
+		return v, ""
+	}
+	jetzt, err := letzterCheckpointJetzt(cs)
+	if err != nil {
+		return v, "letzter Checkpoint nicht lesbar"
+	}
+	if jetzt != v.basis {
+		return v, "letzter Checkpoint geaendert"
+	}
+	return v, ""
+}
+
+func (dag *BlockDAG) degradedGrund() string {
+	dag.degradedMu.Lock()
+	defer dag.degradedMu.Unlock()
+	return dag.degradedReason
+}
+
+func hatCheckpointTx(txs []Transaction) bool {
+	for i := range txs {
+		if txs[i].Type == checkpointTxArt {
+			return true
+		}
+	}
+	return false
+}
+
+// letzterCheckpointJetzt: der letzte Checkpoint, wie er gespeichert ist --
+// mit Zeitgrenze (laeuft unter dag.mu).
+func letzterCheckpointJetzt(cs *ChainState) (string, error) {
+	ctx, abbrechen := context.WithTimeout(context.Background(), 2*time.Second)
+	defer abbrechen()
+	var v string
+	err := cs.db.QueryRowContext(ctx, `SELECT value FROM chain_config WHERE key = $1`, letzterCheckpointSchluessel).Scan(&v)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return v, err
 }
 
 // checkpointVorschau: traegt txs eine Checkpoint-Transaktion, der letzte
@@ -382,6 +486,10 @@ func (dag *BlockDAG) checkpointVorschau(txs []Transaction, eltern []string, zeit
 		tx := txs[i]
 		ende := time.Now().Add(checkpointVorschauFrist)
 		err := cs.checkpointInDBTx(func(ctx context.Context, dbTx *sql.Tx) error {
+			var e error
+			if v.basis, e = letzterCheckpointRoh(ctx, cs); e != nil {
+				return e
+			}
 			innen := checkpointReplayLeser(dbTx)
 			lies := func(hashes []string) (map[string]blockKopf, error) {
 				if time.Now().After(ende) {
@@ -392,7 +500,6 @@ func (dag *BlockDAG) checkpointVorschau(txs []Transaction, eltern []string, zeit
 			if err := dag.applyCheckpointTxLocked(ctx, &tx, eltern, zeit, lies); err != nil {
 				return err
 			}
-			var e error
 			v.neu, e = letzterCheckpointRoh(ctx, cs)
 			return e
 		}, false)

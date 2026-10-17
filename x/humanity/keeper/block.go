@@ -600,7 +600,12 @@ type BlockDAG struct {
 	// channel design, which serialized replay the same way but ran it
 	// asynchronously — see AddPeerBlock for why that was a correctness bug,
 	// not just a latency tradeoff.
-	replayMu            sync.Mutex
+	replayMu sync.Mutex
+	// produktionsPauseGen zaehlt die Laeufe von WithBlockProductionPaused
+	// (erhoeht unter dag.mu). ProduceBlock gibt dag.mu fuer die Suche der
+	// Checkpoint-Vorschau frei und erkennt daran, ob in dieser Zeit eine
+	// Verteilung lief (checkpointVorschauOhneDAGSperre, checkpoint_tx.go).
+	produktionsPauseGen atomic.Uint64
 	stateRootMismatches map[string]int // per-proposer StateRoot mismatch counters
 	// stateRootMismatchLastAt (audit 2026-06-30 monster audit, P2-03): Unix
 	// timestamp of each proposer's most recent mismatch. stateRootMismatches
@@ -3381,7 +3386,17 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 	// Zeile wird mit dem Block verbraucht): sonst wendeten andere an, was
 	// dieser Knoten nicht weiss. Nur sie -- ein Abschneiden ab ihr hielte
 	// alles dahinter auf, solange die Pruefung hier scheitert.
-	cpVorschau := dag.checkpointVorschau(txs, parentHashes, blockZeit)
+	//
+	// Die Suche laeuft OHNE dag.mu (bis checkpointVorschauFrist; replayMu
+	// bleibt gehalten). Hat sich dabei etwas geaendert, worauf dieser Block
+	// schon gebaut ist, entsteht in diesem Takt keiner -- die Auftraege gehen
+	// zurueck (blockGespeichert), auch die Checkpoint-Transaktion.
+	cpVorschau, cpAbbruch := dag.checkpointVorschauOhneDAGSperre(txs, parentHashes, blockZeit)
+	if cpAbbruch != "" {
+		fmt.Printf("[CHECKPOINT] ⚠ Waehrend der Checkpoint-Vorschau geaendert (%s) -- kein Block in diesem Takt\n", cpAbbruch)
+		merkeProduktionsAusfall("checkpoint_vorschau_veraltet")
+		return nil
+	}
 	if cpVorschau.unklar {
 		fmt.Printf("[CHECKPOINT] ⚠ Checkpoint-Transaktion hier nicht pruefbar -- nicht in diesen Block\n")
 		txs = append(txs[:cpVorschau.index:cpVorschau.index], txs[cpVorschau.index+1:]...)
@@ -3699,6 +3714,10 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 func (dag *BlockDAG) WithBlockProductionPaused(fn func()) {
 	dag.mu.Lock()
 	defer dag.mu.Unlock()
+	// Unter dag.mu: eine ProduceBlock, die dag.mu fuer die Checkpoint-
+	// Vorschau freigegeben hat, sieht danach, dass hier etwas lief, und
+	// baut keinen Block aus dem Stand von vorher (checkpoint_tx.go).
+	dag.produktionsPauseGen.Add(1)
 	fn()
 }
 
