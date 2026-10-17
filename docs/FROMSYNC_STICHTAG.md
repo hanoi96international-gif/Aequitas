@@ -1,10 +1,14 @@
 # FromSync-Stichtag
 
-Stand: 16.10.2026. Im Code ist der Stichtag **schlafend**
-(`fromSyncStrengAbUnix = math.MaxInt64`, Rücknahme
-`fromSyncStrengBisUnix = math.MaxInt64`,
-`x/humanity/keeper/fromsync_stichtag.go`). Solange er schläft, verhält sich
-jeder Knoten byte-gleich wie vorher (`TestFromSyncStichtag_SchlafendByteGleich`).
+Stand: 17.10.2026. Der Stichtag ist **gesetzt**:
+`fromSyncStrengAbUnix = 1792454400` = **20.10.2026, 00:00:00 UTC**
+(02:00 Berlin), rund 56 h Vorlauf ab dem Setzen. Keine Rücknahme
+(`fromSyncStrengBisUnix = math.MaxInt64`),
+`x/humanity/keeper/fromsync_stichtag.go`. Blöcke mit älterer Blockzeit
+spielen unverändert nach (`TestFromSyncStichtag_SchlafendByteGleich` prüft das
+Verhalten ohne Stichtag weiter über den Override). Aktiver Validator ist nur
+C1, der mit dem Merge ausrollt, also vor `Ab`. Kommt vor `Ab` ein weiterer
+Validator dazu, muss er mit diesem Code laufen (Schritt 4).
 
 ## Warum
 
