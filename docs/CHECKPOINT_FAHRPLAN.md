@@ -183,7 +183,10 @@ einen letzten Checkpoint.
    sondern direkt nach dem Speichern des eigenen Blocks (noch unter
    `dag.mu`, kein fremder Block dazwischen), nach der Regel des
    Nachspielens. Die Suche läuft einmal, im Probelauf `checkpointVorschau`
-   mit Blockzeit und Eltern (Frist 3 s unter `dag.mu`); seine StateRoot
+   mit Blockzeit und Eltern (Frist 3 s, ohne `dag.mu`, unter `replayMu`;
+   danach prüft `checkpointVorschauOhneDAGSperre` unter `dag.mu`, dass
+   Resync, Degradierung, Verteilung, Eltern und letzter Checkpoint
+   unverändert sind – sonst entsteht in diesem Takt kein Block); seine StateRoot
    rechnet er mit dessen Ergebnis, und genau dieser Wert wird in derselben
    Datenbank-Transaktion wie der Block geschrieben (`checkpointMitSpeichern`)
    – keine zweite Suche, die anders ausgehen könnte, und kein gespeicherter
