@@ -1,6 +1,9 @@
 package keeper
 
-import "testing"
+import (
+	"math"
+	"testing"
+)
 
 // Regression test for the definitive root cause of the 2026-07-06 3-node
 // non-merging incident: isFinalityViolation exempted FromSync blocks but not
@@ -46,8 +49,17 @@ func TestIsFinalityViolation_SelfFetchedAncestorExempt(t *testing.T) {
 
 	oldBlock.SelfFetched = false
 	oldBlock.FromSync = true
+	// Vor dem FromSync-Stichtag (fromsync_stichtag.go): ausdruecklich ohne
+	// Stichtag geprueft, nicht abhaengig vom Datum des Testlaufs.
+	fromSyncStichtagSetzen(t, math.MaxInt64)
 	if dag.isFinalityViolation(oldBlock) {
-		t.Fatal("a FromSync (trusted seed) block must remain unconditionally exempt, as before")
+		t.Fatal("a FromSync (trusted seed) block must remain unconditionally exempt before the FromSync deadline")
+	}
+	// Ab dem Stichtag (Empfangszeit): FromSync entbindet nicht mehr.
+	delete(dag.orphans, oldBlock.Hash)
+	fromSyncStichtagSetzen(t, nowUnix()-3600)
+	if !dag.isFinalityViolation(oldBlock) {
+		t.Fatal("from the FromSync deadline on, a FromSync block below finality must be a finality violation")
 	}
 }
 

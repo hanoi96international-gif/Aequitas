@@ -93,7 +93,7 @@ Reihenfolge, in der sie gemacht werden sollten.
    - Erst ab drei Validatoren wählt die Leitung bei Ausfall selbst einen neuen Leiter.
    - Erst ab vier bestätigen Checkpoints etwas.
 7. **Strenges Nachrechnen** (`nachrechnenStrengAbUnix`): Sobald `/api/wirtschaft/regeln` über längere Zeit null Abweichungen zeigt, den Stichtag per PR setzen, **bevor** ein zweiter unabhängiger Produzent zugelassen wird. Ohne ihn könnte ein fremder Produzent Geld erzeugen.
-8. **FromSync-Stichtag** (`fromSyncStrengAbUnix`): gesetzt auf 20.10.2026 00:00 UTC (17.10.2026, auf deine Anweisung). Für dich bleibt: in der ersten Stunde nach `Ab` die Logs von C1 auf `[FINALITY] ✗` / `[SLASHING] ✗` ansehen und jeden neuen Validator vor dem Start mit diesem Code betreiben. Rücknahme nur über `fromSyncStrengBisUnix`: `docs/FROMSYNC_STICHTAG.md`.
+8. **FromSync-Stichtag** (`fromSyncStrengAbUnix`): gesetzt auf 20.10.2026 00:00 UTC (17.10.2026, auf deine Anweisung). Für dich bleibt: in der ersten Stunde nach `Ab` die Logs von C1 auf `[FINALITY] ✗` / `[SLASHING] ✗` ansehen, jeden neuen Validator vor dem Start mit diesem Code betreiben (spätestens 19.10.2026 23:58 UTC), und C1 keinen Seed eintragen, ohne vorher Finalität und StateRoot des Seeds zu vergleichen (sonst kann das Sync-Tor C1 nach einem Neustart anhalten, F4). Rücknahme nur über `fromSyncStrengBisUnix`: `docs/FROMSYNC_STICHTAG.md`.
 9. **Checkpoint-Stichtag** (`checkpointTxAbUnix`): erst mit vier oder mehr Validatoren, nach dem Abschnitt „Einschalten“ in `CHECKPOINT_FAHRPLAN.md`.
 10. **Chain-ID-Wechsel** (entschieden: neue Chain-ID 19260930):
    - In ethereum-lists/chains prüfen, ob die ID frei ist, und sie dort eintragen.

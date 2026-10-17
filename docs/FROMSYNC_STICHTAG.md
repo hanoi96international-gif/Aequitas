@@ -10,6 +10,20 @@ Verhalten ohne Stichtag weiter über den Override). Aktiver Validator ist nur
 C1, der mit dem Merge ausrollt, also vor `Ab`. Kommt vor `Ab` ein weiterer
 Validator dazu, muss er mit diesem Code laufen (Schritt 4).
 
+**Frist:** Wegen der Rück-Toleranz (`zeitstempelRueckToleranz`, 120 s) gilt die
+strenge Prüfung schon für Blöcke ab **19.10.2026 23:58:00 UTC** (`Ab − 2 min`).
+Jeder Validator muss also vor diesem Zeitpunkt mit diesem Code laufen. Schafft
+ein Deploy das nicht, `Ab` per PR verschieben, nie mit altem Code über die
+Frist hinaus produzieren.
+
+**Seeds auf C1 (F4):** Laut Deploy-Log vom 17.10.2026 hat C1 keinen Seed
+(`PRIMARY_NODE_URLS=keine`), also kein Sync-Tor, das ihn anhalten könnte. Wer
+C1 später einen Seed einträgt, prüft vorher: der Seed hat denselben
+`finalized_height`/Hash und dieselbe StateRoot, und in `/api/health/combined`
+steht `sync_diagnostics[].clean_sync_streak >= 3`. Nach jedem Neustart von C1
+im Log auf `Not yet 3 consecutive clean sync cycles` achten; Abhilfe: Seed
+entfernen oder per Resync heilen.
+
 ## Warum
 
 Ein Block, den ein Knoten per HTTP-Sync von einem **eingetragenen Seed**
@@ -113,7 +127,7 @@ Checkpoint abweist. Für die Sperre gilt das ohnehin:
    Der PR bekommt eine eigene Sicherheitsprüfung (Konsens).
    `TestFromSyncStichtag_SchlafendByteGleich` läuft weiter (er nutzt den
    Override `math.MaxInt64`).
-4. **Ausrollen:** Auf allen Validatoren vor `Ab` deployen. Ein Knoten mit dem
+4. **Ausrollen:** Auf allen Validatoren vor `Ab − 2 min` deployen (Rück-Toleranz). Ein Knoten mit dem
    alten Code nimmt nach `Ab` Seed-Blöcke an, die die anderen abweisen. Dann
    laufen die Knoten auseinander.
 5. **Nach `Ab` beobachten (erste Stunde):**
