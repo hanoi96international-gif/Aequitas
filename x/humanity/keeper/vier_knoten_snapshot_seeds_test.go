@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -231,13 +232,15 @@ func (n *vierKnotenNetz) snapshotMissbrauch(t *testing.T) {
 	// Der oeffentliche Snapshot ist je Absender-IP 30 s gedrosselt
 	// (handleSnapshot), und die Knoten holen alle von 127.0.0.1 (Loopback-
 	// Route). Im Fall LeiterFaelltAusUndZiehtNach hat der ueberholte Leiter
-	// eben erst so geholt. Liefe der erste Fall hier in die Drosselung,
-	// wartete PerformResync 35 s -- mit gesetztem resyncInProgress, also ohne
-	// jeden Block anzunehmen; laenger als die Finalitaetstiefe, und seine
-	// eigenen letzten Bloecke blieben als toter Zweig stehen (Befund, siehe
-	// Bericht). Darum das Fenster hier abwarten, statt den Knoten taub zu
-	// machen. Die Drosselung selbst bleibt unangetastet.
-	time.Sleep(31 * time.Second)
+	// eben erst so geholt, der erste Fall hier laeuft also in die Drosselung
+	// und PerformResync wartet sie ab. Frueher geschah das mit gesetztem
+	// resyncInProgress -- 35 s ohne jeden Block, laenger als die
+	// Finalitaetstiefe, und die eigenen letzten Bloecke blieben als toter
+	// Zweig stehen; darum stand hier ein Warten von 31 s. Seit der Abruf vor
+	// dem Tor laeuft (autoheal.go), ist das der Missbrauchsfall selbst: ein
+	// Beobachter haelt fest, ob das Tor waehrend eines Falls je zu war. Keiner
+	// der Snapshots ist gueltig, also darf es nie zu sein. Die Drosselung
+	// selbst bleibt unangetastet.
 
 	importHoeheVorher := zielCS.getConfigValueDB("snapshot_import_height")
 	for _, f := range faelle {
@@ -245,7 +248,30 @@ func (n *vierKnotenNetz) snapshotMissbrauch(t *testing.T) {
 			if f.vorher != nil {
 				f.vorher(t)
 			}
+			var torZu atomic.Bool
+			stop := make(chan struct{})
+			beobachtet := make(chan struct{})
+			go func() {
+				defer close(beobachtet)
+				for {
+					select {
+					case <-stop:
+						return
+					case <-time.After(time.Millisecond):
+						if zielDag.resyncInProgress.Load() {
+							torZu.Store(true)
+						}
+					}
+				}
+			}()
+			start := time.Now()
 			err := zielDag.PerformResync(f.url, f.signer, seed.srv.URL)
+			close(stop)
+			<-beobachtet
+			if torZu.Load() {
+				t.Fatalf("Knoten %d war waehrend des Abrufs taub (resyncInProgress gesetzt, %s), obwohl der Snapshot ungueltig war",
+					ziel.i, time.Since(start).Round(time.Millisecond))
+			}
 			if err == nil {
 				t.Fatalf("Knoten %d hat den Snapshot uebernommen", ziel.i)
 			}

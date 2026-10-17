@@ -560,7 +560,8 @@ func zyklusStoppenNachSeite(hinzugefuegt, bekannt, gesamt int, deepScan bool) bo
 }
 
 // schonBekannt: dieser Knoten hat den Block bereits -- im Speicher-DAG,
-// oder unterhalb des Speicherfensters in der Datenbank. Genau die zwei
+// oder unterhalb des Speicherfensters in der Datenbank, dort nachgespielt
+// (blockAltBekannt). Genau die zwei
 // Faelle, in denen doSyncOnce (exists) bzw. AddPeerBlock (altBekannt) ihn
 // ohnehin ohne Rumpf durchwinken. Fuer so einen Block wird kein Rumpf
 // nachgeladen: der Ueberlapp von 20 Hoehen (syncOverlap) besteht fast nur
@@ -572,7 +573,8 @@ func (dag *BlockDAG) schonBekannt(b *Block) bool {
 	if dag.hasBlockInMemory(b.Hash) {
 		return true
 	}
-	return dag.state != nil && dag.state.db != nil && dag.unterSpeicherfenster(b.Height) && dag.state.BlockExistsInDB(b.Hash)
+	bekannt, _ := dag.blockAltBekannt(b)
+	return bekannt
 }
 
 // fetchBlocksSincePage is fetchBlocksSince with an explicit choice of whether

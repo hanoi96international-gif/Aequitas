@@ -241,7 +241,7 @@ var sperreOhneDefer = map[string]int{
 	"pool_flush.go:ChainState.flushPoolAccountsIfDirty":        1,
 	"snapshot.go:ChainState.ExportSnapshot":                    1,
 	"snapshot.go:ChainState.ImportSnapshotFromURL":             1,
-	"snapshot.go:ChainState.ResyncFromSnapshotURL":             2,
+	"snapshot.go:ChainState.wendeResyncSnapshotAn":             2,
 	"state.go:ChainState.DistributeUBIPool":                    1,
 	"state.go:ChainState.registerHumanMitZeitenLocked":         1,
 	"sync_blocks.go:BlockDAG.doSyncOnce":                       1,
