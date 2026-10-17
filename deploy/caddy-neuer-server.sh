@@ -12,13 +12,22 @@ mkdir -p /root/caddy
 # Vergleichsdienste jede Bezeugung ab, und die Registrierung ueber proof1
 # faellt aus.
 C1_COORD=d3c46a772f2c40e533f6abd5781d0c39cdcda9ba3df63e909ebd729d2e2aebbf
-for k in http://127.0.0.1:8080 https://proof2.aequitas.digital; do
-  if curl -fsS -m 10 "$k/api/coordinators" | grep -q "\"$C1_COORD\""; then
-    echo "  Coordinator C1 eingetragen auf $k"
-  else
-    echo "::error::Coordinator C1 fehlt auf $k -- Caddy bleibt unveraendert"; exit 1
-  fi
-done
+# Nur noetig, wenn sich das Caddyfile aendert: ist es schon auf dem Stand des
+# Repos (etwa beim reinen Neuanlegen fuer die Log-Rotation), aendert sich am
+# Routing nichts. Das Register ist seit dem Neustart bei null leer
+# (coordinator-auth-diagnose.yml); der Vergleichsdienst vertraut dem
+# Coordinator ueber COORDINATOR_PUBLIC_KEYS.
+if [ -f "$CF" ] && cmp -s "$NEU" "$CF"; then
+  echo "  Caddyfile unveraendert -- Routing bleibt, keine Coordinator-Pruefung noetig"
+else
+  for k in http://127.0.0.1:8080 https://proof2.aequitas.digital; do
+    if curl -fsS -m 10 "$k/api/coordinators" | grep -q "\"$C1_COORD\""; then
+      echo "  Coordinator C1 eingetragen auf $k"
+    else
+      echo "::error::Coordinator C1 fehlt auf $k -- Caddy bleibt unveraendert"; exit 1
+    fi
+  done
+fi
 docker run --rm -v "$NEU":/etc/caddy/Caddyfile:ro caddy:2 caddy validate --config /etc/caddy/Caddyfile >/dev/null
 # Log-Rotation am Container selbst (Server-Haertung, Betreiber-Punkt 13): die
 # Vorgabe in daemon.json gilt erst nach einem Docker-Neustart, der alle
