@@ -39,7 +39,7 @@ jobs:
     steps:
       - name: Reconcile on Contabo1
         if: ${{ inputs.box == 'contabo1' }}
-        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         with:
           host: alter-c1-abgeschaltet.invalid
           username: root
@@ -139,7 +139,7 @@ jobs:
 
       - name: Reconcile on Contabo2
         if: ${{ inputs.box == 'contabo2' }}
-        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         with:
           host: 194.163.188.71
           username: root

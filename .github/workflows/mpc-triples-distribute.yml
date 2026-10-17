@@ -96,7 +96,7 @@ jobs:
           echo "PARTY1_SHA=$B" >> "$GITHUB_ENV"
 
       - name: Assert Contabo1 is still the lower address (party 0)
-        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         with:
           host: alter-c1-abgeschaltet.invalid
           username: root
@@ -116,7 +116,7 @@ jobs:
             mkdir -p /root/aequitas-mpc
 
       - name: Assert Contabo2 is still the higher address (party 1)
-        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         with:
           host: 194.163.188.71
           username: root
@@ -156,7 +156,7 @@ jobs:
           strip_components: 1
 
       - name: Verify Contabo1 has party 0 and NOT party 1
-        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         with:
           host: alter-c1-abgeschaltet.invalid
           username: root
@@ -180,7 +180,7 @@ jobs:
             echo "OK"
 
       - name: Verify Contabo2 has party 1 and NOT party 0
-        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         with:
           host: 194.163.188.71
           username: root
