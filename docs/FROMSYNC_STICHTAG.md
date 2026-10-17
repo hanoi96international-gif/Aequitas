@@ -1,8 +1,8 @@
 # FromSync-Stichtag
 
 Stand: 17.10.2026. Der Stichtag ist **gesetzt**:
-`fromSyncStrengAbUnix = 1792454400` = **20.10.2026, 00:00:00 UTC**
-(02:00 Berlin), rund 56 h Vorlauf ab dem Setzen. Keine Rücknahme
+`fromSyncStrengAbUnix = 1792281600` = **18.10.2026, 00:00:00 UTC**
+(02:00 Berlin), auf Anweisung des Betreibers vom 20.10. vorgezogen (rund 2,5 h Vorlauf statt der sonst verlangten 48 h; nur ein Validator). Keine Rücknahme
 (`fromSyncStrengBisUnix = math.MaxInt64`),
 `x/humanity/keeper/fromsync_stichtag.go`. Blöcke mit älterer Blockzeit
 spielen unverändert nach (`TestFromSyncStichtag_SchlafendByteGleich` prüft das
@@ -11,7 +11,7 @@ C1, der mit dem Merge ausrollt, also vor `Ab`. Kommt vor `Ab` ein weiterer
 Validator dazu, muss er mit diesem Code laufen (Schritt 4).
 
 **Frist:** Wegen der Rück-Toleranz (`zeitstempelRueckToleranz`, 120 s) gilt die
-strenge Prüfung schon für Blöcke ab **19.10.2026 23:58:00 UTC** (`Ab − 2 min`).
+strenge Prüfung schon für Blöcke ab **17.10.2026 23:58:00 UTC** (`Ab − 2 min`).
 Jeder Validator muss also vor diesem Zeitpunkt mit diesem Code laufen. Schafft
 ein Deploy das nicht, `Ab` per PR verschieben, nie mit altem Code über die
 Frist hinaus produzieren.

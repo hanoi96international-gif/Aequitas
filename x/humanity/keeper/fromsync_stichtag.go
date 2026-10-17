@@ -97,10 +97,11 @@ import (
 // fromSyncStrengAbUnix: Blockzeit, ab der FromSync keine Pruefung mehr
 // entbindet. math.MaxInt64 = SCHLAFEND.
 //
-// Gesetzt am 17.10.2026: 1792454400 = 20.10.2026 00:00:00 UTC (rund 56 h
+// Gesetzt am 17.10.2026 (zunaechst 20.10.), auf Anweisung des Betreibers
+// vorgezogen auf 1792281600 = 18.10.2026 00:00:00 UTC (rund 2,5 h
 // Vorlauf, volle Stunde UTC). Aktiver Validator ist nur C1, der beim Merge
 // ausgerollt wird -- also vor Ab. Nie zurueck auf MaxInt64 (siehe oben).
-const fromSyncStrengAbUnix int64 = 1792454400
+const fromSyncStrengAbUnix int64 = 1792281600
 
 // fromSyncStrengBisUnix: Blockzeit, ab der die alte Ausnahme wieder gilt
 // (Ruecknahme, siehe oben). math.MaxInt64 = keine Ruecknahme. Gilt nur, wenn

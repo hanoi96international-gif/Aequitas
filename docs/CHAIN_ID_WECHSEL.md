@@ -1,8 +1,9 @@
 # Chain-ID-Wechsel 1926 → 19260930 (0x125E602)
 
 Stand: 17.10.2026. Der Stichtag ist **gesetzt**:
-`chainIDWechselAbUnix = 1793059200` = **27.10.2026, 00:00:00 UTC**
-(`x/humanity/keeper/chain_id_wechsel.go`). Annahmepause ab 26.10.2026,
+`chainIDWechselAbUnix = 1792281600` = **18.10.2026, 00:00:00 UTC**
+(auf Anweisung des Betreibers vom 27.10. vorgezogen, ohne 7-Tage-Ankündigung)
+(`x/humanity/keeper/chain_id_wechsel.go`). Annahmepause ab 17.10.2026,
 23:50 UTC. App 1.11.0 (liest die ID live) ist das Release dazu; die
 Startseite kündigt den Wechsel an (`chain_id_hinweis.go`, bis 14 Tage danach).
 Rückweg nur **vor** `Ab`: wieder `math.MaxInt64`, ausrollen.
@@ -53,18 +54,18 @@ des Stichtags oder 0, solange der Wechsel schläft.
 
 Alte Blöcke spielen unverändert nach: Ihre Blockzeit liegt vor `Ab`.
 
-## Am Stichtag (27.10.2026) -- Betrieb mit einem Validator
+## Am Stichtag (18.10.2026) -- Betrieb mit einem Validator
 
 Solange C1 der einzige Validator ist, gibt es keinen Seed, von dem er sich
 heilen könnte. Der Schutz ist deshalb Vorbeugung:
 
-1. **Deploy-Stopp 26.10.2026 23:00 bis 27.10.2026 01:00 UTC.** Kein Merge
+1. **Deploy-Stopp 17.10.2026 23:00 bis 18.10.2026 01:00 UTC.** Kein Merge
    auf `main` (jeder Merge startet C1 über `deploy-c1-dann-c2.yml` neu), kein
    Neustart, keine Workflows, die Container anfassen. Grund: Ein Neustart
    über den Stichtag hinweg mit noch offenen 1926-Überweisungen im Ausgang ist
    der einzige Weg in den Stillstand unten.
-2. **Vorher prüfen (26.10., bis 23:00 UTC):** `/api/status` meldet
-   `chain_id_wechsel_ab = 1793059200` auf jedem Knoten (auch Leseknoten);
+2. **Vorher prüfen (17.10., bis 23:00 UTC):** `/api/status` meldet
+   `chain_id_wechsel_ab = 1792281600` auf jedem Knoten (auch Leseknoten);
    die App-Version 1.11.0 ist das neueste Release.
 3. **Ab 23:50 UTC** nimmt C1 keine Überweisungen an (`-32005`, wiederholbar).
    Der Ausgang leert sich in dieser Zeit (Blöcke alle paar Sekunden); was
