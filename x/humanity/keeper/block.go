@@ -4819,6 +4819,55 @@ func (dag *BlockDAG) notifyNewBlock(block *Block) {
 // function's 2026-07-04 FIX comment) for a bounded, already-loaded backfill —
 // prefetching here while that skip is active would just be extra unwanted DB
 // load, not a correctness issue, but pointless.
+// spitzeEinhaengenLocked (AddPeerBlock, unter dag.mu): Eltern aus den Spitzen,
+// der Block selbst wird Spitze -- ausser er stand schon im Speicher und ein
+// Kind fuehrt ihn als Elternteil.
+//
+// hatKindLocked: fuehrt irgendein Block im Speicher-DAG hash als Elternteil?
+// Aufrufer haelt dag.mu. Linear ueber dag.blocks -- nur fuer den seltenen Fall,
+// dass ein Block beim Einhaengen schon im Speicher stand (spitzeNurOhneKind).
+//
+// # spitzeNurOhneKind -- WARUM (gefunden im Vier-Knoten-Test, 16./17.10.2026)
+//
+// AddPeerBlock speichert einen Block VOR dem Nachspielen (SaveBlockToDB) und
+// haengt ihn erst danach, unter dag.mu, in dag.blocks/dag.tips ein. In diesem
+// Fenster kann ein Kind desselben Blocks eintreffen (Push und Sync laufen
+// nebeneinander): prefetchParentsFromDB bzw. "resolved locally" in
+// doSyncOnce findet den Elternblock in der Datenbank und legt ihn ohne
+// Spitzen-Buchfuehrung in dag.blocks; das Kind haengt sich an
+// (collectUnreplayedAncestors spielt den Elternblock vorher nach -- der
+// Zustand stimmt). Danach kommt der Elternblock selbst zum Einhaengen und
+// setzte bisher bedingungslos dag.tips[hash] = true: eine Spitze, die ein
+// Kind hat. Sie verschwand erst, wenn dieser Knoten selbst wieder einen
+// Block erzeugte, der sie als (weit zurueckliegenden) Elternteil fuehrt --
+// gesehen: Spitze auf Hoehe 49 bei Hoehe 121, Spitze 192 bei 397. Bis dahin
+// meldet der Knoten andere Spitzen als jeder andere, und sein naechster
+// Block traegt einen zusaetzlichen, tiefen Elternteil (groesseres Merge-Set,
+// naeher an peerElternGrenze/Merge-Tiefe).
+//
+// Ein Block, der zum ersten Mal in dag.blocks kommt, kann kein Kind im
+// Speicher haben (ein Kind haengt sich nur an vorhandene Eltern) -- dort
+// bleibt es beim schnellen Weg ohne Suche.
+func (dag *BlockDAG) spitzeEinhaengenLocked(block *Block, vorherImSpeicher bool) {
+	for _, ph := range block.ParentHashes {
+		delete(dag.tips, ph)
+	}
+	if !vorherImSpeicher || !dag.hatKindLocked(block.Hash) {
+		dag.tips[block.Hash] = true
+	}
+}
+
+func (dag *BlockDAG) hatKindLocked(hash string) bool {
+	for _, b := range dag.blocks {
+		for _, ph := range b.ParentHashes {
+			if ph == hash {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (dag *BlockDAG) prefetchParentsFromDB(block *Block) {
 	if block == nil || dag.state == nil || len(block.ParentHashes) == 0 || dag.ghostdagMigrationPending.Load() {
 		return
@@ -5810,6 +5859,9 @@ func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
 	}
 
 	dag.mu.Lock()
+	// War der Block schon im Speicher-DAG, bevor er hier eingehaengt wird?
+	// Siehe spitzeNurOhneKind unten.
+	_, vorherImSpeicher := dag.blocks[block.Hash]
 	if prev, hadStub := dag.blocks[block.Hash]; hadStub && prev.Proposer == "synthetic-checkpoint" {
 		// Healing a stub (see the "already known" check above): the gap this
 		// stub was bridging is now closed with real, replayed data.
@@ -5840,13 +5892,9 @@ func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
 	dag.state.merkeTxRoot(block) // tx_root -> hash, siehe tx_batch_nach_hash.go
 	dag.notifyNewBlock(block)    // wake /api/events subscribers — see notifyNewBlock's own comment
 
-	// Remove parents from tips
-	for _, ph := range block.ParentHashes {
-		delete(dag.tips, ph)
-	}
-
-	// Add this block as new tip
-	dag.tips[block.Hash] = true
+	// Remove parents from tips, add this block as new tip -- nur, wenn kein
+	// Block im Speicher-DAG ihn schon als Elternteil fuehrt (spitzeNurOhneKind).
+	dag.spitzeEinhaengenLocked(block, vorherImSpeicher)
 
 	if block.Height > dag.height {
 		dag.setHeight(block.Height)
