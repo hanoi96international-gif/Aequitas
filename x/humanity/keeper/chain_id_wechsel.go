@@ -70,7 +70,12 @@ const (
 	// chainIDWechselAbUnix: Blockzeit, ab der die neue ID gilt.
 	// math.MaxInt64 = SCHLAFEND. Gesetzt wird der Stichtag in einem eigenen
 	// PR mit mindestens 48 h Vorlauf, wenn App und Ankuendigung stehen.
-	chainIDWechselAbUnix int64 = math.MaxInt64
+	//
+	// Gesetzt am 17.10.2026: 1793059200 = 27.10.2026 00:00:00 UTC (rund
+	// 9 Tage Vorlauf: App 1.11.0 mit beiden IDs, Ankuendigung >= 7 Tage).
+	// Annahmepause ab Ab - 600 s = 26.10.2026 23:50 UTC. Rueckweg nur VOR
+	// Ab: wieder math.MaxInt64, ausrollen (docs/CHAIN_ID_WECHSEL.md).
+	chainIDWechselAbUnix int64 = 1793059200
 
 	// chainIDWechselPause: so lange vor dem Stichtag nimmt der Knoten keine
 	// Ueberweisungen mehr an. Was davor mit 1926 angenommen wurde, steht

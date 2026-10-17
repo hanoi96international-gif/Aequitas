@@ -1,8 +1,11 @@
 # Chain-ID-Wechsel 1926 → 19260930 (0x125E602)
 
-Stand: 15.10.2026. Der Betreiber hat den Wechsel entschieden. Im Code ist er
-**schlafend** (`chainIDWechselAbUnix = math.MaxInt64`,
-`x/humanity/keeper/chain_id_wechsel.go`).
+Stand: 17.10.2026. Der Stichtag ist **gesetzt**:
+`chainIDWechselAbUnix = 1793059200` = **27.10.2026, 00:00:00 UTC**
+(`x/humanity/keeper/chain_id_wechsel.go`). Annahmepause ab 26.10.2026,
+23:50 UTC. App 1.11.0 (liest die ID live) ist das Release dazu; die
+Startseite kündigt den Wechsel an (`chain_id_hinweis.go`, bis 14 Tage danach).
+Rückweg nur **vor** `Ab`: wieder `math.MaxInt64`, ausrollen.
 
 ## Warum
 

@@ -1,6 +1,7 @@
 package keeper
 
 import (
+	"math"
 	"testing"
 	"time"
 )
@@ -15,6 +16,9 @@ func signaturVorabLeeren(t *testing.T) {
 // Vorab gepruefter gueltiger Block: angenommen, das Ergebnis wird abgeholt
 // und nicht liegen gelassen.
 func TestSignaturVorab_GueltigerBlockUeberVorabpruefung(t *testing.T) {
+	// Prueft den Weg vor dem Chain-ID-Wechsel (signiert mit 1926), unabhaengig
+	// vom Datum des Testlaufs; danach: TestChainIDWechsel_*, *NeueChainID.
+	wechselAb(t, math.MaxInt64)
 	signaturVorabLeeren(t)
 	a := neuerTestSchluessel(t)
 	b := neuerTestSchluessel(t)
@@ -84,6 +88,9 @@ func TestSignaturVorab_ErgebnisGiltNurFuerDasselbeObjekt(t *testing.T) {
 // Liegengebliebene Ergebnisse (Block nie nachgespielt) wachsen nicht ohne
 // Grenze; wer ueber der Grenze kommt, wird im Nachspielen selbst geprueft.
 func TestSignaturVorab_Begrenzt(t *testing.T) {
+	// Prueft den Weg vor dem Chain-ID-Wechsel (signiert mit 1926), unabhaengig
+	// vom Datum des Testlaufs; danach: TestChainIDWechsel_*, *NeueChainID.
+	wechselAb(t, math.MaxInt64)
 	signaturVorabLeeren(t)
 	t.Cleanup(func() { signaturVorabLeeren(t) })
 	a := neuerTestSchluessel(t)

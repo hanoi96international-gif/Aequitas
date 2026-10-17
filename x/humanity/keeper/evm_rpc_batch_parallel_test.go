@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math"
 	"math/big"
 	"net/http/httptest"
 	"strings"
@@ -89,6 +90,9 @@ func TestDecodeAndRecoverSender_MatchesOriginalInlineLogic(t *testing.T) {
 // the pre-existing serial code did -- run under -race to catch any data race
 // introduced by the new worker-pool pre-pass.
 func TestHandleRPC_BatchParallelSendRawTransaction(t *testing.T) {
+	// Prueft den Weg vor dem Chain-ID-Wechsel (signiert mit 1926), unabhaengig
+	// vom Datum des Testlaufs; danach: TestChainIDWechsel_*, *NeueChainID.
+	wechselAb(t, math.MaxInt64)
 	// Die Annahmekontrolle lehnt einen Validator ab, der seit 30 s keinen Block
 	// produziert hat. In diesem Test produziert nie jemand einen, was unter dem
 	// Race-Detector (deutlich langsamer) nach genau 30 s zuschlaegt: der Lauf vom

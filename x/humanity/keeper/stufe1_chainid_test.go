@@ -21,6 +21,9 @@ import (
 // trotzdem wieder her -- angenommen, haette jeder andere Validator den Block
 // verworfen. Sie muss schon an der Annahme scheitern.
 func TestStufe1_UngeschuetzteTransaktionWirdAbgewiesen(t *testing.T) {
+	// Prueft den Weg vor dem Chain-ID-Wechsel (signiert mit 1926), unabhaengig
+	// vom Datum des Testlaufs; danach: TestChainIDWechsel_*, *NeueChainID.
+	wechselAb(t, math.MaxInt64)
 	signierteUeberweisungenOverride.Store(1)
 	t.Cleanup(func() { signierteUeberweisungenOverride.Store(math.MaxInt64) })
 	noteBlockProduced()
@@ -61,6 +64,9 @@ func TestStufe1_UngeschuetzteTransaktionWirdAbgewiesen(t *testing.T) {
 // verarbeitet lief Nonce 6 vor 5, und 5 war "zu niedrig" (Generalprobe
 // 26.09.2026: 440.169 von 605.430 abgelehnt).
 func TestStufe1_BuendelEinesAbsendersWirdVollstaendigAngenommen(t *testing.T) {
+	// Prueft den Weg vor dem Chain-ID-Wechsel (signiert mit 1926), unabhaengig
+	// vom Datum des Testlaufs; danach: TestChainIDWechsel_*, *NeueChainID.
+	wechselAb(t, math.MaxInt64)
 	signierteUeberweisungenOverride.Store(1)
 	t.Cleanup(func() { signierteUeberweisungenOverride.Store(math.MaxInt64) })
 	noteBlockProduced()
@@ -126,6 +132,9 @@ func TestStufe1_BuendelGruppenNachAbsenderUndNonce(t *testing.T) {
 // Konten mit verschiedenem Blatt auf C1 und C2). Ungueltige Rohformen wirken
 // nicht und fuehren nicht zur Ablehnung; die Nonce sinkt nie.
 func TestStufe1_VorlaufNachspielenSetztNonceWieAnnahme(t *testing.T) {
+	// Prueft den Weg vor dem Chain-ID-Wechsel (signiert mit 1926), unabhaengig
+	// vom Datum des Testlaufs; danach: TestChainIDWechsel_*, *NeueChainID.
+	wechselAb(t, math.MaxInt64)
 	cs := newTestState()
 	a, b := neuerTestSchluessel(t), neuerTestSchluessel(t)
 	cs.mu.Lock()

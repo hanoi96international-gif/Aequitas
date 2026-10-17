@@ -4092,7 +4092,7 @@ func (a *APIServer) handleAppDownload(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *APIServer) handleLanding(w http.ResponseWriter, r *http.Request) {
-	a.schreibeLandingSeite(w, r, landingHTML)
+	a.schreibeLandingSeite(w, r, mitChainIDHinweis(landingHTML, nowUnix()))
 }
 
 // schreibeLandingSeite: Startseite und ihre Unterseiten (seiten.go) teilen

@@ -97,7 +97,7 @@ Reihenfolge, in der sie gemacht werden sollten.
 9. **Checkpoint-Stichtag** (`checkpointTxAbUnix`): erst mit vier oder mehr Validatoren, nach dem Abschnitt „Einschalten“ in `CHECKPOINT_FAHRPLAN.md`.
 10. **Chain-ID-Wechsel** (entschieden: neue Chain-ID 19260930):
    - ID in ethereum-lists/chains eintragen: Die Datei liegt fertig unter `deploy/ethereum-lists/eip155-19260930.json` (Name, RPC `https://aequitas.digital/rpc`, AEQ mit 18 Stellen). Als PR an `ethereum-lists/chains` unter `_data/chains/` einreichen, sobald der Stichtag feststeht -- deren Prüfung erwartet, dass der RPC die ID schon meldet. Am 16.10.2026 war 19260930 frei; vorher erneut prüfen.
-   - Nach den App- und Web-PRs einen Stichtag wählen und ankündigen: MetaMask-Nutzer müssen das Netz neu einrichten.
+   - Stichtag gesetzt (17.10.2026): **27.10.2026, 00:00 UTC**, App 1.11.0 dazu veröffentlicht, Hinweis auf der Startseite. Für dich bleibt: den Wechsel zusätzlich in deinen Kanälen ankündigen (MetaMask-Nutzer legen das Netz neu an), nach dem Stichtag den ethereum-lists-Eintrag einreichen.
    - Den Ablauf beschreibt `docs/CHAIN_ID_WECHSEL.md`.
 11. **Sybil über das Gerätegeheimnis** (`ALLOW_DEVICE_SECRET_REGISTER`): Solange die Registrierung ohne Gesicht erlaubt ist, kann ein Mensch mit mehreren Geräten mehrfach registrieren. Entscheiden, ob die Beta das zulässt.
 12. **Trusted Setup:** Der Beweisschlüssel hat nur einen Beitrag. Eine Zeremonie mit mehreren unabhängigen Beiträgen vor echten Werten.
