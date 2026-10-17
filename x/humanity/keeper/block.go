@@ -4788,37 +4788,6 @@ func (dag *BlockDAG) notifyNewBlock(block *Block) {
 	}
 }
 
-// prefetchParentsFromDB batch-loads any of block.ParentHashes not already
-// resident in dag.blocks, via a SINGLE Postgres round trip, BEFORE
-// AddPeerBlock takes dag.mu — see ghostdagBlockLookup's own "P0, 2026-07-10"
-// comment for why its single-hash DB fallback (called for every ancestor
-// computeGHOSTDAGState's merge-set BFS can't resolve from dag.blocks) can no
-// longer be skipped for correctness, yet still runs synchronously WHILE
-// dag.mu is held write-locked. Confirmed live (Contabo1/Contabo2 diagnostic
-// session, 2026-07-24) as the actual mechanism behind the multi-minute
-// block-attach queueing seen during a catch-up burst: right after a
-// checkpoint-seeded resync, dag.blocks' in-memory window is mostly cold, so
-// a burst of peer blocks each needing several ancestor lookups serializes
-// the WHOLE node (ProduceBlock, every other AddPeerBlock, every dag.mu-
-// touching API read) behind a chain of one-row-at-a-time DB queries.
-//
-// This does not remove any of those single-hash lookups — computeGHOSTDAGState
-// can still need DEEPER ancestors beyond direct parents, which this cannot
-// predict without running the BFS itself. It only pre-warms the common,
-// dominant case (a block's DIRECT parents, exactly what integrity check 3
-// below needs first, and what most of a fresh catch-up burst's misses
-// actually are) with one batched query taken OUTSIDE the lock, so the
-// in-lock path hits dag.blocks' fast, in-memory branch instead of the DB
-// fallback for however many of those hashes this call manages to warm.
-// Harmless if it races with something else populating dag.blocks first —
-// re-checked under the write lock before inserting, and whichever value
-// lands is the same trusted, already-validated chain_blocks row either way.
-//
-// Mirrors ghostdagBlockLookup's own migration-pending skip: a startup
-// migration already refuses this exact class of DB-fallback storm (see that
-// function's 2026-07-04 FIX comment) for a bounded, already-loaded backfill —
-// prefetching here while that skip is active would just be extra unwanted DB
-// load, not a correctness issue, but pointless.
 // spitzeEinhaengenLocked (AddPeerBlock, unter dag.mu): Eltern aus den Spitzen,
 // der Block selbst wird Spitze -- ausser er stand schon im Speicher und ein
 // Kind fuehrt ihn als Elternteil.
@@ -4857,6 +4826,7 @@ func (dag *BlockDAG) spitzeEinhaengenLocked(block *Block, vorherImSpeicher bool)
 	}
 }
 
+// hatKindLocked: siehe spitzeEinhaengenLocked.
 func (dag *BlockDAG) hatKindLocked(hash string) bool {
 	for _, b := range dag.blocks {
 		for _, ph := range b.ParentHashes {
@@ -4868,6 +4838,37 @@ func (dag *BlockDAG) hatKindLocked(hash string) bool {
 	return false
 }
 
+// prefetchParentsFromDB batch-loads any of block.ParentHashes not already
+// resident in dag.blocks, via a SINGLE Postgres round trip, BEFORE
+// AddPeerBlock takes dag.mu — see ghostdagBlockLookup's own "P0, 2026-07-10"
+// comment for why its single-hash DB fallback (called for every ancestor
+// computeGHOSTDAGState's merge-set BFS can't resolve from dag.blocks) can no
+// longer be skipped for correctness, yet still runs synchronously WHILE
+// dag.mu is held write-locked. Confirmed live (Contabo1/Contabo2 diagnostic
+// session, 2026-07-24) as the actual mechanism behind the multi-minute
+// block-attach queueing seen during a catch-up burst: right after a
+// checkpoint-seeded resync, dag.blocks' in-memory window is mostly cold, so
+// a burst of peer blocks each needing several ancestor lookups serializes
+// the WHOLE node (ProduceBlock, every other AddPeerBlock, every dag.mu-
+// touching API read) behind a chain of one-row-at-a-time DB queries.
+//
+// This does not remove any of those single-hash lookups — computeGHOSTDAGState
+// can still need DEEPER ancestors beyond direct parents, which this cannot
+// predict without running the BFS itself. It only pre-warms the common,
+// dominant case (a block's DIRECT parents, exactly what integrity check 3
+// below needs first, and what most of a fresh catch-up burst's misses
+// actually are) with one batched query taken OUTSIDE the lock, so the
+// in-lock path hits dag.blocks' fast, in-memory branch instead of the DB
+// fallback for however many of those hashes this call manages to warm.
+// Harmless if it races with something else populating dag.blocks first —
+// re-checked under the write lock before inserting, and whichever value
+// lands is the same trusted, already-validated chain_blocks row either way.
+//
+// Mirrors ghostdagBlockLookup's own migration-pending skip: a startup
+// migration already refuses this exact class of DB-fallback storm (see that
+// function's 2026-07-04 FIX comment) for a bounded, already-loaded backfill —
+// prefetching here while that skip is active would just be extra unwanted DB
+// load, not a correctness issue, but pointless.
 func (dag *BlockDAG) prefetchParentsFromDB(block *Block) {
 	if block == nil || dag.state == nil || len(block.ParentHashes) == 0 || dag.ghostdagMigrationPending.Load() {
 		return
