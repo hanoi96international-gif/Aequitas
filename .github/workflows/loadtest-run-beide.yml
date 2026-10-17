@@ -95,7 +95,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: produktion
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Konten-CSV von C2 holen (nur fuer C1 noetig, harmlos fuer C2)
         uses: nicklasfrahm/scp-action@704793d454ed4c14a0dd1682836302a1ee98ffc2 # main
