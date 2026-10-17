@@ -303,6 +303,17 @@ with tempfile.TemporaryDirectory() as tmp:
     if p.returncode == 0 or (w / "etc/docker/daemon.json").read_text() != kaputt:
         f("kaputte daemon.json wird ueberschrieben oder der Lauf bleibt gruen")
 
+# Pruefung von #388: kein "neu geladen" ohne aktiven Dienst/Socket, und
+# keine daemon.json-Aenderung, wenn die docker-Einheit Log-Flags setzt.
+_sk = SKRIPT.read_text() if "SKRIPT" in globals() else open("deploy/server-haerten.sh").read()
+if "systemctl is-active --quiet ssh.socket" not in _sk or "kein reload moeglich" not in _sk:
+    f("sshd: ohne aktiven ssh/sshd-Dienst oder ssh.socket muss der Lauf rot enden, nicht 'neu geladen' melden")
+_d = _sk[_sk.find("docker_anwenden() {"):]
+_w = _d.find("python3")
+_g = _d.find("--log-(driver|opt)")
+if _g < 0 or (_w >= 0 and _g > _w):
+    f("docker: Log-Flags der Einheit (systemctl cat docker) muessen VOR dem Schreiben von daemon.json geprueft werden")
+
 for x in fehler:
     print(f"::error::{x}")
 print(f"{len(fehler)} Verstoesse")

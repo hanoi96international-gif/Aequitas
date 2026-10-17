@@ -224,10 +224,16 @@ ssh_anwenden() {
       timeout "$T" systemctl reload ssh.service || { echo "::error::reload ssh.service fehlgeschlagen."; return 1; }
     elif timeout "$T" systemctl is-active --quiet sshd.service; then
       timeout "$T" systemctl reload sshd.service || { echo "::error::reload sshd.service fehlgeschlagen."; return 1; }
+    elif timeout "$T" systemctl is-active --quiet ssh.socket; then
+      echo "  Drop-in geschrieben; ssh.socket aktiv (Socket-Aktivierung) -- jede neue Verbindung liest es."
     else
-      echo "  ssh.service/sshd.service nicht aktiv (Socket-Aktivierung) -- neue Verbindungen lesen das Drop-in."
+      # Weder Dienst noch Socket aktiv: ein laufender sshd (andere Einheit,
+      # ohne systemd) liefe mit dem alten Stand weiter, und sshd -T unten
+      # liest nur die Dateien (Pruefung von #388). Nicht als Erfolg melden.
+      echo "::error::Weder ssh.service, sshd.service noch ssh.socket aktiv -- kein reload moeglich. Drop-in bleibt geschrieben (nur haertend), Root wird NICHT gesperrt."
+      return 1
     fi
-    echo "  Drop-in geschrieben und sshd neu geladen."
+    echo "  Drop-in geschrieben und angewendet."
   fi
   # 5. Wirkung pruefen.
   local pa pr kb pk
@@ -235,13 +241,20 @@ ssh_anwenden() {
   kb="$(sshd_wert "$kk")"; pk="$(sshd_wert pubkeyauthentication)"
   echo "  danach: passwordauthentication=$pa permitrootlogin=$pr $kk=$kb pubkeyauthentication=$pk"
   if [ "$pa" != no ] || [ "$kb" != no ] || [ "$pk" != yes ] || { [ "$pr" != without-password ] && [ "$pr" != prohibit-password ]; }; then
-    echo "::error::sshd -T zeigt die gehaerteten Werte nicht -- ein frueherer Eintrag geht vor (sshd_config.d pruefen)."
+    echo "::error::sshd -T zeigt die gehaerteten Werte nicht -- ein frueherer Eintrag geht vor (sshd_config.d pruefen). Das Drop-in bleibt stehen (es haertet nur); Root wird NICHT gesperrt."
     return 1
   fi
 }
 
 docker_anwenden() {
   echo "== Docker-Log-Rotation =="
+  # Setzt die systemd-Einheit schon --log-driver/--log-opt, verweigert
+  # dockerd beim naechsten Start den Doppeleintrag in daemon.json -- und
+  # dockerd --validate sieht die Flags der Einheit nicht (Pruefung von #388).
+  if timeout "$T" systemctl cat docker 2>/dev/null | grep -Eq -- '--log-(driver|opt)'; then
+    echo "::error::Die docker-Einheit setzt --log-driver/--log-opt selbst -- daemon.json nicht angefasst (sonst startet dockerd nicht mehr). Betreiber-Entscheidung."
+    return 1
+  fi
   local neu="$ARBEIT/daemon.json.neu" rc=0
   mkdir -p "$(dirname "$DJSON")"
   # Zusammenfuehren: vorhandene Schluessel bleiben, vorhandene log-opts
