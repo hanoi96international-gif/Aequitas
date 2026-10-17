@@ -96,14 +96,19 @@ Reihenfolge, in der sie gemacht werden sollten.
 8. **FromSync-Stichtag** (`fromSyncStrengAbUnix`): gesetzt auf 20.10.2026 00:00 UTC (17.10.2026, auf deine Anweisung). Für dich bleibt: in der ersten Stunde nach `Ab` die Logs von C1 auf `[FINALITY] ✗` / `[SLASHING] ✗` ansehen, jeden neuen Validator vor dem Start mit diesem Code betreiben (spätestens 19.10.2026 23:58 UTC), und C1 keinen Seed eintragen, ohne vorher Finalität und StateRoot des Seeds zu vergleichen (sonst kann das Sync-Tor C1 nach einem Neustart anhalten, F4). Rücknahme nur über `fromSyncStrengBisUnix`: `docs/FROMSYNC_STICHTAG.md`.
 9. **Checkpoint-Stichtag** (`checkpointTxAbUnix`): erst mit vier oder mehr Validatoren, nach dem Abschnitt „Einschalten“ in `CHECKPOINT_FAHRPLAN.md`.
 10. **Chain-ID-Wechsel** (entschieden: neue Chain-ID 19260930):
-   - In ethereum-lists/chains prüfen, ob die ID frei ist, und sie dort eintragen.
+   - ID in ethereum-lists/chains eintragen: Die Datei liegt fertig unter `deploy/ethereum-lists/eip155-19260930.json` (Name, RPC `https://aequitas.digital/rpc`, AEQ mit 18 Stellen). Als PR an `ethereum-lists/chains` unter `_data/chains/` einreichen, sobald der Stichtag feststeht -- deren Prüfung erwartet, dass der RPC die ID schon meldet. Am 16.10.2026 war 19260930 frei; vorher erneut prüfen.
    - Nach den App- und Web-PRs einen Stichtag wählen und ankündigen: MetaMask-Nutzer müssen das Netz neu einrichten.
    - Den Ablauf beschreibt `docs/CHAIN_ID_WECHSEL.md`.
 11. **Sybil über das Gerätegeheimnis** (`ALLOW_DEVICE_SECRET_REGISTER`): Solange die Registrierung ohne Gesicht erlaubt ist, kann ein Mensch mit mehreren Geräten mehrfach registrieren. Entscheiden, ob die Beta das zulässt.
 12. **Trusted Setup:** Der Beweisschlüssel hat nur einen Beitrag. Eine Zeremonie mit mehreren unabhängigen Beiträgen vor echten Werten.
 13. **Server:** Workflow `server-haerten.yml` (Skript `deploy/server-haerten.sh`, Wächter `scripts/lint_server_haerten.py`). Erst mit `modus=pruefen` (Voreinstellung, nur lesen) den Bericht ansehen, dann mit `modus=anwenden` freigeben.
     - Root-Passwort und SSH nur mit Schlüssel: `anwenden` setzt ein sshd-Drop-in (kein Passwort-, kein Tastatur-Login, root nur mit Schlüssel). sshd wird nur neu geladen, und erst wenn `authorized_keys` einen Schlüssel enthält und `sshd -t` besteht. Das root-Passwort wird erst gesperrt, wenn ein neuer Schlüssel-Login danach klappt und sshd nur noch `publickey` anbietet. Danach nimmt auch die Konsole des Anbieters kein root-Passwort mehr; Notzugang über dessen Rettungssystem.
-    - Log-Rotation für alle Container (Docker `max-size`): `anwenden` ergänzt `/etc/docker/daemon.json` um `max-size 50m`, `max-file 5`. Docker und Container werden **nicht** neu gestartet. Die Grenze gilt erst für Container, die nach dem nächsten Start des Docker-Dienstes erstellt werden; den Zeitpunkt wählst du (Wartungsfenster). Der Bericht listet die Container, die noch ohne `max-size` laufen.
+    - **Erledigt am 17.10.2026 auf C1** (`anwenden`, Lauf 39032183542): SSH nur mit Schlüssel, root-Passwort gesperrt.
+    - Log-Rotation für alle Container (Docker `max-size`): `anwenden` hat `/etc/docker/daemon.json` um `max-size 50m`, `max-file 5` ergänzt; Docker wurde **nicht** neu gestartet. Die Container rotieren deshalb über ihre eigenen Optionen:
+      - `aequitas-node`, `aequitas-postgres`: schon über `deploy/validator/docker-compose.yml`.
+      - `proof-server`: über `proof-deploy.sh` ab jedem Deploy (proof-server #20, ausgerollt).
+      - `aequitas-caddy`: einmal `neuer-server-caddy.yml` mit `neu_anlegen=true` starten. Legt Caddy mit gleichen Volumes neu an (Zertifikate bleiben), wenige Sekunden ohne HTTPS, prüft danach alle öffentlichen Wege.
+      - Danach `server-haerten.yml` (`pruefen`): Der Bericht darf keinen Container ohne `max-size` mehr nennen.
     - Port 8080 nur hinter dem Proxy öffentlich: **bleibt deine Entscheidung.** Der Workflow schließt ihn nicht, er berichtet nur. Peers sprechen den Knoten direkt über `http://IP:8080` an (`SELF_URL`, `PRIMARY_NODE_URLS`; `deploy/neuer-server.sh` öffnet 8080 in ufw). Ihn zu schließen ist ein Netzwechsel: erst alle Peers auf die Proxy-Adresse umstellen. Von Docker veröffentlichte Ports umgehen ufw.
 
 ## 4. Schnell

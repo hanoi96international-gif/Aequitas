@@ -20,6 +20,28 @@ for k in http://127.0.0.1:8080 https://proof2.aequitas.digital; do
   fi
 done
 docker run --rm -v "$NEU":/etc/caddy/Caddyfile:ro caddy:2 caddy validate --config /etc/caddy/Caddyfile >/dev/null
+# Log-Rotation am Container selbst (Server-Haertung, Betreiber-Punkt 13): die
+# Vorgabe in daemon.json gilt erst nach einem Docker-Neustart, der alle
+# Container anhielte. NEU_ANLEGEN=1 legt einen laufenden aequitas-caddy
+# einmal neu an -- gleiche Volumes (Zertifikate bleiben), kurze Unterbrechung
+# von HTTPS. Ohne den Schalter bleibt es beim Nachladen.
+LOGS="--log-opt max-size=50m --log-opt max-file=5"
+case "${NEU_ANLEGEN:-0}" in 0|1) ;; *) echo "::error::NEU_ANLEGEN muss 0 oder 1 sein"; exit 1 ;; esac
+if [ "${NEU_ANLEGEN:-0}" = 1 ] && docker ps -a --format '{{.Names}}' | grep -qx aequitas-caddy; then
+  if [ "$(docker inspect -f '{{index .HostConfig.LogConfig.Config "max-size"}}' aequitas-caddy)" != "" ]; then
+    echo "  aequitas-caddy rotiert seine Logs schon -- nicht neu angelegt"
+  else
+    # Nur neu anlegen, wenn der Container genau so eingehaengt ist, wie ihn
+    # dieses Skript anlegt -- sonst gingen Zertifikate oder Konfiguration
+    # verloren.
+    MOUNTS=$(docker inspect -f '{{range .Mounts}}{{if .Name}}{{.Name}}{{else}}{{.Source}}{{end}}:{{.Destination}} {{end}}' aequitas-caddy)
+    for m in "$CF:/etc/caddy/Caddyfile" "caddy_data:/data" "caddy_config:/config"; do
+      case " $MOUNTS " in *" $m "*) ;; *) echo "::error::aequitas-caddy hat $m nicht ($MOUNTS) -- nicht neu angelegt"; exit 1 ;; esac
+    done
+    docker rm -f aequitas-caddy >/dev/null
+    echo "  aequitas-caddy wird mit Log-Rotation neu angelegt"
+  fi
+fi
 if docker ps -a --format '{{.Names}}' | grep -qx aequitas-caddy; then
   [ -f "$CF" ] && cp -a "$CF" "$CF.bak-$(date +%s)"
   # Inhalt ersetzen, Datei behalten: sie ist als Datei eingehaengt, ein neuer
@@ -28,7 +50,7 @@ if docker ps -a --format '{{.Names}}' | grep -qx aequitas-caddy; then
   docker exec aequitas-caddy caddy reload --config /etc/caddy/Caddyfile
 else
   cp "$NEU" "$CF"
-  docker run -d --name aequitas-caddy --restart unless-stopped \
+  docker run -d --name aequitas-caddy --restart unless-stopped $LOGS \
     --network aequitas-net -p 80:80 -p 443:443 \
     -v "$CF":/etc/caddy/Caddyfile:ro \
     -v caddy_data:/data -v caddy_config:/config -v caddy_logs:/var/log/caddy \
