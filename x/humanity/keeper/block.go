@@ -4358,6 +4358,22 @@ func (dag *BlockDAG) hasAwaitingOrphan(hash string) bool {
 // Datenbank schon kannte -- siehe AddPeerBlock.
 var altBekannt atomic.Int64
 
+// altInArbeit zaehlt Bloecke unter dem Speicherfenster, deren Kopf zwar in
+// chain_blocks lag, aber noch nicht nachgespielt war (blockAltBekannt) --
+// nicht als bekannt gemeldet.
+var altInArbeit atomic.Int64
+
+// blockAltBekannt: unter dem Speicherfenster und in chain_blocks. bekannt nur,
+// wenn nachgespielt; inArbeit, wenn der Kopf da, aber (noch) nicht
+// nachgespielt ist. Dieselbe Regel nutzt schonBekannt (sync_blocks.go).
+func (dag *BlockDAG) blockAltBekannt(b *Block) (bekannt, inArbeit bool) {
+	if b == nil || dag.state == nil || dag.state.db == nil || !dag.unterSpeicherfenster(b.Height) {
+		return false, false
+	}
+	da, nachgespielt := dag.state.blockNachgespieltInDB(b.Hash)
+	return da && nachgespielt, da && !nachgespielt
+}
+
 // unterSpeicherfenster: liegt die Hoehe unter dem, was der Speicher-DAG noch
 // haelt? Dann ist die Datenbank die einzige Stelle, an der der Block sein
 // kann -- und die einzige, an der er sein muss.
@@ -5194,9 +5210,20 @@ func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
 	// "fehlt" (der Stub ist nur im Speicher), und alle landeten als Waisen
 	// auf einem Vater, der nie kommt: 4.664 Waisen-Eintraege, 3.796 vergebliche
 	// Finalitaetslaeufe, Heap 92 MB -> 3,4 GB in 20 Minuten.
-	if dag.state != nil && dag.state.db != nil && dag.unterSpeicherfenster(block.Height) && dag.state.BlockExistsInDB(block.Hash) {
+	//
+	// Bekannt heisst NACHGESPIELT (blockAltBekannt): ein Kopf, den ein
+	// paralleler Aufruf gerade vor seinem Nachspielen angelegt hat, liegt
+	// schon in chain_blocks -- scheitert dessen Nachspielen, wird er wieder
+	// geloescht. Frueher meldete dieser Zweig solch einen Block als
+	// angenommen (true), Push-Antwort und Sync-Zaehlung inklusive. Jetzt:
+	// "nicht angenommen" -- der Absender bzw. der naechste Sync liefert ihn
+	// wieder, und dann ist er entweder nachgespielt oder weg.
+	if bekannt, inArbeit := dag.blockAltBekannt(block); bekannt {
 		altBekannt.Add(1)
 		return true
+	} else if inArbeit {
+		altInArbeit.Add(1)
+		return false
 	}
 	dag.prefetchParentsFromDB(block)
 	dag.prefetchMergeSetFromDB(block)

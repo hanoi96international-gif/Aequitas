@@ -4646,6 +4646,24 @@ func (cs *ChainState) HasBlockFromProposerAtHeight(proposer string, height int64
 // (not an error) if the hash genuinely doesn't exist, matching
 // GetBlockByHash's contract.
 // BlockExistsInDB: liegt der Block in chain_blocks? Eine Zeile, kein Rumpf.
+// blockNachgespieltInDB: liegt der Block in chain_blocks UND ist er
+// nachgespielt (replayed = true)? AddPeerBlock legt den Kopf VOR dem
+// Nachspielen mit replayed = false an und loescht ihn nach einem Fehlschlag
+// wieder; in diesem Fenster ist "in der Datenbank" kein Beleg, dass dieser
+// Knoten den Block hat. Ein Lesefehler gilt als nicht nachgespielt
+// (fail-closed: der Block wird nicht als bekannt durchgewunken).
+func (cs *ChainState) blockNachgespieltInDB(hash string) (da, nachgespielt bool) {
+	if cs.db == nil || hash == "" {
+		return false, false
+	}
+	cs.ensureReplayedColumn()
+	var r bool
+	if err := cs.db.QueryRow(`SELECT replayed FROM chain_blocks WHERE hash = $1`, hash).Scan(&r); err != nil {
+		return false, false
+	}
+	return true, r
+}
+
 func (cs *ChainState) BlockExistsInDB(hash string) bool {
 	if cs.db == nil || hash == "" {
 		return false
