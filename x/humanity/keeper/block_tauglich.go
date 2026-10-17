@@ -176,6 +176,11 @@ func auftragsFenster(tx *Transaction, jetzt int64) zeitFenster {
 		if tx.Type == "distribution_round_marker" && nachrechnenStreng(jetzt) {
 			f.eng(sattAdd(tx.DistributionAt, -600), sattAdd(tx.DistributionAt, 600))
 		}
+	case "ubi_distribution_finalize":
+		// nachrechnen.go (ubi_abschluss_zeit): wie die Rundenmarke.
+		if nachrechnenStreng(jetzt) {
+			f.eng(sattAdd(tx.DistributionAt, -600), sattAdd(tx.DistributionAt, 600))
+		}
 	}
 	return f
 }
@@ -248,6 +253,10 @@ func blockTauglich(tx *Transaction, blockZeit int64) error {
 		}
 		if d := tx.DistributionAt - blockZeit; nachrechnenStreng(blockZeit) && (d > 600 || d < -600) {
 			return fmt.Errorf("Rundenmarke %d, Block %d (strenger Modus)", tx.DistributionAt, blockZeit)
+		}
+	case "ubi_distribution_finalize":
+		if d := tx.DistributionAt - blockZeit; nachrechnenStreng(blockZeit) && (d > 600 || d < -600) {
+			return fmt.Errorf("UBI-Abschluss %d, Block %d (strenger Modus)", tx.DistributionAt, blockZeit)
 		}
 	}
 	return nil
