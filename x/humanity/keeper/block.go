@@ -8509,7 +8509,10 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			}
 			// Begrenzt (stateroot_beobachtung.go): neue Produzenten bekommen
 			// nur bis stateRootProduzentenMax einen Eintrag. Bestehende
-			// zaehlen immer weiter.
+			// zaehlen immer weiter. Vorher Eintraege raeumen, die kein Leser
+			// mehr zaehlt (aelter als das Fenster) -- sonst bliebe eine volle
+			// Map fuer immer voll (Pruefung von #383).
+			dag.stateRootAlteRaeumen(time.Now().Unix())
 			if stateRootZaehlerPlatz(dag.stateRootMismatches, block.Proposer) {
 				dag.stateRootMismatches[block.Proposer]++
 				dag.stateRootMismatchLastAt[block.Proposer] = time.Now().Unix()
@@ -8554,18 +8557,15 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			// Fall through: commit the individually-verified transactions.
 		} else {
 			dag.stateRootMismatchesMu.Lock()
-			// Nur vorhandene Eintraege nullen: ein fehlender zaehlt fuer
-			// jeden Leser wie 0, und ein Nullen legte sonst fuer JEDEN
-			// Produzenten mit passendem Root einen Eintrag an (unbegrenzt).
-			if _, da := dag.stateRootMismatches[block.Proposer]; da {
-				dag.stateRootMismatches[block.Proposer] = 0 // reset on match
-			}
-			if _, da := dag.stateRootEcht[block.Proposer]; da {
-				dag.stateRootEcht[block.Proposer] = 0
-			}
-			if _, da := dag.stateRootGeschwister[block.Proposer]; da {
-				dag.stateRootGeschwister[block.Proposer] = 0
-			}
+			// Reset on match: loeschen statt nullen. Ein fehlender Eintrag
+			// zaehlt fuer jeden Leser wie 0; ein stehengelassener 0-Eintrag
+			// belegte dagegen fuer immer einen der stateRootProduzentenMax
+			// Plaetze (Pruefung von #383), und ein Nullen legte frueher fuer
+			// JEDEN Produzenten mit passendem Root einen an.
+			delete(dag.stateRootMismatches, block.Proposer)
+			delete(dag.stateRootMismatchLastAt, block.Proposer)
+			delete(dag.stateRootEcht, block.Proposer)
+			delete(dag.stateRootGeschwister, block.Proposer)
 			delete(dag.stateRootEchtLastAt, block.Proposer)
 			dag.stateRootMismatchesMu.Unlock()
 			dag.srBeobachtung.erfasse(block.Proposer, block.Height, true, false, "", "", 0)

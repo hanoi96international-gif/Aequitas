@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 )
 
 // Missbrauchstests zu stateroot_beobachtung.go: ein Produzent mit gefaelschtem
@@ -220,5 +221,74 @@ func TestStateRootBeobachtung_NebenlaeufigLesenUndSchreiben(t *testing.T) {
 	defer o.mu.Unlock()
 	if len(o.je) != stateRootProduzentenMax {
 		t.Fatalf("%d Eintraege, erwartet %d", len(o.je), stateRootProduzentenMax)
+	}
+}
+
+// MISSBRAUCH (Pruefung von #383): 64 Produzenten weichen je einmal ab und
+// passen danach wieder. Ein NEUER Produzent, der danach dauerhaft abweicht,
+// muss in den Signalen (echt/gesamt, [ALERT], Selbstheilung) zaehlen --
+// stehengelassene 0-Eintraege durften die Plaetze nicht fuer immer belegen.
+func TestStateRootBeobachtung_VolleMapsVerdeckenKeinenNeuenAbweichler(t *testing.T) {
+	dag, cs := ruhigerKnoten(t)
+	falsch := strings.Repeat("cd", 32)
+	richtig := func() string {
+		cs.mu.Lock()
+		defer cs.mu.Unlock()
+		return cs.stateRootLocked(cs.getConfigValue("last_ubi_at"), cs.getConfigValue(letzterCheckpointSchluessel))
+	}
+	h := 0
+	for i := 0; i < stateRootProduzentenMax; i++ {
+		p := fmt.Sprintf("0x%040x", 5000+i)
+		h++
+		dag.replayTransactions(srBlock(h, p, falsch), true)
+		h++
+		dag.replayTransactions(srBlock(h, p, richtig()), true)
+	}
+	neu := fmt.Sprintf("0x%040x", 9999)
+	for i := 0; i < 20; i++ {
+		h++
+		dag.replayTransactions(srBlock(h, neu, falsch), true)
+	}
+	if e, g := dag.EchteStateRootAbweichungen(), dag.TotalStateRootMismatches(); e != 20 || g != 20 {
+		t.Fatalf("neuer Abweichler nach 64 erholten Produzenten: echt=%d gesamt=%d, erwartet 20/20", e, g)
+	}
+}
+
+// MISSBRAUCH: 64 Produzenten weichen ab und hoeren dann auf (Eintraege
+// werden alt). Ein neuer Abweichler bekommt trotzdem einen Platz -- alte
+// Eintraege zaehlt kein Leser mehr, sie werden bei voller Map geraeumt.
+// Gegenprobe: solange die 64 frisch sind, bleibt die Grenze hart.
+func TestStateRootBeobachtung_AlteEintraegeMachenPlatz(t *testing.T) {
+	dag, _ := ruhigerKnoten(t)
+	falsch := strings.Repeat("ef", 32)
+	for i := 0; i < stateRootProduzentenMax; i++ {
+		dag.replayTransactions(srBlock(i+1, fmt.Sprintf("0x%040x", 7000+i), falsch), true)
+	}
+	neu := fmt.Sprintf("0x%040x", 8888)
+	// Gegenprobe: alle 64 frisch -> kein Platz, Grenze haelt.
+	dag.replayTransactions(srBlock(100, neu, falsch), true)
+	dag.stateRootMismatchesMu.Lock()
+	_, drin := dag.stateRootEcht[neu]
+	n := len(dag.stateRootEcht)
+	// Die 64 altern: Zeitmarken vor das Fenster legen.
+	alt := time.Now().Add(-2 * stateRootMismatchActiveWindow).Unix()
+	for p := range dag.stateRootMismatchLastAt {
+		dag.stateRootMismatchLastAt[p] = alt
+	}
+	for p := range dag.stateRootEchtLastAt {
+		dag.stateRootEchtLastAt[p] = alt
+	}
+	dag.stateRootMismatchesMu.Unlock()
+	if drin || n > stateRootProduzentenMax {
+		t.Fatalf("Grenze bei frischen Eintraegen nicht hart: drin=%v n=%d", drin, n)
+	}
+	dag.replayTransactions(srBlock(101, neu, falsch), true)
+	if e := dag.EchteStateRootAbweichungen(); e != 1 {
+		t.Fatalf("neuer Abweichler nach gealterten Eintraegen nicht gezaehlt: echt=%d", e)
+	}
+	dag.stateRootMismatchesMu.Lock()
+	defer dag.stateRootMismatchesMu.Unlock()
+	if len(dag.stateRootEcht) > stateRootProduzentenMax || len(dag.stateRootMismatches) > stateRootProduzentenMax {
+		t.Fatalf("Grenze ueberschritten: %d/%d", len(dag.stateRootEcht), len(dag.stateRootMismatches))
 	}
 }

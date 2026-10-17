@@ -4,6 +4,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 )
 
 // STATEROOT-ABWEICHUNGEN JE PRODUZENT -- sichtbar statt nur im Log.
@@ -186,4 +187,37 @@ func stateRootZaehlerPlatz(m map[string]int, k string) bool {
 		return true
 	}
 	return len(m) < stateRootProduzentenMax
+}
+
+// stateRootAlteRaeumen: Eintraege, deren letzte Abweichung aelter als
+// stateRootMismatchActiveWindow ist, zaehlt kein Leser mehr
+// (TotalStateRootMismatches, EchteStateRootAbweichungen). Sie werden
+// geloescht, sobald eine Map voll ist -- so konkurrieren um die Plaetze nur
+// Produzenten, die gerade abweichen, und ein Produzent, der neu abweicht,
+// wird gezaehlt, auch wenn frueher schon 64 andere abgewichen sind.
+// Aufrufer haelt stateRootMismatchesMu.
+func (dag *BlockDAG) stateRootAlteRaeumen(jetzt int64) {
+	if len(dag.stateRootMismatches) < stateRootProduzentenMax &&
+		len(dag.stateRootGeschwister) < stateRootProduzentenMax &&
+		len(dag.stateRootEcht) < stateRootProduzentenMax {
+		return
+	}
+	cutoff := jetzt - int64(stateRootMismatchActiveWindow/time.Second)
+	for p := range dag.stateRootMismatches {
+		if dag.stateRootMismatchLastAt[p] < cutoff {
+			delete(dag.stateRootMismatches, p)
+			delete(dag.stateRootMismatchLastAt, p)
+		}
+	}
+	for p := range dag.stateRootGeschwister {
+		if dag.stateRootMismatchLastAt[p] < cutoff {
+			delete(dag.stateRootGeschwister, p)
+		}
+	}
+	for p := range dag.stateRootEcht {
+		if dag.stateRootEchtLastAt[p] < cutoff {
+			delete(dag.stateRootEcht, p)
+			delete(dag.stateRootEchtLastAt, p)
+		}
+	}
 }
