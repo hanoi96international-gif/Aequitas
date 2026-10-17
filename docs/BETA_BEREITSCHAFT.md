@@ -1,4 +1,4 @@
-# Beta-Bereitschaft — Prüfung vom 14.10.2026, Stand 16.10.2026
+# Beta-Bereitschaft — Prüfung vom 14.10.2026, Stand 17.10.2026
 
 Geprüft wurden alle vier Repos: Kette, App, Biometrie und Proof-Server. Die
 Fragen waren: funktioniert es, ist es sicher, ist es schnell, und ist der Weg
@@ -45,6 +45,13 @@ jeweiligen PR.
 | Ahnen-Leerlauf: Netzfehler zählten als leere Runde, der Zähler galt prozessweit für alle Peers, und ein selbst eingetragener Peer konnte mit leeren Antworten Resync samt Neustart auslösen. Jetzt nur vollständige Antworten, je Peer und je Knoten; heilen nur, wenn ein eingetragener Seed die Historie nicht liefert. | MITTEL | Aequitas #380 |
 | Push-Plätze: Wer einen der 8 Plätze belegt, muss mit mindestens 32 KiB/s senden (nach 5 s Anlauf), und kein Push hält einen Platz länger als 10 s; nach dem Rumpf liegt keine Frist mehr auf der Verbindung (sonst brach net/http den Kontext folgender Keep-Alive-Anfragen ab). Vorher hielt nur die ReadTimeout von 30 s einen tropfenden Push, und vier Adressen belegten alle Plätze. Der Abbruch zählt im Flutschutz je /64. | MITTEL | Aequitas #381 |
 | App: Abfragen ruhen im Hintergrund und bei unsichtbarem Tab, laufen nie parallel, verlängern die Pause bei Fehlschlägen bis 2 min und zeigen einen Offline-Hinweis (vorher `setInterval` ohne Rücksicht auf Knoten und Akku). | NIEDRIG | Aequitas-App #33 |
+| Biometrie- und Proof-Datenbanken: nächtlich auf C1 gesichert, auf der Box mit `age` an einen öffentlichen Schlüssel verschlüsselt, nur die `.age`-Datei verlässt die Box (Rückspielprobe, Host-Schlüssel nur ed25519, Image per Digest). Aktiv, sobald `BIO_BACKUP_AGE_RECIPIENT` gesetzt ist. | MITTEL | Aequitas #382 |
+| StateRoot-Abweichungen je Produzent sichtbar (`/api/health/combined` → `stateroot_je_produzent`), alle Zähler auf 64 Produzenten begrenzt; volle Maps verdecken keinen neuen Abweichler. Konsens unverändert (Begründung im PR). | MITTEL | Aequitas #383 |
+| `checkpointVorschau` sucht ohne `dag.mu`, mit Nachprüfung danach (fail-closed: kein Block in diesem Takt). Rest: `replayMu` bleibt bis 3 s gehalten. | MITTEL | Aequitas #384 |
+| Vier-Knoten-Test um Snapshot-Resync, Snapshot-Fälschungen und Trusted Seeds erweitert. Gefunden und behoben: ein Elternblock wurde Spitze, obwohl schon ein Kind auf ihm stand (abweichende Spitzen, zusätzlicher tiefer Elternteil im nächsten Block). Snapshot-Import verlangt immer einen Unterzeichner. | HOCH | Aequitas #385 |
+| Resync holt und prüft den Snapshot vor dem Tor (vorher war der Knoten über den ganzen Abruf, bis zu Minuten bei Drosselung, taub); nur der Austausch ist gesperrt, höchstens einer zugleich, wartet laufende Blockdurchgänge ab. Tote Zweige unter der Finalität werden nicht mehr als Spitzen gemeldet. Ein Block gilt erst als „bekannt“, wenn er nachgespielt ist. | MITTEL | Aequitas #386 |
+| Biometrie-Coordinator mit #57/#58 auf C1 ausgerollt (16.10.2026); Sandbox vorher im Container als root geprüft. Schlüssel und Einzelbetrieb unverändert. | – | biometric deploy |
+| Alte Actions-Logs geprüft: kein Lauf zeigt einen privaten Schlüssel im Klartext; der Ausgabeweg ist seit #353 geschlossen. Kein Schlüsseltausch nötig. | – | – |
 
 **In Prüfung (15.10.2026):**
 
@@ -56,15 +63,15 @@ jeweiligen PR.
 
 | Befund | Schwere | Anmerkung |
 |---|---|---|
-| StateRoot-Abweichung wird nur geloggt, der Block angenommen. Im DAG mit mehreren Produzenten ergeben Geschwister immer verschiedene Roots, ein hartes Abweisen hielte den Sync an. | MITTEL | tragbar nur bei geschlossener Produzentenliste. Abweisen ist auch im scheinbar eindeutigen Fall (ein Elternblock, Knoten ruht) nicht sicher: der Root enthaelt die angenommenen, noch nicht verblockten Ueberweisungen des Produzenten. Sichtbar je Produzent in `/api/health/combined` → `stateroot_je_produzent` (begrenzt auf 64), siehe `stateroot_beobachtung.go` |
-| FromSync-Ausnahmen (Sperre, Finalität) über Seed-Verbindungen ohne TLS | MITTEL | schlafender Stichtag im Code (`fromsync_stichtag.go`); einschalten per PR nach `docs/FROMSYNC_STICHTAG.md` |
-| Keine echten Tests mit 4 oder mehr Knoten (Simulationen gibt es) | HOCH | weitgehend: `TestVierKnoten_RealDB` (4 Instanzen, eigene Datenbanken, HTTP-Push/-Sync, Leitung, Ausfall und Rueckkehr samt Snapshot-Resync des ueberholten Leiters, Faelschungen, Trusted Seeds/FromSync, Snapshot-Faelschungen, Rueckkehr nach geloeschter Datenbank ueber den Snapshot). Nicht abgedeckt: libp2p; paketweite Zaehler (Push-Plaetze) teilen sich die Instanzen -- siehe Dateikoepfe |
-| `checkpointVorschau` hielt `dag.mu` (bis über 5 s je Checkpoint-Block). Behoben: die Suche läuft ohne `dag.mu` (`checkpointVorschauOhneDAGSperre`), danach Nachprüfung unter `dag.mu` (Resync, degradiert, Verteilung, Eltern, letzter Checkpoint) – bei jeder Änderung kein Block in diesem Takt. Rest: `replayMu` bleibt bis zur Frist (3 s) gehalten, das Nachspielen fremder Blöcke wartet so lange | NIEDRIG | erst ab dem Checkpoint-Stichtag; Branch `wt-checkpoint` |
-| Snapshot und Autoheal vertrauen C1 | MITTEL | erst mit mehreren Unterzeichnern lösbar |
-| App: bio/salt gehen an den Knoten, den die App gerade nutzt | MITTEL | durch „nur https“ entschärft |
-| Proof-Server: ein `console.warn` je abgewiesener Anfrage | NIEDRIG | |
-| Videozerlegung ohne Sandbox; 160 MiB Upload | MITTEL | |
+| StateRoot-Abweichung wird nur angezeigt, der Block angenommen. | MITTEL | Abweisen ist auch im scheinbar eindeutigen Fall nicht sicher: der Root enthält die angenommenen, noch nicht verblockten Überweisungen des Produzenten. Lösbar nur per Konsensänderung (Root aus angewandten Blöcken, `KONSENS_UND_AUSFUEHRUNG_2026.md`). Sichtbar je Produzent seit #383. |
+| FromSync-Ausnahmen (Sperre, Finalität) über Seed-Verbindungen ohne TLS | MITTEL | Code fertig und schlafend (`fromsync_stichtag.go`). Einschalten ist eine Betreiber-Entscheidung (Konsenswechsel), siehe Abschnitt 3 und `docs/FROMSYNC_STICHTAG.md`. |
+| Tests mit vier Knoten: libp2p nicht abgedeckt | NIEDRIG | `Start()` wählt sich bei öffentlichen Bootstrap-Knoten ein; ein geschlossenes libp2p-Netz bräuchte Bootstrap-Konfiguration im Produktionscode. Paketweite Zähler teilen sich die Instanzen im Prozess. |
+| Snapshot und Autoheal vertrauen C1 | MITTEL | erst mit mehreren Unterzeichnern lösbar (zweiter Validator) |
 | Deepfake-Schutz schwach | HOCH | Forschung, kein schneller Fix |
+
+Geklärt ohne Code: **App bio/salt** gehen nur an die beim Bau festgelegten
+https-Adressen des Projekts (`API_BASE`, `API_FALLBACKS`) -- beides eigene
+Knoten; „nur https“ verhindert den Abstieg.
 
 ## 3. Nur der Betreiber
 
@@ -77,27 +84,24 @@ Reihenfolge, in der sie gemacht werden sollten.
    - Erst dann wirkt die Sperre aus biometric #46 und proof-server #12.
    - Bei einem privaten Repo im Free-Plan gibt es keine Schutzregeln.
    - Achtung: Der Proof-Server-Deploy nach einem Merge wartet dann auf eine Freigabe.
-2. **Alte Logs:**
-   - Actions-Läufe löschen, die den ersten Start eines Knotens geloggt haben, denn sie können Schlüssel enthalten.
-   - Ist ein noch genutzter Schlüssel betroffen, ihn tauschen.
+2. **Alte Logs:** geprüft am 17.10.2026 -- kein Actions-Lauf zeigt einen privaten Schlüssel im Klartext, kein Tausch nötig. Nicht geprüft: Logs vor dem 18.07.2026, Railway-Logs und `docker logs` auf den Boxen.
 3. **Vor dem nächsten Vergleichsdienst-Deploy:** Der Workflow prüft jetzt selbst, ob der Coordinator-Schlüssel in `COORDINATOR_PUBLIC_KEYS` steht, und bricht sonst ab. Fehlt er, den Schlüssel in `vergleichsdienst-neuer-c1.yml` eintragen.
-4. **Externe Überwachung:**
-   - Ein Dienst außerhalb von C1 fragt `/api/status` (Höhe steigt), `/matching/health` und `/health` des Proof-Servers ab und alarmiert.
-   - Heute merkt niemand einen Ausfall von außen.
-5. **Sicherung außerhalb der Box:** Die Biometrie- und Proof-Datenbanken liegen nur auf C1. Täglich verschlüsselt auf einen zweiten Ort sichern und das Zurückspielen einmal üben (DR-Runbook). Workflow und Skript stehen bereit; offen sind das Secret `BIO_BACKUP_AGE_RECIPIENT` und die Übung (`docs/BIOMETRIE_SICHERUNG.md`).
+4. **Externe Überwachung:** Es gibt sie: `wache.yml` prüft von GitHub aus Höhe, Gleichstand, Proof-Server, Vergleichsdienst, Coordinator-Quorum und Backup-Alter und schickt bei Rot eine E-Mail; der `wachhund` auf der Box meldet alle 5 min über Telegram/ntfy. Lücke: GitHub führt den 10-min-Zeitplan nur etwa alle 4 h aus. Für Minuten-Alarm einen externen Uptime-Dienst auf `https://aequitas.digital/api/wache` setzen (antwortet bei Rot mit 503).
+5. **Sicherung außerhalb der Box:** Die Biometrie- und Proof-Datenbanken liegen nur auf C1. Täglich verschlüsselt auf einen zweiten Ort sichern und das Zurückspielen einmal üben (DR-Runbook). Workflow und Skript sind gemergt (#382); offen sind das Secret `BIO_BACKUP_AGE_RECIPIENT` und die Übung (`docs/BIOMETRIE_SICHERUNG.md`).
 6. **Mehr Validatoren** (`docs/VALIDATOREN_HINZUFUEGEN.md`):
    - Server und Betreiber kommen von dir.
    - Erst ab drei Validatoren wählt die Leitung bei Ausfall selbst einen neuen Leiter.
    - Erst ab vier bestätigen Checkpoints etwas.
 7. **Strenges Nachrechnen** (`nachrechnenStrengAbUnix`): Sobald `/api/wirtschaft/regeln` über längere Zeit null Abweichungen zeigt, den Stichtag per PR setzen, **bevor** ein zweiter unabhängiger Produzent zugelassen wird. Ohne ihn könnte ein fremder Produzent Geld erzeugen.
-8. **Checkpoint-Stichtag** (`checkpointTxAbUnix`): erst mit vier oder mehr Validatoren, nach dem Abschnitt „Einschalten“ in `CHECKPOINT_FAHRPLAN.md`.
-9. **Chain-ID-Wechsel** (entschieden: neue Chain-ID 19260930):
+8. **FromSync-Stichtag** (`fromSyncStrengAbUnix`): Code fertig und schlafend. Solange C1 der einzige Validator ist, reicht ein Vorlauf von etwa 2 h (C1 rollt mit dem Merge selbst aus); mit weiteren Validatoren mindestens 48 h. Ablauf, Rücknahme und Restrisiken: `docs/FROMSYNC_STICHTAG.md`. Einschalten ist ein Konsenswechsel und braucht deine ausdrückliche Freigabe.
+9. **Checkpoint-Stichtag** (`checkpointTxAbUnix`): erst mit vier oder mehr Validatoren, nach dem Abschnitt „Einschalten“ in `CHECKPOINT_FAHRPLAN.md`.
+10. **Chain-ID-Wechsel** (entschieden: neue Chain-ID 19260930):
    - In ethereum-lists/chains prüfen, ob die ID frei ist, und sie dort eintragen.
    - Nach den App- und Web-PRs einen Stichtag wählen und ankündigen: MetaMask-Nutzer müssen das Netz neu einrichten.
    - Den Ablauf beschreibt `docs/CHAIN_ID_WECHSEL.md`.
-10. **Sybil über das Gerätegeheimnis** (`ALLOW_DEVICE_SECRET_REGISTER`): Solange die Registrierung ohne Gesicht erlaubt ist, kann ein Mensch mit mehreren Geräten mehrfach registrieren. Entscheiden, ob die Beta das zulässt.
-11. **Trusted Setup:** Der Beweisschlüssel hat nur einen Beitrag. Eine Zeremonie mit mehreren unabhängigen Beiträgen vor echten Werten.
-12. **Server:**
+11. **Sybil über das Gerätegeheimnis** (`ALLOW_DEVICE_SECRET_REGISTER`): Solange die Registrierung ohne Gesicht erlaubt ist, kann ein Mensch mit mehreren Geräten mehrfach registrieren. Entscheiden, ob die Beta das zulässt.
+12. **Trusted Setup:** Der Beweisschlüssel hat nur einen Beitrag. Eine Zeremonie mit mehreren unabhängigen Beiträgen vor echten Werten.
+13. **Server:**
     - Port 8080 nur hinter dem Proxy öffentlich.
     - Log-Rotation für alle Container (Docker `max-size`).
     - Root-Passwort und SSH nur mit Schlüssel.
