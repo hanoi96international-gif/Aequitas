@@ -32,7 +32,8 @@ import (
 //
 // Jeder Knoten ist so gebaut wie in cmd/aequitasd/main.go:
 //
-//	NewChainState (eigene Postgres-Datenbank aeq_vier_N)
+//	NewChainState (eigene Postgres-Datenbank aeq_vier_N; Praefix per
+//	AEQUITAS_VIER_DB_PRAEFIX, damit parallele Laeufe sich nicht stoeren)
 //	NewBlockchain (eigener RELAYER_PRIVATE_KEY, gemeinsame AUTHORIZED_VALIDATORS)
 //	LoadValidatorKeysIntoDAG, AnnahmeMessungBeginnen
 //	NewAPIServer + serverKette(buildMux()) auf einem echten HTTP-Server
@@ -94,15 +95,31 @@ import (
 //     Stand eines anderen. Der Test nimmt nur frisch gebaute Antworten.
 //   - zustand_ablehnung.go:72, annahme_tor.go:100: reine Zaehler.
 //
+// SEIT 16.10.2026 ABGEDECKT (vier_knoten_snapshot_seeds_test.go):
+//   - Snapshot-Resync ueber Loopback: ein geloeschter Knoten kommt ueber
+//     dag.PerformResync (der Weg von leitungUeberholt und der Selbstheilung)
+//     und das echte /api/snapshot zurueck. Der Abruf waehlt ueber
+//     snapshotDialLokal (snapshot.go) statt pinningDialer -- wie
+//     leitungDialLokal; jede Pruefung am Snapshot bleibt, und die Faelschungen
+//     (fremder Unterzeichner, veraendert, ohne Signatur, veraltet, ohne
+//     erwarteten Unterzeichner) laufen gegen einen echten Knoten.
+//   - Trusted Seeds: in den uebrigen Faellen bewusst keine (FromSync greift
+//     nie, jeder Block durchlaeuft jede Pruefung). Eigener Fall: ein Knoten
+//     traegt per PEER_NODES einen Peer als Seed ein (trustedSeedsSetzen wie
+//     StartPeerDiscovery), ein anderer nicht; nur beim ersten ist dessen Block
+//     FromSync.
+//
 // NICHT ABGEDECKT:
-//   - Snapshot-Resync: ein zurueckkehrender Ex-Leiter will den Zustand vom
-//     neuen Leiter neu holen (leitung_netz.go:532), der Snapshot-Abruf geht
-//     ueber pinningDialer und scheitert an Loopback (sync_blocks.go:205). Der
-//     Knoten zieht im Test ueber Push und Sync nach, nicht ueber den Snapshot.
 //   - libp2p-Gossip (p2p.go): die P2P-Knoten laufen ohne Start(), Bloecke
-//     gehen nur ueber HTTP.
-//   - Trusted Seeds (PRIMARY_NODE_URL): bewusst keine, damit FromSync nie
-//     greift und jeder Block jede Pruefung durchlaeuft.
+//     gehen nur ueber HTTP. Start() waehlt sich bei den oeffentlichen
+//     Bootstrap-Knoten ein (Netz nach aussen, nicht deterministisch); ein
+//     abgeschlossenes libp2p-Netz aus vier Knoten braeuchte eigene
+//     Bootstrap-Konfiguration im Produktionscode.
+//
+// Seit snapshotDialLokal laeuft auch in LeiterFaelltAusUndZiehtNach der echte
+// Weg: der zurueckkehrende Ex-Leiter merkt "Leitung verloren, ohne sie zu
+// uebergeben" (leitungUeberholt) und holt den Zustand per Snapshot vom neuen
+// Leiter (im Log: "Zustand vom neuen Leiter uebernommen").
 //   - Echte Prozessneustarts: "Neustart" heisst neue Instanz aus derselben
 //     Datenbank; Hintergrundarbeiter der alten Instanz laufen gegen eine
 //     geschlossene Datenbank aus (wie bei testKnoten).
@@ -127,6 +144,17 @@ func TestVierKnoten_RealDB(t *testing.T) {
 
 	// (b) Der Leiter faellt aus: die anderen machen weiter, er zieht nach.
 	t.Run("LeiterFaelltAusUndZiehtNach", func(t *testing.T) { netz.leiterAusfall(t) })
+
+	// (e) Trusted Seeds: FromSync nur fuer eingetragene Seeds
+	// (vier_knoten_snapshot_seeds_test.go).
+	t.Run("TrustedSeedsFromSync", func(t *testing.T) { netz.trustedSeedsFromSync(t) })
+
+	// (f) Snapshot-Faelschungen: jede Pruefung von fetchAndValidateSnapshot /
+	// ResyncFromSnapshotURL gegen einen echten Knoten.
+	t.Run("SnapshotMissbrauch", func(t *testing.T) { netz.snapshotMissbrauch(t) })
+
+	// (g) Datenbank weg: Rueckkehr ueber den echten Snapshot-Weg.
+	t.Run("SnapshotResyncNachLoeschung", func(t *testing.T) { netz.snapshotResyncNachLoeschung(t) })
 }
 
 // ------------------------------------------------------------- Aufbau
@@ -134,11 +162,12 @@ func TestVierKnoten_RealDB(t *testing.T) {
 const vierKnotenAnzahl = 4
 
 type vierKnoten struct {
-	i     int
-	key   *ecdsa.PrivateKey
-	addr  string
-	dbURL string
-	srv   *httptest.Server
+	i      int
+	key    *ecdsa.PrivateKey
+	addr   string
+	dbURL  string
+	dbName string
+	srv    *httptest.Server
 
 	handler atomic.Pointer[http.Handler]
 	aus     atomic.Bool // ausgefallen: kein HTTP, kein Takt
@@ -190,7 +219,28 @@ func vierDBURL(t *testing.T, dbname string) string {
 	return u.String()
 }
 
-// vierDatenbankFrisch legt aeq_vier_N leer neu an und das Schema hinein.
+// vierDBPraefix: Praefix der Knoten-Datenbanken, Vorgabe "aeq_vier_".
+// AEQUITAS_VIER_DB_PRAEFIX setzt einen eigenen, damit zwei Laeufe auf
+// derselben Postgres-Instanz einander nicht die Datenbanken loeschen. Der
+// Name geht ungequotet in DROP/CREATE DATABASE -- darum nur [a-z0-9_].
+func vierDBPraefix(t *testing.T) string {
+	t.Helper()
+	p := os.Getenv("AEQUITAS_VIER_DB_PRAEFIX")
+	if p == "" {
+		return "aeq_vier_"
+	}
+	if len(p) > 40 || !(p[0] >= 'a' && p[0] <= 'z' || p[0] == '_') {
+		t.Fatalf("AEQUITAS_VIER_DB_PRAEFIX %q: nur [a-z_][a-z0-9_]*, hoechstens 40 Zeichen", p)
+	}
+	for _, c := range p {
+		if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '_') {
+			t.Fatalf("AEQUITAS_VIER_DB_PRAEFIX %q: nur [a-z_][a-z0-9_]*, hoechstens 40 Zeichen", p)
+		}
+	}
+	return p
+}
+
+// vierDatenbankFrisch legt <praefix>N leer neu an und das Schema hinein.
 func vierDatenbankFrisch(t *testing.T, name string) string {
 	t.Helper()
 	admin, err := sql.Open("postgres", vierDBURL(t, "postgres"))
@@ -236,6 +286,7 @@ func genesisKonten(t *testing.T, dbURL string, adressen []string, guthaben float
 func neuesVierKnotenNetz(t *testing.T) *vierKnotenNetz {
 	t.Helper()
 	netz := &vierKnotenNetz{t: t, ende: make(chan struct{})}
+	praefix := vierDBPraefix(t)
 
 	// Die Regeln des Betriebs, nicht die des TestMain: signierte Ueberweisungen
 	// und Wirtschaftsregeln nach ihren echten Stichtagen (0 = Konstante gilt).
@@ -254,6 +305,10 @@ func neuesVierKnotenNetz(t *testing.T) *vierKnotenNetz {
 	txBatchClient = httpSyncClient
 	altDial := leitungDialLokal.Load() // leitung_dial_test.go setzt es per init()
 	leitungDialLokal.Store(true)
+	// Snapshot-Abruf und Checkpoint-Bloecke beim Resync (snapshot.go,
+	// snapshotDial) ebenso -- nur die Wahl der Zieladresse, keine Pruefung.
+	altSnapDial := snapshotDialLokal.Load()
+	snapshotDialLokal.Store(true)
 	echtTakt := leitungTaktStarten
 
 	// Schluessel: vier Validatoren, sortiert -- die kleinste Adresse leitet
@@ -318,7 +373,8 @@ func neuesVierKnotenNetz(t *testing.T) *vierKnotenNetz {
 		k.srv.Listener.Close()
 		k.srv.Listener = ln
 		k.srv.Start()
-		k.dbURL = vierDatenbankFrisch(t, fmt.Sprintf("aeq_vier_%d", i))
+		k.dbName = fmt.Sprintf("%s%d", praefix, i)
+		k.dbURL = vierDatenbankFrisch(t, k.dbName)
 		genesisKonten(t, k.dbURL, genesis, 1000)
 		satz = append(satz, k.addr+"="+k.srv.URL)
 		validatoren = append(validatoren, k.addr)
@@ -376,6 +432,7 @@ func neuesVierKnotenNetz(t *testing.T) *vierKnotenNetz {
 		leitungTaktStarten = echtTakt
 		httpSyncClient, txBatchClient = echtSync, echtBatch
 		leitungDialLokal.Store(altDial)
+		snapshotDialLokal.Store(altSnapDial)
 		leistung.mu.Lock()
 		leistung.zwang = altZwang
 		leistung.mu.Unlock()
