@@ -897,7 +897,10 @@ func main() {
 			berlin = time.FixedZone("CET", 2*60*60) // CEST fallback (summer, UTC+2)
 		}
 
-		lastAt := chainState.GetLastUBIAt()
+		// Die letzte AUSGEFUEHRTE Runde, nicht last_ubi_at: das rueckt nur bei
+		// einer Auszahlung vor, und mit leeren Toepfen galt sonst jede Runde
+		// nach jedem Neustart als ueberfaellig (verteilung_zeitplan.go).
+		lastAt := chainState.LetzteVerteilungsrunde()
 		firstTarget := computeFirstUBITarget(lastAt, time.Now(), berlin)
 
 		firstDelay := time.Until(firstTarget)
@@ -932,6 +935,14 @@ func main() {
 			// node's uptime (worse than a crash: nothing else would notice).
 			keeper.SafeCall("daily-distribution-round", func() {
 				retrySoon := false
+				// ubiAt ist die DistributionAt der Runde. Gesetzt erst unter
+				// der Produktionspause, nach dem Warten auf dag.mu: so liegt
+				// sie nahe an der Blockzeit, und RunDailyDistributionAtomic
+				// prueft genau diesen Wert unter cs.mu noch einmal gegen den
+				// Mindestabstand (verteilung_zeitplan.go). Die Pruefung hier
+				// davor ist nur die Vorauswahl fuer den Zeitplan.
+				var ubiAt int64
+				var abstandZiel time.Time
 				if os.Getenv("DISTRIBUTION_ENABLED") == "false" {
 					fmt.Println("[POOLS] Distribution disabled on this node (DISTRIBUTION_ENABLED=false)")
 					keeper.RecordDistributionOutcome("skipped", "DISTRIBUTION_ENABLED=false on this node")
@@ -979,6 +990,32 @@ func main() {
 					fmt.Printf("[POOLS] Verteilung nicht hier: %s — erneute Pruefung in %s\n", grund, distributionHealthRetryInterval)
 					keeper.RecordDistributionOutcome("skipped", grund)
 					retrySoon = true
+				} else if grund, pruefbar := func() (string, bool) {
+					// Mindestabstand (Erzeuger): jeder nachspielende Knoten
+					// verwirft eine Runde < 24 h nach seiner letzten Marke
+					// (distributionRoundToSkip). Fail-closed: Marken nicht
+					// lesbar -> keine Runde in diesem Takt.
+					frei, err := chainState.VerteilungAbstandFreiAb()
+					if err != nil {
+						// Fehlertext nur ins Log: der Grund steht oeffentlich
+						// in /api/health/combined.
+						fmt.Printf("[POOLS] Mindestabstand nicht pruefbar: %v\n", err)
+						return "Mindestabstand nicht pruefbar, keine Runde (Details im Knotenlog)", false
+					}
+					if keeper.VerteilAbstandErlaubt(time.Now().Unix(), frei) {
+						return "", true
+					}
+					if t, ok := keeper.VerteilAbstandWiederholung(frei, time.Now(), berlin); ok {
+						abstandZiel = t
+					}
+					return fmt.Sprintf("Mindestabstand: die letzte Runde liegt noch keine 24 h zurueck (frei ab %s)",
+						time.Unix(frei, 0).In(berlin).Format("02.01. 15:04:05")), true
+				}(); grund != "" {
+					fmt.Printf("[POOLS] Verteilung jetzt nicht: %s\n", grund)
+					keeper.RecordDistributionOutcome("skipped", grund)
+					if !pruefbar {
+						retrySoon = true
+					}
 				} else if chainState.TryLockDistribution() {
 					// FIX (audit3, P0 #3): the entire distribution round — UBI, validator
 					// pool, LP pool, escrow move/release, AND every resulting outbox TX —
@@ -996,28 +1033,35 @@ func main() {
 					// tip/parent selection during this window, not just the cs.mu-guarded
 					// part RunDailyDistributionAtomic itself already serializes against).
 					bc.WithBlockProductionPaused(func() {
-						ubiAt := time.Now().Unix()
+						ubiAt = time.Now().Unix()
 						if err := chainState.RunDailyDistributionAtomic(ubiAt); err != nil {
 							fmt.Printf("[POOLS] ✗ Distribution FAILED and was fully rolled back: %v\n", err)
 							keeper.RecordDistributionOutcome("failed", err.Error())
 							return
 						}
 						fmt.Printf("[POOLS] ✓ Distribution done at %s\n", time.Now().In(berlin).Format("02.01. 15:04:05"))
-						keeper.RecordDistributionOutcome("ran", "round executed; whether it paid anything depends on pool balances")
+						keeper.RecordDistributionOutcome("ran", "round executed; UBI: "+keeper.LetztesUBIErgebnis())
 					})
 				} else {
 					fmt.Printf("[POOLS] Distribution already ran within the last 24h on this or another node — skipping\n")
-					keeper.RecordDistributionOutcome("ran_elsewhere", "another node already distributed within the last 24h")
+					keeper.RecordDistributionOutcome("ran_elsewhere", "distribution lock held: the last round (this or another node) is less than 23h55m old")
 					// Lief die letzte Runde GESTERN, nur spaeter als 20:00 (ein
 					// Retry wegen Sync oder fehlender Lease, Pruefung von #354),
 					// ist sie noch keine 23 h 55 min her -- ohne erneute Pruefung
 					// fiele der heutige Tag ganz aus. Also bald wieder pruefen,
 					// bis die Frist um ist. Lief sie heute, gilt morgen.
-					if keeper.VerteilungHeuteOffen(chainState.GetLastUBIAt(), time.Now(), berlin) {
+					//
+					// Gemessen an der letzten AUSGEFUEHRTEN Runde und nur, wenn
+					// die Sperre bis kurz nach dem Termin frei wird -- sonst lag
+					// die letzte Runde weit neben 20:00, und Nachholen hielte sie
+					// dort fest (verteilung_zeitplan.go).
+					if keeper.VerteilungBaldNachholen(chainState.LetzteVerteilungsrunde(), chainState.VerteilungsSperreAb(), time.Now(), berlin) {
 						retrySoon = true
 					}
 				}
-				if retrySoon {
+				if !abstandZiel.IsZero() {
+					firstTarget = abstandZiel
+				} else if retrySoon {
 					firstTarget = time.Now().Add(distributionHealthRetryInterval)
 				} else {
 					firstTarget = nextDaily20(time.Now(), berlin)
