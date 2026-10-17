@@ -64,7 +64,7 @@ jeweiligen PR.
 | Befund | Schwere | Anmerkung |
 |---|---|---|
 | StateRoot-Abweichung wird nur angezeigt, der Block angenommen. | MITTEL | Abweisen ist auch im scheinbar eindeutigen Fall nicht sicher: der Root enthält die angenommenen, noch nicht verblockten Überweisungen des Produzenten. Lösbar nur per Konsensänderung (Root aus angewandten Blöcken, `KONSENS_UND_AUSFUEHRUNG_2026.md`). Sichtbar je Produzent seit #383. |
-| FromSync-Ausnahmen (Sperre, Finalität) über Seed-Verbindungen ohne TLS | MITTEL | Code fertig und schlafend (`fromsync_stichtag.go`). Einschalten ist eine Betreiber-Entscheidung (Konsenswechsel), siehe Abschnitt 3 und `docs/FROMSYNC_STICHTAG.md`. |
+| FromSync-Ausnahmen (Sperre, Finalität) über Seed-Verbindungen ohne TLS | MITTEL | Stichtag gesetzt: ab Blockzeit 20.10.2026 00:00 UTC prüft jeder Knoten Seed-Blöcke wie gepushte (`fromsync_stichtag.go`, `docs/FROMSYNC_STICHTAG.md`). |
 | Tests mit vier Knoten: libp2p nicht abgedeckt | NIEDRIG | `Start()` wählt sich bei öffentlichen Bootstrap-Knoten ein; ein geschlossenes libp2p-Netz bräuchte Bootstrap-Konfiguration im Produktionscode. Paketweite Zähler teilen sich die Instanzen im Prozess. |
 | Snapshot und Autoheal vertrauen C1 | MITTEL | erst mit mehreren Unterzeichnern lösbar (zweiter Validator) |
 | Deepfake-Schutz schwach | HOCH | Forschung, kein schneller Fix |
@@ -93,7 +93,7 @@ Reihenfolge, in der sie gemacht werden sollten.
    - Erst ab drei Validatoren wählt die Leitung bei Ausfall selbst einen neuen Leiter.
    - Erst ab vier bestätigen Checkpoints etwas.
 7. **Strenges Nachrechnen** (`nachrechnenStrengAbUnix`): Sobald `/api/wirtschaft/regeln` über längere Zeit null Abweichungen zeigt, den Stichtag per PR setzen, **bevor** ein zweiter unabhängiger Produzent zugelassen wird. Ohne ihn könnte ein fremder Produzent Geld erzeugen.
-8. **FromSync-Stichtag** (`fromSyncStrengAbUnix`): Code fertig und schlafend. Solange C1 der einzige Validator ist, reicht ein Vorlauf von etwa 2 h (C1 rollt mit dem Merge selbst aus); mit weiteren Validatoren mindestens 48 h. Ablauf, Rücknahme und Restrisiken: `docs/FROMSYNC_STICHTAG.md`. Einschalten ist ein Konsenswechsel und braucht deine ausdrückliche Freigabe.
+8. **FromSync-Stichtag** (`fromSyncStrengAbUnix`): gesetzt auf 20.10.2026 00:00 UTC (17.10.2026, auf deine Anweisung). Für dich bleibt: in der ersten Stunde nach `Ab` die Logs von C1 auf `[FINALITY] ✗` / `[SLASHING] ✗` ansehen, jeden neuen Validator vor dem Start mit diesem Code betreiben (spätestens 19.10.2026 23:58 UTC), und C1 keinen Seed eintragen, ohne vorher Finalität und StateRoot des Seeds zu vergleichen (sonst kann das Sync-Tor C1 nach einem Neustart anhalten, F4). Rücknahme nur über `fromSyncStrengBisUnix`: `docs/FROMSYNC_STICHTAG.md`.
 9. **Checkpoint-Stichtag** (`checkpointTxAbUnix`): erst mit vier oder mehr Validatoren, nach dem Abschnitt „Einschalten“ in `CHECKPOINT_FAHRPLAN.md`.
 10. **Chain-ID-Wechsel** (entschieden: neue Chain-ID 19260930):
    - In ethereum-lists/chains prüfen, ob die ID frei ist, und sie dort eintragen.

@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"bytes"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -42,9 +43,20 @@ func TestSync_BekanntOderUnterFinalitaet_Gutfall(t *testing.T) {
 	if bekannt, unter := dag.bekanntOderUnterFinalitaet(&Block{Hash: "da"}); !bekannt || unter {
 		t.Fatalf("bekannter Block: %v %v", bekannt, unter)
 	}
-	// Ein Sync-Block ist nie eine Finalitaetsverletzung -- und braucht keinen state.
+	// Vor dem FromSync-Stichtag ist ein Sync-Block nie eine
+	// Finalitaetsverletzung -- und braucht keinen state. Ausdruecklich ohne
+	// Stichtag geprueft, nicht abhaengig vom Datum des Testlaufs.
+	fromSyncStichtagSetzen(t, math.MaxInt64)
 	if bekannt, unter := dag.bekanntOderUnterFinalitaet(&Block{Hash: "neu", FromSync: true}); bekannt || unter {
 		t.Fatalf("neuer Sync-Block: %v %v", bekannt, unter)
+	}
+	// Ab dem Stichtag gilt die Finalitaet auch fuer ihn.
+	cs := newTestState()
+	cs.SetFinalizedCheckpoint("deadbeef", 1000, 5000)
+	dag.state = cs
+	fromSyncStichtagSetzen(t, nowUnix()-3600)
+	if bekannt, unter := dag.bekanntOderUnterFinalitaet(&Block{Hash: "neu", Height: 10, FromSync: true}); bekannt || !unter {
+		t.Fatalf("Sync-Block unter der Finalitaet ab dem Stichtag: %v %v, want false true", bekannt, unter)
 	}
 }
 
