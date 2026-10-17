@@ -7370,11 +7370,20 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 	// Lesung (getConfigValueDB, "IO wait"), waehrend ProduceBlock 1,7 s auf
 	// die Sperre wartete und die Hoehe stand. Postgres war derweil mit dem
 	// Flush von 11.000 Ueberweisungen je Sekunde beschaeftigt.
-	var lastRoundAt, lastUBIAt int64
+	//
+	// FAIL-CLOSED (Sicherheitspruefung #389, info): frueher machte ein
+	// Lesefehler hier still eine 0 daraus -- die Runde galt als "nie
+	// gelaufen" und wurde NICHT uebersprungen, auch wenn sie es haette
+	// muessen (Doppelgutschrift). Jetzt streng wie beim Erzeuger
+	// (verteilMarkenLesen): nicht lesbar -> Block nicht angewandt, der
+	// Backoff (replayFailures) versucht ihn spaeter erneut.
 	var skipDistributionRound int64
-	if blockTraegtAusschuettung(block.Transactions) {
-		fmt.Sscan(dag.state.getConfigValueDB("last_distribution_round_at"), &lastRoundAt)
-		fmt.Sscan(dag.state.getConfigValueDB("last_ubi_at"), &lastUBIAt)
+	if blockTraegtAusschuettung(block.Transactions) && dag.state != nil && dag.state.db != nil {
+		lastRoundAt, lastUBIAt, err := verteilMarkenLesen(dag.state.db)
+		if err != nil {
+			fmt.Printf("[REPLAY] ✗ Verteilungsmarken nicht lesbar, Block #%d nicht angewandt (spaeter erneut): %v\n", block.Height, err)
+			return false
+		}
 		skipDistributionRound = distributionRoundToSkip(block.Transactions, lastRoundAt, lastUBIAt)
 	}
 

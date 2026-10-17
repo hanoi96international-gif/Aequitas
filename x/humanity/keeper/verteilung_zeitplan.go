@@ -210,6 +210,20 @@ type zeileLeser interface {
 // einer Runde ueber den Pool, in RunDailyDistributionAtomic ueber deren
 // Transaktion (verteilAbstandInRundePruefen).
 func verteilAbstandFreiLesen(q zeileLeser) (int64, error) {
+	runde, auszahlung, err := verteilMarkenLesen(q)
+	if err != nil {
+		return 0, err
+	}
+	return verteilAbstandFrei(runde, auszahlung), nil
+}
+
+// verteilMarkenLesen liest last_distribution_round_at und last_ubi_at
+// STRENG: fehlt eine Zeile oder ist sie leer, zaehlt sie als 0 (nie
+// gelaufen); jeder Lesefehler und jeder nicht ganzzahlige oder negative Wert
+// ist ein Fehler. Erzeuger (Mindestabstand) und Nachspielen
+// (distributionRoundToSkip) lesen beide hierueber -- dieselbe Lesart auf
+// beiden Seiten.
+func verteilMarkenLesen(q zeileLeser) (runde, auszahlung int64, err error) {
 	lies := func(key string) (int64, error) {
 		var v string
 		err := q.QueryRow(`SELECT value FROM chain_config WHERE key = $1`, key).Scan(&v)
@@ -229,15 +243,13 @@ func verteilAbstandFreiLesen(q zeileLeser) (int64, error) {
 		}
 		return t, nil
 	}
-	runde, err := lies("last_distribution_round_at")
-	if err != nil {
-		return 0, err
+	if runde, err = lies("last_distribution_round_at"); err != nil {
+		return 0, 0, err
 	}
-	auszahlung, err := lies("last_ubi_at")
-	if err != nil {
-		return 0, err
+	if auszahlung, err = lies("last_ubi_at"); err != nil {
+		return 0, 0, err
 	}
-	return verteilAbstandFrei(runde, auszahlung), nil
+	return runde, auszahlung, nil
 }
 
 // ErrVerteilAbstand: RunDailyDistributionAtomic hat die Runde abgelehnt, weil
