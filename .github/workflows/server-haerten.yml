@@ -1,0 +1,145 @@
+name: Server haerten C1 (SSH nur Schluessel, Log-Rotation, Ports)
+
+# WARUM. docs/BETA_BEREITSCHAFT.md, Betreiber-Punkt 13: Port 8080 nur hinter
+# dem Proxy oeffentlich; Log-Rotation fuer alle Container (Docker max-size);
+# Root-Passwort und SSH nur mit Schluessel. Bisher gab es dafuer keinen Weg
+# ausser einer Hand-Sitzung auf C1.
+#
+# WAS DIESER WORKFLOW TUT (deploy/server-haerten.sh, per stdin auf C1):
+#
+#   modus=pruefen (Voreinstellung) -- nur lesen. Bericht ohne Geheimnisse:
+#     sshd -T (Passwort-, Tastatur-, Schluessel-Login, root), Status des
+#     root-Passworts (passwd -S), daemon.json und LogConfig jedes Containers,
+#     oeffentlich gebundene Ports (ss -ltnp), ufw/nftables. Urteil je Punkt.
+#     Dazu von aussen: welche Login-Verfahren bietet sshd wirklich an
+#     (Verfahren "none", kein Passwortversuch).
+#
+#   modus=anwenden -- idempotent, fail-closed, ohne Aussperren:
+#     1. SSH: Drop-in 00-aequitas-haerten.conf (kein Passwort, kein
+#        Tastatur-Login, root nur mit Schluessel). Erst wenn
+#        /root/.ssh/authorized_keys einen Schluessel enthaelt und sshd -t
+#        besteht, wird sshd neu GELADEN (reload, kein restart).
+#     2. Docker: log-driver json-file, max-size 50m, max-file 5 in
+#        /etc/docker/daemon.json zusammengefuehrt. dockerd und Container
+#        werden NICHT neu gestartet -- die Kette liefe sonst nicht.
+#     3. Ein NEUER Schluessel-Login muss klappen und sshd darf nur noch
+#        "publickey" anbieten. Erst dann: root-Passwort sperren (passwd -l).
+#
+#   Port 8080 wird NIE geschlossen, nur berichtet: Peers sprechen den Knoten
+#   direkt ueber http://IP:8080 an (SELF_URL, PRIMARY_NODE_URLS;
+#   deploy/neuer-server.sh oeffnet 8080 in ufw). Das bleibt Betreiber-Sache.
+#
+# FREIGABE. Wie jeder Server-Workflow in der Umgebung `produktion`
+# (docs/SERVER_FREIGABE.md). Nur per Hand, nie per Zeitplan oder Push.
+# Waechter: scripts/lint_server_haerten.py.
+
+on:
+  workflow_dispatch:
+    inputs:
+      modus:
+        description: "pruefen = nur Bericht; anwenden = SSH nur Schluessel, Docker-Log-Rotation, root-Passwort sperren"
+        required: true
+        default: pruefen
+        type: choice
+        options: [pruefen, anwenden]
+
+concurrency:
+  group: server-haerten-c1
+  cancel-in-progress: false
+
+# Nur lesen: dieser Workflow schreibt nichts ins Repo.
+permissions:
+  contents: read
+
+jobs:
+  haerten:
+    runs-on: ubuntu-latest
+    environment: produktion
+    timeout-minutes: 15
+    env:
+      HOST: 188.172.229.121
+      MODUS: ${{ github.event.inputs.modus || 'pruefen' }}
+    steps:
+      - name: Modus pruefen
+        run: |
+          set -eu
+          case "$MODUS" in
+            pruefen|anwenden) echo "Modus: $MODUS" ;;
+            *) echo "::error::Unbekannter Modus -- nur pruefen oder anwenden."; exit 1 ;;
+          esac
+
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          sparse-checkout: deploy/server-haerten.sh
+          sparse-checkout-cone-mode: false
+
+      - name: Schluessel und Host-Pruefung
+        env:
+          KEY: ${{ secrets.CONTABO_SSH_KEY }}
+          FP: "SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA"
+        run: |
+          set -eu
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          # Nur ed25519 und genau eine Zeile (Pruefung von #382, F1): sonst
+          # reicht ein gefaelschter ecdsa-/rsa-Schluessel neben dem echten.
+          ssh-keyscan -t ed25519 "$HOST" 2>/dev/null > ~/.ssh/kh_all
+          [ "$(grep -c . ~/.ssh/kh_all)" = 1 ] || { echo "::error::Host-Schluessel von $HOST: nicht genau eine ed25519-Zeile"; exit 1; }
+          [ "$(ssh-keygen -lf ~/.ssh/kh_all | awk '{print $2}')" = "$FP" ] || { echo "::error::Host-Schluessel von $HOST passt nicht"; exit 1; }
+          cp ~/.ssh/kh_all ~/.ssh/known_hosts
+
+      - name: Bericht vorher (nur lesen)
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          { printf 'export MODUS=pruefen\n'; cat deploy/server-haerten.sh; } \
+            | ssh -o BatchMode=yes -o ConnectTimeout=20 root@"$HOST" 'bash -s'
+
+      - name: Login-Verfahren von aussen (vorher)
+        timeout-minutes: 2
+        run: |
+          set -u
+          # Verfahren "none": sshd nennt, was es anbietet -- kein Passwortversuch.
+          A=$(ssh -o BatchMode=yes -o ConnectTimeout=20 -o PreferredAuthentications=none -o PubkeyAuthentication=no root@"$HOST" true 2>&1 | grep -oE 'Permission denied \([^)]*\)' | head -1)
+          echo "sshd bietet an: ${A:-unbekannt}"
+
+      - name: Anwenden (SSH-Drop-in, Docker-Log-Rotation)
+        if: env.MODUS == 'anwenden'
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          { printf 'export MODUS=anwenden\n'; cat deploy/server-haerten.sh; } \
+            | ssh -o BatchMode=yes -o ConnectTimeout=20 root@"$HOST" 'bash -s'
+
+      - name: Neuer Schluessel-Login nach dem reload
+        if: env.MODUS == 'anwenden'
+        timeout-minutes: 2
+        run: |
+          set -euo pipefail
+          # Eine NEUE Verbindung (die alte hat der reload nicht beruehrt):
+          # klappt sie, ist der Schluessel-Login nach der Haertung belegt.
+          ssh -o BatchMode=yes -o ConnectTimeout=20 root@"$HOST" true
+          echo "Neuer Schluessel-Login: ok"
+          A=$(ssh -o BatchMode=yes -o ConnectTimeout=20 -o PreferredAuthentications=none -o PubkeyAuthentication=no root@"$HOST" true 2>&1 | grep -oE 'Permission denied \([^)]*\)' | head -1 || true)
+          echo "sshd bietet an: ${A:-unbekannt}"
+          [ "$A" = "Permission denied (publickey)" ] || { echo "::error::sshd bietet noch etwas anderes als publickey an -- root-Passwort wird NICHT gesperrt."; exit 1; }
+
+      - name: Root-Passwort sperren
+        if: env.MODUS == 'anwenden'
+        timeout-minutes: 2
+        run: |
+          set -euo pipefail
+          { printf 'export MODUS=root-sperren\n'; cat deploy/server-haerten.sh; } \
+            | ssh -o BatchMode=yes -o ConnectTimeout=20 root@"$HOST" 'bash -s'
+
+      - name: Bericht nachher (nur lesen)
+        if: env.MODUS == 'anwenden'
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          { printf 'export MODUS=pruefen\n'; cat deploy/server-haerten.sh; } \
+            | ssh -o BatchMode=yes -o ConnectTimeout=20 root@"$HOST" 'bash -s'
+
+      - name: SSH-Schluessel vom Runner entfernen
+        if: always()
+        run: rm -f ~/.ssh/id_ed25519
