@@ -130,6 +130,7 @@ func TestAuftragsFenster_SpiegeltBlockTauglich(t *testing.T) {
 		"erneuerung ohne":   {Type: "liveness_renewal", Wallet: "0xa"},
 		"umlauf":            {Type: "umlauf", Wallet: "0xa", DistributionAt: basis},
 		"rundenmarke":       {Type: "distribution_round_marker", DistributionAt: basis},
+		"ubi_abschluss":     {Type: "ubi_distribution_finalize", DistributionAt: basis},
 		"validator_bindung": bindungUnterschrieben(t, betreiber, knoten, basis),
 		"ohne Nachweis":     {Type: "vormund_setzen", Wallet: "0xa", To: "0xb"},
 		"transfer":          {Type: "transfer", Wallet: "0xa", To: "0xb", Amount: 1},

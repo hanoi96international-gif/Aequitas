@@ -177,6 +177,18 @@ func (cs *ChainState) nachrechnenTxLocked(tx *Transaction, blockZeit int64) erro
 		return cs.nachrechnenUBILocked(tx, blockZeit)
 
 	case "ubi_distribution_finalize":
+		// Der Abschluss setzt last_ubi_at auf seinen Zeitpunkt -- wie die
+		// Rundenmarke last_distribution_round_at. Weit neben dem Block (oder
+		// negativ) verschiebt er die Doppelrunden-Erkennung und den
+		// Mindestabstand aller Knoten (Sicherheitspruefung #391, info).
+		// Dieselbe Grenze wie die Rundenmarke: der Erzeuger schreibt beiden
+		// denselben Zeitpunkt (RunDailyDistributionAtomic, ubiAt).
+		if d := tx.DistributionAt - blockZeit; d > 600 || d < -600 {
+			if err := nachrechnenAbweichung("ubi_abschluss_zeit", blockZeit,
+				"distribution_at=%d, Blockzeit %d (Abstand %ds)", tx.DistributionAt, blockZeit, d); err != nil {
+				return err
+			}
+		}
 		endstand := tx.Amount
 		return cs.nachrechnenUBIAbschlussLocked(blockZeit, &endstand)
 
