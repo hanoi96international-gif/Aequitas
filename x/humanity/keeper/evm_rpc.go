@@ -2045,11 +2045,19 @@ func (s *EVMRPCServer) getTransactionByHash(params []json.RawMessage) (interface
 	// pending transaction — and what tells a wallet to keep waiting instead
 	// of concluding anything.
 	var blockHashField, blockNumberField, txIndexField interface{} = nil, nil, nil
+	// Chain-ID der Transaktion: die ihres Blocks (Chain-ID-Wechsel, die ID
+	// haengt an der Blockzeit). Ohne Block (ausstehend) die von jetzt.
+	chainIDZeit := nowUnix()
 	if h, bh, idx, ok := s.state.LookupTxBlock(txHash); ok {
 		// Wie in der Quittung: der sichtbare Block der Hoehe (evm_rpc_hoehe.go).
 		blockHashField = "0x" + s.kanonischerBlockHash(h, bh)
 		blockNumberField = fmt.Sprintf("0x%x", uint64(h))
 		txIndexField = fmt.Sprintf("0x%x", idx)
+		if s.dag != nil {
+			if b := s.dag.GetBlockByHeight(h); b != nil {
+				chainIDZeit = b.Timestamp
+			}
+		}
 	}
 
 	// FIX (2026-08-28): nonce und value waren fest auf "0x0" verdrahtet.
@@ -2105,7 +2113,7 @@ func (s *EVMRPCServer) getTransactionByHash(params []json.RawMessage) (interface
 		"gasPrice": "0x0",
 		"input":    inputField,
 		"type":     typFeld,
-		"chainId":  chainIDHexFuer(nowUnix()),
+		"chainId":  chainIDHexFuer(chainIDZeit),
 	}
 	if typFeld == "0x2" {
 		ergebnis["maxFeePerGas"] = "0x0"

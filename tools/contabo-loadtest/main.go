@@ -59,7 +59,10 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
-const chainID = 1926 // matches evm_rpc.go's own eth_chainId ("0x786")
+// Die Chain-ID ist nicht fest: die Kette wechselt am Stichtag von 1926 auf
+// 19260930 (docs/CHAIN_ID_WECHSEL.md). Signiert wird mit der ID, die der
+// Knoten live meldet (eth_chainId), und nur mit einer dieser beiden.
+var bekannteChainIDs = map[int64]bool{1926: true, 19260930: true}
 
 type account struct {
 	index   int
@@ -110,6 +113,28 @@ func must(err error) {
 type rpcClient struct {
 	url string
 	hc  *http.Client
+
+	chainIDOnce sync.Once
+	chainIDWert *big.Int
+}
+
+// chainID: eth_chainId des Knotens, einmal gelesen. Unbekannt oder nicht
+// lesbar: Abbruch -- lieber kein Lauf als einer, dessen Ueberweisungen alle
+// abgelehnt werden.
+func (c *rpcClient) chainID() *big.Int {
+	c.chainIDOnce.Do(func() {
+		res, err := c.call("eth_chainId", []string{})
+		must(err)
+		var hexID string
+		must(json.Unmarshal(res, &hexID))
+		id, ok := new(big.Int).SetString(strings.TrimPrefix(hexID, "0x"), 16)
+		if !ok || !id.IsInt64() || !bekannteChainIDs[id.Int64()] {
+			must(fmt.Errorf("unbekannte Chain-ID vom Knoten: %q", hexID))
+		}
+		fmt.Printf("chain id %d (live vom Knoten)\n", id.Int64())
+		c.chainIDWert = id
+	})
+	return c.chainIDWert
 }
 
 type rpcReq struct {
@@ -375,7 +400,7 @@ func prefetchNonces(c *rpcClient, senders, recipients []*account) ([]*account, [
 
 func (c *rpcClient) sendValue(from *account, toAddr string, amountWei *big.Int) (string, error) {
 	tx := types.NewTransaction(from.nonce, addrFromHex(toAddr), amountWei, 21000, big.NewInt(0), nil)
-	signer := types.NewEIP155Signer(big.NewInt(chainID))
+	signer := types.NewEIP155Signer(c.chainID())
 	signedTx, err := types.SignTx(tx, signer, from.priv)
 	if err != nil {
 		return "", err
@@ -498,7 +523,7 @@ func (c *rpcClient) sendValueBatch(from *account, toAddrs []string, amountWei *b
 		return 0, nil
 	}
 	genStart := time.Now()
-	signer := types.NewEIP155Signer(big.NewInt(chainID))
+	signer := types.NewEIP155Signer(c.chainID())
 	reqs := make([]rpcReq, 0, n)
 	for i := 0; i < n; i++ {
 		tx := types.NewTransaction(from.nonce+uint64(i), addrFromHex(toAddrs[i]), amountWei, 21000, big.NewInt(0), nil)

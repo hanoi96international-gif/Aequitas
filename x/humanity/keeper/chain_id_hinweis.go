@@ -35,11 +35,21 @@ func chainIDHinweisHTML(jetzt int64) string {
 </div>`, datum, date, chainIDNeuWert, chainIDNeuWert)
 }
 
-// mitChainIDHinweis setzt den Hinweis direkt hinter <main> ein (einmal).
+// mitChainIDHinweis setzt den Hinweis direkt hinter das erste <main ...>
+// ein (einmal; Startseite und Explorer). Ohne <main> bleibt die Seite gleich.
 func mitChainIDHinweis(html string, jetzt int64) string {
 	h := chainIDHinweisHTML(jetzt)
 	if h == "" {
 		return html
 	}
-	return strings.Replace(html, "<main>", "<main>"+h, 1)
+	i := strings.Index(html, "<main")
+	if i < 0 {
+		return html
+	}
+	j := strings.IndexByte(html[i:], '>')
+	if j < 0 {
+		return html
+	}
+	k := i + j + 1
+	return html[:k] + h + html[k:]
 }

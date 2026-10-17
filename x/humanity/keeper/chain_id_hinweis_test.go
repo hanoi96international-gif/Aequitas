@@ -32,4 +32,12 @@ func TestChainIDHinweis_NurMitStichtag(t *testing.T) {
 	if strings.Count(landingHTML, "<main>") != 1 {
 		t.Fatal("Startseite hat nicht genau ein <main>")
 	}
+	// Explorer (dort richten MetaMask-Nutzer das Netz ein): hinter <main id=...>.
+	ex := mitChainIDHinweis(explorerHTMLVersioned, ab-86400)
+	if strings.Count(ex, "Chain-ID-Wechsel am 27.10.2026") != 1 || !strings.Contains(ex, "<main id=\"content\">\n<div role=\"status\"") {
+		t.Fatal("Hinweis fehlt im Explorer oder steht nicht hinter <main>")
+	}
+	if mitChainIDHinweis("<p>ohne main</p>", ab-86400) != "<p>ohne main</p>" {
+		t.Fatal("Seite ohne <main> veraendert")
+	}
 }
