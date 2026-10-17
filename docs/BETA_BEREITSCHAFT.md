@@ -101,10 +101,10 @@ Reihenfolge, in der sie gemacht werden sollten.
    - Den Ablauf beschreibt `docs/CHAIN_ID_WECHSEL.md`.
 11. **Sybil über das Gerätegeheimnis** (`ALLOW_DEVICE_SECRET_REGISTER`): Solange die Registrierung ohne Gesicht erlaubt ist, kann ein Mensch mit mehreren Geräten mehrfach registrieren. Entscheiden, ob die Beta das zulässt.
 12. **Trusted Setup:** Der Beweisschlüssel hat nur einen Beitrag. Eine Zeremonie mit mehreren unabhängigen Beiträgen vor echten Werten.
-13. **Server:**
-    - Port 8080 nur hinter dem Proxy öffentlich.
-    - Log-Rotation für alle Container (Docker `max-size`).
-    - Root-Passwort und SSH nur mit Schlüssel.
+13. **Server:** Workflow `server-haerten.yml` (Skript `deploy/server-haerten.sh`, Wächter `scripts/lint_server_haerten.py`). Erst mit `modus=pruefen` (Voreinstellung, nur lesen) den Bericht ansehen, dann mit `modus=anwenden` freigeben.
+    - Root-Passwort und SSH nur mit Schlüssel: `anwenden` setzt ein sshd-Drop-in (kein Passwort-, kein Tastatur-Login, root nur mit Schlüssel). sshd wird nur neu geladen, und erst wenn `authorized_keys` einen Schlüssel enthält und `sshd -t` besteht. Das root-Passwort wird erst gesperrt, wenn ein neuer Schlüssel-Login danach klappt und sshd nur noch `publickey` anbietet. Danach nimmt auch die Konsole des Anbieters kein root-Passwort mehr; Notzugang über dessen Rettungssystem.
+    - Log-Rotation für alle Container (Docker `max-size`): `anwenden` ergänzt `/etc/docker/daemon.json` um `max-size 50m`, `max-file 5`. Docker und Container werden **nicht** neu gestartet. Die Grenze gilt erst für Container, die nach dem nächsten Start des Docker-Dienstes erstellt werden; den Zeitpunkt wählst du (Wartungsfenster). Der Bericht listet die Container, die noch ohne `max-size` laufen.
+    - Port 8080 nur hinter dem Proxy öffentlich: **bleibt deine Entscheidung.** Der Workflow schließt ihn nicht, er berichtet nur. Peers sprechen den Knoten direkt über `http://IP:8080` an (`SELF_URL`, `PRIMARY_NODE_URLS`; `deploy/neuer-server.sh` öffnet 8080 in ufw). Ihn zu schließen ist ein Netzwechsel: erst alle Peers auf die Proxy-Adresse umstellen. Von Docker veröffentlichte Ports umgehen ufw.
 
 ## 4. Schnell
 
