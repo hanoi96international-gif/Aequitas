@@ -935,6 +935,11 @@ func main() {
 			// node's uptime (worse than a crash: nothing else would notice).
 			keeper.SafeCall("daily-distribution-round", func() {
 				retrySoon := false
+				// ubiAt ist die DistributionAt der Runde -- gesetzt direkt vor
+				// der Abstandspruefung, damit genau der geschriebene Wert
+				// geprueft wird (verteilung_zeitplan.go, Mindestabstand).
+				var ubiAt int64
+				var abstandZiel time.Time
 				if os.Getenv("DISTRIBUTION_ENABLED") == "false" {
 					fmt.Println("[POOLS] Distribution disabled on this node (DISTRIBUTION_ENABLED=false)")
 					keeper.RecordDistributionOutcome("skipped", "DISTRIBUTION_ENABLED=false on this node")
@@ -982,6 +987,30 @@ func main() {
 					fmt.Printf("[POOLS] Verteilung nicht hier: %s — erneute Pruefung in %s\n", grund, distributionHealthRetryInterval)
 					keeper.RecordDistributionOutcome("skipped", grund)
 					retrySoon = true
+				} else if grund, pruefbar := func() (string, bool) {
+					// Mindestabstand (Erzeuger): jeder nachspielende Knoten
+					// verwirft eine Runde < 24 h nach seiner letzten Marke
+					// (distributionRoundToSkip). Fail-closed: Marken nicht
+					// lesbar -> keine Runde in diesem Takt.
+					ubiAt = time.Now().Unix()
+					frei, err := chainState.VerteilungAbstandFreiAb()
+					if err != nil {
+						return "Mindestabstand nicht pruefbar, keine Runde: " + err.Error(), false
+					}
+					if keeper.VerteilAbstandErlaubt(ubiAt, frei) {
+						return "", true
+					}
+					if t, ok := keeper.VerteilAbstandWiederholung(frei, time.Now(), berlin); ok {
+						abstandZiel = t
+					}
+					return fmt.Sprintf("Mindestabstand: die letzte Runde liegt noch keine 24 h zurueck (frei ab %s)",
+						time.Unix(frei, 0).In(berlin).Format("02.01. 15:04:05")), true
+				}(); grund != "" {
+					fmt.Printf("[POOLS] Verteilung jetzt nicht: %s\n", grund)
+					keeper.RecordDistributionOutcome("skipped", grund)
+					if !pruefbar {
+						retrySoon = true
+					}
 				} else if chainState.TryLockDistribution() {
 					// FIX (audit3, P0 #3): the entire distribution round — UBI, validator
 					// pool, LP pool, escrow move/release, AND every resulting outbox TX —
@@ -999,7 +1028,6 @@ func main() {
 					// tip/parent selection during this window, not just the cs.mu-guarded
 					// part RunDailyDistributionAtomic itself already serializes against).
 					bc.WithBlockProductionPaused(func() {
-						ubiAt := time.Now().Unix()
 						if err := chainState.RunDailyDistributionAtomic(ubiAt); err != nil {
 							fmt.Printf("[POOLS] ✗ Distribution FAILED and was fully rolled back: %v\n", err)
 							keeper.RecordDistributionOutcome("failed", err.Error())
@@ -1025,7 +1053,9 @@ func main() {
 						retrySoon = true
 					}
 				}
-				if retrySoon {
+				if !abstandZiel.IsZero() {
+					firstTarget = abstandZiel
+				} else if retrySoon {
 					firstTarget = time.Now().Add(distributionHealthRetryInterval)
 				} else {
 					firstTarget = nextDaily20(time.Now(), berlin)

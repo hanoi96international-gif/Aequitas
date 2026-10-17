@@ -1,7 +1,11 @@
 package keeper
 
 import (
+	"database/sql"
+	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 )
@@ -135,4 +139,113 @@ func LetztesUBIErgebnis() string {
 		return *p
 	}
 	return ""
+}
+
+// # MINDESTABSTAND ZWISCHEN ZWEI RUNDEN (Erzeuger)
+//
+// Jeder nachspielende Knoten verwirft eine Runde, deren DistributionAt
+// weniger als 24 h nach seiner letzten Rundenmarke liegt
+// (distributionRoundToSkip, block.go: `tx.DistributionAt - last < 24*3600`,
+// fuer distribution_round_marker gegen last_distribution_round_at und fuer
+// ubi_distribution_finalize gegen last_ubi_at). TryLockDistribution liess
+// eine neue Runde aber schon nach 23 h 55 min zu -- eine Runde in diesem
+// Fenster haette der Erzeuger angewandt und jeder andere Knoten
+// uebersprungen: Marke, Umlaufzeit und (bei einer Auszahlung) Kontostaende
+// liefen auseinander.
+//
+// Der Erzeuger startet darum nur, wenn GENAU der Wert, den er in die
+// Transaktionen schreibt (ubiAt = DistributionAt), mindestens 24 h nach
+// beiden Marken liegt. Die Zeitbasis ist auf beiden Seiten dieselbe: zwei vom
+// Erzeuger gewaehlte ganze Sekunden, verglichen ohne Uhr des Nachspielenden
+// und ohne Blockzeit. Eine Reserve ueber 24 h braucht es deshalb nicht -- und
+// sie schadete: jede Runde muesste dann mindestens Reserve spaeter laufen als
+// die vorige, der 20:00-Plan wanderte taeglich um die Reserve nach hinten.
+// Die Rueckwaerts-Uhrstellung ist abgedeckt, weil geprueft wird, was
+// geschrieben wird, nicht eine fruehere Lesung der Uhr.
+//
+// Nichts an distributionRoundToSkip oder am Nachspielen aendert sich.
+
+// verteilMindestabstand: muss distributionRoundToSkip entsprechen (24*3600 s);
+// TestVerteilAbstand_DeckungsgleichMitNachspielen haelt beide zusammen.
+const verteilMindestabstand int64 = 24 * 3600
+
+// verteilAbstandFrei: ab welcher DistributionAt eine neue Runde von keinem
+// nachspielenden Knoten mehr verworfen wird. 0 = keine Marke, jederzeit.
+func verteilAbstandFrei(letzteRunde, letzteAuszahlung int64) int64 {
+	letzte := letzteRunde
+	if letzteAuszahlung > letzte {
+		letzte = letzteAuszahlung
+	}
+	if letzte <= 0 {
+		return 0
+	}
+	return letzte + verteilMindestabstand
+}
+
+// VerteilAbstandErlaubt: darf der Erzeuger eine Runde mit DistributionAt
+// ubiAt starten, ohne dass nachspielende Knoten sie verwerfen?
+func VerteilAbstandErlaubt(ubiAt, frei int64) bool {
+	return ubiAt >= frei
+}
+
+// VerteilungAbstandFreiAb liest beide Marken STRENG: fehlt eine Zeile, zaehlt
+// sie als 0 (nie gelaufen); jeder Lesefehler und jeder nicht lesbare Wert ist
+// ein Fehler -- der Aufrufer startet dann keine Runde (fail-closed). Anders
+// als LetzteVerteilungsrunde, die nur den Zeitplan schaetzt.
+func (cs *ChainState) VerteilungAbstandFreiAb() (int64, error) {
+	if cs.db == nil {
+		return 0, nil // ohne Datenbank (Einzeltests): keine Marken
+	}
+	lies := func(key string) (int64, error) {
+		var v string
+		err := cs.db.QueryRow(`SELECT value FROM chain_config WHERE key = $1`, key).Scan(&v)
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, nil
+		}
+		if err != nil {
+			return 0, fmt.Errorf("%s nicht lesbar: %w", key, err)
+		}
+		v = strings.TrimSpace(v)
+		if v == "" {
+			return 0, nil
+		}
+		t, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || t < 0 {
+			return 0, fmt.Errorf("%s hat keinen gueltigen Zeitpunkt (%q)", key, v)
+		}
+		return t, nil
+	}
+	runde, err := lies("last_distribution_round_at")
+	if err != nil {
+		return 0, err
+	}
+	auszahlung, err := lies("last_ubi_at")
+	if err != nil {
+		return 0, err
+	}
+	return verteilAbstandFrei(runde, auszahlung), nil
+}
+
+// verteilAbstandNachlauf: so viel spaeter als 20:00 darf eine Runde wegen
+// des Mindestabstands hoechstens laufen. Lief die vorige Runde Sekunden nach
+// 20:00 (Planerlatenz), laeuft die naechste ebenso viele Sekunden nach 20:00
+// -- der Versatz waechst nicht, er ist das Maximum der bisherigen Latenzen.
+// Lief sie mehr als das spaeter (Retry wegen Sync, Sommerzeit-Umstellung mit
+// 23-h-Tag), faellt der eine Termin aus und der Plan setzt wieder auf 20:00
+// auf, statt die Verspaetung dauerhaft mitzunehmen.
+const verteilAbstandNachlauf = 15 * time.Minute
+
+// VerteilAbstandWiederholung: wann der Planer nach einer am Mindestabstand
+// gescheiterten Runde erneut versucht -- genau zum freien Zeitpunkt, wenn der
+// hoechstens verteilAbstandNachlauf nach dem aktuellen 20:00-Termin liegt;
+// sonst ok=false und der Aufrufer nimmt den naechsten Termin.
+func VerteilAbstandWiederholung(frei int64, jetzt time.Time, loc *time.Location) (time.Time, bool) {
+	ziel := time.Unix(frei, 0)
+	if ziel.After(verteilTerminZeit(jetzt.In(loc)).Add(verteilAbstandNachlauf)) {
+		return time.Time{}, false
+	}
+	if !ziel.After(jetzt) {
+		ziel = jetzt
+	}
+	return ziel, true
 }
