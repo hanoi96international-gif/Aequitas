@@ -59,3 +59,39 @@ func TestNachrechnen_UBIAbschlussZeitBegrenzt(t *testing.T) {
 		t.Fatalf("ehrlicher Abschluss nicht blocktauglich: %v", err)
 	}
 }
+
+// Ehrlicher Weg auf Ausgangsebene (Pruefung von e956700a, niedrig): Abschluss
+// und Rundenmarke tragen denselben Zeitpunkt. Im strengen Modus kommen beide
+// in denselben Block, solange die Elternzeit hoechstens 10 min nach der Runde
+// liegt -- nie einer ohne den anderen. Danach ein definierter Fehler (k == 0),
+// kein Weglassen.
+func TestBlockZeitPraefix_UBIAbschlussUndMarkeZusammen(t *testing.T) {
+	nachrechnenStrengOverride.Store(1)
+	t.Cleanup(func() { nachrechnenStrengOverride.Store(0) })
+	at := rundenZeitStrengAbUnix + 30*86400
+	ausgang := []Transaction{
+		{Type: "ubi_distribution", Wallet: "0xa", Amount: 1},
+		{Type: "ubi_distribution_finalize", DistributionAt: at},
+		{Type: "distribution_round_marker", DistributionAt: at},
+	}
+	for _, d := range []int64{0, 5, 300, 599} {
+		k, zeit, err := blockZeitPraefix(ausgang, at+d+1, at+d)
+		if err != nil || k != len(ausgang) {
+			t.Fatalf("Elternzeit at+%d: k=%d zeit=%d err=%v, want alle %d in einem Block", d, k, zeit, err, len(ausgang))
+		}
+		if zeit-at > 600 || at-zeit > 600 {
+			t.Fatalf("Elternzeit at+%d: Blockzeit %d ausserhalb der 10 min", d, zeit)
+		}
+	}
+	// Elternzeit schon ueber at+600: kein Block, nichts weggelassen.
+	k, _, err := blockZeitPraefix(ausgang, at+700, at+650)
+	if err == nil {
+		// Teilen ist nur vor dem Abschluss erlaubt -- nie Abschluss ohne Marke.
+		if k == 2 {
+			t.Fatal("Abschluss ohne Rundenmarke in einen Block gelegt")
+		}
+		if k > 1 {
+			t.Fatalf("k=%d: Runde ausserhalb der 10 min in einen Block gelegt", k)
+		}
+	}
+}
