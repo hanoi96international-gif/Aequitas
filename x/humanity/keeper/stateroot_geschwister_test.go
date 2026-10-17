@@ -76,12 +76,15 @@ func TestStateRoot_GeschwisterWerdenGetrenntGezaehlt(t *testing.T) {
 func TestStateRoot_UebereinstimmungSetztBeideZaehlerZurueck(t *testing.T) {
 	body := quelleLesen(t, "block.go")
 
-	i := strings.Index(body, "dag.stateRootMismatches[block.Proposer] = 0")
+	// Seit der Pruefung von #383 wird geloescht statt genullt: ein fehlender
+	// Eintrag zaehlt fuer jeden Leser wie 0, ein 0-Eintrag belegte dagegen
+	// einen der begrenzten Plaetze fuer immer.
+	i := strings.Index(body, "delete(dag.stateRootMismatches, block.Proposer)")
 	if i < 0 {
 		t.Fatal("der Ruecksetzer auf Uebereinstimmung ist weg")
 	}
 	rest := body[i : i+400]
-	for _, feld := range []string{"dag.stateRootEcht[block.Proposer] = 0", "dag.stateRootGeschwister[block.Proposer] = 0"} {
+	for _, feld := range []string{"delete(dag.stateRootEcht, block.Proposer)", "delete(dag.stateRootGeschwister, block.Proposer)"} {
 		if !strings.Contains(rest, feld) {
 			t.Errorf("%s fehlt beim Ruecksetzen. Ein Zaehler, der nur waechst, meldet "+
 				"irgendwann Divergenz aus reiner Ansammlung.", feld)

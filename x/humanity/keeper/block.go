@@ -627,6 +627,9 @@ type BlockDAG struct {
 	stateRootEchtLastAt   map[string]int64
 	stateRootGeschwister  map[string]int
 	stateRootMismatchesMu sync.Mutex // protects stateRootMismatches/stateRootMismatchLastAt (written under replayMu+cs.mu, read independently by TotalStateRootMismatches)
+	// srBeobachtung: kumulierte Vergleiche je Produzent, begrenzt, fuer
+	// /api/health/combined (stateroot_beobachtung.go). Eigene Sperre.
+	srBeobachtung stateRootBeobachtung
 	// lastSuccessfulPeerSyncAt is the Unix timestamp of the last time this
 	// node successfully accepted a peer block via AddPeerBlock. Read/written
 	// with atomic.Int64 (not dag.mu) since it's set from AddPeerBlock's
@@ -8504,11 +8507,21 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			if dag.stateRootMismatchLastAt == nil {
 				dag.stateRootMismatchLastAt = make(map[string]int64)
 			}
-			dag.stateRootMismatches[block.Proposer]++
-			dag.stateRootMismatchLastAt[block.Proposer] = time.Now().Unix()
+			// Begrenzt (stateroot_beobachtung.go): neue Produzenten bekommen
+			// nur bis stateRootProduzentenMax einen Eintrag. Bestehende
+			// zaehlen immer weiter. Vorher Eintraege raeumen, die kein Leser
+			// mehr zaehlt (aelter als das Fenster) -- sonst bliebe eine volle
+			// Map fuer immer voll (Pruefung von #383).
+			dag.stateRootAlteRaeumen(time.Now().Unix())
+			if stateRootZaehlerPlatz(dag.stateRootMismatches, block.Proposer) {
+				dag.stateRootMismatches[block.Proposer]++
+				dag.stateRootMismatchLastAt[block.Proposer] = time.Now().Unix()
+			}
 			if geschwisterbedingt {
-				dag.stateRootGeschwister[block.Proposer]++
-			} else {
+				if stateRootZaehlerPlatz(dag.stateRootGeschwister, block.Proposer) {
+					dag.stateRootGeschwister[block.Proposer]++
+				}
+			} else if stateRootZaehlerPlatz(dag.stateRootEcht, block.Proposer) {
 				// Nur diese bewegen die Selbstheilung, und nur sie bekommen
 				// die eigene Zeitmarke -- sonst haelt ein Strom harmloser
 				// Geschwister-Abweichungen das Zeitfenster der echten offen.
@@ -8517,6 +8530,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			}
 			alert := !geschwisterbedingt && dag.stateRootEcht[block.Proposer] >= 5
 			dag.stateRootMismatchesMu.Unlock()
+			dag.srBeobachtung.erfasse(block.Proposer, block.Height, false, geschwisterbedingt, block.StateRoot, localRoot, time.Now().Unix())
 			if alert {
 				fmt.Printf("[ALERT] 5+ StateRoot mismatches from %s — nodes may have diverged; investigate or resync from primary snapshot\n", block.Proposer)
 			}
@@ -8543,17 +8557,18 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			// Fall through: commit the individually-verified transactions.
 		} else {
 			dag.stateRootMismatchesMu.Lock()
-			if dag.stateRootMismatches != nil {
-				dag.stateRootMismatches[block.Proposer] = 0 // reset on match
-			}
-			if dag.stateRootEcht != nil {
-				dag.stateRootEcht[block.Proposer] = 0
-			}
-			if dag.stateRootGeschwister != nil {
-				dag.stateRootGeschwister[block.Proposer] = 0
-			}
+			// Reset on match: loeschen statt nullen. Ein fehlender Eintrag
+			// zaehlt fuer jeden Leser wie 0; ein stehengelassener 0-Eintrag
+			// belegte dagegen fuer immer einen der stateRootProduzentenMax
+			// Plaetze (Pruefung von #383), und ein Nullen legte frueher fuer
+			// JEDEN Produzenten mit passendem Root einen an.
+			delete(dag.stateRootMismatches, block.Proposer)
+			delete(dag.stateRootMismatchLastAt, block.Proposer)
+			delete(dag.stateRootEcht, block.Proposer)
+			delete(dag.stateRootGeschwister, block.Proposer)
 			delete(dag.stateRootEchtLastAt, block.Proposer)
 			dag.stateRootMismatchesMu.Unlock()
+			dag.srBeobachtung.erfasse(block.Proposer, block.Height, true, false, "", "", 0)
 		}
 	}
 
