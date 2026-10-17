@@ -935,9 +935,12 @@ func main() {
 			// node's uptime (worse than a crash: nothing else would notice).
 			keeper.SafeCall("daily-distribution-round", func() {
 				retrySoon := false
-				// ubiAt ist die DistributionAt der Runde -- gesetzt direkt vor
-				// der Abstandspruefung, damit genau der geschriebene Wert
-				// geprueft wird (verteilung_zeitplan.go, Mindestabstand).
+				// ubiAt ist die DistributionAt der Runde. Gesetzt erst unter
+				// der Produktionspause, nach dem Warten auf dag.mu: so liegt
+				// sie nahe an der Blockzeit, und RunDailyDistributionAtomic
+				// prueft genau diesen Wert unter cs.mu noch einmal gegen den
+				// Mindestabstand (verteilung_zeitplan.go). Die Pruefung hier
+				// davor ist nur die Vorauswahl fuer den Zeitplan.
 				var ubiAt int64
 				var abstandZiel time.Time
 				if os.Getenv("DISTRIBUTION_ENABLED") == "false" {
@@ -992,12 +995,14 @@ func main() {
 					// verwirft eine Runde < 24 h nach seiner letzten Marke
 					// (distributionRoundToSkip). Fail-closed: Marken nicht
 					// lesbar -> keine Runde in diesem Takt.
-					ubiAt = time.Now().Unix()
 					frei, err := chainState.VerteilungAbstandFreiAb()
 					if err != nil {
-						return "Mindestabstand nicht pruefbar, keine Runde: " + err.Error(), false
+						// Fehlertext nur ins Log: der Grund steht oeffentlich
+						// in /api/health/combined.
+						fmt.Printf("[POOLS] Mindestabstand nicht pruefbar: %v\n", err)
+						return "Mindestabstand nicht pruefbar, keine Runde (Details im Knotenlog)", false
 					}
-					if keeper.VerteilAbstandErlaubt(ubiAt, frei) {
+					if keeper.VerteilAbstandErlaubt(time.Now().Unix(), frei) {
 						return "", true
 					}
 					if t, ok := keeper.VerteilAbstandWiederholung(frei, time.Now(), berlin); ok {
@@ -1028,6 +1033,7 @@ func main() {
 					// tip/parent selection during this window, not just the cs.mu-guarded
 					// part RunDailyDistributionAtomic itself already serializes against).
 					bc.WithBlockProductionPaused(func() {
+						ubiAt = time.Now().Unix()
 						if err := chainState.RunDailyDistributionAtomic(ubiAt); err != nil {
 							fmt.Printf("[POOLS] ✗ Distribution FAILED and was fully rolled back: %v\n", err)
 							keeper.RecordDistributionOutcome("failed", err.Error())

@@ -1,7 +1,9 @@
 package keeper
 
 import (
+	"errors"
 	"os"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -158,5 +160,70 @@ func TestVerteilungAbstandFreiAb_RealDB(t *testing.T) {
 	cs.db.Close()
 	if _, err := cs.VerteilungAbstandFreiAb(); err == nil {
 		t.Fatal("Datenbank nicht erreichbar: Fehler erwartet (fail-closed)")
+	}
+}
+
+// Missbrauch (Sicherheitspruefung, Befund mittel): zwischen der Pruefung im
+// Planer und der Runde spielt ein Peer-Block die Runde eines anderen
+// Erzeugers nach. RunDailyDistributionAtomic muss die eigene Runde dann unter
+// cs.mu ablehnen und nichts schreiben -- sonst verwirft jeder andere Knoten
+// sie (distributionRoundToSkip) und die Staende laufen auseinander.
+func TestRunDailyDistributionAtomic_AbstandUnterSperre_RealDB(t *testing.T) {
+	if os.Getenv("AEQUITAS_TPS_BENCH") != "1" {
+		t.Skip("opt-in only: set AEQUITAS_TPS_BENCH=1 and DATABASE_URL (a disposable local Postgres) to run")
+	}
+	truncateDistTestTables(t)
+	cs := testKnoten(t, "unused-verteil-abstand-runde-test.json")
+	if !cs.useDB {
+		t.Fatal("expected a live PostgreSQL connection")
+	}
+	jetzt := time.Now().Unix()
+
+	// Planer hat geprueft (keine Marke), dann kommt die fremde Runde an.
+	if frei, err := cs.VerteilungAbstandFreiAb(); err != nil || !VerteilAbstandErlaubt(jetzt, frei) {
+		t.Fatalf("Vorpruefung: frei=%d err=%v, want erlaubt", frei, err)
+	}
+	fremd := jetzt - 60
+	if err := cs.setConfigValueDB("last_distribution_round_at", strconv.FormatInt(fremd, 10)); err != nil {
+		t.Fatal(err)
+	}
+	err := cs.RunDailyDistributionAtomic(jetzt)
+	if !errors.Is(err, ErrVerteilAbstand) {
+		t.Fatalf("Runde 60 s nach fremder Runde: err=%v, want ErrVerteilAbstand", err)
+	}
+	if got := cs.getConfigValueDB("last_distribution_round_at"); got != strconv.FormatInt(fremd, 10) {
+		t.Fatalf("Marke nach abgelehnter Runde = %q, want unveraendert %d", got, fremd)
+	}
+
+	// Grenze: 1 s vor Ablauf abgelehnt, genau 24 h danach erlaubt.
+	if err := cs.RunDailyDistributionAtomic(fremd + 24*3600 - 1); !errors.Is(err, ErrVerteilAbstand) {
+		t.Fatalf("24 h - 1 s: err=%v, want ErrVerteilAbstand", err)
+	}
+	// last_ubi_at zaehlt mit: spaetere Auszahlung verschiebt die Grenze.
+	if err := cs.setConfigValueDB("last_ubi_at", strconv.FormatInt(fremd+10, 10)); err != nil {
+		t.Fatal(err)
+	}
+	if err := cs.RunDailyDistributionAtomic(fremd + 24*3600); !errors.Is(err, ErrVerteilAbstand) {
+		t.Fatalf("24 h nach Marke, aber < 24 h nach last_ubi_at: err=%v, want ErrVerteilAbstand", err)
+	}
+
+	// Unlesbare Marke: fail-closed, nichts geschrieben.
+	if err := cs.setConfigValueDB("last_distribution_round_at", "kaputt"); err != nil {
+		t.Fatal(err)
+	}
+	if err := cs.RunDailyDistributionAtomic(fremd + 48*3600); err == nil {
+		t.Fatal("unlesbare Marke: Fehler erwartet (fail-closed)")
+	}
+	if got := cs.getConfigValueDB("last_distribution_round_at"); got != "kaputt" {
+		t.Fatalf("Marke nach Fehler = %q, want unveraendert", got)
+	}
+
+	// Gutfall: Abstand eingehalten -> die Runde laeuft ohne Fehler. (Die
+	// leere Testkette erzeugt keine Transaktion und darum keine Marke.)
+	if err := cs.setConfigValueDB("last_distribution_round_at", strconv.FormatInt(fremd, 10)); err != nil {
+		t.Fatal(err)
+	}
+	if err := cs.RunDailyDistributionAtomic(fremd + 10 + 24*3600); err != nil {
+		t.Fatalf("Abstand eingehalten: err=%v", err)
 	}
 }

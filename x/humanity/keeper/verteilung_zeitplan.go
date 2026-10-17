@@ -1,6 +1,7 @@
 package keeper
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -196,9 +197,22 @@ func (cs *ChainState) VerteilungAbstandFreiAb() (int64, error) {
 	if cs.db == nil {
 		return 0, nil // ohne Datenbank (Einzeltests): keine Marken
 	}
+	return verteilAbstandFreiLesen(cs.db)
+}
+
+// zeileLeser: das Stueck von *sql.DB und *sql.Tx, das verteilAbstandFreiLesen
+// braucht.
+type zeileLeser interface {
+	QueryRow(query string, args ...any) *sql.Row
+}
+
+// verteilAbstandFreiLesen liest beide Marken streng ueber q -- ausserhalb
+// einer Runde ueber den Pool, in RunDailyDistributionAtomic ueber deren
+// Transaktion (verteilAbstandInRundePruefen).
+func verteilAbstandFreiLesen(q zeileLeser) (int64, error) {
 	lies := func(key string) (int64, error) {
 		var v string
-		err := cs.db.QueryRow(`SELECT value FROM chain_config WHERE key = $1`, key).Scan(&v)
+		err := q.QueryRow(`SELECT value FROM chain_config WHERE key = $1`, key).Scan(&v)
 		if errors.Is(err, sql.ErrNoRows) {
 			return 0, nil
 		}
@@ -224,6 +238,35 @@ func (cs *ChainState) VerteilungAbstandFreiAb() (int64, error) {
 		return 0, err
 	}
 	return verteilAbstandFrei(runde, auszahlung), nil
+}
+
+// ErrVerteilAbstand: RunDailyDistributionAtomic hat die Runde abgelehnt, weil
+// sie unter cs.mu den Mindestabstand nicht einhielt.
+var ErrVerteilAbstand = errors.New("Mindestabstand zur letzten Runde nicht eingehalten")
+
+// verteilAbstandInRundePruefen: dieselbe Pruefung wie im Planer, aber
+// INNERHALB der Verteilungstransaktion und unter cs.mu (Sicherheitspruefung
+// des Zeitplan-PRs, Befund mittel). Der Planer prueft ohne Sperre; zwischen
+// seiner Pruefung und der Runde kann ein Peer-Block mit der Runde eines
+// anderen Erzeugers nachgespielt werden (Leiterwechsel in derselben Minute).
+// Ohne diese zweite Pruefung liefe die Runde trotzdem, und jeder andere
+// Knoten verwuerfe sie (distributionRoundToSkip) -- Marken, Umlauf und
+// Kontostaende liefen auseinander. Nachgespielt wird nur unter cs.mu, also
+// sieht diese Lesung jede bis hierher angewandte Marke. Fail-closed:
+// Lesefehler oder zu kurzer Abstand -> Fehler, die Runde wird ganz
+// zurueckgerollt.
+func (cs *ChainState) verteilAbstandInRundePruefen(ctx context.Context, ubiAt int64) error {
+	if cs.db == nil {
+		return nil // ohne Datenbank (Einzeltests): keine Marken
+	}
+	frei, err := verteilAbstandFreiLesen(cs.dbExecCtx(ctx))
+	if err != nil {
+		return fmt.Errorf("Mindestabstand nicht pruefbar: %w", err)
+	}
+	if !VerteilAbstandErlaubt(ubiAt, frei) {
+		return fmt.Errorf("%w (Runde %d, frei ab %d)", ErrVerteilAbstand, ubiAt, frei)
+	}
+	return nil
 }
 
 // verteilAbstandNachlauf: so viel spaeter als 20:00 darf eine Runde wegen

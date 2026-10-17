@@ -5159,6 +5159,11 @@ func (cs *ChainState) RunDailyDistributionAtomic(ubiAt int64) error {
 	return cs.runAtomicDistributionWithOutbox(func(ctx context.Context) ([]Transaction, error) {
 		var txs []Transaction
 
+		// Mindestabstand unter cs.mu erneut pruefen (verteilung_zeitplan.go).
+		if err := cs.verteilAbstandInRundePruefen(ctx, ubiAt); err != nil {
+			return nil, err
+		}
+
 		// Umlaufsicherung, Liegegeld, freie Adressen (wirtschaft.go) --
 		// VOR dem Grundeinkommen, damit es noch am selben Tag verteilt wird.
 		// Leer vor der Aktivierung.
