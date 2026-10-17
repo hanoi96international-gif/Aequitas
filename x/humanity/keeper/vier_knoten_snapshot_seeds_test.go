@@ -228,6 +228,17 @@ func (n *vierKnotenNetz) snapshotMissbrauch(t *testing.T) {
 			}},
 	}
 
+	// Der oeffentliche Snapshot ist je Absender-IP 30 s gedrosselt
+	// (handleSnapshot), und die Knoten holen alle von 127.0.0.1 (Loopback-
+	// Route). Im Fall LeiterFaelltAusUndZiehtNach hat der ueberholte Leiter
+	// eben erst so geholt. Liefe der erste Fall hier in die Drosselung,
+	// wartete PerformResync 35 s -- mit gesetztem resyncInProgress, also ohne
+	// jeden Block anzunehmen; laenger als die Finalitaetstiefe, und seine
+	// eigenen letzten Bloecke blieben als toter Zweig stehen (Befund, siehe
+	// Bericht). Darum das Fenster hier abwarten, statt den Knoten taub zu
+	// machen. Die Drosselung selbst bleibt unangetastet.
+	time.Sleep(31 * time.Second)
+
 	importHoeheVorher := zielCS.getConfigValueDB("snapshot_import_height")
 	for _, f := range faelle {
 		t.Run(f.name, func(t *testing.T) {
@@ -427,9 +438,27 @@ func (n *vierKnotenNetz) trustedSeedsFromSync(t *testing.T) {
 
 	abgewehrtB := dagB.replayMauer.abgewehrt.Load()
 	abweisungenA, abweisungenB := dagA.replayMauer.abweisungen.Load(), dagB.replayMauer.abweisungen.Load()
-	for v := 0; v < replayMauerSchwelle; v++ {
+	// Ein beim Nachspielen gescheiterter Block wird erst nach
+	// replayBackoffFor(n) wieder nachgespielt (5 s, 10 s, ...; block.go) --
+	// davor zaehlt ein Abruf nicht. Der Peer liefert ihn also ueber die Zeit
+	// immer wieder, wie ein Seed, dessen Kette ihn fuehrt, bis jeder Knoten
+	// ihn replayMauerSchwelle-mal nachgespielt und abgewiesen hat.
+	//
+	// Waehrenddessen erzeugt niemand (ruhe): sonst rueckt die Finalitaet
+	// weiter, und B (kein Seed, kein FromSync) liesse den Block noch vor dem
+	// dritten Nachspielen schon im Sync als "unter der Finalitaet" fallen --
+	// A als Seed nicht (FromSync entbindet dort bis zum Stichtag,
+	// fromsync_stichtag.go). Das ist ein anderer Unterschied als der, um den
+	// es hier geht.
+	n.ruhe.Store(true)
+	defer n.ruhe.Store(false)
+	ende := time.Now().Add(90 * time.Second)
+	for time.Now().Before(ende) &&
+		(dagA.replayMauer.abweisungen.Load()-abweisungenA < replayMauerSchwelle ||
+			dagB.replayMauer.abweisungen.Load()-abweisungenB < replayMauerSchwelle) {
 		dagB.doSyncOnce(peer.URL)
 		dagA.doSyncOnce(peer.URL)
+		time.Sleep(time.Second)
 	}
 	time.Sleep(500 * time.Millisecond) // loeseHeilungAus laeuft in einer Goroutine
 

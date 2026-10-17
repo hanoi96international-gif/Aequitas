@@ -115,10 +115,11 @@ import (
 //     Bootstrap-Knoten ein (Netz nach aussen, nicht deterministisch); ein
 //     abgeschlossenes libp2p-Netz aus vier Knoten braeuchte eigene
 //     Bootstrap-Konfiguration im Produktionscode.
-//   - Leitungswechsel mit Snapshot-Resync des ueberholten Leiters
-//     (leitungUeberholt) als Ganzes: der Test ruft PerformResync mit
-//     denselben Argumenten direkt; den Ausloeser (Term verloren, ohne zu
-//     uebergeben) erzeugt er nicht.
+//
+// Seit snapshotDialLokal laeuft auch in LeiterFaelltAusUndZiehtNach der echte
+// Weg: der zurueckkehrende Ex-Leiter merkt "Leitung verloren, ohne sie zu
+// uebergeben" (leitungUeberholt) und holt den Zustand per Snapshot vom neuen
+// Leiter (im Log: "Zustand vom neuen Leiter uebernommen").
 //   - Echte Prozessneustarts: "Neustart" heisst neue Instanz aus derselben
 //     Datenbank; Hintergrundarbeiter der alten Instanz laufen gegen eine
 //     geschlossene Datenbank aus (wie bei testKnoten).
