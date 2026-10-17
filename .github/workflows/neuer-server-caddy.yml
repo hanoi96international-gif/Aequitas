@@ -4,6 +4,11 @@ name: Neuer C1 (netcup) -- Caddy (aequitas.digital und proof1)
 # Vergleichsdienst, /coordinator -> Coordinator auf C2.
 on:
   workflow_dispatch:
+    inputs:
+      neu_anlegen:
+        description: aequitas-caddy einmal mit Log-Rotation neu anlegen (kurze HTTPS-Unterbrechung)
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency: neuer-c1-caddy
@@ -30,4 +35,6 @@ jobs:
       - name: Caddyfile auf die Box
         run: scp -o BatchMode=yes deploy/Caddyfile.neuer-server root@$NEU:/root/Aequitas/deploy/Caddyfile.neuer-server
       - name: Ausrollen und pruefen
-        run: ssh -o BatchMode=yes -o ServerAliveInterval=30 root@$NEU 'bash -s' < deploy/caddy-neuer-server.sh
+        env:
+          NEU_ANLEGEN: ${{ inputs.neu_anlegen && '1' || '0' }}
+        run: ssh -o BatchMode=yes -o ServerAliveInterval=30 root@$NEU "NEU_ANLEGEN=$NEU_ANLEGEN bash -s" < deploy/caddy-neuer-server.sh
