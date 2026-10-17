@@ -56,7 +56,7 @@ jeweiligen PR.
 
 | Befund | Schwere | Anmerkung |
 |---|---|---|
-| StateRoot-Abweichung wird nur geloggt, der Block angenommen. Im DAG mit mehreren Produzenten ergeben Geschwister immer verschiedene Roots, ein hartes Abweisen hielte den Sync an. | MITTEL | tragbar nur bei geschlossener Produzentenliste |
+| StateRoot-Abweichung wird nur geloggt, der Block angenommen. Im DAG mit mehreren Produzenten ergeben Geschwister immer verschiedene Roots, ein hartes Abweisen hielte den Sync an. | MITTEL | tragbar nur bei geschlossener Produzentenliste. Abweisen ist auch im scheinbar eindeutigen Fall (ein Elternblock, Knoten ruht) nicht sicher: der Root enthaelt die angenommenen, noch nicht verblockten Ueberweisungen des Produzenten. Sichtbar je Produzent in `/api/health/combined` → `stateroot_je_produzent` (begrenzt auf 64), siehe `stateroot_beobachtung.go` |
 | FromSync-Ausnahmen (Sperre, Finalität) über Seed-Verbindungen ohne TLS | MITTEL | schlafender Stichtag im Code (`fromsync_stichtag.go`); einschalten per PR nach `docs/FROMSYNC_STICHTAG.md` |
 | Keine echten Tests mit 4 oder mehr Knoten (Simulationen gibt es) | HOCH | teilweise: `TestVierKnoten_RealDB` (4 Instanzen, eigene Datenbanken, HTTP-Push/-Sync, Leitung, Ausfall und Rueckkehr, Faelschungen). Nicht abgedeckt: Snapshot-Resync ueber Loopback, libp2p, Trusted Seeds; paketweite Zaehler (Push-Plaetze) teilen sich die Instanzen; die Replay-Mauer zaehlt seit #375 je Knoten -- siehe Dateikopf |
 | `checkpointVorschau` läuft unter `dag.mu` (bis über 5 s je Checkpoint-Block) | MITTEL | erst ab dem Checkpoint-Stichtag |

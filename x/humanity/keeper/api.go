@@ -809,6 +809,10 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		"sync_streak":            SyncStreakStats(),
 		"produktions_ausfaelle":  ProduktionsAusfaelle(),
 		"stateroot_abweichungen": a.blockchain.StateRootAufschluesselung(),
+		// Dieselben Vergleiche je Produzent, kumuliert und begrenzt -- damit
+		// ein einzelner abweichender Produzent sichtbar ist, nicht nur eine
+		// Summe oder eine Logzeile. Siehe stateroot_beobachtung.go.
+		"stateroot_je_produzent": a.blockchain.StateRootJeProduzent(),
 		"peer_hoehen":            PeerHoehenStand(),
 		"dag_ausduennung":        AusduennStand(),
 		"fork_pruefung":          map[string]interface{}{"bedeutung": "Divergenzpruefung gegen den Primary. geschwister = anderer kanonischer Block, aber unserer ist dem Primary bekannt (harmlos); unbekannt_in_folge = der Primary kennt unseren Block nicht, Resync ab 3.", "geschwister": chainDivergenceGeschwister.Load(), "unbekannt_in_folge": chainDivergenceFolge.Load(), "stateroot_resync_unterdrueckt": stateRootResyncUnterdrueckt.Load()},
