@@ -1007,6 +1007,16 @@ type BlockDAG struct {
 	// lock-free before either function takes dag.mu/replayMu, so a resync in
 	// progress never has to contend with them for those locks either.
 	resyncInProgress atomic.Bool
+	// Das Tor um resyncInProgress -- siehe resync_tor.go: Halter-Zahl (unter
+	// resyncTorMu) und laufende Durchgaenge hinter der Pruefung. Schreiben
+	// nur ueber resyncTorSchliessen; ProduceBlock/AddPeerBlock betreten es
+	// ueber resyncTorBetreten.
+	resyncTorMu     sync.Mutex
+	resyncTorHalter int
+	resyncTorDrin   atomic.Int64
+	// resyncLaeuftMu: hoechstens ein PerformResync zugleich, ueber Abruf und
+	// Austausch (autoheal.go).
+	resyncLaeuftMu sync.Mutex
 	// resyncBootstrapURL/resyncSigner/resyncPrimaryURL cache the three values
 	// StartDivergenceAutoHeal was configured with, so triggerAutoResync
 	// (autoheal.go) can call PerformResync without needing its own signature
@@ -2561,10 +2571,12 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 	if dag.state != nil {
 		dag.state.nichtImRegister.Store(false)
 	}
-	if dag.resyncInProgress.Load() {
+	torOffen, torVerlassen := dag.resyncTorBetreten()
+	if !torOffen {
 		merkeProduktionsAusfall("resync_laeuft")
 		return nil // an in-process self-heal resync is atomically swapping account/DAG state right now — see resyncInProgress's field comment
 	}
+	defer torVerlassen() // resync_tor.go: der Resync wartet, bis dieser Durchgang fertig ist
 	// Ongoing health check, not tied to any specific past incident: warn if a
 	// single ProduceBlock call takes unusually long, since it holds dag.mu for
 	// its entire duration (every other dag.mu consumer — API reads,
@@ -5042,9 +5054,11 @@ func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
 		// stall-timeout escape valves below.
 		dag.lastPeerContactAt.Store(time.Now().Unix())
 	}
-	if dag.resyncInProgress.Load() {
+	torOffen, torVerlassen := dag.resyncTorBetreten()
+	if !torOffen {
 		return false // an in-process self-heal resync is atomically swapping account/DAG state right now — see resyncInProgress's field comment; the sender will redeliver, ordered sync fills the gap once the resync completes
 	}
+	defer torVerlassen() // resync_tor.go: der Resync wartet, bis dieser Durchgang fertig ist
 	// FIX (durable fix, 2026-07-04 — closes wasted-effort noise found live after
 	// a fresh checkpoint-seeded resync): a block at or below BootHeight is
 	// already fully accounted for by the snapshot/checkpoint this node just

@@ -450,11 +450,40 @@ func (dag *BlockDAG) triggerAutoResyncMitBeweis(reason string, endgueltig bool) 
 // call, exactly like the boot-time sequence in main.go — safe to run
 // alongside concurrent API reads, which simply block briefly on whichever
 // lock they need.
+//
+// ABRUF VOR DEM TOR (Befund aus dem Vier-Knoten-Test): resyncInProgress
+// wurde frueher VOR dem Abruf gesetzt -- samt bis zu drei 429-Wartezeiten von
+// je 35 s. Solange nahm und erzeugte der Knoten keinen Block, auch wenn der
+// Abruf am Ende scheiterte; ein zurueckliegender Knoten war minutenlang taub
+// und verlor dabei seine eigenen letzten Bloecke an einen toten Zweig. Jetzt:
+//
+//  1. resyncLaeuftMu: hoechstens ein Resync zugleich, ueber Abruf UND
+//     Austausch. Ein zweiter Aufruf wartet auf den ersten; die Aufrufer sind
+//     eine feste Menge von Waechter-Goroutinen und leitungUeberholt.
+//  2. Abruf und ALLE Pruefungen (holeResyncSnapshot: Signatur, Unterzeichner,
+//     Alter, Register, Rueckschritt) ohne Tor -- der Knoten laeuft weiter.
+//  3. Erst dann das Tor zu, warten, bis kein ProduceBlock/AddPeerBlock mehr
+//     dahinter laeuft (hoechstens resyncTorLeerMax, sonst Abbruch ohne
+//     Aenderung), und genau den geprueften Snapshot anwenden. Was sich
+//     seither geaendert haben kann -- Alter, lokale Hoehe fuer die
+//     Rueckschritt-Schranke --, prueft wendeResyncSnapshotAn noch einmal.
+//  4. Alles, was mit dem Austausch atomar sein muss (Checkpoint, bootHeight,
+//     Bruecke, Sync-Marken, Aufhol-Tor), bleibt hinter dem Tor.
 func (dag *BlockDAG) PerformResync(bootstrapURL, signer, primaryURL string) error {
-	dag.resyncInProgress.Store(true)
-	defer dag.resyncInProgress.Store(false)
+	dag.resyncLaeuftMu.Lock()
+	defer dag.resyncLaeuftMu.Unlock()
 
-	if err := dag.state.ResyncFromSnapshotURL(bootstrapURL, signer); err != nil {
+	g, err := dag.state.holeResyncSnapshot(bootstrapURL, signer)
+	if err != nil {
+		return fmt.Errorf("resync from snapshot: %w", err)
+	}
+
+	oeffnen := dag.resyncTorSchliessen()
+	defer oeffnen()
+	if err := dag.warteBisResyncTorLeer(resyncTorLeerMax); err != nil {
+		return fmt.Errorf("resync from snapshot: %w", err)
+	}
+	if err := dag.state.wendeResyncSnapshotAn(g); err != nil {
 		return fmt.Errorf("resync from snapshot: %w", err)
 	}
 	dag.state.ClearAutoResyncRequest()

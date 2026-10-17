@@ -511,8 +511,11 @@ func (dag *BlockDAG) leitungUeberholt(term uint64) {
 	}
 	fmt.Printf("[LEITUNG] ⚠ Leitung von Term %d verloren, ohne sie zu uebergeben -- verwerfe unverteilte Annahmen und hole den Zustand neu\n", term)
 	// 1. Keine Bloecke mehr aus dem eigenen Ausgangskorb.
-	dag.resyncInProgress.Store(true)
-	defer dag.resyncInProgress.Store(false)
+	// Ueber resyncTorSchliessen statt eines blossen Store: PerformResync
+	// schliesst das Tor fuer den Austausch selbst noch einmal und oeffnet es
+	// danach -- nur so bleibt es zu, bis auch dieser Aufruf fertig ist.
+	oeffnen := dag.resyncTorSchliessen()
+	defer oeffnen()
 	// 2.+3. WAL-Warteschlange und Ausgangskorb.
 	verworfen, geloescht := cs.leitungUnverteiltVerwerfen()
 	fmt.Printf("[LEITUNG] %d WAL-Eintraege und %d Ausgangskorb-Zeilen verworfen\n", verworfen, geloescht)
@@ -527,7 +530,6 @@ func (dag *BlockDAG) leitungUeberholt(term uint64) {
 		cs.setConfigValueDB(autoResyncPendingKey, "1")
 		return
 	}
-	dag.resyncInProgress.Store(false) // PerformResync setzt es selbst
 	if err := dag.PerformResync(u+"/api/snapshot", addr, u); err != nil {
 		fmt.Printf("[LEITUNG] ✗ Neusynchronisation vom Leiter fehlgeschlagen (%v) -- beim naechsten Neustart\n", err)
 		cs.setConfigValueDB(autoResyncPendingKey, "1")

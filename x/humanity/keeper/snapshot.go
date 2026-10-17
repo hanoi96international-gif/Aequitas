@@ -280,7 +280,7 @@ var errSnapshotRateLimited = errors.New("snapshot server is rate limiting this n
 // by asking again and a recovering node must not sit in a retry loop against a
 // peer that is genuinely wrong.
 func fetchSnapshotWaitingOutRateLimit(peerURL, expectedSignerHex string) (*StateSnapshot, error) {
-	return retryWhileRateLimited(snapshotRetryAttempts, snapshotRetryWait, func() (*StateSnapshot, error) {
+	return retryWhileRateLimited(snapshotRetryAttempts, snapshotRetryWarten, func() (*StateSnapshot, error) {
 		return fetchAndValidateSnapshot(peerURL, expectedSignerHex)
 	})
 }
@@ -291,6 +291,12 @@ const (
 	snapshotRetryAttempts = 4
 	snapshotRetryWait     = 35 * time.Second
 )
+
+// snapshotRetryWarten: die Wartezeit, die fetchSnapshotWaitingOutRateLimit
+// wirklich benutzt. Im Betrieb immer snapshotRetryWait; nur Tests verkuerzen
+// sie, um einen lange drosselnden Peer zu zeigen, ohne Minuten zu warten
+// (resync_vor_tor_test.go). Die Zahl der Versuche bleibt fest.
+var snapshotRetryWarten = snapshotRetryWait
 
 // retryWhileRateLimited is the decision this fix turns on, separated from the
 // network so it can be tested without one: the snapshot fetcher refuses
@@ -337,6 +343,27 @@ func snapshotDial(ctx context.Context, network, addr string) (net.Conn, error) {
 		return (&net.Dialer{Timeout: 10 * time.Second}).DialContext(ctx, network, addr)
 	}
 	return pinningDialer(ctx, network, addr)
+}
+
+// pruefeSnapshotAlter: weder aus der Zukunft (mehr als 60 s) noch aelter als
+// SNAPSHOT_MAX_AGE_SECONDS (Vorgabe 24 h). Beim Abruf geprueft und beim
+// ersetzenden Resync unmittelbar vor dem Austausch noch einmal
+// (wendeResyncSnapshotAn) -- zwischen beidem kann der Abruf Minuten dauern.
+func pruefeSnapshotAlter(ts int64) error {
+	now := time.Now().Unix()
+	if ts > now+60 {
+		return fmt.Errorf("snapshot timestamp is in the future (%d seconds ahead)", ts-now)
+	}
+	maxAge := int64(86400) // 24 hours default
+	if v := os.Getenv("SNAPSHOT_MAX_AGE_SECONDS"); v != "" {
+		if n, err := fmt.Sscanf(v, "%d", &maxAge); n != 1 || err != nil {
+			maxAge = 86400
+		}
+	}
+	if now-ts > maxAge {
+		return fmt.Errorf("snapshot is too old (%d seconds, max %d) — set SNAPSHOT_MAX_AGE_SECONDS to override", now-ts, maxAge)
+	}
+	return nil
 }
 
 func fetchAndValidateSnapshot(peerURL, expectedSignerHex string) (*StateSnapshot, error) {
@@ -399,18 +426,8 @@ func fetchAndValidateSnapshot(peerURL, expectedSignerHex string) (*StateSnapshot
 		return nil, fmt.Errorf("parse failed: %w", err)
 	}
 
-	now := time.Now().Unix()
-	if snap.Timestamp > now+60 {
-		return nil, fmt.Errorf("snapshot timestamp is in the future (%d seconds ahead)", snap.Timestamp-now)
-	}
-	maxAge := int64(86400) // 24 hours default
-	if v := os.Getenv("SNAPSHOT_MAX_AGE_SECONDS"); v != "" {
-		if n, err := fmt.Sscanf(v, "%d", &maxAge); n != 1 || err != nil {
-			maxAge = 86400
-		}
-	}
-	if now-snap.Timestamp > maxAge {
-		return nil, fmt.Errorf("snapshot is too old (%d seconds, max %d) — set SNAPSHOT_MAX_AGE_SECONDS to override", now-snap.Timestamp, maxAge)
+	if err := pruefeSnapshotAlter(snap.Timestamp); err != nil {
+		return nil, err
 	}
 
 	// Signature verification is mandatory when BOOTSTRAP_SIGNER is configured.
@@ -773,31 +790,47 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) (
 // correctly — this is the same signed-snapshot recovery this session
 // already used twice in production for CD20/the VPS via a full DB wipe;
 // this gives operators a way to do it without one.
-func (cs *ChainState) ResyncFromSnapshotURL(peerURL, expectedSignerHex string) (err error) {
-	// Wie ImportSnapshotFromURL: den Stand der Erzeuger neu lesen.
-	defer func() {
-		if err == nil {
-			cs.erzeugerRegisterAuffrischen()
-		}
-	}()
+func (cs *ChainState) ResyncFromSnapshotURL(peerURL, expectedSignerHex string) error {
+	g, err := cs.holeResyncSnapshot(peerURL, expectedSignerHex)
+	if err != nil {
+		return err
+	}
+	return cs.wendeResyncSnapshotAn(g)
+}
+
+// resyncSnapshot: ein abgerufener und vollstaendig gepruefter Snapshot fuer
+// den ersetzenden Resync. Nur holeResyncSnapshot erzeugt ihn -- nach
+// Signatur, Unterzeichner, Alter, Validator-Register und Rueckschritt-
+// Schranke --, und wendeResyncSnapshotAn wendet genau diesen an. Dazwischen
+// laeuft der Knoten weiter (PerformResync, autoheal.go): der Abruf samt
+// 429-Wartezeiten kann Minuten dauern und darf ihn nicht taub machen.
+type resyncSnapshot struct {
+	snap           *StateSnapshot
+	peerURL        string
+	signer         string
+	validatorenBis int64
+}
+
+// holeResyncSnapshot: Abruf und alle Pruefungen von ResyncFromSnapshotURL,
+// ohne eine Sperre und ohne den Zustand zu beruehren.
+func (cs *ChainState) holeResyncSnapshot(peerURL, expectedSignerHex string) (*resyncSnapshot, error) {
 	if expectedSignerHex == "" {
-		return fmt.Errorf("RESYNC_FROM_SNAPSHOT requires BOOTSTRAP_SIGNER set — refusing to replace local state from an unverified source")
+		return nil, fmt.Errorf("RESYNC_FROM_SNAPSHOT requires BOOTSTRAP_SIGNER set — refusing to replace local state from an unverified source")
 	}
 	// Waits out the peer's 30s public-tier throttle instead of failing on it.
 	// A recovering node polls that same peer for blocks continuously, so a 429
 	// here is ordinary; see fetchSnapshotWaitingOutRateLimit.
-	snapPtr, err := fetchSnapshotWaitingOutRateLimit(peerURL, expectedSignerHex)
+	snap, err := fetchSnapshotWaitingOutRateLimit(peerURL, expectedSignerHex)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	snap := *snapPtr
 	// Wie beim Import: das Register vor jeder Sperre selbst pruefen.
 	validatorenBis := snapshotValidatorenBis(snap.Timestamp)
 	if err := pruefeSnapshotValidatoren(snap.Validatoren, validatorenBis); err != nil {
-		return fmt.Errorf("resync: validator register: %w", err)
+		return nil, fmt.Errorf("resync: validator register: %w", err)
 	}
 	if err := pruefeSnapshotVerlauf(snap.ValidatorVerlauf, validatorenBis); err != nil {
-		return fmt.Errorf("resync: validator history: %w", err)
+		return nil, fmt.Errorf("resync: validator history: %w", err)
 	}
 
 	// FIX (audit 2026-08-15, after a live near-miss): refuse a snapshot that
@@ -819,14 +852,50 @@ func (cs *ChainState) ResyncFromSnapshotURL(peerURL, expectedSignerHex string) (
 	// tolerance is deliberately generous — a snapshot is already slightly stale
 	// when it is applied, and a busy node advances during the fetch — but it is
 	// finite, which is the entire point.
+	if err := cs.pruefeResyncRueckschritt(peerURL, snap.Height); err != nil {
+		return nil, err
+	}
+	return &resyncSnapshot{snap: snap, peerURL: peerURL, signer: expectedSignerHex, validatorenBis: validatorenBis}, nil
+}
+
+// pruefeResyncRueckschritt: die Rueckschritt-Schranke (siehe oben). Zweimal
+// aufgerufen -- nach dem Abruf und unmittelbar vor dem Austausch --, weil die
+// lokale Hoehe waehrend des Abrufs weiterlaeuft.
+func (cs *ChainState) pruefeResyncRueckschritt(peerURL string, snapHeight int64) error {
 	if localHeight := cs.localChainHeightForResync(); localHeight > 0 &&
-		snap.Height+resyncBackwardsTolerance < localHeight {
+		snapHeight+resyncBackwardsTolerance < localHeight {
 		if os.Getenv("ALLOW_RESYNC_REGRESSION") != "true" {
-			return fmt.Errorf("%s", resyncRegressionMessage(peerURL, snap.Height, localHeight))
+			return fmt.Errorf("%s", resyncRegressionMessage(peerURL, snapHeight, localHeight))
 		}
 		fmt.Printf("[RESYNC] ⚠ ALLOW_RESYNC_REGRESSION=true — accepting a snapshot %d blocks behind local height %d\n",
-			localHeight-snap.Height, localHeight)
+			localHeight-snapHeight, localHeight)
 	}
+	return nil
+}
+
+// wendeResyncSnapshotAn: der Austausch selbst, fuer einen Snapshot aus
+// holeResyncSnapshot. Was sich seit dem Abruf geaendert haben kann, wird hier
+// noch einmal geprueft (fail-closed): das Alter und die Rueckschritt-Schranke
+// gegen die JETZIGE lokale Hoehe. Signatur, Unterzeichner und Register haengen
+// nur am Snapshot selbst, den niemand ausser holeResyncSnapshot erzeugt.
+func (cs *ChainState) wendeResyncSnapshotAn(g *resyncSnapshot) (err error) {
+	// Wie ImportSnapshotFromURL: den Stand der Erzeuger neu lesen.
+	defer func() {
+		if err == nil {
+			cs.erzeugerRegisterAuffrischen()
+		}
+	}()
+	if g == nil || g.snap == nil || g.signer == "" {
+		return fmt.Errorf("resync: no verified snapshot — refusing to replace local state")
+	}
+	if err := pruefeSnapshotAlter(g.snap.Timestamp); err != nil {
+		return fmt.Errorf("resync: %w", err)
+	}
+	if err := cs.pruefeResyncRueckschritt(g.peerURL, g.snap.Height); err != nil {
+		return err
+	}
+	snap := *g.snap
+	peerURL, expectedSignerHex, validatorenBis := g.peerURL, g.signer, g.validatorenBis
 
 	fmt.Printf("[RESYNC] ⚠ Authoritative resync: REPLACING local state with snapshot from %s (signed by %s)\n", peerURL, expectedSignerHex)
 
