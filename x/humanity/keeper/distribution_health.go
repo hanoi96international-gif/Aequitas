@@ -85,6 +85,18 @@ func (cs *ChainState) DistributionHealth() map[string]interface{} {
 	out["last_payout_note"] = "only stamped when a round actually distributed something; " +
 		"an old value means no fees accumulated, not a missed round"
 
+	// Did a round RUN? last_distribution_round_at is stamped by every executed
+	// round, paid or not, and replayed by every node -- unlike last_attempt
+	// below it survives a restart. And when is the next attempt planned?
+	// (verteilung_zeitplan.go)
+	out["last_round_at"] = cs.LetzteVerteilungsrunde()
+	out["last_round_note"] = "last executed round (paid or not); compare with last_payout_at"
+	out["next_attempt_at"] = cs.NaechsteVerteilungAt()
+	if e := LetztesUBIErgebnis(); e != "" {
+		// ausgezahlt | topf_leer | keine_menschen | anteil_rundet_auf_null
+		out["ubi_result"] = e
+	}
+
 	lastDistribution.mu.Lock()
 	defer lastDistribution.mu.Unlock()
 

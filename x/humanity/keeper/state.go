@@ -2169,10 +2169,10 @@ func (cs *ChainState) TryLockDistribution() bool {
 	// we've replayed that block (which sets last_ubi_at via
 	// applyUBIFinalizeDeltaLocked), there's nothing left to do.
 	if lastUBIAt := cs.GetLastUBIAt(); lastUBIAt > 0 &&
-		time.Since(time.Unix(lastUBIAt, 0)) < 23*time.Hour+55*time.Minute {
+		time.Since(time.Unix(lastUBIAt, 0)) < verteilSperreFrist {
 		return false
 	}
-	threshold := fmt.Sprintf("%d", time.Now().Add(-23*time.Hour-55*time.Minute).Unix()) // F5-FIX: grace period, still < 24h
+	threshold := fmt.Sprintf("%d", time.Now().Add(-verteilSperreFrist).Unix()) // F5-FIX: grace period, still < 24h
 	now := fmt.Sprintf("%d", time.Now().Unix())
 	// Insert if missing, update if older than threshold
 	result, err := cs.db.Exec(
@@ -4209,6 +4209,7 @@ func (cs *ChainState) distributeUBIPoolLocked(ctx context.Context, verteiltAm in
 	poolAcc, ok := cs.accounts.Get(ubiPoolAddr)
 	if !ok || poolAcc.Balance <= 0 {
 		fmt.Println("[UBI] Pool is empty — nothing to distribute today")
+		merkeUBIErgebnis(ubiErgebnisTopfLeer)
 		return nil, nil
 	}
 
@@ -4247,6 +4248,7 @@ func (cs *ChainState) distributeUBIPoolLocked(ctx context.Context, verteiltAm in
 	}
 	if len(humanAddrs) == 0 {
 		fmt.Println("[UBI] No registered humans yet — pool left untouched")
+		merkeUBIErgebnis(ubiErgebnisKeineMenschen)
 		return nil, nil
 	}
 	// Ensure all human accounts are in the cache so the distribution loop
@@ -4271,6 +4273,7 @@ func (cs *ChainState) distributeUBIPoolLocked(ctx context.Context, verteiltAm in
 	poolAcc, ok = cs.accounts.Get(ubiPoolAddr)
 	if !ok || poolAcc.Balance <= 0 {
 		fmt.Println("[UBI] Pool empty after demurrage settlement — nothing to distribute")
+		merkeUBIErgebnis(ubiErgebnisTopfLeer)
 		return nil, nil
 	}
 	// P0-FIX: Do NOT call settleDemurrageLocked on the pool account itself —
@@ -4286,6 +4289,7 @@ func (cs *ChainState) distributeUBIPoolLocked(ctx context.Context, verteiltAm in
 	// P0-5/P2-9: prevent funds vanishing via float rounding to 0
 	if share == 0 {
 		fmt.Printf("[UBI] Share %.10f rounds to zero — pool left intact for next distribution\n", share)
+		merkeUBIErgebnis(ubiErgebnisAnteilNull)
 		return nil, nil
 	}
 	// P0-2 + P1-6: credit humans BEFORE zeroing pool AND before last_ubi_at.
@@ -4339,6 +4343,7 @@ func (cs *ChainState) distributeUBIPoolLocked(ctx context.Context, verteiltAm in
 
 	fmt.Printf("[UBI] ✓ Distributed %.6f AEQ across %d registered humans (%.6f AEQ each)\n",
 		total, len(humanAddrs), share)
+	merkeUBIErgebnis(ubiErgebnisAusgezahlt)
 	capturedGini := cs.calcGiniLocked()
 	capturedHumans := len(humanAddrs)
 	SafeGoroutine("SaveGiniSnapshotValues", func() { cs.SaveGiniSnapshotValues(capturedGini, capturedHumans) })

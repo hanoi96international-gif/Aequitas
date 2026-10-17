@@ -897,7 +897,10 @@ func main() {
 			berlin = time.FixedZone("CET", 2*60*60) // CEST fallback (summer, UTC+2)
 		}
 
-		lastAt := chainState.GetLastUBIAt()
+		// Die letzte AUSGEFUEHRTE Runde, nicht last_ubi_at: das rueckt nur bei
+		// einer Auszahlung vor, und mit leeren Toepfen galt sonst jede Runde
+		// nach jedem Neustart als ueberfaellig (verteilung_zeitplan.go).
+		lastAt := chainState.LetzteVerteilungsrunde()
 		firstTarget := computeFirstUBITarget(lastAt, time.Now(), berlin)
 
 		firstDelay := time.Until(firstTarget)
@@ -1003,17 +1006,22 @@ func main() {
 							return
 						}
 						fmt.Printf("[POOLS] ✓ Distribution done at %s\n", time.Now().In(berlin).Format("02.01. 15:04:05"))
-						keeper.RecordDistributionOutcome("ran", "round executed; whether it paid anything depends on pool balances")
+						keeper.RecordDistributionOutcome("ran", "round executed; UBI: "+keeper.LetztesUBIErgebnis())
 					})
 				} else {
 					fmt.Printf("[POOLS] Distribution already ran within the last 24h on this or another node — skipping\n")
-					keeper.RecordDistributionOutcome("ran_elsewhere", "another node already distributed within the last 24h")
+					keeper.RecordDistributionOutcome("ran_elsewhere", "distribution lock held: the last round (this or another node) is less than 23h55m old")
 					// Lief die letzte Runde GESTERN, nur spaeter als 20:00 (ein
 					// Retry wegen Sync oder fehlender Lease, Pruefung von #354),
 					// ist sie noch keine 23 h 55 min her -- ohne erneute Pruefung
 					// fiele der heutige Tag ganz aus. Also bald wieder pruefen,
 					// bis die Frist um ist. Lief sie heute, gilt morgen.
-					if keeper.VerteilungHeuteOffen(chainState.GetLastUBIAt(), time.Now(), berlin) {
+					//
+					// Gemessen an der letzten AUSGEFUEHRTEN Runde und nur, wenn
+					// die Sperre bis kurz nach dem Termin frei wird -- sonst lag
+					// die letzte Runde weit neben 20:00, und Nachholen hielte sie
+					// dort fest (verteilung_zeitplan.go).
+					if keeper.VerteilungBaldNachholen(chainState.LetzteVerteilungsrunde(), chainState.VerteilungsSperreAb(), time.Now(), berlin) {
 						retrySoon = true
 					}
 				}

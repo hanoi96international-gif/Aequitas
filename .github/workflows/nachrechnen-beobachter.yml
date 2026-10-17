@@ -82,7 +82,7 @@ jobs:
           echo "ubi_vorher=$L" >> "$GITHUB_OUTPUT"
           # C1s Stand der Verteilung beim Start: wann zuletzt eine Runde
           # erreicht wurde (auch ohne Auszahlung) -- fuer das Ergebnis.
-          V=$(curl -sf -m 25 "$C1/api/health/combined" | jq -r '.distribution.last_attempt.at // empty' 2>/dev/null || true)
+          V=$(curl -sf -m 25 "$C1/api/health/combined" | jq -r '.chain.distribution.last_attempt.at // empty' 2>/dev/null || true)
           case "$V" in ''|*[!0-9]*) V="";; esac
           echo "versuch_vorher=$V" >> "$GITHUB_OUTPUT"
           JETZT=$(date +%s)
@@ -186,7 +186,7 @@ jobs:
             | jq '[.. | objects | select(has("nachrechnen")) | .nachrechnen][0] // {}' > nachrechnen.json || true
           curl -s -m 20 http://localhost:8080/api/status > status.json || true
           # C1s eigener Stand am Ende: Runde erreicht? Ausgezahlt?
-          curl -s -m 20 "$C1/api/health/combined" | jq '.distribution // {}' > c1_verteilung.json 2>/dev/null || echo '{}' > c1_verteilung.json
+          curl -s -m 20 "$C1/api/health/combined" | jq '.chain.distribution // {}' > c1_verteilung.json 2>/dev/null || echo '{}' > c1_verteilung.json
           curl -s -m 20 "$C1/api/debug/stateroot-components" | jq -r '.last_ubi_at // ""' > c1_ubi_nachher.txt 2>/dev/null || true
           kill $PID 2>/dev/null || true
           sleep 5
@@ -227,6 +227,7 @@ jobs:
             echo "- nachgespielte Bloecke: $(grep -cE '\[REPLAY\]' node.log || true) Zeilen, abgelehnt: $(grep -cE 'rolling back whole block' node.log || true)"
             echo "- Verteilungsrunde nachgespielt: $([ "$RUNDE" = 1 ] && echo ja || echo nein)"
             echo "- C1: Runde im Lauf erreicht: $C1_RUNDE, ausgezahlt: $C1_AUSGEZAHLT"
+            echo "- C1: letzte ausgefuehrte Runde (last_round_at): $(jq -r '.last_round_at // "?"' c1_verteilung.json 2>/dev/null), Grundeinkommen: $(jq -r '.ubi_result // "?"' c1_verteilung.json 2>/dev/null), Grund: $(jq -r '.last_attempt.reason // "?"' c1_verteilung.json 2>/dev/null | tr -d '\r\n' | cut -c1-200)"
             if [ "$GEPRUEFT" = 0 ] || [ "$RUNDE" != 1 ]; then
               echo
               if [ "$C1_AUSGEZAHLT" = nein ] && [ "$C1_RUNDE" != nein ]; then
