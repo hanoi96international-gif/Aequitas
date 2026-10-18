@@ -185,6 +185,61 @@ sein.**
 - Transparenzlog für Bestätigungen und Schlüssel.
 - Aufteilung der biometrischen Daten auf dem Gerät.
 
+## Festgelegte Entscheidungen (18.10.2026)
+
+Diese Entscheidungen leiten sich aus dem Leitbild ab: Geld eines Menschen für
+alle Menschen, so fair wie möglich. Bis eine Mehrheit der Betreiber etwas
+anderes beschließt, gelten sie als Vorgabe. Jede Abweichung braucht eine
+schriftliche Begründung in diesem Dokument.
+
+### Verifier-Zulassung (für B1)
+
+1. **Ein Mensch, ein Verifier.** Verifier kann nur ein registrierter Mensch
+   werden, und jeder Mensch zählt einmal. Mehrere Schlüssel, Server oder
+   Firmen machen niemanden zu mehreren Verifiern.
+2. **Kein Kapitaleinsatz.** Für die Zulassung zählen weder Guthaben noch
+   Stake. Wer mehr Geld hat, bekommt dadurch keine Stimme mehr.
+3. **Zulassung mit 2/3** der bereits zugelassenen Verifier, auf der Kette und
+   mit Unterschriften. Damit B1 starten kann, sind am Anfang drei Betreiber
+   gesetzt. Jeder weitere wird durch Abstimmung aufgenommen.
+4. **Austritt jederzeit und ohne Bedingung.**
+5. **Entzug nur aus zwei Gründen:** durch einen Betrugsbeweis auf der Kette,
+   etwa zwei widersprüchliche Bestätigungen derselben Registrierung, oder
+   durch einen Beschluss von 2/3 der Verifier. Ein Entzug wirkt **nie
+   rückwirkend**. Menschen, die der Verifier früher bestätigt hat, bleiben
+   Menschen (Grundsatz 1).
+6. **Verschiedene Betreiber-Menschen.** Das Quorum k-von-n in A3 und B3 zählt
+   verschiedene Menschen, nicht verschiedene Schlüssel.
+
+### Klasse „gelb“: 800 AEQ werden nicht auf Dauer zurückgehalten
+
+Heute (`LEBENDIGKEIT_GEGEN_DEEPFAKES.md`, Zeile 66) pausiert die Staffel einer
+gelben Registrierung ohne Zeitgrenze, solange die zweite
+Lebendigkeitsprüfung fehlt. Damit verliert ein Mensch, den die Prüfung zu
+Unrecht als unsicher einstuft, den größten Teil seines Grundbetrags auf
+unbestimmte Zeit. Das verträgt sich nicht mit „nur bestätigen, nie
+wegnehmen“.
+
+**Festgelegt:**
+
+- Die zweite Prüfung beschleunigt die Staffel: Sie läuft dann wie bisher.
+- Bleibt die zweite Prüfung aus, werden die 800 AEQ trotzdem freigegeben,
+  **30 Tage nach der Registrierung**.
+- Die automatische Freigabe kann nur ein **begründeter Einspruch** anhalten.
+  Er muss von verschiedenen Betreiber-Menschen unterschrieben sein (dasselbe
+  Quorum wie in A3), einen nachprüfbaren Grund enthalten und vor Tag 30
+  vorliegen. Ein Einspruch hält die Freigabe nur an. Er nimmt nichts weg,
+  was schon ausgezahlt ist.
+- Umsetzung in `grant_staffel.go`: Die Staffel ist heute ruhend (Aktivierung
+  2100). Die Regel wird eingebaut, bevor die Staffel scharf geschaltet wird.
+  Bis dahin bekommen alle Registrierungen den vollen Betrag sofort, und
+  niemand wird benachteiligt.
+
+### Rechtsrahmen
+
+Die Entwürfe liegen in `docs/RECHTSVORLAGEN_ENTWURF.md`. Es sind
+**Entwürfe für eine Anwältin oder einen Anwalt**, keine geprüften Texte.
+
 ## Regeln für jede Änderung
 
 - Neue Transaktionsarten werden in `kein_entzug_test.go` eingeordnet
@@ -192,3 +247,4 @@ sein.**
   Begründung in `bekannteGeldAusnahmen` und eine strenge Nachrechnung.
 - Kein Code außer `clearRegistrationsFromDB` setzt `is_human` auf `false`.
 - Ein Verifier-Entzug wirkt nie rückwirkend.
+- Keine Regel hält einem Menschen Geld ohne zeitliche Grenze zurück.
