@@ -47,32 +47,10 @@ func (a *APIServer) handleWache(w http.ResponseWriter, r *http.Request) {
 	//    stand der Modus 14 Stunden auf "optional", und nichts hat es gemeldet.
 	//    Ein Tor, das offen steht, sieht von aussen genauso aus wie eines, das
 	//    zu ist -- ausser man fragt.
-	a.proofStatusMu.RLock()
-	proofDa := len(a.proofServerStatus) > 0
-	modus := proofServerModus(a.proofServerStatus)
-	a.proofStatusMu.RUnlock()
-	if len(proofServerURLs()) == 0 {
-		// Ein Validator ohne eigenen Proof-Server (deploy/validator) registriert
-		// niemanden -- fuer ihn ist das kein Befund. Rot waere hier dauerhaft
-		// rot, und eine Wache, die immer rot ist, liest niemand mehr.
-		gruen = append(gruen, "kein Proof-Server konfiguriert (uebersprungen)")
-	} else if !proofDa {
-		rot = append(rot, "Proof-Server nicht erreichbar -- keine Registrierung moeglich")
-	} else if modus != "required" {
-		rot = append(rot, fmt.Sprintf("Proof-Server BIO_ATTESTATION_MODE=%q statt required -- Registrierung ohne Gesichtspruefung moeglich", modus))
-	} else if st := a.proofServerStatusKopie(); proofServerQuorum(st) == 1 {
-		// Quorum 1 hiesse: EIN geleakter Schluessel bezeugt beliebig viele
-		// Menschen, und niemand merkt es (bio_attestation.js, QUORUM). Erlaubt
-		// ist es nur im ausdruecklich erklaerten EINZELBETRIEB mit Tagesgrenze
-		// (Entscheidung des Betreibers vom 04.10.2026) -- dieselbe Regel wie
-		// in wache.yml. Fehlt eine Angabe, bleibt es rot.
-		if g, ok := proofServerEinzelbetrieb(st); ok {
-			gruen = append(gruen, fmt.Sprintf("Proof-Server erreichbar, Gesichtspruefung Pflicht, EINZELBETRIEB: Quorum 1, hoechstens %d neue Menschen je Tag", g))
-		} else {
-			rot = append(rot, "Proof-Server BIO_ATTESTATION_QUORUM=1 ohne erklaerten Einzelbetrieb mit Tagesgrenze -- ein einzelner Schluessel genuegt fuer beliebig viele Registrierungen")
-		}
+	if ok, text := proofServerWacheBefund(len(proofServerURLs()) > 0, a.proofServerStatusKopie()); ok {
+		gruen = append(gruen, text)
 	} else {
-		gruen = append(gruen, "Proof-Server erreichbar, Gesichtspruefung Pflicht")
+		rot = append(rot, text)
 	}
 
 	// 2b. Coordinator auf dieser Box (aequitas-coordinator im selben Docker-
@@ -281,6 +259,42 @@ func proofServerQuorum(status map[string]interface{}) int {
 		return q
 	}
 	return 0
+}
+
+// proofServerWacheBefund: Punkt 2 der Wache aus EINER Kopie der letzten
+// /health-Antwort des Proof-Servers. true = in Ordnung. Fail-closed: gruen
+// nur bei required und Quorum >= 2, oder bei Quorum 1 im erklaerten
+// Einzelbetrieb. Quorum 0 oder fehlend (verkuerzte oder fremde Antwort) ist
+// rot -- der echte Proof-Server meldet es immer.
+func proofServerWacheBefund(konfiguriert bool, st map[string]interface{}) (bool, string) {
+	if !konfiguriert {
+		// Ein Validator ohne eigenen Proof-Server (deploy/validator) registriert
+		// niemanden -- fuer ihn ist das kein Befund. Rot waere hier dauerhaft
+		// rot, und eine Wache, die immer rot ist, liest niemand mehr.
+		return true, "kein Proof-Server konfiguriert (uebersprungen)"
+	}
+	if len(st) == 0 {
+		return false, "Proof-Server nicht erreichbar -- keine Registrierung moeglich"
+	}
+	if modus := proofServerModus(st); modus != "required" {
+		return false, fmt.Sprintf("Proof-Server BIO_ATTESTATION_MODE=%q statt required -- Registrierung ohne Gesichtspruefung moeglich", modus)
+	}
+	switch q := proofServerQuorum(st); {
+	case q >= 2:
+		return true, "Proof-Server erreichbar, Gesichtspruefung Pflicht"
+	case q == 1:
+		// Quorum 1 hiesse: EIN geleakter Schluessel bezeugt beliebig viele
+		// Menschen, und niemand merkt es (bio_attestation.js, QUORUM). Erlaubt
+		// ist es nur im ausdruecklich erklaerten EINZELBETRIEB mit Tagesgrenze
+		// (Entscheidung des Betreibers vom 04.10.2026) -- dieselbe Regel wie
+		// in wache.yml.
+		if g, ok := proofServerEinzelbetrieb(st); ok {
+			return true, fmt.Sprintf("Proof-Server erreichbar, Gesichtspruefung Pflicht, EINZELBETRIEB: Quorum 1, hoechstens %d neue Menschen je Tag", g)
+		}
+		return false, "Proof-Server BIO_ATTESTATION_QUORUM=1 ohne erklaerten Einzelbetrieb mit Tagesgrenze -- ein einzelner Schluessel genuegt fuer beliebig viele Registrierungen"
+	default:
+		return false, "Proof-Server meldet kein Bezeugungs-Quorum -- unklar, ob eine Registrierung Bezeuger braucht"
+	}
 }
 
 // proofServerEinzelbetrieb: meldet der Proof-Server (/health, einzelbetrieb)
