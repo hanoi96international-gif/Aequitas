@@ -234,8 +234,11 @@ func TestWALRoh_AnnahmeBlockNachspielenGleich_RealDB(t *testing.T) {
 	a, b := neuerTestSchluessel(t), neuerTestSchluessel(t)
 	rohKonto(t, cs, a.addr, 1000)
 	rohKonto(t, cs, b.addr, 0)
+	// Mit der Chain-ID, die jetzt gilt: seit dem Chain-ID-Wechsel
+	// (18.10.2026) lehnt der zweite Knoten 1926 fuer neue Bloecke ab.
+	id := chainIDFuer(nowUnix()).Int64()
 	for n := uint64(0); n < 3; n++ {
-		tx := signiere(t, a, b.addr, aeqWei(int64(n)+1), n, 1926)
+		tx := signiere(t, a, b.addr, aeqWei(int64(n)+1), n, id)
 		if _, _, applied, err := cs.transferConcurrentWAL(a.addr, b.addr, tx.Amount, vorlageAus(tx)); !applied || err != nil {
 			t.Fatalf("Nonce %d: applied=%v err=%v", n, applied, err)
 		}
