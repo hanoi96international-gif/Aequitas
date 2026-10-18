@@ -9,6 +9,7 @@ package keeper
 import (
 	"bytes"
 	"fmt"
+	"math"
 	"math/big"
 	"strings"
 	"testing"
@@ -51,6 +52,11 @@ func konsensKnotenAufrufe(b *goldenBuch, prefix string, evm *EVMEngine, von comm
 
 func TestKonsensEVM_GoldenWerte_RealDB(t *testing.T) {
 	v8DBLeeren(t) // prueft das Opt-in
+	// Chain-ID-Wechsel (18.10.2026): die Goldwerte stammen aus v1.13.0, vor
+	// dem Stichtag -- eip712Domain() meldete dort 1926. Deshalb ohne
+	// Stichtag; die neue ID pruefen TestV8_GoldenVektorNeueChainID und die
+	// TestChainIDWechsel_*-Tests.
+	wechselAb(t, math.MaxInt64)
 	b := &goldenBuch{}
 	deployer := "0x00000000000000000000000000000000000d0e01"
 	_, alice := v8Schluessel(t, testKeyAlice)
