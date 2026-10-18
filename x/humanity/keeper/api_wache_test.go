@@ -3,6 +3,7 @@ package keeper
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -93,5 +94,54 @@ func TestProofServerQuorum(t *testing.T) {
 	}
 	if q := proofServerQuorum(map[string]interface{}{"durchsetzung": map[string]interface{}{"quorum": float64(2)}}); q != 2 {
 		t.Fatalf("json-Zahl: %d", q)
+	}
+}
+
+// Quorum 1 ist nur im erklaerten Einzelbetrieb mit gueltiger Tagesgrenze kein
+// Befund. Jede fehlende oder verdrehte Angabe bleibt rot (fail-closed).
+func TestProofServerEinzelbetrieb(t *testing.T) {
+	mit := func(e map[string]interface{}) map[string]interface{} {
+		return map[string]interface{}{"durchsetzung": map[string]interface{}{"quorum": float64(1)}, "einzelbetrieb": e}
+	}
+	gut := map[string]interface{}{"aktiv": true, "erklaert": true, "tagesgrenze": float64(25)}
+	if g, ok := proofServerEinzelbetrieb(mit(gut)); !ok || g != 25 {
+		t.Fatalf("erklaerter Einzelbetrieb mit Grenze 25: got %d %v", g, ok)
+	}
+	for name, e := range map[string]interface{}{
+		"fehlt":                  nil,
+		"not available":          map[string]interface{}{"error": "not available"},
+		"nicht erklaert":         map[string]interface{}{"aktiv": true, "erklaert": false, "tagesgrenze": float64(25)},
+		"nicht aktiv":            map[string]interface{}{"aktiv": false, "erklaert": true, "tagesgrenze": float64(25)},
+		"Grenze fehlt":           map[string]interface{}{"aktiv": true, "erklaert": true},
+		"Grenze null":            map[string]interface{}{"aktiv": true, "erklaert": true, "tagesgrenze": nil},
+		"Grenze 0":               map[string]interface{}{"aktiv": true, "erklaert": true, "tagesgrenze": float64(0)},
+		"Grenze negativ":         map[string]interface{}{"aktiv": true, "erklaert": true, "tagesgrenze": float64(-1)},
+		"Grenze zu gross":        map[string]interface{}{"aktiv": true, "erklaert": true, "tagesgrenze": float64(1001)},
+		"Grenze gebrochen":       map[string]interface{}{"aktiv": true, "erklaert": true, "tagesgrenze": 2.5},
+		"Grenze als Text":        map[string]interface{}{"aktiv": true, "erklaert": true, "tagesgrenze": "25"},
+		"aktiv als Text":         map[string]interface{}{"aktiv": "true", "erklaert": true, "tagesgrenze": float64(25)},
+		"erklaert als Text":      map[string]interface{}{"aktiv": true, "erklaert": "an", "tagesgrenze": float64(25)},
+		"einzelbetrieb als Text": "an",
+	} {
+		st := map[string]interface{}{"durchsetzung": map[string]interface{}{"quorum": float64(1)}}
+		if e != nil {
+			st["einzelbetrieb"] = e
+		}
+		if g, ok := proofServerEinzelbetrieb(st); ok {
+			t.Errorf("%s: muss rot bleiben, got %d %v", name, g, ok)
+		}
+	}
+	if _, ok := proofServerEinzelbetrieb(nil); ok {
+		t.Fatal("kein Status muss rot bleiben")
+	}
+}
+
+// Die Wache nimmt Quorum 1 nur ueber proofServerEinzelbetrieb hin.
+func TestWache_Quorum1NurImEinzelbetrieb(t *testing.T) {
+	b := functionBodyFromSource(t, "api_wache.go", "func (a *APIServer) handleWache(")
+	i := strings.Index(b, "proofServerQuorum(st) == 1")
+	j := strings.Index(b, "proofServerEinzelbetrieb(st)")
+	if i < 0 || j < i || !strings.Contains(b[i:], "BIO_ATTESTATION_QUORUM=1 ohne erklaerten Einzelbetrieb") {
+		t.Fatal("Quorum 1 ohne Einzelbetrieb-Pruefung in handleWache")
 	}
 }

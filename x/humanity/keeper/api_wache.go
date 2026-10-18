@@ -60,10 +60,17 @@ func (a *APIServer) handleWache(w http.ResponseWriter, r *http.Request) {
 		rot = append(rot, "Proof-Server nicht erreichbar -- keine Registrierung moeglich")
 	} else if modus != "required" {
 		rot = append(rot, fmt.Sprintf("Proof-Server BIO_ATTESTATION_MODE=%q statt required -- Registrierung ohne Gesichtspruefung moeglich", modus))
-	} else if q := proofServerQuorum(a.proofServerStatusKopie()); q > 0 && q < 2 {
+	} else if st := a.proofServerStatusKopie(); proofServerQuorum(st) == 1 {
 		// Quorum 1 hiesse: EIN geleakter Schluessel bezeugt beliebig viele
-		// Menschen, und niemand merkt es (bio_attestation.js, QUORUM).
-		rot = append(rot, fmt.Sprintf("Proof-Server BIO_ATTESTATION_QUORUM=%d -- ein einzelner Schluessel genuegt fuer eine Registrierung", q))
+		// Menschen, und niemand merkt es (bio_attestation.js, QUORUM). Erlaubt
+		// ist es nur im ausdruecklich erklaerten EINZELBETRIEB mit Tagesgrenze
+		// (Entscheidung des Betreibers vom 04.10.2026) -- dieselbe Regel wie
+		// in wache.yml. Fehlt eine Angabe, bleibt es rot.
+		if g, ok := proofServerEinzelbetrieb(st); ok {
+			gruen = append(gruen, fmt.Sprintf("Proof-Server erreichbar, Gesichtspruefung Pflicht, EINZELBETRIEB: Quorum 1, hoechstens %d neue Menschen je Tag", g))
+		} else {
+			rot = append(rot, "Proof-Server BIO_ATTESTATION_QUORUM=1 ohne erklaerten Einzelbetrieb mit Tagesgrenze -- ein einzelner Schluessel genuegt fuer beliebig viele Registrierungen")
+		}
 	} else {
 		gruen = append(gruen, "Proof-Server erreichbar, Gesichtspruefung Pflicht")
 	}
@@ -274,6 +281,29 @@ func proofServerQuorum(status map[string]interface{}) int {
 		return q
 	}
 	return 0
+}
+
+// proofServerEinzelbetrieb: meldet der Proof-Server (/health, einzelbetrieb)
+// den ausdruecklich erklaerten Einzelbetrieb mit wirksamer Tagesgrenze? Nur
+// dann ist Quorum 1 kein Befund. Alles andere -- fehlendes Feld, nicht
+// erklaert, nicht aktiv, Grenze fehlt oder ausserhalb 1..1000 (der Bereich,
+// den bio_attestation.js zulaesst) -- zaehlt als nein.
+func proofServerEinzelbetrieb(status map[string]interface{}) (int, bool) {
+	e, _ := status["einzelbetrieb"].(map[string]interface{})
+	if e == nil {
+		return 0, false
+	}
+	if aktiv, _ := e["aktiv"].(bool); !aktiv {
+		return 0, false
+	}
+	if erklaert, _ := e["erklaert"].(bool); !erklaert {
+		return 0, false
+	}
+	g, ok := e["tagesgrenze"].(float64)
+	if !ok || g != float64(int(g)) || g < 1 || g > 1000 {
+		return 0, false
+	}
+	return int(g), true
 }
 
 // proofServerStatusKopie liefert die letzte /health-Antwort unter der Sperre.
