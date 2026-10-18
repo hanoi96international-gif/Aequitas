@@ -1779,10 +1779,20 @@ func tableNameFromDelete(stmt string) string {
 // the full DB. Triggered by CLEAR_REGISTRATIONS=true env var. Clears:
 // nullifiers, bio_registrations, chain_accounts (is_human+balance), EVM
 // storage slots for V7 (usedNullifiers/usedCommitments/isHuman), evm_nonces,
-// evm_tx_receipts, and pending_txs. Safe to run on primary or secondary.
-// Remove CLEAR_REGISTRATIONS=true after the first successful restart.
+// evm_tx_receipts, and pending_txs. Remove CLEAR_REGISTRATIONS=true after the
+// first successful restart.
+//
+// Nur noch auf Testketten: auf dem Hauptnetz (oder wenn das nicht
+// auszuschliessen ist) verweigert, siehe hauptnetz_schutz.go. Ein Betreiber
+// darf Menschen nur bestaetigen, nie wegnehmen (docs/VERIFIER_PRINZIPIEN.md).
 func (cs *ChainState) clearRegistrationsFromDB() {
 	if cs.db == nil {
+		return
+	}
+	// Vor jeder anderen Pruefung und vor jedem Zugriff auf die Datenbank:
+	// keine noch so vollstaendige Bestaetigung oeffnet das auf dem Hauptnetz.
+	if grund := hauptnetzGrund(); grund != "" {
+		fmt.Printf("[ALERT] [CLEAR-REG] VERWEIGERT: CLEAR_REGISTRATIONS auf dem Hauptnetz (%s) -- keine Daten geaendert. Ein Betreiber darf Menschen nicht wegnehmen; Variablen CLEAR_REGISTRATIONS, CLEAR_REGISTRATIONS_CONFIRM und ALLOW_DESTRUCTIVE_MAINTENANCE entfernen.\n", grund)
 		return
 	}
 	if time.Since(processStartTime) > 5*time.Minute {
