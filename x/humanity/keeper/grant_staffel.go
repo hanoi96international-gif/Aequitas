@@ -58,7 +58,10 @@ const (
 	//     H1): OFFEN, was die Zulassung knapp macht;
 	//   - der strenge Modus beginnt spaetestens mit der Staffel;
 	//   - Bindung und Bescheinigung tragen die Chain-ID
-	//     (coordinator_nachrichten.go, v2; im Konsens nur v2).
+	//     (coordinator_nachrichten.go, v2; im Konsens nur v2);
+	//   - die Staffel haelt nichts ohne Zeitgrenze zurueck: spaetestens 30
+	//     Tage nach der Registrierung frei, angehalten nur durch begruendeten
+	//     Einspruch im Quorum (docs/VERIFIER_PRINZIPIEN.md, 18.10.2026).
 	stagedGrantActivationUnix int64 = 4102444800
 
 	grantKlasseSofort     = "sofort"

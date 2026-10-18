@@ -348,6 +348,8 @@ func TestStaffel_SchlaeftBisZulassungUndStreng(t *testing.T) {
 		t.Fatalf("stagedGrantActivationUnix = %d: vor der Staffel muessen stehen (1) Zulassung und Entzug der "+
 			"Coordinatoren im Konsens, (2) nachrechnenStrengAbUnix <= Staffel-Stichtag (heute %d), "+
 			"(3) Chain-ID in Bindung und Bescheinigung, (4) die Zulassung kostet etwas Knappes (#310, H1: ein "+
-			"Validator-Schluessel allein kostet eine Farm nichts) -- jeweils mit Verhaltenstest", stagedGrantActivationUnix, nachrechnenStrengAbUnix)
+			"Validator-Schluessel allein kostet eine Farm nichts), (5) die Staffel gibt die 800 AEQ spaetestens 30 Tage "+
+			"nach der Registrierung frei, angehalten nur durch begruendeten Einspruch im Quorum (docs/VERIFIER_PRINZIPIEN.md, "+
+			"\"Festgelegte Entscheidungen\") -- jeweils mit Verhaltenstest", stagedGrantActivationUnix, nachrechnenStrengAbUnix)
 	}
 }
