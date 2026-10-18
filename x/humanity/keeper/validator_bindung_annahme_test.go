@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -57,7 +58,10 @@ func selbstnachweis(t *testing.T, a *APIServer, wallet string) map[string]interf
 // Vor dem Stichtag aendert sich nichts: Annahme, Endpunkt und Selbstnachweis
 // schweigen.
 func TestValidatorBindung_SchlaeftVorStichtag(t *testing.T) {
-	validatorRegisterOverride.Store(0)
+	// Schlafend ausdruecklich ueber den Override: der Stichtag ist seit dem
+	// 18.10.2026 gesetzt, nowUnix() liegt danach.
+	validatorRegisterOverride.Store(math.MaxInt64)
+	t.Cleanup(func() { validatorRegisterOverride.Store(0) })
 	betreiber, bw := neuerSchluessel(t)
 	knoten, _ := neuerSchluessel(t)
 	tx := bindungUnterschrieben(t, betreiber, knoten, nowUnix())
