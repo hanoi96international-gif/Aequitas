@@ -94,7 +94,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"math"
 	"math/big"
 	"sort"
 	"strconv"
@@ -104,9 +103,19 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
-// validatorRegisterAbUnix: Stichtag fuer validator_bindung. Platzhalter --
-// den Tag setzt der Betreiber (docs/VALIDATOR_REGISTER_KONSENS.md).
-const validatorRegisterAbUnix int64 = math.MaxInt64
+// validatorRegisterAbUnix: Stichtag fuer validator_bindung
+// (docs/VALIDATOR_REGISTER_KONSENS.md).
+//
+// Gesetzt am 18.10.2026 auf Anweisung des Betreibers ("alle Stichtage auf
+// heute"): 1792324800 = 18.10.2026 12:00:00 UTC, rund 3 h Vorlauf. Aktiver
+// Validator ist nur C1 (ANNAHME_ROLLE=annehmend, deploy-c1.sh), er rollt mit
+// dem Merge aus -- also vor Ab. Allein schaltet der Stichtag nur die
+// Transaktionsart frei; die StateRoot bleibt byte-gleich, solange das
+// Register leer ist. Die Leser (registerLeserAb, erzeugerSchnittAb) bleiben
+// schlafend: sie duerfen fruehestens eine Woche spaeter kommen (per Test
+// erzwungen), und erzeugerSchnitt erst, wenn C1 gebunden ist -- sonst
+// schloesse sich C1 selbst aus.
+const validatorRegisterAbUnix int64 = 1792324800
 
 // validatorRegisterOverride: nur fuer Tests (0 = Konstante gilt).
 var validatorRegisterOverride atomic.Int64

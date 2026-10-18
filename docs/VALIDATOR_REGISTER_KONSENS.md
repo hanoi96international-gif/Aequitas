@@ -98,6 +98,12 @@ Dinge ohne Konsenswirkung (Erreichbarkeit, Messwerte als Hinweis).
      lesbar, gibt es keinen Snapshot (HTTP 503) statt eines unvollständigen,
      unterschriebenen. Merge-Import nimmt je Betreiber die neuere Bindung;
      `RESET_DB_STATE` und `CLEAR_REGISTRATIONS` leeren das Register.
+   - **Stichtag gesetzt: 18.10.2026 12:00:00 UTC (`1792324800`).** Danach
+     bindet der Betreiber von C1 einmal über `/node-binding` (Wallet des
+     registrierten Menschen, der `NODE_OPERATOR_WALLET` ist). Die Leser
+     (`registerLeserAb`, `erzeugerSchnittAb`) schlafen weiter: frühestens
+     eine Woche später, `erzeugerSchnitt` erst wenn `erzeuger_ohne_bindung`
+     in `/api/status` leer ist.
    - **Vor dem Stichtag `validatorRegisterAbUnix` (Platzhalter
      `math.MaxInt64`) ist jede `validator_bindung` ungültig** – der Block wird
      abgewiesen (`bekannteTxArt`, beim Nachspielen noch einmal). Nichts

@@ -3,6 +3,7 @@ package keeper
 import (
 	"crypto/ecdsa"
 	"encoding/hex"
+	"math"
 	"math/big"
 	"strings"
 	"testing"
@@ -43,9 +44,16 @@ func TestBekannteTxArt_ValidatorBindungErstAbStichtag(t *testing.T) {
 	if bekannteTxArt("erfunden", 1000) || !bekannteTxArt("transfer", 0) || !bekannteTxArt("vormund_setzen", 0) {
 		t.Fatal("die uebrigen Arten haben sich veraendert")
 	}
-	validatorRegisterOverride.Store(0)
+	// Schlafend (Stichtag MaxInt64): nie bekannt. Seit der Stichtag gesetzt
+	// ist (18.10.2026), ueber den Override -- wie bei chainIDWechsel.
+	validatorRegisterOverride.Store(math.MaxInt64)
 	if bekannteTxArt("validator_bindung", nowUnix()) {
 		t.Fatal("ohne gesetzten Stichtag muss validator_bindung unbekannt sein")
+	}
+	// Der gesetzte Stichtag selbst: davor unbekannt, ab ihm bekannt.
+	validatorRegisterOverride.Store(0)
+	if bekannteTxArt("validator_bindung", validatorRegisterAbUnix-1) || !bekannteTxArt("validator_bindung", validatorRegisterAbUnix) {
+		t.Fatal("validator_bindung haelt den gesetzten Stichtag nicht ein")
 	}
 }
 
