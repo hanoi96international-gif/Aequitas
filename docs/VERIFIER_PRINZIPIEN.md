@@ -60,6 +60,17 @@ Hauptnetz-Genesis → kein einziger Datenbankzugriff; Gegenversuch auf einer
 Testkette; mit echter Datenbank bleibt der Mensch Mensch, mit Guthaben und
 Nullifier).
 
+### 1b. Betreiberzugang zur Box – offen
+
+Das Tor schließt nur den Weg über Umgebungsvariablen. Wer Shell- oder
+Datenbankzugriff auf C1 hat, kann den lokalen Stand weiterhin direkt
+ändern. Eine abweichende StateRoot wird heute nur gewarnt
+(`block.go`, „accepted“), und Auto-Heal übernimmt den Snapshot von C1.
+Grundsatz 1 gilt für den Betreiberzugang daher erst, wenn andere Knoten
+selbst nachrechnen und streng ablehnen (A3, B3) und Snapshots nicht mehr
+von einem einzigen Betreiber kommen (A6/B4). Bis dahin ist der Betreiber
+von C1 vertrauenswürdig – so ehrlich muss es hier stehen.
+
 ### 2. Kein Block nimmt das Menschsein – jetzt als Invariante getestet
 
 `kein_entzug_test.go` spielt für **jede** Transaktionsart im
@@ -73,6 +84,12 @@ Ein Wächter-Test durchsucht alle Nicht-Test-Dateien des Keepers nach SQL
 (`SET … is_human = false/'f'/0/NOT`) und Go-Code (`IsHuman = false`,
 `IsHuman: false`, `IsHuman = !…`), der das Menschsein wegnimmt. Erlaubt ist
 allein `clearRegistrationsFromDB` – und die verweigert auf dem Hauptnetz.
+Der Wächter ist ein Stolperdraht für wörtliche Rückschritte, keine
+vollständige Analyse: `IsHuman = v` mit `v == false`, ein neu gebauter
+Kontosatz ohne `IsHuman`, SQL mit Parameter (`SET is_human = $1`),
+`DELETE`/`TRUNCATE` oder Code außerhalb des Pakets erkennt er nicht. Die
+eigentliche Absicherung gegen Entzug über Blöcke ist der Invariantentest
+oben.
 
 Zeilen in `chain_accounts` verschwinden außerdem beim Import eines
 signierten Snapshots (`snapshot.go`, `RESET_DB_STATE` auf einem

@@ -104,6 +104,8 @@ func TestClearRegistrations_HauptnetzVerweigert(t *testing.T) {
 		"genesis.json kaputt":                          {genesis: `{"chain_id":`},
 		"genesis.json ohne chain_id":                   {genesis: `{"genesis_time":"2027-01-01T00:00:00Z"}`},
 		"Testkette, aber IS_PRIMARY_NODE":              {genesis: genesisTestkette, primary: true},
+		"ohne genesis_time":                            {genesis: `{"chain_id":"x"}`},
+		"genesis_time kaputt":                          {genesis: `{"chain_id":"x","genesis_time":"kaputt"}`},
 	}
 	for name, f := range faelle {
 		t.Run(name, func(t *testing.T) {

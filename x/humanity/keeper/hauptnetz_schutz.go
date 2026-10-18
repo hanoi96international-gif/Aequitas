@@ -86,11 +86,16 @@ func hauptnetzGrundAusGenesis(data []byte) string {
 	if strings.EqualFold(cid, hauptnetzChainID) {
 		return fmt.Sprintf("chain_id %q ist das Hauptnetz", cid)
 	}
-	if t, err := time.Parse(time.RFC3339, strings.TrimSpace(g.GenesisTime)); err == nil {
-		for _, h := range hauptnetzGenesisZeiten {
-			if t.Equal(h) {
-				return fmt.Sprintf("genesis_time %s ist die einer Hauptnetz-Genesis", h.Format(time.RFC3339))
-			}
+	// Ohne lesbare genesis_time faellt genesisTimestamp() auf die Zeit der
+	// alten Hauptnetz-Genesis zurueck -- der Knoten hielte sich selbst fuer
+	// das Hauptnetz. Also auch hier: nicht feststellbar, verweigern.
+	t, err := time.Parse(time.RFC3339, strings.TrimSpace(g.GenesisTime))
+	if err != nil {
+		return "genesis.json ohne lesbare genesis_time -- Netz nicht feststellbar"
+	}
+	for _, h := range hauptnetzGenesisZeiten {
+		if t.Equal(h) {
+			return fmt.Sprintf("genesis_time %s ist die einer Hauptnetz-Genesis", h.Format(time.RFC3339))
 		}
 	}
 	return ""
