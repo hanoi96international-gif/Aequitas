@@ -161,6 +161,13 @@ func proveHerkunftVerlangt() bool {
 	return !strings.EqualFold(strings.TrimSpace(os.Getenv("REQUIRE_PROVE_PROVENANCE")), "false")
 }
 
+// ProveHerkunftStand zeigt in /api/health/combined, ob das Tor an ist. Es
+// stand bisher nur in der Umgebung des Containers -- von aussen sah ein
+// abgeschaltetes Tor genauso gesund aus wie ein eingeschaltetes.
+func ProveHerkunftStand() map[string]any {
+	return map[string]any{"verlangt": proveHerkunftVerlangt()}
+}
+
 // hatProveHerkunft prueft, ob dieser Nullifier aus einem /prove dieses Knotens
 // FUER DIESE WALLET stammt und noch nicht verfallen ist.
 func hatProveHerkunft(nullifier, wallet string) bool {

@@ -49,6 +49,9 @@ jobs:
       # authorized_keys- und sshd -t-Pruefung neu und startet nichts neu.
       # Kopf von scripts/lint_server_haerten.py.
       - run: python3 scripts/lint_server_haerten.py
+      # Die Wache wird rot, wenn ein Tor vor dem Praegen offen steht (Proof-
+      # Server nicht required, /prove-Herkunft aus). Kopf von scripts/lint_wache_pruefung.py.
+      - run: python3 scripts/lint_wache_pruefung.py
 
   test:
     runs-on: ubuntu-latest
