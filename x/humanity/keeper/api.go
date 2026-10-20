@@ -787,6 +787,10 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		"push_gzip":           GzipPushStand(),
 		"eigenlast_bremse":    EigenlastBremseStand(),
 		"divergenz":           DivergenzStand(),
+		// Verlangt /api/register die /prove-Herkunft? Aus heisst: wer lokal
+		// einen Beweis erzeugt, praegt ohne Gesichtspruefung (prove_provenance.go).
+		// wache_pruefung.py wird rot, wenn das hier nicht true ist.
+		"prove_herkunft": ProveHerkunftStand(),
 		// The request split, so the ~50ms per transfer that TransferAtomic does
 		// not account for can be subtracted out instead of guessed at. Read
 		// unaccounted_in_send_ms first; see rpc_phase_stats.go.
