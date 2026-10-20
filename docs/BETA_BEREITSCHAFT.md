@@ -57,7 +57,7 @@ jeweiligen PR.
 
 | Befund | Schwere | PR |
 |---|---|---|
-| go-ethereum v1.13 → v1.17.8 mit Konsens-Vergleichstest (Golden-Werte aus v1.13). Die Prüfung fand eine Spaltungslücke: Typ 3 im Sidecar-Format v1 lasen nur neue Knoten. Behoben: Typ 3 und 4 werden nie angenommen. Offen ist noch der Beleg, dass das geänderte SSTORE-Verhalten keinen V7-Aufruf trifft. **Alle Validatoren müssen zugleich umstellen.** | MITTEL | Aequitas #359 |
+| go-ethereum v1.13 → v1.17.8 mit Konsens-Vergleichstest (Golden-Werte aus v1.13). Die Prüfung fand eine Spaltungslücke: Typ 3 im Sidecar-Format v1 lasen nur neue Knoten. Behoben: Typ 3 und 4 werden nie angenommen. Beleg, dass das geänderte SSTORE-Verhalten keinen Aufruf trifft: jeder zugelassene Selektor (`konsens_evm_knotenaufruf_test.go`, Golden-Werte aus v1.13 byte-gleich) und Aufrufdaten mit 1–3 Byte an V7, V8 und BioVerifier, die ohne Selektorprüfung in die EVM gelangen (`konsens_evm_kurzaufruf_test.go`). **Alle Validatoren müssen zugleich umstellen.** | MITTEL | Aequitas #359 |
 
 ## 2. Im Code offen
 
