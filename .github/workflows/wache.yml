@@ -95,6 +95,14 @@ jobs:
                 rot "$B antwortet nicht auf /api/status"
               else
                 if [ "${H2[$B]}" -gt "${H1[$B]:-0}" ]; then ok "Hoehe waechst (${H1[$B]} -> ${H2[$B]})"; else rot "Hoehe steht (${H1[$B]} -> ${H2[$B]})"; fi
+                # Validator-Register (Stichtag 18.10.2026): jeder Erzeuger bindet sich
+                # einmal ueber /node-binding. Hinweis, kein Rot -- die Leser schlafen
+                # noch; ohne Bindung schloesse erzeugerSchnitt ihn spaeter aus
+                # (docs/VALIDATOR_REGISTER_KONSENS.md).
+                EOB=$(curl -s --max-time 10 "http://$B:8080/api/status" | python3 -c "import sys,json; v=json.load(sys.stdin).get('erzeuger_ohne_bindung'); print(','.join(v) if isinstance(v,list) else '?')" 2>/dev/null || echo "?")
+                if [ -z "$EOB" ]; then ok "jeder Erzeuger im Validator-Register gebunden"
+                elif [ "$EOB" = "?" ]; then echo "ℹ $B: erzeuger_ohne_bindung nicht lesbar"
+                else echo "ℹ $B: Erzeuger OHNE Bindung im Validator-Register: $EOB -- einmal ueber http://$B:8080/node-binding mit der Betreiber-Wallet binden"; fi
                 J=$(h $B)
                 if [ -z "$J" ]; then rot "$B antwortet nicht auf /api/health/combined"; else echo "$J" | python3 .github/wache_pruefung.py || ROT=1; fi
               fi
