@@ -1,4 +1,4 @@
-# Beta-Bereitschaft — Prüfung vom 14.10.2026, Stand 17.10.2026
+# Beta-Bereitschaft — Prüfung vom 14.10.2026, Stand 20.10.2026
 
 Geprüft wurden alle vier Repos: Kette, App, Biometrie und Proof-Server. Die
 Fragen waren: funktioniert es, ist es sicher, ist es schnell, und ist der Weg
@@ -52,12 +52,7 @@ jeweiligen PR.
 | Resync holt und prüft den Snapshot vor dem Tor (vorher war der Knoten über den ganzen Abruf, bis zu Minuten bei Drosselung, taub); nur der Austausch ist gesperrt, höchstens einer zugleich, wartet laufende Blockdurchgänge ab. Tote Zweige unter der Finalität werden nicht mehr als Spitzen gemeldet. Ein Block gilt erst als „bekannt“, wenn er nachgespielt ist. | MITTEL | Aequitas #386 |
 | Biometrie-Coordinator mit #57/#58 auf C1 ausgerollt (16.10.2026); Sandbox vorher im Container als root geprüft. Schlüssel und Einzelbetrieb unverändert. | – | biometric deploy |
 | Alte Actions-Logs geprüft: kein Lauf zeigt einen privaten Schlüssel im Klartext; der Ausgabeweg ist seit #353 geschlossen. Kein Schlüsseltausch nötig. | – | – |
-
-**In Prüfung (15.10.2026):**
-
-| Befund | Schwere | PR |
-|---|---|---|
-| go-ethereum v1.13 → v1.17.8 mit Konsens-Vergleichstest (Golden-Werte aus v1.13). Die Prüfung fand eine Spaltungslücke: Typ 3 im Sidecar-Format v1 lasen nur neue Knoten. Behoben: Typ 3 und 4 werden nie angenommen. Offen ist noch der Beleg, dass das geänderte SSTORE-Verhalten keinen V7-Aufruf trifft. **Alle Validatoren müssen zugleich umstellen.** | MITTEL | Aequitas #359 |
+| go-ethereum v1.13 → v1.17.8 mit Konsens-Vergleichstest (Golden-Werte aus v1.13). Die Prüfung fand eine Spaltungslücke: Typ 3 im Sidecar-Format v1 lasen nur neue Knoten. Behoben: Typ 3 und 4 werden nie angenommen. Beleg, dass das geänderte SSTORE-Verhalten keinen Aufruf trifft: jeder zugelassene Selektor (`konsens_evm_knotenaufruf_test.go`, Golden-Werte aus v1.13 byte-gleich) und Aufrufdaten mit 1–3 Byte an V7, V8 und BioVerifier, die ohne Selektorprüfung in die EVM gelangen (`konsens_evm_kurzaufruf_test.go`). Ausgerollt mit den Deploys seit dem 15.10.2026; jeder neue Validator startet mit diesem Stand. | MITTEL | Aequitas #359 |
 
 ## 2. Im Code offen
 
