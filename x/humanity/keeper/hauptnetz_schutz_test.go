@@ -99,6 +99,7 @@ func TestClearRegistrations_HauptnetzVerweigert(t *testing.T) {
 		"V8-Genesis des Hauptnetzes":                   {genesis: genesisHauptnetzV8},
 		"alte Hauptnetz-Genesis":                       {genesis: `{"chain_id":"aequitas-1","genesis_time":"2026-06-13T00:00:00Z"}`},
 		"Kopie mit umbenannter chain_id, gleiche Zeit": {genesis: `{"chain_id":"aequitas-test","genesis_time":"2026-09-30T18:10:00Z"}`},
+		"Kopie der Genesis vom 21.10.2026":             {genesis: `{"chain_id":"aequitas-test","genesis_time":"2026-10-21T15:00:00Z"}`},
 		"chain_id in anderer Schreibweise":             {genesis: `{"chain_id":" AEQUITAS-1 ","genesis_time":"2027-01-01T00:00:00Z"}`},
 		"genesis.json fehlt":                           {lesFehl: errors.New("no such file")},
 		"genesis.json kaputt":                          {genesis: `{"chain_id":`},

@@ -54,6 +54,12 @@ var konsensBekannteAbweichungen = map[string]map[string]bekannteAbweichung{
 		"ueb/typ4-setcode absender": {"ueb/typ4-setcode absender=0x0000000000000000000000000000000000000000 fehler=true typ=4",
 			"Folge davon: Absender nicht wiederherstellbar (ErrTxTypeNotSupported)"},
 	},
+	"konsens_evm_golden_realdb.txt": {
+		"v7/deploy code": {"v7/deploy code=0405f9329cf538f92263a187f3143b542ddd5cd8c737bf2a3a83587b64d7a4f5 bio=081b6377daf3741c17ebb78808affd23c51e81600096c2d8c6195f1389c879fa speicher zeilen=11 hash=2d92927ba76fda98a8f4694f138ef5751267baad6c1c376c8352f64aea067017",
+			"Kein geth-Unterschied: der Knoten legt seit dem 21.10.2026 den BioVerifier der Zeremonie v4 an (BioVerifierRuntimeBytecode), " +
+				"daher ein anderer Code-Hash. Derselbe Code wie v3 bis auf die Schluesselkonstanten (konsens_evm_bioverifier_test.go); " +
+				"verifyProof-Ergebnis und alle anderen Zeilen bleiben gleich"},
+	},
 }
 
 // Die Vertraege der Kette (Erzeugungscode von V7/V8, Laufzeitcode von

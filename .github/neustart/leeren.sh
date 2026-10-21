@@ -19,6 +19,9 @@ if [ -n "$MATCH" ]; then laeuft "$MATCH" || fehler "$MATCH laeuft nicht"; fi
 [ -n "$PROOF" ] || fehler "kein Proof-Server-Container gefunden (proof-server / aequitas-proof-server)"
 laeuft "$PROOF" || fehler "$PROOF laeuft nicht"
 [ -n "$MATCH" ] || fehler "kein Matching-Container gefunden"
+[ -n "$MATCH_DB" ] || fehler "POH_DB_PATH ist im Matching-Container nicht gesetzt -- ohne genauen Pfad wird nichts geloescht"
+docker exec "$MATCH" test -s "$MATCH_DB" || fehler "Matching-Datenbank $MATCH_DB fehlt oder ist leer -- falscher Pfad?"
+echo "Registrierungen vorher:"; registrierungen_zaehlen | sed "s/^/   /"
 echo "Geprueft: Knoten=$NODE DB=$DB WAL=$WALDIR Proof=$PROOF Matching=${MATCH:-keiner}"
 
 # ── Ab hier wird geloescht.
@@ -58,10 +61,11 @@ fi
 
 if [ -n "$MATCH" ]; then
   echo "=== Matching-Datenbank leeren ==="
-  docker exec -i "$MATCH" python3 - <<'PY' || { echo "FEHLER: Matching"; FEHLER=1; }
-import os, sqlite3
-p = os.environ.get("POH_DB_PATH", "/app/data/poh.db")
-c = sqlite3.connect(p)
+  docker exec -i -e P="$MATCH_DB" "$MATCH" python3 - <<'PY' || { echo "FEHLER: Matching"; FEHLER=1; }
+import glob, os, sqlite3
+p = os.environ["P"]
+# mode=rw: eine fehlende Datei ist ein Fehler, keine neue leere Datenbank.
+c = sqlite3.connect("file:" + p + "?mode=rw", uri=True)
 ts = [t for (t,) in c.execute("select name from sqlite_master where type='table' and name not like 'sqlite_%'")]
 for t in ts:
     c.execute('delete from "%s"' % t)
@@ -69,9 +73,17 @@ c.commit()
 c.execute("vacuum")
 for t in ts:
     print("   %s jetzt %d" % (t, c.execute('select count(*) from "%s"' % t).fetchone()[0]))
+# Alte Sicherungskopien tragen dieselben Gesichter; zurueckgespielt waere man
+# wieder Duplikat. Sie gehen mit.
+for s in glob.glob(glob.escape(p) + ".vor-*"):
+    os.remove(s)
+    print("   Sicherung %s geloescht" % os.path.basename(s))
 PY
   docker restart "$MATCH" >/dev/null
 fi
+
+echo "=== Nachzaehlen: keine Registrierung darf uebrig sein ==="
+if ! alles_null; then echo "FEHLER: es sind noch Registrierungen da (siehe oben)"; FEHLER=1; fi
 
 if [ "$FEHLER" != 0 ]; then
   echo "::error::Mindestens ein Schritt ist gescheitert (siehe oben). Der Knoten bleibt gestoppt."
