@@ -52,6 +52,10 @@ jobs:
       # Die Wache wird rot, wenn ein Tor vor dem Praegen offen steht (Proof-
       # Server nicht required, /prove-Herkunft aus). Kopf von scripts/lint_wache_pruefung.py.
       - run: python3 scripts/lint_wache_pruefung.py
+      # Neustart-Skripte laufen als ssh ... bash -s: kein docker exec -i ohne
+      # eigene Eingabe, und fern.sh wertet ein verschlucktes Skript als rot.
+      - run: python3 scripts/lint_neustart_eingabe.py
+      - run: bash scripts/test_neustart_fern.sh
 
   test:
     runs-on: ubuntu-latest

@@ -36,7 +36,10 @@ for t, n in (("test_enrollments", "matching_test"), ("real_enrollments", "matchi
         print(n, "?")
 print("matching_sicherungen", len(glob.glob(glob.escape(p) + ".vor-*")))
 PY
-  docker exec -i "$PROOF" node -e 'const {Pool}=require("pg");const p=new Pool({connectionString:process.env.DATABASE_URL,ssl:{rejectUnauthorized:process.env.DB_SSL_REJECT_UNAUTHORIZED!=="false"}});p.query("select count(*)::int as n from bio_hashes").then(r=>{console.log("proof_bio_hashes",r.rows[0].n);return p.end()}).catch(()=>{console.log("proof_bio_hashes ?");process.exit(0)})' || echo "proof_bio_hashes ?"
+  # Ohne -i und mit </dev/null: dieses Skript kommt selbst ueber die
+  # Standardeingabe (ssh ... bash -s). "docker exec -i" ohne eigene Eingabe
+  # schluckte am 21.10.2026 den Rest von leeren.sh -- gruen, nichts geloescht.
+  docker exec "$PROOF" node -e 'const {Pool}=require("pg");const p=new Pool({connectionString:process.env.DATABASE_URL,ssl:{rejectUnauthorized:process.env.DB_SSL_REJECT_UNAUTHORIZED!=="false"}});p.query("select count(*)::int as n from bio_hashes").then(r=>{console.log("proof_bio_hashes",r.rows[0].n);return p.end()}).catch(()=>{console.log("proof_bio_hashes ?");process.exit(0)})' </dev/null || echo "proof_bio_hashes ?"
 }
 # alles_null: liest registrierungen_zaehlen und scheitert, wenn ein Wert nicht 0 ist.
 alles_null() {
