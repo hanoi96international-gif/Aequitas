@@ -37,4 +37,9 @@ echo "Hoehe $H0 -> $H1"
 for c in "$PROOF" "$COORD"; do
   [ -n "$c" ] && docker inspect "$c" >/dev/null 2>&1 && docker restart "$c" >/dev/null && echo "$c neu gestartet"
 done
+echo "=== Nach dem Neustart aller Dienste: keine alte Registrierung ==="
+sleep 10
+alles_null || { echo "::error::nach dem Start sind wieder Registrierungen da -- vor jeder neuen Anmeldung klaeren"; exit 1; }
+M2=$(feld "$(curl -s -m 5 http://127.0.0.1:8080/api/status)" total_humans)
+[ "$M2" = 0 ] || { echo "::error::total_humans ist $M2"; exit 1; }
 echo "=== $BOX laeuft als neues Netz ($K) ==="
