@@ -361,6 +361,32 @@ func merkeProveKlasse(respBody []byte) {
 //
 // Vor der Aktivierung der Staffel nichts (der Handler antwortet 409).
 func (a *APIServer) erneuerungsGrenze(next http.HandlerFunc) http.HandlerFunc {
+	return a.nachweisGrenze(erneuerungsGrenzArt, next)
+}
+
+// nachweisGrenzArt: was eine Annahme mit Coordinator-Bescheinigung
+// (Erneuerung, Lebensnachweis) an der Grenze unterscheidet -- je Art eigene
+// Zaehler, sonst verbrauchte die eine das Budget der anderen.
+type nachweisGrenzArt struct {
+	aktiv      func(int64) bool
+	inaktiv    string // Antwort (409) vor dem Stichtag
+	direkt     string // Praefix des Direktzaehlers je Absender
+	pruefung   string // Praefix des Zaehlers fuer Nachweispruefungen
+	von        string // Praefix weitergeleiteter Anfragen (Karte erneuerungVon)
+	zuVieleTxt string // Antwort (429)
+}
+
+var erneuerungsGrenzArt = nachweisGrenzArt{
+	aktiv:      stagedGrantAktiv,
+	inaktiv:    "staged grant not active yet",
+	direkt:     "liveness-renewal:",
+	pruefung:   "liveness-renewal-pruefung:",
+	von:        erneuerungVonPraefix,
+	zuVieleTxt: "too many renewal requests from this address -- please retry in a minute",
+}
+
+// nachweisGrenze: die Grenze aus erneuerungsGrenze, je Art (oben).
+func (a *APIServer) nachweisGrenze(art nachweisGrenzArt, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			next(w, r)
@@ -369,13 +395,13 @@ func (a *APIServer) erneuerungsGrenze(next http.HandlerFunc) http.HandlerFunc {
 		// Vor dem Stichtag gleich hier: nichts zaehlen, nichts unterschreiben
 		// und weiterleiten, nur damit der Zustaendige 409 sagt (Pruefung von
 		// #319, INFO-22).
-		if !stagedGrantAktiv(time.Now().Unix()) {
+		if !art.aktiv(time.Now().Unix()) {
 			writeJSONCORS(w)
-			jsonError(w, "staged grant not active yet", http.StatusConflict)
+			jsonError(w, art.inaktiv, http.StatusConflict)
 			return
 		}
 		absender := erneuerungsAbsender(r)
-		schluessel := "liveness-renewal:" + absender
+		schluessel := art.direkt + absender
 		if r.Header.Get(weitergeleitetKopf) != "" {
 			// Die Pruefung haengt nicht am Direktzaehler: ein gescheiterter
 			// Nachweis faellt dort hinein und sperrte sonst auch die
@@ -389,7 +415,7 @@ func (a *APIServer) erneuerungsGrenze(next http.HandlerFunc) http.HandlerFunc {
 			// ihn kommt, und ein Angreifer mit 21 Adressen sperrte alle hinter
 			// ihm aus (MEDIUM-28).
 			fuer := ""
-			pruefung := "liveness-renewal-pruefung:" + absender
+			pruefung := art.pruefung + absender
 			if r.Header.Get(weiterleitungNachweisKopf) != "" {
 				if gebucht, ok := burstBuchen(pruefung, burstNachweisPruefungJeIP, burstFenster); ok {
 					fuer = a.state.weiterleitungFuer(r, time.Now())
@@ -399,7 +425,7 @@ func (a *APIServer) erneuerungsGrenze(next http.HandlerFunc) http.HandlerFunc {
 				}
 			}
 			if fuer != "" {
-				schluessel = erneuerungVonPraefix + fuer
+				schluessel = art.von + fuer
 			} else if rpcRateLimitFrei(r) {
 				next(w, r)
 				return
@@ -407,7 +433,7 @@ func (a *APIServer) erneuerungsGrenze(next http.HandlerFunc) http.HandlerFunc {
 		}
 		if !burstErlaubt(schluessel, burstErneuerungJeIP, burstFenster) {
 			writeJSONCORS(w)
-			jsonError(w, "too many renewal requests from this address -- please retry in a minute", http.StatusTooManyRequests)
+			jsonError(w, art.zuVieleTxt, http.StatusTooManyRequests)
 			return
 		}
 		next(w, r)
@@ -658,6 +684,14 @@ func (cs *ChainState) coordinatorMenschStand(mensch string) (istMensch, staffelO
 // Zulassung im Konsens: nur, wer zur Zeit der Bescheinigung einen
 // Validator-Schluessel im Kettenregister haelt (coordinator_zulassung.go).
 func bescheinigungPruefen(wallet string, issuedAt int64, b *Lebendigkeitsbescheinigung, stand CoordinatorMenschStand, zugelassen CoordinatorZulassung) error {
+	return bescheinigungPruefenFuer(erneuerungsNachricht, wallet, issuedAt, b, stand, zugelassen)
+}
+
+// bescheinigungPruefenFuer: dieselben Regeln mit dem Satz einer anderen Art
+// (lebensnachweis.go: lebensnachweisNachricht). Jede Art hat ihre eigene
+// Domaene -- eine Erneuerungs-Bescheinigung besteht hier nicht als
+// Lebensnachweis und umgekehrt.
+func bescheinigungPruefenFuer(nachricht func(wallet string, issuedAt int64) string, wallet string, issuedAt int64, b *Lebendigkeitsbescheinigung, stand CoordinatorMenschStand, zugelassen CoordinatorZulassung) error {
 	if b == nil {
 		return fmt.Errorf("keine Bescheinigung")
 	}
@@ -681,7 +715,7 @@ func bescheinigungPruefen(wallet string, issuedAt int64, b *Lebendigkeitsbeschei
 	if err := pruefePersonalSignGemerkt(coordinatorFreigabeNachricht(pub), b.MenschSig, mensch); err != nil {
 		return fmt.Errorf("Freigabe des Menschen: %v", err)
 	}
-	msg := erneuerungsNachricht(wallet, issuedAt)
+	msg := nachricht(wallet, issuedAt)
 	if !ed25519PruefenStreng(pub, b.Signature, []byte(msg)) {
 		return fmt.Errorf("Bescheinigung passt nicht zu Wallet und Zeitpunkt (oder ist keine Ed25519-Unterschrift in kanonischer Schreibweise)")
 	}

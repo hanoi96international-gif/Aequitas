@@ -650,7 +650,9 @@ func anfrageKonten(pfad string, body []byte) []string {
 		// Die Erneuerung belastet das erneuerte Konto (handleLivenessRenewal,
 		// annahmeBeginnen(wallet)) -- im verteilten Term nimmt sie nur dessen
 		// Zustaendiger an, nicht zwingend der Leiter (Sicherheitspruefung #300).
-		pfad == "/api/liveness-renewal":
+		pfad == "/api/liveness-renewal",
+		// Der Lebensnachweis ebenso (handleProofOfLife, annahmeBeginnen(wallet)).
+		pfad == "/api/proof-of-life":
 		return []string{w}
 	}
 	return nil

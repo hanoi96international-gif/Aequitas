@@ -131,7 +131,7 @@ func WeiterleitungNachweisStand() map[string]interface{} {
 }
 
 func weiterleitungUnterschreiben(pfad string) bool {
-	return pfad == "/api/liveness-renewal"
+	return pfad == "/api/liveness-renewal" || pfad == "/api/proof-of-life"
 }
 
 func weiterleitungHash(methode, pfad string, zeitMs int64, fuer, ziel, nonce string, koerper []byte) []byte {

@@ -72,6 +72,7 @@ var replayArten = map[string]geldArt{
 	"faucet":                           geldNurGutschrift,
 	"ubi_distribution":                 geldNurGutschrift,
 	"liveness_renewal":                 geldNurGutschrift,
+	"proof_of_life":                    geldNurGutschrift, // lebensnachweis.go: bewegt kein Geld, setzt nur LebensnachweisAm
 	"grant_release":                    geldNurGutschrift,
 	"umlauf":                           geldRegelAusnahme,
 	"unternehmen_eroeffnen":            geldUnterschrieben,

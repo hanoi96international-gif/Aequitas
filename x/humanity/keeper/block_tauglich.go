@@ -159,6 +159,23 @@ func auftragsFenster(tx *Transaction, jetzt int64) zeitFenster {
 			}
 			f.eng(sattAdd(tx.DistributionAt, -erneuerungHoechstensVoraus), sattAdd(tx.DistributionAt, erneuerungHoechstensAlt))
 		}
+	case "proof_of_life":
+		// lebensnachweis.go: angewandt nur ab lebensnachweisAktiv und mit
+		// issued_at hoechstens 5 min nach dem Block; im strengen Modus
+		// ausserdem hoechstens 7 Tage alt (lebensnachweis_zeit).
+		f.eng(max(lebensnachweisAb(), registerLeserAb()), math.MaxInt64)
+		if tx.DistributionAt > 0 {
+			f.eng(sattAdd(tx.DistributionAt, -nachweisHoechstensVoraus), math.MaxInt64)
+			if nachrechnenStreng(jetzt) {
+				f.eng(math.MinInt64, sattAdd(tx.DistributionAt, erneuerungHoechstensAlt))
+			}
+		}
+	case "ubi_distribution":
+		// nachrechnen_ubi.go (ubi_rundenzeit): im strengen Modus hoechstens
+		// 10 min neben dem Block, wie der Abschluss.
+		if tx.DistributionAt > 0 && nachrechnenStreng(jetzt) {
+			f.eng(sattAdd(tx.DistributionAt, -600), sattAdd(tx.DistributionAt, 600))
+		}
 	case "register_human":
 		// pruefeRegistrierungV8: die Annahmezeit liegt hoechstens 5 min nach
 		// dem Block.
@@ -238,6 +255,23 @@ func blockTauglich(tx *Transaction, blockZeit int64) error {
 			if z := tx.DistributionAt; z <= 0 || blockZeit-z > erneuerungHoechstensAlt || z-blockZeit > erneuerungHoechstensVoraus {
 				return fmt.Errorf("Erneuerung bescheinigt %d, Block %d", z, blockZeit)
 			}
+		}
+	case "proof_of_life":
+		// Angenommen wird nur, wenn lebensnachweisAktiv(jetzt): ein Block
+		// davor oder mit issued_at mehr als 5 min nach ihm hiesse, dass jeder
+		// Nachspielende nicht anwendet, was der Erzeuger angewandt hat.
+		if !lebensnachweisAktiv(blockZeit) {
+			return fmt.Errorf("proof_of_life vor dem Stichtag oder vor registerLeserAb (Block %d)", blockZeit)
+		}
+		if z := tx.DistributionAt; z > 0 && z > sattAdd(blockZeit, nachweisHoechstensVoraus) {
+			return fmt.Errorf("Lebensnachweis bescheinigt %d, Block %d", z, blockZeit)
+		}
+		if z := tx.DistributionAt; z > 0 && nachrechnenStreng(blockZeit) && blockZeit-z > erneuerungHoechstensAlt {
+			return fmt.Errorf("Lebensnachweis bescheinigt %d, Block %d (strenger Modus)", z, blockZeit)
+		}
+	case "ubi_distribution":
+		if d := tx.DistributionAt - blockZeit; tx.DistributionAt > 0 && nachrechnenStreng(blockZeit) && (d > 600 || d < -600) {
+			return fmt.Errorf("Grundeinkommen zur Runde %d, Block %d (strenger Modus)", tx.DistributionAt, blockZeit)
 		}
 	case "register_human":
 		if vertragV8() && tx.RegAt > blockZeit+v8NachspielKarenz {

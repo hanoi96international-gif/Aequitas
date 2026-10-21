@@ -30,6 +30,13 @@ import (
 //     (beim Abschluss; zusammen mit den beiden ersten Regeln heisst das:
 //     genau die Menschen, jeder genau einmal).
 //   - ubi_anteil:      der Betrag ist nicht floor6(Topf / Menschen).
+//   - ubi_pausiert:    der Empfaenger ist zur Rundenzeit ohne faelligen
+//     Lebensnachweis (lebensnachweis.go) -- sein Tagesanteil gehoert in
+//     dieser Runde den anderen. "Menschen" heisst ab lebensnachweisAktiv
+//     deshalb: die nicht pausierten Menschen (countUBIEmpfaengerLocked).
+//   - ubi_rundenzeit:  die Rundenzeit im Grundeinkommen (DistributionAt)
+//     liegt mehr als 10 min neben dem Block. Dann gilt die Blockzeit --
+//     einer Zeit, die der Erzeuger frei waehlt, glaubt kein Knoten.
 //   - demurrage_nach_umstellung: seit der Umlaufsicherung (wirtschaft.go)
 //     gibt es keine Demurrage mehr -- effectiveBalance gibt das Guthaben
 //     unveraendert zurueck, settleDemurrageLocked liefert 0. Ein
@@ -63,6 +70,10 @@ type ubiRundePruefung struct {
 	// (Neustart). Bis zur naechsten Rundengrenze keine Zahl-/Anteilspruefung.
 	unsicher bool
 	aktiv    bool
+	// zeit: die Rundenzeit, an der sich entscheidet, wer pausiert ist
+	// (lebensnachweis.go) -- DistributionAt des ersten Grundeinkommens,
+	// sonst die Blockzeit.
+	zeit int64
 	// Beim ersten Grundeinkommen der Runde festgehalten.
 	topfStart int64 // Mikro-AEQ
 	menschen  int64
@@ -124,7 +135,18 @@ func (cs *ChainState) nachrechnenUBILocked(tx *Transaction, blockZeit int64) err
 	r := &cs.ubiRunde
 	betrag := NewDecimal(tx.Amount).Micro()
 	if !r.aktiv {
-		menschen, err := cs.countHumanAccountsLocked(context.Background())
+		zeit := blockZeit
+		if tx.DistributionAt > 0 {
+			if d := tx.DistributionAt - blockZeit; d > 600 || d < -600 {
+				if err := nachrechnenAbweichung("ubi_rundenzeit", blockZeit,
+					"distribution_at=%d, Blockzeit %d (Abstand %ds)", tx.DistributionAt, blockZeit, d); err != nil {
+					return err
+				}
+			} else {
+				zeit = tx.DistributionAt
+			}
+		}
+		menschen, err := cs.countUBIEmpfaengerLocked(context.Background(), zeit)
 		if err != nil {
 			// Ohne eigene Zahl keine Pruefung von Zahl und Anteil -- aber
 			// auch kein Glaube: die Runde gilt als unsicher und wird
@@ -137,6 +159,7 @@ func (cs *ChainState) nachrechnenUBILocked(tx *Transaction, blockZeit int64) err
 		*r = ubiRundePruefung{
 			unsicher:   r.unsicher,
 			aktiv:      true,
+			zeit:       zeit,
 			topfStart:  cs.topfMikroLocked(ubiPoolAddr),
 			menschen:   menschen,
 			anteil:     betrag,
@@ -153,6 +176,11 @@ func (cs *ChainState) nachrechnenUBILocked(tx *Transaction, blockZeit int64) err
 		// was ein Block hineinschreibt.
 		return nachrechnenAbweichung("ubi_kein_mensch", blockZeit,
 			"%s ist kein registrierter Mensch (%.6f AEQ)", kurzAdresse(wallet), tx.Amount)
+	} else if lebensnachweisPausiert(acc, r.zeit) {
+		if err := nachrechnenAbweichung("ubi_pausiert", blockZeit,
+			"%s ist zur Rundenzeit %d ohne faelligen Lebensnachweis (%.6f AEQ)", kurzAdresse(wallet), r.zeit, tx.Amount); err != nil {
+			return err
+		}
 	}
 	if _, schon := r.empfaenger[wallet]; schon {
 		if err := nachrechnenAbweichung("ubi_doppelt", blockZeit,

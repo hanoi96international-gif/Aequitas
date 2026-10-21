@@ -117,6 +117,12 @@ func (cs *ChainState) registerHumanConcurrent(address string, pendingTx Transact
 	scratch.IsHuman = true
 	scratch.Balance = scratch.Balance.Add(NewDecimal(1000))
 	touchActivity(&scratch)
+	// Ab dem Stichtag ist die Registrierung der erste Lebensnachweis
+	// (lebensnachweis.go) -- nach RegAt, wie im gesperrten Pfad und beim
+	// Nachspielen.
+	if z := lebensnachweisRegZeit(pendingTx.RegAt, nowUnix()); z > scratch.LebensnachweisAm {
+		scratch.LebensnachweisAm = z
+	}
 
 	// Re-validate the cap authoritatively under lock: the pre-check above
 	// ran without holding the shard lock, so this address's balance (if it

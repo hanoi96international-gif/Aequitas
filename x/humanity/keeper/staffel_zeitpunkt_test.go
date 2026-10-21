@@ -104,6 +104,11 @@ func TestStaffelZeit_AnnahmeUndNachspielenGleichesBlatt(t *testing.T) {
 	blockZeit := regAt + 7
 	nachspieler.mu.Lock()
 	err := nachspieler.registerHumanMitZeitenLocked(context.Background(), w, blockZeit, staffelRegZeit(tx.RegAt, blockZeit), tx.GrantClass)
+	if err == nil {
+		// Wie replayTransactions: ab dem Stichtag des Lebensnachweises zaehlt
+		// die Registrierung als erster Nachweis (lebensnachweis.go).
+		err = nachspieler.lebensnachweisBeiRegistrierungLocked(context.Background(), w, tx.RegAt, blockZeit)
+	}
 	nachspieler.mu.Unlock()
 	if err != nil {
 		t.Fatal(err)
@@ -205,6 +210,11 @@ func TestStaffelZeit_StichtagZwischenAnnahmeUndBlock(t *testing.T) {
 	blockZeit := regAt + 30 // nach dem Stichtag
 	nachspieler.mu.Lock()
 	err := nachspieler.registerHumanMitZeitenLocked(context.Background(), w, blockZeit, staffelRegZeit(tx.RegAt, blockZeit), tx.GrantClass)
+	if err == nil {
+		// Wie replayTransactions: ab dem Stichtag des Lebensnachweises zaehlt
+		// die Registrierung als erster Nachweis (lebensnachweis.go).
+		err = nachspieler.lebensnachweisBeiRegistrierungLocked(context.Background(), w, tx.RegAt, blockZeit)
+	}
 	nachspieler.mu.Unlock()
 	if err != nil {
 		t.Fatal(err)

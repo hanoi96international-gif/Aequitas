@@ -292,6 +292,13 @@ func (cs *ChainState) humanAccountChunkLocked(ctx context.Context, offset, limit
 // distributeUBIChunkLocked credits one chunk and reports whether the epoch is
 // now complete.
 //
+// LEBENSNACHWEIS (lebensnachweis.go): dieser Pfad kennt keine Rundenzeit und
+// schliesst deshalb niemanden ohne faelligen Lebensnachweis aus -- der
+// einmalige Pfad (distributeUBIPoolLocked) tut es, und nachrechnen_ubi.go
+// erwartet es ab lebensnachweisAktiv. Wer das Stueckeln einschaltet
+// (UBIChunkingActive), muss Zaehlung und Auswahl hier vorher auf
+// countUBIEmpfaengerLocked/lebensnachweisEmpfaengerLocked umstellen.
+//
 // Opening an epoch fixes the share and the account count. Every later chunk
 // reads those stored values, so demurrage arriving mid-epoch cannot change
 // what earlier chunks already paid — and the pool is reduced by exactly what
