@@ -27,6 +27,9 @@ name: Neustart bei null (V8) -- erkunden oder ausfuehren
 # 21.10.2026: C2 ist seit dem 03.10. abgeschaltet, seine IP meldet einen
 # fremden Host-Schluessel -- C2 ist aus allen Schritten entfernt. Die
 # neueren Releases heissen "vX.Y.Z" statt "app-vX.Y.Z"; beides gilt.
+# Jeder Fernschritt laeuft ueber .github/neustart/fern.sh: gruen nur, wenn
+# das Skript bis zur letzten Zeile kam. Beim ersten Lauf am 21.10. schluckte
+# ein "docker exec -i" den Rest von leeren.sh -- gruen, geloescht war nichts.
 # Ablauf (Betreiber, 30.09.2026: das neue Netz beginnt mit C1 allein):
 #   1. beide Boxen sichern (deploy/backup-ledger.sh, Kopie bleibt auf der Box),
 #   2. beide leeren (Knoten gestoppt),
@@ -78,7 +81,7 @@ jobs:
         env:
           HOST: ${{ matrix.host }}
           BOX: ${{ matrix.box }}
-        run: cat .github/neustart/gemeinsam.sh .github/neustart/erkunden.sh | ssh -i ~/.ssh/k -o BatchMode=yes "root@$HOST" "BOX=$BOX bash -s"
+        run: bash .github/neustart/fern.sh "$HOST" "BOX=$BOX" .github/neustart/gemeinsam.sh .github/neustart/erkunden.sh
 
   pruefen:
     if: inputs.modus == 'ausfuehren'
@@ -131,7 +134,7 @@ jobs:
         env:
           HOST: ${{ matrix.host }}
           BOX: ${{ matrix.box }}
-        run: ssh -i ~/.ssh/k -o BatchMode=yes "root@$HOST" "BOX=$BOX bash -s" < deploy/backup-ledger.sh
+        run: bash .github/neustart/fern.sh "$HOST" "BOX=$BOX" deploy/backup-ledger.sh
 
   leeren:
     needs: sichern
@@ -155,7 +158,7 @@ jobs:
         env:
           HOST: ${{ matrix.host }}
           BOX: ${{ matrix.box }}
-        run: cat .github/neustart/gemeinsam.sh .github/neustart/leeren.sh | ssh -i ~/.ssh/k -o BatchMode=yes "root@$HOST" "BOX=$BOX BESTAETIGT='ALLE GUTHABEN WEG' bash -s"
+        run: bash .github/neustart/fern.sh "$HOST" "BOX=$BOX BESTAETIGT='ALLE GUTHABEN WEG'" .github/neustart/gemeinsam.sh .github/neustart/leeren.sh
 
   produzenten-c1:
     needs: leeren
@@ -171,7 +174,7 @@ jobs:
           FP: "SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA"
         run: bash .github/neustart/ssh-einrichten.sh
       - name: C1 einziger Produzent (AUTHORIZED_VALIDATORS = eigene Signieradresse)
-        run: cat .github/neustart/gemeinsam.sh .github/neustart/produzenten-c1.sh | ssh -i ~/.ssh/k -o BatchMode=yes root@188.172.229.121 "BOX=C1 BESTAETIGT='ALLE GUTHABEN WEG' bash -s"
+        run: bash .github/neustart/fern.sh 188.172.229.121 "BOX=C1 BESTAETIGT='ALLE GUTHABEN WEG'" .github/neustart/gemeinsam.sh .github/neustart/produzenten-c1.sh
 
   starten-c1:
     needs: produzenten-c1
@@ -187,7 +190,7 @@ jobs:
           FP: "SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA"
         run: bash .github/neustart/ssh-einrichten.sh
       - name: C1 mit dem Stand von main bauen und starten (deploy-c1.sh)
-        run: ssh -i ~/.ssh/k -o BatchMode=yes -o ServerAliveInterval=30 root@188.172.229.121 'bash -s' < deploy/deploy-c1.sh
+        run: bash .github/neustart/fern.sh 188.172.229.121 "" deploy/deploy-c1.sh
       - name: C1 ist das neue Netz (v8, null Menschen, nimmt an)
-        run: cat .github/neustart/gemeinsam.sh .github/neustart/starten.sh | ssh -i ~/.ssh/k -o BatchMode=yes root@188.172.229.121 "BOX=C1 bash -s"
+        run: bash .github/neustart/fern.sh 188.172.229.121 "BOX=C1" .github/neustart/gemeinsam.sh .github/neustart/starten.sh
 
