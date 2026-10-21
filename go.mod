@@ -1,6 +1,6 @@
 module github.com/hanoi96international-gif/aequitas-chain
 
-go 1.26.9
+go 1.26.10
 
 require (
 	filippo.io/edwards25519 v1.0.0
