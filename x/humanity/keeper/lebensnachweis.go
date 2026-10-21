@@ -30,7 +30,8 @@ package keeper
 //
 //	am         = LebensnachweisAm (issued_at des letzten Nachweises; fuer eine
 //	             Registrierung nach dem Stichtag deren Zeitpunkt), mindestens
-//	             der Stichtag -- wer heute registriert ist, beginnt dort.
+//	             lebensnachweisUhrAb (Stichtag bzw. spaetere Zulassung der
+//	             Coordinatoren) -- wer heute registriert ist, beginnt dort.
 //	faellig_ab = am + 300 Tage: fruehester Nachweis. Frueher wird keiner
 //	             angenommen -- das bremst auch das Abdriften der Vorlage.
 //	frist      = am + 365 Tage.
@@ -47,10 +48,15 @@ package keeper
 // niemand pausiert, der Endpunkt antwortet 409, eine proof_of_life im Block
 // ist Leerlauf -- fail-closed fuer die Pruefung (kein Nachweis ohne
 // zugelassenen Coordinator), ohne Geld festzuhalten.
-// TestLebensnachweis_ZulassungVorDerFaelligkeit verlangt, dass
-// registerLeserAb spaetestens mit der ersten Faelligkeit kommt: sonst waeren
-// beim Einschalten der Zulassung alle schon ueber pause_ab und wuerden ohne
-// Vorlauf pausiert.
+//
+// DIE UHR BEGINNT, WENN NACHWEISE MOEGLICH WERDEN. Kaeme die Zulassung erst
+// nach der ersten Faelligkeit (Stichtag + 300 Tage), waeren beim Einschalten
+// alle schon ueber pause_ab und wuerden ohne jeden Vorlauf pausiert. Darum
+// zaehlt als fruehestes am nicht der Stichtag allein, sondern der spaetere von
+// Stichtag und registerLeserAb (lebensnachweisUhrAb) -- jeder hat nach dem
+// Einschalten der Zulassung die vollen 300/365/395 Tage. Steht
+// registerLeserAb noch auf seinem Platzhalter (nach 2100), bleibt es beim
+// Stichtag; aktiv ist dann ohnehin false.
 //
 // DETERMINISMUS. Ob jemand pausiert ist, haengt nur an der Rundenzeit
 // (ubiAt, steht ab dem Stichtag in jeder ubi_distribution als
@@ -104,6 +110,21 @@ func lebensnachweisAb() int64 {
 	return lebensnachweisAbUnix
 }
 
+// lebensnachweisUhrMax: ein registerLeserAb dahinter ist ein Platzhalter
+// (heute MaxInt64), kein Termin -- 01.01.2100.
+const lebensnachweisUhrMax int64 = 4102444800
+
+// lebensnachweisUhrAb: das frueheste am -- der spaetere von Stichtag und
+// Zulassung der Coordinatoren (siehe "DIE UHR BEGINNT ..."). Eine Konstante
+// des Programms, bei allen Knoten gleich.
+func lebensnachweisUhrAb() int64 {
+	ab := lebensnachweisAb()
+	if r := registerLeserAb(); r > ab && r < lebensnachweisUhrMax {
+		ab = r
+	}
+	return ab
+}
+
 // lebensnachweisStichtag: liegt t am oder nach dem Stichtag? Ab hier zaehlt
 // eine Registrierung als erster Nachweis (lebensnachweisRegZeit).
 func lebensnachweisStichtag(t int64) bool { return t >= lebensnachweisAb() }
@@ -135,7 +156,7 @@ type lebensnachweisFristen struct {
 }
 
 func lebensnachweisFristenVon(acc *AccountState) lebensnachweisFristen {
-	am := lebensnachweisAb()
+	am := lebensnachweisUhrAb()
 	if acc != nil && acc.LebensnachweisAm > am {
 		am = acc.LebensnachweisAm
 	}
@@ -384,7 +405,7 @@ func (cs *ChainState) lebensnachweisEmpfaengerLocked(menschen []string, t int64)
 // countUBIEmpfaengerLocked: wie viele Menschen zur Rundenzeit t ihren
 // Tagesanteil bekommen (nachrechnen_ubi.go). Eine Zaehlung, keine Liste --
 // wie countHumanAccountsLocked. Dieselbe Bedingung wie
-// lebensnachweisPausiert, in SQL: wirksames am (mindestens der Stichtag) >
+// lebensnachweisPausiert, in SQL: wirksames am (mindestens lebensnachweisUhrAb) >
 // t - 395 Tage.
 func (cs *ChainState) countUBIEmpfaengerLocked(ctx context.Context, t int64) (int64, error) {
 	if !lebensnachweisAktiv(t) {
@@ -403,7 +424,7 @@ func (cs *ChainState) countUBIEmpfaengerLocked(ctx context.Context, t int64) (in
 	var n int64
 	if err := cs.dbExecCtx(ctx).QueryRow(
 		`SELECT count(*) FROM chain_accounts WHERE is_human = true AND GREATEST(COALESCE(lebensnachweis_am, 0), $2) > $1`,
-		lebensnachweisPauseGrenze(t), lebensnachweisAb()).Scan(&n); err != nil {
+		lebensnachweisPauseGrenze(t), lebensnachweisUhrAb()).Scan(&n); err != nil {
 		return 0, fmt.Errorf("count UBI recipients: %w", err)
 	}
 	return n, nil

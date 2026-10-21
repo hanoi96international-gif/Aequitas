@@ -777,11 +777,38 @@ func TestLebensnachweis_Blockzeit(t *testing.T) {
 // Faelligkeit kommen. Kaeme sie spaeter, waeren beim Einschalten alle schon
 // ueber pause_ab und wuerden ohne Vorlauf pausiert -- wer registerLeserAbUnix
 // setzt, sieht hier, was er mitentscheidet.
-func TestLebensnachweis_ZulassungVorDerFaelligkeit(t *testing.T) {
-	if registerLeserAbUnix != math.MaxInt64 && registerLeserAbUnix > lebensnachweisAbUnix+lebensnachweisFaelligTage*86400 {
-		t.Fatalf("registerLeserAb %d liegt nach der ersten Faelligkeit (%d): beim Einschalten der Zulassung "+
-			"waeren alle ohne Vorlauf ueber pause_ab -- erst die Fristen verschieben (z. B. am = max(Stichtag, registerLeserAb))",
-			registerLeserAbUnix, lebensnachweisAbUnix+lebensnachweisFaelligTage*86400)
+// Kommt die Zulassung der Coordinatoren erst nach der ersten Faelligkeit,
+// beginnt die Uhr mit ihr: niemand ist beim Einschalten schon pausiert, und
+// jeder hat die vollen Fristen. Der Platzhalter (MaxInt64) verschiebt nichts.
+func TestLebensnachweis_UhrBeginntMitDerZulassung(t *testing.T) {
+	stichtag := int64(1_800_000_000)
+	spaet := stichtag + 500*86400 // nach Stichtag + 395 Tagen
+	lnAktiv(t, stichtag, spaet)
+	acc := &AccountState{IsHuman: true}
+	f := lebensnachweisFristenVon(acc)
+	if f.am != spaet || f.faelligAb != spaet+300*86400 || f.pauseAb != spaet+395*86400 {
+		t.Fatalf("Fristen ab der Zulassung erwartet, bekommen %+v", f)
+	}
+	if lebensnachweisPausiert(acc, spaet) || lebensnachweisPausiert(acc, spaet+394*86400) {
+		t.Fatal("beim Einschalten der Zulassung darf niemand ohne Vorlauf pausiert sein")
+	}
+	if !lebensnachweisPausiert(acc, spaet+395*86400) {
+		t.Fatal("nach den vollen Fristen ohne Nachweis pausiert")
+	}
+	// Ein Nachweis nach der Zulassung zaehlt wie immer.
+	acc.LebensnachweisAm = spaet + 320*86400
+	if lebensnachweisFristenVon(acc).am != acc.LebensnachweisAm {
+		t.Fatal("ein spaeterer Nachweis bestimmt am")
+	}
+	// Platzhalter: es bleibt beim Stichtag.
+	lnAktiv(t, stichtag, math.MaxInt64)
+	if got := lebensnachweisFristenVon(&AccountState{IsHuman: true}).am; got != stichtag {
+		t.Fatalf("Platzhalter verschiebt am auf %d", got)
+	}
+	// Die Konstante selbst: heute Platzhalter oder spaetestens so, dass die
+	// Rechnung oben greift -- es gibt keinen Wert, der ohne Vorlauf pausiert.
+	if registerLeserAbUnix != math.MaxInt64 && registerLeserAbUnix >= lebensnachweisUhrMax {
+		t.Fatalf("registerLeserAbUnix %d ist weder Platzhalter noch Termin vor 2100", registerLeserAbUnix)
 	}
 }
 
