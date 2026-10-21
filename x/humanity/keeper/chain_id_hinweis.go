@@ -7,19 +7,19 @@ import (
 )
 
 // Ankuendigung des Chain-ID-Wechsels auf der Startseite (docs/CHAIN_ID_WECHSEL.md,
-// Schritt 3): solange ein Stichtag gesetzt ist und bis 14 Tage danach steht
-// oben auf der Seite, wann die Chain-ID wechselt und was Nutzer tun muessen.
+// Schritt 3): solange ein Stichtag gesetzt ist und noch bevorsteht, steht oben
+// auf der Seite, wann die Chain-ID wechselt und was Nutzer tun muessen. Danach
+// nicht mehr: seit dem Neustart bei null (21.10.2026) laeuft die Kette von
+// Genesis an mit der neuen ID, ein Nachlauf kuendigte nur noch Vergangenes an.
 // Vom Knoten gerendert, ohne Skript (CSP script-src 'self'); der Inhalt kommt
 // nur aus Konstanten, nie aus einer Anfrage.
-
-const chainIDHinweisNachlauf = 14 * 24 * 3600
 
 func chainIDHinweisHTML(jetzt int64) string {
 	if !chainIDWechselGeplant() {
 		return ""
 	}
 	ab := chainIDWechselAb()
-	if jetzt >= sattAdd(ab, chainIDHinweisNachlauf) {
+	if jetzt >= ab {
 		return ""
 	}
 	t := time.Unix(ab, 0).UTC()

@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// Der Hinweis erscheint nur mit gesetztem Stichtag, bis 14 Tage danach, genau
+// Der Hinweis erscheint nur mit gesetztem Stichtag, nur davor, genau
 // einmal hinter <main>, und nennt Datum und neue ID.
 func TestChainIDHinweis_NurMitStichtag(t *testing.T) {
 	wechselAb(t, math.MaxInt64)
@@ -23,11 +23,11 @@ func TestChainIDHinweis_NurMitStichtag(t *testing.T) {
 	if !strings.Contains(seite, "<main>\n<div role=\"status\"") || !strings.Contains(seite, "19260930") {
 		t.Fatal("Hinweis nicht hinter <main> oder ohne neue ID")
 	}
-	if mitChainIDHinweis(landingHTML, ab+14*86400-1) == landingHTML {
-		t.Fatal("Hinweis fehlt kurz vor Ende des Nachlaufs")
+	if mitChainIDHinweis(landingHTML, ab-1) == landingHTML {
+		t.Fatal("Hinweis fehlt kurz vor dem Stichtag")
 	}
-	if mitChainIDHinweis(landingHTML, ab+14*86400) != landingHTML {
-		t.Fatal("Hinweis steht nach dem Nachlauf noch")
+	if mitChainIDHinweis(landingHTML, ab) != landingHTML {
+		t.Fatal("Hinweis steht ab dem Stichtag noch")
 	}
 	if strings.Count(landingHTML, "<main>") != 1 {
 		t.Fatal("Startseite hat nicht genau ein <main>")

@@ -5,7 +5,7 @@ Stand: 17.10.2026. Der Stichtag ist **gesetzt**:
 (auf Anweisung des Betreibers vom 27.10. vorgezogen, ohne 7-Tage-Ankündigung)
 (`x/humanity/keeper/chain_id_wechsel.go`). Annahmepause ab 17.10.2026,
 23:50 UTC. App 1.11.0 (liest die ID live) ist das Release dazu; die
-Startseite kündigt den Wechsel an (`chain_id_hinweis.go`, bis 14 Tage danach).
+Startseite kündigt den Wechsel an (`chain_id_hinweis.go`, bis zum Stichtag).
 Rückweg nur **vor** `Ab`: wieder `math.MaxInt64`, ausrollen.
 
 ## Warum
