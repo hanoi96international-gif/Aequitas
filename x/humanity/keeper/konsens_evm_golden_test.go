@@ -428,7 +428,7 @@ func konsensVertraege(t *testing.T, b *goldenBuch) {
 	v7Code, _ := hex.DecodeString(V7ContractBytecode)
 	v7 := l.erzeuge(t, "deploy/v7-mock", ts, deployer, append(append([]byte{}, v7Code...), kwort(verifier)...))
 	bio := common.HexToAddress(BIO_VERIFIER_ADDR)
-	bioCode, _ := hex.DecodeString(BioVerifierRuntimeBytecode)
+	bioCode, _ := hex.DecodeString(bioVerifierV3Golden) // eingefroren, konsens_evm_bioverifier_test.go
 	setzeCode(sdb, bio, bioCode)
 	v7echt := l.erzeuge(t, "deploy/v7-bioverifier", ts, deployer, append(append([]byte{}, v7Code...), kwort(bio)...))
 	scratchCode, _ := hex.DecodeString(scratchGetterInitcode)
@@ -769,7 +769,7 @@ func konsensBN254(t *testing.T, b *goldenBuch) {
 	}
 	// Dieselben Faelle durch den echten BioVerifier.
 	bio := common.HexToAddress(BIO_VERIFIER_ADDR)
-	bioCode, _ := hex.DecodeString(BioVerifierRuntimeBytecode)
+	bioCode, _ := hex.DecodeString(bioVerifierV3Golden) // eingefroren, konsens_evm_bioverifier_test.go
 	setzeCode(sdb, bio, bioCode)
 	bioABI, err := abi.JSON(strings.NewReader(bioVerifierABI))
 	if err != nil {

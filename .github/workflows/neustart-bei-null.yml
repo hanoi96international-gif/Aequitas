@@ -24,6 +24,9 @@ name: Neustart bei null (V8) -- erkunden oder ausfuehren
 #     gemergt). Der normale Deploy haelt bei diesem Merge an
 #     (.github/neustart/genesis-passt.sh): die Knoten laufen bis hierher
 #     unveraendert auf der alten Kette weiter.
+# 21.10.2026: C2 ist seit dem 03.10. abgeschaltet, seine IP meldet einen
+# fremden Host-Schluessel -- C2 ist aus allen Schritten entfernt. Die
+# neueren Releases heissen "vX.Y.Z" statt "app-vX.Y.Z"; beides gilt.
 # Ablauf (Betreiber, 30.09.2026: das neue Netz beginnt mit C1 allein):
 #   1. beide Boxen sichern (deploy/backup-ledger.sh, Kopie bleibt auf der Box),
 #   2. beide leeren (Knoten gestoppt),
@@ -33,9 +36,7 @@ name: Neustart bei null (V8) -- erkunden oder ausfuehren
 #      Schluessel und seine Bindung bleiben.
 #   4. C1 mit deploy-c1.sh aus main bauen und starten (v8, null Menschen,
 #      nimmt an),
-#   5. C2: Knoten bleibt aus, seine Dienste laufen geleert weiter. C2 wird
-#      danach nach docs/VALIDATOR_EINRICHTEN.md neu eingerichtet (Test des
-#      Guides); bis dahin steht C2_AKTIV in deploy-c1-dann-c2.yml auf "nein".
+#   5. (bis 21.10.: C2-Dienste neu starten -- C2 gibt es nicht mehr)
 on:
   workflow_dispatch:
     inputs:
@@ -65,7 +66,6 @@ jobs:
       matrix:
         include:
           - {box: C1, host: 188.172.229.121, fp: "SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA", key: CONTABO_SSH_KEY}
-          - {box: C2, host: 194.163.188.71, fp: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto", key: CONTABO2_SSH_KEY}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: Schluessel und Host-Pruefung
@@ -103,7 +103,7 @@ jobs:
           echo "neuestes Release: $TAG"
           python3 -c '
           import re, sys
-          m = re.fullmatch(r"app-v(\d+)\.(\d+)\.(\d+)", sys.argv[1])
+          m = re.fullmatch(r"(?:app-)?v(\d+)\.(\d+)\.(\d+)", sys.argv[1])
           if not m or tuple(map(int, m.groups())) < (1, 8, 1):
               print("::error::neuestes App-Release ist aelter als app-v1.8.1 -- ohne V8-Unterschrift koennte sich niemand registrieren")
               sys.exit(1)
@@ -119,7 +119,6 @@ jobs:
       matrix:
         include:
           - {box: C1, host: 188.172.229.121, fp: "SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA", key: CONTABO_SSH_KEY}
-          - {box: C2, host: 194.163.188.71, fp: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto", key: CONTABO2_SSH_KEY}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: Schluessel und Host-Pruefung
@@ -144,7 +143,6 @@ jobs:
       matrix:
         include:
           - {box: C1, host: 188.172.229.121, fp: "SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA", key: CONTABO_SSH_KEY}
-          - {box: C2, host: 194.163.188.71, fp: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto", key: CONTABO2_SSH_KEY}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: Schluessel und Host-Pruefung
@@ -193,29 +191,3 @@ jobs:
       - name: C1 ist das neue Netz (v8, null Menschen, nimmt an)
         run: cat .github/neustart/gemeinsam.sh .github/neustart/starten.sh | ssh -i ~/.ssh/k -o BatchMode=yes root@188.172.229.121 "BOX=C1 bash -s"
 
-  c2-dienste:
-    # C2 bleibt ohne Knoten, bis er nach docs/VALIDATOR_EINRICHTEN.md neu
-    # eingerichtet wird (Test des Guides). Seine Dienste (Proof-Server,
-    # Coordinator, Vergleichsdienst) sind geleert und laufen weiter.
-    needs: starten-c1
-    runs-on: ubuntu-latest
-    environment: produktion
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-      - name: Schluessel und Host-Pruefung
-        env:
-          KEY: ${{ secrets.CONTABO2_SSH_KEY }}
-          HOST: 194.163.188.71
-          FP: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
-        run: bash .github/neustart/ssh-einrichten.sh
-      - name: C2-Knoten bleibt aus, Dienste neu starten
-        run: |
-          cat .github/neustart/gemeinsam.sh - <<'SKRIPT' | ssh -i ~/.ssh/k -o BatchMode=yes root@194.163.188.71 "BOX=C2 bash -s"
-          set -euo pipefail
-          if laeuft "$NODE"; then echo "::error::C2-Knoten laeuft -- er gehoert nicht zum neuen Netz"; exit 1; fi
-          for c in "$PROOF" "$COORD" "$MATCH"; do
-            [ -n "$c" ] && docker inspect "$c" >/dev/null 2>&1 && docker restart "$c" >/dev/null && echo "$c neu gestartet"
-          done
-          echo "C2: Knoten aus (wartet auf Neueinrichtung nach Guide), Dienste laufen."
-          SKRIPT
