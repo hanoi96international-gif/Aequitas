@@ -49,7 +49,8 @@ const hauptnetzChainID = "aequitas-1"
 
 // hauptnetzGenesisZeiten: genesis_time der Genesis-Dateien des echten Netzes.
 var hauptnetzGenesisZeiten = []time.Time{
-	time.Date(2026, 9, 30, 18, 10, 0, 0, time.UTC), // V8-Genesis (genesis.json)
+	time.Date(2026, 10, 21, 15, 0, 0, 0, time.UTC), // Neustart mit Zeremonie v4 (genesis.json)
+	time.Date(2026, 9, 30, 18, 10, 0, 0, time.UTC), // V8-Genesis bis 21.10.2026
 	time.Date(2026, 6, 13, 0, 0, 0, 0, time.UTC),   // alte Kette, auch Rueckfall von genesisTimestamp
 }
 
