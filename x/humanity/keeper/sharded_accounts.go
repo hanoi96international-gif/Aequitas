@@ -94,7 +94,14 @@ import (
 //
 // Nur beim Start gelesen; ein unbrauchbarer Wert ergibt die Vorgabe. Ein
 // Rueckweg auf 16384 ist damit eine Umgebungsvariable und kein Deploy.
+//
+// Nach oben hoechstens numAccountShardsHoechstens (1.048.576, das Vierfache
+// der Vorgabe, rund 56 MB fuer die leeren Shards). Darueber wurde nie
+// gemessen, und ein verrutschter Wert (eine Null zu viel) haette den Knoten
+// beim Start in den Speichertod geschickt statt in die Vorgabe.
 const numAccountShardsVorgabe = 262144
+
+const numAccountShardsHoechstens = 1 << 20
 
 const numAccountShardsEnv = "AEQUITAS_ACCOUNT_SHARDS"
 
@@ -109,6 +116,11 @@ func shardZahlAusUmgebung() int {
 	if err != nil || n < 1 {
 		fmt.Printf("[SHARDS] %s=%q ist keine positive Zahl -- bleibe bei %d\n",
 			numAccountShardsEnv, roh, numAccountShardsVorgabe)
+		return numAccountShardsVorgabe
+	}
+	if n > numAccountShardsHoechstens {
+		fmt.Printf("[SHARDS] %s=%d liegt ueber der Obergrenze %d -- bleibe bei %d\n",
+			numAccountShardsEnv, n, numAccountShardsHoechstens, numAccountShardsVorgabe)
 		return numAccountShardsVorgabe
 	}
 	if n != numAccountShardsVorgabe {
