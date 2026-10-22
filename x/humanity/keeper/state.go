@@ -1303,6 +1303,11 @@ WHERE commitment IN (
 	// Partial index on is_human lets distributeUBIPoolLocked enumerate all
 	// registered humans from the DB without a full chain_accounts table scan.
 	dbExec(`CREATE INDEX IF NOT EXISTS idx_chain_accounts_is_human ON chain_accounts(address) WHERE is_human = true`)
+	// Rund 20 Abfragen auf chain_accounts filtern ueber lower(address)
+	// (ladeKontenCtx, die Vorpruefung der Validator-Bindung, die Versionen beim
+	// Schreiben). Der Primaerschluessel auf address dient dafuer nicht: jede las
+	// die ganze Tabelle, auch ausgeloest von aussen (Pruefung von #327, INFO-4).
+	dbExec(`CREATE INDEX IF NOT EXISTS idx_chain_accounts_lower_address ON chain_accounts(lower(address))`)
 	// FIX (P3, beta-launch audit 2026-07-05): distributeLPPoolLocked and
 	// checkAndMoveToEscrowLocked used to only iterate cs.accounts (the
 	// in-memory cache), so a genuinely-inactive human or LP holder whose
