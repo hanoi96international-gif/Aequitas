@@ -174,7 +174,7 @@ func InflightStand() map[string]interface{} {
 		"abgelehnt":            abgelehnt,
 		"angenommen":           angenommen,
 		"abgelehnt_pct":        anteil,
-		"abweicht_von_vorgabe": grenze != inflightVorgabe,
+		"abweicht_von_vorgabe": grenze != vorgabeNachSpeicher(),
 		"bedeutung": "Obergrenze gleichzeitig angenommener RPC-Posten. Ohne sie nimmt der " +
 			"Knoten unbegrenzt Arbeit an und liefert sie nach der Client-Zeitgrenze aus -- " +
 			"am 29.08.2026 gemessen: 576 Sender ergaben 0 Erfolge und 138.000 " +
