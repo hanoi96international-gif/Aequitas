@@ -448,6 +448,12 @@ func main() {
 	fmt.Printf("✓ Registervertrag: %s\n", keeper.VertragVersion())
 	// Ohne Produzentenliste glaubte der Knoten jedem registrierten Menschen
 	// Bloecke (Audit 2026-10-21, H1) -- vor dem Start, nicht als Warnung.
+	// Bescheinigung im Konsens (Audit 2026-10-21, K1): eine unlesbare
+	// Schluesselliste haelt an, statt still schlafend zu laufen.
+	if err := keeper.PruefeBescheinigungGenesis(); err != nil {
+		fmt.Printf("✗ bescheinigung in genesis.json: %v\n", err)
+		os.Exit(1)
+	}
 	if err := keeper.PruefeProduzentenliste(); err != nil {
 		fmt.Printf("✗ %v\n", err)
 		os.Exit(1)

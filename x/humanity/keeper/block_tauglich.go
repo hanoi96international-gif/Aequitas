@@ -243,6 +243,13 @@ func blockTauglich(tx *Transaction, blockZeit int64) error {
 		if vertragV8() && tx.RegAt > blockZeit+v8NachspielKarenz {
 			return fmt.Errorf("Registrierung angenommen um %d, Block %d", tx.RegAt, blockZeit)
 		}
+		// Ab dem Stichtag weist jeder Knoten eine Registrierung ohne
+		// Bescheinigung ab (bio_bescheinigung_konsens.go). Die Annahme
+		// verlangt sie schon einen Tag vorher; dies faengt nur, was davor
+		// angenommen und nie verblockt wurde.
+		if bescheinigungAktiv(blockZeit) && tx.BioBescheinigung == nil {
+			return fmt.Errorf("Registrierung ohne Bescheinigung, Block %d", blockZeit)
+		}
 	case "umlauf":
 		if rundenZeitNachBlock(tx.DistributionAt, blockZeit) || umlaufLPZeitVorgezogen(tx.DistributionAt, blockZeit) {
 			return fmt.Errorf("Umlauf zur Runde %d, Block %d", tx.DistributionAt, blockZeit)

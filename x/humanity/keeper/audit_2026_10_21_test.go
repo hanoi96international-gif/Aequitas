@@ -32,7 +32,7 @@ func TestAudit_NachspielenTauschUeberReserveWirdAbgelehnt(t *testing.T) {
 		out       float64
 	}{
 		{"tUSD->AEQ weit ueber der Reserve", false, 50_000},
-		{"tUSD->AEQ genau die Reserve", false, 100},
+		{"tUSD->AEQ knapp ueber der Reserve", false, 100.000001},
 		{"AEQ->tUSD ueber der Reserve", true, 1_000},
 	} {
 		t.Run(fall.name, func(t *testing.T) {
@@ -73,6 +73,31 @@ func TestAudit_NachspielenEhrlicherTauschGehtDurch(t *testing.T) {
 	cs.mu.Unlock()
 	if err != nil {
 		t.Fatalf("ehrlicher Tausch abgelehnt: %v", err)
+	}
+	if nachher := summe(); nachher != vorher {
+		t.Fatalf("AEQ aus Konten und Reserve veraendert: %v -> %v", vorher.Float(), nachher.Float())
+	}
+}
+
+// Grenzfall zu K2: ein Ergebnis von genau der Reserve (Rundung auf Mikro-AEQ
+// bei sehr grossem Einsatz) ist kein Geld aus dem Nichts -- es leert die
+// Reserve, mehr nicht. Abgelehnt wuerde ein ehrlicher Block zur Spaltung.
+func TestAudit_NachspielenTauschGenauDieReserve(t *testing.T) {
+	cs := auditPoolZustand()
+	summe := func() Decimal {
+		var d Decimal
+		cs.accounts.Range(func(_ string, a *AccountState) bool { d = d.Add(a.Balance); return true })
+		return d.Add(cs.pool.ReserveAEQ)
+	}
+	vorher := summe()
+	cs.mu.Lock()
+	err := cs.applySwapDeltaLockedMitAbgabe(context.Background(), auditA, 1, 100, false, 0, 1, 0)
+	cs.mu.Unlock()
+	if err != nil {
+		t.Fatalf("Ergebnis gleich der Reserve abgelehnt: %v", err)
+	}
+	if !cs.pool.ReserveAEQ.IsZero() {
+		t.Fatalf("Reserve nicht geleert: %v", cs.pool.ReserveAEQ.Float())
 	}
 	if nachher := summe(); nachher != vorher {
 		t.Fatalf("AEQ aus Konten und Reserve veraendert: %v -> %v", vorher.Float(), nachher.Float())

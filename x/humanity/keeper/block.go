@@ -142,6 +142,12 @@ type Transaction struct {
 	RegSignatur string `json:"reg_signatur,omitempty"`
 	RegFrist    int64  `json:"reg_frist,omitempty"`
 	RegAt       int64  `json:"reg_at,omitempty"`
+	// Die Bescheinigung von Coordinator und Vergleichsdienst (Audit
+	// 2026-10-21, K1, bio_bescheinigung_konsens.go). Ab dem Stichtag in der
+	// Genesis prueft JEDER Knoten selbst, dass die Gesichtspruefung
+	// stattgefunden hat -- vorher wusste das nur der annehmende Knoten.
+	// omitempty: Bloecke ohne sie behalten ihren Hash.
+	BioBescheinigung *BioBescheinigung `json:"bio_bescheinigung,omitempty"`
 	// BlockAHash/BlockBHash identify the equivocation evidence pair for
 	// "slash_equivocation" TXs so the replay can be idempotent (see the
 	// slash_equivocation case in replayTransactions and
@@ -7865,6 +7871,15 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			// V8-Kette, es gibt keine aelteren Bloecke, die daran scheitern.
 			if vertragV8() {
 				if err := pruefeRegistrierungV8(tx, block.Timestamp); err != nil {
+					fmt.Printf("[REPLAY] ✗ register_human for %s (block #%d): %v — rolling back whole block\n", wallet, block.Height, err)
+					hardFailure = true
+					continue
+				}
+			}
+			// Die Gesichtspruefung selbst nachpruefen (K1) -- ab dem Stichtag
+			// der Genesis. Ohne sie konnte jeder Erzeuger Menschen erfinden.
+			if bescheinigungAktiv(block.Timestamp) {
+				if err := pruefeBioBescheinigung(tx); err != nil {
 					fmt.Printf("[REPLAY] ✗ register_human for %s (block #%d): %v — rolling back whole block\n", wallet, block.Height, err)
 					hardFailure = true
 					continue

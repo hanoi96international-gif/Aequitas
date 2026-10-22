@@ -8888,8 +8888,12 @@ func (cs *ChainState) applySwapDeltaLockedMitAbgabe(ctx context.Context, wallet 
 		if aeqToTusd {
 			reserve = cs.pool.ReserveTUSD
 		}
-		if NewDecimal(amountOut) >= reserve {
-			return fmt.Errorf("swap: Ergebnis %.6f nicht kleiner als die Reserve %.6f: %w",
+		// Strikt groesser: genau die Reserve kann ein ehrlicher Erzeuger durch
+		// die Rundung auf Mikro-AEQ erreichen (Ergebnis knapp unter der
+		// Reserve, gerundet gleich) -- dann wird sie null, und es entsteht
+		// nichts. Erst darueber entstuende Geld.
+		if NewDecimal(amountOut) > reserve {
+			return fmt.Errorf("swap: Ergebnis %.6f groesser als die Reserve %.6f: %w",
 				amountOut, reserve.Float(), ErrZustandLehntAb)
 		}
 	}
@@ -8990,15 +8994,15 @@ func (cs *ChainState) applySwapDeltaLockedMitAbgabe(ctx context.Context, wallet 
 	if cs.pool != nil {
 		if aeqToTusd {
 			// Sender put in AEQ, got tUSD: reserveAEQ grows, reserveTUSD shrinks.
-			// Ohne AtLeastZero: dass amountOut kleiner als die Reserve ist,
-			// steht oben fest (K2) -- ein Klemmen hier verdeckte nur Geld aus
-			// dem Nichts.
+			// Dass amountOut die Reserve nicht uebersteigt, steht oben fest
+			// (K2); AtLeastZero greift damit nie mehr und bleibt nur als
+			// Sicherung gegen einen negativen Pool.
 			cs.pool.ReserveAEQ = cs.pool.ReserveAEQ.Add(inPool)
-			cs.pool.ReserveTUSD = cs.pool.ReserveTUSD.Sub(NewDecimal(amountOut))
+			cs.pool.ReserveTUSD = cs.pool.ReserveTUSD.Sub(NewDecimal(amountOut)).AtLeastZero()
 		} else {
 			// Sender put in tUSD, got AEQ: reserveTUSD grows, reserveAEQ shrinks.
 			cs.pool.ReserveTUSD = cs.pool.ReserveTUSD.Add(inPool)
-			cs.pool.ReserveAEQ = cs.pool.ReserveAEQ.Sub(NewDecimal(amountOut))
+			cs.pool.ReserveAEQ = cs.pool.ReserveAEQ.Sub(NewDecimal(amountOut)).AtLeastZero()
 		}
 		if saveAccountFirst {
 			if err := saveAcct(); err != nil {

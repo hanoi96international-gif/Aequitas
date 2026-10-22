@@ -1410,6 +1410,7 @@ func (a *APIServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 		// (Audit K-1) -- vor dem Launch muss hier true stehen.
 		"produzenten_geschlossen": a.blockchain.ProduzentenGeschlossen(),
 		"produzenten":             a.blockchain.ProduzentenListe(),
+		"bescheinigung_konsens":   BescheinigungStand(),
 		"validator_liste_hash":    a.blockchain.ValidatorListeHash(),
 		// Erzeuger aus AUTHORIZED_VALIDATORS ohne Bindung im Kettenregister:
 		// ab erzeugerSchnittAb erzeugten sie nicht mehr. Der Stichtag darf

@@ -7,6 +7,7 @@ require (
 	github.com/ethereum/go-ethereum v1.17.8
 	github.com/hdevalence/ed25519consensus v0.2.0
 	github.com/holiman/uint256 v1.3.2
+	github.com/iden3/go-iden3-crypto v0.0.17
 	github.com/lib/pq v1.12.3
 	github.com/libp2p/go-libp2p v0.50.0
 	golang.org/x/crypto v0.55.0

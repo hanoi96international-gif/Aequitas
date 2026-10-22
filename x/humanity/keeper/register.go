@@ -891,6 +891,23 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 			return "", fmt.Errorf("registration rejected: %w", err)
 		}
 	}
+	// Die Bescheinigung in die Transaktion (Audit 2026-10-21, K1): ab einem
+	// Tag vor dem Stichtag der Genesis Pflicht, und genau dieselbe Pruefung,
+	// die spaeter jeder nachspielende Knoten macht -- sonst erzeugte dieser
+	// Knoten einen Block, den die anderen ablehnen.
+	if bescheinigungBeiAnnahme(annahmeZeit) {
+		b := proveBescheinigung(nullifierToStore, wallet)
+		if b == nil {
+			return "", fmt.Errorf("registration rejected: no attestation from the biometric check for this proof -- run /api/prove again")
+		}
+		if k, err := bescheinigungKonf(); err == nil {
+			b.Modus = k.Modus
+		}
+		pendingRegTx.BioBescheinigung = b
+		if err := pruefeBioBescheinigung(pendingRegTx); err != nil {
+			return "", fmt.Errorf("registration rejected: %w", err)
+		}
+	}
 
 	// ── REGISTRATION STATE MACHINE (audit P1-02) ─────────────────────────
 	// Step 1: Write a durable intent BEFORE submitting the EVM tx.
