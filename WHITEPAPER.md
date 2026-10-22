@@ -153,7 +153,7 @@ Stand **25.09.2026**, abgelesen aus dem laufenden Betrieb. Dieser Abschnitt hat 
 | | Stand |
 |---|---|
 | Erfasst | nur das Gesicht: Foto + kurze Bildfolge (Blinzeln, Blick zur Seite, Farbblitze) |
-| Vergleichsdienste | zwei, auf zwei Contabo-Servern verschiedener Eigentümer; beide müssen zustimmen. Ein dritter Dienst bei Railway ist seit 14.09.2026 abgeschaltet. |
+| Vergleichsdienste | Beta: einer, betrieben vom Betreiber (Quorum 1, höchstens 25 neue Registrierungen am Tag). Ziel: mehrere unabhängige Dienste verschiedener Eigentümer, die übereinstimmen müssen. |
 | Bescheinigung | Wallet-Bindung des Coordinators **und** 2 verschiedene Personen-Bescheinigungen, auf beiden Proof-Servern verlangt (seit 26.08.2026) |
 | Gespeichert | nur ein 64-Byte-Auszug je Mensch; Foto und Template werden nach Sekunden verworfen (seit 24.08.2026). Aus dem Auszug lässt sich das Gesicht nicht rekonstruieren, er erkennt aber wieder — er gilt deshalb als biometrisches Datum nach Art. 9 DSGVO. |
 | Lebendigkeit | verbindlich ist die Blick-Aufgabe. Blitzfarben, Parallaxe, Puls und Antispoof werden gemessen und zu einer Klasse zusammengefasst, entscheiden aber noch nichts (Schattenmodus, seit 13.09.2026) |
