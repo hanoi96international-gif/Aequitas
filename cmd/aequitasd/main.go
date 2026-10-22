@@ -446,6 +446,12 @@ func main() {
 		os.Exit(1)
 	}
 	fmt.Printf("✓ Registervertrag: %s\n", keeper.VertragVersion())
+	// Ohne Produzentenliste glaubte der Knoten jedem registrierten Menschen
+	// Bloecke (Audit 2026-10-21, H1) -- vor dem Start, nicht als Warnung.
+	if err := keeper.PruefeProduzentenliste(); err != nil {
+		fmt.Printf("✗ %v\n", err)
+		os.Exit(1)
+	}
 	if keeper.BeobachterModus() {
 		fmt.Println("✓ Beobachter (AEQUITAS_BEOBACHTER): spielt nur nach, erzeugt keine Bloecke")
 	}

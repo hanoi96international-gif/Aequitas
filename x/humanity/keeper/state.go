@@ -5971,8 +5971,8 @@ func (cs *ChainState) transferMutateLocked(ctx context.Context, from, to string,
 	to = strings.ToLower(to)
 	// P1-FIX: reject NaN/Inf amounts — these would corrupt balances via
 	// NewDecimal which uses math.Round (NaN/Inf propagate silently).
-	if amount <= 0 || math.IsNaN(amount) || math.IsInf(amount, 0) {
-		return 0, 0, nil, nil, 0, fmt.Errorf("invalid transfer amount: %v", amount)
+	if err := pruefeUeberweisungsBetrag(amount); err != nil {
+		return 0, 0, nil, nil, 0, err
 	}
 	// P2-5: reject self-transfers; mirrors AequitasV7.sol behaviour and
 	// prevents double-demurrage settlement on the same account object.
@@ -8872,6 +8872,27 @@ func (cs *ChainState) applySwapDeltaLockedMitAbgabe(ctx context.Context, wallet 
 	if abgabe < 0 || math.IsNaN(abgabe) || math.IsInf(abgabe, 0) || (abgabe > 0 && !aeqToTusd) {
 		return fmt.Errorf("swap: ungueltige Abgabe %v: %w", abgabe, ErrZustandLehntAb)
 	}
+	// DAS ERGEBNIS MUSS AUS DER RESERVE KOMMEN (Audit 2026-10-21, K2).
+	//
+	// amountOut steht im Block und kommt vom Erzeuger. Unten wurde die
+	// Reserve mit AtLeastZero() abgezogen: ein Ergebnis groesser als die
+	// Reserve setzte sie stumm auf null und schrieb dem Konto trotzdem den
+	// vollen Betrag gut -- gemessen: 50.000 AEQ aus 100 AEQ Reserve. Die
+	// Annahme (swapLockedMitAbgabe) laesst so ein Ergebnis nie zu; ein Block,
+	// der es traegt, ist ungueltig, kein Rundungsfall.
+	if math.IsNaN(amountOut) || math.IsInf(amountOut, 0) || amountOut <= 0 {
+		return fmt.Errorf("swap: ungueltiges Ergebnis %v: %w", amountOut, ErrZustandLehntAb)
+	}
+	if cs.pool != nil {
+		reserve := cs.pool.ReserveAEQ
+		if aeqToTusd {
+			reserve = cs.pool.ReserveTUSD
+		}
+		if NewDecimal(amountOut) >= reserve {
+			return fmt.Errorf("swap: Ergebnis %.6f nicht kleiner als die Reserve %.6f: %w",
+				amountOut, reserve.Float(), ErrZustandLehntAb)
+		}
+	}
 	wallet = strings.ToLower(wallet)
 	cs.ensureAccountLoadedCtx(ctx, wallet)
 	acc, ok := cs.accounts.Get(wallet)
@@ -8969,12 +8990,15 @@ func (cs *ChainState) applySwapDeltaLockedMitAbgabe(ctx context.Context, wallet 
 	if cs.pool != nil {
 		if aeqToTusd {
 			// Sender put in AEQ, got tUSD: reserveAEQ grows, reserveTUSD shrinks.
+			// Ohne AtLeastZero: dass amountOut kleiner als die Reserve ist,
+			// steht oben fest (K2) -- ein Klemmen hier verdeckte nur Geld aus
+			// dem Nichts.
 			cs.pool.ReserveAEQ = cs.pool.ReserveAEQ.Add(inPool)
-			cs.pool.ReserveTUSD = cs.pool.ReserveTUSD.Sub(NewDecimal(amountOut)).AtLeastZero()
+			cs.pool.ReserveTUSD = cs.pool.ReserveTUSD.Sub(NewDecimal(amountOut))
 		} else {
 			// Sender put in tUSD, got AEQ: reserveTUSD grows, reserveAEQ shrinks.
 			cs.pool.ReserveTUSD = cs.pool.ReserveTUSD.Add(inPool)
-			cs.pool.ReserveAEQ = cs.pool.ReserveAEQ.Sub(NewDecimal(amountOut)).AtLeastZero()
+			cs.pool.ReserveAEQ = cs.pool.ReserveAEQ.Sub(NewDecimal(amountOut))
 		}
 		if saveAccountFirst {
 			if err := saveAcct(); err != nil {

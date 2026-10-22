@@ -3,7 +3,6 @@ package keeper
 import (
 	"context"
 	"fmt"
-	"math"
 	"strings"
 )
 
@@ -77,8 +76,8 @@ func (cs *ChainState) transferConcurrent(from, to string, amount float64, pendin
 	if from == to {
 		return 0, 0, true, fmt.Errorf("self-transfer not allowed")
 	}
-	if amount <= 0 || math.IsNaN(amount) || math.IsInf(amount, 0) {
-		return 0, 0, true, fmt.Errorf("invalid transfer amount: %v", amount)
+	if err := pruefeUeberweisungsBetrag(amount); err != nil {
+		return 0, 0, true, err
 	}
 	if cs.db == nil {
 		return 0, 0, false, nil // no DB to make atomic with — let the slow (no-DB) path handle it

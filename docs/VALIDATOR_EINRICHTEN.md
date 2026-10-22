@@ -158,6 +158,7 @@ wie es war. Ohne sie ist es ein neuer Knoten: neu binden, neu aufnehmen lassen.
 | `operator_binding_signature missing or invalid` | die Bindung fehlt oder passt nicht | `bash einrichten.sh` erneut starten und den QR-Code scannen |
 | `einrichten.sh`: „Keine Bestätigung aus der App angekommen“ | QR-Code nicht gescannt oder nicht bestätigt | `bash einrichten.sh` noch einmal starten und den neuen Code scannen |
 | App: „Dieser Code wurde für eine andere Wallet erzeugt“ | beim Einrichten eine andere Adresse eingegeben | in `.env` `NODE_OPERATOR_WALLET` korrigieren oder neu einrichten |
+| `AUTHORIZED_VALIDATORS ist leer` (Knoten startet nicht) | die Produzentenliste fehlt; ohne sie glaubte der Knoten jedem registrierten Menschen Blöcke | `bash einrichten.sh` erneut starten (liest die Liste vom Netz und fragt nach), oder `produzenten` und `validator_liste_hash` aus `/api/status` eines bestehenden Validators von Hand in `.env` eintragen |
 | `ist registriert, aber nicht in AUTHORIZED_VALIDATORS` | noch nicht als Produzent aufgenommen | Signieradresse an den Betreiber schicken; bis dahin Beobachter |
 | Höhe steht, `Not yet 3 consecutive clean sync cycles` | der Knoten holt noch auf | warten |
 | Höhe bleibt hinter dem Netz zurück | Port 4001/8080 zu, oder zu wenig Arbeitsspeicher | Firewall des Anbieters prüfen, `docker stats` |

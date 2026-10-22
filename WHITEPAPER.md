@@ -106,7 +106,7 @@ Today Aequitas relies on a **live face check** and **zero-knowledge proofs**; in
 
 **Registration flow (as of 2026-09-25):**
 1. The Android app captures a photo of the face and a short sequence: blink once, glance left or right on a random prompt, while the screen flashes a random colour sequence. Only the face is captured — no fingerprint, no hand, no ID document.
-2. The capture goes to **two independent matching services** on different machines owned by different people. They briefly compute a face description and compare it with every earlier enrolment. **Both** must agree (quorum 2 of 2); if one is unreachable, nothing is decided.
+2. The capture goes to the matching service, which briefly computes a face description and compares it with every earlier enrolment. **Beta status (October 2026):** a single matching service run by the operator decides (quorum 1, at most 25 new registrations a day). The design is two or more independent services with different owners that must agree; that is the next step, not the current state.
 3. Only a **64-byte sketch** (512 yes/no values) is stored. The photo and the full face description are discarded within seconds.
 4. If the person is new, the coordinator issues a random identifier (`bio_hash`) — not a function of the face — and signs its binding to the wallet; the matching services sign that a new human stands behind that identifier.
 5. The proof server turns this into a **Groth16 zero-knowledge proof** (BN128) with `commitment` and `nullifier` — but only if the wallet binding **and** two distinct attestations are present (since 2026-08-25/26).
@@ -176,7 +176,7 @@ State as of **2026-09-25**, read from the running system. Where anything else co
 | | State |
 |---|---|
 | Captured | the face only: photo + short sequence (blink, glance aside, colour flashes) |
-| Matching services | two, on two Contabo servers with different owners; both must agree. A third service on Railway has been off since 2026-09-14. |
+| Matching services | beta: one, run by the operator (quorum 1, at most 25 new registrations a day). Target: several independent services with different owners. |
 | Attestation | coordinator's wallet binding **and** 2 distinct personhood attestations, required on both proof servers (since 2026-08-26) |
 | Stored | only a 64-byte sketch per person; photo and template are discarded within seconds (since 2026-08-24). The face cannot be reconstructed from the sketch, but it does recognise — so it counts as biometric data under GDPR Art. 9. |
 | Liveness | the glance task is binding. Flash colours, parallax, pulse and anti-spoof are measured and combined into a class, but decide nothing yet (shadow mode, since 2026-09-13) |
@@ -417,7 +417,7 @@ Contabo 1 (Lauterbourg, FR)           Contabo 2 (Lauterbourg, FR)
 
 Zwei Server mit je eigener PostgreSQL-Datenbank, zwei Eigentümer der Vergleichsdienste. Railway ist seit August 2026 für die Kette und seit 14.09.2026 auch für den Vergleichsdienst abgeschaltet. Jeder registrierte Mensch kann einen weiteren Knoten betreiben.
 
-Two servers, each with its own PostgreSQL database; the two matching services have different owners. Railway has been shut down for the chain since August 2026 and for the matching service since 2026-09-14. Any registered human can run a further node.
+Beta: one server (C1) produces blocks and runs the matching service, both operated by one person. Other nodes check signatures and nonces themselves, but cannot yet verify by themselves that a registration passed the face check (AUDIT_2026-10-21.md, K1); until that is part of consensus, the operator could create AEQ. Any registered human can run a further node.
 
 ### 5.3 Technische Kenndaten / Technical Specifications
 

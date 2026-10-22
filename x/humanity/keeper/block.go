@@ -1347,6 +1347,20 @@ func (dag *BlockDAG) ProduzentenGeschlossen() bool {
 	return len(dag.produzentenFest) > 0
 }
 
+// ProduzentenListe: AUTHORIZED_VALIDATORS dieses Knotens, sortiert. Fuer
+// /api/status, damit ein neuer Validator die Liste abschreiben und gegen
+// validator_liste_hash pruefen kann (Audit 2026-10-21, H1: ohne Liste startet
+// kein Knoten mehr). Oeffentliche Adressen, kein Geheimnis. Ohne Sperre aus
+// demselben Grund wie ProduzentenGeschlossen.
+func (dag *BlockDAG) ProduzentenListe() []string {
+	liste := make([]string, 0, len(dag.produzentenFest))
+	for a := range dag.produzentenFest {
+		liste = append(liste, a)
+	}
+	sort.Strings(liste)
+	return liste
+}
+
 // bekannteTxArt: Integrity check 4 in AddPeerBlock. Eine Art, die erst ab
 // einem Stichtag gilt, ist davor so unbekannt wie eine erfundene -- der Block
 // wird abgewiesen, wie ihn ein Knoten ohne diese Art abwiese.

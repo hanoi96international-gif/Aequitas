@@ -1409,6 +1409,7 @@ func (a *APIServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 		// false heisst: jeder registrierte Mensch kann Blockproduzent werden
 		// (Audit K-1) -- vor dem Launch muss hier true stehen.
 		"produzenten_geschlossen": a.blockchain.ProduzentenGeschlossen(),
+		"produzenten":             a.blockchain.ProduzentenListe(),
 		"validator_liste_hash":    a.blockchain.ValidatorListeHash(),
 		// Erzeuger aus AUTHORIZED_VALIDATORS ohne Bindung im Kettenregister:
 		// ab erzeugerSchnittAb erzeugten sie nicht mehr. Der Stichtag darf
@@ -2639,7 +2640,7 @@ func (a *APIServer) handleRegistered(w http.ResponseWriter, r *http.Request) {
 	// attributes and zero <script> tags at all (pure static markup plus one
 	// escaped %s interpolation, see below) — script-src never needed
 	// 'unsafe-inline' here.
-	w.Header().Set("Content-Security-Policy", "default-src 'self' 'unsafe-inline'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.bunny.net; font-src https://fonts.bunny.net; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'")
+	w.Header().Set("Content-Security-Policy", "default-src 'self' 'unsafe-inline'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'")
 	w.Header().Set("X-Frame-Options", "DENY")
 	setHSTS(w, r)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -2769,7 +2770,7 @@ func (a *APIServer) handleUI(w http.ResponseWriter, r *http.Request) {
 	// (already allowed above) and then rendered via URL.createObjectURL(),
 	// i.e. an <img src="blob:..."> — the https://api.web3modal.org origin
 	// itself is never used directly as an <img> src, only blob: is.
-	w.Header().Set("Content-Security-Policy", "default-src 'self' 'unsafe-inline'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.bunny.net; font-src https://fonts.bunny.net; connect-src 'self' https://aequitas.digital wss://relay.walletconnect.org https://relay.walletconnect.org https://api.web3modal.org https://verify.walletconnect.org https://verify.walletconnect.com; img-src 'self' data: blob: https://api.web3modal.org; frame-ancestors 'none'")
+	w.Header().Set("Content-Security-Policy", "default-src 'self' 'unsafe-inline'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src 'self' https://aequitas.digital wss://relay.walletconnect.org https://relay.walletconnect.org https://api.web3modal.org https://verify.walletconnect.org https://verify.walletconnect.com; img-src 'self' data: blob: https://api.web3modal.org; frame-ancestors 'none'")
 	w.Header().Set("X-Frame-Options", "DENY")
 	setHSTS(w, r)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -4016,7 +4017,7 @@ func (a *APIServer) handleDapp(w http.ResponseWriter, r *http.Request) {
 	// script is now external+self-hosted (see dappJS's comment in
 	// api_html.go) and its 21 onclick=/oninput= attributes are gone, so this
 	// can go straight to a strict script-src with zero exceptions.
-	w.Header().Set("Content-Security-Policy", "default-src 'self' 'unsafe-inline'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.bunny.net; font-src https://fonts.bunny.net; connect-src 'self' https://aequitas.digital; img-src 'self' data:; frame-ancestors 'none'")
+	w.Header().Set("Content-Security-Policy", "default-src 'self' 'unsafe-inline'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src 'self' https://aequitas.digital; img-src 'self' data:; frame-ancestors 'none'")
 	w.Header().Set("X-Frame-Options", "DENY")
 	setHSTS(w, r)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -4110,7 +4111,7 @@ func (a *APIServer) schreibeLandingSeite(w http.ResponseWriter, r *http.Request,
 	// FIX (Monster Audit 2026-07-12 follow-up, P1): loadStats()/the smooth-scroll
 	// handler now live in the same-origin /landing.js file (see landingJS's
 	// comment in api_html.go), so script-src no longer needs 'unsafe-inline'.
-	w.Header().Set("Content-Security-Policy", "default-src 'self' 'unsafe-inline'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.bunny.net; font-src https://fonts.bunny.net; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'")
+	w.Header().Set("Content-Security-Policy", "default-src 'self' 'unsafe-inline'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'")
 	w.Header().Set("X-Frame-Options", "DENY")
 	setHSTS(w, r)
 	w.Header().Set("X-Content-Type-Options", "nosniff")

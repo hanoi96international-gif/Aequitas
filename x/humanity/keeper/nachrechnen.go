@@ -41,7 +41,17 @@ import (
 //
 // Stichtag an block.Timestamp: seit K-3 (zeitstempel_pruefung.go) kann ein
 // Produzent hoechstens 120 s hinter seine Eltern zurueckdatieren.
-const nachrechnenStrengAbUnix int64 = math.MaxInt64
+//
+// GESETZT AM 22.10.2026 (Audit 2026-10-21, K2): 2026-11-01T00:00:00Z. Bis
+// dahin blieb die Beobachtung unbefristet -- und solange jeder Knoten
+// Werte des Erzeugers nur zaehlte statt ablehnte, uebernahm er ein
+// Tauschergebnis ueber der Reserve, ein beliebiges Liegegeld oder eine
+// beliebige Gebuehr. Bis zum Stichtag laeuft nachrechnen-beobachter.yml und
+// muss null Abweichungen zeigen; zeigt er welche, wird DIESER Tag nach
+// hinten geschoben (fuer alle Knoten zugleich), nie eine Regel abgeschaltet.
+// Fail-closed: lieber haelt ein nachspielender Knoten an, als dass er Geld
+// aus dem Nichts annimmt.
+const nachrechnenStrengAbUnix int64 = 1793491200
 
 var (
 	nachrechnenGeprueft     atomic.Int64
@@ -141,6 +151,9 @@ func (cs *ChainState) nachrechnenTxLocked(tx *Transaction, blockZeit int64) erro
 
 	case "liveness_renewal":
 		return cs.nachrechnenErneuerungLocked(tx, wallet, blockZeit) // nachrechnen_erneuerung.go
+
+	case "transfer":
+		return cs.nachrechnenUeberweisungLocked(tx, wallet, blockZeit) // nachrechnen_ueberweisung.go
 
 	case "kappung":
 		// Die Kappung bucht einen festen Betrag ins Grundeinkommen, den der
