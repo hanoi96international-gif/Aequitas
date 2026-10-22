@@ -30,12 +30,25 @@ func TestInflight_LehntUeberDerGrenzeAb(t *testing.T) {
 // Eine ausdrueckliche 0 schaltet ab. Ein TIPPFEHLER darf das nicht:
 // evm_rpc.go stellt diese Regel fuer den Ratenbegrenzer auf, und ein Schutz,
 // den eine verrutschte Taste abschaltet, ist keiner.
+//
+// Die Vorgabe haengt an GOMEMLIMIT (vorgabeNachSpeicher). Der Test setzt es
+// selbst, sonst fiel er durch, sobald die Umgebung eines setzte.
 func TestInflight_TippfehlerSchaltetNichtAb(t *testing.T) {
-	for _, murks := range []string{"achttausend", "-5", "8000x", " "} {
-		t.Setenv(inflightGrenzeEnv, murks)
-		if got := inflightGrenze(); got != inflightVorgabe {
-			t.Fatalf("bei %q ist die Grenze %d, erwartet die Vorgabe %d -- "+
-				"ein Tippfehler darf den Schutz nicht abschalten", murks, got, inflightVorgabe)
+	for _, fall := range []struct {
+		gomemlimit string
+		vorgabe    int64
+	}{
+		{"", inflightVorgabe},
+		{"5GiB", 20000},
+		{"256MiB", inflightUntergrenze},
+	} {
+		t.Setenv("GOMEMLIMIT", fall.gomemlimit)
+		for _, murks := range []string{"achttausend", "-5", "8000x", " "} {
+			t.Setenv(inflightGrenzeEnv, murks)
+			if got := inflightGrenze(); got != fall.vorgabe {
+				t.Fatalf("GOMEMLIMIT=%q, bei %q ist die Grenze %d, erwartet die Vorgabe %d -- "+
+					"ein Tippfehler darf den Schutz nicht abschalten", fall.gomemlimit, murks, got, fall.vorgabe)
+			}
 		}
 	}
 	t.Setenv(inflightGrenzeEnv, "0")
@@ -112,4 +125,24 @@ func inflightZuruecksetzen() {
 	inflightHoechststand.Store(0)
 	inflightAbgelehnt.Store(0)
 	inflightAngenommen.Store(0)
+}
+
+// abweicht_von_vorgabe vergleicht mit der Vorgabe, die gerade gilt: auf den
+// Boxen (GOMEMLIMIT=5GiB) ist das 20.000, nicht 8.000. Vorher meldete der
+// Knoten dort "abweichend", obwohl niemand etwas eingestellt hatte.
+func TestInflight_StandVergleichtMitDerGeltendenVorgabe(t *testing.T) {
+	t.Setenv("GOMEMLIMIT", "5GiB")
+	t.Setenv(inflightGrenzeEnv, "")
+	if st := InflightStand(); st["grenze"] != int64(20000) || st["abweicht_von_vorgabe"] != false {
+		t.Fatalf("ohne Einstellung: grenze %v, abweicht %v -- erwartet 20000, false", st["grenze"], st["abweicht_von_vorgabe"])
+	}
+	t.Setenv(inflightGrenzeEnv, "8000")
+	if st := InflightStand(); st["abweicht_von_vorgabe"] != true {
+		t.Fatalf("eingestellt auf 8000 bei Vorgabe 20000: abweicht %v, erwartet true", st["abweicht_von_vorgabe"])
+	}
+	t.Setenv("GOMEMLIMIT", "")
+	t.Setenv(inflightGrenzeEnv, "")
+	if st := InflightStand(); st["grenze"] != inflightVorgabe || st["abweicht_von_vorgabe"] != false {
+		t.Fatalf("ohne GOMEMLIMIT: grenze %v, abweicht %v -- erwartet %d, false", st["grenze"], st["abweicht_von_vorgabe"], inflightVorgabe)
+	}
 }

@@ -70,7 +70,7 @@ jobs:
         include:
           - {box: C1, host: 188.172.229.121, fp: "SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA", key: CONTABO_SSH_KEY}
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Schluessel und Host-Pruefung
         env:
           KEY: ${{ secrets[matrix.key] }}
@@ -93,7 +93,7 @@ jobs:
           B: ${{ inputs.bestaetigung }}
         run: |
           [ "$B" = "ALLE GUTHABEN WEG" ] || { echo "::error::bestaetigung muss genau 'ALLE GUTHABEN WEG' lauten -- nichts passiert"; exit 1; }
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: main traegt die V8-Genesis (Genesis-PR gemergt)
         run: |
           jq . genesis.json
@@ -123,7 +123,7 @@ jobs:
         include:
           - {box: C1, host: 188.172.229.121, fp: "SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA", key: CONTABO_SSH_KEY}
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Schluessel und Host-Pruefung
         env:
           KEY: ${{ secrets[matrix.key] }}
@@ -147,7 +147,7 @@ jobs:
         include:
           - {box: C1, host: 188.172.229.121, fp: "SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA", key: CONTABO_SSH_KEY}
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Schluessel und Host-Pruefung
         env:
           KEY: ${{ secrets[matrix.key] }}
@@ -166,7 +166,7 @@ jobs:
     environment: produktion
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Schluessel und Host-Pruefung
         env:
           KEY: ${{ secrets.CONTABO_SSH_KEY }}
@@ -182,7 +182,7 @@ jobs:
     environment: produktion
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Schluessel und Host-Pruefung
         env:
           KEY: ${{ secrets.CONTABO_SSH_KEY }}

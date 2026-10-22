@@ -16,19 +16,15 @@ func TestShardZahl_WasSieKostet(t *testing.T) {
 	if testing.Short() {
 		t.Skip("allokiert absichtlich viel")
 	}
-	alt := numAccountShards
-	defer func() { numAccountShards = alt }()
 	gemessen := map[int]time.Duration{}
 
 	for _, n := range []int{16384, 262144} {
-		numAccountShards = n
-
 		runtime.GC()
 		var vor runtime.MemStats
 		runtime.ReadMemStats(&vor)
 
 		start := time.Now()
-		sa := newShardedAccounts()
+		sa := newShardedAccountsN(n)
 		bauzeit := time.Since(start)
 
 		runtime.GC()

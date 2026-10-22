@@ -40,7 +40,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: produktion
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Refuse unless DNS already points at Contabo1
         run: |
@@ -109,7 +109,7 @@ jobs:
             docker exec proof-caddy sh -c "cat /etc/caddy/Caddyfile"
 
       - name: Copy and reload
-        uses: appleboy/scp-action@917f8b81dfc1ccd331fef9e2d61bdc6c8be94634 # v0.1.7
+        uses: appleboy/scp-action@ff85246acaad7bdce478db94a363cd2bf7c90345 # v1.0.0
         with:
           host: alter-c1-abgeschaltet.invalid
           username: root
