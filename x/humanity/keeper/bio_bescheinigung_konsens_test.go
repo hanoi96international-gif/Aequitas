@@ -4,7 +4,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/hex"
-	"math/big"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -46,43 +46,61 @@ func (s bTestSchluessel) unterschreibe(msg string) string {
 
 const (
 	bTestWallet = "0xb0d1000000000000000000000000000000000001"
-	bTestBio    = "987654321987654321987654321"
-	bTestZeit   = int64(1_800_000_000)
+	// Poseidon(987654321987654321987654321), von der Schaltung biometric_v3
+	// gerechnet -- die Kette rechnet kein Poseidon mehr, sie prueft
+	// Unterschriften ueber den Nullifier des Beweises.
+	bTestNullifier = "2258162185744682068870376411042672036729508593423772695192684261112116008409"
+	bTestZeit      = int64(1_800_000_000)
 )
 
-func bTestTx(t *testing.T, bio string, sigs ...string) Transaction {
+func bTestTx(t *testing.T, nullifier string, sigs ...string) Transaction {
 	t.Helper()
-	b, _ := new(big.Int).SetString(bio, 10)
-	n, err := poseidonNullifier(b)
+	return Transaction{Type: "register_human", Wallet: bTestWallet, RegAt: bTestZeit + 30,
+		PubSignals:       []string{"1", nullifier},
+		BioBescheinigung: &BioBescheinigung{Zeit: bTestZeit, Modus: "test", Signaturen: sigs}}
+}
+
+func bindung(k bTestSchluessel, modus, nullifier, wallet string, zeit int64) string {
+	return k.unterschreibe("aequitas-bio-attestation-v3|" + modus + "|" + nullifier + "|" + wallet + "|" + strconv.FormatInt(zeit, 10))
+}
+
+func aussage(k bTestSchluessel, modus, nullifier string, zeit int64) string {
+	return k.unterschreibe("aequitas-bio-personhood-v3|" + modus + "|" + nullifier + "|" + strconv.FormatInt(zeit, 10))
+}
+
+// Pruefvektoren, byte-gleich zu den Gegenproben in aequitas-biometric-beta
+// (coordinator/tests/test_bescheinigung_v3.py, matching-service/tests/
+// test_personhood_v3.py). Weicht ein Zeichen ab, prueft keine Unterschrift.
+func TestBescheinigung_NachrichtenV3(t *testing.T) {
+	n := "9904028930859697121695025471312564917337032846528014134060777877259199866166" // Poseidon(123)
+	if got := string(bindungNachrichtV3("test", n, "0xabcd000000000000000000000000000000000001", 1787712345)); got !=
+		"aequitas-bio-attestation-v3|test|"+n+"|0xabcd000000000000000000000000000000000001|1787712345" {
+		t.Fatalf("Bindung: %s", got)
+	}
+	if got := string(aussageNachrichtV3("test", n, 1787712345)); got != "aequitas-bio-personhood-v3|test|"+n+"|1787712345" {
+		t.Fatalf("Aussage: %s", got)
+	}
+}
+
+// bio (= die bio_hash des Coordinators) kommt in keinen Block: mit ihr fragt
+// ein Mensch seine Einschreibung ab und loescht sie.
+func TestBescheinigung_KeinBioImBlock(t *testing.T) {
+	tx := bTestTx(t, bTestNullifier, "aa")
+	roh, err := json.Marshal(tx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return Transaction{Type: "register_human", Wallet: bTestWallet, RegAt: bTestZeit + 30,
-		PubSignals:       []string{"1", n.String()},
-		BioBescheinigung: &BioBescheinigung{Bio: bio, Zeit: bTestZeit, Modus: "test", Signaturen: sigs}}
-}
-
-func bindung(k bTestSchluessel, modus, bio, wallet string, zeit int64) string {
-	return k.unterschreibe("aequitas-bio-attestation-v2|" + modus + "|" + bio + "|" + wallet + "|" + strconv.FormatInt(zeit, 10))
-}
-
-func aussage(k bTestSchluessel, modus, bio string, zeit int64) string {
-	return k.unterschreibe("aequitas-bio-personhood-v2|" + modus + "|" + bio + "|" + strconv.FormatInt(zeit, 10))
-}
-
-// Poseidon wie der Circuit: Werte aus der Witness-Berechnung von
-// aequitas-proof-server/biometric_v3_js/biometric_v3.wasm (22.10.2026).
-func TestBescheinigung_PoseidonWieCircuit(t *testing.T) {
-	for bio, erwartet := range map[string]string{
-		"12345": "4267533774488295900887461483015112262021273608761099826938271132511348470966",
-		"21888242871839275222246405745257275088548364400416034343698204186575808495616": "3366645945435192953002076803303112651887535928162668198103357554665518664470",
-		"987654321987654321987654321": "2258162185744682068870376411042672036729508593423772695192684261112116008409",
-	} {
-		b, _ := new(big.Int).SetString(bio, 10)
-		n, err := poseidonNullifier(b)
-		if err != nil || n.String() != erwartet {
-			t.Fatalf("Poseidon(%s) = %v (%v), Circuit sagt %s", bio, n, err, erwartet)
-		}
+	if strings.Contains(string(roh), `"bio"`) || strings.Contains(string(roh), "987654321987654321987654321") {
+		t.Fatalf("bio im Block: %s", roh)
+	}
+	// Auch ein Erzeuger, der "bio" mitschickt, bringt es nicht in den Zustand:
+	// das Feld gibt es nicht.
+	var zurueck Transaction
+	if err := json.Unmarshal([]byte(`{"type":"register_human","bio_bescheinigung":{"bio":"123","zeit":1,"modus":"test","sig":["aa"]}}`), &zurueck); err != nil {
+		t.Fatal(err)
+	}
+	if neu, _ := json.Marshal(zurueck.BioBescheinigung); strings.Contains(string(neu), "bio") {
+		t.Fatalf("bio uebernommen: %s", neu)
 	}
 }
 
@@ -91,35 +109,52 @@ func TestBescheinigung_GueltigUndMissbrauch(t *testing.T) {
 	setBescheinigungFuerTest(t, &bescheinigungKonfig{AbUnix: 1, Modus: "test", Quorum: 2,
 		Coordinator: []string{coord.pub}, Bezeuger: []string{zeuge.pub}})
 
-	gut := bTestTx(t, bTestBio, bindung(coord, "test", bTestBio, bTestWallet, bTestZeit), aussage(zeuge, "test", bTestBio, bTestZeit))
+	gut := bTestTx(t, bTestNullifier, bindung(coord, "test", bTestNullifier, bTestWallet, bTestZeit), aussage(zeuge, "test", bTestNullifier, bTestZeit))
 	if err := pruefeBioBescheinigung(gut); err != nil {
 		t.Fatalf("gueltige Bescheinigung abgelehnt: %v", err)
 	}
 
 	faelle := map[string]Transaction{
 		"ohne Bescheinigung": func() Transaction { x := gut; x.BioBescheinigung = nil; return x }(),
-		"erfundenes bio (Nullifier passt nicht)": func() Transaction {
-			x := bTestTx(t, "111", bindung(coord, "test", bTestBio, bTestWallet, bTestZeit), aussage(zeuge, "test", bTestBio, bTestZeit))
-			x.PubSignals = gut.PubSignals
+		"Unterschriften ueber einen anderen Nullifier": func() Transaction {
+			x := bTestTx(t, bTestNullifier, bindung(coord, "test", "111", bTestWallet, bTestZeit), aussage(zeuge, "test", "111", bTestZeit))
+			return x
+		}(),
+		"alte Form v2 ueber bio": func() Transaction {
+			bio := "987654321987654321987654321"
+			return bTestTx(t, bTestNullifier,
+				coord.unterschreibe("aequitas-bio-attestation-v2|test|"+bio+"|"+bTestWallet+"|"+strconv.FormatInt(bTestZeit, 10)),
+				zeuge.unterschreibe("aequitas-bio-personhood-v2|test|"+bio+"|"+strconv.FormatInt(bTestZeit, 10)))
+		}(),
+		"Nullifier ausserhalb des Feldes": func() Transaction {
+			gross := "21888242871839275222246405745257275088548364400416034343698204186575808495617"
+			return bTestTx(t, gross, bindung(coord, "test", gross, bTestWallet, bTestZeit), aussage(zeuge, "test", gross, bTestZeit))
+		}(),
+		"Nullifier nicht dezimal": func() Transaction {
+			return bTestTx(t, "0x1f", bindung(coord, "test", "0x1f", bTestWallet, bTestZeit), aussage(zeuge, "test", "0x1f", bTestZeit))
+		}(),
+		"ohne Nullifier": func() Transaction {
+			x := gut
+			x.PubSignals = []string{"1"}
 			return x
 		}(),
 		"Bescheinigung einer anderen Wallet": func() Transaction {
-			x := bTestTx(t, bTestBio, bindung(coord, "test", bTestBio, "0xb0d1000000000000000000000000000000000666", bTestZeit), aussage(zeuge, "test", bTestBio, bTestZeit))
+			x := bTestTx(t, bTestNullifier, bindung(coord, "test", bTestNullifier, "0xb0d1000000000000000000000000000000000666", bTestZeit), aussage(zeuge, "test", bTestNullifier, bTestZeit))
 			return x
 		}(),
-		"fremder Schluessel bindet":      bTestTx(t, bTestBio, bindung(fremd, "test", bTestBio, bTestWallet, bTestZeit), aussage(zeuge, "test", bTestBio, bTestZeit)),
-		"Vergleichsdienst bindet selbst": bTestTx(t, bTestBio, bindung(zeuge, "test", bTestBio, bTestWallet, bTestZeit), aussage(zeuge, "test", bTestBio, bTestZeit)),
-		"nur Bindung, kein Zeuge":        bTestTx(t, bTestBio, bindung(coord, "test", bTestBio, bTestWallet, bTestZeit)),
-		"Coordinator bezeugt doppelt":    bTestTx(t, bTestBio, bindung(coord, "test", bTestBio, bTestWallet, bTestZeit), aussage(coord, "test", bTestBio, bTestZeit)),
-		"doppelte Unterschrift": bTestTx(t, bTestBio, bindung(coord, "test", bTestBio, bTestWallet, bTestZeit),
-			aussage(zeuge, "test", bTestBio, bTestZeit), aussage(zeuge, "test", bTestBio, bTestZeit)),
+		"fremder Schluessel bindet":      bTestTx(t, bTestNullifier, bindung(fremd, "test", bTestNullifier, bTestWallet, bTestZeit), aussage(zeuge, "test", bTestNullifier, bTestZeit)),
+		"Vergleichsdienst bindet selbst": bTestTx(t, bTestNullifier, bindung(zeuge, "test", bTestNullifier, bTestWallet, bTestZeit), aussage(zeuge, "test", bTestNullifier, bTestZeit)),
+		"nur Bindung, kein Zeuge":        bTestTx(t, bTestNullifier, bindung(coord, "test", bTestNullifier, bTestWallet, bTestZeit)),
+		"Coordinator bezeugt doppelt":    bTestTx(t, bTestNullifier, bindung(coord, "test", bTestNullifier, bTestWallet, bTestZeit), aussage(coord, "test", bTestNullifier, bTestZeit)),
+		"doppelte Unterschrift": bTestTx(t, bTestNullifier, bindung(coord, "test", bTestNullifier, bTestWallet, bTestZeit),
+			aussage(zeuge, "test", bTestNullifier, bTestZeit), aussage(zeuge, "test", bTestNullifier, bTestZeit)),
 		"anderer Modus": func() Transaction {
-			x := bTestTx(t, bTestBio, bindung(coord, "real", bTestBio, bTestWallet, bTestZeit), aussage(zeuge, "real", bTestBio, bTestZeit))
+			x := bTestTx(t, bTestNullifier, bindung(coord, "real", bTestNullifier, bTestWallet, bTestZeit), aussage(zeuge, "real", bTestNullifier, bTestZeit))
 			x.BioBescheinigung.Modus = "real"
 			return x
 		}(),
 		"Zeitpunkt umgeschrieben": func() Transaction {
-			x := bTestTx(t, bTestBio, bindung(coord, "test", bTestBio, bTestWallet, bTestZeit), aussage(zeuge, "test", bTestBio, bTestZeit))
+			x := bTestTx(t, bTestNullifier, bindung(coord, "test", bTestNullifier, bTestWallet, bTestZeit), aussage(zeuge, "test", bTestNullifier, bTestZeit))
 			x.BioBescheinigung.Zeit = bTestZeit + 1
 			return x
 		}(),
@@ -128,12 +163,10 @@ func TestBescheinigung_GueltigUndMissbrauch(t *testing.T) {
 			x.RegAt = bTestZeit + bescheinigungHoechstensAlt + 1
 			return x
 		}(),
-		"bio mit fuehrender Null": func() Transaction {
-			x := bTestTx(t, bTestBio, bindung(coord, "test", "0"+bTestBio, bTestWallet, bTestZeit), aussage(zeuge, "test", "0"+bTestBio, bTestZeit))
-			x.BioBescheinigung.Bio = "0" + bTestBio
-			return x
+		"Nullifier mit fuehrender Null, unterschrieben so": func() Transaction {
+			return bTestTx(t, "0"+bTestNullifier, bindung(coord, "test", "0"+bTestNullifier, bTestWallet, bTestZeit), aussage(zeuge, "test", "0"+bTestNullifier, bTestZeit))
 		}(),
-		"Unterschrift Grossbuchstaben": bTestTx(t, bTestBio, strings.ToUpper(bindung(coord, "test", bTestBio, bTestWallet, bTestZeit)), aussage(zeuge, "test", bTestBio, bTestZeit)),
+		"Unterschrift Grossbuchstaben": bTestTx(t, bTestNullifier, strings.ToUpper(bindung(coord, "test", bTestNullifier, bTestWallet, bTestZeit)), aussage(zeuge, "test", bTestNullifier, bTestZeit)),
 	}
 	for name, tx := range faelle {
 		if err := pruefeBioBescheinigung(tx); err == nil {
@@ -147,7 +180,7 @@ func TestBescheinigung_GueltigUndMissbrauch(t *testing.T) {
 func TestBescheinigung_EinzelbetriebZaehltSchluesselNichtSignaturen(t *testing.T) {
 	coord := neuerEd25519(t)
 	setBescheinigungFuerTest(t, &bescheinigungKonfig{AbUnix: 1, Modus: "test", Quorum: 1, Coordinator: []string{coord.pub}})
-	if err := pruefeBioBescheinigung(bTestTx(t, bTestBio, bindung(coord, "test", bTestBio, bTestWallet, bTestZeit))); err != nil {
+	if err := pruefeBioBescheinigung(bTestTx(t, bTestNullifier, bindung(coord, "test", bTestNullifier, bTestWallet, bTestZeit))); err != nil {
 		t.Fatalf("Quorum 1 mit einem Coordinator abgelehnt: %v", err)
 	}
 	k := bescheinigungKonfig{AbUnix: 1, Modus: "test", Quorum: 2, Coordinator: []string{coord.pub}}
@@ -191,22 +224,45 @@ func TestBescheinigung_RepoGenesisLesbar(t *testing.T) {
 	}
 }
 
-// Der Rumpf eines /prove: jeder Schluessel genau so geschrieben. Ein
-// zweites "Bio" neben "bio" macht ihn mehrdeutig -- keine Bescheinigung.
+// Der Rumpf eines /prove: nur die v3-Eintraege zaehlen, jeder Schluessel
+// genau so geschrieben. Ein zweites "BioAttestation" neben "bioAttestation"
+// macht ihn mehrdeutig -- keine Bescheinigung.
 func TestBescheinigung_AusProveAnfrageEindeutig(t *testing.T) {
-	ok := bescheinigungAusProveAnfrage([]byte(`{"bio":"123","wallet":"0x1","bioAttestation":"AA,bb","bioAttestationIssuedAt":1800000000}`))
-	if ok == nil || ok.Bio != "123" || ok.Zeit != 1_800_000_000 || len(ok.Signaturen) != 2 || ok.Signaturen[0] != "aa" {
+	ok := bescheinigungAusProveAnfrage([]byte(`{"bio":"123","wallet":"0x1","bioAttestation":"cc,v3:AA, v3:bb ,dd","bioAttestationIssuedAt":1800000000}`))
+	if ok == nil || ok.Zeit != 1_800_000_000 || len(ok.Signaturen) != 2 || ok.Signaturen[0] != "aa" || ok.Signaturen[1] != "bb" {
 		t.Fatalf("gueltiger Rumpf nicht gelesen: %+v", ok)
 	}
 	for name, body := range map[string]string{
-		"doppelt verschieden geschrieben": `{"bio":"123","Bio":"999","bioAttestation":"aa","bioAttestationIssuedAt":1}`,
-		"doppelt gleich":                  `{"bio":"123","bio":"999","bioAttestation":"aa","bioAttestationIssuedAt":1}`,
+		"nur v2":                          `{"bio":"123","bioAttestation":"aa,bb","bioAttestationIssuedAt":1800000000}`,
+		"doppelt verschieden geschrieben": `{"bioAttestation":"v3:aa","BioAttestation":"v3:bb","bioAttestationIssuedAt":1}`,
+		"doppelt gleich":                  `{"bioAttestation":"v3:aa","bioAttestation":"v3:bb","bioAttestationIssuedAt":1}`,
 		"ohne Unterschriften":             `{"bio":"123","bioAttestationIssuedAt":1800000000}`,
-		"bio als Zahl":                    `{"bio":123,"bioAttestation":"aa","bioAttestationIssuedAt":1800000000}`,
-		"Muell hinter dem Objekt":         `{"bio":"123","bioAttestation":"aa","bioAttestationIssuedAt":1800000000} {}`,
+		"ohne Zeitpunkt":                  `{"bioAttestation":"v3:aa"}`,
+		"Muell hinter dem Objekt":         `{"bioAttestation":"v3:aa","bioAttestationIssuedAt":1800000000} {}`,
+		"zu viele":                        `{"bioAttestation":"` + strings.Repeat("v3:aa,", bescheinigungMaxSignaturen+1) + `","bioAttestationIssuedAt":1}`,
 	} {
 		if b := bescheinigungAusProveAnfrage([]byte(body)); b != nil {
 			t.Errorf("%s: Bescheinigung gelesen: %+v", name, b)
+		}
+	}
+}
+
+// An den Proof-Server geht der Rumpf ohne die v3-Eintraege -- er kennt sie
+// nicht und wiese die ganze Anfrage ab. Alles andere bleibt Byte fuer Byte.
+func TestBescheinigung_ProofServerSiehtKeinV3(t *testing.T) {
+	for name, fall := range map[string]struct{ rein, raus string }{
+		"gemischt": {`{"bio":"123","wallet":"0xAb","bioAttestation":"aa,v3:cc,bb,v3:dd","bioAttestationIssuedAt":17,"x":[1,2]}`,
+			`{"bio":"123","wallet":"0xAb","bioAttestation":"aa,bb","bioAttestationIssuedAt":17,"x":[1,2]}`},
+		"Leerraum": {"{ \"bioAttestation\" :  \"v3:cc,aa\" , \"bio\":\"1\"}", "{ \"bioAttestation\" :  \"aa\" , \"bio\":\"1\"}"},
+		"nur v3":   {`{"bioAttestation":"v3:cc"}`, `{"bioAttestation":""}`},
+		"ohne v3":  {`{"bioAttestation":"aa,bb","bio":"1"}`, `{"bioAttestation":"aa,bb","bio":"1"}`},
+		"Zeichen davor im Schluessel": {`{"a\"bioAttestation":"v3:cc","bioAttestation":"v3:dd,aa"}`, `{"a\"bioAttestation":"v3:cc","bioAttestation":"aa"}`},
+		// Mehrdeutig: unveraendert weiter, der Proof-Server weist ab (fail-closed).
+		"doppelt": {`{"bioAttestation":"v3:cc","BioAttestation":"aa"}`, `{"bioAttestation":"v3:cc","BioAttestation":"aa"}`},
+		"kein Objekt": {`[1]`, `[1]`},
+	} {
+		if got := string(proveAnfrageOhneV3([]byte(fall.rein))); got != fall.raus {
+			t.Errorf("%s:\n rein %s\n raus %s\n soll %s", name, fall.rein, got, fall.raus)
 		}
 	}
 }

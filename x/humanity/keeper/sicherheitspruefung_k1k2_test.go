@@ -142,7 +142,7 @@ func TestSicherheit_WiederholungOhneBescheinigung(t *testing.T) {
 	coord, zeuge := neuerEd25519(t), neuerEd25519(t)
 	setBescheinigungFuerTest(t, &bescheinigungKonfig{AbUnix: 1, Modus: "test", Quorum: 2,
 		Coordinator: []string{coord.pub}, Bezeuger: []string{zeuge.pub}})
-	gut := bTestTx(t, bTestBio, bindung(coord, "test", bTestBio, bTestWallet, bTestZeit), aussage(zeuge, "test", bTestBio, bTestZeit))
+	gut := bTestTx(t, bTestNullifier, bindung(coord, "test", bTestNullifier, bTestWallet, bTestZeit), aussage(zeuge, "test", bTestNullifier, bTestZeit))
 	gut.Nullifier = gut.PubSignals[1]
 	if err := recoveryBescheinigungPruefen(gut); err != nil {
 		t.Fatalf("gueltige Bescheinigung abgewiesen: %v", err)
@@ -151,7 +151,7 @@ func TestSicherheit_WiederholungOhneBescheinigung(t *testing.T) {
 	ohne.BioBescheinigung = nil
 	ohneNullifier := gut
 	ohneNullifier.Nullifier = ""
-	falsch := bTestTx(t, bTestBio, bindung(coord, "test", bTestBio, "0xb0d1000000000000000000000000000000000666", bTestZeit), aussage(zeuge, "test", bTestBio, bTestZeit))
+	falsch := bTestTx(t, bTestNullifier, bindung(coord, "test", bTestNullifier, "0xb0d1000000000000000000000000000000000666", bTestZeit), aussage(zeuge, "test", bTestNullifier, bTestZeit))
 	falsch.Nullifier = falsch.PubSignals[1]
 	for name, tx := range map[string]Transaction{"ohne Bescheinigung": ohne, "ohne Nullifier": ohneNullifier, "fremde Wallet": falsch} {
 		if recoveryBescheinigungPruefen(tx) == nil {

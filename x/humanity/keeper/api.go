@@ -3600,7 +3600,11 @@ func (a *APIServer) handleProveProxy(w http.ResponseWriter, r *http.Request) {
 	// (addProofServerAuth) so the proof server's auth check passes. The
 	// token lives only in the chain node's env var and is never exposed to
 	// browser clients — the proxy is the sole caller of the proof server.
-	resp, err := doProofServerRequestFailover("POST", "/prove", body, 120*time.Second, nil)
+	// Die v3-Unterschriften (Bescheinigung im Konsens, ueber den Nullifier)
+	// kennt der Proof-Server nicht -- er wiese die ganze Anfrage ab. Sie
+	// bleiben hier und gehen ueber merkeProveHerkunft (mit dem Original-Rumpf)
+	// in die Registrierung (bio_bescheinigung_konsens.go).
+	resp, err := doProofServerRequestFailover("POST", "/prove", proveAnfrageOhneV3(body), 120*time.Second, nil)
 	if err != nil {
 		http.Error(w, `{"error":"proof server unreachable"}`, 502)
 		return

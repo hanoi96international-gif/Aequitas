@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"bytes"
+	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -14,8 +15,6 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-
-	"github.com/iden3/go-iden3-crypto/poseidon"
 )
 
 // DIE BESCHEINIGUNG IM KONSENS (Audit 2026-10-21, K1).
@@ -34,25 +33,39 @@ import (
 //
 // # WAS JETZT GILT (ab bescheinigung.ab_unix in genesis.json)
 //
-// Die Transaktion traegt die Bescheinigung: `bio` (die Zufallszahl des
-// Coordinators -- kein biometrisches Merkmal), ihren Zeitpunkt, den
-// Betriebsmodus und die Ed25519-Unterschriften. Jeder Knoten prueft selbst:
+// Die Transaktion traegt die Bescheinigung: Zeitpunkt, Betriebsmodus und die
+// Ed25519-Unterschriften (Form v3). Jeder Knoten prueft selbst:
 //
-//   - Poseidon(bio) ist der Nullifier des Beweises (pubSignals[1]). Poseidon
-//     wie circomlib, gegen den Circuit des Proof-Servers mit Testvektoren
-//     belegt (TestBescheinigung_PoseidonWieCircuit).
 //   - Jede Unterschrift passt zu einem Schluessel aus der Genesis und zu
-//     genau der Nachricht, die auch der Proof-Server nachbildet
-//     (bio_attestation.js, Form v2):
-//       Bindung:  aequitas-bio-attestation-v2|<modus>|<bio>|<wallet>|<zeit>
+//     genau einer dieser Nachrichten ueber den NULLIFIER des Beweises
+//     (pubSignals[1], kanonisch dezimal):
+//       Bindung:  aequitas-bio-attestation-v3|<modus>|<nullifier>|<wallet>|<zeit>
 //                 nur Coordinator-Schluessel
-//       Aussage:  aequitas-bio-personhood-v2|<modus>|<bio>|<zeit>
+//       Aussage:  aequitas-bio-personhood-v3|<modus>|<nullifier>|<zeit>
 //                 Bezeuger-Schluessel (ohne eigene Liste: Coordinator)
 //   - Mindestens eine Bindung an DIESE Wallet; bei getrennten Listen
 //     mindestens ein Bezeuger, der nicht gebunden hat; verschiedene
 //     Schluessel >= quorum. Gezaehlt werden Schluessel, nie Signaturen.
 //   - Der Zeitpunkt liegt hoechstens bescheinigungHoechstensAlt vor der
 //     Annahme (RegAt) und hoechstens 60 s danach.
+//
+// # WARUM DER NULLIFIER, NICHT bio (v3 statt v2)
+//
+// Die erste Fassung trug `bio` (die Zufallszahl des Coordinators) im Block
+// und pruefte Poseidon(bio) = Nullifier. Genau diese Zahl ist aber die
+// bio_hash, mit der ein Mensch beim Coordinator seine Einschreibung abfragt
+// (/access) und loescht (DELETE /enrollment) -- ihr Besitz gilt dort als
+// Nachweis, die Person zu sein. Im Block waere sie oeffentlich gewesen: jeder
+// haette jede Einschreibung loeschen koennen, und der Geloeschte kaeme als
+// Fremder ein zweites Mal durch. Der Nullifier steht ohnehin oeffentlich im
+// Beweis und laesst sich nicht zurueckrechnen; Coordinator und
+// Vergleichsdienst unterschreiben ihn darum selbst (v3, aequitas-biometric-beta
+// bio_attestation.py und attest_sign.py, dort Poseidon gegen die Schaltung
+// getestet). `bio` kommt in keinen Block.
+//
+// Die v3-Unterschriften kommen im selben Feld wie v2 an (bioAttestation,
+// Praefix "v3:"). Dieser Knoten nimmt sie heraus, bevor er die Anfrage an den
+// Proof-Server weiterreicht (proveAnfrageOhneV3), der nur v1/v2 kennt.
 //
 // Schluessel stehen in der Genesis, nicht in einer Umgebungsvariablen: alle
 // Knoten muessen dieselbe Antwort geben. Eine neue Liste ist eine neue
@@ -68,7 +81,6 @@ import (
 
 // BioBescheinigung reist in register_human mit.
 type BioBescheinigung struct {
-	Bio        string   `json:"bio"`
 	Zeit       int64    `json:"zeit"`
 	Modus      string   `json:"modus"`
 	Signaturen []string `json:"sig"`
@@ -83,13 +95,16 @@ const (
 )
 
 const (
-	bescheinigungDomaeneBindung = "aequitas-bio-attestation-v2"
-	bescheinigungDomaeneAussage = "aequitas-bio-personhood-v2"
+	bescheinigungDomaeneBindung = "aequitas-bio-attestation-v3"
+	bescheinigungDomaeneAussage = "aequitas-bio-personhood-v3"
+	// bescheinigungV3Praefix markiert v3-Unterschriften im Feld
+	// bioAttestation der /prove-Anfrage.
+	bescheinigungV3Praefix = "v3:"
 )
 
 var bnFeld, _ = new(big.Int).SetString("21888242871839275222246405745257275088548364400416034343698204186575808495617", 10)
 
-var bioDezimal = regexp.MustCompile(`^[0-9]{1,78}$`)
+var nullifierDezimal = regexp.MustCompile(`^[0-9]{1,78}$`)
 
 type bescheinigungKonfig struct {
 	AbUnix      int64    `json:"ab_unix"`
@@ -248,9 +263,15 @@ func BescheinigungStand() map[string]any {
 		"fingerabdruck": bescheinigungFingerabdruck(k)}
 }
 
-// poseidonNullifier: Poseidon(bio) wie circomlib (biometric_v3.circom).
-func poseidonNullifier(bio *big.Int) (*big.Int, error) {
-	return poseidon.Hash([]*big.Int{bio})
+// bindungNachrichtV3 und aussageNachrichtV3: byte-gleich zu
+// signing_message_v3 (coordinator/app/bio_attestation.py) und
+// personhood_message_v3 (matching-service/app/attest_sign.py).
+func bindungNachrichtV3(modus, nullifier, wallet string, zeit int64) []byte {
+	return []byte(bescheinigungDomaeneBindung + "|" + modus + "|" + nullifier + "|" + wallet + "|" + strconv.FormatInt(zeit, 10))
+}
+
+func aussageNachrichtV3(modus, nullifier string, zeit int64) []byte {
+	return []byte(bescheinigungDomaeneAussage + "|" + modus + "|" + nullifier + "|" + strconv.FormatInt(zeit, 10))
 }
 
 // pruefeBioBescheinigung: die Bescheinigung einer register_human gegen
@@ -264,27 +285,19 @@ func pruefeBioBescheinigung(tx Transaction) error {
 	if b == nil {
 		return errors.New("Registrierung ohne Bescheinigung")
 	}
-	if !bioDezimal.MatchString(b.Bio) || (len(b.Bio) > 1 && b.Bio[0] == '0') {
-		return errors.New("bescheinigung: bio ist keine kanonische Dezimalzahl")
-	}
-	bio, _ := new(big.Int).SetString(b.Bio, 10)
-	if bio.Cmp(bnFeld) >= 0 {
-		return errors.New("bescheinigung: bio liegt nicht im Feld")
-	}
 	if len(tx.PubSignals) < 2 {
 		return errors.New("bescheinigung: Beweis ohne Nullifier")
 	}
-	nullifier, ok := new(big.Int).SetString(strings.TrimSpace(tx.PubSignals[1]), 10)
-	if !ok {
-		return errors.New("bescheinigung: pubSignals[1] unlesbar")
+	roh := strings.TrimSpace(tx.PubSignals[1])
+	if !nullifierDezimal.MatchString(roh) {
+		return errors.New("bescheinigung: pubSignals[1] ist keine Dezimalzahl")
 	}
-	erwartet, err := poseidonNullifier(bio)
-	if err != nil {
-		return fmt.Errorf("bescheinigung: Poseidon: %w", err)
+	n, _ := new(big.Int).SetString(roh, 10)
+	if n.Cmp(bnFeld) >= 0 {
+		return errors.New("bescheinigung: Nullifier liegt nicht im Feld")
 	}
-	if erwartet.Cmp(nullifier) != 0 {
-		return errors.New("bescheinigung: Poseidon(bio) ist nicht der Nullifier des Beweises")
-	}
+	// Kanonisch (ohne fuehrende Nullen), wie die Unterzeichner ihn schreiben.
+	nullifier := n.String()
 	if b.Modus != k.Modus {
 		return fmt.Errorf("bescheinigung: Modus %q, das Netz verlangt %q", b.Modus, k.Modus)
 	}
@@ -298,9 +311,31 @@ func pruefeBioBescheinigung(tx Transaction) error {
 		return fmt.Errorf("bescheinigung: %d Unterschriften (1..%d)", len(b.Signaturen), bescheinigungMaxSignaturen)
 	}
 	wallet := strings.ToLower(strings.TrimSpace(tx.Wallet))
-	zeit := strconv.FormatInt(b.Zeit, 10)
-	bindungMsg := []byte(bescheinigungDomaeneBindung + "|" + b.Modus + "|" + b.Bio + "|" + wallet + "|" + zeit)
-	aussageMsg := []byte(bescheinigungDomaeneAussage + "|" + b.Modus + "|" + b.Bio + "|" + zeit)
+	bindungMsg := bindungNachrichtV3(b.Modus, nullifier, wallet, b.Zeit)
+	aussageMsg := aussageNachrichtV3(b.Modus, nullifier, b.Zeit)
+	// Die Schluessel einmal je Pruefung dekodieren. Ihre Tauglichkeit (keine
+	// kleine Ordnung) steht seit dem Laden der Konfiguration fest
+	// (bescheinigungKonfig.pruefen); sie je (Unterschrift, Schluessel) neu zu
+	// rechnen, kostete bei 17 Unterschriften und 64 Schluesseln ueber 2.000
+	// Skalarmultiplikationen je Registrierung (Sicherheitspruefung des
+	// Diffs, Hinweis).
+	pubs := map[string]ed25519.PublicKey{}
+	for _, liste := range [][]string{k.Coordinator, k.Bezeuger} {
+		for _, h := range liste {
+			if !ed25519HexTauglich(h) {
+				return fmt.Errorf("bescheinigung: Schluessel %.12s... untauglich", h)
+			}
+			roh, _ := hex.DecodeString(h)
+			pubs[h] = ed25519.PublicKey(roh)
+		}
+	}
+	passtZu := func(h, sig string, msg []byte) bool {
+		if len(sig) != 2*ed25519.SignatureSize || !kleinHex(sig) {
+			return false
+		}
+		roh, err := hex.DecodeString(sig)
+		return err == nil && ed25519.Verify(pubs[h], msg, roh)
+	}
 	bezeuger := k.Bezeuger
 	getrennt := len(bezeuger) > 0
 	if !getrennt {
@@ -316,14 +351,14 @@ func pruefeBioBescheinigung(tx Transaction) error {
 		gesehen[sig] = true
 		passt := false
 		for _, s := range k.Coordinator {
-			if ed25519PruefenStreng(s, sig, bindungMsg) {
+			if passtZu(s, sig, bindungMsg) {
 				bindet[s], bezeugt[s], passt = true, true, true
 				break
 			}
 		}
 		if !passt {
 			for _, s := range bezeuger {
-				if ed25519PruefenStreng(s, sig, aussageMsg) {
+				if passtZu(s, sig, aussageMsg) {
 					bezeugt[s], passt = true, true
 					break
 				}
@@ -353,20 +388,21 @@ func pruefeBioBescheinigung(tx Transaction) error {
 	return nil
 }
 
-// bescheinigungAusProveAnfrage liest bio, Unterschriften und Zeitpunkt aus
-// dem Rumpf eines /prove -- jeden Schluessel genau so geschrieben und genau
-// einmal (wie eindeutigeWallet: Go ordnet Schluessel ohne Ruecksicht auf
-// Gross-/Kleinschreibung zu, der Proof-Server nicht). Was nicht eindeutig
-// lesbar ist, ergibt keine Bescheinigung -- die Registrierung scheitert dann
-// spaeter (die umkehrbare Richtung).
+// bescheinigungAusProveAnfrage liest die v3-Unterschriften ("v3:..." in
+// bioAttestation) und den Zeitpunkt aus dem Rumpf eines /prove -- jeden
+// Schluessel genau so geschrieben und genau einmal (wie eindeutigeWallet: Go
+// ordnet Schluessel ohne Ruecksicht auf Gross-/Kleinschreibung zu, der
+// Proof-Server nicht). `bio` wird nicht gelesen und nicht gemerkt. Was nicht
+// eindeutig lesbar ist, ergibt keine Bescheinigung -- die Registrierung
+// scheitert dann spaeter (die umkehrbare Richtung).
 func bescheinigungAusProveAnfrage(body []byte) *BioBescheinigung {
-	werte, ok := eindeutigeFelder(body, "bio", "bioAttestation", "bioAttestationIssuedAt")
+	werte, ok := eindeutigeFelder(body, "bioAttestation", "bioAttestationIssuedAt")
 	if !ok {
 		return nil
 	}
-	var bio, sigs string
+	var sigs string
 	var zeit json.Number
-	if json.Unmarshal(werte["bio"], &bio) != nil || json.Unmarshal(werte["bioAttestation"], &sigs) != nil {
+	if json.Unmarshal(werte["bioAttestation"], &sigs) != nil {
 		return nil
 	}
 	dec := json.NewDecoder(bytes.NewReader(werte["bioAttestationIssuedAt"]))
@@ -382,16 +418,89 @@ func bescheinigungAusProveAnfrage(body []byte) *BioBescheinigung {
 	if err != nil || z <= 0 {
 		return nil
 	}
+	_, v3 := teileBescheinigungsfeld(sigs)
 	var liste []string
-	for _, teil := range strings.Split(sigs, ",") {
+	for _, teil := range v3 {
 		if t := ed25519SigNormal(teil); t != "" {
 			liste = append(liste, t)
 		}
 	}
-	if len(liste) == 0 || len(liste) > bescheinigungMaxSignaturen || !bioDezimal.MatchString(strings.TrimSpace(bio)) {
+	if len(liste) == 0 || len(liste) > bescheinigungMaxSignaturen {
 		return nil
 	}
-	return &BioBescheinigung{Bio: strings.TrimSpace(bio), Zeit: z, Signaturen: liste}
+	return &BioBescheinigung{Zeit: z, Signaturen: liste}
+}
+
+// teileBescheinigungsfeld: die Eintraege von bioAttestation in die fuer den
+// Proof-Server (ohne Praefix) und die v3-Eintraege (Praefix entfernt).
+func teileBescheinigungsfeld(sigs string) (proofServer, v3 []string) {
+	for _, teil := range strings.Split(sigs, ",") {
+		t := strings.TrimSpace(teil)
+		switch {
+		case t == "":
+		case strings.HasPrefix(t, bescheinigungV3Praefix):
+			v3 = append(v3, strings.TrimPrefix(t, bescheinigungV3Praefix))
+		default:
+			proofServer = append(proofServer, t)
+		}
+	}
+	return proofServer, v3
+}
+
+// proveAnfrageOhneV3: der Rumpf, wie er an den Proof-Server geht -- ohne die
+// v3-Eintraege in bioAttestation, die er nicht kennt (er wiese sonst die
+// ganze Anfrage ab, weil jede Unterschrift passen muss). Alles andere bleibt
+// Byte fuer Byte erhalten. Ist bioAttestation nicht eindeutig lesbar oder
+// traegt es keinen v3-Eintrag, geht der Rumpf unveraendert weiter -- der
+// Proof-Server entscheidet dann wie bisher (fail-closed).
+func proveAnfrageOhneV3(body []byte) []byte {
+	werte, ok := eindeutigeFelder(body, "bioAttestation")
+	if !ok {
+		return body
+	}
+	var sigs string
+	if json.Unmarshal(werte["bioAttestation"], &sigs) != nil {
+		return body
+	}
+	rest, v3 := teileBescheinigungsfeld(sigs)
+	if len(v3) == 0 {
+		return body
+	}
+	neu, err := json.Marshal(strings.Join(rest, ","))
+	if err != nil {
+		return body
+	}
+	// Den Wert an seiner Stelle ersetzen: eindeutigeFelder hat sichergestellt,
+	// dass der Schluessel genau einmal und genau so geschrieben vorkommt.
+	dec := json.NewDecoder(bytes.NewReader(body))
+	if _, err := dec.Token(); err != nil {
+		return body
+	}
+	for dec.More() {
+		t, err := dec.Token()
+		if err != nil {
+			return body
+		}
+		vorWert := dec.InputOffset()
+		var wert json.RawMessage
+		if err := dec.Decode(&wert); err != nil {
+			return body
+		}
+		if t == "bioAttestation" {
+			nachWert := dec.InputOffset()
+			// Leerraum zwischen ':' und Wert ueberspringen.
+			anfang := int(vorWert)
+			for anfang < len(body) && body[anfang] != '"' {
+				anfang++
+			}
+			aus := make([]byte, 0, len(body))
+			aus = append(aus, body[:anfang]...)
+			aus = append(aus, neu...)
+			aus = append(aus, body[nachWert:]...)
+			return aus
+		}
+	}
+	return body
 }
 
 // recoveryBescheinigungPruefen: darf eine wiederholte Registrierung

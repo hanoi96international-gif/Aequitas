@@ -10,17 +10,39 @@ gültigen Groth16-Beweis — und den kann jeder erzeugen, der Blöcke erzeugt: d
 Beweisschlüssel ist öffentlich, `bio` eine Zufallszahl. Ein Erzeuger konnte so
 beliebig viele „Menschen“ anlegen.
 
-Ab dem Stichtag trägt jede `register_human` die Bescheinigung (`bio`,
-Zeitpunkt, Modus, Ed25519-Unterschriften von Coordinator und
-Vergleichsdienst), und **jeder** Knoten prüft selbst:
-`Poseidon(bio) = Nullifier des Beweises`, Unterschriften von Schlüsseln aus der
-Genesis, Bindung an genau diese Wallet, Quorum (`x/humanity/keeper/bio_bescheinigung_konsens.go`).
+Ab dem Stichtag trägt jede `register_human` die Bescheinigung (Zeitpunkt,
+Modus, Ed25519-Unterschriften von Coordinator und Vergleichsdienst), und
+**jeder** Knoten prüft selbst: Unterschriften von Schlüsseln aus der Genesis
+über den **Nullifier des Beweises**, Bindung an genau diese Wallet, Quorum
+(`x/humanity/keeper/bio_bescheinigung_konsens.go`).
 
-`bio` ist kein biometrisches Merkmal, sondern die Zufallszahl des Coordinators.
-Sie steht danach öffentlich im Block; aus ihr lässt sich kein Gesicht und keine
-Wallet ableiten.
+**`bio` kommt in keinen Block.** Die erste Fassung trug `bio` im Block — das
+ist die `bio_hash`, mit der ein Mensch beim Coordinator seine Einschreibung
+abfragt (`/access`) und löscht (`DELETE /enrollment`). Öffentlich hätte jeder
+jede Einschreibung löschen können, und der Gelöschte wäre als Fremder ein
+zweites Mal durchgekommen. Darum unterschreiben Coordinator und
+Vergleichsdienst eine eigene Form v3 über den Nullifier (der ohnehin
+öffentlich im Beweis steht):
+
+```
+aequitas-bio-attestation-v3|<modus>|<nullifier>|<wallet>|<zeit>   Coordinator
+aequitas-bio-personhood-v3|<modus>|<nullifier>|<zeit>             Vergleichsdienst
+```
+
+Sie reisen im selben Feld wie v2 (`bioAttestation`, Präfix `v3:`); der Knoten
+nimmt sie heraus, bevor er die Anfrage an den Proof-Server weiterreicht. App
+und Proof-Server bleiben unverändert.
 
 ## Einschalten (Betreiber)
+
+0. Reihenfolge, sonst scheitern Registrierungen:
+   1. **Alle Knoten** auf diese Fassung (sie nehmen `v3:` heraus). Ein alter
+      Knoten reichte `v3:…` an den Proof-Server weiter, und der wiese ab.
+   2. **Vergleichsdienste** neu ausrollen (sie liefern
+      `personhood_signature_v3`).
+   3. Erst dann im **Coordinator** `BESCHEINIGUNG_V3=ja` setzen.
+   4. Prüfen: eine Test-Registrierung; `/api/status` des Knotens zeigt die
+      Bescheinigung noch als schlafend, die Registrierung geht trotzdem durch.
 
 1. Die öffentlichen Schlüssel holen (64 Hex, klein):
    - Coordinator: `COORDINATOR_PUBLIC_KEYS` des Proof-Servers auf C1 (bzw.
