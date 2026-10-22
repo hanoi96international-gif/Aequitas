@@ -4305,6 +4305,11 @@ func (cs *ChainState) distributeUBIPoolLocked(ctx context.Context, verteiltAm in
 	if err != nil {
 		return nil, err
 	}
+	// Erst wenn jeder angewandte Lebensnachweis in einem Block steht -- sonst
+	// saehen die Nachspielenden andere Pausen (lebensnachweis_runde.go, #410).
+	if err := cs.lebensnachweisRundeBereitLocked(ctx, verteiltAm, pauseMoeglich); err != nil {
+		return nil, err
+	}
 	humanAddrs, pausiert := cs.lebensnachweisEmpfaengerLocked(humanAddrs, verteiltAm, pauseMoeglich)
 	if len(humanAddrs) == 0 {
 		fmt.Printf("[UBI] Alle %d Menschen ueberfaellig (Lebensnachweis) — Topf bleibt fuer die naechste Runde stehen\n", pausiert)
