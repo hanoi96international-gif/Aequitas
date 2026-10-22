@@ -63,11 +63,21 @@ RUN GIT_COMMIT_EFFECTIVE="${GIT_COMMIT}"; \
     go build -ldflags "-X github.com/hanoi96international-gif/aequitas-chain/x/humanity/keeper.buildGitCommitStamp=${GIT_COMMIT_EFFECTIVE}" -o aequitasd ./cmd/aequitasd/
 
 FROM alpine:latest
+# Eigener Benutzer (Audit 2026-10-21): der Knoten startet als root, uebergibt
+# seine Datenverzeichnisse unter /data diesem Benutzer und legt die Rechte
+# dann selbst ab (cmd/aequitasd/rechte.go) -- so laufen bestehende Volumes,
+# die root gehoeren, ohne Umzug von Hand weiter. UID/GID muessen zu
+# knotenUID/knotenGID dort passen.
+RUN addgroup -S -g 10001 aequitas && adduser -S -D -H -u 10001 -G aequitas aequitas \
+    && mkdir -p /data/wal /data/mpc && chown aequitas:aequitas /data/wal /data/mpc
 WORKDIR /app
 COPY --from=builder /app/aequitasd .
 COPY --from=builder /app/genesis.json .
 COPY --from=builder /app/aequitas-dapp.html .
 COPY --from=builder /app/downloads ./downloads
+# /app selbst gehoert dem Knoten (ein WAL ohne AEQUITAS_WAL_PATH entsteht hier);
+# die Dateien darin bleiben root und damit unveraenderlich fuer ihn.
+RUN chown aequitas:aequitas /app
 EXPOSE 8080
 EXPOSE 4001
 CMD ["./aequitasd"]

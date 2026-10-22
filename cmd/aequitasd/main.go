@@ -334,6 +334,12 @@ func main() {
 		}
 		return
 	}
+	// Root-Rechte ablegen, bevor irgendetwas geoeffnet wird oder lauscht
+	// (rechte.go). Scheitert es, startet der Knoten nicht.
+	if err := rechteAblegen(echteRechteUmgebung()); err != nil {
+		fmt.Printf("✗ %v\n  Abhilfe: Datenverzeichnis auf dem Host dem Benutzer %d geben (chown -R %d:%d <Verzeichnis>) oder, nur als Notbehelf, AEQUITAS_ALS_ROOT=ja.\n", err, knotenUID, knotenUID, knotenGID)
+		os.Exit(1)
+	}
 	// Vor dem Banner, damit die ausgegebene Blockzeit die tatsaechliche ist
 	// und nicht die Vorgabe -- und vor TuneProposerBreakerForBlockTime und
 	// TuneFinalitySlackForBlockTime weiter unten, die daraus ihre Schwellen

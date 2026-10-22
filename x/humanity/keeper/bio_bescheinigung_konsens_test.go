@@ -253,12 +253,12 @@ func TestBescheinigung_ProofServerSiehtKeinV3(t *testing.T) {
 	for name, fall := range map[string]struct{ rein, raus string }{
 		"gemischt": {`{"bio":"123","wallet":"0xAb","bioAttestation":"aa,v3:cc,bb,v3:dd","bioAttestationIssuedAt":17,"x":[1,2]}`,
 			`{"bio":"123","wallet":"0xAb","bioAttestation":"aa,bb","bioAttestationIssuedAt":17,"x":[1,2]}`},
-		"Leerraum": {"{ \"bioAttestation\" :  \"v3:cc,aa\" , \"bio\":\"1\"}", "{ \"bioAttestation\" :  \"aa\" , \"bio\":\"1\"}"},
-		"nur v3":   {`{"bioAttestation":"v3:cc"}`, `{"bioAttestation":""}`},
-		"ohne v3":  {`{"bioAttestation":"aa,bb","bio":"1"}`, `{"bioAttestation":"aa,bb","bio":"1"}`},
+		"Leerraum":                    {"{ \"bioAttestation\" :  \"v3:cc,aa\" , \"bio\":\"1\"}", "{ \"bioAttestation\" :  \"aa\" , \"bio\":\"1\"}"},
+		"nur v3":                      {`{"bioAttestation":"v3:cc"}`, `{"bioAttestation":""}`},
+		"ohne v3":                     {`{"bioAttestation":"aa,bb","bio":"1"}`, `{"bioAttestation":"aa,bb","bio":"1"}`},
 		"Zeichen davor im Schluessel": {`{"a\"bioAttestation":"v3:cc","bioAttestation":"v3:dd,aa"}`, `{"a\"bioAttestation":"v3:cc","bioAttestation":"aa"}`},
 		// Mehrdeutig: unveraendert weiter, der Proof-Server weist ab (fail-closed).
-		"doppelt": {`{"bioAttestation":"v3:cc","BioAttestation":"aa"}`, `{"bioAttestation":"v3:cc","BioAttestation":"aa"}`},
+		"doppelt":     {`{"bioAttestation":"v3:cc","BioAttestation":"aa"}`, `{"bioAttestation":"v3:cc","BioAttestation":"aa"}`},
 		"kein Objekt": {`[1]`, `[1]`},
 	} {
 		if got := string(proveAnfrageOhneV3([]byte(fall.rein))); got != fall.raus {
