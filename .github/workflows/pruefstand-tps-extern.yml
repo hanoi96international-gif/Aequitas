@@ -36,7 +36,7 @@ jobs:
       teile: ${{ steps.p.outputs.teile }}
       start: ${{ steps.s.outputs.start }}
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - name: Parameter
@@ -99,7 +99,7 @@ jobs:
       matrix:
         teil: ${{ fromJSON(needs.aufbau.outputs.teile) }}
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - name: Schluessel und Host-Pruefung
@@ -181,7 +181,7 @@ jobs:
     environment: produktion
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Schluessel und Host-Pruefung
         env:
           KEY: ${{ secrets.CONTABO_SSH_KEY }}
