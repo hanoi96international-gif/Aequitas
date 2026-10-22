@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"math"
 	"os"
 	"sort"
 	"strconv"
@@ -469,8 +468,8 @@ func (cs *ChainState) transferConcurrentWALGesperrt(from, to string, amount floa
 	if from == to {
 		return 0, 0, true, fmt.Errorf("self-transfer not allowed"), nil
 	}
-	if amount <= 0 || math.IsNaN(amount) || math.IsInf(amount, 0) {
-		return 0, 0, true, fmt.Errorf("invalid transfer amount: %v", amount), nil
+	if err := pruefeUeberweisungsBetrag(amount); err != nil {
+		return 0, 0, true, err, nil
 	}
 
 	// GEMESSEN AM 29.08.2026 -- DIESE ZEILE IST JETZT DER ENGPASS.

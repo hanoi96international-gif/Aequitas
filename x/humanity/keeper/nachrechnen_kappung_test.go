@@ -18,6 +18,9 @@ func kappungPruefe(t *testing.T, k *annahmeKnoten, tx Transaction) int64 {
 // Meldung. Missbrauch: ein Produzent kappt ein Konto weit unter der Grenze
 // oder nimmt mehr als den Ueberschuss.
 func TestNachrechnenKappung(t *testing.T) {
+	// Beobachtungsmodus ausdruecklich: der Test prueft Zaehlen vor
+	// Ablehnen und darf nicht an der Uhr haengen (nachrechnen_modus_test.go).
+	nachrechnenModus(t, false)
 	stufe2An(t)
 	a, c := kappungsKnoten(t, "a"), kappungsKnoten(t, "c")
 	if _, _, err := a.cs.TransferAtomic("0xx", "0xy", 2_000, Transaction{Type: "transfer", Wallet: "0xx", To: "0xy", Amount: 2_000, TxHash: "0xk1"}); err != nil {

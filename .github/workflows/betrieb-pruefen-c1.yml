@@ -56,8 +56,13 @@ jobs:
             done
           }
           zeige aequitas-node PROOF_SERVER_URLS CHAIN_SERVICE_TOKEN AUTHORIZED_VALIDATORS
-          zeige aequitas-coordinator CHAIN_BASE_URL VALIDATOR_URLS QUORUM_SIZE SERVICE_MODE ALTERSPRUEFUNG
+          zeige aequitas-coordinator CHAIN_BASE_URL VALIDATOR_URLS QUORUM_SIZE SERVICE_MODE ALTERSPRUEFUNG BESCHEINIGUNG_V3
           zeige aequitas-matching CHAIN_BASE_URL SERVICE_MODE ALTERSPRUEFUNG ALTER_MODELL_PFAD ALTER_MODELL_SHA256
+          # Audit 2026-10-21 (K3): ohne eigenen Seed und Indexschluessel startet
+          # der Vergleichsdienst ab dieser Fassung nicht mehr; liegen schon
+          # Sketches ohne Pruefwert vor, braucht er einmal die Bestaetigung.
+          # Nur gesetzt/fehlt -- nie der Wert.
+          zeige aequitas-matching FACE_SKETCH_SEED FACE_SKETCH_SEED_FILE MATCHER_INDEX_KEY TEMPLATE_ENCRYPTION_KEY SKETCH_SEED_BESTAND_BESTAETIGT ENTWICKLUNGSBETRIEB
           echo
           echo "=== Knoten: Hoehe ==="
           h1=$(curl -s --max-time 5 http://127.0.0.1:8080/api/status | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("height") or d.get("block_height") or d.get("latest_height") or "?")' 2>/dev/null || echo "?")
@@ -81,7 +86,7 @@ jobs:
           ' 2>/dev/null || echo "(nicht lesbar)"
           echo
           echo "=== Vergleichsdienst: /health (Auszug) ==="
-          docker exec aequitas-matching python -c "import json,urllib.request,os; p=os.environ.get('PORT','8098'); d=json.load(urllib.request.urlopen('http://127.0.0.1:'+p+'/health', timeout=10)); print(json.dumps({k:d.get(k) for k in ('gallery_real','gallery_test','real_data_unlocked','consent_version_current','consents_outdated')}, sort_keys=True)); print('alter:', json.dumps({k:(d.get('alter') or {}).get(k) for k in ('modus','pruefgrenze','modell_bereit')}))" 2>/dev/null || echo "(nicht lesbar)"
+          docker exec aequitas-matching python -c "import json,urllib.request,os; p=os.environ.get('PORT','8098'); d=json.load(urllib.request.urlopen('http://127.0.0.1:'+p+'/health', timeout=10)); print(json.dumps({k:d.get(k) for k in ('gallery_real','gallery_test','real_data_unlocked','consent_version_current','consents_outdated','sketch_seed_configured')}, sort_keys=True)); print('alter:', json.dumps({k:(d.get('alter') or {}).get(k) for k in ('modus','pruefgrenze','modell_bereit')}))" 2>/dev/null || echo "(nicht lesbar)"
           echo
           echo "=== Ausschuettungsrunden seit der Umlaufsicherung (26.09.) ==="
           # Nur Zeitpunkte und Anzahlen, keine Adressen. Abstand < 86400 s

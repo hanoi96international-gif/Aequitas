@@ -107,6 +107,9 @@ func tauschKnoten(t *testing.T, konten map[string]float64) (*BlockDAG, *ChainSta
 }
 
 func TestAuftragsNachweis_NachspielenPrueftUndSetztNonce(t *testing.T) {
+	// Beobachtungsmodus ausdruecklich: der Test prueft Zaehlen vor
+	// Ablehnen und darf nicht an der Uhr haengen (nachrechnen_modus_test.go).
+	nachrechnenModus(t, false)
 	a := neuerTestSchluessel(t)
 	dag, cs := tauschKnoten(t, map[string]float64{a.addr: 1000})
 
@@ -144,6 +147,9 @@ func TestAuftragsNachweis_GefaelschterTauschAendertNichts(t *testing.T) {
 }
 
 func TestAuftragsNachweis_VorDerAktivierungUnveraendert(t *testing.T) {
+	// Beobachtungsmodus ausdruecklich: der Test prueft Zaehlen vor
+	// Ablehnen und darf nicht an der Uhr haengen (nachrechnen_modus_test.go).
+	nachrechnenModus(t, false)
 	a := neuerTestSchluessel(t)
 	dag, cs := tauschKnoten(t, map[string]float64{a.addr: 1000})
 	signierteUeberweisungenOverride.Store(math.MaxInt64) // aus

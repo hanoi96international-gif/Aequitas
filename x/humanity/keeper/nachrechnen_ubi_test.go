@@ -150,6 +150,9 @@ func TestNachrechnenUBI_EhrlicheRundeAlsVergleich(t *testing.T) {
 // Missbrauch: der ganze Topf an einen Menschen, in drei Gutschriften.
 // Erhaltung sieht nichts (90 aus 90).
 func TestNachrechnenUBI_AllesAnEinen(t *testing.T) {
+	// Beobachtungsmodus ausdruecklich: der Test prueft Zaehlen vor
+	// Ablehnen und darf nicht an der Uhr haengen (nachrechnen_modus_test.go).
+	nachrechnenModus(t, false)
 	a := erhaltungMenschen[0]
 	neu := ubiAngriff(t, ubiAn(a, 30), ubiAn(a, 30), ubiAn(a, 30))
 	if neu["ubi_doppelt"] != 2 {
@@ -264,6 +267,9 @@ func TestNachrechnenUBI_RueckrollenEntferntEmpfaenger(t *testing.T) {
 // Seit der Umlaufsicherung gibt es keine Demurrage: eine erfundene nimmt
 // einem Konto Geld und gibt es dem Topf. Vorher (Override aus) gilt sie.
 func TestNachrechnenUBI_DemurrageNachUmstellung(t *testing.T) {
+	// Beobachtungsmodus ausdruecklich: der Test prueft Zaehlen vor
+	// Ablehnen und darf nicht an der Uhr haengen (nachrechnen_modus_test.go).
+	nachrechnenModus(t, false)
 	zeit := int64(1_800_000_000)
 	tx := Transaction{Type: "transfer", Wallet: erhaltungMenschen[0], To: erhaltungMenschen[1], Amount: 1, FromDemurrageLost: 5}
 	cs := nachrechnenTestState()
@@ -335,6 +341,9 @@ func TestNachrechnenUBI_EchteRundeNachUmstellung(t *testing.T) {
 // Empfaengermengen wachsen dabei nicht -- sie enthalten nur Menschen bzw.
 // LP-Halter, also hoechstens so viele wie der Zustand hat.
 func TestNachrechnen_OffeneRundeWaechstNicht(t *testing.T) {
+	// Beobachtungsmodus ausdruecklich: der Test prueft Zaehlen vor
+	// Ablehnen und darf nicht an der Uhr haengen (nachrechnen_modus_test.go).
+	nachrechnenModus(t, false)
 	wirtschaftAktivOverride.Store(1)
 	t.Cleanup(func() { wirtschaftAktivOverride.Store(math.MaxInt64) })
 	dag, cs := nachspielKnoten(t, nil)

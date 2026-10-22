@@ -143,6 +143,12 @@ type Transaction struct {
 	RegSignatur string `json:"reg_signatur,omitempty"`
 	RegFrist    int64  `json:"reg_frist,omitempty"`
 	RegAt       int64  `json:"reg_at,omitempty"`
+	// Die Bescheinigung von Coordinator und Vergleichsdienst (Audit
+	// 2026-10-21, K1, bio_bescheinigung_konsens.go). Ab dem Stichtag in der
+	// Genesis prueft JEDER Knoten selbst, dass die Gesichtspruefung
+	// stattgefunden hat -- vorher wusste das nur der annehmende Knoten.
+	// omitempty: Bloecke ohne sie behalten ihren Hash.
+	BioBescheinigung *BioBescheinigung `json:"bio_bescheinigung,omitempty"`
 	// BlockAHash/BlockBHash identify the equivocation evidence pair for
 	// "slash_equivocation" TXs so the replay can be idempotent (see the
 	// slash_equivocation case in replayTransactions and
@@ -1346,6 +1352,20 @@ func (dag *BlockDAG) nimmProduzentAufLocked(addr string) bool {
 // darf gerade NICHT auf dag.mu warten (status_ohne_sperre.go).
 func (dag *BlockDAG) ProduzentenGeschlossen() bool {
 	return len(dag.produzentenFest) > 0
+}
+
+// ProduzentenListe: AUTHORIZED_VALIDATORS dieses Knotens, sortiert. Fuer
+// /api/status, damit ein neuer Validator die Liste abschreiben und gegen
+// validator_liste_hash pruefen kann (Audit 2026-10-21, H1: ohne Liste startet
+// kein Knoten mehr). Oeffentliche Adressen, kein Geheimnis. Ohne Sperre aus
+// demselben Grund wie ProduzentenGeschlossen.
+func (dag *BlockDAG) ProduzentenListe() []string {
+	liste := make([]string, 0, len(dag.produzentenFest))
+	for a := range dag.produzentenFest {
+		liste = append(liste, a)
+	}
+	sort.Strings(liste)
+	return liste
 }
 
 // bekannteTxArt: Integrity check 4 in AddPeerBlock. Eine Art, die erst ab
@@ -7667,7 +7687,9 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 		// mit den Wirtschaftsregeln wieder komplett seriell gelaufen.
 		// Ueberweisungen mit Gebuehr bleiben seriell (collectDisjointTransferBatch).
 		if tx.Type == "transfer" && skipDistributionRound == 0 {
-			if batch, _ := collectDisjointTransferBatch(block.Transactions, txIdx); len(batch) >= parallelReplayMinBatch {
+			batch, _ := collectDisjointTransferBatch(block.Transactions, txIdx)
+			batch = dag.state.lohnGebuehrPraefix(batch)
+			if len(batch) >= parallelReplayMinBatch {
 				// withTx statt des leeren ctx: JEDE Kontoaenderung dieses
 				// Replays gehoert in dbTx, sonst ueberlebt sie einen Ruecklauf.
 				// Vorher kam sie ueber den stillen Rueckfall auf cs.activeTx
@@ -7854,6 +7876,15 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			// V8-Kette, es gibt keine aelteren Bloecke, die daran scheitern.
 			if vertragV8() {
 				if err := pruefeRegistrierungV8(tx, block.Timestamp); err != nil {
+					fmt.Printf("[REPLAY] ✗ register_human for %s (block #%d): %v — rolling back whole block\n", wallet, block.Height, err)
+					hardFailure = true
+					continue
+				}
+			}
+			// Die Gesichtspruefung selbst nachpruefen (K1) -- ab dem Stichtag
+			// der Genesis. Ohne sie konnte jeder Erzeuger Menschen erfinden.
+			if bescheinigungAktiv(block.Timestamp) {
+				if err := pruefeBioBescheinigung(tx); err != nil {
 					fmt.Printf("[REPLAY] ✗ register_human for %s (block #%d): %v — rolling back whole block\n", wallet, block.Height, err)
 					hardFailure = true
 					continue

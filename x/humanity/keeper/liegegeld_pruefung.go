@@ -3,7 +3,6 @@ package keeper
 import (
 	"fmt"
 	"math"
-	"os"
 	"strings"
 	"sync/atomic"
 )
@@ -27,10 +26,11 @@ import (
 // nur AEQUITAS_LIEGEGELD_PRUEFUNG=streng um -- je Knoten. Eine Konsensregel,
 // die jeder Knoten anders eingestellt haben kann, ist selbst nicht
 // deterministisch: ein strenger Knoten verwirft, was die anderen annehmen,
-// und laeuft von der Kette weg. Die Variable bleibt als Moeglichkeit, einen
-// einzelnen Knoten frueher streng zu stellen (nie lockerer), und die
-// Abweichungen zaehlen jetzt auch im gemeinsamen Nachrechnen (Regel
-// "liegegeld").
+// und laeuft von der Kette weg. Seit 22.10.2026 (Audit 2026-10-21, M2) ist
+// die Variable ganz entfernt: auch "frueher streng" auf einem einzelnen
+// Knoten heisst, dass dieser Knoten Bloecke verwirft, die alle anderen
+// annehmen. Es gilt nur noch der gemeinsame Stichtag; die Abweichungen
+// zaehlen im gemeinsamen Nachrechnen (Regel "liegegeld").
 //
 // Warum nicht sofort streng: der Erzeuger schreibt seinen Buchungsaugenblick
 // in die Transaktion (Transaction.BuchAt), der Nachspielende bucht zum selben
@@ -53,10 +53,6 @@ var (
 	liegegeldUebersprungen atomic.Int64
 )
 
-func liegegeldStreng() bool {
-	return strings.EqualFold(strings.TrimSpace(os.Getenv("AEQUITAS_LIEGEGELD_PRUEFUNG")), "streng")
-}
-
 // pruefeUmlaufLocked: stimmt der Betrag einer "umlauf"-Transaktion? VOR dem
 // Anwenden aufrufen (der Stand vor dem Abzug ist der, mit dem der Erzeuger
 // gerechnet hat). Fehler nur im strengen Modus. Caller haelt cs.mu.
@@ -70,12 +66,12 @@ func (cs *ChainState) pruefeUmlaufLocked(wallet string, betrag float64, at int64
 		return nil // applyUmlaufDeltaLocked tut dann nichts
 	}
 	// Muesste der Einzug LP-Anteile aufloesen (umlauf_lp.go), prueft jeder
-	// Knoten IMMER streng -- unabhaengig von AEQUITAS_LIEGEGELD_PRUEFUNG.
+	// Knoten IMMER streng, auch vor dem gemeinsamen Stichtag.
 	// Sonst loeste ein ueberhoehter Betrag im Block die ganze Position im
 	// Pool auf (Sicherheitspruefung #238, M2). Was sich nicht nachrechnen
 	// laesst, loest nichts auf.
 	lpNoetig := at >= umlaufMitLPAbUnix && NewDecimal(betrag) > acc.Balance && acc.LPShares > 0
-	streng := liegegeldStreng() || lpNoetig
+	streng := lpNoetig
 	art := cs.kontoartVon(wallet, acc.IsHuman)
 	w := cs.wirt()
 	var vorher int64
@@ -151,7 +147,7 @@ func (w *wirtschaft) fensterVollLocked(jetzt int64) bool {
 
 func liegegeldPruefungStand() map[string]interface{} {
 	modus := "beobachten"
-	if liegegeldStreng() || nachrechnenStreng(nowUnix()) {
+	if nachrechnenStreng(nowUnix()) {
 		modus = "streng"
 	}
 	return map[string]interface{}{

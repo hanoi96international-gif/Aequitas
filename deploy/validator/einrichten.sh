@@ -86,6 +86,28 @@ else
   gruen ".env geschrieben (nur fuer root lesbar)"
 fi
 
+# Produzentenliste (Pflicht seit dem Audit 2026-10-21, H1): ohne sie startet
+# der Knoten nicht. Ist sie leer, von PRIMARY_NODE_URL abschreiben und zur
+# Bestaetigung anzeigen -- der Abruf laeuft ueber http, also die Liste mit
+# einer zweiten Quelle (Webseite, Betreiber) vergleichen.
+if ! grep -qE '^AUTHORIZED_VALIDATORS=0x' .env; then
+  QUELLE="$(grep -E '^PRIMARY_NODE_URL=' .env | cut -d= -f2-)"
+  STATUS="$(curl -fsS -m 15 "$QUELLE/api/status" 2>/dev/null || true)"
+  LISTE="$(printf '%s' "$STATUS" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(",".join(d.get("produzenten") or []))' 2>/dev/null || true)"
+  HASH="$(printf '%s' "$STATUS" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("validator_liste_hash") or "")' 2>/dev/null || true)"
+  if [ -z "$LISTE" ] || [ -z "$HASH" ]; then
+    rot "Produzentenliste von $QUELLE nicht lesbar. AUTHORIZED_VALIDATORS und AUTHORIZED_VALIDATORS_HASH von Hand in .env eintragen."
+    exit 1
+  fi
+  echo "  Produzenten laut $QUELLE: $LISTE"
+  echo "  Hash: $HASH"
+  read -r -p "Stimmt das mit der Angabe des Netzes ueberein? / Does this match the network's published list? [j/N, y/N] " OK
+  case "${OK:-n}" in j|J|y|Y) ;; *) rot "Abgebrochen -- Liste von Hand pruefen und eintragen."; exit 1 ;; esac
+  sed -i -e "s|^AUTHORIZED_VALIDATORS=.*|AUTHORIZED_VALIDATORS=$LISTE|" \
+         -e "s|^AUTHORIZED_VALIDATORS_HASH=.*|AUTHORIZED_VALIDATORS_HASH=$HASH|" .env
+  gruen "Produzentenliste eingetragen"
+fi
+
 schritt "4/6 Bauen und starten (dauert beim ersten Mal etwa 10 Minuten)"
 GIT_COMMIT="$(git rev-parse --short=7 HEAD 2>/dev/null || echo unknown)" docker compose build
 

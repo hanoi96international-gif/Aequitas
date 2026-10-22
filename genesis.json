@@ -3,5 +3,14 @@
   "genesis_time": "2026-10-21T15:00:00Z",
   "initial_humans": [],
   "initial_supply": 0,
-  "register_vertrag": {"version": "v8"}
+  "register_vertrag": {
+    "version": "v8"
+  },
+  "bescheinigung": {
+    "ab_unix": 0,
+    "modus": "test",
+    "quorum": 1,
+    "coordinator": [],
+    "bezeuger": []
+  }
 }

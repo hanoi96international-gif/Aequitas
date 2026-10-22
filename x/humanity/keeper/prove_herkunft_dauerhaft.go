@@ -34,6 +34,7 @@ package keeper
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"sync/atomic"
 	"time"
@@ -71,6 +72,12 @@ func richteProveHerkunftDBEin(db *sql.DB) {
 		fmt.Printf("[PROVE] Herkunftstabelle nicht angelegt, nur Arbeitsspeicher: %v\n", err)
 		return
 	}
+	// Die Bescheinigung zur Herkunft (bio_bescheinigung_konsens.go). Fehlt
+	// die Spalte, bleibt es beim Arbeitsspeicher -- wie bei der Tabelle.
+	if _, err := db.ExecContext(ctx, `ALTER TABLE prove_herkunft ADD COLUMN IF NOT EXISTS bescheinigung TEXT NOT NULL DEFAULT ''`); err != nil {
+		fmt.Printf("[PROVE] Spalte bescheinigung nicht angelegt, nur Arbeitsspeicher: %v\n", err)
+		return
+	}
 	proveHerkunftDBAb.Store(time.Now().UnixNano())
 	proveHerkunftDB.Store(db)
 }
@@ -85,9 +92,15 @@ func speichereProveHerkunftDB(schluessel string, h herkunft) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), proveHerkunftDBWartezeit)
 	defer cancel()
-	if _, err := db.ExecContext(ctx, `INSERT INTO prove_herkunft (nullifier, wallet, zeit_unix) VALUES ($1, $2, $3)
-		ON CONFLICT (nullifier) DO UPDATE SET wallet = $2, zeit_unix = $3`,
-		schluessel, h.wallet, h.zeit.Unix()); err != nil {
+	bescheinigung := ""
+	if h.bescheinigung != nil {
+		if roh, err := json.Marshal(h.bescheinigung); err == nil {
+			bescheinigung = string(roh)
+		}
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO prove_herkunft (nullifier, wallet, zeit_unix, bescheinigung) VALUES ($1, $2, $3, $4)
+		ON CONFLICT (nullifier) DO UPDATE SET wallet = $2, zeit_unix = $3, bescheinigung = $4`,
+		schluessel, h.wallet, h.zeit.Unix(), bescheinigung); err != nil {
 		fmt.Printf("[PROVE] Herkunft nicht dauerhaft gespeichert (Arbeitsspeicher gilt): %v\n", err)
 		return
 	}
@@ -116,13 +129,20 @@ func ladeProveHerkunftDB(schluessel string) (herkunft, bool) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), proveHerkunftDBWartezeit)
 	defer cancel()
-	var wallet string
+	var wallet, bescheinigung string
 	var zeit int64
-	if err := db.QueryRowContext(ctx, `SELECT wallet, zeit_unix FROM prove_herkunft WHERE nullifier = $1`, schluessel).Scan(&wallet, &zeit); err != nil {
+	if err := db.QueryRowContext(ctx, `SELECT wallet, zeit_unix, bescheinigung FROM prove_herkunft WHERE nullifier = $1`, schluessel).Scan(&wallet, &zeit, &bescheinigung); err != nil {
 		return herkunft{}, false
 	}
 	if zeit <= 0 || !isValidWalletAddr(wallet) {
 		return herkunft{}, false
 	}
-	return herkunft{zeit: time.Unix(zeit, 0), wallet: wallet}, true
+	h := herkunft{zeit: time.Unix(zeit, 0), wallet: wallet}
+	if bescheinigung != "" {
+		var b BioBescheinigung
+		if json.Unmarshal([]byte(bescheinigung), &b) == nil {
+			h.bescheinigung = &b
+		}
+	}
+	return h, true
 }

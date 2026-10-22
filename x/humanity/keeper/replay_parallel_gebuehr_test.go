@@ -75,7 +75,10 @@ func baueWeltMitTopf(t *testing.T, cs *ChainState) buchfuehrungsWelt {
 
 // gebuehrFuerTest: mal keine, mal die echte Regel (0,1 %), mal ein krummer
 // Mikro-Betrag -- der Nachspielende uebernimmt die Gebuehr aus dem Block,
-// also muss jeder Wert gleich gebucht werden.
+// also muss jeder Wert gleich gebucht werden. Krumme Werte nur bis zur
+// Obergrenze von 0,1 %: darueber geht eine Ueberweisung seit dem Audit vom
+// 21.10.2026 bewusst NICHT mehr in den parallelen Lauf, sondern seriell durch
+// das Nachrechnen (TestAudit_ParallelerLaufNimmtKeineUeberhoehteGebuehr).
 func gebuehrFuerTest(rng *rand.Rand, betrag float64) float64 {
 	switch rng.Intn(4) {
 	case 0:
@@ -83,13 +86,20 @@ func gebuehrFuerTest(rng *rand.Rand, betrag float64) float64 {
 	case 1:
 		return grundGebuehr(betrag)
 	case 2:
-		return float64(1+rng.Intn(5_000_000)) / 1e6 // bis 5 AEQ
+		hoechstens := int(grundGebuehr(betrag) * 1e6)
+		if hoechstens < 1 {
+			hoechstens = 1
+		}
+		return float64(1+rng.Intn(hoechstens)) / 1e6
 	default:
 		return 0.000001
 	}
 }
 
 func TestParallelesNachspielen_MitGebuehrWieSeriell(t *testing.T) {
+	// Beobachtungsmodus ausdruecklich: der Test prueft Zaehlen vor
+	// Ablehnen und darf nicht an der Uhr haengen (nachrechnen_modus_test.go).
+	nachrechnenModus(t, false)
 	wirtschaftAn(t)
 	uhr(t, 1_800_000_000)
 	jetzt := nowUnix()

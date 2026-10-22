@@ -36,6 +36,9 @@ func treuhandPruefe(t *testing.T, cs *ChainState, tx Transaction, zeit int64) ma
 // escrow_move auf null. Ein wirklich 2,5 Jahre inaktives Konto bleibt ohne
 // Meldung.
 func TestNachrechnenTreuhand_Verschiebung(t *testing.T) {
+	// Beobachtungsmodus ausdruecklich: der Test prueft Zaehlen vor
+	// Ablehnen und darf nicht an der Uhr haengen (nachrechnen_modus_test.go).
+	nachrechnenModus(t, false)
 	jetzt := int64(1_900_000_000)
 	cs := newTestState()
 	cs.mu.Lock()
@@ -65,6 +68,9 @@ func TestNachrechnenTreuhand_Verschiebung(t *testing.T) {
 // Missbrauch: Freigabe in den Topf bzw. Rueckholung, bevor es eine
 // ehrliche Treuhand ueberhaupt geben kann -- neues Geld.
 func TestNachrechnenTreuhand_FreigabeZuFrueh(t *testing.T) {
+	// Beobachtungsmodus ausdruecklich: der Test prueft Zaehlen vor
+	// Ablehnen und darf nicht an der Uhr haengen (nachrechnen_modus_test.go).
+	nachrechnenModus(t, false)
 	cs := newTestState()
 	heute := int64(1_791_000_000) // Oktober 2026
 	if neu := treuhandPruefe(t, cs, Transaction{Type: "escrow_release", Amount: 1e6}, heute); neu["treuhand_zu_frueh"] != 1 {
