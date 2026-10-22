@@ -15,6 +15,11 @@ Kein Umzug von Hand nötig. Auf dem Host gehören die eingehängten Verzeichniss
 danach UID 10001 (C1/C2: `/root/aequitas-wal-data`, `/root/aequitas-mpc`;
 Validatoren: Volume `waldata`). Backups als root auf dem Host lesen sie weiter.
 
+Am 22.10.2026 so geprüft (Laufzeitstufe des Images, statisch gebautes
+Binary): Volume mit root-eigenem WAL (0600, Verzeichnis 0700) → nach dem
+Start gehört es 10001, der Prozess läuft mit `Uid/Gid 10001`, ohne
+Zusatzgruppen. Schreibgeschützt eingehängt → Start bricht mit `✗` ab.
+
 ## Wenn er nicht startet
 
 Die Meldung beginnt mit `✗` und nennt das Verzeichnis. Abhilfe auf dem Host:

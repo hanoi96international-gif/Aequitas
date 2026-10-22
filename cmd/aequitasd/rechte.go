@@ -95,6 +95,12 @@ func uebergeben(dir string, uid, gid int) error {
 		if n > rechteHoechstensEintraege {
 			return fmt.Errorf("%s: mehr als %d Eintraege -- kein Datenverzeichnis des Knotens", dir, rechteHoechstensEintraege)
 		}
+		// Gehoert es schon uid/gid, nichts schreiben: so startet auch ein
+		// schon uebergebenes, schreibgeschuetzt eingehaengtes Verzeichnis.
+		var st syscall.Stat_t
+		if syscall.Lstat(p, &st) == nil && int(st.Uid) == uid && int(st.Gid) == gid {
+			return nil
+		}
 		return os.Lchown(p, uid, gid)
 	})
 }
