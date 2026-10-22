@@ -45,7 +45,7 @@ func (cs *ChainState) offeneLebensnachweise(ctx context.Context) (int64, error) 
 	}
 	var n int64
 	if err := cs.dbExecCtx(ctx).QueryRow(
-		`SELECT count(*) FROM pending_txs WHERE included_at = 0 AND (tx_json::jsonb ->> 'type') = $1`,
+		`SELECT count(*) FROM pending_txs WHERE included_at = 0 AND (tx_json::json ->> 'type') = $1`,
 		lebensnachweisTxArt).Scan(&n); err != nil {
 		return 0, fmt.Errorf("offene Lebensnachweise nicht lesbar: %w", err)
 	}
@@ -93,10 +93,27 @@ func (cs *ChainState) LebensnachweiseOffenGrund(jetzt int64) string {
 // ErrLebensnachweiseOffen abgebrochen und vollstaendig zurueckgerollt wurde
 // (main.go). Nur dann: last_ubi_at ist unveraendert, die Runde hat nicht
 // stattgefunden, und ohne Freigabe fiele sie fuer fast 24 Stunden aus.
+//
+// Nur die EIGENE Sperre (Sicherheitspruefung #411, Befund 3): frei wird der
+// Eintrag nur, wenn er noch genau den Wert traegt, mit dem dieser Knoten ihn
+// genommen hat. Hat inzwischen ein anderer die Sperre genommen, bleibt sie.
 func (cs *ChainState) VerteilungsSperreLoesen() error {
 	if cs.db == nil {
 		return nil
 	}
-	_, err := cs.db.Exec(`UPDATE chain_config SET value = '0' WHERE key = 'distribution_lock_at'`)
-	return err
+	wert := cs.verteilSperreWert.Load()
+	if wert == nil {
+		return errKeineEigeneSperre
+	}
+	res, err := cs.db.Exec(`UPDATE chain_config SET value = '0' WHERE key = 'distribution_lock_at' AND value = $1`, *wert)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return errKeineEigeneSperre
+	}
+	cs.verteilSperreWert.CompareAndSwap(wert, nil)
+	return nil
 }
+
+var errKeineEigeneSperre = errors.New("Tagessperre gehoert nicht (mehr) dieser Runde -- nicht freigegeben")

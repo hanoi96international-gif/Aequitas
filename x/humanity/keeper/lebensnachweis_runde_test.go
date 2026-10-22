@@ -3,6 +3,7 @@ package keeper
 import (
 	"context"
 	"errors"
+	"math"
 	"testing"
 )
 
@@ -105,6 +106,41 @@ func TestLebensnachweisRunde_SperreFreigeben_RealDB(t *testing.T) {
 	}
 }
 
+// Missbrauch/Wettlauf (Sicherheitspruefung #411, Befund 3): hat inzwischen
+// ein anderer Knoten die Sperre genommen (anderer Wert), gibt die Freigabe
+// sie NICHT frei -- sonst liefe die Runde am selben Tag zweimal an. Ohne
+// eigene Sperre gibt es ebenfalls nichts freizugeben.
+func TestLebensnachweisRunde_NurEigeneSperreFrei_RealDB(t *testing.T) {
+	truncateDistTestTables(t)
+	cs := testKnoten(t, "unused-lebensnachweis-sperre-fremd-test.json")
+	if !cs.useDB {
+		t.Fatal("erwartet eine echte PostgreSQL-Verbindung")
+	}
+	if err := cs.VerteilungsSperreLoesen(); err == nil {
+		t.Fatal("ohne eigene Sperre freigegeben")
+	}
+	if !cs.TryLockDistribution() {
+		t.Fatal("Sperre nicht erhalten")
+	}
+	// Ein anderer Knoten derselben Datenbank nimmt die Sperre neu.
+	if _, err := cs.db.Exec(`UPDATE chain_config SET value = '9999999999' WHERE key = 'distribution_lock_at'`); err != nil {
+		t.Fatal(err)
+	}
+	if err := cs.VerteilungsSperreLoesen(); err == nil {
+		t.Fatal("fremde Sperre freigegeben")
+	}
+	var wert string
+	if err := cs.db.QueryRow(`SELECT value FROM chain_config WHERE key = 'distribution_lock_at'`).Scan(&wert); err != nil {
+		t.Fatal(err)
+	}
+	if wert != "9999999999" {
+		t.Fatalf("fremde Sperre veraendert: %q", wert)
+	}
+	if cs.TryLockDistribution() {
+		t.Fatal("Sperre trotz fremder Sperre erhalten")
+	}
+}
+
 // Die Runde fragt, bevor sie Empfaenger waehlt (Reihenfolge im Quelltext,
 // wie TestAnnahme_MerkerReihenfolge).
 func TestLebensnachweisRunde_PruefungVorDerAuswahl(t *testing.T) {
@@ -113,5 +149,18 @@ func TestLebensnachweisRunde_PruefungVorDerAuswahl(t *testing.T) {
 	auswahl, ok2 := st["cs.lebensnachweisEmpfaengerLocked"]
 	if !ok1 || !ok2 || bereit >= auswahl {
 		t.Fatalf("lebensnachweisRundeBereitLocked muss vor lebensnachweisEmpfaengerLocked stehen (%v/%v)", ok1, ok2)
+	}
+}
+
+// Sperre gegen versehentliches Einschalten (wie TestStufe2NieVorStrengemNachrechnen):
+// die Sicherheitspruefung von #408/#411 hat zwei Befunde, die erst mit dem
+// Einschalten wirken und Konsensaenderungen brauchen (Aequitas#412). Wer einen
+// der Stichtage setzt, schliesst vorher den Befund und passt diesen Test an.
+func TestLebensnachweis_AktivierungErstNachBefunden(t *testing.T) {
+	if verteilteAnnahmeAbUnix != math.MaxInt64 && registerLeserAbUnix != math.MaxInt64 {
+		t.Fatalf("verteilte Annahme und Lebensnachweis zugleich: vorher #412 Befund 1 schliessen (Runde als Schranke ueber alle Zustaendigen)")
+	}
+	if registerLeserAbUnix != math.MaxInt64 {
+		t.Fatalf("registerLeserAbUnix gesetzt: vorher #412 Befund 2 schliessen (nur Betreiber ohne offene Staffel zaehlen, offene grant_release abwarten)")
 	}
 }

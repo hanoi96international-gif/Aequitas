@@ -286,6 +286,10 @@ func (cs *ChainState) lebensnachweisPauseAnzeige(jetzt int64) bool {
 	defer abbruch()
 	n, err := zugelasseneBetreiberZu(dbMitKontext{ctx: ctx, db: cs.db}, jetzt, lebensnachweisMindestBetreiber)
 	if err != nil {
+		// Auch den Fehler eine Minute merken (Sicherheitspruefung #411,
+		// Befund 5): sonst laese bei gestoerter Datenbank jede oeffentliche
+		// /api/balance-Anfrage den ganzen Verlauf erneut.
+		lebensnachweisAnzeigeGemerkt.Store(lebensnachweisAnzeigeStand{zeit: jetzt, moeglich: false})
 		return false
 	}
 	moeglich := n >= lebensnachweisMindestBetreiber

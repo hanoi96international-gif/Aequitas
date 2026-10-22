@@ -235,6 +235,10 @@ type ChainState struct {
 	// leitung: rotierender Leiter (leitung.go); nil = aus, dann gilt allein
 	// nurLesend wie bisher.
 	leitung atomic.Pointer[Leitung]
+	// verteilSperreWert: der Wert, mit dem TryLockDistribution die
+	// Tagessperre zuletzt genommen hat. VerteilungsSperreLoesen gibt nur genau
+	// diese Sperre frei (lebensnachweis_runde.go).
+	verteilSperreWert atomic.Pointer[string]
 	// leitungStartVersucht: StarteLeitung ist gelaufen (gelungen oder nicht).
 	// Bis dahin haelt die Annahme mit AEQUITAS_LEITUNG=an an
 	// (leitungNichtBereit) -- leitung ist dann noch nil, und der Knoten naehme
@@ -2211,6 +2215,9 @@ WHERE chain_config.value = '' OR COALESCE(NULLIF(regexp_replace(chain_config.val
 		return false
 	}
 	rows, _ := result.RowsAffected()
+	if rows > 0 {
+		cs.verteilSperreWert.Store(&now)
+	}
 	return rows > 0
 }
 
