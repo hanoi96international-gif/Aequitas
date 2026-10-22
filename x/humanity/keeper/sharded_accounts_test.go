@@ -92,7 +92,7 @@ func TestShardedAccounts_LenAndRange(t *testing.T) {
 // remaining account in the current shard or later shards.
 func TestShardedAccounts_RangeEarlyStop(t *testing.T) {
 	sa := newShardedAccounts()
-	for i := 0; i < numAccountShards*3; i++ {
+	for i := 0; i < len(sa.shards)*3; i++ {
 		addr := fmt.Sprintf("0xstop%04d", i)
 		sa.Set(addr, &AccountState{Address: addr})
 	}
@@ -137,15 +137,16 @@ func TestShardedAccounts_MarshalJSON(t *testing.T) {
 // every future cross-shard-locking phase depends on: the same address
 // must always hash to the same shard, and the range must stay in bounds.
 func TestShardedAccounts_ShardIndexDeterministic(t *testing.T) {
+	sa := newShardedAccounts()
 	addrs := []string{"0x0", "0xabc123", "0xValidatorsPool", "", "0x" + string(make([]byte, 100))}
 	for _, a := range addrs {
-		first := shardIndexFor(a, numAccountShards)
-		if first < 0 || first >= numAccountShards {
-			t.Fatalf("shardIndexFor(%q) = %d, out of range [0,%d)", a, first, numAccountShards)
+		first := sa.index(a)
+		if first < 0 || first >= len(sa.shards) {
+			t.Fatalf("index(%q) = %d, out of range [0,%d)", a, first, len(sa.shards))
 		}
 		for i := 0; i < 10; i++ {
-			if got := shardIndexFor(a, numAccountShards); got != first {
-				t.Fatalf("shardIndexFor(%q) not deterministic: got %d and %d", a, first, got)
+			if got := sa.index(a); got != first {
+				t.Fatalf("index(%q) not deterministic: got %d and %d", a, first, got)
 			}
 		}
 	}
@@ -448,7 +449,7 @@ func TestShardedAccounts_LockAddrs_DedupesSameShard(t *testing.T) {
 	seen := map[int]string{}
 	for i := 0; i < 100000; i++ {
 		addr := fmt.Sprintf("0xdup%06d", i)
-		idx := shardIndexFor(addr, numAccountShards)
+		idx := sa.index(addr)
 		if prior, ok := seen[idx]; ok {
 			a, b = prior, addr
 			break
@@ -644,17 +645,17 @@ func TestShardedAccounts_TryLockAddrs_ReleasesPartialAcquisitionOnFailure(t *tes
 	seen := map[int]string{}
 	for i := 0; i < 10000 && (lowAddr == "" || collideAddr == ""); i++ {
 		addr := fmt.Sprintf("0xseek%05d", i)
-		idx := shardIndexFor(addr, numAccountShards)
+		idx := sa.index(addr)
 		if lowAddr == "" {
 			lowAddr, highAddr = addr, addr
 			seen[idx] = addr
 			continue
 		}
-		lowIdx := shardIndexFor(lowAddr, numAccountShards)
+		lowIdx := sa.index(lowAddr)
 		if idx < lowIdx {
 			lowAddr = addr
 		}
-		if existing, ok := seen[idx]; ok && existing != addr && highAddr != "" && idx != shardIndexFor(lowAddr, numAccountShards) {
+		if existing, ok := seen[idx]; ok && existing != addr && highAddr != "" && idx != sa.index(lowAddr) {
 			collideAddr = existing
 			highAddr = addr
 		}
@@ -745,21 +746,39 @@ func TestShardedAccounts_TryLockAddrs_ConcurrentContentionNeverDeadlocks(t *test
 	}
 }
 
-// Race aus TestShardZahl_WasSieKostet: der Test setzt numAccountShards fuer
+// Race aus TestShardZahl_WasSieKostet: der Test setzte numAccountShards fuer
 // eigene Karten um, waehrend Hintergrund-Arbeiter frueherer Tests (Pool-Flush,
-// EVM-Spiegel) noch auf ihre Karten zugreifen. Las shardIndexFor dabei die
+// EVM-Spiegel) noch auf ihre Karten zugriffen. Las shardIndexFor dabei die
 // Paketvariable, meldete -race den Zugriff -- und eine Karte, die mit einer
 // anderen Zahl gebaut ist, griff neben ihre Shards. Jetzt zaehlt jede Karte
-// mit ihrer eigenen Zahl.
+// mit ihrer eigenen Zahl, und Tests bauen solche Karten mit
+// newShardedAccountsN, statt die Paketvariable zu schreiben.
+//
+// Die Tests hier erkennen einen Rueckfall nur, wenn die Paketvariable von der
+// Zahl der Karte abweicht: dann laeuft ein Index aus numAccountShards aus der
+// Karte (Panik) oder trifft einen anderen Shard.
+func testShardZahlVoraussetzung(t *testing.T, n int) {
+	t.Helper()
+	if numAccountShards <= n {
+		t.Fatalf("Testvoraussetzung: numAccountShards=%d muss groesser als %d sein, "+
+			"sonst erkennt der Test einen Index aus der Paketvariable nicht (%s gesetzt?)",
+			numAccountShards, n, numAccountShardsEnv)
+	}
+}
+
 func TestShardedAccounts_ZahlJeKarte(t *testing.T) {
-	alt := numAccountShards
-	t.Cleanup(func() { numAccountShards = alt })
-	numAccountShards = 64
-	klein := newShardedAccounts()
-	numAccountShards = 1024
-	gross := newShardedAccounts()
+	testShardZahlVoraussetzung(t, 1024)
+	vorher := numAccountShards
+	klein := newShardedAccountsN(64)
+	gross := newShardedAccountsN(1024)
 	if len(klein.shards) != 64 || len(gross.shards) != 1024 {
 		t.Fatalf("Shards %d/%d, erwartet 64/1024", len(klein.shards), len(gross.shards))
+	}
+	if len(klein.belegt) != 1 || len(gross.belegt) != 16 {
+		t.Fatalf("Bitfeld %d/%d Woerter, erwartet 1/16", len(klein.belegt), len(gross.belegt))
+	}
+	if numAccountShards != vorher {
+		t.Fatalf("newShardedAccountsN hat numAccountShards veraendert: %d -> %d", vorher, numAccountShards)
 	}
 	adr := func(i int) string { return fmt.Sprintf("0x%040x", i) }
 	for i := 0; i < 2000; i++ {
@@ -769,41 +788,95 @@ func TestShardedAccounts_ZahlJeKarte(t *testing.T) {
 	if klein.Len() != 2000 || gross.Len() != 2000 {
 		t.Fatalf("Len %d/%d, erwartet 2000/2000", klein.Len(), gross.Len())
 	}
-	// Waehrend ein anderer die Paketvariable umsetzt, greift ein Arbeiter
-	// weiter zu -- unter -race ohne Meldung, und er findet alles.
-	stop := make(chan struct{})
-	laeuft := make(chan struct{})
-	fertig := make(chan int)
-	go func() {
-		gefunden, runden := 0, 0
-		for {
-			select {
-			case <-stop:
-				fertig <- gefunden
-				return
-			default:
-			}
-			for i := 0; i < 2000; i += 97 {
-				if _, ok := klein.Get(adr(i)); ok {
-					gefunden++
-				}
-			}
-			if runden++; runden == 1 {
-				close(laeuft)
-			}
-		}
-	}()
-	<-laeuft
-	for i := 0; i < 2000; i++ {
-		numAccountShards = 16 + i%7
-	}
-	close(stop)
-	if gefunden := <-fertig; gefunden < 21 {
-		t.Fatalf("der Arbeiter fand %d, erwartet mindestens einen ganzen Durchlauf (21)", gefunden)
-	}
 	for i := 0; i < 2000; i++ {
 		if _, ok := klein.Get(adr(i)); !ok {
 			t.Fatalf("%s fehlt in der Karte mit 64 Shards", adr(i))
 		}
+		if _, ok := gross.Get(adr(i)); !ok {
+			t.Fatalf("%s fehlt in der Karte mit 1024 Shards", adr(i))
+		}
+	}
+	// Clone behaelt die Zahl des Originals, nicht die der Paketvariable.
+	kopie := klein.Clone()
+	if len(kopie.shards) != 64 || kopie.Len() != 2000 {
+		t.Fatalf("Clone: %d Shards, %d Eintraege, erwartet 64/2000", len(kopie.shards), kopie.Len())
+	}
+	if _, ok := kopie.Get(adr(1999)); !ok {
+		t.Fatalf("Clone: %s fehlt", adr(1999))
+	}
+}
+
+// Jede Methode, die einen Shard waehlt, muss die Zahl der Karte nehmen. 100
+// ist bewusst kein Vielfaches von 64: ein Index aus der Laenge des Bitfelds
+// (2 Woerter = 128) liefe sonst nicht auf. Ohne -race deterministisch.
+func TestShardedAccounts_JedeMethodeNutztDieZahlDerKarte(t *testing.T) {
+	testShardZahlVoraussetzung(t, 100)
+	sa := newShardedAccountsN(100)
+	adr := func(i int) string { return fmt.Sprintf("0x%040x", i) }
+
+	for i := 0; i < 3000; i++ {
+		a, b := adr(i), adr(i+1)
+		if idx := sa.index(a); idx < 0 || idx >= len(sa.shards) {
+			t.Fatalf("index(%s) = %d ausserhalb [0,%d)", a, idx, len(sa.shards))
+		}
+		sa.Set(a, &AccountState{Address: a})
+		unlock := sa.LockAddrs(a, b)
+		if _, ok := sa.GetLocked(a); !ok {
+			unlock()
+			t.Fatalf("GetLocked(%s) nach Set nicht gefunden", a)
+		}
+		sa.SetLocked(b, &AccountState{Address: b})
+		unlock()
+		if _, ok := sa.Get(b); !ok {
+			t.Fatalf("Get(%s) nach SetLocked nicht gefunden", b)
+		}
+		u2, ok := sa.TryLockAddrs(a, b)
+		if !ok {
+			t.Fatalf("TryLockAddrs(%s) ohne Konkurrenz fehlgeschlagen", a)
+		}
+		u2()
+		sa.XorLeaf(a, [32]byte{}, [32]byte{1})
+	}
+	if sa.Len() != 3001 {
+		t.Fatalf("Len %d, erwartet 3001", sa.Len())
+	}
+	for i := 0; i <= 3000; i++ {
+		sa.Delete(adr(i))
+	}
+	if sa.Len() != 0 {
+		t.Fatalf("nach Delete Len %d, erwartet 0 (Delete traf den falschen Shard)", sa.Len())
+	}
+	gesehen := make([]bool, len(sa.shards))
+	for i := 0; i < 20000; i++ {
+		gesehen[sa.index(adr(i))] = true
+	}
+	for i, g := range gesehen {
+		if !g {
+			t.Fatalf("Shard %d von %d nie getroffen", i, len(sa.shards))
+		}
+	}
+}
+
+// Eine Karte ohne Shards ist ein Programmierfehler: der Bau bricht ab, statt
+// beim ersten Zugriff durch null zu teilen. Eine Karte mit einem Shard ist
+// gueltig.
+func TestShardedAccounts_NShardsMindestensEins(t *testing.T) {
+	for _, n := range []int{0, -1, -262144} {
+		func() {
+			defer func() {
+				if recover() == nil {
+					t.Errorf("newShardedAccountsN(%d) ohne Panik", n)
+				}
+			}()
+			_ = newShardedAccountsN(n)
+		}()
+	}
+	eins := newShardedAccountsN(1)
+	eins.Set("0xa", &AccountState{Address: "0xa"})
+	eins.Set("0xb", &AccountState{Address: "0xb"})
+	unlock := eins.LockAddrs("0xa", "0xb")
+	unlock()
+	if eins.Len() != 2 || len(eins.shards) != 1 || len(eins.belegt) != 1 {
+		t.Fatalf("Karte mit 1 Shard: Len %d, Shards %d, Bitfeld %d", eins.Len(), len(eins.shards), len(eins.belegt))
 	}
 }

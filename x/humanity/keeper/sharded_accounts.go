@@ -180,11 +180,23 @@ type shardedAccounts struct {
 // sind in Go erlaubt.
 
 func newShardedAccounts() *shardedAccounts {
-	sa := &shardedAccounts{
-		shards: make([]*accountShard, numAccountShards),
-		belegt: make([]atomic.Uint64, (numAccountShards+63)/64),
+	return newShardedAccountsN(numAccountShards)
+}
+
+// newShardedAccountsN baut eine Karte mit n Shards. n wird genau einmal
+// gelesen; Shards, Bitfeld und Block haben damit sicher dieselbe Laenge.
+// n < 1 ist ein Programmierfehler und endet hier in einer Panik statt beim
+// ersten Zugriff in einer Division durch null. Tests bauen ihre Karten mit
+// eigener Zahl hierueber, statt numAccountShards umzusetzen.
+func newShardedAccountsN(n int) *shardedAccounts {
+	if n < 1 {
+		panic(fmt.Sprintf("newShardedAccountsN: %d Shards, mindestens 1", n))
 	}
-	alle := make([]accountShard, numAccountShards)
+	sa := &shardedAccounts{
+		shards: make([]*accountShard, n),
+		belegt: make([]atomic.Uint64, (n+63)/64),
+	}
+	alle := make([]accountShard, n)
 	for i := range sa.shards {
 		sa.shards[i] = &alle[i]
 	}
@@ -242,9 +254,9 @@ func (sa *shardedAccounts) belegteShards(fn func(s *accountShard) bool) {
 // Die Zahl der Shards kommt von der Karte (len(sa.shards)), nicht aus
 // numAccountShards: die Paketvariable gilt nur beim Bau. Las jeder Zugriff
 // sie, raste jeder Hintergrund-Arbeiter (Pool-Flush, EVM-Spiegel) gegen einen
-// Test, der sie fuer eine eigene Karte umsetzt (TestShardZahl_WasSieKostet,
+// Test, der sie fuer eine eigene Karte umsetzte (TestShardZahl_WasSieKostet,
 // -race) -- und eine Karte, die mit einer anderen Zahl gebaut ist, griffe
-// neben ihre Shards.
+// neben ihre Shards. Tests bauen solche Karten heute mit newShardedAccountsN.
 func shardIndexFor(addr string, shards int) int {
 	const offset32 = 2166136261
 	const prime32 = 16777619
@@ -432,8 +444,9 @@ func (sa *shardedAccounts) Range(fn func(addr string, acc *AccountState) bool) {
 // separate steps in state.go today -- nothing silently keeps them in sync.
 // A caller that needs the clone's own CombinedXOR() to be meaningful must
 // rebuild it explicitly (Range + XorLeaf per account) after cloning.
+// Die Kopie hat dieselbe Shard-Zahl wie das Original.
 func (sa *shardedAccounts) Clone() *shardedAccounts {
-	clone := newShardedAccounts()
+	clone := newShardedAccountsN(len(sa.shards))
 	sa.Range(func(addr string, acc *AccountState) bool {
 		cp := *acc
 		clone.Set(addr, &cp)
