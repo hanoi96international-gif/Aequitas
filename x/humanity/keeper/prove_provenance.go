@@ -80,6 +80,11 @@ var proveHerkunft sync.Map // kanonischer Nullifier -> herkunft
 type herkunft struct {
 	zeit   time.Time
 	wallet string // klein, mit 0x
+	// Die Bescheinigung aus derselben /prove-Anfrage (bio, Unterschriften,
+	// Zeitpunkt). Ab dem Stichtag reist sie mit der Registrierung in den
+	// Block (bio_bescheinigung_konsens.go). nil, wenn die Anfrage keine
+	// eindeutig lesbare trug.
+	bescheinigung *BioBescheinigung
 }
 
 // proveHerkunftTTL ist etwas grosszuegiger als die Gueltigkeit der
@@ -132,7 +137,7 @@ func merkeProveHerkunft(reqBody, respBody []byte) {
 		return
 	}
 	jetzt := time.Now()
-	h := herkunft{zeit: jetzt, wallet: wallet}
+	h := herkunft{zeit: jetzt, wallet: wallet, bescheinigung: bescheinigungAusProveAnfrage(reqBody)}
 	proveHerkunft.Store(schluessel, h)
 	// Zweites Gedaechtnis fuer einen Neustart (prove_herkunft_dauerhaft.go).
 	speichereProveHerkunftDB(schluessel, h)
@@ -171,24 +176,44 @@ func ProveHerkunftStand() map[string]any {
 // hatProveHerkunft prueft, ob dieser Nullifier aus einem /prove dieses Knotens
 // FUER DIESE WALLET stammt und noch nicht verfallen ist.
 func hatProveHerkunft(nullifier, wallet string) bool {
+	_, ok := proveHerkunftFuer(nullifier, wallet)
+	return ok
+}
+
+// proveBescheinigung: die Bescheinigung der /prove-Anfrage, aus der dieser
+// Nullifier fuer diese Wallet stammt -- nil, wenn es keine gibt.
+func proveBescheinigung(nullifier, wallet string) *BioBescheinigung {
+	h, ok := proveHerkunftFuer(nullifier, wallet)
+	if !ok || h.bescheinigung == nil {
+		return nil
+	}
+	b := *h.bescheinigung
+	b.Signaturen = append([]string(nil), h.bescheinigung.Signaturen...)
+	return &b
+}
+
+func proveHerkunftFuer(nullifier, wallet string) (herkunft, bool) {
 	schluessel := herkunftsSchluessel(nullifier)
 	w := strings.ToLower(strings.TrimSpace(wallet))
 	if schluessel == "" || !isValidWalletAddr(w) {
-		return false
+		return herkunft{}, false
 	}
 	var h herkunft
 	if v, ok := proveHerkunft.Load(schluessel); ok {
 		if h, ok = v.(herkunft); !ok {
-			return false
+			return herkunft{}, false
 		}
 	} else {
 		// Nach einem Neustart weiss der Arbeitsspeicher nichts mehr; die
 		// Tabelle schon. Jeder Fehler dort heisst: keine Herkunft.
 		if h, ok = ladeProveHerkunftDB(schluessel); !ok {
-			return false
+			return herkunft{}, false
 		}
 	}
-	return h.wallet == w && time.Since(h.zeit) <= proveHerkunftTTL
+	if h.wallet != w || time.Since(h.zeit) > proveHerkunftTTL {
+		return herkunft{}, false
+	}
+	return h, true
 }
 
 // eindeutigeWallet liest die Wallet aus dem /prove-Rumpf so, wie der
@@ -243,4 +268,54 @@ func eindeutigeWallet(body []byte) (string, bool) {
 		return "", false
 	}
 	return strings.ToLower(strings.TrimSpace(wallet)), true
+}
+
+// eindeutigeFelder liest die genannten Schluessel aus einem JSON-Objekt --
+// jeden genau so geschrieben und genau einmal, wie eindeutigeWallet. Ein
+// Schluessel, der einem der Namen bis auf Gross-/Kleinschreibung gleicht,
+// aber anders geschrieben ist, macht den Rumpf mehrdeutig (false).
+func eindeutigeFelder(body []byte, namen ...string) (map[string]json.RawMessage, bool) {
+	dec := json.NewDecoder(bytes.NewReader(body))
+	if t, err := dec.Token(); err != nil || t != json.Delim('{') {
+		return nil, false
+	}
+	werte := map[string]json.RawMessage{}
+	for dec.More() {
+		t, err := dec.Token()
+		if err != nil {
+			return nil, false
+		}
+		schluessel, ok := t.(string)
+		if !ok {
+			return nil, false
+		}
+		var wert json.RawMessage
+		if err := dec.Decode(&wert); err != nil {
+			return nil, false
+		}
+		for _, n := range namen {
+			if !strings.EqualFold(schluessel, n) {
+				continue
+			}
+			if schluessel != n {
+				return nil, false
+			}
+			if _, doppelt := werte[n]; doppelt {
+				return nil, false
+			}
+			werte[n] = wert
+		}
+	}
+	if t, err := dec.Token(); err != nil || t != json.Delim('}') {
+		return nil, false
+	}
+	if _, err := dec.Token(); err != io.EOF {
+		return nil, false
+	}
+	for _, n := range namen {
+		if _, da := werte[n]; !da {
+			return nil, false
+		}
+	}
+	return werte, true
 }

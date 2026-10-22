@@ -3,6 +3,7 @@ package keeper
 const landingQuelle = `<!DOCTYPE html>
 <html lang="en">
 <head>
+<!-- Keine externen Schriften (Audit 2026-10-21): jede Besucher-IP ging an fonts.bunny.net. Inter, wenn installiert, sonst die Systemschrift. -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="google" content="notranslate">
@@ -26,8 +27,6 @@ const landingQuelle = `<!DOCTYPE html>
 <meta name="twitter:title" content="Aequitas — money that belongs to every human equally">
 <meta name="twitter:description" content="Beta: one human, one account, 1,000 AEQ start. Live face check at registration. Live on-chain Gini.">
 <meta name="twitter:image" content="https://aequitas.digital/og-image.png">
-<link rel="preconnect" href="https://fonts.bunny.net" crossorigin="anonymous">
-<link href="https://fonts.bunny.net/css?family=inter:300,400,500,600,700,800,900&display=swap" rel="stylesheet" referrerpolicy="no-referrer" crossorigin="anonymous">
 <style>
 *{box-sizing:border-box;margin:0;padding:0;min-width:0}
 :root{
@@ -702,7 +701,7 @@ section{padding:64px 16px}
       <div class="wy reveal"><span class="wy-ico"><svg class="ico" aria-hidden="true"><use href="#i-shield"/></svg></span><h3 data-i18n="wy-2-h">Being human becomes valuable</h3><p data-i18n="wy-2-p">In a world full of bots and AI fakes, proof that someone is a real person becomes precious. Aequitas is built on exactly that: one person, one account.</p></div>
       <div class="wy reveal"><span class="wy-ico"><svg class="ico" aria-hidden="true"><use href="#i-trend"/></svg></span><h3 data-i18n="wy-3-h">Inequality keeps growing</h3><p data-i18n="wy-3-p">Since the 1990s the largest fortunes have grown about twice as fast as the wealth of the poorer half of humanity. Aequitas has a brake built in: hoarding costs, and everything flows back to everyone.</p></div>
       <div class="wy reveal"><span class="wy-ico"><svg class="ico" aria-hidden="true"><use href="#i-globe"/></svg></span><h3 data-i18n="wy-4-h">Billions are left out</h3><p data-i18n="wy-4-p">1.3 billion adults have no account. With Aequitas a smartphone is enough.</p></div>
-      <div class="wy reveal"><span class="wy-ico"><svg class="ico" aria-hidden="true"><use href="#i-lock"/></svg></span><h3 data-i18n="wy-5-h">Money you can trust</h3><p data-i18n="wy-5-p">Governments and central banks can create money whenever they decide to. The rules of Aequitas are open, the same for everyone, and nobody can print more.</p></div>
+      <div class="wy reveal"><span class="wy-ico"><svg class="ico" aria-hidden="true"><use href="#i-lock"/></svg></span><h3 data-i18n="wy-5-h">Money you can trust</h3><p data-i18n="wy-5-p">Governments and central banks can create money whenever they decide to. The rules of Aequitas are open and the same for everyone. During the beta the operator still runs the only block producer and could create money; taking that power away is the goal, not yet the state.</p></div>
       <div class="wy reveal"><span class="wy-ico"><svg class="ico" aria-hidden="true"><use href="#i-heart"/></svg></span><h3 data-i18n="wy-6-h">Money that serves people</h3><p data-i18n="wy-6-p">Money should flow to where people live and work, not pile up. Circulation keeps local businesses and communities alive.</p></div>
     </div>
     <div class="center-head"><a class="section-link" href="/idee" data-i18n="wy-link">The whole idea behind Aequitas →</a></div>
@@ -1275,7 +1274,7 @@ section{padding:64px 16px}
     <div class="section-label" data-i18n="rm-label">Roadmap</div>
     <h2 data-i18n="rm-h2">What comes next</h2>
     <ol class="rm-list">
-      <li class="now"><h3 data-i18n="rm-1-h">Now: Beta</h3><p data-i18n="rm-1-p">Registration with a live face check by two independent matching services. 1,000 AEQ start, basic income every day.</p></li>
+      <li class="now"><h3 data-i18n="rm-1-h">Now: Beta</h3><p data-i18n="rm-1-p">Registration with a live face check. During the beta a single matching service run by the operator decides, with at most 25 new registrations a day; independent services are the next step. 1,000 AEQ start, basic income every day.</p></li>
       <li><h3 data-i18n="rm-2-h">26 September 2026</h3><p data-i18n="rm-2-p">The economy rules take effect: three account types, idle-money levy, exit levy, fee-free monthly amounts for people.</p></li>
       <li><h3 data-i18n="rm-3-h">App for shops</h3><p data-i18n="rm-3-p">Checkout mode with QR code and accounting export.</p></li>
       <li><h3 data-i18n="rm-4-h">Pilot town</h3><p data-i18n="rm-4-p">5–10 shops (café, bakery, farm shop, hairdresser, workshop) for three months. Measured: how much stays in circulation, how much leaves, how much reaches the basic income.</p></li>
@@ -1297,7 +1296,7 @@ section{padding:64px 16px}
       <li data-i18n="op-5"><strong>The numbers are starting values.</strong> 2,000 AEQ base amount, 1.5 and 3 months' turnover, 0.5 %/1 %, 2 %, 1,000 and 3,000 a month: measured in the pilot town, then adjusted.</li>
       <li data-i18n="op-6"><strong>The face check is an interim step.</strong> A live face check on the phone makes duplicates much harder, but it cannot yet prove 1 person = 1 registration beyond doubt. That is why we are working on the iris scan; how exactly it will be implemented is still open.</li>
     </ul>
-    <div class="sybil-blurb" data-i18n="sybil-blurb"><strong>Sybil / protection:</strong> live face check by two independent matching services that must both agree + two signed attestations + on-chain nullifier, spent once. Named limits: accounts from before 25 Aug 2026 are covered only once their owner adds the face in the app; the matching threshold is not yet calibrated on real captures; only the glance task is binding for liveness, so advanced deepfakes remain a residual risk; each service holds the whole 64-byte sketch, the split mode (<code>MPC</code>) is not yet authoritative. Long term, Aequitas will rely on iris scans to truly guarantee one person, one registration. How that can be implemented reliably and privacy-preserving is being worked on now; hardware and timing are not decided yet.</div>
+    <div class="sybil-blurb" data-i18n="sybil-blurb"><strong>Sybil / protection:</strong> Beta status: one operator runs the only matching service and the only block producer; other nodes cannot yet verify the face check themselves. live face check by independent matching services whose majority must agree (since 3 Oct 2026 only one is running, with at most 25 new registrations per day) + signed attestations + on-chain nullifier, spent once. Since the restart on 30 Sep 2026 every account has passed this check. Named limits: the matching threshold is not yet calibrated on real captures; only the glance task is binding for liveness, so advanced deepfakes remain a residual risk; each service holds the whole 64-byte sketch, the split mode (<code>MPC</code>) is not yet authoritative. Long term, Aequitas will rely on iris scans to truly guarantee one person, one registration. How that can be implemented reliably and privacy-preserving is being worked on now; hardware and timing are not decided yet.</div>
   </div>
 </section>
 

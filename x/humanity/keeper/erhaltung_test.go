@@ -81,6 +81,9 @@ func TestErhaltung_EchteRundeOhneAbweichung(t *testing.T) {
 // an eine Wallet aus -- der Weg, mit dem das Gutachten die Geldmenge von 10
 // auf 101.909 AEQ hob.
 func TestErhaltung_UeberzogenerTopfWirdErkannt(t *testing.T) {
+	// Beobachtungsmodus ausdruecklich: der Test prueft Zaehlen vor
+	// Ablehnen und darf nicht an der Uhr haengen (nachrechnen_modus_test.go).
+	nachrechnenModus(t, false)
 	dag, _ := erhaltungKnoten(t, 10)
 	vorher := erhaltungZaehler("topf_ueberzogen")
 	at := nowUnix()
@@ -112,6 +115,9 @@ func TestErhaltung_ZuHoherEndstandWirdErkannt(t *testing.T) {
 
 // Missbrauch: Validatoren- und LP-Topf ueberzogen.
 func TestErhaltung_ValidatorenUndLPUeberzogen(t *testing.T) {
+	// Beobachtungsmodus ausdruecklich: der Test prueft Zaehlen vor
+	// Ablehnen und darf nicht an der Uhr haengen (nachrechnen_modus_test.go).
+	nachrechnenModus(t, false)
 	dag, cs := erhaltungKnoten(t, 0)
 	cs.mu.Lock()
 	cs.accounts.Set(validatorsPoolAddr, &AccountState{Address: validatorsPoolAddr, Balance: NewDecimal(5)})
@@ -132,6 +138,9 @@ func TestErhaltung_ValidatorenUndLPUeberzogen(t *testing.T) {
 // Missbrauch: Grundeinkommen ohne Abschluss, verteilt auf mehrere Bloecke --
 // spaetestens die Rundenmarke prueft die offene Summe.
 func TestErhaltung_UBIOhneAbschlussBeiMarkeErkannt(t *testing.T) {
+	// Beobachtungsmodus ausdruecklich: der Test prueft Zaehlen vor
+	// Ablehnen und darf nicht an der Uhr haengen (nachrechnen_modus_test.go).
+	nachrechnenModus(t, false)
 	dag, _ := erhaltungKnoten(t, 90)
 	vorher := erhaltungZaehler("topf_ueberzogen")
 	for i := 1; i <= 4; i++ {

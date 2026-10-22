@@ -3468,6 +3468,24 @@ func (cs *ChainState) RetryRegistrationRecoveries() int {
 			}
 		}
 
+		// Ohne gueltige Bescheinigung nach dem Stichtag nicht nachholen
+		// (Sicherheitspruefung des Diffs zum Audit 2026-10-21, F2). Eine
+		// alte Absicht traegt keine, und ihre Registrierung kaeme erst in
+		// einen Block nach dem Stichtag: jeder andere Knoten wiese sie ab,
+		// dieser haette sie gutgeschrieben, und weil keine Blockzeit mehr zu
+		// ihr passt, stuende die Erzeugung (block_tauglich.go). Die Zeile
+		// bleibt offen und sichtbar (registration_recovery, /api/health);
+		// der Mensch registriert sich neu.
+		if bescheinigungBeiAnnahme(time.Now().Unix()) {
+			if err := recoveryBescheinigungPruefen(pendingTx); err != nil {
+				if _, dbErr := cs.db.Exec(`UPDATE registration_recovery SET last_error=$1 WHERE id=$2`, err.Error(), r.id); dbErr != nil {
+					fmt.Printf("[RECOVERY] ⚠ Could not record error for recovery id=%d: %v\n", r.id, dbErr)
+				}
+				fmt.Printf("[RECOVERY] ✗ %s nicht nachgeholt: %v\n", r.wallet, err)
+				continue
+			}
+		}
+
 		var regErr error
 		if pendingTx.Nullifier != "" {
 			regErr = cs.RegisterHumanAtomic(r.wallet, pendingTx)

@@ -165,6 +165,14 @@ func auftragsFenster(tx *Transaction, jetzt int64) zeitFenster {
 		if vertragV8() && tx.RegAt > 0 {
 			f.eng(sattAdd(tx.RegAt, -v8NachspielKarenz), math.MaxInt64)
 		}
+		// bio_bescheinigung_konsens.go: ohne Bescheinigung nur vor dem
+		// Stichtag (Sicherheitspruefung des Diffs, F2). Ohne diese Zeile
+		// waehlte blockZeitPraefix "jetzt", auch wenn die Eltern noch vor dem
+		// Stichtag liegen und eine fruehere Blockzeit die Registrierung
+		// getragen haette.
+		if ab := bescheinigungAb(); ab > 0 && tx.BioBescheinigung == nil {
+			f.eng(math.MinInt64, ab-1)
+		}
 	case "umlauf", "distribution_round_marker":
 		// wirtschaft.go/umlauf_lp.go: die Rundenzeit liegt hoechstens 60 s
 		// nach dem Block.
@@ -242,6 +250,13 @@ func blockTauglich(tx *Transaction, blockZeit int64) error {
 	case "register_human":
 		if vertragV8() && tx.RegAt > blockZeit+v8NachspielKarenz {
 			return fmt.Errorf("Registrierung angenommen um %d, Block %d", tx.RegAt, blockZeit)
+		}
+		// Ab dem Stichtag weist jeder Knoten eine Registrierung ohne
+		// Bescheinigung ab (bio_bescheinigung_konsens.go). Die Annahme
+		// verlangt sie schon einen Tag vorher; dies faengt nur, was davor
+		// angenommen und nie verblockt wurde.
+		if bescheinigungAktiv(blockZeit) && tx.BioBescheinigung == nil {
+			return fmt.Errorf("Registrierung ohne Bescheinigung, Block %d", blockZeit)
 		}
 	case "umlauf":
 		if rundenZeitNachBlock(tx.DistributionAt, blockZeit) || umlaufLPZeitVorgezogen(tx.DistributionAt, blockZeit) {

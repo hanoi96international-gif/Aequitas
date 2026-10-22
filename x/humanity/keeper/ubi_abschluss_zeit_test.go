@@ -13,6 +13,9 @@ import (
 // Beobachtet vor dem strengen Nachrechnen, abgelehnt ab ihm; der Erzeuger
 // legt so eine Transaktion im strengen Modus gar nicht erst in einen Block.
 func TestNachrechnen_UBIAbschlussZeitBegrenzt(t *testing.T) {
+	// Beobachtungsmodus ausdruecklich: der Test prueft Zaehlen vor
+	// Ablehnen und darf nicht an der Uhr haengen (nachrechnen_modus_test.go).
+	nachrechnenModus(t, false)
 	block := int64(1_800_000_000)
 	zaehler := func() int64 { return erhaltungZaehler("ubi_abschluss_zeit") }
 	pruefe := func(at int64) error {

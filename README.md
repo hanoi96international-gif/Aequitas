@@ -80,7 +80,8 @@ Jeder AEQ-Halter muss nachweisen, dass er ein einzigartiger lebender Mensch ist 
 Every AEQ holder must prove they are a unique living human through biometric verification and Zero-Knowledge Proofs.
 
 - 📱 **Android App** → kurze Live-Gesichtsprüfung: Blinzeln, Blick zu einer zufälligen Seite, Farbblitze; nur das Gesicht, kein Fingerabdruck, kein Ausweis / short live face check: blink, glance to a random side, colour flashes; face only, no fingerprint, no ID
-- 🧑‍⚖️ Zwei unabhängige Vergleichsdienste (verschiedene Eigentümer) prüfen, dass das Gesicht noch nicht registriert ist; beide müssen zustimmen / two independent matching services (different owners) check the face is not yet registered; both must agree
+- 🧑‍⚖️ Ein Vergleichsdienst prüft, dass das Gesicht noch nicht registriert ist. **Beta:** ein einziger Dienst des Betreibers (höchstens 25 neue Registrierungen am Tag); mehrere unabhängige Dienste sind das Ziel, nicht der Stand / a matching service checks the face is not yet registered. **Beta:** a single service run by the operator (at most 25 new registrations a day); several independent services are the goal, not the current state
+- ⚠️ **Beta, ehrlich:** Ein Betreiber betreibt den einzigen Blockerzeuger. Andere Knoten können noch nicht selbst prüfen, ob eine Registrierung die Gesichtsprüfung bestanden hat — bis das Teil des Konsenses ist, könnte der Betreiber AEQ erzeugen (`AUDIT_2026-10-21.md`) / **Beta, honestly:** one operator runs the only block producer; until the face-check attestation is part of consensus, the operator could create AEQ
 - 🔒 Foto und Template werden nach Sekunden gelöscht; die Vergleichsdienste behalten nur einen 64-Byte-Auszug, aus dem sich das Gesicht nicht rekonstruieren lässt / photo and template are deleted within seconds; the matching services keep only a 64-byte sketch from which the face cannot be reconstructed
 - 🔐 Groth16 ZKP auf dem Proof-Server, nur gegen Wallet-Bindung + 2 signierte Bescheinigungen / Groth16 ZKP on the proof server, only against the wallet binding + 2 signed attestations
 - ⚖️ Abgewiesen? Kennung `W-…` in der App, Widerspruch binnen 90 Tagen, ein Mensch prüft / Rejected? Identifier `W-…` in the app, objection within 90 days, a human reviews
@@ -102,6 +103,8 @@ UBI from protocol economics — no taxation, no government, no political decisio
 - Inaktive Wallets nach 4 Jahren / Inactive wallet escrow after 4 years
 
 ### 3. Wealth Cap — Vermögensobergrenze
+
+> **Gilt für Menschen-Konten.** Unternehmenskonten haben keine Obergrenze; sie zahlen stattdessen Liegegeld (bis 1 %/Monat) auf Geld, das über ihrem Umsatz liegen bleibt. Die Obergrenze ist damit keine absolute Vermögensgrenze einer Person. / **Applies to human accounts.** Business accounts have no cap; they pay an idle-money levy (up to 1 %/month) instead.
 
 Dynamische Obergrenze — kein Admin-Key, kein Governance-Vote, automatisch durch Human-Count ausgelöst:
 Dynamic ceiling — no admin key, no governance vote, triggered automatically by human count:

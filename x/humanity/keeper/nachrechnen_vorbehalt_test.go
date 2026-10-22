@@ -72,6 +72,9 @@ func kopieMitVorbehalt(tx Transaction) Transaction {
 // unterschrieben, eine fremde Wallet, eine unbekannte Referenz und ein
 // Ergebnis unter dem Mindestbetrag fallen auf.
 func TestNachrechnenVorbehalt_Tausch(t *testing.T) {
+	// Beobachtungsmodus ausdruecklich: der Test prueft Zaehlen vor
+	// Ablehnen und darf nicht an der Uhr haengen (nachrechnen_modus_test.go).
+	nachrechnenModus(t, false)
 	c, ehrlich := vorbehaltAusfuehrungFuerTest(t,
 		Transaction{Type: "swap_aeq_tusd", Wallet: "0xvx", Amount: 1_000, TxHash: "0xvbn1"}, 900)
 	if ehrlich.Vorbehalt == nil || ehrlich.Vorbehalt.Erstattet {
@@ -129,6 +132,9 @@ func TestNachrechnenVorbehalt_Tausch(t *testing.T) {
 // Einlage ueber einen Vorbehalt: erfundene LP-Anteile und ein anderer
 // zweiter Betrag fallen auf.
 func TestNachrechnenVorbehalt_Einlage(t *testing.T) {
+	// Beobachtungsmodus ausdruecklich: der Test prueft Zaehlen vor
+	// Ablehnen und darf nicht an der Uhr haengen (nachrechnen_modus_test.go).
+	nachrechnenModus(t, false)
 	c, ehrlich := vorbehaltAusfuehrungFuerTest(t,
 		Transaction{Type: "add_liquidity", Wallet: "0xvx", Amount: 100, AmountOut: 100, TxHash: "0xvbn2"}, 0)
 	if got := vorbehaltPruefe(t, c, ehrlich); len(got) != 0 {

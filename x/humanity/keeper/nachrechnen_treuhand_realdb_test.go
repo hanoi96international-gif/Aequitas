@@ -27,6 +27,12 @@ type treuhandTestKnoten struct {
 
 func neuerTreuhandTestKnoten(t *testing.T, name string) *treuhandTestKnoten {
 	t.Helper()
+	// Diese Tests zeigen den Beobachtungsmodus (pruefe: "darf nichts
+	// abgelehnt werden") mit Blockzeiten nach dem strengen Stichtag
+	// (nachrechnenStrengAbUnix, 2026-11-01): ohne Festlegung galte dort der
+	// strenge Modus. Den strengen Fall zeigt
+	// TestTreuhandBestand_StrengLehntUeberBestandAb_RealDB eigens.
+	nachrechnenModus(t, false)
 	truncateDistTestTables(t)
 	cs := testKnoten(t, name)
 	if !cs.useDB {

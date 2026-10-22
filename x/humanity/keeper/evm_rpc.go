@@ -1697,18 +1697,17 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage, pre *precomp
 			s.evm.LoadContractStorage(toAddr)
 		}
 
-		// FIX (BRUTAL-P2-05): persist an optimistic success receipt before
-		// executing so MetaMask gets a non-null receipt immediately after
-		// receiving the txHash. If execution fails, update to status=0x0 and
-		// persist the failure durably — previously a failed contract call only
-		// set in-memory txStatus/txError with no SaveTxReceipt call, so after
-		// a restart MetaMask would see null receipt and show "pending" forever.
-		sh := s.txMetaShardFor(txHash)
-		sh.mu.Lock()
-		sh.status[txHash] = true
-		sh.note(txHash)
-		sh.mu.Unlock()
-		s.state.SaveTxReceipt(txHash, senderAddr, toAddrForReceipt, "0x1", "")
+		// Erfolgsquittung erst NACH der Ausfuehrung (Audit 2026-10-21).
+		// Vorher stand hier eine vorweggenommene "0x1"-Quittung (BRUTAL-P2-05)
+		// -- fuer MetaMask, damit es nach dem txHash sofort eine Quittung
+		// findet. Den txHash bekommt die Wallet aber erst, wenn diese Funktion
+		// zurueckkehrt, also nach der Ausfuehrung: die fruehe Quittung half
+		// niemandem. Sie schadete nur: stuerzte der Knoten dazwischen ab, stand
+		// dauerhaft "erfolgreich" in der Datenbank fuer einen Aufruf, der nie
+		// lief, und eine gleichzeitige Abfrage sah den Erfolg, bevor es ihn
+		// gab. Jetzt: ein Absturz dazwischen hinterlaesst keine Quittung
+		// (ehrlich: unbekannt), nie eine falsche. Der Fehlerfall schreibt
+		// weiter dauerhaft "0x0".
 
 		// persist=true: this is the actual execution of a real, signed
 		// transaction submitted via sendRawTransaction — the one place where a
@@ -1731,6 +1730,12 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage, pre *precomp
 
 		fmt.Printf("[RPC] ✓ Contract call result: %x\n", result)
 		s.evm.PersistContractStorage(toAddr)
+		sh := s.txMetaShardFor(txHash)
+		sh.mu.Lock()
+		sh.status[txHash] = true
+		sh.note(txHash)
+		sh.mu.Unlock()
+		s.state.SaveTxReceipt(txHash, senderAddr, toAddrForReceipt, "0x1", "")
 		return txHash, nil
 	}
 

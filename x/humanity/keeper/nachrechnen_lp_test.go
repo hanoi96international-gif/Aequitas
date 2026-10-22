@@ -170,6 +170,9 @@ func TestNachrechnenLP_RueckrollenEntferntBedachte(t *testing.T) {
 
 // Validatoren: der Erzeuger zahlt nur Betreibern, die Menschen sind.
 func TestNachrechnenValidator_KeinMensch(t *testing.T) {
+	// Beobachtungsmodus ausdruecklich: der Test prueft Zaehlen vor
+	// Ablehnen und darf nicht an der Uhr haengen (nachrechnen_modus_test.go).
+	nachrechnenModus(t, false)
 	cs := nachrechnenTestState()
 	vorher := lpZaehler()
 	for _, w := range []string{"0xmensch", "0xfrei"} {

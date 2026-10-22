@@ -90,6 +90,9 @@ func TestSlashBeweis_EchteDoppelsignatur(t *testing.T) {
 // Kopf veraendert, verschiedene Eltern, zweimal derselbe Block, gewaehlter
 // Zeitpunkt.
 func TestSlashBeweis_Missbrauch(t *testing.T) {
+	// Beobachtungsmodus ausdruecklich: der Test prueft Zaehlen vor
+	// Ablehnen und darf nicht an der Uhr haengen (nachrechnen_modus_test.go).
+	nachrechnenModus(t, false)
 	key, a, b := slashFall(t)
 	signierer := strings.ToLower(crypto.PubkeyToAddress(key.PublicKey).Hex())
 	gut := &Doppelbeweis{A: kopfVon(a), B: kopfVon(b)}

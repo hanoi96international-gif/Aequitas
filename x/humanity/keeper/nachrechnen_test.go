@@ -36,6 +36,9 @@ func erwarteterTausch(cs *ChainState, betrag float64) float64 {
 }
 
 func TestNachrechnen_GefaelschtesTauschergebnis(t *testing.T) {
+	// Beobachtungsmodus ausdruecklich: der Test prueft Zaehlen vor
+	// Ablehnen und darf nicht an der Uhr haengen (nachrechnen_modus_test.go).
+	nachrechnenModus(t, false)
 	cs := nachrechnenTestState()
 	ehrlich := erwarteterTausch(cs, 100)
 	if pruefe(t, cs, Transaction{Type: "swap_aeq_tusd", Wallet: "0xfrei", Amount: 100, AmountOut: ehrlich}) {
@@ -52,6 +55,9 @@ func TestNachrechnen_GefaelschtesTauschergebnis(t *testing.T) {
 }
 
 func TestNachrechnen_AufgeblaehteLPAnteile(t *testing.T) {
+	// Beobachtungsmodus ausdruecklich: der Test prueft Zaehlen vor
+	// Ablehnen und darf nicht an der Uhr haengen (nachrechnen_modus_test.go).
+	nachrechnenModus(t, false)
 	cs := nachrechnenTestState()
 	ehrlich := (100.0 / 100_000) * 1000
 	if pruefe(t, cs, Transaction{Type: "add_liquidity", Wallet: "0xfrei", Amount: 100, AmountOut: 100, LPShares: ehrlich}) {
@@ -63,6 +69,9 @@ func TestNachrechnen_AufgeblaehteLPAnteile(t *testing.T) {
 }
 
 func TestNachrechnen_Faucet(t *testing.T) {
+	// Beobachtungsmodus ausdruecklich: der Test prueft Zaehlen vor
+	// Ablehnen und darf nicht an der Uhr haengen (nachrechnen_modus_test.go).
+	nachrechnenModus(t, false)
 	cs := nachrechnenTestState()
 	if pruefe(t, cs, Transaction{Type: "faucet", Wallet: "0xmensch", Amount: tusdFaucetAmount}) {
 		t.Fatal("ehrlicher Faucet an einen Menschen darf nicht anschlagen")
@@ -76,6 +85,9 @@ func TestNachrechnen_Faucet(t *testing.T) {
 }
 
 func TestNachrechnen_UngueltigeBetraege(t *testing.T) {
+	// Beobachtungsmodus ausdruecklich: der Test prueft Zaehlen vor
+	// Ablehnen und darf nicht an der Uhr haengen (nachrechnen_modus_test.go).
+	nachrechnenModus(t, false)
 	cs := nachrechnenTestState()
 	for _, tx := range []Transaction{
 		{Type: "transfer", Wallet: "0xfrei", To: "0xmensch", Amount: 1, ToDemurrageLost: -5},
@@ -90,6 +102,9 @@ func TestNachrechnen_UngueltigeBetraege(t *testing.T) {
 }
 
 func TestNachrechnen_AlteUBIFormUndRundenmarke(t *testing.T) {
+	// Beobachtungsmodus ausdruecklich: der Test prueft Zaehlen vor
+	// Ablehnen und darf nicht an der Uhr haengen (nachrechnen_modus_test.go).
+	nachrechnenModus(t, false)
 	cs := nachrechnenTestState()
 	if !pruefe(t, cs, Transaction{Type: "ubi_distribution", AmountPerHuman: 1e6}) {
 		t.Fatal("alte UBI-Form mit Betrag fuer alle muss anschlagen")
@@ -104,6 +119,9 @@ func TestNachrechnen_AlteUBIFormUndRundenmarke(t *testing.T) {
 
 // Im strengen Modus lehnt dieselbe Abweichung den Block ab.
 func TestNachrechnen_StrengLehntAb(t *testing.T) {
+	// Beobachtungsmodus ausdruecklich: der Test prueft Zaehlen vor
+	// Ablehnen und darf nicht an der Uhr haengen (nachrechnen_modus_test.go).
+	nachrechnenModus(t, false)
 	cs := nachrechnenTestState()
 	tx := Transaction{Type: "faucet", Wallet: "0xmensch", Amount: 1e9}
 	cs.mu.Lock()

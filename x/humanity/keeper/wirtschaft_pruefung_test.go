@@ -3,7 +3,6 @@ package keeper
 import (
 	"context"
 	"errors"
-	"os"
 	"sync/atomic"
 	"testing"
 )
@@ -212,7 +211,7 @@ func zweiKnoten(t *testing.T) (*ChainState, *ChainState, context.Context, func(i
 // Abweichung; ein verfaelschter Betrag wird gezaehlt und im strengen Modus
 // abgelehnt.
 func TestLiegegeldPruefungBeimNachspielen(t *testing.T) {
-	os.Unsetenv("AEQUITAS_LIEGEGELD_PRUEFUNG")
+	nachrechnenModus(t, false)
 	cs, nach, ctx, vor := zweiKnoten(t)
 	lauf := func(faktor float64) (int64, error) {
 		vor(tag)
@@ -253,18 +252,18 @@ func TestLiegegeldPruefungBeimNachspielen(t *testing.T) {
 	if n, err := lauf(2); n != 1 || err != nil {
 		t.Fatalf("beobachten: eine Abweichung zaehlen, nicht ablehnen: %d, %v", n, err)
 	}
-	t.Setenv("AEQUITAS_LIEGEGELD_PRUEFUNG", "streng")
+	nachrechnenModus(t, true)
 	if n, err := lauf(2); n != 1 || err == nil {
 		t.Fatalf("streng: ablehnen: %d, %v", n, err)
 	}
 }
 
 // Der gemeinsame Stichtag (nachrechnenStrengAbUnix) macht die Liegegeld-
-// Pruefung auf JEDEM Knoten streng -- ohne AEQUITAS_LIEGEGELD_PRUEFUNG. Vor
+// Pruefung auf JEDEM Knoten streng -- es gibt keinen Schalter je Knoten mehr. Vor
 // dem Stichtag zaehlt eine Abweichung auch im gemeinsamen Nachrechnen
 // (Regel "liegegeld"), lehnt aber nicht ab.
 func TestLiegegeldPruefung_GemeinsamerStichtag(t *testing.T) {
-	os.Unsetenv("AEQUITAS_LIEGEGELD_PRUEFUNG")
+	nachrechnenModus(t, false)
 	cs, nach, ctx, vor := zweiKnoten(t)
 	lauf := func() error {
 		vor(tag)
@@ -324,7 +323,7 @@ func TestLiegegeldPruefungNurMitVollemFenster(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("AEQUITAS_LIEGEGELD_PRUEFUNG", "streng")
+	nachrechnenModus(t, true)
 	ueber := liegegeldUebersprungen.Load()
 	nach.mu.Lock()
 	defer nach.mu.Unlock()

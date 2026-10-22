@@ -133,7 +133,7 @@ func TestUmlauf_LP_ErzeugerUndNachspielerGleich(t *testing.T) {
 // auf (im strengen Modus lehnt sie den Block ab).
 func TestUmlauf_LP_UeberhoehterBetragFaelltAuf(t *testing.T) {
 	wirtschaftAn(t)
-	t.Setenv("AEQUITAS_LIEGEGELD_PRUEFUNG", "streng")
+	nachrechnenModus(t, true)
 	at := umlaufMitLPAbUnix + 3600
 	cs := lpTestZustand(0, 20000)
 	cs.wirt().letzterUmlauf = at - 86400
@@ -188,7 +188,7 @@ func TestNachspielen_UmlaufLPRegelVorgezogenWirdAbgelehnt(t *testing.T) {
 // jeder Knoten immer streng.
 func TestNachspielen_UeberhoehterUmlaufLoestKeineLPAuf(t *testing.T) {
 	wirtschaftAn(t)
-	t.Setenv("AEQUITAS_LIEGEGELD_PRUEFUNG", "")
+	nachrechnenModus(t, false)
 	at := umlaufMitLPAbUnix + 3600
 	dag, cs := lpNachspielKnoten(t, 0, 20000)
 	cs.wirt().letzterUmlauf = at - 86400
@@ -219,7 +219,7 @@ func TestNachspielen_UeberhoehterUmlaufLoestKeineLPAuf(t *testing.T) {
 // bleiben bitgleich, und es entsteht kein Geld.
 func TestUmlauf_LP_MehrereHalter_ErzeugerUndNachspielerGleich(t *testing.T) {
 	wirtschaftAn(t)
-	t.Setenv("AEQUITAS_LIEGEGELD_PRUEFUNG", "streng")
+	nachrechnenModus(t, true)
 	at := umlaufMitLPAbUnix + 3600
 	halter := map[string][2]float64{ // Guthaben, LP-Anteile
 		"0xa100000000000000000000000000000000000d01": {0, 7333.333333},

@@ -219,6 +219,20 @@ func collectDisjointTransferBatch(txs []Transaction, start int) (batch []Transac
 			}
 			break
 		}
+		// Dasselbe fuer die Regeln aus nachrechnen_ueberweisung.go (Audit
+		// 2026-10-21): eine Gebuehr ueber 0,1 % des Betrags und ein Betrag
+		// unter einem Mikro-AEQ. Ohne diese Abzweigung haette der schnelle
+		// Pfad sie ungeprueft gebucht -- ein Erzeuger haette eine ueberhoehte
+		// Gebuehr nur in einen Lauf legen muessen. Die genaue Regel fuer
+		// Loehne (Unternehmen an Mensch: null) braucht das Register; der
+		// Aufrufer kuerzt den Lauf dafuer mit lohnGebuehrPraefix
+		// (nachrechnen_ueberweisung.go). Hier nur, was ohne Zustand feststeht.
+		if NewDecimal(tx.Amount) <= 0 || tx.Gebuehr > grundGebuehr(tx.Amount)+1e-6 {
+			if i == start {
+				merkeBuendelAblehnung(&baFelder)
+			}
+			break
+		}
 		touched[from] = true
 		touched[to] = true
 		batch = append(batch, tx)
