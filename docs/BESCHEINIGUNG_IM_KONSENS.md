@@ -43,10 +43,27 @@ Wallet ableiten.
    erreicht ist. Ab dann verlangt die Annahme die Bescheinigung; ab `ab_unix`
    weist jeder Knoten einen Block mit einer Registrierung ohne gültige ab.
 4. Prüfen: `/api/status` → `bescheinigung_konsens` zeigt Stichtag, Modus,
-   Quorum und die Zahl der Schlüssel.
+   Quorum, die Zahl der Schlüssel und einen `fingerabdruck`. Der
+   Fingerabdruck muss auf **allen** Knoten gleich sein — sonst haben sie
+   verschiedene Schlüssellisten und spalten sich am Stichtag.
+5. Jeder Schlüssel, den der Proof-Server annimmt, muss in der Genesis stehen.
+   Unterschreibt ein Coordinator mit einem Schlüssel, der dort fehlt, werden
+   ab dem Stichtag alle seine Registrierungen abgewiesen (fail-closed).
 
 Ein Schlüsselwechsel (neuer Coordinator, zweiter Vergleichsdienst) ist eine
 neue Genesis-Fassung mit neuem Stichtag — auf allen Knoten zugleich.
 
 Ein Knoten mit unlesbarer `bescheinigung` (Tippfehler, Schlüssel kleiner
-Ordnung, Quorum größer als die Zahl der Schlüssel) startet nicht.
+Ordnung, Quorum größer als die Zahl der Schlüssel), mit einem falsch
+geschriebenen Eintragsnamen (`Bescheinigung`, `bescheinigungen`) oder ohne
+`genesis.json` startet nicht.
+
+**Alte Registrierungen.** Eine Registrierung, die vor `ab_unix - 1 Tag`
+angenommen wurde, trägt keine Bescheinigung. Sie muss in einen Block vor dem
+Stichtag; die Erzeugung legt die Blockzeit dafür so früh wie möglich. Steht
+die Erzeugung über den Stichtag hinweg länger als einen Tag, passt keine
+Blockzeit mehr — dann entsteht kein Block (statt eines, den alle abweisen),
+und es gilt die übliche Abhilfe: Resync vom Seed, Ausgang verwerfen. Die
+Wiederholung hängengebliebener Registrierungen (`registration_recovery`)
+bucht ab dem Vorlauf keine ohne gültige Bescheinigung mehr ein; die Zeile
+bleibt offen und sichtbar, der Mensch registriert sich neu.

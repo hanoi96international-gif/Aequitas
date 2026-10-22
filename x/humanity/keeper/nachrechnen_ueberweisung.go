@@ -59,3 +59,28 @@ func (cs *ChainState) nachrechnenUeberweisungLocked(tx *Transaction, wallet stri
 	}
 	return nil
 }
+
+// lohnGebuehrPraefix kuerzt einen Lauf fuer den schnellen Pfad
+// (replay_parallel.go) vor die erste Ueberweisung mit Gebuehr, deren
+// Absender ein Unternehmen ist (Sicherheitspruefung des Diffs zum Audit
+// 2026-10-21, F1). Fuer sie gilt die Lohnregel (Unternehmen an Mensch:
+// Gebuehr null), und die prueft nur nachrechnenUeberweisungLocked im
+// seriellen Pfad. collectDisjointTransferBatch ist zustandslos und sah nur
+// die 0,1 %-Obergrenze; weil fast jede Ueberweisung den schnellen Pfad nimmt,
+// erreichte eine Lohnzahlung den seriellen nie -- ein Erzeuger konnte jedem
+// Lohn eine nicht unterschriebene Gebuehr bis 0,1 % aufschlagen.
+//
+// Bewusst grob: jede Gebuehr eines Unternehmens geht seriell, nicht nur die
+// an Menschen. Die Kontoart des Empfaengers braucht das Konto (Datenbank),
+// die des Absenders nur das Register im Speicher. Ein Lauf enthaelt nur
+// Ueberweisungen, und die aendern das Register nicht -- die Antwort steht
+// fuer den ganzen Lauf fest.
+func (cs *ChainState) lohnGebuehrPraefix(batch []Transaction) []Transaction {
+	w := cs.wirt()
+	for i, tx := range batch {
+		if tx.Gebuehr > 0 && w.istUnternehmen(strings.ToLower(strings.TrimSpace(tx.Wallet))) {
+			return batch[:i]
+		}
+	}
+	return batch
+}

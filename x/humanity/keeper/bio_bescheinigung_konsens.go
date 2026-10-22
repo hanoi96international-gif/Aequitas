@@ -2,6 +2,8 @@ package keeper
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -116,6 +118,15 @@ func ladeBescheinigungKonfig(data []byte) (bescheinigungKonfig, error) {
 	if err := json.Unmarshal(data, &roh); err != nil {
 		return bescheinigungKonfig{}, fmt.Errorf("genesis.json unlesbar: %w", err)
 	}
+	// Ein Tippfehler im Namen (etwa "Bescheinigung" oder "bescheinigungen")
+	// liesse die Regel still schlafen -- dieser Knoten naehme dann
+	// Registrierungen ohne Bescheinigung an, die alle anderen abweisen
+	// (Sicherheitspruefung des Diffs, F4). Nur der genaue Name gilt.
+	for name := range roh {
+		if name != "bescheinigung" && strings.HasPrefix(strings.ToLower(name), "bescheinigung") {
+			return bescheinigungKonfig{}, fmt.Errorf("genesis.json: Eintrag %q -- gemeint ist \"bescheinigung\"", name)
+		}
+	}
 	teil, da := roh["bescheinigung"]
 	if !da {
 		return bescheinigungKonfig{}, nil
@@ -178,9 +189,29 @@ func bescheinigungKonf() (bescheinigungKonfig, error) {
 }
 
 // PruefeBescheinigungGenesis beim Start (cmd/aequitasd): ein Fehler haelt an.
+// Auch eine fehlende genesis.json (Sicherheitspruefung des Diffs, F4): ohne
+// sie schliefe die Regel still, und der Knoten naehme Registrierungen an, die
+// alle anderen abweisen. Tests laufen ohne genesis.json im Paketverzeichnis
+// und rufen diese Startpruefung nicht.
 func PruefeBescheinigungGenesis() error {
+	if _, err := os.Stat("genesis.json"); err != nil {
+		return fmt.Errorf("genesis.json nicht lesbar (%w) -- ohne sie gilt die Bescheinigungsregel nicht", err)
+	}
 	_, err := bescheinigungKonf()
 	return err
+}
+
+// bescheinigungFingerabdruck: SHA-256 der gelesenen Konfiguration (kanonisch
+// als JSON der Struktur, nicht der Dateibytes -- Leerzeichen in genesis.json
+// aendern ihn nicht). Zwei Knoten mit verschiedenen Schluessellisten zeigen
+// in /api/status verschiedene Werte, nicht nur verschiedene Anzahlen.
+func bescheinigungFingerabdruck(k bescheinigungKonfig) string {
+	roh, err := json.Marshal(k)
+	if err != nil {
+		return ""
+	}
+	h := sha256.Sum256(roh)
+	return hex.EncodeToString(h[:])
 }
 
 func bescheinigungAb() int64 {
@@ -213,7 +244,8 @@ func BescheinigungStand() map[string]any {
 		return map[string]any{"fehler": err.Error()}
 	}
 	return map[string]any{"ab_unix": k.AbUnix, "modus": k.Modus, "quorum": k.Quorum,
-		"coordinator": len(k.Coordinator), "bezeuger": len(k.Bezeuger)}
+		"coordinator": len(k.Coordinator), "bezeuger": len(k.Bezeuger),
+		"fingerabdruck": bescheinigungFingerabdruck(k)}
 }
 
 // poseidonNullifier: Poseidon(bio) wie circomlib (biometric_v3.circom).
@@ -360,4 +392,18 @@ func bescheinigungAusProveAnfrage(body []byte) *BioBescheinigung {
 		return nil
 	}
 	return &BioBescheinigung{Bio: strings.TrimSpace(bio), Zeit: z, Signaturen: liste}
+}
+
+// recoveryBescheinigungPruefen: darf eine wiederholte Registrierung
+// (RetryRegistrationRecoveries) ab dem Stichtag noch eingebucht werden?
+// Nur mit der Nullifier-Form (die alte ohne Nullifier kennt keine
+// Bescheinigung) und einer Bescheinigung, die jeder Knoten annimmt.
+func recoveryBescheinigungPruefen(tx Transaction) error {
+	if tx.Nullifier == "" {
+		return fmt.Errorf("Registrierung ohne Nullifier: nach dem Stichtag der Bescheinigung nicht nachholbar")
+	}
+	if tx.BioBescheinigung == nil {
+		return fmt.Errorf("Registrierung ohne Bescheinigung: nach dem Stichtag nicht nachholbar -- neu registrieren")
+	}
+	return pruefeBioBescheinigung(tx)
 }

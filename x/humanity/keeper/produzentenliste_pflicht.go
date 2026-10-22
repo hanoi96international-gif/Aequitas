@@ -41,6 +41,12 @@ func PruefeProduzentenliste() error {
 		return nil
 	}
 	if strings.EqualFold(strings.TrimSpace(os.Getenv("AEQUITAS_PRODUZENTEN_OFFEN")), "ja") {
+		// Nur ausserhalb des Hauptnetzes (Sicherheitspruefung des Diffs,
+		// F6): sonst oeffnete eine Zeile in der .env die Luecke aus H1 wieder.
+		// Fail-closed: ist das Netz nicht feststellbar, gilt es als Hauptnetz.
+		if grund := hauptnetzGrund(); grund != "" {
+			return fmt.Errorf("AEQUITAS_PRODUZENTEN_OFFEN=ja gilt nur in einem Testnetz, hier nicht (%s) -- AUTHORIZED_VALIDATORS setzen", grund)
+		}
 		return nil
 	}
 	return fmt.Errorf("AUTHORIZED_VALIDATORS ist leer: dieser Knoten wuerde Bloecke JEDES registrierten Menschen " +

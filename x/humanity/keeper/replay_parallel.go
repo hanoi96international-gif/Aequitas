@@ -224,8 +224,9 @@ func collectDisjointTransferBatch(txs []Transaction, start int) (batch []Transac
 		// unter einem Mikro-AEQ. Ohne diese Abzweigung haette der schnelle
 		// Pfad sie ungeprueft gebucht -- ein Erzeuger haette eine ueberhoehte
 		// Gebuehr nur in einen Lauf legen muessen. Die genaue Regel fuer
-		// Loehne (Unternehmen an Mensch: null) braucht das Register und
-		// bleibt im seriellen Pfad; hier nur, was ohne Zustand feststeht.
+		// Loehne (Unternehmen an Mensch: null) braucht das Register; der
+		// Aufrufer kuerzt den Lauf dafuer mit lohnGebuehrPraefix
+		// (nachrechnen_ueberweisung.go). Hier nur, was ohne Zustand feststeht.
 		if NewDecimal(tx.Amount) <= 0 || tx.Gebuehr > grundGebuehr(tx.Amount)+1e-6 {
 			if i == start {
 				merkeBuendelAblehnung(&baFelder)

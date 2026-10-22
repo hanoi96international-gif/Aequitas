@@ -15,8 +15,33 @@ func TestProduzentenliste_LeerHaeltAn(t *testing.T) {
 		t.Fatal("nur \"ja\" erklaert die offene Liste")
 	}
 	t.Setenv("AEQUITAS_PRODUZENTEN_OFFEN", "ja")
+	t.Setenv("IS_PRIMARY_NODE", "")
+	genesisFuerTest(t, `{"chain_id":"aequitas-testnetz-7","genesis_time":"2026-10-01T00:00:00Z"}`, nil)
 	if err := PruefeProduzentenliste(); err != nil {
-		t.Fatalf("ausdruecklich offene Liste abgewiesen: %v", err)
+		t.Fatalf("ausdruecklich offene Liste im Testnetz abgewiesen: %v", err)
+	}
+}
+
+// Sicherheitspruefung des Diffs, F6: im Hauptnetz oeffnet die Erklaerung die
+// Liste nicht -- und ist das Netz nicht feststellbar, gilt es als Hauptnetz.
+func TestProduzentenliste_OffenNieImHauptnetz(t *testing.T) {
+	t.Setenv("AUTHORIZED_VALIDATORS", "")
+	t.Setenv("AEQUITAS_PRODUZENTEN_OFFEN", "ja")
+	t.Setenv("IS_PRIMARY_NODE", "")
+	for name, g := range map[string]string{
+		"Hauptnetz":    `{"chain_id":"aequitas-1","genesis_time":"2026-10-21T15:00:00Z"}`,
+		"unlesbar":     `{kaputt`,
+		"ohne Kennung": `{"genesis_time":"2026-10-01T00:00:00Z"}`,
+	} {
+		genesisFuerTest(t, g, nil)
+		if PruefeProduzentenliste() == nil {
+			t.Errorf("%s: offene Liste zugelassen", name)
+		}
+	}
+	genesisFuerTest(t, `{"chain_id":"aequitas-testnetz-7","genesis_time":"2026-10-01T00:00:00Z"}`, nil)
+	t.Setenv("IS_PRIMARY_NODE", "true")
+	if PruefeProduzentenliste() == nil {
+		t.Errorf("IS_PRIMARY_NODE: offene Liste zugelassen")
 	}
 }
 

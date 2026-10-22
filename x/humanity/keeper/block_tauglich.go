@@ -165,6 +165,14 @@ func auftragsFenster(tx *Transaction, jetzt int64) zeitFenster {
 		if vertragV8() && tx.RegAt > 0 {
 			f.eng(sattAdd(tx.RegAt, -v8NachspielKarenz), math.MaxInt64)
 		}
+		// bio_bescheinigung_konsens.go: ohne Bescheinigung nur vor dem
+		// Stichtag (Sicherheitspruefung des Diffs, F2). Ohne diese Zeile
+		// waehlte blockZeitPraefix "jetzt", auch wenn die Eltern noch vor dem
+		// Stichtag liegen und eine fruehere Blockzeit die Registrierung
+		// getragen haette.
+		if ab := bescheinigungAb(); ab > 0 && tx.BioBescheinigung == nil {
+			f.eng(math.MinInt64, ab-1)
+		}
 	case "umlauf", "distribution_round_marker":
 		// wirtschaft.go/umlauf_lp.go: die Rundenzeit liegt hoechstens 60 s
 		// nach dem Block.

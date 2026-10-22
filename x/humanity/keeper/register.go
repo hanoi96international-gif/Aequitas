@@ -721,6 +721,13 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 		if v8 {
 			return "", fmt.Errorf("registration rejected: register contract not deployed on this node: %w", dryRunErr)
 		}
+		// Der Spiegel-Ersatz kennt keine Bescheinigung (Sicherheitspruefung
+		// des Diffs zum Audit 2026-10-21): ab dem Stichtag waere seine
+		// Registrierung lokal gutgeschrieben und von jedem anderen Knoten
+		// abgewiesen.
+		if bescheinigungBeiAnnahme(annahmeZeit) {
+			return "", fmt.Errorf("registration rejected: register contract not deployed on this node, and the mirror fallback carries no attestation: %w", dryRunErr)
+		}
 		if os.Getenv("ALLOW_V7_MIRROR_FALLBACK") != "true" {
 			return "", fmt.Errorf("registration rejected: V7 contract not yet deployed on this node and ALLOW_V7_MIRROR_FALLBACK is not set — wait for V7 auto-deploy to finish, or set ALLOW_V7_MIRROR_FALLBACK=true to use the (less safe) mirror registration fallback: %w", dryRunErr)
 		}

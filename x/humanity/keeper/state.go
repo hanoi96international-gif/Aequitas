@@ -6274,6 +6274,15 @@ func (cs *ChainState) swapLocked(ctx context.Context, address string, amountIn f
 // bei AEQ -> tUSD zahlt der Tauschende ab der Aktivierung 2 % auf den Teil
 // ueber seinem Freibetrag obendrauf, ans Grundeinkommen. Sie steht als
 // Gebuehr in der Transaktion; applySwapDeltaLocked wendet genau sie an.
+// errSwapErgebnisNull (Sicherheitspruefung des Diffs zum Audit 2026-10-21,
+// F3): ein Einsatz, der nach der Rundung auf Mikro-Einheiten nichts ergibt
+// (etwa 1 Mikro-AEQ gegen eine kleinere Gegenreserve). Vorher galt er als
+// erfolgreicher Tausch: der Einsatz wurde abgebucht, die Reserve wuchs. Das
+// Nachspielen ueberspringt einen direkten Tausch mit Ergebnis null aber als
+// "unvollstaendig" (block.go) -- der annehmende Knoten und alle anderen
+// gingen still auseinander. Jetzt wird er bei der Annahme abgewiesen.
+var errSwapErgebnisNull = errors.New("swap: Einsatz zu klein, Ergebnis rundet auf null")
+
 func (cs *ChainState) swapLockedMitAbgabe(ctx context.Context, address string, amountIn float64, aeqToTusd bool, minAmountOut float64) (float64, float64, float64, error) {
 	// P2-7: reload pool from DB before swap to avoid stale-memory AMM invariant violation
 	cs.reloadPoolFromDB()
@@ -6321,6 +6330,9 @@ func (cs *ChainState) swapLockedMitAbgabe(ctx context.Context, address string, a
 		if amountOut >= cs.pool.ReserveTUSD.Float() {
 			return 0, 0, 0, fmt.Errorf("swap too large for pool liquidity")
 		}
+		if amountOut <= 0 {
+			return 0, 0, 0, errSwapErgebnisNull
+		}
 		if minAmountOut > 0 && amountOut < minAmountOut {
 			return 0, 0, 0, fmt.Errorf("slippage: output %.6f tUSD below requested minimum %.6f", amountOut, minAmountOut)
 		}
@@ -6332,6 +6344,9 @@ func (cs *ChainState) swapLockedMitAbgabe(ctx context.Context, address string, a
 		amountOut = AMMSwapOut(cs.pool.ReserveTUSD, cs.pool.ReserveAEQ, inPool).Float()
 		if amountOut >= cs.pool.ReserveAEQ.Float() {
 			return 0, 0, 0, fmt.Errorf("swap too large for pool liquidity")
+		}
+		if amountOut <= 0 {
+			return 0, 0, 0, errSwapErgebnisNull
 		}
 		if minAmountOut > 0 && amountOut < minAmountOut {
 			return 0, 0, 0, fmt.Errorf("slippage: output %.6f AEQ below requested minimum %.6f", amountOut, minAmountOut)
@@ -8880,7 +8895,14 @@ func (cs *ChainState) applySwapDeltaLockedMitAbgabe(ctx context.Context, wallet 
 	// vollen Betrag gut -- gemessen: 50.000 AEQ aus 100 AEQ Reserve. Die
 	// Annahme (swapLockedMitAbgabe) laesst so ein Ergebnis nie zu; ein Block,
 	// der es traegt, ist ungueltig, kein Rundungsfall.
-	if math.IsNaN(amountOut) || math.IsInf(amountOut, 0) || amountOut <= 0 {
+	//
+	// Null bleibt erlaubt (Sicherheitspruefung des Diffs, F3): die Annahme
+	// liess ein Ergebnis von null bis zum 22.10.2026 zu (1 Mikro-AEQ Einsatz
+	// gegen eine kleinere Gegenreserve rundet auf null), und solche Tausche
+	// stehen in Vorbehalts-Ausfuehrungen alter Bloecke. Sie abzulehnen, haette
+	// das Nachspielen dieser Bloecke veraendert. Null erzeugt nichts; die
+	// Annahme laesst es seit dem 22.10. nicht mehr zu (swapLockedMitAbgabe).
+	if math.IsNaN(amountOut) || math.IsInf(amountOut, 0) || amountOut < 0 {
 		return fmt.Errorf("swap: ungueltiges Ergebnis %v: %w", amountOut, ErrZustandLehntAb)
 	}
 	if cs.pool != nil {
