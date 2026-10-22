@@ -292,11 +292,27 @@ func TestLebensnachweis_SpalteLadenZaehlen_RealDB(t *testing.T) {
 	if nachher := f.cs.StateRootComponentBreakdown(); vorher.AccountSetXOR != nachher.AccountSetXOR {
 		t.Fatalf("account_set_xor vor/nach Neuaufbau verschieden: %s / %s", vorher.AccountSetXOR, nachher.AccountSetXOR)
 	}
-	// Zaehlung (SQL) und Auswahl (Speicher): f.wallet und der Coordinator
-	// ohne Nachweis sind pausiert, mit nicht.
+	// Nur EIN zugelassener Betreiber: niemand wird pausiert -- sein eigener
+	// Mensch koennte nie nachweisen (kein Coordinator bescheinigt sich selbst).
+	f.cs.mu.Lock()
+	moeglich, err := f.cs.lebensnachweisPauseMoeglichLocked(context.Background(), ubiAt)
+	f.cs.mu.Unlock()
+	if err != nil || moeglich {
+		t.Fatalf("ein Betreiber: Pause moeglich=%v (%v)", moeglich, err)
+	}
+	// Ein zweiter Mensch haelt einen Validator-Schluessel: jetzt pausiert die Runde.
+	zweiter := distTestAddr(1963)
+	registerKonto(t, f.cs, zweiter, true)
+	verlaufEintrag(t, f.cs, zweiter, distTestAddr(1951), f.jetzt-30*lnTag)
 	f.cs.mu.Lock()
 	defer f.cs.mu.Unlock()
-	n, err := f.cs.countUBIEmpfaengerLocked(context.Background(), ubiAt)
+	moeglich, err = f.cs.lebensnachweisPauseMoeglichLocked(context.Background(), ubiAt)
+	if err != nil || !moeglich {
+		t.Fatalf("zwei Betreiber: Pause moeglich=%v (%v)", moeglich, err)
+	}
+	// Zaehlung (SQL) und Auswahl (Speicher): f.wallet und beide Betreiber
+	// ohne Nachweis sind pausiert, mit nicht.
+	n, err := f.cs.countUBIEmpfaengerLocked(context.Background(), ubiAt, moeglich)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -307,8 +323,8 @@ func TestLebensnachweis_SpalteLadenZaehlen_RealDB(t *testing.T) {
 		}
 		return true
 	})
-	empf, pausiert := f.cs.lebensnachweisEmpfaengerLocked(menschen, ubiAt)
-	if n != int64(len(empf)) || n != 1 || pausiert != 2 || empf[0] != mit {
+	empf, pausiert := f.cs.lebensnachweisEmpfaengerLocked(menschen, ubiAt, moeglich)
+	if n != int64(len(empf)) || n != 1 || pausiert != 3 || empf[0] != mit {
 		t.Fatalf("SQL zaehlt %d, Auswahl %v (%d pausiert)", n, empf, pausiert)
 	}
 }

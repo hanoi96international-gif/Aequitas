@@ -76,6 +76,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/lib/pq"
 )
 
 const (
@@ -180,10 +182,129 @@ func lebensnachweisPauseGrenze(t int64) int64 {
 	return sattAdd(t, -lebensnachweisPauseTage*86400)
 }
 
+// MINDESTENS ZWEI BETREIBER (zweiter Sicherheitsdurchgang #408, LOW-1).
+//
+// Kein Coordinator bescheinigt sich selbst (bescheinigungPruefenFuer). Gaebe
+// es zu t nur EINEN zugelassenen Menschen, koennte genau dieser nie einen
+// Nachweis erbringen -- er waere ab pause_ab ohne Ende pausiert; leerte sich
+// das Register, wuerden nach und nach alle pausiert, ohne Weg zurueck. Eine
+// Pause ohne Moeglichkeit, sie zu beenden, ist genau das, was "aktiv nur,
+// wenn Nachweise moeglich sind" ausschliessen soll. Darum pausiert eine Runde
+// nur, wenn zu ihrer Rundenzeit mindestens lebensnachweisMindestBetreiber
+// verschiedene Menschen einen Validator-Schluessel im Kettenregister halten
+// (dieselben Fenster wie die Zulassung, coordinatorZugelassenIn) -- dann hat
+// jeder, auch jeder Betreiber, einen anderen, der ihn bescheinigen kann.
+// Konsensdaten, bei jedem Knoten gleich; einmal je Runde gelesen.
+const lebensnachweisMindestBetreiber = 2
+
+// zugelasseneBetreiberZu: wie viele verschiedene Menschen zu t einen
+// Validator-Schluessel im Kettenregister halten -- gezaehlt bis grenze.
+func zugelasseneBetreiberZu(q sqlExecutor, t int64, grenze int) (int, error) {
+	zeilen, err := verlaufLesen(q, nil)
+	if err != nil {
+		return 0, err
+	}
+	betreiber := map[string]bool{}
+	for _, z := range zeilen {
+		betreiber[z.betreiber] = true
+	}
+	if len(betreiber) == 0 {
+		return 0, nil
+	}
+	liste := make([]string, 0, len(betreiber))
+	for b := range betreiber {
+		liste = append(liste, b)
+	}
+	menschen := map[string]bool{}
+	rows, err := q.Query(`SELECT lower(address) FROM chain_accounts WHERE lower(address) = ANY($1) AND is_human`, pq.Array(liste))
+	if err != nil {
+		return 0, err
+	}
+	for rows.Next() {
+		var a string
+		if err := rows.Scan(&a); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		menschen[a] = true
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	st := &erzeugerStand{fenster: fensterAusIntervallen(bindungsIntervalle(zeilen), menschen, nil)}
+	gezaehlt := map[string]bool{}
+	for s := range st.fenster {
+		if m := st.erzeugerFenster(s, t); m != "" {
+			gezaehlt[m] = true
+			if len(gezaehlt) >= grenze {
+				break
+			}
+		}
+	}
+	return len(gezaehlt), nil
+}
+
+// lebensnachweisPauseMoeglichLocked: darf eine Runde zur Rundenzeit t
+// ueberhaupt jemanden pausieren? lebensnachweisAktiv UND mindestens
+// lebensnachweisMindestBetreiber zugelassene Menschen. Ein Lesefehler ist ein
+// Fehler (der Aufrufer entscheidet nichts), nie "moeglich". Ohne Datenbank
+// (nur Tests) entscheidet betreiberOhneDB; ist der nicht gesetzt, gilt die
+// Zulassung allein (die Tests ohne Register pruefen die Fristen).
+func (cs *ChainState) lebensnachweisPauseMoeglichLocked(ctx context.Context, t int64) (bool, error) {
+	if !lebensnachweisAktiv(t) {
+		return false, nil
+	}
+	if cs.db == nil {
+		if cs.betreiberOhneDB != nil {
+			return cs.betreiberOhneDB(t) >= lebensnachweisMindestBetreiber, nil
+		}
+		return true, nil
+	}
+	n, err := zugelasseneBetreiberZu(cs.dbExecCtx(ctx), t, lebensnachweisMindestBetreiber)
+	if err != nil {
+		return false, fmt.Errorf("Lebensnachweis: Betreiber zu %d nicht lesbar: %w", t, err)
+	}
+	return n >= lebensnachweisMindestBetreiber, nil
+}
+
+// lebensnachweisPauseAnzeige: dasselbe fuer /api/balance -- ohne Sperre, mit
+// Zeitgrenze, eine Minute gemerkt. Nur Anzeige; entschieden wird in der
+// Runde. Ein Lesefehler zeigt "nicht pausiert" (die Runde entscheidet selbst).
+func (cs *ChainState) lebensnachweisPauseAnzeige(jetzt int64) bool {
+	if !lebensnachweisAktiv(jetzt) {
+		return false
+	}
+	if cs.db == nil {
+		ok, _ := cs.lebensnachweisPauseMoeglichLocked(context.Background(), jetzt)
+		return ok
+	}
+	if g, ok := lebensnachweisAnzeigeGemerkt.Load().(lebensnachweisAnzeigeStand); ok && jetzt-g.zeit < 60 && jetzt >= g.zeit {
+		return g.moeglich
+	}
+	ctx, abbruch := context.WithTimeout(context.Background(), 5*time.Second)
+	defer abbruch()
+	n, err := zugelasseneBetreiberZu(dbMitKontext{ctx: ctx, db: cs.db}, jetzt, lebensnachweisMindestBetreiber)
+	if err != nil {
+		return false
+	}
+	moeglich := n >= lebensnachweisMindestBetreiber
+	lebensnachweisAnzeigeGemerkt.Store(lebensnachweisAnzeigeStand{zeit: jetzt, moeglich: moeglich})
+	return moeglich
+}
+
+type lebensnachweisAnzeigeStand struct {
+	zeit     int64
+	moeglich bool
+}
+
+var lebensnachweisAnzeigeGemerkt atomic.Value
+
 // LebensnachweisStand fuer /api/balance: alle Zeitpunkte als ganze
 // Unix-Sekunden, aktiv/pausiert als bool. Fuer Nicht-Menschen nil. Vor dem
-// Stichtag aktiv=false, die Zeitpunkte trotzdem berechnet.
-func LebensnachweisStand(acc *AccountState, jetzt int64) map[string]interface{} {
+// Stichtag aktiv=false, die Zeitpunkte trotzdem berechnet. pauseMoeglich:
+// lebensnachweisPauseAnzeige.
+func LebensnachweisStand(acc *AccountState, jetzt int64, pauseMoeglich bool) map[string]interface{} {
 	if acc == nil || !acc.IsHuman {
 		return nil
 	}
@@ -194,15 +315,16 @@ func LebensnachweisStand(acc *AccountState, jetzt int64) map[string]interface{} 
 		"faellig_ab": f.faelligAb,
 		"frist":      f.frist,
 		"pause_ab":   f.pauseAb,
-		"pausiert":   lebensnachweisPausiert(acc, jetzt),
+		"pausiert":   pauseMoeglich && lebensnachweisPausiert(acc, jetzt),
 	}
 }
 
 // LebensnachweisStandVon liest den Stand eines Kontos (auch ein kaltes).
 func (cs *ChainState) LebensnachweisStandVon(address string, jetzt int64) map[string]interface{} {
+	moeglich := cs.lebensnachweisPauseAnzeige(jetzt)
 	var st map[string]interface{}
 	cs.readAccount(strings.ToLower(strings.TrimSpace(address)), func(acc *AccountState) {
-		st = LebensnachweisStand(acc, jetzt)
+		st = LebensnachweisStand(acc, jetzt, moeglich)
 	})
 	return st
 }
@@ -211,21 +333,37 @@ func (cs *ChainState) LebensnachweisStandVon(address string, jetzt int64) map[st
 
 // lebensnachweisRegZeit: ab wann eine Registrierung als erster Nachweis
 // zaehlt -- 0 (nichts setzen), wenn die Transaktion keinen Annahmezeitpunkt
-// traegt oder er vor dem Stichtag liegt. Derselbe Wert wie fuer die Staffel
-// (staffelRegZeit, "EIN ZEITPUNKT" in grant_staffel.go): der Erzeuger misst
-// mit seiner Uhr, jeder Nachspielende mit der Blockzeit, beide kommen auf
-// RegAt. OHNE RegAt (der Spiegel-Ersatzweg in register.go, sonst tot) gaebe
-// es keinen gemeinsamen Wert -- dann bleibt das Feld 0 und am ist der
-// Stichtag, bei allen Knoten gleich.
+// traegt, er nach (Bezug + 5 min) liegt oder der Lebensnachweis zu RegAt
+// noch nicht aktiv war.
+//
+// RegAt SELBST, OHNE KLEMME (zweiter Sicherheitsdurchgang #408, MEDIUM-1).
+// Bis hierhin lief RegAt durch staffelRegZeit, und das klemmt nach unten auf
+// Bezug - 1 Tag -- Bezug ist beim Erzeuger seine Uhr, beim Nachspielenden die
+// Blockzeit. Kam eine Registrierung mehr als einen Tag nach der Annahme in
+// einen Block (Wiederanlauf, RetryRegistrationRecoveries mit altem RegAt),
+// setzten beide Seiten verschiedene Werte, und das Blatt (accountLeaf, :ln=)
+// wich bis zum naechsten Nachweis ab. Ein rueckdatiertes RegAt schadet hier
+// nur dem Registrierten selbst (frueher faellig), es braucht keine Klemme.
+// Die obere Grenze (Bezug + v8NachspielKarenz) trifft beim Erzeuger nie (er
+// setzt RegAt selbst nach seiner Uhr), beim Nachspielenden weist V8 ein
+// spaeteres RegAt ohnehin ab.
+//
+// NUR WENN AKTIV. Vor lebensnachweisAktiv aenderte der Wert nichts (am =
+// max(LebensnachweisAm, lebensnachweisUhrAb) und RegAt < UhrAb), er
+// veraenderte nur die Blaetter -- und zwang jeden Knoten, vor dem Stichtag
+// diese Fassung zu fahren. So bleiben die Blaetter bis zur Zulassung der
+// Coordinatoren, wie sie sind.
+//
+// OHNE RegAt (der Spiegel-Ersatzweg in register.go, sonst tot) bleibt das
+// Feld 0 und am ist lebensnachweisUhrAb, bei allen Knoten gleich.
 func lebensnachweisRegZeit(regAt, bezug int64) int64 {
-	if regAt <= 0 {
+	if regAt <= 0 || regAt > sattAdd(bezug, v8NachspielKarenz) {
 		return 0
 	}
-	z := staffelRegZeit(regAt, bezug)
-	if !lebensnachweisStichtag(z) {
+	if !lebensnachweisAktiv(regAt) {
 		return 0
 	}
-	return z
+	return regAt
 }
 
 // lebensnachweisBeiRegistrierungLocked setzt nach einer Registrierung
@@ -387,8 +525,9 @@ func (cs *ChainState) nachrechnenLebensnachweisLocked(tx *Transaction, blockZeit
 // Tagesanteil bekommen -- alle ausser den Pausierten, in derselben
 // Reihenfolge. Vor lebensnachweisAktiv(t) alle. Caller haelt cs.mu, die
 // Konten sind geladen.
-func (cs *ChainState) lebensnachweisEmpfaengerLocked(menschen []string, t int64) (empfaenger []string, pausiert int) {
-	if !lebensnachweisAktiv(t) {
+// moeglich: lebensnachweisPauseMoeglichLocked fuer diese Runde.
+func (cs *ChainState) lebensnachweisEmpfaengerLocked(menschen []string, t int64, moeglich bool) (empfaenger []string, pausiert int) {
+	if !moeglich || !lebensnachweisAktiv(t) {
 		return menschen, 0
 	}
 	empfaenger = make([]string, 0, len(menschen))
@@ -407,8 +546,9 @@ func (cs *ChainState) lebensnachweisEmpfaengerLocked(menschen []string, t int64)
 // wie countHumanAccountsLocked. Dieselbe Bedingung wie
 // lebensnachweisPausiert, in SQL: wirksames am (mindestens lebensnachweisUhrAb) >
 // t - 395 Tage.
-func (cs *ChainState) countUBIEmpfaengerLocked(ctx context.Context, t int64) (int64, error) {
-	if !lebensnachweisAktiv(t) {
+// moeglich: lebensnachweisPauseMoeglichLocked fuer diese Runde.
+func (cs *ChainState) countUBIEmpfaengerLocked(ctx context.Context, t int64, moeglich bool) (int64, error) {
+	if !moeglich || !lebensnachweisAktiv(t) {
 		return cs.countHumanAccountsLocked(ctx)
 	}
 	if cs.db == nil {

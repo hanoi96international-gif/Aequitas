@@ -195,6 +195,9 @@ type ChainState struct {
 	// die Zulassung eines Coordinators fuer den Lebensnachweis
 	// (lebensnachweis.go) kommt dann von hier. In Betrieb immer nil.
 	zulassungOhneDB CoordinatorZulassung
+	// betreiberOhneDB: nur Tests. Wie viele zugelassene Betreiber-Menschen es
+	// zu t gibt (lebensnachweisPauseMoeglichLocked). In Betrieb immer nil.
+	betreiberOhneDB func(t int64) int
 
 	// nachspielZeit: Blockzeit des Blocks, den replayTransactions gerade unter
 	// cs.mu anwendet (0 = keiner, Annahme). Fuer Regeln, die ab einer
@@ -4295,7 +4298,14 @@ func (cs *ChainState) distributeUBIPoolLocked(ctx context.Context, verteiltAm in
 	// Nachspielende ab). Entschieden nur aus verteiltAm und Kettenzustand;
 	// vor lebensnachweisAktiv sind alle Empfaenger.
 	alleMenschen := len(humanAddrs)
-	humanAddrs, pausiert := cs.lebensnachweisEmpfaengerLocked(humanAddrs, verteiltAm)
+	// Pausiert wird nur, wenn ein Nachweis zu verteiltAm moeglich ist
+	// (mindestens zwei zugelassene Betreiber). Nicht lesbar: die Runde
+	// entscheidet nichts und wird spaeter wiederholt.
+	pauseMoeglich, err := cs.lebensnachweisPauseMoeglichLocked(ctx, verteiltAm)
+	if err != nil {
+		return nil, err
+	}
+	humanAddrs, pausiert := cs.lebensnachweisEmpfaengerLocked(humanAddrs, verteiltAm, pauseMoeglich)
 	if len(humanAddrs) == 0 {
 		fmt.Printf("[UBI] Alle %d Menschen ueberfaellig (Lebensnachweis) — Topf bleibt fuer die naechste Runde stehen\n", pausiert)
 		merkeUBIErgebnis(ubiErgebnisKeineMenschen)

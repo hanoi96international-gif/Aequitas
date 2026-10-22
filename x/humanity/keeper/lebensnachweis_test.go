@@ -163,7 +163,7 @@ func TestLebensnachweis_Fristen(t *testing.T) {
 		t.Fatal("vor dem Stichtag aktiv")
 	}
 	// Kein Mensch: nie pausiert (und kein Stand).
-	if lebensnachweisPausiert(&AccountState{Address: lnAndere}, pause) || LebensnachweisStand(&AccountState{Address: lnAndere}, pause) != nil {
+	if lebensnachweisPausiert(&AccountState{Address: lnAndere}, pause) || LebensnachweisStand(&AccountState{Address: lnAndere}, pause, true) != nil {
 		t.Fatal("Nicht-Mensch mit Lebensnachweis-Stand")
 	}
 	// Ueberlauf: am nahe MaxInt64 laeuft nicht ins Negative.
@@ -678,11 +678,11 @@ func TestLebensnachweis_ZaehlungWieAuswahl(t *testing.T) {
 	acct(f.cs, lnDritte).LebensnachweisAm = ubiAt - 395*lnTag + 1 // eine Sekunde danach: nicht
 	f.cs.mu.Lock()
 	defer f.cs.mu.Unlock()
-	n, err := f.cs.countUBIEmpfaengerLocked(context.Background(), ubiAt)
+	n, err := f.cs.countUBIEmpfaengerLocked(context.Background(), ubiAt, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	empf, pausiert := f.cs.lebensnachweisEmpfaengerLocked([]string{lnWallet, lnAndere, lnDritte, f.mensch}, ubiAt)
+	empf, pausiert := f.cs.lebensnachweisEmpfaengerLocked([]string{lnWallet, lnAndere, lnDritte, f.mensch}, ubiAt, true)
 	if n != 2 || len(empf) != 2 || pausiert != 2 || empf[0] != lnAndere || empf[1] != lnDritte {
 		t.Fatalf("Zaehlung %d, Auswahl %v (%d pausiert)", n, empf, pausiert)
 	}
@@ -695,7 +695,7 @@ func TestLebensnachweis_ZaehlungWieAuswahl(t *testing.T) {
 // RegAt bleibt das Feld 0 (und das Blatt unveraendert).
 func TestLebensnachweis_Registrierung(t *testing.T) {
 	regAt := nowUnix() - 40
-	lnAktiv(t, regAt-100, 0)
+	lnAktiv(t, regAt-100, 1)
 	w := "0x00000000000000000000000000000000000000c7"
 	tx := Transaction{Type: "register_human", Wallet: w, RegAt: regAt}
 	erzeuger := newTestState()
@@ -722,6 +722,18 @@ func TestLebensnachweis_Registrierung(t *testing.T) {
 	if f := lebensnachweisFristenVon(acct(erzeuger, w)); f.am != regAt {
 		t.Fatalf("am=%d, erwartet die Registrierung", f.am)
 	}
+	// Stichtag erreicht, aber Coordinatoren noch nicht zugelassen (heute):
+	// nichts -- die Blaetter bleiben bis zur Zulassung, wie sie sind.
+	registerLeserOverride.Store(0) // Konstante: Platzhalter
+	w3 := "0x00000000000000000000000000000000000000c9"
+	ohneZulassung := newTestState()
+	if err := ohneZulassung.RegisterHumanAtomic(w3, Transaction{Type: "register_human", Wallet: w3, RegAt: regAt}); err != nil {
+		t.Fatal(err)
+	}
+	if acct(ohneZulassung, w3).LebensnachweisAm != 0 {
+		t.Fatal("Registrierung vor der Zulassung setzt LebensnachweisAm (Blatt aendert sich)")
+	}
+	registerLeserOverride.Store(1)
 	// Vor dem Stichtag: nichts.
 	lebensnachweisAbOverride.Store(regAt + 100)
 	w2 := "0x00000000000000000000000000000000000000c8"
@@ -743,6 +755,83 @@ func TestLebensnachweis_Registrierung(t *testing.T) {
 	}
 	if !strings.Contains(body, "applyLebensnachweisLocked(context.Background(), &tx, block.Timestamp)") {
 		t.Fatal("replayTransactions wendet proof_of_life nicht mit der Pruefung an")
+	}
+}
+
+// Zweiter Sicherheitsdurchgang #408, MEDIUM-1: kommt eine Registrierung
+// mehr als einen Tag nach der Annahme in einen Block (Wiederanlauf,
+// RetryRegistrationRecoveries mit altem RegAt), setzen Erzeuger und
+// Nachspielender DENSELBEN Wert -- RegAt selbst, ohne Klemme an die eigene
+// Uhr.
+func TestLebensnachweis_VerspaeteteRegistrierungGleichesBlatt(t *testing.T) {
+	jetzt := nowUnix()
+	regAt := jetzt - 3*86400
+	lnAktiv(t, regAt-100, 1)
+	w := "0x00000000000000000000000000000000000000ca"
+	tx := Transaction{Type: "register_human", Wallet: w, RegAt: regAt}
+	erzeuger := newTestState()
+	if err := erzeuger.RegisterHumanAtomic(w, tx); err != nil {
+		t.Fatal(err)
+	}
+	nachspieler := newTestState()
+	blockZeit := jetzt + 4
+	nachspieler.mu.Lock()
+	err := nachspieler.registerHumanMitZeitenLocked(context.Background(), w, blockZeit, staffelRegZeit(tx.RegAt, blockZeit), tx.GrantClass)
+	if err == nil {
+		err = nachspieler.lebensnachweisBeiRegistrierungLocked(context.Background(), w, tx.RegAt, blockZeit)
+	}
+	nachspieler.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	e, n := acct(erzeuger, w).LebensnachweisAm, acct(nachspieler, w).LebensnachweisAm
+	if e != regAt || n != regAt {
+		t.Fatalf("LebensnachweisAm Erzeuger %d, Nachspielender %d, erwartet RegAt %d", e, n, regAt)
+	}
+	// Die Blaetter: nur das Lebensnachweis-Feld ist Gegenstand; die Staffel
+	// schlaeft (2100) und traegt nichts bei.
+	if accountLeaf(acct(erzeuger, w)) != accountLeaf(acct(nachspieler, w)) {
+		t.Fatal("verspaetete Registrierung: Erzeuger und Nachspielender haben verschiedene Blaetter")
+	}
+	// Ein RegAt weit nach dem Bezug zaehlt nicht.
+	if lebensnachweisRegZeit(blockZeit+v8NachspielKarenz+1, blockZeit) != 0 {
+		t.Fatal("vordatiertes RegAt gesetzt")
+	}
+}
+
+// Zweiter Sicherheitsdurchgang #408, LOW-1: mit nur einem zugelassenen
+// Betreiber pausiert keine Runde (sein eigener Mensch koennte nie
+// nachweisen); ab zwei schon. Auch die Anzeige folgt dem.
+func TestLebensnachweis_PauseNurMitZweiBetreibern(t *testing.T) {
+	f := neuerLnFall(t)
+	ubiAt := lnStichtag + 400*lnTag // f.mensch ohne Nachweis: ueber pause_ab
+	betreiber := 1
+	f.cs.betreiberOhneDB = func(int64) int { return betreiber }
+	f.cs.mu.Lock()
+	moeglich, err := f.cs.lebensnachweisPauseMoeglichLocked(context.Background(), ubiAt)
+	if err != nil || moeglich {
+		f.cs.mu.Unlock()
+		t.Fatalf("ein Betreiber: moeglich=%v (%v)", moeglich, err)
+	}
+	empf, pausiert := f.cs.lebensnachweisEmpfaengerLocked([]string{f.mensch}, ubiAt, moeglich)
+	n, _ := f.cs.countUBIEmpfaengerLocked(context.Background(), ubiAt, moeglich)
+	f.cs.mu.Unlock()
+	if pausiert != 0 || len(empf) != 1 || n < 1 {
+		t.Fatalf("ein Betreiber: %d pausiert, Zaehlung %d", pausiert, n)
+	}
+	if st := f.cs.LebensnachweisStandVon(f.mensch, ubiAt); st == nil || st["pausiert"] != false {
+		t.Fatalf("Anzeige mit einem Betreiber: %v", st)
+	}
+	betreiber = 2
+	f.cs.mu.Lock()
+	moeglich, _ = f.cs.lebensnachweisPauseMoeglichLocked(context.Background(), ubiAt)
+	_, pausiert = f.cs.lebensnachweisEmpfaengerLocked([]string{f.mensch}, ubiAt, moeglich)
+	f.cs.mu.Unlock()
+	if !moeglich || pausiert != 1 {
+		t.Fatalf("zwei Betreiber: moeglich=%v, %d pausiert", moeglich, pausiert)
+	}
+	if st := f.cs.LebensnachweisStandVon(f.mensch, ubiAt); st == nil || st["pausiert"] != true {
+		t.Fatalf("Anzeige mit zwei Betreibern: %v", st)
 	}
 }
 
