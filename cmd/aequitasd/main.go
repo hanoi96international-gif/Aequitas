@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -1034,6 +1035,14 @@ func main() {
 					if !pruefbar {
 						retrySoon = true
 					}
+				} else if grund := chainState.LebensnachweiseOffenGrund(time.Now().Unix()); grund != "" {
+					// Lebensnachweis (#410, lebensnachweis_runde.go): erst wenn
+					// jeder angewandte Nachweis in einem Block steht -- VOR der
+					// Tagessperre, sonst fiele der Tag aus. Bald erneut pruefen:
+					// die Nachweise kommen mit dem naechsten Block.
+					fmt.Printf("[POOLS] Verteilung jetzt nicht: %s\n", grund)
+					keeper.RecordDistributionOutcome("skipped", grund)
+					retrySoon = true
 				} else if chainState.TryLockDistribution() {
 					// FIX (audit3, P0 #3): the entire distribution round — UBI, validator
 					// pool, LP pool, escrow move/release, AND every resulting outbox TX —
@@ -1055,6 +1064,17 @@ func main() {
 						if err := chainState.RunDailyDistributionAtomic(ubiAt); err != nil {
 							fmt.Printf("[POOLS] ✗ Distribution FAILED and was fully rolled back: %v\n", err)
 							keeper.RecordDistributionOutcome("failed", err.Error())
+							// Ein Lebensnachweis kam zwischen Vorpruefung und
+							// Runde (#410): die Runde ist zurueckgerollt und hat
+							// nicht stattgefunden -- Sperre freigeben und bald
+							// wiederholen, statt den Tag ausfallen zu lassen.
+							if errors.Is(err, keeper.ErrLebensnachweiseOffen) {
+								if lErr := chainState.VerteilungsSperreLoesen(); lErr != nil {
+									fmt.Printf("[POOLS] ✗ Tagessperre nicht freigegeben: %v\n", lErr)
+								} else {
+									retrySoon = true
+								}
+							}
 							return
 						}
 						fmt.Printf("[POOLS] ✓ Distribution done at %s\n", time.Now().In(berlin).Format("02.01. 15:04:05"))
