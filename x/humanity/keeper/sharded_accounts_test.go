@@ -139,12 +139,12 @@ func TestShardedAccounts_MarshalJSON(t *testing.T) {
 func TestShardedAccounts_ShardIndexDeterministic(t *testing.T) {
 	addrs := []string{"0x0", "0xabc123", "0xValidatorsPool", "", "0x" + string(make([]byte, 100))}
 	for _, a := range addrs {
-		first := shardIndexFor(a)
+		first := shardIndexFor(a, numAccountShards)
 		if first < 0 || first >= numAccountShards {
 			t.Fatalf("shardIndexFor(%q) = %d, out of range [0,%d)", a, first, numAccountShards)
 		}
 		for i := 0; i < 10; i++ {
-			if got := shardIndexFor(a); got != first {
+			if got := shardIndexFor(a, numAccountShards); got != first {
 				t.Fatalf("shardIndexFor(%q) not deterministic: got %d and %d", a, first, got)
 			}
 		}
@@ -448,7 +448,7 @@ func TestShardedAccounts_LockAddrs_DedupesSameShard(t *testing.T) {
 	seen := map[int]string{}
 	for i := 0; i < 100000; i++ {
 		addr := fmt.Sprintf("0xdup%06d", i)
-		idx := shardIndexFor(addr)
+		idx := shardIndexFor(addr, numAccountShards)
 		if prior, ok := seen[idx]; ok {
 			a, b = prior, addr
 			break
@@ -644,17 +644,17 @@ func TestShardedAccounts_TryLockAddrs_ReleasesPartialAcquisitionOnFailure(t *tes
 	seen := map[int]string{}
 	for i := 0; i < 10000 && (lowAddr == "" || collideAddr == ""); i++ {
 		addr := fmt.Sprintf("0xseek%05d", i)
-		idx := shardIndexFor(addr)
+		idx := shardIndexFor(addr, numAccountShards)
 		if lowAddr == "" {
 			lowAddr, highAddr = addr, addr
 			seen[idx] = addr
 			continue
 		}
-		lowIdx := shardIndexFor(lowAddr)
+		lowIdx := shardIndexFor(lowAddr, numAccountShards)
 		if idx < lowIdx {
 			lowAddr = addr
 		}
-		if existing, ok := seen[idx]; ok && existing != addr && highAddr != "" && idx != shardIndexFor(lowAddr) {
+		if existing, ok := seen[idx]; ok && existing != addr && highAddr != "" && idx != shardIndexFor(lowAddr, numAccountShards) {
 			collideAddr = existing
 			highAddr = addr
 		}
@@ -742,5 +742,68 @@ func TestShardedAccounts_TryLockAddrs_ConcurrentContentionNeverDeadlocks(t *test
 	})
 	if total != float64(numAddrs)*10000 {
 		t.Fatalf("total balance after %d concurrent TryLockAddrs attempts = %v, want %v (a successful attempt must still move exactly 1 unit)", rounds, total, float64(numAddrs)*10000)
+	}
+}
+
+// Race aus TestShardZahl_WasSieKostet: der Test setzt numAccountShards fuer
+// eigene Karten um, waehrend Hintergrund-Arbeiter frueherer Tests (Pool-Flush,
+// EVM-Spiegel) noch auf ihre Karten zugreifen. Las shardIndexFor dabei die
+// Paketvariable, meldete -race den Zugriff -- und eine Karte, die mit einer
+// anderen Zahl gebaut ist, griff neben ihre Shards. Jetzt zaehlt jede Karte
+// mit ihrer eigenen Zahl.
+func TestShardedAccounts_ZahlJeKarte(t *testing.T) {
+	alt := numAccountShards
+	t.Cleanup(func() { numAccountShards = alt })
+	numAccountShards = 64
+	klein := newShardedAccounts()
+	numAccountShards = 1024
+	gross := newShardedAccounts()
+	if len(klein.shards) != 64 || len(gross.shards) != 1024 {
+		t.Fatalf("Shards %d/%d, erwartet 64/1024", len(klein.shards), len(gross.shards))
+	}
+	adr := func(i int) string { return fmt.Sprintf("0x%040x", i) }
+	for i := 0; i < 2000; i++ {
+		klein.Set(adr(i), &AccountState{Address: adr(i)})
+		gross.Set(adr(i), &AccountState{Address: adr(i)})
+	}
+	if klein.Len() != 2000 || gross.Len() != 2000 {
+		t.Fatalf("Len %d/%d, erwartet 2000/2000", klein.Len(), gross.Len())
+	}
+	// Waehrend ein anderer die Paketvariable umsetzt, greift ein Arbeiter
+	// weiter zu -- unter -race ohne Meldung, und er findet alles.
+	stop := make(chan struct{})
+	laeuft := make(chan struct{})
+	fertig := make(chan int)
+	go func() {
+		gefunden, runden := 0, 0
+		for {
+			select {
+			case <-stop:
+				fertig <- gefunden
+				return
+			default:
+			}
+			for i := 0; i < 2000; i += 97 {
+				if _, ok := klein.Get(adr(i)); ok {
+					gefunden++
+				}
+			}
+			if runden++; runden == 1 {
+				close(laeuft)
+			}
+		}
+	}()
+	<-laeuft
+	for i := 0; i < 2000; i++ {
+		numAccountShards = 16 + i%7
+	}
+	close(stop)
+	if gefunden := <-fertig; gefunden < 21 {
+		t.Fatalf("der Arbeiter fand %d, erwartet mindestens einen ganzen Durchlauf (21)", gefunden)
+	}
+	for i := 0; i < 2000; i++ {
+		if _, ok := klein.Get(adr(i)); !ok {
+			t.Fatalf("%s fehlt in der Karte mit 64 Shards", adr(i))
+		}
 	}
 }
