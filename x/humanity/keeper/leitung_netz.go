@@ -749,17 +749,31 @@ func leiteWeiterMit(w http.ResponseWriter, r *http.Request, ziel string, body []
 	return true
 }
 
-// zumLeiter: Swap, Liquiditaet und Faucet nehmen an (annahme_tor.go) --
-// bei rotierendem Leiter gehoeren sie zu ihm wie Ueberweisungen.
 // zumLeiterRumpfHoechstens: so gross darf der Rumpf eines POST hinter
 // zumLeiter sein -- die groesste Grenze der Handler dahinter (64 KiB bei
 // Tausch, Liquiditaet und Faucet, readBodyLimited; die uebrigen 4 bis 8 KiB).
 const zumLeiterRumpfHoechstens = 64 << 10
 
-// zumLeiterLeseFrist: so lange darf das Lesen des Rumpfs dauern (der Server
-// erlaubt 30 s). Variable fuer Tests.
+// zumLeiterLeseFrist: so lange darf das Lesen des Rumpfs dauern. Sie ersetzt
+// die Frist des Servers fuer die Anfrage (Beginn + ReadTimeout); weil die
+// Koepfe hoechstens ReadHeaderTimeout dauern (api.go), bleibt beides zusammen
+// unter dem ReadTimeout. Variable fuer Tests.
 var zumLeiterLeseFrist = 10 * time.Second
 
+// zumLeiterOhneFrist: wie oft die Lese-Frist nicht gesetzt werden konnte (eine
+// Huelle ohne Unwrap vor zumLeiter); gemeldet wird einmal.
+var (
+	zumLeiterOhneFrist         atomic.Int64
+	zumLeiterOhneFristGemeldet atomic.Bool
+)
+
+// zumLeiter: Swap, Liquiditaet und Faucet nehmen an (annahme_tor.go) --
+// bei rotierendem Leiter gehoeren sie zu ihm wie Ueberweisungen.
+//
+// Jede Huelle vor zumLeiter, die r.Body ersetzt, muss den Rest des Rumpfs
+// durchreichen (weiterleitungFuer): zumLeiter loescht seine Lese-Frist, sobald
+// es bis zum Ende gelesen hat -- war das nur eine abgeschnittene Kopie,
+// verwarf net/http den Rest danach ohne jede Frist (Pruefung von #414).
 func (a *APIServer) zumLeiter(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Die Nonce fuer Tausch und Liquiditaet kennt am frischesten, wer das
@@ -782,13 +796,25 @@ func (a *APIServer) zumLeiter(h http.HandlerFunc) http.HandlerFunc {
 		// Hoechstens zumLeiterRumpfHoechstens, mit eigener Lese-Frist: vorher
 		// bis 1 MiB, still abgeschnitten, nur durch den ReadTimeout des
 		// Servers (30 s) begrenzt -- an jeder Route dahinter, auch vor ihrem
-		// Stichtag (Pruefung von #327, INFO-3). Die Frist wird nach dem Lesen
-		// geloescht, sonst liefe sie auf dem Hintergrund-Lesen der Verbindung
-		// ab, und net/http braeche deren Kontext ab -- auch fuer jede
+		// Stichtag (Pruefung von #327, INFO-3). Ein angekuendigt zu grosser
+		// Rumpf wird gar nicht erst gelesen.
+		if r.ContentLength > zumLeiterRumpfHoechstens {
+			http.Error(w, `{"error":"request body too large"}`, http.StatusRequestEntityTooLarge)
+			return
+		}
+		// Die Frist wird nach dem Lesen bis zum Ende geloescht: lief das
+		// Hintergrund-Lesen der Verbindung schon (leerer Rumpf, oder ein
+		// Vorleser hat bis zum Ende gelesen), liefe sie sonst darauf ab, und
+		// net/http braeche den Kontext der Verbindung ab -- auch fuer jede
 		// Folgeanfrage auf ihr (#327, LOW-1). Nach einem Fehler bleibt sie:
 		// net/http verwirft vor der Antwort den Rest des Rumpfs.
 		rc := http.NewResponseController(w)
-		_ = rc.SetReadDeadline(time.Now().Add(zumLeiterLeseFrist))
+		if err := rc.SetReadDeadline(time.Now().Add(zumLeiterLeseFrist)); err != nil {
+			zumLeiterOhneFrist.Add(1)
+			if zumLeiterOhneFristGemeldet.CompareAndSwap(false, true) {
+				fmt.Printf("[LEITUNG] ⚠ %s: Lese-Frist nicht setzbar (%v) -- es gilt nur der ReadTimeout des Servers\n", r.URL.Path, err)
+			}
+		}
 		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, zumLeiterRumpfHoechstens))
 		if err != nil {
 			var zuGross *http.MaxBytesError

@@ -998,6 +998,23 @@ func gzipMiddleware(next http.Handler) http.Handler {
 // panic in the synchronous request path is handled uniformly and logged the
 // same way every other recovered panic in this codebase is, rather than
 // relying solely on the stdlib's silent default behavior.
+// apiHTTPServer: der Server mit seinen Fristen -- eigene Funktion, damit ein
+// Test sie festhaelt.
+func apiHTTPServer(addr string, mux http.Handler) *http.Server {
+	return &http.Server{
+		Addr:    addr,
+		Handler: serverKette(mux),
+		// Koepfe hoechstens 10 s: Handler, die eine eigene Lese-Frist fuer den
+		// Rumpf setzen (zumLeiter, /api/validator-bindung), ersetzen damit die
+		// Frist des Servers -- mit langsamen Koepfen davor kaeme eine Anfrage
+		// sonst ueber den ReadTimeout hinaus (Pruefung von #414, Befund 2).
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
+}
+
 // serverKette: die Huellen um den Mux, wie der Server sie nimmt -- eigene
 // Funktion, damit Tests durch dieselbe Kette laufen.
 func serverKette(mux http.Handler) http.Handler {
@@ -1287,13 +1304,7 @@ func (a *APIServer) Start(port int) {
 	// because stale cached content was a real, repeated problem tonight.
 	// Compression doesn't cache anything; every request still gets
 	// re-validated, just transferred smaller.
-	srv := &http.Server{
-		Addr:         addr,
-		Handler:      serverKette(mux),
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 60 * time.Second,
-		IdleTimeout:  120 * time.Second,
-	}
+	srv := apiHTTPServer(addr, mux)
 	SafeGoroutine("http.ListenAndServe", func() {
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			fmt.Printf("[API] Server error: %v\n", err)
