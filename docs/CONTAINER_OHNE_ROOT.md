@@ -11,6 +11,13 @@ Datenverzeichnisse unter `/data`, die er laut Konfiguration benutzt
 (UID/GID 10001) und legt die root-Rechte dann ab — bevor er irgendetwas
 öffnet oder lauscht. Danach prüft er, ob er ins WAL-Verzeichnis schreiben kann.
 
+`/app` (Binary, `genesis.json`, Seiten) bleibt root: was root vor dem
+Ablegen ausführt oder liest, darf der Knotenbenutzer nicht ändern können —
+sonst könnte Code mit seinen Rechten `aequitasd` ersetzen, und beim nächsten
+Neustart liefe es als root. Geschrieben wird nur unter `/data`; das Image setzt
+dafür `AEQUITAS_WAL_PATH=/data/wal/aequitas_transfers.wal` (eine Angabe in der
+`.env` geht vor; alle Deployments setzen ohnehin genau diesen Pfad).
+
 Kein Umzug von Hand nötig. Auf dem Host gehören die eingehängten Verzeichnisse
 danach UID 10001 (C1/C2: `/root/aequitas-wal-data`, `/root/aequitas-mpc`;
 Validatoren: Volume `waldata`). Backups als root auf dem Host lesen sie weiter.

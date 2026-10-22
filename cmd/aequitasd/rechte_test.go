@@ -33,7 +33,7 @@ func TestRechte_NurVerzeichnisseUnterData(t *testing.T) {
 		"/data/x.wal",         // /data selbst
 		"/x.wal",              // Wurzel
 		"/etc/aequitas.wal",
-		"aequitas_transfers.wal", // relativ: /app, im Image uebergeben
+		"aequitas_transfers.wal", // relativ: /app bleibt root
 		"",
 	} {
 		if got := datenVerzeichnisse(umgebung(map[string]string{"AEQUITAS_WAL_PATH": p})); len(got) != 0 {

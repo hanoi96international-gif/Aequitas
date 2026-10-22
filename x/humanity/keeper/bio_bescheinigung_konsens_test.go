@@ -199,6 +199,13 @@ func TestBescheinigung_KonfigurationFailClosed(t *testing.T) {
 		"Quorum 0":                   `{"bescheinigung":{"ab_unix":1,"modus":"test","quorum":0,"coordinator":["` + gut + `"]}}`,
 		"Tippfehler im Feld":         `{"bescheinigung":{"ab_unix":1,"modus":"test","quorum":1,"coordinatoren":["` + gut + `"]}}`,
 		"Grossbuchstaben":            `{"bescheinigung":{"ab_unix":1,"modus":"test","quorum":1,"coordinator":["` + strings.ToUpper(gut) + `"]}}`,
+		"Quorum ueber 17 (nie erreichbar)": func() string {
+			var ks []string
+			for i := 0; i < bescheinigungMaxSignaturen+1; i++ {
+				ks = append(ks, `"`+neuerEd25519(t).pub+`"`)
+			}
+			return `{"bescheinigung":{"ab_unix":1,"modus":"test","quorum":18,"coordinator":[` + strings.Join(ks, ",") + `]}}`
+		}(),
 	} {
 		if _, err := ladeBescheinigungKonfig([]byte(json)); err == nil {
 			t.Errorf("%s: Konfiguration angenommen", name)

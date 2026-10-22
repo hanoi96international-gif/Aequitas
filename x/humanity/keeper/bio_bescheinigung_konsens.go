@@ -183,6 +183,12 @@ func (k bescheinigungKonfig) pruefen() error {
 	if k.Quorum < 1 || k.Quorum > len(alle) {
 		return fmt.Errorf("bescheinigung.quorum=%d, es gibt %d verschiedene Schluessel", k.Quorum, len(alle))
 	}
+	// Mehr verschiedene Schluessel, als eine Bescheinigung Unterschriften
+	// tragen darf, kann keine je erreichen -- jede Registrierung waere ab
+	// dem Stichtag tot (Sicherheitspruefung des Diffs, F-B).
+	if k.Quorum > bescheinigungMaxSignaturen {
+		return fmt.Errorf("bescheinigung.quorum=%d, eine Bescheinigung traegt hoechstens %d Unterschriften", k.Quorum, bescheinigungMaxSignaturen)
+	}
 	return nil
 }
 
@@ -313,19 +319,19 @@ func pruefeBioBescheinigung(tx Transaction) error {
 	wallet := strings.ToLower(strings.TrimSpace(tx.Wallet))
 	bindungMsg := bindungNachrichtV3(b.Modus, nullifier, wallet, b.Zeit)
 	aussageMsg := aussageNachrichtV3(b.Modus, nullifier, b.Zeit)
-	// Die Schluessel einmal je Pruefung dekodieren. Ihre Tauglichkeit (keine
-	// kleine Ordnung) steht seit dem Laden der Konfiguration fest
-	// (bescheinigungKonfig.pruefen); sie je (Unterschrift, Schluessel) neu zu
-	// rechnen, kostete bei 17 Unterschriften und 64 Schluesseln ueber 2.000
-	// Skalarmultiplikationen je Registrierung (Sicherheitspruefung des
-	// Diffs, Hinweis).
+	// Die Schluessel einmal je Pruefung dekodieren. Ihre Tauglichkeit (64 Hex
+	// klein, keine kleine Ordnung) hat bescheinigungKonf schon geprueft --
+	// beim Laden der Genesis (ladeBescheinigungKonfig -> pruefen) bzw. bei
+	// jeder Test-Konfiguration; mit Fehler kaeme k hier nicht an. Sie je
+	// (Unterschrift, Schluessel) neu zu rechnen, kostete bei 17 Unterschriften
+	// und 64 Schluesseln ueber 2.000 Skalarmultiplikationen je Registrierung.
 	pubs := map[string]ed25519.PublicKey{}
 	for _, liste := range [][]string{k.Coordinator, k.Bezeuger} {
 		for _, h := range liste {
-			if !ed25519HexTauglich(h) {
-				return fmt.Errorf("bescheinigung: Schluessel %.12s... untauglich", h)
+			roh, err := hex.DecodeString(h)
+			if err != nil || len(roh) != ed25519.PublicKeySize {
+				return fmt.Errorf("bescheinigung: Schluessel %.12s... unlesbar", h)
 			}
-			roh, _ := hex.DecodeString(h)
 			pubs[h] = ed25519.PublicKey(roh)
 		}
 	}

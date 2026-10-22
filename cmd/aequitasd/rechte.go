@@ -56,8 +56,9 @@ const (
 var rechteHoechstensEintraege = 10_000
 
 // datenVerzeichnisse: die Verzeichnisse unter /data, die der Knoten laut
-// Umgebung benutzt. Ohne AEQUITAS_WAL_PATH liegt das WAL relativ zum
-// Arbeitsverzeichnis (/app, im Image dem Knoten uebergeben).
+// Umgebung benutzt. Das Image setzt AEQUITAS_WAL_PATH auf /data/wal; /app
+// bleibt root (Dockerfile) -- ein relativer WAL-Pfad scheitert dort beim
+// Oeffnen, statt dem Knoten das Verzeichnis seines Binarys zu geben.
 func datenVerzeichnisse(getenv func(string) string) []string {
 	var aus []string
 	for _, name := range []string{"AEQUITAS_WAL_PATH", "MPC_TRIPLE_FILE"} {

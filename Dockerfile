@@ -75,9 +75,14 @@ COPY --from=builder /app/aequitasd .
 COPY --from=builder /app/genesis.json .
 COPY --from=builder /app/aequitas-dapp.html .
 COPY --from=builder /app/downloads ./downloads
-# /app selbst gehoert dem Knoten (ein WAL ohne AEQUITAS_WAL_PATH entsteht hier);
-# die Dateien darin bleiben root und damit unveraenderlich fuer ihn.
-RUN chown aequitas:aequitas /app
+# /app und alles darin bleibt root: das Binary, genesis.json und die
+# Seiten fuehrt bzw. liest root vor dem Ablegen der Rechte. Gehoerte /app dem
+# Knotenbenutzer, koennte Code mit dessen Rechten /app/aequitasd umbenennen
+# und ersetzen -- beim naechsten Neustart liefe es als root
+# (Sicherheitspruefung des Diffs, F-A). Geschrieben wird nur unter /data.
+# Darum liegt das WAL auch ohne eigene Angabe dort (alle Deployments setzen
+# genau diesen Pfad; eine Angabe in der .env geht vor).
+ENV AEQUITAS_WAL_PATH=/data/wal/aequitas_transfers.wal
 EXPOSE 8080
 EXPOSE 4001
 CMD ["./aequitasd"]
