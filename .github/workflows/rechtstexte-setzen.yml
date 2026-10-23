@@ -1,9 +1,12 @@
-name: Impressum und Datenschutz freischalten (beide Boxen)
+name: Impressum und Datenschutz freischalten (C1)
 
-# Die sieben Pflichtangaben (docs/RECHTSTEXTE_FREISCHALTEN.md) in
-# /root/.aequitas.env schreiben und den Knoten neu starten -- erst C1, dann
-# C2, jeweils mit Wartezeit, bis er wieder antwortet. Danach antworten
-# /impressum und /datenschutz mit 200.
+# Die sieben Pflichtangaben (docs/RECHTSTEXTE_FREISCHALTEN.md) in die .env
+# von C1 (netcup, 188.172.229.121) schreiben und nur den Knoten-Container neu
+# starten. Danach antworten /impressum und /datenschutz mit 200.
+#
+# Bis zum 23.10.2026 zielte dieser Workflow auf den alten Contabo1 und auf
+# Contabo2 -- beide abgeschaltet. Er lief nie; Blocker 3 hing an einem Weg,
+# der keinen laufenden Server mehr erreichte.
 #
 # Die Werte stehen danach oeffentlich auf der Website; sie sind hier also
 # keine Geheimnisse. Trotzdem: nur Betreiberangaben eintragen, die
@@ -11,6 +14,8 @@ name: Impressum und Datenschutz freischalten (beide Boxen)
 # ob sie wahr sind.
 #
 # Leere optionale Felder verschwinden samt ihrer Zeile auf der Seite.
+# Rueckweg: die Sicherung .env.bak-rechtstexte-<zeit> neben der .env und
+# docker compose up -d --no-deps node.
 
 on:
   workflow_dispatch:
@@ -41,85 +46,35 @@ on:
         required: false
         default: ""
 
-# Nur lesen (Beta-Pruefung 15.10.2026): dieser Workflow schreibt nichts
-# ins Repo; die Voreinstellung des Tokens soll nicht mehr gelten.
 permissions:
   contents: read
+
+concurrency:
+  group: c1-knoten
+  cancel-in-progress: false
 
 jobs:
   c1:
     runs-on: ubuntu-latest
     environment: produktion
+    timeout-minutes: 20
     steps:
-      - name: Contabo1
-        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
-        with:
-          host: alter-c1-abgeschaltet.invalid
-          username: root
-          key: ${{ secrets.CONTABO_SSH_KEY }}
-          port: 22
-          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
-          timeout: 900s
-          command_timeout: 900s
-          envs: LEGAL_NAME,LEGAL_STRASSE,LEGAL_ORT,LEGAL_LAND,LEGAL_EMAIL,LEGAL_VERANTWORTLICH,LEGAL_AUFSICHTSBEHOERDE,LEGAL_OPTIONAL
-          script: |
-            set -euo pipefail
-            echo "### CONTABO1 -> Rechtstexte ###"
-            ENVF=/root/.aequitas.env
-            [ -f "$ENVF" ] || { echo "FEHLER: $ENVF fehlt"; exit 1; }
-            cp -a "$ENVF" "$ENVF.bak-$(date +%s)"
-            umask 077
-            grep -vE '^LEGAL_[A-Z_]+=' "$ENVF" > "$ENVF.tmp"
-            # Optionale Angaben aus EINEM Feld (workflow_dispatch erlaubt nur zehn Eingaben).
-            IFS=';' read -ra OPT <<< "${LEGAL_OPTIONAL:-}"
-            for paar in "${OPT[@]}"; do
-              key="${paar%%=*}"; val="${paar#*=}"
-              case "$key" in
-                LEGAL_TELEFON|LEGAL_VERTRETEN_DURCH|LEGAL_REGISTERGERICHT|LEGAL_REGISTERNUMMER|LEGAL_USTID)
-                  [ "$paar" != "$key" ] && export "$key=$val" ;;
-                "") ;;
-                *) echo "unbekannte optionale Angabe: $key -- ignoriert" ;;
-              esac
-            done
-            for k in LEGAL_NAME LEGAL_STRASSE LEGAL_ORT LEGAL_LAND LEGAL_EMAIL LEGAL_VERANTWORTLICH LEGAL_AUFSICHTSBEHOERDE LEGAL_TELEFON LEGAL_VERTRETEN_DURCH LEGAL_REGISTERGERICHT LEGAL_REGISTERNUMMER LEGAL_USTID; do
-              v="${!k:-}"
-              # Zeilenumbrueche und Anfuehrungszeichen haben in einer env-Datei nichts verloren.
-              v=$(printf '%s' "$v" | tr -d '\r\n"')
-              [ -n "$v" ] && printf '%s=%s\n' "$k" "$v" >> "$ENVF.tmp"
-            done
-            mv "$ENVF.tmp" "$ENVF"; chmod 600 "$ENVF"
-            echo "gesetzt: $(grep -cE '^LEGAL_[A-Z_]+=' "$ENVF") LEGAL_-Zeilen"
-
-            # Knoten mit derselben Konfiguration neu starten, nur die Umgebung
-            # aus der Datei nachgezogen -- dasselbe Verfahren wie set-apk-url-both.
-            IMAGE="$(docker inspect aequitas-node --format '{{.Config.Image}}')"
-            NET="$(docker inspect aequitas-node --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' | awk '{print $1}')"
-            PORTS="$(docker inspect aequitas-node --format '{{range $p, $c := .HostConfig.PortBindings}}-p {{(index $c 0).HostPort}}:{{$p}} {{end}}' | sed 's|/tcp||g')"
-            MOUNTS="$(docker inspect aequitas-node --format '{{range .Mounts}}-v {{.Source}}:{{.Destination}} {{end}}')"
-            mkdir -p /root/rechtstexte
-            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' \
-              | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME|LEGAL_[A-Z_]+)=' \
-              | grep -E '^[A-Za-z_][A-Za-z0-9_]*=' > /tmp/proc.env
-            grep -E '^[A-Za-z_][A-Za-z0-9_]*=' "$ENVF" | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME)=' > /tmp/file.env
-            awk -F= '!seen[$1]++' /tmp/file.env /tmp/proc.env > /root/rechtstexte/env
-            chmod 600 /root/rechtstexte/env
-            docker stop aequitas-node && docker rm aequitas-node
-            # shellcheck disable=SC2086
-            docker run -d --name aequitas-node --network "$NET" $PORTS $MOUNTS \
-              --env-file /root/rechtstexte/env --restart unless-stopped "$IMAGE" >/dev/null
-            rm -f /tmp/proc.env /tmp/file.env
-
-            echo "=== warten, bis der Knoten antwortet ==="
-            ok=0
-            for i in $(seq 1 30); do
-              if curl -s --max-time 10 -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/api/status | grep -q 200; then ok=1; break; fi
-              sleep 10
-            done
-            [ "$ok" = 1 ] || { echo "FEHLER: Knoten antwortet nach 5 Minuten nicht"; docker logs --tail 40 aequitas-node; exit 1; }
-            echo "legal-status: $(curl -s --max-time 10 http://127.0.0.1:8080/api/legal-status | tr -d '\n' | cut -c1-200)"
-            for p in impressum datenschutz; do
-              echo "  /$p -> HTTP $(curl -s --max-time 10 -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/$p)"
-            done
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Schluessel und Host-Pruefung
+        env:
+          KEY: ${{ secrets.CONTABO_SSH_KEY }}
+        run: |
+          set -eu
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -t ed25519 188.172.229.121 2>/dev/null > ~/.ssh/kh1
+          ssh-keygen -lf ~/.ssh/kh1 | awk '{print $2}' | grep -qx 'SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA' || { echo "::error::Host-Schluessel von C1 passt nicht"; exit 1; }
+          cp ~/.ssh/kh1 ~/.ssh/known_hosts
+      # Die Angaben werden auf dem Runner zu KEY=WERT-Zeilen (ohne
+      # Zeilenumbrueche und Anfuehrungszeichen) und gehen base64-kodiert zur
+      # Box -- keine Eingabe wird dort als Shell-Code gelesen.
+      - name: Angaben aufbereiten
+        id: angaben
         env:
           LEGAL_NAME: ${{ inputs.LEGAL_NAME }}
           LEGAL_STRASSE: ${{ inputs.LEGAL_STRASSE }}
@@ -129,84 +84,56 @@ jobs:
           LEGAL_VERANTWORTLICH: ${{ inputs.LEGAL_VERANTWORTLICH }}
           LEGAL_AUFSICHTSBEHOERDE: ${{ inputs.LEGAL_AUFSICHTSBEHOERDE }}
           LEGAL_OPTIONAL: ${{ inputs.LEGAL_OPTIONAL }}
-
-  c2:
-    needs: c1
-    runs-on: ubuntu-latest
-    environment: produktion
-    steps:
-      - name: Contabo2
-        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
-        with:
-          host: alter-c2-abgeschaltet.invalid
-          username: root
-          key: ${{ secrets.CONTABO2_SSH_KEY }}
-          port: 22
-          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
-          timeout: 900s
-          command_timeout: 900s
-          envs: LEGAL_NAME,LEGAL_STRASSE,LEGAL_ORT,LEGAL_LAND,LEGAL_EMAIL,LEGAL_VERANTWORTLICH,LEGAL_AUFSICHTSBEHOERDE,LEGAL_OPTIONAL
-          script: |
-            set -euo pipefail
-            echo "### CONTABO2 -> Rechtstexte ###"
-            ENVF=/root/.aequitas.env
-            [ -f "$ENVF" ] || { echo "FEHLER: $ENVF fehlt"; exit 1; }
-            cp -a "$ENVF" "$ENVF.bak-$(date +%s)"
-            umask 077
-            grep -vE '^LEGAL_[A-Z_]+=' "$ENVF" > "$ENVF.tmp"
-            # Optionale Angaben aus EINEM Feld (workflow_dispatch erlaubt nur zehn Eingaben).
-            IFS=';' read -ra OPT <<< "${LEGAL_OPTIONAL:-}"
-            for paar in "${OPT[@]}"; do
-              key="${paar%%=*}"; val="${paar#*=}"
-              case "$key" in
-                LEGAL_TELEFON|LEGAL_VERTRETEN_DURCH|LEGAL_REGISTERGERICHT|LEGAL_REGISTERNUMMER|LEGAL_USTID)
-                  [ "$paar" != "$key" ] && export "$key=$val" ;;
-                "") ;;
-                *) echo "unbekannte optionale Angabe: $key -- ignoriert" ;;
-              esac
-            done
-            for k in LEGAL_NAME LEGAL_STRASSE LEGAL_ORT LEGAL_LAND LEGAL_EMAIL LEGAL_VERANTWORTLICH LEGAL_AUFSICHTSBEHOERDE LEGAL_TELEFON LEGAL_VERTRETEN_DURCH LEGAL_REGISTERGERICHT LEGAL_REGISTERNUMMER LEGAL_USTID; do
-              v="${!k:-}"
-              v=$(printf '%s' "$v" | tr -d '\r\n"')
-              [ -n "$v" ] && printf '%s=%s\n' "$k" "$v" >> "$ENVF.tmp"
-            done
-            mv "$ENVF.tmp" "$ENVF"; chmod 600 "$ENVF"
-            echo "gesetzt: $(grep -cE '^LEGAL_[A-Z_]+=' "$ENVF") LEGAL_-Zeilen"
-
-            IMAGE="$(docker inspect aequitas-node --format '{{.Config.Image}}')"
-            NET="$(docker inspect aequitas-node --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' | awk '{print $1}')"
-            PORTS="$(docker inspect aequitas-node --format '{{range $p, $c := .HostConfig.PortBindings}}-p {{(index $c 0).HostPort}}:{{$p}} {{end}}' | sed 's|/tcp||g')"
-            MOUNTS="$(docker inspect aequitas-node --format '{{range .Mounts}}-v {{.Source}}:{{.Destination}} {{end}}')"
-            mkdir -p /root/rechtstexte
-            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' \
-              | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME|LEGAL_[A-Z_]+)=' \
-              | grep -E '^[A-Za-z_][A-Za-z0-9_]*=' > /tmp/proc.env
-            grep -E '^[A-Za-z_][A-Za-z0-9_]*=' "$ENVF" | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME)=' > /tmp/file.env
-            awk -F= '!seen[$1]++' /tmp/file.env /tmp/proc.env > /root/rechtstexte/env
-            chmod 600 /root/rechtstexte/env
-            docker stop aequitas-node && docker rm aequitas-node
-            # shellcheck disable=SC2086
-            docker run -d --name aequitas-node --network "$NET" $PORTS $MOUNTS \
-              --env-file /root/rechtstexte/env --restart unless-stopped "$IMAGE" >/dev/null
-            rm -f /tmp/proc.env /tmp/file.env
-
-            echo "=== warten, bis der Knoten antwortet ==="
-            ok=0
-            for i in $(seq 1 30); do
-              if curl -s --max-time 10 -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/api/status | grep -q 200; then ok=1; break; fi
-              sleep 10
-            done
-            [ "$ok" = 1 ] || { echo "FEHLER: Knoten antwortet nach 5 Minuten nicht"; docker logs --tail 40 aequitas-node; exit 1; }
-            echo "legal-status: $(curl -s --max-time 10 http://127.0.0.1:8080/api/legal-status | tr -d '\n' | cut -c1-200)"
-            for p in impressum datenschutz; do
-              echo "  /$p -> HTTP $(curl -s --max-time 10 -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/$p)"
-            done
+        run: |
+          set -euo pipefail
+          # Optionale Angaben aus EINEM Feld (workflow_dispatch erlaubt nur zehn Eingaben).
+          IFS=';' read -ra OPT <<< "${LEGAL_OPTIONAL:-}"
+          for paar in "${OPT[@]}"; do
+            key="${paar%%=*}"; val="${paar#*=}"
+            case "$key" in
+              LEGAL_TELEFON|LEGAL_VERTRETEN_DURCH|LEGAL_REGISTERGERICHT|LEGAL_REGISTERNUMMER|LEGAL_USTID)
+                [ "$paar" != "$key" ] && export "$key=$val" ;;
+              "") ;;
+              *) echo "unbekannte optionale Angabe: $key -- ignoriert" ;;
+            esac
+          done
+          : > legal.env
+          for k in LEGAL_NAME LEGAL_STRASSE LEGAL_ORT LEGAL_LAND LEGAL_EMAIL LEGAL_VERANTWORTLICH LEGAL_AUFSICHTSBEHOERDE LEGAL_TELEFON LEGAL_VERTRETEN_DURCH LEGAL_REGISTERGERICHT LEGAL_REGISTERNUMMER LEGAL_USTID; do
+            v="${!k:-}"
+            # Zeilenumbrueche und Anfuehrungszeichen haben in einer env-Datei nichts verloren.
+            v=$(printf '%s' "$v" | tr -d '\r\n"')
+            [ -n "$v" ] && printf '%s=%s\n' "$k" "$v" >> legal.env
+          done
+          echo "b64=$(base64 -w0 legal.env)" >> "$GITHUB_OUTPUT"
+          echo "$(wc -l < legal.env) LEGAL_-Zeilen"
+      - name: C1 setzen und Knoten neu starten
         env:
-          LEGAL_NAME: ${{ inputs.LEGAL_NAME }}
-          LEGAL_STRASSE: ${{ inputs.LEGAL_STRASSE }}
-          LEGAL_ORT: ${{ inputs.LEGAL_ORT }}
-          LEGAL_LAND: ${{ inputs.LEGAL_LAND }}
-          LEGAL_EMAIL: ${{ inputs.LEGAL_EMAIL }}
-          LEGAL_VERANTWORTLICH: ${{ inputs.LEGAL_VERANTWORTLICH }}
-          LEGAL_AUFSICHTSBEHOERDE: ${{ inputs.LEGAL_AUFSICHTSBEHOERDE }}
-          LEGAL_OPTIONAL: ${{ inputs.LEGAL_OPTIONAL }}
+          B64: ${{ steps.angaben.outputs.b64 }}
+        run: |
+          [[ "$B64" =~ ^[A-Za-z0-9+/=]+$ ]] || { echo "::error::Angaben leer oder nicht base64"; exit 1; }
+          ssh -o BatchMode=yes -o ServerAliveInterval=30 root@188.172.229.121 "B64='$B64' bash -s" <<'SKRIPT'
+          set -euo pipefail
+          cd /root/Aequitas/deploy/validator
+          grep -qx 'ANNAHME_ROLLE=annehmend' .env || { echo "ABBRUCH: ANNAHME_ROLLE=annehmend fehlt in .env"; exit 1; }
+          cp -a .env ".env.bak-rechtstexte-$(date +%s)"
+          umask 077
+          printf '%s' "$B64" | base64 -d > /tmp/legal.env
+          grep -qvE '^LEGAL_[A-Z_]+=' /tmp/legal.env && { echo "ABBRUCH: unerwartete Zeile in den Angaben"; exit 1; }
+          { grep -vE '^LEGAL_[A-Z_]+=' .env; cat /tmp/legal.env; } > .env.tmp
+          rm -f /tmp/legal.env
+          mv .env.tmp .env; chmod 600 .env
+          echo "gesetzt: $(grep -cE '^LEGAL_[A-Z_]+=' .env) LEGAL_-Zeilen"
+          docker compose up -d --no-deps node
+          ok=0
+          for i in $(seq 1 30); do
+            if curl -s --max-time 10 -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/api/status | grep -q 200; then ok=1; break; fi
+            sleep 10
+          done
+          [ "$ok" = 1 ] || { echo "FEHLER: Knoten antwortet nach 5 Minuten nicht"; exit 1; }
+          echo "legal-status: $(curl -s --max-time 10 http://127.0.0.1:8080/api/legal-status | tr -d '\n' | cut -c1-200)"
+          for p in impressum datenschutz; do
+            echo "  /$p -> HTTP $(curl -s --max-time 10 -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/$p)"
+          done
+          SKRIPT
+      - name: C1 lebt und die Hoehe steigt
+        run: bash deploy/pruefe-knoten.sh http://188.172.229.121:8080
