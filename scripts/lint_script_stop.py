@@ -1,103 +1,86 @@
 #!/usr/bin/env python3
-"""script_stop: true zerlegt Skripte, die mehr als eine Zeile brauchen.
+"""Kein Workflow-Schritt mit appleboy/ssh-action darf `script_stop` setzen.
 
-WAS appleboy/ssh-action DAMIT TUT
+WARUM DIE EINGABE WEG MUSS (23.10.2026)
 
-Mit `script_stop: true` teilt drone-ssh das Skript an jedem Zeilenumbruch,
-schneidet jede Zeile zurecht und haengt dahinter
+appleboy/ssh-action ab v1.2.x (wir nutzen v1.2.5, 0ff4204d) kennt
+`script_stop` nicht mehr: die Eingabe steht nicht mehr in action.yml und wird
+still ignoriert, GitHub schreibt nur eine Warnung ins Log. Ein Schritt, der
+sich auf `script_stop: true` verlaesst, liefe nach einem gescheiterten Befehl
+einfach weiter -- ein Deploy nach einem gescheiterten Build, ein Neustart nach
+einer gescheiterten Sicherung. Das ist fail-open, und keine CI bemerkt es, weil
+kein CI-Job die Aktion ausfuehrt.
 
-    DRONE_SSH_PREV_COMMAND_EXIT_CODE=$? ; if [ ... -ne 0 ]; then exit ...; fi;
+Vor dem Update standen 37 Schritte auf `script_stop: true`. Sie brechen jetzt
+im Skript selbst ab: `set -euo pipefail` (wo vorher `set -uo pipefail` stand)
+oder `set -e` als erste Zeile -- das ist, was gemeint war. Die uebrigen
+`script_stop: false` waren ohnehin die Voreinstellung und sind entfernt.
 
--- ausser die Zeile endet mit einem Backslash. Das ist kein `set -e`. Es trifft
-Zeilen, die fuer sich genommen gar kein Befehl sind:
+WAS script_stop: true IN v1.0.3 TAT (Vorgeschichte, 23.09.2026)
 
-- hinter `else` steht der Exit-Code der GESCHEITERTEN Bedingung, also 1:
-  jeder else-Zweig beendet den Lauf, bevor er beginnt;
-- hinter `case ... in` entsteht ein Syntaxfehler;
-- in einem Heredoc landet die Pruefzeile IN DER DATEI, die geschrieben wird.
+drone-ssh teilte das Skript an jedem Zeilenumbruch und haengte hinter jede
+Zeile `DRONE_SSH_PREV_COMMAND_EXIT_CODE=$? ; if [ ... -ne 0 ]; then exit ...;
+fi;`. Hinter `else` stand damit der Exit-Code der gescheiterten Bedingung,
+`case ... in` wurde zum Syntaxfehler, in Heredocs landete die Pruefzeile in
+der geschriebenen Datei. wachhund-telegram-installieren.yml und
+rechtstexte-setzen.yml waren so zerlegt; 21 Schritte in 18 Dateien.
 
-BELEGT AM 23.09.2026
+Diese Pruefung schlaegt fehl, sobald ein ssh-action-Schritt `script_stop`
+ueberhaupt setzt, egal mit welchem Wert. Wer einen Abbruch beim ersten Fehler
+will, schreibt `set -e` (oder `set -euo pipefail`) als erste Skriptzeile.
 
-wachhund-telegram-installieren.yml schrieb so ein verstuemmeltes wachhund.sh
-auf beide Boxen: im gruenen Fall stieg es hinter `else` mit 1 aus, bevor es
-seinen Zustand schrieb -- "wieder gruen" haette es nie gemeldet. Lokal
-nachgebaut: Original Exit 0, umgeformt Exit 1. rechtstexte-setzen.yml, der
-Ein-Klick-Weg fuer Impressum und Datenschutz, hatte nach der Umformung einen
-Syntaxfehler und waere beim ersten Klick gescheitert. 21 Schritte in 18
-Dateien waren betroffen.
-
-Diese Pruefung baut die Umformung nach und schlaegt fehl, sobald ein Schritt
-mit script_stop: true eine solche Struktur enthaelt oder danach nicht mehr
-parst. Abhilfe ist immer dieselbe: script_stop: false und `set -e` (oder
-`set -euo pipefail`) als erste Zeile -- das ist, was gemeint war.
+`--selbsttest` prueft die Pruefung an erfundenen Workflows.
 """
 import glob
-import os
-import re
-import subprocess
 import sys
-import tempfile
 
 import yaml
 
-PRUEFZEILE = ("DRONE_SSH_PREV_COMMAND_EXIT_CODE=$? ; if [ $DRONE_SSH_PREV_COMMAND_EXIT_CODE "
-              "-ne 0 ]; then exit $DRONE_SSH_PREV_COMMAND_EXIT_CODE; fi;")
 
-
-def umformen(skript: str) -> str:
-    aus = []
-    for z in skript.split("\n"):
-        z = z.strip()
-        if not z:
-            continue
-        aus.append(z)
-        if not z.endswith("\\"):
-            aus.append(PRUEFZEILE)
-    return "\n".join(aus) + "\n"
-
-
-def befunde(skript: str) -> list[str]:
-    s = re.sub(r"\$\{\{[^}]*\}\}", "X", skript)
-    zeilen = [z.strip() for z in s.split("\n")]
-    # Kommentarzeilen zaehlen nicht: "state-only dumps are <<200MB" in
-    # backup-ledger.yml ist kein Heredoc (erster Fehlalarm, 23.09.2026).
-    code = [z for z in zeilen if not z.startswith("#")]
+def befunde(d: dict) -> list[str]:
     g = []
-    if any(re.search(r"<<-?\s*['\"]?[A-Za-z_]\w*", z) for z in code):
-        g.append("Heredoc (die Pruefzeilen landen in der geschriebenen Datei)")
-    if any(z == "else" or z.startswith(("else ", "elif ")) for z in zeilen):
-        g.append("else/elif (steigt hinter else mit dem Exit-Code der Bedingung aus)")
-    if re.search(r"\bcase\b.*\bin\s*$", s, re.M):
-        g.append("case (Syntaxfehler nach der Umformung)")
-    if re.search(r"-c '\s*\n", s):
-        g.append("mehrzeiliges -c '...' (Pruefzeilen landen im Programmtext)")
-    with tempfile.NamedTemporaryFile("w", suffix=".sh", delete=False) as t:
-        t.write(umformen(s))
-    try:
-        r = subprocess.run(["bash", "-n", t.name], capture_output=True, text=True)
-    finally:
-        os.unlink(t.name)
-    if r.returncode:
-        g.append("Syntaxfehler nach der Umformung: " + r.stderr.strip().splitlines()[0].split(": ", 1)[-1])
+    for jn, j in (d.get("jobs") or {}).items():
+        for st in (j or {}).get("steps") or []:
+            if "ssh-action" not in str(st.get("uses", "")):
+                continue
+            w = st.get("with") or {}
+            if "script_stop" in w:
+                g.append(f"{jn} / {st.get('name', '?')}: script_stop: {w['script_stop']} "
+                         f"(ab ssh-action v1.2 still ignoriert)")
     return g
 
 
+def selbsttest() -> int:
+    def wf(w):
+        return {"jobs": {"j": {"steps": [{"name": "s", "uses": "appleboy/ssh-action@x", "with": w}]}}}
+    faelle = [
+        (wf({"script": "deploy.sh", "script_stop": True}), 1),
+        (wf({"script": "deploy.sh", "script_stop": "true"}), 1),
+        (wf({"script": "deploy.sh", "script_stop": False}), 1),
+        (wf({"script": "set -e\ndeploy.sh"}), 0),
+        ({"jobs": {"j": {"steps": [{"uses": "appleboy/scp-action@x", "with": {"script_stop": True}}]}}}, 0),
+        ({"jobs": {"j": {"steps": [{"run": "true"}]}}}, 0),
+    ]
+    falsch = 0
+    for i, (d, n) in enumerate(faelle):
+        if len(befunde(d)) != n:
+            falsch += 1
+            print(f"Selbsttest {i}: erwartet {n} Befund(e), bekommen {befunde(d)}")
+    print("Selbsttest bestanden." if not falsch else f"Selbsttest: {falsch} Fehler.")
+    return 1 if falsch else 0
+
+
 def main() -> int:
+    if sys.argv[1:] == ["--selbsttest"]:
+        return selbsttest()
     fehler = 0
     dateien = sorted(glob.glob(".github/workflows/*.yml") + glob.glob(".github/workflows/*.yaml"))
     for f in dateien:
         d = yaml.safe_load(open(f, encoding="utf-8")) or {}
-        for jn, j in (d.get("jobs") or {}).items():
-            for st in j.get("steps") or []:
-                w = st.get("with") or {}
-                if "ssh-action" not in str(st.get("uses", "")) or "script" not in w:
-                    continue
-                if str(w.get("script_stop", "false")).strip().lower() != "true":
-                    continue
-                for b in befunde(str(w["script"])):
-                    fehler += 1
-                    print(f"::error file={f}::{jn} / {st.get('name', '?')}: script_stop: true mit {b}. "
-                          f"Abhilfe: script_stop: false und set -e als erste Skriptzeile.")
+        for b in befunde(d):
+            fehler += 1
+            print(f"::error file={f}::{b}. Abhilfe: Zeile streichen; fuer Abbruch beim ersten "
+                  f"Fehler set -e als erste Skriptzeile.")
     if fehler:
         print(f"{fehler} Befund(e). Hintergrund: Kopf von scripts/lint_script_stop.py")
         return 1

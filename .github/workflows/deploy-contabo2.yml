@@ -97,7 +97,7 @@ jobs:
           done
           echo "gave up waiting for Contabo1's deploy after 40 min — proceeding anyway (fail-open)"
       - name: Deploy to Contabo2
-        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         with:
           host: 194.163.188.71
           username: root
@@ -117,7 +117,7 @@ jobs:
           # PATH/HOSTNAME/HOME/RESYNC_FROM_SNAPSHOT) — same pattern as the
           # existing redeploy_normal_c2.sh, plus an actual image rebuild.
           script: |
-            set -uo pipefail
+            set -euo pipefail
             # Prune BEFORE the build, not only after it.
             #
             # The post-build prune below bounds how much cache a finished deploy
@@ -185,7 +185,6 @@ jobs:
             if docker builder prune -af --max-used-space 10GB >/tmp/prune.out 2>&1; then tail -2 /tmp/prune.out; else tail -2 /tmp/prune.out; echo "--max-used-space fehlgeschlagen"; fi; echo "zusaetzlich: --filter until=72h (#214)"; docker builder prune -af --filter until=72h 2>&1 | tail -2 || echo "(builder prune fehlgeschlagen)"
             echo "=== disk after deploy ==="
             df -h / | tail -1
-          script_stop: true
           timeout: 1800s
           command_timeout: 1800s
       # Contabo1's own deploy gained this check first; without the same one
@@ -300,14 +299,13 @@ jobs:
       # erfolgreichem Deploy und Pruefung; entfernt nur Images ohne Container.
       - name: Remove unused images on Contabo2 (after a successful deploy)
         continue-on-error: true
-        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         with:
           host: 194.163.188.71
           username: root
           key: ${{ secrets.CONTABO2_SSH_KEY }}
           port: 22
           fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
-          script_stop: false
           timeout: 300s
           command_timeout: 300s
           script: |

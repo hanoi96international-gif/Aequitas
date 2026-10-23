@@ -43,14 +43,13 @@ jobs:
     environment: produktion
     steps:
       - name: Name the restarter
-        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         with:
           host: ${{ inputs.box == 'contabo1' && 'alter-c1-abgeschaltet.invalid' || '194.163.188.71' }}
           username: root
           key: ${{ inputs.box == 'contabo1' && secrets.CONTABO_SSH_KEY || secrets.CONTABO2_SSH_KEY }}
           port: 22
           fingerprint: ${{ inputs.box == 'contabo1' && 'SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4' || 'SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto' }}
-          script_stop: false
           timeout: 300s
           command_timeout: 300s
           script: |
