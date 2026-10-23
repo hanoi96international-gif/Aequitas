@@ -1,0 +1,69 @@
+name: C1 -- Ausnahme von der RPC-Ratenbegrenzung entfernen
+
+# perf-c1.yml setzte am 26.09.2026 AEQUITAS_RPC_RATE_LIMIT_FREI auf die IP
+# von C2 (Lastgenerator). C2 ist seit dem 03.10.2026 abgeschaltet, seine IP
+# meldete am 21.10.2026 einen fremden Host-Schluessel -- die Ausnahme gilt
+# seitdem einem Fremden. Dieser Workflow leert NUR diesen einen Wert auf C1;
+# alle anderen Schalter bleiben, wie sie sind (perf-c1.yml erneut laufen zu
+# lassen wuerde alle Schalter vom 26.09. zuruecksetzen).
+#
+# Ohne "schreiben" wird nur angezeigt. Rueckweg: die Sicherung
+# .env.bak-rpc-frei-<zeit> neben der .env und docker compose up -d --no-deps node.
+on:
+  workflow_dispatch:
+    inputs:
+      schreiben:
+        description: "Leeren und Knoten neu starten (sonst nur anzeigen)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: c1-knoten
+  cancel-in-progress: false
+
+jobs:
+  c1:
+    runs-on: ubuntu-latest
+    environment: produktion
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Schluessel und Host-Pruefung
+        env:
+          KEY: ${{ secrets.CONTABO_SSH_KEY }}
+        run: |
+          set -eu
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -t ed25519 188.172.229.121 2>/dev/null > ~/.ssh/kh1
+          ssh-keygen -lf ~/.ssh/kh1 | awk '{print $2}' | grep -qx 'SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA' || { echo "::error::Host-Schluessel von C1 passt nicht"; exit 1; }
+          cp ~/.ssh/kh1 ~/.ssh/known_hosts
+      - name: Ausnahme anzeigen und leeren
+        env:
+          SCHREIBEN: ${{ inputs.schreiben }}
+        run: |
+          ssh -o BatchMode=yes -o ServerAliveInterval=30 root@188.172.229.121 "SCHREIBEN='$SCHREIBEN' bash -s" <<'SKRIPT'
+          set -euo pipefail
+          cd /root/Aequitas/deploy/validator
+          proz() { docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep '^AEQUITAS_RPC_RATE_LIMIT_FREI=' | cut -d= -f2- || true; }
+          datei=$(grep '^AEQUITAS_RPC_RATE_LIMIT_FREI=' .env | cut -d= -f2- || true)
+          echo "Prozess: AEQUITAS_RPC_RATE_LIMIT_FREI=$(proz)"
+          echo ".env:    AEQUITAS_RPC_RATE_LIMIT_FREI=$datei"
+          [ "$SCHREIBEN" = "true" ] || { echo "nur angezeigt"; exit 0; }
+          if [ -z "$(proz)" ] && [ -z "$datei" ]; then echo "schon leer"; exit 0; fi
+          grep -qx 'ANNAHME_ROLLE=annehmend' .env || { echo "ABBRUCH: ANNAHME_ROLLE=annehmend fehlt in .env"; exit 1; }
+          cp -a .env ".env.bak-rpc-frei-$(date +%s)"
+          if grep -q '^AEQUITAS_RPC_RATE_LIMIT_FREI=' .env; then
+            sed -i 's|^AEQUITAS_RPC_RATE_LIMIT_FREI=.*|AEQUITAS_RPC_RATE_LIMIT_FREI=|' .env
+          fi
+          docker compose up -d --no-deps node
+          neu=$(proz)
+          [ -z "$neu" ] || { echo "FEHLER: im Prozess steht noch '$neu'"; exit 1; }
+          echo "C1: keine Ausnahme mehr"
+          SKRIPT
+      - name: C1 lebt und die Hoehe steigt
+        if: ${{ inputs.schreiben }}
+        run: bash deploy/pruefe-knoten.sh http://188.172.229.121:8080
