@@ -29,7 +29,12 @@ ABGESCHALTET = {
 }
 
 fehler = []
-for pfad in sorted(glob.glob(".github/workflows/*.yml") + glob.glob(".github/workflows/*.yaml")):
+# Auch die Skripte, die Workflows auf die Server schicken: deploy/server-
+# starten.sh trug bis zum 23.10.2026 die C2-IP als Snapshot-Quelle.
+DATEIEN = (glob.glob(".github/workflows/*.yml") + glob.glob(".github/workflows/*.yaml")
+           + glob.glob(".github/neustart/*.sh") + glob.glob(".github/pruefstand/*.sh")
+           + glob.glob("deploy/*.sh"))
+for pfad in sorted(DATEIEN):
     with open(pfad, encoding="utf-8") as f:
         for nr, zeile in enumerate(f, 1):
             if zeile.lstrip().startswith("#"):
