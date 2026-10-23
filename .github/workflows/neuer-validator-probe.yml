@@ -50,7 +50,7 @@ jobs:
       - name: Knoten starten und beobachten
         env:
           DATABASE_URL: postgres://postgres:aequitas@localhost:5432/aequitas?sslmode=disable
-          PRIMARY_NODE_URLS: http://alter-c1-abgeschaltet.invalid:8080,http://194.163.188.71:8080
+          PRIMARY_NODE_URLS: http://alter-c1-abgeschaltet.invalid:8080,http://alter-c2-abgeschaltet.invalid:8080
           PRIMARY_NODE_URL: http://alter-c1-abgeschaltet.invalid:8080
           AEQUITAS_WAL_ENABLED: "1"
           AEQUITAS_WAL_PATH: /tmp/aequitas-wal/aequitas_transfers.wal

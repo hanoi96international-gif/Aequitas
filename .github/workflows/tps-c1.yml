@@ -44,12 +44,12 @@ jobs:
           printf '%s\n' "$K1" > ~/.ssh/c1 && printf '%s\n' "$K2" > ~/.ssh/c2 && chmod 600 ~/.ssh/c1 ~/.ssh/c2
           ssh-keyscan -t ed25519 188.172.229.121 2>/dev/null > ~/.ssh/k1
           ssh-keygen -lf ~/.ssh/k1 | awk '{print $2}' | grep -qx 'SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA'
-          ssh-keyscan 194.163.188.71 2>/dev/null > ~/.ssh/k2
+          ssh-keyscan alter-c2-abgeschaltet.invalid 2>/dev/null > ~/.ssh/k2
           ssh-keygen -lf ~/.ssh/k2 | awk '{print $2}' | grep -qx 'SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto'
           cat ~/.ssh/k1 ~/.ssh/k2 > ~/.ssh/known_hosts
       - name: Werkzeug auf C2
         run: |
-          scp -i ~/.ssh/c2 -o BatchMode=yes tools/contabo-loadtest/main.go tools/contabo-loadtest/gen_accounts.go go.mod go.sum root@194.163.188.71:/root/contabo-loadtest/
+          scp -i ~/.ssh/c2 -o BatchMode=yes tools/contabo-loadtest/main.go tools/contabo-loadtest/gen_accounts.go go.mod go.sum root@alter-c2-abgeschaltet.invalid:/root/contabo-loadtest/
       - name: Startzeit und Stand C1
         run: |
           echo "START=$(date -u +%Y-%m-%dT%H:%M:%S)" >> "$GITHUB_ENV"
@@ -65,7 +65,7 @@ jobs:
           echo $! > /tmp/rueckstau.pid
       - name: Last von C2 auf C1
         run: |
-          ssh -i ~/.ssh/c2 -o BatchMode=yes root@194.163.188.71 \
+          ssh -i ~/.ssh/c2 -o BatchMode=yes root@alter-c2-abgeschaltet.invalid \
             "DURATION='$DURATION' ACCOUNTS_CSV='$ACCOUNTS_CSV' PAIRS='$PAIRS' BATCH='$BATCH' TOPOLOGY='$TOPOLOGY' bash -s" <<'SKRIPT'
           set -euo pipefail
           cd /root/contabo-loadtest
@@ -138,12 +138,12 @@ jobs:
             "curl -s -m 10 http://127.0.0.1:8080/api/health/combined | jq -c '{produktions_ausfaelle, exclusive_lock, fallback_gruende, signierte_ueberweisungen, rueckstau: (.rueckstau|{aktuell,grenze,abgelehnt})}'" | head -c 4000 || true
           echo
           echo "--- C2: Nachspielen (replay_phasen, replay_schlimmster) ---"
-          ssh -i ~/.ssh/c2 -o BatchMode=yes root@194.163.188.71 \
+          ssh -i ~/.ssh/c2 -o BatchMode=yes root@alter-c2-abgeschaltet.invalid \
             "curl -s -m 10 http://127.0.0.1:8080/api/health/combined | jq -c '{replay_phasen: (.replay_phasen|del(.bedeutung)), replay_schlimmster, buendel_teile: (.buendel_teile|del(.bedeutung))}'" | head -c 6000 || true
           echo
       - name: C2 im Fenster -- empfangene, abgelehnte, fehlende Bloecke
         run: |
-          ssh -i ~/.ssh/c2 -o BatchMode=yes root@194.163.188.71 "START='$START' bash -s" <<'SKRIPT' || true
+          ssh -i ~/.ssh/c2 -o BatchMode=yes root@alter-c2-abgeschaltet.invalid "START='$START' bash -s" <<'SKRIPT' || true
           for m in 'AddPeerBlock' 'missing parent' 'orphan' 'Orphan' 'awaiting' 'rejected' '✗' 'timeout' 'fetchMissing' 'push'; do
             printf '%s: ' "$m"; docker logs --since "$START" aequitas-node 2>&1 | grep -c -- "$m" || true
           done

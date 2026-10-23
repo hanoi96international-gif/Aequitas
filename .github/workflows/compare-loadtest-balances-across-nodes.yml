@@ -70,7 +70,7 @@ jobs:
           # reach the primary over the public URL and Contabo1 over its IP,
           # the mirror image of what compare-stateroot-components does from
           # Contabo1.
-          host: 194.163.188.71
+          host: alter-c2-abgeschaltet.invalid
           username: root
           key: ${{ secrets.CONTABO2_SSH_KEY }}
           port: 22

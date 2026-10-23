@@ -108,7 +108,7 @@ jobs:
       - name: Wait for Contabo2 to be healthy (never restart both validators at once)
         run: |
           for i in $(seq 1 40); do
-            code=$(curl -s -o /dev/null -w "%{http_code}" -m 10 http://194.163.188.71:8080/api/status || true)
+            code=$(curl -s -o /dev/null -w "%{http_code}" -m 10 http://alter-c2-abgeschaltet.invalid:8080/api/status || true)
             if [ "$code" = "200" ]; then
               echo "Contabo2 healthy (HTTP 200) — proceeding with the Contabo1 deploy"
               exit 0

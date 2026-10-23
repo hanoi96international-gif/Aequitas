@@ -46,12 +46,12 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Genesis passt zur laufenden Kette (Wechsel nur ueber neustart-bei-null.yml)
-        run: bash .github/neustart/genesis-passt.sh http://$C1:8080 http://194.163.188.71:8080
+        run: bash .github/neustart/genesis-passt.sh http://$C1:8080 http://alter-c2-abgeschaltet.invalid:8080
       - name: C2 muss laufen, bevor C1 neu startet
         if: env.C2_AKTIV == 'ja'
         run: |
           for i in $(seq 1 40); do
-            [ "$(curl -s -o /dev/null -w '%{http_code}' -m 10 http://194.163.188.71:8080/api/status || true)" = 200 ] && { echo "C2 antwortet"; exit 0; }
+            [ "$(curl -s -o /dev/null -w '%{http_code}' -m 10 http://alter-c2-abgeschaltet.invalid:8080/api/status || true)" = 200 ] && { echo "C2 antwortet"; exit 0; }
             echo "C2 antwortet noch nicht ($i/40)"; sleep 15
           done
           echo "::error::C2 antwortet seit 10 min nicht -- C1 wird NICHT neu gestartet, sonst stuende die Kette"
@@ -107,13 +107,13 @@ jobs:
           set -eu
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           printf '%s\n' "$KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan 194.163.188.71 2>/dev/null > ~/.ssh/kh
+          ssh-keyscan alter-c2-abgeschaltet.invalid 2>/dev/null > ~/.ssh/kh
           ssh-keygen -lf ~/.ssh/kh | awk '{print $2}' | grep -qx 'SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto' || { echo "::error::Host-Schluessel von C2 passt nicht"; exit 1; }
           cp ~/.ssh/kh ~/.ssh/known_hosts
       - name: C2 nachziehen
         if: env.C2_AKTIV == 'ja'
         run: |
-          ssh -o BatchMode=yes -o ServerAliveInterval=30 root@194.163.188.71 '
+          ssh -o BatchMode=yes -o ServerAliveInterval=30 root@alter-c2-abgeschaltet.invalid '
             set -euo pipefail
             grep -qx "ANNAHME_ROLLE=nur_lesend" /root/.aequitas.env || { echo "ABBRUCH: ANNAHME_ROLLE=nur_lesend fehlt in /root/.aequitas.env"; exit 1; }
             # Build-Cache begrenzen und das Ergebnis LOGGEN (#214). Auf C2 (Docker
@@ -134,14 +134,14 @@ jobs:
           '
       - name: C2 lebt und die Hoehe steigt
         if: env.C2_AKTIV == 'ja'
-        run: bash deploy/pruefe-knoten.sh http://194.163.188.71:8080
+        run: bash deploy/pruefe-knoten.sh http://alter-c2-abgeschaltet.invalid:8080
       - name: C2 -- ungenutzte Images entfernen (nur nach erfolgreichem Deploy)
         if: env.C2_AKTIV == 'ja'
         # #214: alte Images blieben auf C2 liegen (8,4 GB am 29.09.2026).
         # Entfernt nur Images ohne Container; der laufende Knoten ist nicht betroffen.
         continue-on-error: true
         run: |
-          ssh -o BatchMode=yes -o ServerAliveInterval=30 root@194.163.188.71 '
+          ssh -o BatchMode=yes -o ServerAliveInterval=30 root@alter-c2-abgeschaltet.invalid '
             df -h / | tail -1
             docker image prune -af 2>&1 | tail -2 || echo "(image prune fehlgeschlagen)"
             df -h / | tail -1

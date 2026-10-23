@@ -31,14 +31,14 @@ jobs:
           set -eu
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           printf '%s\n' "$K2" > ~/.ssh/c2 && chmod 600 ~/.ssh/c2
-          ssh-keyscan 194.163.188.71 2>/dev/null > ~/.ssh/k2
+          ssh-keyscan alter-c2-abgeschaltet.invalid 2>/dev/null > ~/.ssh/k2
           ssh-keygen -lf ~/.ssh/k2 | awk '{print $2}' | grep -qx 'SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto'
           cp ~/.ssh/k2 ~/.ssh/known_hosts
       - name: Holen, pruefen, hineinschreiben
         run: |
           echo "$TAG" | grep -qE '^app-v[0-9]+\.[0-9]+\.[0-9]+$'
           echo "$SOLL" | grep -qE '^[0-9a-f]{64}$'
-          ssh -i ~/.ssh/c2 -o BatchMode=yes root@194.163.188.71 "TAG='$TAG' SOLL='$SOLL' bash -s" <<'SKRIPT'
+          ssh -i ~/.ssh/c2 -o BatchMode=yes root@alter-c2-abgeschaltet.invalid "TAG='$TAG' SOLL='$SOLL' bash -s" <<'SKRIPT'
           set -eu
           ZIEL=/root/aequitas-downloads/aequitas-app.apk
           [ -f "$ZIEL" ] || { echo "keine eingehaengte Datei auf C2 -- nichts zu tun"; exit 0; }

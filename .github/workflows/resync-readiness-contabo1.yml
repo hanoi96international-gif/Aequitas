@@ -55,7 +55,7 @@ jobs:
             echo "--- peers this node is pointed at ---"
             docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E '^(PRIMARY_NODE_URL|PRIMARY_NODE_URLS|SELF_URL)=' || echo "(none)"
             echo "--- is Contabo2's snapshot reachable and signed? ---"
-            curl -s --max-time 60 http://194.163.188.71:8080/api/snapshot -o /tmp/peer_snap.json
+            curl -s --max-time 60 http://alter-c2-abgeschaltet.invalid:8080/api/snapshot -o /tmp/peer_snap.json
             echo "bytes: $(wc -c < /tmp/peer_snap.json)"
             python3 - <<'PY'
             import json

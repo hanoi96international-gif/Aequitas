@@ -27,7 +27,7 @@ jobs:
       - name: Beide Knoten
         run: |
           set -u
-          for K in "C2 194.163.188.71"; do  # C1 seit 24.09.2026 abgeschaltet
+          for K in "C2 alter-c2-abgeschaltet.invalid"; do  # C1 seit 24.09.2026 abgeschaltet
             set -- $K
             echo "================ $1 ($2) ================"
             curl -s --max-time 20 "http://$2:8080/api/health/combined" > h.json || { echo "keine Antwort"; continue; }
@@ -58,7 +58,7 @@ jobs:
       # Bloecke, Transaktionen, geltender Deckel, Dauer und die Anteile.
       - name: C2 -- Blockbau je Minute (Zeitreihe; nimmt seit 24.09.2026 an)
         run: |
-          curl -s --max-time 30 "http://194.163.188.71:8080/api/produktion?n=1800" > p.json
+          curl -s --max-time 30 "http://alter-c2-abgeschaltet.invalid:8080/api/produktion?n=1800" > p.json
           python3 - <<'PY'
           import json, collections, datetime
           d = json.load(open("p.json"))

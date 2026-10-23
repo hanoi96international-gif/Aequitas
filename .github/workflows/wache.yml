@@ -44,7 +44,7 @@ jobs:
     timeout-minutes: 8
     env:
       C2_AKTIV: "nein"
-      C2_IP: 194.163.188.71
+      C2_IP: alter-c2-abgeschaltet.invalid
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Pruefen

@@ -42,7 +42,7 @@ jobs:
             secret: C1
             fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
           - name: contabo2
-            host: 194.163.188.71
+            host: alter-c2-abgeschaltet.invalid
             secret: C2
             fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
     steps:

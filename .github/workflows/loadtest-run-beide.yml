@@ -91,7 +91,7 @@ jobs:
       matrix:
         box:
           - {name: "C1", host: "alter-c1-abgeschaltet.invalid", secret: "C1", fp: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4", teil: "1/2"}
-          - {name: "C2", host: "194.163.188.71", secret: "C2", fp: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto", teil: "2/2"}
+          - {name: "C2", host: "alter-c2-abgeschaltet.invalid", secret: "C2", fp: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto", teil: "2/2"}
     runs-on: ubuntu-latest
     environment: produktion
     steps:
@@ -101,7 +101,7 @@ jobs:
         uses: nicklasfrahm/scp-action@704793d454ed4c14a0dd1682836302a1ee98ffc2 # main
         with:
           direction: download
-          host: 194.163.188.71
+          host: alter-c2-abgeschaltet.invalid
           username: root
           key: ${{ secrets.CONTABO2_SSH_KEY }}
           insecure_ignore_fingerprint: true

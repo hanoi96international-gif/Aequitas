@@ -38,7 +38,7 @@ jobs:
             host: alter-c1-abgeschaltet.invalid
             script: /root/deploy.sh
           - box: contabo2
-            host: 194.163.188.71
+            host: alter-c2-abgeschaltet.invalid
             script: /root/deploy_safe_c2.sh
     steps:
       - name: Patch ${{ matrix.box }} (${{ matrix.script }})

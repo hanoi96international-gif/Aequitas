@@ -63,11 +63,11 @@ jobs:
           # (173.249.37.118) ist abgeschaltet.
           - name: c1
             host: 188.172.229.121
-            partner: 194.163.188.71
+            partner: alter-c2-abgeschaltet.invalid
             secret: C1
             fingerprint: "SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA"
           - name: contabo2
-            host: 194.163.188.71
+            host: alter-c2-abgeschaltet.invalid
             partner: 188.172.229.121
             secret: C2
             fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
@@ -88,9 +88,9 @@ jobs:
           [ -z "$N" ] || exit 0
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           printf '%s\n' "$K2" > ~/.ssh/c2 && chmod 600 ~/.ssh/c2
-          ssh-keyscan 194.163.188.71 2>/dev/null > ~/.ssh/kh_c2
+          ssh-keyscan alter-c2-abgeschaltet.invalid 2>/dev/null > ~/.ssh/kh_c2
           ssh-keygen -lf ~/.ssh/kh_c2 | awk '{print $2}' | grep -qx 'SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto'
-          V=$(ssh -i ~/.ssh/c2 -o BatchMode=yes -o UserKnownHostsFile=$HOME/.ssh/kh_c2 root@194.163.188.71 \
+          V=$(ssh -i ~/.ssh/c2 -o BatchMode=yes -o UserKnownHostsFile=$HOME/.ssh/kh_c2 root@alter-c2-abgeschaltet.invalid \
             "grep -E '^NTFY_KANAL=' /root/wachhund/env 2>/dev/null | head -1 | cut -d= -f2-" | tr -d '[:space:]')
           rm -f ~/.ssh/c2
           if [ -n "$V" ]; then

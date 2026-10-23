@@ -115,7 +115,7 @@ jobs:
             secret_name: CONTABO_SSH_KEY
             fingerprint: "SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA"
           - box: contabo2
-            host: 194.163.188.71
+            host: alter-c2-abgeschaltet.invalid
             secret_name: CONTABO2_SSH_KEY
             fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
     steps:
