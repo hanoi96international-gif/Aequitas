@@ -134,7 +134,7 @@ func TestBootstrapAddrIsSelf(t *testing.T) {
 		{"own address", "/ip4/173.249.37.118/tcp/4001/p2p/" + selfID, selfID, true},
 		{"own address, trailing slash", "/ip4/173.249.37.118/tcp/4001/p2p/" + selfID + "/", selfID, true},
 		{"different peer, same host", "/ip4/173.249.37.118/tcp/4001/p2p/" + otherID, selfID, false},
-		{"different peer, different host", "/ip4/194.163.188.71/tcp/4001/p2p/" + otherID, selfID, false},
+		{"different peer, different host", "/ip4/203.0.113.7/tcp/4001/p2p/" + otherID, selfID, false},
 		{"no /p2p/ component", "/ip4/173.249.37.118/tcp/4001", selfID, false},
 		{"empty self id", "/ip4/173.249.37.118/tcp/4001/p2p/" + selfID, "", false},
 		// A peer ID that merely CONTAINS ours as a prefix must not match —

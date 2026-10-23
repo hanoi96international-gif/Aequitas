@@ -1,10 +1,9 @@
 # Caddy auf dem neuen C1 (netcup, 188.172.229.121) -- Primary seit 26.09.2026.
 #
-# Wie deploy/Caddyfile.contabo2 fuer proof2: die Domain zeigt auf den Knoten,
-# proof1 auf Proof-Server, Vergleichsdienst und Coordinator dieser Box.
-# Seit 26.09.2026 hat C1 einen eigenen Coordinator (Schluessel d3c46a77...
-# auf beiden Knoten eingetragen); proof1/coordinator und proof2/coordinator
-# sind damit zwei unabhaengige Eingaenge.
+# Die Domain zeigt auf den Knoten, proof1 auf Proof-Server,
+# Vergleichsdienst und Coordinator dieser Box. Seit 26.09.2026 hat C1 einen
+# eigenen Coordinator (Schluessel d3c46a77...). C2 und proof2 sind seit dem
+# 03.10.2026 abgeschaltet.
 #
 # Zertifikate holt Caddy selbst (Let's Encrypt, HTTP-01 auf Port 80).
 # Ausgerollt ueber .github/workflows/neuer-server-caddy.yml.

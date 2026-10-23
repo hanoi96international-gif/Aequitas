@@ -60,7 +60,7 @@ func TestIstNetzAdresse_VerwechseltProsaNicht(t *testing.T) {
 	}
 	sind := []string{
 		"127.0.0.1:58900->127.0.0.1:8080", "127.0.0.1:8080",
-		"194.163.188.71:8080", "localhost:5432",
+		"203.0.113.7:8080", "localhost:5432",
 	}
 	for _, f := range sind {
 		if !istNetzAdresse(f) {

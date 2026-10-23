@@ -6,14 +6,14 @@ import (
 )
 
 func TestRpcRateLimitFrei_NurDieTCPAdresseZaehlt(t *testing.T) {
-	t.Setenv("AEQUITAS_RPC_RATE_LIMIT_FREI", " 194.163.188.71 , kein-ip, ")
+	t.Setenv("AEQUITAS_RPC_RATE_LIMIT_FREI", " 203.0.113.7 , kein-ip, ")
 	liste := rpcRateLimitFreiAusUmgebung()
-	if len(liste) != 1 || !liste["194.163.188.71"] {
+	if len(liste) != 1 || !liste["203.0.113.7"] {
 		t.Fatalf("Liste = %v, erwartet genau die eine gueltige Adresse", liste)
 	}
 
 	partner := httptest.NewRequest("POST", "/rpc", nil)
-	partner.RemoteAddr = "194.163.188.71:51234"
+	partner.RemoteAddr = "203.0.113.7:51234"
 	if !rpcRateLimitFreiFuer(liste, partner) {
 		t.Fatal("die Partnerbox muss freigestellt sein")
 	}
@@ -30,7 +30,7 @@ func TestRpcRateLimitFrei_NurDieTCPAdresseZaehlt(t *testing.T) {
 	for _, remote := range []string{"203.0.113.9:40000", "127.0.0.1:40000"} {
 		gefaelscht := httptest.NewRequest("POST", "/rpc", nil)
 		gefaelscht.RemoteAddr = remote
-		gefaelscht.Header.Set("X-Forwarded-For", "194.163.188.71")
+		gefaelscht.Header.Set("X-Forwarded-For", "203.0.113.7")
 		if rpcRateLimitFreiFuer(liste, gefaelscht) {
 			t.Fatalf("X-Forwarded-For darf nie freistellen (RemoteAddr %s)", remote)
 		}
@@ -41,7 +41,7 @@ func TestRpcRateLimitFrei_LeerStelltNiemandenFrei(t *testing.T) {
 	t.Setenv("AEQUITAS_RPC_RATE_LIMIT_FREI", "")
 	liste := rpcRateLimitFreiAusUmgebung()
 	r := httptest.NewRequest("POST", "/rpc", nil)
-	r.RemoteAddr = "194.163.188.71:1"
+	r.RemoteAddr = "203.0.113.7:1"
 	if rpcRateLimitFreiFuer(liste, r) {
 		t.Fatal("ohne Liste ist niemand freigestellt")
 	}
