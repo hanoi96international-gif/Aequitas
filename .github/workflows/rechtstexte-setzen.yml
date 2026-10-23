@@ -70,10 +70,12 @@ jobs:
           ssh-keyscan -t ed25519 188.172.229.121 2>/dev/null > ~/.ssh/kh1
           ssh-keygen -lf ~/.ssh/kh1 | awk '{print $2}' | grep -qx 'SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA' || { echo "::error::Host-Schluessel von C1 passt nicht"; exit 1; }
           cp ~/.ssh/kh1 ~/.ssh/known_hosts
-      # Die Angaben werden auf dem Runner zu KEY=WERT-Zeilen (ohne
-      # Zeilenumbrueche und Anfuehrungszeichen) und gehen base64-kodiert zur
-      # Box -- keine Eingabe wird dort als Shell-Code gelesen.
-      - name: Angaben aufbereiten
+      # Die Angaben prueft deploy/rechtstexte-angaben.sh gegen eine Liste
+      # erlaubter Zeichen und bricht sonst ab (Kopf des Skripts: docker
+      # compose liest die .env mit eigenem Parser -- ' setzt weitere
+      # Schluessel, ${VAR} setzt Geheimnisse ein). Zur Box gehen sie
+      # base64-kodiert; dort wird keine Eingabe als Shell-Code gelesen.
+      - name: Angaben pruefen
         id: angaben
         env:
           LEGAL_NAME: ${{ inputs.LEGAL_NAME }}
@@ -86,24 +88,7 @@ jobs:
           LEGAL_OPTIONAL: ${{ inputs.LEGAL_OPTIONAL }}
         run: |
           set -euo pipefail
-          # Optionale Angaben aus EINEM Feld (workflow_dispatch erlaubt nur zehn Eingaben).
-          IFS=';' read -ra OPT <<< "${LEGAL_OPTIONAL:-}"
-          for paar in "${OPT[@]}"; do
-            key="${paar%%=*}"; val="${paar#*=}"
-            case "$key" in
-              LEGAL_TELEFON|LEGAL_VERTRETEN_DURCH|LEGAL_REGISTERGERICHT|LEGAL_REGISTERNUMMER|LEGAL_USTID)
-                [ "$paar" != "$key" ] && export "$key=$val" ;;
-              "") ;;
-              *) echo "unbekannte optionale Angabe: $key -- ignoriert" ;;
-            esac
-          done
-          : > legal.env
-          for k in LEGAL_NAME LEGAL_STRASSE LEGAL_ORT LEGAL_LAND LEGAL_EMAIL LEGAL_VERANTWORTLICH LEGAL_AUFSICHTSBEHOERDE LEGAL_TELEFON LEGAL_VERTRETEN_DURCH LEGAL_REGISTERGERICHT LEGAL_REGISTERNUMMER LEGAL_USTID; do
-            v="${!k:-}"
-            # Zeilenumbrueche und Anfuehrungszeichen haben in einer env-Datei nichts verloren.
-            v=$(printf '%s' "$v" | tr -d '\r\n"')
-            [ -n "$v" ] && printf '%s=%s\n' "$k" "$v" >> legal.env
-          done
+          bash deploy/rechtstexte-angaben.sh > legal.env
           echo "b64=$(base64 -w0 legal.env)" >> "$GITHUB_OUTPUT"
           echo "$(wc -l < legal.env) LEGAL_-Zeilen"
       - name: C1 setzen und Knoten neu starten
@@ -115,15 +100,31 @@ jobs:
           set -euo pipefail
           cd /root/Aequitas/deploy/validator
           grep -qx 'ANNAHME_ROLLE=annehmend' .env || { echo "ABBRUCH: ANNAHME_ROLLE=annehmend fehlt in .env"; exit 1; }
-          cp -a .env ".env.bak-rechtstexte-$(date +%s)"
+          BAK=".env.bak-rechtstexte-$(date +%s)"
+          cp -a .env "$BAK"
           umask 077
           printf '%s' "$B64" | base64 -d > /tmp/legal.env
           grep -qvE '^LEGAL_[A-Z_]+=' /tmp/legal.env && { echo "ABBRUCH: unerwartete Zeile in den Angaben"; exit 1; }
+          umg() { docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E '^[A-Za-z_][A-Za-z0-9_]*=' | sort; }
+          umg | grep -vE '^LEGAL_' > /tmp/vorher.env || true
           { grep -vE '^LEGAL_[A-Z_]+=' .env; cat /tmp/legal.env; } > .env.tmp
-          rm -f /tmp/legal.env
           mv .env.tmp .env; chmod 600 .env
           echo "gesetzt: $(grep -cE '^LEGAL_[A-Z_]+=' .env) LEGAL_-Zeilen"
           docker compose up -d --no-deps node
+          # Zweite Sperre: im laufenden Prozess darf sich ausser LEGAL_ nichts
+          # geaendert haben, und jeder LEGAL_-Wert steht dort woertlich so,
+          # wie er eingegeben wurde. Sonst: Sicherung zurueck, neu starten, rot.
+          umg | grep -vE '^LEGAL_' > /tmp/nachher.env || true
+          umg | grep -E '^LEGAL_' > /tmp/legal-ist.env || true
+          if ! cmp -s /tmp/vorher.env /tmp/nachher.env || ! cmp -s <(sort /tmp/legal.env) /tmp/legal-ist.env; then
+            echo "ABBRUCH: Umgebung des Knotens weicht ab -- Sicherung wird zurueckgespielt"
+            diff <(cut -d= -f1 /tmp/vorher.env) <(cut -d= -f1 /tmp/nachher.env) || true
+            cp -a "$BAK" .env
+            docker compose up -d --no-deps node
+            rm -f /tmp/legal.env /tmp/vorher.env /tmp/nachher.env /tmp/legal-ist.env
+            exit 1
+          fi
+          rm -f /tmp/legal.env /tmp/vorher.env /tmp/nachher.env /tmp/legal-ist.env
           ok=0
           for i in $(seq 1 30); do
             if curl -s --max-time 10 -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/api/status | grep -q 200; then ok=1; break; fi

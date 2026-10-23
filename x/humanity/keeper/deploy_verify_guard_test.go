@@ -41,78 +41,140 @@ import (
 // deploy against real boxes, which is precisely where nobody can afford to
 // discover it is wrong.
 func TestDeployGuard_WaitsForAdvancementAndRejectsUnreadableHeight(t *testing.T) {
-	for _, f := range []string{"deploy-contabo.yml", "deploy-contabo2.yml"} {
-		// Assert on the shell logic only. The comments quote the old code as
-		// the record of what went wrong, and must not read as the old code
-		// still being there.
-		step := guardControlFlow(deployStep(t, f, "alive and advancing"))
+	// Bis zum 23.10.2026 stand der Waechter als Schritt in deploy-contabo.yml
+	// und deploy-contabo2.yml. Beide Boxen sind abgeschaltet, die Workflows
+	// geloescht; der Push-Deploy deploy-c1.yml ruft deploy/pruefe-knoten.sh
+	// auf. Dort steht der Waechter heute -- und dort gelten dieselben Regeln.
+	wired := deployStep(t, "deploy-c1.yml", "Hoehe steigt")
+	if !strings.Contains(wired, "deploy/pruefe-knoten.sh") {
+		t.Fatalf("deploy-c1.yml: the step after the rollout no longer runs " +
+			"deploy/pruefe-knoten.sh -- the guard below would not run on a deploy at all")
+	}
+	src, err := os.ReadFile("../../../deploy/pruefe-knoten.sh")
+	if err != nil {
+		t.Fatalf("read deploy/pruefe-knoten.sh: %v", err)
+	}
+	// Assert on the shell logic only (comments and echo lines stripped).
+	step := guardControlFlow(string(src))
+	const f = "deploy/pruefe-knoten.sh"
 
-		// The shape that caused the false failure: read height, sleep once,
-		// read again, decide. Any fixed single window measures the deploy's
-		// timing rather than the node's health.
-		if regexp.MustCompile(`sleep 60\b`).MatchString(step) {
-			t.Errorf("%s: the guard still sleeps a single fixed 60s between two height "+
-				"samples. That is the 2026-08-19 false failure: a node that is replaying "+
-				"is not a node that is stuck. Sample until the height moves.", f)
-		}
-		if strings.Contains(step, "-le") {
-			t.Errorf("%s: the guard still decides on `-le` against the previous sample. "+
-				"Compare each sample against the BASELINE and succeed as soon as one "+
-				"exceeds it, so slow startup is not a failure.", f)
-		}
-
-		// It must keep looking rather than judging once.
-		if !strings.Contains(step, "-gt") || !strings.Contains(step, "advanced=yes") {
-			t.Errorf("%s: the guard must poll until the height exceeds its baseline "+
-				"(`-gt` … advanced=yes), not judge a single interval.", f)
-		}
-
-		// Every unreadable answer must land in the same bucket as no answer.
-		// Without this the comparison errors and the step reports success.
-		if !strings.Contains(step, `*[!0-9]*`) {
-			t.Errorf("%s: the guard must reject a non-numeric .height explicitly "+
-				"(a `case` guard on *[!0-9]*). Comparing it with `[ … -gt … ]` is a bash "+
-				"error, and an erroring condition is false — which reports a PASS for a "+
-				"node whose height was never read.", f)
-		}
+	// The shape that caused the false failure: read height, sleep once,
+	// read again, decide. Any fixed single window measures the deploy's
+	// timing rather than the node's health.
+	if regexp.MustCompile(`sleep 60\b`).MatchString(step) {
+		t.Errorf("%s: the guard sleeps a single fixed 60s between two height "+
+			"samples. That is the 2026-08-19 false failure: a node that is replaying "+
+			"is not a node that is stuck. Sample until the height moves.", f)
+	}
+	if strings.Contains(step, "-le") {
+		t.Errorf("%s: the guard decides on `-le` against the previous sample. "+
+			"Compare each sample against the BASELINE and succeed as soon as one "+
+			"exceeds it, so slow startup is not a failure.", f)
 	}
 
-	// Contabo2 lacked this check entirely until 2026-08-15, and Contabo1's copy
-	// is where it was written first. Two hand-maintained copies of one guard
-	// drift; assert the control flow is identical and let the prose differ.
-	c1 := guardControlFlow(deployStep(t, "deploy-contabo.yml", "alive and advancing"))
-	c2 := guardControlFlow(deployStep(t, "deploy-contabo2.yml", "alive and advancing"))
-	if c1 != c2 {
-		t.Errorf("the two deploy guards have drifted apart.\ncontabo1:\n%s\ncontabo2:\n%s", c1, c2)
+	// It must keep looking rather than judging once: a polling loop, and
+	// success only when a sample exceeds the baseline.
+	if !strings.Contains(step, `-gt "$h0"`) || !regexp.MustCompile(`seq 1 \d+\)`).MatchString(step) {
+		t.Errorf("%s: the guard must poll until the height exceeds its baseline "+
+			"(`-gt \"$h0\"` inside a `seq` loop), not judge a single interval.", f)
+	}
+
+	// Every unreadable answer must land in the same bucket as no answer.
+	// Without this the comparison errors and the step reports success.
+	if !strings.Contains(step, `*[!0-9]*`) {
+		t.Errorf("%s: the guard must reject a non-numeric .height explicitly "+
+			"(a `case` guard on *[!0-9]*). Comparing it with `[ … -gt … ]` is a bash "+
+			"error, and an erroring condition is false — which reports a PASS for a "+
+			"node whose height was never read.", f)
+	}
+	// Falling out of the loop without advancing must be a failure.
+	if !strings.HasSuffix(strings.TrimSpace(string(src)), "exit 1") {
+		t.Errorf("%s: the guard must end with `exit 1` when the height never moved", f)
 	}
 }
 
-// Contabo2 must not fall open while Contabo1 is still deploying.
+// The guard must finish inside its job's timeout.
 //
-// Contabo2's deploy waits for Contabo1's run of the same commit and, on
-// timeout, proceeds anyway — deliberately, so a wedged Contabo1 can never
-// permanently block shipping a fix. That fail-open is only safe while the wait
-// actually outlasts Contabo1's job. Making the guard above patient added up to
-// ten minutes to that job, and nothing in either file states the coupling, so
-// the next person to raise a budget would silently turn the staggered rollout
-// back into the simultaneous restart that forked the network twice on
-// 2026-07-25.
-func TestDeployGuard_Contabo2OutwaitsContabo1(t *testing.T) {
-	c2Wait := loopBudget(t, deployStep(t, "deploy-contabo2.yml", "deploy of this same commit"))
-	c1Wait := loopBudget(t, deployStep(t, "deploy-contabo.yml", "never restart both validators"))
-	c1Verify := loopBudget(t, deployStep(t, "deploy-contabo.yml", "alive and advancing"))
-
-	// Contabo1's job is its wait for this box, plus the image build, plus the
-	// verify. The build is not expressed in the workflow; 10 minutes is roughly
-	// double the observed worst case (7m36s on 2026-08-19).
-	const buildAllowance = 600
-	need := c1Wait + c1Verify + buildAllowance
-	if c2Wait <= need {
-		t.Errorf("Contabo2 waits %ds for Contabo1, but Contabo1's job can take %ds "+
-			"(wait %ds + build ~%ds + verify %ds). Contabo2 would fail open and restart "+
-			"while Contabo1 is still mid-rollout — the simultaneous restart the "+
-			"staggering exists to prevent.", c2Wait, need, c1Wait, buildAllowance, c1Verify)
+// deploy-c1.yml rolls back to the previous image when the guard fails
+// (rueckrollen-c1.sh, `if: failure()`). If GitHub cancels the job on
+// timeout-minutes first, that rollback never runs and C1 stays on an image
+// nobody verified. So the build, one full guard and the rollback must fit. This replaces the C1/C2 staggering check from before
+// 23.10.2026 (C2 waits longer than C1): with one box there is nothing to
+// stagger, but the same arithmetic now has to fit the job's own deadline.
+func TestDeployGuard_FitsInsideTheJobTimeout(t *testing.T) {
+	src, err := os.ReadFile("../../../deploy/pruefe-knoten.sh")
+	if err != nil {
+		t.Fatalf("read deploy/pruefe-knoten.sh: %v", err)
 	}
+	guard := scriptBudget(t, string(src))
+	wf, err := os.ReadFile("../../../.github/workflows/deploy-c1.yml")
+	if err != nil {
+		t.Fatalf("read deploy-c1.yml: %v", err)
+	}
+	m := regexp.MustCompile(`(?m)^  c1:\n(?:.*\n)*?    timeout-minutes: (\d+)`).FindStringSubmatch(string(wf))
+	if m == nil {
+		t.Fatalf("deploy-c1.yml: job c1 has no timeout-minutes -- without one the job " +
+			"runs up to six hours and the arithmetic below means nothing")
+	}
+	var minutes int
+	fmt.Sscanf(m[1], "%d", &minutes)
+	// The image build (10 min, roughly double the observed worst case of
+	// 7m36s on 2026-08-19), one full guard, then the rollback (5 min).
+	const buildAllowance, rollbackAllowance = 600, 300
+	need := buildAllowance + guard + rollbackAllowance
+	if minutes*60 <= need {
+		t.Errorf("deploy-c1.yml: job c1 times out after %ds, but build ~%ds + guard %ds "+
+			"+ rollback ~%ds = %ds. GitHub would cancel the job before the rollback runs.",
+			minutes*60, buildAllowance, guard, rollbackAllowance, need)
+	}
+}
+
+// scriptBudget returns the worst-case seconds of every `for i in $(seq 1 N)`
+// loop in a script: N times (its sleep plus every curl -m timeout in the
+// loop body, including those of one-line shell functions the body calls).
+// Unlike loopBudget it also reads `…; sleep S` at the end of a line, as
+// deploy/pruefe-knoten.sh writes it.
+func scriptBudget(t *testing.T, src string) int {
+	t.Helper()
+	parts := regexp.MustCompile(`for i in \$\(seq 1 (\d+)\)`).Split(src, -1)
+	counts := regexp.MustCompile(`for i in \$\(seq 1 (\d+)\)`).FindAllStringSubmatch(src, -1)
+	if len(counts) == 0 {
+		t.Fatalf("no `for i in $(seq 1 N)` loop found -- update the arithmetic here rather than deleting it")
+	}
+	fnTimeout := map[string]int{}
+	for _, f := range regexp.MustCompile(`(?m)^(\w+)\(\) \{(.*)\}`).FindAllStringSubmatch(src, -1) {
+		for _, x := range regexp.MustCompile(`-m (\d+)`).FindAllStringSubmatch(f[2], -1) {
+			var v int
+			fmt.Sscanf(x[1], "%d", &v)
+			fnTimeout[f[1]] += v
+		}
+	}
+	total := 0
+	for i, c := range counts {
+		body := parts[i+1]
+		if j := strings.Index(body, "\ndone"); j >= 0 {
+			body = body[:j]
+		}
+		var n int
+		fmt.Sscanf(c[1], "%d", &n)
+		per := 0
+		sl := regexp.MustCompile(`\bsleep (\d+)`).FindAllStringSubmatch(body, -1)
+		if len(sl) != 1 {
+			t.Fatalf("loop %d: expected exactly one `sleep S`, found %d", i+1, len(sl))
+		}
+		for _, x := range append(sl, regexp.MustCompile(`-m (\d+)`).FindAllStringSubmatch(body, -1)...) {
+			var v int
+			fmt.Sscanf(x[1], "%d", &v)
+			per += v
+		}
+		for name, v := range fnTimeout {
+			if regexp.MustCompile(`\b` + name + `\b`).MatchString(body) {
+				per += v
+			}
+		}
+		total += n * per
+	}
+	return total
 }
 
 // deployStep returns the `run:` body of the deploy job step whose name contains
