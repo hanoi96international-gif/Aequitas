@@ -18,7 +18,7 @@ jobs:
   q:
     strategy:
       fail-fast: false
-      matrix: {box: [{name: "C1", host: "alter-c1-abgeschaltet.invalid", secret: "C1"}, {name: "C2", host: "194.163.188.71", secret: "C2"}]}
+      matrix: {box: [{name: "C1", host: "alter-c1-abgeschaltet.invalid", secret: "C1"}, {name: "C2", host: "alter-c2-abgeschaltet.invalid", secret: "C2"}]}
     runs-on: ubuntu-latest
     environment: produktion
     steps:

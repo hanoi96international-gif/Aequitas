@@ -37,9 +37,16 @@ chmod 600 "$ENVF"
 # neue Validatoren beschrieben): C2, dessen Blockadresse die Signatur des
 # Snapshots beglaubigt. Ohne PRIMARY_NODE_URLS versucht ein leerer Knoten den
 # Replay ab Genesis und steht bei Hoehe 0 (so am 26.09.2026).
+#
+# Seit dem 03.10.2026 ist C2 abgeschaltet und seine IP neu vergeben. Eine
+# Quelle, die ein Fremder beantworten kann, waere ein vertrauenswuerdiger
+# Seed (FromSync). Darum gibt es hier keine Vorgabe mehr: wer einen neuen
+# Server aufsetzt, traegt PRIMARY_NODE_URLS und BOOTSTRAP_SIGNER (Quelle
+# und deren Blockadresse) vorher selbst in die .env ein -- sonst Abbruch.
 setze() { grep -q "^$1=" "$ENVF" || echo "$1=$2" >> "$ENVF"; }
-setze PRIMARY_NODE_URLS "http://194.163.188.71:8080"
-setze BOOTSTRAP_SIGNER "0x1a37dcdaa42cf3f7e1f6e41379961f40df44a4e3"
+for k in PRIMARY_NODE_URLS BOOTSTRAP_SIGNER; do
+  grep -q "^$k=." "$ENVF" || { echo "ABBRUCH: $k fehlt in $ENVF -- Snapshot-Quelle und Signierer zuerst festlegen (C2 ist abgeschaltet)"; exit 1; }
+done
 # Bindung Signierschluessel 0x3066639a...42dc an die Menschen-Wallet
 # 0x0be8...d016, auf /node-binding erzeugt (26.09.2026, geprueft: stellt
 # genau diese Wallet wieder her). Nicht geheim. Der Knoten schickt sie den

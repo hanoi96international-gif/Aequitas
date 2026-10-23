@@ -27,7 +27,7 @@ on:
   workflow_dispatch:
     inputs:
       hostname:
-        description: "The name that must already resolve to 194.163.188.71 (e.g. c2.aequitas.digital)"
+        description: "The name that must already resolve to alter-c2-abgeschaltet.invalid (e.g. c2.aequitas.digital)"
         required: true
       skip_dns_check:
         description: "Install even if DNS does not point here yet (not recommended)"
@@ -53,7 +53,7 @@ jobs:
           set -uo pipefail
           ip=$(getent hosts "$HOSTNAME_INPUT" | awk '{print $1}' | head -1)
           echo "$HOSTNAME_INPUT -> ${ip:-<unresolved>}"
-          if [ "$ip" = "194.163.188.71" ]; then
+          if [ "$ip" = "alter-c2-abgeschaltet.invalid" ]; then
             echo "DNS is correct — proceeding"
             exit 0
           fi
@@ -64,14 +64,14 @@ jobs:
             exit 0
           fi
           echo
-          echo "REFUSING: $HOSTNAME_INPUT must resolve to 194.163.188.71 first."
+          echo "REFUSING: $HOSTNAME_INPUT must resolve to alter-c2-abgeschaltet.invalid first."
           echo "Add the A record, wait for it to propagate, then re-run."
           exit 1
 
       - name: Copy the Caddy config
         uses: appleboy/scp-action@ff85246acaad7bdce478db94a363cd2bf7c90345 # v1.0.0
         with:
-          host: 194.163.188.71
+          host: alter-c2-abgeschaltet.invalid
           username: root
           key: ${{ secrets.CONTABO2_SSH_KEY }}
           port: 22
@@ -84,7 +84,7 @@ jobs:
         env:
           HOSTNAME_INPUT: ${{ inputs.hostname }}
         with:
-          host: 194.163.188.71
+          host: alter-c2-abgeschaltet.invalid
           username: root
           key: ${{ secrets.CONTABO2_SSH_KEY }}
           port: 22

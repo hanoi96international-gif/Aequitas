@@ -82,7 +82,7 @@ jobs:
           # zweiter Server kommt hier mit einer Zeile dazu (und in wache.yml).
           # Seit 26.09.2026: der neue C1 (netcup) ist Primary und nimmt an,
           # C2 ist nur_lesend.
-          KNOTEN="C1=188.172.229.121=proof1=true C2=194.163.188.71=proof2=false"
+          KNOTEN="C1=188.172.229.121=proof1=true C2=alter-c2-abgeschaltet.invalid=proof2=false"
           declare -A API RPC IP PH SOLLAN HOEHE COMMIT EVMID WAB
           NAMEN=""
           for E in $KNOTEN; do

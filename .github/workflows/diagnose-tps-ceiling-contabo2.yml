@@ -94,7 +94,7 @@ jobs:
         if: ${{ inputs.deploy_node == 'true' }}
         uses: appleboy/scp-action@ff85246acaad7bdce478db94a363cd2bf7c90345 # v1.0.0
         with:
-          host: 194.163.188.71
+          host: alter-c2-abgeschaltet.invalid
           username: root
           key: ${{ secrets.CONTABO2_SSH_KEY }}
           port: 22
@@ -109,7 +109,7 @@ jobs:
           EXTRA_ENV: ${{ inputs.extra_env }}
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         with:
-          host: 194.163.188.71
+          host: alter-c2-abgeschaltet.invalid
           username: root
           key: ${{ secrets.CONTABO2_SSH_KEY }}
           port: 22
@@ -195,7 +195,7 @@ jobs:
       - name: Ship current loadtest source to Contabo2
         uses: appleboy/scp-action@ff85246acaad7bdce478db94a363cd2bf7c90345 # v1.0.0
         with:
-          host: 194.163.188.71
+          host: alter-c2-abgeschaltet.invalid
           username: root
           key: ${{ secrets.CONTABO2_SSH_KEY }}
           port: 22
@@ -216,7 +216,7 @@ jobs:
           ACCOUNTS_CSV: ${{ inputs.accounts_csv }}
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         with:
-          host: 194.163.188.71
+          host: alter-c2-abgeschaltet.invalid
           username: root
           key: ${{ secrets.CONTABO2_SSH_KEY }}
           port: 22

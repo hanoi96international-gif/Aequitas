@@ -93,7 +93,7 @@ jobs:
             set -uo pipefail
             PRIMARY="https://aequitas.digital"
             C1="http://localhost:8080"
-            C2="http://194.163.188.71:8080"
+            C2="http://alter-c2-abgeschaltet.invalid:8080"
 
             echo "=== date ==="
             date -u

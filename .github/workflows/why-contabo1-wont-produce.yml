@@ -76,7 +76,7 @@ jobs:
 
             echo ""
             echo "=== per-peer sync state on all three (clean_sync_streak, deep_scan_floor_override) ==="
-            for t in "primary|https://aequitas.digital" "contabo1|http://localhost:8080" "contabo2|http://194.163.188.71:8080"; do
+            for t in "primary|https://aequitas.digital" "contabo1|http://localhost:8080" "contabo2|http://alter-c2-abgeschaltet.invalid:8080"; do
               n="${t%%|*}"; u="${t#*|}"
               echo "--- $n ---"
               curl -sS --max-time 20 "$u/api/health/combined" 2>/dev/null \

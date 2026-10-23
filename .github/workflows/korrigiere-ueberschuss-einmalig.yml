@@ -52,7 +52,7 @@ jobs:
             echo "=== C1 Vorratsabgleich vorher ==="
             curl -s http://localhost:8080/api/health/combined | tr ',' '\n' | grep -iE "measured|claimed|difference|reconciled|beyond_known|supply_alarm" || true
             echo "=== C2 Pool vorher ==="
-            curl -s --max-time 15 http://194.163.188.71:8080/api/pool; echo
+            curl -s --max-time 15 http://alter-c2-abgeschaltet.invalid:8080/api/pool; echo
 
       - name: Freigeben, korrigieren, wieder verriegeln
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
@@ -141,7 +141,7 @@ jobs:
             echo "=== C1 Pool nachher ==="
             curl -s http://localhost:8080/api/pool; echo
             echo "=== C2 Pool nachher (muss gleich sein) ==="
-            curl -s --max-time 15 http://194.163.188.71:8080/api/pool; echo
+            curl -s --max-time 15 http://alter-c2-abgeschaltet.invalid:8080/api/pool; echo
             echo "=== C1 Vorratsabgleich nachher ==="
             curl -s http://localhost:8080/api/health/combined | tr ',' '\n' | grep -iE "measured|claimed|difference|reconciled|beyond_known|supply_alarm" || true
             echo ""

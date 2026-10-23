@@ -36,7 +36,7 @@ jobs:
           ssh-keygen -lf ~/.ssh/k1 | awk '{print $2}' | grep -qx 'SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA' || { echo "::error::Host-Schluessel von C1 passt nicht"; exit 1; }
           cat ~/.ssh/k1 > ~/.ssh/known_hosts
           if [ "$C2_AKTIV" = "ja" ]; then
-            ssh-keyscan 194.163.188.71 2>/dev/null > ~/.ssh/k2
+            ssh-keyscan alter-c2-abgeschaltet.invalid 2>/dev/null > ~/.ssh/k2
             ssh-keygen -lf ~/.ssh/k2 | awk '{print $2}' | grep -qx 'SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto' || { echo "::error::Host-Schluessel von C2 passt nicht"; exit 1; }
             cat ~/.ssh/k2 >> ~/.ssh/known_hosts
           fi
@@ -44,7 +44,7 @@ jobs:
         run: |
           fehler=0
           boxen="c1:188.172.229.121"
-          if [ "$C2_AKTIV" = "ja" ]; then boxen="$boxen c2:194.163.188.71"; else echo "::notice::C2_AKTIV=$C2_AKTIV -- C2 ist kein Validator und wird nicht ausgerollt, nur C1 wird geprueft"; fi
+          if [ "$C2_AKTIV" = "ja" ]; then boxen="$boxen c2:alter-c2-abgeschaltet.invalid"; else echo "::notice::C2_AKTIV=$C2_AKTIV -- C2 ist kein Validator und wird nicht ausgerollt, nur C1 wird geprueft"; fi
           for box in $boxen; do
             k=${box%%:*}; h=${box#*:}
             n=$(ssh -i ~/.ssh/$k -o BatchMode=yes root@$h \

@@ -31,10 +31,12 @@ setze AEQUITAS_PEER_LAG_BODEN 1500
 setze AEQUITAS_PEER_LAG_SLACK 5
 # 15 GB RAM auf C1 (C2: 11 GB, 5GiB). Postgres braucht ~2 GB, Rest bleibt frei.
 setze GOMEMLIMIT 8GiB
-# Lastgenerator auf C2 (eigene Maschine) von der Ratenbegrenzung ausnehmen
-# (rpc_frei.go). Gemessen 26.09.: ohne das 99 % -32005 bei 1.051 Paaren.
-# Nur diese eine Adresse; die Inflight-Grenze gilt weiter.
-setze AEQUITAS_RPC_RATE_LIMIT_FREI 194.163.188.71
+# Keine Ausnahme von der Ratenbegrenzung (rpc_frei.go). Bis zum 23.10.2026
+# stand hier der Lastgenerator auf C2 (gemessen 26.09.: ohne die Ausnahme
+# 99 % -32005 bei 1.051 Paaren). C2 ist seit dem 03.10.2026 abgeschaltet,
+# seine IP neu vergeben -- eine Ausnahme fuer sie gaelte einem Fremden.
+# Leer setzen, damit ein erneuter Lauf eine alte Ausnahme auch entfernt.
+setze AEQUITAS_RPC_RATE_LIMIT_FREI ""
 # Bloecke aus dem Speicher (speicherkorb.go) und aufgeteilter Flush
 # (wal_flush_teile.go), freigegeben am 02.10.2026 nach Pruefstand und
 # Sicherheitspruefung (PR #259, #260): Ketten-TPS auf dem C1-Pruefstand

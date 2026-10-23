@@ -122,7 +122,7 @@ jobs:
             # Parameter wie jede andere Messung dieser Reihe (Buendel 10,
             # disjunkte Paare, Mindestguthaben), damit die Zahlen
             # vergleichbar bleiben.
-            nohup ./loadtest.ring -accounts accounts-funded.csv               -rpc http://194.163.188.71:8080/rpc               -status http://194.163.188.71:8080/api/status               -phase run -pairs 400 -topology pairs -batch-size 10               -min-balance-wei 100000000000000               -duration "$DURATION" -ramp 5               > /tmp/prof.log 2>&1 &
+            nohup ./loadtest.ring -accounts accounts-funded.csv               -rpc http://alter-c2-abgeschaltet.invalid:8080/rpc               -status http://alter-c2-abgeschaltet.invalid:8080/api/status               -phase run -pairs 400 -topology pairs -batch-size 10               -min-balance-wei 100000000000000               -duration "$DURATION" -ramp 5               > /tmp/prof.log 2>&1 &
 
             # Capture mid-run: a profile taken after the load stops shows an
             # idle node. Both are cumulative since the process started, so the

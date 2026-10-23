@@ -36,7 +36,7 @@ jobs:
             host: alter-c1-abgeschaltet.invalid
             secret: CONTABO_SSH_KEY
           - name: C2-Vergleich
-            host: 194.163.188.71
+            host: alter-c2-abgeschaltet.invalid
             secret: CONTABO2_SSH_KEY
       fail-fast: false
     steps:

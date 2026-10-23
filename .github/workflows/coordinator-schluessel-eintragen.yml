@@ -33,7 +33,7 @@ jobs:
           set -euo pipefail
           alle=""
           for b in "C1 188.172.229.121 SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA K1" \
-                   "C2 194.163.188.71 SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto K2"; do
+                   "C2 alter-c2-abgeschaltet.invalid SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto K2"; do
             set -- $b
             KEY="${!4}" HOST="$2" FP="$3" bash .github/neustart/ssh-einrichten.sh
             k="$(ssh -i ~/.ssh/k -o BatchMode=yes "root@$2" 'bash -s' <<'SKRIPT'
@@ -63,7 +63,7 @@ jobs:
       matrix:
         include:
           - {box: C1, host: 188.172.229.121, fp: "SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA", key: CONTABO_SSH_KEY}
-          - {box: C2, host: 194.163.188.71, fp: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto", key: CONTABO2_SSH_KEY}
+          - {box: C2, host: alter-c2-abgeschaltet.invalid, fp: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto", key: CONTABO2_SSH_KEY}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Schluessel und Host-Pruefung

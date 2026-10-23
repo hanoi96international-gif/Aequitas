@@ -56,9 +56,9 @@ jobs:
         run: |
           if [ "${{ inputs.box }}" = "contabo1" ]; then
             echo "host=alter-c1-abgeschaltet.invalid" >> $GITHUB_OUTPUT
-            echo "other=194.163.188.71" >> $GITHUB_OUTPUT
+            echo "other=alter-c2-abgeschaltet.invalid" >> $GITHUB_OUTPUT
           else
-            echo "host=194.163.188.71" >> $GITHUB_OUTPUT
+            echo "host=alter-c2-abgeschaltet.invalid" >> $GITHUB_OUTPUT
             echo "other=alter-c1-abgeschaltet.invalid" >> $GITHUB_OUTPUT
           fi
 

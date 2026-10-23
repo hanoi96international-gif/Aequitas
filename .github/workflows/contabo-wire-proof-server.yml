@@ -52,9 +52,9 @@ jobs:
         run: |
           if [ "${{ inputs.box }}" = "contabo1" ]; then
             echo "host=alter-c1-abgeschaltet.invalid"              >> $GITHUB_OUTPUT
-            echo "peer=http://194.163.188.71:8080"  >> $GITHUB_OUTPUT
+            echo "peer=http://alter-c2-abgeschaltet.invalid:8080"  >> $GITHUB_OUTPUT
           else
-            echo "host=194.163.188.71"              >> $GITHUB_OUTPUT
+            echo "host=alter-c2-abgeschaltet.invalid"              >> $GITHUB_OUTPUT
             echo "peer=http://alter-c1-abgeschaltet.invalid:8080"  >> $GITHUB_OUTPUT
           fi
 
@@ -177,7 +177,7 @@ jobs:
         if: ${{ inputs.box == 'contabo2' }}
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         with:
-          host: 194.163.188.71
+          host: alter-c2-abgeschaltet.invalid
           username: root
           key: ${{ secrets.CONTABO2_SSH_KEY }}
           port: 22

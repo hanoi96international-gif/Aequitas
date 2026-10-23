@@ -55,7 +55,7 @@ on:
       peers:
         description: "static committee: URL|0xSigningAddress, comma-separated. ORDER DEFINES THE PARTY INDEX."
         required: false
-        default: "http://alter-c1-abgeschaltet.invalid:8080|0x0be8b961cbf6564bd1931b0803d35c0659e0d016,http://194.163.188.71:8080|0x1a37dcdaa42cf3f7e1f6e41379961f40df44a4e3"
+        default: "http://alter-c1-abgeschaltet.invalid:8080|0x0be8b961cbf6564bd1931b0803d35c0659e0d016,http://alter-c2-abgeschaltet.invalid:8080|0x1a37dcdaa42cf3f7e1f6e41379961f40df44a4e3"
 
 # Nur lesen (Beta-Pruefung 15.10.2026): dieser Workflow schreibt nichts
 # ins Repo; die Voreinstellung des Tokens soll nicht mehr gelten.
@@ -219,7 +219,7 @@ jobs:
       - name: Contabo2
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         with:
-          host: 194.163.188.71
+          host: alter-c2-abgeschaltet.invalid
           username: root
           key: ${{ secrets.CONTABO2_SSH_KEY }}
           port: 22

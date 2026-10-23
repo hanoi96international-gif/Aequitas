@@ -84,7 +84,7 @@ jobs:
       - name: Record the starting state of both boxes
         run: |
           set -uo pipefail
-          for h in alter-c1-abgeschaltet.invalid 194.163.188.71; do
+          for h in alter-c1-abgeschaltet.invalid alter-c2-abgeschaltet.invalid; do
             S=$(curl -s --max-time 20 "http://$h:8080/api/status" || echo '{}')
             echo "$h  $(echo "$S" | tr ',' '\n' | grep -E '"height"|uptime' | tr '\n' ' ')"
           done
@@ -97,7 +97,7 @@ jobs:
       - name: Copy the current generator source to Contabo2
         uses: appleboy/scp-action@ff85246acaad7bdce478db94a363cd2bf7c90345 # v1.0.0
         with:
-          host: 194.163.188.71
+          host: alter-c2-abgeschaltet.invalid
           username: root
           key: ${{ secrets.CONTABO2_SSH_KEY }}
           port: 22
@@ -107,7 +107,7 @@ jobs:
       - name: Rebuild the generator
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         with:
-          host: 194.163.188.71
+          host: alter-c2-abgeschaltet.invalid
           username: root
           key: ${{ secrets.CONTABO2_SSH_KEY }}
           port: 22
@@ -150,7 +150,7 @@ jobs:
           printf '%s\n' "$KEY_C1" > ~/.ssh/c1 && chmod 600 ~/.ssh/c1
           printf '%s\n' "$KEY_C2" > ~/.ssh/c2 && chmod 600 ~/.ssh/c2
           SSHOPT="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR"
-          scp $SSHOPT -i ~/.ssh/c2 root@194.163.188.71:/root/contabo-loadtest/accounts-funded.csv /tmp/accounts-funded.csv
+          scp $SSHOPT -i ~/.ssh/c2 root@alter-c2-abgeschaltet.invalid:/root/contabo-loadtest/accounts-funded.csv /tmp/accounts-funded.csv
           echo "Kontenliste geholt: $(wc -l < /tmp/accounts-funded.csv) Zeilen"
           ssh $SSHOPT -i ~/.ssh/c1 root@alter-c1-abgeschaltet.invalid 'mkdir -p /root/contabo-loadtest'
           scp $SSHOPT -i ~/.ssh/c1 /tmp/accounts-funded.csv root@alter-c1-abgeschaltet.invalid:/root/contabo-loadtest/accounts-funded.csv
@@ -198,7 +198,7 @@ jobs:
       - name: Start the load on Contabo2 (returns immediately)
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         with:
-          host: 194.163.188.71
+          host: alter-c2-abgeschaltet.invalid
           username: root
           key: ${{ secrets.CONTABO2_SSH_KEY }}
           port: 22
@@ -345,7 +345,7 @@ jobs:
             # 10 s Timeout und verdoppelte die Beobachtungszeit.
             H1=""
             [ "$EINZELN" = 1 ] || H1=$(curl -s --max-time 10 "http://alter-c1-abgeschaltet.invalid:8080/api/status" 2>/dev/null | grep -o '"height":[0-9]*' | cut -d: -f2)
-            H2=$(curl -s --max-time 10 "http://194.163.188.71:8080/api/status" 2>/dev/null | grep -o '"height":[0-9]*' | cut -d: -f2)
+            H2=$(curl -s --max-time 10 "http://alter-c2-abgeschaltet.invalid:8080/api/status" 2>/dev/null | grep -o '"height":[0-9]*' | cut -d: -f2)
             N=""
             [ -z "$H2" ] && { N="$N C2 UNREACHABLE"; H2=0; }
             if [ "$EINZELN" = 1 ]; then H1=$H2; else [ -z "$H1" ] && { N="C1 UNREACHABLE $N"; H1=0; }; fi
@@ -363,7 +363,7 @@ jobs:
 
           echo ""
           if [ "$EINZELN" = 1 ]; then
-            H2=$(curl -s --max-time 15 "http://194.163.188.71:8080/api/status" | grep -o '"height":[0-9]*' | cut -d: -f2)
+            H2=$(curl -s --max-time 15 "http://alter-c2-abgeschaltet.invalid:8080/api/status" | grep -o '"height":[0-9]*' | cut -d: -f2)
             echo "final: C2=$H2 (Einzelknoten)"
             if [ -n "$H2" ] && [ "$H2" -gt "$PREV2" -o "$STALL2" -lt 3 ]; then
               echo "VERDICT: C2 hat Last und Erholung ohne Stillstand getragen."
@@ -374,9 +374,9 @@ jobs:
           fi
           echo "worst divergence seen: $WORST blocks"
           H1=$(curl -s --max-time 15 "http://alter-c1-abgeschaltet.invalid:8080/api/status" | grep -o '"height":[0-9]*' | cut -d: -f2)
-          H2=$(curl -s --max-time 15 "http://194.163.188.71:8080/api/status" | grep -o '"height":[0-9]*' | cut -d: -f2)
+          H2=$(curl -s --max-time 15 "http://alter-c2-abgeschaltet.invalid:8080/api/status" | grep -o '"height":[0-9]*' | cut -d: -f2)
           K1=$(curl -s --max-time 15 "http://alter-c1-abgeschaltet.invalid:8080/api/status" | grep -o '"latest_hash":"[^"]*"')
-          K2=$(curl -s --max-time 15 "http://194.163.188.71:8080/api/status" | grep -o '"latest_hash":"[^"]*"')
+          K2=$(curl -s --max-time 15 "http://alter-c2-abgeschaltet.invalid:8080/api/status" | grep -o '"latest_hash":"[^"]*"')
           echo "final: C1=$H1  C2=$H2  diff=$(( H1 - H2 ))"
           echo "C1 $K1"
           echo "C2 $K2"
@@ -394,7 +394,7 @@ jobs:
         if: always()
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         with:
-          host: 194.163.188.71
+          host: alter-c2-abgeschaltet.invalid
           username: root
           key: ${{ secrets.CONTABO2_SSH_KEY }}
           port: 22

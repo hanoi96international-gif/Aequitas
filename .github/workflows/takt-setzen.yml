@@ -31,7 +31,7 @@ jobs:
       matrix:
         box:
           - {name: "Contabo1", host: "alter-c1-abgeschaltet.invalid", secret: "C1"}
-          - {name: "Contabo2", host: "194.163.188.71", secret: "C2"}
+          - {name: "Contabo2", host: "alter-c2-abgeschaltet.invalid", secret: "C2"}
     runs-on: ubuntu-latest
     environment: produktion
     steps:

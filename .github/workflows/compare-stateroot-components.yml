@@ -56,7 +56,7 @@ jobs:
             for target in \
               "primary|https://aequitas.digital" \
               "contabo1|http://localhost:8080" \
-              "contabo2|http://194.163.188.71:8080"
+              "contabo2|http://alter-c2-abgeschaltet.invalid:8080"
             do
               name="${target%%|*}"
               url="${target#*|}"
@@ -70,7 +70,7 @@ jobs:
             for target in \
               "primary|https://aequitas.digital" \
               "contabo1|http://localhost:8080" \
-              "contabo2|http://194.163.188.71:8080"
+              "contabo2|http://alter-c2-abgeschaltet.invalid:8080"
             do
               name="${target%%|*}"
               url="${target#*|}"

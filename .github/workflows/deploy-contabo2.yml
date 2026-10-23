@@ -99,7 +99,7 @@ jobs:
       - name: Deploy to Contabo2
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         with:
-          host: 194.163.188.71
+          host: alter-c2-abgeschaltet.invalid
           username: root
           key: ${{ secrets.CONTABO2_SSH_KEY }}
           port: 22
@@ -202,7 +202,7 @@ jobs:
       - name: Verify Contabo2 is alive and advancing after the deploy
         run: |
           set -uo pipefail
-          BASE=http://194.163.188.71:8080
+          BASE=http://alter-c2-abgeschaltet.invalid:8080
           up=""
           for i in $(seq 1 30); do
             code=$(curl -s -m 10 -o /dev/null -w '%{http_code}' "$BASE/api/health/combined" || echo 000)
@@ -301,7 +301,7 @@ jobs:
         continue-on-error: true
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         with:
-          host: 194.163.188.71
+          host: alter-c2-abgeschaltet.invalid
           username: root
           key: ${{ secrets.CONTABO2_SSH_KEY }}
           port: 22

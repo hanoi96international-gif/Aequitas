@@ -39,15 +39,15 @@ jobs:
           set -eu
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           printf '%s\n' "$KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan 194.163.188.71 2>/dev/null > ~/.ssh/kh_all
+          ssh-keyscan alter-c2-abgeschaltet.invalid 2>/dev/null > ~/.ssh/kh_all
           ssh-keygen -lf ~/.ssh/kh_all | awk '{print $2}' | grep -qx 'SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto' || { echo "::error::Host-Schluessel von C2 passt nicht"; exit 1; }
           cp ~/.ssh/kh_all ~/.ssh/known_hosts
       - name: C2 lesen
-        run: ssh -o BatchMode=yes root@194.163.188.71 'bash -s' < deploy/lage-lesen.sh
+        run: ssh -o BatchMode=yes root@alter-c2-abgeschaltet.invalid 'bash -s' < deploy/lage-lesen.sh
       - name: deploy_safe_c2.sh auf C2 (nur Ablauf, keine Werte)
-        run: ssh -o BatchMode=yes root@194.163.188.71 "grep -vE '^\\s*(#|$)' /root/deploy_safe_c2.sh | grep -viE 'KEY=|TOKEN=|PASSWORD=|SECRET=|postgres://' | head -120"
+        run: ssh -o BatchMode=yes root@alter-c2-abgeschaltet.invalid "grep -vE '^\\s*(#|$)' /root/deploy_safe_c2.sh | grep -viE 'KEY=|TOKEN=|PASSWORD=|SECRET=|postgres://' | head -120"
       - name: env-setzen.sh auf C2 (nur Ablauf, keine Werte)
-        run: ssh -o BatchMode=yes root@194.163.188.71 "grep -vE '^\s*$' /root/env-setzen.sh | grep -viE 'KEY=|TOKEN=|PASSWORD=|SECRET=' | head -80"
+        run: ssh -o BatchMode=yes root@alter-c2-abgeschaltet.invalid "grep -vE '^\s*$' /root/env-setzen.sh | grep -viE 'KEY=|TOKEN=|PASSWORD=|SECRET=' | head -80"
   aussen:
     runs-on: ubuntu-latest
     steps:

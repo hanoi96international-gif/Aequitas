@@ -26,13 +26,13 @@ jobs:
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           printf '%s\n' "$K1" > ~/.ssh/c1 && chmod 600 ~/.ssh/c1
           printf '%s\n' "$K2" > ~/.ssh/c2 && chmod 600 ~/.ssh/c2
-          ssh-keyscan 194.163.188.71 2>/dev/null > ~/.ssh/kh
+          ssh-keyscan alter-c2-abgeschaltet.invalid 2>/dev/null > ~/.ssh/kh
           ssh-keygen -lf ~/.ssh/kh | awk '{print $2}' | grep -qx 'SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto' || { echo "::error::Host-Schluessel von C2 passt nicht"; exit 1; }
           cat ~/.ssh/kh >> ~/.ssh/known_hosts
       - name: Von C2 lesen
         run: |
           set -eu
-          ssh -i ~/.ssh/c2 -o BatchMode=yes root@194.163.188.71 '
+          ssh -i ~/.ssh/c2 -o BatchMode=yes root@alter-c2-abgeschaltet.invalid '
             DB=$(docker inspect aequitas-node --format "{{range .Config.Env}}{{println .}}{{end}}" | grep "^DATABASE_URL=" | cut -d= -f2-)
             docker run --rm --network aequitas-net postgres:16-alpine psql "$DB" -tA -F"|" \
               -c "SELECT public_key, human_wallet, COALESCE(url, '"''"') FROM coordinator_keys ORDER BY registered_at"

@@ -34,7 +34,7 @@ jobs:
         run: |
           set -euo pipefail
           c1=$(curl -sf -m 25 http://188.172.229.121:8080/api/status | jq -r '.validator_address // empty' | tr 'A-F' 'a-f')
-          c2=$(curl -sf -m 25 http://194.163.188.71:8080/api/status | jq -r '.validator_address // empty' | tr 'A-F' 'a-f')
+          c2=$(curl -sf -m 25 http://alter-c2-abgeschaltet.invalid:8080/api/status | jq -r '.validator_address // empty' | tr 'A-F' 'a-f')
           echo "C1: $c1"; echo "C2: $c2"
           for a in "$c1" "$c2"; do [[ "$a" =~ ^0x[0-9a-f]{40}$ ]] || { echo "::error::Signieradresse nicht lesbar: '$a'"; exit 1; }; done
           [ "$c1" != "$c2" ] || { echo "::error::C1 und C2 haben dieselbe Signieradresse"; exit 1; }
@@ -53,7 +53,7 @@ jobs:
           set -eu
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           printf '%s\n' "$KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan 194.163.188.71 2>/dev/null > ~/.ssh/kh
+          ssh-keyscan alter-c2-abgeschaltet.invalid 2>/dev/null > ~/.ssh/kh
           ssh-keygen -lf ~/.ssh/kh | awk '{print $2}' | grep -qx 'SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto' || { echo "::error::Host-Schluessel von C2 passt nicht"; exit 1; }
           cp ~/.ssh/kh ~/.ssh/known_hosts
       - name: C2 setzen
@@ -61,7 +61,7 @@ jobs:
           LISTE: ${{ needs.adressen.outputs.liste }}
           SCHREIBEN: ${{ inputs.schreiben }}
         run: |
-          ssh -o BatchMode=yes -o ServerAliveInterval=30 root@194.163.188.71 "LISTE='$LISTE' SCHREIBEN='$SCHREIBEN' bash -s" <<'SKRIPT'
+          ssh -o BatchMode=yes -o ServerAliveInterval=30 root@alter-c2-abgeschaltet.invalid "LISTE='$LISTE' SCHREIBEN='$SCHREIBEN' bash -s" <<'SKRIPT'
           set -euo pipefail
           ist=$(docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep '^AUTHORIZED_VALIDATORS=' | cut -d= -f2- || true)
           echo "C2 bisher: AUTHORIZED_VALIDATORS=${ist:-<leer>}"
@@ -77,7 +77,7 @@ jobs:
           SKRIPT
       - name: C2 lebt und die Hoehe steigt
         if: ${{ inputs.schreiben }}
-        run: bash deploy/pruefe-knoten.sh http://194.163.188.71:8080
+        run: bash deploy/pruefe-knoten.sh http://alter-c2-abgeschaltet.invalid:8080
 
   c1:
     needs: [adressen, c2]
@@ -122,6 +122,6 @@ jobs:
       - name: Beide melden produzenten_geschlossen
         if: ${{ inputs.schreiben }}
         run: |
-          for h in 188.172.229.121 194.163.188.71; do
+          for h in 188.172.229.121 alter-c2-abgeschaltet.invalid; do
             echo "$h: $(curl -s -m 10 http://$h:8080/api/status | jq -c '{height, produzenten_geschlossen}')"
           done

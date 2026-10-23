@@ -28,7 +28,7 @@ jobs:
           printf '%s\n' "$K1" > ~/.ssh/c1 && printf '%s\n' "$K2" > ~/.ssh/c2 && chmod 600 ~/.ssh/c1 ~/.ssh/c2
           ssh-keyscan -t ed25519 188.172.229.121 2>/dev/null > ~/.ssh/k1
           ssh-keygen -lf ~/.ssh/k1 | awk '{print $2}' | grep -qx 'SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA'
-          ssh-keyscan 194.163.188.71 2>/dev/null > ~/.ssh/k2
+          ssh-keyscan alter-c2-abgeschaltet.invalid 2>/dev/null > ~/.ssh/k2
           ssh-keygen -lf ~/.ssh/k2 | awk '{print $2}' | grep -qx 'SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto'
           cat ~/.ssh/k1 ~/.ssh/k2 > ~/.ssh/known_hosts
       - name: Schalter setzen und Knoten neu starten
@@ -42,4 +42,4 @@ jobs:
       # lesen -- der Schritt waere sonst jedes Mal rot.
       - name: Nachher -- C2
         if: env.C2_AKTIV == 'ja'
-        run: ssh -i ~/.ssh/c2 -o BatchMode=yes root@194.163.188.71 'bash -s' < deploy/leistung-lesen.sh
+        run: ssh -i ~/.ssh/c2 -o BatchMode=yes root@alter-c2-abgeschaltet.invalid 'bash -s' < deploy/leistung-lesen.sh

@@ -61,7 +61,7 @@ jobs:
 
           PRIMARY="https://aequitas.digital"
           C1="http://alter-c1-abgeschaltet.invalid:8080"
-          C2="http://194.163.188.71:8080"
+          C2="http://alter-c2-abgeschaltet.invalid:8080"
           url_of () { case "$1" in primary) echo "$PRIMARY";; c1) echo "$C1";; c2) echo "$C2";; esac; }
 
           echo "=== UTC ==="; date -u; echo ""
@@ -285,7 +285,7 @@ jobs:
       - name: Contabo2 merge evidence
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         with:
-          host: 194.163.188.71
+          host: alter-c2-abgeschaltet.invalid
           username: root
           key: ${{ secrets.CONTABO2_SSH_KEY }}
           port: 22

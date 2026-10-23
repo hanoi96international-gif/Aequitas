@@ -30,7 +30,7 @@ jobs:
           printf '%s\n' "$K1" > ~/.ssh/c1 && printf '%s\n' "$K2" > ~/.ssh/c2 && chmod 600 ~/.ssh/c1 ~/.ssh/c2
           ssh-keyscan -t ed25519 188.172.229.121 2>/dev/null > ~/.ssh/k1
           ssh-keygen -lf ~/.ssh/k1 | awk '{print $2}' | grep -qx 'SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA'
-          ssh-keyscan 194.163.188.71 2>/dev/null > ~/.ssh/k2
+          ssh-keyscan alter-c2-abgeschaltet.invalid 2>/dev/null > ~/.ssh/k2
           ssh-keygen -lf ~/.ssh/k2 | awk '{print $2}' | grep -qx 'SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto'
           cat ~/.ssh/k1 ~/.ssh/k2 > ~/.ssh/known_hosts
       - name: Auszuege
@@ -41,12 +41,12 @@ jobs:
           xor() { curl -s -m 10 "http://$1:8080/api/debug/stateroot-components" | jq -r .account_set_xor; }
           for i in 1 2; do
             echo "C1_XOR_VOR=$(xor 188.172.229.121)" > xor.env
-            echo "C2_XOR_VOR=$(xor 194.163.188.71)" >> xor.env
+            echo "C2_XOR_VOR=$(xor alter-c2-abgeschaltet.invalid)" >> xor.env
             ssh -i ~/.ssh/c1 -o BatchMode=yes root@188.172.229.121 'bash -s' < deploy/konten-auszug.sh > c1.txt &
-            ssh -i ~/.ssh/c2 -o BatchMode=yes root@194.163.188.71 'bash -s' < deploy/konten-auszug.sh > c2.txt &
+            ssh -i ~/.ssh/c2 -o BatchMode=yes root@alter-c2-abgeschaltet.invalid 'bash -s' < deploy/konten-auszug.sh > c2.txt &
             wait
             echo "C1_XOR_NACH=$(xor 188.172.229.121)" >> xor.env
-            echo "C2_XOR_NACH=$(xor 194.163.188.71)" >> xor.env
+            echo "C2_XOR_NACH=$(xor alter-c2-abgeschaltet.invalid)" >> xor.env
             echo "C1 $(wc -l < c1.txt) Konten, C2 $(wc -l < c2.txt) Konten"
             [ -s c1.txt ] && [ -s c2.txt ] && break
             sleep 5

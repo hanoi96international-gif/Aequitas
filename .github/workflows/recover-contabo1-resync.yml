@@ -83,7 +83,7 @@ jobs:
 
             echo "=== pointing Contabo1 at Contabo2 as its snapshot source ==="
             sed -i '/^BOOTSTRAP_SNAPSHOT_URL=/d;/^BOOTSTRAP_SIGNER=/d' /root/.aequitas.env
-            echo 'BOOTSTRAP_SNAPSHOT_URL=http://194.163.188.71:8080/api/snapshot' >> /root/.aequitas.env
+            echo 'BOOTSTRAP_SNAPSHOT_URL=http://alter-c2-abgeschaltet.invalid:8080/api/snapshot' >> /root/.aequitas.env
             echo 'BOOTSTRAP_SIGNER=0x1a37dcdaa42cf3f7e1f6e41379961f40df44a4e3' >> /root/.aequitas.env
             sed -i 's/^RESYNC_FROM_SNAPSHOT=.*/RESYNC_FROM_SNAPSHOT=true/' /root/.aequitas.env
             grep -q '^RESYNC_FROM_SNAPSHOT=' /root/.aequitas.env || echo 'RESYNC_FROM_SNAPSHOT=true' >> /root/.aequitas.env
