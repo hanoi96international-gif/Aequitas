@@ -1,4 +1,4 @@
-name: C1 (netcup) -- Leistungsschalter wie C2 setzen
+name: C1 (netcup) -- Leistungsschalter setzen
 # Setzt auf C1 die Schalter, die C2 seit August traegt (deploy/perf-c1-setzen.sh),
 # startet nur den Knoten-Container neu und prueft danach: Schalter im
 # Container, C1 nimmt an, Hoehe steigt. Freigegeben am 26.09.2026.
@@ -6,8 +6,6 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
-env:
-  C2_AKTIV: "nein"
 concurrency:
   group: c1-knoten
   cancel-in-progress: false
@@ -21,25 +19,16 @@ jobs:
       - name: Schluessel und Host-Pruefung
         env:
           K1: ${{ secrets.CONTABO_SSH_KEY }}
-          K2: ${{ secrets.CONTABO2_SSH_KEY }}
         run: |
           set -eu
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
-          printf '%s\n' "$K1" > ~/.ssh/c1 && printf '%s\n' "$K2" > ~/.ssh/c2 && chmod 600 ~/.ssh/c1 ~/.ssh/c2
+          printf '%s\n' "$K1" > ~/.ssh/c1 && chmod 600 ~/.ssh/c1
           ssh-keyscan -t ed25519 188.172.229.121 2>/dev/null > ~/.ssh/k1
           ssh-keygen -lf ~/.ssh/k1 | awk '{print $2}' | grep -qx 'SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA'
-          ssh-keyscan alter-c2-abgeschaltet.invalid 2>/dev/null > ~/.ssh/k2
-          ssh-keygen -lf ~/.ssh/k2 | awk '{print $2}' | grep -qx 'SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto'
-          cat ~/.ssh/k1 ~/.ssh/k2 > ~/.ssh/known_hosts
+          cat ~/.ssh/k1 > ~/.ssh/known_hosts
       - name: Schalter setzen und Knoten neu starten
         run: ssh -i ~/.ssh/c1 -o BatchMode=yes root@188.172.229.121 'bash -s' < deploy/perf-c1-setzen.sh
       - name: Hoehe steigt
         run: bash deploy/pruefe-knoten.sh https://aequitas.digital
       - name: Nachher -- C1
         run: ssh -i ~/.ssh/c1 -o BatchMode=yes root@188.172.229.121 'bash -s' < deploy/leistung-lesen.sh
-      # Wie deploy-c1-dann-c2.yml: ist C2 kein laufender Validator (Neustart
-      # bei null, Neueinrichtung nach Guide), gibt es dort keinen Knoten zu
-      # lesen -- der Schritt waere sonst jedes Mal rot.
-      - name: Nachher -- C2
-        if: env.C2_AKTIV == 'ja'
-        run: ssh -i ~/.ssh/c2 -o BatchMode=yes root@alter-c2-abgeschaltet.invalid 'bash -s' < deploy/leistung-lesen.sh

@@ -56,7 +56,7 @@ jobs:
         # Seit dem 26.09.2026 der neue C1; die alte Contabo1-IP 173.249.37.118
         # ist abgeschaltet. Der Knoten liest deploy/validator/.env (Compose,
         # deploy/deploy-c1.sh). C2 ist seit dem Neustart bei null ohne Knoten
-        # (C2_AKTIV in deploy-c1-dann-c2.yml) und wird hier nicht angefasst.
+        # (C2_AKTIV in deploy-c1.yml) und wird hier nicht angefasst.
         env:
           KEY: ${{ secrets.CONTABO_SSH_KEY }}
         run: |

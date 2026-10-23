@@ -13,7 +13,7 @@ C2 (194.163.188.71) ist seit dem 03.10.2026 abgeschaltet; am 21.10.2026
 meldete die IP einen fremden Host-Schluessel, sie ist also neu vergeben. Am
 23.10.2026 standen noch 259 ausfuehrbare Zeilen in 183 Workflows darauf,
 83 ssh-action-Schritte ohne fingerprint. Der schwerste Fall: der
-Push-Deploy deploy-c1-dann-c2.yml fragte bei schweigendem C1 die C2-IP nach
+Push-Deploy deploy-c1.yml fragte bei schweigendem C1 die C2-IP nach
 der Genesis -- ein Fremder mit den oeffentlichen Werten haette die Sperre
 geoeffnet. Ersetzt durch alter-c2-abgeschaltet.invalid.
 

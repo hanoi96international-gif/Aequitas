@@ -35,7 +35,8 @@ pruefe() { # name url
   fi
 }
 pruefe "$BOXNAME" "http://127.0.0.1:8080/api/wache"
-pruefe "partner $PARTNER" "http://$PARTNER:8080/api/wache"
+# Ohne Partner (nur ein Knoten) gibt es nichts zu fragen.
+if [ -n "${PARTNER:-}" ]; then pruefe "partner $PARTNER" "http://$PARTNER:8080/api/wache"; fi
 vorher_status=gruen; vorher_alarm=0
 if [ -f "$STATE" ]; then . "$STATE"; fi
 senden() {

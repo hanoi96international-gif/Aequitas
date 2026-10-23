@@ -8,7 +8,7 @@ on:
   push:
     branches-ignore: [master, main]
   pull_request:
-  # Pforte vor jedem Deploy (deploy-c1-dann-c2.yml): dieselben Pruefungen
+  # Pforte vor jedem Deploy (deploy-c1.yml): dieselben Pruefungen
   # wie im PR -- race, db-tests, govulncheck, Docker-Image -- nicht weniger.
   workflow_call:
 

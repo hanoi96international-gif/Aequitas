@@ -1,4 +1,4 @@
-name: Lage C1 (netcup) und C2 -- Rolle, Dienste, Quorum (nur lesend)
+name: Lage C1 (netcup) -- Rolle, Dienste, Quorum (nur lesend)
 # Vor dem Umschalten: welche Box nimmt an (ANNAHME_ROLLE), welche Dienste
 # laufen wo, steht das Bezeugungs-Quorum? Gibt nur Namen aus festen Listen
 # aus (deploy/lage-lesen.sh) -- das Log ist oeffentlich.
@@ -26,37 +26,15 @@ jobs:
         run: ssh-keyscan 188.172.229.121 2>/dev/null | ssh-keygen -lf -
       - name: C1 lesen
         run: ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes root@$NEU 'bash -s' < deploy/lage-lesen.sh
-  c2:
-    runs-on: ubuntu-latest
-    environment: produktion
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Schluessel und Host-Pruefung
-        env:
-          KEY: ${{ secrets.CONTABO2_SSH_KEY }}
-        run: |
-          set -eu
-          mkdir -p ~/.ssh && chmod 700 ~/.ssh
-          printf '%s\n' "$KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan alter-c2-abgeschaltet.invalid 2>/dev/null > ~/.ssh/kh_all
-          ssh-keygen -lf ~/.ssh/kh_all | awk '{print $2}' | grep -qx 'SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto' || { echo "::error::Host-Schluessel von C2 passt nicht"; exit 1; }
-          cp ~/.ssh/kh_all ~/.ssh/known_hosts
-      - name: C2 lesen
-        run: ssh -o BatchMode=yes root@alter-c2-abgeschaltet.invalid 'bash -s' < deploy/lage-lesen.sh
-      - name: deploy_safe_c2.sh auf C2 (nur Ablauf, keine Werte)
-        run: ssh -o BatchMode=yes root@alter-c2-abgeschaltet.invalid "grep -vE '^\\s*(#|$)' /root/deploy_safe_c2.sh | grep -viE 'KEY=|TOKEN=|PASSWORD=|SECRET=|postgres://' | head -120"
-      - name: env-setzen.sh auf C2 (nur Ablauf, keine Werte)
-        run: ssh -o BatchMode=yes root@alter-c2-abgeschaltet.invalid "grep -vE '^\s*$' /root/env-setzen.sh | grep -viE 'KEY=|TOKEN=|PASSWORD=|SECRET=' | head -80"
   aussen:
     runs-on: ubuntu-latest
     steps:
       - name: Oeffentliche Endpunkte
         run: |
-          for u in https://aequitas.digital/api/status https://proof1.aequitas.digital/coordinator/health https://proof2.aequitas.digital/coordinator/health https://proof2.aequitas.digital/coordinator/inventory https://proof1.aequitas.digital/matching/health https://proof2.aequitas.digital/matching/health https://proof2.aequitas.digital/health https://proof2.aequitas.digital/api/status; do
+          for u in https://aequitas.digital/api/status https://proof1.aequitas.digital/coordinator/health https://proof1.aequitas.digital/matching/health; do
             echo "== $u"; curl -s -m 10 -w '  [HTTP %{http_code}]' "$u" | head -c 1500; echo
           done
-          echo "== DNS"; for h in aequitas.digital proof1.aequitas.digital proof2.aequitas.digital; do echo "$h -> $(dig +short $h | tr '\n' ' ')"; done
+          echo "== DNS"; for h in aequitas.digital proof1.aequitas.digital; do echo "$h -> $(dig +short $h | tr '\n' ' ')"; done
           # Welche App liefert die Seite aus? /download/app.apk leitet auf ein
           # Release weiter (api.go handleAppDownload, AEQUITAS_APK_URL).
           echo "== /download/app.apk"; curl -sI -m 15 https://aequitas.digital/download/app.apk | grep -iE '^HTTP|^location' || echo "  keine Antwort"

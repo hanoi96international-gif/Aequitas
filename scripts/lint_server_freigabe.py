@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Jeder Job, der Server-Schluessel (secrets.*SSH*/*KEY*) benutzt, laeuft in der
-GitHub-Umgebung `produktion` -- und nur deploy-c1-dann-c2.yml startet von selbst.
+GitHub-Umgebung `produktion` -- und nur deploy-c1.yml startet von selbst.
 
 Warum (29.09.2026): 136 Workflows hatten Root-Zugang auf C1/C2, keiner brauchte
 eine Freigabe, 21 starteten schon bei einem Push. Wer Schreibrechte auf GitHub
@@ -17,7 +17,7 @@ import sys
 import yaml
 
 UMGEBUNG = "produktion"
-DARF_PUSH = {"deploy-c1-dann-c2.yml"}
+DARF_PUSH = {"deploy-c1.yml"}
 SCHLUESSEL = re.compile(r"secrets\.[A-Z0-9_]*(SSH|KEY)", re.I)
 GEHEIM = re.compile(r"secrets\.")
 
