@@ -107,6 +107,10 @@ func (w *countingWriter) Write(b []byte) (int, error) {
 	return n, err
 }
 
+// Unwrap: http.NewResponseController (Fristen im Handler) erreicht so die
+// Verbindung auch hinter countEndpoint.
+func (w *countingWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+
 // countEndpoint wraps a handler so its calls, response size and callers are
 // recorded.
 func countEndpoint(c *endpointCounter, next http.HandlerFunc) http.HandlerFunc {
