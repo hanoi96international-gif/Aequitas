@@ -89,10 +89,10 @@ func TestLebensnachweisRunde_WartetAufBetreiberAenderungen_RealDB(t *testing.T) 
 	if err := savePendingTxExec(cs.db, Transaction{Type: "register_human", Wallet: distTestAddr(1972)}); err != nil {
 		t.Fatal(err)
 	}
-	if err := cs.lebensnachweisRundeBereitLocked(ctx, 2_000, true); err != nil {
+	if err := cs.lebensnachweisRundeBereitLocked(ctx, 2_000); err != nil {
 		t.Fatalf("gewoehnliche Registrierung haelt die Runde an: %v", err)
 	}
-	if g := cs.LebensnachweiseOffenGrund(2_000); g != "" {
+	if g, _ := cs.LebensnachweiseOffenGrund(2_000); g != "" {
 		t.Fatalf("Vorpruefung haelt bei gewoehnlicher Registrierung an: %q", g)
 	}
 
@@ -101,11 +101,26 @@ func TestLebensnachweisRunde_WartetAufBetreiberAenderungen_RealDB(t *testing.T) 
 	if err := savePendingTxExec(cs.db, Transaction{Type: "register_human", Wallet: "0x" + strings.ToUpper(betreiber[2:])}); err != nil {
 		t.Fatal(err)
 	}
-	if err := cs.lebensnachweisRundeBereitLocked(ctx, 2_000, true); !errors.Is(err, ErrLebensnachweiseOffen) {
+	if err := cs.lebensnachweisRundeBereitLocked(ctx, 2_000); !errors.Is(err, ErrLebensnachweiseOffen) {
 		t.Fatalf("offene Registrierung eines Betreibers haelt die Runde nicht an: %v", err)
 	}
-	if g := cs.LebensnachweiseOffenGrund(2_000); g == "" {
+	g, nachweiseOffen := cs.LebensnachweiseOffenGrund(2_000)
+	if g == "" {
 		t.Fatal("Vorpruefung laesst die Runde trotz offener Betreiber-Registrierung starten")
+	}
+	// Ohne offenen Lebensnachweis hilft kein Halt der Annahme.
+	if nachweiseOffen {
+		t.Fatal("Betreiber-Registrierung als offener Lebensnachweis gemeldet -- die Annahme wuerde ohne Nutzen angehalten")
+	}
+	verblocken()
+
+	// Eine offene Bindung kann die Betreiberzahl auch SENKEN (Uebernahme,
+	// umstrittene Bindung): auch sie haelt an.
+	if err := savePendingTxExec(cs.db, Transaction{Type: "validator_bindung", Wallet: distTestAddr(1974), To: distTestAddr(1971)}); err != nil {
+		t.Fatal(err)
+	}
+	if err := cs.lebensnachweisRundeBereitLocked(ctx, 2_000); !errors.Is(err, ErrLebensnachweiseOffen) {
+		t.Fatalf("offene validator_bindung haelt die Runde nicht an: %v", err)
 	}
 	verblocken()
 
@@ -113,11 +128,11 @@ func TestLebensnachweisRunde_WartetAufBetreiberAenderungen_RealDB(t *testing.T) 
 	if err := savePendingTxExec(cs.db, Transaction{Type: "grant_release", Wallet: distTestAddr(1973), Amount: 1}); err != nil {
 		t.Fatal(err)
 	}
-	if err := cs.lebensnachweisRundeBereitLocked(ctx, 2_000, true); !errors.Is(err, ErrLebensnachweiseOffen) {
+	if err := cs.lebensnachweisRundeBereitLocked(ctx, 2_000); !errors.Is(err, ErrLebensnachweiseOffen) {
 		t.Fatalf("offene grant_release haelt die Runde nicht an: %v", err)
 	}
 	verblocken()
-	if err := cs.lebensnachweisRundeBereitLocked(ctx, 2_000, true); err != nil {
+	if err := cs.lebensnachweisRundeBereitLocked(ctx, 2_000); err != nil {
 		t.Fatalf("alles verblockt, Runde trotzdem angehalten: %v", err)
 	}
 }

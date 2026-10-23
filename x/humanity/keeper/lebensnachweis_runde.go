@@ -37,12 +37,22 @@ import (
 // DIE BETREIBERZAHL EBENSO (#412, Befund 2). Ob die Runde ueberhaupt
 // pausieren darf, haengt an den Betreibern ohne offene Staffel
 // (zugelasseneBetreiberZu). Auch die aendert der Erzeuger sofort, vor dem
-// Block: grant_release (Staffelrest auf 0) und register_human (ein Betreiber
-// wird Mensch). Darum zaehlen auch diese als offen -- grant_release jeder
-// Wallet (sie entsteht nur in der Tagesrunde, offen ist sie also nur bei
-// haengendem Ausgang), register_human nur fuer Wallets, die im
-// Kettenregister als Betreiber stehen (validator_verlauf, begrenzt) -- eine
-// gewoehnliche Registrierung haelt die Runde nicht an.
+// Block, und zwar in beide Richtungen:
+//   - grant_release (Staffelrest auf 0) und register_human (ein Betreiber
+//     wird Mensch) erhoehen sie;
+//   - validator_bindung (applyValidatorBindungLocked schon bei der Annahme)
+//     kann sie auch senken: ein anderer Betreiber bindet denselben
+//     Schluessel, oder zwei Bindungen derselben Sekunde sind umstritten
+//     (Sicherheitspruefung von a9744132, NIEDRIG-1).
+// Darum zaehlen diese als offen: grant_release und validator_bindung jeder
+// Wallet (beide selten -- grant_release entsteht nur in der Tagesrunde,
+// validator_bindung hoechstens einmal je validatorBindungAbstand),
+// register_human nur fuer Wallets, die im Kettenregister als Betreiber
+// stehen (validator_verlauf, begrenzt) -- eine gewoehnliche Registrierung
+// haelt die Runde nicht an. Und weil die Zahl auch sinken kann, wartet die
+// Runde ab lebensnachweisAktiv immer, nicht nur, wenn der Erzeuger eine
+// Pause fuer moeglich haelt: saehe er "nicht moeglich" mit einer Bindung,
+// die die Nachspielenden noch nicht kennen, saehen sie "moeglich".
 
 // ErrLebensnachweiseOffen: die Runde wird bald wiederholt (main.go), bis die
 // offenen Auftraege verblockt sind.
@@ -50,32 +60,35 @@ var ErrLebensnachweiseOffen = errors.New("Grundeinkommensrunde wartet: angewandt
 
 // offenePauseAuftraege: wie viele Auftraege im Ausgang noch in keinem
 // erzeugten Block stehen, die die Pause-Entscheidung der Runde aendern
-// (siehe oben). Ohne Datenbank (Tests, Einzelknoten ohne Ausgang) gibt es
+// (siehe oben) -- alle, und davon die Lebensnachweise (nur fuer die hilft
+// der Halt). Ohne Datenbank (Tests, Einzelknoten ohne Ausgang) gibt es
 // keinen Ausgang, also nichts Offenes.
-func (cs *ChainState) offenePauseAuftraege(ctx context.Context) (int64, error) {
+func (cs *ChainState) offenePauseAuftraege(ctx context.Context) (alle, nachweise int64, err error) {
 	if cs.db == nil {
-		return 0, nil
+		return 0, 0, nil
 	}
-	var n int64
 	if err := cs.dbExecCtx(ctx).QueryRow(
-		`SELECT count(*) FROM pending_txs WHERE included_at = 0 AND (
-			(tx_json::json ->> 'type') IN ($1, 'grant_release')
+		`SELECT count(*), count(*) FILTER (WHERE (tx_json::json ->> 'type') = $1)
+		   FROM pending_txs WHERE included_at = 0 AND (
+			(tx_json::json ->> 'type') IN ($1, 'grant_release', 'validator_bindung')
 			OR ((tx_json::json ->> 'type') = 'register_human'
 			    AND lower(tx_json::json ->> 'wallet') IN (SELECT lower(operator_wallet) FROM validator_verlauf)))`,
-		lebensnachweisTxArt).Scan(&n); err != nil {
-		return 0, fmt.Errorf("offene Lebensnachweise nicht lesbar: %w", err)
+		lebensnachweisTxArt).Scan(&alle, &nachweise); err != nil {
+		return 0, 0, fmt.Errorf("offene Lebensnachweise nicht lesbar: %w", err)
 	}
-	return n, nil
+	return alle, nachweise, nil
 }
 
 // lebensnachweisRundeBereitLocked: darf die Runde zur Rundenzeit t ueber
 // Pausen entscheiden? nil = ja. Nicht lesbar = nein (fail-closed: die Runde
-// wird wiederholt, statt mit unbekanntem Stand zu entscheiden).
-func (cs *ChainState) lebensnachweisRundeBereitLocked(ctx context.Context, t int64, pauseMoeglich bool) error {
-	if !pauseMoeglich || !lebensnachweisAktiv(t) {
+// wird wiederholt, statt mit unbekanntem Stand zu entscheiden). Ab
+// lebensnachweisAktiv immer, auch wenn der Erzeuger keine Pause fuer
+// moeglich haelt (siehe oben: die Betreiberzahl kann auch sinken).
+func (cs *ChainState) lebensnachweisRundeBereitLocked(ctx context.Context, t int64) error {
+	if !lebensnachweisAktiv(t) {
 		return nil
 	}
-	n, err := cs.offenePauseAuftraege(ctx)
+	n, _, err := cs.offenePauseAuftraege(ctx)
 	if err != nil {
 		return fmt.Errorf("%w (%v)", ErrLebensnachweiseOffen, err)
 	}
@@ -88,21 +101,23 @@ func (cs *ChainState) lebensnachweisRundeBereitLocked(ctx context.Context, t int
 // LebensnachweiseOffenGrund: Vorpruefung in main.go VOR der Tagessperre
 // (TryLockDistribution) -- sonst hielte eine abgebrochene Runde die Sperre
 // fast 24 Stunden, und der Tag fiele aus. Leer = die Runde darf starten.
-// Ohne cs.mu, darum grober als lebensnachweisRundeBereitLocked: geprueft
-// wird ab lebensnachweisAktiv, auch wenn keine Pause moeglich waere.
-func (cs *ChainState) LebensnachweiseOffenGrund(jetzt int64) string {
+// Ohne cs.mu, sonst wie lebensnachweisRundeBereitLocked. nachweiseOffen:
+// unter den offenen Auftraegen sind Lebensnachweise -- nur dann hilft es,
+// ihre Annahme kurz anzuhalten (nie bei einem Lesefehler oder nur
+// Betreiber-Aenderungen; Sicherheitspruefung von a9744132, NIEDRIG-2).
+func (cs *ChainState) LebensnachweiseOffenGrund(jetzt int64) (grund string, nachweiseOffen bool) {
 	if !lebensnachweisAktiv(jetzt) || cs.db == nil {
-		return ""
+		return "", false
 	}
-	n, err := cs.offenePauseAuftraege(context.Background())
+	n, nachweise, err := cs.offenePauseAuftraege(context.Background())
 	if err != nil {
 		fmt.Printf("[POOLS] %v\n", err)
-		return "offene Lebensnachweise nicht lesbar -- Runde wird wiederholt (Details im Knotenlog)"
+		return "offene Lebensnachweise nicht lesbar -- Runde wird wiederholt (Details im Knotenlog)", false
 	}
 	if n > 0 {
-		return fmt.Sprintf("%d angewandte Lebensnachweise oder Betreiber-Aenderungen stehen noch in keinem Block -- Runde wird wiederholt", n)
+		return fmt.Sprintf("%d angewandte Lebensnachweise oder Betreiber-Aenderungen stehen noch in keinem Block -- Runde wird wiederholt", n), nachweise > 0
 	}
-	return ""
+	return "", false
 }
 
 // VerteilungsSperreLoesen: gibt die Tagessperre frei, wenn die Runde mit

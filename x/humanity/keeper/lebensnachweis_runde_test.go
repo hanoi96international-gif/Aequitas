@@ -16,10 +16,10 @@ import (
 func TestLebensnachweisRunde_OhneAusgangUndInaktiv(t *testing.T) {
 	cs := newTestState()
 	lnAktiv(t, 1_000, 1_000)
-	if err := cs.lebensnachweisRundeBereitLocked(context.Background(), 2_000, true); err != nil {
+	if err := cs.lebensnachweisRundeBereitLocked(context.Background(), 2_000); err != nil {
 		t.Fatalf("ohne Ausgang: %v", err)
 	}
-	if g := cs.LebensnachweiseOffenGrund(2_000); g != "" {
+	if g, _ := cs.LebensnachweiseOffenGrund(2_000); g != "" {
 		t.Fatalf("ohne Ausgang: %q", g)
 	}
 }
@@ -40,7 +40,7 @@ func TestLebensnachweisRunde_WartetAufOffeneNachweise_RealDB(t *testing.T) {
 	if err := savePendingTxExec(cs.db, Transaction{Type: "transfer", Wallet: "0xa1", To: "0xb", Amount: 1}); err != nil {
 		t.Fatal(err)
 	}
-	if err := cs.lebensnachweisRundeBereitLocked(ctx, 2_000, true); err != nil {
+	if err := cs.lebensnachweisRundeBereitLocked(ctx, 2_000); err != nil {
 		t.Fatalf("Ueberweisung im Ausgang haelt die Runde an: %v", err)
 	}
 
@@ -48,18 +48,21 @@ func TestLebensnachweisRunde_WartetAufOffeneNachweise_RealDB(t *testing.T) {
 	if err := savePendingTxExec(cs.db, Transaction{Type: lebensnachweisTxArt, Wallet: "0xa2", DistributionAt: 1_900}); err != nil {
 		t.Fatal(err)
 	}
-	if err := cs.lebensnachweisRundeBereitLocked(ctx, 2_000, true); !errors.Is(err, ErrLebensnachweiseOffen) {
+	if err := cs.lebensnachweisRundeBereitLocked(ctx, 2_000); !errors.Is(err, ErrLebensnachweiseOffen) {
 		t.Fatalf("offener Lebensnachweis haelt die Runde nicht an: %v", err)
 	}
-	if g := cs.LebensnachweiseOffenGrund(2_000); g == "" {
+	if g, _ := cs.LebensnachweiseOffenGrund(2_000); g == "" {
 		t.Fatal("Vorpruefung laesst die Runde trotz offenem Lebensnachweis starten")
 	}
-	// Vor der Aktivierung bzw. ohne moegliche Pause entscheidet die Runde
-	// keine Pausen -- dann wartet sie auch nicht.
-	if err := cs.lebensnachweisRundeBereitLocked(ctx, 2_000, false); err != nil {
-		t.Fatalf("ohne moegliche Pause angehalten: %v", err)
+	// Ein offener Lebensnachweis ist das Signal, die Annahme kurz anzuhalten.
+	if _, offen := cs.LebensnachweiseOffenGrund(2_000); !offen {
+		t.Fatal("offener Lebensnachweis nicht als Grund zum Anhalten gemeldet")
 	}
-	if err := cs.lebensnachweisRundeBereitLocked(ctx, 500, true); err != nil {
+	// Vor der Aktivierung entscheidet die Runde keine Pausen -- dann wartet
+	// sie auch nicht. (Ab der Aktivierung wartet sie immer, auch wenn der
+	// Erzeuger keine Pause fuer moeglich haelt: #412, die Betreiberzahl kann
+	// auch sinken.)
+	if err := cs.lebensnachweisRundeBereitLocked(ctx, 500); err != nil {
 		t.Fatalf("vor der Aktivierung angehalten: %v", err)
 	}
 
@@ -67,10 +70,10 @@ func TestLebensnachweisRunde_WartetAufOffeneNachweise_RealDB(t *testing.T) {
 	if _, err := cs.db.Exec(`UPDATE pending_txs SET included_at = 1 WHERE (tx_json::jsonb ->> 'type') = $1`, lebensnachweisTxArt); err != nil {
 		t.Fatal(err)
 	}
-	if err := cs.lebensnachweisRundeBereitLocked(ctx, 2_000, true); err != nil {
+	if err := cs.lebensnachweisRundeBereitLocked(ctx, 2_000); err != nil {
 		t.Fatalf("verblockter Lebensnachweis haelt die Runde an: %v", err)
 	}
-	if g := cs.LebensnachweiseOffenGrund(2_000); g != "" {
+	if g, _ := cs.LebensnachweiseOffenGrund(2_000); g != "" {
 		t.Fatalf("Vorpruefung nach dem Verblocken: %q", g)
 	}
 
@@ -79,7 +82,7 @@ func TestLebensnachweisRunde_WartetAufOffeneNachweise_RealDB(t *testing.T) {
 	if _, err := cs.db.Exec(`UPDATE pending_txs SET included_at = 0 WHERE (tx_json::jsonb ->> 'type') = $1`, lebensnachweisTxArt); err != nil {
 		t.Fatal(err)
 	}
-	if err := cs.lebensnachweisRundeBereitLocked(ctx, 2_000, true); !errors.Is(err, ErrLebensnachweiseOffen) {
+	if err := cs.lebensnachweisRundeBereitLocked(ctx, 2_000); !errors.Is(err, ErrLebensnachweiseOffen) {
 		t.Fatalf("zurueckgelegter Lebensnachweis haelt die Runde nicht an: %v", err)
 	}
 }

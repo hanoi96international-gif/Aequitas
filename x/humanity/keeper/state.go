@@ -4317,7 +4317,7 @@ func (cs *ChainState) distributeUBIPoolLocked(ctx context.Context, verteiltAm in
 	}
 	// Erst wenn jeder angewandte Lebensnachweis in einem Block steht -- sonst
 	// saehen die Nachspielenden andere Pausen (lebensnachweis_runde.go, #410).
-	if err := cs.lebensnachweisRundeBereitLocked(ctx, verteiltAm, pauseMoeglich); err != nil {
+	if err := cs.lebensnachweisRundeBereitLocked(ctx, verteiltAm); err != nil {
 		return nil, err
 	}
 	humanAddrs, pausiert := cs.lebensnachweisEmpfaengerLocked(humanAddrs, verteiltAm, pauseMoeglich)

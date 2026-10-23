@@ -1039,7 +1039,7 @@ func main() {
 					if !pruefbar {
 						retrySoon = true
 					}
-				} else if grund := chainState.LebensnachweiseOffenGrund(time.Now().Unix()); grund != "" {
+				} else if grund, nachweiseOffen := chainState.LebensnachweiseOffenGrund(time.Now().Unix()); grund != "" {
 					// Lebensnachweis (#410, lebensnachweis_runde.go): erst wenn
 					// jeder angewandte Nachweis in einem Block steht -- VOR der
 					// Tagessperre, sonst fiele der Tag aus. Bald erneut pruefen:
@@ -1047,7 +1047,9 @@ func main() {
 					fmt.Printf("[POOLS] Verteilung jetzt nicht: %s\n", grund)
 					keeper.RecordDistributionOutcome("skipped", grund)
 					retrySoon = true
-					if chainState.LebensnachweisAnnahmeHalten(time.Now().Unix()) {
+					// Nur offene Lebensnachweise lassen die Runde rutschen --
+					// nur dann die Annahme kurz anhalten (#412, Befund 4).
+					if nachweiseOffen && chainState.LebensnachweisAnnahmeHalten(time.Now().Unix()) {
 						lnZiel = time.Now().Add(keeper.LebensnachweisHaltWiederholung)
 					}
 				} else if chainState.TryLockDistribution() {
@@ -1079,10 +1081,10 @@ func main() {
 								if lErr := chainState.VerteilungsSperreLoesen(); lErr != nil {
 									fmt.Printf("[POOLS] ✗ Tagessperre nicht freigegeben: %v\n", lErr)
 								} else {
+									// Ob angehalten wird, entscheidet die
+									// naechste Vorpruefung (nur bei offenen
+									// Lebensnachweisen, nie bei Lesefehlern).
 									retrySoon = true
-									if chainState.LebensnachweisAnnahmeHalten(time.Now().Unix()) {
-										lnZiel = time.Now().Add(keeper.LebensnachweisHaltWiederholung)
-									}
 								}
 								return
 							}
