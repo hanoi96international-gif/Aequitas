@@ -173,7 +173,9 @@ jobs:
             # Die Runde ist nachgespielt, sobald das eigene last_ubi_at ueber
             # dem von C1 beim Start liegt. Danach noch 5 Minuten (LP- und
             # Validatoren-Runde folgen), dann Schluss.
-            if [ "$RUNDE" = 0 ] && [ -n "$UBI_VORHER" ] && [ -n "$U" ] && [ "$U" -gt "$UBI_VORHER" ] 2>/dev/null; then
+            # Leer = C1 hatte vor dem Start noch keine Runde mit Auszahlung
+            # (etwa nach dem Neustart bei null): dann zaehlt jede (Lauf 33).
+            if [ "$RUNDE" = 0 ] && [ -n "$U" ] && [ "$U" -gt "${UBI_VORHER:-0}" ] 2>/dev/null; then
               RUNDE=1
               echo "Verteilungsrunde nachgespielt -- noch 5 Minuten"
               N=$(( $(date +%s) + 300 )); [ "$N" -lt "$ENDE" ] && ENDE=$N
@@ -216,7 +218,7 @@ jobs:
           C1_UBI=$(cat c1_ubi_nachher.txt 2>/dev/null || true)
           C1_RUNDE=nein; C1_AUSGEZAHLT=nein
           if [ -n "$C1_VERSUCH" ] && { [ -z "$VERSUCH_VORHER" ] || [ "$C1_VERSUCH" -gt "$VERSUCH_VORHER" ] 2>/dev/null; }; then C1_RUNDE="ja ($C1_AUSGANG)"; fi
-          if [ -n "$C1_UBI" ] && [ -n "$UBI_VORHER" ] && [ "$C1_UBI" -gt "$UBI_VORHER" ] 2>/dev/null; then C1_AUSGEZAHLT=ja; fi
+          if [ -n "$C1_UBI" ] && [ "$C1_UBI" -gt "${UBI_VORHER:-0}" ] 2>/dev/null; then C1_AUSGEZAHLT=ja; fi
           {
             echo "## Nachrechnen beobachtet"
             echo
