@@ -77,15 +77,7 @@ on:
         required: true
         default: both
         type: choice
-        options: [both, c1, contabo2]
-
-# Wie deploy-c1-dann-c2.yml: ist C2 gerade kein Validator (Neustart bei null,
-# Neueinrichtung nach Guide), hat seine Datenbank keinen Ledger -- der Dump
-# waere leer und der Lauf jeden Tag rot (01.10.2026: 848 Bytes). Dann wird C2
-# uebersprungen, ausser jemand waehlt ihn von Hand aus. Zurueck auf "ja",
-# sobald C2 wieder Validator ist.
-env:
-  C2_AKTIV: "nein"
+        options: [both, c1]
 
 concurrency:
   group: backup-ledger
@@ -114,19 +106,12 @@ jobs:
             host: 188.172.229.121
             secret_name: CONTABO_SSH_KEY
             fingerprint: "SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA"
-          - box: contabo2
-            host: alter-c2-abgeschaltet.invalid
-            secret_name: CONTABO2_SSH_KEY
-            fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
     steps:
       - name: Skip boxes this run does not target
         id: gate
         run: |
           want="${{ github.event.inputs.box || 'both' }}"
-          if [ "${{ matrix.box }}" = "contabo2" ] && [ "$C2_AKTIV" != "ja" ] && [ "$want" != "contabo2" ]; then
-            echo "run=false" >> "$GITHUB_OUTPUT"
-            echo "C2_AKTIV=$C2_AKTIV -- C2 ist kein Validator, kein Ledger zu sichern."
-          elif [ "$want" = "both" ] || [ "$want" = "${{ matrix.box }}" ]; then
+          if [ "$want" = "both" ] || [ "$want" = "${{ matrix.box }}" ]; then
             echo "run=true" >> "$GITHUB_OUTPUT"
           else
             echo "run=false" >> "$GITHUB_OUTPUT"

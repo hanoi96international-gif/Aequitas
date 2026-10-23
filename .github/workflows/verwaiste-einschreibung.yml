@@ -32,22 +32,3 @@ jobs:
           cp ~/.ssh/kh ~/.ssh/known_hosts
       - name: C1 Vergleichsdienst
         run: ssh -o BatchMode=yes root@188.172.229.121 'bash -s' < .github/neustart/verwaiste-einschreibung.sh
-  c2:
-    needs: c1
-    runs-on: ubuntu-latest
-    environment: produktion
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Schluessel und Host-Pruefung
-        env:
-          KEY: ${{ secrets.CONTABO2_SSH_KEY }}
-        run: |
-          set -eu
-          mkdir -p ~/.ssh && chmod 700 ~/.ssh
-          printf '%s\n' "$KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan alter-c2-abgeschaltet.invalid 2>/dev/null > ~/.ssh/kh
-          ssh-keygen -lf ~/.ssh/kh | awk '{print $2}' | grep -qx 'SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto' || { echo "::error::Host-Schluessel von C2 passt nicht"; exit 1; }
-          cp ~/.ssh/kh ~/.ssh/known_hosts
-      - name: C2 Vergleichsdienst (nur der Dienst, der C2-Knoten bleibt aus)
-        run: ssh -o BatchMode=yes root@alter-c2-abgeschaltet.invalid 'bash -s' < .github/neustart/verwaiste-einschreibung.sh

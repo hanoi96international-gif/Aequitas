@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # C1 zurueck auf das Image, das vor dem letzten Deploy lief
 # (aequitas-node:vorher, gesetzt von deploy/deploy-c1.sh).
-# Laeuft ueber .github/workflows/deploy-c1-dann-c2.yml, wenn das Ausrollen
+# Laeuft ueber .github/workflows/deploy-c1.yml, wenn das Ausrollen
 # scheitert oder die Hoehe danach nicht steigt.
 #
 # Daten bleiben, wie sie sind: Postgres und WAL liegen in Volumes, und das

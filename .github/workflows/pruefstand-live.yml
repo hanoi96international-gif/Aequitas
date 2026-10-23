@@ -38,23 +38,6 @@ jobs:
   pruefen:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # C2_AKTIV wie in wache.yml: seit dem Neustart bei null (30.09.2026)
-    # laeuft das Netz mit C1 allein, der C2-Knoten bleibt aus, bis C2 nach
-    # docs/VALIDATOR_EINRICHTEN.md neu eingerichtet ist. Solange "nein": C2s
-    # KNOTEN (Kette, App-API, RPC, Tor, APK) wird nicht geprueft -- ROT nur,
-    # falls er doch antwortet (dann laeuft dort eine Kette ausserhalb des
-    # Netzes). C2s DIENSTE (Coordinator, Vergleichsdienst proof2 -- Teil des
-    # Quorums --, Proof-Server) weiter wie bisher. Nach der Neueinrichtung "ja".
-    #
-    # C2_DIENSTE_AKTIV: seit dem 03.10.2026 ist die ganze C2-Box aus, also
-    # auch Coordinator, Vergleichsdienst und Proof-Server unter proof2. Der
-    # Coordinator auf C1 hat Quorum 1 mit dem Vergleichsdienst auf C1.
-    # Solange "nein", werden die Dienste unter proof2 nicht geprueft (sonst
-    # ist der Pruefstand dauerhaft rot und zeigt echte Fehler nicht mehr).
-    # Zurueck auf "ja", sobald dort wieder Dienste laufen.
-    env:
-      C2_AKTIV: "nein"
-      C2_DIENSTE_AKTIV: "nein"
     steps:
       - name: Pruefen
         env:
@@ -82,7 +65,7 @@ jobs:
           # zweiter Server kommt hier mit einer Zeile dazu (und in wache.yml).
           # Seit 26.09.2026: der neue C1 (netcup) ist Primary und nimmt an,
           # C2 ist nur_lesend.
-          KNOTEN="C1=188.172.229.121=proof1=true C2=alter-c2-abgeschaltet.invalid=proof2=false"
+          KNOTEN="C1=188.172.229.121=proof1=true"
           declare -A API RPC IP PH SOLLAN HOEHE COMMIT EVMID WAB
           NAMEN=""
           for E in $KNOTEN; do
@@ -91,17 +74,6 @@ jobs:
             API[$N]=https://$P.aequitas.digital/api; RPC[$N]=https://$P.aequitas.digital/rpc
           done
           DIENSTE="$NAMEN"
-          case "$C2_DIENSTE_AKTIV" in ja|nein) ;; *) rot "C2_DIENSTE_AKTIV='$C2_DIENSTE_AKTIV' -- erwartet ja oder nein"; C2_DIENSTE_AKTIV=ja;; esac
-          if [ "$C2_DIENSTE_AKTIV" = nein ]; then
-            DIENSTE=$(for N in $DIENSTE; do [ "$N" != C2 ] && echo "$N"; done | xargs)
-            info "Dienste unter proof2 nicht geprueft (C2_DIENSTE_AKTIV=nein, C2-Box seit 03.10.2026 aus)"
-          fi
-          case "$C2_AKTIV" in ja|nein) ;; *) rot "C2_AKTIV='$C2_AKTIV' -- erwartet ja oder nein"; C2_AKTIV=ja;; esac
-          if [ "$C2_AKTIV" = nein ]; then
-            NAMEN=$(for N in $NAMEN; do [ "$N" != C2 ] && echo "$N"; done | xargs)
-            C2S=$(get --max-time 10 "http://${IP[C2]}:8080/api/status" | jq_ '.height // empty')
-            if [ -n "$C2S" ]; then rot "C2-Knoten antwortet (Hoehe $C2S), obwohl C2_AKTIV=nein -- gehoert nicht zum neuen Netz"; else info "C2-Knoten aus (C2_AKTIV=nein) -- nur seine Dienste werden geprueft"; fi
-          fi
           ANNEHMER=$(for N in $NAMEN; do [ "${SOLLAN[$N]}" = true ] && echo "$N"; done | wc -l)
           [ "$ANNEHMER" = 1 ] && ok "genau ein Knoten nimmt Ueberweisungen an" || rot "$ANNEHMER Knoten als annehmend eingetragen -- genau einer ist richtig"
 

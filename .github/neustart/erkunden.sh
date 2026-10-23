@@ -102,7 +102,7 @@ if [ -n "$PROOF" ]; then
 fi
 echo
 echo "===== $BOX: Deploy-Skript der Box (nur ob es baut) ====="
-for f in /root/deploy_safe_c2.sh /root/Aequitas/deploy/deploy-c1.sh; do
+for f in /root/Aequitas/deploy/deploy-c1.sh; do
   [ -f "$f" ] && echo "$f: git fetch/reset/pull $(grep -cE 'git (fetch|reset|pull)' "$f")x, docker build $(grep -cE 'docker (compose )?build|docker build' "$f")x, docker run/up $(grep -cE 'docker run|compose up' "$f")x"
 done
 echo

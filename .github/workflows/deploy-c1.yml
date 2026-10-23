@@ -1,0 +1,72 @@
+name: Deploy -- C1 (netcup, Primary)
+# Ein Push auf main rollt den Knoten aus:
+#   1. Die volle CI (ci.yml)
+#   2. C1 (188.172.229.121, Primary): bauen, neu starten, pruefen
+#      (antwortet, Hoehe steigt, nimmt_an=true)
+# Bis zum 23.10.2026 hiess dieser Workflow deploy-c1-dann-c2.yml und zog
+# danach C2 nach. C2 ist seit dem 03.10.2026 abgeschaltet, seine IP neu
+# vergeben; der C2-Teil ist entfernt. Ein neuer zweiter Server kommt als
+# eigener Job nach c1 dazu (needs: c1).
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '.github/**'
+      - '**.md'
+      - 'tools/**'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: deploy-knoten
+  cancel-in-progress: false
+jobs:
+  # Die volle CI (ci.yml) als Pforte: bis zum 15.10.2026 lief hier nur
+  # go test ohne -race, ohne Datenbank und ohne govulncheck -- der Deploy
+  # pruefte weniger als jeder PR (Beta-Pruefung, MITTEL).
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  c1:
+    needs: ci
+    runs-on: ubuntu-latest
+    environment: produktion
+    timeout-minutes: 60
+    env:
+      C1: 188.172.229.121
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Genesis passt zur laufenden Kette (Wechsel nur ueber neustart-bei-null.yml)
+        run: bash .github/neustart/genesis-passt.sh http://$C1:8080
+      - name: Schluessel
+        env:
+          KEY: ${{ secrets.CONTABO_SSH_KEY }}
+        run: |
+          set -eu
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          # Host-Schluessel des neuen C1 festgepinnt (ED25519, gelesen am 26.09.2026).
+          ssh-keyscan -t ed25519 $C1 2>/dev/null > ~/.ssh/kh1
+          ssh-keygen -lf ~/.ssh/kh1 | awk '{print $2}' | grep -qx 'SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA' || { echo "::error::Host-Schluessel von C1 passt nicht"; exit 1; }
+          cat ~/.ssh/kh1 >> ~/.ssh/known_hosts
+      - name: C1 ausrollen
+        id: ausrollen
+        run: ssh -o BatchMode=yes -o ServerAliveInterval=30 root@$C1 'bash -s' < deploy/deploy-c1.sh
+      - name: C1 lebt und die Hoehe steigt
+        id: hoehe
+        run: bash deploy/pruefe-knoten.sh http://$C1:8080
+      # Ruecknahme (Beta-Pruefung, MITTEL): scheitert das Ausrollen oder
+      # steigt die Hoehe nicht, laeuft wieder das Image, das VOR diesem
+      # Deploy lief (deploy-c1.sh merkt es sich als aequitas-node:vorher).
+      # Der Job bleibt rot -- die Ursache muss trotzdem geklaert werden --,
+      # aber die Kette steht nicht still, bis jemand eingreift.
+      - name: C1 zurueck auf das vorige Image
+        id: zurueck
+        if: failure() && (steps.ausrollen.outcome == 'failure' || steps.hoehe.outcome == 'failure')
+        run: ssh -o BatchMode=yes -o ServerAliveInterval=30 root@$C1 'bash -s' < deploy/rueckrollen-c1.sh
+      - name: C1 lebt nach der Ruecknahme
+        if: failure() && steps.zurueck.outcome == 'success'
+        run: |
+          bash deploy/pruefe-knoten.sh http://$C1:8080
+          echo "::error::Deploy gescheitert, C1 laeuft wieder auf dem vorigen Image -- Ursache klaeren"
+

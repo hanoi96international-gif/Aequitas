@@ -1,4 +1,4 @@
-name: Wirtschaft Stufe 2 -- Vorbedingung auf C1/C2 pruefen (nur lesen)
+name: Wirtschaft Stufe 2 -- Vorbedingung auf C1 pruefen (nur lesen)
 
 # Vor dem Ausrollen von wirtschaft.go (Gruender bleibt an erster Stelle,
 # docs/SICHERHEITSPRUEFUNG_BRANCH_2026-10-02.md, Abschnitt 1): Haelt die
@@ -12,12 +12,6 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
-env:
-  # Wie in deploy-c1-dann-c2.yml: C2 ist seit dem Neustart bei null (30.09.)
-  # kein Validator und wird neu eingerichtet. Solange "nein", wird nur C1
-  # geprueft -- der einzige Knoten, der ausgerollt wird. Zurueck auf "ja",
-  # sobald C2 wieder Validator ist.
-  C2_AKTIV: "nein"
 jobs:
   pruefen:
     runs-on: ubuntu-latest
@@ -27,24 +21,17 @@ jobs:
       - name: Schluessel und Host-Pruefung
         env:
           K1: ${{ secrets.CONTABO_SSH_KEY }}
-          K2: ${{ secrets.CONTABO2_SSH_KEY }}
         run: |
           set -eu
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
-          printf '%s\n' "$K1" > ~/.ssh/c1 && printf '%s\n' "$K2" > ~/.ssh/c2 && chmod 600 ~/.ssh/c1 ~/.ssh/c2
+          printf '%s\n' "$K1" > ~/.ssh/c1 && chmod 600 ~/.ssh/c1
           ssh-keyscan -t ed25519 188.172.229.121 2>/dev/null > ~/.ssh/k1
           ssh-keygen -lf ~/.ssh/k1 | awk '{print $2}' | grep -qx 'SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA' || { echo "::error::Host-Schluessel von C1 passt nicht"; exit 1; }
           cat ~/.ssh/k1 > ~/.ssh/known_hosts
-          if [ "$C2_AKTIV" = "ja" ]; then
-            ssh-keyscan alter-c2-abgeschaltet.invalid 2>/dev/null > ~/.ssh/k2
-            ssh-keygen -lf ~/.ssh/k2 | awk '{print $2}' | grep -qx 'SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto' || { echo "::error::Host-Schluessel von C2 passt nicht"; exit 1; }
-            cat ~/.ssh/k2 >> ~/.ssh/known_hosts
-          fi
       - name: Unternehmen mit mehreren Verantwortlichen
         run: |
           fehler=0
           boxen="c1:188.172.229.121"
-          if [ "$C2_AKTIV" = "ja" ]; then boxen="$boxen c2:alter-c2-abgeschaltet.invalid"; else echo "::notice::C2_AKTIV=$C2_AKTIV -- C2 ist kein Validator und wird nicht ausgerollt, nur C1 wird geprueft"; fi
           for box in $boxen; do
             k=${box%%:*}; h=${box#*:}
             n=$(ssh -i ~/.ssh/$k -o BatchMode=yes root@$h \

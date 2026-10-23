@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Neuen C1 (netcup, Primary) auf origin/main bringen.
-# Laeuft ueber .github/workflows/deploy-c1-dann-c2.yml -- danach, und nur
+# Laeuft ueber .github/workflows/deploy-c1.yml -- danach, und nur
 # wenn das hier gruen ist, zieht C2 nach.
 #
 # Die Rolle steht in deploy/validator/.env (ANNAHME_ROLLE=annehmend,

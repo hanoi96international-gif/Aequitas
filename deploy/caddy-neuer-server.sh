@@ -20,7 +20,7 @@ C1_COORD=d3c46a772f2c40e533f6abd5781d0c39cdcda9ba3df63e909ebd729d2e2aebbf
 if [ -f "$CF" ] && cmp -s "$NEU" "$CF"; then
   echo "  Caddyfile unveraendert -- Routing bleibt, keine Coordinator-Pruefung noetig"
 else
-  for k in http://127.0.0.1:8080 https://proof2.aequitas.digital; do
+  for k in http://127.0.0.1:8080; do
     if curl -fsS -m 10 "$k/api/coordinators" | grep -q "\"$C1_COORD\""; then
       echo "  Coordinator C1 eingetragen auf $k"
     else

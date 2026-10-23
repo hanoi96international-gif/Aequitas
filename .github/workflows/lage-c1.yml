@@ -1,0 +1,40 @@
+name: Lage C1 (netcup) -- Rolle, Dienste, Quorum (nur lesend)
+# Vor dem Umschalten: welche Box nimmt an (ANNAHME_ROLLE), welche Dienste
+# laufen wo, steht das Bezeugungs-Quorum? Gibt nur Namen aus festen Listen
+# aus (deploy/lage-lesen.sh) -- das Log ist oeffentlich.
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  c1:
+    runs-on: ubuntu-latest
+    environment: produktion
+    timeout-minutes: 10
+    env:
+      NEU: 188.172.229.121
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Schluessel
+        env:
+          KEY: ${{ secrets.CONTABO_SSH_KEY }}
+        run: |
+          set -eu
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+      - name: Host-Fingerabdruck C1 (zum Festpinnen)
+        run: ssh-keyscan 188.172.229.121 2>/dev/null | ssh-keygen -lf -
+      - name: C1 lesen
+        run: ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes root@$NEU 'bash -s' < deploy/lage-lesen.sh
+  aussen:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Oeffentliche Endpunkte
+        run: |
+          for u in https://aequitas.digital/api/status https://proof1.aequitas.digital/coordinator/health https://proof1.aequitas.digital/matching/health; do
+            echo "== $u"; curl -s -m 10 -w '  [HTTP %{http_code}]' "$u" | head -c 1500; echo
+          done
+          echo "== DNS"; for h in aequitas.digital proof1.aequitas.digital; do echo "$h -> $(dig +short $h | tr '\n' ' ')"; done
+          # Welche App liefert die Seite aus? /download/app.apk leitet auf ein
+          # Release weiter (api.go handleAppDownload, AEQUITAS_APK_URL).
+          echo "== /download/app.apk"; curl -sI -m 15 https://aequitas.digital/download/app.apk | grep -iE '^HTTP|^location' || echo "  keine Antwort"

@@ -8,7 +8,7 @@ on:
   push:
     branches-ignore: [master, main]
   pull_request:
-  # Pforte vor jedem Deploy (deploy-c1-dann-c2.yml): dieselben Pruefungen
+  # Pforte vor jedem Deploy (deploy-c1.yml): dieselben Pruefungen
   # wie im PR -- race, db-tests, govulncheck, Docker-Image -- nicht weniger.
   workflow_call:
 
@@ -56,6 +56,9 @@ jobs:
       # eigene Eingabe, und fern.sh wertet ein verschlucktes Skript als rot.
       - run: python3 scripts/lint_neustart_eingabe.py
       - run: bash scripts/test_neustart_fern.sh
+      # Angaben fuer Impressum/Datenschutz: kein zweiter .env-Schluessel, keine
+      # Variable, kein Kommentar (Kopf von deploy/rechtstexte-angaben.sh).
+      - run: bash scripts/test_rechtstexte_angaben.sh
 
   test:
     runs-on: ubuntu-latest

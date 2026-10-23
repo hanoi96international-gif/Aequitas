@@ -23,14 +23,6 @@ name: Wache (alle 10 Minuten)
 # Und einmal: der Coordinator antwortet mit Quorum >= 2 (oder Quorum 1 im
 # Einzelbetrieb mit aktiver Tagesgrenze), und das letzte
 # Backup ist juenger als 36 Stunden.
-#
-# C2_AKTIV (wie in deploy-c1-dann-c2.yml): seit dem Neustart bei null
-# (30.09.2026) laeuft das neue Netz mit C1 allein; der C2-Knoten bleibt aus,
-# bis C2 nach docs/VALIDATOR_EINRICHTEN.md neu eingerichtet ist. Solange
-# "nein": C2s Knoten wird nicht auf Hoehe/Gleichstand geprueft, seine Dienste
-# (Vergleichsdienst proof2 -- Teil des Quorums --, Coordinator) weiter wie
-# bisher. ROT, falls der C2-Knoten doch antwortet: dann laeuft dort eine
-# Kette, die nicht zum neuen Netz gehoert. Nach der Neueinrichtung "ja".
 on:
   schedule:
     - cron: "*/10 * * * *"
@@ -42,9 +34,6 @@ jobs:
   wache:
     runs-on: ubuntu-latest
     timeout-minutes: 8
-    env:
-      C2_AKTIV: "nein"
-      C2_IP: alter-c2-abgeschaltet.invalid
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Pruefen
@@ -81,31 +70,24 @@ jobs:
           for B in "${!PHOST[@]}"; do H1[$B]=$(st $B); done
           sleep 25
           for B in "${!PHOST[@]}"; do H2[$B]=$(st $B); done
-          case "$C2_AKTIV" in ja|nein) ;; *) rot "C2_AKTIV='$C2_AKTIV' -- erwartet ja oder nein"; C2_AKTIV=ja;; esac
           AKTIV=""
           for B in "${!PHOST[@]}"; do
             echo "===== $B ====="
-            if [ "$B" = "$C2_IP" ] && [ "$C2_AKTIV" = nein ]; then
-              # Knoten absichtlich aus (siehe Kopf). Antwortet er doch, laeuft
-              # dort eine Kette ausserhalb des neuen Netzes.
-              if [ -n "${H2[$B]}" ]; then rot "$B: Knoten antwortet (Hoehe ${H2[$B]}), obwohl C2_AKTIV=nein -- gehoert nicht zum neuen Netz"; else echo "ℹ $B: Knoten aus (C2_AKTIV=nein, Neueinrichtung nach Guide) -- Dienste werden weiter geprueft"; fi
+            AKTIV="$AKTIV $B"
+            if [ -z "${H2[$B]}" ]; then
+              rot "$B antwortet nicht auf /api/status"
             else
-              AKTIV="$AKTIV $B"
-              if [ -z "${H2[$B]}" ]; then
-                rot "$B antwortet nicht auf /api/status"
-              else
-                if [ "${H2[$B]}" -gt "${H1[$B]:-0}" ]; then ok "Hoehe waechst (${H1[$B]} -> ${H2[$B]})"; else rot "Hoehe steht (${H1[$B]} -> ${H2[$B]})"; fi
-                # Validator-Register (Stichtag 18.10.2026): jeder Erzeuger bindet sich
-                # einmal ueber /node-binding. Hinweis, kein Rot -- die Leser schlafen
-                # noch; ohne Bindung schloesse erzeugerSchnitt ihn spaeter aus
-                # (docs/VALIDATOR_REGISTER_KONSENS.md).
-                EOB=$(curl -s --max-time 10 "http://$B:8080/api/status" | python3 -c "import sys,json; v=json.load(sys.stdin).get('erzeuger_ohne_bindung'); print(','.join(v) if isinstance(v,list) else '?')" 2>/dev/null || echo "?")
-                if [ -z "$EOB" ]; then ok "jeder Erzeuger im Validator-Register gebunden"
-                elif [ "$EOB" = "?" ]; then echo "ℹ $B: erzeuger_ohne_bindung nicht lesbar"
-                else echo "ℹ $B: Erzeuger OHNE Bindung im Validator-Register: $EOB -- einmal ueber http://$B:8080/node-binding mit der Betreiber-Wallet binden"; fi
-                J=$(h $B)
-                if [ -z "$J" ]; then rot "$B antwortet nicht auf /api/health/combined"; else echo "$J" | python3 .github/wache_pruefung.py || ROT=1; fi
-              fi
+              if [ "${H2[$B]}" -gt "${H1[$B]:-0}" ]; then ok "Hoehe waechst (${H1[$B]} -> ${H2[$B]})"; else rot "Hoehe steht (${H1[$B]} -> ${H2[$B]})"; fi
+              # Validator-Register (Stichtag 18.10.2026): jeder Erzeuger bindet sich
+              # einmal ueber /node-binding. Hinweis, kein Rot -- die Leser schlafen
+              # noch; ohne Bindung schloesse erzeugerSchnitt ihn spaeter aus
+              # (docs/VALIDATOR_REGISTER_KONSENS.md).
+              EOB=$(curl -s --max-time 10 "http://$B:8080/api/status" | python3 -c "import sys,json; v=json.load(sys.stdin).get('erzeuger_ohne_bindung'); print(','.join(v) if isinstance(v,list) else '?')" 2>/dev/null || echo "?")
+              if [ -z "$EOB" ]; then ok "jeder Erzeuger im Validator-Register gebunden"
+              elif [ "$EOB" = "?" ]; then echo "ℹ $B: erzeuger_ohne_bindung nicht lesbar"
+              else echo "ℹ $B: Erzeuger OHNE Bindung im Validator-Register: $EOB -- einmal ueber http://$B:8080/node-binding mit der Betreiber-Wallet binden"; fi
+              J=$(h $B)
+              if [ -z "$J" ]; then rot "$B antwortet nicht auf /api/health/combined"; else echo "$J" | python3 .github/wache_pruefung.py || ROT=1; fi
             fi
             M=$(curl -s --max-time 15 "https://${PHOST[$B]}.aequitas.digital/matching/health" | grep -o '"status":"ok"')
             if [ -n "$M" ]; then ok "Vergleichsdienst antwortet"; else rot "Vergleichsdienst (/matching/health) antwortet nicht"; fi

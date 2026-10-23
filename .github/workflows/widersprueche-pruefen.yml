@@ -51,7 +51,6 @@ jobs:
           # die IP vergibt der Anbieter neu -- nie mehr per SSH ansprechen. C1 ist
           # seit dem 26.09.2026 die netcup-Box (wie backup-ledger.yml, wache.yml).
           - { name: C1, host: 188.172.229.121, secret: C1, fingerprint: "SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA" }
-          - { name: Contabo2, host: alter-c2-abgeschaltet.invalid, secret: C2, fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto" }
     runs-on: ubuntu-latest
     environment: produktion
     steps:
@@ -83,7 +82,7 @@ jobs:
       # Schluesseltyp und brach mit "fingerprint mismatch" ab.)
       - name: Schluessel und Host-Pruefung
         env:
-          KEY: ${{ matrix.box.secret == 'C1' && secrets.CONTABO_SSH_KEY || secrets.CONTABO2_SSH_KEY }}
+          KEY: ${{ secrets.CONTABO_SSH_KEY }}
           HOST: ${{ matrix.box.host }}
           FP: ${{ matrix.box.fingerprint }}
         run: |
