@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
+	"time"
 )
 
 // DIE RUNDE WARTET AUF OFFENE LEBENSNACHWEISE (#410).
@@ -31,21 +33,35 @@ import (
 // Nachrechnen bleiben, wie sie sind. Vor lebensnachweisAktiv (und solange
 // keine Pause moeglich ist) gilt nichts davon -- dann pausiert die Runde
 // niemanden, und ein Nachweis aendert an ihr nichts.
+//
+// DIE BETREIBERZAHL EBENSO (#412, Befund 2). Ob die Runde ueberhaupt
+// pausieren darf, haengt an den Betreibern ohne offene Staffel
+// (zugelasseneBetreiberZu). Auch die aendert der Erzeuger sofort, vor dem
+// Block: grant_release (Staffelrest auf 0) und register_human (ein Betreiber
+// wird Mensch). Darum zaehlen auch diese als offen -- grant_release jeder
+// Wallet (sie entsteht nur in der Tagesrunde, offen ist sie also nur bei
+// haengendem Ausgang), register_human nur fuer Wallets, die im
+// Kettenregister als Betreiber stehen (validator_verlauf, begrenzt) -- eine
+// gewoehnliche Registrierung haelt die Runde nicht an.
 
-// ErrLebensnachweiseOffen: die Runde wird spaeter wiederholt (main.go, wie
-// ein Sync-Problem: in 15 Minuten), bis die offenen Nachweise verblockt sind.
-var ErrLebensnachweiseOffen = errors.New("Grundeinkommensrunde wartet: angewandte Lebensnachweise stehen noch in keinem Block")
+// ErrLebensnachweiseOffen: die Runde wird bald wiederholt (main.go), bis die
+// offenen Auftraege verblockt sind.
+var ErrLebensnachweiseOffen = errors.New("Grundeinkommensrunde wartet: angewandte Lebensnachweise oder Betreiber-Aenderungen stehen noch in keinem Block")
 
-// offeneLebensnachweise: wie viele proof_of_life im Ausgang noch in keinem
-// erzeugten Block stehen. Ohne Datenbank (Tests, Einzelknoten ohne Ausgang)
-// gibt es keinen Ausgang, also nichts Offenes.
-func (cs *ChainState) offeneLebensnachweise(ctx context.Context) (int64, error) {
+// offenePauseAuftraege: wie viele Auftraege im Ausgang noch in keinem
+// erzeugten Block stehen, die die Pause-Entscheidung der Runde aendern
+// (siehe oben). Ohne Datenbank (Tests, Einzelknoten ohne Ausgang) gibt es
+// keinen Ausgang, also nichts Offenes.
+func (cs *ChainState) offenePauseAuftraege(ctx context.Context) (int64, error) {
 	if cs.db == nil {
 		return 0, nil
 	}
 	var n int64
 	if err := cs.dbExecCtx(ctx).QueryRow(
-		`SELECT count(*) FROM pending_txs WHERE included_at = 0 AND (tx_json::json ->> 'type') = $1`,
+		`SELECT count(*) FROM pending_txs WHERE included_at = 0 AND (
+			(tx_json::json ->> 'type') IN ($1, 'grant_release')
+			OR ((tx_json::json ->> 'type') = 'register_human'
+			    AND lower(tx_json::json ->> 'wallet') IN (SELECT lower(operator_wallet) FROM validator_verlauf)))`,
 		lebensnachweisTxArt).Scan(&n); err != nil {
 		return 0, fmt.Errorf("offene Lebensnachweise nicht lesbar: %w", err)
 	}
@@ -59,7 +75,7 @@ func (cs *ChainState) lebensnachweisRundeBereitLocked(ctx context.Context, t int
 	if !pauseMoeglich || !lebensnachweisAktiv(t) {
 		return nil
 	}
-	n, err := cs.offeneLebensnachweise(ctx)
+	n, err := cs.offenePauseAuftraege(ctx)
 	if err != nil {
 		return fmt.Errorf("%w (%v)", ErrLebensnachweiseOffen, err)
 	}
@@ -78,13 +94,13 @@ func (cs *ChainState) LebensnachweiseOffenGrund(jetzt int64) string {
 	if !lebensnachweisAktiv(jetzt) || cs.db == nil {
 		return ""
 	}
-	n, err := cs.offeneLebensnachweise(context.Background())
+	n, err := cs.offenePauseAuftraege(context.Background())
 	if err != nil {
 		fmt.Printf("[POOLS] %v\n", err)
 		return "offene Lebensnachweise nicht lesbar -- Runde wird wiederholt (Details im Knotenlog)"
 	}
 	if n > 0 {
-		return fmt.Sprintf("%d angewandte Lebensnachweise stehen noch in keinem Block -- Runde wird wiederholt", n)
+		return fmt.Sprintf("%d angewandte Lebensnachweise oder Betreiber-Aenderungen stehen noch in keinem Block -- Runde wird wiederholt", n)
 	}
 	return ""
 }
@@ -117,3 +133,70 @@ func (cs *ChainState) VerteilungsSperreLoesen() error {
 }
 
 var errKeineEigeneSperre = errors.New("Tagessperre gehoert nicht (mehr) dieser Runde -- nicht freigegeben")
+
+// ANNAHME KURZ ANHALTEN (#412, Befund 4).
+//
+// Alle Bestandsmenschen haben dasselbe Fenster (lebensnachweisUhrAb). Kommen
+// Nachweise in stetigem Strom, liegt bei jeder Vorpruefung einer offen, und
+// die Runde rutschte immer weiter. Darum haelt der Knoten, wenn die Runde auf
+// offene Nachweise wartet, die Annahme neuer Nachweise kurz an
+// (lebensnachweisHaltDauer): die offenen kommen mit dem naechsten Block, die
+// Runde wird nach LebensnachweisHaltWiederholung erneut versucht und laeuft.
+// Ein abgewiesener Mensch sendet dieselbe Bescheinigung gleich noch einmal
+// (sie gilt lebensnachweisAnnahmeAlt = 15 min; die App bietet es an).
+//
+// Begrenzt: ein Halt endet nach lebensnachweisHaltDauer von selbst, auch wenn
+// die Runde nie freigibt; ein neuer beginnt fruehestens
+// lebensnachweisHaltAbstand nach dem letzten -- auch bei haengendem Ausgang
+// bleibt die Annahme die meiste Zeit offen. Nur Verfuegbarkeit: an der
+// Pruefung eines Nachweises und an der Runde aendert der Halt nichts.
+const (
+	lebensnachweisHaltDauer   int64 = 120
+	lebensnachweisHaltAbstand int64 = 600
+)
+
+// LebensnachweisHaltWiederholung: so bald versucht main.go die Runde erneut,
+// wenn es einen Halt gesetzt hat -- innerhalb des Halts.
+const LebensnachweisHaltWiederholung = 60 * time.Second
+
+type lebensnachweisHalt struct {
+	mu   sync.Mutex
+	seit int64 // Beginn des letzten Halts
+	bis  int64 // Ende des laufenden Halts, 0 = keiner
+}
+
+// LebensnachweisAnnahmeHalten: main.go, wenn die Runde auf offene Nachweise
+// wartet. true = ein neuer Halt laeuft ab jetzt; false = der letzte begann
+// vor weniger als lebensnachweisHaltAbstand (dann kein neuer).
+func (cs *ChainState) LebensnachweisAnnahmeHalten(jetzt int64) bool {
+	h := &cs.lnHalt
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.seit != 0 && jetzt >= h.seit && jetzt-h.seit < lebensnachweisHaltAbstand {
+		return false
+	}
+	h.seit, h.bis = jetzt, sattAdd(jetzt, lebensnachweisHaltDauer)
+	return true
+}
+
+// LebensnachweisAnnahmeFreigeben: die Runde ist gelaufen oder aus anderem
+// Grund gescheitert -- die Annahme sofort wieder oeffnen.
+func (cs *ChainState) LebensnachweisAnnahmeFreigeben() {
+	h := &cs.lnHalt
+	h.mu.Lock()
+	h.bis = 0
+	h.mu.Unlock()
+}
+
+// lebensnachweisAngehalten: Sekunden bis zum Ende des Halts, 0 = offen.
+func (cs *ChainState) lebensnachweisAngehalten(jetzt int64) int64 {
+	h := &cs.lnHalt
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	// Uhr zurueckgesprungen (jetzt < seit): der Halt gilt als vorbei -- er
+	// soll nie laenger dauern als lebensnachweisHaltDauer.
+	if h.bis == 0 || jetzt >= h.bis || jetzt < h.seit {
+		return 0
+	}
+	return h.bis - jetzt
+}

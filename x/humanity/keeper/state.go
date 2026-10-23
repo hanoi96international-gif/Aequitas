@@ -239,6 +239,9 @@ type ChainState struct {
 	// Tagessperre zuletzt genommen hat. VerteilungsSperreLoesen gibt nur genau
 	// diese Sperre frei (lebensnachweis_runde.go).
 	verteilSperreWert atomic.Pointer[string]
+	// lnHalt: die Annahme von Lebensnachweisen kurz angehalten, damit die
+	// wartende Grundeinkommensrunde laufen kann (lebensnachweis_runde.go).
+	lnHalt lebensnachweisHalt
 	// leitungStartVersucht: StarteLeitung ist gelaufen (gelungen oder nicht).
 	// Bis dahin haelt die Annahme mit AEQUITAS_LEITUNG=an an
 	// (leitungNichtBereit) -- leitung ist dann noch nil, und der Knoten naehme

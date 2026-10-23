@@ -73,6 +73,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -195,10 +196,22 @@ func lebensnachweisPauseGrenze(t int64) int64 {
 // (dieselben Fenster wie die Zulassung, coordinatorZugelassenIn) -- dann hat
 // jeder, auch jeder Betreiber, einen anderen, der ihn bescheinigen kann.
 // Konsensdaten, bei jedem Knoten gleich; einmal je Runde gelesen.
+//
+// NUR BETREIBER OHNE OFFENE STAFFEL (Sicherheitspruefung #408/#411, Befund 2,
+// Aequitas#412). Bescheinigen darf nur, wer keine offene Staffel hat
+// (bescheinigungPruefenFuer). Zaehlte ein Betreiber mit offener Staffel mit,
+// waere bei zwei Betreibern die Pause moeglich, obwohl der andere nie
+// bescheinigt werden kann -- er saesse ab pause_ab ohne Ausweg fest. Darum
+// zaehlt nur, wer zu t einen Validator-Schluessel haelt UND keine offene
+// Staffel traegt -- also genau, wer auch bescheinigen koennte. Die Staffel
+// aendert sich beim Erzeuger sofort (grant_release, register_human); die
+// Runde wartet darum auch auf solche offenen Auftraege
+// (lebensnachweis_runde.go), damit Erzeuger und Nachspielende gleich zaehlen.
 const lebensnachweisMindestBetreiber = 2
 
-// zugelasseneBetreiberZu: wie viele verschiedene Menschen zu t einen
-// Validator-Schluessel im Kettenregister halten -- gezaehlt bis grenze.
+// zugelasseneBetreiberZu: wie viele verschiedene Menschen ohne offene Staffel
+// zu t einen Validator-Schluessel im Kettenregister halten -- gezaehlt bis
+// grenze.
 func zugelasseneBetreiberZu(q sqlExecutor, t int64, grenze int) (int, error) {
 	zeilen, err := verlaufLesen(q, nil)
 	if err != nil {
@@ -216,7 +229,7 @@ func zugelasseneBetreiberZu(q sqlExecutor, t int64, grenze int) (int, error) {
 		liste = append(liste, b)
 	}
 	menschen := map[string]bool{}
-	rows, err := q.Query(`SELECT lower(address) FROM chain_accounts WHERE lower(address) = ANY($1) AND is_human`, pq.Array(liste))
+	rows, err := q.Query(`SELECT lower(address) FROM chain_accounts WHERE lower(address) = ANY($1) AND is_human AND COALESCE(grant_staged_rest, 0) <= 0`, pq.Array(liste))
 	if err != nil {
 		return 0, err
 	}
@@ -687,6 +700,14 @@ func (a *APIServer) handleProofOfLife(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusConflict)
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"error": "proof of life not due yet", "faellig_ab": f.faelligAb})
+		return
+	}
+	// Die Grundeinkommensrunde wartet auf offene Nachweise (#412, Befund 4):
+	// kurz keine neuen, damit sie laufen kann. Die Bescheinigung bleibt
+	// gueltig und kann gleich noch einmal gesendet werden.
+	if rest := a.state.lebensnachweisAngehalten(now); rest > 0 {
+		w.Header().Set("Retry-After", strconv.FormatInt(rest, 10))
+		jsonError(w, "daily distribution is about to run -- please resend this proof of life in a minute (the attestation stays valid)", http.StatusServiceUnavailable)
 		return
 	}
 	// Durchs Annahme-Tor: nur der Zustaendige des Kontos nimmt an (Folger

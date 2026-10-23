@@ -153,14 +153,16 @@ func TestLebensnachweisRunde_PruefungVorDerAuswahl(t *testing.T) {
 }
 
 // Sperre gegen versehentliches Einschalten (wie TestStufe2NieVorStrengemNachrechnen):
-// die Sicherheitspruefung von #408/#411 hat zwei Befunde, die erst mit dem
-// Einschalten wirken und Konsensaenderungen brauchen (Aequitas#412). Wer einen
-// der Stichtage setzt, schliesst vorher den Befund und passt diesen Test an.
+// die Sicherheitspruefung von #408/#411 hat Befunde, die erst mit dem
+// Einschalten wirken (Aequitas#412). Befund 2 (Betreiber mit offener
+// Staffel) und Befund 4 (Verfuegbarkeit) sind geschlossen
+// (zugelasseneBetreiberZu, offenePauseAuftraege, lebensnachweisHalt).
+// Offen bleibt Befund 1: im verteilten Term nimmt der Zustaendige den
+// Nachweis an, die Runde laeuft beim Leiter -- der Waechter sieht nur den
+// eigenen Ausgang. Wer beide Stichtage setzt, schliesst vorher Befund 1 und
+// passt diesen Test an.
 func TestLebensnachweis_AktivierungErstNachBefunden(t *testing.T) {
 	if verteilteAnnahmeAbUnix != math.MaxInt64 && registerLeserAbUnix != math.MaxInt64 {
 		t.Fatalf("verteilte Annahme und Lebensnachweis zugleich: vorher #412 Befund 1 schliessen (Runde als Schranke ueber alle Zustaendigen)")
-	}
-	if registerLeserAbUnix != math.MaxInt64 {
-		t.Fatalf("registerLeserAbUnix gesetzt: vorher #412 Befund 2 schliessen (nur Betreiber ohne offene Staffel zaehlen, offene grant_release abwarten)")
 	}
 }

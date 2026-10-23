@@ -962,6 +962,10 @@ func main() {
 				// davor ist nur die Vorauswahl fuer den Zeitplan.
 				var ubiAt int64
 				var abstandZiel time.Time
+				// lnZiel: die Runde wartet auf offene Lebensnachweise und die
+				// Annahme ist kurz angehalten (#412, Befund 4) -- dann gleich
+				// wieder versuchen, innerhalb des Halts.
+				var lnZiel time.Time
 				if os.Getenv("DISTRIBUTION_ENABLED") == "false" {
 					fmt.Println("[POOLS] Distribution disabled on this node (DISTRIBUTION_ENABLED=false)")
 					keeper.RecordDistributionOutcome("skipped", "DISTRIBUTION_ENABLED=false on this node")
@@ -1043,6 +1047,9 @@ func main() {
 					fmt.Printf("[POOLS] Verteilung jetzt nicht: %s\n", grund)
 					keeper.RecordDistributionOutcome("skipped", grund)
 					retrySoon = true
+					if chainState.LebensnachweisAnnahmeHalten(time.Now().Unix()) {
+						lnZiel = time.Now().Add(keeper.LebensnachweisHaltWiederholung)
+					}
 				} else if chainState.TryLockDistribution() {
 					// FIX (audit3, P0 #3): the entire distribution round — UBI, validator
 					// pool, LP pool, escrow move/release, AND every resulting outbox TX —
@@ -1073,10 +1080,16 @@ func main() {
 									fmt.Printf("[POOLS] ✗ Tagessperre nicht freigegeben: %v\n", lErr)
 								} else {
 									retrySoon = true
+									if chainState.LebensnachweisAnnahmeHalten(time.Now().Unix()) {
+										lnZiel = time.Now().Add(keeper.LebensnachweisHaltWiederholung)
+									}
 								}
+								return
 							}
+							chainState.LebensnachweisAnnahmeFreigeben()
 							return
 						}
+						chainState.LebensnachweisAnnahmeFreigeben()
 						fmt.Printf("[POOLS] ✓ Distribution done at %s\n", time.Now().In(berlin).Format("02.01. 15:04:05"))
 						keeper.RecordDistributionOutcome("ran", "round executed; UBI: "+keeper.LetztesUBIErgebnis())
 					})
@@ -1099,6 +1112,8 @@ func main() {
 				}
 				if !abstandZiel.IsZero() {
 					firstTarget = abstandZiel
+				} else if !lnZiel.IsZero() {
+					firstTarget = lnZiel
 				} else if retrySoon {
 					firstTarget = time.Now().Add(distributionHealthRetryInterval)
 				} else {
