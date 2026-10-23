@@ -44,7 +44,6 @@ Aequitas's Gini coefficient is measured live (explorer → Equality) — for com
 | ⛓ RPC Endpoint | https://aequitas.digital/rpc |
 | 🔒 Proof Server | Pro Validator eine eigene Instanz, konfiguriert über `PROOF_SERVER_URLS` — es gibt bewusst **keinen** eingebauten Default mehr (ein Node soll bei Fehlkonfiguration laut scheitern, statt still die Infrastruktur eines Dritten zu benutzen) |
 | 📡 Bootstrap Node (C1, netcup — Primary seit 26.09.2026) | `/ip4/188.172.229.121/tcp/4001/p2p/12D3KooWFQyUpthkkVAii4ayMX4wpFGjDaGJxkNQXRBrmC2kx1gc` |
-| 📡 Bootstrap Node (Contabo2) | `/ip4/194.163.188.71/tcp/4001/p2p/12D3KooWBv34kuVcmNDxZT4kCZFvNVGhy4zgkBZDGMtp7YSx2UUN` |
 
 ---
 
