@@ -21,13 +21,12 @@ jobs:
     environment: produktion
     steps:
       - if: ${{ inputs.box == matrix.box.name }}
-        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         with:
           host: ${{ matrix.box.host }}
           username: root
           key: ${{ matrix.box.secret == 'C1' && secrets.CONTABO_SSH_KEY || secrets.CONTABO2_SSH_KEY }}
           port: 22
-          script_stop: false
           timeout: 120s
           command_timeout: 120s
           envs: PFAD

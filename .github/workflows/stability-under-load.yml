@@ -105,13 +105,12 @@ jobs:
           target: "/root/contabo-loadtest"
 
       - name: Rebuild the generator
-        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         with:
           host: 194.163.188.71
           username: root
           key: ${{ secrets.CONTABO2_SSH_KEY }}
           port: 22
-          script_stop: false
           timeout: 600s
           command_timeout: 600s
           script: |
@@ -161,13 +160,12 @@ jobs:
 
       - name: Start the load on Contabo1 (returns immediately)
         if: ${{ inputs.beide_generatoren == 'ja' }}
-        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         with:
           host: alter-c1-abgeschaltet.invalid
           username: root
           key: ${{ secrets.CONTABO_SSH_KEY }}
           port: 22
-          script_stop: false
           timeout: 300s
           command_timeout: 300s
           envs: DURATION,PAIRS,TOPOLOGY,TRANSFERWEI,MINBAL
@@ -198,13 +196,12 @@ jobs:
           MINBAL: ${{ inputs.min_balance_wei }}
 
       - name: Start the load on Contabo2 (returns immediately)
-        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         with:
           host: 194.163.188.71
           username: root
           key: ${{ secrets.CONTABO2_SSH_KEY }}
           port: 22
-          script_stop: false
           timeout: 300s
           command_timeout: 300s
           # MINBAL fehlte hier bis zum 23.09.2026: der Schritt setzte ihn unten
@@ -395,13 +392,12 @@ jobs:
 
       - name: What the generator and the boxes reported
         if: always()
-        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         with:
           host: 194.163.188.71
           username: root
           key: ${{ secrets.CONTABO2_SSH_KEY }}
           port: 22
-          script_stop: false
           script: |
             echo "=== generator ==="
             # The RAW tail first. A narrower grep is how three separate stalls
@@ -428,13 +424,12 @@ jobs:
       # auf C1 -- der Bericht oben las bis dahin nur C2.
       - name: Was Contabo1 (der annehmende Knoten) meldet
         if: always() && inputs.ziele == 'c1'
-        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         with:
           host: alter-c1-abgeschaltet.invalid
           username: root
           key: ${{ secrets.CONTABO_SSH_KEY }}
           port: 22
-          script_stop: false
           script: |
             echo "=== Neustart? ==="
             docker inspect aequitas-node --format 'RestartCount={{.RestartCount}} OOMKilled={{.State.OOMKilled}} Status={{.State.Status}} StartedAt={{.State.StartedAt}}'

@@ -50,14 +50,13 @@ jobs:
         run: echo "checking"
 
       - name: Read Contabo1's current token fingerprint
-        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         with:
           host: alter-c1-abgeschaltet.invalid
           username: root
           key: ${{ secrets.CONTABO_SSH_KEY }}
           port: 22
           fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
-          script_stop: false
           script: |
             V=$(grep '^MPC_CLIENT_TOKEN=' /root/.aequitas.env 2>/dev/null | cut -d= -f2-)
             if [ -z "$V" ]; then echo "Contabo1: no token set"; else
@@ -65,13 +64,12 @@ jobs:
             fi
 
       - name: Read Contabo2's current token fingerprint
-        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         with:
           host: 194.163.188.71
           username: root
           key: ${{ secrets.CONTABO2_SSH_KEY }}
           port: 22
-          script_stop: false
           script: |
             V=$(grep '^MPC_CLIENT_TOKEN=' /root/.aequitas.env 2>/dev/null | cut -d= -f2-)
             if [ -z "$V" ]; then echo "Contabo2: no token set"; else
@@ -87,14 +85,13 @@ jobs:
           echo "generated; sha256=$(printf %s "$T" | sha256sum | cut -c1-16)"
 
       - name: Write it to Contabo1
-        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         with:
           host: alter-c1-abgeschaltet.invalid
           username: root
           key: ${{ secrets.CONTABO_SSH_KEY }}
           port: 22
           fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
-          script_stop: false
           envs: MPC_TOKEN
           script: |
             echo "step start"
@@ -114,13 +111,12 @@ jobs:
               || echo "NOT yet in the running process -- the container must be recreated for it to take effect"
 
       - name: Write the SAME token to Contabo2
-        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         with:
           host: 194.163.188.71
           username: root
           key: ${{ secrets.CONTABO2_SSH_KEY }}
           port: 22
-          script_stop: false
           envs: MPC_TOKEN
           script: |
             echo "step start"

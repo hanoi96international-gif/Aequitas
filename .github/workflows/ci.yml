@@ -31,10 +31,10 @@ jobs:
           python-version: "3.x"
       - run: pip install pyyaml
       - run: python3 scripts/lint_workflow_envs.py
-      # script_stop: true haengt hinter JEDE Zeile eine Exit-Pruefung -- auch
-      # in Heredocs, hinter else und case. Am 23.09.2026 in 21 Schritten
-      # gefunden, darunter der Wachhund und der Ein-Klick-Weg fuer Impressum
-      # und Datenschutz. Kopf von scripts/lint_script_stop.py.
+      # ssh-action ab v1.2 ignoriert script_stop still: ein Schritt, der sich
+      # darauf verlaesst, liefe nach einem Fehler weiter. Abbruch steht als
+      # set -e im Skript. Kopf von scripts/lint_script_stop.py.
+      - run: python3 scripts/lint_script_stop.py --selbsttest
       - run: python3 scripts/lint_script_stop.py
       # Server-Schluessel nur in der Umgebung `produktion` (mit Freigabe), und
       # kein Server-Workflow startet per Push. Kopf von scripts/lint_server_freigabe.py.

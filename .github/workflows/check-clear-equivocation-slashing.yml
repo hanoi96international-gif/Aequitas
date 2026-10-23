@@ -68,19 +68,18 @@ jobs:
     environment: produktion
     steps:
       - name: Check + conditionally clear on Contabo1
-        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         with:
           host: alter-c1-abgeschaltet.invalid
           username: root
           key: ${{ secrets.CONTABO_SSH_KEY }}
           port: 22
           fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
-          script_stop: true
           timeout: 600s
           command_timeout: 600s
           envs: ADDR,FORCE
           script: |
-            set -uo pipefail
+            set -euo pipefail
             ADDR_LC="$(echo "$ADDR" | tr 'A-Z' 'a-z')"
             DATABASE_URL="$(grep -E '^DATABASE_URL=' /root/.aequitas.env 2>/dev/null | head -1 | cut -d= -f2-)"
             if [ -z "$DATABASE_URL" ]; then
@@ -127,19 +126,18 @@ jobs:
     environment: produktion
     steps:
       - name: Check + conditionally clear on Contabo2
-        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         with:
           host: 194.163.188.71
           username: root
           key: ${{ secrets.CONTABO2_SSH_KEY }}
           port: 22
           fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
-          script_stop: true
           timeout: 600s
           command_timeout: 600s
           envs: ADDR,FORCE
           script: |
-            set -uo pipefail
+            set -euo pipefail
             ADDR_LC="$(echo "$ADDR" | tr 'A-Z' 'a-z')"
             DATABASE_URL="$(grep -E '^DATABASE_URL=' /root/.aequitas.env 2>/dev/null | head -1 | cut -d= -f2-)"
             if [ -z "$DATABASE_URL" ]; then

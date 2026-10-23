@@ -36,14 +36,13 @@ jobs:
     environment: produktion
     steps:
       - name: Vorher-Zustand beider Boxen
-        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         with:
           host: alter-c1-abgeschaltet.invalid
           username: root
           key: ${{ secrets.CONTABO_SSH_KEY }}
           port: 22
           fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
-          script_stop: false
           timeout: 120s
           command_timeout: 120s
           script: |
@@ -56,14 +55,13 @@ jobs:
             curl -s --max-time 15 http://194.163.188.71:8080/api/pool; echo
 
       - name: Freigeben, korrigieren, wieder verriegeln
-        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         with:
           host: alter-c1-abgeschaltet.invalid
           username: root
           key: ${{ secrets.CONTABO_SSH_KEY }}
           port: 22
           fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
-          script_stop: false
           timeout: 300s
           command_timeout: 300s
           envs: BURN_AEQ,BURN_TUSD
@@ -128,14 +126,13 @@ jobs:
 
       - name: Nachher -- und ob beide Boxen sich einig sind
         if: always()
-        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         with:
           host: alter-c1-abgeschaltet.invalid
           username: root
           key: ${{ secrets.CONTABO_SSH_KEY }}
           port: 22
           fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
-          script_stop: false
           timeout: 180s
           command_timeout: 180s
           script: |

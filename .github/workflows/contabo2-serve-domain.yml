@@ -80,7 +80,7 @@ jobs:
           strip_components: 1
 
       - name: Install, validate, reload
-        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         env:
           HOSTNAME_INPUT: ${{ inputs.hostname }}
         with:
@@ -88,7 +88,6 @@ jobs:
           username: root
           key: ${{ secrets.CONTABO2_SSH_KEY }}
           port: 22
-          script_stop: false  # set -e steht im Skript; script_stop:true haengt hinter JEDE Zeile eine Exit-Pruefung -- auch in Heredocs und hinter else/case (Beleg: wachhund-telegram-installieren.yml, 23.09.2026)
           timeout: 900s
           command_timeout: 900s
           envs: HOSTNAME_INPUT
