@@ -160,10 +160,14 @@ func TestBootstrapAddrIsSelf(t *testing.T) {
 // the HTTP seed went stale at the same time — would reach the network by no
 // transport at all.
 func TestDefaultBootstrapNodes_NoDecommissionedHosts(t *testing.T) {
-	// ZWEI. Vom 24. bis 26.09.2026 lief genau ein Validator (Contabo1
-	// abgeschaltet) und die Untergrenze war voruebergehend 1. Seit dem
-	// 26.09.2026 ersetzt der neue C1 (netcup) ihn -- wieder zwei.
-	const mindestBootstrapKnoten = 2
+	// EINS, voruebergehend. Vom 24. bis 26.09.2026 lief genau ein Validator
+	// (Contabo1 abgeschaltet), die Untergrenze war 1; ab dem 26.09.2026 mit
+	// dem neuen C1 (netcup) wieder zwei. Seit dem 03.10.2026 ist Contabo2
+	// abgeschaltet und seine IP neu vergeben -- es laeuft nur C1. Eine tote
+	// oder fremde Adresse als zweiten Eintrag zu behalten, nur um die Zahl
+	// zu halten, waere Vertrauen in einen fremden Rechner. Zurueck auf 2,
+	// sobald ein zweiter Server mit eigener Peer-ID dazukommt.
+	const mindestBootstrapKnoten = 1
 	if len(defaultBootstrapNodes) < mindestBootstrapKnoten {
 		t.Fatalf("defaultBootstrapNodes has %d entr(ies) — keep at least %d so one validator being down does not strand newcomers", len(defaultBootstrapNodes), mindestBootstrapKnoten)
 	}
@@ -196,18 +200,48 @@ func TestBootstrapNodes_ParsesCommaSeparatedList(t *testing.T) {
 	}
 }
 
-// Contabo1 ist seit dem 24.09.2026 abgeschaltet. Eine gekuendigte IP vergibt
-// der Anbieter neu -- als eingebauter Seed oder Bootstrap waere sie
-// Vertrauen in einen Rechner, der jemand anderem gehoeren kann.
-func TestEingebauteSeeds_OhneAbgeschaltetesContabo1(t *testing.T) {
-	for _, s := range defaultPublicSeeds {
-		if strings.Contains(s, "173.249.37.118") {
-			t.Errorf("defaultPublicSeeds enthaelt die abgeschaltete C1-Adresse: %s", s)
+// Contabo1 ist seit dem 24.09.2026 abgeschaltet, Contabo2 seit dem
+// 03.10.2026 (seine IP meldete am 21.10.2026 einen fremden Host-Schluessel).
+// Eine gekuendigte IP vergibt der Anbieter neu -- als eingebauter Seed oder
+// Bootstrap waere sie Vertrauen in einen Rechner, der jemand anderem
+// gehoeren kann.
+var abgeschalteteAdressen = map[string]string{
+	"173.249.37.118": "Contabo1",
+	"194.163.188.71": "Contabo2",
+}
+
+func TestEingebauteSeeds_OhneAbgeschalteteServer(t *testing.T) {
+	for adresse, name := range abgeschalteteAdressen {
+		for _, s := range defaultPublicSeeds {
+			if strings.Contains(s, adresse) {
+				t.Errorf("defaultPublicSeeds enthaelt die abgeschaltete %s-Adresse: %s", name, s)
+			}
+		}
+		for _, b := range defaultBootstrapNodes {
+			if strings.Contains(b, adresse) {
+				t.Errorf("defaultBootstrapNodes enthaelt die abgeschaltete %s-Adresse: %s", name, b)
+			}
 		}
 	}
-	for _, b := range defaultBootstrapNodes {
-		if strings.Contains(b, "173.249.37.118") {
-			t.Errorf("defaultBootstrapNodes enthaelt die abgeschaltete C1-Adresse: %s", b)
+}
+
+// Ohne BOOTSTRAP_P2P_ADDR und PRIMARY_NODE_URLS landet ein frischer Knoten
+// genau bei den eingebauten Listen. Auch dort darf keine abgeschaltete
+// Adresse ankommen -- nicht nur in den Konstanten.
+func TestFrischerKnoten_FragtKeineAbgeschalteteAdresse(t *testing.T) {
+	t.Setenv("BOOTSTRAP_P2P_ADDR", "")
+	t.Setenv("PRIMARY_NODE_URL", "")
+	t.Setenv("PRIMARY_NODE_URLS", "")
+	for adresse, name := range abgeschalteteAdressen {
+		for _, b := range BootstrapNodes() {
+			if strings.Contains(b, adresse) {
+				t.Errorf("BootstrapNodes() liefert die abgeschaltete %s-Adresse: %s", name, b)
+			}
+		}
+		for _, s := range seedURLs("https://self.example.com") {
+			if strings.Contains(s, adresse) {
+				t.Errorf("seedURLs() liefert die abgeschaltete %s-Adresse: %s", name, s)
+			}
 		}
 	}
 }

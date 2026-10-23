@@ -2485,9 +2485,12 @@ const defaultPublicSeed = "https://aequitas.digital"
 //
 // Der neue C1 (netcup, 188.172.229.121) steht seit dem 26.09.2026 an erster
 // Stelle: er ist der Primary, und aequitas.digital zeigt auf ihn.
+//
+// CONTABO2 (194.163.188.71) IST RAUS, seit dem 03.10.2026; am 21.10.2026
+// meldete die IP einen fremden Host-Schluessel -- sie ist neu vergeben. Aus
+// demselben Grund wie oben steht sie hier nicht mehr.
 var defaultPublicSeeds = []string{
 	"http://188.172.229.121:8080", // neuer C1 (netcup) — Primary seit 26.09.2026
-	"http://194.163.188.71:8080",  // Contabo2 — verified to carry the real chain
 	defaultPublicSeed,             // canonical domain, consulted last (see above)
 }
 
