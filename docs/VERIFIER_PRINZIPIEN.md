@@ -235,6 +235,40 @@ wegnehmen“.
   Bis dahin bekommen alle Registrierungen den vollen Betrag sofort, und
   niemand wird benachteiligt.
 
+### Jährlicher Lebensnachweis (21.10.2026)
+
+Das Grundeinkommen soll an lebende Menschen gehen, die ihr Konto selbst
+halten — nicht an Verstorbene oder gekaufte Konten. Einmal im Jahr
+bestätigt deshalb jeder mit demselben Gesicht wie bei der Registrierung,
+dass er lebt (`x/humanity/keeper/lebensnachweis.go`, Transaktion
+`proof_of_life`; Coordinator `/lebensnachweis`).
+
+**Wie das mit Grundsatz 1 zusammengeht:**
+
+- **Nichts wird weggenommen.** Mensch-Status und Guthaben bleiben
+  unangetastet, auch nach Jahren ohne Nachweis. Kein Code setzt dafür
+  `is_human` auf `false`; `proof_of_life` ist in `kein_entzug_test.go` als
+  reine Gutschrift-Art eingeordnet.
+- **Nichts wird zurückgehalten.** Wer überfällig ist, nimmt an der
+  Verteilung nicht teil, solange er überfällig ist; sein Anteil geht an alle
+  anderen, es entsteht kein Guthaben, das jemand verwaltet oder freigeben
+  müsste. Das ist keine Regel, die „Geld ohne Zeitgrenze zurückhält“: es
+  gibt kein zurückgehaltenes Geld, und das Ende der Pause liegt allein beim
+  Menschen selbst — nach dem Nachweis läuft der Anteil ab der nächsten
+  Runde.
+- **Nur, wenn ein Nachweis möglich ist.** Pausiert wird nur, solange
+  Coordinatoren im Konsens zugelassen sind (`registerLeserAktiv`). Die Uhr
+  beginnt am späteren von Stichtag (01.11.2026) und Zulassung
+  (`lebensnachweisUhrAb`): niemand wird beim Einschalten ohne Vorlauf
+  pausiert.
+- **Großzügige Fristen.** Frühestens nach 300 Tagen bestätigen, Frist 365
+  Tage, danach 30 Tage Nachfrist.
+- **Jeder Knoten prüft selbst** die Bescheinigung (Ed25519 des
+  Coordinators, eigene Domäne `aequitas-proof-of-life-v1`, Bindung des
+  Schlüssels an einen zugelassenen Menschen) und rechnet nach, dass kein
+  Pausierter einen Anteil bekommt (`nachrechnen_ubi.go`, Befund
+  `ubi_pausiert`) — beobachtend bis `nachrechnenStrengAbUnix`.
+
 ### Rechtsrahmen
 
 Die Entwürfe liegen in `docs/RECHTSVORLAGEN_ENTWURF.md`. Es sind

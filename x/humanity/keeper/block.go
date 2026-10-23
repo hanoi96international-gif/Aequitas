@@ -53,7 +53,8 @@ type Transaction struct {
 	// steht in DistributionAt), damit jeder Knoten selbst prueft,
 	// dass die zweite Lebendigkeitspruefung bestanden ist
 	// (nachrechnen_erneuerung.go). omitempty: aeltere Bloecke behalten ihren
-	// Hash.
+	// Hash. Bei proof_of_life dasselbe mit eigener Domaene
+	// (aequitas-proof-of-life-v1, lebensnachweis.go).
 	Bescheinigung *Lebendigkeitsbescheinigung `json:"bescheinigung,omitempty"`
 	// FromDemurrageLost/ToDemurrageLost carry the exact AEQ amount the
 	// primary node decayed off Wallet/To via settleDemurrageLocked while
@@ -1386,6 +1387,8 @@ func bekannteTxArt(typ string, blockZeit int64) bool {
 		return checkpointTxAktiv(blockZeit)
 	case "slash_abrechnung": // strafe_abrechnung.go, schlafend bis registerLeserAb
 		return registerLeserAktiv(blockZeit)
+	case "proof_of_life": // lebensnachweis.go, schlafend bis Stichtag und registerLeserAb
+		return lebensnachweisAktiv(blockZeit)
 	case "vorbehalt", "vorbehalt_ausfuehrung", "kappung":
 		// Stufe 2 (vorbehalt.go, kappung_verteilt.go). Fehlten hier bis
 		// 05.10.2026 ganz: ab der Aktivierung haette jeder Knoten jeden
@@ -7925,6 +7928,13 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			// blockTouchedAddresses via tx.Wallet), but cs.nullifiers is a
 			// separate map the account snapshot doesn't touch.
 			claimedNullifiers = append(claimedNullifiers, nullifier)
+			// lebensnachweis.go: ab dem Stichtag zaehlt die Registrierung als
+			// erster Nachweis -- mit RegAt, wie bei der Annahme.
+			if err := dag.state.lebensnachweisBeiRegistrierungLocked(context.Background(), wallet, tx.RegAt, block.Timestamp); err != nil {
+				fmt.Printf("[REPLAY] ✗ register_human %s: Lebensnachweis nicht gespeichert: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
+				hardFailure = true
+				continue
+			}
 			if commitment != "" {
 				_ = dag.state.SaveBioRegistration(commitment, wallet, tx.TxHash, "")
 			}
@@ -8088,6 +8098,17 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			// Annahme -- nicht die Blockzeit ("EIN ZEITPUNKT").
 			if err := dag.state.applyLivenessRenewalDeltaLocked(context.Background(), wallet, tx.DistributionAt, block.Timestamp); err != nil {
 				fmt.Printf("[REPLAY] ✗ liveness_renewal %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
+				hardFailure = true
+				continue
+			}
+		case "proof_of_life":
+			// lebensnachweis.go: jeder Knoten prueft die Bescheinigung selbst
+			// (eigene Domaene, Bindung in der Transaktion, Zulassung im
+			// Konsens, faellig_ab). Ungueltig: nie angewandt, gezaehlt, im
+			// strengen Modus Fehler. Zulassung nicht lesbar: der ganze Block
+			// zurueck -- weder ungeprueft angewandt noch verworfen.
+			if err := dag.state.applyLebensnachweisLocked(context.Background(), &tx, block.Timestamp); err != nil {
+				fmt.Printf("[REPLAY] ✗ proof_of_life %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
 				hardFailure = true
 				continue
 			}

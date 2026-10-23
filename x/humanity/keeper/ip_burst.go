@@ -43,9 +43,13 @@ var erneuerungVon = neueBegrenzteKarteOhneNetz("erneuerung_weitergeleitet", gren
 
 const erneuerungVonPraefix = "liveness-renewal-von:"
 
+// lebensnachweisVonPraefix: dasselbe fuer weitergeleitete Lebensnachweise
+// (lebensnachweis.go) -- eigene Zaehler, dieselbe Karte.
+const lebensnachweisVonPraefix = "proof-of-life-von:"
+
 // burstKarte: in welcher Karte key zaehlt.
 func burstKarte(key string) *begrenzteKarte {
-	if strings.HasPrefix(key, erneuerungVonPraefix) {
+	if strings.HasPrefix(key, erneuerungVonPraefix) || strings.HasPrefix(key, lebensnachweisVonPraefix) {
 		return erneuerungVon
 	}
 	return ipBurst

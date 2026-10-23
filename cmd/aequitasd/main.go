@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -961,6 +962,10 @@ func main() {
 				// davor ist nur die Vorauswahl fuer den Zeitplan.
 				var ubiAt int64
 				var abstandZiel time.Time
+				// lnZiel: die Runde wartet auf offene Lebensnachweise und die
+				// Annahme ist kurz angehalten (#412, Befund 4) -- dann gleich
+				// wieder versuchen, innerhalb des Halts.
+				var lnZiel time.Time
 				if os.Getenv("DISTRIBUTION_ENABLED") == "false" {
 					fmt.Println("[POOLS] Distribution disabled on this node (DISTRIBUTION_ENABLED=false)")
 					keeper.RecordDistributionOutcome("skipped", "DISTRIBUTION_ENABLED=false on this node")
@@ -1034,6 +1039,19 @@ func main() {
 					if !pruefbar {
 						retrySoon = true
 					}
+				} else if grund, nachweiseOffen := chainState.LebensnachweiseOffenGrund(time.Now().Unix()); grund != "" {
+					// Lebensnachweis (#410, lebensnachweis_runde.go): erst wenn
+					// jeder angewandte Nachweis in einem Block steht -- VOR der
+					// Tagessperre, sonst fiele der Tag aus. Bald erneut pruefen:
+					// die Nachweise kommen mit dem naechsten Block.
+					fmt.Printf("[POOLS] Verteilung jetzt nicht: %s\n", grund)
+					keeper.RecordDistributionOutcome("skipped", grund)
+					retrySoon = true
+					// Nur offene Lebensnachweise lassen die Runde rutschen --
+					// nur dann die Annahme kurz anhalten (#412, Befund 4).
+					if nachweiseOffen && chainState.LebensnachweisAnnahmeHalten(time.Now().Unix()) {
+						lnZiel = time.Now().Add(keeper.LebensnachweisHaltWiederholung)
+					}
 				} else if chainState.TryLockDistribution() {
 					// FIX (audit3, P0 #3): the entire distribution round — UBI, validator
 					// pool, LP pool, escrow move/release, AND every resulting outbox TX —
@@ -1055,8 +1073,25 @@ func main() {
 						if err := chainState.RunDailyDistributionAtomic(ubiAt); err != nil {
 							fmt.Printf("[POOLS] ✗ Distribution FAILED and was fully rolled back: %v\n", err)
 							keeper.RecordDistributionOutcome("failed", err.Error())
+							// Ein Lebensnachweis kam zwischen Vorpruefung und
+							// Runde (#410): die Runde ist zurueckgerollt und hat
+							// nicht stattgefunden -- Sperre freigeben und bald
+							// wiederholen, statt den Tag ausfallen zu lassen.
+							if errors.Is(err, keeper.ErrLebensnachweiseOffen) {
+								if lErr := chainState.VerteilungsSperreLoesen(); lErr != nil {
+									fmt.Printf("[POOLS] ✗ Tagessperre nicht freigegeben: %v\n", lErr)
+								} else {
+									// Ob angehalten wird, entscheidet die
+									// naechste Vorpruefung (nur bei offenen
+									// Lebensnachweisen, nie bei Lesefehlern).
+									retrySoon = true
+								}
+								return
+							}
+							chainState.LebensnachweisAnnahmeFreigeben()
 							return
 						}
+						chainState.LebensnachweisAnnahmeFreigeben()
 						fmt.Printf("[POOLS] ✓ Distribution done at %s\n", time.Now().In(berlin).Format("02.01. 15:04:05"))
 						keeper.RecordDistributionOutcome("ran", "round executed; UBI: "+keeper.LetztesUBIErgebnis())
 					})
@@ -1079,6 +1114,8 @@ func main() {
 				}
 				if !abstandZiel.IsZero() {
 					firstTarget = abstandZiel
+				} else if !lnZiel.IsZero() {
+					firstTarget = lnZiel
 				} else if retrySoon {
 					firstTarget = time.Now().Add(distributionHealthRetryInterval)
 				} else {

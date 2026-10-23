@@ -152,6 +152,11 @@ func (cs *ChainState) nachrechnenTxLocked(tx *Transaction, blockZeit int64) erro
 	case "liveness_renewal":
 		return cs.nachrechnenErneuerungLocked(tx, wallet, blockZeit) // nachrechnen_erneuerung.go
 
+	case "proof_of_life":
+		// Was entscheidet, ob er gilt, prueft applyLebensnachweisLocked selbst
+		// (lebensnachweis.go) -- hier nur das Alter.
+		return cs.nachrechnenLebensnachweisLocked(tx, blockZeit)
+
 	case "transfer":
 		return cs.nachrechnenUeberweisungLocked(tx, wallet, blockZeit) // nachrechnen_ueberweisung.go
 

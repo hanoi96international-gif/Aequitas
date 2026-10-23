@@ -1209,6 +1209,9 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	mux.HandleFunc("/api/coordinators", a.handleCoordinatorList)
 	// Zum Leiter: die Erneuerung geht durch dessen Annahme-Tor (grant_staffel.go).
 	mux.HandleFunc("/api/liveness-renewal", a.erneuerungsGrenze(a.zumLeiter(a.handleLivenessRenewal)))
+	// Jaehrlicher Lebensnachweis (lebensnachweis.go): dieselbe Kette aus
+	// eigener Grenze, Weiterleitung zum Zustaendigen und Annahme-Tor.
+	mux.HandleFunc("/api/proof-of-life", a.lebensnachweisGrenze(a.zumLeiter(a.handleProofOfLife)))
 	// Unternehmen (wirtschaft.go, wirtschaft_api.go)
 	mux.HandleFunc("/api/wirtschaft/regeln", a.handleWirtschaftRegeln)
 	mux.HandleFunc("/api/wirtschaft/konto", a.handleWirtschaftKonto)
@@ -2429,6 +2432,12 @@ func (a *APIServer) handleBalance(w http.ResponseWriter, r *http.Request) {
 	// WP 2: offener Staffelrest, falls vorhanden (grant_staffel.go).
 	if st := a.state.StaffelStandVon(wallet); st != nil {
 		antwort["staffel"] = st
+	}
+	// Lebensnachweis (lebensnachweis.go): nur fuer Menschen. Der
+	// Coordinator liest aktiv und faellig_ab und weist ab, was nicht bool
+	// bzw. ganze Zahl ist.
+	if ln := a.state.LebensnachweisStandVon(wallet, time.Now().Unix()); ln != nil {
+		antwort["lebensnachweis"] = ln
 	}
 	json.NewEncoder(w).Encode(antwort)
 }
