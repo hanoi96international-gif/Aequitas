@@ -20,6 +20,8 @@ name: Wache (alle 10 Minuten)
 #   - keine Ueberweisung beim Nachspielen uebersprungen (zustands_ablehnung)
 #   - Platte nicht kritisch, Knoten nicht degraded
 #   - Vergleichsdienst (/matching/health) antwortet
+#   - produzenten_geschlossen ist true (Blocker 18)
+# Und: der Name proof2.aequitas.digital zeigt auf keinen fremden Rechner.
 # Und einmal: der Coordinator antwortet mit Quorum >= 2 (oder Quorum 1 im
 # Einzelbetrieb mit aktiver Tagesgrenze), und das letzte
 # Backup ist juenger als 36 Stunden.
@@ -86,6 +88,10 @@ jobs:
               if [ -z "$EOB" ]; then ok "jeder Erzeuger im Validator-Register gebunden"
               elif [ "$EOB" = "?" ]; then echo "ℹ $B: erzeuger_ohne_bindung nicht lesbar"
               else echo "ℹ $B: Erzeuger OHNE Bindung im Validator-Register: $EOB -- einmal ueber http://$B:8080/node-binding mit der Betreiber-Wallet binden"; fi
+              # Blocker 18 (Audit K-1): nur AUTHORIZED_VALIDATORS erzeugen Bloecke.
+              # Fehlt das Feld, ist es nicht true oder ist die Antwort kaputt: rot.
+              PG=$(curl -s --max-time 10 "http://$B:8080/api/status" | python3 -c "import sys,json; v=json.load(sys.stdin).get('produzenten_geschlossen'); print('ja' if v is True else repr(v))" 2>/dev/null || echo "unlesbar")
+              if [ "$PG" = ja ]; then ok "produzenten_geschlossen=true"; else rot "$B: produzenten_geschlossen=$PG -- jeder Schluessel koennte Bloecke erzeugen (produzenten-festlegen.yml)"; fi
               J=$(h $B)
               if [ -z "$J" ]; then rot "$B antwortet nicht auf /api/health/combined"; else echo "$J" | python3 .github/wache_pruefung.py || ROT=1; fi
             fi
@@ -153,6 +159,18 @@ jobs:
           # Railway: seit 14.09. 03:45 "Application not found" -- die Instanz ist weg. Die ausgelieferte App
           # (v1.7.1) registriert ueber proof1/proof2; nur alte v1.6.0-Installationen haengen daran. Hinweis, kein Rot.
           if echo "$CO" | grep -q '"status":"ok"' && [ "${Q:-0}" -ge 2 ]; then ok "Coordinator Railway ok, Quorum $Q (nur noch fuer v1.6.0)"; else echo "ℹ Coordinator Railway nicht erreichbar -- betrifft nur v1.6.0-Installationen, die auf v1.7.1 aktualisieren muessen: $(echo "${CO:-keine Antwort}" | cut -c1-80)"; fi
+          # Namen abgeschalteter Server: die APK v1.12.3 weicht auf proof2 aus
+          # (Coordinator mit Gesichtsaufnahmen, API, RPC). Zeigt der Name auf
+          # einen fremden Rechner, holt der sich ein Zertifikat und bekommt das.
+          # Erlaubt: loest nicht auf, oder nur auf einen eigenen Knoten.
+          for N in proof2.aequitas.digital; do
+            ZIEL=$( { dig +short A "$N"; dig +short AAAA "$N"; } 2>/dev/null | sed 's/\.$//' | sort -u | tr '\n' ' ' | sed 's/ $//')
+            FREMD=""
+            for Z in $ZIEL; do case " ${!PHOST[*]} " in *" $Z "*) ;; *) FREMD="$FREMD $Z" ;; esac; done
+            if [ -z "$ZIEL" ]; then ok "$N loest nicht auf"
+            elif [ -z "$FREMD" ]; then ok "$N zeigt nur auf eigene Knoten ($ZIEL)"
+            else rot "$N zeigt auf$FREMD -- nicht unser Server; alte Apps weichen dorthin aus (auch mit Gesichtsaufnahmen). DNS-Eintrag loeschen"; fi
+          done
           LAST=$(gh api "repos/$REPO/actions/workflows/backup-ledger.yml/runs?per_page=5&status=success" --jq '.workflow_runs[0].updated_at' 2>/dev/null)
           if [ -n "$LAST" ] && [ "$LAST" != "null" ]; then
             AGE=$(( ( $(date +%s) - $(date -d "$LAST" +%s) ) / 3600 ))
