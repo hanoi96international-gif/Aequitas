@@ -59,12 +59,10 @@ jobs:
           # C2 nimmt_an=false). Der erste Lauf fiel daran dreimal ROT.
 
           # DIE AKTIVEN KNOTEN: NAME=IP=PROOFHOST=NIMMT_AN. Genau einer nimmt
-          # Ueberweisungen an (annahme_tor.go). Contabo1 (173.249.37.118, proof1)
-          # ist seit dem 24.09.2026 abgeschaltet -- Abo nicht verlaengert, die
-          # Kette startet vor dem Launch bei null. Seitdem nimmt C2 an. Ein neuer
-          # zweiter Server kommt hier mit einer Zeile dazu (und in wache.yml).
-          # Seit 26.09.2026: der neue C1 (netcup) ist Primary und nimmt an,
-          # C2 ist nur_lesend.
+          # Ueberweisungen an (annahme_tor.go). Seit dem 03.10.2026 laeuft nur
+          # C1 (netcup); der alte Contabo1 und C2 sind abgeschaltet, ihre IPs
+          # neu vergeben (lint_alte_hosts.py). Ein zweiter Server kommt hier mit
+          # einer Zeile dazu (und in wache.yml).
           KNOTEN="C1=188.172.229.121=proof1=true"
           declare -A API RPC IP PH SOLLAN HOEHE COMMIT EVMID WAB
           NAMEN=""
@@ -86,6 +84,16 @@ jobs:
             # oder -- ab dem Stichtag chain_id_wechsel_ab -- 19260930.
             EVMID[$K]=$(echo "$S" | jq_ '.chain_evm_id // empty'); WAB[$K]=$(echo "$S" | jq_ '.chain_id_wechsel_ab // empty')
             if [ -n "$H" ]; then ok "$K ${API[$K]}/status: Hoehe $H, Commit ${G:-?}"; else rot "$K ${API[$K]}/status antwortet nicht: $(echo "$S" | head -c 120)"; fi
+            # Blocker 18 (Audit K-1): nur AUTHORIZED_VALIDATORS erzeugen Bloecke.
+            # Fehlt das Feld oder ist es nicht true, ist die Zulassung offen.
+            PG=$(echo "$S" | jq_ '.produzenten_geschlossen | if . == null then "fehlt" else tostring end')
+            [ "$PG" = true ] && ok "$K produzenten_geschlossen=true (nur AUTHORIZED_VALIDATORS erzeugen)" || rot "$K produzenten_geschlossen=$PG -- produzenten-festlegen.yml (Blocker 18)"
+            # Validator-Register: Hinweis wie in wache.yml, kein Rot. null heisst
+            # offen oder nicht lesbar, [] heisst alle gebunden.
+            EOB=$([ -n "$H" ] && echo "$S" | jq_ '.erzeuger_ohne_bindung | if type == "array" then join(",") else "?" end' || echo "?")
+            if [ -z "$EOB" ]; then ok "$K jeder Erzeuger im Validator-Register gebunden"
+            elif [ "$EOB" = "?" ]; then info "$K erzeuger_ohne_bindung nicht lesbar"
+            else info "$K Erzeuger OHNE Bindung: $EOB -- einmal ueber http://${IP[$K]}:8080/node-binding mit der Betreiber-Wallet binden"; fi
             W=$(code "http://${IP[$K]}:8080/api/wache")
             if [ "$W" = 200 ]; then ok "$K /api/wache 200"; else rot "$K /api/wache HTTP $W: $(get "http://${IP[$K]}:8080/api/wache" | head -c 600)"; fi
             HC=$(get "http://${IP[$K]}:8080/api/health/combined")

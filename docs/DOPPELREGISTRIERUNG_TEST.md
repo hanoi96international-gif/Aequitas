@@ -1,23 +1,21 @@
 # Testablauf: Ein Mensch = ein Konto
 
-**Stand 13.09.2026, 18:00.** Der biometrische Nachweis ist das Tor
-(`BIO_ATTESTATION_MODE=required` auf beiden Proof-Servern — am 13.09. von 01:15
-bis 15:13 kurz `optional`, seitdem wieder `required` —, Quorum 2, Vergleichsdienste
-proof1 + proof2). Was fehlt, ist der Beleg mit echten Menschen: genau **eine**
+**Stand 24.10.2026.** Der biometrische Nachweis ist das Tor
+(`BIO_ATTESTATION_MODE=required` am Proof-Server, Herkunftspflicht an
+`/api/register`). Seit dem 03.10.2026 läuft **ein** Vergleichsdienst (proof1 auf
+C1) im Einzelbetrieb: Quorum 1, höchstens 25 Registrierungen am Tag. C2/proof2
+ist abgeschaltet. Was fehlt, ist der Beleg mit echten Menschen: genau **eine**
 Person hat den Weg bisher durchlaufen (`gallery_test: 1`). Dieser Ablauf liefert
 den Beleg — oder die Stelle, an der er scheitert.
 
 Braucht: **zwei Personen, zwei Telefone**, 30 Minuten, die App von
-https://aequitas.digital/download/app.apk (v1.6.0 registriert über den
-Railway-Coordinator; ab v1.7.0 über proof1/proof2 — für Schritt 6 unten ist
-v1.7.0 Pflicht).
+https://aequitas.digital/download/app.apk (derzeit v1.12.3).
 
 ## Vorher ablesen (Nullpunkt)
 
 ```bash
-curl -s https://coordinator-production-e067.up.railway.app/inventory | python3 -m json.tool | head -40
+curl -s https://proof1.aequitas.digital/coordinator/health
 curl -s https://proof1.aequitas.digital/matching/health
-curl -s https://proof2.aequitas.digital/matching/health
 curl -s https://proof1.aequitas.digital/health
 curl -s https://aequitas.digital/api/status | grep -oE '"total_humans":[0-9]+'
 ```
@@ -33,8 +31,7 @@ Notieren: `gallery_test` je Vergleichsdienst, `bio_hash_count`, `total_humans`.
 | 3 | Person A löscht die App auf Telefon 1 und installiert neu (neues Gerätegeheimnis, neues Wallet) | **abgewiesen** — das Gesicht ist bekannt | wie 2 |
 | 4 | Person B registriert sich auf Telefon 2 | durch | `total_humans` +1 |
 | 5 | Person A mit Brille / anderem Licht / anderem Abstand (falls 1 ohne Brille war) auf Telefon 2 | **abgewiesen** | wie 2 |
-
-| 6 | **Altkonto nachziehen** (App ≥ v1.7.0): ein vor dem 25.08. registrierter Mensch öffnet den Identity-Tab → „Gesicht zu diesem Konto nachziehen" | durch: `nachgezogen`; **kein** Zuschuss, Kontostand unverändert | `gallery_test` +1 auf proof1 **und** proof2; Coordinator `/health` → `nachziehen.nachgezogen` +1; `total_humans` unverändert |
+| 6 | **Altkonto nachziehen** (App ≥ v1.7.0, nur falls noch ein Altkonto ohne Gesicht existiert): ein vor dem 25.08. registrierter Mensch öffnet den Identity-Tab → „Gesicht zu diesem Konto nachziehen" | durch: `nachgezogen`; **kein** Zuschuss, Kontostand unverändert | `gallery_test` +1 auf proof1; Coordinator `/health` → `nachziehen.nachgezogen` +1; `total_humans` unverändert |
 | 7 | Derselbe Mensch aus 6 registriert sich auf einem anderen Telefon neu (neues Wallet) | **abgewiesen** als Duplikat | wie 2 — das ist der Beleg, dass der Nachzieh-Weg die Altkonten wirklich schließt |
 
 Jeder Schritt, der anders ausgeht als erwartet, ist der Befund. Nicht weiter
