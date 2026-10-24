@@ -93,7 +93,22 @@ jobs:
             EOB=$([ -n "$H" ] && echo "$S" | jq_ '.erzeuger_ohne_bindung | if type == "array" then join(",") else "?" end' || echo "?")
             if [ -z "$EOB" ]; then ok "$K jeder Erzeuger im Validator-Register gebunden"
             elif [ "$EOB" = "?" ]; then info "$K erzeuger_ohne_bindung nicht lesbar"
-            else info "$K Erzeuger OHNE Bindung: $EOB -- einmal ueber http://${IP[$K]}:8080/node-binding mit der Betreiber-Wallet binden"; fi
+            else
+              info "$K Erzeuger OHNE Bindung: $EOB -- einmal ueber http://${IP[$K]}:8080/node-binding mit der Betreiber-Wallet binden"
+              # Woran es haengt: das Register nimmt eine Bindung nur von einem
+              # registrierten Menschen an (validator_bindung_annahme.go), und
+              # sie wirkt erst erzeugerFrist (2 h) spaeter. Hoechstens 5 Erzeuger.
+              for E in $(echo "$EOB" | tr ',' '\n' | grep -E '^0x[0-9a-f]{40}$' | head -5); do
+                BW=$(get "${API[$K]}/validator-binding?signing_address=$E" | jq_ '.human_wallet // empty' | tr 'A-F' 'a-f')
+                if ! [[ "$BW" =~ ^0x[0-9a-f]{40}$ ]]; then info "  $E: keine Betreiber-Wallet hinterlegt (knoten-binden.yml)"; continue; fi
+                MH=$(get "${API[$K]}/balance?wallet=$BW" | jq_ '.is_human | if . == null then "?" else tostring end')
+                case "$MH" in
+                  true)  info "  $E: Betreiber $BW ist Mensch -- /node-binding unterschreiben; wirkt 2 h danach" ;;
+                  false) info "  $E: Betreiber $BW ist auf dieser Kette KEIN registrierter Mensch -- erst mit dieser Wallet in der App registrieren, dann /node-binding" ;;
+                  *)     info "  $E: ob Betreiber $BW Mensch ist, nicht lesbar" ;;
+                esac
+              done
+            fi
             W=$(code "http://${IP[$K]}:8080/api/wache")
             if [ "$W" = 200 ]; then ok "$K /api/wache 200"; else rot "$K /api/wache HTTP $W: $(get "http://${IP[$K]}:8080/api/wache" | head -c 600)"; fi
             HC=$(get "http://${IP[$K]}:8080/api/health/combined")
