@@ -43,9 +43,13 @@ Tests entfernt (Aequitas #419–#422, biometric #87, proof-server #24);
 7. **DSGVO-Entscheidung** (Blocker 5); bis dahin bleibt der Vergleichsdienst
    im Testmodus (`real_data_unlocked=false`), die Altersschätzung beobachtet
    nur (`modell_bereit=false`).
-8. **Aufräumen ohne Wirkung auf den Betrieb:** DNS-Eintrag `proof2`,
-   Secret `CONTABO2_SSH_KEY`, `EXPO_PUBLIC_*_FALLBACKS` mit proof2 löschen
-   (von hier nicht prüfbar).
+8. **App-Bauvariablen leeren:** `EXPO_PUBLIC_COORDINATOR_FALLBACKS`,
+   `EXPO_PUBLIC_API_FALLBACKS`, `EXPO_PUBLIC_RPC_FALLBACKS` im App-Repo
+   enthalten noch proof2 (die APK v1.12.3 weicht dorthin aus, auch mit
+   Gesichtsaufnahmen). Der Name `proof2` löst seit dem 24.10. nicht mehr auf,
+   der Ausweg läuft also ins Leere; `pruefstand-live.yml` wird rot, sobald er
+   wieder auf einen fremden Server zeigt. Vor dem nächsten App-Bau leeren,
+   dazu das Secret `CONTABO2_SSH_KEY` löschen.
 
 Ein zweiter Validator ist für die Beta nicht nötig, für den Launch schon
 (Punkt 3.6). Bis dahin trägt C1 allein: Snapshot und Autoheal vertrauen C1,

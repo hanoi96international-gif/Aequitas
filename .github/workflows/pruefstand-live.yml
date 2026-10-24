@@ -196,6 +196,25 @@ jobs:
             [ -n "$SOLL" ] && [ "$IST" = "$SOLL" ] && ok "$Q == $TAG" || rot "$Q liefert ${IST:0:16}..., neuestes Release ($TAG) ist ${SOLL:0:16}..."
           done
 
+          echo "===== Namen abgeschalteter Server ====="
+          # Die ausgelieferte App (v1.12.3, gebaut mit EXPO_PUBLIC_*_FALLBACKS)
+          # weicht auf proof2.aequitas.digital aus, wenn proof1 nicht antwortet:
+          # Coordinator (Gesichtsaufnahmen), API und RPC. proof2 war C2; dessen
+          # IP ist seit Oktober 2026 neu vergeben. Zeigt der Name auf eine
+          # fremde Adresse, kann deren Inhaber ein gueltiges Zertifikat fuer
+          # proof2 holen und bekommt, was die App dorthin schickt. Erlaubt: der
+          # Name loest nicht auf, oder er zeigt nur auf einen eigenen Knoten.
+          for N in proof2.aequitas.digital; do
+            ZIEL=$( { dig +short A "$N"; dig +short AAAA "$N"; } 2>/dev/null | sed 's/\.$//' | sort -u | tr '\n' ' ' | sed 's/ $//')
+            FREMD=""
+            for Z in $ZIEL; do
+              case " $(for K in $NAMEN; do echo -n "${IP[$K]} "; done)" in *" $Z "*) ;; *) FREMD="$FREMD $Z" ;; esac
+            done
+            if [ -z "$ZIEL" ]; then ok "$N loest nicht auf"
+            elif [ -z "$FREMD" ]; then ok "$N zeigt nur auf eigene Knoten ($ZIEL)"
+            else rot "$N zeigt auf$FREMD -- nicht unser Server; die App v1.12.3 weicht dorthin aus (auch mit Gesichtsaufnahmen). DNS-Eintrag loeschen"; fi
+          done
+
           echo "===== Website und Rechtstexte ====="
           [ "$(code https://aequitas.digital/)" = 200 ] && ok "https://aequitas.digital/ 200" || rot "Startseite nicht 200"
           LS=$(get https://aequitas.digital/api/legal-status)
