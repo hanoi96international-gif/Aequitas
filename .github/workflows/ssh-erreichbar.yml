@@ -22,10 +22,16 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 5
     steps:
-      - name: Port 22 und Host-Schluessel
+      - name: ssh-keyscan je dreimal ohne -T, mit -T 5 und -T 10
         run: |
           set -u
           ssh -V 2>&1
-          timeout 15 bash -c 'exec 3<>/dev/tcp/188.172.229.121/22 && head -c 64 <&3' && echo || echo "Port 22: keine Antwort"
-          timeout 20 ssh-keyscan -v -T 10 -t ed25519 188.172.229.121 2>&1 | grep -v '^#' | sed -E 's/(ssh-ed25519) [A-Za-z0-9+\/=]+/\1 <schluessel>/' | tail -25
-          timeout 20 ssh-keyscan -T 10 -t ed25519 188.172.229.121 2>/dev/null | ssh-keygen -lf - 2>&1 || true
+          for t in "" "-T 5" "-T 10"; do
+            for i in 1 2 3; do
+              start=$(date +%s.%N)
+              # shellcheck disable=SC2086
+              n=$(ssh-keyscan $t -t ed25519 188.172.229.121 2>/tmp/err | grep -c . || true)
+              ende=$(date +%s.%N)
+              echo "keyscan ${t:-ohne -T} #$i: $n Zeile(n), $(echo "$ende - $start" | bc) s, stderr: $(grep -v '^#' /tmp/err | head -2 | tr '\n' ' ')"
+            done
+          done
