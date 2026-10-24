@@ -984,20 +984,6 @@ func gzipMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// recoverMiddleware is explicit defense-in-depth panic recovery around the
-// whole mux. FIX (P1-2, beta-launch audit 2026-07-05): Go's own net/http
-// stdlib already recovers a panic in a request handler (only that one
-// connection dies), so this middleware is not closing an active hole today
-// — but that stdlib recovery only covers the ORIGINAL request-handling
-// goroutine. Any handler that spawns its OWN goroutine (a pattern already
-// used throughout this file) reproduces the exact P0-3 crash risk with no
-// explicit safety net at the mux level to catch it as a fallback, and nothing
-// here would signal that gap to a future handler author. An explicit
-// recover() here doesn't help with THAT case either (recover only catches a
-// panic in the SAME goroutine — see panic_recovery.go), but it does mean a
-// panic in the synchronous request path is handled uniformly and logged the
-// same way every other recovered panic in this codebase is, rather than
-// relying solely on the stdlib's silent default behavior.
 // apiHTTPServer: der Server mit seinen Fristen -- eigene Funktion, damit ein
 // Test sie festhaelt.
 func apiHTTPServer(addr string, mux http.Handler) *http.Server {
@@ -1021,6 +1007,20 @@ func serverKette(mux http.Handler) http.Handler {
 	return recoverMiddleware(retryAfterMiddleware(ipZurDomainMiddleware(gzipMiddleware(mux))))
 }
 
+// recoverMiddleware is explicit defense-in-depth panic recovery around the
+// whole mux. FIX (P1-2, beta-launch audit 2026-07-05): Go's own net/http
+// stdlib already recovers a panic in a request handler (only that one
+// connection dies), so this middleware is not closing an active hole today
+// — but that stdlib recovery only covers the ORIGINAL request-handling
+// goroutine. Any handler that spawns its OWN goroutine (a pattern already
+// used throughout this file) reproduces the exact P0-3 crash risk with no
+// explicit safety net at the mux level to catch it as a fallback, and nothing
+// here would signal that gap to a future handler author. An explicit
+// recover() here doesn't help with THAT case either (recover only catches a
+// panic in the SAME goroutine — see panic_recovery.go), but it does mean a
+// panic in the synchronous request path is handled uniformly and logged the
+// same way every other recovered panic in this codebase is, rather than
+// relying solely on the stdlib's silent default behavior.
 func recoverMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {

@@ -759,7 +759,11 @@ const zumLeiterRumpfHoechstens = 64 << 10
 // zumLeiterLeseFrist: so lange darf das Lesen des Rumpfs dauern. Sie ersetzt
 // die Frist des Servers fuer die Anfrage (Beginn + ReadTimeout); weil die
 // Koepfe hoechstens ReadHeaderTimeout dauern (api.go), bleibt beides zusammen
-// unter dem ReadTimeout. Variable fuer Tests.
+// unter dem ReadTimeout -- ausser hinter einem Vorleser (weiterleitungFuer,
+// nur /api/liveness-renewal): dort beginnt sie erst nach dessen Lesen, also
+// hoechstens Beginn + ReadTimeout + zumLeiterLeseFrist (40 s). Begrenzt; ein
+// Vorleser, der an der Frist des Servers scheitert, endet mit 400 und
+// geschlossener Verbindung (siehe zumLeiter). Variable fuer Tests.
 var zumLeiterLeseFrist = 10 * time.Second
 
 // zumLeiterOhneFrist: wie oft die Lese-Frist nicht gesetzt werden konnte (eine
@@ -800,8 +804,24 @@ func (a *APIServer) zumLeiter(h http.HandlerFunc) http.HandlerFunc {
 		// Servers (30 s) begrenzt -- an jeder Route dahinter, auch vor ihrem
 		// Stichtag (Pruefung von #327, INFO-3). Ein angekuendigt zu grosser
 		// Rumpf wird gar nicht erst gelesen.
+		//
+		// Jede Fehlerantwort hier schliesst die Verbindung: net/http verwirft
+		// sonst bis 256 KiB Rest -- hinter einem Vorleser ohne dessen
+		// tooBig-Abkuerzung (zweite Pruefung von #414, INFO).
 		if r.ContentLength > zumLeiterRumpfHoechstens {
+			w.Header().Set("Connection", "close")
 			http.Error(w, `{"error":"request body too large"}`, http.StatusRequestEntityTooLarge)
+			return
+		}
+		// Ist der Kontext der Verbindung schon abgebrochen -- ein Vorleser
+		// (weiterleitungFuer) scheiterte an der Frist des Servers --, liest
+		// zumLeiter nicht weiter: mit neuer Frist und dem Rest des Rumpfs
+		// belebte es die Verbindung wieder, sie bliebe mit abgebrochenem
+		// Kontext im Keep-Alive, und hinter Caddy scheiterten darauf die
+		// Anfragen anderer (zweite Pruefung von #414, Befund 1).
+		if r.Context().Err() != nil {
+			w.Header().Set("Connection", "close")
+			http.Error(w, `{"error":"unlesbar"}`, http.StatusBadRequest)
 			return
 		}
 		// Die Frist wird nach dem Lesen bis zum Ende geloescht: lief das
@@ -820,6 +840,7 @@ func (a *APIServer) zumLeiter(h http.HandlerFunc) http.HandlerFunc {
 		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, zumLeiterRumpfHoechstens))
 		if err != nil {
 			var zuGross *http.MaxBytesError
+			w.Header().Set("Connection", "close")
 			if errors.As(err, &zuGross) {
 				http.Error(w, `{"error":"request body too large"}`, http.StatusRequestEntityTooLarge)
 				return

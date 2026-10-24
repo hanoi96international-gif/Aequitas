@@ -182,7 +182,13 @@ func TestWeiterleitungNachweis_NurEchteWeiterleitungen(t *testing.T) {
 	// Ist er noch groesser, folgt dem Gelesenen der Rest -- nicht abgeschnitten
 	// (Pruefung von #414, Befund 1: zumLeiter liest bis zum Ende und loescht
 	// erst dann seine Lese-Frist).
-	riesig := strings.Repeat("y", weiterleitungKoerperMax+5000)
+	// Mit fortlaufenden Bloecken: so faellt auch auf, wenn Gelesenes und Rest
+	// in falscher Reihenfolge zurueckkommen (zweite Pruefung von #414, M2).
+	var rb strings.Builder
+	for i := 0; rb.Len() < weiterleitungKoerperMax+5000; i++ {
+		fmt.Fprintf(&rb, "%08d", i)
+	}
+	riesig := rb.String()
 	r = beimZustaendigen(t, folger, "203.0.113.20", nachweisIch, koerper, ms(6))
 	r.Body = io.NopCloser(strings.NewReader(riesig))
 	if cs.weiterleitungFuer(r, jetzt) != "" {
