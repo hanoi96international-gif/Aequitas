@@ -31,7 +31,7 @@ import (
 // Seiten gleich sein. Ist er es dreimal hintereinander nicht, ist das keine
 // Unschaerfe mehr, sondern ein Unterschied im Kontostand. Der Waechter
 // schreibt es ins Log und in /api/health/combined (divergenz); den Resync
-// entscheidet ein Mensch (resync-contabo1-only.yml / -contabo2-only.yml),
+// entscheidet ein Mensch (Resync des abweichenden Knotens vom Primary),
 // bis der Weg dorthin wieder ohne Fehlalarm ist.
 //
 // RUHE HEISST: BEIDE SEITEN. Am 14.09.2026 meldeten beide Boxen
@@ -305,7 +305,7 @@ func (dag *BlockDAG) divergenzEinmalPruefen() {
 		divergenzPeer.Store(seed)
 		if n >= divergenzSchwelle && time.Now().Unix()-divergenzLetzteMeld.Load() >= 600 {
 			divergenzLetzteMeld.Store(time.Now().Unix())
-			fmt.Printf("[DIVERGENZ] ✗ Zustand weicht von %s ab (%s), %d Vergleiche in Folge, beide in Ruhe und gleichauf (Hoehe %d/%d). Das ist kein Geschwister-Effekt. Abhilfe: Resync eines Knotens vom anderen (resync-contabo1-only.yml / -contabo2-only.yml) -- in der Ruhe, nie unter Last.\n",
+			fmt.Printf("[DIVERGENZ] ✗ Zustand weicht von %s ab (%s), %d Vergleiche in Folge, beide in Ruhe und gleichauf (Hoehe %d/%d). Das ist kein Geschwister-Effekt. Abhilfe: Resync des abweichenden Knotens vom Primary -- in der Ruhe, nie unter Last.\n",
 				seed, text, n, eigeneHoehe, peerHoehe)
 		}
 		// Selbstheilung -- nur wo sie erlaubt ist (siehe divergenzAutoResyncErlaubt),

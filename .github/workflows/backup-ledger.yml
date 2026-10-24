@@ -91,6 +91,9 @@ permissions:
 jobs:
   backup:
     runs-on: ubuntu-latest
+    # Wie backup-biometrie-verschluesselt.yml: der Root-Schluessel von C1 nur
+    # in der Umgebung produktion (lint_server_freigabe.py, Klammerform).
+    environment: produktion
     strategy:
       # Sequential: both jobs run pg_dump against a live validator, and doing
       # that to both at once is exactly the kind of simultaneous load this
