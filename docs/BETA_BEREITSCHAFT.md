@@ -1,4 +1,4 @@
-# Beta-Bereitschaft — Prüfung vom 14.10.2026, Stand 20.10.2026
+# Beta-Bereitschaft — Prüfung vom 14.10.2026, Stand 24.10.2026
 
 Geprüft wurden alle vier Repos: Kette, App, Biometrie und Proof-Server. Die
 Fragen waren: funktioniert es, ist es sicher, ist es schnell, und ist der Weg
@@ -8,6 +8,48 @@ was **im Code offen** ist und was **nur der Betreiber** tun kann.
 Massstab ist AGENTS.md, „Sicherheit — Launch-Massstab“. Jede Änderung unten
 hatte eine getrennte Sicherheitsprüfung; das Ergebnis steht als Kommentar im
 jeweiligen PR.
+
+## 0. Live-Stand 24.10.2026
+
+Gelesen mit `pruefstand-live.yml`, `wache.yml` und `betrieb-pruefen-c1.yml`
+(nur lesend), alle drei grün. Es läuft **ein** Server: C1 (netcup,
+188.172.229.121, `proof1.aequitas.digital`). Der alte Contabo1 (seit 24.09.)
+und C2 (seit 03.10.) sind abgeschaltet und aus Code, Seeds, Workflows und
+Tests entfernt (Aequitas #419–#422, biometric #87, proof-server #24);
+`lint_alte_hosts.py` hält ihre IPs draußen.
+
+| Bereich | Stand |
+|---|---|
+| Kette | Höhe ~226.700, Chain-ID 19260930, keine Kontostand-Abweichung, nur C1 nimmt an, keine Fehler im Knoten-Log |
+| Registrierung | Coordinator proof1 ok, **Quorum 1 im Einzelbetrieb** (höchstens 25 Registrierungen am Tag), Vergleichsdienst ok, Proof-Server `required`, Herkunftspflicht an `/api/register` |
+| App | Website und C1 liefern v1.12.3 (= neuestes Release). Sie sendet Einwilligung v3; Coordinator und Vergleichsdienst nehmen v3 als Vorgängerfassung in jedem Modus an (geltend: v4). **Kein neues Release nötig, um sich zu registrieren.** |
+| Sicherung | Ledger-Backup vor 22 h gelaufen; Biometrie-Backup ohne `BIO_BACKUP_AGE_RECIPIENT` (Punkt 3.5) |
+| RPC-Ausnahme | `AEQUITAS_RPC_RATE_LIMIT_FREI` auf C1 geleert (galt der neu vergebenen C2-IP) |
+| Produzenten | `AUTHORIZED_VALIDATORS` auf C1 = nur C1; `pruefstand-live.yml` prüft seit 24.10. `produzenten_geschlossen` |
+
+**Was die Beta noch braucht** (alles Betreiber, Reihenfolge = Vorschlag):
+
+1. **Impressum und Datenschutz** (Blocker 3): `/impressum` und
+   `/datenschutz` antworten 404, alle sieben `LEGAL_*` fehlen.
+   `rechtstexte-setzen.yml` mit den sieben Angaben starten (erlaubte
+   Zeichen: Buchstaben, Ziffern, Leerzeichen, `. , - / @ + & ( ) : _`).
+2. **C1 im Validator-Register binden** (3.6a): Erzeuger
+   `0x3066639af1653325100c1074a9696612dbdc42dc` hat keine Bindung.
+3. **Umgebung `produktion` scharf machen** (3.1).
+4. **`BIO_BACKUP_AGE_RECIPIENT`** setzen (3.5).
+5. **Registrierung mit frischem Wallet** (Blocker 2): Beleg `total_humans` +1
+   und `gallery_test` +1.
+6. **Zwei-Personen-Test** nach `docs/DOPPELREGISTRIERUNG_TEST.md` (Blocker 4).
+7. **DSGVO-Entscheidung** (Blocker 5); bis dahin bleibt der Vergleichsdienst
+   im Testmodus (`real_data_unlocked=false`), die Altersschätzung beobachtet
+   nur (`modell_bereit=false`).
+8. **Aufräumen ohne Wirkung auf den Betrieb:** DNS-Eintrag `proof2`,
+   Secret `CONTABO2_SSH_KEY`, `EXPO_PUBLIC_*_FALLBACKS` mit proof2 löschen
+   (von hier nicht prüfbar).
+
+Ein zweiter Validator ist für die Beta nicht nötig, für den Launch schon
+(Punkt 3.6). Bis dahin trägt C1 allein: Snapshot und Autoheal vertrauen C1,
+der Einzelbetrieb begrenzt Registrierungen auf 25 am Tag.
 
 ## 1. Erledigt (gemergt)
 

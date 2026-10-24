@@ -1,6 +1,6 @@
 # Impressum und Datenschutzerklärung freischalten
 
-**Stand 28.08.2026.**
+**Stand 24.10.2026.**
 
 Beide Seiten sind fertig geschrieben und antworten trotzdem mit **404**. Das ist kein Fehler: es fehlen die Angaben, die nur der Betreiber kennt.
 
@@ -16,28 +16,32 @@ Antwortet mit den Namen der fehlenden Variablen und dem, was jede bedeutet. Öff
 
 ## Einsetzen
 
-**Der kurze Weg (seit 14.09.2026):** Actions → „Impressum und Datenschutz freischalten (beide Boxen)"
-(`rechtstexte-setzen.yml`) → die sieben Felder ausfüllen → Run. Der Workflow schreibt die Werte in
-`/root/.aequitas.env` beider Boxen und startet die Knoten nacheinander neu; am Ende steht im Log
-`/impressum -> HTTP 200`. Optionale Angaben in das achte Feld, mit `;` getrennt
-(`LEGAL_TELEFON=…;LEGAL_USTID=…`). Was unten folgt, ist derselbe Vorgang von Hand.
+Actions → „Impressum und Datenschutz freischalten (C1)" (`rechtstexte-setzen.yml`)
+→ die sieben Felder ausfüllen → Run. Optionale Angaben ins achte Feld, mit `;`
+getrennt (`LEGAL_TELEFON=+49 30 1234;LEGAL_USTID=DE123456789`).
 
-An den HTML-Dateien wird **nichts** geändert. Die Angaben kommen aus Umgebungsvariablen; auf beiden Boxen dieselben.
+Der Workflow
 
-```bash
-cat >> /root/.aequitas.env <<'ENDE'
-LEGAL_NAME=Max Mustermann
-LEGAL_STRASSE=Musterstraße 1
-LEGAL_ORT=12345 Musterstadt
-LEGAL_LAND=Deutschland
-LEGAL_EMAIL=kontakt@example.org
-LEGAL_VERANTWORTLICH=Max Mustermann
-LEGAL_AUFSICHTSBEHOERDE=Der Landesbeauftragte für Datenschutz …
-ENDE
-chmod 600 /root/.aequitas.env
-```
+1. prüft jede Angabe auf dem Runner (`deploy/rechtstexte-angaben.sh`),
+2. schreibt sie in `deploy/validator/.env` auf C1 (vorher Sicherung
+   `.env.bak-rechtstexte-<zeit>`),
+3. startet nur den Knoten-Container neu,
+4. prüft, dass sich im laufenden Prozess außer `LEGAL_*` nichts geändert hat
+   und jeder Wert wörtlich angekommen ist — sonst spielt er die Sicherung
+   zurück und endet rot,
+5. zeigt `/impressum -> HTTP 200` und prüft, dass die Höhe weiter steigt.
 
-Danach den Knoten neu starten. Die Seiten erscheinen von selbst.
+**Erlaubte Zeichen:** Buchstaben (auch Umlaute), Ziffern, Leerzeichen und
+`. , - / @ + & ( ) : _`, höchstens 200 Zeichen, kein Leerzeichen am Anfang
+oder Ende. Alles andere (`'`, `"`, `$`, `#`, `=`, `` ` ``, `\`, Zeilenumbruch)
+bricht den Lauf ab, bevor etwas auf C1 ankommt. Grund: docker compose liest die
+`.env` mit eigenem Parser — nach einem `'` setzt er einen weiteren Schlüssel,
+`${VAR}` setzt ein Geheimnis ins öffentliche Impressum. Nichts wird still
+entfernt; eine abgelehnte Angabe bitte umformulieren (z. B. „und" statt `;`).
+
+Von Hand bitte nicht: ein Eintrag direkt in die `.env` umgeht diese Prüfung.
+An den HTML-Dateien wird **nichts** geändert; die Angaben kommen aus
+Umgebungsvariablen.
 
 ### Die sieben Pflichtangaben
 
