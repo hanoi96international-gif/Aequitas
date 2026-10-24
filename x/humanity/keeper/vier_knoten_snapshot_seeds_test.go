@@ -486,7 +486,20 @@ func (n *vierKnotenNetz) trustedSeedsFromSync(t *testing.T) {
 		dagA.doSyncOnce(peer.URL)
 		time.Sleep(time.Second)
 	}
-	time.Sleep(500 * time.Millisecond) // loeseHeilungAus laeuft in einer Goroutine
+	// loeseHeilungAus entscheidet in einer Goroutine: bei A (Beleg) ruft sie
+	// replayMauerHeilen, bei B (kein Beleg) zaehlt sie abgewehrt. Eine feste
+	// Pause von 500 ms war auf einem ausgelasteten Runner zu kurz (CI am
+	// 24.10.2026, lokal nie). Gewartet wird auf genau diese beiden Ereignisse,
+	// hoechstens 10 s; geprueft wird danach unveraendert.
+	geheilt := func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(heilungen[dagA]) > 0
+	}
+	for frist := time.Now().Add(10 * time.Second); time.Now().Before(frist) &&
+		(!geheilt() || dagB.replayMauer.abgewehrt.Load() <= abgewehrtB); {
+		time.Sleep(50 * time.Millisecond)
+	}
 
 	// Beide: abgewiesen, nichts verbucht.
 	for _, k := range []*vierKnoten{a, b} {
