@@ -22,10 +22,13 @@ Tests entfernt (Aequitas #419–#422, biometric #87, proof-server #24);
 |---|---|
 | Kette | Höhe ~226.700, Chain-ID 19260930, keine Kontostand-Abweichung, nur C1 nimmt an, keine Fehler im Knoten-Log |
 | Registrierung | Coordinator proof1 ok, **Quorum 1 im Einzelbetrieb** (höchstens 25 Registrierungen am Tag), Vergleichsdienst ok, Proof-Server `required`, Herkunftspflicht an `/api/register` |
-| App | Website und C1 liefern v1.12.3 (= neuestes Release). Sie sendet Einwilligung v3; Coordinator und Vergleichsdienst nehmen v3 als Vorgängerfassung in jedem Modus an (geltend: v4). **Kein neues Release nötig, um sich zu registrieren.** |
+| App | Website und C1 liefern **v1.12.9** (= neuestes Release, App #45). Die APK enthält keine proof2-Adresse mehr; die Bauvariablen `EXPO_PUBLIC_*_FALLBACKS` sind geleert. Die App weist abgeschaltete Server in jeder Schreibweise selbst ab (`abgeschaltet()` in `lib/config.ts`). |
 | Sicherung | Ledger-Backup vor 22 h gelaufen; Biometrie-Backup ohne `BIO_BACKUP_AGE_RECIPIENT` (Punkt 3.5) |
 | RPC-Ausnahme | `AEQUITAS_RPC_RATE_LIMIT_FREI` auf C1 geleert (galt der neu vergebenen C2-IP) |
-| Produzenten | `AUTHORIZED_VALIDATORS` auf C1 = nur C1; `produzenten_geschlossen=true` (live, `pruefstand-live.yml` prüft es seit 24.10.) |
+| Produzenten | `AUTHORIZED_VALIDATORS` auf C1 = nur C1; `produzenten_geschlossen=true` (live; `pruefstand-live.yml` und `wache.yml` werden rot, wenn der Wert nicht genau `true` ist) |
+| Register-Bindung | Betreiber-Wallet `0x0be8…d016` ist Mensch; die Bindung von C1 fehlt noch (Punkt 2 unten). `pruefstand-live.yml` zeigt den Stand. |
+| Railway-Coordinator | Antwortet noch (USA). Er ist nicht mehr in App oder Workflows eingetragen, sollte aber abgeschaltet werden (Datenschutz). |
+| Freigaben | Die Umgebungen `produktion` und `app-signatur` haben keine Prüfer: Deploys und das Signieren der APK laufen ohne Freigabe (Punkt 3). |
 
 **Was die Beta noch braucht** (alles Betreiber, Reihenfolge = Vorschlag):
 
@@ -43,13 +46,11 @@ Tests entfernt (Aequitas #419–#422, biometric #87, proof-server #24);
 7. **DSGVO-Entscheidung** (Blocker 5); bis dahin bleibt der Vergleichsdienst
    im Testmodus (`real_data_unlocked=false`), die Altersschätzung beobachtet
    nur (`modell_bereit=false`).
-8. **App-Bauvariablen leeren:** `EXPO_PUBLIC_COORDINATOR_FALLBACKS`,
-   `EXPO_PUBLIC_API_FALLBACKS`, `EXPO_PUBLIC_RPC_FALLBACKS` im App-Repo
-   enthalten noch proof2 (die APK v1.12.3 weicht dorthin aus, auch mit
-   Gesichtsaufnahmen). Der Name `proof2` löst seit dem 24.10. nicht mehr auf,
-   der Ausweg läuft also ins Leere; `pruefstand-live.yml` wird rot, sobald er
-   wieder auf einen fremden Server zeigt. Vor dem nächsten App-Bau leeren,
-   dazu das Secret `CONTABO2_SSH_KEY` löschen.
+8. ~~App-Bauvariablen leeren~~ **erledigt** (24.10.2026): Die Variablen
+   sind leer, v1.12.9 ist ohne proof2 gebaut und ausgeliefert. Offen bleibt
+   nur, das Secret `CONTABO2_SSH_KEY` zu löschen.
+9. **Railway-Coordinator abschalten** (USA, Datenschutz). Er wird nirgends
+   mehr angesprochen.
 
 Ein zweiter Validator ist für die Beta nicht nötig, für den Launch schon
 (Punkt 3.6). Bis dahin trägt C1 allein: Snapshot und Autoheal vertrauen C1,
@@ -98,6 +99,8 @@ der Einzelbetrieb begrenzt Registrierungen auf 25 am Tag.
 | Resync holt und prüft den Snapshot vor dem Tor (vorher war der Knoten über den ganzen Abruf, bis zu Minuten bei Drosselung, taub); nur der Austausch ist gesperrt, höchstens einer zugleich, wartet laufende Blockdurchgänge ab. Tote Zweige unter der Finalität werden nicht mehr als Spitzen gemeldet. Ein Block gilt erst als „bekannt“, wenn er nachgespielt ist. | MITTEL | Aequitas #386 |
 | Biometrie-Coordinator mit #57/#58 auf C1 ausgerollt (16.10.2026); Sandbox vorher im Container als root geprüft. Schlüssel und Einzelbetrieb unverändert. | – | biometric deploy |
 | Alte Actions-Logs geprüft: kein Lauf zeigt einen privaten Schlüssel im Klartext; der Ausgabeweg ist seit #353 geschlossen. Kein Schlüsseltausch nötig. | – | – |
+| `zumLeiter`: POST-Rumpf höchstens 64 KiB mit eigener Lese-Frist (10 s), angekündigt zu Großes ohne Lesen abgewiesen, eine an der Server-Frist gescheiterte Verbindung wird geschlossen statt weiterverwendet. Dazu ist der WAL-Gruppen-Commit-Test unabhängig vom fsync-Tempo. | MITTEL | Aequitas #427 (löst #414 ab) |
+| App: abgeschaltete Server (proof2, alte IPs) zählen in keiner Schreibweise, auch nicht aus Bauvariablen | HOCH | Aequitas-App #45 |
 | go-ethereum v1.13 → v1.17.8 mit Konsens-Vergleichstest (Golden-Werte aus v1.13). Die Prüfung fand eine Spaltungslücke: Typ 3 im Sidecar-Format v1 lasen nur neue Knoten. Behoben: Typ 3 und 4 werden nie angenommen. Beleg, dass das geänderte SSTORE-Verhalten keinen Aufruf trifft: jeder zugelassene Selektor (`konsens_evm_knotenaufruf_test.go`, Golden-Werte aus v1.13 byte-gleich) und Aufrufdaten mit 1–3 Byte an V7, V8 und BioVerifier, die ohne Selektorprüfung in die EVM gelangen (`konsens_evm_kurzaufruf_test.go`). Ausgerollt mit den Deploys seit dem 15.10.2026; jeder neue Validator startet mit diesem Stand. | MITTEL | Aequitas #359 |
 
 ## 2. Im Code offen
