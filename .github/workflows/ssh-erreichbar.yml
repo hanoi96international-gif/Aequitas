@@ -1,0 +1,31 @@
+name: SSH-Erreichbarkeit C1 (Diagnose, ohne Secrets)
+
+# Liest nur: ob C1 auf Port 22 antwortet und welchen Host-Schluessel er
+# zeigt -- von beiden Runner-Bildern aus. Seit `ubuntu-latest` auf 26.04
+# zeigt, liefert ssh-keyscan dort keinen Schluessel mehr (24.10.2026), auf
+# 24.04 lief derselbe Schritt kurz vorher durch. Kein Secret, keine Anmeldung.
+on:
+  workflow_dispatch:
+  push:
+    branches: ["claude/**"]
+    paths: [".github/workflows/ssh-erreichbar.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  pruefen:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-26.04]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
+    steps:
+      - name: Port 22 und Host-Schluessel
+        run: |
+          set -u
+          ssh -V 2>&1
+          timeout 15 bash -c 'exec 3<>/dev/tcp/188.172.229.121/22 && head -c 64 <&3' && echo || echo "Port 22: keine Antwort"
+          timeout 20 ssh-keyscan -v -T 10 -t ed25519 188.172.229.121 2>&1 | grep -v '^#' | sed -E 's/(ssh-ed25519) [A-Za-z0-9+\/=]+/\1 <schluessel>/' | tail -25
+          timeout 20 ssh-keyscan -T 10 -t ed25519 188.172.229.121 2>/dev/null | ssh-keygen -lf - 2>&1 || true
