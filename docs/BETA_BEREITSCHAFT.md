@@ -25,7 +25,7 @@ Tests entfernt (Aequitas #419–#422, biometric #87, proof-server #24);
 | App | Website und C1 liefern v1.12.3 (= neuestes Release). Sie sendet Einwilligung v3; Coordinator und Vergleichsdienst nehmen v3 als Vorgängerfassung in jedem Modus an (geltend: v4). **Kein neues Release nötig, um sich zu registrieren.** |
 | Sicherung | Ledger-Backup vor 22 h gelaufen; Biometrie-Backup ohne `BIO_BACKUP_AGE_RECIPIENT` (Punkt 3.5) |
 | RPC-Ausnahme | `AEQUITAS_RPC_RATE_LIMIT_FREI` auf C1 geleert (galt der neu vergebenen C2-IP) |
-| Produzenten | `AUTHORIZED_VALIDATORS` auf C1 = nur C1; `pruefstand-live.yml` prüft seit 24.10. `produzenten_geschlossen` |
+| Produzenten | `AUTHORIZED_VALIDATORS` auf C1 = nur C1; `produzenten_geschlossen=true` (live, `pruefstand-live.yml` prüft es seit 24.10.) |
 
 **Was die Beta noch braucht** (alles Betreiber, Reihenfolge = Vorschlag):
 
