@@ -40,6 +40,8 @@ jobs:
       # kein Server-Workflow startet per Push. Kopf von scripts/lint_server_freigabe.py.
       - run: python3 scripts/lint_server_freigabe.py --selbsttest
       - run: python3 scripts/lint_server_freigabe.py
+      - run: python3 scripts/lint_keyscan.py --selbsttest
+      - run: python3 scripts/lint_keyscan.py
       # Kein Workflow spricht einen abgeschalteten Server an (alte IPs werden
       # neu vergeben). Kopf von scripts/lint_alte_hosts.py.
       - run: python3 scripts/lint_alte_hosts.py

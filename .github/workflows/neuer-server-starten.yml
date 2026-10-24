@@ -28,7 +28,7 @@ jobs:
           printf '%s\n' "$KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
           # Host-Schluessel von C1 gepinnt (wie backup-ledger.yml): genau eine
           # ed25519-Zeile, und ihr Fingerabdruck muss stimmen.
-          ssh-keyscan -t ed25519 188.172.229.121 2>/dev/null > ~/.ssh/kh1
+          ssh-keyscan -t ed25519 188.172.229.121 2>/dev/null | { grep -v '^#' || true; } > ~/.ssh/kh1
           [ "$(grep -c . ~/.ssh/kh1)" = 1 ] || { echo "::error::Host-Schluessel von C1: nicht genau eine ed25519-Zeile"; exit 1; }
           [ "$(ssh-keygen -lf ~/.ssh/kh1 | awk '{print $2}')" = "SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA" ] || { echo "::error::Host-Schluessel von C1 passt nicht"; exit 1; }
           cp ~/.ssh/kh1 ~/.ssh/known_hosts
