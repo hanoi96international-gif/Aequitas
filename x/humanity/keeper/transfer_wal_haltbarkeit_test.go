@@ -118,6 +118,19 @@ func TestTransferWAL_GleicherAbsenderTeiltDenGruppenCommit(t *testing.T) {
 	t.Setenv(shardRetryVersucheEnv, "200")
 	t.Setenv(shardRetryPauseEnv, "200")
 	shardRetryZuruecksetzen()
+	// FESTES SAMMELFENSTER STATT FSYNC-TEMPO. Mit der Vorgabe (Fenster 0)
+	// buendelt nur, was waehrend eines fdatasync ankommt. Auf einer Platte,
+	// die in Mikrosekunden synchronisiert, ist das fast nichts: in CI kamen
+	// 0,85 bis 0,89 Syncs je Ueberweisung heraus (PR #427), ohne dass am
+	// Code etwas anders war -- dieselbe Messung ergibt lokal 0,26. Ein
+	// Fenster von 2 ms macht die Ueberlappung unabhaengig von der Platte.
+	// Die Aussage bleibt scharf: hielte eine Ueberweisung ihre Shard-Sperre
+	// bis zum fsync, waeren die Ueberweisungen desselben Absenders
+	// hintereinander gereiht, jedes Buendel haette genau einen Datensatz,
+	// und es kaeme wieder 1,00 heraus -- mit oder ohne Fenster. Die
+	// sequenzielle Basislinie bleibt ebenso bei 1,00: wer auf seine eigene
+	// Haltbarkeit wartet, kann kein Buendel mit seinem Nachfolger teilen.
+	t.Setenv("AEQUITAS_WAL_MAX_BATCH_WAIT_US", "2000")
 
 	// BASISLINIE IM SELBEN TEST: 100 Ueberweisungen streng nacheinander --
 	// so viele Syncs kosten sie auf DIESER Platte. Eine feste Quote kippt
