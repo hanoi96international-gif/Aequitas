@@ -179,6 +179,18 @@ func TestWeiterleitungNachweis_NurEchteWeiterleitungen(t *testing.T) {
 	if b, _ := io.ReadAll(r.Body); len(b) != weiterleitungKoerperMax+1 {
 		t.Fatalf("zurueckgelegt %d Bytes, erwartet die gelesenen %d", len(b), weiterleitungKoerperMax+1)
 	}
+	// Ist er noch groesser, folgt dem Gelesenen der Rest -- nicht abgeschnitten
+	// (Pruefung von #414, Befund 1: zumLeiter liest bis zum Ende und loescht
+	// erst dann seine Lese-Frist).
+	riesig := strings.Repeat("y", weiterleitungKoerperMax+5000)
+	r = beimZustaendigen(t, folger, "203.0.113.20", nachweisIch, koerper, ms(6))
+	r.Body = io.NopCloser(strings.NewReader(riesig))
+	if cs.weiterleitungFuer(r, jetzt) != "" {
+		t.Fatal("uebergrosser Koerper anerkannt")
+	}
+	if b, _ := io.ReadAll(r.Body); string(b) != riesig {
+		t.Fatalf("zurueckgelegt %d Bytes, erwartet den ganzen Koerper (%d)", len(b), len(riesig))
+	}
 	// Zwillinge: dieselbe Anfrage zweimal in derselben Millisekunde -- beide
 	// sind eigene Weiterleitungen (Pruefung von #319, MEDIUM-18).
 	z1 := beimZustaendigen(t, folger, "203.0.113.24", nachweisIch, koerper, ms(8))

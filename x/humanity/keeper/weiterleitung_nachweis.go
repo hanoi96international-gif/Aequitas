@@ -206,7 +206,16 @@ func (cs *ChainState) weiterleitungFuer(r *http.Request, jetzt time.Time) string
 		return weiterleitungAbweisen(grundFormat)
 	}
 	koerper, err := io.ReadAll(io.LimitReader(r.Body, weiterleitungKoerperMax+1))
-	r.Body = io.NopCloser(bytes.NewReader(koerper))
+	// Zurueckgelegt wird das Gelesene VOR dem Rest des Rumpfs, nicht statt
+	// seiner: zumLeiter liest dahinter bis zum Ende der Verbindung (oder
+	// scheitert an Grenze und Frist) und loescht seine Lese-Frist erst dann.
+	// Mit der abgeschnittenen Kopie las es "erfolgreich" aus dem Speicher,
+	// loeschte die Frist, und net/http verwarf den Rest ohne jede Frist --
+	// eine Verbindung blieb unbegrenzt haengen (Pruefung von #414, Befund 1).
+	r.Body = struct {
+		io.Reader
+		io.Closer
+	}{io.MultiReader(bytes.NewReader(koerper), r.Body), r.Body}
 	if err != nil || len(koerper) > weiterleitungKoerperMax {
 		return weiterleitungAbweisen(grundKoerper)
 	}
