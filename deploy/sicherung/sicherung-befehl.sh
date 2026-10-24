@@ -24,7 +24,7 @@
 # ohnehin als Artefakt im oeffentlichen Repo liegt (Zustand ohne
 # biometrische Zeilen) und age-Chiffrat.
 #
-# GRENZEN. Ein Lauf je Art zugleich (flock), hoechstens einer je 10 Minuten
+# GRENZEN. Ein Lauf je Art zugleich (flock), hoechstens einer je 30 Minuten
 # (auch ein gescheiterter zaehlt), Laufzeit begrenzt (timeout), Dateien nur
 # bis 500 MB.
 set -uo pipefail
@@ -33,7 +33,7 @@ umask 077
 LIB=/usr/local/lib/aequitas-sicherung
 ETC=/etc/aequitas-sicherung
 STAND=/var/lib/aequitas-sicherung
-MIN_ABSTAND=600
+MIN_ABSTAND=1800
 MAX_DATEI=$((500 * 1024 * 1024))
 
 BEFEHL="${SSH_ORIGINAL_COMMAND:-}"
@@ -86,7 +86,7 @@ case "$BEFEHL" in
   ledger)
     sperren ledger
     protokoll "ledger: Start"
-    BOX=c1 timeout 900 bash "$LIB/backup-ledger.sh"
+    BOX=c1 timeout 900 bash "$LIB/backup-ledger.sh" </dev/null
     rc=$?
     protokoll "ledger: Ende ($rc)"
     exit "$rc"
@@ -105,7 +105,7 @@ case "$BEFEHL" in
     fi
     sperren bio
     protokoll "bio: Start"
-    BIO_BACKUP_AGE_RECIPIENT="$R" timeout 1200 bash "$LIB/backup-biometrie.sh"
+    BIO_BACKUP_AGE_RECIPIENT="$R" timeout 1200 bash "$LIB/backup-biometrie.sh" </dev/null
     rc=$?
     protokoll "bio: Ende ($rc)"
     exit "$rc"

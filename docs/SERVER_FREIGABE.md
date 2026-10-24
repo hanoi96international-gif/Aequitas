@@ -85,7 +85,8 @@ aber auch **ohne Root-Schlüssel**:
   festen Befehle aus `deploy/sicherung/sicherung-befehl.sh` ausführen: sichern
   (`ledger`, `bio`), die fertige Datei abholen, Prüfsummen lesen. Keine Shell,
   keine Weiterleitung, kein eigener Code; höchstens ein Lauf je Art zugleich und
-  einer je 10 Minuten.
+  einer je 30 Minuten (ein gestohlener Schlüssel löst also höchstens alle
+  30 Minuten einen Dump auf dem laufenden Validator aus).
 - Die Skripte, die er ausführt, und der age-Empfänger der Biometrie-Sicherung
   liegen fest auf C1. Eingerichtet und aktualisiert werden sie nur über
   `sicherung-einrichten.yml` in `produktion`, also mit deiner Freigabe.
