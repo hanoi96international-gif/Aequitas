@@ -72,6 +72,51 @@ auf deine Freigabe warten und danach grün laufen.
   kommt niemand auf die Server, auch keine Claude-Sitzung.
 - Messungen und Diagnosen laufen nur noch mit Workflows von `main`.
 
+## Sicherung ohne Freigabe-Halt (seit 24.10.2026)
+
+Mit Pflicht-Freigabe in `produktion` warteten auch die nächtlichen Sicherungen
+(`backup-ledger.yml`, `backup-biometrie-verschluesselt.yml`) auf einen Klick.
+Vergessen hieß: keine Sicherung, und die Wache wird nach 36 h rot. Deshalb laufen
+genau diese zwei Workflows in einer eigenen Umgebung **`sicherung`** ohne Prüfer,
+aber auch **ohne Root-Schlüssel**:
+
+- Ihr Schlüssel `SICHERUNG_SSH_KEY` steht auf C1 in `authorized_keys` als
+  `restrict,command="/usr/local/sbin/aequitas-sicherung" …`. Er kann nur die
+  festen Befehle aus `deploy/sicherung/sicherung-befehl.sh` ausführen: sichern
+  (`ledger`, `bio`), die fertige Datei abholen, Prüfsummen lesen. Keine Shell,
+  keine Weiterleitung, kein eigener Code; höchstens ein Lauf je Art zugleich und
+  einer je 10 Minuten.
+- Die Skripte, die er ausführt, und der age-Empfänger der Biometrie-Sicherung
+  liegen fest auf C1. Eingerichtet und aktualisiert werden sie nur über
+  `sicherung-einrichten.yml` in `produktion`, also mit deiner Freigabe.
+- Wer den Schlüssel stiehlt, bekommt höchstens, was ohnehin als Artefakt im
+  öffentlichen Repo liegt (Zustand ohne biometrische Zeilen), und age-Chiffrat.
+- `scripts/lint_server_freigabe.py` lässt `sicherung` nur für diese zwei Workflows
+  und nur mit `SICHERUNG_SSH_KEY` zu; `scripts/test_sicherung_befehl.sh` zeigt, dass
+  der Befehl jede andere Anfrage abweist.
+
+**Einrichten (einmal, etwa 5 Minuten):**
+
+1. Settings → Environments → **New environment** → Name genau `sicherung`. Keine
+   Prüfer. **Deployment branches and tags** → „Selected branches and tags“ → `main`.
+2. Dort **Add environment secret** → Name `SICHERUNG_SSH_KEY`, Wert: der private
+   Schlüssel, den ich dir gegeben habe (ganze Datei, mit den Zeilen
+   `-----BEGIN/END OPENSSH PRIVATE KEY-----`). Der öffentliche Teil liegt in
+   `deploy/sicherung/sicherung_ed25519.pub`.
+3. Actions → „Sicherungsschluessel auf C1 einrichten“ → Run workflow (bei
+   `bio_empfaenger` den öffentlichen age-Schlüssel, siehe
+   `docs/BIOMETRIE_SICHERUNG.md`) → freigeben.
+4. Actions → „Backup the ledger“ → Run workflow. Er muss **ohne** Freigabe starten
+   und grün werden.
+
+**Wichtig:** `CONTABO_SSH_KEY` darf **kein Repository-Secret** mehr sein, nur ein
+Secret der Umgebung `produktion` (Schritt 2 oben). Repository-Secrets sieht jeder
+Job, auch einer in `sicherung`; nur Umgebungs-Secrets sind getrennt.
+
+Ändern sich `deploy/backup-ledger.sh`, `deploy/backup-biometrie.sh` oder
+`deploy/sicherung/*`, `sicherung-einrichten.yml` erneut starten. Bis dahin warnen
+die Sicherungsläufe („Sicherungsskript auf C1 veraltet“).
+
 ## Offen
 
 - `Railway`: Die Railway-Instanz ist seit 14.09. abgeschaltet. Wird der Token nicht mehr

@@ -6,7 +6,7 @@
 >
 > **Live geprüft** (`pruefstand-live.yml`, `wache.yml`, `betrieb-pruefen-c1.yml`, nur lesend, alle grün): Höhe ~226.700, Chain-ID 19260930, keine Abweichung, nur C1 nimmt an; Coordinator proof1 ok, Quorum 1 im Einzelbetrieb (25 am Tag), Vergleichsdienst ok, Proof-Server `required`; APK v1.12.3 = neuestes Release; Ledger-Backup aktuell. Die Ausnahme von der RPC-Ratenbegrenzung (galt der C2-IP) ist geleert.
 >
-> **Offen für die Beta, alles bei dir:** Blocker 3 (Impressum: `rechtstexte-setzen.yml`), C1 im Validator-Register binden (Blocker 18), Blocker 17 (`produktion`), `BIO_BACKUP_AGE_RECIPIENT`, eine Registrierung mit frischem Wallet (Blocker 2), Zwei-Personen-Test (Blocker 4), DSGVO-Entscheidung (Blocker 5), App-Bauvariablen ohne proof2. Liste mit Schritten: `docs/BETA_BEREITSCHAFT.md`, Abschnitt 0.
+> **Offen für die Beta, alles bei dir:** Blocker 3 (Impressum: `rechtstexte-setzen.yml`), C1 im Validator-Register binden (Blocker 18), Sicherungsschlüssel einrichten (`sicherung-einrichten.yml` mit dem öffentlichen age-Schlüssel, `SICHERUNG_SSH_KEY` in der Umgebung `sicherung`), eine Registrierung mit frischem Wallet (Blocker 2), Zwei-Personen-Test (Blocker 4), DSGVO-Entscheidung (Blocker 5), App-Bauvariablen ohne proof2. Liste mit Schritten: `docs/BETA_BEREITSCHAFT.md`, Abschnitt 0.
 >
 > ## 02.10.2026: Stand vor der Beta
 >

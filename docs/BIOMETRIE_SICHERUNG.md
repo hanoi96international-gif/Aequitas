@@ -31,7 +31,12 @@ Nicht im Archiv:
 
 ## Einmalig einrichten (Betreiber, etwa 5 Minuten)
 
-Es ist genau **ein** neues Secret nötig.
+Seit dem 24.10.2026 läuft die Sicherung in der Umgebung **`sicherung`** ohne
+Freigabe-Halt, mit einem eigenen, beschränkten Schlüssel (siehe
+`docs/SERVER_FREIGABE.md`, Abschnitt „Sicherung ohne Freigabe-Halt“). Der
+öffentliche age-Schlüssel liegt **fest auf C1**, nicht in GitHub: Wer den
+Sicherungsschlüssel stiehlt, kann sich die Daten nicht an einen eigenen
+Schlüssel verschlüsseln lassen.
 
 1. Auf einem eigenen Rechner, nicht auf C1 und nicht in GitHub:
    ```
@@ -42,16 +47,14 @@ Es ist genau **ein** neues Secret nötig.
    in den Passwortmanager und zusätzlich offline ab, z. B. auf einem USB-Stick im Safe.
    Er darf nie auf einen Server, in ein Repo oder in ein Secret.
 3. Die Zeile `# public key: age1…` in der Datei ist der **öffentliche** Schlüssel.
-   Trage ihn ein unter GitHub → Settings → Environments → `produktion` → Environment
-   secrets → **`BIO_BACKUP_AGE_RECIPIENT`**. Nur der Wert `age1…`, ohne `# public key:`.
-4. Actions → „Biometrie- und Proof-Datenbanken sichern (verschlüsselt)“ → Run workflow,
-   dann freigeben. Der Lauf muss grün sein.
+   Actions → „Sicherungsschluessel auf C1 einrichten“ → Run workflow → bei
+   `bio_empfaenger` nur den Wert `age1…` eintragen (ohne `# public key:`), dann
+   freigeben. Der Workflow lehnt alles ab, was kein öffentlicher age-Schlüssel ist.
+4. Actions → „Biometrie- und Proof-Datenbanken sichern (verschlüsselt)“ → Run workflow.
+   Der Lauf muss grün sein; danach läuft er jede Nacht ohne Klick.
 
-Fehlt das Secret oder ist es kein `age1…`-Schlüssel, bricht der Lauf vor dem ersten
-Kontakt zu C1 rot ab. Hochgeladen wird dann nichts.
-
-`CONTABO_SSH_KEY` ist schon vorhanden. Mit Pflicht-Freigabe in `produktion` wartet auch
-der nächtliche Lauf auf deinen Klick.
+Ist auf C1 kein gültiger Empfänger hinterlegt, bricht der Lauf rot ab, bevor
+etwas gesichert wird. Hochgeladen wird dann nichts.
 
 ## Zurückspielen üben (einmal jetzt, danach vierteljährlich)
 

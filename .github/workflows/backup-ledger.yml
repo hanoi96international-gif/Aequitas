@@ -91,9 +91,15 @@ permissions:
 jobs:
   backup:
     runs-on: ubuntu-latest
-    # Wie backup-biometrie-verschluesselt.yml: der Root-Schluessel von C1 nur
-    # in der Umgebung produktion (lint_server_freigabe.py, Klammerform).
-    environment: produktion
+    # UMGEBUNG `sicherung` (24.10.2026): ohne Freigabe-Halt, damit die
+    # naechtliche Sicherung nicht auf einen Klick wartet -- aber auch ohne
+    # Root-Schluessel. SICHERUNG_SSH_KEY darf auf C1 nur den erzwungenen
+    # Befehl deploy/sicherung/sicherung-befehl.sh ausfuehren (ledger,
+    # ledger-datei, ledger-zusammenfassung, ...). Das Sicherungsskript liegt
+    # auf C1; eingerichtet und aktualisiert ueber sicherung-einrichten.yml
+    # (Umgebung produktion, mit Freigabe). lint_server_freigabe.py haelt fest,
+    # dass hier kein anderes Secret ankommt.
+    environment: sicherung
     strategy:
       # Sequential: both jobs run pg_dump against a live validator, and doing
       # that to both at once is exactly the kind of simultaneous load this
@@ -107,7 +113,6 @@ jobs:
           # Der neue C1 (netcup, Primary seit 26.09.2026) steht hier als c1.
           - box: c1
             host: 188.172.229.121
-            secret_name: CONTABO_SSH_KEY
             fingerprint: "SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA"
     steps:
       - name: Skip boxes this run does not target
@@ -130,11 +135,12 @@ jobs:
       - name: Schluessel und Host-Pruefung
         if: steps.gate.outputs.run == 'true'
         env:
-          KEY: ${{ secrets[matrix.secret_name] }}
+          KEY: ${{ secrets.SICHERUNG_SSH_KEY }}
           HOST: ${{ matrix.host }}
           FP: ${{ matrix.fingerprint }}
         run: |
           set -eu
+          [ -n "${KEY:-}" ] || { echo "::error title=SICHERUNG_SSH_KEY fehlt::Secret SICHERUNG_SSH_KEY in der Umgebung sicherung anlegen (docs/SERVER_FREIGABE.md, Abschnitt Sicherung)."; exit 1; }
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           printf '%s\n' "$KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
           # Nur ed25519 und genau eine Zeile (Pruefung von #382, F1): sonst
@@ -144,10 +150,25 @@ jobs:
           [ "$(ssh-keygen -lf ~/.ssh/kh_all | awk '{print $2}')" = "$FP" ] || { echo "::error::Host-Schluessel von $HOST passt nicht"; exit 1; }
           cp ~/.ssh/kh_all ~/.ssh/known_hosts
 
+      - name: Installierte Fassung gegen das Repo
+        # Auf C1 laeuft die Fassung, die sicherung-einrichten.yml installiert
+        # hat. Weicht sie vom Repo ab, laeuft die Sicherung trotzdem -- mit
+        # einer sichtbaren Warnung, bis jemand neu einrichtet.
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          set -euo pipefail
+          IST=$(ssh -o BatchMode=yes -o IdentitiesOnly=yes root@${{ matrix.host }} pruefsummen | awk '$2 == "backup-ledger.sh" {print $1}')
+          SOLL=$(sha256sum deploy/backup-ledger.sh | awk '{print $1}')
+          if [ "$IST" != "$SOLL" ]; then
+            echo "::warning title=Sicherungsskript auf C1 veraltet::Installiert ${IST:-?}, im Repo $SOLL -- sicherung-einrichten.yml starten."
+          else
+            echo "backup-ledger.sh auf C1 = Repo ($SOLL)"
+          fi
+
       - name: Dump and verify on ${{ matrix.box }}
         if: steps.gate.outputs.run == 'true'
-        timeout-minutes: 10
-        run: ssh -o BatchMode=yes root@${{ matrix.host }} "BOX='${{ matrix.box }}' bash -s" < deploy/backup-ledger.sh
+        timeout-minutes: 16
+        run: ssh -o BatchMode=yes -o IdentitiesOnly=yes root@${{ matrix.host }} ledger
 
       - name: Fetch the dump off the box
         # always(), damit eine gescheiterte Pruefung die Auslagerung nicht mehr
@@ -157,12 +178,16 @@ jobs:
         # Ausgelagert wird die Fassung OHNE biometrische Tabellenzeilen
         # (deploy/backup-ledger.sh) -- das Repo ist oeffentlich.
         if: always() && steps.gate.outputs.run == 'true'
-        run: scp -o BatchMode=yes root@${{ matrix.host }}:/root/backup-latest.dump ${{ matrix.box }}-ledger.dump
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -o IdentitiesOnly=yes root@${{ matrix.host }} ledger-datei > ${{ matrix.box }}-ledger.dump
+          [ "$(head -c 5 ${{ matrix.box }}-ledger.dump)" = "PGDMP" ] || { echo "::error::Abgeholte Datei ist kein pg_dump -- nichts hochgeladen."; rm -f ${{ matrix.box }}-ledger.dump; exit 1; }
 
       - name: Fetch backup summary
         if: success() && steps.gate.outputs.run == 'true'
         timeout-minutes: 2
-        run: scp -o BatchMode=yes root@${{ matrix.host }}:/root/backup-latest.summary ${{ matrix.box }}-backup.summary
+        run: ssh -o BatchMode=yes -o IdentitiesOnly=yes root@${{ matrix.host }} ledger-zusammenfassung > ${{ matrix.box }}-backup.summary
 
       - name: Job summary
         if: success() && steps.gate.outputs.run == 'true'
@@ -172,19 +197,19 @@ jobs:
             echo "### Ledger backup \`${{ matrix.box }}\`"
             echo ""
             if [ -f "${{ matrix.box }}-backup.summary" ]; then
-              . "./${{ matrix.box }}-backup.summary"
+              # Nur bekannte Felder, nie die Datei als Shell lesen: sie kommt
+              # von der Box.
+              feld() { grep -E "^$1=[0-9a-z]+$" "${{ matrix.box }}-backup.summary" | head -1 | cut -d= -f2; }
               echo "| Field | Value |"
               echo "| --- | --- |"
-              echo "| humans | ${humans:-?} |"
-              echo "| accounts | ${accounts:-?} |"
-              echo "| nullifiers | ${nullifiers:-?} |"
-              echo "| dump_mb | ${dump_mb:-?} |"
-              echo "| dump_bytes | ${dump_bytes:-?} |"
+              for f in humans accounts nullifiers dump_mb dump_bytes; do
+                echo "| $f | $(feld $f || true) |"
+              done
             else
               echo "_No summary file from box._"
             fi
             echo ""
-            echo "Dump-Schritt: 10 min; dump size hard-fail if >500MB. Ausgelagert: ohne biometrische Tabellenzeilen."
+            echo "Dump-Schritt: 15 min auf der Box; dump size hard-fail if >500MB. Ausgelagert: ohne biometrische Tabellenzeilen."
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload as an artifact (the second location)
@@ -195,3 +220,7 @@ jobs:
           path: ${{ matrix.box }}-ledger.dump
           retention-days: 90
           if-no-files-found: error
+
+      - name: SSH-Schluessel vom Runner entfernen
+        if: always()
+        run: rm -f ~/.ssh/id_ed25519
