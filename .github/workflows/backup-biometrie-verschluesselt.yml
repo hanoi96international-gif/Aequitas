@@ -13,16 +13,20 @@ name: Biometrie- und Proof-Datenbanken sichern (verschluesselt)
 # oeffentlichen Schluessel verschluesseln und den Klartext loeschen. Hierher
 # kommt nur die .age-Datei; sie wird 30 Tage als Artefakt gehalten.
 #
-# NUR DER OEFFENTLICHE SCHLUESSEL ERREICHT GITHUB. Secret
-# BIO_BACKUP_AGE_RECIPIENT = age1... (age-keygen, offline). Der private
-# Schluessel liegt nur beim Betreiber; ohne ihn ist das Artefakt Rauschen.
-# Fehlt das Secret oder ist es kein age1-Schluessel: rot, nichts hochgeladen.
+# NUR DER OEFFENTLICHE SCHLUESSEL VERLAESST DEN BETREIBER. age1... (age-keygen,
+# offline) wird einmal mit sicherung-einrichten.yml auf C1 hinterlegt. Der
+# private Schluessel liegt nur beim Betreiber; ohne ihn ist das Artefakt
+# Rauschen. Ist auf C1 keiner hinterlegt: rot, nichts hochgeladen.
 # Einrichtung und Wiederherstellungsuebung: docs/BIOMETRIE_SICHERUNG.md.
 #
-# FREIGABE. Wie jeder Server-Workflow in der Umgebung `produktion`
-# (docs/SERVER_FREIGABE.md). Mit Pflicht-Freigabe wartet auch der naechtliche
-# Lauf auf einen Klick -- das ist gewollt: ohne Freigabe kommt niemand an den
-# C1-Schluessel.
+# UMGEBUNG `sicherung` (24.10.2026), nicht `produktion`: mit Pflicht-Freigabe
+# wartete der naechtliche Lauf auf einen Klick, und vergessen hiess keine
+# Sicherung. Der Schluessel SICHERUNG_SSH_KEY kann auf C1 nur den erzwungenen
+# Befehl deploy/sicherung/sicherung-befehl.sh ausfuehren -- kein Root-Zugang.
+# Der age-Empfaenger liegt FEST AUF C1 (eingetragen mit
+# sicherung-einrichten.yml, Umgebung produktion, mit Freigabe): wer diesen
+# Schluessel stiehlt, kann sich die Daten nicht an seinen eigenen Schluessel
+# verschluesseln lassen.
 
 on:
   schedule:
@@ -42,29 +46,9 @@ permissions:
 jobs:
   sichern:
     runs-on: ubuntu-latest
-    environment: produktion
-    timeout-minutes: 25
+    environment: sicherung
+    timeout-minutes: 30
     steps:
-      - name: Empfaenger pruefen (fail-closed)
-        # Vor jedem Kontakt zur Box: ohne gueltigen oeffentlichen age-Schluessel
-        # wird nichts gesichert und nichts hochgeladen. Der Wert wird nie
-        # ausgegeben.
-        env:
-          R: ${{ secrets.BIO_BACKUP_AGE_RECIPIENT }}
-        run: |
-          set -eu
-          if [ -z "${R:-}" ]; then
-            echo "::error title=BIO_BACKUP_AGE_RECIPIENT fehlt::Betreiber-Schritt: offline 'age-keygen -o bio-backup.key' ausfuehren, den privaten Schluessel offline verwahren und NUR die Zeile 'Public key: age1...' als Secret BIO_BACKUP_AGE_RECIPIENT in der Umgebung produktion eintragen (docs/BIOMETRIE_SICHERUNG.md). Bis dahin wird nichts gesichert."
-            exit 1
-          fi
-          # Ganzer Wert, nicht zeilenweise: age1 + 58 Zeichen Bech32 (ohne 1, b, i, o).
-          REST="${R#age1}"
-          if [ "$REST" = "$R" ] || [ "${#R}" -ne 62 ] || case "$REST" in *[!qpzry9x8gf2tvdw0s3jn54khce6mua7l]*) true ;; *) false ;; esac; then
-            echo "::error title=BIO_BACKUP_AGE_RECIPIENT ungueltig::Das Secret ist kein oeffentlicher age-Schluessel (age1..., 62 Zeichen). Nie den privaten Schluessel (AGE-SECRET-KEY-...) eintragen! Siehe docs/BIOMETRIE_SICHERUNG.md. Nichts gesichert."
-            exit 1
-          fi
-          echo "Empfaenger: gueltiger age1-Schluessel gesetzt"
-
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: deploy/backup-biometrie.sh
@@ -72,11 +56,12 @@ jobs:
 
       - name: Schluessel und Host-Pruefung
         env:
-          KEY: ${{ secrets.CONTABO_SSH_KEY }}
+          KEY: ${{ secrets.SICHERUNG_SSH_KEY }}
           HOST: 188.172.229.121
           FP: "SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA"
         run: |
           set -eu
+          [ -n "${KEY:-}" ] || { echo "::error title=SICHERUNG_SSH_KEY fehlt::Secret SICHERUNG_SSH_KEY in der Umgebung sicherung anlegen (docs/SERVER_FREIGABE.md, Abschnitt Sicherung)."; exit 1; }
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           printf '%s\n' "$KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
           # Nur ed25519 und genau eine Zeile (Pruefung von #382, F1): sonst
@@ -86,25 +71,35 @@ jobs:
           [ "$(ssh-keygen -lf ~/.ssh/kh_all | awk '{print $2}')" = "$FP" ] || { echo "::error::Host-Schluessel von $HOST passt nicht"; exit 1; }
           cp ~/.ssh/kh_all ~/.ssh/known_hosts
 
-      - name: Sichern, pruefen und verschluesseln auf C1
-        timeout-minutes: 15
-        env:
-          BIO_BACKUP_AGE_RECIPIENT: ${{ secrets.BIO_BACKUP_AGE_RECIPIENT }}
+      - name: Empfaenger und installierte Fassung (fail-closed)
+        # Ohne hinterlegten age-Empfaenger wird nichts gesichert und nichts
+        # hochgeladen. Eine vom Repo abweichende Skriptfassung auf C1 ist nur
+        # eine Warnung (sicherung-einrichten.yml bringt sie auf Stand).
         run: |
           set -euo pipefail
-          # Wert als export-Zeile vor dem Skript ueber stdin -- nicht auf die
-          # Befehlszeile der Box, wo ps ihn zeigen wuerde.
-          {
-            printf 'export BIO_BACKUP_AGE_RECIPIENT=%q\n' "$BIO_BACKUP_AGE_RECIPIENT"
-            cat deploy/backup-biometrie.sh
-          } | ssh -o BatchMode=yes root@188.172.229.121 'bash -s'
+          STAND=$(ssh -o BatchMode=yes -o IdentitiesOnly=yes root@188.172.229.121 pruefsummen)
+          if ! printf '%s\n' "$STAND" | grep -qx 'bio_empfaenger=gesetzt'; then
+            echo "::error title=age-Empfaenger fehlt auf C1::Betreiber-Schritt: offline 'age-keygen -o bio-backup.key' ausfuehren, den privaten Schluessel offline verwahren und sicherung-einrichten.yml mit bio_empfaenger=age1... starten (docs/BIOMETRIE_SICHERUNG.md). Bis dahin wird nichts gesichert."
+            exit 1
+          fi
+          IST=$(printf '%s\n' "$STAND" | awk '$2 == "backup-biometrie.sh" {print $1}')
+          SOLL=$(sha256sum deploy/backup-biometrie.sh | awk '{print $1}')
+          if [ "$IST" != "$SOLL" ]; then
+            echo "::warning title=Sicherungsskript auf C1 veraltet::Installiert ${IST:-?}, im Repo $SOLL -- sicherung-einrichten.yml starten."
+          else
+            echo "backup-biometrie.sh auf C1 = Repo ($SOLL)"
+          fi
+
+      - name: Sichern, pruefen und verschluesseln auf C1
+        timeout-minutes: 22
+        run: ssh -o BatchMode=yes -o IdentitiesOnly=yes root@188.172.229.121 bio
 
       - name: Verschluesselte Datei abholen und pruefen
         timeout-minutes: 5
         run: |
           set -euo pipefail
-          scp -o BatchMode=yes root@188.172.229.121:/root/bio-sicherung/bio-latest.tar.age bio-c1.tar.age
-          scp -o BatchMode=yes root@188.172.229.121:/root/bio-sicherung/bio-latest.summary bio-c1.summary
+          ssh -o BatchMode=yes -o IdentitiesOnly=yes root@188.172.229.121 bio-datei > bio-c1.tar.age
+          ssh -o BatchMode=yes -o IdentitiesOnly=yes root@188.172.229.121 bio-zusammenfassung > bio-c1.summary
           # Nie etwas anderes als age-Chiffrat hochladen.
           [ "$(head -c 21 bio-c1.tar.age)" = "age-encryption.org/v1" ] || { echo "::error::Abgeholte Datei ist keine age-Datei -- nichts hochgeladen."; rm -f bio-c1.tar.age; exit 1; }
           GROESSE=$(stat -c %s bio-c1.tar.age)

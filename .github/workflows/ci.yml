@@ -60,6 +60,7 @@ jobs:
       # Angaben fuer Impressum/Datenschutz: kein zweiter .env-Schluessel, keine
       # Variable, kein Kommentar (Kopf von deploy/rechtstexte-angaben.sh).
       - run: bash scripts/test_rechtstexte_angaben.sh
+      - run: bash scripts/test_sicherung_befehl.sh
 
   test:
     runs-on: ubuntu-latest

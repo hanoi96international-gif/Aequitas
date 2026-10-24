@@ -23,12 +23,12 @@ Tests entfernt (Aequitas #419–#422, biometric #87, proof-server #24);
 | Kette | Höhe ~226.700, Chain-ID 19260930, keine Kontostand-Abweichung, nur C1 nimmt an, keine Fehler im Knoten-Log |
 | Registrierung | Coordinator proof1 ok, **Quorum 1 im Einzelbetrieb** (höchstens 25 Registrierungen am Tag), Vergleichsdienst ok, Proof-Server `required`, Herkunftspflicht an `/api/register` |
 | App | Website und C1 liefern **v1.12.9** (= neuestes Release, App #45). Die APK enthält keine proof2-Adresse mehr; die Bauvariablen `EXPO_PUBLIC_*_FALLBACKS` sind geleert. Die App weist abgeschaltete Server in jeder Schreibweise selbst ab (`abgeschaltet()` in `lib/config.ts`). |
-| Sicherung | Ledger-Backup vor 22 h gelaufen; Biometrie-Backup ohne `BIO_BACKUP_AGE_RECIPIENT` (Punkt 3.5) |
+| Sicherung | Läuft künftig in der Umgebung `sicherung` ohne Freigabe-Halt, mit einem Schlüssel, der auf C1 nur die Sicherung ausführen darf (`deploy/sicherung/`). Offen: einrichten (Punkt 4); bis dahin warten die nächtlichen Läufe auf eine Freigabe. Biometrie-Backup ohne age-Empfänger (Punkt 3.5) |
 | RPC-Ausnahme | `AEQUITAS_RPC_RATE_LIMIT_FREI` auf C1 geleert (galt der neu vergebenen C2-IP) |
 | Produzenten | `AUTHORIZED_VALIDATORS` auf C1 = nur C1; `produzenten_geschlossen=true` (live; `pruefstand-live.yml` und `wache.yml` werden rot, wenn der Wert nicht genau `true` ist) |
 | Register-Bindung | Betreiber-Wallet `0x0be8…d016` ist Mensch; die Bindung von C1 fehlt noch (Punkt 2 unten). `pruefstand-live.yml` zeigt den Stand. |
 | Railway-Coordinator | Antwortet noch (USA). Er ist nicht mehr in App oder Workflows eingetragen, sollte aber abgeschaltet werden (Datenschutz). |
-| Freigaben | Die Umgebungen `produktion` und `app-signatur` haben keine Prüfer: Deploys und das Signieren der APK laufen ohne Freigabe (Punkt 3). |
+| Freigaben | `produktion` (alle vier Repos) und `app-signatur` haben seit dem 24.10. Pflicht-Prüfer; belegt an je einem wartenden Lauf in Aequitas und Biometrie. App und Proof-Server zeigen es beim nächsten Bau bzw. Deploy. |
 
 **Was die Beta noch braucht** (alles Betreiber, Reihenfolge = Vorschlag):
 
@@ -39,7 +39,10 @@ Tests entfernt (Aequitas #419–#422, biometric #87, proof-server #24);
 2. **C1 im Validator-Register binden** (3.6a): Erzeuger
    `0x3066639af1653325100c1074a9696612dbdc42dc` hat keine Bindung.
 3. **Umgebung `produktion` scharf machen** (3.1).
-4. **`BIO_BACKUP_AGE_RECIPIENT`** setzen (3.5).
+4. **Sicherung ohne Klick einrichten** (3.5): `SICHERUNG_SSH_KEY` in der neuen
+   Umgebung `sicherung` anlegen, dann `sicherung-einrichten.yml` mit dem
+   öffentlichen age-Schlüssel (`bio_empfaenger`) starten und freigeben
+   (`docs/SERVER_FREIGABE.md`, `docs/BIOMETRIE_SICHERUNG.md`).
 5. **Registrierung mit frischem Wallet** (Blocker 2): Beleg `total_humans` +1
    und `gallery_test` +1.
 6. **Zwei-Personen-Test** nach `docs/DOPPELREGISTRIERUNG_TEST.md` (Blocker 4).
@@ -92,7 +95,7 @@ der Einzelbetrieb begrenzt Registrierungen auf 25 am Tag.
 | Ahnen-Leerlauf: Netzfehler zählten als leere Runde, der Zähler galt prozessweit für alle Peers, und ein selbst eingetragener Peer konnte mit leeren Antworten Resync samt Neustart auslösen. Jetzt nur vollständige Antworten, je Peer und je Knoten; heilen nur, wenn ein eingetragener Seed die Historie nicht liefert. | MITTEL | Aequitas #380 |
 | Push-Plätze: Wer einen der 8 Plätze belegt, muss mit mindestens 32 KiB/s senden (nach 5 s Anlauf), und kein Push hält einen Platz länger als 10 s; nach dem Rumpf liegt keine Frist mehr auf der Verbindung (sonst brach net/http den Kontext folgender Keep-Alive-Anfragen ab). Vorher hielt nur die ReadTimeout von 30 s einen tropfenden Push, und vier Adressen belegten alle Plätze. Der Abbruch zählt im Flutschutz je /64. | MITTEL | Aequitas #381 |
 | App: Abfragen ruhen im Hintergrund und bei unsichtbarem Tab, laufen nie parallel, verlängern die Pause bei Fehlschlägen bis 2 min und zeigen einen Offline-Hinweis (vorher `setInterval` ohne Rücksicht auf Knoten und Akku). | NIEDRIG | Aequitas-App #33 |
-| Biometrie- und Proof-Datenbanken: nächtlich auf C1 gesichert, auf der Box mit `age` an einen öffentlichen Schlüssel verschlüsselt, nur die `.age`-Datei verlässt die Box (Rückspielprobe, Host-Schlüssel nur ed25519, Image per Digest). Aktiv, sobald `BIO_BACKUP_AGE_RECIPIENT` gesetzt ist. | MITTEL | Aequitas #382 |
+| Biometrie- und Proof-Datenbanken: nächtlich auf C1 gesichert, auf der Box mit `age` an einen öffentlichen Schlüssel verschlüsselt, nur die `.age`-Datei verlässt die Box (Rückspielprobe, Host-Schlüssel nur ed25519, Image per Digest). Aktiv, sobald der age-Empfänger auf C1 hinterlegt ist (`sicherung-einrichten.yml`). | MITTEL | Aequitas #382 |
 | StateRoot-Abweichungen je Produzent sichtbar (`/api/health/combined` → `stateroot_je_produzent`), alle Zähler auf 64 Produzenten begrenzt; volle Maps verdecken keinen neuen Abweichler. Konsens unverändert (Begründung im PR). | MITTEL | Aequitas #383 |
 | `checkpointVorschau` sucht ohne `dag.mu`, mit Nachprüfung danach (fail-closed: kein Block in diesem Takt). Rest: `replayMu` bleibt bis 3 s gehalten. | MITTEL | Aequitas #384 |
 | Vier-Knoten-Test um Snapshot-Resync, Snapshot-Fälschungen und Trusted Seeds erweitert. Gefunden und behoben: ein Elternblock wurde Spitze, obwohl schon ein Kind auf ihm stand (abweichende Spitzen, zusätzlicher tiefer Elternteil im nächsten Block). Snapshot-Import verlangt immer einen Unterzeichner. | HOCH | Aequitas #385 |
@@ -131,7 +134,7 @@ Reihenfolge, in der sie gemacht werden sollten.
 2. **Alte Logs:** geprüft am 17.10.2026 -- kein Actions-Lauf zeigt einen privaten Schlüssel im Klartext, kein Tausch nötig. Nicht geprüft: Logs vor dem 18.07.2026, Railway-Logs und `docker logs` auf den Boxen.
 3. **Vor dem nächsten Vergleichsdienst-Deploy:** Der Workflow prüft jetzt selbst, ob der Coordinator-Schlüssel in `COORDINATOR_PUBLIC_KEYS` steht, und bricht sonst ab. Fehlt er, den Schlüssel in `vergleichsdienst-neuer-c1.yml` eintragen.
 4. **Externe Überwachung:** Es gibt sie: `wache.yml` prüft von GitHub aus Höhe, Gleichstand, Proof-Server, Vergleichsdienst, Coordinator-Quorum und Backup-Alter und schickt bei Rot eine E-Mail; der `wachhund` auf der Box meldet alle 5 min über Telegram/ntfy. Lücke: GitHub führt den 10-min-Zeitplan nur etwa alle 4 h aus. Für Minuten-Alarm einen externen Uptime-Dienst auf `https://aequitas.digital/api/wache` setzen (antwortet bei Rot mit 503).
-5. **Sicherung außerhalb der Box:** Die Biometrie- und Proof-Datenbanken liegen nur auf C1. Täglich verschlüsselt auf einen zweiten Ort sichern und das Zurückspielen einmal üben (DR-Runbook). Workflow und Skript sind gemergt (#382); offen sind das Secret `BIO_BACKUP_AGE_RECIPIENT` und die Übung (`docs/BIOMETRIE_SICHERUNG.md`). Stand 20.10.2026: Der nächtliche Lauf bricht seit dem 19.10. jedes Mal mit „BIO_BACKUP_AGE_RECIPIENT fehlt“ ab -- bis das Secret steht, gibt es **keine** Sicherung außer Haus.
+5. **Sicherung außerhalb der Box:** Die Biometrie- und Proof-Datenbanken liegen nur auf C1. Täglich verschlüsselt auf einen zweiten Ort sichern und das Zurückspielen einmal üben (DR-Runbook). Workflow und Skript sind gemergt (#382); offen sind der öffentliche age-Schlüssel (seit 24.10.2026 über `sicherung-einrichten.yml` fest auf C1, nicht mehr als Secret) und die Übung (`docs/BIOMETRIE_SICHERUNG.md`). Bis er hinterlegt ist, gibt es **keine** Sicherung der Biometrie außer Haus.
 6a. **C1 im Validator-Register binden** (seit dem Stichtag 18.10.2026 12:00 UTC möglich, einmal): `http://188.172.229.121:8080/node-binding` öffnen und mit der Wallet unterschreiben, die als `NODE_OPERATOR_WALLET` auf C1 steht (in der App: Tab „Knoten“ → „Knoten binden“). Ohne Bindung schlösse der spätere Erzeugerschnitt C1 aus, und ein zweiter Validator kann sich nur neben einem gebundenen C1 sauber einreihen. Die Wache zeigt seit 20.10.2026, ob noch ein Erzeuger ohne Bindung ist (Hinweis „Erzeuger OHNE Bindung“, `erzeuger_ohne_bindung` in `/api/status`).
 6. **Mehr Validatoren** (`docs/VALIDATOREN_HINZUFUEGEN.md`):
    - Server und Betreiber kommen von dir.
