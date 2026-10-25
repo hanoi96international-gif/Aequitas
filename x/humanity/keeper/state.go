@@ -223,6 +223,8 @@ type ChainState struct {
 	validatorRunde validatorRundePruefung
 	// freigaben: Staffel-Freigaben der laufenden Runde (nachrechnen_freigabe.go).
 	freigaben freigabeRunde
+	// umlaufRunde: Vollstaendigkeit der Umlaufrunde (nachrechnen_umlauf.go).
+	umlaufRunde umlaufRundePruefung
 	// kappungsKandidaten: Konten, die ueber der Grenze liegen koennten und
 	// deren Kappung Stufe 2 dem Zustaendigen ueberlaesst.
 	kappungsMu         sync.Mutex
@@ -1108,6 +1110,7 @@ func NewChainState(dataFile string) *ChainState {
 				cs.ubiRunde.unsicher = true
 				cs.lpRunde.unsicher = true
 				cs.validatorRunde.unsicher = true
+				cs.umlaufRunde.unsicher = true
 				// Der Uebersprungen-Zaehler muss den Neustart ueberleben --
 				// siehe zustand_ablehnung.go: ein Neustart nach rotem Alarm
 				// loeschte bisher den Alarm, nicht die Divergenz.
@@ -8396,6 +8399,7 @@ type blockRollbackSnapshot struct {
 	lpRunde        lpRundePruefung
 	validatorRunde validatorRundePruefung
 	freigaben      freigabeRunde
+	umlaufRunde    umlaufRundePruefung
 	// vorbehalte: die offenen Vorbehalte (cs.vorbehalte) der Vorbehaltskonten
 	// unter den Adressen. Die Tabelle vorbehalte_offen geht mit der
 	// Transaktion zurueck, die Karte im Speicher nur hiermit.
@@ -8567,6 +8571,7 @@ func (cs *ChainState) snapshotForRollbackLocked(addrs []string, full bool, chain
 	snap.lpRunde = cs.lpRunde
 	snap.validatorRunde = cs.validatorRunde
 	snap.freigaben = cs.freigaben
+	snap.umlaufRunde = cs.umlaufRunde
 	snap.vorbehalte = cs.vorbehaltSichern(addrs, full)
 	return snap
 }
@@ -8682,6 +8687,7 @@ func (cs *ChainState) restoreFromRollbackLockedCtx(ctx context.Context, snap *bl
 	cs.lpRunde = snap.lpRunde.zurueck()
 	cs.validatorRunde = snap.validatorRunde.zurueck()
 	cs.freigaben = snap.freigaben.zurueck()
+	cs.umlaufRunde = snap.umlaufRunde.zurueck()
 	cs.vorbehaltZurueck(snap.vorbehalte)
 	var toDelete []string
 	for _, s := range snap.accounts {

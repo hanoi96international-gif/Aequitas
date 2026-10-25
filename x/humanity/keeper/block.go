@@ -7694,7 +7694,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 		// Ueberweisungen mit Gebuehr bleiben seriell (collectDisjointTransferBatch).
 		if tx.Type == "transfer" && skipDistributionRound == 0 {
 			batch, _ := collectDisjointTransferBatch(block.Transactions, txIdx)
-			batch = dag.state.lohnGebuehrPraefix(batch)
+			batch = dag.state.lohnGebuehrPraefix(batch, block.Timestamp)
 			if len(batch) >= parallelReplayMinBatch {
 				// withTx statt des leeren ctx: JEDE Kontoaenderung dieses
 				// Replays gehoert in dbTx, sonst ueberlebt sie einen Ruecklauf.

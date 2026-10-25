@@ -7,7 +7,8 @@ import (
 )
 
 // DER VORSCHLAG "GLEICHGEWICHT" IM MODELL (docs/WIRTSCHAFT_ENDFASSUNG.md,
-// 25.10.2026). Nur Modell -- die Kette rechnet weiter nach wirtschaft.go.
+// 25.10.2026). In der Kette gebaut und schlafend (wirtschaft3.go); bis zur
+// Aktivierung rechnet sie nach wirtschaft.go.
 //
 // Eine Regel fuer jedes Konto: SatzMonat auf das ganze Guthaben (Menschen,
 // Unternehmen, freie Adressen gleich, LP-Anteile mitgezaehlt), ohne
@@ -46,11 +47,12 @@ type GleichgewichtParameter struct {
 }
 
 // StandardGleichgewicht: der Vorschlag mit den Zahlen aus der Endfassung.
-// SatzMonat ist der heutige Satz der Menschen, die Grenzen sind die heutigen.
+// SatzMonat ist der Satz der Kette (gleichgewichtSatzMonat, so hoch wie der
+// heutige der Menschen), die Grenzen sind die heutigen.
 func StandardGleichgewicht() GleichgewichtParameter {
 	return GleichgewichtParameter{
 		FairerAnteil: registrationGrant,
-		SatzMonat:    menschUmlaufMonat,
+		SatzMonat:    gleichgewichtSatzMonat,
 		GrenzeFaktor: wealthCapMultiplier,
 		FreiGrenze:   freiGrenze,
 		AktivAnteil:  1,

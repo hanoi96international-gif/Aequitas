@@ -6,12 +6,14 @@ Stand 25.10.2026. Dieses Dokument schließt die Prüfungen vom 02.10.2026 ab
 welche Regeln Aequitas auf Dauer haben sollte, warum, was das kostet und wie
 es in den Code kommt.
 
-**Status:** Vorschlag zur Entscheidung. Gebaut ist nur das Rechenmodell
+**Status:** Vorschlag zur Entscheidung. Gebaut sind das Rechenmodell
 (`go run ./cmd/wirtschaftsmodell -vorschlag`, Tests in
-`x/humanity/keeper/wirtschaftsmodell_gleichgewicht_test.go`). Die Kette
-rechnet weiter nach `wirtschaft.go`. Der Umbau ist eine Konsensänderung und
-braucht eure Entscheidung, eine Aktivierungszeit und eine eigene
-Sicherheitsprüfung (AGENTS.md).
+`x/humanity/keeper/wirtschaftsmodell_gleichgewicht_test.go`) und, seit
+25.10.2026, **die Regel in der Kette, schlafend** (`wirtschaft3.go`,
+`nachrechnen_umlauf.go`, Aktivierung `gleichgewichtAktivAbUnix` = 2100;
+Stand in Abschnitt 10). Bis zur Aktivierung rechnet die Kette nach
+`wirtschaft.go`. Scharf wird sie nur mit eurer Entscheidung und einem echten
+Datum, das nach dem Ausrollen auf alle Knoten liegt.
 
 **Grenze:** Die Originalstudien ließen sich aus der Arbeitsumgebung wieder
 nicht abrufen (Netzwerkrichtlinie). Ausgewertet sind Suchergebnisse,
@@ -369,6 +371,16 @@ Konto. `umlauf` bleibt in `bekannteGeldAusnahmen` (`kein_entzug_test.go`),
 mit dieser Begründung.
 
 ### Schritt 1: Konsens (eine Aktivierungszeit)
+
+**Stand 25.10.2026: gebaut, schlafend.** a–e und h sind in der Kette,
+g ist unverändert, i liefert `/api/wirtschaft/regeln` → `gleichgewicht`
+(Satz, Dividende je Mensch, Zähler der Vollständigkeitsprüfung); die App
+zeigt es noch nicht. f ist bewusst offen: die Buchführung läuft weiter,
+keine Regel des Gleichgewichts liest sie. Tests:
+`x/humanity/keeper/wirtschaft3_test.go` (echte Runden über zwei Knoten, ein
+und zwei Blöcke, streng; je Angriff ein Missbrauchstest; Datenbank und
+Speicher als Kandidatenquelle gegen Postgres). Prüfung des Diffs:
+`docs/SICHERHEITSPRUEFUNG_2026-10-25.md`, Abschnitt 2.
 
 Neue Konstante `gleichgewichtAktivAbUnix` in einer neuen Datei
 `x/humanity/keeper/wirtschaft3.go`, wie `wirtschaft2.go`: zuerst auf

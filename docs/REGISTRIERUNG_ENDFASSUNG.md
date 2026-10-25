@@ -326,6 +326,29 @@ Knoten.
 | 8 | Präsenzaufnahme: Stationsschlüssel im Register, Unterschrift in der Bescheinigung, Klasse grün | biometric-beta, Aequitas | ja |
 | 9 | Widerspruch: Antwortfrist und Zahlen auf der Statusseite | biometric-beta | nein |
 
+**Stand 25.10.2026:**
+
+| # | Stand |
+|---|---|
+| 1 | gebaut, schlafend wie die Staffel (`grant_staffel.go`, `staffel_einspruch.go`; Prüfung `SICHERHEITSPRUEFUNG_2026-10-25.md`) |
+| 2 | gebaut (`LEBENDIGKEIT_KALIBRIERT`; vorher ist jede Registrierung gestaffelt) |
+| 6 | **zurückgestellt**, siehe unten |
+| 7 | Entwurf fertig (`UMZUG_ENTWURF.md`): kein neuer Vertrag, der Go-Zustand ist das Register; die Zuordnung Nullifier → Wallet muss dafür in die StateRoot. Bau nach eurer Entscheidung zur Ausnahme in `kein_entzug_test.go` |
+| 9 | gebaut: Antwortfrist 14 Tage (höchstens 30), ab dem ersten Widerspruch; `/health` zählt Überfällige und warnt |
+
+**Warum die Bürgschaft (Nr. 6) zurückgestellt ist.** Mit der Freigabe
+spätestens an Tag 30 spart sie einem echten Menschen höchstens Zeit, und
+wenig: wie nach der Zweitprüfung liefe der Rest mit der Tagesrate, von
+Tag 7 bis Tag 30 also rund 610 statt null AEQ früher. Sie öffnet dafür einen
+Weg, der heute zu ist: Zwei Menschen, die sich absprechen, beschleunigen je
+Paar bis zu fünf Konten im Jahr — genau die Konten, gegen die ein Einspruch bis
+Tag 30 möglich sein soll. Gäbe sie „den Rest sofort frei“, wie der erste
+Entwurf es las, entkäme eine Farm mit zwei Bürgen jedem Einspruch. Und die
+Sperre „zwei Jahre nach nachgewiesener Doppelung“ setzt einen Nachweis
+voraus, den die Kette nicht kennt. Wenn sie kommt, dann nur als
+Zweitprüfung (Tagesrate, frühestens ab Tag 7, Einspruch hält weiter an) und
+erst, wenn es diesen Nachweis gibt.
+
 **Sicherheit für Umzug und Bürgschaft (die zwei neuen Konsensregeln):**
 
 1. *Wer erreicht den Code?* Jeder über die App und den Coordinator (öffentlich,

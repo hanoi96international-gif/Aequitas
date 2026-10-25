@@ -665,6 +665,9 @@ func (cs *ChainState) gebuehrMitWirtschaft(from, to string, fromArt, toArt konto
 	if !wirtschaftAktiv(jetzt) {
 		return ueberweisungsGebuehrFuer(amount, guthaben)
 	}
+	if gleichgewichtAktiv(jetzt) {
+		return 0 // wirtschaft3.go, e: keine Ueberweisungsgebuehr
+	}
 	switch fromArt {
 	case artMensch:
 		w := cs.wirt()
@@ -864,6 +867,9 @@ func (cs *ChainState) umlaufBetragRoh(addr string, art kontoart, stand float64, 
 		return 0
 	}
 	anteil := float64(sekunden) / sekundenJeMonat
+	if gleichgewichtAktiv(jetzt) {
+		return gleichgewichtUmlauf(art, stand, anteil) // wirtschaft3.go
+	}
 	switch art {
 	case artMensch:
 		return round6(math.Max(0, stand-menschSparFreibetrag) * menschUmlaufMonat * anteil)
@@ -900,41 +906,12 @@ func (cs *ChainState) umlaufLocked(ctx context.Context, at int64) ([]Transaction
 		sekunden = 7 * 86400
 	}
 
-	kandidaten := map[string]bool{}
-	if cs.db != nil {
-		// lp_shares > 0: ab umlaufMitLPAbUnix zaehlen LP-Anteile mit
-		// (umlaufStandLocked) -- wer sein Geld im Pool haelt, stand sonst
-		// gar nicht erst auf der Liste. Frueher mitgelesen schadet nicht:
-		// umlaufBetrag entscheidet.
-		rows, err := cs.dbExecCtx(ctx).Query(
-			`SELECT lower(address) FROM chain_accounts
-			 WHERE (is_human = true AND balance > $1) OR (is_human = false AND balance > 0) OR lp_shares > 0
-			 ORDER BY 1`, menschSparFreibetrag)
-		if err != nil {
-			return nil, fmt.Errorf("umlauf: %w", err)
-		}
-		for rows.Next() {
-			var a string
-			if rows.Scan(&a) == nil {
-				kandidaten[a] = true
-			}
-		}
-		rows.Close()
-	} else {
-		cs.accounts.Range(func(a string, acc *AccountState) bool {
-			if acc.Balance.Float() > 0 || acc.LPShares > 0 {
-				kandidaten[strings.ToLower(a)] = true
-			}
-			return true
-		})
+	// Wer schulden koennte (wirtschaft3.go): bis zum Gleichgewicht wie
+	// bisher, danach jedes Konto mit Guthaben oder LP-Anteilen.
+	adressen, err := cs.umlaufKandidatenLocked(cs.dbExecCtx(ctx), at)
+	if err != nil {
+		return nil, fmt.Errorf("umlauf: %w", err)
 	}
-	adressen := make([]string, 0, len(kandidaten))
-	for a := range kandidaten {
-		if !istSystemAdresse(a) {
-			adressen = append(adressen, a)
-		}
-	}
-	sort.Strings(adressen)
 
 	var txs []Transaction
 	for _, a := range adressen {

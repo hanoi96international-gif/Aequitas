@@ -579,6 +579,7 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) (
 		}
 	}
 	cs.unternehmenAusSnapshot(snap.Unternehmen)
+	cs.umlaufRunde = umlaufRundePruefung{unsicher: true} // wie replaceInMemoryFromSnapshotLocked
 	// FIX 11: Only import pool state on genuine cold start (no humans registered).
 	// Prevents a stale snapshot from overwriting an active pool that temporarily has
 	// zero reserves (e.g., after all liquidity was removed).
@@ -1548,6 +1549,9 @@ func (cs *ChainState) replaceInMemoryFromSnapshotLocked(snap *StateSnapshot) {
 	}
 	cs.accounts = fresh
 	cs.unternehmenAusSnapshot(snap.Unternehmen)
+	// Ein anderer Stand: wo die laufende Umlaufrunde steht, ist unbekannt
+	// (nachrechnen_umlauf.go) -- bis zur naechsten Rundenmarke nichts melden.
+	cs.umlaufRunde = umlaufRundePruefung{unsicher: true}
 	if snap.Pool != nil {
 		cs.pool = snap.Pool
 	}

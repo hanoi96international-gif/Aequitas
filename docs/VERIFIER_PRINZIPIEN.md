@@ -112,6 +112,20 @@ Regeln, die einem Konto nach Regel ohne Unterschrift Geld nehmen:
 `nachrechnenStrengAbUnix` steht auf `MaxInt64`: jede Abweichung wird
 gezählt und unter `/api/wirtschaft/regeln` veröffentlicht, der Block gilt.
 
+**Nachtrag 25.10.2026 (Gleichgewicht, schlafend, `wirtschaft3.go`):** ab der
+Aktivierung erfüllt `umlauf` Grundsatz 1 für jedes Konto. Ein Satz für alle
+Kontoarten, ohne Buchführung: jeder Knoten rechnet jeden Betrag nach, auch
+bei Unternehmen, und prüft an der Rundenmarke, dass jedes Konto, das
+schuldet, genau einmal belastet wurde (`nachrechnen_umlauf.go`:
+`umlauf_ausgelassen`, `umlauf_doppelt`, `umlauf_reihenfolge`,
+`umlauf_rundenzeit`). Eine Überweisungsgebühr gibt es dann nicht mehr
+(`gebuehr_nach_gleichgewicht`).
+
+**Befund 25.10.2026, heutige Regeln:** ein `umlauf` mit einer Rundenzeit vor
+der letzten Runde wurde nicht nachgerechnet und nahm bis zum ganzen
+Guthaben. Jetzt `umlauf_alte_runde`, streng ab dem gemeinsamen Stichtag nach
+der Blockzeit (`liegegeld_pruefung.go`).
+
 **Befund aus dem neuen Test:** auch drei Gutschriftarten
 (`ubi_distribution`, `lp_distribution`, `validator_distribution`) senken
 heute ein Guthaben, wenn der Erzeuger einen negativen Betrag oder eine

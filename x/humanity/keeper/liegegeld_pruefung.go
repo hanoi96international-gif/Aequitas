@@ -91,7 +91,9 @@ func (cs *ChainState) pruefeUmlaufLocked(wallet string, betrag float64, at, bloc
 			aelter = at < w.letzterUmlauf
 			return
 		}
-		fensterVoll = art != artUnternehmen || w.fensterVollLocked(at)
+		// Ab dem Gleichgewicht (wirtschaft3.go, c) braucht kein Betrag mehr
+		// die Buchfuehrung: jeder Knoten prueft jedes Konto.
+		fensterVoll = art != artUnternehmen || gleichgewichtAktiv(at) || w.fensterVollLocked(at)
 	})
 	if !zeitraumBekannt {
 		liegegeldUebersprungen.Add(1)

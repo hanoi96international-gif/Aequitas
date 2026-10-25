@@ -37,6 +37,15 @@ func (cs *ChainState) nachrechnenUeberweisungLocked(tx *Transaction, wallet stri
 	if !wirtschaftAktiv(jetzt) {
 		return nil // davor galt der Aufschlag nach Guthaben (ueberweisungsGebuehrFuer)
 	}
+	// Ab dem Gleichgewicht (wirtschaft3.go, e) gibt es keine Gebuehr. Der
+	// Buchungsaugenblick entscheidet, damit eine kurz vorher angenommene
+	// Ueberweisung ihre Gebuehr behalten darf; er liegt hoechstens eine
+	// Woche vor dem Block (buchZeitBeimNachspielen).
+	if gleichgewichtAktiv(jetzt) {
+		return nachrechnenAbweichung("gebuehr_nach_gleichgewicht", blockZeit,
+			"%s -> %s: Gebuehr %.6f im Block, seit dem Gleichgewicht gibt es keine",
+			kurzAdresse(wallet), kurzAdresse(tx.To), tx.Gebuehr)
+	}
 	to := strings.ToLower(strings.TrimSpace(tx.To))
 	cs.ensureAccountLoadedCtx(context.Background(), wallet)
 	cs.ensureAccountLoadedCtx(context.Background(), to)
@@ -75,10 +84,19 @@ func (cs *ChainState) nachrechnenUeberweisungLocked(tx *Transaction, wallet stri
 // die des Absenders nur das Register im Speicher. Ein Lauf enthaelt nur
 // Ueberweisungen, und die aendern das Register nicht -- die Antwort steht
 // fuer den ganzen Lauf fest.
-func (cs *ChainState) lohnGebuehrPraefix(batch []Transaction) []Transaction {
+//
+// Ab dem Gleichgewicht (wirtschaft3.go, e) geht JEDE Ueberweisung mit
+// Gebuehr seriell: dort lehnt nachrechnenUeberweisungLocked sie ab
+// (gebuehr_nach_gleichgewicht). Der schnelle Pfad kennt nur die
+// 0,1 %-Obergrenze und haette sie gebucht.
+func (cs *ChainState) lohnGebuehrPraefix(batch []Transaction, blockZeit int64) []Transaction {
 	w := cs.wirt()
 	for i, tx := range batch {
-		if tx.Gebuehr > 0 && w.istUnternehmen(strings.ToLower(strings.TrimSpace(tx.Wallet))) {
+		if tx.Gebuehr <= 0 {
+			continue
+		}
+		if gleichgewichtAktiv(buchZeitBeimNachspielen(tx.BuchAt, blockZeit)) ||
+			w.istUnternehmen(strings.ToLower(strings.TrimSpace(tx.Wallet))) {
 			return batch[:i]
 		}
 	}
