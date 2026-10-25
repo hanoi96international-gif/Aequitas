@@ -1,0 +1,43 @@
+name: SSH-Erreichbarkeit C1 (Diagnose, ohne Secrets)
+
+# Liest nur: die strenge Host-Pruefung der Server-Workflows gegen C1, von
+# beiden Runner-Bildern aus. Seit `ubuntu-latest` auf 26.04 zeigt (24.10.2026),
+# schreibt ssh-keyscan (OpenSSH 10.2) eine Kommentarzeile mit, und "genau eine
+# Zeile" schlug fehl; siehe scripts/lint_keyscan.py. Kein Secret, keine
+# Anmeldung.
+on:
+  workflow_dispatch:
+  push:
+    branches: ["claude/**"]
+    paths: [".github/workflows/ssh-erreichbar.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  pruefen:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-26.04]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
+    steps:
+      - name: Strenge Host-Pruefung wie in den Server-Workflows
+        env:
+          HOST: 188.172.229.121
+          FP: "SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA"
+        run: |
+          set -eu
+          ssh -V 2>&1
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -t ed25519 "$HOST" 2>/dev/null | { grep -v '^#' || true; } > ~/.ssh/kh_all
+          [ "$(grep -c . ~/.ssh/kh_all)" = 1 ] || { echo "::error::Host-Schluessel von $HOST: nicht genau eine ed25519-Zeile"; exit 1; }
+          [ "$(ssh-keygen -lf ~/.ssh/kh_all | awk '{print $2}')" = "$FP" ] || { echo "::error::Host-Schluessel von $HOST passt nicht"; exit 1; }
+          echo "Host-Pruefung bestanden: genau ein ed25519-Schluessel, Fingerabdruck stimmt"
+      - name: Gegenprobe -- ein zweiter Schluessel wird weiter abgewiesen
+        run: |
+          set -u
+          { ssh-keyscan -t ed25519 188.172.229.121 2>/dev/null; echo "188.172.229.121 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGVyZmlubmVybmVyZmlubmVybmVyZmlubmVybmVyZmlu"; } | { grep -v '^#' || true; } > /tmp/kh
+          if [ "$(grep -c . /tmp/kh)" = 1 ]; then echo "::error::zweiter Schluessel nicht erkannt"; exit 1; fi
+          echo "Gegenprobe: $(grep -c . /tmp/kh) Schluesselzeilen -> abgewiesen, wie es sein soll"

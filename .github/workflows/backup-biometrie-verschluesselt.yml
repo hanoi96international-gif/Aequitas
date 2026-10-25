@@ -66,7 +66,7 @@ jobs:
           printf '%s\n' "$KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
           # Nur ed25519 und genau eine Zeile (Pruefung von #382, F1): sonst
           # reicht ein gefaelschter ecdsa-/rsa-Schluessel neben dem echten.
-          ssh-keyscan -t ed25519 "$HOST" 2>/dev/null > ~/.ssh/kh_all
+          ssh-keyscan -t ed25519 "$HOST" 2>/dev/null | { grep -v '^#' || true; } > ~/.ssh/kh_all
           [ "$(grep -c . ~/.ssh/kh_all)" = 1 ] || { echo "::error::Host-Schluessel von $HOST: nicht genau eine ed25519-Zeile"; exit 1; }
           [ "$(ssh-keygen -lf ~/.ssh/kh_all | awk '{print $2}')" = "$FP" ] || { echo "::error::Host-Schluessel von $HOST passt nicht"; exit 1; }
           cp ~/.ssh/kh_all ~/.ssh/known_hosts
