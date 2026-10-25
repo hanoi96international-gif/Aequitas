@@ -8080,7 +8080,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 				// context.Background() is correct — see registerHumanLocked's
 				// comment: dag.state.activeTx was already set directly above
 				// this loop, and dbExecCtx falls back to it.
-				if err := dag.state.applyUBIRewardDeltaLocked(context.Background(), wallet, tx.Amount, tx.FromDemurrageLost, block.Timestamp); err != nil {
+				if err := dag.state.applyUBIRewardDeltaLocked(context.Background(), wallet, tx.Amount, tx.FromDemurrageLost, block.Timestamp, kontenSammlung); err != nil {
 					fmt.Printf("[REPLAY] ✗ ubi_distribution %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
 					hardFailure = true
 					continue
@@ -8151,7 +8151,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 				hardFailure = true
 				continue
 			}
-			if err := dag.state.applyUmlaufDeltaLocked(context.Background(), wallet, tx.Amount, tx.DistributionAt); err != nil {
+			if err := dag.state.applyUmlaufDeltaLocked(context.Background(), wallet, tx.Amount, tx.DistributionAt, kontenSammlung); err != nil {
 				fmt.Printf("[REPLAY] ✗ umlauf %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
 				hardFailure = true
 				continue

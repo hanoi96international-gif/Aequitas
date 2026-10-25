@@ -3047,9 +3047,34 @@ func writeDollarParam(sb *strings.Builder, n int, suffix string) {
 	sb.WriteString(suffix)
 }
 
+// kontenStueck: so viele Konten schreibt saveAccountsToDBBatchCtx hoechstens
+// in EINEM Statement. Jede Verbindung des Knotens laeuft mit
+// statement_timeout=5000 ms (NewChainState). Die Tagesrunde schrieb alle
+// Menschen in ein Statement: gemessen (BenchmarkTagesrundeDB) riss das bei
+// 100.000 Konten die Grenze, die Runde fiel aus -- jeden Tag. 5.000 Konten
+// brauchen lokal rund 0,15 s.
+const kontenStueck = 5000
+
 // saveAccountsToDBBatchCtx is saveAccountsToDBBatch's real implementation —
 // see dbExecCtx's comment for the migration this is part of.
+//
+// Mehr als kontenStueck Konten gehen in Stuecken, nach Adresse sortiert ueber
+// ALLE Stuecke -- dieselbe Sperrreihenfolge wie ein einziges Statement, also
+// keine neue Verklemmung zwischen zwei Transaktionen. Alle Stuecke laufen in
+// der Transaktion aus ctx; scheitert eines, geht der Fehler wie bisher an den
+// Aufrufer, der die Transaktion zuruecknimmt.
 func (cs *ChainState) saveAccountsToDBBatchCtx(ctx context.Context, accs []*AccountState) error {
+	if len(accs) > kontenStueck && cs.useDB {
+		sortiert := append([]*AccountState(nil), accs...)
+		sort.Slice(sortiert, func(i, j int) bool { return sortiert[i].Address < sortiert[j].Address })
+		for start := 0; start < len(sortiert); start += kontenStueck {
+			ende := min(start+kontenStueck, len(sortiert))
+			if err := cs.saveAccountsToDBBatchCtx(ctx, sortiert[start:ende]); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
 	if len(accs) == 0 {
 		return nil
 	}
@@ -4265,6 +4290,14 @@ func (cs *ChainState) DistributeUBIPool() []DistributionShare {
 }
 
 func (cs *ChainState) distributeUBIPoolLocked(ctx context.Context, verteiltAm int64) ([]DistributionShare, error) {
+	return cs.distributeUBIPoolSammelndLocked(ctx, verteiltAm, nil)
+}
+
+// distributeUBIPoolSammelndLocked: sammler != nil -- die Gutschriften gehen
+// nicht sofort in die Datenbank, sondern in sammler (Blaetter der StateRoot
+// sofort fortgeschrieben). Die Tagesrunde schreibt Umlauf und Grundeinkommen
+// so in EINEM Vorgang: jedes Konto, das beides beruehrt, nur einmal.
+func (cs *ChainState) distributeUBIPoolSammelndLocked(ctx context.Context, verteiltAm int64, sammler *kontenSammler) ([]DistributionShare, error) {
 	// FIX (Monster Audit 2026-07-12, P1): see DistributeValidatorsPool's
 	// comment — a cold pool address must not read as "empty". Loaded once
 	// here; the second read below (after the demurrage loop) reuses the same
@@ -4407,7 +4440,12 @@ func (cs *ChainState) distributeUBIPoolLocked(ctx context.Context, verteiltAm in
 		batch = append(batch, acc)
 		shares = append(shares, DistributionShare{Wallet: addr, Amount: share, DemurrageLost: demurrageLost[addr]})
 	}
-	if err := cs.saveAccountsToDBBatchCtx(ctx, batch); err != nil {
+	if sammler != nil {
+		for _, a := range batch {
+			cs.updateAccountLeafLocked(a)
+		}
+		sammler.hinzufuegen(batch...)
+	} else if err := cs.saveAccountsToDBBatchCtx(ctx, batch); err != nil {
 		return nil, fmt.Errorf("could not save UBI rewards batch: %w", err)
 	}
 	// Rest im Topf lassen statt vernichten -- siehe pool_remainder.go. Jeder
@@ -5208,11 +5246,10 @@ func (cs *ChainState) runAtomicDistributionWithOutbox(fn func(ctx context.Contex
 	txs, fnErr := fn(withTx(context.Background(), tx))
 	var outboxErr error
 	if fnErr == nil {
-		for _, t := range txs {
-			if outboxErr = savePendingTxExec(tx, t); outboxErr != nil {
-				break
-			}
-		}
+		// Geordnet und in Stuecken statt einer Zeile je Transaktion
+		// (savePendingTxsGeordnetExec): die Reihenfolge im Ausgang ist die im
+		// Block, und eine Runde hat eine Transaktion je Mensch und je Konto.
+		outboxErr = savePendingTxsGeordnetExec(tx, txs)
 	}
 
 	if fnErr != nil || outboxErr != nil {
@@ -5264,15 +5301,24 @@ func (cs *ChainState) RunDailyDistributionAtomic(ubiAt int64) error {
 		// Umlaufsicherung, Liegegeld, freie Adressen (wirtschaft.go) --
 		// VOR dem Grundeinkommen, damit es noch am selben Tag verteilt wird.
 		// Leer vor der Aktivierung.
-		umlauf, err := cs.umlaufLocked(ctx, ubiAt)
+		//
+		// Umlauf und Grundeinkommen sammeln ihre Konten und schreiben sie in
+		// EINEM Vorgang (BenchmarkTagesrundeDB: jedes Konto sonst zweimal).
+		// Geschrieben wird direkt danach, bevor Freigaben, Validatoren und
+		// Treuhand Konten aus der Datenbank lesen.
+		sammler := neuerKontenSammler()
+		umlauf, err := cs.umlaufSammelndLocked(ctx, ubiAt, sammler)
 		if err != nil {
 			return nil, fmt.Errorf("umlauf failed: %w", err)
 		}
 		txs = append(txs, umlauf...)
 
-		ubiShares, err := cs.distributeUBIPoolLocked(ctx, ubiAt)
+		ubiShares, err := cs.distributeUBIPoolSammelndLocked(ctx, ubiAt, sammler)
 		if err != nil {
 			return nil, fmt.Errorf("UBI distribution failed: %w", err)
+		}
+		if err := cs.saveAccountsToDBBatchCtx(ctx, sammler.konten); err != nil {
+			return nil, fmt.Errorf("umlauf/UBI: Konten schreiben: %w", err)
 		}
 		var ubiTotal float64
 		// Ab lebensnachweisAktiv traegt jedes Grundeinkommen die Rundenzeit:
@@ -9474,14 +9520,16 @@ func (cs *ChainState) ApplyUBIRewardDelta(wallet string, amount, demurrageLost f
 	// RegisterHuman's comment.
 	// activityAt 0 — no block here, so touchActivityAt falls back to nowUnix();
 	// see ApplyTransferDelta's identical note.
-	return cs.applyUBIRewardDeltaLocked(context.Background(), wallet, amount, demurrageLost, 0)
+	return cs.applyUBIRewardDeltaLocked(context.Background(), wallet, amount, demurrageLost, 0, nil)
 }
 
 // applyUBIRewardDeltaLocked is ApplyUBIRewardDelta's body — see
 // applyTransferDeltaLocked's comment.
 // activityAt is the replayed block's own Timestamp — see touchActivityAt for
 // why a replay handler must not read this node's wall clock.
-func (cs *ChainState) applyUBIRewardDeltaLocked(ctx context.Context, wallet string, amount, demurrageLost float64, activityAt int64) error {
+// sammler != nil: das Konto wird mit dem Block geschrieben
+// (replay_konten_sammler.go), das Blatt der StateRoot sofort.
+func (cs *ChainState) applyUBIRewardDeltaLocked(ctx context.Context, wallet string, amount, demurrageLost float64, activityAt int64, sammler *kontenSammler) error {
 	wallet = strings.ToLower(wallet)
 	// FIX (Monster Audit follow-up, 2026-07-12, P0): see applyTransferDeltaLocked's
 	// comment — same cold-cache pattern. Here a cold wallet fails as
@@ -9502,6 +9550,11 @@ func (cs *ChainState) applyUBIRewardDeltaLocked(ctx context.Context, wallet stri
 	// silently restore it the moment one of them became primary.
 	if err := cs.enforceWealthCapLockedCtx(ctx, acc); err != nil {
 		return fmt.Errorf("ubi reward: could not enforce wealth cap for %s: %w", wallet, err)
+	}
+	if sammler != nil {
+		cs.updateAccountLeafLocked(acc)
+		sammler.hinzufuegen(acc)
+		return nil
 	}
 	// FIX (audit recheck2, P0 #3): see ApplyTransferDelta's comment.
 	if err := cs.saveAccountToDBCtx(ctx, acc); err != nil {

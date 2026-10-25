@@ -107,7 +107,7 @@ func TestUmlauf_LP_ErzeugerUndNachspielerGleich(t *testing.T) {
 		if err := nachspieler.pruefeUmlaufLocked(txs[0].Wallet, txs[0].Amount, at, at); err != nil {
 			t.Fatal(err)
 		}
-		if err := nachspieler.applyUmlaufDeltaLocked(context.Background(), txs[0].Wallet, txs[0].Amount, at); err != nil {
+		if err := nachspieler.applyUmlaufDeltaLocked(context.Background(), txs[0].Wallet, txs[0].Amount, at, nil); err != nil {
 			t.Fatal(err)
 		}
 		nachspieler.mu.Unlock()
@@ -250,7 +250,7 @@ func TestUmlauf_LP_MehrereHalter_ErzeugerUndNachspielerGleich(t *testing.T) {
 		if err := nachspieler.pruefeUmlaufLocked(tx.Wallet, tx.Amount, at, at); err != nil {
 			t.Fatal(err)
 		}
-		if err := nachspieler.applyUmlaufDeltaLocked(context.Background(), tx.Wallet, tx.Amount, at); err != nil {
+		if err := nachspieler.applyUmlaufDeltaLocked(context.Background(), tx.Wallet, tx.Amount, at, nil); err != nil {
 			t.Fatal(err)
 		}
 	}

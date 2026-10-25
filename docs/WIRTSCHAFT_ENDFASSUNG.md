@@ -402,9 +402,25 @@ Runde, nie an der Uhr des Knotens.
 
 **Grenzen (AGENTS.md, Frage 2).** Heute läuft der Umlauf nur über Konten über
 5.000 AEQ und Nicht-Menschen; künftig über jedes Konto mit Guthaben, also
-O(Konten) je Tag unter `cs.mu`. Das ist bei der heutigen Größe unkritisch, ab
-etwa 10⁵ Konten nicht. Vorher den Umlauf wie die Verteilung in Abschnitte
-teilen (`ubi_chunked.go`) oder Schritt 2 bauen. `umlaufMindestBetrag`
+O(Konten) je Tag unter `cs.mu`. **Gemessen 25.10.2026** (`BenchmarkTagesrundeDB`,
+lokales Postgres, Erzeuger und ein zweiter Knoten, der nachspielt; beide
+Knoten enden mit denselben Kontoständen):
+
+| Konten | Regeln | Erzeuger steht | Nachspielen gesamt | vorher (Erzeuger) |
+|---|---|---|---|---|
+| 20.000 | heute | 1,3 s | 1,7 s | 8,3 s |
+| 20.000 | Gleichgewicht | 1,9 s | 2,5 s | 52,3 s |
+| 100.000 | heute | 9,9 s | 11,2 s | fiel aus (`statement_timeout`) |
+| 100.000 | Gleichgewicht | 12,2 s | 20,1 s | fiel aus |
+
+Dafür: Umlauf und Grundeinkommen schreiben ihre Konten gesammelt, jedes
+einmal je Runde; der Ausgang geht geordnet in Stücken zu 5.000; Konten in
+Stücken zu 5.000 (vorher riss das eine große Statement ab etwa 50.000
+Menschen die 5-s-Grenze jeder Verbindung — die Runde fiel jeden Tag aus,
+**auch mit den heutigen Regeln**). Nachspielen verteilt sich auf die Blöcke
+der Runde (höchstens 10.000 Transaktionen je Block, rund 1 s je Block).
+Für den Launch bis 10⁵ Konten reicht das. Darüber die Runde wie die
+Verteilung in Abschnitte teilen (`ubi_chunked.go`, noch nicht verdrahtet). `umlaufMindestBetrag`
 (0,001 AEQ) bleibt: Konten unter rund 6 AEQ werden nicht belastet, zugunsten
 der Inhaber.
 

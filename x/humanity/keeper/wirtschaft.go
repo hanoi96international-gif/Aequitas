@@ -888,7 +888,27 @@ func (cs *ChainState) umlaufBetragRoh(addr string, art kontoart, stand float64, 
 // umlaufLocked berechnet die Umlauf-Transaktionen eines Tagesdurchlaufs und
 // wendet sie an. Reihenfolge nach Adresse, damit jeder Knoten dieselbe
 // Folge sieht. Vor der Aktivierung leer. Caller haelt cs.mu.
+//
+// Schreibt alle Konten am Ende in einem Vorgang. Die Tagesrunde nimmt
+// umlaufSammelndLocked und schreibt erst nach dem Grundeinkommen -- dann
+// geht jedes Konto, das beides beruehrt, nur einmal in die Datenbank.
 func (cs *ChainState) umlaufLocked(ctx context.Context, at int64) ([]Transaction, error) {
+	sammler := neuerKontenSammler()
+	txs, err := cs.umlaufSammelndLocked(ctx, at, sammler)
+	if err != nil {
+		return nil, err
+	}
+	if err := cs.saveAccountsToDBBatchCtx(ctx, sammler.konten); err != nil {
+		return nil, fmt.Errorf("umlauf: Konten schreiben: %w", err)
+	}
+	return txs, nil
+}
+
+// umlaufSammelndLocked: umlaufLocked ohne den Schreibvorgang -- die Konten
+// stehen danach in sammler, ihre Blaetter der StateRoot sind fortgeschrieben.
+// Der Aufrufer MUSS sammler in derselben Transaktion schreiben, bevor etwas
+// diese Konten aus der Datenbank liest.
+func (cs *ChainState) umlaufSammelndLocked(ctx context.Context, at int64, sammler *kontenSammler) ([]Transaction, error) {
 	if !wirtschaftAktiv(at) {
 		return nil, nil
 	}
@@ -913,6 +933,11 @@ func (cs *ChainState) umlaufLocked(ctx context.Context, at int64) ([]Transaction
 		return nil, fmt.Errorf("umlauf: %w", err)
 	}
 
+	// Alle Konten der Runde gesammelt (replay_konten_sammler.go) statt zwei
+	// Schreibvorgaengen je Konto (Konto und Topf): gemessen mit 20.000 Konten
+	// (BenchmarkTagesrundeDB) stand der Knoten sonst fast eine Minute.
+	// Dieselbe Datenbanktransaktion, dieselben Endstaende; das Blatt der
+	// StateRoot schreibt applyUmlaufDeltaLocked je Konto fort.
 	var txs []Transaction
 	for _, a := range adressen {
 		cs.ensureAccountLoadedCtx(ctx, a)
@@ -925,7 +950,7 @@ func (cs *ChainState) umlaufLocked(ctx context.Context, at int64) ([]Transaction
 		if betrag <= 0 {
 			continue
 		}
-		if err := cs.applyUmlaufDeltaLocked(ctx, a, betrag, at); err != nil {
+		if err := cs.applyUmlaufDeltaLocked(ctx, a, betrag, at, sammler); err != nil {
 			return nil, err
 		}
 		txs = append(txs, Transaction{Type: "umlauf", Wallet: a, Amount: betrag, DistributionAt: at})
@@ -937,7 +962,12 @@ func (cs *ChainState) umlaufLocked(ctx context.Context, at int64) ([]Transaction
 
 // applyUmlaufDeltaLocked: Betrag vom Konto ins Grundeinkommen. Auf das
 // Guthaben gedeckelt -- ein Block nimmt nie mehr, als da ist. Caller haelt cs.mu.
-func (cs *ChainState) applyUmlaufDeltaLocked(ctx context.Context, wallet string, amount float64, at int64) error {
+//
+// sammler != nil: Konto und Topf werden nicht sofort geschrieben, sondern
+// gesammelt (Erzeuger: am Ende der Runde, Nachspielen: am Ende des Blocks,
+// replay_konten_sammler.go). Das Blatt der StateRoot wird trotzdem sofort
+// fortgeschrieben. nil: wie bisher je Konto.
+func (cs *ChainState) applyUmlaufDeltaLocked(ctx context.Context, wallet string, amount float64, at int64, sammler *kontenSammler) error {
 	wallet = strings.ToLower(strings.TrimSpace(wallet))
 	if amount <= 0 || math.IsNaN(amount) || math.IsInf(amount, 0) {
 		return fmt.Errorf("umlauf %s: Betrag %v: %w", wallet, amount, ErrZustandLehntAb)
@@ -965,16 +995,24 @@ func (cs *ChainState) applyUmlaufDeltaLocked(ctx context.Context, wallet string,
 	if b > acc.Balance {
 		b = acc.Balance
 	}
+	speichern := func(a *AccountState) error {
+		if sammler != nil {
+			cs.updateAccountLeafLocked(a)
+			sammler.hinzufuegen(a)
+			return nil
+		}
+		return cs.saveAccountToDBCtx(ctx, a)
+	}
 	if b <= 0 {
 		if aufgeloest {
-			if err := cs.saveAccountToDBCtx(ctx, acc); err != nil {
+			if err := speichern(acc); err != nil {
 				return fmt.Errorf("umlauf %s: %w", wallet, err)
 			}
 		}
 		return nil
 	}
 	acc.Balance = acc.Balance.Sub(b)
-	if err := cs.saveAccountToDBCtx(ctx, acc); err != nil {
+	if err := speichern(acc); err != nil {
 		return fmt.Errorf("umlauf %s: %w", wallet, err)
 	}
 	cs.ensureAccountLoadedCtx(ctx, ubiPoolAddr)
@@ -984,7 +1022,7 @@ func (cs *ChainState) applyUmlaufDeltaLocked(ctx context.Context, wallet string,
 		cs.accounts.Set(ubiPoolAddr, ubiAcc)
 	}
 	ubiAcc.Balance = ubiAcc.Balance.Add(b)
-	if err := cs.saveAccountToDBCtx(ctx, ubiAcc); err != nil {
+	if err := speichern(ubiAcc); err != nil {
 		return fmt.Errorf("umlauf: Grundeinkommen: %w", err)
 	}
 	w := cs.wirt()

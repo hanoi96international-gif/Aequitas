@@ -236,7 +236,7 @@ func TestLiegegeldPruefungBeimNachspielen(t *testing.T) {
 			if err := nach.pruefeUmlaufLocked(tx.Wallet, betrag, tx.DistributionAt, tx.DistributionAt); err != nil {
 				return liegegeldAbweichungen.Load() - vorher, err
 			}
-			if err := nach.applyUmlaufDeltaLocked(ctx, tx.Wallet, betrag, tx.DistributionAt); err != nil {
+			if err := nach.applyUmlaufDeltaLocked(ctx, tx.Wallet, betrag, tx.DistributionAt, nil); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -283,7 +283,7 @@ func TestLiegegeldPruefung_GemeinsamerStichtag(t *testing.T) {
 			if err := nach.pruefeUmlaufLocked(tx.Wallet, betrag, tx.DistributionAt, tx.DistributionAt); err != nil {
 				return err
 			}
-			if err := nach.applyUmlaufDeltaLocked(ctx, tx.Wallet, betrag, tx.DistributionAt); err != nil {
+			if err := nach.applyUmlaufDeltaLocked(ctx, tx.Wallet, betrag, tx.DistributionAt, nil); err != nil {
 				t.Fatal(err)
 			}
 		}

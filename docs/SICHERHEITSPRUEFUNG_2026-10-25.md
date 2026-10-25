@@ -57,3 +57,21 @@ gebaut: Punkt f (Buchführung abschalten), Anzeige in der App, Teilen der
 Runde für sehr viele Konten. Vor der Aktivierung nötig: eure Entscheidung,
 ein echtes Datum nach dem Ausrollen, vier Wochen strenges Nachrechnen ohne
 Abweichung (Voraussetzung 1).
+
+## 3. Tagesrunde unter Last
+
+Dateien: `wirtschaft.go` (`umlaufSammelndLocked`, `applyUmlaufDeltaLocked`
+mit Sammler), `state.go` (`distributeUBIPoolSammelndLocked`,
+`applyUBIRewardDeltaLocked` mit Sammler, `saveAccountsToDBBatchCtx` in
+Stücken, Ausgang der Runde), `evm_storage.go` (`savePendingTxsGeordnetExec`),
+`block.go` (Nachspielen mit dem Block-Sammler).
+
+| # | Frage | Befund | Stand |
+|---|---|---|---|
+| 1 | Ändert das ein Ergebnis? | Nein. Nur wann geschrieben wird: dieselbe Datenbanktransaktion, dieselben Endstände; das Blatt der StateRoot wird je Konto sofort fortgeschrieben (`updateAccountLeafLocked`), wie im parallelen Nachspielen. Zwischen Sammeln und Schreiben liest kein Schritt Kontostände aus der Datenbank (der Durchschnitt der Vermögensgrenze ist die Konstante 1.000; Gini aus dem Speicher); geschrieben wird vor Freigaben, Validatoren und Treuhand. | Ganzes Paket und Datenbankgruppen grün; der Benchmark vergleicht Erzeuger und Nachspieler |
+| 2 | Reihenfolge im Block | Der Ausgang bekommt seine IDs in der Reihenfolge der Runde (`WITH ORDINALITY … ORDER BY`), über alle Stücke. | `TestAusgangGeordnet_RealDB` |
+| 3 | Sperrreihenfolge | Konten in Stücken, nach Adresse sortiert über alle Stücke — dieselbe Reihenfolge wie ein Statement, keine neue Verklemmung. | geprüft |
+| 4 | **Befund: Runde fällt ab etwa 50.000 Menschen aus** | Alle Menschen in einem Statement rissen `statement_timeout=5000` (jede Verbindung), die Runde wurde zurückgerollt — jeden Tag, auch mit den heutigen Regeln. Behoben mit Stücken zu 5.000. | gemessen mit 100.000 Konten |
+
+Ergebnis: ein Befund (4), behoben; keine offenen.
+
