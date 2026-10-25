@@ -15,6 +15,11 @@ sicher: iOS macht aus "--" einen Gedankenstrich und zerstoert damit die
 Marker, base64 enthaelt keine solchen Zeichen. Ergibt das Dekodieren keinen
 OpenSSH-Schluessel, bleibt der Wert, wie er war (unlesbar).
 
+Fehlen Kopf und Fuss ganz (am Handy wurde nur der Rumpf kopiert, Lauf
+40169907595: 5 Zeilen, kein Kopf), ergaenzt die Reparatur sie -- aber nur,
+wenn der Rumpf als base64 mit der festen Kennung "openssh-key-v1\\0" des
+OpenSSH-Formats beginnt. Ob der Schluessel taugt, prueft danach ssh selbst.
+
 Weil Kopf und Fuss fester Text sind, setzt die Reparatur sie aus Binde-,
 Gedanken- und Halbgeviertstrichen wieder auf fuenf Bindestriche. Der Rumpf
 (base64) enthaelt keine Striche und wird davon nicht beruehrt.
@@ -31,7 +36,8 @@ PERL = (r"s/\r//g; s/(?:-|\xE2\x80[\x93\x94])+ *(BEGIN|END) OPENSSH PRIVATE KEY 
         r"/-----$1 OPENSSH PRIVATE KEY-----/g; "
         r"unless (/-----BEGIN OPENSSH PRIVATE KEY-----/) { (my $z = $_) =~ s/\s//g; "
         r"if ($z =~ m|^[A-Za-z0-9+/]+=*$|) { require MIME::Base64; my $d = MIME::Base64::decode_base64($z); "
-        r"$_ = $d if $d =~ /-----BEGIN OPENSSH PRIVATE KEY-----/; } } "
+        r"if ($d =~ /-----BEGIN OPENSSH PRIVATE KEY-----/) { $_ = $d; } "
+        r"elsif ($d =~ /\Aopenssh-key-v1\x00/) { $_ = qq{-----BEGIN OPENSSH PRIVATE KEY-----\n$z\n-----END OPENSSH PRIVATE KEY-----\n}; } } } "
         r"s/\s*(-----BEGIN OPENSSH PRIVATE KEY-----)\s*(.*?)\s*"
         r"(-----END OPENSSH PRIVATE KEY-----)\s*/my ($k, $b, $f) = ($1, $2, $3); "
         r"$b =~ s|\s||g; $b =~ s|(.{70})|$1\n|g; $b =~ s|\n\z||; "

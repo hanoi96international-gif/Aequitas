@@ -50,6 +50,8 @@ lesen "Tabs statt Umbrueche" 0 "$(printf '%s' "$ECHT" | tr '\n' '\t')"
 lesen "eine base64-Zeile" 0 "$(base64 -w0 "$T/echt")"
 lesen "base64 mit Umbruechen" 0 "$(base64 "$T/echt")"
 lesen "base64 mit Leerzeichen" 0 "$(base64 "$T/echt" | tr '\n' ' ')"
+lesen "nur der Rumpf, ohne Kopf und Fuss" 0 "$(printf '%s\n' "$ECHT" | sed '1d;$d')"
+lesen "nur der Rumpf, als eine Zeile" 0 "$(printf '%s\n' "$ECHT" | sed '1d;$d' | tr -d '\n')"
 
 # Unlesbar -- die Reparatur macht daraus keinen Schluessel
 lesen "leer" 1 ""
@@ -62,6 +64,8 @@ lesen "Halbgeviertstriche statt Bindestriche" 0 "$(printf '%s\n' "$ECHT" | sed '
 lesen "Gedankenstrich im Rumpf" 1 "$(printf '%s\n' "$ECHT" | sed '3s/^./—/')"
 lesen "base64 von Unsinn" 1 "$(printf 'hallo welt' | base64 -w0)"
 lesen "base64 abgeschnitten" 1 "$(base64 -w0 "$T/echt" | cut -c1-200)"
+lesen "Rumpf ohne erste Zeile" 1 "$(printf '%s\n' "$ECHT" | sed '1,2d;$d')"
+lesen "Rumpf ohne letzte Zeile" 1 "$(printf '%s\n' "$ECHT" | sed '1d' | head -n -2)"
 lesen "base64 mit Fremdzeichen" 1 "$(base64 -w0 "$T/echt" | sed 's/^/;id;/')"
 
 # Ein richtig eingefuegter Schluessel bleibt byte-gleich.
@@ -72,5 +76,5 @@ cmp -s "$T/ziel" "$T/echt" || { echo "FEHLER: richtiger Schluessel wird veraende
 aus="$(KEY="$(printf '%s' "$ECHT" | tr '\n' ' ')" bash -c "$REPARATUR > /dev/null" 2>&1)"
 [ -z "$aus" ] || { echo "FEHLER: Reparatur schreibt auf stdout/stderr"; fehler=1; }
 
-if [ "$fehler" = 0 ]; then echo "ssh-schluessel-reparatur: 11 Schreibweisen lesbar, 9 Faelle bleiben unlesbar, richtiger Schluessel unveraendert"; fi
+if [ "$fehler" = 0 ]; then echo "ssh-schluessel-reparatur: 13 Schreibweisen lesbar, 11 Faelle bleiben unlesbar, richtiger Schluessel unveraendert"; fi
 exit "$fehler"
