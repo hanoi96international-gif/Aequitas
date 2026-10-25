@@ -33,7 +33,7 @@ jobs:
         run: |
           set -eu
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
-          printf '%s\n' "$KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          printf '%s' "$KEY" | perl -0777 -pe 's/\r//g; s/\s*(-----BEGIN OPENSSH PRIVATE KEY-----)\s*(.*?)\s*(-----END OPENSSH PRIVATE KEY-----)\s*/my ($k, $b, $f) = ($1, $2, $3); $b =~ s|\s||g; $b =~ s|(.{70})|$1\n|g; $b =~ s|\n\z||; "$k\n$b\n$f\n"/se' > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -t ed25519 $C1 2>/dev/null > ~/.ssh/kh1
           ssh-keygen -lf ~/.ssh/kh1 | awk '{print $2}' | grep -qx 'SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA' || { echo "::error::Host-Schluessel von C1 passt nicht"; exit 1; }
           cat ~/.ssh/kh1 >> ~/.ssh/known_hosts

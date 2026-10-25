@@ -76,10 +76,12 @@ jobs:
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           [ -n "$KEY" ] || { echo "::error title=CONTABO_SSH_KEY fehlt::Weder in der Umgebung produktion noch als Repository-Secret gibt es CONTABO_SSH_KEY. Fuer eintragen: aequitas-proof-server, c1-root-schluessel.yml."; exit 1; }
           # Genau so, wie die anderen Server-Workflows den Schluessel lesen --
-          # ohne Nachbearbeitung. Was hier nicht lesbar ist, ist es dort auch nicht.
-          printf '%s\n' "$KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          # mit derselben Reparatur verlorener Zeilenumbrueche
+          # (scripts/lint_ssh_schluessel.py). Was hier nicht lesbar ist, ist es
+          # dort auch nicht.
+          printf '%s' "$KEY" | perl -0777 -pe 's/\r//g; s/\s*(-----BEGIN OPENSSH PRIVATE KEY-----)\s*(.*?)\s*(-----END OPENSSH PRIVATE KEY-----)\s*/my ($k, $b, $f) = ($1, $2, $3); $b =~ s|\s||g; $b =~ s|(.{70})|$1\n|g; $b =~ s|\n\z||; "$k\n$b\n$f\n"/se' > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
           if ! ICH="$(ssh-keygen -y -f ~/.ssh/id_ed25519 2>/dev/null | ssh-keygen -lf - | awk '{print $2}')" || [ -z "$ICH" ]; then
-            echo "::error title=CONTABO_SSH_KEY unlesbar::So, wie die Server-Workflows ihn lesen, ist der Schluessel kaputt -- beim Einfuegen gingen vermutlich Zeilenumbrueche verloren. Neu einfuegen, alle Zeilen von -----BEGIN bis -----END (docs/SERVER_FREIGABE.md)."
+            echo "::error title=CONTABO_SSH_KEY unlesbar::Auch nach der Reparatur verlorener Zeilenumbrueche ist der Schluessel nicht lesbar -- unvollstaendig eingefuegt? Neu einfuegen, alles von -----BEGIN bis -----END (docs/SERVER_FREIGABE.md)."
             rm -f ~/.ssh/id_ed25519; exit 1
           fi
           NEU="$(ssh-keygen -lf deploy/c1-root/c1_root_ed25519.pub | awk '{print $2}')"

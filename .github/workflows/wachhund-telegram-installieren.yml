@@ -108,7 +108,7 @@ jobs:
         run: |
           set -eu
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
-          printf '%s\n' "$KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          printf '%s' "$KEY" | perl -0777 -pe 's/\r//g; s/\s*(-----BEGIN OPENSSH PRIVATE KEY-----)\s*(.*?)\s*(-----END OPENSSH PRIVATE KEY-----)\s*/my ($k, $b, $f) = ($1, $2, $3); $b =~ s|\s||g; $b =~ s|(.{70})|$1\n|g; $b =~ s|\n\z||; "$k\n$b\n$f\n"/se' > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
           # Wie backup-ledger.yml (F1, #382): nur ed25519, genau eine Zeile --
           # sonst landen ungepruefte Schluessel anderer Typen in known_hosts.
           ssh-keyscan -t ed25519 "$HOST" 2>/dev/null | { grep -v '^#' || true; } > ~/.ssh/kh_all

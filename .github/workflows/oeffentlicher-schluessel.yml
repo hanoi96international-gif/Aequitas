@@ -20,7 +20,7 @@ jobs:
         run: |
           set -eu
           umask 077
-          printf '%s\n' "$KEY" > k
+          printf '%s' "$KEY" | perl -0777 -pe 's/\r//g; s/\s*(-----BEGIN OPENSSH PRIVATE KEY-----)\s*(.*?)\s*(-----END OPENSSH PRIVATE KEY-----)\s*/my ($k, $b, $f) = ($1, $2, $3); $b =~ s|\s||g; $b =~ s|(.{70})|$1\n|g; $b =~ s|\n\z||; "$k\n$b\n$f\n"/se' > k
           echo "----- OEFFENTLICHER SCHLUESSEL (fuer netcup) -----"
           ssh-keygen -y -f k
           echo "----- ENDE -----"

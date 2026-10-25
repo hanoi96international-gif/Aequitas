@@ -134,8 +134,11 @@ mit Freigabe.
    Repository-Secret hier war am 25.10. schon gelöscht; der Schritt lief deshalb
    in **aequitas-proof-server** (`c1-root-schluessel.yml`, `schritt=eintragen`),
    wo der alte Schlüssel noch lag -- gleiche Befehle, gleicher neuer Schlüssel.
-2. Den neuen Schlüssel hinterlegen -- **alle Zeilen** von `-----BEGIN` bis
-   `-----END`, die Server-Workflows lesen ihn ohne Nachbearbeitung:
+2. Den neuen Schlüssel hinterlegen -- alles von `-----BEGIN` bis `-----END`.
+   Gehen beim Einfügen am Handy die Zeilenumbrüche verloren, setzen die
+   Server-Workflows sie wieder (seit 25.10.2026, `scripts/lint_ssh_schluessel.py`,
+   getestet in `scripts/test_ssh_schluessel_reparatur.sh`); ein abgeschnittener
+   Schlüssel bleibt unlesbar.
    - Aequitas (öffentlich): Settings → Environments → `produktion` → Secret
      `CONTABO_SSH_KEY`. Ein Umgebungs-Secret hat Vorrang vor dem gleichnamigen
      Repository-Secret.
