@@ -28,7 +28,7 @@ def reparatur(var):
 
 
 # Variablen, die ein SSH-Schluessel-Secret tragen (Workflow-env).
-TRAEGER = re.compile(r"^\s*(\w+):\s*\$\{\{\s*secrets(?:\.(\w*SSH_KEY)|\[matrix\.key\])\s*\}\}", re.M)
+TRAEGER = re.compile(r"^\s*(\w+):\s*\$\{\{\s*secrets(?:\.(\w*SSH_KEY)|\[matrix\.\w+\])\s*\}\}", re.M)
 # Schreiben einer Variablen in eine Datei.
 SCHREIBEN = re.compile(r"printf\s+'%s(?:\\n)?'\s+\"\$\{?(\w+)\}?\"(.*?)>\s*(\S+)")
 
@@ -60,6 +60,7 @@ def selbsttest():
         (env + gut, 0),
         # Matrix-Secret
         ("          KEY: ${{ secrets[matrix.key] }}\n" + roh, 1),
+        ("          KEY: ${{ secrets[matrix.secret] }}\n" + roh, 1),
         # Anderer Variablenname
         ("          K1: ${{ secrets.BOX_SSH_KEY }}\n          printf '%s\\n' \"$K1\" > ~/.ssh/c1\n", 1),
         # Kein Schluessel-Secret: kein Befund
