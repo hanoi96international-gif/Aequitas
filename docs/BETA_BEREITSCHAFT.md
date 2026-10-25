@@ -63,6 +63,13 @@ Tests entfernt (Aequitas #419–#422, biometric #87, proof-server #24);
     werden von keinem Workflow mehr gelesen).
 11. **Caddy-Log-Rotation**: `neuer-server-caddy.yml` mit `neu_anlegen`
     starten und freigeben (kurze HTTPS-Unterbrechung, Zertifikate bleiben).
+12. **Überwachung von außen** (Minuten statt Stunden): GitHub führt
+    `wache.yml` statt alle 10 Minuten nur alle 2–5 Stunden aus (25.10.: zuletzt
+    09:54 UTC). Bei UptimeRobot (kostenlos) zwei HTTP(S)-Monitore mit 5 min
+    Abstand und E-Mail-Alarm anlegen:
+    `https://aequitas.digital/api/wache` (200 = alles da, 503 = der Rumpf
+    nennt, was fehlt) und `https://proof1.aequitas.digital/health`. Kein
+    Geheimnis nötig, beide Adressen sind öffentlich.
 
 Ein zweiter Validator ist für die Beta nicht nötig, für den Launch schon
 (Punkt 3.6). Bis dahin trägt C1 allein: Snapshot und Autoheal vertrauen C1,
@@ -153,7 +160,7 @@ Reihenfolge, in der sie gemacht werden sollten.
 8. **FromSync-Stichtag** (`fromSyncStrengAbUnix`): gesetzt auf 18.10.2026 00:00 UTC (vorgezogen) (17.10.2026, auf deine Anweisung). Für dich bleibt: in der ersten Stunde nach `Ab` die Logs von C1 auf `[FINALITY] ✗` / `[SLASHING] ✗` ansehen, jeden neuen Validator vor dem Start mit diesem Code betreiben (spätestens 17.10.2026 23:58 UTC), und C1 keinen Seed eintragen, ohne vorher Finalität und StateRoot des Seeds zu vergleichen (sonst kann das Sync-Tor C1 nach einem Neustart anhalten, F4). Rücknahme nur über `fromSyncStrengBisUnix`: `docs/FROMSYNC_STICHTAG.md`.
 9. **Checkpoint-Stichtag** (`checkpointTxAbUnix`): erst mit vier oder mehr Validatoren, nach dem Abschnitt „Einschalten“ in `CHECKPOINT_FAHRPLAN.md`.
 10. **Chain-ID-Wechsel** (entschieden: neue Chain-ID 19260930):
-   - ID in ethereum-lists/chains eintragen: Die Datei liegt fertig unter `deploy/ethereum-lists/eip155-19260930.json` (Name, RPC `https://aequitas.digital/rpc`, AEQ mit 18 Stellen). Als PR an `ethereum-lists/chains` unter `_data/chains/` einreichen, sobald der Stichtag feststeht -- deren Prüfung erwartet, dass der RPC die ID schon meldet. Am 16.10.2026 war 19260930 frei; vorher erneut prüfen.
+   - ID in ethereum-lists/chains eintragen: Die Datei liegt fertig unter `deploy/ethereum-lists/eip155-19260930.json` (Name, RPC `https://aequitas.digital/rpc`, AEQ mit 18 Stellen). Als PR an `ethereum-lists/chains` unter `_data/chains/` einreichen; Schritte, Titel und Text: `docs/ETHEREUM_LISTS_PR.md`. Am 16.10.2026 war 19260930 frei; vorher erneut prüfen.
    - Stichtag gesetzt (17.10.2026): **18.10.2026, 00:00 UTC** (vorgezogen, ohne 7-Tage-Vorlauf), App 1.11.0 dazu veröffentlicht, Hinweis auf der Startseite. Für dich bleibt: den Wechsel zusätzlich in deinen Kanälen ankündigen (MetaMask-Nutzer legen das Netz neu an), nach dem Stichtag den ethereum-lists-Eintrag einreichen.
    - Den Ablauf beschreibt `docs/CHAIN_ID_WECHSEL.md`.
 11. **Sybil über das Gerätegeheimnis** (`ALLOW_DEVICE_SECRET_REGISTER`): **im Code geschlossen, keine Entscheidung mehr nötig** (geprüft 20.10.2026). Eine Registrierung ohne Gesicht kommt nicht mehr auf die Kette, auch wenn eine App mit dem Schalter gebaut ist:
