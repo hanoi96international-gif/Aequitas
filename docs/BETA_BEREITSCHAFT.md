@@ -36,8 +36,10 @@ Tests entfernt (Aequitas #419–#422, biometric #87, proof-server #24);
    `/datenschutz` antworten 404, alle sieben `LEGAL_*` fehlen.
    `rechtstexte-setzen.yml` mit den sieben Angaben starten (erlaubte
    Zeichen: Buchstaben, Ziffern, Leerzeichen, `. , - / @ + & ( ) : _`).
-2. **C1 im Validator-Register binden** (3.6a): Erzeuger
-   `0x3066639af1653325100c1074a9696612dbdc42dc` hat keine Bindung.
+2. **C1 im Validator-Register auf der Kette eintragen** (3.6a): Erzeuger
+   `0x3066639af1653325100c1074a9696612dbdc42dc` steht noch nicht im Register
+   (beim Knoten gebunden seit 21.10.). Ab App 1.13.0: `knoten-binden.yml`
+   starten, in der App einmal bestätigen.
 3. **Umgebung `produktion` scharf machen** (3.1).
 4. **Sicherung ohne Klick einrichten** (3.5): `SICHERUNG_SSH_KEY` in der neuen
    Umgebung `sicherung` anlegen, dann `sicherung-einrichten.yml` mit dem
@@ -135,7 +137,7 @@ Reihenfolge, in der sie gemacht werden sollten.
 3. **Vor dem nächsten Vergleichsdienst-Deploy:** Der Workflow prüft jetzt selbst, ob der Coordinator-Schlüssel in `COORDINATOR_PUBLIC_KEYS` steht, und bricht sonst ab. Fehlt er, den Schlüssel in `vergleichsdienst-neuer-c1.yml` eintragen.
 4. **Externe Überwachung:** Es gibt sie: `wache.yml` prüft von GitHub aus Höhe, Gleichstand, Proof-Server, Vergleichsdienst, Coordinator-Quorum und Backup-Alter und schickt bei Rot eine E-Mail; der `wachhund` auf der Box meldet alle 5 min über Telegram/ntfy. Lücke: GitHub führt den 10-min-Zeitplan nur etwa alle 4 h aus. Für Minuten-Alarm einen externen Uptime-Dienst auf `https://aequitas.digital/api/wache` setzen (antwortet bei Rot mit 503).
 5. **Sicherung außerhalb der Box:** Die Biometrie- und Proof-Datenbanken liegen nur auf C1. Täglich verschlüsselt auf einen zweiten Ort sichern und das Zurückspielen einmal üben (DR-Runbook). Workflow und Skript sind gemergt (#382); offen sind der öffentliche age-Schlüssel (seit 24.10.2026 über `sicherung-einrichten.yml` fest auf C1, nicht mehr als Secret) und die Übung (`docs/BIOMETRIE_SICHERUNG.md`). Bis er hinterlegt ist, gibt es **keine** Sicherung der Biometrie außer Haus.
-6a. **C1 im Validator-Register binden** (seit dem Stichtag 18.10.2026 12:00 UTC möglich, einmal): `http://188.172.229.121:8080/node-binding` öffnen und mit der Wallet unterschreiben, die als `NODE_OPERATOR_WALLET` auf C1 steht (in der App: Tab „Knoten“ → „Knoten binden“). Ohne Bindung schlösse der spätere Erzeugerschnitt C1 aus, und ein zweiter Validator kann sich nur neben einem gebundenen C1 sauber einreihen. Die Wache zeigt seit 20.10.2026, ob noch ein Erzeuger ohne Bindung ist (Hinweis „Erzeuger OHNE Bindung“, `erzeuger_ohne_bindung` in `/api/status`).
+6a. **C1 im Validator-Register binden** (seit dem Stichtag 18.10.2026 12:00 UTC möglich, einmal): Die Bindung **beim Knoten** ist seit dem 21.10.2026 erledigt (App, `knoten-binden.yml`, Lauf 39659933383). Der Eintrag **auf der Kette** fehlt noch: Die App konnte ihn bis 1.12.9 nicht machen, nur die Browserseite `/node-binding`. Ab App 1.13.0 genügt `knoten-binden.yml` starten und in der App unter „Knoten“ einmal bestätigen; die Wallet fragt dann zweimal. Ohne Bindung schlösse der spätere Erzeugerschnitt C1 aus, und ein zweiter Validator kann sich nur neben einem gebundenen C1 sauber einreihen. Die Wache zeigt seit 20.10.2026, ob noch ein Erzeuger ohne Bindung ist (Hinweis „Erzeuger OHNE Bindung“, `erzeuger_ohne_bindung` in `/api/status`).
 6. **Mehr Validatoren** (`docs/VALIDATOREN_HINZUFUEGEN.md`):
    - Server und Betreiber kommen von dir.
    - Erst ab drei Validatoren wählt die Leitung bei Ausfall selbst einen neuen Leiter.

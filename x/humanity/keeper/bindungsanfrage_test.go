@@ -195,3 +195,114 @@ func TestBindungsanfrage_FlutVonEinerIPVerdraengtNicht(t *testing.T) {
 		t.Fatalf("echte Anfrage verdraengt oder Flut nicht zusammengefasst: %+v", o)
 	}
 }
+
+func (wl anfrageWelt) anfrageKette(t *testing.T, ip string, knoten *ecdsa.PrivateKey, zeit int64, ketteSig string) (int, string) {
+	t.Helper()
+	body, _ := json.Marshal(map[string]interface{}{
+		"signing_address":         adrVon(knoten),
+		"wallet":                  wl.wallet,
+		"beweis":                  personalSign(t, knoten, "Aequitas: validator key linked to human "+wl.wallet),
+		"bindung_zeit":            zeit,
+		"bindung_signatur_knoten": ketteSig,
+	})
+	r := httptest.NewRequest("POST", "/api/bindungsanfrage", bytes.NewReader(body))
+	r.RemoteAddr = ip + ":1234"
+	w := httptest.NewRecorder()
+	wl.a.handleBindungsanfrage(w, r)
+	return w.Code, w.Body.String()
+}
+
+// Gutfall: der Knoten meldet seinen Kettennachweis mit; die App bekommt
+// Zeitpunkt und Unterschrift unveraendert und kann die Kettenbindung mit
+// derselben Bestaetigung einreichen. Ein neuer Nachweis ersetzt den alten.
+func TestBindungsanfrage_KettennachweisGutfall(t *testing.T) {
+	validatorRegisterOverride.Store(1)
+	t.Cleanup(func() { validatorRegisterOverride.Store(0) })
+	wl := neueAnfrageWelt(t)
+	k, _ := crypto.GenerateKey()
+	jetzt := nowUnix()
+	sig := personalSign(t, k, validatorBindungNachricht(adrVon(k), wl.wallet, jetzt))
+	if c, b := wl.anfrageKette(t, "203.0.113.20", k, jetzt, sig); c != 200 {
+		t.Fatalf("Status %d: %s", c, b)
+	}
+	o := wl.offen(t)
+	if len(o) != 1 || o[0].KetteZeit != jetzt || o[0].KetteSig != sig {
+		t.Fatalf("offen: %+v", o)
+	}
+	// Erneuert (einrichten.sh meldet alle 3 Minuten neu): nur der neue bleibt.
+	neu := jetzt + 1
+	sig2 := personalSign(t, k, validatorBindungNachricht(adrVon(k), wl.wallet, neu))
+	if c, b := wl.anfrageKette(t, "203.0.113.20", k, neu, sig2); c != 200 {
+		t.Fatalf("Status %d: %s", c, b)
+	}
+	o2 := wl.offen(t)
+	if len(o2) != 1 || o2[0].KetteZeit != neu || o2[0].KetteSig != sig2 {
+		t.Fatalf("nach Erneuern: %+v", o2)
+	}
+	// Die Unterschrift des Knotens taugt fuer die Annahme: genau der Satz,
+	// den validator_bindung prueft.
+	if err := verifyPersonalSign(validatorBindungNachricht(adrVon(k), wl.wallet, neu), o2[0].KetteSig, adrVon(k)); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Missbrauch: ein Kettennachweis, der nicht genau zu dieser Signieradresse,
+// dieser Wallet und jetzt passt, weist die ganze Anfrage ab -- nichts wird
+// angezeigt, was die App spaeter unterschreiben koennte.
+func TestBindungsanfrage_KettennachweisMissbrauch(t *testing.T) {
+	validatorRegisterOverride.Store(1)
+	t.Cleanup(func() { validatorRegisterOverride.Store(0) })
+	wl := neueAnfrageWelt(t)
+	k, _ := crypto.GenerateKey()
+	fremd, _ := crypto.GenerateKey()
+	jetzt := nowUnix()
+	adr := adrVon(k)
+	gross := "0x" + strings.ToUpper(personalSign(t, k, validatorBindungNachricht(adr, wl.wallet, jetzt))[2:])
+	faelle := []struct {
+		name string
+		zeit int64
+		sig  string
+	}{
+		{"fremder Schluessel", jetzt, personalSign(t, fremd, validatorBindungNachricht(adr, wl.wallet, jetzt))},
+		{"andere Wallet im Satz", jetzt, personalSign(t, k, validatorBindungNachricht(adr, "0x0000000000000000000000000000000000000001", jetzt))},
+		{"andere Signieradresse im Satz", jetzt, personalSign(t, k, validatorBindungNachricht(adrVon(fremd), wl.wallet, jetzt))},
+		{"Zeitpunkt passt nicht zum Satz", jetzt, personalSign(t, k, validatorBindungNachricht(adr, wl.wallet, jetzt-5))},
+		{"zu alt (wiederholt)", jetzt - 3600, personalSign(t, k, validatorBindungNachricht(adr, wl.wallet, jetzt-3600))},
+		{"knapp zu alt", jetzt - bindungsAnfrageKetteHoechstensAlt - 5, personalSign(t, k, validatorBindungNachricht(adr, wl.wallet, jetzt-bindungsAnfrageKetteHoechstensAlt-5))},
+		{"zu weit voraus", jetzt + nachweisHoechstensVoraus + 60, personalSign(t, k, validatorBindungNachricht(adr, wl.wallet, jetzt+nachweisHoechstensVoraus+60))},
+		{"nur Zeit", jetzt, ""},
+		{"nur Unterschrift", 0, personalSign(t, k, validatorBindungNachricht(adr, wl.wallet, jetzt))},
+		{"nicht kanonisch (Grossbuchstaben)", jetzt, gross},
+		{"Unsinn", jetzt, "0x1234"},
+	}
+	for i, f := range faelle {
+		ip := fmt.Sprintf("198.51.100.%d", 50+i)
+		if c, b := wl.anfrageKette(t, ip, k, f.zeit, f.sig); c != http.StatusBadRequest {
+			t.Errorf("%s: Status %d (%s)", f.name, c, b)
+		}
+	}
+	if o := wl.offen(t); len(o) != 0 {
+		t.Fatalf("abgewiesene Anfragen sind offen: %+v", o)
+	}
+	// Vor dem Stichtag des Registers: abgewiesen, nicht still ohne Kette.
+	validatorRegisterOverride.Store(jetzt + 86400)
+	if c, _ := wl.anfrageKette(t, "198.51.100.99", k, jetzt, personalSign(t, k, validatorBindungNachricht(adr, wl.wallet, jetzt))); c != http.StatusBadRequest {
+		t.Fatalf("Register schlaeft: Status %d", c)
+	}
+	// Ohne Kettennachweis geht die Anfrage wie bisher.
+	if c := wl.anfrage(t, "198.51.100.98", k, wl.wallet, personalSign(t, k, "Aequitas: validator key linked to human "+wl.wallet)); c != 200 {
+		t.Fatalf("ohne Kette: Status %d", c)
+	}
+}
+
+// Der Satz der Kettenbindung ist byte-gleich mit dem, den die App selbst baut
+// (Aequitas-App, lib/knotenBindung.ts, kettenbindungsNachricht; derselbe
+// feste Wert steht dort im Test). Weicht einer ab, lehnt die Kette jede
+// Bindung aus der App ab.
+func TestKettenbindungsNachricht_GleichMitApp(t *testing.T) {
+	got := validatorBindungNachricht("0xABCDEF0000000000000000000000000000000001", "0x00000000000000000000000000000000000000Aa", 1792900000)
+	want := "Aequitas: bind validator 0xabcdef0000000000000000000000000000000001 to operator 0x00000000000000000000000000000000000000aa chain:1926 ts:1792900000"
+	if got != want {
+		t.Fatalf("\n got %q\nwant %q", got, want)
+	}
+}
