@@ -17,6 +17,10 @@ Push-Deploy deploy-c1.yml fragte bei schweigendem C1 die C2-IP nach
 der Genesis -- ein Fremder mit den oeffentlichen Werten haette die Sperre
 geoeffnet. Ersetzt durch alter-c2-abgeschaltet.invalid.
 
+Railway (*.up.railway.app) ist seit dem 14.09.2026 weg ("Application not
+found"). Solche Namen vergibt Railway an jeden neuen Dienst, der sie
+beansprucht -- eine Abfrage dorthin bekaeme die Antwort eines Fremden.
+
 Dieser Waechter haelt es so. Kommentare duerfen die Adresse nennen
 (Geschichte), ausfuehrbare Zeilen nicht.
 """
@@ -26,6 +30,7 @@ import sys
 ABGESCHALTET = {
     "173.249.37.118": "alter Contabo1, abgeschaltet seit 24.09.2026 (neuer C1: 188.172.229.121)",
     "194.163.188.71": "Contabo2, abgeschaltet seit 03.10.2026, IP neu vergeben (fremder Host-Schluessel)",
+    ".up.railway.app": "Railway, seit 14.09.2026 weg -- der Name kann neu vergeben sein",
 }
 
 fehler = []
