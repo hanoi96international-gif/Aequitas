@@ -4,8 +4,9 @@ name: C1 Root-Schluessel tauschen
 # oeffentlichen Repo: jeder Workflow, auch auf einem Nebenzweig, kam daran --
 # die Freigabe in `produktion` schuetzte ihn nicht. Den Wert kennt niemand
 # mehr, also kann er nicht verschoben werden. Stattdessen ein neuer Schluessel,
-# nur als Secret der Umgebung `produktion` (in Aequitas, aequitas-proof-server
-# und aequitas-biometric-beta), und danach der alte weg von C1.
+# hier nur als Secret der Umgebung `produktion` (in den privaten Repos
+# aequitas-proof-server und aequitas-biometric-beta als Repository-Secret),
+# und danach der alte weg von C1.
 #
 # DREI SCHRITTE, JEDER EIN EIGENER LAUF MIT FREIGABE. Niemand wird
 # ausgesperrt: der alte Schluessel geht erst, wenn ein Lauf nachweislich mit
@@ -14,6 +15,9 @@ name: C1 Root-Schluessel tauschen
 #   eintragen        mit dem ALTEN Schluessel (noch Repository-Secret): den
 #                    neuen (deploy/c1-root/c1_root_ed25519.pub) zusaetzlich
 #                    eintragen, den Fingerabdruck des alten auf C1 merken.
+#                    Seit das Repository-Secret hier fehlt, laeuft dieser
+#                    Schritt in aequitas-proof-server (c1-root-schluessel.yml,
+#                    gleiche Befehle, gleicher neuer Schluessel).
 #   pruefen          mit dem NEUEN Schluessel (Umgebungs-Secret in
 #                    produktion, es hat Vorrang vor dem Repository-Secret):
 #                    lesbar genau so, wie die Server-Workflows ihn lesen
@@ -34,7 +38,7 @@ on:
         type: choice
         options: [eintragen, pruefen, alten-entfernen]
       andere_repos_umgestellt:
-        description: "Nur fuer alten-entfernen: CONTABO_SSH_KEY in proof-server und biometric (Umgebung produktion) ist der neue"
+        description: "Nur fuer alten-entfernen: CONTABO_SSH_KEY in proof-server und biometric ist der neue (proof-server: c1-root-schluessel.yml pruefen gruen)"
         required: true
         type: choice
         default: nein
@@ -70,6 +74,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          [ -n "$KEY" ] || { echo "::error title=CONTABO_SSH_KEY fehlt::Weder in der Umgebung produktion noch als Repository-Secret gibt es CONTABO_SSH_KEY. Fuer eintragen: aequitas-proof-server, c1-root-schluessel.yml."; exit 1; }
           # Genau so, wie die anderen Server-Workflows den Schluessel lesen --
           # ohne Nachbearbeitung. Was hier nicht lesbar ist, ist es dort auch nicht.
           printf '%s\n' "$KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
@@ -139,7 +144,7 @@ jobs:
                 exit 1
               fi
               if [ "$ANDERE" != "ja" ]; then
-                echo "::error title=Andere Repos zuerst::aequitas-proof-server und aequitas-biometric-beta melden sich mit CONTABO_SSH_KEY an. Erst dort den neuen in produktion anlegen, dann mit andere_repos_umgestellt=ja starten."
+                echo "::error title=Andere Repos zuerst::aequitas-proof-server und aequitas-biometric-beta melden sich mit CONTABO_SSH_KEY an. Erst dort das Repository-Secret durch den neuen ersetzen (proof-server: c1-root-schluessel.yml pruefen gruen), dann mit andere_repos_umgestellt=ja starten."
                 exit 1
               fi
               {
@@ -168,7 +173,7 @@ jobs:
           ssh-keygen -lf "$AK" | awk '{print "  " $2, $3}'
           SKRIPT
               } | ssh -o BatchMode=yes -o IdentitiesOnly=yes root@$C1 'bash -s'
-              echo "Weiter: Repository-Secret CONTABO_SSH_KEY in allen drei Repos loeschen."
+              echo "Weiter: ein Repository-Secret CONTABO_SSH_KEY in Aequitas, falls noch da, loeschen."
               ;;
             *) echo "::error::Unbekannter Schritt"; exit 1 ;;
           esac
