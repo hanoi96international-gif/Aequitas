@@ -51,7 +51,10 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          sparse-checkout: deploy/backup-biometrie.sh
+          sparse-checkout: |
+            deploy/backup-biometrie.sh
+            deploy/sicherung/schluessel-lesen.sh
+            deploy/sicherung/sicherung_ed25519.pub
           sparse-checkout-cone-mode: false
 
       - name: Schluessel und Host-Pruefung
@@ -61,9 +64,10 @@ jobs:
           FP: "SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA"
         run: |
           set -eu
-          [ -n "${KEY:-}" ] || { echo "::error title=SICHERUNG_SSH_KEY fehlt::Secret SICHERUNG_SSH_KEY in der Umgebung sicherung anlegen (docs/SERVER_FREIGABE.md, Abschnitt Sicherung)."; exit 1; }
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
-          printf '%s\n' "$KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          # Liest den Schluessel auch ohne Zeilenumbrueche oder als eine
+          # base64-Zeile und prueft ihn gegen den oeffentlichen im Repo.
+          bash deploy/sicherung/schluessel-lesen.sh ~/.ssh/id_ed25519 deploy/sicherung/sicherung_ed25519.pub
           # Nur ed25519 und genau eine Zeile (Pruefung von #382, F1): sonst
           # reicht ein gefaelschter ecdsa-/rsa-Schluessel neben dem echten.
           ssh-keyscan -t ed25519 "$HOST" 2>/dev/null | { grep -v '^#' || true; } > ~/.ssh/kh_all
@@ -98,7 +102,9 @@ jobs:
         timeout-minutes: 5
         run: |
           set -euo pipefail
-          ssh -o BatchMode=yes -o IdentitiesOnly=yes root@188.172.229.121 bio-datei > bio-c1.tar.age
+          trap 'rm -f bio-c1.tar.age.tmp' EXIT
+          ssh -o BatchMode=yes -o IdentitiesOnly=yes root@188.172.229.121 bio-datei > bio-c1.tar.age.tmp
+          mv bio-c1.tar.age.tmp bio-c1.tar.age
           ssh -o BatchMode=yes -o IdentitiesOnly=yes root@188.172.229.121 bio-zusammenfassung > bio-c1.summary
           # Nie etwas anderes als age-Chiffrat hochladen.
           [ "$(head -c 21 bio-c1.tar.age)" = "age-encryption.org/v1" ] || { echo "::error::Abgeholte Datei ist keine age-Datei -- nichts hochgeladen."; rm -f bio-c1.tar.age; exit 1; }

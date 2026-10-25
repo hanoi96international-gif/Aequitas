@@ -129,7 +129,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: steps.gate.outputs.run == 'true'
         with:
-          sparse-checkout: deploy/backup-ledger.sh
+          sparse-checkout: |
+            deploy/backup-ledger.sh
+            deploy/sicherung/schluessel-lesen.sh
+            deploy/sicherung/sicherung_ed25519.pub
           sparse-checkout-cone-mode: false
 
       - name: Schluessel und Host-Pruefung
@@ -140,9 +143,10 @@ jobs:
           FP: ${{ matrix.fingerprint }}
         run: |
           set -eu
-          [ -n "${KEY:-}" ] || { echo "::error title=SICHERUNG_SSH_KEY fehlt::Secret SICHERUNG_SSH_KEY in der Umgebung sicherung anlegen (docs/SERVER_FREIGABE.md, Abschnitt Sicherung)."; exit 1; }
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
-          printf '%s\n' "$KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          # Liest den Schluessel auch ohne Zeilenumbrueche oder als eine
+          # base64-Zeile und prueft ihn gegen den oeffentlichen im Repo.
+          bash deploy/sicherung/schluessel-lesen.sh ~/.ssh/id_ed25519 deploy/sicherung/sicherung_ed25519.pub
           # Nur ed25519 und genau eine Zeile (Pruefung von #382, F1): sonst
           # reicht ein gefaelschter ecdsa-/rsa-Schluessel neben dem echten.
           ssh-keyscan -t ed25519 "$HOST" 2>/dev/null | { grep -v '^#' || true; } > ~/.ssh/kh_all
@@ -181,8 +185,12 @@ jobs:
         timeout-minutes: 5
         run: |
           set -euo pipefail
-          ssh -o BatchMode=yes -o IdentitiesOnly=yes root@${{ matrix.host }} ledger-datei > ${{ matrix.box }}-ledger.dump
-          [ "$(head -c 5 ${{ matrix.box }}-ledger.dump)" = "PGDMP" ] || { echo "::error::Abgeholte Datei ist kein pg_dump -- nichts hochgeladen."; rm -f ${{ matrix.box }}-ledger.dump; exit 1; }
+          # Erst in eine Zwischendatei; hochgeladen wird nur ein echter pg_dump
+          # (am 25.10.2026 lud ein gescheitertes Abholen eine leere Datei hoch).
+          trap 'rm -f ${{ matrix.box }}-ledger.dump.tmp' EXIT
+          ssh -o BatchMode=yes -o IdentitiesOnly=yes root@${{ matrix.host }} ledger-datei > ${{ matrix.box }}-ledger.dump.tmp
+          [ "$(head -c 5 ${{ matrix.box }}-ledger.dump.tmp)" = "PGDMP" ] || { echo "::error::Abgeholte Datei ist kein pg_dump -- nichts hochgeladen."; exit 1; }
+          mv ${{ matrix.box }}-ledger.dump.tmp ${{ matrix.box }}-ledger.dump
 
       - name: Fetch backup summary
         if: success() && steps.gate.outputs.run == 'true'
