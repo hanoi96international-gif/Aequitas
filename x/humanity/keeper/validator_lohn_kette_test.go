@@ -1,6 +1,9 @@
 package keeper
 
-import "testing"
+import (
+	"math"
+	"testing"
+)
 
 // Das Fenster: die 24 Stunden bis 15 Minuten vor der Runde -- mit festen
 // Zahlen, nicht aus denselben Konstanten nachgerechnet.
@@ -14,7 +17,7 @@ func TestValidatorLohnAusKette_Fenster(t *testing.T) {
 // Umgeschaltet wird erst, wenn das ganze Fenster nach erzeugerSchnittAb
 // liegt (Rueck-Toleranz der Blockzeit eingerechnet); nie ohne Rundenzeit.
 func TestValidatorLohnAusKette_Schalter(t *testing.T) {
-	t.Cleanup(func() { erzeugerSchnittOverride.Store(0) })
+	t.Cleanup(func() { erzeugerSchnittOverride.Store(math.MaxInt64) })
 	const ab = int64(10_000_000)
 	erzeugerSchnittOverride.Store(ab)
 	grenze := ab + 86400 + 900 - zeitstempelRueckToleranz
@@ -27,7 +30,7 @@ func TestValidatorLohnAusKette_Schalter(t *testing.T) {
 	if validatorLohnAusKette(0) {
 		t.Fatal("ohne Rundenzeit umgeschaltet")
 	}
-	erzeugerSchnittOverride.Store(0) // Platzhalter
+	erzeugerSchnittOverride.Store(math.MaxInt64) // Platzhalter
 	if validatorLohnAusKette(nowUnix()) {
 		t.Fatal("vor dem Stichtag (Platzhalter) umgeschaltet")
 	}

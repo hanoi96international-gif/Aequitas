@@ -1,6 +1,7 @@
 package keeper
 
 import (
+	"math"
 	"testing"
 )
 
@@ -8,7 +9,7 @@ import (
 // blockTauglich und dem Nachspielen entsprechen -- sonst entstuende ein
 // Block, den jeder abweist, oder einer fehlte.
 func TestStrafeAbrechnung_FensterWieNachspielen(t *testing.T) {
-	t.Cleanup(func() { registerLeserOverride.Store(0) })
+	t.Cleanup(func() { registerLeserOverride.Store(math.MaxInt64) })
 	for _, ab := range []int64{1, 1_000_000, 1_000_000 + 1800, 1_000_000 + 7200} {
 		registerLeserOverride.Store(ab)
 		for _, d := range []int64{1_000_000 - 7200, 1_000_000, 1_000_000 + 3600} {
@@ -33,7 +34,7 @@ func TestStrafeAbrechnung_FensterWieNachspielen(t *testing.T) {
 // Missbrauch: ab dem Stichtag kein Beweis, der mehr als W nach der Tat in
 // einem Block steht; davor wie bisher ohne Grenze.
 func TestStrafeAbrechnung_FrischeNurAbStichtag(t *testing.T) {
-	t.Cleanup(func() { registerLeserOverride.Store(0) })
+	t.Cleanup(func() { registerLeserOverride.Store(math.MaxInt64) })
 	registerLeserOverride.Store(10_000)
 	if err := beweisFrischPruefen(100, 9_999); err != nil {
 		t.Fatalf("vor dem Stichtag begrenzt: %v", err)
@@ -72,7 +73,7 @@ func TestStrafeAbrechnung_FaelligkeitLaesstZeitZumNachspielen(t *testing.T) {
 // slash_abrechnung ist vor registerLeserAb unbekannt -- ein Block damit wird
 // abgewiesen wie mit einer erfundenen Art.
 func TestStrafeAbrechnung_UnbekanntVorDemStichtag(t *testing.T) {
-	t.Cleanup(func() { registerLeserOverride.Store(0) })
+	t.Cleanup(func() { registerLeserOverride.Store(math.MaxInt64) })
 	registerLeserOverride.Store(10_000)
 	if bekannteTxArt("slash_abrechnung", 9_999) {
 		t.Fatal("vor dem Stichtag bekannt")

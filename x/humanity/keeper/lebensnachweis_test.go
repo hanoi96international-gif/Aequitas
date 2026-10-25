@@ -153,7 +153,7 @@ func TestLebensnachweis_Fristen(t *testing.T) {
 	}
 	// Ohne Zulassung der Coordinatoren kann niemand nachweisen -- also wird
 	// niemand pausiert (kein Geld ohne Zeitgrenze zurueckgehalten).
-	registerLeserOverride.Store(0) // Konstante: MaxInt64
+	registerLeserOverride.Store(math.MaxInt64) // Konstante: MaxInt64
 	if lebensnachweisAktiv(pause) || lebensnachweisPausiert(acc, pause+1000*lnTag) {
 		t.Fatal("ohne zugelassene Coordinatoren darf niemand pausiert sein")
 	}
@@ -406,7 +406,7 @@ func TestLebensnachweis_LeerlaufVorAktivierung(t *testing.T) {
 		t.Fatalf("vor dem Stichtag: %v %v am=%d", befund, err, f.am(lnWallet))
 	}
 	lebensnachweisAbOverride.Store(lnStichtag)
-	registerLeserOverride.Store(0) // registerLeserAbUnix = MaxInt64
+	registerLeserOverride.Store(math.MaxInt64) // registerLeserAbUnix = MaxInt64
 	if befund, err := f.anwenden(tx, issued+60); err != nil || len(befund) != 0 || f.am(lnWallet) != 0 {
 		t.Fatalf("ohne Zulassung der Coordinatoren: %v %v am=%d", befund, err, f.am(lnWallet))
 	}
@@ -547,7 +547,7 @@ func TestLebensnachweis_PausierterOhneTagesanteil_AndereBekommenIhn(t *testing.T
 // waere. Die Runde traegt dann keine Rundenzeit (Bloecke wie bisher).
 func TestLebensnachweis_OhneZulassungNiemandPausiert(t *testing.T) {
 	f := neuerLnFall(t)
-	registerLeserOverride.Store(0)
+	registerLeserOverride.Store(math.MaxInt64)
 	lnTopf(f.cs, 400)
 	txs := lnRunde(t, f.cs, lnStichtag+800*lnTag)
 	n := 0
@@ -724,7 +724,7 @@ func TestLebensnachweis_Registrierung(t *testing.T) {
 	}
 	// Stichtag erreicht, aber Coordinatoren noch nicht zugelassen (heute):
 	// nichts -- die Blaetter bleiben bis zur Zulassung, wie sie sind.
-	registerLeserOverride.Store(0) // Konstante: Platzhalter
+	registerLeserOverride.Store(math.MaxInt64) // Konstante: Platzhalter
 	w3 := "0x00000000000000000000000000000000000000c9"
 	ohneZulassung := newTestState()
 	if err := ohneZulassung.RegisterHumanAtomic(w3, Transaction{Type: "register_human", Wallet: w3, RegAt: regAt}); err != nil {

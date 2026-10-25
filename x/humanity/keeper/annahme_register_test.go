@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"errors"
+	"math"
 	"testing"
 	"time"
 )
@@ -14,7 +15,7 @@ import (
 // Messung der Annahme-Pause beginnt darum schon mit diesem Versuch.
 func TestAnnahme_PausiertOhneRegister(t *testing.T) {
 	erzeugerSchnittOverride.Store(1)
-	t.Cleanup(func() { erzeugerSchnittOverride.Store(0) })
+	t.Cleanup(func() { erzeugerSchnittOverride.Store(math.MaxInt64) })
 	dag, cs := newDeterminismTestDAG()
 	self := "0x00000000000000000000000000000000000000c3"
 	dag.selfProposer = self
