@@ -171,16 +171,37 @@ WALLET_ENV="$(grep -E '^NODE_OPERATOR_WALLET=' .env | cut -d= -f2- | tr 'A-F' 'a
 if ! fehlt NODE_OPERATOR_BINDING_SIGNATURE; then
   gruen "Bindung ist schon eingetragen / already bound."
 else
-  P="$(curl -fsS -m 10 "http://127.0.0.1:8080/api/validator-selfproof?wallet=$WALLET_ENV" 2>/dev/null || true)"
-  BEWEIS="$(printf '%s' "$P" | grep -oE '"signing_key_signature": ?"0x[0-9a-f]{130}"' | grep -oE '0x[0-9a-f]{130}' || true)"
-  [ -n "$BEWEIS" ] || { rot "Der Knoten liefert keinen Schluesselnachweis. Log: docker compose logs node"; exit 1; }
   # Anfrage ans Netz: die App mit dieser Wallet zeigt sie von selbst an
-  # (keeper/bindungsanfrage.go). Kein QR-Code, kein Link.
+  # (keeper/bindungsanfrage.go). Kein QR-Code, kein Link. Mit dem Nachweis
+  # fuer das Validator-Register auf der Kette (bindung_zeit,
+  # bindung_signatur_knoten): mit derselben Bestaetigung traegt die App den
+  # Knoten auch dort ein. Der Nachweis gilt nur Minuten -- er wird bei jedem
+  # Melden frisch vom Knoten geholt, und die Warteschleife unten meldet alle
+  # 3 Minuten neu.
   anfragen() {
-    curl -fsS -m 10 -H 'Content-Type: application/json' \
-      -d "{\"signing_address\":\"$ADDR\",\"wallet\":\"$WALLET_ENV\",\"beweis\":\"$BEWEIS\"}" \
-      "$NETZ/api/bindungsanfrage" >/dev/null 2>&1
+    local p j
+    p="$(curl -fsS -m 10 "http://127.0.0.1:8080/api/validator-selfproof?wallet=$WALLET_ENV" 2>/dev/null || true)"
+    j="$(printf '%s' "$p" | python3 -c '
+import json, re, sys
+adr, wallet = sys.argv[1], sys.argv[2]
+try:
+    p = json.load(sys.stdin)
+except Exception:
+    sys.exit(1)
+beweis = str(p.get("signing_key_signature") or "")
+if str(p.get("signing_address") or "").lower() != adr or not re.fullmatch(r"0x[0-9a-f]{130}", beweis):
+    sys.exit(1)
+out = {"signing_address": adr, "wallet": wallet, "beweis": beweis}
+z, s = p.get("bindung_zeit"), str(p.get("bindung_signatur_knoten") or "")
+if isinstance(z, int) and z > 0 and re.fullmatch(r"0x[0-9a-f]{130}", s):
+    out["bindung_zeit"], out["bindung_signatur_knoten"] = z, s
+print(json.dumps(out))
+' "$ADDR" "$WALLET_ENV")" || return 1
+    curl -fsS -m 10 -H 'Content-Type: application/json' -d "$j" "$NETZ/api/bindungsanfrage" >/dev/null 2>&1
   }
+  P="$(curl -fsS -m 10 "http://127.0.0.1:8080/api/validator-selfproof?wallet=$WALLET_ENV" 2>/dev/null || true)"
+  printf '%s' "$P" | grep -qE '"signing_key_signature": ?"0x[0-9a-f]{130}"' \
+    || { rot "Der Knoten liefert keinen Schluesselnachweis. Log: docker compose logs node"; exit 1; }
   GEMELDET=""
   for i in $(seq 1 12); do anfragen && { GEMELDET=1; break; }; sleep 5; done
   [ -n "$GEMELDET" ] || { rot "Das Netz ($NETZ) nimmt die Anfrage nicht an. Ist die Wallet $WALLET_ENV in der App registriert?
@@ -213,6 +234,9 @@ TEXT
     SIG="$(printf '%s' "$B" | grep -oE '"human_signature": ?"0x[0-9a-fA-F]{130}"' | grep -oE '0x[0-9a-fA-F]{130}' || true)"
     if [ -n "$SIG" ] && [ "$W" = "$WALLET_ENV" ]; then break; fi
     SIG=""
+    # Alle 3 Minuten mit frischem Kettennachweis neu melden (die Annahme
+    # nimmt die Kettenbindung nur bis 10 Minuten nach dessen Zeitpunkt).
+    if [ $((i % 36)) = 0 ]; then anfragen || true; fi
     sleep 5
   done
   if [ -z "$SIG" ]; then

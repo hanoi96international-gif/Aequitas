@@ -154,11 +154,6 @@ jobs:
             D=$(( MAX - MIN ))
             if [ "$D" -le 20 ]; then ok "Boxen gleichauf (Abstand $D)"; else rot "Boxen nicht gleichauf (Abstand $D)"; fi
           fi
-          CO=$(curl -s --max-time 15 https://coordinator-production-e067.up.railway.app/health)
-          Q=$(echo "$CO" | grep -oE '"quorum_size":[0-9]+' | cut -d: -f2)
-          # Railway: seit 14.09. 03:45 "Application not found" -- die Instanz ist weg. Die ausgelieferte App
-          # (v1.7.1) registriert ueber proof1/proof2; nur alte v1.6.0-Installationen haengen daran. Hinweis, kein Rot.
-          if echo "$CO" | grep -q '"status":"ok"' && [ "${Q:-0}" -ge 2 ]; then ok "Coordinator Railway ok, Quorum $Q (nur noch fuer v1.6.0)"; else echo "ℹ Coordinator Railway nicht erreichbar -- betrifft nur v1.6.0-Installationen, die auf v1.7.1 aktualisieren muessen: $(echo "${CO:-keine Antwort}" | cut -c1-80)"; fi
           # Namen abgeschalteter Server: die APK v1.12.3 weicht auf proof2 aus
           # (Coordinator mit Gesichtsaufnahmen, API, RPC). Zeigt der Name auf
           # einen fremden Rechner, holt der sich ein Zertifikat und bekommt das.

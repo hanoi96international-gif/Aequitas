@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"sort"
 	"strings"
@@ -25,6 +26,14 @@ import (
 //  3. Die App unterschreibt wie bisher und reicht ueber
 //     /api/register-validator-key ein; einrichten.sh holt die fertige
 //     Bindung bei /api/validator-binding ab.
+//  4. Seit 25.10.2026 traegt die Anfrage zusaetzlich den Nachweis des Knotens
+//     fuer das Validator-Register auf der Kette (bindung_zeit,
+//     bindung_signatur_knoten aus /api/validator-selfproof). Mit derselben
+//     Bestaetigung unterschreibt die App auch diesen Satz und reicht die
+//     Bindung bei /api/validator-bindung ein -- vorher ging das nur ueber die
+//     Browserseite /node-binding, und wer der Ein-Schritt-Anleitung folgte,
+//     stand nie im Register. Der Nachweis ist hoechstens 2 Minuten alt
+//     (die Annahme nimmt 10); einrichten.sh meldet alle 3 Minuten neu.
 //
 // Die Unterschrift des Menschen bleibt Pflicht -- ein Server, der sich selbst
 // an eine Wallet bindet, waere eine Bindung ohne Zustimmung. Neu ist nur, wie
@@ -61,6 +70,45 @@ type bindungsAnfrage struct {
 	Beweis  string    `json:"beweis"`
 	IP      string    `json:"ip"`
 	Zeit    time.Time `json:"zeit"`
+	// Optional: Nachweis des Knotens fuer das Validator-Register auf der
+	// Kette (validatorBindungNachricht, Zeitpunkt + Unterschrift der
+	// Signieradresse). Damit unterschreibt die App mit EINER Bestaetigung
+	// auch die Kettenbindung (/api/validator-bindung). Beide leer: nur die
+	// Bindung beim Knoten.
+	KetteZeit int64  `json:"bindung_zeit,omitempty"`
+	KetteSig  string `json:"bindung_signatur_knoten,omitempty"`
+}
+
+// bindungsAnfrageKetteHoechstensAlt: so alt darf der Kettennachweis beim
+// Melden hoechstens sein. Die Annahme nimmt eine Bindung nur bis
+// validatorBindungAnnahmeFrist (10 min); das Skript meldet die Anfrage
+// deshalb alle 3 Minuten mit frischem Nachweis neu, und die App holt sie
+// unmittelbar vor dem Unterschreiben noch einmal.
+const bindungsAnfrageKetteHoechstensAlt int64 = 120
+
+// pruefeKettennachweis: gehoert der Kettennachweis zu genau dieser
+// Signieradresse und Wallet, ist er frisch und kanonisch? Fail-closed: ein
+// halber oder falscher Nachweis weist die ganze Anfrage ab.
+func pruefeKettennachweis(adr, wallet string, zeit int64, sig string, jetzt int64) error {
+	if zeit == 0 && sig == "" {
+		return nil
+	}
+	if zeit == 0 || sig == "" {
+		return fmt.Errorf("bindung_zeit and bindung_signatur_knoten only together")
+	}
+	if !validatorRegisterAktiv(jetzt) {
+		return errValidatorRegisterSchlaeft
+	}
+	if zeit < jetzt-bindungsAnfrageKetteHoechstensAlt || zeit > jetzt+nachweisHoechstensVoraus {
+		return fmt.Errorf("bindung_zeit is not current")
+	}
+	if !kanonischeSignatur(sig) {
+		return fmt.Errorf("bindung_signatur_knoten is not a canonical signature")
+	}
+	if err := verifyPersonalSign(validatorBindungNachricht(adr, wallet, zeit), sig, adr); err != nil {
+		return fmt.Errorf("bindung_signatur_knoten is not from signing_address over the chain binding")
+	}
+	return nil
 }
 
 type bindungsAnfragenTyp struct {
@@ -154,9 +202,11 @@ func (a *APIServer) handleBindungsanfrage(w http.ResponseWriter, r *http.Request
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 2<<10)
 	var req struct {
-		Adresse string `json:"signing_address"`
-		Wallet  string `json:"wallet"`
-		Beweis  string `json:"beweis"`
+		Adresse   string `json:"signing_address"`
+		Wallet    string `json:"wallet"`
+		Beweis    string `json:"beweis"`
+		KetteZeit int64  `json:"bindung_zeit"`
+		KetteSig  string `json:"bindung_signatur_knoten"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		jsonError(w, "invalid request", http.StatusBadRequest)
@@ -174,11 +224,17 @@ func (a *APIServer) handleBindungsanfrage(w http.ResponseWriter, r *http.Request
 		jsonError(w, "beweis is not a signature of signing_address over \"Aequitas: validator key linked to human <wallet>\"", http.StatusBadRequest)
 		return
 	}
+	ketteSig := strings.TrimSpace(req.KetteSig)
+	if err := pruefeKettennachweis(adr, wallet, req.KetteZeit, ketteSig, nowUnix()); err != nil {
+		jsonError(w, "chain binding proof rejected: "+err.Error(), http.StatusBadRequest)
+		return
+	}
 	if a.state == nil || !a.state.IsHuman(wallet) {
 		jsonError(w, "wallet is not a registered human", http.StatusForbidden)
 		return
 	}
-	bindungsAnfragen.merke(bindungsAnfrage{Adresse: adr, Wallet: wallet, Beweis: beweis, IP: ip, Zeit: time.Now()})
+	bindungsAnfragen.merke(bindungsAnfrage{Adresse: adr, Wallet: wallet, Beweis: beweis, IP: ip, Zeit: time.Now(),
+		KetteZeit: req.KetteZeit, KetteSig: ketteSig})
 	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "laeuft_ab_in_s": int(bindungsAnfrageDauer.Seconds())})
 }
 

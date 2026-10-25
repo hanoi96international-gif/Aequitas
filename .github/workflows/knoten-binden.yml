@@ -7,7 +7,10 @@ name: Knoten mit Wallet verbinden (QR-Code fuer C1)
 #
 #   1. code    -- erzeugt den Bindungscode (aequitasapp://knoten-binden?...),
 #                 als QR-Bild (Artefakt "qr-code") und als QR im Protokoll.
-#   2. warten  -- bis zu 15 Minuten auf die Bestaetigung in der App
+#   2. warten  -- bis zu 15 Minuten auf die Bestaetigung in der App; die
+#                 Anfrage wird alle 3 Minuten mit frischem Kettennachweis neu
+#                 gemeldet. Mit derselben Bestaetigung traegt die App C1 auch
+#                 ins Validator-Register auf der Kette ein (seit 25.10.2026).
 #                 ("Knoten" -> "Knoten binden (QR scannen)"), dann wird die
 #                 Bindung auf C1 eingetragen und der Knoten neu gestartet
 #                 (wenige Sekunden).
@@ -78,6 +81,7 @@ jobs:
           ZAHL="$(printf '%s\n' "$AUS" | sed -n 's/^KONTROLLZAHL=//p')"
           LINK="$(printf '%s\n' "$AUS" | sed -n 's/^LINK=//p')"
           ADR="$(printf '%s\n' "$AUS" | sed -n 's/^ADRESSE=//p')"
+          KETTE="$(printf '%s\n' "$AUS" | sed -n 's/^KETTE=//p')"
           [[ "$LINK" =~ ^aequitasapp://knoten-binden\?adresse=0x[0-9a-f]{40}\&wallet=0x[0-9a-f]{40}\&beweis=0x[0-9a-f]{130}$ ]] || { echo "::error::Kein gueltiger Bindungscode"; exit 1; }
           WJ="$(printf '%s\n' "$LINK" | sed -E 's/.*&wallet=(0x[0-9a-f]{40})&.*/\1/')"
           WEB="$NETZ/binden?${LINK#aequitasapp://knoten-binden?}"
@@ -97,6 +101,13 @@ jobs:
             echo "Ersatzweise: Link [Knoten verbinden]($WEB) auf dem Handy mit der App öffnen, oder unter *Artifacts* \`qr-code\` mit der App scannen."
             echo
             echo "Dieser Lauf wartet bis zu 15 Minuten und trägt die Bindung dann auf C1 ein."
+            if [ "$KETTE" = "kette" ]; then
+              echo
+              echo "Mit derselben Bestätigung trägt die App C1 auch ins Validator-Register auf der Kette ein (die Wallet fragt dafür ein zweites Mal nach einer Unterschrift)."
+            else
+              echo
+              echo "**Hinweis:** Der Knoten liefert keinen Kettennachweis (Register noch nicht aktiv oder alter Stand) -- diesmal nur die Bindung beim Knoten."
+            fi
             echo
             echo "Signieradresse von C1: \`$ADR\` · Wallet: \`$WJ\`"
             echo
@@ -119,6 +130,16 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Schluessel und Host-Pruefung
+        env:
+          KEY: ${{ secrets.CONTABO_SSH_KEY }}
+        run: |
+          set -eu
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s' "$KEY" | perl -0777 -pe 's/\r//g; s/(?:-|\xE2\x80[\x93\x94])+ *(BEGIN|END) OPENSSH PRIVATE KEY *(?:-|\xE2\x80[\x93\x94])+/-----$1 OPENSSH PRIVATE KEY-----/g; unless (/-----BEGIN OPENSSH PRIVATE KEY-----/) { (my $z = $_) =~ s/\s//g; if ($z =~ m|^[A-Za-z0-9+/]+=*$|) { require MIME::Base64; my $d = MIME::Base64::decode_base64($z); if ($d =~ /-----BEGIN OPENSSH PRIVATE KEY-----/) { $_ = $d; } elsif ($d =~ /\Aopenssh-key-v1\x00/) { $_ = qq{-----BEGIN OPENSSH PRIVATE KEY-----\n$z\n-----END OPENSSH PRIVATE KEY-----\n}; } } } s/\s*(-----BEGIN OPENSSH PRIVATE KEY-----)\s*(.*?)\s*(-----END OPENSSH PRIVATE KEY-----)\s*/my ($k, $b, $f) = ($1, $2, $3); $b =~ s|\s||g; $b =~ s|(.{70})|$1\n|g; $b =~ s|\n\z||; "$k\n$b\n$f\n"/se' > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -t ed25519 $C1 2>/dev/null > ~/.ssh/kh1
+          ssh-keygen -lf ~/.ssh/kh1 | awk '{print $2}' | grep -qx "$C1_HOSTKEY" || { echo "::error::Host-Schluessel von C1 passt nicht"; exit 1; }
+          cp ~/.ssh/kh1 ~/.ssh/known_hosts
       - name: Auf die Bestaetigung in der App warten
         env:
           ADR: ${{ needs.code.outputs.adresse }}
@@ -131,20 +152,16 @@ jobs:
             GEB="$(printf '%s' "$B" | jq -r '.human_wallet // empty' 2>/dev/null | tr 'A-F' 'a-f' || true)"
             if [ "$GEB" = "$W" ]; then echo "Bestaetigung aus der App ist angekommen."; exit 0; fi
             [ $((i % 12)) = 1 ] && echo "warte auf die Bestaetigung in der App ... ($(( (180 - i) * 5 / 60 )) min uebrig)"
+            # Alle 3 Minuten die Anfrage mit frischem Kettennachweis neu melden:
+            # die Annahme nimmt die Kettenbindung nur bis 10 Minuten nach dem
+            # Zeitpunkt, den der Knoten unterschrieben hat.
+            if [ $((i % 36)) = 0 ]; then
+              ssh -o BatchMode=yes root@$C1 "PHASE=anfrage WALLET=$W bash /root/knoten-binden.sh" || true
+            fi
             sleep 5
           done
           echo "::error::Keine Bestaetigung aus der App in 15 Minuten. Einfach noch einmal starten."
           exit 1
-      - name: Schluessel und Host-Pruefung
-        env:
-          KEY: ${{ secrets.CONTABO_SSH_KEY }}
-        run: |
-          set -eu
-          mkdir -p ~/.ssh && chmod 700 ~/.ssh
-          printf '%s' "$KEY" | perl -0777 -pe 's/\r//g; s/(?:-|\xE2\x80[\x93\x94])+ *(BEGIN|END) OPENSSH PRIVATE KEY *(?:-|\xE2\x80[\x93\x94])+/-----$1 OPENSSH PRIVATE KEY-----/g; unless (/-----BEGIN OPENSSH PRIVATE KEY-----/) { (my $z = $_) =~ s/\s//g; if ($z =~ m|^[A-Za-z0-9+/]+=*$|) { require MIME::Base64; my $d = MIME::Base64::decode_base64($z); if ($d =~ /-----BEGIN OPENSSH PRIVATE KEY-----/) { $_ = $d; } elsif ($d =~ /\Aopenssh-key-v1\x00/) { $_ = qq{-----BEGIN OPENSSH PRIVATE KEY-----\n$z\n-----END OPENSSH PRIVATE KEY-----\n}; } } } s/\s*(-----BEGIN OPENSSH PRIVATE KEY-----)\s*(.*?)\s*(-----END OPENSSH PRIVATE KEY-----)\s*/my ($k, $b, $f) = ($1, $2, $3); $b =~ s|\s||g; $b =~ s|(.{70})|$1\n|g; $b =~ s|\n\z||; "$k\n$b\n$f\n"/se' > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -t ed25519 $C1 2>/dev/null > ~/.ssh/kh1
-          ssh-keygen -lf ~/.ssh/kh1 | awk '{print $2}' | grep -qx "$C1_HOSTKEY" || { echo "::error::Host-Schluessel von C1 passt nicht"; exit 1; }
-          cp ~/.ssh/kh1 ~/.ssh/known_hosts
       - name: Bindung auf C1 eintragen
         env:
           W: ${{ needs.code.outputs.wallet }}

@@ -1,5 +1,15 @@
 # Launch-Checkliste
 
+> ## 25.10.2026: Nachtrag
+>
+> - **App v1.13.0** veröffentlicht: „Knoten“ → „Bestätigen“ trägt einen Server auch ins Validator-Register auf der Kette ein. C1 damit eingereicht (`knoten-binden.yml`, Lauf 40192341488); bestätigt, sobald `erzeuger_ohne_bindung` leer ist (Blocker 18).
+> - **Root-Zugang C1:** neuer Schlüssel nur in `produktion`, der alte und der unbekannte `github-actions-deploy-contabo1` auf C1 entfernt (#433, #436).
+> - **Railway** abgeschaltet und aus Workflows, Wache und Biometrie-Skripten entfernt (#437, biometric #91). Secrets `Railway` und `CONTABO2_SSH_KEY` liest kein Workflow mehr; löschen.
+> - **Notfall-Wechsel des Coordinator-Schlüssels** auf C1: `coordinator-schluessel-wechseln.yml` (biometric #92).
+> - **Caddy:** Vorprüfung auf den Schlüssel, mit dem der Coordinator unterschreibt, statt auf das leere Register (#438); Log-Rotation mit `neuer-server-caddy.yml` (`neu_anlegen`) noch offen.
+>
+> Aktuelle Liste: `docs/BETA_BEREITSCHAFT.md`, Abschnitt 0.
+>
 > ## 24.10.2026: Stand nach dem Ende von C2
 >
 > Es läuft **ein** Server: C1 (netcup, 188.172.229.121, `proof1.aequitas.digital`). Der alte Contabo1 (seit 24.09.) und C2 (seit 03.10.) sind abgeschaltet, ihre IPs neu vergeben. Seit Aequitas #419–#422, biometric #87 und proof-server #24 stehen sie in keinem ausführbaren Code mehr (Seeds, Bootstrap, Workflows, Deploy-Skripte, Tests); `lint_alte_hosts.py` hält sie draußen. Deploy: `deploy-c1.yml`. Die Abschnitte darunter sind Verlauf und nennen C2 und proof2 so, wie es damals war.
@@ -369,7 +379,7 @@ Anleitung; die Betreiber erfahren, wenn etwas kaputtgeht.
 | 5 | **DSGVO Phase 2** (Phase 1) | `ALLOW_REAL_BIOMETRIC_DATA=true` + `LEGAL_SIGNOFF_DATE` gesetzt, Drittland (Railway in `sfo`) entschieden | ❌ Unterlagen liegen in `aequitas-biometric-beta/docs/dsgvo/`; Entscheidung offen | **du / Jurist** |
 | 6 | **Betreiber merkt, wenn es brennt** | Alarm binnen Minuten | ✅ 23.09.: Wachhund auf beiden Boxen, alle 5 min gegen `/api/wache`, meldet über ntfy (sofort bei Rot, dann alle 6 h, und bei Grün). Testnachricht auf beiden Boxen zugestellt. Dazu `wache.yml` (GitHub, Mail) und `pruefstand-live.yml` auf Knopfdruck | **du:** ntfy-App, Kanal abonnieren (Name im Chat) |
 | 17 | **Server-Zugang nur mit Freigabe** | GitHub-Umgebung `produktion` mit Required reviewers (Inhaber) und nur `main`; SSH-Schlüssel nur als Umgebungs-Secrets, Repo-Secrets gelöscht; ein Test-Workflow wartet auf Freigabe und läuft danach grün | ⚠ im Code fertig (alle Server-Workflows in `produktion`, Push-Auslöser nur `deploy-c1.yml`, Lint `lint_server_freigabe.py` mit Selbsttest, Host-Schlüssel von C1 gepinnt). Bis zur Einstellung in GitHub hat weiter jeder mit Schreibrechten Root auf C1. `CONTABO2_SSH_KEY` wird nicht mehr gebraucht. Anleitung `docs/SERVER_FREIGABE.md` | **du:** Umgebung anlegen, Secrets umziehen, `CONTABO2_SSH_KEY` löschen — **vor dem Beta-Launch** |
-| 18 | **Nur zugelassene Knoten produzieren Blöcke** (Audit K-1) | `/api/status` → `produzenten_geschlossen: true` auf jedem Betreiberknoten; `AUTHORIZED_VALIDATORS` = dieselben Signieradressen | ⚠ 23.10.: `AUTHORIZED_VALIDATORS` auf C1 = nur C1 (`produzenten-festlegen.yml`). Seit 24.10. prüft `pruefstand-live.yml` `produzenten_geschlossen` (rot, wenn nicht `true`); live `true` (Lauf 40072773142). Offen: Erzeuger `0x3066…42dc` ist im Validator-Register nicht gebunden (`/node-binding`). Übergang, bis das Nachspielen jeden Wert selbst prüft (K-2, K-3, K-4) | **du:** C1 binden: `http://188.172.229.121:8080/node-binding` mit der Betreiber-Wallet |
+| 18 | **Nur zugelassene Knoten produzieren Blöcke** (Audit K-1) | `/api/status` → `produzenten_geschlossen: true` auf jedem Betreiberknoten; `AUTHORIZED_VALIDATORS` = dieselben Signieradressen | ⚠ 23.10.: `AUTHORIZED_VALIDATORS` auf C1 = nur C1 (`produzenten-festlegen.yml`). Seit 24.10. prüft `pruefstand-live.yml` `produzenten_geschlossen` (rot, wenn nicht `true`); live `true` (Lauf 40072773142). 25.10.: Erzeuger `0x3066…42dc` mit App 1.13.0 ins Validator-Register auf der Kette eingereicht (`knoten-binden.yml`, Lauf 40192341488); das Register wertet sie 2 h später. Übergang, bis das Nachspielen jeden Wert selbst prüft (K-2, K-3, K-4) | prüfen: `erzeuger_ohne_bindung` leer; danach Stichtag „nur gebundene Server erzeugen“ (eigener PR) |
 
 ## Wichtig, aber kein Blocker
 

@@ -8,23 +8,46 @@ CF=/root/caddy/Caddyfile
 NEU=/root/Aequitas/deploy/Caddyfile.neuer-server
 mkdir -p /root/caddy
 # /coordinator/* zeigt auf den eigenen Coordinator. Nur umschalten, wenn
-# sein Schluessel auf beiden Knoten eingetragen ist -- sonst lehnen die
-# Vergleichsdienste jede Bezeugung ab, und die Registrierung ueber proof1
-# faellt aus.
-C1_COORD=d3c46a772f2c40e533f6abd5781d0c39cdcda9ba3df63e909ebd729d2e2aebbf
+# Vergleichsdienst und Proof-Server genau den Schluessel anerkennen, mit dem
+# er gerade unterschreibt -- sonst lehnen sie jede Bezeugung ab, und die
+# Registrierung ueber proof1 faellt aus. Bis zum 25.10.2026 stand hier ein
+# fester Schluessel und die Abfrage des Registers auf der Kette; das Register
+# ist seit dem Neustart bei null leer (coordinator-auth-diagnose.yml), die
+# Pruefung konnte nie gruen werden, und nach einem Notfall-Wechsel
+# (coordinator-schluessel-wechseln.yml, biometric) waere der feste Wert
+# veraltet. Gelesen wird nur auf C1, von den Containern selbst.
+# --- coordinator_anerkannt anfang (scripts/test_caddy_coordinator.sh)
+# $1: Schluessel des Coordinators, $2: COORDINATOR_PUBLIC_KEYS (Komma-Liste).
+# Wahr nur, wenn $1 genau 64 Zeichen Hex (klein) ist und als ganzer Eintrag
+# in der Liste steht -- kein Teilstueck, kein leerer Wert.
+coordinator_anerkannt() {
+  local k=$1 e teile
+  [[ $k =~ ^[0-9a-f]{64}$ ]] || return 1
+  IFS=, read -r -a teile <<<"$2"
+  for e in "${teile[@]}"; do
+    e=$(printf '%s' "$e" | tr -d '[:space:]' | tr 'A-F' 'a-f')
+    [ "$e" = "$k" ] && return 0
+  done
+  return 1
+}
+# --- coordinator_anerkannt ende
 # Nur noetig, wenn sich das Caddyfile aendert: ist es schon auf dem Stand des
 # Repos (etwa beim reinen Neuanlegen fuer die Log-Rotation), aendert sich am
-# Routing nichts. Das Register ist seit dem Neustart bei null leer
-# (coordinator-auth-diagnose.yml); der Vergleichsdienst vertraut dem
-# Coordinator ueber COORDINATOR_PUBLIC_KEYS.
+# Routing nichts.
 if [ -f "$CF" ] && cmp -s "$NEU" "$CF"; then
   echo "  Caddyfile unveraendert -- Routing bleibt, keine Coordinator-Pruefung noetig"
 else
-  for k in http://127.0.0.1:8080; do
-    if curl -fsS -m 10 "$k/api/coordinators" | grep -q "\"$C1_COORD\""; then
-      echo "  Coordinator C1 eingetragen auf $k"
+  KOORD=$(docker exec aequitas-node wget -qO- -T 20 http://aequitas-coordinator:8200/inventory 2>/dev/null \
+    | python3 -c "import sys,json; print(((json.load(sys.stdin).get('bereit_fuer_echtbetrieb') or {}).get('attestation_public_key') or '').strip().lower())" 2>/dev/null || true)
+  [[ $KOORD =~ ^[0-9a-f]{64}$ ]] || { echo "::error::Coordinator auf C1 nennt keinen Schluessel (/inventory) -- Caddy bleibt unveraendert"; exit 1; }
+  echo "  Coordinator unterschreibt mit ${KOORD:0:12}..."
+  for c in aequitas-matching proof-server; do
+    liste=$(docker inspect "$c" --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null \
+      | grep '^COORDINATOR_PUBLIC_KEYS=' | tail -1 | cut -d= -f2- || true)
+    if coordinator_anerkannt "$KOORD" "$liste"; then
+      echo "  $c erkennt ihn an"
     else
-      echo "::error::Coordinator C1 fehlt auf $k -- Caddy bleibt unveraendert"; exit 1
+      echo "::error::$c erkennt den Coordinator nicht an (COORDINATOR_PUBLIC_KEYS) -- Caddy bleibt unveraendert"; exit 1
     fi
   done
 fi

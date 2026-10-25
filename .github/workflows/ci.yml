@@ -69,6 +69,8 @@ jobs:
       - run: bash scripts/test_sicherung_befehl.sh
       - run: bash scripts/test_schluessel_lesen.sh
       - run: bash scripts/test_ssh_schluessel_reparatur.sh
+      - run: bash scripts/test_bindungsanfrage_skript.sh
+      - run: bash scripts/test_caddy_coordinator.sh
 
   test:
     runs-on: ubuntu-latest

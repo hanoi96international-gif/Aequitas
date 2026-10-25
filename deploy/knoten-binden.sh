@@ -6,6 +6,10 @@
 #
 #   PHASE=link    [WALLET=0x..] gibt LINK=aequitasapp://knoten-binden?... aus;
 #                              ohne WALLET die eingetragene Betreiber-Wallet
+#   PHASE=anfrage [WALLET=0x..] meldet die Anfrage mit frischem Nachweis
+#                              neu (der Kettennachweis gilt nur Minuten; der
+#                              Workflow ruft das alle 3 Minuten, bis die App
+#                              bestaetigt hat)
 #   PHASE=setzen  WALLET=0x..  holt die Bindung SELBST beim Netz ab, prueft,
 #                              dass sie genau diese Wallet und diese
 #                              Signieradresse nennt, traegt sie ein und startet
@@ -42,6 +46,37 @@ neustart() {
   exit 1
 }
 
+# Anfrage ans Netz (keeper/bindungsanfrage.go): die App mit dieser Wallet
+# zeigt sie unter "Knoten" an. Seit 25.10.2026 mit dem Nachweis fuer das
+# Validator-Register auf der Kette (bindung_zeit, bindung_signatur_knoten) --
+# die App unterschreibt dann mit derselben Bestaetigung auch die
+# Kettenbindung. Der Nachweis kommt frisch vom Knoten und gilt nur Minuten,
+# darum wird er bei jedem Melden neu geholt. Gibt den Schluesselnachweis
+# (beweis) aus; Rueckgabe 1, wenn der Knoten keinen liefert oder das Netz
+# ablehnt.
+anfrage_melden() {
+  local p j
+  p="$(curl -fsS -m 10 "http://127.0.0.1:8080/api/validator-selfproof?wallet=$WALLET" || true)"
+  j="$(printf '%s' "$p" | python3 -c '
+import json, re, sys
+adr, wallet = sys.argv[1], sys.argv[2]
+try:
+    p = json.load(sys.stdin)
+except Exception:
+    sys.exit(1)
+beweis = str(p.get("signing_key_signature") or "")
+if str(p.get("signing_address") or "").lower() != adr or not re.fullmatch(r"0x[0-9a-f]{130}", beweis):
+    sys.exit(1)
+out = {"signing_address": adr, "wallet": wallet, "beweis": beweis}
+z, s = p.get("bindung_zeit"), str(p.get("bindung_signatur_knoten") or "")
+if isinstance(z, int) and z > 0 and re.fullmatch(r"0x[0-9a-f]{130}", s):
+    out["bindung_zeit"], out["bindung_signatur_knoten"] = z, s
+print(json.dumps(out))
+' "$ADDR" "$WALLET")" || return 1
+  curl -fsS -m 10 -H 'Content-Type: application/json' -d "$j" "$NETZ/api/bindungsanfrage" >/dev/null || return 1
+  printf '%s' "$j" | python3 -c 'import json,sys;p=json.load(sys.stdin);print(p["beweis"]);print("kette" if "bindung_zeit" in p else "ohne-kette")'
+}
+
 S="$(curl -fsS -m 10 http://127.0.0.1:8080/api/status || true)"
 ADDR="$(printf '%s' "$S" | grep -oE '"validator_address": ?"0x[0-9a-fA-F]{40}"' | grep -oE '0x[0-9a-fA-F]{40}' | tr 'A-F' 'a-f' || true)"
 [ -n "$ADDR" ] || { echo "ABBRUCH: Knoten nennt keine Signieradresse (/api/status)"; exit 1; }
@@ -63,18 +98,21 @@ link)
     neustart
   fi
   if grep -qE '^NODE_OPERATOR_BINDING_SIGNATURE=.+' .env; then echo "Bindung bisher: eingetragen"; else echo "Bindung bisher: keine"; fi
-  P="$(curl -fsS -m 10 "http://127.0.0.1:8080/api/validator-selfproof?wallet=$WALLET" || true)"
-  BEWEIS="$(printf '%s' "$P" | grep -oE '"signing_key_signature": ?"0x[0-9a-f]{130}"' | grep -oE '0x[0-9a-f]{130}' || true)"
-  [ -n "$BEWEIS" ] || { echo "ABBRUCH: Knoten liefert keinen Schluesselnachweis"; exit 1; }
   echo "ADRESSE=$ADDR"
-  echo "LINK=aequitasapp://knoten-binden?adresse=$ADDR&wallet=$WALLET&beweis=$BEWEIS"
-  # Wie einrichten.sh: Anfrage ans Netz, die App zeigt sie unter "Knoten"
-  # zum Bestaetigen an (keeper/bindungsanfrage.go).
-  if curl -fsS -m 10 -H 'Content-Type: application/json' \
-      -d "{\"signing_address\":\"$ADDR\",\"wallet\":\"$WALLET\",\"beweis\":\"$BEWEIS\"}" \
-      "$NETZ/api/bindungsanfrage" >/dev/null; then
+  if AUS="$(anfrage_melden)"; then
+    BEWEIS="$(printf '%s\n' "$AUS" | sed -n 1p)"
+    echo "LINK=aequitasapp://knoten-binden?adresse=$ADDR&wallet=$WALLET&beweis=$BEWEIS"
     echo "ANFRAGE=gemeldet"
+    echo "KETTE=$(printf '%s\n' "$AUS" | sed -n 2p)"
     echo "KONTROLLZAHL=$(python3 -c "import hashlib,sys;n=int.from_bytes(hashlib.sha256(sys.argv[1].encode()).digest()[:4],'big')%1000000;s='%06d'%n;print(s[:3]+' '+s[3:])" "$ADDR")"
+  else
+    echo "ABBRUCH: Knoten liefert keinen Schluesselnachweis, oder das Netz nimmt die Anfrage nicht an"
+    exit 1
+  fi
+  ;;
+anfrage)
+  if AUS="$(anfrage_melden)"; then
+    echo "ANFRAGE=erneuert ($(printf '%s\n' "$AUS" | sed -n 2p))"
   else
     echo "ANFRAGE=fehlgeschlagen"
   fi
@@ -93,5 +131,5 @@ setzen)
   neustart
   ;;
 *)
-  echo "ABBRUCH: PHASE=link oder PHASE=setzen"; exit 1 ;;
+  echo "ABBRUCH: PHASE=link, PHASE=anfrage oder PHASE=setzen"; exit 1 ;;
 esac

@@ -1,7 +1,7 @@
 name: Neuer C1 (netcup) -- Caddy (aequitas.digital und proof1)
 # Rollt deploy/Caddyfile.neuer-server auf 188.172.229.121 aus
 # (deploy/caddy-neuer-server.sh): Domain -> Knoten, proof1 -> Proof-Server,
-# Vergleichsdienst, /coordinator -> Coordinator auf C2.
+# Vergleichsdienst, /coordinator -> Coordinator auf C1.
 on:
   workflow_dispatch:
     inputs:

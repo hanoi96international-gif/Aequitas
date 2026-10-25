@@ -6,10 +6,13 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -366,6 +369,20 @@ func (n *vierKnotenNetz) snapshotResyncNachLoeschung(t *testing.T) {
 
 	k.aus.Store(false)
 	n.taktStarten(k)
+	// Der Snapshot kann genau dann gezogen sein, als oben zwei Geschwister
+	// standen (zwei Spitzen auf einer Hoehe, so gewollt). Der Resync legt den
+	// Geschwister nur in dag.blocks, nie als Spitze (block.go,
+	// RefreshBootHeightAfterSnapshotImport: Geschwister sind nur auf ihre
+	// Unterschrift geprueft, nicht auf Zulassung). Bis ein neuer Block ihn
+	// zusammenfuehrt, unterscheiden sich darum die Spitzen -- und
+	// pruefeGleichstand haelt die Erzeugung an. Erst muss das Netz ueber die
+	// Snapshot-Hoehe hinaus, und der zurueckgeholte Knoten muss diese Bloecke
+	// annehmen: genau dafuer laedt der Resync die Geschwister.
+	snapHoehe, err := strconv.ParseInt(importHoehe, 10, 64)
+	if err != nil {
+		t.Fatalf("snapshot_import_height %q: %v", importHoehe, err)
+	}
+	n.warteSpitzenUeber(t, snapHoehe, 60*time.Second)
 	mit := n.pruefeGleichstand(t, "der geloeschte Knoten ist ueber den Snapshot zurueck")
 	if mit.hoehe < ohne.hoehe {
 		t.Fatalf("Hoehe nach dem Resync %d < %d", mit.hoehe, ohne.hoehe)
@@ -373,6 +390,47 @@ func (n *vierKnotenNetz) snapshotResyncNachLoeschung(t *testing.T) {
 	// Und er traegt weiter mit.
 	n.ueberweisen(t, 4)
 	n.pruefeGleichstand(t, "nach dem Snapshot-Resync weiter mit vier Knoten")
+}
+
+// warteSpitzenUeber: bis bei jedem lebenden Knoten jede Spitze ueber hoehe
+// liegt -- dann ist alles bis hoehe, Geschwister eingeschlossen, in einem
+// spaeteren Block zusammengefuehrt. Hoechstens frist, sonst rot.
+func (n *vierKnotenNetz) warteSpitzenUeber(t *testing.T, hoehe int64, frist time.Duration) {
+	t.Helper()
+	ende := time.Now().Add(frist)
+	var stand []string
+	for {
+		stand = stand[:0]
+		alle := true
+		for _, k := range n.ks {
+			if k.aus.Load() {
+				continue
+			}
+			_, dag, _ := k.teile()
+			tips := dag.GetTips()
+			sort.Strings(tips)
+			dag.mu.RLock()
+			for _, h := range tips {
+				b := dag.blocks[h]
+				if b == nil || b.Height <= hoehe {
+					alle = false
+					var bh int64 = -1
+					if b != nil {
+						bh = b.Height
+					}
+					stand = append(stand, fmt.Sprintf("Knoten %d: Spitze %.16s auf Hoehe %d", k.i, h, bh))
+				}
+			}
+			dag.mu.RUnlock()
+		}
+		if alle {
+			return
+		}
+		if time.Now().After(ende) {
+			t.Fatalf("nach %s liegt noch eine Spitze bei oder unter Hoehe %d: %v", frist, hoehe, stand)
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
 }
 
 // ------------------------------------------------------------- Trusted Seeds

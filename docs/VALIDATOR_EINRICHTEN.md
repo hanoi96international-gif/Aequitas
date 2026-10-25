@@ -75,29 +75,47 @@ Konfiguration, Bauen und Starten (beim ersten Mal etwa 10 Minuten) und das
 dauerhafte Speichern der beiden Schlüssel, die dein Knoten beim ersten Start
 für sich erzeugt.
 
-## Am Ende: QR-Code scannen
+## Am Ende: in der App bestätigen
 
 Die Belohnungen gehen an deine Wallet. Dafür muss das Netz wissen, dass
-dieser Knoten dir gehört. Das erledigst du mit dem Handy:
+dieser Knoten dir gehört. Das erledigst du mit dem Handy, mit **einer**
+Bestätigung:
 
-1. Das Skript zeigt am Ende einen **QR-Code** im Terminal.
-2. Öffne die Aequitas-App → Tab **„Knoten“** → **„Knoten binden (QR scannen)“**
-   und scanne den Code.
-3. Die App zeigt die Signieradresse deines Knotens. Tippe auf **„Bestätigen“**.
+1. Das Skript zeigt am Ende eine sechsstellige **Kontrollzahl** und wartet.
+2. Öffne die Aequitas-App (ab Version 1.13.0) → Tab **„Knoten“**. Dort
+   erscheint „Dein Server möchte sich mit dir verbinden“ mit einer Zahl.
+3. Nur wenn die Zahl **genau** der im Terminal entspricht, auf
+   **„Bestätigen“** tippen. Deine Wallet fragt dann bis zu zweimal nach einer
+   Unterschrift.
 
-Die Unterschrift kostet nichts und bewegt kein Geld. Das Skript merkt die
-Bestätigung nach wenigen Sekunden, trägt die Bindung selbst ein und startet den
-Knoten neu. Du musst nichts kopieren und nichts eintippen. Kommt innerhalb von
-15 Minuten keine Bestätigung, einfach `bash einrichten.sh` noch einmal starten.
+Damit ist der Knoten an zwei Stellen eingetragen:
 
-Die App prüft dabei selbst, dass der Code für **deine** Wallet erzeugt wurde
-und dass der Knoten den Schlüssel zur gezeigten Signieradresse wirklich hat.
-Ein fremder oder verfälschter Code wird abgelehnt, bevor unterschrieben wird.
+- **beim Knoten:** Das Skript merkt die Bestätigung nach wenigen Sekunden,
+  trägt die Bindung selbst ein und startet den Knoten neu;
+- **im Validator-Register auf der Kette:** Mit dem nächsten Block prüft jeder
+  Knoten die Bindung selbst. Ohne diesen Eintrag kann der Knoten später, wenn
+  nur noch Knoten aus dem Register Blöcke erzeugen dürfen, nicht erzeugen.
+
+Die Unterschriften kosten nichts und bewegen kein Geld. Du musst nichts
+kopieren und nichts eintippen. Kommt innerhalb von 15 Minuten keine
+Bestätigung, einfach `bash einrichten.sh` noch einmal starten.
+
+Die App prüft dabei selbst, dass die Anfrage für **deine** Wallet erzeugt
+wurde und dass der Knoten den Schlüssel zur gezeigten Signieradresse wirklich
+hat. Eine fremde oder verfälschte Anfrage wird abgelehnt, bevor unterschrieben
+wird. Den Satz für das Register setzt die App selbst zusammen.
+
+Meldet die App „Beim Knoten verbunden. Der Eintrag im Validator-Register …
+hat nicht geklappt“, ist der Knoten trotzdem gebunden. Den Eintrag holst du
+nach, indem du `bash einrichten.sh` noch einmal startest und wieder
+bestätigst. Ein Betreiber kann sich höchstens einmal am Tag neu ins Register
+eintragen.
 
 **Ohne die App** (zum Beispiel mit MetaMask im Browser): die Bindungsseite des
-eigenen Knotens `http://DEINE-SERVER-IP:8080/node-binding` öffnen, mit derselben
-Wallet unterschreiben, die angezeigte Zeile `NODE_OPERATOR_BINDING_SIGNATURE=…`
-in `.env` eintragen und `docker compose up -d node` ausführen.
+eigenen Knotens `http://DEINE-SERVER-IP:8080/node-binding` öffnen und mit
+derselben Wallet beide Sätze unterschreiben. Danach die angezeigte Zeile
+`NODE_OPERATOR_BINDING_SIGNATURE=…` in `.env` eintragen und
+`docker compose up -d node` ausführen.
 
 ## Danach: Aufnahme als Blockproduzent
 
@@ -156,7 +174,7 @@ wie es war. Ohne sie ist es ein neuer Knoten: neu binden, neu aufnehmen lassen.
 |---|---|---|
 | `NODE_OPERATOR_WALLET is not a registered human` | die Wallet ist nicht registriert | erst in der App registrieren |
 | `operator_binding_signature missing or invalid` | die Bindung fehlt oder passt nicht | `bash einrichten.sh` erneut starten und den QR-Code scannen |
-| `einrichten.sh`: „Keine Bestätigung aus der App angekommen“ | QR-Code nicht gescannt oder nicht bestätigt | `bash einrichten.sh` noch einmal starten und den neuen Code scannen |
+| `einrichten.sh`: „Keine Bestätigung aus der App angekommen“ | Anfrage in der App nicht bestätigt | `bash einrichten.sh` noch einmal starten und in der App unter „Knoten“ bestätigen |
 | App: „Dieser Code wurde für eine andere Wallet erzeugt“ | beim Einrichten eine andere Adresse eingegeben | in `.env` `NODE_OPERATOR_WALLET` korrigieren oder neu einrichten |
 | `AUTHORIZED_VALIDATORS ist leer` (Knoten startet nicht) | die Produzentenliste fehlt; ohne sie glaubte der Knoten jedem registrierten Menschen Blöcke | `bash einrichten.sh` erneut starten (liest die Liste vom Netz und fragt nach), oder `produzenten` und `validator_liste_hash` aus `/api/status` eines bestehenden Validators von Hand in `.env` eintragen |
 | `ist registriert, aber nicht in AUTHORIZED_VALIDATORS` | noch nicht als Produzent aufgenommen | Signieradresse an den Betreiber schicken; bis dahin Beobachter |
