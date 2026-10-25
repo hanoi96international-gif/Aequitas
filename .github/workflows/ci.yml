@@ -71,6 +71,8 @@ jobs:
       - run: bash scripts/test_ssh_schluessel_reparatur.sh
       - run: bash scripts/test_bindungsanfrage_skript.sh
       - run: bash scripts/test_caddy_coordinator.sh
+      - run: python3 scripts/lint_deploy_pfade.py --selbsttest
+      - run: python3 scripts/lint_deploy_pfade.py
 
   test:
     runs-on: ubuntu-latest
