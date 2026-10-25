@@ -225,6 +225,9 @@ type ChainState struct {
 	freigaben freigabeRunde
 	// umlaufRunde: Vollstaendigkeit der Umlaufrunde (nachrechnen_umlauf.go).
 	umlaufRunde umlaufRundePruefung
+	// satzPlan: der Satz des Gleichgewichts (satz_plan.go). Unter cs.mu; in
+	// chain_config, im Rueckroll-Snapshot und in der StateRoot.
+	satzPlan satzPlan
 	// kappungsKandidaten: Konten, die ueber der Grenze liegen koennten und
 	// deren Kappung Stufe 2 dem Zustaendigen ueberlaesst.
 	kappungsMu         sync.Mutex
@@ -2706,6 +2709,11 @@ func (cs *ChainState) loadFromDB() {
 	fmt.Printf("✓ State-root accumulators seeded (accountSetXOR=%x…, nullifierSetXOR=%x…)\n",
 		cs.accountSetXOR[:4], cs.nullifierSetXOR[:4])
 	cs.wirtschaftLaden()
+	// satz_plan.go: ein unlesbarer Plan haelt den Knoten an, statt mit einem
+	// anderen Satz zu rechnen als alle anderen.
+	if err := cs.satzPlanLaden(context.Background()); err != nil {
+		panic(fmt.Sprintf("Satzplan des Gleichgewichts (%s) nicht lesbar: %v", satzKonfigSchluessel, err))
+	}
 }
 
 // loadOrInitPool reads the single liquidity_pool row, creating it (at
@@ -7819,6 +7827,12 @@ func (cs *ChainState) stateRootLocked(lastUBIAt, letzterCP string) string {
 		sb.WriteString("|checkpoint:")
 		sb.WriteString(letzterCP)
 	}
+	// Satz des Gleichgewichts (satz_plan.go): nur, wenn es einen Plan gibt --
+	// ohne bleibt die Wurzel byte-gleich.
+	if !cs.satzPlan.leer() {
+		sb.WriteString("|satz:")
+		sb.WriteString(cs.satzPlan.kodiert())
+	}
 	hash := sha256.Sum256([]byte(sb.String()))
 	return hex.EncodeToString(hash[:])
 }
@@ -8446,6 +8460,7 @@ type blockRollbackSnapshot struct {
 	validatorRunde validatorRundePruefung
 	freigaben      freigabeRunde
 	umlaufRunde    umlaufRundePruefung
+	satzPlan       satzPlan
 	// vorbehalte: die offenen Vorbehalte (cs.vorbehalte) der Vorbehaltskonten
 	// unter den Adressen. Die Tabelle vorbehalte_offen geht mit der
 	// Transaktion zurueck, die Karte im Speicher nur hiermit.
@@ -8618,6 +8633,7 @@ func (cs *ChainState) snapshotForRollbackLocked(addrs []string, full bool, chain
 	snap.validatorRunde = cs.validatorRunde
 	snap.freigaben = cs.freigaben
 	snap.umlaufRunde = cs.umlaufRunde
+	snap.satzPlan = cs.satzPlan
 	snap.vorbehalte = cs.vorbehaltSichern(addrs, full)
 	return snap
 }
@@ -8734,6 +8750,7 @@ func (cs *ChainState) restoreFromRollbackLockedCtx(ctx context.Context, snap *bl
 	cs.validatorRunde = snap.validatorRunde.zurueck()
 	cs.freigaben = snap.freigaben.zurueck()
 	cs.umlaufRunde = snap.umlaufRunde.zurueck()
+	cs.satzPlan = snap.satzPlan
 	cs.vorbehaltZurueck(snap.vorbehalte)
 	var toDelete []string
 	for _, s := range snap.accounts {

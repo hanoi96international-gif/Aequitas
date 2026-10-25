@@ -75,3 +75,24 @@ Stücken, Ausgang der Runde), `evm_storage.go` (`savePendingTxsGeordnetExec`),
 
 Ergebnis: ein Befund (4), behoben; keine offenen.
 
+## 4. Satz einstellbar (`satz_plan.go`, schlafend wie das Gleichgewicht)
+
+Dateien: `satz_plan.go` (neu), `wirtschaft3.go`, `wirtschaft.go`,
+`block.go` (Feld `Satz`, `bekannteTxArt`, Nachspielen), `block_tauglich.go`,
+`state.go` (Plan im Zustand, Rückroll-Snapshot, StateRoot, Laden beim Start),
+`snapshot.go`, `checkpoint_tx.go` (Prüfung des Snapshot-Werts), `api.go`,
+`ip_burst.go`, `weiterleitung_nachweis.go`.
+
+| # | Frage | Befund | Stand |
+|---|---|---|---|
+| 1 | Wer kann den Satz ändern? | Nur zwei verschiedene, zugelassene Betreiber-Menschen gemeinsam, jede Unterschrift über Satz, Gültigkeit und Zeit (Domäne `aequitas-gleichgewicht-satz-v1`, Chain-ID); Bindung wie beim Einspruch. Ein Betreiber allein, derselbe zweimal, ein nicht zugelassener, eine fremde Bindung, ein anderer Satz oder ein anderes Datum als unterschrieben: nie angewandt. | `TestSatz_Missbrauch` |
+| 2 | Wie weit? | Spanne 25–100 bp, Schritte 5 bp, höchstens ±25 bp je Änderung, einmal je Quartal, 30–90 Tage Vorlauf ab dem Block. Wiederholen einer alten Ankündigung: `satz_wiederholt`. | `TestSatz_Missbrauch`, `…_WiederholungUndQuartal` |
+| 3 | Laufen Knoten auseinander? | Der Plan steht in der StateRoot (nur wenn gesetzt — sonst byte-gleich), im Rückroll-Snapshot, in `chain_config`, im Export-Snapshot; ein unlesbarer Wert hält den Knoten beim Start an, ein unlesbarer Snapshot-Wert verwirft den Snapshot. Ein Knoten mit anderem Plan weist die Runde ab. | `…_StateRootUndRueckrollen`, `…_UmlaufNachrechnenMitSatz`, `…_AnnahmeNachspielenLaden_RealDB` |
+| 4 | Grenzen | Plan höchstens 3 Stufen; Körper 16 KiB; 2–8 Bescheinigungen; eigener Zähler je Absender; Unterschriften vor jeder Datenbankabfrage; Annahme nur beim Leiter (`annahmeBeginnenLeiter`). | `…_PlanBegrenzt` |
+| 5 | Vor der Aktivierung | Art unbekannt, Endpunkt 409, `block_tauglich` lässt sie in keinen Block. | `…_SchlaeftVorDemGleichgewicht`, RealDB-Test |
+
+Ergebnis: keine offenen Befunde über NIEDRIG. Hingenommen: Zwei Betreiber
+können den Satz in der Spanne bewegen — das ist die Mitbestimmung, nur
+begrenzt und angekündigt. Später durch Menschen statt Betreiber
+(Abstimmung) zu ersetzen; die Prüfung je Knoten bleibt dieselbe.
+

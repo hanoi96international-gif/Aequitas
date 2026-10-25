@@ -278,6 +278,11 @@ func pruefeSnapshotKonfig(key, wert string) error {
 			return err
 		}
 	}
+	if key == satzKonfigSchluessel {
+		if _, err := satzPlanLesen(wert); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

@@ -75,6 +75,7 @@ var replayArten = map[string]geldArt{
 	"proof_of_life":                    geldNurGutschrift, // lebensnachweis.go: bewegt kein Geld, setzt nur LebensnachweisAm
 	"grant_release":                    geldNurGutschrift,
 	"staffel_einspruch":                geldNurGutschrift, // staffel_einspruch.go: bewegt kein Geld, setzt nur StaffelEinspruchAm
+	"satz_ankuendigung":                geldNurGutschrift, // satz_plan.go: bewegt kein Geld, setzt nur den Satzplan
 	"umlauf":                           geldRegelAusnahme,
 	"unternehmen_eroeffnen":            geldUnterschrieben,
 	"vorbehalt":                        geldUnterschrieben,
@@ -121,6 +122,7 @@ var bekannteGeldAusnahmen = map[string]string{
 // Zeichenkettenliterals stehen.
 var ersetzbareKonstanten = map[string]string{
 	"checkpointTxArt": checkpointTxArt,
+	"satzTxArt":       satzTxArt,
 }
 
 // replaySwitchArten liest die Arten des Nachspiel-Switches aus block.go

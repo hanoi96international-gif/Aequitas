@@ -60,6 +60,9 @@ type Transaction struct {
 	// die Freigabe einer Staffel an Tag 30 (staffel_einspruch.go). omitempty:
 	// aeltere Bloecke behalten ihren Hash.
 	Einspruch *StaffelEinspruch `json:"einspruch,omitempty"`
+	// Satz: Ankuendigung eines neuen Satzes des Gleichgewichts (satz_plan.go).
+	// omitempty: aeltere Bloecke behalten ihren Hash.
+	Satz *SatzAnkuendigung `json:"satz,omitempty"`
 	// FromDemurrageLost/ToDemurrageLost carry the exact AEQ amount the
 	// primary node decayed off Wallet/To via settleDemurrageLocked while
 	// processing this TX. Secondary nodes replay these exact numbers
@@ -1395,6 +1398,8 @@ func bekannteTxArt(typ string, blockZeit int64) bool {
 		return lebensnachweisAktiv(blockZeit)
 	case staffelEinspruchTxArt: // staffel_einspruch.go, schlafend wie die Staffel
 		return stagedGrantAktiv(blockZeit)
+	case satzTxArt: // satz_plan.go, schlafend wie das Gleichgewicht
+		return gleichgewichtAktiv(blockZeit)
 	case "vorbehalt", "vorbehalt_ausfuehrung", "kappung":
 		// Stufe 2 (vorbehalt.go, kappung_verteilt.go). Fehlten hier bis
 		// 05.10.2026 ganz: ab der Aktivierung haette jeder Knoten jeden
@@ -8115,6 +8120,17 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			// zurueck -- weder ungeprueft angewandt noch verworfen.
 			if err := dag.state.applyLebensnachweisLocked(context.Background(), &tx, block.Timestamp); err != nil {
 				fmt.Printf("[REPLAY] ✗ proof_of_life %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
+				hardFailure = true
+				continue
+			}
+		case satzTxArt:
+			// satz_plan.go: Spanne, Schritt, Sprung, Vorlauf, Quartal,
+			// Wiederholung und die Bescheinigungen verschiedener
+			// Betreiber-Menschen prueft jeder Knoten selbst. Ungueltig: nie
+			// angewandt, gezaehlt, im strengen Modus Fehler. Zulassung nicht
+			// lesbar: der ganze Block zurueck.
+			if err := dag.state.applySatzAnkuendigungLocked(context.Background(), &tx, block.Timestamp); err != nil {
+				fmt.Printf("[REPLAY] ✗ satz_ankuendigung: %v (block #%d) — rolling back whole block\n", err, block.Height)
 				hardFailure = true
 				continue
 			}

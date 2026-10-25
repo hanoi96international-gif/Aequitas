@@ -173,6 +173,16 @@ func auftragsFenster(tx *Transaction, jetzt int64) zeitFenster {
 			return zeitFenster{1, 0}
 		}
 		f.eng(sattAdd(tx.DistributionAt, -nachweisHoechstensVoraus), sattAdd(tx.DistributionAt, erneuerungHoechstensAlt))
+	case satzTxArt:
+		// satz_plan.go: erst ab dem Gleichgewicht; issued_at wie beim
+		// Einspruch (satz_zeit); gilt_ab 30 bis 90 Tage nach dem Block
+		// (satz_vorlauf).
+		f.eng(gleichgewichtAb(), math.MaxInt64)
+		if tx.DistributionAt <= 0 || tx.Satz == nil {
+			return zeitFenster{1, 0}
+		}
+		f.eng(sattAdd(tx.DistributionAt, -nachweisHoechstensVoraus), sattAdd(tx.DistributionAt, erneuerungHoechstensAlt))
+		f.eng(sattAdd(tx.Satz.GiltAb, -satzVorlaufMax), sattAdd(tx.Satz.GiltAb, -satzVorlaufMin))
 	case "proof_of_life":
 		// lebensnachweis.go: angewandt nur ab lebensnachweisAktiv und mit
 		// issued_at hoechstens 5 min nach dem Block; im strengen Modus
@@ -281,6 +291,16 @@ func blockTauglich(tx *Transaction, blockZeit int64) error {
 	case "grant_release":
 		if tx.DistributionAt > blockZeit+60 {
 			return fmt.Errorf("Freigabe zur Runde %d, Block %d", tx.DistributionAt, blockZeit)
+		}
+	case satzTxArt:
+		if !gleichgewichtAktiv(blockZeit) {
+			return fmt.Errorf("satz_ankuendigung vor dem Gleichgewicht (Block %d)", blockZeit)
+		}
+		if z := tx.DistributionAt; z <= 0 || z > sattAdd(blockZeit, nachweisHoechstensVoraus) || blockZeit-z > erneuerungHoechstensAlt {
+			return fmt.Errorf("Satz bescheinigt %d, Block %d", z, blockZeit)
+		}
+		if tx.Satz == nil || tx.Satz.GiltAb < sattAdd(blockZeit, satzVorlaufMin) || tx.Satz.GiltAb > sattAdd(blockZeit, satzVorlaufMax) {
+			return fmt.Errorf("Satz ohne gueltigen Vorlauf, Block %d", blockZeit)
 		}
 	case staffelEinspruchTxArt:
 		if !stagedGrantAktiv(blockZeit) {

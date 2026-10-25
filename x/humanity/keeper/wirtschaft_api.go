@@ -110,7 +110,7 @@ func (a *APIServer) handleWirtschaftRegeln(w http.ResponseWriter, r *http.Reques
 		// Die naechste Stufe (wirtschaft3.go), schlafend bis zur Entscheidung.
 		// Ist sie aktiv, gelten ihre Zahlen statt "mensch", "unternehmen",
 		// "frei" und "ueberweisung_prozent" oben.
-		"gleichgewicht": gleichgewichtStand(time.Now().Unix()),
+		"gleichgewicht": a.state.gleichgewichtStand(time.Now().Unix()),
 	})
 }
 

@@ -868,7 +868,7 @@ func (cs *ChainState) umlaufBetragRoh(addr string, art kontoart, stand float64, 
 	}
 	anteil := float64(sekunden) / sekundenJeMonat
 	if gleichgewichtAktiv(jetzt) {
-		return gleichgewichtUmlauf(art, stand, anteil) // wirtschaft3.go
+		return gleichgewichtUmlauf(art, stand, anteil, cs.gleichgewichtSatzZuLocked(jetzt)) // wirtschaft3.go, satz_plan.go
 	}
 	switch art {
 	case artMensch:

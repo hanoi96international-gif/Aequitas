@@ -65,15 +65,25 @@ func gleichgewichtAktiv(unix int64) bool {
 	return unix >= a
 }
 
+// gleichgewichtAb: ab wann das Gleichgewicht gilt (fuer block_tauglich.go).
+func gleichgewichtAb() int64 {
+	a := gleichgewichtAktivAbUnix
+	if o := gleichgewichtAktivOverride.Load(); o != 0 {
+		a = o
+	}
+	return max(a, aktivAb())
+}
+
 // gleichgewichtUmlauf: was ein Konto dieser Art bei diesem Stand fuer den
-// Anteil eines Monats schuldet. Dieselbe Formel wie
+// Anteil eines Monats schuldet, bei satz je Monat (gleichgewichtSatzZuLocked:
+// der Satz, der zur Rundenzeit gilt, satz_plan.go). Dieselbe Formel wie
 // GleichgewichtParameter.Umlauf im Modell (Test
 // TestWirtschaftsmodell_FormelnGleichDerKette).
-func gleichgewichtUmlauf(art kontoart, stand, anteil float64) float64 {
+func gleichgewichtUmlauf(art kontoart, stand, anteil, satz float64) float64 {
 	if art == artSystem || stand <= 0 || anteil <= 0 {
 		return 0
 	}
-	return round6(stand * gleichgewichtSatzMonat * anteil)
+	return round6(stand * satz * anteil)
 }
 
 // umlaufKandidatenLocked: die Konten, die in der Runde zu at schulden
@@ -141,12 +151,20 @@ func (cs *ChainState) umlaufKandidatenLocked(q sqlExecutor, at int64) ([]string,
 }
 
 // gleichgewichtStand: fuer /api/wirtschaft/regeln.
-func gleichgewichtStand(jetzt int64) map[string]interface{} {
+func (cs *ChainState) gleichgewichtStand(jetzt int64) map[string]interface{} {
 	g := StandardGleichgewicht()
+	satz := map[string]interface{}{}
+	if cs != nil {
+		satz = cs.SatzStand(jetzt)
+		if bp, ok := satz["bp_jetzt"].(int64); ok {
+			g.SatzMonat = float64(bp) / 10_000
+		}
+	}
 	return map[string]interface{}{
 		"aktiv":                        gleichgewichtAktiv(jetzt),
 		"aktiv_ab":                     gleichgewichtAktivAbUnix,
-		"umlauf_prozent_monat":         gleichgewichtSatzMonat * 100,
+		"umlauf_prozent_monat":         g.SatzMonat * 100,
+		"satz":                         satz,
 		"gilt_fuer":                    "jedes Konto ab dem ersten AEQ, Menschen, Unternehmen und freie Adressen gleich",
 		"ueberweisung_prozent":         0,
 		"dividende_je_mensch_monat":    g.DividendeJeMensch(),

@@ -149,7 +149,7 @@ nur **netto statt brutto**: Wer 1.000 AEQ hält, gibt 5 ab und bekommt 5.
 | Swap-Gebühr | 0,1 %, 40 / 30 / 30 an Validatoren, Liquidität, Grundeinkommen | gleich |
 | Ausstieg in Stable | wie heute, bis der echte Ausgang öffnet (Abschnitt 12) | 2 % über 3.000 AEQ/Monat |
 | Treuhand inaktiver Konten | wie heute | gleich |
-| Spanne für Mitbestimmung | Satz zwischen 0,25 % und 1 % im Monat, Schritte von 0,05 %, höchstens eine Änderung je Quartal, 30 Tage vorher angekündigt | – |
+| Spanne für Mitbestimmung | Satz zwischen 0,25 % und 1 % im Monat, Schritte von 0,05 %, höchstens ±0,25 Punkte je Änderung, höchstens eine Änderung je Quartal, 30 bis 90 Tage vorher angekündigt, von zwei Betreiber-Menschen gemeinsam — **gebaut** (`satz_plan.go`) | – |
 
 **Warum 0,5 %:** Es ist der heutige Satz der Menschen, also keine neue Zahl.
 Er liegt im erprobten Bereich (Gesell 5,2 %, Circles 7 %, Chiemgauer 8 %,
@@ -399,6 +399,7 @@ Runde, nie an der Uhr des Knotens.
 | g | `distributeUBIPoolLocked`, `nachrechnen_ubi.go` | unverändert: der ganze Topf an die nicht pausierten Menschen |
 | h | `wirtschaftsmodell.go` | `TestWirtschaftsmodell_FormelnGleichDerKette` um den neuen Zweig erweitern: Modell und Kette gleich |
 | i | `/api/wirtschaft/regeln`, App | Satz, Dividende der letzten 30 Tage, **Netto je Konto** im Monat |
+| j | neu: `satz_plan.go` | **Der Satz ist nicht fest.** Transaktion `satz_ankuendigung` (`POST /api/wirtschaft/satz`): Spanne, Schritt, Sprung, Vorlauf, Quartal und zwei Betreiber-Menschen prüft jeder Knoten; der Plan steht in der StateRoot, im Rückroll- und im Export-Snapshot. Ohne Ankündigung gilt 0,5 % |
 
 **Grenzen (AGENTS.md, Frage 2).** Heute läuft der Umlauf nur über Konten über
 5.000 AEQ und Nicht-Menschen; künftig über jedes Konto mit Guthaben, also

@@ -121,6 +121,14 @@ schuldet, genau einmal belastet wurde (`nachrechnen_umlauf.go`:
 `umlauf_rundenzeit`). Eine Überweisungsgebühr gibt es dann nicht mehr
 (`gebuehr_nach_gleichgewicht`).
 
+**Satz einstellbar, nicht fest (25.10.2026, `satz_plan.go`):** der Satz des
+Gleichgewichts ändert sich nur durch eine `satz_ankuendigung` zweier
+verschiedener zugelassener Betreiber-Menschen, in der Spanne 0,25–1 % im
+Monat, höchstens ±0,25 Punkte je Änderung, 30–90 Tage vorher in der Kette,
+höchstens einmal je Quartal. Jeder Knoten prüft das selbst; der Plan steht in
+der StateRoot. Niemand kann den Satz über Nacht ändern, und keine Ankündigung
+wirkt rückwirkend.
+
 **Befund 25.10.2026, heutige Regeln:** ein `umlauf` mit einer Rundenzeit vor
 der letzten Runde wurde nicht nachgerechnet und nahm bis zum ganzen
 Guthaben. Jetzt `umlauf_alte_runde`, streng ab dem gemeinsamen Stichtag nach

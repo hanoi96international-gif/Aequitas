@@ -1230,6 +1230,9 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	// eigener Grenze, Weiterleitung zum Zustaendigen und Annahme-Tor.
 	mux.HandleFunc("/api/proof-of-life", a.lebensnachweisGrenze(a.zumLeiter(a.handleProofOfLife)))
 	mux.HandleFunc("/api/staffel/einspruch", a.staffelEinspruchGrenze(a.zumLeiter(a.handleStaffelEinspruch)))
+	// Satz des Gleichgewichts ankuendigen (satz_plan.go): zwei
+	// Betreiber-Menschen, nur beim Leiter.
+	mux.HandleFunc("/api/wirtschaft/satz", a.satzGrenze(a.zumLeiter(a.handleSatzAnkuendigung)))
 	// Unternehmen (wirtschaft.go, wirtschaft_api.go)
 	mux.HandleFunc("/api/wirtschaft/regeln", a.handleWirtschaftRegeln)
 	mux.HandleFunc("/api/wirtschaft/konto", a.handleWirtschaftKonto)
