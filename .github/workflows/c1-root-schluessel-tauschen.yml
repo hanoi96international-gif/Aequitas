@@ -1,0 +1,178 @@
+name: C1 Root-Schluessel tauschen
+
+# WARUM (25.10.2026). CONTABO_SSH_KEY lag als Repository-Secret im
+# oeffentlichen Repo: jeder Workflow, auch auf einem Nebenzweig, kam daran --
+# die Freigabe in `produktion` schuetzte ihn nicht. Den Wert kennt niemand
+# mehr, also kann er nicht verschoben werden. Stattdessen ein neuer Schluessel,
+# nur als Secret der Umgebung `produktion` (in Aequitas, aequitas-proof-server
+# und aequitas-biometric-beta), und danach der alte weg von C1.
+#
+# DREI SCHRITTE, JEDER EIN EIGENER LAUF MIT FREIGABE. Niemand wird
+# ausgesperrt: der alte Schluessel geht erst, wenn ein Lauf nachweislich mit
+# dem neuen angemeldet ist.
+#
+#   eintragen        mit dem ALTEN Schluessel (noch Repository-Secret): den
+#                    neuen (deploy/c1-root/c1_root_ed25519.pub) zusaetzlich
+#                    eintragen, den Fingerabdruck des alten auf C1 merken.
+#   pruefen          mit dem NEUEN Schluessel (Umgebungs-Secret in
+#                    produktion, es hat Vorrang vor dem Repository-Secret):
+#                    lesbar genau so, wie die Server-Workflows ihn lesen
+#                    (printf > Datei, ohne Nachbearbeitung), und Anmeldung.
+#   alten-entfernen  mit dem NEUEN Schluessel: den gemerkten alten von C1
+#                    nehmen. Nur mit andere_repos_umgestellt=ja -- Proof-
+#                    Server und Biometrie melden sich sonst noch mit dem
+#                    alten an.
+#
+# Nur Fingerabdruecke erscheinen im Protokoll, nie Schluesselinhalte.
+
+on:
+  workflow_dispatch:
+    inputs:
+      schritt:
+        description: "eintragen, pruefen oder alten-entfernen"
+        required: true
+        type: choice
+        options: [eintragen, pruefen, alten-entfernen]
+      andere_repos_umgestellt:
+        description: "Nur fuer alten-entfernen: CONTABO_SSH_KEY in proof-server und biometric (Umgebung produktion) ist der neue"
+        required: true
+        type: choice
+        default: nein
+        options: [nein, ja]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: c1-root-schluessel
+  cancel-in-progress: false
+
+jobs:
+  tauschen:
+    runs-on: ubuntu-latest
+    environment: produktion
+    timeout-minutes: 10
+    env:
+      C1: 188.172.229.121
+      FP: "SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA"
+      SCHRITT: ${{ inputs.schritt }}
+      ANDERE: ${{ inputs.andere_repos_umgestellt }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: deploy/c1-root/c1_root_ed25519.pub
+          sparse-checkout-cone-mode: false
+
+      - name: Schluessel lesen (wie die Server-Workflows) und Host-Pruefung
+        id: wer
+        env:
+          KEY: ${{ secrets.CONTABO_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          # Genau so, wie die anderen Server-Workflows den Schluessel lesen --
+          # ohne Nachbearbeitung. Was hier nicht lesbar ist, ist es dort auch nicht.
+          printf '%s\n' "$KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          if ! ICH="$(ssh-keygen -y -f ~/.ssh/id_ed25519 2>/dev/null | ssh-keygen -lf - | awk '{print $2}')" || [ -z "$ICH" ]; then
+            echo "::error title=CONTABO_SSH_KEY unlesbar::So, wie die Server-Workflows ihn lesen, ist der Schluessel kaputt -- beim Einfuegen gingen vermutlich Zeilenumbrueche verloren. Neu einfuegen, alle Zeilen von -----BEGIN bis -----END (docs/SERVER_FREIGABE.md)."
+            rm -f ~/.ssh/id_ed25519; exit 1
+          fi
+          NEU="$(ssh-keygen -lf deploy/c1-root/c1_root_ed25519.pub | awk '{print $2}')"
+          echo "angemeldet wird mit: $ICH"
+          echo "neuer Schluessel:    $NEU"
+          echo "ich=$ICH" >> "$GITHUB_OUTPUT"
+          echo "neu=$NEU" >> "$GITHUB_OUTPUT"
+          ssh-keyscan -t ed25519 "$C1" 2>/dev/null | { grep -v '^#' || true; } > ~/.ssh/kh_all
+          [ "$(grep -c . ~/.ssh/kh_all)" = 1 ] || { echo "::error::Host-Schluessel von C1: nicht genau eine ed25519-Zeile"; exit 1; }
+          [ "$(ssh-keygen -lf ~/.ssh/kh_all | awk '{print $2}')" = "$FP" ] || { echo "::error::Host-Schluessel von C1 passt nicht"; exit 1; }
+          cp ~/.ssh/kh_all ~/.ssh/known_hosts
+
+      - name: Schritt ${{ inputs.schritt }}
+        env:
+          ICH: ${{ steps.wer.outputs.ich }}
+          NEU: ${{ steps.wer.outputs.neu }}
+        run: |
+          set -euo pipefail
+          case "$ICH$NEU" in *[!A-Za-z0-9+/:=]*) echo "::error::Fingerabdruck unerwartet"; exit 1 ;; esac
+          NEU_ZEILE="$(awk '{print $1, $2, "aequitas-c1-root"}' deploy/c1-root/c1_root_ed25519.pub)"
+          case "$SCHRITT" in
+            eintragen)
+              if [ "$ICH" = "$NEU" ]; then
+                echo "Angemeldet wird schon mit dem neuen Schluessel -- nichts einzutragen."
+                exit 0
+              fi
+              {
+                printf 'export NEU_ZEILE=%q ALT_FP=%q\n' "$NEU_ZEILE" "$ICH"
+                cat <<'SKRIPT'
+          set -euo pipefail
+          AK=/root/.ssh/authorized_keys
+          [ -s "$AK" ] || { echo "::error::authorized_keys fehlt"; exit 1; }
+          B64="$(printf '%s' "$NEU_ZEILE" | awk '{print $2}')"
+          cp -p "$AK" "$AK.vor-root-tausch-$(date -u +%Y%m%dT%H%M%SZ)"
+          if grep -qF "$B64" "$AK"; then
+            echo "Neuer Root-Schluessel war schon eingetragen."
+          else
+            printf '%s\n' "$NEU_ZEILE" >> "$AK"
+            echo "Neuer Root-Schluessel eingetragen."
+          fi
+          if [ ! -s /root/.ssh/root-alt.fp ]; then
+            printf '%s\n' "$ALT_FP" > /root/.ssh/root-alt.fp
+            chmod 600 /root/.ssh/root-alt.fp
+          fi
+          echo "Als alt gemerkt: $(cat /root/.ssh/root-alt.fp)"
+          echo "Schluessel auf C1 (Fingerabdruck, Kommentar):"
+          ssh-keygen -lf "$AK" | awk '{print "  " $2, $3}'
+          SKRIPT
+              } | ssh -o BatchMode=yes -o IdentitiesOnly=yes root@$C1 'bash -s'
+              echo "Weiter: CONTABO_SSH_KEY in produktion anlegen, dann Schritt pruefen."
+              ;;
+            pruefen)
+              if [ "$ICH" != "$NEU" ]; then
+                echo "::error title=Noch der alte Schluessel::CONTABO_SSH_KEY in der Umgebung produktion ist nicht der neue ($NEU) -- angemeldet wurde mit $ICH. Secret in produktion anlegen bzw. ersetzen."
+                exit 1
+              fi
+              ssh -o BatchMode=yes -o IdentitiesOnly=yes root@$C1 'echo "Anmeldung mit dem neuen Root-Schluessel: ok"; ssh-keygen -lf /root/.ssh/authorized_keys | awk "{print \"  \" \$2, \$3}"'
+              ;;
+            alten-entfernen)
+              if [ "$ICH" != "$NEU" ]; then
+                echo "::error::Angemeldet mit $ICH, nicht mit dem neuen Schluessel -- der alte bleibt."
+                exit 1
+              fi
+              if [ "$ANDERE" != "ja" ]; then
+                echo "::error title=Andere Repos zuerst::aequitas-proof-server und aequitas-biometric-beta melden sich mit CONTABO_SSH_KEY an. Erst dort den neuen in produktion anlegen, dann mit andere_repos_umgestellt=ja starten."
+                exit 1
+              fi
+              {
+                printf 'export NEU_FP=%q\n' "$NEU"
+                cat <<'SKRIPT'
+          set -euo pipefail
+          AK=/root/.ssh/authorized_keys
+          ALT="$(cat /root/.ssh/root-alt.fp 2>/dev/null || true)"
+          [ -n "$ALT" ] || { echo "::error::Kein alter Schluessel gemerkt (Schritt eintragen lief nicht)."; exit 1; }
+          [ "$ALT" != "$NEU_FP" ] || { echo "::error::Alter und neuer Schluessel sind gleich -- nichts entfernt."; exit 1; }
+          NEU_DATEI="$(mktemp)"; trap 'rm -f "$NEU_DATEI"' EXIT
+          n=0
+          while IFS= read -r z || [ -n "$z" ]; do
+            fp="$(printf '%s\n' "$z" | ssh-keygen -lf - 2>/dev/null | awk '{print $2}' || true)"
+            if [ -n "$fp" ] && [ "$fp" = "$ALT" ]; then n=$((n + 1)); continue; fi
+            printf '%s\n' "$z" >> "$NEU_DATEI"
+          done < "$AK"
+          if [ "$n" = 0 ]; then echo "Alter Schluessel ist nicht mehr eingetragen -- nichts zu tun."; exit 0; fi
+          ssh-keygen -lf "$NEU_DATEI" | awk '{print $2}' | grep -qxF "$NEU_FP" || { echo "::error::Der neue Schluessel fehlte danach -- nichts geaendert."; exit 1; }
+          cp -p "$AK" "$AK.vor-root-entfernen-$(date -u +%Y%m%dT%H%M%SZ)"
+          chmod 600 "$NEU_DATEI"
+          mv "$NEU_DATEI" "$AK"
+          trap - EXIT
+          rm -f /root/.ssh/root-alt.fp
+          echo "Alter Root-Schluessel entfernt ($n Zeile). Uebrig (Fingerabdruck, Kommentar):"
+          ssh-keygen -lf "$AK" | awk '{print "  " $2, $3}'
+          SKRIPT
+              } | ssh -o BatchMode=yes -o IdentitiesOnly=yes root@$C1 'bash -s'
+              echo "Weiter: Repository-Secret CONTABO_SSH_KEY in allen drei Repos loeschen."
+              ;;
+            *) echo "::error::Unbekannter Schritt"; exit 1 ;;
+          esac
+
+      - name: SSH-Schluessel vom Runner entfernen
+        if: always()
+        run: rm -f ~/.ssh/id_ed25519
