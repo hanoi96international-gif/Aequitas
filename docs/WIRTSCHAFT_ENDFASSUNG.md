@@ -271,7 +271,8 @@ zwei Wochen 0,125 %), nie ein Freibetrag für eine Kontoart.
 
 Eine Firma ohne Umsatz mit 50.000 AEQ zahlt 243 statt 454 AEQ im Monat. Das ist
 kein Versteck: Ein Mensch zahlt auf dasselbe Geld denselben Satz. Sie umgeht
-aber die **Vermögensgrenze**: Ein Mensch kann über eigene Unternehmen mehr als
+aber die **Vermögensgrenze** (Audit 21.10.2026, M3: „eine Grenze für
+Unternehmen wäre eine Wirtschaftsentscheidung“): Ein Mensch kann über eigene Unternehmen mehr als
 25 × halten, und das kostet ihn nicht mehr als 5,8 % im Jahr (heute rund 11 %).
 Ich halte das für hinnehmbar: Stimmen hängen an Menschen, nicht an AEQ;
 Unternehmen sind öffentlich mit ihren Verantwortlichen eingetragen; und eine
@@ -356,6 +357,16 @@ Die Identität bleibt der Engpass (`REGISTRIERUNG_ENDFASSUNG.md`).
 2. **Vor echtem Wert: Lebensnachweis aktiv.** Er wirkt erst, wenn
    Coordinatoren im Konsens zugelassen sind (`registerLeserAktiv`,
    `lebensnachweisAktiv`). Für Testgeld in der Beta nicht nötig.
+
+### Verträglichkeit mit den Verifier-Prinzipien
+
+Der Umlauf nimmt Geld ohne Unterschrift. Grundsatz 1 in
+`VERIFIER_PRINZIPIEN.md` erlaubt das nur als Regel, „die jeder Knoten selbst
+nachrechnet und streng durchsetzt“. Heute gilt das für Menschen und freie
+Adressen; Unternehmen überspringt die Prüfung, wenn die Buchführung des
+Knotens nicht das ganze Fenster abdeckt. Mit der Endfassung gilt es für jedes
+Konto. `umlauf` bleibt in `bekannteGeldAusnahmen` (`kein_entzug_test.go`),
+mit dieser Begründung.
 
 ### Schritt 1: Konsens (eine Aktivierungszeit)
 
