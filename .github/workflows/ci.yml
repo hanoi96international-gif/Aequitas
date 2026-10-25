@@ -63,6 +63,7 @@ jobs:
       # Variable, kein Kommentar (Kopf von deploy/rechtstexte-angaben.sh).
       - run: bash scripts/test_rechtstexte_angaben.sh
       - run: bash scripts/test_sicherung_befehl.sh
+      - run: bash scripts/test_schluessel_lesen.sh
 
   test:
     runs-on: ubuntu-latest

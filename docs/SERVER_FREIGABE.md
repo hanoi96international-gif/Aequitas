@@ -101,9 +101,11 @@ aber auch **ohne Root-Schlüssel**:
 1. Settings → Environments → **New environment** → Name genau `sicherung`. Keine
    Prüfer. **Deployment branches and tags** → „Selected branches and tags“ → `main`.
 2. Dort **Add environment secret** → Name `SICHERUNG_SSH_KEY`, Wert: der private
-   Schlüssel, den ich dir gegeben habe (ganze Datei, mit den Zeilen
-   `-----BEGIN/END OPENSSH PRIVATE KEY-----`). Der öffentliche Teil liegt in
-   `deploy/sicherung/sicherung_ed25519.pub`.
+   Schlüssel als **eine base64-Zeile** (`base64 -w0 schluessel`) -- so übersteht er
+   das Einfügen am Handy. Die ganze Datei mit `-----BEGIN/END OPENSSH PRIVATE KEY-----`
+   geht auch, selbst ohne Zeilenumbrüche (`deploy/sicherung/schluessel-lesen.sh`).
+   Der Workflow prüft, dass das Secret zum öffentlichen Teil in
+   `deploy/sicherung/sicherung_ed25519.pub` passt, und sagt sonst genau, was fehlt.
 3. Actions → „Sicherungsschluessel auf C1 einrichten“ → Run workflow (bei
    `bio_empfaenger` den öffentlichen age-Schlüssel, siehe
    `docs/BIOMETRIE_SICHERUNG.md`) → freigeben.
