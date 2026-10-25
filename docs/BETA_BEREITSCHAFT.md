@@ -1,4 +1,4 @@
-# Beta-Bereitschaft — Prüfung vom 14.10.2026, Stand 24.10.2026
+# Beta-Bereitschaft — Prüfung vom 14.10.2026, Stand 25.10.2026
 
 Geprüft wurden alle vier Repos: Kette, App, Biometrie und Proof-Server. Die
 Fragen waren: funktioniert es, ist es sicher, ist es schnell, und ist der Weg
@@ -9,7 +9,7 @@ Massstab ist AGENTS.md, „Sicherheit — Launch-Massstab“. Jede Änderung unt
 hatte eine getrennte Sicherheitsprüfung; das Ergebnis steht als Kommentar im
 jeweiligen PR.
 
-## 0. Live-Stand 24.10.2026
+## 0. Live-Stand 25.10.2026
 
 Gelesen mit `pruefstand-live.yml`, `wache.yml` und `betrieb-pruefen-c1.yml`
 (nur lesend), alle drei grün. Es läuft **ein** Server: C1 (netcup,
@@ -22,12 +22,15 @@ Tests entfernt (Aequitas #419–#422, biometric #87, proof-server #24);
 |---|---|
 | Kette | Höhe ~226.700, Chain-ID 19260930, keine Kontostand-Abweichung, nur C1 nimmt an, keine Fehler im Knoten-Log |
 | Registrierung | Coordinator proof1 ok, **Quorum 1 im Einzelbetrieb** (höchstens 25 Registrierungen am Tag), Vergleichsdienst ok, Proof-Server `required`, Herkunftspflicht an `/api/register` |
-| App | Website und C1 liefern **v1.12.9** (= neuestes Release, App #45). Die APK enthält keine proof2-Adresse mehr; die Bauvariablen `EXPO_PUBLIC_*_FALLBACKS` sind geleert. Die App weist abgeschaltete Server in jeder Schreibweise selbst ab (`abgeschaltet()` in `lib/config.ts`). |
+| App | Neuestes Release **v1.13.0** (25.10., App #46): „Knoten“ → „Bestätigen“ trägt einen Server auch ins Validator-Register auf der Kette ein. Seit v1.12.9 keine proof2-Adresse mehr in der APK, die Bauvariablen `EXPO_PUBLIC_*_FALLBACKS` sind geleert. Die App weist abgeschaltete Server in jeder Schreibweise selbst ab (`abgeschaltet()` in `lib/config.ts`). |
 | Sicherung | Läuft künftig in der Umgebung `sicherung` ohne Freigabe-Halt, mit einem Schlüssel, der auf C1 nur die Sicherung ausführen darf (`deploy/sicherung/`). Offen: einrichten (Punkt 4); bis dahin warten die nächtlichen Läufe auf eine Freigabe. Biometrie-Backup ohne age-Empfänger (Punkt 3.5) |
 | RPC-Ausnahme | `AEQUITAS_RPC_RATE_LIMIT_FREI` auf C1 geleert (galt der neu vergebenen C2-IP) |
 | Produzenten | `AUTHORIZED_VALIDATORS` auf C1 = nur C1; `produzenten_geschlossen=true` (live; `pruefstand-live.yml` und `wache.yml` werden rot, wenn der Wert nicht genau `true` ist) |
-| Register-Bindung | Betreiber-Wallet `0x0be8…d016` ist Mensch; die Bindung von C1 fehlt noch (Punkt 2 unten). `pruefstand-live.yml` zeigt den Stand. |
-| Railway-Coordinator | Antwortet noch (USA). Er ist nicht mehr in App oder Workflows eingetragen, sollte aber abgeschaltet werden (Datenschutz). |
+| Register-Bindung | Betreiber-Wallet `0x0be8…d016` ist Mensch. Am 25.10. mit App 1.13.0 und `knoten-binden.yml` (Lauf 40192341488) bestätigt; das Register wertet eine Bindung erst 2 h nach der Einreichung. Erledigt ist sie, wenn `erzeuger_ohne_bindung` in `/api/status` leer ist (Wache und `pruefstand-live.yml` zeigen es). |
+| Railway | Abgeschaltet (antwortet „Application not found“). Reste in Workflows, Wache und Biometrie-Skripten entfernt (Aequitas #437, biometric #91); `lint_alte_hosts.py` lässt `*.up.railway.app` in ausführbaren Zeilen nicht mehr zu. |
+| Root-Zugang C1 | Neuer Root-Schlüssel nur als Umgebungs-Secret in `produktion`; der alte (lag als Repository-Secret im öffentlichen Repo) ist am 25.10. auf C1 entfernt, ebenso der unbekannte Schlüssel `github-actions-deploy-contabo1` (`c1-root-schluessel-tauschen.yml`, #433/#436). |
+| Coordinator-Schlüssel | Für den Notfall „Signierschlüssel entwendet“ gibt es wieder einen Weg auf C1: `coordinator-schluessel-wechseln.yml` (biometric #92), mit Rücknahme, wenn ein Dienst den neuen Schlüssel nicht annimmt. |
+| Caddy | Log-Rotation am Container noch offen: `neuer-server-caddy.yml` mit `neu_anlegen` starten (Vorprüfung seit #438 auf den Schlüssel, mit dem der Coordinator unterschreibt). |
 | Freigaben | `produktion` (alle vier Repos) und `app-signatur` haben seit dem 24.10. Pflicht-Prüfer; belegt an je einem wartenden Lauf in Aequitas und Biometrie. App und Proof-Server zeigen es beim nächsten Bau bzw. Deploy. |
 
 **Was die Beta noch braucht** (alles Betreiber, Reihenfolge = Vorschlag):
@@ -36,10 +39,11 @@ Tests entfernt (Aequitas #419–#422, biometric #87, proof-server #24);
    `/datenschutz` antworten 404, alle sieben `LEGAL_*` fehlen.
    `rechtstexte-setzen.yml` mit den sieben Angaben starten (erlaubte
    Zeichen: Buchstaben, Ziffern, Leerzeichen, `. , - / @ + & ( ) : _`).
-2. **C1 im Validator-Register auf der Kette eintragen** (3.6a): Erzeuger
-   `0x3066639af1653325100c1074a9696612dbdc42dc` steht noch nicht im Register
-   (beim Knoten gebunden seit 21.10.). Ab App 1.13.0: `knoten-binden.yml`
-   starten, in der App einmal bestätigen.
+2. ~~C1 im Validator-Register auf der Kette eintragen~~ **eingereicht**
+   (25.10.2026, App 1.13.0, `knoten-binden.yml` Lauf 40192341488). Offen nur
+   die Bestätigung: `erzeuger_ohne_bindung` muss leer sein. Danach kann der
+   Stichtag „nur gebundene Server erzeugen“ gesetzt werden (Konsensänderung,
+   eigener PR mit Sicherheitsprüfung).
 3. **Umgebung `produktion` scharf machen** (3.1).
 4. **Sicherung ohne Klick einrichten** (3.5): `SICHERUNG_SSH_KEY` in der neuen
    Umgebung `sicherung` anlegen, dann `sicherung-einrichten.yml` mit dem
@@ -52,10 +56,20 @@ Tests entfernt (Aequitas #419–#422, biometric #87, proof-server #24);
    im Testmodus (`real_data_unlocked=false`), die Altersschätzung beobachtet
    nur (`modell_bereit=false`).
 8. ~~App-Bauvariablen leeren~~ **erledigt** (24.10.2026): Die Variablen
-   sind leer, v1.12.9 ist ohne proof2 gebaut und ausgeliefert. Offen bleibt
-   nur, das Secret `CONTABO2_SSH_KEY` zu löschen.
-9. **Railway-Coordinator abschalten** (USA, Datenschutz). Er wird nirgends
-   mehr angesprochen.
+   sind leer, v1.12.9 ist ohne proof2 gebaut und ausgeliefert.
+9. ~~Railway-Coordinator abschalten~~ **erledigt**: abgeschaltet, Reste
+   entfernt (Aequitas #437, biometric #91).
+10. **Secrets aufräumen**: `Railway` und `CONTABO2_SSH_KEY` löschen (beide
+    werden von keinem Workflow mehr gelesen).
+11. **Caddy-Log-Rotation**: `neuer-server-caddy.yml` mit `neu_anlegen`
+    starten und freigeben (kurze HTTPS-Unterbrechung, Zertifikate bleiben).
+12. **Überwachung von außen** (Minuten statt Stunden): GitHub führt
+    `wache.yml` statt alle 10 Minuten nur alle 2–5 Stunden aus (25.10.: zuletzt
+    09:54 UTC). Bei UptimeRobot (kostenlos) zwei HTTP(S)-Monitore mit 5 min
+    Abstand und E-Mail-Alarm anlegen:
+    `https://aequitas.digital/api/wache` (200 = alles da, 503 = der Rumpf
+    nennt, was fehlt) und `https://proof1.aequitas.digital/health`. Kein
+    Geheimnis nötig, beide Adressen sind öffentlich.
 
 Ein zweiter Validator ist für die Beta nicht nötig, für den Launch schon
 (Punkt 3.6). Bis dahin trägt C1 allein: Snapshot und Autoheal vertrauen C1,
@@ -146,7 +160,7 @@ Reihenfolge, in der sie gemacht werden sollten.
 8. **FromSync-Stichtag** (`fromSyncStrengAbUnix`): gesetzt auf 18.10.2026 00:00 UTC (vorgezogen) (17.10.2026, auf deine Anweisung). Für dich bleibt: in der ersten Stunde nach `Ab` die Logs von C1 auf `[FINALITY] ✗` / `[SLASHING] ✗` ansehen, jeden neuen Validator vor dem Start mit diesem Code betreiben (spätestens 17.10.2026 23:58 UTC), und C1 keinen Seed eintragen, ohne vorher Finalität und StateRoot des Seeds zu vergleichen (sonst kann das Sync-Tor C1 nach einem Neustart anhalten, F4). Rücknahme nur über `fromSyncStrengBisUnix`: `docs/FROMSYNC_STICHTAG.md`.
 9. **Checkpoint-Stichtag** (`checkpointTxAbUnix`): erst mit vier oder mehr Validatoren, nach dem Abschnitt „Einschalten“ in `CHECKPOINT_FAHRPLAN.md`.
 10. **Chain-ID-Wechsel** (entschieden: neue Chain-ID 19260930):
-   - ID in ethereum-lists/chains eintragen: Die Datei liegt fertig unter `deploy/ethereum-lists/eip155-19260930.json` (Name, RPC `https://aequitas.digital/rpc`, AEQ mit 18 Stellen). Als PR an `ethereum-lists/chains` unter `_data/chains/` einreichen, sobald der Stichtag feststeht -- deren Prüfung erwartet, dass der RPC die ID schon meldet. Am 16.10.2026 war 19260930 frei; vorher erneut prüfen.
+   - ID in ethereum-lists/chains eintragen: Die Datei liegt fertig unter `deploy/ethereum-lists/eip155-19260930.json` (Name, RPC `https://aequitas.digital/rpc`, AEQ mit 18 Stellen). Als PR an `ethereum-lists/chains` unter `_data/chains/` einreichen; Schritte, Titel und Text: `docs/ETHEREUM_LISTS_PR.md`. Am 16.10.2026 war 19260930 frei; vorher erneut prüfen.
    - Stichtag gesetzt (17.10.2026): **18.10.2026, 00:00 UTC** (vorgezogen, ohne 7-Tage-Vorlauf), App 1.11.0 dazu veröffentlicht, Hinweis auf der Startseite. Für dich bleibt: den Wechsel zusätzlich in deinen Kanälen ankündigen (MetaMask-Nutzer legen das Netz neu an), nach dem Stichtag den ethereum-lists-Eintrag einreichen.
    - Den Ablauf beschreibt `docs/CHAIN_ID_WECHSEL.md`.
 11. **Sybil über das Gerätegeheimnis** (`ALLOW_DEVICE_SECRET_REGISTER`): **im Code geschlossen, keine Entscheidung mehr nötig** (geprüft 20.10.2026). Eine Registrierung ohne Gesicht kommt nicht mehr auf die Kette, auch wenn eine App mit dem Schalter gebaut ist:
