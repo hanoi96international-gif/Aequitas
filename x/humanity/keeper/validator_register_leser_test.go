@@ -181,7 +181,7 @@ func registerStand() *erzeugerStand {
 func TestErzeugerErlaubt_SchnittmengeUndFailClosed(t *testing.T) {
 	ab := int64(2_000_000_000)
 	erzeugerSchnittOverride.Store(ab)
-	t.Cleanup(func() { erzeugerSchnittOverride.Store(0) })
+	t.Cleanup(func() { erzeugerSchnittOverride.Store(math.MaxInt64) })
 	vorher := ab - zeitstempelRueckToleranz - 1
 
 	dag := erzeugerTestDAG(registerStand())
@@ -227,7 +227,7 @@ func TestErzeugerErlaubt_SchnittmengeUndFailClosed(t *testing.T) {
 func TestErzeugerErlaubt_RueckdatierenUmgehtDenStichtagNicht(t *testing.T) {
 	ab := int64(2_000_000_000)
 	erzeugerSchnittOverride.Store(ab)
-	t.Cleanup(func() { erzeugerSchnittOverride.Store(0) })
+	t.Cleanup(func() { erzeugerSchnittOverride.Store(math.MaxInt64) })
 	dag := erzeugerTestDAG(registerStand())
 	if dag.erzeugerErlaubt("0xb", ab-zeitstempelRueckToleranz) {
 		t.Fatal("um die Rueck-Toleranz zurueckdatierter Block ohne Bindung angenommen")
@@ -243,7 +243,7 @@ func TestErzeugerErlaubt_RueckdatierenUmgehtDenStichtagNicht(t *testing.T) {
 // nahtlos weiter, der neue beginnt erst danach.
 func TestErzeugerErlaubt_WechselOhneSpaltung(t *testing.T) {
 	erzeugerSchnittOverride.Store(1)
-	t.Cleanup(func() { erzeugerSchnittOverride.Store(0) })
+	t.Cleanup(func() { erzeugerSchnittOverride.Store(math.MaxInt64) })
 	T := int64(1_900_000_000)
 	alt := standAus(z("v", "0xk", T-30*86400))
 	neu := standAus(z("v", "0xk", T-30*86400), z("v", "0xk2", T))
@@ -306,7 +306,7 @@ func TestSyncValidatoren_AbStichtagNichtsVonPeers(t *testing.T) {
 	echt := httpSyncClient
 	httpSyncClient = &http.Client{}
 	t.Cleanup(func() { httpSyncClient = echt })
-	t.Cleanup(func() { registerLeserOverride.Store(0); erzeugerSchnittOverride.Store(0) })
+	t.Cleanup(func() { registerLeserOverride.Store(math.MaxInt64); erzeugerSchnittOverride.Store(math.MaxInt64) })
 	mk, mensch := neuerSchluessel(t)
 	_, signing := neuerSchluessel(t)
 	sig := personalSign(t, mk, "Aequitas: authorize validator "+signing)
@@ -355,7 +355,7 @@ func TestValidatorMenschVon_AbStichtagAusDemStand(t *testing.T) {
 		t.Fatalf("vor dem Stichtag: %q", got)
 	}
 	registerLeserOverride.Store(1)
-	t.Cleanup(func() { registerLeserOverride.Store(0) })
+	t.Cleanup(func() { registerLeserOverride.Store(math.MaxInt64) })
 	if got := dag.validatorMenschVon("0xaa"); got != "" {
 		t.Fatalf("ab registerLeserAb ohne Stand: %q", got)
 	}
@@ -402,7 +402,7 @@ func TestErzeugerRegisterAuffrischen_FehlerBehaeltFenster(t *testing.T) {
 	dag := erzeugerTestDAG(nil)
 	dag.state = cs
 	erzeugerSchnittOverride.Store(1)
-	t.Cleanup(func() { erzeugerSchnittOverride.Store(0) })
+	t.Cleanup(func() { erzeugerSchnittOverride.Store(math.MaxInt64) })
 	if dag.erzeugerErlaubt("0xa", nowUnix()) {
 		t.Fatal("Erzeugerpruefung mit Lesefehler offen")
 	}
@@ -439,7 +439,7 @@ func TestAddPeerBlock_ErzeugerpruefungAusDemRegister(t *testing.T) {
 		t.Fatal("vor dem Stichtag als unbekannt abgewiesen -- der Test beweist nichts")
 	}
 	erzeugerSchnittOverride.Store(1)
-	t.Cleanup(func() { erzeugerSchnittOverride.Store(0) })
+	t.Cleanup(func() { erzeugerSchnittOverride.Store(math.MaxInt64) })
 	if !lauf(leer) {
 		t.Fatal("ab erzeugerSchnittAb: Schluessel ohne Bindung nicht abgewiesen")
 	}
@@ -512,7 +512,7 @@ func TestRegisterAndDiscover_SeedListeAbStichtagNicht(t *testing.T) {
 		t.Fatal("vor dem Stichtag nicht aufgenommen -- der Test beweist nichts")
 	}
 	erzeugerSchnittOverride.Store(1) // offen: newGhostdagTestDAG hat keine Liste
-	t.Cleanup(func() { erzeugerSchnittOverride.Store(0) })
+	t.Cleanup(func() { erzeugerSchnittOverride.Store(math.MaxInt64) })
 	if lauf() {
 		t.Fatal("ab dem Stichtag aus der Liste des Seeds aufgenommen")
 	}
@@ -524,7 +524,7 @@ func TestRegisterAndDiscover_SeedListeAbStichtagNicht(t *testing.T) {
 // nicht mehr gegen K1.
 func TestLeitung_WechselGibtKeinenZweitenSitz(t *testing.T) {
 	registerLeserOverride.Store(1)
-	t.Cleanup(func() { registerLeserOverride.Store(0) })
+	t.Cleanup(func() { registerLeserOverride.Store(math.MaxInt64) })
 	dag := newOrphanTestDAG()
 	dag.state = newTestState()
 	dag.state.erzeugerRegister.Store(standAus(z("0xm", "0xk0", 0), z("0xm", "0xk1", nowUnix()-3*erzeugerFrist)))

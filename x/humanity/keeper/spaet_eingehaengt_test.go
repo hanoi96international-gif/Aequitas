@@ -1,6 +1,7 @@
 package keeper
 
 import (
+	"math"
 	"strings"
 	"testing"
 
@@ -11,7 +12,7 @@ import (
 // der eigenen Spitze liegt, wird ab dem Stichtag abgewiesen; puenktlich, aus
 // der Geschichte vom Seed, vor dem Stichtag oder ohne solche Transaktion nicht.
 func TestSpaetEingehaengt_Regel(t *testing.T) {
-	t.Cleanup(func() { validatorRegisterOverride.Store(0); registerLeserOverride.Store(0) })
+	t.Cleanup(func() { validatorRegisterOverride.Store(0); registerLeserOverride.Store(math.MaxInt64) })
 	block := func(zeit int64, typ string, sync bool) *Block {
 		return &Block{Timestamp: zeit, FromSync: sync, Transactions: []Transaction{{Type: "transfer"}, {Type: typ}}}
 	}
@@ -20,7 +21,7 @@ func TestSpaetEingehaengt_Regel(t *testing.T) {
 	spaet := t0 + spaetEingehaengtGrenze + 1
 	for _, typ := range []string{"validator_bindung", "slash_equivocation"} {
 		validatorRegisterOverride.Store(0)
-		registerLeserOverride.Store(0)
+		registerLeserOverride.Store(math.MaxInt64)
 		if g := spaetEingehaengt(block(t0, typ, false), zeit(spaet)); g != "" {
 			t.Fatalf("%s vor dem Stichtag abgewiesen: %s", typ, g)
 		}

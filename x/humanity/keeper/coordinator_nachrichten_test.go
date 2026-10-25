@@ -4,6 +4,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/hex"
+	"math"
 	"strings"
 	"testing"
 )
@@ -32,7 +33,7 @@ func TestCoordinatorNachrichten_ImKonsensNurV2(t *testing.T) {
 	gut := func(m string) (bool, bool) { return m == mensch, false }
 	zugelassen := func(m string, t int64) (bool, error) { return m == mensch && t == issued, nil }
 	registerLeserOverride.Store(1)
-	t.Cleanup(func() { registerLeserOverride.Store(0) })
+	t.Cleanup(func() { registerLeserOverride.Store(math.MaxInt64) })
 	signiere := func(msg string) string { return hex.EncodeToString(ed25519.Sign(priv, []byte(msg))) }
 	fremdeKette := strings.Replace
 

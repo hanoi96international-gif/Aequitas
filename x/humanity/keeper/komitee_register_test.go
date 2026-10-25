@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"math"
 	"sort"
 	"testing"
 	"time"
@@ -33,7 +34,7 @@ func komiteeDAG(st *erzeugerStand, self string) *BlockDAG {
 func erzeugerSchnittAb1(t *testing.T) {
 	t.Helper()
 	erzeugerSchnittOverride.Store(1)
-	t.Cleanup(func() { erzeugerSchnittOverride.Store(0) })
+	t.Cleanup(func() { erzeugerSchnittOverride.Store(math.MaxInt64) })
 }
 
 // erwartetesKomitee: unabhaengig nachgerechnet -- die Zugelassenen zu t,
@@ -316,7 +317,7 @@ func TestKomiteeAusRegister_Rangliste(t *testing.T) {
 func TestKomiteeAusRegister_StichtagWieErzeugerpruefung(t *testing.T) {
 	jetzt := int64(1_900_000_000)
 	erzeugerSchnittOverride.Store(jetzt + zeitstempelRueckToleranz)
-	t.Cleanup(func() { erzeugerSchnittOverride.Store(0) })
+	t.Cleanup(func() { erzeugerSchnittOverride.Store(math.MaxInt64) })
 	dag := komiteeDAG(komiteeStand(3, 0, 1<<62), "")
 	dag.authorizedValidators = map[string]bool{"0x00000000000000000000000000000000000000f1": true}
 	if !erzeugerSchnittAktiv(jetzt) {

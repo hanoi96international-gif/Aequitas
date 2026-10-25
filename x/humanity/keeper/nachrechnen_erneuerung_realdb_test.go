@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -79,7 +80,7 @@ func neuerErneuerungsFall(t *testing.T, registriertVorTagen int64) *erneuerungsF
 	// Zugelassen (coordinator_zulassung.go): der Mensch haelt seit 30 Tagen
 	// einen Validator-Schluessel im Kettenregister.
 	registerLeserOverride.Store(1)
-	t.Cleanup(func() { registerLeserOverride.Store(0) })
+	t.Cleanup(func() { registerLeserOverride.Store(math.MaxInt64) })
 	if _, err := cs.db.Exec(`DELETE FROM validator_verlauf`); err != nil {
 		t.Fatal(err)
 	}
