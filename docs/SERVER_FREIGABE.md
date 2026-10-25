@@ -137,8 +137,10 @@ mit Freigabe.
 2. Den neuen Schlüssel hinterlegen -- alles von `-----BEGIN` bis `-----END`.
    Gehen beim Einfügen am Handy die Zeilenumbrüche verloren, setzen die
    Server-Workflows sie wieder (seit 25.10.2026, `scripts/lint_ssh_schluessel.py`,
-   getestet in `scripts/test_ssh_schluessel_reparatur.sh`); ein abgeschnittener
-   Schlüssel bleibt unlesbar.
+   getestet in `scripts/test_ssh_schluessel_reparatur.sh`), auch wenn iOS aus
+   `--` Gedankenstriche gemacht hat; ein abgeschnittener Schlüssel bleibt
+   unlesbar. Am sichersten am Handy: die Datei als **eine base64-Zeile**
+   (`base64 -w0 schluessel`) -- auch die nehmen alle Server-Workflows an.
    - Aequitas (öffentlich): Settings → Environments → `produktion` → Secret
      `CONTABO_SSH_KEY`. Ein Umgebungs-Secret hat Vorrang vor dem gleichnamigen
      Repository-Secret.

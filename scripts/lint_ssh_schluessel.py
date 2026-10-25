@@ -9,6 +9,16 @@ getestet in scripts/test_ssh_schluessel_reparatur.sh) setzt Kopf, Rumpf und
 Fuss wieder zusammen; ein richtig eingefuegter Schluessel bleibt byte-gleich,
 alles andere bleibt unlesbar.
 
+Ohne Kopf wird der Wert als EINE base64-Zeile der ganzen Schluesseldatei
+gelesen (`base64 -w0 schluessel`). So uebersteht er das Einfuegen am Handy
+sicher: iOS macht aus "--" einen Gedankenstrich und zerstoert damit die
+Marker, base64 enthaelt keine solchen Zeichen. Ergibt das Dekodieren keinen
+OpenSSH-Schluessel, bleibt der Wert, wie er war (unlesbar).
+
+Weil Kopf und Fuss fester Text sind, setzt die Reparatur sie aus Binde-,
+Gedanken- und Halbgeviertstrichen wieder auf fuenf Bindestriche. Der Rumpf
+(base64) enthaelt keine Striche und wird davon nicht beruehrt.
+
 Dieser Waechter haelt fest: Wo eine Variable, die ein *SSH_KEY-Secret traegt,
 in eine Datei geschrieben wird, steht genau diese Reparatur. `--reparatur`
 gibt die Zeile fuer den Test aus, `--selbsttest` prueft den Waechter.
@@ -17,7 +27,12 @@ import glob
 import re
 import sys
 
-PERL = (r"s/\r//g; s/\s*(-----BEGIN OPENSSH PRIVATE KEY-----)\s*(.*?)\s*"
+PERL = (r"s/\r//g; s/(?:-|\xE2\x80[\x93\x94])+ *(BEGIN|END) OPENSSH PRIVATE KEY *(?:-|\xE2\x80[\x93\x94])+"
+        r"/-----$1 OPENSSH PRIVATE KEY-----/g; "
+        r"unless (/-----BEGIN OPENSSH PRIVATE KEY-----/) { (my $z = $_) =~ s/\s//g; "
+        r"if ($z =~ m|^[A-Za-z0-9+/]+=*$|) { require MIME::Base64; my $d = MIME::Base64::decode_base64($z); "
+        r"$_ = $d if $d =~ /-----BEGIN OPENSSH PRIVATE KEY-----/; } } "
+        r"s/\s*(-----BEGIN OPENSSH PRIVATE KEY-----)\s*(.*?)\s*"
         r"(-----END OPENSSH PRIVATE KEY-----)\s*/my ($k, $b, $f) = ($1, $2, $3); "
         r"$b =~ s|\s||g; $b =~ s|(.{70})|$1\n|g; $b =~ s|\n\z||; "
         r'"$k\n$b\n$f\n"/se')

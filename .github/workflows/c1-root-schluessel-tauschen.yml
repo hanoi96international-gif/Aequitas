@@ -79,8 +79,9 @@ jobs:
           # mit derselben Reparatur verlorener Zeilenumbrueche
           # (scripts/lint_ssh_schluessel.py). Was hier nicht lesbar ist, ist es
           # dort auch nicht.
-          printf '%s' "$KEY" | perl -0777 -pe 's/\r//g; s/\s*(-----BEGIN OPENSSH PRIVATE KEY-----)\s*(.*?)\s*(-----END OPENSSH PRIVATE KEY-----)\s*/my ($k, $b, $f) = ($1, $2, $3); $b =~ s|\s||g; $b =~ s|(.{70})|$1\n|g; $b =~ s|\n\z||; "$k\n$b\n$f\n"/se' > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          printf '%s' "$KEY" | perl -0777 -pe 's/\r//g; s/(?:-|\xE2\x80[\x93\x94])+ *(BEGIN|END) OPENSSH PRIVATE KEY *(?:-|\xE2\x80[\x93\x94])+/-----$1 OPENSSH PRIVATE KEY-----/g; unless (/-----BEGIN OPENSSH PRIVATE KEY-----/) { (my $z = $_) =~ s/\s//g; if ($z =~ m|^[A-Za-z0-9+/]+=*$|) { require MIME::Base64; my $d = MIME::Base64::decode_base64($z); $_ = $d if $d =~ /-----BEGIN OPENSSH PRIVATE KEY-----/; } } s/\s*(-----BEGIN OPENSSH PRIVATE KEY-----)\s*(.*?)\s*(-----END OPENSSH PRIVATE KEY-----)\s*/my ($k, $b, $f) = ($1, $2, $3); $b =~ s|\s||g; $b =~ s|(.{70})|$1\n|g; $b =~ s|\n\z||; "$k\n$b\n$f\n"/se' > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
           if ! ICH="$(ssh-keygen -y -f ~/.ssh/id_ed25519 2>/dev/null | ssh-keygen -lf - | awk '{print $2}')" || [ -z "$ICH" ]; then
+            python3 -c 'import os, re, unicodedata as u; k = os.environ.get("KEY", ""); f = sorted(set("U+%04X %s" % (ord(c), u.name(c, "?")) for c in k if not re.match(r"[A-Za-z0-9+/=\s-]", c))); print("Diagnose (ohne Inhalt): Laenge", len(k), "| Zeilen", k.count(chr(10)) + 1, "| Kopf", "BEGIN OPENSSH PRIVATE KEY" in k, "| Fuss", "END OPENSSH PRIVATE KEY" in k, "| fremde Zeichen:", ", ".join(f[:8]) or "keine")'
             echo "::error title=CONTABO_SSH_KEY unlesbar::Auch nach der Reparatur verlorener Zeilenumbrueche ist der Schluessel nicht lesbar -- unvollstaendig eingefuegt? Neu einfuegen, alles von -----BEGIN bis -----END (docs/SERVER_FREIGABE.md)."
             rm -f ~/.ssh/id_ed25519; exit 1
           fi
