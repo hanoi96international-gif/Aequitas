@@ -123,25 +123,39 @@ die Sicherungsläufe („Sicherungsskript auf C1 veraltet“).
 ## Root-Schlüssel tauschen (seit 25.10.2026)
 
 `CONTABO_SSH_KEY` lag als Repository-Secret im öffentlichen Repo; den Wert
-kennt niemand mehr. Deshalb ein neuer Schlüssel, nur als Secret der Umgebung
-`produktion` -- in **Aequitas, aequitas-proof-server und
-aequitas-biometric-beta** -- und danach der alte weg von C1. Workflow:
-`c1-root-schluessel-tauschen.yml`, jeder Schritt ein eigener Lauf mit Freigabe.
+kennt niemand mehr. Deshalb ein neuer Schlüssel -- hier nur als Secret der
+Umgebung `produktion`, in den privaten Repos **aequitas-proof-server** und
+**aequitas-biometric-beta** als Repository-Secret -- und danach der alte weg von
+C1. Workflow: `c1-root-schluessel-tauschen.yml`, jeder Schritt ein eigener Lauf
+mit Freigabe.
 
 1. `schritt=eintragen` -- mit dem alten Schlüssel den neuen
-   (`deploy/c1-root/c1_root_ed25519.pub`) zusätzlich auf C1 eintragen.
-2. In allen drei Repos unter Settings → Environments → `produktion` das Secret
-   `CONTABO_SSH_KEY` mit dem neuen Schlüssel anlegen -- **alle Zeilen** von
-   `-----BEGIN` bis `-----END`, die Server-Workflows lesen ihn ohne
-   Nachbearbeitung. Ein Umgebungs-Secret hat Vorrang vor dem gleichnamigen
-   Repository-Secret.
-3. `schritt=pruefen` -- liest das Secret genau wie die Server-Workflows und
-   meldet sich mit dem neuen Schlüssel an. Rot, solange es unlesbar oder noch
-   der alte ist.
+   (`deploy/c1-root/c1_root_ed25519.pub`) zusätzlich auf C1 eintragen. Das
+   Repository-Secret hier war am 25.10. schon gelöscht; der Schritt lief deshalb
+   in **aequitas-proof-server** (`c1-root-schluessel.yml`, `schritt=eintragen`),
+   wo der alte Schlüssel noch lag -- gleiche Befehle, gleicher neuer Schlüssel.
+2. Den neuen Schlüssel hinterlegen -- alles von `-----BEGIN` bis `-----END`.
+   Gehen beim Einfügen am Handy die Zeilenumbrüche verloren, setzen die
+   Server-Workflows sie wieder (seit 25.10.2026, `scripts/lint_ssh_schluessel.py`,
+   getestet in `scripts/test_ssh_schluessel_reparatur.sh`), auch wenn iOS aus
+   `--` Gedankenstriche gemacht hat; ein abgeschnittener Schlüssel bleibt
+   unlesbar. Am sichersten am Handy: die Datei als **eine base64-Zeile**
+   (`base64 -w0 schluessel`) -- auch die nehmen alle Server-Workflows an.
+   - Aequitas (öffentlich): Settings → Environments → `produktion` → Secret
+     `CONTABO_SSH_KEY`. Ein Umgebungs-Secret hat Vorrang vor dem gleichnamigen
+     Repository-Secret.
+   - aequitas-proof-server und aequitas-biometric-beta (privat): das
+     Repository-Secret `CONTABO_SSH_KEY` mit dem neuen Wert ersetzen. Ein Wert je
+     Repo, nichts überlagert ihn; in einem privaten Repo erreicht ein
+     Repository-Secret ohnehin nur, wer Schreibrecht hat.
+3. `schritt=pruefen` hier und in aequitas-proof-server -- liest das Secret
+   genau wie die Server-Workflows und meldet sich mit dem neuen Schlüssel an.
+   Rot, solange es unlesbar oder noch der alte ist.
 4. `schritt=alten-entfernen`, `andere_repos_umgestellt=ja` -- nimmt nur den
    alten Root-Schlüssel von C1; alle anderen Zeilen (Biometrie, Sicherung,
    der neue) bleiben, vorher wird gesichert.
-5. Repository-Secret `CONTABO_SSH_KEY` in allen drei Repos löschen.
+5. Ein Repository-Secret `CONTABO_SSH_KEY` in Aequitas, falls noch vorhanden,
+   löschen.
 
 ## Offen
 
