@@ -56,6 +56,10 @@ type Transaction struct {
 	// Hash. Bei proof_of_life dasselbe mit eigener Domaene
 	// (aequitas-proof-of-life-v1, lebensnachweis.go).
 	Bescheinigung *Lebendigkeitsbescheinigung `json:"bescheinigung,omitempty"`
+	// Einspruch: Grund und Bescheinigungen mehrerer Betreiber-Menschen gegen
+	// die Freigabe einer Staffel an Tag 30 (staffel_einspruch.go). omitempty:
+	// aeltere Bloecke behalten ihren Hash.
+	Einspruch *StaffelEinspruch `json:"einspruch,omitempty"`
 	// FromDemurrageLost/ToDemurrageLost carry the exact AEQ amount the
 	// primary node decayed off Wallet/To via settleDemurrageLocked while
 	// processing this TX. Secondary nodes replay these exact numbers
@@ -1389,6 +1393,8 @@ func bekannteTxArt(typ string, blockZeit int64) bool {
 		return registerLeserAktiv(blockZeit)
 	case "proof_of_life": // lebensnachweis.go, schlafend bis Stichtag und registerLeserAb
 		return lebensnachweisAktiv(blockZeit)
+	case staffelEinspruchTxArt: // staffel_einspruch.go, schlafend wie die Staffel
+		return stagedGrantAktiv(blockZeit)
 	case "vorbehalt", "vorbehalt_ausfuehrung", "kappung":
 		// Stufe 2 (vorbehalt.go, kappung_verteilt.go). Fehlten hier bis
 		// 05.10.2026 ganz: ab der Aktivierung haette jeder Knoten jeden
@@ -8109,6 +8115,16 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			// zurueck -- weder ungeprueft angewandt noch verworfen.
 			if err := dag.state.applyLebensnachweisLocked(context.Background(), &tx, block.Timestamp); err != nil {
 				fmt.Printf("[REPLAY] ✗ proof_of_life %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
+				hardFailure = true
+				continue
+			}
+		case "staffel_einspruch":
+			// staffel_einspruch.go: jeder Knoten prueft Grund, Zeit, Staffel
+			// und die Bescheinigungen verschiedener Betreiber-Menschen selbst.
+			// Ungueltig: nie angewandt, gezaehlt, im strengen Modus Fehler.
+			// Zulassung nicht lesbar: der ganze Block zurueck.
+			if err := dag.state.applyStaffelEinspruchLocked(context.Background(), &tx, block.Timestamp); err != nil {
+				fmt.Printf("[REPLAY] ✗ staffel_einspruch %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
 				hardFailure = true
 				continue
 			}

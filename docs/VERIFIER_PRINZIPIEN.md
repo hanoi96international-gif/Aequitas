@@ -231,9 +231,21 @@ wegnehmen“.
   vorliegen. Ein Einspruch hält die Freigabe nur an. Er nimmt nichts weg,
   was schon ausgezahlt ist.
 - Umsetzung in `grant_staffel.go`: Die Staffel ist heute ruhend (Aktivierung
-  2100). Die Regel wird eingebaut, bevor die Staffel scharf geschaltet wird.
-  Bis dahin bekommen alle Registrierungen den vollen Betrag sofort, und
+  2100). Bis dahin bekommen alle Registrierungen den vollen Betrag sofort, und
   niemand wird benachteiligt.
+- **Eingebaut 25.10.2026** (schlafend wie die Staffel):
+  `staffelFreigabeHoechstens` gibt ab Tag 30 den ganzen Rest frei, mit
+  Zweitprüfung vorher die Tagesrate; wer die Prüfung macht, ist nie
+  langsamer. Der Einspruch (`staffel_einspruch.go`, Transaktion
+  `staffel_einspruch`) braucht Bescheinigungen von **zwei verschiedenen**
+  zugelassenen Betreiber-Menschen, einen Grund (10–280 Byte, Hash in jeder
+  Unterschrift) und muss vor Tag 30 bescheinigt sein. Er hält die Freigabe
+  höchstens bis Tag 180 an; eine neuere Zweitprüfung des Menschen beendet
+  die Pause sofort. Nur der erste Einspruch zählt. Jeder Knoten prüft alles
+  selbst; `StaffelEinspruchAm` steht im Blatt der StateRoot, nur wenn
+  gesetzt. Missbrauchstests: `staffel_einspruch_test.go`. Der Grund steht
+  für immer öffentlich in der Kette: **keine personenbezogenen Daten**, nur
+  der Befund und eine Vorgangskennung (z. B. „W-…“ aus dem Widerspruchsweg).
 
 ### Jährlicher Lebensnachweis (21.10.2026)
 

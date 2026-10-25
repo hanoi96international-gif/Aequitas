@@ -159,6 +159,20 @@ func auftragsFenster(tx *Transaction, jetzt int64) zeitFenster {
 			}
 			f.eng(sattAdd(tx.DistributionAt, -erneuerungHoechstensVoraus), sattAdd(tx.DistributionAt, erneuerungHoechstensAlt))
 		}
+	case "grant_release":
+		// grant_staffel.go (freigabe_rundenzeit): die Rundenzeit liegt
+		// hoechstens 60 s nach dem Block.
+		if tx.DistributionAt > 0 {
+			f.eng(sattAdd(tx.DistributionAt, -60), math.MaxInt64)
+		}
+	case staffelEinspruchTxArt:
+		// staffel_einspruch.go: erst ab der Staffel; issued_at hoechstens
+		// 5 min nach und hoechstens 7 Tage vor dem Block (einspruch_zeit).
+		f.eng(stagedGrantAb(), math.MaxInt64)
+		if tx.DistributionAt <= 0 {
+			return zeitFenster{1, 0}
+		}
+		f.eng(sattAdd(tx.DistributionAt, -nachweisHoechstensVoraus), sattAdd(tx.DistributionAt, erneuerungHoechstensAlt))
 	case "proof_of_life":
 		// lebensnachweis.go: angewandt nur ab lebensnachweisAktiv und mit
 		// issued_at hoechstens 5 min nach dem Block; im strengen Modus
@@ -263,6 +277,17 @@ func blockTauglich(tx *Transaction, blockZeit int64) error {
 			if z := tx.DistributionAt; z <= 0 || blockZeit-z > erneuerungHoechstensAlt || z-blockZeit > erneuerungHoechstensVoraus {
 				return fmt.Errorf("Erneuerung bescheinigt %d, Block %d", z, blockZeit)
 			}
+		}
+	case "grant_release":
+		if tx.DistributionAt > blockZeit+60 {
+			return fmt.Errorf("Freigabe zur Runde %d, Block %d", tx.DistributionAt, blockZeit)
+		}
+	case staffelEinspruchTxArt:
+		if !stagedGrantAktiv(blockZeit) {
+			return fmt.Errorf("staffel_einspruch vor der Staffel (Block %d)", blockZeit)
+		}
+		if z := tx.DistributionAt; z <= 0 || z > sattAdd(blockZeit, nachweisHoechstensVoraus) || blockZeit-z > erneuerungHoechstensAlt {
+			return fmt.Errorf("Einspruch bescheinigt %d, Block %d", z, blockZeit)
 		}
 	case "proof_of_life":
 		// Angenommen wird nur, wenn lebensnachweisAktiv(jetzt): ein Block

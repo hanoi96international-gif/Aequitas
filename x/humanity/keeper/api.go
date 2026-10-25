@@ -1229,6 +1229,7 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	// Jaehrlicher Lebensnachweis (lebensnachweis.go): dieselbe Kette aus
 	// eigener Grenze, Weiterleitung zum Zustaendigen und Annahme-Tor.
 	mux.HandleFunc("/api/proof-of-life", a.lebensnachweisGrenze(a.zumLeiter(a.handleProofOfLife)))
+	mux.HandleFunc("/api/staffel/einspruch", a.staffelEinspruchGrenze(a.zumLeiter(a.handleStaffelEinspruch)))
 	// Unternehmen (wirtschaft.go, wirtschaft_api.go)
 	mux.HandleFunc("/api/wirtschaft/regeln", a.handleWirtschaftRegeln)
 	mux.HandleFunc("/api/wirtschaft/konto", a.handleWirtschaftKonto)

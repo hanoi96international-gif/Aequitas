@@ -63,7 +63,7 @@ ergeben `R ∈ [0,1]`. Kein Signal davon sperrt jemanden aus. Es entscheidet
 | Klasse | Bedingung (erste Schwellen, aus Messdaten zu setzen) | Folge |
 |---|---|---|
 | **grün** | L hoch, R niedrig | Registrierung + 1.000 AEQ sofort, wie heute |
-| **gelb** | L mittel oder R erhöht | Registrierung sofort; 200 AEQ sofort, 800 AEQ als **Staffel über 30 Tage**, die nur läuft, wenn nach 7 Tagen eine **zweite Lebendigkeitsprüfung** (neue Challenge-Menge) bestanden wurde. Bleibt sie aus, pausiert die Staffel — sie läuft weiter, sobald sie kommt. |
+| **gelb** | L mittel oder R erhöht | Registrierung sofort; 200 AEQ sofort, 800 AEQ als **Staffel über 30 Tage**, die nur läuft, wenn nach 7 Tagen eine **zweite Lebendigkeitsprüfung** (neue Challenge-Menge) bestanden wurde. Bleibt sie aus, wird der Rest **spätestens an Tag 30** ganz frei (Entscheidung 18.10.2026, eingebaut 25.10.2026); anhalten kann das nur ein begründeter Einspruch zweier Betreiber-Menschen, höchstens bis Tag 180 (`staffel_einspruch.go`). |
 | **rot** | L niedrig | keine Prägung; Zweitprüfung an einem anderen Tag oder Widerspruch. Kein Ausschluss. |
 
 Damit lohnt sich keine Deepfake-Farm mehr: jede Kunstfigur müsste wiederholt
@@ -108,6 +108,12 @@ DSGVO-Bewertung (weiteres Merkmal nach Art. 9).
 Zukunft setzen und beide Knoten ausrollen; (2) am Tag danach `LEBENDIGKEIT_VERBINDLICH=true` an beiden
 Coordinatoren — ab da tragen gelbe Registrierungen die Klasse; (3) App mit Zweitprüfung (WP 3) muss vorher
 draußen sein, sonst kann niemand seine Staffel starten.
+
+**Vor der Kalibrierung alle gelb (25.10.2026).** Solange `LEBENDIGKEIT_KALIBRIERT` nicht `true` ist,
+bescheinigt der Coordinator mit `LEBENDIGKEIT_VERBINDLICH=true` für **jede** Registrierung „gestaffelt“
+(`coordinator/app/lebendigkeit.py`, `kalibriert()`). Die Staffel kostet einen echten Menschen höchstens
+Zeit: spätestens an Tag 30 ist der Rest frei. `LEBENDIGKEIT_KALIBRIERT=true` erst setzen, wenn WP 4 die
+Schwellen aus echten Aufnahmen gesetzt hat — dann gilt die Klasse (grün sofort, gelb/rot gestaffelt).
 
 Reihenfolge: 1 → 2 → 3 → 4. Nichts davon geht scharf, bevor der
 Zwei-Personen-Test (`DOPPELREGISTRIERUNG_TEST.md`) die ersten Messwerte für
