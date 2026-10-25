@@ -8146,7 +8146,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 				hardFailure = true
 				continue
 			}
-			if err := dag.state.pruefeUmlaufLocked(wallet, tx.Amount, tx.DistributionAt); err != nil {
+			if err := dag.state.pruefeUmlaufLocked(wallet, tx.Amount, tx.DistributionAt, block.Timestamp); err != nil {
 				fmt.Printf("[REPLAY] ✗ %v (block #%d) — rolling back whole block\n", err, block.Height)
 				hardFailure = true
 				continue

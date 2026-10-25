@@ -56,7 +56,11 @@ var (
 // pruefeUmlaufLocked: stimmt der Betrag einer "umlauf"-Transaktion? VOR dem
 // Anwenden aufrufen (der Stand vor dem Abzug ist der, mit dem der Erzeuger
 // gerechnet hat). Fehler nur im strengen Modus. Caller haelt cs.mu.
-func (cs *ChainState) pruefeUmlaufLocked(wallet string, betrag float64, at int64) error {
+//
+// blockZeit: die Zeit des Blocks, der die Transaktion traegt. Sie entscheidet,
+// ob eine Runde aus der Vergangenheit streng abgelehnt wird (umlauf_alte_runde)
+// -- nie die Rundenzeit at, die der Erzeuger frei waehlt.
+func (cs *ChainState) pruefeUmlaufLocked(wallet string, betrag float64, at, blockZeit int64) error {
 	if !wirtschaftAktiv(at) {
 		return nil
 	}
@@ -75,7 +79,7 @@ func (cs *ChainState) pruefeUmlaufLocked(wallet string, betrag float64, at int64
 	art := cs.kontoartVon(wallet, acc.IsHuman)
 	w := cs.wirt()
 	var vorher int64
-	zeitraumBekannt, fensterVoll := true, true
+	zeitraumBekannt, fensterVoll, aelter := true, true, false
 	w.mitSperre(func() {
 		switch {
 		case at > w.letzterUmlauf:
@@ -84,6 +88,7 @@ func (cs *ChainState) pruefeUmlaufLocked(wallet string, betrag float64, at int64
 			vorher = w.laufVorher
 		default:
 			zeitraumBekannt = false
+			aelter = at < w.letzterUmlauf
 			return
 		}
 		fensterVoll = art != artUnternehmen || w.fensterVollLocked(at)
@@ -93,7 +98,22 @@ func (cs *ChainState) pruefeUmlaufLocked(wallet string, betrag float64, at int64
 		if lpNoetig {
 			return fmt.Errorf("umlauf %s: Zeitraum unbekannt, LP-Anteile werden nicht aufgeloest: %w", wallet, ErrZustandLehntAb)
 		}
-		return nil // ein aelterer Lauf: Zeitraum unbekannt
+		// EINE RUNDE AUS DER VERGANGENHEIT (Sicherheitspruefung 25.10.2026).
+		// Bis hierhin wurde ein Umlauf mit einer Rundenzeit vor der letzten
+		// Runde weder nachgerechnet noch begrenzt -- applyUmlaufDeltaLocked
+		// zog ihn bis zum ganzen Guthaben ab. Ein Erzeuger musste nur eine
+		// alte Rundenzeit eintragen, um jedem Konto sein Geld ins
+		// Grundeinkommen zu nehmen. Ehrlich entsteht das nie: Runden laufen
+		// nur vorwaerts, und eine schon angewandte Runde ueberspringt das
+		// Nachspielen an ihrer Rundenmarke (distributionRoundToSkip). Gleich
+		// alt (at == letzterUmlauf nach einem Neustart mitten in der Runde)
+		// bleibt wie bisher. Streng ab dem gemeinsamen Stichtag, nach der
+		// BLOCKZEIT.
+		if aelter {
+			return nachrechnenAbweichung("umlauf_alte_runde", blockZeit,
+				"%s: Rundenzeit %d liegt vor der letzten Runde (%.6f AEQ)", kurzAdresse(wallet), at, betrag)
+		}
+		return nil // Zeitraum unbekannt (Neustart mitten in der Runde)
 	}
 	if !fensterVoll {
 		liegegeldUebersprungen.Add(1)

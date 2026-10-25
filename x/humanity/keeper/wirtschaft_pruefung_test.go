@@ -233,7 +233,7 @@ func TestLiegegeldPruefungBeimNachspielen(t *testing.T) {
 			if tx.Wallet == wFirmaA {
 				betrag *= faktor
 			}
-			if err := nach.pruefeUmlaufLocked(tx.Wallet, betrag, tx.DistributionAt); err != nil {
+			if err := nach.pruefeUmlaufLocked(tx.Wallet, betrag, tx.DistributionAt, tx.DistributionAt); err != nil {
 				return liegegeldAbweichungen.Load() - vorher, err
 			}
 			if err := nach.applyUmlaufDeltaLocked(ctx, tx.Wallet, betrag, tx.DistributionAt); err != nil {
@@ -280,7 +280,7 @@ func TestLiegegeldPruefung_GemeinsamerStichtag(t *testing.T) {
 			if tx.Wallet == wFirmaA {
 				betrag *= 2 // verfaelscht
 			}
-			if err := nach.pruefeUmlaufLocked(tx.Wallet, betrag, tx.DistributionAt); err != nil {
+			if err := nach.pruefeUmlaufLocked(tx.Wallet, betrag, tx.DistributionAt, tx.DistributionAt); err != nil {
 				return err
 			}
 			if err := nach.applyUmlaufDeltaLocked(ctx, tx.Wallet, betrag, tx.DistributionAt); err != nil {
@@ -328,7 +328,7 @@ func TestLiegegeldPruefungNurMitVollemFenster(t *testing.T) {
 	nach.mu.Lock()
 	defer nach.mu.Unlock()
 	for _, tx := range txs {
-		if err := nach.pruefeUmlaufLocked(tx.Wallet, tx.Amount, tx.DistributionAt); err != nil {
+		if err := nach.pruefeUmlaufLocked(tx.Wallet, tx.Amount, tx.DistributionAt, tx.DistributionAt); err != nil {
 			t.Fatalf("%s: %v", tx.Wallet, err)
 		}
 	}
