@@ -26,6 +26,11 @@ name: C1 Root-Schluessel tauschen
 #                    nehmen. Nur mit andere_repos_umgestellt=ja -- Proof-
 #                    Server und Biometrie melden sich sonst noch mit dem
 #                    alten an.
+#   fremden-entfernen  mit dem NEUEN Schluessel: genau EINEN weiteren
+#                    Schluessel von C1 nehmen, benannt ueber seinen
+#                    Fingerabdruck (Eingabe fingerabdruck). Nie den neuen
+#                    Root-Schluessel, nie den, mit dem dieser Lauf angemeldet
+#                    ist; vorher eine Kopie von authorized_keys auf C1.
 #
 # Nur Fingerabdruecke erscheinen im Protokoll, nie Schluesselinhalte.
 
@@ -33,16 +38,20 @@ on:
   workflow_dispatch:
     inputs:
       schritt:
-        description: "eintragen, pruefen oder alten-entfernen"
+        description: "eintragen, pruefen, alten-entfernen oder fremden-entfernen"
         required: true
         type: choice
-        options: [eintragen, pruefen, alten-entfernen]
+        options: [eintragen, pruefen, alten-entfernen, fremden-entfernen]
       andere_repos_umgestellt:
         description: "Nur fuer alten-entfernen: CONTABO_SSH_KEY in proof-server und biometric ist der neue (proof-server: c1-root-schluessel.yml pruefen gruen)"
         required: true
         type: choice
         default: nein
         options: [nein, ja]
+      fingerabdruck:
+        description: "Nur fuer fremden-entfernen: Fingerabdruck des Schluessels, der von C1 soll (SHA256:...)"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -61,6 +70,7 @@ jobs:
       FP: "SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA"
       SCHRITT: ${{ inputs.schritt }}
       ANDERE: ${{ inputs.andere_repos_umgestellt }}
+      WEG_FP: ${{ inputs.fingerabdruck }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -177,6 +187,40 @@ jobs:
           SKRIPT
               } | ssh -o BatchMode=yes -o IdentitiesOnly=yes root@$C1 'bash -s'
               echo "Weiter: ein Repository-Secret CONTABO_SSH_KEY in Aequitas, falls noch da, loeschen."
+              ;;
+            fremden-entfernen)
+              if [ "$ICH" != "$NEU" ]; then
+                echo "::error::Angemeldet mit $ICH, nicht mit dem neuen Schluessel -- nichts entfernt."
+                exit 1
+              fi
+              WEG="$(printf '%s' "$WEG_FP" | tr -d '[:space:]')"
+              [[ "$WEG" =~ ^SHA256:[A-Za-z0-9+/]{43}$ ]] || { echo "::error::fingerabdruck: SHA256: und 43 Zeichen erwartet"; exit 1; }
+              [ "$WEG" != "$NEU" ] && [ "$WEG" != "$ICH" ] || { echo "::error::Das ist der Root-Schluessel dieses Laufs -- der bleibt."; exit 1; }
+              {
+                printf 'export NEU_FP=%q WEG_FP=%q\n' "$NEU" "$WEG"
+                cat <<'SKRIPT'
+          set -euo pipefail
+          AK=/root/.ssh/authorized_keys
+          [ -s "$AK" ] || { echo "::error::authorized_keys fehlt"; exit 1; }
+          NEU_DATEI="$(mktemp)"; trap 'rm -f "$NEU_DATEI"' EXIT
+          n=0
+          while IFS= read -r z || [ -n "$z" ]; do
+            fp="$(printf '%s\n' "$z" | ssh-keygen -lf - 2>/dev/null | awk '{print $2}' || true)"
+            if [ -n "$fp" ] && [ "$fp" = "$WEG_FP" ]; then n=$((n + 1)); continue; fi
+            printf '%s\n' "$z" >> "$NEU_DATEI"
+          done < "$AK"
+          if [ "$n" = 0 ]; then echo "$WEG_FP ist nicht eingetragen -- nichts zu tun."; exit 0; fi
+          ssh-keygen -lf "$NEU_DATEI" | awk '{print $2}' | grep -qxF "$NEU_FP" || { echo "::error::Der Root-Schluessel fehlte danach -- nichts geaendert."; exit 1; }
+          cp -p "$AK" "$AK.vor-fremden-entfernen-$(date -u +%Y%m%dT%H%M%SZ)"
+          chmod 600 "$NEU_DATEI"
+          mv "$NEU_DATEI" "$AK"
+          trap - EXIT
+          echo "Entfernt: $WEG_FP ($n Zeile). Uebrig (Fingerabdruck, Kommentar):"
+          ssh-keygen -lf "$AK" | awk '{print "  " $2, $3}'
+          SKRIPT
+              } | ssh -o BatchMode=yes -o IdentitiesOnly=yes root@$C1 'bash -s'
+              # Gegenprobe mit neuer Verbindung: der Root-Zugang steht noch.
+              ssh -o BatchMode=yes -o IdentitiesOnly=yes root@$C1 'echo "Anmeldung danach: ok"'
               ;;
             *) echo "::error::Unbekannter Schritt"; exit 1 ;;
           esac
