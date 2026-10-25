@@ -202,7 +202,10 @@ jobs:
           set -euo pipefail
           AK=/root/.ssh/authorized_keys
           [ -s "$AK" ] || { echo "::error::authorized_keys fehlt"; exit 1; }
-          NEU_DATEI="$(mktemp)"; trap 'rm -f "$NEU_DATEI"' EXIT
+          # Im selben Verzeichnis: mv ist dann ein atomares rename, nie eine
+          # halb geschriebene authorized_keys (/tmp kann ein anderes
+          # Dateisystem sein).
+          NEU_DATEI="$(mktemp /root/.ssh/authorized_keys.neu.XXXXXX)"; trap 'rm -f "$NEU_DATEI"' EXIT
           n=0
           while IFS= read -r z || [ -n "$z" ]; do
             fp="$(printf '%s\n' "$z" | ssh-keygen -lf - 2>/dev/null | awk '{print $2}' || true)"
