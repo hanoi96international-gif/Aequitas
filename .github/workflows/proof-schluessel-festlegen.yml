@@ -83,12 +83,17 @@ jobs:
       - name: Schluessel und Host-Pruefung
         env:
           KEY: ${{ secrets[matrix.secret] }}
+          HOST: ${{ matrix.host }}
+          FP: ${{ matrix.fp }}
         run: |
           set -eu
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           printf '%s' "$KEY" | perl -0777 -pe 's/\r//g; s/(?:-|\xE2\x80[\x93\x94])+ *(BEGIN|END) OPENSSH PRIVATE KEY *(?:-|\xE2\x80[\x93\x94])+/-----$1 OPENSSH PRIVATE KEY-----/g; unless (/-----BEGIN OPENSSH PRIVATE KEY-----/) { (my $z = $_) =~ s/\s//g; if ($z =~ m|^[A-Za-z0-9+/]+=*$|) { require MIME::Base64; my $d = MIME::Base64::decode_base64($z); if ($d =~ /-----BEGIN OPENSSH PRIVATE KEY-----/) { $_ = $d; } elsif ($d =~ /\Aopenssh-key-v1\x00/) { $_ = qq{-----BEGIN OPENSSH PRIVATE KEY-----\n$z\n-----END OPENSSH PRIVATE KEY-----\n}; } } } s/\s*(-----BEGIN OPENSSH PRIVATE KEY-----)\s*(.*?)\s*(-----END OPENSSH PRIVATE KEY-----)\s*/my ($k, $b, $f) = ($1, $2, $3); $b =~ s|\s||g; $b =~ s|(.{70})|$1\n|g; $b =~ s|\n\z||; "$k\n$b\n$f\n"/se' > ~/.ssh/id && chmod 600 ~/.ssh/id
-          ssh-keyscan "${{ matrix.host }}" 2>/dev/null > ~/.ssh/kh
-          ssh-keygen -lf ~/.ssh/kh | awk '{print $2}' | grep -qx '${{ matrix.fp }}' || { echo "::error::Host-Schluessel passt nicht"; exit 1; }
+          # Nur ed25519, genau eine Zeile, fester Fingerabdruck; ssh danach nur
+          # mit ed25519 (sonst konnte ssh einen ungeprueften Typ aushandeln).
+          ssh-keyscan -t ed25519 "$HOST" 2>/dev/null | { grep -v '^#' || true; } > ~/.ssh/kh
+          [ "$(grep -c . ~/.ssh/kh)" = 1 ] || { echo "::error::Host-Schluessel: nicht genau eine ed25519-Zeile"; exit 1; }
+          [ "$(ssh-keygen -lf ~/.ssh/kh | awk '{print $2}')" = "$FP" ] || { echo "::error::Host-Schluessel passt nicht"; exit 1; }
           cp ~/.ssh/kh ~/.ssh/known_hosts
       - name: Vereinigen und schreiben
         env:
@@ -96,7 +101,7 @@ jobs:
           NEU_P: ${{ needs.sammeln.outputs.personhood }}
           SCHREIBEN: ${{ inputs.schreiben }}
         run: |
-          ssh -i ~/.ssh/id -o BatchMode=yes root@${{ matrix.host }} \
+          ssh -i ~/.ssh/id -o BatchMode=yes -o IdentitiesOnly=yes -o HostKeyAlgorithms=ssh-ed25519 root@${{ matrix.host }} \
             "NEU_C='$NEU_C' NEU_P='$NEU_P' SCHREIBEN='$SCHREIBEN' bash -s" <<'SKRIPT'
           set -euo pipefail
           alt() { docker inspect proof-server --format '{{range .Config.Env}}{{println .}}{{end}}' | grep "^$1=" | cut -d= -f2- || true; }
