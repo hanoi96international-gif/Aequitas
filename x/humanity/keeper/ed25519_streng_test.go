@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -143,7 +144,7 @@ func TestBescheinigungPruefen_Regeln(t *testing.T) {
 	gut := func(m string) (bool, bool) { return m == mensch, false }
 	zugelassen := func(m string, t int64) (bool, error) { return m == mensch && t == issued, nil }
 	registerLeserOverride.Store(1)
-	t.Cleanup(func() { registerLeserOverride.Store(0) })
+	t.Cleanup(func() { registerLeserOverride.Store(math.MaxInt64) })
 	tx := erneuerungsTransaktion(wallet, issued, pubHex, signiere(wallet), bindung)
 	if err := bescheinigungPruefen(wallet, issued, tx.Bescheinigung, gut, zugelassen); err != nil {
 		t.Fatalf("gueltige Bescheinigung: %v", err)

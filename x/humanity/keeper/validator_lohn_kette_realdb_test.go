@@ -3,6 +3,7 @@ package keeper
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"testing"
 	"time"
@@ -84,7 +85,7 @@ func neuerLohnFall(t *testing.T) *lohnFall {
 	}
 	f.konten()
 	erzeugerSchnittOverride.Store(1)
-	t.Cleanup(func() { erzeugerSchnittOverride.Store(0) })
+	t.Cleanup(func() { erzeugerSchnittOverride.Store(math.MaxInt64) })
 	return f
 }
 

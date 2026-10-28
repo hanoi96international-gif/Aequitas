@@ -71,6 +71,8 @@ jobs:
       - run: bash scripts/test_ssh_schluessel_reparatur.sh
       - run: bash scripts/test_bindungsanfrage_skript.sh
       - run: bash scripts/test_caddy_coordinator.sh
+      - run: python3 scripts/lint_deploy_pfade.py --selbsttest
+      - run: python3 scripts/lint_deploy_pfade.py
 
   test:
     runs-on: ubuntu-latest
@@ -161,9 +163,21 @@ jobs:
             psql "$ADMIN_URL" -c "DROP DATABASE IF EXISTS ${db};" >/dev/null
             psql "$ADMIN_URL" -c "CREATE DATABASE ${db};" >/dev/null
             echo "::group::${name}"
+            set +e
             DATABASE_URL="postgres://postgres:postgres@localhost:5432/${db}?sslmode=disable" \
               go test ./x/humanity/keeper/ -run "$1" -v -timeout 10m 2>&1 | tee "out_${name}.txt"
+            rc=${PIPESTATUS[0]}
+            set -e
             echo "::endgroup::"
+            # Bei Rot den Grund ans Ende des Protokolls und an die Pruefung
+            # (::error): am 28.10.2026 kippte realdb einmal (PR #442), und die
+            # Meldung stand 5000 Zeilen vor dem Ende -- nicht mehr lesbar.
+            if [ "$rc" -ne 0 ]; then
+              grep -E '^\s*--- FAIL' "out_${name}.txt" | sed "s/^ *//" | while read -r z; do echo "::error title=db-tests ${name}::${z}"; done || true
+              echo "===== ${name}: fehlgeschlagene Tests ====="
+              grep -E -A25 '^\s*--- FAIL|^panic:' "out_${name}.txt" | head -300 || true
+              exit "$rc"
+            fi
             # A group where everything skipped is a green tick that proves
             # nothing — the exact failure mode this job exists to end.
             if ! grep -qE '^--- PASS' "out_${name}.txt"; then

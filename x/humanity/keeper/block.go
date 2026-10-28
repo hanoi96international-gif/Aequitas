@@ -5392,7 +5392,7 @@ func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
 		// (validator_register_leser.go, erzeugerErlaubt).
 		if !dag.erzeugerErlaubt(proposer, block.Timestamp) && !(block.FromSync && syncGeschichte(block.Timestamp)) {
 			// P3-2: cap to prevent unbounded memory growth from forged proposer addresses
-			if len(dag.warnedUnknownProposers) > 500 {
+			if dag.warnedUnknownProposers == nil || len(dag.warnedUnknownProposers) > 500 {
 				dag.warnedUnknownProposers = make(map[string]bool)
 			}
 			firstSeen := !dag.warnedUnknownProposers[proposer]

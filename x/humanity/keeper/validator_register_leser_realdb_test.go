@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"fmt"
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -107,7 +108,7 @@ func (k *strafKnoten) blockZu(zeit int64, txs ...Transaction) bool {
 // mitStichtag: registerLeserAb fuer die Dauer von f.
 func mitStichtag(ab int64, f func()) {
 	registerLeserOverride.Store(ab)
-	defer registerLeserOverride.Store(0)
+	defer registerLeserOverride.Store(math.MaxInt64)
 	f()
 }
 
@@ -543,7 +544,7 @@ func TestErzeugerAusVerlauf_RealDB(t *testing.T) {
 	dag := newOrphanTestDAG()
 	dag.state = f.cs
 	erzeugerSchnittOverride.Store(1)
-	t.Cleanup(func() { erzeugerSchnittOverride.Store(0) })
+	t.Cleanup(func() { erzeugerSchnittOverride.Store(math.MaxInt64) })
 	f.cs.erzeugerRegisterAuffrischen()
 	for addr, want := range map[string]bool{s(0): true, s(1): true, s(5): false, s(2): false, s(4): false} {
 		if got := dag.erzeugerNachRegister(addr, jetzt); got != want {

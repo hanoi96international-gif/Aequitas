@@ -18,7 +18,7 @@ import (
 func TestProduceBlock_EigenerSchluesselZurBlockzeit(t *testing.T) {
 	vorherW := wirtschaftAktivOverride.Load()
 	wirtschaftAktivOverride.Store(1)
-	t.Cleanup(func() { wirtschaftAktivOverride.Store(vorherW); erzeugerSchnittOverride.Store(0) })
+	t.Cleanup(func() { wirtschaftAktivOverride.Store(vorherW); erzeugerSchnittOverride.Store(math.MaxInt64) })
 	echt := time.Now().Unix()
 	self := "0x00000000000000000000000000000000000000b7"
 	lauf := func(schnitt int64, fenster []zeitfenster) (string, *Block, int) {
@@ -58,7 +58,7 @@ func TestProduceBlock_EigenerSchluesselZurBlockzeit(t *testing.T) {
 		t.Fatalf("Blockzeit vor dem Stichtag: Grund %q, kein Block", g)
 	}
 	// Vor dem Stichtag, ohne jede Bindung: es wird erzeugt wie bisher.
-	if g, b, _ := lauf(0, nil); b == nil || g == "blockzeit_nicht_im_register" {
+	if g, b, _ := lauf(math.MaxInt64, nil); b == nil || g == "blockzeit_nicht_im_register" {
 		t.Fatalf("vor dem Stichtag: Grund %q, Block %v", g, b != nil)
 	}
 }

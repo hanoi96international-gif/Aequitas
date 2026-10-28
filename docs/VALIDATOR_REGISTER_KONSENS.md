@@ -104,6 +104,13 @@ Dinge ohne Konsenswirkung (Erreichbarkeit, Messwerte als Hinweis).
      (`registerLeserAb`, `erzeugerSchnittAb`) schlafen weiter: frühestens
      eine Woche später, `erzeugerSchnitt` erst wenn `erzeuger_ohne_bindung`
      in `/api/status` leer ist.
+   - **Leser gesetzt (28.10.2026): beide ab 28.10.2026 10:00:00 UTC (11:00 MEZ)
+     (`1793181600`).** C1 ist seit dem 25.10. im Register gebunden (App
+     1.13.0, `knoten-binden.yml`); `wache.yml` meldet am 28.10. „jeder
+     Erzeuger im Validator-Register gebunden“. Das Ausrollen muss vor dem
+     Stichtag auf C1 sein. Rücknahme nur vorher (wieder `math.MaxInt64`,
+     ausrollen). Die Tests halten beide Leser schlafend (`TestMain`, #439);
+     wer den aktiven Zustand prüft, setzt den Override selbst.
    - **Vor dem Stichtag `validatorRegisterAbUnix` (Platzhalter
      `math.MaxInt64`) ist jede `validator_bindung` ungültig** – der Block wird
      abgewiesen (`bekannteTxArt`, beim Nachspielen noch einmal). Nichts

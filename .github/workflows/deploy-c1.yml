@@ -10,10 +10,28 @@ name: Deploy -- C1 (netcup, Primary)
 on:
   push:
     branches: [main]
-    paths-ignore:
-      - '.github/**'
-      - '**.md'
-      - 'tools/**'
+    # Nur, was im Knoten-Image landet oder den Deploy selbst ausmacht. Bis zum
+    # 25.10.2026 stand hier eine Ausschlussliste (.github, *.md, tools): jede
+    # Aenderung an Skripten oder Tests startete einen Deploy, der auf
+    # Freigabe wartete und C1 ohne neuen Code neu gestartet haette -- und
+    # grundpfeiler.md (per go:embed im Knoten) wurde nie ausgerollt.
+    # scripts/lint_deploy_pfade.py prueft, dass jede go:embed-Datei und alles,
+    # was das Dockerfile uebernimmt, hier erfasst ist.
+    paths:
+      - '**.go'
+      - '!**_test.go'
+      - 'go.mod'
+      - 'go.sum'
+      - 'x/humanity/keeper/assets/**'
+      - 'genesis.json'
+      - 'aequitas-dapp.html'
+      - 'downloads/**'
+      - 'Dockerfile'
+      - '.dockerignore'
+      - 'deploy/validator/**'
+      - 'deploy/deploy-c1.sh'
+      - 'deploy/pruefe-knoten.sh'
+      - 'deploy/rueckrollen-c1.sh'
   workflow_dispatch:
 permissions:
   contents: read

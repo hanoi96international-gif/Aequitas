@@ -78,8 +78,14 @@ import (
 // registered_nodes) ist der zweite Teil von Schritt 3.
 
 const (
-	registerLeserAbUnix   int64 = math.MaxInt64
-	erzeugerSchnittAbUnix int64 = math.MaxInt64
+	// Gesetzt am 28.10.2026 (Beta-Liste B2): 28.10.2026 10:00 UTC (11:00 MEZ), beide
+	// zugleich (erzeugerSchnittAb >= registerLeserAb, Test). Vorbedingung
+	// erfuellt: erzeuger_ohne_bindung leer (wache.yml, 28.10. 01:17 UTC:
+	// "jeder Erzeuger im Validator-Register gebunden"). Ruecknahme nur VOR
+	// dem Stichtag (wieder math.MaxInt64, ausrollen); danach haengen
+	// Erzeugerpruefung, Leitung und Strafkonto am Register.
+	registerLeserAbUnix   int64 = 1793181600
+	erzeugerSchnittAbUnix int64 = 1793181600
 	// registerLeserVorlauf: so lange nach validatorRegisterAb frühestens.
 	registerLeserVorlauf int64 = 7 * 86400
 	// erzeugerFrist: so lange nach ihrem Zeitpunkt wirkt eine Bindung (oder

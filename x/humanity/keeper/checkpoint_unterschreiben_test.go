@@ -4,6 +4,7 @@ import (
 	"crypto/ecdsa"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"strings"
 	"testing"
@@ -23,7 +24,7 @@ type unterschriftFall struct {
 func neuerUnterschriftFall(t *testing.T, mitDB bool) *unterschriftFall {
 	t.Helper()
 	erzeugerSchnittOverride.Store(1)
-	t.Cleanup(func() { erzeugerSchnittOverride.Store(0) })
+	t.Cleanup(func() { erzeugerSchnittOverride.Store(math.MaxInt64) })
 	f := &unterschriftFall{dag: newOrphanTestDAG()}
 	f.dag.replayedBlocks = map[string]bool{}
 	if mitDB {

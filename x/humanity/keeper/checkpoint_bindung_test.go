@@ -3,6 +3,7 @@ package keeper
 import (
 	"crypto/ecdsa"
 	"errors"
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -24,7 +25,7 @@ type bindungFall struct {
 func neuerBindungFall(t *testing.T) *bindungFall {
 	t.Helper()
 	erzeugerSchnittOverride.Store(1)
-	t.Cleanup(func() { erzeugerSchnittOverride.Store(0) })
+	t.Cleanup(func() { erzeugerSchnittOverride.Store(math.MaxInt64) })
 	f := &bindungFall{dag: newOrphanTestDAG()}
 	f.dag.replayedBlocks = map[string]bool{}
 	f.dag.state = &ChainState{}
