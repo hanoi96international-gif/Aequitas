@@ -1,0 +1,268 @@
+name: Biometrie -- Coordinator auf eine Contabo-Box ausrollen (manuell)
+
+# Erneuert den laufenden Coordinator (aequitas-coordinator) auf C1, C2 oder
+# beiden aus einem in GHCR veroeffentlichten Image -- ohne Build auf der Box
+# und OHNE die Schluessel anzufassen.
+#
+# WAS BLEIBT, WAS SICH AENDERT
+#
+# Bleibt: alles, was den laufenden Container ausmacht -- Umgebung
+# (COORDINATOR_SIGNING_KEY, WALLET_TAG_KEY, VALIDATOR_URLS, QUORUM_SIZE,
+# CHAIN_BASE_URL, SERVICE_MODE, ...), Datenverzeichnis (Widerspruchsspeicher),
+# Netz, Name, Log-Grenzen. Das alles wird vom LAUFENDEN Container abgelesen,
+# nicht aus einer Datei rekonstruiert: die Datei koennte veraltet sein, der
+# Container ist es nie.
+#
+# Aendert sich: nur das Image. Danach muss /inventory denselben
+# attestation_public_key nennen wie vorher -- sonst hat der Lauf die
+# Schluessel verloren, und der Job bricht ab, bevor jemand es fuer Erfolg
+# haelt.
+#
+# WARUM DIE UMGEBUNG NICHT IM LOG STEHT
+#
+# Sie enthaelt zwei Geheimnisse. Sie wird in eine Datei mit Modus 600
+# geschrieben, dem neuen Container per --env-file gegeben und danach geloescht.
+# Kein echo, kein set -x.
+
+# Aus aequitas-biometric-beta uebernommen (28.10.2026): dort ist das Repo
+# privat, und im GitHub-Plan gibt es fuer private Repos keine Pflicht-
+# Freigabe der Umgebung `produktion`. Hier (oeffentlich) wartet jeder Lauf
+# auf die Freigabe. Die Images kommen weiter aus dem privaten GHCR-Paket
+# des Biometrie-Repos (Lesezugriff fuer dieses Repo in den Paket-
+# Einstellungen). Inhaltlich unveraendert bis auf den Image-Pfad.
+on:
+  workflow_dispatch:
+    inputs:
+      box:
+        description: "Welche Box"
+        required: true
+        type: choice
+        options: [both, contabo1]
+        default: both
+      tag:
+        description: "Image-Tag in GHCR (ein Commit-SHA; 'latest' nur, wenn du weisst, was gerade latest ist)"
+        required: true
+        default: "latest"
+      alterspruefung:
+        description: "ALTERSPRUEFUNG setzen (unveraendert = wie im laufenden Container)"
+        required: true
+        type: choice
+        options: [unveraendert, selbstangabe, beobachten, erzwingen]
+        default: unveraendert
+      einwilligung_vorgabe:
+        description: "Fest eingetragene CURRENT_CONSENT_VERSION/UEBERGANG_CONSENT_VERSIONEN entfernen, damit die Vorgabe im Code gilt"
+        required: true
+        type: boolean
+        default: false
+      einzelbetrieb:
+        description: "Auf EINEN Vergleichsdienst umstellen (C2 abgeschaltet): VALIDATOR_URLS=proof1, proof2 abgemeldet, kein festes QUORUM_SIZE, Tagesgrenze"
+        required: true
+        type: boolean
+        default: false
+      tagesgrenze:
+        description: "EINZELBETRIEB_TAGESGRENZE (1..1000), nur mit einzelbetrieb"
+        required: false
+        default: "25"
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: produktion
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include:
+          - name: contabo1
+            host: 188.172.229.121  # neuer C1 (netcup) seit 26.09.2026
+            public: proof1.aequitas.digital
+    steps:
+      - name: Box auswaehlen
+        id: skip
+        # Eingaben ueber env, nie direkt in den Befehl (Injection-Muster).
+        env:
+          BOX: ${{ inputs.box }}
+          MATRIX_NAME: ${{ matrix.name }}
+        run: |
+          if [ "$BOX" = "both" ] || [ "$BOX" = "$MATRIX_NAME" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Root-Schluessel fuer ssh-action, mit der Reparatur am Handy eingefuegter
+      # Secrets (scripts/lint_ssh_schluessel.py). RUNNER_TEMP leert GitHub am
+      # Anfang und Ende jedes Jobs.
+      - name: Root-Schluessel bereitlegen
+        env:
+          KEY: ${{ secrets.CONTABO_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s' "$KEY" | perl -0777 -pe 's/\r//g; s/(?:-|\xE2\x80[\x93\x94])+ *(BEGIN|END) OPENSSH PRIVATE KEY *(?:-|\xE2\x80[\x93\x94])+/-----$1 OPENSSH PRIVATE KEY-----/g; unless (/-----BEGIN OPENSSH PRIVATE KEY-----/) { (my $z = $_) =~ s/\s//g; if ($z =~ m|^[A-Za-z0-9+/]+=*$|) { require MIME::Base64; my $d = MIME::Base64::decode_base64($z); if ($d =~ /-----BEGIN OPENSSH PRIVATE KEY-----/) { $_ = $d; } elsif ($d =~ /\Aopenssh-key-v1\x00/) { $_ = qq{-----BEGIN OPENSSH PRIVATE KEY-----\n$z\n-----END OPENSSH PRIVATE KEY-----\n}; } } } s/\s*(-----BEGIN OPENSSH PRIVATE KEY-----)\s*(.*?)\s*(-----END OPENSSH PRIVATE KEY-----)\s*/my ($k, $b, $f) = ($1, $2, $3); $b =~ s|\s||g; $b =~ s|(.{70})|$1\n|g; $b =~ s|\n\z||; "$k\n$b\n$f\n"/se' > "$RUNNER_TEMP/c1_root_key"
+          ssh-keygen -y -f "$RUNNER_TEMP/c1_root_key" >/dev/null 2>&1 || { echo "::error title=CONTABO_SSH_KEY unlesbar::Secret CONTABO_SSH_KEY neu einfuegen (alles von -----BEGIN bis -----END)."; rm -f "$RUNNER_TEMP/c1_root_key"; exit 1; }
+      - name: Ziehen und Container erneuern
+        if: steps.skip.outputs.run == 'true'
+        env:
+          IMAGE: ghcr.io/hanoi96international-gif/aequitas-biometric-beta/coordinator:${{ inputs.tag }}
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PUBLIC_NAME: ${{ matrix.public }}
+          ALTERSPRUEFUNG_NEU: ${{ inputs.alterspruefung }}
+          EINWILLIGUNG_VORGABE: ${{ inputs.einwilligung_vorgabe }}
+          EINZELBETRIEB: ${{ inputs.einzelbetrieb }}
+          TAGESGRENZE: ${{ inputs.tagesgrenze }}
+          C1_HOST: ${{ matrix.host }}
+        run: |
+          set -euo pipefail
+          # Statt appleboy/ssh-action (28.10.2026): drone-ssh handelte einen anderen
+          # Host-Schluesseltyp als ed25519 aus und verglich dessen Fingerabdruck mit
+          # dem ed25519-Wert -- "host key fingerprint mismatch", jeder Lauf seit #90
+          # brach ab. Hier nur ed25519, vorher gegen den festen Wert geprueft.
+          ssh-keyscan -t ed25519 "$C1_HOST" 2>/dev/null | { grep -v '^#' || true; } > "$RUNNER_TEMP/kh"
+          [ "$(grep -c . "$RUNNER_TEMP/kh")" = 1 ] || { echo "::error::Host-Schluessel von $C1_HOST: nicht genau eine ed25519-Zeile"; exit 1; }
+          [ "$(ssh-keygen -lf "$RUNNER_TEMP/kh" | awk '{print $2}')" = "SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA" ] || { echo "::error::Host-Schluessel von $C1_HOST passt nicht"; exit 1; }
+          {
+            for v in IMAGE GHCR_USER GHCR_TOKEN PUBLIC_NAME ALTERSPRUEFUNG_NEU EINWILLIGUNG_VORGABE EINZELBETRIEB TAGESGRENZE; do printf 'export %s=%q\n' "$v" "${!v}"; done
+            cat <<'SKRIPT'
+          set -euo pipefail
+          NAME=aequitas-coordinator
+          echo "=== ${PUBLIC_NAME}: $NAME -> $IMAGE ==="
+
+          docker inspect "$NAME" >/dev/null 2>&1 || { echo "FEHLER: kein Container $NAME auf dieser Box"; exit 1; }
+          VORHER=$(curl -s --max-time 10 "https://${PUBLIC_NAME}/coordinator/inventory" \
+            | tr ',' '\n' | grep -o '"attestation_public_key":"[0-9a-f]*"' | head -1 | cut -d'"' -f4 || true)
+          echo "attestation_public_key vorher: ${VORHER:-(nicht lesbar)}"
+
+          echo "=== Image ziehen ==="
+          echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin >/dev/null
+          trap 'docker logout ghcr.io >/dev/null 2>&1 || true; rm -f /root/.coordinator-neu.env /root/.coordinator-alt.env' EXIT
+          gezogen=0
+          for pause in 5 15 30; do
+            if docker pull "$IMAGE" 2>&1 | tail -2; then gezogen=1; break; fi
+            echo "Pull abgebrochen -- neuer Versuch in ${pause}s"; sleep "$pause"
+          done
+          [ "$gezogen" = 1 ] || { echo "FEHLER: Image nicht ziehbar"; exit 1; }
+
+          echo "=== Laufende Einstellungen ablesen ==="
+          umask 077
+          docker inspect "$NAME" --format '{{range .Config.Env}}{{println .}}{{end}}' \
+            | grep -vE '^(PATH|HOSTNAME|HOME|LANG|LC_ALL|PYTHON[A-Z_]*|GPG_KEY|PIP_[A-Z_]*)=' \
+            | grep -E '^[A-Za-z_][A-Za-z0-9_]*=' > /root/.coordinator-neu.env
+          # Unveraendert fuer die Ruecknahme (zurueck, unten).
+          cp /root/.coordinator-neu.env /root/.coordinator-alt.env
+          echo "  $(wc -l < /root/.coordinator-neu.env) Umgebungsvariablen (Werte bleiben ungezeigt)"
+          # Einstellungen, die dieser Lauf ausdruecklich setzt (Eingaben oben).
+          # Werte sind keine Geheimnisse; gezeigt wird nur, was sich aendert.
+          if [ "$ALTERSPRUEFUNG_NEU" != "unveraendert" ]; then
+            alt=$(grep -E '^ALTERSPRUEFUNG=' /root/.coordinator-neu.env | cut -d= -f2- || true)
+            sed -i '/^ALTERSPRUEFUNG=/d' /root/.coordinator-neu.env
+            echo "ALTERSPRUEFUNG=$ALTERSPRUEFUNG_NEU" >> /root/.coordinator-neu.env
+            echo "  ALTERSPRUEFUNG: ${alt:-(nicht gesetzt, Vorgabe erzwingen)} -> $ALTERSPRUEFUNG_NEU"
+          fi
+          for v in CURRENT_CONSENT_VERSION UEBERGANG_CONSENT_VERSIONEN; do
+            if grep -qE "^$v=" /root/.coordinator-neu.env; then
+              wert=$(grep -E "^$v=" /root/.coordinator-neu.env | cut -d= -f2-)
+              if [ "$EINWILLIGUNG_VORGABE" = "true" ]; then
+                sed -i "/^$v=/d" /root/.coordinator-neu.env
+                echo "  $v war fest auf '$wert' -- entfernt, es gilt die Vorgabe im Code"
+              else
+                echo "  $v ist fest auf '$wert' (bleibt)"
+              fi
+            fi
+          done
+          # Einzelbetrieb (coordinator/app/einzelbetrieb.py, Entscheidung des
+          # Betreibers vom 04.10.2026): proof2 gibt es mit C2 nicht mehr.
+          # Kein festes Quorum -- die Mehrheit der bekannten Dienste, also 1
+          # jetzt und 2 von selbst, sobald ein zweiter dazukommt. Bei 1 gilt
+          # die Tagesgrenze.
+          if [ "$EINZELBETRIEB" = "true" ]; then
+            case "$TAGESGRENZE" in ''|*[!0-9]*) echo "FEHLER: tagesgrenze muss eine Zahl sein"; exit 1;; esac
+            [ "$TAGESGRENZE" -ge 1 ] && [ "$TAGESGRENZE" -le 1000 ] || { echo "FEHLER: tagesgrenze 1..1000"; exit 1; }
+            for v in VALIDATOR_URLS QUORUM_SIZE VALIDATOR_ABGEMELDET EINZELBETRIEB_TAGESGRENZE EINZELBETRIEB_DB_PATH; do
+              echo "  $v vorher: $(grep -E "^$v=" /root/.coordinator-neu.env | cut -d= -f2- || true)"
+              sed -i "/^$v=/d" /root/.coordinator-neu.env
+            done
+            {
+              echo "VALIDATOR_URLS=https://proof1.aequitas.digital/matching"
+              echo "VALIDATOR_ABGEMELDET=https://proof2.aequitas.digital/matching"
+              echo "EINZELBETRIEB_TAGESGRENZE=$TAGESGRENZE"
+              echo "EINZELBETRIEB_DB_PATH=/data/einzelbetrieb.db"
+            } >> /root/.coordinator-neu.env
+            echo "  -> VALIDATOR_URLS=proof1, proof2 abgemeldet, QUORUM_SIZE entfernt, Tagesgrenze $TAGESGRENZE"
+          fi
+          NET=$(docker inspect "$NAME" --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}' | awk '{print $1}')
+          [ -n "$NET" ] || NET=aequitas-net
+          MOUNTS=$(docker inspect "$NAME" --format '{{range .Mounts}}{{if eq .Type "bind"}}-v {{.Source}}:{{.Destination}} {{end}}{{end}}')
+          PORTS=$(docker inspect "$NAME" --format '{{range $p, $b := .HostConfig.PortBindings}}{{range $b}}-p {{.HostIp}}:{{.HostPort}}:{{$p}} {{end}}{{end}}' | sed 's/-p :/-p /g')
+          echo "  Netz: $NET"
+          echo "  Mounts: ${MOUNTS:-(keine)}"
+          echo "  Ports: ${PORTS:-(nur im Netz)}"
+          ALT=$(docker inspect "$NAME" --format '{{.Config.Image}}')
+          echo "  altes Image: $ALT"
+
+          # Ruecknahme: startet das neue Image nicht wie erwartet, laeuft das
+          # alte mit genau der alten Umgebung wieder -- statt eines
+          # Coordinators, der bis zum naechsten Eingriff aus ist.
+          zurueck() {
+            echo "=== Ruecknahme auf $ALT ==="
+            docker logs --tail 40 "$NAME" 2>&1 | cut -c1-300 || true
+            docker rm -f "$NAME" >/dev/null 2>&1 || true
+            # shellcheck disable=SC2086
+            docker run -d --name "$NAME" --restart unless-stopped \
+              --network "$NET" --env-file /root/.coordinator-alt.env \
+              $MOUNTS $PORTS \
+              --log-opt max-size=20m --log-opt max-file=3 \
+              "$ALT" >/dev/null && echo "altes Image laeuft wieder" || echo "FEHLER: auch das alte Image startet nicht"
+          }
+
+          echo "=== Erneuern ==="
+          docker rm -f "$NAME" >/dev/null
+          # shellcheck disable=SC2086
+          if ! docker run -d --name "$NAME" --restart unless-stopped \
+            --network "$NET" --env-file /root/.coordinator-neu.env \
+            $MOUNTS $PORTS \
+            --log-opt max-size=20m --log-opt max-file=3 \
+            "$IMAGE" >/dev/null; then
+            zurueck; exit 1
+          fi
+          rm -f /root/.coordinator-neu.env
+
+          echo "=== Warten auf /health mit dem neuen Feld 'erneuerung' (WP 3) ==="
+          ok=0
+          for _ in $(seq 1 30); do
+            body=$(docker run --rm --network "$NET" curlimages/curl:latest -s --max-time 5 "http://${NAME}:8200/health" 2>/dev/null || true)
+            if echo "$body" | grep -q '"erneuerung"'; then ok=1; break; fi
+            sleep 3
+          done
+          if [ "$ok" != 1 ]; then
+            echo "FEHLER: /health antwortet nicht wie erwartet"
+            zurueck
+            exit 1
+          fi
+          echo "$body" | cut -c1-400
+          echo "einzelbetrieb: $(echo "$body" | python3 -c "import sys,json; e=json.load(sys.stdin).get('einzelbetrieb') or {}; print({k: e.get(k) for k in ('aktiv','vergleichsdienste','quorum','tagesgrenze','heute')})" 2>/dev/null || echo '(nicht lesbar)')"
+          if [ "$EINZELBETRIEB" = "true" ] && ! echo "$body" | grep -qE '"quorum_size": ?1[,}]'; then
+            echo "FEHLER: nach der Umstellung ist das Quorum nicht 1 -- nennt das Register der Kette einen weiteren Dienst?"
+            echo "$body" | grep -o '"validator_urls":\[[^]]*\]' || true
+            zurueck
+            exit 1
+          fi
+
+          NACHHER=$(curl -s --max-time 15 "https://${PUBLIC_NAME}/coordinator/inventory" \
+            | tr ',' '\n' | grep -o '"attestation_public_key":"[0-9a-f]*"' | head -1 | cut -d'"' -f4 || true)
+          echo "attestation_public_key nachher: ${NACHHER:-(nicht lesbar)}"
+          if [ -n "$VORHER" ] && [ "$VORHER" != "$NACHHER" ]; then
+            echo "FEHLER: der Schluessel hat sich geaendert -- Umgebung verloren? Altes Image: $ALT"
+            zurueck
+            exit 1
+          fi
+          echo "=== fertig: ${PUBLIC_NAME} laeuft auf $IMAGE ==="
+          SKRIPT
+          } | timeout 1800 ssh -o BatchMode=yes -o IdentitiesOnly=yes -o HostKeyAlgorithms=ssh-ed25519 \
+              -o UserKnownHostsFile="$RUNNER_TEMP/kh" -o ServerAliveInterval=30 \
+              -i "$RUNNER_TEMP/c1_root_key" root@"$C1_HOST" 'bash -s'

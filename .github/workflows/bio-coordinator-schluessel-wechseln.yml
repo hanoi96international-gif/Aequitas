@@ -1,0 +1,275 @@
+name: Biometrie -- Coordinator-Signierschluessel auf C1 wechseln (Notfall)
+
+# WARUM (25.10.2026). Fuer den Fall "COORDINATOR_SIGNING_KEY entwendet"
+# (docs/dsgvo/05_DATENPANNE.md) gab es nur scripts/attestierung-
+# scharfschalten.ps1 -- es steuerte die Dienste auf Railway und ist mit
+# Railway entfernt (#91). Auf C1 gab es keinen Weg.
+#
+# WAS DER SCHLUESSEL KANN. Mit ihm bescheinigt der Coordinator eine
+# Einschreibung; der Proof-Server gibt nur mit dieser Bescheinigung einen
+# Beweis aus, der Vergleichsdienst nimmt nur von ihm /propose, /commit,
+# /access, /vouch und Loeschungen an. Wer den privaten Teil hat, kann also
+# Registrierungen bescheinigen und im Vergleichsdienst schreiben.
+#
+# WAS DIESER LAUF TUT (alles auf C1, 188.172.229.121):
+#   anzeigen  nur lesen: welchen Schluessel der Coordinator fuehrt und welchen
+#             Vergleichsdienst und Proof-Server anerkennen (Praefixe).
+#   wechseln  1. Neuen Schluessel AUF DER BOX erzeugen (openssl), den
+#                oeffentlichen Teil im Coordinator-Container ableiten (stdin,
+#                nie in einer Befehlszeile). Der private Teil verlaesst die
+#                Box nie und steht nie im Protokoll.
+#             2. Coordinator mit dem neuen Schluessel neu anlegen (Umgebung,
+#                Netz, Mounts vom laufenden Container wie deploy-coordinator-
+#                to-box.yml). /inventory muss danach den neuen oeffentlichen
+#                Schluessel nennen, sonst Ruecknahme -- in diesem Schritt hat
+#                sich an den anderen Diensten noch nichts geaendert.
+#             3. Vergleichsdienst: COORDINATOR_PUBLIC_KEYS = NUR der neue.
+#             4. Proof-Server: COORDINATOR_PUBLIC_KEYS = NUR der neue
+#                (/root/proof-server.env.schluessel, dann proof-deploy.sh).
+#             Der alte Schluessel wird in 3 und 4 ENTFERNT, nicht ergaenzt:
+#             er gilt als entwendet. Scheitert 3 oder 4, wird er NICHT wieder
+#             eingesetzt (fail-closed): dann steht die Registrierung, bis der
+#             Fehler behoben ist -- besser als ein entwendeter Schluessel, der
+#             weiter gilt.
+#
+# DANACH: den neuen oeffentlichen Schluessel (steht in der Zusammenfassung)
+# per PR in vergleichsdienst-neuer-c1.yml eintragen. Bis dahin bricht ein
+# erneuter Lauf dort fail-closed ab (er prueft den Coordinator gegen seine
+# Liste) -- er setzt den alten nie still wieder ein.
+#
+# Vorher von jeder Datei eine Kopie auf C1 (*.vor-schluesselwechsel-<Zeit>).
+# Diese Kopien enthalten den ALTEN privaten Schluessel; nach einem
+# erfolgreichen Wechsel loescht der Lauf die Kopie der Coordinator-Datei.
+
+# Aus aequitas-biometric-beta uebernommen (28.10.2026): dort ist das Repo
+# privat, und im GitHub-Plan gibt es fuer private Repos keine Pflicht-
+# Freigabe der Umgebung `produktion`. Hier (oeffentlich) wartet jeder Lauf
+# auf die Freigabe. Die Images kommen weiter aus dem privaten GHCR-Paket
+# des Biometrie-Repos (Lesezugriff fuer dieses Repo in den Paket-
+# Einstellungen). Inhaltlich unveraendert bis auf den Image-Pfad.
+on:
+  workflow_dispatch:
+    inputs:
+      modus:
+        description: "anzeigen (nur lesen) oder wechseln"
+        required: true
+        type: choice
+        default: anzeigen
+        options: [anzeigen, wechseln]
+      bestaetigung:
+        description: "Nur fuer wechseln: genau SCHLUESSEL WECHSELN eintippen"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: coordinator-schluessel-c1
+  cancel-in-progress: false
+
+jobs:
+  wechseln:
+    runs-on: ubuntu-latest
+    environment: produktion
+    timeout-minutes: 30
+    env:
+      C1: 188.172.229.121
+      MODUS: ${{ inputs.modus }}
+      BESTAETIGUNG: ${{ inputs.bestaetigung }}
+    steps:
+      - name: Eingaben pruefen
+        run: |
+          set -euo pipefail
+          case "$MODUS" in anzeigen|wechseln) ;; *) echo "::error::modus anzeigen oder wechseln"; exit 1 ;; esac
+          if [ "$MODUS" = wechseln ] && [ "$BESTAETIGUNG" != "SCHLUESSEL WECHSELN" ]; then
+            echo "::error::Fuer wechseln genau SCHLUESSEL WECHSELN eintippen -- nichts geaendert."
+            exit 1
+          fi
+
+      - name: Schluessel und Host-Pruefung
+        env:
+          KEY: ${{ secrets.CONTABO_SSH_KEY }}
+        run: |
+          set -eu
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s' "$KEY" | perl -0777 -pe 's/\r//g; s/(?:-|\xE2\x80[\x93\x94])+ *(BEGIN|END) OPENSSH PRIVATE KEY *(?:-|\xE2\x80[\x93\x94])+/-----$1 OPENSSH PRIVATE KEY-----/g; unless (/-----BEGIN OPENSSH PRIVATE KEY-----/) { (my $z = $_) =~ s/\s//g; if ($z =~ m|^[A-Za-z0-9+/]+=*$|) { require MIME::Base64; my $d = MIME::Base64::decode_base64($z); if ($d =~ /-----BEGIN OPENSSH PRIVATE KEY-----/) { $_ = $d; } elsif ($d =~ /\Aopenssh-key-v1\x00/) { $_ = qq{-----BEGIN OPENSSH PRIVATE KEY-----\n$z\n-----END OPENSSH PRIVATE KEY-----\n}; } } } s/\s*(-----BEGIN OPENSSH PRIVATE KEY-----)\s*(.*?)\s*(-----END OPENSSH PRIVATE KEY-----)\s*/my ($k, $b, $f) = ($1, $2, $3); $b =~ s|\s||g; $b =~ s|(.{70})|$1\n|g; $b =~ s|\n\z||; "$k\n$b\n$f\n"/se' > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          ssh-keygen -y -f ~/.ssh/id_ed25519 >/dev/null 2>&1 || { echo "::error title=CONTABO_SSH_KEY unlesbar::Secret CONTABO_SSH_KEY neu einfuegen (alles von -----BEGIN bis -----END)."; rm -f ~/.ssh/id_ed25519; exit 1; }
+          ssh-keyscan -t ed25519 "$C1" 2>/dev/null | { grep -v '^#' || true; } > ~/.ssh/kh
+          [ "$(grep -c . ~/.ssh/kh)" = 1 ] || { echo "::error::Host-Schluessel von C1: nicht genau eine ed25519-Zeile"; exit 1; }
+          ssh-keygen -lf ~/.ssh/kh | awk '{print $2}' | grep -qx 'SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA' || { echo "::error::Host-Schluessel von C1 passt nicht"; exit 1; }
+          cp ~/.ssh/kh ~/.ssh/known_hosts
+
+      - name: Schluessel ${{ inputs.modus }}
+        id: lauf
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -o IdentitiesOnly=yes -o ServerAliveInterval=30 root@$C1 \
+            "MODUS='$MODUS' bash -s" <<'SKRIPT' | tee "$RUNNER_TEMP/ausgabe.txt"
+          set -euo pipefail
+          umask 077
+          ZEIT=$(date -u +%Y%m%dT%H%M%SZ)
+          CENV=/root/.aequitas-coordinator.env
+          MENV=/root/.aequitas-matching.env
+          FEST=/root/proof-server.env.schluessel
+          hex64() { [[ "$1" =~ ^[0-9a-f]{64}$ ]]; }
+          inventar() {
+            docker exec aequitas-node wget -qO- -T 20 http://aequitas-coordinator:8200/inventory 2>/dev/null \
+              | python3 -c "import sys,json; print(((json.load(sys.stdin).get('bereit_fuer_echtbetrieb') or {}).get('attestation_public_key') or '').strip().lower())" 2>/dev/null || true
+          }
+          env_von() { docker inspect "$1" --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | grep "^$2=" | tail -1 | cut -d= -f2- | tr 'A-F' 'a-f' || true; }
+          praefixe() { echo "$1" | tr ',' '\n' | grep . | cut -c1-8 | paste -sd' ' - || true; }
+
+          for c in aequitas-coordinator aequitas-matching proof-server aequitas-node; do
+            docker inspect "$c" >/dev/null 2>&1 || { echo "::error::Container $c fehlt auf C1 -- nichts geaendert"; exit 1; }
+          done
+          ALT=$(inventar)
+          hex64 "$ALT" || { echo "::error::Schluessel des Coordinators nicht lesbar -- nichts geaendert"; exit 1; }
+          echo "Coordinator fuehrt:            ${ALT:0:8}"
+          echo "Vergleichsdienst erkennt an:   $(praefixe "$(env_von aequitas-matching COORDINATOR_PUBLIC_KEYS)")"
+          echo "Proof-Server erkennt an:       $(praefixe "$(env_von proof-server COORDINATOR_PUBLIC_KEYS)")"
+          [ "$MODUS" = wechseln ] || { echo "nur angezeigt, nichts geaendert"; exit 0; }
+
+          # Kopien vor jeder Aenderung (Modus 600 durch umask).
+          for f in "$CENV" "$MENV" "$FEST"; do
+            if [ -f "$f" ]; then cp -p "$f" "$f.vor-schluesselwechsel-$ZEIT"; fi
+          done
+
+          # 1. Neuer Schluessel, auf der Box erzeugt. Oeffentlicher Teil im
+          #    Coordinator-Container abgeleitet (dieselbe Bibliothek, mit der
+          #    er unterschreibt), der private Teil nur ueber stdin.
+          NEU_SEED=$(openssl rand -hex 32)
+          hex64 "$NEU_SEED" || { echo "::error::Schluesselerzeugung fehlgeschlagen -- nichts geaendert"; exit 1; }
+          NEU=$(printf '%s' "$NEU_SEED" | docker exec -i aequitas-coordinator python -c 'import sys
+          from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+          from cryptography.hazmat.primitives import serialization as s
+          k = Ed25519PrivateKey.from_private_bytes(bytes.fromhex(sys.stdin.read().strip()))
+          print(k.public_key().public_bytes(s.Encoding.Raw, s.PublicFormat.Raw).hex())' | tr -d '[:space:]')
+          hex64 "$NEU" || { echo "::error::Oeffentlicher Schluessel nicht ableitbar -- nichts geaendert"; exit 1; }
+          [ "$NEU" != "$ALT" ] || { echo "::error::Neuer gleich altem Schluessel -- nichts geaendert"; exit 1; }
+          echo "neuer Schluessel:              ${NEU:0:8}"
+
+          # Container mit ersetzter Variable neu anlegen: Umgebung, Netz,
+          # Mounts und Image vom laufenden Container. Die Umgebungsdatei
+          # enthaelt Geheimnisse: Modus 600, danach geloescht.
+          neu_anlegen() { # name variable wert
+            local name="$1" var="$2" wert="$3" envd="/root/.$1.schluesselwechsel.env"
+            docker inspect "$name" --format '{{range .Config.Env}}{{println .}}{{end}}' \
+              | grep -vE '^(PATH|HOSTNAME|HOME|LANG|LC_ALL|PYTHON[A-Z_]*|GPG_KEY|PIP_[A-Z_]*)=' \
+              | grep -E '^[A-Za-z_][A-Za-z0-9_]*=' | grep -v "^$var=" > "$envd"
+            printf '%s=%s\n' "$var" "$wert" >> "$envd"
+            local net mounts ports image
+            net=$(docker inspect "$name" --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}' | awk '{print $1}')
+            mounts=$(docker inspect "$name" --format '{{range .Mounts}}{{if eq .Type "bind"}}-v {{.Source}}:{{.Destination}} {{end}}{{end}}')
+            ports=$(docker inspect "$name" --format '{{range $p, $b := .HostConfig.PortBindings}}{{range $b}}-p {{.HostIp}}:{{.HostPort}}:{{$p}} {{end}}{{end}}' | sed 's/-p :/-p /g')
+            image=$(docker inspect "$name" --format '{{.Image}}')
+            docker rm -f "$name" >/dev/null
+            # shellcheck disable=SC2086
+            docker run -d --name "$name" --restart unless-stopped --network "${net:-aequitas-net}" \
+              --env-file "$envd" $mounts $ports --log-opt max-size=20m --log-opt max-file=3 "$image" >/dev/null
+            local rc=$?
+            rm -f "$envd"
+            return $rc
+          }
+          ersetze_in_datei() { # datei variable wert
+            local f="$1" var="$2" wert="$3"
+            [ -f "$f" ] || : > "$f"
+            grep -v "^$var=" "$f" > "$f.neu" || true
+            printf '%s=%s\n' "$var" "$wert" >> "$f.neu"
+            chmod 600 "$f.neu"; mv "$f.neu" "$f"
+          }
+
+          # 2. Coordinator. Hier ist an den anderen Diensten noch nichts
+          #    geaendert: scheitert es, zurueck zum alten Container.
+          C_ALT_ENV="/root/.aequitas-coordinator.vorher.env"
+          docker inspect aequitas-coordinator --format '{{range .Config.Env}}{{println .}}{{end}}' \
+            | grep -vE '^(PATH|HOSTNAME|HOME|LANG|LC_ALL|PYTHON[A-Z_]*|GPG_KEY|PIP_[A-Z_]*)=' \
+            | grep -E '^[A-Za-z_][A-Za-z0-9_]*=' > "$C_ALT_ENV"
+          C_NET=$(docker inspect aequitas-coordinator --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}' | awk '{print $1}')
+          C_MOUNTS=$(docker inspect aequitas-coordinator --format '{{range .Mounts}}{{if eq .Type "bind"}}-v {{.Source}}:{{.Destination}} {{end}}{{end}}')
+          C_IMAGE=$(docker inspect aequitas-coordinator --format '{{.Image}}')
+          coordinator_zurueck() {
+            echo "Ruecknahme: Coordinator mit dem alten Schluessel"
+            docker rm -f aequitas-coordinator >/dev/null 2>&1 || true
+            # shellcheck disable=SC2086
+            docker run -d --name aequitas-coordinator --restart unless-stopped --network "${C_NET:-aequitas-net}" \
+              --env-file "$C_ALT_ENV" $C_MOUNTS --log-opt max-size=20m --log-opt max-file=3 "$C_IMAGE" >/dev/null || true
+            rm -f "$C_ALT_ENV"
+            if [ -f "$CENV.vor-schluesselwechsel-$ZEIT" ]; then cp -p "$CENV.vor-schluesselwechsel-$ZEIT" "$CENV"; fi
+          }
+          if ! neu_anlegen aequitas-coordinator COORDINATOR_SIGNING_KEY "$NEU_SEED"; then
+            coordinator_zurueck; echo "::error::Coordinator startet nicht -- alter Stand wieder aktiv, sonst nichts geaendert"; exit 1
+          fi
+          ok=0
+          for _ in $(seq 1 30); do
+            sleep 3
+            [ "$(inventar)" = "$NEU" ] && { ok=1; break; }
+          done
+          if [ "$ok" != 1 ]; then
+            coordinator_zurueck; echo "::error::Coordinator nennt den neuen Schluessel nicht -- alter Stand wieder aktiv, sonst nichts geaendert"; exit 1
+          fi
+          ersetze_in_datei "$CENV" COORDINATOR_SIGNING_KEY "$NEU_SEED"
+          unset NEU_SEED
+          rm -f "$C_ALT_ENV" "$CENV.vor-schluesselwechsel-$ZEIT"
+          echo "✓ Coordinator unterschreibt mit ${NEU:0:8}"
+
+          # Ab hier gilt der alte Schluessel als entwendet: er wird nirgends
+          # wieder eingesetzt. Scheitert ein Schritt, steht die Registrierung.
+          FEHLER=0
+
+          # 3. Vergleichsdienst.
+          ersetze_in_datei "$MENV" COORDINATOR_PUBLIC_KEYS "$NEU"
+          if neu_anlegen aequitas-matching COORDINATOR_PUBLIC_KEYS "$NEU"; then
+            bereit=0
+            for _ in $(seq 1 60); do
+              sleep 5
+              docker exec aequitas-matching python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8098/health', timeout=3)" >/dev/null 2>&1 && { bereit=1; break; }
+            done
+            if [ "$bereit" = 1 ] && [ "$(env_von aequitas-matching COORDINATOR_PUBLIC_KEYS)" = "$NEU" ]; then
+              echo "✓ Vergleichsdienst erkennt nur noch ${NEU:0:8} an"
+            else
+              echo "::error::Vergleichsdienst antwortet nicht oder fuehrt nicht genau den neuen Schluessel"; FEHLER=1
+            fi
+          else
+            echo "::error::Vergleichsdienst startet nicht"; FEHLER=1
+          fi
+
+          # 4. Proof-Server: festgelegte Liste ersetzen, proof-deploy.sh wendet
+          #    sie an (und nimmt bei Fehlschlag das alte Image -- mit der
+          #    NEUEN Liste, der alte Schluessel kommt nicht zurueck).
+          ersetze_in_datei "$FEST" COORDINATOR_PUBLIC_KEYS "$NEU"
+          if bash /root/proof-deploy.sh 2>&1 | grep -viE 'key|token|secret|password' && [ "$(env_von proof-server COORDINATOR_PUBLIC_KEYS)" = "$NEU" ]; then
+            echo "✓ Proof-Server erkennt nur noch ${NEU:0:8} an"
+          else
+            echo "::error::Proof-Server fuehrt nicht genau den neuen Schluessel (proof-deploy.sh pruefen)"; FEHLER=1
+          fi
+
+          echo "NEUER_SCHLUESSEL=$NEU"
+          echo "ALTER_SCHLUESSEL=$ALT"
+          [ "$FEHLER" = 0 ] || { echo "::error::Wechsel unvollstaendig -- der alte Schluessel ist trotzdem ueberall entfernt; Registrierung steht bis zur Behebung."; exit 1; }
+          echo "✓ Wechsel vollstaendig"
+          SKRIPT
+
+      - name: Zusammenfassung
+        if: always() && inputs.modus == 'wechseln'
+        run: |
+          set -eu
+          NEU=$(sed -n 's/^NEUER_SCHLUESSEL=\([0-9a-f]\{64\}\)$/\1/p' "$RUNNER_TEMP/ausgabe.txt" 2>/dev/null | tail -1 || true)
+          ALT=$(sed -n 's/^ALTER_SCHLUESSEL=\([0-9a-f]\{64\}\)$/\1/p' "$RUNNER_TEMP/ausgabe.txt" 2>/dev/null | tail -1 || true)
+          {
+            echo "## Coordinator-Schluessel gewechselt"
+            echo
+            if [ -n "$NEU" ]; then
+              echo "Neuer oeffentlicher Schluessel (oeffentlich, darf hier stehen): \`$NEU\`"
+              echo
+              echo "Alter (gilt als entwendet, ueberall entfernt): \`${ALT:-?}\`"
+              echo
+              echo "**Jetzt:** den neuen Schluessel per PR in \`vergleichsdienst-neuer-c1.yml\` (COORDINATOR_PUBLIC_KEYS) eintragen und den Wechsel in der Meldung nach Art. 33 nennen."
+            else
+              echo "Kein neuer Schluessel gesetzt -- Protokoll oben ansehen."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: SSH-Schluessel vom Runner entfernen
+        if: always()
+        run: rm -f ~/.ssh/id_ed25519

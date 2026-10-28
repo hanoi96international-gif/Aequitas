@@ -1,0 +1,149 @@
+name: Proof-Server -- Einzelbetrieb auf C1 -- ein Vergleichsdienst, Quorum 1, Tagesgrenze
+
+# WARUM
+#
+# C2 ist seit dem 03.10.2026 abgeschaltet, mit ihm proof2 (Coordinator und
+# Vergleichsdienst). Der Proof-Server verlangte zwei Bezeuger-Unterschriften
+# (BIO_ATTESTATION_QUORUM=2); mit nur noch einem Vergleichsdienst geht damit
+# keine Registrierung mehr durch. Der Betreiber hat am 04.10.2026
+# entschieden: Quorum 1 MIT Ausgleich (bio_attestation.js, EINZELBETRIEB).
+#
+# WAS
+#
+#   1. Die oeffentlichen Schluessel der laufenden Dienste auf proof1 lesen
+#      (/coordinator/inventory und /matching/health -- /besitznachweis und
+#      /bezeugungsnachweis stellen seit aequitas-biometric-beta#38 nur noch
+#      fuer die Betreiber-Wallet aus).
+#   2. Auf C1 pruefen, dass beide SCHON anerkannt sind -- dieser Lauf grenzt
+#      nur ein, er fuegt nie einen Schluessel hinzu.
+#   3. /root/proof-server.env.schluessel auf genau diese beiden Schluessel
+#      setzen, dazu Quorum 1, Einzelbetrieb an, Tagesgrenze. Bei Quorum 1
+#      genuegt JEDER anerkannte Bezeuger allein; der Schluessel des
+#      abgeschalteten proof2 (eine andere Person) muss deshalb heraus.
+#   4. Ausliefern (proof-deploy.sh). Antwortet der Dienst danach nicht wie
+#      erwartet, wird die vorige Schluesseldatei zurueckgelegt und erneut
+#      ausgeliefert.
+#
+# Zurueck auf Quorum 2: sobald ein zweiter Vergleichsdienst unterschreibt,
+# schluessel-festlegen.yml laufen lassen und BIO_ATTESTATION_QUORUM=2 setzen.
+# Aus aequitas-proof-server uebernommen (28.10.2026): dort ist das Repo
+# privat, und im GitHub-Plan gibt es fuer private Repos keine Pflicht-
+# Freigabe der Umgebung `produktion`. Hier wartet jeder Lauf auf die
+# Freigabe.
+# Statt Quelltext hochzuladen und auf C1 zu bauen, wendet
+# deploy/proof-server/proof-ausrollen.sh die neue Umgebung auf das LAUFENDE
+# Image an.
+on:
+  workflow_dispatch:
+    inputs:
+      tagesgrenze:
+        description: "Hoechstens so viele neue Menschen je UTC-Tag (1..1000)"
+        required: true
+        default: "25"
+      schreiben:
+        description: "Umstellen (sonst nur anzeigen)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: proof-server-c1
+  cancel-in-progress: false
+
+jobs:
+  umstellen:
+    runs-on: ubuntu-latest
+    environment: produktion
+    timeout-minutes: 30
+    env:
+      BOX: 188.172.229.121
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: deploy/proof-server/proof-ausrollen.sh
+          sparse-checkout-cone-mode: false
+      - name: Eingaben
+        env:
+          GRENZE: ${{ inputs.tagesgrenze }}
+        run: |
+          set -eu
+          case "$GRENZE" in ''|*[!0-9]*) echo "::error::tagesgrenze muss eine Zahl sein"; exit 1;; esac
+          [ "$GRENZE" -ge 1 ] && [ "$GRENZE" -le 1000 ] || { echo "::error::tagesgrenze 1..1000"; exit 1; }
+      - name: Oeffentliche Schluessel der Dienste auf proof1
+        id: s
+        run: |
+          set -euo pipefail
+          # /inventory fragt die Vergleichsdienste ab, deshalb mehr Zeit.
+          ck=$(curl -sf -m 30 "https://proof1.aequitas.digital/coordinator/inventory" | jq -r '.bereit_fuer_echtbetrieb.attestation_public_key // empty' | tr 'A-F' 'a-f')
+          pk=$(curl -sf -m 15 "https://proof1.aequitas.digital/matching/health" | jq -r '.personhood_public_key // empty' | tr 'A-F' 'a-f')
+          [[ "$ck" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::Coordinator-Schluessel von proof1 nicht lesbar"; exit 1; }
+          [[ "$pk" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::Vergleichsdienst-Schluessel von proof1 nicht lesbar"; exit 1; }
+          [ "$ck" != "$pk" ] || { echo "::error::derselbe Schluessel in beiden Rollen"; exit 1; }
+          echo "proof1: coordinator ${ck:0:8} | vergleichsdienst ${pk:0:8}"
+          echo "coordinator=$ck" >> "$GITHUB_OUTPUT"
+          echo "personhood=$pk" >> "$GITHUB_OUTPUT"
+      - name: Schluessel und Host-Pruefung
+        env:
+          KEY: ${{ secrets.CONTABO_SSH_KEY }}
+        run: |
+          set -eu
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s' "$KEY" | perl -0777 -pe 's/\r//g; s/(?:-|\xE2\x80[\x93\x94])+ *(BEGIN|END) OPENSSH PRIVATE KEY *(?:-|\xE2\x80[\x93\x94])+/-----$1 OPENSSH PRIVATE KEY-----/g; unless (/-----BEGIN OPENSSH PRIVATE KEY-----/) { (my $z = $_) =~ s/\s//g; if ($z =~ m|^[A-Za-z0-9+/]+=*$|) { require MIME::Base64; my $d = MIME::Base64::decode_base64($z); if ($d =~ /-----BEGIN OPENSSH PRIVATE KEY-----/) { $_ = $d; } elsif ($d =~ /\Aopenssh-key-v1\x00/) { $_ = qq{-----BEGIN OPENSSH PRIVATE KEY-----\n$z\n-----END OPENSSH PRIVATE KEY-----\n}; } } } s/\s*(-----BEGIN OPENSSH PRIVATE KEY-----)\s*(.*?)\s*(-----END OPENSSH PRIVATE KEY-----)\s*/my ($k, $b, $f) = ($1, $2, $3); $b =~ s|\s||g; $b =~ s|(.{70})|$1\n|g; $b =~ s|\n\z||; "$k\n$b\n$f\n"/se' > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -t ed25519 "$BOX" 2>/dev/null > ~/.ssh/kh
+          ssh-keygen -lf ~/.ssh/kh | awk '{print $2}' | grep -qx 'SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA' || { echo "::error::Host-Schluessel von C1 passt nicht"; exit 1; }
+          cp ~/.ssh/kh ~/.ssh/known_hosts
+      - name: Ausroll-Skript auf die Box
+        if: inputs.schreiben
+        run: |
+          set -euo pipefail
+          scp -q -o BatchMode=yes deploy/proof-server/proof-ausrollen.sh "root@$BOX:/root/proof-ausrollen.sh.neu"
+          ssh -o BatchMode=yes root@$BOX 'install -m 700 /root/proof-ausrollen.sh.neu /root/proof-ausrollen.sh && rm -f /root/proof-ausrollen.sh.neu'
+      - name: Eingrenzen, umstellen, ausliefern
+        env:
+          C: ${{ steps.s.outputs.coordinator }}
+          P: ${{ steps.s.outputs.personhood }}
+          GRENZE: ${{ inputs.tagesgrenze }}
+          SCHREIBEN: ${{ inputs.schreiben }}
+        run: |
+          ssh -o BatchMode=yes -o ServerAliveInterval=30 root@$BOX \
+            "C='$C' P='$P' GRENZE='$GRENZE' SCHREIBEN='$SCHREIBEN' bash -s" <<'SKRIPT'
+          set -euo pipefail
+          FEST=/root/proof-server.env.schluessel
+          alt() { docker inspect proof-server --format '{{range .Config.Env}}{{println .}}{{end}}' | grep "^$1=" | cut -d= -f2- | tr 'A-F' 'a-f' || true; }
+          zeige() { echo "$1" | tr ',' '\n' | cut -c1-8 | paste -sd' ' -; }
+          AC=$(alt COORDINATOR_PUBLIC_KEYS); AP=$(alt PERSONHOOD_PUBLIC_KEYS)
+          echo "bisher Coordinator:      $(zeige "$AC")"
+          echo "bisher Vergleichsdienst: $(zeige "$AP")"
+          echo "bisher Quorum:           $(alt BIO_ATTESTATION_QUORUM)"
+          # Nur eingrenzen: beide muessen schon anerkannt sein.
+          echo ",$AC," | grep -q ",$C," || { echo "FEHLER: Coordinator ${C:0:8} ist auf C1 nicht anerkannt -- nichts geaendert"; exit 1; }
+          echo ",$AP," | grep -q ",$P," || { echo "FEHLER: Vergleichsdienst ${P:0:8} ist auf C1 nicht anerkannt -- nichts geaendert"; exit 1; }
+          echo "neu    Coordinator:      ${C:0:8}"
+          echo "neu    Vergleichsdienst: ${P:0:8}"
+          echo "neu    Quorum 1, Einzelbetrieb an, Tagesgrenze $GRENZE"
+          [ "$SCHREIBEN" = "true" ] || { echo "nur angezeigt, nichts geschrieben"; exit 0; }
+
+          umask 077
+          SICHERUNG=""
+          if [ -f "$FEST" ]; then SICHERUNG="$FEST.vor-einzelbetrieb-$(date +%s)"; cp -a "$FEST" "$SICHERUNG"; fi
+          printf 'COORDINATOR_PUBLIC_KEYS=%s\nPERSONHOOD_PUBLIC_KEYS=%s\nBIO_ATTESTATION_QUORUM=1\nBIO_ATTESTATION_EINZELBETRIEB=an\nEINZELBETRIEB_TAGESGRENZE=%s\n' \
+            "$C" "$P" "$GRENZE" > "$FEST"
+          chmod 600 "$FEST"; umask 022
+
+          gesund() {
+            H=$(docker exec proof-server sh -c 'wget -qO- --timeout=5 http://127.0.0.1:3000/health' 2>/dev/null || true)
+            echo "$H" | grep -q '"aktiv":true' && echo "$H" | grep -qE '"quorum": ?1[,}]' && echo "$H" | grep -qE '"bezeuger": ?1[,}]'
+          }
+          if bash /root/proof-ausrollen.sh && gesund; then
+            echo "✓ Einzelbetrieb aktiv"
+            echo "$H" | python3 -c "import sys,json; j=json.load(sys.stdin); print('durchsetzung', {k: j['durchsetzung'].get(k) for k in ('mode','quorum','bezeuger','coordinatoren')}); print('einzelbetrieb', j.get('einzelbetrieb'))"
+          else
+            echo "FEHLER: nach der Umstellung nicht wie erwartet -- vorige Schluesseldatei zurueck"
+            if [ -n "$SICHERUNG" ]; then cp -a "$SICHERUNG" "$FEST"; else rm -f "$FEST"; fi
+            bash /root/proof-ausrollen.sh || true
+            exit 1
+          fi
+          SKRIPT

@@ -1,0 +1,107 @@
+name: Proof-Server auf C1 ausrollen
+
+# WARUM HIER (28.10.2026). Bisher rollte das private Repo aequitas-proof-server
+# selbst aus (deploy.yml: Quelltext hochladen, auf C1 bauen). In privaten Repos
+# gibt es im GitHub-Plan keine Pflicht-Freigabe fuer `produktion` -- jeder mit
+# Schreibrecht kam ohne Freigabe auf den Server. Jetzt baut das Proof-Server-
+# Repo nur noch das Image (build-image.yml, GHCR), und ausgerollt wird hier,
+# wo `produktion` eine Freigabe verlangt.
+#
+# tag      Commit-SHA des Proof-Server-Repos (40 Zeichen), dessen Image
+#          ausgerollt wird -- nie `latest` (was laeuft, muss nachpruefbar
+#          sein). Leer: das laufende Image bleibt, nur die Umgebung
+#          (festgelegte Schluessellisten, Modus) wird neu angewendet.
+#
+# Lesezugriff auf das private GHCR-Paket: in den Paket-Einstellungen von
+# aequitas-proof-server/proof-server unter "Manage Actions access" dieses Repo
+# (Aequitas) mit Rolle Read eintragen.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Commit-SHA des Proof-Server-Repos (40 Zeichen); leer = nur Umgebung neu anwenden"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: proof-server-c1
+  cancel-in-progress: false
+
+jobs:
+  ausrollen:
+    runs-on: ubuntu-latest
+    environment: produktion
+    timeout-minutes: 30
+    env:
+      BOX: 188.172.229.121
+      TAG: ${{ inputs.tag }}
+      # Welche Bescheinigungen der Proof-Server annimmt (bio_attestation.js,
+      # aequitas-proof-server docs/BIO_MODUS_UMSTELLUNG.md). Testbetrieb laut
+      # Entscheidung des Betreibers vom 15.10.2026; der Wechsel auf echte
+      # Daten ist ein PR, der diese Zeile auf real setzt.
+      ERWARTETER_BIO_MODUS: test
+    steps:
+      - name: Eingabe pruefen
+        run: |
+          set -euo pipefail
+          T="$(printf '%s' "$TAG" | tr -d '[:space:]')"
+          if [ -n "$T" ] && ! [[ "$T" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::tag muss ein 40-stelliger Commit-SHA sein (oder leer) -- nichts geaendert"; exit 1
+          fi
+          echo "TAG=$T" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: deploy/proof-server/proof-ausrollen.sh
+          sparse-checkout-cone-mode: false
+
+      - name: Schluessel und Host-Pruefung
+        env:
+          KEY: ${{ secrets.CONTABO_SSH_KEY }}
+        run: |
+          set -eu
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s' "$KEY" | perl -0777 -pe 's/\r//g; s/(?:-|\xE2\x80[\x93\x94])+ *(BEGIN|END) OPENSSH PRIVATE KEY *(?:-|\xE2\x80[\x93\x94])+/-----$1 OPENSSH PRIVATE KEY-----/g; unless (/-----BEGIN OPENSSH PRIVATE KEY-----/) { (my $z = $_) =~ s/\s//g; if ($z =~ m|^[A-Za-z0-9+/]+=*$|) { require MIME::Base64; my $d = MIME::Base64::decode_base64($z); if ($d =~ /-----BEGIN OPENSSH PRIVATE KEY-----/) { $_ = $d; } elsif ($d =~ /\Aopenssh-key-v1\x00/) { $_ = qq{-----BEGIN OPENSSH PRIVATE KEY-----\n$z\n-----END OPENSSH PRIVATE KEY-----\n}; } } } s/\s*(-----BEGIN OPENSSH PRIVATE KEY-----)\s*(.*?)\s*(-----END OPENSSH PRIVATE KEY-----)\s*/my ($k, $b, $f) = ($1, $2, $3); $b =~ s|\s||g; $b =~ s|(.{70})|$1\n|g; $b =~ s|\n\z||; "$k\n$b\n$f\n"/se' > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          ssh-keygen -y -f ~/.ssh/id_ed25519 >/dev/null 2>&1 || { echo "::error title=CONTABO_SSH_KEY unlesbar::Secret neu einfuegen (alles von -----BEGIN bis -----END)."; rm -f ~/.ssh/id_ed25519; exit 1; }
+          ssh-keyscan -t ed25519 "$BOX" 2>/dev/null | { grep -v '^#' || true; } > ~/.ssh/kh_all
+          [ "$(grep -c . ~/.ssh/kh_all)" = 1 ] || { echo "::error::Host-Schluessel von C1: nicht genau eine ed25519-Zeile"; exit 1; }
+          [ "$(ssh-keygen -lf ~/.ssh/kh_all | awk '{print $2}')" = "SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA" ] || { echo "::error::Host-Schluessel von C1 passt nicht"; exit 1; }
+          cp ~/.ssh/kh_all ~/.ssh/known_hosts
+
+      - name: Ausrollen (mit Ruecknahme)
+        env:
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          SSH="ssh -o BatchMode=yes -o IdentitiesOnly=yes -o HostKeyAlgorithms=ssh-ed25519 -o ServerAliveInterval=30 root@$BOX"
+          scp -q -o BatchMode=yes -o IdentitiesOnly=yes -o HostKeyAlgorithms=ssh-ed25519 \
+            deploy/proof-server/proof-ausrollen.sh "root@$BOX:/root/proof-ausrollen.sh.neu"
+          IMAGE=""
+          [ -z "$TAG" ] || IMAGE="ghcr.io/hanoi96international-gif/aequitas-proof-server/proof-server:$TAG"
+          # Werte als export-Zeilen ueber stdin, nie in die Befehlszeile der
+          # Box; das Token nur fuer die Anmeldung, danach abgemeldet.
+          {
+            printf 'export IMAGE=%q ERWARTETER_BIO_MODUS=%q GHCR_USER=%q GHCR_TOKEN=%q\n' \
+              "$IMAGE" "$ERWARTETER_BIO_MODUS" "$GHCR_USER" "$GHCR_TOKEN"
+            cat <<'SKRIPT'
+          set -euo pipefail
+          install -m 700 /root/proof-ausrollen.sh.neu /root/proof-ausrollen.sh && rm -f /root/proof-ausrollen.sh.neu
+          if [ -n "$IMAGE" ]; then
+            printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin >/dev/null
+            trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
+          fi
+          unset GHCR_TOKEN
+          bash /root/proof-ausrollen.sh
+          SKRIPT
+          } | timeout 1500 $SSH 'bash -s'
+
+      - name: SSH-Schluessel vom Runner entfernen
+        if: always()
+        run: rm -f ~/.ssh/id_ed25519
