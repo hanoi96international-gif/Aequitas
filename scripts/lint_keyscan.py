@@ -14,6 +14,13 @@ zeilen, und es muss genau eine sein. Nur Kommentare zaehlen nicht. Dieser
 Waechter haelt fest: jede Datei, in die ssh-keyscan schreibt und die danach
 mit `grep -c .` auf genau eine Zeile geprueft wird, bekommt die Ausgabe ohne
 Kommentarzeilen. `--selbsttest` prueft den Waechter an erfundenen Schritten.
+
+Zweite Regel (28.10.2026): Wird ein Fingerabdruck nur unter den Zeilen
+gesucht (`ssh-keygen -lf DATEI | ... grep -q`), muss der Scan in DATEI auf
+`-t ed25519` beschraenkt sein. Sonst reicht EIN passender Schluessel unter
+allen Typen, die anderen landen ungeprueft in known_hosts, und ssh kann
+einen davon aushandeln (gefunden in zwei aus privaten Repos uebernommenen
+Workflows).
 """
 import glob
 import re
@@ -22,6 +29,7 @@ import sys
 ZAEHLEN = re.compile(r'grep -c \. (~/\.ssh/[\w.-]+)\)" = 1')
 SCAN = re.compile(r"ssh-keyscan [^\n]*?>\s*(~/\.ssh/[\w.-]+)")
 FILTER = "grep -v '^#'"
+IRGENDEINER = re.compile(r"ssh-keygen -lf (~/\.ssh/[\w.-]+)[^\n]*\|\s*grep -q")
 
 
 def befunde(name, text):
@@ -34,6 +42,11 @@ def befunde(name, text):
             if FILTER not in m.group(0):
                 fehler.append(f"{name}: ssh-keyscan nach {datei} ohne {FILTER} -- "
                               "OpenSSH 10 schreibt eine Kommentarzeile, die Zaehlung bricht ab")
+    for datei in set(IRGENDEINER.findall(text)):
+        for m in SCAN.finditer(text):
+            if m.group(1) == datei and "-t ed25519" not in m.group(0):
+                fehler.append(f"{name}: Fingerabdruck wird unter allen Schluesseltypen in {datei} gesucht -- "
+                              "ssh-keyscan -t ed25519 verwenden, sonst landen ungepruefte Typen in known_hosts")
     return fehler
 
 
@@ -49,6 +62,18 @@ def selbsttest():
         (zaehlen, 1),
         # Zwei Scans in dieselbe Datei, einer ohne Filter.
         ("ssh-keyscan a 2>/dev/null | grep -v '^#' > ~/.ssh/kh1\nssh-keyscan b > ~/.ssh/kh1\n" + zaehlen, 1),
+        # Angriff: alle Typen gescannt, ein passender reicht -- ein fremder
+        # RSA-Schluessel neben dem echten ed25519 kaeme durch.
+        ("ssh-keyscan \"$H\" 2>/dev/null > ~/.ssh/kh\n"
+         "ssh-keygen -lf ~/.ssh/kh | awk '{print $2}' | grep -qx \"$FP\"\n", 1),
+        ("ssh-keyscan \"$H\" 2>/dev/null > ~/.ssh/known_hosts\n"
+         "ssh-keygen -lf ~/.ssh/known_hosts | awk '{print $2}' | grep -qx \"$FP\" || exit 1\n", 1),
+        # Auf ed25519 beschraenkt: in Ordnung.
+        ("ssh-keyscan -t ed25519 \"$H\" 2>/dev/null > ~/.ssh/kh\n"
+         "ssh-keygen -lf ~/.ssh/kh | awk '{print $2}' | grep -qx \"$FP\"\n", 0),
+        # Alle Typen, aber nur die passende Zeile behalten (Vergleich mit =): in Ordnung.
+        ("ssh-keyscan \"$H\" 2>/dev/null > ~/.ssh/alle\n"
+         "f=\"$(printf '%s\\n' \"$z\" | ssh-keygen -lf - | awk '{print $2}')\"\n", 0),
     ]
     falsch = 0
     for i, (text, n) in enumerate(faelle):
