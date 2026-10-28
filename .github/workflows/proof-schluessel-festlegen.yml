@@ -1,0 +1,124 @@
+name: Proof-Server -- Schluessel festlegen -- Coordinator und Vergleichsdienste (Audit K2)
+
+# WARUM
+#
+# Seit PR #7 zaehlen fuer das Quorum nur noch Schluessel, die fest auf der Box
+# stehen (COORDINATOR_PUBLIC_KEYS / PERSONHOOD_PUBLIC_KEYS). Die Register der
+# Kette sind Selbstbedienung fuer jeden Menschen und werden nicht mehr
+# gelesen. Bis dahin kam je Box mindestens ein echter Schluessel NUR aus der
+# Kette (Diagnose 29.09.2026) -- ohne diesen Workflow wiese der neue
+# Proof-Server die echten Registrierungen ab.
+#
+# WAS
+#
+#   1. Die oeffentlichen Schluessel der LAUFENDEN Dienste von proof1 und
+#      proof2 lesen -- ueber deren eigene oeffentliche Endpunkte
+#      (/coordinator/inventory: bereit_fuer_echtbetrieb.attestation_public_key,
+#      /matching/health: personhood_public_key). Keine Geheimnisse; beide
+#      Werte sind absichtlich oeffentlich. Bis zum 07.10.2026 kamen sie aus
+#      /besitznachweis bzw. /bezeugungsnachweis mit einer Platzhalter-Wallet;
+#      seit aequitas-biometric-beta#38 stellen beide nur noch fuer die
+#      Betreiber-Wallet aus und antworten sonst mit 400. Die Unterschrift
+#      darin hat dieser Workflow nie geprueft -- es ging nur um den
+#      oeffentlichen Schluessel, und der ist in beiden Quellen derselbe.
+#   2. Je Box: mit den schon eingetragenen Schluesseln vereinigen (nie etwas
+#      wegnehmen) und nach /root/proof-server.env.schluessel schreiben.
+#      proof-deploy.sh wendet die Datei beim naechsten Deploy an.
+#
+# Angezeigt werden nur 8-stellige Praefixe. Ohne "schreiben" wird nur
+# gezeigt, was geschrieben wuerde.
+# Aus aequitas-proof-server uebernommen (28.10.2026): dort ist das Repo
+# privat, und im GitHub-Plan gibt es fuer private Repos keine Pflicht-
+# Freigabe der Umgebung `produktion`. Hier wartet jeder Lauf auf die
+# Freigabe.
+on:
+  workflow_dispatch:
+    inputs:
+      schreiben:
+        description: "Auf die Boxen schreiben (sonst nur anzeigen)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  sammeln:
+    runs-on: ubuntu-latest
+    outputs:
+      coordinator: ${{ steps.s.outputs.coordinator }}
+      personhood: ${{ steps.s.outputs.personhood }}
+    steps:
+      - id: s
+        name: Oeffentliche Schluessel der laufenden Dienste
+        run: |
+          set -euo pipefail
+          c=""; p=""
+          # proof2 gibt es seit dem 03.10.2026 nicht mehr (C2 abgeschaltet).
+          for h in proof1; do
+            # /inventory fragt die Vergleichsdienste ab, deshalb mehr Zeit.
+            ck=$(curl -sf -m 30 "https://$h.aequitas.digital/coordinator/inventory" | jq -r '.bereit_fuer_echtbetrieb.attestation_public_key // empty' || true)
+            pk=$(curl -sf -m 15 "https://$h.aequitas.digital/matching/health" | jq -r '.personhood_public_key // empty' || true)
+            echo "$h: coordinator ${ck:0:8} | vergleichsdienst ${pk:0:8}"
+            [[ "$ck" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::$h: Coordinator-Schluessel nicht lesbar"; exit 1; }
+            [[ "$pk" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::$h: Vergleichsdienst-Schluessel nicht lesbar"; exit 1; }
+            c="$c,$ck"; p="$p,$pk"
+          done
+          echo "coordinator=${c#,}" >> "$GITHUB_OUTPUT"
+          echo "personhood=${p#,}" >> "$GITHUB_OUTPUT"
+
+  schreiben:
+    needs: sammeln
+    runs-on: ubuntu-latest
+    environment: produktion
+    strategy:
+      max-parallel: 1
+      matrix:
+        include:
+          - box: c1
+            host: 188.172.229.121
+            fp: 'SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA'
+            secret: CONTABO_SSH_KEY
+    steps:
+      - name: Schluessel und Host-Pruefung
+        env:
+          KEY: ${{ secrets[matrix.secret] }}
+        run: |
+          set -eu
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s' "$KEY" | perl -0777 -pe 's/\r//g; s/(?:-|\xE2\x80[\x93\x94])+ *(BEGIN|END) OPENSSH PRIVATE KEY *(?:-|\xE2\x80[\x93\x94])+/-----$1 OPENSSH PRIVATE KEY-----/g; unless (/-----BEGIN OPENSSH PRIVATE KEY-----/) { (my $z = $_) =~ s/\s//g; if ($z =~ m|^[A-Za-z0-9+/]+=*$|) { require MIME::Base64; my $d = MIME::Base64::decode_base64($z); if ($d =~ /-----BEGIN OPENSSH PRIVATE KEY-----/) { $_ = $d; } elsif ($d =~ /\Aopenssh-key-v1\x00/) { $_ = qq{-----BEGIN OPENSSH PRIVATE KEY-----\n$z\n-----END OPENSSH PRIVATE KEY-----\n}; } } } s/\s*(-----BEGIN OPENSSH PRIVATE KEY-----)\s*(.*?)\s*(-----END OPENSSH PRIVATE KEY-----)\s*/my ($k, $b, $f) = ($1, $2, $3); $b =~ s|\s||g; $b =~ s|(.{70})|$1\n|g; $b =~ s|\n\z||; "$k\n$b\n$f\n"/se' > ~/.ssh/id && chmod 600 ~/.ssh/id
+          ssh-keyscan "${{ matrix.host }}" 2>/dev/null > ~/.ssh/kh
+          ssh-keygen -lf ~/.ssh/kh | awk '{print $2}' | grep -qx '${{ matrix.fp }}' || { echo "::error::Host-Schluessel passt nicht"; exit 1; }
+          cp ~/.ssh/kh ~/.ssh/known_hosts
+      - name: Vereinigen und schreiben
+        env:
+          NEU_C: ${{ needs.sammeln.outputs.coordinator }}
+          NEU_P: ${{ needs.sammeln.outputs.personhood }}
+          SCHREIBEN: ${{ inputs.schreiben }}
+        run: |
+          ssh -i ~/.ssh/id -o BatchMode=yes root@${{ matrix.host }} \
+            "NEU_C='$NEU_C' NEU_P='$NEU_P' SCHREIBEN='$SCHREIBEN' bash -s" <<'SKRIPT'
+          set -euo pipefail
+          alt() { docker inspect proof-server --format '{{range .Config.Env}}{{println .}}{{end}}' | grep "^$1=" | cut -d= -f2- || true; }
+          vereinige() { printf '%s,%s' "$1" "$2" | tr ',' '\n' | tr 'A-F' 'a-f' | grep -E '^[0-9a-f]{64}$' | sort -u | paste -sd, -; }
+          C=$(vereinige "$(alt COORDINATOR_PUBLIC_KEYS)" "$NEU_C")
+          P=$(vereinige "$(alt PERSONHOOD_PUBLIC_KEYS)" "$NEU_P")
+          zeige() { echo "$1" | tr ',' '\n' | cut -c1-8 | paste -sd' ' -; }
+          echo "bisher Coordinator:     $(zeige "$(alt COORDINATOR_PUBLIC_KEYS)")"
+          echo "bisher Vergleichsdienst: $(zeige "$(alt PERSONHOOD_PUBLIC_KEYS)")"
+          echo "neu    Coordinator:     $(zeige "$C")"
+          echo "neu    Vergleichsdienst: $(zeige "$P")"
+          # Kein Schluessel darf in beiden Listen stehen: sonst bezeugt ein
+          # Coordinator sich selbst (bio_attestation.js).
+          for k in $(echo "$C" | tr ',' ' '); do
+            if echo ",$P," | grep -q ",$k,"; then echo "FEHLER: ${k:0:8} steht in beiden Listen"; exit 1; fi
+          done
+          if [ "$SCHREIBEN" = "true" ]; then
+            umask 077
+            printf 'COORDINATOR_PUBLIC_KEYS=%s\nPERSONHOOD_PUBLIC_KEYS=%s\n' "$C" "$P" > /root/proof-server.env.schluessel
+            chmod 600 /root/proof-server.env.schluessel
+            echo "geschrieben: /root/proof-server.env.schluessel (wirkt beim naechsten Deploy)"
+          else
+            echo "nur angezeigt, nichts geschrieben"
+          fi
+          SKRIPT

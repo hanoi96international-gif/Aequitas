@@ -1,0 +1,76 @@
+name: Biometrie -- Registrierung live -- wo kommt die App an (nur lesen, maskiert)
+# 28.09.2026: App 1.8 meldet quorum_failed, aber weder der Coordinator auf
+# C1 noch der auf C2 zeigt ein POST /register. Hier: jede Nicht-Health-Zeile
+# beider Coordinatoren und Vergleichsdienste der letzten Stunden.
+# Der Railway-Coordinator ist seit 14.09.2026 weg und wird nicht mehr
+# gefragt: *.up.railway.app-Namen kann jeder neu beanspruchen.
+# Kennungen, Hashes und IPs werden geschwaerzt.
+# Aus aequitas-biometric-beta uebernommen (28.10.2026): dort ist das Repo
+# privat, und im GitHub-Plan gibt es fuer private Repos keine Pflicht-
+# Freigabe der Umgebung `produktion`. Hier (oeffentlich) wartet jeder Lauf
+# auf die Freigabe. Die Images kommen weiter aus dem privaten GHCR-Paket
+# des Biometrie-Repos (Lesezugriff fuer dieses Repo in den Paket-
+# Einstellungen). Inhaltlich unveraendert bis auf den Image-Pfad.
+on:
+  workflow_dispatch:
+    inputs:
+      stunden:
+        description: "Wie viele Stunden zurueck"
+        default: "6"
+permissions:
+  contents: read
+jobs:
+  lesen:
+    runs-on: ubuntu-latest
+    environment: produktion
+    timeout-minutes: 10
+    env:
+      STUNDEN: ${{ github.event.inputs.stunden || '48' }}
+    steps:
+      - name: DNS und Coordinator
+        run: |
+          echo "== DNS mit TTL =="
+          for h in proof1.aequitas.digital aequitas.digital; do
+            for t in A AAAA; do echo "$h $t: $(dig +noall +answer $t $h @1.1.1.1 | awk '{print $2, $5}' | tr '\n' ' ')"; done
+          done
+          # Die frühere Abfrage des alten C1 (173.249.37.118) ist weg: die IP
+          # ist seit Oktober 2026 neu vergeben, die Antwort käme von einem Fremden.
+          for p in proof1; do
+            echo "== $p (zum Vergleich) =="
+            curl -s -m 15 "https://$p.aequitas.digital/coordinator/health" \
+              | jq -c '{lebendigkeit: .lebendigkeit.letzte, nachziehen, galerie_angleich}' || true
+          done
+      - name: Schluessel und Host-Pruefung
+        env:
+          K: ${{ secrets.CONTABO_SSH_KEY }}
+        run: |
+          set -eu
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s' "$K" | perl -0777 -pe 's/\r//g; s/(?:-|\xE2\x80[\x93\x94])+ *(BEGIN|END) OPENSSH PRIVATE KEY *(?:-|\xE2\x80[\x93\x94])+/-----$1 OPENSSH PRIVATE KEY-----/g; unless (/-----BEGIN OPENSSH PRIVATE KEY-----/) { (my $z = $_) =~ s/\s//g; if ($z =~ m|^[A-Za-z0-9+/]+=*$|) { require MIME::Base64; my $d = MIME::Base64::decode_base64($z); if ($d =~ /-----BEGIN OPENSSH PRIVATE KEY-----/) { $_ = $d; } elsif ($d =~ /\Aopenssh-key-v1\x00/) { $_ = qq{-----BEGIN OPENSSH PRIVATE KEY-----\n$z\n-----END OPENSSH PRIVATE KEY-----\n}; } } } s/\s*(-----BEGIN OPENSSH PRIVATE KEY-----)\s*(.*?)\s*(-----END OPENSSH PRIVATE KEY-----)\s*/my ($k, $b, $f) = ($1, $2, $3); $b =~ s|\s||g; $b =~ s|(.{70})|$1\n|g; $b =~ s|\n\z||; "$k\n$b\n$f\n"/se' > ~/.ssh/k && chmod 600 ~/.ssh/k
+          ssh-keyscan -t ed25519 188.172.229.121 2>/dev/null > ~/.ssh/h1
+          ssh-keygen -lf ~/.ssh/h1 | awk '{print $2}' | grep -qx 'SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA'
+          cat ~/.ssh/h1 > ~/.ssh/known_hosts
+      - name: Protokolle
+        run: |
+          for box in c1:188.172.229.121; do
+            k=${box%%:*}; h=${box#*:}
+            echo "################ $k ################"
+            ssh -i ~/.ssh/k -o BatchMode=yes root@$h "STUNDEN=$STUNDEN bash -s" <<'SKRIPT' | sed -E 's/[0-9a-fA-F]{6,}/#/g; s/0x[0-9a-fA-F#…]+/0x…/g; s/W-[0-9A-Za-z]+/W-…/g; s/([0-9]{1,3}\.){3}[0-9]{1,3}/ip/g' | cut -c1-300
+          for c in aequitas-coordinator aequitas-matching; do
+            echo "--- $c: Container ---"
+            docker inspect "$c" --format 'gestartet={{.State.StartedAt}} restarts={{.RestartCount}} image={{.Config.Image}}' 2>&1
+            echo "--- $c: Anfragen seit Start, gezaehlt nach Methode/Pfad/Status ---"
+            docker logs "$c" 2>&1 | grep -oE '"(GET|POST|PUT|DELETE|HEAD) [^ ?"]+[^"]*" [0-9]{3}' \
+              | sed -E 's/\?[^ ]*//' | sort | uniq -c | sort -rn | head -25
+            echo "--- $c: erste und letzte Protokollzeit ---"
+            docker logs --timestamps "$c" 2>&1 | head -1 | cut -c1-30
+            docker logs --timestamps "$c" 2>&1 | tail -1 | cut -c1-30
+            echo "--- $c (letzte ${STUNDEN} h, ohne Health) ---"
+            docker logs --timestamps --since "${STUNDEN}h" "$c" 2>&1 | grep -vE 'GET /(health|inventory|matching/health)' | tail -60
+          done
+          echo "--- Caddy: Anfragen an /coordinator (letzte ${STUNDEN} h) ---"
+          for c in $(docker ps --format '{{.Names}}' | grep -i caddy); do
+            docker logs --since "${STUNDEN}h" "$c" 2>&1 | grep -iE 'coordinator' | grep -viE 'health|inventory' | tail -20
+          done
+          SKRIPT
+          done

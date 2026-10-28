@@ -1,0 +1,76 @@
+name: Biometrie -- Abstimmung testen -- /propose ueber beide Vergleichsdienste (schreibt nichts)
+# 28.09.2026: Seit dem Neustart der Coordinatoren (27.09. 10:50 UTC) kam keine
+# Registrierung mehr an; der Galerie-Angleich wurde nie mit einer echten
+# Aufnahme ausprobiert. Hier: der Coordinator selbst fragt mit seiner
+# Signatur alle VALIDATOR_URLS per /propose -- derselbe Weg wie bei /register
+# --, nur ohne /commit, ohne Galerie-Angleich, ohne Praegung. /propose
+# speichert nichts. Bild: das Beispielfoto, das insightface im
+# Vergleichsdienst mitbringt (kein Foto eines Teilnehmers).
+# Aus aequitas-biometric-beta uebernommen (28.10.2026): dort ist das Repo
+# privat, und im GitHub-Plan gibt es fuer private Repos keine Pflicht-
+# Freigabe der Umgebung `produktion`. Hier (oeffentlich) wartet jeder Lauf
+# auf die Freigabe. Die Images kommen weiter aus dem privaten GHCR-Paket
+# des Biometrie-Repos (Lesezugriff fuer dieses Repo in den Paket-
+# Einstellungen). Inhaltlich unveraendert bis auf den Image-Pfad.
+on:
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  testen:
+    runs-on: ubuntu-latest
+    environment: produktion
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - box: c1
+            host: 188.172.229.121
+            fp: 'SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA'
+    steps:
+      - name: Schluessel und Host-Pruefung
+        env:
+          K: ${{ secrets.CONTABO_SSH_KEY }}
+          HOST: ${{ matrix.host }}
+          FP: ${{ matrix.fp }}
+        run: |
+          set -eu
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s' "$K" | perl -0777 -pe 's/\r//g; s/(?:-|\xE2\x80[\x93\x94])+ *(BEGIN|END) OPENSSH PRIVATE KEY *(?:-|\xE2\x80[\x93\x94])+/-----$1 OPENSSH PRIVATE KEY-----/g; unless (/-----BEGIN OPENSSH PRIVATE KEY-----/) { (my $z = $_) =~ s/\s//g; if ($z =~ m|^[A-Za-z0-9+/]+=*$|) { require MIME::Base64; my $d = MIME::Base64::decode_base64($z); if ($d =~ /-----BEGIN OPENSSH PRIVATE KEY-----/) { $_ = $d; } elsif ($d =~ /\Aopenssh-key-v1\x00/) { $_ = qq{-----BEGIN OPENSSH PRIVATE KEY-----\n$z\n-----END OPENSSH PRIVATE KEY-----\n}; } } } s/\s*(-----BEGIN OPENSSH PRIVATE KEY-----)\s*(.*?)\s*(-----END OPENSSH PRIVATE KEY-----)\s*/my ($k, $b, $f) = ($1, $2, $3); $b =~ s|\s||g; $b =~ s|(.{70})|$1\n|g; $b =~ s|\n\z||; "$k\n$b\n$f\n"/se' > ~/.ssh/k && chmod 600 ~/.ssh/k
+          # Alle Schluesseltypen: C1 ist ueber ed25519 gepinnt, C2 ueber einen
+          # anderen Typ (wie in registrierung-protokoll.yml).
+          ssh-keyscan "$HOST" 2>/dev/null > ~/.ssh/known_hosts
+          ssh-keygen -lf ~/.ssh/known_hosts | awk '{print $2}' | grep -qx "$FP"
+      - name: Abstimmung vom Coordinator auf ${{ matrix.box }}
+        env:
+          HOST: ${{ matrix.host }}
+        run: |
+          ssh -i ~/.ssh/k -o BatchMode=yes root@$HOST 'bash -s' <<'SKRIPT' | sed -E 's/[0-9a-fA-F]{10,}/#/g' | cut -c1-300
+          set -u
+          BILD=$(docker exec aequitas-matching python -c "import insightface,os,glob; d=os.path.join(os.path.dirname(insightface.__file__),'data','images'); f=sorted(glob.glob(d+'/*.jpg')+glob.glob(d+'/*.png')); print(f[0] if f else '')")
+          echo "Testbild: $(basename "${BILD:-keins}")"
+          [ -n "$BILD" ] || { echo "kein Beispielbild gefunden"; exit 0; }
+          docker cp "aequitas-matching:$BILD" /tmp/abstimmung-test.img >/dev/null
+          docker cp /tmp/abstimmung-test.img aequitas-coordinator:/tmp/abstimmung-test.img >/dev/null
+          rm -f /tmp/abstimmung-test.img
+          docker exec -i aequitas-coordinator python - <<'PY'
+          import asyncio
+          from app.quorum import fan_out_propose, aggregate_votes, galerie_luecke
+          from app.validatoren import aktuelle_validatoren, aktuelles_quorum
+          face = open("/tmp/abstimmung-test.img", "rb").read()
+          async def lauf():
+              votes = await fan_out_propose("test", "diagnose-abstimmung", "127.0.0.1", None, face, [], 0.0)
+              q = aktuelles_quorum()
+              agg = aggregate_votes(votes, q)
+              print(f"Validatoren: {aktuelle_validatoren()}  Quorum: {q}")
+              for v in votes:
+                  print(f"  {v.validator_url}: {v.decision}"
+                        f"{' +kennung' if v.matched_bio_hash else ''} {v.dauer_s:.1f}s"
+                        f"{' FEHLER ' + v.error if getattr(v, 'error', None) else ''}")
+              print(f"Gesamt: {agg.decision}")
+              print(f"Galerie-Angleich wuerde greifen: {galerie_luecke(votes) is not None}")
+          asyncio.run(lauf())
+          PY
+          docker exec aequitas-coordinator rm -f /tmp/abstimmung-test.img
+          SKRIPT
