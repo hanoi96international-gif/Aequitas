@@ -23,7 +23,7 @@ name: Proof-Server -- Schluessel festlegen -- Coordinator und Vergleichsdienste 
 #      oeffentlichen Schluessel, und der ist in beiden Quellen derselbe.
 #   2. Je Box: mit den schon eingetragenen Schluesseln vereinigen (nie etwas
 #      wegnehmen) und nach /root/proof-server.env.schluessel schreiben.
-#      proof-deploy.sh wendet die Datei beim naechsten Deploy an.
+#      proof-ausrollen.sh wendet die Datei beim naechsten Ausrollen an.
 #
 # Angezeigt werden nur 8-stellige Praefixe. Ohne "schreiben" wird nur
 # gezeigt, was geschrieben wuerde.
@@ -122,7 +122,7 @@ jobs:
             umask 077
             printf 'COORDINATOR_PUBLIC_KEYS=%s\nPERSONHOOD_PUBLIC_KEYS=%s\n' "$C" "$P" > /root/proof-server.env.schluessel
             chmod 600 /root/proof-server.env.schluessel
-            echo "geschrieben: /root/proof-server.env.schluessel (wirkt beim naechsten Deploy)"
+            echo "geschrieben: /root/proof-server.env.schluessel (wirkt beim naechsten Ausrollen: proof-server-ausrollen.yml)"
           else
             echo "nur angezeigt, nichts geschrieben"
           fi

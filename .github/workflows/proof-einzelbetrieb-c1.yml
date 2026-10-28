@@ -20,7 +20,7 @@ name: Proof-Server -- Einzelbetrieb auf C1 -- ein Vergleichsdienst, Quorum 1, Ta
 #      setzen, dazu Quorum 1, Einzelbetrieb an, Tagesgrenze. Bei Quorum 1
 #      genuegt JEDER anerkannte Bezeuger allein; der Schluessel des
 #      abgeschalteten proof2 (eine andere Person) muss deshalb heraus.
-#   4. Ausliefern (proof-deploy.sh). Antwortet der Dienst danach nicht wie
+#   4. Ausliefern (proof-ausrollen.sh, laufendes Image). Antwortet der Dienst danach nicht wie
 #      erwartet, wird die vorige Schluesseldatei zurueckgelegt und erneut
 #      ausgeliefert.
 #

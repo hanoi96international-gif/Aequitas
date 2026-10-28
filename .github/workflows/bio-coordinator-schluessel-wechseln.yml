@@ -25,7 +25,8 @@ name: Biometrie -- Coordinator-Signierschluessel auf C1 wechseln (Notfall)
 #                sich an den anderen Diensten noch nichts geaendert.
 #             3. Vergleichsdienst: COORDINATOR_PUBLIC_KEYS = NUR der neue.
 #             4. Proof-Server: COORDINATOR_PUBLIC_KEYS = NUR der neue
-#                (/root/proof-server.env.schluessel, dann proof-deploy.sh).
+#                (/root/proof-server.env.schluessel, dann proof-ausrollen.sh
+#                ohne IMAGE: laufendes Image, Umgebung neu angewendet).
 #             Der alte Schluessel wird in 3 und 4 ENTFERNT, nicht ergaenzt:
 #             er gilt als entwendet. Scheitert 3 oder 4, wird er NICHT wieder
 #             eingesetzt (fail-closed): dann steht die Registrierung, bis der
@@ -87,6 +88,17 @@ jobs:
             exit 1
           fi
 
+      # Ausroll-Skript des Proof-Servers aus diesem Repo (Schritt 4). Das
+      # alte /root/proof-deploy.sh baute aus einem hochgeladenen Quellstand
+      # -- der wird seit dem Umzug nach GHCR nicht mehr gepflegt; es wuerde
+      # einen alten Stand neu bauen.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: inputs.modus == 'wechseln'
+        with:
+          persist-credentials: false
+          sparse-checkout: deploy/proof-server/proof-ausrollen.sh
+          sparse-checkout-cone-mode: false
+
       - name: Schluessel und Host-Pruefung
         env:
           KEY: ${{ secrets.CONTABO_SSH_KEY }}
@@ -100,11 +112,20 @@ jobs:
           ssh-keygen -lf ~/.ssh/kh | awk '{print $2}' | grep -qx 'SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA' || { echo "::error::Host-Schluessel von C1 passt nicht"; exit 1; }
           cp ~/.ssh/kh ~/.ssh/known_hosts
 
+      - name: Ausroll-Skript des Proof-Servers auf die Box
+        if: inputs.modus == 'wechseln'
+        run: |
+          set -euo pipefail
+          scp -q -o BatchMode=yes -o IdentitiesOnly=yes -o HostKeyAlgorithms=ssh-ed25519 \
+            deploy/proof-server/proof-ausrollen.sh "root@$C1:/root/proof-ausrollen.sh.neu"
+          ssh -o BatchMode=yes -o IdentitiesOnly=yes -o HostKeyAlgorithms=ssh-ed25519 root@$C1 \
+            'install -m 700 /root/proof-ausrollen.sh.neu /root/proof-ausrollen.sh && rm -f /root/proof-ausrollen.sh.neu'
+
       - name: Schluessel ${{ inputs.modus }}
         id: lauf
         run: |
           set -euo pipefail
-          ssh -o BatchMode=yes -o IdentitiesOnly=yes -o ServerAliveInterval=30 root@$C1 \
+          ssh -o BatchMode=yes -o IdentitiesOnly=yes -o HostKeyAlgorithms=ssh-ed25519 -o ServerAliveInterval=30 root@$C1 \
             "MODUS='$MODUS' bash -s" <<'SKRIPT' | tee "$RUNNER_TEMP/ausgabe.txt"
           set -euo pipefail
           umask 077
@@ -234,14 +255,15 @@ jobs:
             echo "::error::Vergleichsdienst startet nicht"; FEHLER=1
           fi
 
-          # 4. Proof-Server: festgelegte Liste ersetzen, proof-deploy.sh wendet
-          #    sie an (und nimmt bei Fehlschlag das alte Image -- mit der
-          #    NEUEN Liste, der alte Schluessel kommt nicht zurueck).
+          # 4. Proof-Server: festgelegte Liste ersetzen, proof-ausrollen.sh
+          #    (ohne IMAGE: laufendes Image) wendet sie an und nimmt bei
+          #    Fehlschlag den alten Container -- mit der NEUEN Liste, der alte
+          #    Schluessel kommt nicht zurueck.
           ersetze_in_datei "$FEST" COORDINATOR_PUBLIC_KEYS "$NEU"
-          if bash /root/proof-deploy.sh 2>&1 | grep -viE 'key|token|secret|password' && [ "$(env_von proof-server COORDINATOR_PUBLIC_KEYS)" = "$NEU" ]; then
+          if IMAGE= bash /root/proof-ausrollen.sh 2>&1 | grep -viE 'key|token|secret|password' && [ "$(env_von proof-server COORDINATOR_PUBLIC_KEYS)" = "$NEU" ]; then
             echo "✓ Proof-Server erkennt nur noch ${NEU:0:8} an"
           else
-            echo "::error::Proof-Server fuehrt nicht genau den neuen Schluessel (proof-deploy.sh pruefen)"; FEHLER=1
+            echo "::error::Proof-Server fuehrt nicht genau den neuen Schluessel (proof-ausrollen.sh pruefen)"; FEHLER=1
           fi
 
           echo "NEUER_SCHLUESSEL=$NEU"
