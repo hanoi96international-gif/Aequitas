@@ -112,6 +112,28 @@ Regeln, die einem Konto nach Regel ohne Unterschrift Geld nehmen:
 `nachrechnenStrengAbUnix` steht auf `MaxInt64`: jede Abweichung wird
 gezählt und unter `/api/wirtschaft/regeln` veröffentlicht, der Block gilt.
 
+**Nachtrag 25.10.2026 (Gleichgewicht, schlafend, `wirtschaft3.go`):** ab der
+Aktivierung erfüllt `umlauf` Grundsatz 1 für jedes Konto. Ein Satz für alle
+Kontoarten, ohne Buchführung: jeder Knoten rechnet jeden Betrag nach, auch
+bei Unternehmen, und prüft an der Rundenmarke, dass jedes Konto, das
+schuldet, genau einmal belastet wurde (`nachrechnen_umlauf.go`:
+`umlauf_ausgelassen`, `umlauf_doppelt`, `umlauf_reihenfolge`,
+`umlauf_rundenzeit`). Eine Überweisungsgebühr gibt es dann nicht mehr
+(`gebuehr_nach_gleichgewicht`).
+
+**Satz einstellbar, nicht fest (25.10.2026, `satz_plan.go`):** der Satz des
+Gleichgewichts ändert sich nur durch eine `satz_ankuendigung` zweier
+verschiedener zugelassener Betreiber-Menschen, in der Spanne 0,25–1 % im
+Monat, höchstens ±0,25 Punkte je Änderung, 30–90 Tage vorher in der Kette,
+höchstens einmal je Quartal. Jeder Knoten prüft das selbst; der Plan steht in
+der StateRoot. Niemand kann den Satz über Nacht ändern, und keine Ankündigung
+wirkt rückwirkend.
+
+**Befund 25.10.2026, heutige Regeln:** ein `umlauf` mit einer Rundenzeit vor
+der letzten Runde wurde nicht nachgerechnet und nahm bis zum ganzen
+Guthaben. Jetzt `umlauf_alte_runde`, streng ab dem gemeinsamen Stichtag nach
+der Blockzeit (`liegegeld_pruefung.go`).
+
 **Befund aus dem neuen Test:** auch drei Gutschriftarten
 (`ubi_distribution`, `lp_distribution`, `validator_distribution`) senken
 heute ein Guthaben, wenn der Erzeuger einen negativen Betrag oder eine
@@ -231,9 +253,21 @@ wegnehmen“.
   vorliegen. Ein Einspruch hält die Freigabe nur an. Er nimmt nichts weg,
   was schon ausgezahlt ist.
 - Umsetzung in `grant_staffel.go`: Die Staffel ist heute ruhend (Aktivierung
-  2100). Die Regel wird eingebaut, bevor die Staffel scharf geschaltet wird.
-  Bis dahin bekommen alle Registrierungen den vollen Betrag sofort, und
+  2100). Bis dahin bekommen alle Registrierungen den vollen Betrag sofort, und
   niemand wird benachteiligt.
+- **Eingebaut 25.10.2026** (schlafend wie die Staffel):
+  `staffelFreigabeHoechstens` gibt ab Tag 30 den ganzen Rest frei, mit
+  Zweitprüfung vorher die Tagesrate; wer die Prüfung macht, ist nie
+  langsamer. Der Einspruch (`staffel_einspruch.go`, Transaktion
+  `staffel_einspruch`) braucht Bescheinigungen von **zwei verschiedenen**
+  zugelassenen Betreiber-Menschen, einen Grund (10–280 Byte, Hash in jeder
+  Unterschrift) und muss vor Tag 30 bescheinigt sein. Er hält die Freigabe
+  höchstens bis Tag 180 an; eine neuere Zweitprüfung des Menschen beendet
+  die Pause sofort. Nur der erste Einspruch zählt. Jeder Knoten prüft alles
+  selbst; `StaffelEinspruchAm` steht im Blatt der StateRoot, nur wenn
+  gesetzt. Missbrauchstests: `staffel_einspruch_test.go`. Der Grund steht
+  für immer öffentlich in der Kette: **keine personenbezogenen Daten**, nur
+  der Befund und eine Vorgangskennung (z. B. „W-…“ aus dem Widerspruchsweg).
 
 ### Jährlicher Lebensnachweis (21.10.2026)
 

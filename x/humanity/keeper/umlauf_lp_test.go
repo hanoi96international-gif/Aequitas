@@ -104,10 +104,10 @@ func TestUmlauf_LP_ErzeugerUndNachspielerGleich(t *testing.T) {
 
 		abw := liegegeldAbweichungen.Load()
 		nachspieler.mu.Lock()
-		if err := nachspieler.pruefeUmlaufLocked(txs[0].Wallet, txs[0].Amount, at); err != nil {
+		if err := nachspieler.pruefeUmlaufLocked(txs[0].Wallet, txs[0].Amount, at, at); err != nil {
 			t.Fatal(err)
 		}
-		if err := nachspieler.applyUmlaufDeltaLocked(context.Background(), txs[0].Wallet, txs[0].Amount, at); err != nil {
+		if err := nachspieler.applyUmlaufDeltaLocked(context.Background(), txs[0].Wallet, txs[0].Amount, at, nil); err != nil {
 			t.Fatal(err)
 		}
 		nachspieler.mu.Unlock()
@@ -139,10 +139,10 @@ func TestUmlauf_LP_UeberhoehterBetragFaelltAuf(t *testing.T) {
 	cs.wirt().letzterUmlauf = at - 86400
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
-	if err := cs.pruefeUmlaufLocked(lpTestWallet, 10*einTagAbgabeMensch(20000), at); err == nil {
+	if err := cs.pruefeUmlaufLocked(lpTestWallet, 10*einTagAbgabeMensch(20000), at, at); err == nil {
 		t.Fatal("zehnfacher Betrag auf LP-Anteilen wurde nicht abgelehnt")
 	}
-	if err := cs.pruefeUmlaufLocked(lpTestWallet, einTagAbgabeMensch(20000), at); err != nil {
+	if err := cs.pruefeUmlaufLocked(lpTestWallet, einTagAbgabeMensch(20000), at, at); err != nil {
 		t.Fatalf("richtiger Betrag abgelehnt: %v", err)
 	}
 }
@@ -247,10 +247,10 @@ func TestUmlauf_LP_MehrereHalter_ErzeugerUndNachspielerGleich(t *testing.T) {
 	nachspieler.wirt().letzterUmlauf = at - 86400
 	nachspieler.mu.Lock()
 	for _, tx := range txs {
-		if err := nachspieler.pruefeUmlaufLocked(tx.Wallet, tx.Amount, at); err != nil {
+		if err := nachspieler.pruefeUmlaufLocked(tx.Wallet, tx.Amount, at, at); err != nil {
 			t.Fatal(err)
 		}
-		if err := nachspieler.applyUmlaufDeltaLocked(context.Background(), tx.Wallet, tx.Amount, at); err != nil {
+		if err := nachspieler.applyUmlaufDeltaLocked(context.Background(), tx.Wallet, tx.Amount, at, nil); err != nil {
 			t.Fatal(err)
 		}
 	}

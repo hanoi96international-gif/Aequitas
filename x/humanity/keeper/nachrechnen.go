@@ -123,6 +123,12 @@ func (cs *ChainState) nachrechnenTxLocked(tx *Transaction, blockZeit int64) erro
 		return err
 	}
 
+	// 3. Ab dem Gleichgewicht: die Umlaufrunde ist vollstaendig
+	// (nachrechnen_umlauf.go). Davor Leerlauf.
+	if err := cs.nachrechnenUmlaufRundeLocked(tx, blockZeit); err != nil {
+		return err
+	}
+
 	wallet := strings.ToLower(strings.TrimSpace(tx.Wallet))
 	switch tx.Type {
 	case "faucet":

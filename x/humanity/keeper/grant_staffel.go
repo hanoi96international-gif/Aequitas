@@ -18,6 +18,18 @@ package keeper
 // uebertragbar und unterliegt keiner Demurrage: er ist ein Anspruch, kein
 // Guthaben.
 //
+// SPAETESTENS AN TAG 30 (Entscheidung 18.10.2026, docs/VERIFIER_PRINZIPIEN.md
+// "Festgelegte Entscheidungen"). Die Zweitpruefung BESCHLEUNIGT die Staffel,
+// sie ist keine Bedingung: Ab GrantStagedUntil (Registrierung + 30 Tage)
+// gibt die Tagesrunde den ganzen Rest frei, auch ohne Erneuerung. Mit
+// Erneuerung laeuft vorher die Tagesrate, und an Tag 30 kommt der Rest --
+// wer die Pruefung macht, ist nie langsamer als wer sie auslaesst. Anhalten
+// kann die Freigabe an Tag 30 nur ein begruendeter Einspruch verschiedener
+// Betreiber-Menschen (staffel_einspruch.go), und auch der nur befristet.
+// Keine Regel haelt einem Menschen Geld ohne Zeitgrenze zurueck.
+// staffelFreigabeHoechstens ist die eine Rechnung dafuer -- beim Erzeuger
+// (grantReleasesLocked) wie beim Nachspielen (nachrechnen_freigabe.go).
+//
 // SCHLAFEND. Nichts davon wirkt vor stagedGrantActivationUnix. Bis dahin wird
 // grant_class ignoriert (voller Zuschuss wie immer), liveness_renewal und
 // grant_release sind Leerlauf. Die Konstante steht auf 2100 -- WP 4 setzt das
@@ -38,6 +50,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net"
 	"net/http"
 	"sort"
@@ -82,11 +95,15 @@ const (
 var stagedGrantActivationOverride atomic.Int64
 
 func stagedGrantAktiv(blockUnix int64) bool {
-	a := stagedGrantActivationUnix
+	return blockUnix >= stagedGrantAb()
+}
+
+// stagedGrantAb: der Stichtag der Staffel (Konstante oder Testwert).
+func stagedGrantAb() int64 {
 	if o := stagedGrantActivationOverride.Load(); o > 0 {
-		a = o
+		return o
 	}
-	return blockUnix >= a
+	return stagedGrantActivationUnix
 }
 
 // grantStaffelTagesrate ist der Betrag, den ein Tagesdurchlauf freigibt:
@@ -231,22 +248,64 @@ func (cs *ChainState) applyGrantReleaseDeltaLocked(ctx context.Context, address 
 	return cs.saveAccountToDBCtx(ctx, acc)
 }
 
-// grantReleasesLocked berechnet die Freigaben eines Tagesdurchlaufs: jedes
-// Konto mit offenem Rest UND erfolgter Erneuerung bekommt die Tagesrate,
-// gedeckelt auf den Rest. Reihenfolge nach Adresse aus der Datenbank, damit
-// jeder Knoten dieselben Transaktionen in derselben Reihenfolge sieht.
-// Ohne Datenbank (Tests) aus dem Speicher, sortiert. Vor der Aktivierung
-// leer. Caller haelt cs.mu.
+// Was staffelFreigabeHoechstens ueber eine Freigabe sagt, wenn sie nichts
+// freigeben darf -- die Namen der Befunde beim Nachspielen.
+const (
+	freigabeOhneLebenszeichen = "freigabe_ohne_lebenszeichen"
+	freigabeAngehalten        = "freigabe_angehalten"
+)
+
+// staffelFreigabeHoechstens: wie viel eine Tagesrunde zur Rundenzeit t
+// hoechstens freigeben darf -- die eine Rechnung fuer Erzeuger und
+// Nachspielende, nur aus dem Kettenzustand des Kontos und t:
+//
+//   - kein offener Rest: 0;
+//   - ab GrantStagedUntil (Tag 30) der ganze Rest -- ausser ein Einspruch
+//     haelt ihn an (staffelEinspruchHaelt);
+//   - vorher mit gueltiger Erneuerung die Tagesrate, gedeckelt auf den Rest;
+//   - sonst 0, mit dem Grund als Befundname.
+//
+// Ein GrantStagedUntil von 0 bei offenem Rest gibt es nur in Testkonten von
+// vor dieser Regel; es zaehlt als "Tag 30 noch nicht erreicht".
+func staffelFreigabeHoechstens(acc *AccountState, t int64) (betrag float64, regel string) {
+	if acc == nil || acc.GrantStagedRest <= 0 {
+		return 0, ""
+	}
+	rest := round6(acc.GrantStagedRest.Float())
+	angehalten := staffelEinspruchHaelt(acc, t)
+	if acc.GrantStagedUntil > 0 && t >= acc.GrantStagedUntil && !angehalten {
+		return rest, ""
+	}
+	if staffelErneuertGueltig(acc) {
+		return math.Min(grantStaffelTagesrate(), rest), ""
+	}
+	if angehalten {
+		return 0, freigabeAngehalten
+	}
+	return 0, freigabeOhneLebenszeichen
+}
+
+// grantReleasesLocked berechnet die Freigaben eines Tagesdurchlaufs nach
+// staffelFreigabeHoechstens: mit Erneuerung die Tagesrate, ab Tag 30 der
+// ganze Rest. Jede Freigabe traegt die Rundenzeit (DistributionAt), damit
+// jeder Nachspielende mit derselben Zeit rechnet. Reihenfolge nach Adresse
+// aus der Datenbank, damit jeder Knoten dieselben Transaktionen in derselben
+// Reihenfolge sieht. Ohne Datenbank (Tests) aus dem Speicher, sortiert. Vor
+// der Aktivierung leer. Caller haelt cs.mu.
 func (cs *ChainState) grantReleasesLocked(ctx context.Context, ubiAt int64) ([]Transaction, error) {
 	if !stagedGrantAktiv(ubiAt) {
 		return nil, nil
 	}
 	var adressen []string
 	if cs.db != nil {
+		// Nur eine Vorauswahl (Erneuerung oder Tag 30 erreicht); ob und wie
+		// viel, entscheidet staffelFreigabeHoechstens.
 		rows, err := cs.dbExecCtx(ctx).Query(
 			`SELECT lower(address) FROM chain_accounts
-			 WHERE is_human = true AND COALESCE(grant_staged_rest, 0) > 0 AND COALESCE(liveness_renewed_at, 0) > 0
-			 ORDER BY lower(address)`)
+			 WHERE is_human = true AND COALESCE(grant_staged_rest, 0) > 0
+			   AND (COALESCE(liveness_renewed_at, 0) > 0
+			        OR (COALESCE(grant_staged_until, 0) > 0 AND grant_staged_until <= $1))
+			 ORDER BY lower(address)`, ubiAt)
 		if err != nil {
 			return nil, fmt.Errorf("grant releases: %w", err)
 		}
@@ -259,34 +318,77 @@ func (cs *ChainState) grantReleasesLocked(ctx context.Context, ubiAt int64) ([]T
 		rows.Close()
 	} else {
 		cs.accounts.Range(func(a string, acc *AccountState) bool {
-			if acc.IsHuman && acc.GrantStagedRest > 0 && acc.LivenessRenewedAt > 0 {
+			if acc.IsHuman && acc.GrantStagedRest > 0 {
 				adressen = append(adressen, strings.ToLower(a))
 			}
 			return true
 		})
 		sort.Strings(adressen)
 	}
-	rate := grantStaffelTagesrate()
+	offen, err := cs.offeneStaffelAuftraege(ctx)
+	if err != nil {
+		// Fail-closed wie die Vorauswahl oben: ohne Wissen, was offen ist,
+		// keine Runde. Ein Lesefehler mitten in der Datenbank-Transaktion
+		// liesse sie ohnehin nicht weiterlaufen.
+		return nil, fmt.Errorf("grant releases: offene Auftraege: %w", err)
+	}
 	var txs []Transaction
 	for _, a := range adressen {
-		cs.ensureAccountLoadedCtx(ctx, a)
-		acc, ok := cs.accounts.Get(a)
-		if !ok || acc.GrantStagedRest <= 0 {
+		if offen[a] {
 			continue
 		}
-		betrag := rate
-		if rest := acc.GrantStagedRest.Float(); rest < betrag {
-			betrag = round6(rest)
+		cs.ensureAccountLoadedCtx(ctx, a)
+		acc, ok := cs.accounts.Get(a)
+		if !ok || !acc.IsHuman {
+			continue
 		}
+		betrag, _ := staffelFreigabeHoechstens(acc, ubiAt)
 		if betrag <= 0 {
 			continue
 		}
 		if err := cs.applyGrantReleaseDeltaLocked(ctx, a, betrag, ubiAt); err != nil {
 			return nil, err
 		}
-		txs = append(txs, Transaction{Type: "grant_release", Wallet: a, Amount: betrag})
+		txs = append(txs, Transaction{Type: "grant_release", Wallet: a, Amount: betrag, DistributionAt: ubiAt})
 	}
 	return txs, nil
+}
+
+// offeneStaffelAuftraege: die Wallets, fuer die eine angewandte Erneuerung
+// oder ein angewandter Einspruch noch in keinem Block steht.
+//
+// WARUM. Der Erzeuger wendet beide bei der Annahme sofort an
+// (runAtomicWithOutbox), die Transaktion steht aber erst im naechsten Block.
+// Gaebe die Tagesrunde dazwischen frei, und stuende die Runde in einem Block
+// VOR der Erneuerung (andere Blockaufteilung, zurueckgelegter Ausgang),
+// saehe jeder Nachspielende eine Freigabe ohne gueltige Pruefung
+// (freigabe_ohne_lebenszeichen, freigabe_angehalten) -- im strengen Modus ein
+// ungueltiger Block. Dieselbe Lage wie beim Lebensnachweis
+// (lebensnachweis_runde.go); hier genuegt es, genau diese Wallets eine
+// Runde auszulassen: ob eine Freigabe FEHLT, prueft kein Nachspielender, und
+// am naechsten Tag steht der Auftrag im Block. Kein Konsens, nur der
+// Erzeuger. Ohne Datenbank (Tests) gibt es keinen Ausgang.
+func (cs *ChainState) offeneStaffelAuftraege(ctx context.Context) (map[string]bool, error) {
+	offen := map[string]bool{}
+	if cs.db == nil {
+		return offen, nil
+	}
+	rows, err := cs.dbExecCtx(ctx).Query(
+		`SELECT DISTINCT lower(tx_json::json ->> 'wallet') FROM pending_txs
+		  WHERE included_at = 0 AND (tx_json::json ->> 'type') IN ('liveness_renewal', $1)`,
+		staffelEinspruchTxArt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var w string
+		if err := rows.Scan(&w); err != nil {
+			return nil, err
+		}
+		offen[w] = true
+	}
+	return offen, rows.Err()
 }
 
 // StaffelStand fuer /api/balance und die App: was offen ist, ob die Staffel
@@ -295,14 +397,19 @@ func StaffelStand(acc *AccountState) map[string]interface{} {
 	if acc == nil || (acc.GrantStagedRest == 0 && acc.LivenessRenewedAt == 0) {
 		return nil
 	}
-	return map[string]interface{}{
+	m := map[string]interface{}{
 		"rest_aeq":      acc.GrantStagedRest.Float(),
-		"laeuft":        acc.GrantStagedRest > 0 && acc.LivenessRenewedAt > 0,
+		"laeuft":        acc.GrantStagedRest > 0 && staffelErneuertGueltig(acc),
 		"erneuert_am":   acc.LivenessRenewedAt,
 		"bis":           acc.GrantStagedUntil,
+		"frei_ab":       staffelFreiAb(acc),
 		"tagesrate_aeq": grantStaffelTagesrate(),
-		"bedeutung":     "Teil des Startzuschusses, der erst nach einer zweiten Lebendigkeitspruefung ueber 30 Tage freigegeben wird. Kein Verlust: pausiert, bis die Pruefung kommt.",
+		"bedeutung":     "Teil des Startzuschusses. Er wird spaetestens 30 Tage nach der Registrierung ganz frei; eine zweite Lebendigkeitspruefung ab Tag 7 gibt ihn schon vorher taeglich frei. Kein Verlust.",
 	}
+	if acc.StaffelEinspruchAm > 0 {
+		m["einspruch_am"] = acc.StaffelEinspruchAm
+	}
+	return m
 }
 
 // ------------------------------------------------------------ Herkunft
@@ -579,9 +686,11 @@ func (a *APIServer) handleLivenessRenewal(w http.ResponseWriter, r *http.Request
 		// Transaktion mehr in den Bloecken -- dieselbe Anfrage binnen 15
 		// Minuten noch einmal geschickt lag sonst mehrfach im Ausgang
 		// (zweiter Sicherheitsdurchgang #300). Unter der Sperre geprueft, damit
-		// zwei gleichzeitige Anfragen nicht beide durchkommen.
+		// zwei gleichzeitige Anfragen nicht beide durchkommen. Nach einem
+		// Einspruch (staffel_einspruch.go) zaehlt nur eine NEUERE Pruefung --
+		// sie beendet die Pause, darum wird sie dann wieder angenommen.
 		a.state.ensureAccountLoadedCtx(ctx, wallet)
-		if acc, ok := a.state.accounts.Get(wallet); ok && acc.LivenessRenewedAt > 0 {
+		if acc, ok := a.state.accounts.Get(wallet); ok && staffelErneuertGueltig(acc) {
 			return Transaction{}, errSchonErneuert
 		}
 		if err := a.state.applyLivenessRenewalDeltaLocked(ctx, wallet, req.IssuedAt, now); err != nil {

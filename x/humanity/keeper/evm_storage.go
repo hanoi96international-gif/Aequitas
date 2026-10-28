@@ -2722,6 +2722,47 @@ func savePendingTxsBatchExec(ex sqlExecutor, txs []Transaction) error {
 	return err
 }
 
+// ausgangStueck: so viele Zeilen setzt savePendingTxsGeordnetExec je
+// Statement ab -- begrenzt die Groesse eines Statements (die JSON-Texte einer
+// Tagesrunde zusammen sind sonst viele Megabyte).
+const ausgangStueck = 5000
+
+// savePendingTxsGeordnetExec: wie savePendingTxExec je Transaktion, aber in
+// Stuecken zu ausgangStueck Zeilen. Die IDs werden GENAU in der Reihenfolge
+// von txs vergeben (WITH ORDINALITY ... ORDER BY), und ProduceBlock liest
+// nach (wal_seq, id) -- die Reihenfolge im Block ist die von txs, wie mit
+// einer Zeile je Transaktion. Fuer die Tagesrunde (runAtomicDistributionWithOutbox),
+// die unter cs.mu laeuft: in dieser Zeit vergibt der WAL keine neue Seq, also
+// tragen alle Zeilen dieselbe, wie zuvor jede einzeln.
+//
+// Gemessen (BenchmarkTagesrundeDB, 20.000 Menschen): eine Zeile je
+// Transaktion kostete den groessten Teil der 8 s, die der Knoten in der Runde
+// stand.
+func savePendingTxsGeordnetExec(ex sqlExecutor, txs []Transaction) error {
+	for start := 0; start < len(txs); start += ausgangStueck {
+		ende := start + ausgangStueck
+		if ende > len(txs) {
+			ende = len(txs)
+		}
+		teil := txs[start:ende]
+		txJSON := make([]string, len(teil))
+		for i, tx := range teil {
+			data, err := json.Marshal(tx)
+			if err != nil {
+				fmt.Printf("[TX] SavePendingTx marshal error: %v\n", err)
+				return err
+			}
+			txJSON[i] = string(data)
+		}
+		if _, err := ex.Exec(`INSERT INTO pending_txs (tx_json, created_at, wal_seq)
+			SELECT u.tx_json, $2, $3 FROM unnest($1::text[]) WITH ORDINALITY AS u(tx_json, nr) ORDER BY u.nr`,
+			pq.Array(txJSON), time.Now().Unix(), pendingSeqJetzt()); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // LoadPendingTxs reads all not-yet-included DB-pending TXs and atomically
 // marks them included, in the SAME query (UPDATE ... RETURNING) — not a
 // separate SELECT now and a DELETE later via ClearPendingTxs. Call

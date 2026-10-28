@@ -4,6 +4,8 @@
 //	go run ./cmd/wirtschaftsmodell                          # heutige Zahlen, 12 Monate
 //	go run ./cmd/wirtschaftsmodell -setze UmlaufMonat=0.01  # eine Zahl aendern
 //	go run ./cmd/wirtschaftsmodell -empfindlichkeit         # jede Zahl halbiert/verdoppelt
+//	go run ./cmd/wirtschaftsmodell -vorschlag               # Vorschlag Gleichgewicht gegen heute
+//	                                                         (docs/WIRTSCHAFT_ENDFASSUNG.md)
 package main
 
 import (
@@ -21,6 +23,8 @@ func main() {
 	setze := flag.String("setze", "", "Zahlen aendern: Name=Wert[,Name=Wert...] (Namen wie in ModellParameter)")
 	empf := flag.Bool("empfindlichkeit", false, "jede Zahl halbiert und verdoppelt gegen alle Akteure zeigen")
 	menschen := flag.Int("menschen", 1000, "angenommene Bevoelkerung, auf die der Topf verteilt wuerde")
+	vorschlag := flag.Bool("vorschlag", false, "Vorschlag Gleichgewicht (ein Satz fuer jedes Konto, alles an alle) gegen die heutigen Regeln")
+	aktiv := flag.Float64("aktiv", 1, "Vorschlag: Anteil der Menschen mit gueltigem Lebensnachweis (0 bis 1)")
 	flag.Parse()
 	if *monate < 1 || *monate > 1200 {
 		fmt.Fprintln(os.Stderr, "monate: 1 bis 1200")
@@ -48,6 +52,18 @@ func main() {
 				os.Exit(2)
 			}
 		}
+	}
+	if *vorschlag {
+		if *aktiv <= 0 || *aktiv > 1 {
+			fmt.Fprintln(os.Stderr, "aktiv: groesser 0 bis 1")
+			os.Exit(2)
+		}
+		g := keeper.StandardGleichgewicht()
+		g.AktivAnteil = *aktiv
+		fmt.Println(keeper.VergleichTabelle(keeper.GleichgewichtModell(p, g, keeper.GleichgewichtAkteure(), *monate), *menschen))
+		fmt.Println(keeper.LadenkostenTabelle(p, g, 9000))
+		fmt.Println(keeper.VerlaufTabelle(g))
+		return
 	}
 	akteure := keeper.ModellAkteure()
 	fmt.Println(keeper.ModellTabelle(keeper.Wirtschaftsmodell(p, akteure, *monate), *menschen))

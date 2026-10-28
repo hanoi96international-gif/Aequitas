@@ -351,6 +351,6 @@ func TestStaffel_SchlaeftBisZulassungUndStreng(t *testing.T) {
 			"(3) Chain-ID in Bindung und Bescheinigung, (4) die Zulassung kostet etwas Knappes (#310, H1: ein "+
 			"Validator-Schluessel allein kostet eine Farm nichts), (5) die Staffel gibt die 800 AEQ spaetestens 30 Tage "+
 			"nach der Registrierung frei, angehalten nur durch begruendeten Einspruch im Quorum (docs/VERIFIER_PRINZIPIEN.md, "+
-			"\"Festgelegte Entscheidungen\") -- jeweils mit Verhaltenstest", stagedGrantActivationUnix, nachrechnenStrengAbUnix)
+			"\"Festgelegte Entscheidungen\"; erfuellt 25.10.2026, staffel_einspruch_test.go) -- jeweils mit Verhaltenstest", stagedGrantActivationUnix, nachrechnenStrengAbUnix)
 	}
 }
