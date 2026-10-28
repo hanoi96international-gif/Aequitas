@@ -1,4 +1,4 @@
-# Beta-Bereitschaft — Prüfung vom 14.10.2026, Stand 25.10.2026
+# Beta-Bereitschaft — Prüfung vom 14.10.2026, Stand 28.10.2026
 
 Geprüft wurden alle vier Repos: Kette, App, Biometrie und Proof-Server. Die
 Fragen waren: funktioniert es, ist es sicher, ist es schnell, und ist der Weg
@@ -9,7 +9,7 @@ Massstab ist AGENTS.md, „Sicherheit — Launch-Massstab“. Jede Änderung unt
 hatte eine getrennte Sicherheitsprüfung; das Ergebnis steht als Kommentar im
 jeweiligen PR.
 
-## 0. Live-Stand 25.10.2026
+## 0. Live-Stand 28.10.2026
 
 Gelesen mit `pruefstand-live.yml`, `wache.yml` und `betrieb-pruefen-c1.yml`
 (nur lesend), alle drei grün. Es läuft **ein** Server: C1 (netcup,
@@ -20,17 +20,18 @@ Tests entfernt (Aequitas #419–#422, biometric #87, proof-server #24);
 
 | Bereich | Stand |
 |---|---|
-| Kette | Höhe ~226.700, Chain-ID 19260930, keine Kontostand-Abweichung, nur C1 nimmt an, keine Fehler im Knoten-Log |
+| Kette | Höhe ~571.900 (28.10.), Chain-ID 19260930, keine Kontostand-Abweichung, nur C1 nimmt an, keine Fehler im Knoten-Log |
 | Registrierung | Coordinator proof1 ok, **Quorum 1 im Einzelbetrieb** (höchstens 25 Registrierungen am Tag), Vergleichsdienst ok, Proof-Server `required`, Herkunftspflicht an `/api/register` |
 | App | Neuestes Release **v1.13.0** (25.10., App #46): „Knoten“ → „Bestätigen“ trägt einen Server auch ins Validator-Register auf der Kette ein. Seit v1.12.9 keine proof2-Adresse mehr in der APK, die Bauvariablen `EXPO_PUBLIC_*_FALLBACKS` sind geleert. Die App weist abgeschaltete Server in jeder Schreibweise selbst ab (`abgeschaltet()` in `lib/config.ts`). |
-| Sicherung | Läuft künftig in der Umgebung `sicherung` ohne Freigabe-Halt, mit einem Schlüssel, der auf C1 nur die Sicherung ausführen darf (`deploy/sicherung/`). Offen: einrichten (Punkt 4); bis dahin warten die nächtlichen Läufe auf eine Freigabe. Biometrie-Backup ohne age-Empfänger (Punkt 3.5) |
+| Sicherung | Umgebung `sicherung` eingerichtet (25.10.): Die Ledger-Sicherung läuft nachts ohne Freigabe mit dem beschränkten Schlüssel (`deploy/sicherung/`), zuletzt erfolgreich am 27.10. **Die Biometrie-Sicherung scheitert jede Nacht**: auf C1 ist kein age-Empfänger hinterlegt, also wird nichts gesichert (Punkt 4). |
 | RPC-Ausnahme | `AEQUITAS_RPC_RATE_LIMIT_FREI` auf C1 geleert (galt der neu vergebenen C2-IP) |
 | Produzenten | `AUTHORIZED_VALIDATORS` auf C1 = nur C1; `produzenten_geschlossen=true` (live; `pruefstand-live.yml` und `wache.yml` werden rot, wenn der Wert nicht genau `true` ist) |
-| Register-Bindung | Betreiber-Wallet `0x0be8…d016` ist Mensch. Am 25.10. mit App 1.13.0 und `knoten-binden.yml` (Lauf 40192341488) bestätigt; das Register wertet eine Bindung erst 2 h nach der Einreichung. Erledigt ist sie, wenn `erzeuger_ohne_bindung` in `/api/status` leer ist (Wache und `pruefstand-live.yml` zeigen es). |
+| Register-Bindung | C1 im Validator-Register auf der Kette gebunden (25.10., App 1.13.0, `knoten-binden.yml`); `wache.yml` am 28.10.: „jeder Erzeuger im Validator-Register gebunden“. **Seit 28.10.2026 10:00 UTC erzeugen nur gebundene Server** (`registerLeserAb`, `erzeugerSchnittAb`, #442, auf C1 seit 06:46 UTC). Fällt die Bindung von C1 weg, steht die Kette -- die Wache prüft es bei jedem Lauf. |
 | Railway | Abgeschaltet (antwortet „Application not found“). Reste in Workflows, Wache und Biometrie-Skripten entfernt (Aequitas #437, biometric #91); `lint_alte_hosts.py` lässt `*.up.railway.app` in ausführbaren Zeilen nicht mehr zu. |
 | Root-Zugang C1 | Neuer Root-Schlüssel nur als Umgebungs-Secret in `produktion`; der alte (lag als Repository-Secret im öffentlichen Repo) ist am 25.10. auf C1 entfernt, ebenso der unbekannte Schlüssel `github-actions-deploy-contabo1` (`c1-root-schluessel-tauschen.yml`, #433/#436). |
 | Coordinator-Schlüssel | Für den Notfall „Signierschlüssel entwendet“ gibt es wieder einen Weg auf C1: `coordinator-schluessel-wechseln.yml` (biometric #92), mit Rücknahme, wenn ein Dienst den neuen Schlüssel nicht annimmt. |
-| Caddy | Log-Rotation am Container noch offen: `neuer-server-caddy.yml` mit `neu_anlegen` starten (Vorprüfung seit #438 auf den Schlüssel, mit dem der Coordinator unterschreibt). |
+| Caddy | Erledigt 25.10. (`neuer-server-caddy.yml`, Lauf 40199773044): Log-Rotation war schon aktiv, die Konfiguration kommt aus dem Repo, alle sechs öffentlichen Wege antworten 200. |
+| Deploy | Seit #441 startet `deploy-c1.yml` nur bei Änderungen am Knoten-Image (Positivliste, geprüft von `lint_deploy_pfade.py`); Änderungen an Tests, Skripten und Doku lösen keinen Deploy mehr aus. |
 | Freigaben | `produktion` (alle vier Repos) und `app-signatur` haben seit dem 24.10. Pflicht-Prüfer; belegt an je einem wartenden Lauf in Aequitas und Biometrie. App und Proof-Server zeigen es beim nächsten Bau bzw. Deploy. |
 
 **Was die Beta noch braucht** (alles Betreiber, Reihenfolge = Vorschlag):
@@ -39,16 +40,18 @@ Tests entfernt (Aequitas #419–#422, biometric #87, proof-server #24);
    `/datenschutz` antworten 404, alle sieben `LEGAL_*` fehlen.
    `rechtstexte-setzen.yml` mit den sieben Angaben starten (erlaubte
    Zeichen: Buchstaben, Ziffern, Leerzeichen, `. , - / @ + & ( ) : _`).
-2. ~~C1 im Validator-Register auf der Kette eintragen~~ **eingereicht**
-   (25.10.2026, App 1.13.0, `knoten-binden.yml` Lauf 40192341488). Offen nur
-   die Bestätigung: `erzeuger_ohne_bindung` muss leer sein. Danach kann der
-   Stichtag „nur gebundene Server erzeugen“ gesetzt werden (Konsensänderung,
-   eigener PR mit Sicherheitsprüfung).
+2. ~~C1 im Validator-Register auf der Kette eintragen~~ **erledigt**
+   (25.10.2026); „nur gebundene Server erzeugen“ gilt seit 28.10.2026
+   10:00 UTC (#442).
 3. **Umgebung `produktion` scharf machen** (3.1).
-4. **Sicherung ohne Klick einrichten** (3.5): `SICHERUNG_SSH_KEY` in der neuen
-   Umgebung `sicherung` anlegen, dann `sicherung-einrichten.yml` mit dem
-   öffentlichen age-Schlüssel (`bio_empfaenger`) starten und freigeben
-   (`docs/SERVER_FREIGABE.md`, `docs/BIOMETRIE_SICHERUNG.md`).
+4. **Biometrie-Sicherung freischalten** (3.5): Die Umgebung `sicherung` und
+   `SICHERUNG_SSH_KEY` sind eingerichtet, es fehlt nur der age-Empfänger.
+   Auf deinem Rechner (nicht am Server, nicht im Repo)
+   `age-keygen -o bio-backup.key` ausführen und die Datei offline verwahren;
+   dann `sicherung-einrichten.yml` mit `bio_empfaenger=age1…` (die
+   öffentliche Zeile, die `age-keygen` ausgibt) starten und freigeben
+   (`docs/BIOMETRIE_SICHERUNG.md`). Bis dahin scheitert
+   `backup-biometrie-verschluesselt.yml` jede Nacht und sichert nichts.
 5. **Registrierung mit frischem Wallet** (Blocker 2): Beleg `total_humans` +1
    und `gallery_test` +1.
 6. **Zwei-Personen-Test** nach `docs/DOPPELREGISTRIERUNG_TEST.md` (Blocker 4).
@@ -61,8 +64,7 @@ Tests entfernt (Aequitas #419–#422, biometric #87, proof-server #24);
    entfernt (Aequitas #437, biometric #91).
 10. **Secrets aufräumen**: `Railway` und `CONTABO2_SSH_KEY` löschen (beide
     werden von keinem Workflow mehr gelesen).
-11. **Caddy-Log-Rotation**: `neuer-server-caddy.yml` mit `neu_anlegen`
-    starten und freigeben (kurze HTTPS-Unterbrechung, Zertifikate bleiben).
+11. ~~Caddy-Log-Rotation~~ **erledigt** (25.10.2026).
 12. **Überwachung von außen** (Minuten statt Stunden): GitHub führt
     `wache.yml` statt alle 10 Minuten nur alle 2–5 Stunden aus (25.10.: zuletzt
     09:54 UTC). Bei UptimeRobot (kostenlos) zwei HTTP(S)-Monitore mit 5 min
@@ -176,7 +178,7 @@ Reihenfolge, in der sie gemacht werden sollten.
     - Log-Rotation für alle Container (Docker `max-size`): `anwenden` hat `/etc/docker/daemon.json` um `max-size 50m`, `max-file 5` ergänzt; Docker wurde **nicht** neu gestartet. Die Container rotieren deshalb über ihre eigenen Optionen:
       - `aequitas-node`, `aequitas-postgres`: schon über `deploy/validator/docker-compose.yml`.
       - `proof-server`: über `proof-deploy.sh` ab jedem Deploy (proof-server #20, ausgerollt).
-      - `aequitas-caddy`: einmal `neuer-server-caddy.yml` mit `neu_anlegen=true` starten. Legt Caddy mit gleichen Volumes neu an (Zertifikate bleiben), wenige Sekunden ohne HTTPS, prüft danach alle öffentlichen Wege.
+      - `aequitas-caddy`: erledigt (25.10.2026, `neuer-server-caddy.yml`): rotiert seine Logs.
       - Danach `server-haerten.yml` (`pruefen`): Der Bericht darf keinen Container ohne `max-size` mehr nennen.
     - Port 8080 nur hinter dem Proxy öffentlich: **bleibt deine Entscheidung.** Der Workflow schließt ihn nicht, er berichtet nur. Peers sprechen den Knoten direkt über `http://IP:8080` an (`SELF_URL`, `PRIMARY_NODE_URLS`; `deploy/neuer-server.sh` öffnet 8080 in ufw). Ihn zu schließen ist ein Netzwechsel: erst alle Peers auf die Proxy-Adresse umstellen. Von Docker veröffentlichte Ports umgehen ufw.
 
