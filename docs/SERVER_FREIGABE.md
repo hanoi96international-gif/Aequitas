@@ -179,8 +179,15 @@ Paket (`coordinator`, `matching` in aequitas-biometric-beta, `proof-server`
 in aequitas-proof-server): Paket öffnen → **Package settings** → **Manage
 Actions access** → **Add repository** → `Aequitas`, Rolle **Read**.
 
-Erst wenn jeder neue Ablauf einmal echt gelaufen ist, werden die alten
-Workflows entfernt und `CONTABO_SSH_KEY` in den beiden privaten Repos gelöscht.
+**Abgeschlossen am 29.10.2026.** Jeder neue Ablauf ist von hier aus echt
+gelaufen: Proof-Server aus GHCR ausgerollt (Image `8b9387e4`), Coordinator und
+Vergleichsdienst aus GHCR neu ausgerollt (Zugriff auf alle drei Pakete
+bestätigt), Protokolle, Schlüssel anzeigen, Einzelbetrieb, Schlüssellisten,
+Indexumstellung und Probeabgleich. Danach wurden die alten Workflows entfernt
+(aequitas-biometric-beta #96, aequitas-proof-server #30). In beiden privaten
+Repos steht kein Server-Schlüssel mehr, weder als Repository- noch als
+Umgebungs-Secret (Betreiber, 29.10.). Im Biometrie-Repo bleibt nur
+`SERVICE_AUTH_TOKEN`.
 
 ## Offen
 
