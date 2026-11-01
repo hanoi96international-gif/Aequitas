@@ -8,7 +8,13 @@ go run ./cmd/wirtschaftsmodell                           # heutige Zahlen, 12 Mo
 go run ./cmd/wirtschaftsmodell -setze UmlaufMonat=0.01   # eine Zahl ändern
 go run ./cmd/wirtschaftsmodell -empfindlichkeit          # jede Zahl halbiert und verdoppelt
 go run ./cmd/wirtschaftsmodell -menschen 5000            # Topf je Mensch bei 5.000 Menschen
+go run ./cmd/wirtschaftsmodell -vorschlag                # Endfassung "Gleichgewicht" gegen heute
+go run ./cmd/wirtschaftsmodell -vorschlag -aktiv 0.9     # ... mit 90 % gültigen Lebensnachweisen
 ```
+
+Der Vorschlag (ein Satz für jedes Konto, alles an alle Menschen, keine
+Gebühr) steht in `WIRTSCHAFT_ENDFASSUNG.md`; sein Modell in
+`x/humanity/keeper/wirtschaftsmodell_gleichgewicht.go`.
 
 ## Was es rechnet
 

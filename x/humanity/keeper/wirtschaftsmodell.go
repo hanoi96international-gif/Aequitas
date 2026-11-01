@@ -113,6 +113,10 @@ type ModellAkteur struct {
 	ZurueckAnKunde float64
 	ErstesUntern   bool    // erstes Unternehmen der Gruenderin: nie mehr als "wie ein Mensch"
 	GruenderStand  float64 // Guthaben der Gruenderin (fuer "wie ein Mensch")
+	// Inaktiv: Mensch ohne gueltigen Lebensnachweis (verlorener Schluessel,
+	// verstorben). Nur der Vorschlag Gleichgewicht unterscheidet das: er
+	// bekommt keine Dividende (wirtschaftsmodell_gleichgewicht.go).
+	Inaktiv bool
 }
 
 // ModellAkteure: die festen Akteure aus WIRTSCHAFT_ZAHLENPRUEFUNG.md 4.2.

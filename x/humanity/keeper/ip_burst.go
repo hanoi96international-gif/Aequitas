@@ -47,9 +47,18 @@ const erneuerungVonPraefix = "liveness-renewal-von:"
 // (lebensnachweis.go) -- eigene Zaehler, dieselbe Karte.
 const lebensnachweisVonPraefix = "proof-of-life-von:"
 
+// staffelEinspruchVonPraefix: dasselbe fuer weitergeleitete Einsprueche gegen
+// eine Staffel (staffel_einspruch.go).
+const staffelEinspruchVonPraefix = "staffel-einspruch-von:"
+
+// satzVonPraefix: dasselbe fuer weitergeleitete Satz-Ankuendigungen
+// (satz_plan.go).
+const satzVonPraefix = "satz-von:"
+
 // burstKarte: in welcher Karte key zaehlt.
 func burstKarte(key string) *begrenzteKarte {
-	if strings.HasPrefix(key, erneuerungVonPraefix) || strings.HasPrefix(key, lebensnachweisVonPraefix) {
+	if strings.HasPrefix(key, erneuerungVonPraefix) || strings.HasPrefix(key, lebensnachweisVonPraefix) ||
+		strings.HasPrefix(key, staffelEinspruchVonPraefix) || strings.HasPrefix(key, satzVonPraefix) {
 		return erneuerungVon
 	}
 	return ipBurst

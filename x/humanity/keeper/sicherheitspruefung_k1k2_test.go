@@ -31,7 +31,7 @@ func TestSicherheit_LohnGebuehrNichtUeberDenSchnellenPfad(t *testing.T) {
 	if !errors.Is(serr, ErrZustandLehntAb) {
 		t.Fatalf("serielles Nachrechnen lehnt nicht ab: %v", serr)
 	}
-	if b := cs.lohnGebuehrPraefix([]Transaction{lohn}); len(b) != 0 {
+	if b := cs.lohnGebuehrPraefix([]Transaction{lohn}, 0); len(b) != 0 {
 		t.Fatalf("Lohn mit Gebuehr bleibt im schnellen Lauf (%d)", len(b))
 	}
 	vorU := acct(cs, auditU).Balance
@@ -47,14 +47,14 @@ func TestSicherheit_LohnGebuehrNichtUeberDenSchnellenPfad(t *testing.T) {
 	// Ueberweisung zwischen Menschen bleibt im schnellen Lauf.
 	ohne := lohn
 	ohne.Gebuehr = 0
-	if b := cs.lohnGebuehrPraefix([]Transaction{ohne}); len(b) != 1 {
+	if b := cs.lohnGebuehrPraefix([]Transaction{ohne}, 0); len(b) != 1 {
 		t.Fatalf("Lohn ohne Gebuehr aus dem Lauf genommen")
 	}
 	if !dag.replayTransactions(&Block{Height: 1, Hash: "0xf1b", Timestamp: jetzt, Transactions: []Transaction{ohne}}, true) {
 		t.Fatalf("ehrlicher Lohn abgelehnt")
 	}
 	mensch := Transaction{Type: "transfer", Wallet: auditB, To: auditA, Amount: 10, Gebuehr: grundGebuehr(10)}
-	if b := cs.lohnGebuehrPraefix([]Transaction{mensch, lohn}); len(b) != 1 {
+	if b := cs.lohnGebuehrPraefix([]Transaction{mensch, lohn}, 0); len(b) != 1 {
 		t.Fatalf("Lauf nicht genau vor dem Lohn gekuerzt: %d", len(b))
 	}
 }

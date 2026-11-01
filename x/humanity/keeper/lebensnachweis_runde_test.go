@@ -147,7 +147,13 @@ func TestLebensnachweisRunde_NurEigeneSperreFrei_RealDB(t *testing.T) {
 // Die Runde fragt, bevor sie Empfaenger waehlt (Reihenfolge im Quelltext,
 // wie TestAnnahme_MerkerReihenfolge).
 func TestLebensnachweisRunde_PruefungVorDerAuswahl(t *testing.T) {
-	st := aufrufStellen(t, "state.go", "distributeUBIPoolLocked")
+	// Der Rumpf der Verteilung steht seit 25.10.2026 in
+	// distributeUBIPoolSammelndLocked (Umlauf und Grundeinkommen schreiben
+	// ihre Konten in einem Vorgang); distributeUBIPoolLocked ruft ihn nur auf.
+	if _, ok := aufrufStellen(t, "state.go", "distributeUBIPoolLocked")["cs.distributeUBIPoolSammelndLocked"]; !ok {
+		t.Fatal("distributeUBIPoolLocked muss distributeUBIPoolSammelndLocked aufrufen")
+	}
+	st := aufrufStellen(t, "state.go", "distributeUBIPoolSammelndLocked")
 	bereit, ok1 := st["cs.lebensnachweisRundeBereitLocked"]
 	auswahl, ok2 := st["cs.lebensnachweisEmpfaengerLocked"]
 	if !ok1 || !ok2 || bereit >= auswahl {

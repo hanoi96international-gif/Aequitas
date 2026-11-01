@@ -56,6 +56,13 @@ type Transaction struct {
 	// Hash. Bei proof_of_life dasselbe mit eigener Domaene
 	// (aequitas-proof-of-life-v1, lebensnachweis.go).
 	Bescheinigung *Lebendigkeitsbescheinigung `json:"bescheinigung,omitempty"`
+	// Einspruch: Grund und Bescheinigungen mehrerer Betreiber-Menschen gegen
+	// die Freigabe einer Staffel an Tag 30 (staffel_einspruch.go). omitempty:
+	// aeltere Bloecke behalten ihren Hash.
+	Einspruch *StaffelEinspruch `json:"einspruch,omitempty"`
+	// Satz: Ankuendigung eines neuen Satzes des Gleichgewichts (satz_plan.go).
+	// omitempty: aeltere Bloecke behalten ihren Hash.
+	Satz *SatzAnkuendigung `json:"satz,omitempty"`
 	// FromDemurrageLost/ToDemurrageLost carry the exact AEQ amount the
 	// primary node decayed off Wallet/To via settleDemurrageLocked while
 	// processing this TX. Secondary nodes replay these exact numbers
@@ -1389,6 +1396,10 @@ func bekannteTxArt(typ string, blockZeit int64) bool {
 		return registerLeserAktiv(blockZeit)
 	case "proof_of_life": // lebensnachweis.go, schlafend bis Stichtag und registerLeserAb
 		return lebensnachweisAktiv(blockZeit)
+	case staffelEinspruchTxArt: // staffel_einspruch.go, schlafend wie die Staffel
+		return stagedGrantAktiv(blockZeit)
+	case satzTxArt: // satz_plan.go, schlafend wie das Gleichgewicht
+		return gleichgewichtAktiv(blockZeit)
 	case "vorbehalt", "vorbehalt_ausfuehrung", "kappung":
 		// Stufe 2 (vorbehalt.go, kappung_verteilt.go). Fehlten hier bis
 		// 05.10.2026 ganz: ab der Aktivierung haette jeder Knoten jeden
@@ -7688,7 +7699,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 		// Ueberweisungen mit Gebuehr bleiben seriell (collectDisjointTransferBatch).
 		if tx.Type == "transfer" && skipDistributionRound == 0 {
 			batch, _ := collectDisjointTransferBatch(block.Transactions, txIdx)
-			batch = dag.state.lohnGebuehrPraefix(batch)
+			batch = dag.state.lohnGebuehrPraefix(batch, block.Timestamp)
 			if len(batch) >= parallelReplayMinBatch {
 				// withTx statt des leeren ctx: JEDE Kontoaenderung dieses
 				// Replays gehoert in dbTx, sonst ueberlebt sie einen Ruecklauf.
@@ -8074,7 +8085,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 				// context.Background() is correct — see registerHumanLocked's
 				// comment: dag.state.activeTx was already set directly above
 				// this loop, and dbExecCtx falls back to it.
-				if err := dag.state.applyUBIRewardDeltaLocked(context.Background(), wallet, tx.Amount, tx.FromDemurrageLost, block.Timestamp); err != nil {
+				if err := dag.state.applyUBIRewardDeltaLocked(context.Background(), wallet, tx.Amount, tx.FromDemurrageLost, block.Timestamp, kontenSammlung); err != nil {
 					fmt.Printf("[REPLAY] ✗ ubi_distribution %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
 					hardFailure = true
 					continue
@@ -8112,6 +8123,27 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 				hardFailure = true
 				continue
 			}
+		case satzTxArt:
+			// satz_plan.go: Spanne, Schritt, Sprung, Vorlauf, Quartal,
+			// Wiederholung und die Bescheinigungen verschiedener
+			// Betreiber-Menschen prueft jeder Knoten selbst. Ungueltig: nie
+			// angewandt, gezaehlt, im strengen Modus Fehler. Zulassung nicht
+			// lesbar: der ganze Block zurueck.
+			if err := dag.state.applySatzAnkuendigungLocked(context.Background(), &tx, block.Timestamp); err != nil {
+				fmt.Printf("[REPLAY] ✗ satz_ankuendigung: %v (block #%d) — rolling back whole block\n", err, block.Height)
+				hardFailure = true
+				continue
+			}
+		case "staffel_einspruch":
+			// staffel_einspruch.go: jeder Knoten prueft Grund, Zeit, Staffel
+			// und die Bescheinigungen verschiedener Betreiber-Menschen selbst.
+			// Ungueltig: nie angewandt, gezaehlt, im strengen Modus Fehler.
+			// Zulassung nicht lesbar: der ganze Block zurueck.
+			if err := dag.state.applyStaffelEinspruchLocked(context.Background(), &tx, block.Timestamp); err != nil {
+				fmt.Printf("[REPLAY] ✗ staffel_einspruch %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
+				hardFailure = true
+				continue
+			}
 		case "grant_release":
 			if err := dag.state.applyGrantReleaseDeltaLocked(context.Background(), wallet, tx.Amount, block.Timestamp); err != nil {
 				fmt.Printf("[REPLAY] ✗ grant_release %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
@@ -8130,12 +8162,12 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 				hardFailure = true
 				continue
 			}
-			if err := dag.state.pruefeUmlaufLocked(wallet, tx.Amount, tx.DistributionAt); err != nil {
+			if err := dag.state.pruefeUmlaufLocked(wallet, tx.Amount, tx.DistributionAt, block.Timestamp); err != nil {
 				fmt.Printf("[REPLAY] ✗ %v (block #%d) — rolling back whole block\n", err, block.Height)
 				hardFailure = true
 				continue
 			}
-			if err := dag.state.applyUmlaufDeltaLocked(context.Background(), wallet, tx.Amount, tx.DistributionAt); err != nil {
+			if err := dag.state.applyUmlaufDeltaLocked(context.Background(), wallet, tx.Amount, tx.DistributionAt, kontenSammlung); err != nil {
 				fmt.Printf("[REPLAY] ✗ umlauf %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
 				hardFailure = true
 				continue

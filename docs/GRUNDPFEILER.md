@@ -109,6 +109,13 @@ Registrierungen; Widersprüche.
 > Geld entsteht nur für Menschen, für jeden gleich. Niemand bekommt mehr, weil
 > er früher kam, mehr hat oder ein Unternehmen ist.
 
+> **Beantwortet 25.10.2026 (`WIRTSCHAFT_ENDFASSUNG.md`, Abschnitt 4):** Liegt
+> die Haltegebühr auf jedem Guthaben und geht alles gleich an alle Menschen,
+> sind „einmal“ und „laufend“ mathematisch dasselbe: jedes Guthaben strebt zum
+> fairen Anteil, die Geldmenge bleibt Menschen × 1.000. Die Frage ist damit
+> nur noch, ob die Gebühr auch auf den fairen Anteil liegt (netto geschützt
+> statt brutto). Empfehlung dort: ja.
+
 **Die Grundsatzfrage, die offen ist:** Einmal 1.000 (heute) oder laufend wie
 Circles? Einmalig ist einfacher und hält die Menge je Mensch fest, liefert aber
 ein kleines Grundeinkommen und lässt Startguthaben liegen. Laufend liefert ein

@@ -232,7 +232,7 @@ func (cs *ChainState) ExportSnapshot(signingKey *ecdsa.PrivateKey, height int64,
 	// above — this read must use the plain DB-only variant, never
 	// cs.dbExec()/cs.activeTx.
 	snap.ChainConfig = map[string]string{}
-	for _, key := range []string{"last_ubi_at", "last_validators_at", "last_lp_at", "last_treasury_at", letzterCheckpointSchluessel} {
+	for _, key := range []string{"last_ubi_at", "last_validators_at", "last_lp_at", "last_treasury_at", letzterCheckpointSchluessel, satzKonfigSchluessel} {
 		if val := cs.getConfigValueDB(key); val != "" {
 			snap.ChainConfig[key] = val
 		}
@@ -579,6 +579,7 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) (
 		}
 	}
 	cs.unternehmenAusSnapshot(snap.Unternehmen)
+	cs.umlaufRunde = umlaufRundePruefung{unsicher: true} // wie replaceInMemoryFromSnapshotLocked
 	// FIX 11: Only import pool state on genuine cold start (no humans registered).
 	// Prevents a stale snapshot from overwriting an active pool that temporarily has
 	// zero reserves (e.g., after all liquidity was removed).
@@ -692,6 +693,11 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) (
 						return fmt.Errorf("setting config %s: %w", key, err)
 					}
 				}
+			}
+			// Der Satzplan (satz_plan.go) geht in die StateRoot und in jeden
+			// Umlauf: aus chain_config neu, wie er jetzt dort steht.
+			if err := cs.satzPlanLaden(ctx); err != nil {
+				return fmt.Errorf("snapshot config %s: %w", satzKonfigSchluessel, err)
 			}
 			// FIX (double-apply): on a genuine fresh bootstrap, record the height
 			// this snapshot was taken at. cs.accounts above already reflects the
@@ -1137,6 +1143,12 @@ func (cs *ChainState) wendeResyncSnapshotAn(g *resyncSnapshot) (err error) {
 			return fail(fmt.Errorf("resync: could not clear %s: %w", letzterCheckpointSchluessel, err))
 		}
 	}
+	// Ebenso der Satzplan (satz_plan.go).
+	if _, da := snap.ChainConfig[satzKonfigSchluessel]; !da {
+		if err := cs.setConfigValueCtx(ctx, satzKonfigSchluessel, ""); err != nil {
+			return fail(fmt.Errorf("resync: could not clear %s: %w", satzKonfigSchluessel, err))
+		}
+	}
 	for key, val := range snap.ChainConfig {
 		if err := pruefeSnapshotKonfig(key, val); err != nil {
 			return fail(fmt.Errorf("resync: config %q: %w", key, err))
@@ -1147,6 +1159,9 @@ func (cs *ChainState) wendeResyncSnapshotAn(g *resyncSnapshot) (err error) {
 		if err := cs.setConfigValueCtx(ctx, key, val); err != nil {
 			return fail(fmt.Errorf("resync: could not set config %q: %w", key, err))
 		}
+	}
+	if err := cs.satzPlanLaden(ctx); err != nil {
+		return fail(fmt.Errorf("resync: %s: %w", satzKonfigSchluessel, err))
 	}
 	if snap.Height > 0 {
 		if err := cs.setConfigValueCtx(ctx, "snapshot_import_height", fmt.Sprintf("%d", snap.Height)); err != nil {
@@ -1548,6 +1563,9 @@ func (cs *ChainState) replaceInMemoryFromSnapshotLocked(snap *StateSnapshot) {
 	}
 	cs.accounts = fresh
 	cs.unternehmenAusSnapshot(snap.Unternehmen)
+	// Ein anderer Stand: wo die laufende Umlaufrunde steht, ist unbekannt
+	// (nachrechnen_umlauf.go) -- bis zur naechsten Rundenmarke nichts melden.
+	cs.umlaufRunde = umlaufRundePruefung{unsicher: true}
 	if snap.Pool != nil {
 		cs.pool = snap.Pool
 	}

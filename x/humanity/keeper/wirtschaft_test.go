@@ -476,7 +476,7 @@ func TestUmlaufTageslaufUndNachspielen(t *testing.T) {
 	geben(nach, wFrei, 900)
 	nach.mu.Lock()
 	for _, tx := range txs {
-		if err := nach.applyUmlaufDeltaLocked(ctx, tx.Wallet, tx.Amount, tx.DistributionAt); err != nil {
+		if err := nach.applyUmlaufDeltaLocked(ctx, tx.Wallet, tx.Amount, tx.DistributionAt, nil); err != nil {
 			t.Fatal(err)
 		}
 	}

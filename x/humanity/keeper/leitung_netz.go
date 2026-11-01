@@ -653,7 +653,9 @@ func anfrageKonten(pfad string, body []byte) []string {
 		// Zustaendiger an, nicht zwingend der Leiter (Sicherheitspruefung #300).
 		pfad == "/api/liveness-renewal",
 		// Der Lebensnachweis ebenso (handleProofOfLife, annahmeBeginnen(wallet)).
-		pfad == "/api/proof-of-life":
+		pfad == "/api/proof-of-life",
+		// Der Einspruch gegen eine Staffel ebenso (handleStaffelEinspruch).
+		pfad == "/api/staffel/einspruch":
 		return []string{w}
 	}
 	return nil

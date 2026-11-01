@@ -156,6 +156,11 @@ euro-gedeckt; AEQ ist es nicht. Die Einordnung ist eine Frage an die Kanzlei.
 
 ## 5. Eine Grundsatzfrage, offen benannt
 
+> **Nachtrag 25.10.2026:** beantwortet in `WIRTSCHAFT_ENDFASSUNG.md`
+> (Abschnitt 4). Mit einer Haltegebühr auf jedem Guthaben und gleicher
+> Verteilung ist die feste Geldmenge dasselbe wie die laufende Ausgabe von
+> Circles, nur in einer Einheit, die nicht wächst.
+
 Circles gibt jedem Menschen laufend neues Geld (eine Einheit pro Stunde) und
 belastet alles mit 7 % im Jahr. Das erzeugt ein spürbares Grundeinkommen und
 hält liegendes Geld in Bewegung. Aequitas gibt einmal 1.000 AEQ und verteilt nur

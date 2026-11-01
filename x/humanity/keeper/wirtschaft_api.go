@@ -107,6 +107,10 @@ func (a *APIServer) handleWirtschaftRegeln(w http.ResponseWriter, r *http.Reques
 		"ausstiegsabgabe_prozent": float64(ausstiegsAbgabeBps) / 100,
 		"ueberweisung_prozent":    float64(ueberweisungsGebuehrBps) / 100,
 		"abgaben_gehen_an":        "grundeinkommen",
+		// Die naechste Stufe (wirtschaft3.go), schlafend bis zur Entscheidung.
+		// Ist sie aktiv, gelten ihre Zahlen statt "mensch", "unternehmen",
+		// "frei" und "ueberweisung_prozent" oben.
+		"gleichgewicht": a.state.gleichgewichtStand(time.Now().Unix()),
 	})
 }
 
