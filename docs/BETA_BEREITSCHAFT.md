@@ -1,81 +1,133 @@
-# Beta-Bereitschaft — Prüfung vom 14.10.2026, Stand 28.10.2026
+# Beta-Bereitschaft — Prüfung vom 14.10.2026, Stand 01.11.2026
 
 Geprüft wurden alle vier Repos: Kette, App, Biometrie und Proof-Server. Die
-Fragen waren: funktioniert es, ist es sicher, ist es schnell, und ist der Weg
-zu mehr Validatoren frei? Dieses Dokument hält fest, was **erledigt** ist,
-was **im Code offen** ist und was **nur der Betreiber** tun kann.
+Fragen waren:
 
-Massstab ist AGENTS.md, „Sicherheit — Launch-Massstab“. Jede Änderung unten
-hatte eine getrennte Sicherheitsprüfung; das Ergebnis steht als Kommentar im
+- Funktioniert es?
+- Ist es sicher?
+- Ist es schnell?
+- Ist der Weg zu mehr Validatoren frei?
+
+Dieses Dokument hält fest, was **erledigt** ist, was **im Code offen** ist und
+was **nur der Betreiber** tun kann.
+
+Maßstab ist AGENTS.md, „Sicherheit — Launch-Massstab“. Jede Änderung unten
+hatte eine getrennte Sicherheitsprüfung. Das Ergebnis steht als Kommentar im
 jeweiligen PR.
 
-## 0. Live-Stand 28.10.2026
+## 0. Live-Stand 01.11.2026
 
-Gelesen mit `pruefstand-live.yml`, `wache.yml` und `betrieb-pruefen-c1.yml`
-(nur lesend), alle drei grün. Es läuft **ein** Server: C1 (netcup,
-188.172.229.121, `proof1.aequitas.digital`). Der alte Contabo1 (seit 24.09.)
-und C2 (seit 03.10.) sind abgeschaltet und aus Code, Seeds, Workflows und
-Tests entfernt (Aequitas #419–#422, biometric #87, proof-server #24);
-`lint_alte_hosts.py` hält ihre IPs draußen.
+Gelesen am 01.11.2026 mit `betrieb-pruefen-c1.yml` (Lauf 41346637556) und
+`server-haerten.yml` im Modus `pruefen` (Lauf 41346634665). Beide sind grün
+und lesen nur.
+
+Es läuft **ein** Server: C1 (netcup, 188.172.229.121,
+`proof1.aequitas.digital`).
 
 | Bereich | Stand |
 |---|---|
-| Kette | Höhe ~571.900 (28.10.), Chain-ID 19260930, keine Kontostand-Abweichung, nur C1 nimmt an, keine Fehler im Knoten-Log |
-| Registrierung | Coordinator proof1 ok, **Quorum 1 im Einzelbetrieb** (höchstens 25 Registrierungen am Tag), Vergleichsdienst ok, Proof-Server `required`, Herkunftspflicht an `/api/register` |
-| App | Neuestes Release **v1.13.0** (25.10., App #46): „Knoten“ → „Bestätigen“ trägt einen Server auch ins Validator-Register auf der Kette ein. Seit v1.12.9 keine proof2-Adresse mehr in der APK, die Bauvariablen `EXPO_PUBLIC_*_FALLBACKS` sind geleert. Die App weist abgeschaltete Server in jeder Schreibweise selbst ab (`abgeschaltet()` in `lib/config.ts`). |
-| Sicherung | Umgebung `sicherung` eingerichtet (25.10.): Die Ledger-Sicherung läuft nachts ohne Freigabe mit dem beschränkten Schlüssel (`deploy/sicherung/`), zuletzt erfolgreich am 27.10. **Die Biometrie-Sicherung scheitert jede Nacht**: auf C1 ist kein age-Empfänger hinterlegt, also wird nichts gesichert (Punkt 4). |
-| RPC-Ausnahme | `AEQUITAS_RPC_RATE_LIMIT_FREI` auf C1 geleert (galt der neu vergebenen C2-IP) |
-| Produzenten | `AUTHORIZED_VALIDATORS` auf C1 = nur C1; `produzenten_geschlossen=true` (live; `pruefstand-live.yml` und `wache.yml` werden rot, wenn der Wert nicht genau `true` ist) |
-| Register-Bindung | C1 im Validator-Register auf der Kette gebunden (25.10., App 1.13.0, `knoten-binden.yml`); `wache.yml` am 28.10.: „jeder Erzeuger im Validator-Register gebunden“. **Seit 28.10.2026 10:00 UTC erzeugen nur gebundene Server** (`registerLeserAb`, `erzeugerSchnittAb`, #442, auf C1 seit 06:46 UTC). Fällt die Bindung von C1 weg, steht die Kette -- die Wache prüft es bei jedem Lauf. |
-| Railway | Abgeschaltet (antwortet „Application not found“). Reste in Workflows, Wache und Biometrie-Skripten entfernt (Aequitas #437, biometric #91); `lint_alte_hosts.py` lässt `*.up.railway.app` in ausführbaren Zeilen nicht mehr zu. |
-| Root-Zugang C1 | Neuer Root-Schlüssel nur als Umgebungs-Secret in `produktion`; der alte (lag als Repository-Secret im öffentlichen Repo) ist am 25.10. auf C1 entfernt, ebenso der unbekannte Schlüssel `github-actions-deploy-contabo1` (`c1-root-schluessel-tauschen.yml`, #433/#436). |
-| Coordinator-Schlüssel | Für den Notfall „Signierschlüssel entwendet“ gibt es wieder einen Weg auf C1: `coordinator-schluessel-wechseln.yml` (biometric #92), mit Rücknahme, wenn ein Dienst den neuen Schlüssel nicht annimmt. |
-| Caddy | Erledigt 25.10. (`neuer-server-caddy.yml`, Lauf 40199773044): Log-Rotation war schon aktiv, die Konfiguration kommt aus dem Repo, alle sechs öffentlichen Wege antworten 200. |
-| Deploy | Seit #441 startet `deploy-c1.yml` nur bei Änderungen am Knoten-Image (Positivliste, geprüft von `lint_deploy_pfade.py`); Änderungen an Tests, Skripten und Doku lösen keinen Deploy mehr aus. |
-| Freigaben | `produktion` (alle vier Repos) und `app-signatur` haben seit dem 24.10. Pflicht-Prüfer; belegt an je einem wartenden Lauf in Aequitas und Biometrie. App und Proof-Server zeigen es beim nächsten Bau bzw. Deploy. |
+| Kette | Höhe ~968.500, etwa ein Block je Sekunde. `chain.healthy`, 1 Mensch, keine Kontostand-Abweichung. Im Knoten-Log der letzten 24 h steht kein Fehler, nur eine abgewiesene, zu schnell wiederholte Peer-Registrierung. |
+| Stichtage 01.11.2026 00:00 UTC | **Strenges Nachrechnen** (`nachrechnenStrengAbUnix`): aktiv. **Lebensnachweis** (`lebensnachweisAbUnix`): aktiv, pausiert aber 395 Tage lang niemanden. Ab dem Stichtag lehnt `umlauf_alte_runde` (#440) Umläufe mit alter Rundenzeit ab. Die verteilte Annahme schläft weiter (`MaxInt64`). Issue #412, Befund 1 ist damit nicht ausgelöst. |
+| Registrierung | Coordinator ok, **Quorum 1 im Einzelbetrieb** (höchstens 25 Registrierungen am Tag, heute 0). Vergleichsdienst im Testmodus (`real_data_unlocked=false`, Galerie: 1 Test-Eintrag). Proof-Server steht auf `required`, die Bescheinigung hat Form v2 und verlangt den Modus `test`. Coordinator-Schlüssel `d3c46a77`, Bezeuger `a73580d9`. |
+| Grundeinkommen | Die tägliche Runde läuft (`last_distribution_round_at` 01.11.), aber der Topf ist leer (`topf_leer`). Es wird also nichts ausgezahlt. Ausgezahlt wurde zuletzt am 22.10. |
+| App | Release **v1.13.0**. v1.13.1 (Staffel Tag 30, Einspruch, Antwortfrist im Widerspruch; App #47) ist gemergt und wird gebaut. |
+| Server-Zugang | Seit dem 28./29.10.2026 erreichen **nur** Workflows des öffentlichen Aequitas-Repos C1, und jeder Lauf wartet auf die Freigabe in `produktion`. Die privaten Repos bauen nur Images (GHCR) und haben keinen Server-Schlüssel mehr. Ihre Server-Workflows sind entfernt (biometric #96, proof-server #30). Jede Host-Prüfung nimmt genau eine ed25519-Zeile mit festem Fingerabdruck. `lint_keyscan.py` hält das fest (#446). |
+| Härtung C1 | SSH nur mit Schlüssel, root nur mit Schlüssel, root-Passwort gesperrt (L). sshd bietet nur `publickey` an. Alle 7 Container haben eine Log-Grenze. ufw ist aktiv: offen sind 22, 80, 443, 4001 und 8080 (8080 bewusst für Peers). |
+| Sicherung | Ledger nachts. Biometrie und Proof-DB werden seit dem 30.10. jede Nacht erfolgreich mit `age` verschlüsselt gesichert (`backup-biometrie-verschluesselt.yml`). |
+| Abhängigkeiten | Am 01.11. mit der vollständigen Go-Schwachstellendatenbank geprüft (4.731 Einträge). x/net 0.62, x/crypto 0.58, edwards25519 1.1.1 (#449). Übrig ist nur GO-2026-5932 (openpgp, ohne Fix, nicht importiert). Biometrie: `pip-audit` sauber nach pyasn1 0.6.5 (#103). Proof-Server: `npm audit` sauber nach body-parser 2.4.0 (#31). App: nur Build-Werkzeuge betroffen, dazu `decode-uri-component` über expo-router (lokaler Deep-Link-DoS). |
+| Konto | GitHub-Zugang mit Passkey und Authenticator-App. UptimeRobot überwacht von außen. Alte Secrets (`Railway`, `CONTABO2_SSH_KEY` u. a.) sind gelöscht. |
 
-**Was die Beta noch braucht** (alles Betreiber, Reihenfolge = Vorschlag):
+**Was die Beta noch braucht.** Alles hier kann nur der Betreiber tun. Die
+Reihenfolge ist ein Vorschlag.
 
 1. **Impressum und Datenschutz** (Blocker 3): `/impressum` und
    `/datenschutz` antworten 404, alle sieben `LEGAL_*` fehlen.
-   `rechtstexte-setzen.yml` mit den sieben Angaben starten (erlaubte
-   Zeichen: Buchstaben, Ziffern, Leerzeichen, `. , - / @ + & ( ) : _`).
-2. ~~C1 im Validator-Register auf der Kette eintragen~~ **erledigt**
-   (25.10.2026); „nur gebundene Server erzeugen“ gilt seit 28.10.2026
-   10:00 UTC (#442).
-3. **Umgebung `produktion` scharf machen** (3.1).
-4. **Biometrie-Sicherung freischalten** (3.5): Die Umgebung `sicherung` und
-   `SICHERUNG_SSH_KEY` sind eingerichtet, es fehlt nur der age-Empfänger.
-   Auf deinem Rechner (nicht am Server, nicht im Repo)
-   `age-keygen -o bio-backup.key` ausführen und die Datei offline verwahren;
-   dann `sicherung-einrichten.yml` mit `bio_empfaenger=age1…` (die
-   öffentliche Zeile, die `age-keygen` ausgibt) starten und freigeben
-   (`docs/BIOMETRIE_SICHERUNG.md`). Bis dahin scheitert
-   `backup-biometrie-verschluesselt.yml` jede Nacht und sichert nichts.
-5. **Registrierung mit frischem Wallet** (Blocker 2): Beleg `total_humans` +1
+   - Wer in Deutschland einen Dienst anbietet, braucht eine ladungsfähige
+     Anschrift (§ 5 DDG). Wer personenbezogene Daten verarbeitet, muss einen
+     Verantwortlichen nennen (DSGVO Art. 13).
+   - Das muss kein Privatname sein: Eine juristische Person (UG, e. V.,
+     Stiftung) kann Betreiber sein.
+   - Danach `rechtstexte-setzen.yml` mit den sieben Angaben starten.
+2. **Deepfake-Test** (`docs/DEEPFAKE_TEST.md`, Lage in Abschnitt 0a): 5 echte
+   Aufnahmen und 3–4 Angriffe mit dem eigenen, schon registrierten Gesicht.
+   Danach `bio-lebendigkeit-auswerten.yml` starten.
+3. **Registrierung mit frischem Wallet** (Blocker 2): Beleg `total_humans` +1
    und `gallery_test` +1.
-6. **Zwei-Personen-Test** nach `docs/DOPPELREGISTRIERUNG_TEST.md` (Blocker 4).
-7. **DSGVO-Entscheidung** (Blocker 5); bis dahin bleibt der Vergleichsdienst
-   im Testmodus (`real_data_unlocked=false`), die Altersschätzung beobachtet
-   nur (`modell_bereit=false`).
-8. ~~App-Bauvariablen leeren~~ **erledigt** (24.10.2026): Die Variablen
-   sind leer, v1.12.9 ist ohne proof2 gebaut und ausgeliefert.
-9. ~~Railway-Coordinator abschalten~~ **erledigt**: abgeschaltet, Reste
-   entfernt (Aequitas #437, biometric #91).
-10. **Secrets aufräumen**: `Railway` und `CONTABO2_SSH_KEY` löschen (beide
-    werden von keinem Workflow mehr gelesen).
-11. ~~Caddy-Log-Rotation~~ **erledigt** (25.10.2026).
-12. **Überwachung von außen** (Minuten statt Stunden): GitHub führt
-    `wache.yml` statt alle 10 Minuten nur alle 2–5 Stunden aus (25.10.: zuletzt
-    09:54 UTC). Bei UptimeRobot (kostenlos) zwei HTTP(S)-Monitore mit 5 min
-    Abstand und E-Mail-Alarm anlegen:
-    `https://aequitas.digital/api/wache` (200 = alles da, 503 = der Rumpf
-    nennt, was fehlt) und `https://proof1.aequitas.digital/health`. Kein
-    Geheimnis nötig, beide Adressen sind öffentlich.
+4. **Zwei-Personen-Test** nach `docs/DOPPELREGISTRIERUNG_TEST.md` (Blocker 4).
+5. **20 echte Registrierungen** (Beta-Teilnehmer), damit WP 4 Schwellen setzen
+   kann (`LEBENDIGKEIT_GEGEN_DEEPFAKES.md`).
+6. **DSGVO-Entscheidung** (Blocker 5). Bis dahin bleibt der Vergleichsdienst
+   im Testmodus (`real_data_unlocked=false`). Die Altersschätzung beobachtet
+   nur (`modell_bereit=false`). Für den Echtbetrieb braucht der
+   Vergleichsdienst einen **eigenen** `MATCHER_INDEX_KEY`. Heute wird er aus
+   `TEMPLATE_ENCRYPTION_KEY` abgeleitet, und das lässt `enroll_index.py` nur
+   im Testmodus zu.
+7. **Zweiter Validator** (Launch, nicht Beta): Server und Betreiber kommen von
+   dir (`docs/VALIDATOREN_HINZUFUEGEN.md`). Vorher den Lasttest aus der
+   Schlussbemerkung von Issue #208 bestehen.
+
+Erledigt seit dem 28.10.:
+
+- Umgebung `produktion` mit Pflicht-Freigabe. Der Server-Zugang liegt nur noch
+  im öffentlichen Repo.
+- Secrets aufgeräumt.
+- Überwachung von außen (UptimeRobot).
+- Biometrie-Sicherung freigeschaltet.
+- Zwei-Faktor-Anmeldung.
 
 Ein zweiter Validator ist für die Beta nicht nötig, für den Launch schon
-(Punkt 3.6). Bis dahin trägt C1 allein: Snapshot und Autoheal vertrauen C1,
-der Einzelbetrieb begrenzt Registrierungen auf 25 am Tag.
+(Punkt 3.6). Bis dahin trägt C1 allein. Snapshot und Autoheal vertrauen C1,
+und der Einzelbetrieb begrenzt Registrierungen auf 25 am Tag.
+
+## 0a. Deepfake — Stand 01.11.2026
+
+**Scharf ist heute:**
+
+- Bildserie (mindestens 10 Bilder).
+- Blinzeln.
+- Kopfdreh-Aufgabe (`REQUIRE_CHALLENGE_LIVENESS`, Voreinstellung an).
+- Das Standbild muss aus derselben Aufnahme stammen (`bindung.py`).
+
+Blitzfolge, Puls, Parallaxe, Antispoof und IMU werden gerechnet und gehen in
+den Lebendigkeits-Score L ein, entscheiden aber nichts.
+
+**Was das heißt:**
+
+- **Foto oder Video vor der Kamera** scheitert meist an Blinzeln und
+  Kopfdrehung. Ein Video, das zur gewürfelten Richtung dreht, kann bestehen.
+- **Ein Echtzeit-Face-Swap** dreht den Kopf mit und besteht die scharfen
+  Prüfungen.
+- **Eine virtuelle Kamera** (Injektion) umgeht die Kamera ganz. Die
+  Blitzprüfung hält sie nicht sicher auf: Die App kennt die Farbfolge, und
+  `flash_liveness.py` misst die Farbbalance des ganzen Bildes, nicht die
+  3D-Spiegelung im Gesicht.
+
+**Was den Schaden heute begrenzt:**
+
+- Einzelbetrieb: höchstens 25 Registrierungen am Tag.
+- Mengengrenzen je Adresse und je Netz.
+- Duplikaterkennung: Ein Gesicht kommt nur einmal durch.
+- Widerspruchsweg.
+
+Die Staffel (200 sofort, 800 über 30 Tage) ist gebaut, schläft aber
+(`stagedGrantActivationUnix` = 2100). Vor der Kalibrierung wäre jede
+Registrierung gestaffelt (`LEBENDIGKEIT_KALIBRIERT`). Auch dann ist der Rest
+spätestens an Tag 30 frei. Anhalten können ihn nur zwei Betreiber mit
+Einspruch, und heute gibt es einen.
+
+**Weg zu „launchfertig“:**
+
+1. Deepfake-Test nach `docs/DEEPFAKE_TEST.md`.
+2. 20 echte Aufnahmen.
+3. `bio-lebendigkeit-auswerten.yml` zeigt Trennung und schlägt Schwellen vor.
+4. Staffel aktivieren, dann `LEBENDIGKEIT_VERBINDLICH=true`. Reihenfolge in
+   `LEBENDIGKEIT_GEGEN_DEEPFAKES.md`.
+
+Gegen Injektion hilft am Ende nur, die Geräte-Attestierung (Play Integrity /
+App Attest) ins Risiko R zu nehmen, sobald sie gemessen ist. Heute liegt sie
+dort nur als Signal. Eine Blitzprüfung, die die Spiegelung im
+Gesichtsausschnitt gegen den Hintergrund misst, wäre der nächste Schritt im
+Vergleichsdienst. Das ist Forschung, kein schneller Fix.
 
 ## 1. Erledigt (gemergt)
 
@@ -132,7 +184,7 @@ der Einzelbetrieb begrenzt Registrierungen auf 25 am Tag.
 | FromSync-Ausnahmen (Sperre, Finalität) über Seed-Verbindungen ohne TLS | MITTEL | Stichtag gesetzt: ab Blockzeit 18.10.2026 00:00 UTC prüft jeder Knoten Seed-Blöcke wie gepushte (`fromsync_stichtag.go`, `docs/FROMSYNC_STICHTAG.md`). |
 | Tests mit vier Knoten: libp2p nicht abgedeckt | NIEDRIG | `Start()` wählt sich bei öffentlichen Bootstrap-Knoten ein; ein geschlossenes libp2p-Netz bräuchte Bootstrap-Konfiguration im Produktionscode. Paketweite Zähler teilen sich die Instanzen im Prozess. |
 | Snapshot und Autoheal vertrauen C1 | MITTEL | erst mit mehreren Unterzeichnern lösbar (zweiter Validator) |
-| Deepfake-Schutz schwach | HOCH | Forschung, kein schneller Fix |
+| Deepfake-Schutz schwach | HOCH | Abschnitt 0a; Messweg `docs/DEEPFAKE_TEST.md` + `bio-lebendigkeit-auswerten.yml` (01.11.2026) |
 
 Geklärt ohne Code: **App bio/salt** gehen nur an die beim Bau festgelegten
 https-Adressen des Projekts (`API_BASE`, `API_FALLBACKS`) -- beides eigene
