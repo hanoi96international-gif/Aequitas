@@ -244,7 +244,6 @@ func TestFreigabe_DoppelteRundeGibtNichtFrei_RealDB(t *testing.T) {
 // ein zweites Mal einziehen.
 func TestUmlauf_DoppelteRundeZiehtNichtZweimalEin_RealDB(t *testing.T) {
 	truncateDistTestTables(t) // auch das Opt-in-Tor
-	nachrechnenModus(t, false)
 	cs := testKnoten(t, "unused-umlauf-doppelrunde-test.json")
 	if !cs.useDB {
 		t.Fatal("erwartet eine echte PostgreSQL-Verbindung -- DATABASE_URL pruefen")
