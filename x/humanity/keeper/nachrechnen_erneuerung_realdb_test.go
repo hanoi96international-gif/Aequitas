@@ -42,6 +42,9 @@ type erneuerungsFall struct {
 
 func neuerErneuerungsFall(t *testing.T, registriertVorTagen int64) *erneuerungsFall {
 	t.Helper()
+	// Beobachten, unabhaengig von der Uhr: die Tests hier zaehlen
+	// Abweichungen; die strengen setzen danach selbst Store(1).
+	nachrechnenModus(t, false)
 	truncateDistTestTables(t)
 	cs := testKnoten(t, "unused-erneuerung-realdb-test.json")
 	if !cs.useDB {

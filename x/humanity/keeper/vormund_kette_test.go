@@ -72,6 +72,7 @@ func TestVormundKette_RealDB(t *testing.T) {
 		t.Fatal("DATABASE_URL must point at a disposable local Postgres database")
 	}
 	truncateDistTestTables(t)
+	nachrechnenModus(t, false) // Schritt 5 zaehlt im Beobachtungsmodus
 	cs := testKnoten(t, "unused-vormund-kette-db-test.json")
 	if !cs.useDB {
 		t.Fatal("expected a live PostgreSQL connection")

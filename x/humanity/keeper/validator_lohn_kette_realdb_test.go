@@ -34,6 +34,7 @@ type lohnFall struct {
 
 func neuerLohnFall(t *testing.T) *lohnFall {
 	t.Helper()
+	nachrechnenModus(t, false) // zaehlt Abweichungen, unabhaengig von der Uhr
 	if os.Getenv("AEQUITAS_TPS_BENCH") != "1" {
 		t.Skip("opt-in only: set AEQUITAS_TPS_BENCH=1 and DATABASE_URL (a disposable local Postgres) to run")
 	}
