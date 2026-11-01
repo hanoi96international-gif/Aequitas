@@ -3,6 +3,7 @@ package keeper
 import (
 	"context"
 	"errors"
+	"math"
 	"sync/atomic"
 	"testing"
 )
@@ -305,7 +306,7 @@ func TestLiegegeldPruefung_GemeinsamerStichtag(t *testing.T) {
 	}
 
 	nachrechnenStrengOverride.Store(1)
-	t.Cleanup(func() { nachrechnenStrengOverride.Store(0) })
+	t.Cleanup(func() { nachrechnenStrengOverride.Store(math.MaxInt64) })
 	if err := lauf(); !errors.Is(err, ErrZustandLehntAb) {
 		t.Fatalf("ab dem Stichtag muss die Abweichung abgelehnt werden, bekam %v", err)
 	}

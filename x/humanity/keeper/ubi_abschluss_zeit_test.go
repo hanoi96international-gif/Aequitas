@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"errors"
+	"math"
 	"testing"
 )
 
@@ -47,7 +48,7 @@ func TestNachrechnen_UBIAbschlussZeitBegrenzt(t *testing.T) {
 
 	// Streng: abgelehnt -- im Nachrechnen und schon beim Erzeuger.
 	nachrechnenStrengOverride.Store(1)
-	t.Cleanup(func() { nachrechnenStrengOverride.Store(0) })
+	t.Cleanup(func() { nachrechnenStrengOverride.Store(math.MaxInt64) })
 	for _, at := range []int64{-1, block - 601, block + 601} {
 		if err := pruefe(at); !errors.Is(err, ErrZustandLehntAb) {
 			t.Fatalf("at=%d: im strengen Modus nicht abgelehnt: %v", at, err)
@@ -70,7 +71,7 @@ func TestNachrechnen_UBIAbschlussZeitBegrenzt(t *testing.T) {
 // kein Weglassen.
 func TestBlockZeitPraefix_UBIAbschlussUndMarkeZusammen(t *testing.T) {
 	nachrechnenStrengOverride.Store(1)
-	t.Cleanup(func() { nachrechnenStrengOverride.Store(0) })
+	t.Cleanup(func() { nachrechnenStrengOverride.Store(math.MaxInt64) })
 	at := rundenZeitStrengAbUnix + 30*86400
 	ausgang := []Transaction{
 		{Type: "ubi_distribution", Wallet: "0xa", Amount: 1},

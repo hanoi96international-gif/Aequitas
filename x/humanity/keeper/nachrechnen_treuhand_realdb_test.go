@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"fmt"
+	"math"
 	"testing"
 )
 
@@ -218,7 +219,7 @@ func TestTreuhandBestand_StrengLehntUeberBestandAb_RealDB(t *testing.T) {
 		t.Fatal("Verschiebung abgelehnt")
 	}
 	nachrechnenStrengOverride.Store(1)
-	t.Cleanup(func() { nachrechnenStrengOverride.Store(0) })
+	t.Cleanup(func() { nachrechnenStrengOverride.Store(math.MaxInt64) })
 
 	frei := t1 + escrowToUBISeconds
 	vorher := k.topf()

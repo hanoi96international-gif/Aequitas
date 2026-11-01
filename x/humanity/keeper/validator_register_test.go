@@ -193,7 +193,7 @@ func TestValidatorBindung_ChainIDImSatz(t *testing.T) {
 func TestBekannteTxArt_Stufe2ErstAbAktivierung(t *testing.T) {
 	verteilteAnnahmeOverride.Store(1000)
 	nachrechnenStrengOverride.Store(1000)
-	t.Cleanup(func() { verteilteAnnahmeOverride.Store(0); nachrechnenStrengOverride.Store(0) })
+	t.Cleanup(func() { verteilteAnnahmeOverride.Store(0); nachrechnenStrengOverride.Store(math.MaxInt64) })
 	for _, typ := range []string{"vorbehalt", "vorbehalt_ausfuehrung", "kappung"} {
 		if bekannteTxArt(typ, 999) {
 			t.Fatalf("%s vor der Aktivierung durchgelassen", typ)
@@ -211,7 +211,9 @@ func TestBekannteTxArt_Stufe2ErstAbAktivierung(t *testing.T) {
 		}
 	}
 	verteilteAnnahmeOverride.Store(0)
-	nachrechnenStrengOverride.Store(0)
+	// Nachrechnen streng wie seit dem 01.11.2026 im Betrieb -- unbekannt
+	// bleibt vorbehalt allein wegen der fehlenden verteilten Annahme.
+	nachrechnenStrengOverride.Store(1)
 	if bekannteTxArt("vorbehalt", nowUnix()) {
 		t.Fatal("ohne gesetzten Stichtag muss vorbehalt unbekannt sein")
 	}

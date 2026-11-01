@@ -17,5 +17,5 @@ func nachrechnenModus(t *testing.T, streng bool) {
 	} else {
 		nachrechnenStrengOverride.Store(math.MaxInt64)
 	}
-	t.Cleanup(func() { nachrechnenStrengOverride.Store(0) })
+	t.Cleanup(func() { nachrechnenStrengOverride.Store(math.MaxInt64) })
 }
