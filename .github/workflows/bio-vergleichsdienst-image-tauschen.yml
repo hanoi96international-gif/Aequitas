@@ -1,0 +1,226 @@
+name: Biometrie -- Vergleichsdienst -- nur das Image tauschen (Umgebung bleibt)
+
+# Wie deploy-coordinator-to-box.yml, fuer aequitas-matching: Umgebung,
+# Netz, Mounts, Ports und Name werden vom LAUFENDEN Container abgelesen, nur
+# das Image wechselt. deploy-validator-to-box.yml baut den Container dagegen
+# aus /root/.aequitas-matching.env neu -- was spaeter von Hand dazukam
+# (Coordinator-Schluessel, Bezeugungsschluessel, Schalter), ginge verloren.
+#
+# Danach muss /health dasselbe melden wie vorher: Bestand (gallery_*),
+# Bezeugungsschluessel, akzeptierte Coordinator-Schluessel. Sonst bricht der
+# Lauf ab und nennt das alte Image. Ausgegeben werden nur diese oeffentlichen
+# Werte, nie die Umgebung.
+
+# Aus aequitas-biometric-beta uebernommen (28.10.2026): dort ist das Repo
+# privat, und im GitHub-Plan gibt es fuer private Repos keine Pflicht-
+# Freigabe der Umgebung `produktion`. Hier (oeffentlich) wartet jeder Lauf
+# auf die Freigabe. Die Images kommen weiter aus dem privaten GHCR-Paket
+# des Biometrie-Repos (Lesezugriff fuer dieses Repo in den Paket-
+# Einstellungen). Inhaltlich unveraendert bis auf den Image-Pfad.
+on:
+  workflow_dispatch:
+    inputs:
+      box:
+        description: "Welche Box"
+        required: true
+        type: choice
+        options: [contabo1, both]
+        default: contabo1
+      tag:
+        description: "Image-Tag in GHCR (Commit-SHA)"
+        required: true
+      alterspruefung:
+        description: "ALTERSPRUEFUNG setzen (unveraendert = wie im laufenden Container)"
+        required: true
+        type: choice
+        options: [unveraendert, beobachten, erzwingen]
+        default: unveraendert
+      einwilligung_vorgabe:
+        description: "Fest eingetragene CURRENT_CONSENT_VERSION/UEBERGANG_CONSENT_VERSIONEN entfernen, damit die Vorgabe im Code gilt"
+        required: true
+        type: boolean
+        default: false
+      seed_bestand_bestaetigen:
+        description: "SKETCH_SEED_BESTAND_BESTAETIGT=ja setzen (Audit 21.10., K3): nur wenn der laufende FACE_SKETCH_SEED derselbe ist, mit dem die gespeicherten Sketches entstanden -- dieser Lauf uebernimmt ihn unveraendert"
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  tauschen:
+    runs-on: ubuntu-latest
+    environment: produktion
+    strategy:
+      fail-fast: true
+      max-parallel: 1
+      matrix:
+        include:
+          - name: contabo1
+            host: 188.172.229.121
+    steps:
+      - name: Box auswaehlen
+        id: skip
+        # Eingaben ueber env, nie direkt in den Befehl (Injection-Muster).
+        env:
+          BOX: ${{ inputs.box }}
+          MATRIX_NAME: ${{ matrix.name }}
+        run: |
+          if [ "$BOX" = "both" ] || [ "$BOX" = "$MATRIX_NAME" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+      # Root-Schluessel fuer ssh-action, mit der Reparatur am Handy eingefuegter
+      # Secrets (scripts/lint_ssh_schluessel.py). RUNNER_TEMP leert GitHub am
+      # Anfang und Ende jedes Jobs.
+      - name: Root-Schluessel bereitlegen
+        env:
+          KEY: ${{ secrets.CONTABO_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s' "$KEY" | perl -0777 -pe 's/\r//g; s/(?:-|\xE2\x80[\x93\x94])+ *(BEGIN|END) OPENSSH PRIVATE KEY *(?:-|\xE2\x80[\x93\x94])+/-----$1 OPENSSH PRIVATE KEY-----/g; unless (/-----BEGIN OPENSSH PRIVATE KEY-----/) { (my $z = $_) =~ s/\s//g; if ($z =~ m|^[A-Za-z0-9+/]+=*$|) { require MIME::Base64; my $d = MIME::Base64::decode_base64($z); if ($d =~ /-----BEGIN OPENSSH PRIVATE KEY-----/) { $_ = $d; } elsif ($d =~ /\Aopenssh-key-v1\x00/) { $_ = qq{-----BEGIN OPENSSH PRIVATE KEY-----\n$z\n-----END OPENSSH PRIVATE KEY-----\n}; } } } s/\s*(-----BEGIN OPENSSH PRIVATE KEY-----)\s*(.*?)\s*(-----END OPENSSH PRIVATE KEY-----)\s*/my ($k, $b, $f) = ($1, $2, $3); $b =~ s|\s||g; $b =~ s|(.{70})|$1\n|g; $b =~ s|\n\z||; "$k\n$b\n$f\n"/se' > "$RUNNER_TEMP/c1_root_key"
+          ssh-keygen -y -f "$RUNNER_TEMP/c1_root_key" >/dev/null 2>&1 || { echo "::error title=CONTABO_SSH_KEY unlesbar::Secret CONTABO_SSH_KEY neu einfuegen (alles von -----BEGIN bis -----END)."; rm -f "$RUNNER_TEMP/c1_root_key"; exit 1; }
+      - name: Image tauschen
+        if: steps.skip.outputs.run == 'true'
+        env:
+          IMAGE: ghcr.io/hanoi96international-gif/aequitas-biometric-beta/matching:${{ inputs.tag }}
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ALTERSPRUEFUNG_NEU: ${{ inputs.alterspruefung }}
+          EINWILLIGUNG_VORGABE: ${{ inputs.einwilligung_vorgabe }}
+          SEED_BESTAETIGEN: ${{ inputs.seed_bestand_bestaetigen }}
+          C1_HOST: ${{ matrix.host }}
+        run: |
+          set -euo pipefail
+          # Statt appleboy/ssh-action (28.10.2026): drone-ssh handelte einen anderen
+          # Host-Schluesseltyp als ed25519 aus und verglich dessen Fingerabdruck mit
+          # dem ed25519-Wert -- "host key fingerprint mismatch", jeder Lauf seit #90
+          # brach ab. Hier nur ed25519, vorher gegen den festen Wert geprueft.
+          ssh-keyscan -t ed25519 "$C1_HOST" 2>/dev/null | { grep -v '^#' || true; } > "$RUNNER_TEMP/kh"
+          [ "$(grep -c . "$RUNNER_TEMP/kh")" = 1 ] || { echo "::error::Host-Schluessel von $C1_HOST: nicht genau eine ed25519-Zeile"; exit 1; }
+          [ "$(ssh-keygen -lf "$RUNNER_TEMP/kh" | awk '{print $2}')" = "SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA" ] || { echo "::error::Host-Schluessel von $C1_HOST passt nicht"; exit 1; }
+          {
+            for v in IMAGE GHCR_USER GHCR_TOKEN ALTERSPRUEFUNG_NEU EINWILLIGUNG_VORGABE SEED_BESTAETIGEN; do printf 'export %s=%q\n' "$v" "${!v}"; done
+            cat <<'SKRIPT'
+          set -euo pipefail
+          NAME=aequitas-matching
+          docker inspect "$NAME" >/dev/null 2>&1 || { echo "FEHLER: kein Container $NAME"; exit 1; }
+          PORT=$(docker inspect "$NAME" --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E '^PORT=' | head -1 | cut -d= -f2)
+          PORT=${PORT:-8098}
+          stand() {
+            docker exec "$NAME" python -c "import json,urllib.request; d=json.load(urllib.request.urlopen('http://127.0.0.1:$PORT/health', timeout=10)); print(json.dumps({k:d.get(k) for k in ('gallery_test','gallery_real','personhood_public_key','coordinator_keys','requires_coordinator_auth','real_data_unlocked','sketch_seed_configured','templates_encrypted_at_rest')}, sort_keys=True))"
+          }
+          VORHER=$(stand || echo "nicht lesbar")
+          echo "vorher: $VORHER"
+
+          echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin >/dev/null
+          trap 'docker logout ghcr.io >/dev/null 2>&1 || true; rm -f /root/.matching-neu.env /root/.matching-alt.env' EXIT
+          gezogen=0
+          for pause in 5 15 30 60; do
+            if docker pull "$IMAGE" 2>&1 | tail -1; then gezogen=1; break; fi
+            sleep "$pause"
+          done
+          [ "$gezogen" = 1 ] || { echo "FEHLER: Image nicht ziehbar -- alter Container laeuft weiter"; exit 1; }
+
+          umask 077
+          docker inspect "$NAME" --format '{{range .Config.Env}}{{println .}}{{end}}' \
+            | grep -vE '^(PATH|HOSTNAME|HOME|LANG|LC_ALL|PYTHON[A-Z_]*|GPG_KEY|PIP_[A-Z_]*)=' \
+            | grep -E '^[A-Za-z_][A-Za-z0-9_]*=' > /root/.matching-neu.env
+          # Unveraendert fuer die Ruecknahme (zurueck, unten).
+          cp /root/.matching-neu.env /root/.matching-alt.env
+          echo "  $(wc -l < /root/.matching-neu.env) Umgebungsvariablen (Werte ungezeigt)"
+          # Seed-Schutz (Audit 21.10., K3): liegen Sketches ohne Pruefwert
+          # vor, startet der neue Dienst nur mit dieser Erklaerung. Der Seed
+          # selbst kommt unveraendert aus dem laufenden Container.
+          if [ "$SEED_BESTAETIGEN" = "true" ]; then
+            sed -i '/^SKETCH_SEED_BESTAND_BESTAETIGT=/d' /root/.matching-neu.env
+            echo "SKETCH_SEED_BESTAND_BESTAETIGT=ja" >> /root/.matching-neu.env
+            echo "  SKETCH_SEED_BESTAND_BESTAETIGT=ja (Seed unveraendert aus dem laufenden Container)"
+          fi
+          # Einstellungen, die dieser Lauf ausdruecklich setzt (Eingaben oben).
+          # Werte sind keine Geheimnisse; gezeigt wird nur, was sich aendert.
+          if [ "$ALTERSPRUEFUNG_NEU" != "unveraendert" ]; then
+            alt=$(grep -E '^ALTERSPRUEFUNG=' /root/.matching-neu.env | cut -d= -f2- || true)
+            sed -i '/^ALTERSPRUEFUNG=/d' /root/.matching-neu.env
+            echo "ALTERSPRUEFUNG=$ALTERSPRUEFUNG_NEU" >> /root/.matching-neu.env
+            echo "  ALTERSPRUEFUNG: ${alt:-(nicht gesetzt, Vorgabe erzwingen)} -> $ALTERSPRUEFUNG_NEU"
+          fi
+          for v in CURRENT_CONSENT_VERSION UEBERGANG_CONSENT_VERSIONEN; do
+            if grep -qE "^$v=" /root/.matching-neu.env; then
+              wert=$(grep -E "^$v=" /root/.matching-neu.env | cut -d= -f2-)
+              if [ "$EINWILLIGUNG_VORGABE" = "true" ]; then
+                sed -i "/^$v=/d" /root/.matching-neu.env
+                echo "  $v war fest auf '$wert' -- entfernt, es gilt die Vorgabe im Code"
+              else
+                echo "  $v ist fest auf '$wert' (bleibt)"
+              fi
+            fi
+          done
+          NET=$(docker inspect "$NAME" --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}' | awk '{print $1}')
+          [ -n "$NET" ] || NET=aequitas-net
+          MOUNTS=$(docker inspect "$NAME" --format '{{range .Mounts}}{{if eq .Type "bind"}}-v {{.Source}}:{{.Destination}} {{end}}{{if eq .Type "volume"}}-v {{.Name}}:{{.Destination}} {{end}}{{end}}')
+          PORTS=$(docker inspect "$NAME" --format '{{range $p, $b := .HostConfig.PortBindings}}{{range $b}}-p {{.HostIp}}:{{.HostPort}}:{{$p}} {{end}}{{end}}' | sed 's/-p :/-p /g')
+          ALT=$(docker inspect "$NAME" --format '{{.Config.Image}}')
+          echo "  Netz: $NET | Mounts: ${MOUNTS:-(keine)} | Ports: ${PORTS:-(nur im Netz)}"
+          echo "  altes Image: $ALT"
+
+          # Ruecknahme: startet das neue Image nicht wie vorher, laeuft das
+          # alte mit genau der alten Umgebung wieder -- statt eines Dienstes,
+          # der bis zum naechsten Eingriff aus ist.
+          zurueck() {
+            echo "=== Ruecknahme auf $ALT ==="
+            docker logs --tail 30 "$NAME" 2>&1 | sed -E 's/[0-9a-fA-F]{16,}/#/g' | cut -c1-250 || true
+            docker rm -f "$NAME" >/dev/null 2>&1 || true
+            # shellcheck disable=SC2086
+            docker run -d --name "$NAME" --restart unless-stopped \
+              --network "$NET" --env-file /root/.matching-alt.env \
+              $MOUNTS $PORTS \
+              --log-opt max-size=20m --log-opt max-file=3 \
+              "$ALT" >/dev/null && echo "altes Image laeuft wieder" || echo "FEHLER: auch das alte Image startet nicht"
+          }
+
+          docker rm -f "$NAME" >/dev/null
+          # shellcheck disable=SC2086
+          if ! docker run -d --name "$NAME" --restart unless-stopped \
+            --network "$NET" --env-file /root/.matching-neu.env \
+            $MOUNTS $PORTS \
+            --log-opt max-size=20m --log-opt max-file=3 \
+            "$IMAGE" >/dev/null; then
+            zurueck; exit 1
+          fi
+          rm -f /root/.matching-neu.env
+
+          NACHHER=""
+          for _ in $(seq 1 60); do
+            sleep 5
+            NACHHER=$(stand 2>/dev/null || true)
+            [ -n "$NACHHER" ] && break
+          done
+          echo "nachher: ${NACHHER:-nicht lesbar}"
+          if [ -z "$NACHHER" ]; then
+            echo "FEHLER: /health antwortet nach 5 Minuten nicht. Altes Image: $ALT"
+            zurueck
+            exit 1
+          fi
+          if [ "$VORHER" != "nicht lesbar" ] && [ "$VORHER" != "$NACHHER" ]; then
+            echo "FEHLER: /health meldet einen anderen Stand -- Umgebung oder Daten verloren? Altes Image: $ALT"
+            zurueck
+            exit 1
+          fi
+          MODUS=$(docker exec "$NAME" python -c "import json,urllib.request; d=json.load(urllib.request.urlopen('http://127.0.0.1:$PORT/health', timeout=10)); print((d.get('alter') or {}).get('modus','?'))" 2>/dev/null || echo "?")
+          echo "Altersprüfung laut /health: $MODUS"
+          if [ "$ALTERSPRUEFUNG_NEU" != "unveraendert" ] && [ "$MODUS" != "$ALTERSPRUEFUNG_NEU" ]; then
+            echo "FEHLER: /health meldet Altersprüfung '$MODUS', gesetzt war '$ALTERSPRUEFUNG_NEU'. Altes Image: $ALT"
+            zurueck
+            exit 1
+          fi
+          echo "=== fertig: $NAME laeuft auf $IMAGE ==="
+          SKRIPT
+          } | timeout 1800 ssh -o BatchMode=yes -o IdentitiesOnly=yes -o HostKeyAlgorithms=ssh-ed25519 \
+              -o UserKnownHostsFile="$RUNNER_TEMP/kh" -o ServerAliveInterval=30 \
+              -i "$RUNNER_TEMP/c1_root_key" root@"$C1_HOST" 'bash -s'

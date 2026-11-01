@@ -1,0 +1,103 @@
+name: Biometrie -- Vergleichsdienst -- Indexumstellung (A5) abschliessen
+
+# Nach der Umstellung auf enroll_key/bio_hash_enc (A5, #63) bleibt im
+# Datenverzeichnis die Sicherung *.vor-indexumstellung-* liegen -- mit allen
+# bio_hash im KLARTEXT. Dieser Lauf prueft zuerst, dass der Dienst auf dem
+# neuen Stand gesund ist, und loescht erst dann (shred) die Sicherung.
+#
+# Geloescht wird nur, wenn ALLES stimmt (sonst Abbruch, nichts geloescht):
+#   - /health: status ok, plaintext_bio_hashes == 0, matcher_backend gesetzt,
+#     gallery_test + gallery_real >= erwartet (Eingabe)
+#   - in der Datenbank: keine Spalte bio_hash mehr, matcher_index.bereinigt = 1
+# Ausgegeben werden nur Zahlen und Dateinamen, nie Inhalte.
+
+# Aus aequitas-biometric-beta uebernommen (28.10.2026): dort ist das Repo
+# privat, und im GitHub-Plan gibt es fuer private Repos keine Pflicht-
+# Freigabe der Umgebung `produktion`. Hier (oeffentlich) wartet jeder Lauf
+# auf die Freigabe. Die Images kommen weiter aus dem privaten GHCR-Paket
+# des Biometrie-Repos (Lesezugriff fuer dieses Repo in den Paket-
+# Einstellungen). Inhaltlich unveraendert bis auf den Image-Pfad.
+on:
+  workflow_dispatch:
+    inputs:
+      erwartet_mindestens:
+        description: "Mindestzahl Eintraege (gallery_test + gallery_real) -- vor dem Deploy: 1"
+        required: true
+        default: "1"
+      loeschen:
+        description: "Sicherung wirklich loeschen (sonst nur pruefen)"
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  abschliessen:
+    runs-on: ubuntu-latest
+    environment: produktion
+    steps:
+      # Root-Schluessel fuer ssh-action, mit der Reparatur am Handy eingefuegter
+      # Secrets (scripts/lint_ssh_schluessel.py). RUNNER_TEMP leert GitHub am
+      # Anfang und Ende jedes Jobs.
+      - name: Root-Schluessel bereitlegen
+        env:
+          KEY: ${{ secrets.CONTABO_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s' "$KEY" | perl -0777 -pe 's/\r//g; s/(?:-|\xE2\x80[\x93\x94])+ *(BEGIN|END) OPENSSH PRIVATE KEY *(?:-|\xE2\x80[\x93\x94])+/-----$1 OPENSSH PRIVATE KEY-----/g; unless (/-----BEGIN OPENSSH PRIVATE KEY-----/) { (my $z = $_) =~ s/\s//g; if ($z =~ m|^[A-Za-z0-9+/]+=*$|) { require MIME::Base64; my $d = MIME::Base64::decode_base64($z); if ($d =~ /-----BEGIN OPENSSH PRIVATE KEY-----/) { $_ = $d; } elsif ($d =~ /\Aopenssh-key-v1\x00/) { $_ = qq{-----BEGIN OPENSSH PRIVATE KEY-----\n$z\n-----END OPENSSH PRIVATE KEY-----\n}; } } } s/\s*(-----BEGIN OPENSSH PRIVATE KEY-----)\s*(.*?)\s*(-----END OPENSSH PRIVATE KEY-----)\s*/my ($k, $b, $f) = ($1, $2, $3); $b =~ s|\s||g; $b =~ s|(.{70})|$1\n|g; $b =~ s|\n\z||; "$k\n$b\n$f\n"/se' > "$RUNNER_TEMP/c1_root_key"
+          ssh-keygen -y -f "$RUNNER_TEMP/c1_root_key" >/dev/null 2>&1 || { echo "::error title=CONTABO_SSH_KEY unlesbar::Secret CONTABO_SSH_KEY neu einfuegen (alles von -----BEGIN bis -----END)."; rm -f "$RUNNER_TEMP/c1_root_key"; exit 1; }
+      - name: Pruefen und Sicherung entfernen
+        env:
+          ERWARTET: ${{ inputs.erwartet_mindestens }}
+          LOESCHEN: ${{ inputs.loeschen }}
+          C1_HOST: 188.172.229.121
+        run: |
+          set -euo pipefail
+          # Statt appleboy/ssh-action (28.10.2026): drone-ssh handelte einen anderen
+          # Host-Schluesseltyp als ed25519 aus und verglich dessen Fingerabdruck mit
+          # dem ed25519-Wert -- "host key fingerprint mismatch", jeder Lauf seit #90
+          # brach ab. Hier nur ed25519, vorher gegen den festen Wert geprueft.
+          ssh-keyscan -t ed25519 "$C1_HOST" 2>/dev/null | { grep -v '^#' || true; } > "$RUNNER_TEMP/kh"
+          [ "$(grep -c . "$RUNNER_TEMP/kh")" = 1 ] || { echo "::error::Host-Schluessel von $C1_HOST: nicht genau eine ed25519-Zeile"; exit 1; }
+          [ "$(ssh-keygen -lf "$RUNNER_TEMP/kh" | awk '{print $2}')" = "SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA" ] || { echo "::error::Host-Schluessel von $C1_HOST passt nicht"; exit 1; }
+          {
+            for v in ERWARTET LOESCHEN; do printf 'export %s=%q\n' "$v" "${!v}"; done
+            cat <<'SKRIPT'
+          set -euo pipefail
+          case "$ERWARTET" in ''|*[!0-9]*) echo "FEHLER: erwartet_mindestens keine Zahl"; exit 1;; esac
+          NAME=aequitas-matching
+          PORT=$(docker inspect "$NAME" --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E '^PORT=' | head -1 | cut -d= -f2 || true)
+          PORT=${PORT:-8098}
+          H=$(docker exec "$NAME" python -c "import json,urllib.request; d=json.load(urllib.request.urlopen('http://127.0.0.1:$PORT/health', timeout=10)); print(d.get('status'), d.get('plaintext_bio_hashes'), d.get('matcher_backend'), int(d.get('gallery_test') or 0)+int(d.get('gallery_real') or 0))")
+          set -- $H
+          echo "health: status=$1 plaintext_bio_hashes=$2 matcher_backend=$3 eintraege=$4"
+          [ "$1" = ok ] || { echo "FEHLER: Dienst nicht ok -- nichts geloescht"; exit 1; }
+          [ "$2" = 0 ] || { echo "FEHLER: noch Klartext-bio_hash -- nichts geloescht"; exit 1; }
+          [ "$3" != None ] && [ -n "$3" ] || { echo "FEHLER: kein matcher_backend -- alter Stand?"; exit 1; }
+          [ "$4" -ge "$ERWARTET" ] || { echo "FEHLER: nur $4 Eintraege, erwartet >= $ERWARTET -- nichts geloescht"; exit 1; }
+          DBPFAD=$(docker exec "$NAME" python -c "import os; print(os.path.abspath(os.getenv('POH_DB_PATH','poh_beta.db')))")
+          case "$DBPFAD" in /data/*) ;; *) echo "FEHLER: Datenbank $DBPFAD liegt nicht unter /data"; exit 1;; esac
+          SPALTE=$(docker exec "$NAME" python -c "import sqlite3,sys; c=sqlite3.connect('file:'+sys.argv[1]+'?mode=ro', uri=True); n=sum(1 for t in ('test_enrollments','real_enrollments','duplicate_attempts') for r in c.execute('select name from pragma_table_info(?)',(t,)) if r[0] in ('bio_hash','matched_bio_hash')); print(n, c.execute('select bereinigt from matcher_index where id=1').fetchone()[0])" "$DBPFAD")
+          set -- $SPALTE
+          echo "datenbank: klartext_spalten=$1 bereinigt=$2"
+          [ "$1" = 0 ] && [ "$2" = 1 ] || { echo "FEHLER: Umstellung nicht abgeschlossen -- nichts geloescht"; exit 1; }
+          # Host-Verzeichnis aus dem Mount ablesen, nicht raten.
+          QUELLE=$(docker inspect "$NAME" --format '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Source}}{{end}}{{end}}')
+          case "$QUELLE" in /*) ;; *) echo "FEHLER: kein Host-Mount fuer /data gefunden -- nichts geloescht"; exit 1;; esac
+          DIR=$(dirname "$QUELLE${DBPFAD#/data}")
+          ls -la "$DIR" | grep -E 'vor-indexumstellung|unfertig' || echo "(keine Sicherung vorhanden)"
+          if [ "$LOESCHEN" = "true" ]; then
+            for f in "$DIR"/*vor-indexumstellung* "$DIR"/*.unfertig; do
+              [ -e "$f" ] || continue
+              shred -u -n 1 "$f" && echo "geloescht: $(basename "$f")"
+            done
+          else
+            echo "nur geprueft (loeschen=false)"
+          fi
+          SKRIPT
+          } | timeout 1800 ssh -o BatchMode=yes -o IdentitiesOnly=yes -o HostKeyAlgorithms=ssh-ed25519 \
+              -o UserKnownHostsFile="$RUNNER_TEMP/kh" -o ServerAliveInterval=30 \
+              -i "$RUNNER_TEMP/c1_root_key" root@"$C1_HOST" 'bash -s'

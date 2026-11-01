@@ -1,0 +1,326 @@
+name: Biometrie -- Vergleichsdienst auf eine Contabo-Box ausrollen (manuell)
+
+# Stellt einen ZWEITEN bzw. DRITTEN Vergleichsdienst bereit, damit das Quorum
+# aufhoert, nominell zu sein.
+#
+# WARUM DREI UND NICHT ZWEI
+#
+# Der Coordinator rechnet (N // 2) + 1. Bei N=2 ist das Quorum 2 -- beide
+# muessten zustimmen, und ein Ausfall stoppt JEDE Registrierung. Erst N=3 gibt
+# ein Quorum von 2, bei dem einer ausfallen darf. Zwei Validatoren waeren also
+# nicht "halb so gut wie drei", sondern schlechter als einer.
+#
+# WARUM AUF DIESEN BOXEN
+#
+# C1 und C2 gehoeren verschiedenen Personen und stehen auf verschiedenen
+# Maschinen. Drei Instanzen bei EINEM Anbieter unter EINEM Konto waeren drei
+# Prozesse, keine drei unabhaengigen Urteile.
+#
+# WARUM DIESER WORKFLOW UND NICHT SSH VON HAND
+#
+# Das Image liegt in GHCR, und das Paket ist privat. Damit auf der Box kein
+# dauerhaftes Zugangstoken liegen muss, meldet sich der Job mit seinem eigenen
+# GITHUB_TOKEN an, zieht, und meldet sich wieder ab -- das Token gilt nur fuer
+# die Dauer dieses Laufs.
+#
+# Ausserdem baut die Box damit NICHTS. Das Matching-Image ist 5,3 GB mit
+# nativen Abhaengigkeiten (torch, insightface, mediapipe); ein Build daneben
+# auf einem laufenden Validator ist genau das, was hier vermieden wird.
+#
+# WAS DIESER WORKFLOW BEWUSST NICHT TUT
+#
+# Er fasst den Coordinator nicht an. Nach dem Lauf laeuft der neue Dienst,
+# antwortet auf /health -- und bekommt noch keine einzige Registrierung. Erst
+# ein zweiter, ausdruecklicher Schritt (VALIDATOR_URLS und QUORUM_SIZE am
+# Coordinator) nimmt ihn in Betrieb. So laesst sich jeder Schritt einzeln
+# pruefen und einzeln zuruecknehmen.
+#
+# EIN LEERER VALIDATOR IST GEFAEHRLICH -- LIES DAS, BEVOR DU IHN EINHAENGST
+#
+# Jeder Validator haelt seinen eigenen Bestand. Ein frisch aufgesetzter kennt
+# niemanden und stimmt darum "neu" fuer Menschen, die laengst eingeschrieben
+# sind. Bei Quorum 2 und zwei leeren Validatoren ginge ein echter Doppelgaenger
+# glatt durch. Vor dem Umstellen des Coordinators muss deshalb entweder
+#   * der vorhandene Bestand auf allen Instanzen gleich sein, oder
+#   * ueberall bei null angefangen werden.
+# Beides ist eine Entscheidung, keine Nebenwirkung -- deshalb steht sie hier
+# und nicht in einem Skriptschritt.
+# Aus aequitas-biometric-beta uebernommen (28.10.2026): dort ist das Repo
+# privat, und im GitHub-Plan gibt es fuer private Repos keine Pflicht-
+# Freigabe der Umgebung `produktion`. Hier (oeffentlich) wartet jeder Lauf
+# auf die Freigabe. Die Images kommen weiter aus dem privaten GHCR-Paket
+# des Biometrie-Repos (Lesezugriff fuer dieses Repo in den Paket-
+# Einstellungen). Inhaltlich unveraendert bis auf den Image-Pfad.
+on:
+  workflow_dispatch:
+    inputs:
+      box:
+        description: "Welche Box"
+        required: true
+        type: choice
+        options: [contabo1]
+      port:
+        description: "Port, auf dem der Dienst intern lauscht"
+        required: false
+        default: "8098"
+      tag:
+        description: "Image-Tag in GHCR (latest, oder ein Commit-SHA)"
+        required: false
+        default: "latest"
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: produktion
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Ziel bestimmen
+        id: ziel
+        # Eingaben ueber env, nie direkt in den Befehl (Injection-Muster).
+        env:
+          BOX: ${{ inputs.box }}
+        run: |
+          set -euo pipefail
+          # C2 (proof2) ist seit dem 03.10.2026 abgeschaltet, seine IP neu vergeben.
+          [ "$BOX" = "contabo1" ] || { echo "::error::unbekannte Box: $BOX"; exit 1; }
+          echo "host=188.172.229.121" >> "$GITHUB_OUTPUT"
+          echo "name=proof1.aequitas.digital"  >> "$GITHUB_OUTPUT"
+
+      # Root-Schluessel fuer ssh-action, mit der Reparatur am Handy eingefuegter
+      # Secrets (scripts/lint_ssh_schluessel.py). RUNNER_TEMP leert GitHub am
+      # Anfang und Ende jedes Jobs.
+      - name: Root-Schluessel bereitlegen
+        env:
+          KEY: ${{ secrets.CONTABO_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s' "$KEY" | perl -0777 -pe 's/\r//g; s/(?:-|\xE2\x80[\x93\x94])+ *(BEGIN|END) OPENSSH PRIVATE KEY *(?:-|\xE2\x80[\x93\x94])+/-----$1 OPENSSH PRIVATE KEY-----/g; unless (/-----BEGIN OPENSSH PRIVATE KEY-----/) { (my $z = $_) =~ s/\s//g; if ($z =~ m|^[A-Za-z0-9+/]+=*$|) { require MIME::Base64; my $d = MIME::Base64::decode_base64($z); if ($d =~ /-----BEGIN OPENSSH PRIVATE KEY-----/) { $_ = $d; } elsif ($d =~ /\Aopenssh-key-v1\x00/) { $_ = qq{-----BEGIN OPENSSH PRIVATE KEY-----\n$z\n-----END OPENSSH PRIVATE KEY-----\n}; } } } s/\s*(-----BEGIN OPENSSH PRIVATE KEY-----)\s*(.*?)\s*(-----END OPENSSH PRIVATE KEY-----)\s*/my ($k, $b, $f) = ($1, $2, $3); $b =~ s|\s||g; $b =~ s|(.{70})|$1\n|g; $b =~ s|\n\z||; "$k\n$b\n$f\n"/se' > "$RUNNER_TEMP/c1_root_key"
+          ssh-keygen -y -f "$RUNNER_TEMP/c1_root_key" >/dev/null 2>&1 || { echo "::error title=CONTABO_SSH_KEY unlesbar::Secret CONTABO_SSH_KEY neu einfuegen (alles von -----BEGIN bis -----END)."; rm -f "$RUNNER_TEMP/c1_root_key"; exit 1; }
+      - name: Ziehen, starten, hinter TLS haengen
+        env:
+          IMAGE: ghcr.io/hanoi96international-gif/aequitas-biometric-beta/matching:${{ inputs.tag }}
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SERVICE_AUTH_TOKEN: ${{ secrets.SERVICE_AUTH_TOKEN }}
+          PORT: ${{ inputs.port }}
+          PUBLIC_NAME: ${{ steps.ziel.outputs.name }}
+          C1_HOST: ${{ steps.ziel.outputs.host }}
+        run: |
+          set -euo pipefail
+          # Statt appleboy/ssh-action (28.10.2026): drone-ssh handelte einen anderen
+          # Host-Schluesseltyp als ed25519 aus und verglich dessen Fingerabdruck mit
+          # dem ed25519-Wert -- "host key fingerprint mismatch", jeder Lauf seit #90
+          # brach ab. Hier nur ed25519, vorher gegen den festen Wert geprueft.
+          ssh-keyscan -t ed25519 "$C1_HOST" 2>/dev/null | { grep -v '^#' || true; } > "$RUNNER_TEMP/kh"
+          [ "$(grep -c . "$RUNNER_TEMP/kh")" = 1 ] || { echo "::error::Host-Schluessel von $C1_HOST: nicht genau eine ed25519-Zeile"; exit 1; }
+          [ "$(ssh-keygen -lf "$RUNNER_TEMP/kh" | awk '{print $2}')" = "SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA" ] || { echo "::error::Host-Schluessel von $C1_HOST passt nicht"; exit 1; }
+          {
+            for v in IMAGE GHCR_USER GHCR_TOKEN SERVICE_AUTH_TOKEN PORT PUBLIC_NAME; do printf 'export %s=%q\n' "$v" "${!v}"; done
+            cat <<'SKRIPT'
+          set -euo pipefail
+
+          if [ -z "${SERVICE_AUTH_TOKEN:-}" ]; then
+            echo "FEHLER: SERVICE_AUTH_TOKEN ist nicht als Repository-Secret hinterlegt."
+            echo "Ohne ihn antwortet der Dienst auf JEDEN geschuetzten Endpunkt mit 503,"
+            echo "und der Coordinator koennte ihn nie ansprechen. Er muss GENAU dem des"
+            echo "Coordinators entsprechen."
+            exit 1
+          fi
+
+          echo "=== Was laeuft hier schon ==="
+          docker ps --format '  {{.Names}}\t{{.Status}}'
+          free -g | awk '/Mem:/ {print "  RAM frei: "$7" GB"}'
+          df -BG --output=avail / | tail -1 | sed 's/^/  Platte frei:/'
+
+          echo "=== Image ziehen (kein Build auf dieser Box) ==="
+          echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+          # Der Logout steht im trap, damit auch ein Abbruch mittendrin keine
+          # Anmeldung auf der Box zuruecklaesst.
+          trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
+          # MIT WIEDERHOLUNG, und das ist nicht Vorsicht, sondern gemessen.
+          #
+          # Das Image ist 5,3 GB, und der Zug von GHCR zur Box brach am
+          # 26.08.2026 zweimal hintereinander mitten im Layer ab:
+          #   failed to copy: read tcp [...] -> [2606:50c0:8000::154]:443:
+          #   read: connection reset by peer
+          # Beide Male ueber IPv6, beide Male an einer anderen Gegenstelle.
+          # Ein einzelner Versuch ist bei dieser Groesse ueber diese Strecke
+          # schlicht zu optimistisch.
+          #
+          # Wiederholen hilft wirklich, statt nur die Wuerfel neu zu werfen:
+          # docker behaelt bereits vollstaendig geladene Layer, jeder Versuch
+          # setzt also weiter oben an. Deshalb wachsende Pausen und nicht
+          # sofort nochmal -- ein Reset kommt selten allein.
+          gezogen=0
+          for versuch in 1 2 3 4 5; do
+            if docker pull "$IMAGE"; then
+              gezogen=1
+              break
+            fi
+            echo "Zug $versuch gescheitert; erneuter Versuch in $((versuch * 10))s"
+            sleep $((versuch * 10))
+          done
+          docker logout ghcr.io >/dev/null 2>&1 || true
+          if [ "$gezogen" -ne 1 ]; then
+            echo "Image liess sich in 5 Versuchen nicht ziehen. Der laufende"
+            echo "Container bleibt unangetastet -- die Box laeuft weiter auf"
+            echo "der bisherigen Fassung."
+            exit 1
+          fi
+
+          # Ab hier mit dem DIGEST weiterarbeiten, nicht mit dem Tag.
+          #
+          # github.sha stand hier zuerst -- und war falsch: der Deploy laeuft
+          # aus einem anderen Commit als der Build. Eine Aenderung nur an
+          # dieser Workflow-Datei loest keinen Image-Build aus, also zeigte
+          # das Tag ins Leere ("not found").
+          #
+          # "latest" allein waere die andere Falle: es wandert, und eine Box,
+          # die es gezogen hat, kann hinterher nicht mehr sagen, WAS sie
+          # faehrt. Der Digest ist unveraenderlich und beantwortet genau das.
+          DIGEST="$(docker inspect --format '{{index .RepoDigests 0}}' "$IMAGE")"
+          echo "  laeuft ab jetzt auf: $DIGEST"
+
+          echo "=== Eigene Geheimnisse dieser Instanz ==="
+          # Absichtlich NICHT vom Railway-Dienst uebernommen: die Instanzen
+          # tauschen keine verschluesselten Daten aus, jede liest nur ihre
+          # eigene Datenbank. Verschiedene Schluessel sind also moeglich --
+          # und besser, weil ein Einbruch bei einer Instanz die anderen nicht
+          # mit aufmacht.
+          #
+          # Auch der Sketch-Seed darf abweichen: der Bit-Abstand wird in eine
+          # geschaetzte Kosinus-Aehnlichkeit zurueckgerechnet, und die ist
+          # unabhaengig davon, WELCHE Zufallshyperebenen benutzt wurden. Zwei
+          # Instanzen mit verschiedenen Seeds kommen zum selben Urteil.
+          ENVFILE=/root/.aequitas-matching.env
+          echo "  [1] pruefe $ENVFILE"
+          # KEIN "if" hier, und das ist kein Stilfrage.
+          #
+          # appleboy/ssh-action mit script_stop bricht bei JEDEM Rueckgabewert
+          # ungleich null ab -- auch bei einer if-BEDINGUNG. Das erklaert jeden
+          # bisherigen Fehlschlag an dieser Stelle:
+          #   [ ! -f DATEI ] auf C1 (Datei da)    -> Bedingung falsch -> Abbruch
+          #   [ -f DATEI ]   auf C1 (Datei da)    -> Bedingung wahr   -> lief
+          #   [ -f DATEI ]   auf C2 (Datei fehlt) -> Bedingung falsch -> Abbruch
+          #
+          # "test ... || { ... }" gibt in beiden Faellen null zurueck: existiert
+          # die Datei, greift die Kurzschluss-Auswertung; existiert sie nicht,
+          # endet der Block mit einem erfolgreichen echo.
+          test -f "$ENVFILE" || {
+            echo "  [2] lege neu an"
+            TEK=$(openssl rand -base64 32)
+            FSS=$(openssl rand -hex 32)
+            echo "TEMPLATE_ENCRYPTION_KEY=$TEK" > "$ENVFILE"
+            echo "FACE_SKETCH_SEED=$FSS" >> "$ENVFILE"
+            echo "  [3] angelegt"
+          }
+          echo "  [3b] Env-Datei steht"
+
+          # Der Token kommt bei JEDEM Lauf aus dem Repository-Secret, damit
+          # eine Aenderung dort auch wirklich ankommt. Die beiden anderen
+          # Werte bleiben stehen -- ein neuer FACE_SKETCH_SEED wuerde jede
+          # gespeicherte Einschreibung unvergleichbar machen.
+          echo "  [4] Token setzen"
+          grep -v "^SERVICE_AUTH_TOKEN=" "$ENVFILE" > "$ENVFILE.neu" || true
+          echo "SERVICE_AUTH_TOKEN=$SERVICE_AUTH_TOKEN" >> "$ENVFILE.neu"
+          mv "$ENVFILE.neu" "$ENVFILE"
+          chmod 600 "$ENVFILE"
+          echo "  [5] Env fertig"
+
+          mkdir -p /root/aequitas-matching-data
+
+          echo "=== Container ersetzen ==="
+          # CHAIN_BASE_URL steht mit im Aufruf: ohne sie liest der Dienst das
+          # Coordinator-Register der Kette nicht und kennt nur
+          # COORDINATOR_PUBLIC_KEYS. Am 28.08.2026 hat dieser Workflow die von
+          # Hand gesetzte Variable beim Neubau still entfernt -- eine
+          # Einstellung, die ein Deploy wegnimmt, ist keine Einstellung.
+          #
+          # Die Erklaerung steht HIER und nicht zwischen den -e Zeilen: eine
+          # Kommentarzeile mitten in einer mit Backslash fortgesetzten Kette
+          # beendet den Befehl. Genau das hat den Dienst auf beiden Boxen
+          # heruntergenommen, weil docker rm davor schon gelaufen war.
+          docker rm -f aequitas-matching >/dev/null 2>&1 || true
+          docker run -d --name aequitas-matching \
+            --network aequitas-net \
+            --restart unless-stopped \
+            --env-file "$ENVFILE" \
+            -e POH_DB_PATH=/data/poh_beta.db \
+            -e ALLOW_REAL_BIOMETRIC_DATA=false \
+            -e CHAIN_BASE_URL=http://aequitas-node:8080 \
+            -e TORCH_NUM_THREADS=4 \
+            -e PORT="$PORT" \
+            -v /root/aequitas-matching-data:/data \
+            "$DIGEST"
+
+          echo "=== Warten, bis er antwortet ==="
+          # Der erste Start laedt die Modelle in den Speicher; 3 Minuten sind
+          # grosszuegig, aber ein zu knappes Fenster meldet einen gesunden
+          # Dienst als kaputt.
+          bereit=0
+          for i in $(seq 1 36); do
+            sleep 5
+            # EINZEILIG. Mehrzeiliger Python-Code in einem YAML-Block
+            # traegt die Einrueckung des Blocks mit, und Python lehnt ein
+            # eingeruecktes "import" auf Modulebene ab. Der Check schlug
+            # deshalb IMMER fehl -- gemeldet als "antwortet nicht", waehrend
+            # der Dienst laut eigenem Log laengst lief.
+            if docker exec aequitas-matching python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:$PORT/health', timeout=3)" >/dev/null 2>&1; then
+              bereit=1
+              echo "  antwortet nach etwa $((i * 5)) s"
+              break
+            fi
+          done
+          if [ "$bereit" -ne 1 ]; then
+            echo "FEHLER: /health antwortet nach 3 Minuten nicht. Log:"
+            docker logs --tail 80 aequitas-matching || true
+            exit 1
+          fi
+
+          # TLS-Route: NICHT hier.
+          #
+          # Sie ist eine einmalige Einrichtung je Box, kein Schritt fuer jeden
+          # Deploy -- und drei Anlaeufe, sie hier zu erledigen, sind an der
+          # Action gescheitert, nicht an der Sache: erst eingebettetes Python
+          # (Einrueckung im YAML-Block), dann ein grep-Muster mit Backslash.
+          # Dieselbe Action war schon ueber ein "!" in einer Dateipruefung
+          # gestolpert. Was sie mit Sonderzeichen macht, ist aus dem Protokoll
+          # nicht ersichtlich.
+          #
+          # Der Block im Caddyfile der Box sieht so aus und bleibt stehen:
+          #
+          #   proofN.aequitas.digital/matching/* {
+          #     uri strip_prefix /matching
+          #     reverse_proxy aequitas-matching:8098
+          #   }
+          #
+          # Caddy nimmt die pfadgenauere Site-Adresse vorrangig, der
+          # vorhandene proof-server-Eintrag bleibt unberuehrt.
+
+          echo "=== Von aussen erreichbar? ==="
+          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 20 "https://$PUBLIC_NAME/matching/health" || echo 000)
+          echo "  https://$PUBLIC_NAME/matching/health -> $code"
+          if [ "$code" = "200" ]; then
+            echo "  erreichbar."
+          else
+            echo "  NOCH NICHT erreichbar -- die TLS-Route fehlt vermutlich"
+            echo "  (einmalige Einrichtung je Box, siehe Kommentar oben)."
+          fi
+
+          echo
+          echo "=== Fertig. Der Coordinator zeigt noch NICHT hierher. ==="
+          echo "Naechster Schritt, bewusst getrennt:"
+          echo "  VALIDATOR_URLS um https://$PUBLIC_NAME/matching erweitern"
+          echo "  QUORUM_SIZE auf (Anzahl // 2) + 1 setzen"
+          echo "Vorher pruefen, dass alle Instanzen denselben Bestand haben --"
+          echo "ein leerer Validator stimmt 'neu' fuer laengst Eingeschriebene."
+          SKRIPT
+          } | timeout 1800 ssh -o BatchMode=yes -o IdentitiesOnly=yes -o HostKeyAlgorithms=ssh-ed25519 \
+              -o UserKnownHostsFile="$RUNNER_TEMP/kh" -o ServerAliveInterval=30 \
+              -i "$RUNNER_TEMP/c1_root_key" root@"$C1_HOST" 'bash -s'

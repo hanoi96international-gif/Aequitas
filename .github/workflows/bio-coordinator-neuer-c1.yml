@@ -1,0 +1,94 @@
+name: Biometrie -- Coordinator auf dem neuen C1 (netcup) -- zweiter Eingang fuer Registrierungen
+# Bisher lief nur der Coordinator auf C2: faellt C2 aus, geht keine
+# Registrierung mehr. Dieser Lauf startet einen ZWEITEN, eigenstaendigen
+# Coordinator auf 188.172.229.121 (docs/EIGENER_COORDINATOR.md):
+#   * eigener COORDINATOR_SIGNING_KEY und WALLET_TAG_KEY, AUF DER BOX erzeugt,
+#     nie ausgegeben (Wiederholung laesst vorhandene Schluessel stehen)
+#   * Vergleichsdienst proof1, eigener Proof-Server. Seit C2 abgeschaltet
+#     ist (03.10.2026), gibt es proof2 nicht mehr. Das Quorum ist NICHT fest
+#     gesetzt: die Mehrheit der bekannten Dienste (validatoren.py), also 1
+#     jetzt und 2, sobald ein zweiter Dienst dazukommt. Solange es 1 ist,
+#     gilt die Tagesgrenze des Einzelbetriebs (einzelbetrieb.py;
+#     Entscheidung des Betreibers vom 04.10.2026).
+#   * Widerspruchsspeicher auf der Platte (/root/coordinator-daten)
+# Er wird hier NICHT an proof1/coordinator gehaengt: erst muss sein
+# oeffentlicher Schluessel eingetragen sein (scripts/coordinator-eintragen.sh,
+# Unterschrift eines registrierten Menschen), sonst lehnen die Dienste ihn ab.
+# Vom Betreiber am 26.09.2026 beauftragt.
+# Aus aequitas-biometric-beta uebernommen (28.10.2026): dort ist das Repo
+# privat, und im GitHub-Plan gibt es fuer private Repos keine Pflicht-
+# Freigabe der Umgebung `produktion`. Hier (oeffentlich) wartet jeder Lauf
+# auf die Freigabe. Die Images kommen weiter aus dem privaten GHCR-Paket
+# des Biometrie-Repos (Lesezugriff fuer dieses Repo in den Paket-
+# Einstellungen). Inhaltlich unveraendert bis auf den Image-Pfad.
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  packages: read
+jobs:
+  ausrollen:
+    runs-on: ubuntu-latest
+    environment: produktion
+    timeout-minutes: 30
+    env:
+      NEU: 188.172.229.121
+    steps:
+      - name: Schluessel und Host-Pruefung
+        env:
+          KEY: ${{ secrets.CONTABO_SSH_KEY }}
+        run: |
+          set -eu
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s' "$KEY" | perl -0777 -pe 's/\r//g; s/(?:-|\xE2\x80[\x93\x94])+ *(BEGIN|END) OPENSSH PRIVATE KEY *(?:-|\xE2\x80[\x93\x94])+/-----$1 OPENSSH PRIVATE KEY-----/g; unless (/-----BEGIN OPENSSH PRIVATE KEY-----/) { (my $z = $_) =~ s/\s//g; if ($z =~ m|^[A-Za-z0-9+/]+=*$|) { require MIME::Base64; my $d = MIME::Base64::decode_base64($z); if ($d =~ /-----BEGIN OPENSSH PRIVATE KEY-----/) { $_ = $d; } elsif ($d =~ /\Aopenssh-key-v1\x00/) { $_ = qq{-----BEGIN OPENSSH PRIVATE KEY-----\n$z\n-----END OPENSSH PRIVATE KEY-----\n}; } } } s/\s*(-----BEGIN OPENSSH PRIVATE KEY-----)\s*(.*?)\s*(-----END OPENSSH PRIVATE KEY-----)\s*/my ($k, $b, $f) = ($1, $2, $3); $b =~ s|\s||g; $b =~ s|(.{70})|$1\n|g; $b =~ s|\n\z||; "$k\n$b\n$f\n"/se' > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -t ed25519 $NEU 2>/dev/null > ~/.ssh/known_hosts
+          ssh-keygen -lf ~/.ssh/known_hosts | awk '{print $2}' | grep -qx 'SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA'
+      - name: Ziehen und starten
+        env:
+          IMAGE: ghcr.io/hanoi96international-gif/aequitas-biometric-beta/coordinator:latest
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          printf 'IMAGE=%q\nGHCR_USER=%q\nGHCR_TOKEN=%q\n' "$IMAGE" "$GHCR_USER" "$GHCR_TOKEN" > vars.sh
+          cat vars.sh - <<'SKRIPT' | ssh -o BatchMode=yes -o ServerAliveInterval=30 root@$NEU 'bash -s'
+          set -euo pipefail
+          echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin >/dev/null
+          trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
+          ok=0; for v in 1 2 3; do docker pull -q "$IMAGE" && { ok=1; break; }; sleep $((v*10)); done
+          docker logout ghcr.io >/dev/null 2>&1 || true
+          [ "$ok" = 1 ] || { echo "Image nicht gezogen"; exit 1; }
+          DIGEST="$(docker inspect --format '{{index .RepoDigests 0}}' "$IMAGE")"
+          echo "Image: $DIGEST"
+          ENVF=/root/.aequitas-coordinator.env
+          umask 077; test -f "$ENVF" || : > "$ENVF"
+          grep -q '^COORDINATOR_SIGNING_KEY=' "$ENVF" || echo "COORDINATOR_SIGNING_KEY=$(openssl rand -hex 32)" >> "$ENVF"
+          grep -q '^WALLET_TAG_KEY=' "$ENVF" || echo "WALLET_TAG_KEY=$(openssl rand -hex 32)" >> "$ENVF"
+          chmod 600 "$ENVF"; umask 022
+          mkdir -p /root/coordinator-daten
+          docker rm -f aequitas-coordinator >/dev/null 2>&1 || true
+          docker run -d --name aequitas-coordinator --network aequitas-net --restart unless-stopped \
+            --env-file "$ENVF" \
+            -e SERVICE_MODE=test \
+            -e VALIDATOR_URLS=https://proof1.aequitas.digital/matching \
+            -e VALIDATOR_ABGEMELDET=https://proof2.aequitas.digital/matching \
+            -e EINZELBETRIEB_TAGESGRENZE=25 \
+            -e EINZELBETRIEB_DB_PATH=/data/einzelbetrieb.db \
+            -e PROOF_SERVER_BASE_URL=http://proof-server:3000 \
+            -e CHAIN_BASE_URL=http://aequitas-node:8080 \
+            -e CAPTURE_WEB_ORIGIN=https://proof1.aequitas.digital \
+            -e SERVE_CAPTURE_WEB=true \
+            -e WIDERSPRUCH_DB_PATH=/data/widersprueche.db \
+            -e PORT=8200 \
+            -v /root/coordinator-daten:/data \
+            --log-opt max-size=10m --log-opt max-file=3 "$DIGEST" >/dev/null
+          for i in $(seq 1 36); do
+            H=$(docker exec aequitas-node wget -qO- -T 5 http://aequitas-coordinator:8200/health 2>/dev/null || true)
+            echo "$H" | grep -q '"status":"ok"' && break; sleep 5
+          done
+          echo "$H" | grep -q '"status":"ok"' || { echo "kein /health -- Log:"; docker logs --tail 40 aequitas-coordinator 2>&1 | grep -viE 'key|token|secret'; exit 1; }
+          echo "health: $(echo "$H" | head -c 400)"
+          echo "$H" | python3 -c "import sys,json; e=json.load(sys.stdin).get('einzelbetrieb') or {}; print('einzelbetrieb', {k: e.get(k) for k in ('aktiv','vergleichsdienste','quorum','tagesgrenze','heute')})"
+          docker exec aequitas-node wget -qO- -T 20 http://aequitas-coordinator:8200/inventory 2>/dev/null \
+            | python3 -c "import sys,json; d=json.load(sys.stdin); b=d.get('bereit_fuer_echtbetrieb',{}); print('attestation_public_key', b.get('attestation_public_key')); print('erreichbar', [ (v['validator_url'], v.get('erreichbar')) for v in d.get('validatoren',[])])"
+          SKRIPT

@@ -1,0 +1,48 @@
+name: Biometrie -- Registrierung -- Protokoll der Koordinatoren und Vergleichsdienste (nur lesen, maskiert)
+# Nur Entscheidungen, Zaehler und Aehnlichkeitswerte. Kennungen, Hashes,
+# Adressen und IPs werden vor der Ausgabe geschwaerzt (ab 6 Hex-Zeichen).
+# Aus aequitas-biometric-beta uebernommen (28.10.2026): dort ist das Repo
+# privat, und im GitHub-Plan gibt es fuer private Repos keine Pflicht-
+# Freigabe der Umgebung `produktion`. Hier (oeffentlich) wartet jeder Lauf
+# auf die Freigabe. Die Images kommen weiter aus dem privaten GHCR-Paket
+# des Biometrie-Repos (Lesezugriff fuer dieses Repo in den Paket-
+# Einstellungen). Inhaltlich unveraendert bis auf den Image-Pfad.
+on:
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  lesen:
+    runs-on: ubuntu-latest
+    environment: produktion
+    timeout-minutes: 10
+    steps:
+      - name: Health beider Koordinatoren
+        run: |
+          for P in proof1; do
+            echo "== $P =="
+            curl -s -m 15 "https://$P.aequitas.digital/coordinator/health" | jq -c '{status, quorum_size, galerie_angleich, nachziehen}' || true
+            curl -s -m 15 "https://$P.aequitas.digital/matching/health" | jq -c '{gallery_test, gallery_real}' || true
+          done
+      - name: Schluessel und Host-Pruefung
+        env:
+          K: ${{ secrets.CONTABO_SSH_KEY }}
+        run: |
+          set -eu
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s' "$K" | perl -0777 -pe 's/\r//g; s/(?:-|\xE2\x80[\x93\x94])+ *(BEGIN|END) OPENSSH PRIVATE KEY *(?:-|\xE2\x80[\x93\x94])+/-----$1 OPENSSH PRIVATE KEY-----/g; unless (/-----BEGIN OPENSSH PRIVATE KEY-----/) { (my $z = $_) =~ s/\s//g; if ($z =~ m|^[A-Za-z0-9+/]+=*$|) { require MIME::Base64; my $d = MIME::Base64::decode_base64($z); if ($d =~ /-----BEGIN OPENSSH PRIVATE KEY-----/) { $_ = $d; } elsif ($d =~ /\Aopenssh-key-v1\x00/) { $_ = qq{-----BEGIN OPENSSH PRIVATE KEY-----\n$z\n-----END OPENSSH PRIVATE KEY-----\n}; } } } s/\s*(-----BEGIN OPENSSH PRIVATE KEY-----)\s*(.*?)\s*(-----END OPENSSH PRIVATE KEY-----)\s*/my ($k, $b, $f) = ($1, $2, $3); $b =~ s|\s||g; $b =~ s|(.{70})|$1\n|g; $b =~ s|\n\z||; "$k\n$b\n$f\n"/se' > ~/.ssh/k && chmod 600 ~/.ssh/k
+          ssh-keyscan -t ed25519 188.172.229.121 2>/dev/null > ~/.ssh/h1
+          ssh-keygen -lf ~/.ssh/h1 | awk '{print $2}' | grep -qx 'SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA'
+          cat ~/.ssh/h1 > ~/.ssh/known_hosts
+      - name: Protokolle seit 09:25 UTC
+        run: |
+          for box in c1:188.172.229.121; do
+            k=${box%%:*}; h=${box#*:}
+            echo "################ $k ################"
+            ssh -i ~/.ssh/k -o BatchMode=yes root@$h 'bash -s' <<'SKRIPT' | sed -E 's/[0-9a-fA-F]{6,}/#/g; s/0x[0-9a-fA-F#…]+/0x…/g; s/W-[0-9A-Za-z]+/W-…/g; s/([0-9]{1,3}\.){3}[0-9]{1,3}/ip/g' | cut -c1-300
+          for c in aequitas-coordinator aequitas-matching; do
+            echo "--- $c ---"
+            docker logs --since 2026-09-27T09:44:00Z "$c" 2>&1 | grep -vE 'GET /health|GET /inventory|GET /matching/health' | grep -iE 'QUORUM|GALERIE|MATCH|decision|quorum|register|commit|propose|error|Traceback|Exception|fehl|refus|abgewiesen|attestation' | tail -40
+          done
+          SKRIPT
+          done

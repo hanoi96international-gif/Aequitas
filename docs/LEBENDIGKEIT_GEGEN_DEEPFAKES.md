@@ -104,6 +104,31 @@ DSGVO-Bewertung (weiteres Merkmal nach Art. 9).
 | 3 | Zweite Lebendigkeitspruefung ab Tag 7, **an dieselbe Person gebunden** — **✅ 24.09.2026, schlafend wie WP 2**. Coordinator `POST /erneuern` (`coordinator/app/erneuerung.py`): Wallet-Signatur (`aequitas-lebendigkeit-erneuern-v1\|wallet\|nonce`), Kette nennt Nullifier + Registrierzeit, Quorum muss das Gesicht als bekannt erkennen **und** Poseidon(getroffene bio) muss der Nullifier dieser Wallet sein — sonst `anderes_gesicht`. Ohne diese Bindung bezahlte eine Farm fuer Tag 7 einen echten Menschen fuer tausend Konten. Bescheinigung `aequitas-liveness-renewal-v1\|wallet\|issued_at`. Kette nimmt vor Tag 7 nicht an (409 + `frueh_ab`). App: Identity-Karte „Rest deines Startzuschusses“, `biometric-capture?zweck=erneuern`, 12 Sprachen | aequitas-app, biometric-beta, aequitas-chain | erledigt |
 | 4 | Schwellen aus echten Aufnahmen setzen, dann Klassen scharf schalten | biometric-beta | nach ≥ 20 echten Registrierungen |
 
+**Nachtrag 28.10.2026 (biometric #94).** Gefunden: „nicht geprüft zählt
+neutral“ galt auch für Signale, die der Server selbst angefordert hatte. Eine
+veränderte App ließ die Blitzfolge weg — dann war die Aufnahme mit der
+Kopfdreh-Aufgabe allein **grün**, genau der Prüfung, die ein Echtzeit-Deepfake
+besteht. Jetzt zählt ein angefordertes Signal (Aufgabe, Blitz), das kein
+Validator prüfen konnte, mit 0 und als Risiko `verweigert:<signal>`; nicht
+angeforderte (Gyroskop, Puls) bleiben neutral. Und der Messstand für WP 4
+liegt jetzt dauerhaft im Coordinator (`/data/lebendigkeit.db`, nur Tag,
+Klasse und Zahlen, höchstens 10.000 Einträge) statt im Speicher, den jeder
+Deploy löschte. Lesen: `https://proof1.aequitas.digital/coordinator/health`
+→ `lebendigkeit.korpus` (Anzahl, Klassen, Quantile von L, R und je Signal).
+
+**WP 4 — so werden die Schwellen gesetzt:**
+1. Echte Aufnahmen sammeln: Registrierungen der Beta, dazu der
+   Zwei-Personen-Test (`DOPPELREGISTRIERUNG_TEST.md`) — Ziel ≥ 20.
+2. Angriffsaufnahmen zum Vergleich, mit einem zweiten Gerät: (a) Foto auf
+   einem Bildschirm vor die Kamera, (b) aufgezeichnetes Video vom Bildschirm,
+   (c) wenn verfügbar eine Face-Swap-App. Jede solche Aufnahme muss **gelb oder
+   rot** landen; `lebendigkeit.letzte` zeigt Klasse, L, R und Risiken.
+3. Aus `korpus` die Schwellen ablesen: `gruen_L` unter das 5-%-Quantil der
+   echten Aufnahmen, `rot_L` über das höchste L der Angriffe. Überlappen sich
+   echte und Angriffe, wird **nicht** scharf geschaltet — dann zuerst das
+   schwache Signal verbessern (meist Blitz bei schlechtem Licht).
+4. Erst dann in der Reihenfolge unten scharf schalten.
+
 **Scharfschalten (nach WP 4), in dieser Reihenfolge:** (1) `stagedGrantActivationUnix` auf ein Datum in der
 Zukunft setzen und beide Knoten ausrollen; (2) am Tag danach `LEBENDIGKEIT_VERBINDLICH=true` an beiden
 Coordinatoren — ab da tragen gelbe Registrierungen die Klasse; (3) App mit Zweitprüfung (WP 3) muss vorher

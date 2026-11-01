@@ -157,6 +157,38 @@ mit Freigabe.
 5. Ein Repository-Secret `CONTABO_SSH_KEY` in Aequitas, falls noch vorhanden,
    löschen.
 
+## Private Repos: Server-Workflows liegen hier (seit 28.10.2026)
+
+In **privaten** Repos (aequitas-biometric-beta, aequitas-proof-server) bietet
+GitHub die Pflicht-Prüfer für eine Umgebung nur mit Enterprise an — auch mit
+Pro fehlt dort der Abschnitt „Deployment protection rules“. Läufe dort
+warteten deshalb nie auf eine Freigabe (Coordinator-Deploy am 28.10.).
+
+Darum liegen alle Workflows, die auf C1 zugreifen, hier im öffentlichen Repo,
+in der Umgebung `produktion`:
+
+| hier | vorher |
+|---|---|
+| `bio-*.yml` (Coordinator-/Vergleichsdienst-Deploy, Schlüsselwechsel, Logs, Einrichtung) | aequitas-biometric-beta, gleicher Name ohne `bio-` |
+| `proof-server-ausrollen.yml` (Image aus GHCR, `deploy/proof-server/proof-ausrollen.sh`) | aequitas-proof-server `deploy.yml` (Quelltext hochladen, auf C1 bauen) |
+| `proof-einzelbetrieb-c1.yml`, `proof-schluessel-festlegen.yml` | aequitas-proof-server, ohne `proof-` |
+
+Die privaten Repos bauen nur noch Images (GHCR) und brauchen keinen
+Server-Schlüssel. Damit dieses Repo die privaten Images ziehen darf, einmal je
+Paket (`coordinator`, `matching` in aequitas-biometric-beta, `proof-server`
+in aequitas-proof-server): Paket öffnen → **Package settings** → **Manage
+Actions access** → **Add repository** → `Aequitas`, Rolle **Read**.
+
+**Abgeschlossen am 29.10.2026.** Jeder neue Ablauf ist von hier aus echt
+gelaufen: Proof-Server aus GHCR ausgerollt (Image `8b9387e4`), Coordinator und
+Vergleichsdienst aus GHCR neu ausgerollt (Zugriff auf alle drei Pakete
+bestätigt), Protokolle, Schlüssel anzeigen, Einzelbetrieb, Schlüssellisten,
+Indexumstellung und Probeabgleich. Danach wurden die alten Workflows entfernt
+(aequitas-biometric-beta #96, aequitas-proof-server #30). In beiden privaten
+Repos steht kein Server-Schlüssel mehr, weder als Repository- noch als
+Umgebungs-Secret (Betreiber, 29.10.). Im Biometrie-Repo bleibt nur
+`SERVICE_AUTH_TOKEN`.
+
 ## Offen
 
 - `Railway`: Die Railway-Instanz ist seit 14.09. abgeschaltet. Wird der Token nicht mehr

@@ -1,0 +1,154 @@
+name: Biometrie -- Vergleichsdienst auf dem neuen C1 (netcup) -- Quorum wieder herstellen
+# Der Coordinator (C2) verlangt Quorum 2 aus proof1 + proof2. proof1 zeigt
+# seit dem 26.09.2026 per DNS auf den neuen C1 (188.172.229.121), dort lief
+# aber kein Vergleichsdienst -- keine Registrierung war moeglich.
+#
+# Wie deploy-validator-to-box.yml, nur fuer die neue Box:
+#   * Image aus GHCR (kein Build auf der Box), Anmeldung nur fuer diesen Lauf
+#   * eigene Geheimnisse, AUF DER BOX erzeugt, nie ausgegeben
+#     (TEMPLATE_ENCRYPTION_KEY, FACE_SKETCH_SEED, VALIDATOR_SIGNING_KEY)
+#   * Coordinator-Pflicht, OEFFENTLICHE Schluesselliste: nur der Coordinator
+#     dieses C1 (C2 ist seit 03.10.2026 abgeschaltet)
+#   * Caddy-Route proof1.aequitas.digital/matching/* -> aequitas-matching:8098
+#
+# LEERER BESTAND: der neue Dienst kennt niemanden. Das ist hier die sichere
+# Richtung -- bei Quorum 2 aus 2 muss auch C2 "neu" sagen, und C2 kennt den
+# bisherigen Bestand. Neue Einschreibungen schreibt der Coordinator in beide.
+# Vom Betreiber am 26.09.2026 freigegeben.
+# Aus aequitas-biometric-beta uebernommen (28.10.2026): dort ist das Repo
+# privat, und im GitHub-Plan gibt es fuer private Repos keine Pflicht-
+# Freigabe der Umgebung `produktion`. Hier (oeffentlich) wartet jeder Lauf
+# auf die Freigabe. Die Images kommen weiter aus dem privaten GHCR-Paket
+# des Biometrie-Repos (Lesezugriff fuer dieses Repo in den Paket-
+# Einstellungen). Inhaltlich unveraendert bis auf den Image-Pfad.
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  packages: read
+jobs:
+  ausrollen:
+    runs-on: ubuntu-latest
+    environment: produktion
+    timeout-minutes: 45
+    env:
+      NEU: 188.172.229.121
+    steps:
+      - name: Schluessel
+        env:
+          KEY: ${{ secrets.CONTABO_SSH_KEY }}
+        run: |
+          set -eu
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          # Mit der Reparatur am Handy eingefuegter Secrets
+          # (scripts/lint_ssh_schluessel.py). Frueher stand hier zusaetzlich
+          # BOX_SSH_KEY -- das war der alte Root-Schluessel von C1 (aequitas-
+          # claude-code), seit dem Tausch am 25.10.2026 nicht mehr gueltig.
+          printf '%s' "$KEY" | perl -0777 -pe 's/\r//g; s/(?:-|\xE2\x80[\x93\x94])+ *(BEGIN|END) OPENSSH PRIVATE KEY *(?:-|\xE2\x80[\x93\x94])+/-----$1 OPENSSH PRIVATE KEY-----/g; unless (/-----BEGIN OPENSSH PRIVATE KEY-----/) { (my $z = $_) =~ s/\s//g; if ($z =~ m|^[A-Za-z0-9+/]+=*$|) { require MIME::Base64; my $d = MIME::Base64::decode_base64($z); if ($d =~ /-----BEGIN OPENSSH PRIVATE KEY-----/) { $_ = $d; } elsif ($d =~ /\Aopenssh-key-v1\x00/) { $_ = qq{-----BEGIN OPENSSH PRIVATE KEY-----\n$z\n-----END OPENSSH PRIVATE KEY-----\n}; } } } s/\s*(-----BEGIN OPENSSH PRIVATE KEY-----)\s*(.*?)\s*(-----END OPENSSH PRIVATE KEY-----)\s*/my ($k, $b, $f) = ($1, $2, $3); $b =~ s|\s||g; $b =~ s|(.{70})|$1\n|g; $b =~ s|\n\z||; "$k\n$b\n$f\n"/se' > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          if ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o ConnectTimeout=20 root@$NEU true 2>/dev/null; then
+            echo "Anmeldung klappt"; exit 0
+          fi
+          # Oeffentlicher Teil (nicht geheim) -- er gehoert auf der neuen Box in
+          # authorized_keys (Aequitas-Repo, c1-schluessel-eintragen.yml).
+          echo "CONTABO_SSH_KEY oeffentlich: $(ssh-keygen -y -f ~/.ssh/id_ed25519 2>/dev/null || echo unlesbar)"
+          echo "::error::CONTABO_SSH_KEY dieses Repos wird vom neuen Server nicht angenommen."
+          exit 1
+      - name: Ziehen, starten, Route
+        env:
+          IMAGE: ghcr.io/hanoi96international-gif/aequitas-biometric-beta/matching:latest
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SERVICE_AUTH_TOKEN: ${{ secrets.SERVICE_AUTH_TOKEN }}
+        run: |
+          set -eu
+          [ -n "$SERVICE_AUTH_TOKEN" ] || { echo "::error::SERVICE_AUTH_TOKEN fehlt"; exit 1; }
+          # Geheimnisse gehen ueber stdin in eine Datei, nicht in die Kommandozeile.
+          printf 'IMAGE=%q\nGHCR_USER=%q\nGHCR_TOKEN=%q\nSERVICE_AUTH_TOKEN=%q\n' \
+            "$IMAGE" "$GHCR_USER" "$GHCR_TOKEN" "$SERVICE_AUTH_TOKEN" > vars.sh
+          cat vars.sh - <<'SKRIPT' | ssh -o BatchMode=yes -o ServerAliveInterval=30 root@$NEU 'bash -s'
+          set -euo pipefail
+          echo "=== Box ==="; docker ps --format '  {{.Names}}\t{{.Status}}'; free -g | awk '/Mem:/ {print "  RAM frei: "$7" GB"}'
+          echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin >/dev/null
+          trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
+          ok=0
+          for v in 1 2 3 4 5; do docker pull -q "$IMAGE" && { ok=1; break; }; echo "Zug $v gescheitert"; sleep $((v*10)); done
+          docker logout ghcr.io >/dev/null 2>&1 || true
+          [ "$ok" = 1 ] || { echo "Image nicht gezogen"; exit 1; }
+          DIGEST="$(docker inspect --format '{{index .RepoDigests 0}}' "$IMAGE")"
+          echo "  Image: $DIGEST"
+
+          ENVFILE=/root/.aequitas-matching.env
+          umask 077
+          test -f "$ENVFILE" || : > "$ENVFILE"
+          grep -q '^TEMPLATE_ENCRYPTION_KEY=' "$ENVFILE" || echo "TEMPLATE_ENCRYPTION_KEY=$(openssl rand -base64 32)" >> "$ENVFILE"
+          grep -q '^FACE_SKETCH_SEED=' "$ENVFILE" || echo "FACE_SKETCH_SEED=$(openssl rand -hex 32)" >> "$ENVFILE"
+          # Bezeugungsschluessel AUF DIESER BOX (BEZEUGUNGS_QUORUM.md, Schritt 1).
+          grep -q '^VALIDATOR_SIGNING_KEY=' "$ENVFILE" || echo "VALIDATOR_SIGNING_KEY=$(openssl rand -hex 32)" >> "$ENVFILE"
+          sed -i '/^SERVICE_AUTH_TOKEN=/d;/^REQUIRE_COORDINATOR_AUTH=/d;/^COORDINATOR_PUBLIC_KEYS=/d' "$ENVFILE"
+          {
+            echo "SERVICE_AUTH_TOKEN=$SERVICE_AUTH_TOKEN"
+            echo "REQUIRE_COORDINATOR_AUTH=true"
+            # Genau EIN oeffentlicher Schluessel: der Coordinator auf diesem C1
+            # (d3c46a77..., am 16.10.2026 von dessen /inventory gelesen; derselbe,
+            # den der Proof-Server als einzige coordinator_kennungen fuehrt).
+            # Ohne ihn brach dieser Workflow fail-closed ab (BETA_BEREITSCHAFT.md,
+            # Betreiber Punkt 3).
+            # Die drei Schluessel aus der C2-Zeit (22eb16f4..., ac9c5052...,
+            # 1f14063c...) sind am 16.10.2026 entfernt: ihre Coordinatoren liefen
+            # auf dem alten Contabo-C1 (aus seit 24.09.2026) und auf C2 (aus seit
+            # 03.10.2026). Wer ihre privaten Teile noch hat, durfte hier sonst
+            # /propose, /commit, /access, /vouch und Loeschungen.
+            echo "COORDINATOR_PUBLIC_KEYS=d3c46a772f2c40e533f6abd5781d0c39cdcda9ba3df63e909ebd729d2e2aebbf"
+          } >> "$ENVFILE"
+          chmod 600 "$ENVFILE"; umask 022
+          mkdir -p /root/aequitas-matching-data
+
+          # Sperre VOR dem Tausch (Pruefung von #44, HOCH): seit 14.10.2026
+          # zaehlt das Coordinator-Register der Kette nur mit
+          # COORDINATOREN_AUS_KETTE=an. Laeuft hier ein Coordinator, dessen
+          # Schluessel nur im Register steht, wiese der neue Dienst jede
+          # Einschreibung ab. Dann lieber den alten Dienst stehen lassen.
+          if docker ps --format '{{.Names}}' | grep -qx aequitas-coordinator; then
+            CKEY="$(docker exec aequitas-node wget -qO- -T 20 http://aequitas-coordinator:8200/inventory 2>/dev/null \
+              | python3 -c "import sys,json; print(((json.load(sys.stdin).get('bereit_fuer_echtbetrieb') or {}).get('attestation_public_key') or '').strip().lower())" 2>/dev/null || true)"
+            LISTE="$(grep '^COORDINATOR_PUBLIC_KEYS=' "$ENVFILE" | tail -1 | cut -d= -f2- | tr 'A-F' 'a-f')"
+            if [ -z "$CKEY" ]; then
+              echo "::error::Schluessel des Coordinators auf dieser Box nicht lesbar -- Abbruch, der alte Vergleichsdienst laeuft weiter"; exit 1
+            fi
+            case ",$LISTE," in
+              *",$CKEY,"*) echo "  Coordinator-Schluessel steht in COORDINATOR_PUBLIC_KEYS" ;;
+              *) echo "::error::Der Coordinator dieser Box ($CKEY) steht nicht in COORDINATOR_PUBLIC_KEYS -- erst in diesen Workflow eintragen. Abbruch, der alte Vergleichsdienst laeuft weiter"; exit 1 ;;
+            esac
+          fi
+
+          docker rm -f aequitas-matching >/dev/null 2>&1 || true
+          docker run -d --name aequitas-matching --network aequitas-net --restart unless-stopped \
+            --env-file "$ENVFILE" -e POH_DB_PATH=/data/poh_beta.db -e ALLOW_REAL_BIOMETRIC_DATA=false \
+            -e CHAIN_BASE_URL=http://aequitas-node:8080 -e TORCH_NUM_THREADS=4 -e PORT=8098 \
+            --log-opt max-size=10m --log-opt max-file=3 \
+            -v /root/aequitas-matching-data:/data "$DIGEST" >/dev/null
+          bereit=0
+          for i in $(seq 1 60); do
+            sleep 5
+            if docker exec aequitas-matching python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8098/health', timeout=3)" >/dev/null 2>&1; then bereit=1; echo "  antwortet nach $((i*5)) s"; break; fi
+          done
+          [ "$bereit" = 1 ] || { echo "kein /health -- Log:"; docker logs --tail 40 aequitas-matching 2>&1 | grep -viE 'key|token|secret'; exit 1; }
+
+          echo "=== Caddy: proof1-Route ==="
+          CF=/root/caddy/Caddyfile
+          cp -a "$CF" "$CF.bak-$(date +%s)"
+          if ! grep -q 'proof1.aequitas.digital' "$CF"; then
+            printf '%s\n' '' \
+              'proof1.aequitas.digital/matching {' '	redir /matching/health permanent' '}' \
+              'proof1.aequitas.digital/matching/* {' '	uri strip_prefix /matching' '	reverse_proxy aequitas-matching:8098' '}' >> "$CF"
+          fi
+          docker exec aequitas-caddy caddy validate --config /etc/caddy/Caddyfile >/dev/null
+          docker exec aequitas-caddy caddy reload --config /etc/caddy/Caddyfile
+          for i in $(seq 1 24); do
+            c=$(curl -s -o /dev/null -w '%{http_code}' -m 10 https://proof1.aequitas.digital/matching/health || echo 000)
+            [ "$c" = 200 ] && break; sleep 5
+          done
+          echo "  https://proof1.aequitas.digital/matching/health -> $c"
+          curl -s -m 10 https://proof1.aequitas.digital/matching/health | head -c 800; echo
+          [ "$c" = 200 ]
+          SKRIPT
