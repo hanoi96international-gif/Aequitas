@@ -1,0 +1,113 @@
+name: Wiederherstellung ueben (Sicherung von C1 auf fremder Maschine)
+# Eine Sicherung, die nie zurueckgespielt wurde, ist eine Datei.
+#
+# backup-ledger.yml prueft jede Nacht auf C1 selbst, dass sich der Dump in
+# eine Wegwerf-Datenbank laden laesst. Das beweist nicht, was im Ernstfall
+# zaehlt: C1 ist weg, und auf einer FREMDEN Maschine soll aus der Kopie ausser
+# Haus (dem Artefakt) wieder ein Knoten werden. Diese Uebung tut genau das:
+#
+#   1. die neueste Ledger-Sicherung (Artefakt ledger-c1-*) holen -- hoechstens
+#      48 h alt, sonst rot (dann laeuft die Sicherung selbst nicht);
+#   2. in ein frisches PostgreSQL 16 zurueckspielen (pg_restore derselben
+#      Hauptversion wie auf C1);
+#   3. den Zustand ueber denselben Ladeweg wie aequitasd laden
+#      (TestWiederherstellung_Sicherung): Menschen da, Geldmenge geht auf,
+#      StateRoot berechenbar.
+#
+# Kein Server-Zugang, kein Geheimnis ausser dem GITHUB_TOKEN dieses Laufs
+# (nur actions: read, um das Artefakt zu holen). Das Artefakt enthaelt keine
+# biometrischen Tabellenzeilen (deploy/backup-ledger.sh). Die Biometrie-
+# Sicherung ist mit age verschluesselt; der private Schluessel liegt offline
+# beim Betreiber -- deren Uebung steht in docs/BIOMETRIE_SICHERUNG.md.
+on:
+  schedule:
+    # Sonntags 05:23 UTC: nach der Sicherung um 03:17, ausserhalb der Runde.
+    - cron: "23 5 * * 0"
+  workflow_dispatch: {}
+  # Wer die Uebung selbst aendert, sieht sie im PR laufen (kein Geheimnis).
+  pull_request:
+    paths:
+      - .github/workflows/wiederherstellung-ueben.yml
+      - x/humanity/keeper/wiederherstellung_test.go
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: wiederherstellung-ueben
+  cancel-in-progress: false
+jobs:
+  ueben:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: wiederherstellung
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+        ports:
+          - 5432:5432
+    env:
+      DATABASE_URL: "postgres://postgres:postgres@localhost:5432/wiederherstellung?sslmode=disable"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Neueste Sicherung holen
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          api() { curl -sS --fail --max-time 60 -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "$@"; }
+          api "https://api.github.com/repos/$REPO/actions/artifacts?per_page=100" > artefakte.json
+          jq -r '[.artifacts[] | select((.name | test("^ledger-c1-[0-9]+$")) and (.expired | not))]
+                 | sort_by(.created_at) | last | "\(.id) \(.created_at) \(.size_in_bytes) \(.name)"' artefakte.json > wahl.txt
+          read -r ID ERSTELLT GROESSE NAME < wahl.txt
+          [ "$ID" != "null" ] && [ -n "$ID" ] || { echo "::error::keine Ledger-Sicherung gefunden"; exit 1; }
+          case "$ID$GROESSE" in *[!0-9]*) echo "::error::unerwartete Antwort der API"; exit 1;; esac
+          ALTER=$(( $(date +%s) - $(date -d "$ERSTELLT" +%s) ))
+          echo "Sicherung: $NAME vom $ERSTELLT ($GROESSE Byte, $((ALTER / 3600)) h alt)"
+          [ "$ALTER" -le $((48 * 3600)) ] || { echo "::error::neueste Sicherung ist $((ALTER / 3600)) h alt -- backup-ledger.yml pruefen"; exit 1; }
+          [ "$GROESSE" -le $((600 * 1024 * 1024)) ] || { echo "::error::Sicherung groesser als 600 MiB"; exit 1; }
+          mkdir -p sicherung
+          # Die API antwortet mit einer Weiterleitung auf einen kurzlebigen
+          # Speicher-Link. Der Token geht nur an die API, nie an das Ziel der
+          # Weiterleitung (curl -L gaebe -H-Kopfzeilen dorthin weiter).
+          ZIEL=$(curl -sS --max-time 60 -o /dev/null -w '%{redirect_url}' \
+            -H "Authorization: Bearer $GH_TOKEN" "https://api.github.com/repos/$REPO/actions/artifacts/$ID/zip")
+          case "$ZIEL" in https://*) ;; *) echo "::error::keine Download-Adresse fuer das Artefakt"; exit 1;; esac
+          curl -sS --fail --proto '=https' --max-time 300 --max-filesize $((700 * 1024 * 1024)) \
+            -o sicherung/s.zip "$ZIEL"
+          unzip -q -o sicherung/s.zip -d sicherung
+          [ -f sicherung/c1-ledger.dump ] || { echo "::error::c1-ledger.dump fehlt im Artefakt"; exit 1; }
+          [ "$(head -c 5 sicherung/c1-ledger.dump)" = "PGDMP" ] || { echo "::error::kein pg_dump"; exit 1; }
+          { echo "### Wiederherstellung"; echo ""; echo "Sicherung \`$NAME\` vom $ERSTELLT ($((ALTER / 3600)) h alt, $GROESSE Byte)"; } >> "$GITHUB_STEP_SUMMARY"
+      - name: Zurueckspielen (pg_restore 16 im Datenbank-Container)
+        env:
+          PG_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          set -euo pipefail
+          docker exec -i "$PG_CONTAINER" pg_restore --no-owner --no-acl --exit-on-error \
+            -U postgres -d wiederherstellung < sicherung/c1-ledger.dump
+          docker exec "$PG_CONTAINER" psql -U postgres -d wiederherstellung -t -A -c \
+            "SELECT 'konten=' || count(*) || ' menschen=' || count(*) FILTER (WHERE is_human) FROM chain_accounts" \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Zustand laden wie ein neuer Knoten
+        env:
+          AEQUITAS_WIEDERHERSTELLUNG: "1"
+          AEQUITAS_WIEDERHERSTELLUNG_MENSCHEN: "1"
+        run: |
+          set -euo pipefail
+          go test ./x/humanity/keeper -run '^TestWiederherstellung_Sicherung$' -count=1 -v 2>&1 | tee test.log
+          grep -q -- '--- PASS: TestWiederherstellung_Sicherung' test.log
+          { echo ""; grep -oE 'WIEDERHERGESTELLT .*' test.log; } >> "$GITHUB_STEP_SUMMARY"
+      - name: Aufraeumen
+        if: always()
+        run: rm -rf sicherung artefakte.json wahl.txt
