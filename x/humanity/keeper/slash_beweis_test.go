@@ -3,6 +3,7 @@ package keeper
 import (
 	"crypto/ecdsa"
 	"encoding/hex"
+	"math"
 	"strings"
 	"testing"
 
@@ -147,7 +148,7 @@ func TestSlashBeweis_Missbrauch(t *testing.T) {
 func TestSlashBeweis_StrengLehntAb(t *testing.T) {
 	_, a, b := slashFall(t)
 	nachrechnenStrengOverride.Store(1)
-	t.Cleanup(func() { nachrechnenStrengOverride.Store(0) })
+	t.Cleanup(func() { nachrechnenStrengOverride.Store(math.MaxInt64) })
 	tx := slashTx("0x00000000000000000000000000000000000000aa", a, b, nil)
 	cs := newTestState()
 	cs.mu.Lock()

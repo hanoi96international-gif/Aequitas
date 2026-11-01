@@ -1,6 +1,7 @@
 package keeper
 
 import (
+	"math"
 	"testing"
 )
 
@@ -158,7 +159,7 @@ func TestNachrechnenVorbehalt_StrengLehntAb(t *testing.T) {
 	c, ehrlich := vorbehaltAusfuehrungFuerTest(t,
 		Transaction{Type: "swap_aeq_tusd", Wallet: "0xvx", Amount: 1_000, TxHash: "0xvbn3"}, 0)
 	nachrechnenStrengOverride.Store(1)
-	t.Cleanup(func() { nachrechnenStrengOverride.Store(0) })
+	t.Cleanup(func() { nachrechnenStrengOverride.Store(math.MaxInt64) })
 
 	erfunden := kopieMitVorbehalt(ehrlich)
 	erfunden.AmountOut *= 10

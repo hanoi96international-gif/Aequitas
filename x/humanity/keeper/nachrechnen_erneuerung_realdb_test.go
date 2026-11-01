@@ -250,7 +250,7 @@ func TestErneuerung_VorDerAktivierungUngeprueft_RealDB(t *testing.T) {
 func TestErneuerung_StrengLehntErfundeneAb_RealDB(t *testing.T) {
 	f := neuerErneuerungsFall(t, 10)
 	nachrechnenStrengOverride.Store(1)
-	t.Cleanup(func() { nachrechnenStrengOverride.Store(0) })
+	t.Cleanup(func() { nachrechnenStrengOverride.Store(math.MaxInt64) })
 	block := func(tx Transaction) bool {
 		f.n++
 		b := &Block{Height: int64(f.n), Hash: fmt.Sprintf("erneuerung-%s-%d", t.Name(), f.n), Timestamp: f.jetzt, Transactions: []Transaction{tx}}
