@@ -204,6 +204,20 @@ jobs:
   # tatsaechlich erreichbar ist -- ein roter Lauf ist also ein echter Befund,
   # kein Rauschen. Geprueft wird mit der Go-Version aus go.mod, also mit der,
   # die auch das Image baut (Dockerfile: golang:<go.mod>-alpine).
+  # Gleiche Rechnung auf jeder CPU: kein fusioniertes Multiplizieren-Addieren
+  # im Ketten-Code (arm64, riscv64, ppc64le, s390x). Sonst rechnete ein
+  # Validator auf ARM Geldbetraege im letzten Bit anders als C1, und das
+  # strenge Nachrechnen spaltete die Kette. Kopf von scripts/lint_fma.sh.
+  architektur:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - run: bash scripts/lint_fma.sh --selbsttest
+      - run: bash scripts/lint_fma.sh
+
   schwachstellen:
     runs-on: ubuntu-latest
     steps:

@@ -164,7 +164,7 @@ func (p *probenStand) faellig(addr string, jetzt time.Time, r *rand.Rand) bool {
 	if ok && jetzt.Before(t) {
 		return false
 	}
-	abstand := time.Duration(float64(probeAbstand) * (0.5 + r.Float64()))
+	abstand := time.Duration(float64(probeAbstand) * (0.5 + float64(r.Float64())))
 	if !ok {
 		abstand = time.Duration(float64(abstand) * r.Float64()) // erste Probe bald
 	}

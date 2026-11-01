@@ -169,7 +169,7 @@ func (p ModellParameter) gebuehr(betrag float64) float64 {
 }
 
 func (p ModellParameter) menschUmlauf(stand float64) float64 {
-	return math.Max(0, stand-p.SparFreibetrag) * p.UmlaufMonat
+	return float64(math.Max(0, stand-p.SparFreibetrag) * p.UmlaufMonat)
 }
 
 func (p ModellParameter) liegegeld(stand, umsatz float64) float64 {
@@ -177,7 +177,7 @@ func (p ModellParameter) liegegeld(stand, umsatz float64) float64 {
 	stufe2 := math.Max(p.Sockel, p.UmsatzStufe2Faktor*umsatz)
 	mittel := math.Max(0, math.Min(stand, stufe2)-frei)
 	hoch := math.Max(0, stand-stufe2)
-	return mittel*p.LiegeRate1Monat + hoch*p.LiegeRate2Monat
+	return float64(mittel*p.LiegeRate1Monat) + float64(hoch*p.LiegeRate2Monat)
 }
 
 // liegegeldWieMensch: das erste Unternehmen einer Gruenderin zahlt nie mehr,
@@ -185,7 +185,7 @@ func (p ModellParameter) liegegeld(stand, umsatz float64) float64 {
 func (p ModellParameter) liegegeldWieMensch(stand, umsatz, gruender float64) float64 {
 	normal := p.liegegeld(stand, umsatz)
 	g := math.Max(0, gruender)
-	platz := math.Max(0, p.FairerAnteil*p.GrenzeFaktor-g)
+	platz := math.Max(0, float64(p.FairerAnteil*p.GrenzeFaktor)-g)
 	unten := math.Min(stand, platz)
 	wieMensch := p.menschUmlauf(g+unten) - p.menschUmlauf(g) + p.liegegeld(stand, umsatz) - p.liegegeld(unten, umsatz)
 	return math.Min(normal, wieMensch)
@@ -195,7 +195,7 @@ func (p ModellParameter) ausstieg(betrag, frei float64) float64 {
 	return round6(math.Max(0, betrag-frei) * p.AusstiegBps / 10_000)
 }
 
-func (p ModellParameter) grenze() float64 { return p.GrenzeFaktor * p.Durchschnitt }
+func (p ModellParameter) grenze() float64 { return float64(p.GrenzeFaktor * p.Durchschnitt) }
 
 // anrechenbarerUmsatz je Monat (monatsUmsatzLocked, vereinfacht auf Monate).
 func (p ModellParameter) anrechenbarerUmsatz(a ModellAkteur) float64 {

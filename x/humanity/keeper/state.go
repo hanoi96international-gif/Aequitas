@@ -4466,7 +4466,7 @@ func (cs *ChainState) distributeUBIPoolSammelndLocked(ctx context.Context, verte
 	if zufluss < 0 {
 		zufluss = 0
 	}
-	poolAcc.Balance = NewDecimal(neuerTopfstand(total, share*float64(len(humanAddrs)), verteiltAm) + zufluss)
+	poolAcc.Balance = NewDecimal(neuerTopfstand(total, float64(share*float64(len(humanAddrs))), verteiltAm) + zufluss)
 	if err := cs.saveAccountToDBCtx(ctx, poolAcc); err != nil {
 		return nil, fmt.Errorf("could not settle UBI pool: %w", err)
 	}
@@ -4676,7 +4676,7 @@ func (cs *ChainState) enforceWealthCapLockedCtx(ctx context.Context, acc *Accoun
 		return nil // no meaningful average yet (e.g. only one human registered so far)
 	}
 	multiplier := cs.bootstrapMultiplierLocked()
-	wealthCapAmt := avg * multiplier
+	wealthCapAmt := float64(avg * multiplier)
 	// The cap is on WEALTH, so it counts LP shares too.
 	//
 	// FIX (2026-08-20): this read acc.Balance alone, so the entire mechanism was
@@ -7147,8 +7147,8 @@ func (cs *ChainState) addLiquidityLocked(ctx context.Context, address string, am
 	// instantly shift the price, which is the same rule real AMMs enforce.
 	var mintedShares float64
 	if cs.pool.ReserveAEQ > 0 && cs.pool.ReserveTUSD > 0 {
-		expectedTUSD := amountAEQ * (cs.pool.ReserveTUSD.Float() / cs.pool.ReserveAEQ.Float())
-		tolerance := expectedTUSD * 0.003 // 0.3% slack — tighter than 1% to prevent price manipulation
+		expectedTUSD := float64(amountAEQ * (cs.pool.ReserveTUSD.Float() / cs.pool.ReserveAEQ.Float()))
+		tolerance := float64(expectedTUSD * 0.003) // 0.3% slack — tighter than 1% to prevent price manipulation
 		if amountTUSD < expectedTUSD-tolerance || amountTUSD > expectedTUSD+tolerance {
 			return 0, fmt.Errorf("deposit ratio does not match pool ratio (expected ~%.4f tUSD for %.4f AEQ)", expectedTUSD, amountAEQ)
 		}
@@ -8131,7 +8131,7 @@ func calcGiniFromBalances(balances []float64) float64 {
 	var sum, numerator float64
 	for i, x := range balances {
 		sum += x
-		numerator += float64(2*i+1-n) * x
+		numerator += float64(float64(2*i+1-n) * x)
 	}
 	if sum == 0 {
 		return 0.0
@@ -8185,7 +8185,7 @@ func (cs *ChainState) humanAEQWealthLocked(acc *AccountState) float64 {
 	wealth := effectiveBalance(acc).Float()
 	if cs.pool != nil {
 		if total := cs.pool.TotalLPShares.Float(); total > 0 {
-			wealth += acc.LPShares.Float() / total * cs.pool.ReserveAEQ.Float()
+			wealth += float64(acc.LPShares.Float() / total * cs.pool.ReserveAEQ.Float())
 		}
 	}
 	return wealth
