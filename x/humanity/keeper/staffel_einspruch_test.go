@@ -464,6 +464,7 @@ func TestStaffel_KeinZurueckhaltenOhneEnde(t *testing.T) {
 // Im strengen Modus lehnt ein ungueltiger Einspruch den Block ab (Fehler),
 // ein gueltiger geht durch.
 func TestStaffelEinspruch_StrengLehntAb(t *testing.T) {
+	nachrechnenModus(t, true) // ausdruecklich, nicht ueber das Datum (TestMain: beobachtend)
 	f := neuerSeFall(t)
 	streng := nachrechnenStrengAbUnix + 100*seTag
 	// Staffel neu anlegen, mit Tag 30 nach dem strengen Stichtag.

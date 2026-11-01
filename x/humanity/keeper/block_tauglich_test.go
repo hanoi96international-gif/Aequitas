@@ -118,7 +118,7 @@ func TestAuftragsFenster_SpiegeltBlockTauglich(t *testing.T) {
 	validatorRegisterOverride.Store(1)
 	t.Cleanup(func() {
 		stagedGrantActivationOverride.Store(0)
-		nachrechnenStrengOverride.Store(0)
+		nachrechnenStrengOverride.Store(math.MaxInt64)
 		validatorRegisterOverride.Store(0)
 	})
 	basis := rundenZeitStrengAbUnix + 30*86400

@@ -28,6 +28,12 @@ func TestMain(m *testing.M) {
 	signierteUeberweisungenOverride.Store(math.MaxInt64)
 	registerLeserOverride.Store(math.MaxInt64)
 	erzeugerSchnittOverride.Store(math.MaxInt64)
+	// Ebenso das strenge Nachrechnen (nachrechnen.go, nachrechnenStrengAbUnix
+	// = 01.11.2026): die Tests sehen es beobachtend, auch nach dem Stichtag.
+	// Wer streng prueft, setzt es selbst (nachrechnenModus(t, true)). Vorher
+	// kippten am 01.11.2026 alle Datenbanktests, die mit der echten Uhr
+	// "im Beobachtungsmodus" nachspielen -- und mit ihnen der Deploy.
+	nachrechnenStrengOverride.Store(math.MaxInt64)
 	os.Exit(m.Run())
 }
 
@@ -37,16 +43,17 @@ func wirtschaftAn(t *testing.T) {
 	t.Cleanup(func() { wirtschaftAktivOverride.Store(math.MaxInt64) })
 }
 
-// Ein Test, der registerLeserOverride oder erzeugerSchnittOverride auf 0
-// zuruecksetzt, liest danach die Konstante -- nach dem Stichtag also den
-// aktiven Zustand, und kippt an einem Datum statt an einer Aenderung.
+// Ein Test, der registerLeserOverride, erzeugerSchnittOverride oder
+// nachrechnenStrengOverride auf 0 zuruecksetzt, liest danach die Konstante --
+// nach dem Stichtag also den aktiven Zustand, und kippt an einem Datum statt
+// an einer Aenderung (so am 01.11.2026 die Datenbanktests samt Deploy).
 // Zurueckgesetzt wird auf math.MaxInt64 (schlafend, wie TestMain).
 func TestRegisterStichtage_TestsSetzenNieAufDieKonstante(t *testing.T) {
 	dateien, err := filepath.Glob("*_test.go")
 	if err != nil || len(dateien) == 0 {
 		t.Fatalf("keine Testdateien gefunden: %v", err)
 	}
-	muster := regexp.MustCompile(`(registerLeserOverride|erzeugerSchnittOverride)\.Store\(\s*0\s*\)`)
+	muster := regexp.MustCompile(`(registerLeserOverride|erzeugerSchnittOverride|nachrechnenStrengOverride)\.Store\(\s*0\s*\)`)
 	for _, d := range dateien {
 		inhalt, err := os.ReadFile(d)
 		if err != nil {

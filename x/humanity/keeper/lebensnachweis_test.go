@@ -432,7 +432,7 @@ func TestLebensnachweis_ZulassungUnlesbarUndStreng(t *testing.T) {
 	}
 	f.cs.zulassungOhneDB = func(m string, _ int64) (bool, error) { return m == f.mensch, nil }
 	nachrechnenStrengOverride.Store(1)
-	t.Cleanup(func() { nachrechnenStrengOverride.Store(0) })
+	t.Cleanup(func() { nachrechnenStrengOverride.Store(math.MaxInt64) })
 	if _, err := f.anwenden(f.tx(lnWallet, lnStichtag+10*lnTag), block); err == nil {
 		t.Fatal("strenger Modus: zu frueher Nachweis nicht abgelehnt")
 	}
