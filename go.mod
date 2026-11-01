@@ -3,14 +3,14 @@ module github.com/hanoi96international-gif/aequitas-chain
 go 1.26.10
 
 require (
-	filippo.io/edwards25519 v1.0.0
+	filippo.io/edwards25519 v1.1.1
 	github.com/ethereum/go-ethereum v1.17.8
 	github.com/hdevalence/ed25519consensus v0.2.0
 	github.com/holiman/uint256 v1.3.2
 	github.com/lib/pq v1.12.3
 	github.com/libp2p/go-libp2p v0.50.0
-	golang.org/x/crypto v0.55.0
-	golang.org/x/sys v0.47.0
+	golang.org/x/crypto v0.58.0
+	golang.org/x/sys v0.49.0
 )
 
 require (
@@ -108,13 +108,13 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.28.0 // indirect
 	golang.org/x/exp v0.0.0-20260718201538-764159d718ef // indirect
-	golang.org/x/mod v0.39.0 // indirect
-	golang.org/x/net v0.58.0 // indirect
-	golang.org/x/sync v0.22.0 // indirect
-	golang.org/x/telemetry v0.0.0-20260811182544-a038080d80e5 // indirect
-	golang.org/x/text v0.41.0 // indirect
+	golang.org/x/mod v0.41.0 // indirect
+	golang.org/x/net v0.62.0 // indirect
+	golang.org/x/sync v0.24.0 // indirect
+	golang.org/x/telemetry v0.0.0-20260924152758-ed294f943157 // indirect
+	golang.org/x/text v0.43.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
-	golang.org/x/tools v0.49.0 // indirect
+	golang.org/x/tools v0.51.0 // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	lukechampine.com/blake3 v1.4.1 // indirect
