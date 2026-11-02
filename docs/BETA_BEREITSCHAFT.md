@@ -175,6 +175,9 @@ Vergleichsdienst. Das ist Forschung, kein schneller Fix.
 | `zumLeiter`: POST-Rumpf höchstens 64 KiB mit eigener Lese-Frist (10 s), angekündigt zu Großes ohne Lesen abgewiesen, eine an der Server-Frist gescheiterte Verbindung wird geschlossen statt weiterverwendet. Dazu ist der WAL-Gruppen-Commit-Test unabhängig vom fsync-Tempo. | MITTEL | Aequitas #427 (löst #414 ab) |
 | App: abgeschaltete Server (proof2, alte IPs) zählen in keiner Schreibweise, auch nicht aus Bauvariablen | HOCH | Aequitas-App #45 |
 | go-ethereum v1.13 → v1.17.8 mit Konsens-Vergleichstest (Golden-Werte aus v1.13). Die Prüfung fand eine Spaltungslücke: Typ 3 im Sidecar-Format v1 lasen nur neue Knoten. Behoben: Typ 3 und 4 werden nie angenommen. Beleg, dass das geänderte SSTORE-Verhalten keinen Aufruf trifft: jeder zugelassene Selektor (`konsens_evm_knotenaufruf_test.go`, Golden-Werte aus v1.13 byte-gleich) und Aufrufdaten mit 1–3 Byte an V7, V8 und BioVerifier, die ohne Selektorprüfung in die EVM gelangen (`konsens_evm_kurzaufruf_test.go`). Ausgerollt mit den Deploys seit dem 15.10.2026; jeder neue Validator startet mit diesem Stand. | MITTEL | Aequitas #359 |
+| Geldrechnung auf jeder CPU gleich: Go verschmolz auf arm64, riscv64, ppc64le und s390x `x*y+z` zu einer Operation mit einer Rundung (Umlauf, Grundeinkommen, Vermögensgrenze, Topfrest, Nachrechen-Toleranz). Ein Validator auf ARM hätte seit dem strengen Nachrechnen Blöcke abgelehnt. Jetzt `float64(...)` um jedes Produkt; auf amd64 bitgleich (Maschinencode verglichen). CI-Job `architektur` (`scripts/lint_fma.sh`). | HOCH | Aequitas #451 |
+| Wiederherstellung geübt: `wiederherstellung-ueben.yml` spielt die nächtliche Ledger-Sicherung jeden Sonntag auf einer fremden Maschine zurück und lädt sie über denselben Weg wie `aequitasd` (Menschen da, Geldmenge geht auf, StateRoot). Erster Lauf 01.11.2026 grün: 5 Konten, 1 Mensch, 1.000,000000 AEQ. | MITTEL | Aequitas #451 |
+| Blitzprüfung nach Abstand (Gesicht gegen Hintergrund), nur im Messstand; ein flacher Bildschirm, den die Ganzbild-Prüfung besteht, fällt beim Relief durch. | – | biometric #104 |
 
 ## 2. Im Code offen
 
@@ -184,7 +187,7 @@ Vergleichsdienst. Das ist Forschung, kein schneller Fix.
 | FromSync-Ausnahmen (Sperre, Finalität) über Seed-Verbindungen ohne TLS | MITTEL | Stichtag gesetzt: ab Blockzeit 18.10.2026 00:00 UTC prüft jeder Knoten Seed-Blöcke wie gepushte (`fromsync_stichtag.go`, `docs/FROMSYNC_STICHTAG.md`). |
 | Tests mit vier Knoten: libp2p nicht abgedeckt | NIEDRIG | `Start()` wählt sich bei öffentlichen Bootstrap-Knoten ein; ein geschlossenes libp2p-Netz bräuchte Bootstrap-Konfiguration im Produktionscode. Paketweite Zähler teilen sich die Instanzen im Prozess. |
 | Snapshot und Autoheal vertrauen C1 | MITTEL | erst mit mehreren Unterzeichnern lösbar (zweiter Validator) |
-| Deepfake-Schutz schwach | HOCH | Abschnitt 0a; Messweg `docs/DEEPFAKE_TEST.md` + `bio-lebendigkeit-auswerten.yml` (01.11.2026) |
+| Deepfake-Schutz schwach | HOCH | Abschnitt 0a; Messweg `docs/DEEPFAKE_TEST.md` + `bio-lebendigkeit-auswerten.yml`; Blitz-Relief wird gemessen (biometric #104). Launch-Bericht mit Reihenfolge: Phasen und Tore |
 
 Geklärt ohne Code: **App bio/salt** gehen nur an die beim Bau festgelegten
 https-Adressen des Projekts (`API_BASE`, `API_FALLBACKS`) -- beides eigene
