@@ -410,7 +410,7 @@ func (cs *ChainState) finishUBIEpochLocked(ctx context.Context, epoch ubiEpochSt
 	if credited > 0 {
 		cs.ensureAccountLoadedCtx(ctx, ubiPoolAddr)
 		if poolAcc, ok := cs.accounts.Get(ubiPoolAddr); ok {
-			paid := epoch.share * float64(credited)
+			paid := float64(epoch.share * float64(credited))
 			remaining := poolAcc.Balance.Float() - paid
 			if remaining < 0 {
 				// Only reachable if the pool was drained by something else

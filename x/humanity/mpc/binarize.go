@@ -94,7 +94,7 @@ func NewProjections(seed string, bits, dim int) (*Projections, error) {
 			// only the SIGN of the projection is used, and the sign of a sum
 			// of independent symmetric variables is unbiased regardless of
 			// the exact shape.
-			u := float64(binary.BigEndian.Uint64(buf)) / float64(math.MaxUint64)
+			u := float64(float64(binary.BigEndian.Uint64(buf)) / float64(math.MaxUint64))
 			row[j] = u - 0.5
 		}
 		planes[i] = row
@@ -136,7 +136,7 @@ func (p *Projections) Sketch(embedding []float64) ([]uint8, error) {
 	for i, plane := range p.planes {
 		var dot float64
 		for j, v := range embedding {
-			dot += v * plane[j]
+			dot += float64(v * plane[j])
 		}
 		// Ties (an exactly zero projection) go to 1. The choice is arbitrary
 		// but must be FIXED: deciding it per-call, or by floating-point luck,

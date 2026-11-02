@@ -496,7 +496,7 @@ func (w *wirtschaft) erstesOffenesLocked(e *unternehmenEintrag) bool {
 // menschUmlaufFuer: was ein Mensch mit diesem Guthaben im Monat zahlt --
 // bis zur Vermoegensgrenze, die fuer Menschen gilt.
 func menschUmlaufFuer(stand float64) float64 {
-	return math.Max(0, stand-menschSparFreibetrag) * menschUmlaufMonat
+	return float64(math.Max(0, stand-menschSparFreibetrag) * menschUmlaufMonat)
 }
 
 // liegegeldLocked: Liegegeld pro Monat fuer ein Unternehmen bei diesem Stand.
@@ -648,7 +648,7 @@ func liegegeldFuerStand(stand, umsatz float64) float64 {
 	stufe2 := math.Max(unternehmenSockel, umsatzStufe2Faktor*umsatz)
 	mittel := math.Max(0, math.Min(stand, stufe2)-frei)
 	hoch := math.Max(0, stand-stufe2)
-	return mittel*liegeRate1Monat + hoch*liegeRate2Monat
+	return float64(mittel*liegeRate1Monat) + float64(hoch*liegeRate2Monat)
 }
 
 // ------------------------------------------------------------ Gebuehren

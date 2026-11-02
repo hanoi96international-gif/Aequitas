@@ -1,0 +1,46 @@
+name: Biometrie -- Deepfake-Test auswerten (nur lesen, oeffentlich)
+# docs/DEEPFAKE_TEST.md. Liest /coordinator/health (oeffentlich, ohne
+# Kennungen) und trennt echte Aufnahmen von Angriffen: die letzten N
+# Bewertungen sind die Angriffe. Rot, wenn ein Angriff gruen landet.
+# Kein Geheimnis, kein Server-Zugang, keine Freigabe noetig.
+on:
+  workflow_dispatch:
+    inputs:
+      angriffe:
+        description: "Wie viele der LETZTEN Aufnahmen waren Angriffe (0-50)"
+        default: "0"
+      stunden:
+        description: "Nur Aufnahmen der letzten Stunden (1-720)"
+        default: "24"
+permissions:
+  contents: read
+concurrency:
+  group: bio-lebendigkeit-auswerten
+  cancel-in-progress: false
+jobs:
+  auswerten:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      ANGRIFFE: ${{ github.event.inputs.angriffe }}
+      STUNDEN: ${{ github.event.inputs.stunden }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: scripts/lebendigkeit_auswerten.py
+          sparse-checkout-cone-mode: false
+      - name: Eingaben pruefen
+        run: |
+          set -eu
+          case "$ANGRIFFE" in ''|*[!0-9]*) echo "::error::angriffe muss eine Zahl sein"; exit 1;; esac
+          case "$STUNDEN" in ''|*[!0-9]*) echo "::error::stunden muss eine Zahl sein"; exit 1;; esac
+          [ "$ANGRIFFE" -le 50 ] || { echo "::error::angriffe hoechstens 50"; exit 1; }
+          [ "$STUNDEN" -ge 1 ] && [ "$STUNDEN" -le 720 ] || { echo "::error::stunden 1-720"; exit 1; }
+      - name: Auswerten
+        run: |
+          set -eu
+          curl -sS --fail --max-time 20 --max-filesize 4194304 --proto '=https' \
+            https://proof1.aequitas.digital/coordinator/health > health.json
+          SEIT=$(( $(date +%s) - STUNDEN * 3600 ))
+          python3 scripts/lebendigkeit_auswerten.py --angriffe "$ANGRIFFE" --seit "$SEIT" < health.json \
+            | tee -a "$GITHUB_STEP_SUMMARY"

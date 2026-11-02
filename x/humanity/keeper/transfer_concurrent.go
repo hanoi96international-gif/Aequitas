@@ -273,7 +273,7 @@ func (cs *ChainState) wealthCapAmountLocked() (amt float64, ok bool) {
 	if avg <= 0 {
 		return 0, false
 	}
-	return avg * cs.bootstrapMultiplierLocked(), true
+	return float64(avg * cs.bootstrapMultiplierLocked()), true
 }
 
 // wuerdeKappenLocked sagt, ob enforceWealthCapLockedCtx ein Konto mit dem

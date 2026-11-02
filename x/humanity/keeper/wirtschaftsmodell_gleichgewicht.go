@@ -93,7 +93,7 @@ func (g GleichgewichtParameter) HalbwertMonate() float64 {
 // GleichgewichtModell (unter der Grenze).
 func (g GleichgewichtParameter) VerlaufRuhend(start float64, monate int) float64 {
 	d := g.DividendeJeMensch() / g.SatzMonat // Gleichgewicht: fairer Anteil / AktivAnteil
-	return d + (start-d)*math.Pow(1-g.SatzMonat, float64(monate))
+	return d + float64((start-d)*math.Pow(1-g.SatzMonat, float64(monate)))
 }
 
 // GleichgewichtAkteure: die Akteure des heutigen Modells und zwei, an denen
@@ -136,7 +136,7 @@ func GleichgewichtModell(p ModellParameter, g GleichgewichtParameter, akteure []
 	if monate > 0 {
 		v.TopfHeuteJeMonat = round6(heute.GrundeinkommenSum / float64(monate))
 	}
-	grenze := g.GrenzeFaktor * g.FairerAnteil
+	grenze := float64(g.GrenzeFaktor * g.FairerAnteil)
 	for i, a := range akteure {
 		stand := a.Guthaben
 		var abgaben, dividende float64

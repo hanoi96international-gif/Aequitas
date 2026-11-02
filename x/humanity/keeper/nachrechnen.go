@@ -183,7 +183,7 @@ func (cs *ChainState) nachrechnenTxLocked(tx *Transaction, blockZeit int64) erro
 		erlaubt := cs.kappungsBetragLocked(acc)
 		spielraum := 1e-6
 		if grenze, ok := cs.wealthCapAmountLocked(); ok {
-			spielraum += grenze * 0.0001
+			spielraum += float64(grenze * 0.0001)
 		}
 		if tx.Amount > erlaubt+spielraum {
 			return nachrechnenAbweichung("kappung_unter_grenze", blockZeit,
