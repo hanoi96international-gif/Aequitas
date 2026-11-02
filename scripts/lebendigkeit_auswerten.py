@@ -35,7 +35,9 @@ import time
 
 MIN_ECHTE = 20
 ABSTAND = 0.02  # rot_L liegt so weit ueber dem hoechsten Angriff
-SIGNALE = ("challenge", "flash", "parallax", "pulse", "antispoof")
+# flash_relief ist nur gemessen (Coordinator NUR_GEMESSEN), zeigt hier aber,
+# ob es trennt -- genau dafuer wird es gemessen.
+SIGNALE = ("challenge", "flash", "parallax", "pulse", "antispoof", "flash_relief")
 # Hoechstens so viele Eintraege werden gelesen (letzte haelt 50).
 MAX_EINTRAEGE = 200
 
