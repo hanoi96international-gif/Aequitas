@@ -268,6 +268,20 @@ func (cs *ChainState) lebensnachweisPauseMoeglichLocked(ctx context.Context, t i
 	if !lebensnachweisAktiv(t) {
 		return false, nil
 	}
+	// KEINE PAUSE UNTER VERTEILTER ANNAHME (Aequitas#412, Befund 1). Im
+	// verteilten Betrieb nimmt der Zustaendige eines Kontos dessen
+	// Lebensnachweis an und wendet ihn sofort an; die Runde laeuft aber beim
+	// Leiter, der diesen Nachweis noch nicht kennen muss. Er pausierte die
+	// Wallet, der Zustaendige spielte die Runde mit einem Empfaenger mehr nach
+	// -- im strengen Modus ein ungueltiger Block, die Kette spaltet sich.
+	// Bis eine Schranke "jeder Zustaendige hat seine Nachweise verblockt"
+	// gebaut ist, entscheidet die Runde dann keine Pausen. Deterministisch aus
+	// der Rundenzeit t, bei Erzeuger und Nachspielenden gleich (beide fragen
+	// hier). Die Folge ist mild: wer seinen Nachweis versaeumt, bekommt den
+	// Tagesanteil weiter -- niemand verliert etwas, keine Gabelung.
+	if verteilteAnnahmeAktiv(t) {
+		return false, nil
+	}
 	if cs.db == nil {
 		if cs.betreiberOhneDB != nil {
 			return cs.betreiberOhneDB(t) >= lebensnachweisMindestBetreiber, nil
@@ -285,7 +299,7 @@ func (cs *ChainState) lebensnachweisPauseMoeglichLocked(ctx context.Context, t i
 // Zeitgrenze, eine Minute gemerkt. Nur Anzeige; entschieden wird in der
 // Runde. Ein Lesefehler zeigt "nicht pausiert" (die Runde entscheidet selbst).
 func (cs *ChainState) lebensnachweisPauseAnzeige(jetzt int64) bool {
-	if !lebensnachweisAktiv(jetzt) {
+	if !lebensnachweisAktiv(jetzt) || verteilteAnnahmeAktiv(jetzt) {
 		return false
 	}
 	if cs.db == nil {
