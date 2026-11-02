@@ -70,6 +70,9 @@ jobs:
       # Variable, kein Kommentar (Kopf von deploy/rechtstexte-angaben.sh).
       - run: bash scripts/test_rechtstexte_angaben.sh
       - run: bash scripts/test_sicherung_befehl.sh
+      # Schluessel-Sicherung: nur age-Chiffrat an den Empfaenger auf C1, kein Wert
+      # im Protokoll, kein Klartext zurueck. Kopf von scripts/test_schluessel_sichern.sh.
+      - run: bash scripts/test_schluessel_sichern.sh
       - run: bash scripts/test_schluessel_lesen.sh
       - run: bash scripts/test_ssh_schluessel_reparatur.sh
       - run: bash scripts/test_bindungsanfrage_skript.sh
