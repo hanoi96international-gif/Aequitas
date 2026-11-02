@@ -26,6 +26,14 @@ Nicht im Archiv:
 - Schlüssel aus den `.env`-Dateien, besonders `TEMPLATE_ENCRYPTION_KEY` des
   Vergleichsdienstes (`/root/.aequitas-matching.env`). Ohne ihn sind die Templates in
   `poh_beta.db` nicht lesbar. Verwahre ihn getrennt offline.
+
+  **Seit 02.11.2026 gibt es dafür einen eigenen Weg:** `schluessel-sichern.yml` liest
+  die Umgebung von Coordinator, Vergleichsdienst, Proof-Server und Knoten und
+  verschlüsselt sie auf C1 an denselben age-Empfänger. Herauskommt nur die
+  `.age`-Datei, als Artefakt für 3 Tage. Lade sie herunter und lege sie neben
+  `bio-backup.key` ab. Das ist besonders wichtig für `FACE_SKETCH_SEED`: Mit einem
+  anderen Seed passt kein gespeicherter Sketch mehr, und jeder Mensch könnte sich ein
+  zweites Mal registrieren. Nach jedem Schlüsselwechsel erneut ausführen.
 - Die Datenbanken werden je für sich konsistent kopiert, aber nicht im selben
   Augenblick. Zwischen den vier Kopien liegen Sekunden.
 

@@ -1,0 +1,120 @@
+name: Schluessel sichern -- C1 (verschluesselt, fuer die Offline-Ablage)
+# WARUM (02.11.2026). Die naechtliche Biometrie-Sicherung enthaelt bewusst
+# KEINE Schluessel (deploy/backup-biometrie.sh). Ohne sie ist sie nach einem
+# Verlust von C1 wertlos:
+#   - FACE_SKETCH_SEED: mit einem anderen Seed passt kein gespeicherter
+#     Sketch mehr -- jeder Mensch koennte sich ein zweites Mal registrieren;
+#   - TEMPLATE_ENCRYPTION_KEY / MATCHER_INDEX_KEY: ohne sie sind Vorlagen und
+#     Index nicht lesbar;
+#   - COORDINATOR_SIGNING_KEY, WALLET_TAG_KEY, Bezeugungsschluessel, NODE_KEY:
+#     ohne sie ist C1 nach einem Neuaufbau ein anderer Teilnehmer.
+# docs/BIOMETRIE_SICHERUNG.md sagt "getrennt offline verwahren" -- dafuer gab
+# es bisher keinen Weg. Dieser Workflow ist er.
+#
+# WAS ER TUT. Auf C1: die Umgebung der vier Dienste (Coordinator,
+# Vergleichsdienst, Proof-Server, Knoten) wird gelesen, in ein Verzeichnis mit
+# Modus 0700 geschrieben und sofort mit age an den oeffentlichen Schluessel
+# verschluesselt, der fest auf C1 liegt (/etc/aequitas-sicherung/bio-empfaenger,
+# derselbe wie fuer die Biometrie-Sicherung; der private liegt offline beim
+# Betreiber). Der Klartext wird geloescht, auch bei einem Abbruch (trap). Nur
+# die .age-Datei verlaesst die Box -- als Artefakt, 3 Tage, zum Herunterladen
+# und Ablegen NEBEN bio-backup.key, offline. Im Protokoll stehen nur Namen und
+# Anzahlen, nie Werte.
+#
+# WER DEN PRIVATEN AGE-SCHLUESSEL HAT, HAT DAMIT ALLE SCHLUESSEL. Das ist der
+# Zweck -- und der Grund fuer die Pflicht-Freigabe, die Bestaetigung und die
+# kurze Aufbewahrung.
+on:
+  workflow_dispatch:
+    inputs:
+      bestaetigung:
+        description: "Zum Ausfuehren genau: SCHLUESSEL SICHERN"
+        required: true
+        default: ""
+permissions:
+  contents: read
+concurrency:
+  group: schluessel-sichern
+  cancel-in-progress: false
+jobs:
+  sichern:
+    runs-on: ubuntu-latest
+    environment: produktion
+    timeout-minutes: 10
+    env:
+      BESTAETIGUNG: ${{ inputs.bestaetigung }}
+    steps:
+      - name: Bestaetigung pruefen
+        run: |
+          set -eu
+          [ "$BESTAETIGUNG" = "SCHLUESSEL SICHERN" ] || { echo "::error::Bestaetigung fehlt (genau: SCHLUESSEL SICHERN)"; exit 1; }
+      - name: Schluessel und Host-Pruefung
+        env:
+          KEY: ${{ secrets.CONTABO_SSH_KEY }}
+          FP: "SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA"
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s' "$KEY" | perl -0777 -pe 's/\r//g; s/(?:-|\xE2\x80[\x93\x94])+ *(BEGIN|END) OPENSSH PRIVATE KEY *(?:-|\xE2\x80[\x93\x94])+/-----$1 OPENSSH PRIVATE KEY-----/g; unless (/-----BEGIN OPENSSH PRIVATE KEY-----/) { (my $z = $_) =~ s/\s//g; if ($z =~ m|^[A-Za-z0-9+/]+=*$|) { require MIME::Base64; my $d = MIME::Base64::decode_base64($z); if ($d =~ /-----BEGIN OPENSSH PRIVATE KEY-----/) { $_ = $d; } elsif ($d =~ /\Aopenssh-key-v1\x00/) { $_ = qq{-----BEGIN OPENSSH PRIVATE KEY-----\n$z\n-----END OPENSSH PRIVATE KEY-----\n}; } } } s/\s*(-----BEGIN OPENSSH PRIVATE KEY-----)\s*(.*?)\s*(-----END OPENSSH PRIVATE KEY-----)\s*/my ($k, $b, $f) = ($1, $2, $3); $b =~ s|\s||g; $b =~ s|(.{70})|$1\n|g; $b =~ s|\n\z||; "$k\n$b\n$f\n"/se' > ~/.ssh/k && chmod 600 ~/.ssh/k
+          # Nur ed25519 und genau eine Zeile (lint_keyscan.py).
+          ssh-keyscan -t ed25519 188.172.229.121 2>/dev/null | { grep -v '^#' || true; } > ~/.ssh/kh
+          [ "$(grep -c . ~/.ssh/kh)" = 1 ] || { echo "::error::Host-Schluessel: nicht genau eine ed25519-Zeile"; exit 1; }
+          [ "$(ssh-keygen -lf ~/.ssh/kh | awk '{print $2}')" = "$FP" ] || { echo "::error::Host-Schluessel von C1 passt nicht"; exit 1; }
+          cp ~/.ssh/kh ~/.ssh/known_hosts
+      - name: Auf C1 verschluesseln und abholen
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/k -o BatchMode=yes -o IdentitiesOnly=yes -o HostKeyAlgorithms=ssh-ed25519 root@188.172.229.121 'bash -s' > schluessel-c1.tar.age <<'SKRIPT'
+          set -euo pipefail
+          umask 077
+          R=$(cat /etc/aequitas-sicherung/bio-empfaenger 2>/dev/null || true)
+          REST="${R#age1}"
+          if [ "${#R}" != 62 ] || [ "$REST" = "$R" ] || [ -n "$(printf '%s' "$REST" | tr -d 'qpzry9x8gf2tvdw0s3jn54khce6mua7l')" ]; then
+            echo "kein gueltiger age-Empfaenger auf C1 (sicherung-einrichten.yml)" >&2; exit 1
+          fi
+          command -v age >/dev/null || { echo "age fehlt auf C1" >&2; exit 1; }
+          WORK=$(mktemp -d /root/.schluessel-sichern.XXXXXX)
+          AUS=$(mktemp /root/.schluessel-sichern-aus.XXXXXX)
+          trap 'rm -rf "$WORK" "$AUS"' EXIT
+          for c in aequitas-coordinator aequitas-matching proof-server aequitas-node; do
+            if docker inspect "$c" >/dev/null 2>&1; then
+              docker inspect "$c" --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -v '^$' > "$WORK/$c.env"
+              # Nur Name und Anzahl ins Protokoll (stderr), nie Werte.
+              echo "$c: $(wc -l < "$WORK/$c.env") Variablen: $(cut -d= -f1 "$WORK/$c.env" | grep -E 'KEY|SEED|SECRET|TOKEN|PASSWORD' | tr '\n' ' ')" >&2
+              cut -d= -f1 "$WORK/$c.env" | grep -E '_FILE$' | sed "s/^/  Hinweis $c: Variable zeigt auf eine Datei, deren Inhalt NICHT gesichert ist: /" >&2 || true
+            else
+              echo "$c: kein Container" >&2
+            fi
+          done
+          [ -f /root/Aequitas/deploy/validator/.env ] && cp /root/Aequitas/deploy/validator/.env "$WORK/knoten-validator.env"
+          [ -f /root/.aequitas-matching.env ] && cp /root/.aequitas-matching.env "$WORK/aequitas-matching.datei.env"
+          date -u +%Y-%m-%dT%H:%M:%SZ > "$WORK/STAND"
+          # Ausgabe ausserhalb von WORK: sonst laege sie in ihrem eigenen Archiv.
+          tar -C "$WORK" -cf - . | age -r "$R" > "$AUS"
+          [ "$(head -c 21 "$AUS")" = "age-encryption.org/v1" ] || { echo "Ergebnis ist kein age" >&2; exit 1; }
+          [ "$(head -c 4096 "$AUS" | grep -ac '^-> X25519 ')" = 1 ] || { echo "nicht genau ein Empfaenger" >&2; exit 1; }
+          echo "Empfaenger: ${R:0:12}...  Groesse: $(stat -c %s "$AUS") Bytes" >&2
+          cat "$AUS"
+          SKRIPT
+          rm -f ~/.ssh/k
+          # Nur eine age-Datei geht hinaus -- nie Klartext.
+          [ "$(head -c 21 schluessel-c1.tar.age)" = "age-encryption.org/v1" ] || { echo "::error::Abgeholte Datei ist kein age-Chiffrat -- nichts hochgeladen"; rm -f schluessel-c1.tar.age; exit 1; }
+          [ "$(head -c 4096 schluessel-c1.tar.age | grep -ac '^-> X25519 ')" = 1 ] || { echo "::error::nicht genau ein Empfaenger -- nichts hochgeladen"; rm -f schluessel-c1.tar.age; exit 1; }
+          {
+            echo "### Schluessel gesichert (verschluesselt)"
+            echo ""
+            echo "1. Artefakt \`schluessel-c1\` unten herunterladen (3 Tage verfuegbar)."
+            echo "2. Neben \`bio-backup.key\` offline ablegen (nicht in eine Cloud ohne eigene Verschluesselung)."
+            echo "3. Probe auf dem eigenen Rechner: \`age -d -i bio-backup.key schluessel-c1.tar.age | tar t\` listet die Dateien."
+            echo ""
+            echo "sha256: \`$(sha256sum schluessel-c1.tar.age | cut -d' ' -f1)\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: schluessel-c1
+          path: schluessel-c1.tar.age
+          retention-days: 3
+          if-no-files-found: error
+      - name: Aufraeumen
+        if: always()
+        run: rm -f ~/.ssh/k schluessel-c1.tar.age
