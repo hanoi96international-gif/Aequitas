@@ -51,7 +51,10 @@ Schlüssel verschlüsseln lassen.
    age-keygen -o bio-backup.key
    ```
    (`age` aus dem Paketmanager, z. B. `apt install age` oder `brew install age`.)
-2. `bio-backup.key` enthält den **privaten** Schlüssel (`AGE-SECRET-KEY-1…`). Lege ihn
+2. `bio-backup.key` enthält den **privaten** Schlüssel (`AGE-SECRET-KEY-1…`). Seit dem
+   02.11.2026 heißt die Datei beim Betreiber `aequitas-bio-backup-2026-11-02.key`
+   (neues Schlüsselpaar; der Schlüssel vom 28.10. ist ersetzt, ältere Archive sind damit
+   nicht mehr lesbar). Lege ihn
    in den Passwortmanager und zusätzlich offline ab, z. B. auf einem USB-Stick im Safe.
    Er darf nie auf einen Server, in ein Repo oder in ein Secret.
 3. Die Zeile `# public key: age1…` in der Datei ist der **öffentliche** Schlüssel.
