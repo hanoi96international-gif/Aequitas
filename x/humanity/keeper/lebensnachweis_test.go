@@ -835,6 +835,44 @@ func TestLebensnachweis_PauseNurMitZweiBetreibern(t *testing.T) {
 	}
 }
 
+// Aequitas#412, Befund 1: unter verteilter Annahme pausiert keine Runde --
+// sonst saehe der Leiter eine Pause, die der Zustaendige (der den Nachweis
+// schon angewandt hat) nicht sieht, und die Kette spaltete sich. Mit zwei
+// Betreibern und einer ueberfaelligen Wallet: vor der Aktivierung pausiert,
+// ab ihr nicht -- in der Runde, in der Zaehlung des Nachrechnens und in der
+// Anzeige.
+func TestLebensnachweis_KeinePauseUnterVerteilterAnnahme(t *testing.T) {
+	f := neuerLnFall(t)
+	ubiAt := lnStichtag + 400*lnTag
+	f.cs.betreiberOhneDB = func(int64) int { return 2 }
+	t.Cleanup(func() { verteilteAnnahmeOverride.Store(0) })
+
+	pruefen := func(name string, wollePause bool) {
+		t.Helper()
+		f.cs.mu.Lock()
+		moeglich, err := f.cs.lebensnachweisPauseMoeglichLocked(context.Background(), ubiAt)
+		empf, pausiert := f.cs.lebensnachweisEmpfaengerLocked([]string{f.mensch}, ubiAt, moeglich)
+		n, _ := f.cs.countUBIEmpfaengerLocked(context.Background(), ubiAt, moeglich)
+		f.cs.mu.Unlock()
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if wollePause && (pausiert != 1 || len(empf) != 0) {
+			t.Fatalf("%s: erwartet pausiert, %d pausiert, %d Empfaenger", name, pausiert, len(empf))
+		}
+		if !wollePause && (pausiert != 0 || len(empf) != 1 || n < 1) {
+			t.Fatalf("%s: erwartet keine Pause, %d pausiert, Zaehlung %d", name, pausiert, n)
+		}
+		if st := f.cs.LebensnachweisStandVon(f.mensch, ubiAt); st == nil || st["pausiert"] != wollePause {
+			t.Fatalf("%s: Anzeige %v", name, st)
+		}
+	}
+	verteilteAnnahmeOverride.Store(ubiAt + 1) // erst nach der Runde aktiv
+	pruefen("vor der verteilten Annahme", true)
+	verteilteAnnahmeOverride.Store(ubiAt) // genau zur Rundenzeit aktiv
+	pruefen("unter verteilter Annahme", false)
+}
+
 // ------------------------------------------------------------ Blockzeit
 
 // Der Erzeuger waehlt keine Blockzeit, zu der ein Nachspielender den

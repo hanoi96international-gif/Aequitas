@@ -18,7 +18,7 @@ name: Schluessel sichern -- C1 (verschluesselt, fuer die Offline-Ablage)
 # derselbe wie fuer die Biometrie-Sicherung; der private liegt offline beim
 # Betreiber). Der Klartext wird geloescht, auch bei einem Abbruch (trap). Nur
 # die .age-Datei verlaesst die Box -- als Artefakt, 3 Tage, zum Herunterladen
-# und Ablegen NEBEN bio-backup.key, offline. Im Protokoll stehen nur Namen und
+# und Ablegen NEBEN dem privaten age-Schluessel, offline. Im Protokoll stehen nur Namen und
 # Anzahlen, nie Werte.
 #
 # WER DEN PRIVATEN AGE-SCHLUESSEL HAT, HAT DAMIT ALLE SCHLUESSEL. Das ist der
@@ -104,8 +104,8 @@ jobs:
             echo "### Schluessel gesichert (verschluesselt)"
             echo ""
             echo "1. Artefakt \`schluessel-c1\` unten herunterladen (3 Tage verfuegbar)."
-            echo "2. Neben \`bio-backup.key\` offline ablegen (nicht in eine Cloud ohne eigene Verschluesselung)."
-            echo "3. Probe auf dem eigenen Rechner: \`age -d -i bio-backup.key schluessel-c1.tar.age | tar t\` listet die Dateien."
+            echo "2. Neben deinem privaten age-Schluessel (z. B. \`aequitas-bio-backup-2026-11-02.key\`) offline ablegen (nicht in eine Cloud ohne eigene Verschluesselung)."
+            echo "3. Probe auf dem eigenen Rechner: \`age -d -i aequitas-bio-backup-2026-11-02.key schluessel-c1.tar.age | tar t\` listet die Dateien."
             echo ""
             echo "sha256: \`$(sha256sum schluessel-c1.tar.age | cut -d' ' -f1)\`"
           } >> "$GITHUB_STEP_SUMMARY"

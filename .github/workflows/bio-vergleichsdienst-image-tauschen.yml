@@ -40,6 +40,11 @@ on:
         required: true
         type: boolean
         default: false
+      indexschluessel_erzeugen:
+        description: "Eigenen MATCHER_INDEX_KEY auf C1 erzeugen (nur wenn noch keiner gesetzt ist; Pflicht fuer den Echtbetrieb). Danach schluessel-sichern.yml ausfuehren!"
+        required: true
+        type: boolean
+        default: false
       seed_bestand_bestaetigen:
         description: "SKETCH_SEED_BESTAND_BESTAETIGT=ja setzen (Audit 21.10., K3): nur wenn der laufende FACE_SKETCH_SEED derselbe ist, mit dem die gespeicherten Sketches entstanden -- dieser Lauf uebernimmt ihn unveraendert"
         required: true
@@ -94,6 +99,7 @@ jobs:
           ALTERSPRUEFUNG_NEU: ${{ inputs.alterspruefung }}
           EINWILLIGUNG_VORGABE: ${{ inputs.einwilligung_vorgabe }}
           SEED_BESTAETIGEN: ${{ inputs.seed_bestand_bestaetigen }}
+          INDEXSCHLUESSEL: ${{ inputs.indexschluessel_erzeugen }}
           C1_HOST: ${{ matrix.host }}
         run: |
           set -euo pipefail
@@ -105,7 +111,7 @@ jobs:
           [ "$(grep -c . "$RUNNER_TEMP/kh")" = 1 ] || { echo "::error::Host-Schluessel von $C1_HOST: nicht genau eine ed25519-Zeile"; exit 1; }
           [ "$(ssh-keygen -lf "$RUNNER_TEMP/kh" | awk '{print $2}')" = "SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA" ] || { echo "::error::Host-Schluessel von $C1_HOST passt nicht"; exit 1; }
           {
-            for v in IMAGE GHCR_USER GHCR_TOKEN ALTERSPRUEFUNG_NEU EINWILLIGUNG_VORGABE SEED_BESTAETIGEN; do printf 'export %s=%q\n' "$v" "${!v}"; done
+            for v in IMAGE GHCR_USER GHCR_TOKEN ALTERSPRUEFUNG_NEU EINWILLIGUNG_VORGABE SEED_BESTAETIGEN INDEXSCHLUESSEL; do printf 'export %s=%q\n' "$v" "${!v}"; done
             cat <<'SKRIPT'
           set -euo pipefail
           NAME=aequitas-matching
@@ -141,6 +147,35 @@ jobs:
             sed -i '/^SKETCH_SEED_BESTAND_BESTAETIGT=/d' /root/.matching-neu.env
             echo "SKETCH_SEED_BESTAND_BESTAETIGT=ja" >> /root/.matching-neu.env
             echo "  SKETCH_SEED_BESTAND_BESTAETIGT=ja (Seed unveraendert aus dem laufenden Container)"
+          fi
+          # Eigener Indexschluessel (enroll_index.py, Punkt 4: Pflicht im
+          # Echtbetrieb). Erzeugt AUF DER BOX, nie im Protokoll. Der Dienst
+          # schluesselt den Bestand beim Start selbst um (storage.
+          # _index_umschluesseln: prueft jede Zeile gegen den alten,
+          # abgeleiteten Schluessel, legt eine Sicherung an, alles in einer
+          # Transaktion). Danach startet er NUR noch mit diesem Schluessel --
+          # deshalb steht er auch in der Ruecknahme-Umgebung und in
+          # /root/.aequitas-matching.env (Neuaufbau ueber
+          # bio-deploy-validator-to-box), und schluessel-sichern.yml muss
+          # danach laufen.
+          INDEX_NEU=0
+          if [ "$INDEXSCHLUESSEL" = "true" ]; then
+            if grep -qE '^MATCHER_INDEX_KEY(_FILE)?=.' /root/.matching-neu.env; then
+              echo "  MATCHER_INDEX_KEY ist schon gesetzt -- bleibt unveraendert"
+            else
+              command -v openssl >/dev/null || { echo "FEHLER: openssl fehlt auf der Box -- nichts geaendert"; exit 1; }
+              K=$(openssl rand -hex 32)
+              [ "${#K}" = 64 ] || { echo "FEHLER: Schluessel nicht erzeugt -- nichts geaendert"; exit 1; }
+              for d in /root/.matching-neu.env /root/.matching-alt.env; do echo "MATCHER_INDEX_KEY=$K" >> "$d"; done
+              if [ -f /root/.aequitas-matching.env ]; then
+                cp -a /root/.aequitas-matching.env "/root/.aequitas-matching.env.vor-indexschluessel.$(date +%s)"
+                sed -i '/^MATCHER_INDEX_KEY=/d' /root/.aequitas-matching.env
+                echo "MATCHER_INDEX_KEY=$K" >> /root/.aequitas-matching.env
+              fi
+              unset K
+              INDEX_NEU=1
+              echo "  MATCHER_INDEX_KEY: neu erzeugt (32 Byte, Wert ungezeigt); Umschluesseln beim Start"
+            fi
           fi
           # Einstellungen, die dieser Lauf ausdruecklich setzt (Eingaben oben).
           # Werte sind keine Geheimnisse; gezeigt wird nur, was sich aendert.
@@ -211,6 +246,14 @@ jobs:
             echo "FEHLER: /health meldet einen anderen Stand -- Umgebung oder Daten verloren? Altes Image: $ALT"
             zurueck
             exit 1
+          fi
+          if [ "$INDEX_NEU" = 1 ]; then
+            HERKUNFT=$(docker logs "$NAME" 2>&1 | grep -oE '\[INDEX\] Schluessel: [a-z-]+' | tail -1 || true)
+            echo "Indexschluessel laut Start: ${HERKUNFT:-nicht gemeldet}"
+            case "$HERKUNFT" in
+              *eigener-schluessel) echo "Bestand auf den eigenen Indexschluessel umgeschluesselt -- jetzt schluessel-sichern.yml ausfuehren." ;;
+              *) echo "FEHLER: der Dienst meldet nicht den eigenen Schluessel. Er laeuft weiter; Protokoll pruefen."; exit 1 ;;
+            esac
           fi
           MODUS=$(docker exec "$NAME" python -c "import json,urllib.request; d=json.load(urllib.request.urlopen('http://127.0.0.1:$PORT/health', timeout=10)); print((d.get('alter') or {}).get('modus','?'))" 2>/dev/null || echo "?")
           echo "Altersprüfung laut /health: $MODUS"

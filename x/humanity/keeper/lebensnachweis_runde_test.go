@@ -3,7 +3,6 @@ package keeper
 import (
 	"context"
 	"errors"
-	"math"
 	"testing"
 )
 
@@ -170,8 +169,6 @@ func TestLebensnachweisRunde_PruefungVorDerAuswahl(t *testing.T) {
 // Nachweis an, die Runde laeuft beim Leiter -- der Waechter sieht nur den
 // eigenen Ausgang. Wer beide Stichtage setzt, schliesst vorher Befund 1 und
 // passt diesen Test an.
-func TestLebensnachweis_AktivierungErstNachBefunden(t *testing.T) {
-	if verteilteAnnahmeAbUnix != math.MaxInt64 && registerLeserAbUnix != math.MaxInt64 {
-		t.Fatalf("verteilte Annahme und Lebensnachweis zugleich: vorher #412 Befund 1 schliessen (Runde als Schranke ueber alle Zustaendigen)")
-	}
-}
+// #412 Befund 1 ist geschlossen: unter verteilter Annahme pausiert keine
+// Runde (lebensnachweisPauseMoeglichLocked). Missbrauchstest:
+// TestLebensnachweis_KeinePauseUnterVerteilterAnnahme (lebensnachweis_test.go).
