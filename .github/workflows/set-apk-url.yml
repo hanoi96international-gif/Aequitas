@@ -20,13 +20,20 @@ name: Set the APK download fallback on both boxes (manual)
 # Run this right after publishing a new app release -- or not at all: without
 # AEQUITAS_APK_URL the node redirects to releases/latest, which is always the
 # newest release (api.go, defaultAPKReleaseURL).
+#
+# 02.11.2026: VORGABE "latest" -- die Zeile wird entfernt, der Knoten folgt
+# dem neuesten Release. Die feste Version war zum dritten Mal veraltet
+# (v1.13.0 statt v1.13.1, gefunden von pruefstand-live.yml). Ein neues
+# Release entsteht nur mit Freigabe in app-signatur; "latest" ist also immer
+# ein freigegebenes. Eine feste Version bleibt moeglich (Tag eingeben), etwa
+# um nach einem fehlerhaften Release zurueckzugehen.
 on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release-Tag im App-Repo, z. B. app-v1.8.2"
+        description: "latest (Vorgabe: immer das neueste Release) oder ein fester Release-Tag, z. B. v1.13.1"
         required: true
-        default: "app-v1.8.2"
+        default: "latest"
 
 # Nur lesen (Beta-Pruefung 15.10.2026): dieser Workflow schreibt nichts
 # ins Repo; die Voreinstellung des Tokens soll nicht mehr gelten.
@@ -37,6 +44,8 @@ jobs:
   set:
     runs-on: ubuntu-latest
     environment: produktion
+    env:
+      TAG: ${{ inputs.tag }}
     steps:
       - name: Pruefen, dass es das Release ueberhaupt gibt
         # Zuerst, und als eigener Schritt: eine Fallback-URL auf ein nicht
@@ -44,40 +53,55 @@ jobs:
         # veraltete liefert wenigstens eine App aus.
         run: |
           set -euo pipefail
-          URL="https://github.com/hanoi96international-gif/Aequitas-App/releases/download/${{ inputs.tag }}/app-release.apk"
+          [[ "$TAG" =~ ^(latest|[A-Za-z0-9._-]{1,64})$ ]] || { echo "::error::tag nur latest oder A-Z a-z 0-9 . _ -"; exit 1; }
+          if [ "$TAG" = latest ]; then
+            URL="https://github.com/hanoi96international-gif/Aequitas-App/releases/latest/download/app-release.apk"
+          else
+            URL="https://github.com/hanoi96international-gif/Aequitas-App/releases/download/${TAG}/app-release.apk"
+          fi
           echo "Pruefe: $URL"
           CODE="$(curl -sIL -o /dev/null -w '%{http_code}' "$URL")"
-          SIZE="$(curl -sIL -o /dev/null -w '%{size_download}' "$URL")"
           echo "HTTP $CODE"
-          [ "$CODE" = "200" ] || { echo "FEHLER: ${{ inputs.tag }} liefert kein abrufbares app-release.apk."; exit 1; }
-          echo "APK_URL=$URL" >> "$GITHUB_ENV"
+          [ "$CODE" = "200" ] || { echo "::error::$TAG liefert kein abrufbares app-release.apk."; exit 1; }
+          # latest: die Zeile wird entfernt (leerer Wert), der Knoten nimmt
+          # seinen eingebauten Rueckfall releases/latest.
+          if [ "$TAG" = latest ]; then echo "APK_URL=" >> "$GITHUB_ENV"; else echo "APK_URL=$URL" >> "$GITHUB_ENV"; fi
 
       - name: C1 (netcup, 188.172.229.121)
-        # Seit dem 26.09.2026 der neue C1; die alte Contabo1-IP 173.249.37.118
-        # ist abgeschaltet. Der Knoten liest deploy/validator/.env (Compose,
-        # deploy/deploy-c1.sh). C2 ist seit dem Neustart bei null ohne Knoten
-        # (C2_AKTIV in deploy-c1.yml) und wird hier nicht angefasst.
+        # Seit dem 26.09.2026 der neue C1. Der Knoten liest
+        # deploy/validator/.env (Compose, deploy/deploy-c1.sh).
         env:
           KEY: ${{ secrets.CONTABO_SSH_KEY }}
+          FP: "SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA"
         run: |
           set -euo pipefail
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           printf '%s' "$KEY" | perl -0777 -pe 's/\r//g; s/(?:-|\xE2\x80[\x93\x94])+ *(BEGIN|END) OPENSSH PRIVATE KEY *(?:-|\xE2\x80[\x93\x94])+/-----$1 OPENSSH PRIVATE KEY-----/g; unless (/-----BEGIN OPENSSH PRIVATE KEY-----/) { (my $z = $_) =~ s/\s//g; if ($z =~ m|^[A-Za-z0-9+/]+=*$|) { require MIME::Base64; my $d = MIME::Base64::decode_base64($z); if ($d =~ /-----BEGIN OPENSSH PRIVATE KEY-----/) { $_ = $d; } elsif ($d =~ /\Aopenssh-key-v1\x00/) { $_ = qq{-----BEGIN OPENSSH PRIVATE KEY-----\n$z\n-----END OPENSSH PRIVATE KEY-----\n}; } } } s/\s*(-----BEGIN OPENSSH PRIVATE KEY-----)\s*(.*?)\s*(-----END OPENSSH PRIVATE KEY-----)\s*/my ($k, $b, $f) = ($1, $2, $3); $b =~ s|\s||g; $b =~ s|(.{70})|$1\n|g; $b =~ s|\n\z||; "$k\n$b\n$f\n"/se' > ~/.ssh/k && chmod 600 ~/.ssh/k
-          ssh-keyscan -t ed25519 188.172.229.121 2>/dev/null > ~/.ssh/kh
-          ssh-keygen -lf ~/.ssh/kh | awk '{print $2}' | grep -qx 'SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA' || { echo "::error::Host-Schluessel von C1 passt nicht"; exit 1; }
-          cat ~/.ssh/kh >> ~/.ssh/known_hosts
-          ssh -i ~/.ssh/k -o BatchMode=yes root@188.172.229.121 "APK_URL='$APK_URL' bash -s" <<'SKRIPT'
+          # Nur ed25519 und genau eine Zeile (lint_keyscan.py).
+          ssh-keyscan -t ed25519 188.172.229.121 2>/dev/null | { grep -v '^#' || true; } > ~/.ssh/kh
+          [ "$(grep -c . ~/.ssh/kh)" = 1 ] || { echo "::error::Host-Schluessel: nicht genau eine ed25519-Zeile"; exit 1; }
+          [ "$(ssh-keygen -lf ~/.ssh/kh | awk '{print $2}')" = "$FP" ] || { echo "::error::Host-Schluessel von C1 passt nicht"; exit 1; }
+          cp ~/.ssh/kh ~/.ssh/known_hosts
+          printf 'export APK_URL=%q\n' "$APK_URL" | cat - <(cat <<'SKRIPT'
           set -euo pipefail
           ENV_FILE=/root/Aequitas/deploy/validator/.env
           [ -f "$ENV_FILE" ] || { echo "FEHLER: $ENV_FILE fehlt"; exit 1; }
           cp -a "$ENV_FILE" "${ENV_FILE}.bak.$(date +%s)"
-          # Ersetzen falls vorhanden, sonst anhaengen -- eine zweite Zeile
-          # waere eine Frage der Lesereihenfolge.
-          if grep -q '^AEQUITAS_APK_URL=' "$ENV_FILE"; then
-            sed -i "s#^AEQUITAS_APK_URL=.*#AEQUITAS_APK_URL=${APK_URL}#" "$ENV_FILE"
-          else
+          echo "vorher: $(grep '^AEQUITAS_APK_URL=' "$ENV_FILE" || echo 'AEQUITAS_APK_URL nicht gesetzt')"
+          sed -i '/^AEQUITAS_APK_URL=/d' "$ENV_FILE"
+          if [ -n "$APK_URL" ]; then
             echo "AEQUITAS_APK_URL=${APK_URL}" >> "$ENV_FILE"
+            echo "nachher: AEQUITAS_APK_URL=${APK_URL}"
+          else
+            echo "nachher: AEQUITAS_APK_URL entfernt -- der Knoten folgt releases/latest"
           fi
-          grep '^AEQUITAS_APK_URL=' "$ENV_FILE"
+          # Eine eingebundene Datei geht jeder URL vor (api.go handleAppDownload).
+          if docker exec aequitas-node sh -c 'test -f downloads/aequitas-app.apk' 2>/dev/null; then
+            echo "::warning::Im Knoten liegt downloads/aequitas-app.apk -- sie wird statt jeder URL ausgeliefert."
+          else
+            echo "keine eingebundene APK-Datei im Knoten (gut: die URL entscheidet)"
+          fi
           echo "Hinweis: wirksam beim naechsten Neustart des Knotens (naechster Deploy)."
           SKRIPT
+          ) | ssh -i ~/.ssh/k -o BatchMode=yes -o IdentitiesOnly=yes -o HostKeyAlgorithms=ssh-ed25519 root@188.172.229.121 'bash -s'
+          rm -f ~/.ssh/k
