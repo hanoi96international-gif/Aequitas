@@ -3,8 +3,13 @@
 #
 # Auf dem frischen Server (Ubuntu 22.04/24.04, als root):
 #
-#   curl -fsSL https://raw.githubusercontent.com/hanoi96international-gif/Aequitas/claude/aequitas-weitermachen-i6yayi/deploy/neuer-server.sh \
-#     | bash -s -- 0xDEIN_REGISTRIERTES_WALLET
+#   curl -fsSLo neuer-server.sh https://raw.githubusercontent.com/hanoi96international-gif/Aequitas/main/deploy/neuer-server.sh
+#   less neuer-server.sh        # erst lesen: es laeuft als root
+#   bash neuer-server.sh 0xDEIN_REGISTRIERTES_WALLET
+#
+# (Bis 03.11.2026 stand hier ein alter Arbeitszweig statt main, direkt in
+# bash geleitet: ein neuer Betreiber haette ungelesen einen veralteten Stand
+# als root ausgefuehrt.)
 #
 # Das Wallet muss ein in der App registrierter Mensch sein
 # (docs/VALIDATOR_EINRICHTEN.md: ein Mensch = ein Validator).

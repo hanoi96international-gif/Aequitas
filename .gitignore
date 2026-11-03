@@ -80,3 +80,6 @@ mpc-triples/
 # unversionierte Aenderung auf und verdeckt echte.
 __pycache__/
 *.pyc
+
+# Gebautes Lastprogramm (lag bis 03.11.2026 versehentlich im Repo, #363)
+/contabo-loadtest
