@@ -42,6 +42,14 @@ var impressumHTML string
 //go:embed assets/datenschutz.html
 var datenschutzHTML string
 
+// Der Weg, eine Anmeldung OHNE die App loeschen zu lassen (05.11.2026). Der
+// Play Store verlangt ihn neben dem Weg in der App; er braucht die
+// Kontaktadresse des Verantwortlichen und erscheint deshalb wie Impressum und
+// Datenschutz erst, wenn alle Pflichtangaben gesetzt sind.
+//
+//go:embed assets/loeschen.html
+var loeschenHTML string
+
 // platzhalterMarke steht in den Vorlagen überall dort, wo eine Angabe fehlt,
 // die nur die verantwortliche Person machen kann.
 const platzhalterMarke = "PLATZHALTER"
@@ -115,4 +123,8 @@ func (a *APIServer) handleImpressum(w http.ResponseWriter, r *http.Request) {
 
 func (a *APIServer) handleDatenschutz(w http.ResponseWriter, r *http.Request) {
 	a.serveLegal(w, "Datenschutzerklärung", datenschutzHTML)
+}
+
+func (a *APIServer) handleLoeschen(w http.ResponseWriter, r *http.Request) {
+	a.serveLegal(w, "Anmeldung löschen", loeschenHTML)
 }

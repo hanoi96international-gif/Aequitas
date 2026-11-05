@@ -237,7 +237,7 @@ jobs:
           [ "$(code https://aequitas.digital/)" = 200 ] && ok "https://aequitas.digital/ 200" || rot "Startseite nicht 200"
           LS=$(get https://aequitas.digital/api/legal-status)
           FEHLT=$(echo "$LS" | jq_ '(.fehlende_angaben // []) | join(", ")')
-          for P in impressum datenschutz; do
+          for P in impressum datenschutz loeschen; do
             C=$(code "https://aequitas.digital/$P")
             if [ "$C" = 200 ]; then ok "/$P 200"; else info "/$P HTTP $C -- offen, bis die Pflichtangaben gesetzt sind (rechtstexte-setzen.yml): ${FEHLT:-?}"; fi
           done

@@ -142,8 +142,8 @@ func (a *APIServer) handleLegalStatus(w http.ResponseWriter, r *http.Request) {
 		"vollstaendig":     len(fehlt) == 0,
 		"fehlende_angaben": fehlt,
 		"bedeutung":        erklaerung,
-		"seiten":           []string{"/impressum", "/datenschutz"},
-		"hinweis": "Solange eine Pflichtangabe fehlt, antworten beide Seiten mit 404. " +
+		"seiten":           []string{"/impressum", "/datenschutz", "/loeschen"},
+		"hinweis": "Solange eine Pflichtangabe fehlt, antworten alle drei Seiten mit 404. " +
 			"Ein unvollstaendiges Impressum ist schlechter als keines: es erweckt den " +
 			"Anschein, die Pflicht sei erfuellt.",
 	})
