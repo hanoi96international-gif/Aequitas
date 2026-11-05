@@ -1070,6 +1070,7 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	// /datenschutz zu existieren SCHIENEN, ohne es zu tun.
 	mux.HandleFunc("/impressum", a.handleImpressum)
 	mux.HandleFunc("/datenschutz", a.handleDatenschutz)
+	mux.HandleFunc("/loeschen", a.handleLoeschen)
 	// Die Grundpfeiler (grundpfeiler_seite.go) -- immer sichtbar, anders als
 	// die Rechtstexte haengen sie an keiner Pflichtangabe.
 	mux.HandleFunc("/grundpfeiler", a.handleGrundpfeiler)

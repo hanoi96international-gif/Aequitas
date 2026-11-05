@@ -97,8 +97,29 @@ SIZE=$(stat -c %s "$DUMP")
 # Wiederherstellung mindestens den Stand des lebenden Knotens vor dem Dump
 # traegt. Eine leere Datenbank (C2 am 01.10.: 848 Bytes, kein Schema)
 # faellt weiter durch.
-if ! docker run --rm -v "$OUT:/out" postgres:16-alpine \
-    pg_restore -l "/out/$(basename "$DUMP")" | grep -q "TABLE DATA public chain_accounts "; then
+#
+# ERST GANZ LESEN, DANN SUCHEN (04.11.2026). Hier stand
+# "pg_restore -l ... | grep -q ...". Unter pipefail ist das ein Wettlauf:
+# grep -q hoert beim ersten Treffer auf, docker schreibt die restliche Liste
+# in eine geschlossene Leitung ("write /dev/stdout: broken pipe"), die
+# Leitung gilt als gescheitert -- und ein gueltiger Dump wurde als "kein
+# Ledger" verworfen. So am 04.11. auf C1; die Wache meldete danach 40 h ohne
+# Sicherung. Jetzt: die Liste wird vollstaendig gelesen; scheitert
+# pg_restore -l selbst, ist der Dump unlesbar (eigene Meldung).
+enthaelt_kontentabelle() {
+  local liste
+  liste=$(docker run --rm -v "$OUT:/out" postgres:16-alpine \
+    pg_restore -l "/out/$(basename "$DUMP")") || {
+    echo "pg_restore -l failed — the dump is not readable. Failing."
+    return 2
+  }
+  grep -q "TABLE DATA public chain_accounts " <<<"$liste"
+}
+if enthaelt_kontentabelle; then
+  :
+else
+  rc=$?
+  [ "$rc" = 2 ] && exit 1
   echo "Dump (${SIZE} bytes) contains no chain_accounts rows — that is not a ledger. Failing."
   exit 1
 fi
