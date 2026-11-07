@@ -591,12 +591,12 @@ func proveAnfrageOhneV3(body []byte) []byte {
 // (RetryRegistrationRecoveries) ab dem Stichtag noch eingebucht werden?
 // Nur mit der Nullifier-Form (die alte ohne Nullifier kennt keine
 // Bescheinigung) und einer Bescheinigung, die jeder Knoten annimmt.
-func recoveryBescheinigungPruefen(tx Transaction) error {
+func recoveryBescheinigungPruefen(tx Transaction, jetzt int64, pruefer func(m string, t int64) bool) error {
 	if tx.Nullifier == "" {
 		return fmt.Errorf("Registrierung ohne Nullifier: nach dem Stichtag der Bescheinigung nicht nachholbar")
 	}
 	if tx.BioBescheinigung == nil {
 		return fmt.Errorf("Registrierung ohne Bescheinigung: nach dem Stichtag nicht nachholbar -- neu registrieren")
 	}
-	return pruefeBioBescheinigung(tx)
+	return pruefeBioBescheinigungMit(tx, jetzt, pruefer)
 }

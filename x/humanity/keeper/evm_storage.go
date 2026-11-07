@@ -3518,7 +3518,7 @@ func (cs *ChainState) RetryRegistrationRecoveries() int {
 		// bleibt offen und sichtbar (registration_recovery, /api/health);
 		// der Mensch registriert sich neu.
 		if bescheinigungBeiAnnahme(time.Now().Unix()) {
-			if err := recoveryBescheinigungPruefen(pendingTx); err != nil {
+			if err := recoveryBescheinigungPruefen(pendingTx, time.Now().Unix(), cs.verifierRegisterJetzt().mitglied); err != nil {
 				if _, dbErr := cs.db.Exec(`UPDATE registration_recovery SET last_error=$1 WHERE id=$2`, err.Error(), r.id); dbErr != nil {
 					fmt.Printf("[RECOVERY] ⚠ Could not record error for recovery id=%d: %v\n", r.id, dbErr)
 				}
