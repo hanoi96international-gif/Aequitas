@@ -24,7 +24,7 @@ func vdAnmeldung(t *testing.T, p b1bPruefer, rolle, u string, zeit int64) map[st
 	b := p.bindung(t)
 	return map[string]interface{}{"rolle": rolle, "public_key": p.k.pub, "url": u, "zeit": zeit,
 		"signatur": p.k.unterschreibe(dienstNachricht(rolle, u, zeit)),
-		"mensch": b.Mensch, "mensch_sig": b.MenschSig, "schluessel_sig": b.SchluesselSig}
+		"mensch":   b.Mensch, "mensch_sig": b.MenschSig, "schluessel_sig": b.SchluesselSig}
 }
 
 func vdSenden(t *testing.T, a *APIServer, body interface{}) *httptest.ResponseRecorder {
