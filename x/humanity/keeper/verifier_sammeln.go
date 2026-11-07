@@ -37,8 +37,9 @@ package keeper
 //
 // # GRENZEN
 //
-// Hoechstens verifierSammlungenHoechstens offene Abstimmungen und
-// verifierAntraegeHoechstens Antraege. Stimmen gibt es je Abstimmung
+// Hoechstens verifierSammlungenHoechstens offene Abstimmungen (je Pruefer
+// hoechstens verifierSammlungenJePruefer) und verifierAntraegeHoechstens
+// Antraege. Stimmen gibt es je Abstimmung
 // hoechstens eine je Pruefer -- und Pruefer sind hoechstens verifierHoechstens.
 // Eine Abstimmung eroeffnen kann nur ein Pruefer (gueltige Stimme), einen
 // Antrag stellen nur ein registrierter Mensch, einmal. Alles verfaellt nach
@@ -58,9 +59,13 @@ import (
 
 const (
 	verifierSammlungenHoechstens = 64
-	verifierAntraegeHoechstens   = 64
-	verifierStimmeKoerperMax     = 8 << 10
-	verifierAntragKoerperMax     = 4 << 10
+	// Ein Pruefer eroeffnet oder fuellt hoechstens so viele Abstimmungen
+	// zugleich -- sonst belegte ein einzelner mit Stimmen fuer 64 erfundene
+	// Betroffene alle Plaetze fuer 14 Tage (Sicherheitsdurchgang des Diffs).
+	verifierSammlungenJePruefer = 8
+	verifierAntraegeHoechstens  = 64
+	verifierStimmeKoerperMax    = 8 << 10
+	verifierAntragKoerperMax    = 4 << 10
 	// Ein Antrag ist hoechstens so alt oder so weit voraus, wenn er ankommt.
 	verifierAntragSpielraum int64 = 600
 )
@@ -306,6 +311,22 @@ func (a *APIServer) handleVerifierStimme(w http.ResponseWriter, r *http.Request)
 	}
 	// Je Pruefer eine Stimme: die juengere ersetzt die aeltere.
 	m := req.Stimme.Bescheinigung.Mensch
+	if _, schon := s.stimmen[m]; !schon {
+		n := 0
+		for _, x := range verifierSammel.offen {
+			if _, ok := x.stimmen[m]; ok {
+				n++
+			}
+		}
+		if n >= verifierSammlungenJePruefer {
+			if len(s.stimmen) == 0 {
+				delete(verifierSammel.offen, key)
+			}
+			verifierSammel.mu.Unlock()
+			jsonError(w, "too many open votes from this verifier -- please retry later", http.StatusTooManyRequests)
+			return
+		}
+	}
 	if alt, ok := s.stimmen[m]; !ok || req.Stimme.Zeit > alt.Zeit {
 		s.stimmen[m] = req.Stimme
 	}

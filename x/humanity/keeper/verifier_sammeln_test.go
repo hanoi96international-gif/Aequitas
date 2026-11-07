@@ -321,3 +321,30 @@ func TestVerifierSammeln_Antrag(t *testing.T) {
 		t.Fatalf("Liste: %v %s", err, w.Body.String())
 	}
 }
+
+// Ein einzelner Pruefer belegt nicht alle Plaetze.
+func TestVerifierSammeln_HoechstensSoVieleJePruefer(t *testing.T) {
+	f := neuerVrFall(t)
+	vsFrisch(t)
+	verifierRegisterOverride.Store(nowUnix() - 1000)
+	now := nowUnix()
+	a := &APIServer{state: f.cs}
+	for i := 0; i < verifierSammlungenJePruefer; i++ {
+		ziel := distTestAddr(7000 + i)
+		if w := vsStimmeSenden(t, a, verifierArtAufnahme, ziel, f.stimme(0, verifierArtAufnahme, ziel, now)); w.Code != http.StatusOK {
+			t.Fatalf("Stimme %d: %d %s", i, w.Code, w.Body.String())
+		}
+	}
+	ziel := distTestAddr(7999)
+	if w := vsStimmeSenden(t, a, verifierArtAufnahme, ziel, f.stimme(0, verifierArtAufnahme, ziel, now)); w.Code != http.StatusTooManyRequests {
+		t.Fatalf("ueber der Grenze je Pruefer: %d %s", w.Code, w.Body.String())
+	}
+	if len(verifierSammel.offen) != verifierSammlungenJePruefer {
+		t.Fatalf("%d Abstimmungen, erwartet %d (keine leere uebrig)", len(verifierSammel.offen), verifierSammlungenJePruefer)
+	}
+	// Dieselbe Abstimmung erneut: erlaubt (ersetzt die eigene Stimme).
+	erst := distTestAddr(7000)
+	if w := vsStimmeSenden(t, a, verifierArtAufnahme, erst, f.stimme(0, verifierArtAufnahme, erst, now+1)); w.Code != http.StatusOK {
+		t.Fatalf("eigene Stimme erneuern: %d", w.Code)
+	}
+}
