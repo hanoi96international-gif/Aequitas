@@ -120,3 +120,28 @@ func TestSeiten_LandingJSVersioniert(t *testing.T) {
 		}
 	}
 }
+
+// Die Website darf den einzigen Vergleichsdienst nicht "unabhaengig" nennen:
+// er gehoert dem Betreiber (Einzelbetrieb seit 03.10.2026). Und sie darf ein
+// Grundeinkommen "jeden Tag" nicht versprechen, ohne zu sagen, dass es heute
+// fast nichts ist (live 07.11.2026: 0,000295 AEQ je Mensch in 30 Tagen).
+func TestLanding_KeinUnabhaengigerEinzeldienst_UndEhrlichesGrundeinkommen(t *testing.T) {
+	for _, falsch := range []string{
+		"Ein unabhängiger Vergleichsdienst (derzeit einer)",
+		"An independent matching service (currently one)",
+	} {
+		if strings.Contains(landingJS, falsch) {
+			t.Errorf("Website behauptet noch: %q", falsch)
+		}
+	}
+	for _, muss := range []string{
+		"Ein Vergleichsdienst des Betreibers",
+		"A matching service run by the operator",
+		"Heute ist das noch fast nichts",
+		"today that is almost nothing",
+	} {
+		if !strings.Contains(landingJS, muss) {
+			t.Errorf("fehlt auf der Website: %q", muss)
+		}
+	}
+}
