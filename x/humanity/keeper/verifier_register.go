@@ -74,11 +74,10 @@ package keeper
 // (sonst byte-gleich). Gruender stehen im Code, nicht im Zustand; ein
 // Eintrag fuer einen Gruender (nach seinem Austritt) geht vor.
 //
-// # SCHLAFEND
+// # VOR DEM STICHTAG
 //
 // Vor verifierRegisterAb ist die Art unbekannt (bekannteTxArt: der Block wird
-// abgewiesen), und die Zulassung bleibt wie bisher. Nichts aendert sich, bis
-// der Stichtag gesetzt wird.
+// abgewiesen), und die Zulassung bleibt wie bisher.
 
 import (
 	"context"
@@ -121,7 +120,14 @@ const (
 
 // verifierRegisterAbUnix: Stichtag (math.MaxInt64 = schlafend).
 // TestVerifierRegister_NieVorRegisterLeser erzwingt: nie vor registerLeserAb.
-const verifierRegisterAbUnix int64 = math.MaxInt64
+//
+// Gesetzt am 07.11.2026 auf Anweisung des Betreibers ("alles auf volle
+// Dezentralitaet", K1 und Register heute): 1794070800 = 07.11.2026 17:00 UTC,
+// zugleich mit der Bescheinigung im Konsens. Der Deploy haelt an, wenn er
+// nicht mindestens 30 Minuten vorher laeuft
+// (.github/neustart/verifier-stichtag-nicht-verpasst.sh). Heute ist nur der
+// Gruender Coordinator; fuer ihn aendert sich nichts.
+const verifierRegisterAbUnix int64 = 1794070800
 
 // verifierRegisterOverride: nur fuer Tests (0 = der Stichtag oben).
 var verifierRegisterOverride atomic.Int64

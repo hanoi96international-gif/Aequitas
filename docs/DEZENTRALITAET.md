@@ -28,8 +28,8 @@ zentrale Instanz: `SKALIERUNG_DEZENTRAL.md`.
 | **Blöcke erzeugen** | ja, mit Erzeugerprüfung aus dem Kettenregister (seit 28.10.) | jeder registrierte Mensch mit Validator-Bindung | **1** (C1) | weitere Menschen mit eigenem Server |
 | **Transaktionen annehmen** | ja, jede Überweisung trägt die Rohsignatur (Stufe 1.0) | — | **1** annehmender Knoten | Stufe 2 (`verteilteAnnahmeAbUnix`) ist gebaut; scharf frühestens ab drei unabhängigen Validatoren |
 | **Wirtschaftsregeln** | ja, streng seit 01.11. (`nachrechnenStrengAbUnix`) | — | — | — |
-| **Mensch bestätigen (K1)** | ja, ab 16.11.: jeder Knoten prüft die Unterschriften von Coordinator und Vergleichsdienst | Schlüssel stehen in der Genesis | **1** Betreiber | Schlüssel aus dem Prüfer-Register statt der Genesis (Schritt B1b unten) |
-| **Prüfer (Coordinator) zulassen** | ja | **neu:** Aufnahme durch zwei Drittel der Prüfer (`verifier_register.go`) | **1** (Gründer) | Stichtag setzen; zweiter und dritter Prüfer |
+| **Mensch bestätigen (K1)** | ja, ab 07.11. 17:00 UTC: jeder Knoten prüft die Unterschriften von Coordinator und Vergleichsdienst | Schlüssel stehen in der Genesis | **1** Betreiber | Schlüssel aus dem Prüfer-Register statt der Genesis (Schritt B1b unten) |
+| **Prüfer (Coordinator) zulassen** | ja | **neu:** Aufnahme durch zwei Drittel der Prüfer (`verifier_register.go`), ab 07.11. 17:00 UTC | **1** (Gründer) | zweiter und dritter Prüfer |
 | **Vergleichsdienst (Gesichtsabgleich)** | Ergebnis ja (K1), der Abgleich selbst nein | wer den Dienst betreibt | **1**, mit Tagesgrenze 25 | zweiter Dienst bei einem anderen Menschen; später MPC (Phase C) |
 | **Proof-Server (ZK-Beweis)** | ja, der Beweis wird überall geprüft | jeder | **1** | B4: ohne Vertrauensrolle, jeder kann rechnen |
 | **Grundeinkommen, Staffel, Lebensnachweis** | ja | Einspruch nur mit zwei verschiedenen Prüfern | — | Staffel schläft, bis die Zulassung knapp ist (jetzt gebaut) |
@@ -80,18 +80,21 @@ Prüfer-Register steht**. Ins Register kommt man:
 braucht jede Aufnahme beide, ab drei Prüfern zwei von drei, und so weiter. Der
 Gründer kann also allein nur den Ersten neben sich holen, danach nicht mehr.
 
-**Schlafend.** `verifierRegisterAbUnix` steht auf `MaxInt64`. Vor dem
-Scharfschalten:
+**Stichtag 07.11.2026 17:00 UTC**, zugleich mit K1 (Anweisung des
+Betreibers). Der Deploy hält an, wenn er nicht mindestens 30 Minuten vorher
+läuft (`.github/neustart/verifier-stichtag-nicht-verpasst.sh`).
 
-1. Coordinator-Betreiber-Wallet einrichten (`COORDINATOR_BETREIBER_WALLET` =
-   Gründer). Sonst kann der Gründer nicht abstimmen.
-2. Stichtag mit mindestens einem Tag Vorlauf setzen und C1 ausrollen.
+Damit der Gründer bescheinigen und abstimmen kann, braucht sein Coordinator
+die Betreiber-Wallet (`bio-deploy-coordinator-to-box.yml`, Eingabe
+`betreiber_wallet`) und einmal die Freigabe des Schlüssels durch die Wallet
+selbst (Unterschrift in der App). Für K1 ist das nicht nötig: K1 prüft die
+Schlüssel aus der Genesis.
 
 ## Reihenfolge der nächsten Schritte
 
 | # | Schritt | Braucht | Stand |
 |---|---|---|---|
-| 1 | Prüfer-Register mit Abstimmung (B1) | Code | **gebaut, schlafend** |
+| 1 | Prüfer-Register mit Abstimmung (B1) | Code | **gebaut, scharf ab 07.11. 17:00 UTC** |
 | 2 | B1b: K1 liest Prüfer-Schlüssel aus dem Register statt aus der Genesis | Code (Kette, Coordinator, Proof-Server) | offen |
 | 3 | Zweiter Prüfer mit eigenem Coordinator und Vergleichsdienst | **einen Menschen** | offen |
 | 4 | K1-Quorum auf 2 verschiedene Menschen | Schritt 2 und 3 | offen |

@@ -1,6 +1,6 @@
 # Bescheinigung im Konsens einschalten
 
-**Stand 07.11.2026 — Stichtag gesetzt: 16.11.2026 00:00 UTC (`ab_unix` 1794787200).**
+**Stand 07.11.2026 — Stichtag vorgezogen auf heute, 07.11.2026 17:00 UTC (`ab_unix` 1794070800), auf Anweisung des Betreibers („K1 heute schon live“). Vorher 16.11.2026.**
 Hintergrund: `AUDIT_2026-10-21.md`, K1.
 
 | Schritt | Stand |
@@ -12,9 +12,16 @@ Hintergrund: `AUDIT_2026-10-21.md`, K1.
 | Waechter | `pruefstand-live.yml`: ROT, wenn ein Stichtag gesetzt ist und der Coordinator kein v3 liefert |
 | Gegenprobe ueber die Sprachgrenze | `TestBescheinigung_UnterschriftenAusDemPythonCode`: Unterschriften aus dem echten Python-Code bestehen die Pruefung der Kette |
 
-Spaetestens am 14.11.2026 muss der Coordinator v3 liefern (Annahme verlangt
-sie ab 15.11. 00:00 UTC). Geschieht das nicht, weist der Knoten neue
-Registrierungen ab, bis es nachgeholt ist; die Kette selbst bleibt heil.
+Der Coordinator liefert v3 seit 07.11. (`bescheinigung.v3` in
+`/coordinator/health`), der Vergleichsdienst `bezeugung_v3`. Die Annahme
+verlangt die Bescheinigung sofort nach dem Deploy (Vorlauf ein Tag vor dem
+Stichtag). Faellt v3 aus, weist der Knoten neue Registrierungen ab, bis es
+nachgeholt ist; die Kette selbst bleibt heil.
+
+Der Deploy haelt an, wenn der Stichtag nicht mehr mindestens 30 Minuten in
+der Zukunft liegt (`.github/neustart/k1-stichtag-nicht-verpasst.sh`, Test
+`scripts/test_k1_stichtag_nicht_verpasst.sh`): sonst entstuenden zwischen
+Stichtag und Deploy Bloecke ohne Pruefung.
 
 ## Worum es geht
 

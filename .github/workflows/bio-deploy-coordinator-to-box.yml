@@ -69,6 +69,10 @@ on:
         type: choice
         options: [unveraendert, ja, aus]
         default: unveraendert
+      betreiber_wallet:
+        description: "COORDINATOR_BETREIBER_WALLET (Pruefer-Register: der Mensch hinter dem Coordinator-Schluessel, 0x + 40 Hex klein; unveraendert = wie im laufenden Container)"
+        required: true
+        default: unveraendert
 
 permissions:
   contents: read
@@ -123,6 +127,7 @@ jobs:
           EINZELBETRIEB: ${{ inputs.einzelbetrieb }}
           TAGESGRENZE: ${{ inputs.tagesgrenze }}
           BESCHEINIGUNG_V3_NEU: ${{ inputs.bescheinigung_v3 }}
+          BETREIBER_WALLET_NEU: ${{ inputs.betreiber_wallet }}
           C1_HOST: ${{ matrix.host }}
         run: |
           set -euo pipefail
@@ -134,7 +139,7 @@ jobs:
           [ "$(grep -c . "$RUNNER_TEMP/kh")" = 1 ] || { echo "::error::Host-Schluessel von $C1_HOST: nicht genau eine ed25519-Zeile"; exit 1; }
           [ "$(ssh-keygen -lf "$RUNNER_TEMP/kh" | awk '{print $2}')" = "SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA" ] || { echo "::error::Host-Schluessel von $C1_HOST passt nicht"; exit 1; }
           {
-            for v in IMAGE GHCR_USER GHCR_TOKEN PUBLIC_NAME ALTERSPRUEFUNG_NEU EINWILLIGUNG_VORGABE EINZELBETRIEB TAGESGRENZE BESCHEINIGUNG_V3_NEU; do printf 'export %s=%q\n' "$v" "${!v}"; done
+            for v in IMAGE GHCR_USER GHCR_TOKEN PUBLIC_NAME ALTERSPRUEFUNG_NEU EINWILLIGUNG_VORGABE EINZELBETRIEB TAGESGRENZE BESCHEINIGUNG_V3_NEU BETREIBER_WALLET_NEU; do printf 'export %s=%q\n' "$v" "${!v}"; done
             cat <<'SKRIPT'
           set -euo pipefail
           NAME=aequitas-coordinator
@@ -227,6 +232,19 @@ jobs:
               ;;
             *) echo "FEHLER: bescheinigung_v3 unbekannt"; exit 1;;
           esac
+          # Pruefer-Register (verifier_register.go): der Mensch hinter dem
+          # Schluessel. Nur eine kanonische Adresse; sie ist oeffentlich (steht
+          # in jeder Bescheinigung), kein Geheimnis.
+          case "$BETREIBER_WALLET_NEU" in
+            unveraendert) ;;
+            *)
+              printf '%s' "$BETREIBER_WALLET_NEU" | grep -qE '^0x[0-9a-f]{40}$' || { echo "FEHLER: betreiber_wallet ist keine Adresse in Kleinschreibung"; exit 1; }
+              alt=$(grep -E '^COORDINATOR_BETREIBER_WALLET=' /root/.coordinator-neu.env | cut -d= -f2- || true)
+              sed -i '/^COORDINATOR_BETREIBER_WALLET=/d' /root/.coordinator-neu.env
+              echo "COORDINATOR_BETREIBER_WALLET=$BETREIBER_WALLET_NEU" >> /root/.coordinator-neu.env
+              echo "  COORDINATOR_BETREIBER_WALLET: ${alt:-(nicht gesetzt)} -> $BETREIBER_WALLET_NEU"
+              ;;
+          esac
           NET=$(docker inspect "$NAME" --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}' | awk '{print $1}')
           [ -n "$NET" ] || NET=aequitas-net
           MOUNTS=$(docker inspect "$NAME" --format '{{range .Mounts}}{{if eq .Type "bind"}}-v {{.Source}}:{{.Destination}} {{end}}{{end}}')
@@ -283,6 +301,16 @@ jobs:
             echo "$body" | grep -o '"validator_urls":\[[^]]*\]' || true
             zurueck
             exit 1
+          fi
+
+          if [ "$BETREIBER_WALLET_NEU" != unveraendert ]; then
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "https://${PUBLIC_NAME}/coordinator/besitznachweis?wallet=$BETREIBER_WALLET_NEU" || echo 000)
+            echo "besitznachweis fuer die Betreiber-Wallet: HTTP $code"
+            if [ "$code" != 200 ]; then
+              echo "FEHLER: der Coordinator stellt keinen Besitznachweis fuer die Betreiber-Wallet aus"
+              zurueck
+              exit 1
+            fi
           fi
 
           if [ "$BESCHEINIGUNG_V3_NEU" != unveraendert ]; then
