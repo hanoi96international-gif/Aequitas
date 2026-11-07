@@ -19,7 +19,7 @@ func gleichgewichtAn(t *testing.T) {
 	t.Helper()
 	wirtschaftAn(t)
 	gleichgewichtAktivOverride.Store(1)
-	t.Cleanup(func() { gleichgewichtAktivOverride.Store(0) })
+	t.Cleanup(func() { gleichgewichtAktivOverride.Store(math.MaxInt64) })
 }
 
 var ggRegeln = []string{
@@ -45,26 +45,37 @@ func ggNeu(vorher map[string]int64) map[string]int64 {
 	return m
 }
 
-// Vor der Aktivierung (2100) aendert sich nichts: Menschen unter dem
-// Sparfreibetrag zahlen keinen Umlauf, Ueberweisungen kosten Gebuehr.
-func TestGleichgewicht_SchlaeftBis2100(t *testing.T) {
+// Der Stichtag (07.11.2026 18:00 UTC, Entscheidung des Betreibers): eine
+// Sekunde davor gelten die alten Regeln -- Mensch mit 1.000 AEQ zahlt keinen
+// Umlauf, Ueberweisungen kosten Gebuehr --, ab ihm das Gleichgewicht.
+func TestGleichgewicht_Stichtag(t *testing.T) {
 	wirtschaftAn(t)
-	jetzt := int64(1_800_000_000)
+	if gleichgewichtAktivAbUnix != 1794074400 {
+		t.Fatalf("Stichtag %d, freigegeben ist 1794074400 (07.11.2026 18:00 UTC)", gleichgewichtAktivAbUnix)
+	}
+	// Die Konstante selbst pruefen (TestMain haelt sie sonst schlafend);
+	// zurueck auf math.MaxInt64, nie auf 0.
+	gleichgewichtAktivOverride.Store(gleichgewichtAktivAbUnix)
+	t.Cleanup(func() { gleichgewichtAktivOverride.Store(math.MaxInt64) })
 	cs := newTestState()
-	if b := cs.umlaufBetragRoh(wMensch1, artMensch, 1000, jetzt, sekundenJeMonat); b != 0 {
-		t.Fatalf("vor dem Gleichgewicht zahlt ein Mensch mit 1.000 AEQ nichts, bekommen %v", b)
+	vorher, ab := gleichgewichtAktivAbUnix-1, gleichgewichtAktivAbUnix
+	if b := cs.umlaufBetragRoh(wMensch1, artMensch, 1000, vorher, sekundenJeMonat); b != 0 {
+		t.Fatalf("vor dem Stichtag zahlt ein Mensch mit 1.000 AEQ nichts, bekommen %v", b)
 	}
-	if g := cs.gebuehrMitWirtschaft(wFrei, wMensch1, artFrei, artMensch, 100, 200, jetzt); g <= 0 {
-		t.Fatalf("vor dem Gleichgewicht kostet eine Ueberweisung Gebuehr, bekommen %v", g)
+	if g := cs.gebuehrMitWirtschaft(wFrei, wMensch1, artFrei, artMensch, 100, 200, vorher); g <= 0 {
+		t.Fatalf("vor dem Stichtag kostet eine Ueberweisung Gebuehr, bekommen %v", g)
 	}
-	if gleichgewichtAktiv(gleichgewichtAktivAbUnix-1) || !gleichgewichtAktiv(gleichgewichtAktivAbUnix) {
+	if b := cs.umlaufBetragRoh(wMensch1, artMensch, 1000, ab, sekundenJeMonat); math.Abs(b-5) > 1e-9 {
+		t.Fatalf("ab dem Stichtag zahlt ein Mensch mit 1.000 AEQ 5 AEQ im Monat, bekommen %v", b)
+	}
+	if g := cs.gebuehrMitWirtschaft(wFrei, wMensch1, artFrei, artMensch, 100, 200, ab); g != 0 {
+		t.Fatalf("ab dem Stichtag kostet keine Ueberweisung etwas, bekommen %v", g)
+	}
+	if gleichgewichtAktiv(vorher) || !gleichgewichtAktiv(ab) {
 		t.Fatal("Aktivierung muss genau an gleichgewichtAktivAbUnix liegen")
 	}
-	if gleichgewichtAktivAbUnix != 4102444800 {
-		t.Fatal("das Gleichgewicht schlaeft bis zur Entscheidung (2100)")
-	}
 	wirtschaftAktivOverride.Store(math.MaxInt64)
-	if gleichgewichtAktiv(gleichgewichtAktivAbUnix) {
+	if gleichgewichtAktiv(ab) {
 		t.Fatal("ohne die Wirtschaftsregeln kein Gleichgewicht")
 	}
 }
@@ -507,7 +518,7 @@ func TestGleichgewicht_SchnittstelleMeldetStand(t *testing.T) {
 		t.Fatalf("vor dem Gleichgewicht: regeln.gleichgewicht.aktiv = %v", g["aktiv"])
 	}
 	gleichgewichtAktivOverride.Store(1)
-	t.Cleanup(func() { gleichgewichtAktivOverride.Store(0) })
+	t.Cleanup(func() { gleichgewichtAktivOverride.Store(math.MaxInt64) })
 	if v := frage(konto)["gleichgewicht"]; v != true {
 		t.Fatalf("nach der Aktivierung: konto.gleichgewicht = %v", v)
 	}

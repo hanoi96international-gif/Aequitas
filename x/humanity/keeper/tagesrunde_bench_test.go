@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"strconv"
 	"testing"
@@ -79,7 +80,7 @@ func tagesrundeMessen(b *testing.B, n int, gg bool) {
 	b.Cleanup(func() { wirtschaftAktivOverride.Store(1<<63 - 1) })
 	if gg {
 		gleichgewichtAktivOverride.Store(1)
-		b.Cleanup(func() { gleichgewichtAktivOverride.Store(0) })
+		b.Cleanup(func() { gleichgewichtAktivOverride.Store(math.MaxInt64) })
 	}
 	lauf := time.Now().UnixNano() % 1_000_000_000
 	erzeuger := rundeKnoten(b, basis, fmt.Sprintf("tagesrunde_%d_a", lauf), n)

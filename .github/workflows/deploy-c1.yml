@@ -56,6 +56,13 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Genesis passt zur laufenden Kette (Wechsel nur ueber neustart-bei-null.yml)
         run: bash .github/neustart/genesis-passt.sh http://$C1:8080
+      - name: Stichtag des Gleichgewichts nicht verpasst
+        # Ein neuer Stichtag (wirtschaft3.go) darf erst ausgerollt werden,
+        # solange er in der Zukunft liegt -- mit 30 Minuten Puffer fuer Bau
+        # und Neustart. Liegt er schon zurueck, haette der laufende Knoten
+        # Bloecke danach unter den alten Regeln erzeugt, die der neue Stand
+        # anders nachrechnet. Dann: neuen Stichtag waehlen, nicht ausrollen.
+        run: bash .github/neustart/stichtag-nicht-verpasst.sh http://$C1:8080
       - name: Schluessel
         env:
           KEY: ${{ secrets.CONTABO_SSH_KEY }}

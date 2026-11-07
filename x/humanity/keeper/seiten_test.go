@@ -1,6 +1,7 @@
 package keeper
 
 import (
+	"encoding/json"
 	"net/http/httptest"
 	"regexp"
 	"sort"
@@ -142,6 +143,63 @@ func TestLanding_KeinUnabhaengigerEinzeldienst_UndEhrlichesGrundeinkommen(t *tes
 	} {
 		if !strings.Contains(landingJS, muss) {
 			t.Errorf("fehlt auf der Website: %q", muss)
+		}
+	}
+}
+
+// Die Texte des Gleichgewichts (GG in landing.js) gelten, sobald die Kette es
+// meldet. Jede der zwoelf Sprachen braucht dann dieselben Schluessel wie
+// "de" -- fehlt einer, bliebe in dieser Sprache der Text der alten Regeln
+// stehen, ohne dass es jemand merkt. Jeder Schluessel muss ein echter der
+// Seite sein, und {ab} (der Stichtag aus der Kette) steht in jeder Sprache
+// genau dort, wo er im Deutschen steht.
+func TestLanding_GleichgewichtInAllenSprachen(t *testing.T) {
+	a := strings.Index(landingJS, "const GG = {\n")
+	if a < 0 {
+		t.Fatal("landing.js: keine Tabelle GG")
+	}
+	b := strings.Index(landingJS[a:], "\n};\n")
+	if b < 0 {
+		t.Fatal("landing.js: Tabelle GG ohne Ende")
+	}
+	var gg map[string]map[string]string
+	roh := strings.TrimSuffix(strings.TrimPrefix(landingJS[a:a+b+3], "const GG = "), ";")
+	// Die Tabelle ist JSON bis auf die Kommas am Ende jedes Blocks.
+	roh = regexp.MustCompile(`,(\s*})`).ReplaceAllString(roh, "$1")
+	if err := json.Unmarshal([]byte(roh), &gg); err != nil {
+		t.Fatalf("GG ist kein lesbares Objekt: %v", err)
+	}
+	benutzt := map[string]bool{}
+	for _, html := range seitenFuerTest {
+		for _, m := range regexp.MustCompile(`data-i18n="([^"]+)"`).FindAllStringSubmatch(html, -1) {
+			benutzt[m[1]] = true
+		}
+	}
+	de := gg["de"]
+	if len(gg) != 12 || len(de) < 70 {
+		t.Fatalf("GG: %d Sprachen, %d deutsche Texte", len(gg), len(de))
+	}
+	for k := range de {
+		if !benutzt[k] {
+			t.Errorf("GG.de.%s: kein Schluessel der Seiten", k)
+		}
+	}
+	for lang, texte := range gg {
+		for k, v := range de {
+			w, da := texte[k]
+			if !da || strings.TrimSpace(w) == "" {
+				t.Errorf("GG.%s: %s fehlt", lang, k)
+				continue
+			}
+			if strings.Contains(v, "{ab}") != strings.Contains(w, "{ab}") {
+				t.Errorf("GG.%s.%s: {ab} anders als im Deutschen", lang, k)
+			}
+			if strings.Count(v, "<strong>") != strings.Count(w, "<strong>") {
+				t.Errorf("GG.%s.%s: Hervorhebung anders als im Deutschen", lang, k)
+			}
+		}
+		if len(texte) != len(de) {
+			t.Errorf("GG.%s: %d Texte, Deutsch %d", lang, len(texte), len(de))
 		}
 	}
 }
