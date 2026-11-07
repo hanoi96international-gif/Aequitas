@@ -2,7 +2,11 @@ package keeper
 
 import (
 	"context"
+	"encoding/json"
 	"math"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -470,5 +474,45 @@ func TestGleichgewicht_KandidatenAusDatenbankUndSpeicher_RealDB(t *testing.T) {
 		if belastet[a] <= 0 {
 			t.Fatalf("%s ohne Umlauf: %+v", a, belastet)
 		}
+	}
+}
+
+// Die App schaltet an /api/wirtschaft/konto um (gleichgewicht), die Website an
+// /api/wirtschaft/regeln (gleichgewicht.aktiv). Beide Felder folgen derselben
+// Regel wie die Kette, vorher wie nachher -- und vorher steht dort false,
+// damit niemand eine Ueberweisung zu billig angezeigt bekommt.
+func TestGleichgewicht_SchnittstelleMeldetStand(t *testing.T) {
+	wirtschaftAn(t)
+	a := &APIServer{state: newTestState()}
+	frage := func(pfad string) map[string]interface{} {
+		t.Helper()
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, pfad, nil)
+		if strings.HasPrefix(pfad, "/api/wirtschaft/konto") {
+			a.handleWirtschaftKonto(rec, req)
+		} else {
+			a.handleWirtschaftRegeln(rec, req)
+		}
+		var m map[string]interface{}
+		if err := json.Unmarshal(rec.Body.Bytes(), &m); err != nil {
+			t.Fatalf("%s: %v (%s)", pfad, err, rec.Body.String())
+		}
+		return m
+	}
+	konto := "/api/wirtschaft/konto?adresse=" + wMensch1
+	if v, da := frage(konto)["gleichgewicht"]; !da || v != false {
+		t.Fatalf("vor dem Gleichgewicht: konto.gleichgewicht = %v (da %v), erwartet false", v, da)
+	}
+	if g := frage("/api/wirtschaft/regeln")["gleichgewicht"].(map[string]interface{}); g["aktiv"] != false {
+		t.Fatalf("vor dem Gleichgewicht: regeln.gleichgewicht.aktiv = %v", g["aktiv"])
+	}
+	gleichgewichtAktivOverride.Store(1)
+	t.Cleanup(func() { gleichgewichtAktivOverride.Store(0) })
+	if v := frage(konto)["gleichgewicht"]; v != true {
+		t.Fatalf("nach der Aktivierung: konto.gleichgewicht = %v", v)
+	}
+	g := frage("/api/wirtschaft/regeln")["gleichgewicht"].(map[string]interface{})
+	if g["aktiv"] != true || g["umlauf_prozent_monat"] != 0.5 {
+		t.Fatalf("nach der Aktivierung: regeln.gleichgewicht = %v", g)
 	}
 }

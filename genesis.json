@@ -7,10 +7,10 @@
     "version": "v8"
   },
   "bescheinigung": {
-    "ab_unix": 0,
+    "ab_unix": 1794787200,
     "modus": "test",
     "quorum": 1,
-    "coordinator": [],
-    "bezeuger": []
+    "coordinator": ["d3c46a772f2c40e533f6abd5781d0c39cdcda9ba3df63e909ebd729d2e2aebbf"],
+    "bezeuger": ["a73580d9c74cf33996373be983d3fb212aeccd150b963f9046d057872ddefccf"]
   }
 }

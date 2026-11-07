@@ -287,6 +287,17 @@ jobs:
               echo "Alter (gilt als entwendet, ueberall entfernt): \`${ALT:-?}\`"
               echo
               echo "**Jetzt:** den neuen Schluessel per PR in \`vergleichsdienst-neuer-c1.yml\` (COORDINATOR_PUBLIC_KEYS) eintragen und den Wechsel in der Meldung nach Art. 33 nennen."
+              # Bescheinigung im Konsens (K1): Die Kette kennt die Schluessel
+              # aus genesis.json. Steht dort ein Stichtag, weist jeder Knoten
+              # Registrierungen mit dem neuen Schluessel ab, bis er dort steht
+              # (fail-closed -- der alte gilt als entwendet und bleibt bis
+              # dahin ebenfalls gueltig, also auch entfernen).
+              KAB=$(curl -s --max-time 15 https://aequitas.digital/api/status | jq -r '.bescheinigung_konsens.ab_unix // 0' 2>/dev/null || echo "?")
+              if [ "$KAB" != 0 ]; then
+                echo
+                echo "**K1 ist eingeschaltet (Stichtag \`$KAB\`):** in \`genesis.json\` unter \`bescheinigung.coordinator\` den alten Schluessel durch den neuen ersetzen und auf ALLE Knoten ausrollen (docs/BESCHEINIGUNG_IM_KONSENS.md). Bis dahin scheitern neue Registrierungen, und der entwendete Schluessel gilt fuer die Kette weiter."
+                echo "::warning title=K1::genesis.json bescheinigung.coordinator auf den neuen Schluessel umstellen und ausrollen" >&2
+              fi
             else
               echo "Kein neuer Schluessel gesetzt -- Protokoll oben ansehen."
             fi

@@ -1,6 +1,20 @@
 # Bescheinigung im Konsens einschalten
 
-**Stand 22.10.2026 — gebaut, schlafend.** Hintergrund: `AUDIT_2026-10-21.md`, K1.
+**Stand 07.11.2026 — Stichtag gesetzt: 16.11.2026 00:00 UTC (`ab_unix` 1794787200).**
+Hintergrund: `AUDIT_2026-10-21.md`, K1.
+
+| Schritt | Stand |
+|---|---|
+| Knoten C1 nimmt `v3:` heraus | ja (seit 22.10., `bescheinigung_konsens` in `/api/status`) |
+| Vergleichsdienst liefert v3 | Code ja; im Betrieb sichtbar an `bezeugung_v3` in `/matching/health`, sobald der Stand mit diesem Feld ausgerollt ist |
+| Coordinator `BESCHEINIGUNG_V3=ja` | `bio-deploy-coordinator-to-box.yml`, Eingabe `bescheinigung_v3: ja` -- prueft vorher Knoten und Vergleichsdienst, nachher `bescheinigung.v3` in `/coordinator/health` |
+| Schluessel in `genesis.json` | Coordinator `d3c46a77…` (Fingerabdruck 44ff65e3), Bezeuger `a73580d9…` (d4946df6) -- dieselben, die der Proof-Server heute prueft |
+| Waechter | `pruefstand-live.yml`: ROT, wenn ein Stichtag gesetzt ist und der Coordinator kein v3 liefert |
+| Gegenprobe ueber die Sprachgrenze | `TestBescheinigung_UnterschriftenAusDemPythonCode`: Unterschriften aus dem echten Python-Code bestehen die Pruefung der Kette |
+
+Spaetestens am 14.11.2026 muss der Coordinator v3 liefern (Annahme verlangt
+sie ab 15.11. 00:00 UTC). Geschieht das nicht, weist der Knoten neue
+Registrierungen ab, bis es nachgeholt ist; die Kette selbst bleibt heil.
 
 ## Worum es geht
 
