@@ -375,7 +375,7 @@ func (cs *ChainState) offeneStaffelAuftraege(ctx context.Context) (map[string]bo
 	}
 	rows, err := cs.dbExecCtx(ctx).Query(
 		`SELECT DISTINCT lower(tx_json::json ->> 'wallet') FROM pending_txs
-		  WHERE included_at = 0 AND (tx_json::json ->> 'type') IN ('liveness_renewal', $1)`,
+		  WHERE included_at = 0 AND (tx_json::json ->> 'type') IN ('liveness_renewal', $1, 'umzug_ankuendigen')`,
 		staffelEinspruchTxArt)
 	if err != nil {
 		return nil, err

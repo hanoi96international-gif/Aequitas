@@ -288,6 +288,11 @@ func pruefeSnapshotKonfig(key, wert string) error {
 			return err
 		}
 	}
+	if key == umzugKonfigSchluessel {
+		if _, err := umzugRegisterLesen(wert); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

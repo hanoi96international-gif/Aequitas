@@ -340,8 +340,20 @@ func pruefeBioBescheinigungMit(tx Transaction, blockZeit int64, pruefer func(m s
 		return fmt.Errorf("bescheinigung: %d Unterschriften (1..%d)", len(b.Signaturen), bescheinigungMaxSignaturen)
 	}
 	wallet := strings.ToLower(strings.TrimSpace(tx.Wallet))
-	bindungMsg := bindungNachrichtV3(b.Modus, nullifier, wallet, b.Zeit)
-	aussageMsg := aussageNachrichtV3(b.Modus, nullifier, b.Zeit)
+	return pruefeV3Unterschriften(b, k, bindungNachrichtV3(b.Modus, nullifier, wallet, b.Zeit),
+		aussageNachrichtV3(b.Modus, nullifier, b.Zeit), blockZeit, pruefer)
+}
+
+// pruefeV3Unterschriften: die Unterschriften einer v3-Bescheinigung gegen die
+// Schluessel der Genesis und (ab bescheinigungRegisterAb) die mitgebrachten
+// Bindungen von Pruefern. bindungMsg unterschreibt, wer die Bescheinigung an
+// eine Wallet bindet (Coordinator), aussageMsg, wer den Menschen bezeugt
+// (Vergleichsdienst). Dieselbe Regel fuer Registrierung und Umzug (umzug.go);
+// die Domaenen in den Nachrichten trennen beide.
+func pruefeV3Unterschriften(b *BioBescheinigung, k bescheinigungKonfig, bindungMsg, aussageMsg []byte, blockZeit int64, pruefer func(m string, t int64) bool) error {
+	if len(b.Signaturen) == 0 || len(b.Signaturen) > bescheinigungMaxSignaturen {
+		return fmt.Errorf("bescheinigung: %d Unterschriften (1..%d)", len(b.Signaturen), bescheinigungMaxSignaturen)
+	}
 	// Die Schluessel einmal je Pruefung dekodieren. Ihre Tauglichkeit (64 Hex
 	// klein, keine kleine Ordnung) hat bescheinigungKonf schon geprueft --
 	// beim Laden der Genesis (ladeBescheinigungKonfig -> pruefen) bzw. bei

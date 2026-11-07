@@ -173,6 +173,22 @@ func auftragsFenster(tx *Transaction, jetzt int64) zeitFenster {
 			return zeitFenster{1, 0}
 		}
 		f.eng(sattAdd(tx.DistributionAt, -nachweisHoechstensVoraus), sattAdd(tx.DistributionAt, erneuerungHoechstensAlt))
+	case umzugCodeTxArt, umzugAnkuendigenTxArt:
+		// umzug.go: erst ab dem Stichtag; unterschrieben hoechstens 5 min
+		// nach und hoechstens einen Tag vor dem Block (umzug_zeit).
+		f.eng(umzugAb(), math.MaxInt64)
+		if tx.DistributionAt <= 0 {
+			return zeitFenster{1, 0}
+		}
+		f.eng(sattAdd(tx.DistributionAt, -umzugHoechstensVoraus), sattAdd(tx.DistributionAt, umzugHoechstensAlt))
+	case umzugWiderrufTxArt:
+		f.eng(umzugAb(), math.MaxInt64)
+	case umzugVollzugTxArt:
+		// Die Rundenzeit liegt hoechstens 60 s nach dem Block (umzug_frist).
+		f.eng(umzugAb(), math.MaxInt64)
+		if tx.DistributionAt > 0 {
+			f.eng(sattAdd(tx.DistributionAt, -60), math.MaxInt64)
+		}
 	case satzTxArt:
 		// satz_plan.go: erst ab dem Gleichgewicht; issued_at wie beim
 		// Einspruch (satz_zeit); gilt_ab 30 bis 90 Tage nach dem Block
@@ -324,6 +340,17 @@ func blockTauglich(tx *Transaction, blockZeit int64) error {
 		}
 		if z := tx.DistributionAt; z <= 0 || z > sattAdd(blockZeit, nachweisHoechstensVoraus) || z < blockZeit-nachweisHoechstensAlt {
 			return fmt.Errorf("Pruefer-Aenderung bescheinigt %d, Block %d", z, blockZeit)
+		}
+	case umzugCodeTxArt, umzugAnkuendigenTxArt:
+		if !umzugAktiv(blockZeit) {
+			return fmt.Errorf("%s vor dem Stichtag (Block %d)", tx.Type, blockZeit)
+		}
+		if z := tx.DistributionAt; z <= 0 || z > sattAdd(blockZeit, umzugHoechstensVoraus) || blockZeit-z > umzugHoechstensAlt {
+			return fmt.Errorf("%s unterschrieben %d, Block %d", tx.Type, z, blockZeit)
+		}
+	case umzugWiderrufTxArt, umzugVollzugTxArt:
+		if !umzugAktiv(blockZeit) {
+			return fmt.Errorf("%s vor dem Stichtag (Block %d)", tx.Type, blockZeit)
 		}
 	case staffelEinspruchTxArt:
 		if !stagedGrantAktiv(blockZeit) {

@@ -63,18 +63,24 @@ const (
 // neue Art hinzu, scheitert TestKeinEntzug_AlleArtenErfasst, bis sie hier
 // bewusst eingeordnet ist.
 var replayArten = map[string]geldArt{
-	"register_human":                   geldNurGutschrift,
-	"transfer":                         geldUnterschrieben,
-	"swap_aeq_tusd":                    geldUnterschrieben,
-	"swap_tusd_aeq":                    geldUnterschrieben,
-	"add_liquidity":                    geldUnterschrieben,
-	"remove_liquidity":                 geldUnterschrieben,
-	"faucet":                           geldNurGutschrift,
-	"ubi_distribution":                 geldNurGutschrift,
-	"liveness_renewal":                 geldNurGutschrift,
-	"proof_of_life":                    geldNurGutschrift, // lebensnachweis.go: bewegt kein Geld, setzt nur LebensnachweisAm
-	"grant_release":                    geldNurGutschrift,
-	"staffel_einspruch":                geldNurGutschrift, // staffel_einspruch.go: bewegt kein Geld, setzt nur StaffelEinspruchAm
+	"register_human":    geldNurGutschrift,
+	"transfer":          geldUnterschrieben,
+	"swap_aeq_tusd":     geldUnterschrieben,
+	"swap_tusd_aeq":     geldUnterschrieben,
+	"add_liquidity":     geldUnterschrieben,
+	"remove_liquidity":  geldUnterschrieben,
+	"faucet":            geldNurGutschrift,
+	"ubi_distribution":  geldNurGutschrift,
+	"liveness_renewal":  geldNurGutschrift,
+	"proof_of_life":     geldNurGutschrift, // lebensnachweis.go: bewegt kein Geld, setzt nur LebensnachweisAm
+	"grant_release":     geldNurGutschrift,
+	"staffel_einspruch": geldNurGutschrift, // staffel_einspruch.go: bewegt kein Geld, setzt nur StaffelEinspruchAm
+	// umzug.go: bewegen kein Guthaben -- der Umzug nimmt nur Menschsein,
+	// Nullifier und Staffelrest mit, das Geld bleibt bei der alten Wallet.
+	"umzug_code":                       geldNurGutschrift,
+	"umzug_ankuendigen":                geldNurGutschrift,
+	"umzug_widerruf":                   geldNurGutschrift,
+	"umzug_vollzug":                    geldNurGutschrift,
 	"satz_ankuendigung":                geldNurGutschrift, // satz_plan.go: bewegt kein Geld, setzt nur den Satzplan
 	"verifier_zulassung":               geldNurGutschrift, // verifier_register.go: bewegt kein Geld, nimmt kein Menschsein, setzt nur das Pruefer-Register
 	"umlauf":                           geldRegelAusnahme,
@@ -125,6 +131,11 @@ var ersetzbareKonstanten = map[string]string{
 	"checkpointTxArt": checkpointTxArt,
 	"satzTxArt":       satzTxArt,
 	"verifierTxArt":   verifierTxArt,
+	// umzug.go
+	"umzugCodeTxArt":        umzugCodeTxArt,
+	"umzugAnkuendigenTxArt": umzugAnkuendigenTxArt,
+	"umzugWiderrufTxArt":    umzugWiderrufTxArt,
+	"umzugVollzugTxArt":     umzugVollzugTxArt,
 }
 
 // replaySwitchArten liest die Arten des Nachspiel-Switches aus block.go
@@ -524,6 +535,14 @@ func TestKeinEntzug_GefaelschteTransaktionen_RealDB(t *testing.T) {
 func TestKeinEntzug_NiemandSetztIsHumanFalse(t *testing.T) {
 	erlaubt := map[string]bool{
 		"state.go:clearRegistrationsFromDB": true,
+		// AUSNAHME (Entscheidung des Betreibers vom 07.11.2026,
+		// docs/UMZUG_ENTWURF.md 5): der Umzug setzt is_human der ALTEN Wallet
+		// zurueck, weil derselbe Mensch es auf die neue holt. Kein Entzug:
+		// ausgeloest nur durch das Gesicht dieses Menschen (v3-Bescheinigung
+		// mit eigener Domaene) und entweder seinen Wiederherstellungscode oder
+		// 14 Tage Frist mit Widerruf durch den alten Schluessel; im selben
+		// Schritt wird die neue Wallet Mensch (umzug_test.go prueft beides).
+		"umzug.go:umzugVollziehenLocked": true,
 	}
 	sqlFalsch := regexp.MustCompile(`(?i)is_human\s*=\s*(false\b|'f'|'false'|0\b|not\b)`)
 	setWort := regexp.MustCompile(`(?i)\bSET\b`)
