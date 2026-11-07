@@ -432,3 +432,23 @@ func TestUmzug_CodeForm(t *testing.T) {
 		t.Fatal("der Hash muss an die Wallet gebunden sein")
 	}
 }
+
+// Pruefvektoren, byte-gleich in der App (lib/__tests__/umzug.test.ts). Weicht
+// ein Zeichen ab, passt kein Code und keine Unterschrift.
+func TestUmzug_PruefvektorenFuerDieApp(t *testing.T) {
+	alt := "0x00000000000000000000000000000000000000a1"
+	if h := umzugCodeHash(alt, "ABCDEFGHJKMNPQRSTVWXYZ01"); h != "abfd9a9f06ddeadaf8b4a8ab9eb4f30363ceabbdb34e44b57cb9503d68529777" {
+		t.Fatalf("umzugCodeHash = %s", h)
+	}
+	for got, want := range map[string]string{
+		umzugCodeSetzenNachricht(alt, "ab", 7):                "aequitas-umzug-code-setzen-v1|chain:1926|" + alt + "|ab|7",
+		umzugAntragNachricht("42", alt, "0xb", 9):             "aequitas-umzug-v1|chain:1926|42|" + alt + "|0xb|9",
+		umzugWiderrufNachricht("42", "0xb", 9):                "aequitas-umzug-widerruf-v1|chain:1926|42|0xb|9",
+		string(umzugBindungNachricht("real", "42", "0xb", 9)): "aequitas-umzug-bindung-v1|real|42|0xb|9",
+		string(umzugAussageNachricht("real", "42", 9)):        "aequitas-umzug-aussage-v1|real|42|9",
+	} {
+		if got != want {
+			t.Fatalf("%q != %q", got, want)
+		}
+	}
+}
