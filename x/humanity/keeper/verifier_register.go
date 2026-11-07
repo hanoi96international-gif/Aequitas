@@ -357,6 +357,17 @@ type verifierUrteil struct {
 	eintrag  verifierEintrag
 	regel    string
 	text     string
+	// stimme: welche Stimme (1-basiert) den Befund ausgeloest hat, 0 = keine
+	// einzelne. Nur fuer die Sammelstelle (verifier_sammeln.go), die eine
+	// untaugliche Stimme verwirft, statt die ganze Abstimmung zu blockieren;
+	// am Ergebnis aendert das Feld nichts.
+	stimme int
+}
+
+// mitStimme: derselbe Befund, der Stimme nr zugeordnet.
+func (u verifierUrteil) mitStimme(nr int) verifierUrteil {
+	u.stimme = nr
+	return u
 }
 
 func verifierBefund(regel, format string, args ...interface{}) verifierUrteil {
@@ -481,7 +492,7 @@ func (cs *ChainState) verifierUrteilLocked(ctx context.Context, tx *Transaction,
 	for i := range z.Stimmen {
 		m := strings.ToLower(strings.TrimSpace(z.Stimmen[i].Bescheinigung.Mensch))
 		if behauptet[m] {
-			return verifierBefund("verifier_stimme", "Stimme %d: %s stimmt zweimal", i+1, kurzAdresse(m)), nil
+			return verifierBefund("verifier_stimme", "Stimme %d: %s stimmt zweimal", i+1, kurzAdresse(m)).mitStimme(i + 1), nil
 		}
 		behauptet[m] = true
 	}
@@ -489,24 +500,24 @@ func (cs *ChainState) verifierUrteilLocked(ctx context.Context, tx *Transaction,
 	for i := range z.Stimmen {
 		s := &z.Stimmen[i]
 		if s.Zeit <= 0 || s.Zeit > sattAdd(zeit, nachweisHoechstensVoraus) || zeit-s.Zeit > verifierStimmeHoechstensAlt {
-			return verifierBefund("verifier_stimme_zeit", "Stimme %d von %d, bescheinigt %d", i+1, s.Zeit, zeit), nil
+			return verifierBefund("verifier_stimme_zeit", "Stimme %d von %d, bescheinigt %d", i+1, s.Zeit, zeit).mitStimme(i + 1), nil
 		}
 		if hatEintrag && s.Zeit <= vorher.Zuletzt {
-			return verifierBefund("verifier_stimme_zeit", "Stimme %d von %d liegt vor der letzten Aenderung %d", i+1, s.Zeit, vorher.Zuletzt), nil
+			return verifierBefund("verifier_stimme_zeit", "Stimme %d von %d liegt vor der letzten Aenderung %d", i+1, s.Zeit, vorher.Zuletzt).mitStimme(i + 1), nil
 		}
 		// Wer nicht stimmberechtigt ist, faellt VOR jeder Unterschrift und
 		// jedem Datenbankzugriff heraus (billig vor teuer): die Angabe des
 		// Menschen ist hier nur eine Behauptung, geprueft wird sie unten.
 		if m := strings.ToLower(strings.TrimSpace(s.Bescheinigung.Mensch)); z.Art == verifierArtAustritt && m != betroffener {
-			return verifierBefund("verifier_stimme", "Austritt nur durch %s selbst", kurzAdresse(betroffener)), nil
+			return verifierBefund("verifier_stimme", "Austritt nur durch %s selbst", kurzAdresse(betroffener)).mitStimme(i + 1), nil
 		} else if z.Art != verifierArtAustritt && !stimmberechtigt[m] {
-			return verifierBefund("verifier_stimme", "Stimme %d: %s ist zu %d nicht stimmberechtigt", i+1, kurzAdresse(m), zeit), nil
+			return verifierBefund("verifier_stimme", "Stimme %d: %s ist zu %d nicht stimmberechtigt", i+1, kurzAdresse(m), zeit).mitStimme(i + 1), nil
 		}
 		if err := bescheinigungPruefenFuer(nachricht, fuer, s.Zeit, &s.Bescheinigung, stand, zulassung); err != nil {
 			if errors.Is(err, errZulassungNichtLesbar) {
 				return verifierUrteil{}, err
 			}
-			return verifierBefund("verifier_stimme", "Stimme %d: %v", i+1, err), nil
+			return verifierBefund("verifier_stimme", "Stimme %d: %v", i+1, err).mitStimme(i + 1), nil
 		}
 		// Stimmberechtigt (oben) ist, wer zu issued_at Pruefer ist -- nicht der
 		// Betroffene, nicht ein Mensch, der erst spaeter dazukommt. Gezaehlt
@@ -606,7 +617,10 @@ func (a *APIServer) verifierGrenze(next http.HandlerFunc) http.HandlerFunc {
 	return a.nachweisGrenze(verifierGrenzArt, next)
 }
 
-type verifierAbgelehnt struct{ text string }
+type verifierAbgelehnt struct {
+	text   string
+	stimme int // 1-basiert, 0 = keine einzelne Stimme (verifierUrteil.stimme)
+}
 
 func (e *verifierAbgelehnt) Error() string { return e.text }
 
@@ -671,20 +685,50 @@ func (a *APIServer) handleVerifier(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	tx := Transaction{Type: verifierTxArt, Wallet: strings.ToLower(strings.TrimSpace(req.Wallet)), DistributionAt: req.IssuedAt,
-		Verifier: &VerifierZulassung{Art: req.Art, Stimmen: req.Stimmen}}
-	if err := a.state.annahmeBeginnenLeiter(); err != nil {
-		jsonError(w, err.Error(), http.StatusServiceUnavailable)
+	if err := a.verifierEinreichen(req.Art, req.Wallet, req.IssuedAt, now, req.Stimmen); err != nil {
+		var abgelehnt *verifierAbgelehnt
+		var leiter *verifierNichtLeiter
+		switch {
+		case errors.As(err, &abgelehnt):
+			jsonError(w, "verifier change rejected: "+abgelehnt.text, http.StatusConflict)
+		case errors.Is(err, errVerifierOhneWirkung):
+			jsonError(w, "verifier change has no effect", http.StatusConflict)
+		case errors.As(err, &leiter):
+			jsonError(w, leiter.err.Error(), http.StatusServiceUnavailable)
+		default:
+			fmt.Printf("[API] verifier change failed: %v\n", err)
+			jsonError(w, "internal error, please retry shortly", http.StatusInternalServerError)
+		}
 		return
 	}
+	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "verifier": a.state.VerifierStand(now)})
+}
+
+// verifierNichtLeiter: dieser Knoten nimmt gerade nichts an (kein Leiter).
+type verifierNichtLeiter struct{ err error }
+
+func (e *verifierNichtLeiter) Error() string { return e.err.Error() }
+
+// verifierEinreichen: eine Aenderung annehmen -- dieselbe Pruefung wie beim
+// Nachspielen (verifierUrteilLocked), unter der Annahmesperre des Leiters.
+// Die Unterschriften der Stimmen muss der Aufrufer vorher geprueft haben
+// (billig vor teuer); geprueft werden sie hier trotzdem noch einmal.
+// Fehler: *verifierAbgelehnt (mit der Nummer einer untauglichen Stimme),
+// errVerifierOhneWirkung, *verifierNichtLeiter oder ein interner.
+func (a *APIServer) verifierEinreichen(art, wallet string, issuedAt, now int64, stimmen []VerifierStimme) error {
+	tx := Transaction{Type: verifierTxArt, Wallet: strings.ToLower(strings.TrimSpace(wallet)), DistributionAt: issuedAt,
+		Verifier: &VerifierZulassung{Art: art, Stimmen: stimmen}}
+	if err := a.state.annahmeBeginnenLeiter(); err != nil {
+		return &verifierNichtLeiter{err: err}
+	}
 	defer a.state.annahmeEnde()
-	if err := a.state.runAtomicWithOutbox(nil, false, func(ctx context.Context) (Transaction, error) {
+	return a.state.runAtomicWithOutbox(nil, false, func(ctx context.Context) (Transaction, error) {
 		u, err := a.state.verifierUrteilLocked(ctx, &tx, now)
 		if err != nil {
 			return Transaction{}, err
 		}
 		if u.regel != "" {
-			return Transaction{}, &verifierAbgelehnt{text: u.regel + ": " + u.text}
+			return Transaction{}, &verifierAbgelehnt{text: u.regel + ": " + u.text, stimme: u.stimme}
 		}
 		if !u.anwenden {
 			return Transaction{}, errVerifierOhneWirkung
@@ -693,18 +737,5 @@ func (a *APIServer) handleVerifier(w http.ResponseWriter, r *http.Request) {
 			return Transaction{}, err
 		}
 		return tx, nil
-	}); err != nil {
-		var abgelehnt *verifierAbgelehnt
-		switch {
-		case errors.As(err, &abgelehnt):
-			jsonError(w, "verifier change rejected: "+abgelehnt.text, http.StatusConflict)
-		case errors.Is(err, errVerifierOhneWirkung):
-			jsonError(w, "verifier change has no effect", http.StatusConflict)
-		default:
-			fmt.Printf("[API] verifier change failed: %v\n", err)
-			jsonError(w, "internal error, please retry shortly", http.StatusInternalServerError)
-		}
-		return
-	}
-	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "verifier": a.state.VerifierStand(now)})
+	})
 }

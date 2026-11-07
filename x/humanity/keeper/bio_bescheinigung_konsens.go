@@ -264,8 +264,14 @@ func BescheinigungStand() map[string]any {
 	if err != nil {
 		return map[string]any{"fehler": err.Error()}
 	}
+	// Die Schluessel selbst (oeffentlich, stehen in der Genesis): der
+	// Coordinator reicht nur v3-Unterschriften weiter, deren Schluessel hier
+	// steht -- eine einzige fremde Unterschrift macht die ganze Registrierung
+	// ungueltig ("passt zu keinem Schluessel des Netzes").
 	return map[string]any{"ab_unix": k.AbUnix, "modus": k.Modus, "quorum": k.Quorum,
 		"coordinator": len(k.Coordinator), "bezeuger": len(k.Bezeuger),
+		"schluessel": map[string][]string{"coordinator": append([]string{}, k.Coordinator...),
+			"bezeuger": append([]string{}, k.Bezeuger...)},
 		"fingerabdruck": bescheinigungFingerabdruck(k)}
 }
 
