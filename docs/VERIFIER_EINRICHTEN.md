@@ -69,24 +69,35 @@ Wallet:   0x…
 Schluessel/key: …
 ```
 
-## Danach: Aufnahme
+## Danach: Aufnahme (automatisch, ohne Telegram)
 
-Schick die drei Zeilen in die Telegram-Gruppe (Link auf aequitas.digital).
-Nichts davon ist geheim.
+Ab hier brauchst du nur noch die App. Niemand muss etwas von Hand eintragen.
 
-Der Betreiber nimmt neue Verifier heute von Hand in die Prüfung auf. Der Grund
-steht im Prüfbefund K2 (30.09.2026): Würde jeder Schlüssel, der sich selbst
-einträgt, sofort als Bezeuger zählen, könnte ein Mensch mit genug Schlüsseln
-allein ein ganzes Quorum stellen. Der Betreiber prüft deshalb, dass hinter der
-Wallet ein registrierter Mensch steht und dieser nur einen Verifier betreibt.
-Den Nachweis dafür liefert dein Verifier selbst
-(`https://…sslip.io/bezeugungsnachweis?wallet=0x…`) — und zwar nur für deine
-Wallet: Ab dem Programmstand mit aequitas-biometric-beta#38 stellt er ihn
-ausschließlich für `VALIDATOR_BETREIBER_WALLET` aus, die das Skript in `.env`
-gleich `OPERATOR_WALLET` setzt; für jede andere Wallet antwortet er mit 400,
-ohne die Variable für niemanden. Sonst könnte sich jeder registrierte Mensch
-einen Nachweis für die eigene Wallet holen und deinen Schlüssel unter seinem
-Namen eintragen.
+1. **Schlüssel freigeben.** App → Tab **Knoten** → Karte **„Prüfer“** →
+   **„Schlüssel freigeben“**. Als Adresse die erste Zeile von oben eintragen
+   (`https://…sslip.io`), **„Nachweis holen“** antippen, dann mit deiner Wallet
+   freigeben. Dein Verifier stellt den Nachweis nur für deine eigene Wallet aus
+   (`VALIDATOR_BETREIBER_WALLET`, setzt das Skript gleich `OPERATOR_WALLET`) --
+   sonst könnte jemand anderes deinen Schlüssel unter seinem Namen eintragen.
+2. **Als Prüfer bewerben.** App → Karte „Prüfer“ → **„Prüfer-Register öffnen“**
+   → **„Bewerben“**. Alle Prüfer sehen deine Bewerbung.
+3. **Abstimmung.** Sobald zwei Drittel der Prüfer zugestimmt haben, trägt die
+   Kette dich selbst ein. Wirksam wird das nach einer Frist von etwa zwei
+   Stunden.
+4. **Ab dann läuft alles von selbst.** Dein Verifier meldet sich alle
+   5 Minuten beim Netz an. Jeder Coordinator prüft die Anmeldung selbst nach
+   und nutzt deinen Dienst, solange er antwortet. Seine Unterschriften zählen
+   in jeder Registrierung, die jeder Knoten selbst prüft (ab dem
+   08.11.2026 18:00 UTC). Fällt dein Server aus, wird er nach spätestens
+   30 Minuten nicht mehr genutzt, ohne dass jemand etwas tun muss.
+
+Warum es die Abstimmung braucht: Würde jeder Schlüssel, der sich selbst
+einträgt, sofort zählen, könnte ein Mensch mit genug Schlüsseln allein ein
+ganzes Quorum stellen (Prüfbefund K2, 30.09.2026). Deshalb zählen nur
+Prüfer, und Prüfer wird man nur mit den Stimmen von zwei Dritteln der Prüfer.
+Und eine Registrierung, an der ein Prüfer-Schlüssel beteiligt ist, braucht
+immer mindestens zwei verschiedene Menschen: niemand kann allein Menschen
+erfinden.
 
 Bis zur Aufnahme läuft dein Verifier, bekommt aber noch keine Anfragen.
 
@@ -141,7 +152,7 @@ ist dein Verifier ein neuer: neue Schlüssel, neue Aufnahme.
 
 | Meldung | Bedeutung | Was tun |
 |---|---|---|
-| „Das Verifier-Image ist nicht abrufbar“ | das Programm ist noch nicht öffentlich | in der Telegram-Gruppe melden |
+| „Das Verifier-Image ist nicht abrufbar“ | Download unterbrochen oder GitHub kurz nicht erreichbar | `bash einrichten.sh` erneut starten |
 | „Port 80 ist belegt“ | auf dem Server läuft schon ein Webserver | einen eigenen Server für den Verifier nehmen |
 | „HTTPS noch nicht erreichbar“ | Port 80 oder 443 beim Anbieter gesperrt | in der Firewall des Anbieters freigeben, dann `bash einrichten.sh` erneut |
 | „Liste der Coordinatoren nicht lesbar“ | das Netz war kurz nicht erreichbar | später erneut starten |

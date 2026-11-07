@@ -28,9 +28,9 @@ zentrale Instanz: `SKALIERUNG_DEZENTRAL.md`.
 | **Blöcke erzeugen** | ja, mit Erzeugerprüfung aus dem Kettenregister (seit 28.10.) | jeder registrierte Mensch mit Validator-Bindung | **1** (C1) | weitere Menschen mit eigenem Server |
 | **Transaktionen annehmen** | ja, jede Überweisung trägt die Rohsignatur (Stufe 1.0) | — | **1** annehmender Knoten | Stufe 2 (`verteilteAnnahmeAbUnix`) ist gebaut; scharf frühestens ab drei unabhängigen Validatoren |
 | **Wirtschaftsregeln** | ja, streng seit 01.11. (`nachrechnenStrengAbUnix`) | — | — | — |
-| **Mensch bestätigen (K1)** | ja, ab 07.11. 17:00 UTC: jeder Knoten prüft die Unterschriften von Coordinator und Vergleichsdienst | Schlüssel stehen in der Genesis | **1** Betreiber | Schlüssel aus dem Prüfer-Register statt der Genesis (Schritt B1b unten) |
+| **Mensch bestätigen (K1)** | ja, ab 07.11. 17:00 UTC: jeder Knoten prüft die Unterschriften von Coordinator und Vergleichsdienst | Genesis-Schlüssel **und ab 08.11. 18:00 UTC die Schlüssel aller Prüfer** (Bindung reist in der Registrierung, B1b) | **1** Betreiber | mit Prüfer-Schlüsseln immer mindestens zwei verschiedene Menschen |
 | **Prüfer (Coordinator) zulassen** | ja | **neu:** Aufnahme durch zwei Drittel der Prüfer (`verifier_register.go`), ab 07.11. 17:00 UTC | **1** (Gründer) | zweiter und dritter Prüfer |
-| **Vergleichsdienst (Gesichtsabgleich)** | Ergebnis ja (K1), der Abgleich selbst nein | wer den Dienst betreibt | **1**, mit Tagesgrenze 25 | zweiter Dienst bei einem anderen Menschen; später MPC (Phase C) |
+| **Vergleichsdienst (Gesichtsabgleich)** | Ergebnis ja (K1), der Abgleich selbst nein | **jeder Prüfer**: der Dienst meldet sich selbst an, jeder Coordinator prüft die Anmeldung nach und nutzt ihn automatisch (ab 08.11. 18:00 UTC) | **1**, mit Tagesgrenze 25 | zweiter Prüfer mit eigenem Dienst; später MPC (Phase C) |
 | **Proof-Server (ZK-Beweis)** | ja, der Beweis wird überall geprüft | jeder | **1** | B4: ohne Vertrauensrolle, jeder kann rechnen |
 | **Grundeinkommen, Staffel, Lebensnachweis** | ja | Einspruch nur mit zwei verschiedenen Prüfern | — | Staffel schläft, bis die Zulassung knapp ist (jetzt gebaut) |
 | **Satz des Gleichgewichts ändern** | ja | zwei verschiedene zugelassene Betreiber-Menschen | 1 → **unmöglich allein** | gut so: allein kann niemand den Satz ändern |
@@ -95,7 +95,7 @@ Schlüssel aus der Genesis.
 | # | Schritt | Braucht | Stand |
 |---|---|---|---|
 | 1 | Prüfer-Register mit Abstimmung (B1) | Code | **gebaut, scharf ab 07.11. 17:00 UTC** |
-| 2 | B1b: K1 liest Prüfer-Schlüssel aus dem Register statt aus der Genesis | Code (Kette, Coordinator, Proof-Server) | offen |
+| 2 | B1b: K1 nimmt die Schlüssel der Prüfer an; Dienste melden sich selbst an; Abstimmung per App | Code (Kette, Coordinator, Vergleichsdienst, Proof-Server, App) | **gebaut, scharf ab 08.11.2026 18:00 UTC** |
 | 3 | Zweiter Prüfer mit eigenem Coordinator und Vergleichsdienst | **einen Menschen** | offen |
 | 4 | K1-Quorum auf 2 verschiedene Menschen | Schritt 2 und 3 | offen |
 | 5 | Staffel scharf | Schritt 1 aktiv, dann Test `TestStaffel_SchlaeftBisZulassungUndStreng` bewusst anpassen | offen |
