@@ -63,6 +63,13 @@ jobs:
         # Bloecke danach unter den alten Regeln erzeugt, die der neue Stand
         # anders nachrechnet. Dann: neuen Stichtag waehlen, nicht ausrollen.
         run: bash .github/neustart/stichtag-nicht-verpasst.sh http://$C1:8080
+      - name: Stichtag der Bescheinigung im Konsens (K1) nicht verpasst
+        # Dasselbe fuer bescheinigung.ab_unix in genesis.json: zwischen
+        # einem verpassten Stichtag und dem Deploy entstuenden Bloecke ohne
+        # K1-Pruefung, die der neue Stand anders nachrechnet.
+        run: bash .github/neustart/k1-stichtag-nicht-verpasst.sh http://$C1:8080
+      - name: Stichtag des Pruefer-Registers nicht verpasst
+        run: bash .github/neustart/verifier-stichtag-nicht-verpasst.sh http://$C1:8080
       - name: Schluessel
         env:
           KEY: ${{ secrets.CONTABO_SSH_KEY }}

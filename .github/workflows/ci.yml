@@ -75,6 +75,8 @@ jobs:
       - run: bash scripts/test_schluessel_sichern.sh
       - run: bash scripts/test_backup_ledger_liste.sh
       - run: bash scripts/test_stichtag_nicht_verpasst.sh
+      - run: bash scripts/test_k1_stichtag_nicht_verpasst.sh
+      - run: bash scripts/test_verifier_stichtag_nicht_verpasst.sh
       - run: bash scripts/test_schluessel_lesen.sh
       - run: bash scripts/test_ssh_schluessel_reparatur.sh
       - run: bash scripts/test_bindungsanfrage_skript.sh

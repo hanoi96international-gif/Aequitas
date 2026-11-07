@@ -39,6 +39,11 @@ func TestMain(m *testing.M) {
 	// Sparfreibetrag -- sehen sie weiter, auch mit der echten Uhr. Wer das
 	// Gleichgewicht prueft, schaltet es mit gleichgewichtAn(t) ein.
 	gleichgewichtAktivOverride.Store(math.MaxInt64)
+	// Pruefer-Register (verifier_register.go): Stichtag 07.11.2026 17:00 UTC.
+	// Fruehere Tests mit Coordinator-Bescheinigungen spaeterer Zeit
+	// bleiben beim bisherigen Verhalten; die Register-Tests setzen ihren
+	// eigenen Stichtag.
+	verifierRegisterOverride.Store(math.MaxInt64)
 	os.Exit(m.Run())
 }
 
@@ -58,7 +63,7 @@ func TestRegisterStichtage_TestsSetzenNieAufDieKonstante(t *testing.T) {
 	if err != nil || len(dateien) == 0 {
 		t.Fatalf("keine Testdateien gefunden: %v", err)
 	}
-	muster := regexp.MustCompile(`(registerLeserOverride|erzeugerSchnittOverride|nachrechnenStrengOverride|gleichgewichtAktivOverride)\.Store\(\s*0\s*\)`)
+	muster := regexp.MustCompile(`(registerLeserOverride|erzeugerSchnittOverride|nachrechnenStrengOverride|gleichgewichtAktivOverride|verifierRegisterOverride)\.Store\(\s*0\s*\)`)
 	for _, d := range dateien {
 		inhalt, err := os.ReadFile(d)
 		if err != nil {

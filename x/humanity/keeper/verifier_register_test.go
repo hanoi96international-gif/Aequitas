@@ -340,17 +340,21 @@ func TestVerifierRegister_StimmeGiltNurFuerIhrenSatz(t *testing.T) {
 	}
 }
 
-func TestVerifierRegister_SchlafendOhneWirkung(t *testing.T) {
-	if verifierRegisterAbUnix != math.MaxInt64 {
-		t.Skip("Stichtag gesetzt")
-	}
+func TestVerifierRegister_VorDemStichtagOhneWirkung(t *testing.T) {
+	// TestMain haelt das Register schlafend (verifierRegisterOverride).
 	if verifierRegisterAktiv(math.MaxInt64-1) || bekannteTxArt(verifierTxArt, 2_000_000_000) {
 		t.Fatal("schlafend: unbekannte Art, keine Wirkung")
 	}
 	cs := newTestState()
-	ok := cs.verifierZugelassen("0x"+strings.Repeat("cd", 20), 2_000_000_000)
-	if !ok {
+	if !cs.verifierZugelassen("0x"+strings.Repeat("cd", 20), 2_000_000_000) {
 		t.Fatal("schlafend: die Zulassung bleibt wie bisher")
+	}
+	// Mit dem Stichtag: vorher bekannt nicht, danach ja.
+	vorher := verifierRegisterOverride.Load()
+	verifierRegisterOverride.Store(verifierRegisterAbUnix)
+	t.Cleanup(func() { verifierRegisterOverride.Store(vorher) })
+	if bekannteTxArt(verifierTxArt, verifierRegisterAbUnix-1) || !bekannteTxArt(verifierTxArt, verifierRegisterAbUnix) {
+		t.Fatal("die Art gilt genau ab dem Stichtag")
 	}
 }
 
