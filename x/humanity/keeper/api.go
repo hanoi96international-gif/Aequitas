@@ -1175,6 +1175,7 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	mux.HandleFunc("/api/check-registration", a.handleCheckRegistration)
 	mux.HandleFunc("/api/check-registration-by-biohash", a.handleCheckRegistrationByBioHash)
 	mux.HandleFunc("/api/check-nullifier", a.handleCheckNullifier)
+	mux.HandleFunc("/api/nullifier-passt", a.handleNullifierPasst)
 	mux.HandleFunc("/api/swap", a.zumLeiter(a.handleSwap))
 	mux.HandleFunc("/api/add-liquidity", a.zumLeiter(a.handleAddLiquidity))
 	mux.HandleFunc("/api/remove-liquidity", a.zumLeiter(a.handleRemoveLiquidity))
