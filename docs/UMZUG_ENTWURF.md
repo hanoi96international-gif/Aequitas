@@ -14,6 +14,17 @@ Entscheidungen des Betreibers vom 07.11.2026:
   danach jeden Umzug ohne Code (Sicherheitsdurchgang des Diffs, 07.11.).
 - **Nur das Gesicht: 14 Tage**, in denen die alte Wallet widerrufen kann
   (`umzug_widerruf`); danach vollzieht die Tagesrunde (`umzug_vollzug`).
+- **Restrisiken beseitigt (07.11., auf Wunsch des Betreibers):**
+  - Ohne Code nur nach **strenger** Pruefung: gruene Lebendigkeit UND an die
+    Aufnahme gebundene Hardware-Attestierung des Geraets. Die Pruefstufe
+    steht in der Unterschrift des Coordinators (`aequitas-umzug-bindung-v1|
+    ...|streng`), die Kette verlangt sie ohne Code.
+  - **Code schlaegt jeden offenen Umzug** ohne Code: mit Gesicht und Code
+    zieht der Mensch sofort um und beendet damit auch den Umzug eines
+    Angreifers.
+  - **Hoechstens ein Widerruf je Mensch im Jahr.** Danach laeuft ein streng
+    gepruefter Umzug ohne Code nach 30 Tagen fest durch -- ein Dieb mit dem
+    alten Schluessel kann den Menschen nicht fuer immer aussperren.
 - **Keine neuen AEQ.** Das Guthaben bleibt bei der alten Wallet; die neue gilt
   als "Faucet abgeholt".
 - **Ausnahme in `kein_entzug_test.go`** fuer `umzugVollziehenLocked` (siehe 5).

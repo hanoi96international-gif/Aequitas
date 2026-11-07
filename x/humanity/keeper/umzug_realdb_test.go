@@ -57,7 +57,8 @@ func TestUmzug_UeberDieEndpunkte_RealDB(t *testing.T) {
 	}
 	antrag := f.antrag(f.neuKey, f.neu, f.alt, uzN, jetzt, uzCode)
 	body := map[string]interface{}{"neu": f.neu, "alt": f.alt, "nullifier": uzN, "zeit": jetzt, "modus": "test",
-		"bescheinigung": []string{"v3:" + antrag.BioBescheinigung.Signaturen[0], "v3:" + antrag.BioBescheinigung.Signaturen[1]}, "code": strings.ToLower(uzCode), "sig": antrag.Umzug.Sig}
+		"bescheinigung": []string{"v3:" + antrag.BioBescheinigung.Signaturen[0], "v3:" + antrag.BioBescheinigung.Signaturen[1]}, "pruefung": "streng",
+		"code": strings.ToLower(uzCode), "sig": antrag.Umzug.Sig}
 	// Falscher Code: abgelehnt, nichts geschieht.
 	falsch := map[string]interface{}{}
 	for k, v := range body {

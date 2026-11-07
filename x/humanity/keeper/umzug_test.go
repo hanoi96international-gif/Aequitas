@@ -19,7 +19,7 @@ const (
 
 var uzRegeln = []string{"umzug_form", "umzug_zeit", "umzug_unterschrift", "umzug_bescheinigung", "umzug_nullifier",
 	"umzug_ziel", "umzug_offen", "umzug_jahresgrenze", "umzug_code", "umzug_voll", "umzug_nicht_offen",
-	"umzug_frist", "umzug_code_alt", "umzug_code_kein_mensch", "umzug_code_voll"}
+	"umzug_frist", "umzug_code_alt", "umzug_code_kein_mensch", "umzug_code_voll", "umzug_pruefung", "umzug_fest"}
 
 type uzFall struct {
 	t      *testing.T
@@ -70,14 +70,20 @@ func uzNeu(vorher map[string]int64) map[string]int64 {
 	return m
 }
 
-// antrag: ein vollstaendig gueltiger Antrag von neu fuer den Menschen n.
+// antrag: ein vollstaendig gueltiger Antrag von neu fuer den Menschen n,
+// streng geprueft.
 func (f *uzFall) antrag(neuKey *ecdsa.PrivateKey, neu, alt, n string, zeit int64, code string) Transaction {
+	return f.antragMit(neuKey, neu, alt, n, zeit, code, umzugPruefungStreng)
+}
+
+func (f *uzFall) antragMit(neuKey *ecdsa.PrivateKey, neu, alt, n string, zeit int64, code, pruefung string) Transaction {
 	b := &BioBescheinigung{Zeit: zeit, Modus: "test", Signaturen: []string{
-		f.coord.unterschreibe(string(umzugBindungNachricht("test", n, neu, zeit))),
+		f.coord.unterschreibe(string(umzugBindungNachricht("test", n, neu, zeit, pruefung))),
 		f.zeuge.unterschreibe(string(umzugAussageNachricht("test", n, zeit))),
 	}}
 	return Transaction{Type: umzugAnkuendigenTxArt, Wallet: neu, To: alt, Nullifier: n, DistributionAt: zeit,
-		BioBescheinigung: b, Umzug: &UmzugAngaben{Code: umzugCodeNormal(code), Sig: personalSign(f.t, neuKey, umzugAntragNachricht(n, alt, neu, zeit))}}
+		BioBescheinigung: b, Umzug: &UmzugAngaben{Code: umzugCodeNormal(code), Pruefung: pruefung,
+			Sig: personalSign(f.t, neuKey, umzugAntragNachricht(n, alt, neu, zeit))}}
 }
 
 func (f *uzFall) codeTx(key *ecdsa.PrivateKey, wallet, code string, zeit int64) Transaction {
@@ -441,11 +447,11 @@ func TestUmzug_PruefvektorenFuerDieApp(t *testing.T) {
 		t.Fatalf("umzugCodeHash = %s", h)
 	}
 	for got, want := range map[string]string{
-		umzugCodeSetzenNachricht(alt, "ab", 7):                "aequitas-umzug-code-setzen-v1|chain:1926|" + alt + "|ab|7",
-		umzugAntragNachricht("42", alt, "0xb", 9):             "aequitas-umzug-v1|chain:1926|42|" + alt + "|0xb|9",
-		umzugWiderrufNachricht("42", "0xb", 9):                "aequitas-umzug-widerruf-v1|chain:1926|42|0xb|9",
-		string(umzugBindungNachricht("real", "42", "0xb", 9)): "aequitas-umzug-bindung-v1|real|42|0xb|9",
-		string(umzugAussageNachricht("real", "42", 9)):        "aequitas-umzug-aussage-v1|real|42|9",
+		umzugCodeSetzenNachricht(alt, "ab", 7):                          "aequitas-umzug-code-setzen-v1|chain:1926|" + alt + "|ab|7",
+		umzugAntragNachricht("42", alt, "0xb", 9):                       "aequitas-umzug-v1|chain:1926|42|" + alt + "|0xb|9",
+		umzugWiderrufNachricht("42", "0xb", 9):                          "aequitas-umzug-widerruf-v1|chain:1926|42|0xb|9",
+		string(umzugBindungNachricht("real", "42", "0xb", 9, "streng")): "aequitas-umzug-bindung-v1|real|42|0xb|9|streng",
+		string(umzugAussageNachricht("real", "42", 9)):                  "aequitas-umzug-aussage-v1|real|42|9",
 	} {
 		if got != want {
 			t.Fatalf("%q != %q", got, want)
@@ -484,5 +490,85 @@ func TestUmzug_HoechstensDreiCodes(t *testing.T) {
 	}
 	if b := f.anwenden(f.codeTx(f.altKey, f.alt, uzCode, uzZeit+50), uzZeit+50); b["umzug_code_voll"] != 1 {
 		t.Fatalf("Wiederholung eines Codes: %v", b)
+	}
+}
+
+// Restrisiko Deepfake: ohne Code nur nach strenger Pruefung des Coordinators.
+// Die Pruefstufe steht in seiner Unterschrift -- wer sie im Antrag hochsetzt,
+// faellt an der Bescheinigung durch.
+func TestUmzug_OhneCodeNurStreng(t *testing.T) {
+	z := uzZeit + 100
+	f := neuerUzFall(t)
+	if b := f.anwenden(f.antragMit(f.neuKey, f.neu, f.alt, uzN, z, "", umzugPruefungEinfach), z); b["umzug_pruefung"] != 1 || f.umgezogen() {
+		t.Fatalf("einfach ohne Code: %v", b)
+	}
+	f2 := neuerUzFall(t)
+	tx := f2.antragMit(f2.neuKey, f2.neu, f2.alt, uzN, z, "", umzugPruefungEinfach)
+	tx.Umzug.Pruefung = umzugPruefungStreng // hochgesetzt, die Unterschrift sagt "einfach"
+	if b := f2.anwenden(tx, z); b["umzug_bescheinigung"] != 1 {
+		t.Fatalf("hochgesetzte Pruefstufe: %v", b)
+	}
+	// Mit Code reicht "einfach": der Code ist der zweite Faktor.
+	f3 := neuerUzFall(t)
+	f3.anwenden(f3.codeTx(f3.altKey, f3.alt, uzCode, uzZeit), uzZeit)
+	if b := f3.anwenden(f3.antragMit(f3.neuKey, f3.neu, f3.alt, uzN, z, uzCode, umzugPruefungEinfach), z); len(b) != 0 || !f3.umgezogen() {
+		t.Fatalf("einfach mit Code: %v", b)
+	}
+}
+
+// Code schlaegt einen offenen Umzug ohne Code -- auch den eines Angreifers.
+func TestUmzug_CodeBeendetFremdenOffenenUmzug(t *testing.T) {
+	f := neuerUzFall(t)
+	f.anwenden(f.codeTx(f.altKey, f.alt, uzCode, uzZeit), uzZeit)
+	angreiferKey, angreifer := neuerSchluessel(t)
+	z := uzZeit + 100
+	if b := f.anwenden(f.antrag(angreiferKey, angreifer, f.alt, uzN, z, ""), z); len(b) != 0 {
+		t.Fatalf("Angreifer: %v", b)
+	}
+	if b := f.anwenden(f.antrag(f.neuKey, f.neu, f.alt, uzN, z+60, uzCode), z+60); len(b) != 0 || !f.umgezogen() {
+		t.Fatalf("Mensch mit Code: %v", b)
+	}
+	if _, offen := f.cs.umzugRegisterJetzt().offen(uzN); offen {
+		t.Fatal("der Umzug des Angreifers ist noch offen")
+	}
+	f.cs.mu.Lock()
+	txs, _ := f.cs.umzugVollzuegeLocked(context.Background(), z+umzugFristFest)
+	f.cs.mu.Unlock()
+	if len(txs) != 0 || f.mensch(angreifer) {
+		t.Fatal("der Angreifer darf nie Mensch werden")
+	}
+}
+
+// Ein Dieb mit dem alten Schluessel widerruft hoechstens einmal im Jahr;
+// danach laeuft ein streng gepruefter Umzug ohne Code nach 30 Tagen fest durch.
+func TestUmzug_DiebKannNichtEwigWiderrufen(t *testing.T) {
+	f := neuerUzFall(t)
+	z := uzZeit + 100
+	f.anwenden(f.antrag(f.neuKey, f.neu, f.alt, uzN, z, ""), z)
+	if b := f.anwenden(f.widerruf(f.altKey, f.alt, f.neu, uzN, z), z+10); len(b) != 0 {
+		t.Fatalf("erster Widerruf: %v", b)
+	}
+	z2 := z + 86400
+	if b := f.anwenden(f.antrag(f.neuKey, f.neu, f.alt, uzN, z2, ""), z2); len(b) != 0 {
+		t.Fatalf("zweiter Antrag: %v", b)
+	}
+	o, _ := f.cs.umzugRegisterJetzt().offen(uzN)
+	if !o.Fest || o.FreiAb != z2+umzugFristFest {
+		t.Fatalf("zweiter Antrag muss fest sein, 30 Tage: %+v", o)
+	}
+	if b := f.anwenden(f.widerruf(f.altKey, f.alt, f.neu, uzN, z2), z2+10); b["umzug_fest"] != 1 {
+		t.Fatalf("zweiter Widerruf: %v", b)
+	}
+	f.cs.mu.Lock()
+	vorher, _ := f.cs.umzugVollzuegeLocked(context.Background(), z2+umzugFrist)
+	nachher, _ := f.cs.umzugVollzuegeLocked(context.Background(), z2+umzugFristFest)
+	f.cs.mu.Unlock()
+	if len(vorher) != 0 || len(nachher) != 1 || !f.umgezogen() {
+		t.Fatalf("fest: vorher %d, nachher %d, umgezogen %v", len(vorher), len(nachher), f.umgezogen())
+	}
+	// Ein Jahr spaeter zaehlt der alte Widerruf nicht mehr.
+	reg, err := umzugRegisterLesen(f.cs.umzugRegisterJetzt().kodiert())
+	if err != nil || reg.widerrufeSeit(uzN, z+umzugJahr+1) != 0 {
+		t.Fatalf("Widerrufe nach einem Jahr: %v", err)
 	}
 }

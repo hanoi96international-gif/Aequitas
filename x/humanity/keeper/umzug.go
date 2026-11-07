@@ -80,6 +80,17 @@ const (
 
 	// Frist ohne Code.
 	umzugFrist int64 = 14 * 86400
+	// Frist ohne Code, wenn fuer diesen Menschen im letzten Jahr schon
+	// widerrufen wurde: laenger, aber nicht mehr widerrufbar (sonst sperrte
+	// ein Dieb mit dem alten Schluessel den Menschen fuer immer aus).
+	umzugFristFest int64 = 30 * 86400
+	// Widerrufe je Nullifier in 365 Tagen, danach ist ein Umzug fest.
+	umzugWiderrufeJeJahr     = 1
+	umzugWiderrufeHoechstens = 20000
+	// Pruefstufe des Coordinators: ohne Code nur "streng" (Lebendigkeit gruen
+	// UND an die Aufnahme gebundene Hardware-Attestierung des Geraets).
+	umzugPruefungStreng  = "streng"
+	umzugPruefungEinfach = "einfach"
 	// Hoechstens zwei vollzogene Umzuege je Nullifier in 365 Tagen.
 	umzugJeJahr       = 2
 	umzugJahr   int64 = 365 * 86400
@@ -133,12 +144,15 @@ type UmzugAngaben struct {
 	Sig string `json:"sig,omitempty"`
 	// umzug_widerruf: Zeit der Ankuendigung, die widerrufen wird.
 	Angekuendigt int64 `json:"angekuendigt,omitempty"`
+	// umzug_ankuendigen: Pruefstufe, die der Coordinator mit seiner Bindung
+	// unterschrieben hat ("streng" oder "einfach").
+	Pruefung string `json:"pruefung,omitempty"`
 }
 
 // ------------------------------------------------------------ Nachrichten
 
-func umzugBindungNachricht(modus, n, neu string, zeit int64) []byte {
-	return []byte(umzugDomaeneBindung + "|" + modus + "|" + n + "|" + neu + "|" + strconv.FormatInt(zeit, 10))
+func umzugBindungNachricht(modus, n, neu string, zeit int64, pruefung string) []byte {
+	return []byte(umzugDomaeneBindung + "|" + modus + "|" + n + "|" + neu + "|" + strconv.FormatInt(zeit, 10) + "|" + pruefung)
 }
 
 func umzugAussageNachricht(modus, n string, zeit int64) []byte {
@@ -217,6 +231,21 @@ type umzugOffen struct {
 	Neu       string `json:"neu"`
 	Zeit      int64  `json:"z"`
 	FreiAb    int64  `json:"frei_ab"`
+	// Fest: nicht mehr widerrufbar (umzugFristFest).
+	Fest bool `json:"fest,omitempty"`
+}
+
+// umzugWiderrufen: ein Widerruf, fuer die Jahresgrenze der Widerrufe.
+type umzugWiderrufen struct {
+	Nullifier string `json:"n"`
+	Am        int64  `json:"am"`
+}
+
+func (o umzugOffen) frist() int64 {
+	if o.Fest {
+		return umzugFristFest
+	}
+	return umzugFrist
 }
 
 type umzugErledigt struct {
@@ -233,13 +262,15 @@ type umzugRegister struct {
 	Codes    []umzugCode     `json:"codes,omitempty"`
 	Offen    []umzugOffen    `json:"offen,omitempty"`
 	Erledigt []umzugErledigt `json:"erledigt,omitempty"`
+	// Widerrufe: hoechstens umzugWiderrufeHoechstens, nach (Am, Nullifier).
+	Widerrufe []umzugWiderrufen `json:"widerrufe,omitempty"`
 
 	roh  string
 	hash string
 }
 
 func (r *umzugRegister) leer() bool {
-	return r == nil || (len(r.Codes) == 0 && len(r.Offen) == 0 && len(r.Erledigt) == 0)
+	return r == nil || (len(r.Codes) == 0 && len(r.Offen) == 0 && len(r.Erledigt) == 0 && len(r.Widerrufe) == 0)
 }
 
 // fertig: Schreibweise und Hash einmal rechnen (die StateRoot liest den Hash
@@ -276,7 +307,8 @@ func umzugRegisterLesen(s string) (*umzugRegister, error) {
 	if err := dec.Decode(r); err != nil {
 		return nil, fmt.Errorf("Umzugs-Register nicht lesbar: %w", err)
 	}
-	if len(r.Codes) > umzugCodesHoechstens || len(r.Offen) > umzugOffenHoechstens || len(r.Erledigt) > umzugErledigtHoechstens {
+	if len(r.Codes) > umzugCodesHoechstens || len(r.Offen) > umzugOffenHoechstens || len(r.Erledigt) > umzugErledigtHoechstens ||
+		len(r.Widerrufe) > umzugWiderrufeHoechstens {
 		return nil, errors.New("Umzugs-Register ueber seinen Grenzen")
 	}
 	for i, c := range r.Codes {
@@ -292,7 +324,7 @@ func umzugRegisterLesen(s string) (*umzugRegister, error) {
 	}
 	for i, o := range r.Offen {
 		if !umzugNullifierKanonisch(o.Nullifier) || !kanonischeAdresse(o.Alt) || !kanonischeAdresse(o.Neu) || o.Alt == o.Neu ||
-			o.Zeit <= 0 || o.FreiAb != o.Zeit+umzugFrist || (i > 0 && o.Nullifier <= r.Offen[i-1].Nullifier) {
+			o.Zeit <= 0 || o.FreiAb != o.Zeit+o.frist() || (i > 0 && o.Nullifier <= r.Offen[i-1].Nullifier) {
 			return nil, fmt.Errorf("Umzugs-Register: offener Umzug %d ungueltig", i)
 		}
 	}
@@ -300,6 +332,11 @@ func umzugRegisterLesen(s string) (*umzugRegister, error) {
 		if !umzugNullifierKanonisch(e.Nullifier) || !kanonischeAdresse(e.Alt) || !kanonischeAdresse(e.Neu) || e.Am <= 0 ||
 			(i > 0 && !umzugErledigtVor(r.Erledigt[i-1], e)) {
 			return nil, fmt.Errorf("Umzugs-Register: erledigter Umzug %d ungueltig", i)
+		}
+	}
+	for i, w := range r.Widerrufe {
+		if !umzugNullifierKanonisch(w.Nullifier) || w.Am <= 0 || (i > 0 && !umzugWiderrufVor(r.Widerrufe[i-1], w)) {
+			return nil, fmt.Errorf("Umzugs-Register: Widerruf %d ungueltig", i)
 		}
 	}
 	r.fertig()
@@ -319,15 +356,49 @@ func umzugErledigtVor(a, b umzugErledigt) bool {
 	return a.Neu < b.Neu
 }
 
+func umzugWiderrufVor(a, b umzugWiderrufen) bool {
+	if a.Am != b.Am {
+		return a.Am < b.Am
+	}
+	return a.Nullifier < b.Nullifier
+}
+
+// widerrufeSeit: Widerrufe fuer diesen Nullifier in den 365 Tagen vor t.
+func (r *umzugRegister) widerrufeSeit(n string, t int64) int {
+	z := 0
+	for _, w := range r.Widerrufe {
+		if w.Nullifier == n && w.Am > t-umzugJahr {
+			z++
+		}
+	}
+	return z
+}
+
+// mitWiderruf: haengt w an und streicht, was aelter als umzugErledigtHalten
+// vor w.Am ist (deterministisch, w.Am kommt aus dem Register).
+func (r *umzugRegister) mitWiderruf(w umzugWiderrufen) *umzugRegister {
+	k := r.kopie()
+	behalten := k.Widerrufe[:0]
+	for _, x := range k.Widerrufe {
+		if x.Am > w.Am-umzugErledigtHalten {
+			behalten = append(behalten, x)
+		}
+	}
+	k.Widerrufe = append(behalten, w)
+	sort.Slice(k.Widerrufe, func(i, j int) bool { return umzugWiderrufVor(k.Widerrufe[i], k.Widerrufe[j]) })
+	return k.fertig()
+}
+
 func (r *umzugRegister) kopie() *umzugRegister {
 	codes := make([]umzugCode, len(r.Codes))
 	for i, c := range r.Codes {
 		codes[i] = umzugCode{Wallet: c.Wallet, Hashes: append([]string(nil), c.Hashes...), Zeit: c.Zeit}
 	}
 	return &umzugRegister{
-		Codes:    codes,
-		Offen:    append([]umzugOffen(nil), r.Offen...),
-		Erledigt: append([]umzugErledigt(nil), r.Erledigt...),
+		Codes:     codes,
+		Offen:     append([]umzugOffen(nil), r.Offen...),
+		Erledigt:  append([]umzugErledigt(nil), r.Erledigt...),
+		Widerrufe: append([]umzugWiderrufen(nil), r.Widerrufe...),
 	}
 }
 
@@ -599,6 +670,9 @@ type umzugUrteil struct {
 	// verfallen: Vollzug, dessen Bedingungen nicht mehr gelten -- der offene
 	// Umzug wird gestrichen.
 	verfallen bool
+	// fest: Antrag ohne Code nach einem Widerruf im letzten Jahr -- 30 Tage,
+	// nicht widerrufbar.
+	fest bool
 }
 
 func umzugBefund(regel, format string, args ...interface{}) umzugUrteil {
@@ -617,6 +691,7 @@ func (cs *ChainState) umzugAnkuendigenUrteilLocked(ctx context.Context, tx *Tran
 	b := tx.BioBescheinigung
 	if !kanonischeAdresse(neu) || !kanonischeAdresse(alt) || neu == alt || !umzugNullifierKanonisch(n) ||
 		u == nil || !kanonischeSignatur(u.Sig) || u.CodeHash != "" || u.Angekuendigt != 0 ||
+		(u.Pruefung != umzugPruefungStreng && u.Pruefung != umzugPruefungEinfach) ||
 		(u.Code != "" && umzugCodeNormal(u.Code) != u.Code) || b == nil || b.Zeit != tx.DistributionAt {
 		return umzugBefund("umzug_form", "Antrag nicht in gueltiger Form"), nil
 	}
@@ -639,7 +714,7 @@ func (cs *ChainState) umzugAnkuendigenUrteilLocked(ctx context.Context, tx *Tran
 	if b.Modus != k.Modus {
 		return umzugBefund("umzug_bescheinigung", "Modus %q, das Netz verlangt %q", b.Modus, k.Modus), nil
 	}
-	if err := pruefeV3Unterschriften(b, k, umzugBindungNachricht(b.Modus, n, neu, z), umzugAussageNachricht(b.Modus, n, z),
+	if err := pruefeV3Unterschriften(b, k, umzugBindungNachricht(b.Modus, n, neu, z, u.Pruefung), umzugAussageNachricht(b.Modus, n, z),
 		blockZeit, cs.verifierRegisterJetzt().mitglied); err != nil {
 		return umzugBefund("umzug_bescheinigung", "%s: %v", kurzAdresse(neu), err), nil
 	}
@@ -662,10 +737,13 @@ func (cs *ChainState) umzugAnkuendigenUrteilLocked(ctx context.Context, tx *Tran
 		return umzugBefund("umzug_ziel", "%s: %s", kurzAdresse(neu), grund), nil
 	}
 	reg := cs.umzugRegisterJetzt()
-	if _, offen := reg.offen(n); offen {
+	// Ein offener Umzug ohne Code haelt nur einen weiteren OHNE Code auf: mit
+	// Gesicht und Code zieht der Mensch sofort um und beendet ihn damit --
+	// auch den eines Angreifers.
+	if _, offen := reg.offen(n); offen && u.Code == "" {
 		return umzugBefund("umzug_offen", "fuer diesen Menschen ist schon ein Umzug offen"), nil
 	}
-	if _, offen := reg.offenMit(neu); offen {
+	if o, offen := reg.offenMit(neu); offen && o.Nullifier != n {
 		return umzugBefund("umzug_offen", "%s ist schon an einem offenen Umzug beteiligt", kurzAdresse(neu)), nil
 	}
 	if reg.erledigtSeit(n, z) >= umzugJeJahr {
@@ -688,10 +766,16 @@ func (cs *ChainState) umzugAnkuendigenUrteilLocked(ctx context.Context, tx *Tran
 		}
 		return umzugUrteil{sofort: true}, nil
 	}
+	// Ohne Code nur nach der strengsten Pruefung des Coordinators: gruene
+	// Lebendigkeit UND an die Aufnahme gebundene Hardware-Attestierung (gegen
+	// eingespielte Videos und Deepfakes ueber eine virtuelle Kamera).
+	if u.Pruefung != umzugPruefungStreng {
+		return umzugBefund("umzug_pruefung", "%s: ohne Code nur nach strenger Pruefung", kurzAdresse(neu)), nil
+	}
 	if len(reg.Offen) >= umzugOffenHoechstens {
 		return umzugBefund("umzug_voll", "zu viele offene Umzuege"), nil
 	}
-	return umzugUrteil{}, nil
+	return umzugUrteil{fest: reg.widerrufeSeit(n, z) >= umzugWiderrufeJeJahr}, nil
 }
 
 // umzugAnkuendigenAnwendenLocked: nach einem Urteil ohne Befund.
@@ -699,8 +783,9 @@ func (cs *ChainState) umzugAnkuendigenAnwendenLocked(ctx context.Context, tx *Tr
 	if u.sofort {
 		return cs.umzugVollziehenLocked(ctx, tx.Nullifier, tx.To, tx.Wallet, tx.DistributionAt)
 	}
-	reg := cs.umzugRegisterJetzt().mitOffen(umzugOffen{Nullifier: tx.Nullifier, Alt: tx.To, Neu: tx.Wallet,
-		Zeit: tx.DistributionAt, FreiAb: tx.DistributionAt + umzugFrist})
+	o := umzugOffen{Nullifier: tx.Nullifier, Alt: tx.To, Neu: tx.Wallet, Zeit: tx.DistributionAt, Fest: u.fest}
+	o.FreiAb = o.Zeit + o.frist()
+	reg := cs.umzugRegisterJetzt().mitOffen(o)
 	return cs.umzugRegisterSetzenLocked(ctx, reg)
 }
 
@@ -712,12 +797,16 @@ func (cs *ChainState) umzugWiderrufUrteilLocked(tx *Transaction, blockZeit int64
 	alt, neu, n := tx.Wallet, tx.To, tx.Nullifier
 	u := tx.Umzug
 	if !kanonischeAdresse(alt) || !kanonischeAdresse(neu) || !umzugNullifierKanonisch(n) || u == nil ||
-		!kanonischeSignatur(u.Sig) || u.Code != "" || u.CodeHash != "" || u.Angekuendigt <= 0 || tx.BioBescheinigung != nil {
+		!kanonischeSignatur(u.Sig) || u.Code != "" || u.CodeHash != "" || u.Pruefung != "" || u.Angekuendigt <= 0 ||
+		tx.BioBescheinigung != nil {
 		return umzugBefund("umzug_form", "Widerruf nicht in gueltiger Form")
 	}
 	o, ok := cs.umzugRegisterJetzt().offen(n)
 	if !ok || o.Alt != alt || o.Neu != neu || o.Zeit != u.Angekuendigt {
 		return umzugBefund("umzug_nicht_offen", "kein passender offener Umzug")
+	}
+	if o.Fest {
+		return umzugBefund("umzug_fest", "dieser Umzug ist nicht mehr widerrufbar (schon ein Widerruf im letzten Jahr)")
 	}
 	if err := pruefePersonalSignGemerkt(umzugWiderrufNachricht(n, neu, u.Angekuendigt), u.Sig, alt); err != nil {
 		return umzugBefund("umzug_unterschrift", "Widerruf nicht von %s unterschrieben", kurzAdresse(alt))
@@ -733,7 +822,7 @@ func (cs *ChainState) umzugCodeUrteilLocked(ctx context.Context, tx *Transaction
 	alt := tx.Wallet
 	u := tx.Umzug
 	if !kanonischeAdresse(alt) || u == nil || !istHash64(u.CodeHash) || !kanonischeSignatur(u.Sig) ||
-		u.Code != "" || u.Angekuendigt != 0 || tx.BioBescheinigung != nil || tx.To != "" || tx.Nullifier != "" {
+		u.Code != "" || u.Angekuendigt != 0 || u.Pruefung != "" || tx.BioBescheinigung != nil || tx.To != "" || tx.Nullifier != "" {
 		return umzugBefund("umzug_form", "Code nicht in gueltiger Form")
 	}
 	z := tx.DistributionAt
@@ -877,7 +966,9 @@ func (cs *ChainState) umzugAnwendenLocked(ctx context.Context, tx *Transaction, 
 	case umzugAnkuendigenTxArt:
 		return cs.umzugAnkuendigenAnwendenLocked(ctx, tx, u)
 	case umzugWiderrufTxArt:
-		return cs.umzugRegisterSetzenLocked(ctx, cs.umzugRegisterJetzt().ohneOffen(tx.Nullifier))
+		reg := cs.umzugRegisterJetzt()
+		o, _ := reg.offen(tx.Nullifier)
+		return cs.umzugRegisterSetzenLocked(ctx, reg.ohneOffen(tx.Nullifier).mitWiderruf(umzugWiderrufen{Nullifier: tx.Nullifier, Am: o.Zeit}))
 	case umzugVollzugTxArt:
 		return cs.umzugVollzugAnwendenLocked(ctx, tx.Nullifier, tx.To, tx.Wallet, tx.DistributionAt, u)
 	}
@@ -948,7 +1039,9 @@ func (a *APIServer) umzugAnnehmen(w http.ResponseWriter, r *http.Request, tx Tra
 	if tx.Type == umzugAnkuendigenTxArt {
 		antwort["sofort"] = ergebnis.sofort
 		if !ergebnis.sofort {
-			antwort["frei_ab"] = tx.DistributionAt + umzugFrist
+			o := umzugOffen{Zeit: tx.DistributionAt, Fest: ergebnis.fest}
+			antwort["frei_ab"] = o.Zeit + o.frist()
+			antwort["fest"] = ergebnis.fest
 		}
 	}
 	json.NewEncoder(w).Encode(antwort)
@@ -1014,6 +1107,7 @@ func (a *APIServer) handleUmzugAntrag(w http.ResponseWriter, r *http.Request) {
 		Zeit      int64    `json:"zeit"`
 		Modus     string   `json:"modus"`
 		Eintraege []string `json:"bescheinigung"`
+		Pruefung  string   `json:"pruefung"`
 		Code      string   `json:"code"`
 		Sig       string   `json:"sig"`
 	}
@@ -1061,7 +1155,7 @@ func (a *APIServer) handleUmzugAntrag(w http.ResponseWriter, r *http.Request) {
 	}
 	tx := Transaction{Type: umzugAnkuendigenTxArt, Wallet: neu, To: alt, Nullifier: req.Nullifier, DistributionAt: req.Zeit,
 		BioBescheinigung: &BioBescheinigung{Zeit: req.Zeit, Modus: req.Modus, Signaturen: unterschriften, Bindungen: bindungen},
-		Umzug:            &UmzugAngaben{Code: code, Sig: sig}}
+		Umzug:            &UmzugAngaben{Code: code, Sig: sig, Pruefung: req.Pruefung}}
 	a.umzugAnnehmen(w, r, tx, []string{alt})
 }
 
@@ -1127,7 +1221,8 @@ func (a *APIServer) handleUmzugStand(w http.ResponseWriter, r *http.Request) {
 		antwort["codes"] = len(c.Hashes)
 	}
 	if o, ok := reg.offenMit(wallet); ok {
-		antwort["offen"] = map[string]interface{}{"nullifier": o.Nullifier, "alt": o.Alt, "neu": o.Neu, "angekuendigt": o.Zeit, "frei_ab": o.FreiAb}
+		antwort["offen"] = map[string]interface{}{"nullifier": o.Nullifier, "alt": o.Alt, "neu": o.Neu, "angekuendigt": o.Zeit,
+			"frei_ab": o.FreiAb, "fest": o.Fest}
 	}
 	json.NewEncoder(w).Encode(antwort)
 }
