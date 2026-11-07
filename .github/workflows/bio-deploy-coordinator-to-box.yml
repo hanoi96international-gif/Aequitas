@@ -63,6 +63,12 @@ on:
         description: "EINZELBETRIEB_TAGESGRENZE (1..1000), nur mit einzelbetrieb"
         required: false
         default: "25"
+      bescheinigung_v3:
+        description: "BESCHEINIGUNG_V3 (Bescheinigung im Konsens, K1): ja = zusaetzlich v3 ueber den Nullifier unterschreiben"
+        required: true
+        type: choice
+        options: [unveraendert, ja, aus]
+        default: unveraendert
 
 permissions:
   contents: read
@@ -116,6 +122,7 @@ jobs:
           EINWILLIGUNG_VORGABE: ${{ inputs.einwilligung_vorgabe }}
           EINZELBETRIEB: ${{ inputs.einzelbetrieb }}
           TAGESGRENZE: ${{ inputs.tagesgrenze }}
+          BESCHEINIGUNG_V3_NEU: ${{ inputs.bescheinigung_v3 }}
           C1_HOST: ${{ matrix.host }}
         run: |
           set -euo pipefail
@@ -127,7 +134,7 @@ jobs:
           [ "$(grep -c . "$RUNNER_TEMP/kh")" = 1 ] || { echo "::error::Host-Schluessel von $C1_HOST: nicht genau eine ed25519-Zeile"; exit 1; }
           [ "$(ssh-keygen -lf "$RUNNER_TEMP/kh" | awk '{print $2}')" = "SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA" ] || { echo "::error::Host-Schluessel von $C1_HOST passt nicht"; exit 1; }
           {
-            for v in IMAGE GHCR_USER GHCR_TOKEN PUBLIC_NAME ALTERSPRUEFUNG_NEU EINWILLIGUNG_VORGABE EINZELBETRIEB TAGESGRENZE; do printf 'export %s=%q\n' "$v" "${!v}"; done
+            for v in IMAGE GHCR_USER GHCR_TOKEN PUBLIC_NAME ALTERSPRUEFUNG_NEU EINWILLIGUNG_VORGABE EINZELBETRIEB TAGESGRENZE BESCHEINIGUNG_V3_NEU; do printf 'export %s=%q\n' "$v" "${!v}"; done
             cat <<'SKRIPT'
           set -euo pipefail
           NAME=aequitas-coordinator
@@ -195,6 +202,31 @@ jobs:
             } >> /root/.coordinator-neu.env
             echo "  -> VALIDATOR_URLS=proof1, proof2 abgemeldet, QUORUM_SIZE entfernt, Tagesgrenze $TAGESGRENZE"
           fi
+          # Bescheinigung im Konsens (K1, docs/BESCHEINIGUNG_IM_KONSENS.md):
+          # v3 erst, wenn Knoten und Vergleichsdienst es koennen -- ein Knoten
+          # ohne K1 reichte "v3:..." an den Proof-Server weiter, und der wiese
+          # jede Registrierung ab; ein Vergleichsdienst ohne v3 liesse das
+          # Quorum ab dem Stichtag scheitern. Abschalten nur, solange die
+          # Genesis keinen Stichtag traegt: danach verlangt jeder Knoten v3.
+          case "$BESCHEINIGUNG_V3_NEU" in
+            unveraendert) ;;
+            ja|aus)
+              knoten=$(curl -s --max-time 15 https://aequitas.digital/api/status || true)
+              ab=$(printf '%s' "$knoten" | python3 -c "import sys,json; b=json.load(sys.stdin).get('bescheinigung_konsens'); print(b['ab_unix'] if isinstance(b, dict) and isinstance(b.get('ab_unix'), int) else 'fehlt')" 2>/dev/null || echo fehlt)
+              [ "$ab" != fehlt ] || { echo "FEHLER: der Knoten meldet keine bescheinigung_konsens -- er kann v3 nicht herausnehmen"; exit 1; }
+              if [ "$BESCHEINIGUNG_V3_NEU" = ja ]; then
+                vd=$(curl -s --max-time 15 "https://${PUBLIC_NAME}/matching/health" || true)
+                printf '%s' "$vd" | grep -qE '"bezeugung_v3": ?true' || { echo "FEHLER: der Vergleichsdienst meldet nicht bezeugung_v3=true -- erst ihn ausrollen"; exit 1; }
+              elif [ "$ab" != 0 ]; then
+                echo "FEHLER: die Genesis verlangt die Bescheinigung ab $ab -- ohne v3 scheitert jede Registrierung"; exit 1
+              fi
+              alt=$(grep -E '^BESCHEINIGUNG_V3=' /root/.coordinator-neu.env | cut -d= -f2- || true)
+              sed -i '/^BESCHEINIGUNG_V3=/d' /root/.coordinator-neu.env
+              [ "$BESCHEINIGUNG_V3_NEU" = ja ] && echo "BESCHEINIGUNG_V3=ja" >> /root/.coordinator-neu.env
+              echo "  BESCHEINIGUNG_V3: ${alt:-(nicht gesetzt)} -> $BESCHEINIGUNG_V3_NEU (Knoten-Stichtag ab_unix=$ab)"
+              ;;
+            *) echo "FEHLER: bescheinigung_v3 unbekannt"; exit 1;;
+          esac
           NET=$(docker inspect "$NAME" --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}' | awk '{print $1}')
           [ -n "$NET" ] || NET=aequitas-net
           MOUNTS=$(docker inspect "$NAME" --format '{{range .Mounts}}{{if eq .Type "bind"}}-v {{.Source}}:{{.Destination}} {{end}}{{end}}')
@@ -251,6 +283,17 @@ jobs:
             echo "$body" | grep -o '"validator_urls":\[[^]]*\]' || true
             zurueck
             exit 1
+          fi
+
+          if [ "$BESCHEINIGUNG_V3_NEU" != unveraendert ]; then
+            soll=false; [ "$BESCHEINIGUNG_V3_NEU" = ja ] && soll=true
+            ist=$(echo "$body" | python3 -c "import sys,json; print(str(json.load(sys.stdin)['bescheinigung'].get('v3')).lower())" 2>/dev/null || echo unlesbar)
+            echo "bescheinigung.v3: $ist (soll $soll)"
+            if [ "$ist" != "$soll" ]; then
+              echo "FEHLER: der Coordinator meldet bescheinigung.v3=$ist -- Image zu alt?"
+              zurueck
+              exit 1
+            fi
           fi
 
           NACHHER=$(curl -s --max-time 15 "https://${PUBLIC_NAME}/coordinator/inventory" \

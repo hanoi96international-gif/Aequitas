@@ -195,6 +195,18 @@ jobs:
             [ "$WO" = 0 ] && ok "${PH[$K]} keine offenen Widersprueche" || rot "${PH[$K]} $WO offene Widersprueche -- widersprueche-pruefen.yml"
             WN=$(echo "$CH" | jq_ '.warnungen | length')
             [ "$WN" = 0 ] && ok "${PH[$K]} keine Warnungen" || rot "${PH[$K]} Warnungen: $(echo "$CH" | jq_ '.warnungen | join(",")')"
+            # Bescheinigung im Konsens (K1): traegt die Genesis einen Stichtag,
+            # verlangt jeder Knoten ab einem Tag davor die v3-Unterschriften.
+            # Dann muss der Coordinator sie liefern -- sonst scheitert jede
+            # Registrierung (fail-closed, aber niemand kaeme mehr hinein).
+            KAB=$(get "${API[$K]}/status" | jq_ '.bescheinigung_konsens.ab_unix // empty')
+            CV3=$(echo "$CH" | jq_ '.bescheinigung.v3')
+            if [ -n "$KAB" ] && [ "$KAB" != 0 ]; then
+              [ "$CV3" = true ] && ok "${PH[$K]} Coordinator unterschreibt v3 (K1-Stichtag $(date -u -d @"$KAB" +%F))" \
+                || rot "${PH[$K]} K1-Stichtag $(date -u -d @"$KAB" +%F) gesetzt, aber Coordinator bescheinigung.v3=$CV3 -- bio-deploy-coordinator-to-box.yml mit bescheinigung_v3=ja"
+            else
+              info "${PH[$K]} K1 schlaeft (kein Stichtag); Coordinator bescheinigung.v3=$CV3"
+            fi
             NC=$(get -X POST "$B/coordinator/challenge" | jq_ '.nonce // empty')
             [ -n "$NC" ] && ok "${PH[$K]} /challenge gibt einen Nonce (Einstieg der Registrierung)" || rot "${PH[$K]} /challenge ohne Nonce"
             WS=$(get -H 'Content-Type: application/json' -d '{"kennung":"W-0000000000000000","standpunkt":""}' "$B/coordinator/widerspruch" | jq_ '.status // empty')

@@ -287,3 +287,70 @@ func TestBescheinigung_BlockOhneBescheinigungNichtTauglich(t *testing.T) {
 		t.Fatal("ab dem Stichtag ohne Bescheinigung tauglich")
 	}
 }
+
+// Gegenprobe ueber die Sprachgrenze: Unterschriften, die der echte Python-Code
+// erzeugt hat -- coordinator/app/bio_attestation.py v3_unterschriften (Schluessel
+// 0x11 x 32, BESCHEINIGUNG_V3=ja) und matching-service/app/attest_sign.py
+// sign_personhood_v3 (Schluessel 0x22 x 32), beide fuer bio_hash 123, Modus
+// test, Zeit 1787712345. Die Kette sieht nur den Nullifier Poseidon(123) aus
+// dem Beweis. Liest der Knoten das Feld so, wie der Coordinator es schreibt,
+// und passen die Unterschriften zur Genesis-Form von C1 (ein Coordinator, ein
+// Bezeuger, Quorum 1)? Sonst schiede ab dem Stichtag jede echte Registrierung.
+func TestBescheinigung_UnterschriftenAusDemPythonCode(t *testing.T) {
+	const (
+		coordPub  = "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737"
+		persPub   = "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0"
+		coordSig  = "238138a615bb9809e6cc8fa0e6f848dd80d015c98266ff0b532334c048a90870591bdd489540438a5f8ea8b9dc2a0ae11451ee68e4c20a2689c84c80b281db0c"
+		persSig   = "9cb2460c5977e9c803d287c608219176f41d7c4d7cb616c62a6c465a201666a03299aa9a0b56261ce8f568f35954a08a40585f46dc20b100a9de3859dd996509"
+		nullifier = "9904028930859697121695025471312564917337032846528014134060777877259199866166" // Poseidon(123)
+		zeit      = int64(1787712345)
+		wallet    = "0xabcd000000000000000000000000000000000001"
+	)
+	// Der Rumpf, wie die App ihn an /api/register-human weiterreicht: v2 fuer
+	// den Proof-Server, v3 mit Praefix.
+	body := `{"bio":"123","wallet":"0xAbCd000000000000000000000000000000000001","bioAttestation":"` +
+		strings.Repeat("ab", 64) + ",v3:" + coordSig + ",v3:" + persSig + `","bioAttestationIssuedAt":1787712345}`
+	b := bescheinigungAusProveAnfrage([]byte(body))
+	if b == nil || b.Zeit != zeit || len(b.Signaturen) != 2 {
+		t.Fatalf("Feld des Coordinators nicht gelesen: %+v", b)
+	}
+	b.Modus = "test"
+	tx := Transaction{Type: "register_human", Wallet: wallet, RegAt: zeit + 20,
+		PubSignals: []string{"1", nullifier}, BioBescheinigung: b}
+	c1 := &bescheinigungKonfig{AbUnix: 1, Modus: "test", Quorum: 1, Coordinator: []string{coordPub}, Bezeuger: []string{persPub}}
+	setBescheinigungFuerTest(t, c1)
+	if err := pruefeBioBescheinigung(tx); err != nil {
+		t.Fatalf("echte Unterschriften abgewiesen: %v", err)
+	}
+
+	// Missbrauch: dieselben Unterschriften fuer eine andere Wallet, einen
+	// anderen Nullifier, im anderen Modus, ohne den Bezeuger, oder gegen eine
+	// Genesis mit fremden Schluesseln -- jedes Mal abgewiesen.
+	fremd := tx
+	fremd.Wallet = "0xabcd000000000000000000000000000000000002"
+	if pruefeBioBescheinigung(fremd) == nil {
+		t.Error("fremde Wallet angenommen")
+	}
+	andererN := tx
+	andererN.PubSignals = []string{"1", bTestNullifier}
+	if pruefeBioBescheinigung(andererN) == nil {
+		t.Error("fremder Nullifier angenommen")
+	}
+	nurCoord := tx
+	nurCoord.BioBescheinigung = &BioBescheinigung{Zeit: zeit, Modus: "test", Signaturen: []string{coordSig}}
+	if pruefeBioBescheinigung(nurCoord) == nil {
+		t.Error("ohne Bezeugung des Vergleichsdienstes angenommen")
+	}
+	real := *c1
+	real.Modus = "real"
+	setBescheinigungFuerTest(t, &real)
+	if pruefeBioBescheinigung(tx) == nil {
+		t.Error("Bescheinigung im Modus test von einem Netz im Modus real angenommen")
+	}
+	vertauscht := *c1
+	vertauscht.Coordinator, vertauscht.Bezeuger = []string{persPub}, []string{coordPub}
+	setBescheinigungFuerTest(t, &vertauscht)
+	if pruefeBioBescheinigung(tx) == nil {
+		t.Error("Rollen vertauscht angenommen")
+	}
+}
