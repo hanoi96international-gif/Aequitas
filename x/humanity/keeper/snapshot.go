@@ -232,7 +232,7 @@ func (cs *ChainState) ExportSnapshot(signingKey *ecdsa.PrivateKey, height int64,
 	// above — this read must use the plain DB-only variant, never
 	// cs.dbExec()/cs.activeTx.
 	snap.ChainConfig = map[string]string{}
-	for _, key := range []string{"last_ubi_at", "last_validators_at", "last_lp_at", "last_treasury_at", letzterCheckpointSchluessel, satzKonfigSchluessel} {
+	for _, key := range []string{"last_ubi_at", "last_validators_at", "last_lp_at", "last_treasury_at", letzterCheckpointSchluessel, satzKonfigSchluessel, verifierKonfigSchluessel} {
 		if val := cs.getConfigValueDB(key); val != "" {
 			snap.ChainConfig[key] = val
 		}
@@ -699,6 +699,9 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) (
 			if err := cs.satzPlanLaden(ctx); err != nil {
 				return fmt.Errorf("snapshot config %s: %w", satzKonfigSchluessel, err)
 			}
+			if err := cs.verifierRegisterLaden(ctx); err != nil {
+				return fmt.Errorf("snapshot config %s: %w", verifierKonfigSchluessel, err)
+			}
 			// FIX (double-apply): on a genuine fresh bootstrap, record the height
 			// this snapshot was taken at. cs.accounts above already reflects the
 			// cumulative effect of every block up to and including this height —
@@ -1149,6 +1152,12 @@ func (cs *ChainState) wendeResyncSnapshotAn(g *resyncSnapshot) (err error) {
 			return fail(fmt.Errorf("resync: could not clear %s: %w", satzKonfigSchluessel, err))
 		}
 	}
+	// Ebenso das Pruefer-Register (verifier_register.go).
+	if _, da := snap.ChainConfig[verifierKonfigSchluessel]; !da {
+		if err := cs.setConfigValueCtx(ctx, verifierKonfigSchluessel, ""); err != nil {
+			return fail(fmt.Errorf("resync: could not clear %s: %w", verifierKonfigSchluessel, err))
+		}
+	}
 	for key, val := range snap.ChainConfig {
 		if err := pruefeSnapshotKonfig(key, val); err != nil {
 			return fail(fmt.Errorf("resync: config %q: %w", key, err))
@@ -1162,6 +1171,9 @@ func (cs *ChainState) wendeResyncSnapshotAn(g *resyncSnapshot) (err error) {
 	}
 	if err := cs.satzPlanLaden(ctx); err != nil {
 		return fail(fmt.Errorf("resync: %s: %w", satzKonfigSchluessel, err))
+	}
+	if err := cs.verifierRegisterLaden(ctx); err != nil {
+		return fail(fmt.Errorf("resync: %s: %w", verifierKonfigSchluessel, err))
 	}
 	if snap.Height > 0 {
 		if err := cs.setConfigValueCtx(ctx, "snapshot_import_height", fmt.Sprintf("%d", snap.Height)); err != nil {

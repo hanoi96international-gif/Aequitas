@@ -34,6 +34,12 @@ import (
 // Staffel bleibt deshalb beim Platzhalter (TestStaffel_SchlaeftBisZulassungUndStreng),
 // bis die Zulassung an etwas Knappes gebunden ist, das im Konsens steht.
 //
+// GEBAUT 07.11.2026 (verifier_register.go, schlafend bis verifierRegisterAb):
+// ab dem Stichtag ist zusaetzlich die Aufnahme ins Pruefer-Register noetig --
+// mit den Stimmen von zwei Dritteln der Pruefer. Das Knappe sind die Stimmen
+// bestehender Pruefer, nicht Geld. Jede Zulassung (Annahme und Nachspielen)
+// geht ueber mitPruefern.
+//
 // Gilt die Staffel, bevor das Register gelesen wird (registerLeserAb), ist
 // niemand zugelassen -- fail-closed. TestStaffel_ZulassungVorDerStaffel
 // erzwingt die Reihenfolge der Stichtage.
@@ -140,5 +146,9 @@ func (cs *ChainState) coordinatorZugelassen(mensch string, t int64) (bool, error
 	}
 	ctx, abbruch := context.WithTimeout(context.Background(), 5*time.Second)
 	defer abbruch()
-	return coordinatorZugelassenIn(dbMitKontext{ctx: ctx, db: cs.db}, mensch, t)
+	// Ab verifierRegisterAb zusaetzlich das Pruefer-Register
+	// (verifier_register.go) -- dieselbe Regel wie beim Nachspielen.
+	return cs.mitPruefern(func(m string, t int64) (bool, error) {
+		return coordinatorZugelassenIn(dbMitKontext{ctx: ctx, db: cs.db}, m, t)
+	})(mensch, t)
 }

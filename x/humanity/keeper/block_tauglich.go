@@ -183,6 +183,16 @@ func auftragsFenster(tx *Transaction, jetzt int64) zeitFenster {
 		}
 		f.eng(sattAdd(tx.DistributionAt, -nachweisHoechstensVoraus), sattAdd(tx.DistributionAt, erneuerungHoechstensAlt))
 		f.eng(sattAdd(tx.Satz.GiltAb, -satzVorlaufMax), sattAdd(tx.Satz.GiltAb, -satzVorlaufMin))
+	case verifierTxArt:
+		// verifier_register.go: erst ab dem Stichtag; issued_at hoechstens
+		// 5 min nach und hoechstens nachweisHoechstensAlt vor dem Block
+		// (verifier_zeit) -- enger als beim Satz, weil die Wirkung daran
+		// haengt (Reihenfolge, Kopf der Datei).
+		f.eng(verifierRegisterAb(), math.MaxInt64)
+		if tx.DistributionAt <= 0 || tx.Verifier == nil {
+			return zeitFenster{1, 0}
+		}
+		f.eng(sattAdd(tx.DistributionAt, -nachweisHoechstensVoraus), sattAdd(tx.DistributionAt, nachweisHoechstensAlt))
 	case "proof_of_life":
 		// lebensnachweis.go: angewandt nur ab lebensnachweisAktiv und mit
 		// issued_at hoechstens 5 min nach dem Block; im strengen Modus
@@ -301,6 +311,13 @@ func blockTauglich(tx *Transaction, blockZeit int64) error {
 		}
 		if tx.Satz == nil || tx.Satz.GiltAb < sattAdd(blockZeit, satzVorlaufMin) || tx.Satz.GiltAb > sattAdd(blockZeit, satzVorlaufMax) {
 			return fmt.Errorf("Satz ohne gueltigen Vorlauf, Block %d", blockZeit)
+		}
+	case verifierTxArt:
+		if !verifierRegisterAktiv(blockZeit) {
+			return fmt.Errorf("verifier_zulassung vor dem Stichtag (Block %d)", blockZeit)
+		}
+		if z := tx.DistributionAt; z <= 0 || z > sattAdd(blockZeit, nachweisHoechstensVoraus) || z < blockZeit-nachweisHoechstensAlt {
+			return fmt.Errorf("Pruefer-Aenderung bescheinigt %d, Block %d", z, blockZeit)
 		}
 	case staffelEinspruchTxArt:
 		if !stagedGrantAktiv(blockZeit) {

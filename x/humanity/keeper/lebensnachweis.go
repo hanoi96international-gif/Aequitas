@@ -431,15 +431,17 @@ func lebensnachweisBefund(regel, format string, args ...interface{}) lebensnachw
 // laufenden Transaktion (dbExecCtx) -- beim Nachspielen wie bei der Annahme
 // unter cs.mu, ohne zweite Verbindung.
 func (cs *ChainState) lebensnachweisZulassung(ctx context.Context) CoordinatorZulassung {
+	// Ab verifierRegisterAb zusaetzlich das Pruefer-Register
+	// (verifier_register.go, mitPruefern) -- auf jedem Weg, auch im Test.
 	if cs.zulassungOhneDB != nil && cs.db == nil {
-		return cs.zulassungOhneDB
+		return cs.mitPruefern(cs.zulassungOhneDB)
 	}
-	return func(m string, t int64) (bool, error) {
+	return cs.mitPruefern(func(m string, t int64) (bool, error) {
 		if cs.db == nil {
 			return false, fmt.Errorf("keine Datenbank")
 		}
 		return coordinatorZugelassenIn(cs.dbExecCtx(ctx), m, t)
-	}
+	})
 }
 
 // lebensnachweisUrteilLocked: darf tx zu blockUnix angewandt werden? Jeder
