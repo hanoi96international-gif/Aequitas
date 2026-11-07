@@ -30,6 +30,21 @@ cd "$(dirname "$0")"
 rot() { printf '\n\033[31m%s\033[0m\n' "$*" >&2; }
 gruen() { printf '\033[32m%s\033[0m\n' "$*"; }
 schritt() { printf '\n\033[1m== %s\033[0m\n' "$*"; }
+# Werte in .env lesen und setzen. Bis zum 07.11.2026 rief das Skript beide auf,
+# ohne sie zu definieren (sie lagen nur in schluessel-eintragen.sh, einem
+# eigenen Prozess): "fehlt" endete mit "command not found", "if ! fehlt"
+# galt damit als "schon gebunden", und Schritt 6 wurde still uebersprungen --
+# ein neuer Knoten wurde nie an seinen Menschen gebunden.
+# scripts/test_einrichten_funktionen.py prueft, dass jede aufgerufene Funktion
+# definiert ist.
+fehlt() { ! grep -qE "^$1=.+" .env; }
+setze() {
+  local neu
+  neu="$(mktemp .env.XXXXXX)"
+  { grep -vE "^$1=" .env || true; printf '%s=%s\n' "$1" "$2"; } > "$neu"
+  install -m 600 "$neu" .env
+  rm -f "$neu"
+}
 
 schritt "1/6 Voraussetzungen"
 command -v docker >/dev/null || { rot "Docker fehlt. Installieren: curl -fsSL https://get.docker.com | sh"; exit 1; }

@@ -29,7 +29,7 @@ cd "$(dirname "$0")"
 # Das Image, das auch C1 fuer den Vergleichsdienst nutzt (festgelegt, nicht
 # "latest": jeder Verifier soll dasselbe pruefen). Wird mit dem Repo
 # aktualisiert.
-VERIFIER_IMAGE_STANDARD="ghcr.io/hanoi96international-gif/aequitas-biometric-beta/matching:a9fc9815648f960d87b4641bbd50e412a8c0dcb1"
+VERIFIER_IMAGE_STANDARD="ghcr.io/hanoi96international-gif/aequitas-biometric-beta/matching:b37478b2faf0238b751d90af9c6e644358c6ec9a"
 # Liste der anerkannten Coordinatoren: dort, wo das Netz sie selbst zeigt.
 COORD_QUELLE="${AEQUITAS_COORD_QUELLE:-https://proof1.aequitas.digital/matching/health}"
 NETZ="${AEQUITAS_NETZ:-https://aequitas.digital}"
@@ -58,8 +58,24 @@ if [ ! -f .env ] && command -v ss >/dev/null; then
     fi
   done
 fi
+# MINDESTAUSSTATTUNG (07.11.2026): bis hierhin nur ein Hinweis. Ein zu
+# schwacher Vergleichsdienst antwortet zu langsam, das Quorum wartet auf ihn
+# und jede Registrierung haengt -- er wird abgelehnt, nicht gewarnt.
+# Das Programm (Gesichtsmodelle, PyTorch) braucht allein etwa 5 GB Platz und
+# 2-3 GB Arbeitsspeicher im Betrieb.
+MIN_KERNE=2; MIN_RAM_MB=3500; MIN_PLATZ_GB=40
+KERNE="$(nproc 2>/dev/null || echo 0)"
 SPEICHER_MB="$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo 2>/dev/null || echo 0)"
-[ "${SPEICHER_MB:-0}" -ge 3500 ] || echo "  Hinweis / note: ${SPEICHER_MB} MB RAM -- empfohlen sind 4 GB / 4 GB recommended."
+PLATZ_GB="$(df -Pk . 2>/dev/null | awk 'NR==2 {print int($4/1048576)}' || echo 0)"
+echo "  Server: $KERNE Kerne/cores, $((SPEICHER_MB/1024)) GB RAM, $PLATZ_GB GB frei/free"
+if [ ! -f .env ] && { [ "$KERNE" -lt "$MIN_KERNE" ] || [ "$SPEICHER_MB" -lt "$MIN_RAM_MB" ] || [ "$PLATZ_GB" -lt "$MIN_PLATZ_GB" ]; }; then
+  rot "Dieser Server ist zu schwach fuer einen Verifier -- abgelehnt.
+This server is too weak for a verifier -- rejected.
+  Mindestens / at least: $MIN_KERNE Kerne/cores, 4 GB RAM, $MIN_PLATZ_GB GB freie SSD/free SSD.
+  Hier / here:           $KERNE Kerne/cores, $((SPEICHER_MB/1024)) GB RAM, $PLATZ_GB GB.
+Einen groesseren Server nehmen und neu starten. / Use a bigger server and run again."
+  exit 1
+fi
 gruen "Docker, Compose, openssl: vorhanden / present"
 
 if [ -f .env ]; then
@@ -152,7 +168,8 @@ printf '%s {\n\treverse_proxy aequitas-verifier:8098\n}\n' "$HOST" > Caddyfile
 schritt "5/6 Starten (erster Download etwa 5 GB) / Starting (first download ~5 GB)"
 if ! docker compose pull -q verifier; then
   rot "Das Verifier-Image ist nicht abrufbar / image not available.
-Ist es schon oeffentlich? / Is it public yet? Bitte im Telegram melden / please report in Telegram."
+Download unterbrochen oder GitHub kurz nicht erreichbar -- bash einrichten.sh erneut starten.
+Download interrupted or GitHub briefly unreachable -- run bash einrichten.sh again."
   exit 1
 fi
 docker compose up -d
