@@ -84,6 +84,9 @@ type BioBescheinigung struct {
 	Zeit       int64    `json:"zeit"`
 	Modus      string   `json:"modus"`
 	Signaturen []string `json:"sig"`
+	// Bindungen der Schluessel von Pruefern, die keine Genesis-Schluessel sind
+	// (B1b, bio_bescheinigung_register.go). Erst ab bescheinigungRegisterAb.
+	Bindungen []BescheinigungsBindung `json:"bindungen,omitempty"`
 }
 
 const (
@@ -100,6 +103,9 @@ const (
 	// bescheinigungV3Praefix markiert v3-Unterschriften im Feld
 	// bioAttestation der /prove-Anfrage.
 	bescheinigungV3Praefix = "v3:"
+	// bescheinigungBindungPraefix markiert die Bindung eines Pruefer-Schluessels
+	// (B1b): "v3k:<schluessel>.<mensch>.<mensch_sig>.<schluessel_sig>".
+	bescheinigungBindungPraefix = "v3k:"
 )
 
 var bnFeld, _ = new(big.Int).SetString("21888242871839275222246405745257275088548364400416034343698204186575808495617", 10)
@@ -272,6 +278,9 @@ func BescheinigungStand() map[string]any {
 		"coordinator": len(k.Coordinator), "bezeuger": len(k.Bezeuger),
 		"schluessel": map[string][]string{"coordinator": append([]string{}, k.Coordinator...),
 			"bezeuger": append([]string{}, k.Bezeuger...)},
+		// Ab hier zaehlen auch Schluessel von Pruefern mit Bindung (B1b);
+		// die Bindungen stehen in /api/verifier/dienste.
+		"register_ab": bescheinigungRegisterAb(),
 		"fingerabdruck": bescheinigungFingerabdruck(k)}
 }
 
@@ -289,6 +298,14 @@ func aussageNachrichtV3(modus, nullifier string, zeit int64) []byte {
 // pruefeBioBescheinigung: die Bescheinigung einer register_human gegen
 // Beweis, Wallet und Schluessel der Genesis. Fehler = Block ungueltig.
 func pruefeBioBescheinigung(tx Transaction) error {
+	return pruefeBioBescheinigungMit(tx, 0, nil)
+}
+
+// pruefeBioBescheinigungMit: dieselbe Pruefung; ab bescheinigungRegisterAb
+// (blockZeit) zaehlen auch Schluessel von Pruefern, deren Bindung die
+// Registrierung mitbringt (bio_bescheinigung_register.go). pruefer: ist der
+// Mensch zur Zeit t Pruefer? nil = keine Pruefer-Schluessel (fail-closed).
+func pruefeBioBescheinigungMit(tx Transaction, blockZeit int64, pruefer func(m string, t int64) bool) error {
 	k, err := bescheinigungKonf()
 	if err != nil {
 		return err
@@ -341,6 +358,20 @@ func pruefeBioBescheinigung(tx Transaction) error {
 			pubs[h] = ed25519.PublicKey(roh)
 		}
 	}
+	// Schluessel von Pruefern (B1b): jeder mit seiner Bindung, Mensch zur Zeit
+	// der Bescheinigung Pruefer. Wer zaehlt, ist der Mensch (genesisMensch fuer
+	// die Genesis-Schluessel und die Gruender).
+	register, err := registerSchluesselPruefen(b, blockZeit, pruefer, pubs)
+	if err != nil {
+		return err
+	}
+	menschVon := func(h string) string {
+		if m, ok := register[h]; ok {
+			return m
+		}
+		return genesisMensch
+	}
+	zaehltMenschen := len(register) > 0
 	passtZu := func(h, sig string, msg []byte) bool {
 		if len(sig) != 2*ed25519.SignatureSize || !kleinHex(sig) {
 			return false
@@ -353,6 +384,14 @@ func pruefeBioBescheinigung(tx Transaction) error {
 	if !getrennt {
 		bezeuger = k.Coordinator
 	}
+	// Pruefer-Schluessel duerfen beides: binden (wie ein Coordinator) und
+	// bezeugen (wie ein Vergleichsdienst). Die Regel "mindestens ein
+	// Bezeuger, der nicht gebunden hat" bleibt je SCHLUESSEL bestehen.
+	coordinatoren := k.Coordinator
+	if zaehltMenschen {
+		coordinatoren = append(append([]string{}, k.Coordinator...), sortierteSchluessel(register)...)
+		bezeuger = append(append([]string{}, bezeuger...), sortierteSchluessel(register)...)
+	}
 	gesehen := map[string]bool{}
 	bindet := map[string]bool{}
 	bezeugt := map[string]bool{}
@@ -362,7 +401,7 @@ func pruefeBioBescheinigung(tx Transaction) error {
 		}
 		gesehen[sig] = true
 		passt := false
-		for _, s := range k.Coordinator {
+		for _, s := range coordinatoren {
 			if passtZu(s, sig, bindungMsg) {
 				bindet[s], bezeugt[s], passt = true, true, true
 				break
@@ -393,6 +432,22 @@ func pruefeBioBescheinigung(tx Transaction) error {
 		if ohneBindung == 0 {
 			return errors.New("bescheinigung: kein Vergleichsdienst hat den Menschen bezeugt")
 		}
+	}
+	if zaehltMenschen {
+		// Jede Bindung muss gebraucht werden: keine Ladung fremder Bindungen.
+		for h := range register {
+			if !bezeugt[h] {
+				return errors.New("bescheinigung: eine Bindung gehoert zu keiner Unterschrift")
+			}
+		}
+		menschen := map[string]bool{}
+		for s := range bezeugt {
+			menschen[menschVon(s)] = true
+		}
+		if len(menschen) < k.Quorum {
+			return fmt.Errorf("bescheinigung: %d von %d noetigen Menschen", len(menschen), k.Quorum)
+		}
+		return nil
 	}
 	if len(bezeugt) < k.Quorum {
 		return fmt.Errorf("bescheinigung: %d von %d noetigen Schluesseln", len(bezeugt), k.Quorum)
@@ -430,33 +485,50 @@ func bescheinigungAusProveAnfrage(body []byte) *BioBescheinigung {
 	if err != nil || z <= 0 {
 		return nil
 	}
-	_, v3 := teileBescheinigungsfeld(sigs)
+	_, v3, roheBindungen := teileBescheinigungsfeldMitBindungen(sigs)
 	var liste []string
 	for _, teil := range v3 {
 		if t := ed25519SigNormal(teil); t != "" {
 			liste = append(liste, t)
 		}
 	}
-	if len(liste) == 0 || len(liste) > bescheinigungMaxSignaturen {
+	if len(liste) == 0 || len(liste) > bescheinigungMaxSignaturen || len(roheBindungen) > bescheinigungMaxSignaturen {
 		return nil
 	}
-	return &BioBescheinigung{Zeit: z, Signaturen: liste}
+	var bindungen []BescheinigungsBindung
+	for _, roh := range roheBindungen {
+		b, ok := leseBescheinigungsBindung(roh)
+		if !ok {
+			return nil
+		}
+		bindungen = append(bindungen, b)
+	}
+	return &BioBescheinigung{Zeit: z, Signaturen: liste, Bindungen: bindungen}
 }
 
 // teileBescheinigungsfeld: die Eintraege von bioAttestation in die fuer den
 // Proof-Server (ohne Praefix) und die v3-Eintraege (Praefix entfernt).
 func teileBescheinigungsfeld(sigs string) (proofServer, v3 []string) {
+	proofServer, v3, _ = teileBescheinigungsfeldMitBindungen(sigs)
+	return proofServer, v3
+}
+
+// teileBescheinigungsfeldMitBindungen: dazu die Bindungen ("v3k:"). Sie gehen
+// nie an den Proof-Server (er kennt sie nicht und wiese die Anfrage ab).
+func teileBescheinigungsfeldMitBindungen(sigs string) (proofServer, v3, bindungen []string) {
 	for _, teil := range strings.Split(sigs, ",") {
 		t := strings.TrimSpace(teil)
 		switch {
 		case t == "":
 		case strings.HasPrefix(t, bescheinigungV3Praefix):
 			v3 = append(v3, strings.TrimPrefix(t, bescheinigungV3Praefix))
+		case strings.HasPrefix(t, bescheinigungBindungPraefix):
+			bindungen = append(bindungen, strings.TrimPrefix(t, bescheinigungBindungPraefix))
 		default:
 			proofServer = append(proofServer, t)
 		}
 	}
-	return proofServer, v3
+	return proofServer, v3, bindungen
 }
 
 // proveAnfrageOhneV3: der Rumpf, wie er an den Proof-Server geht -- ohne die
@@ -474,8 +546,8 @@ func proveAnfrageOhneV3(body []byte) []byte {
 	if json.Unmarshal(werte["bioAttestation"], &sigs) != nil {
 		return body
 	}
-	rest, v3 := teileBescheinigungsfeld(sigs)
-	if len(v3) == 0 {
+	rest, v3, bindungen := teileBescheinigungsfeldMitBindungen(sigs)
+	if len(v3) == 0 && len(bindungen) == 0 {
 		return body
 	}
 	neu, err := json.Marshal(strings.Join(rest, ","))
