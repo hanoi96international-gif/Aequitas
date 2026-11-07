@@ -151,6 +151,11 @@ func (a *APIServer) handleWirtschaftKonto(w http.ResponseWriter, r *http.Request
 		// Grundlage der Umlaufabgabe (abgabe_grundlage).
 		"lp_wert": round6(lpWert), "abgabe_grundlage": round6(abgabeStand),
 		"aktiv": wirtschaftAktiv(jetzt),
+		// Gilt das Gleichgewicht (wirtschaft3.go)? Dann kostet keine
+		// Ueberweisung etwas, und gebuehrenfrei_rest_monat spielt keine Rolle.
+		// Die App schaltet daran um, nicht an einer eigenen Uhr; fehlt das
+		// Feld (alter Knoten), rechnet sie mit der bisherigen Gebuehr.
+		"gleichgewicht": gleichgewichtAktiv(jetzt),
 	}
 	wi := cs.wirt()
 	wi.mu.Lock()

@@ -5982,6 +5982,129 @@ hi: {
 }
 };
 
+// Gleichgewicht (wirtschaft3.go): Texte, die ab dem Stichtag gelten. Ob es
+// gilt, sagt die Kette (/api/wirtschaft/regeln -> gleichgewicht.aktiv), nicht
+// die Uhr des Browsers: Website, App und Kette schalten im selben Augenblick
+// um, und ein verschobener Stichtag braucht hier keine Aenderung. {ab} wird
+// durch den Stichtag aus der Kette ersetzt. Ohne Antwort bleiben die
+// bisherigen Texte stehen. Die Sprachen stehen absichtlich in Anfuehrungs-
+// zeichen: Die Pruefung der Sprachbloecke oben (seiten_test.go) zaehlt nur T.
+const GG = {
+  "de": {
+    "pz-3-p": "Die Umlaufabgabe fließt jeden Tag zu gleichen Teilen an alle Menschen zurück.",
+    "vg-q5": "Wohin fließt die Umlaufabgabe?",
+    "fn-1-p": "Bezahlen in Sekunden, überall auf der Welt, ohne Kartengebühr. Überweisungen kosten nichts, und der Laden erhält den vollen Preis.",
+    "fn-2-p": "Neues Geld entsteht nur mit einem neuen Menschen, je 1.000 AEQ — so gibt es immer genau 1.000 AEQ pro Mensch, und niemand kann das verwässern. Wer weniger als 1.000 AEQ hat, bekommt jeden Monat etwas dazu.",
+    "ul-sub": "Jedes Guthaben gibt 0,5 % im Monat ab, und alles geht zu gleichen Teilen als Grundeinkommen an alle Menschen zurück. Wer weniger als den fairen Anteil hat, bekommt dazu. So bleibt Geld in Bewegung, und Vermögen kann sich nicht grenzenlos anhäufen.",
+    "ul-1": "<strong>Eine Regel für alle.</strong> 0,5 % im Monat auf jedes Guthaben, für Menschen, Unternehmen und sonstige Adressen gleich, ab dem ersten AEQ.",
+    "ul-2": "<strong>Netto zahlt nur, wer mehr als 1.000 AEQ hat.</strong> Bei genau 1.000 AEQ gleichen sich Abgabe und Grundeinkommen aus; wer weniger hat, bekommt dazu.",
+    "calc-free": "bis 1.000 AEQ: Sie bekommen dazu",
+    "calc-over": "darüber: Sie zahlen netto",
+    "calc-l-fee": "Netto im Monat (Abgabe minus Grundeinkommen)",
+    "calc-note": "Ein Minus heißt: Sie bekommen mehr Grundeinkommen, als Sie abgeben. Gerechnet mit 5 AEQ Grundeinkommen im Monat, dem Wert, solange jeder Mensch im Schnitt 1.000 AEQ hält.",
+    "biz-b1-p": "Eine Zahlung kostet weder den Laden noch die Kundschaft etwas.",
+    "bc-note": "Typische Händlergebühren in Europa. Bei Aequitas kostet eine Zahlung nichts, der Laden erhält den vollen Preis. Der Umtausch von AEQ in Euro kostet Unternehmen 2 %, außer für das, was sie selbst eingezahlt haben.",
+    "cf-l1": "Löhne 1.500 · kostenlos",
+    "cf-l2": "Lieferant 800 · kostenlos",
+    "cf-l3": "Inhaberin 600 · kostenlos",
+    "cf-l4": "Rücklage 100 · 0,5 AEQ Umlaufabgabe",
+    "cf-r": "Kosten im Monat: rund 0,5 AEQ, dazu ein paar Cent für Geld, das ein paar Tage auf dem Konto liegt",
+    "ppl-1": "<strong>Ihr fairer Anteil bleibt Ihnen.</strong> Bei 1.000 AEQ gleichen sich Umlaufabgabe und Grundeinkommen aus.",
+    "ppl-2": "<strong>Der Alltag kostet nichts.</strong> Überweisungen sind gebührenfrei, egal wie viel Sie ausgeben.",
+    "ppl-4": "<strong>Sparen ist erlaubt.</strong> Was über 1.000 AEQ liegt, gibt 0,5 % im Monat ab; halten dürfen Sie bis 25.000 AEQ.",
+    "ppl-5": "<strong>Wer mehr hat, trägt mehr.</strong> Netto zahlt nur, wer mehr als 1.000 AEQ hat: 0,5 % im Monat auf den Teil darüber. Die Grenze von 25.000 AEQ bleibt; eine Zahlung, die jemanden über die Grenze brächte, wird abgelehnt.",
+    "pn-2-l": "Gebühr auf Überweisungen",
+    "pn-3-v": "1.000 AEQ",
+    "pn-3-l": "Guthaben, bei dem Abgabe und Grundeinkommen sich ausgleichen",
+    "vi-3": "der Umlaufabgabe zurück an alle Menschen, jeden Tag",
+    "faq-q2": "Was hat sich für mich als Mensch am {ab} geändert?",
+    "faq-a2": "Für die meisten wird es günstiger: Überweisungen kosten nichts mehr. Jedes Guthaben gibt 0,5 % im Monat ab, und alles kommt als Grundeinkommen zu gleichen Teilen zurück. Wer um die 1.000 AEQ hat, zahlt netto nichts; wer weniger hat, bekommt dazu.",
+    "faq-a3": "Nein. Die Umlaufabgabe und die Ausstiegsabgabe gehen zu 100 % ins Grundeinkommen und kommen zu gleichen Teilen bei allen verifizierten Menschen an.",
+    "faq-a5": "Jede Adresse, die weder ein verifizierter Mensch noch ein Unternehmen ist: die Geldbörse eines Besuchers, eine Trinkgeldkasse, ein einfacher Vertrag. Sie darf höchstens 250 AEQ halten und gibt wie jedes Guthaben 0,5 % im Monat ab.",
+    "faq-a6": "Jeder Mensch existiert bei Aequitas genau einmal. Den Anteil am Grundeinkommen gibt es je Mensch einmal; mit mehr Konten lässt er sich nicht vervielfachen. Das kann kein anderes Geld.",
+    "faq-a8": "Weil es bei Fairness um den Anteil jedes Menschen am ganzen Geld geht, nicht um Dollarbeträge. Der Durchschnittsmensch hält immer genau einen fairen Anteil (1.000 AEQ), und jede Grenze ist ein Vielfaches davon. Eine Dollar-Kopplung bräuchte eine Kursquelle, die jemand verschieben könnte, und ein steigender Kurs würde die Grenzen still verschärfen. Nur der Tausch-Freibetrag hängt davon ab, wie viel vom Leben in AEQ bezahlt wird: Nach der Pilotstadt soll er dem folgen, was der Median-Mensch wirklich im Monat ausgibt, nie weniger als 1 × der faire Anteil.",
+    "eco-p2-p": "Einkaufen, Löhne zahlen und Lieferanten bezahlen kostet nichts. Jedes Guthaben gibt 0,5 % im Monat ab; wer Geld weitergibt, statt es liegen zu lassen, trägt weniger.",
+    "eco-p3-p": "Die Umlaufabgabe und die Ausstiegsabgaben gehen zu 100 % ins Grundeinkommen, jeden Tag zu gleichen Teilen an jeden verifizierten Menschen: rund 5 AEQ im Monat je Mensch, solange jeder Mensch im Schnitt 1.000 AEQ hält.",
+    "cmp-r3": "Umlaufabgabe",
+    "cmp-r3-p": "0,5 % im Monat auf das ganze Guthaben",
+    "cmp-r3-b": "0,5 % im Monat auf das ganze Guthaben",
+    "cmp-r3-f": "0,5 % im Monat",
+    "cmp-r4-p": "frei",
+    "cmp-r4-b": "frei",
+    "cmp-r4-f": "frei",
+    "cmp-note": "Diese Regeln gelten ab {ab}. Jede Abgabe geht zu 100 % ins Grundeinkommen.",
+    "fs-note": "<strong>Jede Grenze ist ein Vielfaches des fairen Anteils.</strong> 1.000 AEQ hält der Durchschnittsmensch, denn die Geldmenge ist immer Menschen × 1.000 AEQ. Also sind 3.000 = 3× und 25.000 = 25× der faire Anteil. Die Grenzen hängen nicht am Dollar: Steigt oder fällt AEQ im Wert, ändert sich der faire Anteil aller mit, und die Grenzen behalten ihre Bedeutung. Solange weniger als 25 Menschen registriert sind, liegt der Deckel für Menschen niedriger: 1.000 AEQ je registriertem Menschen, mindestens 5.000 AEQ.",
+    "fee-h": "Überweisungen kosten nichts",
+    "fee-r1": "Menschen",
+    "fee-r2": "Unternehmen",
+    "fee-r2-v": "frei",
+    "fee-r3": "Unternehmen an Menschen (Lohn)",
+    "fee-r4": "Sonstige Adressen",
+    "fee-r4-v": "frei",
+    "fee-note": "Keine Überweisung kostet etwas, egal wie groß: Der Empfänger bekommt immer den vollen Betrag. Vermögen ist durch die Grenze von 25.000 AEQ und die Umlaufabgabe begrenzt. Diese Regeln gelten ab {ab}.",
+    "ubi-c3-p": "Die Umlaufabgabe (0,5 % im Monat auf jedes Guthaben), 30 % der Swap-Gebühren, die Ausstiegsabgabe von 2 % und alles über der Grenze von 25.000 AEQ.",
+    "ex-sub": "Fünf Situationen, gerechnet mit den Regeln, die ab {ab} gelten, und mit 5 AEQ Grundeinkommen im Monat.",
+    "ex-anna-p": "Sie hat 800 AEQ und gibt 600 AEQ im Monat aus. Überweisungen kosten nichts. Umlaufabgabe: 4 AEQ. Grundeinkommen: 5 AEQ.",
+    "ex-anna-r": "bekommt netto 1 AEQ im Monat",
+    "ex-ben-p": "Er verdient 2.000 AEQ Lohn, gibt 1.500 AEQ aus und tauscht 1.000 AEQ für die Miete in Euro. Sein Guthaben liegt im Mittel bei 1.500 AEQ: Umlaufabgabe 7,5 AEQ, Grundeinkommen 5 AEQ. Tauschgebühr: 1 AEQ. Keine Ausstiegsabgabe: bis 3.000 AEQ im Monat sind frei.",
+    "ex-ben-r": "zahlt netto 3,5 AEQ im Monat",
+    "ex-clara-p": "Sie gibt 3.000 AEQ im Monat aus und tauscht 5.000 AEQ. Umlaufabgabe: 20.000 × 0,5 % = 100 AEQ. Umtausch: 2.000 × 2 % = 40 AEQ (die ersten 3.000 sind frei). Grundeinkommen: 5 AEQ. Alles geht ins Grundeinkommen, also auch an Anna und Ben.",
+    "ex-clara-r": "zahlt netto 135 AEQ im Monat",
+    "ex-market-p": "40.000 AEQ Einkäufe im Monat, aber 200.000 AEQ bleiben auf dem Konto. Umlaufabgabe: 200.000 × 0,5 % = 1.000 AEQ. Eine Reserve von zwei Monatsumsätzen (80.000 AEQ) kostete 400 AEQ im Monat.",
+    "ex-market-r": "zahlt 1.000 AEQ im Monat ins Grundeinkommen",
+    "ex-hoard-p": "Als Mensch: unmöglich, die Grenze liegt bei 25.000 AEQ. Auf 400 sonstigen Adressen à 250 AEQ oder auf einem Unternehmenskonto: 100.000 × 0,5 % = 500 AEQ im Monat, ohne jeden Freibetrag.",
+    "ex-hoard-r": "Horten kostet in jeder Form rund 6 % im Jahr",
+    "biz-b3-p": "Menschen halten höchstens 25.000 AEQ, Unternehmen haben keine feste Grenze. Für alle gilt dieselbe Umlaufabgabe von 0,5 % im Monat.",
+    "shop-2-p": "Läuft AEQ bei euch, folgt das Unternehmenskonto: keine feste Grenze, Löhne und Zahlungen gebührenfrei, dieselbe Umlaufabgabe wie für alle.",
+    "ru-sub": "Sie gelten ab {ab}. Jede Abgabe geht zu 100 % ins Grundeinkommen, zu gleichen Teilen an jeden Menschen.",
+    "biz-r1-k": "Umlaufabgabe",
+    "biz-r1-v": "0,5 % im Monat auf das ganze Guthaben, wie für jedes Konto",
+    "biz-r2-v": "Für keine Abgabe mehr: Der Umsatz erscheint nur noch im Unternehmensverzeichnis, als Hinweis für die Kundschaft.",
+    "biz-r4-v": "frei",
+    "age-note": "Seit dem {ab} hängt keine Abgabe mehr am Umsatz: Jedes Guthaben gibt 0,5 % im Monat ab, ob Mensch oder Unternehmen. Der Umsatz steht nur noch als Anzeige im Unternehmensverzeichnis.",
+    "lh-1": "<strong>Als Unternehmen anmelden, um die 25.000-Grenze zu umgehen.</strong> Ein Unternehmen zahlt dieselbe Umlaufabgabe wie ein Mensch, bei der Abgabe bringt es also nichts. Wer Geld über eigene Unternehmen hält, steht damit öffentlich im Verzeichnis.",
+    "lh-2": "<strong>Geld im Kreis schicken, um Umsatz aufzublähen.</strong> Bringt nichts mehr: Für die Abgabe zählt kein Umsatz, nur das Guthaben.",
+    "lh-3": "<strong>Geld selbst oder über den Inhaber einzahlen.</strong> Bringt nichts: Umsatz zählt für keine Abgabe.",
+    "lh-9": "<strong>Ein Smart Contract als Versteck.</strong> Verträge sind sonstige Adressen: höchstens 250 AEQ, und sie geben wie jedes Guthaben 0,5 % im Monat ab.",
+    "op-5": "<strong>Die Zahlen sind Startwerte.</strong> 0,5 % im Monat, 2 %, 3.000 im Monat: in der Pilotstadt gemessen, dann angepasst. Den Satz der Umlaufabgabe können zwei Betreiber gemeinsam zwischen 0,25 % und 1 % im Monat ändern, höchstens einmal im Quartal und mit 30 bis 90 Tagen Ankündigung.",
+    "eco-svg-levies": "Umlaufabgabe · Ausstieg",
+  },
+};
+
+// gleichgewicht: {satz: Anteil je Monat, ab: Unix-Sekunden}, sobald die Kette
+// meldet, dass es gilt; sonst null.
+var gleichgewicht = null;
+
+function texteFuer(lang) {
+  const t = T[lang];
+  const g = gleichgewicht;
+  if (!g || !GG[lang]) return t;
+  let ab;
+  try {
+    ab = new Date(g.ab * 1000).toLocaleDateString(lang, {day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC'});
+  } catch (e) {
+    ab = new Date(g.ab * 1000).toISOString().slice(0, 10);
+  }
+  const o = Object.assign({}, t);
+  for (const k of Object.keys(GG[lang])) o[k] = GG[lang][k].split('{ab}').join(ab);
+  return o;
+}
+
+async function ladeGleichgewicht() {
+  try {
+    const d = await fetch('/api/wirtschaft/regeln').then(r => r.json());
+    const g = d && d.gleichgewicht;
+    if (!g || g.aktiv !== true) return;
+    const satz = Number(g.umlauf_prozent_monat) / 100;
+    const ab = Number(g.aktiv_ab);
+    // Nur, was die Kette ueberhaupt zulaesst (satz_plan.go: 0,25 bis 1 %).
+    if (!(satz >= 0.0025 && satz <= 0.01) || !(ab > 0)) return;
+    gleichgewicht = {satz, ab};
+    setLangOhneSpeichern(document.documentElement.lang || 'en');
+    if (calcNeu) calcNeu();
+  } catch (e) { /* Knoten nicht erreichbar: die bisherigen Texte bleiben */ }
+}
+
 function setLang(lang) {
   if (!T[lang]) return;
   const sel = document.getElementById('lang-sel');
@@ -5989,7 +6112,7 @@ function setLang(lang) {
   document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
   document.documentElement.lang = lang;
   try { localStorage.setItem(LANG_KEY, lang); } catch (e) { /* private mode — lasts this page view only */ }
-  const t = T[lang];
+  const t = texteFuer(lang);
   document.querySelectorAll('[data-i18n]').forEach(el => {
     const key = el.getAttribute('data-i18n');
     // Values may contain markup the layout depends on — the headline's <br>
@@ -6138,19 +6261,27 @@ function initReveal() {
 
 // Rechner Umlaufsicherung (Abschnitt "umlauf"): Menschen zahlen 0,5 % im
 // Monat auf den Teil ueber 5.000 AEQ (wirtschaft.go, menschSparFreibetrag).
+var calcNeu = null;
 function initCalc() {
   const inp = document.getElementById('calc-in');
   if (!inp) return;
-  const FREI = 5000, RATE = 0.005, MAX = +inp.max;
+  const FREI = 5000, RATE = 0.005, FAIR = 1000, MAX = +inp.max;
   const upd = () => {
     const b = +inp.value;
     const lang = document.documentElement.lang || undefined;
+    // Vor dem Gleichgewicht: 0,5 % auf den Teil ueber 5.000 AEQ. Danach:
+    // Abgabe minus Grundeinkommen, Satz x (Guthaben - fairer Anteil) --
+    // dieselbe Formel wie die Kette (netto_je_mensch_monat_formel).
+    const g = gleichgewicht;
+    const grenze = g ? FAIR : FREI;
+    const betrag = g ? (b - FAIR) * g.satz : Math.max(0, b - FREI) * RATE;
     setText('calc-bal', b.toLocaleString(lang));
-    setText('calc-fee', (Math.max(0, b - FREI) * RATE).toLocaleString(lang, {maximumFractionDigits: 2}));
+    setText('calc-fee', betrag.toLocaleString(lang, {maximumFractionDigits: 2}));
     const f = document.getElementById('calc-free'), o = document.getElementById('calc-over');
-    if (f) f.style.width = (Math.min(b, FREI) / MAX * 100) + '%';
-    if (o) o.style.width = (Math.max(0, b - FREI) / MAX * 100) + '%';
+    if (f) f.style.width = (Math.min(b, grenze) / MAX * 100) + '%';
+    if (o) o.style.width = (Math.max(0, b - grenze) / MAX * 100) + '%';
   };
+  calcNeu = upd;
   inp.addEventListener('input', upd);
   document.getElementById('lang-sel')?.addEventListener('change', upd);
   upd();
@@ -6160,6 +6291,7 @@ document.documentElement.classList.add('js');
 initReveal();
 initLang();
 initCalc();
+ladeGleichgewicht();
 renderCountdown();
 loadStats();
 loadBusiness();
