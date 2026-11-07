@@ -70,6 +70,8 @@ jobs:
         run: bash .github/neustart/k1-stichtag-nicht-verpasst.sh http://$C1:8080
       - name: Stichtag des Pruefer-Registers nicht verpasst
         run: bash .github/neustart/verifier-stichtag-nicht-verpasst.sh http://$C1:8080
+      - name: Stichtag von K1 mit Pruefer-Schluesseln (B1b) nicht verpasst
+        run: bash .github/neustart/b1b-stichtag-nicht-verpasst.sh http://$C1:8080
       - name: Schluessel
         env:
           KEY: ${{ secrets.CONTABO_SSH_KEY }}
