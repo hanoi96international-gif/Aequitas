@@ -77,7 +77,9 @@ Eine **virtuelle Kamera** (Injektion auf einem gerooteten Gerät) umgeht die
 Kamera ganz. Die Blitzprüfung hilft dagegen nur begrenzt. Die App kennt die
 Farbfolge, und `flash_liveness.py` misst die Farbbalance des ganzen Bildes,
 nicht die 3D-Spiegelung im Gesicht. Eine Injektion kann die Bilder also
-passend einfärben. Dagegen helfen Geräte-Attestierung (Play Integrity / App
-Attest, heute nur Risikosignal), die Staffel und die Tagesgrenze im
+passend einfärben. Dagegen hilft die Geräteprüfung. Seit 07.11.2026
+ist sie an genau die hochgeladenen Bilder gebunden, und ohne sie gibt es kein
+„grün“. Ein gerootetes Telefon oder ein Emulator besteht die Android Key
+Attestation nicht. Dazu kommen die Staffel und die Tagesgrenze im
 Einzelbetrieb (25 Registrierungen am Tag). Siehe `docs/BETA_BEREITSCHAFT.md`,
 Abschnitt 0a „Deepfake“.
