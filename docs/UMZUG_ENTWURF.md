@@ -1,4 +1,57 @@
-# Umzug — Entwurf vor dem Bau
+# Umzug — Entwurf und Stand des Baus
+
+## Stand 07.11.2026: gebaut (Kette), schlafend bis 12.11.2026 18:00 UTC
+
+Entscheidungen des Betreibers vom 07.11.2026:
+
+- **Gesicht + Wiederherstellungscode: sofortiger Umzug.** Kein Zeitschloss,
+  kein Widerruf durch die alte Wallet (ein Dieb mit dem Seed kann den
+  rechtmaessigen Menschen sonst fuer immer aussperren). Der Code wird von der
+  App einmal erzeugt und einmal gezeigt; auf der Kette steht nur sein Hash,
+  an die Wallet gebunden (`umzug_code`). Nach dem Umzug ist er verbraucht.
+  Ein neuer Code kommt DAZU (hoechstens drei je Wallet), er ersetzt keinen:
+  sonst ersetzte ein Dieb mit dem Seed den Code des Menschen und widerriefe
+  danach jeden Umzug ohne Code (Sicherheitsdurchgang des Diffs, 07.11.).
+- **Nur das Gesicht: 14 Tage**, in denen die alte Wallet widerrufen kann
+  (`umzug_widerruf`); danach vollzieht die Tagesrunde (`umzug_vollzug`).
+- **Restrisiken beseitigt (07.11., auf Wunsch des Betreibers):**
+  - Ohne Code nur nach **strenger** Pruefung: gruene Lebendigkeit UND an die
+    Aufnahme gebundene Hardware-Attestierung des Geraets. Die Pruefstufe
+    steht in der Unterschrift des Coordinators (`aequitas-umzug-bindung-v1|
+    ...|streng`), die Kette verlangt sie ohne Code.
+  - **Code schlaegt jeden offenen Umzug** ohne Code: mit Gesicht und Code
+    zieht der Mensch sofort um und beendet damit auch den Umzug eines
+    Angreifers.
+  - **Hoechstens ein Widerruf je Mensch im Jahr.** Danach laeuft ein streng
+    gepruefter Umzug ohne Code nach 30 Tagen fest durch -- ein Dieb mit dem
+    alten Schluessel kann den Menschen nicht fuer immer aussperren.
+- **Keine neuen AEQ.** Das Guthaben bleibt bei der alten Wallet; die neue gilt
+  als "Faucet abgeholt".
+- **Ausnahme in `kein_entzug_test.go`** fuer `umzugVollziehenLocked` (siehe 5).
+
+Umgesetzt in `x/humanity/keeper/umzug.go` (Tests: `umzug_test.go`,
+`umzug_realdb_test.go`). Abweichend vom Entwurf unten:
+
+- Kein neuer Groth16-Beweis fuer W2: das Gesicht bescheinigt eine
+  v3-Bescheinigung mit eigenen Domaenen (`aequitas-umzug-bindung-v1`,
+  `aequitas-umzug-aussage-v1`), gegen dieselben Schluessel und mit denselben
+  Regeln wie die Registrierung (`pruefeV3Unterschriften`). Der Nullifier zieht
+  um, die Einschreibung (`bio_registrations`) auch.
+- Kein Kontofeld und kein XOR-Akkumulator: das Register (Codes, offene und
+  erledigte Umzuege) steht kanonisch in `chain_config` (`umzug_register`),
+  sein Hash in der StateRoot -- nur, wenn es Eintraege gibt. Grenzen:
+  50.000 Codes, 1.000 offene, 20.000 erledigte Umzuege; vor 50.000 Codes muss
+  das Register in eine eigene Tabelle.
+- Die Tagesrunde wartet, solange ein angenommener Umzug noch in keinem Block
+  steht (sonst zahlten Erzeuger und Nachspielende das Grundeinkommen an
+  verschiedene Wallets).
+
+Noch offen: Coordinator `/umzug` und Vergleichsdienst `/umzug/bezeugen`
+(strenge Identitaetspruefung wie beim Auffrischen, Zwillinge
+ausgeschlossen), App (Code erzeugen und hinterlegen, "Konto zurueckholen",
+Warnung bei der alten Wallet).
+
+---
 
 Stand 25.10.2026. Ausgangspunkt: `REGISTRIERUNG_ENDFASSUNG.md` 5.4 (Ablauf,
 Grenzen, Zwang, Zwillinge) und Nr. 7 der Umsetzung. Dieser Entwurf

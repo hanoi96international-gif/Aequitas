@@ -70,7 +70,7 @@ func (cs *ChainState) offenePauseAuftraege(ctx context.Context) (alle, nachweise
 	if err := cs.dbExecCtx(ctx).QueryRow(
 		`SELECT count(*), count(*) FILTER (WHERE (tx_json::json ->> 'type') = $1)
 		   FROM pending_txs WHERE included_at = 0 AND (
-			(tx_json::json ->> 'type') IN ($1, 'grant_release', 'validator_bindung')
+			(tx_json::json ->> 'type') IN ($1, 'grant_release', 'validator_bindung', 'umzug_ankuendigen', 'umzug_widerruf')
 			OR ((tx_json::json ->> 'type') = 'register_human'
 			    AND lower(tx_json::json ->> 'wallet') IN (SELECT lower(operator_wallet) FROM validator_verlauf)))`,
 		lebensnachweisTxArt).Scan(&alle, &nachweise); err != nil {
@@ -85,7 +85,10 @@ func (cs *ChainState) offenePauseAuftraege(ctx context.Context) (alle, nachweise
 // lebensnachweisAktiv immer, auch wenn der Erzeuger keine Pause fuer
 // moeglich haelt (siehe oben: die Betreiberzahl kann auch sinken).
 func (cs *ChainState) lebensnachweisRundeBereitLocked(ctx context.Context, t int64) error {
-	if !lebensnachweisAktiv(t) {
+	// Ein angewandter Umzug (umzug.go) aendert, wer Mensch ist -- die Runde
+	// wartet auf ihn wie auf einen Lebensnachweis, sonst zahlte der Erzeuger
+	// das Grundeinkommen an W2, wer nachspielt, an W1.
+	if !lebensnachweisAktiv(t) && !umzugAktiv(t) {
 		return nil
 	}
 	n, _, err := cs.offenePauseAuftraege(ctx)
@@ -106,7 +109,7 @@ func (cs *ChainState) lebensnachweisRundeBereitLocked(ctx context.Context, t int
 // ihre Annahme kurz anzuhalten (nie bei einem Lesefehler oder nur
 // Betreiber-Aenderungen; Sicherheitspruefung von a9744132, NIEDRIG-2).
 func (cs *ChainState) LebensnachweiseOffenGrund(jetzt int64) (grund string, nachweiseOffen bool) {
-	if !lebensnachweisAktiv(jetzt) || cs.db == nil {
+	if (!lebensnachweisAktiv(jetzt) && !umzugAktiv(jetzt)) || cs.db == nil {
 		return "", false
 	}
 	n, nachweise, err := cs.offenePauseAuftraege(context.Background())

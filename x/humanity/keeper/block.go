@@ -67,6 +67,9 @@ type Transaction struct {
 	// Stimmen der Pruefer (verifier_register.go). omitempty: aeltere Bloecke
 	// behalten ihren Hash.
 	Verifier *VerifierZulassung `json:"verifier,omitempty"`
+	// Umzug: Code, Antrag oder Widerruf eines Umzugs (umzug.go). omitempty:
+	// aeltere Bloecke behalten ihren Hash.
+	Umzug *UmzugAngaben `json:"umzug,omitempty"`
 	// FromDemurrageLost/ToDemurrageLost carry the exact AEQ amount the
 	// primary node decayed off Wallet/To via settleDemurrageLocked while
 	// processing this TX. Secondary nodes replay these exact numbers
@@ -1406,6 +1409,8 @@ func bekannteTxArt(typ string, blockZeit int64) bool {
 		return gleichgewichtAktiv(blockZeit)
 	case verifierTxArt: // verifier_register.go, schlafend bis verifierRegisterAb
 		return verifierRegisterAktiv(blockZeit)
+	case umzugCodeTxArt, umzugAnkuendigenTxArt, umzugWiderrufTxArt, umzugVollzugTxArt: // umzug.go, schlafend bis umzugAb
+		return umzugAktiv(blockZeit)
 	case "vorbehalt", "vorbehalt_ausfuehrung", "kappung":
 		// Stufe 2 (vorbehalt.go, kappung_verteilt.go). Fehlten hier bis
 		// 05.10.2026 ganz: ab der Aktivierung haette jeder Knoten jeden
@@ -7207,6 +7212,9 @@ func isDistributionRoundTxType(txType string) bool {
 		// stagedGrantActivationUnix (2100) Leerlauf, kein Block traegt eine
 		// angewandte Freigabe.
 		"grant_release",
+		// umzug_vollzug (umzug.go) entsteht nur in der Tagesrunde; in einer
+		// doppelten Runde ist er ohnehin Leerlauf (der offene Umzug ist weg).
+		umzugVollzugTxArt,
 		// umlauf (wirtschaft.go, Umlaufsicherung/Liegegeld) entsteht ebenfalls
 		// nur in der Tagesrunde (umlaufLocked, einziger Aufrufer
 		// RunDailyDistributionAtomic) und fehlte hier: In einer doppelten
@@ -8157,6 +8165,15 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			// Zulassung nicht lesbar: der ganze Block zurueck.
 			if err := dag.state.applyStaffelEinspruchLocked(context.Background(), &tx, block.Timestamp); err != nil {
 				fmt.Printf("[REPLAY] ✗ staffel_einspruch %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
+				hardFailure = true
+				continue
+			}
+		case umzugCodeTxArt, umzugAnkuendigenTxArt, umzugWiderrufTxArt, umzugVollzugTxArt:
+			// umzug.go: jeder Knoten prueft Unterschriften, Bescheinigung,
+			// Nullifier und Fristen selbst. Ungueltig: nie angewandt, gezaehlt,
+			// im strengen Modus Fehler. Zustand nicht lesbar: Block zurueck.
+			if err := dag.state.applyUmzugLocked(context.Background(), &tx, block.Timestamp); err != nil {
+				fmt.Printf("[REPLAY] ✗ %s %s: %v (block #%d) — rolling back whole block\n", tx.Type, wallet, err, block.Height)
 				hardFailure = true
 				continue
 			}

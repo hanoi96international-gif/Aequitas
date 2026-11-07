@@ -233,6 +233,8 @@ type ChainState struct {
 	// ohne cs.mu; geschrieben wird nur unter cs.mu. In chain_config, im
 	// Rueckroll-Snapshot und in der StateRoot.
 	verifierReg atomic.Pointer[verifierRegister]
+	// umzugReg: das Umzugs-Register (umzug.go), ohne Sperre lesbar.
+	umzugReg atomic.Pointer[umzugRegister]
 	// kappungsKandidaten: Konten, die ueber der Grenze liegen koennten und
 	// deren Kappung Stufe 2 dem Zustaendigen ueberlaesst.
 	kappungsMu         sync.Mutex
@@ -2722,6 +2724,10 @@ func (cs *ChainState) loadFromDB() {
 	// verifier_register.go: ebenso -- ein unlesbares Register haelt an.
 	if err := cs.verifierRegisterLaden(context.Background()); err != nil {
 		panic(fmt.Sprintf("Pruefer-Register (%s) nicht lesbar: %v", verifierKonfigSchluessel, err))
+	}
+	// umzug.go: ebenso.
+	if err := cs.umzugRegisterLaden(context.Background()); err != nil {
+		panic(fmt.Sprintf("Umzugs-Register (%s) nicht lesbar: %v", umzugKonfigSchluessel, err))
 	}
 }
 
@@ -5370,6 +5376,13 @@ func (cs *ChainState) RunDailyDistributionAtomic(ubiAt int64) error {
 		}
 		txs = append(txs, freigaben...)
 
+		// Umzuege ohne Code, deren Frist abgelaufen ist (umzug.go).
+		umzuege, err := cs.umzugVollzuegeLocked(ctx, ubiAt)
+		if err != nil {
+			return nil, fmt.Errorf("umzug: %w", err)
+		}
+		txs = append(txs, umzuege...)
+
 		validatorShares, err := cs.distributeValidatorsPoolLocked(ctx, ubiAt)
 		if err != nil {
 			return nil, fmt.Errorf("validator distribution failed: %w", err)
@@ -7847,6 +7860,11 @@ func (cs *ChainState) stateRootLocked(lastUBIAt, letzterCP string) string {
 		sb.WriteString("|pruefer:")
 		sb.WriteString(reg.kodiert())
 	}
+	// Umzugs-Register (umzug.go): nur mit Eintraegen, als Hash.
+	if reg := cs.umzugRegisterJetzt(); !reg.leer() {
+		sb.WriteString("|umzug:")
+		sb.WriteString(reg.hash)
+	}
 	hash := sha256.Sum256([]byte(sb.String()))
 	return hex.EncodeToString(hash[:])
 }
@@ -8476,6 +8494,7 @@ type blockRollbackSnapshot struct {
 	umlaufRunde    umlaufRundePruefung
 	satzPlan       satzPlan
 	verifierReg    *verifierRegister
+	umzugReg       *umzugRegister
 	// vorbehalte: die offenen Vorbehalte (cs.vorbehalte) der Vorbehaltskonten
 	// unter den Adressen. Die Tabelle vorbehalte_offen geht mit der
 	// Transaktion zurueck, die Karte im Speicher nur hiermit.
@@ -8650,6 +8669,7 @@ func (cs *ChainState) snapshotForRollbackLocked(addrs []string, full bool, chain
 	snap.umlaufRunde = cs.umlaufRunde
 	snap.satzPlan = cs.satzPlan
 	snap.verifierReg = cs.verifierRegisterJetzt()
+	snap.umzugReg = cs.umzugRegisterJetzt()
 	snap.vorbehalte = cs.vorbehaltSichern(addrs, full)
 	return snap
 }
@@ -8769,6 +8789,9 @@ func (cs *ChainState) restoreFromRollbackLockedCtx(ctx context.Context, snap *bl
 	cs.satzPlan = snap.satzPlan
 	if snap.verifierReg != nil {
 		cs.verifierReg.Store(snap.verifierReg)
+	}
+	if snap.umzugReg != nil {
+		cs.umzugReg.Store(snap.umzugReg)
 	}
 	cs.vorbehaltZurueck(snap.vorbehalte)
 	var toDelete []string
