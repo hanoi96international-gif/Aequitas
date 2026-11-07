@@ -60,15 +60,15 @@ import (
 )
 
 const (
-	dienstRolleVergleich    = "vergleichsdienst"
-	dienstRolleCoordinator  = "coordinator"
-	dienstDomain            = "aequitas-dienst-v1"
-	dienstJeMensch          = 4
-	dienstHoechstens        = dienstJeMensch * verifierHoechstens
-	dienstGueltig     int64 = 1800
-	dienstSpielraum   int64 = 600
-	dienstKoerperMax        = 4 << 10
-	dienstURLMax            = 200
+	dienstRolleVergleich         = "vergleichsdienst"
+	dienstRolleCoordinator       = "coordinator"
+	dienstDomain                 = "aequitas-dienst-v1"
+	dienstJeMensch               = 4
+	dienstHoechstens             = dienstJeMensch * verifierHoechstens
+	dienstGueltig          int64 = 1800
+	dienstSpielraum        int64 = 600
+	dienstKoerperMax             = 4 << 10
+	dienstURLMax                 = 200
 )
 
 // dienstNachricht: was der Schluessel eines Dienstes fuer seine Anmeldung

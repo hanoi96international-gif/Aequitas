@@ -280,7 +280,7 @@ func BescheinigungStand() map[string]any {
 			"bezeuger": append([]string{}, k.Bezeuger...)},
 		// Ab hier zaehlen auch Schluessel von Pruefern mit Bindung (B1b);
 		// die Bindungen stehen in /api/verifier/dienste.
-		"register_ab": bescheinigungRegisterAb(),
+		"register_ab":   bescheinigungRegisterAb(),
 		"fingerabdruck": bescheinigungFingerabdruck(k)}
 }
 
