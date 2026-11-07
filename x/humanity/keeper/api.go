@@ -1175,6 +1175,7 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	mux.HandleFunc("/api/check-registration", a.handleCheckRegistration)
 	mux.HandleFunc("/api/check-registration-by-biohash", a.handleCheckRegistrationByBioHash)
 	mux.HandleFunc("/api/check-nullifier", a.handleCheckNullifier)
+	mux.HandleFunc("/api/nullifier-passt", a.handleNullifierPasst)
 	mux.HandleFunc("/api/swap", a.zumLeiter(a.handleSwap))
 	mux.HandleFunc("/api/add-liquidity", a.zumLeiter(a.handleAddLiquidity))
 	mux.HandleFunc("/api/remove-liquidity", a.zumLeiter(a.handleRemoveLiquidity))
@@ -1272,6 +1273,7 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	mux.HandleFunc("/dapp", a.handleDapp)
 	mux.HandleFunc("/dapp.js", a.handleDappJS)
 	mux.HandleFunc("/download/app.apk", a.handleAppDownload)
+	mux.HandleFunc("/api/app-version", a.handleAppVersion)
 	// Die PDF-Leitfaeden (Juni 2026: Fork, PostgreSQL, MetaMask-Schluessel)
 	// sind seit dem Ein-Befehl-Einrichten vom 30.09.2026 falsch. Alte Links
 	// (Startseite, geteilte Nachrichten) landen deshalb auf der aktuellen

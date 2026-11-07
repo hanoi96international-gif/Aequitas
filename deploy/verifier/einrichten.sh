@@ -29,7 +29,7 @@ cd "$(dirname "$0")"
 # Das Image, das auch C1 fuer den Vergleichsdienst nutzt (festgelegt, nicht
 # "latest": jeder Verifier soll dasselbe pruefen). Wird mit dem Repo
 # aktualisiert.
-VERIFIER_IMAGE_STANDARD="ghcr.io/hanoi96international-gif/aequitas-biometric-beta/matching:b37478b2faf0238b751d90af9c6e644358c6ec9a"
+VERIFIER_IMAGE_STANDARD="ghcr.io/hanoi96international-gif/aequitas-biometric-beta/matching:4c8542f566a6a22c73cb9ef38b279e791f7addf4"
 # Liste der anerkannten Coordinatoren: dort, wo das Netz sie selbst zeigt.
 COORD_QUELLE="${AEQUITAS_COORD_QUELLE:-https://proof1.aequitas.digital/matching/health}"
 NETZ="${AEQUITAS_NETZ:-https://aequitas.digital}"
@@ -205,11 +205,18 @@ Log: docker compose logs --tail 50 verifier"; exit 1; }
 gruen "Fertig / Done."
 cat <<TEXT
 
-Schick diese drei Zeilen in die Telegram-Gruppe (aequitas.digital). Der
-Betreiber prueft sie und nimmt deinen Verifier in die Pruefung auf. Nichts
-davon ist geheim.
-Send these three lines to the Telegram group. The operator checks them and
-admits your verifier. None of it is secret.
+Weiter in der App (kein Telegram, niemand muss etwas eintragen):
+  1. Knoten-Tab -> Karte "Pruefer" -> "Schluessel freigeben",
+     Adresse https://$HOST eintragen, "Nachweis holen", mit der Wallet freigeben.
+  2. "Pruefer-Register oeffnen" -> "Bewerben". Stimmen zwei Drittel der Pruefer
+     zu, traegt die Kette dich ein; ab dann meldet sich dein Verifier selbst an
+     und wird automatisch genutzt.
+Continue in the app (no Telegram, nobody enters anything by hand):
+  1. Node tab -> "Verifier" card -> "Approve key", enter https://$HOST,
+     "Fetch proof", approve with your wallet.
+  2. "Open verifier register" -> "Apply". Once two thirds of the verifiers
+     agree, the chain admits you; from then on your verifier announces itself
+     and is used automatically.
 
     Verifier: https://$HOST
     Wallet:   $WALLET
