@@ -34,6 +34,11 @@ func TestMain(m *testing.M) {
 	// kippten am 01.11.2026 alle Datenbanktests, die mit der echten Uhr
 	// "im Beobachtungsmodus" nachspielen -- und mit ihnen der Deploy.
 	nachrechnenStrengOverride.Store(math.MaxInt64)
+	// Ebenso das Gleichgewicht (wirtschaft3.go, aktiv ab 07.11.2026 18:00
+	// UTC): die Tests der Regeln davor -- Liegegeld nach Umsatz, Gebuehren,
+	// Sparfreibetrag -- sehen sie weiter, auch mit der echten Uhr. Wer das
+	// Gleichgewicht prueft, schaltet es mit gleichgewichtAn(t) ein.
+	gleichgewichtAktivOverride.Store(math.MaxInt64)
 	os.Exit(m.Run())
 }
 
@@ -53,7 +58,7 @@ func TestRegisterStichtage_TestsSetzenNieAufDieKonstante(t *testing.T) {
 	if err != nil || len(dateien) == 0 {
 		t.Fatalf("keine Testdateien gefunden: %v", err)
 	}
-	muster := regexp.MustCompile(`(registerLeserOverride|erzeugerSchnittOverride|nachrechnenStrengOverride)\.Store\(\s*0\s*\)`)
+	muster := regexp.MustCompile(`(registerLeserOverride|erzeugerSchnittOverride|nachrechnenStrengOverride|gleichgewichtAktivOverride)\.Store\(\s*0\s*\)`)
 	for _, d := range dateien {
 		inhalt, err := os.ReadFile(d)
 		if err != nil {

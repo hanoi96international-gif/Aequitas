@@ -1,9 +1,8 @@
 package keeper
 
 // Wirtschaft, dritte Stufe: "Gleichgewicht" (docs/WIRTSCHAFT_ENDFASSUNG.md,
-// Abschnitt 10, Schritt 1). SCHLAFEND: gleichgewichtAktivAbUnix liegt im
-// Jahr 2100. Das echte Datum erst nach der Entscheidung des Betreibers und
-// nachdem alle Knoten diesen Stand haben (wie wirtschaftAktivAbUnix).
+// Abschnitt 10, Schritt 1). AKTIV ab gleichgewichtAktivAbUnix (07.11.2026
+// 18:00 UTC), Entscheidung des Betreibers vom 07.11.2026.
 //
 // Ab der Aktivierung, entschieden an der Rundenzeit bzw. am
 // Buchungsaugenblick, nie an der Uhr des nachspielenden Knotens:
@@ -41,8 +40,13 @@ import (
 	"sync/atomic"
 )
 
-// gleichgewichtAktivAbUnix: 2100-01-01 00:00 UTC -- schlafend.
-const gleichgewichtAktivAbUnix int64 = 4102444800
+// gleichgewichtAktivAbUnix: 2026-11-07 18:00 UTC, vom Betreiber am 07.11.2026
+// freigegeben ("ab heute"). Zwei Stunden vor der Tagesrunde um 20:00 UTC:
+// die Runde dieses Tages ist die erste nach dem Gleichgewicht. Der Deploy
+// (deploy-c1.yml) haelt an, wenn der Stichtag eines neuen Stands schon
+// erreicht ist, bevor der laufende Knoten ihn kennt -- sonst spielte er
+// Bloecke nach anderen Regeln nach, als unter denen sie entstanden.
+const gleichgewichtAktivAbUnix int64 = 1794074400
 
 // gleichgewichtSatzMonat: 0,5 % im Monat auf jedes Guthaben -- der heutige
 // Satz der Menschen, jetzt fuer alle und ab dem ersten AEQ.
