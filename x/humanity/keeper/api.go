@@ -1273,6 +1273,7 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	mux.HandleFunc("/dapp", a.handleDapp)
 	mux.HandleFunc("/dapp.js", a.handleDappJS)
 	mux.HandleFunc("/download/app.apk", a.handleAppDownload)
+	mux.HandleFunc("/api/app-version", a.handleAppVersion)
 	// Die PDF-Leitfaeden (Juni 2026: Fork, PostgreSQL, MetaMask-Schluessel)
 	// sind seit dem Ein-Befehl-Einrichten vom 30.09.2026 falsch. Alte Links
 	// (Startseite, geteilte Nachrichten) landen deshalb auf der aktuellen
