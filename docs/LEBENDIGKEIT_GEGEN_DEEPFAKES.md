@@ -28,7 +28,7 @@ oder Besitz).
 | Parallaxe / 3D-Konsistenz, IMU-Bewegung | `parallax.py`, `imu_motion.py` | gebaut, **aus** |
 | Antispoof (MiniFASNet, v2) | `antispoof*.py` | gebaut, nur informativ |
 | Sensor-Fingerabdruck (PRNU), Moiré | `prnu.py`, `moire.py` | gebaut, **aus** |
-| Play Integrity / App Attest | Coordinator | gebaut, gates nichts |
+| Play Integrity / App Attest / Android Key Attestation | Coordinator | Key Attestation live seit 07.11.2026; ab dann ohne gültige, an die Aufnahme gebundene Prüfung kein „grün“ |
 | Risiko-Score | `risk.py` | nur Geräte-/Subnetz-Häufung |
 
 Ein Live-Deepfake (Face-Swap auf der Kamera) dreht den Kopf mit. Die einzige
@@ -115,6 +115,29 @@ liegt jetzt dauerhaft im Coordinator (`/data/lebendigkeit.db`, nur Tag,
 Klasse und Zahlen, höchstens 10.000 Einträge) statt im Speicher, den jeder
 Deploy löschte. Lesen: `https://proof1.aequitas.digital/coordinator/health`
 → `lebendigkeit.korpus` (Anzahl, Klassen, Quantile von L, R und je Signal).
+
+**Nachtrag 07.11.2026 (Geräteprüfung an die Aufnahme gebunden).** Zwei
+Lücken gegen eingespeiste Bilder geschlossen:
+
+1. Die Geräteprüfung band auf `/register`, `/nachziehen`, `/erneuern` und
+   `/lebensnachweis` nur an den Nonce. Ein echtes, gesperrtes Telefon holte
+   das Token, ein eigener Client schickte daneben einen Deepfake-Strom vom
+   Rechner. Jetzt bindet die App (ab 1.15.0) das Token an genau die
+   hochgeladenen Bytes: `aequitas-aufnahme-v1|<nonce>|<aufnahme_hash>`, wie
+   auf dem Zwillingsweg, mit eigenem Präfix. Ein Token zum bloßen Nonce oder
+   zu anderen Bildern ist dann ungültig.
+2. Eine **fehlende** Geräteprüfung zählte im Risiko gar nicht. Eine
+   veränderte App ließ sie einfach weg. Jetzt gilt fail-closed: **grün nur
+   mit gültiger, an die Aufnahme gebundener Prüfung**. Fehlt sie, ist sie
+   nur an den Nonce gebunden, ungültig oder nicht prüfbar, wird die Aufnahme
+   gelb (Risiko `attestierung_fehlt`, `…_nicht_an_aufnahme`, `…_ungueltig`,
+   `…_nicht_pruefbar`). Gelb heißt gestaffelt, nie ausgesperrt. Android Key
+   Attestation braucht kein Google-Konto; jedes Android-Telefon mit
+   Sicherheitschip kann sie liefern.
+
+Restrisiko: Ein Angreifer mit einem gesperrten Telefon und unserer App kann
+weiter einen Bildschirm vor die echte Kamera halten. Dagegen arbeiten Blitz,
+Blitz-Relief im Gesicht, Moiré und Parallaxe; ihre Schwellen setzt WP 4.
 
 **WP 4 — so werden die Schwellen gesetzt:**
 1. Echte Aufnahmen sammeln: Registrierungen der Beta, dazu der
