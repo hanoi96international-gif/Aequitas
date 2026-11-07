@@ -14,7 +14,8 @@ package keeper
 //
 //   - Gesicht + Wiederherstellungscode: der Umzug geschieht sofort. Den Code
 //     erzeugt die App einmal und zeigt ihn einmal; auf der Kette steht nur
-//     sein Hash (umzug_code, von W1 unterschrieben). Die alte Wallet kann
+//     sein Hash (umzug_code, von W1 unterschrieben; hoechstens drei je
+//     Wallet, ein neuer ersetzt keinen alten). Die alte Wallet kann
 //     diesen Umzug nicht aufhalten -- wer Gesicht UND Code hat, ist der
 //     Mensch, auch wenn ein Dieb den alten Schluessel hat.
 //   - Nur das Gesicht: 14 Tage Frist (umzugFrist). In der Zeit kann die alte
@@ -90,6 +91,8 @@ const (
 	umzugCodesHoechstens    = 50000
 	umzugOffenHoechstens    = 1000
 	umzugErledigtHoechstens = 20000
+	// Codes je Wallet (sie sammeln sich, siehe umzugCode).
+	umzugCodesJeWallet = 3
 	// Vollzuege je Tagesrunde; der Rest am naechsten Tag.
 	umzugVollzugJeRunde = 200
 
@@ -197,10 +200,15 @@ func umzugNullifierKanonisch(n string) bool {
 
 // ------------------------------------------------------------ Register
 
+// umzugCode: die Codes einer Wallet. Ein neuer Code kommt DAZU, er ersetzt
+// keinen (Sicherheitsdurchgang des Diffs): sonst ersetzte ein Dieb mit dem
+// alten Schluessel den Code des Menschen, und den Weg ohne Code koennte er
+// mit demselben Schluessel jedes Mal widerrufen -- der Mensch kaeme nie mehr
+// an sein Menschsein. Ein Code allein bewirkt nichts ohne das Gesicht.
 type umzugCode struct {
-	Wallet string `json:"w"`
-	Hash   string `json:"h"`
-	Zeit   int64  `json:"z"`
+	Wallet string   `json:"w"`
+	Hashes []string `json:"h"`
+	Zeit   int64    `json:"z"`
 }
 
 type umzugOffen struct {
@@ -272,8 +280,14 @@ func umzugRegisterLesen(s string) (*umzugRegister, error) {
 		return nil, errors.New("Umzugs-Register ueber seinen Grenzen")
 	}
 	for i, c := range r.Codes {
-		if !kanonischeAdresse(c.Wallet) || !istHash64(c.Hash) || c.Zeit <= 0 || (i > 0 && c.Wallet <= r.Codes[i-1].Wallet) {
+		if !kanonischeAdresse(c.Wallet) || len(c.Hashes) == 0 || len(c.Hashes) > umzugCodesJeWallet || c.Zeit <= 0 ||
+			(i > 0 && c.Wallet <= r.Codes[i-1].Wallet) {
 			return nil, fmt.Errorf("Umzugs-Register: Code %d ungueltig", i)
+		}
+		for j, h := range c.Hashes {
+			if !istHash64(h) || (j > 0 && h == c.Hashes[j-1]) {
+				return nil, fmt.Errorf("Umzugs-Register: Code %d ungueltig", i)
+			}
 		}
 	}
 	for i, o := range r.Offen {
@@ -306,8 +320,12 @@ func umzugErledigtVor(a, b umzugErledigt) bool {
 }
 
 func (r *umzugRegister) kopie() *umzugRegister {
+	codes := make([]umzugCode, len(r.Codes))
+	for i, c := range r.Codes {
+		codes[i] = umzugCode{Wallet: c.Wallet, Hashes: append([]string(nil), c.Hashes...), Zeit: c.Zeit}
+	}
 	return &umzugRegister{
-		Codes:    append([]umzugCode(nil), r.Codes...),
+		Codes:    codes,
 		Offen:    append([]umzugOffen(nil), r.Offen...),
 		Erledigt: append([]umzugErledigt(nil), r.Erledigt...),
 	}
@@ -350,11 +368,14 @@ func (r *umzugRegister) erledigtSeit(n string, t int64) int {
 	return z
 }
 
+// mitCode: haengt den Hash an (in der Reihenfolge des Hinterlegens) und
+// setzt die Zeit -- c.Hashes traegt genau einen neuen Hash.
 func (r *umzugRegister) mitCode(c umzugCode) *umzugRegister {
 	k := r.kopie()
 	i := sort.Search(len(k.Codes), func(i int) bool { return k.Codes[i].Wallet >= c.Wallet })
 	if i < len(k.Codes) && k.Codes[i].Wallet == c.Wallet {
-		k.Codes[i] = c
+		k.Codes[i].Hashes = append(k.Codes[i].Hashes, c.Hashes...)
+		k.Codes[i].Zeit = c.Zeit
 	} else {
 		k.Codes = append(k.Codes, umzugCode{})
 		copy(k.Codes[i+1:], k.Codes[i:])
@@ -473,7 +494,7 @@ func (cs *ChainState) umzugHatNullifierLocked(ctx context.Context, w string) (bo
 		return false, nil
 	}
 	var anzahl int
-	if err := cs.dbExecCtx(ctx).QueryRow(`SELECT count(*) FROM nullifiers WHERE lower(wallet_address) = $1`, w).Scan(&anzahl); err != nil {
+	if err := cs.dbExecCtx(ctx).QueryRow(`SELECT count(*) FROM nullifiers WHERE wallet_address = $1 OR lower(wallet_address) = $1`, w).Scan(&anzahl); err != nil {
 		return false, err
 	}
 	return anzahl > 0, nil
@@ -655,7 +676,14 @@ func (cs *ChainState) umzugAnkuendigenUrteilLocked(ctx context.Context, tx *Tran
 	}
 	if u.Code != "" {
 		c, ok := reg.code(alt)
-		if !ok || c.Hash != umzugCodeHash(alt, u.Code) {
+		passt := false
+		if ok {
+			soll := umzugCodeHash(alt, u.Code)
+			for _, h := range c.Hashes {
+				passt = passt || h == soll
+			}
+		}
+		if !passt {
 			return umzugBefund("umzug_code", "%s: Wiederherstellungscode passt nicht", kurzAdresse(alt)), nil
 		}
 		return umzugUrteil{sofort: true}, nil
@@ -722,8 +750,16 @@ func (cs *ChainState) umzugCodeUrteilLocked(ctx context.Context, tx *Transaction
 	reg := cs.umzugRegisterJetzt()
 	if c, ok := reg.code(alt); ok {
 		if c.Zeit >= z {
-			// Wiederholung oder aelter als der hinterlegte: nie zurueck.
+			// Wiederholung oder aelter als der zuletzt hinterlegte.
 			return umzugBefund("umzug_code_alt", "%s: hinterlegter Code ist neuer", kurzAdresse(alt))
+		}
+		if len(c.Hashes) >= umzugCodesJeWallet {
+			return umzugBefund("umzug_code_voll", "%s: schon %d Codes", kurzAdresse(alt), umzugCodesJeWallet)
+		}
+		for _, h := range c.Hashes {
+			if h == u.CodeHash {
+				return umzugBefund("umzug_code_alt", "%s: dieser Code ist schon hinterlegt", kurzAdresse(alt))
+			}
 		}
 	} else if len(reg.Codes) >= umzugCodesHoechstens {
 		return umzugBefund("umzug_voll", "Code-Register voll")
@@ -837,7 +873,7 @@ func (cs *ChainState) applyUmzugLocked(ctx context.Context, tx *Transaction, blo
 func (cs *ChainState) umzugAnwendenLocked(ctx context.Context, tx *Transaction, u umzugUrteil) error {
 	switch tx.Type {
 	case umzugCodeTxArt:
-		return cs.umzugRegisterSetzenLocked(ctx, cs.umzugRegisterJetzt().mitCode(umzugCode{Wallet: tx.Wallet, Hash: tx.Umzug.CodeHash, Zeit: tx.DistributionAt}))
+		return cs.umzugRegisterSetzenLocked(ctx, cs.umzugRegisterJetzt().mitCode(umzugCode{Wallet: tx.Wallet, Hashes: []string{tx.Umzug.CodeHash}, Zeit: tx.DistributionAt}))
 	case umzugAnkuendigenTxArt:
 		return cs.umzugAnkuendigenAnwendenLocked(ctx, tx, u)
 	case umzugWiderrufTxArt:
@@ -1088,6 +1124,7 @@ func (a *APIServer) handleUmzugStand(w http.ResponseWriter, r *http.Request) {
 	}
 	if c, ok := reg.code(wallet); ok {
 		antwort["code_seit"] = c.Zeit
+		antwort["codes"] = len(c.Hashes)
 	}
 	if o, ok := reg.offenMit(wallet); ok {
 		antwort["offen"] = map[string]interface{}{"nullifier": o.Nullifier, "alt": o.Alt, "neu": o.Neu, "angekuendigt": o.Zeit, "frei_ab": o.FreiAb}

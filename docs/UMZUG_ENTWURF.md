@@ -9,6 +9,9 @@ Entscheidungen des Betreibers vom 07.11.2026:
   rechtmaessigen Menschen sonst fuer immer aussperren). Der Code wird von der
   App einmal erzeugt und einmal gezeigt; auf der Kette steht nur sein Hash,
   an die Wallet gebunden (`umzug_code`). Nach dem Umzug ist er verbraucht.
+  Ein neuer Code kommt DAZU (hoechstens drei je Wallet), er ersetzt keinen:
+  sonst ersetzte ein Dieb mit dem Seed den Code des Menschen und widerriefe
+  danach jeden Umzug ohne Code (Sicherheitsdurchgang des Diffs, 07.11.).
 - **Nur das Gesicht: 14 Tage**, in denen die alte Wallet widerrufen kann
   (`umzug_widerruf`); danach vollzieht die Tagesrunde (`umzug_vollzug`).
 - **Keine neuen AEQ.** Das Guthaben bleibt bei der alten Wallet; die neue gilt

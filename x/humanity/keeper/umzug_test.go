@@ -19,7 +19,7 @@ const (
 
 var uzRegeln = []string{"umzug_form", "umzug_zeit", "umzug_unterschrift", "umzug_bescheinigung", "umzug_nullifier",
 	"umzug_ziel", "umzug_offen", "umzug_jahresgrenze", "umzug_code", "umzug_voll", "umzug_nicht_offen",
-	"umzug_frist", "umzug_code_alt", "umzug_code_kein_mensch"}
+	"umzug_frist", "umzug_code_alt", "umzug_code_kein_mensch", "umzug_code_voll"}
 
 type uzFall struct {
 	t      *testing.T
@@ -450,5 +450,39 @@ func TestUmzug_PruefvektorenFuerDieApp(t *testing.T) {
 		if got != want {
 			t.Fatalf("%q != %q", got, want)
 		}
+	}
+}
+
+// Sicherheitsdurchgang des Diffs: ein Dieb mit dem alten Schluessel hinterlegt
+// einen eigenen Code. Der Code des Menschen bleibt gueltig -- mit Gesicht und
+// SEINEM Code zieht der Mensch sofort um, und der Dieb kann nichts widerrufen.
+func TestUmzug_DiebKannDenCodeNichtErsetzen(t *testing.T) {
+	f := neuerUzFall(t)
+	f.anwenden(f.codeTx(f.altKey, f.alt, uzCode, uzZeit), uzZeit)
+	// Der Dieb hat den Seed: er unterschreibt als f.alt einen neuen Code.
+	if b := f.anwenden(f.codeTx(f.altKey, f.alt, "ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZ", uzZeit+10), uzZeit+10); len(b) != 0 {
+		t.Fatalf("zweiter Code: %v", b)
+	}
+	if c, _ := f.cs.umzugRegisterJetzt().code(f.alt); len(c.Hashes) != 2 {
+		t.Fatalf("Codes: %+v", c)
+	}
+	if b := f.anwenden(f.antrag(f.neuKey, f.neu, f.alt, uzN, uzZeit+100, uzCode), uzZeit+110); len(b) != 0 || !f.umgezogen() {
+		t.Fatalf("der Mensch muss mit seinem Code sofort umziehen koennen: %v", b)
+	}
+}
+
+func TestUmzug_HoechstensDreiCodes(t *testing.T) {
+	f := neuerUzFall(t)
+	for i, c := range []string{uzCode, "ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZ", "1111-2222-3333-4444-5555-6666"} {
+		z := uzZeit + int64(i)*10
+		if b := f.anwenden(f.codeTx(f.altKey, f.alt, c, z), z); len(b) != 0 {
+			t.Fatalf("Code %d: %v", i+1, b)
+		}
+	}
+	if b := f.anwenden(f.codeTx(f.altKey, f.alt, "7777-8888-9999-AAAA-BBBB-CCCC", uzZeit+40), uzZeit+40); b["umzug_code_voll"] != 1 {
+		t.Fatalf("vierter Code: %v", b)
+	}
+	if b := f.anwenden(f.codeTx(f.altKey, f.alt, uzCode, uzZeit+50), uzZeit+50); b["umzug_code_voll"] != 1 {
+		t.Fatalf("Wiederholung eines Codes: %v", b)
 	}
 }
