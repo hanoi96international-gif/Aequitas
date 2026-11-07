@@ -7901,7 +7901,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			// Die Gesichtspruefung selbst nachpruefen (K1) -- ab dem Stichtag
 			// der Genesis. Ohne sie konnte jeder Erzeuger Menschen erfinden.
 			if bescheinigungAktiv(block.Timestamp) {
-				if err := pruefeBioBescheinigung(tx); err != nil {
+				if err := pruefeBioBescheinigungMit(tx, block.Timestamp, dag.state.verifierRegisterJetzt().mitglied); err != nil {
 					fmt.Printf("[REPLAY] ✗ register_human for %s (block #%d): %v — rolling back whole block\n", wallet, block.Height, err)
 					hardFailure = true
 					continue

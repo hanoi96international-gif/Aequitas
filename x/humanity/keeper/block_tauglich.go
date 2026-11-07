@@ -221,6 +221,12 @@ func auftragsFenster(tx *Transaction, jetzt int64) zeitFenster {
 		// waehlte blockZeitPraefix "jetzt", auch wenn die Eltern noch vor dem
 		// Stichtag liegen und eine fruehere Blockzeit die Registrierung
 		// getragen haette.
+		// bio_bescheinigung_register.go: Bindungen von Pruefer-Schluesseln erst
+		// ab dem Stichtag und hoechstens registerBindungFenster nach der
+		// Bescheinigung.
+		if b := tx.BioBescheinigung; b != nil && len(b.Bindungen) > 0 {
+			f.eng(bescheinigungRegisterAb(), sattAdd(b.Zeit, registerBindungFenster))
+		}
 		if ab := bescheinigungAb(); ab > 0 && tx.BioBescheinigung == nil {
 			f.eng(math.MinInt64, ab-1)
 		}

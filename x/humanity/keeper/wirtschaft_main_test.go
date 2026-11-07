@@ -44,6 +44,9 @@ func TestMain(m *testing.M) {
 	// bleiben beim bisherigen Verhalten; die Register-Tests setzen ihren
 	// eigenen Stichtag.
 	verifierRegisterOverride.Store(math.MaxInt64)
+	// K1 mit Pruefer-Schluesseln (bio_bescheinigung_register.go), Stichtag
+	// 08.11.2026 18:00 UTC: schlafend, die B1b-Tests setzen ihren eigenen.
+	bescheinigungRegisterOverride.Store(math.MaxInt64)
 	os.Exit(m.Run())
 }
 
@@ -63,7 +66,7 @@ func TestRegisterStichtage_TestsSetzenNieAufDieKonstante(t *testing.T) {
 	if err != nil || len(dateien) == 0 {
 		t.Fatalf("keine Testdateien gefunden: %v", err)
 	}
-	muster := regexp.MustCompile(`(registerLeserOverride|erzeugerSchnittOverride|nachrechnenStrengOverride|gleichgewichtAktivOverride|verifierRegisterOverride)\.Store\(\s*0\s*\)`)
+	muster := regexp.MustCompile(`(registerLeserOverride|erzeugerSchnittOverride|nachrechnenStrengOverride|gleichgewichtAktivOverride|verifierRegisterOverride|bescheinigungRegisterOverride)\.Store\(\s*0\s*\)`)
 	for _, d := range dateien {
 		inhalt, err := os.ReadFile(d)
 		if err != nil {

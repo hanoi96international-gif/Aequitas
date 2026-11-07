@@ -15,7 +15,7 @@ import (
 // ein Missbrauchstest.
 
 var vrRegeln = []string{"verifier_form", "verifier_zeit", "verifier_wiederholt", "verifier_schon", "verifier_voll",
-	"verifier_kein_mitglied", "verifier_kein_mensch", "verifier_quorum", "verifier_stimme_zeit", "verifier_stimme"}
+	"verifier_kein_mitglied", "verifier_kein_mensch", "verifier_quorum", "verifier_stimme_zeit", "verifier_stimme", "verifier_pause"}
 
 func vrZaehler() map[string]int64 {
 	m := map[string]int64{}

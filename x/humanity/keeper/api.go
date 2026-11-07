@@ -1240,6 +1240,8 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	mux.HandleFunc("/api/verifier/stimme", a.verifierGrenze(a.handleVerifierStimme))
 	mux.HandleFunc("/api/verifier/antrag", a.verifierGrenze(a.handleVerifierAntrag))
 	mux.HandleFunc("/api/verifier/antraege", a.handleVerifierAntraege)
+	mux.HandleFunc("/api/verifier/dienst", a.verifierGrenze(a.handleVerifierDienst))
+	mux.HandleFunc("/api/verifier/dienste", a.handleVerifierDienste)
 	// Unternehmen (wirtschaft.go, wirtschaft_api.go)
 	mux.HandleFunc("/api/wirtschaft/regeln", a.handleWirtschaftRegeln)
 	mux.HandleFunc("/api/wirtschaft/konto", a.handleWirtschaftKonto)

@@ -430,6 +430,13 @@ func (cs *ChainState) verifierUrteilLocked(ctx context.Context, tx *Transaction,
 		if istJetzt || istDann {
 			return verifierBefund("verifier_schon", "%s ist schon Pruefer", kurzAdresse(betroffener)), nil
 		}
+		// Wiederaufnahme fruehestens verifierWiederaufnahmePause nach dem Ende
+		// (ab bescheinigungRegisterAb): die Aufnahme ueberschreibt den alten
+		// Eintrag, und Registrierungen mit Pruefer-Schluesseln fragen
+		// "war er zur Zeit der Bescheinigung Pruefer?" (bio_bescheinigung_register.go).
+		if hatEintrag && vorher.Bis != 0 && bescheinigungRegisterAktiv(zeit) && zeit < sattAdd(vorher.Bis, verifierWiederaufnahmePause) {
+			return verifierBefund("verifier_pause", "Ende %d, Wiederaufnahme fruehestens %d", vorher.Bis, sattAdd(vorher.Bis, verifierWiederaufnahmePause)), nil
+		}
 		if !hatEintrag {
 			bleiben := 0
 			for _, x := range reg.Eintraege {
