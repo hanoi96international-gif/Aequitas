@@ -201,14 +201,15 @@ func TestVerifierRegister_KeineSelbststimme(t *testing.T) {
 	}
 }
 
-// Missbrauch: dieselbe Stimme zweimal -- gezaehlt werden Menschen.
+// Missbrauch: derselbe Mensch stimmt zweimal (auch mit verschiedener
+// Stimmzeit) -- abgewiesen, bevor eine Stimme etwas kostet.
 func TestVerifierRegister_MenschZaehltEinmal(t *testing.T) {
 	f := neuerVrFall(t)
 	f.aufnehmen(1, vrAb+1000, 0)
 	z := vrAb + 1000 + erzeugerFrist + 10
 	tx := f.tx(verifierArtAufnahme, f.m(2), z, 0)
 	tx.Verifier.Stimmen = append(tx.Verifier.Stimmen, f.stimme(0, verifierArtAufnahme, f.m(2), z-5))
-	if neu := f.anwenden(tx, z); neu["verifier_quorum"] != 1 {
+	if neu := f.anwenden(tx, z); neu["verifier_stimme"] != 1 {
 		t.Fatalf("zwei Stimmen desselben Menschen: %v", neu)
 	}
 }

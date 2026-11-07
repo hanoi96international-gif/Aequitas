@@ -468,6 +468,17 @@ func (cs *ChainState) verifierUrteilLocked(ctx context.Context, tx *Transaction,
 	if z.Art == verifierArtAustritt {
 		fuer = ubiPoolAddr
 	}
+	// Je Mensch hoechstens eine Stimme -- vor jeder Pruefung. Sonst kostete
+	// dieselbe echte Stimme, 171-mal kopiert, 171 Pruefungen samt
+	// Datenbankabfrage unter der Sperre (Sicherheitspruefung des Diffs).
+	behauptet := map[string]bool{}
+	for i := range z.Stimmen {
+		m := strings.ToLower(strings.TrimSpace(z.Stimmen[i].Bescheinigung.Mensch))
+		if behauptet[m] {
+			return verifierBefund("verifier_stimme", "Stimme %d: %s stimmt zweimal", i+1, kurzAdresse(m)), nil
+		}
+		behauptet[m] = true
+	}
 	stimmen := map[string]bool{}
 	for i := range z.Stimmen {
 		s := &z.Stimmen[i]
