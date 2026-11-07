@@ -193,6 +193,10 @@ sein.**
 - **B1 – Verifier-Register auf der Kette.** Zulassung durch 2/3
   verschiedener zugelassener Menschen; ein Entzug wirkt nie rückwirkend
   (früher bestätigte Menschen bleiben Menschen).
+  *Gebaut 07.11.2026, schlafend: `verifier_register.go`, Transaktion
+  `verifier_zulassung`, Endpunkt `/api/verifier`; siehe `DEZENTRALITAET.md`.
+  Offen als B1b: K1 liest die Schlüssel aus dem Register statt aus der
+  Genesis.*
 - **B2 – Register-Leser einschalten.**
 - **B3 – Quorum 2 von 3 im Konsens streng;** `nachrechnenStreng` vor dem
   zweiten Erzeuger.

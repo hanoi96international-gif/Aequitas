@@ -283,6 +283,11 @@ func pruefeSnapshotKonfig(key, wert string) error {
 			return err
 		}
 	}
+	if key == verifierKonfigSchluessel {
+		if _, err := verifierRegisterLesen(wert); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

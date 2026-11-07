@@ -63,6 +63,10 @@ type Transaction struct {
 	// Satz: Ankuendigung eines neuen Satzes des Gleichgewichts (satz_plan.go).
 	// omitempty: aeltere Bloecke behalten ihren Hash.
 	Satz *SatzAnkuendigung `json:"satz,omitempty"`
+	// Verifier: Aufnahme, Austritt oder Entzug eines Pruefers mit den
+	// Stimmen der Pruefer (verifier_register.go). omitempty: aeltere Bloecke
+	// behalten ihren Hash.
+	Verifier *VerifierZulassung `json:"verifier,omitempty"`
 	// FromDemurrageLost/ToDemurrageLost carry the exact AEQ amount the
 	// primary node decayed off Wallet/To via settleDemurrageLocked while
 	// processing this TX. Secondary nodes replay these exact numbers
@@ -1400,6 +1404,8 @@ func bekannteTxArt(typ string, blockZeit int64) bool {
 		return stagedGrantAktiv(blockZeit)
 	case satzTxArt: // satz_plan.go, schlafend wie das Gleichgewicht
 		return gleichgewichtAktiv(blockZeit)
+	case verifierTxArt: // verifier_register.go, schlafend bis verifierRegisterAb
+		return verifierRegisterAktiv(blockZeit)
 	case "vorbehalt", "vorbehalt_ausfuehrung", "kappung":
 		// Stufe 2 (vorbehalt.go, kappung_verteilt.go). Fehlten hier bis
 		// 05.10.2026 ganz: ab der Aktivierung haette jeder Knoten jeden
@@ -8131,6 +8137,16 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			// lesbar: der ganze Block zurueck.
 			if err := dag.state.applySatzAnkuendigungLocked(context.Background(), &tx, block.Timestamp); err != nil {
 				fmt.Printf("[REPLAY] ✗ satz_ankuendigung: %v (block #%d) — rolling back whole block\n", err, block.Height)
+				hardFailure = true
+				continue
+			}
+		case verifierTxArt:
+			// verifier_register.go: Art, Zeit, Wiederholung, Mitgliedschaft
+			// und die Stimmen von zwei Dritteln der Pruefer prueft jeder
+			// Knoten selbst. Ungueltig: nie angewandt, gezaehlt, im strengen
+			// Modus Fehler. Zulassung nicht lesbar: der ganze Block zurueck.
+			if err := dag.state.applyVerifierZulassungLocked(context.Background(), &tx, block.Timestamp); err != nil {
+				fmt.Printf("[REPLAY] ✗ verifier_zulassung: %v (block #%d) — rolling back whole block\n", err, block.Height)
 				hardFailure = true
 				continue
 			}

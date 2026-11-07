@@ -58,7 +58,8 @@ const satzVonPraefix = "satz-von:"
 // burstKarte: in welcher Karte key zaehlt.
 func burstKarte(key string) *begrenzteKarte {
 	if strings.HasPrefix(key, erneuerungVonPraefix) || strings.HasPrefix(key, lebensnachweisVonPraefix) ||
-		strings.HasPrefix(key, staffelEinspruchVonPraefix) || strings.HasPrefix(key, satzVonPraefix) {
+		strings.HasPrefix(key, staffelEinspruchVonPraefix) || strings.HasPrefix(key, satzVonPraefix) ||
+		strings.HasPrefix(key, verifierVonPraefix) {
 		return erneuerungVon
 	}
 	return ipBurst

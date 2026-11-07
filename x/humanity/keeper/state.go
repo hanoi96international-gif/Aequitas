@@ -228,6 +228,11 @@ type ChainState struct {
 	// satzPlan: der Satz des Gleichgewichts (satz_plan.go). Unter cs.mu; in
 	// chain_config, im Rueckroll-Snapshot und in der StateRoot.
 	satzPlan satzPlan
+	// verifierReg: das Pruefer-Register (verifier_register.go). Ein
+	// atomarer Zeiger auf einen unveraenderlichen Wert: die Annahme liest ihn
+	// ohne cs.mu; geschrieben wird nur unter cs.mu. In chain_config, im
+	// Rueckroll-Snapshot und in der StateRoot.
+	verifierReg atomic.Pointer[verifierRegister]
 	// kappungsKandidaten: Konten, die ueber der Grenze liegen koennten und
 	// deren Kappung Stufe 2 dem Zustaendigen ueberlaesst.
 	kappungsMu         sync.Mutex
@@ -2713,6 +2718,10 @@ func (cs *ChainState) loadFromDB() {
 	// anderen Satz zu rechnen als alle anderen.
 	if err := cs.satzPlanLaden(context.Background()); err != nil {
 		panic(fmt.Sprintf("Satzplan des Gleichgewichts (%s) nicht lesbar: %v", satzKonfigSchluessel, err))
+	}
+	// verifier_register.go: ebenso -- ein unlesbares Register haelt an.
+	if err := cs.verifierRegisterLaden(context.Background()); err != nil {
+		panic(fmt.Sprintf("Pruefer-Register (%s) nicht lesbar: %v", verifierKonfigSchluessel, err))
 	}
 }
 
@@ -7833,6 +7842,11 @@ func (cs *ChainState) stateRootLocked(lastUBIAt, letzterCP string) string {
 		sb.WriteString("|satz:")
 		sb.WriteString(cs.satzPlan.kodiert())
 	}
+	// Pruefer-Register (verifier_register.go): nur mit Eintraegen.
+	if reg := cs.verifierRegisterJetzt(); !reg.leer() {
+		sb.WriteString("|pruefer:")
+		sb.WriteString(reg.kodiert())
+	}
 	hash := sha256.Sum256([]byte(sb.String()))
 	return hex.EncodeToString(hash[:])
 }
@@ -8461,6 +8475,7 @@ type blockRollbackSnapshot struct {
 	freigaben      freigabeRunde
 	umlaufRunde    umlaufRundePruefung
 	satzPlan       satzPlan
+	verifierReg    *verifierRegister
 	// vorbehalte: die offenen Vorbehalte (cs.vorbehalte) der Vorbehaltskonten
 	// unter den Adressen. Die Tabelle vorbehalte_offen geht mit der
 	// Transaktion zurueck, die Karte im Speicher nur hiermit.
@@ -8634,6 +8649,7 @@ func (cs *ChainState) snapshotForRollbackLocked(addrs []string, full bool, chain
 	snap.freigaben = cs.freigaben
 	snap.umlaufRunde = cs.umlaufRunde
 	snap.satzPlan = cs.satzPlan
+	snap.verifierReg = cs.verifierRegisterJetzt()
 	snap.vorbehalte = cs.vorbehaltSichern(addrs, full)
 	return snap
 }
@@ -8751,6 +8767,9 @@ func (cs *ChainState) restoreFromRollbackLockedCtx(ctx context.Context, snap *bl
 	cs.freigaben = snap.freigaben.zurueck()
 	cs.umlaufRunde = snap.umlaufRunde.zurueck()
 	cs.satzPlan = snap.satzPlan
+	if snap.verifierReg != nil {
+		cs.verifierReg.Store(snap.verifierReg)
+	}
 	cs.vorbehaltZurueck(snap.vorbehalte)
 	var toDelete []string
 	for _, s := range snap.accounts {

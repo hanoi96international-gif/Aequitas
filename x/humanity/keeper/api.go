@@ -1234,6 +1234,9 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	// Satz des Gleichgewichts ankuendigen (satz_plan.go): zwei
 	// Betreiber-Menschen, nur beim Leiter.
 	mux.HandleFunc("/api/wirtschaft/satz", a.satzGrenze(a.zumLeiter(a.handleSatzAnkuendigung)))
+	// Pruefer-Register (verifier_register.go): GET Stand, POST Aufnahme,
+	// Austritt, Entzug mit Stimmen -- nur beim Leiter, nicht weitergeleitet.
+	mux.HandleFunc("/api/verifier", a.verifierGrenze(a.handleVerifier))
 	// Unternehmen (wirtschaft.go, wirtschaft_api.go)
 	mux.HandleFunc("/api/wirtschaft/regeln", a.handleWirtschaftRegeln)
 	mux.HandleFunc("/api/wirtschaft/konto", a.handleWirtschaftKonto)
