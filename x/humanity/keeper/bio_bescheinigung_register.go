@@ -26,7 +26,10 @@ package keeper
 //
 // Gezaehlt werden dann MENSCHEN, nicht Schluessel: alle Genesis-Schluessel und
 // alle Schluessel der Gruender sind ein Mensch (genesisMensch), jeder weitere
-// Pruefer einer. Wer zwei Schluessel hat, zaehlt einmal. "Mindestens ein
+// Pruefer einer. Wer zwei Schluessel hat, zaehlt einmal. Mit Pruefer-
+// Schluesseln braucht es mindestens registerMindestMenschen verschiedene
+// Menschen: ein Pruefer allein -- Coordinator und Vergleichsdienst in einer
+// Hand -- praegt niemanden. "Mindestens ein
 // Bezeuger, der nicht gebunden hat" bleibt je Schluessel: ein Vergleichsdienst
 // muss den Menschen gesehen haben.
 //
@@ -78,6 +81,11 @@ const registerBindungFenster int64 = 86400
 // verifierWiederaufnahmePause: so lange nach dem Ende ist keine Wiederaufnahme
 // moeglich (ab bescheinigungRegisterAb).
 const verifierWiederaufnahmePause = 2 * registerBindungFenster
+
+// registerMindestMenschen: so viele verschiedene Menschen braucht eine
+// Registrierung, an der ein Pruefer-Schluessel beteiligt ist -- wie hoch das
+// Quorum der Genesis auch ist. Kein einzelner Pruefer praegt allein.
+const registerMindestMenschen = 2
 
 // genesisMensch: unter diesem Namen zaehlen die Genesis-Schluessel und die
 // Gruender -- ein Mensch, egal wie viele Schluessel.

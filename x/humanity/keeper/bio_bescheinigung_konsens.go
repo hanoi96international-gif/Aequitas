@@ -444,8 +444,16 @@ func pruefeBioBescheinigungMit(tx Transaction, blockZeit int64, pruefer func(m s
 		for s := range bezeugt {
 			menschen[menschVon(s)] = true
 		}
-		if len(menschen) < k.Quorum {
-			return fmt.Errorf("bescheinigung: %d von %d noetigen Menschen", len(menschen), k.Quorum)
+		// Mit Pruefer-Schluesseln mindestens zwei verschiedene Menschen
+		// (Sicherheitsdurchgang des Diffs): sonst praegte ein einzelner
+		// Pruefer mit seinem Coordinator- und seinem Vergleichsdienst-
+		// Schluessel allein beliebig viele Menschen.
+		noetig := k.Quorum
+		if noetig < registerMindestMenschen {
+			noetig = registerMindestMenschen
+		}
+		if len(menschen) < noetig {
+			return fmt.Errorf("bescheinigung: %d von %d noetigen Menschen", len(menschen), noetig)
 		}
 		return nil
 	}

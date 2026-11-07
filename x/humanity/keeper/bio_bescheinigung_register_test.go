@@ -79,6 +79,30 @@ func TestB1b_PrueferCoordinatorBindet(t *testing.T) {
 	}
 }
 
+// Ein Pruefer allein -- Coordinator- und Vergleichsdienst-Schluessel in einer
+// Hand -- praegt niemanden, auch wenn das Quorum der Genesis 1 ist.
+func TestB1b_EinPrueferAllein(t *testing.T) {
+	f := neuerB1bFall(t, 1)
+	p := neuerB1bPruefer(t)
+	p2 := b1bPruefer{mk: p.mk, mensch: p.mensch, k: neuerEd25519(t)}
+	f.pruefer[p.mensch] = true
+	tx := mitBindungen(bTestTx(t, bTestNullifier,
+		bindung(p.k, "test", bTestNullifier, bTestWallet, bTestZeit),
+		aussage(p2.k, "test", bTestNullifier, bTestZeit)), p.bindung(t), p2.bindung(t))
+	if err := f.pruefe(tx, bTestZeit+60); err == nil {
+		t.Fatal("ein einzelner Pruefer praegte allein")
+	}
+	// Zwei verschiedene Pruefer: angenommen.
+	q := neuerB1bPruefer(t)
+	f.pruefer[q.mensch] = true
+	tx = mitBindungen(bTestTx(t, bTestNullifier,
+		bindung(p.k, "test", bTestNullifier, bTestWallet, bTestZeit),
+		aussage(q.k, "test", bTestNullifier, bTestZeit)), p.bindung(t), q.bindung(t))
+	if err := f.pruefe(tx, bTestZeit+60); err != nil {
+		t.Fatalf("zwei Pruefer: %v", err)
+	}
+}
+
 func TestB1b_ZweiMenschenErfuellenQuorumZwei(t *testing.T) {
 	f := neuerB1bFall(t, 2)
 	p := neuerB1bPruefer(t)
