@@ -24,6 +24,12 @@ import (
 
 const (
 	appVersionQuelle  = "https://api.github.com/repos/hanoi96international-gif/Aequitas-App/releases/latest"
+	// Zweiter Weg, wenn die API nicht antwortet (ohne Anmeldung 60 Anfragen je
+	// Stunde und Adresse): github.com leitet .../releases/latest auf
+	// .../releases/tag/<tag> weiter. Gelesen wird nur das Ziel der
+	// Weiterleitung, ihr gefolgt wird nicht.
+	appVersionSeite     = "https://github.com/hanoi96international-gif/Aequitas-App/releases/latest"
+	appVersionSeiteZiel = "https://github.com/hanoi96international-gif/Aequitas-App/releases/tag/"
 	appVersionAbstand = 30 * time.Minute
 	// Nach einem Fehlschlag (GitHub antwortet nicht, Ratenlimit) frueher neu
 	// fragen: sonst meldet ein frisch gestarteter Knoten 30 Minuten lang gar
@@ -56,16 +62,51 @@ func appVersionAusAntwort(roh []byte) string {
 	return m[1]
 }
 
-func appVersionHolen() {
-	k := &http.Client{Timeout: 10 * time.Second}
-	resp, err := k.Get(appVersionQuelle)
-	if err == nil {
-		defer resp.Body.Close()
+// appVersionAusWeiterleitung: die Versionsnummer aus dem Ziel der
+// Weiterleitung von appVersionSeite -- nur genau appVersionSeiteZiel plus ein
+// Tag in strenger Form, sonst "".
+func appVersionAusWeiterleitung(ziel string) string {
+	if !strings.HasPrefix(ziel, appVersionSeiteZiel) {
+		return ""
 	}
+	m := appVersionForm.FindStringSubmatch(strings.TrimPrefix(ziel, appVersionSeiteZiel))
+	if m == nil {
+		return ""
+	}
+	return m[1]
+}
+
+func appVersionAnfrage(url string) (*http.Response, error) {
+	k := &http.Client{
+		Timeout: 10 * time.Second,
+		// Keiner Weiterleitung folgen: die API leitet nicht weiter, und bei
+		// der Seite wird nur das Ziel gelesen.
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", "aequitas-knoten")
+	return k.Do(req)
+}
+
+func appVersionHolen() {
 	v := ""
-	if err == nil && resp.StatusCode == http.StatusOK {
-		roh, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
-		v = appVersionAusAntwort(roh)
+	if resp, err := appVersionAnfrage(appVersionQuelle); err == nil {
+		if resp.StatusCode == http.StatusOK {
+			roh, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+			v = appVersionAusAntwort(roh)
+		}
+		resp.Body.Close()
+	}
+	if v == "" {
+		if resp, err := appVersionAnfrage(appVersionSeite); err == nil {
+			if resp.StatusCode == http.StatusFound || resp.StatusCode == http.StatusMovedPermanently {
+				v = appVersionAusWeiterleitung(resp.Header.Get("Location"))
+			}
+			resp.Body.Close()
+		}
 	}
 	appVersionErgebnis(v, time.Now())
 }

@@ -70,3 +70,25 @@ func TestAppVersionWiederholungNachFehlschlag(t *testing.T) {
 		t.Fatalf("ein Fehlschlag hat den letzten Stand geloescht: %q", v)
 	}
 }
+
+// Zweiter Weg ueber die Weiterleitung von github.com: nur das erwartete Ziel
+// mit einem Tag in strenger Form -- keine andere Adresse, kein anderes Repo,
+// kein angehaengter Text.
+func TestAppVersionAusWeiterleitung(t *testing.T) {
+	for ziel, will := range map[string]string{
+		"https://github.com/hanoi96international-gif/Aequitas-App/releases/tag/v1.18.1":      "1.18.1",
+		"https://github.com/hanoi96international-gif/Aequitas-App/releases/tag/1.2.3":        "1.2.3",
+		"https://github.com/hanoi96international-gif/Aequitas-App/releases/tag/v1.18.1-rc1":  "",
+		"https://github.com/hanoi96international-gif/Aequitas-App/releases/tag/v1.18.1?x=1":  "",
+		"https://github.com/hanoi96international-gif/Aequitas-App/releases/tag/v1.18.1/../a": "",
+		"https://github.com/someone-else/Aequitas-App/releases/tag/v9.9.9":                   "",
+		"https://evil.example/hanoi96international-gif/Aequitas-App/releases/tag/v9.9.9":     "",
+		"http://github.com/hanoi96international-gif/Aequitas-App/releases/tag/v1.18.1":       "",
+		"https://github.com/hanoi96international-gif/Aequitas-App/releases":                  "",
+		"": "",
+	} {
+		if got := appVersionAusWeiterleitung(ziel); got != will {
+			t.Errorf("%q: %q, erwartet %q", ziel, got, will)
+		}
+	}
+}
