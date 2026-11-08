@@ -24,10 +24,13 @@ func walRestAnlegen(t *testing.T, walPath string) (from, to string) {
 	from, to = distTestAddr(840), distTestAddr(841)
 	seedConcurrentTestAccount(t, csA, from, 1000, time.Now().Unix())
 	seedConcurrentTestAccount(t, csA, to, 0, time.Now().Unix())
+	// Den Flush-Arbeiter VOR der Ueberweisung anhalten: sonst kann er den
+	// Satz nach Postgres schreiben, bevor der Test ihn anhaelt, und es gibt
+	// keinen Rest (zeitabhaengig, im CI am 08.11.2026 rot).
+	csA.stopWALFlushWorkerForTest()
 	if _, _, applied, err := csA.transferConcurrentWAL(from, to, 42, Transaction{Type: "transfer", Wallet: from, To: to, Amount: 42, TxHash: "0xbeobachterwalrest"}); !applied || err != nil {
 		t.Fatalf("Vorbedingung: Ueberweisung ueber das WAL: applied=%v err=%v", applied, err)
 	}
-	csA.stopWALFlushWorkerForTest()
 	if err := csA.wal.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -156,11 +159,15 @@ func TestWALRest_BeobachterStartetNicht_RealDB(t *testing.T) {
 		t.Fatalf("verworfener Satz angewandt: Empfaenger %s", b)
 	}
 	// Ein neuer Rest (seq 2) -- die stehengebliebene Variable (=1) verwirft ihn
-	// nicht.
+	// nicht. Flush-Arbeiter vorher anhalten (wie in walRestAnlegen), damit
+	// seq 2 sicher nicht in Postgres steht.
+	csC.stopWALFlushWorkerForTest()
 	if _, _, applied, err := csC.transferConcurrentWAL(from, to, 7, Transaction{Type: "transfer", Wallet: from, To: to, Amount: 7, TxHash: "0xwalrestneu"}); !applied || err != nil {
 		t.Fatalf("Vorbedingung: zweite Ueberweisung: applied=%v err=%v", applied, err)
 	}
-	csC.stopWALFlushWorkerForTest()
+	if b := dbStand(t, csC, from); b != 1000 {
+		t.Fatalf("Vorbedingung: der zweite Satz steht schon in Postgres (%v)", b)
+	}
 	if err := csC.wal.Close(); err != nil {
 		t.Fatal(err)
 	}
