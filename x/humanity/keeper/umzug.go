@@ -63,8 +63,9 @@ import (
 )
 
 const (
-	// umzugAbUnix: 2026-11-12 18:00 UTC.
-	umzugAbUnix int64 = 1794506400
+	// umzugAbUnix: 2026-11-08 18:00 UTC (vorgezogen vom 12.11. auf Wunsch des
+	// Betreibers, zusammen mit dem Stichtag von B1b).
+	umzugAbUnix int64 = 1794160800
 
 	umzugCodeTxArt        = "umzug_code"
 	umzugAnkuendigenTxArt = "umzug_ankuendigen"
