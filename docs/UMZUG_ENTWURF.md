@@ -1,5 +1,30 @@
 # Umzug — Entwurf und Stand des Baus
 
+## Nachtrag 08.11.2026: Regeln fuer den Wiederherstellungscode (ab 09.11.2026 18:00 UTC)
+
+Live seit 08.11.2026 18:00 UTC. Befund am selben Abend: wer die Seed-Phrase
+stiehlt, konnte einen EIGENEN Code anlegen (er galt sofort) und mit einem
+Deepfake des Gesichts sofort umziehen -- ohne Widerruf. Ohne Code waeren es
+14 Tage mit Warnung und Stopp-Knopf gewesen. Entscheidung des Betreibers:
+
+- **Ein Code je Wallet, nicht aenderbar** (`umzug_code_fest`). Die Regel
+  "ein neuer kommt dazu, hoechstens drei" (unten) gilt nur bis zum Stichtag.
+- **Gueltig erst 14 Tage nach dem Hinterlegen** (`umzugCodeReife`,
+  `umzug_code_unreif`). Die App zeigt so lange auf Home: angelegt am ...,
+  gueltig ab ... -- "warst du das nicht?". `/api/umzug` meldet
+  `code_gueltig_ab`.
+- **Ein noch nicht gueltiger Code verfaellt**, sobald fuer die Wallet ein
+  Umzug ohne Code angekuendigt wird (auch ein fester), und solange einer
+  offen ist, wird kein Code hinterlegt (`umzug_code_offen`). Der Mensch, der
+  einen fremden Code sieht, zieht mit dem Gesicht um; der Code des Diebs ist
+  dann weg. Ein REIFER Code bleibt und schlaegt wie bisher jeden offenen
+  Umzug ohne Code.
+- Vor dem Stichtag (Blockzeit) gilt alles wie zuvor -- alte Bloecke rechnen
+  gleich nach. Ab dem Stichtag zaehlt die Reife auch fuer schon hinterlegte
+  Codes (`Zeit` des Codes + 14 Tage). Ausroll-Sperre:
+  `.github/neustart/umzug-code-regeln-nicht-verpasst.sh`.
+- Tests: `umzug_code_regeln_test.go`.
+
 ## Stand 07.11.2026: gebaut (Kette), schlafend bis 08.11.2026 18:00 UTC
 
 Entscheidungen des Betreibers vom 07.11.2026:

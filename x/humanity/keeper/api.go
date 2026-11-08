@@ -1447,7 +1447,7 @@ func (a *APIServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 		"produzenten":             a.blockchain.ProduzentenListe(),
 		"bescheinigung_konsens":   BescheinigungStand(),
 		// Umzug (umzug.go): ab wann; fuer die App und die Deploy-Sperre.
-		"umzug":                map[string]int64{"aktiv_ab": umzugAb()},
+		"umzug":                map[string]int64{"aktiv_ab": umzugAb(), "code_regeln_ab": umzugCodeRegelnAb()},
 		"validator_liste_hash": a.blockchain.ValidatorListeHash(),
 		// Erzeuger aus AUTHORIZED_VALIDATORS ohne Bindung im Kettenregister:
 		// ab erzeugerSchnittAb erzeugten sie nicht mehr. Der Stichtag darf
