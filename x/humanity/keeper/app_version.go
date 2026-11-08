@@ -25,15 +25,20 @@ import (
 const (
 	appVersionQuelle  = "https://api.github.com/repos/hanoi96international-gif/Aequitas-App/releases/latest"
 	appVersionAbstand = 30 * time.Minute
+	// Nach einem Fehlschlag (GitHub antwortet nicht, Ratenlimit) frueher neu
+	// fragen: sonst meldet ein frisch gestarteter Knoten 30 Minuten lang gar
+	// keine Version, und niemand sieht die Update-Meldung. Weiterhin hoechstens
+	// eine Anfrage zur Zeit.
+	appVersionWiederholung = 2 * time.Minute
 )
 
 var appVersionForm = regexp.MustCompile(`^v?([0-9]{1,4}\.[0-9]{1,4}\.[0-9]{1,4})$`)
 
 var appVersionStand struct {
-	mu      sync.Mutex
-	version string
-	geholt  time.Time
-	laeuft  bool
+	mu        sync.Mutex
+	version   string
+	naechster time.Time // frueheste naechste Anfrage bei GitHub
+	laeuft    bool
 }
 
 // appVersionAusAntwort: die Versionsnummer aus der Antwort von GitHub, streng.
@@ -62,13 +67,35 @@ func appVersionHolen() {
 		roh, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
 		v = appVersionAusAntwort(roh)
 	}
+	appVersionErgebnis(v, time.Now())
+}
+
+// appVersionErgebnis traegt das Ergebnis einer Anfrage ein: eine gueltige
+// Version ersetzt den Stand, naechste Anfrage nach appVersionAbstand; ein
+// Fehlschlag laesst den letzten Stand, naechste Anfrage nach
+// appVersionWiederholung.
+func appVersionErgebnis(v string, jetzt time.Time) {
 	appVersionStand.mu.Lock()
 	defer appVersionStand.mu.Unlock()
 	appVersionStand.laeuft = false
-	appVersionStand.geholt = time.Now()
 	if v != "" {
-		appVersionStand.version = v // nur Neues ersetzt; ein Fehler laesst den letzten Stand
+		appVersionStand.version = v
+		appVersionStand.naechster = jetzt.Add(appVersionAbstand)
+		return
 	}
+	appVersionStand.naechster = jetzt.Add(appVersionWiederholung)
+}
+
+// appVersionFaellig: ob jetzt bei GitHub gefragt wird; markiert die Anfrage
+// als laufend (hoechstens eine zur Zeit). Gibt auch den aktuellen Stand.
+func appVersionFaellig(jetzt time.Time) (version string, fragen bool) {
+	appVersionStand.mu.Lock()
+	defer appVersionStand.mu.Unlock()
+	if !appVersionStand.laeuft && !jetzt.Before(appVersionStand.naechster) {
+		appVersionStand.laeuft = true
+		fragen = true
+	}
+	return appVersionStand.version, fragen
 }
 
 func (a *APIServer) handleAppVersion(w http.ResponseWriter, r *http.Request) {
@@ -77,13 +104,15 @@ func (a *APIServer) handleAppVersion(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "GET only", http.StatusMethodNotAllowed)
 		return
 	}
-	appVersionStand.mu.Lock()
-	v := appVersionStand.version
-	if !appVersionStand.laeuft && time.Since(appVersionStand.geholt) > appVersionAbstand {
-		appVersionStand.laeuft = true
+	v, fragen := appVersionFaellig(time.Now())
+	if fragen {
 		go appVersionHolen()
 	}
-	appVersionStand.mu.Unlock()
-	w.Header().Set("Cache-Control", "public, max-age=300")
+	if v == "" {
+		// Noch keine Version: nicht 5 Minuten lang "nichts" zwischenspeichern.
+		w.Header().Set("Cache-Control", "public, max-age=30")
+	} else {
+		w.Header().Set("Cache-Control", "public, max-age=300")
+	}
 	json.NewEncoder(w).Encode(map[string]string{"version": v, "download": "/download/app.apk"})
 }
