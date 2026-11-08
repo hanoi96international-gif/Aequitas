@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# Haelt den Deploy an, wenn der Stichtag der Code-Regeln im Repo (umzugCodeRegelnAbUnix,
+# x/humanity/keeper/umzug.go) ein anderer ist als der des laufenden Knotens
+# und nicht mehr mindestens PUFFER Sekunden in der Zukunft liegt. Ein Knoten
+# ohne umzug.code_regeln_ab (aelterer Stand) gilt als schlafend. Antwortet der
+# Knoten gar nicht: anhalten.
+# Aufruf: umzug-code-regeln-nicht-verpasst.sh URL [JETZT_UNIX]
+set -euo pipefail
+PUFFER=1800
+MAX=9223372036854775807
+BASE=$1
+JETZT=${2:-$(date -u +%s)}
+ROH=$(sed -n 's/^\tumzugCodeRegelnAbUnix int64 = \([0-9]*\)$/\1/p' x/humanity/keeper/umzug.go)
+case "$ROH" in
+  *[!0-9]*|"") echo "::error::umzugCodeRegelnAbUnix im Repo nicht lesbar"; exit 1 ;;
+  *) REPO=$ROH ;;
+esac
+STATUS=$(curl -sf -m 15 "$BASE/api/status") || { echo "::error::laufender Knoten antwortet nicht -- Deploy angehalten"; exit 1; }
+# Kaputtes JSON haelt an (nicht "schlafend"); nur ein fehlendes Feld gilt
+# als aelterer Stand.
+LIVE=$(printf '%s' "$STATUS" | jq -r '(.umzug // {}) | (.code_regeln_ab // "schlafend") | tostring' 2>/dev/null) || { echo "::error::Antwort des laufenden Knotens ist kein JSON -- Deploy angehalten"; exit 1; }
+[ "$LIVE" = schlafend ] && LIVE=$MAX
+[[ "$LIVE" =~ ^[1-9][0-9]{0,11}$ || "$LIVE" = "$MAX" ]] || { echo "::error::Stichtag der Code-Regeln im laufenden Knoten unlesbar: $LIVE"; exit 1; }
+echo "Stichtag Code-Regeln: Repo $REPO, laufend $LIVE, jetzt $JETZT"
+if [ "$REPO" = "$LIVE" ]; then
+  echo "unveraendert"
+  exit 0
+fi
+if [ "$REPO" -lt $((JETZT + PUFFER)) ]; then
+  echo "::error::Neuer Stichtag $REPO liegt nicht mindestens $PUFFER s in der Zukunft (jetzt $JETZT). Neuen Stichtag waehlen."
+  exit 1
+fi
+if [ "$LIVE" -le "$JETZT" ]; then
+  echo "::error::Der laufende Knoten wendet die Code-Regeln schon an (seit $LIVE); ein anderer Stichtag waere rueckwirkend."
+  exit 1
+fi
+echo "neuer Stichtag liegt in der Zukunft -- ausrollen erlaubt"

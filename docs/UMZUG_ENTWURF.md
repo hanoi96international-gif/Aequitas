@@ -1,5 +1,39 @@
 # Umzug — Entwurf und Stand des Baus
 
+## Nachtrag 08.11.2026: ein Wiederherstellungscode je Wallet (ab 09.11.2026 18:00 UTC)
+
+Live seit 08.11.2026 18:00 UTC. Befund am selben Abend: wer die Seed-Phrase
+stiehlt, konnte einen EIGENEN Code dazulegen (er galt sofort) und mit einem
+Deepfake des Gesichts sofort umziehen -- ohne Widerruf. Entscheidung des
+Betreibers:
+
+- **Ein Code je Wallet, nicht aenderbar, gilt sofort** (`umzug_code_fest`).
+  Einen neuen Code gibt es nur nach einem Umzug auf eine neue Wallet. Die
+  Regel "ein neuer kommt dazu, hoechstens drei" (unten) gilt nur bis zum
+  Stichtag. Die App bietet den Code gleich nach der Registrierung an -- dann
+  ist der Mensch der Erste.
+- Gemessen an der **unterschriebenen Zeit** des Auftrags, nicht an der
+  Blockzeit: Annahme (Uhrzeit) und Nachspielen (Blockzeit) entscheiden
+  gleich. Ein Auftrag von vor dem Stichtag kommt nur in einen Block davor
+  (`umzug_zeit`, `blockTauglich`, `auftragsFenster`) -- zurueckdatiert legt
+  niemand nach dem Stichtag einen zweiten Code dazu.
+- **Verworfen** (Sicherheitspruefung von #472): eine Reifezeit von 14 Tagen
+  und das Verfallen unreifer Codes bei einem Umzug ohne Code. Damit haette
+  ein Angreifer mit Deepfake allein (ohne Seed) einen Menschen in dessen
+  ersten 14 Tagen aussperren koennen: Umzug ankuendigen (Code verfaellt),
+  nach dem Widerruf gleich wieder (fest, Code wieder weg).
+- **Annahme-Pause:** ab 10 Minuten vor dem Stichtag nimmt der Knoten keinen
+  Code-Auftrag mit einer Zeit davor an (wie beim Chain-ID-Wechsel) -- sonst
+  koennte ein angenommener Auftrag, der nur vor den Stichtag darf, die
+  Erzeugung anhalten (2. Durchgang, M1).
+- Restrisiko: legt ein Dieb mit dem Seed den ersten Code an, BEVOR der Mensch
+  seinen hat, gilt der des Diebs (ohne Deepfake verzoegert er den Menschen
+  um bis zu ~44 Tage, mit Deepfake gewinnt er, wenn er zuerst handelt).
+  Darum der Code direkt nach der Registrierung. Codes, die vor dem Stichtag
+  dazugelegt wurden (bis zu drei), bleiben gueltig.
+- Ausroll-Sperre: `.github/neustart/umzug-code-regeln-nicht-verpasst.sh`
+  (kaputtes JSON haelt an). Tests: `umzug_code_regeln_test.go`.
+
 ## Stand 07.11.2026: gebaut (Kette), schlafend bis 08.11.2026 18:00 UTC
 
 Entscheidungen des Betreibers vom 07.11.2026:

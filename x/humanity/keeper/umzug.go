@@ -67,6 +67,29 @@ const (
 	// Betreibers, zusammen mit dem Stichtag von B1b).
 	umzugAbUnix int64 = 1794160800
 
+	// umzugCodeRegelnAbUnix: 2026-11-09 18:00 UTC. Ab dann (Entscheidung des
+	// Betreibers vom 08.11.2026): EIN Code je Wallet, einmal hinterlegt nicht
+	// aenderbar; er gilt sofort. Einen neuen Code gibt es nur nach einem Umzug
+	// auf eine neue Wallet. Grund: wer die Seed-Phrase stiehlt, konnte bisher
+	// einen eigenen Code DAZU legen und mit einem Deepfake des Gesichts sofort
+	// umziehen, ohne Widerruf. Hat der Mensch seinen Code (die App bietet ihn
+	// gleich nach der Registrierung an), legt niemand mehr einen dazu.
+	// Gemessen an der unterschriebenen Zeit des Auftrags (tx.DistributionAt),
+	// nicht an der Blockzeit: so entscheiden Annahme (Uhrzeit) und Nachspielen
+	// (Blockzeit) gleich. Ein Auftrag von vor dem Stichtag kommt nur in einen
+	// Block vor dem Stichtag (auftragsFenster, blockTauglich).
+	// (Eine Reifezeit und ein Verfallen unreifer Codes waren im Entwurf; die
+	// Sicherheitspruefung von #472 zeigte, dass ein Angreifer mit Deepfake
+	// allein den Menschen damit aussperren konnte -- verworfen.)
+	umzugCodeRegelnAbUnix int64 = 1794247200
+	// umzugCodeRegelnPause: so lange vor dem Stichtag nimmt der Knoten keinen
+	// Code-Auftrag mit einer Zeit davor mehr an (wie chainIDWechselPause).
+	// Sonst stuende ein angenommener Auftrag, der nur in einen Block VOR dem
+	// Stichtag darf, noch im Ausgang, waehrend schon ein Block danach
+	// entstanden ist -- das Fenster waere leer und die Erzeugung hinge
+	// (Sicherheitspruefung von #472, 2. Durchgang, M1).
+	umzugCodeRegelnPause int64 = 600
+
 	umzugCodeTxArt        = "umzug_code"
 	umzugAnkuendigenTxArt = "umzug_ankuendigen"
 	umzugWiderrufTxArt    = "umzug_widerruf"
@@ -133,6 +156,27 @@ func umzugAb() int64 {
 }
 
 func umzugAktiv(t int64) bool { return t >= umzugAb() }
+
+// umzugCodeRegelnAbOverride: nur fuer Tests (0 = Konstante gilt).
+var umzugCodeRegelnAbOverride atomic.Int64
+
+func umzugCodeRegelnAb() int64 {
+	if o := umzugCodeRegelnAbOverride.Load(); o != 0 {
+		return o
+	}
+	return umzugCodeRegelnAbUnix
+}
+
+// umzugCodeAnnahmePausiert: nimmt der Knoten zur Uhrzeit jetzt einen
+// Code-Auftrag mit der unterschriebenen Zeit z NICHT an? Nur fuer die
+// Annahme -- das Nachspielen entscheidet allein am Urteil.
+func umzugCodeAnnahmePausiert(z, jetzt int64) bool {
+	return !umzugCodeRegeln(z) && jetzt >= sattAdd(umzugCodeRegelnAb(), -umzugCodeRegelnPause)
+}
+
+// umzugCodeRegeln: gilt fuer einen Auftrag mit der unterschriebenen Zeit z
+// "ein Code je Wallet, nicht aenderbar"?
+func umzugCodeRegeln(z int64) bool { return z >= umzugCodeRegelnAb() }
 
 // UmzugAngaben: was die Umzugs-Transaktionen zusaetzlich tragen.
 type UmzugAngaben struct {
@@ -830,6 +874,12 @@ func (cs *ChainState) umzugCodeUrteilLocked(ctx context.Context, tx *Transaction
 	if z <= 0 || z > sattAdd(blockZeit, umzugHoechstensVoraus) || blockZeit-z > umzugHoechstensAlt {
 		return umzugBefund("umzug_zeit", "%s: unterschrieben %d, Block %d", kurzAdresse(alt), z, blockZeit)
 	}
+	// Ein Auftrag von vor dem Stichtag nur in einem Block vor dem Stichtag --
+	// sonst haengte das Ergebnis davon ab, ob mit Uhr- oder Blockzeit
+	// gerechnet wird, und ein zurueckdatierter Auftrag umginge die Regel.
+	if !umzugCodeRegeln(z) && umzugCodeRegeln(blockZeit) {
+		return umzugBefund("umzug_zeit", "%s: unterschrieben %d vor dem Stichtag der Code-Regeln, Block %d danach", kurzAdresse(alt), z, blockZeit)
+	}
 	cs.ensureAccountLoadedCtx(ctx, alt)
 	if a, ok := cs.accounts.Get(alt); !ok || !a.IsHuman {
 		return umzugBefund("umzug_code_kein_mensch", "%s ist kein Mensch", kurzAdresse(alt))
@@ -838,6 +888,11 @@ func (cs *ChainState) umzugCodeUrteilLocked(ctx context.Context, tx *Transaction
 		return umzugBefund("umzug_unterschrift", "Code nicht von %s unterschrieben", kurzAdresse(alt))
 	}
 	reg := cs.umzugRegisterJetzt()
+	if umzugCodeRegeln(z) {
+		if _, ok := reg.code(alt); ok {
+			return umzugBefund("umzug_code_fest", "%s: hat schon einen Wiederherstellungscode, er ist nicht aenderbar", kurzAdresse(alt))
+		}
+	}
 	if c, ok := reg.code(alt); ok {
 		if c.Zeit >= z {
 			// Wiederholung oder aelter als der zuletzt hinterlegte.
@@ -1092,6 +1147,10 @@ func (a *APIServer) handleUmzugCode(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "signature does not match wallet", http.StatusForbidden)
 		return
 	}
+	if umzugCodeAnnahmePausiert(req.Zeit, time.Now().Unix()) {
+		jsonError(w, fmt.Sprintf("recovery codes paused for the switch to the new code rules at %d -- please sign again then", umzugCodeRegelnAb()), http.StatusServiceUnavailable)
+		return
+	}
 	a.umzugAnnehmen(w, r, Transaction{Type: umzugCodeTxArt, Wallet: wallet, DistributionAt: req.Zeit,
 		Umzug: &UmzugAngaben{CodeHash: req.CodeHash, Sig: sig}}, nil)
 }
@@ -1202,7 +1261,7 @@ func (a *APIServer) handleUmzugStand(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	reg := a.state.umzugRegisterJetzt()
-	antwort := map[string]interface{}{"aktiv_ab": umzugAb(), "frist_tage": umzugFrist / 86400}
+	antwort := map[string]interface{}{"aktiv_ab": umzugAb(), "frist_tage": umzugFrist / 86400, "code_regeln_ab": umzugCodeRegelnAb()}
 	if n := strings.TrimSpace(r.URL.Query().Get("n")); n != "" {
 		if !umzugNullifierKanonisch(n) {
 			jsonError(w, "n must be a decimal nullifier", http.StatusBadRequest)
