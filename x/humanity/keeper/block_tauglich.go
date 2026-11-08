@@ -181,6 +181,11 @@ func auftragsFenster(tx *Transaction, jetzt int64) zeitFenster {
 			return zeitFenster{1, 0}
 		}
 		f.eng(sattAdd(tx.DistributionAt, -umzugHoechstensVoraus), sattAdd(tx.DistributionAt, umzugHoechstensAlt))
+		// Ein Code-Auftrag von vor dem Stichtag der Code-Regeln nur in einen
+		// Block davor (umzug_zeit in umzugCodeUrteilLocked).
+		if tx.Type == umzugCodeTxArt && !umzugCodeRegeln(tx.DistributionAt) {
+			f.eng(math.MinInt64, umzugCodeRegelnAb()-1)
+		}
 	case umzugWiderrufTxArt:
 		f.eng(umzugAb(), math.MaxInt64)
 	case umzugVollzugTxArt:
@@ -347,6 +352,9 @@ func blockTauglich(tx *Transaction, blockZeit int64) error {
 		}
 		if z := tx.DistributionAt; z <= 0 || z > sattAdd(blockZeit, umzugHoechstensVoraus) || blockZeit-z > umzugHoechstensAlt {
 			return fmt.Errorf("%s unterschrieben %d, Block %d", tx.Type, z, blockZeit)
+		}
+		if tx.Type == umzugCodeTxArt && !umzugCodeRegeln(tx.DistributionAt) && umzugCodeRegeln(blockZeit) {
+			return fmt.Errorf("umzug_code unterschrieben %d vor dem Stichtag der Code-Regeln, Block %d danach", tx.DistributionAt, blockZeit)
 		}
 	case umzugWiderrufTxArt, umzugVollzugTxArt:
 		if !umzugAktiv(blockZeit) {

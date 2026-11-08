@@ -23,6 +23,9 @@ lauf '{}' $((REPO - 600)) halt                                   # nur zehn Minu
 lauf '{}' $((REPO + 60)) halt                                    # schon vorbei
 lauf '{"umzug":{"aktiv_ab":1794160800,"code_regeln_ab":1700000000}}' $((REPO - 7200)) halt   # laufender Knoten nimmt sie schon an
 lauf '{"umzug":{"aktiv_ab":1794160800,"code_regeln_ab":"x"}}' $((REPO - 7200)) halt          # unlesbar
+lauf 'kein json' $((REPO - 7200)) halt                                                    # kaputte Antwort
+lauf '{"umzug":{"code_regeln_ab":99999999999999999999}}' $((REPO - 7200)) halt          # riesige Zahl
+lauf '{"umzug":{"code_regeln_ab":"0001794247200"}}' $((REPO - 7200)) halt               # fuehrende Nullen
 rm -f "$D/api/status"
 if bash .github/neustart/umzug-code-regeln-nicht-verpasst.sh "http://127.0.0.1:$PORT" 0 >/dev/null 2>&1; then echo "FEHLER: ohne Antwort erlaubt"; exit 1; fi
 echo "ok: ohne Antwort -> halt"

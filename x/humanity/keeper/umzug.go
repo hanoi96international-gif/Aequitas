@@ -67,20 +67,21 @@ const (
 	// Betreibers, zusammen mit dem Stichtag von B1b).
 	umzugAbUnix int64 = 1794160800
 
-	// umzugCodeRegelnAbUnix: 2026-11-09 18:00 UTC (Blockzeit). Ab dann
-	// (Entscheidung des Betreibers vom 08.11.2026):
-	//   - ein Code je Wallet, einmal hinterlegt nicht aenderbar;
-	//   - gueltig erst umzugCodeReife nach dem Hinterlegen;
-	//   - ein noch nicht gueltiger Code verfaellt, sobald fuer die Wallet ein
-	//     Umzug ohne Code angekuendigt wird, und solange einer offen ist,
-	//     wird kein Code hinterlegt.
-	// Grund: wer die Seed-Phrase stiehlt, konnte einen eigenen Code anlegen
-	// und mit einem Deepfake des Gesichts SOFORT umziehen, ohne dass der
-	// Mensch widersprechen konnte. Jetzt sieht der Mensch den fremden Code
-	// 14 Tage lang (App: Warnung) und zieht in der Zeit selbst mit dem
-	// Gesicht um -- dann ist der fremde Code weg.
+	// umzugCodeRegelnAbUnix: 2026-11-09 18:00 UTC. Ab dann (Entscheidung des
+	// Betreibers vom 08.11.2026): EIN Code je Wallet, einmal hinterlegt nicht
+	// aenderbar; er gilt sofort. Einen neuen Code gibt es nur nach einem Umzug
+	// auf eine neue Wallet. Grund: wer die Seed-Phrase stiehlt, konnte bisher
+	// einen eigenen Code DAZU legen und mit einem Deepfake des Gesichts sofort
+	// umziehen, ohne Widerruf. Hat der Mensch seinen Code (die App bietet ihn
+	// gleich nach der Registrierung an), legt niemand mehr einen dazu.
+	// Gemessen an der unterschriebenen Zeit des Auftrags (tx.DistributionAt),
+	// nicht an der Blockzeit: so entscheiden Annahme (Uhrzeit) und Nachspielen
+	// (Blockzeit) gleich. Ein Auftrag von vor dem Stichtag kommt nur in einen
+	// Block vor dem Stichtag (auftragsFenster, blockTauglich).
+	// (Eine Reifezeit und ein Verfallen unreifer Codes waren im Entwurf; die
+	// Sicherheitspruefung von #472 zeigte, dass ein Angreifer mit Deepfake
+	// allein den Menschen damit aussperren konnte -- verworfen.)
 	umzugCodeRegelnAbUnix int64 = 1794247200
-	umzugCodeReife        int64 = 14 * 86400
 
 	umzugCodeTxArt        = "umzug_code"
 	umzugAnkuendigenTxArt = "umzug_ankuendigen"
@@ -159,13 +160,9 @@ func umzugCodeRegelnAb() int64 {
 	return umzugCodeRegelnAbUnix
 }
 
-// umzugCodeRegeln: gelten zu Blockzeit t die Regeln vom 08.11.2026 (ein
-// Code, nicht aenderbar, Reifezeit)?
-func umzugCodeRegeln(t int64) bool { return t >= umzugCodeRegelnAb() }
-
-// gueltigAb: ab wann der Code bei einem Umzug zaehlt (nach den Regeln vom
-// 08.11.2026; davor sofort).
-func (c umzugCode) gueltigAb() int64 { return sattAdd(c.Zeit, umzugCodeReife) }
+// umzugCodeRegeln: gilt fuer einen Auftrag mit der unterschriebenen Zeit z
+// "ein Code je Wallet, nicht aenderbar"?
+func umzugCodeRegeln(z int64) bool { return z >= umzugCodeRegelnAb() }
 
 // UmzugAngaben: was die Umzugs-Transaktionen zusaetzlich tragen.
 type UmzugAngaben struct {
@@ -462,16 +459,6 @@ func (r *umzugRegister) offenMit(w string) (umzugOffen, bool) {
 	return umzugOffen{}, false
 }
 
-// offenAlsAlt: der offene Umzug, bei dem w die ALTE Wallet ist.
-func (r *umzugRegister) offenAlsAlt(w string) (umzugOffen, bool) {
-	for _, o := range r.Offen {
-		if o.Alt == w {
-			return o, true
-		}
-	}
-	return umzugOffen{}, false
-}
-
 // erledigtSeit: vollzogene Umzuege dieses Nullifiers in den 365 Tagen vor t.
 func (r *umzugRegister) erledigtSeit(n string, t int64) int {
 	z := 0
@@ -717,9 +704,6 @@ type umzugUrteil struct {
 	// fest: Antrag ohne Code nach einem Widerruf im letzten Jahr -- 30 Tage,
 	// nicht widerrufbar.
 	fest bool
-	// codeVerwerfen: Antrag ohne Code, die alte Wallet hat einen noch nicht
-	// gueltigen Code -- er verfaellt (umzugCodeRegelnAbUnix).
-	codeVerwerfen bool
 }
 
 func umzugBefund(regel, format string, args ...interface{}) umzugUrteil {
@@ -811,9 +795,6 @@ func (cs *ChainState) umzugAnkuendigenUrteilLocked(ctx context.Context, tx *Tran
 		if !passt {
 			return umzugBefund("umzug_code", "%s: Wiederherstellungscode passt nicht", kurzAdresse(alt)), nil
 		}
-		if umzugCodeRegeln(blockZeit) && blockZeit < c.gueltigAb() {
-			return umzugBefund("umzug_code_unreif", "%s: Wiederherstellungscode gilt erst ab %d", kurzAdresse(alt), c.gueltigAb()), nil
-		}
 		return umzugUrteil{sofort: true}, nil
 	}
 	// Ohne Code nur nach der strengsten Pruefung des Coordinators: gruene
@@ -825,11 +806,7 @@ func (cs *ChainState) umzugAnkuendigenUrteilLocked(ctx context.Context, tx *Tran
 	if len(reg.Offen) >= umzugOffenHoechstens {
 		return umzugBefund("umzug_voll", "zu viele offene Umzuege"), nil
 	}
-	urteil := umzugUrteil{fest: reg.widerrufeSeit(n, z) >= umzugWiderrufeJeJahr}
-	if c, ok := reg.code(alt); ok && umzugCodeRegeln(blockZeit) && blockZeit < c.gueltigAb() {
-		urteil.codeVerwerfen = true
-	}
-	return urteil, nil
+	return umzugUrteil{fest: reg.widerrufeSeit(n, z) >= umzugWiderrufeJeJahr}, nil
 }
 
 // umzugAnkuendigenAnwendenLocked: nach einem Urteil ohne Befund.
@@ -840,9 +817,6 @@ func (cs *ChainState) umzugAnkuendigenAnwendenLocked(ctx context.Context, tx *Tr
 	o := umzugOffen{Nullifier: tx.Nullifier, Alt: tx.To, Neu: tx.Wallet, Zeit: tx.DistributionAt, Fest: u.fest}
 	o.FreiAb = o.Zeit + o.frist()
 	reg := cs.umzugRegisterJetzt().mitOffen(o)
-	if u.codeVerwerfen {
-		reg = reg.ohneCode(o.Alt)
-	}
 	return cs.umzugRegisterSetzenLocked(ctx, reg)
 }
 
@@ -886,6 +860,12 @@ func (cs *ChainState) umzugCodeUrteilLocked(ctx context.Context, tx *Transaction
 	if z <= 0 || z > sattAdd(blockZeit, umzugHoechstensVoraus) || blockZeit-z > umzugHoechstensAlt {
 		return umzugBefund("umzug_zeit", "%s: unterschrieben %d, Block %d", kurzAdresse(alt), z, blockZeit)
 	}
+	// Ein Auftrag von vor dem Stichtag nur in einem Block vor dem Stichtag --
+	// sonst haengte das Ergebnis davon ab, ob mit Uhr- oder Blockzeit
+	// gerechnet wird, und ein zurueckdatierter Auftrag umginge die Regel.
+	if !umzugCodeRegeln(z) && umzugCodeRegeln(blockZeit) {
+		return umzugBefund("umzug_zeit", "%s: unterschrieben %d vor dem Stichtag der Code-Regeln, Block %d danach", kurzAdresse(alt), z, blockZeit)
+	}
 	cs.ensureAccountLoadedCtx(ctx, alt)
 	if a, ok := cs.accounts.Get(alt); !ok || !a.IsHuman {
 		return umzugBefund("umzug_code_kein_mensch", "%s ist kein Mensch", kurzAdresse(alt))
@@ -894,12 +874,9 @@ func (cs *ChainState) umzugCodeUrteilLocked(ctx context.Context, tx *Transaction
 		return umzugBefund("umzug_unterschrift", "Code nicht von %s unterschrieben", kurzAdresse(alt))
 	}
 	reg := cs.umzugRegisterJetzt()
-	if umzugCodeRegeln(blockZeit) {
+	if umzugCodeRegeln(z) {
 		if _, ok := reg.code(alt); ok {
 			return umzugBefund("umzug_code_fest", "%s: hat schon einen Wiederherstellungscode, er ist nicht aenderbar", kurzAdresse(alt))
-		}
-		if _, offen := reg.offenAlsAlt(alt); offen {
-			return umzugBefund("umzug_code_offen", "%s: waehrend eines offenen Umzugs kein neuer Code", kurzAdresse(alt))
 		}
 	}
 	if c, ok := reg.code(alt); ok {
@@ -1266,8 +1243,7 @@ func (a *APIServer) handleUmzugStand(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	reg := a.state.umzugRegisterJetzt()
-	antwort := map[string]interface{}{"aktiv_ab": umzugAb(), "frist_tage": umzugFrist / 86400,
-		"code_regeln_ab": umzugCodeRegelnAb(), "code_reife_tage": umzugCodeReife / 86400}
+	antwort := map[string]interface{}{"aktiv_ab": umzugAb(), "frist_tage": umzugFrist / 86400, "code_regeln_ab": umzugCodeRegelnAb()}
 	if n := strings.TrimSpace(r.URL.Query().Get("n")); n != "" {
 		if !umzugNullifierKanonisch(n) {
 			jsonError(w, "n must be a decimal nullifier", http.StatusBadRequest)
@@ -1285,8 +1261,6 @@ func (a *APIServer) handleUmzugStand(w http.ResponseWriter, r *http.Request) {
 	if c, ok := reg.code(wallet); ok {
 		antwort["code_seit"] = c.Zeit
 		antwort["codes"] = len(c.Hashes)
-		// Ab wann der Code bei einem Umzug zaehlt (Regeln vom 08.11.2026).
-		antwort["code_gueltig_ab"] = c.gueltigAb()
 	}
 	if o, ok := reg.offenMit(wallet); ok {
 		antwort["offen"] = map[string]interface{}{"nullifier": o.Nullifier, "alt": o.Alt, "neu": o.Neu, "angekuendigt": o.Zeit,

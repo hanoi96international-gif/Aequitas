@@ -20,7 +20,7 @@ const (
 var uzRegeln = []string{"umzug_form", "umzug_zeit", "umzug_unterschrift", "umzug_bescheinigung", "umzug_nullifier",
 	"umzug_ziel", "umzug_offen", "umzug_jahresgrenze", "umzug_code", "umzug_voll", "umzug_nicht_offen",
 	"umzug_frist", "umzug_code_alt", "umzug_code_kein_mensch", "umzug_code_voll", "umzug_pruefung", "umzug_fest",
-	"umzug_code_fest", "umzug_code_offen", "umzug_code_unreif"}
+	"umzug_code_fest"}
 
 type uzFall struct {
 	t      *testing.T

@@ -1,29 +1,32 @@
 # Umzug — Entwurf und Stand des Baus
 
-## Nachtrag 08.11.2026: Regeln fuer den Wiederherstellungscode (ab 09.11.2026 18:00 UTC)
+## Nachtrag 08.11.2026: ein Wiederherstellungscode je Wallet (ab 09.11.2026 18:00 UTC)
 
 Live seit 08.11.2026 18:00 UTC. Befund am selben Abend: wer die Seed-Phrase
-stiehlt, konnte einen EIGENEN Code anlegen (er galt sofort) und mit einem
-Deepfake des Gesichts sofort umziehen -- ohne Widerruf. Ohne Code waeren es
-14 Tage mit Warnung und Stopp-Knopf gewesen. Entscheidung des Betreibers:
+stiehlt, konnte einen EIGENEN Code dazulegen (er galt sofort) und mit einem
+Deepfake des Gesichts sofort umziehen -- ohne Widerruf. Entscheidung des
+Betreibers:
 
-- **Ein Code je Wallet, nicht aenderbar** (`umzug_code_fest`). Die Regel
-  "ein neuer kommt dazu, hoechstens drei" (unten) gilt nur bis zum Stichtag.
-- **Gueltig erst 14 Tage nach dem Hinterlegen** (`umzugCodeReife`,
-  `umzug_code_unreif`). Die App zeigt so lange auf Home: angelegt am ...,
-  gueltig ab ... -- "warst du das nicht?". `/api/umzug` meldet
-  `code_gueltig_ab`.
-- **Ein noch nicht gueltiger Code verfaellt**, sobald fuer die Wallet ein
-  Umzug ohne Code angekuendigt wird (auch ein fester), und solange einer
-  offen ist, wird kein Code hinterlegt (`umzug_code_offen`). Der Mensch, der
-  einen fremden Code sieht, zieht mit dem Gesicht um; der Code des Diebs ist
-  dann weg. Ein REIFER Code bleibt und schlaegt wie bisher jeden offenen
-  Umzug ohne Code.
-- Vor dem Stichtag (Blockzeit) gilt alles wie zuvor -- alte Bloecke rechnen
-  gleich nach. Ab dem Stichtag zaehlt die Reife auch fuer schon hinterlegte
-  Codes (`Zeit` des Codes + 14 Tage). Ausroll-Sperre:
-  `.github/neustart/umzug-code-regeln-nicht-verpasst.sh`.
-- Tests: `umzug_code_regeln_test.go`.
+- **Ein Code je Wallet, nicht aenderbar, gilt sofort** (`umzug_code_fest`).
+  Einen neuen Code gibt es nur nach einem Umzug auf eine neue Wallet. Die
+  Regel "ein neuer kommt dazu, hoechstens drei" (unten) gilt nur bis zum
+  Stichtag. Die App bietet den Code gleich nach der Registrierung an -- dann
+  ist der Mensch der Erste.
+- Gemessen an der **unterschriebenen Zeit** des Auftrags, nicht an der
+  Blockzeit: Annahme (Uhrzeit) und Nachspielen (Blockzeit) entscheiden
+  gleich. Ein Auftrag von vor dem Stichtag kommt nur in einen Block davor
+  (`umzug_zeit`, `blockTauglich`, `auftragsFenster`) -- zurueckdatiert legt
+  niemand nach dem Stichtag einen zweiten Code dazu.
+- **Verworfen** (Sicherheitspruefung von #472): eine Reifezeit von 14 Tagen
+  und das Verfallen unreifer Codes bei einem Umzug ohne Code. Damit haette
+  ein Angreifer mit Deepfake allein (ohne Seed) einen Menschen in dessen
+  ersten 14 Tagen aussperren koennen: Umzug ankuendigen (Code verfaellt),
+  nach dem Widerruf gleich wieder (fest, Code wieder weg).
+- Restrisiko: legt ein Dieb mit dem Seed den ersten Code an, BEVOR der Mensch
+  seinen hat, gilt der des Diebs. Darum der Code direkt nach der
+  Registrierung.
+- Ausroll-Sperre: `.github/neustart/umzug-code-regeln-nicht-verpasst.sh`
+  (kaputtes JSON haelt an). Tests: `umzug_code_regeln_test.go`.
 
 ## Stand 07.11.2026: gebaut (Kette), schlafend bis 08.11.2026 18:00 UTC
 

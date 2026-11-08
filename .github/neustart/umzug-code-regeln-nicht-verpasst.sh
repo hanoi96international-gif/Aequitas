@@ -16,9 +16,11 @@ case "$ROH" in
   *) REPO=$ROH ;;
 esac
 STATUS=$(curl -sf -m 15 "$BASE/api/status") || { echo "::error::laufender Knoten antwortet nicht -- Deploy angehalten"; exit 1; }
-LIVE=$(printf '%s' "$STATUS" | jq -r '(.umzug // {}) | (.code_regeln_ab // "schlafend") | tostring' 2>/dev/null || echo schlafend)
+# Kaputtes JSON haelt an (nicht "schlafend"); nur ein fehlendes Feld gilt
+# als aelterer Stand.
+LIVE=$(printf '%s' "$STATUS" | jq -r '(.umzug // {}) | (.code_regeln_ab // "schlafend") | tostring' 2>/dev/null) || { echo "::error::Antwort des laufenden Knotens ist kein JSON -- Deploy angehalten"; exit 1; }
 [ "$LIVE" = schlafend ] && LIVE=$MAX
-[[ "$LIVE" =~ ^[0-9]+$ ]] || { echo "::error::Stichtag der Code-Regeln im laufenden Knoten unlesbar: $LIVE"; exit 1; }
+[[ "$LIVE" =~ ^[1-9][0-9]{0,11}$ || "$LIVE" = "$MAX" ]] || { echo "::error::Stichtag der Code-Regeln im laufenden Knoten unlesbar: $LIVE"; exit 1; }
 echo "Stichtag Code-Regeln: Repo $REPO, laufend $LIVE, jetzt $JETZT"
 if [ "$REPO" = "$LIVE" ]; then
   echo "unveraendert"
