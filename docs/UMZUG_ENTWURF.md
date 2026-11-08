@@ -1,6 +1,6 @@
 # Umzug — Entwurf und Stand des Baus
 
-## Stand 07.11.2026: gebaut (Kette), schlafend bis 12.11.2026 18:00 UTC
+## Stand 07.11.2026: gebaut (Kette), schlafend bis 08.11.2026 18:00 UTC
 
 Entscheidungen des Betreibers vom 07.11.2026:
 
