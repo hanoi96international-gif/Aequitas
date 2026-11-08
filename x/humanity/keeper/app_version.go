@@ -23,14 +23,14 @@ import (
 )
 
 const (
-	appVersionQuelle  = "https://api.github.com/repos/hanoi96international-gif/Aequitas-App/releases/latest"
+	appVersionQuelle = "https://api.github.com/repos/hanoi96international-gif/Aequitas-App/releases/latest"
 	// Zweiter Weg, wenn die API nicht antwortet (ohne Anmeldung 60 Anfragen je
 	// Stunde und Adresse): github.com leitet .../releases/latest auf
 	// .../releases/tag/<tag> weiter. Gelesen wird nur das Ziel der
 	// Weiterleitung, ihr gefolgt wird nicht.
 	appVersionSeite     = "https://github.com/hanoi96international-gif/Aequitas-App/releases/latest"
 	appVersionSeiteZiel = "https://github.com/hanoi96international-gif/Aequitas-App/releases/tag/"
-	appVersionAbstand = 30 * time.Minute
+	appVersionAbstand   = 30 * time.Minute
 	// Nach einem Fehlschlag (GitHub antwortet nicht, Ratenlimit) frueher neu
 	// fragen: sonst meldet ein frisch gestarteter Knoten 30 Minuten lang gar
 	// keine Version, und niemand sieht die Update-Meldung. Weiterhin hoechstens
