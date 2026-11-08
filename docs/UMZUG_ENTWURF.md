@@ -22,9 +22,15 @@ Betreibers:
   ein Angreifer mit Deepfake allein (ohne Seed) einen Menschen in dessen
   ersten 14 Tagen aussperren koennen: Umzug ankuendigen (Code verfaellt),
   nach dem Widerruf gleich wieder (fest, Code wieder weg).
+- **Annahme-Pause:** ab 10 Minuten vor dem Stichtag nimmt der Knoten keinen
+  Code-Auftrag mit einer Zeit davor an (wie beim Chain-ID-Wechsel) -- sonst
+  koennte ein angenommener Auftrag, der nur vor den Stichtag darf, die
+  Erzeugung anhalten (2. Durchgang, M1).
 - Restrisiko: legt ein Dieb mit dem Seed den ersten Code an, BEVOR der Mensch
-  seinen hat, gilt der des Diebs. Darum der Code direkt nach der
-  Registrierung.
+  seinen hat, gilt der des Diebs (ohne Deepfake verzoegert er den Menschen
+  um bis zu ~44 Tage, mit Deepfake gewinnt er, wenn er zuerst handelt).
+  Darum der Code direkt nach der Registrierung. Codes, die vor dem Stichtag
+  dazugelegt wurden (bis zu drei), bleiben gueltig.
 - Ausroll-Sperre: `.github/neustart/umzug-code-regeln-nicht-verpasst.sh`
   (kaputtes JSON haelt an). Tests: `umzug_code_regeln_test.go`.
 

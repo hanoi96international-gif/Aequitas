@@ -82,6 +82,13 @@ const (
 	// Sicherheitspruefung von #472 zeigte, dass ein Angreifer mit Deepfake
 	// allein den Menschen damit aussperren konnte -- verworfen.)
 	umzugCodeRegelnAbUnix int64 = 1794247200
+	// umzugCodeRegelnPause: so lange vor dem Stichtag nimmt der Knoten keinen
+	// Code-Auftrag mit einer Zeit davor mehr an (wie chainIDWechselPause).
+	// Sonst stuende ein angenommener Auftrag, der nur in einen Block VOR dem
+	// Stichtag darf, noch im Ausgang, waehrend schon ein Block danach
+	// entstanden ist -- das Fenster waere leer und die Erzeugung hinge
+	// (Sicherheitspruefung von #472, 2. Durchgang, M1).
+	umzugCodeRegelnPause int64 = 600
 
 	umzugCodeTxArt        = "umzug_code"
 	umzugAnkuendigenTxArt = "umzug_ankuendigen"
@@ -158,6 +165,13 @@ func umzugCodeRegelnAb() int64 {
 		return o
 	}
 	return umzugCodeRegelnAbUnix
+}
+
+// umzugCodeAnnahmePausiert: nimmt der Knoten zur Uhrzeit jetzt einen
+// Code-Auftrag mit der unterschriebenen Zeit z NICHT an? Nur fuer die
+// Annahme -- das Nachspielen entscheidet allein am Urteil.
+func umzugCodeAnnahmePausiert(z, jetzt int64) bool {
+	return !umzugCodeRegeln(z) && jetzt >= sattAdd(umzugCodeRegelnAb(), -umzugCodeRegelnPause)
 }
 
 // umzugCodeRegeln: gilt fuer einen Auftrag mit der unterschriebenen Zeit z
@@ -1131,6 +1145,10 @@ func (a *APIServer) handleUmzugCode(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := verifyPersonalSign(umzugCodeSetzenNachricht(wallet, req.CodeHash, req.Zeit), sig, wallet); err != nil {
 		jsonError(w, "signature does not match wallet", http.StatusForbidden)
+		return
+	}
+	if umzugCodeAnnahmePausiert(req.Zeit, time.Now().Unix()) {
+		jsonError(w, fmt.Sprintf("recovery codes paused for the switch to the new code rules at %d -- please sign again then", umzugCodeRegelnAb()), http.StatusServiceUnavailable)
 		return
 	}
 	a.umzugAnnehmen(w, r, Transaction{Type: umzugCodeTxArt, Wallet: wallet, DistributionAt: req.Zeit,

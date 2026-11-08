@@ -124,3 +124,30 @@ func TestUmzugCode_VorDemStichtagWieBisher(t *testing.T) {
 		t.Fatalf("zweiter Code vor dem Stichtag: %v", b)
 	}
 }
+
+// Annahme-Pause (Sicherheitspruefung #472, M1): ab 600 s vor dem Stichtag
+// nimmt der Knoten keinen Code-Auftrag mit einer Zeit vor dem Stichtag mehr
+// an -- sonst koennte er im Ausgang stehen, waehrend schon ein Block nach dem
+// Stichtag entstand, und kein Block passte mehr fuer ihn.
+func TestUmzugCode_AnnahmePauseVorDemStichtag(t *testing.T) {
+	ab := uzZeit + 10000
+	codeRegelnAb(t, ab)
+	pause := ab - umzugCodeRegelnPause
+	fall := []struct {
+		z, jetzt int64
+		pausiert bool
+	}{
+		{pause - 100, pause - 1, false}, // vor der Pause: wie bisher
+		{pause - 100, pause, true},      // Pause beginnt
+		{ab - 1, ab - 1, true},          // kurz vor dem Stichtag
+		{ab - 10, ab + 5, true},         // zurueckdatiert danach
+		{ab, ab - 300, false},           // neue Zeit (bis 300 s voraus): neue Regel, keine Pause
+		{ab, ab, false},
+		{ab + 50, ab + 60, false},
+	}
+	for _, c := range fall {
+		if got := umzugCodeAnnahmePausiert(c.z, c.jetzt); got != c.pausiert {
+			t.Errorf("z %d, jetzt %d: pausiert %v, erwartet %v", c.z-ab, c.jetzt-ab, got, c.pausiert)
+		}
+	}
+}
