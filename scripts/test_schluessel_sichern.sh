@@ -10,8 +10,18 @@
 #   3. Die Ausgabe liegt nicht in ihrem eigenen Archiv.
 set -euo pipefail
 WURZEL=$(cd "$(dirname "$0")/.." && pwd)
-command -v age >/dev/null || { sudo apt-get install -y -qq age >/dev/null; }
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
+# age: zuerst aus dem Paketspiegel; faellt der aus (11.11.2026: auf den
+# GitHub-Runnern war security.ubuntu.com nicht aufloesbar, dreimal in
+# Folge), dieselbe Version ueber den Go-Modul-Proxy -- Pruefsummen gegen
+# sum.golang.org. Ohne age kein Test: Abbruch, nicht ueberspringen.
+if ! command -v age >/dev/null || ! command -v age-keygen >/dev/null; then
+  if ! sudo apt-get install -y -qq age >/dev/null 2>&1; then
+    GOBIN="$T/bin" go install filippo.io/age/cmd/age@v1.2.1 filippo.io/age/cmd/age-keygen@v1.2.1
+    PATH="$T/bin:$PATH"
+  fi
+fi
+command -v age >/dev/null && command -v age-keygen >/dev/null || { echo "FEHLER: age nicht verfuegbar"; exit 1; }
 mkdir -p "$T/fake" "$T/etc" "$T/root/Aequitas/deploy/validator"
 age-keygen -o "$T/offline.key" 2>/dev/null
 grep -o 'age1[a-z0-9]*' "$T/offline.key" > "$T/etc/bio-empfaenger"
