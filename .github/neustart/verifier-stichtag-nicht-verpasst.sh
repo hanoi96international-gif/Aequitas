@@ -17,9 +17,12 @@ case "$ROH" in
   *) REPO=$ROH ;;
 esac
 curl -sf -m 15 "$BASE/api/status" >/dev/null || { echo "::error::laufender Knoten antwortet nicht -- Deploy angehalten"; exit 1; }
-LIVE=$(curl -s -m 15 "$BASE/api/verifier" | jq -r 'if type == "object" then (.ab // "schlafend") else "schlafend" end' 2>/dev/null || echo schlafend)
+# Kaputtes JSON haelt an (nicht "schlafend"); ein JSON-Objekt ohne "ab"
+# (aelterer Knoten, 404 mit Fehlerobjekt) gilt als schlafend.
+VERIFIER=$(curl -s -m 15 "$BASE/api/verifier") || { echo "::error::/api/verifier antwortet nicht -- Deploy angehalten"; exit 1; }
+LIVE=$(printf '%s' "$VERIFIER" | jq -r 'if type == "object" then (.ab // "schlafend") else "schlafend" end | tostring' 2>/dev/null) || { echo "::error::Antwort von /api/verifier ist kein JSON -- Deploy angehalten"; exit 1; }
 [ "$LIVE" = schlafend ] && LIVE=$MAX
-[[ "$LIVE" =~ ^[0-9]+$ ]] || { echo "::error::Stichtag des laufenden Knotens unlesbar: $LIVE"; exit 1; }
+[[ "$LIVE" =~ ^[1-9][0-9]{0,11}$ || "$LIVE" = "$MAX" ]] || { echo "::error::Stichtag des laufenden Knotens unlesbar: $LIVE"; exit 1; }
 echo "Stichtag Pruefer-Register: Repo $REPO, laufend $LIVE, jetzt $JETZT"
 if [ "$REPO" = "$LIVE" ]; then
   echo "unveraendert"
