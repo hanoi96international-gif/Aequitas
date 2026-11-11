@@ -76,6 +76,8 @@ jobs:
         run: bash .github/neustart/umzug-stichtag-nicht-verpasst.sh http://$C1:8080
       - name: Stichtag der Code-Regeln des Umzugs nicht verpasst
         run: bash .github/neustart/umzug-code-regeln-nicht-verpasst.sh http://$C1:8080
+      - name: Stichtag "nur der letzte Code" nicht verpasst
+        run: bash .github/neustart/umzug-letzter-code-nicht-verpasst.sh http://$C1:8080
       - name: Schluessel
         env:
           KEY: ${{ secrets.CONTABO_SSH_KEY }}

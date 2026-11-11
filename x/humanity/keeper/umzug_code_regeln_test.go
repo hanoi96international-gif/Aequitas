@@ -151,3 +151,87 @@ func TestUmzugCode_AnnahmePauseVorDemStichtag(t *testing.T) {
 		}
 	}
 }
+
+// Ab umzugNurLetzterCodeAbUnix zaehlt bei einem Umzug nur der zuletzt
+// hinterlegte Code (Entscheidung vom 11.11.2026: eine Wallet hatte vor dem
+// 09.11. zwei Codes angelegt). Der aeltere passt nicht mehr, der letzte
+// zieht sofort um.
+func TestUmzugCode_NurDerLetzteGilt(t *testing.T) {
+	ab := uzZeit + 1000
+	vorher := umzugNurLetzterCodeAbOverride.Load()
+	umzugNurLetzterCodeAbOverride.Store(ab)
+	t.Cleanup(func() { umzugNurLetzterCodeAbOverride.Store(vorher) })
+	f := neuerUzFall(t)
+	codeRegelnAb(t, ab+100000) // vor den Code-Regeln: zwei Codes erlaubt
+	f.anwenden(f.codeTx(f.altKey, f.alt, uzDiebCode, uzZeit), uzZeit)
+	f.anwenden(f.codeTx(f.altKey, f.alt, uzCode, uzZeit+10), uzZeit+10)
+	if c, _ := f.cs.umzugRegisterJetzt().code(f.alt); len(c.Hashes) != 2 {
+		t.Fatalf("Vorbedingung: zwei Codes, %+v", c)
+	}
+	// Ab dem Stichtag passt der aeltere nicht mehr ...
+	if b := f.anwenden(f.antrag(f.neuKey, f.neu, f.alt, uzN, ab, uzDiebCode), ab); b["umzug_code"] != 1 || f.umgezogen() {
+		t.Fatalf("aelterer Code ab dem Stichtag: %v", b)
+	}
+	// ... der letzte schon, sofort.
+	if b := f.anwenden(f.antrag(f.neuKey, f.neu, f.alt, uzN, ab+10, uzCode), ab+10); len(b) != 0 || !f.umgezogen() {
+		t.Fatalf("letzter Code ab dem Stichtag: %v", b)
+	}
+}
+
+// Zurueckdatiert: ein Antrag mit Code von vor dem Stichtag kommt in keinen
+// Block danach (Urteil, blockTauglich, auftragsFenster), und 600 s davor
+// nimmt der Knoten keinen mehr an -- sonst galte der aeltere Code weiter.
+func TestUmzugCode_NurDerLetzteZurueckdatiertUndPause(t *testing.T) {
+	ab := uzZeit + 1000
+	vorher := umzugNurLetzterCodeAbOverride.Load()
+	umzugNurLetzterCodeAbOverride.Store(ab)
+	t.Cleanup(func() { umzugNurLetzterCodeAbOverride.Store(vorher) })
+	f := neuerUzFall(t)
+	codeRegelnAb(t, ab+100000)
+	f.anwenden(f.codeTx(f.altKey, f.alt, uzDiebCode, uzZeit), uzZeit)
+	f.anwenden(f.codeTx(f.altKey, f.alt, uzCode, uzZeit+10), uzZeit+10)
+	alt := f.antrag(f.neuKey, f.neu, f.alt, uzN, ab-50, uzDiebCode)
+	if b := f.anwenden(alt, ab); b["umzug_zeit"] != 1 || f.umgezogen() {
+		t.Fatalf("zurueckdatiert nach dem Stichtag: %v", b)
+	}
+	if err := blockTauglich(&alt, ab); err == nil {
+		t.Fatal("blockTauglich nimmt den zurueckdatierten Antrag nach dem Stichtag")
+	}
+	if fen := auftragsFenster(&alt, ab); fen.bis != ab-1 {
+		t.Fatalf("auftragsFenster: %+v", fen)
+	}
+	ohne := f.antrag(f.neuKey, f.neu, f.alt, uzN, ab-50, "")
+	if fen := auftragsFenster(&ohne, ab); fen.bis < ab {
+		t.Fatalf("Antrag OHNE Code darf nicht beschraenkt werden: %+v", fen)
+	}
+	for _, c := range []struct {
+		z, jetzt int64
+		pausiert bool
+	}{
+		{ab - 700, ab - 601, false},
+		{ab - 700, ab - 600, true},
+		{ab - 10, ab + 5, true},
+		{ab, ab - 200, false},
+		{ab + 5, ab + 10, false},
+	} {
+		if got := umzugAntragMitCodePausiert(c.z, c.jetzt); got != c.pausiert {
+			t.Errorf("z %d, jetzt %d: %v, erwartet %v", c.z-ab, c.jetzt-ab, got, c.pausiert)
+		}
+	}
+}
+
+// Vor dem Stichtag "nur der letzte Code" gelten alle hinterlegten (Nachspielen
+// alter Bloecke unveraendert).
+func TestUmzugCode_VorDemStichtagGeltenAlle(t *testing.T) {
+	ab := uzZeit + 1000
+	vorher := umzugNurLetzterCodeAbOverride.Load()
+	umzugNurLetzterCodeAbOverride.Store(ab)
+	t.Cleanup(func() { umzugNurLetzterCodeAbOverride.Store(vorher) })
+	f := neuerUzFall(t)
+	codeRegelnAb(t, ab+100000)
+	f.anwenden(f.codeTx(f.altKey, f.alt, uzDiebCode, uzZeit), uzZeit)
+	f.anwenden(f.codeTx(f.altKey, f.alt, uzCode, uzZeit+10), uzZeit+10)
+	if b := f.anwenden(f.antrag(f.neuKey, f.neu, f.alt, uzN, ab-100, uzDiebCode), ab-100); len(b) != 0 || !f.umgezogen() {
+		t.Fatalf("aelterer Code vor dem Stichtag: %v", b)
+	}
+}
