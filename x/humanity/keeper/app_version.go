@@ -139,6 +139,15 @@ func appVersionFaellig(jetzt time.Time) (version string, fragen bool) {
 	return appVersionStand.version, fragen
 }
 
+// appVersionBeimStart: einmal beim Start des Knotens fragen -- ueber
+// appVersionFaellig, also hoechstens eine Anfrage zur Zeit und nicht oefter
+// als vorgesehen.
+func appVersionBeimStart() {
+	if _, fragen := appVersionFaellig(time.Now()); fragen {
+		SafeGoroutine("app-version", appVersionHolen)
+	}
+}
+
 func (a *APIServer) handleAppVersion(w http.ResponseWriter, r *http.Request) {
 	writeJSONCORS(w)
 	if r.Method != http.MethodGet {

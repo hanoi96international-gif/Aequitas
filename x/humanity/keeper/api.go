@@ -1334,6 +1334,10 @@ func (a *APIServer) Start(port int) {
 			fmt.Printf("[API] Server error: %v\n", err)
 		}
 	})
+	// Die neueste App-Version gleich beim Start holen: sonst bekam die erste
+	// Anfrage nach jedem Neustart "" und die App zeigte keine Update-Meldung
+	// (gesehen am 11.11.2026). Dieselbe Grenze wie bei einer Anfrage.
+	appVersionBeimStart()
 	startPprofServer()
 }
 
