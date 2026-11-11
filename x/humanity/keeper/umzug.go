@@ -14,8 +14,10 @@ package keeper
 //
 //   - Gesicht + Wiederherstellungscode: der Umzug geschieht sofort. Den Code
 //     erzeugt die App einmal und zeigt ihn einmal; auf der Kette steht nur
-//     sein Hash (umzug_code, von W1 unterschrieben; hoechstens drei je
-//     Wallet, ein neuer ersetzt keinen alten). Die alte Wallet kann
+//     sein Hash (umzug_code, von W1 unterschrieben). Seit dem 09.11.2026
+//     genau EINER je Wallet, nicht aenderbar (umzugCodeRegelnAbUnix); davor
+//     bis zu drei, von denen ab dem 12.11.2026 nur der zuletzt hinterlegte
+//     zaehlt (umzugNurLetzterCodeAbUnix). Die alte Wallet kann
 //     diesen Umzug nicht aufhalten -- wer Gesicht UND Code hat, ist der
 //     Mensch, auch wenn ein Dieb den alten Schluessel hat.
 //   - Nur das Gesicht: 14 Tage Frist (umzugFrist). In der Zeit kann die alte
@@ -136,7 +138,7 @@ const (
 	umzugCodesHoechstens    = 50000
 	umzugOffenHoechstens    = 1000
 	umzugErledigtHoechstens = 20000
-	// Codes je Wallet (sie sammeln sich, siehe umzugCode).
+	// Codes je Wallet vor umzugCodeRegelnAbUnix (siehe umzugCode).
 	umzugCodesJeWallet = 3
 	// Vollzuege je Tagesrunde; der Rest am naechsten Tag.
 	umzugVollzugJeRunde = 200
@@ -289,11 +291,14 @@ func umzugNullifierKanonisch(n string) bool {
 
 // ------------------------------------------------------------ Register
 
-// umzugCode: die Codes einer Wallet. Ein neuer Code kommt DAZU, er ersetzt
-// keinen (Sicherheitsdurchgang des Diffs): sonst ersetzte ein Dieb mit dem
-// alten Schluessel den Code des Menschen, und den Weg ohne Code koennte er
-// mit demselben Schluessel jedes Mal widerrufen -- der Mensch kaeme nie mehr
-// an sein Menschsein. Ein Code allein bewirkt nichts ohne das Gesicht.
+// umzugCode: die Codes einer Wallet, in der Reihenfolge des Hinterlegens.
+// Bis zum 09.11.2026 kam ein neuer Code DAZU (hoechstens drei) -- ein Dieb
+// mit dem alten Schluessel sollte den Code des Menschen nicht ersetzen.
+// Seit umzugCodeRegelnAbUnix gibt es nur noch einen, nicht aenderbar. Ab
+// umzugNurLetzterCodeAbUnix zaehlt bei Wallets mit mehreren nur der letzte
+// (Entscheidung des Betreibers vom 11.11.2026; es gab genau eine solche
+// Wallet, beide Codes vom Inhaber). Ein Code allein bewirkt nichts ohne das
+// Gesicht.
 type umzugCode struct {
 	Wallet string   `json:"w"`
 	Hashes []string `json:"h"`
