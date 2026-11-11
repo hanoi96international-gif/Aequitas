@@ -186,6 +186,11 @@ func auftragsFenster(tx *Transaction, jetzt int64) zeitFenster {
 		if tx.Type == umzugCodeTxArt && !umzugCodeRegeln(tx.DistributionAt) {
 			f.eng(math.MinInt64, umzugCodeRegelnAb()-1)
 		}
+		// Ein Antrag MIT Code von vor dem Stichtag "nur der letzte Code" nur
+		// in einen Block davor (umzug_zeit in umzugAnkuendigenUrteilLocked).
+		if tx.Type == umzugAnkuendigenTxArt && tx.Umzug != nil && tx.Umzug.Code != "" && !umzugNurLetzterCode(tx.DistributionAt) {
+			f.eng(math.MinInt64, umzugNurLetzterCodeAb()-1)
+		}
 	case umzugWiderrufTxArt:
 		f.eng(umzugAb(), math.MaxInt64)
 	case umzugVollzugTxArt:
@@ -355,6 +360,9 @@ func blockTauglich(tx *Transaction, blockZeit int64) error {
 		}
 		if tx.Type == umzugCodeTxArt && !umzugCodeRegeln(tx.DistributionAt) && umzugCodeRegeln(blockZeit) {
 			return fmt.Errorf("umzug_code unterschrieben %d vor dem Stichtag der Code-Regeln, Block %d danach", tx.DistributionAt, blockZeit)
+		}
+		if tx.Type == umzugAnkuendigenTxArt && tx.Umzug != nil && tx.Umzug.Code != "" && !umzugNurLetzterCode(tx.DistributionAt) && umzugNurLetzterCode(blockZeit) {
+			return fmt.Errorf("umzug_ankuendigen mit Code bescheinigt %d vor dem Stichtag \"nur der letzte Code\", Block %d danach", tx.DistributionAt, blockZeit)
 		}
 	case umzugWiderrufTxArt, umzugVollzugTxArt:
 		if !umzugAktiv(blockZeit) {

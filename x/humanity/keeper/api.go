@@ -1334,6 +1334,10 @@ func (a *APIServer) Start(port int) {
 			fmt.Printf("[API] Server error: %v\n", err)
 		}
 	})
+	// Die neueste App-Version gleich beim Start holen: sonst bekam die erste
+	// Anfrage nach jedem Neustart "" und die App zeigte keine Update-Meldung
+	// (gesehen am 11.11.2026). Dieselbe Grenze wie bei einer Anfrage.
+	appVersionBeimStart()
 	startPprofServer()
 }
 
@@ -1447,7 +1451,7 @@ func (a *APIServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 		"produzenten":             a.blockchain.ProduzentenListe(),
 		"bescheinigung_konsens":   BescheinigungStand(),
 		// Umzug (umzug.go): ab wann; fuer die App und die Deploy-Sperre.
-		"umzug":                map[string]int64{"aktiv_ab": umzugAb(), "code_regeln_ab": umzugCodeRegelnAb()},
+		"umzug":                map[string]int64{"aktiv_ab": umzugAb(), "code_regeln_ab": umzugCodeRegelnAb(), "nur_letzter_code_ab": umzugNurLetzterCodeAb()},
 		"validator_liste_hash": a.blockchain.ValidatorListeHash(),
 		// Erzeuger aus AUTHORIZED_VALIDATORS ohne Bindung im Kettenregister:
 		// ab erzeugerSchnittAb erzeugten sie nicht mehr. Der Stichtag darf

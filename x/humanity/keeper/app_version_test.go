@@ -92,3 +92,36 @@ func TestAppVersionAusWeiterleitung(t *testing.T) {
 		}
 	}
 }
+
+// Beim Start wird nur gefragt, wenn es faellig ist und keine Anfrage laeuft
+// -- dieselbe Grenze wie bei einer Anfrage von aussen (kein Sturm von
+// Anfragen an GitHub bei schnellen Neustarts im selben Prozess).
+func TestAppVersionBeimStartNurWennFaellig(t *testing.T) {
+	appVersionStand.mu.Lock()
+	alt := struct {
+		v string
+		n time.Time
+		l bool
+	}{appVersionStand.version, appVersionStand.naechster, appVersionStand.laeuft}
+	t.Cleanup(func() {
+		appVersionStand.mu.Lock()
+		appVersionStand.version, appVersionStand.naechster, appVersionStand.laeuft = alt.v, alt.n, alt.l
+		appVersionStand.mu.Unlock()
+	})
+	// Nicht faellig: nichts startet.
+	appVersionStand.version, appVersionStand.naechster, appVersionStand.laeuft = "1.18.3", time.Now().Add(time.Hour), false
+	appVersionStand.mu.Unlock()
+	appVersionBeimStart()
+	appVersionStand.mu.Lock()
+	if appVersionStand.laeuft {
+		appVersionStand.mu.Unlock()
+		t.Fatal("beim Start gefragt, obwohl nicht faellig")
+	}
+	// Laeuft schon eine: keine zweite.
+	appVersionStand.naechster, appVersionStand.laeuft = time.Time{}, true
+	appVersionStand.mu.Unlock()
+	appVersionBeimStart()
+	if _, fragen := appVersionFaellig(time.Now()); fragen {
+		t.Fatal("laufende Anfrage wurde verdoppelt")
+	}
+}

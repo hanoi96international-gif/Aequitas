@@ -34,6 +34,18 @@ Betreibers:
 - Ausroll-Sperre: `.github/neustart/umzug-code-regeln-nicht-verpasst.sh`
   (kaputtes JSON haelt an). Tests: `umzug_code_regeln_test.go`.
 
+## Nachtrag 11.11.2026: nur der zuletzt hinterlegte Code (ab 12.11.2026 18:00 UTC)
+
+Eine Wallet hatte vor dem 09.11. zwei Codes hinterlegt (beide bestaetigt).
+Entscheidung des Betreibers: **nur der zuletzt angelegte gilt**. Ab
+`umzugNurLetzterCodeAbUnix` vergleicht ein Umzug mit Code nur noch den
+letzten Hash (`Hashes` stehen in der Reihenfolge des Hinterlegens). Gemessen
+an der bescheinigten Zeit des Antrags; ein Antrag mit Code von vor dem
+Stichtag nur in einen Block davor (`umzug_zeit`, `blockTauglich`,
+`auftragsFenster`), 600 s davor keine Annahme. `/api/umzug` meldet
+`codes_gueltig` und `nur_letzter_code_ab`. Ausroll-Sperre:
+`.github/neustart/umzug-letzter-code-nicht-verpasst.sh`.
+
 ## Stand 07.11.2026: gebaut (Kette), schlafend bis 08.11.2026 18:00 UTC
 
 Entscheidungen des Betreibers vom 07.11.2026:

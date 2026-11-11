@@ -14,8 +14,10 @@ package keeper
 //
 //   - Gesicht + Wiederherstellungscode: der Umzug geschieht sofort. Den Code
 //     erzeugt die App einmal und zeigt ihn einmal; auf der Kette steht nur
-//     sein Hash (umzug_code, von W1 unterschrieben; hoechstens drei je
-//     Wallet, ein neuer ersetzt keinen alten). Die alte Wallet kann
+//     sein Hash (umzug_code, von W1 unterschrieben). Seit dem 09.11.2026
+//     genau EINER je Wallet, nicht aenderbar (umzugCodeRegelnAbUnix); davor
+//     bis zu drei, von denen ab dem 12.11.2026 nur der zuletzt hinterlegte
+//     zaehlt (umzugNurLetzterCodeAbUnix). Die alte Wallet kann
 //     diesen Umzug nicht aufhalten -- wer Gesicht UND Code hat, ist der
 //     Mensch, auch wenn ein Dieb den alten Schluessel hat.
 //   - Nur das Gesicht: 14 Tage Frist (umzugFrist). In der Zeit kann die alte
@@ -90,6 +92,16 @@ const (
 	// (Sicherheitspruefung von #472, 2. Durchgang, M1).
 	umzugCodeRegelnPause int64 = 600
 
+	// umzugNurLetzterCodeAbUnix: 2026-11-12 18:00 UTC. Ab dann zaehlt bei
+	// einem Umzug mit Code nur der ZULETZT hinterlegte Code einer Wallet.
+	// Vor dem 09.11.2026 durfte eine Wallet bis zu drei Codes hinterlegen;
+	// Entscheidung des Betreibers vom 11.11.2026: nur der zuletzt angelegte
+	// gilt. Gemessen wie umzugCodeRegelnAbUnix an der unterschriebenen Zeit
+	// des Antrags; ein Antrag mit Code von vor dem Stichtag nur in einen Block
+	// davor (umzug_zeit, blockTauglich, auftragsFenster), und 600 s davor
+	// nimmt der Knoten keinen mehr an.
+	umzugNurLetzterCodeAbUnix int64 = 1794506400
+
 	umzugCodeTxArt        = "umzug_code"
 	umzugAnkuendigenTxArt = "umzug_ankuendigen"
 	umzugWiderrufTxArt    = "umzug_widerruf"
@@ -126,7 +138,7 @@ const (
 	umzugCodesHoechstens    = 50000
 	umzugOffenHoechstens    = 1000
 	umzugErledigtHoechstens = 20000
-	// Codes je Wallet (sie sammeln sich, siehe umzugCode).
+	// Codes je Wallet vor umzugCodeRegelnAbUnix (siehe umzugCode).
 	umzugCodesJeWallet = 3
 	// Vollzuege je Tagesrunde; der Rest am naechsten Tag.
 	umzugVollzugJeRunde = 200
@@ -165,6 +177,26 @@ func umzugCodeRegelnAb() int64 {
 		return o
 	}
 	return umzugCodeRegelnAbUnix
+}
+
+// umzugNurLetzterCodeAbOverride: nur fuer Tests (0 = Konstante gilt).
+var umzugNurLetzterCodeAbOverride atomic.Int64
+
+func umzugNurLetzterCodeAb() int64 {
+	if o := umzugNurLetzterCodeAbOverride.Load(); o != 0 {
+		return o
+	}
+	return umzugNurLetzterCodeAbUnix
+}
+
+// umzugNurLetzterCode: zaehlt fuer einen Antrag mit der unterschriebenen
+// Zeit z nur der zuletzt hinterlegte Code?
+func umzugNurLetzterCode(z int64) bool { return z >= umzugNurLetzterCodeAb() }
+
+// umzugAntragMitCodePausiert: nimmt der Knoten zur Uhrzeit jetzt einen
+// Antrag MIT Code und der Zeit z NICHT an (wie umzugCodeAnnahmePausiert)?
+func umzugAntragMitCodePausiert(z, jetzt int64) bool {
+	return !umzugNurLetzterCode(z) && jetzt >= sattAdd(umzugNurLetzterCodeAb(), -umzugCodeRegelnPause)
 }
 
 // umzugCodeAnnahmePausiert: nimmt der Knoten zur Uhrzeit jetzt einen
@@ -259,11 +291,14 @@ func umzugNullifierKanonisch(n string) bool {
 
 // ------------------------------------------------------------ Register
 
-// umzugCode: die Codes einer Wallet. Ein neuer Code kommt DAZU, er ersetzt
-// keinen (Sicherheitsdurchgang des Diffs): sonst ersetzte ein Dieb mit dem
-// alten Schluessel den Code des Menschen, und den Weg ohne Code koennte er
-// mit demselben Schluessel jedes Mal widerrufen -- der Mensch kaeme nie mehr
-// an sein Menschsein. Ein Code allein bewirkt nichts ohne das Gesicht.
+// umzugCode: die Codes einer Wallet, in der Reihenfolge des Hinterlegens.
+// Bis zum 09.11.2026 kam ein neuer Code DAZU (hoechstens drei) -- ein Dieb
+// mit dem alten Schluessel sollte den Code des Menschen nicht ersetzen.
+// Seit umzugCodeRegelnAbUnix gibt es nur noch einen, nicht aenderbar. Ab
+// umzugNurLetzterCodeAbUnix zaehlt bei Wallets mit mehreren nur der letzte
+// (Entscheidung des Betreibers vom 11.11.2026; es gab genau eine solche
+// Wallet, beide Codes vom Inhaber). Ein Code allein bewirkt nichts ohne das
+// Gesicht.
 type umzugCode struct {
 	Wallet string   `json:"w"`
 	Hashes []string `json:"h"`
@@ -798,12 +833,24 @@ func (cs *ChainState) umzugAnkuendigenUrteilLocked(ctx context.Context, tx *Tran
 		return umzugBefund("umzug_voll", "Register voll"), nil
 	}
 	if u.Code != "" {
+		// Ein Antrag mit Code von vor dem Stichtag "nur der letzte Code" nur
+		// in einen Block davor -- sonst entschieden Annahme und Nachspielen
+		// verschieden.
+		if !umzugNurLetzterCode(z) && umzugNurLetzterCode(blockZeit) {
+			return umzugBefund("umzug_zeit", "%s: Antrag mit Code bescheinigt %d vor dem Stichtag, Block %d danach", kurzAdresse(neu), z, blockZeit), nil
+		}
 		c, ok := reg.code(alt)
 		passt := false
-		if ok {
+		if ok && len(c.Hashes) > 0 {
 			soll := umzugCodeHash(alt, u.Code)
-			for _, h := range c.Hashes {
-				passt = passt || h == soll
+			if umzugNurLetzterCode(z) {
+				// Nur der zuletzt hinterlegte (Hashes in der Reihenfolge des
+				// Hinterlegens, umzugRegister.mitCode).
+				passt = c.Hashes[len(c.Hashes)-1] == soll
+			} else {
+				for _, h := range c.Hashes {
+					passt = passt || h == soll
+				}
 			}
 		}
 		if !passt {
@@ -1213,6 +1260,10 @@ func (a *APIServer) handleUmzugAntrag(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "signature does not match the new wallet", http.StatusForbidden)
 		return
 	}
+	if code != "" && umzugAntragMitCodePausiert(req.Zeit, time.Now().Unix()) {
+		jsonError(w, fmt.Sprintf("moves with a recovery code paused for the rule change at %d -- please try again then", umzugNurLetzterCodeAb()), http.StatusServiceUnavailable)
+		return
+	}
 	tx := Transaction{Type: umzugAnkuendigenTxArt, Wallet: neu, To: alt, Nullifier: req.Nullifier, DistributionAt: req.Zeit,
 		BioBescheinigung: &BioBescheinigung{Zeit: req.Zeit, Modus: req.Modus, Signaturen: unterschriften, Bindungen: bindungen},
 		Umzug:            &UmzugAngaben{Code: code, Sig: sig, Pruefung: req.Pruefung}}
@@ -1261,7 +1312,8 @@ func (a *APIServer) handleUmzugStand(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	reg := a.state.umzugRegisterJetzt()
-	antwort := map[string]interface{}{"aktiv_ab": umzugAb(), "frist_tage": umzugFrist / 86400, "code_regeln_ab": umzugCodeRegelnAb()}
+	antwort := map[string]interface{}{"aktiv_ab": umzugAb(), "frist_tage": umzugFrist / 86400, "code_regeln_ab": umzugCodeRegelnAb(),
+		"nur_letzter_code_ab": umzugNurLetzterCodeAb()}
 	if n := strings.TrimSpace(r.URL.Query().Get("n")); n != "" {
 		if !umzugNullifierKanonisch(n) {
 			jsonError(w, "n must be a decimal nullifier", http.StatusBadRequest)
@@ -1279,6 +1331,13 @@ func (a *APIServer) handleUmzugStand(w http.ResponseWriter, r *http.Request) {
 	if c, ok := reg.code(wallet); ok {
 		antwort["code_seit"] = c.Zeit
 		antwort["codes"] = len(c.Hashes)
+		// Wie viele bei einem Umzug zaehlen (ab umzugNurLetzterCodeAbUnix
+		// nur der zuletzt hinterlegte).
+		if umzugNurLetzterCode(time.Now().Unix()) {
+			antwort["codes_gueltig"] = 1
+		} else {
+			antwort["codes_gueltig"] = len(c.Hashes)
+		}
 	}
 	if o, ok := reg.offenMit(wallet); ok {
 		antwort["offen"] = map[string]interface{}{"nullifier": o.Nullifier, "alt": o.Alt, "neu": o.Neu, "angekuendigt": o.Zeit,
