@@ -23,6 +23,8 @@ lauf '{}' $((REPO - 600)) halt                                                  
 lauf '{}' $((REPO + 60)) halt                                                     # schon vorbei
 lauf '{"bescheinigung_konsens":{"register_ab":1700000000}}' $((REPO - 7200)) halt # laufender Knoten nimmt sie schon an
 lauf '{"bescheinigung_konsens":{"register_ab":"x"}}' $((REPO - 7200)) halt        # unlesbar
+lauf 'kein json' $((REPO - 7200)) halt                                     # kaputte Antwort
+lauf '{"bescheinigung_konsens":{"register_ab":99999999999999999999}}' $((REPO - 7200)) halt  # riesige Zahl
 rm -f "$D/api/status"
 if bash .github/neustart/b1b-stichtag-nicht-verpasst.sh "http://127.0.0.1:$PORT" 0 >/dev/null 2>&1; then echo "FEHLER: ohne Antwort erlaubt"; exit 1; fi
 echo "ok: ohne Antwort -> halt"

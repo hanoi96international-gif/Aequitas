@@ -12,7 +12,8 @@ PORT=$((20000 + RANDOM % 20000))
 (cd "$D" && python3 -m http.server "$PORT" --bind 127.0.0.1 >/dev/null 2>&1) & PID=$!
 sleep 1
 lauf() { # inhalt jetzt erwartung
-  if [ -n "$1" ]; then printf '%s' "$1" > "$D/api/verifier"; else rm -f "$D/api/verifier"; fi
+  # Ohne Endpunkt antwortet der echte Knoten mit {"error":"no such endpoint"}.
+  if [ -n "$1" ]; then printf '%s' "$1" > "$D/api/verifier"; else printf '%s' '{"error":"no such endpoint"}' > "$D/api/verifier"; fi
   if bash .github/neustart/verifier-stichtag-nicht-verpasst.sh "http://127.0.0.1:$PORT" "$2" >/dev/null 2>&1; then e=ok; else e=halt; fi
   [ "$e" = "$3" ] || { echo "FEHLER: live=$1 jetzt=$2 -> $e, erwartet $3"; exit 1; }
   echo "ok: live=${1:-(kein Endpunkt)} jetzt=$2 -> $e"
@@ -23,6 +24,9 @@ lauf '{"aktiv":false}' $((REPO - 7200)) ok             # schlafend, zwei Stunden
 lauf '' $((REPO - 600)) halt                           # nur zehn Minuten voraus
 lauf '' $((REPO + 60)) halt                            # schon vorbei
 lauf '{"ab":1700000000}' $((REPO - 7200)) halt         # laufender Knoten fuehrt es schon
+lauf 'kein json' $((REPO - 7200)) halt                 # kaputte Antwort
+lauf '{"ab":99999999999999999999}' $((REPO - 7200)) halt  # riesige Zahl
+lauf '{"ab":"0001700000000"}' $((REPO - 7200)) halt     # fuehrende Nullen
 rm -f "$D/api/status"
 if bash .github/neustart/verifier-stichtag-nicht-verpasst.sh "http://127.0.0.1:$PORT" 0 >/dev/null 2>&1; then echo "FEHLER: ohne Antwort erlaubt"; exit 1; fi
 echo "ok: ohne Antwort -> halt"
