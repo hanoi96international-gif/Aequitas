@@ -1,6 +1,6 @@
 # Play Store: was vorbereitet ist und was fehlt
 
-Stand: 03.11.2026. Die Google-Regeln ändern sich oft; vor dem Einreichen die
+Stand: 03.11.2026, Berechtigungen 12.11.2026. Die Google-Regeln ändern sich oft; vor dem Einreichen die
 verlinkten Seiten noch einmal lesen.
 
 ## Kurz
@@ -14,11 +14,17 @@ Entwicklerkonto und drei Angaben, die nur der Betreiber machen kann.
 | `.aab`-Build | Profil `production` in `eas.json` |
 | Signatur | **Achtung**, siehe unten: Play App Signing mit demselben Schlüssel |
 | Konto löschen in der App | vorhanden (Identität → Daten löschen, `DELETE /enrollment`) |
-| Konto löschen über das Web (Pflicht) | **fehlt**: eine Seite mit Anleitung; siehe unten |
+| Konto löschen über das Web (Pflicht) | Seite `/loeschen` gebaut; erscheint wie Impressum erst mit den Pflichtangaben |
 | Datenschutzerklärung als URL | **fehlt**: hängt am Impressum (`rechtstexte-setzen.yml`) |
-| Entwicklerkonto | **fehlt**: als Organisation, siehe unten |
+| Entwicklerkonto | **fehlt**; Entscheidung 07.11.: privates Konto (Schritte in `store/PLAY_STORE.md` im App-Repo) |
+| Berechtigungen | ab App 1.18.7 nur Kamera und Geräte-Biometrie; der Build prüft das Manifest |
 
 ## 1. Entwicklerkonto: als Organisation, nicht privat
+
+> **Entscheidung 07.11.2026:** privates Konto. Damit gilt der geschlossene
+> Test mit mindestens 12 Testern über 14 Tage (Schritte und Einladungstext:
+> `store/PLAY_STORE.md` im App-Repo). Der Abschnitt darunter bleibt als
+> Begründung, warum ein Organisationskonto das erspart hätte.
 
 - Ein **privates** Konto (nach dem 13.11.2023 angelegt) muss jede neue App
   erst 14 Tage lang mit mindestens 12 Testern im geschlossenen Test laufen
@@ -55,7 +61,7 @@ ihn vor dem Absenden gegenlesen.
 | Datentyp bei Google | Erhoben? | Zweck | Anmerkung |
 |---|---|---|---|
 | Fotos und Videos | ja, nicht geteilt | Betrugsschutz und Sicherheit (Einmaligkeit) | Bildserie und Vorlage nur im Arbeitsspeicher; gespeichert wird ein Sketch, der kein Bild ist |
-| Audio (sonstige Audiodateien) | ja, nicht geteilt | Betrugsschutz (akustische Lebendigkeit) | Echo eines Ultraschall-Tons, keine Sprache |
+| Audio | nein | — | Die akustische Prüfung ist seit dem 23.08.2026 entfernt; ab App 1.18.7 verlangt die App auch kein Mikrofon mehr (vorher stand `RECORD_AUDIO` ungenutzt im Manifest) |
 | Geräte- oder andere Kennungen | ja, nicht geteilt | Betrugsschutz | Geräte-Geheimnis; Play-Integrity-Nachweis |
 | Finanzinformationen | ja | App-Funktion | Wallet-Adresse und Kontostand liegen öffentlich auf der Kette |
 | Standort, Kontakte, Nachrichten, Werbe-ID | nein | — | — |
