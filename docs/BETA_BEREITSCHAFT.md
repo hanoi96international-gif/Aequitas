@@ -1,4 +1,4 @@
-# Beta-Bereitschaft — Prüfung vom 14.10.2026, Stand 01.11.2026
+# Beta-Bereitschaft — Prüfung vom 14.10.2026, Stand 11.11.2026
 
 Geprüft wurden alle vier Repos: Kette, App, Biometrie und Proof-Server. Die
 Fragen waren:
@@ -15,7 +15,71 @@ Maßstab ist AGENTS.md, „Sicherheit — Launch-Massstab“. Jede Änderung unt
 hatte eine getrennte Sicherheitsprüfung. Das Ergebnis steht als Kommentar im
 jeweiligen PR.
 
-## 0. Live-Stand 01.11.2026
+## 0. Live-Stand 11.11.2026
+
+Gelesen am 11.11.2026 um 20:40 UTC, und zwar von `aequitas.digital/api/status`
+und `/api/app-version`. Abschnitt „Live-Stand 01.11.“ darunter ist Verlauf.
+
+| Bereich | Stand |
+|---|---|
+| Kette | Höhe ~1.831.000, Commit `cf930f6` (= `main` ohne die reine Ausroll-Sperre #475), 1 Mensch, Geldmenge 1.000 AEQ, Abweichung 0. Ein Erzeuger (C1), `erzeuger_ohne_bindung` leer, Register-Vertrag v8. |
+| Registrierung | Bescheinigung im Konsens aktiv, Quorum 1, Modus `test`. Coordinator `d3c46a77`, Bezeuger `a73580d9`. |
+| Umzug | Seit 08.11. 18:00 UTC aktiv. Seit 09.11. 18:00 UTC gilt ein Wiederherstellungscode je Wallet, nicht änderbar (`umzug_code_fest`). **Ab 12.11.2026 18:00 UTC** zählt beim Umzug mit Code nur der zuletzt angelegte Code (`nur_letzter_code_ab` = 1794506400); Wallets mit mehreren alten Codes sind damit eindeutig. Nach dem Stichtag einmal live prüfen: `/api/umzug?adresse=…` zeigt `codes_gueltig` = 1. |
+| App | Release **v1.18.5**. Der Knoten meldet sie an die App (Update-Meldung). Er fragt GitHub nur, wenn jemand `/api/app-version` aufruft, höchstens alle 30 Minuten, nach einem Fehlschlag nach 2 Minuten, und einmal beim Start. Gemergt und noch nicht gebaut: 1.18.6 (App #62: Fehlertexte beim Umzug, „Code doch angekommen“, O/I/L im Code) und App #63 (glob/minimatch, nur Build). |
+| Abhängigkeiten | Go 1.26.11 (GO-2026-6859). Biometrie: setuptools 84.2 (Vergleichsdienst neu ausgerollt). App, `npm audit --omit=dev`: übrig sind nur zwei Pakete, beide im Build: `image-size` (Metro übergibt einen Pfad, den 2.x nicht kann) und `deepmerge` (kein Fix). `decode-uri-component` liegt als eigene Fassung in `vendor/` und läuft in linearer Zeit. |
+| Ausroll-Sperren | Jeder Stichtag hat eine Sperre in `.github/neustart/`: B1b, Umzug, Code-Regeln, letzter Code, Verifier. Sie hält an, wenn die Antwort des Knotens kaputt ist oder eine Zahl nicht streng passt (#475). |
+| Rechtstexte | `/impressum` und `/datenschutz` antworten weiter **404**. |
+
+**Grenzen, die bleiben, solange es nur einen Betreiber gibt.** Alle sind
+bekannt und beschrieben. Keine davon lässt sich allein mit Code beheben.
+
+1. **Ein Erzeuger, ein Vergleichsdienst.** Fällt C1 aus, stehen Kette,
+   Registrierung und App-API. Die Wiederherstellung ist geübt
+   (`wiederherstellung-ueben.yml`). Abhilfe bringt
+   erst ein zweiter Server mit eigenem Betreiber (`docs/VALIDATOREN_HINZUFUEGEN.md`).
+2. **StateRoot-Abweichung wird nur angezeigt.** Jeder Knoten rechnet selbst
+   nach. Bei einer Abweichung hält aber kein Knoten an, denn mit einem Erzeuger
+   gäbe es niemanden, gegen den man abstimmen könnte. Durchgesetzt wird erst
+   mit mehreren Validatoren (`docs/KONSENS_UND_AUSFUEHRUNG_2026.md`).
+3. **Leiterwechsel bei genau zwei Validatoren** braucht den Schalter
+   `AEQUITAS_LEITUNG_ZWEI_WECHSELN`. Ab drei Validatoren wechselt die Leitung
+   von selbst (`docs/OFFEN.md`, Punkt 6).
+4. **Gesichtsvergleich und Lebendigkeit sind nicht kalibriert.** Dafür fehlen
+   echte Aufnahmen (`docs/DEEPFAKE_TEST.md`). Die gestaffelte Freischaltung
+   schläft bis zum Stichtag 2100.
+5. **libp2p nur teilweise getestet.** Die Tests decken den Aufbau ab
+   (`p2p_bootstrap_test.go`) und mehrere Knoten mit echter Datenbank
+   (`vier_knoten_realdb_test.go`). Der Betrieb über libp2p zwischen zwei
+   echten Servern lässt sich erst mit einem zweiten Server prüfen.
+6. **Durchsatz.** Gemessen sind gut 16.000 Ketten-TPS auf C1 (02.10.). Mehr
+   bringt erst die verteilte Annahme mit mehreren Validatoren, und die schläft
+   (`MaxInt64`). Ein Umbau vorher brächte bei einem Server nichts und wäre ein
+   Konsens-Risiko.
+
+**Was nur du tun kannst, geordnet nach Wichtigkeit.**
+
+1. **Impressum und Datenschutz** (Blocker 3): die sieben `LEGAL_*`-Angaben,
+   dann `rechtstexte-setzen.yml`. Ohne sie ist ein öffentlicher Start in
+   Deutschland nicht zulässig.
+2. **App 1.18.6 bauen und veröffentlichen:** `build-apk.yml` (Signier-Freigabe),
+   danach `release-apk.yml`.
+3. **Zweiter Server mit eigenem Betreiber.** Das ist der wichtigste Schritt zur
+   Dezentralität und hebt die Grenzen 1–3 auf.
+4. **Deepfake-Aufnahmen** und **Zwei-Personen-Test** (Grenze 4).
+5. **DSGVO-Entscheidung** (Blocker 5). Danach eigener `MATCHER_INDEX_KEY` und
+   Echtmodus.
+6. **Externe Prüfung** (`docs/AUDIT_ANFRAGE.md`), **Play Store**
+   (`docs/PLAY_STORE.md`), **GitHub-Organisation** (`docs/GITHUB_ORGANISATION.md`).
+
+Erledigt seit dem 02.11. (alle mit getrennter Sicherheitsprüfung im PR):
+Umzug mit Gesicht und 14 Tagen Zeitschloss (#467, Stichtag vorgezogen in #468), Code-Regeln (#472) mit
+Annahme-Pause vor jedem Stichtag, Website-FAQ in 12 Sprachen (#473),
+App-Version nach Neustart und Fehlschlag (#469, #470, #474), Go 1.26.11 (#474),
+strengere Ausroll-Sperren (#475), App 1.18.x mit Code-Einrichtung auf der
+Startseite und eindeutigen Fehlertexten (App #57–#63), setuptools 84 im
+Vergleichsdienst (biometric #117).
+
+## 0.1 Live-Stand 01.11.2026
 
 Gelesen am 01.11.2026 mit `betrieb-pruefen-c1.yml` (Lauf 41346637556) und
 `server-haerten.yml` im Modus `pruefen` (Lauf 41346634665). Beide sind grün
