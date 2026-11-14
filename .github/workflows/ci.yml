@@ -242,12 +242,12 @@ jobs:
       - name: govulncheck (Hauptmodul)
         run: |
           set -o pipefail
-          go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 -format json ./... | python3 scripts/govulncheck_pruefen.py
+          go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 -format json ./... | python3 scripts/govulncheck_pruefen.py
       - name: govulncheck (zk-forschung)
         working-directory: forschung/zk-gueltigkeit
         run: |
           set -o pipefail
-          go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 -format json ./... | python3 ../../scripts/govulncheck_pruefen.py
+          go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 -format json ./... | python3 ../../scripts/govulncheck_pruefen.py
 
   # The race detector, on its own job so it reports independently of the
   # ordinary suite (it roughly triples runtime, and a data race is a different
