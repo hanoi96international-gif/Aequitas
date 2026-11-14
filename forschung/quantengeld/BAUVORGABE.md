@@ -208,6 +208,19 @@ Je schlechter der Speicher, desto mehr Teile – aber die Sicherheit bleibt bei
    Ansatz „PEGASIS“ 2025, nachzulesen) statt über ~760 kleine Primzahlen,
    und schnellere Multiplizierer (einfaches Karatsuba gemessen: kein
    Gewinn) – Kandidaten für den Faktor 2⁵–2¹⁰. Erst zählen, dann behaupten.
+   **Literaturstand (Suche 14.11.2026, Volltexte von hier nicht erreichbar):**
+   PEGASIS (CRYPTO 2025) wertet die Aktion *beliebiger* Elemente in
+   Polynomzeit aus, ohne Klassengruppenstruktur und ohne Gitterreduktion –
+   damit entfiele auch unsere Überdeckungs-Korrektur (2⁴). Gemessen (Sage):
+   1,5 s bei 512 Bit, 21 s bei 2.048, ~2 min bei 4.096 Bit. Der Nachfolger
+   qt-Pegasis (ePrint 2025/1859) ist 2,6× schneller bei 4.000 Bit und
+   **scheitert nie** – für eine Quantenschaltung entscheidend, denn jede
+   Wiederholung „bis es klappt“ müsste sonst in Überlagerung mitgerechnet
+   werden. Grobe Einordnung aus den Zeiten: bei 4.096 Bit etwa 2²²–2²⁵
+   Multiplikationen je Aktion, unsere CSIDH-Auswertung mit Überdeckung
+   ~2²⁵ – also **Gewinn zwischen 1× und 2³, nicht sicher 2⁵**. Die echten
+   Operationszahlen (Länge der 4-dimensionalen Kette, Kosten je Schritt)
+   stehen im Volltext; nächster Schritt: nachlesen und nachzählen.
 5. **Reicht eine schwache Prüfung? – Nein, gemessen (`schwache_pruefung.py`).**
    Idee: statt der vollen Projektion (Exponenten bis m = 21) je Erzeuger
    ein paar Hadamard-Tests mit einer einzigen Isogenie. Der beste Angriff
