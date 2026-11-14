@@ -208,16 +208,20 @@ Je schlechter der Speicher, desto mehr Teile – aber die Sicherheit bleibt bei
    Ansatz „PEGASIS“ 2025, nachzulesen) statt über ~760 kleine Primzahlen,
    und schnellere Multiplizierer (einfaches Karatsuba gemessen: kein
    Gewinn) – Kandidaten für den Faktor 2⁵–2¹⁰. Erst zählen, dann behaupten.
-5. **Reicht eine schwache Prüfung? (offen, 2⁴ bei 8.192 Bit)** Die volle
-   Prüfung projiziert auf genau eine Seriennummer und braucht dafür
-   Exponenten bis m = 21. Mit kleinen Exponenten (m = 1) lässt der Test
-   statt einer Seriennummer etwa 2⁴⁰⁹⁶ · (2/3)⁷⁵⁸ ≈ 2³⁶⁵³ „Nachbarn“ durch.
-   Eine *neu geprägte* Note trifft diese Menge nur mit 2⁻⁴⁴³ – das wäre
-   sicher. Offen ist, ob ein Fälscher aus echten Noten einen Zustand mit
-   einem Nachbar-Bezeichner *ableiten* kann (Bezeichner verschieben oder
-   Noten kombinieren, ohne die Vektorisierung zu lösen). Gelingt der
-   Beweis, dass das nicht geht, sinken die Prüfkosten um 2⁴, ohne die Note
-   zu schwächen. Bis dahin gilt die volle Prüfung.
+5. **Reicht eine schwache Prüfung? – Nein, gemessen (`schwache_pruefung.py`).**
+   Idee: statt der vollen Projektion (Exponenten bis m = 21) je Erzeuger
+   ein paar Hadamard-Tests mit einer einzigen Isogenie. Der beste Angriff
+   darauf ist ein **glatter Zustand**: eine Gaußglocke über
+   Exponentenvektoren mit den Phasen der Note. Er besteht jeden Einzeltest
+   fast, braucht aber nur einen Träger kleiner als die Gruppe. An der
+   echten kleinen Gruppe (h = 1.491) exakt simuliert: Glocke σ = 0,4
+   besteht schwach mit 0,16, voll nur mit 0,015 – und die Formel trifft die
+   Simulation. Hochgerechnet, mit derselben Annahme für beide Prüfungen
+   (Träger ≤ 2⁻¹²⁸·N): die schwache Prüfung braucht bei 8.192 Bit **156
+   Runden, die volle 42** – sie ist 3,7× **teurer**. Die volle Prüfung
+   bleibt. (Nebenbefund: auch die volle Prüfung ruht darauf, dass
+   Vektorisierung *in einem Ausschnitt* der Größe 2⁻¹²⁸·N schwer bleibt –
+   als Annahme festgehalten.)
 
 ## 6. Das Gesamtpaket – was wir bauen, was andere bauen
 
@@ -226,7 +230,7 @@ Gesamtpaket.“* Das ist der Weg. Die drei Sperren, ehrlich nach Zuständigkeit:
 
 | Sperre | Wer löst sie | Unser Beitrag |
 |---|---|---|
-| **Prüfkosten** (2e: Tage je Prüfung) | **wir** – Algorithmen | 5.4: einfache Hebel gemessen (2²); Faktor 2⁵–2¹⁰ strukturell suchen |
+| **Prüfkosten** (2e: Tage je Prüfung) | **wir** – Algorithmen | gemessen: Strategien 2², Karatsuba einfach 0, schwache Prüfung 0 – Faktor 2⁵–2¹⁰ nur strukturell (höherdimensionale Isogenien) |
 | **Einlösen** (Einmal-Signatur, heute nur aus iO) | **wir** – Protokoll | Einweg-Brücke (unten) braucht sie gar nicht |
 | **Speicher** (≈ 4.100–8.500 fehlerkorrigierte logische Qubits je Teilnote, über Tage) | Hardware-Hersteller | Vorgabe festhalten; Stand der Fahrpläne verfolgen |
 

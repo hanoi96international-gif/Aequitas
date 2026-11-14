@@ -203,6 +203,8 @@ gemessen und bringen zusammen ≈ 2²; der nötige Faktor 2⁵–2¹⁰ muss aus
 anderen Auswertung der Gruppenaktion kommen (`BAUVORGABE.md` §2e). Der
 Multiplizierer ist als echter umkehrbarer Schaltkreis gebaut und gezählt
 (`schaltkreis_mult.py`): Schulbuch 4,0·B², einfaches Karatsuba kein Gewinn.
+Eine „schwache“ Prüfung mit wenigen Einzeltests ist gegen glatte
+Fälschungen 3,7× teurer als die volle (`schwache_pruefung.py`).
 
 ## 4. Weitere Dokumente
 
