@@ -1,6 +1,9 @@
 package keeper
 
 import (
+	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -27,13 +30,22 @@ import (
 // laufen die Abfragen wie bisher (nur langsamer), nichts wird uebersprungen.
 var lowerIndizes = []struct{ name, definition string }{
 	{"idx_evm_nonces_lower", "evm_nonces (lower(address))"},
-	{"idx_chain_accounts_lower", "chain_accounts (lower(address))"},
 	{"idx_evm_storage_lower", "evm_storage (lower(address), slot)"},
 	{"idx_evm_contracts_lower", "evm_contracts (lower(address))"},
 	{"idx_chain_blocks_proposer_lower", "chain_blocks (lower(proposer), timestamp)"},
 	{"idx_guardians_wallet_lower", "guardians (lower(wallet_address))"},
 	{"idx_guardians_guardian_lower", "guardians (lower(guardian_address))"},
 	{"idx_registered_nodes_signing_lower", "registered_nodes (lower(signing_address))"},
+}
+
+// doppelteIndizes: frueher hier gebaut, inzwischen doppelt vorhanden. Den
+// Index auf chain_accounts(lower(address)) legt seit #413 (23.10.2026)
+// state.go als idx_chain_accounts_lower_address an; zwei gleiche Indizes
+// kosten bei jedem Schreiben doppelt und lassen den Planer zufaellig
+// waehlen. Entfernt wird nur, wenn der verbleibende gueltig da ist -- sonst
+// bleibt alles, wie es ist.
+var doppelteIndizes = []struct{ name, bleibt string }{
+	{"idx_chain_accounts_lower", "idx_chain_accounts_lower_address"},
 }
 
 // lowerIndizesSicherstellen: im Hintergrund, einmal je Start. Ein fehlender
@@ -78,5 +90,36 @@ func (cs *ChainState) lowerIndizesBauen() (fehlend []string) {
 			fehlend = append(fehlend, ix.name)
 		}
 	}
+	for _, d := range doppelteIndizes {
+		if err := cs.doppeltenIndexEntfernen(d.name, d.bleibt); err != nil {
+			fmt.Printf("[INDEX] doppelter Index %s nicht entfernt: %v -- bleibt bestehen\n", d.name, err)
+		}
+	}
 	return fehlend
+}
+
+// doppeltenIndexEntfernen entfernt name nebenlaeufig (ohne Tabellensperre),
+// aber nur, wenn bleibt als gueltiger Index existiert.
+func (cs *ChainState) doppeltenIndexEntfernen(name, bleibt string) error {
+	ctx := context.Background()
+	conn, err := cs.db.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	var gueltig sql.NullBool
+	if err := conn.QueryRowContext(ctx,
+		`SELECT i.indisvalid FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid WHERE c.relname = $1`,
+		bleibt).Scan(&gueltig); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	if !gueltig.Valid || !gueltig.Bool {
+		return nil // der verbleibende fehlt: den doppelten behalten
+	}
+	if _, err := conn.ExecContext(ctx, `SET statement_timeout = 0`); err != nil {
+		return err
+	}
+	defer conn.ExecContext(ctx, `RESET statement_timeout`) //nolint:errcheck
+	_, err = conn.ExecContext(ctx, `DROP INDEX CONCURRENTLY IF EXISTS `+name)
+	return err
 }
