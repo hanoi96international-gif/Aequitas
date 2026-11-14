@@ -273,3 +273,17 @@ sobald es eine Einmal-Signatur ohne iO gibt.
 
 Damit hängt Version 1 nur noch an **zwei** Dingen: an unserem Prüfkosten-
 Hebel und am Speicher. Die Kettenseite und die Spezifikation stehen.
+
+## 7. Andere Wege – Literaturstand (Suche 14.11.2026, Volltexte von hier nicht erreichbar)
+
+| Weg | Was er verspricht | Haken | Für uns |
+|---|---|---|---|
+| **Gruppenaktion (Zhandry, veröffentlicht 2025)** – unser Weg | öffentlich prüfbar, offline | braucht laut Autor **eine zusätzliche Annahme, deren Tragfähigkeit offen ist**; Kosten siehe §2e | bleibt Hauptweg, Annahme in §1 als offen führen |
+| **Einmal-Speicher (Genovese & Stambler, arXiv 2512.21304, 2025/26)** | öffentlich prüfbar mit **QKD-artiger Technik** statt Universal-Quantenrechner | Hardware-Annahme (Einmal-Speicher sind ohne sie beweisbar unmöglich), nur **N Prüfungen je Note**, Quantenspeicher mit langer Kohärenz nötig | **ernsthafter Kandidat für einen früheren Versuch** – Vertrauen in Hardware statt in eine Stelle; Volltext lesen |
+| **Quanten-Schecks / Löschnachweis aus LWE (Barhoush & Salvail, arXiv 2401.16116)** | klassisch einlösbar, Löschnachweis öffentlich prüfbar | **vom Autor zurückgezogen** (v4) | nicht darauf bauen |
+| Gitter (Khesin–Lu–Shor u. a.) | – | **gebrochen** (Liu–Montgomery–Zhandry 2023) | ausgeschlossen |
+
+Nächster Schritt: die Volltexte von Zhandry 2025 (welche Zusatzannahme?) und
+Genovese & Stambler (welche Hardware, wie viele Qubits, wie lange Speicher?)
+lesen – beide sind über arxiv.org zugänglich, von dieser Sitzung aus derzeit
+nicht.
