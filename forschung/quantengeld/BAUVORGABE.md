@@ -26,15 +26,15 @@ nachzulesen** (die Volltexte waren von hier aus nicht erreichbar).
    veröffentlichten Schätzungen (Literatur: Peikert 2020, Bonnetain &
    Schrottenloher 2020) sehen **CSIDH-512 deutlich unter 128 Bit
    Quantensicherheit**; für ~128 Bit werden Primzahlen in der Größenordnung
-   **2.048 bis 4.096 Bit** genannt. **Vorgabe nach eigener Messung (2a–2c):
-   p ≥ 8.192 Bit für 2¹²⁸, p ≈ 16.384 Bit für das Ziel 2⁻¹⁹².**
+   **2.048 bis 4.096 Bit** genannt. **Vorgabe nach eigener Messung (2a–2d):
+   p ≥ 8.192 Bit für 2¹²⁸, p ≥ 17.000 Bit für das Ziel 2⁻¹⁹².**
 3. **Mehrteilige Note** (`isogenie_mehrteilig.py`): k Teilnoten, gültig ab
    τ bestandenen, mit Abstand d = 2τ − k ≥ 1 über der Hälfte (gegen
    Aufteilen). Bei kryptografischer Größe genügt d = 1; die Fälschungs­
    schranke 1/h je Teilnote liegt dann weit unter 2⁻¹²⁸ – die Sicherheit
    bestimmt allein Punkt 2.
 4. **Fehlerkorrektur:** Jede Teilnote ist ein Register aus m ≈ log₂ h Qubits;
-   bei p ≈ 16.384 Bit ist h ≈ √p ≈ 2⁸¹⁹², also **m ≈ 8.192 logische Qubits je
+   bei p ≈ 17.000 Bit ist h ≈ √p ≈ 2⁸⁵⁰⁰, also **m ≈ 8.500 logische Qubits je
    Teilnote** (bei 8.192 Bit: 4.096). Nach `rauschen_oeffentlich.py` muss jedes Qubit dann m-mal
    besser sein als bei Wiesner – das geht nur mit **fehlerkorrigierten
    logischen Qubits**.
@@ -88,9 +88,29 @@ gehaltene Vektor (Speicher), jeweils beim günstigsten L, n = 16 … 72:
 | 8.192 Bit | 2⁶⁹ | **2¹³⁴ – über 2¹²⁸** | 2⁶¹ |
 | 16.384 Bit | ≈ 2⁹⁸ | **2¹⁸⁹ – etwa 2¹⁹²** | 2⁸⁴ |
 
+### 2d. Was kostet eine Abfrage? (`isogenie_kosten.py`)
+
+Gezählt: Körpermultiplikationen einer Gruppenaktion mit Exponenten in
+{−1, 0, 1} (zählende Arithmetik, gegen `isogenie_geld.py` geprüft), Modell
+je kleiner Primzahl l: Kofaktor-Leiter (~ log₂ p) plus Kern/Isogenie (~ l);
+das Modell liegt unter der Zählung (günstig für den Angreifer). Je
+Multiplikation 4·B² Toffoli-Gatter.
+
+| Primzahl | Toffoli je Abfrage | Quantenanteil (× Abfragen) | klassische Arbeit | Angriff kostet |
+|---|---|---|---|---|
+| 512 Bit | 2³⁸ | 2⁵⁶ | 2³⁶ | 2⁵⁶ |
+| 4.096 Bit | 2⁵⁰ | 2⁹⁸ | 2⁹⁶ | 2⁹⁸ |
+| 8.192 Bit | 2⁵⁴ | 2¹²² | **2¹³⁴** | **2¹³⁴** |
+| 16.384 Bit | 2⁵⁷ | 2¹⁵⁴ | **2¹⁸⁹** | **2¹⁸⁹** |
+
+Ab 8.192 Bit bestimmt die **klassische Arbeit** des Siebs den Preis.
+Aufgelöst nach dem Ziel (log₂ Arbeit = 2,05·√n + 3,0):
+**2¹²⁸ ab ≈ 7.450 Bit, 2¹⁹² ab ≈ 17.000 Bit.**
+
 **Vorgabe (konservativ, „so scharf wie es geht“):**
 - **2¹²⁸: p ≥ 8.192 Bit.**
-- **2¹⁹² (unser Ziel, ML-DSA-65-Niveau): p ≈ 16.384 Bit.**
+- **2¹⁹² (unser Ziel, ML-DSA-65-Niveau): p ≥ 17.000 Bit** (16.384 Bit
+  reichen mit 2¹⁸⁹ knapp nicht).
 
 Die Literatur nennt für das unterste Niveau teils 4.096 Bit – unter anderen
 Kostenannahmen (z. B. Speicher teurer als Rechenzeit). Unsere Messung ist
@@ -102,11 +122,11 @@ Stelle. 512 Bit sind in jedem Fall gebrochen.
 
 Aus `isogenie_mehrteilig.py`, Ziel 2⁻¹²⁸ und 2⁻¹⁹²:
 
-| Teilnote besteht (nach Lagerung) | Teile k | Schwelle τ | logische Qubits je Note (m ≈ 8.192, p ≈ 16.384 Bit) |
+| Teilnote besteht (nach Lagerung) | Teile k | Schwelle τ | logische Qubits je Note (m ≈ 8.500, p ≈ 17.000 Bit) |
 |---|---|---|---|
-| 100 % | 1 | 1 | ~8.192 |
-| 90 % | 5 | 3 | ~40.960 |
-| 75 % | 19 | 10 | ~155.648 |
+| 100 % | 1 | 1 | ~8.500 |
+| 90 % | 5 | 3 | ~42.500 |
+| 75 % | 19 | 10 | ~161.500 |
 
 Je schlechter der Speicher, desto mehr Teile – aber die Sicherheit bleibt bei
 2⁻¹²⁸. Der Speicher entscheidet, ob eine Note *handlich* ist, nicht ob sie
@@ -121,7 +141,7 @@ Je schlechter der Speicher, desto mehr Teile – aber die Sicherheit bleibt bei
   verbraucht – keine Note zweimal.
 - Einschalten erst, wenn **(a)** ein Verfahren mit Sicherheitsbeweis aus
   anerkannten Annahmen vorliegt oder die Fachwelt das Gruppenaktions-Verfahren
-  bei p ≈ 16.384 Bit für tragfähig hält, und **(b)** fehlerkorrigierte
+  bei p ≥ 17.000 Bit für tragfähig hält, und **(b)** fehlerkorrigierte
   Speicher die Lagerzeit aus Punkt 1 schaffen. Bis dahin bleibt der Code –
   wie alle Stichtage – schlafend.
 
@@ -129,9 +149,9 @@ Je schlechter der Speicher, desto mehr Teile – aber die Sicherheit bleibt bei
 
 1. Die Literaturschätzungen aus Punkt 2 selbst nachrechnen – **weit
    gediehen** (2a erster Algorithmus, 2b Kollimation – trifft Peikerts Werte
-   für 512 Bit, 2c klassische Arbeit und Speicher). Offen: Kosten einer
-   Isogenie-Auswertung im Quantenschaltkreis; bessere Zusammenführungen im
-   Sieb, die die klassische Arbeit senken könnten.
+   für 512 Bit, 2c klassische Arbeit und Speicher, 2d Kosten je Abfrage).
+   Offen: bessere Zusammenführungen im Sieb, die die klassische Arbeit senken
+   könnten – sie würden die Vorgabe weiter nach oben schieben.
 2. Kopieren einer Teilnote formal auf Vektorisierung zurückführen (bisher
    als Annahme benutzt – genau das zeigt Doliskani im generischen Modell).
 3. Rauschtolerante Prüfung *innerhalb* einer Teilnote statt nur über
