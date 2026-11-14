@@ -159,7 +159,7 @@ Umsetzung in dieser Reihenfolge, jede Stufe ein eigener PR mit Prüfung:
 - libp2p: hybride Schlüssel, sobald go-libp2p sie anbietet; bis dahin sind nur
   öffentliche Kettendaten betroffen.
 
-**Stufe 6 – Forschung: Quantengeld (kein Code)**
+**Stufe 6 – Forschung: Quantengeld** (Problembeschreibung und Simulationen: `forschung/quantengeld/`)
 
 Das eigentliche Ziel hinter „quantischem Geld“ ist ein echtes, offenes
 Problem: Bargeld, das man **ohne Kette und ohne Bank** weitergeben kann und

@@ -62,6 +62,11 @@ jobs:
       # Deepfake-Test: ein gruener Angriff macht den Lauf rot, nie ein
       # Schwellenvorschlag ohne Trennung. Kopf von scripts/lebendigkeit_auswerten.py.
       - run: python3 scripts/lebendigkeit_auswerten.py --selbsttest
+      # Forschung Quantengeld (forschung/quantengeld/README.md): die
+      # Simulationen rechnen exakt und pruefen sich selbst -- kein Produktcode.
+      - run: python3 -I forschung/quantengeld/wiesner.py --selbsttest
+      - run: python3 -I forschung/quantengeld/zhandry_spielzeug.py --selbsttest
+      - run: python3 -I forschung/quantengeld/bruecke.py --selbsttest
       # Neustart-Skripte laufen als ssh ... bash -s: kein docker exec -i ohne
       # eigene Eingabe, und fern.sh wertet ein verschlucktes Skript als rot.
       - run: python3 scripts/lint_neustart_eingabe.py
