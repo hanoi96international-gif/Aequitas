@@ -282,10 +282,15 @@ func TestBeobachter_LiestKeinWALEin_RealDB(t *testing.T) {
 	from, to := distTestAddr(830), distTestAddr(831)
 	seedConcurrentTestAccount(t, csA, from, 1000, time.Now().Unix())
 	seedConcurrentTestAccount(t, csA, to, 0, time.Now().Unix())
+	// Den Flush-Arbeiter VOR der Ueberweisung anhalten (wie in
+	// wal_rest_test.go): sonst schreibt er den Satz nach Postgres, bevor der
+	// Test ihn anhaelt, und der Kontostand sieht aus, als haette der
+	// Beobachter das WAL angewandt (CI 14.11.2026, mit Pause nachgestellt:
+	// Kontostand 957.958 statt 1000).
+	csA.stopWALFlushWorkerForTest()
 	if _, _, applied, err := csA.transferConcurrentWAL(from, to, 42, Transaction{Type: "transfer", Wallet: from, To: to, Amount: 42, TxHash: "0xbeobachterwal1"}); !applied || err != nil {
 		t.Fatalf("Vorbedingung: Ueberweisung ueber das WAL: applied=%v err=%v", applied, err)
 	}
-	csA.stopWALFlushWorkerForTest()
 	if err := csA.wal.Close(); err != nil {
 		t.Fatal(err)
 	}

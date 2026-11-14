@@ -86,6 +86,10 @@ func TestTransferConcurrentWAL_CrashRecovery_ActivityClockUsesRestartTimeNotOrig
 	seedConcurrentTestAccount(t, csA, from, 1000, tTransfer-100)
 	seedConcurrentTestAccount(t, csA, to, 0, tTransfer-100)
 
+	// Flush-Arbeiter VOR der Ueberweisung anhalten: die Wiederherstellung
+	// unten setzt einen nie geflushten Satz voraus (wie
+	// TestTransferConcurrentWAL_CrashRecovery_UnflushedTransfersReconstructed).
+	csA.stopWALFlushWorkerForTest()
 	origTimeNowFunc = setzeZeitQuelleFuerTest(func() time.Time { return time.Unix(tTransfer, 0) })
 	_, _, applied, err := csA.transferConcurrentWAL(from, to, 100, Transaction{
 		Type: "transfer", Wallet: from, To: to, Amount: 100, TxHash: "0xactivityclock1",
