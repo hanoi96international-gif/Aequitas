@@ -1,0 +1,197 @@
+name: Biometrie -- quantensichere Schluessel (ML-DSA-65) auf C1 anlegen
+
+# WARUM (14.11.2026, docs/QUANTENSICHERHEIT.md, Stufe 1). Ab
+# bescheinigung.pq_ab_unix verlangt jeder Knoten zu jeder Ed25519-Unterschrift
+# von Coordinator und Vergleichsdienst eine ML-DSA-65-Unterschrift desselben
+# Pruefers (bio_bescheinigung_pq.go). Coordinator und Vergleichsdienst
+# unterschreiben damit, sobald COORDINATOR_MLDSA_SEED bzw. MATCHER_MLDSA_SEED
+# gesetzt sind (aequitas-biometric-beta, pq_unterschrift.py).
+#
+# WAS DIESER LAUF TUT (alles auf C1, 188.172.229.121):
+#   anzeigen  nur lesen: ob die Seeds gesetzt sind; die oeffentlichen
+#             Schluessel (ML-DSA-65, 1.952 Byte) und die Zeile fuer genesis.json.
+#   anlegen   Je Dienst, der noch KEINEN Seed hat: Seed AUF DER BOX erzeugen
+#             (openssl), Container mit dem Seed neu anlegen (Umgebung, Netz,
+#             Mounts, Image vom laufenden Container), dauerhaft in seine
+#             Umgebungsdatei. Den oeffentlichen Schluessel leitet der Container
+#             selbst ab (dieselbe Bibliothek, mit der er unterschreibt). Der
+#             Seed verlaesst die Box nie und steht nie im Protokoll.
+#             Einen schon gesetzten Seed ersetzt der Lauf NIE: der zugehoerige
+#             oeffentliche Schluessel steht dann womoeglich schon in der
+#             Genesis, ein neuer passte nicht mehr (fail-closed).
+#
+# VORAUSSETZUNG: Coordinator und Vergleichsdienst laufen mit Images, die
+# pq_unterschrift.py kennen (aequitas-biometric-beta #118). Sonst bricht der
+# Lauf ab, bevor er etwas aendert.
+#
+# DANACH: die ausgegebene Zeile in genesis.json (bescheinigung.pq) eintragen,
+# ausrollen, eine echte Registrierung abwarten, erst dann pq_ab_unix setzen.
+# Und schluessel-sichern.yml laufen lassen -- die Seeds stehen in den
+# Umgebungen der Container und kommen so ins verschluesselte Archiv.
+on:
+  workflow_dispatch:
+    inputs:
+      modus:
+        description: "anzeigen (nur lesen) oder anlegen"
+        required: true
+        type: choice
+        default: anzeigen
+        options: [anzeigen, anlegen]
+      bestaetigung:
+        description: "Nur fuer anlegen: genau PQ SCHLUESSEL ANLEGEN eintippen"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: coordinator-schluessel-c1
+  cancel-in-progress: false
+
+jobs:
+  anlegen:
+    runs-on: ubuntu-latest
+    environment: produktion
+    timeout-minutes: 30
+    env:
+      C1: 188.172.229.121
+      MODUS: ${{ inputs.modus }}
+      BESTAETIGUNG: ${{ inputs.bestaetigung }}
+    steps:
+      - name: Eingaben pruefen
+        run: |
+          set -euo pipefail
+          case "$MODUS" in anzeigen|anlegen) ;; *) echo "::error::modus anzeigen oder anlegen"; exit 1 ;; esac
+          if [ "$MODUS" = anlegen ] && [ "$BESTAETIGUNG" != "PQ SCHLUESSEL ANLEGEN" ]; then
+            echo "::error::Fuer anlegen genau PQ SCHLUESSEL ANLEGEN eintippen -- nichts geaendert."
+            exit 1
+          fi
+
+      - name: Schluessel und Host-Pruefung
+        env:
+          KEY: ${{ secrets.CONTABO_SSH_KEY }}
+        run: |
+          set -eu
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s' "$KEY" | perl -0777 -pe 's/\r//g; s/(?:-|\xE2\x80[\x93\x94])+ *(BEGIN|END) OPENSSH PRIVATE KEY *(?:-|\xE2\x80[\x93\x94])+/-----$1 OPENSSH PRIVATE KEY-----/g; unless (/-----BEGIN OPENSSH PRIVATE KEY-----/) { (my $z = $_) =~ s/\s//g; if ($z =~ m|^[A-Za-z0-9+/]+=*$|) { require MIME::Base64; my $d = MIME::Base64::decode_base64($z); if ($d =~ /-----BEGIN OPENSSH PRIVATE KEY-----/) { $_ = $d; } elsif ($d =~ /\Aopenssh-key-v1\x00/) { $_ = qq{-----BEGIN OPENSSH PRIVATE KEY-----\n$z\n-----END OPENSSH PRIVATE KEY-----\n}; } } } s/\s*(-----BEGIN OPENSSH PRIVATE KEY-----)\s*(.*?)\s*(-----END OPENSSH PRIVATE KEY-----)\s*/my ($k, $b, $f) = ($1, $2, $3); $b =~ s|\s||g; $b =~ s|(.{70})|$1\n|g; $b =~ s|\n\z||; "$k\n$b\n$f\n"/se' > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          ssh-keygen -y -f ~/.ssh/id_ed25519 >/dev/null 2>&1 || { echo "::error title=CONTABO_SSH_KEY unlesbar::Secret CONTABO_SSH_KEY neu einfuegen (alles von -----BEGIN bis -----END)."; rm -f ~/.ssh/id_ed25519; exit 1; }
+          ssh-keyscan -t ed25519 "$C1" 2>/dev/null | { grep -v '^#' || true; } > ~/.ssh/kh
+          [ "$(grep -c . ~/.ssh/kh)" = 1 ] || { echo "::error::Host-Schluessel von C1: nicht genau eine ed25519-Zeile"; exit 1; }
+          ssh-keygen -lf ~/.ssh/kh | awk '{print $2}' | grep -qx 'SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA' || { echo "::error::Host-Schluessel von C1 passt nicht"; exit 1; }
+          cp ~/.ssh/kh ~/.ssh/known_hosts
+
+      - name: PQ-Schluessel ${{ inputs.modus }}
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -o IdentitiesOnly=yes -o HostKeyAlgorithms=ssh-ed25519 -o ServerAliveInterval=30 root@$C1 \
+            "MODUS='$MODUS' bash -s" <<'SKRIPT' | tee "$RUNNER_TEMP/ausgabe.txt"
+          set -euo pipefail
+          umask 077
+          hex64() { [[ "$1" =~ ^[0-9a-f]{64}$ ]]; }
+          env_von() { docker inspect "$1" --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | grep "^$2=" | tail -1 | cut -d= -f2- || true; }
+          # Oeffentlichen ML-DSA-Schluessel im Container ableiten -- der Seed
+          # nur ueber stdin, nie in einer Befehlszeile.
+          pq_pub() { # container seed
+            printf '%s' "$2" | docker exec -i "$1" python -c 'import sys
+          from cryptography.hazmat.primitives.asymmetric import mldsa
+          k = mldsa.MLDSA65PrivateKey.from_seed_bytes(bytes.fromhex(sys.stdin.read().strip()))
+          print(k.public_key().public_bytes_raw().hex())' | tr -d '[:space:]'
+          }
+          kann_pq() { docker exec "$1" python -c 'import app.pq_unterschrift as p; assert p.mldsa is not None' >/dev/null 2>&1; }
+          neu_anlegen() { # name variable wert
+            local name="$1" var="$2" wert="$3" envd="/root/.$1.pq.env"
+            docker inspect "$name" --format '{{range .Config.Env}}{{println .}}{{end}}' \
+              | grep -vE '^(PATH|HOSTNAME|HOME|LANG|LC_ALL|PYTHON[A-Z_]*|GPG_KEY|PIP_[A-Z_]*)=' \
+              | grep -E '^[A-Za-z_][A-Za-z0-9_]*=' | grep -v "^$var=" > "$envd"
+            printf '%s=%s\n' "$var" "$wert" >> "$envd"
+            local net mounts ports image
+            net=$(docker inspect "$name" --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}' | awk '{print $1}')
+            mounts=$(docker inspect "$name" --format '{{range .Mounts}}{{if eq .Type "bind"}}-v {{.Source}}:{{.Destination}} {{end}}{{end}}')
+            ports=$(docker inspect "$name" --format '{{range $p, $b := .HostConfig.PortBindings}}{{range $b}}-p {{.HostIp}}:{{.HostPort}}:{{$p}} {{end}}{{end}}' | sed 's/-p :/-p /g')
+            image=$(docker inspect "$name" --format '{{.Image}}')
+            docker rm -f "$name" >/dev/null
+            # shellcheck disable=SC2086
+            docker run -d --name "$name" --restart unless-stopped --network "${net:-aequitas-net}" \
+              --env-file "$envd" $mounts $ports --log-opt max-size=20m --log-opt max-file=3 "$image" >/dev/null
+            local rc=$?
+            rm -f "$envd"
+            return $rc
+          }
+          ersetze_in_datei() { # datei variable wert
+            local f="$1" var="$2" wert="$3"
+            [ -f "$f" ] || : > "$f"
+            grep -v "^$var=" "$f" > "$f.neu" || true
+            printf '%s=%s\n' "$var" "$wert" >> "$f.neu"
+            chmod 600 "$f.neu"; mv "$f.neu" "$f"
+          }
+
+          for c in aequitas-coordinator aequitas-matching; do
+            docker inspect "$c" >/dev/null 2>&1 || { echo "::error::Container $c fehlt auf C1 -- nichts geaendert"; exit 1; }
+            kann_pq "$c" || { echo "::error::$c kennt pq_unterschrift.py nicht (Image vor aequitas-biometric-beta #118) -- erst das Image ausrollen; nichts geaendert"; exit 1; }
+          done
+
+          # Dienst, Variable, Umgebungsdatei
+          for eintrag in "aequitas-coordinator COORDINATOR_MLDSA_SEED /root/.aequitas-coordinator.env" \
+                         "aequitas-matching MATCHER_MLDSA_SEED /root/.aequitas-matching.env"; do
+            set -- $eintrag
+            name="$1"; var="$2"; datei="$3"
+            seed=$(env_von "$name" "$var" | tr 'A-F' 'a-f')
+            if hex64 "$seed"; then
+              pub=$(pq_pub "$name" "$seed")
+              echo "$name: Seed gesetzt, wird nicht ersetzt"
+            elif [ -n "$seed" ]; then
+              echo "::error::$name: $var hat eine falsche Form -- nichts geaendert (Wert nicht ausgegeben)"; exit 1
+            elif [ "$MODUS" = anzeigen ]; then
+              echo "$name: kein Seed"
+              continue
+            else
+              seed=$(openssl rand -hex 32)
+              hex64 "$seed" || { echo "::error::Seed-Erzeugung fehlgeschlagen"; exit 1; }
+              pub=$(pq_pub "$name" "$seed")
+              [[ "$pub" =~ ^[0-9a-f]{3904}$ ]] || { echo "::error::$name: oeffentlicher Schluessel nicht ableitbar -- nichts geaendert"; exit 1; }
+              ersetze_in_datei "$datei" "$var" "$seed"
+              neu_anlegen "$name" "$var" "$seed" || { echo "::error::$name startet nicht neu -- Seed steht in $datei, Container pruefen"; exit 1; }
+              ok=0
+              for _ in $(seq 1 40); do
+                sleep 3
+                if docker exec "$name" python -c 'import app.pq_unterschrift as p; assert p.konfiguriert()' >/dev/null 2>&1; then ok=1; break; fi
+              done
+              [ "$ok" = 1 ] || { echo "::error::$name laeuft nicht mit dem neuen Seed"; exit 1; }
+              echo "$name: Seed neu angelegt"
+            fi
+            unset seed
+            [[ "$pub" =~ ^[0-9a-f]{3904}$ ]] || { echo "::error::$name: oeffentlicher Schluessel unlesbar"; exit 1; }
+            echo "PQ_PUB $name $pub"
+          done
+          SKRIPT
+
+      - name: Zusammenfassung
+        if: always()
+        run: |
+          set -eu
+          ST=$(curl -s --max-time 15 https://aequitas.digital/api/status || true)
+          CED=$(printf '%s' "$ST" | jq -r '.bescheinigung_konsens.schluessel.coordinator[0] // empty' 2>/dev/null || true)
+          BED=$(printf '%s' "$ST" | jq -r '.bescheinigung_konsens.schluessel.bezeuger[0] // empty' 2>/dev/null || true)
+          CPQ=$(sed -n 's/^PQ_PUB aequitas-coordinator \([0-9a-f]\{3904\}\)$/\1/p' "$RUNNER_TEMP/ausgabe.txt" 2>/dev/null | tail -1 || true)
+          MPQ=$(sed -n 's/^PQ_PUB aequitas-matching \([0-9a-f]\{3904\}\)$/\1/p' "$RUNNER_TEMP/ausgabe.txt" 2>/dev/null | tail -1 || true)
+          {
+            echo "## Quantensichere Schluessel (ML-DSA-65)"
+            echo
+            echo "| Dienst | Ed25519 (Genesis) | ML-DSA-65 |"
+            echo "|---|---|---|"
+            echo "| Coordinator | \`${CED:0:12}…\` | ${CPQ:+\`${CPQ:0:16}…\` (${#CPQ} Hex)} |"
+            echo "| Vergleichsdienst | \`${BED:0:12}…\` | ${MPQ:+\`${MPQ:0:16}…\` (${#MPQ} Hex)} |"
+            if [ -n "$CPQ" ] && [ -n "$MPQ" ] && [ -n "$CED" ] && [ -n "$BED" ]; then
+              echo
+              echo "Fuer \`genesis.json\` unter \`bescheinigung\` (oeffentlich, darf hier stehen; pq_ab_unix erst NACH einer echten Registrierung setzen):"
+              echo
+              echo '```json'
+              printf '"pq": {"%s": "%s", "%s": "%s"}\n' "$CED" "$CPQ" "$BED" "$MPQ"
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: SSH-Schluessel vom Runner entfernen
+        if: always()
+        run: rm -f ~/.ssh/id_ed25519
