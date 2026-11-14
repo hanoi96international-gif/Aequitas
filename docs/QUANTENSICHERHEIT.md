@@ -129,7 +129,7 @@ Umsetzung in dieser Reihenfolge, jede Stufe ein eigener PR mit Prüfung:
 
 **Danach ist „1 × 1.000“ an der Stelle, wo AEQ entsteht, quantensicher.**
 
-**Stufe 2 – Zusage für jede Wallet (Konsens, klein)** – *Knoten: `pq_zusage.go`, Stichtag `pqZusageAbUnix` = 17.11.2026 18:00 UTC*
+**Stufe 2 – Zusage für jede Wallet (Konsens, klein)** – *Knoten: `pq_zusage.go`, Stichtag `pqZusageAbUnix` = 14.11.2026 22:00 UTC*
 1. Neue Transaktion `pq_zusage` (`POST /api/pq/zusage`, Stand in
    `GET /api/umzug?wallet=`): die Wallet hinterlegt einmalig
    `SHA-256(ML-DSA-65-Schlüssel)` (die 1.952 Rohbytes des öffentlichen
@@ -157,7 +157,7 @@ Umsetzung in dieser Reihenfolge, jede Stufe ein eigener PR mit Prüfung:
    Stichtag – und die App legt die Zusage gleich bei der Einrichtung an.
    Unternehmens-Wallets (kein Mensch) folgen mit eigener Grenze.
 
-**Stufe 3 – PQ-Wallets (Konsens + App)** – *Knoten: `pq_ueberweisung.go`, Stichtag `pqUeberweisungAbUnix` = 17.11.2026 18:00 UTC*
+**Stufe 3 – PQ-Wallets (Konsens + App)** – *Knoten: `pq_ueberweisung.go`, Stichtag `pqUeberweisungAbUnix` = 14.11.2026 22:00 UTC*
 1. **PQ-Adresse** = `"0x"` + letzte 20 Byte von
    `SHA-256("aequitas-pq-adresse-v1" || ML-DSA-65-Schlüssel)`. Sie empfängt
    mit jeder gewöhnlichen Überweisung. **Ausgeben** geht nur mit einer

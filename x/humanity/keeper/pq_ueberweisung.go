@@ -46,8 +46,9 @@ import (
 )
 
 const (
-	// pqUeberweisungAbUnix: 2026-11-17 18:00 UTC (zugleich mit der PQ-Zusage).
-	pqUeberweisungAbUnix int64 = 1794938400
+	// pqUeberweisungAbUnix: 2026-11-14 22:00 UTC (zugleich mit der PQ-Zusage,
+	// vom 17.11. vorgezogen auf Wunsch des Betreibers).
+	pqUeberweisungAbUnix int64 = 1794693600
 
 	pqDomaeneAdresse      = "aequitas-pq-adresse-v1"
 	pqDomaeneUeberweisung = "aequitas-pq-ueberweisung-v1"

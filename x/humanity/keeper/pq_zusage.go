@@ -45,8 +45,9 @@ import (
 )
 
 const (
-	// pqZusageAbUnix: 2026-11-17 18:00 UTC.
-	pqZusageAbUnix int64 = 1794938400
+	// pqZusageAbUnix: 2026-11-14 22:00 UTC (vom 17.11. vorgezogen auf Wunsch
+	// des Betreibers, "heute live"; Waechter pq-zusage-nicht-verpasst.sh).
+	pqZusageAbUnix int64 = 1794693600
 
 	pqZusageTxArt   = "pq_zusage"
 	pqDomaeneZusage = "aequitas-pq-zusage-v1"
