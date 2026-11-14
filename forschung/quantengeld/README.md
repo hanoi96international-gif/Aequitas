@@ -70,7 +70,16 @@ Seriennummer nachbauen, und genau diesen Angriff zeigt die Simulation.
 Sicher wäre das Verfahren erst mit einer Gruppenaktion, in der das schwer
 ist. Kandidaten sind Isogenien. **Das ist die offene Forschungsfrage.**
 
-## 4. Plan: was wir tun können
+## 4. Weitere Dokumente
+
+- `BRUECKE.md` und `bruecke.py`: der Entwurf der Brücke AEQ ↔ Quanten-Note.
+  Grundlage ist Coladangelo & Sattath (2020). Das Protokollmodell hat einen
+  Selbsttest mit Angriffen.
+- `FORSCHUNGSSTAND.md`: Arbeiten, mögliche Ansprechpartner, Förderung.
+- `ANSCHREIBEN.md`: Vorlage für den ersten Kontakt. Verschickt wird sie nur
+  vom Betreiber.
+
+## 5. Plan: was wir tun können
 
 1. **Verstehen und zeigen:** die Simulationen ausbauen. Als Nächstes kommt
    eine Gruppenaktion auf einer Menge, in der der Nachbau nicht trivial ist,
