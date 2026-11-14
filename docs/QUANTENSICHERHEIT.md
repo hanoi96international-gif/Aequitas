@@ -200,30 +200,49 @@ Umsetzung in dieser Reihenfolge, jede Stufe ein eigener PR mit Prüfung:
 - libp2p: hybride Schlüssel, sobald go-libp2p sie anbietet; bis dahin sind nur
   öffentliche Kettendaten betroffen.
 
-**Stufe 6 – Forschung: Quantengeld** (Problembeschreibung und Simulationen: `forschung/quantengeld/`)
+**Stufe 6 – Quantengeld: eigene Forschung, Bauvorgabe, Kettenseite** (`forschung/quantengeld/`)
 
-Das eigentliche Ziel hinter „quantischem Geld“ ist ein echtes, offenes
-Problem: Bargeld, das man **ohne Kette und ohne Bank** weitergeben kann und
-das sich trotzdem nicht kopieren lässt – offline und privat.
+Das Ziel hinter „quantischem Geld“ ist ein echtes, offenes Problem: Bargeld,
+das man **ohne Kette und ohne Bank** weitergeben kann und das sich trotzdem
+nicht kopieren lässt – offline und privat. Aequitas forscht daran selbst
+(Auftrag des Betreibers vom 14.11.2026: „Wir sind die Forschungsgruppe“).
+Alles ist ausführbar und läuft als Selbsttest in der CI.
 
-- *Stand der Forschung (2025/26):* Öffentlich prüfbares Quantengeld hat
-  Kandidaten (Zhandry 2024, aus abelschen Gruppenaktionen; 2025 im generischen
-  Modell als sicher bewiesen), aber **keinen Beweis aus Standardannahmen**;
-  mehrere ältere Verfahren sind gebrochen (Aaronson 2009, Gitter-Varianten).
-- *Was fehlt außer der Mathematik:* Jeder Inhaber bräuchte einen
-  Quantenspeicher, der Zustände über Tage hält, und einen Quantenrechner zum
-  Prüfen. Beides gibt es in keinem Handy, und auf absehbare Zeit nicht.
-- *Wie Aequitas dazu passen könnte (Gedankenmodell, keine Zusage):* Die Kette
-  bleibt die Ausgabestelle – „ein Mensch, einmal 1.000 AEQ“ entsteht dort. Wer
-  später Quanten-Banknoten will, sperrt AEQ auf der Kette und erhält dafür
-  Noten mit öffentlicher Seriennummer; wer eine Note zurückgibt, bekommt die
-  AEQ wieder. Die Einmaligkeit des Menschen leistet weiterhin die
-  Registrierung, die Unkopierbarkeit der Noten die Physik.
-- *Was wir jetzt tun können:* die Literatur verfolgen, mit Forschungsgruppen
-  sprechen (z. B. QuSoft Amsterdam, Gruppen um Aaronson und Zhandry) und
-  Aequitas so bauen, dass eine solche Ausgabestelle später andocken kann –
-  also genau die Stufen 0–5. Wer „Quantenwährung“ heute verspricht, verspricht
-  etwas, das niemand liefern kann.
+**Was wir gebaut und gemessen haben**
+
+| Baustein | Ergebnis | Datei |
+|---|---|---|
+| Hardware-Maßstab (Bank prüft) | Kohärenz ≈ 2,5–10 × Lagerzeit | `rauschen.py` |
+| Preis der Öffentlichkeit | echte Note besteht genau mit (1−p)^m → ohne Fehlerkorrektur unbrauchbar | `rauschen_oeffentlich.py` |
+| Echte Isogenie-Gruppenaktion | CSIDH-Art, selbst gebaut, geprüft (h = 27 und 1.491) | `isogenie_geld.py` |
+| Mehrteilige Note | Fälschen/Aufteilen ≤ 2⁻¹⁹²; bloße Mehrheit fällt dem Aufteilen zum Opfer | `isogenie_mehrteilig.py` |
+| Angriffsstärke | beide Kuperberg-Siebe gemessen, trifft Peikert (512 Bit) | `kuperberg.py` |
+| Kosten je Abfrage | Multiplikationen gezählt, Toffoli-Schätzung | `isogenie_kosten.py` |
+| Einlösen | Einmal-Signatur; Kettenseite als Spezifikation, 17 Angriffe abgewiesen | `bruecke_kette.py` |
+
+**Bauvorgabe** (`BAUVORGABE.md`, aus eigener Messung, konservativ):
+- Sicherheitsziel **2⁻¹⁹²** (ML-DSA-65-Niveau, wie Stufen 1–3).
+- Gruppenaktion CSIDH-Art mit **p ≥ 17.000 Bit** (2¹²⁸ ab 8.192 Bit;
+  512 Bit sind gebrochen).
+- Note aus k Teilnoten mit Schwelle τ > k/2 (Abstand gegen Aufteilen);
+  je Teilnote **≈ 8.500 fehlerkorrigierte logische Qubits**.
+- Einlösen per Einmal-Signatur; die Kette prüft klassisch und erzwingt
+  „höchstens einmal je Seriennummer“ selbst.
+
+**Was noch fehlt – und warum es heute niemand liefern kann**
+1. Fehlerkorrigierte Quantenspeicher in dieser Größe, im Gerät statt im Labor.
+2. Eine praktisch nutzbare Einmal-Signatur (im Standardmodell bisher nur über
+   Ununterscheidbarkeits-Verschleierung, Shmueli & Zhandry 2025).
+3. Ein Sicherheitsbeweis aus Standardannahmen für die Gruppenaktions-Note
+   (bisher im generischen Modell, Doliskani 2025).
+
+**Einschalten** erst, wenn 1–3 erfüllt sind; bis dahin ist die Kettenseite
+Spezifikation (`bruecke_kette.py`), nicht Knoten-Code – sie geht in den
+Knoten, sobald das Einlöse-Verfahren feststeht, damit der Geldweg nur einmal
+und gegen den echten Prüfer gebaut wird. Wer „Quantenwährung“ heute
+verspricht, verspricht etwas, das niemand liefern kann; Aequitas liefert
+heute die quantensichere Grundlage (Stufen 1–3 live) und die vollständige
+Bauvorgabe für den Tag, an dem die Hardware kommt.
 
 ## 6. Sicherheit (AGENTS.md)
 
