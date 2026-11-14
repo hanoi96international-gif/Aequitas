@@ -221,6 +221,11 @@ en:{
   'x-like-scandinavia-0-27':'Like Scandinavia (~0.27)',
   'x-liquidity-pool-30':'Liquidity Pool (30%)',
   'x-loading-blocks':'Loading blocks...',
+  'x-seite-neueste':"Newest",
+  'x-seite-neuer':"← Newer",
+  'x-seite-aelter':"Older →",
+  'x-seite-gehe':"Go to height",
+  'x-seite-hoehe':"Height",
   'x-loading-topology':'Loading topology…',
   'x-loading-transactions':'Loading transactions...',
   'x-lorenz-curve':'Lorenz Curve',
@@ -566,6 +571,11 @@ de:{
   'x-like-scandinavia-0-27':'Wie Skandinavien (~0,27)',
   'x-liquidity-pool-30':'Liquiditäts-Topf (30 %)',
   'x-loading-blocks':'Blöcke werden geladen …',
+  'x-seite-neueste':"Neueste",
+  'x-seite-neuer':"← Neuere",
+  'x-seite-aelter':"Ältere →",
+  'x-seite-gehe':"Zur Höhe",
+  'x-seite-hoehe':"Höhe",
   'x-loading-topology':'Netzstruktur wird geladen …',
   'x-loading-transactions':'Überweisungen werden geladen …',
   'x-lorenz-curve':'Lorenz Curve',
@@ -924,6 +934,11 @@ es:{
   'x-like-scandinavia-0-27':'Como Escandinavia (~0,27)',
   'x-liquidity-pool-30':'Fondo de liquidez (30 %)',
   'x-loading-blocks':'Cargando bloques…',
+  'x-seite-neueste':"Más recientes",
+  'x-seite-neuer':"← Más nuevos",
+  'x-seite-aelter':"Más antiguos →",
+  'x-seite-gehe':"Ir a la altura",
+  'x-seite-hoehe':"Altura",
   'x-loading-topology':'Cargando topología…',
   'x-loading-transactions':'Cargando transacciones…',
   'x-lorenz-curve':'Lorenz Curve',
@@ -1271,6 +1286,11 @@ ru:{
   'x-like-scandinavia-0-27':'Как в Скандинавии (~0,27)',
   'x-liquidity-pool-30':'Пул ликвидности (30 %)',
   'x-loading-blocks':'Загрузка блоков…',
+  'x-seite-neueste':"Новейшие",
+  'x-seite-neuer':"← Новее",
+  'x-seite-aelter':"Старее →",
+  'x-seite-gehe':"К высоте",
+  'x-seite-hoehe':"Высота",
   'x-loading-topology':'Загрузка топологии…',
   'x-loading-transactions':'Загрузка переводов…',
   'x-lorenz-curve':'Lorenz Curve',
@@ -1615,6 +1635,11 @@ zh:{
   'x-like-scandinavia-0-27':'相当于北欧（约 0.27）',
   'x-liquidity-pool-30':'流动性池（30 %）',
   'x-loading-blocks':'正在加载区块…',
+  'x-seite-neueste':"最新",
+  'x-seite-neuer':"← 较新",
+  'x-seite-aelter':"较旧 →",
+  'x-seite-gehe':"跳到高度",
+  'x-seite-hoehe':"高度",
   'x-loading-topology':'正在加载网络结构…',
   'x-loading-transactions':'正在加载交易…',
   'x-lorenz-curve':'Lorenz Curve',
@@ -1960,6 +1985,11 @@ id:{
   'x-like-scandinavia-0-27':'Seperti Skandinavia (~0,27)',
   'x-liquidity-pool-30':'Kolam likuiditas (30 %)',
   'x-loading-blocks':'Memuat blok…',
+  'x-seite-neueste':"Terbaru",
+  'x-seite-neuer':"← Lebih baru",
+  'x-seite-aelter':"Lebih lama →",
+  'x-seite-gehe':"Ke tinggi",
+  'x-seite-hoehe':"Tinggi",
   'x-loading-topology':'Memuat topologi…',
   'x-loading-transactions':'Memuat transaksi…',
   'x-lorenz-curve':'Lorenz Curve',
@@ -2300,6 +2330,11 @@ it:{
   'x-like-scandinavia-0-27':'Come la Scandinavia (~0,27)',
   'x-liquidity-pool-30':'Fondo di liquidità (30 %)',
   'x-loading-blocks':'Caricamento dei blocchi…',
+  'x-seite-neueste':"Più recenti",
+  'x-seite-neuer':"← Più nuovi",
+  'x-seite-aelter':"Più vecchi →",
+  'x-seite-gehe':"Vai all'altezza",
+  'x-seite-hoehe':"Altezza",
   'x-loading-topology':'Caricamento della topologia…',
   'x-loading-transactions':'Caricamento delle transazioni…',
   'x-lorenz-curve':'Lorenz Curve',
@@ -2641,6 +2676,11 @@ tr:{
   'x-like-scandinavia-0-27':'İskandinavya gibi (~0,27)',
   'x-liquidity-pool-30':'Likidite havuzu (%30)',
   'x-loading-blocks':'Bloklar yükleniyor…',
+  'x-seite-neueste':"En yeni",
+  'x-seite-neuer':"← Daha yeni",
+  'x-seite-aelter':"Daha eski →",
+  'x-seite-gehe':"Yüksekliğe git",
+  'x-seite-hoehe':"Yükseklik",
   'x-loading-topology':'Ağ yapısı yükleniyor…',
   'x-loading-transactions':'İşlemler yükleniyor…',
   'x-lorenz-curve':'Lorenz Curve',
@@ -2988,6 +3028,11 @@ fr:{
   'x-like-scandinavia-0-27':'Comme la Scandinavie (~0,27)',
   'x-liquidity-pool-30':'Pool de liquidité (30 %)',
   'x-loading-blocks':'Chargement des blocs…',
+  'x-seite-neueste':"Les plus récents",
+  'x-seite-neuer':"← Plus récents",
+  'x-seite-aelter':"Plus anciens →",
+  'x-seite-gehe':"Aller à la hauteur",
+  'x-seite-hoehe':"Hauteur",
   'x-loading-topology':'Chargement de la topologie…',
   'x-loading-transactions':'Chargement des transactions…',
   'x-lorenz-curve':'Lorenz Curve',
@@ -3334,6 +3379,11 @@ pt:{
   'x-like-scandinavia-0-27':'Como a Escandinávia (~0,27)',
   'x-liquidity-pool-30':'Fundo de liquidez (30 %)',
   'x-loading-blocks':'A carregar blocos…',
+  'x-seite-neueste':"Mais recentes",
+  'x-seite-neuer':"← Mais novos",
+  'x-seite-aelter':"Mais antigos →",
+  'x-seite-gehe':"Ir para altura",
+  'x-seite-hoehe':"Altura",
   'x-loading-topology':'A carregar a topologia…',
   'x-loading-transactions':'A carregar transações…',
   'x-lorenz-curve':'Lorenz Curve',
@@ -3680,6 +3730,11 @@ ar:{
   'x-like-scandinavia-0-27':'مثل إسكندنافيا (~0.27)',
   'x-liquidity-pool-30':'مجمع السيولة (30 %)',
   'x-loading-blocks':'جارٍ تحميل الكتل…',
+  'x-seite-neueste':"الأحدث",
+  'x-seite-neuer':"← أحدث",
+  'x-seite-aelter':"أقدم →",
+  'x-seite-gehe':"انتقل إلى الارتفاع",
+  'x-seite-hoehe':"الارتفاع",
   'x-loading-topology':'جارٍ تحميل بنية الشبكة…',
   'x-loading-transactions':'جارٍ تحميل المعاملات…',
   'x-lorenz-curve':'Lorenz Curve',
@@ -4024,6 +4079,11 @@ hi:{
   'x-like-scandinavia-0-27':'स्कैंडिनेविया जैसा (~0.27)',
   'x-liquidity-pool-30':'तरलता कोष (30 %)',
   'x-loading-blocks':'ब्लॉक लोड हो रहे हैं…',
+  'x-seite-neueste':"नवीनतम",
+  'x-seite-neuer':"← नए",
+  'x-seite-aelter':"पुराने →",
+  'x-seite-gehe':"ऊँचाई पर जाएँ",
+  'x-seite-hoehe':"ऊँचाई",
   'x-loading-topology':'नेटवर्क संरचना लोड हो रही है…',
   'x-loading-transactions':'लेन-देन लोड हो रहे हैं…',
   'x-lorenz-curve':'Lorenz Curve',
@@ -5956,6 +6016,32 @@ function renderDagView(rawBlocks, canonicalHashSet) {
 }
 
 let loadBlocksSeq = 0;
+// Blaettern durch die ganze Kette (/api/blocks/canonical?bis=H): null = die
+// neuesten (laufend aktualisiert), sonst die Seite unter dieser Hoehe.
+let blockSeiteBis = null;
+const BLOCK_SEITE = 30;
+function blockSeiteSetzen(bis) {
+  blockSeiteBis = bis;
+  const hinweis = document.getElementById('block-seite-stand');
+  if (hinweis) hinweis.textContent = bis === null ? '' : ('< #' + bis);
+  loadBlocks();
+}
+function blockSeiteNeueste() { blockSeiteSetzen(null); }
+function blockSeiteAelter() {
+  const unterste = Number(document.getElementById('blocks-list').getAttribute('data-unterste') || '0');
+  if (unterste > 0) blockSeiteSetzen(unterste);
+}
+function blockSeiteNeuer() {
+  if (blockSeiteBis === null) return;
+  const bis = blockSeiteBis + BLOCK_SEITE;
+  blockSeiteSetzen(latestChainHeight && bis > latestChainHeight ? null : bis);
+}
+function blockSeiteGehe() {
+  const feld = document.getElementById('block-seite-hoehe');
+  const h = parseInt(feld && feld.value, 10);
+  if (!(h >= 0)) return;
+  blockSeiteSetzen(h + 1);
+}
 async function loadBlocks() {
   const mySeq = ++loadBlocksSeq;
   try {
@@ -5974,7 +6060,7 @@ async function loadBlocks() {
     // search/detail lookups in allBlocks, which intentionally need every
     // sibling, not just the canonical one.
     const [canonicalBlocks, rawBlocks] = await Promise.all([
-      fetch('/api/blocks/canonical?limit=30').then(function(r) { return r.json(); }),
+      fetch('/api/blocks/canonical?limit=' + BLOCK_SEITE + (blockSeiteBis === null ? '' : '&bis=' + blockSeiteBis)).then(function(r) { return r.json(); }),
       fetch('/api/blocks').then(function(r) { return r.json(); })
     ]);
     if (mySeq !== loadBlocksSeq) return;
@@ -6031,7 +6117,9 @@ async function loadBlocks() {
       (latestChainHeight || dedupedBlocks.length) + ' blocks';
     // Populate block table rows (latest 30)
     if (list) {
-      list.innerHTML = dedupedBlocks.slice(0, 30).map(function(b) {
+      const unterste = dedupedBlocks.length ? dedupedBlocks[dedupedBlocks.length - 1].height : 0;
+      list.setAttribute('data-unterste', String(unterste));
+      list.innerHTML = dedupedBlocks.slice(0, BLOCK_SEITE).map(function(b) {
         const merge = b.parent_hashes && b.parent_hashes.length > 1;
         // Count transactions across EVERY block at this height, not just the
         // canonical one. Same reason the transaction list below reads siblings:
@@ -7326,6 +7414,10 @@ const CLICK_ACTIONS = {
   doGuardianConfirmAlive: doGuardianConfirmAlive,
   expSearch: expSearch,
   openBlock: openBlock,
+  blockSeiteNeueste: blockSeiteNeueste,
+  blockSeiteNeuer: blockSeiteNeuer,
+  blockSeiteAelter: blockSeiteAelter,
+  blockSeiteGehe: blockSeiteGehe,
   closeBlock: closeBlock,
   closeBlockOnBackdropClick: closeBlockOnBackdropClick,
   setChartInterval: setChartInterval,
