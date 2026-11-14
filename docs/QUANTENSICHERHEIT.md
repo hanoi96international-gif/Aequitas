@@ -76,7 +76,8 @@ Umzug: vor dem Stichtag gilt das Alte, danach das Neue, jeder Knoten prüft
 selbst; Sperren in `.github/neustart/` verhindern ein Ausrollen nach dem
 Stichtag.
 
-**Stufe 0 – Sicherungen quantensicher (kein Konsens, sofort)**
+**Stufe 0 – Sicherungen quantensicher (kein Konsens, sofort)** – *Code fertig
+(14.11.2026); wirksam, sobald der Betreiber den `age1pq1…`-Schlüssel einträgt.*
 1. Betreiber erzeugt offline `age-keygen -pq -o bio-backup-pq.key` und trägt
    den öffentlichen Schlüssel (`age1pq1…`, ~2.000 Zeichen) mit
    `sicherung-einrichten.yml` ein.
@@ -131,6 +132,31 @@ Stichtag.
 - libp2p: hybride Schlüssel, sobald go-libp2p sie anbietet; bis dahin sind nur
   öffentliche Kettendaten betroffen.
 
+**Stufe 6 – Forschung: Quantengeld (kein Code)**
+
+Das eigentliche Ziel hinter „quantischem Geld“ ist ein echtes, offenes
+Problem: Bargeld, das man **ohne Kette und ohne Bank** weitergeben kann und
+das sich trotzdem nicht kopieren lässt – offline und privat.
+
+- *Stand der Forschung (2025/26):* Öffentlich prüfbares Quantengeld hat
+  Kandidaten (Zhandry 2024, aus abelschen Gruppenaktionen; 2025 im generischen
+  Modell als sicher bewiesen), aber **keinen Beweis aus Standardannahmen**;
+  mehrere ältere Verfahren sind gebrochen (Aaronson 2009, Gitter-Varianten).
+- *Was fehlt außer der Mathematik:* Jeder Inhaber bräuchte einen
+  Quantenspeicher, der Zustände über Tage hält, und einen Quantenrechner zum
+  Prüfen. Beides gibt es in keinem Handy, und auf absehbare Zeit nicht.
+- *Wie Aequitas dazu passen könnte (Gedankenmodell, keine Zusage):* Die Kette
+  bleibt die Ausgabestelle – „ein Mensch, einmal 1.000 AEQ“ entsteht dort. Wer
+  später Quanten-Banknoten will, sperrt AEQ auf der Kette und erhält dafür
+  Noten mit öffentlicher Seriennummer; wer eine Note zurückgibt, bekommt die
+  AEQ wieder. Die Einmaligkeit des Menschen leistet weiterhin die
+  Registrierung, die Unkopierbarkeit der Noten die Physik.
+- *Was wir jetzt tun können:* die Literatur verfolgen, mit Forschungsgruppen
+  sprechen (z. B. QuSoft Amsterdam, Gruppen um Aaronson und Zhandry) und
+  Aequitas so bauen, dass eine solche Ausgabestelle später andocken kann –
+  also genau die Stufen 0–5. Wer „Quantenwährung“ heute verspricht, verspricht
+  etwas, das niemand liefern kann.
+
 ## 6. Sicherheit (AGENTS.md)
 
 Für jede Stufe gilt der Launch-Maßstab: getrennte Sicherheitsprüfung des
@@ -148,3 +174,5 @@ Durchsatz weggelassen; ML-DSA kommt **zusätzlich**, nicht statt.
 - BIP-360: https://cointelegraph.com/news/bitcoin-s-quantum-upgrade-path-what-bip-360-changes-and-what-it-does-not
 - Go `crypto/mldsa`: https://pkg.go.dev/crypto/mldsa
 - age mit Post-Quanten-Schlüsseln: https://github.com/FiloSottile/age
+- Zhandry, Quantengeld aus abelschen Gruppenaktionen: https://arxiv.org/pdf/2307.12120
+- Sicherheit im generischen Modell (2025): https://eprint.iacr.org/2025/092

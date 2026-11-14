@@ -38,18 +38,41 @@ B64="$(printf '%s\n' "$PUB" | awk '{print $2}')"
 
 # Empfaenger der Biometrie-Sicherung (oeffentlich), nur wenn angegeben.
 if [ -n "${BIO_EMPFAENGER:-}" ]; then
-  R="$BIO_EMPFAENGER"; REST="${R#age1}"
-  if [ "$REST" = "$R" ] || [ "${#R}" -ne 62 ] || case "$REST" in *[!qpzry9x8gf2tvdw0s3jn54khce6mua7l]*) true ;; *) false ;; esac; then
-    echo "::error::BIO_EMPFAENGER ist kein oeffentlicher age-Schluessel (age1..., 62 Zeichen). Nie den privaten (AGE-SECRET-KEY-...) angeben."
+  R="$BIO_EMPFAENGER"
+  case "$R" in
+    age1pq1*) REST="${R#age1pq1}"; LAENGE=1959 ;;
+    age1*)    REST="${R#age1}";    LAENGE=62 ;;
+    *)        REST="";             LAENGE=0 ;;
+  esac
+  if [ -z "$REST" ] || [ "${#R}" -ne "$LAENGE" ] || case "$REST" in *[!qpzry9x8gf2tvdw0s3jn54khce6mua7l]*) true ;; *) false ;; esac; then
+    echo "::error::BIO_EMPFAENGER ist kein oeffentlicher age-Schluessel (age1pq1... oder age1...). Nie den privaten (AGE-SECRET-KEY-...) angeben."
     exit 1
   fi
 fi
+
+# age v1.3.1 pruefen, BEVOR irgendetwas ersetzt wird (siehe unten).
+case "$(uname -m)" in
+  x86_64)  AGE_DATEI=age-linux-amd64; AGE_SHA=2e305637f2a0555305e21c17fb74446acbb39b53135d43d4b744e50c287133a5 ;;
+  aarch64) AGE_DATEI=age-linux-arm64; AGE_SHA=92da3edf27811a65a599342d743a13bb50b7f0b07f8947530d4e83249f2e4532 ;;
+  *)       echo "::error::Architektur $(uname -m): kein gepruefter age-Build"; exit 1 ;;
+esac
+[ -f "$QUELLE/$AGE_DATEI" ] || { echo "::error::$AGE_DATEI fehlt in $QUELLE"; exit 1; }
+[ "$(sha256sum "$QUELLE/$AGE_DATEI" | awk '{print $1}')" = "$AGE_SHA" ] || { echo "::error::$AGE_DATEI hat nicht die erwartete SHA-256 -- nicht installiert"; exit 1; }
 
 # 1. Skripte. Nur root darf sie aendern; der Schluessel fuehrt genau diese aus.
 install -d -m 755 -o root -g root "$LIB"
 install -d -m 700 -o root -g root "$ETC" "$STAND"
 install -m 755 -o root -g root "$QUELLE/backup-ledger.sh" "$QUELLE/backup-biometrie.sh" "$LIB/"
 install -m 755 -o root -g root "$QUELLE/sicherung-befehl.sh" "$BEFEHL"
+
+# age v1.3.1 (kann quantensicher verschluesseln, docs/QUANTENSICHERHEIT.md).
+# Der Workflow laedt das Release, prueft dessen SHA-256 und legt die Binaerdatei
+# je Architektur bei; oben wurde sie ein zweites Mal gegen eine feste SHA-256
+# geprueft (fehlt sie oder passt sie nicht: Abbruch, bevor etwas ersetzt ist).
+install -m 755 -o root -g root "$QUELLE/$AGE_DATEI" "$LIB/age.neu"
+[ "$("$LIB/age.neu" --version 2>/dev/null | head -1)" = v1.3.1 ] || { rm -f "$LIB/age.neu"; echo "::error::age meldet nicht v1.3.1"; exit 1; }
+mv "$LIB/age.neu" "$LIB/age"
+echo "age v1.3.1 hinterlegt ($AGE_DATEI)"
 if [ -n "${BIO_EMPFAENGER:-}" ]; then
   printf '%s\n' "$BIO_EMPFAENGER" > "$ETC/bio-empfaenger.neu"
   chmod 600 "$ETC/bio-empfaenger.neu"

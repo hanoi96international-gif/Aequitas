@@ -53,11 +53,18 @@ if [ -z "$R" ]; then
   echo "::error::BIO_BACKUP_AGE_RECIPIENT fehlt -- ohne oeffentlichen age-Schluessel wird nichts gesichert (docs/BIOMETRIE_SICHERUNG.md)."
   exit 2
 fi
-# X25519-Empfaenger: age1 + 58 Zeichen Bech32 (ohne 1, b, i, o).
+# Zwei Formen (docs/QUANTENSICHERHEIT.md, Stufe 0):
+#   quantensicher: age1pq1 + 1952 Zeichen Bech32 (ML-KEM-768 + X25519, age >= 1.3)
+#   klassisch:     age1 + 58 Zeichen Bech32 (X25519) -- ein Quantenrechner
+#                  koennte heute abgeholte Archive spaeter oeffnen.
 # Ganzer Wert, nicht zeilenweise (grep -x liesse "age1...\nanderes" durch).
-R_REST="${R#age1}"
-if [ "$R_REST" = "$R" ] || [ "${#R}" -ne 62 ] || case "$R_REST" in *[!qpzry9x8gf2tvdw0s3jn54khce6mua7l]*) true ;; *) false ;; esac; then
-  echo "::error::BIO_BACKUP_AGE_RECIPIENT ist kein gueltiger oeffentlicher age-Schluessel (age1..., 62 Zeichen). Nichts gesichert (docs/BIOMETRIE_SICHERUNG.md)."
+case "$R" in
+  age1pq1*) R_REST="${R#age1pq1}"; R_LAENGE=1959; STANZE=mlkem768x25519 ;;
+  age1*)    R_REST="${R#age1}";    R_LAENGE=62;   STANZE=X25519 ;;
+  *)        R_REST="";             R_LAENGE=0;    STANZE="" ;;
+esac
+if [ -z "$R_REST" ] || [ "${#R}" -ne "$R_LAENGE" ] || case "$R_REST" in *[!qpzry9x8gf2tvdw0s3jn54khce6mua7l]*) true ;; *) false ;; esac; then
+  echo "::error::BIO_BACKUP_AGE_RECIPIENT ist kein gueltiger oeffentlicher age-Schluessel (age1pq1... mit 1959 oder age1... mit 62 Zeichen). Nichts gesichert (docs/BIOMETRIE_SICHERUNG.md)."
   exit 2
 fi
 
@@ -101,14 +108,29 @@ if [ "$FREI_KB" -lt "$MIN_FREI_KB" ]; then
 fi
 
 command -v python3 >/dev/null || { echo "::error::python3 fehlt auf der Box (SQLite-Backup-API)."; exit 1; }
-# age aus dem Paket der Distribution, nicht per curl|sh.
-if ! command -v age >/dev/null; then
-  echo "age fehlt -- installiere das Distributionspaket"
-  DEBIAN_FRONTEND=noninteractive timeout 300 apt-get update -qq >/dev/null </dev/null
-  DEBIAN_FRONTEND=noninteractive timeout 300 apt-get install -y -qq --no-install-recommends age >/dev/null </dev/null
+# age: zuerst das gepruefte Release, das einrichten.sh hinterlegt (feste
+# SHA-256, kann quantensicher verschluesseln); sonst das Paket der
+# Distribution, nie per curl|sh.
+AGE=/usr/local/lib/aequitas-sicherung/age
+if [ ! -x "$AGE" ]; then
+  if ! command -v age >/dev/null; then
+    echo "age fehlt -- installiere das Distributionspaket"
+    DEBIAN_FRONTEND=noninteractive timeout 300 apt-get update -qq >/dev/null </dev/null
+    DEBIAN_FRONTEND=noninteractive timeout 300 apt-get install -y -qq --no-install-recommends age >/dev/null </dev/null
+  fi
+  command -v age >/dev/null || { echo "::error::age nicht installierbar."; exit 1; }
+  AGE="$(command -v age)"
 fi
-command -v age >/dev/null || { echo "::error::age nicht installierbar."; exit 1; }
-echo "age: $(age --version 2>/dev/null | head -1)"
+AGE_VERSION="$("$AGE" --version 2>/dev/null | head -1)"
+echo "age: $AGE_VERSION"
+# Ein quantensicherer Empfaenger braucht age >= 1.3; aelteres age wuerde ihn
+# ablehnen -- dann lieber hier mit klarem Hinweis.
+if [ "$STANZE" = mlkem768x25519 ]; then
+  case "$AGE_VERSION" in
+    v1.[3-9]*|v1.[1-9][0-9]*|v[2-9]*) ;;
+    *) echo "::error::Quantensicherer Empfaenger, aber age $AGE_VERSION kann das nicht (braucht >= 1.3). sicherung-einrichten.yml erneut starten -- es hinterlegt age v1.3.1."; exit 1 ;;
+  esac
+fi
 
 mkdir -m 700 "$WORK" "$WORK/coordinator" "$WORK/matching"
 # Fehlertexte von pg_dump/pg_restore/psql koennen Werte zeigen (DETAIL: Key
@@ -279,13 +301,14 @@ if [ "$KLAR" -gt "$MAX_KLARTEXT" ]; then
 fi
 printf '%s\n' "erstellt=$STAMP" "kette_bio_hashes=$R_KETTE_BIO" "proof_bio_hashes=$R_PROOF_BIO" \
   "kette_tabellen=$KETTE_ZEILEN" "sqlite=$SQLITE_ZUSAMMENFASSUNG" > "$WORK/INHALT.txt"
-timeout 600 tar -C "$WORK" -cf - . | timeout 600 age -r "$R" -o "$ZIEL.tmp"
+timeout 600 tar -C "$WORK" -cf - . | timeout 600 "$AGE" -r "$R" -o "$ZIEL.tmp"
 rm -rf "$WORK"
 [ ! -e "$WORK" ] || { echo "::error::Klartext liess sich nicht loeschen. Abbruch."; exit 1; }
 
 # Die Datei muss age-verschluesselt sein -- nie ein Klartext-tar.
 [ "$(head -c 21 "$ZIEL.tmp")" = "age-encryption.org/v1" ] || { echo "::error::Ergebnis ist keine age-Datei. Abbruch."; exit 1; }
-[ "$(head -c 4096 "$ZIEL.tmp" | grep -ac '^-> X25519 ')" = 1 ] || { echo "::error::age-Kopf hat nicht genau einen X25519-Empfaenger. Abbruch."; exit 1; }
+# Genau ein Empfaenger, und zwar von der Art des hinterlegten Schluessels.
+[ "$(head -c 4096 "$ZIEL.tmp" | grep -ac '^-> ')" = 1 ] && [ "$(head -c 4096 "$ZIEL.tmp" | grep -ac "^-> $STANZE ")" = 1 ] || { echo "::error::age-Kopf hat nicht genau einen $STANZE-Empfaenger. Abbruch."; exit 1; }
 GROESSE="$(stat -c %s "$ZIEL.tmp")"
 if [ "$GROESSE" -gt "$MAX_AGE_BYTES" ]; then
   echo "::error::.age-Datei $GROESSE Bytes (> 500 MB). Abbruch."; exit 1

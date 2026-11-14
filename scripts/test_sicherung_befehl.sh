@@ -85,6 +85,12 @@ printf 'age1zzz\n' > "$T/etc/bio-empfaenger";                          erwarte "
 printf 'AGE-SECRET-KEY-1QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQ\n' > "$T/etc/bio-empfaenger"
 erwarte "bio mit privatem Schluessel" 5 bio
 printf 'age1%s\n' "$(printf 'b%.0s' $(seq 58))" > "$T/etc/bio-empfaenger"; erwarte "bio mit Nicht-Bech32" 5 bio
+# Quantensicher (age1pq1 + 1952): falsche Laenge, fremdes Zeichen, PQ-Praefix
+# mit klassischer Laenge -- alles abgewiesen.
+printf 'age1pq1%s\n' "$(printf 'q%.0s' $(seq 1951))" > "$T/etc/bio-empfaenger"; erwarte "bio mit PQ zu kurz" 5 bio
+printf 'age1pq1%s\n' "$(printf 'q%.0s' $(seq 1953))" > "$T/etc/bio-empfaenger"; erwarte "bio mit PQ zu lang" 5 bio
+printf 'age1pq1%sb\n' "$(printf 'q%.0s' $(seq 1951))" > "$T/etc/bio-empfaenger"; erwarte "bio mit PQ Nicht-Bech32" 5 bio
+printf 'age1pq1%s\n' "$(printf 'q%.0s' $(seq 55))" > "$T/etc/bio-empfaenger"; erwarte "bio mit PQ-Praefix, 62 Zeichen" 5 bio
 [ ! -e "$T/lauf.log" ] || { echo "FEHLER: bio lief ohne gueltigen Empfaenger"; fehler=1; }
 [ "$(lauf pruefsummen 2>/dev/null | tail -1)" = "bio_empfaenger=fehlt" ] || { echo "FEHLER: pruefsummen meldet ungueltigen Empfaenger nicht"; fehler=1; }
 
@@ -97,6 +103,14 @@ rc=0; env -i PATH="$PATH" SSH_ORIGINAL_COMMAND=bio BIO_BACKUP_AGE_RECIPIENT="age
 grep -qx "bio R=$R" "$T/lauf.log" 2>/dev/null || { echo "FEHLER: bio nutzte nicht den Empfaenger von C1"; fehler=1; }
 [ "$(lauf pruefsummen 2>/dev/null | tail -1)" = "bio_empfaenger=gesetzt" ] || { echo "FEHLER: pruefsummen erkennt gueltigen Empfaenger nicht"; fehler=1; }
 erwarte "bio zweimal" 4 bio
+
+# 7b. Quantensicherer Empfaenger (age1pq1 + 1952 Zeichen) wird angenommen.
+neu
+R="age1pq1$(printf 'q%.0s' $(seq 1952))"
+printf '%s\n' "$R" > "$T/etc/bio-empfaenger"
+rc=0; lauf bio >/dev/null 2>&1 || rc=$?
+[ "$rc" = 0 ] || { echo "FEHLER: bio mit quantensicherem Empfaenger: Code $rc"; fehler=1; }
+grep -qx "bio R=$R" "$T/lauf.log" 2>/dev/null || { echo "FEHLER: bio nutzte den quantensicheren Empfaenger nicht"; fehler=1; }
 
 # 8. Ein Fehlschlag des Skripts kommt beim Aufrufer an.
 neu

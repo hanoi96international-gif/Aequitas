@@ -68,11 +68,18 @@ jobs:
           set -euo pipefail
           umask 077
           R=$(cat /etc/aequitas-sicherung/bio-empfaenger 2>/dev/null || true)
-          REST="${R#age1}"
-          if [ "${#R}" != 62 ] || [ "$REST" = "$R" ] || [ -n "$(printf '%s' "$REST" | tr -d 'qpzry9x8gf2tvdw0s3jn54khce6mua7l')" ]; then
+          case "$R" in
+            age1pq1*) REST="${R#age1pq1}"; LAENGE=1959 ;;
+            age1*)    REST="${R#age1}";    LAENGE=62 ;;
+            *)        REST="";             LAENGE=0 ;;
+          esac
+          if [ -z "$REST" ] || [ "${#R}" != "$LAENGE" ] || [ -n "$(printf '%s' "$REST" | tr -d 'qpzry9x8gf2tvdw0s3jn54khce6mua7l')" ]; then
             echo "kein gueltiger age-Empfaenger auf C1 (sicherung-einrichten.yml)" >&2; exit 1
           fi
-          command -v age >/dev/null || { echo "age fehlt auf C1" >&2; exit 1; }
+          # Das gepruefte age v1.3.1 aus sicherung-einrichten.yml, sonst das der Box.
+          AGE=/usr/local/lib/aequitas-sicherung/age
+          [ -x "$AGE" ] || AGE="$(command -v age || true)"
+          [ -n "$AGE" ] || { echo "age fehlt auf C1" >&2; exit 1; }
           WORK=$(mktemp -d /root/.schluessel-sichern.XXXXXX)
           AUS=$(mktemp /root/.schluessel-sichern-aus.XXXXXX)
           trap 'rm -rf "$WORK" "$AUS"' EXIT
@@ -90,16 +97,18 @@ jobs:
           [ -f /root/.aequitas-matching.env ] && cp /root/.aequitas-matching.env "$WORK/aequitas-matching.datei.env"
           date -u +%Y-%m-%dT%H:%M:%SZ > "$WORK/STAND"
           # Ausgabe ausserhalb von WORK: sonst laege sie in ihrem eigenen Archiv.
-          tar -C "$WORK" -cf - . | age -r "$R" > "$AUS"
+          tar -C "$WORK" -cf - . | "$AGE" -r "$R" > "$AUS"
           [ "$(head -c 21 "$AUS")" = "age-encryption.org/v1" ] || { echo "Ergebnis ist kein age" >&2; exit 1; }
-          [ "$(head -c 4096 "$AUS" | grep -ac '^-> X25519 ')" = 1 ] || { echo "nicht genau ein Empfaenger" >&2; exit 1; }
+          # Genau ein Empfaenger, von der Art des hinterlegten Schluessels.
+          case "$R" in age1pq1*) STANZE=mlkem768x25519 ;; *) STANZE=X25519 ;; esac
+          [ "$(head -c 4096 "$AUS" | grep -ac '^-> ')" = 1 ] && [ "$(head -c 4096 "$AUS" | grep -ac "^-> $STANZE ")" = 1 ] || { echo "nicht genau ein Empfaenger" >&2; exit 1; }
           echo "Empfaenger: ${R:0:12}...  Groesse: $(stat -c %s "$AUS") Bytes" >&2
           cat "$AUS"
           SKRIPT
           rm -f ~/.ssh/k
           # Nur eine age-Datei geht hinaus -- nie Klartext.
           [ "$(head -c 21 schluessel-c1.tar.age)" = "age-encryption.org/v1" ] || { echo "::error::Abgeholte Datei ist kein age-Chiffrat -- nichts hochgeladen"; rm -f schluessel-c1.tar.age; exit 1; }
-          [ "$(head -c 4096 schluessel-c1.tar.age | grep -ac '^-> X25519 ')" = 1 ] || { echo "::error::nicht genau ein Empfaenger -- nichts hochgeladen"; rm -f schluessel-c1.tar.age; exit 1; }
+          [ "$(head -c 4096 schluessel-c1.tar.age | grep -ac '^-> ')" = 1 ] && [ "$(head -c 4096 schluessel-c1.tar.age | grep -acE '^-> (mlkem768x25519|X25519) ')" = 1 ] || { echo "::error::nicht genau ein Empfaenger -- nichts hochgeladen"; rm -f schluessel-c1.tar.age; exit 1; }
           {
             echo "### Schluessel gesichert (verschluesselt)"
             echo ""

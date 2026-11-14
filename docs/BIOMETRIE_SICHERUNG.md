@@ -46,21 +46,31 @@ Freigabe-Halt, mit einem eigenen, beschränkten Schlüssel (siehe
 Sicherungsschlüssel stiehlt, kann sich die Daten nicht an einen eigenen
 Schlüssel verschlüsseln lassen.
 
+> **Ab 14.11.2026: quantensicherer Schlüssel** (`docs/QUANTENSICHERHEIT.md`,
+> Stufe 0). Ein klassischer Schlüssel (`age1…`, X25519) wird weiter
+> angenommen, aber ein Quantenrechner könnte die heute abgeholten Archive
+> später öffnen. Für den Wechsel die Schritte 1–4 mit `-pq` wiederholen; ab
+> dann gelten nur noch Archive, die mit dem neuen Schlüssel lesbar sind.
+
 1. Auf einem eigenen Rechner, nicht auf C1 und nicht in GitHub:
    ```
-   age-keygen -o bio-backup.key
+   age-keygen -pq -o bio-backup-pq.key
    ```
-   (`age` aus dem Paketmanager, z. B. `apt install age` oder `brew install age`.)
+   Braucht **age 1.3 oder neuer** (`age --version`; z. B. `brew install age`,
+   oder das Release von https://github.com/FiloSottile/age/releases). Ältere
+   Versionen kennen `-pq` nicht. Ohne `-pq` entsteht ein klassischer Schlüssel.
 2. `bio-backup.key` enthält den **privaten** Schlüssel (`AGE-SECRET-KEY-1…`). Seit dem
    02.11.2026 heißt die Datei beim Betreiber `aequitas-bio-backup-2026-11-02.key`
    (neues Schlüsselpaar; der Schlüssel vom 28.10. ist ersetzt, ältere Archive sind damit
    nicht mehr lesbar). Lege ihn
    in den Passwortmanager und zusätzlich offline ab, z. B. auf einem USB-Stick im Safe.
    Er darf nie auf einen Server, in ein Repo oder in ein Secret.
-3. Die Zeile `# public key: age1…` in der Datei ist der **öffentliche** Schlüssel.
-   Actions → „Sicherungsschluessel auf C1 einrichten“ → Run workflow → bei
-   `bio_empfaenger` nur den Wert `age1…` eintragen (ohne `# public key:`), dann
-   freigeben. Der Workflow lehnt alles ab, was kein öffentlicher age-Schlüssel ist.
+3. Der **öffentliche** Schlüssel: `age-keygen -y bio-backup-pq.key` gibt ihn aus
+   (`age1pq1…`, 1.959 Zeichen in einer Zeile; beim klassischen Schlüssel `age1…`,
+   62 Zeichen). Actions → „Sicherungsschluessel auf C1 einrichten“ → Run workflow →
+   bei `bio_empfaenger` genau diesen Wert eintragen, dann freigeben. Der Workflow
+   lehnt alles ab, was kein öffentlicher age-Schlüssel ist, und hinterlegt auf C1
+   age v1.3.1 (Release von GitHub, SHA-256 doppelt geprüft).
 4. Actions → „Biometrie- und Proof-Datenbanken sichern (verschlüsselt)“ → Run workflow.
    Der Lauf muss grün sein; danach läuft er jede Nacht ohne Klick.
 
@@ -79,7 +89,7 @@ Auf einem eigenen Rechner mit Docker, nicht auf C1:
    ```
 3. Entschlüsseln in ein leeres Verzeichnis:
    ```
-   mkdir -m 700 uebung && age -d -i bio-backup.key bio-c1.tar.age | tar -C uebung -xf -
+   mkdir -m 700 uebung && age -d -i bio-backup-pq.key bio-c1.tar.age | tar -C uebung -xf -
    cat uebung/INHALT.txt
    ```
 4. Postgres-Teile in eine Testinstanz:
