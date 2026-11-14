@@ -90,17 +90,44 @@ Stichtag.
    oder nur auf dem Server und außer Haus) – unabhängig von Quanten.
 
 **Stufe 1 – Registrierung hybrid (Konsens, Stichtag)**
-1. Coordinator und Bezeuger bekommen je einen ML-DSA-65-Schlüssel; die
-   öffentlichen Schlüssel kommen in die Genesis-/Register-Liste neben Ed25519.
-2. Bescheinigung v4: dieselben Nachrichten (`…-v4|modus|nullifier|wallet|zeit`),
-   je Schlüssel **Ed25519 und ML-DSA**. Ab Stichtag lehnt jeder Knoten eine
-   Registrierung ohne gültige ML-DSA-Unterschriften ab (fail-closed).
-3. Biometrie-Repo (Python): ML-DSA im Coordinator und Vergleichsdienst.
-   Offene Frage: Bibliothek (pyca/cryptography über OpenSSL ≥ 3.5, oder
-   liboqs) – nur mit Begründung und Prüfung.
-4. Missbrauchstests: fehlende/gefälschte ML-DSA-Unterschrift, nur Ed25519,
-   fremder Schlüssel, Wiederholung, übergroße Unterschrift.
-   **Danach ist „1 × 1.000“ an der Stelle, wo AEQ entsteht, quantensicher.**
+
+*Geprüft am 14.11.2026:* Eine ML-DSA-65-Unterschrift aus Python
+(`cryptography` 50.0.2, schon Abhängigkeit von Coordinator und
+Vergleichsdienst) prüft Go 1.27 (`crypto/mldsa`, Standardbibliothek) korrekt;
+geänderte Nachricht oder ein gekipptes Bit werden abgewiesen. **Keine neue
+Abhängigkeit** auf beiden Seiten. Größen: Schlüssel 1.952, Unterschrift 3.309
+Byte.
+
+Heute läuft die Bescheinigung so: Coordinator (`bio_attestation.py`) und
+Vergleichsdienst (`attest_sign.py`) unterschreiben mit Ed25519, die App reicht
+die Unterschriften beim Beweis durch (`lib/attestation.ts`), jeder Knoten prüft
+sie gegen die Genesis-Schlüssel (`bio_bescheinigung_konsens.go`, Form v3).
+
+Umsetzung in dieser Reihenfolge, jede Stufe ein eigener PR mit Prüfung:
+
+1. **Knoten auf Go 1.27** – nur der Wechsel der Werkzeugkette (`go.mod`,
+   `Dockerfile`, CI), voller Testlauf mit `-race`, `govulncheck`; ausrollen.
+2. **Unterschreiben (Biometrie-Repo):** Coordinator und Vergleichsdienst
+   unterschreiben *zusätzlich* mit ML-DSA-65, Nachricht `…-v4|…` (gleicher
+   Inhalt wie v3). Seeds (32 Byte) als eigene Secrets, auf C1 erzeugt, in
+   `schluessel-sichern.yml` mitgesichert. Ohne Seed: keine v4-Unterschrift,
+   nichts sonst ändert sich.
+3. **App:** reicht das neue Feld unverändert durch; feste Größengrenzen.
+4. **Prüfen (Knoten):** Genesis bekommt je Schlüssel den ML-DSA-Schlüssel neben
+   Ed25519. Ab Stichtag `bescheinigungPQAb` (bis dahin `MaxInt64`) gilt eine
+   Bindung bzw. Aussage nur, wenn **beide** Unterschriften desselben Prüfers
+   gültig sind; gezählt werden weiter Schlüssel, nie Unterschriften. Grenzen:
+   Unterschrift genau 3.309 Byte, höchstens so viele wie Schlüssel in der
+   Genesis. Sperre in `.github/neustart/` gegen ein Ausrollen nach dem Stichtag.
+5. **Missbrauchstests:** nur Ed25519; nur ML-DSA; ML-DSA von fremdem Schlüssel;
+   ML-DSA über andere Wallet/anderen Nullifier/andere Zeit; Wiederholung;
+   übergroße und abgeschnittene Unterschrift; zwei Unterschriften desselben
+   Schlüssels zählen einmal; Block vor dem Stichtag ohne ML-DSA bleibt gültig
+   (Nachspielen der alten Kette).
+6. **Stichtag setzen**, erst wenn 1–3 live sind und eine echte Registrierung
+   mit beiden Unterschriften durchging.
+
+**Danach ist „1 × 1.000“ an der Stelle, wo AEQ entsteht, quantensicher.**
 
 **Stufe 2 – Zusage für jede Wallet (Konsens, klein)**
 1. Neue Transaktion „PQ-Zusage“: die Wallet hinterlegt einmalig
