@@ -287,3 +287,52 @@ Nächster Schritt: die Volltexte von Zhandry 2025 (welche Zusatzannahme?) und
 Genovese & Stambler (welche Hardware, wie viele Qubits, wie lange Speicher?)
 lesen – beide sind über arxiv.org zugänglich, von dieser Sitzung aus derzeit
 nicht.
+
+## 8. Der Weg (14.11.2026, nach Lektüre von Zhandry 2025 im Volltext)
+
+**Neuer Befund aus dem Volltext (TheoretiCS 2025, Abschnitt 6):** Für
+CSIDH-artige Gruppen, in denen nur *kurze* Elemente berechenbar sind
+(„REGA“), prüft Zhandrys Verfahren nicht mit 2 Gruppenaktionen, sondern mit
+λ Hadamard-Tests – jeder eine volle Gruppenaktion mit Exponenten aus einer
+gruppenüberdeckenden Verteilung. Je Test: echte Note besteht mit ≥ 0,961,
+jede andere mit ≤ 0,848 (Beweisschranken des Papiers). Für 2⁻¹²⁸ (ehrliche
+Note fällt mit ≤ 2⁻⁴⁰ durch) gerechnet: **29.250 Tests** mit der Schwelle
+7/8 des Papiers, **2.750 Tests** mit optimierter Schwelle 0,93. Das ist
+**2¹¹ mehr**, als §2e angenommen hat. Die saubere Fassung mit 2 Aktionen
+(Abschnitt 1.1/3) braucht eine Gruppenaktion für **beliebige** Elemente
+(„EGA“) – für CSIDH heute nur über Gitterreduktion in Dimension ~760
+(Kosten laut Zhandry ≈ 2^(n^(1/3))).
+
+**Daraus der Weg – vier Bausteine, jeder aus vorhandener Forschung:**
+
+1. **Rechenwerk: qt-Pegasis** (Dartois, Komada Eriksen, Invernizzi,
+   Vercauteren; ePrint 2025/1859). Wertet die Klassengruppenaktion für
+   *beliebige* Elemente in Polynomzeit aus, **scheitert nie** (keine
+   Wiederholungen – Pflicht für eine Quantenschaltung), fast nur
+   4-dimensionale 2-Isogenien. Es gibt eine **zeitkonstante C-Umsetzung**
+   der 4D-Kette (ePrint 2026/114, < 25 ms bei 500 Bit) – zeitkonstant heißt
+   datenunabhängiger Ablauf, genau was ein Schaltkreis braucht. Damit wird
+   aus der REGA- die EGA-Fassung: **Prüfen = 2 Aktionen statt 2.750 Tests.**
+   Grobe Hochrechnung (aus 25 ms ≈ 2²⁰ Multiplikationen bei 500 Bit,
+   linear in der Bitlänge): ~2²⁴ Multiplikationen je Aktion bei 8.192 Bit –
+   **nachzuzählen**, sobald der Volltext vorliegt.
+2. **Verfahren: Zhandry 2025, EGA-Fassung**, Sicherheit im generischen
+   Modell plus eine Verstärkung der DLog-Annahme (§7).
+3. **Brücke: Einweg** (§6) – braucht keine Einmal-Signatur; die
+   Kettenseite liegt schlafend im Knoten.
+4. **Hardware:** Note 8.192 logische Qubits (2¹²⁸), Prüfgerät 10⁷–10⁹
+   (§2e, `umkehrbar.py`). Prüfen findet an **Prüfstellen** statt – jeder,
+   der ein Prüfgerät betreibt, kann prüfen (öffentlich, ohne Geheimnis).
+
+**Zwischenschritt mit heutiger Technik (nur Forschung, kein Echtgeld):**
+ein Spielgeld-Demonstrator nach Genovese & Stambler (arXiv 2512.21304,
+Volltext gelesen): QKD-artige Einzelqubits, Prüfung per Stichprobe
+(„cut-and-choose“), Fälschungsschranke 2^(−2ξ). **Für Echtgeld
+ungeeignet:** die Einmal-Speicher hängen an vertrauenswürdiger Hardware
+(TEE wie Intel SGX); wer eine TEE knackt, liest alle Urbilder der Note aus
+und kann sie **beliebig oft** nachmachen. Das verletzt den Launch-Maßstab.
+
+**Nächste Schritte:** (a) Volltexte qt-Pegasis und ePrint 2026/114 – ePrint
+blockt automatische Abrufe; Betreiber lädt sie herunter oder gibt sie frei.
+(b) Daraus die 4D-Kette als Schaltkreis zählen (Länge, Kosten je Schritt,
+Umkehrbarkeit) – wie `isogenie_hebel.py` für CSIDH.
