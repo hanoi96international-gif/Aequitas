@@ -24,9 +24,17 @@ Small exact simulations, a protocol model of lock → offline transfer →
 bolt-to-signature → redeem, and the open questions are public:
 https://github.com/hanoi96international-gif/Aequitas/tree/main/forschung/quantengeld
 
+One result from our simulations: for a group-action note verified by a single
+projection on an m-qubit Fourier state, an honest note survives storage with
+exactly (1 − p)^m under independent depolarizing noise (p = per-qubit flip
+probability, any serial number; checked against all 4^m Pauli errors). Without
+error correction, a note held for one day would need coherence times of
+decades, while Wiesner-style private verification needs only 2.5–10× the
+storage time (rauschen.py, rauschen_oeffentlich.py).
+
 Our concrete question: which quantum-lightning candidate would you consider
-the most credible basis today, and is anyone working on noise tolerance
-beyond the oracle model?
+the most credible basis today, and is anyone working on noise-tolerant
+public verification beyond the oracle model (e.g. arXiv:2407.06463)?
 
 We are not asking for a commitment. A short pointer would already help a lot.
 

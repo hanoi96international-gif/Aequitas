@@ -70,6 +70,117 @@ Seriennummer nachbauen, und genau diesen Angriff zeigt die Simulation.
 Sicher wäre das Verfahren erst mit einer Gruppenaktion, in der das schwer
 ist. Kandidaten sind Isogenien. **Das ist die offene Forschungsfrage.**
 
+## 3a. Was die Hardware können muss (`rauschen.py`)
+
+Eine Note liegt eine Zeit im Speicher, jedes Qubit zerfällt mit der
+Kohärenzzeit T. Der Prüfer muss deshalb einige falsche Qubits dulden – und
+jede Toleranz hilft auch dem Fälscher. Gerechnet ist exakt (Binomialschwänze),
+mit zwei Forderungen: **die echte Note besteht zu ≥ 99 %, eine Fälschung
+höchstens zu 10⁻¹²** (Wiesner-Noten, bester Fälscher 1/4 je Qubit; für
+öffentlich prüfbare Verfahren ist das eine *untere* Schranke).
+
+| Lagerzeit der Note | Note ≤ 256 Qubits | Note ≤ 2.048 Qubits |
+|---|---|---|
+| 1 Minute | T ≥ 10,6 Min. | T ≥ 2,5 Min. |
+| 1 Stunde | T ≥ 10,6 Std. | T ≥ 2,5 Std. |
+| **1 Tag** | **T ≥ 10,6 Tage** | **T ≥ 2,5 Tage** |
+| 1 Woche | T ≥ 74 Tage | T ≥ 17 Tage |
+| 30 Tage | T ≥ 318 Tage | T ≥ 75 Tage |
+
+**Die Faustregel:** die Kohärenzzeit muss etwa das 2,5- bis 10-fache der
+Lagerzeit betragen – je mehr Qubits, desto weniger. Größere Noten helfen nur
+bis etwa zum Faktor 2: unterhalb von T ≈ 2 × Lagerzeit fallen echte und
+gefälschte Noten statistisch zusammen, und keine Notengröße rettet das.
+
+Zum Vergleich (Laborwerte, Größenordnung, vor Zitierung prüfen):
+supraleitende Qubits Millisekunden, Ionenfallen Sekunden bis Minuten,
+Kernspins in Festkörpern einige Stunden – jeweils gekühlt und ohne
+Transport. **Eine Note, die man einen Tag in der Tasche trägt, braucht
+Speicher, die Tage halten: rund 10- bis 100-mal länger als die besten
+gekühlten Laborspeicher (Stunden) und milliardenfach länger als heutige
+Rechen-Qubits (Millisekunden) – und das im Gerät, nicht im Labor.** Das ist die ehrliche Größe
+der Hardware-Lücke – und zugleich der Maßstab, an dem sich jede künftige
+Ankündigung messen lässt.
+
+## 3b. Der Preis der Öffentlichkeit (`rauschen_oeffentlich.py`)
+
+Beim öffentlich prüfbaren Verfahren (Gruppenaktion, Zhandry) ist die Note ein
+Fourier-Zustand über ein Register aus m Qubits, geprüft wird durch eine
+einzige Projektion. Hergeleitet und am Zustandsvektor geprüft (alle 4^m
+Pauli-Fehler für kleine m, Monte-Carlo für größere):
+
+> **Eine echte Note besteht nach der Lagerung genau mit (1 − p)^m** – für jede
+> Seriennummer, p = Kippwahrscheinlichkeit eines Qubits.
+
+Es gibt keine Mehrheit über viele Qubits wie bei Wiesner: **jedes Qubit muss
+m-mal besser sein.** Für eine Note, die einen Tag lagert und zu ≥ 99 % besteht:
+
+| Register m | einteilig: Kohärenz / Lagerzeit | für 1 Tag | mehrteilig (101 Teile, > 50 %) | für 1 Tag |
+|---|---|---|---|---|
+| 64 | 3.184 | 9 Jahre | 65 | 65 Tage |
+| 256 | 12.736 | 35 Jahre | 262 | 262 Tage |
+| 512 | 25.472 | 70 Jahre | 524 | 1 Jahr |
+| 2.048 | 101.887 | 279 Jahre | 2.099 | 6 Jahre |
+
+**Mehrteilige Note:** k unabhängige Teilnoten, angenommen bei mehr als der
+Hälfte. Mehr als die Hälfte ist nötig gegen den Aufteilungsangriff (ein
+Fälscher verteilt die echten Teilnoten auf zwei Noten – dann bräuchte er mehr
+als k echte). Eine Teilnote muss dann nur noch zu etwa 60 % bestehen statt zu
+99 % – das senkt die Forderung um das ~50-Fache.
+
+**Folgerung für Aequitas:** Öffentlich prüfbares Quantengeld ist ohne
+Quanten-Fehlerkorrektur nicht lagerfähig. Selbst mehrteilig liegt die
+Forderung hunderte Male über Wiesner (2,5–10). Der realistische Weg führt
+über **fehlerkorrigierte logische Qubits** als Speicher – genau die Technik,
+die Quantenrechner ohnehin brauchen. Das ist der Meilenstein, an dem sich
+messen lässt, wann eine Aequitas-Quanten-Note in Reichweite kommt. Und es ist
+eine präzise, neue Frage an die Forschung: **rauschtolerante öffentliche
+Prüfung** (bisher nur im Orakelmodell, arXiv:2407.06463).
+
+## 3c. Eine echte Isogenie-Gruppenaktion (`isogenie_geld.py`)
+
+Statt Z_N wirkt jetzt die **Klassengruppe** auf supersingulären
+Montgomery-Kurven über F_419 – dieselbe Mathematik wie CSIDH und wie Zhandrys
+Vorschlag, nur winzig. Selbst gebaut aus Velu-Isogenien (x-Koordinaten), ohne
+Bibliothek:
+
+- **Bahn:** 27 Kurven (Klassenzahl h = 27), erzeugt von der 3-Isogenie.
+  Geprüft: kommutativ, invertierbar, frei, jede Kurve supersingulär, jedes
+  Bild liegt auf seiner Kurve – auch für Kerne auf dem Twist.
+- **Note** |$_y⟩ = Σ_k ω^{yk} |g^k·E₀⟩ ist Eigenzustand der öffentlichen
+  3-Isogenie: **jeder kann prüfen**, drucken ergibt eine zufällige
+  Seriennummer, eine Fälschung mit einer klassischen Kurve besteht zu 1/h.
+- **Wo die Sicherheit sitzt – jetzt sichtbar:** Eine Note zu einer
+  *gewünschten* Seriennummer braucht zu jeder Kurve ihren Index k
+  (Vektorisierung, der „diskrete Logarithmus“ der Gruppenaktion). Hier sind
+  es 27 Kurven und eine Tabelle. Bei kryptografischen Größen sind es rund
+  2^256, und auch ein Quantenrechner braucht dafür subexponentielle Zeit
+  (Kuperberg). Im Spielzeug Z_N gab es diese Stufe gar nicht.
+
+Beim Bau fand der Selbsttest einen Fehler in der ersten Fassung der
+Isogenie-Formel (falsche Bildkurve, nicht supersingulär) – die richtige
+Formel A′ = π²(A − 6σ) ist jetzt durch den Test abgesichert.
+
+## 3d. Scharf: mehrteilige Isogenie-Note (`isogenie_mehrteilig.py`)
+
+Eine Note aus k unabhängigen Teilnoten (echte Gruppenaktion p = 868019,
+h = 1.491 Kurven), gültig ab τ bestandenen. Zwei Angriffe, exakt gerechnet:
+**Fälschen ohne Note** (je Teilnote ≤ 1/h, für jeden Zustand – geprüft) und
+**Aufteilen** einer echten Note in zwei. Der zweite zeigt: bloß „mehr als die
+Hälfte“ reicht nicht – eine einzige geglückte Fälschung genügt (1:250). Die
+Schwelle braucht einen Abstand d = 2τ − k.
+
+| Ziel | Teilnote besteht | k | τ | Aufteilen |
+|---|---|---|---|---|
+| 2⁻¹²⁸ | 100 % | 13 | 13 | 5,6·10⁻⁴² |
+| 2⁻¹²⁸ | 90 % | 29 | 22 | 5,5·10⁻⁴¹ |
+| 2⁻¹⁹² | 90 % | 40 | 31 | 4,3·10⁻⁶⁰ |
+
+Schon mit 1.491 Kurven ist die Note damit **so scharf wie ML-DSA-65**. Bei
+kryptografischer Größe genügt d = 1 – dort bestimmt allein die Schwere der
+Vektorisierung die Sicherheit. Die Vorgaben für den echten Bau stehen in
+**`BAUVORGABE.md`**.
+
 ## 4. Weitere Dokumente
 
 - `BRUECKE.md` und `bruecke.py`: der Entwurf der Brücke AEQ ↔ Quanten-Note.
@@ -81,9 +192,12 @@ ist. Kandidaten sind Isogenien. **Das ist die offene Forschungsfrage.**
 
 ## 5. Plan: was wir tun können
 
-1. **Verstehen und zeigen:** die Simulationen ausbauen. Als Nächstes kommt
-   eine Gruppenaktion auf einer Menge, in der der Nachbau nicht trivial ist,
-   als Lehrbeispiel ohne Sicherheitsanspruch.
+1. **Verstehen und zeigen:** die Simulationen ausbauen. Erledigt:
+   Hardware-Forderung unter Rauschen (`rauschen.py`, Abschnitt 3a). Als
+   Nächstes: eine Gruppenaktion auf einer Menge, in der der Nachbau nicht
+   trivial ist, als Lehrbeispiel ohne Sicherheitsanspruch – erledigt mit
+   einer echten Isogenie-Gruppenaktion (Abschnitt 3c). Erledigt:
+   Rauschrechnung für das öffentlich prüfbare Verfahren (Abschnitt 3b).
 2. **Brücke entwerfen** (Gedankenmodell): AEQ auf der Kette sperren, dafür
    eine Note mit öffentlicher Seriennummer; eine Note zurückgeben, dafür die
    AEQ zurück. Die Seriennummer steht auf der Kette, sodass sich jede Note nur

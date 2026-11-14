@@ -290,6 +290,16 @@
         <tbody id="blocks-list"><tr><td colspan="6" class="exp-empty" data-i18n="x-loading-blocks">Loading blocks...</td></tr></tbody>
       </table>
     </div>
+    <!-- Blaettern durch die ganze Kette, nicht nur die neuesten (explorer.js, blockSeite*). -->
+    <div class="exp-seiten" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 16px;border-top:1px solid var(--border)">
+      <button type="button" class="exp-btn-sm" data-act="blockSeiteNeueste" data-i18n="x-seite-neueste">Newest</button>
+      <button type="button" class="exp-btn-sm" data-act="blockSeiteNeuer" data-i18n="x-seite-neuer">← Newer</button>
+      <button type="button" class="exp-btn-sm" data-act="blockSeiteAelter" data-i18n="x-seite-aelter">Older →</button>
+      <span id="block-seite-stand" class="exp-muted" style="font-size:0.7rem"></span>
+      <span style="flex:1"></span>
+      <input id="block-seite-hoehe" type="number" min="0" inputmode="numeric" style="width:9em" placeholder="#" aria-label="Height">
+      <button type="button" class="exp-btn-sm" data-act="blockSeiteGehe" data-i18n="x-seite-gehe">Go to height</button>
+    </div>
   </div>
   <!-- Latest Transactions -->
   <div class="exp-panel">
