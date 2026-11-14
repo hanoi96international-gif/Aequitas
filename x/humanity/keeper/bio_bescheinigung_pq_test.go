@@ -127,6 +127,11 @@ func TestPQBescheinigung_StichtagOhneStau(t *testing.T) {
 	if err := pruefeBioBescheinigungMit(ohnePQ, bTestZeit+200, nil); err != nil {
 		t.Fatalf("vor dem Stichtag ausgestellt, kurz danach im Block: %v", err)
 	}
+	// Ein Umzug darf 24 h alte Bescheinigungen tragen: auch 3 h nach dem
+	// Stichtag gilt die vorher ausgestellte noch.
+	if err := pruefeBioBescheinigungMit(ohnePQ, bTestZeit+100+3*3600, nil); err != nil {
+		t.Fatalf("vor dem Stichtag ausgestellt, 3 h danach im Block: %v", err)
+	}
 	// Ein rueckdatierter Bescheid hilft nach Ablauf der Frist nicht mehr.
 	if err := pruefeBioBescheinigungMit(ohnePQ, bTestZeit+100+pqNachlauf, nil); err == nil {
 		t.Fatal("ohne PQ lange nach dem Stichtag im Block angenommen")

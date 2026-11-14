@@ -35,8 +35,9 @@ import (
 //
 // Pflicht, wenn die Bescheinigung ab dem Stichtag ausgestellt ist (b.Zeit,
 // von den Pruefern unterschrieben) ODER der Block so spaet liegt, dass eine
-// vor dem Stichtag ausgestellte Bescheinigung nicht mehr gueltig sein kann
-// (Stichtag + bescheinigungHoechstensAlt + 1 h). So faellt keine kurz vor dem
+// vor dem Stichtag ausgestellte Bescheinigung nicht mehr gueltig sein kann:
+// Stichtag + umzugHoechstensAlt (24 h, der laengere der beiden Wege; die
+// Registrierung erlaubt nur bescheinigungHoechstensAlt = 1 h) + 1 h. So faellt keine kurz vor dem
 // Stichtag angenommene Registrierung aus dem naechsten Block (der Fall, der
 // beim Umzug M1 hiess), und ein Erzeuger kann mit einer rueckdatierten
 // Bescheinigung nach Ablauf dieser Frist nichts mehr erreichen.
@@ -59,8 +60,9 @@ const (
 	pqSignaturHex      = 2 * 3309
 	pqEintragLaenge    = 2*32 + 1 + pqSignaturHex
 	// Nach dem Stichtag gilt eine vorher ausgestellte Bescheinigung hoechstens
-	// noch so lange (Annahme bis bescheinigungHoechstensAlt, dann Block).
-	pqNachlauf = bescheinigungHoechstensAlt + 3600
+	// noch so lange: Registrierung 1 h, Umzug 24 h (umzugHoechstensAlt), dazu
+	// 1 h Puffer. Danach hilft keine Rueckdatierung mehr.
+	pqNachlauf = umzugHoechstensAlt + 3600
 )
 
 // pruefenPQ: die PQ-Felder der Genesis. Fehler halten den Start an.
