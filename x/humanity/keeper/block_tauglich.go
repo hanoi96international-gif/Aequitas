@@ -492,6 +492,10 @@ func blockZeitPraefix(txs []Transaction, jetzt, elternZeit int64) (int, int64, e
 	if n := checkpointTxGrenze(txs); n < len(txs) {
 		txs = txs[:n]
 	}
+	// Hoechstens pqUeberweisungenJeBlock PQ-Ueberweisungen (pq_ueberweisung.go).
+	if n := pqUeberweisungGrenze(txs); n < len(txs) {
+		txs = txs[:n]
+	}
 	if t, err := blockZeitFuer(txs, jetzt, elternZeit); err == nil {
 		return len(txs), t, nil
 	}

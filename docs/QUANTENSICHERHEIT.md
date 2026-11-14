@@ -157,14 +157,34 @@ Umsetzung in dieser Reihenfolge, jede Stufe ein eigener PR mit Prüfung:
    Stichtag – und die App legt die Zusage gleich bei der Einrichtung an.
    Unternehmens-Wallets (kein Mensch) folgen mit eigener Grenze.
 
-**Stufe 3 – PQ-Wallets (Konsens + App)**
-1. Neuer Transaktionstyp mit ML-DSA-65-Unterschrift; Adresse = Hash des
-   ML-DSA-Schlüssels.
-2. App: ML-DSA in JavaScript/nativ (Kandidat `@noble/post-quantum`; neue
-   Abhängigkeit, nur mit Prüfung). Umzug von alter auf neue Adresse in der App
-   mit einem Knopf.
-3. Durchsatz: Unterschrift ~50× größer als ECDSA, Prüfung ähnlich schnell.
-   Vorher im Prüfstand messen.
+**Stufe 3 – PQ-Wallets (Konsens + App)** – *Knoten: `pq_ueberweisung.go`, Stichtag `pqUeberweisungAbUnix` = 17.11.2026 18:00 UTC*
+1. **PQ-Adresse** = `"0x"` + letzte 20 Byte von
+   `SHA-256("aequitas-pq-adresse-v1" || ML-DSA-65-Schlüssel)`. Sie empfängt
+   mit jeder gewöhnlichen Überweisung. **Ausgeben** geht nur mit einer
+   ML-DSA-65-Unterschrift: eine EVM-Rohform bräuchte einen secp256k1-Schlüssel,
+   dessen Keccak-Adresse genau diese 20 Byte trifft (Urbild, auch mit Grover
+   2^80 Schritte je Adresse). Kein ML-DSA-Schlüssel ergibt eine gewöhnliche
+   Adresse.
+2. **Überweisung** = gewöhnliche `transfer`-Transaktion, die statt der
+   Rohform `Roh` den Nachweis `pq` trägt (Schlüssel, Unterschrift, Nonce,
+   Betrag in Wei). Unterschrieben wird
+   `aequitas-pq-ueberweisung-v1|chain:1926|<von>|<an>|<wei>|<nonce>`;
+   `tx_hash` = SHA-256 dieser Nachricht. Gebühr, Kontostände, Buchführung,
+   Kontoverlauf und Nonce (`NaechsteNonce`) laufen unverändert über die Wege
+   der Überweisung; jeder Knoten prüft die Unterschrift beim Nachspielen
+   selbst, vorab und parallel wie die EVM-Unterschriften.
+3. **Annahme** `POST /api/pq/ueberweisung` (`{von, an, wei, nonce, pub, sig}`)
+   nur auf dem seriellen Weg – der WAL-Schnellpfad schriebe den Nachweis nicht
+   mit. Stand einer Adresse (Nonce, Guthaben): `GET /api/pq/stand?adresse=`.
+4. **Grenzen:** höchstens 500 PQ-Überweisungen je Block (rund 5,4 MB; ein Block
+   darf 32 MB groß sein) – der Erzeuger schneidet in Reihenfolge ab, jeder
+   Knoten weist mehr ab. Körper ≤ 16 KiB, Burst je IP, Betrag ≤ 10^30 Wei.
+5. **App:** der „Tresor“ – die PQ-Adresse aus derselben Seed-Phrase
+   (Schlüssel wie Stufe 2). Guthaben hineinschieben ist eine gewöhnliche
+   Überweisung; heraus geht es nur mit ML-DSA. `@noble/post-quantum`
+   (geprüft in Aequitas-App #65).
+6. **Noch nicht** (eigene Schritte): das Menschsein und das Grundeinkommen auf
+   eine PQ-Adresse umziehen; Unternehmen; EVM-Verträge von PQ-Adressen aus.
 
 **Stufe 4 – Notbremse (Konsens, Stichtag erst bei echter Gefahr)**
 - Ab einem Stichtag nehmen die Knoten von reinen ECDSA-Wallets nichts mehr an.

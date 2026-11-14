@@ -115,7 +115,7 @@ func (cs *ChainState) processTransferBatchConcurrent(batch []*transferBatchReque
 	// Signierte Ueberweisungen (Stufe 1.0) setzen NaechsteNonce nur im
 	// seriellen Stapelpfad -- dieser hier kennt das nicht.
 	for _, req := range batch {
-		if req.pendingTxTemplate.Roh != "" {
+		if signiert(req.pendingTxTemplate) {
 			return false
 		}
 	}

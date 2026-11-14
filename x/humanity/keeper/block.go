@@ -100,6 +100,11 @@ type Transaction struct {
 	// Knoten (signierte_ueberweisung.go, Stufe 1.0). omitempty: aeltere
 	// Bloecke und andere Transaktionsarten behalten ihren Hash.
 	Roh string `json:"roh,omitempty"`
+	// PQ: statt Roh der Nachweis einer quantensicheren Ueberweisung von einer
+	// PQ-Adresse (pq_ueberweisung.go, Stufe 3) -- ML-DSA-65-Schluessel,
+	// Unterschrift, Nonce und Betrag in Wei. omitempty: aeltere Bloecke
+	// behalten ihren Hash.
+	PQ *PQUeberweisung `json:"pq,omitempty"`
 	// Nachweis: Unterschrift(en) des Auftraggebers fuer alle anderen
 	// Auftraege, die Geld oder Rechte bewegen (Tausch, Liquiditaet, Faucet,
 	// Treuhand, Unternehmen) -- das Gegenstueck zu Roh (auftrag_nachweis.go).
@@ -7689,6 +7694,11 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 	checkpointTxe := 0
 	for txIdx := 0; txIdx < len(block.Transactions); txIdx++ {
 		if err := checkpointFeldErlaubt(&block.Transactions[txIdx]); err != nil {
+			fmt.Printf("[REPLAY] ✗ %v (block #%d) — rolling back whole block\n", err, block.Height)
+			hardFailure = true
+			break
+		}
+		if err := pqFeldErlaubt(&block.Transactions[txIdx]); err != nil {
 			fmt.Printf("[REPLAY] ✗ %v (block #%d) — rolling back whole block\n", err, block.Height)
 			hardFailure = true
 			break

@@ -5583,18 +5583,21 @@ func (cs *ChainState) TransferAtomic(from, to string, amount float64, pendingTxT
 	// nur der Stapelpfad und der WAL-Pfad setzen NaechsteNonce beim Annehmen.
 	if cs.wal != nil {
 		// Auch signierte Ueberweisungen: der WAL-Pfad prueft und setzt
-		// NaechsteNonce selbst (wal_nonce_reihenfolge.go).
-		if fLost, tLost, applied, werr := cs.transferConcurrentWAL(from, to, amount, pendingTxTemplate); applied {
-			transferFastPathApplied.Add(1)
-			return fLost, tLost, werr
+		// NaechsteNonce selbst (wal_nonce_reihenfolge.go). PQ-Ueberweisungen
+		// (pq_ueberweisung.go) nie: der WAL-Satz traegt ihren Nachweis nicht.
+		if pendingTxTemplate.PQ == nil {
+			if fLost, tLost, applied, werr := cs.transferConcurrentWAL(from, to, amount, pendingTxTemplate); applied {
+				transferFastPathApplied.Add(1)
+				return fLost, tLost, werr
+			}
 		}
 		// Zurueck auf den seriellen Weg: dessen Zeile stuende sofort in
 		// pending_txs, vor noch ungeflushten WAL-Ueberweisungen desselben
 		// Absenders mit kleinerer Nonce. Erst die schreiben.
-		if pendingTxTemplate.Roh != "" && !cs.walVorSeriellLeeren(from) {
+		if signiert(pendingTxTemplate) && !cs.walVorSeriellLeeren(from) {
 			return 0, 0, fmt.Errorf("server busy: earlier transfers of this sender are still being written, try again shortly")
 		}
-	} else if pendingTxTemplate.Roh != "" {
+	} else if signiert(pendingTxTemplate) {
 		// kein schneller Pfad: transferConcurrent kennt NaechsteNonce nicht
 	} else if fLost, tLost, applied, cerr := cs.transferConcurrent(from, to, amount, pendingTxTemplate); applied {
 		transferFastPathApplied.Add(1)

@@ -134,6 +134,14 @@ func ueberweisungAusRoh(t *types.Transaction) (to string, betrag float64, ok boo
 // beliebig parallel ausfuehrbar. blockZeit: die Zeit des Blocks, der sie
 // traegt -- nach ihr richtet sich die Chain-ID (chain_id_wechsel.go).
 func pruefeUeberweisungsRoh(tx *Transaction, blockZeit int64) (uint64, error) {
+	if tx.PQ != nil {
+		// Stufe 3 (pq_ueberweisung.go): ML-DSA-65 statt EVM-Rohform.
+		n, err := pruefePQUeberweisung(tx, blockZeit)
+		if err != nil {
+			return 0, fmt.Errorf("%w: %v", ErrUeberweisungNichtSigniert, err)
+		}
+		return n, nil
+	}
 	if tx.Roh == "" {
 		return 0, fmt.Errorf("%w: keine Rohform (TxHash %s)", ErrUeberweisungNichtSigniert, tx.TxHash)
 	}
@@ -170,6 +178,14 @@ func pruefeUeberweisungsRoh(tx *Transaction, blockZeit int64) (uint64, error) {
 // angenommenen Ueberweisung. Die Signatur hat sendRawTransaction bereits
 // geprueft; hier wird nur gelesen.
 func nonceAusVorlage(vorlage Transaction) (uint64, bool) {
+	if vorlage.PQ != nil {
+		// PQ-Ueberweisung: die Unterschrift hat handlePQUeberweisung
+		// geprueft (pruefePQUeberweisung).
+		if vorlage.PQ.Nonce >= math.MaxInt64 {
+			return 0, false
+		}
+		return vorlage.PQ.Nonce, true
+	}
 	if vorlage.Roh == "" {
 		return 0, false
 	}
@@ -207,6 +223,9 @@ type ueberweisungsNonce struct {
 // der mit dem kleinsten Index gemeldet, damit jeder Knoten dieselbe Meldung
 // schreibt. blockZeit: block.Timestamp (Chain-ID, chain_id_wechsel.go).
 func pruefeUeberweisungenImBlock(txs []Transaction, blockZeit int64) ([]ueberweisungsNonce, error) {
+	if n := pqUeberweisungGrenze(txs); n < len(txs) {
+		return nil, fmt.Errorf("%w: mehr als %d PQ-Ueberweisungen im Block", ErrUeberweisungNichtSigniert, pqUeberweisungenJeBlock)
+	}
 	var idx []int
 	for i := range txs {
 		if txs[i].Type == "transfer" {
