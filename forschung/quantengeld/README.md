@@ -200,7 +200,9 @@ klassische Arbeit den Preis. Daher die Vorgabe in `BAUVORGABE.md`:
 prüfen kostet bei 8.192 Bit ≈ 2⁵⁵ Toffoli – der eigentliche Engpass neben
 dem Speicher. Die einfachen Rechenhebel (Strategien, Schranken, √Vélu) sind
 gemessen und bringen zusammen ≈ 2²; der nötige Faktor 2⁵–2¹⁰ muss aus einer
-anderen Auswertung der Gruppenaktion kommen (`BAUVORGABE.md` §2e).
+anderen Auswertung der Gruppenaktion kommen (`BAUVORGABE.md` §2e). Der
+Multiplizierer ist als echter umkehrbarer Schaltkreis gebaut und gezählt
+(`schaltkreis_mult.py`): Schulbuch 4,0·B², einfaches Karatsuba kein Gewinn.
 
 ## 4. Weitere Dokumente
 

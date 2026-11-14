@@ -156,7 +156,13 @@ Original geprüft – gleiche Kurven):**
   **strukturell** kommen (§5.4): Gruppenaktion über höherdimensionale
   Isogenien (Aufwand wächst mit log p statt mit Σ lᵢ; offen: die
   Normgleichungen in Überlagerung lösen) und schnellere Multiplizierer im
-  Schaltkreis (Karatsuba statt Schulbuch; Literatur, nachzulesen).
+  Schaltkreis.
+- **Multiplizierer gebaut und gemessen (`schaltkreis_mult.py`):** echter
+  umkehrbarer Schaltkreis, Gatter für Gatter simuliert, ohne Müll.
+  Schulbuch kostet **4,0·B²** Toffoli – die Annahme oben stimmt. Karatsuba
+  in einfacher Bauart gewinnt **nicht** (eine Stufe 1,38× teurer): die
+  Überträge laufen durch das ganze Ergebnisregister. Gewinn braucht eine
+  Übertragsbehandlung mit Fenstern (Literatur: Gidney 2019, nachzulesen).
 
 ## 3. Parameter (gerechnet)
 
@@ -200,8 +206,18 @@ Je schlechter der Speicher, desto mehr Teile – aber die Sicherheit bleibt bei
    CSIDH-Hebel sind gemessen und ausgeschöpft (zusammen ≈ 2²). Nächstes:
    Gruppenaktion mit höherdimensionalen Isogenien auswerten (Literatur:
    Ansatz „PEGASIS“ 2025, nachzulesen) statt über ~760 kleine Primzahlen,
-   und schnellere Multiplizierer – Kandidaten für den Faktor 2⁵–2¹⁰. Erst
-   zählen, dann behaupten.
+   und schnellere Multiplizierer (einfaches Karatsuba gemessen: kein
+   Gewinn) – Kandidaten für den Faktor 2⁵–2¹⁰. Erst zählen, dann behaupten.
+5. **Reicht eine schwache Prüfung? (offen, 2⁴ bei 8.192 Bit)** Die volle
+   Prüfung projiziert auf genau eine Seriennummer und braucht dafür
+   Exponenten bis m = 21. Mit kleinen Exponenten (m = 1) lässt der Test
+   statt einer Seriennummer etwa 2⁴⁰⁹⁶ · (2/3)⁷⁵⁸ ≈ 2³⁶⁵³ „Nachbarn“ durch.
+   Eine *neu geprägte* Note trifft diese Menge nur mit 2⁻⁴⁴³ – das wäre
+   sicher. Offen ist, ob ein Fälscher aus echten Noten einen Zustand mit
+   einem Nachbar-Bezeichner *ableiten* kann (Bezeichner verschieben oder
+   Noten kombinieren, ohne die Vektorisierung zu lösen). Gelingt der
+   Beweis, dass das nicht geht, sinken die Prüfkosten um 2⁴, ohne die Note
+   zu schwächen. Bis dahin gilt die volle Prüfung.
 
 ## 6. Das Gesamtpaket – was wir bauen, was andere bauen
 
