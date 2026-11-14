@@ -102,6 +102,41 @@ Rechen-Qubits (Millisekunden) – und das im Gerät, nicht im Labor.** Das ist d
 der Hardware-Lücke – und zugleich der Maßstab, an dem sich jede künftige
 Ankündigung messen lässt.
 
+## 3b. Der Preis der Öffentlichkeit (`rauschen_oeffentlich.py`)
+
+Beim öffentlich prüfbaren Verfahren (Gruppenaktion, Zhandry) ist die Note ein
+Fourier-Zustand über ein Register aus m Qubits, geprüft wird durch eine
+einzige Projektion. Hergeleitet und am Zustandsvektor geprüft (alle 4^m
+Pauli-Fehler für kleine m, Monte-Carlo für größere):
+
+> **Eine echte Note besteht nach der Lagerung genau mit (1 − p)^m** – für jede
+> Seriennummer, p = Kippwahrscheinlichkeit eines Qubits.
+
+Es gibt keine Mehrheit über viele Qubits wie bei Wiesner: **jedes Qubit muss
+m-mal besser sein.** Für eine Note, die einen Tag lagert und zu ≥ 99 % besteht:
+
+| Register m | einteilig: Kohärenz / Lagerzeit | für 1 Tag | mehrteilig (101 Teile, > 50 %) | für 1 Tag |
+|---|---|---|---|---|
+| 64 | 3.184 | 9 Jahre | 65 | 65 Tage |
+| 256 | 12.736 | 35 Jahre | 262 | 262 Tage |
+| 512 | 25.472 | 70 Jahre | 524 | 1 Jahr |
+| 2.048 | 101.887 | 279 Jahre | 2.099 | 6 Jahre |
+
+**Mehrteilige Note:** k unabhängige Teilnoten, angenommen bei mehr als der
+Hälfte. Mehr als die Hälfte ist nötig gegen den Aufteilungsangriff (ein
+Fälscher verteilt die echten Teilnoten auf zwei Noten – dann bräuchte er mehr
+als k echte). Eine Teilnote muss dann nur noch zu etwa 60 % bestehen statt zu
+99 % – das senkt die Forderung um das ~50-Fache.
+
+**Folgerung für Aequitas:** Öffentlich prüfbares Quantengeld ist ohne
+Quanten-Fehlerkorrektur nicht lagerfähig. Selbst mehrteilig liegt die
+Forderung hunderte Male über Wiesner (2,5–10). Der realistische Weg führt
+über **fehlerkorrigierte logische Qubits** als Speicher – genau die Technik,
+die Quantenrechner ohnehin brauchen. Das ist der Meilenstein, an dem sich
+messen lässt, wann eine Aequitas-Quanten-Note in Reichweite kommt. Und es ist
+eine präzise, neue Frage an die Forschung: **rauschtolerante öffentliche
+Prüfung** (bisher nur im Orakelmodell, arXiv:2407.06463).
+
 ## 4. Weitere Dokumente
 
 - `BRUECKE.md` und `bruecke.py`: der Entwurf der Brücke AEQ ↔ Quanten-Note.
@@ -116,8 +151,8 @@ Ankündigung messen lässt.
 1. **Verstehen und zeigen:** die Simulationen ausbauen. Erledigt:
    Hardware-Forderung unter Rauschen (`rauschen.py`, Abschnitt 3a). Als
    Nächstes: eine Gruppenaktion auf einer Menge, in der der Nachbau nicht
-   trivial ist, als Lehrbeispiel ohne Sicherheitsanspruch; und dieselbe
-   Rauschrechnung für das öffentlich prüfbare Verfahren.
+   trivial ist, als Lehrbeispiel ohne Sicherheitsanspruch. Erledigt:
+   Rauschrechnung für das öffentlich prüfbare Verfahren (Abschnitt 3b).
 2. **Brücke entwerfen** (Gedankenmodell): AEQ auf der Kette sperren, dafür
    eine Note mit öffentlicher Seriennummer; eine Note zurückgeben, dafür die
    AEQ zurück. Die Seriennummer steht auf der Kette, sodass sich jede Note nur
