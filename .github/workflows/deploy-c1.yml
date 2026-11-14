@@ -78,6 +78,8 @@ jobs:
         run: bash .github/neustart/umzug-code-regeln-nicht-verpasst.sh http://$C1:8080
       - name: Stichtag "nur der letzte Code" nicht verpasst
         run: bash .github/neustart/umzug-letzter-code-nicht-verpasst.sh http://$C1:8080
+      - name: Stichtag der PQ-Zusage nicht verpasst
+        run: bash .github/neustart/pq-zusage-nicht-verpasst.sh http://$C1:8080
       - name: Schluessel
         env:
           KEY: ${{ secrets.CONTABO_SSH_KEY }}

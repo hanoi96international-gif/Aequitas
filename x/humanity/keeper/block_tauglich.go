@@ -193,6 +193,10 @@ func auftragsFenster(tx *Transaction, jetzt int64) zeitFenster {
 		}
 	case umzugWiderrufTxArt:
 		f.eng(umzugAb(), math.MaxInt64)
+	case pqZusageTxArt:
+		// pq_zusage.go: wie das Urteil (pq_zeit).
+		g := pqZusageFenster(*tx)
+		f.eng(g.von, g.bis)
 	case umzugVollzugTxArt:
 		// Die Rundenzeit liegt hoechstens 60 s nach dem Block (umzug_frist).
 		f.eng(umzugAb(), math.MaxInt64)
@@ -363,6 +367,13 @@ func blockTauglich(tx *Transaction, blockZeit int64) error {
 		}
 		if tx.Type == umzugAnkuendigenTxArt && tx.Umzug != nil && tx.Umzug.Code != "" && !umzugNurLetzterCode(tx.DistributionAt) && umzugNurLetzterCode(blockZeit) {
 			return fmt.Errorf("umzug_ankuendigen mit Code bescheinigt %d vor dem Stichtag \"nur der letzte Code\", Block %d danach", tx.DistributionAt, blockZeit)
+		}
+	case pqZusageTxArt:
+		if !pqZusageAktiv(blockZeit) {
+			return fmt.Errorf("pq_zusage vor dem Stichtag (Block %d)", blockZeit)
+		}
+		if z := tx.DistributionAt; z <= 0 || !pqZusageAktiv(z) || z > sattAdd(blockZeit, umzugHoechstensVoraus) || blockZeit-z > umzugHoechstensAlt {
+			return fmt.Errorf("pq_zusage unterschrieben %d, Block %d", z, blockZeit)
 		}
 	case umzugWiderrufTxArt, umzugVollzugTxArt:
 		if !umzugAktiv(blockZeit) {
