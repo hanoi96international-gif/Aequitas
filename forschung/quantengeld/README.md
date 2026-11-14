@@ -161,6 +161,26 @@ Beim Bau fand der Selbsttest einen Fehler in der ersten Fassung der
 Isogenie-Formel (falsche Bildkurve, nicht supersingulär) – die richtige
 Formel A′ = π²(A − 6σ) ist jetzt durch den Test abgesichert.
 
+## 3d. Scharf: mehrteilige Isogenie-Note (`isogenie_mehrteilig.py`)
+
+Eine Note aus k unabhängigen Teilnoten (echte Gruppenaktion p = 868019,
+h = 1.491 Kurven), gültig ab τ bestandenen. Zwei Angriffe, exakt gerechnet:
+**Fälschen ohne Note** (je Teilnote ≤ 1/h, für jeden Zustand – geprüft) und
+**Aufteilen** einer echten Note in zwei. Der zweite zeigt: bloß „mehr als die
+Hälfte“ reicht nicht – eine einzige geglückte Fälschung genügt (1:250). Die
+Schwelle braucht einen Abstand d = 2τ − k.
+
+| Ziel | Teilnote besteht | k | τ | Aufteilen |
+|---|---|---|---|---|
+| 2⁻¹²⁸ | 100 % | 13 | 13 | 5,6·10⁻⁴² |
+| 2⁻¹²⁸ | 90 % | 29 | 22 | 5,5·10⁻⁴¹ |
+| 2⁻¹⁹² | 90 % | 40 | 31 | 4,3·10⁻⁶⁰ |
+
+Schon mit 1.491 Kurven ist die Note damit **so scharf wie ML-DSA-65**. Bei
+kryptografischer Größe genügt d = 1 – dort bestimmt allein die Schwere der
+Vektorisierung die Sicherheit. Die Vorgaben für den echten Bau stehen in
+**`BAUVORGABE.md`**.
+
 ## 4. Weitere Dokumente
 
 - `BRUECKE.md` und `bruecke.py`: der Entwurf der Brücke AEQ ↔ Quanten-Note.
