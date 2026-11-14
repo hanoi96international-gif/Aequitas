@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync/atomic"
 )
 
 // DIE BESCHEINIGUNG QUANTENSICHER (docs/QUANTENSICHERHEIT.md, Stufe 1).
@@ -158,9 +159,35 @@ func pruefePQ(b *BioBescheinigung, k bescheinigungKonfig, bindungMsg, aussageMsg
 	if err := pqFeldForm(b.PQ); err != nil {
 		return err
 	}
-	if !pqPflicht(k, b.Zeit, blockZeit) {
-		return nil
+	if pqPflicht(k, b.Zeit, blockZeit) {
+		return pqPruefenStreng(b, k, bindungMsg, aussageMsg, bindet, bezeugt)
 	}
+	// VOR DEM STICHTAG: beobachten. Dieselbe strenge Pruefung, aber nur
+	// gezaehlt (/api/status -> bescheinigung_konsens.pq_beobachtet), nie
+	// abgewiesen. So zeigt die erste echte Registrierung, dass Coordinator und
+	// Vergleichsdienst richtig unterschreiben, BEVOR pq_ab_unix gesetzt wird
+	// (Waechter bio-pq-bereit.sh). Kosten: hoechstens
+	// bescheinigungMaxSignaturen ML-DSA-Pruefungen, erst nach bestandener
+	// Ed25519-Pruefung.
+	if len(k.PQ) > 0 {
+		if len(b.PQ) == 0 {
+			pqBeobachtetOhne.Add(1)
+		} else if err := pqPruefenStreng(b, k, bindungMsg, aussageMsg, bindet, bezeugt); err != nil {
+			pqBeobachtetFalsch.Add(1)
+			fmt.Printf("[BIO-PQ] Bescheinigung haette ab dem Stichtag nicht gegolten: %v\n", err)
+		} else {
+			pqBeobachtetOK.Add(1)
+		}
+	}
+	return nil
+}
+
+// Zaehler der Beobachtung vor dem Stichtag (je Pruefung, nicht je Mensch:
+// dieselbe Registrierung wird z. B. beim Einreichen und im Block geprueft).
+var pqBeobachtetOK, pqBeobachtetFalsch, pqBeobachtetOhne atomic.Int64
+
+// pqPruefenStreng: die Pruefung ab dem Stichtag.
+func pqPruefenStreng(b *BioBescheinigung, k bescheinigungKonfig, bindungMsg, aussageMsg []byte, bindet, bezeugt map[string]bool) error {
 	sigs := map[string]string{}
 	for _, e := range b.PQ {
 		ed, sig, _ := pqEintragTeilen(e)

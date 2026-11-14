@@ -102,6 +102,7 @@ jobs:
       - run: bash scripts/test_pq_zusage_nicht_verpasst.sh
       - run: bash scripts/test_pq_ueberweisung_nicht_verpasst.sh
       - run: bash scripts/test_pq_stempel_bereit.sh
+      - run: bash scripts/test_bio_pq_bereit.sh
       - run: python3 scripts/test_einrichten_funktionen.py
       - run: bash scripts/test_schluessel_lesen.sh
       - run: bash scripts/test_ssh_schluessel_reparatur.sh

@@ -299,6 +299,8 @@ func BescheinigungStand() map[string]any {
 		// Schluessel einen ML-DSA-Schluessel haben.
 		"pq_ab_unix":    k.PQAbUnix,
 		"pq_schluessel": len(k.PQ),
+		// Vor dem Stichtag geprueft und gezaehlt (bio_bescheinigung_pq.go).
+		"pq_beobachtet": map[string]int64{"ok": pqBeobachtetOK.Load(), "falsch": pqBeobachtetFalsch.Load(), "ohne": pqBeobachtetOhne.Load()},
 		"fingerabdruck": bescheinigungFingerabdruck(k)}
 }
 

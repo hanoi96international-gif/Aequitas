@@ -84,6 +84,8 @@ jobs:
         run: bash .github/neustart/pq-ueberweisung-nicht-verpasst.sh http://$C1:8080
       - name: PQ-Stempel bereit (Stichhoehe nur, wenn der Erzeuger richtig stempelt)
         run: bash .github/neustart/pq-stempel-bereit.sh http://$C1:8080
+      - name: Bescheinigung PQ bereit (Stichtag nur nach beobachteter gueltiger Registrierung)
+        run: bash .github/neustart/bio-pq-bereit.sh http://$C1:8080
       - name: Schluessel
         env:
           KEY: ${{ secrets.CONTABO_SSH_KEY }}
