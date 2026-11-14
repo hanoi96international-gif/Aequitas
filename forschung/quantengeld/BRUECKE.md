@@ -96,6 +96,26 @@ Einlöse-Mechanismus) ist austauschbar. Deshalb lässt sich die Kettenseite
 **schon jetzt spezifizieren und testen**, ohne sich auf ein Quantenverfahren
 festzulegen – sie bleibt schlafend, bis eines trägt (BAUVORGABE.md §4).
 
+## Kettenseite als ausführbare Spezifikation (`bruecke_kette.py`)
+
+Was ein Knoten später Byte für Byte prüft – unabhängig vom Quantenverfahren:
+
+- **Seriennummer** s = SHA-256(öffentlicher Schlüssel der Note).
+- **Einlösen** nur mit einer Einmal-Signatur über
+  `aequitas-quanten-einloesen-v1|chain:1926|<s>|<ziel>|<wei>` – Ziel und
+  Betrag sind gebunden. Für die Spezifikation steht eine Lamport-Signatur
+  (SHA-256) an Stelle der Quanten-Einmal-Signatur: dieselbe Prüfung auf der
+  Kette, selbst quantensicher.
+- **Höchstens eine Einlösung je Seriennummer – erzwingt die Kette selbst**,
+  auch wenn jemand zwei gültige Unterschriften vorlegt.
+- Sperren nur mit Deckung und neuer Seriennummer; Rückholen nur durch den
+  Sperrenden, nur wenn erlaubt, nur nach der Frist; danach ist die Note
+  wertlos. Erhaltung: es entsteht nie AEQ.
+
+Selbsttest: **17 Angriffe abgewiesen**, Summe erhalten, und eine
+**Gegenprobe** mit absichtlich ausgebauten Prüfungen (ohne Signatur, ohne
+Einmal-Regel) zeigt, dass die Tests greifen.
+
 ## Offene Fragen (Forschung)
 
 1. **Ein Quantum-Lightning-Verfahren mit belastbarer Sicherheit.** Der
