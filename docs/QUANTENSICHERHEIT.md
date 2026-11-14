@@ -225,7 +225,8 @@ Alles ist ausführbar und läuft als Selbsttest in der CI.
 - Gruppenaktion CSIDH-Art mit **p ≥ 17.000 Bit** (2¹²⁸ ab 8.192 Bit;
   512 Bit sind gebrochen).
 - Note aus k Teilnoten mit Schwelle τ > k/2 (Abstand gegen Aufteilen);
-  je Teilnote **≈ 8.500 fehlerkorrigierte logische Qubits**.
+  je Teilnote **≈ 17.000 fehlerkorrigierte logische Qubits** (die Kurve
+  wird als Zahl in F_p gespeichert: log₂ p Qubits).
 - Einlösen per Einmal-Signatur; die Kette prüft klassisch und erzwingt
   „höchstens einmal je Seriennummer“ selbst.
 

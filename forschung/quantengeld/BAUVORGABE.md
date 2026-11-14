@@ -33,9 +33,12 @@ nachzulesen** (die Volltexte waren von hier aus nicht erreichbar).
    Aufteilen). Bei kryptografischer Größe genügt d = 1; die Fälschungs­
    schranke 1/h je Teilnote liegt dann weit unter 2⁻¹²⁸ – die Sicherheit
    bestimmt allein Punkt 2.
-4. **Fehlerkorrektur:** Jede Teilnote ist ein Register aus m ≈ log₂ h Qubits;
-   bei p ≈ 17.000 Bit ist h ≈ √p ≈ 2⁸⁵⁰⁰, also **m ≈ 8.500 logische Qubits je
-   Teilnote** (bei 8.192 Bit: 4.096). Nach `rauschen_oeffentlich.py` muss jedes Qubit dann m-mal
+4. **Fehlerkorrektur:** Jede Teilnote ist ein Register, das eine Kurve
+   speichert – den Koeffizienten A ∈ F_p, also **m ≈ log₂ p Qubits**
+   (Korrektur 14.11.2026: vorher stand hier log₂ h ≈ (log₂ p)/2 – eine
+   kürzere Darstellung der Kurven wäre gerade der diskrete Logarithmus).
+   Bei p ≈ 17.000 Bit also **m ≈ 17.000 logische Qubits je Teilnote** (bei
+   8.192 Bit: 8.192). Nach `rauschen_oeffentlich.py` muss jedes Qubit dann m-mal
    besser sein als bei Wiesner – das geht nur mit **fehlerkorrigierten
    logischen Qubits**.
 
@@ -112,6 +115,11 @@ Aufgelöst nach dem Ziel (log₂ Arbeit = 2,05·√n + 3,0):
 - **2¹⁹² (unser Ziel, ML-DSA-65-Niveau): p ≥ 17.000 Bit** (16.384 Bit
   reichen mit 2¹⁸⁹ knapp nicht).
 
+**Gegenprobe, stärkerer Angreifer (`sieb_dreifach.py`):** Kollimation mit
+drei statt zwei Vektoren (mehr Bits je Stufe, weniger Abfragen) gemessen,
+n = 16 … 32: die klassische Arbeit ist **nie kleiner** (1,0× bis 4,0×);
+gerechnet wächst sie mit 2^(2,5·√n) statt 2^(2·√n). Die Vorgabe bleibt.
+
 Die Literatur nennt für das unterste Niveau teils 4.096 Bit – unter anderen
 Kostenannahmen (z. B. Speicher teurer als Rechenzeit). Unsere Messung ist
 strenger; wir bauen nach der strengeren. Die Hochrechnung von n ≤ 72 auf
@@ -136,6 +144,14 @@ mit 1 µs je logischer Schicht (optimistisch):
 darf nicht Tage dauern. **Billigeres Prüfen schwächt die Note nicht** – ab
 8.192 Bit bestimmt die klassische Arbeit des Siebs den Angriffspreis (2c),
 nicht die Kosten je Abfrage.
+
+**Umkehrbarkeit, gegen uns (`umkehrbar.py`):** Der Schaltkreis muss jeden
+Zwischenstand zurückrechnen (Bennetts Kieselspiel, Zug für Zug gespielt und
+gegen die Formel geprüft). Bei 8.192 Bit: Zeitfaktor **≈ 8 bei 7·10⁸** bis
+**≈ 100 bei 7·10⁶ logischen Qubits Arbeitsspeicher** – Prüfen also **2⁵⁸–2⁶²
+Toffoli**, und ein **Prüfgerät** braucht 10⁷–10⁹ logische Qubits (die Note
+selbst 8.192). Prüfen wird damit Sache großer Prüfstellen, nicht des
+Telefons. Bennett ist allgemein, also eine obere Schranke.
 
 **Erster Hebel gemessen (`isogenie_hebel.py`, projektiv gezählt, gegen das
 Original geprüft – gleiche Kurven):**
@@ -168,11 +184,11 @@ Original geprüft – gleiche Kurven):**
 
 Aus `isogenie_mehrteilig.py`, Ziel 2⁻¹²⁸ und 2⁻¹⁹²:
 
-| Teilnote besteht (nach Lagerung) | Teile k | Schwelle τ | logische Qubits je Note (m ≈ 8.500, p ≈ 17.000 Bit) |
+| Teilnote besteht (nach Lagerung) | Teile k | Schwelle τ | logische Qubits je Note (m ≈ 17.000, p ≈ 17.000 Bit) |
 |---|---|---|---|
-| 100 % | 1 | 1 | ~8.500 |
-| 90 % | 5 | 3 | ~42.500 |
-| 75 % | 19 | 10 | ~161.500 |
+| 100 % | 1 | 1 | ~17.000 |
+| 90 % | 5 | 3 | ~85.000 |
+| 75 % | 19 | 10 | ~323.000 |
 
 Je schlechter der Speicher, desto mehr Teile – aber die Sicherheit bleibt bei
 2⁻¹²⁸. Der Speicher entscheidet, ob eine Note *handlich* ist, nicht ob sie
@@ -245,7 +261,7 @@ Gesamtpaket.“* Das ist der Weg. Die drei Sperren, ehrlich nach Zuständigkeit:
 |---|---|---|
 | **Prüfkosten** (2e: Tage je Prüfung) | **wir** – Algorithmen | gemessen: Strategien 2², Karatsuba einfach 0, schwache Prüfung 0 – Faktor 2⁵–2¹⁰ nur strukturell (höherdimensionale Isogenien) |
 | **Einlösen** (Einmal-Signatur, heute nur aus iO) | **wir** – Protokoll | Einweg-Brücke (unten) braucht sie gar nicht |
-| **Speicher** (≈ 4.100–8.500 fehlerkorrigierte logische Qubits je Teilnote, über Tage) | Hardware-Hersteller | Vorgabe festhalten; Stand der Fahrpläne verfolgen |
+| **Speicher** (≈ 8.200–17.000 fehlerkorrigierte logische Qubits je Teilnote, über Tage; dazu der Arbeitsspeicher des Prüfers, noch nicht gezählt) | Hardware-Hersteller | Vorgabe festhalten; Stand der Fahrpläne verfolgen |
 
 **Einweg-Brücke (Version 1 ohne Einmal-Signatur):** AEQ → Note geht (Sperren
 als Inhaberpapier, die Kette vermerkt nur die Seriennummer). Zurück zur Kette
