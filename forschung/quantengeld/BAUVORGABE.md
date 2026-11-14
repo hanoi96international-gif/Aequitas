@@ -145,6 +145,14 @@ darf nicht Tage dauern. **Billigeres Prüfen schwächt die Note nicht** – ab
 8.192 Bit bestimmt die klassische Arbeit des Siebs den Angriffspreis (2c),
 nicht die Kosten je Abfrage.
 
+**Umkehrbarkeit, gegen uns (`umkehrbar.py`):** Der Schaltkreis muss jeden
+Zwischenstand zurückrechnen (Bennetts Kieselspiel, Zug für Zug gespielt und
+gegen die Formel geprüft). Bei 8.192 Bit: Zeitfaktor **≈ 8 bei 7·10⁸** bis
+**≈ 100 bei 7·10⁶ logischen Qubits Arbeitsspeicher** – Prüfen also **2⁵⁸–2⁶²
+Toffoli**, und ein **Prüfgerät** braucht 10⁷–10⁹ logische Qubits (die Note
+selbst 8.192). Prüfen wird damit Sache großer Prüfstellen, nicht des
+Telefons. Bennett ist allgemein, also eine obere Schranke.
+
 **Erster Hebel gemessen (`isogenie_hebel.py`, projektiv gezählt, gegen das
 Original geprüft – gleiche Kurven):**
 
