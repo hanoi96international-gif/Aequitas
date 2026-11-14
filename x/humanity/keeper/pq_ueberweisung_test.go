@@ -405,3 +405,27 @@ func TestPQUeberweisung_UnterschriftDerAppGiltImKnoten(t *testing.T) {
 		t.Fatal("App und Knoten leiten verschiedene Adressen ab")
 	}
 }
+
+// Sicherheitspruefung von #488: eine PQ-Ueberweisung passt nur in Bloecke ab
+// dem Stichtag -- der Erzeuger waehlt eine Blockzeit danach oder laesst sie
+// fuer den naechsten Block liegen.
+func TestPQUeberweisung_FensterAbStichtag(t *testing.T) {
+	vorher := pqUeberweisungAbOverride.Load()
+	pqUeberweisungAbOverride.Store(2_000_000_000)
+	defer pqUeberweisungAbOverride.Store(vorher)
+	a := neuerPQKontoSchluessel(t, 0xa1)
+	tx := pqTransfer(t, a, neuerTestSchluessel(t).addr, aeqWei(1), 0)
+	if err := blockTauglich(&tx, 2_000_000_000-1); err == nil {
+		t.Fatal("vor dem Stichtag tauglich")
+	}
+	if err := blockTauglich(&tx, 2_000_000_000); err != nil {
+		t.Fatalf("zum Stichtag nicht tauglich: %v", err)
+	}
+	if f := auftragsFenster(&tx, 2_000_000_100); f.von != 2_000_000_000 {
+		t.Fatalf("Fenster beginnt %d", f.von)
+	}
+	// Ein Block, dessen Zeit nur vor dem Stichtag laege, nimmt sie nicht auf.
+	if n, _, err := blockZeitPraefix([]Transaction{{Type: "faucet", Wallet: a.addr}, tx}, 2_000_000_000-10, 2_000_000_000-20); err != nil || n != 1 {
+		t.Fatalf("Praefix %d (%v), erwartet 1", n, err)
+	}
+}
