@@ -101,6 +101,47 @@ def klassisch_u_toffoli(bits: int, tests: int = 128) -> float:
     return math.log2(tests * 2 * kette_mult(bits) * TOFFOLI_JE_MUL * bits * bits)
 
 
+def nebenkosten_mult(bits: int) -> dict:
+    """Je Test in Ueberlagerung auf der Kurve der Note (eigene Schaetzung):
+    Traegerpruefung: ist es eine supersingulaere Kurve der Bahn? Ein
+      deterministischer Punkt, [p+1]P = 0 und volle 2-Potenz-Ordnung:
+      ~ 1 Leiter ueber log2 p Bit (12 Mult. je Schritt).
+    Schritt 2.1 [Q]: Basis der 2^(e+2)-Torsion -- feste Folge von
+      Kandidatenpunkten, je ~1/2 Erfolg; fuer Ausfall <= 2^-40 bis zu 40
+      Versuche, je Kofaktor-Leiter + e Verdopplungen (~6 Mult.).
+    Schritt 2.2 [Q]: 2 Punkte mal 5 Skalare (~e Bit): 10 Leitern."""
+    leiter = 12 * bits
+    return {
+        "traeger": leiter,
+        "schritt2": 40 * (6 * bits) + 10 * leiter,
+    }
+
+
+def gesamt_b(bits: int, tests: int = 128) -> dict:
+    """Variante B komplett: je Test Traeger + Schritt 2 + 2 Ketten; dazu
+    Umkehrbarkeit (Bennett, umkehrbar.py) mit dem Zustand der 4D-Kette:
+    je Kiesel ~ 16 Theta-Koordinaten x B Bit x log2(e) gehaltene Punkte."""
+    ub = _lade_umkehrbar()
+    n = nebenkosten_mult(bits)
+    je_test = n["traeger"] + n["schritt2"] + 2 * kette_mult(bits)
+    mult = tests * je_test
+    T = max(2, int(je_test / 50))                       # Schritte je Test (Kette ~50 Mult./Schritt)
+    S = 16 * bits * max(1, int(math.log2(bits)))        # Qubits je Kiesel
+    zeilen = []
+    for b in (16, 256, 4096):
+        k, f = ub.formel(T, b)
+        zeilen.append((b, k * S, 2 * f, math.log2(mult * 2 * f * TOFFOLI_JE_MUL * bits * bits)))
+    return {"mult": math.log2(mult), "neben_anteil": (n["traeger"] + n["schritt2"]) / je_test, "umkehrbar": zeilen}
+
+
+def _lade_umkehrbar():
+    spec = importlib.util.spec_from_file_location(
+        "umkehrbar", os.path.join(os.path.dirname(os.path.abspath(__file__)), "umkehrbar.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
 def rega_toffoli(bits: int, tests: int = 2750, mult_je_aktion_log2: float | None = None) -> float:
     """REGA-Fassung (CSIDH, [Z] Abschnitt 6): Tests x 2 Aktionen.
     Mult. je Aktion aus isogenie_hebel.py (optimale Strategie, Ueberdeckung)."""
@@ -129,6 +170,9 @@ def selbsttest() -> None:
         for d in (1, 2, N - 1):
             m = sum(cmath.exp(2j * math.pi * u * d / N) for u in range(N)) / N
             assert abs(m) < 1e-9, (N, d)
+    # 5. Traeger und Schritt 2 sind klein gegen die Kette (< 1/3 je Test).
+    for bits in (4096, 8192, 17000):
+        assert gesamt_b(bits)["neben_anteil"] < 1 / 3, bits
     print("selbsttest ok")
 
 
@@ -151,6 +195,17 @@ def main() -> None:
         r = rega_toffoli(bits)
         b = klassisch_u_toffoli(bits)
         print(f"| {bits} Bit | 2^{w['kette']:.1f} Mult. | 2^{w['schritt1']:.1f} Mult. | **2^{w['pruefen_toffoli']:.1f}** | **2^{b:.1f}** | 2^{r:.1f} |")
+    drucke_gesamt()
+
+
+def drucke_gesamt() -> None:
+    print("\nVariante B komplett (je Test Traeger + Schritt 2 + 2 Ketten, 128 Tests), mit Umkehrbarkeit:")
+    print("| Primzahl | Mult. gesamt | Anteil Traeger+Schritt 2 | Arbeitsspeicher (logische Qubits) | Faktor | Toffoli gesamt |")
+    print("|---|---|---|---|---|---|")
+    for bits in (4096, 8192, 17000):
+        g = gesamt_b(bits)
+        for b, q, f, t in g["umkehrbar"]:
+            print(f"| {bits} Bit | 2^{g['mult']:.1f} | {100 * g['neben_anteil']:.0f} % | {q:.1e} | {f:.0f}x | 2^{t:.1f} |")
 
 
 if __name__ == "__main__":

@@ -361,6 +361,22 @@ Trägerprüfung (liegt der Zustand auf Kurven der Bahn?) und Schritt 2
 (Torsionsbasis der Kurve) in Überlagerung – beide laut [Q] billig gegen die
 Kette, zu zählen.
 
+**Variante B komplett** (`pegasis_kosten.py`, je Test Trägerprüfung +
+Schritt 2 + 2 Ketten, 128 Tests; Träger und Schritt 2 sind ~11 % – klein
+gegen die Kette), mit Umkehrbarkeit (Bennett, Zustand der 4D-Kette ~16
+Theta-Koordinaten × B Bit × log₂ e gehaltene Punkte je Kiesel):
+
+| Primzahl | Arbeitsspeicher Prüfgerät | Toffoli je Prüfung |
+|---|---|---|
+| 4.096 Bit | 6·10⁷ … 6·10⁹ logische Qubits | 2⁶³ … 2⁶⁰ |
+| **8.192 Bit** | **1·10⁸ … 1·10¹⁰** | **2⁶⁵˙⁵ … 2⁶³** |
+| 17.000 Bit | 3·10⁸ … 3·10¹⁰ | 2⁶⁹˙⁵ … 2⁶⁶ |
+
+Damit ist der Weg **vollständig beziffert**: jedes Teil stammt aus
+veröffentlichter Forschung, jede Zahl aus einem Skript mit Selbsttest. Die
+Lücke ist die Hardware – ein Prüfgerät mit ~10⁸–10¹⁰ logischen Qubits und
+~2⁶³ Toffoli je Prüfung (zum Vergleich: RSA-2048 brechen ≈ 2³¹˙⁵).
+
 **Nächste Schritte:** (a) ~~Volltexte~~ gelesen (qt-Pegasis, PEGASIS,
 Dartois–Duparc; vom Betreiber hochgeladen). (b) Die 4D-Kette als
 umkehrbaren Schaltkreis zählen (Theta-Koordinaten, Kosten je Schritt aus
