@@ -75,3 +75,48 @@ func TestLowerIndizes_AbfragenBenutzenIndex_RealDB(t *testing.T) {
 		t.Fatalf("LoadNonce = %d, erwartet 255", got)
 	}
 }
+
+// Der doppelte Index auf chain_accounts(lower(address)) wird entfernt --
+// aber nur, wenn der verbleibende gueltig da ist (sonst bliebe die Tabelle
+// ohne Index).
+func TestLowerIndizes_DoppelterIndexNurMitErsatzEntfernt_RealDB(t *testing.T) {
+	truncateDistTestTables(t)
+	cs := testKnoten(t, "unused-lower-indizes-doppelt.json")
+	if !cs.useDB {
+		t.Fatal("keine Datenbank")
+	}
+	db, err := sql.Open("postgres", os.Getenv("DATABASE_URL"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	da := func(name string) bool {
+		var n int
+		db.QueryRow(`SELECT count(*) FROM pg_indexes WHERE indexname = $1`, name).Scan(&n)
+		return n == 1
+	}
+	t.Cleanup(func() {
+		db.Exec(`CREATE INDEX IF NOT EXISTS idx_chain_accounts_lower_address ON chain_accounts(lower(address))`)
+	})
+
+	// Ohne Ersatz: der doppelte bleibt.
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_chain_accounts_lower ON chain_accounts(lower(address))`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`DROP INDEX IF EXISTS idx_chain_accounts_lower_address`); err != nil {
+		t.Fatal(err)
+	}
+	cs.lowerIndizesBauen()
+	if !da("idx_chain_accounts_lower") {
+		t.Fatal("doppelter Index entfernt, obwohl der Ersatz fehlt")
+	}
+
+	// Mit Ersatz: der doppelte geht, der Ersatz bleibt.
+	if _, err := db.Exec(`CREATE INDEX idx_chain_accounts_lower_address ON chain_accounts(lower(address))`); err != nil {
+		t.Fatal(err)
+	}
+	cs.lowerIndizesBauen()
+	if da("idx_chain_accounts_lower") || !da("idx_chain_accounts_lower_address") {
+		t.Fatalf("doppelt: %v, Ersatz: %v", da("idx_chain_accounts_lower"), da("idx_chain_accounts_lower_address"))
+	}
+}
