@@ -196,6 +196,16 @@ gezählt, ~4·B² Toffoli je Multiplikation): ab 8.192 Bit bestimmt die
 klassische Arbeit den Preis. Daher die Vorgabe in `BAUVORGABE.md`:
 **p ≥ 8.192 Bit für 2¹²⁸, p ≥ 17.000 Bit für unser Ziel 2⁻¹⁹²**.
 
+**Prüfkosten** (`isogenie_kosten.py`, `isogenie_hebel.py`): Eine Note zu
+prüfen kostet bei 8.192 Bit ≈ 2⁵⁵ Toffoli – der eigentliche Engpass neben
+dem Speicher. Die einfachen Rechenhebel (Strategien, Schranken, √Vélu) sind
+gemessen und bringen zusammen ≈ 2²; der nötige Faktor 2⁵–2¹⁰ muss aus einer
+anderen Auswertung der Gruppenaktion kommen (`BAUVORGABE.md` §2e). Der
+Multiplizierer ist als echter umkehrbarer Schaltkreis gebaut und gezählt
+(`schaltkreis_mult.py`): Schulbuch 4,0·B², einfaches Karatsuba kein Gewinn.
+Eine „schwache“ Prüfung mit wenigen Einzeltests ist gegen glatte
+Fälschungen 3,7× teurer als die volle (`schwache_pruefung.py`).
+
 ## 4. Weitere Dokumente
 
 - `BRUECKE.md` und `bruecke.py`: der Entwurf der Brücke AEQ ↔ Quanten-Note.
