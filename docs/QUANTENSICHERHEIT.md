@@ -200,6 +200,33 @@ Umsetzung in dieser Reihenfolge, jede Stufe ein eigener PR mit Prüfung:
 - libp2p: hybride Schlüssel, sobald go-libp2p sie anbietet; bis dahin sind nur
   öffentliche Kettendaten betroffen.
 
+*Entwurf (14.11.2026), gemessen – vor dem Bau zur Entscheidung:*
+
+| Größe | Messung |
+|---|---|
+| Block heute (Mittel aus 50 Live-Blöcken, JSON) | 756 Byte |
+| ML-DSA-65-Unterschrift | 3.309 Byte (6.618 als Hex) |
+| Unterschreiben / Prüfen (Go `crypto/mldsa`, 2,1-GHz-Xeon) | 0,34 ms / 0,21 ms |
+
+**Je Block unterschreiben** wäre rechnerisch billig, aber jeder Block würde
+~10× größer: bei 1 Block/s rund **640 MB je Tag** mehr Speicher und
+Netzlast. **Vorschlag: PQ-Stempel.** Der Erzeuger unterschreibt mit ML-DSA
+in festen Abständen (z. B. alle 60 Blöcke) die Wurzel der Block-Hashes seit
+dem letzten Stempel. Die Blöcke dazwischen tragen weiter secp256k1. Jeder
+Knoten prüft den Stempel selbst. **Endgültig** (Checkpoint, Rückgabe als
+bestätigt) wird ein Block erst, wenn ein gültiger Stempel ihn deckt. Mehrkosten
+≈ 110 Byte je Block statt 6.600. Wer secp256k1 mit einem Quantenrechner
+bricht, kann Blöcke vorschlagen, aber keinen Stempel fälschen – seine Blöcke
+werden nie endgültig.
+
+Offen und vor dem Bau zu entscheiden: Abstand N (Speicher gegen Wartezeit
+bis endgültig), was Apps und Börsen als „bestätigt“ anzeigen, und wie die
+ML-DSA-Schlüssel der Erzeuger ins Register kommen (wie in Stufe 1 über die
+Genesis oder per 2/3-Aufnahme). Dringlichkeit: Unterschriften schützen nur
+im Moment ihrer Nutzung (kein „heute speichern, später brechen“) – das muss
+vor dem ersten Quantenrechner stehen, der secp256k1 bricht, nicht heute
+Nacht.
+
 **Stufe 6 – Quantengeld: eigene Forschung, Bauvorgabe, Kettenseite** (`forschung/quantengeld/`)
 
 Das Ziel hinter „quantischem Geld“ ist ein echtes, offenes Problem: Bargeld,

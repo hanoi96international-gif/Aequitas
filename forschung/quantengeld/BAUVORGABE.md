@@ -273,3 +273,121 @@ sobald es eine Einmal-Signatur ohne iO gibt.
 
 Damit hängt Version 1 nur noch an **zwei** Dingen: an unserem Prüfkosten-
 Hebel und am Speicher. Die Kettenseite und die Spezifikation stehen.
+
+## 7. Andere Wege – Literaturstand (Suche 14.11.2026, Volltexte von hier nicht erreichbar)
+
+| Weg | Was er verspricht | Haken | Für uns |
+|---|---|---|---|
+| **Gruppenaktion (Zhandry, veröffentlicht 2025)** – unser Weg | öffentlich prüfbar, offline | braucht laut Autor **eine zusätzliche Annahme, deren Tragfähigkeit offen ist**; Kosten siehe §2e | bleibt Hauptweg, Annahme in §1 als offen führen |
+| **Einmal-Speicher (Genovese & Stambler, arXiv 2512.21304, 2025/26)** | öffentlich prüfbar mit **QKD-artiger Technik** statt Universal-Quantenrechner | Hardware-Annahme (Einmal-Speicher sind ohne sie beweisbar unmöglich), nur **N Prüfungen je Note**, Quantenspeicher mit langer Kohärenz nötig | **ernsthafter Kandidat für einen früheren Versuch** – Vertrauen in Hardware statt in eine Stelle; Volltext lesen |
+| **Quanten-Schecks / Löschnachweis aus LWE (Barhoush & Salvail, arXiv 2401.16116)** | klassisch einlösbar, Löschnachweis öffentlich prüfbar | **vom Autor zurückgezogen** (v4) | nicht darauf bauen |
+| Gitter (Khesin–Lu–Shor u. a.) | – | **gebrochen** (Liu–Montgomery–Zhandry 2023) | ausgeschlossen |
+
+Nächster Schritt: die Volltexte von Zhandry 2025 (welche Zusatzannahme?) und
+Genovese & Stambler (welche Hardware, wie viele Qubits, wie lange Speicher?)
+lesen – beide sind über arxiv.org zugänglich, von dieser Sitzung aus derzeit
+nicht.
+
+## 8. Der Weg (14.11.2026, nach Lektüre von Zhandry 2025 im Volltext)
+
+**Neuer Befund aus dem Volltext (TheoretiCS 2025, Abschnitt 6):** Für
+CSIDH-artige Gruppen, in denen nur *kurze* Elemente berechenbar sind
+(„REGA“), prüft Zhandrys Verfahren nicht mit 2 Gruppenaktionen, sondern mit
+λ Hadamard-Tests – jeder eine volle Gruppenaktion mit Exponenten aus einer
+gruppenüberdeckenden Verteilung. Je Test: echte Note besteht mit ≥ 0,961,
+jede andere mit ≤ 0,848 (Beweisschranken des Papiers). Für 2⁻¹²⁸ (ehrliche
+Note fällt mit ≤ 2⁻⁴⁰ durch) gerechnet: **29.250 Tests** mit der Schwelle
+7/8 des Papiers, **2.750 Tests** mit optimierter Schwelle 0,93. Das ist
+**2¹¹ mehr**, als §2e angenommen hat. Die saubere Fassung mit 2 Aktionen
+(Abschnitt 1.1/3) braucht eine Gruppenaktion für **beliebige** Elemente
+(„EGA“) – für CSIDH heute nur über Gitterreduktion in Dimension ~760
+(Kosten laut Zhandry ≈ 2^(n^(1/3))).
+
+**Daraus der Weg – vier Bausteine, jeder aus vorhandener Forschung:**
+
+1. **Rechenwerk: qt-Pegasis** (Dartois, Komada Eriksen, Invernizzi,
+   Vercauteren; ePrint 2025/1859). Wertet die Klassengruppenaktion für
+   *beliebige* Elemente in Polynomzeit aus, **scheitert nie** (keine
+   Wiederholungen – Pflicht für eine Quantenschaltung), fast nur
+   4-dimensionale 2-Isogenien. Es gibt eine **zeitkonstante C-Umsetzung**
+   der 4D-Kette (ePrint 2026/114, < 25 ms bei 500 Bit) – zeitkonstant heißt
+   datenunabhängiger Ablauf, genau was ein Schaltkreis braucht. Damit wird
+   aus der REGA- die EGA-Fassung: **Prüfen = 2 Aktionen statt 2.750 Tests.**
+   Grobe Hochrechnung (aus 25 ms ≈ 2²⁰ Multiplikationen bei 500 Bit,
+   linear in der Bitlänge): ~2²⁴ Multiplikationen je Aktion bei 8.192 Bit –
+   **nachzuzählen**, sobald der Volltext vorliegt.
+2. **Verfahren: Zhandry 2025, EGA-Fassung**, Sicherheit im generischen
+   Modell plus eine Verstärkung der DLog-Annahme (§7).
+3. **Brücke: Einweg** (§6) – braucht keine Einmal-Signatur; die
+   Kettenseite liegt schlafend im Knoten.
+4. **Hardware:** Note 8.192 logische Qubits (2¹²⁸), Prüfgerät 10⁷–10⁹
+   (§2e, `umkehrbar.py`). Prüfen findet an **Prüfstellen** statt – jeder,
+   der ein Prüfgerät betreibt, kann prüfen (öffentlich, ohne Geheimnis).
+
+**Zwischenschritt mit heutiger Technik (nur Forschung, kein Echtgeld):**
+ein Spielgeld-Demonstrator nach Genovese & Stambler (arXiv 2512.21304,
+Volltext gelesen): QKD-artige Einzelqubits, Prüfung per Stichprobe
+(„cut-and-choose“), Fälschungsschranke 2^(−2ξ). **Für Echtgeld
+ungeeignet:** die Einmal-Speicher hängen an vertrauenswürdiger Hardware
+(TEE wie Intel SGX); wer eine TEE knackt, liest alle Urbilder der Note aus
+und kann sie **beliebig oft** nachmachen. Das verletzt den Launch-Maßstab.
+
+**Gerechnet nach den Volltexten (`pegasis_kosten.py`):** Die zeitkonstante
+C-Umsetzung der 4D-Kette ([DD] Tabelle 1, Apple M1) umgerechnet in
+Multiplikationen: **~2²⁰ bei 505 Bit bis ~2²³ bei 4.030 Bit, fast linear
+(Steigung 0,88)** – bei 8.192 Bit **2²³˙⁵ je Aktion**. Neuer Engpass ist
+**Schritt 1** (Normgleichung): seine Suche nach einer Primzahl muss im
+Schaltkreis mit fester Obergrenze laufen – 2²⁶˙⁸ Multiplikationen, 10× die
+Kette. Daher zwei Varianten:
+
+| Primzahl | **A: kohärent, 2 Aktionen** | **B: u klassisch, 128 Tests** | CSIDH-REGA, 2.750 Tests |
+|---|---|---|---|
+| 4.096 Bit | 2⁵² | 2⁵⁷ | 2⁶⁴ |
+| **8.192 Bit** | **2⁵⁶** | **2⁵⁹˙⁵** | 2⁶⁸ |
+| 17.000 Bit | 2⁶⁰ | 2⁶³ | 2⁷²˙⁵ |
+
+(Toffoli je Prüfung, vor Umkehrbarkeit: ×8 bis ×100, `umkehrbar.py`.)
+
+**Variante B ist eigener Vorschlag:** Der Prüfer zieht u *klassisch*
+gleichverteilt und löst Schritt 1 auf einem gewöhnlichen Rechner; der
+Quantenrechner führt je Test nur die von *einem* Qubit gesteuerte Kette aus.
+Weil die Note ein exakter Eigenzustand ist, gilt Mittel_u χ(u,h)*·U_u = P_h:
+jeder Test wirkt wie (I + P_h)/2 – eine fremde Note besteht je Test mit
+**genau ½**, die echte mit 1; 128 Tests für 2⁻¹²⁸. Etwas teurer als A, aber
+**keine Primzahlsuche und keine Überlagerung über Ideale im Schaltkreis** –
+der Schaltkreis ist eine feste, klassisch parametrierte 4D-Kette. Das ist
+der Kandidat, mit dem wir weiterbauen. Offen bleibt in beiden Varianten die
+Trägerprüfung (liegt der Zustand auf Kurven der Bahn?) und Schritt 2
+(Torsionsbasis der Kurve) in Überlagerung – beide laut [Q] billig gegen die
+Kette, zu zählen.
+
+**Variante B komplett** (`pegasis_kosten.py`, je Test Trägerprüfung +
+Schritt 2 + 2 Ketten, 128 Tests; Träger und Schritt 2 sind ~11 % – klein
+gegen die Kette), mit Umkehrbarkeit (Bennett, Zustand der 4D-Kette ~16
+Theta-Koordinaten × B Bit × log₂ e gehaltene Punkte je Kiesel):
+
+| Primzahl | Arbeitsspeicher Prüfgerät | Toffoli je Prüfung |
+|---|---|---|
+| 4.096 Bit | 6·10⁷ … 6·10⁹ logische Qubits | 2⁶³ … 2⁶⁰ |
+| **8.192 Bit** | **1·10⁸ … 1·10¹⁰** | **2⁶⁵˙⁵ … 2⁶³** |
+| 17.000 Bit | 3·10⁸ … 3·10¹⁰ | 2⁶⁹˙⁵ … 2⁶⁶ |
+
+**Gegenprobe der Kettenlänge aus den Formeln** ([DD] Abschnitt 2:
+Auswertung einer generischen 2-Isogenie in Dimension 4 = 16 S + 16 M,
+Verdopplung ~ das Doppelte, Bildkurve ~ 3·(2⁴−2) M; ausgewogene Strategie
+über e ≈ log₂ p Schritte, 4 Kernpunkte): trifft die aus den gemessenen
+Takten umgerechnete Zahl bei allen fünf Messgrößen auf **Faktor 1,4**. Bei
+8.192 Bit sagt die Formel 2²⁴˙³, die Takte 2²³˙⁵ – vorsichtig gelesen
+liegen die Gesamtzahlen oben also bis 2⁰˙⁸ höher.
+
+Damit ist der Weg **vollständig beziffert**: jedes Teil stammt aus
+veröffentlichter Forschung, jede Zahl aus einem Skript mit Selbsttest. Die
+Lücke ist die Hardware – ein Prüfgerät mit ~10⁸–10¹⁰ logischen Qubits und
+~2⁶³ Toffoli je Prüfung (zum Vergleich: RSA-2048 brechen ≈ 2³¹˙⁵).
+
+**Nächste Schritte:** (a) ~~Volltexte~~ gelesen (qt-Pegasis, PEGASIS,
+Dartois–Duparc; vom Betreiber hochgeladen). (b) Die 4D-Kette als
+umkehrbaren Schaltkreis zählen (Theta-Koordinaten, Kosten je Schritt aus
+[DD]: Bildkurve 3·(2⁴−2) M, Auswertung 171 M + 52 S je Klebe-Schritt),
+statt aus Takten umzurechnen. (c) Trägerprüfung und Schritt 2 in
+Überlagerung zählen.
