@@ -112,6 +112,11 @@ Aufgelöst nach dem Ziel (log₂ Arbeit = 2,05·√n + 3,0):
 - **2¹⁹² (unser Ziel, ML-DSA-65-Niveau): p ≥ 17.000 Bit** (16.384 Bit
   reichen mit 2¹⁸⁹ knapp nicht).
 
+**Gegenprobe, stärkerer Angreifer (`sieb_dreifach.py`):** Kollimation mit
+drei statt zwei Vektoren (mehr Bits je Stufe, weniger Abfragen) gemessen,
+n = 16 … 32: die klassische Arbeit ist **nie kleiner** (1,0× bis 4,0×);
+gerechnet wächst sie mit 2^(2,5·√n) statt 2^(2·√n). Die Vorgabe bleibt.
+
 Die Literatur nennt für das unterste Niveau teils 4.096 Bit – unter anderen
 Kostenannahmen (z. B. Speicher teurer als Rechenzeit). Unsere Messung ist
 strenger; wir bauen nach der strengeren. Die Hochrechnung von n ≤ 72 auf
