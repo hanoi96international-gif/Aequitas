@@ -1803,6 +1803,19 @@ func (a *APIServer) handleCanonicalBlocks(w http.ResponseWriter, r *http.Request
 		limit = 30
 	}
 	top := a.blockchain.Height()
+	// ?bis=H: die Seite UNTER Hoehe H (Explorer blaettert durch die ganze
+	// Kette, nicht nur die neuesten). Aeltere Hoehen liest GetBlockByHeight
+	// aus der Datenbank; je Seite hoechstens 200.
+	if s := r.URL.Query().Get("bis"); s != "" {
+		bis, err := strconv.ParseInt(s, 10, 64)
+		if err != nil || bis < 1 {
+			jsonError(w, "bis must be a height >= 1", http.StatusBadRequest)
+			return
+		}
+		if bis-1 < top {
+			top = bis - 1
+		}
+	}
 	blocks := make([]*Block, 0, limit)
 	for h := top; h > top-int64(limit) && h >= 0; h-- {
 		if b := a.blockchain.GetBlockByHeight(h); b != nil {

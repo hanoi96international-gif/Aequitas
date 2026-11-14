@@ -70,6 +70,38 @@ Seriennummer nachbauen, und genau diesen Angriff zeigt die Simulation.
 Sicher wäre das Verfahren erst mit einer Gruppenaktion, in der das schwer
 ist. Kandidaten sind Isogenien. **Das ist die offene Forschungsfrage.**
 
+## 3a. Was die Hardware können muss (`rauschen.py`)
+
+Eine Note liegt eine Zeit im Speicher, jedes Qubit zerfällt mit der
+Kohärenzzeit T. Der Prüfer muss deshalb einige falsche Qubits dulden – und
+jede Toleranz hilft auch dem Fälscher. Gerechnet ist exakt (Binomialschwänze),
+mit zwei Forderungen: **die echte Note besteht zu ≥ 99 %, eine Fälschung
+höchstens zu 10⁻¹²** (Wiesner-Noten, bester Fälscher 1/4 je Qubit; für
+öffentlich prüfbare Verfahren ist das eine *untere* Schranke).
+
+| Lagerzeit der Note | Note ≤ 256 Qubits | Note ≤ 2.048 Qubits |
+|---|---|---|
+| 1 Minute | T ≥ 10,6 Min. | T ≥ 2,5 Min. |
+| 1 Stunde | T ≥ 10,6 Std. | T ≥ 2,5 Std. |
+| **1 Tag** | **T ≥ 10,6 Tage** | **T ≥ 2,5 Tage** |
+| 1 Woche | T ≥ 74 Tage | T ≥ 17 Tage |
+| 30 Tage | T ≥ 318 Tage | T ≥ 75 Tage |
+
+**Die Faustregel:** die Kohärenzzeit muss etwa das 2,5- bis 10-fache der
+Lagerzeit betragen – je mehr Qubits, desto weniger. Größere Noten helfen nur
+bis etwa zum Faktor 2: unterhalb von T ≈ 2 × Lagerzeit fallen echte und
+gefälschte Noten statistisch zusammen, und keine Notengröße rettet das.
+
+Zum Vergleich (Laborwerte, Größenordnung, vor Zitierung prüfen):
+supraleitende Qubits Millisekunden, Ionenfallen Sekunden bis Minuten,
+Kernspins in Festkörpern einige Stunden – jeweils gekühlt und ohne
+Transport. **Eine Note, die man einen Tag in der Tasche trägt, braucht
+Speicher, die Tage halten: rund 10- bis 100-mal länger als die besten
+gekühlten Laborspeicher (Stunden) und milliardenfach länger als heutige
+Rechen-Qubits (Millisekunden) – und das im Gerät, nicht im Labor.** Das ist die ehrliche Größe
+der Hardware-Lücke – und zugleich der Maßstab, an dem sich jede künftige
+Ankündigung messen lässt.
+
 ## 4. Weitere Dokumente
 
 - `BRUECKE.md` und `bruecke.py`: der Entwurf der Brücke AEQ ↔ Quanten-Note.
@@ -81,9 +113,11 @@ ist. Kandidaten sind Isogenien. **Das ist die offene Forschungsfrage.**
 
 ## 5. Plan: was wir tun können
 
-1. **Verstehen und zeigen:** die Simulationen ausbauen. Als Nächstes kommt
-   eine Gruppenaktion auf einer Menge, in der der Nachbau nicht trivial ist,
-   als Lehrbeispiel ohne Sicherheitsanspruch.
+1. **Verstehen und zeigen:** die Simulationen ausbauen. Erledigt:
+   Hardware-Forderung unter Rauschen (`rauschen.py`, Abschnitt 3a). Als
+   Nächstes: eine Gruppenaktion auf einer Menge, in der der Nachbau nicht
+   trivial ist, als Lehrbeispiel ohne Sicherheitsanspruch; und dieselbe
+   Rauschrechnung für das öffentlich prüfbare Verfahren.
 2. **Brücke entwerfen** (Gedankenmodell): AEQ auf der Kette sperren, dafür
    eine Note mit öffentlicher Seriennummer; eine Note zurückgeben, dafür die
    AEQ zurück. Die Seriennummer steht auf der Kette, sodass sich jede Note nur
