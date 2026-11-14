@@ -4,6 +4,9 @@ import (
 	"crypto/mldsa"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -220,5 +223,54 @@ func TestPQBescheinigung_AusProveAnfrageUndProofServer(t *testing.T) {
 	schlecht := []byte(`{"bioAttestation":"v3:` + gut.BioBescheinigung.Signaturen[0] + `,pq:abc","bioAttestationIssuedAt":` + strconv.FormatInt(bTestZeit, 10) + `}`)
 	if bescheinigungAusProveAnfrage(schlecht) != nil {
 		t.Fatal("PQ-Eintrag in falscher Form ergab eine Bescheinigung")
+	}
+}
+
+// Pruefvektor aus dem Python-Coordinator (aequitas-biometric-beta,
+// coordinator/tests/test_pq_unterschrift.py, gleiche Seeds): eine echte
+// Ed25519-Bindung plus ML-DSA-65 aus cryptography 50. Weicht die Nachricht,
+// das Praefix oder die Feldform zwischen den Repos ab, wird dieser Test rot.
+func TestPQBescheinigung_VektorAusDemPythonCoordinator(t *testing.T) {
+	roh, err := os.ReadFile(filepath.Join("testdata", "pq_bescheinigung_vektor.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var v struct {
+		Modus, Nullifier, Wallet                    string
+		Zeit                                        int64
+		Ed25519Pub, Ed25519Sig, MldsaPub, PQEintrag string
+	}
+	var m map[string]any
+	if err := json.Unmarshal(roh, &m); err != nil {
+		t.Fatal(err)
+	}
+	v.Modus, v.Nullifier, v.Wallet = m["modus"].(string), m["nullifier"].(string), m["wallet"].(string)
+	v.Zeit = int64(m["zeit"].(float64))
+	v.Ed25519Pub, v.Ed25519Sig = m["ed25519_pub"].(string), m["ed25519_sig"].(string)
+	v.MldsaPub, v.PQEintrag = m["mldsa_pub"].(string), m["pq_eintrag"].(string)
+
+	setBescheinigungFuerTest(t, &bescheinigungKonfig{AbUnix: 1, Modus: v.Modus, Quorum: 1,
+		Coordinator: []string{v.Ed25519Pub}, PQAbUnix: v.Zeit, PQ: map[string]string{v.Ed25519Pub: v.MldsaPub}})
+	feld := "v3:" + v.Ed25519Sig + "," + v.PQEintrag
+	b := bescheinigungAusProveAnfrage([]byte(`{"bioAttestation":"` + feld + `","bioAttestationIssuedAt":` + strconv.FormatInt(v.Zeit, 10) + `}`))
+	if b == nil {
+		t.Fatal("Feld aus dem Coordinator nicht lesbar")
+	}
+	b.Modus = v.Modus
+	tx := Transaction{Type: "register_human", Wallet: v.Wallet, RegAt: v.Zeit + 30,
+		PubSignals: []string{"1", v.Nullifier}, BioBescheinigung: b}
+	if err := pruefeBioBescheinigung(tx); err != nil {
+		t.Fatalf("Bescheinigung aus dem Python-Coordinator abgelehnt: %v", err)
+	}
+	// Gegenprobe: ein Zeichen der ML-DSA-Unterschrift geaendert.
+	kaputt := []byte(b.PQ[0])
+	if kaputt[200] == '0' {
+		kaputt[200] = '1'
+	} else {
+		kaputt[200] = '0'
+	}
+	b.PQ = []string{string(kaputt)}
+	if err := pruefeBioBescheinigung(tx); err == nil {
+		t.Fatal("veraenderte ML-DSA-Unterschrift angenommen")
 	}
 }
