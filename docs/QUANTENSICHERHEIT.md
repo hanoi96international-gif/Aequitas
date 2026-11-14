@@ -236,10 +236,16 @@ Alles ist ausführbar und läuft als Selbsttest in der CI.
 3. Ein Sicherheitsbeweis aus Standardannahmen für die Gruppenaktions-Note
    (bisher im generischen Modell, Doliskani 2025).
 
-**Einschalten** erst, wenn 1–3 erfüllt sind; bis dahin ist die Kettenseite
-Spezifikation (`bruecke_kette.py`), nicht Knoten-Code – sie geht in den
-Knoten, sobald das Einlöse-Verfahren feststeht, damit der Geldweg nur einmal
-und gegen den echten Prüfer gebaut wird. Wer „Quantenwährung“ heute
+**Im Knoten** (`x/humanity/keeper/quanten_note.go`, schlafend): die
+Prüfregeln der Kettenseite – Seriennummer, Einlöse-Nachricht Byte für Byte,
+Einmal-Signatur-Prüfung, Register (Sperren, Einlösen, Rückholen) –, gegen
+eine von der Spezifikation erzeugte Unterschrift abgeglichen, mit denselben
+17 Angriffen, Erhaltung und Mutationsproben. Die Transaktionsarten sind
+unbekannt (Block mit ihnen ungültig); ein Test verhindert das Einschalten,
+solange die Lamport-Platzhalter-Signatur statt des Quantenverfahrens
+eingetragen ist. **Einschalten** erst, wenn 1–3 erfüllt sind – zusammen mit
+dem Anschluss an den Geldweg (Annahme, Nachspielen, Nachrechnen, Kein-Entzug)
+in einem eigenen, eigens geprüften Schritt. Wer „Quantenwährung“ heute
 verspricht, verspricht etwas, das niemand liefern kann; Aequitas liefert
 heute die quantensichere Grundlage (Stufen 1–3 live) und die vollständige
 Bauvorgabe für den Tag, an dem die Hardware kommt.

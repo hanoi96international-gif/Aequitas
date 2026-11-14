@@ -116,6 +116,13 @@ Selbsttest: **17 Angriffe abgewiesen**, Summe erhalten, und eine
 **Gegenprobe** mit absichtlich ausgebauten Prüfungen (ohne Signatur, ohne
 Einmal-Regel) zeigt, dass die Tests greifen.
 
+**Im Knoten umgesetzt** (`x/humanity/keeper/quanten_note.go`, schlafend):
+dieselben Regeln in Go; eine von `bruecke_kette.py` erzeugte Unterschrift
+(`testdata/quanten_note_vektor.json`) besteht im Knoten, für jedes andere
+Ziel nicht. Mutationsproben: ohne Signaturprüfung oder ohne Fristprüfung
+schlägt der Test an; „höchstens einmal“ ist doppelt abgesichert (Register
+und Verbraucht-Liste) – erst ohne beide geht der Angriff durch.
+
 ## Offene Fragen (Forschung)
 
 1. **Ein Quantum-Lightning-Verfahren mit belastbarer Sicherheit.** Der
