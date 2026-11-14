@@ -137,6 +137,30 @@ messen lässt, wann eine Aequitas-Quanten-Note in Reichweite kommt. Und es ist
 eine präzise, neue Frage an die Forschung: **rauschtolerante öffentliche
 Prüfung** (bisher nur im Orakelmodell, arXiv:2407.06463).
 
+## 3c. Eine echte Isogenie-Gruppenaktion (`isogenie_geld.py`)
+
+Statt Z_N wirkt jetzt die **Klassengruppe** auf supersingulären
+Montgomery-Kurven über F_419 – dieselbe Mathematik wie CSIDH und wie Zhandrys
+Vorschlag, nur winzig. Selbst gebaut aus Velu-Isogenien (x-Koordinaten), ohne
+Bibliothek:
+
+- **Bahn:** 27 Kurven (Klassenzahl h = 27), erzeugt von der 3-Isogenie.
+  Geprüft: kommutativ, invertierbar, frei, jede Kurve supersingulär, jedes
+  Bild liegt auf seiner Kurve – auch für Kerne auf dem Twist.
+- **Note** |$_y⟩ = Σ_k ω^{yk} |g^k·E₀⟩ ist Eigenzustand der öffentlichen
+  3-Isogenie: **jeder kann prüfen**, drucken ergibt eine zufällige
+  Seriennummer, eine Fälschung mit einer klassischen Kurve besteht zu 1/h.
+- **Wo die Sicherheit sitzt – jetzt sichtbar:** Eine Note zu einer
+  *gewünschten* Seriennummer braucht zu jeder Kurve ihren Index k
+  (Vektorisierung, der „diskrete Logarithmus“ der Gruppenaktion). Hier sind
+  es 27 Kurven und eine Tabelle. Bei kryptografischen Größen sind es rund
+  2^256, und auch ein Quantenrechner braucht dafür subexponentielle Zeit
+  (Kuperberg). Im Spielzeug Z_N gab es diese Stufe gar nicht.
+
+Beim Bau fand der Selbsttest einen Fehler in der ersten Fassung der
+Isogenie-Formel (falsche Bildkurve, nicht supersingulär) – die richtige
+Formel A′ = π²(A − 6σ) ist jetzt durch den Test abgesichert.
+
 ## 4. Weitere Dokumente
 
 - `BRUECKE.md` und `bruecke.py`: der Entwurf der Brücke AEQ ↔ Quanten-Note.
@@ -151,7 +175,8 @@ Prüfung** (bisher nur im Orakelmodell, arXiv:2407.06463).
 1. **Verstehen und zeigen:** die Simulationen ausbauen. Erledigt:
    Hardware-Forderung unter Rauschen (`rauschen.py`, Abschnitt 3a). Als
    Nächstes: eine Gruppenaktion auf einer Menge, in der der Nachbau nicht
-   trivial ist, als Lehrbeispiel ohne Sicherheitsanspruch. Erledigt:
+   trivial ist, als Lehrbeispiel ohne Sicherheitsanspruch – erledigt mit
+   einer echten Isogenie-Gruppenaktion (Abschnitt 3c). Erledigt:
    Rauschrechnung für das öffentlich prüfbare Verfahren (Abschnitt 3b).
 2. **Brücke entwerfen** (Gedankenmodell): AEQ auf der Kette sperren, dafür
    eine Note mit öffentlicher Seriennummer; eine Note zurückgeben, dafür die
