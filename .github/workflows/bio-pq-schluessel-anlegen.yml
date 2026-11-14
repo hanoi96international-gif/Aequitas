@@ -68,6 +68,14 @@ jobs:
             exit 1
           fi
 
+      # Nur genesis.json: der Abgleich unten vergleicht die Schluessel auf der
+      # Box mit denen, die die Knoten pruefen werden.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: genesis.json
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
       - name: Schluessel und Host-Pruefung
         env:
           KEY: ${{ secrets.CONTABO_SSH_KEY }}
@@ -191,6 +199,27 @@ jobs:
               echo '```'
             fi
           } >> "$GITHUB_STEP_SUMMARY"
+          # Abgleich mit genesis.json dieses Stands: stimmt jeder eingetragene
+          # PQ-Schluessel Byte fuer Byte mit dem auf der Box? Ein falscher Eintrag
+          # liesse ab pq_ab_unix keine Registrierung mehr zu -- darum rot.
+          abgleich() { # name ed25519 pq_von_der_box
+            local soll
+            soll=$(jq -r --arg k "$2" '.bescheinigung.pq[$k] // empty' genesis.json 2>/dev/null || true)
+            if [ -z "$soll" ]; then
+              echo "$1: noch nicht in genesis.json"
+            elif [ -z "$3" ]; then
+              echo "::error::$1: steht in genesis.json, aber die Box liefert keinen PQ-Schluessel"
+            elif [ "$soll" = "$3" ]; then
+              echo "$1: genesis.json passt (sha256 $(printf '%s' "$3" | sha256sum | cut -c1-16))"
+            else
+              echo "::error::$1: genesis.json passt NICHT zur Box -- vor pq_ab_unix korrigieren"
+            fi
+          }
+          [ -n "$CED" ] && [ -n "$BED" ] || { echo "::error::Ed25519-Schluessel aus /api/status nicht lesbar -- kein Abgleich"; exit 1; }
+          { abgleich Coordinator "$CED" "$CPQ"; abgleich Vergleichsdienst "$BED" "$MPQ"; } > "$RUNNER_TEMP/abgleich.txt"
+          cat "$RUNNER_TEMP/abgleich.txt"
+          sed 's/^::error:://' "$RUNNER_TEMP/abgleich.txt" >> "$GITHUB_STEP_SUMMARY"
+          ! grep -q '^::error::' "$RUNNER_TEMP/abgleich.txt"
 
       - name: SSH-Schluessel vom Runner entfernen
         if: always()

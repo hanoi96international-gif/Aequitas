@@ -226,8 +226,26 @@ func TestBescheinigung_RepoGenesisLesbar(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ladeBescheinigungKonfig(data); err != nil {
+	k, err := ladeBescheinigungKonfig(data)
+	if err != nil {
 		t.Fatalf("genesis.json: %v", err)
+	}
+	// Quantensicher: sobald PQ-Schluessel eingetragen sind, dann fuer JEDEN
+	// Pruefer -- sonst koennte pq_ab_unix nie gesetzt werden, ohne dass ein
+	// Pruefer danach nicht mehr zaehlt (pruefenPQ wiese die Genesis ab).
+	if len(k.PQ) > 0 {
+		for _, liste := range [][]string{k.Coordinator, k.Bezeuger} {
+			for _, s := range liste {
+				if _, ok := k.PQ[s]; !ok {
+					t.Errorf("genesis.json: bescheinigung.pq ohne Eintrag fuer %.12s...", s)
+				}
+			}
+		}
+		// Mit Stichtag muesste dieselbe Genesis weiter lesbar sein.
+		k.PQAbUnix = k.AbUnix
+		if err := k.pruefen(); err != nil {
+			t.Errorf("genesis.json mit pq_ab_unix: %v", err)
+		}
 	}
 }
 
