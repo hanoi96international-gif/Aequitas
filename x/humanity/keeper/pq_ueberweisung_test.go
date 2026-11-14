@@ -9,6 +9,7 @@ import (
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 )
@@ -374,5 +375,33 @@ func TestPQUeberweisung_HoechstensJeBlock(t *testing.T) {
 	}
 	if got := kontoVon(t, cs2, a.addr).NaechsteNonce; got != pqUeberweisungenJeBlock {
 		t.Fatalf("NaechsteNonce %d", got)
+	}
+}
+
+// Die App (lib/tresor.ts, @noble/post-quantum, deterministisch) unterschreibt
+// so, dass JEDER Knoten die Ueberweisung annimmt: Vektor von der App erzeugt
+// (testdata/pq_ueberweisung_app_vektor.json, Seed 0x11*32).
+func TestPQUeberweisung_UnterschriftDerAppGiltImKnoten(t *testing.T) {
+	pqAktivFuerTest(t)
+	roh, err := os.ReadFile("testdata/pq_ueberweisung_app_vektor.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var v struct {
+		Adresse, An, Wei, Pub, Sig string
+		Nonce                      uint64
+	}
+	if err := json.Unmarshal(roh, &v); err != nil {
+		t.Fatal(err)
+	}
+	wei, _ := new(big.Int).SetString(v.Wei, 10)
+	tx := Transaction{Type: "transfer", Wallet: v.Adresse, To: v.An, Amount: betragAusWei(wei),
+		TxHash: pqUeberweisungTxHash(pqUeberweisungNachricht(v.Adresse, v.An, v.Wei, v.Nonce)),
+		PQ:     &PQUeberweisung{Pub: v.Pub, Sig: v.Sig, Nonce: v.Nonce, Wei: v.Wei}}
+	if _, err := pruefeUeberweisungsRoh(&tx, nowUnix()); err != nil {
+		t.Fatalf("Unterschrift der App abgelehnt: %v", err)
+	}
+	if neuerPQKontoSchluessel(t, 0x11).addr != v.Adresse {
+		t.Fatal("App und Knoten leiten verschiedene Adressen ab")
 	}
 }
