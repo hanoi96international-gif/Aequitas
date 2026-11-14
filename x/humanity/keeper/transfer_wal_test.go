@@ -232,7 +232,10 @@ func TestTransferConcurrentWAL_CrashRecovery_UnflushedTransfersReconstructed(t *
 
 	// Two WAL-durable transfers, deliberately NEVER flushed to Postgres —
 	// this is the "process restarted before the async worker's next tick"
-	// scenario.
+	// scenario. Den Flush-Arbeiter VOR den Ueberweisungen anhalten (wie
+	// wal_rest_test.go): sonst konnte er sie nach Postgres schreiben, bevor
+	// die Pruefung unten lief (CI 14.11.2026: dbBalanceBefore=899.9).
+	csA.stopWALFlushWorkerForTest()
 	if _, _, applied, err := csA.transferConcurrentWAL(from, to, 100, Transaction{Type: "transfer", Wallet: from, To: to, Amount: 100, TxHash: "0xcrash1"}); !applied || err != nil {
 		t.Fatalf("first transfer: applied=%v err=%v", applied, err)
 	}
