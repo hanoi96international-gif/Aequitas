@@ -25,7 +25,7 @@ suspend test times trap true type typeset ulimit umask unalias unset wait
 
 PROGRAMME = set("""
 docker curl grep sed awk python3 git openssl mktemp install rm cat seq sleep tr cut head tail
-nproc df sort uniq wc chmod chown mkdir cp mv ln ip ss hostname date id whoami sha256sum basename
+nproc df sort uniq wc chmod chown mkdir cp mv ln ip ss hostname date id whoami sha256sum basename uname
 dirname tee xargs env sudo systemctl apt-get timeout stat find touch ufw ssh-keygen jq base64 od
 ls paste
 """.split())
