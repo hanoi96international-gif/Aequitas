@@ -1411,6 +1411,8 @@ func bekannteTxArt(typ string, blockZeit int64) bool {
 		return verifierRegisterAktiv(blockZeit)
 	case umzugCodeTxArt, umzugAnkuendigenTxArt, umzugWiderrufTxArt, umzugVollzugTxArt: // umzug.go, schlafend bis umzugAb
 		return umzugAktiv(blockZeit)
+	case pqZusageTxArt: // pq_zusage.go, schlafend bis pqZusageAb
+		return pqZusageAktiv(blockZeit)
 	case "vorbehalt", "vorbehalt_ausfuehrung", "kappung":
 		// Stufe 2 (vorbehalt.go, kappung_verteilt.go). Fehlten hier bis
 		// 05.10.2026 ganz: ab der Aktivierung haette jeder Knoten jeden
@@ -8168,8 +8170,8 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 				hardFailure = true
 				continue
 			}
-		case umzugCodeTxArt, umzugAnkuendigenTxArt, umzugWiderrufTxArt, umzugVollzugTxArt:
-			// umzug.go: jeder Knoten prueft Unterschriften, Bescheinigung,
+		case umzugCodeTxArt, umzugAnkuendigenTxArt, umzugWiderrufTxArt, umzugVollzugTxArt, pqZusageTxArt:
+			// umzug.go, pq_zusage.go: jeder Knoten prueft Unterschriften, Bescheinigung,
 			// Nullifier und Fristen selbst. Ungueltig: nie angewandt, gezaehlt,
 			// im strengen Modus Fehler. Zustand nicht lesbar: Block zurueck.
 			if err := dag.state.applyUmzugLocked(context.Background(), &tx, block.Timestamp); err != nil {

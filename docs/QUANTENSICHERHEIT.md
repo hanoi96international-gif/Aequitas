@@ -129,12 +129,33 @@ Umsetzung in dieser Reihenfolge, jede Stufe ein eigener PR mit Prüfung:
 
 **Danach ist „1 × 1.000“ an der Stelle, wo AEQ entsteht, quantensicher.**
 
-**Stufe 2 – Zusage für jede Wallet (Konsens, klein)**
-1. Neue Transaktion „PQ-Zusage“: die Wallet hinterlegt einmalig
-   `SHA-256(ML-DSA-Schlüssel)`. Die App erzeugt den Schlüssel aus derselben
-   Seed-Phrase (eigener Ableitungspfad), der Nutzer muss nichts Neues sichern.
-2. Kostet 32 Byte je Wallet und macht heute nichts – aber nach Stufe 4 ist
-   genau sie der Beweis, wem die Wallet gehört.
+**Stufe 2 – Zusage für jede Wallet (Konsens, klein)** – *Knoten: `pq_zusage.go`, Stichtag `pqZusageAbUnix` = 17.11.2026 18:00 UTC*
+1. Neue Transaktion `pq_zusage` (`POST /api/pq/zusage`, Stand in
+   `GET /api/umzug?wallet=`): die Wallet hinterlegt einmalig
+   `SHA-256(ML-DSA-65-Schlüssel)` (die 1.952 Rohbytes des öffentlichen
+   Schlüssels), unterschrieben mit EIP-191 über
+   `aequitas-pq-zusage-v1|chain:1926|<wallet>|<hash>|<zeit>`.
+2. **Ableitung (App):** ML-DSA-Seed ξ = HMAC-SHA256(Schlüssel
+   `"aequitas-mldsa65-v1"`, BIP-39-Seed der Seed-Phrase, leere Passphrase);
+   daraus der Schlüssel nach FIPS 204. **Nie aus dem secp256k1-Schlüssel** –
+   den kann ein Quantenrechner ableiten, den BIP-39-Seed nicht. Der Nutzer
+   muss nichts Neues sichern. Die App speichert nur den Wallet-Schlüssel, nicht
+   die Seed-Phrase: die Zusage entsteht beim Anlegen/Importieren mit
+   Seed-Phrase; bestehende Wallets geben die Seed-Phrase dafür einmal ein.
+3. Regeln, die jeder Knoten selbst prüft: nur ein Mensch (`is_human`, das
+   begrenzt das Register ohne Gebühr), **genau eine Zusage je Wallet, nicht
+   änderbar** (ein Angreifer mit abgeleitetem secp256k1-Schlüssel kann sie
+   nicht ersetzen), unterschrieben frühestens zum Stichtag, höchstens 5 min
+   voraus und einen Tag alt, höchstens 50.000 Zusagen (dann eigene Tabelle).
+   Gespeichert im Umzugs-Register (`chain_config`, StateRoot); ohne Zusagen
+   bleibt dessen Schreibweise byte-gleich. Ein Umzug lässt die Zusage bei der
+   Wallet – das Guthaben bleibt ja auch dort.
+4. Kostet 32 Byte je Wallet und macht heute nichts – aber nach Stufe 4 ist
+   genau sie der Beweis, wem die Wallet gehört. **Restrisiko:** eine Wallet
+   *ohne* Zusage kann ein Angreifer, der secp256k1 schon bricht, zuerst
+   belegen. Deshalb zählen bei der Notbremse nur Zusagen von *vor* ihrem
+   Stichtag – und die App legt die Zusage gleich bei der Einrichtung an.
+   Unternehmens-Wallets (kein Mensch) folgen mit eigener Grenze.
 
 **Stufe 3 – PQ-Wallets (Konsens + App)**
 1. Neuer Transaktionstyp mit ML-DSA-65-Unterschrift; Adresse = Hash des

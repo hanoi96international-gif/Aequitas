@@ -224,6 +224,8 @@ type UmzugAngaben struct {
 	// umzug_ankuendigen: Pruefstufe, die der Coordinator mit seiner Bindung
 	// unterschrieben hat ("streng" oder "einfach").
 	Pruefung string `json:"pruefung,omitempty"`
+	// pq_zusage (pq_zusage.go): SHA-256 des ML-DSA-65-Schluessels der Wallet.
+	PQHash string `json:"pq_hash,omitempty"`
 }
 
 // ------------------------------------------------------------ Nachrichten
@@ -344,13 +346,15 @@ type umzugRegister struct {
 	Erledigt []umzugErledigt `json:"erledigt,omitempty"`
 	// Widerrufe: hoechstens umzugWiderrufeHoechstens, nach (Am, Nullifier).
 	Widerrufe []umzugWiderrufen `json:"widerrufe,omitempty"`
+	// PQ-Zusagen (pq_zusage.go), nach Wallet sortiert.
+	PQ []pqZusage `json:"pq,omitempty"`
 
 	roh  string
 	hash string
 }
 
 func (r *umzugRegister) leer() bool {
-	return r == nil || (len(r.Codes) == 0 && len(r.Offen) == 0 && len(r.Erledigt) == 0 && len(r.Widerrufe) == 0)
+	return r == nil || (len(r.Codes) == 0 && len(r.Offen) == 0 && len(r.Erledigt) == 0 && len(r.Widerrufe) == 0 && len(r.PQ) == 0)
 }
 
 // fertig: Schreibweise und Hash einmal rechnen (die StateRoot liest den Hash
@@ -419,6 +423,9 @@ func umzugRegisterLesen(s string) (*umzugRegister, error) {
 			return nil, fmt.Errorf("Umzugs-Register: Widerruf %d ungueltig", i)
 		}
 	}
+	if err := pqZusagenGueltig(r.PQ); err != nil {
+		return nil, err
+	}
 	r.fertig()
 	if r.kodiert() != s {
 		return nil, errors.New("Umzugs-Register nicht in kanonischer Schreibweise")
@@ -479,6 +486,7 @@ func (r *umzugRegister) kopie() *umzugRegister {
 		Offen:     append([]umzugOffen(nil), r.Offen...),
 		Erledigt:  append([]umzugErledigt(nil), r.Erledigt...),
 		Widerrufe: append([]umzugWiderrufen(nil), r.Widerrufe...),
+		PQ:        append([]pqZusage(nil), r.PQ...),
 	}
 }
 
@@ -770,7 +778,7 @@ func (cs *ChainState) umzugAnkuendigenUrteilLocked(ctx context.Context, tx *Tran
 	u := tx.Umzug
 	b := tx.BioBescheinigung
 	if !kanonischeAdresse(neu) || !kanonischeAdresse(alt) || neu == alt || !umzugNullifierKanonisch(n) ||
-		u == nil || !kanonischeSignatur(u.Sig) || u.CodeHash != "" || u.Angekuendigt != 0 ||
+		u == nil || !kanonischeSignatur(u.Sig) || u.CodeHash != "" || u.PQHash != "" || u.Angekuendigt != 0 ||
 		(u.Pruefung != umzugPruefungStreng && u.Pruefung != umzugPruefungEinfach) ||
 		(u.Code != "" && umzugCodeNormal(u.Code) != u.Code) || b == nil || b.Zeit != tx.DistributionAt {
 		return umzugBefund("umzug_form", "Antrag nicht in gueltiger Form"), nil
@@ -889,7 +897,7 @@ func (cs *ChainState) umzugWiderrufUrteilLocked(tx *Transaction, blockZeit int64
 	alt, neu, n := tx.Wallet, tx.To, tx.Nullifier
 	u := tx.Umzug
 	if !kanonischeAdresse(alt) || !kanonischeAdresse(neu) || !umzugNullifierKanonisch(n) || u == nil ||
-		!kanonischeSignatur(u.Sig) || u.Code != "" || u.CodeHash != "" || u.Pruefung != "" || u.Angekuendigt <= 0 ||
+		!kanonischeSignatur(u.Sig) || u.Code != "" || u.CodeHash != "" || u.PQHash != "" || u.Pruefung != "" || u.Angekuendigt <= 0 ||
 		tx.BioBescheinigung != nil {
 		return umzugBefund("umzug_form", "Widerruf nicht in gueltiger Form")
 	}
@@ -914,7 +922,7 @@ func (cs *ChainState) umzugCodeUrteilLocked(ctx context.Context, tx *Transaction
 	alt := tx.Wallet
 	u := tx.Umzug
 	if !kanonischeAdresse(alt) || u == nil || !istHash64(u.CodeHash) || !kanonischeSignatur(u.Sig) ||
-		u.Code != "" || u.Angekuendigt != 0 || u.Pruefung != "" || tx.BioBescheinigung != nil || tx.To != "" || tx.Nullifier != "" {
+		u.Code != "" || u.PQHash != "" || u.Angekuendigt != 0 || u.Pruefung != "" || tx.BioBescheinigung != nil || tx.To != "" || tx.Nullifier != "" {
 		return umzugBefund("umzug_form", "Code nicht in gueltiger Form")
 	}
 	z := tx.DistributionAt
@@ -1050,6 +1058,8 @@ func (cs *ChainState) applyUmzugLocked(ctx context.Context, tx *Transaction, blo
 		u = cs.umzugWiderrufUrteilLocked(tx, blockZeit)
 	case umzugVollzugTxArt:
 		u, err = cs.umzugVollzugUrteilLocked(ctx, tx, blockZeit)
+	case pqZusageTxArt:
+		u = cs.pqZusageUrteilLocked(ctx, tx, blockZeit)
 	default:
 		return fmt.Errorf("keine Umzugs-Art: %q", tx.Type)
 	}
@@ -1074,13 +1084,15 @@ func (cs *ChainState) umzugAnwendenLocked(ctx context.Context, tx *Transaction, 
 		return cs.umzugRegisterSetzenLocked(ctx, reg.ohneOffen(tx.Nullifier).mitWiderruf(umzugWiderrufen{Nullifier: tx.Nullifier, Am: o.Zeit}))
 	case umzugVollzugTxArt:
 		return cs.umzugVollzugAnwendenLocked(ctx, tx.Nullifier, tx.To, tx.Wallet, tx.DistributionAt, u)
+	case pqZusageTxArt:
+		return cs.umzugRegisterSetzenLocked(ctx, cs.umzugRegisterJetzt().mitPQZusage(pqZusage{Wallet: tx.Wallet, Hash: tx.Umzug.PQHash, Zeit: tx.DistributionAt}))
 	}
 	return fmt.Errorf("keine Umzugs-Art: %q", tx.Type)
 }
 
 func istUmzugTxArt(t string) bool {
 	switch t {
-	case umzugCodeTxArt, umzugAnkuendigenTxArt, umzugWiderrufTxArt, umzugVollzugTxArt:
+	case umzugCodeTxArt, umzugAnkuendigenTxArt, umzugWiderrufTxArt, umzugVollzugTxArt, pqZusageTxArt:
 		return true
 	}
 	return false
@@ -1115,6 +1127,10 @@ func (a *APIServer) umzugAnnehmen(w http.ResponseWriter, r *http.Request, tx Tra
 			u, err = a.state.umzugAnkuendigenUrteilLocked(ctx, &tx, now)
 		case umzugWiderrufTxArt:
 			u = a.state.umzugWiderrufUrteilLocked(&tx, now)
+		case pqZusageTxArt:
+			u = a.state.pqZusageUrteilLocked(ctx, &tx, now)
+		default:
+			return Transaction{}, fmt.Errorf("keine annehmbare Art: %q", tx.Type)
 		}
 		if err != nil {
 			return Transaction{}, err
@@ -1313,7 +1329,7 @@ func (a *APIServer) handleUmzugStand(w http.ResponseWriter, r *http.Request) {
 	}
 	reg := a.state.umzugRegisterJetzt()
 	antwort := map[string]interface{}{"aktiv_ab": umzugAb(), "frist_tage": umzugFrist / 86400, "code_regeln_ab": umzugCodeRegelnAb(),
-		"nur_letzter_code_ab": umzugNurLetzterCodeAb()}
+		"nur_letzter_code_ab": umzugNurLetzterCodeAb(), "pq_zusage_ab": pqZusageAb()}
 	if n := strings.TrimSpace(r.URL.Query().Get("n")); n != "" {
 		if !umzugNullifierKanonisch(n) {
 			jsonError(w, "n must be a decimal nullifier", http.StatusBadRequest)
@@ -1327,6 +1343,10 @@ func (a *APIServer) handleUmzugStand(w http.ResponseWriter, r *http.Request) {
 	if !kanonischeAdresse(wallet) {
 		jsonError(w, "wallet or n required", http.StatusBadRequest)
 		return
+	}
+	if z, ok := reg.pqZusage(wallet); ok {
+		antwort["pq_zusage_seit"] = z.Zeit
+		antwort["pq_hash"] = z.Hash
 	}
 	if c, ok := reg.code(wallet); ok {
 		antwort["code_seit"] = c.Zeit
