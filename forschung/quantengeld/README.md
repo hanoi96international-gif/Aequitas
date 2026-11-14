@@ -181,6 +181,21 @@ kryptografischer Größe genügt d = 1 – dort bestimmt allein die Schwere der
 Vektorisierung die Sicherheit. Die Vorgaben für den echten Bau stehen in
 **`BAUVORGABE.md`**.
 
+## 3e. Wie schwer ist der Angriff? Selbst gemessen (`kuperberg.py`)
+
+Die Sicherheit der Isogenie-Note hängt an der Vektorisierung. Der beste
+Quantenangriff ist Kuperbergs Sieb; seine Abfragezahl ließ sich exakt
+simulieren: **log₂ Q ≈ 2,16·√n**. Hochgerechnet: 512-Bit-Primzahlen ≈ 2³⁴
+Abfragen (zu schwach), 4.096 Bit ≈ 2⁹⁸ Abfragen. **Korrektur durch den
+stärkeren Angreifer** (Kollimationssieb, ebenfalls gemessen):
+log₂ Q ≈ 1,06·√n – für 512 Bit 2¹⁸ (trifft die Literatur, Peikert 2020),
+für 4.096 Bit nur 2⁴⁹. Mitgezählt auch die klassische Arbeit des Siebs
+(≈ 2^(2,05·√n)): 4.096 Bit ≈ 2⁹⁶ (zu wenig), 8.192 Bit ≈ 2¹³⁴, 16.384 Bit
+≈ 2¹⁸⁹. Dazu die Kosten je Abfrage (`isogenie_kosten.py`: Multiplikationen
+gezählt, ~4·B² Toffoli je Multiplikation): ab 8.192 Bit bestimmt die
+klassische Arbeit den Preis. Daher die Vorgabe in `BAUVORGABE.md`:
+**p ≥ 8.192 Bit für 2¹²⁸, p ≥ 17.000 Bit für unser Ziel 2⁻¹⁹²**.
+
 ## 4. Weitere Dokumente
 
 - `BRUECKE.md` und `bruecke.py`: der Entwurf der Brücke AEQ ↔ Quanten-Note.

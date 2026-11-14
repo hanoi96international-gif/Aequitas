@@ -62,6 +62,67 @@ Fristprüfung entfernt, schlägt der Test an. Zwei Prüfungen sind doppelt
 abgesichert, nämlich die Doppeleinlösung und die Einlösung nach Rückholung:
 Fehlt eine davon, fängt die zweite den Fall ab.
 
+## Der Einlöse-Nachweis: Einmal-Signaturen (Stand 14.11.2026)
+
+Das ideale Lightning in `bruecke.py` braucht genau eine Eigenschaft, die
+gewöhnliches Quantengeld nicht hat: Wer die Note **verbraucht**, erhält einen
+**klassischen** Nachweis, den die Kette prüfen kann – und mehr als einen
+solchen Nachweis gibt es nie. Das leistet eine **Einmal-Signatur**
+(one-shot signature, OSS):
+
+- Die Note *ist* ein quantenmechanischer Signierzustand; ihre Seriennummer ist
+  der öffentliche Schlüssel pk.
+- **Einlösen** heißt: mit dem Zustand **eine** Nachricht unterschreiben, etwa
+  „einlösen an Wallet W“. Dabei wird der Zustand verbraucht; eine zweite
+  Nachricht unter demselben pk lässt sich nie unterschreiben.
+- Die Kette prüft die Unterschrift **klassisch** – gleich wie heute jede
+  ML-DSA-Unterschrift (Stufe 3).
+- Daraus folgt auch Lightning: zwei gültige Noten mit demselben pk ergäben
+  zwei Unterschriften.
+
+**Stand der Forschung** (laut Zusammenfassungen, Volltexte vor Zitierung
+lesen): Einmal-Signaturen wurden 2020 eingeführt (Amos, Georgiou, Kiayias,
+Zhandry), zunächst nur im Orakelmodell. 2025 wurde eine Konstruktion im
+Standardmodell vorgelegt (Shmueli & Zhandry, aus Ununterscheidbarkeits-
+Verschleierung und LWE). Damit ist die **Einlöse-Frage theoretisch gelöst,
+praktisch nicht**: Ununterscheidbarkeits-Verschleierung ist heute weit von
+jeder Anwendung entfernt.
+
+**Folgerung für die Bauvorgabe:** Die Kette braucht für die Brücke nur
+klassische Bausteine, die es schon gibt – ein Register der Seriennummern
+(öffentliche Schlüssel) und die Prüfung einer Unterschrift beim Einlösen.
+Die Quantenseite (Note = OSS-Zustand oder Gruppenaktions-Note mit
+Einlöse-Mechanismus) ist austauschbar. Deshalb lässt sich die Kettenseite
+**schon jetzt spezifizieren und testen**, ohne sich auf ein Quantenverfahren
+festzulegen – sie bleibt schlafend, bis eines trägt (BAUVORGABE.md §4).
+
+## Kettenseite als ausführbare Spezifikation (`bruecke_kette.py`)
+
+Was ein Knoten später Byte für Byte prüft – unabhängig vom Quantenverfahren:
+
+- **Seriennummer** s = SHA-256(öffentlicher Schlüssel der Note).
+- **Einlösen** nur mit einer Einmal-Signatur über
+  `aequitas-quanten-einloesen-v1|chain:1926|<s>|<ziel>|<wei>` – Ziel und
+  Betrag sind gebunden. Für die Spezifikation steht eine Lamport-Signatur
+  (SHA-256) an Stelle der Quanten-Einmal-Signatur: dieselbe Prüfung auf der
+  Kette, selbst quantensicher.
+- **Höchstens eine Einlösung je Seriennummer – erzwingt die Kette selbst**,
+  auch wenn jemand zwei gültige Unterschriften vorlegt.
+- Sperren nur mit Deckung und neuer Seriennummer; Rückholen nur durch den
+  Sperrenden, nur wenn erlaubt, nur nach der Frist; danach ist die Note
+  wertlos. Erhaltung: es entsteht nie AEQ.
+
+Selbsttest: **17 Angriffe abgewiesen**, Summe erhalten, und eine
+**Gegenprobe** mit absichtlich ausgebauten Prüfungen (ohne Signatur, ohne
+Einmal-Regel) zeigt, dass die Tests greifen.
+
+**Im Knoten umgesetzt** (`x/humanity/keeper/quanten_note.go`, schlafend):
+dieselben Regeln in Go; eine von `bruecke_kette.py` erzeugte Unterschrift
+(`testdata/quanten_note_vektor.json`) besteht im Knoten, für jedes andere
+Ziel nicht. Mutationsproben: ohne Signaturprüfung oder ohne Fristprüfung
+schlägt der Test an; „höchstens einmal“ ist doppelt abgesichert (Register
+und Verbraucht-Liste) – erst ohne beide geht der Angriff durch.
+
 ## Offene Fragen (Forschung)
 
 1. **Ein Quantum-Lightning-Verfahren mit belastbarer Sicherheit.** Der
@@ -75,5 +136,10 @@ Fehlt eine davon, fängt die zweite den Fall ab.
    Endgeräte gibt es nicht.
 4. **Klassische Seite quantensicher.** Einlöse-Nachweis, Kontounterschriften
    und Kette müssen selbst quantensicher sein, sonst ist die Brücke der
-   schwache Teil. Genau dafür sind die Stufen 1 bis 5 in
-   `docs/QUANTENSICHERHEIT.md`.
+   schwache Teil. **Erledigt für Registrierung, Zusage und Überweisung**
+   (Stufen 1–3, ML-DSA-65, live ab 14.11.2026 22:00 UTC); offen sind
+   Validatoren und Netz (Stufe 5).
+5. **Einlösen praktisch machen.** Einmal-Signaturen gibt es im
+   Standardmodell nur über Ununterscheidbarkeits-Verschleierung. Gesucht: ein
+   Einlöse-Mechanismus direkt für die Gruppenaktions-Note (isogenie_geld.py)
+   oder eine praktischere OSS-Konstruktion.
