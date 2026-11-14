@@ -26,16 +26,16 @@ nachzulesen** (die Volltexte waren von hier aus nicht erreichbar).
    veröffentlichten Schätzungen (Literatur: Peikert 2020, Bonnetain &
    Schrottenloher 2020) sehen **CSIDH-512 deutlich unter 128 Bit
    Quantensicherheit**; für ~128 Bit werden Primzahlen in der Größenordnung
-   **2.048 bis 4.096 Bit** genannt. **Vorgabe: p ≥ 4.096 Bit**, bis eigene
-   Nachrechnung eine kleinere Zahl rechtfertigt.
+   **2.048 bis 4.096 Bit** genannt. **Vorgabe nach eigener Messung (2a, 2b):
+   p ≥ 4.096 Bit als Untergrenze, p ≥ 8.192 Bit für das Ziel 2⁻¹⁹².**
 3. **Mehrteilige Note** (`isogenie_mehrteilig.py`): k Teilnoten, gültig ab
    τ bestandenen, mit Abstand d = 2τ − k ≥ 1 über der Hälfte (gegen
    Aufteilen). Bei kryptografischer Größe genügt d = 1; die Fälschungs­
    schranke 1/h je Teilnote liegt dann weit unter 2⁻¹²⁸ – die Sicherheit
    bestimmt allein Punkt 2.
 4. **Fehlerkorrektur:** Jede Teilnote ist ein Register aus m ≈ log₂ h Qubits;
-   bei p ≈ 4.096 Bit ist h ≈ √p ≈ 2²⁰⁴⁸, also **m ≈ 2.048 logische Qubits je
-   Teilnote**. Nach `rauschen_oeffentlich.py` muss jedes Qubit dann m-mal
+   bei p ≈ 8.192 Bit ist h ≈ √p ≈ 2⁴⁰⁹⁶, also **m ≈ 4.096 logische Qubits je
+   Teilnote** (bei 4.096 Bit: 2.048). Nach `rauschen_oeffentlich.py` muss jedes Qubit dann m-mal
    besser sein als bei Wiesner – das geht nur mit **fehlerkorrigierten
    logischen Qubits**.
 
@@ -56,18 +56,39 @@ Einordnung: das ist der *erste* (einfachste) Kuperberg-Algorithmus, also
 eine **obere** Schranke für den Angreifer; bessere Siebe (Kuperberg 2011,
 Regev, Peikert) brauchen weniger Abfragen, kosten aber mehr Speicher. Die
 Hochrechnung von n ≤ 36 auf n = 2.048 ist weit – sie bestätigt die
-Größenordnung, nicht die letzte Stelle. **Ergebnis: Die Vorgabe p ≥ 4.096 Bit
-ist durch eigene Messung gestützt; 512 Bit wären klar zu schwach.**
+Größenordnung, nicht die letzte Stelle.
+
+### 2b. Korrektur durch den stärkeren Angreifer: Kollimationssieb
+
+Der *zweite* Kuperberg-Algorithmus (Kollimation, Kuperberg 2011 / Peikert
+2020) tauscht Abfragen gegen Speicher. Ebenfalls exakt über die Etiketten
+gemessen (`kuperberg.py`, `kollimation`), n = 16 … 72:
+**log₂ Q ≈ 1,06·√n + 0,7**.
+
+| Primzahl p | erster Algorithmus | **Kollimation** |
+|---|---|---|
+| 512 Bit | 2³⁴ | **2¹⁸** (Literatur, Peikert 2020: 2¹⁶–2¹⁹ – unser Modell trifft das) |
+| 2.048 Bit | 2⁶⁹ | 2³⁵ |
+| 4.096 Bit | 2⁹⁸ | **2⁴⁹** |
+| 8.192 Bit | – | ≈ 2⁶⁹ |
+
+Damit trägt die Zahl der Abfragen allein bei 4.096 Bit **nicht** bis 2¹²⁸;
+die Sicherheit läge dann an Rechenzeit und Speicher des Siebs und an den
+Kosten je Isogenie – zu knapp für unser Ziel. **Korrigierte Vorgabe:
+p ≥ 4.096 Bit als absolute Untergrenze (2¹²⁸), p ≥ 8.192 Bit für das Ziel
+2⁻¹⁹².** Die Literatur nennt für höhere Sicherheitsstufen dieselbe
+Größenordnung (vor Festlegung nachlesen). 512 Bit sind in jedem Fall
+gebrochen.
 
 ## 3. Parameter (gerechnet)
 
 Aus `isogenie_mehrteilig.py`, Ziel 2⁻¹²⁸ und 2⁻¹⁹²:
 
-| Teilnote besteht (nach Lagerung) | Teile k | Schwelle τ | logische Qubits je Note (m ≈ 2.048) |
+| Teilnote besteht (nach Lagerung) | Teile k | Schwelle τ | logische Qubits je Note (m ≈ 4.096, p ≈ 8.192 Bit) |
 |---|---|---|---|
-| 100 % | 1 | 1 | ~2.048 |
-| 90 % | 5 | 3 | ~10.240 |
-| 75 % | 19 | 10 | ~38.912 |
+| 100 % | 1 | 1 | ~4.096 |
+| 90 % | 5 | 3 | ~20.480 |
+| 75 % | 19 | 10 | ~77.824 |
 
 Je schlechter der Speicher, desto mehr Teile – aber die Sicherheit bleibt bei
 2⁻¹²⁸. Der Speicher entscheidet, ob eine Note *handlich* ist, nicht ob sie
@@ -82,16 +103,16 @@ Je schlechter der Speicher, desto mehr Teile – aber die Sicherheit bleibt bei
   verbraucht – keine Note zweimal.
 - Einschalten erst, wenn **(a)** ein Verfahren mit Sicherheitsbeweis aus
   anerkannten Annahmen vorliegt oder die Fachwelt das Gruppenaktions-Verfahren
-  bei p ≥ 4.096 Bit für tragfähig hält, und **(b)** fehlerkorrigierte
+  bei p ≥ 8.192 Bit für tragfähig hält, und **(b)** fehlerkorrigierte
   Speicher die Lagerzeit aus Punkt 1 schaffen. Bis dahin bleibt der Code –
   wie alle Stichtage – schlafend.
 
 ## 5. Was wir als Forschungsgruppe als Nächstes prüfen
 
-1. Die Literaturschätzungen aus Punkt 2 selbst nachrechnen – **begonnen**
-   (2a: erster Kuperberg-Algorithmus gemessen). Offen: die besseren Siebe
-   (Kuperberg 2011 / Peikert) und die Kosten einer Isogenie-Auswertung im
-   Quantenschaltkreis.
+1. Die Literaturschätzungen aus Punkt 2 selbst nachrechnen – **weit
+   gediehen** (2a erster Algorithmus, 2b Kollimation – trifft Peikerts Werte
+   für 512 Bit). Offen: Speicher und klassische Rechenzeit der Kollimation
+   als Kostenmodell, Kosten einer Isogenie-Auswertung im Quantenschaltkreis.
 2. Kopieren einer Teilnote formal auf Vektorisierung zurückführen (bisher
    als Annahme benutzt – genau das zeigt Doliskani im generischen Modell).
 3. Rauschtolerante Prüfung *innerhalb* einer Teilnote statt nur über

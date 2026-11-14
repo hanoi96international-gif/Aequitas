@@ -186,9 +186,11 @@ Vektorisierung die Sicherheit. Die Vorgaben für den echten Bau stehen in
 Die Sicherheit der Isogenie-Note hängt an der Vektorisierung. Der beste
 Quantenangriff ist Kuperbergs Sieb; seine Abfragezahl ließ sich exakt
 simulieren: **log₂ Q ≈ 2,16·√n**. Hochgerechnet: 512-Bit-Primzahlen ≈ 2³⁴
-Abfragen (zu schwach), **4.096 Bit ≈ 2⁹⁸ Abfragen** – zusammen mit den Kosten
-je Isogenie in Reichweite von 2¹²⁸. Damit ist die Vorgabe „p ≥ 4.096 Bit“
-in `BAUVORGABE.md` durch eigene Messung gestützt.
+Abfragen (zu schwach), 4.096 Bit ≈ 2⁹⁸ Abfragen. **Korrektur durch den
+stärkeren Angreifer** (Kollimationssieb, ebenfalls gemessen):
+log₂ Q ≈ 1,06·√n – für 512 Bit 2¹⁸ (trifft die Literatur, Peikert 2020),
+für 4.096 Bit nur 2⁴⁹. Daher die angezogene Vorgabe in `BAUVORGABE.md`:
+**p ≥ 4.096 Bit Untergrenze, p ≥ 8.192 Bit für 2⁻¹⁹²**.
 
 ## 4. Weitere Dokumente
 

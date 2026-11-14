@@ -107,6 +107,87 @@ def beste_stufe(n: int, rng: random.Random) -> tuple[int, int]:
     return best
 
 
+# ---- Zweiter Algorithmus: Kollimationssieb (Kuperberg 2011, Peikert 2020) ----
+#
+# Statt einzelner Qubits verarbeitet es "Phasenvektoren" der Laenge L mit
+# Etiketten b_1..b_L (Zustand Summe_j exp(2 pi i s b_j / N) |j>). Zwei
+# Vektoren werden zusammengefuegt (Etiketten b + b'), dann die naechsten r
+# Bits der Summe gemessen: uebrig bleiben die Paare mit diesem Rest, um r Bits
+# genullt. Wieder haengt alles nur an den Etiketten. Gemessen werden die
+# Abfragen (Vektoren der Laenge 2 = ein Qubit) fuer eine Speichergrenze L.
+
+
+class _Zaehler:
+    def __init__(self):
+        self.abfragen = 0
+
+
+def _abfrage(N: int, rng: random.Random, z: _Zaehler) -> list[int]:
+    z.abfragen += 1
+    return [0, rng.randrange(1, N)]
+
+
+def _blatt(N: int, L: int, rng: random.Random, z: _Zaehler) -> list[int]:
+    """Phasenvektor der Laenge >= L aus Abfragen (ohne Bits zu nullen)."""
+    v = _abfrage(N, rng, z)
+    while len(v) < L:
+        w = _abfrage(N, rng, z)
+        v = [(x + y) % N for x in v for y in w]
+    return v
+
+
+def _kollimieren(v1, v2, genullt, r, N, rng):
+    """Fuegt v1, v2 zusammen und misst die Bits genullt .. genullt+r-1 der Summe."""
+    m = (1 << r) - 1
+    i, j = rng.randrange(len(v1)), rng.randrange(len(v2))  # Messung: zufaelliges Paar
+    c = ((v1[i] + v2[j]) >> genullt) & m
+    nach_rest: dict[int, list[int]] = {}
+    for y in v2:
+        nach_rest.setdefault((y >> genullt) & m, []).append(y)
+    neu = []
+    for x in v1:
+        gesucht = (c - ((x >> genullt) & m)) & m
+        for y in nach_rest.get(gesucht, ()):
+            # Summe minus Rest: die naechsten r Bits sind danach 0 (globale Phase).
+            neu.append((x + y - (c << genullt)) % N)
+    return neu
+
+
+def kollimation(n: int, L: int, rng: random.Random) -> tuple[bool, int]:
+    """Ein Lauf: (Erfolg, Abfragen). Erfolg = ein Vektor, der die Etiketten 0
+    und N/2 enthaelt (verraet das unterste Bit von s)."""
+    N = 1 << n
+    z = _Zaehler()
+    r = max(1, int(math.log2(L)))
+
+    def baue(genullt: int, tiefe: int = 0) -> list[int]:
+        if genullt == 0:
+            return _blatt(N, L, rng, z)
+        vor = max(0, genullt - r)
+        while True:
+            v = _kollimieren(baue(vor, tiefe + 1), baue(vor, tiefe + 1), vor, genullt - vor, N, rng)
+            if len(v) >= 2:
+                return v[: 4 * L]  # Laenge begrenzen (Speicher L)
+            if z.abfragen > Q_MAX:
+                return v
+
+    v = baue(n - 1)
+    ok = len(v) >= 2 and 0 in v and (N >> 1) in v and all(x in (0, N >> 1) for x in v)
+    return ok, z.abfragen
+
+
+def kollimation_abfragen(n: int, L: int, rng: random.Random, laeufe: int = 5) -> float:
+    """Mittlere Abfragen je erfolgreichem Lauf."""
+    gesamt, erfolge = 0, 0
+    for _ in range(laeufe * 4):
+        ok, q = kollimation(n, L, rng)
+        gesamt += q
+        erfolge += ok
+        if erfolge >= laeufe:
+            break
+    return gesamt / max(1, erfolge)
+
+
 def anpassen(punkte):
     """Kleinste Quadrate fuer log2 Q = a * sqrt(n) + c."""
     xs = [math.sqrt(n) for n, _ in punkte]
@@ -132,7 +213,12 @@ def selbsttest() -> None:
     q24 = beste_stufe(24, rng)[1]
     assert q24 > q12
     assert math.log2(q24) / math.log2(q12) < 24 / 12
-    print(f"selbsttest ok (n=12: {q12} Abfragen, n=24: {q24})")
+    # 4. Kollimation: braucht bei n = 32 viel weniger Abfragen als der erste
+    #    Algorithmus (Tausch gegen Speicher), und ihr Ergebnis ist korrekt
+    #    (nur die Etiketten 0 und N/2).
+    qk = kollimation_abfragen(32, 1024, rng, 3)
+    assert qk < beste_stufe(32, rng)[1] / 4, qk
+    print(f"selbsttest ok (n=12: {q12} Abfragen, n=24: {q24}; Kollimation n=32: {qk:.0f})")
 
 
 def main() -> None:
