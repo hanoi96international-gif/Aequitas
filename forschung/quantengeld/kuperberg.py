@@ -120,6 +120,8 @@ def beste_stufe(n: int, rng: random.Random) -> tuple[int, int]:
 class _Zaehler:
     def __init__(self):
         self.abfragen = 0
+        self.arbeit = 0  # klassische Etiketten-Operationen (Zeit des Siebs)
+        self.speicher = 0  # groesster gleichzeitig gehaltener Phasenvektor
 
 
 def _abfrage(N: int, rng: random.Random, z: _Zaehler) -> list[int]:
@@ -133,10 +135,12 @@ def _blatt(N: int, L: int, rng: random.Random, z: _Zaehler) -> list[int]:
     while len(v) < L:
         w = _abfrage(N, rng, z)
         v = [(x + y) % N for x in v for y in w]
+        z.arbeit += len(v)
+    z.speicher = max(z.speicher, len(v))
     return v
 
 
-def _kollimieren(v1, v2, genullt, r, N, rng):
+def _kollimieren(v1, v2, genullt, r, N, rng, z: "_Zaehler | None" = None):
     """Fuegt v1, v2 zusammen und misst die Bits genullt .. genullt+r-1 der Summe."""
     m = (1 << r) - 1
     i, j = rng.randrange(len(v1)), rng.randrange(len(v2))  # Messung: zufaelliges Paar
@@ -150,10 +154,13 @@ def _kollimieren(v1, v2, genullt, r, N, rng):
         for y in nach_rest.get(gesucht, ()):
             # Summe minus Rest: die naechsten r Bits sind danach 0 (globale Phase).
             neu.append((x + y - (c << genullt)) % N)
+    if z is not None:
+        z.arbeit += len(v1) + len(v2) + len(neu)
+        z.speicher = max(z.speicher, len(v1) + len(v2) + len(neu))
     return neu
 
 
-def kollimation(n: int, L: int, rng: random.Random) -> tuple[bool, int]:
+def kollimation(n: int, L: int, rng: random.Random, kosten: dict | None = None) -> tuple[bool, int]:
     """Ein Lauf: (Erfolg, Abfragen). Erfolg = ein Vektor, der die Etiketten 0
     und N/2 enthaelt (verraet das unterste Bit von s)."""
     N = 1 << n
@@ -165,7 +172,7 @@ def kollimation(n: int, L: int, rng: random.Random) -> tuple[bool, int]:
             return _blatt(N, L, rng, z)
         vor = max(0, genullt - r)
         while True:
-            v = _kollimieren(baue(vor, tiefe + 1), baue(vor, tiefe + 1), vor, genullt - vor, N, rng)
+            v = _kollimieren(baue(vor, tiefe + 1), baue(vor, tiefe + 1), vor, genullt - vor, N, rng, z)
             if len(v) >= 2:
                 return v[: 4 * L]  # Laenge begrenzen (Speicher L)
             if z.abfragen > Q_MAX:
@@ -173,18 +180,26 @@ def kollimation(n: int, L: int, rng: random.Random) -> tuple[bool, int]:
 
     v = baue(n - 1)
     ok = len(v) >= 2 and 0 in v and (N >> 1) in v and all(x in (0, N >> 1) for x in v)
+    if kosten is not None:
+        kosten["arbeit"] = kosten.get("arbeit", 0) + z.arbeit
+        kosten["speicher"] = max(kosten.get("speicher", 0), z.speicher)
     return ok, z.abfragen
 
 
-def kollimation_abfragen(n: int, L: int, rng: random.Random, laeufe: int = 5) -> float:
-    """Mittlere Abfragen je erfolgreichem Lauf."""
+def kollimation_abfragen(n: int, L: int, rng: random.Random, laeufe: int = 5, kosten: dict | None = None) -> float:
+    """Mittlere Abfragen je erfolgreichem Lauf; kosten (optional) bekommt
+    mittlere klassische Arbeit und groessten Speicher je Erfolg."""
     gesamt, erfolge = 0, 0
+    k: dict = {}
     for _ in range(laeufe * 4):
-        ok, q = kollimation(n, L, rng)
+        ok, q = kollimation(n, L, rng, k)
         gesamt += q
         erfolge += ok
         if erfolge >= laeufe:
             break
+    if kosten is not None:
+        kosten["arbeit"] = k.get("arbeit", 0) / max(1, erfolge)
+        kosten["speicher"] = k.get("speicher", 0)
     return gesamt / max(1, erfolge)
 
 

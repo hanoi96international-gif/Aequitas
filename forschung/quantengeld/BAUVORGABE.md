@@ -26,16 +26,16 @@ nachzulesen** (die Volltexte waren von hier aus nicht erreichbar).
    veröffentlichten Schätzungen (Literatur: Peikert 2020, Bonnetain &
    Schrottenloher 2020) sehen **CSIDH-512 deutlich unter 128 Bit
    Quantensicherheit**; für ~128 Bit werden Primzahlen in der Größenordnung
-   **2.048 bis 4.096 Bit** genannt. **Vorgabe nach eigener Messung (2a, 2b):
-   p ≥ 4.096 Bit als Untergrenze, p ≥ 8.192 Bit für das Ziel 2⁻¹⁹².**
+   **2.048 bis 4.096 Bit** genannt. **Vorgabe nach eigener Messung (2a–2c):
+   p ≥ 8.192 Bit für 2¹²⁸, p ≈ 16.384 Bit für das Ziel 2⁻¹⁹².**
 3. **Mehrteilige Note** (`isogenie_mehrteilig.py`): k Teilnoten, gültig ab
    τ bestandenen, mit Abstand d = 2τ − k ≥ 1 über der Hälfte (gegen
    Aufteilen). Bei kryptografischer Größe genügt d = 1; die Fälschungs­
    schranke 1/h je Teilnote liegt dann weit unter 2⁻¹²⁸ – die Sicherheit
    bestimmt allein Punkt 2.
 4. **Fehlerkorrektur:** Jede Teilnote ist ein Register aus m ≈ log₂ h Qubits;
-   bei p ≈ 8.192 Bit ist h ≈ √p ≈ 2⁴⁰⁹⁶, also **m ≈ 4.096 logische Qubits je
-   Teilnote** (bei 4.096 Bit: 2.048). Nach `rauschen_oeffentlich.py` muss jedes Qubit dann m-mal
+   bei p ≈ 16.384 Bit ist h ≈ √p ≈ 2⁸¹⁹², also **m ≈ 8.192 logische Qubits je
+   Teilnote** (bei 8.192 Bit: 4.096). Nach `rauschen_oeffentlich.py` muss jedes Qubit dann m-mal
    besser sein als bei Wiesner – das geht nur mit **fehlerkorrigierten
    logischen Qubits**.
 
@@ -73,22 +73,40 @@ gemessen (`kuperberg.py`, `kollimation`), n = 16 … 72:
 | 8.192 Bit | – | ≈ 2⁶⁹ |
 
 Damit trägt die Zahl der Abfragen allein bei 4.096 Bit **nicht** bis 2¹²⁸;
-die Sicherheit läge dann an Rechenzeit und Speicher des Siebs und an den
-Kosten je Isogenie – zu knapp für unser Ziel. **Korrigierte Vorgabe:
-p ≥ 4.096 Bit als absolute Untergrenze (2¹²⁸), p ≥ 8.192 Bit für das Ziel
-2⁻¹⁹².** Die Literatur nennt für höhere Sicherheitsstufen dieselbe
-Größenordnung (vor Festlegung nachlesen). 512 Bit sind in jedem Fall
-gebrochen.
+die Sicherheit liegt an Rechenzeit und Speicher des Siebs.
+
+### 2c. Der volle Preis: klassische Arbeit und Speicher der Kollimation
+
+Mitgezählt: jede Etiketten-Operation (Zeit) und der größte gleichzeitig
+gehaltene Vektor (Speicher), jeweils beim günstigsten L, n = 16 … 72:
+**log₂ Arbeit ≈ 2,05·√n + 3,0**, **log₂ Speicher ≈ 0,86·√n + 5,9**.
+
+| Primzahl p | Quantenabfragen | **klassische Arbeit** | Speicher |
+|---|---|---|---|
+| 512 Bit | 2¹⁸ | 2³⁶ | 2²⁰ |
+| 4.096 Bit | 2⁴⁹ | **2⁹⁶ – unter 2¹²⁸** | 2⁴⁵ |
+| 8.192 Bit | 2⁶⁹ | **2¹³⁴ – über 2¹²⁸** | 2⁶¹ |
+| 16.384 Bit | ≈ 2⁹⁸ | **2¹⁸⁹ – etwa 2¹⁹²** | 2⁸⁴ |
+
+**Vorgabe (konservativ, „so scharf wie es geht“):**
+- **2¹²⁸: p ≥ 8.192 Bit.**
+- **2¹⁹² (unser Ziel, ML-DSA-65-Niveau): p ≈ 16.384 Bit.**
+
+Die Literatur nennt für das unterste Niveau teils 4.096 Bit – unter anderen
+Kostenannahmen (z. B. Speicher teurer als Rechenzeit). Unsere Messung ist
+strenger; wir bauen nach der strengeren. Die Hochrechnung von n ≤ 72 auf
+n ≈ 8.192 bleibt weit und bestätigt die Größenordnung, nicht die letzte
+Stelle. 512 Bit sind in jedem Fall gebrochen.
 
 ## 3. Parameter (gerechnet)
 
 Aus `isogenie_mehrteilig.py`, Ziel 2⁻¹²⁸ und 2⁻¹⁹²:
 
-| Teilnote besteht (nach Lagerung) | Teile k | Schwelle τ | logische Qubits je Note (m ≈ 4.096, p ≈ 8.192 Bit) |
+| Teilnote besteht (nach Lagerung) | Teile k | Schwelle τ | logische Qubits je Note (m ≈ 8.192, p ≈ 16.384 Bit) |
 |---|---|---|---|
-| 100 % | 1 | 1 | ~4.096 |
-| 90 % | 5 | 3 | ~20.480 |
-| 75 % | 19 | 10 | ~77.824 |
+| 100 % | 1 | 1 | ~8.192 |
+| 90 % | 5 | 3 | ~40.960 |
+| 75 % | 19 | 10 | ~155.648 |
 
 Je schlechter der Speicher, desto mehr Teile – aber die Sicherheit bleibt bei
 2⁻¹²⁸. Der Speicher entscheidet, ob eine Note *handlich* ist, nicht ob sie
@@ -103,7 +121,7 @@ Je schlechter der Speicher, desto mehr Teile – aber die Sicherheit bleibt bei
   verbraucht – keine Note zweimal.
 - Einschalten erst, wenn **(a)** ein Verfahren mit Sicherheitsbeweis aus
   anerkannten Annahmen vorliegt oder die Fachwelt das Gruppenaktions-Verfahren
-  bei p ≥ 8.192 Bit für tragfähig hält, und **(b)** fehlerkorrigierte
+  bei p ≈ 16.384 Bit für tragfähig hält, und **(b)** fehlerkorrigierte
   Speicher die Lagerzeit aus Punkt 1 schaffen. Bis dahin bleibt der Code –
   wie alle Stichtage – schlafend.
 
@@ -111,8 +129,9 @@ Je schlechter der Speicher, desto mehr Teile – aber die Sicherheit bleibt bei
 
 1. Die Literaturschätzungen aus Punkt 2 selbst nachrechnen – **weit
    gediehen** (2a erster Algorithmus, 2b Kollimation – trifft Peikerts Werte
-   für 512 Bit). Offen: Speicher und klassische Rechenzeit der Kollimation
-   als Kostenmodell, Kosten einer Isogenie-Auswertung im Quantenschaltkreis.
+   für 512 Bit, 2c klassische Arbeit und Speicher). Offen: Kosten einer
+   Isogenie-Auswertung im Quantenschaltkreis; bessere Zusammenführungen im
+   Sieb, die die klassische Arbeit senken könnten.
 2. Kopieren einer Teilnote formal auf Vektorisierung zurückführen (bisher
    als Annahme benutzt – genau das zeigt Doliskani im generischen Modell).
 3. Rauschtolerante Prüfung *innerhalb* einer Teilnote statt nur über
