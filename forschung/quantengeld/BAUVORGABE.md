@@ -133,11 +133,30 @@ mit 1 µs je logischer Schicht (optimistisch):
 (RSA-2048 ≈ 2³¹˙⁵ Toffoli: Literatur, Gidney & Ekerå 2019, nachzulesen.)
 
 **Das ist der eigentliche Engpass, nicht nur der Speicher:** Eine Zahlung
-darf nicht Tage dauern. **Der Hebel liegt bei uns:** weniger Multiplikationen
-je Gruppenaktion. 2⁵ weniger → 8.192 Bit in 7 h (wenig Qubits); 2¹⁰ weniger
-→ 12 Minuten. **Billigeres Prüfen schwächt die Note nicht** – ab 8.192 Bit
-bestimmt die klassische Arbeit des Siebs den Angriffspreis (2c), nicht die
-Kosten je Abfrage.
+darf nicht Tage dauern. **Billigeres Prüfen schwächt die Note nicht** – ab
+8.192 Bit bestimmt die klassische Arbeit des Siebs den Angriffspreis (2c),
+nicht die Kosten je Abfrage.
+
+**Erster Hebel gemessen (`isogenie_hebel.py`, projektiv gezählt, gegen das
+Original geprüft – gleiche Kurven):**
+
+| Primzahl | bisher | + Überdeckung (gegen uns) | + Strategie, Schranken | + √Vélu (Literatur) |
+|---|---|---|---|---|
+| 4.096 Bit | 2⁴⁹ | 2⁵³ | 2⁵² | **2⁵¹** |
+| 8.192 Bit | 2⁵³ | 2⁵⁷ | 2⁵⁶ | **2⁵⁵** |
+| 17.000 Bit | 2⁵⁷ | 2⁶² | 2⁶¹ | **2⁵⁹** |
+
+- **Korrektur gegen uns:** Der Prüfer braucht die *ganze* Gruppe, also
+  Exponenten bis m = 21 (8.192 Bit), nicht nur −1…1. Das kostet 2⁴.
+- **Die einfachen Hebel sind ausgeschöpft:** Teile-und-herrsche, optimale
+  Strategie, Schranken je Primzahl bringen zusammen nur 2⁰˙⁷, √Vélu
+  (Literaturmodell) 2¹˙³. Bei dieser Größe kostet nicht die Leiter, sondern
+  das Schieben von Punkten und die Isogenien selbst (~ Σ |eᵢ|·lᵢ).
+- **Stand: Prüfen ≈ 2⁵⁵ Toffoli bei 8.192 Bit.** Der Faktor 2⁵–2¹⁰ muss
+  **strukturell** kommen (§5.4): Gruppenaktion über höherdimensionale
+  Isogenien (Aufwand wächst mit log p statt mit Σ lᵢ; offen: die
+  Normgleichungen in Überlagerung lösen) und schnellere Multiplizierer im
+  Schaltkreis (Karatsuba statt Schulbuch; Literatur, nachzulesen).
 
 ## 3. Parameter (gerechnet)
 
@@ -177,10 +196,12 @@ Je schlechter der Speicher, desto mehr Teile – aber die Sicherheit bleibt bei
    als Annahme benutzt – genau das zeigt Doliskani im generischen Modell).
 3. Rauschtolerante Prüfung *innerhalb* einer Teilnote statt nur über
    Teilnoten hinweg.
-4. **Prüfkosten senken (neu, höchste Priorität – 2e):** Gruppenaktion mit
-   höherdimensionalen Isogenien auswerten (Literatur: Ansatz „PEGASIS“
-   2025, nachzulesen) statt über ~760 kleine Primzahlen; Kandidat für den
-   Faktor 2⁵–2¹⁰. Erst zählen, dann behaupten.
+4. **Prüfkosten senken (höchste Priorität – 2e):** Die klassischen
+   CSIDH-Hebel sind gemessen und ausgeschöpft (zusammen ≈ 2²). Nächstes:
+   Gruppenaktion mit höherdimensionalen Isogenien auswerten (Literatur:
+   Ansatz „PEGASIS“ 2025, nachzulesen) statt über ~760 kleine Primzahlen,
+   und schnellere Multiplizierer – Kandidaten für den Faktor 2⁵–2¹⁰. Erst
+   zählen, dann behaupten.
 
 ## 6. Das Gesamtpaket – was wir bauen, was andere bauen
 
@@ -189,7 +210,7 @@ Gesamtpaket.“* Das ist der Weg. Die drei Sperren, ehrlich nach Zuständigkeit:
 
 | Sperre | Wer löst sie | Unser Beitrag |
 |---|---|---|
-| **Prüfkosten** (2e: Tage je Prüfung) | **wir** – Algorithmen | 5.4: Faktor 2⁵–2¹⁰ suchen und messen |
+| **Prüfkosten** (2e: Tage je Prüfung) | **wir** – Algorithmen | 5.4: einfache Hebel gemessen (2²); Faktor 2⁵–2¹⁰ strukturell suchen |
 | **Einlösen** (Einmal-Signatur, heute nur aus iO) | **wir** – Protokoll | Einweg-Brücke (unten) braucht sie gar nicht |
 | **Speicher** (≈ 4.100–8.500 fehlerkorrigierte logische Qubits je Teilnote, über Tage) | Hardware-Hersteller | Vorgabe festhalten; Stand der Fahrpläne verfolgen |
 
