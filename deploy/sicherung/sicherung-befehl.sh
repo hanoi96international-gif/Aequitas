@@ -48,10 +48,16 @@ ablehnen() {
   exit 2
 }
 
-# Gueltiger oeffentlicher age-Schluessel: age1 + 58 Zeichen Bech32.
+# Gueltiger oeffentlicher age-Schluessel: quantensicher age1pq1 + 1952 oder
+# klassisch age1 + 58 Zeichen Bech32 (docs/QUANTENSICHERHEIT.md, Stufe 0).
 age_empfaenger_ok() {
-  local r="$1" rest="${1#age1}"
-  [ "$rest" != "$r" ] && [ "${#r}" -eq 62 ] && case "$rest" in *[!qpzry9x8gf2tvdw0s3jn54khce6mua7l]*) false ;; *) true ;; esac
+  local r="$1" rest laenge
+  case "$r" in
+    age1pq1*) rest="${r#age1pq1}"; laenge=1959 ;;
+    age1*)    rest="${r#age1}";    laenge=62 ;;
+    *)        return 1 ;;
+  esac
+  [ -n "$rest" ] && [ "${#r}" -eq "$laenge" ] && case "$rest" in *[!qpzry9x8gf2tvdw0s3jn54khce6mua7l]*) false ;; *) true ;; esac
 }
 
 # Ein Lauf je Art zugleich, hoechstens einer je MIN_ABSTAND Sekunden.

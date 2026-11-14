@@ -33,6 +33,8 @@ BEFEHLE = {"bio", "bio-datei", "bio-zusammenfassung", "pruefsummen"}
 SKRIPT = pathlib.Path("deploy/backup-biometrie.sh")
 # Ein beliebiger, gueltig geformter OEFFENTLICHER Schluessel (kein Geheimnis).
 GUELTIG = "age1q5j4sy96gase6ulghewvzcya8upxrlqve6xm6dxn3v7umgcmgy7qqna70a"
+# Quantensicher (age-keygen -pq, ML-KEM-768 + X25519; docs/QUANTENSICHERHEIT.md).
+GUELTIG_PQ = "age1pq1t9tkdpt83l92gkfmtqcyzwffky6rwskfcsxt5c576dp6hqnk2weyzpzkdvc7ge6m75slc3m7xefhealxdn7erfrvnjngk3gtmx9yh9rzvuhy9fnqsmyc8z2eeqnrf0hq0p0fr3h4m2r0av40w693dvvt8rj5nw0r2rxgyg6wjg25kzd94tr3trhkazx54krnz6vkje39wr48sv35qwt7pqrd2ftzcfdf3uuhchedu5mprymccz48d3rnsu5rt3364f02se2v2qte4gtjqgj7ff5zjx7j87y9u7rhsx0mrd0whwgamsx6asg6k5gt9c2jqrhagazkz3y8u7g2ek4qyestnuvxpz6yex2qtxmrsg5nrunu9j2fj8uynd433zdpandcmagvvweern78zp7qcytf0faqjfxs9aq9gl80pzn87994mpn288kpkum0ps824dfl6gzextpug2zs8qp5eq2e7c8mmcr7z63qfh7s9p6hedmhked09fy6e0a8w93usjpr0nsxdxu45ptqzm6y00l6xk52q9wqgewmp0q2x858vge4nkcqj46edgn0gdp67vf2ywsnhsw0hn98yda2luzm3kycc34h3djwnq4jhvwzfxngqdurc6vye6px9r94pgcdkj93cq4f7nkg0nxe2t4kqzlxj0zfhe65jr784qh25hr9vdsynyu7406t8pvppjmcyywjaxxvu64daq4jdw9yy4h9dpe2wjzpsutsqugx44dhx79ssxtw2ypayr9krne4pucnh4pyw3hf5vslsceftx2x5frtxc2asm7pudh2qjsjdk220c33zvn28taukd85x6fxdqzzdtlrcwlkyptsyvmmlwzlu8r3dh6fwlf4sqqksyemtd48209qrx5jr6sh20787yeq4cjtzacznf2f9x4h28u92duyl7n2lxdg0xq6f7v4ymu0ndqy5xp7c9tzcy29t9ew4fe4hsy8uas2h4ur0wks4garzc3ygz5acun2np6ny73qtsy2qyyw6d7eu2284jv8s2pgrdcvg6ny2vv3ekkd7vj5u85s2uvu0dyvzs8eapfulfenpecvqddg89p8kzuvp3ys93n5ye3ggc0zq2vm7c590e3e4cpxjsjpxvt7cjvmnzagwvq3wrznwtdrcgz84jfrywvl6p47tzcqnd7nzkyj23c0rzq746pt6nj5jj5cttymc3vevprs0mrjmf2tp3shqtm7hpvysx2rzxyl85me0fcc4824gs6s7gxmj9k0ga78u2t5473l27q8wymjv5qdl0ju5tdcf9nd0j6g0fd08krxade2g6ae5p0ec3g5msspjcmnckyu87qknd5jz9smng8ml6vp06vgkyscs3dtvsj3a8z69qfzp6vg9q9x3ntdjx72ejhpqwqgvkvr3hgny6f0sm8st9as2gjkzza48grzcuzrqr0ckjgpxuzrvejkl3r5j545jnufs0pagccf8tzn5lg9sc34g2hp5fjhmc6sl6rfalk99axz93de257wlyurfrd3rdrnjk7wjg0lwx00edd8l3gslcpk0c265rgtv2zx0e9r7tsp9c0zzq5hye4zuk2320q5slpqkhvmqwhqyxyua9v2kwaplad2a2fkf477qj8dxaf8nc4k3q5e6de3wdjhg3ne8n8w3jj5guvkxzwkvs5hkrrzj9cguu22ummv2sg5wsj0z4dccpcegqv244t4xylhh3cejfrepf2zfwfp5m5h7mvc5hcfcg3ayl98a894syas3f72gqeytxl2jjv80jggq4gfjy28cntrck407klyrand5vuplxjyvlxtf27hlfu3pwd0s5yqh6ulyj0nlzrtx84eyye636lp7q4s842ugagmxqye9aaujjeke3mznhdm2wu3dj5d03csgl9axmfc793g0klj0qu4vpdy8gszp6ru"
 UNGUELTIG = [
     "",
     "AGE-SECRET-KEY-1QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQ",
@@ -41,6 +43,12 @@ UNGUELTIG = [
     GUELTIG.replace("q", "b", 1),  # b ist kein Bech32-Zeichen
     "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample",
     GUELTIG + "\nrm -rf /",
+    GUELTIG_PQ[:-1],                    # ein Zeichen zu kurz
+    GUELTIG_PQ + "q",                   # ein Zeichen zu lang
+    GUELTIG_PQ[:-1] + "b",              # b ist kein Bech32-Zeichen
+    "age1pq1" + GUELTIG[4:],            # PQ-Praefix mit klassischer Laenge
+    GUELTIG_PQ + "\nrm -rf /",
+    "AGE-SECRET-KEY-PQ-1" + "Q" * 60,   # privater PQ-Schluessel
 ]
 
 fehler = []
@@ -123,7 +131,7 @@ else:
             f(f"sicherung-einrichten.yml: Empfaengerpruefung laesst {wert[:20]!r} durch")
         if wert in p.stdout + p.stderr:
             f("sicherung-einrichten.yml: Empfaengerpruefung gibt den Wert aus")
-    for wert in ("", GUELTIG):
+    for wert in ("", GUELTIG, GUELTIG_PQ):
         p = subprocess.run(["bash", "-c", run], env={"PATH": os.environ["PATH"], "R": wert},
                            capture_output=True, text=True)
         if p.returncode != 0:

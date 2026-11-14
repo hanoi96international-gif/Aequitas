@@ -11,17 +11,15 @@
 set -euo pipefail
 WURZEL=$(cd "$(dirname "$0")/.." && pwd)
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
-# age: zuerst aus dem Paketspiegel; faellt der aus (11.11.2026: auf den
-# GitHub-Runnern war security.ubuntu.com nicht aufloesbar, dreimal in
-# Folge), dieselbe Version ueber den Go-Modul-Proxy -- Pruefsummen gegen
-# sum.golang.org. Ohne age kein Test: Abbruch, nicht ueberspringen.
-if ! command -v age >/dev/null || ! command -v age-keygen >/dev/null; then
-  if ! sudo apt-get install -y -qq age >/dev/null 2>&1; then
-    GOBIN="$T/bin" go install filippo.io/age/cmd/age@v1.2.1 filippo.io/age/cmd/age-keygen@v1.2.1
-    PATH="$T/bin:$PATH"
-  fi
+# age >= 1.3 (kann quantensicher, -pq; docs/QUANTENSICHERHEIT.md): dieselbe
+# Version wie auf C1, ueber den Go-Modul-Proxy -- Pruefsummen gegen
+# sum.golang.org. Das Paket der Distribution ist aelter und kann kein -pq.
+# Ohne age kein Test: Abbruch, nicht ueberspringen.
+if ! age-keygen -pq >/dev/null 2>&1; then
+  GOBIN="$T/bin" go install filippo.io/age/cmd/age@v1.3.1 filippo.io/age/cmd/age-keygen@v1.3.1
+  PATH="$T/bin:$PATH"
 fi
-command -v age >/dev/null && command -v age-keygen >/dev/null || { echo "FEHLER: age nicht verfuegbar"; exit 1; }
+age-keygen -pq >/dev/null 2>&1 || { echo "FEHLER: age >= 1.3 nicht verfuegbar"; exit 1; }
 mkdir -p "$T/fake" "$T/etc" "$T/root/Aequitas/deploy/validator"
 age-keygen -o "$T/offline.key" 2>/dev/null
 grep -o 'age1[a-z0-9]*' "$T/offline.key" > "$T/etc/bio-empfaenger"
@@ -55,6 +53,20 @@ soll "Archiv enthaelt die Umgebungen" '[ "$INHALT" = "./ ./STAND ./aequitas-coor
 soll "Seed im Archiv" 'age -d -i "$T/offline.key" "$T/out.age" | tar xOf - ./aequitas-matching.env | grep -q geheim-seed'
 soll "kein Wert im Protokoll" '! grep -q geheim "$T/log"'
 soll "kein Klartext zurueck" '[ -z "$(ls -A "$T" | grep schluessel-sichern || true)" ]'
+
+# Quantensicherer Empfaenger: gleicher Ablauf, Kopf mit genau einem
+# mlkem768x25519-Empfaenger, nur mit dem PQ-Schluessel zu oeffnen.
+age-keygen -pq -o "$T/offline-pq.key" 2>/dev/null
+age-keygen -y "$T/offline-pq.key" > "$T/etc/bio-empfaenger"
+soll "PQ-Empfaenger hat 1959 Zeichen" '[ "$(tr -d "\n" < "$T/etc/bio-empfaenger" | wc -c)" = 1959 ]'
+PATH="$T/fake:$PATH" bash "$T/skript.sh" > "$T/out-pq.age" 2> "$T/log-pq"
+soll "PQ: genau ein mlkem768x25519-Empfaenger" '[ "$(head -c 4096 "$T/out-pq.age" | grep -ac "^-> ")" = 1 ] && [ "$(head -c 4096 "$T/out-pq.age" | grep -ac "^-> mlkem768x25519 ")" = 1 ]'
+soll "PQ: Seed im Archiv" 'age -d -i "$T/offline-pq.key" "$T/out-pq.age" | tar xOf - ./aequitas-matching.env | grep -q geheim-seed'
+soll "PQ: klassischer Schluessel oeffnet es nicht" '! age -d -i "$T/offline.key" "$T/out-pq.age" >/dev/null 2>&1'
+soll "PQ: kein Wert im Protokoll" '! grep -q geheim "$T/log-pq"'
+printf 'age1pq1%s\n' "$(printf 'q%.0s' $(seq 1951))" > "$T/etc/bio-empfaenger"
+rc=0; PATH="$T/fake:$PATH" bash "$T/skript.sh" > "$T/out-pq2" 2>/dev/null || rc=$?
+soll "PQ-Empfaenger zu kurz -> Abbruch" '[ "$rc" != 0 ] && [ ! -s "$T/out-pq2" ]'
 
 echo "AGE-SECRET-KEY-1QQQQ" > "$T/etc/bio-empfaenger"
 rc=0; PATH="$T/fake:$PATH" bash "$T/skript.sh" > "$T/out2" 2>/dev/null || rc=$?

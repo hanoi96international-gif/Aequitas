@@ -19,7 +19,7 @@ on:
   workflow_dispatch:
     inputs:
       bio_empfaenger:
-        description: "Oeffentlicher age-Schluessel (age1..., 62 Zeichen) -- leer = unveraendert"
+        description: "Oeffentlicher age-Schluessel: quantensicher age1pq1... (1959 Zeichen, age-keygen -pq) oder klassisch age1... (62) -- leer = unveraendert"
         required: false
         default: ""
 
@@ -44,12 +44,16 @@ jobs:
         run: |
           set -eu
           if [ -n "$R" ]; then
-            REST="${R#age1}"
-            if [ "$REST" = "$R" ] || [ "${#R}" -ne 62 ] || case "$REST" in *[!qpzry9x8gf2tvdw0s3jn54khce6mua7l]*) true ;; *) false ;; esac; then
-              echo "::error::bio_empfaenger ist kein oeffentlicher age-Schluessel (age1..., 62 Zeichen). Nichts geaendert."
+            case "$R" in
+              age1pq1*) REST="${R#age1pq1}"; LAENGE=1959; ART=quantensicher ;;
+              age1*)    REST="${R#age1}";    LAENGE=62;   ART="klassisch (nicht quantensicher)" ;;
+              *)        REST="";             LAENGE=0;    ART="" ;;
+            esac
+            if [ -z "$REST" ] || [ "${#R}" -ne "$LAENGE" ] || case "$REST" in *[!qpzry9x8gf2tvdw0s3jn54khce6mua7l]*) true ;; *) false ;; esac; then
+              echo "::error::bio_empfaenger ist kein oeffentlicher age-Schluessel (age1pq1... mit 1959 oder age1... mit 62 Zeichen). Nichts geaendert."
               exit 1
             fi
-            echo "age-Empfaenger: gueltig"
+            echo "age-Empfaenger: gueltig, $ART"
           else
             echo "age-Empfaenger: unveraendert"
           fi
@@ -75,6 +79,21 @@ jobs:
           [ "$(ssh-keygen -lf ~/.ssh/kh_all | awk '{print $2}')" = "$FP" ] || { echo "::error::Host-Schluessel von C1 passt nicht"; exit 1; }
           cp ~/.ssh/kh_all ~/.ssh/known_hosts
 
+      # age v1.3.1 fuer C1 (quantensichere Empfaenger, docs/QUANTENSICHERHEIT.md):
+      # das Release von GitHub, gegen feste SHA-256 geprueft; einrichten.sh
+      # prueft die Binaerdatei auf C1 noch einmal.
+      - name: age v1.3.1 holen und pruefen
+        run: |
+          set -euo pipefail
+          mkdir -p age-dl
+          for arch in amd64:bdc69c09cbdd6cf8b1f333d372a1f58247b3a33146406333e30c0f26e8f51377 arm64:c6878a324421b69e3e20b00ba17c04bc5c6dab0030cfe55bf8f68fa8d9e9093a; do
+            a="${arch%%:*}"; soll="${arch#*:}"
+            curl -fsSL --max-time 120 -o "age-dl/$a.tgz" "https://github.com/FiloSottile/age/releases/download/v1.3.1/age-v1.3.1-linux-$a.tar.gz"
+            [ "$(sha256sum "age-dl/$a.tgz" | awk '{print $1}')" = "$soll" ] || { echo "::error::age v1.3.1 ($a): SHA-256 passt nicht -- Abbruch"; exit 1; }
+            tar -xzf "age-dl/$a.tgz" -C age-dl age/age
+            mv age-dl/age/age "age-dl/age-linux-$a"
+          done
+
       - name: Einrichten auf C1
         env:
           R: ${{ inputs.bio_empfaenger }}
@@ -84,7 +103,7 @@ jobs:
           ssh -o BatchMode=yes root@$C1 "rm -rf '$ZIEL' && mkdir -m 700 '$ZIEL'"
           scp -o BatchMode=yes deploy/backup-ledger.sh deploy/backup-biometrie.sh \
             deploy/sicherung/sicherung-befehl.sh deploy/sicherung/einrichten.sh \
-            deploy/sicherung/sicherung_ed25519.pub "root@$C1:$ZIEL/"
+            deploy/sicherung/sicherung_ed25519.pub age-dl/age-linux-amd64 age-dl/age-linux-arm64 "root@$C1:$ZIEL/"
           # Wert als export-Zeile ueber stdin, nicht auf die Befehlszeile der Box.
           {
             printf 'export BIO_EMPFAENGER=%q\n' "$R"
