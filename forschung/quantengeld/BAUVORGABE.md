@@ -39,6 +39,26 @@ nachzulesen** (die Volltexte waren von hier aus nicht erreichbar).
    besser sein als bei Wiesner – das geht nur mit **fehlerkorrigierten
    logischen Qubits**.
 
+### 2a. Selbst gemessen: Kuperbergs Sieb (`kuperberg.py`)
+
+Die Zahl der Quantenabfragen hängt nur an der klassischen Buchführung der
+Etiketten – sie lässt sich exakt simulieren. Gemessen für n = 12 … 36
+(n = log₂ der Gruppengröße), angepasst an **log₂ Q ≈ 2,16·√n**:
+
+| Primzahl p | n ≈ (log₂ p)/2 | Abfragen (erster Algorithmus) | + je Abfrage eine Isogenie im Quantenschaltkreis |
+|---|---|---|---|
+| 512 Bit | 256 | ≈ 2³⁴ | weit unter 2¹²⁸ |
+| 1.024 Bit | 512 | ≈ 2⁴⁹ | unter 2¹²⁸ |
+| 2.048 Bit | 1.024 | ≈ 2⁶⁹ | ≈ 2⁶⁹ × Isogeniekosten – knapp |
+| **4.096 Bit** | 2.048 | **≈ 2⁹⁸** | **≈ 2⁹⁸ × Isogeniekosten – Ziel 2¹²⁸ erreichbar** |
+
+Einordnung: das ist der *erste* (einfachste) Kuperberg-Algorithmus, also
+eine **obere** Schranke für den Angreifer; bessere Siebe (Kuperberg 2011,
+Regev, Peikert) brauchen weniger Abfragen, kosten aber mehr Speicher. Die
+Hochrechnung von n ≤ 36 auf n = 2.048 ist weit – sie bestätigt die
+Größenordnung, nicht die letzte Stelle. **Ergebnis: Die Vorgabe p ≥ 4.096 Bit
+ist durch eigene Messung gestützt; 512 Bit wären klar zu schwach.**
+
 ## 3. Parameter (gerechnet)
 
 Aus `isogenie_mehrteilig.py`, Ziel 2⁻¹²⁸ und 2⁻¹⁹²:
@@ -68,8 +88,10 @@ Je schlechter der Speicher, desto mehr Teile – aber die Sicherheit bleibt bei
 
 ## 5. Was wir als Forschungsgruppe als Nächstes prüfen
 
-1. Die Literaturschätzungen aus Punkt 2 selbst nachrechnen (Kuperberg-
-   Varianten, Kosten der Isogenie-Auswertung im Quantenschaltkreis).
+1. Die Literaturschätzungen aus Punkt 2 selbst nachrechnen – **begonnen**
+   (2a: erster Kuperberg-Algorithmus gemessen). Offen: die besseren Siebe
+   (Kuperberg 2011 / Peikert) und die Kosten einer Isogenie-Auswertung im
+   Quantenschaltkreis.
 2. Kopieren einer Teilnote formal auf Vektorisierung zurückführen (bisher
    als Annahme benutzt – genau das zeigt Doliskani im generischen Modell).
 3. Rauschtolerante Prüfung *innerhalb* einer Teilnote statt nur über
