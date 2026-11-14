@@ -118,6 +118,27 @@ strenger; wir bauen nach der strengeren. Die Hochrechnung von n ≤ 72 auf
 n ≈ 8.192 bleibt weit und bestätigt die Größenordnung, nicht die letzte
 Stelle. 512 Bit sind in jedem Fall gebrochen.
 
+### 2e. Was kostet das PRÜFEN einer Note? (`isogenie_kosten.py`)
+
+Der ehrliche Prüfer projiziert auf den Eigenraum zur Seriennummer: eine
+Gruppenaktion in Überlagerung hin, eine zurück, also ≈ 2 Abfragen. Gerechnet
+mit 1 µs je logischer Schicht (optimistisch):
+
+| Primzahl | Toffoli | × RSA-2048 brechen | Dauer, wenig Qubits | Dauer, parallel (~B² Qubits) |
+|---|---|---|---|---|
+| 4.096 Bit | 2⁵¹ | 2¹⁹ | 1,3 Tage | 1,1 h |
+| **8.192 Bit** | **2⁵⁴˙⁵** | 2²³ | **9 Tage** | **4,5 h** |
+| 17.000 Bit | 2⁵⁹ | 2²⁷ | 74 Tage | 21 h |
+
+(RSA-2048 ≈ 2³¹˙⁵ Toffoli: Literatur, Gidney & Ekerå 2019, nachzulesen.)
+
+**Das ist der eigentliche Engpass, nicht nur der Speicher:** Eine Zahlung
+darf nicht Tage dauern. **Der Hebel liegt bei uns:** weniger Multiplikationen
+je Gruppenaktion. 2⁵ weniger → 8.192 Bit in 7 h (wenig Qubits); 2¹⁰ weniger
+→ 12 Minuten. **Billigeres Prüfen schwächt die Note nicht** – ab 8.192 Bit
+bestimmt die klassische Arbeit des Siebs den Angriffspreis (2c), nicht die
+Kosten je Abfrage.
+
 ## 3. Parameter (gerechnet)
 
 Aus `isogenie_mehrteilig.py`, Ziel 2⁻¹²⁸ und 2⁻¹⁹²:
@@ -156,3 +177,29 @@ Je schlechter der Speicher, desto mehr Teile – aber die Sicherheit bleibt bei
    als Annahme benutzt – genau das zeigt Doliskani im generischen Modell).
 3. Rauschtolerante Prüfung *innerhalb* einer Teilnote statt nur über
    Teilnoten hinweg.
+4. **Prüfkosten senken (neu, höchste Priorität – 2e):** Gruppenaktion mit
+   höherdimensionalen Isogenien auswerten (Literatur: Ansatz „PEGASIS“
+   2025, nachzulesen) statt über ~760 kleine Primzahlen; Kandidat für den
+   Faktor 2⁵–2¹⁰. Erst zählen, dann behaupten.
+
+## 6. Das Gesamtpaket – was wir bauen, was andere bauen
+
+Der Betreiber: *„Wir können das bauen – aus vielen einzelnen Forschungen ein
+Gesamtpaket.“* Das ist der Weg. Die drei Sperren, ehrlich nach Zuständigkeit:
+
+| Sperre | Wer löst sie | Unser Beitrag |
+|---|---|---|
+| **Prüfkosten** (2e: Tage je Prüfung) | **wir** – Algorithmen | 5.4: Faktor 2⁵–2¹⁰ suchen und messen |
+| **Einlösen** (Einmal-Signatur, heute nur aus iO) | **wir** – Protokoll | Einweg-Brücke (unten) braucht sie gar nicht |
+| **Speicher** (≈ 4.100–8.500 fehlerkorrigierte logische Qubits je Teilnote, über Tage) | Hardware-Hersteller | Vorgabe festhalten; Stand der Fahrpläne verfolgen |
+
+**Einweg-Brücke (Version 1 ohne Einmal-Signatur):** AEQ → Note geht (Sperren
+als Inhaberpapier, die Kette vermerkt nur die Seriennummer). Zurück zur Kette
+geht es nicht; wer AEQ will, tauscht die Note gegen AEQ bei jemandem, der
+Noten nimmt – wie Bargeld gegen Kontoguthaben. Die Erhaltung bleibt
+(Konten + ausgegebene Noten = konstant), eine verlorene Note ist verloren wie
+ein Geldschein. Der Rückweg (Einlösen, schon im Knoten, schlafend) kommt dazu,
+sobald es eine Einmal-Signatur ohne iO gibt.
+
+Damit hängt Version 1 nur noch an **zwei** Dingen: an unserem Prüfkosten-
+Hebel und am Speicher. Die Kettenseite und die Spezifikation stehen.
