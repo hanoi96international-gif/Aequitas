@@ -332,7 +332,38 @@ ungeeignet:** die Einmal-Speicher hängen an vertrauenswürdiger Hardware
 (TEE wie Intel SGX); wer eine TEE knackt, liest alle Urbilder der Note aus
 und kann sie **beliebig oft** nachmachen. Das verletzt den Launch-Maßstab.
 
-**Nächste Schritte:** (a) Volltexte qt-Pegasis und ePrint 2026/114 – ePrint
-blockt automatische Abrufe; Betreiber lädt sie herunter oder gibt sie frei.
-(b) Daraus die 4D-Kette als Schaltkreis zählen (Länge, Kosten je Schritt,
-Umkehrbarkeit) – wie `isogenie_hebel.py` für CSIDH.
+**Gerechnet nach den Volltexten (`pegasis_kosten.py`):** Die zeitkonstante
+C-Umsetzung der 4D-Kette ([DD] Tabelle 1, Apple M1) umgerechnet in
+Multiplikationen: **~2²⁰ bei 505 Bit bis ~2²³ bei 4.030 Bit, fast linear
+(Steigung 0,88)** – bei 8.192 Bit **2²³˙⁵ je Aktion**. Neuer Engpass ist
+**Schritt 1** (Normgleichung): seine Suche nach einer Primzahl muss im
+Schaltkreis mit fester Obergrenze laufen – 2²⁶˙⁸ Multiplikationen, 10× die
+Kette. Daher zwei Varianten:
+
+| Primzahl | **A: kohärent, 2 Aktionen** | **B: u klassisch, 128 Tests** | CSIDH-REGA, 2.750 Tests |
+|---|---|---|---|
+| 4.096 Bit | 2⁵² | 2⁵⁷ | 2⁶⁴ |
+| **8.192 Bit** | **2⁵⁶** | **2⁵⁹˙⁵** | 2⁶⁸ |
+| 17.000 Bit | 2⁶⁰ | 2⁶³ | 2⁷²˙⁵ |
+
+(Toffoli je Prüfung, vor Umkehrbarkeit: ×8 bis ×100, `umkehrbar.py`.)
+
+**Variante B ist eigener Vorschlag:** Der Prüfer zieht u *klassisch*
+gleichverteilt und löst Schritt 1 auf einem gewöhnlichen Rechner; der
+Quantenrechner führt je Test nur die von *einem* Qubit gesteuerte Kette aus.
+Weil die Note ein exakter Eigenzustand ist, gilt Mittel_u χ(u,h)*·U_u = P_h:
+jeder Test wirkt wie (I + P_h)/2 – eine fremde Note besteht je Test mit
+**genau ½**, die echte mit 1; 128 Tests für 2⁻¹²⁸. Etwas teurer als A, aber
+**keine Primzahlsuche und keine Überlagerung über Ideale im Schaltkreis** –
+der Schaltkreis ist eine feste, klassisch parametrierte 4D-Kette. Das ist
+der Kandidat, mit dem wir weiterbauen. Offen bleibt in beiden Varianten die
+Trägerprüfung (liegt der Zustand auf Kurven der Bahn?) und Schritt 2
+(Torsionsbasis der Kurve) in Überlagerung – beide laut [Q] billig gegen die
+Kette, zu zählen.
+
+**Nächste Schritte:** (a) ~~Volltexte~~ gelesen (qt-Pegasis, PEGASIS,
+Dartois–Duparc; vom Betreiber hochgeladen). (b) Die 4D-Kette als
+umkehrbaren Schaltkreis zählen (Theta-Koordinaten, Kosten je Schritt aus
+[DD]: Bildkurve 3·(2⁴−2) M, Auswertung 171 M + 52 S je Klebe-Schritt),
+statt aus Takten umzurechnen. (c) Trägerprüfung und Schritt 2 in
+Überlagerung zählen.
