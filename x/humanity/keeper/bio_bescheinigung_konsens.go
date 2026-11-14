@@ -87,6 +87,9 @@ type BioBescheinigung struct {
 	// Bindungen der Schluessel von Pruefern, die keine Genesis-Schluessel sind
 	// (B1b, bio_bescheinigung_register.go). Erst ab bescheinigungRegisterAb.
 	Bindungen []BescheinigungsBindung `json:"bindungen,omitempty"`
+	// Post-Quanten-Unterschriften (ML-DSA-65), "<ed25519>:<ml-dsa>" je
+	// Schluessel; ab bescheinigung.pq_ab_unix Pflicht (bio_bescheinigung_pq.go).
+	PQ []string `json:"pq,omitempty"`
 }
 
 const (
@@ -118,6 +121,11 @@ type bescheinigungKonfig struct {
 	Quorum      int      `json:"quorum"`
 	Coordinator []string `json:"coordinator"`
 	Bezeuger    []string `json:"bezeuger"`
+	// Quantensicher (bio_bescheinigung_pq.go): Stichtag und je Ed25519-
+	// Schluessel sein ML-DSA-65-Schluessel. omitempty: ohne sie bleibt der
+	// Fingerabdruck der Konfiguration gleich.
+	PQAbUnix int64             `json:"pq_ab_unix,omitempty"`
+	PQ       map[string]string `json:"pq,omitempty"`
 }
 
 var (
@@ -131,6 +139,9 @@ var (
 
 // bescheinigungAbOverride: nur fuer Tests (0 = Genesis gilt).
 var bescheinigungAbOverride atomic.Int64
+
+// pqAbOverride: nur fuer Tests (0 = Genesis gilt).
+var pqAbOverride atomic.Int64
 
 // ladeBescheinigungKonfig liest "bescheinigung" aus dem Inhalt einer
 // genesis.json und prueft sie. Fehlt der Eintrag: schlafend.
@@ -164,6 +175,9 @@ func ladeBescheinigungKonfig(data []byte) (bescheinigungKonfig, error) {
 func (k bescheinigungKonfig) pruefen() error {
 	if k.AbUnix < 0 {
 		return errors.New("bescheinigung.ab_unix negativ")
+	}
+	if err := k.pruefenPQ(); err != nil {
+		return err
 	}
 	if k.AbUnix == 0 {
 		return nil // schlafend; die uebrigen Felder duerfen vorbereitet sein
@@ -280,7 +294,11 @@ func BescheinigungStand() map[string]any {
 			"bezeuger": append([]string{}, k.Bezeuger...)},
 		// Ab hier zaehlen auch Schluessel von Pruefern mit Bindung (B1b);
 		// die Bindungen stehen in /api/verifier/dienste.
-		"register_ab":   bescheinigungRegisterAb(),
+		"register_ab": bescheinigungRegisterAb(),
+		// Quantensicher (bio_bescheinigung_pq.go): Stichtag und wie viele
+		// Schluessel einen ML-DSA-Schluessel haben.
+		"pq_ab_unix":    k.PQAbUnix,
+		"pq_schluessel": len(k.PQ),
 		"fingerabdruck": bescheinigungFingerabdruck(k)}
 }
 
@@ -351,8 +369,19 @@ func pruefeBioBescheinigungMit(tx Transaction, blockZeit int64, pruefer func(m s
 // (Vergleichsdienst). Dieselbe Regel fuer Registrierung und Umzug (umzug.go);
 // die Domaenen in den Nachrichten trennen beide.
 func pruefeV3Unterschriften(b *BioBescheinigung, k bescheinigungKonfig, bindungMsg, aussageMsg []byte, blockZeit int64, pruefer func(m string, t int64) bool) error {
+	bindet, bezeugt, err := pruefeV3Kern(b, k, bindungMsg, aussageMsg, blockZeit, pruefer)
+	if err != nil {
+		return err
+	}
+	// Quantensicher: ab pq_ab_unix zusaetzlich ML-DSA je gezaehltem Schluessel.
+	return pruefePQ(b, k, bindungMsg, aussageMsg, bindet, bezeugt, blockZeit)
+}
+
+// pruefeV3Kern: die Ed25519-Pruefung; gibt die Schluessel zurueck, die
+// gebunden bzw. bezeugt haben.
+func pruefeV3Kern(b *BioBescheinigung, k bescheinigungKonfig, bindungMsg, aussageMsg []byte, blockZeit int64, pruefer func(m string, t int64) bool) (bindet, bezeugt map[string]bool, _ error) {
 	if len(b.Signaturen) == 0 || len(b.Signaturen) > bescheinigungMaxSignaturen {
-		return fmt.Errorf("bescheinigung: %d Unterschriften (1..%d)", len(b.Signaturen), bescheinigungMaxSignaturen)
+		return nil, nil, fmt.Errorf("bescheinigung: %d Unterschriften (1..%d)", len(b.Signaturen), bescheinigungMaxSignaturen)
 	}
 	// Die Schluessel einmal je Pruefung dekodieren. Ihre Tauglichkeit (64 Hex
 	// klein, keine kleine Ordnung) hat bescheinigungKonf schon geprueft --
@@ -365,7 +394,7 @@ func pruefeV3Unterschriften(b *BioBescheinigung, k bescheinigungKonfig, bindungM
 		for _, h := range liste {
 			roh, err := hex.DecodeString(h)
 			if err != nil || len(roh) != ed25519.PublicKeySize {
-				return fmt.Errorf("bescheinigung: Schluessel %.12s... unlesbar", h)
+				return nil, nil, fmt.Errorf("bescheinigung: Schluessel %.12s... unlesbar", h)
 			}
 			pubs[h] = ed25519.PublicKey(roh)
 		}
@@ -375,7 +404,7 @@ func pruefeV3Unterschriften(b *BioBescheinigung, k bescheinigungKonfig, bindungM
 	// die Genesis-Schluessel und die Gruender).
 	register, err := registerSchluesselPruefen(b, blockZeit, pruefer, pubs)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 	menschVon := func(h string) string {
 		if m, ok := register[h]; ok {
@@ -405,11 +434,11 @@ func pruefeV3Unterschriften(b *BioBescheinigung, k bescheinigungKonfig, bindungM
 		bezeuger = append(append([]string{}, bezeuger...), sortierteSchluessel(register)...)
 	}
 	gesehen := map[string]bool{}
-	bindet := map[string]bool{}
-	bezeugt := map[string]bool{}
+	bindet = map[string]bool{}
+	bezeugt = map[string]bool{}
 	for _, sig := range b.Signaturen {
 		if gesehen[sig] {
-			return errors.New("bescheinigung: doppelte Unterschrift")
+			return nil, nil, errors.New("bescheinigung: doppelte Unterschrift")
 		}
 		gesehen[sig] = true
 		passt := false
@@ -428,11 +457,11 @@ func pruefeV3Unterschriften(b *BioBescheinigung, k bescheinigungKonfig, bindungM
 			}
 		}
 		if !passt {
-			return errors.New("bescheinigung: eine Unterschrift passt zu keinem Schluessel des Netzes")
+			return nil, nil, errors.New("bescheinigung: eine Unterschrift passt zu keinem Schluessel des Netzes")
 		}
 	}
 	if len(bindet) == 0 {
-		return errors.New("bescheinigung: keine Unterschrift bindet sie an diese Wallet")
+		return nil, nil, errors.New("bescheinigung: keine Unterschrift bindet sie an diese Wallet")
 	}
 	if getrennt {
 		ohneBindung := 0
@@ -442,14 +471,14 @@ func pruefeV3Unterschriften(b *BioBescheinigung, k bescheinigungKonfig, bindungM
 			}
 		}
 		if ohneBindung == 0 {
-			return errors.New("bescheinigung: kein Vergleichsdienst hat den Menschen bezeugt")
+			return nil, nil, errors.New("bescheinigung: kein Vergleichsdienst hat den Menschen bezeugt")
 		}
 	}
 	if zaehltMenschen {
 		// Jede Bindung muss gebraucht werden: keine Ladung fremder Bindungen.
 		for h := range register {
 			if !bezeugt[h] {
-				return errors.New("bescheinigung: eine Bindung gehoert zu keiner Unterschrift")
+				return nil, nil, errors.New("bescheinigung: eine Bindung gehoert zu keiner Unterschrift")
 			}
 		}
 		menschen := map[string]bool{}
@@ -465,14 +494,14 @@ func pruefeV3Unterschriften(b *BioBescheinigung, k bescheinigungKonfig, bindungM
 			noetig = registerMindestMenschen
 		}
 		if len(menschen) < noetig {
-			return fmt.Errorf("bescheinigung: %d von %d noetigen Menschen", len(menschen), noetig)
+			return nil, nil, fmt.Errorf("bescheinigung: %d von %d noetigen Menschen", len(menschen), noetig)
 		}
-		return nil
+		return bindet, bezeugt, nil
 	}
 	if len(bezeugt) < k.Quorum {
-		return fmt.Errorf("bescheinigung: %d von %d noetigen Schluesseln", len(bezeugt), k.Quorum)
+		return nil, nil, fmt.Errorf("bescheinigung: %d von %d noetigen Schluesseln", len(bezeugt), k.Quorum)
 	}
-	return nil
+	return bindet, bezeugt, nil
 }
 
 // bescheinigungAusProveAnfrage liest die v3-Unterschriften ("v3:..." in
@@ -506,6 +535,10 @@ func bescheinigungAusProveAnfrage(body []byte) *BioBescheinigung {
 		return nil
 	}
 	_, v3, roheBindungen := teileBescheinigungsfeldMitBindungen(sigs)
+	pq, pqOk := pqEintraegeAusFeld(sigs)
+	if !pqOk {
+		return nil
+	}
 	var liste []string
 	for _, teil := range v3 {
 		if t := ed25519SigNormal(teil); t != "" {
@@ -523,7 +556,7 @@ func bescheinigungAusProveAnfrage(body []byte) *BioBescheinigung {
 		}
 		bindungen = append(bindungen, b)
 	}
-	return &BioBescheinigung{Zeit: z, Signaturen: liste, Bindungen: bindungen}
+	return &BioBescheinigung{Zeit: z, Signaturen: liste, Bindungen: bindungen, PQ: pq}
 }
 
 // teileBescheinigungsfeld: die Eintraege von bioAttestation in die fuer den
@@ -544,6 +577,9 @@ func teileBescheinigungsfeldMitBindungen(sigs string) (proofServer, v3, bindunge
 			v3 = append(v3, strings.TrimPrefix(t, bescheinigungV3Praefix))
 		case strings.HasPrefix(t, bescheinigungBindungPraefix):
 			bindungen = append(bindungen, strings.TrimPrefix(t, bescheinigungBindungPraefix))
+		case strings.HasPrefix(t, pqFeldPraefix):
+			// Post-Quanten-Unterschriften liest pqEintraegeAusFeld; der
+			// Proof-Server kennt sie nicht und bekommt sie nie.
 		default:
 			proofServer = append(proofServer, t)
 		}
@@ -567,7 +603,7 @@ func proveAnfrageOhneV3(body []byte) []byte {
 		return body
 	}
 	rest, v3, bindungen := teileBescheinigungsfeldMitBindungen(sigs)
-	if len(v3) == 0 && len(bindungen) == 0 {
+	if len(v3) == 0 && len(bindungen) == 0 && !strings.Contains(sigs, pqFeldPraefix) {
 		return body
 	}
 	neu, err := json.Marshal(strings.Join(rest, ","))
