@@ -1240,6 +1240,10 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	mux.HandleFunc("/api/umzug", a.handleUmzugStand)
 	// PQ-Zusage (pq_zusage.go): beim Leiter; der Stand steht in /api/umzug.
 	mux.HandleFunc("/api/pq/zusage", a.zumLeiter(a.handlePQZusage))
+	// PQ-Ueberweisung (pq_ueberweisung.go): beim Leiter wie jede Ueberweisung;
+	// der Stand einer PQ-Adresse von jedem Knoten.
+	mux.HandleFunc("/api/pq/ueberweisung", a.zumLeiter(a.handlePQUeberweisung))
+	mux.HandleFunc("/api/pq/stand", a.handlePQStand)
 	// Satz des Gleichgewichts ankuendigen (satz_plan.go): zwei
 	// Betreiber-Menschen, nur beim Leiter.
 	mux.HandleFunc("/api/wirtschaft/satz", a.satzGrenze(a.zumLeiter(a.handleSatzAnkuendigung)))
@@ -1454,6 +1458,7 @@ func (a *APIServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 		"bescheinigung_konsens":   BescheinigungStand(),
 		// Umzug (umzug.go): ab wann; fuer die App und die Deploy-Sperre.
 		"umzug":                map[string]int64{"aktiv_ab": umzugAb(), "code_regeln_ab": umzugCodeRegelnAb(), "nur_letzter_code_ab": umzugNurLetzterCodeAb(), "pq_zusage_ab": pqZusageAb()},
+		"pq":                   map[string]int64{"ueberweisung_ab": pqUeberweisungAb()},
 		"validator_liste_hash": a.blockchain.ValidatorListeHash(),
 		// Erzeuger aus AUTHORIZED_VALIDATORS ohne Bindung im Kettenregister:
 		// ab erzeugerSchnittAb erzeugten sie nicht mehr. Der Stichtag darf

@@ -105,6 +105,12 @@ func sattAdd(a, b int64) int64 {
 // streng angesetzt (blockZeitFuer prueft die gewaehlte Zeit danach genau).
 func auftragsFenster(tx *Transaction, jetzt int64) zeitFenster {
 	f := offenesFenster()
+	// PQ-Ueberweisung (pq_ueberweisung.go): erst in Bloecke ab dem Stichtag
+	// -- sonst stuende sie um den Stichtag in Bloecken, die jeder Knoten
+	// abweist (Sicherheitspruefung von #488).
+	if tx.PQ != nil {
+		f.eng(pqUeberweisungAb(), math.MaxInt64)
+	}
 	switch {
 	case tx.Type == "validator_bindung":
 		// validator_register.go: immer geprueft (nicht an die Signaturpflicht
@@ -284,6 +290,9 @@ func auftragsFenster(tx *Transaction, jetzt int64) zeitFenster {
 // die zeitabhaengigen Regeln jedes Nachspielenden? Genau, mit den Regeln, die
 // zu blockZeit gelten.
 func blockTauglich(tx *Transaction, blockZeit int64) error {
+	if tx.PQ != nil && !pqUeberweisungAktiv(blockZeit) {
+		return fmt.Errorf("PQ-Ueberweisung vor dem Stichtag (Block %d)", blockZeit)
+	}
 	if tx.Type == "validator_bindung" {
 		if !validatorRegisterAktiv(blockZeit) {
 			return fmt.Errorf("validator_bindung vor dem Stichtag (Block %d)", blockZeit)
@@ -490,6 +499,10 @@ func blockZeitPraefix(txs []Transaction, jetzt, elternZeit int64) (int, int64, e
 	// dem zweiten in den naechsten Block -- sonst wiese jeder andere Knoten
 	// den Block ab.
 	if n := checkpointTxGrenze(txs); n < len(txs) {
+		txs = txs[:n]
+	}
+	// Hoechstens pqUeberweisungenJeBlock PQ-Ueberweisungen (pq_ueberweisung.go).
+	if n := pqUeberweisungGrenze(txs); n < len(txs) {
 		txs = txs[:n]
 	}
 	if t, err := blockZeitFuer(txs, jetzt, elternZeit); err == nil {

@@ -49,6 +49,7 @@ func blockListenAnsicht(bloecke []*Block) []blockListenEintrag {
 			for i := range txs {
 				e.Transactions[i] = txs[i]
 				e.Transactions[i].Roh = ""
+				e.Transactions[i].PQ = nil // rund 11 KB je PQ-Ueberweisung
 			}
 		}
 		out = append(out, e)
