@@ -28,6 +28,17 @@ ERGEBNIS: Gatter je Abfrage, mal Abfragen (kuperberg.py) = Quantenanteil des
 Angriffs; daneben die klassische Arbeit des Siebs. Der Angriff kostet das
 Groessere.
 
+4. PRUEFEN EINER NOTE (BAUVORGABE §2e). Der ehrliche Pruefer projiziert auf
+   den Eigenraum zur Seriennummer: Gruppenaktion in Ueberlagerung, gesteuert
+   von einem Register ueber die ganze Gruppe -- eine Aktion hin, eine zurueck,
+   also ~ 2 Abfragen. Daneben die Tiefe (Laufzeit): die Multiplikationen der
+   Isogeniekette sind nacheinander faellig; je Multiplikation
+     - Schulbuch, wenig Qubits:          Tiefe ~ B
+     - parallel (Baum), ~B^2 Qubits:      Tiefe ~ (log2 B)^2
+   Wichtig: billigeres Pruefen schwaecht die Note NICHT -- ab 8.192 Bit
+   bestimmt die klassische Arbeit des Siebs den Angriffspreis, nicht die
+   Kosten je Abfrage.
+
 Aufruf: python3 -I isogenie_kosten.py [--selbsttest]
 """
 from __future__ import annotations
@@ -174,6 +185,25 @@ def modell_mult(bits: int, a: float = 9.0, b: float = 8.0) -> float:
     return sum((2 / 3) * (a * bits + b * l) for l in kleine_primzahlen(bits))
 
 
+def pruefkosten(bits: int, mult_faktor: float = 1.0) -> dict:
+    """Log2-Kosten EINER Pruefung (2 Aktionen in Ueberlagerung).
+    mult_faktor < 1: Forschungshebel (weniger Multiplikationen je Aktion)."""
+    mult = 2 * modell_mult(bits) * mult_faktor
+    lb = math.log2(bits)
+    return {
+        "toffoli": math.log2(mult * TOFFOLI_JE_MUL * bits * bits),
+        "tiefe_schulbuch": math.log2(mult * bits),
+        "tiefe_parallel": math.log2(mult) + 2 * math.log2(lb),
+    }
+
+
+def tage(log2_schritte: float, takt_us: float) -> float:
+    return 2 ** log2_schritte * takt_us / 1e6 / 86400
+
+
+RSA2048_TOFFOLI_LOG2 = 31.5  # Literatur (Gidney & Ekeraa 2019: ~0,3 n^3), nachzulesen
+
+
 def selbsttest() -> None:
     rng = random.Random(5)
     # 1. Die zaehlende Arithmetik rechnet dasselbe wie das Original.
@@ -206,6 +236,14 @@ def selbsttest() -> None:
     for q in l:
         prod *= q
     assert prod.bit_length() >= 512 and len(l) > 60
+    # 4. Pruefkosten: monoton in p, Hebel wirkt, und Pruefen ist billiger
+    #    als der Angriff (sonst waere das Verfahren sinnlos).
+    a, b = pruefkosten(8192), pruefkosten(17000)
+    assert a["toffoli"] < b["toffoli"] and a["tiefe_parallel"] < a["tiefe_schulbuch"]
+    assert abs(pruefkosten(8192, 2 ** -10)["toffoli"] - (a["toffoli"] - 10)) < 1e-9
+    assert a["toffoli"] < 134 - 64  # weit unter dem Angriffspreis 2^134
+    assert 50 < a["toffoli"] < 60   # Groessenordnung, gegen die Tabelle in BAUVORGABE §2e
+    assert abs(tage(math.log2(86400e6), 1.0) - 1.0) < 1e-9
     print("selbsttest ok")
 
 
@@ -231,6 +269,16 @@ def main() -> None:
         lw = w_fit[0] * math.sqrt(n) + w_fit[1]
         quant = math.log2(tof) + lq
         print(f"| {bits} Bit | {k} | 2^{math.log2(mult):.1f} | 2^{math.log2(tof):.1f} | 2^{lq:.0f} | 2^{quant:.0f} | 2^{lw:.0f} | **2^{max(quant, lw):.0f}** |")
+    print("\nPruefen EINER Note (2 Aktionen in Ueberlagerung), Takt 1 us je logischer Schicht:")
+    print("| Primzahl | Toffoli | = x RSA-2048 | Tiefe Schulbuch | Dauer | Tiefe parallel (~B^2 Qubits) | Dauer |")
+    print("|---|---|---|---|---|---|---|")
+    for bits in (512, 4096, 8192, 17000):
+        k = pruefkosten(bits)
+        print(f"| {bits} Bit | 2^{k['toffoli']:.1f} | 2^{k['toffoli'] - RSA2048_TOFFOLI_LOG2:.0f} | 2^{k['tiefe_schulbuch']:.1f} | {tage(k['tiefe_schulbuch'], 1):.1f} Tage | 2^{k['tiefe_parallel']:.1f} | {tage(k['tiefe_parallel'], 1) * 24:.1f} h |")
+    print("\nForschungshebel: weniger Multiplikationen je Aktion (8.192 Bit, Schulbuch-Tiefe, 1 us):")
+    for f in (1, 2 ** -5, 2 ** -10):
+        k = pruefkosten(8192, f)
+        print(f"  Faktor 2^{math.log2(f):.0f}: Toffoli 2^{k['toffoli']:.1f}, Dauer {tage(k['tiefe_schulbuch'], 1) * 24:.1f} h")
 
 
 if __name__ == "__main__":
