@@ -78,6 +78,7 @@ var replayArten = map[string]geldArt{
 	// umzug.go: bewegen kein Guthaben -- der Umzug nimmt nur Menschsein,
 	// Nullifier und Staffelrest mit, das Geld bleibt bei der alten Wallet.
 	"umzug_code":                       geldNurGutschrift,
+	"pq_zusage":                        geldNurGutschrift, // pq_zusage.go: bewegt kein Geld und kein Menschsein, nur das Register
 	"umzug_ankuendigen":                geldNurGutschrift,
 	"umzug_widerruf":                   geldNurGutschrift,
 	"umzug_vollzug":                    geldNurGutschrift,
@@ -136,6 +137,8 @@ var ersetzbareKonstanten = map[string]string{
 	"umzugAnkuendigenTxArt": umzugAnkuendigenTxArt,
 	"umzugWiderrufTxArt":    umzugWiderrufTxArt,
 	"umzugVollzugTxArt":     umzugVollzugTxArt,
+	// pq_zusage.go
+	"pqZusageTxArt": pqZusageTxArt,
 }
 
 // replaySwitchArten liest die Arten des Nachspiel-Switches aus block.go

@@ -133,17 +133,17 @@ func TestPQZusage_Missbrauch(t *testing.T) {
 		block int64
 		regel string
 	}{
-		"fremder Absender":         {f.pqTx(fremdKey, f.alt, h, uzZeit), uzZeit, "pq_unterschrift"},
-		"Hash vertauscht":          {vertauscht, uzZeit, "pq_unterschrift"},
-		"kein Mensch":              {f.pqTx(nichtMenschKey, nichtMensch, h, uzZeit), uzZeit, "pq_kein_mensch"},
-		"Code-Hash dabei":          {falscheForm, uzZeit, "pq_form"},
-		"Hash zu kurz":             {zuKurz, uzZeit, "pq_form"},
-		"Hash gross geschrieben":   {gross, uzZeit, "pq_form"},
-		"Nullifier dabei":          {mitNullifier, uzZeit, "pq_form"},
-		"ohne Angaben":             {ohneAngaben, uzZeit, "pq_form"},
-		"zu alt":                   {f.pqTx(f.altKey, f.alt, h, uzZeit), uzZeit + umzugHoechstensAlt + 1, "pq_zeit"},
-		"zu weit in der Zukunft":   {f.pqTx(f.altKey, f.alt, h, uzZeit+umzugHoechstensVoraus+1), uzZeit, "pq_zeit"},
-		"ohne Zeit":                {f.pqTx(f.altKey, f.alt, h, 0), uzZeit, "pq_zeit"},
+		"fremder Absender":       {f.pqTx(fremdKey, f.alt, h, uzZeit), uzZeit, "pq_unterschrift"},
+		"Hash vertauscht":        {vertauscht, uzZeit, "pq_unterschrift"},
+		"kein Mensch":            {f.pqTx(nichtMenschKey, nichtMensch, h, uzZeit), uzZeit, "pq_kein_mensch"},
+		"Code-Hash dabei":        {falscheForm, uzZeit, "pq_form"},
+		"Hash zu kurz":           {zuKurz, uzZeit, "pq_form"},
+		"Hash gross geschrieben": {gross, uzZeit, "pq_form"},
+		"Nullifier dabei":        {mitNullifier, uzZeit, "pq_form"},
+		"ohne Angaben":           {ohneAngaben, uzZeit, "pq_form"},
+		"zu alt":                 {f.pqTx(f.altKey, f.alt, h, uzZeit), uzZeit + umzugHoechstensAlt + 1, "pq_zeit"},
+		"zu weit in der Zukunft": {f.pqTx(f.altKey, f.alt, h, uzZeit+umzugHoechstensVoraus+1), uzZeit, "pq_zeit"},
+		"ohne Zeit":              {f.pqTx(f.altKey, f.alt, h, 0), uzZeit, "pq_zeit"},
 	} {
 		if b := f.pqAnwenden(fall.tx, fall.block); b[fall.regel] != 1 {
 			t.Errorf("%s: %v (erwartet %s)", name, b, fall.regel)
