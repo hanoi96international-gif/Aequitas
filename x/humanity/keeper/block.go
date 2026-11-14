@@ -223,6 +223,10 @@ type Block struct {
 	// geschrieben wie der Block (checkpointMitSpeichern). Nicht serialisiert.
 	letzterCheckpointNeu string `json:"-"`
 	Signature            string `json:"signature,omitempty"`
+	// PQStempel: ML-DSA-65-Unterschrift des Erzeugers ueber den Blockhash,
+	// nur auf jeder pqStempelAbstand-ten Hoehe (pq_stempel.go). Wie Signature
+	// NICHT im Hash (calculateBlockHash zaehlt Felder einzeln auf).
+	PQStempel string `json:"pq_stempel,omitempty"`
 	// ProducedAtMs is a millisecond-precision production wall-clock
 	// timestamp, set once by ProduceBlock and transmitted to peers —
 	// deliberately NOT covered by calculateBlockHash (an explicit field list,
@@ -3470,6 +3474,7 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 			fmt.Printf("[BLOCK] Warning: could not sign block #%d: %v\n", block.Height, err)
 		}
 	}
+	dag.pqStempelSetzen(block)
 
 	// P1-04 (audit): compute GHOSTDAG before persisting so the DB row has
 	// correct selected_parent/blue_score/blues from the start — no crash window
@@ -5391,6 +5396,15 @@ func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
 		if recoveredAddr != proposer {
 			fmt.Printf("[DAG] ✗ Rejected peer block #%d: signature mismatch (signer %s, proposer %s)\n",
 				block.Height, recoveredAddr, proposer)
+			dag.mu.Unlock()
+			return false
+		}
+		// Quantensicherer Stempel (pq_stempel.go): erst nach der secp256k1-
+		// Pruefung -- ML-DSA prueft nur, wer als Erzeuger unterschrieben hat
+		// und einen eingetragenen PQ-Schluessel besitzt. Form immer, ab dem
+		// Stichtag Pflicht auf jeder Stempelhoehe -- fail-closed.
+		if err := pruefePQStempel(block); err != nil {
+			fmt.Printf("[DAG] ✗ Rejected peer block #%d from %s: %v\n", block.Height, proposer, err)
 			dag.mu.Unlock()
 			return false
 		}

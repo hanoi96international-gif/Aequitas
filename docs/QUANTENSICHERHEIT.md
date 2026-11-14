@@ -200,7 +200,7 @@ Umsetzung in dieser Reihenfolge, jede Stufe ein eigener PR mit Prüfung:
 - libp2p: hybride Schlüssel, sobald go-libp2p sie anbietet; bis dahin sind nur
   öffentliche Kettendaten betroffen.
 
-*Entwurf (14.11.2026), gemessen – vor dem Bau zur Entscheidung:*
+*Gebaut (14.11.2026), Entscheidungen des Betreibers: „die beste Entscheidung“, „direkt bauen“.*
 
 | Größe | Messung |
 |---|---|
@@ -208,24 +208,36 @@ Umsetzung in dieser Reihenfolge, jede Stufe ein eigener PR mit Prüfung:
 | ML-DSA-65-Unterschrift | 3.309 Byte (6.618 als Hex) |
 | Unterschreiben / Prüfen (Go `crypto/mldsa`, 2,1-GHz-Xeon) | 0,34 ms / 0,21 ms |
 
-**Je Block unterschreiben** wäre rechnerisch billig, aber jeder Block würde
-~10× größer: bei 1 Block/s rund **640 MB je Tag** mehr Speicher und
-Netzlast. **Vorschlag: PQ-Stempel.** Der Erzeuger unterschreibt mit ML-DSA
-in festen Abständen (z. B. alle 60 Blöcke) die Wurzel der Block-Hashes seit
-dem letzten Stempel. Die Blöcke dazwischen tragen weiter secp256k1. Jeder
-Knoten prüft den Stempel selbst. **Endgültig** (Checkpoint, Rückgabe als
-bestätigt) wird ein Block erst, wenn ein gültiger Stempel ihn deckt. Mehrkosten
-≈ 110 Byte je Block statt 6.600. Wer secp256k1 mit einem Quantenrechner
-bricht, kann Blöcke vorschlagen, aber keinen Stempel fälschen – seine Blöcke
-werden nie endgültig.
+**PQ-Stempel (`pq_stempel.go`), wirkt mit dem einen Erzeuger von heute:** Auf
+jeder 60. Höhe (bei 1 Block/s einmal je Minute) unterschreibt der Erzeuger
+zusätzlich mit ML-DSA-65 über `aequitas-pq-stempel-v1|chain:1926|<Blockhash>`.
+Der Hash deckt die Eltern, also die ganze Geschichte dahinter. Ab der
+Stichhöhe `pq_stempel.ab_hoehe` (genesis.json) weist **jeder Knoten selbst** einen Block
+auf einer Stempelhöhe ohne gültigen Stempel seines Erzeugers ab; auf allen
+anderen Höhen muss das Feld leer sein. Wer secp256k1 mit einem Quantenrechner
+bricht, kommt höchstens bis zur nächsten Stempelhöhe. Kosten ≈ 110 Byte je
+Block im Mittel statt 6.600. Vor der Stichhöhe wird nur die Form erzwungen;
+gültige und falsche Stempel werden gezählt (`/api/status` → `pq.stempel`),
+damit man sieht, dass sie stimmen, bevor sie Pflicht werden.
 
-Offen und vor dem Bau zu entscheiden: Abstand N (Speicher gegen Wartezeit
-bis endgültig), was Apps und Börsen als „bestätigt“ anzeigen, und wie die
-ML-DSA-Schlüssel der Erzeuger ins Register kommen (wie in Stufe 1 über die
-Genesis oder per 2/3-Aufnahme). Dringlichkeit: Unterschriften schützen nur
-im Moment ihrer Nutzung (kein „heute speichern, später brechen“) – das muss
-vor dem ersten Quantenrechner stehen, der secp256k1 bricht, nicht heute
-Nacht.
+**Schlüssel:** wie Stufe 1 – `erzeuger-pq-schluessel-anlegen.yml` erzeugt den
+Seed auf C1 (verlässt die Box nie, wird nie ersetzt), der Knoten leitet den
+öffentlichen Schlüssel ab (`/api/pq/stand?stempel=1`), der Lauf gleicht ihn
+byte-genau mit genesis.json ab. **Neue Erzeuger** binden ihren PQ-Schlüssel
+mit einer Erklärung, die *beide* Schlüssel unterschreiben
+(`pruefePQErzeugerBindung`, `checkpoint_pq.go`).
+
+**Komitee-Checkpoints** (`checkpoint_pq.go`, schlafend wie das Zertifikat
+selbst, das erst ab 4 Mitgliedern etwas bestätigt): jeder 10. Checkpoint
+(alle 10 Minuten) braucht zu jeder secp256k1- auch eine ML-DSA-Unterschrift –
+bei bis zu 67 Unterzeichnern rund 370 Byte je Block statt 3,3 KB je Minute
+und Mitglied.
+
+**Reihenfolge zum Scharfschalten:** ausrollen → Schlüssel-Workflow
+(`anlegen`) → Zeile in genesis.json → ausrollen → `geprueft_ok` steigt,
+`geprueft_falsch` bleibt 0 → `pq_stempel.ab_hoehe` setzen (eine Höhe, keine
+Zeit: die Blockzeit wählt der Erzeuger, die Höhe prüft jeder Knoten – ein
+Fälscher könnte sonst zurückdatieren; Wächter wie bei den Stichtagen).
 
 **Stufe 6 – Quantengeld: eigene Forschung, Bauvorgabe, Kettenseite** (`forschung/quantengeld/`)
 

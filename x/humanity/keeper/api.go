@@ -1458,7 +1458,7 @@ func (a *APIServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 		"bescheinigung_konsens":   BescheinigungStand(),
 		// Umzug (umzug.go): ab wann; fuer die App und die Deploy-Sperre.
 		"umzug":                map[string]int64{"aktiv_ab": umzugAb(), "code_regeln_ab": umzugCodeRegelnAb(), "nur_letzter_code_ab": umzugNurLetzterCodeAb(), "pq_zusage_ab": pqZusageAb()},
-		"pq":                   map[string]int64{"ueberweisung_ab": pqUeberweisungAb()},
+		"pq":                   map[string]interface{}{"ueberweisung_ab": pqUeberweisungAb(), "stempel": pqStempelStatus()},
 		"validator_liste_hash": a.blockchain.ValidatorListeHash(),
 		// Erzeuger aus AUTHORIZED_VALIDATORS ohne Bindung im Kettenregister:
 		// ab erzeugerSchnittAb erzeugten sie nicht mehr. Der Stichtag darf

@@ -1,0 +1,164 @@
+name: Erzeuger -- quantensicherer Stempel-Schluessel (ML-DSA-65) auf C1 anlegen
+
+# WARUM (14.11.2026, docs/QUANTENSICHERHEIT.md, Stufe 5). Ab pq_stempel.ab_hoehe
+# in genesis.json weist jeder Knoten einen Block auf jeder 60. Hoehe ab, der
+# keinen gueltigen ML-DSA-65-Stempel seines Erzeugers traegt (pq_stempel.go).
+# Der Erzeuger stempelt, sobald ERZEUGER_MLDSA_SEED in seiner Umgebung steht.
+#
+# WAS DIESER LAUF TUT (auf C1, 188.172.229.121):
+#   anzeigen  nur lesen: ob der Seed gesetzt ist, Erzeugeradresse und
+#             oeffentlicher Schluessel (aus /api/pq/stand?stempel=1).
+#   anlegen   Hat der Knoten noch KEINEN Seed: Seed AUF DER BOX erzeugen
+#             (openssl), in deploy/validator/.env eintragen, den Knoten mit
+#             derselben Version neu anlegen (docker compose up -d node). Den
+#             oeffentlichen Schluessel leitet der Knoten selbst ab. Der Seed
+#             verlaesst die Box nie und steht nie im Protokoll. Einen schon
+#             gesetzten Seed ersetzt der Lauf NIE (sein Schluessel steht
+#             womoeglich schon in der Genesis -- fail-closed).
+#
+# VORAUSSETZUNG: der Knoten laeuft mit einer Version, die den Stempel kennt
+# (/api/pq/stand?stempel=1 antwortet mit "stempel"). Sonst bricht der Lauf ab,
+# bevor er etwas aendert.
+#
+# DANACH: die ausgegebene Zeile in genesis.json (pq_stempel.schluessel)
+# eintragen und ausrollen; /api/status pq.stempel.geprueft_ok steigt, und
+# geprueft_falsch bleibt 0 -- erst dann pq_stempel.ab_hoehe setzen. Und
+# schluessel-sichern.yml laufen lassen (der Seed steht in deploy/validator/.env).
+on:
+  workflow_dispatch:
+    inputs:
+      modus:
+        description: "anzeigen (nur lesen) oder anlegen"
+        required: true
+        type: choice
+        default: anzeigen
+        options: [anzeigen, anlegen]
+      bestaetigung:
+        description: "Nur fuer anlegen: genau STEMPEL SCHLUESSEL ANLEGEN eintippen"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-c1
+  cancel-in-progress: false
+
+jobs:
+  anlegen:
+    runs-on: ubuntu-latest
+    environment: produktion
+    timeout-minutes: 30
+    env:
+      C1: 188.172.229.121
+      MODUS: ${{ inputs.modus }}
+      BESTAETIGUNG: ${{ inputs.bestaetigung }}
+    steps:
+      - name: Eingaben pruefen
+        run: |
+          set -euo pipefail
+          case "$MODUS" in anzeigen|anlegen) ;; *) echo "::error::modus anzeigen oder anlegen"; exit 1 ;; esac
+          if [ "$MODUS" = anlegen ] && [ "$BESTAETIGUNG" != "STEMPEL SCHLUESSEL ANLEGEN" ]; then
+            echo "::error::Fuer anlegen genau STEMPEL SCHLUESSEL ANLEGEN eintippen -- nichts geaendert."
+            exit 1
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: genesis.json
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Schluessel und Host-Pruefung
+        env:
+          KEY: ${{ secrets.CONTABO_SSH_KEY }}
+        run: |
+          set -eu
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s' "$KEY" | perl -0777 -pe 's/\r//g; s/(?:-|\xE2\x80[\x93\x94])+ *(BEGIN|END) OPENSSH PRIVATE KEY *(?:-|\xE2\x80[\x93\x94])+/-----$1 OPENSSH PRIVATE KEY-----/g; unless (/-----BEGIN OPENSSH PRIVATE KEY-----/) { (my $z = $_) =~ s/\s//g; if ($z =~ m|^[A-Za-z0-9+/]+=*$|) { require MIME::Base64; my $d = MIME::Base64::decode_base64($z); if ($d =~ /-----BEGIN OPENSSH PRIVATE KEY-----/) { $_ = $d; } elsif ($d =~ /\Aopenssh-key-v1\x00/) { $_ = qq{-----BEGIN OPENSSH PRIVATE KEY-----\n$z\n-----END OPENSSH PRIVATE KEY-----\n}; } } } s/\s*(-----BEGIN OPENSSH PRIVATE KEY-----)\s*(.*?)\s*(-----END OPENSSH PRIVATE KEY-----)\s*/my ($k, $b, $f) = ($1, $2, $3); $b =~ s|\s||g; $b =~ s|(.{70})|$1\n|g; $b =~ s|\n\z||; "$k\n$b\n$f\n"/se' > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          ssh-keygen -y -f ~/.ssh/id_ed25519 >/dev/null 2>&1 || { echo "::error title=CONTABO_SSH_KEY unlesbar::Secret CONTABO_SSH_KEY neu einfuegen (alles von -----BEGIN bis -----END)."; rm -f ~/.ssh/id_ed25519; exit 1; }
+          ssh-keyscan -t ed25519 "$C1" 2>/dev/null | { grep -v '^#' || true; } > ~/.ssh/kh
+          [ "$(grep -c . ~/.ssh/kh)" = 1 ] || { echo "::error::Host-Schluessel von C1: nicht genau eine ed25519-Zeile"; exit 1; }
+          ssh-keygen -lf ~/.ssh/kh | awk '{print $2}' | grep -qx 'SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA' || { echo "::error::Host-Schluessel von C1 passt nicht"; exit 1; }
+          cp ~/.ssh/kh ~/.ssh/known_hosts
+
+      - name: Stempel-Schluessel ${{ inputs.modus }}
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -o IdentitiesOnly=yes -o HostKeyAlgorithms=ssh-ed25519 -o ServerAliveInterval=30 root@$C1 \
+            "MODUS='$MODUS' bash -s" <<'SKRIPT' | tee "$RUNNER_TEMP/ausgabe.txt"
+          set -euo pipefail
+          umask 077
+          ENVF=/root/Aequitas/deploy/validator/.env
+          [ -f "$ENVF" ] || { echo "::error::$ENVF fehlt -- nichts geaendert"; exit 1; }
+          stand() { curl -s -m 10 'http://127.0.0.1:8080/api/pq/stand?stempel=1' || true; }
+          S=$(stand)
+          printf '%s' "$S" | grep -q '"stempel"' || { echo "::error::Der Knoten kennt den PQ-Stempel nicht (Version vor Stufe 5) -- erst ausrollen; nichts geaendert"; exit 1; }
+          seed=$(grep -E '^ERZEUGER_MLDSA_SEED=' "$ENVF" | tail -1 | cut -d= -f2- | tr 'A-F' 'a-f' || true)
+          if [[ "$seed" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "Seed gesetzt, wird nicht ersetzt"
+          elif [ -n "$seed" ]; then
+            echo "::error::ERZEUGER_MLDSA_SEED hat eine falsche Form -- nichts geaendert (Wert nicht ausgegeben)"; exit 1
+          elif [ "$MODUS" = anzeigen ]; then
+            echo "kein Seed"
+          else
+            seed=$(openssl rand -hex 32)
+            [[ "$seed" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::Seed-Erzeugung fehlgeschlagen"; exit 1; }
+            cp -p "$ENVF" "$ENVF.vor-stempel"
+            printf 'ERZEUGER_MLDSA_SEED=%s\n' "$seed" >> "$ENVF"
+            chmod 600 "$ENVF"
+            cd /root/Aequitas/deploy/validator
+            GIT_COMMIT="$(git -C /root/Aequitas rev-parse --short=7 HEAD)" docker compose up -d node >/dev/null
+            ok=0
+            for _ in $(seq 1 60); do
+              sleep 5
+              if stand | grep -qE '"schluessel": ?"[0-9a-f]{3904}"'; then ok=1; break; fi
+            done
+            [ "$ok" = 1 ] || { echo "::error::Knoten meldet keinen Stempel-Schluessel -- Seed steht in $ENVF, Knoten pruefen"; exit 1; }
+            echo "Seed neu angelegt"
+          fi
+          unset seed
+          S=$(stand)
+          adr=$(printf '%s' "$S" | grep -oE '"erzeuger": ?"0x[0-9a-f]{40}"' | grep -oE '0x[0-9a-f]{40}' || true)
+          pub=$(printf '%s' "$S" | grep -oE '"schluessel": ?"[0-9a-f]{3904}"' | grep -oE '[0-9a-f]{3904}' || true)
+          [ -n "$adr" ] && [ -n "$pub" ] && echo "PQ_STEMPEL $adr $pub"
+          SKRIPT
+
+      - name: Zusammenfassung und Abgleich mit genesis.json
+        if: always()
+        run: |
+          set -eu
+          Z=$(sed -n 's/^PQ_STEMPEL \(0x[0-9a-f]\{40\}\) \([0-9a-f]\{3904\}\)$/\1 \2/p' "$RUNNER_TEMP/ausgabe.txt" 2>/dev/null | tail -1 || true)
+          ADR=${Z%% *}; PUB=${Z#* }
+          {
+            echo "## PQ-Stempel (ML-DSA-65) des Erzeugers"
+            if [ -n "$Z" ]; then
+              echo
+              echo "Erzeuger \`$ADR\`, Schluessel \`${PUB:0:16}…\` (${#PUB} Hex)"
+              echo
+              echo "Fuer \`genesis.json\` (oeffentlich; ab_hoehe erst setzen, wenn geprueft_ok steigt und geprueft_falsch 0 bleibt):"
+              echo
+              echo '```json'
+              printf '"pq_stempel": {"ab_hoehe": 0, "schluessel": {"%s": "%s"}}\n' "$ADR" "$PUB"
+              echo '```'
+            else
+              echo
+              echo "Kein Stempel-Schluessel auf dem Knoten."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          [ -n "$Z" ] || exit 0
+          SOLL=$(jq -r --arg a "$ADR" '.pq_stempel.schluessel[$a] // empty' genesis.json 2>/dev/null || true)
+          if [ -z "$SOLL" ]; then
+            echo "genesis.json: noch nicht eingetragen" | tee -a "$GITHUB_STEP_SUMMARY"
+          elif [ "$SOLL" = "$PUB" ]; then
+            echo "genesis.json passt (sha256 $(printf '%s' "$PUB" | sha256sum | cut -c1-16))" | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::error::genesis.json passt NICHT zum Schluessel des Knotens -- vor ab_hoehe korrigieren"
+            echo "genesis.json passt NICHT zum Knoten" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+      - name: SSH-Schluessel vom Runner entfernen
+        if: always()
+        run: rm -f ~/.ssh/id_ed25519

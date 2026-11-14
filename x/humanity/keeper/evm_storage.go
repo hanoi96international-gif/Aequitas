@@ -3987,7 +3987,9 @@ func (cs *ChainState) ensureTxRootColumn() {
 	if cs.db == nil || cs.txRootSpalteDa.Load() {
 		return
 	}
-	if _, err := cs.db.Exec(`ALTER TABLE chain_blocks ADD COLUMN IF NOT EXISTS tx_root TEXT`); err != nil {
+	// pq_stempel (pq_stempel.go) kommt mit derselben Anweisung: beide Spalten
+	// lesen dieselben Abfragen.
+	if _, err := cs.db.Exec(`ALTER TABLE chain_blocks ADD COLUMN IF NOT EXISTS tx_root TEXT, ADD COLUMN IF NOT EXISTS pq_stempel TEXT`); err != nil {
 		fmt.Printf("[BLOCK] chain_blocks.tx_root konnte nicht angelegt werden (naechster Versuch beim naechsten Aufruf): %v\n", err)
 		return
 	}
@@ -4138,12 +4140,12 @@ func (cs *ChainState) SaveBlockToDB(block *Block, replayed bool) error {
 	_, err = cs.db.Exec(
 		`INSERT INTO chain_blocks
 		   (hash, height, parent_hashes, proposer, timestamp, humans, state_root,
-		    signature, transactions, selected_parent, blue_score, blues, replayed, transactions_z, tx_root)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+		    signature, transactions, selected_parent, blue_score, blues, replayed, transactions_z, tx_root, pq_stempel)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
 		 ON CONFLICT (hash) DO NOTHING`,
 		block.Hash, block.Height, string(parentHashesJSON), block.Proposer, block.Timestamp,
 		block.Humans, block.StateRoot, block.Signature, string(txsJSON),
-		block.SelectedParent, block.BlueScore, string(bluesJSON), replayed, txsZ, block.TxRoot,
+		block.SelectedParent, block.BlueScore, string(bluesJSON), replayed, txsZ, block.TxRoot, block.PQStempel,
 	)
 	return err
 }
@@ -4327,8 +4329,8 @@ func (cs *ChainState) SaveBlockWithPendingTxsAtomic(block *Block, ids []int64) e
 // beide Wege schreiben exakt dasselbe.
 const blockZeileInsertSQL = `INSERT INTO chain_blocks
 		   (hash, height, parent_hashes, proposer, timestamp, humans, state_root,
-		    signature, transactions, selected_parent, blue_score, blues, replayed, transactions_z, tx_root)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,true,$13,$14)
+		    signature, transactions, selected_parent, blue_score, blues, replayed, transactions_z, tx_root, pq_stempel)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,true,$13,$14,$15)
 		 ON CONFLICT (hash) DO NOTHING`
 
 func (cs *ChainState) blockZeileArgs(block *Block) ([]interface{}, error) {
@@ -4394,7 +4396,7 @@ func (cs *ChainState) blockZeileArgs(block *Block) ([]interface{}, error) {
 	return []interface{}{
 		block.Hash, block.Height, string(parentHashesJSON), block.Proposer, block.Timestamp,
 		block.Humans, block.StateRoot, block.Signature, string(txsJSON),
-		block.SelectedParent, block.BlueScore, string(bluesJSONFast), txsZ, block.TxRoot,
+		block.SelectedParent, block.BlueScore, string(bluesJSONFast), txsZ, block.TxRoot, block.PQStempel,
 	}, nil
 }
 
@@ -4444,7 +4446,7 @@ func (cs *ChainState) LoadBlocksFromDB(minHeight int64) (map[string]*Block, erro
 	baseQuery := `SELECT hash, height, parent_hashes, proposer, timestamp, humans, state_root,
 	                 signature, transactions, COALESCE(transactions_z, ''::bytea),
 	                 COALESCE(selected_parent,''), COALESCE(blue_score,0), COALESCE(blues,'[]'),
-	                 COALESCE(replayed,true), COALESCE(tx_root,'')
+	                 COALESCE(replayed,true), COALESCE(tx_root,''), COALESCE(pq_stempel,'')
 	          FROM chain_blocks`
 	var rows *sql.Rows
 	var err error
@@ -4474,7 +4476,7 @@ func (cs *ChainState) LoadBlocksFromDB(minHeight int64) (map[string]*Block, erro
 		if err := rows.Scan(
 			&b.Hash, &b.Height, &parentHashesRaw, &b.Proposer, &b.Timestamp,
 			&b.Humans, &b.StateRoot, &b.Signature, &txsRaw, &txsZ,
-			&b.SelectedParent, &b.BlueScore, &bluesRaw, &b.Replayed, &b.TxRoot,
+			&b.SelectedParent, &b.BlueScore, &bluesRaw, &b.Replayed, &b.TxRoot, &b.PQStempel,
 		); err != nil {
 			fmt.Printf("[BLOCK] LoadBlocksFromDB scan error: %v\n", err)
 			continue
@@ -4537,10 +4539,11 @@ func (cs *ChainState) LoadUnreplayedBlocksFromDB() ([]*Block, error) {
 	cs.ensureGHOSTDAGColumns()
 	cs.ensureReplayedColumn()
 	cs.ensureTxRootColumn()
+	cs.ensureTxRootColumn() // auch pq_stempel: ohne Spalte scheitert die Abfrage
 	rows, err := cs.db.Query(`SELECT hash, height, parent_hashes, proposer, timestamp, humans, state_root,
 	                 signature, transactions, COALESCE(transactions_z, ''::bytea),
 	                 COALESCE(selected_parent,''), COALESCE(blue_score,0), COALESCE(blues,'[]'),
-	                 COALESCE(tx_root,'')
+	                 COALESCE(tx_root,''), COALESCE(pq_stempel,'')
 	          FROM chain_blocks WHERE replayed = false`)
 	if err != nil {
 		return nil, fmt.Errorf("LoadUnreplayedBlocksFromDB query failed: %w", err)
@@ -4554,7 +4557,7 @@ func (cs *ChainState) LoadUnreplayedBlocksFromDB() ([]*Block, error) {
 		if err := rows.Scan(
 			&b.Hash, &b.Height, &parentHashesRaw, &b.Proposer, &b.Timestamp,
 			&b.Humans, &b.StateRoot, &b.Signature, &txsRaw, &txsZ,
-			&b.SelectedParent, &b.BlueScore, &bluesRaw, &b.TxRoot,
+			&b.SelectedParent, &b.BlueScore, &bluesRaw, &b.TxRoot, &b.PQStempel,
 		); err != nil {
 			fmt.Printf("[BLOCK] LoadUnreplayedBlocksFromDB scan error: %v\n", err)
 			continue
@@ -4613,10 +4616,11 @@ func (cs *ChainState) loadBlockFromDBByHeight(height int64, nurNachgespielt bool
 	}
 	cs.ensureGHOSTDAGColumns()
 	cs.ensureTxRootColumn()
+	cs.ensureTxRootColumn() // auch pq_stempel: ohne Spalte scheitert die Abfrage
 	rows, err := cs.db.Query(`SELECT hash, height, parent_hashes, proposer, timestamp, humans, state_root,
 	                 signature, transactions, COALESCE(transactions_z, ''::bytea),
 	                 COALESCE(selected_parent,''), COALESCE(blue_score,0), COALESCE(blues,'[]'),
-	                 COALESCE(tx_root,'')
+	                 COALESCE(tx_root,''), COALESCE(pq_stempel,'')
 	          FROM chain_blocks WHERE height = $1`+cs.nurNachgespieltSQL(nurNachgespielt), height)
 	if err != nil {
 		return nil
@@ -4630,7 +4634,7 @@ func (cs *ChainState) loadBlockFromDBByHeight(height int64, nurNachgespielt bool
 		if err := rows.Scan(
 			&b.Hash, &b.Height, &parentHashesRaw, &b.Proposer, &b.Timestamp,
 			&b.Humans, &b.StateRoot, &b.Signature, &txsRaw, &txsZ,
-			&b.SelectedParent, &b.BlueScore, &bluesRaw, &b.TxRoot,
+			&b.SelectedParent, &b.BlueScore, &bluesRaw, &b.TxRoot, &b.PQStempel,
 		); err != nil {
 			continue
 		}
@@ -4747,10 +4751,11 @@ func (cs *ChainState) loadBlockFromDBByHash(hash string, nurNachgespielt bool) *
 	cs.ensureGHOSTDAGColumns()
 	cs.ensureTxRootColumn()
 	cs.ensureReplayedColumn()
+	cs.ensureTxRootColumn() // auch pq_stempel: ohne Spalte scheitert die Abfrage
 	row := cs.db.QueryRow(`SELECT hash, height, parent_hashes, proposer, timestamp, humans, state_root,
 	                 signature, transactions, COALESCE(transactions_z, ''::bytea),
 	                 COALESCE(selected_parent,''), COALESCE(blue_score,0), COALESCE(blues,'[]'),
-	                 COALESCE(tx_root,''), replayed
+	                 COALESCE(tx_root,''), COALESCE(pq_stempel,''), replayed
 	          FROM chain_blocks WHERE hash = $1`+cs.nurNachgespieltSQL(nurNachgespielt), hash)
 	var b Block
 	var parentHashesRaw, txsRaw, bluesRaw string
@@ -4759,7 +4764,7 @@ func (cs *ChainState) loadBlockFromDBByHash(hash string, nurNachgespielt bool) *
 	if err := row.Scan(
 		&b.Hash, &b.Height, &parentHashesRaw, &b.Proposer, &b.Timestamp,
 		&b.Humans, &b.StateRoot, &b.Signature, &txsRaw, &txsZ,
-		&b.SelectedParent, &b.BlueScore, &bluesRaw, &b.TxRoot, &nachgespielt,
+		&b.SelectedParent, &b.BlueScore, &bluesRaw, &b.TxRoot, &b.PQStempel, &nachgespielt,
 	); err != nil {
 		return nil
 	}
@@ -4833,9 +4838,10 @@ func (cs *ChainState) loadBlocksSinceFromDB(minHeight int64, afterHash string, l
 	// derselbe Deckel, den capBlocksByResponseBytes spaeter anlegt, nur eben
 	// VOR dem Dekodieren statt danach.
 	fetchLimit := limit + dbSinceFetchWindow
+	cs.ensureTxRootColumn() // auch pq_stempel: ohne Spalte scheitert die Abfrage
 	rows, err := cs.db.Query(`SELECT hash, height, parent_hashes, proposer, timestamp, humans, state_root,
 	                 signature, COALESCE(selected_parent,''), COALESCE(blue_score,0), COALESCE(blues,'[]'),
-	                 COALESCE(tx_root,'')
+	                 COALESCE(tx_root,''), COALESCE(pq_stempel,'')
 	          FROM chain_blocks
 	          WHERE height >= $1 AND proposer != 'synthetic-checkpoint'`+cs.nurNachgespieltSQL(nurNachgespielt)+`
 	          ORDER BY height ASC, blue_score DESC, hash ASC
@@ -4853,7 +4859,7 @@ func (cs *ChainState) loadBlocksSinceFromDB(minHeight int64, afterHash string, l
 			&b.SelectedParent, &b.BlueScore, &bluesRaw,
 			// Ohne tx_root am Kopf kann stripBlocksForPeer nicht strippen --
 			// siehe ensureTxRootColumn.
-			&b.TxRoot,
+			&b.TxRoot, &b.PQStempel,
 		); err != nil {
 			continue
 		}
@@ -4969,10 +4975,11 @@ func (cs *ChainState) loadBlocksByHashesFromDB(hashes []string, nurNachgespielt 
 	cs.ensureGHOSTDAGColumns()
 	cs.ensureTxRootColumn()
 	cs.ensureReplayedColumn()
+	cs.ensureTxRootColumn() // auch pq_stempel: ohne Spalte scheitert die Abfrage
 	rows, err := cs.db.Query(`SELECT hash, height, parent_hashes, proposer, timestamp, humans, state_root,
 	                 signature, transactions, COALESCE(transactions_z, ''::bytea),
 	                 COALESCE(selected_parent,''), COALESCE(blue_score,0), COALESCE(blues,'[]'),
-	                 COALESCE(tx_root,''), replayed
+	                 COALESCE(tx_root,''), COALESCE(pq_stempel,''), replayed
 	          FROM chain_blocks
 	          WHERE hash = ANY($1) AND proposer != 'synthetic-checkpoint'`+cs.nurNachgespieltSQL(nurNachgespielt), pq.Array(hashes))
 	if err != nil {
@@ -4988,7 +4995,7 @@ func (cs *ChainState) loadBlocksByHashesFromDB(hashes []string, nurNachgespielt 
 		if err := rows.Scan(
 			&b.Hash, &b.Height, &parentHashesRaw, &b.Proposer, &b.Timestamp,
 			&b.Humans, &b.StateRoot, &b.Signature, &txsRaw, &txsZ,
-			&b.SelectedParent, &b.BlueScore, &bluesRaw, &b.TxRoot, &nachgespielt,
+			&b.SelectedParent, &b.BlueScore, &bluesRaw, &b.TxRoot, &b.PQStempel, &nachgespielt,
 		); err != nil {
 			continue
 		}

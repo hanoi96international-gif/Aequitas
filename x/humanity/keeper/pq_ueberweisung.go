@@ -284,6 +284,19 @@ func (a *APIServer) handlePQStand(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	antwort := map[string]interface{}{"ueberweisung_ab": pqUeberweisungAb(), "zusage_ab": pqZusageAb()}
+	// ?stempel=1: der OEFFENTLICHE ML-DSA-Schluessel dieses Erzeugers fuer den
+	// PQ-Stempel (pq_stempel.go) -- fuer den Abgleich mit genesis.json. Der
+	// Seed bleibt im Knoten.
+	if r.URL.Query().Get("stempel") == "1" {
+		st := map[string]interface{}{"abstand": pqStempelAbstand}
+		if a.blockchain != nil {
+			st["erzeuger"] = a.blockchain.selfProposer
+		}
+		if sk := pqStempelSchluessel(); sk != nil {
+			st["schluessel"] = hex.EncodeToString(sk.PublicKey().Bytes())
+		}
+		antwort["stempel"] = st
+	}
 	adr := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("adresse")))
 	if adr != "" {
 		if !kanonischeAdresse(adr) {
