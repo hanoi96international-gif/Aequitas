@@ -372,6 +372,14 @@ Theta-Koordinaten × B Bit × log₂ e gehaltene Punkte je Kiesel):
 | **8.192 Bit** | **1·10⁸ … 1·10¹⁰** | **2⁶⁵˙⁵ … 2⁶³** |
 | 17.000 Bit | 3·10⁸ … 3·10¹⁰ | 2⁶⁹˙⁵ … 2⁶⁶ |
 
+**Gegenprobe der Kettenlänge aus den Formeln** ([DD] Abschnitt 2:
+Auswertung einer generischen 2-Isogenie in Dimension 4 = 16 S + 16 M,
+Verdopplung ~ das Doppelte, Bildkurve ~ 3·(2⁴−2) M; ausgewogene Strategie
+über e ≈ log₂ p Schritte, 4 Kernpunkte): trifft die aus den gemessenen
+Takten umgerechnete Zahl bei allen fünf Messgrößen auf **Faktor 1,4**. Bei
+8.192 Bit sagt die Formel 2²⁴˙³, die Takte 2²³˙⁵ – vorsichtig gelesen
+liegen die Gesamtzahlen oben also bis 2⁰˙⁸ höher.
+
 Damit ist der Weg **vollständig beziffert**: jedes Teil stammt aus
 veröffentlichter Forschung, jede Zahl aus einem Skript mit Selbsttest. Die
 Lücke ist die Hardware – ein Prüfgerät mit ~10⁸–10¹⁰ logischen Qubits und

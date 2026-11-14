@@ -69,6 +69,18 @@ def kette_mult(bits: int) -> float:
     return 2 ** (a * math.log2(bits) + c)
 
 
+def kette_formel(bits: int) -> float:
+    """Gegenrechnung aus den Formeln ([DD] Abschnitt 2, Dimension g = 4,
+    2^g = 16 Theta-Koordinaten): Auswertung einer generischen 2-Isogenie
+    16 S + 16 M; Verdopplung ~ zweimal das (64); Bildkurve ~ 3(2^g - 2) M
+    + 16 S + Kleinkram (~100); Kette mit e ~ log2 p Schritten, ausgewogene
+    Strategie: je der g = 4 Kernpunkte ~ (e/2) log2 e Verdopplungen und
+    ebenso viele Auswertungen. Eigene Schaetzung der Strategiekosten."""
+    e = bits
+    je_punkt = (e / 2) * math.log2(e)
+    return 4 * je_punkt * (64 + 32) + 100 * e
+
+
 def schritt1_mult(bits: int, ausfall_log2: int = 40) -> float:
     """Feste Kandidatenzahl K: P[keine Primzahl = 1 mod 4 unter K] <= 2^-40.
     Dichte ~ 1 / (ln n) * 2 / 2 (ungerade, = 1 mod 4) -> q = 1 / (ln n)."""
@@ -170,6 +182,11 @@ def selbsttest() -> None:
         for d in (1, 2, N - 1):
             m = sum(cmath.exp(2j * math.pi * u * d / N) for u in range(N)) / N
             assert abs(m) < 1e-9, (N, d)
+    # 4b. Zwei unabhaengige Wege zur Kettenlaenge stimmen ueberein: aus den
+    #     gemessenen Takten und aus den Formeln -- auf Faktor 2.
+    for b, t in DD_M1:
+        r = kette_formel(b) / mult_je_kette(b, t)
+        assert 1 / 2 < r < 2, (b, r)
     # 5. Traeger und Schritt 2 sind klein gegen die Kette (< 1/3 je Test).
     for bits in (4096, 8192, 17000):
         assert gesamt_b(bits)["neben_anteil"] < 1 / 3, bits
@@ -187,6 +204,10 @@ def main() -> None:
     for b, t in DD_M1:
         print(f"| {b} | {t / 1e6:,.0f} | 2^{math.log2(mult_je_kette(b, t)):.1f} |".replace(",", "."))
     print(f"Anpassung: log2 M = {a:.2f} * log2(Bit) + {c:.1f}")
+    print("Gegenrechnung aus den Formeln ([DD] Abschn. 2, ausgewogene Strategie):")
+    for b, t in DD_M1:
+        print(f"  {b} Bit: Formel 2^{math.log2(kette_formel(b)):.1f}, aus Takten 2^{math.log2(mult_je_kette(b, t)):.1f}")
+    print(f"  8192 Bit: Formel 2^{math.log2(kette_formel(8192)):.1f}, Anpassung 2^{math.log2(kette_mult(8192)):.1f}")
     print("\nPruefen einer Note (Toffoli, vor Umkehrbarkeit -- dafuer umkehrbar.py: x8 bis x100):")
     print("| Primzahl | Kette je Aktion | Schritt 1 je Aktion (in Ueberlagerung) | **A: qt-Pegasis kohaerent (2 Aktionen)** | **B: u klassisch (128 Tests)** | CSIDH-REGA (2.750 Tests) |")
     print("|---|---|---|---|---|---|")
