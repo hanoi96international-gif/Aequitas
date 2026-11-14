@@ -461,6 +461,11 @@ func main() {
 		fmt.Printf("✗ bescheinigung in genesis.json: %v\n", err)
 		os.Exit(1)
 	}
+	// PQ-Stempel (Stufe 5): eine unlesbare Konfiguration haelt an.
+	if err := keeper.PruefePQStempelGenesis(); err != nil {
+		fmt.Printf("✗ pq_stempel in genesis.json: %v\n", err)
+		os.Exit(1)
+	}
 	if err := keeper.PruefeProduzentenliste(); err != nil {
 		fmt.Printf("✗ %v\n", err)
 		os.Exit(1)
