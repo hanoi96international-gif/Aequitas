@@ -150,3 +150,21 @@ func TestQuantenNote_AnteileWerdenNachgerechnet(t *testing.T) {
 		t.Fatalf("gedeckt %.6f, erwartet 135", g)
 	}
 }
+
+// Missbrauch ueber einen Snapshot: jede Note einzeln gueltig, zusammen ueber
+// der Grenze der Anteile -- das Register wird nicht gelesen.
+func TestQuantenRegister_SummeDerAnteileBegrenzt(t *testing.T) {
+	satz := quantenSatzEintrag{Name: "isogenie-8192", Ordnung: qgSatzN.String(), Ab: qgAb + 100, Seit: qgAb}
+	note := func(k string, a int64) quantenNoteEintrag {
+		return quantenNoteEintrag{K: strings.Repeat(k, 64), Satz: "isogenie-8192", Von: qnAnna, Anteile: a}
+	}
+	gut := &quantenGeldRegister{Saetze: []quantenSatzEintrag{satz}, Noten: []quantenNoteEintrag{note("a", 5), note("b", 7)}}
+	if _, err := quantenGeldRegisterLesen(gut.kodiert()); err != nil {
+		t.Fatalf("gueltiges Register abgewiesen: %v", err)
+	}
+	boese := &quantenGeldRegister{Saetze: []quantenSatzEintrag{satz},
+		Noten: []quantenNoteEintrag{note("a", quantenAnteileHoechstens), note("b", quantenAnteileHoechstens)}}
+	if _, err := quantenGeldRegisterLesen(boese.kodiert()); err == nil {
+		t.Fatal("Register mit Summe der Anteile ueber der Grenze gelesen")
+	}
+}

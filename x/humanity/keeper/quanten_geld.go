@@ -373,6 +373,16 @@ func quantenGeldRegisterLesen(s string) (*quantenGeldRegister, error) {
 			return nil, fmt.Errorf("Quantengeld-Register: Note %d zu unbekanntem Satz", i)
 		}
 	}
+	// Auch die SUMME der Anteile: ein Register von aussen (Snapshot eines
+	// Peers) koennte jede Note einzeln gueltig und zusammen ueber der Grenze
+	// haben -- dann rechneten Kurs und Wert gesaettigt falsch.
+	var summe int64
+	for _, e := range r.Noten {
+		if summe > quantenAnteileHoechstens-e.Anteile {
+			return nil, errors.New("Quantengeld-Register: Summe der Anteile ueber der Grenze")
+		}
+		summe += e.Anteile
+	}
 	return r, nil
 }
 
