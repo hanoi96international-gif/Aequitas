@@ -66,18 +66,28 @@ class Schaltkreis:
     def p(self, t, a): self.gatter.append(("p", t % TAU, a))
     def cp(self, t, a, b): self.gatter.append(("cp", t % TAU, a, b))
 
+    def barriere(self, qs):
+        """Nichts darf ueber diese Linie hinweg zusammengefasst werden: der
+        Pruefer kennt die Herstellung der Note nicht."""
+        self.gatter.append(("barrier", None, *qs))
+
     def messen(self, qs):
-        self.mess.extend(qs)
+        """Messen an DIESER Stelle (danach darf nur noch auf anderen Qubits
+        gerechnet werden; der Simulator nutzt die aufgeschobene Messung)."""
+        for a in qs:
+            self.gatter.append(("measure", len(self.mess), a))
+            self.mess.append(a)
 
     def qasm(self) -> str:
         z = ["OPENQASM 3.0;", 'include "stdgates.inc";', f"// {self.name}",
              f"qubit[{self.q}] q;", f"bit[{len(self.mess)}] c;"]
         for g in self.gatter:
             n, t, *qs = g
+            if n == "measure":
+                z.append(f"c[{t}] = measure q[{qs[0]}];")
+                continue
             par = f"({t!r})" if t is not None else ""
             z.append(f"{n}{par} " + ", ".join(f"q[{a}]" for a in qs) + ";")
-        for i, a in enumerate(self.mess):
-            z.append(f"c[{i}] = measure q[{a}];")
         return "\n".join(z) + "\n"
 
 
@@ -108,7 +118,9 @@ def qft(s: Schaltkreis, reg: list[int], invers: bool = False) -> None:
 
 def pruef_tests(s: Schaltkreis, b: list[int], anc: list[int], us: list[int],
                 serie_reg: list[int] | None, serie: int | None) -> None:
-    """T Tests der Variante B. Vorher/nachher B durch QFT^-1/QFT (Draper)."""
+    """T Tests der Variante B. Vorher B durch QFT^-1 (Draper); das QFT
+    zurueck macht der Aufrufer NACH dem Messen der Hilfsqubits (die Note
+    ist danach wieder heil und weitergebbar)."""
     n = len(b)
     N = 2 ** n
     qft(s, b, invers=True)
@@ -122,7 +134,6 @@ def pruef_tests(s: Schaltkreis, b: list[int], anc: list[int], us: list[int],
         else:
             s.p(TAU * u * serie / N, a)
         s.h(a)
-    qft(s, b)
 
 
 def praegen_und_pruefen(n: int, us: list[int]) -> Schaltkreis:
@@ -138,8 +149,10 @@ def praegen_und_pruefen(n: int, us: list[int]) -> Schaltkreis:
     for a, b in zip(A, B):
         s.cx(a, b)
     qft(s, A)
+    s.barriere(A + B + H)
     pruef_tests(s, B, H, us, A, None)
     s.messen(H + A)
+    qft(s, B)  # Note zurueck in die Fourier-Basis: wieder weitergebbar
     s.bedeutung = {"fall": "echt", "pruefbits": T, "seriebits": n}
     return s
 
@@ -158,8 +171,10 @@ def faelschung(n: int, us: list[int], serie: int, art: str, d: int) -> Schaltkre
             s.x(B[j])
     if art != "basis":
         qft(s, B)
+    s.barriere(B + H)
     pruef_tests(s, B, H, us, None, serie)
     s.messen(H)
+    qft(s, B)
     s.bedeutung = {"fall": art, "pruefbits": T, "seriebits": 0}
     return s
 
@@ -169,7 +184,16 @@ def faelschung(n: int, us: list[int], serie: int, art: str, d: int) -> Schaltkre
 def simuliere(s: Schaltkreis) -> list[complex]:
     psi = [0j] * (1 << s.q)
     psi[0] = 1
+    gemessen: set[int] = set()
     for n, t, *qs in s.gatter:
+        if n == "barrier":
+            continue
+        if n == "measure":
+            gemessen.add(qs[0])
+            continue
+        # aufgeschobene Messung gilt nur, wenn danach nichts mehr auf einem
+        # gemessenen Qubit passiert
+        assert not gemessen.intersection(qs), f"{n} nach Messung auf {qs}"
         if n == "h":
             m = 1 << qs[0]
             r = 1 / math.sqrt(2)
@@ -195,6 +219,8 @@ def simuliere(s: Schaltkreis) -> list[complex]:
             for i in range(len(psi)):
                 if i & maske == maske:
                     psi[i] *= f
+        else:
+            raise ValueError(f"unbekanntes Gatter {n}")
     return psi
 
 
@@ -221,6 +247,33 @@ def auswerten(s: Schaltkreis, zaehl: dict[str, float]) -> dict:
         for k, v in zaehl.items():
             serien[int(k[:-T], 2)] = serien.get(int(k[:-T], 2), 0) + v / gesamt
     return {"annahme": an / gesamt, "serien": serien}
+
+
+def lesekorrektur(vert: dict[str, float], p0: list[float], p1: list[float]) -> dict[str, float]:
+    """Auslesefehler herausrechnen (je Qubit unabhaengig, "tensoriert").
+    vert: Verteilung ueber Bitketten der Laenge T (Bit 0 ganz rechts);
+    p0[i] = P(lese 0 | ist 0), p1[i] = P(lese 1 | ist 1) fuer Bit i.
+    Kehrt je Qubit die 2x2-Matrix um; negative Reste werden auf 0 gesetzt
+    und neu normiert (ueblich, konservativ)."""
+    T = len(p0)
+    v = [0.0] * (1 << T)
+    for k, w in vert.items():
+        v[int(k, 2)] += w
+    for i in range(T):
+        a, b = p0[i], p1[i]
+        det = a + b - 1
+        if det <= 0.05:
+            raise ValueError(f"Qubit {i}: Auslese zu schlecht fuer eine Korrektur")
+        m = 1 << i
+        for x in range(1 << T):
+            if x & m:
+                continue
+            r0, r1 = v[x], v[x | m]
+            # [[a, 1-b], [1-a, b]]^-1 = [[b, b-1], [a-1, a]] / det
+            v[x], v[x | m] = (b * r0 + (b - 1) * r1) / det, ((a - 1) * r0 + a * r1) / det
+    v = [max(0.0, w) for w in v]
+    z = sum(v) or 1.0
+    return {format(x, f"0{T}b"): w / z for x, w in enumerate(v) if w > 0}
 
 
 def erwartet(fall: str, n: int, T: int) -> float:
@@ -291,7 +344,33 @@ def selbsttest() -> None:
         assert abs(m - erwartet(fall, n, T)) < 0.05, (fall, m, erwartet(fall, n, T))
     # 5. Nur Hardware-Bausteine, QASM ist lesbar.
     s = satz(n, T, 1, rng)[0]
-    assert {g[0] for g in s.gatter} <= {"h", "x", "cx", "p", "cp"}
+    assert {g[0] for g in s.gatter} <= {"h", "x", "cx", "p", "cp", "barrier", "measure"}
+    # 6. Zwischen Herstellen und Pruefen steht eine Barriere (kein
+    #    Verrechnen ueber die Grenze), und gemessen wird vor dem QFT zurueck.
+    for k in satz(n, T, 1, rng):
+        namen = [g[0] for g in k.gatter]
+        assert namen.count("barrier") == 1 and "measure" in namen
+        assert namen.index("barrier") < namen.index("measure")
+    # 7. Lesekorrektur kehrt bekannte Auslesefehler um.
+    wahr = {"000": 0.6, "010": 0.25, "111": 0.15}
+    p0, p1 = [0.97, 0.95, 0.99], [0.93, 0.9, 0.96]
+    gelesen: dict[str, float] = {}
+    for k, w in wahr.items():
+        for x in range(8):
+            pr = w
+            for i in range(3):
+                b, l = int(k[2 - i]), (x >> i) & 1
+                pr *= (p0[i] if l == 0 else 1 - p0[i]) if b == 0 else (p1[i] if l == 1 else 1 - p1[i])
+            key = format(x, "03b")
+            gelesen[key] = gelesen.get(key, 0) + pr
+    korr = lesekorrektur(gelesen, p0, p1)
+    for k in set(wahr) | set(korr):
+        assert abs(korr.get(k, 0) - wahr.get(k, 0)) < 1e-9, (k, korr, wahr)
+    try:
+        lesekorrektur(gelesen, [0.5, 0.95, 0.99], [0.5, 0.9, 0.96])
+        raise AssertionError("unbrauchbare Auslese angenommen")
+    except ValueError:
+        pass
     assert s.qasm().startswith("OPENQASM 3.0;")
     print("selbsttest ok")
 

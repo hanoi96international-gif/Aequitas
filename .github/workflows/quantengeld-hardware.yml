@@ -32,6 +32,10 @@ on:
       schuesse:
         description: "Schuesse je Schaltkreis (1-4000)"
         default: "1000"
+      unterdrueckung:
+        description: "nur ibm: Fehlerunterdrueckung (dynamische Entkopplung, Pauli-Twirling)"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -86,7 +90,12 @@ jobs:
           IBM_QUANTUM_BACKEND: ${{ vars.IBM_QUANTUM_BACKEND }}
           LAEUFE: ${{ inputs.laeufe }}
           SCHUESSE: ${{ inputs.schuesse }}
-        run: python3 -I forschung/quantengeld/hardware_ibm.py --ibm --laeufe "$LAEUFE" --schuesse "$SCHUESSE" --json ergebnis.json
+          UNTERDRUECKUNG: ${{ inputs.unterdrueckung }}
+        run: |
+          set -euo pipefail
+          extra=()
+          if [ "$UNTERDRUECKUNG" = "true" ]; then extra+=(--unterdrueckung); fi
+          python3 -I forschung/quantengeld/hardware_ibm.py --ibm --laeufe "$LAEUFE" --schuesse "$SCHUESSE" "${extra[@]}" --json ergebnis.json
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: quantengeld-ibm
