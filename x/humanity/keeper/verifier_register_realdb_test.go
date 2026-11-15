@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -27,6 +28,13 @@ func TestVerifierRegister_AnnahmeNachspielenLaden_RealDB(t *testing.T) {
 	registerLeserOverride.Store(1)
 	vorherAb := verifierRegisterOverride.Load()
 	verifierRegisterOverride.Store(jetzt - 30*86400)
+	// Mechanik des Registers, nicht der PQ-Teil (der hat eigene Tests in
+	// pruefer_pq_test.go): seit dem Stichtag 15.11.2026 21:00 UTC verlangt
+	// die Kette ihn, und diese Stimmen tragen keinen -- wie in
+	// verifier_register_test.go den Stichtag fuer diesen Test aussetzen.
+	vorherPQ := prueferPQAbOverride.Load()
+	prueferPQAbOverride.Store(math.MaxInt64)
+	t.Cleanup(func() { prueferPQAbOverride.Store(vorherPQ) })
 	vorherGruender := verifierGruender
 	t.Cleanup(func() {
 		registerLeserOverride.Store(vorherLeser)
