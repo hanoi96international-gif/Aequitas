@@ -1,4 +1,15 @@
-# Quantensicherheit – Entwurf (14.11.2026)
+# Quantensicherheit – Stand 15.11.2026
+
+**Stand auf einen Blick** (live geprüft 15.11.2026, 07:30 UTC):
+
+| Stufe | Was | Stand |
+|---|---|---|
+| 0 | Biometrie-Sicherung mit hybridem age (X25519 + ML-KEM) | vorbereitet; wartet auf den PQ-Schlüssel des Betreibers |
+| 1 | Registrierung hybrid (Ed25519 + ML-DSA-65) | Schlüssel in der Genesis, beide Dienste unterschreiben (`/health`: Fingerabdrücke = Genesis); jede PQ-Unterschrift wird vor dem Stichtag streng geprüft und gezählt; **scharf nach der ersten echten Registrierung** (Wächter `bio-pq-bereit.sh`) |
+| 2 | PQ-Zusage je Wallet | **live seit 14.11.2026, 22:00 UTC** |
+| 3 | PQ-Adressen, Überweisungen mit ML-DSA-65 (App 1.20.0, Tresor) | **live seit 14.11.2026, 22:00 UTC** |
+| 5 | PQ-Stempel je 60 Blöcke (ML-DSA-65 des Erzeugers) | Erzeuger stempelt, jeder Stempel gegen die Genesis geprüft (0 falsch); **Pflicht ab Höhe 2.134.680**; Komitee-Checkpoints hybrid, schlafend bis ≥ 4 Erzeuger |
+| 6 | Quantengeld (Forschung) | Weg vollständig beziffert (`forschung/quantengeld/BAUVORGABE.md` §8); die Lücke ist Hardware |
 
 **Ziel:** „Ein Mensch – einmal 1.000 AEQ“ muss auch dann gelten, wenn es
 Quantencomputer gibt. Niemand darf mit einem Quantencomputer Menschen
