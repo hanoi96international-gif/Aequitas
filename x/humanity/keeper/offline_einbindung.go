@@ -48,10 +48,13 @@ package keeper
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+	"reflect"
 	"sort"
 	"strings"
 	"time"
@@ -143,12 +146,34 @@ func offlineWalletUnterschrift(o *OfflineAngaben, nachricht, wallet string, bloc
 
 // ------------------------------------------------------------ Register
 
-func (cs *ChainState) offlineJetzt() *offlineRegister {
-	if r := cs.offlineReg.Load(); r != nil {
-		return r
-	}
-	return &offlineRegister{}
+// offlineStand: das geltende Register und sein Teil der StateRoot, einmal
+// beim Setzen gerechnet -- die Wurzel jedes Blocks liest nur den fertigen
+// Hash, statt das Register neu zu kodieren.
+type offlineStand struct {
+	reg    *offlineRegister
+	wurzel string
 }
+
+func neuerOfflineStand(r *offlineRegister, kodiert string) *offlineStand {
+	st := &offlineStand{reg: r}
+	if kodiert != "" {
+		h := sha256.Sum256([]byte(kodiert))
+		st.wurzel = "|offline:" + hex.EncodeToString(h[:])
+	}
+	return st
+}
+
+func (cs *ChainState) offlineStandJetzt() *offlineStand {
+	if st := cs.offlineReg.Load(); st != nil {
+		return st
+	}
+	return &offlineStand{reg: &offlineRegister{}}
+}
+
+func (cs *ChainState) offlineJetzt() *offlineRegister { return cs.offlineStandJetzt().reg }
+
+// offlineWurzel: der Teil der StateRoot ("" bei leerem Register: byte-gleich).
+func (cs *ChainState) offlineWurzel() string { return cs.offlineStandJetzt().wurzel }
 
 // offlineLaden: das Register aus chain_config (Start, Snapshot, Resync).
 func (cs *ChainState) offlineLaden(ctx context.Context) error {
@@ -159,19 +184,86 @@ func (cs *ChainState) offlineLaden(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	cs.offlineReg.Store(r)
+	cs.offlineReg.Store(neuerOfflineStand(r, r.kodiert()))
 	return nil
 }
 
 // offlineSetzenLocked: in der laufenden Datenbank-Transaktion schreiben.
 func (cs *ChainState) offlineSetzenLocked(ctx context.Context, r *offlineRegister) error {
+	k := r.kodiert()
 	if cs.db != nil {
-		if err := cs.setConfigValueCtx(ctx, offlineKonfigSchluessel, r.kodiert()); err != nil {
+		if err := cs.setConfigValueCtx(ctx, offlineKonfigSchluessel, k); err != nil {
 			return fmt.Errorf("Offline-Register speichern: %w", err)
 		}
 	}
-	cs.offlineReg.Store(r)
+	cs.offlineReg.Store(neuerOfflineStand(r, k))
 	return nil
+}
+
+// offlineNurEigeneFelder: eine Offline-Transaktion traegt nur ihre eigenen
+// Felder. Kein Erzeuger legt etwas hinein, das ein anderer Teil der Kette
+// lesen koennte (Ziel, Gebuehr, Nachweise, Nullifier ...).
+func offlineNurEigeneFelder(tx *Transaction) bool {
+	k := *tx
+	k.Type, k.Wallet, k.Amount, k.DistributionAt, k.Offline, k.TxHash = "", "", 0, 0, nil, ""
+	return reflect.DeepEqual(k, Transaction{})
+}
+
+// offlineBetragImBlock: was Transaction.Amount bei dieser Art sein muss --
+// die Summe, die der Empfaenger bekommt (Anzeige, Verlauf). Der Erzeuger
+// rechnet sie, jeder Nachspielende rechnet nach.
+func offlineBetragImBlock(tx *Transaction, u offlineUrteil) float64 {
+	switch tx.Type {
+	case offlinePfandTxArt:
+		return Decimal(u.pfand).Float()
+	case offlineEinloesungTxArt:
+		return Decimal(u.ausTopf + u.vomKonto).Float()
+	}
+	return 0
+}
+
+// offlineUmzug: zieht ein Mensch um (umzug.go), gehen sein aktives Pfand,
+// seine archivierten Pfaender, die Sperre und die Schulden mit. Sonst
+// entkaeme ein Betrueger Sperre und Schuld, indem er umzieht, und haette mit
+// der neuen Adresse ein zweites Pfand. nil = nichts zu tun (byte-gleich).
+// Die neue Adresse steht nie schon im Register: umzugZielTauglichLocked
+// weist sie vorher ab; hier ist es ein Fehler, nie ein Zusammenlegen.
+func offlineUmzug(reg *offlineRegister, alt, neu string) (*offlineRegister, error) {
+	alt, neu = strings.ToLower(alt), strings.ToLower(neu)
+	if !reg.kenntMensch(alt) {
+		return nil, nil
+	}
+	if reg.kenntMensch(neu) {
+		return nil, fmt.Errorf("offline: %s steht schon im Offline-Register", kurzAdresse(neu))
+	}
+	n := reg.kopie()
+	if g, da := n.Aktiv[alt]; da {
+		delete(n.Aktiv, alt)
+		n.Aktiv[neu] = g
+	}
+	if n.Gesperrt[alt] {
+		delete(n.Gesperrt, alt)
+		n.Gesperrt[neu] = true
+	}
+	if ss, da := n.Schulden[alt]; da {
+		delete(n.Schulden, alt)
+		n.Schulden[neu] = ss
+	}
+	for g, p := range n.Pfaender {
+		if p.Mensch == alt {
+			n.pfandAendern(g).Mensch = neu
+		}
+	}
+	return n, nil
+}
+
+// offlineUmzugLocked: in umzugVollziehenLocked, in der Transaktion des Blocks.
+func (cs *ChainState) offlineUmzugLocked(ctx context.Context, alt, neu string) error {
+	n, err := offlineUmzug(cs.offlineJetzt(), alt, neu)
+	if err != nil || n == nil {
+		return err
+	}
+	return cs.offlineSetzenLocked(ctx, n)
 }
 
 // ------------------------------------------------------------ Form im Block
@@ -251,8 +343,7 @@ func (cs *ChainState) offlineUrteilLocked(ctx context.Context, tx *Transaction, 
 	if !offlineAktiv(blockZeit) {
 		return offlineBefund("offline_inaktiv", "Offline-Bargeld ist noch nicht aktiv")
 	}
-	if o == nil || !istOfflineTxArt(tx.Type) || tx.Roh != "" || tx.PQ != nil || tx.Quanten != nil ||
-		tx.Umzug != nil || tx.BioBescheinigung != nil || tx.To != "" {
+	if o == nil || !istOfflineTxArt(tx.Type) || !offlineNurEigeneFelder(tx) {
 		return offlineBefund("offline_form", "keine Offline-Transaktion in gueltiger Form")
 	}
 	if !offlineZeitGueltig(tx, blockZeit) {
@@ -297,7 +388,9 @@ func (cs *ChainState) offlineUrteilLocked(ctx context.Context, tx *Transaction, 
 			vomKonto = g
 		}
 		schuld := e.Rest - vomKonto
-		neu = offlineSchuldEintragen(neu, e.Mensch, wallet, schuld)
+		if neu, err = offlineSchuldEintragen(neu, e.Mensch, wallet, schuld); err != nil {
+			return offlineAusFehler(err)
+		}
 		return offlineUrteil{reg: neu, ausTopf: e.AusTopf, vomKonto: vomKonto, schuld: schuld}
 
 	case offlineKuendigungTxArt:
@@ -411,6 +504,9 @@ func (cs *ChainState) applyOfflineLocked(ctx context.Context, tx *Transaction, b
 		return fmt.Errorf("%s %s: %s", tx.Type, u.regel, u.text)
 	}
 	o := tx.Offline
+	if tx.Amount != offlineBetragImBlock(tx, u) {
+		return fmt.Errorf("%s: Betrag im Block %v, gerechnet %v", tx.Type, tx.Amount, offlineBetragImBlock(tx, u))
+	}
 	switch tx.Type {
 	case offlineEinloesungTxArt:
 		if o.AusTopf != u.ausTopf || o.VomKonto != u.vomKonto || o.Schuld != u.schuld {
@@ -503,11 +599,8 @@ func (cs *ChainState) offlineAnnehmen(tx Transaction) (Transaction, error) {
 		o := *tx.Offline
 		if tx.Type == offlineEinloesungTxArt {
 			o.AusTopf, o.VomKonto, o.Schuld = u.ausTopf, u.vomKonto, u.schuld
-			tx.Amount = Decimal(u.ausTopf + u.vomKonto).Float()
 		}
-		if tx.Type == offlinePfandTxArt {
-			tx.Amount = Decimal(o.Betrag).Float()
-		}
+		tx.Amount = offlineBetragImBlock(&tx, u)
 		tx.Offline = &o
 		if err := cs.offlineAnwendenLocked(ctx, &tx, u); err != nil {
 			return Transaction{}, err

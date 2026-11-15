@@ -16,10 +16,9 @@ package keeper
 //     Schuld; er kann kein zweites Konto aufmachen.
 //
 // DIESE DATEI enthaelt nur die Regeln (reine Funktionen ueber dem Register)
-// und das Register selbst. Keine Transaktionsart ist eingehaengt; der
-// Stichtag steht auf "nie" (offlineAbUnix). Die Einbindung in Annahme,
-// Nachspielen, Snapshot und Rueckroll kommt als eigene Stufe mit eigener
-// Sicherheitspruefung.
+// und das Register selbst. Die Einbindung in Annahme, Nachspielen,
+// Tagesrunde, Snapshot und Rueckroll steht in offline_einbindung.go (Stufe
+// 1b). Der Stichtag steht auf "nie" (offlineAbUnix).
 //
 // BETRAEGE in Mikro-AEQ (int64), wie Decimal.Micro().
 
@@ -39,9 +38,11 @@ import (
 )
 
 const (
-	// offlineAbUnix: Stichtag (math.MaxInt64 = schlafend). Gesetzt wird er
-	// erst nach Stufe 1b, eigener Sicherheitspruefung und Freigabe.
-	offlineAbUnix int64 = math.MaxInt64
+	// offlineAbUnix: Stichtag (9223372036854775807 = math.MaxInt64 =
+	// schlafend). Gesetzt wird er erst nach eigener Sicherheitspruefung und
+	// Freigabe durch den Betreiber, mit Vorlauf; als Zahl, weil der Waechter
+	// sie liest (.github/neustart/offline-nicht-verpasst.sh).
+	offlineAbUnix int64 = 9223372036854775807
 
 	offlinePfandMinMik   int64 = 1_000_000  // 1 AEQ
 	offlinePfandMaxMik   int64 = 50_000_000 // 50 AEQ
@@ -53,11 +54,21 @@ const (
 	// bleibt das Pfand fuer Einloesungen stehen.
 	offlineEinloeseFrist int64 = 14 * 86400
 
-	// Speichergrenzen (jede Liste im Register ist begrenzt).
-	offlineZaehlerJePfand         = 1000 // eingeloeste Zaehler je Pfand
+	// Speichergrenzen (jede Liste im Register ist begrenzt, das Register als
+	// Ganzes auch: TestOffline_RegisterGroesseBegrenzt rechnet den
+	// schlimmsten Fall nach).
+	offlineZaehlerJePfand         = 200 // eingeloeste Zahlungen je Pfand (Zaehler und Doppel zusammen)
 	offlineZaehlerMax       int64 = 1 << 31
-	offlineArchivJeMensch         = 8   // abgeschlossene Pfaender je Mensch, die spaete Einloesungen noch pruefen
-	offlineSchuldenJeMensch       = 256 // offene Forderungen gegen einen Menschen
+	offlineArchivJeMensch         = 2   // abgeschlossene Pfaender je Mensch, die spaete Einloesungen noch pruefen
+	offlineSchuldenJeMensch       = 256 // offene Forderungen gegen einen Menschen, je Glaeubiger ein Eintrag
+	// offlinePfaenderMax: Pfaender im Register insgesamt (aktive, gekuendigte,
+	// archivierte). Jede Offline-Transaktion kopiert und speichert das
+	// Register; ohne Grenze wuchsen ihre Kosten mit der Zahl der Nutzer.
+	offlinePfaenderMax = 512
+	// offlineArchivDauer: so lange nach dem Abschluss bleibt ein Pfand fuer
+	// spaete Einloesungen im Register; danach faellt es beim naechsten neuen
+	// Pfand heraus (sonst fuellten Einmal-Nutzer die Grenze fuer immer).
+	offlineArchivDauer int64 = 180 * 86400
 
 	offlineDomaeneZahlung    = "aequitas-offline-zahlung-v1"
 	offlineDomaeneZertifikat = "aequitas-offline-zertifikat-v1"
@@ -155,8 +166,35 @@ type offlinePfand struct {
 	Gekuendigt      int64  `json:"gekuendigt,omitempty"`
 	Abgeschlossen   int64  `json:"abgeschlossen,omitempty"`
 	Betrug          bool   `json:"betrug,omitempty"`
-	// Zaehler: eingeloester Zaehler -> SHA-256 der Zahlung (Hex).
+	// Zaehler: eingeloester Zaehler -> SHA-256 der Zahlung (Hex), die erste
+	// Zahlung mit diesem Zaehler.
 	Zaehler map[int64]string `json:"zaehler,omitempty"`
+	// Doppelt: SHA-256 einer weiteren Zahlung mit einem schon eingeloesten
+	// Zaehler (der Betrugsbeweis) -> der Zaehler. Auch sie wird nur einmal
+	// eingeloest: ohne diesen Vermerk liesse sich dieselbe Doppelzahlung
+	// beliebig oft einreichen, und jede zoege erneut vom Konto des Halters.
+	Doppelt map[string]int64 `json:"doppelt,omitempty"`
+}
+
+// eingeloest: wie viele Zahlungen dieses Pfands eingeloest sind.
+func (p *offlinePfand) eingeloest() int { return len(p.Zaehler) + len(p.Doppelt) }
+
+// klon: tiefe Kopie (Register sind unveraenderlich, sobald sie gelten).
+func (p *offlinePfand) klon() *offlinePfand {
+	q := *p
+	if p.Zaehler != nil {
+		q.Zaehler = make(map[int64]string, len(p.Zaehler))
+		for k, v := range p.Zaehler {
+			q.Zaehler[k] = v
+		}
+	}
+	if p.Doppelt != nil {
+		q.Doppelt = make(map[string]int64, len(p.Doppelt))
+		for k, v := range p.Doppelt {
+			q.Doppelt[k] = v
+		}
+	}
+	return &q
 }
 
 func (p *offlinePfand) verfuegbar() int64 {
@@ -180,6 +218,22 @@ type offlineRegister struct {
 	Schulden map[string][]offlineSchuld `json:"schulden,omitempty"`
 }
 
+// kenntMensch: steht m als Halter, Gesperrter oder Schuldner im Register?
+func (r *offlineRegister) kenntMensch(m string) bool {
+	if _, da := r.Aktiv[m]; da {
+		return true
+	}
+	if r.Gesperrt[m] || len(r.Schulden[m]) > 0 {
+		return true
+	}
+	for _, p := range r.Pfaender {
+		if p.Mensch == m {
+			return true
+		}
+	}
+	return false
+}
+
 func (r *offlineRegister) leer() bool {
 	return len(r.Pfaender) == 0 && len(r.Aktiv) == 0 && len(r.Gesperrt) == 0 && len(r.Schulden) == 0
 }
@@ -193,13 +247,43 @@ func (r *offlineRegister) kodiert() string {
 	return string(b)
 }
 
+// kopie: neue Maps, die Eintraege geteilt. Ein Register, das gilt, wird nie
+// veraendert; wer einen Eintrag aendert, holt ihn mit pfandAendern bzw.
+// schuldenAendern (TestOffline_RegisterBleibtUnveraendert). So kostet eine
+// Kopie Zeiger je Eintrag statt das ganze Register zu kodieren.
 func (r *offlineRegister) kopie() *offlineRegister {
-	n, err := offlineRegisterLesen(r.kodiert())
-	if err != nil {
-		// kodiert() stammt aus einem gueltigen Register; das kann nicht scheitern.
-		panic("offlineRegister.kopie: " + err.Error())
+	n := &offlineRegister{
+		Pfaender: make(map[string]*offlinePfand, len(r.Pfaender)+1),
+		Aktiv:    make(map[string]string, len(r.Aktiv)+1),
+		Gesperrt: make(map[string]bool, len(r.Gesperrt)+1),
+		Schulden: make(map[string][]offlineSchuld, len(r.Schulden)+1),
+	}
+	for k, v := range r.Pfaender {
+		n.Pfaender[k] = v
+	}
+	for k, v := range r.Aktiv {
+		n.Aktiv[k] = v
+	}
+	for k, v := range r.Gesperrt {
+		n.Gesperrt[k] = v
+	}
+	for k, v := range r.Schulden {
+		n.Schulden[k] = v
 	}
 	return n
+}
+
+// pfandAendern: der Eintrag von geraet als eigene Kopie in n (nur auf einer
+// frischen kopie() aufrufen).
+func (n *offlineRegister) pfandAendern(geraet string) *offlinePfand {
+	q := n.Pfaender[geraet].klon()
+	n.Pfaender[geraet] = q
+	return q
+}
+
+// schuldenAendern: die Forderungen gegen m als eigene Kopie.
+func (n *offlineRegister) schuldenAendern(m string) []offlineSchuld {
+	return append([]offlineSchuld(nil), n.Schulden[m]...)
 }
 
 func (r *offlineRegister) stateRootTeil() string {
@@ -229,7 +313,7 @@ func offlineRegisterLesen(s string) (*offlineRegister, error) {
 			return nil, errors.New("Offline-Register: Geraet oder Mensch nicht gueltig")
 		}
 		if p.PfandMikro < offlinePfandMinMik || p.PfandMikro > offlinePfandMaxMik || p.AusgezahltMikro < 0 ||
-			p.AusgezahltMikro > p.PfandMikro || len(p.Zaehler) > offlineZaehlerJePfand {
+			p.AusgezahltMikro > p.PfandMikro || p.eingeloest() > offlineZaehlerJePfand {
 			return nil, errors.New("Offline-Register: Betraege oder Zaehler ausserhalb der Grenzen")
 		}
 		for n, d := range p.Zaehler {
@@ -237,6 +321,14 @@ func offlineRegisterLesen(s string) (*offlineRegister, error) {
 				return nil, errors.New("Offline-Register: Zaehler nicht gueltig")
 			}
 		}
+		for d, n := range p.Doppelt {
+			if erste, da := p.Zaehler[n]; !da || erste == d || !istHash64(d) || !p.Betrug {
+				return nil, errors.New("Offline-Register: Doppelzahlung nicht stimmig")
+			}
+		}
+	}
+	if len(r.Pfaender) > offlinePfaenderMax {
+		return nil, errors.New("Offline-Register: zu viele Pfaender")
 	}
 	for m, g := range r.Aktiv {
 		p := r.Pfaender[g]
@@ -346,6 +438,15 @@ func offlinePfandAnlegen(reg *offlineRegister, mensch string, istMensch bool, ge
 	}
 	n := reg.kopie()
 	n.init()
+	// Abgelaufenes Archiv faellt heraus (an der Blockzeit: jeder Knoten gleich).
+	for g, p := range n.Pfaender {
+		if p.Abgeschlossen != 0 && blockZeit-p.Abgeschlossen > offlineArchivDauer {
+			delete(n.Pfaender, g)
+		}
+	}
+	if len(n.Pfaender) >= offlinePfaenderMax {
+		return nil, offlineNein("offline_voll", "das Offline-Register ist voll (%d Pfaender)", offlinePfaenderMax)
+	}
 	n.Pfaender[geraet] = &offlinePfand{Mensch: mensch, Geraet: geraet, PfandMikro: betragMik, Seit: blockZeit}
 	n.Aktiv[mensch] = geraet
 	return n, nil
@@ -390,21 +491,26 @@ func offlineEinloesen(reg *offlineRegister, geraet string, zaehler int64, empfae
 	d := sha256.Sum256([]byte(nachricht))
 	digest := hex.EncodeToString(d[:])
 	betrug := false
-	if alt, da := p.Zaehler[zaehler]; da {
-		if alt == digest {
-			return nil, offlineEinloesung{}, offlineNein("offline_doppelt", "diese Zahlung ist schon eingeloest")
-		}
-		// Zwei verschiedene Zahlungen mit demselben Zaehler: nur der Chip von
-		// geraet kann beide unterschrieben haben -- der Beweis.
-		betrug = true
-	} else if len(p.Zaehler) >= offlineZaehlerJePfand {
+	alt, da := p.Zaehler[zaehler]
+	if (da && alt == digest) || p.Doppelt[digest] != 0 {
+		return nil, offlineEinloesung{}, offlineNein("offline_doppelt", "diese Zahlung ist schon eingeloest")
+	}
+	if p.eingeloest() >= offlineZaehlerJePfand {
 		return nil, offlineEinloesung{}, offlineNein("offline_voll", "dieses Pfand hat die Hoechstzahl an Einloesungen erreicht")
 	}
+	// Zwei verschiedene Zahlungen mit demselben Zaehler: nur der Chip von
+	// geraet kann beide unterschrieben haben -- der Beweis.
+	betrug = da
 
 	n := reg.kopie()
 	n.init()
-	q := n.Pfaender[geraet]
-	if !betrug {
+	q := n.pfandAendern(geraet)
+	if betrug {
+		if q.Doppelt == nil {
+			q.Doppelt = map[string]int64{}
+		}
+		q.Doppelt[digest] = zaehler
+	} else {
 		if q.Zaehler == nil {
 			q.Zaehler = map[int64]string{}
 		}
@@ -430,30 +536,34 @@ func offlineEinloesen(reg *offlineRegister, geraet string, zaehler int64, empfae
 }
 
 // offlineSchuldEintragen: was weder Pfand noch Konto decken, wird eine
-// Forderung des Empfaengers gegen den Schuldner. Die Liste ist begrenzt; ist
-// sie voll, wird die neue Forderung an die letzte angehaengt (kein Betrag
-// geht verloren, nur die Zahl der Eintraege bleibt fest).
-func offlineSchuldEintragen(reg *offlineRegister, schuldner, glaeubiger string, mikro int64) *offlineRegister {
+// Forderung des Empfaengers gegen den Schuldner -- je Glaeubiger ein
+// Eintrag, nie einem anderen gutgeschrieben. Ist die Liste voll und der
+// Glaeubiger neu, gilt die Einloesung nicht (offline_voll): die Zahlung
+// bleibt unterschrieben und laesst sich spaeter einloesen, wenn Platz ist.
+// Frueher wurde sie an den letzten Eintrag gehaengt -- ein Komplize auf dem
+// letzten Platz haette so die Forderungen aller Geschaedigten eingesammelt.
+func offlineSchuldEintragen(reg *offlineRegister, schuldner, glaeubiger string, mikro int64) (*offlineRegister, error) {
 	if mikro <= 0 {
-		return reg
+		return reg, nil
 	}
 	n := reg.kopie()
 	n.init()
-	ss := n.Schulden[schuldner]
+	ss := n.schuldenAendern(schuldner)
 	for i := range ss {
 		if ss[i].Glaeubiger == glaeubiger {
+			if ss[i].Mikro > math.MaxInt64-mikro {
+				return nil, offlineNein("offline_grenze", "Forderung zu gross")
+			}
 			ss[i].Mikro += mikro
 			n.Schulden[schuldner] = ss
-			return n
+			return n, nil
 		}
 	}
 	if len(ss) >= offlineSchuldenJeMensch {
-		ss[len(ss)-1].Mikro += mikro // Grenze: zusammenfassen statt wachsen
-		n.Schulden[schuldner] = ss
-		return n
+		return nil, offlineNein("offline_voll", "zu viele offene Forderungen gegen %s; spaeter erneut einloesen", kurzAdresse(schuldner))
 	}
 	n.Schulden[schuldner] = append(ss, offlineSchuld{Glaeubiger: glaeubiger, Mikro: mikro})
-	return n
+	return n, nil
 }
 
 // offlineKuendigen: der Halter kuendigt sein Pfand. Danach nimmt die App
@@ -471,7 +581,7 @@ func offlineKuendigen(reg *offlineRegister, mensch string, blockZeit int64) (*of
 		return nil, offlineNein("offline_doppelt", "schon gekuendigt")
 	}
 	n := reg.kopie()
-	n.Pfaender[g].Gekuendigt = blockZeit
+	n.pfandAendern(g).Gekuendigt = blockZeit
 	return n, nil
 }
 
@@ -507,10 +617,10 @@ func offlineAbschliessen(reg *offlineRegister, mensch string, blockZeit int64) (
 	}
 	n := reg.kopie()
 	n.init()
-	q := n.Pfaender[g]
+	q := n.pfandAendern(g)
 	rest := q.verfuegbar()
 	var aus []offlineAuszahlung
-	ss := n.Schulden[mensch]
+	ss := n.schuldenAendern(mensch)
 	for len(ss) > 0 && rest > 0 {
 		zahl := ss[0].Mikro
 		if zahl > rest {

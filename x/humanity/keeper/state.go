@@ -250,7 +250,7 @@ type ChainState struct {
 	// offlineReg: das Register des Offline-Bargelds (offline_einbindung.go),
 	// ohne Sperre lesbar; im Rueckroll-Snapshot und (nur nicht leer) in der
 	// StateRoot.
-	offlineReg atomic.Pointer[offlineRegister]
+	offlineReg atomic.Pointer[offlineStand]
 	// kappungsKandidaten: Konten, die ueber der Grenze liegen koennten und
 	// deren Kappung Stufe 2 dem Zustaendigen ueberlaesst.
 	kappungsMu         sync.Mutex
@@ -7978,7 +7978,7 @@ func (cs *ChainState) stateRootLocked(lastUBIAt, letzterCP string) string {
 	// Quantengeld-Register (quanten_geld.go): nur nicht leer, als Hash.
 	sb.WriteString(cs.quantenGeldJetzt().stateRootTeil())
 	// Offline-Register (offline_einbindung.go): nur nicht leer, als Hash.
-	sb.WriteString(cs.offlineJetzt().stateRootTeil())
+	sb.WriteString(cs.offlineWurzel())
 	hash := sha256.Sum256([]byte(sb.String()))
 	return hex.EncodeToString(hash[:])
 }
@@ -8610,7 +8610,7 @@ type blockRollbackSnapshot struct {
 	verifierReg    *verifierRegister
 	umzugReg       *umzugRegister
 	quantenGeld    *quantenGeldRegister
-	offlineReg     *offlineRegister
+	offlineReg     *offlineStand
 	// vorbehalte: die offenen Vorbehalte (cs.vorbehalte) der Vorbehaltskonten
 	// unter den Adressen. Die Tabelle vorbehalte_offen geht mit der
 	// Transaktion zurueck, die Karte im Speicher nur hiermit.
@@ -8787,7 +8787,7 @@ func (cs *ChainState) snapshotForRollbackLocked(addrs []string, full bool, chain
 	snap.verifierReg = cs.verifierRegisterJetzt()
 	snap.umzugReg = cs.umzugRegisterJetzt()
 	snap.quantenGeld = cs.quantenGeldJetzt()
-	snap.offlineReg = cs.offlineJetzt()
+	snap.offlineReg = cs.offlineStandJetzt()
 	snap.vorbehalte = cs.vorbehaltSichern(addrs, full)
 	return snap
 }

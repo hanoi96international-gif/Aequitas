@@ -687,6 +687,12 @@ func (cs *ChainState) umzugZielTauglichLocked(ctx context.Context, w2 string) (s
 	if hat {
 		return "neue Wallet hat schon einen Nullifier", nil
 	}
+	// Offline-Bargeld: Pfand, Sperre und Schulden ziehen mit um
+	// (offlineUmzug); die neue Wallet darf dort nichts Eigenes haben. Vor
+	// dem Stichtag ist das Register leer -- ohne Wirkung.
+	if cs.offlineJetzt().kenntMensch(w2) {
+		return "neue Wallet steht im Offline-Register", nil
+	}
 	return "", nil
 }
 
@@ -750,6 +756,11 @@ func (cs *ChainState) umzugVollziehenLocked(ctx context.Context, n, alt, neu str
 	}
 	if err := cs.saveAccountToDBCtx(ctx, a2); err != nil {
 		return fmt.Errorf("umzug: neue Wallet speichern: %w", err)
+	}
+	// Offline-Bargeld (offline_einbindung.go): Pfand, Sperre und Schulden
+	// gehen mit. Leeres Register: nichts geschrieben, byte-gleich.
+	if err := cs.offlineUmzugLocked(ctx, alt, neu); err != nil {
+		return fmt.Errorf("umzug: %w", err)
 	}
 	reg := cs.umzugRegisterJetzt().ohneOffen(n).ohneCode(alt).mitErledigt(umzugErledigt{Nullifier: n, Alt: alt, Neu: neu, Am: t})
 	return cs.umzugRegisterSetzenLocked(ctx, reg)

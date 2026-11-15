@@ -1,6 +1,7 @@
 # Offline-Bargeld – Entwurf
 
-Stand 15.11.2026. Status: **Entwurf**, noch kein Code in der Kette. Jede Stufe unten kommt
+Stand 15.11.2026. Status: **Stufe 1 (Kette) im Code, schlafend** – `offlineAbUnix` steht auf
+„nie“, keine Offline-Transaktion gilt, der Endpunkt antwortet 409. Jede Stufe unten kommt
 als eigener PR mit Missbrauchstests und eigener Sicherheitsprüfung des Diffs
 (AGENTS.md: Konsens, Kontostände, Unterschriften).
 
@@ -37,9 +38,14 @@ Der Mensch sperrt einen Betrag `A` auf der Kette im **Offline-Topf** (Adresse oh
 Schlüssel, wie der Quantengeld-Topf) und bindet ihn an den öffentlichen Schlüssel `D`
 seines Geräts.
 
-- signierte Überweisung (EVM oder PQ) an den Offline-Topf, dazu `D`;
-- nur ein registrierter Mensch; **höchstens ein aktives Pfand je Mensch**;
-- `1 AEQ ≤ A ≤ 50 AEQ` (`offlinePfandMax`).
+- eigene Art `offline_pfand`: die Wallet unterschreibt (EIP-191 oder ML-DSA-65 einer
+  PQ-Adresse) den Satz `aequitas-offline-pfand-v1|chain:…|M|D|A|Zeit`. Keine gewöhnliche
+  Überweisung an den Topf: dann stünde `D` außerhalb der Unterschrift, und ein Knoten
+  könnte einen eigenen Geräteschlüssel einsetzen. Eine gewöhnliche Überweisung an den Topf
+  ist ab dem Stichtag in keinem Block gültig; die Annahme weist sie schon heute ab.
+- nur ein registrierter Mensch; **höchstens ein aktives Pfand je Mensch**; ein
+  Geräteschlüssel nur für ein Pfand;
+- `1 AEQ ≤ A ≤ 50 AEQ` (`offlinePfandMax`); die Zeit höchstens 1 Tag alt, 5 Minuten voraus.
 
 ### 2. Pfand-Zertifikat (online, vor dem Losgehen)
 
@@ -68,15 +74,19 @@ Dann bucht die Kette `b` vom Offline-Topf an `R`.
 
 ### 5. Kündigen (online)
 
-Der Mensch kündigt sein Pfand. Der Rest kommt erst nach einer **Frist** zurück:
-`72 h` (längstes Zertifikat) **+ 14 Tage** (Einlösefrist). So kann jede Zahlung, die ein
-gültiges Zertifikat trug, noch eingelöst werden.
+Der Mensch kündigt sein Pfand (`offline_kuendigung`, von der Wallet unterschrieben). Der
+Rest kommt erst nach einer **Frist** zurück: `72 h` (längstes Zertifikat) **+ 14 Tage**
+(Einlösefrist). So kann jede Zahlung, die ein gültiges Zertifikat trug, noch eingelöst
+werden. Den Abschluss (`offline_abschluss`) bucht die Tagesrunde: zuerst die offenen
+Forderungen gegen den Halter, dann der Rest an ihn. Jeder Knoten rechnet die Auszahlungen
+nach; ein Block mit anderen ist falsch.
 
 ## Betrug: beweisen und haften
 
 **Beweis.** Zwei verschiedene Zahlungen mit demselben `(D, n)` – oder Zahlungen, deren
 Summe `A` übersteigt – sind ein **unwiderlegbarer Beweis**: nur der Chip von `D` kann sie
-unterschrieben haben. Die Kette erkennt das selbst beim Einlösen.
+unterschrieben haben. Die Kette erkennt das selbst beim Einlösen. Auch die zweite Zahlung
+wird genau einmal eingelöst (vermerkt als „Doppel“ des Zählers).
 
 **Folgen, automatisch, auf jedem Knoten gleich:**
 
@@ -84,7 +94,12 @@ unterschrieben haben. Die Kette erkennt das selbst beim Einlösen.
    nie wieder offline bezahlen (das Konto selbst bleibt).
 2. Jeder Geschädigte bekommt seinen Betrag: zuerst aus dem Pfand, dann vom Konto von `M`.
 3. Was dann noch fehlt, ist eine **Schuld von `M`**, die aus seinen künftigen Eingängen
-   (auch dem Grundeinkommen) beglichen wird, bevor er selbst darüber verfügt.
+   (auch dem Grundeinkommen) beglichen wird, bevor er selbst darüber verfügt (Stufe 4;
+   bis dahin begleicht sie der Rest eines Pfands beim Abschluss). Je Gläubiger ein
+   Eintrag, nie einem anderen gutgeschrieben; ist die Liste voll, wartet ein neuer
+   Gläubiger mit dem Einlösen.
+4. Zieht `M` um (neue Wallet, Stufe 3.6 des Umzugs), gehen Pfand, Sperre und Schulden mit.
+   Eine Wallet, die schon im Offline-Register steht, ist kein Umzugsziel.
 
 **Warum es sich nicht lohnt:** Ein Betrüger gewinnt höchstens, was er doppelt ausgibt –
 und schuldet genau das. Er kann kein zweites Konto aufmachen. Er verliert das
@@ -98,7 +113,11 @@ Offline-Bezahlen für immer.
 | Zahlung | ≤ 20 AEQ | |
 | Zertifikat | ≤ 72 h gültig | Kündigung kann nicht überholen |
 | Einlösefrist nach Kündigung | 14 Tage | |
-| eingelöste Zähler je Pfand | ≤ 10.000 | Speicher begrenzt |
+| eingelöste Zahlungen je Pfand | ≤ 200 (Zähler und Doppel zusammen) | Speicher begrenzt |
+| Pfänder im Register | ≤ 512 (aktive, gekündigte, archivierte) | jede Offline-Transaktion kopiert und speichert das Register; schlimmster Fall ≈ 8 MiB |
+| Archiv | 2 je Mensch, 180 Tage nach dem Abschluss | späte Einlösungen; danach frei für neue Pfänder |
+| Forderungen | ≤ 256 je Schuldner, je Gläubiger eine | |
+| Abschlüsse je Tagesrunde | ≤ 200 | der Rest am nächsten Tag |
 | Weitergabe ohne Netz | **eine Hand** (Version 1) | der Empfänger löst ein, bevor er weitergibt |
 
 ## Datenschutz
@@ -123,6 +142,19 @@ Nicht eingelöste Zahlungen sieht niemand. Kein Server sammelt Offline-Zahlungen
 1. **Kette:** Offline-Topf, `offline_pfand`, `offline_einloesung`, `offline_kuendigung`,
    `offline_abschluss`, Betrugserkennung, Schuld; Register in StateRoot, Snapshot,
    Rückroll; schlafend hinter einem Stichtag. Prüfvektoren für die Sätze.
+   - **1a** (#532): Regeln und Register (`offline_bargeld.go`). ✓
+   - **1b**: Einbindung (`offline_einbindung.go`) – Annahme (`/api/offline/pfand`,
+     `/einloesung`, `/kuendigung`), Nachspielen (jeder Knoten rechnet Topf/Konto/Schuld
+     und Betrag nach), Blockzeit-Fenster, Tagesrunde (Abschluss), StateRoot (nur mit
+     Einträgen, sonst byte-gleich), Snapshot, Resync, Rückroll; beide Töpfe sind
+     Protokoll-Töpfe (`istSystemAdresse`). Befunde der eigenen Sicherheitsprüfung, mit
+     Missbrauchstest behoben: Doppelzahlung ließ sich mehrfach einlösen; Forderungen
+     landeten bei voller Liste beim letzten Gläubiger; Register ohne Gesamtgrenze;
+     Umzug ließ Sperre und Schuld zurück; Offline-Transaktionen trugen fremde Felder. ✓
+   - **Vor dem Stichtag offen:** Braucht der Betrieb mehr als 512 Pfänder gleichzeitig,
+     das Register je Eintrag speichern (eigene Tabelle, Wurzel inkrementell) statt als
+     ein Wert. Ein Erzeuger kann einen fälligen Abschluss aufschieben (nicht stehlen: das
+     Geld bleibt im Topf, die nächste ehrliche Runde bucht ihn).
 2. **Knoten-API:** Zertifikat, Stand, Einreichen.
 3. **App:** Geräteschlüssel (Android Keystore, eigenes natives Modul mit Signieren –
    die vorhandene Bibliothek kann nur attestieren), Pfand anlegen, Zertifikat,

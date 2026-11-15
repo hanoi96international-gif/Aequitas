@@ -335,8 +335,8 @@ func TestOffline_AbschlussBegleichtSchuldenZuerst(t *testing.T) {
 	offAktiv(t)
 	g, m := neuesOffGeraet(t), offAdr(1)
 	r := offMitPfand(t, g, m, 10_000_000)
-	r = offlineSchuldEintragen(r, m, offAdr(5), 4_000_000)
-	r = offlineSchuldEintragen(r, m, offAdr(6), 9_000_000)
+	r, _ = offlineSchuldEintragen(r, m, offAdr(5), 4_000_000)
+	r, _ = offlineSchuldEintragen(r, m, offAdr(6), 9_000_000)
 	r, _ = offlineKuendigen(r, m, offT0)
 	r, aus, err := offlineAbschliessen(r, m, offlineAbschlussAb(offT0))
 	if err != nil {
@@ -350,22 +350,34 @@ func TestOffline_AbschlussBegleichtSchuldenZuerst(t *testing.T) {
 	}
 }
 
+// Die Liste der Forderungen ist begrenzt, und keine Forderung landet je bei
+// einem anderen Glaeubiger: ist die Liste voll, gilt die Einloesung eines
+// neuen Glaeubigers nicht (spaeter erneut), ein bekannter waechst weiter.
 func TestOffline_SchuldenBegrenzt(t *testing.T) {
 	r := &offlineRegister{}
 	m := offAdr(1)
-	var summe int64
-	for i := 0; i < offlineSchuldenJeMensch+50; i++ {
-		r = offlineSchuldEintragen(r, m, offAdr(1000+i), 7)
-		summe += 7
+	for i := 0; i < offlineSchuldenJeMensch; i++ {
+		var err error
+		if r, err = offlineSchuldEintragen(r, m, offAdr(1000+i), 7); err != nil {
+			t.Fatal(err)
+		}
 	}
-	r = offlineSchuldEintragen(r, m, offAdr(1000), 3) // gleicher Glaeubiger: zusammen
-	summe += 3
-	var ist int64
+	vorher := r.kodiert()
+	if _, err := offlineSchuldEintragen(r, m, offAdr(5000), 9); offRegel(err) != "offline_voll" {
+		t.Fatalf("neuer Glaeubiger bei voller Liste: %v", err)
+	}
+	if r.kodiert() != vorher {
+		t.Fatal("abgewiesene Forderung hat das Register veraendert")
+	}
+	letzter := offAdr(1000 + offlineSchuldenJeMensch - 1)
 	for _, s := range r.Schulden[m] {
-		ist += s.Mikro
+		if s.Glaeubiger == letzter && s.Mikro != 7 {
+			t.Fatalf("letzter Glaeubiger bekam fremde Forderung: %+v", s)
+		}
 	}
-	if len(r.Schulden[m]) != offlineSchuldenJeMensch || ist != summe {
-		t.Fatalf("%d Eintraege, Summe %d statt %d", len(r.Schulden[m]), ist, summe)
+	r, err := offlineSchuldEintragen(r, m, offAdr(1000), 3) // gleicher Glaeubiger: zusammen
+	if err != nil || len(r.Schulden[m]) != offlineSchuldenJeMensch || r.Schulden[m][0] != (offlineSchuld{offAdr(1000), 10}) {
+		t.Fatalf("bekannter Glaeubiger: %v %+v", err, r.Schulden[m][0])
 	}
 }
 
