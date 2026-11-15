@@ -232,7 +232,7 @@ func (cs *ChainState) ExportSnapshot(signingKey *ecdsa.PrivateKey, height int64,
 	// above — this read must use the plain DB-only variant, never
 	// cs.dbExec()/cs.activeTx.
 	snap.ChainConfig = map[string]string{}
-	for _, key := range []string{"last_ubi_at", "last_validators_at", "last_lp_at", "last_treasury_at", letzterCheckpointSchluessel, satzKonfigSchluessel, verifierKonfigSchluessel, umzugKonfigSchluessel} {
+	for _, key := range []string{"last_ubi_at", "last_validators_at", "last_lp_at", "last_treasury_at", letzterCheckpointSchluessel, satzKonfigSchluessel, verifierKonfigSchluessel, umzugKonfigSchluessel, quantenGeldKonfigSchluessel} {
 		if val := cs.getConfigValueDB(key); val != "" {
 			snap.ChainConfig[key] = val
 		}
@@ -705,6 +705,9 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) (
 			if err := cs.umzugRegisterLaden(ctx); err != nil {
 				return fmt.Errorf("snapshot config %s: %w", umzugKonfigSchluessel, err)
 			}
+			if err := cs.quantenGeldLaden(ctx); err != nil {
+				return fmt.Errorf("snapshot config %s: %w", quantenGeldKonfigSchluessel, err)
+			}
 			// FIX (double-apply): on a genuine fresh bootstrap, record the height
 			// this snapshot was taken at. cs.accounts above already reflects the
 			// cumulative effect of every block up to and including this height —
@@ -1167,6 +1170,12 @@ func (cs *ChainState) wendeResyncSnapshotAn(g *resyncSnapshot) (err error) {
 			return fail(fmt.Errorf("resync: could not clear %s: %w", umzugKonfigSchluessel, err))
 		}
 	}
+	// Ebenso das Quantengeld-Register (quanten_geld.go).
+	if _, da := snap.ChainConfig[quantenGeldKonfigSchluessel]; !da {
+		if err := cs.setConfigValueCtx(ctx, quantenGeldKonfigSchluessel, ""); err != nil {
+			return fail(fmt.Errorf("resync: could not clear %s: %w", quantenGeldKonfigSchluessel, err))
+		}
+	}
 	for key, val := range snap.ChainConfig {
 		if err := pruefeSnapshotKonfig(key, val); err != nil {
 			return fail(fmt.Errorf("resync: config %q: %w", key, err))
@@ -1186,6 +1195,9 @@ func (cs *ChainState) wendeResyncSnapshotAn(g *resyncSnapshot) (err error) {
 	}
 	if err := cs.umzugRegisterLaden(ctx); err != nil {
 		return fail(fmt.Errorf("resync: %s: %w", umzugKonfigSchluessel, err))
+	}
+	if err := cs.quantenGeldLaden(ctx); err != nil {
+		return fail(fmt.Errorf("resync: %s: %w", quantenGeldKonfigSchluessel, err))
 	}
 	if snap.Height > 0 {
 		if err := cs.setConfigValueCtx(ctx, "snapshot_import_height", fmt.Sprintf("%d", snap.Height)); err != nil {

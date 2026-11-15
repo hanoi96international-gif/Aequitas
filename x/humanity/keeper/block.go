@@ -70,6 +70,10 @@ type Transaction struct {
 	// Umzug: Code, Antrag oder Widerruf eines Umzugs (umzug.go). omitempty:
 	// aeltere Bloecke behalten ihren Hash.
 	Umzug *UmzugAngaben `json:"umzug,omitempty"`
+	// Quanten: Anmeldung einer Quanten-Note (an einer Ueberweisung an den
+	// Quantengeld-Topf) oder Freischaltung eines Parametersatzes
+	// (quanten_geld.go). omitempty: aeltere Bloecke behalten ihren Hash.
+	Quanten *QuantenAngaben `json:"quanten,omitempty"`
 	// FromDemurrageLost/ToDemurrageLost carry the exact AEQ amount the
 	// primary node decayed off Wallet/To via settleDemurrageLocked while
 	// processing this TX. Secondary nodes replay these exact numbers
@@ -1422,6 +1426,8 @@ func bekannteTxArt(typ string, blockZeit int64) bool {
 		return umzugAktiv(blockZeit)
 	case pqZusageTxArt: // pq_zusage.go, schlafend bis pqZusageAb
 		return pqZusageAktiv(blockZeit)
+	case quantenFreischaltungTxArt: // quanten_geld.go, schlafend bis quantenGeldAb
+		return quantenGeldAktiv(blockZeit)
 	case "vorbehalt", "vorbehalt_ausfuehrung", "kappung":
 		// Stufe 2 (vorbehalt.go, kappung_verteilt.go). Fehlten hier bis
 		// 05.10.2026 ganz: ab der Aktivierung haette jeder Knoten jeden
@@ -7717,6 +7723,11 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			hardFailure = true
 			break
 		}
+		if err := quantenFeldErlaubt(&block.Transactions[txIdx], block.Timestamp); err != nil {
+			fmt.Printf("[REPLAY] ✗ %v (block #%d) — rolling back whole block\n", err, block.Height)
+			hardFailure = true
+			break
+		}
 		tx := block.Transactions[txIdx]
 		if hardFailure {
 			break // stop applying further TXs once we know this block is being rolled back
@@ -7997,6 +8008,19 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 				fmt.Printf("[REPLAY] ⚠ Skipping transfer in block #%d: missing fields\n", block.Height)
 				continue
 			}
+			// Anmeldung einer Quanten-Note (quanten_geld.go): VOR der
+			// Ueberweisung pruefen -- der Erzeuger nimmt eine ungueltige nie
+			// an, also ist der Block falsch.
+			var quantenNote *quantenNoteEintrag
+			if tx.Quanten != nil {
+				e, qerr := dag.state.quantenAnmeldungVorUeberweisungLocked(&tx, block.Timestamp)
+				if qerr != nil {
+					fmt.Printf("[REPLAY] ✗ %v (block #%d) — rolling back whole block\n", qerr, block.Height)
+					hardFailure = true
+					continue
+				}
+				quantenNote = &e
+			}
 			// context.Background() is correct — see registerHumanLocked's
 			// comment: dag.state.activeTx was already set directly above
 			// this loop, and dbExecCtx falls back to it.
@@ -8014,7 +8038,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 				// Die Abweichung selbst meldet der StateRoot-Vergleich am Ende
 				// dieses Replays -- der meldet UND laesst die Kette weiterlaufen.
 				// Siehe zustand_ablehnung.go.
-				if istZustandsAblehnung(err) {
+				if istZustandsAblehnung(err) && quantenNote == nil {
 					fmt.Printf("[REPLAY] ⚠ Transfer %s->%s %.6f uebersprungen: %v (block #%d) — Block laeuft weiter\n", wallet, to, tx.Amount, err, block.Height)
 					merkeUebersprungeneUeberweisung()
 					uebersprungenInDiesemBlock++
@@ -8023,6 +8047,13 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 				fmt.Printf("[REPLAY] ✗ Transfer %s->%s %.6f: %v (block #%d) — rolling back whole block\n", wallet, to, tx.Amount, err, block.Height)
 				hardFailure = true
 				continue
+			}
+			if quantenNote != nil {
+				if err := dag.state.quantenNoteEintragenLocked(withTx(context.Background(), dbTx), *quantenNote); err != nil {
+					fmt.Printf("[REPLAY] ✗ quanten_praegen %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
+					hardFailure = true
+					continue
+				}
 			}
 			// Aggregated into one line per block after the loop — see
 			// transfersApplied's declaration for the incident this closes.
@@ -8191,6 +8222,15 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			// Zulassung nicht lesbar: der ganze Block zurueck.
 			if err := dag.state.applyStaffelEinspruchLocked(context.Background(), &tx, block.Timestamp); err != nil {
 				fmt.Printf("[REPLAY] ✗ staffel_einspruch %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
+				hardFailure = true
+				continue
+			}
+		case quantenFreischaltungTxArt:
+			// quanten_geld.go: jeder Knoten prueft Satz, Vorlauf und die
+			// Stimmen von zwei Dritteln der Pruefer selbst. Ungueltig oder
+			// Zulassung nicht lesbar: der ganze Block zurueck.
+			if err := dag.state.applyQuantenFreischaltungLocked(withTx(context.Background(), dbTx), &tx, block.Timestamp); err != nil {
+				fmt.Printf("[REPLAY] ✗ %s %s: %v (block #%d) — rolling back whole block\n", tx.Type, wallet, err, block.Height)
 				hardFailure = true
 				continue
 			}

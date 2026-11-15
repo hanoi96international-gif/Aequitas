@@ -235,6 +235,10 @@ type ChainState struct {
 	verifierReg atomic.Pointer[verifierRegister]
 	// umzugReg: das Umzugs-Register (umzug.go), ohne Sperre lesbar.
 	umzugReg atomic.Pointer[umzugRegister]
+	// quantenGeld: Parametersaetze und angemeldete Quanten-Noten
+	// (quanten_geld.go), ohne Sperre lesbar; im Rueckroll-Snapshot und
+	// (nur nicht leer) in der StateRoot.
+	quantenGeld atomic.Pointer[quantenGeldRegister]
 	// kappungsKandidaten: Konten, die ueber der Grenze liegen koennten und
 	// deren Kappung Stufe 2 dem Zustaendigen ueberlaesst.
 	kappungsMu         sync.Mutex
@@ -2729,6 +2733,10 @@ func (cs *ChainState) loadFromDB() {
 	if err := cs.umzugRegisterLaden(context.Background()); err != nil {
 		panic(fmt.Sprintf("Umzugs-Register (%s) nicht lesbar: %v", umzugKonfigSchluessel, err))
 	}
+	// quanten_geld.go: ebenso.
+	if err := cs.quantenGeldLaden(context.Background()); err != nil {
+		panic(fmt.Sprintf("Quantengeld-Register (%s) nicht lesbar: %v", quantenGeldKonfigSchluessel, err))
+	}
 }
 
 // loadOrInitPool reads the single liquidity_pool row, creating it (at
@@ -4547,7 +4555,11 @@ func isTokenomicsPoolAddress(addr string) bool {
 	case validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr:
 		return true
 	}
-	return false
+	// Quantengeld-Topf (quanten_geld.go): Deckung der angemeldeten Noten --
+	// keine Demurrage, keine Vermoegensgrenze, kein Absenden mit Schluessel.
+	// Die Adresse ist neu (SHA-256 ohne Urbild), bis zum Stichtag ohne
+	// Guthaben: fuer die bisherige Kette aendert sich nichts.
+	return addr == quantenTopfAddr
 }
 
 // bootstrapMultiplierLocked returns the effective wealth cap multiplier.
@@ -7868,6 +7880,8 @@ func (cs *ChainState) stateRootLocked(lastUBIAt, letzterCP string) string {
 		sb.WriteString("|umzug:")
 		sb.WriteString(reg.hash)
 	}
+	// Quantengeld-Register (quanten_geld.go): nur nicht leer, als Hash.
+	sb.WriteString(cs.quantenGeldJetzt().stateRootTeil())
 	hash := sha256.Sum256([]byte(sb.String()))
 	return hex.EncodeToString(hash[:])
 }
@@ -8498,6 +8512,7 @@ type blockRollbackSnapshot struct {
 	satzPlan       satzPlan
 	verifierReg    *verifierRegister
 	umzugReg       *umzugRegister
+	quantenGeld    *quantenGeldRegister
 	// vorbehalte: die offenen Vorbehalte (cs.vorbehalte) der Vorbehaltskonten
 	// unter den Adressen. Die Tabelle vorbehalte_offen geht mit der
 	// Transaktion zurueck, die Karte im Speicher nur hiermit.
@@ -8673,6 +8688,7 @@ func (cs *ChainState) snapshotForRollbackLocked(addrs []string, full bool, chain
 	snap.satzPlan = cs.satzPlan
 	snap.verifierReg = cs.verifierRegisterJetzt()
 	snap.umzugReg = cs.umzugRegisterJetzt()
+	snap.quantenGeld = cs.quantenGeldJetzt()
 	snap.vorbehalte = cs.vorbehaltSichern(addrs, full)
 	return snap
 }
@@ -8795,6 +8811,9 @@ func (cs *ChainState) restoreFromRollbackLockedCtx(ctx context.Context, snap *bl
 	}
 	if snap.umzugReg != nil {
 		cs.umzugReg.Store(snap.umzugReg)
+	}
+	if snap.quantenGeld != nil {
+		cs.quantenGeld.Store(snap.quantenGeld)
 	}
 	cs.vorbehaltZurueck(snap.vorbehalte)
 	var toDelete []string

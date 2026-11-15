@@ -1244,6 +1244,11 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	// der Stand einer PQ-Adresse von jedem Knoten.
 	mux.HandleFunc("/api/pq/ueberweisung", a.zumLeiter(a.handlePQUeberweisung))
 	mux.HandleFunc("/api/pq/stand", a.handlePQStand)
+	// Dezentrales Quantengeld (quanten_geld.go): Stand fuer jeden Empfaenger,
+	// Anmelden einer Note, Freischaltung eines Satzes durch die Pruefer.
+	mux.HandleFunc("/api/quanten/stand", a.handleQuantenStand)
+	mux.HandleFunc("/api/quanten/praegen", a.zumLeiter(a.handleQuantenPraegen))
+	mux.HandleFunc("/api/quanten/freischaltung", a.zumLeiter(a.handleQuantenFreischaltung))
 	// Satz des Gleichgewichts ankuendigen (satz_plan.go): zwei
 	// Betreiber-Menschen, nur beim Leiter.
 	mux.HandleFunc("/api/wirtschaft/satz", a.satzGrenze(a.zumLeiter(a.handleSatzAnkuendigung)))
