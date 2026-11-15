@@ -452,9 +452,27 @@ echter Chip 0,110–0,140). **Erster Lauf auf echter Hardware (IBM
 `ibm_marrakesh`, Heron r2, Job dbsn74gk09pc73b0ct60):** der Chip
 unterscheidet echte Noten von Fälschungen (+0,52), rauscht aber deutlich
 stärker als sein Rauschmodell (echte Note 0,74 statt 0,95) –
-Übersprechen und Kalibrier-Drift, die das Modell nicht kennt. Nächster
-Hebel: Fehlerunterdrückung (dynamische Entkopplung, Pauli-Twirling) und
-kürzere Schaltkreise. Die Maschinen
+Übersprechen und Kalibrier-Drift, die das Modell nicht kennt. 
+
+**Zweite Runde auf `ibm_marrakesh` (15.11.2026, ehrlicher):** jetzt mit
+Barriere zwischen Herstellen und Prüfen (Qiskit darf Gatter der Note nicht
+mit denen des Prüfers verrechnen), Messen vor dem QFT zurück und
+Lesekorrektur je Prüfqubit; einmal ohne, einmal mit Fehlerunterdrückung
+(8 Schaltkreise × 1.000 je Fall):
+
+| echter Chip | geprägt + geprüft | echte Note | fremde Note | nachgebaut | Trennung roh / lesekorr. | Seriennummern |
+|---|---|---|---|---|---|---|
+| ohne Unterdrückung | 0,600 | **0,743** | **0,075** | 0,234 | **+0,51 / +0,53** | 0,108–0,146 |
+| mit DD XY4 + Twirling | 0,512 | 0,676 | 0,195 | 0,239 | +0,44 / +0,47 | **0,120–0,130** |
+
+Die Lesekorrektur ändert wenig (+0,02): der Verlust kommt aus Gattern und
+Dekohärenz, nicht aus der Auslese. **Fehlerunterdrückung schadet hier:**
+Twirling macht kohärente Fehler zufällig – in so kurzen Schaltkreisen
+heben sich manche kohärenten Fehler auf, nach dem Twirling nicht mehr;
+der Zustand verrauscht Richtung Zufall (fremde Note besteht öfter). Einzig
+die Seriennummern werden gleichmäßiger. Erster Befund (je ein Lauf), kein
+Beweis. **Nächster Hebel: kürzere Schaltkreise** (QFT ohne SWAP durch
+Umbenennen der Bits, weniger 2-Qubit-Gatter, Qubit-Wahl nach Kalibrierung). Die Maschinen
 unterscheiden echte Noten deutlich von Fälschungen. **Ehrlich:** im Zyklus
 Z₈ ist das gesteuerte S_u billig (die Gruppe ist bekannt); in der echten
 Isogenie-Gruppe ist genau dieser Baustein die 4D-Kette mit ~2⁶³ Toffoli.
