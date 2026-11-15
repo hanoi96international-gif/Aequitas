@@ -390,6 +390,34 @@ veröffentlichter Forschung, jede Zahl aus einem Skript mit Selbsttest. Die
 Lücke ist die Hardware – ein Prüfgerät mit ~10⁸–10¹⁰ logischen Qubits und
 ~2⁶³ Toffoli je Prüfung (zum Vergleich: RSA-2048 brechen ≈ 2³¹˙⁵).
 
+**Das ganze Geld einmal durchgespielt (`labor.py`, echte Gruppe h = 1.491,
+6 Tests je Prüfung).** Prägen darf jeder (Gen: Seriennummer gleichverteilt).
+Wert bekommt eine Note erst durch Anmelden auf der Kette: der Anmeldende
+sperrt AEQ, die Kette trägt K = SHA-256(„aequitas-quanten-serie-v1|“ ‖
+Seriennummer) ein – jede Seriennummer genau einmal, nur in kürzester
+big-endian-Form, Einweg, kein Einlösen. Der Empfänger prüft selbst: K
+angemeldet und h < Gruppenordnung, dann Variante B. Ergebnis:
+
+| Schritt / Angriff | Ergebnis |
+|---|---|
+| echte, angemeldete Note | besteht mit 1,000 |
+| nicht angemeldete Note | 0 (Kette kennt sie nicht) |
+| Seriennummer doppelt anmelden | abgewiesen |
+| dieselbe Seriennummer mit führender Null | abgewiesen (nur kürzeste Form gilt) |
+| Anmelden ohne Deckung | abgewiesen |
+| fremde Note unter echter Seriennummer | 0,025 (≈ 2⁻⁶) |
+| glatte Fälschung (Glocke) | 0,077 (Formel aus `variante_b.py`) |
+| messen und nachbauen | 0,016 (≈ 2⁻⁶) |
+| zweite Note mit derselben Seriennummer prägen | 1.364 Versuche bei h = 1.491; bei 8.192 Bit ≈ 2⁴⁰⁹⁶ |
+| Erhaltung (Konten + angemeldet) | gilt |
+
+Die Kettenseite steht im Knoten: `quantenPraegen` und `quantenSerieWert` in
+`x/humanity/keeper/quanten_note.go`, Byte für Byte gleich dem Labor
+(Prüfvektor `testdata/quanten_praegen_vektor.json`), schlafend hinter
+demselben Schalter wie die Stufe-6-Brücke (keine Transaktionsart, kein
+Stichtag). Was zum Einschalten fehlt, ist allein die Note selbst: ein
+Quantenspeicher, der den Zustand hält, und ein Prüfgerät für Variante B.
+
 **Nächste Schritte:** (a) ~~Volltexte~~ gelesen (qt-Pegasis, PEGASIS,
 Dartois–Duparc; vom Betreiber hochgeladen). (b) Die 4D-Kette als
 umkehrbaren Schaltkreis zählen (Theta-Koordinaten, Kosten je Schritt aus

@@ -54,6 +54,12 @@ const (
 
 	// quantenRegisterMax: wie bruecke_kette.py.
 	quantenRegisterMax = 1_000_000
+
+	// Quantum Lightning (Zhandry 2025, BAUVORGABE §8), Einweg-Bruecke --
+	// wie forschung/quantengeld/labor.py, Pruefvektor
+	// testdata/quanten_praegen_vektor.json.
+	quantenDomaeneSerie  = "aequitas-quanten-serie-v1"
+	quantenSerieMaxBytes = 1024
 )
 
 func quantenNoteAktiv(t int64) bool { return t >= quantenNoteAbUnix }
@@ -102,6 +108,18 @@ type quantenGesperrt struct {
 type quantenRegister struct {
 	Gesperrt   []quantenGesperrt `json:"gesperrt,omitempty"`
 	Verbraucht []string          `json:"verbraucht,omitempty"`
+	// Lightning: angemeldete Lightning-Noten (Einweg, Inhaberpapier),
+	// kanonisch nach Schluessel sortiert. Nie wieder entfernt.
+	Lightning []quantenLightning `json:"lightning,omitempty"`
+}
+
+// quantenLightning: eine angemeldete Lightning-Seriennummer. K =
+// SHA-256(Domaene | Seriennummer); die Seriennummer selbst steht nicht in
+// der Kette (nur ihr Hash), der Inhaber zeigt sie mit der Note vor.
+type quantenLightning struct {
+	K   string `json:"k"`
+	Wei string `json:"wei"`
+	Von string `json:"von"`
 }
 
 var errQuantenNote = errors.New("Quanten-Note abgelehnt")
@@ -123,6 +141,7 @@ func (r *quantenRegister) kopie() *quantenRegister {
 	return &quantenRegister{
 		Gesperrt:   append([]quantenGesperrt(nil), r.Gesperrt...),
 		Verbraucht: append([]string(nil), r.Verbraucht...),
+		Lightning:  append([]quantenLightning(nil), r.Lightning...),
 	}
 }
 
@@ -153,7 +172,7 @@ func (r *quantenRegister) quantenSperren(wer string, guthaben, wei *big.Int, oef
 	if _, _, ok := r.finde(s); ok || r.verbraucht(s) {
 		return nil, "", fmt.Errorf("%w: Seriennummer nicht neu", errQuantenNote)
 	}
-	if len(r.Gesperrt)+len(r.Verbraucht) >= quantenRegisterMax {
+	if r.groesse() >= quantenRegisterMax {
 		return nil, "", fmt.Errorf("%w: Register voll", errQuantenNote)
 	}
 	k := r.kopie()
@@ -209,10 +228,97 @@ func (r *quantenRegister) quantenRueckholen(wer, s string, jetzt int64) (*quante
 	return k, betrag, nil
 }
 
+func (r *quantenRegister) groesse() int {
+	return len(r.Gesperrt) + len(r.Verbraucht) + len(r.Lightning)
+}
+
+// ---- Quantum Lightning: Praegen ist frei, Anmelden kostet Deckung ----
+//
+// Jeder darf eine Note praegen (Gen ist oeffentlich, kein Schluessel, keine
+// Bank). Wert bekommt sie erst, wenn ihre Seriennummer hier angemeldet ist:
+// der Anmeldende sperrt wei AEQ, die Kette traegt K = SHA-256(Domaene |
+// Seriennummer) ein. Jede Seriennummer genau einmal; keine Rueckholung,
+// kein Einloesen (Einweg, Version 1). Der Empfaenger einer Note prueft
+// selbst: K angemeldet? Dann der Quantentest (Variante B, 128 Tests).
+// Die Kette sieht nie einen Quantenzustand -- nur Hashes und Betraege.
+
+// quantenSerieKanonisch: big-endian, kuerzeste Form (die Null ist 0x00).
+// Sonst haette dieselbe Note mehrere Schreibweisen und liesse sich mehrfach
+// anmelden.
+func quantenSerieKanonisch(serie []byte) bool {
+	return len(serie) > 0 && len(serie) <= quantenSerieMaxBytes && (len(serie) == 1 || serie[0] != 0)
+}
+
+// quantenSerieSchluessel: K = SHA-256(Domaene | "|" | Seriennummer).
+func quantenSerieSchluessel(serie []byte) string {
+	h := sha256.New()
+	h.Write([]byte(quantenDomaeneSerie))
+	h.Write([]byte("|"))
+	h.Write(serie)
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+func (r *quantenRegister) findeLightning(k string) (quantenLightning, int, bool) {
+	i := sort.Search(len(r.Lightning), func(i int) bool { return r.Lightning[i].K >= k })
+	if i < len(r.Lightning) && r.Lightning[i].K == k {
+		return r.Lightning[i], i, true
+	}
+	return quantenLightning{}, i, false
+}
+
+// quantenPraegen: meldet eine Lightning-Seriennummer an. guthaben in Wei;
+// der Geldweg bucht wei vom Anmeldenden ab (Anschluss beim Einschalten).
+func (r *quantenRegister) quantenPraegen(wer string, guthaben, wei *big.Int, serie []byte) (*quantenRegister, string, error) {
+	if !quantenSerieKanonisch(serie) {
+		return nil, "", fmt.Errorf("%w: Seriennummer in falscher Form", errQuantenNote)
+	}
+	if wei == nil || wei.Sign() <= 0 || guthaben == nil || guthaben.Cmp(wei) < 0 {
+		return nil, "", fmt.Errorf("%w: keine Deckung oder Betrag ungueltig", errQuantenNote)
+	}
+	if !kanonischeAdresse(wer) {
+		return nil, "", fmt.Errorf("%w: Adresse nicht kanonisch", errQuantenNote)
+	}
+	k := quantenSerieSchluessel(serie)
+	if _, _, ok := r.findeLightning(k); ok {
+		return nil, "", fmt.Errorf("%w: Seriennummer schon angemeldet", errQuantenNote)
+	}
+	if r.groesse() >= quantenRegisterMax {
+		return nil, "", fmt.Errorf("%w: Register voll", errQuantenNote)
+	}
+	n := r.kopie()
+	_, i, _ := n.findeLightning(k)
+	n.Lightning = append(n.Lightning, quantenLightning{})
+	copy(n.Lightning[i+1:], n.Lightning[i:])
+	n.Lightning[i] = quantenLightning{K: k, Wei: wei.String(), Von: wer}
+	return n, k, nil
+}
+
+// quantenSerieWert: was eine vorgezeigte Seriennummer laut Kette wert ist;
+// 0 = nicht angemeldet (die Note ist nichts wert, egal wie gut sie aussieht).
+func (r *quantenRegister) quantenSerieWert(serie []byte) *big.Int {
+	if !quantenSerieKanonisch(serie) {
+		return new(big.Int)
+	}
+	e, _, ok := r.findeLightning(quantenSerieSchluessel(serie))
+	if !ok {
+		return new(big.Int)
+	}
+	v, ok := new(big.Int).SetString(e.Wei, 10)
+	if !ok {
+		return new(big.Int)
+	}
+	return v
+}
+
 // summeGesperrt: fuer die Erhaltung (Konten + gesperrt = konstant).
 func (r *quantenRegister) summeGesperrt() *big.Int {
 	sum := new(big.Int)
 	for _, e := range r.Gesperrt {
+		if v, ok := new(big.Int).SetString(e.Wei, 10); ok {
+			sum.Add(sum, v)
+		}
+	}
+	for _, e := range r.Lightning {
 		if v, ok := new(big.Int).SetString(e.Wei, 10); ok {
 			sum.Add(sum, v)
 		}

@@ -1,0 +1,14 @@
+{
+  "domaene": "aequitas-quanten-serie-v1",
+  "serie_hex": "04d2",
+  "schluessel": "7fee2384f6525fe161ceba6a79793adbe7a81051d07a2429657f3c6e92760f4b",
+  "serie_max_bytes": 1024,
+  "null_hex": "00",
+  "null_schluessel": "74d7e5e454915c16b78d566ed0abad4ecdf5f669037442facf38aa7acc3420ee",
+  "nicht_kanonisch_hex": [
+    "",
+    "0000",
+    "0004d2",
+    "00ff"
+  ]
+}
