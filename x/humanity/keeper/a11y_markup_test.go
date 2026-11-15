@@ -243,3 +243,21 @@ func TestStylesheets_LongTokensCanWrap(t *testing.T) {
 			" wallet address is one 42-character token and will overflow its box")
 	}
 }
+
+// "Aktive Validatoren" zaehlt verschiedene Erzeuger der juengsten Bloecke.
+// Der Genesis-Block (proposer "genesis") ist keiner: nach dem Neustart bei
+// null (15.11.2026) zeigte die Seite "2" bei einem einzigen Erzeuger.
+func TestExplorerJS_GenesisZaehltNichtAlsValidator(t *testing.T) {
+	i := strings.Index(explorerJS, "const distinctProposers = new Set(rawBlocks")
+	if i < 0 {
+		t.Fatal("Zaehlung der aktiven Validatoren nicht gefunden")
+	}
+	ende := strings.Index(explorerJS[i:], "validatorsEl.textContent")
+	if ende < 0 {
+		t.Fatal("Zaehlung ohne Ausgabe")
+	}
+	block := explorerJS[i : i+ende]
+	if !strings.Contains(block, "is_genesis") || !strings.Contains(block, "'genesis'") {
+		t.Errorf("der Genesis-Block wird als Validator mitgezaehlt:\n%s", block)
+	}
+}

@@ -6222,7 +6222,12 @@ async function loadBlocks() {
     // failure mode a static number here would repeat).
     const validatorsEl = document.getElementById('s-validators');
     if (validatorsEl && rawBlocks && rawBlocks.length) {
-      const distinctProposers = new Set(rawBlocks.map(function(b) { return (b.proposer || '').toLowerCase(); }));
+      // Der Genesis-Block hat keinen Erzeuger (proposer "genesis") -- er
+      // zaehlte nach dem Neustart bei null als zweiter Validator mit, solange
+      // er im Fenster der juengsten Bloecke lag (15.11.2026).
+      const distinctProposers = new Set(rawBlocks
+        .filter(function(b) { return !b.is_genesis && b.proposer && b.proposer !== 'genesis'; })
+        .map(function(b) { return b.proposer.toLowerCase(); }));
       validatorsEl.textContent = distinctProposers.size;
     }
     const dedupedBlocks = canonicalBlocks.slice().sort(function(a, b) { return b.height - a.height; });
