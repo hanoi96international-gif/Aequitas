@@ -18,7 +18,12 @@ Modi:
                      IBM_QUANTUM_INSTANCE (CRN) und IBM_QUANTUM_BACKEND.
                      Der Schluessel wird nie ausgegeben.
 Weitere: --laeufe L (Schaltkreise je Fall, Standard 8), --schuesse S
-(Standard 1000), --tests T (Standard 3), --json DATEI.
+(Standard 1000), --tests T (Standard 3), --json DATEI,
+--unterdrueckung (nur --ibm: dynamische Entkopplung + Pauli-Twirling).
+
+Mit echter Maschine oder Rauschmodell wird zusaetzlich die Auslese der
+Pruefqubits kalibriert (2 Schaltkreise) und die Annahme auch
+lesekorrigiert ausgegeben (hardware.lesekorrektur).
 
 Ausgabe: je Fall die gemessene Annahmequote gegen ideal; beim Praegen die
 Verteilung der Seriennummern; Tiefe und 2-Qubit-Gatter nach Uebersetzung.
@@ -58,11 +63,51 @@ def nach_qiskit(s):
             qc.p(t, qs[0])
         elif n == "cp":
             qc.cp(t, qs[0], qs[1])
+        elif n == "barrier":
+            qc.barrier(*qs)
+        elif n == "measure":
+            qc.measure(qs[0], t)
         else:
             raise ValueError(f"unbekanntes Gatter {n}")
-    for i, a in enumerate(s.mess):
-        qc.measure(a, i)
     return qc
+
+
+def mess_qubits(qc) -> dict[int, int]:
+    """klassisches Bit -> physisches Qubit im uebersetzten Schaltkreis."""
+    out = {}
+    for ins in qc.data:
+        if ins.operation.name == "measure":
+            out[qc.find_bit(ins.clbits[0]).index] = qc.find_bit(ins.qubits[0]).index
+    return out
+
+
+def kalibrierung(backend, sampler, qubits: list[int], schuesse: int) -> tuple[dict, dict]:
+    """P(lese 0|0) und P(lese 1|1) je physischem Qubit: zwei Schaltkreise,
+    alle in |0> bzw. alle in |1>, auf genau den Qubits der Pruefbits."""
+    from qiskit import QuantumCircuit
+    from qiskit.transpiler import generate_preset_pass_manager
+
+    kreise = []
+    for eins in (False, True):
+        qc = QuantumCircuit(backend.num_qubits, len(qubits))
+        for i, q in enumerate(qubits):
+            if eins:
+                qc.x(q)
+        qc.barrier(*qubits)
+        for i, q in enumerate(qubits):
+            qc.measure(q, i)
+        kreise.append(qc)
+    pm = generate_preset_pass_manager(optimization_level=0, backend=backend,
+                                      initial_layout=list(range(backend.num_qubits)))
+    erg = sampler.run(pm.run(kreise), shots=schuesse).result()
+    p0, p1 = {}, {}
+    for eins, r in zip((False, True), erg):
+        zaehl = r.data.c.get_counts()
+        ges = sum(zaehl.values())
+        for i, q in enumerate(qubits):
+            richtig = sum(v for k, v in zaehl.items() if k[-1 - i] == ("1" if eins else "0"))
+            (p1 if eins else p0)[q] = richtig / ges
+    return p0, p1
 
 
 def zahl(arg: str, standard: int, grenze: int) -> int:
@@ -89,7 +134,7 @@ def backend_und_sampler():
             raise SystemExit(f"unbekanntes Rauschmodell {name!r}")
         fake = getattr(fp, name)()
         sim = AerSimulator.from_backend(fake)
-        return fake, AerSampler.from_backend(sim) if hasattr(AerSampler, "from_backend") else AerSampler(), f"Rauschmodell {fake.name}"
+        return sim, AerSampler.from_backend(sim), f"Rauschmodell {fake.name}"
     if "--ibm" in sys.argv:
         from qiskit_ibm_runtime import QiskitRuntimeService, SamplerV2
 
@@ -102,7 +147,17 @@ def backend_und_sampler():
         dienst = QiskitRuntimeService(**kw)
         wunsch = os.environ.get("IBM_QUANTUM_BACKEND", "")
         be = dienst.backend(wunsch) if wunsch else dienst.least_busy(operational=True, simulator=False)
-        return be, SamplerV2(mode=be), f"IBM {be.name}"
+        sampler = SamplerV2(mode=be)
+        wo = f"IBM {be.name}"
+        if "--unterdrueckung" in sys.argv:
+            # Fehlerunterdrueckung: dynamische Entkopplung in Leerlaufzeiten,
+            # Pauli-Twirling der 2-Qubit-Gatter und der Messungen.
+            sampler.options.dynamical_decoupling.enable = True
+            sampler.options.dynamical_decoupling.sequence_type = "XY4"
+            sampler.options.twirling.enable_gates = True
+            sampler.options.twirling.enable_measure = True
+            wo += " mit Fehlerunterdrueckung (DD XY4, Twirling)"
+        return be, sampler, wo
     raise SystemExit("Modus fehlt: --ideal | --rauschen NAME | --ibm")
 
 
@@ -125,13 +180,28 @@ def main() -> None:
     job_id = job.job_id() if hasattr(job, "job_id") else ""
     ergebnisse = job.result()
 
+    # Lesekorrektur: Auslesefehler genau der Qubits, auf denen die
+    # Pruefbits gemessen wurden (nur mit echter Maschine/Rauschmodell).
+    p0 = p1 = None
+    if backend is not None:
+        alle = sorted({q for qc in qcs for b, q in mess_qubits(qc).items() if b < T})
+        p0, p1 = kalibrierung(backend, sampler, alle, schuesse)
+
     faelle: dict[str, dict] = {}
     for s, qc, r in zip(kreise, qcs, ergebnisse):
         zaehl = r.data.c.get_counts()
         e = hw.auswerten(s, zaehl)
         name = "praegen+pruefen" if s.bedeutung["seriebits"] else s.bedeutung["fall"]
-        f = faelle.setdefault(name, {"annahme": [], "serien": {}, "tiefe": 0, "zwei": 0, "qubits": s.q})
+        f = faelle.setdefault(name, {"annahme": [], "korr": [], "serien": {}, "tiefe": 0, "zwei": 0, "qubits": s.q})
         f["annahme"].append(e["annahme"])
+        if p0 is not None:
+            mq = mess_qubits(qc)
+            ges = sum(zaehl.values())
+            rand: dict[str, float] = {}
+            for k, v in zaehl.items():
+                rand[k[-T:]] = rand.get(k[-T:], 0) + v / ges
+            korr = hw.lesekorrektur(rand, [p0[mq[i]] for i in range(T)], [p1[mq[i]] for i in range(T)])
+            f["korr"].append(korr.get("0" * T, 0.0))
         for k, v in e["serien"].items():
             f["serien"][k] = f["serien"].get(k, 0) + v
         ops = qc.count_ops()
@@ -141,13 +211,16 @@ def main() -> None:
     zeilen = [f"## Quantengeld auf {wo}", "",
               f"Zyklus N = {2 ** n}, {T} Tests je Pruefung, {laeufe} Schaltkreise je Fall, {schuesse} Schuesse je Schaltkreis"
               + (f", Job {job_id}" if job_id else "") + ".", "",
-              "| Fall | Qubits | Tiefe | 2-Qubit-Gatter | Annahme gemessen | ideal |", "|---|---|---|---|---|---|"]
+              "| Fall | Qubits | Tiefe | 2-Qubit-Gatter | Annahme roh | Annahme lesekorrigiert | ideal |",
+              "|---|---|---|---|---|---|---|"]
     aus = {"wo": wo, "job": job_id, "n": n, "tests": T, "laeufe": laeufe, "schuesse": schuesse, "faelle": {}}
     for name, f in faelle.items():
         a = sum(f["annahme"]) / len(f["annahme"])
+        k = sum(f["korr"]) / len(f["korr"]) if f["korr"] else None
         ideal = hw.erwartet("echt" if name == "praegen+pruefen" else name, n, T)
-        zeilen.append(f"| {name} | {f['qubits']} | {f['tiefe']} | {f['zwei']} | {a:.3f} | {ideal:.3f} |")
-        aus["faelle"][name] = {"annahme": a, "ideal": ideal, "tiefe": f["tiefe"], "zwei_qubit": f["zwei"]}
+        ks = f"{k:.3f}" if k is not None else "-"
+        zeilen.append(f"| {name} | {f['qubits']} | {f['tiefe']} | {f['zwei']} | {a:.3f} | {ks} | {ideal:.3f} |")
+        aus["faelle"][name] = {"annahme": a, "lesekorrigiert": k, "ideal": ideal, "tiefe": f["tiefe"], "zwei_qubit": f["zwei"]}
         if f["serien"]:
             gesamt = sum(f["serien"].values())
             vert = {k: v / gesamt for k, v in sorted(f["serien"].items())}
@@ -159,8 +232,17 @@ def main() -> None:
     echt = aus["faelle"].get("echt", {}).get("annahme", 0)
     fremd = max(aus["faelle"].get("fremd", {}).get("annahme", 1), aus["faelle"].get("basis", {}).get("annahme", 1))
     aus["trennung"] = echt - fremd
-    zeilen += ["", f"Trennung echt gegen beste Faelschung: {echt:.3f} - {fremd:.3f} = {echt - fremd:+.3f} "
+    zeilen += ["", f"Trennung echt gegen beste Faelschung (roh): {echt:.3f} - {fremd:.3f} = {echt - fremd:+.3f} "
                "(positiv: die Maschine unterscheidet echte Noten von Faelschungen)."]
+    if p0 is not None:
+        ke = aus["faelle"].get("echt", {}).get("lesekorrigiert") or 0
+        kf = max(aus["faelle"].get("fremd", {}).get("lesekorrigiert") or 1, aus["faelle"].get("basis", {}).get("lesekorrigiert") or 1)
+        aus["trennung_lesekorrigiert"] = ke - kf
+        aus["auslese"] = {"p0": p0, "p1": p1}
+        schlecht = min(min(p0.values()), min(p1.values()))
+        zeilen += [f"Trennung lesekorrigiert: {ke:.3f} - {kf:.3f} = {ke - kf:+.3f}. "
+                   f"Auslese der Pruefqubits: schlechtestes P(richtig) = {schlecht:.3f}. "
+                   "Roh ist, was ein einzelner Pruefer erlebt; lesekorrigiert zeigt Zustand und Gatter ohne Auslesefehler."]
     text = "\n".join(zeilen)
     print(text)
     if os.environ.get("GITHUB_STEP_SUMMARY"):
