@@ -68,13 +68,14 @@ import (
 const (
 	// quantenGeldAbUnix: Stichtag der beiden Arten (math.MaxInt64 =
 	// schlafend). Gesetzt am 15.11.2026 auf Anweisung des Betreibers ("alles
-	// in Main, heute laufen"): 1794830400 = 16.11.2026 12:00 UTC. Ab dann
+	// in Main, heute laufen"), dann vorgezogen ("in 1 Stunde bereits
+	// scharf"): 1794748500 = 15.11.2026 13:15 UTC. Ab dann
 	// nimmt das Hauptnetz Freischaltungen und Anmeldungen an; eine Note
 	// anmelden kann trotzdem erst, wer einen Satz hat, den zwei Drittel der
 	// Pruefer freigeschaltet haben (N >= 2^256, 30 Tage Vorlauf). Der Deploy
 	// haelt an, wenn er nicht mindestens 30 Minuten vorher laeuft
 	// (.github/neustart/quantengeld-nicht-verpasst.sh).
-	quantenGeldAbUnix int64 = 1794830400
+	quantenGeldAbUnix int64 = 1794748500
 
 	quantenFreischaltungTxArt   = "quanten_freischaltung"
 	quantenDomaeneFreischaltung = "aequitas-quanten-freischaltung-v1"
