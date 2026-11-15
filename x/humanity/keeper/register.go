@@ -69,32 +69,57 @@ var betreiberRateLimit = neueBegrenzteKarteOhneNetz("betreiber", grenzenSchluess
 // dashboard/API show the wallet as unregistered. Serializing the entire
 // flow per wallet closes the race at its root instead of only patching
 // the symptom.
-var registerWalletLocks sync.Map
-
-// lockWallet returns the mutex for wallet, creating one on first use.
 //
-// NOTE (audit 2026-06-29, considered and deliberately not "fixed"):
-// registerWalletLocks has no cleanup, unlike registerRateLimit's periodic
-// sweep below — every distinct wallet that ever attempts registration
-// (successful, failed, or retried) leaves a permanent *sync.Mutex entry for
-// the lifetime of the process. This is a genuine, slow unbounded-growth
-// resource use, not nothing — but periodically deleting old entries the
-// way the rate limiter does would be UNSAFE here specifically: a goroutine
-// that already loaded a *sync.Mutex reference via LoadOrStore keeps using
-// that exact object even after a concurrent cleanup pass deletes the map
-// entry, while a NEW caller racing in right after would LoadOrStore a
-// DIFFERENT, freshly-allocated mutex — the two callers would then no
-// longer exclude each other, silently reintroducing the exact
-// double-registration race this map exists to prevent. A correct fix needs
-// reference counting (only delete once no goroutine holds the mutex), not
-// implemented here given how rarely this matters in practice: growth is
-// bounded by the number of distinct wallets that ever attempt registration
-// across the chain's entire lifetime, which for a one-time-per-human action
-// stays orders of magnitude below the point where a few KB of *sync.Mutex
-// overhead per entry would be a real operational concern.
-func lockWallet(wallet string) *sync.Mutex {
-	v, _ := registerWalletLocks.LoadOrStore(wallet, &sync.Mutex{})
-	return v.(*sync.Mutex)
+// Audit B3 (2026-11-14): die Karte waechst nicht mehr ohne Grenze. Jeder
+// Eintrag zaehlt, wie viele Aufrufer ihn gerade halten oder auf ihn warten;
+// der letzte, der freigibt, loescht ihn -- unter derselben Sperre, unter der
+// neue Aufrufer ihn holen. Damit kann nie ein zweiter Mutex fuer dieselbe
+// Wallet entstehen, solange noch jemand den ersten haelt (das war der Grund,
+// warum die alte Fassung gar nicht aufraeumte).
+type walletSperre struct {
+	mu     sync.Mutex
+	halter int // unter registerWalletLocksMu
+}
+
+var (
+	registerWalletLocksMu sync.Mutex
+	registerWalletLocks   = map[string]*walletSperre{}
+)
+
+// lockWallet sperrt die Registrierung fuer wallet und gibt die Freigabe
+// zurueck (genau einmal aufrufen). Die Karte enthaelt nur Wallets, deren
+// Registrierung gerade laeuft oder wartet; wie viele das hoechstens sind,
+// begrenzen Rate-Limit und Inflight-Grenze vor diesem Pfad.
+func lockWallet(wallet string) (freigeben func()) {
+	registerWalletLocksMu.Lock()
+	sp := registerWalletLocks[wallet]
+	if sp == nil {
+		sp = &walletSperre{}
+		registerWalletLocks[wallet] = sp
+	}
+	sp.halter++
+	registerWalletLocksMu.Unlock()
+
+	sp.mu.Lock()
+	var einmal sync.Once
+	return func() {
+		einmal.Do(func() {
+			sp.mu.Unlock()
+			registerWalletLocksMu.Lock()
+			sp.halter--
+			if sp.halter == 0 {
+				delete(registerWalletLocks, wallet)
+			}
+			registerWalletLocksMu.Unlock()
+		})
+	}
+}
+
+// walletSperrenAnzahl: wie viele Wallets gerade eine Sperre haben (Tests).
+func walletSperrenAnzahl() int {
+	registerWalletLocksMu.Lock()
+	defer registerWalletLocksMu.Unlock()
+	return len(registerWalletLocks)
 }
 
 func init() {
@@ -384,9 +409,7 @@ func (a *APIServer) handleRegister(w http.ResponseWriter, r *http.Request) {
 
 	// Serialize the entire registration flow for this wallet — see
 	// registerWalletLocks doc comment for why this is required, not optional.
-	walletLock := lockWallet(wallet)
-	walletLock.Lock()
-	defer walletLock.Unlock()
+	defer lockWallet(wallet)()
 
 	if len(req.PA) < 2 || len(req.PB) < 2 || len(req.PC) < 2 || len(req.PubSignals) < 2 {
 		json.NewEncoder(w).Encode(RegisterResponse{Success: false, Message: "incomplete ZK proof"})

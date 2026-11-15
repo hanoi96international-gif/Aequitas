@@ -873,7 +873,9 @@ func (s *EVMRPCServer) dispatch(method string, params []json.RawMessage, pre *pr
 		return "0x1", nil
 
 	default:
-		fmt.Printf("[RPC] Unknown method: %s\n", method)
+		// Audit B13: Methode kommt vom Aufrufer -- gekuerzt und maskiert loggen
+		// (keine Zeilenumbrueche/Steuerzeichen ins Log, keine Riesenzeilen).
+		fmt.Printf("[RPC] Unknown method: %q\n", logKurz(method, 64))
 		return nil, &RPCError{Code: -32601, Message: "Method not found"}
 	}
 }
@@ -944,7 +946,7 @@ func (s *EVMRPCServer) getBalance(params []json.RawMessage) (interface{}, *RPCEr
 		new(big.Float).SetInt(weiPerAEQ),
 	)
 	weiInt, _ := wei.Int(nil)
-	fmt.Printf("[RPC] eth_getBalance %s = %.2f\n", addr, balance)
+	// Audit B13: kein Log je Kontostandsabfrage (Flut, Kontostaende im Log).
 	return "0x" + weiInt.Text(16), nil
 }
 

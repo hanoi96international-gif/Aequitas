@@ -3307,9 +3307,27 @@ func registrationRateLimited(addr string) bool {
 	if last, ok := lastRegistrationAttempt[addr]; ok && now-last < int64(registrationRateLimitWindow) {
 		return true
 	}
+	// Audit B9: die Karte ist begrenzt. Abgelaufene Eintraege sagen nichts
+	// mehr (ausserhalb des Fensters) und werden entfernt, sobald die Grenze
+	// erreicht ist; bleibt sie danach voll, wird abgewiesen (fail-closed),
+	// statt den Speicher weiter wachsen zu lassen.
+	if _, da := lastRegistrationAttempt[addr]; !da && len(lastRegistrationAttempt) >= registrationAttemptsHoechstens {
+		for k, t := range lastRegistrationAttempt {
+			if now-t >= int64(registrationRateLimitWindow) {
+				delete(lastRegistrationAttempt, k)
+			}
+		}
+		if len(lastRegistrationAttempt) >= registrationAttemptsHoechstens {
+			return true
+		}
+	}
 	lastRegistrationAttempt[addr] = now
 	return false
 }
+
+// registrationAttemptsHoechstens: so viele Absender merkt sich
+// registrationRateLimited hoechstens zugleich (alle im 20-s-Fenster).
+const registrationAttemptsHoechstens = 10_000
 
 // handlePeerRegister accepts a node registration and returns the current peer
 // list plus all authorized validator addresses. A node that sends its

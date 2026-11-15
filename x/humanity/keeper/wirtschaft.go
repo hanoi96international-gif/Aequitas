@@ -299,6 +299,38 @@ func (w *wirtschaft) kontoLocked(addr string, jetzt int64) *buchKonto {
 	return k
 }
 
+// kontoAnsichtLocked: Buchkonto NUR LESEN -- fuer oeffentliche Abfragen
+// (/api/wirtschaft/konto). Legt nie einen Eintrag in w.buch an und aendert
+// keinen Zaehler: ein unbekanntes Konto ergibt ein leeres, ein Konto aus
+// einem Vormonat die Monatszaehler auf null, wie kontoLocked sie stellen
+// wuerde. Sonst koennte jeder mit beliebigen Adressen die Buchfuehrung des
+// Knotens ohne Grenze wachsen lassen (Audit B16). w.mu gehalten.
+func (w *wirtschaft) kontoAnsichtLocked(addr string, jetzt int64) *buchKonto {
+	k := w.buch[addr]
+	if k == nil {
+		return &buchKonto{Monat: monatVon(jetzt)}
+	}
+	if m := monatVon(jetzt); k.Monat != m {
+		// flache Kopie reicht: die Maps/Tage werden hier nur gelesen
+		kopie := *k
+		kopie.Monat = m
+		kopie.Ausgegeben, kopie.Getauscht, kopie.Lohn = 0, 0, 0
+		kopie.Einnahmen, kopie.LohnGezahlt, kopie.Entnahmen = 0, 0, 0
+		return &kopie
+	}
+	return k
+}
+
+// umsatzAnsichtLocked: wie umsatzLocked, aber ueber kontoAnsichtLocked --
+// legt nichts an. w.mu gehalten.
+func (w *wirtschaft) umsatzAnsichtLocked(addr string, jetzt int64) float64 {
+	e := w.unternehmen[addr]
+	k := w.kontoAnsichtLocked(addr, jetzt)
+	u90 := w.monatsUmsatzLocked(k, w.mittelTageLocked(e, jetzt, umsatzFensterTage), jetzt)
+	uJahr := w.monatsUmsatzLocked(k, w.mittelTageLocked(e, jetzt, umsatzJahrTage), jetzt)
+	return math.Max(u90, uJahr)
+}
+
 func quartalVon(unix int64) int {
 	t := time.Unix(unix, 0).UTC()
 	return t.Year()*10 + (int(t.Month())-1)/3 + 1

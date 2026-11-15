@@ -1,9 +1,11 @@
 package keeper
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 // B7: Grenze je Absender und Endpunkt -- nach lesenJeAbsender Anfragen 429,
@@ -61,5 +63,43 @@ func TestLesegrenze_UnbekannteAdresseOhneSperreUndOhneAnlegen(t *testing.T) {
 	}
 	if _, ok := lesbareAdresse("0x00000000000000000000000000000000000000C3"); !ok {
 		t.Error("Grossbuchstaben abgewiesen")
+	}
+}
+
+// B16: /api/wirtschaft/konto mit vielen fremden Adressen laesst die
+// Buchfuehrung nicht wachsen und setzt keinen Monatszaehler eines
+// bestehenden Kontos zurueck.
+func TestWirtschaftKonto_LegtKeinBuchAn(t *testing.T) {
+	cs := newTestState()
+	a := &APIServer{state: cs}
+	wi := cs.wirt()
+	jetzt := time.Now().Unix()
+	alt := "0x00000000000000000000000000000000000000a1"
+	wi.mu.Lock()
+	vormonat := monatVon(jetzt - 40*86400)
+	wi.buch[alt] = &buchKonto{Monat: vormonat, Ausgegeben: 7}
+	vorher := len(wi.buch)
+	wi.mu.Unlock()
+	for i := 0; i < 500; i++ {
+		addr := fmt.Sprintf("0x%040x", 0xb000+i)
+		r := httptest.NewRequest(http.MethodGet, "/api/wirtschaft/konto?adresse="+addr, nil)
+		w := httptest.NewRecorder()
+		a.handleWirtschaftKonto(w, r)
+		if w.Code != http.StatusOK {
+			t.Fatalf("%s: %d", addr, w.Code)
+		}
+	}
+	r := httptest.NewRequest(http.MethodGet, "/api/wirtschaft/konto?adresse="+alt, nil)
+	a.handleWirtschaftKonto(httptest.NewRecorder(), r)
+	wi.mu.Lock()
+	defer wi.mu.Unlock()
+	if len(wi.buch) != vorher {
+		t.Fatalf("Buch gewachsen: %d -> %d", vorher, len(wi.buch))
+	}
+	if k := wi.buch[alt]; k.Monat != vormonat || k.Ausgegeben != 7 {
+		t.Fatalf("Abfrage hat das Buchkonto veraendert: %+v", *k)
+	}
+	if v := wi.kontoAnsichtLocked(alt, jetzt); v.Ausgegeben != 0 || v.Monat != monatVon(jetzt) {
+		t.Fatalf("Ansicht stellt den Monat nicht um: %+v", *v)
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"net/http"
 	"strings"
+	"unicode/utf8"
 )
 
 // Audit 14.11.2026, B7: oeffentliche Lesepfade.
@@ -87,4 +88,18 @@ func demurrageStatusVon(acc *AccountState, jetzt int64) DemurrageStatus {
 		st.ShowFourteenDayNotice = true
 	}
 	return st
+}
+
+// logKurz: Text vom Aufrufer fuer ein Log -- hoechstens n Bytes (an einer
+// gueltigen UTF-8-Grenze gekuerzt); zusammen mit %q landen Zeilenumbrueche
+// und Steuerzeichen nur maskiert im Log (Audit B13).
+func logKurz(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	s = s[:n]
+	for len(s) > 0 && !utf8.ValidString(s) {
+		s = s[:len(s)-1]
+	}
+	return s + "…"
 }
