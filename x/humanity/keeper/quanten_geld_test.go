@@ -380,3 +380,40 @@ func TestQuantenGeld_Rueckrollen(t *testing.T) {
 		t.Fatal("Rueckroll laesst die Note stehen")
 	}
 }
+
+// Annahme Ende zu Ende (ohne Datenbank): Deckung geht an den Topf, Note steht
+// im Register, Geldmenge bleibt gleich; eine zweite Anmeldung derselben Note
+// bewegt kein Geld.
+func TestQuantenGeld_AnnahmeEndeZuEnde(t *testing.T) {
+	f := neuerQgPraegeFall(t)
+	// Annahme rechnet mit der Uhr: Stichtag und Satz liegen fuer diesen Test
+	// in der Vergangenheit.
+	quantenGeldAbOverride.Store(1)
+	f.cs.quantenGeld.Store((&quantenGeldRegister{}).mitSatz(quantenSatzEintrag{Name: "isogenie-8192", Ordnung: qgSatzN.String(), Ab: 2, Seit: 1}))
+	summe := func() float64 { return f.cs.TotalSupply() }
+	start := summe()
+	tx := f.tx("isogenie-8192", "04d2", "0x"+strings.Repeat("5", 64), 300)
+	if err := f.cs.quantenPraegenAnnehmen(tx); err != nil {
+		t.Fatal(err)
+	}
+	topf, _ := f.cs.accounts.Get(quantenTopfAddr)
+	if topf == nil || topf.Balance.Float() < 299.999 {
+		t.Fatalf("Topf hat %v", topf)
+	}
+	if acc, _ := f.cs.accounts.Get(f.wallet); acc.Balance.Float() > 700.001 {
+		t.Fatalf("Anmelder hat noch %v", acc.Balance.Float())
+	}
+	if len(f.cs.quantenGeldJetzt().Noten) != 1 {
+		t.Fatal("Note nicht im Register")
+	}
+	if d := summe() - start; d > 1e-6 || d < -1e-6 {
+		t.Fatalf("Geldmenge veraendert um %v", d)
+	}
+	vorTopf := topf.Balance.Float()
+	if err := f.cs.quantenPraegenAnnehmen(f.tx("isogenie-8192", "04d2", "0x"+strings.Repeat("6", 64), 5)); err == nil {
+		t.Fatal("zweite Anmeldung derselben Note angenommen")
+	}
+	if topf, _ = f.cs.accounts.Get(quantenTopfAddr); topf.Balance.Float() != vorTopf {
+		t.Fatal("abgewiesene Anmeldung hat Geld bewegt")
+	}
+}
