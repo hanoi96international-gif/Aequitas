@@ -225,6 +225,7 @@ en:{
   'x-seite-neuer':"← Newer",
   'x-seite-aelter':"Older →",
   'x-seite-gehe':"Go to height",
+  'x-pq-stempel':'Quantum-safe stamp: the producer also signed this block with ML-DSA-65 (every 60th block). Every node checks it.',
   'x-loading-topology':'Loading topology…',
   'x-loading-transactions':'Loading transactions...',
   'x-lorenz-curve':'Lorenz Curve',
@@ -574,6 +575,7 @@ de:{
   'x-seite-neuer':"← Neuere",
   'x-seite-aelter':"Ältere →",
   'x-seite-gehe':"Zur Höhe",
+  'x-pq-stempel':'Quantensicherer Stempel: Der Erzeuger hat diesen Block zusätzlich mit ML-DSA-65 unterschrieben (jeder 60. Block). Jeder Knoten prüft ihn.',
   'x-loading-topology':'Netzstruktur wird geladen …',
   'x-loading-transactions':'Überweisungen werden geladen …',
   'x-lorenz-curve':'Lorenz Curve',
@@ -936,6 +938,7 @@ es:{
   'x-seite-neuer':"← Más nuevos",
   'x-seite-aelter':"Más antiguos →",
   'x-seite-gehe':"Ir a la altura",
+  'x-pq-stempel':'Sello resistente a la computación cuántica: el productor firmó además este bloque con ML-DSA-65 (cada 60 bloques). Cada nodo lo comprueba.',
   'x-loading-topology':'Cargando topología…',
   'x-loading-transactions':'Cargando transacciones…',
   'x-lorenz-curve':'Lorenz Curve',
@@ -1287,6 +1290,7 @@ ru:{
   'x-seite-neuer':"← Новее",
   'x-seite-aelter':"Старее →",
   'x-seite-gehe':"К высоте",
+  'x-pq-stempel':'Квантово-стойкий штамп: создатель дополнительно подписал этот блок ML-DSA-65 (каждый 60-й блок). Каждый узел его проверяет.',
   'x-loading-topology':'Загрузка топологии…',
   'x-loading-transactions':'Загрузка переводов…',
   'x-lorenz-curve':'Lorenz Curve',
@@ -1635,6 +1639,7 @@ zh:{
   'x-seite-neuer':"← 较新",
   'x-seite-aelter':"较旧 →",
   'x-seite-gehe':"跳到高度",
+  'x-pq-stempel':'抗量子印章：出块者还用 ML-DSA-65 签署了此区块（每 60 个区块一次）。每个节点都会验证。',
   'x-loading-topology':'正在加载网络结构…',
   'x-loading-transactions':'正在加载交易…',
   'x-lorenz-curve':'Lorenz Curve',
@@ -1984,6 +1989,7 @@ id:{
   'x-seite-neuer':"← Lebih baru",
   'x-seite-aelter':"Lebih lama →",
   'x-seite-gehe':"Ke tinggi",
+  'x-pq-stempel':'Stempel tahan kuantum: produsen juga menandatangani blok ini dengan ML-DSA-65 (setiap blok ke-60). Setiap node memeriksanya.',
   'x-loading-topology':'Memuat topologi…',
   'x-loading-transactions':'Memuat transaksi…',
   'x-lorenz-curve':'Lorenz Curve',
@@ -2328,6 +2334,7 @@ it:{
   'x-seite-neuer':"← Più nuovi",
   'x-seite-aelter':"Più vecchi →",
   'x-seite-gehe':"Vai all'altezza",
+  'x-pq-stempel':'Timbro a prova di quantistica: il produttore ha firmato questo blocco anche con ML-DSA-65 (ogni 60° blocco). Ogni nodo lo verifica.',
   'x-loading-topology':'Caricamento della topologia…',
   'x-loading-transactions':'Caricamento delle transazioni…',
   'x-lorenz-curve':'Lorenz Curve',
@@ -2673,6 +2680,7 @@ tr:{
   'x-seite-neuer':"← Daha yeni",
   'x-seite-aelter':"Daha eski →",
   'x-seite-gehe':"Yüksekliğe git",
+  'x-pq-stempel':'Kuantuma dayanıklı damga: üretici bu bloğu ayrıca ML-DSA-65 ile imzaladı (her 60. blok). Her düğüm bunu doğrular.',
   'x-loading-topology':'Ağ yapısı yükleniyor…',
   'x-loading-transactions':'İşlemler yükleniyor…',
   'x-lorenz-curve':'Lorenz Curve',
@@ -3024,6 +3032,7 @@ fr:{
   'x-seite-neuer':"← Plus récents",
   'x-seite-aelter':"Plus anciens →",
   'x-seite-gehe':"Aller à la hauteur",
+  'x-pq-stempel':'Tampon résistant au quantique : le producteur a aussi signé ce bloc avec ML-DSA-65 (un bloc sur 60). Chaque nœud le vérifie.',
   'x-loading-topology':'Chargement de la topologie…',
   'x-loading-transactions':'Chargement des transactions…',
   'x-lorenz-curve':'Lorenz Curve',
@@ -3374,6 +3383,7 @@ pt:{
   'x-seite-neuer':"← Mais novos",
   'x-seite-aelter':"Mais antigos →",
   'x-seite-gehe':"Ir para altura",
+  'x-pq-stempel':'Carimbo resistente à computação quântica: o produtor também assinou este bloco com ML-DSA-65 (a cada 60 blocos). Cada nó verifica-o.',
   'x-loading-topology':'A carregar a topologia…',
   'x-loading-transactions':'A carregar transações…',
   'x-lorenz-curve':'Lorenz Curve',
@@ -3724,6 +3734,7 @@ ar:{
   'x-seite-neuer':"← أحدث",
   'x-seite-aelter':"أقدم →",
   'x-seite-gehe':"انتقل إلى الارتفاع",
+  'x-pq-stempel':'ختم مقاوم للحوسبة الكمومية: وقّع المُنتِج هذه الكتلة أيضًا بـ ML-DSA-65 (كل كتلة ستين). تتحقق منه كل عقدة.',
   'x-loading-topology':'جارٍ تحميل بنية الشبكة…',
   'x-loading-transactions':'جارٍ تحميل المعاملات…',
   'x-lorenz-curve':'Lorenz Curve',
@@ -4072,6 +4083,7 @@ hi:{
   'x-seite-neuer':"← नए",
   'x-seite-aelter':"पुराने →",
   'x-seite-gehe':"ऊँचाई पर जाएँ",
+  'x-pq-stempel':'क्वांटम-सुरक्षित मुहर: उत्पादक ने इस ब्लॉक पर ML-DSA-65 से भी हस्ताक्षर किए (हर 60वाँ ब्लॉक)। हर नोड इसे जाँचता है।',
   'x-loading-topology':'नेटवर्क संरचना लोड हो रही है…',
   'x-loading-transactions':'लेन-देन लोड हो रहे हैं…',
   'x-lorenz-curve':'Lorenz Curve',
@@ -6120,6 +6132,10 @@ async function loadBlocks() {
         const typeBadge = merge
           ? '<span class="exp-badge exp-badge-merge">MERGE</span>'
           : '<span class="exp-badge exp-badge-std">STD</span>';
+        // PQ-Stempel (pq_stempel.go): jeder 60. Block traegt eine ML-DSA-65-
+        // Unterschrift des Erzeugers -- als Abzeichen sichtbar machen.
+        const pqTitel = (T[curLang] && T[curLang]['x-pq-stempel']) || T.en['x-pq-stempel'];
+        const pqBadge = b.pq_stempel ? ' <span class="exp-badge exp-badge-pq" title="' + attrEscape(pqTitel) + '">PQ</span>' : '';
         const txBadge = txCount > 0
           ? '<span class="exp-badge exp-badge-tx">' + txCount + '</span>'
           : '<span class="exp-muted">0</span>';
@@ -6129,7 +6145,7 @@ async function loadBlocks() {
           '<td class="exp-muted" style="font-size:0.6rem">' + sanitize(timeAgo(b.timestamp)) + '</td>' +
           '<td>' + txBadge + '</td>' +
           '<td class="exp-addr" style="font-size:0.6rem">' + proposerHTML(b.proposer) + '</td>' +
-          '<td>' + typeBadge + '</td>' +
+          '<td>' + typeBadge + pqBadge + '</td>' +
           '<td style="color:var(--teal);font-size:0.6rem">' + blueScore + '</td>' +
           '</tr>';
       }).join('');
