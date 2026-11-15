@@ -33,7 +33,7 @@ func TestVerifierSammeln_VorpruefungGutfall(t *testing.T) {
 	f := neuerVrFall(t)
 	now := vrAb + 1000
 	s := f.stimme(0, verifierArtAufnahme, f.m(1), now)
-	if err := verifierStimmeVorpruefen(verifierArtAufnahme, f.m(1), &s, f.cs.verifierRegisterJetzt(), now); err != nil {
+	if err := verifierStimmeVorpruefen(verifierArtAufnahme, f.m(1), &s, f.cs.verifierRegisterJetzt(), now, f.cs.prueferZusageVon); err != nil {
 		t.Fatalf("gueltige Stimme abgelehnt: %v", err)
 	}
 }
@@ -88,7 +88,7 @@ func TestVerifierSammeln_VorpruefungMissbrauch(t *testing.T) {
 	}
 	for _, fa := range faelle {
 		s := fa.s()
-		if err := verifierStimmeVorpruefen(fa.art, fa.wallet, &s, reg, now); err == nil {
+		if err := verifierStimmeVorpruefen(fa.art, fa.wallet, &s, reg, now, f.cs.prueferZusageVon); err == nil {
 			t.Errorf("%s: angenommen", fa.name)
 		}
 	}
@@ -106,7 +106,7 @@ func TestVerifierSammeln_VorpruefungNichtVorLetzterAenderung(t *testing.T) {
 	}
 	now := austritt + erzeugerFrist + 100
 	alt := f.stimme(0, verifierArtAufnahme, f.m(1), z)
-	if err := verifierStimmeVorpruefen(verifierArtAufnahme, f.m(1), &alt, f.cs.verifierRegisterJetzt(), now); err == nil {
+	if err := verifierStimmeVorpruefen(verifierArtAufnahme, f.m(1), &alt, f.cs.verifierRegisterJetzt(), now, f.cs.prueferZusageVon); err == nil {
 		t.Fatal("Stimme von vor der letzten Aenderung angenommen")
 	}
 }

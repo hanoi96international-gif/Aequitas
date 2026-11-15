@@ -160,6 +160,9 @@ type VerifierZulassung struct {
 type VerifierStimme struct {
 	Zeit          int64                      `json:"zeit"`
 	Bescheinigung Lebendigkeitsbescheinigung `json:"bescheinigung"`
+	// PQ: ML-DSA-65-Unterschrift des Menschen (pruefer_pq.go, Audit B2).
+	// Fehlt sie, bleibt die Stimme byte-gleich wie vorher.
+	PQ *PrueferPQ `json:"pq,omitempty"`
 }
 
 // verifierNachricht: was jeder Abstimmende unterschreibt.
@@ -525,6 +528,11 @@ func (cs *ChainState) verifierUrteilLocked(ctx context.Context, tx *Transaction,
 				return verifierUrteil{}, err
 			}
 			return verifierBefund("verifier_stimme", "Stimme %d: %v", i+1, err).mitStimme(i + 1), nil
+		}
+		// Audit B2: der PQ-Teil (pruefer_pq.go) -- ab dem Stichtag Pflicht,
+		// vorher, wenn vorhanden, ebenso streng.
+		if err := prueferPQPruefen(s, nachricht(fuer, s.Zeit), prueferPQPflicht(zeit), cs.prueferZusageVon); err != nil {
+			return verifierBefund("verifier_stimme_pq", "Stimme %d: %v", i+1, err).mitStimme(i + 1), nil
 		}
 		// Stimmberechtigt (oben) ist, wer zu issued_at Pruefer ist -- nicht der
 		// Betroffene, nicht ein Mensch, der erst spaeter dazukommt. Gezaehlt

@@ -64,8 +64,10 @@ const (
 	// Betroffene alle Plaetze fuer 14 Tage (Sicherheitsdurchgang des Diffs).
 	verifierSammlungenJePruefer = 8
 	verifierAntraegeHoechstens  = 64
-	verifierStimmeKoerperMax    = 8 << 10
-	verifierAntragKoerperMax    = 4 << 10
+	// Eine Stimme mit PQ-Teil (pruefer_pq.go): ~1 KB Bescheinigung +
+	// 3.904 + 6.618 Hex-Zeichen. Weiterhin EINE Stimme je Anfrage.
+	verifierStimmeKoerperMax = 16 << 10
+	verifierAntragKoerperMax = 4 << 10
 	// Ein Antrag ist hoechstens so alt oder so weit voraus, wenn er ankommt.
 	verifierAntragSpielraum int64 = 600
 )
@@ -139,7 +141,7 @@ func verifierNoetig(reg *verifierRegister, art, wallet string, now int64) int {
 
 // verifierStimmeVorpruefen: alles, was ohne Kettenzustand geht. Die Stimme
 // wird dabei in ihre eine Schreibweise gebracht.
-func verifierStimmeVorpruefen(art, wallet string, s *VerifierStimme, reg *verifierRegister, now int64) error {
+func verifierStimmeVorpruefen(art, wallet string, s *VerifierStimme, reg *verifierRegister, now int64, zusage func(mensch string) (string, bool)) error {
 	if art != verifierArtAufnahme && art != verifierArtAustritt && art != verifierArtEntzug {
 		return fmt.Errorf("unknown art %q", art)
 	}
@@ -193,6 +195,14 @@ func verifierStimmeVorpruefen(art, wallet string, s *VerifierStimme, reg *verifi
 	}
 	if !kanonischeSignatur(b.MenschSig) || verifyPersonalSign(coordinatorFreigabeNachricht(b.PublicKey), b.MenschSig, b.Mensch) != nil {
 		return errors.New("human's approval of the key missing or wrong")
+	}
+	// Audit B2 (pruefer_pq.go): zuletzt, es ist die teuerste Pruefung.
+	if s.PQ != nil {
+		s.PQ.Pub = strings.ToLower(strings.TrimSpace(s.PQ.Pub))
+		s.PQ.Sig = strings.ToLower(strings.TrimSpace(s.PQ.Sig))
+	}
+	if err := prueferPQPruefen(s, verifierNachricht(art, wallet)("", s.Zeit), prueferPQPflicht(now), zusage); err != nil {
+		return err
 	}
 	return nil
 }
@@ -292,7 +302,7 @@ func (a *APIServer) handleVerifierStimme(w http.ResponseWriter, r *http.Request)
 	}
 	wallet := strings.ToLower(strings.TrimSpace(req.Wallet))
 	reg := a.state.verifierRegisterJetzt()
-	if err := verifierStimmeVorpruefen(req.Art, wallet, &req.Stimme, reg, now); err != nil {
+	if err := verifierStimmeVorpruefen(req.Art, wallet, &req.Stimme, reg, now, a.state.prueferZusageVon); err != nil {
 		jsonError(w, "invalid vote: "+err.Error(), http.StatusForbidden)
 		return
 	}
