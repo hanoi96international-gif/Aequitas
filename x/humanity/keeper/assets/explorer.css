@@ -224,6 +224,7 @@ header::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;back
 .exp-badge{display:inline-block;padding:2px 7px;border-radius:4px;font-size:0.73rem;font-weight:700;letter-spacing:0.3px;font-family:var(--font-body)}
 .exp-badge-merge{background:rgba(91,140,255,0.12);color:var(--purple);border:1px solid rgba(91,140,255,0.3)}
 .exp-badge-std{background:rgba(91,140,255,0.07);color:var(--teal);border:1px solid rgba(91,140,255,0.18)}
+.exp-badge-pq{background:rgba(61,220,151,0.10);color:var(--neon,#3DDC97);border:1px solid rgba(61,220,151,0.30)}
 .exp-badge-tx{background:rgba(61,220,151,0.07);color:var(--neon);border:1px solid rgba(61,220,151,0.18)}
 .exp-muted{color:var(--muted)!important}
 .exp-addr{color:var(--teal)!important}
