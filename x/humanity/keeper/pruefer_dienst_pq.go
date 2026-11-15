@@ -67,10 +67,14 @@ import (
 
 const (
 	prueferDienstPQTxArt = "pruefer_dienst_pq"
-	// prueferDienstPQAbUnix: schlafend (MaxInt64 als Zahl, damit der Waechter
-	// sie liest). Vor pq_ab_unix setzen, damit Pruefer ihre Dienste
-	// eintragen koennen (docs/QUANTENSICHERHEIT.md).
-	prueferDienstPQAbUnix int64 = 9223372036854775807 // math.MaxInt64: schlafend (Waechter liest die Zahl)
+	// prueferDienstPQAbUnix: 2026-11-15 19:00 UTC (Entscheidung des Betreibers
+	// vom 15.11.2026, "alles umsetzen, Stichtag heute"). Vor pq_ab_unix, damit
+	// Pruefer ihre Dienste eintragen koennen (docs/QUANTENSICHERHEIT.md). C1
+	// laeuft seit #518 mit diesem Code; Dienste geben ihren Schluessel seit
+	// biometric #121 heraus, die App unterschreibt die Freigabe (1.21.0). Die
+	// Regel erlaubt nur (eine neue Art), sie verlangt nichts.
+	// Waechter: .github/neustart/pruefer-dienst-pq-nicht-verpasst.sh.
+	prueferDienstPQAbUnix int64 = 1794769200
 
 	prueferDienstPQJeMensch    = 2 // Coordinator und Vergleichsdienst
 	prueferDienstPQHoechstens  = prueferDienstPQJeMensch * verifierHoechstens
