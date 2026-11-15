@@ -189,9 +189,27 @@ type verifierEintrag struct {
 // ohne cs.mu).
 type verifierRegister struct {
 	Eintraege []verifierEintrag `json:"e,omitempty"`
+	// PQ: ML-DSA-65-Schluessel der Dienste von Pruefern (pruefer_dienst_pq.go,
+	// Audit B2), sortiert nach Ed25519-Schluessel. Leer: Schreibweise wie
+	// vorher.
+	PQ []prueferDienstPQ `json:"pq,omitempty"`
+	// pqHash: SHA-256 des PQ-Felds, beim Bauen gerechnet (das Register wird
+	// nie veraendert, nur ersetzt) -- geht statt der ~4 KB je Schluessel in
+	// die StateRoot.
+	pqHash string
 }
 
-func (r *verifierRegister) leer() bool { return r == nil || len(r.Eintraege) == 0 }
+func (r *verifierRegister) leer() bool { return r == nil || (len(r.Eintraege) == 0 && len(r.PQ) == 0) }
+
+// kodiertOhnePQ: die Schreibweise fuer die StateRoot (das PQ-Feld nur als
+// Hash daneben, stateRootPruefer). Ohne PQ-Eintraege gleich kodiert().
+func (r *verifierRegister) kodiertOhnePQ() string {
+	if r == nil {
+		return `{}`
+	}
+	b, _ := json.Marshal(&verifierRegister{Eintraege: r.Eintraege})
+	return string(b)
+}
 
 func (r *verifierRegister) kodiert() string {
 	if r == nil {
@@ -278,6 +296,21 @@ func (r *verifierRegister) mitSetzen(e verifierEintrag) *verifierRegister {
 	}
 	neu.Eintraege = append(neu.Eintraege, e)
 	sort.Slice(neu.Eintraege, func(i, j int) bool { return neu.Eintraege[i].Mensch < neu.Eintraege[j].Mensch })
+	// PQ-Schluessel der Dienste bleiben, solange ihr Mensch im Register steht
+	// oder Gruender ist; mit dem Eintrag eines veralteten Pruefers fallen
+	// auch sie weg (das haelt das Feld begrenzt).
+	if r != nil {
+		bleibt := map[string]bool{}
+		for _, x := range neu.Eintraege {
+			bleibt[x.Mensch] = true
+		}
+		for _, p := range r.PQ {
+			if bleibt[p.Mensch] || verifierIstGruender(p.Mensch) {
+				neu.PQ = append(neu.PQ, p)
+			}
+		}
+	}
+	neu.pqHash = prueferPQHash(neu.PQ)
 	return neu
 }
 
@@ -302,6 +335,10 @@ func verifierRegisterLesen(s string) (*verifierRegister, error) {
 			return nil, fmt.Errorf("Pruefer-Register: Eintrag %d ungueltig", i)
 		}
 	}
+	if err := dienstPQGueltig(r.PQ); err != nil {
+		return nil, err
+	}
+	r.pqHash = prueferPQHash(r.PQ)
 	if r.kodiert() != s {
 		return nil, errors.New("Pruefer-Register nicht in kanonischer Schreibweise")
 	}

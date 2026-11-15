@@ -325,7 +325,7 @@ func pruefeBioBescheinigung(tx Transaction) error {
 // (blockZeit) zaehlen auch Schluessel von Pruefern, deren Bindung die
 // Registrierung mitbringt (bio_bescheinigung_register.go). pruefer: ist der
 // Mensch zur Zeit t Pruefer? nil = keine Pruefer-Schluessel (fail-closed).
-func pruefeBioBescheinigungMit(tx Transaction, blockZeit int64, pruefer func(m string, t int64) bool) error {
+func pruefeBioBescheinigungMit(tx Transaction, blockZeit int64, pruefer prueferQuelle) error {
 	k, err := bescheinigungKonf()
 	if err != nil {
 		return err
@@ -370,18 +370,18 @@ func pruefeBioBescheinigungMit(tx Transaction, blockZeit int64, pruefer func(m s
 // eine Wallet bindet (Coordinator), aussageMsg, wer den Menschen bezeugt
 // (Vergleichsdienst). Dieselbe Regel fuer Registrierung und Umzug (umzug.go);
 // die Domaenen in den Nachrichten trennen beide.
-func pruefeV3Unterschriften(b *BioBescheinigung, k bescheinigungKonfig, bindungMsg, aussageMsg []byte, blockZeit int64, pruefer func(m string, t int64) bool) error {
+func pruefeV3Unterschriften(b *BioBescheinigung, k bescheinigungKonfig, bindungMsg, aussageMsg []byte, blockZeit int64, pruefer prueferQuelle) error {
 	bindet, bezeugt, err := pruefeV3Kern(b, k, bindungMsg, aussageMsg, blockZeit, pruefer)
 	if err != nil {
 		return err
 	}
 	// Quantensicher: ab pq_ab_unix zusaetzlich ML-DSA je gezaehltem Schluessel.
-	return pruefePQ(b, k, bindungMsg, aussageMsg, bindet, bezeugt, blockZeit)
+	return pruefePQ(b, k, bindungMsg, aussageMsg, bindet, bezeugt, blockZeit, pruefer)
 }
 
 // pruefeV3Kern: die Ed25519-Pruefung; gibt die Schluessel zurueck, die
 // gebunden bzw. bezeugt haben.
-func pruefeV3Kern(b *BioBescheinigung, k bescheinigungKonfig, bindungMsg, aussageMsg []byte, blockZeit int64, pruefer func(m string, t int64) bool) (bindet, bezeugt map[string]bool, _ error) {
+func pruefeV3Kern(b *BioBescheinigung, k bescheinigungKonfig, bindungMsg, aussageMsg []byte, blockZeit int64, pruefer prueferQuelle) (bindet, bezeugt map[string]bool, _ error) {
 	if len(b.Signaturen) == 0 || len(b.Signaturen) > bescheinigungMaxSignaturen {
 		return nil, nil, fmt.Errorf("bescheinigung: %d Unterschriften (1..%d)", len(b.Signaturen), bescheinigungMaxSignaturen)
 	}
@@ -649,7 +649,7 @@ func proveAnfrageOhneV3(body []byte) []byte {
 // (RetryRegistrationRecoveries) ab dem Stichtag noch eingebucht werden?
 // Nur mit der Nullifier-Form (die alte ohne Nullifier kennt keine
 // Bescheinigung) und einer Bescheinigung, die jeder Knoten annimmt.
-func recoveryBescheinigungPruefen(tx Transaction, jetzt int64, pruefer func(m string, t int64) bool) error {
+func recoveryBescheinigungPruefen(tx Transaction, jetzt int64, pruefer prueferQuelle) error {
 	if tx.Nullifier == "" {
 		return fmt.Errorf("Registrierung ohne Nullifier: nach dem Stichtag der Bescheinigung nicht nachholbar")
 	}

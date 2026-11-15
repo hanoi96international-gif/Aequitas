@@ -1257,6 +1257,12 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	mux.HandleFunc("/api/quanten/stand", a.lesenBegrenzt("/api/quanten/stand", a.handleQuantenStand))
 	mux.HandleFunc("/api/quanten/praegen", a.zumLeiter(a.handleQuantenPraegen))
 	mux.HandleFunc("/api/quanten/freischaltung", a.zumLeiter(a.handleQuantenFreischaltung))
+	// PQ-Schluessel der Pruefer-Dienste (pruefer_dienst_pq.go, Audit B2).
+	mux.HandleFunc("/api/verifier/dienst-pq", a.zumLeiter(a.handlePrueferDienstPQ))
+	// Sammelweg (quanten_sammeln.go): eine Stimme je Anfrage, beim Leiter.
+	mux.HandleFunc("/api/quanten/stimme", a.zumLeiter(a.handleQuantenStimme))
+	// Offene Vorschlaege dieses Knotens (gefuellt beim Leiter, der sammelt).
+	mux.HandleFunc("/api/quanten/abstimmungen", a.lesenBegrenzt("/api/quanten/abstimmungen", a.handleQuantenAbstimmungen))
 	// Satz des Gleichgewichts ankuendigen (satz_plan.go): zwei
 	// Betreiber-Menschen, nur beim Leiter.
 	mux.HandleFunc("/api/wirtschaft/satz", a.satzGrenze(a.zumLeiter(a.handleSatzAnkuendigung)))
@@ -1469,7 +1475,13 @@ func (a *APIServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 		"produzenten_geschlossen": a.blockchain.ProduzentenGeschlossen(),
 		// quanten_geld.go: Stichtag und Topf des dezentralen Quantengelds
 		// (ab fehlt, solange schlafend -- der Waechter liest das so).
-		"quanten":               quantenStatus(),
+		"quanten": quantenStatus(),
+		// pruefer_pq.go: Stichtag der hybriden Pruefer-Stimmen (ab fehlt,
+		// solange schlafend -- pruefer-pq-nicht-verpasst.sh liest das so).
+		"pruefer_pq": prueferPQStatus(),
+		// pruefer_dienst_pq.go: Stichtag der PQ-Schluessel der Pruefer-Dienste
+		// (ab fehlt, solange schlafend).
+		"pruefer_dienst_pq":     prueferDienstPQStatus(),
 		"produzenten":           a.blockchain.ProduzentenListe(),
 		"bescheinigung_konsens": BescheinigungStand(),
 		// Umzug (umzug.go): ab wann; fuer die App und die Deploy-Sperre.

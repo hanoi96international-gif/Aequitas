@@ -57,7 +57,7 @@ func (f *b1bFall) istPruefer(m string, t int64) bool {
 }
 
 func (f *b1bFall) pruefe(tx Transaction, blockZeit int64) error {
-	return pruefeBioBescheinigungMit(tx, blockZeit, f.istPruefer)
+	return pruefeBioBescheinigungMit(tx, blockZeit, alsPruefer(f.istPruefer))
 }
 
 func mitBindungen(tx Transaction, b ...BescheinigungsBindung) Transaction {
@@ -202,7 +202,7 @@ func TestB1b_Missbrauch(t *testing.T) {
 		}()), bTestZeit + 60, f.istPruefer},
 	}
 	for _, fa := range faelle {
-		if err := pruefeBioBescheinigungMit(fa.tx, fa.blockZeit, fa.pruefer); err == nil {
+		if err := pruefeBioBescheinigungMit(fa.tx, fa.blockZeit, alsPruefer(fa.pruefer)); err == nil {
 			t.Errorf("%s: angenommen", fa.name)
 		}
 	}

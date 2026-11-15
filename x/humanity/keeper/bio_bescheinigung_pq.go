@@ -155,12 +155,12 @@ func pqPflicht(k bescheinigungKonfig, bescheinigungZeit, blockZeit int64) bool {
 // pruefePQ: nach der Ed25519-Pruefung (pruefeV3Kern). bindet/bezeugt sind
 // die Schluessel, die dort gezaehlt haben; jeder braucht seine ML-DSA-
 // Unterschrift, und keine PQ-Unterschrift darf zu einem anderen gehoeren.
-func pruefePQ(b *BioBescheinigung, k bescheinigungKonfig, bindungMsg, aussageMsg []byte, bindet, bezeugt map[string]bool, blockZeit int64) error {
+func pruefePQ(b *BioBescheinigung, k bescheinigungKonfig, bindungMsg, aussageMsg []byte, bindet, bezeugt map[string]bool, blockZeit int64, pruefer prueferQuelle) error {
 	if err := pqFeldForm(b.PQ); err != nil {
 		return err
 	}
 	if pqPflicht(k, b.Zeit, blockZeit) {
-		return pqPruefenStreng(b, k, bindungMsg, aussageMsg, bindet, bezeugt)
+		return pqPruefenStreng(b, k, bindungMsg, aussageMsg, bindet, bezeugt, pruefer)
 	}
 	// VOR DEM STICHTAG: beobachten. Dieselbe strenge Pruefung, aber nur
 	// gezaehlt (/api/status -> bescheinigung_konsens.pq_beobachtet), nie
@@ -172,7 +172,7 @@ func pruefePQ(b *BioBescheinigung, k bescheinigungKonfig, bindungMsg, aussageMsg
 	if len(k.PQ) > 0 {
 		if len(b.PQ) == 0 {
 			pqBeobachtetOhne.Add(1)
-		} else if err := pqPruefenStreng(b, k, bindungMsg, aussageMsg, bindet, bezeugt); err != nil {
+		} else if err := pqPruefenStreng(b, k, bindungMsg, aussageMsg, bindet, bezeugt, pruefer); err != nil {
 			pqBeobachtetFalsch.Add(1)
 			fmt.Printf("[BIO-PQ] Bescheinigung haette ab dem Stichtag nicht gegolten: %v\n", err)
 		} else {
@@ -187,7 +187,7 @@ func pruefePQ(b *BioBescheinigung, k bescheinigungKonfig, bindungMsg, aussageMsg
 var pqBeobachtetOK, pqBeobachtetFalsch, pqBeobachtetOhne atomic.Int64
 
 // pqPruefenStreng: die Pruefung ab dem Stichtag.
-func pqPruefenStreng(b *BioBescheinigung, k bescheinigungKonfig, bindungMsg, aussageMsg []byte, bindet, bezeugt map[string]bool) error {
+func pqPruefenStreng(b *BioBescheinigung, k bescheinigungKonfig, bindungMsg, aussageMsg []byte, bindet, bezeugt map[string]bool, pruefer prueferQuelle) error {
 	sigs := map[string]string{}
 	for _, e := range b.PQ {
 		ed, sig, _ := pqEintragTeilen(e)
@@ -201,11 +201,24 @@ func pqPruefenStreng(b *BioBescheinigung, k bescheinigungKonfig, bindungMsg, aus
 			return errors.New("bescheinigung: PQ-Unterschrift eines Schluessels, der nicht unterschrieben hat")
 		}
 	}
+	// Schluessel von Pruefern aus dem Register (B1b): ihr PQ-Schluessel steht
+	// im Pruefer-Register (pruefer_dienst_pq.go, Audit B2) -- fuer GENAU den
+	// Menschen ihrer Bindung, und nur, wenn er zur Zeit der Bescheinigung
+	// schon wirkt.
+	bindungVon := map[string]string{}
+	for _, x := range b.Bindungen {
+		bindungVon[x.PublicKey] = x.Mensch
+	}
 	for s := range bezeugt {
 		pkHex, ok := k.PQ[s]
+		if !ok && pruefer != nil {
+			if mensch, gebunden := bindungVon[s]; gebunden {
+				pkHex, ok = pruefer.dienstPQ(s, mensch, b.Zeit)
+			}
+		}
 		if !ok {
-			// Auch Schluessel von Pruefern aus dem Register (B1b): ohne
-			// hinterlegten PQ-Schluessel zaehlen sie ab dem Stichtag nicht.
+			// Ohne hinterlegten PQ-Schluessel zaehlt ein Schluessel ab dem
+			// Stichtag nicht.
 			return fmt.Errorf("bescheinigung: Schluessel %.12s... hat keinen PQ-Schluessel", s)
 		}
 		sigHex, ok := sigs[s]

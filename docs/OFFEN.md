@@ -334,9 +334,11 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
   (`umzug.go`), B8 (Treuhand Form 2), V8 ohne Befund; Biometrie: B1
   Coordinator (pq: nur auf Wunsch der App), B10, B11 (biometric #120); App:
   B1, B15 (Aequitas-App #68).
-- **B2** (Prüfer-Schlüssel aus dem Register ohne PQ-Schlüssel) ist offen:
-  vor dem Setzen von `pq_ab_unix` muss die Bindung eines Prüfers (B1b) seinen
-  ML-DSA-Schlüssel tragen. Bis dahin `pq_ab_unix` NICHT setzen.
+- **B2** (Prüfer-Schlüssel aus dem Register ohne PQ-Schlüssel): Knotenseite
+  fertig und schlafend (`pruefer_dienst_pq.go`). Offen: Dienst gibt seinen
+  ML-DSA-Schlüssel samt Besitznachweis heraus, App unterschreibt die
+  Freigabe mit dem Tresor-Schlüssel. Reihenfolge: `prueferDienstPQAbUnix`
+  setzen → Prüfer tragen ein → erst dann `pq_ab_unix`.
 - **B12, Rest:** `npm audit` im Ketten-Repo nach `npm audit fix` (nur
   Lockfile, innerhalb der Semver-Grenzen): 26 Meldungen, alle in
   Entwicklungs-Abhängigkeiten (hardhat-Werkzeuge, WalletConnect/@reown,

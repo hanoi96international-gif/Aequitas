@@ -43,10 +43,11 @@ package keeper
 // Sammelweg (/api/verifier/stimme) nimmt je Anfrage EINE Stimme
 // (verifierStimmeKoerperMax). Eine Freischaltung traegt alle Stimmen in
 // einem Koerper; bei 171 Stimmen (zwei Drittel von 256) sind das ~2 MB --
-// mehr als quantenKoerperMax und die Weiterleitung zum Leiter tragen. Vor dem
-// Stichtag dieser Regel braucht die Freischaltung darum einen Sammelweg wie
-// die Pruefer-Abstimmung (docs/QUANTENSICHERHEIT.md, offen). Bis dahin ist
-// die Grenze fail-closed: zu gross wird abgewiesen, nie abgeschnitten.
+// mehr als quantenKoerperMax und die Weiterleitung zum Leiter tragen. Dafuer
+// gibt es den Sammelweg (quanten_sammeln.go, /api/quanten/stimme): eine
+// Stimme je Anfrage, der Leiter baut die Freischaltung selbst. Der Endpunkt
+// mit allen Stimmen bleibt fuer kleine Register; zu gross wird abgewiesen,
+// nie abgeschnitten.
 
 import (
 	"crypto/mldsa"
@@ -62,9 +63,9 @@ import (
 const (
 	prueferPQDomaene = "aequitas-pruefer-pq-v1"
 	// prueferPQAbUnix: schlafend. Erst setzen, wenn die App den PQ-Teil
-	// liefert, eine echte Stimme damit durchging und die Freischaltung einen
-	// Sammelweg hat (siehe GRENZEN).
-	prueferPQAbUnix int64 = math.MaxInt64
+	// liefert und eine echte Stimme damit durchging (Waechter:
+	// .github/neustart/pruefer-pq-nicht-verpasst.sh).
+	prueferPQAbUnix int64 = 9223372036854775807 // math.MaxInt64: schlafend (Waechter liest die Zahl)
 )
 
 // prueferPQAbOverride: nur fuer Tests (0 = Konstante gilt).
@@ -142,4 +143,15 @@ func prueferPQPruefen(s *VerifierStimme, satz string, pflicht bool, zusage func(
 func (cs *ChainState) prueferZusageVon(mensch string) (string, bool) {
 	z, ok := cs.umzugRegisterJetzt().pqZusage(mensch)
 	return z.Hash, ok
+}
+
+// prueferPQStatus: fuer /api/status ("pruefer_pq"). ab fehlt, solange die
+// Regel schlaeft -- der Waechter (.github/neustart/pruefer-pq-nicht-verpasst.sh)
+// liest das so.
+func prueferPQStatus() map[string]interface{} {
+	m := map[string]interface{}{}
+	if ab := prueferPQAb(); ab != math.MaxInt64 {
+		m["ab"] = ab
+	}
+	return m
 }
