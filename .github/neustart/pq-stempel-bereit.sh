@@ -27,7 +27,9 @@ lies() { printf '%s' "$STATUS" | jq -r "$1" 2>/dev/null; }
 LIVE=$(lies '(.pq.stempel.ab_hoehe // 0) | tostring') || { echo "::error::Antwort ist kein JSON -- Deploy angehalten"; exit 1; }
 HOEHE=$(lies '(.height // "x") | tostring')
 [[ "$LIVE" =~ ^(0|[1-9][0-9]{0,12})$ ]] || { echo "::error::Stichhoehe des laufenden Knotens unlesbar: $LIVE"; exit 1; }
-[[ "$HOEHE" =~ ^[1-9][0-9]{0,12}$ ]] || { echo "::error::Hoehe des laufenden Knotens unlesbar: $HOEHE"; exit 1; }
+# Hoehe 0 ist eine gueltige Antwort: eine frisch neu gestartete Kette
+# (neustart-bei-null.yml) -- unlesbar heisst fehlend oder keine Zahl.
+[[ "$HOEHE" =~ ^(0|[1-9][0-9]{0,12})$ ]] || { echo "::error::Hoehe des laufenden Knotens unlesbar: $HOEHE"; exit 1; }
 echo "PQ-Stempel: Stichhoehe Repo $REPO, laufend $LIVE, Hoehe $HOEHE"
 if [ "$REPO" = "$LIVE" ]; then
   echo "unveraendert"
