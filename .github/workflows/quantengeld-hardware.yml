@@ -1,0 +1,93 @@
+# Quantengeld auf Quanten-Hardware (forschung/quantengeld/hardware.py,
+# hardware_ibm.py): Note praegen, mit Variante B pruefen, Faelschungen
+# dagegen -- in Spielzeuggroesse (Zyklus N = 8, 6-9 Qubits).
+#
+#   rauschen: Rauschmodell einer echten IBM-Maschine (kein Geheimnis,
+#             keine Freigabe).
+#   ibm:      echter Quantenrechner bei IBM. Laeuft in der Umgebung
+#             `quantenhardware` (Freigabe noetig); dort liegt das Secret
+#             IBM_QUANTUM_TOKEN, optional die Variablen IBM_QUANTUM_INSTANCE
+#             und IBM_QUANTUM_BACKEND. Kostet Rechenzeit des IBM-Kontos.
+#
+# Abhaengigkeiten fest mit Hashes (hardware-anforderungen.txt). Nur lesende
+# Rechte, kein Schreibzugriff auf das Repo, kein Server.
+name: Quantengeld auf Quanten-Hardware
+
+on:
+  workflow_dispatch:
+    inputs:
+      modus:
+        description: "rauschen = Rauschmodell, ibm = echter Quantenrechner"
+        type: choice
+        options: [rauschen, ibm]
+        default: rauschen
+      rauschmodell:
+        description: "Rauschmodell (nur Modus rauschen)"
+        type: choice
+        options: [FakeFez, FakeTorino, FakeMarrakesh, FakeKingston]
+        default: FakeFez
+      laeufe:
+        description: "Schaltkreise je Fall (1-64)"
+        default: "8"
+      schuesse:
+        description: "Schuesse je Schaltkreis (1-4000)"
+        default: "1000"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quantengeld-hardware
+  cancel-in-progress: false
+
+jobs:
+  rauschen:
+    if: inputs.modus == 'rauschen'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+      - run: pip install --require-hashes --no-deps -r forschung/quantengeld/hardware-anforderungen.txt
+      - run: python3 -I forschung/quantengeld/hardware.py --selbsttest
+      - name: Lauf
+        env:
+          MODELL: ${{ inputs.rauschmodell }}
+          LAEUFE: ${{ inputs.laeufe }}
+          SCHUESSE: ${{ inputs.schuesse }}
+        run: python3 -I forschung/quantengeld/hardware_ibm.py --rauschen "$MODELL" --laeufe "$LAEUFE" --schuesse "$SCHUESSE" --json ergebnis.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: quantengeld-rauschen
+          path: ergebnis.json
+
+  ibm:
+    if: inputs.modus == 'ibm'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    environment: quantenhardware
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+      - run: pip install --require-hashes --no-deps -r forschung/quantengeld/hardware-anforderungen.txt
+      - run: python3 -I forschung/quantengeld/hardware.py --selbsttest
+      - name: Lauf auf echter Hardware
+        env:
+          IBM_QUANTUM_TOKEN: ${{ secrets.IBM_QUANTUM_TOKEN }}
+          IBM_QUANTUM_INSTANCE: ${{ vars.IBM_QUANTUM_INSTANCE }}
+          IBM_QUANTUM_BACKEND: ${{ vars.IBM_QUANTUM_BACKEND }}
+          LAEUFE: ${{ inputs.laeufe }}
+          SCHUESSE: ${{ inputs.schuesse }}
+        run: python3 -I forschung/quantengeld/hardware_ibm.py --ibm --laeufe "$LAEUFE" --schuesse "$SCHUESSE" --json ergebnis.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: quantengeld-ibm
+          path: ergebnis.json

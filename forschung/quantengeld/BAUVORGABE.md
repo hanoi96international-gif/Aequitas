@@ -426,6 +426,35 @@ demselben Schalter wie die Stufe-6-Brücke (keine Transaktionsart, kein
 Stichtag). Was zum Einschalten fehlt, ist allein die Note selbst: ein
 Quantenspeicher, der den Zustand hält, und ein Prüfgerät für Variante B.
 
+**Erster Hardware-Schritt (`hardware.py`, `hardware_ibm.py`,
+Workflow „Quantengeld auf Quanten-Hardware“).** Das Prüfgerät mit 10⁸–10¹⁰
+logischen Qubits gibt es nirgends – aber das Protokoll läuft heute auf
+echten Quantenrechnern, in Spielzeuggröße: Zyklus N = 8, Note und
+Seriennummer je 3 Qubits, 3 Prüftests. **Prägen auf dem Chip** (Hadamard
+über die Gruppe, Aktion, QFT, Seriennummer messen – aufgeschoben), **Prüfen
+mit Variante B** (Hadamard-Test, gesteuertes S_u als Draper-Addierer, u
+gleichverteilt), dazu **Fälschungen**: fremde Note, gemessen-und-nachgebaut.
+Bausteine nur h, x, cx, p, cp. Die Schaltkreise sind doppelt geprüft (eigener
+Zustandsvektor-Simulator und Qiskit, gleiche Ergebnisse). Mit den
+Rauschmodellen echter IBM-Heron-Maschinen (übersetzt auf deren Gatter und
+Kopplung, 16 Schaltkreise × 2.000 Schüsse je Fall):
+
+| Maschine (Rauschmodell) | geprägt + geprüft | echte Note | fremde Note | nachgebaut | Trennung |
+|---|---|---|---|---|---|
+| ideal | 1,000 | 1,000 | 0,125 | 0,234 | +0,77 |
+| Torino (Heron r1) | 0,757 | 0,886 | 0,071 | 0,201 | +0,69 |
+| Fez (Heron r2) | 0,792 | 0,911 | 0,146 | 0,218 | +0,69 |
+| Marrakesh (Heron r2) | 0,849 | 0,946 | 0,117 | 0,249 | +0,70 |
+
+Seriennummern beim Prägen gleichverteilt (je 0,123–0,128). Die Maschinen
+unterscheiden echte Noten deutlich von Fälschungen. **Ehrlich:** im Zyklus
+Z₈ ist das gesteuerte S_u billig (die Gruppe ist bekannt); in der echten
+Isogenie-Gruppe ist genau dieser Baustein die 4D-Kette mit ~2⁶³ Toffoli.
+Der Lauf misst Herstellung, Kohärenz und Prüftest – nicht die Sicherheit.
+Auf echter Hardware: Workflow im Modus `ibm`, Umgebung `quantenhardware`
+mit Freigabe und dem Secret `IBM_QUANTUM_TOKEN` (IBM-Quantum-Konto, das
+kostenlose Kontingent reicht für einen Lauf).
+
 **Nächste Schritte:** (a) ~~Volltexte~~ gelesen (qt-Pegasis, PEGASIS,
 Dartois–Duparc; vom Betreiber hochgeladen). (b) Die 4D-Kette als
 umkehrbaren Schaltkreis zählen (Theta-Koordinaten, Kosten je Schritt aus
