@@ -1580,6 +1580,8 @@ parent_hashes TEXT NOT NULL
 	// Fuer die taegliche Anwesenheit der Validatoren (validator_anwesenheit.go):
 	// ein Tag Bloecke, ohne die ganze Tabelle zu lesen.
 	dbExec(`CREATE INDEX IF NOT EXISTS idx_chain_blocks_timestamp ON chain_blocks (timestamp)`)
+	// Bloecke je Erzeuger, heute und insgesamt (validator_stand.go).
+	dbExec(`CREATE INDEX IF NOT EXISTS idx_chain_blocks_proposer_ts ON chain_blocks (lower(proposer), timestamp)`)
 
 	// FIX (audit 2026-06-28 recheck 4, P1-5): notifyProofServer (register.go)
 	// used to be pure fire-and-forget — a failed call (proof server down,
