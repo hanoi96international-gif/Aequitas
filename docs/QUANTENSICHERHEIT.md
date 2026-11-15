@@ -1,6 +1,6 @@
 # Quantensicherheit – Stand 15.11.2026
 
-**Stand auf einen Blick** (live geprüft 15.11.2026, 07:30 UTC):
+**Stand auf einen Blick** (live geprüft 15.11.2026, 08:56 UTC):
 
 | Stufe | Was | Stand |
 |---|---|---|
@@ -8,8 +8,8 @@
 | 1 | Registrierung hybrid (Ed25519 + ML-DSA-65) | Schlüssel in der Genesis, beide Dienste unterschreiben (`/health`: Fingerabdrücke = Genesis); jede PQ-Unterschrift wird vor dem Stichtag streng geprüft und gezählt; **scharf nach der ersten echten Registrierung** (Wächter `bio-pq-bereit.sh`) |
 | 2 | PQ-Zusage je Wallet | **live seit 14.11.2026, 22:00 UTC** |
 | 3 | PQ-Adressen, Überweisungen mit ML-DSA-65 (App 1.20.0, Tresor) | **live seit 14.11.2026, 22:00 UTC** |
-| 5 | PQ-Stempel je 60 Blöcke (ML-DSA-65 des Erzeugers) | Erzeuger stempelt, jeder Stempel gegen die Genesis geprüft (0 falsch); **Pflicht ab Höhe 2.134.680**; Komitee-Checkpoints hybrid, schlafend bis ≥ 4 Erzeuger |
-| 6 | Quantengeld (Forschung) | Weg vollständig beziffert (`forschung/quantengeld/BAUVORGABE.md` §8); die Lücke ist Hardware |
+| 5 | PQ-Stempel je 60 Blöcke (ML-DSA-65 des Erzeugers) | **Pflicht seit Höhe 2.134.680 (15.11.2026, ~08:55 UTC)**: ein Block auf einer 60er-Höhe ohne gültigen Stempel ist für jeden Knoten ungültig. Block 2.134.680 unabhängig gegen den Schlüssel in `genesis.json` geprüft: gültig (veränderter Hash: abgewiesen). Die Wache meldet, wenn der Erzeuger nicht stempelt. Komitee-Checkpoints hybrid, schlafend bis ≥ 4 Erzeuger |
+| 6 | Quantengeld (Forschung) | Weg vollständig beziffert (`forschung/quantengeld/BAUVORGABE.md` §8). **Ganzes Geld durchgespielt** (`labor.py`: jeder prägt, Anmelden mit Deckung, Prüfen, Angriffe). **Kettenseite im Knoten** (`quantenPraegen`, h < N je Parametersatz) – schlafend, kein Satz eingetragen. **Auf Quanten-Hardware** (Spielzeuggröße, Workflow „Quantengeld auf Quanten-Hardware“): Rauschmodelle echter IBM-Maschinen unterscheiden echte Noten (0,89–0,95) von Fälschungen (≤ 0,25). Die Lücke ist das große Prüfgerät (10⁸–10¹⁰ logische Qubits) |
 
 **Ziel:** „Ein Mensch – einmal 1.000 AEQ“ muss auch dann gelten, wenn es
 Quantencomputer gibt. Niemand darf mit einem Quantencomputer Menschen
@@ -20,7 +20,7 @@ erfinden, fremde Wallets leeren oder Gesichtsdaten entschlüsseln können.
 | | Was es ist | Machbar? |
 |---|---|---|
 | **Post-Quanten-Kryptografie (PQC)** | Unterschriften und Verschlüsselung, die auch ein Quantencomputer nicht knackt. Läuft auf normalen Handys und Servern. NIST-Standards seit 2024: ML-DSA (FIPS 204), SLH-DSA (FIPS 205), ML-KEM (FIPS 203). | **ja, jetzt** |
-| **Quantengeld** | Geldscheine, die selbst Quantenzustände sind und sich deshalb nicht kopieren lassen. Braucht Quantenspeicher in jedem Gerät; die Variante, die jeder selbst prüfen kann, ist mathematisch ungelöst. | **nein** |
+| **Quantengeld** | Geldscheine, die selbst Quantenzustände sind und sich deshalb nicht kopieren lassen. Braucht Quantenspeicher in jedem Gerät. Für die Variante, die jeder selbst prüfen kann, gibt es seit 2025 ein Verfahren auf Isogenien (Zhandry); unser Weg dahin steht in `forschung/quantengeld/BAUVORGABE.md` §8. | **Forschung; Spielzeuggröße läuft auf heutiger Hardware, Alltagsgröße braucht ein Prüfgerät, das es noch nicht gibt** |
 
 Aequitas wird **quantensicher**, nicht „Quantengeld“. So steht es auch nach
 außen: wir werben nie mit „Quantenwährung“.
