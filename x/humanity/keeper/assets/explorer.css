@@ -566,6 +566,8 @@ a.tab{text-decoration:none;display:inline-block}
 .qg-wert{font-size:1.02rem;font-weight:700;color:var(--text);word-break:break-word}
 .qg-an{color:var(--neon,#00D4AA)}
 .qg-bald{color:var(--gold,#F5A623)}
-.qg-topf{margin-top:12px;font-size:0.78rem;color:var(--muted);word-break:break-all}
-.qg-topf code{color:var(--teal,#00D4AA)}
+.qg-topf{margin-top:12px;font-size:0.78rem;color:var(--muted)}
+.qg-topf .qg-lbl{display:block;word-break:normal;overflow-wrap:normal;hyphens:auto}
+.qg-topf code{color:var(--teal,#00D4AA);word-break:break-all}
+.qg-wartet{margin-top:6px;font-size:0.82rem;font-weight:500;color:var(--muted)}
 .qg-hinweis{margin:12px 0 0;font-size:0.8rem;line-height:1.55;color:var(--muted)}

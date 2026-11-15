@@ -159,7 +159,7 @@ func (a *APIServer) handleWirtschaftKonto(w http.ResponseWriter, r *http.Request
 	}
 	wi := cs.wirt()
 	wi.mu.Lock()
-	k := wi.kontoLocked(addr, jetzt)
+	k := wi.kontoAnsichtLocked(addr, jetzt)
 	switch art {
 	case artMensch:
 		antwort["gebuehrenfrei_rest_monat"] = round6(math.Max(0, menschFreiAusgabenMonat-k.Ausgegeben))
@@ -174,7 +174,7 @@ func (a *APIServer) handleWirtschaftKonto(w http.ResponseWriter, r *http.Request
 			antwort["kategorie"] = e.Kategorie
 			antwort["verantwortliche"] = len(e.Verantwortliche)
 		}
-		umsatz := wi.umsatzLocked(addr, jetzt)
+		umsatz := wi.umsatzAnsichtLocked(addr, jetzt)
 		antwort["umsatz"] = map[string]interface{}{
 			"monatsumsatz":                    round6(umsatz),
 			"monatsumsatz_90_tage":            round6(wi.monatsUmsatzLocked(k, wi.mittelTageLocked(e, jetzt, umsatzFensterTage), jetzt)),
@@ -218,7 +218,7 @@ func (a *APIServer) handleUnternehmenListe(w http.ResponseWriter, r *http.Reques
 		}()
 		wi := cs.wirt()
 		wi.mu.Lock()
-		k := wi.kontoLocked(e.Adresse, jetzt)
+		k := wi.kontoAnsichtLocked(e.Adresse, jetzt)
 		monat := map[string]float64{"einnahmen": round6(k.Einnahmen), "lohn_gezahlt": round6(k.LohnGezahlt), "entnahmen": round6(k.Entnahmen)}
 		wi.mu.Unlock()
 		out = append(out, map[string]interface{}{

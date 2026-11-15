@@ -229,12 +229,13 @@ en:{
   'x-qg-titel':"Decentralized quantum money",
   'x-qg-k-status':"Status",
   'x-qg-k-saetze':"Parameter sets (enabled by ⅔ of verifiers)",
-  'x-qg-k-noten':"Registered notes",
+  'x-qg-k-noten':"Registered quantum notes",
   'x-qg-k-gedeckt':"Backing in the pool",
   'x-qg-k-topf':"Pool address (no key exists)",
-  'x-qg-hinweis':"Anyone can mint a quantum note; the chain registers it once, with backing in AEQ, and every recipient checks it themselves. A parameter set is enabled only by ⅔ of the verifiers, once quantum hardware holds notes longer than a payment takes — on today's real chips a note lives about 20 µs. Until then Aequitas protects itself with post-quantum signatures.",
+  'x-qg-hinweis':"Anyone can mint a quantum note; the chain registers it once, with backing in AEQ, and every recipient checks it themselves. A parameter set is enabled by ⅔ of the verifiers — and only once quantum hardware holds a note longer than a payment takes. On today's real chips a note lives about 20 µs. Until then Aequitas protects itself with post-quantum signatures.",
   'x-qg-aktiv':"active on the main network",
   'x-qg-ab':"active on the main network from",
+  'x-qg-wartet':"No parameter set enabled yet – notes can only be registered after that",
   'x-loading-topology':'Loading topology…',
   'x-loading-transactions':'Loading transactions...',
   'x-lorenz-curve':'Lorenz Curve',
@@ -588,12 +589,13 @@ de:{
   'x-qg-titel':"Dezentrales Quantengeld",
   'x-qg-k-status':"Status",
   'x-qg-k-saetze':"Parametersätze (freigeschaltet von ⅔ der Prüfer)",
-  'x-qg-k-noten':"Angemeldete Noten",
+  'x-qg-k-noten':"Angemeldete Quanten-Noten",
   'x-qg-k-gedeckt':"Deckung im Topf",
   'x-qg-k-topf':"Topf-Adresse (zu ihr gibt es keinen Schlüssel)",
-  'x-qg-hinweis':"Jeder kann eine Quanten-Note prägen; die Kette meldet sie einmal an, mit Deckung in AEQ, und jeder Empfänger prüft sie selbst. Ein Parametersatz wird nur von ⅔ der Prüfer freigeschaltet, sobald Quanten-Hardware Noten länger hält, als eine Zahlung dauert – auf heutigen echten Chips lebt eine Note etwa 20 µs. Bis dahin schützt sich Aequitas mit Post-Quanten-Signaturen.",
+  'x-qg-hinweis':"Jeder kann eine Quanten-Note prägen; die Kette meldet sie einmal an, mit Deckung in AEQ, und jeder Empfänger prüft sie selbst. Einen Parametersatz schalten ⅔ der Prüfer frei – und erst, wenn Quanten-Hardware eine Note länger hält, als eine Zahlung dauert. Auf heutigen echten Chips lebt eine Note etwa 20 µs. Bis dahin schützt sich Aequitas mit Post-Quanten-Signaturen.",
   'x-qg-aktiv':"aktiv im Hauptnetz",
   'x-qg-ab':"aktiv im Hauptnetz ab",
+  'x-qg-wartet':"Noch kein Parametersatz freigeschaltet – Noten lassen sich erst danach anmelden",
   'x-loading-topology':'Netzstruktur wird geladen …',
   'x-loading-transactions':'Überweisungen werden geladen …',
   'x-lorenz-curve':'Lorenz Curve',
@@ -966,6 +968,7 @@ es:{
   'x-qg-hinweis':"Cualquiera puede acuñar un billete cuántico; la cadena lo registra una sola vez, con respaldo en AEQ, y cada receptor lo comprueba por sí mismo. Un conjunto de parámetros solo lo habilitan ⅔ de los verificadores cuando el hardware cuántico conserve los billetes más tiempo del que dura un pago; en los chips reales de hoy un billete vive unos 20 µs. Hasta entonces Aequitas se protege con firmas poscuánticas.",
   'x-qg-aktiv':"activo en la red principal",
   'x-qg-ab':"activo en la red principal desde",
+  'x-qg-wartet':"Aún no hay ningún conjunto de parámetros habilitado; los billetes solo pueden registrarse después",
   'x-loading-topology':'Cargando topología…',
   'x-loading-transactions':'Cargando transacciones…',
   'x-lorenz-curve':'Lorenz Curve',
@@ -1327,6 +1330,7 @@ ru:{
   'x-qg-hinweis':"Любой может выпустить квантовую купюру; цепочка регистрирует её один раз с обеспечением в AEQ, и каждый получатель проверяет её сам. Набор параметров включают только ⅔ проверяющих, когда квантовое оборудование сможет хранить купюры дольше, чем длится платёж, — на сегодняшних реальных чипах купюра живёт около 20 мкс. До тех пор Aequitas защищается постквантовыми подписями.",
   'x-qg-aktiv':"активно в основной сети",
   'x-qg-ab':"активно в основной сети с",
+  'x-qg-wartet':"Пока ни один набор параметров не включён — купюры можно регистрировать только после этого",
   'x-loading-topology':'Загрузка топологии…',
   'x-loading-transactions':'Загрузка переводов…',
   'x-lorenz-curve':'Lorenz Curve',
@@ -1685,6 +1689,7 @@ zh:{
   'x-qg-hinweis':"任何人都可以铸造量子钞票；链只登记一次，并以 AEQ 作担保，每个收款人都会自行验证。只有当量子硬件保存钞票的时间长于一次支付所需时间时，参数集才会由 ⅔ 的验证者启用——在当今真实芯片上，一张钞票只能存活约 20 微秒。在此之前，Aequitas 以后量子签名保护自身。",
   'x-qg-aktiv':"已在主网启用",
   'x-qg-ab':"主网启用时间",
+  'x-qg-wartet':"尚未启用任何参数集——之后才能登记钞票",
   'x-loading-topology':'正在加载网络结构…',
   'x-loading-transactions':'正在加载交易…',
   'x-lorenz-curve':'Lorenz Curve',
@@ -2044,6 +2049,7 @@ id:{
   'x-qg-hinweis':"Siapa pun dapat mencetak uang kertas kuantum; rantai mendaftarkannya sekali, dengan jaminan dalam AEQ, dan setiap penerima memeriksanya sendiri. Set parameter hanya diaktifkan oleh ⅔ verifikator setelah perangkat keras kuantum dapat menyimpan uang kertas lebih lama dari durasi pembayaran — pada chip nyata saat ini uang kertas bertahan sekitar 20 µs. Sampai saat itu Aequitas melindungi diri dengan tanda tangan pasca-kuantum.",
   'x-qg-aktiv':"aktif di jaringan utama",
   'x-qg-ab':"aktif di jaringan utama mulai",
+  'x-qg-wartet':"Belum ada set parameter yang diaktifkan – uang kertas baru dapat didaftarkan setelah itu",
   'x-loading-topology':'Memuat topologi…',
   'x-loading-transactions':'Memuat transaksi…',
   'x-lorenz-curve':'Lorenz Curve',
@@ -2398,6 +2404,7 @@ it:{
   'x-qg-hinweis':"Chiunque può coniare una banconota quantistica; la catena la registra una sola volta, con copertura in AEQ, e ogni destinatario la verifica da sé. Un set di parametri viene abilitato solo da ⅔ dei verificatori quando l'hardware quantistico conserva le banconote più a lungo di quanto duri un pagamento: sui chip reali di oggi una banconota vive circa 20 µs. Fino ad allora Aequitas si protegge con firme post-quantistiche.",
   'x-qg-aktiv':"attivo sulla rete principale",
   'x-qg-ab':"attivo sulla rete principale dal",
+  'x-qg-wartet':"Nessun set di parametri ancora abilitato: le banconote si possono registrare solo dopo",
   'x-loading-topology':'Caricamento della topologia…',
   'x-loading-transactions':'Caricamento delle transazioni…',
   'x-lorenz-curve':'Lorenz Curve',
@@ -2753,6 +2760,7 @@ tr:{
   'x-qg-hinweis':"Herkes kuantum banknot basabilir; zincir onu bir kez, AEQ karşılığıyla kaydeder ve her alıcı kendisi doğrular. Bir parametre seti, kuantum donanımı banknotları bir ödemenin süresinden daha uzun tutabildiğinde yalnızca doğrulayıcıların ⅔'ü tarafından etkinleştirilir — bugünkü gerçek çiplerde bir banknot yaklaşık 20 µs yaşar. O zamana kadar Aequitas kendini kuantum sonrası imzalarla korur.",
   'x-qg-aktiv':"ana ağda etkin",
   'x-qg-ab':"ana ağda şu tarihten itibaren etkin:",
+  'x-qg-wartet':"Henüz etkin bir parametre seti yok – banknotlar ancak bundan sonra kaydedilebilir",
   'x-loading-topology':'Ağ yapısı yükleniyor…',
   'x-loading-transactions':'İşlemler yükleniyor…',
   'x-lorenz-curve':'Lorenz Curve',
@@ -3114,6 +3122,7 @@ fr:{
   'x-qg-hinweis':"Chacun peut frapper un billet quantique ; la chaîne l'enregistre une seule fois, avec une couverture en AEQ, et chaque destinataire le vérifie lui-même. Un jeu de paramètres n'est activé que par ⅔ des vérificateurs lorsque le matériel quantique conserve les billets plus longtemps que ne dure un paiement — sur les vraies puces d'aujourd'hui, un billet vit environ 20 µs. D'ici là, Aequitas se protège par des signatures post-quantiques.",
   'x-qg-aktiv':"actif sur le réseau principal",
   'x-qg-ab':"actif sur le réseau principal à partir du",
+  'x-qg-wartet':"Aucun jeu de paramètres activé pour l'instant – les billets ne pourront être enregistrés qu'ensuite",
   'x-loading-topology':'Chargement de la topologie…',
   'x-loading-transactions':'Chargement des transactions…',
   'x-lorenz-curve':'Lorenz Curve',
@@ -3474,6 +3483,7 @@ pt:{
   'x-qg-hinweis':"Qualquer pessoa pode cunhar uma cédula quântica; a cadeia a registra uma única vez, com lastro em AEQ, e cada destinatário a verifica por conta própria. Um conjunto de parâmetros só é ativado por ⅔ dos verificadores quando o hardware quântico conservar as cédulas por mais tempo do que dura um pagamento — nos chips reais de hoje uma cédula vive cerca de 20 µs. Até lá, a Aequitas se protege com assinaturas pós-quânticas.",
   'x-qg-aktiv':"ativo na rede principal",
   'x-qg-ab':"ativo na rede principal a partir de",
+  'x-qg-wartet':"Ainda nenhum conjunto de parâmetros habilitado – as notas só podem ser registradas depois disso",
   'x-loading-topology':'A carregar a topologia…',
   'x-loading-transactions':'A carregar transações…',
   'x-lorenz-curve':'Lorenz Curve',
@@ -3834,6 +3844,7 @@ ar:{
   'x-qg-hinweis':"يمكن لأي شخص سكّ ورقة كمومية؛ تسجلها السلسلة مرة واحدة بغطاء من AEQ، ويتحقق منها كل مستلم بنفسه. لا يفعّل مجموعة المعاملات إلا ⅔ المدققين عندما تحفظ الأجهزة الكمومية الأوراق مدة أطول من مدة الدفع — على الرقائق الحقيقية اليوم تعيش الورقة نحو 20 ميكروثانية. وحتى ذلك الحين تحمي Aequitas نفسها بتوقيعات ما بعد الكم.",
   'x-qg-aktiv':"مفعّل على الشبكة الرئيسية",
   'x-qg-ab':"مفعّل على الشبكة الرئيسية اعتبارًا من",
+  'x-qg-wartet':"لم يُفعَّل أي مجموعة معاملات بعد – لا يمكن تسجيل الأوراق النقدية إلا بعد ذلك",
   'x-loading-topology':'جارٍ تحميل بنية الشبكة…',
   'x-loading-transactions':'جارٍ تحميل المعاملات…',
   'x-lorenz-curve':'Lorenz Curve',
@@ -4192,6 +4203,7 @@ hi:{
   'x-qg-hinweis':"कोई भी क्वांटम नोट बना सकता है; चेन उसे एक बार, AEQ के समर्थन के साथ, पंजीकृत करती है और हर प्राप्तकर्ता उसे स्वयं जाँचता है। पैरामीटर सेट केवल ⅔ सत्यापनकर्ता तभी सक्षम करते हैं जब क्वांटम हार्डवेयर नोटों को किसी भुगतान की अवधि से अधिक समय तक रख सके — आज के वास्तविक चिप्स पर एक नोट लगभग 20 µs जीवित रहता है। तब तक Aequitas पोस्ट-क्वांटम हस्ताक्षरों से अपनी रक्षा करता है।",
   'x-qg-aktiv':"मुख्य नेटवर्क पर सक्रिय",
   'x-qg-ab':"मुख्य नेटवर्क पर सक्रिय होगा:",
+  'x-qg-wartet':"अभी कोई पैरामीटर सेट सक्षम नहीं है – नोट उसके बाद ही पंजीकृत किए जा सकते हैं",
   'x-loading-topology':'नेटवर्क संरचना लोड हो रही है…',
   'x-loading-transactions':'लेन-देन लोड हो रहे हैं…',
   'x-lorenz-curve':'Lorenz Curve',
@@ -4486,6 +4498,7 @@ function setLang(lang) {
   applyBlockTime(lastKnownBlockTime);
   applyChainId(lastKnownChainId);
   applyRpcUrl(); // same reasoning, see applyRpcUrl's own comment — no API data needed, so no guard to trip on
+  if (typeof zeigeQuantengeld === 'function') zeigeQuantengeld();
 }
 
 // lastKnownBlockTime + applyBlockTime: __BT__ is a placeholder embedded in
@@ -7088,6 +7101,23 @@ function setSwapPct(pct) {
 // authorized — the wallet owner sees this in MetaMask's signing prompt
 // before approving, and the server checks the signature matches both the
 // claimed wallet AND this exact message (see verifyPersonalSign in swap.go).
+// Nachrichtenform 2 fuer Tausch und Liquiditaet (auftrag_v2.go, Audit B15):
+// Kette (eingefroren 1926), Wallet und beim Tausch die Mindestgrenze stehen
+// in der Unterschrift. Betraege vorher auf 8 Stellen, damit toFixed(8) und
+// Go "%.8f" dieselben Ziffern ergeben; die Grenze abgerundet.
+const AUFTRAG_FORM = 2;
+function achtStellen(x) { return (isFinite(x) && x > 0) ? Math.round(x * 1e8) / 1e8 : 0; }
+function mindestAchtStellen(x) { return (isFinite(x) && x > 0) ? Math.floor(x * 1e8) / 1e8 : 0; }
+function tauschNachrichtV2(w, richtung, betrag, min, nonce, ts) {
+  return 'aequitas-tausch-v2|chain:1926|' + String(w).toLowerCase() + '|' + richtung + '|' + betrag.toFixed(8) + '|min:' + min.toFixed(8) + '|nonce:' + nonce + '|ts:' + ts;
+}
+function liquiditaetNachrichtV2(w, aeq, tusd, nonce, ts) {
+  return 'aequitas-liquiditaet-v2|chain:1926|' + String(w).toLowerCase() + '|' + aeq.toFixed(8) + '|' + tusd.toFixed(8) + '|nonce:' + nonce + '|ts:' + ts;
+}
+function liquiditaetAbNachrichtV2(w, anteile, nonce, ts) {
+  return 'aequitas-liquiditaet-ab-v2|chain:1926|' + String(w).toLowerCase() + '|' + anteile.toFixed(8) + '|nonce:' + nonce + '|ts:' + ts;
+}
+
 async function signMessage(message) {
   return await activeProvider().request({
     method: 'personal_sign',
@@ -7100,7 +7130,7 @@ async function doSwap() {
   const amount = parseFloat(document.getElementById('swap-amount').value || '0');
   if (amount <= 0) { swapLog('Enter a valid amount', 'err'); return; }
   // FIX 7: guard against sub-precision amounts rounding to zero
-  const preciseAmount = parseFloat(amount.toFixed(8));
+  const preciseAmount = achtStellen(amount);
   if (preciseAmount <= 0) { swapLog('Amount too small (minimum precision: 0.00000001)', 'err'); document.getElementById('swap-btn-go').disabled = false; return; }
 
   document.getElementById('swap-btn-go').disabled = true;
@@ -7108,22 +7138,19 @@ async function doSwap() {
     const nonceResp = await fetch('/api/nonce?wallet=' + swapWaddr);
     const { nonce } = await nonceResp.json();
     const timestamp = Math.floor(Date.now() / 1000);
-    const message = 'Aequitas Swap: ' + swapDirection + ' ' + preciseAmount.toFixed(8) + ' nonce:' + nonce + ' ts:' + timestamp;
-    swapLog('Sign the message in MetaMask to confirm this swap...', 'info');
-    const signature = await signMessage(message);
-
-    // Slippage protection: the server supports an optional min_amount_out
-    // floor (swap.go), but the UI never sent it, so swaps executed with zero
-    // protection against the pool moving between quote and submission.
-    // 1% tolerance below the last on-screen estimate.
+    // Slippage protection: 1% below the last on-screen estimate. Form 2
+    // signs this floor, so it is fixed BEFORE signing.
     const aeqToTusd = swapDirection === 'aeq_to_tusd';
     const est = estimateSwapOutput(preciseAmount, aeqToTusd);
-    const minAmountOut = est && !est.tooLarge ? est.amountOut * 0.99 : 0;
+    const minAmountOut = mindestAchtStellen(est && !est.tooLarge ? est.amountOut * 0.99 : 0);
+    const message = tauschNachrichtV2(swapWaddr, swapDirection, preciseAmount, minAmountOut, nonce, timestamp);
+    swapLog('Sign the message in MetaMask to confirm this swap...', 'info');
+    const signature = await signMessage(message);
 
     const resp = await fetch('/api/swap', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ wallet: swapWaddr, direction: swapDirection, amount: preciseAmount, nonce, timestamp, signature, min_amount_out: minAmountOut })
+      body: JSON.stringify({ wallet: swapWaddr, direction: swapDirection, amount: preciseAmount, nonce, timestamp, signature, min_amount_out: minAmountOut, form: AUFTRAG_FORM })
     });
     const data = await resp.json();
     if (data.success) {
@@ -7187,8 +7214,8 @@ function updateLiquidityRatio(changed) {
 
 async function doAddLiquidity() {
   if (!swapWaddr) return;
-  const amountAEQ = parseFloat(document.getElementById('addliq-aeq').value || '0');
-  const amountTUSD = parseFloat(document.getElementById('addliq-tusd').value || '0');
+  const amountAEQ = achtStellen(parseFloat(document.getElementById('addliq-aeq').value || '0'));
+  const amountTUSD = achtStellen(parseFloat(document.getElementById('addliq-tusd').value || '0'));
   if (amountAEQ <= 0 || amountTUSD <= 0) { swapLog('Enter both AEQ and tUSD amounts', 'err'); return; }
 
   document.getElementById('swap-btn-addliq').disabled = true;
@@ -7196,14 +7223,14 @@ async function doAddLiquidity() {
     const nonceRespL = await fetch('/api/nonce?wallet=' + swapWaddr);
     const { nonce: nonce_l } = await nonceRespL.json();
     const timestamp = Math.floor(Date.now() / 1000);
-    const message = 'Aequitas Add Liquidity: ' + amountAEQ.toFixed(8) + ' AEQ + ' + amountTUSD.toFixed(8) + ' tUSD nonce:' + nonce_l + ' ts:' + timestamp;
+    const message = liquiditaetNachrichtV2(swapWaddr, amountAEQ, amountTUSD, nonce_l, timestamp);
     swapLog('Sign the message in MetaMask to confirm this deposit...', 'info');
     const signature = await signMessage(message);
 
     const resp = await fetch('/api/add-liquidity', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ wallet: swapWaddr, amount_aeq: amountAEQ, amount_tusd: amountTUSD, nonce: nonce_l, timestamp, signature })
+      body: JSON.stringify({ wallet: swapWaddr, amount_aeq: amountAEQ, amount_tusd: amountTUSD, nonce: nonce_l, timestamp, signature, form: AUFTRAG_FORM })
     });
     const data = await resp.json();
     if (data.success) {
@@ -7292,21 +7319,21 @@ function setRemovePct(pct, btn) {
 
 async function doRemoveLiquidity() {
   if (!swapWaddr || myLPShares <= 0) return;
-  const sharesToBurn = myLPShares * removePct;
+  const sharesToBurn = mindestAchtStellen(myLPShares * removePct); // nie mehr als vorhanden
 
   document.getElementById('swap-btn-removeliq').disabled = true;
   try {
     const nonceRespR = await fetch('/api/nonce?wallet=' + swapWaddr);
     const { nonce: nonce_r } = await nonceRespR.json();
     const timestamp = Math.floor(Date.now() / 1000);
-    const message = 'Aequitas Remove Liquidity: ' + sharesToBurn.toFixed(8) + ' shares nonce:' + nonce_r + ' ts:' + timestamp;
+    const message = liquiditaetAbNachrichtV2(swapWaddr, sharesToBurn, nonce_r, timestamp);
     swapLog('Sign the message in MetaMask to confirm this withdrawal...', 'info');
     const signature = await signMessage(message);
 
     const resp = await fetch('/api/remove-liquidity', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ wallet: swapWaddr, shares: sharesToBurn, nonce: nonce_r, timestamp, signature })
+      body: JSON.stringify({ wallet: swapWaddr, shares: sharesToBurn, nonce: nonce_r, timestamp, signature, form: AUFTRAG_FORM })
     });
     const data = await resp.json();
     if (data.success) {
@@ -8238,31 +8265,52 @@ async function restoreWalletFromStorage() {
 
 // Dezentrales Quantengeld (quanten_geld.go): Stand aus /api/quanten/stand.
 // Nur Zahlen und die Topf-Adresse werden eingesetzt (textContent, nie HTML).
+// Letzte Antwort von /api/quanten/stand: setLang() zeichnet damit neu, sonst
+// bliebe der Status in der Sprache, die beim ersten Laden galt (vor dem
+// gespeicherten Sprachwechsel war das immer Englisch).
+let qgLetzter = null;
 async function loadQuantengeld() {
   try {
     const q = await aeqHoleJson('/api/quanten/stand');
     if (!q || typeof q !== 'object') return;
-    const t = (T[curLang] || T.en);
-    const st = document.getElementById('qg-status');
-    if (st) {
-      if (q.aktiv) {
-        st.textContent = '● ' + (t['x-qg-aktiv'] || T.en['x-qg-aktiv']);
-        st.className = 'qg-wert qg-an';
-      } else if (typeof q.ab === 'number') {
-        const d = new Date(q.ab * 1000);
-        st.textContent = (t['x-qg-ab'] || T.en['x-qg-ab']) + ' ' + d.toLocaleString(curLang, {dateStyle: 'medium', timeStyle: 'short'});
-        st.className = 'qg-wert qg-bald';
-      }
-    }
-    const s = document.getElementById('qg-saetze');
-    if (s && Array.isArray(q.saetze)) s.textContent = q.saetze.length ? q.saetze.map(function (x) { return String(x.name) + ' (≈2^' + Number(x.ordnung_bits) + ')'; }).join(', ') : '0';
-    const n = document.getElementById('qg-noten');
-    if (n && typeof q.noten === 'number') n.textContent = fmt(q.noten);
-    const g = document.getElementById('qg-gedeckt');
-    if (g && typeof q.gedeckt_aeq === 'number') g.textContent = fmt(q.gedeckt_aeq) + ' AEQ';
-    const tp = document.getElementById('qg-topf');
-    if (tp && typeof q.topf === 'string' && /^0x[0-9a-f]{40}$/.test(q.topf)) tp.textContent = q.topf;
+    qgLetzter = q;
+    zeigeQuantengeld();
   } catch (e) {}
+}
+function zeigeQuantengeld() {
+  const q = qgLetzter;
+  if (!q) return;
+  const t = (T[curLang] || T.en);
+  const tx = function (k) { return t[k] || T.en[k]; };
+  const keineSaetze = Array.isArray(q.saetze) && q.saetze.length === 0;
+  const st = document.getElementById('qg-status');
+  if (st) {
+    st.textContent = '';
+    const zeile = document.createElement('div');
+    if (q.aktiv) {
+      zeile.textContent = '● ' + tx('x-qg-aktiv');
+      st.className = 'qg-wert qg-an';
+    } else if (typeof q.ab === 'number') {
+      const d = new Date(q.ab * 1000);
+      zeile.textContent = tx('x-qg-ab') + ' ' + d.toLocaleString(curLang, {dateStyle: 'medium', timeStyle: 'short'});
+      st.className = 'qg-wert qg-bald';
+    }
+    st.appendChild(zeile);
+    if (keineSaetze) {
+      const w = document.createElement('div');
+      w.className = 'qg-wartet';
+      w.textContent = tx('x-qg-wartet');
+      st.appendChild(w);
+    }
+  }
+  const s = document.getElementById('qg-saetze');
+  if (s && Array.isArray(q.saetze)) s.textContent = q.saetze.length ? q.saetze.map(function (x) { return String(x.name) + ' (≈2^' + Number(x.ordnung_bits) + ')'; }).join(', ') : '0';
+  const n = document.getElementById('qg-noten');
+  if (n && typeof q.noten === 'number') n.textContent = fmt(q.noten);
+  const g = document.getElementById('qg-gedeckt');
+  if (g && typeof q.gedeckt_aeq === 'number') g.textContent = fmt(q.gedeckt_aeq) + ' AEQ';
+  const tp = document.getElementById('qg-topf');
+  if (tp && typeof q.topf === 'string' && /^0x[0-9a-f]{40}$/.test(q.topf)) tp.textContent = q.topf;
 }
 
 // Block-Details direkt unter <body>: im Explorer-Reiter (position:relative;
