@@ -464,6 +464,7 @@ Lesekorrektur je Prüfqubit; einmal ohne, einmal mit Fehlerunterdrückung
 |---|---|---|---|---|---|---|
 | ohne Unterdrückung | 0,600 | **0,743** | **0,075** | 0,234 | **+0,51 / +0,53** | 0,108–0,146 |
 | mit DD XY4 + Twirling | 0,512 | 0,676 | 0,195 | 0,239 | +0,44 / +0,47 | **0,120–0,130** |
+| **ohne SWAP in der QFT** (16 × 1.000) | **0,642** | **0,774** | 0,170 | **0,221** | **+0,55 / +0,58** | 0,111–0,148 |
 
 Die Lesekorrektur ändert wenig (+0,02): der Verlust kommt aus Gattern und
 Dekohärenz, nicht aus der Auslese. **Fehlerunterdrückung schadet hier:**
@@ -471,8 +472,12 @@ Twirling macht kohärente Fehler zufällig – in so kurzen Schaltkreisen
 heben sich manche kohärenten Fehler auf, nach dem Twirling nicht mehr;
 der Zustand verrauscht Richtung Zufall (fremde Note besteht öfter). Einzig
 die Seriennummern werden gleichmäßiger. Erster Befund (je ein Lauf), kein
-Beweis. **Nächster Hebel: kürzere Schaltkreise** (QFT ohne SWAP durch
-Umbenennen der Bits, weniger 2-Qubit-Gatter, Qubit-Wahl nach Kalibrierung). Die Maschinen
+Beweis. **Kürzere Schaltkreise helfen:** QFT ohne SWAP (Bits umbenennen statt mit
+je 3 CNOT tauschen) hebt die echte Note auf 0,774 und die Trennung auf
++0,55 – bestes Ergebnis auf echter Hardware. (Die fremde Note 0,075 der
+Runde davor war Stichprobenglück bei 8 Schaltkreisen; ideal 0,125.)
+Weitere Hebel: Qubit-Wahl nach Tageskalibrierung, Anordnung passend zum
+Wabengitter (weniger eingefügte Tausch-Gatter). Die Maschinen
 unterscheiden echte Noten deutlich von Fälschungen. **Ehrlich:** im Zyklus
 Z₈ ist das gesteuerte S_u billig (die Gruppe ist bekannt); in der echten
 Isogenie-Gruppe ist genau dieser Baustein die 4D-Kette mit ~2⁶³ Toffoli.
