@@ -445,8 +445,16 @@ Kopplung, 16 Schaltkreise × 2.000 Schüsse je Fall):
 | Torino (Heron r1) | 0,757 | 0,886 | 0,071 | 0,201 | +0,69 |
 | Fez (Heron r2) | 0,792 | 0,911 | 0,146 | 0,218 | +0,69 |
 | Marrakesh (Heron r2) | 0,849 | 0,946 | 0,117 | 0,249 | +0,70 |
+| **ibm_marrakesh, echter Chip** (15.11.2026, 8 × 1.000) | **0,571** | **0,739** | **0,057** | **0,224** | **+0,52** |
 
-Seriennummern beim Prägen gleichverteilt (je 0,123–0,128). Die Maschinen
+Seriennummern beim Prägen gleichverteilt (Rauschmodelle je 0,123–0,128,
+echter Chip 0,110–0,140). **Erster Lauf auf echter Hardware (IBM
+`ibm_marrakesh`, Heron r2, Job dbsn74gk09pc73b0ct60):** der Chip
+unterscheidet echte Noten von Fälschungen (+0,52), rauscht aber deutlich
+stärker als sein Rauschmodell (echte Note 0,74 statt 0,95) –
+Übersprechen und Kalibrier-Drift, die das Modell nicht kennt. Nächster
+Hebel: Fehlerunterdrückung (dynamische Entkopplung, Pauli-Twirling) und
+kürzere Schaltkreise. Die Maschinen
 unterscheiden echte Noten deutlich von Fälschungen. **Ehrlich:** im Zyklus
 Z₈ ist das gesteuerte S_u billig (die Gruppe ist bekannt); in der echten
 Isogenie-Gruppe ist genau dieser Baustein die 4D-Kette mit ~2⁶³ Toffoli.
