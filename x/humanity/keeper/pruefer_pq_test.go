@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"math"
 	"math/big"
 	"os"
 	"strings"
@@ -67,9 +68,22 @@ func prueferPQStichtag(t *testing.T, ab int64) {
 	t.Cleanup(func() { prueferPQAbOverride.Store(vorher) })
 }
 
-func TestPrueferPQ_SchlafendOhneWirkung(t *testing.T) {
-	if prueferPQAbUnix != 1<<63-1 {
-		t.Fatal("prueferPQAbUnix muss schlafen, bis App und Sammelweg der Freischaltung fertig sind")
+// Der gesetzte Stichtag (15.11.2026 21:00 UTC) gilt ohne Test-Ueberschreibung:
+// eine Sekunde davor ist der PQ-Teil freiwillig, ab dann Pflicht; /api/status
+// nennt ihn. Ohne PQ-Teil bleibt eine Stimme byte-gleich (omitempty).
+func TestPrueferPQ_StichtagGesetzt(t *testing.T) {
+	vorher := prueferPQAbOverride.Load()
+	prueferPQAbOverride.Store(0)
+	t.Cleanup(func() { prueferPQAbOverride.Store(vorher) })
+	const ab int64 = 1794776400
+	if prueferPQAb() != ab {
+		t.Fatalf("Stichtag %d, erwartet %d", prueferPQAb(), ab)
+	}
+	if prueferPQPflicht(ab-1) || !prueferPQPflicht(ab) {
+		t.Fatal("Pflicht nicht genau ab der Sekunde")
+	}
+	if s := prueferPQStatus(); s["ab"] != ab {
+		t.Fatalf("Status: %v", s)
 	}
 	// Ohne PQ-Teil: Stimme byte-gleich wie vorher (omitempty).
 	f := neuerVrFall(t)
@@ -172,6 +186,7 @@ func TestPrueferPQ_Missbrauch(t *testing.T) {
 func TestPrueferPQ_VorDemStichtagStreng(t *testing.T) {
 	f := neuerVrFall(t)
 	z := vrAb + 1000
+	prueferPQStichtag(t, math.MaxInt64) // ausdruecklich vor dem Stichtag
 	k := neuerPrueferPQ(t)
 	zusageEintragen(f.cs, f.m(0), k)
 	s := f.pqStimme(0, k, verifierArtAufnahme, f.m(1), z)
