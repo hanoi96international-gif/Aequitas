@@ -370,6 +370,26 @@ func (w *wirtschaft) unternehmenVon(mensch string) []string {
 	return r
 }
 
+// umlaufArt: die Kontoart fuer die Umlaufabgabe. Wie kontoartVon -- nur der
+// Quantengeld-Topf zahlt sie wie ein freies Konto (Entscheidung des
+// Betreibers vom 15.11.2026: "Demurrage auch im Topf"). Sonst waere eine
+// Note ein Weg, Geld ohne Umlaufabgabe zu halten. Jede Note haelt Anteile am
+// Topf (quanten_geld.go); sinkt der Topf um die Abgabe, sinkt jede Note
+// anteilig, und die Abgabe geht wie jede andere ins Grundeinkommen. Kein
+// Sparfreibetrag: eine Note gehoert keinem bekannten Menschen.
+func (cs *ChainState) umlaufArt(addr string, istMensch bool) kontoart {
+	if strings.EqualFold(strings.TrimSpace(addr), quantenTopfAddr) {
+		return artFrei
+	}
+	return cs.kontoartVon(addr, istMensch)
+}
+
+// umlaufZahlt: steht die Adresse in der Umlaufrunde? Keine Systemadresse --
+// ausser dem Quantengeld-Topf (umlaufArt).
+func umlaufZahlt(addr string) bool {
+	return !istSystemAdresse(addr) || strings.EqualFold(strings.TrimSpace(addr), quantenTopfAddr)
+}
+
 func (cs *ChainState) kontoartVon(addr string, istMensch bool) kontoart {
 	addr = strings.ToLower(addr)
 	switch {
@@ -977,7 +997,7 @@ func (cs *ChainState) umlaufSammelndLocked(ctx context.Context, at int64, sammle
 		if !ok {
 			continue
 		}
-		art := cs.kontoartVon(a, acc.IsHuman)
+		art := cs.umlaufArt(a, acc.IsHuman)
 		betrag := cs.umlaufBetrag(a, art, cs.umlaufStandLocked(acc, at), at, sekunden)
 		if betrag <= 0 {
 			continue
@@ -1004,7 +1024,7 @@ func (cs *ChainState) applyUmlaufDeltaLocked(ctx context.Context, wallet string,
 	if amount <= 0 || math.IsNaN(amount) || math.IsInf(amount, 0) {
 		return fmt.Errorf("umlauf %s: Betrag %v: %w", wallet, amount, ErrZustandLehntAb)
 	}
-	if istSystemAdresse(wallet) {
+	if !umlaufZahlt(wallet) {
 		return fmt.Errorf("umlauf %s: Systemadresse: %w", wallet, ErrZustandLehntAb)
 	}
 	cs.ensureAccountLoadedCtx(ctx, wallet)

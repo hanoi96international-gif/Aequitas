@@ -85,6 +85,7 @@ var replayArten = map[string]geldArt{
 	"satz_ankuendigung":                geldNurGutschrift, // satz_plan.go: bewegt kein Geld, setzt nur den Satzplan
 	"verifier_zulassung":               geldNurGutschrift, // verifier_register.go: bewegt kein Geld, nimmt kein Menschsein, setzt nur das Pruefer-Register
 	"quanten_freischaltung":            geldNurGutschrift, // quanten_geld.go: bewegt kein Geld, nimmt kein Menschsein, traegt nur einen Parametersatz ein
+	"quanten_auszahlung":               geldNurGutschrift, // quanten_einloesen.go: zahlt nur aus dem Topf (kein Mensch) an den Empfaenger aus
 	"pruefer_dienst_pq":                geldNurGutschrift, // pruefer_dienst_pq.go: bewegt kein Geld, nimmt kein Menschsein, traegt nur einen PQ-Schluessel ins Pruefer-Register
 	"umlauf":                           geldRegelAusnahme,
 	"unternehmen_eroeffnen":            geldUnterschrieben,
@@ -143,6 +144,7 @@ var ersetzbareKonstanten = map[string]string{
 	"pqZusageTxArt": pqZusageTxArt,
 	// quanten_geld.go
 	"quantenFreischaltungTxArt": quantenFreischaltungTxArt,
+	"quantenEinloesenTxArt":     quantenEinloesenTxArt,
 	// pruefer_dienst_pq.go
 	"prueferDienstPQTxArt": prueferDienstPQTxArt,
 }

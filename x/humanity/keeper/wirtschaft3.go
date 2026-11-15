@@ -146,7 +146,7 @@ func (cs *ChainState) umlaufKandidatenLocked(q sqlExecutor, at int64) ([]string,
 	}
 	adressen := make([]string, 0, len(kandidaten))
 	for a := range kandidaten {
-		if !istSystemAdresse(a) {
+		if umlaufZahlt(a) {
 			adressen = append(adressen, a)
 		}
 	}

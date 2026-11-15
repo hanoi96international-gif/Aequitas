@@ -118,7 +118,7 @@ func TestQuantenGeld_FeldNurWoErlaubt(t *testing.T) {
 func TestQuantenGeld_RegisterNurKanonisch(t *testing.T) {
 	gut := &quantenGeldRegister{
 		Saetze: []quantenSatzEintrag{{Name: "isogenie-8192", Ordnung: qgSatzN.String(), Ab: qgAb, Seit: qgAb - 1}},
-		Noten:  []quantenNoteEintrag{{K: strings.Repeat("a", 64), Satz: "isogenie-8192", Von: qnAnna, Mikro: 1_000_000}},
+		Noten:  []quantenNoteEintrag{{K: strings.Repeat("a", 64), Satz: "isogenie-8192", Von: qnAnna, Anteile: 1_000_000}},
 	}
 	r, err := quantenGeldRegisterLesen(gut.kodiert())
 	if err != nil || r.kodiert() != gut.kodiert() {
@@ -288,12 +288,16 @@ func TestQuantenGeld_AnmeldenGutfall(t *testing.T) {
 	if u.regel != "" {
 		t.Fatalf("%s: %s", u.regel, u.text)
 	}
-	if u.note.K != quantenSerieSchluessel("isogenie-8192", f.wallet, []byte{0x04, 0xd2}) || u.note.Mikro != 300_000_000 {
+	if u.note.K != quantenSerieSchluessel("isogenie-8192", f.wallet, []byte{0x04, 0xd2}) || u.note.topfVor != 0 {
 		t.Fatalf("Eintrag falsch: %+v", u.note)
 	}
 	f.cs.mu.Lock()
-	err := f.cs.quantenNoteEintragenLocked(context.Background(), u.note)
+	qgTopfGutschreiben(f.cs, 300)
+	anteile, err := f.cs.quantenNoteEintragenLocked(context.Background(), u.note, 0)
 	f.cs.mu.Unlock()
+	if anteile != 300_000_000 {
+		t.Fatalf("erste Note: %d Anteile, erwartet 1 je Mikro-AEQ", anteile)
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -373,7 +377,8 @@ func TestQuantenGeld_Rueckrollen(t *testing.T) {
 	f := neuerQgPraegeFall(t)
 	f.cs.mu.Lock()
 	snap := f.cs.snapshotForRollbackLocked(nil, true, nil)
-	_ = f.cs.quantenNoteEintragenLocked(context.Background(), quantenNoteEintrag{K: strings.Repeat("b", 64), Satz: "isogenie-8192", Von: f.wallet, Mikro: 1_000_000})
+	qgTopfGutschreiben(f.cs, 1)
+	_, _ = f.cs.quantenNoteEintragenLocked(context.Background(), quantenNoteEintrag{K: strings.Repeat("b", 64), Satz: "isogenie-8192", Von: f.wallet}, 0)
 	err := f.cs.restoreFromRollbackLockedCtx(context.Background(), snap)
 	f.cs.mu.Unlock()
 	if err != nil {
@@ -455,4 +460,15 @@ func TestQuantenGeld_AnnahmeErstEineStundeNachSatzbeginn(t *testing.T) {
 	if len(f.cs.quantenGeldJetzt().Noten) != 0 {
 		t.Fatal("Register veraendert")
 	}
+}
+
+// qgTopfGutschreiben: wie die Ueberweisung der Deckung an den Topf (nur der
+// Eingang; Caller haelt cs.mu).
+func qgTopfGutschreiben(cs *ChainState, aeq float64) {
+	acc, ok := cs.accounts.Get(quantenTopfAddr)
+	if !ok {
+		acc = &AccountState{Address: quantenTopfAddr}
+		cs.accounts.Set(quantenTopfAddr, acc)
+	}
+	acc.Balance = acc.Balance.Add(NewDecimal(aeq))
 }

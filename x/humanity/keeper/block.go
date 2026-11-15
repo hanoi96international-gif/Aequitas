@@ -1430,7 +1430,7 @@ func bekannteTxArt(typ string, blockZeit int64) bool {
 		return umzugAktiv(blockZeit)
 	case pqZusageTxArt: // pq_zusage.go, schlafend bis pqZusageAb
 		return pqZusageAktiv(blockZeit)
-	case quantenFreischaltungTxArt: // quanten_geld.go, schlafend bis quantenGeldAb
+	case quantenFreischaltungTxArt, quantenEinloesenTxArt: // quanten_geld.go, quanten_einloesen.go, schlafend bis quantenGeldAb
 		return quantenGeldAktiv(blockZeit)
 	case prueferDienstPQTxArt: // pruefer_dienst_pq.go, schlafend bis prueferDienstPQAb
 		return prueferDienstPQAktiv(blockZeit)
@@ -8055,7 +8055,13 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 				continue
 			}
 			if quantenNote != nil {
-				if err := dag.state.quantenNoteEintragenLocked(withTx(context.Background(), dbTx), *quantenNote); err != nil {
+				// Die Anteile stehen im Block (der Erzeuger hat sie gerechnet);
+				// fehlen sie, ist der Block falsch -- 0 hiesse "selbst rechnen".
+				erwartet := tx.Quanten.Anteile
+				if erwartet <= 0 {
+					erwartet = -1
+				}
+				if _, err := dag.state.quantenNoteEintragenLocked(withTx(context.Background(), dbTx), *quantenNote, erwartet); err != nil {
 					fmt.Printf("[REPLAY] ✗ quanten_praegen %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
 					hardFailure = true
 					continue
@@ -8237,6 +8243,19 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			// Zulassung nicht lesbar: der ganze Block zurueck.
 			if err := dag.state.applyStaffelEinspruchLocked(context.Background(), &tx, block.Timestamp); err != nil {
 				fmt.Printf("[REPLAY] ✗ staffel_einspruch %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
+				hardFailure = true
+				continue
+			}
+		case quantenEinloesenTxArt:
+			// quanten_einloesen.go: jeder Knoten prueft Note, Seriennummer,
+			// Einmal-Unterschrift und den Betrag (genau der Wert der Note) selbst.
+			// Fehlt der Betrag, ist der Block falsch (0 hiesse "selbst rechnen").
+			erwartet := NewDecimal(tx.Amount).Micro()
+			if erwartet <= 0 {
+				erwartet = -1
+			}
+			if _, err := dag.state.applyQuantenEinloesenLocked(withTx(context.Background(), dbTx), &tx, block.Timestamp, erwartet); err != nil {
+				fmt.Printf("[REPLAY] ✗ %s %s: %v (block #%d) — rolling back whole block\n", tx.Type, wallet, err, block.Height)
 				hardFailure = true
 				continue
 			}
