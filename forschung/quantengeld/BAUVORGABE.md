@@ -356,7 +356,12 @@ jeder Test wirkt wie (I + P_h)/2 – eine fremde Note besteht je Test mit
 **genau ½**, die echte mit 1; 128 Tests für 2⁻¹²⁸. Etwas teurer als A, aber
 **keine Primzahlsuche und keine Überlagerung über Ideale im Schaltkreis** –
 der Schaltkreis ist eine feste, klassisch parametrierte 4D-Kette. Das ist
-der Kandidat, mit dem wir weiterbauen. Offen bleibt in beiden Varianten die
+der Kandidat, mit dem wir weiterbauen. **An der echten kleinen Gruppe nachgemessen
+(`variante_b.py`, h = 1.491, Kraus-Operatoren nacheinander, u zufällig):**
+die Formel P[besteht] = |⟨$_c|ψ⟩|² + (1 − |⟨$_c|ψ⟩|²)·2⁻ᵀ trifft auf ±0,001 –
+auch für die glatten Fälschungen, an denen die schwache Prüfung scheiterte
+(Glocke σ = 0,4: voll 0,015, B nach 5 Tests 0,046 → 0,015 + 2⁻ᵀ; schwach
+0,160). Nach 128 Tests ist B so scharf wie die volle Projektion. Offen bleibt in beiden Varianten die
 Trägerprüfung (liegt der Zustand auf Kurven der Bahn?) und Schritt 2
 (Torsionsbasis der Kurve) in Überlagerung – beide laut [Q] billig gegen die
 Kette, zu zählen.
