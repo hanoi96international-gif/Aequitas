@@ -19,6 +19,9 @@ func TestQuantenPraegen_VektorWieLabor(t *testing.T) {
 	}
 	var v struct {
 		Domaene       string   `json:"domaene"`
+		Von           string   `json:"von"`
+		FremdVon      string   `json:"fremd_von"`
+		FremdSchl     string   `json:"fremd_schluessel"`
 		SerieHex      string   `json:"serie_hex"`
 		Schluessel    string   `json:"schluessel"`
 		SerieMaxBytes int      `json:"serie_max_bytes"`
@@ -33,11 +36,14 @@ func TestQuantenPraegen_VektorWieLabor(t *testing.T) {
 		t.Fatalf("Konstanten weichen vom Labor ab: %+v", v)
 	}
 	serie, _ := hex.DecodeString(v.SerieHex)
-	if got := quantenSerieSchluessel(serie); got != v.Schluessel {
+	if got := quantenSerieSchluessel(v.Von, serie); got != v.Schluessel {
 		t.Fatalf("Schluessel %s, Labor %s", got, v.Schluessel)
 	}
 	null, _ := hex.DecodeString(v.NullHex)
-	if !quantenSerieKanonisch(null) || quantenSerieSchluessel(null) != v.NullSchl {
+	if quantenSerieSchluessel(v.FremdVon, serie) != v.FremdSchl || v.FremdSchl == v.Schluessel {
+		t.Fatal("Anmelder fliesst nicht wie im Labor in K ein")
+	}
+	if !quantenSerieKanonisch(null) || quantenSerieSchluessel(v.Von, null) != v.NullSchl {
 		t.Fatal("Null weicht vom Labor ab")
 	}
 	if len(v.Schlecht) == 0 {
@@ -61,10 +67,10 @@ func TestQuantenPraegen_ZweiteSchreibweise(t *testing.T) {
 		t.Fatal(err)
 	}
 	lang := append([]byte{0}, serie...)
-	if _, _, err := r.quantenPraegen(qnDieb, aeq(10), aeq(1), lang); err == nil {
+	if _, _, err := r.quantenPraegen(qnAnna, aeq(10), aeq(1), lang); err == nil {
 		t.Fatal("fuehrende Null angenommen")
 	}
-	if r.quantenSerieWert(lang).Sign() != 0 {
+	if r.quantenSerieWert(qnAnna, lang).Sign() != 0 {
 		t.Fatal("fuehrende Null hat Wert")
 	}
 	// Die Null selbst ist kanonisch 0x00 und anmeldbar.
@@ -76,17 +82,17 @@ func TestQuantenPraegen_ZweiteSchreibweise(t *testing.T) {
 func TestQuantenPraegen_AnmeldenUndWert(t *testing.T) {
 	r := &quantenRegister{}
 	serie := []byte{0x04, 0xd2}
-	if r.quantenSerieWert(serie).Sign() != 0 {
+	if r.quantenSerieWert(qnAnna, serie).Sign() != 0 {
 		t.Fatal("nicht angemeldete Note hat Wert")
 	}
 	n, k, err := r.quantenPraegen(qnAnna, aeq(1000), aeq(300), serie)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if k != quantenSerieSchluessel(serie) || n.quantenSerieWert(serie).Cmp(aeq(300)) != 0 {
+	if k != quantenSerieSchluessel(qnAnna, serie) || n.quantenSerieWert(qnAnna, serie).Cmp(aeq(300)) != 0 {
 		t.Fatal("Wert nach Anmeldung falsch")
 	}
-	if r.quantenSerieWert(serie).Sign() != 0 || len(r.Lightning) != 0 {
+	if r.quantenSerieWert(qnAnna, serie).Sign() != 0 || len(r.Lightning) != 0 {
 		t.Fatal("altes Register veraendert")
 	}
 	// Erhaltung: Konto verliert 300, Register gewinnt 300.
@@ -94,7 +100,7 @@ func TestQuantenPraegen_AnmeldenUndWert(t *testing.T) {
 		t.Fatal("Erhaltung verletzt")
 	}
 	// Eine andere Seriennummer ist nichts wert.
-	if n.quantenSerieWert([]byte{0x04, 0xd3}).Sign() != 0 {
+	if n.quantenSerieWert(qnAnna, []byte{0x04, 0xd3}).Sign() != 0 {
 		t.Fatal("fremde Seriennummer hat Wert")
 	}
 }
@@ -113,7 +119,6 @@ func TestQuantenPraegen_Angriffe(t *testing.T) {
 		wei      *big.Int
 		serie    []byte
 	}{
-		{"doppelt anmelden (fremder Absender)", qnDieb, aeq(1000), aeq(1), serie},
 		{"doppelt anmelden (derselbe)", qnAnna, aeq(1000), aeq(1), serie},
 		{"ohne Deckung", qnDieb, aeq(5), aeq(100), []byte("x")},
 		{"Betrag null", qnDieb, aeq(5), big.NewInt(0), []byte("y")},
@@ -136,6 +141,31 @@ func TestQuantenPraegen_Angriffe(t *testing.T) {
 	// Die laengste erlaubte Seriennummer geht.
 	if _, _, err := r.quantenPraegen(qnBen, aeq(1), aeq(1), append([]byte{1}, make([]byte, quantenSerieMaxBytes-1)...)); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// Vorlaufen: der Dieb sieht Bens Anmeldung und meldet dieselbe Seriennummer
+// zuerst unter sich an. Bens Anmeldung geht trotzdem, und Bens Anmeldung
+// zaehlt nur unter Ben -- unter Dieb gezeigt ist sie 1 Wei wert, nicht 50.
+func TestQuantenPraegen_VorlaufenBlockiertNicht(t *testing.T) {
+	r := &quantenRegister{}
+	serie := []byte("bens-note")
+	r, _, err := r.quantenPraegen(qnDieb, aeq(5), big.NewInt(1), serie)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, _, err = r.quantenPraegen(qnBen, aeq(50), aeq(50), serie)
+	if err != nil {
+		t.Fatalf("Vorlaufen hat Bens Anmeldung blockiert: %v", err)
+	}
+	if r.quantenSerieWert(qnBen, serie).Cmp(aeq(50)) != 0 || r.quantenSerieWert(qnDieb, serie).Cmp(big.NewInt(1)) != 0 {
+		t.Fatal("Werte je Anmelder vertauscht")
+	}
+	if r.quantenSerieWert(qnAnna, serie).Sign() != 0 {
+		t.Fatal("Seriennummer unter Unbeteiligtem hat Wert")
+	}
+	if r.quantenSerieWert(strings.ToUpper(qnBen), serie).Sign() != 0 {
+		t.Fatal("nicht kanonische Adresse hat Wert")
 	}
 }
 

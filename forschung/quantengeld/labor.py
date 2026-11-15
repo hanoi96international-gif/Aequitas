@@ -10,11 +10,15 @@ DER ABLAUF (Zhandry 2025 als Quantum Lightning + Einweg-Bruecke):
      auch der Praeger selbst kann keine zweite Note mit DIESEM h machen
      (er muesste Gen wiederholen, bis h zufaellig wieder faellt).
   2. ANMELDEN -- auf der Kette: wer eine Note praegt, sperrt x AEQ und traegt
-     SHA-256(h) ein (Einweg, Inhaberpapier). Jede Seriennummer genau einmal.
-     Ohne Eintrag ist eine Note nichts wert. Keine Bank, kein Sonderrecht.
-  3. BEZAHLEN -- die Note wandert als Quantenzustand, h als Zettel dazu.
-  4. PRUEFEN -- jeder Empfaenger selbst: h in der Kette? Dann Variante B
-     (u klassisch gleichverteilt, T Hadamard-Tests; variante_b.py).
+     K = SHA-256(Domaene | Anmelder | h) ein (Einweg, Inhaberpapier); je
+     Anmelder jede Seriennummer genau einmal. Der Anmelder gehoert in K, damit
+     niemand die Anmeldung vorlaufend blockieren kann. Ohne Eintrag ist eine
+     Note nichts wert. Keine Bank, kein Sonderrecht.
+  3. BEZAHLEN -- die Note wandert als Quantenzustand, (Anmelder, h) als
+     Zettel dazu.
+  4. PRUEFEN -- jeder Empfaenger selbst: K in der Kette, h < Gruppenordnung?
+     Dann Variante B (u klassisch gleichverteilt, T Hadamard-Tests;
+     variante_b.py).
   5. ZURUECK -- in Version 1 nur durch Tausch (Einweg-Bruecke).
 
 Gespielt an der echten kleinen Isogenie-Gruppe (p = 868019, h = 1491; die
@@ -24,7 +28,7 @@ geprueft). Die Kettenregeln sind dieselben wie in quanten_note.go
 haelt Python und Go Byte fuer Byte gleich.
 
 ANGRIFFE, die abprallen muessen: nicht angemeldete Note, Seriennummer
-doppelt anmelden, Note ohne Deckung, gefaelschter Zustand fuer eine echte
+doppelt oder in zweiter Schreibweise anmelden, Vorlaufen, Note ohne Deckung, gefaelschter Zustand fuer eine echte
 Seriennummer (fremde Note, Glocke, Messen-und-Nachbauen), zweite Note mit
 derselben Seriennummer praegen (Lightning). Und: die Erhaltung
 (Konten + angemeldete Noten = konstant).
@@ -54,6 +58,9 @@ sp = _lade("schwache_pruefung")
 vb = _lade("variante_b")
 
 DOMAENE = "aequitas-quanten-serie-v1"
+ANNA = "0x00000000000000000000000000000000000000a1"
+BEN = "0x00000000000000000000000000000000000000b2"
+DIEB = "0x00000000000000000000000000000000000000d3"
 SERIE_MAX_BYTES = 1024  # h in Z_N, N ~ 2^4096 bei 8.192 Bit: 512 Byte; Reserve
 
 
@@ -67,9 +74,12 @@ def kanonisch(serie: bytes) -> bool:
     return 0 < len(serie) <= SERIE_MAX_BYTES and (len(serie) == 1 or serie[0] != 0)
 
 
-def serie_schluessel(serie: bytes) -> str:
-    """Was die Kette eintraegt: SHA-256(Domaene | Seriennummer)."""
-    return hashlib.sha256(DOMAENE.encode() + b"|" + serie).hexdigest()
+def serie_schluessel(von: str, serie: bytes) -> str:
+    """Was die Kette eintraegt: SHA-256(Domaene | Anmelder | Seriennummer).
+    Der Anmelder (kanonische 0x-Adresse, feste Laenge) gehoert dazu: sonst
+    koennte jeder, der die Anmeldung im Mempool sieht, dieselbe Seriennummer
+    mit 1 Wei zuerst anmelden und die echte Anmeldung blockieren."""
+    return hashlib.sha256(DOMAENE.encode() + b"|" + von.encode() + b"|" + serie).hexdigest()
 
 
 class Kette:
@@ -87,17 +97,17 @@ class Kette:
             raise ValueError("Seriennummer in falscher Form")
         if wei <= 0 or self.konten.get(wer, 0) < wei:
             raise ValueError("keine Deckung oder Betrag ungueltig")
-        k = serie_schluessel(serie)
+        k = serie_schluessel(wer, serie)
         if k in self.register:
             raise ValueError("Seriennummer schon angemeldet")
         self.konten[wer] -= wei
         self.register[k] = wei
         return k
 
-    def wert(self, serie: bytes) -> int:
+    def wert(self, von: str, serie: bytes) -> int:
         if not kanonisch(serie):
             return 0
-        return self.register.get(serie_schluessel(serie), 0)
+        return self.register.get(serie_schluessel(von, serie), 0)
 
 
 class Labor:
@@ -110,11 +120,11 @@ class Labor:
         h = self.rng.randrange(self.g.h)
         return serie_bytes(h), self.g.note(h)
 
-    def pruefen(self, kette: Kette, serie: bytes, psi: list, tests: int) -> tuple[bool, float]:
+    def pruefen(self, kette: Kette, von: str, serie: bytes, psi: list, tests: int) -> tuple[bool, float]:
         """Empfaenger: angemeldet und h < Gruppenordnung? Dann Variante B.
         Rueckgabe (besteht, P)."""
         h = int.from_bytes(serie, "big")
-        if kette.wert(serie) == 0 or h >= self.g.h:
+        if kette.wert(von, serie) == 0 or h >= self.g.h:
             return False, 0.0
         p = vb.mittel(self.g, h, psi, tests, 40, self.rng)
         return self.rng.random() < p, p
@@ -122,36 +132,48 @@ class Labor:
 
 def lauf(rng: random.Random, tests: int = 6) -> dict:
     lab = Labor(rng)
-    kette = Kette({"anna": 1000, "ben": 0, "dieb": 5})
+    kette = Kette({ANNA: 1000, BEN: 0, DIEB: 5})
     start = kette.summe()
     erg = {}
 
     # 1-4: Anna praegt, meldet an, bezahlt Ben; Ben prueft.
     serie, note = lab.praegen()
-    kette.anmelden("anna", serie, 300)
-    ok, p = lab.pruefen(kette, serie, note, tests)
+    kette.anmelden(ANNA, serie, 300)
+    ok, p = lab.pruefen(kette, ANNA, serie, note, tests)
     erg["echte Note"] = p
 
     # Angriffe
     s2, n2 = lab.praegen()
-    erg["nicht angemeldete Note"] = lab.pruefen(kette, s2, n2, tests)[1]
+    erg["nicht angemeldete Note"] = lab.pruefen(kette, ANNA, s2, n2, tests)[1]
     try:
-        kette.anmelden("dieb", serie, 1)
+        kette.anmelden(ANNA, serie, 1)
         erg["Seriennummer doppelt anmelden"] = "ANGENOMMEN"
     except ValueError:
         erg["Seriennummer doppelt anmelden"] = "abgewiesen"
+    # Vorlaufen: der Dieb sieht Bens Anmeldung im Mempool und meldet die
+    # Seriennummer zuerst unter sich an. Bens Anmeldung muss trotzdem gehen,
+    # und unter Dieb hat die Note fuer Ben keinen Wert (er prueft ben|serie).
+    kette.konten[BEN] = 50
+    s3, n3 = lab.praegen()
+    kette.anmelden(DIEB, s3, 1)
     try:
-        kette.anmelden("dieb", lab.praegen()[0], 100)
+        kette.anmelden(BEN, s3, 50)
+        erg["Vorlaufen blockiert die Anmeldung nicht"] = kette.wert(BEN, s3) == 50
+    except ValueError:
+        erg["Vorlaufen blockiert die Anmeldung nicht"] = False
+    start += 50
+    try:
+        kette.anmelden(DIEB, lab.praegen()[0], 100)
         erg["Note ohne Deckung anmelden"] = "ANGENOMMEN"
     except ValueError:
         erg["Note ohne Deckung anmelden"] = "abgewiesen"
-    erg["fremde Note unter echter Seriennummer"] = lab.pruefen(kette, serie, n2, tests)[1]
-    erg["glatte Faelschung (Glocke)"] = lab.pruefen(kette, serie, lab.g.glocke(int.from_bytes(serie, "big"), 0.5), tests)[1]
+    erg["fremde Note unter echter Seriennummer"] = lab.pruefen(kette, ANNA, serie, n2, tests)[1]
+    erg["glatte Faelschung (Glocke)"] = lab.pruefen(kette, ANNA, serie, lab.g.glocke(int.from_bytes(serie, "big"), 0.5), tests)[1]
     # Messen und nachbauen: Basiszustand |k> mit k nach |<k|note>|^2.
     k = rng.randrange(lab.g.h)
     basis = [0j] * lab.g.h
     basis[k] = 1
-    erg["Messen und nachbauen"] = lab.pruefen(kette, serie, basis, tests)[1]
+    erg["Messen und nachbauen"] = lab.pruefen(kette, ANNA, serie, basis, tests)[1]
     # Lightning: zweite Note mit derselben Seriennummer praegen.
     versuche = 0
     while lab.praegen()[0] != serie:
@@ -159,7 +181,7 @@ def lauf(rng: random.Random, tests: int = 6) -> dict:
     erg["Lightning: Versuche bis zur gleichen Seriennummer"] = versuche
     # Dieselbe Seriennummer in zweiter Schreibweise (fuehrende Null).
     try:
-        kette.anmelden("anna", b"\x00" + serie, 1)
+        kette.anmelden(ANNA, b"\x00" + serie, 1)
         erg["dieselbe Seriennummer mit fuehrender Null"] = "ANGENOMMEN"
     except ValueError:
         erg["dieselbe Seriennummer mit fuehrender Null"] = "abgewiesen"
@@ -171,9 +193,10 @@ def lauf(rng: random.Random, tests: int = 6) -> dict:
 def vektor() -> dict:
     """Pruefvektor fuer quanten_note.go (quantenPraegen)."""
     serie = serie_bytes(1234)
-    return {"domaene": DOMAENE, "serie_hex": serie.hex(), "schluessel": serie_schluessel(serie),
+    return {"domaene": DOMAENE, "von": ANNA, "serie_hex": serie.hex(), "schluessel": serie_schluessel(ANNA, serie),
             "serie_max_bytes": SERIE_MAX_BYTES,
-            "null_hex": serie_bytes(0).hex(), "null_schluessel": serie_schluessel(serie_bytes(0)),
+            "null_hex": serie_bytes(0).hex(), "null_schluessel": serie_schluessel(ANNA, serie_bytes(0)),
+            "fremd_von": DIEB, "fremd_schluessel": serie_schluessel(DIEB, serie),
             "nicht_kanonisch_hex": ["", "0000", "0004d2", "00ff"]}
 
 
@@ -185,6 +208,7 @@ def selbsttest() -> None:
     assert e["Seriennummer doppelt anmelden"] == "abgewiesen", e
     assert e["Note ohne Deckung anmelden"] == "abgewiesen", e
     assert e["dieselbe Seriennummer mit fuehrender Null"] == "abgewiesen", e
+    assert e["Vorlaufen blockiert die Anmeldung nicht"] is True, e
     t = 6
     assert e["fremde Note unter echter Seriennummer"] < 2 ** -t + 0.03, e
     assert e["Messen und nachbauen"] < 2 ** -t + 1 / e["h"] + 0.03, e
@@ -192,15 +216,15 @@ def selbsttest() -> None:
     assert e["Erhaltung"] is True, e
     assert e["Lightning: Versuche bis zur gleichen Seriennummer"] >= 0
     # Kettenregeln einzeln
-    k = Kette({"a": 10})
+    k = Kette({ANNA: 10})
     zu_lang = b"\x01" * (SERIE_MAX_BYTES + 1)
     for schlecht in [bytes.fromhex(x) for x in vektor()["nicht_kanonisch_hex"]] + [zu_lang]:
         try:
-            k.anmelden("a", schlecht, 1)
+            k.anmelden(ANNA, schlecht, 1)
             raise AssertionError("falsche Form angenommen")
         except ValueError:
             pass
-        assert k.wert(schlecht) == 0
+        assert k.wert(ANNA, schlecht) == 0
     for h in (0, 1, 255, 256, 1490, 2 ** 4095):
         assert kanonisch(serie_bytes(h)) and int.from_bytes(serie_bytes(h), "big") == h
     # Pruefvektor stimmt mit der Datei, die der Go-Test liest

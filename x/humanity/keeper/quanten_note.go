@@ -237,9 +237,13 @@ func (r *quantenRegister) groesse() int {
 // Jeder darf eine Note praegen (Gen ist oeffentlich, kein Schluessel, keine
 // Bank). Wert bekommt sie erst, wenn ihre Seriennummer hier angemeldet ist:
 // der Anmeldende sperrt wei AEQ, die Kette traegt K = SHA-256(Domaene |
-// Seriennummer) ein. Jede Seriennummer genau einmal; keine Rueckholung,
-// kein Einloesen (Einweg, Version 1). Der Empfaenger einer Note prueft
-// selbst: K angemeldet? Dann der Quantentest (Variante B, 128 Tests).
+// Anmelder | Seriennummer) ein. Je Anmelder jede Seriennummer genau einmal;
+// keine Rueckholung, kein Einloesen (Einweg, Version 1). Der Empfaenger
+// einer Note prueft selbst: K angemeldet, h < Gruppenordnung? Dann der
+// Quantentest (Variante B, 128 Tests). Eine zweite Anmeldung derselben Note
+// unter einem anderen Anmelder schafft kein Geld: die Note ist EIN Zustand
+// und wird mit genau einer Anmeldung weitergegeben; die andere Deckung
+// bleibt gesperrt.
 // Die Kette sieht nie einen Quantenzustand -- nur Hashes und Betraege.
 
 // quantenSerieKanonisch: big-endian, kuerzeste Form (die Null ist 0x00).
@@ -249,10 +253,15 @@ func quantenSerieKanonisch(serie []byte) bool {
 	return len(serie) > 0 && len(serie) <= quantenSerieMaxBytes && (len(serie) == 1 || serie[0] != 0)
 }
 
-// quantenSerieSchluessel: K = SHA-256(Domaene | "|" | Seriennummer).
-func quantenSerieSchluessel(serie []byte) string {
+// quantenSerieSchluessel: K = SHA-256(Domaene | "|" | Anmelder | "|" |
+// Seriennummer). Der Anmelder (kanonische Adresse, feste Laenge) gehoert
+// dazu: sonst koennte jeder, der eine Anmeldung im Mempool sieht, dieselbe
+// Seriennummer mit 1 Wei zuerst anmelden und die echte blockieren.
+func quantenSerieSchluessel(von string, serie []byte) string {
 	h := sha256.New()
 	h.Write([]byte(quantenDomaeneSerie))
+	h.Write([]byte("|"))
+	h.Write([]byte(von))
 	h.Write([]byte("|"))
 	h.Write(serie)
 	return hex.EncodeToString(h.Sum(nil))
@@ -278,7 +287,7 @@ func (r *quantenRegister) quantenPraegen(wer string, guthaben, wei *big.Int, ser
 	if !kanonischeAdresse(wer) {
 		return nil, "", fmt.Errorf("%w: Adresse nicht kanonisch", errQuantenNote)
 	}
-	k := quantenSerieSchluessel(serie)
+	k := quantenSerieSchluessel(wer, serie)
 	if _, _, ok := r.findeLightning(k); ok {
 		return nil, "", fmt.Errorf("%w: Seriennummer schon angemeldet", errQuantenNote)
 	}
@@ -293,13 +302,13 @@ func (r *quantenRegister) quantenPraegen(wer string, guthaben, wei *big.Int, ser
 	return n, k, nil
 }
 
-// quantenSerieWert: was eine vorgezeigte Seriennummer laut Kette wert ist;
+// quantenSerieWert: was eine vorgezeigte (Anmelder, Seriennummer) laut Kette wert ist;
 // 0 = nicht angemeldet (die Note ist nichts wert, egal wie gut sie aussieht).
-func (r *quantenRegister) quantenSerieWert(serie []byte) *big.Int {
-	if !quantenSerieKanonisch(serie) {
+func (r *quantenRegister) quantenSerieWert(von string, serie []byte) *big.Int {
+	if !quantenSerieKanonisch(serie) || !kanonischeAdresse(von) {
 		return new(big.Int)
 	}
-	e, _, ok := r.findeLightning(quantenSerieSchluessel(serie))
+	e, _, ok := r.findeLightning(quantenSerieSchluessel(von, serie))
 	if !ok {
 		return new(big.Int)
 	}

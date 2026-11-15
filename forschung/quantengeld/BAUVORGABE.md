@@ -394,9 +394,11 @@ Lücke ist die Hardware – ein Prüfgerät mit ~10⁸–10¹⁰ logischen Qubit
 6 Tests je Prüfung).** Prägen darf jeder (Gen: Seriennummer gleichverteilt).
 Wert bekommt eine Note erst durch Anmelden auf der Kette: der Anmeldende
 sperrt AEQ, die Kette trägt K = SHA-256(„aequitas-quanten-serie-v1|“ ‖
-Seriennummer) ein – jede Seriennummer genau einmal, nur in kürzester
-big-endian-Form, Einweg, kein Einlösen. Der Empfänger prüft selbst: K
-angemeldet und h < Gruppenordnung, dann Variante B. Ergebnis:
+Anmelder ‖ „|“ ‖ Seriennummer) ein – je Anmelder jede Seriennummer genau
+einmal, nur in kürzester big-endian-Form, Einweg, kein Einlösen. Der
+Anmelder steht in K, damit niemand eine Anmeldung aus dem Mempool vorlaufend
+blockieren kann. Der Empfänger prüft selbst: K angemeldet und h <
+Gruppenordnung, dann Variante B. Ergebnis:
 
 | Schritt / Angriff | Ergebnis |
 |---|---|
@@ -404,11 +406,12 @@ angemeldet und h < Gruppenordnung, dann Variante B. Ergebnis:
 | nicht angemeldete Note | 0 (Kette kennt sie nicht) |
 | Seriennummer doppelt anmelden | abgewiesen |
 | dieselbe Seriennummer mit führender Null | abgewiesen (nur kürzeste Form gilt) |
+| Vorlaufen (fremde Anmeldung derselben Seriennummer zuerst) | blockiert nicht; zählt nur unter dem fremden Anmelder |
 | Anmelden ohne Deckung | abgewiesen |
-| fremde Note unter echter Seriennummer | 0,025 (≈ 2⁻⁶) |
+| fremde Note unter echter Seriennummer | 0,017 (≈ 2⁻⁶) |
 | glatte Fälschung (Glocke) | 0,077 (Formel aus `variante_b.py`) |
 | messen und nachbauen | 0,016 (≈ 2⁻⁶) |
-| zweite Note mit derselben Seriennummer prägen | 1.364 Versuche bei h = 1.491; bei 8.192 Bit ≈ 2⁴⁰⁹⁶ |
+| zweite Note mit derselben Seriennummer prägen | 1.363 Versuche bei h = 1.491; bei 8.192 Bit ≈ 2⁴⁰⁹⁶ |
 | Erhaltung (Konten + angemeldet) | gilt |
 
 Die Kettenseite steht im Knoten: `quantenPraegen` und `quantenSerieWert` in
