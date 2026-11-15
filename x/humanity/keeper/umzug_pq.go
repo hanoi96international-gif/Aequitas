@@ -79,9 +79,13 @@ import (
 )
 
 const (
-	// umzugPQAbUnix: schlafend. Erst setzen, wenn jeder Knoten diesen Code
-	// hat (Waechter: .github/neustart/umzug-pq-nicht-verpasst.sh).
-	umzugPQAbUnix int64 = 9223372036854775807 // math.MaxInt64: schlafend (Waechter liest die Zahl)
+	// umzugPQAbUnix: 2026-11-15 19:00 UTC (Entscheidung des Betreibers vom
+	// 15.11.2026, "Stichtag heute"). C1 laeuft seit #519 mit diesem Code,
+	// Coordinator ec33002 nimmt die Tresor-Unterschrift, App 1.21.0 bietet
+	// den Weg an, sobald die Kette den Stichtag nennt. Die Regel erlaubt nur
+	// (ein neuer Weg), sie verlangt nichts: wer nichts tut, merkt nichts.
+	// Waechter: .github/neustart/umzug-pq-nicht-verpasst.sh.
+	umzugPQAbUnix int64 = 1794769200
 )
 
 // umzugPQAbOverride: nur fuer Tests (0 = Konstante gilt).
