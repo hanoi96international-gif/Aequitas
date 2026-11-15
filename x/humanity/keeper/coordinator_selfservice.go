@@ -88,14 +88,31 @@ func holeBesitznachweis(basis, wallet string) (pub string, sig string, err error
 		return "", "", fmt.Errorf("coordinator not reachable at %s: %w", basis, err)
 	}
 	defer resp.Body.Close()
-	// Klein halten: hier kommt ein winziges JSON, kein Datenstrom.
-	roh, err := io.ReadAll(io.LimitReader(resp.Body, 8<<10))
+	return besitznachweisAusAntwort(resp.StatusCode, resp.Body)
+}
+
+// besitznachweisAntwortMax: so viel wird von /besitznachweis gelesen. Seit
+// Audit B2 (aequitas-biometric-beta #121) traegt die Antwort auch den
+// ML-DSA-65-Schluessel (1952 Byte) und dessen Besitznachweis (3309 Byte) als
+// Hex -- zusammen rund 10,7 KiB. Die alte Grenze von 8 KiB schnitt das JSON
+// ab, und jede Eintragung ueber coordinator_url scheiterte mit "not the
+// expected JSON". Weiter fest begrenzt: eine groessere Antwort wird
+// abgewiesen, nicht abgeschnitten gelesen.
+const besitznachweisAntwortMax = 16 << 10
+
+// besitznachweisAusAntwort liest die Antwort des Coordinators -- getrennt vom
+// Abruf, damit die Grenze ohne Netz pruefbar ist.
+func besitznachweisAusAntwort(status int, body io.Reader) (pub string, sig string, err error) {
+	roh, err := io.ReadAll(io.LimitReader(body, besitznachweisAntwortMax+1))
 	if err != nil {
 		return "", "", fmt.Errorf("could not read the coordinator's answer: %w", err)
 	}
-	if resp.StatusCode != http.StatusOK {
+	if status != http.StatusOK {
 		return "", "", fmt.Errorf("the coordinator refused (HTTP %d) -- is COORDINATOR_SIGNING_KEY set there, "+
-			"and is COORDINATOR_BETREIBER_WALLET there exactly the operator wallet this registration is for?", resp.StatusCode)
+			"and is COORDINATOR_BETREIBER_WALLET there exactly the operator wallet this registration is for?", status)
+	}
+	if len(roh) > besitznachweisAntwortMax {
+		return "", "", fmt.Errorf("the coordinator's answer is larger than %d bytes", besitznachweisAntwortMax)
 	}
 	var b struct {
 		PublicKey    string `json:"public_key"`
