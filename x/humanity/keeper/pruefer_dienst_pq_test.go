@@ -316,3 +316,26 @@ func TestPrueferDienstPQ_FreigabeAusDerApp(t *testing.T) {
 		t.Fatal("Freigabe gilt fuer eine andere Zeit")
 	}
 }
+
+// Der gesetzte Stichtag (15.11.2026 19:00 UTC) gilt ohne Test-Ueberschreibung:
+// eine Sekunde davor ist die Art unbekannt und kein Block nimmt sie auf, ab dem
+// Stichtag ist sie bekannt; /api/status nennt ihn (der Waechter liest ihn dort).
+func TestPrueferDienstPQ_StichtagGesetzt(t *testing.T) {
+	vorher := prueferDienstPQAbOverride.Load()
+	prueferDienstPQAbOverride.Store(0)
+	t.Cleanup(func() { prueferDienstPQAbOverride.Store(vorher) })
+	const ab int64 = 1794769200
+	if prueferDienstPQAb() != ab {
+		t.Fatalf("Stichtag %d, erwartet %d", prueferDienstPQAb(), ab)
+	}
+	if prueferDienstPQAktiv(ab-1) || !prueferDienstPQAktiv(ab) {
+		t.Fatal("Stichtag wirkt nicht genau ab der Sekunde")
+	}
+	tx := Transaction{Type: prueferDienstPQTxArt, DistributionAt: ab - 10, DienstPQ: &PrueferDienstPQ{}}
+	if err := blockTauglich(&tx, ab-1); err == nil {
+		t.Fatal("Block vor dem Stichtag nimmt pruefer_dienst_pq auf")
+	}
+	if s := prueferDienstPQStatus(); s["ab"] != ab {
+		t.Fatalf("Status: %v", s)
+	}
+}

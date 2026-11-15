@@ -7,7 +7,12 @@ D=$(mktemp -d); trap 'kill $PID 2>/dev/null || true; rm -rf "$D"' EXIT
 mkdir -p "$D/web/api" "$D/repo"
 PORT=$((20000 + RANDOM % 20000))
 (cd "$D/web" && python3 -m http.server "$PORT" --bind 127.0.0.1 >/dev/null 2>&1) & PID=$!
-sleep 1
+# Erst weiter, wenn der Server antwortet (hoechstens 10 s) -- eine feste
+# Sekunde reichte auf vollen CI-Runnern nicht: dann lief "nichts gesetzt"
+# gegen einen stummen Server und hielt an (15.11.2026, zweimal).
+: > "$D/web/bereit"
+for _ in $(seq 1 50); do curl -sf -m 1 "http://127.0.0.1:$PORT/bereit" >/dev/null && break; sleep 0.2; done
+curl -sf -m 1 "http://127.0.0.1:$PORT/bereit" >/dev/null || { echo "FEHLER: Testserver startet nicht"; exit 1; }
 J=1800000000
 gen() { printf '{"bescheinigung":{"ab_unix":1,"pq_ab_unix":%s}}' "$1" > "$D/repo/genesis.json"; }
 st() { printf '{"bescheinigung_konsens":{"pq_ab_unix":%s,"pq_beobachtet":{"ok":%s,"falsch":%s,"ohne":0}}}' "$1" "$2" "$3" > "$D/web/api/status"; }
