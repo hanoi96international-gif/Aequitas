@@ -84,6 +84,11 @@ class Schaltkreis:
             self.gatter.append(("measure", c, a))
             self.mess[c] = a
 
+    def warten(self, us: float, qs):
+        """Die Note liegt `us` Mikrosekunden im Speicher (Leerlauf)."""
+        if us > 0:
+            self.gatter.append(("delay", float(us), *qs))
+
     def wenn(self, bit: int, t: float, a: int):
         """Klassisch gesteuert (dynamischer Schaltkreis): p(t) auf Qubit a,
         falls das schon gemessene Bit `bit` 1 ist."""
@@ -99,6 +104,9 @@ class Schaltkreis:
                 continue
             if n == "wenn":
                 z.append(f"if (c[{t[0]}] == 1) {{ p({t[1]!r}) q[{qs[0]}]; }}")
+                continue
+            if n == "delay":
+                z += [f"delay[{t}us] q[{a}];" for a in qs]
                 continue
             par = f"({t!r})" if t is not None else ""
             z.append(f"{n}{par} " + ", ".join(f"q[{a}]" for a in qs) + ";")
@@ -166,28 +174,31 @@ def pruef_tests(s: Schaltkreis, b: list[int], anc: list[int], us: list[int],
     return b
 
 
-def praegen_und_pruefen(n: int, us: list[int]) -> Schaltkreis:
+def praegen_und_pruefen(n: int, us: list[int], warten_us: float = 0) -> Schaltkreis:
     """Gen (jeder praegt) + T Pruefungen. Qubits: A n, B n, Hilfsqubits T.
     Klassische Bits: zuerst die T Pruefbits, dann die n Bits der Seriennummer."""
     T = len(us)
     A = list(range(n))
     B = list(range(n, 2 * n))
     H = list(range(2 * n, 2 * n + T))
-    s = Schaltkreis(2 * n + T, f"praegen+pruefen n={n} u={us}")
+    s = Schaltkreis(2 * n + T, f"praegen+pruefen n={n} u={us} warten={warten_us}us")
     for a in A:
         s.h(a)
     for a, b in zip(A, B):
         s.cx(a, b)
     A = qft(s, A)
     s.barriere(sorted(A + B + H))
+    if warten_us > 0:
+        s.warten(warten_us, B)
+        s.barriere(sorted(A + B + H))
     B = pruef_tests(s, B, H, us, A, None)
     s.messen(H + A)
     qft(s, B)  # Note zurueck in die Fourier-Basis: wieder weitergebbar
-    s.bedeutung = {"fall": "echt", "pruefbits": T, "seriebits": n}
+    s.bedeutung = {"fall": "echt", "pruefbits": T, "seriebits": n, "warten_us": warten_us}
     return s
 
 
-def praegen_dynamisch(n: int, us: list[int]) -> Schaltkreis:
+def praegen_dynamisch(n: int, us: list[int], warten_us: float = 0) -> Schaltkreis:
     """Wie praegen_und_pruefen, aber mit halbklassischer QFT (Griffiths-Niu):
     die QFT auf A mit anschliessendem Messen braucht KEIN 2-Qubit-Gatter --
     Qubit fuer Qubit messen, die anderen je nach Messwert drehen. Die
@@ -200,7 +211,7 @@ def praegen_dynamisch(n: int, us: list[int]) -> Schaltkreis:
     A = list(range(n))
     B = list(range(n, 2 * n))
     H = list(range(2 * n, 2 * n + T))
-    s = Schaltkreis(2 * n + T, f"praegen+pruefen dynamisch n={n} u={us}")
+    s = Schaltkreis(2 * n + T, f"praegen+pruefen dynamisch n={n} u={us} warten={warten_us}us")
     for a in A:
         s.h(a)
     for a, b in zip(A, B):
@@ -214,6 +225,9 @@ def praegen_dynamisch(n: int, us: list[int]) -> Schaltkreis:
         for j in reversed(range(i)):
             s.wenn(bit_i, TAU / 2 ** (i - j + 1), A[j])
     s.barriere(sorted(A + B + H))
+    if warten_us > 0:
+        s.warten(warten_us, B)
+        s.barriere(sorted(A + B + H))
     b = qft(s, B, invers=True)
     for a, u in zip(H, us):
         s.h(a)
@@ -226,7 +240,7 @@ def praegen_dynamisch(n: int, us: list[int]) -> Schaltkreis:
         s.h(a)
     s.messen(H, list(range(T)))
     qft(s, b)  # Note zurueck in die Fourier-Basis
-    s.bedeutung = {"fall": "echt", "pruefbits": T, "seriebits": n}
+    s.bedeutung = {"fall": "echt", "pruefbits": T, "seriebits": n, "warten_us": warten_us}
     return s
 
 
@@ -259,7 +273,7 @@ def simuliere(s: Schaltkreis) -> list[complex]:
     psi[0] = 1
     gemessen: set[int] = set()
     for n, t, *qs in s.gatter:
-        if n == "barrier":
+        if n in ("barrier", "delay"):
             continue
         if n == "measure":
             gemessen.add(qs[0])
@@ -428,6 +442,13 @@ def selbsttest() -> None:
                 assert not (A & set(g[2:]) and H & set(g[2:])), g
         zwei = sum(1 for g in s.gatter if g[0] in ("cx", "cp"))
         assert zwei < sum(1 for g in praegen_und_pruefen(n, us).gatter if g[0] in ("cx", "cp")), zwei
+    # 2c. Warten aendert ideal nichts (Leerlauf), steht zwischen Barrieren.
+    for f in (praegen_und_pruefen, praegen_dynamisch):
+        s = f(n, [1, 2, 3], warten_us=50)
+        assert abs(auswerten(s, verteilung(s))["annahme"] - 1) < 1e-9
+        namen = [g[0] for g in s.gatter]
+        k = namen.index("delay")
+        assert namen[k - 1] == "barrier" and namen[k + 1] == "barrier"
     # 3. Echte Note gegen klassische Seriennummer: besteht immer.
     for c in range(N):
         s = faelschung(n, [rng.randrange(N) for _ in range(3)], c, "echt", c)
@@ -446,13 +467,15 @@ def selbsttest() -> None:
         assert abs(m - erwartet(fall, n, T)) < 0.05, (fall, m, erwartet(fall, n, T))
     # 5. Nur Hardware-Bausteine, QASM ist lesbar.
     s = satz(n, T, 1, rng)[0]
-    assert {g[0] for g in s.gatter} <= {"h", "x", "cx", "p", "cp", "barrier", "measure", "wenn"}
+    assert {g[0] for g in s.gatter} <= {"h", "x", "cx", "p", "cp", "barrier", "measure", "wenn", "delay"}
     # 6. Zwischen Herstellen und Pruefen steht eine Barriere (kein
-    #    Verrechnen ueber die Grenze), und gemessen wird vor dem QFT zurueck.
-    for k in satz(n, T, 1, rng):
+    #    Verrechnen ueber die Grenze), und die Pruefbits werden nach ihr
+    #    gemessen (vor dem QFT zurueck).
+    for k in satz(n, T, 1, rng) + satz(n, T, 1, rng, dynamisch=True):
         namen = [g[0] for g in k.gatter]
-        assert namen.count("barrier") == 1 and "measure" in namen
-        assert namen.index("barrier") < namen.index("measure")
+        assert namen.count("barrier") == 1, namen.count("barrier")
+        pruef = [i for i, g in enumerate(k.gatter) if g[0] == "measure" and g[1] < T]
+        assert pruef and min(pruef) > namen.index("barrier")
     # 7. Lesekorrektur kehrt bekannte Auslesefehler um.
     wahr = {"000": 0.6, "010": 0.25, "111": 0.15}
     p0, p1 = [0.97, 0.95, 0.99], [0.93, 0.9, 0.96]
