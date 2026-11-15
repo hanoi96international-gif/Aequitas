@@ -4,7 +4,6 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"sync/atomic"
 )
 
 // ANLAUF NACH EINER NEUEN GENESIS (Neustart bei null, 15.11.2026).
@@ -24,10 +23,12 @@ import (
 //     offen (ohne Liste) nie -- dort koennte sich sonst jeder selbst
 //     zulassen;
 //   - ab der Genesis-Zeit hoechstens erzeugerAnlaufDauer lang;
-//   - und nur bis zur ersten wirksamen Bindung des Schluessels: das
-//     Anlauf-Fenster endet, wo sein erstes echtes Fenster beginnt (die
-//     Bindung plus erzeugerFrist). Danach gilt allein das Register -- auch
-//     fuer das Ende einer Bindung, das Register nimmt weiter weg.
+//   - und nur bis zur ersten Bindung des Schluessels: das Anlauf-Fenster
+//     endet erzeugerFrist nach seiner ERSTEN Zeile im Verlauf, gleich von
+//     wem -- also genau dort, wo sein erstes echtes Fenster beginnt. Auch
+//     wenn der Betreiber spaeter kein Mensch mehr ist und sein Fenster
+//     dadurch entfaellt, kommt der Anlauf nicht zurueck (Sicherheitsdurchgang
+//     #524). Danach gilt allein das Register, das weiter wegnimmt.
 //
 // Das Fenster steht im gespeicherten Stand wie jedes andere; Erzeugerpruefung
 // (eigene Bloecke und fremde), Komitee und Checkpoint-Komitee urteilen damit
@@ -46,23 +47,19 @@ const (
 	anlaufBetreiber           = "anlauf:genesis"
 )
 
-// Nur fuer Tests (0 = genesis.json).
-var anlaufGenesisOverride atomic.Int64
-
-var anlaufGenesisEinmal = sync.OnceValue(genesisTimestamp)
-
-func anlaufGenesis() int64 {
-	if o := anlaufGenesisOverride.Load(); o != 0 {
-		return o
-	}
-	return anlaufGenesisEinmal()
-}
+// anlaufGenesis: die Genesis-Zeit aus genesis.json, einmal je Prozess gelesen
+// (die Erzeugerpruefung laeuft je Block unter dag.mu). Ohne lesbare Datei
+// die feste Zeit von genesisTimestamp -- deren Anlauf ist laengst vorbei
+// (fail-closed).
+var anlaufGenesis = sync.OnceValue(genesisTimestamp)
 
 // anlaufFensterErgaenzen: die Fenster des Stands plus je Schluessel aus
-// liste das Anlauf-Fenster [genesis, min(genesis+Dauer, erster
-// Fensterbeginn)). Veraendert fenster nicht. Ueberlappt nie mit einem echten
-// Fenster -- sonst hiesse der Schluessel "umstritten" (erzeugerFenster).
-func anlaufFensterErgaenzen(fenster map[string][]zeitfenster, liste []string, genesis int64) map[string][]zeitfenster {
+// liste das Anlauf-Fenster [genesis, min(genesis+Dauer, erste Bindung +
+// erzeugerFrist, erster Fensterbeginn)). erste: je Schluessel die Zeit
+// seiner ersten Bindung im Verlauf (erzeugerAusVerlauf). Veraendert fenster
+// nicht. Ueberlappt nie mit einem echten Fenster -- sonst hiesse der
+// Schluessel "umstritten" (erzeugerFenster).
+func anlaufFensterErgaenzen(fenster map[string][]zeitfenster, liste []string, genesis int64, erste map[string]int64) map[string][]zeitfenster {
 	if len(liste) == 0 || genesis <= 0 {
 		return fenster
 	}
@@ -77,6 +74,11 @@ func anlaufFensterErgaenzen(fenster map[string][]zeitfenster, liste []string, ge
 			continue
 		}
 		bis := ende
+		if z, ok := erste[a]; ok {
+			if w := sattAdd(z, erzeugerFrist); w < bis {
+				bis = w
+			}
+		}
 		for _, f := range out[a] {
 			if f.von < bis {
 				bis = f.von
@@ -103,5 +105,17 @@ func (dag *BlockDAG) erzeugerAnlaufListe() []string {
 		out = append(out, a)
 	}
 	sort.Strings(out)
+	return out
+}
+
+// ersteBindungen: je Signierschluessel die Zeit seiner ersten Zeile im
+// Verlauf.
+func ersteBindungen(zeilen []bindungsZeile) map[string]int64 {
+	out := make(map[string]int64, len(zeilen))
+	for _, z := range zeilen {
+		if t, ok := out[z.signing]; !ok || z.zeit < t {
+			out[z.signing] = z.zeit
+		}
+	}
 	return out
 }

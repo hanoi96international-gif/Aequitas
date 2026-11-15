@@ -14,7 +14,7 @@ func TestErzeugerAnlauf_FensterUndGrenzen(t *testing.T) {
 	ende := g + erzeugerAnlaufDauer
 	bindung := g + 3*3600 // C1 bindet drei Stunden nach der Genesis
 	st := standAus(z("mc1", "0xc1", bindung))
-	m := anlaufFensterErgaenzen(st.fenster, []string{"0xc1", "0xb"}, g)
+	m := anlaufFensterErgaenzen(st.fenster, []string{"0xc1", "0xb"}, g, nil)
 	if len(st.fenster["0xb"]) != 0 {
 		t.Fatal("Eingabe veraendert")
 	}
@@ -52,7 +52,7 @@ func TestErzeugerAnlauf_NimmtNichtsZurueckUndOffenNie(t *testing.T) {
 	// 0xa bindet bei g+1h, wechselt bei g+5h auf 0xa2: 0xa darf ab
 	// g+5h+Frist nicht mehr -- auch nicht im Anlaufzeitraum.
 	st := standAus(z("ma", "0xa", g+3600), z("ma", "0xa2", g+5*3600))
-	st.fenster = anlaufFensterErgaenzen(st.fenster, []string{"0xa", "0xb"}, g)
+	st.fenster = anlaufFensterErgaenzen(st.fenster, []string{"0xa", "0xb"}, g, nil)
 	dag := erzeugerTestDAG(st)
 	spaeter := g + 5*3600 + erzeugerFrist + 60
 	if dag.erzeugerErlaubt("0xa", spaeter) {
@@ -77,7 +77,7 @@ func TestErzeugerAnlauf_NimmtNichtsZurueckUndOffenNie(t *testing.T) {
 	if l := dag.erzeugerAnlaufListe(); l != nil {
 		t.Fatalf("offen mit Anlaufliste %v", l)
 	}
-	leer := &erzeugerStand{fenster: anlaufFensterErgaenzen(map[string][]zeitfenster{}, dag.erzeugerAnlaufListe(), g)}
+	leer := &erzeugerStand{fenster: anlaufFensterErgaenzen(map[string][]zeitfenster{}, dag.erzeugerAnlaufListe(), g, nil)}
 	dag.state.erzeugerRegister.Store(leer)
 	if dag.erzeugerErlaubt("0xb", g+60) {
 		t.Fatal("offen: Anlauf ohne Liste")
@@ -96,7 +96,7 @@ func TestErzeugerAnlauf_NimmtNichtsZurueckUndOffenNie(t *testing.T) {
 func TestErzeugerAnlauf_StatusUndKomitee(t *testing.T) {
 	g := nowUnix() - 600
 	st := standAus()
-	st.fenster = anlaufFensterErgaenzen(map[string][]zeitfenster{}, []string{"0xa", "0xb"}, g)
+	st.fenster = anlaufFensterErgaenzen(map[string][]zeitfenster{}, []string{"0xa", "0xb"}, g, nil)
 	st.komiteeRang = komiteeVorberechnen(st, nowUnix())
 	dag := erzeugerTestDAG(st)
 	if o := dag.ErzeugerOhneBindung(); len(o) != 2 {
@@ -107,5 +107,35 @@ func TestErzeugerAnlauf_StatusUndKomitee(t *testing.T) {
 	ec := dag.komiteeAusRegister(nowUnix())
 	if !ec.Members["0xa"] || !ec.Members["0xb"] || ec.Members["0xs"] {
 		t.Fatalf("Komitee im Anlauf: %v", ec.Members)
+	}
+}
+
+// Sicherheitsdurchgang #524: ist der Betreiber einer Bindung heute kein
+// Mensch mehr, faellt sein Fenster weg (fensterAusIntervallen) -- der Anlauf
+// darf deshalb nicht zurueckkommen. Er endet an der ersten Zeile im Verlauf,
+// gleich von wem.
+func TestErzeugerAnlauf_EndetAnDerErstenZeileAuchOhneMenschen(t *testing.T) {
+	g := int64(1_794_758_400)
+	zeilen := []bindungsZeile{z("nichtmehrmensch", "0xa", g+3600), z("mb", "0xb", g+7200)}
+	// 0xa: Betreiber ist kein Mensch mehr -> kein echtes Fenster
+	fenster := fensterAusIntervallen(bindungsIntervalle(zeilen), map[string]bool{"mb": true}, nil)
+	if len(fenster["0xa"]) != 0 {
+		t.Fatal("Testaufbau: 0xa haette kein Fenster haben duerfen")
+	}
+	erste := ersteBindungen(zeilen)
+	if erste["0xa"] != g+3600 || erste["0xb"] != g+7200 {
+		t.Fatalf("erste Bindungen: %v", erste)
+	}
+	st := &erzeugerStand{fenster: anlaufFensterErgaenzen(fenster, []string{"0xa", "0xb"}, g, erste)}
+	if got := st.erzeugerFenster("0xa", g+3600+erzeugerFrist-1); got != anlaufBetreiber {
+		t.Fatalf("0xa vor dem Ende seines Anlaufs: %q", got)
+	}
+	for _, zeit := range []int64{g + 3600 + erzeugerFrist, g + 86400, g + erzeugerAnlaufDauer - 1} {
+		if got := st.erzeugerFenster("0xa", zeit); got != "" {
+			t.Fatalf("0xa zur Zeit %d: %q -- Anlauf zurueckgekommen", zeit, got)
+		}
+	}
+	if got := st.erzeugerFenster("0xb", g+7200+erzeugerFrist); got != "mb" {
+		t.Fatalf("0xb mit wirksamer Bindung: %q", got)
 	}
 }

@@ -300,18 +300,23 @@ func (st *erzeugerStand) erzeugerFenster(addr string, t int64) string {
 // erzeugerAusVerlauf: die Fenster aus dem Verlauf. fest = nil: offen, alle
 // Schluessel; sonst nur diese (geschlossene Liste -- keine Grenze fuer das
 // ganze Netz, die jeder Mensch mit Bindungen fuellen koennte).
-func (cs *ChainState) erzeugerAusVerlauf(ctx context.Context, fest []string) (map[string][]zeitfenster, map[string]string, error) {
+//
+// erste: je Signierschluessel der Zeitpunkt seiner ERSTEN Bindung im
+// Verlauf, gleich von wem (auch wenn der Betreiber heute kein Mensch mehr
+// ist) -- dort endet sein Anlauf (erzeuger_anlauf.go).
+func (cs *ChainState) erzeugerAusVerlauf(ctx context.Context, fest []string) (fenster map[string][]zeitfenster, halter map[string]string, erste map[string]int64, err error) {
 	if cs.db == nil {
-		return nil, nil, fmt.Errorf("keine Datenbank")
+		return nil, nil, nil, fmt.Errorf("keine Datenbank")
 	}
 	q := dbMitKontext{ctx: ctx, db: cs.db}
 	if fest != nil && len(fest) == 0 {
-		return map[string][]zeitfenster{}, map[string]string{}, nil
+		return map[string][]zeitfenster{}, map[string]string{}, map[string]int64{}, nil
 	}
 	zeilen, err := verlaufLesen(q, fest)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
+	erste = ersteBindungen(zeilen)
 	betreiber := map[string]bool{}
 	for _, z := range zeilen {
 		betreiber[z.betreiber] = true
@@ -324,19 +329,19 @@ func (cs *ChainState) erzeugerAusVerlauf(ctx context.Context, fest []string) (ma
 		}
 		rows, err := q.Query(`SELECT lower(address) FROM chain_accounts WHERE lower(address) = ANY($1) AND is_human`, pq.Array(liste))
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 		for rows.Next() {
 			var a string
 			if err := rows.Scan(&a); err != nil {
 				rows.Close()
-				return nil, nil, err
+				return nil, nil, nil, err
 			}
 			menschen[a] = true
 		}
 		rows.Close()
 		if err := rows.Err(); err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 	}
 	var gesucht map[string]bool
@@ -346,7 +351,7 @@ func (cs *ChainState) erzeugerAusVerlauf(ctx context.Context, fest []string) (ma
 			gesucht[strings.ToLower(a)] = true
 		}
 	}
-	return fensterAusIntervallen(bindungsIntervalle(zeilen), menschen, gesucht), letzteHalter(zeilen, menschen, gesucht), nil
+	return fensterAusIntervallen(bindungsIntervalle(zeilen), menschen, gesucht), letzteHalter(zeilen, menschen, gesucht), erste, nil
 }
 
 // letzteHalter: je Signierschluessel der Betreiber seiner letzten Bindung,
@@ -437,7 +442,7 @@ func (cs *ChainState) erzeugerRegisterAuffrischen() {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	m, h, err := cs.erzeugerAusVerlauf(ctx, fest)
+	m, h, erste, err := cs.erzeugerAusVerlauf(ctx, fest)
 	if err != nil {
 		fmt.Printf("[VALIDATOR] Erzeuger aus dem Verlauf nicht lesbar: %v\n", err)
 		m, h = nil, nil
@@ -452,7 +457,7 @@ func (cs *ChainState) erzeugerRegisterAuffrischen() {
 		if p := cs.erzeugerAnlauf.Load(); p != nil {
 			anlauf = *p
 		}
-		m = anlaufFensterErgaenzen(m, anlauf, anlaufGenesis())
+		m = anlaufFensterErgaenzen(m, anlauf, anlaufGenesis(), erste)
 	}
 	cs.erzeugerRegister.Store(erzeugerStandBauen(m, h, err, time.Now(), nowUnix()))
 }
