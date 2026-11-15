@@ -808,7 +808,7 @@ func (cs *ChainState) umzugAnkuendigenUrteilLocked(ctx context.Context, tx *Tran
 		return umzugBefund("umzug_bescheinigung", "Modus %q, das Netz verlangt %q", b.Modus, k.Modus), nil
 	}
 	if err := pruefeV3Unterschriften(b, k, umzugBindungNachricht(b.Modus, n, neu, z, u.Pruefung), umzugAussageNachricht(b.Modus, n, z),
-		blockZeit, cs.verifierRegisterJetzt().mitglied); err != nil {
+		blockZeit, cs.verifierRegisterJetzt()); err != nil {
 		return umzugBefund("umzug_bescheinigung", "%s: %v", kurzAdresse(neu), err), nil
 	}
 	inhaber, err := cs.umzugNullifierInhaberLocked(ctx, n)

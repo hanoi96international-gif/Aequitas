@@ -934,7 +934,7 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 			b.Modus = k.Modus
 		}
 		pendingRegTx.BioBescheinigung = b
-		if err := pruefeBioBescheinigungMit(pendingRegTx, annahmeZeit, a.state.verifierRegisterJetzt().mitglied); err != nil {
+		if err := pruefeBioBescheinigungMit(pendingRegTx, annahmeZeit, a.state.verifierRegisterJetzt()); err != nil {
 			return "", fmt.Errorf("registration rejected: %w", err)
 		}
 	}

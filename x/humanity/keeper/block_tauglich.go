@@ -118,6 +118,15 @@ func auftragsFenster(tx *Transaction, jetzt int64) zeitFenster {
 	if tx.Type == quantenFreischaltungTxArt {
 		f.eng(sattAdd(tx.DistributionAt, -nachweisHoechstensVoraus), sattAdd(tx.DistributionAt, nachweisHoechstensAlt))
 	}
+	// PQ-Schluessel eines Pruefer-Dienstes (pruefer_dienst_pq.go): nur an
+	// seiner Art, erst ab dem Stichtag, issued_at im Nachweisfenster.
+	if tx.DienstPQ != nil || tx.Type == prueferDienstPQTxArt {
+		if tx.DienstPQ == nil || tx.Type != prueferDienstPQTxArt {
+			return zeitFenster{1, 0}
+		}
+		f.eng(prueferDienstPQAb(), math.MaxInt64)
+		f.eng(sattAdd(tx.DistributionAt, -nachweisHoechstensVoraus), sattAdd(tx.DistributionAt, nachweisHoechstensAlt))
+	}
 	switch {
 	case tx.Type == "validator_bindung":
 		// validator_register.go: immer geprueft (nicht an die Signaturpflicht
@@ -297,6 +306,17 @@ func auftragsFenster(tx *Transaction, jetzt int64) zeitFenster {
 // die zeitabhaengigen Regeln jedes Nachspielenden? Genau, mit den Regeln, die
 // zu blockZeit gelten.
 func blockTauglich(tx *Transaction, blockZeit int64) error {
+	if tx.DienstPQ != nil || tx.Type == prueferDienstPQTxArt {
+		if tx.DienstPQ == nil || tx.Type != prueferDienstPQTxArt {
+			return fmt.Errorf("dienst_pq nur an %s", prueferDienstPQTxArt)
+		}
+		if !prueferDienstPQAktiv(blockZeit) {
+			return fmt.Errorf("%s vor dem Stichtag (Block %d)", prueferDienstPQTxArt, blockZeit)
+		}
+		if z := tx.DistributionAt; z <= 0 || z > sattAdd(blockZeit, nachweisHoechstensVoraus) || z < blockZeit-nachweisHoechstensAlt {
+			return fmt.Errorf("PQ-Schluessel freigegeben %d, Block %d", z, blockZeit)
+		}
+	}
 	if tx.PQ != nil && !pqUeberweisungAktiv(blockZeit) {
 		return fmt.Errorf("PQ-Ueberweisung vor dem Stichtag (Block %d)", blockZeit)
 	}

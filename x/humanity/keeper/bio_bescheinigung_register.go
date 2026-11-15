@@ -138,11 +138,35 @@ func sortierteSchluessel(m map[string]string) []string {
 	return out
 }
 
+// prueferQuelle: wer zur Zeit t Pruefer ist, und (Audit B2,
+// pruefer_dienst_pq.go) welcher PQ-Schluessel zu einem Dienst-Schluessel
+// eines Pruefers gehoert. *verifierRegister erfuellt beides.
+type prueferQuelle interface {
+	mitglied(m string, t int64) bool
+	dienstPQ(ed, mensch string, t int64) (string, bool)
+}
+
+// prueferNurMitglied: nur das Stimmrecht, keine PQ-Schluessel (Tests, alte
+// Pfade).
+type prueferNurMitglied func(m string, t int64) bool
+
+func (f prueferNurMitglied) mitglied(m string, t int64) bool { return f(m, t) }
+
+func (f prueferNurMitglied) dienstPQ(string, string, int64) (string, bool) { return "", false }
+
+// alsPruefer: eine Mitglieds-Funktion als prueferQuelle (nil bleibt nil).
+func alsPruefer(f func(m string, t int64) bool) prueferQuelle {
+	if f == nil {
+		return nil
+	}
+	return prueferNurMitglied(f)
+}
+
 // registerSchluesselPruefen: die mitgebrachten Bindungen, geprueft; Ergebnis
 // Schluessel -> Mensch (genesisMensch fuer Gruender). Die Schluessel kommen
 // in pubs. Billig vor teuer: Form, Stichtag, Fenster, Doppelte, dann
 // Unterschriften, dann das Register.
-func registerSchluesselPruefen(b *BioBescheinigung, blockZeit int64, pruefer func(m string, t int64) bool, pubs map[string]ed25519.PublicKey) (map[string]string, error) {
+func registerSchluesselPruefen(b *BioBescheinigung, blockZeit int64, pruefer prueferQuelle, pubs map[string]ed25519.PublicKey) (map[string]string, error) {
 	if len(b.Bindungen) == 0 {
 		return nil, nil
 	}
@@ -173,7 +197,7 @@ func registerSchluesselPruefen(b *BioBescheinigung, blockZeit int64, pruefer fun
 		if !bindungGueltig(x.PublicKey, x.Mensch, x.MenschSig, x.SchluesselSig) {
 			return nil, fmt.Errorf("bescheinigung: Bindung %d: Freigabe oder Besitznachweis falsch", i+1)
 		}
-		if !pruefer(x.Mensch, b.Zeit) {
+		if !pruefer.mitglied(x.Mensch, b.Zeit) {
 			return nil, fmt.Errorf("bescheinigung: Bindung %d: %s ist zu %d kein Pruefer", i+1, kurzAdresse(x.Mensch), b.Zeit)
 		}
 		pubs[x.PublicKey] = ed25519.PublicKey(pub)

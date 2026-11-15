@@ -74,6 +74,10 @@ type Transaction struct {
 	// Quantengeld-Topf) oder Freischaltung eines Parametersatzes
 	// (quanten_geld.go). omitempty: aeltere Bloecke behalten ihren Hash.
 	Quanten *QuantenAngaben `json:"quanten,omitempty"`
+	// DienstPQ: ML-DSA-65-Schluessel eines Pruefer-Dienstes
+	// (pruefer_dienst_pq.go, Audit B2). Nur an pruefer_dienst_pq.
+	// omitempty: aeltere Bloecke behalten ihren Hash.
+	DienstPQ *PrueferDienstPQ `json:"dienst_pq,omitempty"`
 	// FromDemurrageLost/ToDemurrageLost carry the exact AEQ amount the
 	// primary node decayed off Wallet/To via settleDemurrageLocked while
 	// processing this TX. Secondary nodes replay these exact numbers
@@ -1428,6 +1432,8 @@ func bekannteTxArt(typ string, blockZeit int64) bool {
 		return pqZusageAktiv(blockZeit)
 	case quantenFreischaltungTxArt: // quanten_geld.go, schlafend bis quantenGeldAb
 		return quantenGeldAktiv(blockZeit)
+	case prueferDienstPQTxArt: // pruefer_dienst_pq.go, schlafend bis prueferDienstPQAb
+		return prueferDienstPQAktiv(blockZeit)
 	case "vorbehalt", "vorbehalt_ausfuehrung", "kappung":
 		// Stufe 2 (vorbehalt.go, kappung_verteilt.go). Fehlten hier bis
 		// 05.10.2026 ganz: ab der Aktivierung haette jeder Knoten jeden
@@ -7946,7 +7952,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			// Die Gesichtspruefung selbst nachpruefen (K1) -- ab dem Stichtag
 			// der Genesis. Ohne sie konnte jeder Erzeuger Menschen erfinden.
 			if bescheinigungAktiv(block.Timestamp) {
-				if err := pruefeBioBescheinigungMit(tx, block.Timestamp, dag.state.verifierRegisterJetzt().mitglied); err != nil {
+				if err := pruefeBioBescheinigungMit(tx, block.Timestamp, dag.state.verifierRegisterJetzt()); err != nil {
 					fmt.Printf("[REPLAY] ✗ register_human for %s (block #%d): %v — rolling back whole block\n", wallet, block.Height, err)
 					hardFailure = true
 					continue
@@ -8202,6 +8208,15 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			// lesbar: der ganze Block zurueck.
 			if err := dag.state.applySatzAnkuendigungLocked(context.Background(), &tx, block.Timestamp); err != nil {
 				fmt.Printf("[REPLAY] ✗ satz_ankuendigung: %v (block #%d) — rolling back whole block\n", err, block.Height)
+				hardFailure = true
+				continue
+			}
+		case prueferDienstPQTxArt:
+			// pruefer_dienst_pq.go: Pruefer, Zusage, Freigabe und Besitz
+			// (ML-DSA) prueft jeder Knoten selbst. Ungueltig: nie angewandt,
+			// gezaehlt, im strengen Modus Fehler.
+			if err := dag.state.applyPrueferDienstPQLocked(context.Background(), &tx, block.Timestamp); err != nil {
+				fmt.Printf("[REPLAY] ✗ pruefer_dienst_pq: %v (block #%d) — rolling back whole block\n", err, block.Height)
 				hardFailure = true
 				continue
 			}

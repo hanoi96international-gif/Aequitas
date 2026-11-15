@@ -7938,7 +7938,13 @@ func (cs *ChainState) stateRootLocked(lastUBIAt, letzterCP string) string {
 	// Pruefer-Register (verifier_register.go): nur mit Eintraegen.
 	if reg := cs.verifierRegisterJetzt(); !reg.leer() {
 		sb.WriteString("|pruefer:")
-		sb.WriteString(reg.kodiert())
+		// Ohne PQ-Schluessel der Dienste gleich reg.kodiert() (byte-gleich wie
+		// vorher); mit ihnen nur deren Hash daneben (pruefer_dienst_pq.go).
+		sb.WriteString(reg.kodiertOhnePQ())
+		if reg.pqHash != "" {
+			sb.WriteString("|pruefer_pq:")
+			sb.WriteString(reg.pqHash)
+		}
 	}
 	// Umzugs-Register (umzug.go): nur mit Eintraegen, als Hash.
 	if reg := cs.umzugRegisterJetzt(); !reg.leer() {
