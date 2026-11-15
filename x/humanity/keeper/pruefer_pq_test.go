@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"math/big"
+	"os"
 	"strings"
 	"testing"
 )
@@ -276,5 +277,34 @@ func TestPrueferPQ_QuantengeldFreischaltung(t *testing.T) {
 	tx.Quanten.Stimmen[0].PQ, tx.Quanten.Stimmen[1].PQ = tx.Quanten.Stimmen[1].PQ, tx.Quanten.Stimmen[0].PQ
 	if u := qgUrteil(t, f.cs, tx, zeit); u.regel != "quanten_stimme_pq" {
 		t.Fatalf("vertauschte PQ-Teile angenommen: %q", u.regel)
+	}
+}
+
+// Feste Saetze und eine Unterschrift aus der App (@noble/post-quantum,
+// lib/tresor.ts prueferPQTeil, Seed 0x11 x 32, deterministisch): der Knoten
+// erzeugt denselben Satz und nimmt genau diese Unterschrift an.
+func TestPrueferPQ_FesterSatzUndAppVektor(t *testing.T) {
+	roh, err := os.ReadFile("testdata/pruefer_pq_vektor.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var v struct{ Mensch, Satz, Nachricht, Pub, Sig, Zusage string }
+	if err := json.Unmarshal(roh, &v); err != nil {
+		t.Fatal(err)
+	}
+	satz := verifierNachricht(verifierArtAufnahme, "0x"+strings.Repeat("CD", 20))("", 1800000000)
+	if satz != v.Satz {
+		t.Fatalf("Satz der Stimme:\n got %s\nwant %s", satz, v.Satz)
+	}
+	if got := prueferPQNachricht("0xAbCdEf0123456789aBcDeF0123456789AbCdEf01", satz); got != v.Nachricht {
+		t.Fatalf("PQ-Satz:\n got %s\nwant %s", got, v.Nachricht)
+	}
+	s := &VerifierStimme{Bescheinigung: Lebendigkeitsbescheinigung{Mensch: v.Mensch}, PQ: &PrueferPQ{Pub: v.Pub, Sig: v.Sig}}
+	zusage := func(m string) (string, bool) { return v.Zusage, m == v.Mensch }
+	if err := prueferPQPruefen(s, satz, true, zusage); err != nil {
+		t.Fatalf("Unterschrift der App abgewiesen: %v", err)
+	}
+	if err := prueferPQPruefen(s, satz+"0", true, zusage); err == nil {
+		t.Fatal("Unterschrift der App gilt fuer einen anderen Satz")
 	}
 }
