@@ -92,6 +92,23 @@ jobs:
               # Fehlt das Feld, ist es nicht true oder ist die Antwort kaputt: rot.
               PG=$(curl -s --max-time 10 "http://$B:8080/api/status" | python3 -c "import sys,json; v=json.load(sys.stdin).get('produzenten_geschlossen'); print('ja' if v is True else repr(v))" 2>/dev/null || echo "unlesbar")
               if [ "$PG" = ja ]; then ok "produzenten_geschlossen=true"; else rot "$B: produzenten_geschlossen=$PG -- jeder Schluessel koennte Bloecke erzeugen (produzenten-festlegen.yml)"; fi
+              # PQ-Stempel (Stufe 5, pq_stempel.go): ab pq.stempel.ab_hoehe weist jeder
+              # Knoten jeden 60. Block ohne gueltigen Stempel ab. Stempelt der Erzeuger
+              # nicht (Seed weg) oder passt ein Stempel nicht zur Genesis, steht die
+              # Kette an der naechsten Stempelhoehe -- darum rot, sobald es gilt.
+              PQS=$(curl -s --max-time 10 "http://$B:8080/api/status" | python3 -c "import sys,json
+          try:
+              s=json.load(sys.stdin).get('pq',{}).get('stempel') or {}
+              print(int(s.get('ab_hoehe') or 0), 'ja' if s.get('eigener') is True else 'nein', int(s.get('geprueft_falsch') if s.get('geprueft_falsch') is not None else -1), int(s.get('geprueft_ok') or 0))
+          except Exception:
+              print('unlesbar')" 2>/dev/null || echo "unlesbar")
+              if [ "$PQS" = unlesbar ]; then rot "$B: pq.stempel unlesbar"
+              else
+                read -r PQAB PQEIG PQFALSCH PQOK <<< "$PQS"
+                if [ "$PQAB" -gt 0 ] && [ "$PQEIG" != ja ]; then rot "$B: PQ-Stempel ist ab Hoehe $PQAB Pflicht, aber der Erzeuger stempelt NICHT (ERZEUGER_MLDSA_SEED fehlt?) -- die Kette steht an der naechsten 60er-Hoehe"
+                elif [ "$PQFALSCH" != 0 ]; then rot "$B: $PQFALSCH PQ-Stempel passen NICHT zur Genesis (pq_stempel.schluessel pruefen)"
+                else ok "PQ-Stempel: Erzeuger stempelt=$PQEIG, $PQOK geprueft, 0 falsch, Pflicht ab ${PQAB/#0/(noch nicht)}"; fi
+              fi
               J=$(h $B)
               if [ -z "$J" ]; then rot "$B antwortet nicht auf /api/health/combined"; else echo "$J" | python3 .github/wache_pruefung.py || ROT=1; fi
             fi
