@@ -81,6 +81,7 @@ jobs:
       - run: python3 -I forschung/quantengeld/umkehrbar.py --selbsttest
       - run: python3 -I forschung/quantengeld/pegasis_kosten.py --selbsttest
       - run: python3 -I forschung/quantengeld/variante_b.py --selbsttest
+      - run: python3 -I forschung/quantengeld/labor.py --selbsttest
       # Neustart-Skripte laufen als ssh ... bash -s: kein docker exec -i ohne
       # eigene Eingabe, und fern.sh wertet ein verschlucktes Skript als rot.
       - run: python3 scripts/lint_neustart_eingabe.py
