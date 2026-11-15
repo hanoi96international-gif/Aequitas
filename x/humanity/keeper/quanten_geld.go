@@ -33,9 +33,9 @@ package keeper
 //	    Konten laufen ueber den Ueberweisungsweg. Dazu unterschreibt die
 //	    Wallet (EIP-191) Satz, Seriennummer und den TxHash der Ueberweisung.
 //
-// # SCHLAFEND
+// # VOR DEM STICHTAG
 //
-// quantenGeldAbUnix = math.MaxInt64: beide Arten sind unbekannt
+// Vor quantenGeldAbUnix sind beide Arten unbekannt
 // (bekannteTxArt), Quanten-Angaben in einem Block machen ihn ungueltig, der
 // Endpunkt antwortet 409. Leer ist das Register; dann bleiben StateRoot,
 // Snapshot und Rueckroll byte-gleich wie vorher. Auch NACH dem Stichtag
@@ -66,9 +66,15 @@ import (
 )
 
 const (
-	// quantenGeldAbUnix: Stichtag der beiden Arten. math.MaxInt64 = SCHLAFEND;
-	// gesetzt wird er in einem eigenen PR mit Deploy und Vorlauf.
-	quantenGeldAbUnix int64 = math.MaxInt64
+	// quantenGeldAbUnix: Stichtag der beiden Arten (math.MaxInt64 =
+	// schlafend). Gesetzt am 15.11.2026 auf Anweisung des Betreibers ("alles
+	// in Main, heute laufen"): 1794830400 = 16.11.2026 12:00 UTC. Ab dann
+	// nimmt das Hauptnetz Freischaltungen und Anmeldungen an; eine Note
+	// anmelden kann trotzdem erst, wer einen Satz hat, den zwei Drittel der
+	// Pruefer freigeschaltet haben (N >= 2^256, 30 Tage Vorlauf). Der Deploy
+	// haelt an, wenn er nicht mindestens 30 Minuten vorher laeuft
+	// (.github/neustart/quantengeld-nicht-verpasst.sh).
+	quantenGeldAbUnix int64 = 1794830400
 
 	quantenFreischaltungTxArt   = "quanten_freischaltung"
 	quantenDomaeneFreischaltung = "aequitas-quanten-freischaltung-v1"
@@ -415,8 +421,11 @@ func (cs *ChainState) quantenPraegenUrteilLocked(tx *Transaction, blockZeit int6
 	if !ok {
 		return quantenBefund("quanten_form", "Seriennummer nicht in gueltiger Form")
 	}
+	if math.IsNaN(tx.Amount) || math.IsInf(tx.Amount, 0) || tx.Amount <= 0 {
+		return quantenBefund("quanten_deckung", "Deckung ungueltig")
+	}
 	mikro := NewDecimal(tx.Amount).Micro()
-	if mikro < quantenMindestDeckungMik || math.IsNaN(tx.Amount) || math.IsInf(tx.Amount, 0) {
+	if mikro < quantenMindestDeckungMik {
 		return quantenBefund("quanten_deckung", "Deckung %.6f AEQ, mindestens %.6f", tx.Amount, float64(quantenMindestDeckungMik)/1e6)
 	}
 	reg := cs.quantenGeldJetzt()
@@ -775,3 +784,13 @@ func (a *APIServer) handleQuantenFreischaltung(w http.ResponseWriter, r *http.Re
 type quantenAbgelehnt struct{ text string }
 
 func (e *quantenAbgelehnt) Error() string { return e.text }
+
+// quantenStatus: der Teil von /api/status (Waechter quantengeld-nicht-
+// verpasst.sh). "ab" fehlt, solange schlafend.
+func quantenStatus() map[string]interface{} {
+	m := map[string]interface{}{"topf": quantenTopfAddr}
+	if ab := quantenGeldAb(); ab != math.MaxInt64 {
+		m["ab"] = ab
+	}
+	return m
+}

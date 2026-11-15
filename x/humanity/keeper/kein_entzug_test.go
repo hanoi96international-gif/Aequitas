@@ -84,6 +84,7 @@ var replayArten = map[string]geldArt{
 	"umzug_vollzug":                    geldNurGutschrift,
 	"satz_ankuendigung":                geldNurGutschrift, // satz_plan.go: bewegt kein Geld, setzt nur den Satzplan
 	"verifier_zulassung":               geldNurGutschrift, // verifier_register.go: bewegt kein Geld, nimmt kein Menschsein, setzt nur das Pruefer-Register
+	"quanten_freischaltung":            geldNurGutschrift, // quanten_geld.go: bewegt kein Geld, nimmt kein Menschsein, traegt nur einen Parametersatz ein
 	"umlauf":                           geldRegelAusnahme,
 	"unternehmen_eroeffnen":            geldUnterschrieben,
 	"vorbehalt":                        geldUnterschrieben,
@@ -139,6 +140,8 @@ var ersetzbareKonstanten = map[string]string{
 	"umzugVollzugTxArt":     umzugVollzugTxArt,
 	// pq_zusage.go
 	"pqZusageTxArt": pqZusageTxArt,
+	// quanten_geld.go
+	"quantenFreischaltungTxArt": quantenFreischaltungTxArt,
 }
 
 // replaySwitchArten liest die Arten des Nachspiel-Switches aus block.go

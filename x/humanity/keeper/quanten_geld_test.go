@@ -328,6 +328,9 @@ func TestQuantenGeld_AnmeldenAngriffe(t *testing.T) {
 		{"fuehrende Null", f.tx("isogenie-8192", "0004d2", h, 5), z, "quanten_satz"},
 		{"Grossbuchstaben", f.tx("isogenie-8192", "04D2", h, 5), z, "quanten_form"},
 		{"unter Mindestdeckung", f.tx("isogenie-8192", "04d2", h, 0.5), z, "quanten_deckung"},
+		{"Deckung NaN", f.tx("isogenie-8192", "04d2", h, math.NaN()), z, "quanten_deckung"},
+		{"Deckung unendlich", f.tx("isogenie-8192", "04d2", h, math.Inf(1)), z, "quanten_deckung"},
+		{"Deckung negativ", f.tx("isogenie-8192", "04d2", h, -5), z, "quanten_deckung"},
 		{"vor dem Stichtag", f.tx("isogenie-8192", "04d2", h, 5), qgAb - 1, "quanten_form"},
 	}
 	for _, c := range faelle {
