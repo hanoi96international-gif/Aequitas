@@ -1215,6 +1215,9 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	mux.HandleFunc("/api/prove/store", a.handleProveStoreProxy)
 	mux.HandleFunc("/api/proof/check", a.handleProofCheckProxy)
 	mux.HandleFunc("/api/validators", a.handleValidatorList)
+	// Validator-Bereich der App: eingetragen? Bloecke heute und insgesamt
+	// (validator_stand.go; begrenzt, zwischengespeichert, nur lesend).
+	mux.HandleFunc("/api/validator-stand", a.handleValidatorStand)
 	mux.HandleFunc("/api/peers/challenge", a.handlePeerChallenge)
 	mux.HandleFunc("/api/peers/register", a.handlePeerRegister)
 	// Rotierender Leiter: signierte Nachrichten zwischen Validatoren
