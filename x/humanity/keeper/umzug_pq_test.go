@@ -512,3 +512,32 @@ func TestUmzugPQ_VektorAusDerApp(t *testing.T) {
 		t.Fatal("die Unterschrift des Antrags gilt fuer den Code")
 	}
 }
+
+// Der gesetzte Stichtag (15.11.2026 19:00 UTC) gilt ohne jede Test-
+// Ueberschreibung: eine Sekunde davor ist jede PQ-Unterschrift am Umzug ein
+// Befund, ab dem Stichtag die Form erlaubt; /api/status nennt ihn (der
+// Waechter liest ihn dort).
+func TestUmzugPQ_StichtagGesetzt(t *testing.T) {
+	vorher := umzugPQAbOverride.Load()
+	umzugPQAbOverride.Store(0)
+	t.Cleanup(func() { umzugPQAbOverride.Store(vorher) })
+	const ab int64 = 1794769200
+	if umzugPQAb() != ab {
+		t.Fatalf("Stichtag %d, erwartet %d", umzugPQAb(), ab)
+	}
+	p := neuerPQKontoSchluessel(t, 0x70)
+	u := &UmzugAngaben{PQ: pqKonto(t, p, "x")}
+	if umzugSigForm(u, ab-1) {
+		t.Fatal("eine Sekunde vor dem Stichtag erlaubt")
+	}
+	if !umzugSigForm(u, ab) {
+		t.Fatal("zum Stichtag nicht erlaubt")
+	}
+	tx := codeTxPQ(t, p, uzCode, ab-10)
+	if err := blockTauglich(&tx, ab-1); err == nil {
+		t.Fatal("Block vor dem Stichtag nimmt einen Umzug mit PQ auf")
+	}
+	if s := umzugPQStatus(); s["ab"] != ab {
+		t.Fatalf("Status: %v", s)
+	}
+}

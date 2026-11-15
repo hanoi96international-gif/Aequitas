@@ -340,13 +340,11 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
   die Freigabe mit dem Tresor-Schlüssel (Aequitas-App #68). Reihenfolge:
   `prueferDienstPQAbUnix` setzen → Prüfer tragen ein → erst dann
   `pq_ab_unix`.
-- **Stufe 3.6** (Menschsein und Grundeinkommen in den Tresor): fertig und
-  schlafend -- Knoten (`umzug_pq.go`: Antrag, Widerruf und Code mit
+- **Stufe 3.6** (Menschsein und Grundeinkommen in den Tresor): Stichtag
+  15.11.2026, 19:00 UTC -- Knoten (`umzug_pq.go`: Antrag, Widerruf und Code mit
   ML-DSA-65 der PQ-Adresse, Gesicht bleibt Pflicht), Coordinator
   (`pq_konto.py`: Umzug, Lebensnachweis, Erneuerung), App (Tresor-Seite,
-  Umzug, Code, Lebensnachweis). Stichtag `umzugPQAbUnix` erst, wenn jeder
-  Knoten diesen Stand hat und die App ausgeliefert ist (Wächter
-  `umzug-pq-nicht-verpasst.sh`). Auf der PQ-Adresse fehlen noch: Prüfer
+  Umzug, Code, Lebensnachweis). Wächter `umzug-pq-nicht-verpasst.sh`. Auf der PQ-Adresse fehlen noch: Prüfer
   werden (B1b), Wächter setzen, Treuhand zurückholen -- für das
   Grundeinkommen braucht es keinen davon.
 - **B12, Rest:** `npm audit` im Ketten-Repo nach `npm audit fix` (nur
