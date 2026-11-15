@@ -93,18 +93,30 @@ class Schaltkreis:
 
 # ---- Bausteine (Qubit j eines Registers hat Gewicht 2^j) ----
 
-def qft(s: Schaltkreis, reg: list[int], invers: bool = False) -> None:
-    """|x> -> N^-1/2 sum_y w^(x y) |y> (ohne Vertauschungs-Trick: mit SWAPs
-    aus cx, damit die Bitordnung stimmt)."""
+# Ohne SWAP: die QFT laesst die Bits in umgekehrter Reihenfolge liegen; statt
+# sie mit je 3 CNOT zurueckzutauschen, merkt sich der Schaltkreis, auf
+# welchem Qubit welches Bit liegt (Umbenennen kostet nichts).
+TAUSCH = False
+
+
+def qft(s: Schaltkreis, reg: list[int], invers: bool = False, tausch: bool | None = None) -> list[int]:
+    """|x> -> N^-1/2 sum_y w^(x y) |y>. `reg[j]` traegt Bit j (Gewicht 2^j)
+    der Eingabe; Rueckgabe: welches Qubit danach Bit j traegt. Mit tausch
+    (SWAPs aus cx) ist das wieder `reg`, ohne ist es umgekehrt."""
+    tausch = TAUSCH if tausch is None else tausch
     n = len(reg)
+    if invers and not tausch:
+        # Umkehrung der QFT ohne Tausch: die Eingabe liegt umgekehrt.
+        reg = reg[::-1]
     ops = []
     for i in reversed(range(n)):
         ops.append(("h", reg[i]))
         for j in reversed(range(i)):
             ops.append(("cp", TAU / 2 ** (i - j + 1), reg[j], reg[i]))
-    for i in range(n // 2):
-        a, b = reg[i], reg[n - 1 - i]
-        ops += [("cx", a, b), ("cx", b, a), ("cx", a, b)]
+    if tausch:
+        for i in range(n // 2):
+            a, b = reg[i], reg[n - 1 - i]
+            ops += [("cx", a, b), ("cx", b, a), ("cx", a, b)]
     if invers:
         ops = ops[::-1]
     for o in ops:
@@ -114,16 +126,19 @@ def qft(s: Schaltkreis, reg: list[int], invers: bool = False) -> None:
             s.cx(o[1], o[2])
         else:
             s.cp(-o[1] if invers else o[1], o[2], o[3])
+    if tausch or invers:
+        return list(reg)
+    return reg[::-1]
 
 
 def pruef_tests(s: Schaltkreis, b: list[int], anc: list[int], us: list[int],
-                serie_reg: list[int] | None, serie: int | None) -> None:
+                serie_reg: list[int] | None, serie: int | None) -> list[int]:
     """T Tests der Variante B. Vorher B durch QFT^-1 (Draper); das QFT
     zurueck macht der Aufrufer NACH dem Messen der Hilfsqubits (die Note
-    ist danach wieder heil und weitergebbar)."""
+    ist danach wieder heil und weitergebbar). Rueckgabe: Bitlage von B."""
     n = len(b)
     N = 2 ** n
-    qft(s, b, invers=True)
+    b = qft(s, b, invers=True)
     for a, u in zip(anc, us):
         s.h(a)
         for j in range(n):  # gesteuertes S_u: Phase w^(-u 2^j) auf B_j
@@ -134,6 +149,7 @@ def pruef_tests(s: Schaltkreis, b: list[int], anc: list[int], us: list[int],
         else:
             s.p(TAU * u * serie / N, a)
         s.h(a)
+    return b
 
 
 def praegen_und_pruefen(n: int, us: list[int]) -> Schaltkreis:
@@ -148,9 +164,9 @@ def praegen_und_pruefen(n: int, us: list[int]) -> Schaltkreis:
         s.h(a)
     for a, b in zip(A, B):
         s.cx(a, b)
-    qft(s, A)
-    s.barriere(A + B + H)
-    pruef_tests(s, B, H, us, A, None)
+    A = qft(s, A)
+    s.barriere(sorted(A + B + H))
+    B = pruef_tests(s, B, H, us, A, None)
     s.messen(H + A)
     qft(s, B)  # Note zurueck in die Fourier-Basis: wieder weitergebbar
     s.bedeutung = {"fall": "echt", "pruefbits": T, "seriebits": n}
@@ -170,9 +186,9 @@ def faelschung(n: int, us: list[int], serie: int, art: str, d: int) -> Schaltkre
         if (wert >> j) & 1:
             s.x(B[j])
     if art != "basis":
-        qft(s, B)
-    s.barriere(B + H)
-    pruef_tests(s, B, H, us, None, serie)
+        B = qft(s, B)
+    s.barriere(sorted(B + H))
+    B = pruef_tests(s, B, H, us, None, serie)
     s.messen(H)
     qft(s, B)
     s.bedeutung = {"fall": art, "pruefbits": T, "seriebits": 0}
@@ -306,19 +322,24 @@ def selbsttest() -> None:
     n = 3
     N = 2 ** n
     # 1. QFT stimmt mit der Definition.
-    for x in range(N):
-        s = Schaltkreis(n, "qft")
-        for j in range(n):
-            if (x >> j) & 1:
-                s.x(j)
-        qft(s, list(range(n)))
-        psi = simuliere(s)
-        for y in range(N):
-            soll = cmath.exp(1j * TAU * x * y / N) / math.sqrt(N)
-            assert abs(psi[y] - soll) < 1e-9, (x, y)
-        qft(s, list(range(n)), invers=True)
-        psi = simuliere(s)
-        assert abs(psi[x] - 1) < 1e-9
+    def index(wert, lage):
+        return sum(((wert >> j) & 1) << lage[j] for j in range(len(lage)))
+
+    for tausch in (True, False):
+        for x in range(N):
+            s = Schaltkreis(n, "qft")
+            for j in range(n):
+                if (x >> j) & 1:
+                    s.x(j)
+            lage = qft(s, list(range(n)), tausch=tausch)
+            psi = simuliere(s)
+            for y in range(N):
+                soll = cmath.exp(1j * TAU * x * y / N) / math.sqrt(N)
+                assert abs(psi[index(y, lage)] - soll) < 1e-9, (tausch, x, y)
+            zurueck = qft(s, lage, invers=True, tausch=tausch)
+            assert zurueck == list(range(n)), zurueck
+            psi = simuliere(s)
+            assert abs(psi[x] - 1) < 1e-9
     # 2. Praegen: Seriennummer gleichverteilt, echte Note besteht IMMER.
     for _ in range(4):
         us = [rng.randrange(N) for _ in range(3)]
