@@ -84,6 +84,8 @@ jobs:
         run: bash .github/neustart/pq-ueberweisung-nicht-verpasst.sh http://$C1:8080
       - name: Stichtag des Quantengelds nicht verpasst
         run: bash .github/neustart/quantengeld-nicht-verpasst.sh http://$C1:8080
+      - name: Stichtag des Offline-Bargelds nicht verpasst, Topf vorher leer
+        run: bash .github/neustart/offline-nicht-verpasst.sh http://$C1:8080
       - name: Stichtag der hybriden Pruefer-Stimmen nicht verpasst
         run: bash .github/neustart/pruefer-pq-nicht-verpasst.sh http://$C1:8080
       - name: Stichtag der PQ-Schluessel der Pruefer-Dienste nicht verpasst

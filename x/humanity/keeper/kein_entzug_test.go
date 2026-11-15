@@ -82,11 +82,15 @@ var replayArten = map[string]geldArt{
 	"umzug_ankuendigen":                geldNurGutschrift,
 	"umzug_widerruf":                   geldNurGutschrift,
 	"umzug_vollzug":                    geldNurGutschrift,
-	"satz_ankuendigung":                geldNurGutschrift, // satz_plan.go: bewegt kein Geld, setzt nur den Satzplan
-	"verifier_zulassung":               geldNurGutschrift, // verifier_register.go: bewegt kein Geld, nimmt kein Menschsein, setzt nur das Pruefer-Register
-	"quanten_freischaltung":            geldNurGutschrift, // quanten_geld.go: bewegt kein Geld, nimmt kein Menschsein, traegt nur einen Parametersatz ein
-	"quanten_auszahlung":               geldNurGutschrift, // quanten_einloesen.go: zahlt nur aus dem Topf (kein Mensch) an den Empfaenger aus
-	"pruefer_dienst_pq":                geldNurGutschrift, // pruefer_dienst_pq.go: bewegt kein Geld, nimmt kein Menschsein, traegt nur einen PQ-Schluessel ins Pruefer-Register
+	"satz_ankuendigung":                geldNurGutschrift,  // satz_plan.go: bewegt kein Geld, setzt nur den Satzplan
+	"verifier_zulassung":               geldNurGutschrift,  // verifier_register.go: bewegt kein Geld, nimmt kein Menschsein, setzt nur das Pruefer-Register
+	"quanten_freischaltung":            geldNurGutschrift,  // quanten_geld.go: bewegt kein Geld, nimmt kein Menschsein, traegt nur einen Parametersatz ein
+	"quanten_auszahlung":               geldNurGutschrift,  // quanten_einloesen.go: zahlt nur aus dem Topf (kein Mensch) an den Empfaenger aus
+	"pruefer_dienst_pq":                geldNurGutschrift,  // pruefer_dienst_pq.go: bewegt kein Geld, nimmt kein Menschsein, traegt nur einen PQ-Schluessel ins Pruefer-Register
+	"offline_pfand":                    geldUnterschrieben, // offline_einbindung.go: Mensch -> Topf nur mit seiner Unterschrift (EIP-191 oder ML-DSA) ueber Betrag und Geraet
+	"offline_einloesung":               geldUnterschrieben, // offline_einbindung.go: Topf -> Empfaenger; vom Halter nur mit der Unterschrift seines Geraets, das er selbst an das Pfand gebunden hat
+	"offline_kuendigung":               geldNurGutschrift,  // offline_einbindung.go: bewegt kein Geld, setzt nur die Kuendigung (unterschrieben)
+	"offline_abschluss":                geldNurGutschrift,  // offline_einbindung.go: zahlt nur aus dem Topf (kein Mensch) an Glaeubiger und Halter
 	"umlauf":                           geldRegelAusnahme,
 	"unternehmen_eroeffnen":            geldUnterschrieben,
 	"vorbehalt":                        geldUnterschrieben,
@@ -147,6 +151,11 @@ var ersetzbareKonstanten = map[string]string{
 	"quantenEinloesenTxArt":     quantenEinloesenTxArt,
 	// pruefer_dienst_pq.go
 	"prueferDienstPQTxArt": prueferDienstPQTxArt,
+	// offline_einbindung.go
+	"offlinePfandTxArt":      offlinePfandTxArt,
+	"offlineEinloesungTxArt": offlineEinloesungTxArt,
+	"offlineKuendigungTxArt": offlineKuendigungTxArt,
+	"offlineAbschlussTxArt":  offlineAbschlussTxArt,
 }
 
 // replaySwitchArten liest die Arten des Nachspiel-Switches aus block.go
