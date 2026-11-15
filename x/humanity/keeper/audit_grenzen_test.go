@@ -105,3 +105,31 @@ func TestLogKurz(t *testing.T) {
 		t.Fatal("kurzer Text veraendert")
 	}
 }
+
+// B14: /mpc/budget nennt keinen Pfad und liest die Datei nicht bei jeder
+// Anfrage neu.
+func TestMPCBudget_OhnePfadUndGepuffert(t *testing.T) {
+	dir := t.TempDir()
+	geheim := dir + "/geheimer-ort/tripel.bin"
+	t.Setenv("MPC_TRIPLE_FILE", geheim)
+	mpcBudgetPuffer.Lock()
+	mpcBudgetPuffer.zeit = time.Time{}
+	mpcBudgetPuffer.Unlock()
+	a := &APIServer{}
+	jetzt := time.Now()
+	b := a.mpcTripleBudgetGepuffert(512, jetzt)
+	if strings.Contains(b.Fehler, "geheimer-ort") || strings.Contains(b.Datei, "geheimer-ort") {
+		t.Fatalf("Pfad in der Antwort: %+v", b)
+	}
+	if b.Datei != "gesetzt" || b.Fehler == "" {
+		t.Fatalf("unerwartet: %+v", b)
+	}
+	// innerhalb der Frische: dieselbe Antwort, auch wenn sich die Umgebung aendert
+	t.Setenv("MPC_TRIPLE_FILE", "")
+	if b2 := a.mpcTripleBudgetGepuffert(512, jetzt.Add(10*time.Second)); b2 != b {
+		t.Fatalf("Puffer nicht benutzt: %+v", b2)
+	}
+	if b3 := a.mpcTripleBudgetGepuffert(512, jetzt.Add(mpcBudgetFrische+time.Second)); b3.Datei != "" {
+		t.Fatalf("nach Ablauf nicht neu berechnet: %+v", b3)
+	}
+}

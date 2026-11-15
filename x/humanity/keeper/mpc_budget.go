@@ -8,6 +8,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/hanoi96international-gif/aequitas-chain/x/humanity/mpc"
 )
@@ -54,6 +56,8 @@ import (
 
 // tripleBudget beschreibt den Vorrat einer Partei.
 type tripleBudget struct {
+	// Datei: nur ob ein Vorrat eingestellt ist ("gesetzt"/""), nie der Pfad
+	// (Audit B14: die Antwort ist oeffentlich).
 	Datei          string `json:"datei"`
 	Gesamt         int    `json:"tripel_gesamt"`
 	Verbraucht     int    `json:"tripel_verbraucht"`
@@ -122,19 +126,24 @@ func registrierungenAusVorrat(verbleibend, bestand, templateLen int) int {
 
 // mpcTripleBudget liest den Vorrat, ohne ihn anzufassen.
 func (a *APIServer) mpcTripleBudget(templateLen int) tripleBudget {
-	b := tripleBudget{Datei: strings.TrimSpace(os.Getenv("MPC_TRIPLE_FILE"))}
-	if b.Datei == "" {
+	pfad := strings.TrimSpace(os.Getenv("MPC_TRIPLE_FILE"))
+	b := tripleBudget{}
+	if pfad == "" {
 		b.Fehler = "MPC_TRIPLE_FILE ist nicht gesetzt — diese Partei hat keine Tripel"
 		return b
 	}
-	roh, err := os.ReadFile(b.Datei)
+	b.Datei = "gesetzt"
+	roh, err := os.ReadFile(pfad)
 	if err != nil {
-		b.Fehler = fmt.Sprintf("%s ist nicht lesbar: %v", b.Datei, err)
+		// Pfad und Fehlertext nur ins Betreiber-Log, nicht in die Antwort
+		fmt.Printf("[MPC] Tripel-Vorrat %s nicht lesbar: %v\n", pfad, err)
+		b.Fehler = "MPC_TRIPLE_FILE ist nicht lesbar (Details im Knoten-Log)"
 		return b
 	}
 	alle, err := mpc.DecodeTriples(roh)
 	if err != nil {
-		b.Fehler = fmt.Sprintf("%s ist beschädigt: %v", b.Datei, err)
+		fmt.Printf("[MPC] Tripel-Vorrat %s beschaedigt: %v\n", pfad, err)
+		b.Fehler = "MPC_TRIPLE_FILE ist beschädigt (Details im Knoten-Log)"
 		return b
 	}
 	b.Gesamt = len(alle)
@@ -226,7 +235,7 @@ func tripelWarnung(nochRegistrier int) (warnung, nachschub string) {
 // ohnehin auf der Kette.
 func (a *APIServer) handleMPCBudget(w http.ResponseWriter, r *http.Request) {
 	const templateLen = 512 // Sketch-Bits; siehe face_sketch.py
-	b := a.mpcTripleBudget(templateLen)
+	b := a.mpcTripleBudgetGepuffert(templateLen, time.Now())
 
 	w.Header().Set("Content-Type", "application/json")
 	if b.Fehler != "" {
@@ -235,4 +244,28 @@ func (a *APIServer) handleMPCBudget(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}
 	_ = json.NewEncoder(w).Encode(b)
+}
+
+// Audit B14: die Antwort wird hoechstens alle mpcBudgetFrische neu berechnet
+// (Datei ganz lesen und dekodieren, Datenbankabfragen). Gleichzeitige
+// Anfragen warten auf dieselbe Berechnung, statt sie zu vervielfachen.
+const mpcBudgetFrische = 30 * time.Second
+
+var mpcBudgetPuffer struct {
+	sync.Mutex
+	zeit  time.Time
+	tlen  int
+	stand tripleBudget
+}
+
+func (a *APIServer) mpcTripleBudgetGepuffert(templateLen int, jetzt time.Time) tripleBudget {
+	mpcBudgetPuffer.Lock()
+	defer mpcBudgetPuffer.Unlock()
+	if !mpcBudgetPuffer.zeit.IsZero() && mpcBudgetPuffer.tlen == templateLen &&
+		jetzt.Sub(mpcBudgetPuffer.zeit) < mpcBudgetFrische && jetzt.After(mpcBudgetPuffer.zeit.Add(-time.Second)) {
+		return mpcBudgetPuffer.stand
+	}
+	b := a.mpcTripleBudget(templateLen)
+	mpcBudgetPuffer.zeit, mpcBudgetPuffer.tlen, mpcBudgetPuffer.stand = jetzt, templateLen, b
+	return b
 }
