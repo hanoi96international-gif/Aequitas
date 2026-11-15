@@ -43,6 +43,10 @@ on:
       warten_reihe:
         description: "Speicherzeit messen: Mikrosekunden, z. B. 0,20,50,100 (leer = normaler Lauf)"
         default: ""
+      bezahlen:
+        description: "Bezahlen: Note per Teleportation uebertragen und beim Empfaenger pruefen"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -72,11 +76,13 @@ jobs:
           SCHUESSE: ${{ inputs.schuesse }}
           DYNAMISCH: ${{ inputs.dynamisch }}
           WARTEN: ${{ inputs.warten_reihe }}
+          BEZAHLEN: ${{ inputs.bezahlen }}
         run: |
           set -euo pipefail
           extra=()
           if [ "$DYNAMISCH" = "true" ]; then extra+=(--dynamisch); fi
           if [ -n "$WARTEN" ]; then extra+=(--warten-reihe "$WARTEN"); fi
+          if [ "$BEZAHLEN" = "true" ]; then extra+=(--bezahlen); fi
           python3 -I forschung/quantengeld/hardware_ibm.py --rauschen "$MODELL" --laeufe "$LAEUFE" --schuesse "$SCHUESSE" "${extra[@]}" --json ergebnis.json
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -107,12 +113,14 @@ jobs:
           UNTERDRUECKUNG: ${{ inputs.unterdrueckung }}
           DYNAMISCH: ${{ inputs.dynamisch }}
           WARTEN: ${{ inputs.warten_reihe }}
+          BEZAHLEN: ${{ inputs.bezahlen }}
         run: |
           set -euo pipefail
           extra=()
           if [ "$UNTERDRUECKUNG" = "true" ]; then extra+=(--unterdrueckung); fi
           if [ "$DYNAMISCH" = "true" ]; then extra+=(--dynamisch); fi
           if [ -n "$WARTEN" ]; then extra+=(--warten-reihe "$WARTEN"); fi
+          if [ "$BEZAHLEN" = "true" ]; then extra+=(--bezahlen); fi
           python3 -I forschung/quantengeld/hardware_ibm.py --ibm --laeufe "$LAEUFE" --schuesse "$SCHUESSE" "${extra[@]}" --json ergebnis.json
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

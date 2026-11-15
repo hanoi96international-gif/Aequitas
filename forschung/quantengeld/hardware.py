@@ -94,6 +94,10 @@ class Schaltkreis:
         falls das schon gemessene Bit `bit` 1 ist."""
         self.gatter.append(("wenn", (bit, t % TAU), a))
 
+    def wenn_x(self, bit: int, a: int):
+        """Klassisch gesteuertes X (Teleportation): x auf Qubit a, falls Bit 1."""
+        self.gatter.append(("wenn", (bit, "x"), a))
+
     def qasm(self) -> str:
         z = ["OPENQASM 3.0;", 'include "stdgates.inc";', f"// {self.name}",
              f"qubit[{self.q}] q;", f"bit[{len(self.mess)}] c;"]
@@ -103,7 +107,8 @@ class Schaltkreis:
                 z.append(f"c[{t}] = measure q[{qs[0]}];")
                 continue
             if n == "wenn":
-                z.append(f"if (c[{t[0]}] == 1) {{ p({t[1]!r}) q[{qs[0]}]; }}")
+                g = "x" if t[1] == "x" else f"p({t[1]!r})"
+                z.append(f"if (c[{t[0]}] == 1) {{ {g} q[{qs[0]}]; }}")
                 continue
             if n == "delay":
                 z += [f"delay[{t}us] q[{a}];" for a in qs]
@@ -244,6 +249,66 @@ def praegen_dynamisch(n: int, us: list[int], warten_us: float = 0) -> Schaltkrei
     return s
 
 
+def bezahlen(n: int, us: list[int]) -> Schaltkreis:
+    """Praegen (halbklassisch) -> BEZAHLEN -> Pruefen beim Empfaenger.
+
+    Bezahlen = Teleportation: Zahler (Note in B) und Empfaenger (Register C)
+    teilen je Qubit ein verschraenktes Paar (E_j, C_j). Der Zahler misst
+    B_j, E_j in der Bell-Basis und schickt die zwei Bits (klassisch, hier
+    die Rueckkopplung im Chip); der Empfaenger korrigiert mit X und Z. Die
+    Note liegt danach in C, in B bleibt nichts zurueck (kein Kopieren).
+    Qubits: A n, B n, E n, C n, Hilfsqubits T."""
+    T = len(us)
+    N = 2 ** n
+    A = list(range(n))
+    B = list(range(n, 2 * n))
+    E = list(range(2 * n, 3 * n))
+    C = list(range(3 * n, 4 * n))
+    H = list(range(4 * n, 4 * n + T))
+    s = Schaltkreis(4 * n + T, f"praegen+bezahlen+pruefen n={n} u={us}")
+    # Praegen (wie praegen_dynamisch)
+    for a in A:
+        s.h(a)
+    for a, b in zip(A, B):
+        s.cx(a, b)
+    for i in reversed(range(n)):
+        s.h(A[i])
+        bit_i = T + (n - 1 - i)
+        s.messen([A[i]], [bit_i])
+        for j in reversed(range(i)):
+            s.wenn(bit_i, TAU / 2 ** (i - j + 1), A[j])
+    # Verschraenkte Paare zwischen Zahler (E) und Empfaenger (C)
+    for e, c in zip(E, C):
+        s.h(e)
+        s.cx(e, c)
+    s.barriere(sorted(A + B + E + C + H))
+    # Zahler: Bell-Messung von (B_j, E_j); Bits nach T+n+2j, T+n+2j+1
+    for j, (b, e) in enumerate(zip(B, E)):
+        s.cx(b, e)
+        s.h(b)
+        s.messen([b, e], [T + n + 2 * j, T + n + 2 * j + 1])
+    # Empfaenger: X je nach E-Bit, Z (= p(pi)) je nach B-Bit
+    for j, c in enumerate(C):
+        s.wenn_x(T + n + 2 * j + 1, c)
+        s.wenn(T + n + 2 * j, math.pi, c)
+    s.barriere(sorted(C + H))
+    # Pruefen beim Empfaenger (Note jetzt in C)
+    c_lage = qft(s, C, invers=True)
+    for a, u in zip(H, us):
+        s.h(a)
+        for j in range(n):
+            s.cp(-TAU * u * 2 ** j / N, a, c_lage[j])
+    for j in range(n):
+        for a, u in zip(H, us):
+            s.wenn(T + j, TAU * u * 2 ** j / N, a)
+    for a in H:
+        s.h(a)
+    s.messen(H, list(range(T)))
+    qft(s, c_lage)
+    s.bedeutung = {"fall": "bezahlt", "pruefbits": T, "seriebits": n, "zusatzbits": 2 * n}
+    return s
+
+
 def faelschung(n: int, us: list[int], serie: int, art: str, d: int) -> Schaltkreis:
     """Pruefung eines vorgelegten Zustands gegen die Seriennummer `serie`.
     art: "echt" (|$_serie>, Referenz), "fremd" (|$_d>), "basis" (|d>,
@@ -285,7 +350,10 @@ def simuliere(s: Schaltkreis) -> list[complex]:
             steuer = s.mess[bit]
             assert steuer in gemessen, f"Bit {bit} noch nicht gemessen"
             assert qs[0] not in gemessen, f"wenn auf gemessenem Qubit {qs[0]}"
-            n, qs = "cp", [steuer, qs[0]]
+            if t == "x":
+                n, t, qs = "cx", None, [steuer, qs[0]]
+            else:
+                n, qs = "cp", [steuer, qs[0]]
         else:
             # aufgeschobene Messung gilt nur, wenn danach nichts mehr auf
             # einem gemessenen Qubit passiert
@@ -339,9 +407,11 @@ def auswerten(s: Schaltkreis, zaehl: dict[str, float]) -> dict:
     gesamt = sum(zaehl.values())
     an = sum(v for k, v in zaehl.items() if k[-T:] == "0" * T)
     serien: dict[int, float] = {}
-    if s.bedeutung["seriebits"]:
+    sb = s.bedeutung["seriebits"]
+    if sb:
         for k, v in zaehl.items():
-            serien[int(k[:-T], 2)] = serien.get(int(k[:-T], 2), 0) + v / gesamt
+            z = int(k[-(T + sb):-T], 2)  # Seriennummer: Bits T..T+sb-1
+            serien[z] = serien.get(z, 0) + v / gesamt
     return {"annahme": an / gesamt, "serien": serien}
 
 
@@ -449,6 +519,27 @@ def selbsttest() -> None:
         namen = [g[0] for g in s.gatter]
         k = namen.index("delay")
         assert namen[k - 1] == "barrier" and namen[k + 1] == "barrier"
+    # 2d. Bezahlen (Teleportation): die Note kommt heil beim Empfaenger an,
+    #     die Seriennummer bleibt gleichverteilt, und die zwei Bits je Qubit,
+    #     die der Zahler schickt, sind reiner Zufall (verraten nichts).
+    for _ in range(2):
+        us = [rng.randrange(N) for _ in range(3)]
+        s = bezahlen(n, us)
+        vert = verteilung(s)
+        e = auswerten(s, vert)
+        assert abs(e["annahme"] - 1) < 1e-9, e
+        assert len(e["serien"]) == N and all(abs(v - 1 / N) < 1e-9 for v in e["serien"].values()), e
+        for b in range(3 + n, 3 + 3 * n):
+            eins = sum(v for k, v in vert.items() if k[-1 - b] == "1")
+            assert abs(eins - 0.5) < 1e-9, (b, eins)
+        A, H = set(range(n)), set(range(4 * n, 4 * n + 3))
+        for g in s.gatter:
+            if g[0] in ("cx", "cp"):
+                assert not (H & set(g[2:]) and set(g[2:]) - H - set(range(3 * n, 4 * n))), g
+    # Gegenprobe: ohne die Korrektur beim Empfaenger scheitert die Pruefung.
+    C = set(range(3 * n, 4 * n))
+    s.gatter = [g for g in s.gatter if not (g[0] == "wenn" and g[2] in C)]
+    assert auswerten(s, verteilung(s))["annahme"] < 0.5
     # 3. Echte Note gegen klassische Seriennummer: besteht immer.
     for c in range(N):
         s = faelschung(n, [rng.randrange(N) for _ in range(3)], c, "echt", c)

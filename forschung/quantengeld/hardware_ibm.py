@@ -24,7 +24,10 @@ Weitere: --laeufe L (Schaltkreise je Fall, Standard 8), --schuesse S
 klassische Steuerung, ~40 % weniger 2-Qubit-Gatter; hardware.praegen_dynamisch),
 --warten-reihe W1,W2,... (Speicherzeit: nur Praegen+Pruefen, die Note
 liegt je W Mikrosekunden zwischen Praegen und Pruefen; hoechstens 8 Werte,
-je 0..1000 us).
+je 0..1000 us),
+--bezahlen (Uebertragung: Praegen+Pruefen gegen Praegen+BEZAHLEN+Pruefen,
+die Note wird per Teleportation an ein anderes Register geschickt;
+hardware.bezahlen).
 
 Mit echter Maschine oder Rauschmodell wird zusaetzlich die Auslese der
 Pruefqubits kalibriert (2 Schaltkreise) und die Annahme auch
@@ -84,7 +87,10 @@ def nach_qiskit(s):
                 i += 1
             with qc.if_test((qc.clbits[bit], 1)):
                 for w, a in block:
-                    qc.p(w, a)
+                    if w == "x":
+                        qc.x(a)
+                    else:
+                        qc.p(w, a)
             continue
         i += 1
         if n == "h":
@@ -228,7 +234,13 @@ def main() -> None:
     rng = random.Random(int.from_bytes(os.urandom(8), "big"))
     dyn = "--dynamisch" in sys.argv
     reihe = warten_reihe()
-    if reihe is None:
+    if "--bezahlen" in sys.argv:
+        # je Lauf dieselben u: Praegen+Pruefen gegen Praegen+BEZAHLEN+Pruefen
+        kreise = []
+        for _ in range(laeufe):
+            us = [rng.randrange(2 ** n) for _ in range(T)]
+            kreise += [hw.praegen_dynamisch(n, us), hw.bezahlen(n, us)]
+    elif reihe is None:
         kreise = hw.satz(n, T, laeufe, rng, dynamisch=dyn)
     else:
         bau = hw.praegen_dynamisch if dyn else hw.praegen_und_pruefen
@@ -268,6 +280,8 @@ def main() -> None:
         zaehl = r.data.c.get_counts()
         e = hw.auswerten(s, zaehl)
         name = "praegen+pruefen" if s.bedeutung["seriebits"] else s.bedeutung["fall"]
+        if s.bedeutung["fall"] == "bezahlt":
+            name = "praegen+bezahlen+pruefen"
         if reihe is not None:
             name += f" nach {s.bedeutung.get('warten_us', 0):g} us"
         f = faelle.setdefault(name, {"annahme": [], "korr": [], "serien": {}, "tiefe": 0, "zwei": 0, "qubits": s.q})
