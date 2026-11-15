@@ -274,3 +274,41 @@ func TestPQBescheinigung_VektorAusDemPythonCoordinator(t *testing.T) {
 		t.Fatal("veraenderte ML-DSA-Unterschrift angenommen")
 	}
 }
+
+// Vor dem Stichtag: die strenge Pruefung laeuft mit und zaehlt -- gueltige,
+// falsche und fehlende PQ-Unterschriften -- und weist nie ab. Darauf stuetzt
+// sich der Waechter vor pq_ab_unix (bio-pq-bereit.sh).
+func TestPQBescheinigung_BeobachtenVorDemStichtag(t *testing.T) {
+	coord, zeuge := pqUmgebung(t, 0) // Schluessel da, Stichtag nicht gesetzt
+	ok0, falsch0, ohne0 := pqBeobachtetOK.Load(), pqBeobachtetFalsch.Load(), pqBeobachtetOhne.Load()
+
+	if err := pruefeBioBescheinigung(pqGuteTx(t, coord, zeuge)); err != nil {
+		t.Fatalf("gueltig: %v", err)
+	}
+	fremd := neuerPQ(t)
+	falsch := pqGuteTx(t, coord, zeuge)
+	falsch.BioBescheinigung.PQ[1] = zeuge.ed.pub + ":" + strings.SplitN(fremd.pqUnterschrift(t, aussageText("test", bTestNullifier, bTestZeit)), ":", 2)[1]
+	if err := pruefeBioBescheinigung(falsch); err != nil {
+		t.Fatalf("vor dem Stichtag abgewiesen (soll nur gezaehlt werden): %v", err)
+	}
+	ohne := pqGuteTx(t, coord, zeuge)
+	ohne.BioBescheinigung.PQ = nil
+	if err := pruefeBioBescheinigung(ohne); err != nil {
+		t.Fatalf("ohne PQ: %v", err)
+	}
+	if d := pqBeobachtetOK.Load() - ok0; d < 1 {
+		t.Fatalf("gueltige nicht gezaehlt (+%d)", d)
+	}
+	if d := pqBeobachtetFalsch.Load() - falsch0; d < 1 {
+		t.Fatalf("falsche nicht gezaehlt (+%d)", d)
+	}
+	if d := pqBeobachtetOhne.Load() - ohne0; d < 1 {
+		t.Fatalf("fehlende nicht gezaehlt (+%d)", d)
+	}
+	// Die falsche zaehlt NIE als gueltig.
+	ok1 := pqBeobachtetOK.Load()
+	_ = pruefeBioBescheinigung(falsch)
+	if pqBeobachtetOK.Load() != ok1 {
+		t.Fatal("falsche PQ-Unterschrift als gueltig gezaehlt")
+	}
+}
