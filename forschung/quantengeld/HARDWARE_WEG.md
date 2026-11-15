@@ -11,6 +11,25 @@ Topf, Einlösen, Freischaltung). Was fehlt, ist Hardware für drei Dinge: **halt
 - **Lebensdauer einer Note ~20 µs.** Das ist die Grenze supraleitender Qubits (T₂ im
   Bereich 100 µs, mit Gattern weniger).
 
+## Fehlerkorrektur im Speicher auf IBM – gemessen, hilft nicht (15.11.2026)
+
+Rauschmodell `fake_marrakesh` (Kalibrierung der echten Maschine), 8 Schaltkreise je Fall,
+1.000 Schüsse, Lauf 43758397525. Annahme der echten Note (ideal 1,000; ~0,2 = verloren):
+
+| Wartezeit | ungeschützt | 3-Qubit-Code Phase | 3-Qubit-Code Bit |
+|---|---|---|---|
+| 0 µs | **0,891** | 0,837 | 0,832 |
+| 20 µs | **0,724** | 0,583 | 0,440 |
+| 50 µs | **0,548** | 0,376 | 0,275 |
+| 100 µs | **0,389** | 0,260 | 0,216 |
+| 200 µs | **0,305** | 0,229 | 0,208 |
+
+Der Code kostet 44 zusätzliche 2-Qubit-Gatter (94 statt 50); deren Fehler wiegen mehr als
+das, was er beim Warten rettet, und jeder der beiden Codes verstärkt die jeweils andere
+Fehlerart. **Auf supraleitenden Chips ist die Lebensdauer einer Note damit nicht zu
+verlängern** – kein echter IBM-Lauf dafür (Rechenzeit gespart). Der Weg ist die
+Ionenfalle (Schritt 1 unten).
+
 ## Was es schon gibt (Recherche 15.11.2026)
 
 | Weg | Stand | Was es für Aequitas heißt |
