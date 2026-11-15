@@ -189,12 +189,14 @@ func pqFeldErlaubt(tx *Transaction) error {
 }
 
 // pqUeberweisungGrenze: wie viele Transaktionen vom Anfang ein Block tragen
-// kann, ohne mehr als pqUeberweisungenJeBlock PQ-Ueberweisungen (wie
-// checkpointTxGrenze: der Rest kommt in der Reihenfolge in den naechsten).
+// kann, ohne mehr als pqUeberweisungenJeBlock schwere PQ-Nachweise --
+// PQ-Ueberweisungen und Umzugs-Auftraege mit ML-DSA-Unterschrift
+// (pqNachweisSchwer, umzug_pq.go) -- wie checkpointTxGrenze: der Rest kommt
+// in der Reihenfolge in den naechsten.
 func pqUeberweisungGrenze(txs []Transaction) int {
 	n := 0
 	for i := range txs {
-		if txs[i].PQ != nil {
+		if pqNachweisSchwer(&txs[i]) {
 			n++
 			if n > pqUeberweisungenJeBlock {
 				return i

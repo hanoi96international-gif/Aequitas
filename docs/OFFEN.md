@@ -334,11 +334,21 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
   (`umzug.go`), B8 (Treuhand Form 2), V8 ohne Befund; Biometrie: B1
   Coordinator (pq: nur auf Wunsch der App), B10, B11 (biometric #120); App:
   B1, B15 (Aequitas-App #68).
-- **B2** (Prüfer-Schlüssel aus dem Register ohne PQ-Schlüssel): Knotenseite
-  fertig und schlafend (`pruefer_dienst_pq.go`). Offen: Dienst gibt seinen
-  ML-DSA-Schlüssel samt Besitznachweis heraus, App unterschreibt die
-  Freigabe mit dem Tresor-Schlüssel. Reihenfolge: `prueferDienstPQAbUnix`
-  setzen → Prüfer tragen ein → erst dann `pq_ab_unix`.
+- **B2** (Prüfer-Schlüssel aus dem Register ohne PQ-Schlüssel): fertig und
+  schlafend -- Knoten (`pruefer_dienst_pq.go`, #518), Dienste geben
+  Schlüssel und Besitznachweis heraus (biometric #121), App unterschreibt
+  die Freigabe mit dem Tresor-Schlüssel (Aequitas-App #68). Reihenfolge:
+  `prueferDienstPQAbUnix` setzen → Prüfer tragen ein → erst dann
+  `pq_ab_unix`.
+- **Stufe 3.6** (Menschsein und Grundeinkommen in den Tresor): fertig und
+  schlafend -- Knoten (`umzug_pq.go`: Antrag, Widerruf und Code mit
+  ML-DSA-65 der PQ-Adresse, Gesicht bleibt Pflicht), Coordinator
+  (`pq_konto.py`: Umzug, Lebensnachweis, Erneuerung), App (Tresor-Seite,
+  Umzug, Code, Lebensnachweis). Stichtag `umzugPQAbUnix` erst, wenn jeder
+  Knoten diesen Stand hat und die App ausgeliefert ist (Wächter
+  `umzug-pq-nicht-verpasst.sh`). Auf der PQ-Adresse fehlen noch: Prüfer
+  werden (B1b), Wächter setzen, Treuhand zurückholen -- für das
+  Grundeinkommen braucht es keinen davon.
 - **B12, Rest:** `npm audit` im Ketten-Repo nach `npm audit fix` (nur
   Lockfile, innerhalb der Semver-Grenzen): 26 Meldungen, alle in
   Entwicklungs-Abhängigkeiten (hardhat-Werkzeuge, WalletConnect/@reown,

@@ -1479,6 +1479,8 @@ func (a *APIServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 		// pruefer_pq.go: Stichtag der hybriden Pruefer-Stimmen (ab fehlt,
 		// solange schlafend -- pruefer-pq-nicht-verpasst.sh liest das so).
 		"pruefer_pq": prueferPQStatus(),
+		// Stufe 3.6 (umzug_pq.go): ab fehlt, solange schlafend (Waechter).
+		"umzug_pq": umzugPQStatus(),
 		// pruefer_dienst_pq.go: Stichtag der PQ-Schluessel der Pruefer-Dienste
 		// (ab fehlt, solange schlafend).
 		"pruefer_dienst_pq":     prueferDienstPQStatus(),

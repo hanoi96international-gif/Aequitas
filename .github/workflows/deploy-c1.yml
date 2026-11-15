@@ -88,6 +88,8 @@ jobs:
         run: bash .github/neustart/pruefer-pq-nicht-verpasst.sh http://$C1:8080
       - name: Stichtag der PQ-Schluessel der Pruefer-Dienste nicht verpasst
         run: bash .github/neustart/pruefer-dienst-pq-nicht-verpasst.sh http://$C1:8080
+      - name: Stichtag der PQ-Unterschriften am Umzug nicht verpasst
+        run: bash .github/neustart/umzug-pq-nicht-verpasst.sh http://$C1:8080
       - name: PQ-Stempel bereit (Stichhoehe nur, wenn der Erzeuger richtig stempelt)
         run: bash .github/neustart/pq-stempel-bereit.sh http://$C1:8080
       - name: Bescheinigung PQ bereit (Stichtag nur nach beobachteter gueltiger Registrierung)

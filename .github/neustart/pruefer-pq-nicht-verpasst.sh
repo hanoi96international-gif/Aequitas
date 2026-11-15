@@ -21,7 +21,7 @@ STATUS=$(curl -sf -m 15 "$BASE/api/status") || { echo "::error::laufender Knoten
 LIVE=$(printf '%s' "$STATUS" | jq -r '(.pruefer_pq // {}) | (.ab // "schlafend") | tostring' 2>/dev/null) || { echo "::error::Antwort des laufenden Knotens ist kein JSON -- Deploy angehalten"; exit 1; }
 [ "$LIVE" = schlafend ] && LIVE=$MAX
 [[ "$LIVE" =~ ^[1-9][0-9]{0,11}$ || "$LIVE" = "$MAX" ]] || { echo "::error::Stichtag der hybriden Pruefer-Stimmen im laufenden Knoten unlesbar: $LIVE"; exit 1; }
-echo "Stichtag Quantengelds: Repo $REPO, laufend $LIVE, jetzt $JETZT"
+echo "Stichtag hybride Pruefer-Stimmen: Repo $REPO, laufend $LIVE, jetzt $JETZT"
 if [ "$REPO" = "$LIVE" ]; then
   echo "unveraendert"
   exit 0
