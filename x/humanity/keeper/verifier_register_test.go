@@ -54,10 +54,19 @@ func neuerVrFall(t *testing.T) *vrFall {
 	vorherAb := verifierRegisterOverride.Load()
 	verifierRegisterOverride.Store(vrAb)
 	vorherGruender := verifierGruender
+	// Die Faelle hier pruefen die Regeln des Registers (Stimmrecht, zwei
+	// Drittel, Fristen, Entzug ...) zur Testzeit vrAb (2027) -- ohne den
+	// PQ-Teil der Stimmen (pruefer_pq.go). Dessen Stichtag (15.11.2026 21:00
+	// UTC) laege davor; darum hier ausdruecklich "noch nicht". Die PQ-Regel
+	// selbst pruefen pruefer_pq_test.go und quanten_*_test.go mit eigenem
+	// Stichtag (prueferPQStichtag), nach diesem Aufbau gesetzt.
+	vorherPQ := prueferPQAbOverride.Load()
+	prueferPQAbOverride.Store(math.MaxInt64)
 	t.Cleanup(func() {
 		registerLeserOverride.Store(vorherLeser)
 		verifierRegisterOverride.Store(vorherAb)
 		verifierGruender = vorherGruender
+		prueferPQAbOverride.Store(vorherPQ)
 	})
 	f := &vrFall{t: t, cs: newTestState(), schluessel: map[string]bool{}}
 	for i := 0; i < 6; i++ {

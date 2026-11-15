@@ -62,10 +62,14 @@ import (
 
 const (
 	prueferPQDomaene = "aequitas-pruefer-pq-v1"
-	// prueferPQAbUnix: schlafend. Erst setzen, wenn die App den PQ-Teil
-	// liefert und eine echte Stimme damit durchging (Waechter:
-	// .github/neustart/pruefer-pq-nicht-verpasst.sh).
-	prueferPQAbUnix int64 = 9223372036854775807 // math.MaxInt64: schlafend (Waechter liest die Zahl)
+	// prueferPQAbUnix: 2026-11-15 21:00 UTC (Entscheidung des Betreibers vom
+	// 15.11.2026, "Stichtage alle heute"). Die App liefert den PQ-Teil seit
+	// 1.21.0 (veroeffentlicht 15.11.2026 16:31 UTC); auf der neuen Kette
+	// (Genesis 15.11.2026 16:00 UTC) gibt es noch keine Stimme ohne ihn. Ab
+	// dann zaehlt eine Pruefer-Stimme nur mit der ML-DSA-Unterschrift des
+	// Menschen, deren Schluessel seine PQ-Zusage ist. Waechter:
+	// .github/neustart/pruefer-pq-nicht-verpasst.sh.
+	prueferPQAbUnix int64 = 1794776400
 )
 
 // prueferPQAbOverride: nur fuer Tests (0 = Konstante gilt).
