@@ -233,6 +233,11 @@ type ChainState struct {
 	// ohne cs.mu; geschrieben wird nur unter cs.mu. In chain_config, im
 	// Rueckroll-Snapshot und in der StateRoot.
 	verifierReg atomic.Pointer[verifierRegister]
+	// unlesbareKonten: Adressen, deren letztes Lesen an einem echten
+	// Datenbankfehler scheiterte (Audit B5, konto_unlesbar.go).
+	unlesbareKonten   sync.Map
+	unlesbareAnzahl   atomic.Int64
+	unlesbarUeberlauf atomic.Bool
 	// dateiPfad: nur im Datei-Modus (ohne DATABASE_URL) -- woher geladen und
 	// wohin gespeichert wird (Audit B6).
 	dateiPfad string
@@ -2422,9 +2427,16 @@ func (cs *ChainState) ensureAccountLoadedCtx(ctx context.Context, addr string) {
 		// reviewed on its own.
 		if err != sql.ErrNoRows {
 			fmt.Printf("[STATE] ⚠ ensureAccountLoaded(%s): real DB error, not ErrNoRows — treating as cold/fresh account, which is WRONG if this address already has a balance: %v\n", addr, err)
+			// Audit 14.11.2026, B5: ein frisches Konto fuer diese Adresse
+			// darf jetzt nicht ueber eine moegliche Zeile geschrieben werden
+			// (saveAccountToDBInnerCtx), bis ein Lesen wieder gelingt.
+			cs.kontoUnlesbarMerken(addr)
+		} else {
+			cs.kontoLesbar(addr)
 		}
 		return // not in DB (or DB unreachable) — caller's !ok branch will create a fresh account
 	}
+	cs.kontoLesbar(addr)
 	acc.Balance = NewDecimal(bal)
 	acc.TUsdBalance = NewDecimal(tusd)
 	acc.LPShares = NewDecimal(lp)
@@ -2949,6 +2961,12 @@ func (cs *ChainState) saveAccountToDBCtx(ctx context.Context, acc *AccountState)
 // functions here, the original saveAccountToDBInner name is simply removed
 // rather than kept as a wrapper -- nothing else in this codebase calls it.
 func (cs *ChainState) saveAccountToDBInnerCtx(ctx context.Context, acc *AccountState) error {
+	// Audit 14.11.2026, B5: ein frisches Konto (Version 0) nie fuer eine
+	// Adresse schreiben, deren letztes Lesen an einem echten Datenbankfehler
+	// scheiterte -- das UPSERT unten ueberschriebe eine vorhandene Zeile.
+	if acc.Version == 0 && cs.kontoUnlesbar(acc.Address) {
+		return fmt.Errorf("account %s: last read failed with a database error -- refusing to write a fresh account over a possibly existing row", acc.Address)
+	}
 	if !cs.useDB {
 		acc.Version++ // no-DB mode: mark as saved
 		return nil
@@ -3678,10 +3696,10 @@ func (cs *ChainState) readAccount(address string, fn func(*AccountState)) {
 		return
 	}
 
-	cs.mu.Lock()
-	defer cs.mu.Unlock()
-	cs.ensureAccountLoaded(address)
-	if acc, ok := cs.accounts.Get(address); ok {
+	// Nicht im Speicher: ohne Sperre aus der Datenbank lesen und nicht
+	// anlegen (Audit B7, lesegrenze.go) -- vorher die exklusive Sperre und
+	// ein Datenbankzugriff je Anfrage, beliebig oft von aussen.
+	if acc, ok := cs.kontoNurLesen(address); ok {
 		fn(acc)
 	}
 }
@@ -4778,10 +4796,22 @@ type DemurrageStatus struct {
 // same window. The 7-day notice has no such one-time flag; per Daniel's
 // spec, that one is meant to repeat on every login during its window.
 func (cs *ChainState) GetDemurrageStatus(address string) DemurrageStatus {
+	address = strings.ToLower(address)
+	// Audit B7: ein Konto, das nicht im Speicher steht, ohne Sperre lesen
+	// (lesegrenze.go). Fuer kalte Konten wird der 14-Tage-Hinweis hier nicht
+	// als gezeigt vermerkt -- er erscheint dann hoechstens einmal mehr.
+	cs.mu.RLock()
+	_, imSpeicher := cs.accounts.Get(address)
+	cs.mu.RUnlock()
+	if !imSpeicher {
+		acc, ok := cs.kontoNurLesen(address)
+		if !ok || acc.LastActivityAt == 0 {
+			return DemurrageStatus{Active: false, DaysUntilStart: float64(demurrageGracePeriodSeconds) / 86400}
+		}
+		return demurrageStatusVon(acc, nowUnix())
+	}
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
-	address = strings.ToLower(address)
-	cs.ensureAccountLoaded(address) // cold accounts must report their real demurrage status, not the grace-period default
 
 	acc, ok := cs.accounts.Get(address)
 	if !ok || acc.LastActivityAt == 0 {
