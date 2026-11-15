@@ -407,9 +407,26 @@ function calcSwapPreview() {
   }
 }
 
+// Nachrichtenform 2 fuer Tausch und Liquiditaet (auftrag_v2.go, Audit B15):
+// Kette (eingefroren 1926), Wallet und beim Tausch die Mindestgrenze stehen
+// in der Unterschrift. Betraege vorher auf 8 Stellen, damit toFixed(8) und
+// Go "%.8f" dieselben Ziffern ergeben; die Grenze abgerundet.
+const AUFTRAG_FORM = 2;
+function achtStellen(x) { return (isFinite(x) && x > 0) ? Math.round(x * 1e8) / 1e8 : 0; }
+function mindestAchtStellen(x) { return (isFinite(x) && x > 0) ? Math.floor(x * 1e8) / 1e8 : 0; }
+function tauschNachrichtV2(w, richtung, betrag, min, nonce, ts) {
+  return 'aequitas-tausch-v2|chain:1926|' + String(w).toLowerCase() + '|' + richtung + '|' + betrag.toFixed(8) + '|min:' + min.toFixed(8) + '|nonce:' + nonce + '|ts:' + ts;
+}
+function liquiditaetNachrichtV2(w, aeq, tusd, nonce, ts) {
+  return 'aequitas-liquiditaet-v2|chain:1926|' + String(w).toLowerCase() + '|' + aeq.toFixed(8) + '|' + tusd.toFixed(8) + '|nonce:' + nonce + '|ts:' + ts;
+}
+function liquiditaetAbNachrichtV2(w, anteile, nonce, ts) {
+  return 'aequitas-liquiditaet-ab-v2|chain:1926|' + String(w).toLowerCase() + '|' + anteile.toFixed(8) + '|nonce:' + nonce + '|ts:' + ts;
+}
+
 async function doSwap() {
   if (!wallet) { connectWallet(); return; }
-  const amt = parseFloat(document.getElementById('swap-amount').value);
+  const amt = achtStellen(parseFloat(document.getElementById('swap-amount').value));
   if (!amt || amt <= 0) { setStatus('swap-status', 'Enter an amount', 'err'); return; }
   const btn = document.getElementById('swap-btn');
   btn.disabled = true;
@@ -422,19 +439,21 @@ async function doSwap() {
     // ~1000x, so every swap failed the staleness check regardless of the
     // signature. Must be seconds, matching the message the server signs.
     const ts = Math.floor(Date.now() / 1000);
-    const msg = 'Aequitas Swap: ' + swapDir + ' ' + amt.toFixed(8) + ' nonce:' + nonce + ' ts:' + ts;
-    setStatus('swap-status', 'Sign in MetaMask…', 'info');
-    const sig = await window.ethereum.request({ method: 'personal_sign', params: [msg, wallet] });
-    setStatus('swap-status', 'Submitting swap…', 'info');
+    // Form 2: die Grenze steht in der Unterschrift -- vorher festlegen.
     let minOut = 0;
     if (poolData) {
       const aeqR = parseFloat(poolData.aeq_reserve || 0), tusdR = parseFloat(poolData.tusd_reserve || 0);
       const inF = amt * 0.999;
       const out = swapDir === 'aeq_to_tusd' ? (tusdR * inF) / (aeqR + inF) : (aeqR * inF) / (tusdR + inF);
-      minOut = out * 0.99;
+      minOut = mindestAchtStellen(out * 0.99);
     }
+    const msg = tauschNachrichtV2(wallet, swapDir, amt, minOut, nonce, ts);
+    setStatus('swap-status', 'Sign in MetaMask…', 'info');
+    const sig = await window.ethereum.request({ method: 'personal_sign', params: [msg, wallet] });
+    setStatus('swap-status', 'Submitting swap…', 'info');
+    // amount als Zahl: der Knoten liest float64 (ein String scheiterte am JSON).
     const r = await fetch(API + '/swap', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ wallet, direction: swapDir, amount: amt.toFixed(8), nonce, timestamp: ts, signature: sig, min_amount_out: minOut }) });
+      body: JSON.stringify({ wallet, direction: swapDir, amount: amt, nonce, timestamp: ts, signature: sig, min_amount_out: minOut, form: AUFTRAG_FORM }) });
     const d = await r.json();
     // FIX (launch audit 2026-07-03): handleSwap always responds HTTP 200,
     // signaling failure only via {"success":false,"message":"..."} in the

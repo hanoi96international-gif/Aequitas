@@ -7101,6 +7101,23 @@ function setSwapPct(pct) {
 // authorized — the wallet owner sees this in MetaMask's signing prompt
 // before approving, and the server checks the signature matches both the
 // claimed wallet AND this exact message (see verifyPersonalSign in swap.go).
+// Nachrichtenform 2 fuer Tausch und Liquiditaet (auftrag_v2.go, Audit B15):
+// Kette (eingefroren 1926), Wallet und beim Tausch die Mindestgrenze stehen
+// in der Unterschrift. Betraege vorher auf 8 Stellen, damit toFixed(8) und
+// Go "%.8f" dieselben Ziffern ergeben; die Grenze abgerundet.
+const AUFTRAG_FORM = 2;
+function achtStellen(x) { return (isFinite(x) && x > 0) ? Math.round(x * 1e8) / 1e8 : 0; }
+function mindestAchtStellen(x) { return (isFinite(x) && x > 0) ? Math.floor(x * 1e8) / 1e8 : 0; }
+function tauschNachrichtV2(w, richtung, betrag, min, nonce, ts) {
+  return 'aequitas-tausch-v2|chain:1926|' + String(w).toLowerCase() + '|' + richtung + '|' + betrag.toFixed(8) + '|min:' + min.toFixed(8) + '|nonce:' + nonce + '|ts:' + ts;
+}
+function liquiditaetNachrichtV2(w, aeq, tusd, nonce, ts) {
+  return 'aequitas-liquiditaet-v2|chain:1926|' + String(w).toLowerCase() + '|' + aeq.toFixed(8) + '|' + tusd.toFixed(8) + '|nonce:' + nonce + '|ts:' + ts;
+}
+function liquiditaetAbNachrichtV2(w, anteile, nonce, ts) {
+  return 'aequitas-liquiditaet-ab-v2|chain:1926|' + String(w).toLowerCase() + '|' + anteile.toFixed(8) + '|nonce:' + nonce + '|ts:' + ts;
+}
+
 async function signMessage(message) {
   return await activeProvider().request({
     method: 'personal_sign',
@@ -7113,7 +7130,7 @@ async function doSwap() {
   const amount = parseFloat(document.getElementById('swap-amount').value || '0');
   if (amount <= 0) { swapLog('Enter a valid amount', 'err'); return; }
   // FIX 7: guard against sub-precision amounts rounding to zero
-  const preciseAmount = parseFloat(amount.toFixed(8));
+  const preciseAmount = achtStellen(amount);
   if (preciseAmount <= 0) { swapLog('Amount too small (minimum precision: 0.00000001)', 'err'); document.getElementById('swap-btn-go').disabled = false; return; }
 
   document.getElementById('swap-btn-go').disabled = true;
@@ -7121,22 +7138,19 @@ async function doSwap() {
     const nonceResp = await fetch('/api/nonce?wallet=' + swapWaddr);
     const { nonce } = await nonceResp.json();
     const timestamp = Math.floor(Date.now() / 1000);
-    const message = 'Aequitas Swap: ' + swapDirection + ' ' + preciseAmount.toFixed(8) + ' nonce:' + nonce + ' ts:' + timestamp;
-    swapLog('Sign the message in MetaMask to confirm this swap...', 'info');
-    const signature = await signMessage(message);
-
-    // Slippage protection: the server supports an optional min_amount_out
-    // floor (swap.go), but the UI never sent it, so swaps executed with zero
-    // protection against the pool moving between quote and submission.
-    // 1% tolerance below the last on-screen estimate.
+    // Slippage protection: 1% below the last on-screen estimate. Form 2
+    // signs this floor, so it is fixed BEFORE signing.
     const aeqToTusd = swapDirection === 'aeq_to_tusd';
     const est = estimateSwapOutput(preciseAmount, aeqToTusd);
-    const minAmountOut = est && !est.tooLarge ? est.amountOut * 0.99 : 0;
+    const minAmountOut = mindestAchtStellen(est && !est.tooLarge ? est.amountOut * 0.99 : 0);
+    const message = tauschNachrichtV2(swapWaddr, swapDirection, preciseAmount, minAmountOut, nonce, timestamp);
+    swapLog('Sign the message in MetaMask to confirm this swap...', 'info');
+    const signature = await signMessage(message);
 
     const resp = await fetch('/api/swap', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ wallet: swapWaddr, direction: swapDirection, amount: preciseAmount, nonce, timestamp, signature, min_amount_out: minAmountOut })
+      body: JSON.stringify({ wallet: swapWaddr, direction: swapDirection, amount: preciseAmount, nonce, timestamp, signature, min_amount_out: minAmountOut, form: AUFTRAG_FORM })
     });
     const data = await resp.json();
     if (data.success) {
@@ -7200,8 +7214,8 @@ function updateLiquidityRatio(changed) {
 
 async function doAddLiquidity() {
   if (!swapWaddr) return;
-  const amountAEQ = parseFloat(document.getElementById('addliq-aeq').value || '0');
-  const amountTUSD = parseFloat(document.getElementById('addliq-tusd').value || '0');
+  const amountAEQ = achtStellen(parseFloat(document.getElementById('addliq-aeq').value || '0'));
+  const amountTUSD = achtStellen(parseFloat(document.getElementById('addliq-tusd').value || '0'));
   if (amountAEQ <= 0 || amountTUSD <= 0) { swapLog('Enter both AEQ and tUSD amounts', 'err'); return; }
 
   document.getElementById('swap-btn-addliq').disabled = true;
@@ -7209,14 +7223,14 @@ async function doAddLiquidity() {
     const nonceRespL = await fetch('/api/nonce?wallet=' + swapWaddr);
     const { nonce: nonce_l } = await nonceRespL.json();
     const timestamp = Math.floor(Date.now() / 1000);
-    const message = 'Aequitas Add Liquidity: ' + amountAEQ.toFixed(8) + ' AEQ + ' + amountTUSD.toFixed(8) + ' tUSD nonce:' + nonce_l + ' ts:' + timestamp;
+    const message = liquiditaetNachrichtV2(swapWaddr, amountAEQ, amountTUSD, nonce_l, timestamp);
     swapLog('Sign the message in MetaMask to confirm this deposit...', 'info');
     const signature = await signMessage(message);
 
     const resp = await fetch('/api/add-liquidity', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ wallet: swapWaddr, amount_aeq: amountAEQ, amount_tusd: amountTUSD, nonce: nonce_l, timestamp, signature })
+      body: JSON.stringify({ wallet: swapWaddr, amount_aeq: amountAEQ, amount_tusd: amountTUSD, nonce: nonce_l, timestamp, signature, form: AUFTRAG_FORM })
     });
     const data = await resp.json();
     if (data.success) {
@@ -7305,21 +7319,21 @@ function setRemovePct(pct, btn) {
 
 async function doRemoveLiquidity() {
   if (!swapWaddr || myLPShares <= 0) return;
-  const sharesToBurn = myLPShares * removePct;
+  const sharesToBurn = mindestAchtStellen(myLPShares * removePct); // nie mehr als vorhanden
 
   document.getElementById('swap-btn-removeliq').disabled = true;
   try {
     const nonceRespR = await fetch('/api/nonce?wallet=' + swapWaddr);
     const { nonce: nonce_r } = await nonceRespR.json();
     const timestamp = Math.floor(Date.now() / 1000);
-    const message = 'Aequitas Remove Liquidity: ' + sharesToBurn.toFixed(8) + ' shares nonce:' + nonce_r + ' ts:' + timestamp;
+    const message = liquiditaetAbNachrichtV2(swapWaddr, sharesToBurn, nonce_r, timestamp);
     swapLog('Sign the message in MetaMask to confirm this withdrawal...', 'info');
     const signature = await signMessage(message);
 
     const resp = await fetch('/api/remove-liquidity', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ wallet: swapWaddr, shares: sharesToBurn, nonce: nonce_r, timestamp, signature })
+      body: JSON.stringify({ wallet: swapWaddr, shares: sharesToBurn, nonce: nonce_r, timestamp, signature, form: AUFTRAG_FORM })
     });
     const data = await resp.json();
     if (data.success) {
