@@ -8661,6 +8661,23 @@ func blockTouchedAddresses(block *Block) (addrs []string, needsFullSnapshot bool
 			if tx.Vorbehalt != nil && tx.Vorbehalt.Ref != "" {
 				add(vorbehaltsKonto(tx.Vorbehalt.Ref))
 			}
+		// Quantengeld (quanten_einloesen.go): die Einloesung bucht vom Topf,
+		// der in keinem Wallet/To steht. Ohne ihn behielte ein Block, der
+		// spaeter an einer anderen Transaktion scheitert, den Abzug am Topf
+		// im Speicher, waehrend die Datenbank zurueckrollt.
+		case quantenEinloesenTxArt:
+			add(quantenTopfAddr)
+		// Offline-Bargeld (offline_einbindung.go): Topf, Halter (nur wenn
+		// sein Konto belastet wird) und die Empfaenger eines Abschlusses.
+		// Jeder Knoten prueft, dass genau diese Konten bewegt werden.
+		case offlinePfandTxArt, offlineEinloesungTxArt, offlineAbschlussTxArt:
+			add(offlineTopfAddr)
+			if tx.Offline != nil {
+				add(tx.Offline.Halter)
+				for _, a := range tx.Offline.Auszahlungen {
+					add(a.An)
+				}
+			}
 		}
 	}
 	add(validatorsPoolAddr)

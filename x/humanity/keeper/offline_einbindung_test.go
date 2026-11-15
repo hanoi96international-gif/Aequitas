@@ -8,6 +8,7 @@ import (
 	"math"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -723,5 +724,171 @@ func TestOfflineEinbindung_UmzugNimmtSperreUndSchuldMit(t *testing.T) {
 	}
 	if _, err := offlineUmzug(f.cs.offlineJetzt(), f.neu, fremd); err == nil {
 		t.Fatal("Umzug in einen bestehenden Eintrag")
+	}
+}
+
+// Befund des zweiten Pruefdurchgangs: der Rueckroll eines Blocks
+// (blockTouchedAddresses) kannte Topf, Halter und Abschluss-Empfaenger nicht
+// -- scheiterte spaeter eine andere Transaktion im Block, blieben ihre Staende
+// im Speicher veraendert, waehrend die Datenbank zurueckrollte. Ebenso der
+// Quantengeld-Topf bei quanten_einloesen (live).
+func TestOfflineEinbindung_RueckrollKenntAlleKonten(t *testing.T) {
+	_, empf := neuerSchluessel(t)
+	halter, glaeubiger := offAdr(41), offAdr(42)
+	block := &Block{Transactions: []Transaction{
+		{Type: quantenEinloesenTxArt, Wallet: empf},
+		{Type: offlinePfandTxArt, Wallet: halter, Offline: &OfflineAngaben{}},
+		{Type: offlineEinloesungTxArt, Wallet: empf, Offline: &OfflineAngaben{VomKonto: 1, Halter: halter}},
+		{Type: offlineAbschlussTxArt, Wallet: halter, Offline: &OfflineAngaben{Auszahlungen: []OfflineAuszahlung{{An: glaeubiger, Mikro: 1}}}},
+	}}
+	addrs, _ := blockTouchedAddresses(block)
+	for _, a := range []string{quantenTopfAddr, offlineTopfAddr, halter, glaeubiger, strings.ToLower(empf)} {
+		if !slices.Contains(addrs, a) {
+			t.Fatalf("%s fehlt im Rueckroll: %v", a, addrs)
+		}
+	}
+}
+
+// Der Halter steht genau dann im Block, wenn sein Konto belastet wird, und
+// ist der Halter des Pfands.
+func TestOfflineEinbindung_HalterImBlock(t *testing.T) {
+	w := neueOffWelt(t, 30)
+	w.annehmen(w.pfandTx(5_000_000, offT0), offT0+10)
+	w.annehmen(w.zahlung(1, w.empf, 5_000_000), offT0+20)
+	// Ueberziehen: 3 AEQ vom Konto des Halters.
+	tx := w.zahlung(2, w.empf, 3_000_000)
+	tx.Offline.VomKonto, tx.Amount = 3_000_000, 3
+	for _, falsch := range []string{"", fremdAdr(), w.empf} {
+		k := tx
+		o := *tx.Offline
+		o.Halter = falsch
+		k.Offline = &o
+		w.cs.mu.Lock()
+		err := w.cs.applyOfflineLocked(context.Background(), &k, offT0+30)
+		w.cs.mu.Unlock()
+		if err == nil {
+			t.Fatalf("Halter %q angenommen", falsch)
+		}
+	}
+	tx.Offline.Halter = w.mensch
+	w.cs.mu.Lock()
+	err := w.cs.applyOfflineLocked(context.Background(), &tx, offT0+30)
+	w.cs.mu.Unlock()
+	if err != nil || w.stand(w.mensch) != 22_000_000 {
+		t.Fatalf("richtiger Halter: %v, Mensch %d", err, w.stand(w.mensch))
+	}
+	// Ohne Belastung kein Halter im Block.
+	v := neueOffWelt(t, 30)
+	v.annehmen(v.pfandTx(5_000_000, offT0), offT0+10)
+	ohne := v.zahlung(1, v.empf, 1_000_000)
+	ohne.Offline.AusTopf, ohne.Amount, ohne.Offline.Halter = 1_000_000, 1, v.mensch
+	v.cs.mu.Lock()
+	err = v.cs.applyOfflineLocked(context.Background(), &ohne, offT0+20)
+	v.cs.mu.Unlock()
+	if err == nil {
+		t.Fatal("Halter ohne Belastung angenommen")
+	}
+	ohne.Offline.Halter = ""
+	v.cs.mu.Lock()
+	err = v.cs.applyOfflineLocked(context.Background(), &ohne, offT0+20)
+	v.cs.mu.Unlock()
+	if err != nil {
+		t.Fatalf("ohne Halter: %v", err)
+	}
+	for _, art := range []Transaction{w.pfandTx(5_000_000, offT0+50), w.kuendigungTx(offT0 + 50)} {
+		art.Offline.Halter = w.mensch
+		if u := w.urteil(art, offT0+60); u.regel != "offline_form" {
+			t.Fatalf("%s mit Halter: %+v", art.Type, u)
+		}
+	}
+}
+
+// Die Annahme prueft die Unterschrift vor der Sperre (Vorfilter).
+func TestOfflineEinbindung_UnterschriftVorab(t *testing.T) {
+	w := neueOffWelt(t, 30)
+	gut := w.zahlung(1, w.empf, 1_000_000)
+	if !offlineUnterschriftVorab(&gut, offT0) {
+		t.Fatal("gute Zahlung abgewiesen")
+	}
+	falsch := w.zahlung(1, w.empf, 1_000_000)
+	falsch.Offline.Betrag = 2_000_000
+	if offlineUnterschriftVorab(&falsch, offT0) {
+		t.Fatal("geaenderte Zahlung durchgelassen")
+	}
+	p := w.pfandTx(5_000_000, offT0)
+	if !offlineUnterschriftVorab(&p, offT0) {
+		t.Fatal("gutes Pfand abgewiesen")
+	}
+	p.Offline.Betrag = 6_000_000
+	if offlineUnterschriftVorab(&p, offT0) {
+		t.Fatal("geaendertes Pfand durchgelassen")
+	}
+	k := w.kuendigungTx(offT0)
+	k.Wallet = fremdAdr()
+	if offlineUnterschriftVorab(&k, offT0) {
+		t.Fatal("Kuendigung fuer fremde Wallet durchgelassen")
+	}
+	ab := Transaction{Type: offlineAbschlussTxArt, Offline: &OfflineAngaben{}}
+	if offlineUnterschriftVorab(&ab, offT0) {
+		t.Fatal("Abschluss ueber die Annahme")
+	}
+}
+
+// Der Endpunkt: Pfand und Einloesung von Anfang bis Ende ueber HTTP, und je
+// eine Faelschung, die abgewiesen wird, ohne Geld zu bewegen.
+func TestOfflineEinbindung_Endpunkt(t *testing.T) {
+	offlineAbOverride.Store(1)
+	t.Cleanup(func() { offlineAbOverride.Store(0) })
+	w := &offWelt{t: t, cs: newTestState(), g: neuesOffGeraet(t)}
+	w.mk, w.mensch = neuerSchluessel(t)
+	addHuman(w.cs, w.mensch, 30)
+	_, w.empf = neuerSchluessel(t)
+	a := &APIServer{state: w.cs}
+	post := func(art string, body map[string]interface{}) (int, map[string]interface{}) {
+		t.Helper()
+		roh, _ := json.Marshal(body)
+		r := httptest.NewRequest(http.MethodPost, "/api/offline/x", bytes.NewReader(roh))
+		r.RemoteAddr = "192.0.2.7:1234"
+		rec := httptest.NewRecorder()
+		a.handleOffline(art)(rec, r)
+		var aus map[string]interface{}
+		_ = json.Unmarshal(rec.Body.Bytes(), &aus)
+		return rec.Code, aus
+	}
+	jetzt := nowUnix()
+	sig := personalSign(t, w.mk, offlinePfandNachricht(w.mensch, w.g.hex, 10_000_000, jetzt))
+	// Gefaelscht: anderer Betrag als unterschrieben.
+	if code, _ := post(offlinePfandTxArt, map[string]interface{}{"wallet": w.mensch, "geraet": w.g.hex, "betrag": 20_000_000, "zeit": jetzt, "wallet_sig": sig}); code != http.StatusConflict {
+		t.Fatalf("gefaelschtes Pfand: %d", code)
+	}
+	if code, aus := post(offlinePfandTxArt, map[string]interface{}{"wallet": w.mensch, "geraet": w.g.hex, "betrag": 10_000_000, "zeit": jetzt, "wallet_sig": sig}); code != http.StatusOK {
+		t.Fatalf("Pfand: %d %v", code, aus)
+	}
+	if w.stand(offlineTopfAddr) != 10_000_000 {
+		t.Fatalf("Topf %d", w.stand(offlineTopfAddr))
+	}
+	// Unbekanntes Feld: abgewiesen.
+	if code, _ := post(offlineEinloesungTxArt, map[string]interface{}{"empfaenger": w.empf, "geraet": w.g.hex, "zaehler": 1, "betrag": 1_000_000, "sig": w.g.zahle(t, 1, w.empf, 1_000_000), "aus_topf": 5}); code != http.StatusBadRequest {
+		t.Fatalf("unbekanntes Feld: %d", code)
+	}
+	// Gefaelscht: anderer Empfaenger als unterschrieben.
+	_, b := neuerSchluessel(t)
+	if code, _ := post(offlineEinloesungTxArt, map[string]interface{}{"empfaenger": b, "geraet": w.g.hex, "zaehler": 1, "betrag": 1_000_000, "sig": w.g.zahle(t, 1, w.empf, 1_000_000)}); code != http.StatusConflict {
+		t.Fatalf("Zahlung an anderen Empfaenger: %d", code)
+	}
+	code, aus := post(offlineEinloesungTxArt, map[string]interface{}{"empfaenger": w.empf, "geraet": w.g.hex, "zaehler": 1, "betrag": 1_000_000, "sig": w.g.zahle(t, 1, w.empf, 1_000_000)})
+	if code != http.StatusOK || aus["aus_topf"] != float64(1_000_000) {
+		t.Fatalf("Einloesung: %d %v", code, aus)
+	}
+	if w.stand(w.empf) != 1_000_000 || w.stand(b) != 0 {
+		t.Fatalf("Empfaenger %d, b %d", w.stand(w.empf), w.stand(b))
+	}
+	// Dieselbe noch einmal: 409.
+	if code, _ := post(offlineEinloesungTxArt, map[string]interface{}{"empfaenger": w.empf, "geraet": w.g.hex, "zaehler": 1, "betrag": 1_000_000, "sig": w.g.zahle(t, 1, w.empf, 1_000_000)}); code != http.StatusConflict {
+		t.Fatalf("Wiederholung: %d", code)
+	}
+	// Abschluss gibt es ueber die Annahme nicht.
+	if code, _ := post(offlineAbschlussTxArt, map[string]interface{}{"wallet": w.mensch}); code != http.StatusNotFound {
+		t.Fatalf("Abschluss ueber HTTP: %d", code)
 	}
 }

@@ -55,6 +55,7 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -98,6 +99,10 @@ type OfflineAngaben struct {
 	AusTopf  int64 `json:"aus_topf,omitempty"`
 	VomKonto int64 `json:"vom_konto,omitempty"`
 	Schuld   int64 `json:"schuld,omitempty"`
+	// Halter: nur wenn VomKonto > 0 -- wessen Konto die Einloesung belastet.
+	// Steht im Block, damit der Rueckroll (blockTouchedAddresses) das Konto
+	// kennt; jeder Knoten prueft, dass es der Halter des Pfands ist.
+	Halter string `json:"halter,omitempty"`
 	// Abschluss: an wen der Rest geht (in dieser Reihenfolge).
 	Auszahlungen []OfflineAuszahlung `json:"auszahlungen,omitempty"`
 }
@@ -310,7 +315,8 @@ type offlineUrteil struct {
 	// Geldwege, in Mikro-AEQ.
 	pfand    int64 // Mensch -> Topf
 	ausTopf  int64 // Topf -> Empfaenger
-	vomKonto int64 // Mensch -> Empfaenger
+	vomKonto int64  // Halter -> Empfaenger
+	halter   string // nur bei vomKonto > 0
 	schuld   int64
 	auszahl  []OfflineAuszahlung // Topf -> An
 }
@@ -356,7 +362,7 @@ func (cs *ChainState) offlineUrteilLocked(ctx context.Context, tx *Transaction, 
 	reg := cs.offlineJetzt()
 	switch tx.Type {
 	case offlinePfandTxArt:
-		if o.Zaehler != 0 || o.Sig != "" || o.AusTopf != 0 || o.VomKonto != 0 || o.Schuld != 0 || len(o.Auszahlungen) != 0 {
+		if o.Zaehler != 0 || o.Sig != "" || o.AusTopf != 0 || o.VomKonto != 0 || o.Schuld != 0 || o.Halter != "" || len(o.Auszahlungen) != 0 {
 			return offlineBefund("offline_form", "Pfand nicht in gueltiger Form")
 		}
 		if err := offlineWalletUnterschrift(o, offlinePfandNachricht(wallet, o.Geraet, o.Betrag, tx.DistributionAt), wallet, blockZeit); err != nil {
@@ -391,10 +397,14 @@ func (cs *ChainState) offlineUrteilLocked(ctx context.Context, tx *Transaction, 
 		if neu, err = offlineSchuldEintragen(neu, e.Mensch, wallet, schuld); err != nil {
 			return offlineAusFehler(err)
 		}
-		return offlineUrteil{reg: neu, ausTopf: e.AusTopf, vomKonto: vomKonto, schuld: schuld}
+		halter := ""
+		if vomKonto > 0 {
+			halter = e.Mensch
+		}
+		return offlineUrteil{reg: neu, ausTopf: e.AusTopf, vomKonto: vomKonto, schuld: schuld, halter: halter}
 
 	case offlineKuendigungTxArt:
-		if o.Betrag != 0 || o.Zaehler != 0 || o.Sig != "" || o.AusTopf != 0 || o.VomKonto != 0 || o.Schuld != 0 || len(o.Auszahlungen) != 0 {
+		if o.Betrag != 0 || o.Zaehler != 0 || o.Sig != "" || o.AusTopf != 0 || o.VomKonto != 0 || o.Schuld != 0 || o.Halter != "" || len(o.Auszahlungen) != 0 {
 			return offlineBefund("offline_form", "Kuendigung nicht in gueltiger Form")
 		}
 		g, da := reg.Aktiv[wallet]
@@ -411,7 +421,7 @@ func (cs *ChainState) offlineUrteilLocked(ctx context.Context, tx *Transaction, 
 		return offlineUrteil{reg: neu}
 
 	case offlineAbschlussTxArt:
-		if o.Betrag != 0 || o.Zaehler != 0 || o.Sig != "" || o.WalletSig != "" || o.PQ != nil || o.AusTopf != 0 || o.VomKonto != 0 || o.Schuld != 0 {
+		if o.Betrag != 0 || o.Zaehler != 0 || o.Sig != "" || o.WalletSig != "" || o.PQ != nil || o.AusTopf != 0 || o.VomKonto != 0 || o.Schuld != 0 || o.Halter != "" {
 			return offlineBefund("offline_form", "Abschluss nicht in gueltiger Form")
 		}
 		g, da := reg.Aktiv[wallet]
@@ -476,14 +486,10 @@ func (cs *ChainState) offlineAnwendenLocked(ctx context.Context, tx *Transaction
 			return err
 		}
 	case offlineEinloesungTxArt:
-		mensch := ""
-		if p := u.reg.Pfaender[tx.Offline.Geraet]; p != nil {
-			mensch = p.Mensch
-		}
 		if err := cs.offlineBewegenLocked(ctx, offlineTopfAddr, wallet, u.ausTopf); err != nil {
 			return err
 		}
-		if err := cs.offlineBewegenLocked(ctx, mensch, wallet, u.vomKonto); err != nil {
+		if err := cs.offlineBewegenLocked(ctx, u.halter, wallet, u.vomKonto); err != nil {
 			return err
 		}
 	case offlineAbschlussTxArt:
@@ -509,9 +515,9 @@ func (cs *ChainState) applyOfflineLocked(ctx context.Context, tx *Transaction, b
 	}
 	switch tx.Type {
 	case offlineEinloesungTxArt:
-		if o.AusTopf != u.ausTopf || o.VomKonto != u.vomKonto || o.Schuld != u.schuld {
-			return fmt.Errorf("offline_einloesung: Block nennt %d/%d/%d (Topf/Konto/Schuld), gerechnet %d/%d/%d",
-				o.AusTopf, o.VomKonto, o.Schuld, u.ausTopf, u.vomKonto, u.schuld)
+		if o.AusTopf != u.ausTopf || o.VomKonto != u.vomKonto || o.Schuld != u.schuld || o.Halter != u.halter {
+			return fmt.Errorf("offline_einloesung: Block nennt %d/%d/%d/%s (Topf/Konto/Schuld/Halter), gerechnet %d/%d/%d/%s",
+				o.AusTopf, o.VomKonto, o.Schuld, kurzAdresse(o.Halter), u.ausTopf, u.vomKonto, u.schuld, kurzAdresse(u.halter))
 		}
 	case offlineAbschlussTxArt:
 		if !offlineAuszahlungenGleich(o.Auszahlungen, u.auszahl) {
@@ -598,7 +604,12 @@ func (cs *ChainState) offlineAnnehmen(tx Transaction) (Transaction, error) {
 		}
 		o := *tx.Offline
 		if tx.Type == offlineEinloesungTxArt {
-			o.AusTopf, o.VomKonto, o.Schuld = u.ausTopf, u.vomKonto, u.schuld
+			// Der Halter muss im Rueckroll dieser Operation stehen; hat er
+			// sich seit dem Lesen geaendert (Umzug), erneut versuchen.
+			if u.halter != "" && !slices.Contains(konten, u.halter) {
+				return Transaction{}, &offlineAbgewiesen{text: "offline_wiederholen: Halter hat sich geaendert, bitte erneut einreichen"}
+			}
+			o.AusTopf, o.VomKonto, o.Schuld, o.Halter = u.ausTopf, u.vomKonto, u.schuld, u.halter
 		}
 		tx.Amount = offlineBetragImBlock(&tx, u)
 		tx.Offline = &o
@@ -609,6 +620,25 @@ func (cs *ChainState) offlineAnnehmen(tx Transaction) (Transaction, error) {
 		return tx, nil
 	})
 	return fertig, err
+}
+
+// offlineUnterschriftVorab: die Unterschrift einer eingereichten
+// Offline-Transaktion, ohne Zustand (Geraet bzw. Wallet). Nur ein Vorfilter
+// der Annahme; das Urteil prueft sie unter der Sperre noch einmal.
+func offlineUnterschriftVorab(tx *Transaction, jetzt int64) bool {
+	o := tx.Offline
+	if o == nil {
+		return false
+	}
+	switch tx.Type {
+	case offlineEinloesungTxArt:
+		return offlineSignaturPruefen(o.Geraet, offlineZahlungNachricht(o.Geraet, o.Zaehler, tx.Wallet, o.Betrag), o.Sig)
+	case offlinePfandTxArt:
+		return offlineWalletUnterschrift(o, offlinePfandNachricht(tx.Wallet, o.Geraet, o.Betrag, tx.DistributionAt), tx.Wallet, jetzt) == nil
+	case offlineKuendigungTxArt:
+		return offlineWalletUnterschrift(o, offlineKuendigungNachricht(tx.Wallet, o.Geraet, tx.DistributionAt), tx.Wallet, jetzt) == nil
+	}
+	return false
 }
 
 // handleOffline: POST /api/offline/pfand | /einloesung | /kuendigung.
@@ -672,6 +702,13 @@ func (a *APIServer) handleOffline(art string) http.HandlerFunc {
 			}
 		default:
 			jsonError(w, "unknown offline type", http.StatusNotFound)
+			return
+		}
+		// Unterschrift vor der Sperre pruefen (zustandslos): eine falsche
+		// bindet keine Sperre. Unter der Sperre prueft das Urteil sie erneut,
+		// wie jeder Knoten beim Nachspielen.
+		if !offlineUnterschriftVorab(&tx, time.Now().Unix()) {
+			jsonError(w, "rejected: offline_unterschrift: Unterschrift gilt nicht", http.StatusConflict)
 			return
 		}
 		fertig, err := a.state.offlineAnnehmen(tx)

@@ -150,7 +150,9 @@ Nicht eingelöste Zahlungen sieht niemand. Kein Server sammelt Offline-Zahlungen
      Protokoll-Töpfe (`istSystemAdresse`). Befunde der eigenen Sicherheitsprüfung, mit
      Missbrauchstest behoben: Doppelzahlung ließ sich mehrfach einlösen; Forderungen
      landeten bei voller Liste beim letzten Gläubiger; Register ohne Gesamtgrenze;
-     Umzug ließ Sperre und Schuld zurück; Offline-Transaktionen trugen fremde Felder. ✓
+     Umzug ließ Sperre und Schuld zurück; Offline-Transaktionen trugen fremde Felder;
+     der Rückroll eines Blocks kannte Topf, Halter und Abschluss-Empfänger nicht (ebenso
+     den Quantengeld-Topf bei `quanten_einloesen`). ✓
    - **Vor dem Stichtag offen:** Braucht der Betrieb mehr als 512 Pfänder gleichzeitig,
      das Register je Eintrag speichern (eigene Tabelle, Wurzel inkrementell) statt als
      ein Wert. Ein Erzeuger kann einen fälligen Abschluss aufschieben (nicht stehlen: das
