@@ -284,3 +284,35 @@ func TestPrueferDienstPQ_VektorAusDemDienst(t *testing.T) {
 		t.Fatalf("Freigabe-Satz: %s", got)
 	}
 }
+
+// Die Freigabe aus der App (@noble/post-quantum, lib/dienstPQ.ts, Seed 0x11):
+// der Knoten erzeugt denselben Satz und nimmt genau diese Unterschrift an --
+// fuer den Dienst-Schluessel aus dem Python-Vektor (gleicher Seed, gleicher
+// Schluessel in beiden Bibliotheken).
+func TestPrueferDienstPQ_FreigabeAusDerApp(t *testing.T) {
+	roh, err := os.ReadFile("testdata/pruefer_dienst_freigabe_vektor.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var v struct {
+		Mensch, Ed, Nachricht string
+		DienstPub             string `json:"dienst_pub"`
+		Zeit                  int64
+		MenschPub             string `json:"mensch_pub"`
+		MenschSig             string `json:"mensch_sig"`
+	}
+	if err := json.Unmarshal(roh, &v); err != nil {
+		t.Fatal(err)
+	}
+	h, _ := sha256Hex(v.DienstPub)
+	satz := prueferDienstFreigabeNachricht(v.Mensch, v.Ed, h, v.Zeit)
+	if satz != v.Nachricht {
+		t.Fatalf("Satz:\n got %s\nwant %s", satz, v.Nachricht)
+	}
+	if !mldsaPruefen(v.MenschPub, v.MenschSig, satz) {
+		t.Fatal("Freigabe der App abgewiesen")
+	}
+	if mldsaPruefen(v.MenschPub, v.MenschSig, prueferDienstFreigabeNachricht(v.Mensch, v.Ed, h, v.Zeit+1)) {
+		t.Fatal("Freigabe gilt fuer eine andere Zeit")
+	}
+}
