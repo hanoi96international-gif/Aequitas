@@ -253,6 +253,18 @@
     <div class="exp-stat-sub" id="s-validators-sub" data-i18n="x-distinct-proposers-recent-blocks">Distinct proposers, recent blocks</div>
   </div>
 </div>
+<!-- Dezentrales Quantengeld (quanten_geld.go, /api/quanten/stand) -->
+<div class="qg-panel" id="qg-panel">
+  <div class="qg-titel"><span class="qg-logo" aria-hidden="true">⟨ψ⟩</span><span data-i18n="x-qg-titel">Decentralized quantum money</span></div>
+  <div class="qg-raster">
+    <div class="qg-feld"><div class="qg-lbl" data-i18n="x-qg-k-status">Status</div><div class="qg-wert" id="qg-status">—</div></div>
+    <div class="qg-feld"><div class="qg-lbl" data-i18n="x-qg-k-saetze">Parameter sets (enabled by ⅔ of verifiers)</div><div class="qg-wert" id="qg-saetze">—</div></div>
+    <div class="qg-feld"><div class="qg-lbl" data-i18n="x-qg-k-noten">Registered notes</div><div class="qg-wert" id="qg-noten">—</div></div>
+    <div class="qg-feld"><div class="qg-lbl" data-i18n="x-qg-k-gedeckt">Backing in the pool</div><div class="qg-wert" id="qg-gedeckt">—</div></div>
+  </div>
+  <div class="qg-topf"><span class="qg-lbl" data-i18n="x-qg-k-topf">Pool address (no key exists)</span> <code id="qg-topf">—</code></div>
+  <p class="qg-hinweis" data-i18n="x-qg-hinweis">Anyone can mint a quantum note; the chain registers it once, with backing in AEQ, and every recipient checks it themselves. A parameter set is enabled only by ⅔ of the verifiers, once quantum hardware holds notes longer than a payment takes — on today's real chips a note lives about 20 µs. Until then Aequitas protects itself with post-quantum signatures.</p>
+</div>
 <!-- GHOSTDAG DAG view: actual parent/merge structure, not just a linear list -->
 <div class="dag-panel">
   <div class="exp-panel-hdr">

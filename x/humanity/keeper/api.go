@@ -2901,7 +2901,7 @@ func mitFussLinks(html, fest, legal string) string {
 func (a *APIServer) handleExplorerCSS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/css; charset=utf-8")
 	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-	fmt.Fprint(w, explorerCSS)
+	fmt.Fprint(w, explorerCSSGesamt)
 }
 
 func (a *APIServer) handleExplorerJS(w http.ResponseWriter, r *http.Request) {

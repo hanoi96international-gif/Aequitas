@@ -128,6 +128,8 @@ var i18nDynamicKeys = map[string]bool{
 	"guard-none":         true, // guardian address panel, see explorer.js
 	"ubi-hero-sub-empty": true, // empty UBI pool hero subtitle, set dynamically in explorer.js
 	"x-pq-stempel":       true, // title of the PQ badge on stamped blocks, set in explorer.js
+	"x-qg-aktiv":         true, // quantum money status (explorer.js loadQuantengeld)
+	"x-qg-ab":            true, // quantum money status before the cut-over (explorer.js loadQuantengeld)
 }
 
 // englishI18nKeys returns the key set of the English block, which the test
