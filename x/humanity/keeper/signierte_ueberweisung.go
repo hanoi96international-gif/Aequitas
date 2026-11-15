@@ -224,7 +224,7 @@ type ueberweisungsNonce struct {
 // schreibt. blockZeit: block.Timestamp (Chain-ID, chain_id_wechsel.go).
 func pruefeUeberweisungenImBlock(txs []Transaction, blockZeit int64) ([]ueberweisungsNonce, error) {
 	if n := pqUeberweisungGrenze(txs); n < len(txs) {
-		return nil, fmt.Errorf("%w: mehr als %d PQ-Ueberweisungen im Block", ErrUeberweisungNichtSigniert, pqUeberweisungenJeBlock)
+		return nil, fmt.Errorf("%w: mehr als %d PQ-Nachweise (Ueberweisungen, Umzugs-Auftraege) im Block", ErrUeberweisungNichtSigniert, pqUeberweisungenJeBlock)
 	}
 	var idx []int
 	for i := range txs {

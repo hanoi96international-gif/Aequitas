@@ -106,6 +106,7 @@ jobs:
       - run: bash scripts/test_quantengeld_nicht_verpasst.sh
       - run: bash scripts/test_pruefer_pq_nicht_verpasst.sh
       - run: bash scripts/test_pruefer_dienst_pq_nicht_verpasst.sh
+      - run: bash scripts/test_umzug_pq_nicht_verpasst.sh
       - run: bash scripts/test_pq_ueberweisung_nicht_verpasst.sh
       - run: bash scripts/test_pq_stempel_bereit.sh
       - run: bash scripts/test_bio_pq_bereit.sh

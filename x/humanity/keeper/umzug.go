@@ -231,6 +231,9 @@ type UmzugAngaben struct {
 	Pruefung string `json:"pruefung,omitempty"`
 	// pq_zusage (pq_zusage.go): SHA-256 des ML-DSA-65-Schluessels der Wallet.
 	PQHash string `json:"pq_hash,omitempty"`
+	// Statt Sig: die ML-DSA-65-Unterschrift einer PQ-Adresse ueber dieselbe
+	// Nachricht (umzug_pq.go) -- an Antrag, Widerruf und Code, ab umzugPQAb.
+	PQ *PQKonto `json:"pq,omitempty"`
 }
 
 // ------------------------------------------------------------ Nachrichten
@@ -783,7 +786,7 @@ func (cs *ChainState) umzugAnkuendigenUrteilLocked(ctx context.Context, tx *Tran
 	u := tx.Umzug
 	b := tx.BioBescheinigung
 	if !kanonischeAdresse(neu) || !kanonischeAdresse(alt) || neu == alt || !umzugNullifierKanonisch(n) ||
-		u == nil || !kanonischeSignatur(u.Sig) || u.CodeHash != "" || u.PQHash != "" || u.Angekuendigt != 0 ||
+		u == nil || !umzugSigForm(u, blockZeit) || u.CodeHash != "" || u.PQHash != "" || u.Angekuendigt != 0 ||
 		(u.Pruefung != umzugPruefungStreng && u.Pruefung != umzugPruefungEinfach) ||
 		(u.Code != "" && umzugCodeNormal(u.Code) != u.Code) || b == nil || b.Zeit != tx.DistributionAt {
 		return umzugBefund("umzug_form", "Antrag nicht in gueltiger Form"), nil
@@ -792,7 +795,7 @@ func (cs *ChainState) umzugAnkuendigenUrteilLocked(ctx context.Context, tx *Tran
 	if z <= 0 || z > sattAdd(blockZeit, umzugHoechstensVoraus) || blockZeit-z > umzugHoechstensAlt {
 		return umzugBefund("umzug_zeit", "%s: bescheinigt %d, Block %d", kurzAdresse(neu), z, blockZeit), nil
 	}
-	if err := pruefePersonalSignGemerkt(umzugAntragNachricht(n, alt, neu, z), u.Sig, neu); err != nil {
+	if err := umzugUnterschriftPruefen(u, umzugAntragNachricht(n, alt, neu, z), neu); err != nil {
 		return umzugBefund("umzug_unterschrift", "%s: Antrag nicht von der neuen Wallet unterschrieben", kurzAdresse(neu)), nil
 	}
 	k, err := bescheinigungKonf()
@@ -902,7 +905,7 @@ func (cs *ChainState) umzugWiderrufUrteilLocked(tx *Transaction, blockZeit int64
 	alt, neu, n := tx.Wallet, tx.To, tx.Nullifier
 	u := tx.Umzug
 	if !kanonischeAdresse(alt) || !kanonischeAdresse(neu) || !umzugNullifierKanonisch(n) || u == nil ||
-		!kanonischeSignatur(u.Sig) || u.Code != "" || u.CodeHash != "" || u.PQHash != "" || u.Pruefung != "" || u.Angekuendigt <= 0 ||
+		!umzugSigForm(u, blockZeit) || u.Code != "" || u.CodeHash != "" || u.PQHash != "" || u.Pruefung != "" || u.Angekuendigt <= 0 ||
 		tx.BioBescheinigung != nil {
 		return umzugBefund("umzug_form", "Widerruf nicht in gueltiger Form")
 	}
@@ -913,7 +916,7 @@ func (cs *ChainState) umzugWiderrufUrteilLocked(tx *Transaction, blockZeit int64
 	if o.Fest {
 		return umzugBefund("umzug_fest", "dieser Umzug ist nicht mehr widerrufbar (schon ein Widerruf im letzten Jahr)")
 	}
-	if err := pruefePersonalSignGemerkt(umzugWiderrufNachricht(n, neu, u.Angekuendigt), u.Sig, alt); err != nil {
+	if err := umzugUnterschriftPruefen(u, umzugWiderrufNachricht(n, neu, u.Angekuendigt), alt); err != nil {
 		return umzugBefund("umzug_unterschrift", "Widerruf nicht von %s unterschrieben", kurzAdresse(alt))
 	}
 	return umzugUrteil{}
@@ -926,7 +929,7 @@ func (cs *ChainState) umzugCodeUrteilLocked(ctx context.Context, tx *Transaction
 	}
 	alt := tx.Wallet
 	u := tx.Umzug
-	if !kanonischeAdresse(alt) || u == nil || !istHash64(u.CodeHash) || !kanonischeSignatur(u.Sig) ||
+	if !kanonischeAdresse(alt) || u == nil || !istHash64(u.CodeHash) || !umzugSigForm(u, blockZeit) ||
 		u.Code != "" || u.PQHash != "" || u.Angekuendigt != 0 || u.Pruefung != "" || tx.BioBescheinigung != nil || tx.To != "" || tx.Nullifier != "" {
 		return umzugBefund("umzug_form", "Code nicht in gueltiger Form")
 	}
@@ -944,7 +947,7 @@ func (cs *ChainState) umzugCodeUrteilLocked(ctx context.Context, tx *Transaction
 	if a, ok := cs.accounts.Get(alt); !ok || !a.IsHuman {
 		return umzugBefund("umzug_code_kein_mensch", "%s ist kein Mensch", kurzAdresse(alt))
 	}
-	if err := pruefePersonalSignGemerkt(umzugCodeSetzenNachricht(alt, u.CodeHash, z), u.Sig, alt); err != nil {
+	if err := umzugUnterschriftPruefen(u, umzugCodeSetzenNachricht(alt, u.CodeHash, z), alt); err != nil {
 		return umzugBefund("umzug_unterschrift", "Code nicht von %s unterschrieben", kurzAdresse(alt))
 	}
 	reg := cs.umzugRegisterJetzt()
@@ -1207,17 +1210,22 @@ func (a *APIServer) handleUmzugCode(w http.ResponseWriter, r *http.Request) {
 		CodeHash string `json:"code_hash"`
 		Zeit     int64  `json:"zeit"`
 		Sig      string `json:"sig"`
+		umzugPQAnfrage
 	}
 	if !a.umzugVorpruefung(w, r, &req) {
 		return
 	}
 	wallet := strings.ToLower(strings.TrimSpace(req.Wallet))
-	sig := kanonischeSignaturVersuch(req.Sig)
-	if !kanonischeAdresse(wallet) || !istHash64(req.CodeHash) || !kanonischeSignatur(sig) {
-		jsonError(w, "wallet, code_hash (64 hex) and sig required", http.StatusBadRequest)
+	sig, pq, ok := req.angaben(req.Sig, time.Now().Unix())
+	if !umzugPQAnnehmbar(w, req.umzugPQAnfrage) {
 		return
 	}
-	if err := verifyPersonalSign(umzugCodeSetzenNachricht(wallet, req.CodeHash, req.Zeit), sig, wallet); err != nil {
+	if !kanonischeAdresse(wallet) || !istHash64(req.CodeHash) || !ok {
+		jsonError(w, "wallet, code_hash (64 hex) and sig (or pq_pub and pq_sig) required", http.StatusBadRequest)
+		return
+	}
+	u := &UmzugAngaben{CodeHash: req.CodeHash, Sig: sig, PQ: pq}
+	if err := umzugUnterschriftVorab(u, umzugCodeSetzenNachricht(wallet, req.CodeHash, req.Zeit), wallet); err != nil {
 		jsonError(w, "signature does not match wallet", http.StatusForbidden)
 		return
 	}
@@ -1225,8 +1233,7 @@ func (a *APIServer) handleUmzugCode(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, fmt.Sprintf("recovery codes paused for the switch to the new code rules at %d -- please sign again then", umzugCodeRegelnAb()), http.StatusServiceUnavailable)
 		return
 	}
-	a.umzugAnnehmen(w, r, Transaction{Type: umzugCodeTxArt, Wallet: wallet, DistributionAt: req.Zeit,
-		Umzug: &UmzugAngaben{CodeHash: req.CodeHash, Sig: sig}}, nil)
+	a.umzugAnnehmen(w, r, Transaction{Type: umzugCodeTxArt, Wallet: wallet, DistributionAt: req.Zeit, Umzug: u}, nil)
 }
 
 // handleUmzugAntrag: {"neu", "alt", "nullifier", "zeit", "modus",
@@ -1244,13 +1251,17 @@ func (a *APIServer) handleUmzugAntrag(w http.ResponseWriter, r *http.Request) {
 		Pruefung  string   `json:"pruefung"`
 		Code      string   `json:"code"`
 		Sig       string   `json:"sig"`
+		umzugPQAnfrage
 	}
 	if !a.umzugVorpruefungMax(w, r, &req, umzugAntragKoerperMax) {
 		return
 	}
 	neu := strings.ToLower(strings.TrimSpace(req.Neu))
 	alt := strings.ToLower(strings.TrimSpace(req.Alt))
-	sig := kanonischeSignaturVersuch(req.Sig)
+	if !umzugPQAnnehmbar(w, req.umzugPQAnfrage) {
+		return
+	}
+	sig, kontoPQ, sigOk := req.angaben(req.Sig, time.Now().Unix())
 	code := ""
 	if strings.TrimSpace(req.Code) != "" {
 		if code = umzugCodeNormal(req.Code); code == "" {
@@ -1258,9 +1269,9 @@ func (a *APIServer) handleUmzugAntrag(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if !kanonischeAdresse(neu) || !kanonischeAdresse(alt) || !umzugNullifierKanonisch(req.Nullifier) || !kanonischeSignatur(sig) ||
+	if !kanonischeAdresse(neu) || !kanonischeAdresse(alt) || !umzugNullifierKanonisch(req.Nullifier) || !sigOk ||
 		len(req.Eintraege) == 0 || len(req.Eintraege) > 3*bescheinigungMaxSignaturen {
-		jsonError(w, "neu, alt, nullifier, bescheinigung and sig required", http.StatusBadRequest)
+		jsonError(w, "neu, alt, nullifier, bescheinigung and sig (or pq_pub and pq_sig) required", http.StatusBadRequest)
 		return
 	}
 	// Audit B1 (14.11.2026): auch "pq:"-Eintraege (ML-DSA-65 des
@@ -1295,7 +1306,8 @@ func (a *APIServer) handleUmzugAntrag(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "bescheinigung: 1 to 17 signatures", http.StatusBadRequest)
 		return
 	}
-	if err := verifyPersonalSign(umzugAntragNachricht(req.Nullifier, alt, neu, req.Zeit), sig, neu); err != nil {
+	u := &UmzugAngaben{Code: code, Sig: sig, PQ: kontoPQ, Pruefung: req.Pruefung}
+	if err := umzugUnterschriftVorab(u, umzugAntragNachricht(req.Nullifier, alt, neu, req.Zeit), neu); err != nil {
 		jsonError(w, "signature does not match the new wallet", http.StatusForbidden)
 		return
 	}
@@ -1305,7 +1317,7 @@ func (a *APIServer) handleUmzugAntrag(w http.ResponseWriter, r *http.Request) {
 	}
 	tx := Transaction{Type: umzugAnkuendigenTxArt, Wallet: neu, To: alt, Nullifier: req.Nullifier, DistributionAt: req.Zeit,
 		BioBescheinigung: &BioBescheinigung{Zeit: req.Zeit, Modus: req.Modus, Signaturen: unterschriften, Bindungen: bindungen, PQ: pq},
-		Umzug:            &UmzugAngaben{Code: code, Sig: sig, Pruefung: req.Pruefung}}
+		Umzug:            u}
 	a.umzugAnnehmen(w, r, tx, []string{alt})
 }
 
@@ -1317,23 +1329,27 @@ func (a *APIServer) handleUmzugWiderruf(w http.ResponseWriter, r *http.Request) 
 		Nullifier    string `json:"nullifier"`
 		Angekuendigt int64  `json:"angekuendigt"`
 		Sig          string `json:"sig"`
+		umzugPQAnfrage
 	}
 	if !a.umzugVorpruefung(w, r, &req) {
 		return
 	}
 	alt := strings.ToLower(strings.TrimSpace(req.Alt))
 	neu := strings.ToLower(strings.TrimSpace(req.Neu))
-	sig := kanonischeSignaturVersuch(req.Sig)
-	if !kanonischeAdresse(alt) || !kanonischeAdresse(neu) || !umzugNullifierKanonisch(req.Nullifier) || !kanonischeSignatur(sig) || req.Angekuendigt <= 0 {
-		jsonError(w, "alt, neu, nullifier, angekuendigt and sig required", http.StatusBadRequest)
+	if !umzugPQAnnehmbar(w, req.umzugPQAnfrage) {
 		return
 	}
-	if err := verifyPersonalSign(umzugWiderrufNachricht(req.Nullifier, neu, req.Angekuendigt), sig, alt); err != nil {
+	sig, pq, sigOk := req.angaben(req.Sig, time.Now().Unix())
+	if !kanonischeAdresse(alt) || !kanonischeAdresse(neu) || !umzugNullifierKanonisch(req.Nullifier) || !sigOk || req.Angekuendigt <= 0 {
+		jsonError(w, "alt, neu, nullifier, angekuendigt and sig (or pq_pub and pq_sig) required", http.StatusBadRequest)
+		return
+	}
+	u := &UmzugAngaben{Sig: sig, PQ: pq, Angekuendigt: req.Angekuendigt}
+	if err := umzugUnterschriftVorab(u, umzugWiderrufNachricht(req.Nullifier, neu, req.Angekuendigt), alt); err != nil {
 		jsonError(w, "signature does not match the old wallet", http.StatusForbidden)
 		return
 	}
-	a.umzugAnnehmen(w, r, Transaction{Type: umzugWiderrufTxArt, Wallet: alt, To: neu, Nullifier: req.Nullifier,
-		Umzug: &UmzugAngaben{Sig: sig, Angekuendigt: req.Angekuendigt}}, []string{neu})
+	a.umzugAnnehmen(w, r, Transaction{Type: umzugWiderrufTxArt, Wallet: alt, To: neu, Nullifier: req.Nullifier, Umzug: u}, []string{neu})
 }
 
 // handleUmzugStand: GET ?wallet= -- fuer die App: ist ein Code hinterlegt,
@@ -1352,7 +1368,7 @@ func (a *APIServer) handleUmzugStand(w http.ResponseWriter, r *http.Request) {
 	}
 	reg := a.state.umzugRegisterJetzt()
 	antwort := map[string]interface{}{"aktiv_ab": umzugAb(), "frist_tage": umzugFrist / 86400, "code_regeln_ab": umzugCodeRegelnAb(),
-		"nur_letzter_code_ab": umzugNurLetzterCodeAb(), "pq_zusage_ab": pqZusageAb()}
+		"nur_letzter_code_ab": umzugNurLetzterCodeAb(), "pq_zusage_ab": pqZusageAb(), "pq_unterschrift_ab": umzugPQAb()}
 	if n := strings.TrimSpace(r.URL.Query().Get("n")); n != "" {
 		if !umzugNullifierKanonisch(n) {
 			jsonError(w, "n must be a decimal nullifier", http.StatusBadRequest)

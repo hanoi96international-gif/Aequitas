@@ -8,6 +8,7 @@
 | 1 | Registrierung hybrid (Ed25519 + ML-DSA-65) | Schlüssel in der Genesis, beide Dienste unterschreiben (`/health`: Fingerabdrücke = Genesis); jede PQ-Unterschrift wird vor dem Stichtag streng geprüft und gezählt; **scharf nach der ersten echten Registrierung** (Wächter `bio-pq-bereit.sh`) |
 | 2 | PQ-Zusage je Wallet | **live seit 14.11.2026, 22:00 UTC** |
 | 3 | PQ-Adressen, Überweisungen mit ML-DSA-65 (App 1.20.0, Tresor) | **live seit 14.11.2026, 22:00 UTC** |
+| 3.6 | Menschsein und Grundeinkommen in den Tresor: Umzugsantrag, Widerruf und Wiederherstellungscode dürfen statt EIP-191 die ML-DSA-65-Unterschrift der PQ-Adresse tragen (nur, wenn der Schlüssel genau die Adresse ergibt); das Gesicht bleibt Pflicht; Coordinator nimmt sie bei Umzug, Lebensnachweis und Erneuerung | **Knoten, Coordinator und App fertig, schlafend** (`umzug_pq.go`, `umzugPQAbUnix` = MaxInt64, Wächter `umzug-pq-nicht-verpasst.sh`); die App bietet den Weg erst an, wenn die Kette einen Stichtag nennt |
 | 5 | PQ-Stempel je 60 Blöcke (ML-DSA-65 des Erzeugers) | **Pflicht seit Höhe 2.134.680 (15.11.2026, ~08:55 UTC)**: ein Block auf einer 60er-Höhe ohne gültigen Stempel ist für jeden Knoten ungültig. Block 2.134.680 unabhängig gegen den Schlüssel in `genesis.json` geprüft: gültig (veränderter Hash: abgewiesen). Die Wache meldet, wenn der Erzeuger nicht stempelt. Komitee-Checkpoints hybrid, schlafend bis ≥ 4 Erzeuger |
 | 5b | Prüfer-Stimmen hybrid (Audit B2): Aufnahme, Austritt, Entzug und Freischaltung eines Quantengeld-Satzes brauchen zusätzlich die ML-DSA-65-Unterschrift des Menschen; der Schlüssel muss seine PQ-Zusage (Stufe 2) sein | **Knoten fertig, schlafend** (`pruefer_pq.go`, `prueferPQAbUnix` = MaxInt64); ein mitgeschickter PQ-Teil wird schon jetzt streng geprüft. App 1.21.0 unterschreibt den PQ-Teil (Tresor-Schlüssel); Sammelweg für die Freischaltung (`quanten_sammeln.go`, `/api/quanten/stimme`, eine Stimme je Anfrage); Wächter `pruefer-pq-nicht-verpasst.sh`. Offen vor dem Stichtag: eine echte hybride Stimme |
 | 1b | PQ-Schlüssel der Prüfer-Dienste (Audit B2): Schlüssel von Prüfern aus dem Register (B1b) brauchen ab `pq_ab_unix` einen ML-DSA-Schlüssel. Der Prüfer trägt ihn mit `pruefer_dienst_pq` ein: Besitznachweis des Dienstes und Freigabe mit seinem eigenen ML-DSA-Schlüssel aus der Seed-Phrase (= PQ-Zusage) | **Knoten fertig, schlafend** (`pruefer_dienst_pq.go`, `prueferDienstPQAbUnix`, Wächter `pruefer-dienst-pq-nicht-verpasst.sh`). Reihenfolge: Stichtag setzen → Prüfer tragen ihre Dienste ein (App/Dienst folgen) → erst dann `pq_ab_unix` |
@@ -196,8 +197,23 @@ Umsetzung in dieser Reihenfolge, jede Stufe ein eigener PR mit Prüfung:
    (Schlüssel wie Stufe 2). Guthaben hineinschieben ist eine gewöhnliche
    Überweisung; heraus geht es nur mit ML-DSA. `@noble/post-quantum`
    (geprüft in Aequitas-App #65).
-6. **Noch nicht** (eigene Schritte): das Menschsein und das Grundeinkommen auf
-   eine PQ-Adresse umziehen; Unternehmen; EVM-Verträge von PQ-Adressen aus.
+6. **Menschsein und Grundeinkommen auf die PQ-Adresse** (Stufe 3.6,
+   `umzug_pq.go`, schlafend bis `umzugPQAbUnix`): der gewöhnliche Umzug mit
+   Gesicht, nur dass die neue Wallet der Tresor sein darf. Antrag (neue
+   Wallet), Widerruf (alte Wallet) und Wiederherstellungscode tragen statt
+   der EIP-191-Unterschrift `pq: {pub, sig}` -- ML-DSA-65 über genau
+   denselben Satz, gültig nur, wenn der Schlüssel genau die unterschreibende
+   Adresse ergibt; nie beides. Das Gesicht bleibt Pflicht: ein Dieb mit dem
+   secp256k1-Schlüssel der alten Wallet holt das Menschsein nicht auf
+   „seine“ PQ-Adresse. Das Grundeinkommen folgt dem Menschsein (die
+   Tagesrunde zahlt an `is_human`); das Guthaben zieht nicht mit. Im Block
+   zählt ein solcher Auftrag zu den 500 schweren PQ-Nachweisen. Coordinator
+   (`pq_konto.py`): Umzugsstart, Lebensnachweis und Erneuerung nehmen
+   `pq_public_key` + `pq_signatur`. App: Tresor-Seite, Umzug, Code und
+   Lebensnachweis mit dem Tresor.
+7. **Noch nicht** (eigene Schritte): auf der PQ-Adresse Prüfer werden (B1b),
+   Wächter setzen, Treuhand zurückholen; Unternehmen; EVM-Verträge von
+   PQ-Adressen aus.
 
 **Stufe 4 – Notbremse (Konsens, Stichtag erst bei echter Gefahr)**
 - Ab einem Stichtag nehmen die Knoten von reinen ECDSA-Wallets nichts mehr an.

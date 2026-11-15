@@ -125,7 +125,7 @@ func (cs *ChainState) pqZusageUrteilLocked(ctx context.Context, tx *Transaction,
 	}
 	w := tx.Wallet
 	u := tx.Umzug
-	if !kanonischeAdresse(w) || u == nil || !istHash64(u.PQHash) || !kanonischeSignatur(u.Sig) ||
+	if !kanonischeAdresse(w) || u == nil || !istHash64(u.PQHash) || !kanonischeSignatur(u.Sig) || u.PQ != nil ||
 		u.Code != "" || u.CodeHash != "" || u.Angekuendigt != 0 || u.Pruefung != "" ||
 		tx.BioBescheinigung != nil || tx.To != "" || tx.Nullifier != "" {
 		return umzugBefund("pq_form", "PQ-Zusage nicht in gueltiger Form")

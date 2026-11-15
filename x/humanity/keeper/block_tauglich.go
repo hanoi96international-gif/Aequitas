@@ -111,6 +111,14 @@ func auftragsFenster(tx *Transaction, jetzt int64) zeitFenster {
 	if tx.PQ != nil {
 		f.eng(pqUeberweisungAb(), math.MaxInt64)
 	}
+	// ML-DSA-Unterschrift eines Umzugs-Auftrags (umzug_pq.go): nur an Antrag,
+	// Widerruf und Code, erst in Bloecke ab dem Stichtag.
+	if tx.Umzug != nil && tx.Umzug.PQ != nil {
+		if !umzugPQErlaubt(tx) {
+			return zeitFenster{1, 0}
+		}
+		f.eng(umzugPQAb(), math.MaxInt64)
+	}
 	// Quanten-Angaben (quanten_geld.go): erst in Bloecke ab dem Stichtag.
 	if tx.Quanten != nil || tx.Type == quantenFreischaltungTxArt {
 		f.eng(quantenGeldAb(), math.MaxInt64)
@@ -319,6 +327,14 @@ func blockTauglich(tx *Transaction, blockZeit int64) error {
 	}
 	if tx.PQ != nil && !pqUeberweisungAktiv(blockZeit) {
 		return fmt.Errorf("PQ-Ueberweisung vor dem Stichtag (Block %d)", blockZeit)
+	}
+	if tx.Umzug != nil && tx.Umzug.PQ != nil {
+		if !umzugPQErlaubt(tx) {
+			return fmt.Errorf("PQ-Unterschrift an %s", tx.Type)
+		}
+		if !umzugPQAktiv(blockZeit) {
+			return fmt.Errorf("%s mit PQ-Unterschrift vor dem Stichtag (Block %d)", tx.Type, blockZeit)
+		}
 	}
 	if err := quantenFeldErlaubt(tx, blockZeit); err != nil {
 		return err
