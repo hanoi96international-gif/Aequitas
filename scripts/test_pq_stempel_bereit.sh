@@ -41,4 +41,8 @@ gen 200000;  printf 'kein json' > "$D/web/api/status"; lauf "kaputte Antwort" ha
 gen 200000;  printf '{"height":100000,"pq":{"stempel":{"ab_hoehe":"x"}}}' > "$D/web/api/status"; lauf "Stichhoehe unlesbar" halt
 gen 200000;  printf '{"height":100000,"pq":{"stempel":{"ab_hoehe":0,"eigener":true,"geprueft_ok":5,"geprueft_falsch":0}}}' > "$D/web/api/status"; lauf "keine Erzeugerliste" halt
 printf '{"pq_stempel":{"ab_hoehe":"1e9"}}' > "$D/repo/genesis.json"; st 0 100000 true 5 0; lauf "Stichhoehe im Repo unlesbar" halt
+gen 3600;    st 3600 0 true 0 0;            lauf "frisch neu gestartet (Hoehe 0), Stichhoehe unveraendert" ok
+gen 3600;    st 0 0 true 0 0;               lauf "frisch neu gestartet, neue Stichhoehe ohne gepruefte Stempel" halt
+gen 3600;    printf '{"pq":{"stempel":{"ab_hoehe":3600}}}' > "$D/web/api/status"; lauf "Hoehe fehlt" halt
+gen 3600;    printf '{"height":"null","pq":{"stempel":{"ab_hoehe":3600}}}' > "$D/web/api/status"; lauf "Hoehe keine Zahl" halt
 rm -f "$D/web/api/status"; gen 200000; lauf "ohne Antwort" halt
