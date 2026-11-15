@@ -83,6 +83,7 @@ jobs:
       - run: python3 -I forschung/quantengeld/variante_b.py --selbsttest
       - run: python3 -I forschung/quantengeld/labor.py --selbsttest
       - run: python3 -I forschung/quantengeld/hardware.py --selbsttest
+      - run: python3 -I forschung/quantengeld/hardware_ibm.py --selbsttest
       # Ionenfalle (Quantinuum): Uebersetzung nach pytket hin und zurueck,
       # Warten als sleep, Eingaben begrenzt -- ohne Netz und ohne Token.
       # Eigene Umgebung, damit die gepinnten Pakete nichts anderes beruehren.

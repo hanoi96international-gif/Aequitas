@@ -184,6 +184,33 @@ def schutz_codes() -> list[str] | None:
     return [wert]
 
 
+def fall_fuer_ideal(name: str) -> str:
+    """Fallname der Tabelle -> Fall fuer hw.erwartet. Jede echte, gepraegte
+    Note (auch nach Warten, geschuetzt oder ungeschuetzt, bezahlt) hat ideal
+    die Annahme der echten Note. Bis zum 15.11.2026 stuerzte die Auswertung
+    bei --geschuetzt hier ab (KeyError 'ungeschuetzt nach 0 us') -- NACH dem
+    Lauf auf der Hardware, also bezahlte Rechenzeit ohne Ergebnis."""
+    basis = name.split(" nach ")[0]
+    if basis.startswith(("praegen", "geschuetzt", "ungeschuetzt")):
+        return "echt"
+    return basis
+
+
+def selbsttest() -> None:
+    """Ohne qiskit: jede Fallbezeichnung, die main() bilden kann, hat einen
+    idealen Wert (vor jedem Hardware-Lauf, damit die Auswertung nicht erst
+    nach dem bezahlten Lauf scheitert)."""
+    namen = ["echt", "fremd", "basis", "praegen+pruefen", "praegen+bezahlen+pruefen"]
+    for w in (0, 20, 1000):
+        namen += [f"praegen+pruefen nach {w:g} us", f"ungeschuetzt nach {w:g} us"]
+        namen += [f"geschuetzt({c}) nach {w:g} us" for c in hw.CODES]
+    for name in namen:
+        hw.erwartet(fall_fuer_ideal(name), 3, 3)
+    assert fall_fuer_ideal("ungeschuetzt nach 0 us") == "echt"
+    assert fall_fuer_ideal("fremd") == "fremd"
+    print("selbsttest ok")
+
+
 def zahl(arg: str, standard: int, grenze: int) -> int:
     if arg not in sys.argv:
         return standard
@@ -244,6 +271,9 @@ def backend_und_sampler():
 
 
 def main() -> None:
+    if "--selbsttest" in sys.argv:
+        selbsttest()
+        return
     laeufe = zahl("--laeufe", 8, MAX_LAEUFE)
     schuesse = zahl("--schuesse", 1000, MAX_SCHUESSE)
     T = zahl("--tests", 3, MAX_TESTS)
@@ -337,7 +367,7 @@ def main() -> None:
     for name, f in faelle.items():
         a = sum(f["annahme"]) / len(f["annahme"])
         k = sum(f["korr"]) / len(f["korr"]) if f["korr"] else None
-        ideal = hw.erwartet("echt" if name.startswith("praegen") else name, n, T)
+        ideal = hw.erwartet(fall_fuer_ideal(name), n, T)
         ks = f"{k:.3f}" if k is not None else "-"
         zeilen.append(f"| {name} | {f['qubits']} | {f['tiefe']} | {f['zwei']} | {a:.3f} | {ks} | {ideal:.3f} |")
         aus["faelle"][name] = {"annahme": a, "lesekorrigiert": k, "ideal": ideal, "tiefe": f["tiefe"], "zwei_qubit": f["zwei"]}

@@ -82,6 +82,7 @@ jobs:
           python-version: "3.13"
       - run: pip install --require-hashes --no-deps -r forschung/quantengeld/hardware-anforderungen.txt
       - run: python3 -I forschung/quantengeld/hardware.py --selbsttest
+      - run: python3 -I forschung/quantengeld/hardware_ibm.py --selbsttest
       - name: Lauf
         env:
           MODELL: ${{ inputs.rauschmodell }}
@@ -118,6 +119,7 @@ jobs:
           python-version: "3.13"
       - run: pip install --require-hashes --no-deps -r forschung/quantengeld/hardware-anforderungen.txt
       - run: python3 -I forschung/quantengeld/hardware.py --selbsttest
+      - run: python3 -I forschung/quantengeld/hardware_ibm.py --selbsttest
       - name: Lauf auf echter Hardware
         env:
           IBM_QUANTUM_TOKEN: ${{ secrets.IBM_QUANTUM_TOKEN }}
