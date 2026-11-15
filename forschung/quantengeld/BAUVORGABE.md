@@ -486,6 +486,41 @@ Auf echter Hardware: Workflow im Modus `ibm`, Umgebung `quantenhardware`
 mit Freigabe und dem Secret `IBM_QUANTUM_TOKEN` (IBM-Quantum-Konto, das
 kostenlose Kontingent reicht für einen Lauf).
 
+**Alle vier Bausteine auf echter Hardware (`ibm_marrakesh`, 15.11.2026).**
+Mit halbklassischer QFT beim Prägen, Barriere zwischen Herstellen und
+Prüfen, bester von 8 Übersetzungen:
+
+| Baustein | Messung auf dem echten Chip | ideal |
+|---|---|---|
+| **Prüfen** (echte gegen gefälschte Note) | echte Note 0,806, fremde 0,086, nachgebaut 0,211 – Trennung **+0,59** (lesekorr. +0,62) | +0,77 |
+| **Prägen** (jeder, auf dem Chip, Seriennummer gleichverteilt) | 0,615 (halbklassisch) bzw. 0,642 (kohärent) | 1,000 |
+| **Bezahlen** (Teleportation Zahler → Empfänger, Prüfen beim Empfänger) | **0,488** gegen 0,631 ohne Übertragung; Fälschung 0,21 | 1,000 |
+| **Speichern** (Note wartet zwischen Prägen und Prüfen) | 0 µs 0,59 · 20 µs 0,32 · **50 µs 0,19 = Fälschungsniveau** | 1,000 |
+
+Die halbklassische QFT hilft im Rauschmodell (0,85 → 0,91), auf dem Chip
+nicht: Messen mitten im Lauf und klassisch steuern kostet Mikrosekunden,
+in denen die Note zerfällt – das Rauschmodell kennt diese Wartezeit nicht.
+Aus demselben Grund kostet Bezahlen auf dem Chip 14 Punkte statt 4.
+
+**Die Lücken zum Alltagsgeld, ehrlich beziffert:**
+
+| Lücke | heute (gemessen) | nötig für Alltagsgeld | Faktor | was sie schließt |
+|---|---|---|---|---|
+| **Speicherzeit** der Note | ~20 µs (supraleitend) | Tage bis Jahre | 10¹⁰–10¹³ | fehlerkorrigierter Quantenspeicher (logische Qubits, die sich selbst reparieren); Ionen/Atome halten Sekunden bis Minuten, Kernspins Stunden – noch ohne Fehlerkorrektur über so lange Zeit |
+| **Übertragung** zwischen zwei Geräten | Teleportation **auf einem Chip**: 0,49 | über Netz zwischen Handys/Geräten | – | Quantennetz (verschränkte Paare zwischen Geräten, Speicher an beiden Enden); heute Labor-Strecken |
+| **Prüfgerät** in kryptografischer Größe | 6–9 Qubits, ~50 2-Qubit-Gatter | 10⁸–10¹⁰ logische Qubits, ~2⁶³ Toffoli je Prüfung | ~10⁷ Qubits · ~10¹⁷ Gatter | fehlertolerante Quantenrechner; öffentliche Fahrpläne nennen ~10² logische Qubits Ende der 2020er |
+| **Fälschungssicherheit** | Zyklus der Ordnung 8 (keine) | Isogenie-Gruppe, Ordnung ≈ 2⁴⁰⁹⁶ | – | dieselbe Hardware; Verfahren steht (Zhandry 2025, §8) |
+| **Kette** | Register, Anmelden mit Deckung, h < N – im Knoten, schlafend | Parametersatz eintragen, Transaktionsart einschalten | – | eigener PR mit Sicherheitsprüfung, sobald die Hardware da ist |
+
+**Was „zeitnah in Aequitas“ heißt:** die Kettenseite ist fertig und
+getestet (schlafend), das Protokoll ist auf echter Hardware vollständig
+durchgespielt. Einschalten kann man es erst, wenn eine Note länger lebt als
+ein Bezahlvorgang dauert – heute 20 µs. Bis dahin schützt Aequitas sich mit
+Post-Quanten-Kryptografie (Stufen 2, 3, 5 live). Die Hardware-Läufe sind
+ein Messgerät: sobald IBM (oder ein anderer Anbieter) bessere Chips oder
+Speicher anbietet, zeigt derselbe Workflow, wie weit die Lücke geschrumpft
+ist.
+
 **Nächste Schritte:** (a) ~~Volltexte~~ gelesen (qt-Pegasis, PEGASIS,
 Dartois–Duparc; vom Betreiber hochgeladen). (b) Die 4D-Kette als
 umkehrbaren Schaltkreis zählen (Theta-Koordinaten, Kosten je Schritt aus
