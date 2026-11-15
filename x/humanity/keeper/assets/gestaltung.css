@@ -1,0 +1,147 @@
+/* ══════════════════════════════════════════════════════════════════════
+   AEQUITAS · GESTALTUNG 2026
+   Eine Gestaltung fuer beide Teile der Website: die Inhaltsseiten
+   (landing.go, haengt diese Datei an ihren <style>-Block) und die
+   Anwendung (explorer.html, an explorer.css angehaengt; api_html.go).
+   Steht NACH den bisherigen Regeln und aendert nur die Optik -- keine
+   Kennung, keine Klasse, an der JavaScript haengt.
+   ══════════════════════════════════════════════════════════════════════ */
+
+:root{
+  /* Flaechen: tiefe Tinte statt Grau, Karten mit Hauch von Blau */
+  --bg:#070A12;--card:#0D1220;--card2:#121929;--border:rgba(148,163,184,0.13);
+  /* Ein Hauptakzent (Blau), dazu Quanten-Violett und Tuerkis */
+  --accent:#6E8BFF;--purple:#6E8BFF;--teal:#6E8BFF;--blue:#6E8BFF;
+  --quant:#A48BFF;--quant2:#2DD4BF;
+  --green:#34D399;--neon:#34D399;--gold:#F5B841;--warn:#F5B841;--red:#F87171;--danger:#F87171;
+  --text:#EEF1F7;--muted:#98A2B6;
+  --grad:linear-gradient(120deg,#6E8BFF 0%,#A48BFF 55%,#2DD4BF 100%);
+  --grad-soft:linear-gradient(120deg,rgba(110,139,255,0.16),rgba(164,139,255,0.12) 55%,rgba(45,212,191,0.10));
+  --radius:18px;--radius-sm:12px;--radius-pill:999px;
+  --shadow:0 1px 0 rgba(255,255,255,0.045) inset,0 18px 48px -18px rgba(0,0,0,0.65);
+  --ring:0 0 0 1px rgba(164,139,255,0.35),0 0 0 4px rgba(110,139,255,0.18);
+}
+
+html{background:var(--bg)}
+body{
+  background:var(--bg);
+  background-image:
+    radial-gradient(1100px 560px at 12% -8%,rgba(110,139,255,0.15),transparent 62%),
+    radial-gradient(900px 520px at 96% -4%,rgba(164,139,255,0.11),transparent 60%),
+    radial-gradient(700px 420px at 50% 110%,rgba(45,212,191,0.06),transparent 60%);
+  background-attachment:fixed;
+  font-size:16px;letter-spacing:-0.006em;
+  -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;
+  text-rendering:optimizeLegibility;
+}
+::selection{background:rgba(164,139,255,0.35);color:#fff}
+
+/* ── Kopfzeile: Glas, eine Linie, ruhiger Verlauf oben ─────────────────── */
+header.site-nav,body>nav{
+  background:rgba(7,10,18,0.72);
+  -webkit-backdrop-filter:saturate(160%) blur(18px);backdrop-filter:saturate(160%) blur(18px);
+  border-bottom:1px solid var(--border);box-shadow:0 10px 30px -20px rgba(0,0,0,0.8);
+}
+header.site-nav::before,body>nav::before{height:1px;opacity:0.9;background:var(--grad)}
+.logo-icon{background:var(--grad);border-radius:11px;box-shadow:0 6px 22px -6px rgba(164,139,255,0.55)}
+.logo-text{background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:3.2px}
+.logo-sub{letter-spacing:2.2px;opacity:0.85}
+.lang-sel{background:rgba(255,255,255,0.04);border-color:var(--border);color:var(--text)}
+.lang-sel:hover{border-color:rgba(164,139,255,0.4)}
+
+/* Reiter als ruhige Segmente; aktiver Reiter mit Verlaufsglanz */
+.tabs{gap:4px;border-top-color:rgba(148,163,184,0.08)}
+.tab{color:var(--muted);font-weight:600;letter-spacing:0.15px;border:1px solid transparent;border-radius:var(--radius-pill);transition:color .2s,background .2s,border-color .2s}
+.tab:hover{color:var(--text);background:rgba(255,255,255,0.05)}
+.tab.active,.tab[aria-current="page"]{color:#fff;background:var(--grad-soft);border-color:rgba(164,139,255,0.42);box-shadow:0 6px 18px -10px rgba(164,139,255,0.7)}
+.tab-biz{color:var(--gold)}
+.tab-sep{opacity:0.5}
+
+/* Breite Bildschirme: Logo, Reiter und Aktionen in EINER Zeile */
+@media (min-width:1240px){
+  header.site-nav,body>nav{flex-direction:row;align-items:center;gap:6px;padding:0 18px}
+  header.site-nav .nav-top,body>nav .nav-top{display:contents}
+  header.site-nav .logo-wrap,body>nav .logo-wrap{order:1;margin-right:10px;height:64px}
+  header.site-nav .tabs,body>nav .tabs{order:2;flex:1 1 auto;border-top:none;padding:0 6px;justify-content:center}
+  header.site-nav .lang-sel,body>nav .lang-sel{order:3}
+  header.site-nav .header-right,body>nav .header-right{order:4}
+  header.site-nav .logo-sub,body>nav .logo-sub{display:none}
+  .tab{padding:8px 13px;font-size:0.8rem}
+  section[id]{scroll-margin-top:84px}
+  .hero{padding-top:128px}
+}
+
+/* ── Knoepfe ──────────────────────────────────────────────────────────── */
+.btn-primary,.nav-cta{
+  background:var(--grad);background-size:170% 170%;background-position:0% 50%;
+  color:#fff;border:none;
+  box-shadow:0 12px 30px -12px rgba(110,139,255,0.75),0 1px 0 rgba(255,255,255,0.18) inset;
+  transition:background-position .45s ease,transform .15s ease,box-shadow .2s ease;
+}
+.btn-primary:hover,.nav-cta:hover{background-position:100% 50%;transform:translateY(-1px);opacity:1;
+  box-shadow:0 16px 36px -12px rgba(164,139,255,0.8),0 1px 0 rgba(255,255,255,0.2) inset}
+.btn-secondary{background:rgba(255,255,255,0.035);border:1px solid rgba(148,163,184,0.24);color:var(--text)}
+.btn-secondary:hover{background:rgba(164,139,255,0.10);border-color:rgba(164,139,255,0.45)}
+.btn-primary:focus-visible,.btn-secondary:focus-visible,.nav-cta:focus-visible,.tab:focus-visible{outline:none;box-shadow:var(--ring)}
+
+/* ── Abzeichen ────────────────────────────────────────────────────────── */
+.hero-badge{background:rgba(245,184,65,0.10);border-color:rgba(245,184,65,0.32);letter-spacing:0.3px}
+.badge{border-radius:var(--radius-pill)}
+.badge-dag{background:rgba(164,139,255,0.10);border:1px solid rgba(164,139,255,0.32);color:#C4B5FF}
+
+/* ── Ueberschriften ───────────────────────────────────────────────────── */
+h1,h2,.rhero-title,.sec-title,.hero h1{letter-spacing:-0.028em}
+.rhero-title{font-weight:800}
+
+/* ── Karten: eine Familie, feine Kante, weicher Schatten ──────────────── */
+.rcard,.ic,.section,.exp-panel,.idx,.nc,.rhero,.exp-stat,.stat,.stat-item,
+.fairness-panel,.rstep,.dag-panel,.mm-card,.phil-card,.pool4-card,.ubi-src-card,.ubi-hero-section{
+  border-color:var(--border);border-radius:var(--radius);box-shadow:var(--shadow)}
+.rhero{background:
+    radial-gradient(800px 260px at 50% -40%,rgba(164,139,255,0.16),transparent 70%),
+    linear-gradient(180deg,rgba(255,255,255,0.025),rgba(255,255,255,0.01));
+  border:1px solid rgba(164,139,255,0.20)}
+.rstep:hover,.pool4-card:hover,.ubi-src-card:hover,.stat:hover,.exp-stat:hover{border-color:rgba(164,139,255,0.35)}
+
+/* ── Zahlen: gleiche Ziffernbreite, nie umbrechen ─────────────────────── */
+.live-num,.stat-val,.stat-num,.exp-stat-val,.qg-wert,.pool4-amount,.ubi-pool-amount,.idx-big,.mval,.nstat{
+  font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1}
+.live-num,.stat-val,.stat-num,.exp-stat-val{white-space:nowrap}
+.live-strip .live-num{font-size:clamp(1.15rem,2.2vw,1.8rem)}
+.stat-val{font-size:clamp(1.2rem,2.4vw,1.7rem)}
+.live-chip{border-radius:var(--radius);border-color:var(--border);background:linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.012));box-shadow:var(--shadow)}
+
+/* ── Tabellen ─────────────────────────────────────────────────────────── */
+.exp-table thead th{color:var(--muted);letter-spacing:1px;font-weight:600}
+.exp-table tbody tr.exp-tr:hover{background:rgba(164,139,255,0.06)}
+
+/* ── Quantensicher: eigener Akzent (PQ-Stempel, Quantengeld) ──────────── */
+.exp-badge-pq{background:rgba(164,139,255,0.14);border:1px solid rgba(164,139,255,0.45);color:#CFC2FF}
+.qg-panel{border:1px solid rgba(164,139,255,0.34);background:
+    radial-gradient(700px 220px at 0% 0%,rgba(164,139,255,0.18),transparent 70%),
+    radial-gradient(600px 220px at 100% 100%,rgba(45,212,191,0.10),transparent 70%),
+    var(--card);box-shadow:var(--shadow)}
+.qg-logo{background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+
+/* ── Fusszeile ────────────────────────────────────────────────────────── */
+.site-footer,footer{border-top:1px solid var(--border)}
+.footer-links a{color:var(--muted)}
+.footer-links a:hover{color:var(--text)}
+
+/* ── Bewegung nur, wenn erwuenscht ────────────────────────────────────── */
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;scroll-behavior:auto!important}
+}
+
+/* ── Block-Details: immer ueber allem, "Schliessen" immer erreichbar ─────
+   Das Overlay haengt explorer.js direkt unter <body> (vorher verdeckte die
+   Kopfzeile auf dem Handy den Knopf). Kopf der Karte klebt oben, grosse
+   Tippflaeche, Abstand zur Kerbe (Safe Area). */
+.block-detail-overlay{z-index:2000;background:rgba(3,5,10,0.78);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
+  padding:max(16px,env(safe-area-inset-top)) 12px max(16px,env(safe-area-inset-bottom))}
+.block-detail-overlay.open{padding-top:max(24px,env(safe-area-inset-top))}
+.bdc{border-radius:var(--radius);border:1px solid rgba(164,139,255,0.32);box-shadow:0 30px 80px -20px rgba(0,0,0,0.8);overflow:visible}
+.bdc-hdr{position:sticky;top:0;z-index:2;background:rgba(18,25,41,0.96);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);border-radius:var(--radius) var(--radius) 0 0}
+.bdc-close{min-height:40px;min-width:44px;display:inline-flex;align-items:center;justify-content:center;font-size:1rem;font-weight:600;color:var(--text);
+  background:rgba(255,255,255,0.06);border:1px solid rgba(148,163,184,0.28);border-radius:var(--radius-pill);padding:6px 14px}
+.bdc-close:hover,.bdc-close:focus-visible{background:rgba(164,139,255,0.18);border-color:rgba(164,139,255,0.5);outline:none}

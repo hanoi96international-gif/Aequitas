@@ -46,6 +46,8 @@ func landingTeile() (kopf, hero, fuss string) {
 		panic("landingQuelle: <main> fehlt")
 	}
 	kopf = landingQuelle[:i+len(mainAuf)]
+	// Gemeinsame Gestaltung (assets/gestaltung.css) ans Ende des <style>-Blocks.
+	kopf = strings.Replace(kopf, "</style>", gestaltungCSS+"\n</style>", 1)
 	fuss = landingQuelle[j:]
 	koerper := landingQuelle[i+len(mainAuf) : j]
 	k := strings.Index(koerper, `<section id="`)
