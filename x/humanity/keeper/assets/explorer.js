@@ -226,6 +226,15 @@ en:{
   'x-seite-aelter':"Older →",
   'x-seite-gehe':"Go to height",
   'x-pq-stempel':'Quantum-safe stamp: the producer also signed this block with ML-DSA-65 (every 60th block). Every node checks it.',
+  'x-qg-titel':"Decentralized quantum money",
+  'x-qg-k-status':"Status",
+  'x-qg-k-saetze':"Parameter sets (enabled by ⅔ of verifiers)",
+  'x-qg-k-noten':"Registered notes",
+  'x-qg-k-gedeckt':"Backing in the pool",
+  'x-qg-k-topf':"Pool address (no key exists)",
+  'x-qg-hinweis':"Anyone can mint a quantum note; the chain registers it once, with backing in AEQ, and every recipient checks it themselves. A parameter set is enabled only by ⅔ of the verifiers, once quantum hardware holds notes longer than a payment takes — on today's real chips a note lives about 20 µs. Until then Aequitas protects itself with post-quantum signatures.",
+  'x-qg-aktiv':"active on the main network",
+  'x-qg-ab':"active on the main network from",
   'x-loading-topology':'Loading topology…',
   'x-loading-transactions':'Loading transactions...',
   'x-lorenz-curve':'Lorenz Curve',
@@ -576,6 +585,15 @@ de:{
   'x-seite-aelter':"Ältere →",
   'x-seite-gehe':"Zur Höhe",
   'x-pq-stempel':'Quantensicherer Stempel: Der Erzeuger hat diesen Block zusätzlich mit ML-DSA-65 unterschrieben (jeder 60. Block). Jeder Knoten prüft ihn.',
+  'x-qg-titel':"Dezentrales Quantengeld",
+  'x-qg-k-status':"Status",
+  'x-qg-k-saetze':"Parametersätze (freigeschaltet von ⅔ der Prüfer)",
+  'x-qg-k-noten':"Angemeldete Noten",
+  'x-qg-k-gedeckt':"Deckung im Topf",
+  'x-qg-k-topf':"Topf-Adresse (zu ihr gibt es keinen Schlüssel)",
+  'x-qg-hinweis':"Jeder kann eine Quanten-Note prägen; die Kette meldet sie einmal an, mit Deckung in AEQ, und jeder Empfänger prüft sie selbst. Ein Parametersatz wird nur von ⅔ der Prüfer freigeschaltet, sobald Quanten-Hardware Noten länger hält, als eine Zahlung dauert – auf heutigen echten Chips lebt eine Note etwa 20 µs. Bis dahin schützt sich Aequitas mit Post-Quanten-Signaturen.",
+  'x-qg-aktiv':"aktiv im Hauptnetz",
+  'x-qg-ab':"aktiv im Hauptnetz ab",
   'x-loading-topology':'Netzstruktur wird geladen …',
   'x-loading-transactions':'Überweisungen werden geladen …',
   'x-lorenz-curve':'Lorenz Curve',
@@ -939,6 +957,15 @@ es:{
   'x-seite-aelter':"Más antiguos →",
   'x-seite-gehe':"Ir a la altura",
   'x-pq-stempel':'Sello resistente a la computación cuántica: el productor firmó además este bloque con ML-DSA-65 (cada 60 bloques). Cada nodo lo comprueba.',
+  'x-qg-titel':"Dinero cuántico descentralizado",
+  'x-qg-k-status':"Estado",
+  'x-qg-k-saetze':"Conjuntos de parámetros (habilitados por ⅔ de los verificadores)",
+  'x-qg-k-noten':"Billetes registrados",
+  'x-qg-k-gedeckt':"Respaldo en el fondo",
+  'x-qg-k-topf':"Dirección del fondo (no existe clave)",
+  'x-qg-hinweis':"Cualquiera puede acuñar un billete cuántico; la cadena lo registra una sola vez, con respaldo en AEQ, y cada receptor lo comprueba por sí mismo. Un conjunto de parámetros solo lo habilitan ⅔ de los verificadores cuando el hardware cuántico conserve los billetes más tiempo del que dura un pago; en los chips reales de hoy un billete vive unos 20 µs. Hasta entonces Aequitas se protege con firmas poscuánticas.",
+  'x-qg-aktiv':"activo en la red principal",
+  'x-qg-ab':"activo en la red principal desde",
   'x-loading-topology':'Cargando topología…',
   'x-loading-transactions':'Cargando transacciones…',
   'x-lorenz-curve':'Lorenz Curve',
@@ -1291,6 +1318,15 @@ ru:{
   'x-seite-aelter':"Старее →",
   'x-seite-gehe':"К высоте",
   'x-pq-stempel':'Квантово-стойкий штамп: создатель дополнительно подписал этот блок ML-DSA-65 (каждый 60-й блок). Каждый узел его проверяет.',
+  'x-qg-titel':"Децентрализованные квантовые деньги",
+  'x-qg-k-status':"Статус",
+  'x-qg-k-saetze':"Наборы параметров (включаются ⅔ проверяющих)",
+  'x-qg-k-noten':"Зарегистрированные купюры",
+  'x-qg-k-gedeckt':"Обеспечение в пуле",
+  'x-qg-k-topf':"Адрес пула (ключа не существует)",
+  'x-qg-hinweis':"Любой может выпустить квантовую купюру; цепочка регистрирует её один раз с обеспечением в AEQ, и каждый получатель проверяет её сам. Набор параметров включают только ⅔ проверяющих, когда квантовое оборудование сможет хранить купюры дольше, чем длится платёж, — на сегодняшних реальных чипах купюра живёт около 20 мкс. До тех пор Aequitas защищается постквантовыми подписями.",
+  'x-qg-aktiv':"активно в основной сети",
+  'x-qg-ab':"активно в основной сети с",
   'x-loading-topology':'Загрузка топологии…',
   'x-loading-transactions':'Загрузка переводов…',
   'x-lorenz-curve':'Lorenz Curve',
@@ -1640,6 +1676,15 @@ zh:{
   'x-seite-aelter':"较旧 →",
   'x-seite-gehe':"跳到高度",
   'x-pq-stempel':'抗量子印章：出块者还用 ML-DSA-65 签署了此区块（每 60 个区块一次）。每个节点都会验证。',
+  'x-qg-titel':"去中心化量子货币",
+  'x-qg-k-status':"状态",
+  'x-qg-k-saetze':"参数集（由 ⅔ 验证者启用）",
+  'x-qg-k-noten':"已登记的钞票",
+  'x-qg-k-gedeckt':"资金池中的担保",
+  'x-qg-k-topf':"资金池地址（不存在私钥）",
+  'x-qg-hinweis':"任何人都可以铸造量子钞票；链只登记一次，并以 AEQ 作担保，每个收款人都会自行验证。只有当量子硬件保存钞票的时间长于一次支付所需时间时，参数集才会由 ⅔ 的验证者启用——在当今真实芯片上，一张钞票只能存活约 20 微秒。在此之前，Aequitas 以后量子签名保护自身。",
+  'x-qg-aktiv':"已在主网启用",
+  'x-qg-ab':"主网启用时间",
   'x-loading-topology':'正在加载网络结构…',
   'x-loading-transactions':'正在加载交易…',
   'x-lorenz-curve':'Lorenz Curve',
@@ -1990,6 +2035,15 @@ id:{
   'x-seite-aelter':"Lebih lama →",
   'x-seite-gehe':"Ke tinggi",
   'x-pq-stempel':'Stempel tahan kuantum: produsen juga menandatangani blok ini dengan ML-DSA-65 (setiap blok ke-60). Setiap node memeriksanya.',
+  'x-qg-titel':"Uang kuantum terdesentralisasi",
+  'x-qg-k-status':"Status",
+  'x-qg-k-saetze':"Set parameter (diaktifkan oleh ⅔ verifikator)",
+  'x-qg-k-noten':"Uang kertas terdaftar",
+  'x-qg-k-gedeckt':"Jaminan di kumpulan",
+  'x-qg-k-topf':"Alamat kumpulan (tidak ada kunci)",
+  'x-qg-hinweis':"Siapa pun dapat mencetak uang kertas kuantum; rantai mendaftarkannya sekali, dengan jaminan dalam AEQ, dan setiap penerima memeriksanya sendiri. Set parameter hanya diaktifkan oleh ⅔ verifikator setelah perangkat keras kuantum dapat menyimpan uang kertas lebih lama dari durasi pembayaran — pada chip nyata saat ini uang kertas bertahan sekitar 20 µs. Sampai saat itu Aequitas melindungi diri dengan tanda tangan pasca-kuantum.",
+  'x-qg-aktiv':"aktif di jaringan utama",
+  'x-qg-ab':"aktif di jaringan utama mulai",
   'x-loading-topology':'Memuat topologi…',
   'x-loading-transactions':'Memuat transaksi…',
   'x-lorenz-curve':'Lorenz Curve',
@@ -2335,6 +2389,15 @@ it:{
   'x-seite-aelter':"Più vecchi →",
   'x-seite-gehe':"Vai all'altezza",
   'x-pq-stempel':'Timbro a prova di quantistica: il produttore ha firmato questo blocco anche con ML-DSA-65 (ogni 60° blocco). Ogni nodo lo verifica.',
+  'x-qg-titel':"Moneta quantistica decentralizzata",
+  'x-qg-k-status':"Stato",
+  'x-qg-k-saetze':"Set di parametri (abilitati da ⅔ dei verificatori)",
+  'x-qg-k-noten':"Banconote registrate",
+  'x-qg-k-gedeckt':"Copertura nel fondo",
+  'x-qg-k-topf':"Indirizzo del fondo (non esiste chiave)",
+  'x-qg-hinweis':"Chiunque può coniare una banconota quantistica; la catena la registra una sola volta, con copertura in AEQ, e ogni destinatario la verifica da sé. Un set di parametri viene abilitato solo da ⅔ dei verificatori quando l'hardware quantistico conserva le banconote più a lungo di quanto duri un pagamento: sui chip reali di oggi una banconota vive circa 20 µs. Fino ad allora Aequitas si protegge con firme post-quantistiche.",
+  'x-qg-aktiv':"attivo sulla rete principale",
+  'x-qg-ab':"attivo sulla rete principale dal",
   'x-loading-topology':'Caricamento della topologia…',
   'x-loading-transactions':'Caricamento delle transazioni…',
   'x-lorenz-curve':'Lorenz Curve',
@@ -2681,6 +2744,15 @@ tr:{
   'x-seite-aelter':"Daha eski →",
   'x-seite-gehe':"Yüksekliğe git",
   'x-pq-stempel':'Kuantuma dayanıklı damga: üretici bu bloğu ayrıca ML-DSA-65 ile imzaladı (her 60. blok). Her düğüm bunu doğrular.',
+  'x-qg-titel':"Merkeziyetsiz kuantum para",
+  'x-qg-k-status':"Durum",
+  'x-qg-k-saetze':"Parametre setleri (doğrulayıcıların ⅔'ü tarafından etkinleştirilir)",
+  'x-qg-k-noten':"Kayıtlı banknotlar",
+  'x-qg-k-gedeckt':"Havuzdaki karşılık",
+  'x-qg-k-topf':"Havuz adresi (anahtarı yoktur)",
+  'x-qg-hinweis':"Herkes kuantum banknot basabilir; zincir onu bir kez, AEQ karşılığıyla kaydeder ve her alıcı kendisi doğrular. Bir parametre seti, kuantum donanımı banknotları bir ödemenin süresinden daha uzun tutabildiğinde yalnızca doğrulayıcıların ⅔'ü tarafından etkinleştirilir — bugünkü gerçek çiplerde bir banknot yaklaşık 20 µs yaşar. O zamana kadar Aequitas kendini kuantum sonrası imzalarla korur.",
+  'x-qg-aktiv':"ana ağda etkin",
+  'x-qg-ab':"ana ağda şu tarihten itibaren etkin:",
   'x-loading-topology':'Ağ yapısı yükleniyor…',
   'x-loading-transactions':'İşlemler yükleniyor…',
   'x-lorenz-curve':'Lorenz Curve',
@@ -3033,6 +3105,15 @@ fr:{
   'x-seite-aelter':"Plus anciens →",
   'x-seite-gehe':"Aller à la hauteur",
   'x-pq-stempel':'Tampon résistant au quantique : le producteur a aussi signé ce bloc avec ML-DSA-65 (un bloc sur 60). Chaque nœud le vérifie.',
+  'x-qg-titel':"Monnaie quantique décentralisée",
+  'x-qg-k-status':"Statut",
+  'x-qg-k-saetze':"Jeux de paramètres (activés par ⅔ des vérificateurs)",
+  'x-qg-k-noten':"Billets enregistrés",
+  'x-qg-k-gedeckt':"Couverture dans le fonds",
+  'x-qg-k-topf':"Adresse du fonds (aucune clé n'existe)",
+  'x-qg-hinweis':"Chacun peut frapper un billet quantique ; la chaîne l'enregistre une seule fois, avec une couverture en AEQ, et chaque destinataire le vérifie lui-même. Un jeu de paramètres n'est activé que par ⅔ des vérificateurs lorsque le matériel quantique conserve les billets plus longtemps que ne dure un paiement — sur les vraies puces d'aujourd'hui, un billet vit environ 20 µs. D'ici là, Aequitas se protège par des signatures post-quantiques.",
+  'x-qg-aktiv':"actif sur le réseau principal",
+  'x-qg-ab':"actif sur le réseau principal à partir du",
   'x-loading-topology':'Chargement de la topologie…',
   'x-loading-transactions':'Chargement des transactions…',
   'x-lorenz-curve':'Lorenz Curve',
@@ -3384,6 +3465,15 @@ pt:{
   'x-seite-aelter':"Mais antigos →",
   'x-seite-gehe':"Ir para altura",
   'x-pq-stempel':'Carimbo resistente à computação quântica: o produtor também assinou este bloco com ML-DSA-65 (a cada 60 blocos). Cada nó verifica-o.',
+  'x-qg-titel':"Dinheiro quântico descentralizado",
+  'x-qg-k-status':"Estado",
+  'x-qg-k-saetze':"Conjuntos de parâmetros (ativados por ⅔ dos verificadores)",
+  'x-qg-k-noten':"Cédulas registradas",
+  'x-qg-k-gedeckt':"Lastro no fundo",
+  'x-qg-k-topf':"Endereço do fundo (não existe chave)",
+  'x-qg-hinweis':"Qualquer pessoa pode cunhar uma cédula quântica; a cadeia a registra uma única vez, com lastro em AEQ, e cada destinatário a verifica por conta própria. Um conjunto de parâmetros só é ativado por ⅔ dos verificadores quando o hardware quântico conservar as cédulas por mais tempo do que dura um pagamento — nos chips reais de hoje uma cédula vive cerca de 20 µs. Até lá, a Aequitas se protege com assinaturas pós-quânticas.",
+  'x-qg-aktiv':"ativo na rede principal",
+  'x-qg-ab':"ativo na rede principal a partir de",
   'x-loading-topology':'A carregar a topologia…',
   'x-loading-transactions':'A carregar transações…',
   'x-lorenz-curve':'Lorenz Curve',
@@ -3735,6 +3825,15 @@ ar:{
   'x-seite-aelter':"أقدم →",
   'x-seite-gehe':"انتقل إلى الارتفاع",
   'x-pq-stempel':'ختم مقاوم للحوسبة الكمومية: وقّع المُنتِج هذه الكتلة أيضًا بـ ML-DSA-65 (كل كتلة ستين). تتحقق منه كل عقدة.',
+  'x-qg-titel':"نقود كمومية لامركزية",
+  'x-qg-k-status':"الحالة",
+  'x-qg-k-saetze':"مجموعات المعاملات (يفعّلها ⅔ المدققين)",
+  'x-qg-k-noten':"الأوراق المسجلة",
+  'x-qg-k-gedeckt':"الغطاء في الصندوق",
+  'x-qg-k-topf':"عنوان الصندوق (لا يوجد مفتاح)",
+  'x-qg-hinweis':"يمكن لأي شخص سكّ ورقة كمومية؛ تسجلها السلسلة مرة واحدة بغطاء من AEQ، ويتحقق منها كل مستلم بنفسه. لا يفعّل مجموعة المعاملات إلا ⅔ المدققين عندما تحفظ الأجهزة الكمومية الأوراق مدة أطول من مدة الدفع — على الرقائق الحقيقية اليوم تعيش الورقة نحو 20 ميكروثانية. وحتى ذلك الحين تحمي Aequitas نفسها بتوقيعات ما بعد الكم.",
+  'x-qg-aktiv':"مفعّل على الشبكة الرئيسية",
+  'x-qg-ab':"مفعّل على الشبكة الرئيسية اعتبارًا من",
   'x-loading-topology':'جارٍ تحميل بنية الشبكة…',
   'x-loading-transactions':'جارٍ تحميل المعاملات…',
   'x-lorenz-curve':'Lorenz Curve',
@@ -4084,6 +4183,15 @@ hi:{
   'x-seite-aelter':"पुराने →",
   'x-seite-gehe':"ऊँचाई पर जाएँ",
   'x-pq-stempel':'क्वांटम-सुरक्षित मुहर: उत्पादक ने इस ब्लॉक पर ML-DSA-65 से भी हस्ताक्षर किए (हर 60वाँ ब्लॉक)। हर नोड इसे जाँचता है।',
+  'x-qg-titel':"विकेंद्रीकृत क्वांटम मुद्रा",
+  'x-qg-k-status':"स्थिति",
+  'x-qg-k-saetze':"पैरामीटर सेट (⅔ सत्यापनकर्ताओं द्वारा सक्षम)",
+  'x-qg-k-noten':"पंजीकृत नोट",
+  'x-qg-k-gedeckt':"पूल में समर्थन",
+  'x-qg-k-topf':"पूल पता (कोई कुंजी मौजूद नहीं)",
+  'x-qg-hinweis':"कोई भी क्वांटम नोट बना सकता है; चेन उसे एक बार, AEQ के समर्थन के साथ, पंजीकृत करती है और हर प्राप्तकर्ता उसे स्वयं जाँचता है। पैरामीटर सेट केवल ⅔ सत्यापनकर्ता तभी सक्षम करते हैं जब क्वांटम हार्डवेयर नोटों को किसी भुगतान की अवधि से अधिक समय तक रख सके — आज के वास्तविक चिप्स पर एक नोट लगभग 20 µs जीवित रहता है। तब तक Aequitas पोस्ट-क्वांटम हस्ताक्षरों से अपनी रक्षा करता है।",
+  'x-qg-aktiv':"मुख्य नेटवर्क पर सक्रिय",
+  'x-qg-ab':"मुख्य नेटवर्क पर सक्रिय होगा:",
   'x-loading-topology':'नेटवर्क संरचना लोड हो रही है…',
   'x-loading-transactions':'लेन-देन लोड हो रहे हैं…',
   'x-lorenz-curve':'Lorenz Curve',
@@ -8128,7 +8236,45 @@ async function restoreWalletFromStorage() {
   } catch(e) {}
 }
 
+// Dezentrales Quantengeld (quanten_geld.go): Stand aus /api/quanten/stand.
+// Nur Zahlen und die Topf-Adresse werden eingesetzt (textContent, nie HTML).
+async function loadQuantengeld() {
+  try {
+    const q = await aeqHoleJson('/api/quanten/stand');
+    if (!q || typeof q !== 'object') return;
+    const t = (T[curLang] || T.en);
+    const st = document.getElementById('qg-status');
+    if (st) {
+      if (q.aktiv) {
+        st.textContent = '● ' + (t['x-qg-aktiv'] || T.en['x-qg-aktiv']);
+        st.className = 'qg-wert qg-an';
+      } else if (typeof q.ab === 'number') {
+        const d = new Date(q.ab * 1000);
+        st.textContent = (t['x-qg-ab'] || T.en['x-qg-ab']) + ' ' + d.toLocaleString(curLang, {dateStyle: 'medium', timeStyle: 'short'});
+        st.className = 'qg-wert qg-bald';
+      }
+    }
+    const s = document.getElementById('qg-saetze');
+    if (s && Array.isArray(q.saetze)) s.textContent = q.saetze.length ? q.saetze.map(function (x) { return String(x.name) + ' (≈2^' + Number(x.ordnung_bits) + ')'; }).join(', ') : '0';
+    const n = document.getElementById('qg-noten');
+    if (n && typeof q.noten === 'number') n.textContent = fmt(q.noten);
+    const g = document.getElementById('qg-gedeckt');
+    if (g && typeof q.gedeckt_aeq === 'number') g.textContent = fmt(q.gedeckt_aeq) + ' AEQ';
+    const tp = document.getElementById('qg-topf');
+    if (tp && typeof q.topf === 'string' && /^0x[0-9a-f]{40}$/.test(q.topf)) tp.textContent = q.topf;
+  } catch (e) {}
+}
+
+// Block-Details direkt unter <body>: im Explorer-Reiter (position:relative;
+// z-index:1, eine eigene Ebene) lag das Overlay trotz z-index:1000 UNTER der
+// Kopfzeile -- auf dem Handy war "Close" verdeckt und nicht erreichbar.
+(function () {
+  const ov = document.getElementById('block-detail-overlay');
+  if (ov && ov.parentElement !== document.body) document.body.appendChild(ov);
+})();
+
 checkProofParams();
+loadQuantengeld();
 restoreWalletFromStorage();
 loadValidatorLabels();
 loadStatus();
@@ -8163,6 +8309,7 @@ function pollWhenTabActive(tabContentId, fn) {
   };
 }
 setInterval(pollWhenVisible(loadStatus), 6000);
+setInterval(pollWhenVisible(loadQuantengeld), 30000);
 setInterval(pollWhenVisible(loadHealth), 30000);
 setInterval(pollWhenVisible(loadBlocks), 6000);
 setInterval(pollWhenTabActive('tab-explorer', loadHumans), 10000);

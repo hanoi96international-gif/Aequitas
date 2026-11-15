@@ -29,6 +29,16 @@ var explorerCSS string
 //go:embed assets/explorer.js
 var explorerJS string
 
+// gestaltungCSS: die gemeinsame Gestaltung der Website (assets/gestaltung.css),
+// angehaengt an explorer.css und an den <style>-Block der Inhaltsseiten
+// (seiten.go, landingTeile). Steht NACH den bisherigen Regeln.
+//
+//go:embed assets/gestaltung.css
+var gestaltungCSS string
+
+// explorerCSSGesamt: was /explorer.css ausliefert (und was die Version hasht).
+var explorerCSSGesamt = explorerCSS + "\n" + gestaltungCSS
+
 // explorerCSSVersion/explorerJSVersion fingerprint the embedded content so
 // browsers never serve a stale cached copy after a deploy.
 //
@@ -46,7 +56,7 @@ var explorerJS string
 // different URL, which a browser has never cached, so the cache no longer
 // needs to be short-lived to stay correct (see handleExplorerCSS/JS's own
 // comment for the resulting long, safe cache lifetime).
-var explorerCSSVersion = fmt.Sprintf("%08x", crc32.ChecksumIEEE([]byte(explorerCSS)))
+var explorerCSSVersion = fmt.Sprintf("%08x", crc32.ChecksumIEEE([]byte(explorerCSSGesamt)))
 var explorerJSVersion = fmt.Sprintf("%08x", crc32.ChecksumIEEE([]byte(explorerJS)))
 
 // explorerHTMLVersioned is explorerHTML with its stylesheet/script tags
