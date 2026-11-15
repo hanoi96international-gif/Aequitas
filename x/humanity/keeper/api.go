@@ -1257,6 +1257,10 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	mux.HandleFunc("/api/quanten/stand", a.lesenBegrenzt("/api/quanten/stand", a.handleQuantenStand))
 	mux.HandleFunc("/api/quanten/praegen", a.zumLeiter(a.handleQuantenPraegen))
 	mux.HandleFunc("/api/quanten/freischaltung", a.zumLeiter(a.handleQuantenFreischaltung))
+	// Sammelweg (quanten_sammeln.go): eine Stimme je Anfrage, beim Leiter.
+	mux.HandleFunc("/api/quanten/stimme", a.zumLeiter(a.handleQuantenStimme))
+	// Offene Vorschlaege dieses Knotens (gefuellt beim Leiter, der sammelt).
+	mux.HandleFunc("/api/quanten/abstimmungen", a.lesenBegrenzt("/api/quanten/abstimmungen", a.handleQuantenAbstimmungen))
 	// Satz des Gleichgewichts ankuendigen (satz_plan.go): zwei
 	// Betreiber-Menschen, nur beim Leiter.
 	mux.HandleFunc("/api/wirtschaft/satz", a.satzGrenze(a.zumLeiter(a.handleSatzAnkuendigung)))

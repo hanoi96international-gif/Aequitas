@@ -411,10 +411,19 @@ type quantenUrteil struct {
 	regel, text string
 	note        quantenNoteEintrag
 	satz        quantenSatzEintrag
+	// stimme: 1-basiert die Stimme, an der die Freischaltung scheiterte
+	// (0 = keine einzelne) -- der Sammelweg verwirft genau sie
+	// (quanten_sammeln.go).
+	stimme int
 }
 
 func quantenBefund(regel, format string, args ...interface{}) quantenUrteil {
 	return quantenUrteil{regel: regel, text: fmt.Sprintf(format, args...)}
+}
+
+func (u quantenUrteil) mitStimme(i int) quantenUrteil {
+	u.stimme = i
+	return u
 }
 
 // quantenPraegenUrteilLocked: darf diese Ueberweisung an den Topf eine Note
@@ -510,10 +519,10 @@ func (cs *ChainState) quantenFreischaltungUrteilLocked(ctx context.Context, tx *
 	for i := range q.Stimmen {
 		m := strings.ToLower(strings.TrimSpace(q.Stimmen[i].Bescheinigung.Mensch))
 		if behauptet[m] {
-			return quantenBefund("quanten_stimme", "Stimme %d: %s stimmt zweimal", i+1, kurzAdresse(m)), nil
+			return quantenBefund("quanten_stimme", "Stimme %d: %s stimmt zweimal", i+1, kurzAdresse(m)).mitStimme(i + 1), nil
 		}
 		if !stimmberechtigt[m] {
-			return quantenBefund("quanten_stimme", "Stimme %d: %s ist zu %d kein Pruefer", i+1, kurzAdresse(m), zeit), nil
+			return quantenBefund("quanten_stimme", "Stimme %d: %s ist zu %d kein Pruefer", i+1, kurzAdresse(m), zeit).mitStimme(i + 1), nil
 		}
 		behauptet[m] = true
 	}
@@ -528,7 +537,7 @@ func (cs *ChainState) quantenFreischaltungUrteilLocked(ctx context.Context, tx *
 	for i := range q.Stimmen {
 		s := &q.Stimmen[i]
 		if s.Zeit <= 0 || s.Zeit > sattAdd(zeit, nachweisHoechstensVoraus) || zeit-s.Zeit > verifierStimmeHoechstensAlt {
-			return quantenBefund("quanten_stimme_zeit", "Stimme %d von %d, beschlossen %d", i+1, s.Zeit, zeit), nil
+			return quantenBefund("quanten_stimme_zeit", "Stimme %d von %d, beschlossen %d", i+1, s.Zeit, zeit).mitStimme(i + 1), nil
 		}
 		// "fuer" ist eine Adresse, die kein Mensch ist: niemand bescheinigt
 		// hier sich selbst etwas (wie beim Austritt, verifier_register.go).
@@ -536,11 +545,11 @@ func (cs *ChainState) quantenFreischaltungUrteilLocked(ctx context.Context, tx *
 			if errors.Is(err, errZulassungNichtLesbar) {
 				return quantenUrteil{}, err
 			}
-			return quantenBefund("quanten_stimme", "Stimme %d: %v", i+1, err), nil
+			return quantenBefund("quanten_stimme", "Stimme %d: %v", i+1, err).mitStimme(i + 1), nil
 		}
 		// Audit B2: PQ-Teil des Pruefers (pruefer_pq.go).
 		if err := prueferPQPruefen(s, nachricht(ubiPoolAddr, s.Zeit), prueferPQPflicht(zeit), cs.prueferZusageVon); err != nil {
-			return quantenBefund("quanten_stimme_pq", "Stimme %d: %v", i+1, err), nil
+			return quantenBefund("quanten_stimme_pq", "Stimme %d: %v", i+1, err).mitStimme(i + 1), nil
 		}
 		stimmen[s.Bescheinigung.Mensch] = true
 	}
@@ -774,24 +783,7 @@ func (a *APIServer) handleQuantenFreischaltung(w http.ResponseWriter, r *http.Re
 	}
 	tx := Transaction{Type: quantenFreischaltungTxArt, Wallet: von, DistributionAt: req.Beschlossen,
 		Quanten: &QuantenAngaben{Satz: req.Satz, Ordnung: req.Ordnung, Ab: req.Ab, Stimmen: req.Stimmen}}
-	if err := a.state.annahmeBeginnen(von); err != nil {
-		jsonError(w, err.Error(), http.StatusServiceUnavailable)
-		return
-	}
-	defer a.state.annahmeEnde()
-	err := a.state.runAtomicWithOutbox([]string{von}, false, func(ctx context.Context) (Transaction, error) {
-		u, err := a.state.quantenFreischaltungUrteilLocked(ctx, &tx, jetzt)
-		if err != nil {
-			return Transaction{}, err
-		}
-		if u.regel != "" {
-			return Transaction{}, &quantenAbgelehnt{text: u.regel + ": " + u.text}
-		}
-		if err := a.state.quantenGeldSetzenLocked(ctx, a.state.quantenGeldJetzt().mitSatz(u.satz)); err != nil {
-			return Transaction{}, err
-		}
-		return tx, nil
-	})
+	err := a.quantenFreischaltungAnnehmen(tx, jetzt)
 	var abgelehnt *quantenAbgelehnt
 	switch {
 	case errors.As(err, &abgelehnt):
@@ -804,7 +796,33 @@ func (a *APIServer) handleQuantenFreischaltung(w http.ResponseWriter, r *http.Re
 	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "satz": req.Satz, "ab": req.Ab})
 }
 
-type quantenAbgelehnt struct{ text string }
+// quantenFreischaltungAnnehmen: eine Freischaltung durch das Annahme-Tor --
+// dieselbe Pruefung wie beim Nachspielen, dann ins Register und in den
+// Ausgang. Fuer den Endpunkt mit allen Stimmen und den Sammelweg.
+func (a *APIServer) quantenFreischaltungAnnehmen(tx Transaction, jetzt int64) error {
+	if err := a.state.annahmeBeginnen(tx.Wallet); err != nil {
+		return err
+	}
+	defer a.state.annahmeEnde()
+	return a.state.runAtomicWithOutbox([]string{tx.Wallet}, false, func(ctx context.Context) (Transaction, error) {
+		u, err := a.state.quantenFreischaltungUrteilLocked(ctx, &tx, jetzt)
+		if err != nil {
+			return Transaction{}, err
+		}
+		if u.regel != "" {
+			return Transaction{}, &quantenAbgelehnt{text: u.regel + ": " + u.text, stimme: u.stimme}
+		}
+		if err := a.state.quantenGeldSetzenLocked(ctx, a.state.quantenGeldJetzt().mitSatz(u.satz)); err != nil {
+			return Transaction{}, err
+		}
+		return tx, nil
+	})
+}
+
+type quantenAbgelehnt struct {
+	text   string
+	stimme int // 1-basiert, 0 = keine einzelne Stimme
+}
 
 func (e *quantenAbgelehnt) Error() string { return e.text }
 
