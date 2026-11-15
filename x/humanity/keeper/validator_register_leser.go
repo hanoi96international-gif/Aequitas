@@ -445,6 +445,15 @@ func (cs *ChainState) erzeugerRegisterAuffrischen() {
 			m, h = alt.fenster, alt.halter
 		}
 	}
+	if err == nil {
+		// erzeuger_anlauf.go: nach einer neuen Genesis erzeugen die Schluessel
+		// der geschlossenen Liste bis zu ihrer ersten wirksamen Bindung.
+		var anlauf []string
+		if p := cs.erzeugerAnlauf.Load(); p != nil {
+			anlauf = *p
+		}
+		m = anlaufFensterErgaenzen(m, anlauf, anlaufGenesis())
+	}
 	cs.erzeugerRegister.Store(erzeugerStandBauen(m, h, err, time.Now(), nowUnix()))
 }
 
@@ -471,6 +480,9 @@ func (dag *BlockDAG) StarteErzeugerRegister() {
 	erzeugerAuffrischenEinmal.Do(func() {
 		if fest := dag.erzeugerFestListe(); fest != nil {
 			dag.state.erzeugerFest.Store(&fest)
+		}
+		if anlauf := dag.erzeugerAnlaufListe(); len(anlauf) > 0 {
+			dag.state.erzeugerAnlauf.Store(&anlauf)
 		}
 		bald := func() bool {
 			grenze := nowUnix() + 86400
@@ -579,7 +591,9 @@ func (dag *BlockDAG) ErzeugerOhneBindung() []string {
 	jetzt := nowUnix()
 	out := []string{}
 	for a := range dag.produzentenFest {
-		if st.erzeugerFenster(a, jetzt) == "" {
+		// Der Anlauf (erzeuger_anlauf.go) ist keine Bindung: der Schluessel
+		// steht hier weiter, bis sein Betreiber ihn bindet.
+		if w := st.erzeugerFenster(a, jetzt); w == "" || w == anlaufBetreiber {
 			out = append(out, a)
 		}
 	}

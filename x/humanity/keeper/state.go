@@ -342,6 +342,10 @@ type ChainState struct {
 	// erzeugerFest: AUTHORIZED_VALIDATORS, fuer den Erzeugerstand (nur diese
 	// werden gelesen, wenn die Liste geschlossen ist).
 	erzeugerFest atomic.Pointer[[]string]
+	// erzeugerAnlauf: AUTHORIZED_VALIDATORS (ohne den eigenen Schluessel,
+	// wenn er nicht darin steht) -- die Schluessel, die nach einer neuen
+	// Genesis bis zu ihrer ersten Bindung erzeugen (erzeuger_anlauf.go).
+	erzeugerAnlauf atomic.Pointer[[]string]
 	// erzeugerAuffrischenMu: ein Auffrischen nach dem anderen -- sonst
 	// speicherte ein langsames, frueher begonnenes den aelteren Stand nach
 	// einem neueren.
