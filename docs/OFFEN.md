@@ -328,6 +328,24 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
       (signiert, begrenzt), Zertifikat als eigene Transaktionsart in die
       Kette, dann Anker (#340) und Finalität daran.
 
+## Audit 14.11.2026 – Stand
+
+- Erledigt: B3, B4, B5, B6, B7, B9, B13, B14, B15, B16 (#516), B1 Knoten
+  (`umzug.go`), B8 (Treuhand Form 2), V8 ohne Befund; Biometrie: B1
+  Coordinator (pq: nur auf Wunsch der App), B10, B11 (biometric #120); App:
+  B1, B15 (Aequitas-App #68).
+- **B2** (Prüfer-Schlüssel aus dem Register ohne PQ-Schlüssel) ist offen:
+  vor dem Setzen von `pq_ab_unix` muss die Bindung eines Prüfers (B1b) seinen
+  ML-DSA-Schlüssel tragen. Bis dahin `pq_ab_unix` NICHT setzen.
+- **B12, Rest:** `npm audit` im Ketten-Repo nach `npm audit fix` (nur
+  Lockfile, innerhalb der Semver-Grenzen): 26 Meldungen, alle in
+  Entwicklungs-Abhängigkeiten (hardhat-Werkzeuge, WalletConnect/@reown,
+  @coinbase/cdp-sdk). Sie gehen auf zod < 4.6.6, undici 5, @fastify/busboy 2
+  und axios 1.16.0 (von @coinbase/cdp-sdk fest gepinnt) zurück; behebbar nur
+  mit einem Major-Wechsel dieser Pakete in ihren Vorlagen. Laufzeit
+  (`--omit=dev`): 0, im CI geprüft. Das ausgelieferte WalletConnect-Bündel
+  wird nicht im CI gebaut -- vor dem nächsten Neubau prüfen.
+
 ## Ratenbegrenzung – bekannte Lücken
 - **`X-Forwarded-For` hinter einem privaten TCP-Partner** (Prüfung von #319,
   LOW-3; seit #324 zählt der letzte Eintrag, IPv6 je /64, und jede Karte der

@@ -69,3 +69,27 @@ func auftragFormAnnehmbar(form int, jetzt int64) error {
 func gueltigeMindestgrenze(min float64) bool {
 	return !math.IsNaN(min) && !math.IsInf(min, 0) && min >= 0
 }
+
+// Audit B8 (14.11.2026): Treuhand zurueckholen, Nachrichtenform 2.
+//
+// Die alte Nachricht ("Aequitas: recover escrow <wallet>") trug weder Zeit
+// noch Kette und steht spaeter im Block. Wer sie einmal gesehen hatte, konnte
+// die Treuhand eines untaetigen Kontos immer wieder zurueckholen (Geld nur an
+// die eigene Wallet -- aber gegen den Willen des Inhabers). Form 2 traegt
+// Kette, Wallet und Zeit; jeder Knoten prueft das Zeitfenster gegen die
+// Blockzeit (nachweisMitZeit), die Annahme dazu das engere Annahmefenster.
+//
+//	aequitas-treuhand-zurueck-v2|chain:1926|<wallet>|ts:<t>
+func treuhandZurueckNachrichtV2(wallet string, ts int64) string {
+	return fmt.Sprintf("aequitas-treuhand-zurueck-v2|chain:%d|%s|ts:%d", eingefroreneChainID, strings.ToLower(wallet), ts)
+}
+
+// nachweisMitZeit: traegt die unterschriebene Nachricht dieses Auftrags eine
+// Zeit, die gegen die Blockzeit geprueft wird? Wie hatNachweisZeit, dazu die
+// Treuhand-Rueckholung in Form 2.
+func nachweisMitZeit(tx *Transaction) bool {
+	if hatNachweisZeit(tx.Type) {
+		return true
+	}
+	return tx.Type == "escrow_recover" && tx.Nachweis != nil && tx.Nachweis.Form == auftragForm2
+}

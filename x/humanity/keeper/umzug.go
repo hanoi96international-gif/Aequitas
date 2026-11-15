@@ -153,6 +153,11 @@ const (
 	umzugCodeZeichen = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 
 	umzugKoerperMax = 32 << 10
+	// umzugAntragKoerperMax: der Antrag traegt seit dem 14.11. auch die
+	// "pq:"-Unterschriften des Coordinators und der Zeugen (je 6.686
+	// Zeichen; Audit B1). 64 KiB wie /prove und die Weiterleitung zum Leiter
+	// (zumLeiterRumpfHoechstens): Platz fuer Bindung und rund sieben Zeugen.
+	umzugAntragKoerperMax = 64 << 10
 
 	umzugKonfigSchluessel = "umzug_register"
 )
@@ -1167,6 +1172,12 @@ func (a *APIServer) umzugAnnehmen(w http.ResponseWriter, r *http.Request, tx Tra
 }
 
 func (a *APIServer) umzugVorpruefung(w http.ResponseWriter, r *http.Request, ziel interface{}) bool {
+	return a.umzugVorpruefungMax(w, r, ziel, umzugKoerperMax)
+}
+
+// umzugVorpruefungMax: wie umzugVorpruefung mit eigener Koerpergrenze (nur
+// der Antrag traegt PQ-Unterschriften, umzugAntragKoerperMax).
+func (a *APIServer) umzugVorpruefungMax(w http.ResponseWriter, r *http.Request, ziel interface{}, max int64) bool {
 	writeJSONCORS(w)
 	if r.Method != http.MethodPost {
 		jsonError(w, "POST only", http.StatusMethodNotAllowed)
@@ -1180,7 +1191,7 @@ func (a *APIServer) umzugVorpruefung(w http.ResponseWriter, r *http.Request, zie
 		jsonError(w, "too many requests from this address", http.StatusTooManyRequests)
 		return false
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, umzugKoerperMax)).Decode(ziel); err != nil {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, max)).Decode(ziel); err != nil {
 		jsonError(w, "invalid JSON", http.StatusBadRequest)
 		return false
 	}
@@ -1219,7 +1230,7 @@ func (a *APIServer) handleUmzugCode(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleUmzugAntrag: {"neu", "alt", "nullifier", "zeit", "modus",
-// "bescheinigung": ["v3:<sig>", ..., "v3k:<bindung>", ...], "code", "sig"} --
+// "bescheinigung": ["v3:<sig>", ..., "v3k:<bindung>", ..., "pq:<ed>:<sig>", ...], "code", "sig"} --
 // die App der neuen Wallet reicht die Bescheinigung des Coordinators ein,
 // in derselben Schreibweise wie bioAttestation bei der Registrierung.
 func (a *APIServer) handleUmzugAntrag(w http.ResponseWriter, r *http.Request) {
@@ -1234,7 +1245,7 @@ func (a *APIServer) handleUmzugAntrag(w http.ResponseWriter, r *http.Request) {
 		Code      string   `json:"code"`
 		Sig       string   `json:"sig"`
 	}
-	if !a.umzugVorpruefung(w, r, &req) {
+	if !a.umzugVorpruefungMax(w, r, &req, umzugAntragKoerperMax) {
 		return
 	}
 	neu := strings.ToLower(strings.TrimSpace(req.Neu))
@@ -1248,17 +1259,29 @@ func (a *APIServer) handleUmzugAntrag(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if !kanonischeAdresse(neu) || !kanonischeAdresse(alt) || !umzugNullifierKanonisch(req.Nullifier) || !kanonischeSignatur(sig) ||
-		len(req.Eintraege) == 0 || len(req.Eintraege) > 2*bescheinigungMaxSignaturen {
+		len(req.Eintraege) == 0 || len(req.Eintraege) > 3*bescheinigungMaxSignaturen {
 		jsonError(w, "neu, alt, nullifier, bescheinigung and sig required", http.StatusBadRequest)
 		return
 	}
+	// Audit B1 (14.11.2026): auch "pq:"-Eintraege (ML-DSA-65 des
+	// Coordinators und der Zeugen, bio_bescheinigung_pq.go). Vorher wies der
+	// Knoten sie mit 400 ab -- seit der Coordinator sie anhaengt, ging kein
+	// Umzug mehr. Sie gehen in die Transaktion; beim Nachspielen prueft jeder
+	// Knoten sie (pruefeV3Unterschriften -> pruefePQ), ab dem Stichtag Pflicht.
 	for _, e := range req.Eintraege {
-		if strings.Contains(e, ",") || (!strings.HasPrefix(e, bescheinigungV3Praefix) && !strings.HasPrefix(e, bescheinigungBindungPraefix)) {
-			jsonError(w, "bescheinigung: only v3: and v3k: entries", http.StatusBadRequest)
+		if strings.Contains(e, ",") || (!strings.HasPrefix(e, bescheinigungV3Praefix) && !strings.HasPrefix(e, bescheinigungBindungPraefix) &&
+			!strings.HasPrefix(e, pqFeldPraefix)) {
+			jsonError(w, "bescheinigung: only v3:, v3k: and pq: entries", http.StatusBadRequest)
 			return
 		}
 	}
-	_, unterschriften, roheBindungen := teileBescheinigungsfeldMitBindungen(strings.Join(req.Eintraege, ","))
+	feld := strings.Join(req.Eintraege, ",")
+	pq, pqOk := pqEintraegeAusFeld(feld)
+	if !pqOk {
+		jsonError(w, "bescheinigung: pq: entries malformed or too many", http.StatusBadRequest)
+		return
+	}
+	_, unterschriften, roheBindungen := teileBescheinigungsfeldMitBindungen(feld)
 	var bindungen []BescheinigungsBindung
 	for _, roh := range roheBindungen {
 		b, ok := leseBescheinigungsBindung(roh)
@@ -1268,7 +1291,7 @@ func (a *APIServer) handleUmzugAntrag(w http.ResponseWriter, r *http.Request) {
 		}
 		bindungen = append(bindungen, b)
 	}
-	if len(unterschriften) == 0 || len(unterschriften) > bescheinigungMaxSignaturen {
+	if len(unterschriften) == 0 || len(unterschriften) > bescheinigungMaxSignaturen || len(bindungen) > bescheinigungMaxSignaturen {
 		jsonError(w, "bescheinigung: 1 to 17 signatures", http.StatusBadRequest)
 		return
 	}
@@ -1281,7 +1304,7 @@ func (a *APIServer) handleUmzugAntrag(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	tx := Transaction{Type: umzugAnkuendigenTxArt, Wallet: neu, To: alt, Nullifier: req.Nullifier, DistributionAt: req.Zeit,
-		BioBescheinigung: &BioBescheinigung{Zeit: req.Zeit, Modus: req.Modus, Signaturen: unterschriften, Bindungen: bindungen},
+		BioBescheinigung: &BioBescheinigung{Zeit: req.Zeit, Modus: req.Modus, Signaturen: unterschriften, Bindungen: bindungen, PQ: pq},
 		Umzug:            &UmzugAngaben{Code: code, Sig: sig, Pruefung: req.Pruefung}}
 	a.umzugAnnehmen(w, r, tx, []string{alt})
 }

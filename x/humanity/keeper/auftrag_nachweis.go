@@ -182,6 +182,12 @@ func auftragsNachricht(tx *Transaction) (string, []unterschrift, error) {
 	case "faucet":
 		return fmt.Sprintf("Aequitas tUSD Faucet Claim: %s ts:%d", w, n.Zeit), []unterschrift{{w, n.Sig}}, nil
 	case "escrow_recover":
+		if n.Form == auftragForm2 && n.Min == 0 && n.Zeit > 0 {
+			return treuhandZurueckNachrichtV2(w, n.Zeit), []unterschrift{{w, n.Sig}}, nil
+		}
+		if n.Form != 0 || n.Min != 0 {
+			return "", nil, fmt.Errorf("Treuhand: unbekannte Nachrichtenform %d", n.Form)
+		}
 		return "Aequitas: recover escrow " + w, []unterschrift{{w, n.Sig}}, nil
 	case "vormund_setzen": // vormund_kette.go: der Schutzbefohlene unterschreibt
 		return vormundSetzenNachricht(to, n.Zeit), []unterschrift{{w, n.Sig}}, nil
@@ -216,7 +222,7 @@ func pruefeAuftragsNachweis(tx *Transaction, blockZeit int64) error {
 	if tx.Nachweis == nil {
 		return fmt.Errorf("%w: %s ohne Nachweis", ErrUeberweisungNichtSigniert, tx.Type)
 	}
-	if hatNachweisZeit(tx.Type) {
+	if nachweisMitZeit(tx) {
 		z := tx.Nachweis.Zeit
 		if z < blockZeit-nachweisHoechstensAlt || z > blockZeit+nachweisHoechstensVoraus {
 			return fmt.Errorf("%w: %s unterschrieben um %d, Block %d", ErrUeberweisungNichtSigniert, tx.Type, z, blockZeit)

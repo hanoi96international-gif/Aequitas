@@ -538,6 +538,10 @@ func (cs *ChainState) quantenFreischaltungUrteilLocked(ctx context.Context, tx *
 			}
 			return quantenBefund("quanten_stimme", "Stimme %d: %v", i+1, err), nil
 		}
+		// Audit B2: PQ-Teil des Pruefers (pruefer_pq.go).
+		if err := prueferPQPruefen(s, nachricht(ubiPoolAddr, s.Zeit), prueferPQPflicht(zeit), cs.prueferZusageVon); err != nil {
+			return quantenBefund("quanten_stimme_pq", "Stimme %d: %v", i+1, err), nil
+		}
 		stimmen[s.Bescheinigung.Mensch] = true
 	}
 	if len(stimmen) < noetig {

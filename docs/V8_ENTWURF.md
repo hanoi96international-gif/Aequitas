@@ -461,3 +461,28 @@ und ein Wechsel ist ein Konsens-Update aller Knoten. Registrar- und Verifier-Wec
 bedeuten einen neuen Contract (kein Admin) – bewusst, beides ist ohnehin ein Konsens-Update.
 Auf der laufenden Kette müssten die bestehenden Testmenschen aus V7 migriert werden, und der
 Neustart löscht sie ohnehin.
+
+## Prüfung vor dem Neustart (15.11.2026)
+
+Der Vertrag (`contracts/AequitasV8.sol`, 342 Zeilen) wurde noch einmal ganz
+gelesen. **Kein neuer Befund.** Geprüft:
+
+- **Wer schreibt:** nur ein Registrar (`isRegistrar[msg.sender]`), kein
+  Registrar wird Mensch, jede Wallet nur einmal.
+- **Unterschrift:** EIP-712 mit `chainId`, Vertragsadresse und `NETZ_SALT`
+  (eine alte Kette mit derselben ID und Adresse hat einen anderen Bereich);
+  genau 65 Byte, `v` ∈ {27, 28}, niedriges `s`, nie `address(0)`; Nonce je
+  Wallet; Frist höchstens ein Tag voraus.
+- **Beweis:** öffentliche Signale ≠ 0 und < r (kein Alias x/x + r), jeder
+  Commitment und jeder Nullifier genau einmal; `verifyProof` ist `view`, also
+  STATICCALL, und läuft vor jeder Schreibung. Keine Wiedereintrittsmöglichkeit.
+- **Domäne:** `DOMAIN_SEPARATOR` wird bei jedem Aufruf aus `address(this)`
+  gebildet, die Immutables stehen im Laufzeitcode -- richtig für das Kopieren
+  an die Genesis-Adresse.
+- **ERC-20:** `transfer` scheitert im Vertrag immer (der Knoten bucht in Go);
+  `approve`/`transferFrom` gibt es nicht, ein Aufruf scheitert.
+- **Restlücke** (bekannt, oben): wer einen fremden Beweis vor seiner
+  Verwendung bekommt, könnte ihn für die eigene Wallet unterschreiben. Der
+  Knoten nimmt einen Nullifier nur für die Wallet aus der `/prove`-Anfrage an
+  (`prove_provenance.go`, Paar Nullifier/Wallet); ganz schließt das erst
+  Circuit v4 mit der Wallet als öffentlichem Signal.
