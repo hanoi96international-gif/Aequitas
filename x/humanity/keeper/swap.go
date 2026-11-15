@@ -72,9 +72,12 @@ type SwapRequest struct {
 	// (a stripped/altered MinAmountOut only removes the caller's own
 	// protection, it cannot move funds anywhere).
 	MinAmountOut float64 `json:"min_amount_out,omitempty"`
-	Nonce        int64   `json:"nonce"`     // per-wallet monotonic counter — atomically consumed on use
-	Timestamp    int64   `json:"timestamp"` // Unix time — secondary guard against stale requests
-	Signature    string  `json:"signature"`
+	// Form 2 (auftrag_v2.go, Audit B15): die Unterschrift deckt Kette,
+	// Wallet und MinAmountOut. Der Kommentar oben gilt nur fuer Form 1.
+	Form      int    `json:"form,omitempty"`
+	Nonce     int64  `json:"nonce"`     // per-wallet monotonic counter — atomically consumed on use
+	Timestamp int64  `json:"timestamp"` // Unix time — secondary guard against stale requests
+	Signature string `json:"signature"`
 }
 
 type SwapResponse struct {
@@ -131,7 +134,21 @@ func (a *APIServer) handleSwap(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := auftragFormAnnehmbar(req.Form, time.Now().Unix()); err != nil {
+		json.NewEncoder(w).Encode(SwapResponse{Success: false, Message: err.Error()})
+		return
+	}
+	if !gueltigeMindestgrenze(req.MinAmountOut) {
+		json.NewEncoder(w).Encode(SwapResponse{Success: false, Message: "min_amount_out must be a finite number >= 0"})
+		return
+	}
 	message := fmt.Sprintf("Aequitas Swap: %s %.8f nonce:%d ts:%d", req.Direction, req.Amount, req.Nonce, req.Timestamp)
+	var nachweisMin float64
+	nachweisForm := 0
+	if req.Form == auftragForm2 {
+		message = tauschNachrichtV2(wallet, req.Direction, req.Amount, req.MinAmountOut, req.Nonce, req.Timestamp)
+		nachweisForm, nachweisMin = auftragForm2, req.MinAmountOut
+	}
 	if err := verifyPersonalSign(message, req.Signature, wallet); err != nil {
 		json.NewEncoder(w).Encode(SwapResponse{Success: false, Message: "signature invalid: " + err.Error()})
 		return
@@ -158,7 +175,7 @@ func (a *APIServer) handleSwap(w http.ResponseWriter, r *http.Request) {
 	// state-changing operation in the system, so this was the most
 	// frequently-hit version of the durability gap).
 	pendingTxTemplate := Transaction{Type: txType, Wallet: wallet, Amount: req.Amount,
-		Nachweis: nachweisFuerAnnahme(Auftragsnachweis{Sig: req.Signature, Nonce: req.Nonce, Zeit: req.Timestamp, Betrag: req.Amount})}
+		Nachweis: nachweisFuerAnnahme(Auftragsnachweis{Sig: req.Signature, Nonce: req.Nonce, Zeit: req.Timestamp, Betrag: req.Amount, Form: nachweisForm, Min: nachweisMin})}
 	if err := a.state.pruefeAuftragsNonce(wallet, pendingTxTemplate.Nachweis); err != nil {
 		a.state.RestoreSwapNonce(wallet, req.Nonce)
 		json.NewEncoder(w).Encode(SwapResponse{Success: false, Message: err.Error()})
@@ -200,6 +217,7 @@ type AddLiquidityRequest struct {
 	Nonce      int64   `json:"nonce"`
 	Timestamp  int64   `json:"timestamp"`
 	Signature  string  `json:"signature"`
+	Form       int     `json:"form,omitempty"` // 2: auftrag_v2.go
 }
 
 type AddLiquidityResponse struct {
@@ -243,7 +261,16 @@ func (a *APIServer) handleAddLiquidity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := auftragFormAnnehmbar(req.Form, time.Now().Unix()); err != nil {
+		json.NewEncoder(w).Encode(AddLiquidityResponse{Success: false, Message: err.Error()})
+		return
+	}
 	message := fmt.Sprintf("Aequitas Add Liquidity: %.8f AEQ + %.8f tUSD nonce:%d ts:%d", req.AmountAEQ, req.AmountTUSD, req.Nonce, req.Timestamp)
+	nachweisForm := 0
+	if req.Form == auftragForm2 {
+		message = liquiditaetNachrichtV2(wallet, req.AmountAEQ, req.AmountTUSD, req.Nonce, req.Timestamp)
+		nachweisForm = auftragForm2
+	}
 	if err := verifyPersonalSign(message, req.Signature, wallet); err != nil {
 		json.NewEncoder(w).Encode(AddLiquidityResponse{Success: false, Message: "signature invalid: " + err.Error()})
 		return
@@ -256,7 +283,7 @@ func (a *APIServer) handleAddLiquidity(w http.ResponseWriter, r *http.Request) {
 	// the pending_tx outbox insert as a single DB transaction — see
 	// SwapAtomic's comment above / TransferAtomic's comment in state.go.
 	pendingTxTemplate := Transaction{Type: "add_liquidity", Wallet: wallet, Amount: req.AmountAEQ, AmountOut: req.AmountTUSD,
-		Nachweis: nachweisFuerAnnahme(Auftragsnachweis{Sig: req.Signature, Nonce: req.Nonce, Zeit: req.Timestamp, Betrag: req.AmountAEQ, Betrag2: req.AmountTUSD})}
+		Nachweis: nachweisFuerAnnahme(Auftragsnachweis{Sig: req.Signature, Nonce: req.Nonce, Zeit: req.Timestamp, Betrag: req.AmountAEQ, Betrag2: req.AmountTUSD, Form: nachweisForm})}
 	if err := a.state.pruefeAuftragsNonce(wallet, pendingTxTemplate.Nachweis); err != nil {
 		a.state.RestoreSwapNonce(wallet, req.Nonce)
 		json.NewEncoder(w).Encode(AddLiquidityResponse{Success: false, Message: err.Error()})
@@ -289,6 +316,7 @@ type RemoveLiquidityRequest struct {
 	Nonce        int64   `json:"nonce"`
 	Timestamp    int64   `json:"timestamp"`
 	Signature    string  `json:"signature"`
+	Form         int     `json:"form,omitempty"` // 2: auftrag_v2.go
 }
 
 type RemoveLiquidityResponse struct {
@@ -334,7 +362,16 @@ func (a *APIServer) handleRemoveLiquidity(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	if err := auftragFormAnnehmbar(req.Form, time.Now().Unix()); err != nil {
+		json.NewEncoder(w).Encode(RemoveLiquidityResponse{Success: false, Message: err.Error()})
+		return
+	}
 	message := fmt.Sprintf("Aequitas Remove Liquidity: %.8f shares nonce:%d ts:%d", req.SharesToBurn, req.Nonce, req.Timestamp)
+	nachweisForm := 0
+	if req.Form == auftragForm2 {
+		message = liquiditaetAbNachrichtV2(wallet, req.SharesToBurn, req.Nonce, req.Timestamp)
+		nachweisForm = auftragForm2
+	}
 	if err := verifyPersonalSign(message, req.Signature, wallet); err != nil {
 		json.NewEncoder(w).Encode(RemoveLiquidityResponse{Success: false, Message: "signature invalid: " + err.Error()})
 		return
@@ -347,7 +384,7 @@ func (a *APIServer) handleRemoveLiquidity(w http.ResponseWriter, r *http.Request
 	// and the pending_tx outbox insert as a single DB transaction — see
 	// SwapAtomic's comment above / TransferAtomic's comment in state.go.
 	pendingTxTemplate := Transaction{Type: "remove_liquidity", Wallet: wallet, Amount: req.SharesToBurn,
-		Nachweis: nachweisFuerAnnahme(Auftragsnachweis{Sig: req.Signature, Nonce: req.Nonce, Zeit: req.Timestamp, Betrag: req.SharesToBurn})}
+		Nachweis: nachweisFuerAnnahme(Auftragsnachweis{Sig: req.Signature, Nonce: req.Nonce, Zeit: req.Timestamp, Betrag: req.SharesToBurn, Form: nachweisForm})}
 	if err := a.state.pruefeAuftragsNonce(wallet, pendingTxTemplate.Nachweis); err != nil {
 		a.state.RestoreSwapNonce(wallet, req.Nonce)
 		json.NewEncoder(w).Encode(RemoveLiquidityResponse{Success: false, Message: err.Error()})

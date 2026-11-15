@@ -55,6 +55,11 @@ type Auftragsnachweis struct {
 	Zeit    int64   `json:"zeit,omitempty"`
 	Betrag  float64 `json:"betrag,omitempty"`
 	Betrag2 float64 `json:"betrag2,omitempty"`
+	// Form: 0/1 die alte Nachricht, 2 die mit Kette, Wallet und (Tausch)
+	// Mindestbetrag (auftrag_v2.go, Audit B15). Min: der unterschriebene
+	// Mindestbetrag eines Tauschs der Form 2.
+	Form int     `json:"form,omitempty"`
+	Min  float64 `json:"min,omitempty"`
 }
 
 // Zeitfenster gegen die Blockzeit.
@@ -129,17 +134,48 @@ func auftragsNachricht(tx *Transaction) (string, []unterschrift, error) {
 		if tx.Type == "swap_tusd_aeq" {
 			richtung = "tusd_to_aeq"
 		}
+		if n.Form == auftragForm2 {
+			if !gueltigeMindestgrenze(n.Min) {
+				return "", nil, fmt.Errorf("Tausch: ungueltiger Mindestbetrag")
+			}
+			// Der Block muss die unterschriebene Grenze einhalten: beim
+			// Vorbehalt traegt er sie weiter (die Ausfuehrung prueft das
+			// Ergebnis dagegen), beim direkten Tausch steht das Ergebnis im Block.
+			if tx.Vorbehalt != nil {
+				if tx.Vorbehalt.MinOut != n.Min {
+					return "", nil, fmt.Errorf("Tausch: unterschriebener Mindestbetrag %.8f, im Vorbehalt %.8f", n.Min, tx.Vorbehalt.MinOut)
+				}
+			} else if tx.AmountOut < n.Min {
+				return "", nil, fmt.Errorf("Tausch: Ergebnis %.8f unter dem unterschriebenen Mindestbetrag %.8f", tx.AmountOut, n.Min)
+			}
+			return tauschNachrichtV2(w, richtung, n.Betrag, n.Min, n.Nonce, n.Zeit), []unterschrift{{w, n.Sig}}, nil
+		}
+		if n.Form != 0 || n.Min != 0 {
+			return "", nil, fmt.Errorf("Tausch: unbekannte Nachrichtenform %d", n.Form)
+		}
 		return fmt.Sprintf("Aequitas Swap: %s %.8f nonce:%d ts:%d", richtung, n.Betrag, n.Nonce, n.Zeit),
 			[]unterschrift{{w, n.Sig}}, nil
 	case "add_liquidity":
 		if tx.Amount != n.Betrag || tx.AmountOut != n.Betrag2 {
 			return "", nil, fmt.Errorf("Liquiditaet: unterschrieben %.8f/%.8f, im Block %.8f/%.8f", n.Betrag, n.Betrag2, tx.Amount, tx.AmountOut)
 		}
+		if n.Form == auftragForm2 && n.Min == 0 {
+			return liquiditaetNachrichtV2(w, n.Betrag, n.Betrag2, n.Nonce, n.Zeit), []unterschrift{{w, n.Sig}}, nil
+		}
+		if n.Form != 0 || n.Min != 0 {
+			return "", nil, fmt.Errorf("Liquiditaet: unbekannte Nachrichtenform %d", n.Form)
+		}
 		return fmt.Sprintf("Aequitas Add Liquidity: %.8f AEQ + %.8f tUSD nonce:%d ts:%d", n.Betrag, n.Betrag2, n.Nonce, n.Zeit),
 			[]unterschrift{{w, n.Sig}}, nil
 	case "remove_liquidity":
 		if tx.Amount != n.Betrag {
 			return "", nil, fmt.Errorf("Liquiditaet abziehen: unterschrieben %.8f Anteile, im Block %.8f", n.Betrag, tx.Amount)
+		}
+		if n.Form == auftragForm2 && n.Min == 0 {
+			return liquiditaetAbNachrichtV2(w, n.Betrag, n.Nonce, n.Zeit), []unterschrift{{w, n.Sig}}, nil
+		}
+		if n.Form != 0 || n.Min != 0 {
+			return "", nil, fmt.Errorf("Liquiditaet abziehen: unbekannte Nachrichtenform %d", n.Form)
 		}
 		return fmt.Sprintf("Aequitas Remove Liquidity: %.8f shares nonce:%d ts:%d", n.Betrag, n.Nonce, n.Zeit),
 			[]unterschrift{{w, n.Sig}}, nil

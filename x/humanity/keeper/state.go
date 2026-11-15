@@ -4795,15 +4795,20 @@ type DemurrageStatus struct {
 // one-time notice isn't repeated on every subsequent login within that
 // same window. The 7-day notice has no such one-time flag; per Daniel's
 // spec, that one is meant to repeat on every login during its window.
+// kontoImSpeicher: steht das Konto im Speicher? Kurze Lesesperre.
+func (cs *ChainState) kontoImSpeicher(address string) bool {
+	cs.mu.RLock()
+	defer cs.mu.RUnlock()
+	_, ok := cs.accounts.Get(address)
+	return ok
+}
+
 func (cs *ChainState) GetDemurrageStatus(address string) DemurrageStatus {
 	address = strings.ToLower(address)
 	// Audit B7: ein Konto, das nicht im Speicher steht, ohne Sperre lesen
 	// (lesegrenze.go). Fuer kalte Konten wird der 14-Tage-Hinweis hier nicht
 	// als gezeigt vermerkt -- er erscheint dann hoechstens einmal mehr.
-	cs.mu.RLock()
-	_, imSpeicher := cs.accounts.Get(address)
-	cs.mu.RUnlock()
-	if !imSpeicher {
+	if !cs.kontoImSpeicher(address) {
 		acc, ok := cs.kontoNurLesen(address)
 		if !ok || acc.LastActivityAt == 0 {
 			return DemurrageStatus{Active: false, DaysUntilStart: float64(demurrageGracePeriodSeconds) / 86400}
