@@ -2,6 +2,8 @@ package keeper
 
 import (
 	"context"
+	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 )
@@ -253,5 +255,32 @@ func TestPrueferDienstPQ_BescheinigungNachDemStichtag(t *testing.T) {
 	falsch := pdQuelle{f: f, reg: (&verifierRegister{}).mitDienstPQ(prueferDienstPQ{Ed: p.k.pub, Mensch: p.mensch, Pub: anderer.pub, Wirkung: bTestZeit})}
 	if err := pruefeBioBescheinigungMit(tx, bTestZeit+60, falsch); err == nil {
 		t.Fatal("PQ-Unterschrift passt zu einem anderen eingetragenen Schluessel")
+	}
+}
+
+// Der Besitznachweis aus dem Dienst (aequitas-biometric-beta,
+// pq_unterschrift.besitz, Python cryptography): derselbe Satz, und der Knoten
+// nimmt genau diese Unterschrift an.
+func TestPrueferDienstPQ_VektorAusDemDienst(t *testing.T) {
+	roh, err := os.ReadFile("testdata/pruefer_dienst_besitz_vektor.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var v struct{ Mensch, Ed, Nachricht, Pub, Sig string }
+	if err := json.Unmarshal(roh, &v); err != nil {
+		t.Fatal(err)
+	}
+	if got := prueferDienstBesitzNachricht("0xAbCdEf0123456789aBcDeF0123456789AbCdEf01", strings.ToUpper(v.Ed)); got != v.Nachricht {
+		t.Fatalf("Satz:\n got %s\nwant %s", got, v.Nachricht)
+	}
+	if !mldsaPruefen(v.Pub, v.Sig, prueferDienstBesitzNachricht(v.Mensch, v.Ed)) {
+		t.Fatal("Besitznachweis des Dienstes abgewiesen")
+	}
+	if mldsaPruefen(v.Pub, v.Sig, prueferDienstBesitzNachricht("0x"+strings.Repeat("1", 40), v.Ed)) {
+		t.Fatal("Besitznachweis gilt fuer einen anderen Menschen")
+	}
+	if got := prueferDienstFreigabeNachricht(v.Mensch, v.Ed, strings.Repeat("e", 64), 1800000000); got !=
+		"aequitas-pruefer-dienst-pq-v1|chain:1926|"+v.Mensch+"|"+v.Ed+"|"+strings.Repeat("e", 64)+"|1800000000" {
+		t.Fatalf("Freigabe-Satz: %s", got)
 	}
 }
