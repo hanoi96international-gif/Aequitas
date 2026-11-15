@@ -298,6 +298,11 @@ func pruefeSnapshotKonfig(key, wert string) error {
 			return err
 		}
 	}
+	if key == offlineKonfigSchluessel {
+		if _, err := offlineRegisterLesen(wert); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

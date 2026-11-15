@@ -1261,6 +1261,10 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	mux.HandleFunc("/api/quanten/praegen", a.zumLeiter(a.handleQuantenPraegen))
 	mux.HandleFunc("/api/quanten/freischaltung", a.zumLeiter(a.handleQuantenFreischaltung))
 	mux.HandleFunc("/api/quanten/einloesen", a.zumLeiter(a.handleQuantenEinloesen))
+	// offline_einbindung.go: Offline-Bargeld (Stufe 1b), vor dem Stichtag 409.
+	mux.HandleFunc("/api/offline/pfand", a.zumLeiter(a.handleOffline(offlinePfandTxArt)))
+	mux.HandleFunc("/api/offline/einloesung", a.zumLeiter(a.handleOffline(offlineEinloesungTxArt)))
+	mux.HandleFunc("/api/offline/kuendigung", a.zumLeiter(a.handleOffline(offlineKuendigungTxArt)))
 	// PQ-Schluessel der Pruefer-Dienste (pruefer_dienst_pq.go, Audit B2).
 	mux.HandleFunc("/api/verifier/dienst-pq", a.zumLeiter(a.handlePrueferDienstPQ))
 	// Sammelweg (quanten_sammeln.go): eine Stimme je Anfrage, beim Leiter.
@@ -1480,6 +1484,9 @@ func (a *APIServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 		// quanten_geld.go: Stichtag und Topf des dezentralen Quantengelds
 		// (ab fehlt, solange schlafend -- der Waechter liest das so).
 		"quanten": quantenStatus(),
+		// offline_einbindung.go: Stichtag des Offline-Bargelds (ab fehlt,
+		// solange schlafend) und der Topf.
+		"offline": offlineStatus(),
 		// pruefer_pq.go: Stichtag der hybriden Pruefer-Stimmen (ab fehlt,
 		// solange schlafend -- pruefer-pq-nicht-verpasst.sh liest das so).
 		"pruefer_pq": prueferPQStatus(),

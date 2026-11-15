@@ -467,6 +467,12 @@ func pruefeTopfNurMitNote(to string, vorlage Transaction) error {
 	if strings.EqualFold(strings.TrimSpace(to), quantenTopfAddr) {
 		return fmt.Errorf("transfers to the quantum money pool %s are only accepted as note registrations (/api/quanten/praegen)", quantenTopfAddr)
 	}
+	// Ebenso der Offline-Topf (offline_einbindung.go): Deckung ohne Pfand
+	// waere verloren und ab dem Stichtag in keinem Block gueltig. Pfaender
+	// laufen ueber /api/offline/pfand, nie hier.
+	if strings.EqualFold(strings.TrimSpace(to), offlineTopfAddr) {
+		return fmt.Errorf("transfers to the offline cash pool %s are not accepted (pledges via /api/offline/pfand)", offlineTopfAddr)
+	}
 	return nil
 }
 

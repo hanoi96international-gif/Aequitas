@@ -78,6 +78,9 @@ type Transaction struct {
 	// (pruefer_dienst_pq.go, Audit B2). Nur an pruefer_dienst_pq.
 	// omitempty: aeltere Bloecke behalten ihren Hash.
 	DienstPQ *PrueferDienstPQ `json:"dienst_pq,omitempty"`
+	// Offline: Pfand, Einloesung, Kuendigung, Abschluss des Offline-Bargelds
+	// (offline_einbindung.go). omitempty: aeltere Bloecke behalten ihren Hash.
+	Offline *OfflineAngaben `json:"offline,omitempty"`
 	// FromDemurrageLost/ToDemurrageLost carry the exact AEQ amount the
 	// primary node decayed off Wallet/To via settleDemurrageLocked while
 	// processing this TX. Secondary nodes replay these exact numbers
@@ -1434,6 +1437,8 @@ func bekannteTxArt(typ string, blockZeit int64) bool {
 		return quantenGeldAktiv(blockZeit)
 	case prueferDienstPQTxArt: // pruefer_dienst_pq.go, schlafend bis prueferDienstPQAb
 		return prueferDienstPQAktiv(blockZeit)
+	case offlinePfandTxArt, offlineEinloesungTxArt, offlineKuendigungTxArt, offlineAbschlussTxArt: // offline_einbindung.go, schlafend bis offlineAb
+		return offlineAktiv(blockZeit)
 	case "vorbehalt", "vorbehalt_ausfuehrung", "kappung":
 		// Stufe 2 (vorbehalt.go, kappung_verteilt.go). Fehlten hier bis
 		// 05.10.2026 ganz: ab der Aktivierung haette jeder Knoten jeden
@@ -7248,6 +7253,10 @@ func isDistributionRoundTxType(txType string) bool {
 		// umzug_vollzug (umzug.go) entsteht nur in der Tagesrunde; in einer
 		// doppelten Runde ist er ohnehin Leerlauf (der offene Umzug ist weg).
 		umzugVollzugTxArt,
+		// offline_abschluss (offline_einbindung.go) entsteht nur in der
+		// Tagesrunde; in einer doppelten Runde ist er Leerlauf (das Pfand ist
+		// dann schon abgeschlossen).
+		offlineAbschlussTxArt,
 		// umlauf (wirtschaft.go, Umlaufsicherung/Liegegeld) entsteht ebenfalls
 		// nur in der Tagesrunde (umlaufLocked, einziger Aufrufer
 		// RunDailyDistributionAtomic) und fehlte hier: In einer doppelten
@@ -7730,6 +7739,11 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			break
 		}
 		if err := quantenFeldErlaubt(&block.Transactions[txIdx], block.Timestamp); err != nil {
+			fmt.Printf("[REPLAY] ✗ %v (block #%d) — rolling back whole block\n", err, block.Height)
+			hardFailure = true
+			break
+		}
+		if err := offlineFeldErlaubt(&block.Transactions[txIdx], block.Timestamp); err != nil {
 			fmt.Printf("[REPLAY] ✗ %v (block #%d) — rolling back whole block\n", err, block.Height)
 			hardFailure = true
 			break
@@ -8255,6 +8269,16 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 				erwartet = -1
 			}
 			if _, err := dag.state.applyQuantenEinloesenLocked(withTx(context.Background(), dbTx), &tx, block.Timestamp, erwartet); err != nil {
+				fmt.Printf("[REPLAY] ✗ %s %s: %v (block #%d) — rolling back whole block\n", tx.Type, wallet, err, block.Height)
+				hardFailure = true
+				continue
+			}
+		case offlinePfandTxArt, offlineEinloesungTxArt, offlineKuendigungTxArt, offlineAbschlussTxArt:
+			// offline_einbindung.go: jeder Knoten prueft Unterschriften (Wallet
+			// bzw. Geraet), Pfand, Zaehler, Deckung und Fristen selbst und
+			// rechnet die Geldwege nach; sie muessen genau die im Block sein.
+			// Ungueltig: der ganze Block zurueck.
+			if err := dag.state.applyOfflineLocked(withTx(context.Background(), dbTx), &tx, block.Timestamp); err != nil {
 				fmt.Printf("[REPLAY] ✗ %s %s: %v (block #%d) — rolling back whole block\n", tx.Type, wallet, err, block.Height)
 				hardFailure = true
 				continue

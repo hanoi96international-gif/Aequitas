@@ -298,12 +298,12 @@ func (r *offlineRegister) archivBegrenzen(mensch string) {
 // ------------------------------------------------------------ Regeln
 
 // offlineKeinKonto: Adressen, die weder Pfand halten noch Offline-Zahlungen
-// empfangen. istSystemAdresse kennt die beiden Toepfe (Offline, Quantengeld)
-// nicht -- das dort zu aendern wirkt auf andere Wege der Kette und kommt mit
-// Stufe 1b und eigener Pruefung; hier werden beide ausdruecklich genannt.
+// empfangen -- jede Systemadresse. Beide Toepfe sind Protokoll-Toepfe
+// (isTokenomicsPoolAddress, Stufe 1b): istSystemAdresse kennt sie. Der
+// Quantengeld-Topf stand dort schon seit quanten_geld.go; der Offline-Topf
+// kam mit Stufe 1b dazu (vorher ohne Guthaben, ohne Wirkung auf die Kette).
 func offlineKeinKonto(a string) bool {
-	a = strings.ToLower(strings.TrimSpace(a))
-	return istSystemAdresse(a) || a == offlineTopfAddr || a == strings.ToLower(quantenTopfAddr)
+	return istSystemAdresse(strings.ToLower(strings.TrimSpace(a)))
 }
 
 // offlineAbgelehnt: eine Regel ist verletzt -- die Transaktion gilt nicht

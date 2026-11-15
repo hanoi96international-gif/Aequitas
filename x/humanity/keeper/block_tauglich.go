@@ -126,6 +126,23 @@ func auftragsFenster(tx *Transaction, jetzt int64) zeitFenster {
 	if tx.Type == quantenFreischaltungTxArt {
 		f.eng(sattAdd(tx.DistributionAt, -nachweisHoechstensVoraus), sattAdd(tx.DistributionAt, nachweisHoechstensAlt))
 	}
+	// Offline-Bargeld (offline_einbindung.go): Angaben nur an den Offline-
+	// Arten, erst ab dem Stichtag; Pfand und Kuendigung im Fenster ihrer
+	// unterschriebenen Zeit, der Abschluss hoechstens 60 s vor seiner
+	// Rundenzeit.
+	if tx.Offline != nil || istOfflineTxArt(tx.Type) {
+		if tx.Offline == nil || !istOfflineTxArt(tx.Type) {
+			return zeitFenster{1, 0}
+		}
+		f.eng(offlineAb(), math.MaxInt64)
+		z := tx.DistributionAt
+		switch tx.Type {
+		case offlinePfandTxArt, offlineKuendigungTxArt:
+			f.eng(sattAdd(z, -offlineHoechstensVoraus), sattAdd(z, offlineHoechstensAlt))
+		case offlineAbschlussTxArt:
+			f.eng(sattAdd(z, -60), math.MaxInt64)
+		}
+	}
 	// PQ-Schluessel eines Pruefer-Dienstes (pruefer_dienst_pq.go): nur an
 	// seiner Art, erst ab dem Stichtag, issued_at im Nachweisfenster.
 	if tx.DienstPQ != nil || tx.Type == prueferDienstPQTxArt {
@@ -338,6 +355,12 @@ func blockTauglich(tx *Transaction, blockZeit int64) error {
 	}
 	if err := quantenFeldErlaubt(tx, blockZeit); err != nil {
 		return err
+	}
+	if err := offlineFeldErlaubt(tx, blockZeit); err != nil {
+		return err
+	}
+	if istOfflineTxArt(tx.Type) && !offlineZeitGueltig(tx, blockZeit) {
+		return fmt.Errorf("%s: Zeit %d passt nicht zu Block %d", tx.Type, tx.DistributionAt, blockZeit)
 	}
 	if tx.Type == quantenFreischaltungTxArt {
 		if !quantenGeldAktiv(blockZeit) {
