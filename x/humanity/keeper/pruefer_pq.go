@@ -64,7 +64,7 @@ const (
 	// prueferPQAbUnix: schlafend. Erst setzen, wenn die App den PQ-Teil
 	// liefert, eine echte Stimme damit durchging und die Freischaltung einen
 	// Sammelweg hat (siehe GRENZEN).
-	prueferPQAbUnix int64 = math.MaxInt64
+	prueferPQAbUnix int64 = 9223372036854775807 // math.MaxInt64: schlafend (Waechter liest die Zahl)
 )
 
 // prueferPQAbOverride: nur fuer Tests (0 = Konstante gilt).
@@ -142,4 +142,15 @@ func prueferPQPruefen(s *VerifierStimme, satz string, pflicht bool, zusage func(
 func (cs *ChainState) prueferZusageVon(mensch string) (string, bool) {
 	z, ok := cs.umzugRegisterJetzt().pqZusage(mensch)
 	return z.Hash, ok
+}
+
+// prueferPQStatus: fuer /api/status ("pruefer_pq"). ab fehlt, solange die
+// Regel schlaeft -- der Waechter (.github/neustart/pruefer-pq-nicht-verpasst.sh)
+// liest das so.
+func prueferPQStatus() map[string]interface{} {
+	m := map[string]interface{}{}
+	if ab := prueferPQAb(); ab != math.MaxInt64 {
+		m["ab"] = ab
+	}
+	return m
 }
