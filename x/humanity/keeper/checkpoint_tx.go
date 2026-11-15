@@ -293,6 +293,11 @@ func pruefeSnapshotKonfig(key, wert string) error {
 			return err
 		}
 	}
+	if key == quantenGeldKonfigSchluessel {
+		if _, err := quantenGeldRegisterLesen(wert); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

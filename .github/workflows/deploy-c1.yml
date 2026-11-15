@@ -82,6 +82,8 @@ jobs:
         run: bash .github/neustart/pq-zusage-nicht-verpasst.sh http://$C1:8080
       - name: Stichtag der PQ-Ueberweisung nicht verpasst
         run: bash .github/neustart/pq-ueberweisung-nicht-verpasst.sh http://$C1:8080
+      - name: Stichtag des Quantengelds nicht verpasst
+        run: bash .github/neustart/quantengeld-nicht-verpasst.sh http://$C1:8080
       - name: PQ-Stempel bereit (Stichhoehe nur, wenn der Erzeuger richtig stempelt)
         run: bash .github/neustart/pq-stempel-bereit.sh http://$C1:8080
       - name: Bescheinigung PQ bereit (Stichtag nur nach beobachteter gueltiger Registrierung)

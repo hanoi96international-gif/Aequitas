@@ -111,6 +111,13 @@ func auftragsFenster(tx *Transaction, jetzt int64) zeitFenster {
 	if tx.PQ != nil {
 		f.eng(pqUeberweisungAb(), math.MaxInt64)
 	}
+	// Quanten-Angaben (quanten_geld.go): erst in Bloecke ab dem Stichtag.
+	if tx.Quanten != nil || tx.Type == quantenFreischaltungTxArt {
+		f.eng(quantenGeldAb(), math.MaxInt64)
+	}
+	if tx.Type == quantenFreischaltungTxArt {
+		f.eng(sattAdd(tx.DistributionAt, -nachweisHoechstensVoraus), sattAdd(tx.DistributionAt, nachweisHoechstensAlt))
+	}
 	switch {
 	case tx.Type == "validator_bindung":
 		// validator_register.go: immer geprueft (nicht an die Signaturpflicht
@@ -292,6 +299,17 @@ func auftragsFenster(tx *Transaction, jetzt int64) zeitFenster {
 func blockTauglich(tx *Transaction, blockZeit int64) error {
 	if tx.PQ != nil && !pqUeberweisungAktiv(blockZeit) {
 		return fmt.Errorf("PQ-Ueberweisung vor dem Stichtag (Block %d)", blockZeit)
+	}
+	if err := quantenFeldErlaubt(tx, blockZeit); err != nil {
+		return err
+	}
+	if tx.Type == quantenFreischaltungTxArt {
+		if !quantenGeldAktiv(blockZeit) {
+			return fmt.Errorf("quanten_freischaltung vor dem Stichtag (Block %d)", blockZeit)
+		}
+		if z := tx.DistributionAt; z <= 0 || z < blockZeit-nachweisHoechstensAlt || z > sattAdd(blockZeit, nachweisHoechstensVoraus) {
+			return fmt.Errorf("quanten_freischaltung beschlossen %d, Block %d", z, blockZeit)
+		}
 	}
 	if tx.Type == "validator_bindung" {
 		if !validatorRegisterAktiv(blockZeit) {

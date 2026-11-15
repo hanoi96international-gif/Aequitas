@@ -1244,6 +1244,11 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	// der Stand einer PQ-Adresse von jedem Knoten.
 	mux.HandleFunc("/api/pq/ueberweisung", a.zumLeiter(a.handlePQUeberweisung))
 	mux.HandleFunc("/api/pq/stand", a.handlePQStand)
+	// Dezentrales Quantengeld (quanten_geld.go): Stand fuer jeden Empfaenger,
+	// Anmelden einer Note, Freischaltung eines Satzes durch die Pruefer.
+	mux.HandleFunc("/api/quanten/stand", a.handleQuantenStand)
+	mux.HandleFunc("/api/quanten/praegen", a.zumLeiter(a.handleQuantenPraegen))
+	mux.HandleFunc("/api/quanten/freischaltung", a.zumLeiter(a.handleQuantenFreischaltung))
 	// Satz des Gleichgewichts ankuendigen (satz_plan.go): zwei
 	// Betreiber-Menschen, nur beim Leiter.
 	mux.HandleFunc("/api/wirtschaft/satz", a.satzGrenze(a.zumLeiter(a.handleSatzAnkuendigung)))
@@ -1454,8 +1459,11 @@ func (a *APIServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 		// false heisst: jeder registrierte Mensch kann Blockproduzent werden
 		// (Audit K-1) -- vor dem Launch muss hier true stehen.
 		"produzenten_geschlossen": a.blockchain.ProduzentenGeschlossen(),
-		"produzenten":             a.blockchain.ProduzentenListe(),
-		"bescheinigung_konsens":   BescheinigungStand(),
+		// quanten_geld.go: Stichtag und Topf des dezentralen Quantengelds
+		// (ab fehlt, solange schlafend -- der Waechter liest das so).
+		"quanten":               quantenStatus(),
+		"produzenten":           a.blockchain.ProduzentenListe(),
+		"bescheinigung_konsens": BescheinigungStand(),
 		// Umzug (umzug.go): ab wann; fuer die App und die Deploy-Sperre.
 		"umzug":                map[string]int64{"aktiv_ab": umzugAb(), "code_regeln_ab": umzugCodeRegelnAb(), "nur_letzter_code_ab": umzugNurLetzterCodeAb(), "pq_zusage_ab": pqZusageAb()},
 		"pq":                   map[string]interface{}{"ueberweisung_ab": pqUeberweisungAb(), "stempel": pqStempelStatus()},
