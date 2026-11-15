@@ -62,6 +62,15 @@ const (
 	quantenSerieMaxBytes = 1024
 )
 
+// quantenParameterSaetze: Parametersatz -> Gruppenordnung N der Lightning-
+// Noten. Die Kette weist jede Seriennummer h >= N ab: dieselbe Note haette
+// sonst die Seriennummern h, h + N, h + 2N, ... (F4 der Pruefung von #503).
+// LEER, solange kein echter Satz feststeht -- dann wird jede Anmeldung
+// abgewiesen. TestQuantenPraegen_ProduktionsSaetzeSicher verlangt fuer
+// jeden Eintrag N >= 2^256; der Spielzeugsatz des Labors (h = 1491) lebt
+// nur in den Tests.
+var quantenParameterSaetze = map[string]*big.Int{}
+
 func quantenNoteAktiv(t int64) bool { return t >= quantenNoteAbUnix }
 
 // quantenSeriennummer: s = SHA-256(oeffentlicher Schluessel).
@@ -114,12 +123,13 @@ type quantenRegister struct {
 }
 
 // quantenLightning: eine angemeldete Lightning-Seriennummer. K =
-// SHA-256(Domaene | Anmelder | Seriennummer) (quantenSerieSchluessel); der
-// Inhaber zeigt (Anmelder, Seriennummer) mit der Note vor.
+// SHA-256(Domaene | Satz | Anmelder | Seriennummer) (quantenSerieSchluessel);
+// der Inhaber zeigt (Satz, Anmelder, Seriennummer) mit der Note vor.
 type quantenLightning struct {
-	K   string `json:"k"`
-	Wei string `json:"wei"`
-	Von string `json:"von"`
+	K    string `json:"k"`
+	Satz string `json:"satz"`
+	Wei  string `json:"wei"`
+	Von  string `json:"von"`
 }
 
 var errQuantenNote = errors.New("Quanten-Note abgelehnt")
@@ -239,8 +249,8 @@ func (r *quantenRegister) groesse() int {
 // der Anmeldende sperrt wei AEQ, die Kette traegt K = SHA-256(Domaene |
 // Anmelder | Seriennummer) ein. Je Anmelder jede Seriennummer genau einmal;
 // keine Rueckholung, kein Einloesen (Einweg, Version 1). Der Empfaenger
-// einer Note prueft selbst: K angemeldet, h < Gruppenordnung? Dann der
-// Quantentest (Variante B, 128 Tests). Eine zweite Anmeldung derselben Note
+// einer Note prueft selbst: K angemeldet (die Kette hat h < N des Satzes
+// geprueft)? Dann der Quantentest (Variante B, 128 Tests). Eine zweite Anmeldung derselben Note
 // unter einem anderen Anmelder schafft kein Geld: die Note ist EIN Zustand
 // und wird mit genau einer Anmeldung weitergegeben; die andere Deckung
 // bleibt gesperrt.
@@ -253,13 +263,44 @@ func quantenSerieKanonisch(serie []byte) bool {
 	return len(serie) > 0 && len(serie) <= quantenSerieMaxBytes && (len(serie) == 1 || serie[0] != 0)
 }
 
-// quantenSerieSchluessel: K = SHA-256(Domaene | "|" | Anmelder | "|" |
-// Seriennummer). Der Anmelder (kanonische Adresse, feste Laenge) gehoert
-// dazu: sonst koennte jeder, der eine Anmeldung im Mempool sieht, dieselbe
-// Seriennummer mit 1 Wei zuerst anmelden und die echte blockieren.
-func quantenSerieSchluessel(von string, serie []byte) string {
+// quantenSatzGueltig: Name eines Parametersatzes, 1..32 Zeichen a-z 0-9 '-'
+// (kein '|', damit die Verkettung in K eindeutig bleibt).
+func quantenSatzGueltig(satz string) bool {
+	if len(satz) == 0 || len(satz) > 32 {
+		return false
+	}
+	for i := 0; i < len(satz); i++ {
+		c := satz[i]
+		if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-') {
+			return false
+		}
+	}
+	return true
+}
+
+// quantenSerieForm: Satz bekannt, Seriennummer kanonisch und h < N.
+func quantenSerieForm(saetze map[string]*big.Int, satz string, serie []byte) bool {
+	if !quantenSatzGueltig(satz) || !quantenSerieKanonisch(serie) {
+		return false
+	}
+	n, ok := saetze[satz]
+	if !ok || n == nil || n.Sign() <= 0 {
+		return false
+	}
+	return new(big.Int).SetBytes(serie).Cmp(n) < 0
+}
+
+// quantenSerieSchluessel: K = SHA-256(Domaene | "|" | Satz | "|" | Anmelder
+// | "|" | Seriennummer). Der Anmelder (kanonische Adresse, feste Laenge)
+// gehoert dazu: sonst koennte jeder, der eine Anmeldung im Mempool sieht,
+// dieselbe Seriennummer mit 1 Wei zuerst anmelden und die echte blockieren.
+// Der Satz gehoert dazu, damit gleiche Zahlen aus verschiedenen Gruppen nie
+// dieselbe Anmeldung sind.
+func quantenSerieSchluessel(satz, von string, serie []byte) string {
 	h := sha256.New()
 	h.Write([]byte(quantenDomaeneSerie))
+	h.Write([]byte("|"))
+	h.Write([]byte(satz))
 	h.Write([]byte("|"))
 	h.Write([]byte(von))
 	h.Write([]byte("|"))
@@ -277,9 +318,13 @@ func (r *quantenRegister) findeLightning(k string) (quantenLightning, int, bool)
 
 // quantenPraegen: meldet eine Lightning-Seriennummer an. guthaben in Wei;
 // der Geldweg bucht wei vom Anmeldenden ab (Anschluss beim Einschalten).
-func (r *quantenRegister) quantenPraegen(wer string, guthaben, wei *big.Int, serie []byte) (*quantenRegister, string, error) {
-	if !quantenSerieKanonisch(serie) {
-		return nil, "", fmt.Errorf("%w: Seriennummer in falscher Form", errQuantenNote)
+func (r *quantenRegister) quantenPraegen(wer string, guthaben, wei *big.Int, satz string, serie []byte) (*quantenRegister, string, error) {
+	return r.quantenPraegenMit(quantenParameterSaetze, wer, guthaben, wei, satz, serie)
+}
+
+func (r *quantenRegister) quantenPraegenMit(saetze map[string]*big.Int, wer string, guthaben, wei *big.Int, satz string, serie []byte) (*quantenRegister, string, error) {
+	if !quantenSerieForm(saetze, satz, serie) {
+		return nil, "", fmt.Errorf("%w: Seriennummer in falscher Form, zu gross oder Satz unbekannt", errQuantenNote)
 	}
 	if wei == nil || wei.Sign() <= 0 || guthaben == nil || guthaben.Cmp(wei) < 0 {
 		return nil, "", fmt.Errorf("%w: keine Deckung oder Betrag ungueltig", errQuantenNote)
@@ -287,7 +332,7 @@ func (r *quantenRegister) quantenPraegen(wer string, guthaben, wei *big.Int, ser
 	if !kanonischeAdresse(wer) {
 		return nil, "", fmt.Errorf("%w: Adresse nicht kanonisch", errQuantenNote)
 	}
-	k := quantenSerieSchluessel(wer, serie)
+	k := quantenSerieSchluessel(satz, wer, serie)
 	if _, _, ok := r.findeLightning(k); ok {
 		return nil, "", fmt.Errorf("%w: Seriennummer schon angemeldet", errQuantenNote)
 	}
@@ -298,17 +343,22 @@ func (r *quantenRegister) quantenPraegen(wer string, guthaben, wei *big.Int, ser
 	_, i, _ := n.findeLightning(k)
 	n.Lightning = append(n.Lightning, quantenLightning{})
 	copy(n.Lightning[i+1:], n.Lightning[i:])
-	n.Lightning[i] = quantenLightning{K: k, Wei: wei.String(), Von: wer}
+	n.Lightning[i] = quantenLightning{K: k, Satz: satz, Wei: wei.String(), Von: wer}
 	return n, k, nil
 }
 
-// quantenSerieWert: was eine vorgezeigte (Anmelder, Seriennummer) laut Kette wert ist;
-// 0 = nicht angemeldet (die Note ist nichts wert, egal wie gut sie aussieht).
-func (r *quantenRegister) quantenSerieWert(von string, serie []byte) *big.Int {
-	if !quantenSerieKanonisch(serie) || !kanonischeAdresse(von) {
+// quantenSerieWert: was eine vorgezeigte (Satz, Anmelder, Seriennummer) laut
+// Kette wert ist; 0 = nicht angemeldet oder ungueltig (die Note ist nichts
+// wert, egal wie gut sie aussieht).
+func (r *quantenRegister) quantenSerieWert(satz, von string, serie []byte) *big.Int {
+	return r.quantenSerieWertMit(quantenParameterSaetze, satz, von, serie)
+}
+
+func (r *quantenRegister) quantenSerieWertMit(saetze map[string]*big.Int, satz, von string, serie []byte) *big.Int {
+	if !quantenSerieForm(saetze, satz, serie) || !kanonischeAdresse(von) {
 		return new(big.Int)
 	}
-	e, _, ok := r.findeLightning(quantenSerieSchluessel(von, serie))
+	e, _, ok := r.findeLightning(quantenSerieSchluessel(satz, von, serie))
 	if !ok {
 		return new(big.Int)
 	}

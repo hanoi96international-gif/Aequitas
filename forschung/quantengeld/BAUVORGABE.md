@@ -394,11 +394,14 @@ Lücke ist die Hardware – ein Prüfgerät mit ~10⁸–10¹⁰ logischen Qubit
 6 Tests je Prüfung).** Prägen darf jeder (Gen: Seriennummer gleichverteilt).
 Wert bekommt eine Note erst durch Anmelden auf der Kette: der Anmeldende
 sperrt AEQ, die Kette trägt K = SHA-256(„aequitas-quanten-serie-v1|“ ‖
-Anmelder ‖ „|“ ‖ Seriennummer) ein – je Anmelder jede Seriennummer genau
-einmal, nur in kürzester big-endian-Form, Einweg, kein Einlösen. Der
-Anmelder steht in K, damit niemand eine Anmeldung aus dem Mempool vorlaufend
-blockieren kann. Der Empfänger prüft selbst: K angemeldet und h <
-Gruppenordnung, dann Variante B. Ergebnis:
+Parametersatz ‖ „|“ ‖ Anmelder ‖ „|“ ‖ Seriennummer) ein – je Anmelder jede
+Seriennummer genau einmal, nur in kürzester big-endian-Form und nur h < N
+(Gruppenordnung des Parametersatzes; sonst wären h und h + N zwei
+Anmeldungen derselben Note), Einweg, kein Einlösen. Der Anmelder steht in
+K, damit niemand eine Anmeldung aus dem Mempool vorlaufend blockieren kann.
+Der Empfänger prüft selbst: K angemeldet, dann Variante B. Im Knoten ist
+die Liste der Parametersätze **leer** – jede Anmeldung scheitert, bis ein
+echter Satz feststeht; ein Wächtertest verlangt dafür N ≥ 2²⁵⁶. Ergebnis:
 
 | Schritt / Angriff | Ergebnis |
 |---|---|
@@ -407,6 +410,8 @@ Gruppenordnung, dann Variante B. Ergebnis:
 | Seriennummer doppelt anmelden | abgewiesen |
 | dieselbe Seriennummer mit führender Null | abgewiesen (nur kürzeste Form gilt) |
 | Vorlaufen (fremde Anmeldung derselben Seriennummer zuerst) | blockiert nicht; zählt nur unter dem fremden Anmelder |
+| dieselbe Note unter h + N | abgewiesen (Kette kennt N je Parametersatz) |
+| unbekannter Parametersatz | abgewiesen |
 | Anmelden ohne Deckung | abgewiesen |
 | fremde Note unter echter Seriennummer | 0,017 (≈ 2⁻⁶) |
 | glatte Fälschung (Glocke) | 0,077 (Formel aus `variante_b.py`) |

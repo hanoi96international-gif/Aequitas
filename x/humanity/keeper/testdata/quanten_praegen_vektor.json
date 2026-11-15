@@ -1,13 +1,22 @@
 {
   "domaene": "aequitas-quanten-serie-v1",
+  "satz": "labor-h1491",
+  "ordnung": 1491,
   "von": "0x00000000000000000000000000000000000000a1",
   "serie_hex": "04d2",
-  "schluessel": "be0b10a6b5427d1b773423c0e93bd71f9c7594b05a8465d2c11654bc89ed0b99",
+  "schluessel": "54f95702d3f5aa4cd51fcd3cca33d1211e86749b1c7d75b48de10d51011acecf",
   "serie_max_bytes": 1024,
   "null_hex": "00",
-  "null_schluessel": "ac5595dd48494e8b90183b272a07df6d41c1c56cf337564014ac7f30529d6218",
+  "null_schluessel": "42086fe79631a55e181b83ea9159d5aeba875c1a6497ce323728f5ade0eb089c",
   "fremd_von": "0x00000000000000000000000000000000000000d3",
-  "fremd_schluessel": "6359cb7b9801193b1eb870737abc326d8abc2b189b14ea2d012644d4d1df86a7",
+  "fremd_schluessel": "6dac270d73cc745559d6c4eaa510ddb709f27772c19b0467bbee59ed932882d0",
+  "anderer_satz": "labor-b",
+  "anderer_satz_schluessel": "7b98e2440aa8f18f277a3f8c2c05ba7a970fef8c747982021b3c473059ed7bf4",
+  "groesste_hex": "05d2",
+  "zu_gross_hex": [
+    "05d3",
+    "0aa5"
+  ],
   "nicht_kanonisch_hex": [
     "",
     "0000",
