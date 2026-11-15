@@ -19,7 +19,15 @@ Modi:
                      Der Schluessel wird nie ausgegeben.
 Weitere: --laeufe L (Schaltkreise je Fall, Standard 8), --schuesse S
 (Standard 1000), --tests T (Standard 3), --json DATEI,
---unterdrueckung (nur --ibm: dynamische Entkopplung + Pauli-Twirling).
+--unterdrueckung (nur --ibm: dynamische Entkopplung + Pauli-Twirling),
+--dynamisch (Praegen mit halbklassischer QFT: Messen mitten im Lauf und
+klassische Steuerung, ~40 % weniger 2-Qubit-Gatter; hardware.praegen_dynamisch),
+--warten-reihe W1,W2,... (Speicherzeit: nur Praegen+Pruefen, die Note
+liegt je W Mikrosekunden zwischen Praegen und Pruefen; hoechstens 8 Werte,
+je 0..1000 us),
+--bezahlen (Uebertragung: Praegen+Pruefen gegen Praegen+BEZAHLEN+Pruefen,
+die Note wird per Teleportation an ein anderes Register geschickt;
+hardware.bezahlen).
 
 Mit echter Maschine oder Rauschmodell wird zusaetzlich die Auslese der
 Pruefqubits kalibriert (2 Schaltkreise) und die Annahme auch
@@ -46,13 +54,45 @@ _spec.loader.exec_module(hw)
 MAX_LAEUFE = 64      # Schaltkreise je Fall (Kosten auf echter Hardware!)
 MAX_SCHUESSE = 4000
 MAX_TESTS = 6
+VERSUCHE_UEBERSETZUNG = 8
+ZWEI_QUBIT = ("cx", "cz", "ecr", "cp", "rzz")
+
+
+def zwei_qubit(qc) -> int:
+    """2-Qubit-Gatter, auch in klassisch gesteuerten Bloecken."""
+    z = 0
+    for ins in qc.data:
+        if ins.operation.name in ZWEI_QUBIT:
+            z += 1
+        for blk in getattr(ins.operation, "blocks", ()):
+            z += zwei_qubit(blk)
+    return z
 
 
 def nach_qiskit(s):
     from qiskit import QuantumCircuit
 
     qc = QuantumCircuit(s.q, len(s.mess), name=s.name[:60])
-    for n, t, *qs in s.gatter:
+    gatter = list(s.gatter)
+    i = 0
+    while i < len(gatter):
+        n, t, *qs = gatter[i]
+        if n == "wenn":
+            # aufeinanderfolgende Phasen mit demselben Steuerbit in EINEN
+            # klassisch gesteuerten Block (eine Rueckkopplung statt vieler)
+            bit = t[0]
+            block = []
+            while i < len(gatter) and gatter[i][0] == "wenn" and gatter[i][1][0] == bit:
+                block.append((gatter[i][1][1], gatter[i][2]))
+                i += 1
+            with qc.if_test((qc.clbits[bit], 1)):
+                for w, a in block:
+                    if w == "x":
+                        qc.x(a)
+                    else:
+                        qc.p(w, a)
+            continue
+        i += 1
         if n == "h":
             qc.h(qs[0])
         elif n == "x":
@@ -63,6 +103,9 @@ def nach_qiskit(s):
             qc.p(t, qs[0])
         elif n == "cp":
             qc.cp(t, qs[0], qs[1])
+        elif n == "delay":
+            for a in qs:
+                qc.delay(t, a, unit="us")
         elif n == "barrier":
             qc.barrier(*qs)
         elif n == "measure":
@@ -110,6 +153,20 @@ def kalibrierung(backend, sampler, qubits: list[int], schuesse: int) -> tuple[di
     return p0, p1
 
 
+MAX_WARTEN_WERTE = 8
+MAX_WARTEN_US = 1000
+
+
+def warten_reihe() -> list[float] | None:
+    if "--warten-reihe" not in sys.argv:
+        return None
+    roh = sys.argv[sys.argv.index("--warten-reihe") + 1]
+    werte = [float(x) for x in roh.split(",") if x.strip()]
+    if not 1 <= len(werte) <= MAX_WARTEN_WERTE or any(not 0 <= w <= MAX_WARTEN_US for w in werte):
+        raise SystemExit(f"--warten-reihe: 1..{MAX_WARTEN_WERTE} Werte, je 0..{MAX_WARTEN_US} us")
+    return werte
+
+
 def zahl(arg: str, standard: int, grenze: int) -> int:
     if arg not in sys.argv:
         return standard
@@ -121,6 +178,11 @@ def zahl(arg: str, standard: int, grenze: int) -> int:
 
 def backend_und_sampler():
     if "--ideal" in sys.argv:
+        if "--dynamisch" in sys.argv:
+            # dynamische Schaltkreise kann nur Aer (ohne Rauschen)
+            from qiskit_aer.primitives import SamplerV2 as AerSampler
+
+            return None, AerSampler(), "ideal (Aer ohne Rauschen)"
         from qiskit.primitives import StatevectorSampler
 
         return None, StatevectorSampler(), "ideal (Qiskit StatevectorSampler)"
@@ -133,7 +195,10 @@ def backend_und_sampler():
         if not name.startswith("Fake") or not hasattr(fp, name):
             raise SystemExit(f"unbekanntes Rauschmodell {name!r}")
         fake = getattr(fp, name)()
-        sim = AerSimulator.from_backend(fake)
+        # Mit dynamischen Schaltkreisen kuerzt Aer nicht auf die benutzten
+        # Qubits; die Matrix-Produkt-Methode rechnet nur verschraenkte teuer.
+        methode = "matrix_product_state" if "--dynamisch" in sys.argv else "automatic"
+        sim = AerSimulator.from_backend(fake, method=methode)
         return sim, AerSampler.from_backend(sim), f"Rauschmodell {fake.name}"
     if "--ibm" in sys.argv:
         from qiskit_ibm_runtime import QiskitRuntimeService, SamplerV2
@@ -167,15 +232,38 @@ def main() -> None:
     T = zahl("--tests", 3, MAX_TESTS)
     n = 3
     rng = random.Random(int.from_bytes(os.urandom(8), "big"))
-    kreise = hw.satz(n, T, laeufe, rng)
+    dyn = "--dynamisch" in sys.argv
+    reihe = warten_reihe()
+    if "--bezahlen" in sys.argv:
+        # je Lauf dieselben u: Praegen+Pruefen gegen Praegen+BEZAHLEN+Pruefen
+        kreise = []
+        for _ in range(laeufe):
+            us = [rng.randrange(2 ** n) for _ in range(T)]
+            kreise += [hw.praegen_dynamisch(n, us), hw.bezahlen(n, us)]
+    elif reihe is None:
+        kreise = hw.satz(n, T, laeufe, rng, dynamisch=dyn)
+    else:
+        bau = hw.praegen_dynamisch if dyn else hw.praegen_und_pruefen
+        kreise = [bau(n, [rng.randrange(2 ** n) for _ in range(T)], warten_us=w)
+                  for w in reihe for _ in range(laeufe)]
     backend, sampler, wo = backend_und_sampler()
 
     qcs = [nach_qiskit(s) for s in kreise]
     if backend is not None:
         from qiskit.transpiler import generate_preset_pass_manager
 
-        pm = generate_preset_pass_manager(optimization_level=3, backend=backend, seed_transpiler=7)
-        qcs = pm.run(qcs)
+        # Mehrere Uebersetzungen (verschiedene Startwerte fuer Anordnung und
+        # Wege), je Schaltkreis die mit den wenigsten 2-Qubit-Gattern (dann
+        # geringster Tiefe). Rauschbewusste Qubit-Wahl macht der Uebersetzer
+        # auf Stufe 3 selbst (Fehlerraten der Tageskalibrierung).
+        beste = [None] * len(qcs)
+        for seed in range(VERSUCHE_UEBERSETZUNG):
+            pm = generate_preset_pass_manager(optimization_level=3, backend=backend, seed_transpiler=seed)
+            for i, q in enumerate(pm.run(qcs)):
+                guete = (zwei_qubit(q), q.depth())
+                if beste[i] is None or guete < beste[i][0]:
+                    beste[i] = (guete, q)
+        qcs = [b[1] for b in beste]
     job = sampler.run(qcs, shots=schuesse)
     job_id = job.job_id() if hasattr(job, "job_id") else ""
     ergebnisse = job.result()
@@ -192,6 +280,10 @@ def main() -> None:
         zaehl = r.data.c.get_counts()
         e = hw.auswerten(s, zaehl)
         name = "praegen+pruefen" if s.bedeutung["seriebits"] else s.bedeutung["fall"]
+        if s.bedeutung["fall"] == "bezahlt":
+            name = "praegen+bezahlen+pruefen"
+        if reihe is not None:
+            name += f" nach {s.bedeutung.get('warten_us', 0):g} us"
         f = faelle.setdefault(name, {"annahme": [], "korr": [], "serien": {}, "tiefe": 0, "zwei": 0, "qubits": s.q})
         f["annahme"].append(e["annahme"])
         if p0 is not None:
@@ -204,9 +296,8 @@ def main() -> None:
             f["korr"].append(korr.get("0" * T, 0.0))
         for k, v in e["serien"].items():
             f["serien"][k] = f["serien"].get(k, 0) + v
-        ops = qc.count_ops()
         f["tiefe"] = max(f["tiefe"], qc.depth())
-        f["zwei"] = max(f["zwei"], sum(v for k, v in ops.items() if k in ("cx", "cz", "ecr", "cp", "rzz")))
+        f["zwei"] = max(f["zwei"], zwei_qubit(qc))
 
     zeilen = [f"## Quantengeld auf {wo}", "",
               f"Zyklus N = {2 ** n}, {T} Tests je Pruefung, {laeufe} Schaltkreise je Fall, {schuesse} Schuesse je Schaltkreis"
@@ -217,7 +308,7 @@ def main() -> None:
     for name, f in faelle.items():
         a = sum(f["annahme"]) / len(f["annahme"])
         k = sum(f["korr"]) / len(f["korr"]) if f["korr"] else None
-        ideal = hw.erwartet("echt" if name == "praegen+pruefen" else name, n, T)
+        ideal = hw.erwartet("echt" if name.startswith("praegen") else name, n, T)
         ks = f"{k:.3f}" if k is not None else "-"
         zeilen.append(f"| {name} | {f['qubits']} | {f['tiefe']} | {f['zwei']} | {a:.3f} | {ks} | {ideal:.3f} |")
         aus["faelle"][name] = {"annahme": a, "lesekorrigiert": k, "ideal": ideal, "tiefe": f["tiefe"], "zwei_qubit": f["zwei"]}
@@ -225,16 +316,20 @@ def main() -> None:
             gesamt = sum(f["serien"].values())
             vert = {k: v / gesamt for k, v in sorted(f["serien"].items())}
             aus["faelle"][name]["serien"] = vert
-    if "praegen+pruefen" in aus["faelle"] and "serien" in aus["faelle"]["praegen+pruefen"]:
+    if reihe is None and "praegen+pruefen" in aus["faelle"] and "serien" in aus["faelle"]["praegen+pruefen"]:
         v = aus["faelle"]["praegen+pruefen"]["serien"]
         zeilen += ["", "Seriennummern beim Praegen (ideal je 1/8 = 0,125): "
                    + ", ".join(f"{k}: {p:.3f}" for k, p in v.items())]
-    echt = aus["faelle"].get("echt", {}).get("annahme", 0)
-    fremd = max(aus["faelle"].get("fremd", {}).get("annahme", 1), aus["faelle"].get("basis", {}).get("annahme", 1))
-    aus["trennung"] = echt - fremd
-    zeilen += ["", f"Trennung echt gegen beste Faelschung (roh): {echt:.3f} - {fremd:.3f} = {echt - fremd:+.3f} "
-               "(positiv: die Maschine unterscheidet echte Noten von Faelschungen)."]
-    if p0 is not None:
+    if reihe is not None:
+        zeilen += ["", "Speicherzeit: Annahme der echten, gepraegten Note nach W Mikrosekunden im Speicher. "
+                   "Faellt sie auf ~0,23 (Zufall bei 3 Tests: 1/8 + Rauschen), ist die Note verloren."]
+    elif "echt" in aus["faelle"]:
+        echt = aus["faelle"]["echt"]["annahme"]
+        fremd = max(aus["faelle"].get("fremd", {}).get("annahme", 1), aus["faelle"].get("basis", {}).get("annahme", 1))
+        aus["trennung"] = echt - fremd
+        zeilen += ["", f"Trennung echt gegen beste Faelschung (roh): {echt:.3f} - {fremd:.3f} = {echt - fremd:+.3f} "
+                   "(positiv: die Maschine unterscheidet echte Noten von Faelschungen)."]
+    if p0 is not None and reihe is None:
         ke = aus["faelle"].get("echt", {}).get("lesekorrigiert") or 0
         kf = max(aus["faelle"].get("fremd", {}).get("lesekorrigiert") or 1, aus["faelle"].get("basis", {}).get("lesekorrigiert") or 1)
         aus["trennung_lesekorrigiert"] = ke - kf
