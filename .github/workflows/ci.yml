@@ -83,6 +83,21 @@ jobs:
       - run: python3 -I forschung/quantengeld/variante_b.py --selbsttest
       - run: python3 -I forschung/quantengeld/labor.py --selbsttest
       - run: python3 -I forschung/quantengeld/hardware.py --selbsttest
+      - run: python3 -I forschung/quantengeld/hardware_ibm.py --selbsttest
+      # Ionenfalle (Quantinuum): Uebersetzung nach pytket hin und zurueck,
+      # Warten als sleep, Eingaben begrenzt -- ohne Netz und ohne Token.
+      # Eigene Umgebung, damit die gepinnten Pakete nichts anderes beruehren.
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        id: py313
+        with:
+          python-version: "3.13"
+          update-environment: false
+      - env:
+          PY313: ${{ steps.py313.outputs.python-path }}
+        run: |
+          "$PY313" -m venv /tmp/qnx
+          /tmp/qnx/bin/pip install --require-hashes --no-deps -r forschung/quantengeld/quantinuum-anforderungen.txt
+          /tmp/qnx/bin/python -I forschung/quantengeld/hardware_quantinuum.py --selbsttest
       # Neustart-Skripte laufen als ssh ... bash -s: kein docker exec -i ohne
       # eigene Eingabe, und fern.sh wertet ein verschlucktes Skript als rot.
       - run: python3 scripts/lint_neustart_eingabe.py

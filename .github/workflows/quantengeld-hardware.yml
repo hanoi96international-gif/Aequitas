@@ -8,6 +8,14 @@
 #             `quantenhardware` (Freigabe noetig); dort liegt das Secret
 #             IBM_QUANTUM_TOKEN, optional die Variablen IBM_QUANTUM_INSTANCE
 #             und IBM_QUANTUM_BACKEND. Kostet Rechenzeit des IBM-Kontos.
+#   quantinuum-pruefen / quantinuum-emulator / quantinuum:
+#             IONENFALLE bei Quantinuum ueber Nexus (hardware_quantinuum.py):
+#             Syntaxpruefung (H2-1SC, kostenlos), Emulator (H2-1E) oder die
+#             Maschine (Variable QUANTINUUM_DEVICE, Standard H2-1). Umgebung
+#             `quantenhardware` mit dem Secret QUANTINUUM_TOKEN (Refresh-Token
+#             aus Nexus) oder QUANTINUUM_EMAIL + QUANTINUUM_PASSWORT. warten_reihe gilt hier in MILLISEKUNDEN (Ionen halten
+#             Sekunden). Kostendeckel je Schaltkreis: Variable
+#             QUANTINUUM_HQC_JE_KREIS (Standard 50).
 #
 # Abhaengigkeiten fest mit Hashes (hardware-anforderungen.txt). Nur lesende
 # Rechte, kein Schreibzugriff auf das Repo, kein Server.
@@ -17,9 +25,9 @@ on:
   workflow_dispatch:
     inputs:
       modus:
-        description: "rauschen = Rauschmodell, ibm = echter Quantenrechner"
+        description: "rauschen = Rauschmodell, ibm = IBM-Chip, quantinuum-* = Ionenfalle (pruefen kostenlos, emulator, Maschine)"
         type: choice
-        options: [rauschen, ibm]
+        options: [rauschen, ibm, quantinuum-pruefen, quantinuum-emulator, quantinuum]
         default: rauschen
       rauschmodell:
         description: "Rauschmodell (nur Modus rauschen)"
@@ -41,7 +49,7 @@ on:
         type: boolean
         default: true
       warten_reihe:
-        description: "Speicherzeit messen: Mikrosekunden, z. B. 0,20,50,100 (leer = normaler Lauf)"
+        description: "Speicherzeit messen: IBM in Mikrosekunden (0,20,50,100), Quantinuum in Millisekunden (0,10,100,1000); leer = normaler Lauf"
         default: ""
       bezahlen:
         description: "Bezahlen: Note per Teleportation uebertragen und beim Empfaenger pruefen"
@@ -74,6 +82,7 @@ jobs:
           python-version: "3.13"
       - run: pip install --require-hashes --no-deps -r forschung/quantengeld/hardware-anforderungen.txt
       - run: python3 -I forschung/quantengeld/hardware.py --selbsttest
+      - run: python3 -I forschung/quantengeld/hardware_ibm.py --selbsttest
       - name: Lauf
         env:
           MODELL: ${{ inputs.rauschmodell }}
@@ -110,6 +119,7 @@ jobs:
           python-version: "3.13"
       - run: pip install --require-hashes --no-deps -r forschung/quantengeld/hardware-anforderungen.txt
       - run: python3 -I forschung/quantengeld/hardware.py --selbsttest
+      - run: python3 -I forschung/quantengeld/hardware_ibm.py --selbsttest
       - name: Lauf auf echter Hardware
         env:
           IBM_QUANTUM_TOKEN: ${{ secrets.IBM_QUANTUM_TOKEN }}
@@ -134,4 +144,49 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: quantengeld-ibm
+          path: ergebnis.json
+
+  quantinuum:
+    if: startsWith(inputs.modus, 'quantinuum')
+    runs-on: ubuntu-latest
+    timeout-minutes: 400
+    environment: quantenhardware
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+      - run: pip install --require-hashes --no-deps -r forschung/quantengeld/quantinuum-anforderungen.txt
+      - run: python3 -I forschung/quantengeld/hardware.py --selbsttest
+      - run: python3 -I forschung/quantengeld/hardware_quantinuum.py --selbsttest
+      - name: Lauf auf der Ionenfalle
+        env:
+          QUANTINUUM_TOKEN: ${{ secrets.QUANTINUUM_TOKEN }}
+          QUANTINUUM_EMAIL: ${{ secrets.QUANTINUUM_EMAIL }}
+          QUANTINUUM_PASSWORT: ${{ secrets.QUANTINUUM_PASSWORT }}
+          QUANTINUUM_DEVICE: ${{ vars.QUANTINUUM_DEVICE }}
+          QUANTINUUM_HQC_JE_KREIS: ${{ vars.QUANTINUUM_HQC_JE_KREIS }}
+          MODUS: ${{ inputs.modus }}
+          LAEUFE: ${{ inputs.laeufe }}
+          SCHUESSE: ${{ inputs.schuesse }}
+          WARTEN: ${{ inputs.warten_reihe }}
+          SCHUTZ: ${{ inputs.schutz }}
+        run: |
+          set -euo pipefail
+          case "$MODUS" in
+            quantinuum-pruefen) geraet=H2-1SC ;;
+            quantinuum-emulator) geraet=H2-1E ;;
+            quantinuum) geraet="${QUANTINUUM_DEVICE:-H2-1}" ;;
+            *) echo "modus: $MODUS unbekannt"; exit 1 ;;
+          esac
+          extra=()
+          if [ -n "$WARTEN" ]; then extra+=(--warten-ms "$WARTEN"); fi
+          case "$SCHUTZ" in aus) ;; phase|bit|beide) extra+=(--geschuetzt "$SCHUTZ") ;; *) echo "schutz: $SCHUTZ unbekannt"; exit 1 ;; esac
+          python3 -I forschung/quantengeld/hardware_quantinuum.py --nexus "$geraet" --laeufe "$LAEUFE" --schuesse "$SCHUESSE" \
+            --hqc-je-kreis "${QUANTINUUM_HQC_JE_KREIS:-50}" "${extra[@]}" --json ergebnis.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: quantengeld-quantinuum
           path: ergebnis.json

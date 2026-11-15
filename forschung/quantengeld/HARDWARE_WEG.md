@@ -11,6 +11,25 @@ Topf, Einlösen, Freischaltung). Was fehlt, ist Hardware für drei Dinge: **halt
 - **Lebensdauer einer Note ~20 µs.** Das ist die Grenze supraleitender Qubits (T₂ im
   Bereich 100 µs, mit Gattern weniger).
 
+## Fehlerkorrektur im Speicher auf IBM – gemessen, hilft nicht (15.11.2026)
+
+Rauschmodell `fake_marrakesh` (Kalibrierung der echten Maschine), 8 Schaltkreise je Fall,
+1.000 Schüsse, Lauf 43758397525. Annahme der echten Note (ideal 1,000; ~0,2 = verloren):
+
+| Wartezeit | ungeschützt | 3-Qubit-Code Phase | 3-Qubit-Code Bit |
+|---|---|---|---|
+| 0 µs | **0,891** | 0,837 | 0,832 |
+| 20 µs | **0,724** | 0,583 | 0,440 |
+| 50 µs | **0,548** | 0,376 | 0,275 |
+| 100 µs | **0,389** | 0,260 | 0,216 |
+| 200 µs | **0,305** | 0,229 | 0,208 |
+
+Der Code kostet 44 zusätzliche 2-Qubit-Gatter (94 statt 50); deren Fehler wiegen mehr als
+das, was er beim Warten rettet, und jeder der beiden Codes verstärkt die jeweils andere
+Fehlerart. **Auf supraleitenden Chips ist die Lebensdauer einer Note damit nicht zu
+verlängern** – kein echter IBM-Lauf dafür (Rechenzeit gespart). Der Weg ist die
+Ionenfalle (Schritt 1 unten).
+
 ## Was es schon gibt (Recherche 15.11.2026)
 
 | Weg | Stand | Was es für Aequitas heißt |
@@ -24,10 +43,29 @@ Topf, Einlösen, Freischaltung). Was fehlt, ist Hardware für drei Dinge: **halt
 
 ## Schritte
 
-1. **Ionenfalle (jetzt):** Labor (`hardware.py`) auf Quantinuum Helios portieren
-   (pytket/Nexus), Wartereihe von Millisekunden bis Sekunden messen, Ergebnis wie bei IBM
-   veröffentlichen. Braucht ein Konto bei Quantinuum (Nexus) und ein Token als
-   GitHub-Secret (`QUANTINUUM_TOKEN`), wie bei IBM.
+1. **Ionenfalle – gebaut (15.11.2026), wartet auf den Zugang:** `hardware_quantinuum.py`
+   übersetzt dieselben Schaltkreise nach pytket und schickt sie über Quantinuum Nexus.
+   Workflow „Quantengeld auf Quanten-Hardware“, Modus
+   - `quantinuum-pruefen`: Syntaxprüfung auf H2-1SC (kostenlos) – zuerst;
+   - `quantinuum-emulator`: H2-1E, mit dem Rauschmodell der Maschine;
+   - `quantinuum`: die Maschine (Variable `QUANTINUUM_DEVICE`, Standard H2-1).
+
+   `warten_reihe` gilt hier in **Millisekunden** (z. B. `0,10,100,1000`); das Warten ist
+   Quantinuums `sleep(t)` in Sekunden. Der Läufer prüft nach dem Übersetzen, dass jedes
+   `sleep` noch im Schaltkreis steht – sonst wird nicht ausgeführt (keine Kosten, keine
+   falschen Zahlen). Kostendeckel je Schaltkreis: `QUANTINUUM_HQC_JE_KREIS` (Standard 50),
+   höchstens 16 Schaltkreise je Fall und 2.000 Schüsse.
+
+   **Einmal einzurichten (Betreiber):** Konto bei Quantinuum Nexus
+   (https://nexus.quantinuum.com). In der Umgebung `quantenhardware` (GitHub → Settings →
+   Environments) entweder die Secrets `QUANTINUUM_EMAIL` und `QUANTINUUM_PASSWORT`
+   (geht nur ohne zweiten Faktor) oder den Refresh-Token als `QUANTINUUM_TOKEN`
+   hinterlegen. Nichts davon wird ausgegeben oder auf die Platte geschrieben. Erst `quantinuum-pruefen`, dann der Emulator, dann die
+   Maschine.
+
+   **Offen bis zum ersten Lauf:** die Einheit von `sleep` (Sekunden laut `hqslib1_dev`)
+   in Quantinuums Doku bestätigen – der Emulator zeigt es auch: fällt die Annahme schon
+   bei 10 ms, stimmt die Einheit nicht.
 2. **Größerer Satz auf Ionen:** größere Gruppe als Z₈ (Z₁₆, Z₃₂) mit mehr Qubits und
    tieferen Schaltkreisen; der Abstand echt/Fälschung muss halten.
 3. **Lagerung:** Kontakt zu Gruppen mit Seltenerd-Speichern (Stunden) für einen
