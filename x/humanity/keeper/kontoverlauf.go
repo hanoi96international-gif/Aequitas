@@ -42,6 +42,7 @@ var verlaufArten = map[string]bool{
 	"validator_distribution": true, "lp_distribution": true,
 	"swap": true, "swap_aeq_tusd": true, "add_liquidity": true, "remove_liquidity": true,
 	"faucet": true, "escrow_release": true, "escrow_recover": true,
+	"quanten_auszahlung": true, // quanten_einloesen.go: Auszahlung einer Note an den Empfaenger
 }
 
 type verlaufZeile struct {

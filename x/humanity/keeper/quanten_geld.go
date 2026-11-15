@@ -128,6 +128,15 @@ type QuantenAngaben struct {
 	Ordnung string           `json:"ordnung,omitempty"`
 	Ab      int64            `json:"ab,omitempty"`
 	Stimmen []VerifierStimme `json:"stimmen,omitempty"`
+	// Anteile: bei einer Anmeldung die Anteile am Topf, die die Note
+	// bekommt -- vom Erzeuger aus dem Stand des Topfs gerechnet und hier
+	// eingetragen; jeder Nachspielende rechnet sie an derselben Stelle nach
+	// und weist den Block ab, wenn sie nicht stimmen (quantenNoteEintragenLocked).
+	Anteile int64 `json:"anteile,omitempty"`
+	// Einloesen (quanten_einloesen.go): die Note (K) und ihre
+	// Einmal-Unterschrift (hex) ueber quantenEinloesenNachricht.
+	K      string `json:"k,omitempty"`
+	Einmal string `json:"einmal,omitempty"`
 }
 
 // ------------------------------------------------------------ Register
@@ -139,11 +148,20 @@ type quantenSatzEintrag struct {
 	Seit    int64  `json:"seit"` // issued_at der Freischaltung
 }
 
+// quantenNoteEintrag: eine angemeldete Note. Sie haelt ANTEILE am Topf,
+// keinen festen Betrag (Entscheidung des Betreibers vom 15.11.2026:
+// Umlaufabgabe auch im Topf). Ihr Wert ist Anteile * Topf / alle Anteile:
+// zahlt der Topf in der Tagesrunde die Abgabe (umlaufArt, wirtschaft.go),
+// sinkt jede Note anteilig, und Topf = Summe aller Noten bleibt auf das
+// Mikro-AEQ genau (die letzte Note bekommt den ganzen Rest).
 type quantenNoteEintrag struct {
-	K     string `json:"k"`
-	Satz  string `json:"satz"`
-	Von   string `json:"von"`
-	Mikro int64  `json:"mikro"`
+	K       string `json:"k"`
+	Satz    string `json:"satz"`
+	Von     string `json:"von"`
+	Anteile int64  `json:"anteile"`
+	// topfVor: Stand des Topfs vor der Ueberweisung -- nur waehrend der
+	// Anmeldung (Urteil -> Eintragen), nie gespeichert.
+	topfVor int64
 }
 
 type quantenGeldRegister struct {
@@ -210,12 +228,66 @@ func (r *quantenGeldRegister) notenVon(w string) int {
 	return n
 }
 
-func (r *quantenGeldRegister) summeMikro() int64 {
+// summeAnteile: alle Anteile am Topf. Gesaettigt -- quantenAnteileFuer haelt
+// die Summe weit darunter (quantenAnteileHoechstens).
+func (r *quantenGeldRegister) summeAnteile() int64 {
 	var s int64
 	for _, e := range r.Noten {
-		s = plusGesaettigt(s, e.Mikro)
+		s = plusGesaettigt(s, e.Anteile)
 	}
 	return s
+}
+
+// quantenAnteileHoechstens: Obergrenze der Summe aller Anteile. Darueber
+// nimmt der Topf keine Note mehr an (quanten_voll) -- so bleibt jedes
+// Zwischenergebnis in int64, auch wenn der Topf durch die Abgabe stark
+// geschrumpft ist und eine neue Note viele Anteile bekaeme.
+const quantenAnteileHoechstens int64 = 1 << 62
+
+// quantenAnteileFuer: Anteile fuer einen Eingang von eingang Mikro-AEQ in
+// einen Topf mit topfVor Mikro-AEQ und summe Anteilen. Die erste Note (keine
+// Anteile) bekommt 1 Anteil je Mikro-AEQ. Abgerundet -- zugunsten der
+// Noten, die schon da sind. false: kein sinnvoller Kurs (Topf leer bei
+// vorhandenen Anteilen, Ueberlauf, null Anteile).
+func quantenAnteileFuer(eingang, topfVor, summe int64) (int64, bool) {
+	if eingang <= 0 || summe < 0 || topfVor < 0 {
+		return 0, false
+	}
+	if summe == 0 {
+		return eingang, eingang <= quantenAnteileHoechstens
+	}
+	if topfVor == 0 {
+		return 0, false
+	}
+	a := new(big.Int).Mul(big.NewInt(eingang), big.NewInt(summe))
+	a.Quo(a, big.NewInt(topfVor))
+	if !a.IsInt64() || a.Int64() <= 0 || a.Int64() > quantenAnteileHoechstens-summe {
+		return 0, false
+	}
+	return a.Int64(), true
+}
+
+// quantenWert: was anteile von summe bei einem Topf von topf Mikro-AEQ wert
+// sind (abgerundet). Haelt eine Note alle Anteile, ist es der ganze Topf.
+func quantenWert(anteile, topf, summe int64) int64 {
+	if anteile <= 0 || topf <= 0 || summe <= 0 {
+		return 0
+	}
+	if anteile >= summe {
+		return topf
+	}
+	w := new(big.Int).Mul(big.NewInt(anteile), big.NewInt(topf))
+	w.Quo(w, big.NewInt(summe))
+	return w.Int64()
+}
+
+// quantenTopfMikroLocked: der Stand des Topfs in Mikro-AEQ. Caller haelt cs.mu.
+func (cs *ChainState) quantenTopfMikroLocked() int64 {
+	cs.ensureAccountLoadedCtx(context.Background(), quantenTopfAddr)
+	if acc, ok := cs.accounts.Get(quantenTopfAddr); ok {
+		return acc.Balance.Micro()
+	}
+	return 0
 }
 
 func (r *quantenGeldRegister) mitNote(e quantenNoteEintrag) *quantenGeldRegister {
@@ -228,6 +300,15 @@ func (r *quantenGeldRegister) mitNote(e quantenNoteEintrag) *quantenGeldRegister
 	copy(k.Noten[i+1:], k.Noten[i:])
 	k.Noten[i] = e
 	return k
+}
+
+// ohneNote: das Register ohne die Note k (eingeloest).
+func (r *quantenGeldRegister) ohneNote(k string) *quantenGeldRegister {
+	kopie := r.kopie()
+	if _, i, da := kopie.note(k); da {
+		kopie.Noten = append(kopie.Noten[:i], kopie.Noten[i+1:]...)
+	}
+	return kopie
 }
 
 func (r *quantenGeldRegister) mitSatz(s quantenSatzEintrag) *quantenGeldRegister {
@@ -284,13 +365,23 @@ func quantenGeldRegisterLesen(s string) (*quantenGeldRegister, error) {
 		}
 	}
 	for i, e := range r.Noten {
-		if !istHash64(e.K) || !kanonischeAdresse(e.Von) || !quantenSatzGueltig(e.Satz) || e.Mikro < quantenMindestDeckungMik ||
+		if !istHash64(e.K) || !kanonischeAdresse(e.Von) || !quantenSatzGueltig(e.Satz) || e.Anteile <= 0 || e.Anteile > quantenAnteileHoechstens ||
 			(i > 0 && e.K <= r.Noten[i-1].K) {
 			return nil, fmt.Errorf("Quantengeld-Register: Note %d ungueltig", i)
 		}
 		if _, ok := r.satz(e.Satz); !ok {
 			return nil, fmt.Errorf("Quantengeld-Register: Note %d zu unbekanntem Satz", i)
 		}
+	}
+	// Auch die SUMME der Anteile: ein Register von aussen (Snapshot eines
+	// Peers) koennte jede Note einzeln gueltig und zusammen ueber der Grenze
+	// haben -- dann rechneten Kurs und Wert gesaettigt falsch.
+	var summe int64
+	for _, e := range r.Noten {
+		if summe > quantenAnteileHoechstens-e.Anteile {
+			return nil, errors.New("Quantengeld-Register: Summe der Anteile ueber der Grenze")
+		}
+		summe += e.Anteile
 	}
 	return r, nil
 }
@@ -356,7 +447,7 @@ func quantenFeldErlaubt(tx *Transaction, blockZeit int64) error {
 		return fmt.Errorf("%s traegt Quanten-Angaben vor dem Stichtag", tx.Type)
 	}
 	switch tx.Type {
-	case quantenFreischaltungTxArt:
+	case quantenFreischaltungTxArt, quantenEinloesenTxArt:
 		return nil
 	case "transfer":
 		if !strings.EqualFold(strings.TrimSpace(tx.To), quantenTopfAddr) {
@@ -436,14 +527,14 @@ func (cs *ChainState) quantenPraegenUrteilLocked(tx *Transaction, blockZeit int6
 	if !quantenGeldAktiv(blockZeit) || q == nil || tx.Type != "transfer" || !strings.EqualFold(strings.TrimSpace(tx.To), quantenTopfAddr) {
 		return quantenBefund("quanten_form", "keine Anmeldung")
 	}
-	if q.Ordnung != "" || q.Ab != 0 || len(q.Stimmen) != 0 || !kanonischeAdresse(w) || !quantenSatzGueltig(q.Satz) {
+	if q.Ordnung != "" || q.Ab != 0 || len(q.Stimmen) != 0 || q.K != "" || q.Einmal != "" || !kanonischeAdresse(w) || !quantenSatzGueltig(q.Satz) {
 		return quantenBefund("quanten_form", "Anmeldung nicht in gueltiger Form")
 	}
 	serie, ok := quantenSerieAusHex(q.Serie)
 	if !ok {
 		return quantenBefund("quanten_form", "Seriennummer nicht in gueltiger Form")
 	}
-	if math.IsNaN(tx.Amount) || math.IsInf(tx.Amount, 0) || tx.Amount <= 0 {
+	if math.IsNaN(tx.Amount) || math.IsInf(tx.Amount, 0) || tx.Amount <= 0 || q.Anteile < 0 {
 		return quantenBefund("quanten_deckung", "Deckung ungueltig")
 	}
 	mikro := NewDecimal(tx.Amount).Micro()
@@ -471,7 +562,7 @@ func (cs *ChainState) quantenPraegenUrteilLocked(tx *Transaction, blockZeit int6
 	if reg.notenVon(w) >= quantenNotenJeAnmelder {
 		return quantenBefund("quanten_voll", "%s: hoechstens %d Noten je Anmelder", kurzAdresse(w), quantenNotenJeAnmelder)
 	}
-	return quantenUrteil{note: quantenNoteEintrag{K: k, Satz: q.Satz, Von: w, Mikro: mikro}}
+	return quantenUrteil{note: quantenNoteEintrag{K: k, Satz: q.Satz, Von: w, topfVor: cs.quantenTopfMikroLocked()}}
 }
 
 // quantenFreischaltungUrteilLocked: zwei Drittel der Pruefer zur Zeit
@@ -482,7 +573,7 @@ func (cs *ChainState) quantenFreischaltungUrteilLocked(ctx context.Context, tx *
 	if !quantenGeldAktiv(blockZeit) || q == nil || tx.Type != quantenFreischaltungTxArt {
 		return quantenBefund("quanten_form", "keine Freischaltung"), nil
 	}
-	if q.Serie != "" || q.Sig != "" || !quantenSatzGueltig(q.Satz) || tx.To != "" || tx.Amount != 0 {
+	if q.Serie != "" || q.Sig != "" || q.K != "" || q.Einmal != "" || q.Anteile != 0 || !quantenSatzGueltig(q.Satz) || tx.To != "" || tx.Amount != 0 {
 		return quantenBefund("quanten_form", "Freischaltung nicht in gueltiger Form"), nil
 	}
 	if _, ok := quantenOrdnungGueltig(q.Ordnung); !ok {
@@ -572,9 +663,24 @@ func (cs *ChainState) quantenAnmeldungVorUeberweisungLocked(tx *Transaction, blo
 	return u.note, nil
 }
 
-// quantenNoteEintragenLocked: NACH der gelungenen Ueberweisung.
-func (cs *ChainState) quantenNoteEintragenLocked(ctx context.Context, e quantenNoteEintrag) error {
-	return cs.quantenGeldSetzenLocked(ctx, cs.quantenGeldJetzt().mitNote(e))
+// quantenNoteEintragenLocked: NACH der gelungenen Ueberweisung. Die Anteile
+// folgen aus dem, was im Topf angekommen ist (Stand jetzt minus Stand vor
+// der Ueberweisung), und dem Kurs davor. erwartet: beim Nachspielen die
+// Anteile aus dem Block -- weichen sie ab, ist der Block falsch (Fehler, der
+// Block geht zurueck); bei der Annahme 0. Liefert die Anteile.
+func (cs *ChainState) quantenNoteEintragenLocked(ctx context.Context, e quantenNoteEintrag, erwartet int64) (int64, error) {
+	reg := cs.quantenGeldJetzt()
+	eingang := cs.quantenTopfMikroLocked() - e.topfVor
+	anteile, ok := quantenAnteileFuer(eingang, e.topfVor, reg.summeAnteile())
+	if !ok {
+		return 0, fmt.Errorf("quanten_anteile: kein Kurs fuer %d Mikro-AEQ (Topf %d, Anteile %d): %w", eingang, e.topfVor, reg.summeAnteile(), ErrZustandLehntAb)
+	}
+	if erwartet != 0 && erwartet != anteile {
+		return 0, fmt.Errorf("quanten_anteile: Block nennt %d Anteile, nachgerechnet %d", erwartet, anteile)
+	}
+	e.Anteile = anteile
+	e.topfVor = 0
+	return anteile, cs.quantenGeldSetzenLocked(ctx, reg.mitNote(e))
 }
 
 // applyQuantenFreischaltungLocked: beim Nachspielen. Ungueltig: nie
@@ -630,9 +736,13 @@ func (cs *ChainState) quantenPraegenAnnehmen(tx Transaction) error {
 		if err := cs.merkeAngenommeneNonceLocked(ctx, from, tx); err != nil {
 			return Transaction{}, err
 		}
-		if err := cs.quantenNoteEintragenLocked(ctx, u.note); err != nil {
+		anteile, err := cs.quantenNoteEintragenLocked(ctx, u.note, 0)
+		if err != nil {
 			return Transaction{}, err
 		}
+		q := *tx.Quanten
+		q.Anteile = anteile
+		tx.Quanten = &q
 		tx.Gebuehr = gebuehr
 		tx.BuchAt = buchStempel(at)
 		tx.FromDemurrageLost = fromLost
@@ -722,7 +832,7 @@ func (cs *ChainState) QuantenStand(k string) map[string]interface{} {
 		"topf":            quantenTopfAddr,
 		"saetze":          saetze,
 		"noten":           len(reg.Noten),
-		"gedeckt_aeq":     float64(reg.summeMikro()) / 1e6,
+		"gedeckt_aeq":     float64(cs.quantenTopfMikroGelesen()) / 1e6,
 		"mindest_deckung": float64(quantenMindestDeckungMik) / 1e6,
 	}
 	if ab != math.MaxInt64 {
@@ -730,7 +840,8 @@ func (cs *ChainState) QuantenStand(k string) map[string]interface{} {
 	}
 	if k = strings.ToLower(strings.TrimSpace(k)); istHash64(k) {
 		e, _, da := reg.note(k)
-		aus["note"] = map[string]interface{}{"angemeldet": da, "deckung_aeq": float64(e.Mikro) / 1e6, "satz": e.Satz, "von": e.Von}
+		aus["note"] = map[string]interface{}{"angemeldet": da, "anteile": e.Anteile,
+			"deckung_aeq": float64(quantenWert(e.Anteile, cs.quantenTopfMikroGelesen(), reg.summeAnteile())) / 1e6, "satz": e.Satz, "von": e.Von}
 	}
 	return aus
 }
@@ -834,4 +945,10 @@ func quantenStatus() map[string]interface{} {
 		m["ab"] = ab
 	}
 	return m
+}
+
+// quantenTopfMikroGelesen: Stand des Topfs fuer Lesepfade (ohne Sperre, ohne
+// Anlegen -- lesegrenze.go).
+func (cs *ChainState) quantenTopfMikroGelesen() int64 {
+	return NewDecimal(cs.GetBalance(quantenTopfAddr)).Micro()
 }

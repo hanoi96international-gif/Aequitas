@@ -216,7 +216,7 @@ func (cs *ChainState) umlaufOffeneLocked(belastet map[string]int64, at int64) (m
 		if !ok {
 			continue
 		}
-		art := cs.kontoartVon(a, acc.IsHuman)
+		art := cs.umlaufArt(a, acc.IsHuman)
 		stand := cs.umlaufStandLocked(acc, at)
 		if cs.umlaufBetragRoh(a, art, stand, at, 7*86400) < umlaufMindestBetrag {
 			continue

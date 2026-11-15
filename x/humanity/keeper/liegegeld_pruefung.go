@@ -76,7 +76,7 @@ func (cs *ChainState) pruefeUmlaufLocked(wallet string, betrag float64, at, bloc
 	// laesst, loest nichts auf.
 	lpNoetig := at >= umlaufMitLPAbUnix && NewDecimal(betrag) > acc.Balance && acc.LPShares > 0
 	streng := lpNoetig
-	art := cs.kontoartVon(wallet, acc.IsHuman)
+	art := cs.umlaufArt(wallet, acc.IsHuman)
 	w := cs.wirt()
 	var vorher int64
 	zeitraumBekannt, fensterVoll, aelter := true, true, false

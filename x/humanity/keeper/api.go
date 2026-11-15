@@ -1257,6 +1257,7 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	mux.HandleFunc("/api/quanten/stand", a.lesenBegrenzt("/api/quanten/stand", a.handleQuantenStand))
 	mux.HandleFunc("/api/quanten/praegen", a.zumLeiter(a.handleQuantenPraegen))
 	mux.HandleFunc("/api/quanten/freischaltung", a.zumLeiter(a.handleQuantenFreischaltung))
+	mux.HandleFunc("/api/quanten/einloesen", a.zumLeiter(a.handleQuantenEinloesen))
 	// PQ-Schluessel der Pruefer-Dienste (pruefer_dienst_pq.go, Audit B2).
 	mux.HandleFunc("/api/verifier/dienst-pq", a.zumLeiter(a.handlePrueferDienstPQ))
 	// Sammelweg (quanten_sammeln.go): eine Stimme je Anfrage, beim Leiter.
