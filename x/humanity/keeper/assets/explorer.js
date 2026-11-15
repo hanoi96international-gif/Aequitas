@@ -6583,12 +6583,15 @@ async function doRecoverEscrow() {
   if (!waddr || !activeProvider()) { guardianLog('Connect wallet first.', 'err'); return; }
   try {
     guardianLog('Sign in your wallet to recover escrow...', 'info');
-    const msg = 'Aequitas: recover escrow ' + waddr;
+    // Form 2 (auftrag_v2.go, Audit B8): mit Kette und Zeit -- eine einmal
+    // gesehene Unterschrift laesst sich nicht spaeter erneut einreichen.
+    const ts = Math.floor(Date.now() / 1000);
+    const msg = 'aequitas-treuhand-zurueck-v2|chain:1926|' + String(waddr).toLowerCase() + '|ts:' + ts;
     const sig = await activeProvider().request({ method: 'personal_sign', params: [msg, waddr] });
     const resp = await fetch('/api/recover-escrow', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ wallet: waddr, signature: sig })
+      body: JSON.stringify({ wallet: waddr, signature: sig, form: AUFTRAG_FORM, timestamp: ts })
     });
     const d = await resp.json();
     if (d.success) {

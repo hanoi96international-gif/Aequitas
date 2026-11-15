@@ -42,7 +42,7 @@ func TestAuftragForm2_WebseiteUnterschreibtForm2(t *testing.T) {
 			t.Fatal(err)
 		}
 		s := string(roh)
-		for _, alt := range []string{"'Aequitas Swap: '", "'Aequitas Add Liquidity: '", "'Aequitas Remove Liquidity: '"} {
+		for _, alt := range []string{"'Aequitas Swap: '", "'Aequitas Add Liquidity: '", "'Aequitas Remove Liquidity: '", "'Aequitas: recover escrow '"} {
 			if strings.Contains(s, alt) {
 				t.Errorf("%s unterschreibt noch Form 1 (%s)", f, alt)
 			}

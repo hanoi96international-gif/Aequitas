@@ -132,7 +132,7 @@ func auftragsFenster(tx *Transaction, jetzt int64) zeitFenster {
 		if tx.Nachweis == nil {
 			// Ohne Nachweis nur vor der Pflicht (Rest aus der Zeit davor).
 			f.eng(math.MinInt64, signierteUeberweisungenAb()-1)
-		} else if hatNachweisZeit(tx.Type) {
+		} else if nachweisMitZeit(tx) {
 			z := tx.Nachweis.Zeit
 			f.eng(sattAdd(z, -nachweisHoechstensVoraus), sattAdd(z, nachweisHoechstensAlt))
 		}
@@ -325,7 +325,7 @@ func blockTauglich(tx *Transaction, blockZeit int64) error {
 		if tx.Nachweis == nil {
 			return fmt.Errorf("%s ohne Nachweis, Block %d", tx.Type, blockZeit)
 		}
-		if hatNachweisZeit(tx.Type) {
+		if nachweisMitZeit(tx) {
 			if z := tx.Nachweis.Zeit; z < blockZeit-nachweisHoechstensAlt || z > blockZeit+nachweisHoechstensVoraus {
 				return fmt.Errorf("%s unterschrieben um %d, Block %d (Fenster -%ds/+%ds)", tx.Type, z, blockZeit, nachweisHoechstensAlt, nachweisHoechstensVoraus)
 			}

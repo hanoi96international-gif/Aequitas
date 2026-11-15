@@ -4629,6 +4629,10 @@ func (a *APIServer) handleRecoverEscrow(w http.ResponseWriter, r *http.Request) 
 	var req struct {
 		Wallet    string `json:"wallet"`
 		Signature string `json:"signature"`
+		// Audit B8: Form 2 (auftrag_v2.go) mit Zeit; Form 1 nur bis
+		// auftragForm1AnnahmeBisUnix.
+		Form      int   `json:"form,omitempty"`
+		Timestamp int64 `json:"timestamp,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, `{"error":"invalid request body"}`, 400)
@@ -4639,12 +4643,31 @@ func (a *APIServer) handleRecoverEscrow(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, `{"error":"invalid wallet address"}`, 400)
 		return
 	}
+	jetzt := time.Now().Unix()
+	if err := auftragFormAnnehmbar(req.Form, jetzt); err != nil {
+		jsonError(w, err.Error(), 400)
+		return
+	}
 	msg := "Aequitas: recover escrow " + wallet
+	nachweis := Auftragsnachweis{Sig: req.Signature}
+	if req.Form == auftragForm2 {
+		// Frisch unterschrieben, nicht aus der Zukunft -- sonst liesse sich
+		// eine einmal gesehene Unterschrift spaeter erneut einreichen.
+		if req.Timestamp < jetzt-nachweisAnnahmeHoechstensAlt || req.Timestamp > jetzt+nachweisHoechstensVoraus {
+			jsonError(w, "signature timestamp outside the allowed window", 400)
+			return
+		}
+		msg = treuhandZurueckNachrichtV2(wallet, req.Timestamp)
+		nachweis = Auftragsnachweis{Sig: req.Signature, Zeit: req.Timestamp, Form: auftragForm2}
+	} else if req.Timestamp != 0 {
+		jsonError(w, "timestamp only with form 2", 400)
+		return
+	}
 	if err := verifyPersonalSign(msg, req.Signature, wallet); err != nil {
 		jsonError(w, "invalid signature: "+err.Error(), 400)
 		return
 	}
-	if err := a.state.RecoverFromEscrowMitNachweis(wallet, nachweisFuerAnnahme(Auftragsnachweis{Sig: req.Signature})); err != nil {
+	if err := a.state.RecoverFromEscrowMitNachweis(wallet, nachweisFuerAnnahme(nachweis)); err != nil {
 		jsonStateError(w, "recover-escrow", wallet, err)
 		return
 	}
