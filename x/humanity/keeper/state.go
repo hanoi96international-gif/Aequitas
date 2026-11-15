@@ -5568,6 +5568,13 @@ func (cs *ChainState) Transfer(from, to string, amount float64) (float64, float6
 var letzteEigeneUeberweisungNs atomic.Int64
 
 func (cs *ChainState) TransferAtomic(from, to string, amount float64, pendingTxTemplate Transaction) (fromLost, toLost float64, err error) {
+	// Quantengeld-Topf nur mit Note (quanten_geld.go): eine Ueberweisung
+	// ohne Note an den Topf ist ab dem Stichtag in keinem Block gueltig --
+	// angenommen hielte sie die Blockproduktion an. Anmeldungen gehen nie
+	// hier entlang (quantenPraegenAnnehmen).
+	if err := pruefeTopfNurMitNote(to, pendingTxTemplate); err != nil {
+		return 0, 0, err
+	}
 	// Nimmt dieser Knoten ueberhaupt an? Siehe annahme_tor.go: nehmen ZWEI
 	// Knoten dasselbe Konto gleichzeitig an, laufen ihre Kontenstaende
 	// auseinander, sobald es leerlaeuft. Geprueft VOR jeder Zustandsaenderung
@@ -6282,6 +6289,11 @@ func (cs *ChainState) TransferWithV7Fee(from, to string, amount float64) (float6
 // FromDemurrageLost/ToDemurrageLost from the transfer's result — none of
 // which are known until transferWithV7FeeLocked runs. See TransferAtomic.
 func (cs *ChainState) TransferWithV7FeeAtomic(from, to string, amount float64, pendingTxTemplate Transaction) (netAmount, fromLost, toLost float64, err error) {
+	// Quantengeld-Topf nur mit Note (quanten_geld.go): sonst hielte die
+	// Ueberweisung nach dem Stichtag die Blockproduktion an.
+	if err := pruefeTopfNurMitNote(to, pendingTxTemplate); err != nil {
+		return 0, 0, 0, err
+	}
 	// Dieselbe Sperre wie in TransferAtomic -- siehe annahme_tor.go. Sie
 	// gehoert in beide Funktionen und nicht an die zwei Aufrufstellen in
 	// evm_rpc.go: so gilt sie auch fuer jeden kuenftigen Aufrufer.

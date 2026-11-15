@@ -420,3 +420,39 @@ func TestQuantenGeld_AnnahmeEndeZuEnde(t *testing.T) {
 		t.Fatal("abgewiesene Anmeldung hat Geld bewegt")
 	}
 }
+
+// Annahme-Sperre: eine gewoehnliche Ueberweisung an den Topf (ohne Note)
+// nimmt kein Weg an -- sie hielte sonst ab dem Stichtag die Blockproduktion
+// an. Auch vor dem Stichtag.
+func TestQuantenGeld_TopfOhneNoteNirgendsAngenommen(t *testing.T) {
+	cs := newTestState()
+	_, w := neuerSchluessel(t)
+	addHuman(cs, w, 1000)
+	if _, _, err := cs.TransferAtomic(w, quantenTopfAddr, 10, Transaction{Type: "transfer", Wallet: w, To: quantenTopfAddr, Amount: 10}); err == nil {
+		t.Fatal("TransferAtomic an den Topf ohne Note angenommen")
+	}
+	if _, _, _, err := cs.TransferWithV7FeeAtomic(w, quantenTopfAddr, 10, Transaction{Type: "transfer", Wallet: w, To: quantenTopfAddr, Amount: 10}); err == nil {
+		t.Fatal("TransferWithV7FeeAtomic an den Topf ohne Note angenommen")
+	}
+	if acc, _ := cs.accounts.Get(w); acc.Balance.Float() != 1000 {
+		t.Fatalf("Guthaben bewegt: %v", acc.Balance.Float())
+	}
+	if pruefeTopfNurMitNote("0x"+strings.ToUpper(quantenTopfAddr[2:]), Transaction{}) == nil {
+		t.Fatal("Grossschreibung umgeht die Sperre")
+	}
+}
+
+// Ein Satz, der eben erst gilt, wird bei der Annahme noch nicht genommen
+// (der Block koennte eine fruehere Zeit bekommen).
+func TestQuantenGeld_AnnahmeErstEineStundeNachSatzbeginn(t *testing.T) {
+	f := neuerQgPraegeFall(t)
+	quantenGeldAbOverride.Store(1)
+	jetzt := time.Now().Unix()
+	f.cs.quantenGeld.Store((&quantenGeldRegister{}).mitSatz(quantenSatzEintrag{Name: "isogenie-8192", Ordnung: qgSatzN.String(), Ab: jetzt - 60, Seit: 1}))
+	if err := f.cs.quantenPraegenAnnehmen(f.tx("isogenie-8192", "04d2", "0x"+strings.Repeat("7", 64), 5)); err == nil {
+		t.Fatal("Anmeldung eine Minute nach Satzbeginn angenommen")
+	}
+	if len(f.cs.quantenGeldJetzt().Noten) != 0 {
+		t.Fatal("Register veraendert")
+	}
+}

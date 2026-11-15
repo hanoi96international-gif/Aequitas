@@ -366,6 +366,18 @@ func quantenFeldErlaubt(tx *Transaction, blockZeit int64) error {
 	return fmt.Errorf("%s traegt Quanten-Angaben", tx.Type)
 }
 
+// pruefeTopfNurMitNote: Annahme-Sperre auf jedem Ueberweisungsweg, ab sofort
+// (nicht erst ab dem Stichtag): eine gewoehnliche Ueberweisung an den Topf
+// waere Deckung ohne Note und ab dem Stichtag in keinem Block gueltig -- der
+// Erzeuger fände fuer sie keine Blockzeit, es entstuende kein Block mehr.
+// Anmeldungen laufen ueber quantenPraegenAnnehmen, nie hier.
+func pruefeTopfNurMitNote(to string, vorlage Transaction) error {
+	if strings.EqualFold(strings.TrimSpace(to), quantenTopfAddr) {
+		return fmt.Errorf("transfers to the quantum money pool %s are only accepted as note registrations (/api/quanten/praegen)", quantenTopfAddr)
+	}
+	return nil
+}
+
 // quantenPraegenNachricht: was die Wallet zur Anmeldung unterschreibt
 // (EIP-191). Der TxHash bindet die Anmeldung an genau diese Ueberweisung.
 func quantenPraegenNachricht(wallet, satz, serieHex, txHash string) string {
@@ -584,6 +596,12 @@ func (cs *ChainState) quantenPraegenAnnehmen(tx Transaction) error {
 		u := cs.quantenPraegenUrteilLocked(&tx, at)
 		if u.regel != "" {
 			return Transaction{}, fmt.Errorf("%s: %s", u.regel, u.text)
+		}
+		// Der Satz muss schon eine Stunde gelten: der Block darf eine
+		// fruehere Zeit bekommen als die Annahme (blockZeitFuer), und beim
+		// Nachspielen muss die Anmeldung zu dieser Zeit genauso bestehen.
+		if _, ok := cs.quantenGeldJetzt().saetzeZu(at - nachweisHoechstensAlt)[tx.Quanten.Satz]; !ok {
+			return Transaction{}, fmt.Errorf("quanten_satz: Satz %q gilt erst seit weniger als %d s", tx.Quanten.Satz, nachweisHoechstensAlt)
 		}
 		cs.ensureAccountLoadedCtx(ctx, from)
 		if acc, ok := cs.accounts.Get(from); ok {
