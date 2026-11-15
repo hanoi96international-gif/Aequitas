@@ -47,6 +47,11 @@ on:
         description: "Bezahlen: Note per Teleportation uebertragen und beim Empfaenger pruefen"
         type: boolean
         default: false
+      schutz:
+        description: "Speicher mit Fehlerkorrektur: ungeschuetzte Note gegen 3-Qubit-Code je Wartezeit (aus/phase/bit/beide)"
+        type: choice
+        options: [aus, phase, bit, beide]
+        default: aus
 
 permissions:
   contents: read
@@ -77,12 +82,14 @@ jobs:
           DYNAMISCH: ${{ inputs.dynamisch }}
           WARTEN: ${{ inputs.warten_reihe }}
           BEZAHLEN: ${{ inputs.bezahlen }}
+          SCHUTZ: ${{ inputs.schutz }}
         run: |
           set -euo pipefail
           extra=()
           if [ "$DYNAMISCH" = "true" ]; then extra+=(--dynamisch); fi
           if [ -n "$WARTEN" ]; then extra+=(--warten-reihe "$WARTEN"); fi
           if [ "$BEZAHLEN" = "true" ]; then extra+=(--bezahlen); fi
+          case "$SCHUTZ" in aus) ;; phase|bit|beide) extra+=(--geschuetzt "$SCHUTZ") ;; *) echo "schutz: $SCHUTZ unbekannt"; exit 1 ;; esac
           python3 -I forschung/quantengeld/hardware_ibm.py --rauschen "$MODELL" --laeufe "$LAEUFE" --schuesse "$SCHUESSE" "${extra[@]}" --json ergebnis.json
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -114,6 +121,7 @@ jobs:
           DYNAMISCH: ${{ inputs.dynamisch }}
           WARTEN: ${{ inputs.warten_reihe }}
           BEZAHLEN: ${{ inputs.bezahlen }}
+          SCHUTZ: ${{ inputs.schutz }}
         run: |
           set -euo pipefail
           extra=()
@@ -121,6 +129,7 @@ jobs:
           if [ "$DYNAMISCH" = "true" ]; then extra+=(--dynamisch); fi
           if [ -n "$WARTEN" ]; then extra+=(--warten-reihe "$WARTEN"); fi
           if [ "$BEZAHLEN" = "true" ]; then extra+=(--bezahlen); fi
+          case "$SCHUTZ" in aus) ;; phase|bit|beide) extra+=(--geschuetzt "$SCHUTZ") ;; *) echo "schutz: $SCHUTZ unbekannt"; exit 1 ;; esac
           python3 -I forschung/quantengeld/hardware_ibm.py --ibm --laeufe "$LAEUFE" --schuesse "$SCHUESSE" "${extra[@]}" --json ergebnis.json
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
