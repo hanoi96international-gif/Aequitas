@@ -1,6 +1,7 @@
 package keeper
 
 import (
+	"fmt"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -78,5 +79,38 @@ func TestHandlePeerRegister_AuthenticatedRateLimitStillWorks(t *testing.T) {
 	a.handlePeerRegister(rec2, req2)
 	if rec2.Code != 429 {
 		t.Fatalf("second immediate authenticated request with the same address should be rate-limited, got %d", rec2.Code)
+	}
+}
+
+// Pruefung von #515, Befund 1: je Absender-IP hoechstens
+// burstPeerRegisterJeIP Anmeldungen im Fenster, noch vor der
+// Unterschriftspruefung -- sonst fuellt eine einzige Adresse mit selbst
+// erzeugten Schluesseln die Karte von registrationRateLimited. Eine andere
+// IP bleibt davon unberuehrt.
+func TestHandlePeerRegister_JeAbsenderBegrenzt(t *testing.T) {
+	dag := newGhostdagTestDAG()
+	cs := newTestState()
+	dag.state = cs
+	dag.authorizedValidators = make(map[string]bool)
+	a := &APIServer{blockchain: dag, state: cs}
+
+	senden := func(ip string, i int) int {
+		body := fmt.Sprintf(`{"url":"","signing_address":"0x%040x","signature":"0x00"}`, 0x5000+i)
+		req := httptest.NewRequest("POST", "/api/peers/register", strings.NewReader(body))
+		req.RemoteAddr = ip + ":4711"
+		rec := httptest.NewRecorder()
+		a.handlePeerRegister(rec, req)
+		return rec.Code
+	}
+	for i := 0; i < burstPeerRegisterJeIP; i++ {
+		if c := senden("203.0.113.77", i); c == 429 {
+			t.Fatalf("Anfrage %d innerhalb der Grenze mit 429 abgewiesen", i)
+		}
+	}
+	if c := senden("203.0.113.77", burstPeerRegisterJeIP); c != 429 {
+		t.Fatalf("Anfrage ueber der Grenze nicht abgewiesen: %d", c)
+	}
+	if c := senden("203.0.113.78", 0); c == 429 {
+		t.Fatal("andere Absender-IP mitgesperrt")
 	}
 }

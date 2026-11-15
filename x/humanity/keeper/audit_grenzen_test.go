@@ -66,16 +66,29 @@ func TestRegistrationRateLimit_Begrenzt(t *testing.T) {
 		registrationRateLimitMu.Unlock()
 	}()
 	for i := 0; i < registrationAttemptsHoechstens; i++ {
-		if registrationRateLimited(fmt.Sprintf("0x%040x", i)) {
+		if registrationRateLimited(fmt.Sprintf("0x%040x", i), false) {
 			t.Fatalf("Eintrag %d abgewiesen", i)
 		}
 	}
-	if !registrationRateLimited("0x00000000000000000000000000000000ffffffff") {
+	if !registrationRateLimited("0x00000000000000000000000000000000ffffffff", false) {
 		t.Fatal("volle Karte nimmt weitere Absender an")
 	}
 	if n := len(lastRegistrationAttempt); n > registrationAttemptsHoechstens {
 		t.Fatalf("Karte ueber der Grenze: %d", n)
 	}
+	// Pruefung von #515, Befund 1: die volle Karte (Angreifer mit selbst
+	// erzeugten Schluesseln) sperrt einen eingetragenen Validator nicht aus;
+	// sein zweiter Versuch im Fenster bleibt begrenzt.
+	validator := "0x000000000000000000000000000000000000beef" // ausserhalb der 0..9999 oben
+	if registrationRateLimited(validator, true) {
+		t.Fatal("eingetragener Validator an der vollen Karte abgewiesen")
+	}
+	if !registrationRateLimited(validator, true) {
+		t.Fatal("Validator innerhalb des Fensters nicht begrenzt")
+	}
+	registrationRateLimitMu.Lock()
+	delete(lastRegistrationAttempt, validator)
+	registrationRateLimitMu.Unlock()
 	// alle Eintraege altern lassen: dann wird aufgeraeumt und angenommen
 	registrationRateLimitMu.Lock()
 	alt := time.Now().Add(-2 * registrationRateLimitWindow).UnixNano()
@@ -83,7 +96,7 @@ func TestRegistrationRateLimit_Begrenzt(t *testing.T) {
 		lastRegistrationAttempt[k] = alt
 	}
 	registrationRateLimitMu.Unlock()
-	if registrationRateLimited("0x00000000000000000000000000000000ffffffff") {
+	if registrationRateLimited("0x00000000000000000000000000000000ffffffff", false) {
 		t.Fatal("nach Ablauf weiter abgewiesen")
 	}
 	if n := len(lastRegistrationAttempt); n != 1 {

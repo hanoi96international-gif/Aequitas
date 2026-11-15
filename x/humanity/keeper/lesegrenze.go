@@ -1,7 +1,6 @@
 package keeper
 
 import (
-	"database/sql"
 	"net/http"
 	"strings"
 	"unicode/utf8"
@@ -60,9 +59,14 @@ func (cs *ChainState) kontoNurLesen(addr string) (*AccountState, bool) {
 		&acc.FaucetClaimed, &acc.Demurrage14DayWarningShown, &staffelRest, &acc.GrantStagedUntil, &acc.LivenessRenewedAt,
 		&acc.NaechsteNonce, &acc.NaechsteAuftragsNonce, &acc.LebensnachweisAm, &acc.StaffelEinspruchAm)
 	if err != nil {
-		if err != sql.ErrNoRows {
-			cs.kontoUnlesbarMerken(addr) // B5: auch hier
-		}
+		// Bewusst NICHT kontoUnlesbarMerken (Pruefung von #515, Befund 2):
+		// dieser Weg ist oeffentlich und mit beliebigen Adressen erreichbar.
+		// Haette er gemerkt, fuellte eine Lese-Flut waehrend eines
+		// Datenbank-Aussetzers die Liste bis zum Ueberlauf -- danach galt
+		// JEDE Adresse als unlesbar, bis zum Neustart (kein frisches Konto,
+		// kein Block mit neuem Empfaenger). Ein Lesen hier schreibt nie;
+		// jeder Schreibweg laedt vorher ueber ensureAccountLoadedCtx, und
+		// das merkt sich den Fehler selbst.
 		return nil, false
 	}
 	acc.Balance = NewDecimal(bal)

@@ -1160,10 +1160,18 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	mux.HandleFunc("/api/annahme", a.handleAnnahmeProtokoll)
 	mux.HandleFunc("/api/debug/stateroot-components", a.handleStateRootComponents)
 	mux.HandleFunc("/api/debug/dag-gates", a.handleDAGGates)
-	mux.HandleFunc("/api/blocks", a.lesenBegrenzt("/api/blocks", countEndpoint(&statBlocks, a.handleBlocks)))
+	// /api/blocks und /api/block bewusst OHNE lesenBegrenzt (Pruefung von
+	// #515, Befund 3): ueber sie holen Validatoren beim Aufholen Bloecke nach
+	// (fetchBlocksSincePage seitenweise ohne Pause, Snapshot-Abgleich ueber
+	// /api/block?height=). Eine Grenze je IP bremste genau den Knoten, der
+	// zurueckliegt, und mehrere Knoten hinter einer Adresse teilten sie sich
+	// (TestVierKnoten_RealDB/LeiterFaelltAusUndZiehtNach rot). Begrenzt sind
+	// beide schon je Anfrage (limit <= 500, ein Block je Abruf); sie lesen
+	// keine Konten und nehmen keine Schreibsperre (Audit B7 betraf Konten).
+	mux.HandleFunc("/api/blocks", countEndpoint(&statBlocks, a.handleBlocks))
 	mux.HandleFunc("/api/blocks/canonical", countEndpoint(&statCanonical, a.handleCanonicalBlocks))
 	mux.HandleFunc("/api/validator-labels", a.handleValidatorLabels)
-	mux.HandleFunc("/api/block", a.lesenBegrenzt("/api/block", a.handleBlockByHash))
+	mux.HandleFunc("/api/block", a.handleBlockByHash) // ohne lesenBegrenzt, siehe /api/blocks
 	mux.HandleFunc("/api/blocks/by-hash", countEndpoint(&statBlocksByHash, a.handleBlocksByHash))
 	mux.HandleFunc("/api/blocks/push", a.handleBlockPush)
 	mux.HandleFunc("/api/txbatch", a.handleTxBatch)
@@ -3297,7 +3305,13 @@ var (
 // "last processed" time. Deliberately decoupled from proposerBlockBlocked —
 // see handlePeerRegister's call site for why reusing that breaker here was
 // a bug, not a feature.
-func registrationRateLimited(addr string) bool {
+//
+// vorrang: addr ist ein eingetragener Validator-Schluessel. Ist die Karte
+// voll, wird ein solcher trotzdem vermerkt und angenommen (die Menge der
+// Validator-Schluessel ist selbst begrenzt): sonst koennte jeder mit
+// selbst erzeugten Schluesseln die Karte fuellen und echte Validatoren
+// aussperren (Pruefung von #515, Befund 1).
+func registrationRateLimited(addr string, vorrang bool) bool {
 	if addr == "" {
 		return false
 	}
@@ -3317,13 +3331,28 @@ func registrationRateLimited(addr string) bool {
 				delete(lastRegistrationAttempt, k)
 			}
 		}
-		if len(lastRegistrationAttempt) >= registrationAttemptsHoechstens {
+		if len(lastRegistrationAttempt) >= registrationAttemptsHoechstens && !vorrang {
 			return true
 		}
 	}
 	lastRegistrationAttempt[addr] = now
 	return false
 }
+
+// validatorSchluesselBekannt: ist addr ein eingetragener Validator-Schluessel?
+func (a *APIServer) validatorSchluesselBekannt(addr string) bool {
+	for _, k := range a.state.GetValidatorKeys() {
+		if k["signing_address"] == addr {
+			return true
+		}
+	}
+	return false
+}
+
+// burstPeerRegisterJeIP: Anmeldungen je Absender-IP und burstFenster (60 s).
+// Ein Knoten meldet sich alle 30 s bei jedem Saatknoten an (zwei je Minute);
+// 60 reichen fuer 30 Knoten hinter einer Adresse.
+const burstPeerRegisterJeIP = 60
 
 // registrationAttemptsHoechstens: so viele Absender merkt sich
 // registrationRateLimited hoechstens zugleich (alle im 20-s-Fenster).
@@ -3406,6 +3435,15 @@ func (a *APIServer) handlePeerRegister(w http.ResponseWriter, r *http.Request) {
 	// A known validator address (keyAuthorizedEarly) alone is NOT sufficient —
 	// anyone can read validator addresses from /api/blocks. Require PEER_SECRET
 	// match OR a valid challenge-response signature to prove private-key ownership.
+	// Pruefung von #515, Befund 1: je Absender-IP hoechstens
+	// burstPeerRegisterJeIP Anmeldungen im Fenster, VOR der
+	// Unterschriftspruefung. Ohne diese Grenze fuellte eine einzige Adresse
+	// mit selbst erzeugten Schluesseln die Karte von registrationRateLimited.
+	if !burstErlaubt("peer-register:"+erneuerungsAbsender(r), burstPeerRegisterJeIP, burstFenster) {
+		w.WriteHeader(http.StatusTooManyRequests)
+		w.Write([]byte(`{"ok":false,"reason":"too many registrations from this address"}`))
+		return
+	}
 	sigOKEarly := req.Signature != "" && req.SigningAddress != "" &&
 		a.blockchain.VerifyPeerChallenge(strings.ToLower(req.SigningAddress), req.Signature)
 
@@ -3459,7 +3497,7 @@ func (a *APIServer) handlePeerRegister(w http.ResponseWriter, r *http.Request) {
 	// proven it holds the signing key (or the explicit PEER_SECRET bypass)
 	// can claim or be blocked by this address's slot — an unauthenticated
 	// caller naming someone else's address can no longer grief it.
-	if addr := strings.ToLower(strings.TrimSpace(req.SigningAddress)); addr != "" && (secretOK || sigOKEarly) && registrationRateLimited(addr) {
+	if addr := strings.ToLower(strings.TrimSpace(req.SigningAddress)); addr != "" && (secretOK || sigOKEarly) && registrationRateLimited(addr, a.validatorSchluesselBekannt(addr)) {
 		fmt.Printf("[PEERS] ✗ Registration from %s rate-limited — retried within %s of its last attempt\n", addr, registrationRateLimitWindow)
 		w.WriteHeader(http.StatusTooManyRequests)
 		w.Write([]byte(`{"ok":false,"reason":"registration rate-limited, retry shortly"}`))
