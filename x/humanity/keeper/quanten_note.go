@@ -114,8 +114,8 @@ type quantenRegister struct {
 }
 
 // quantenLightning: eine angemeldete Lightning-Seriennummer. K =
-// SHA-256(Domaene | Seriennummer); die Seriennummer selbst steht nicht in
-// der Kette (nur ihr Hash), der Inhaber zeigt sie mit der Note vor.
+// SHA-256(Domaene | Anmelder | Seriennummer) (quantenSerieSchluessel); der
+// Inhaber zeigt (Anmelder, Seriennummer) mit der Note vor.
 type quantenLightning struct {
 	K   string `json:"k"`
 	Wei string `json:"wei"`
