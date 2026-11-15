@@ -19,7 +19,9 @@ Modi:
                      Der Schluessel wird nie ausgegeben.
 Weitere: --laeufe L (Schaltkreise je Fall, Standard 8), --schuesse S
 (Standard 1000), --tests T (Standard 3), --json DATEI,
---unterdrueckung (nur --ibm: dynamische Entkopplung + Pauli-Twirling).
+--unterdrueckung (nur --ibm: dynamische Entkopplung + Pauli-Twirling),
+--dynamisch (Praegen mit halbklassischer QFT: Messen mitten im Lauf und
+klassische Steuerung, ~40 % weniger 2-Qubit-Gatter; hardware.praegen_dynamisch).
 
 Mit echter Maschine oder Rauschmodell wird zusaetzlich die Auslese der
 Pruefqubits kalibriert (2 Schaltkreise) und die Annahme auch
@@ -46,13 +48,42 @@ _spec.loader.exec_module(hw)
 MAX_LAEUFE = 64      # Schaltkreise je Fall (Kosten auf echter Hardware!)
 MAX_SCHUESSE = 4000
 MAX_TESTS = 6
+VERSUCHE_UEBERSETZUNG = 8
+ZWEI_QUBIT = ("cx", "cz", "ecr", "cp", "rzz")
+
+
+def zwei_qubit(qc) -> int:
+    """2-Qubit-Gatter, auch in klassisch gesteuerten Bloecken."""
+    z = 0
+    for ins in qc.data:
+        if ins.operation.name in ZWEI_QUBIT:
+            z += 1
+        for blk in getattr(ins.operation, "blocks", ()):
+            z += zwei_qubit(blk)
+    return z
 
 
 def nach_qiskit(s):
     from qiskit import QuantumCircuit
 
     qc = QuantumCircuit(s.q, len(s.mess), name=s.name[:60])
-    for n, t, *qs in s.gatter:
+    gatter = list(s.gatter)
+    i = 0
+    while i < len(gatter):
+        n, t, *qs = gatter[i]
+        if n == "wenn":
+            # aufeinanderfolgende Phasen mit demselben Steuerbit in EINEN
+            # klassisch gesteuerten Block (eine Rueckkopplung statt vieler)
+            bit = t[0]
+            block = []
+            while i < len(gatter) and gatter[i][0] == "wenn" and gatter[i][1][0] == bit:
+                block.append((gatter[i][1][1], gatter[i][2]))
+                i += 1
+            with qc.if_test((qc.clbits[bit], 1)):
+                for w, a in block:
+                    qc.p(w, a)
+            continue
+        i += 1
         if n == "h":
             qc.h(qs[0])
         elif n == "x":
@@ -121,6 +152,11 @@ def zahl(arg: str, standard: int, grenze: int) -> int:
 
 def backend_und_sampler():
     if "--ideal" in sys.argv:
+        if "--dynamisch" in sys.argv:
+            # dynamische Schaltkreise kann nur Aer (ohne Rauschen)
+            from qiskit_aer.primitives import SamplerV2 as AerSampler
+
+            return None, AerSampler(), "ideal (Aer ohne Rauschen)"
         from qiskit.primitives import StatevectorSampler
 
         return None, StatevectorSampler(), "ideal (Qiskit StatevectorSampler)"
@@ -167,15 +203,25 @@ def main() -> None:
     T = zahl("--tests", 3, MAX_TESTS)
     n = 3
     rng = random.Random(int.from_bytes(os.urandom(8), "big"))
-    kreise = hw.satz(n, T, laeufe, rng)
+    kreise = hw.satz(n, T, laeufe, rng, dynamisch="--dynamisch" in sys.argv)
     backend, sampler, wo = backend_und_sampler()
 
     qcs = [nach_qiskit(s) for s in kreise]
     if backend is not None:
         from qiskit.transpiler import generate_preset_pass_manager
 
-        pm = generate_preset_pass_manager(optimization_level=3, backend=backend, seed_transpiler=7)
-        qcs = pm.run(qcs)
+        # Mehrere Uebersetzungen (verschiedene Startwerte fuer Anordnung und
+        # Wege), je Schaltkreis die mit den wenigsten 2-Qubit-Gattern (dann
+        # geringster Tiefe). Rauschbewusste Qubit-Wahl macht der Uebersetzer
+        # auf Stufe 3 selbst (Fehlerraten der Tageskalibrierung).
+        beste = [None] * len(qcs)
+        for seed in range(VERSUCHE_UEBERSETZUNG):
+            pm = generate_preset_pass_manager(optimization_level=3, backend=backend, seed_transpiler=seed)
+            for i, q in enumerate(pm.run(qcs)):
+                guete = (zwei_qubit(q), q.depth())
+                if beste[i] is None or guete < beste[i][0]:
+                    beste[i] = (guete, q)
+        qcs = [b[1] for b in beste]
     job = sampler.run(qcs, shots=schuesse)
     job_id = job.job_id() if hasattr(job, "job_id") else ""
     ergebnisse = job.result()
@@ -204,9 +250,8 @@ def main() -> None:
             f["korr"].append(korr.get("0" * T, 0.0))
         for k, v in e["serien"].items():
             f["serien"][k] = f["serien"].get(k, 0) + v
-        ops = qc.count_ops()
         f["tiefe"] = max(f["tiefe"], qc.depth())
-        f["zwei"] = max(f["zwei"], sum(v for k, v in ops.items() if k in ("cx", "cz", "ecr", "cp", "rzz")))
+        f["zwei"] = max(f["zwei"], zwei_qubit(qc))
 
     zeilen = [f"## Quantengeld auf {wo}", "",
               f"Zyklus N = {2 ** n}, {T} Tests je Pruefung, {laeufe} Schaltkreise je Fall, {schuesse} Schuesse je Schaltkreis"

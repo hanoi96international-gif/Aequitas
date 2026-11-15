@@ -71,12 +71,23 @@ class Schaltkreis:
         Pruefer kennt die Herstellung der Note nicht."""
         self.gatter.append(("barrier", None, *qs))
 
-    def messen(self, qs):
+    def messen(self, qs, bits=None):
         """Messen an DIESER Stelle (danach darf nur noch auf anderen Qubits
-        gerechnet werden; der Simulator nutzt die aufgeschobene Messung)."""
-        for a in qs:
-            self.gatter.append(("measure", len(self.mess), a))
-            self.mess.append(a)
+        gerechnet werden; der Simulator nutzt die aufgeschobene Messung).
+        bits: Ziel-Bits (Standard: die naechsten freien)."""
+        if bits is None:
+            bits = list(range(len(self.mess), len(self.mess) + len(qs)))
+        for a, c in zip(qs, bits):
+            while len(self.mess) <= c:
+                self.mess.append(None)
+            assert self.mess[c] is None, f"Bit {c} doppelt belegt"
+            self.gatter.append(("measure", c, a))
+            self.mess[c] = a
+
+    def wenn(self, bit: int, t: float, a: int):
+        """Klassisch gesteuert (dynamischer Schaltkreis): p(t) auf Qubit a,
+        falls das schon gemessene Bit `bit` 1 ist."""
+        self.gatter.append(("wenn", (bit, t % TAU), a))
 
     def qasm(self) -> str:
         z = ["OPENQASM 3.0;", 'include "stdgates.inc";', f"// {self.name}",
@@ -85,6 +96,9 @@ class Schaltkreis:
             n, t, *qs = g
             if n == "measure":
                 z.append(f"c[{t}] = measure q[{qs[0]}];")
+                continue
+            if n == "wenn":
+                z.append(f"if (c[{t[0]}] == 1) {{ p({t[1]!r}) q[{qs[0]}]; }}")
                 continue
             par = f"({t!r})" if t is not None else ""
             z.append(f"{n}{par} " + ", ".join(f"q[{a}]" for a in qs) + ";")
@@ -173,6 +187,49 @@ def praegen_und_pruefen(n: int, us: list[int]) -> Schaltkreis:
     return s
 
 
+def praegen_dynamisch(n: int, us: list[int]) -> Schaltkreis:
+    """Wie praegen_und_pruefen, aber mit halbklassischer QFT (Griffiths-Niu):
+    die QFT auf A mit anschliessendem Messen braucht KEIN 2-Qubit-Gatter --
+    Qubit fuer Qubit messen, die anderen je nach Messwert drehen. Die
+    Seriennummer ist danach klassisch (wie im echten Protokoll); der Pruefer
+    setzt seine Phase w^(u k) klassisch gesteuert. Kein Gatter zwischen
+    Hilfsqubits und A. Braucht dynamische Schaltkreise (Messen mitten im
+    Lauf, klassische Steuerung)."""
+    T = len(us)
+    N = 2 ** n
+    A = list(range(n))
+    B = list(range(n, 2 * n))
+    H = list(range(2 * n, 2 * n + T))
+    s = Schaltkreis(2 * n + T, f"praegen+pruefen dynamisch n={n} u={us}")
+    for a in A:
+        s.h(a)
+    for a, b in zip(A, B):
+        s.cx(a, b)
+    # halbklassische QFT ohne Tausch: Qubit A[i] traegt danach Bit n-1-i
+    # der Seriennummer; Bits der Seriennummer -> klassische Bits T..T+n-1.
+    for i in reversed(range(n)):
+        s.h(A[i])
+        bit_i = T + (n - 1 - i)
+        s.messen([A[i]], [bit_i])
+        for j in reversed(range(i)):
+            s.wenn(bit_i, TAU / 2 ** (i - j + 1), A[j])
+    s.barriere(sorted(A + B + H))
+    b = qft(s, B, invers=True)
+    for a, u in zip(H, us):
+        s.h(a)
+        for j in range(n):
+            s.cp(-TAU * u * 2 ** j / N, a, b[j])
+    for j in range(n):  # Phase w^(u k), k klassisch: Bit j von k in T+j
+        for a, u in zip(H, us):
+            s.wenn(T + j, TAU * u * 2 ** j / N, a)
+    for a in H:
+        s.h(a)
+    s.messen(H, list(range(T)))
+    qft(s, b)  # Note zurueck in die Fourier-Basis
+    s.bedeutung = {"fall": "echt", "pruefbits": T, "seriebits": n}
+    return s
+
+
 def faelschung(n: int, us: list[int], serie: int, art: str, d: int) -> Schaltkreis:
     """Pruefung eines vorgelegten Zustands gegen die Seriennummer `serie`.
     art: "echt" (|$_serie>, Referenz), "fremd" (|$_d>), "basis" (|d>,
@@ -207,9 +264,18 @@ def simuliere(s: Schaltkreis) -> list[complex]:
         if n == "measure":
             gemessen.add(qs[0])
             continue
-        # aufgeschobene Messung gilt nur, wenn danach nichts mehr auf einem
-        # gemessenen Qubit passiert
-        assert not gemessen.intersection(qs), f"{n} nach Messung auf {qs}"
+        if n == "wenn":
+            # aufgeschobene Messung: klassische Steuerung = Steuerung durch
+            # das gemessene Qubit (Phase ist diagonal, Messung vertauscht)
+            bit, t = t
+            steuer = s.mess[bit]
+            assert steuer in gemessen, f"Bit {bit} noch nicht gemessen"
+            assert qs[0] not in gemessen, f"wenn auf gemessenem Qubit {qs[0]}"
+            n, qs = "cp", [steuer, qs[0]]
+        else:
+            # aufgeschobene Messung gilt nur, wenn danach nichts mehr auf
+            # einem gemessenen Qubit passiert
+            assert not gemessen.intersection(qs), f"{n} nach Messung auf {qs}"
         if n == "h":
             m = 1 << qs[0]
             r = 1 / math.sqrt(2)
@@ -299,14 +365,15 @@ def erwartet(fall: str, n: int, T: int) -> float:
     return voll + (1 - voll) * 2.0 ** -T
 
 
-def satz(n: int, T: int, laeufe: int, rng: random.Random) -> list[Schaltkreis]:
+def satz(n: int, T: int, laeufe: int, rng: random.Random, dynamisch: bool = False) -> list[Schaltkreis]:
     """Die Schaltkreise fuer einen Hardware-Lauf: je Fall `laeufe` Stueck mit
-    frischen, gleichverteilten u (und Seriennummern)."""
+    frischen, gleichverteilten u (und Seriennummern). dynamisch: Praegen mit
+    halbklassischer QFT (praegen_dynamisch)."""
     N = 2 ** n
     out = []
     for _ in range(laeufe):
         us = [rng.randrange(N) for _ in range(T)]
-        out.append(praegen_und_pruefen(n, us))
+        out.append(praegen_dynamisch(n, us) if dynamisch else praegen_und_pruefen(n, us))
         c = rng.randrange(N)
         d = (c + rng.randrange(1, N)) % N
         out.append(faelschung(n, us, c, "echt", c))
@@ -347,6 +414,20 @@ def selbsttest() -> None:
         e = auswerten(s, verteilung(s))
         assert abs(e["annahme"] - 1) < 1e-9, e
         assert len(e["serien"]) == N and all(abs(v - 1 / N) < 1e-9 for v in e["serien"].values()), e
+    # 2b. Dasselbe mit halbklassischer QFT (dynamischer Schaltkreis), und
+    #     kein 2-Qubit-Gatter zwischen Hilfsqubits und A.
+    for _ in range(4):
+        us = [rng.randrange(N) for _ in range(3)]
+        s = praegen_dynamisch(n, us)
+        e = auswerten(s, verteilung(s))
+        assert abs(e["annahme"] - 1) < 1e-9, e
+        assert len(e["serien"]) == N and all(abs(v - 1 / N) < 1e-9 for v in e["serien"].values()), e
+        A, H = set(range(n)), set(range(2 * n, 2 * n + 3))
+        for g in s.gatter:
+            if g[0] in ("cx", "cp"):
+                assert not (A & set(g[2:]) and H & set(g[2:])), g
+        zwei = sum(1 for g in s.gatter if g[0] in ("cx", "cp"))
+        assert zwei < sum(1 for g in praegen_und_pruefen(n, us).gatter if g[0] in ("cx", "cp")), zwei
     # 3. Echte Note gegen klassische Seriennummer: besteht immer.
     for c in range(N):
         s = faelschung(n, [rng.randrange(N) for _ in range(3)], c, "echt", c)
@@ -365,7 +446,7 @@ def selbsttest() -> None:
         assert abs(m - erwartet(fall, n, T)) < 0.05, (fall, m, erwartet(fall, n, T))
     # 5. Nur Hardware-Bausteine, QASM ist lesbar.
     s = satz(n, T, 1, rng)[0]
-    assert {g[0] for g in s.gatter} <= {"h", "x", "cx", "p", "cp", "barrier", "measure"}
+    assert {g[0] for g in s.gatter} <= {"h", "x", "cx", "p", "cp", "barrier", "measure", "wenn"}
     # 6. Zwischen Herstellen und Pruefen steht eine Barriere (kein
     #    Verrechnen ueber die Grenze), und gemessen wird vor dem QFT zurueck.
     for k in satz(n, T, 1, rng):
@@ -412,11 +493,12 @@ def main() -> None:
     faelle: dict[str, list] = {}
     for s in satz(n, T, 40, rng):
         faelle.setdefault(s.bedeutung["fall"] if s.bedeutung["seriebits"] == 0 else "praegen+pruefen", []).append(s)
+    faelle["praegen+pruefen dynamisch"] = [praegen_dynamisch(n, [rng.randrange(2 ** n) for _ in range(T)]) for _ in range(40)]
     for name, ss in faelle.items():
         a = sum(auswerten(s, verteilung(s))["annahme"] for s in ss) / len(ss)
         s0 = ss[0]
         zwei = sum(1 for g in s0.gatter if g[0] in ("cx", "cp"))
-        soll = erwartet("echt" if name == "praegen+pruefen" else name, n, T)
+        soll = erwartet("echt" if name.startswith("praegen") else name, n, T)
         print(f"| {name} | {s0.q} | {len(s0.gatter)} ({zwei}) | {a:.3f} | {soll:.3f} |")
 
 
