@@ -65,6 +65,7 @@ class Schaltkreis:
     def cx(self, a, b): self.gatter.append(("cx", None, a, b))
     def p(self, t, a): self.gatter.append(("p", t % TAU, a))
     def cp(self, t, a, b): self.gatter.append(("cp", t % TAU, a, b))
+    def ccx(self, a, b, c): self.gatter.append(("ccx", None, a, b, c))
 
     def barriere(self, qs):
         """Nichts darf ueber diese Linie hinweg zusammengefasst werden: der
@@ -112,6 +113,9 @@ class Schaltkreis:
                 continue
             if n == "delay":
                 z += [f"delay[{t}us] q[{a}];" for a in qs]
+                continue
+            if n == "barrier":
+                z.append("barrier " + ", ".join(f"q[{a}]" for a in qs) + ";")
                 continue
             par = f"({t!r})" if t is not None else ""
             z.append(f"{n}{par} " + ", ".join(f"q[{a}]" for a in qs) + ";")
@@ -249,6 +253,99 @@ def praegen_dynamisch(n: int, us: list[int], warten_us: float = 0) -> Schaltkrei
     return s
 
 
+# ---- Geschuetzte Note: Fehlerkorrektur im Speicher (15.11.2026) ----
+#
+# Der Umweg auf heutiger Hardware: eine Note lebt auf einem supraleitenden
+# Chip ~20 us, weil jedes Qubit allein zerfaellt. Ein Quantenspeicher
+# verteilt die Note daher auf mehrere Qubits und korrigiert Fehler, bevor
+# sie sich zu einem falschen Zustand aufaddieren. Hier die kleinste Form:
+# jedes Qubit der Note in einem 3-Qubit-Code, waehrend des Wartens, mit
+# Mehrheitsentscheid beim Auspacken (Toffoli) -- ein Fehler je Block wird
+# korrigiert. Kein Trick an der Sicherheit: der Zustand ist derselbe, nur
+# verteilt (nicht kopierbar, keine Messung).
+#
+#   phase: gegen Phasenfehler (Dephasierung, T2):  a|0>+b|1> -> a|+++>+b|---> 
+#   bit:   gegen Bitfehler (Energieverlust, T1):    a|0>+b|1> -> a|000>+b|111>
+#
+# Welcher Fehler auf dem Chip ueberwiegt, entscheidet die Messung: jeder Code
+# macht die jeweils andere Fehlerart dreimal wahrscheinlicher. Gewinnt ein
+# Code ab einer Wartezeit gegen die ungeschuetzte Note, haelt die Note dort
+# laenger -- das ist die Zahl, die zaehlt.
+CODES = ("phase", "bit")
+
+
+def einpacken(s: Schaltkreis, q: int, p1: int, p2: int, code: str) -> None:
+    s.cx(q, p1)
+    s.cx(q, p2)
+    if code == "phase":
+        for a in (q, p1, p2):
+            s.h(a)
+
+
+def auspacken(s: Schaltkreis, q: int, p1: int, p2: int, code: str) -> None:
+    """Mehrheitsentscheid: ein Fehler im Block wird korrigiert, das Ergebnis
+    liegt wieder auf q (p1, p2 tragen danach nur noch die Fehlerspur)."""
+    if code == "phase":
+        for a in (q, p1, p2):
+            s.h(a)
+    s.cx(q, p1)
+    s.cx(q, p2)
+    s.ccx(p1, p2, q)
+
+
+def praegen_geschuetzt(n: int, us: list[int], warten_us: float = 0, code: str = "phase",
+                       fehler: list[tuple[str, int]] | None = None) -> Schaltkreis:
+    """Wie praegen_dynamisch, aber die Note liegt waehrend des Wartens in
+    einem 3-Qubit-Code. Qubits: A n, B n, Partner 2n, Hilfsqubits T.
+    fehler: nur fuer den Selbsttest -- (art, qubit) mitten im Speicher
+    ("z" oder "x"), um zu zeigen, dass der Code einen Fehler je Block faengt."""
+    assert code in CODES, code
+    T = len(us)
+    N = 2 ** n
+    A = list(range(n))
+    B = list(range(n, 2 * n))
+    P = list(range(2 * n, 4 * n))
+    H = list(range(4 * n, 4 * n + T))
+    s = Schaltkreis(4 * n + T, f"praegen+pruefen geschuetzt({code}) n={n} u={us} warten={warten_us}us")
+    for a in A:
+        s.h(a)
+    for a, b in zip(A, B):
+        s.cx(a, b)
+    for i in reversed(range(n)):
+        s.h(A[i])
+        bit_i = T + (n - 1 - i)
+        s.messen([A[i]], [bit_i])
+        for j in reversed(range(i)):
+            s.wenn(bit_i, TAU / 2 ** (i - j + 1), A[j])
+    for j, b in enumerate(B):
+        einpacken(s, b, P[2 * j], P[2 * j + 1], code)
+    s.barriere(sorted(A + B + P + H))
+    if warten_us > 0:
+        s.warten(warten_us, B + P)
+    for art, q in (fehler or []):
+        if art == "z":
+            s.p(math.pi, q)
+        else:
+            s.x(q)
+    s.barriere(sorted(A + B + P + H))
+    for j, b in enumerate(B):
+        auspacken(s, b, P[2 * j], P[2 * j + 1], code)
+    b = qft(s, B, invers=True)
+    for a, u in zip(H, us):
+        s.h(a)
+        for j in range(n):
+            s.cp(-TAU * u * 2 ** j / N, a, b[j])
+    for j in range(n):
+        for a, u in zip(H, us):
+            s.wenn(T + j, TAU * u * 2 ** j / N, a)
+    for a in H:
+        s.h(a)
+    s.messen(H, list(range(T)))
+    qft(s, b)
+    s.bedeutung = {"fall": "echt", "pruefbits": T, "seriebits": n, "warten_us": warten_us, "code": code}
+    return s
+
+
 def bezahlen(n: int, us: list[int]) -> Schaltkreis:
     """Praegen (halbklassisch) -> BEZAHLEN -> Pruefen beim Empfaenger.
 
@@ -374,6 +471,12 @@ def simuliere(s: Schaltkreis) -> list[complex]:
             c, m = 1 << qs[0], 1 << qs[1]
             for i in range(len(psi)):
                 if i & c and not i & m:
+                    psi[i], psi[i | m] = psi[i | m], psi[i]
+        elif n == "ccx":
+            c = (1 << qs[0]) | (1 << qs[1])
+            m = 1 << qs[2]
+            for i in range(len(psi)):
+                if i & c == c and not i & m:
                     psi[i], psi[i | m] = psi[i | m], psi[i]
         elif n in ("p", "cp"):
             maske = 0
@@ -540,6 +643,23 @@ def selbsttest() -> None:
     C = set(range(3 * n, 4 * n))
     s.gatter = [g for g in s.gatter if not (g[0] == "wenn" and g[2] in C)]
     assert auswerten(s, verteilung(s))["annahme"] < 0.5
+    # 2e. Geschuetzte Note: ideal besteht sie immer; ein Fehler der Art, gegen
+    #     die der Code schuetzt, je Block wird korrigiert; zwei im selben
+    #     Block nicht. Gegenprobe: derselbe Fehler auf der ungeschuetzten
+    #     Note laesst die Pruefung scheitern.
+    us = [1, 2, 3]
+    for code, art in (("phase", "z"), ("bit", "x")):
+        s = praegen_geschuetzt(n, us, warten_us=50, code=code)
+        assert abs(auswerten(s, verteilung(s))["annahme"] - 1) < 1e-9, code
+        B, P = list(range(n, 2 * n)), list(range(2 * n, 4 * n))
+        ein_je_block = [(art, B[0]), (art, P[2]), (art, P[5])]
+        s = praegen_geschuetzt(n, us, code=code, fehler=ein_je_block)
+        assert abs(auswerten(s, verteilung(s))["annahme"] - 1) < 1e-9, (code, "ein Fehler je Block")
+        s = praegen_geschuetzt(n, us, code=code, fehler=[(art, P[0]), (art, P[1])])
+        assert auswerten(s, verteilung(s))["annahme"] < 1 - 1e-6, (code, "zwei Fehler in einem Block")
+    s = praegen_dynamisch(n, us)
+    s.gatter.insert([g[0] for g in s.gatter].index("barrier") + 1, ("p", math.pi, n))
+    assert auswerten(s, verteilung(s))["annahme"] < 1 - 1e-6, "ungeschuetzt faengt keinen Fehler"
     # 3. Echte Note gegen klassische Seriennummer: besteht immer.
     for c in range(N):
         s = faelschung(n, [rng.randrange(N) for _ in range(3)], c, "echt", c)
@@ -559,6 +679,8 @@ def selbsttest() -> None:
     # 5. Nur Hardware-Bausteine, QASM ist lesbar.
     s = satz(n, T, 1, rng)[0]
     assert {g[0] for g in s.gatter} <= {"h", "x", "cx", "p", "cp", "barrier", "measure", "wenn", "delay"}
+    assert {g[0] for g in praegen_geschuetzt(n, [1, 2, 3], 20).gatter} <= {
+        "h", "x", "cx", "ccx", "p", "cp", "barrier", "measure", "wenn", "delay"}
     # 6. Zwischen Herstellen und Pruefen steht eine Barriere (kein
     #    Verrechnen ueber die Grenze), und die Pruefbits werden nach ihr
     #    gemessen (vor dem QFT zurueck).
