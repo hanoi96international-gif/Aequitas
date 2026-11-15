@@ -313,8 +313,8 @@ type offlineUrteil struct {
 	regel, text string
 	reg         *offlineRegister
 	// Geldwege, in Mikro-AEQ.
-	pfand    int64 // Mensch -> Topf
-	ausTopf  int64 // Topf -> Empfaenger
+	pfand    int64  // Mensch -> Topf
+	ausTopf  int64  // Topf -> Empfaenger
 	vomKonto int64  // Halter -> Empfaenger
 	halter   string // nur bei vomKonto > 0
 	schuld   int64
