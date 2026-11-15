@@ -13,7 +13,7 @@
 #             Syntaxpruefung (H2-1SC, kostenlos), Emulator (H2-1E) oder die
 #             Maschine (Variable QUANTINUUM_DEVICE, Standard H2-1). Umgebung
 #             `quantenhardware` mit dem Secret QUANTINUUM_TOKEN (Refresh-Token
-#             aus Nexus). warten_reihe gilt hier in MILLISEKUNDEN (Ionen halten
+#             aus Nexus) oder QUANTINUUM_EMAIL + QUANTINUUM_PASSWORT. warten_reihe gilt hier in MILLISEKUNDEN (Ionen halten
 #             Sekunden). Kostendeckel je Schaltkreis: Variable
 #             QUANTINUUM_HQC_JE_KREIS (Standard 50).
 #
@@ -164,6 +164,8 @@ jobs:
       - name: Lauf auf der Ionenfalle
         env:
           QUANTINUUM_TOKEN: ${{ secrets.QUANTINUUM_TOKEN }}
+          QUANTINUUM_EMAIL: ${{ secrets.QUANTINUUM_EMAIL }}
+          QUANTINUUM_PASSWORT: ${{ secrets.QUANTINUUM_PASSWORT }}
           QUANTINUUM_DEVICE: ${{ vars.QUANTINUUM_DEVICE }}
           QUANTINUUM_HQC_JE_KREIS: ${{ vars.QUANTINUUM_HQC_JE_KREIS }}
           MODUS: ${{ inputs.modus }}

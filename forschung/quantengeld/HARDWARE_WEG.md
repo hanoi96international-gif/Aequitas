@@ -37,10 +37,11 @@ Topf, Einlösen, Freischaltung). Was fehlt, ist Hardware für drei Dinge: **halt
    falschen Zahlen). Kostendeckel je Schaltkreis: `QUANTINUUM_HQC_JE_KREIS` (Standard 50),
    höchstens 16 Schaltkreise je Fall und 2.000 Schüsse.
 
-   **Einmal einzurichten (Betreiber):** Konto bei Quantinuum Nexus; dort einmal anmelden
-   und den Refresh-Token als Secret `QUANTINUUM_TOKEN` in der Umgebung `quantenhardware`
-   (GitHub → Settings → Environments) hinterlegen. Der Token wird nie ausgegeben und nie
-   auf die Platte geschrieben. Erst `quantinuum-pruefen`, dann der Emulator, dann die
+   **Einmal einzurichten (Betreiber):** Konto bei Quantinuum Nexus
+   (https://nexus.quantinuum.com). In der Umgebung `quantenhardware` (GitHub → Settings →
+   Environments) entweder die Secrets `QUANTINUUM_EMAIL` und `QUANTINUUM_PASSWORT`
+   (geht nur ohne zweiten Faktor) oder den Refresh-Token als `QUANTINUUM_TOKEN`
+   hinterlegen. Nichts davon wird ausgegeben oder auf die Platte geschrieben. Erst `quantinuum-pruefen`, dann der Emulator, dann die
    Maschine.
 
    **Offen bis zum ersten Lauf:** die Einheit von `sleep` (Sekunden laut `hqslib1_dev`)

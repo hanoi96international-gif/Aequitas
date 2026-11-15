@@ -21,9 +21,10 @@ Modi:
                       liefern (faengt jeden Fehler bei Winkeln, Bits,
                       Bedingungen und Warten).
   --nexus GERAET      auf Quantinuum ueber Nexus. Zugang NUR ueber die
-                      Umgebung: QUANTINUUM_TOKEN (Refresh-Token aus Nexus).
-                      Der Token wird nie ausgegeben und nie auf die Platte
-                      geschrieben (CONFIG.store_tokens = False).
+                      Umgebung: QUANTINUUM_TOKEN (Refresh-Token aus Nexus)
+                      oder QUANTINUUM_EMAIL + QUANTINUUM_PASSWORT (Konto
+                      ohne zweiten Faktor). Nichts davon wird ausgegeben oder
+                      auf die Platte geschrieben (CONFIG.store_tokens = False).
                       GERAET z. B. H2-1SC (Syntaxpruefung, kostenlos),
                       H2-1E (Emulator), H2-1 (Maschine).
 Weitere:
@@ -272,11 +273,24 @@ def nexus_lauf(kreise, geraet: str, schuesse: int, hqc_je_kreis: float):
     from qnexus.config import CONFIG
 
     token = os.environ.get("QUANTINUUM_TOKEN", "").strip()
-    if not token:
-        raise SystemExit("QUANTINUUM_TOKEN fehlt (Umgebung quantenhardware).")
+    email = os.environ.get("QUANTINUUM_EMAIL", "").strip()
+    passwort = os.environ.get("QUANTINUUM_PASSWORT", "")
+    if not token and not (email and passwort):
+        raise SystemExit("Zugang fehlt: QUANTINUUM_TOKEN oder QUANTINUUM_EMAIL + QUANTINUUM_PASSWORT "
+                         "(Umgebung quantenhardware).")
+    # Nichts auf die Platte (write_token ist dann ein No-op), nichts ins Log.
     CONFIG.store_tokens = False
-    qnx.login_with_token(token)
-    del token
+    if token:
+        qnx.login_with_token(token)
+    else:
+        # Ohne Rueckfrage. Verlangt das Konto einen zweiten Faktor, scheitert
+        # das hier (keine Eingabe im Workflow) -- dann den Token nehmen.
+        try:
+            qnx.auth.login_no_interaction(user=email, pwd=passwort)
+        except (EOFError, OSError):
+            raise SystemExit("Anmeldung mit Passwort verlangt einen zweiten Faktor -- "
+                             "bitte QUANTINUUM_TOKEN hinterlegen.")
+    del token, passwort
 
     projekt = qnx.projects.get_or_create(name=PROJEKT)
     qnx.context.set_active_project(projekt)
@@ -448,17 +462,23 @@ def selbsttest() -> None:
             continue
         raise AssertionError(f"Geraet {g!r} angenommen")
     # Ohne Token: Abbruch vor jedem Netzzugriff.
-    alt = os.environ.pop("QUANTINUUM_TOKEN", None)
+    namen = ("QUANTINUUM_TOKEN", "QUANTINUUM_EMAIL", "QUANTINUUM_PASSWORT")
+    alt = {k: os.environ.pop(k, None) for k in namen}
     try:
-        try:
-            nexus_lauf([], "H2-1SC", 1, 1)
-        except SystemExit as e:
-            assert "QUANTINUUM_TOKEN" in str(e)
-        else:
-            raise AssertionError("ohne Token kein Abbruch")
+        for teil in ({}, {"QUANTINUUM_EMAIL": "a@b.de"}, {"QUANTINUUM_PASSWORT": "geheim-4711"}):
+            os.environ.update(teil)
+            try:
+                nexus_lauf([], "H2-1SC", 1, 1)
+            except SystemExit as e:
+                assert "QUANTINUUM_TOKEN" in str(e) and "geheim-4711" not in str(e)
+            else:
+                raise AssertionError(f"ohne vollstaendigen Zugang kein Abbruch: {sorted(teil)}")
+            for k in teil:
+                os.environ.pop(k)
     finally:
-        if alt is not None:
-            os.environ["QUANTINUUM_TOKEN"] = alt
+        for k, v in alt.items():
+            if v is not None:
+                os.environ[k] = v
     print("selbsttest ok")
 
 
