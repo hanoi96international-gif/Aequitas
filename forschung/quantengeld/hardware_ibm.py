@@ -27,7 +27,10 @@ liegt je W Mikrosekunden zwischen Praegen und Pruefen; hoechstens 8 Werte,
 je 0..1000 us),
 --bezahlen (Uebertragung: Praegen+Pruefen gegen Praegen+BEZAHLEN+Pruefen,
 die Note wird per Teleportation an ein anderes Register geschickt;
-hardware.bezahlen).
+hardware.bezahlen),
+--geschuetzt phase|bit|beide (Speicher mit Fehlerkorrektur: je Wartezeit
+die ungeschuetzte Note gegen dieselbe Note im 3-Qubit-Code; ohne
+--warten-reihe 0,20,50,100,200 us; hardware.praegen_geschuetzt).
 
 Mit echter Maschine oder Rauschmodell wird zusaetzlich die Auslese der
 Pruefqubits kalibriert (2 Schaltkreise) und die Annahme auch
@@ -103,6 +106,8 @@ def nach_qiskit(s):
             qc.p(t, qs[0])
         elif n == "cp":
             qc.cp(t, qs[0], qs[1])
+        elif n == "ccx":
+            qc.ccx(qs[0], qs[1], qs[2])
         elif n == "delay":
             for a in qs:
                 qc.delay(t, a, unit="us")
@@ -165,6 +170,18 @@ def warten_reihe() -> list[float] | None:
     if not 1 <= len(werte) <= MAX_WARTEN_WERTE or any(not 0 <= w <= MAX_WARTEN_US for w in werte):
         raise SystemExit(f"--warten-reihe: 1..{MAX_WARTEN_WERTE} Werte, je 0..{MAX_WARTEN_US} us")
     return werte
+
+
+def schutz_codes() -> list[str] | None:
+    """--geschuetzt phase|bit|beide -> die Codes; None ohne die Option."""
+    if "--geschuetzt" not in sys.argv:
+        return None
+    wert = sys.argv[sys.argv.index("--geschuetzt") + 1]
+    if wert == "beide":
+        return list(hw.CODES)
+    if wert not in hw.CODES:
+        raise SystemExit("--geschuetzt: phase, bit oder beide")
+    return [wert]
 
 
 def zahl(arg: str, standard: int, grenze: int) -> int:
@@ -234,7 +251,17 @@ def main() -> None:
     rng = random.Random(int.from_bytes(os.urandom(8), "big"))
     dyn = "--dynamisch" in sys.argv
     reihe = warten_reihe()
-    if "--bezahlen" in sys.argv:
+    codes = schutz_codes()
+    if codes is not None:
+        # je Wartezeit und Lauf dieselben u: ungeschuetzt gegen geschuetzt
+        reihe = reihe or [0, 20, 50, 100, 200]
+        kreise = []
+        for w in reihe:
+            for _ in range(laeufe):
+                us = [rng.randrange(2 ** n) for _ in range(T)]
+                kreise.append(hw.praegen_dynamisch(n, us, warten_us=w))
+                kreise += [hw.praegen_geschuetzt(n, us, warten_us=w, code=c) for c in codes]
+    elif "--bezahlen" in sys.argv:
         # je Lauf dieselben u: Praegen+Pruefen gegen Praegen+BEZAHLEN+Pruefen
         kreise = []
         for _ in range(laeufe):
@@ -282,6 +309,8 @@ def main() -> None:
         name = "praegen+pruefen" if s.bedeutung["seriebits"] else s.bedeutung["fall"]
         if s.bedeutung["fall"] == "bezahlt":
             name = "praegen+bezahlen+pruefen"
+        if codes is not None:
+            name = f"geschuetzt({s.bedeutung['code']})" if "code" in s.bedeutung else "ungeschuetzt"
         if reihe is not None:
             name += f" nach {s.bedeutung.get('warten_us', 0):g} us"
         f = faelle.setdefault(name, {"annahme": [], "korr": [], "serien": {}, "tiefe": 0, "zwei": 0, "qubits": s.q})
