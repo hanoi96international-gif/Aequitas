@@ -60,6 +60,10 @@ on:
         type: choice
         options: [aus, phase, bit, beide]
         default: aus
+      wiesner:
+        description: "Variante W (wiesner_hardware.py): BB84-Note, klassische Pruefung, Fehlerrate je Wartezeit; mit bezahlen auch teleportiert (nur rauschen/ibm)"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -92,9 +96,11 @@ jobs:
           WARTEN: ${{ inputs.warten_reihe }}
           BEZAHLEN: ${{ inputs.bezahlen }}
           SCHUTZ: ${{ inputs.schutz }}
+          WIESNER: ${{ inputs.wiesner }}
         run: |
           set -euo pipefail
           extra=()
+          if [ "$WIESNER" = "true" ]; then extra+=(--wiesner); fi
           if [ "$DYNAMISCH" = "true" ]; then extra+=(--dynamisch); fi
           if [ -n "$WARTEN" ]; then extra+=(--warten-reihe "$WARTEN"); fi
           if [ "$BEZAHLEN" = "true" ]; then extra+=(--bezahlen); fi
@@ -132,9 +138,11 @@ jobs:
           WARTEN: ${{ inputs.warten_reihe }}
           BEZAHLEN: ${{ inputs.bezahlen }}
           SCHUTZ: ${{ inputs.schutz }}
+          WIESNER: ${{ inputs.wiesner }}
         run: |
           set -euo pipefail
           extra=()
+          if [ "$WIESNER" = "true" ]; then extra+=(--wiesner); fi
           if [ "$UNTERDRUECKUNG" = "true" ]; then extra+=(--unterdrueckung); fi
           if [ "$DYNAMISCH" = "true" ]; then extra+=(--dynamisch); fi
           if [ -n "$WARTEN" ]; then extra+=(--warten-reihe "$WARTEN"); fi
