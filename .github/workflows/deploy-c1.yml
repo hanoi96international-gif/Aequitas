@@ -86,6 +86,8 @@ jobs:
         run: bash .github/neustart/quantengeld-nicht-verpasst.sh http://$C1:8080
       - name: Mindestzahl der Pruefer fuers Quantengeld nur ohne eingetragenen Satz aendern
         run: bash .github/neustart/quantengeld-mindest-pruefer.sh http://$C1:8080
+      - name: Quantengeld-Noten je Zeile nur, solange der laufende Knoten keine im alten Format hat
+        run: bash .github/neustart/quantengeld-noten-tabelle.sh http://$C1:8080
       - name: Stichtag des Offline-Bargelds nicht verpasst, Topf vorher leer
         run: bash .github/neustart/offline-nicht-verpasst.sh http://$C1:8080
       - name: Stichtag der hybriden Pruefer-Stimmen nicht verpasst

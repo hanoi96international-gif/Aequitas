@@ -294,8 +294,13 @@ func pruefeSnapshotKonfig(key, wert string) error {
 		}
 	}
 	if key == quantenGeldKonfigSchluessel {
-		if _, err := quantenGeldRegisterLesen(wert); err != nil {
+		r, err := quantenGeldRegisterLesen(wert)
+		if err != nil {
 			return err
+		}
+		// Seit QG3 stehen Noten nur in quanten_noten (StateSnapshot.QuantenNoten).
+		if len(r.Noten) != 0 {
+			return fmt.Errorf("quantum notes in chain_config (format before QG3)")
 		}
 	}
 	if key == offlineKonfigSchluessel {

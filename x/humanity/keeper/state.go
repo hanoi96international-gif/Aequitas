@@ -1422,6 +1422,15 @@ registered_at TIMESTAMP DEFAULT NOW()
 key TEXT PRIMARY KEY,
 value TEXT NOT NULL
 )`)
+	// quanten_noten (quanten_geld.go, QG3): je angemeldete Quanten-Note eine
+	// Zeile. Konsens: das Register (mit den Saetzen aus chain_config) steht
+	// in der StateRoot.
+	dbExec(`CREATE TABLE IF NOT EXISTS quanten_noten (
+k TEXT PRIMARY KEY,
+satz TEXT NOT NULL,
+von TEXT NOT NULL,
+anteile BIGINT NOT NULL
+)`)
 	// synthetic_checkpoint_events: durable audit trail for every
 	// synthetic-checkpoint stub this node has ever inserted (see
 	// BridgeHistoricalGap and queueOrphan's runtime-bridge branch). A stub
