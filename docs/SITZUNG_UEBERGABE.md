@@ -2,7 +2,7 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 16.11.2026 abends, Sitzung „Weiter“ (Auftrag des Betreibers: „Alles erledigen
+Stand: 16.11.2026 ~23 UTC nach #557, Sitzung „Weiter“ (Auftrag des Betreibers: „Alles erledigen
 für dezentrales Quantengeld“).
 
 ## Arbeitsweise (vom Betreiber festgelegt)
@@ -28,7 +28,12 @@ für dezentrales Quantengeld“).
 - Lokale Go-Tests: Erst `df -h /` prüfen. Bei vollem Platz `go clean -cache`. Die
   Fehlermeldung „MB of disk left“ kommt vom Container, nicht vom Code.
 
-## Hauptaugenmerk: dezentrales Quantengeld (Stand 16.11. ~19:25 UTC)
+## Hauptaugenmerk: dezentrales Quantengeld (Stand 16.11. ~23 UTC)
+
+**Als Nächstes:** Register von W und S als eigene Tabelle statt JSON in
+`chain_config` (`quanten_w`), vor jeder Freischaltung (W6). Vorbild ist QG3
+(Register von Quantengeld in eigener Tabelle). Danach: mehrstufige Prüfung bei W,
+App-Anzeige für W und S.
 
 Auftrag des Betreibers: dezentrales Quantengeld auf heutigem Stand funktionsfähig, damit
 Aequitas ernstzunehmendes Quantengeld ist. „Alles umsetzen.“ Die Liste der offenen Punkte
@@ -113,7 +118,7 @@ Nicht übernommen, als Beobachtung für später:
        stehen (der Knoten ist Leiter). Sonst begrenzt die Blockzeit.
 4. **W:** mehrstufige Prüfung; Fehlerkorrektur messen; ~~Ende-zu-Ende-Test mit vier
    Knoten für den Dienst~~ (erledigt, siehe oben); Register als Tabelle (vor W6).
-   - **Peers aus dem Knoten** (PR „Validator-Dienst: Nachbarn des Knotens“, NUMMER):
+   - **Peers aus dem Knoten** (#557, gemergt):
      - Der Dienst fragt die Sync-Peers und Seeds (`BlockDAG.QuantenWNachbarn`) und dazu
        `QUANTEN_W_PEERS` ab. Alle gleichzeitig, mit 5 s Frist und 1 s Nachlauf, sobald
        t beisammen sind.
@@ -134,6 +139,9 @@ Nicht übernommen, als Beobachtung für später:
 | – | – | keine offenen PRs | – |
 
 Gemergt am 16.11.:
+- #557 (Validator-Dienst: Nachbarn des Knotens, gleichzeitig abgefragt, Anteile
+  unterschrieben)
+- #556 (Übergabe nach #555)
 - #555 (Validator-Dienst: Staffel, bis 8 Teile je Takt)
 - #554 (Validator-Dienst für Variante S)
 - #552 (Validator-Dienst W: Auftrag bindet Anteile, Bestätigen wiederholbar; `s_kette.py`
