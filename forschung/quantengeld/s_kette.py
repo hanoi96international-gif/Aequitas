@@ -52,7 +52,8 @@ SICHERHEIT IN ZAHLEN (wiesner_parameter.py)
 GRENZEN (ehrlich)
   - Kein Bargeld von Hand zu Hand: wer x weitergibt, kennt es weiter.
   - Gueltig an genau einer von 2^M vorher festgelegten Stellen (oder
-    Zeitfenstern). Die Stellen muessen ihre Stichproben geheim halten.
+    Zeitfenstern). Die Stellen muessen ihre Stichproben geheim halten und
+    laden nur mit mindestens k_note Stellen (stelle_laden).
   - Die Ausgabe braucht QKD-Empfaengertechnik bei der Nutzerin.
 
 Aufruf:  python3 -I s_kette.py [--selbsttest]
