@@ -91,6 +91,13 @@ func (q *qwDienste) anfrageBestaetigen(x int) QuantenWBestaetigenAnfrage {
 		r.Anteile = append(r.Anteile, p.anteile[i][x-1].Text(16))
 		r.Blaetter = append(r.Blaetter, hex.EncodeToString(p.blaetter[i][:]))
 	}
+	return q.auftrag(r, q.w.praeger)
+}
+
+// auftrag: der Praeger (wer) unterschreibt den Auftrag.
+func (q *qwDienste) auftrag(r QuantenWBestaetigenAnfrage, wer string) QuantenWBestaetigenAnfrage {
+	r.Praeger = wer
+	r.PraegerSig = personalSign(q.w.t, q.w.keys[wer], quantenWAuftragNachricht(wer, r.K, r.N, r.T, r.Tol, r.X, r.Wurzel, r.Validatoren, r.Zeit))
 	return r
 }
 
@@ -216,7 +223,18 @@ func TestQuantenWDienst_BestaetigenMissbrauch(t *testing.T) {
 			v[2] = strings.ToUpper(v[2])
 			r.Validatoren = v
 		},
-		"n zu gross": func(r *QuantenWBestaetigenAnfrage) { r.N = quantenWNMax + 1 },
+		"n zu gross":                func(r *QuantenWBestaetigenAnfrage) { r.N = quantenWNMax + 1 },
+		"Auftrag ohne Unterschrift": func(r *QuantenWBestaetigenAnfrage) { r.PraegerSig = "" },
+		"Auftrag fremd unterschrieben": func(r *QuantenWBestaetigenAnfrage) {
+			*r = q.auftrag(*r, q.w.anna)
+			r.Praeger = q.w.praeger
+		},
+		"Auftrag fuer andere Toleranz": func(r *QuantenWBestaetigenAnfrage) { s := *r; s.Tol = 2; *r = q.auftrag(s, q.w.praeger); r.Tol = 4 },
+		"Praeger kein Mensch": func(r *QuantenWBestaetigenAnfrage) {
+			k, a := neuerSchluessel(t)
+			q.w.keys[a] = k
+			*r = q.auftrag(*r, a)
+		},
 	} {
 		r := gut
 		r.Anteile = append([]string(nil), gut.Anteile...)
@@ -234,6 +252,31 @@ func TestQuantenWDienst_BestaetigenMissbrauch(t *testing.T) {
 	}
 	if _, _, err := d.bestaetigen(gut); err == nil {
 		t.Fatal("zweimal bestaetigt")
+	}
+	// Ein Praeger ohne Deckung belegt keinen Platz.
+	alt := quantenWPraegerTauglich
+	quantenWPraegerTauglich = func(*ChainState, string) bool { return false }
+	r2 := q.anfrageBestaetigen(1)
+	r2.K = strings.Repeat("a", 64)
+	if _, _, err := d.bestaetigen(q.auftrag(r2, q.w.praeger)); err == nil {
+		t.Fatal("Praeger ohne Deckung bestaetigt")
+	}
+	quantenWPraegerTauglich = alt
+	// Je Praeger hoechstens quantenWOffeneJePraeger nicht gepraegte Bestaetigungen.
+	for i := 1; i < quantenWOffeneJePraeger; i++ {
+		ri := q.anfrageBestaetigen(1)
+		ri.K = fmt.Sprintf("%064x", 1000+i)
+		if _, _, err := d.bestaetigen(q.auftrag(ri, q.w.praeger)); err != nil {
+			t.Fatalf("Bestaetigung %d: %v", i, err)
+		}
+	}
+	rz := q.anfrageBestaetigen(1)
+	rz.K = fmt.Sprintf("%064x", 2000)
+	if _, _, err := d.bestaetigen(q.auftrag(rz, q.w.praeger)); err == nil {
+		t.Fatal("mehr als quantenWOffeneJePraeger offene Bestaetigungen eines Praegers")
+	}
+	if _, _, err := d.bestaetigen(q.auftrag(rz, q.w.anna)); err != nil {
+		t.Fatalf("anderer Praeger abgewiesen: %v", err)
 	}
 	// Tresor voll.
 	d.eintraege = map[string]*quantenWTresorEintrag{}
@@ -357,6 +400,22 @@ func TestQuantenWDienst_FristUndSchlaf(t *testing.T) {
 	quantenWAbOverride.Store(qwT0 - 86400)
 	if a := w.anfrage(w.cs); a == nil || a.Basen != nil {
 		t.Fatal("schlafender Dienst hat Zufall eingereicht")
+	}
+}
+
+// Pfade aus den einmal gebauten Ebenen = Pfade je Stelle.
+func TestQuantenWDienst_PfadeAusEbenen(t *testing.T) {
+	for _, n := range []int{1, 2, 3, 7, 64, 200, 1000} {
+		var bl [][32]byte
+		for i := 0; i < n; i++ {
+			bl = append(bl, quantenWHash([]byte{byte(i), byte(i >> 8)}))
+		}
+		eb := quantenWMerkleEbenen(bl)
+		for i := 0; i < n; i++ {
+			if fmt.Sprint(quantenWPfadAusEbenen(eb, i)) != fmt.Sprint(quantenWMerklePfad(bl, i)) {
+				t.Fatalf("n %d, Stelle %d: Pfade verschieden", n, i)
+			}
+		}
 	}
 }
 

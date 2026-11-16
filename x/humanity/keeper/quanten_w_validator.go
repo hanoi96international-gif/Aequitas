@@ -58,6 +58,11 @@ import (
 
 const (
 	quantenWTresorHoechstens = 64
+	// Noch nicht gepraegte Bestaetigungen: hoechstens so viele insgesamt und
+	// je Praeger (sonst belegt ein Fremder den Tresor -- Sicherheitspruefung W2d).
+	quantenWOffeneHoechstens = 32
+	quantenWOffeneJePraeger  = 4
+	quantenWDomAuftrag       = "aequitas-quanten-w-auftrag-v1"
 	// Bestaetigen: n bis 16384 Anteile (~34 Zeichen) und Blaetter (~66 Zeichen).
 	quantenWTresorKoerperMax = 2 << 20
 	quantenWDienstTakt       = 5 * time.Second
@@ -83,6 +88,7 @@ type quantenWTresorEintrag struct {
 	Geheim      string   `json:"geheim"`
 	Anteile     []string `json:"anteile"`  // hex, je Stelle der eigene Anteil
 	Blaetter    []string `json:"blaetter"` // hex, Merkle-Blaetter
+	Praeger     string   `json:"praeger"`
 }
 
 // quantenWAblage: wohin der Tresor schreibt (Datenbank oder Speicher).
@@ -242,6 +248,16 @@ type QuantenWBestaetigenAnfrage struct {
 	Zeit        int64    `json:"zeit"`
 	Anteile     []string `json:"anteile"`
 	Blaetter    []string `json:"blaetter"`
+	// Der Praeger unterschreibt den Auftrag (EIP-191, quantenWAuftragNachricht):
+	// nur ein Mensch mit Deckung belegt Platz im Tresor.
+	Praeger    string `json:"praeger"`
+	PraegerSig string `json:"praeger_sig"`
+}
+
+// quantenWAuftragNachricht: was der Praeger dem Validator unterschreibt.
+func quantenWAuftragNachricht(praeger, K string, n, t, tol, x int, wurzel string, validatoren []string, zeit int64) string {
+	return fmt.Sprintf("%s|chain:%d|%s|%s|%d|%d|%d|%d|%s|%s|%d", quantenWDomAuftrag, eingefroreneChainID,
+		strings.ToLower(praeger), K, n, t, tol, x, wurzel, strings.Join(validatoren, ","), zeit)
 }
 
 // bestaetigen: pruefen, ablegen, unterschreiben. Gibt Anker und Bestaetigung.
@@ -267,6 +283,16 @@ func (d *quantenWDienst) bestaetigen(q QuantenWBestaetigenAnfrage) (anker string
 	}
 	if q.X < 1 || q.X > len(q.Validatoren) || q.Validatoren[q.X-1] != d.adresse {
 		return "", "", quantenWFehler("Nummer %d gehoert nicht zu diesem Validator", q.X)
+	}
+	// Der Auftrag: unterschrieben von einem Menschen mit mindestens der
+	// kleinsten Deckung (sonst belegt ein Fremder kostenlos den Tresor).
+	q.Praeger = strings.ToLower(strings.TrimSpace(q.Praeger))
+	if !kanonischeAdresse(q.Praeger) || !kanonischeSignatur(q.PraegerSig) ||
+		verifyPersonalSign(quantenWAuftragNachricht(q.Praeger, q.K, q.N, q.T, q.Tol, q.X, q.Wurzel, q.Validatoren, q.Zeit), q.PraegerSig, q.Praeger) != nil {
+		return "", "", quantenWFehler("Auftrag nicht vom Praeger unterschrieben")
+	}
+	if !d.praegerTauglich(q.Praeger) {
+		return "", "", quantenWFehler("Praeger ist kein Mensch mit Deckung")
 	}
 	jetzt := d.jetzt()
 	if q.Zeit < jetzt-quantenWAlt || q.Zeit > jetzt+quantenWVoraus {
@@ -306,7 +332,7 @@ func (d *quantenWDienst) bestaetigen(q QuantenWBestaetigenAnfrage) (anker string
 	a := quantenWKetteVor(geheim, quantenWZufallL)
 	e := &quantenWTresorEintrag{K: q.K, N: q.N, T: q.T, Tol: q.Tol, X: q.X, Validatoren: append([]string(nil), q.Validatoren...),
 		Wurzel: q.Wurzel, Zeit: q.Zeit, Geheim: hex.EncodeToString(geheim[:]), Anteile: append([]string(nil), q.Anteile...),
-		Blaetter: append([]string(nil), q.Blaetter...)}
+		Blaetter: append([]string(nil), q.Blaetter...), Praeger: q.Praeger}
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if _, da := d.eintraege[q.K]; da {
@@ -314,6 +340,18 @@ func (d *quantenWDienst) bestaetigen(q QuantenWBestaetigenAnfrage) (anker string
 	}
 	if len(d.eintraege) >= quantenWTresorHoechstens {
 		return "", "", quantenWFehler("Tresor voll")
+	}
+	offen, jePraeger := 0, 0
+	for k, x := range d.eintraege {
+		if _, gepraegt := reg.Noten[k]; !gepraegt {
+			offen++
+			if x.Praeger == q.Praeger {
+				jePraeger++
+			}
+		}
+	}
+	if offen >= quantenWOffeneHoechstens || jePraeger >= quantenWOffeneJePraeger {
+		return "", "", quantenWFehler("zu viele noch nicht gepraegte Bestaetigungen")
 	}
 	roh, err := d.versiegeln(e)
 	if err != nil {
@@ -330,6 +368,18 @@ func (d *quantenWDienst) bestaetigen(q QuantenWBestaetigenAnfrage) (anker string
 	}
 	s[64] += 27
 	return hex.EncodeToString(a[:]), "0x" + hex.EncodeToString(s), nil
+}
+
+// praegerTauglich: ein Mensch mit mindestens der kleinsten Deckung.
+// var: Tests ohne Datenbank setzen ein.
+var quantenWPraegerTauglich = func(cs *ChainState, wallet string) bool {
+	cs.ensureAccountLoadedCtx(context.Background(), wallet)
+	acc, ok := cs.accounts.Get(wallet)
+	return ok && acc.IsHuman && acc.Balance.Micro() >= quantenMindestDeckungMik
+}
+
+func (d *quantenWDienst) praegerTauglich(wallet string) bool {
+	return quantenWPraegerTauglich(d.cs, wallet)
 }
 
 // QuantenWAnteilAusgabe: die Anteile EINES Validators fuer einen Teil.
@@ -368,6 +418,9 @@ func (d *quantenWDienst) anteile(K string, index, ab int) (QuantenWAnteilAusgabe
 	for i, h := range e.Blaetter {
 		blaetter[i], _ = quantenWHex32(h)
 	}
+	// Den Baum EINMAL bauen (nicht je Stelle: bei n = 16384 waeren das
+	// sonst ~2 Mio. Hashes je Abruf -- Sicherheitspruefung W2d).
+	ebenen := quantenWMerkleEbenen(blaetter)
 	out := QuantenWAnteilAusgabe{K: K, Index: index, Ab: ab, X: e.X}
 	for _, i := range a.Stellen[ab:bis] {
 		if i < 0 || i >= e.N {
@@ -376,12 +429,40 @@ func (d *quantenWDienst) anteile(K string, index, ab int) (QuantenWAnteilAusgabe
 		out.Stellen = append(out.Stellen, i)
 		out.Y = append(out.Y, e.Anteile[i])
 		var p []string
-		for _, h := range quantenWMerklePfad(blaetter, i) {
+		for _, h := range quantenWPfadAusEbenen(ebenen, i) {
 			p = append(p, hex.EncodeToString(h[:]))
 		}
 		out.Pfade = append(out.Pfade, p)
 	}
 	return out, nil
+}
+
+// quantenWMerkleEbenen: alle Ebenen des Baums (ungerade Ebenen verdoppeln
+// das letzte Blatt, wie quantenWMerkleWurzel).
+func quantenWMerkleEbenen(blaetter [][32]byte) [][][32]byte {
+	ebene := append([][32]byte(nil), blaetter...)
+	var out [][][32]byte
+	for len(ebene) > 1 {
+		if len(ebene)%2 == 1 {
+			ebene = append(ebene, ebene[len(ebene)-1])
+		}
+		out = append(out, ebene)
+		naechste := make([][32]byte, 0, len(ebene)/2)
+		for j := 0; j < len(ebene); j += 2 {
+			naechste = append(naechste, quantenWKnoten(ebene[j], ebene[j+1]))
+		}
+		ebene = naechste
+	}
+	return out
+}
+
+func quantenWPfadAusEbenen(ebenen [][][32]byte, i int) [][32]byte {
+	var pfad [][32]byte
+	for _, e := range ebenen {
+		pfad = append(pfad, e[i^1])
+		i /= 2
+	}
+	return pfad
 }
 
 // quantenWSammeln: aus den Ausgaben mehrerer Validatoren (gleiche Stellen)
