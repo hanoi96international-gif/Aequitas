@@ -112,8 +112,9 @@ def ende_zu_ende(rng: random.Random, n: int = 32, k: int = 24, bezahlen: bool = 
     # 2. Bezahlen: die Note geht (als Quantenzustand) an den Empfaenger --
     # hier Teil des Schaltkreises unten. 3. Einloesen beim Empfaenger.
     zaehl = kette.noten[K]["zaehl"]
-    st, ch = kette.anfrage("empfaenger", K, k, wk.KetteW.sig(b"e" * 16, f"anfrage|{K}|{k}|empfaenger|{zaehl}"), "empfaenger")
-    kette.block()
+    kette.anfrage("empfaenger", K, k, wk.KetteW.sig(b"e" * 16, f"anfrage|{K}|{k}|empfaenger|{zaehl}"), "empfaenger")
+    kette.block()  # die Aufforderung zieht der naechste Block
+    st, ch = kette.aufforderung_von(K)
     if faelscher:
         antwort = [rng.randrange(2) for _ in st]
     else:

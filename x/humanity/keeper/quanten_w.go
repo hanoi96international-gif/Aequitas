@@ -11,8 +11,9 @@ package keeper
 //
 // OFFENLEGEN STATT GEMEINSAM RECHNEN: beim Praegen steht je Stelle nur eine
 // gesalzene Pruefsumme auf der Kette (Merkle-Wurzel). Eine Pruefung: Anfrage
-// (Pfand; die Stellen werden SOFORT verbraucht) -> Antwort des Anfragenden in
-// einem spaeteren Block -> Offenlegen von t Anteilen je Stelle. Jeder Knoten
+// (Pfand) -> der naechste Block zieht Stellen und Basen aus einem Hash, den
+// beim Absenden niemand kannte; ab da sind die Stellen verbraucht -> Antwort
+// des Anfragenden -> Offenlegen von t Anteilen je Stelle. Jeder Knoten
 // setzt zusammen, prueft Pruefsumme und Pfad und urteilt selbst; ein falscher
 // Anteil faellt an der Pruefsumme auf. Kein Knoten glaubt einem Validator.
 //
@@ -174,6 +175,9 @@ func quantenWZerlegen(v *big.Int) (basis, bit int) {
 // aus K, Anfrage und Blockhash (SHA-256-Strom, Verwerfen gegen Verzerrung,
 // Fisher-Yates -- genau wie die Spezifikation).
 func quantenWAufforderung(K, anfrageID string, blockhash []byte, frei []int, k int) ([]int, []int) {
+	if k < 0 || k > len(frei) {
+		return nil, nil // Aufrufer prueft und weist ab (fail-closed)
+	}
 	strom := quantenWHash(quantenWDomAuf, []byte(K), []byte("|"), []byte(anfrageID), []byte("|"), blockhash)
 	var zaehler uint64
 	var puffer []byte

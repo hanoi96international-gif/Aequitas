@@ -401,9 +401,11 @@ def wiesner_kette_lauf(schuesse: int, rng: random.Random) -> None:
     log.append(f"Block {kette.hoehe}: Note {K[:12]}… gepraegt -- {n} Stellen, Deckung 10 AEQ, 5 Validatoren, Schwelle {t}, Merkle-Wurzel {pr.wurzel.hex()[:12]}…")
     kette.block()
     k = min(n, wk.K_MAX)
-    st, ch = kette.anfrage("empfaenger", K, k, wk.KetteW.sig(sk_e, f"anfrage|{K}|{k}|empfaenger|0"), "empfaenger")
-    log.append(f"Block {kette.hoehe}: Einloesen angefragt (Empfaenger, Pfand 1 AEQ) -- Aufforderung aus dem Block: {k} Stellen, Basen {''.join('ZX'[b] for b in ch)}")
+    kette.anfrage("empfaenger", K, k, wk.KetteW.sig(sk_e, f"anfrage|{K}|{k}|empfaenger|0"), "empfaenger")
+    log.append(f"Block {kette.hoehe}: Einloesen angefragt (Empfaenger, Pfand 1 AEQ)")
     kette.block()
+    st, ch = kette.aufforderung_von(K)  # gezogen erst im naechsten Block
+    log.append(f"Block {kette.hoehe}: Aufforderung aus dem Blockhash: {k} Stellen, Basen {''.join('ZX'[b] for b in ch)}")
     aufforderung = [0] * n
     for i, beta in zip(st, ch):
         aufforderung[i] = beta

@@ -271,13 +271,16 @@ Register, Topf, Abgabe, Freischaltung und Einlösen in AEQ gibt es schon.
 **Ausführbare Regeln (W2a):** `wiesner_kette.py` ist die Spezifikation. Je Stelle steht
 beim Prägen nur eine gesalzene Prüfsumme auf der Kette (Merkle-Wurzel); das Geheimnis
 (Basis, Bit, 124 Bit Salz) liegt als Shamir-Anteile (t von v) bei den Validatoren der
-Note. Eine Prüfung: **Anfrage** mit 1 AEQ Pfand – die Stellen sind ab da verbraucht –,
-Aufforderung aus dem Blockhash; **Antwort** des Anfragenden in einem späteren Block;
+Note. Eine Prüfung: **Anfrage** mit 1 AEQ Pfand; der **nächste Block** zieht Stellen und
+Basen aus einem Blockhash, den beim Absenden niemand kannte – ab da sind die Stellen
+verbraucht. (Sonst könnte eine Absprache, die einen Teil der Stellen kennt, auf einen
+günstigen Hash warten.) **Antwort** des Anfragenden innerhalb von 10 Blöcken;
 **Offenlegen** von t Anteilen je Stelle. Jeder Knoten setzt selbst zusammen, prüft
 Prüfsumme und Pfad und urteilt; ein falscher Anteil fällt an der Prüfsumme auf.
 Weniger als 4 Treffer: unentschieden (Pfand zurück, kein Fehlversuch). 3 Fehlversuche
 sperren die Note; Einlösen geht auch gesperrt, genau einmal. Ein falsches Einlösen geht
-ans Grundeinkommen. Selbsttest mit Missbrauchsfällen; der Knoten rechnet in Go genau
+ans Grundeinkommen. Eine Note hat mindestens 8 Stellen (sonst wäre sie nie prüfbar und
+ihre Deckung läge für immer im Topf). Selbsttest mit Missbrauchsfällen; der Knoten rechnet in Go genau
 gleich (`quanten_w_test.go` gegen `testdata/quanten_w_vektor.json`).
 
 **Ehrlich zur Stärke einer Prüfung:** Mit 15 % Toleranz ist **eine** Prüfung schwach.

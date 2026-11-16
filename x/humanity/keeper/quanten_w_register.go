@@ -14,7 +14,9 @@ import (
 // quantenWAnfrage: eine offene Pruefung oder Einloesung.
 type quantenWAnfrage struct {
 	Von          string
-	Stellen      []int
+	ID           string // K:Zaehl, geht in die Aufforderung ein
+	K            int    // Zahl der Stellen
+	Stellen      []int  // nil, bis der naechste Block zieht (ziehen)
 	Basen        []int
 	Pfand        int64
 	Hoehe        int64
@@ -54,7 +56,9 @@ func quantenWPraegenPruefen(vorhanden bool, K string, n, t int, validatoren []st
 	if vorhanden || !istHash64(K) {
 		return quantenWFehler("K ungueltig oder schon da")
 	}
-	if n < 1 || n > quantenWNMax || t < 1 || t > quantenWTMax || len(validatoren) < t || len(validatoren) > quantenWVMax {
+	// n >= quantenWKMin: sonst liesse sich die Note nie pruefen oder
+	// einloesen, ihre Deckung laege fuer immer im Topf.
+	if n < quantenWKMin || n > quantenWNMax || t < 1 || t > quantenWTMax || len(validatoren) < t || len(validatoren) > quantenWVMax {
 		return quantenWFehler("Groessen")
 	}
 	gesehen := map[string]bool{}
@@ -80,9 +84,12 @@ func (e *quantenWNote) frei() []int {
 	return out
 }
 
-// quantenWAnfragen: eine Pruefung (einloesenAn leer) oder Einloesung. Die
-// Stellen sind ab hier verbraucht -- auch wenn niemand antwortet.
-func (e *quantenWNote) anfragen(K, von string, k int, einloesenAn string, hoehe int64, blockhash []byte) error {
+// anfragen: eine Pruefung (einloesenAn leer) oder Einloesung. Stellen und
+// Basen stehen hier NOCH NICHT fest: sie zieht ziehen() im naechsten Block aus
+// einem Blockhash, den beim Absenden niemand kannte. Sonst koennte eine
+// Absprache, die einen Teil der Stellen kennt, auf einen guenstigen Hash
+// warten und nur dann anfragen.
+func (e *quantenWNote) anfragen(K, von string, k int, einloesenAn string, hoehe int64) error {
 	if e.Tot {
 		return quantenWFehler("Note tot")
 	}
@@ -96,15 +103,34 @@ func (e *quantenWNote) anfragen(K, von string, k int, einloesenAn string, hoehe 
 	if k < quantenWKMin || k > quantenWKMax || k > len(frei) {
 		return quantenWFehler("k = %d", k)
 	}
-	stellen, basen := quantenWAufforderung(K, K+":"+strconv.Itoa(e.Zaehl), blockhash, frei, k)
+	id := K + ":" + strconv.Itoa(e.Zaehl)
+	e.Zaehl++
+	e.Anfrage = &quantenWAnfrage{Von: von, ID: id, K: k, Pfand: quantenWPfand, Hoehe: hoehe, EinloesenAn: einloesenAn}
+	return nil
+}
+
+// ziehen: zu Beginn jedes Blocks NACH dem der Anfrage, vor frist(). blockhash
+// ist der Hash des Blocks, der die Anfrage enthaelt (beim Absenden unbekannt).
+// Ab hier sind die Stellen verbraucht -- auch wenn niemand antwortet.
+func (e *quantenWNote) ziehen(K string, hoehe int64, blockhash []byte) error {
+	a := e.Anfrage
+	if a == nil || a.Stellen != nil {
+		return nil
+	}
+	if hoehe <= a.Hoehe {
+		return quantenWFehler("Ziehen im Block der Anfrage")
+	}
+	stellen, basen := quantenWAufforderung(K, a.ID, blockhash, e.frei(), a.K)
+	if len(stellen) != a.K {
+		return quantenWFehler("Aufforderung: zu wenige freie Stellen")
+	}
 	if e.Benutzt == nil {
 		e.Benutzt = map[int]bool{}
 	}
 	for _, i := range stellen {
 		e.Benutzt[i] = true
 	}
-	e.Zaehl++
-	e.Anfrage = &quantenWAnfrage{Von: von, Stellen: stellen, Basen: basen, Pfand: quantenWPfand, Hoehe: hoehe, EinloesenAn: einloesenAn}
+	a.Stellen, a.Basen = stellen, basen
 	return nil
 }
 
@@ -117,8 +143,11 @@ func (e *quantenWNote) antworten(von string, bits []int, hoehe int64) error {
 	if von != a.Von {
 		return quantenWFehler("nicht vom Anfragenden")
 	}
-	if hoehe <= a.Hoehe {
-		return quantenWFehler("Antwort im selben Block wie die Anfrage")
+	if hoehe <= a.Hoehe || a.Stellen == nil {
+		return quantenWFehler("Aufforderung steht noch aus")
+	}
+	if hoehe > a.Hoehe+quantenWFristAntwort {
+		return quantenWFehler("Antwort nach der Frist")
 	}
 	if len(bits) != len(a.Stellen) {
 		return quantenWFehler("Form der Antwort")
@@ -176,6 +205,12 @@ func (e *quantenWNote) frist(hoehe int64) (bool, quantenWBuchung) {
 	a := e.Anfrage
 	if a == nil {
 		return false, quantenWBuchung{}
+	}
+	if a.Stellen == nil && hoehe > a.Hoehe+quantenWFristAntwort {
+		// Nie gezogen (Fehler der Einbindung, nicht des Anfragenden): Pfand
+		// zurueck, kein Fehlversuch, keine Stelle verbraucht.
+		e.Anfrage = nil
+		return true, quantenWBuchung{PfandZurueckAn: a.Von}
 	}
 	if a.Antwort == nil && hoehe > a.Hoehe+quantenWFristAntwort {
 		b := quantenWBuchung{PfandVerfaellt: true}

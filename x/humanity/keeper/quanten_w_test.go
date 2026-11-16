@@ -220,6 +220,7 @@ func TestQuantenW_Uebergaenge(t *testing.T) {
 		"doppelt":             func() error { return quantenWPraegenPruefen(true, v.K, v.N, v.T, v.Validatoren, 3) },
 		"K gross":             func() error { return quantenWPraegenPruefen(false, "AB"+v.K[2:], v.N, v.T, v.Validatoren, 3) },
 		"zu gross":            func() error { return quantenWPraegenPruefen(false, v.K, quantenWNMax+1, v.T, v.Validatoren, 3) },
+		"zu klein":            func() error { return quantenWPraegenPruefen(false, v.K, quantenWKMin-1, v.T, v.Validatoren, 3) },
 		"t ueber v":           func() error { return quantenWPraegenPruefen(false, v.K, v.N, 6, v.Validatoren, 6) },
 		"Validator doppelt":   func() error { return quantenWPraegenPruefen(false, v.K, v.N, 3, []string{"a", "a", "b"}, 3) },
 		"zu wenig bestaetigt": func() error { return quantenWPraegenPruefen(false, v.K, v.N, v.T, v.Validatoren, 2) },
@@ -228,18 +229,38 @@ func TestQuantenW_Uebergaenge(t *testing.T) {
 			t.Errorf("Praegen %s: angenommen", name)
 		}
 	}
+	if quantenWPraegenPruefen(false, v.K, quantenWKMin, v.T, v.Validatoren, 3) != nil {
+		t.Error("Gegenprobe: kleinste pruefbare Note abgewiesen")
+	}
 
-	// Gutfall wie im Vektor: anfragen (Stellen sofort verbraucht), antworten
-	// im spaeteren Block, offenlegen -> unentschieden (2 Treffer), Pfand zurueck.
+	// Gutfall wie im Vektor: anfragen in Block 10 (noch keine Stellen),
+	// ziehen in Block 11 aus dem Hash des Anfrage-Blocks (dann verbraucht),
+	// antworten, offenlegen -> wie die Spezifikation, Pfand zurueck.
 	e := neu()
-	if err := e.anfragen(v.K, "anna", len(v.Stellen), "", 10, bh); err != nil {
+	if err := e.anfragen(v.K, "anna", len(v.Stellen), "", 10); err != nil {
 		t.Fatal(err)
 	}
-	if got := e.benutztListe(); len(got) != len(v.Stellen) || e.Anfrage.Stellen[0] != v.Stellen[0] {
-		t.Fatalf("verbraucht %v", got)
+	if len(e.benutztListe()) != 0 || e.Anfrage.Stellen != nil {
+		t.Fatal("Stellen schon beim Anfragen festgelegt")
 	}
-	if e.anfragen(v.K, "anna", 8, "", 10, bh) == nil {
+	if e.anfragen(v.K, "anna", 8, "", 10) == nil {
 		t.Error("zweite offene Anfrage angenommen")
+	}
+	if e.antworten("anna", v.Antwort, 11) == nil || e.antworten("anna", []int{}, 11) == nil {
+		t.Error("Antwort vor dem Ziehen angenommen")
+	}
+	if e.ziehen(v.K, 10, bh) == nil || e.Anfrage.Stellen != nil {
+		t.Error("im Block der Anfrage gezogen")
+	}
+	if err := e.ziehen(v.K, 11, bh); err != nil {
+		t.Fatal(err)
+	}
+	if got := e.benutztListe(); len(got) != len(v.Stellen) || e.Anfrage.Stellen[0] != v.Stellen[0] || e.Anfrage.Basen[0] != v.Aufforderung[0] {
+		t.Fatalf("gezogen/verbraucht %v, Spezifikation %v", got, v.Stellen)
+	}
+	vorher := append([]int(nil), e.Anfrage.Stellen...)
+	if err := e.ziehen(v.K, 12, []byte("anderer Hash")); err != nil || e.Anfrage.Stellen[0] != vorher[0] {
+		t.Error("zweites Ziehen aendert die Aufforderung")
 	}
 	if e.antworten("anna", v.Antwort, 10) == nil {
 		t.Error("Antwort im selben Block angenommen")
@@ -250,54 +271,98 @@ func TestQuantenW_Uebergaenge(t *testing.T) {
 	if e.antworten("anna", append([]int{2}, v.Antwort[1:]...), 11) == nil {
 		t.Error("Bit 2 angenommen")
 	}
+	if e.antworten("anna", v.Antwort[1:], 11) == nil {
+		t.Error("kurze Antwort angenommen")
+	}
+	if e.antworten("anna", v.Antwort, 10+quantenWFristAntwort+1) == nil {
+		t.Error("Antwort nach der Frist angenommen (ohne frist())")
+	}
 	if _, _, err := e.offenlegen(v.K, qwOffen(t, v, v.Stellen, 1, 2, 3)); err == nil {
 		t.Error("Offenlegen vor der Antwort angenommen")
 	}
 	if err := e.antworten("anna", v.Antwort, 11); err != nil {
 		t.Fatal(err)
 	}
+	if e.antworten("anna", v.Antwort, 12) == nil {
+		t.Error("Antwort wiederholt")
+	}
 	u, b, err := e.offenlegen(v.K, qwOffen(t, v, v.Stellen, 1, 2, 3))
-	if err != nil || u != quantenWUnentschieden || b.PfandZurueckAn != "anna" || e.Fehl != 0 || e.Anfrage != nil {
-		t.Fatalf("Unentschieden: %v %+v %v fehl=%d", u, b, err, e.Fehl)
+	soll := quantenWUrteil(v.Treffer, v.Fehler)
+	if err != nil || u != soll || e.Fehl != 0 || e.Anfrage != nil {
+		t.Fatalf("Urteil: %v (soll %v) %+v %v fehl=%d", u, soll, b, err, e.Fehl)
+	}
+	if soll != quantenWAbgewiesen && b.PfandZurueckAn != "anna" {
+		t.Fatalf("Pfand nicht zurueck: %+v", b)
 	}
 
 	// Frist: keine Antwort -> Pfand verfaellt, Fehlversuch; nach 3 gesperrt;
 	// gesperrt kann noch eingeloest werden; Einloesen ohne Antwort -> tot.
 	e = &quantenWNote{N: 64, Wurzel: qwH32(t, v.Wurzel), Wert: 5_000_000, Validatoren: v.Validatoren, T: v.T}
 	for j := 0; j < quantenWFehlMax; j++ {
-		if err := e.anfragen(v.K, "fremd", 8, "", int64(100*j), bh); err != nil {
+		h := int64(100 * j)
+		if err := e.anfragen(v.K, "fremd", 8, "", h); err != nil {
 			t.Fatal(err)
 		}
-		if ab, _ := e.frist(int64(100*j) + quantenWFristAntwort); ab {
+		if err := e.ziehen(v.K, h+1, bh); err != nil {
+			t.Fatal(err)
+		}
+		if ab, _ := e.frist(h + quantenWFristAntwort); ab {
 			t.Fatal("Frist zu frueh")
 		}
-		ab, b := e.frist(int64(100*j) + quantenWFristAntwort + 1)
+		ab, b := e.frist(h + quantenWFristAntwort + 1)
 		if !ab || !b.PfandVerfaellt {
 			t.Fatalf("Frist %d: %v %+v", j, ab, b)
 		}
 	}
-	if !e.Gesperrt || e.anfragen(v.K, "fremd", 8, "", 1000, bh) == nil {
+	if len(e.benutztListe()) != 8*quantenWFehlMax {
+		t.Fatalf("verfallene Anfragen haben %d Stellen verbraucht", len(e.benutztListe()))
+	}
+	if !e.Gesperrt || e.anfragen(v.K, "fremd", 8, "", 1000) == nil {
 		t.Fatal("nach 3 Fehlversuchen nicht gesperrt")
 	}
-	if err := e.anfragen(v.K, "anna", 8, "anna", 1000, bh); err != nil {
+	if err := e.anfragen(v.K, "anna", 8, "anna", 1000); err != nil {
 		t.Fatalf("gesperrte Note nicht einloesbar: %v", err)
+	}
+	if err := e.ziehen(v.K, 1001, bh); err != nil {
+		t.Fatal(err)
 	}
 	ab, b2 := e.frist(1000 + quantenWFristAntwort + 1)
 	if !ab || !b2.WertVerfaellt || !e.Tot {
 		t.Fatalf("Einloesen ohne Antwort: %+v tot=%v", b2, e.Tot)
 	}
-	if e.anfragen(v.K, "anna", 8, "anna", 2000, bh) == nil {
+	if e.anfragen(v.K, "anna", 8, "anna", 2000) == nil {
 		t.Error("tote Note angefragt")
 	}
-	// Mehr Stellen als frei.
+	// Mehr Stellen als frei, zu wenige Stellen.
 	e = &quantenWNote{N: 10, Wurzel: qwH32(t, v.Wurzel), Validatoren: v.Validatoren, T: v.T}
-	if e.anfragen(v.K, "anna", 11, "", 1, bh) == nil || e.anfragen(v.K, "anna", 7, "", 1, bh) == nil {
+	if e.anfragen(v.K, "anna", 11, "", 1) == nil || e.anfragen(v.K, "anna", 7, "", 1) == nil {
 		t.Error("k ausserhalb der Grenzen angenommen")
+	}
+	if st, ba := quantenWAufforderung(v.K, "x", bh, []int{1, 2}, 3); st != nil || ba != nil {
+		t.Error("Aufforderung mit k > frei")
+	}
+	// Nie gezogen (Fehler der Einbindung): Pfand zurueck, kein Fehlversuch.
+	e = neu()
+	if err := e.anfragen(v.K, "anna", 8, "", 1); err != nil {
+		t.Fatal(err)
+	}
+	if ab, b := e.frist(1 + quantenWFristAntwort + 1); !ab || b.PfandZurueckAn != "anna" || b.PfandVerfaellt || e.Fehl != 0 || len(e.benutztListe()) != 0 {
+		t.Fatalf("nie gezogen: %v %+v fehl=%d", ab, b, e.Fehl)
 	}
 	// Validatoren legen nicht offen: Pfand zurueck, kein Fehlversuch.
 	e = neu()
-	_ = e.anfragen(v.K, "anna", 8, "", 1, bh)
-	_ = e.antworten("anna", make([]int, 8), 2)
+	if err := e.anfragen(v.K, "anna", 8, "", 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.ziehen(v.K, 2, bh); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.antworten("anna", make([]int, 8), 2); err != nil {
+		t.Fatal(err)
+	}
+	if ab, _ := e.frist(2 + quantenWFristOffen); ab {
+		t.Fatal("Offenlegungsfrist zu frueh")
+	}
 	if ab, b := e.frist(2 + quantenWFristOffen + 1); !ab || b.PfandZurueckAn != "anna" || e.Fehl != 0 {
 		t.Fatalf("Offenlegungsfrist: %v %+v", ab, b)
 	}

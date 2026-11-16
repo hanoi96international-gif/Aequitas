@@ -207,13 +207,24 @@ class KetteW:
         return sum(self.konten.values()) + self.topf + self.grundeinkommen
 
     def block(self, salz: bytes = b""):
-        """Neuer Block: Hoehe +1, neuer Hash; Fristen laufen ab."""
+        """Neuer Block: Hoehe +1, neuer Hash; Aufforderungen werden gezogen,
+        Fristen laufen ab.
+
+        WARUM ERST HIER: Die Aufforderung haengt am Hash eines Blocks, der beim
+        Absenden der Anfrage noch nicht feststand (hier: der naechste; im
+        Knoten: der Block, der die Anfrage enthaelt, gezogen zu Beginn des
+        folgenden). Sonst koennte eine Absprache, die einen Teil der Stellen
+        kennt, auf einen guenstigen Blockhash warten und nur dann anfragen."""
         self.hoehe += 1
         self.blockhash = h(self.blockhash, self.hoehe.to_bytes(8, "big"), salz)
         for K, e in self.noten.items():
             a = e["anfrage"]
             if not a:
                 continue
+            if a["stellen"] is None:
+                frei = [i for i in range(e["n"]) if i not in e["benutzt"]]
+                a["stellen"], a["basen"] = aufforderung(K, a["id"], self.blockhash, frei, a["k"])
+                e["benutzt"].update(a["stellen"])  # ab jetzt verbraucht, auch ohne Antwort
             if a["antwort"] is None and self.hoehe > a["hoehe"] + FRIST_ANTWORT:
                 self._durchgefallen(K, e, "Antwort-Frist verpasst")
             elif a["antwort"] is not None and self.hoehe > a["antwort_hoehe"] + FRIST_OFFENLEGEN:
@@ -227,7 +238,9 @@ class KetteW:
                 validatoren: list[str], t: int, bestaetigungen: dict[str, str]):
         if K in self.noten or len(K) != 64 or any(c not in "0123456789abcdef" for c in K):
             raise Abgewiesen("K ungueltig oder schon da")
-        if not 1 <= n <= N_MAX or not 1 <= t <= T_MAX or not t <= len(validatoren) <= V_MAX:
+        # n >= K_MIN: sonst liesse sich die Note nie pruefen oder einloesen,
+        # ihre Deckung laege fuer immer im Topf.
+        if not K_MIN <= n <= N_MAX or not 1 <= t <= T_MAX or not t <= len(validatoren) <= V_MAX:
             raise Abgewiesen("Groessen")
         if len(set(validatoren)) != len(validatoren) or any(v not in self.val_schluessel for v in validatoren):
             raise Abgewiesen("Validatorenliste")
@@ -243,7 +256,7 @@ class KetteW:
                          "benutzt": set(), "fehl": 0, "gesperrt": False, "tot": False, "anfrage": None, "zaehl": 0}
 
     # -- 2. Anfrage
-    def anfrage(self, von: str, K: str, k: int, sig: str, einloesen_an: str | None = None) -> tuple[list[int], list[int]]:
+    def anfrage(self, von: str, K: str, k: int, sig: str, einloesen_an: str | None = None) -> str:
         e = self.noten.get(K)
         if e is None or e["tot"]:
             raise Abgewiesen("Note unbekannt oder tot")
@@ -261,13 +274,21 @@ class KetteW:
         if einloesen_an is not None and einloesen_an not in self.konten:
             raise Abgewiesen("Ziel")
         anfrage_id = f"{K}:{e['zaehl']}"
-        stellen, basen = aufforderung(K, anfrage_id, self.blockhash, frei, k)
         self.konten[von] -= PFAND
-        e["benutzt"].update(stellen)           # verbraucht SCHON JETZT
         e["zaehl"] += 1
-        e["anfrage"] = {"von": von, "stellen": stellen, "basen": basen, "pfand": PFAND, "hoehe": self.hoehe,
-                        "antwort": None, "antwort_hoehe": None, "einloesen_an": einloesen_an}
-        return stellen, basen
+        # Stellen und Basen zieht der naechste Block (block()); ab dann sind
+        # die Stellen verbraucht.
+        e["anfrage"] = {"von": von, "id": anfrage_id, "k": k, "stellen": None, "basen": None, "pfand": PFAND,
+                        "hoehe": self.hoehe, "antwort": None, "antwort_hoehe": None, "einloesen_an": einloesen_an}
+        return anfrage_id
+
+    def aufforderung_von(self, K: str) -> tuple[list[int], list[int]]:
+        """Die gezogene Aufforderung der offenen Anfrage (oeffentlich)."""
+        e = self.noten.get(K)
+        a = e and e["anfrage"]
+        if not a or a["stellen"] is None:
+            raise Abgewiesen("Aufforderung steht noch aus")
+        return list(a["stellen"]), list(a["basen"])
 
     # -- 3. Antwort
     def antwort(self, von: str, K: str, bits: list[int], sig: str):
@@ -277,8 +298,10 @@ class KetteW:
             raise Abgewiesen("keine offene Anfrage")
         if von != a["von"] or not self._sig_ok(self.konto_schluessel.get(von), f"antwort|{K}|{e['zaehl'] - 1}|{bits}", sig):
             raise Abgewiesen("nicht vom Anfragenden")
-        if self.hoehe <= a["hoehe"]:
+        if self.hoehe <= a["hoehe"] or a["stellen"] is None:
             raise Abgewiesen("Antwort im selben Block wie die Anfrage")
+        if self.hoehe > a["hoehe"] + FRIST_ANTWORT:
+            raise Abgewiesen("Antwort nach der Frist (Anfrage schon beendet)")
         if len(bits) != len(a["stellen"]) or any(b not in (0, 1) for b in bits):
             raise Abgewiesen("Form der Antwort")
         a["antwort"], a["antwort_hoehe"] = list(bits), self.hoehe
@@ -423,8 +446,9 @@ def _selbsttest(fehler: list[str]) -> None:
 
     def runde(k, K, pr, wer, antwort_fn, k_stellen=16, einloesen=None, wer_x=(1, 2, 3)):
         e = k.noten[K]
-        st, ch = k.anfrage(wer, K, k_stellen, KetteW.sig(k.konto_schluessel[wer], f"anfrage|{K}|{k_stellen}|{einloesen}|{e['zaehl']}"), einloesen)
+        k.anfrage(wer, K, k_stellen, KetteW.sig(k.konto_schluessel[wer], f"anfrage|{K}|{k_stellen}|{einloesen}|{e['zaehl']}"), einloesen)
         k.block()
+        st, ch = k.aufforderung_von(K)
         bits = antwort_fn(st, ch)
         k.antwort(wer, K, bits, KetteW.sig(k.konto_schluessel[wer], f"antwort|{K}|{e['zaehl'] - 1}|{bits}"))
         k.block()
@@ -458,11 +482,20 @@ def _selbsttest(fehler: list[str]) -> None:
     e = k.noten[K]
     sg = lambda wer, text: KetteW.sig(k.konto_schluessel[wer], text)
     abgewiesen(lambda: k.antwort("anna", K, [0] * 16, sg("anna", f"antwort|{K}|0|{[0] * 16}")), "Antwort ohne Anfrage")
-    st, ch = k.anfrage("anna", K, 16, sg("anna", f"anfrage|{K}|16|None|0"))
+    hash_vorher = k.blockhash
+    k.anfrage("anna", K, 16, sg("anna", f"anfrage|{K}|16|None|0"))
+    abgewiesen(lambda: k.aufforderung_von(K), "Aufforderung im Block der Anfrage")
     abgewiesen(lambda: k.anfrage("anna", K, 16, sg("anna", f"anfrage|{K}|16|None|1")), "zweite offene Anfrage")
-    ant = ehrlich(basen, bits, st, ch)  # einmal erzeugt: Unterschrift und Antwort passen zusammen
-    abgewiesen(lambda: k.antwort("anna", K, ant, sg("anna", f"antwort|{K}|0|{ant}")), "Antwort im selben Block")
+    ant0 = [0] * 16
+    abgewiesen(lambda: k.antwort("anna", K, ant0, sg("anna", f"antwort|{K}|0|{ant0}")), "Antwort im selben Block")
+    soll(not e["benutzt"], "Stellen vor dem Ziehen verbraucht")
     k.block()
+    st, ch = k.aufforderung_von(K)
+    # Die Aufforderung haengt am NEUEN Blockhash, nicht an dem beim Absenden.
+    soll((st, ch) != aufforderung(K, f"{K}:0", hash_vorher, list(range(e["n"])), 16)
+         and (st, ch) == aufforderung(K, f"{K}:0", k.blockhash, list(range(e["n"])), 16), "Aufforderung aus dem alten Blockhash")
+    soll(set(st) <= e["benutzt"], "gezogene Stellen nicht verbraucht")
+    ant = ehrlich(basen, bits, st, ch)  # einmal erzeugt: Unterschrift und Antwort passen zusammen
     abgewiesen(lambda: k.offenlegen(K, pr.offenlegung(st, [1, 2, 3])), "Offenlegen vor der Antwort")
     abgewiesen(lambda: k.antwort("fremd", K, ant, sg("fremd", f"antwort|{K}|0|{ant}")), "fremde Antwort")
     abgewiesen(lambda: k.antwort("anna", K, ant, sg("fremd", f"antwort|{K}|0|{ant}")), "falsche Unterschrift")
@@ -483,9 +516,14 @@ def _selbsttest(fehler: list[str]) -> None:
 
     # Anfragen fischen: verfallen lassen kostet Pfand, verbraucht die Stellen, zaehlt als Fehlversuch.
     k, K, pr, basen, bits = aufbau(n=40)
-    st, _ = k.anfrage("fremd", K, 16, KetteW.sig(k.konto_schluessel["fremd"], f"anfrage|{K}|16|None|0"))
-    for _ in range(FRIST_ANTWORT + 1):
+    k.anfrage("fremd", K, 16, KetteW.sig(k.konto_schluessel["fremd"], f"anfrage|{K}|16|None|0"))
+    k.block()
+    st, ch = k.aufforderung_von(K)
+    for _ in range(FRIST_ANTWORT - 1):
         k.block()
+    spaet = [0] * 16
+    k.block()  # Hoehe = Anfrage + FRIST_ANTWORT + 1: block() hat die Anfrage schon beendet
+    abgewiesen(lambda: k.antwort("fremd", K, spaet, KetteW.sig(k.konto_schluessel["fremd"], f"antwort|{K}|0|{spaet}")), "Antwort nach der Frist (Anfrage schon beendet)")
     soll(k.noten[K]["anfrage"] is None and k.noten[K]["fehl"] == 1 and set(st) <= k.noten[K]["benutzt"], "Fischen")
     # Mehr Pruefungen als Stellen: 40 Stellen, 2 x 16 verbraucht, 16 passen nicht mehr.
     k.anfrage("anna", K, 16, KetteW.sig(k.konto_schluessel["anna"], f"anfrage|{K}|16|None|1"))
@@ -495,8 +533,9 @@ def _selbsttest(fehler: list[str]) -> None:
     # Validatoren legen nicht offen: Pfand zurueck, kein Fehlversuch.
     k, K, pr, basen, bits = aufbau()
     v0 = k.konten["anna"]
-    st, ch = k.anfrage("anna", K, 16, KetteW.sig(k.konto_schluessel["anna"], f"anfrage|{K}|16|None|0"))
+    k.anfrage("anna", K, 16, KetteW.sig(k.konto_schluessel["anna"], f"anfrage|{K}|16|None|0"))
     k.block()
+    st, ch = k.aufforderung_von(K)
     ant = ehrlich(basen, bits, st, ch)
     k.antwort("anna", K, ant, KetteW.sig(k.konto_schluessel["anna"], f"antwort|{K}|0|{ant}"))
     for _ in range(FRIST_OFFENLEGEN + 1):
@@ -512,8 +551,9 @@ def _selbsttest(fehler: list[str]) -> None:
         if e["n"] - len(e["benutzt"]) < 8:
             break
         v0, fehl0 = k.konten["anna"], e["fehl"]
-        st, ch = k.anfrage("anna", K, 8, KetteW.sig(k.konto_schluessel["anna"], f"anfrage|{K}|8|None|{e['zaehl']}"))
+        k.anfrage("anna", K, 8, KetteW.sig(k.konto_schluessel["anna"], f"anfrage|{K}|8|None|{e['zaehl']}"))
         k.block()
+        st, ch = k.aufforderung_von(K)
         ant = ehrlich(basen, bits, st, ch)
         k.antwort("anna", K, ant, KetteW.sig(k.konto_schluessel["anna"], f"antwort|{K}|{e['zaehl'] - 1}|{ant}"))
         k.block()
@@ -530,16 +570,20 @@ def _selbsttest(fehler: list[str]) -> None:
     k = KetteW(VAL)
     k.konto("anna", 20_000_000, b"a" * 16)
     K = "b" * 64
-    w = merkle_wurzel([h(b"x")])
-    text = f"{DOM_BEST}{K}|{w.hex()}|1|3|{','.join(vliste)}"
+    m = K_MIN
+    w = merkle_wurzel([h(bytes([j])) for j in range(m)])
+    text = f"{DOM_BEST}{K}|{w.hex()}|{m}|3|{','.join(vliste)}"
     best = {v: KetteW.sig(VAL[v], text) for v in vliste[:3]}
-    abgewiesen(lambda: k.praegen("anna", K, 1, w, 5_000_000, vliste, 3, dict(list(best.items())[:2])), "zu wenige Bestaetigungen")
-    abgewiesen(lambda: k.praegen("anna", K, 1, w, 50_000_000, vliste, 3, best), "ohne Deckung")
-    abgewiesen(lambda: k.praegen("anna", K, 1, w, 5_000_000, vliste + ["v9"], 3, best), "fremder Validator")
+    abgewiesen(lambda: k.praegen("anna", K, m, w, 5_000_000, vliste, 3, dict(list(best.items())[:2])), "zu wenige Bestaetigungen")
+    abgewiesen(lambda: k.praegen("anna", K, m, w, 50_000_000, vliste, 3, best), "ohne Deckung")
+    abgewiesen(lambda: k.praegen("anna", K, m, w, 5_000_000, vliste + ["v9"], 3, best), "fremder Validator")
     abgewiesen(lambda: k.praegen("anna", K, N_MAX + 1, w, 5_000_000, vliste, 3, best), "zu gross")
-    abgewiesen(lambda: k.praegen("anna", "B" * 64, 1, w, 5_000_000, vliste, 3, best), "K nicht kanonisch")
-    k.praegen("anna", K, 1, w, 5_000_000, vliste, 3, best)
-    abgewiesen(lambda: k.praegen("anna", K, 1, w, 5_000_000, vliste, 3, best), "K doppelt")
+    klein = f"{DOM_BEST}{K}|{w.hex()}|{m - 1}|3|{','.join(vliste)}"
+    abgewiesen(lambda: k.praegen("anna", K, m - 1, w, 5_000_000, vliste, 3, {v: KetteW.sig(VAL[v], klein) for v in vliste[:3]}),
+               "zu klein (nie pruefbar, Deckung fuer immer im Topf)")
+    abgewiesen(lambda: k.praegen("anna", "B" * 64, m, w, 5_000_000, vliste, 3, best), "K nicht kanonisch")
+    k.praegen("anna", K, m, w, 5_000_000, vliste, 3, best)  # Gegenprobe: so geht es durch
+    abgewiesen(lambda: k.praegen("anna", K, m, w, 5_000_000, vliste, 3, best), "K doppelt")
 
 
 def vektor() -> dict:
