@@ -177,10 +177,13 @@ Annahmestellen. Ebenfalls **schlafend** (dasselbe `quantenWAbUnix`).
    - Die Nutzerin meldet Λ. Danach zieht der Zufall der Kette eine öffentliche Teilmenge
      von höchstens 16.384 Stellen, und darin liegen die geheimen Stichproben. Bleibt der
      Anteil freier Stellen dabei erhalten, auch wenn die Nutzerin Λ geschickt wählt?
-7. **Größe der Stichprobe.** Heute prüft weder die Annahmestelle (`s_kette.py`) noch der
-   Knoten (`quanten_s.go`, `anmelden`), dass eine Stichprobe mindestens k Stellen hat. Wir
-   halten das für eine Lücke (ANALYSE.md 5c). Reicht es, wenn die Annahmestelle beim Laden
-   und der Knoten beim Anmelden mindestens k_note verlangen?
+7. **Größe der Stichprobe.**
+   - Die Annahmestelle lädt nur eine Stichprobe mit mindestens k_note(tol, t, v)
+     verschiedenen Stellen (`s_kette.stelle_laden`, fail-closed).
+   - Der Knoten prüft die Größe bewusst nicht, denn beim Anmelden ist die Annahme ohne
+     Netz schon geschehen (ANALYSE.md 5c).
+   - Ist das die richtige Stelle für die Prüfung, oder braucht es eine Regel schon bei der
+     Ausgabe? Dort ist die Stichprobe nur als Hash bekannt.
 
 ## Was erst die Hardware entscheidet (keine Frage an die Kryptografie)
 

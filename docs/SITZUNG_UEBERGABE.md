@@ -147,10 +147,11 @@ Nicht übernommen, als Beobachtung für später:
     - Befund 2: Die Tabelle für ideale Qubits reicht über eine Leitung nicht. Bei 10° und
       3 % käme ein Fälscher in 1,4 % durch. `s3_stichprobe` rechnet mit λ(θ) und dem
       Mehrphotonen-Anteil.
-    - **Nächster Schritt (Lücke):** Die Größe der Stichprobe prüft niemand. In
-      `s_kette.Annahmestelle`/`stelle_laden` und in `quanten_s.go` (`anmelden`) muss
-      mindestens k_note verlangt werden, fail-closed, mit Missbrauchstest und Prüfvektor.
-      Das berührt `quanten_w_s_kette.go` nicht.
+    - **Lücke geschlossen:** Die Größe der Stichprobe prüfte niemand. Jetzt lädt
+      `s_kette.stelle_laden` nur mit mindestens k_note Stellen (fail-closed, `labor_k` nur
+      für Tests). Mutationen: drei von drei erkannt, Prüfvektor unverändert. Der Knoten
+      prüft die Größe bewusst nicht: Beim Anmelden ist die Annahme schon geschehen. Die
+      App der Annahmestelle muss dieselbe Regel bekommen.
     - Danach: die Tabelle im Knoten mit θ und dem Anteil freier Stellen, dazu die Meldung
       Λ und die öffentliche Teilmenge im Ablauf (vor S3 mit Gerät).
 

@@ -99,9 +99,10 @@ bauen kann.
        käme ein Fälscher in 1,4 % durch.
      - **Offen:** Die Tabelle im Knoten braucht θ und den Anteil freier Stellen als
        Eingang. Dazu kommen die Meldung Λ und die öffentliche Teilmenge im Ablauf.
-     - **Offen, Lücke:** Die Größe der Stichprobe prüft niemand. Die Annahmestelle muss
-       beim Laden mindestens k Stellen verlangen (fail-closed), der Knoten beim
-       Anmelden ebenso.
+     - ~~**Lücke: Die Größe der Stichprobe prüfte niemand.**~~ Geschlossen: Die Annahmestelle
+       lädt nur mit mindestens k_note Stellen (`stelle_laden`, fail-closed). Der Knoten
+       bleibt bewusst ohne diese Prüfung, denn beim Anmelden ist die Annahme schon
+       geschehen (ANALYSE.md 5c). Für die App der Annahmestelle gilt dieselbe Regel.
    - Zu klären: Lässt sich „Ort“ auf Aequitas als „Prüfer bzw. Region + Block-Fenster“
      abbilden, und wie viel Sicherheit bleibt dann übrig?
 2. **Zustellen statt Aufbewahren:**

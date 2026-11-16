@@ -586,12 +586,19 @@ erprobt.
 - **Für Aequitas:** Es ist dasselbe Muster (Mehrphotonen gelten als frei, die Toleranz
   hängt an µ). Variante S kommt ohne Speicher aus und ist darum der heute machbare Weg.
 
-**Zweite Lücke, gefunden beim Durchsehen: Die Größe der Stichprobe prüft niemand.**
-- `s_kette.Annahmestelle` und der Knoten (`quanten_s.go`, `anmelden`) nehmen jede
+**Zweite Lücke, gefunden beim Durchsehen: Die Größe der Stichprobe prüfte niemand.**
+- `s_kette.stelle_laden` und der Knoten (`quanten_s.go`, `anmelden`) nahmen jede
   Stichprobe, die zur Bindung passt, auch eine mit nur wenigen Stellen.
-- Eine Annahmestelle, die ohne Netz annimmt, trägt das Risiko. Sie muss beim Laden prüfen,
-  dass ihre Stichprobe mindestens k Stellen hat (fail-closed).
-- Der Knoten sollte es beim Anmelden ebenfalls prüfen. Das ist in OFFEN.md eingetragen.
+- **Geschlossen in der Spezifikation:** Die Annahmestelle lädt nur eine Stichprobe mit
+  mindestens k_note(tol, t, v) verschiedenen Stellen, sonst gar nicht (fail-closed).
+  Kleinere Größen gibt es nur ausdrücklich als `labor_k` für Vorführung und Tests.
+- **Missbrauchstests:** zu kleine Stichprobe, eine Stelle zu wenig, eine doppelte Stelle,
+  die die Zahl aufbläht, eine Toleranz außerhalb der Tabelle. Mutationen: drei von drei
+  erkannt.
+- **Der Knoten bleibt bewusst ohne diese Prüfung.** Die Stichprobe ist bis zur Einlösung
+  geheim. Beim Anmelden könnte der Knoten nur noch die Auszahlung an die Stelle
+  verweigern, die schon angenommen hat. Schützen kann sich nur die Stelle selbst, vor
+  der Annahme.
 
 ## 6. Zugang, Geld, Begutachtung – andere Wege
 
