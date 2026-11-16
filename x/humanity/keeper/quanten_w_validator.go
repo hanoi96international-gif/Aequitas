@@ -82,8 +82,17 @@ const (
 	quantenWPeerAntwortMax   = 256 << 10
 	quantenWPeersHoechstens  = 32
 	quantenWSammelVersuche   = 8
-	burstQuantenWDienstJeIP  = 30
-	quantenWDomTresor        = "aequitas-quanten-w-tresor-v1|"
+	// Staffel beim Offenlegen (Beobachtung aus #549): je Versuch EIN
+	// zustaendiger Validator (quantenWZustaendig) reicht die Teile ohne Pause
+	// nacheinander ein, hoechstens quantenWTeileJeTakt je Takt; die anderen
+	// springen fuer einen Teil ein, der quantenWStaffelWarten lang offen
+	// ist. Vorher reichten alle jeden Teil gleichzeitig ein (die meisten
+	// abgewiesen, gegen die Burst-Grenze), und bei k_note = 5200 (82 Teile)
+	// dauerte die Offenlegung mit einem Teil je Takt ~7 Minuten.
+	quantenWTeileJeTakt     = 8
+	quantenWStaffelWarten   = 2 * int64(quantenWDienstTakt/time.Second)
+	burstQuantenWDienstJeIP = 30
+	quantenWDomTresor       = "aequitas-quanten-w-tresor-v1|"
 )
 
 // quantenWTresorEintrag: was ein Validator zu einer Note haelt (Klartext nur
@@ -194,6 +203,43 @@ type quantenWDienst struct {
 	hoehe func() int64
 	final func() int64
 	sicht map[string]int64
+	// faellig: seit wann ein Teil offen ist, den ein anderer zuerst
+	// einreichen soll (Staffel); wie sicht begrenzt und aufgeraeumt.
+	faellig map[string]int64
+}
+
+// quantenWZustaendig: welcher Validator (1-basiert) die Teile eines Versuchs
+// zuerst einreicht -- verteilt ueber K und den Versuch.
+func quantenWZustaendig(K string, index, v int) int {
+	if v <= 0 {
+		return 0
+	}
+	b, _ := hex.DecodeString(K[:2])
+	start := 0
+	if len(b) == 1 {
+		start = int(b[0])
+	}
+	return (start+index)%v + 1
+}
+
+// darfEinreichen: der Zustaendige sofort; jeder andere erst, wenn der Teil
+// seit quantenWStaffelWarten offen ist (der Zustaendige faellt aus).
+func (d *quantenWDienst) darfEinreichen(K string, e *quantenWTresorEintrag, index, ab int, jetzt int64, gesehen map[string]bool) bool {
+	if quantenWZustaendig(K, index, len(e.Validatoren)) == e.X {
+		return true
+	}
+	key := fmt.Sprintf("f|%s|%d|%d", K, index, ab)
+	gesehen[key] = true
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	t0, da := d.faellig[key]
+	if !da {
+		if len(d.faellig) < quantenWSichtHoechstens {
+			d.faellig[key] = jetzt
+		}
+		return false
+	}
+	return jetzt-t0 >= quantenWStaffelWarten
 }
 
 // quantenWSichtHoechstens: gemerkte Sichtungen -- je Note hoechstens eine
@@ -224,6 +270,11 @@ func (d *quantenWDienst) sichtRaeumen(gesehen map[string]bool) {
 	for s := range d.sicht {
 		if !gesehen[s] {
 			delete(d.sicht, s)
+		}
+	}
+	for s := range d.faellig {
+		if !gesehen[s] {
+			delete(d.faellig, s)
 		}
 	}
 }
@@ -260,7 +311,7 @@ func neuerQuantenWDienst(cs *ChainState, key *ecdsa.PrivateKey, ablage quantenWA
 	d := &quantenWDienst{cs: cs, key: key, adresse: strings.ToLower(crypto.PubkeyToAddress(key.PublicKey).Hex()),
 		aead: aead, ablage: ablage, eintraege: map[string]*quantenWTresorEintrag{}, peers: peers,
 		client: &http.Client{Timeout: quantenWPeerZeit}, einreichen: einreichen, jetzt: nowUnix,
-		hoehe: func() int64 { return 0 }, final: func() int64 { return -1 }, sicht: map[string]int64{}}
+		hoehe: func() int64 { return 0 }, final: func() int64 { return -1 }, sicht: map[string]int64{}, faellig: map[string]int64{}}
 	roh, err := ablage.alle()
 	if err != nil {
 		return nil, fmt.Errorf("quanten_w: Tresor nicht lesbar: %w", err)
@@ -828,7 +879,17 @@ func (d *quantenWDienst) takt(ctx context.Context) {
 			_ = d.einreichen(quantenWZufallTxArt, QuantenWAngaben{K: K, Index: a.Index,
 				Zufall: []QuantenWZufall{{V: e.X, Z: hex.EncodeToString(z[:])}}})
 		case a.Antwort != nil && a.Offen < len(a.Stellen) && jetzt <= a.AntwortZeit+quantenWFristOffen:
-			d.offenlegenTeil(ctx, K, e, a)
+			for i := 0; i < quantenWTeileJeTakt; i++ {
+				ein := d.cs.quantenWJetzt().Noten[K]
+				if ein == nil || ein.note.Anfrage == nil || ein.note.Anfrage.Index != a.Index {
+					break
+				}
+				na := ein.note.Anfrage
+				if na.Antwort == nil || na.Offen >= len(na.Stellen) || !d.darfEinreichen(K, e, na.Index, na.Offen, jetzt, gesehen) ||
+					!d.offenlegenTeil(ctx, K, e, na) {
+					break
+				}
+			}
 		case (a.Antwort == nil && a.Basen != nil && jetzt > a.Gezogen+quantenWFristAntwort) ||
 			(a.Antwort != nil && jetzt > a.AntwortZeit+quantenWFristOffen):
 			_ = d.einreichen(quantenWFristTxArt, QuantenWAngaben{K: K, Index: a.Index})
@@ -852,23 +913,35 @@ func (d *quantenWDienst) taktS(ctx context.Context, K string, e *quantenWTresorE
 	if !d.reif(sicht) {
 		return // die Anmeldung ist noch nicht final
 	}
-	d.teilOffenlegen(ctx, K, e, t.Fehl, a.Offen, func(offen []QuantenWOffen) error {
-		return d.einreichen(quantenWSOffenlegenTxArt, QuantenWAngaben{K: K, Ab: a.Offen, Offen: offen})
-	})
+	for i := 0; i < quantenWTeileJeTakt; i++ {
+		tok := d.cs.quantenWJetzt().Token[K]
+		if tok == nil || tok.token.Anmeldung == nil || tok.token.Fehl != t.Fehl || quantenWSAnmeldungSicht(K, tok.token) != sicht {
+			return
+		}
+		ab := tok.token.Anmeldung.Offen
+		if !d.darfEinreichen(K, e, t.Fehl, ab, jetzt, gesehen) {
+			return
+		}
+		if !d.teilOffenlegen(ctx, K, e, t.Fehl, ab, func(offen []QuantenWOffen) error {
+			return d.einreichen(quantenWSOffenlegenTxArt, QuantenWAngaben{K: K, Ab: ab, Offen: offen})
+		}) {
+			return
+		}
+	}
 }
 
-func (d *quantenWDienst) offenlegenTeil(ctx context.Context, K string, e *quantenWTresorEintrag, a *quantenWAnfrage) {
-	d.teilOffenlegen(ctx, K, e, a.Index, a.Offen, func(offen []QuantenWOffen) error {
+func (d *quantenWDienst) offenlegenTeil(ctx context.Context, K string, e *quantenWTresorEintrag, a *quantenWAnfrage) bool {
+	return d.teilOffenlegen(ctx, K, e, a.Index, a.Offen, func(offen []QuantenWOffen) error {
 		return d.einreichen(quantenWOffenlegenTxArt, QuantenWAngaben{K: K, Index: a.Index, Ab: a.Offen, Offen: offen})
 	})
 }
 
 // teilOffenlegen: eigene Anteile und die von Nachbarn sammeln, t passende
 // zusammenstellen und einreichen (fuer W-Anfragen und S-Anmeldungen).
-func (d *quantenWDienst) teilOffenlegen(ctx context.Context, K string, e *quantenWTresorEintrag, index, ab int, einreichen func([]QuantenWOffen) error) {
+func (d *quantenWDienst) teilOffenlegen(ctx context.Context, K string, e *quantenWTresorEintrag, index, ab int, einreichen func([]QuantenWOffen) error) bool {
 	eigen, err := d.anteile(K, index, ab)
 	if err != nil {
-		return
+		return false
 	}
 	aus := []QuantenWAnteilAusgabe{eigen}
 	for _, p := range d.peers {
@@ -885,9 +958,10 @@ func (d *quantenWDienst) teilOffenlegen(ctx context.Context, K string, e *quante
 			continue
 		}
 		if einreichen(offen) == nil {
-			return
+			return true
 		}
 	}
+	return false
 }
 
 func (d *quantenWDienst) vergessen(K string) {

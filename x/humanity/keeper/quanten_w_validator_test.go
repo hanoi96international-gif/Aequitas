@@ -152,7 +152,7 @@ func TestQuantenWDienst_Gutfall(t *testing.T) {
 	}
 	w.annehmen(w.antwortTx(w.anna, 0, w.p.ehrlich(a.Stellen, a.Basen)), q.zeit+1)
 	q.zeit += 2
-	q.d[0].takt(context.Background()) // ein Validator sammelt und legt offen
+	q.takt() // der zustaendige Validator sammelt und legt offen
 	if w.anfrage(w.cs) != nil {
 		t.Fatalf("Pruefung nicht abgeschlossen: %+v", w.anfrage(w.cs))
 	}
@@ -168,7 +168,7 @@ func TestQuantenWDienst_Gutfall(t *testing.T) {
 	a = w.anfrage(w.cs)
 	w.annehmen(w.antwortTx(w.bert, 1, w.p.ehrlich(a.Stellen, a.Basen)), q.zeit+1)
 	q.zeit += 2
-	q.d[0].takt(context.Background())
+	q.takt()
 	if _, lebt := w.cs.quantenWJetzt().Noten[w.p.K]; lebt || w.stand(w.cs, w.bert) != 110_000_000 {
 		t.Fatalf("Einloesen nicht durch: bert %d", w.stand(w.cs, w.bert))
 	}
@@ -192,10 +192,10 @@ func TestQuantenWDienst_Teile(t *testing.T) {
 	q.takt()
 	a := w.anfrage(w.cs)
 	w.annehmen(w.antwortTx(w.anna, 0, w.p.ehrlich(a.Stellen, a.Basen)), q.zeit+1)
-	for i := 0; i < 3; i++ {
-		q.zeit += 2
-		q.d[i].takt(context.Background())
-	}
+	// Drei Teile in EINEM Takt: der zustaendige Validator reicht sie ohne
+	// Pause nacheinander ein (hoechstens quantenWTeileJeTakt).
+	q.zeit += 2
+	q.takt()
 	if w.anfrage(w.cs) != nil || w.stand(w.cs, w.anna) != 100_000_000 {
 		t.Fatalf("drei Teile nicht durch: %+v", w.anfrage(w.cs))
 	}
@@ -532,7 +532,7 @@ func TestQuantenWDienst_NichtsVorDerFinalitaet(t *testing.T) {
 	if _, err := q.d[0].anteile(w.p.K, 0, 0); err != nil {
 		t.Fatalf("nach der Finalitaet der Antwort keine Anteile: %v", err)
 	}
-	q.d[0].takt(context.Background())
+	q.takt()
 	if w.anfrage(w.cs) != nil || w.stand(w.cs, w.anna) != 100_000_000 {
 		t.Fatal("die Pruefung der echten Note ist nicht als echt geendet")
 	}
@@ -633,5 +633,48 @@ func TestQuantenWDienst_NummerTresorStichtag(t *testing.T) {
 	q.takt()
 	if a := w.anfrage(w.cs); a == nil || a.Basen == nil {
 		t.Fatal("nach dem Stichtag kein Zufall")
+	}
+}
+
+// Staffel: nur der zustaendige Validator reicht sofort ein; die anderen erst,
+// wenn der Teil quantenWStaffelWarten lang offen ist (Zustaendiger faellt aus).
+func TestQuantenWDienst_Staffel(t *testing.T) {
+	q := neueQwDienste(t, 400)
+	w := q.w
+	q.praegen(t)
+	q.zeit += 10
+	w.annehmen(w.anfrageTx(w.anna, 0, 150, "", q.zeit), q.zeit+1)
+	q.zeit += 2
+	q.takt()
+	a := w.anfrage(w.cs)
+	w.annehmen(w.antwortTx(w.anna, 0, w.p.ehrlich(a.Stellen, a.Basen)), q.zeit+1)
+	q.zeit += 2
+	z := quantenWZustaendig(w.p.K, 0, len(w.val))
+	andere := q.d[z%len(q.d)] // ein anderer als der Zustaendige
+	andere.takt(context.Background())
+	if w.anfrage(w.cs).Offen != 0 {
+		t.Fatal("ein nicht zustaendiger Validator reicht sofort ein")
+	}
+	q.zeit += quantenWStaffelWarten - 1
+	andere.takt(context.Background())
+	if w.anfrage(w.cs).Offen != 0 {
+		t.Fatal("eingesprungen vor der Wartezeit")
+	}
+	q.zeit++
+	andere.takt(context.Background())
+	if w.anfrage(w.cs).Offen != quantenWOffenTeil {
+		t.Fatalf("nicht eingesprungen, Offen %d", w.anfrage(w.cs).Offen)
+	}
+	// Der Zustaendige erledigt den Rest in einem Takt.
+	q.d[z-1].takt(context.Background())
+	if w.anfrage(w.cs) != nil {
+		t.Fatal("der Zustaendige hat den Rest nicht eingereicht")
+	}
+	// Die Wartezeiten offener Teile vergisst der naechste Takt.
+	q.takt()
+	for x, d := range q.d {
+		if len(d.faellig) != 0 {
+			t.Fatalf("Validator %d merkt sich noch %d offene Teile", x+1, len(d.faellig))
+		}
 	}
 }
