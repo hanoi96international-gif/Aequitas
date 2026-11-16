@@ -13,7 +13,7 @@ import (
 )
 
 // Dezentrales Quantengeld, Kettenseite (quanten_geld.go): Freischaltung durch
-// zwei Drittel der Pruefer, Anmelden einer Note an den Topf, Form, Stichtag,
+// zwei Drittel der Pruefer (mindestens fuenf), Anmelden einer Note an den Topf, Form, Stichtag,
 // StateRoot -- Gutfall und Angriffe.
 
 const qgAb int64 = 1_800_000_000
@@ -166,22 +166,98 @@ func qgUrteil(t *testing.T, cs *ChainState, tx Transaction, blockZeit int64) qua
 	return u
 }
 
-// Drei Pruefer: zwei Stimmen noetig. Eine reicht nicht, zwei schon.
-func TestQuantenGeld_FreischaltungZweiDrittel(t *testing.T) {
+// qgPruefer: Menschen 1..n-1 werden nacheinander Pruefer (Mensch 0 ist
+// Gruender), jeder mit zwei Dritteln der Stimmen, die es dann braucht.
+// Liefert eine Zeit, zu der alle n Pruefer sind.
+func qgPruefer(f *vrFall, n int) int64 {
+	f.t.Helper()
+	z := vrAb + 100
+	for i := 1; i < n; i++ {
+		von := make([]int, verifierSchwelle(i))
+		for j := range von {
+			von[j] = j
+		}
+		f.aufnehmen(i, z, von...)
+		z += erzeugerFrist + 10
+	}
+	return z
+}
+
+func qgBis(n int) []int {
+	out := make([]int, n)
+	for i := range out {
+		out[i] = i
+	}
+	return out
+}
+
+// Die Zahl der noetigen Stimmen: zwei Drittel, nie weniger als die
+// Mindestzahl -- und nie mehr, als eine Freischaltung tragen kann.
+func TestQuantenGeld_StimmenNoetig(t *testing.T) {
+	if quantenFreischaltungMindestPruefer < 5 {
+		t.Fatalf("Mindestzahl %d -- unter 5 Pruefern schaltet eine kleine Gruppe allein frei", quantenFreischaltungMindestPruefer)
+	}
+	for pruefer, noetig := range map[int]int{0: 5, 1: 5, 2: 5, 4: 5, 5: 5, 6: 5, 7: 5, 8: 6, 9: 6, 30: 20, 256: 171} {
+		if got := quantenStimmenNoetig(pruefer); got != noetig {
+			t.Errorf("%d Pruefer: %d Stimmen noetig, erwartet %d", pruefer, got, noetig)
+		}
+	}
+	for n := 0; n <= 1000; n++ {
+		if got := quantenStimmenNoetig(n); got < verifierSchwelle(n) || got < quantenFreischaltungMindestPruefer {
+			t.Fatalf("%d Pruefer: %d Stimmen -- weniger als zwei Drittel oder die Mindestzahl", n, got)
+		}
+	}
+	if quantenFreischaltungMindestPruefer > verifierStimmenHoechstens {
+		t.Fatal("Mindestzahl groesser als die Stimmen einer Freischaltung")
+	}
+}
+
+// Missbrauch: wenige Pruefer schalten nichts frei -- ein einziger nicht
+// (der Fall direkt nach dem Neustart bei null), vier von vier nicht.
+func TestQuantenGeld_FreischaltungNichtMitWenigenPruefern(t *testing.T) {
+	n := qgSatzN.String()
+	// Ein Pruefer, eine Stimme: zwei Drittel von 1 waeren 1.
 	f := neuerVrFall(t)
-	f.aufnehmen(1, vrAb+100, 0)
-	t2 := vrAb + 100 + erzeugerFrist + 10 // 1 ist erst nach der Frist Pruefer
-	f.aufnehmen(2, t2, 0, 1)
 	qgAktiv(t)
-	zeit := t2 + erzeugerFrist + 1000
+	zeit := vrAb + 1000
+	if u := qgUrteil(t, f.cs, qgFreischaltung(f, "isogenie-8192", n, zeit+quantenFreischaltungVorlauf, zeit, 0), zeit); u.regel != "quanten_quorum" {
+		t.Fatalf("ein Pruefer schaltet allein frei: %q (%s)", u.regel, u.text)
+	}
+	// Vier Pruefer, alle vier stimmen.
+	f = neuerVrFall(t)
+	zeit = qgPruefer(f, 4) + 1000
+	tx := qgFreischaltung(f, "isogenie-8192", n, zeit+quantenFreischaltungVorlauf, zeit, qgBis(4)...)
+	if u := qgUrteil(t, f.cs, tx, zeit); u.regel != "quanten_quorum" {
+		t.Fatalf("vier von vier Pruefern schalten frei: %q (%s)", u.regel, u.text)
+	}
+	f.cs.mu.Lock()
+	err := f.cs.applyQuantenFreischaltungLocked(context.Background(), &tx, zeit)
+	f.cs.mu.Unlock()
+	if err == nil {
+		t.Fatal("Nachspielen nimmt eine Freischaltung mit vier Stimmen an")
+	}
+	if len(f.cs.quantenGeldJetzt().Saetze) != 0 {
+		t.Fatal("abgewiesene Freischaltung hat das Register veraendert")
+	}
+}
+
+// Sechs Pruefer: zwei Drittel waeren 4, die Mindestzahl verlangt 5. Vier
+// reichen nicht, fuenf schon.
+func TestQuantenGeld_FreischaltungZweiDrittelUndMindestzahl(t *testing.T) {
+	f := neuerVrFall(t)
+	zeit := qgPruefer(f, 6) + 1000
+	qgAktiv(t)
 	ab := zeit + quantenFreischaltungVorlauf
 	n := qgSatzN.String()
-	if u := qgUrteil(t, f.cs, qgFreischaltung(f, "isogenie-8192", n, ab, zeit, 0), zeit); u.regel != "quanten_quorum" {
-		t.Fatalf("eine von drei Stimmen: %+v", u)
+	if len(f.cs.verifierRegisterJetzt().mitgliederZu(zeit)) != 6 {
+		t.Fatal("Aufbau: nicht sechs Pruefer")
 	}
-	tx := qgFreischaltung(f, "isogenie-8192", n, ab, zeit, 0, 1)
+	if u := qgUrteil(t, f.cs, qgFreischaltung(f, "isogenie-8192", n, ab, zeit, qgBis(4)...), zeit); u.regel != "quanten_quorum" {
+		t.Fatalf("vier von sechs Stimmen (zwei Drittel, aber unter der Mindestzahl): %+v", u)
+	}
+	tx := qgFreischaltung(f, "isogenie-8192", n, ab, zeit, qgBis(5)...)
 	if u := qgUrteil(t, f.cs, tx, zeit); u.regel != "" {
-		t.Fatalf("zwei von drei Stimmen abgewiesen: %s %s", u.regel, u.text)
+		t.Fatalf("fuenf von sechs Stimmen abgewiesen: %s %s", u.regel, u.text)
 	}
 	f.cs.mu.Lock()
 	err := f.cs.applyQuantenFreischaltungLocked(context.Background(), &tx, zeit)
@@ -203,24 +279,26 @@ func TestQuantenGeld_FreischaltungZweiDrittel(t *testing.T) {
 	}
 }
 
+// Fuenf Pruefer (0..4); Mensch 5 ist registriert, aber kein Pruefer.
 func TestQuantenGeld_FreischaltungAngriffe(t *testing.T) {
 	f := neuerVrFall(t)
-	f.aufnehmen(1, vrAb+100, 0)
+	zeit := qgPruefer(f, 5) + 1000
 	qgAktiv(t)
-	zeit := vrAb + 100 + erzeugerFrist + 1000
 	ab := zeit + quantenFreischaltungVorlauf
 	n := qgSatzN.String()
 	klein := "1491"
+	alle := qgBis(5)
 	faelle := []struct {
 		name  string
 		tx    Transaction
 		regel string
 	}{
-		{"Spielzeuggruppe", qgFreischaltung(f, "isogenie-8192", klein, ab, zeit, 0, 1), "quanten_ordnung"},
-		{"Laborsatz", qgFreischaltung(f, "labor-h1491", n, ab, zeit, 0, 1), "quanten_form"},
-		{"ohne Vorlauf", qgFreischaltung(f, "isogenie-8192", n, zeit+60, zeit, 0, 1), "quanten_vorlauf"},
-		{"Nicht-Pruefer stimmt", qgFreischaltung(f, "isogenie-8192", n, ab, zeit, 0, 3), "quanten_stimme"},
-		{"zweimal derselbe", qgFreischaltung(f, "isogenie-8192", n, ab, zeit, 0, 0), "quanten_stimme"},
+		{"Spielzeuggruppe", qgFreischaltung(f, "isogenie-8192", klein, ab, zeit, alle...), "quanten_ordnung"},
+		{"Laborsatz", qgFreischaltung(f, "labor-h1491", n, ab, zeit, alle...), "quanten_form"},
+		{"ohne Vorlauf", qgFreischaltung(f, "isogenie-8192", n, zeit+60, zeit, alle...), "quanten_vorlauf"},
+		{"Nicht-Pruefer stimmt", qgFreischaltung(f, "isogenie-8192", n, ab, zeit, 0, 1, 2, 3, 5), "quanten_stimme"},
+		{"zweimal derselbe", qgFreischaltung(f, "isogenie-8192", n, ab, zeit, 0, 0, 1, 2, 3), "quanten_stimme"},
+		{"eine Stimme zu wenig", qgFreischaltung(f, "isogenie-8192", n, ab, zeit, 0, 1, 2, 3), "quanten_quorum"},
 		{"ohne Stimme", qgFreischaltung(f, "isogenie-8192", n, ab, zeit), "quanten_form"},
 	}
 	for _, c := range faelle {
@@ -230,20 +308,24 @@ func TestQuantenGeld_FreischaltungAngriffe(t *testing.T) {
 	}
 	// Stimme fuer einen anderen Satz / eine andere Ordnung / ein anderes ab
 	// zaehlt nicht (die Unterschrift gilt nur fuer genau ihren Satz).
-	tx := qgFreischaltung(f, "isogenie-8192", n, ab, zeit, 0, 1)
+	tx := qgFreischaltung(f, "isogenie-8192", n, ab, zeit, alle...)
 	tx.Quanten.Ab = ab + 1
 	if u := qgUrteil(t, f.cs, tx, zeit); u.regel != "quanten_stimme" {
 		t.Errorf("umgeschriebenes ab angenommen: %+v", u)
 	}
-	tx = qgFreischaltung(f, "isogenie-8192", n, ab, zeit, 0, 1)
+	tx = qgFreischaltung(f, "isogenie-8192", n, ab, zeit, alle...)
 	tx.Quanten.Ordnung = new(big.Int).Add(qgSatzN, big.NewInt(1)).String()
 	if u := qgUrteil(t, f.cs, tx, zeit); u.regel != "quanten_stimme" {
 		t.Errorf("umgeschriebene Ordnung angenommen: %+v", u)
 	}
 	// Blockzeit weit nach dem Beschluss.
-	tx = qgFreischaltung(f, "isogenie-8192", n, ab, zeit, 0, 1)
+	tx = qgFreischaltung(f, "isogenie-8192", n, ab, zeit, alle...)
 	if u := qgUrteil(t, f.cs, tx, zeit+nachweisHoechstensAlt+1); u.regel != "quanten_zeit" {
 		t.Errorf("alter Beschluss angenommen: %+v", u)
+	}
+	// Gutfall zur Gegenprobe: dieselbe Freischaltung gilt.
+	if u := qgUrteil(t, f.cs, qgFreischaltung(f, "isogenie-8192", n, ab, zeit, alle...), zeit); u.regel != "" {
+		t.Fatalf("Gutfall abgewiesen: %s %s", u.regel, u.text)
 	}
 	if len(f.cs.quantenGeldJetzt().Saetze) != 0 {
 		t.Fatal("abgewiesene Freischaltung hat das Register veraendert")

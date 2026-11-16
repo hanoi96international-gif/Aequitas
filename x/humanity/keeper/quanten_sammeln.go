@@ -14,8 +14,9 @@ package keeper
 // # WIE (wie die Pruefer-Abstimmung, verifier_sammeln.go)
 //
 // POST /api/quanten/stimme nimmt EINE Stimme fuer einen Vorschlag
-// (Satz, Ordnung, ab). Der Leiter sammelt; sobald zwei Drittel der Pruefer
-// zugestimmt haben, baut er die Freischaltung selbst und schickt sie durch
+// (Satz, Ordnung, ab). Der Leiter sammelt; sobald zwei Drittel der Pruefer,
+// mindestens quantenFreischaltungMindestPruefer verschiedene, zugestimmt
+// haben, baut er die Freischaltung selbst und schickt sie durch
 // dasselbe Annahme-Tor wie den Endpunkt mit allen Stimmen
 // (quantenFreischaltungAnnehmen). Jeder Knoten prueft die Freischaltung
 // beim Nachspielen ganz -- der Sammelweg verschiebt nur, wo die Stimmen
@@ -239,7 +240,7 @@ func (a *APIServer) quantenSammelEinreichen(v quantenVorschlag, now int64) map[s
 			}
 		}
 		quantenSammel.mu.Unlock()
-		noetig := verifierSchwelle(len(reg.mitgliederZu(now)))
+		noetig := quantenStimmenNoetig(len(reg.mitgliederZu(now)))
 		out := map[string]interface{}{"stimmen": len(stimmen), "noetig": noetig}
 		if len(stimmen) < noetig {
 			out["eingereicht"] = false
@@ -293,7 +294,7 @@ func (a *APIServer) quantenSammelEinreichen(v quantenVorschlag, now int64) map[s
 func (a *APIServer) handleQuantenAbstimmungen(w http.ResponseWriter, r *http.Request) {
 	writeJSONCORS(w)
 	now := time.Now().Unix()
-	noetig := verifierSchwelle(len(a.state.verifierRegisterJetzt().mitgliederZu(now)))
+	noetig := quantenStimmenNoetig(len(a.state.verifierRegisterJetzt().mitgliederZu(now)))
 	quantenSammel.mu.Lock()
 	quantenSammel.aufraeumenLocked(now)
 	liste := make([]map[string]interface{}, 0, len(quantenSammel.offen))

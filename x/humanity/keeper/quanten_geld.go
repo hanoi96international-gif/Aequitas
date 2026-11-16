@@ -87,6 +87,16 @@ const (
 	// Ein Satz gilt fruehestens 30 Tage nach der Abstimmung: jeder Mensch
 	// sieht vorher, was kommt.
 	quantenFreischaltungVorlauf int64 = 30 * 86400
+	// quantenFreischaltungMindestPruefer: so viele VERSCHIEDENE Pruefer
+	// stimmen mindestens fuer einen Satz -- zusaetzlich zu zwei Dritteln
+	// aller Pruefer. Zwei Drittel allein sind bei wenigen Pruefern keine
+	// Huerde: bei einem einzigen (etwa nach dem Neustart bei null) schaltete
+	// seine Stimme allein frei. Gibt es weniger Pruefer, ist keine
+	// Freischaltung moeglich (fail-closed). Festgelegt am 16.11.2026 (bis
+	// dahin offene Entscheidung des Betreibers). Der Deploy haelt an, wenn
+	// sich der Wert aendert und schon ein Satz eingetragen ist
+	// (.github/neustart/quantengeld-mindest-pruefer.sh).
+	quantenFreischaltungMindestPruefer = 5
 	// Angemeldete Noten insgesamt und je Anmelder (das Register wird je
 	// Aenderung ganz neu geschrieben, wie das Umzugs-Register; darueber
 	// gehoert es in eine eigene Tabelle).
@@ -571,8 +581,21 @@ func (cs *ChainState) quantenPraegenUrteilLocked(tx *Transaction, blockZeit int6
 	return quantenUrteil{note: quantenNoteEintrag{K: k, Satz: q.Satz, Von: w, topfVor: cs.quantenTopfMikroLocked()}}
 }
 
+// quantenStimmenNoetig: Stimmen fuer eine Freischaltung bei pruefer
+// Stimmberechtigten -- zwei Drittel, aber nie weniger als
+// quantenFreischaltungMindestPruefer. Dieselbe Zahl gilt beim Nachspielen,
+// beim Sammeln und in der Anzeige.
+func quantenStimmenNoetig(pruefer int) int {
+	n := verifierSchwelle(pruefer)
+	if n < quantenFreischaltungMindestPruefer {
+		n = quantenFreischaltungMindestPruefer
+	}
+	return n
+}
+
 // quantenFreischaltungUrteilLocked: zwei Drittel der Pruefer zur Zeit
-// issued_at (tx.DistributionAt) stimmen fuer genau diesen Satz. Fehler nur,
+// issued_at (tx.DistributionAt), mindestens quantenFreischaltungMindestPruefer
+// verschiedene, stimmen fuer genau diesen Satz. Fehler nur,
 // wenn die Zulassung nicht lesbar war (dann geht der Block zurueck).
 func (cs *ChainState) quantenFreischaltungUrteilLocked(ctx context.Context, tx *Transaction, blockZeit int64) (quantenUrteil, error) {
 	q := tx.Quanten
@@ -610,7 +633,11 @@ func (cs *ChainState) quantenFreischaltungUrteilLocked(ctx context.Context, tx *
 	for _, m := range pr.mitgliederZu(zeit) {
 		stimmberechtigt[m] = true
 	}
-	noetig := verifierSchwelle(len(stimmberechtigt))
+	noetig := quantenStimmenNoetig(len(stimmberechtigt))
+	// Zu wenige Stimmen: abweisen, bevor eine Unterschrift geprueft wird.
+	if len(q.Stimmen) < noetig {
+		return quantenBefund("quanten_quorum", "%d Stimmen, noetig %d (zwei Drittel von %d Pruefern, mindestens %d)", len(q.Stimmen), noetig, len(stimmberechtigt), quantenFreischaltungMindestPruefer), nil
+	}
 	// Je Mensch hoechstens eine Stimme -- vor jeder teuren Pruefung.
 	behauptet := map[string]bool{}
 	for i := range q.Stimmen {
@@ -651,7 +678,7 @@ func (cs *ChainState) quantenFreischaltungUrteilLocked(ctx context.Context, tx *
 		stimmen[s.Bescheinigung.Mensch] = true
 	}
 	if len(stimmen) < noetig {
-		return quantenBefund("quanten_quorum", "%d verschiedene Pruefer, noetig %d von %d", len(stimmen), noetig, len(stimmberechtigt)), nil
+		return quantenBefund("quanten_quorum", "%d verschiedene Pruefer, noetig %d (zwei Drittel von %d, mindestens %d)", len(stimmen), noetig, len(stimmberechtigt), quantenFreischaltungMindestPruefer), nil
 	}
 	return quantenUrteil{satz: quantenSatzEintrag{Name: q.Satz, Ordnung: q.Ordnung, Ab: q.Ab, Seit: zeit}}, nil
 }
@@ -833,13 +860,20 @@ func (cs *ChainState) QuantenStand(k string) map[string]interface{} {
 		saetze = append(saetze, map[string]interface{}{"name": s.Name, "ordnung_bits": len(s.Ordnung) * 3322 / 1000, "ab": s.Ab, "beschlossen": s.Seit})
 	}
 	ab := quantenGeldAb()
+	jetzt := time.Now().Unix()
+	pruefer := len(cs.verifierRegisterJetzt().mitgliederZu(jetzt))
 	aus := map[string]interface{}{
-		"aktiv":           quantenGeldAktiv(time.Now().Unix()),
+		"aktiv":           quantenGeldAktiv(jetzt),
 		"topf":            quantenTopfAddr,
 		"saetze":          saetze,
 		"noten":           len(reg.Noten),
 		"gedeckt_aeq":     float64(cs.quantenTopfMikroGelesen()) / 1e6,
 		"mindest_deckung": float64(quantenMindestDeckungMik) / 1e6,
+		// Freischaltung: so viele Pruefer gibt es, so viele Stimmen braucht
+		// ein Satz (zwei Drittel, mindestens mindest_pruefer).
+		"pruefer":         pruefer,
+		"mindest_pruefer": quantenFreischaltungMindestPruefer,
+		"noetig_stimmen":  quantenStimmenNoetig(pruefer),
 	}
 	if ab != math.MaxInt64 {
 		aus["ab"] = ab
@@ -946,7 +980,10 @@ func (e *quantenAbgelehnt) Error() string { return e.text }
 // quantenStatus: der Teil von /api/status (Waechter quantengeld-nicht-
 // verpasst.sh). "ab" fehlt, solange schlafend.
 func quantenStatus() map[string]interface{} {
-	m := map[string]interface{}{"topf": quantenTopfAddr}
+	// mindest_pruefer: daran erkennt der Deploy-Waechter, welche Regel der
+	// laufende Knoten fuer eine Freischaltung anwendet
+	// (.github/neustart/quantengeld-mindest-pruefer.sh).
+	m := map[string]interface{}{"topf": quantenTopfAddr, "mindest_pruefer": quantenFreischaltungMindestPruefer}
 	if ab := quantenGeldAb(); ab != math.MaxInt64 {
 		m["ab"] = ab
 	}
