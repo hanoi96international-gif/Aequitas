@@ -92,12 +92,12 @@ Nicht übernommen, als Beobachtung für später:
      die Stichprobe wäre sonst aus der Warteschlange kopierbar (Vorauslaufen).
    - Die Unterschrift der Stelle bindet die Zahl der Fehlversuche. Sonst ließe sich eine
      fehlgeschlagene Anmeldung wiederholen, bis der Token tot ist.
-   - Gemergt mit #551. `s_kette.py` ist um die festen Stellen nachgezogen (Folge-PR). Die
+   - Gemergt mit #551. `s_kette.py` ist um die festen Stellen nachgezogen (#552). Die
      Fehlversuche in der Unterschrift der Stelle sind nur im Knoten modelliert, die
      Spezifikation kennt keine Stellen-Unterschrift.
    - Offen: Validator-Dienst für S (Offenlegen der Stichprobe).
 3. **Validator-Dienst W, Beobachtungen aus #549:**
-   - Erledigt im Folge-PR: (1) Der Auftrag bindet den Hash der Anteile
+   - Erledigt mit #552: (1) Der Auftrag bindet den Hash der Anteile
      (`quantenWAuftragNachricht` v2). (2) Ein identischer Auftrag bekommt dieselbe
      Bestätigung, ein anderer für dasselbe K bleibt abgewiesen.
    - Offen: (3) Staffel beim gleichzeitigen Einreichen der Teile. (4) Bei k_note = 5200
@@ -112,9 +112,11 @@ Nicht übernommen, als Beobachtung für später:
 
 | Repo | PR | Inhalt | Nächster Schritt |
 |---|---|---|---|
-| Aequitas | (Zweig `claude/aequitas-fortsetzen-osrea1`) | Validator-Dienst W: Auftrag bindet Anteile, Bestätigen wiederholbar; `s_kette.py`: feste Annahmestellen | CI, Sicherheitsprüfung, mergen |
+| – | – | keine offenen PRs | – |
 
 Gemergt am 16.11.:
+- #552 (Validator-Dienst W: Auftrag bindet Anteile, Bestätigen wiederholbar; `s_kette.py`
+  feste Annahmestellen; Stichtag-Wächter-Tests warten auf den Testserver statt `sleep 1`)
 - #551 (S2b Teil 2: Variante S schlafend in der Kette)
 - #550 (Übergabe nach #549)
 - #549 (Validator-Dienst W: nichts vor der Finalität, Ende-zu-Ende-Test auf vier Knoten)
