@@ -126,12 +126,25 @@ Nicht übernommen, als Beobachtung für später:
        Unterschrift ist das für die Sicherheit nicht nötig, nur für weniger Abrufe.
 5. **App:** W- und S-Anzeige.
 6. **Ionenfalle** (Konto des Betreibers), Vorlage 4 abschicken (Betreiber).
+7. **Gutachten (W5/S4):** Der Prüfauftrag (`docs/QUANTENGELD_PRUEFAUFTRAG.md`) ist auf
+   den Stand von W2c, W2d und Variante S gebracht. Vorher fragte er noch nach 15 % und
+   k = min(64, frei). Es fehlt nur noch ein Gutachter (Betreiber).
+8. **ePrint-Entwurf** (`forschung/quantengeld/EPRINT_ENTWURF.md`, englisch): Varianten W
+   und S, Parameter und Klon-Befund, Umsetzung, Ergebnisse auf IBM, offene Fragen. Die
+   Literatur ist an arXiv geprüft. Veröffentlichen (IACR ePrint) nur durch den Betreiber.
+9. ~~**W3 auf dem echten Chip**~~ – gelaufen (Lauf 43973771243, `ibm_fez`, HEUTE.md 3.3):
+   - Ohne Warten 2,4 % Fehler je Treffer, Annahme 0,90; Note Nr. 1 echt.
+   - Sicher prüfbar mit Toleranz 6 % und 1.360 Stellen (`wiesner_parameter.suche`).
+   - Mit Teleportation 12,5 %: keine sichere Toleranz unter 14,6 %.
+   - Ab 20 µs 29–40 %, die Note ist verloren.
+   - `wiesner_hardware.TOLERANZ` steht jetzt auf 4 % statt 15 %.
 
 ## Offene PRs
 
 | Repo | PR | Inhalt | Nächster Schritt |
 |---|---|---|---|
-| – | – | keine offenen PRs | – |
+| Aequitas | #557 | Validator-Dienst: Nachbarn des Knotens (andere Sitzung, `claude/aequitas-fortsetzen-osrea1`) | deren Sache |
+| Aequitas | (dieser Zweig `claude/friendly-davinci-i4iww1`) | Prüfauftrag auf heutigen Stand, OFFEN.md aufgeräumt | CI grün abwarten, squash-mergen |
 
 Gemergt am 16.11.:
 - #555 (Validator-Dienst: Staffel, bis 8 Teile je Takt)
