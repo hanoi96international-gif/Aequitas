@@ -4,7 +4,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"math/big"
+	"math/rand"
 	"os"
+	"sort"
 	"testing"
 )
 
@@ -210,5 +212,115 @@ func TestQuantenS_Missbrauch(t *testing.T) {
 		if _, err := f(); err == nil {
 			t.Errorf("Ausgabe %s: angenommen", name)
 		}
+	}
+}
+
+// S2b: Anmelden, Offenlegen in Teilen (130 Stellen = 3 Teile), Frist ohne
+// Fehlversuch, falsche Vorlagen bis tot -- mit Pruefsummen und Anteilen aus
+// qwPraegen (Basen u = p.basen, Werte t = p.bits).
+func TestQuantenS_InTeilen(t *testing.T) {
+	p := qwPraegen(300, 3, 5, 77)
+	inh, stelle := "0x00000000000000000000000000000000000000aa", "0x00000000000000000000000000000000000000cc"
+	r := rand.New(rand.NewSource(7))
+	perm := r.Perm(p.n)
+	proben := [2][]int{append([]int(nil), perm[:130]...), append([]int(nil), perm[130:260]...)}
+	sort.Ints(proben[0])
+	sort.Ints(proben[1])
+	neu := func() *quantenSToken {
+		var ph [2][32]byte
+		for b := 0; b < 2; b++ {
+			ph[b] = quantenSProbeHash(p.K, b, proben[b])
+		}
+		e, err := neuerQuantenSToken(p.n, inh, p.wurzel, 5_000_000, ph, 3, 5, quantenWTolStandard)
+		if err != nil {
+			t.Fatal(err)
+		}
+		y := make([]int, p.n)
+		for i := range y {
+			y[i] = r.Intn(2)
+		}
+		if err := e.binden(inh, y); err != nil { // z = 0: d = y
+			t.Fatal(err)
+		}
+		if err := e.waehlen(inh, 1); err != nil { // c = b XOR z: Stelle 1
+			t.Fatal(err)
+		}
+		return e
+	}
+	ehrlich := func(e *quantenSToken) []int {
+		x := make([]int, p.n)
+		for i := range x {
+			if e.D[i] == p.basen[i] {
+				x[i] = p.bits[i]
+			} else {
+				x[i] = r.Intn(2)
+			}
+		}
+		return x
+	}
+	offen := p.offen(proben[1], 1, 3, 5)
+	e := neu()
+	x := ehrlich(e)
+	if e.anmelden(p.K, 1, stelle, x, proben[0], 10) == nil {
+		t.Fatal("fremde Stichprobe angemeldet")
+	}
+	if err := e.anmelden(p.K, 1, stelle, x, proben[1], 10); err != nil {
+		t.Fatal(err)
+	}
+	if e.anmelden(p.K, 1, stelle, x, proben[1], 11) == nil {
+		t.Fatal("zweite Anmeldung")
+	}
+	for name, f := range map[string]func() error{
+		"Teil zu gross":        func() error { _, _, err := e.offenlegenTeil(p.K, 0, offen[:quantenWOffenTeil+1], 12); return err },
+		"Teil nicht der Reihe": func() error { _, _, err := e.offenlegenTeil(p.K, 64, offen[64:128], 12); return err },
+		"Teil verschoben":      func() error { _, _, err := e.offenlegenTeil(p.K, 0, offen[1:65], 12); return err },
+	} {
+		if f() == nil {
+			t.Errorf("%s: angenommen", name)
+		}
+	}
+	if f, _, err := e.offenlegenTeil(p.K, 0, offen[:64], 12); err != nil || f {
+		t.Fatal("erster Teil", err)
+	}
+	// Frist: Anmeldung weg, kein Fehlversuch, neu anmelden geht.
+	if _, _, err := e.offenlegenTeil(p.K, 64, offen[64:128], 10+quantenWFristOffen+1); err == nil || e.Anmeldung != nil || e.Fehl != 0 {
+		t.Fatal("Frist mitten im Offenlegen")
+	}
+	if err := e.anmelden(p.K, 1, stelle, x, proben[1], 5000); err != nil {
+		t.Fatal(err)
+	}
+	var fertig, ok bool
+	for _, g := range [][2]int{{0, 64}, {64, 128}, {128, 130}} {
+		var err error
+		fertig, ok, err = e.offenlegenTeil(p.K, g[0], offen[g[0]:g[1]], 5001)
+		if err != nil {
+			t.Fatal(g, err)
+		}
+	}
+	if !fertig || !ok || !e.Eingeloest {
+		t.Fatal("ehrliches Einloesen in drei Teilen")
+	}
+	if e.anmelden(p.K, 1, stelle, x, proben[1], 5002) == nil {
+		t.Fatal("eingeloesten Token angemeldet")
+	}
+	// Geratene Vorlagen: jedes Mal Fehlversuch, nach quantenWFehlMax tot.
+	e = neu()
+	for v := 0; v < quantenWFehlMax; v++ {
+		xr := make([]int, p.n)
+		for i := range xr {
+			xr[i] = r.Intn(2)
+		}
+		if err := e.anmelden(p.K, 1, stelle, xr, proben[1], int64(9000+v)); err != nil {
+			t.Fatal(err)
+		}
+		for _, g := range [][2]int{{0, 64}, {64, 128}, {128, 130}} {
+			fertig, ok, _ = e.offenlegenTeil(p.K, g[0], offen[g[0]:g[1]], int64(9000+v))
+		}
+		if !fertig || ok {
+			t.Fatalf("geratene Vorlage %d bestanden", v)
+		}
+	}
+	if !e.Tot || e.anmelden(p.K, 1, stelle, x, proben[1], 9999) == nil {
+		t.Fatal("nach quantenWFehlMax nicht tot")
 	}
 }

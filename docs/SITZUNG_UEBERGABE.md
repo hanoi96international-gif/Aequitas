@@ -56,8 +56,25 @@ erst vergleichen, dann zusammenführen; nicht doppelt bauen.
 **Nächste Schritte:**
 1. **S2a** (dieser Zweig, nach #547): Regeln für Variante S im Knoten (`quanten_s.go`,
    Prüfvektor), Einlösen auf der Kette in der Spezifikation (`KetteS.einloesen`), Doku.
-2. **S2b:** S in die Kette einhängen (Transaktionsarten, Register, StateRoot,
-   Snapshot), schlafend; nach dem Muster von `quanten_w_kette.go`.
+2. **S2b – Variante S in die Kette einhängen, schlafend.**
+   - **Spezifikation steht:** `s_kette.py`, `KetteS.anmelden`/`offenlegen`/`_frist`,
+     mit Missbrauch und Mutation 4/4.
+   - **Plan für Go:** S als weitere Satzart IM W-Modul. Damit gelten Stichtag
+     `quantenWAbUnix`, BuchZeit, StateRoot, Snapshot, Checkpoint und Replay automatisch.
+   - **Arten:** `quanten_w_s_ausgeben` (Präger plus Bestätigung aller Validatoren über
+     K, Wurzel, n, t, Validatoren, Stichproben-Hashes, Zeit, Toleranz),
+     `quanten_w_s_binden` und `quanten_w_s_waehlen` (Inhaberin, unterschrieben),
+     `quanten_w_s_anmelden` (Annahmestelle, unterschrieben, mit Vorlage-Unterschrift der
+     Inhaberin), `quanten_w_s_offenlegen` (Teile ≤ 64, ohne Wallet),
+     `quanten_w_s_frist`.
+   - **Code-Stellen:** `istQuantenWTxArt`, `quantenWNurEigeneFelder`, die Case-Liste in
+     `block.go` (Replay), die API-Routen-Schleife; neue Felder in `QuantenWAngaben`
+     (b und c als Text „0“/„1“ wegen omitempty).
+   - **Register:** `quantenWRegister.Token`, höchstens 16; d und x als Bitfeld.
+   - **Geld:** Der Wert hängt an den Anteilen im W-Topf. Bestanden: Wert an die Stelle.
+     Nach `FEHL_MAX` falschen Vorlagen ist der Token tot, der Wert geht ans
+     Grundeinkommen.
+   - **Danach:** eigene Sicherheitsprüfung, Missbrauchstests, Mutation.
 3. **W:** mehrstufige Prüfung; Fehlerkorrektur messen; Ende-zu-Ende-Test mit vier
    Knoten für den Dienst; Peer-Liste aus dem Validator-Register; Register als Tabelle
    (vor W6).

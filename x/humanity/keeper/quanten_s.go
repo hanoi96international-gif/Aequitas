@@ -71,6 +71,22 @@ type quantenSToken struct {
 	D          []int // nil bis zur Bindung
 	C          int   // -1 bis zur Wahl
 	Eingeloest bool
+	// S2b: Einloesen in Teilen (anmelden, offenlegenTeil, frist).
+	Tot       bool
+	Fehl      int
+	Anmeldung *quantenSAnmeldung
+}
+
+// quantenSAnmeldung: eine Annahmestelle hat den Token zum Einloesen angemeldet.
+type quantenSAnmeldung struct {
+	B       int
+	Stelle  string
+	X       []int
+	Probe   []int // sortiert
+	Offen   int
+	Treffer int
+	Fehler  int
+	Zeit    int64
 }
 
 func neuerQuantenSToken(n int, inhaber string, wurzel [32]byte, deckung int64, proben [2][32]byte, t, nVal, tol int) (*quantenSToken, error) {
@@ -149,4 +165,92 @@ func (e *quantenSToken) einloesen(K string, b int, x, probe []int, offen []quant
 	}
 	e.Eingeloest = true
 	return treffer, fehler, nil
+}
+
+// ------------------------------------------------------------ S2b: in Teilen
+//
+// Wie die Spezifikation (KetteS.anmelden/offenlegen/_frist): eine Stelle
+// meldet an (Vorlage-Unterschrift der Inhaberin prueft der Aufrufer), die
+// Validatoren legen die Stichprobe in Teilen offen, geurteilt wird ueber alle.
+// Nicht bestanden: Fehlversuch; nach quantenWFehlMax ist der Token tot (der
+// Aufrufer bucht den Wert ans Grundeinkommen). Legen die Validatoren nicht in
+// der Frist offen: Anmeldung weg, kein Fehlversuch.
+
+// anmelden: hoechstens eine offene Anmeldung je Token.
+func (e *quantenSToken) anmelden(K string, b int, stelle string, x, probe []int, zeit int64) error {
+	if e.Eingeloest || e.Tot {
+		return quantenWFehler("S-Anmelden: eingeloest oder tot")
+	}
+	e.frist(zeit)
+	if e.Anmeldung != nil {
+		return quantenWFehler("S-Anmelden: schon eine offene Anmeldung")
+	}
+	if e.D == nil || e.C == -1 || (b != 0 && b != 1) || !kanonischeAdresse(stelle) {
+		return quantenWFehler("S-Anmelden: Bindung, Wahl oder Stelle")
+	}
+	if len(x) != e.N || !quantenWBitsGueltig(x) {
+		return quantenWFehler("S-Anmelden: Form von x")
+	}
+	sortiert := append([]int(nil), probe...)
+	sort.Ints(sortiert)
+	for i := range sortiert {
+		if sortiert[i] < 0 || sortiert[i] >= e.N || (i > 0 && sortiert[i] == sortiert[i-1]) {
+			return quantenWFehler("S-Anmelden: Stichprobe")
+		}
+	}
+	if len(sortiert) == 0 || quantenSProbeHash(K, b, sortiert) != e.Proben[b] {
+		return quantenWFehler("S-Anmelden: Stichprobe passt nicht zur Ausgabe")
+	}
+	e.Anmeldung = &quantenSAnmeldung{B: b, Stelle: stelle, X: append([]int(nil), x...), Probe: sortiert, Zeit: zeit}
+	return nil
+}
+
+// offenlegenTeil: Stellen Probe[ab : ab+len(offen)], der Reihe nach,
+// hoechstens quantenWOffenTeil, ganz oder gar nicht. fertig = alle offen;
+// dann bestanden (Token verbraucht) oder nicht (Fehlversuch, evtl. tot).
+func (e *quantenSToken) offenlegenTeil(K string, ab int, offen []quantenWOffenStelle, zeit int64) (fertig, bestanden bool, err error) {
+	e.frist(zeit)
+	a := e.Anmeldung
+	if a == nil {
+		return false, false, quantenWFehler("S-Offenlegen: keine Anmeldung")
+	}
+	if ab != a.Offen || len(offen) < 1 || len(offen) > quantenWOffenTeil || ab+len(offen) > len(a.Probe) {
+		return false, false, quantenWFehler("S-Offenlegen: Teil (ab %d, faellig %d, %d Stellen)", ab, a.Offen, len(offen))
+	}
+	bis := ab + len(offen)
+	stellen := a.Probe[ab:bis]
+	basen := make([]int, len(stellen))
+	antwort := make([]int, len(stellen))
+	for j, i := range stellen {
+		basen[j] = e.D[i] ^ a.B ^ e.C
+		antwort[j] = a.X[i]
+	}
+	tr, fe, err := quantenWAuswerten(K, e.N, e.T, e.NVal, e.Wurzel, stellen, basen, antwort, offen)
+	if err != nil {
+		return false, false, err
+	}
+	a.Offen, a.Treffer, a.Fehler = bis, a.Treffer+tr, a.Fehler+fe
+	if a.Offen < len(a.Probe) {
+		return false, false, nil
+	}
+	e.Anmeldung = nil
+	if quantenWUrteil(a.Treffer, a.Fehler, e.Tol) != quantenWEcht {
+		e.Fehl++
+		if e.Fehl >= quantenWFehlMax {
+			e.Tot = true
+		}
+		return true, false, nil
+	}
+	e.Eingeloest = true
+	return true, true, nil
+}
+
+// frist: Anmeldung ohne vollstaendige Offenlegung nach quantenWFristOffen
+// endet ohne Fehlversuch. true = beendet.
+func (e *quantenSToken) frist(zeit int64) bool {
+	if a := e.Anmeldung; a != nil && zeit > a.Zeit+quantenWFristOffen {
+		e.Anmeldung = nil
+		return true
+	}
+	return false
 }
