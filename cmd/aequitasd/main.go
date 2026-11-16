@@ -529,6 +529,9 @@ func main() {
 	chainState.AnnahmeMessungBeginnen()
 	api := keeper.NewAPIServer(bc, p2pNode, chainState)
 	keeper.SafeGoroutine("api.Start", func() { api.Start(apiPort()) })
+	// Quantengeld Variante W, Validator-Dienst (quanten_w_validator.go):
+	// nur mit Signierschluessel; vor dem Stichtag tut er nichts.
+	api.StarteQuantenWValidator()
 	fmt.Println()
 
 	// Bootstrap from a peer snapshot if this is a fresh node (no humans in DB),

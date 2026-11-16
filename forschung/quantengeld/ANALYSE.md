@@ -307,6 +307,34 @@ sie nie prüfbar und ihre Deckung läge für immer im Topf). Selbsttest mit Miss
 steht die Note: Es geht kein Wert verloren, aber es kommt auch keiner heraus (fail-closed).
 Eine Schwellen-Signatur (t von v) wäre lebendiger; das ist eine spätere Stufe.
 
+**Der Validator-Dienst (W2c, 16.11.2026):** Die Regeln sagen, was gültig ist, aber nicht, wer
+es einreicht. `quanten_w_validator.go` ist die Seite des Validators, schlafend wie die Kette:
+
+- **Hinterlegen** (`POST /api/quanten-w/validator/hinterlegen`): Der Präger schickt jedem
+  Validator dessen Anteile und die Blätter. Der Validator prüft Form, Grenzen, seine Stelle in
+  der Liste, Blätter gegen Wurzel und die Unterschrift des Prägers über genau diesen Inhalt.
+  Dann speichert er und antwortet mit Anker und Bestätigung. Je K unterschreibt er genau eine
+  Wurzel und einen Anker.
+- **Tresor:** Anteile und Hash-Ketten-Geheimnis liegen verschlüsselt in der eigenen Datenbank
+  (AES-256-GCM, Schlüssel aus dem Signierschlüssel). Kein Konsens, nicht im Snapshot.
+- **Takt:** Steht eine Anfrage an einer seiner Noten, reicht er seinen Zufall ein. Steht die
+  Antwort, sammelt er Anteile der anderen Validatoren, prüft jede Auswahl gegen die eigenen
+  Blätter und legt offen. Läuft eine Frist ab, beendet er die Anfrage.
+- **Nichts vor der Finalität:** Den Zufall gibt er erst heraus, wenn die Anfrage final ist,
+  die Anteile erst, wenn die Antwort final ist. Sonst könnte der Anfragende die Anteile sehen,
+  seine Antwort aus der Kette fallen lassen und die richtige einreichen.
+
+**Grenzen des Dienstes, ehrlich:**
+- Verliert ein Validator seinen Tresor, liefert er für seine Noten keinen Zufall mehr, und
+  jede Anfrage daran bleibt offen (siehe „Grenze“ oben). Der Tresor gehört in die Sicherung.
+- Ein Validator kann nicht prüfen, ob seine Anteile zu den Blättern passen. Ein Präger mit
+  falschen Anteilen macht nur seine eigene Note unprüfbar.
+- Hinterlegen kostet nichts. Begrenzt ist es je Präger (4 ungeprägte) und gesamt (128);
+  genügend viele Menschen könnten den Tresor eines Validators für das Prägefenster (rund
+  8 Tage) füllen. Ein Pfand fürs Hinterlegen wäre die Abhilfe; das ist eine Frage für W6.
+- Ein Validator sieht K beim Hinterlegen und könnte es bei den anderen vorher belegen. Das
+  stört den Präger (er nimmt ein neues K), bringt dem Störer aber nichts.
+
 **Ehrlich zur Stärke einer Prüfung:** Mit 15 % Toleranz ist **eine** Prüfung schwach.
 Bei 64 geprüften Stellen besteht ein Fälscher ohne Wissen mit 3,8·10⁻⁵, eine Absprache,
 die ein Fünftel der Stellen kennt, mit 1,5·10⁻³ (`wiesner_praegen.py`, exakt gerechnet).
@@ -319,10 +347,10 @@ bessere Speicher. Genau das misst W1.
 |---|---|---|---|
 | W0 | Simulation, Analyse, Schaltkreise | Aequitas | fertig (`wiesner_verteilt.py`, `wiesner_hardware.py`) |
 | W1 | Fehlerraten auf echter Hardware (IBM, Ionenfalle) → Notengröße und Toleranz | Aequitas; Läufe mit Freigabe | Rauschmodell gemessen (HEUTE.md 3.3); IBM-Lauf wartet auf Freigabe; Ionenfalle braucht ein Konto |
-| W2 | Kettenseite schlafend: Satzart „privat“, verteilte Schlüsselerzeugung, Prüf-Transaktion, Zähler, Sperre, Einlösen | Aequitas | **W2a fertig** (16.11.2026): Regeln als ausführbare Spezifikation `wiesner_kette.py` und im Knoten `x/humanity/keeper/quanten_w.go`, `quanten_w_register.go` (schlafend), Byte für Byte gleich (Prüfvektor). **W2b** (16.11.2026): Regeln geschärft (#541), eingehängt in Blöcke mit Unterschriften, Buchungen, StateRoot, Snapshot, schlafend (`quanten_w_kette.go`) |
+| W2 | Kettenseite schlafend: Satzart „privat“, verteilte Schlüsselerzeugung, Prüf-Transaktion, Zähler, Sperre, Einlösen | Aequitas | **W2a fertig** (16.11.2026): Regeln als ausführbare Spezifikation `wiesner_kette.py` und im Knoten `x/humanity/keeper/quanten_w.go`, `quanten_w_register.go` (schlafend), Byte für Byte gleich (Prüfvektor). **W2b** (16.11.2026): Regeln geschärft (#541), eingehängt in Blöcke mit Unterschriften, Buchungen, StateRoot, Snapshot, schlafend (`quanten_w_kette.go`). **W2c** (16.11.2026): Validator-Dienst im Knoten (`quanten_w_validator.go`, schlafend) – verwahrt die Anteile verschlüsselt, bestätigt das Prägen, reicht Zufall und Offenlegung von selbst ein, beides erst nach der Finalität; auf vier Knoten Ende zu Ende gelaufen (`TestVierKnotenQuantenW_RealDB`) |
 | W3 | Prägung ohne Vertrauen (Weg 2 oder 3 oben) als Protokoll und Simulation | Aequitas | **fertig** (16.11.2026): Weg 3 als Schaltkreis (`wiesner_hardware.note_fern`), Simulation mit Absprache-Rechnung (`wiesner_praegen.py`), Läufer `hardware_ibm.py --wiesner --fern` |
 | W4 | Partnerversuch: echte Note in einem Speicher (Stunden), Ausgabe über ein Aequitas-Testnetz, Weitergabe des Geräts, klassische Prüfung, Einlösen | BMFTR-Verbund + Aequitas | Kontakt offen. **Ohne Partner** (Labormaßstab, Note lebt µs): `hardware_ibm.py --wiesner --kette` – Prägen auf der Kette, Bezahlen per Teleportation, Einlösen mit Aufforderung aus den Hash-Ketten der Validatoren, Offenlegen, Urteil, AEQ beim Empfänger; ideal und im Rauschmodell gelaufen, IBM wartet auf Freigabe |
-| W5 | Gutachten (Prüfauftrag um Variante W erweitert), Pilot im Testnetz | extern + Aequitas | Prüfauftrag erweitert (`docs/QUANTENGELD_PRUEFAUFTRAG.md`); Gutachter und Pilot offen |
+| W5 | Gutachten (Prüfauftrag um Variante W erweitert), Pilot im Testnetz | extern + Aequitas | Prüfauftrag erweitert (`docs/QUANTENGELD_PRUEFAUFTRAG.md`); Gutachter offen. Pilot: der Ablauf läuft im Test auf vier Knoten (W2c); ein öffentliches Testnetz mit eigenem Stichtag steht aus |
 | W6 | Satz „privat“ im Hauptnetz freischalten (⅔ der Prüfer, mindestens 5, 30 Tage Vorlauf), anfangs mit kleiner Höchstdeckung je Note | Prüfer | erst nach W4 und W5 |
 
 ## 6. Zugang, Geld, Begutachtung – andere Wege

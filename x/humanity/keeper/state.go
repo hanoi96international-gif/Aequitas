@@ -247,6 +247,9 @@ type ChainState struct {
 	// (quanten_geld.go), ohne Sperre lesbar; im Rueckroll-Snapshot und
 	// (nur nicht leer) in der StateRoot.
 	quantenGeld atomic.Pointer[quantenGeldRegister]
+	// quantenWVal: der Validator-Dienst der Variante W auf diesem Knoten
+	// (quanten_w_validator.go); nil ohne Signierschluessel. Kein Konsens.
+	quantenWVal atomic.Pointer[quantenWValidator]
 	// offlineReg: das Register des Offline-Bargelds (offline_einbindung.go),
 	// ohne Sperre lesbar; im Rueckroll-Snapshot und (nur nicht leer) in der
 	// StateRoot.
@@ -1434,6 +1437,7 @@ satz TEXT NOT NULL,
 von TEXT NOT NULL,
 anteile BIGINT NOT NULL
 )`)
+	quantenWTresorSchema(func(q string) { dbExec(q) })
 	// synthetic_checkpoint_events: durable audit trail for every
 	// synthetic-checkpoint stub this node has ever inserted (see
 	// BridgeHistoricalGap and queueOrphan's runtime-bridge branch). A stub

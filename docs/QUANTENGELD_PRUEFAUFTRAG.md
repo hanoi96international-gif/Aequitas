@@ -53,6 +53,7 @@ Punkten voraus, ebenso den Partnerversuch W4 mit einem echten Speicher.
 | Regeln, ausführbar | `forschung/quantengeld/wiesner_kette.py` | Spezifikation mit Missbrauchsfällen; Prüfvektor für den Knoten |
 | Regeln im Knoten | `quanten_w.go`, `quanten_w_register.go` | Prüfsummen und Merkle, Shamir über 2¹²⁷−1, Hash-Ketten-Zufall, Aufforderung, Urteil, Übergänge |
 | Einbindung | `quanten_w_kette.go` | 6 Transaktionsarten, Unterschriften, Buchungen (W-Topf, Pfand-Topf, Grundeinkommen), Register, StateRoot, Snapshot |
+| Validator-Dienst | `quanten_w_validator.go` | Tresor für Anteile (verschlüsselt), Bestätigung beim Prägen, Zufall und Offenlegung von selbst, beides erst nach der Finalität |
 | Prägen ohne Vertrauen | `wiesner_praegen.py`, `wiesner_hardware.py` (`note_fern`) | Validatoren messen verschränkte Hälften; niemand kennt die ganze Note |
 | Messungen | `HEUTE.md`, `hardware_ibm.py --wiesner` | IBM `ibm_marrakesh`: echt eingelöst ohne Wartezeit (0,998); mit 20 µs und Teleportation abgewiesen |
 
@@ -93,6 +94,24 @@ Punkten voraus, ebenso den Partnerversuch W4 mit einem echten Speicher.
    - Kann er eine Antwort oder Anfrage wiederholen, eine Note doppelt oder neu prägen,
      Validatoren desselben Menschen einsetzen oder die Umlaufabgabe umgehen?
    - Tests: `quanten_w_test.go`, `quanten_w_kette_test.go`; Mutationen zu jeder Regel.
+7. **Validator-Dienst.**
+   - Finalität: Der Dienst gibt Zufall und Anteile heraus, wenn der Stand bei DAG-Höhe h
+     gesehen wurde und der finalisierte Checkpoint h erreicht hat. Reicht das, damit eine
+     Anfrage oder Antwort nicht mehr aus der Kette fallen kann? Welche Folgen hat ein
+     Snapshot-Resync des Validators dazwischen?
+   - Hinterlegen: Der Präger schickt jedem Validator dessen Anteile im Klartext über TLS.
+     Genügt das, oder braucht es Ende-zu-Ende-Verschlüsselung an einen Schlüssel des
+     Validators? Bei der Fern-Präparation (W3) entstehen die Anteile beim Validator selbst.
+   - Tresor: AES-256-GCM mit einem Schlüssel aus dem Signierschlüssel, an K gebunden. Ist
+     die Ableitung angemessen? Wie soll ein Validator den Tresor sichern und wiederherstellen,
+     ohne dass die Sicherung zum Angriffsziel wird?
+   - Verfügbarkeit: Hinterlegen kostet nichts (4 ungeprägte je Präger, 128 gesamt, Verfall
+     nach dem Prägefenster). Braucht es ein Pfand?
+   - Sammeln: Anteile anderer Validatoren werden gegen die eigenen Blätter geprüft, bevor
+     etwas eingereicht wird. Kann ein Validator die Offenlegung trotzdem verhindern oder
+     verfälschen?
+   - Tests: `quanten_w_validator_test.go` (Mutationen zu jeder Prüfung),
+     `vier_knoten_quanten_w_test.go` (vier Knoten, echte Datenbanken, echtes HTTP).
 
 ## Was erst die Hardware entscheidet (keine Frage an die Kryptografie)
 

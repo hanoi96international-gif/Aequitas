@@ -177,6 +177,7 @@ type vierKnoten struct {
 	dag *BlockDAG
 	l   *Leitung
 	p2p *P2PNode
+	api *APIServer
 
 	stop chan struct{} // beendet Takt und Leitung dieser Instanz
 	wg   sync.WaitGroup
@@ -532,6 +533,7 @@ func (n *vierKnotenNetz) starte(t *testing.T, k *vierKnoten) {
 
 	k.mu.Lock()
 	k.cs, k.dag, k.l, k.p2p = cs, dag, nil, p2p
+	k.api = api
 	k.stop = make(chan struct{})
 	k.mu.Unlock()
 	k.handler.Store(&h)
