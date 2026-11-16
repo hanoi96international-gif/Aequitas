@@ -28,7 +28,7 @@ für dezentrales Quantengeld“).
 - Lokale Go-Tests: Erst `df -h /` prüfen. Bei vollem Platz `go clean -cache`. Die
   Fehlermeldung „MB of disk left“ kommt vom Container, nicht vom Code.
 
-## Hauptaugenmerk: dezentrales Quantengeld (Stand 16.11. ~19:05 UTC)
+## Hauptaugenmerk: dezentrales Quantengeld (Stand 16.11. ~19:25 UTC)
 
 Auftrag des Betreibers: dezentrales Quantengeld auf heutigem Stand funktionsfähig, damit
 Aequitas ernstzunehmendes Quantengeld ist. „Alles umsetzen.“ Die Liste der offenen Punkte
@@ -43,9 +43,13 @@ steht in `forschung/quantengeld/OFFEN.md`.
     f = (t−1)/v.
   - Offenlegen in Teilen.
   - Kleinste Prüfung ⌈n/255⌉, damit die Ketten nicht billig leerbar sind.
-- **#547 W2d Validator-Dienst** (`quanten_w_validator.go`): Tresor, Bestätigung mit
-  unterschriebenem Auftrag, Anteile erst nach der Antwort, Hintergrund (Zufall, Teile
-  über `QUANTEN_W_PEERS`, Fristen).
+- **#547 (gemergt):**
+  - **W2d Validator-Dienst** (`quanten_w_validator.go`): Tresor, Bestätigung mit
+    unterschriebenem Auftrag, Anteile erst nach der Antwort, Hintergrund (Zufall, Teile
+    über `QUANTEN_W_PEERS`, Fristen).
+  - **S2a:** Regeln für Variante S im Knoten (`quanten_s.go`, Prüfvektor).
+  - **S2b Teil 1:** Einlösen in Teilen (anmelden, offenlegen, Frist, Fehlversuche).
+- **App 1.23.2** komplett veröffentlicht (APK und IPA, `quelle.json` geprüft).
 - **S-Token auf echter IBM-Hardware** (Lauf 43927782462): 1.680 Qubits, 0,46 % Fehler,
   angenommen; Doppelvorlage abgewiesen.
 
@@ -54,9 +58,8 @@ steht in `forschung/quantengeld/OFFEN.md`.
 erst vergleichen, dann zusammenführen; nicht doppelt bauen.
 
 **Nächste Schritte:**
-1. **S2a** (dieser Zweig, nach #547): Regeln für Variante S im Knoten (`quanten_s.go`,
-   Prüfvektor), Einlösen auf der Kette in der Spezifikation (`KetteS.einloesen`), Doku.
-2. **S2b – Variante S in die Kette einhängen, schlafend.**
+1. ~~S2a und S2b Teil 1~~ – gemergt (#547).
+2. **S2b Teil 2 – Variante S in die Kette einhängen, schlafend.**
    - **Spezifikation steht:** `s_kette.py`, `KetteS.anmelden`/`offenlegen`/`_frist`,
      mit Missbrauch und Mutation 4/4.
    - **Plan für Go:** S als weitere Satzart IM W-Modul. Damit gelten Stichtag
@@ -85,11 +88,10 @@ erst vergleichen, dann zusammenführen; nicht doppelt bauen.
 
 | Repo | PR | Inhalt | Nächster Schritt |
 |---|---|---|---|
-| Aequitas | #547 | W2d Validator-Dienst | CI grün abwarten, squash-mergen |
-| Aequitas-App | – | iOS-IPA zu v1.23.2: release-ios wartet auf Freigabe (Lauf 43932916186) | nach Freigabe Assets und `quelle.json` prüfen |
+| – | – | keine offenen PRs aus dieser Sitzung | – |
 
 Gemergt am 16.11.:
-- #544 (OFFEN.md), #545 (Klonangriff, Variante S), #546 (W2c)
+- #544 (OFFEN.md), #545 (Klonangriff, Variante S), #546 (W2c), #547 (W2d, S2a, S2b Teil 1)
 - #539 (Variante W: Regeln im Knoten W2a, Prägen ohne Vertrauen W3, Ablauf mit der Kette
   W4 ohne Partner)
 - #540, #541, #542 (W2b schlafend eingehängt, W5 Prüfauftrag)
