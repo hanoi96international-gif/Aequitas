@@ -147,6 +147,10 @@ Geheimnis kennt nur der Validator, nicht die Prägestelle. Rauschmodell `ibm_mar
 
 Die Fern-Präparation kostet im Modell etwa einen Prozentpunkt (ein CNOT mehr je Stelle).
 
+Bestätigt im Workflow (16.11.2026, [Lauf 43894244447](https://github.com/hanoi96international-gif/Aequitas/actions/runs/43894244447),
+Rauschmodell `ibm_marrakesh`, 8 Noten je Fall, 1000 Schüsse): Fehler je Treffer 1,6 % /
+5,9 % / 11,8 % / 22,0 %, Annahme 0,95 / 0,83 / 0,70 / 0,44 bei 0 / 20 / 50 / 100 µs.
+
 **Von Anfang bis Ende mit der Kette (W4 ohne Partner):** `hardware_ibm.py --wiesner
 --kette --bezahlen` lässt eine Note aus 16 Qubits durch die Regeln der Kette laufen
 (`wiesner_kette.KetteW`, dieselben Regeln wie im Knoten): Prägen mit Prüfsummen und
@@ -158,7 +162,41 @@ beim Empfänger, Summe erhalten.
 - Rauschmodell `ibm_marrakesh`: echt (5 Treffer, 0 Fehler). Über alle 200 Schüsse
   desselben Schaltkreises: 10,7 % Fehler je Treffer, Annahme 0,57 – bei 16 Stellen
   erlaubt die Toleranz nur einen Fehler, jede zweite Note fiele durch.
-- Auf der echten Maschine: Workflow, Modus `ibm`, `wiesner` = `kette`, `bezahlen` an.
+  Im Workflow bestätigt (16.11.2026, [Lauf 43894251112](https://github.com/hanoi96international-gif/Aequitas/actions/runs/43894251112),
+  Aufforderung erst aus dem Block nach der Anfrage): echt (7 Treffer, 0 Fehler), 10 AEQ
+  beim Empfänger, Topf 0, Summe erhalten.
+- **Auf der echten Maschine** (16.11.2026, `ibm_marrakesh`, [Lauf 43894950189](https://github.com/hanoi96international-gif/Aequitas/actions/runs/43894950189),
+  IBM-Job `dbthuqr69a3s73fp0qq0`): der Ablauf läuft vollständig – Prägen, Anfrage,
+  Aufforderung aus dem Block, Antwort mit Messwerten vom Chip, Offenlegen, Urteil. Die
+  Note hat die 20 µs Halten plus Teleportation aber **nicht überstanden**: 9 Treffer,
+  3 Fehler (33 %, Toleranz 15 %) → **abgewiesen**, kein Wert an den Empfänger, Summe
+  erhalten. Über alle 1000 Schüsse: 39,1 % Fehler je Treffer, Annahme 0,056.
+  Zum Vergleich (Lauf von #538): **sofort** geprüft 0,8 % Fehler, Annahme 0,98; nach
+  20 µs 23 %, Annahme 0,53. Heißt: auf dem echten Chip trägt die Note heute nur, wenn
+  sie nicht warten muss. Für alles mit Wartezeit braucht es den geschützten Speicher
+  (Fehlerkorrektur, #528) oder die Ionenfalle (Sekunden statt Mikrosekunden).
+- **Auf der echten Maschine, ohne Warten** (16.11.2026, `ibm_marrakesh`, [Lauf 43895622629](https://github.com/hanoi96international-gif/Aequitas/actions/runs/43895622629),
+  IBM-Job `dbti2t369a3s73fp0uq0`): Prägen → Anfrage → Aufforderung aus dem nächsten Block
+  → Antwort mit Messwerten vom Chip → drei Validatoren legen offen → jeder Knoten rechnet:
+  **10 Treffer, 0 Fehler → ECHT, 10 AEQ beim Empfänger**, Topf 0, Summe erhalten. Über
+  alle 1000 Schüsse: 0,7 % Fehler je Treffer, **Annahme 0,998**. Damit läuft der ganze
+  Ablauf einer Quanten-Note mit dezentraler Prüfung durch die Validatoren heute auf
+  echter Quanten-Hardware – solange die Note nicht gelagert werden muss.
+- **Geschützte Note auf der echten Maschine** (Fehlerkorrektur im Speicher, #528;
+  16.11.2026, `ibm_marrakesh`, [Lauf 43895628489](https://github.com/hanoi96international-gif/Aequitas/actions/runs/43895628489),
+  IBM-Job `dbti3djsbsbs73cb321g`; Gruppenaktions-Note Z₈, Annahme lesekorrigiert):
+
+  | Wartezeit | ungeschützt | 3-Qubit-Code (Phase) | 3-Qubit-Code (Bit) |
+  |---|---|---|---|
+  | 0 µs | 0,71 | 0,63 | 0,61 |
+  | 20 µs | 0,32 | 0,32 | 0,22 |
+  | 50 µs | 0,37 | 0,36 | 0,34 |
+  | 100 µs | 0,30 | 0,32 | 0,30 |
+
+  Kein messbarer Gewinn: die rund 40 zusätzlichen 2-Qubit-Gatter kosten so viel, wie der
+  Schutz zurückgibt; nur bei 100 µs liegt der Phasen-Code knapp vorn (im Rauschen).
+  Fehlerkorrektur verlängert die Lebensdauer erst mit kleineren Gatterfehlern
+  (Ionenfalle) oder größeren Codes mit Korrektur in Echtzeit.
 
 **Zählt das als Quantengeld?** Als Vorführung: ja, das ist der ganze Ablauf einer
 privat prüfbaren Quanten-Note mit dezentraler Prüfung – auf echter Hardware, sobald der
