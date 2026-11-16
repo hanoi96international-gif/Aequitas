@@ -81,8 +81,8 @@ Nicht übernommen, als Beobachtung für später:
 
 **Nächste Schritte:**
 1. ~~S2a und S2b Teil 1~~ – gemergt (#547).
-2. **S2b Teil 2 – Variante S in die Kette eingehängt, schlafend** (PR aus Zweig
-   `claude/aequitas-fortsetzen-osrea1`, `quanten_w_s_kette.go`): sechs Arten im W-Modul
+2. **S2b Teil 2 – Variante S in die Kette eingehängt, schlafend** (#551,
+   `quanten_w_s_kette.go`): sechs Arten im W-Modul
    (`quanten_w_s_ausgeben`, `_binden`, `_waehlen`, `_anmelden`, `_offenlegen`, `_frist`).
    - Register `token` (höchstens 16), d und x als Bitfeld.
    - Wert über Anteile im W-Topf, mit Umlaufabgabe.
@@ -90,8 +90,11 @@ Nicht übernommen, als Beobachtung für später:
    - **Abweichung von `s_kette.py`:** Die zwei Annahmestellen stehen bei der Ausgabe fest,
      und nur Stelle b darf anmelden. Die Vorlage bindet die Adresse der Stelle nicht, und
      die Stichprobe wäre sonst aus der Warteschlange kopierbar (Vorauslaufen).
-   - Offen: Validator-Dienst für S (Offenlegen der Stichprobe); die Spezifikation um die
-     festen Stellen nachziehen.
+   - Die Unterschrift der Stelle bindet die Zahl der Fehlversuche. Sonst ließe sich eine
+     fehlgeschlagene Anmeldung wiederholen, bis der Token tot ist.
+   - Offen:
+     - Validator-Dienst für S (Offenlegen der Stichprobe).
+     - `s_kette.py` nachziehen: feste Stellen, Fehlversuche in der Unterschrift.
 3. **W:** mehrstufige Prüfung; Fehlerkorrektur messen; ~~Ende-zu-Ende-Test mit vier
    Knoten für den Dienst~~ (erledigt, siehe oben); Peer-Liste aus dem Validator-Register;
    Register als Tabelle (vor W6); die vier Beobachtungen oben.
@@ -102,7 +105,7 @@ Nicht übernommen, als Beobachtung für später:
 
 | Repo | PR | Inhalt | Nächster Schritt |
 |---|---|---|---|
-| Aequitas | S2b Teil 2 (Zweig `claude/aequitas-fortsetzen-osrea1`) | Variante S schlafend in die Kette | Mutationen, `-race`, PR, eigene Sicherheitsprüfung, CI, mergen |
+| Aequitas | #551 | Variante S schlafend in die Kette (S2b Teil 2); Prüfung als Kommentar (S1 Vorauslaufen, S2 Annahme-Sperre, S3 wiederholte Anmeldung, behoben) | CI grün abwarten, squash-mergen |
 
 Gemergt am 16.11.:
 - #550 (Übergabe nach #549)
