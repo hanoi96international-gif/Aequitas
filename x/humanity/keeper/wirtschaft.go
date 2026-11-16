@@ -378,7 +378,7 @@ func (w *wirtschaft) unternehmenVon(mensch string) []string {
 // anteilig, und die Abgabe geht wie jede andere ins Grundeinkommen. Kein
 // Sparfreibetrag: eine Note gehoert keinem bekannten Menschen.
 func (cs *ChainState) umlaufArt(addr string, istMensch bool) kontoart {
-	if strings.EqualFold(strings.TrimSpace(addr), quantenTopfAddr) {
+	if istNotenTopf(addr) {
 		return artFrei
 	}
 	return cs.kontoartVon(addr, istMensch)
@@ -387,7 +387,15 @@ func (cs *ChainState) umlaufArt(addr string, istMensch bool) kontoart {
 // umlaufZahlt: steht die Adresse in der Umlaufrunde? Keine Systemadresse --
 // ausser dem Quantengeld-Topf (umlaufArt).
 func umlaufZahlt(addr string) bool {
-	return !istSystemAdresse(addr) || strings.EqualFold(strings.TrimSpace(addr), quantenTopfAddr)
+	return !istSystemAdresse(addr) || istNotenTopf(addr)
+}
+
+// istNotenTopf: die Toepfe, deren Stand Noten deckt -- Quantengeld und
+// Variante W (quanten_w_kette.go; der Pfand-Topf zahlt keine Abgabe, sein
+// Stand ist die Summe der offenen Pfaender).
+func istNotenTopf(addr string) bool {
+	a := strings.TrimSpace(addr)
+	return strings.EqualFold(a, quantenTopfAddr) || strings.EqualFold(a, quantenWTopfAddr)
 }
 
 func (cs *ChainState) kontoartVon(addr string, istMensch bool) kontoart {

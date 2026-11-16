@@ -31,9 +31,11 @@ für dezentrales Quantengeld“).
 
 | Repo | PR | Inhalt | Nächster Schritt |
 |---|---|---|---|
-| Aequitas | #541 | Variante W: Regeln geschärft (W2b Teil 1) — Zufall aus Hash-Ketten, feste Prüfgröße beim Einlösen, falsches Einlösen tötet die Note nicht, keine Zufallsfrist, Prägezeit in der Bestätigung | CI abwarten, Sicherheitsprüfung steht als Kommentar → squash-mergen |
+| Aequitas | #542 | Variante W schlafend in die Kette eingehängt (`quanten_w_kette.go`) und W5 (Prüfauftrag) | Sicherheitsprüfung als Kommentar posten, CI grün abwarten, squash-mergen |
 
-## In Arbeit: W2b Teil 2 — Variante W in die Kette einhängen (schlafend)
+Gemergt in dieser Sitzung: #540 (HEUTE.md, IBM-Läufe), #541 (W2b Teil 1: Regeln geschärft).
+
+## W2b Teil 2 — Stand
 
 Neue Datei `x/humanity/keeper/quanten_w_kette.go`, schlafend bis `quantenWAbUnix = MaxInt64`.
 
@@ -52,51 +54,38 @@ Neue Datei `x/humanity/keeper/quanten_w_kette.go`, schlafend bis `quantenWAbUnix
 Validator-Register an einen Menschen gebunden, alle an **verschiedene** Menschen.
 
 **Töpfe:**
-- `quantenWTopfAddr`: Deckung, Anteilsmodell wie der Quantengeld-Topf, Umlaufabgabe über
-  `istNotenTopf`.
+- `quantenWTopfAddr`: Deckung, Anteilsmodell, Umlaufabgabe über `istNotenTopf`.
 - `quantenWPfandAddr`: offene Pfänder, ohne Abgabe.
 - Was verfällt, geht an `ubiPoolAddr`.
 
-**Register:**
-- Liegt in chain_config unter `quanten_w` als JSON. Höchstens 64 lebende Noten und 1024 tote.
-  Tote Noten bleiben gemerkt, solange ihre Bestätigung gelten könnte.
+**Register und Block:**
+- Register in chain_config unter `quanten_w` (JSON), höchstens 64 lebende Noten; tote
+  bleiben gemerkt, solange ihre Bestätigung gelten könnte.
 - StateRoot-Teil `|quantenw:` + Hash, nur wenn das Register nicht leer ist.
+- Der Block nennt die gerechneten Felder (Anteile, Pfand, PfandAn, Wert, WertAn, Urteil),
+  jeder Knoten rechnet nach.
+- **BuchAt** wie bei Überweisungen: Der Erzeuger stempelt die Annahmezeit, jeder Knoten
+  rechnet mit ihr, wenn sie zum Block passt (`quantenWBuchZeit`: ≤ 60 s nach,
+  ≤ 7 Tage + 60 s vor dem Block). Tote bleiben entsprechend länger gemerkt
+  (`quantenWToteBehalten`).
 
-**Block:** nennt die gerechneten Felder (Anteile, Pfand, PfandAn, Wert, WertAn, Urteil).
-Jeder Knoten rechnet nach.
-
-**Eingehängt (lokal, baut, noch ohne Tests):**
-- `bekannteTxArt`, Replay-Fall und `quantenWFeldErlaubt` in block.go
-- block_tauglich.go (Zeitfenster)
-- `blockTouchedAddresses`, `isTokenomicsPoolAddress`, StateRoot, Rückroll-Snapshot und
-  Laden beim Start in state.go
-- `registerSicherung`
-- `umlaufArt`/`umlaufZahlt` (`istNotenTopf`)
-- `pruefeTopfNurMitNote`
-- `replay_parallel` (seriell)
-- snapshot.go (Export, Import, Resync), checkpoint_tx.go (`pruefeSnapshotKonfig`)
+**Eingehängt:**
+- block.go: `bekannteTxArt`, Replay-Fall, `quantenWFeldErlaubt`
+- block_tauglich.go
+- state.go: `blockTouchedAddresses`, `isTokenomicsPoolAddress`, StateRoot,
+  Rückroll-Snapshot, Laden beim Start
+- `registerSicherung`, `umlaufArt`/`umlaufZahlt`, `pruefeTopfNurMitNote`,
+  `replay_parallel`
+- snapshot.go, checkpoint_tx.go
 - api.go: `POST /api/quanten-w/<art>`, `GET /api/quanten-w/note?k=`
-- Transaction-Feld `QuantenW` (`omitempty`)
+- `kein_entzug_test.go` (Einordnung der Arten)
 
-**Fehlt noch:**
-1. Tests in `quanten_w_kette_test.go`:
-   - Ablauf: schlafend (409, unbekannte Art, StateRoot byte-gleich) → Gutfall von Annahme
-     bis Nachspielen auf zweitem Knoten, mit gleicher StateRoot und Erhaltung.
-   - Prägen: fremder Validator, gleicher Mensch zweimal, Bestätigung fehlt, alte Prägezeit,
-     tote Note neu prägen, Register voll.
-   - Block mit falschen gerechneten Feldern; W-Angaben an einer Überweisung; Überweisung an
-     die W-Töpfe; Registerlesen mit kaputtem JSON.
-   - Test-Helfer: `quantenWAbOverride`, `quantenWBetreiberVon` überschreiben,
-     `qwPraegen` aus `quanten_w_test.go`.
-2. Volle Keeper-Tests (`go test ./x/humanity/keeper/`, `-race`), gofmt, vet.
-3. PR mit Sicherheitsabschnitt, eigene Sicherheitsprüfung als Kommentar, Mutationen.
-4. Danach ANALYSE.md: in der Stufentabelle W2b auf „fertig“ setzen.
+**Tests:** `quanten_w_kette_test.go` mit 11 Tests. Alle Keeper-Tests grün; 19 Mutationen, alle rot.
 
 ## Danach (Reihenfolge)
 
-1. **W5 (Aufgabe #64):** `docs/QUANTENGELD_PRUEFAUFTRAG.md` um Variante W erweitern
-   (Hash-Ketten-Zufall, Pfandmodell, Grenzen: alle v Validatoren nötig, Schwellen-Signatur
-   später).
+1. **W5 (Aufgabe #64):** `docs/QUANTENGELD_PRUEFAUFTRAG.md` um Variante W erweitert
+   (liegt im W2b-Teil-2-PR). Danach: Gutachter suchen (Anschreiben wie `ANSCHREIBEN.md`).
 2. **Flake (#65):** `TestVierKnoten_RealDB` → „Knoten 3: Schwelle ohne Beleg nicht als
    abgewehrt gezaehlt“ (vier_knoten_realdb_test.go:150). Rot im Push-Lauf von d75ba6ca, grün
    im PR-Lauf. Ursache finden, Test robust machen, nicht abschwächen.

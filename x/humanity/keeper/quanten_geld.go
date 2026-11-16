@@ -606,6 +606,10 @@ func pruefeTopfNurMitNote(to string, vorlage Transaction) error {
 	if strings.EqualFold(strings.TrimSpace(to), offlineTopfAddr) {
 		return fmt.Errorf("transfers to the offline cash pool %s are not accepted (pledges via /api/offline/pfand)", offlineTopfAddr)
 	}
+	// Ebenso die Toepfe der Variante W (quanten_w_kette.go).
+	if a := strings.TrimSpace(to); strings.EqualFold(a, quantenWTopfAddr) || strings.EqualFold(a, quantenWPfandAddr) {
+		return fmt.Errorf("transfers to the variant-W pools are not accepted (notes via /api/quanten-w/praegen)")
+	}
 	return nil
 }
 

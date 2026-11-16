@@ -81,6 +81,10 @@ type Transaction struct {
 	// Offline: Pfand, Einloesung, Kuendigung, Abschluss des Offline-Bargelds
 	// (offline_einbindung.go). omitempty: aeltere Bloecke behalten ihren Hash.
 	Offline *OfflineAngaben `json:"offline,omitempty"`
+	// QuantenW: Praegen, Anfrage, Zufall, Antwort, Offenlegen, Frist einer
+	// Note der Variante W (quanten_w_kette.go). omitempty: aeltere Bloecke
+	// behalten ihren Hash.
+	QuantenW *QuantenWAngaben `json:"quanten_w,omitempty"`
 	// FromDemurrageLost/ToDemurrageLost carry the exact AEQ amount the
 	// primary node decayed off Wallet/To via settleDemurrageLocked while
 	// processing this TX. Secondary nodes replay these exact numbers
@@ -1439,6 +1443,8 @@ func bekannteTxArt(typ string, blockZeit int64) bool {
 		return prueferDienstPQAktiv(blockZeit)
 	case offlinePfandTxArt, offlineEinloesungTxArt, offlineKuendigungTxArt, offlineAbschlussTxArt: // offline_einbindung.go, schlafend bis offlineAb
 		return offlineAktiv(blockZeit)
+	case quantenWPraegenTxArt, quantenWAnfrageTxArt, quantenWZufallTxArt, quantenWAntwortTxArt, quantenWOffenlegenTxArt, quantenWFristTxArt: // quanten_w_kette.go, schlafend bis quantenWAb
+		return quantenWAktiv(blockZeit)
 	case "vorbehalt", "vorbehalt_ausfuehrung", "kappung":
 		// Stufe 2 (vorbehalt.go, kappung_verteilt.go). Fehlten hier bis
 		// 05.10.2026 ganz: ab der Aktivierung haette jeder Knoten jeden
@@ -7748,6 +7754,11 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			hardFailure = true
 			break
 		}
+		if err := quantenWFeldErlaubt(&block.Transactions[txIdx], block.Timestamp); err != nil {
+			fmt.Printf("[REPLAY] ✗ %v (block #%d) — rolling back whole block\n", err, block.Height)
+			hardFailure = true
+			break
+		}
 		tx := block.Transactions[txIdx]
 		if hardFailure {
 			break // stop applying further TXs once we know this block is being rolled back
@@ -8279,6 +8290,16 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			// rechnet die Geldwege nach; sie muessen genau die im Block sein.
 			// Ungueltig: der ganze Block zurueck.
 			if err := dag.state.applyOfflineLocked(withTx(context.Background(), dbTx), &tx, block.Timestamp); err != nil {
+				fmt.Printf("[REPLAY] ✗ %s %s: %v (block #%d) — rolling back whole block\n", tx.Type, wallet, err, block.Height)
+				hardFailure = true
+				continue
+			}
+		case quantenWPraegenTxArt, quantenWAnfrageTxArt, quantenWZufallTxArt, quantenWAntwortTxArt, quantenWOffenlegenTxArt, quantenWFristTxArt:
+			// quanten_w_kette.go: jeder Knoten prueft Unterschriften (Wallet,
+			// Validatoren), Hash-Ketten, Pruefsummen, Fristen und Deckung selbst
+			// und rechnet Anteile, Pfand und Wert nach; sie muessen genau die im
+			// Block sein. Ungueltig oder Zustand nicht lesbar: der ganze Block zurueck.
+			if err := dag.state.applyQuantenWLocked(withTx(context.Background(), dbTx), &tx, block.Timestamp); err != nil {
 				fmt.Printf("[REPLAY] ✗ %s %s: %v (block #%d) — rolling back whole block\n", tx.Type, wallet, err, block.Height)
 				hardFailure = true
 				continue
