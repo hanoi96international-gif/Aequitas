@@ -28,11 +28,33 @@ für dezentrales Quantengeld“).
 - Lokale Go-Tests: Erst `df -h /` prüfen. Bei vollem Platz `go clean -cache`. Die
   Fehlermeldung „MB of disk left“ kommt vom Container, nicht vom Code.
 
+## Hauptaugenmerk nächste Sitzung: dezentrales Quantengeld
+
+Auftrag des Betreibers (16.11. abends): Dezentrales Quantengeld soll auf heutigem Stand
+funktionsfähig werden, damit Aequitas ernstzunehmendes Quantengeld ist. Die vollständige
+Liste steht in **`forschung/quantengeld/OFFEN.md`**. Die Kurzfassung:
+
+1. **Die Prüfung deutlich stärker machen.** Heute gelten 15 % Toleranz bei höchstens
+   64 Stellen. Damit kommt eine Absprache, die ein Fünftel der Stellen kennt, mit
+   1,5·10⁻³ durch. Ziel ist ≤ 2⁻⁴⁰. Die Toleranz soll an die gemessene Fehlerrate
+   gekoppelt werden; dazu größere k, mehr Validatoren und eine mehrstufige Prüfung.
+2. **Wege ohne Quantenspeicher analysieren.** „Geld zum Mitnehmen“ gibt es heute erst
+   mit einem Speicher. Kandidaten: Raumzeit-Token ohne Quantenspeicher (Kent u. a. 2022,
+   Quelle prüfen), Zustellen über QKD-Netze, Ionenfalle als Verwahrung, Abgrenzung zum
+   Offline-Bargeld. Das Ergebnis kommt als neuer Abschnitt in ANALYSE.md, mit
+   Empfehlung.
+3. **Danach bauen:** Prüfer-Dienst für Validatoren, App-Anzeige, `fern` auf dem echten
+   Chip, Ionenfalle.
+
 ## Offene PRs
 
 | Repo | PR | Inhalt | Nächster Schritt |
 |---|---|---|---|
-| Aequitas | #543 | Vier-Knoten-Test: zwei Ursachen der Unruhe behoben (#65) | CI grün abwarten (besonders `db-tests`), squash-mergen |
+| Aequitas | (dieser Zweig) | `forschung/quantengeld/OFFEN.md` und diese Übergabe | CI grün abwarten, squash-mergen |
+
+Gemergt am 16.11.: #539 (Variante W: Regeln im Knoten W2a, Prägen ohne Vertrauen W3,
+Ablauf mit der Kette W4 ohne Partner; Sicherheitsprüfung als PR-Kommentar), #543
+(Vier-Knoten-Test).
 
 Gemergt am 16.11.: #540 (HEUTE.md, IBM-Läufe), #541 (W2b Teil 1: Regeln geschärft),
 #542 (W2b Teil 2: Variante W schlafend in der Kette, `quanten_w_kette.go`, bis
@@ -74,6 +96,10 @@ AEQUITAS_TPS_BENCH=1 DATABASE_URL="postgres://postgres:postgres@localhost:5432/a
 ```
 
 ## Danach (Reihenfolge)
+
+0. **App 1.23.2:** Die APK ist veröffentlicht, die **iOS-IPA fehlt im Release**
+   (release-ios mit Lauf 43884174136 auf der Basis `aequitas-app`). Danach `quelle.json`
+   prüfen.
 
 1. **W5 (Aufgabe #64):** `docs/QUANTENGELD_PRUEFAUFTRAG.md` ist um Variante W erweitert
    (#542). Offen: Gutachter suchen (Anschreiben wie `ANSCHREIBEN.md`).

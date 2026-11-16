@@ -15,6 +15,11 @@ bleibt: Nichts wird behauptet, was nicht gemessen oder bewiesen ist (QUANTENSICH
   - Ablauf von Anfang bis Ende mit der Kette: `hardware_ibm.py --wiesner --kette`.
   - Workflow-Auswahl: `messen | fern | kette`.
   - Prüfauftrag W5: `docs/QUANTENGELD_PRUEFAUFTRAG.md`.
+- **Echte Hardware (IBM `ibm_marrakesh`, HEUTE.md 3.3):**
+  - **Ohne Warten:** Der ganze Ablauf läuft mit dezentraler Prüfung. Ergebnis: echt,
+    10 AEQ beim Empfänger, Annahme 0,998.
+  - **Mit 20 µs Halten und Teleportation:** abgewiesen, 39 % Fehler je Treffer.
+  - **3-Qubit-Schutz:** kein messbarer Gewinn.
 - **Ehrliche Grenze:** Geld zum Mitnehmen gibt es erst mit einem Quantenspeicher. Heute
   lebt eine Note Mikrosekunden.
 - **Ehrliche Schwäche, noch nicht behoben:** Die Toleranz liegt bei 15 %, geprüft werden
@@ -87,8 +92,11 @@ wird.
 
 ## D. Bauen und messen
 
-1. **W1 auf echter Hardware:** Fehlerraten der IBM-Läufe (`messen`, `fern`, `kette`) in
-   HEUTE.md 3.3 eintragen. Daraus folgen die Parameter für Abschnitt B.
+1. **W1 vervollständigen:**
+   - IBM ist gemessen (siehe A).
+   - Offen sind `fern` auf dem echten Chip und die Ionenfalle (Sekunden statt
+     Mikrosekunden).
+   - Aus den Fehlerraten folgen die Parameter für Abschnitt B.
 2. **Prüfer-Dienst für Validatoren:** Anteile verwahren, offenlegen und bestätigen, als
    Gegenstück zur schlafenden Kettenseite.
 3. **App:** eine Variante-W-Note und ihren Prüfstand anzeigen.
@@ -99,13 +107,10 @@ wird.
 
 ## E. Wartet auf dich (Freigaben und Konten)
 
-- **IBM-Lauf W1** (Umgebung `quantenhardware`):
-  https://github.com/hanoi96international-gif/Aequitas/actions/runs/43889523614
-- **IBM-Läufe mit `wiesner = kette` bzw. `fern`:** Workflow „Quantengeld auf
-  Quanten-Hardware“, Modus `ibm`, `bezahlen` an.
-- **App 1.23.2, Signatur-Freigabe der APK** (Umgebung `app-signatur`):
-  https://github.com/hanoi96international-gif/Aequitas-App/actions/runs/43884166853
-  Danach veröffentlichen: release-apk, release-ios (Lauf 43884174136), quelle.json.
+- **IBM-Lauf `wiesner = fern` auf dem echten Chip:** Workflow „Quantengeld auf
+  Quanten-Hardware“, Modus `ibm`. Den Lauf startet die Sitzung, die Freigabe gibst du.
+- **App 1.23.2:** Die APK ist veröffentlicht. Die **iOS-IPA fehlt noch im Release**:
+  release-ios mit Lauf 43884174136, danach `quelle.json` prüfen.
 - **Konto für eine Ionenfalle** (Quantinuum oder IonQ), für C.6 und W1.
 - **Anschreiben an den BMFTR-Verbund** verschicken (`ANSCHREIBEN.md`, Vorlage 2). Das ist
   W4 mit Speicher.
