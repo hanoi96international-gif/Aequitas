@@ -521,8 +521,8 @@ erprobt.
    Danach schlafend im Knoten, wie bisher.
 3. **Offline-Bargeld Stufe 2** (Knoten-API, Zertifikat, Stand) weiterbauen.
 4. **Vorlagen:** Das deutsche Anschreiben an den BMFTR-Token-Verbund und der Entwurf
-   für die Unitary Foundation stehen in `ANSCHREIBEN.md` (Vorlagen 2 und 3). Offen ist
-   noch der ePrint-Entwurf zur Variante W.
+   für die Unitary Foundation stehen in `ANSCHREIBEN.md` (Vorlagen 2 und 3). Der
+   ePrint-Entwurf zu den Varianten W und S steht in `EPRINT_ENTWURF.md` (englisch).
 
 **Brauche ich von dir:**
 1. **Konto bei Open Quantum** (frei) oder Quantinuum. Dann laufen Prägen und Prüfen auf

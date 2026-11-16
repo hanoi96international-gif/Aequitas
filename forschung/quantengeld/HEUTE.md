@@ -151,6 +151,42 @@ Bestätigt im Workflow (16.11.2026, [Lauf 43894244447](https://github.com/hanoi9
 Rauschmodell `ibm_marrakesh`, 8 Noten je Fall, 1000 Schüsse): Fehler je Treffer 1,6 % /
 5,9 % / 11,8 % / 22,0 %, Annahme 0,95 / 0,83 / 0,70 / 0,44 bei 0 / 20 / 50 / 100 µs.
 
+**Prägen ohne Vertrauen auf der echten Maschine** (16.11.2026, `ibm_fez` – IBM hat den
+freien Chip gewählt; [Lauf 43973771243](https://github.com/hanoi96international-gif/Aequitas/actions/runs/43973771243),
+IBM-Job `dbtoib1hlc8s738kbgdg`; 6 Stellen, also 12 Qubits, mit Bezahlen 24; 4 Noten je
+Fall, 500 Schüsse):
+
+| Wartezeit | Fehler je Treffer | mit Bezahlen | Annahme | mit Bezahlen |
+|---|---|---|---|---|
+| 0 µs | **2,4 %** | 12,5 % | **0,90** | 0,54 |
+| 20 µs | 29,2 % | 32,7 % | 0,26 | 0,22 |
+| 50 µs | 35,9 % | 37,6 % | 0,28 | 0,27 |
+| 100 µs | 39,9 % | 39,2 % | 0,26 | 0,28 |
+
+Note Nr. 1 (0 µs): 5 Treffer, 0 Fehler, von den Validatoren auf ihren Anteilen gezählt
+→ **echt**.
+
+**Lesart:**
+- **Ohne Warten trägt die Fern-Präparation auf dem echten Chip:** 2,4 % Fehler je
+  Treffer. Die Note aus einer Hand hatte auf `ibm_marrakesh` 0,7 % (anderer Chip). Das Geheimnis
+  entsteht dabei erst bei der Messung der Validatoren. Mit der Prüfung der Kette heißt
+  das (`wiesner_parameter.suche(0.024)`): **Toleranz 6 %, 1.360 geprüfte Stellen**.
+  Eine ehrliche Note fällt dann mit höchstens 1,1·10⁻⁷ durch, ein Fälscher kommt
+  höchstens mit 2⁻⁴⁰ durch. Bei der Standard-Toleranz von 4 % fiele jede 44. ehrliche
+  Note durch (2,3 %). Die Toleranz je Note (W2c) ist genau dafür da.
+- **Teleportation kostet auf diesem Chip zu viel:** 12,5 % Fehler. Dafür gibt es keine
+  sichere Toleranz unter der Kloner-Schwelle von 14,6 % (`suche(0.125)` findet bis
+  k = 8.192 nichts). Bezahlen per Teleportation ist auf `ibm_fez` heute nicht sicher
+  prüfbar. Im Modell von `ibm_marrakesh` waren es 3 %.
+- **Mit Warten ist die Note verloren:** Ab 20 µs liegen die Fehler bei 29–40 %, nahe am
+  Raten (50 %). Auf `ibm_marrakesh` waren es nach 20 µs noch 23 %, es liegt also auch am
+  Chip. Ohne Speicher (Ionenfalle, Fehlerkorrektur) bleibt es dabei: Prägen und Prüfen
+  in einem Zug, oder Variante S.
+- **Messwerte unter der alten Toleranz:** Die Annahme-Spalten sind noch mit 15 %
+  gerechnet. Bei 6 Stellen ist aber so oder so kein Fehler erlaubt, mit 4 % ergeben
+  sich dieselben Werte. Das Werkzeug (`wiesner_hardware.TOLERANZ`) steht jetzt auf
+  4 %.
+
 **Von Anfang bis Ende mit der Kette (W4 ohne Partner):** `hardware_ibm.py --wiesner
 --kette --bezahlen` lässt eine Note aus 16 Qubits durch die Regeln der Kette laufen
 (`wiesner_kette.KetteW`, dieselben Regeln wie im Knoten): Prägen mit Prüfsummen und
