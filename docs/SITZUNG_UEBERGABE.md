@@ -82,6 +82,40 @@ Gemergt am 16.11.:
 - #540, #541, #542 (W2b schlafend eingehängt, W5 Prüfauftrag)
 - #543 (Vier-Knoten-Test)
 
+## Unruhe im Vier-Knoten-Test (Aufgabe #65) — Korrektur in #543
+
+`TestVierKnoten_RealDB` kippte am 16.11. zweimal im Push-Lauf (`db-tests`), mit zwei
+verschiedenen Ursachen. Beide lagen im Test, nicht im Knoten; keine Prüfung wurde
+gelockert.
+
+1. **Lauf von 3e0dec65** (`LeiterFaelltAusUndZiehtNach`, 90 s „keine Einigkeit“): Holt der
+   alte Leiter seinen Zustand per Snapshot, während der Spender zwei Geschwister-Spitzen
+   auf der Snapshot-Höhe führt, setzt er nur die kanonische als Spitze (block.go, so
+   gewollt). Wurzel und Konten sind gleich, die Spitzen erst nach dem nächsten Block – und
+   in der Ruhe des Tests erzeugt niemand. Korrektur: Steht alles außer den Spitzen 5 s
+   gleich, erzeugt ein Knoten genau einen Block; danach gilt die volle Prüfung
+   unverändert. `leiterAusfall` stellt die Lage jetzt bei jedem Lauf her
+   (`zweiGeschwisterSpitzen`). Gegenprobe: ohne die Zusammenführung kippt der Lauf lokal
+   genau wie in der CI. Erneutes Anbieten der Spitzen (Idee der Vorsitzung) hilft nicht:
+   der Knoten kennt den Block bereits.
+2. **Lauf von d75ba6ca** (`TrustedSeedsFromSync`, „Schwelle ohne Beleg nicht als abgewehrt
+   gezaehlt“): Die Replay-Mauer zählt Abweisungen in Folge und löscht die Zählung bei jedem
+   erfolgreich nachgespielten Block. Die Ruhe begann erst nach dem Bau des Angriffsblocks;
+   ein spät ankommender ehrlicher Block setzte die Folge zurück. Korrektur: Ruhe vor dem
+   Bau, `warteStill`, gewartet wird auf die beiden Ereignisse selbst. Diese Ursache ist aus
+   Code und CI-Meldung abgeleitet, lokal nicht nachgestellt.
+
+Dazu: `spitzenBefund` (wer kennt welche Spitze) bei Uneinigkeit, und `db-tests` druckt bei
+Rot die letzten Testmeldungen.
+
+Lokal laufen lassen: PostgreSQL 16 liegt im Container (`pg_ctlcluster 16 main start`,
+Passwort per `ALTER USER postgres PASSWORD 'postgres'`), dann
+
+```
+AEQUITAS_TPS_BENCH=1 DATABASE_URL="postgres://postgres:postgres@localhost:5432/aeq_ci_realdb?sslmode=disable" \
+  go test ./x/humanity/keeper/ -run 'TestVierKnoten_RealDB$' -v -timeout 15m
+```
+
 ## Danach (Reihenfolge)
 
 0. **App 1.23.2:** Die APK ist veröffentlicht, die **iOS-IPA fehlt im Release**
