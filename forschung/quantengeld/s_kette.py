@@ -10,7 +10,10 @@ ABLAUF
   1. Ausgabe: N Qubits in zufaelligen BB84-Zustaenden (Basen u, Werte t). Die
      Nutzerin misst SOFORT, jede Stelle in einer zufaelligen Basis y, und hat
      danach nur Klartext x. Nichts wird gespeichert. (u, t) liegen als Anteile
-     bei den Validatoren (Fern-Praeparation wie W3); hier vereinfacht.
+     bei den Validatoren (Fern-Praeparation wie W3), auf der Kette nur die
+     Merkle-Wurzel der Pruefsummen (wiesner_kette.Praegung). Jede
+     Annahmestelle laedt ihre Stichprobe als Anteile und prueft sie gegen die
+     Wurzel (stelle_laden) -- sie glaubt keinem Validator.
   2. Bindung auf der Kette: die Nutzerin veroeffentlicht d = y XOR z (z ein
      geheimes Bit, maskiert ihre Basen).
   3. Wahl auf der Kette, EINMAL je Token: c = b XOR z fuer die Stelle b, an der
@@ -57,9 +60,15 @@ Aufruf:  python3 -I s_kette.py [--selbsttest]
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import math
+import os
 import random
 import sys
+
+_spec = importlib.util.spec_from_file_location("wiesner_kette", os.path.join(os.path.dirname(os.path.abspath(__file__)), "wiesner_kette.py"))
+wk = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(wk)
 
 TOL_PROZENT = 4          # wiesner_parameter.suche(0.007): Toleranz 4 %
 K_STELLE = 840           # Stellen je Annahmestelle (je Stichprobe)
@@ -176,6 +185,28 @@ class Annahmestelle:
         self.meldungen.append({"K": K, "stelle": b, "treffer": treffer, "fehler": fehler, "urteil": urteil,
                                "x_hash": hashlib.sha256(bytes(x)).hexdigest()})
         return urteil
+
+
+def stelle_laden(nummer: int, K: str, n: int, wurzel: bytes, t: int, n_val: int,
+                 stichprobe: list[int], offen) -> "Annahmestelle":
+    """DEZENTRALE AUSGABE: die Annahmestelle bekommt ihre Stichprobe nicht von
+    einer Bank, sondern als Anteile von t Validatoren (wiesner_kette.Praegung,
+    v = Basis + 2*Wert + 4*Salz) und prueft JEDE Stelle selbst gegen die
+    Pruefsumme und die Merkle-Wurzel auf der Kette. Ein falscher Anteil oder
+    Pfad: die Stelle laedt nicht (fail-closed) -- sie glaubt keinem Validator."""
+    if len(offen) != len(stichprobe):
+        raise Abgewiesen("Ladung: Zahl der Stellen")
+    u, tt = [0] * n, [0] * n
+    for i, (anteile, pfad) in zip(stichprobe, offen):
+        xs = [x for x, _ in anteile]
+        if len(anteile) != t or len(set(xs)) != t or any(not 1 <= x <= n_val for x in xs) \
+                or any(not 0 <= y < wk.P for _, y in anteile):
+            raise Abgewiesen("Ladung: Anteile")
+        v = wk.zusammensetzen(anteile)
+        if v >> (wk.SALZ_BITS + 2) or not wk.merkle_pruefen(wurzel, wk.pruefsumme(K, i, v), i, pfad, n):
+            raise Abgewiesen("Ladung: Pruefsumme oder Pfad passt nicht")
+        u[i], tt[i] = wk.zerlegen(v)
+    return Annahmestelle(nummer, K, stichprobe, u, tt)
 
 
 def abgleich(meldungen: list[dict]) -> dict[str, list[dict]]:
@@ -317,6 +348,52 @@ def selbsttest() -> bool:
         st[1].daten = {i: (1 - uk, tk) for i, (uk, tk) in st[1].daten.items()}  # Wissen: alles
         st[1].pruefen(K, list(t))
         soll(len(abgleich(st[0].meldungen + st[1].meldungen).get(K, [])) == 2, "Abgleich erkennt Doppelverbrauch nicht")
+        # 4. Dezentrale Ausgabe: Stichproben als Anteile von 3 der 5 Validatoren,
+        # jede Stelle prueft gegen die Wurzel auf der Kette.
+        val = [f"v{j}" for j in range(1, 6)]
+        n = 2 * 64
+        u, t = ausgabe(n, rng)
+        K = hashlib.sha256(rng.randbytes(16)).hexdigest()
+        pr = wk.Praegung(K, u, t, 3, val, rng)
+        proben = stichproben(n, 2, 64, rng)
+        st = [stelle_laden(b, K, n, pr.wurzel, 3, 5, proben[b], pr.offenlegung(proben[b], [1, 3, 5] if b else [2, 4, 5]))
+              for b in (0, 1)]
+        soll(all(st[b].daten == {i: (u[i], t[i]) for i in proben[b]} for b in (0, 1)), "dezentral geladen: falsche Daten")
+        kette = KetteS()
+        kette.ausgeben(K, n, "anna")
+        y, x = messen_ehrlich(u, t, rng, 0.0)
+        festlegen(kette, K, st, list(y), 1)
+        soll(st[1].pruefen(K, x) is True and st[0].pruefen(K, x) is False, "dezentral: Gutfall und Doppelvorlage")
+        # Missbrauch: ein Validator liefert einen falschen Anteil, ein falscher Pfad,
+        # zu wenige oder doppelte Anteile, fremde Wurzel -- die Stelle laedt nicht.
+        of = pr.offenlegung(proben[0], [1, 2, 3])
+        falsch = [([(a[0][0], (a[0][1] + 1) % wk.P)] + a[1:], p_) if j == 0 else (a, p_) for j, (a, p_) in enumerate(of)]
+        abgewiesen(lambda: stelle_laden(0, K, n, pr.wurzel, 3, 5, proben[0], falsch), "falscher Anteil")
+        abgewiesen(lambda: stelle_laden(0, K, n, pr.wurzel, 3, 5, proben[0], [(a, p_[::-1]) for a, p_ in of]), "falscher Pfad")
+        abgewiesen(lambda: stelle_laden(0, K, n, pr.wurzel, 3, 5, proben[0], [(a[:2], p_) for a, p_ in of]), "zu wenige Anteile")
+        abgewiesen(lambda: stelle_laden(0, K, n, pr.wurzel, 3, 5, proben[0], [([a[0], a[0], a[1]], p_) for a, p_ in of]), "doppeltes x")
+        abgewiesen(lambda: stelle_laden(0, K, n, wk.h(b"fremd"), 3, 5, proben[0], of), "fremde Wurzel")
+        abgewiesen(lambda: stelle_laden(0, K, n, pr.wurzel, 3, 5, proben[0], of[:-1]), "Stelle fehlt")
+        # Anteile, die ein richtiges v ergeben, aber gegen die Regel verstossen:
+        # t+1 Anteile; ein Anteil an x = 9 (ausserhalb 1..v, aus dem Polynom
+        # nachgerechnet). Die Pruefsumme allein faengt das NICHT -- die Regel schon.
+        def am(anteile, x0):
+            sm = 0
+            for j, (xj, yj) in enumerate(anteile):
+                z = nn = 1
+                for m_, (xm, _) in enumerate(anteile):
+                    if m_ != j:
+                        z, nn = z * (x0 - xm) % wk.P, nn * (xj - xm) % wk.P
+                sm = (sm + yj * z * pow(nn, -1, wk.P)) % wk.P
+            return sm
+        of4 = pr.offenlegung(proben[0], [1, 2, 3, 4])
+        abgewiesen(lambda: stelle_laden(0, K, n, pr.wurzel, 3, 5, proben[0], of4), "t+1 Anteile")
+        aussen = [([(9, am(a, 9))] + a[1:], p_) for a, p_ in of]
+        soll(all(wk.zusammensetzen(a) == wk.zusammensetzen(b) for (a, _), (b, _) in zip(aussen, of)), "Probe x = 9 falsch gebaut")
+        abgewiesen(lambda: stelle_laden(0, K, n, pr.wurzel, 3, 5, proben[0], aussen), "Anteil an x = 9")
+        # Gegenprobe: dieselbe Ladung unveraendert geht durch.
+        soll(stelle_laden(0, K, n, pr.wurzel, 3, 5, proben[0], of).daten == st[0].daten, "Gegenprobe Ladung")
+
         # Stichproben disjunkt und vollstaendig.
         pr = stichproben(40, 2, 20, rng)
         soll(not set(pr[0]) & set(pr[1]) and len(set(pr[0]) | set(pr[1])) == 40, "Stichproben")

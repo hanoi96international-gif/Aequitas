@@ -444,8 +444,12 @@ erprobt.
     Stelle, fremde Bindung, zweite Wahl, Vorlage ohne Abgleich, Wiederholung, Abgleich
     auf der Kette. Gegenproben mit alter Toleranz, mit c je Stelle und mit vollem Wissen.
 - **Nächste Schritte:**
-  1. ~~Spezifikation `s_kette.py`~~ – erledigt (oben). Offen: Ausgabe über Anteile und
-     Offenlegen wie W, Knoten-Regeln.
+  1. ~~Spezifikation `s_kette.py`~~ – erledigt (oben), auch die **dezentrale
+     Ausgabe** (`stelle_laden`): Jede Annahmestelle lädt ihre Stichprobe als Anteile
+     von t Validatoren und prüft jede Stelle gegen Prüfsumme und Merkle-Wurzel auf der
+     Kette. Ein falscher Anteil oder Pfad, zu wenige oder zu viele Anteile, ein doppeltes
+     x, ein x außerhalb 1..v oder eine fremde Wurzel: Die Stelle lädt nicht. Gegenprobe
+     durch Mutation: fünf von fünf erkannt. Offen: Knoten-Regeln.
   2. S-Vorführung auf IBM.
   3. Anschreiben an die Autoren (Cambridge: Kent, Pitalúa-García; Bristol: Rarity) als
      Vorlage 4.
