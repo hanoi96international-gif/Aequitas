@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 )
 
@@ -23,6 +24,10 @@ type qwDienste struct {
 	zeit   int64
 	mu     sync.Mutex
 	falsch map[int]bool // Validator (1-basiert) liefert falsche Anteile
+	// DAG-Hoehe und finalisierte Hoehe, wie die Dienste sie sehen. Beide 0:
+	// alles ist sofort final (die Tests ohne Finalitaet); der Test der
+	// Finalitaet stellt sie.
+	hoehe, final atomic.Int64
 }
 
 // einreichen: wie die API -- Bescheid, anwenden, der zweite Knoten spielt nach.
@@ -55,6 +60,7 @@ func neueQwDienste(t *testing.T, n int) *qwDienste {
 			t.Fatal(err)
 		}
 		d.jetzt = func() int64 { return q.zeit }
+		d.hoehe, d.final = q.hoehe.Load, q.final.Load
 		q.d = append(q.d, d)
 		xx := x + 1
 		srv := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
@@ -431,5 +437,111 @@ func TestQuantenWDienst_Auswahlen(t *testing.T) {
 	c := QuantenWAnteilAusgabe{X: 2, Stellen: []int{2}, Y: []string{"2"}, Pfade: [][]string{{}}}
 	if quantenWSammeln([]QuantenWAnteilAusgabe{a, b}, []int{0, 1}, 2) != nil || quantenWSammeln([]QuantenWAnteilAusgabe{a, c}, []int{0, 1}, 2) != nil {
 		t.Fatal("doppeltes x oder andere Stellen gesammelt")
+	}
+}
+
+// Nichts vor der Finalitaet: den Wert der Hash-Kette gibt es erst, wenn die
+// Anfrage final ist, die Anteile erst, wenn die Antwort final ist -- und eine
+// ANDERE Antwort an derselben Stelle wartet neu.
+func TestQuantenWDienst_NichtsVorDerFinalitaet(t *testing.T) {
+	q := neueQwDienste(t, 200)
+	w := q.w
+	q.hoehe.Store(100)
+	q.final.Store(50)
+	q.praegen(t)
+	q.zeit += 10
+	w.annehmen(w.anfrageTx(w.anna, 0, 16, "", q.zeit), q.zeit+1)
+	q.zeit += 2
+
+	// Die Anfrage steht, ist aber nicht final: kein Validator legt seinen
+	// Wert offen -- auch nicht, wenn die Kette weiterwaechst.
+	q.takt()
+	q.hoehe.Store(120)
+	q.final.Store(99)
+	q.takt()
+	note := w.cs.quantenWJetzt().Noten[w.p.K].note
+	for x, zi := range note.ZIndex {
+		if zi >= 0 {
+			t.Fatalf("Validator %d hat seinen Zufall vor der Finalitaet der Anfrage offengelegt", x+1)
+		}
+	}
+	q.final.Store(100) // die Hoehe der ersten Sichtung ist final
+	q.takt()
+	a := w.anfrage(w.cs)
+	if a == nil || a.Basen == nil {
+		t.Fatal("nach der Finalitaet der Anfrage kein Zufall")
+	}
+
+	// Der Stand vor der Antwort, um sie "zuruecknehmen" zu koennen (wie eine
+	// Umordnung, die ihren Block verwirft).
+	vorCs, vorNach := w.cs.quantenWStandJetzt(), w.nach.quantenWStandJetzt()
+	falsch := make([]int, len(a.Stellen)) // geraten
+	w.annehmen(w.antwortTx(w.anna, 0, falsch), q.zeit+1)
+	q.zeit += 2
+	for x, d := range q.d {
+		if _, err := d.anteile(w.p.K, 0, 0); err == nil {
+			t.Fatalf("Validator %d gibt Anteile heraus, bevor die Antwort final ist", x+1)
+		}
+	}
+	// Kein Validator legt offen (er bekaeme von sich selbst keine Anteile).
+	q.takt()
+	if w.anfrage(w.cs) == nil || w.anfrage(w.cs).Offen != 0 {
+		t.Fatal("Offenlegung vor der Finalitaet der Antwort")
+	}
+	q.final.Store(119) // eine Hoehe unter der Sichtung der Antwort
+	if _, err := q.d[0].anteile(w.p.K, 0, 0); err == nil {
+		t.Fatal("Anteile eine Hoehe vor der Finalitaet")
+	}
+
+	// DER ANGRIFF: die geratene Antwort faellt aus der Kette, die Hoehe ihrer
+	// Sichtung wird final, und der Anfragende reicht eine andere ein. Die
+	// Sichtung der ersten zaehlt fuer die zweite nicht.
+	w.cs.quantenWReg.Store(vorCs)
+	w.nach.quantenWReg.Store(vorNach)
+	q.hoehe.Store(130)
+	q.final.Store(120)
+	a = w.anfrage(w.cs)
+	w.annehmen(w.antwortTx(w.anna, 0, w.p.ehrlich(a.Stellen, a.Basen)), q.zeit+1)
+	q.zeit += 2
+	for x, d := range q.d {
+		if _, err := d.anteile(w.p.K, 0, 0); err == nil {
+			t.Fatalf("Validator %d gibt nach dem Tausch der Antwort sofort Anteile heraus", x+1)
+		}
+	}
+	q.final.Store(130)
+	if _, err := q.d[0].anteile(w.p.K, 0, 0); err != nil {
+		t.Fatalf("nach der Finalitaet der Antwort keine Anteile: %v", err)
+	}
+	q.d[0].takt(context.Background())
+	if w.anfrage(w.cs) != nil || w.stand(w.cs, w.anna) != 100_000_000 {
+		t.Fatal("die Pruefung der echten Note ist nicht als echt geendet")
+	}
+	// Der Takt vergisst Sichtungen, deren Stand es nicht mehr gibt.
+	q.takt()
+	for x, d := range q.d {
+		if len(d.sicht) != 0 {
+			t.Fatalf("Validator %d merkt sich noch %d Sichtungen", x+1, len(d.sicht))
+		}
+	}
+
+	// Ohne Quelle fuer Hoehe und Finalitaet (ein Dienst, den niemand
+	// angeschlossen hat) wird nichts reif.
+	d, err := neuerQuantenWDienst(w.cs, w.valKeys[0], &quantenWSpeicherAblage{}, nil, q.einreichen)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.reif("x") || d.reif("x") {
+		t.Fatal("ein Dienst ohne Finalitaetsquelle haelt etwas fuer final")
+	}
+	// Die Karte der Sichtungen ist begrenzt; voll = nichts Neues wird reif.
+	voll := q.d[1]
+	for i := 0; i < quantenWSichtHoechstens; i++ {
+		voll.sicht[strconv.Itoa(i)] = 0
+	}
+	if voll.reif("neu") {
+		t.Fatal("bei voller Karte wird ein neuer Stand reif")
+	}
+	if len(voll.sicht) != quantenWSichtHoechstens {
+		t.Fatal("die Karte der Sichtungen waechst ueber ihre Grenze")
 	}
 }
