@@ -24,8 +24,10 @@ Suchergebnisse. Vor jeder Zitierung oder Kontaktaufnahme selbst lesen.
    - **Prüfgeheimnis:** Es liegt **verteilt bei den Validatoren** statt bei einer Bank
      (hier „Variante W“, Abschnitt 5).
    - **Sicherheit:** ohne Rechenannahme; tolerant gegen Rauschen bis 21,4 % (Kumar 2019, V).
-   - **Speicher:** 2,5–10 × Lagerzeit statt 3.184 ×. Speicher mit über 10 h Kohärenz gibt
-     es im Labor (Wang et al. 2025).
+   - **Speicher:** 2,5–10 × Lagerzeit statt 3.184 ×, gerechnet für die Prüfung mit
+     Rückgabe der Note. Bei klassischer Prüfung braucht es mehr Qubits, etwa 1.170
+     statt 309 für 2⁻¹²⁸. Speicher mit über 10 h Kohärenz gibt es im Labor
+     (Wang et al. 2025).
    - **Partner:** Ein deutscher BMFTR-Verbund aus sieben Projekten baut genau solche
      Token-Geräte (V).
    - **Neu für Aequitas** ist nur, das Geheimnis über die Validatoren zu verteilen. Dafür
@@ -177,9 +179,37 @@ er zuerst in eine Simulation und vor ein Gutachten.
 5. **Erneuern oder Einlösen:** nach k Prüfungen oder nach einer Frist. Eine Prüfstelle
    prüft vollständig, und die Note wird neu geprägt oder in AEQ eingelöst.
 
+**Simulation (`wiesner_verteilt.py`, Selbsttest in der CI):**
+- **Aufbau:** Shamir t von v (ein Polynom vom Grad t − 1, beliebige t Anteile setzen
+  zusammen). Prüfen auf den Anteilen: Basisvergleich und Bitvergleich sind linear, je
+  Stelle eine Beaver-Multiplikation. Geöffnet werden nur zwei Zähler (Treffer, Fehler).
+- **Gezeigt:**
+  - t − 1 Anteile verraten nichts (in F₁₁ exakt nachgezählt);
+  - die gemeinsame Prüfung zählt genau wie eine Bank, die alles weiß;
+  - echte Noten bestehen, auch mit 2 % Rauschen bei 15 % Toleranz;
+  - abgewiesen werden: Fälschen ohne Note, Raten mit Rückmeldung (A3), alte Antworten
+    (A5), zu viele Prüfungen (A6), mehrfaches Einlösen (A7);
+  - der einfache Kopierer besteht mit 25/32 je Qubit. Er liegt damit unter der
+    bewiesenen Schranke.
+- **Gegenproben,** jede schlägt an: ohne Sperre, ohne Verbrauch gemessener Qubits, mit
+  vorhersagbarer Aufforderung, mehrfaches Einlösen, falscher Basisvergleich, Toleranz
+  ignoriert.
+- **Fund aus der Simulation:** Sperrt eine Ablehnung die Note (nötig gegen Raten), kann
+  jeder, der die Seriennummer kennt, eine fremde Note mit Unsinn-Antworten sperren.
+  - **Ausweg:** Der echte Halter löst eine gesperrte Note trotzdem ein, mit vollständiger
+    Prüfung aller unbenutzten Qubits.
+  - **Grenze:** Einlösen ist genau ein Versuch, danach ist die Note eingelöst oder tot.
+    Raten über das Einlösen geht so nicht.
+
 **Sicherheit, ehrlich:**
-- **Fälschen ohne Geheimnis:** höchstens (3/4)ⁿ (MVW 2012). Für 2⁻¹²⁸ heißt das
-  n ≥ 309 Qubits, ohne Rauschen gerechnet. Mit Rauschen gibt Kumar 2019 die Schranken.
+- **Fälschen ohne Geheimnis:**
+  - Mit Rückgabe der Note an eine Prüfstelle gilt höchstens (3/4)ⁿ, für 2⁻¹²⁸ also
+    309 Qubits.
+  - Bei **klassischer** Prüfung besteht der beste Fälscher zwei Prüfungen aus einer
+    Note mit höchstens (3/4 + √2/8)ⁿ ≈ 0,927ⁿ (MVW 2012, V). Für 2⁻¹²⁸ sind das
+    **1.167 Qubits**.
+  - Beides ohne Rauschen gerechnet; mit Rauschen gibt Kumar 2019 die Schranken.
+  - Die Simulation `wiesner_verteilt.py` gibt diese Tabelle aus.
 - **Adaptiver Angriff (Brodutch et al. 2014):** Er bricht Wiesner, wenn eine geprüfte
   Note zurückkommt und eine abgewiesene zerstört wird (V). Gegenmaßnahmen:
   - ein abgelehntes Ergebnis sperrt die Note auf der Kette;
@@ -198,8 +228,10 @@ er zuerst in eine Simulation und vor ein Gutachten.
   Offline-Bargeld.
 
 **Hardware:**
-- **Forderung:** Kohärenz 2,5–10 × Lagerzeit (`rauschen.py`, Wiesner) statt
-  3.184 × (öffentlich, 64 Qubits).
+- **Forderung:** Kohärenz 2,5–10 × Lagerzeit (`rauschen.py`, Wiesner mit Rückgabe)
+  statt 3.184 × (öffentlich, 64 Qubits). Für die klassische Prüfung ist die Rechnung
+  mit den Schranken von Kumar 2019 noch zu machen. Weil die Fälschungsschranke je Qubit
+  schwächer ist (0,927 statt 0,75), wird der Abstand zum ehrlichen Rauschen kleiner.
 - **Labor:** Kernspins im Festkörper > 10 h (Wang et al., PRX Quantum 2025), 39 min bei
   Raumtemperatur (Si-28, 2013) (V).
 - **Damit:** Eine Note, die einige Stunden hält, ist im Labor erreichbar, eine, die Tage
@@ -238,12 +270,10 @@ Register, Topf, Abgabe, Freischaltung und Einlösen in AEQ gibt es schon.
 ## 8. Empfehlung und nächste Schritte
 
 **Kann ich ohne dich tun:**
-1. **Simulation Variante W** (`wiesner_verteilt.py`, Selbsttest in der CI):
-   - Prägen und verteiltes Geheimnis (Shamir, t von n);
-   - klassische Prüfung unter Rauschen;
-   - Angriffe: Fälschen; adaptiv nach Brodutch et al.; Absprache von weniger als t
-     Validatoren; Wiederholen einer Prüfantwort; zu viele Prüfungen.
-   - Sie liefert n, Schwellen und Prüfzahl je Note für ein Sicherheitsziel.
+1. ~~Simulation Variante W~~ – **erledigt** (`wiesner_verteilt.py`, Abschnitt 5). Offen
+   bleiben:
+   - die Rauschschranken nach Kumar 2019 statt des einfachen Modells;
+   - blinde Prüfanfragen für mehr Privatsphäre.
 2. **Spezifikation der Kettenseite W** als ausführbares Modell, wie `bruecke_kette.py`.
    Danach schlafend im Knoten, wie bisher.
 3. **Offline-Bargeld Stufe 2** (Knoten-API, Zertifikat, Stand) weiterbauen.
