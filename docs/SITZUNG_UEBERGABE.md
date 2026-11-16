@@ -136,7 +136,7 @@ Nicht übernommen, als Beobachtung für später:
 
 | Repo | PR | Inhalt | Nächster Schritt |
 |---|---|---|---|
-| – | – | keine offenen PRs | – |
+| Aequitas | #558 | andere Sitzung (`claude/friendly-davinci-i4iww1`): Prüfauftrag auf Stand W2c/W2d/S, ePrint-Entwurf, `OFFEN.md` aufgeräumt; ändert auch diese Datei | von jener Sitzung mergen lassen; bei Konflikt in dieser Datei beide Stände zusammenführen |
 
 Gemergt am 16.11.:
 - #557 (Validator-Dienst: Nachbarn des Knotens, gleichzeitig abgefragt, Anteile
