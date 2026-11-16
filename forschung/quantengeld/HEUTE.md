@@ -147,6 +147,10 @@ Geheimnis kennt nur der Validator, nicht die Prägestelle. Rauschmodell `ibm_mar
 
 Die Fern-Präparation kostet im Modell etwa einen Prozentpunkt (ein CNOT mehr je Stelle).
 
+Bestätigt im Workflow (16.11.2026, [Lauf 43894244447](https://github.com/hanoi96international-gif/Aequitas/actions/runs/43894244447),
+Rauschmodell `ibm_marrakesh`, 8 Noten je Fall, 1000 Schüsse): Fehler je Treffer 1,6 % /
+5,9 % / 11,8 % / 22,0 %, Annahme 0,95 / 0,83 / 0,70 / 0,44 bei 0 / 20 / 50 / 100 µs.
+
 **Von Anfang bis Ende mit der Kette (W4 ohne Partner):** `hardware_ibm.py --wiesner
 --kette --bezahlen` lässt eine Note aus 16 Qubits durch die Regeln der Kette laufen
 (`wiesner_kette.KetteW`, dieselben Regeln wie im Knoten): Prägen mit Prüfsummen und
@@ -158,6 +162,9 @@ beim Empfänger, Summe erhalten.
 - Rauschmodell `ibm_marrakesh`: echt (5 Treffer, 0 Fehler). Über alle 200 Schüsse
   desselben Schaltkreises: 10,7 % Fehler je Treffer, Annahme 0,57 – bei 16 Stellen
   erlaubt die Toleranz nur einen Fehler, jede zweite Note fiele durch.
+  Im Workflow bestätigt (16.11.2026, [Lauf 43894251112](https://github.com/hanoi96international-gif/Aequitas/actions/runs/43894251112),
+  Aufforderung erst aus dem Block nach der Anfrage): echt (7 Treffer, 0 Fehler), 10 AEQ
+  beim Empfänger, Topf 0, Summe erhalten.
 - Auf der echten Maschine: Workflow, Modus `ibm`, `wiesner` = `kette`, `bezahlen` an.
 
 **Zählt das als Quantengeld?** Als Vorführung: ja, das ist der ganze Ablauf einer
