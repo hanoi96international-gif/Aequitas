@@ -212,6 +212,9 @@ Fälschungen 3,7× teurer als die volle (`schwache_pruefung.py`).
   öffentlich prüfbare Weg noch nicht trägt, die **Variante W** (privat prüfbar, klassische
   Prüfung, Geheimnis verteilt bei den Validatoren), Offline-Bargeld als Weg für jetzt,
   andere Wege zu Hardware, Geld und Begutachtung.
+- **`HEUTE.md`** (16.11.2026): Was davon unter den heutigen Umständen funktionieren kann –
+  quantensicher ab Werk, laufende Ausgabestelle, Vorführung auf echter Hardware,
+  Offline-Bargeld – und das Heute-Paket mit Reihenfolge und Zuständigkeit.
 - `wiesner_verteilt.py`: Simulation der Variante W – Shamir-Anteile bei den Validatoren,
   klassische Prüfung gemeinsam auf den Anteilen (Beaver), Angriffe A1–A7 mit Gegenproben.
 - `BRUECKE.md` und `bruecke.py`: der Entwurf der Brücke AEQ ↔ Quanten-Note.

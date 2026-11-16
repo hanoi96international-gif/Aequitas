@@ -51,6 +51,8 @@ Suchergebnisse. Vor jeder Zitierung oder Kontaktaufnahme selbst lesen.
    - **Lange Spur:** öffentlich prüfbare Noten bleiben schlafend, bis iO oder
      fehlerkorrigierte Speicher reif sind.
 
+Was davon **heute** schon funktionieren kann, steht in `HEUTE.md`.
+
 ## 1. Was Quantengeld für Aequitas leisten soll
 
 | | Eigenschaft | Warum |
