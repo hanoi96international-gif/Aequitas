@@ -19,6 +19,17 @@ package keeper
 //     die Anfrage mit dieser Nummer offen ist UND ihre Antwort schon steht.
 //     Vorher wuerde der Halter die Geheimnisse der Aufforderung erfahren und
 //     koennte faelschen (fail-closed).
+//   - NICHTS VOR DER FINALITAET (reif): den Wert der Hash-Kette gibt der
+//     Dienst erst heraus, wenn die ANFRAGE final ist, die Anteile erst, wenn
+//     die ANTWORT final ist. "Die Antwort steht" im eigenen Zustand reicht
+//     nicht: faellt ihr Block noch aus der Kette, haette der Anfragende die
+//     Anteile gesehen und reichte danach die richtige Antwort ein -- jede
+//     Faelschung ginge durch. Ebenso koennte er nach dem Zufall seine Anfrage
+//     in anderer Groesse neu unterbringen und sich die Aufforderung
+//     aussuchen. Final heisst: der Stand wurde bei DAG-Hoehe h gesehen,
+//     steht unveraendert da, und der finalisierte Checkpoint hat h erreicht
+//     (darunter ordnet kein Knoten mehr um, finality.go). Ohne Quelle fuer
+//     Hoehe und Finalitaet wird nichts reif (fail-closed).
 //   - HINTERGRUND (quantenWDienst.takt): eigenen Zufall einreichen, sobald eine
 //     Anfrage auf ihn wartet; Teile der Offenlegung sammeln (eigene Anteile +
 //     die der anderen Validatoren ueber QUANTEN_W_PEERS) und einreichen;
@@ -171,6 +182,56 @@ type quantenWDienst struct {
 	// eigene API zum Leiter; in Tests direkt).
 	einreichen func(art string, q QuantenWAngaben) error
 	jetzt      func() int64
+	// hoehe: DAG-Hoehe dieses Knotens; final: Hoehe des finalisierten
+	// Checkpoints (StarteQuantenWDienst setzt beide). sicht: bei welcher
+	// Hoehe ein Stand zum ersten Mal gesehen wurde (reif); durch den Tresor
+	// begrenzt, der Takt vergisst, was es nicht mehr gibt.
+	hoehe func() int64
+	final func() int64
+	sicht map[string]int64
+}
+
+// quantenWSichtHoechstens: gemerkte Sichtungen -- je Note hoechstens eine
+// Anfrage und eine Antwort. Voll = nichts Neues wird reif (fail-closed).
+const quantenWSichtHoechstens = 4 * quantenWTresorHoechstens
+
+// reif: ist der Stand unter diesem Schluessel final? Die erste Frage merkt
+// die DAG-Hoehe; reif ist er, sobald der finalisierte Checkpoint sie
+// erreicht hat.
+func (d *quantenWDienst) reif(schluessel string) bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	h, bekannt := d.sicht[schluessel]
+	if !bekannt {
+		if len(d.sicht) >= quantenWSichtHoechstens {
+			return false
+		}
+		h = d.hoehe()
+		d.sicht[schluessel] = h
+	}
+	return d.final() >= h
+}
+
+// sichtRaeumen: Sichtungen, deren Stand es nicht mehr gibt, vergessen.
+func (d *quantenWDienst) sichtRaeumen(gesehen map[string]bool) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	for s := range d.sicht {
+		if !gesehen[s] {
+			delete(d.sicht, s)
+		}
+	}
+}
+
+// quantenWAnfrageSicht, quantenWAntwortSicht: alles, was die Aufforderung
+// bzw. das Urteil bestimmt -- eine ANDERE Anfrage oder Antwort an derselben
+// Stelle ist ein anderer Stand und wartet neu.
+func quantenWAnfrageSicht(K string, a *quantenWAnfrage) string {
+	return fmt.Sprintf("z|%s|%d|%s|%d|%d|%d|%s", K, a.Index, a.Von, a.K, a.Zeit, a.Pfand, a.EinloesenAn)
+}
+
+func quantenWAntwortSicht(K string, a *quantenWAnfrage) string {
+	return fmt.Sprintf("o|%s|%d|%s|%d|%v|%v|%v|%d", K, a.Index, a.Von, a.Gezogen, a.Stellen, a.Basen, a.Antwort, a.AntwortZeit)
 }
 
 func neuerQuantenWDienst(cs *ChainState, key *ecdsa.PrivateKey, ablage quantenWAblage, peers []string,
@@ -193,7 +254,8 @@ func neuerQuantenWDienst(cs *ChainState, key *ecdsa.PrivateKey, ablage quantenWA
 	}
 	d := &quantenWDienst{cs: cs, key: key, adresse: strings.ToLower(crypto.PubkeyToAddress(key.PublicKey).Hex()),
 		aead: aead, ablage: ablage, eintraege: map[string]*quantenWTresorEintrag{}, peers: peers,
-		client: &http.Client{Timeout: quantenWPeerZeit}, einreichen: einreichen, jetzt: nowUnix}
+		client: &http.Client{Timeout: quantenWPeerZeit}, einreichen: einreichen, jetzt: nowUnix,
+		hoehe: func() int64 { return 0 }, final: func() int64 { return -1 }, sicht: map[string]int64{}}
 	roh, err := ablage.alle()
 	if err != nil {
 		return nil, fmt.Errorf("quanten_w: Tresor nicht lesbar: %w", err)
@@ -428,6 +490,9 @@ func (d *quantenWDienst) anteile(K string, index, ab int) (QuantenWAnteilAusgabe
 	if a.Antwort == nil || a.Basen == nil {
 		return QuantenWAnteilAusgabe{}, quantenWFehler("die Antwort steht noch aus -- vorher kein Anteil")
 	}
+	if !d.reif(quantenWAntwortSicht(K, a)) {
+		return QuantenWAnteilAusgabe{}, quantenWFehler("die Antwort ist noch nicht final -- vorher kein Anteil")
+	}
 	if ab < 0 || ab >= len(a.Stellen) {
 		return QuantenWAnteilAusgabe{}, quantenWFehler("ab %d", ab)
 	}
@@ -574,6 +639,8 @@ func (d *quantenWDienst) takt(ctx context.Context) {
 		return
 	}
 	reg := d.cs.quantenWJetzt()
+	gesehen := map[string]bool{}
+	defer d.sichtRaeumen(gesehen)
 	for _, K := range d.schluessel() {
 		e := d.eintrag(K)
 		if e == nil {
@@ -592,8 +659,16 @@ func (d *quantenWDienst) takt(ctx context.Context) {
 			continue
 		}
 		x := e.X - 1
+		if a.Basen == nil {
+			gesehen[quantenWAnfrageSicht(K, a)] = true
+		} else if a.Antwort != nil {
+			gesehen[quantenWAntwortSicht(K, a)] = true
+		}
 		switch {
 		case a.Basen == nil && x < len(ein.note.ZIndex) && ein.note.ZIndex[x] < a.Index:
+			if !d.reif(quantenWAnfrageSicht(K, a)) {
+				continue // die Anfrage ist noch nicht final
+			}
 			g, _ := hex.DecodeString(e.Geheim)
 			var gh [32]byte
 			copy(gh[:], g)
@@ -729,7 +804,8 @@ func (cs *ChainState) quantenWDienstJetzt() *quantenWDienst {
 // Signierschluessel. Die Peers (Basis-URLs der anderen Validatoren) kommen
 // aus QUANTEN_W_PEERS (vom Betreiber gesetzt, kommagetrennt, nur http(s));
 // eingereicht wird ueber die eigene API (apiBasis), die zum Leiter leitet.
-func (cs *ChainState) StarteQuantenWDienst(ctx context.Context, key *ecdsa.PrivateKey, apiBasis string) error {
+// hoehe: die DAG-Hoehe dieses Knotens (fuer reif); nil = nichts wird reif.
+func (cs *ChainState) StarteQuantenWDienst(ctx context.Context, key *ecdsa.PrivateKey, apiBasis string, hoehe func() int64) error {
 	if key == nil {
 		return nil
 	}
@@ -767,6 +843,13 @@ func (cs *ChainState) StarteQuantenWDienst(ctx context.Context, key *ecdsa.Priva
 	d, err := neuerQuantenWDienst(cs, key, ablage, peers, einreichen)
 	if err != nil {
 		return err
+	}
+	if hoehe != nil {
+		d.hoehe = hoehe
+		d.final = func() int64 {
+			h, _ := cs.GetFinalizedCheckpoint()
+			return h
+		}
 	}
 	cs.quantenWDienstZeiger.Store(d)
 	go d.laufen(ctx)

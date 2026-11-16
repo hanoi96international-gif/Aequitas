@@ -912,7 +912,7 @@ func main() {
 	_ = distCancel // called in shutdown handler below
 	// Quantengeld Variante W, Dienst der Validatoren (quanten_w_validator.go):
 	// nur mit Signierschluessel; schlafend bis zum Stichtag von W.
-	if err := chainState.StarteQuantenWDienst(distCtx, bc.GetSigningKey(), fmt.Sprintf("http://127.0.0.1:%d", apiPort())); err != nil {
+	if err := chainState.StarteQuantenWDienst(distCtx, bc.GetSigningKey(), fmt.Sprintf("http://127.0.0.1:%d", apiPort()), bc.Height); err != nil {
 		fmt.Printf("⚠ Quantengeld-W-Dienst nicht gestartet: %v\n", err)
 	}
 	// FIX 6: distDone is closed when the goroutine exits so the shutdown handler
