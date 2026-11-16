@@ -249,6 +249,37 @@ er zuerst in eine Simulation und vor ein Gutachten.
 
 Register, Topf, Abgabe, Freischaltung und Einlösen in AEQ gibt es schon.
 
+**Offene Frage, nachgetragen am 16.11.2026: Wer prägt, kennt das Geheimnis.**
+- **Das Problem:** Das Gerät, das die Qubits in die BB84-Zustände bringt, muss Basen und
+  Bits im Klartext kennen. Wer es betreibt, könnte sie mitschreiben und jede Note
+  beliebig oft nachbauen. Die Teilung unter den Validatoren schützt also nur die Prüfung,
+  nicht die Prägung. `wiesner_verteilt.py` hat das bisher nicht gezeigt.
+- **Drei Wege, vom schwächsten zum stärksten:**
+  1. **Vertraute Prägestelle** (Labor, Stufe W4 unten): Ein Partner prägt und löscht das
+     Geheimnis nach dem Teilen. Das ist eine Vertrauensannahme wie bei einer
+     Notenbank. Sie reicht für einen Versuch, nicht für echtes Geld.
+  2. **Mehrere Prägestellen je Note:** Jede prägt einen Teil der Qubits, und keine kennt
+     die ganze Note. Fälschen braucht dann die Absprache aller beteiligten Stellen.
+  3. **Fern-Präparation (remote state preparation):**
+     - Die Prägestelle erzeugt verschränkte Paare und schickt je eine Hälfte über eine
+       kurze Quantenleitung an Validatoren, wie bei QKD.
+     - Jeder Validator misst seine Hälften in eigenen Zufallsbasen. Damit legt er fest,
+       in welchem Zustand die andere Hälfte steht, und nur er kennt ihn.
+     - Die Prägestelle erfährt nichts. Jeder Validator kennt nur seinen Teil der Note.
+     - Das ist mit heutiger QKD-Technik im Labor machbar und gehört zum Partnerversuch.
+
+**Stufenplan der Variante W:**
+
+| Stufe | Was | Wer | Stand |
+|---|---|---|---|
+| W0 | Simulation, Analyse, Schaltkreise | Aequitas | fertig (`wiesner_verteilt.py`, `wiesner_hardware.py`) |
+| W1 | Fehlerraten auf echter Hardware (IBM, Ionenfalle) → Notengröße und Toleranz | Aequitas; Läufe mit Freigabe | IBM-Lauf bereit; Ionenfalle braucht ein Konto |
+| W2 | Kettenseite schlafend: Satzart „privat“, verteilte Schlüsselerzeugung, Prüf-Transaktion, Zähler, Sperre, Einlösen | Aequitas | offen |
+| W3 | Prägung ohne Vertrauen (Weg 2 oder 3 oben) als Protokoll und Simulation | Aequitas | offen |
+| W4 | Partnerversuch: echte Note in einem Speicher (Stunden), Ausgabe über ein Aequitas-Testnetz, Weitergabe des Geräts, klassische Prüfung, Einlösen | BMFTR-Verbund + Aequitas | Kontakt offen |
+| W5 | Gutachten (Prüfauftrag um Variante W erweitert), Pilot im Testnetz | extern + Aequitas | offen |
+| W6 | Satz „privat“ im Hauptnetz freischalten (⅔ der Prüfer, mindestens 5, 30 Tage Vorlauf), anfangs mit kleiner Höchstdeckung je Note | Prüfer | erst nach W4 und W5 |
+
 ## 6. Zugang, Geld, Begutachtung – andere Wege
 
 | Bedarf | Bisher | Andere Wege (Stand laut Quellen, vor Nutzung prüfen) |
