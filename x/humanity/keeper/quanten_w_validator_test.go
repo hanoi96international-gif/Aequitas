@@ -545,3 +545,48 @@ func TestQuantenWDienst_NichtsVorDerFinalitaet(t *testing.T) {
 		t.Fatal("die Karte der Sichtungen waechst ueber ihre Grenze")
 	}
 }
+
+// Drei Pruefungen, die in der Gegenprobe (Mutation) kein Test bemerkte:
+// der Auftrag fuer die Nummer eines anderen Validators, der volle Tresor und
+// der Takt vor dem Stichtag.
+func TestQuantenWDienst_NummerTresorStichtag(t *testing.T) {
+	q := neueQwDienste(t, 200)
+	w := q.w
+	// Ein gueltig unterschriebener Auftrag fuer Nummer 2 bei Validator 1:
+	// er wuerde fremde Anteile verwahren und unter seinem Schluessel fuer
+	// eine Nummer bestaetigen, die nicht seine ist.
+	if _, _, err := q.d[0].bestaetigen(q.anfrageBestaetigen(2)); err == nil {
+		t.Fatal("Validator 1 bestaetigt den Auftrag fuer Nummer 2")
+	}
+	if len(q.d[0].eintraege) != 0 {
+		t.Fatal("abgewiesen und trotzdem verwahrt")
+	}
+	// Voller Tresor: fail-closed, auch fuer einen sonst gueltigen Auftrag.
+	voll := q.d[1]
+	for i := 0; i < quantenWTresorHoechstens; i++ {
+		k := fmt.Sprintf("%064x", i+1)
+		voll.eintraege[k] = &quantenWTresorEintrag{K: k, Praeger: "x", Zeit: q.zeit}
+	}
+	if _, _, err := voll.bestaetigen(q.anfrageBestaetigen(2)); err == nil || !strings.Contains(err.Error(), "Tresor voll") {
+		t.Fatalf("voller Tresor nimmt noch an: %v", err)
+	}
+	for k := range voll.eintraege {
+		delete(voll.eintraege, k)
+	}
+
+	// Vor dem Stichtag tut der Takt nichts, auch wenn eine Anfrage wartet.
+	q.praegen(t)
+	q.zeit += 10
+	w.annehmen(w.anfrageTx(w.anna, 0, 16, "", q.zeit), q.zeit+1)
+	q.zeit += 2
+	quantenWAbOverride.Store(0) // die Konstante gilt: schlafend
+	q.takt()
+	if a := w.anfrage(w.cs); a == nil || a.Basen != nil {
+		t.Fatal("der Takt hat vor dem Stichtag Zufall eingereicht")
+	}
+	quantenWAbOverride.Store(qwT0 - 86400)
+	q.takt()
+	if a := w.anfrage(w.cs); a == nil || a.Basen == nil {
+		t.Fatal("nach dem Stichtag kein Zufall")
+	}
+}
