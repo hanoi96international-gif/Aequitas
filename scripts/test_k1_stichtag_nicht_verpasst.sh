@@ -7,8 +7,20 @@ REPO=$(jq -r '.bescheinigung.ab_unix' genesis.json)
 D=$(mktemp -d); trap 'kill $PID 2>/dev/null || true; rm -rf "$D"' EXIT
 mkdir -p "$D/api"
 PORT=$((20000 + RANDOM % 20000))
-(cd "$D" && python3 -m http.server "$PORT" --bind 127.0.0.1 >/dev/null 2>&1) & PID=$!
-sleep 1
+# Testserver starten und warten, bis er antwortet. Ein starres "sleep 1"
+# kippte auf ausgelasteten Runnern (Pruefung meldete "halt" statt "ok");
+# ein belegter Port nimmt einen anderen.
+for _versuch in 1 2 3 4 5; do
+  PORT=$((20000 + RANDOM % 20000))
+  (cd "$D" && exec python3 -m http.server "$PORT" --bind 127.0.0.1 >/dev/null 2>&1) & PID=$!
+  for _i in $(seq 1 150); do
+    curl -s -o /dev/null "http://127.0.0.1:$PORT/" && break 2
+    kill -0 "$PID" 2>/dev/null || break
+    sleep 0.1
+  done
+  kill "$PID" 2>/dev/null || true
+done
+curl -s -o /dev/null "http://127.0.0.1:$PORT/" || { echo "FEHLER: Testserver startet nicht"; exit 1; }
 lauf() { # live jetzt erwartung
   printf '{"bescheinigung_konsens":{"ab_unix":%s}}' "$1" > "$D/api/status"
   if bash .github/neustart/k1-stichtag-nicht-verpasst.sh "http://127.0.0.1:$PORT" "$2" >/dev/null 2>&1; then e=ok; else e=halt; fi

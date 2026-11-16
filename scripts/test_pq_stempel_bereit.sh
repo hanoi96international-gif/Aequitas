@@ -8,8 +8,19 @@ SKRIPT="$PWD/.github/neustart/pq-stempel-bereit.sh"
 D=$(mktemp -d); trap 'kill $PID 2>/dev/null || true; rm -rf "$D"' EXIT
 mkdir -p "$D/web/api" "$D/repo"
 PORT=$((20000 + RANDOM % 20000))
-(cd "$D/web" && python3 -m http.server "$PORT" --bind 127.0.0.1 >/dev/null 2>&1) & PID=$!
-sleep 1
+# Testserver starten und warten, bis er antwortet (ein starres "sleep 1"
+# kippte auf ausgelasteten Runnern); ein belegter Port nimmt einen anderen.
+for _versuch in 1 2 3 4 5; do
+  PORT=$((20000 + RANDOM % 20000))
+  (cd "$D/web" && exec python3 -m http.server "$PORT" --bind 127.0.0.1 >/dev/null 2>&1) & PID=$!
+  for _i in $(seq 1 150); do
+    curl -s -o /dev/null "http://127.0.0.1:$PORT/" && break 2
+    kill -0 "$PID" 2>/dev/null || break
+    sleep 0.1
+  done
+  kill "$PID" 2>/dev/null || true
+done
+curl -s -o /dev/null "http://127.0.0.1:$PORT/" || { echo "FEHLER: Testserver startet nicht"; exit 1; }
 E=0x00000000000000000000000000000000000000e1
 K=$(printf 'ab%.0s' $(seq 1 1952))
 gen() { # ab_hoehe [schluessel-adresse]
