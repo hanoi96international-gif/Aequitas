@@ -2,7 +2,7 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 16.11.2026, Sitzung „Aequitas fortsetzen“ (Auftrag des Betreibers: „Alles erledigen
+Stand: 16.11.2026 abends, Sitzung „Weiter“ (Auftrag des Betreibers: „Alles erledigen
 für dezentrales Quantengeld“).
 
 ## Arbeitsweise (vom Betreiber festgelegt)
@@ -11,11 +11,12 @@ für dezentrales Quantengeld“).
   Mergen ist vorab freigegeben.
 - Nie Geheimnisse im Chat erfragen (GitHub-Secrets oder Credential-Formular). Keine
   Impressum-Daten erfinden.
-- Push nur auf `claude/aequitas-fortsetzen-osrea1` (alle vier Repos). Nach einem
-  Squash-Merge:
-  1. `git checkout -B claude/aequitas-fortsetzen-osrea1 origin/main`
+- Push nur auf den Zweig, den die Sitzung vorgibt (alle vier Repos; zuletzt
+  `claude/weiter-8vzgu9`, davor `claude/aequitas-fortsetzen-osrea1`). Nach einem
+  Squash-Merge, `<zweig>` = der Zweig der Sitzung:
+  1. `git checkout -B <zweig> origin/main`
   2. committen
-  3. `git merge -s ours origin/claude/aequitas-fortsetzen-osrea1`
+  3. `git merge -s ours origin/<zweig>`
   4. normal pushen
 
   **Nie Force-Push**, auch nicht in Hintergrundjobs. Die App hat die Basis `aequitas-app`.
@@ -31,64 +32,53 @@ für dezentrales Quantengeld“).
 
 | Repo | PR | Inhalt | Nächster Schritt |
 |---|---|---|---|
-| Aequitas | #542 | Variante W schlafend in die Kette eingehängt (`quanten_w_kette.go`) und W5 (Prüfauftrag) | Sicherheitsprüfung als Kommentar posten, CI grün abwarten, squash-mergen |
+| Aequitas | #543 | Vier-Knoten-Test: zwei Ursachen der Unruhe behoben (#65) | CI grün abwarten (besonders `db-tests`), squash-mergen |
 
-Gemergt in dieser Sitzung: #540 (HEUTE.md, IBM-Läufe), #541 (W2b Teil 1: Regeln geschärft).
+Gemergt am 16.11.: #540 (HEUTE.md, IBM-Läufe), #541 (W2b Teil 1: Regeln geschärft),
+#542 (W2b Teil 2: Variante W schlafend in der Kette, `quanten_w_kette.go`, bis
+`quantenWAbUnix = MaxInt64`; W5: Prüfauftrag um Variante W erweitert). Einzelheiten zu
+W2b stehen im PR #542 und im Kopf von `x/humanity/keeper/quanten_w_kette.go`.
 
-## W2b Teil 2 — Stand
+## Unruhe im Vier-Knoten-Test (Aufgabe #65) — Korrektur in #543
 
-Neue Datei `x/humanity/keeper/quanten_w_kette.go`, schlafend bis `quantenWAbUnix = MaxInt64`.
+`TestVierKnoten_RealDB` kippte am 16.11. zweimal im Push-Lauf (`db-tests`), mit zwei
+verschiedenen Ursachen. Beide lagen im Test, nicht im Knoten; keine Prüfung wurde
+gelockert.
 
-**Transaktionsarten** (6):
+1. **Lauf von 3e0dec65** (`LeiterFaelltAusUndZiehtNach`, 90 s „keine Einigkeit“): Holt der
+   alte Leiter seinen Zustand per Snapshot, während der Spender zwei Geschwister-Spitzen
+   auf der Snapshot-Höhe führt, setzt er nur die kanonische als Spitze (block.go, so
+   gewollt). Wurzel und Konten sind gleich, die Spitzen erst nach dem nächsten Block – und
+   in der Ruhe des Tests erzeugt niemand. Korrektur: Steht alles außer den Spitzen 5 s
+   gleich, erzeugt ein Knoten genau einen Block; danach gilt die volle Prüfung
+   unverändert. `leiterAusfall` stellt die Lage jetzt bei jedem Lauf her
+   (`zweiGeschwisterSpitzen`). Gegenprobe: ohne die Zusammenführung kippt der Lauf lokal
+   genau wie in der CI. Erneutes Anbieten der Spitzen (Idee der Vorsitzung) hilft nicht:
+   der Knoten kennt den Block bereits.
+2. **Lauf von d75ba6ca** (`TrustedSeedsFromSync`, „Schwelle ohne Beleg nicht als abgewehrt
+   gezaehlt“): Die Replay-Mauer zählt Abweisungen in Folge und löscht die Zählung bei jedem
+   erfolgreich nachgespielten Block. Die Ruhe begann erst nach dem Bau des Angriffsblocks;
+   ein spät ankommender ehrlicher Block setzte die Folge zurück. Korrektur: Ruhe vor dem
+   Bau, `warteStill`, gewartet wird auf die beiden Ereignisse selbst. Diese Ursache ist aus
+   Code und CI-Meldung abgeleitet, lokal nicht nachgestellt.
 
-| Art | Wer | Wirkung |
-|---|---|---|
-| `quanten_w_praegen` | Wallet, unterschrieben | Deckung → W-Topf |
-| `quanten_w_anfrage` | Wallet, unterschrieben | Pfand → Pfand-Topf; das Pfand rechnet jeder Knoten selbst aus dem Wert der Note |
-| `quanten_w_zufall` | ohne Wallet | Werte der Hash-Ketten |
-| `quanten_w_antwort` | Wallet, unterschrieben | die Bits |
-| `quanten_w_offenlegen` | ohne Wallet | Anteile und Pfade; Urteil und Buchungen rechnet jeder Knoten |
-| `quanten_w_frist` | ohne Wallet | beendet eine Anfrage nach ihrer Frist |
+Dazu: `spitzenBefund` (wer kennt welche Spitze) bei Uneinigkeit, und `db-tests` druckt bei
+Rot die letzten Testmeldungen.
 
-**Validatoren:** Alle bestätigen per EIP-191 (Wurzel, Anker, Prägezeit). Jeder ist im
-Validator-Register an einen Menschen gebunden, alle an **verschiedene** Menschen.
+Lokal laufen lassen: PostgreSQL 16 liegt im Container (`pg_ctlcluster 16 main start`,
+Passwort per `ALTER USER postgres PASSWORD 'postgres'`), dann
 
-**Töpfe:**
-- `quantenWTopfAddr`: Deckung, Anteilsmodell, Umlaufabgabe über `istNotenTopf`.
-- `quantenWPfandAddr`: offene Pfänder, ohne Abgabe.
-- Was verfällt, geht an `ubiPoolAddr`.
-
-**Register und Block:**
-- Register in chain_config unter `quanten_w` (JSON), höchstens 64 lebende Noten; tote
-  bleiben gemerkt, solange ihre Bestätigung gelten könnte.
-- StateRoot-Teil `|quantenw:` + Hash, nur wenn das Register nicht leer ist.
-- Der Block nennt die gerechneten Felder (Anteile, Pfand, PfandAn, Wert, WertAn, Urteil),
-  jeder Knoten rechnet nach.
-- **BuchAt** wie bei Überweisungen: Der Erzeuger stempelt die Annahmezeit, jeder Knoten
-  rechnet mit ihr, wenn sie zum Block passt (`quantenWBuchZeit`: ≤ 60 s nach,
-  ≤ 7 Tage + 60 s vor dem Block). Tote bleiben entsprechend länger gemerkt
-  (`quantenWToteBehalten`).
-
-**Eingehängt:**
-- block.go: `bekannteTxArt`, Replay-Fall, `quantenWFeldErlaubt`
-- block_tauglich.go
-- state.go: `blockTouchedAddresses`, `isTokenomicsPoolAddress`, StateRoot,
-  Rückroll-Snapshot, Laden beim Start
-- `registerSicherung`, `umlaufArt`/`umlaufZahlt`, `pruefeTopfNurMitNote`,
-  `replay_parallel`
-- snapshot.go, checkpoint_tx.go
-- api.go: `POST /api/quanten-w/<art>`, `GET /api/quanten-w/note?k=`
-- `kein_entzug_test.go` (Einordnung der Arten)
-
-**Tests:** `quanten_w_kette_test.go` mit 11 Tests. Alle Keeper-Tests grün; 19 Mutationen, alle rot.
+```
+AEQUITAS_TPS_BENCH=1 DATABASE_URL="postgres://postgres:postgres@localhost:5432/aeq_ci_realdb?sslmode=disable" \
+  go test ./x/humanity/keeper/ -run 'TestVierKnoten_RealDB$' -v -timeout 15m
+```
 
 ## Danach (Reihenfolge)
 
-1. **W5 (Aufgabe #64):** `docs/QUANTENGELD_PRUEFAUFTRAG.md` um Variante W erweitert
-   (liegt im W2b-Teil-2-PR). Danach: Gutachter suchen (Anschreiben wie `ANSCHREIBEN.md`).
-2. **Flake (#65):** `TestVierKnoten_RealDB` → „Knoten 3: Schwelle ohne Beleg nicht als
-   abgewehrt gezaehlt“ (vier_knoten_realdb_test.go:150). Rot im Push-Lauf von d75ba6ca, grün
-   im PR-Lauf. Ursache finden, Test robust machen, nicht abschwächen.
+1. **W5 (Aufgabe #64):** `docs/QUANTENGELD_PRUEFAUFTRAG.md` ist um Variante W erweitert
+   (#542). Offen: Gutachter suchen (Anschreiben wie `ANSCHREIBEN.md`).
+2. **Flake (#65):** Korrektur im PR (Abschnitt oben). Nach dem Merge ein paar Push-Läufe
+   beobachten; kippt `db-tests` wieder, stehen die Meldungen jetzt am Ende des Protokolls.
 3. **Ionenfalle:** Konto des Betreibers nötig (Quantinuum Nexus oder die Alternativen in
    ANALYSE.md), als GitHub-Secret `QUANTINUUM_TOKEN`. Erst fragen, wenn der Betreiber so weit
    ist.
