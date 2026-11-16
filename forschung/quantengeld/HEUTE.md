@@ -212,6 +212,40 @@ Stellen (`wiesner_parameter.py`, ANALYSE.md „Befund“). Der Ablauf der Vorfü
 richtig; die Prüfgrößen der Kettenseite müssen vor jeder Freischaltung neu gesetzt
 werden.
 
+### 3.3b Quanten-Token ohne Speicher (Variante S, nachgetragen 16.11.2026 abends)
+
+Variante S ist der Teil, der **heute ohne Quantenspeicher** funktioniert (ANALYSE.md 5b,
+`s_kette.py`).
+
+**Ablauf** (`hardware_ibm.py --s-token`, im Workflow `wiesner` = `s-token`):
+1. **Ausgabe:** 1.680 Qubits in zufälligen BB84-Zuständen, als 105 Schaltkreise zu 16
+   Qubits mit je einem Schuss.
+2. **Sofort messen:** Die Nutzerin misst in zufälligen Basen. Sie hält danach nur
+   Klartext; nichts wird gespeichert.
+3. **Bindung und Wahl auf der Kette:** die maskierten Basen d und die Wahl c.
+4. **Vorlage ohne Netz:** an der gewählten Annahmestelle, die nur ihre geheime
+   Stichprobe von 840 Stellen kennt.
+5. **Angriff:** Derselbe Token wird an der anderen Stelle vorgelegt.
+
+**Ergebnisse:**
+- **Ideal:** Fehler 0 %. Die gewählte Stelle nimmt an (416 Treffer, 0 Fehler), die
+  Doppelvorlage wird abgewiesen (409 Treffer, 205 Fehler).
+- **Rauschmodell `ibm_marrakesh`:** Fehler 0,50 %. Die gewählte Stelle nimmt an
+  (395 Treffer, 2 Fehler, Toleranz 4 %), die Doppelvorlage wird abgewiesen (437 Treffer,
+  218 Fehler).
+- **Auf der echten Maschine:** Workflow, Modus `ibm`, `wiesner` = `s-token`. Das braucht
+  die Freigabe von `quantenhardware`; die Kosten liegen bei Sekunden, weil es keine
+  Wartezeit und keine Rückkopplung gibt.
+
+**Was das ist:** ein Quanten-Token mit sicheren Prüfgrößen. Ein Fälscher kommt mit
+höchstens 2⁻⁴⁰ an zwei Stellen durch (`wiesner_parameter.py`).
+
+**Was es nicht ist:**
+- **Kein Bargeld von Hand zu Hand.**
+- **Noch nicht unfälschbar:** In der Vorführung laufen Ausgabe und Messen im selben
+  Schaltkreis beim Betreiber der Maschine. Unfälschbar wird es erst, wenn die Nutzerin
+  selbst misst (QKD-Empfänger) und die Ausgabe über die Validatoren läuft.
+
 ### 3.4 Bargeld-Verhalten ohne Quanten (Offline-Bargeld)
 
 Was Menschen sich von Quantengeld wünschen, ist meist offline zu zahlen, wie mit

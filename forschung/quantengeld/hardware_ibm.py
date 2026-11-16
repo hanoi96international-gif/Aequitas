@@ -38,6 +38,9 @@ der Kette auf Anteilen laufen; --qubits N je Note, Standard 6, hoechstens 16),
 --wiesner --fern (W3, Praegen ohne Vertrauen: je Stelle ein verschraenktes
 Paar, der Validator misst seine Haelfte in eigener Zufallsbasis; das Geheimnis
 kennt nur er, nicht die Praegestelle; wiesner_hardware.note_fern),
+--s-token [--k K] (Variante S, s_kette.py: 2K Qubits, sofort gemessen, kein
+Speicher; Vorlage an der gewaehlten Annahmestelle und als Angriff an der
+anderen; Standard K = 840, hoechstens 2048),
 --wiesner --kette (W4 ohne Partner: der ganze Ablauf mit der Kettenseite
 wiesner_kette.KetteW -- Praegen auf der Kette, Bezahlen per Teleportation,
 Einloesen beim Empfaenger: Aufforderung aus dem Block, EIN Schuss als
@@ -70,6 +73,10 @@ _spec_w.loader.exec_module(wh)
 _spec_k = importlib.util.spec_from_file_location("wiesner_kette", os.path.join(_hier, "wiesner_kette.py"))
 wk = importlib.util.module_from_spec(_spec_k)
 _spec_k.loader.exec_module(wk)
+_spec_s = importlib.util.spec_from_file_location("s_kette", os.path.join(os.path.dirname(os.path.abspath(__file__)), "s_kette.py"))
+sk = importlib.util.module_from_spec(_spec_s)
+_spec_s.loader.exec_module(sk)
+MAX_S_STELLEN = 2048     # k je Annahmestelle; Token = 2k Qubits in Schaltkreisen zu 16
 
 MAX_LAEUFE = 64      # Schaltkreise je Fall (Kosten auf echter Hardware!)
 MAX_SCHUESSE = 4000
@@ -453,6 +460,63 @@ def wiesner_kette_lauf(schuesse: int, rng: random.Random) -> None:
                        "empfaenger_aeq": kette.konten["empfaenger"] / 1e6, "log": log}, fh, indent=2)
 
 
+def s_token_lauf(rng: random.Random) -> None:
+    """Variante S auf echter Hardware (ANALYSE.md 5b, s_kette.py): Ausgabe von
+    2k Qubits in zufaelligen BB84-Zustaenden, die Nutzerin misst SOFORT in
+    zufaelligen Basen (kein Speicher), dann Bindung und Wahl auf der Kette,
+    Vorlage an der gewaehlten Annahmestelle (ohne Netz) und -- als Angriff --
+    derselbe Token an der anderen Stelle."""
+    k = zahl("--k", sk.K_STELLE, MAX_S_STELLEN)
+    n = 2 * k
+    m = wh.MAX_QUBITS_NOTE
+    u = [rng.randrange(2) for _ in range(n)]
+    t = [rng.randrange(2) for _ in range(n)]
+    y = [rng.randrange(2) for _ in range(n)]
+    kreise = [wh.note(u[i:i + m], t[i:i + m], y[i:i + m], warten_us=0) for i in range(0, n, m)]
+    backend, sampler, wo = backend_und_sampler()
+    qcs = [nach_qiskit(s) for s in kreise]
+    if backend is not None:
+        qcs = uebersetzen(backend, qcs)
+    job = sampler.run(qcs, shots=1)          # EIN Schuss je Schaltkreis: jede Stelle einmal gemessen
+    job_id = job.job_id() if hasattr(job, "job_id") else ""
+    x: list[int] = []
+    for s, r in zip(kreise, job.result()):
+        x += wh.antworten(s, r.data.c.get_bitstrings()[0])
+    K = os.urandom(32).hex()
+    kette = sk.KetteS()
+    kette.ausgeben(K, n, "anna")
+    proben = sk.stichproben(n, 2, k, rng)
+    stellen = [sk.Annahmestelle(b, K, proben[b], u, t) for b in (0, 1)]
+    z, b = rng.randrange(2), rng.randrange(2)
+    sk.festlegen(kette, K, stellen, [yk ^ z for yk in y], b ^ z)
+    echt = stellen[b].pruefen(K, x)
+    doppelt = stellen[1 - b].pruefen(K, x)
+    m_b, m_a = stellen[b].meldungen[-1], stellen[1 - b].meldungen[-1]
+    passend = [i for i in range(n) if y[i] == u[i]]
+    fehlerrate = sum(x[i] != t[i] for i in passend) / max(1, len(passend))
+    wort = {True: "ANGENOMMEN", False: "abgewiesen", None: "unentschieden"}
+    zeilen = [f"## Quanten-Token ohne Speicher (Variante S) auf {wo}", "",
+              f"{n} Qubits in zufaelligen BB84-Zustaenden, sofort gemessen ({len(kreise)} Schaltkreise zu {m}, "
+              f"je ein Schuss" + (f", Job {job_id}" if job_id else "") + "). Toleranz "
+              f"{sk.TOL_PROZENT} %, je Annahmestelle eine geheime Stichprobe von {k} Stellen.", "",
+              f"- Fehlerrate je passender Basis ueber alle Stellen: {fehlerrate:.2%}",
+              f"- Gewaehlte Stelle {b}: {m_b['treffer']} Treffer, {m_b['fehler']} Fehler -> {wort[echt]}",
+              f"- Derselbe Token an Stelle {1 - b} (Doppelvorlage): {m_a['treffer']} Treffer, {m_a['fehler']} Fehler -> {wort[doppelt]}",
+              "", "Vorfuehrung: Ausgabe und Messen laufen im selben Schaltkreis beim Betreiber der Maschine; "
+              "unfaelschbar wird es erst, wenn die Nutzerin selbst misst (QKD-Empfaenger)."]
+    text = "\n".join(zeilen)
+    print(text)
+    if os.environ.get("GITHUB_STEP_SUMMARY"):
+        with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as fh:
+            fh.write(text + "\n")
+    if "--json" in sys.argv:
+        with open(sys.argv[sys.argv.index("--json") + 1], "w") as fh:
+            json.dump({"wo": wo, "job": job_id, "n": n, "k": k, "tol_prozent": sk.TOL_PROZENT,
+                       "fehlerrate": fehlerrate, "stelle": b, "urteil": echt, "treffer": m_b["treffer"],
+                       "fehler": m_b["fehler"], "doppelvorlage": doppelt, "doppel_treffer": m_a["treffer"],
+                       "doppel_fehler": m_a["fehler"]}, fh, indent=2)
+
+
 def main() -> None:
     if "--selbsttest" in sys.argv:
         selbsttest()
@@ -462,6 +526,9 @@ def main() -> None:
     T = zahl("--tests", 3, MAX_TESTS)
     n = 3
     rng = random.Random(int.from_bytes(os.urandom(8), "big"))
+    if "--s-token" in sys.argv:
+        s_token_lauf(rng)
+        return
     if "--wiesner" in sys.argv:
         if "--kette" in sys.argv:
             wiesner_kette_lauf(schuesse, rng)
