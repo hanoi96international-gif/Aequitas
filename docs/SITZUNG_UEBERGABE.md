@@ -53,9 +53,29 @@ steht in `forschung/quantengeld/OFFEN.md`.
 - **S-Token auf echter IBM-Hardware** (Lauf 43927782462): 1.680 Qubits, 0,46 % Fehler,
   angenommen; Doppelvorlage abgewiesen.
 
-**Arbeit einer anderen Sitzung („Weiter“):** Ihr eigener Validator-Dienst war bis
-19:00 UTC nicht gepusht. Der Dienst aus #547 deckt ihn ab. Wird er später doch gepusht,
-erst vergleichen, dann zusammenführen; nicht doppelt bauen.
+**Zusammengeführt mit der Sitzung „Weiter“ (16.11. ~19:45 UTC, PR siehe „Offene PRs“):**
+Deren eigener Validator-Dienst liegt nur zum Nachlesen im Zweig `claude/weiter-8vzgu9`
+(Commit 64861990, nicht gemergt). Der Dienst aus #547 deckt ihn ab. Übernommen wurde nur,
+was zusätzlich war:
+- **Nichts vor der Finalität** (`reif` in `quanten_w_validator.go`): Zufall erst, wenn die
+  Anfrage final ist, Anteile erst, wenn die Antwort final ist (gesehen bei DAG-Höhe h,
+  finalisierter Checkpoint ≥ h). Vorher reichte „die Antwort steht im eigenen Zustand“.
+  `StarteQuantenWDienst` bekommt dafür die DAG-Höhe.
+- **Ende-zu-Ende-Test mit vier Knoten** (`TestVierKnotenQuantenW_RealDB`, läuft in
+  `db-tests`): Präger und Halter über echtes HTTP, alles Übrige tun die Dienste.
+- **Gegenprobe:** 17 Mutationen am Dienst (Ergebnis im PR).
+
+Nicht übernommen, als Beobachtung für später:
+- Der Auftrag des Prägers (`quantenWAuftragNachricht`) bindet die Wurzel, aber nicht die
+  Anteile. Wer einen Auftrag auf dem Weg abfängt, könnte ihn mit anderen Anteilen zuerst
+  einreichen; die Note wäre dann unprüfbar und K belegt. Abhilfe: Hash der Anteile in die
+  Nachricht.
+- `bestaetigen` ist nicht wiederholbar („schon bestaetigt“). Geht die Antwort verloren,
+  braucht der Präger ein neues K.
+- Alle Validatoren reichen jeden Teil der Offenlegung gleichzeitig ein (keine Staffel);
+  drei von vier Einreichungen werden abgewiesen und zählen gegen die Burst-Grenze.
+- Bei 3 von 4 Validatoren verlangt die Tabelle k_note = 5200, das sind 82 Teile. Mit
+  einem Teil je Takt (5 s) dauert die Offenlegung rund 7 Minuten; die Frist ist 30.
 
 **Nächste Schritte:**
 1. ~~S2a und S2b Teil 1~~ – gemergt (#547).
@@ -78,9 +98,9 @@ erst vergleichen, dann zusammenführen; nicht doppelt bauen.
      Nach `FEHL_MAX` falschen Vorlagen ist der Token tot, der Wert geht ans
      Grundeinkommen.
    - **Danach:** eigene Sicherheitsprüfung, Missbrauchstests, Mutation.
-3. **W:** mehrstufige Prüfung; Fehlerkorrektur messen; Ende-zu-Ende-Test mit vier
-   Knoten für den Dienst; Peer-Liste aus dem Validator-Register; Register als Tabelle
-   (vor W6).
+3. **W:** mehrstufige Prüfung; Fehlerkorrektur messen; ~~Ende-zu-Ende-Test mit vier
+   Knoten für den Dienst~~ (erledigt, siehe oben); Peer-Liste aus dem Validator-Register;
+   Register als Tabelle (vor W6); die vier Beobachtungen oben.
 4. **App:** W- und S-Anzeige.
 5. **Ionenfalle** (Konto des Betreibers), Vorlage 4 abschicken (Betreiber).
 
