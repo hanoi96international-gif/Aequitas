@@ -11,11 +11,14 @@ package keeper
 //
 // OFFENLEGEN STATT GEMEINSAM RECHNEN: beim Praegen steht je Stelle nur eine
 // gesalzene Pruefsumme auf der Kette (Merkle-Wurzel). Eine Pruefung: Anfrage
-// (Pfand) -> der naechste Block zieht Stellen und Basen aus einem Hash, den
-// beim Absenden niemand kannte; ab da sind die Stellen verbraucht -> Antwort
-// des Anfragenden -> Offenlegen von t Anteilen je Stelle. Jeder Knoten
-// setzt zusammen, prueft Pruefsumme und Pfad und urteilt selbst; ein falscher
-// Anteil faellt an der Pruefsumme auf. Kein Knoten glaubt einem Validator.
+// (Pfand) -> jeder Validator der Note legt den naechsten Wert seiner
+// Hash-Kette offen (Anker beim Praegen bestaetigt); sind alle da, folgen
+// Stellen und Basen, ab da sind die Stellen verbraucht -> Antwort des
+// Anfragenden -> Offenlegen von t Anteilen je Stelle. Jeder Knoten setzt
+// zusammen, prueft Pruefsumme und Pfad und urteilt selbst; ein falscher
+// Anteil faellt an der Pruefsumme auf, ein falscher Zufall an der
+// Hash-Kette. Kein Knoten glaubt einem Validator, und kein Erzeuger kann
+// die Aufforderung steuern (der Blockhash der ersten Fassung konnte er).
 //
 // Hier stehen nur reine Funktionen und das Register mit seinen Uebergaengen.
 // Unterschriften (Anfrage, Antwort, Bestaetigung der Validatoren) prueft die
@@ -28,31 +31,42 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"math"
 	"math/big"
 	"sort"
 	"strconv"
+	"strings"
 )
 
 const (
-	quantenWNMax         = 2048
-	quantenWKMin         = 8
-	quantenWKMax         = 64
-	quantenWMinTreffer   = 4
-	quantenWFehlMax      = 3
-	quantenWFristAntwort = 10 // Bloecke
-	quantenWFristOffen   = 20 // Bloecke nach der Antwort
-	quantenWTMax         = 16
-	quantenWVMax         = 64
-	quantenWSalzBits     = 124
+	quantenWNMax       = 2048
+	quantenWKMin       = 8
+	quantenWKMax       = 64
+	quantenWMinTreffer = 4
+	quantenWFehlMax    = 3
+	quantenWTMax       = 16
+	// quantenWZufallL: Laenge der Hash-Kette je Validator = hoechstens so
+	// viele Anfragen je Note (quantenWNMax / quantenWKMin).
+	quantenWZufallL  = 256
+	quantenWVMax     = 64
+	quantenWSalzBits = 124
 	// Toleranz 15 %: Fehler <= floor(15 * Treffer / 100) -- ganzzahlig,
 	// damit jeder Knoten genau gleich rundet.
 	quantenWTolProzent = 15
 )
 
+// Fristen in Sekunden Blockzeit.
+const (
+	quantenWFristAntwort int64 = 600  // nach dem vollstaendigen Zufall
+	quantenWFristOffen   int64 = 1800 // nach der Antwort
+)
+
 var (
 	quantenWDomPos  = []byte("aequitas-quanten-w-pos-v1|chain:1926|")
 	quantenWDomAuf  = []byte("aequitas-quanten-w-aufforderung-v1|chain:1926|")
-	quantenWDomBest = "aequitas-quanten-w-anteile-v1|chain:1926|"
+	quantenWDomBest = "aequitas-quanten-w-anteile-v2|chain:1926|"
+	quantenWDomZK   = []byte("aequitas-quanten-w-zufallskette-v1|")
+	quantenWDomZuf  = []byte("aequitas-quanten-w-zufall-v1|chain:1926|")
 	// quantenWP: 2^127 - 1 (Mersenne-Primzahl), Koerper der Anteile.
 	quantenWP = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 127), big.NewInt(1))
 )
@@ -171,14 +185,60 @@ func quantenWZerlegen(v *big.Int) (basis, bit int) {
 	return int(v.Bit(0)), int(v.Bit(1))
 }
 
+// quantenWKetteVor: m Schritte der Hash-Kette eines Validators. Fuer die
+// Anfrage j legt er z(j) = H^(L-1-j)(Geheimnis) offen; H^(j+1)(z(j)) ist der
+// Anker, H^(j-m)(z(j)) = z(m).
+func quantenWKetteVor(x [32]byte, m int) [32]byte {
+	for ; m > 0; m-- {
+		x = quantenWHash(quantenWDomZK, x[:])
+	}
+	return x
+}
+
+// quantenWZufallSaat: Saat der Aufforderung j aus den Werten ALLER
+// Validatoren der Note, in ihrer Reihenfolge.
+func quantenWZufallSaat(K string, j int, werte [][32]byte) [32]byte {
+	teile := [][]byte{quantenWDomZuf, []byte(K), []byte("|"), []byte(strconv.Itoa(j)), []byte("|")}
+	for i := range werte {
+		teile = append(teile, werte[i][:])
+	}
+	return quantenWHash(teile...)
+}
+
+// quantenWPfandFuer: max(quantenWPfand, ceil(Wert * k / n)) -- wer Stellen
+// verbraucht, setzt so viel ein, wie diese Stellen vom Wert tragen.
+func quantenWPfandFuer(wert int64, k, n int) int64 {
+	if wert <= 0 || k <= 0 || n <= 0 {
+		return quantenWPfand
+	}
+	z := new(big.Int).Mul(big.NewInt(wert), big.NewInt(int64(k)))
+	z.Add(z, big.NewInt(int64(n-1)))
+	z.Quo(z, big.NewInt(int64(n)))
+	if !z.IsInt64() {
+		return math.MaxInt64 // kein Konto deckt das: fail-closed
+	}
+	if v := z.Int64(); v > quantenWPfand {
+		return v
+	}
+	return quantenWPfand
+}
+
+// quantenWReserve: so viele Stellen lassen Pruefungen fuer das Einloesen frei.
+func quantenWReserve(n int) int {
+	if n < quantenWKMax {
+		return n
+	}
+	return quantenWKMax
+}
+
 // quantenWAufforderung: k Stellen aus frei und je eine Basis, deterministisch
-// aus K, Anfrage und Blockhash (SHA-256-Strom, Verwerfen gegen Verzerrung,
-// Fisher-Yates -- genau wie die Spezifikation).
-func quantenWAufforderung(K, anfrageID string, blockhash []byte, frei []int, k int) ([]int, []int) {
+// aus K, Anfrage und Saat (quantenWZufallSaat; SHA-256-Strom, Verwerfen gegen
+// Verzerrung, Fisher-Yates -- genau wie die Spezifikation).
+func quantenWAufforderung(K, anfrageID string, saat []byte, frei []int, k int) ([]int, []int) {
 	if k < 0 || k > len(frei) {
 		return nil, nil // Aufrufer prueft und weist ab (fail-closed)
 	}
-	strom := quantenWHash(quantenWDomAuf, []byte(K), []byte("|"), []byte(anfrageID), []byte("|"), blockhash)
+	strom := quantenWHash(quantenWDomAuf, []byte(K), []byte("|"), []byte(anfrageID), []byte("|"), saat)
 	var zaehler uint64
 	var puffer []byte
 	zahl := func(grenze uint64) uint64 {
@@ -285,15 +345,12 @@ func quantenWAuswerten(K string, n, t, v int, wurzel [32]byte, stellen, basen, a
 	return treffer, fehler, nil
 }
 
-// quantenWBestaetigungNachricht: was die Validatoren beim Praegen bestaetigen
-// (sie halten die Anteile zu genau dieser Wurzel).
-func quantenWBestaetigungNachricht(K string, wurzel [32]byte, n, t int, validatoren []string) string {
-	s := fmt.Sprintf("%s%s|%x|%d|%d|", quantenWDomBest, K, wurzel, n, t)
-	for i, v := range validatoren {
-		if i > 0 {
-			s += ","
-		}
-		s += v
-	}
-	return s
+// quantenWBestaetigungNachricht: was Validator x (1-basiert) beim Praegen
+// bestaetigt -- er haelt die Anteile zu genau dieser Wurzel, das ist der
+// Anker seiner Hash-Kette, und das ist die Praegezeit. Die Zeit macht alte
+// Bestaetigungen nach dem Praegefenster wertlos: eine tote Note laesst sich
+// nicht mit denselben Ankern neu praegen (ihre Hash-Ketten waeren teils
+// schon offen, der Zufall vorhersagbar).
+func quantenWBestaetigungNachricht(K string, wurzel [32]byte, n, t int, validatoren []string, x int, anker [32]byte, zeit int64) string {
+	return fmt.Sprintf("%s%s|%x|%d|%d|%s|%d|%x|%d", quantenWDomBest, K, wurzel, n, t, strings.Join(validatoren, ","), x, anker, zeit)
 }

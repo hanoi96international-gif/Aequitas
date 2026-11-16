@@ -389,23 +389,24 @@ def wiesner_kette_lauf(schuesse: int, rng: random.Random) -> None:
     kette = wk.KetteW(VAL)
     sk_p, sk_e = os.urandom(16), os.urandom(16)
     kette.konto("praeger", 50_000_000, sk_p)
-    kette.konto("empfaenger", wk.PFAND, sk_e)
+    k = min(n, wk.K_MAX)  # Einloesen: k fest, nicht waehlbar
+    pfand = wk.pfand_fuer(10_000_000, k, n)
+    kette.konto("empfaenger", pfand, sk_e)
     summe0 = kette.summe()
     log = []
     basen = [rng.randrange(2) for _ in range(n)]
     bits = [rng.randrange(2) for _ in range(n)]
     K = os.urandom(32).hex()
     pr = wk.Praegung(K, basen, bits, t, vliste, rng)
-    text = f"{wk.DOM_BEST}{K}|{pr.wurzel.hex()}|{n}|{t}|{','.join(vliste)}"
-    kette.praegen("praeger", K, n, pr.wurzel, 10_000_000, vliste, t, {v: wk.KetteW.sig(VAL[v], text) for v in vliste})
-    log.append(f"Block {kette.hoehe}: Note {K[:12]}… gepraegt -- {n} Stellen, Deckung 10 AEQ, 5 Validatoren, Schwelle {t}, Merkle-Wurzel {pr.wurzel.hex()[:12]}…")
-    kette.block()
-    k = min(n, wk.K_MAX)
+    kette.praegen("praeger", K, n, pr.wurzel, 10_000_000, vliste, t, pr.anker, pr.bestaetigungen(VAL))
+    log.append(f"t={kette.zeit}s: Note {K[:12]}… gepraegt -- {n} Stellen, Deckung 10 AEQ, 5 Validatoren (je mit Anker ihrer Hash-Kette), Schwelle {t}, Merkle-Wurzel {pr.wurzel.hex()[:12]}…")
+    kette.warten()
     kette.anfrage("empfaenger", K, k, wk.KetteW.sig(sk_e, f"anfrage|{K}|{k}|empfaenger|0"), "empfaenger")
-    log.append(f"Block {kette.hoehe}: Einloesen angefragt (Empfaenger, Pfand 1 AEQ)")
-    kette.block()
-    st, ch = kette.aufforderung_von(K)  # gezogen erst im naechsten Block
-    log.append(f"Block {kette.hoehe}: Aufforderung aus dem Blockhash: {k} Stellen, Basen {''.join('ZX'[b] for b in ch)}")
+    log.append(f"t={kette.zeit}s: Einloesen angefragt (Empfaenger, Pfand {pfand / 1e6:g} AEQ = Wert der {k} gepruefte Stellen)")
+    kette.warten()
+    kette.zufall(K, 0, pr.zufall(0))
+    st, ch = kette.aufforderung_von(K)  # erst, wenn alle Validatoren ihre Hash-Kette offengelegt haben
+    log.append(f"t={kette.zeit}s: Aufforderung aus den Hash-Ketten der 5 Validatoren: {k} Stellen, Basen {''.join('ZX'[b] for b in ch)}")
     aufforderung = [0] * n
     for i, beta in zip(st, ch):
         aufforderung[i] = beta
@@ -421,13 +422,13 @@ def wiesner_kette_lauf(schuesse: int, rng: random.Random) -> None:
     gemessen = wh.antworten(s, erster)
     antwort = [gemessen[i] for i in st]
     kette.antwort("empfaenger", K, antwort, wk.KetteW.sig(sk_e, f"antwort|{K}|0|{antwort}"))
-    log.append(f"Block {kette.hoehe}: Antwort des Empfaengers -- Messwerte vom Quantenrechner ({wo}" + (f", Job {job_id}" if job_id else "") + ")")
-    kette.block()
+    log.append(f"t={kette.zeit}s: Antwort des Empfaengers -- Messwerte vom Quantenrechner ({wo}" + (f", Job {job_id}" if job_id else "") + ")")
+    kette.warten()
     urteil = kette.offenlegen(K, pr.offenlegung(st, [1, 3, 5]))
     treffer = sum(basen[i] == b for i, b in zip(st, ch))
     fehler = sum(basen[i] == b and o != bits[i] for i, b, o in zip(st, ch, antwort))
-    wort = {True: "ECHT -- 10 AEQ an den Empfaenger", False: "abgewiesen -- Wert ans Grundeinkommen", None: "unentschieden -- Pfand zurueck, Note bleibt"}[urteil]
-    log.append(f"Block {kette.hoehe}: Validatoren 1, 3, 5 legen ihre Anteile offen; jeder Knoten rechnet: {treffer} Treffer, {fehler} Fehler -> {wort}")
+    wort = {True: "ECHT -- 10 AEQ an den Empfaenger", False: "abgewiesen -- Pfand ans Grundeinkommen, Note bleibt", None: "unentschieden -- Pfand zurueck, Note bleibt"}[urteil]
+    log.append(f"t={kette.zeit}s: Validatoren 1, 3, 5 legen ihre Anteile offen; jeder Knoten rechnet: {treffer} Treffer, {fehler} Fehler -> {wort}")
     stat = wh.auswerten(s, r.data.c.get_counts())
     zeilen = [f"## Quanten-Note von Anfang bis Ende auf {wo}", "",
               f"Note aus {n} Qubits (BB84), {warten:g} us gehalten" + (", per Teleportation bezahlt" if bez else "")

@@ -19,6 +19,13 @@ When writing or modifying tests, configuring `hardhat.config.ts`, or interacting
 - Hardhat 3 — https://hardhat.org/llms.txt
 - viem — https://viem.sh/llms.txt
 
+## Uebergabe zwischen Sitzungen
+
+Zu Beginn jeder Sitzung `docs/SITZUNG_UEBERGABE.md` lesen und dort weitermachen. Die
+Liste nach jedem Merge und jedem groesseren Schritt aktualisieren und committen/pushen,
+damit ein Abbruch am Nutzungslimit nichts verliert (offene PRs, lokale Arbeit, naechste
+Schritte, Arbeitsweise).
+
 ## Sicherheit — Launch-Massstab (gilt fuer jede Aenderung)
 
 Die Beta laeuft unter Launch-Bedingungen: echte Nutzer, echte Werte. Sicherheit

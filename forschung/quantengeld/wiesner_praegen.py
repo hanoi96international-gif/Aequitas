@@ -85,7 +85,7 @@ def faelschen_wahrscheinlichkeit(f: float, k: int, toleranz: float = wk.TOLERANZ
     return sum(w for (t, e), w in dp.items() if t >= min_treffer and e <= int(toleranz * t))
 
 
-def ende_zu_ende(rng: random.Random, n: int = 32, k: int = 24, bezahlen: bool = True,
+def ende_zu_ende(rng: random.Random, n: int = 32, bezahlen: bool = True,
                  faelscher: bool = False) -> dict:
     """Der ganze Ablauf, Quantenseite exakt simuliert. faelscher: der
     Einloesende hat keine Note, er raet."""
@@ -93,7 +93,11 @@ def ende_zu_ende(rng: random.Random, n: int = 32, k: int = 24, bezahlen: bool = 
     vliste, t = list(VAL), 3
     kette = wk.KetteW(VAL)
     kette.konto("praeger", 50_000_000, b"p" * 16)
-    kette.konto("empfaenger", wk.PFAND, b"e" * 16)  # genau das Pfand der Anfrage
+    # Einloesen prueft k = min(K_MAX, n) Stellen, nicht waehlbar; das Pfand
+    # traegt den Wert dieser Stellen (bei n <= K_MAX der ganze Wert).
+    k = min(wk.K_MAX, n)
+    pfand = wk.pfand_fuer(10_000_000, k, n)
+    kette.konto("empfaenger", pfand, b"e" * 16)  # genau das Pfand der Anfrage
     summe0 = kette.summe()
 
     # 1. Fern-Praeparation: jeder Validator misst seine Stellen in eigenen
@@ -104,16 +108,15 @@ def ende_zu_ende(rng: random.Random, n: int = 32, k: int = 24, bezahlen: bool = 
     bits = [rng.randrange(2) for _ in range(n)]
     K = hashlib.sha256(rng.randbytes(16)).hexdigest()
     pr = wk.Praegung(K, basen, bits, t, vliste, rng)
-    text = f"{wk.DOM_BEST}{K}|{pr.wurzel.hex()}|{n}|{t}|{','.join(vliste)}"
-    best = {v: wk.KetteW.sig(VAL[v], text) for v in vliste}
-    kette.praegen("praeger", K, n, pr.wurzel, 10_000_000, vliste, t, best)
-    kette.block()
+    kette.praegen("praeger", K, n, pr.wurzel, 10_000_000, vliste, t, pr.anker, pr.bestaetigungen(VAL))
+    kette.warten()
 
     # 2. Bezahlen: die Note geht (als Quantenzustand) an den Empfaenger --
     # hier Teil des Schaltkreises unten. 3. Einloesen beim Empfaenger.
     zaehl = kette.noten[K]["zaehl"]
     kette.anfrage("empfaenger", K, k, wk.KetteW.sig(b"e" * 16, f"anfrage|{K}|{k}|empfaenger|{zaehl}"), "empfaenger")
-    kette.block()  # die Aufforderung zieht der naechste Block
+    kette.warten()
+    kette.zufall(K, zaehl, pr.zufall(zaehl))  # alle Validatoren legen ihre Hash-Kette offen
     st, ch = kette.aufforderung_von(K)
     if faelscher:
         antwort = [rng.randrange(2) for _ in st]
@@ -132,7 +135,7 @@ def ende_zu_ende(rng: random.Random, n: int = 32, k: int = 24, bezahlen: bool = 
                     break
             antwort.append(wh.antworten(s, schluessel)[0])
     kette.antwort("empfaenger", K, antwort, wk.KetteW.sig(b"e" * 16, f"antwort|{K}|{zaehl}|{antwort}"))
-    kette.block()
+    kette.warten()
     ok = kette.offenlegen(K, pr.offenlegung(st, [1, 3, 5]))  # None = unentschieden
     return {"urteil": ok, "empfaenger": kette.konten["empfaenger"], "topf": kette.topf,
             "erhaltung": kette.summe() == summe0, "stellen_je_validator": {v: wem.count(v) for v in vliste}}
@@ -173,8 +176,8 @@ def selbsttest() -> bool:
         # Der ganze Ablauf: mit Note eingeloest, AEQ beim Empfaenger, Erhaltung.
         for bez in (False, True):
             r = ende_zu_ende(rng, bezahlen=bez)
-            soll(r["urteil"] is True and r["empfaenger"] == 10_000_000 + wk.PFAND and r["topf"] == 0 and r["erhaltung"], f"Ende zu Ende bezahlt={bez}: {r}")
-        # Ohne Note: abgewiesen, nichts beim Empfaenger, Wert ans Grundeinkommen.
+            soll(r["urteil"] is True and r["empfaenger"] == 10_000_000 + wk.pfand_fuer(10_000_000, 32, 32) and r["topf"] == 0 and r["erhaltung"], f"Ende zu Ende bezahlt={bez}: {r}")
+        # Ohne Note: abgewiesen, nichts beim Empfaenger, sein Pfand ans Grundeinkommen; die Note bleibt.
         durch = sum(ende_zu_ende(rng, faelscher=True)["urteil"] is True for _ in range(40))
         soll(durch <= 2, f"Faelscher {durch}/40 eingeloest")
     except Exception as e:

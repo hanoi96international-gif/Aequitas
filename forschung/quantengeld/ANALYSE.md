@@ -200,8 +200,9 @@ er zuerst in eine Simulation und vor ein Gutachten.
   jeder, der die Seriennummer kennt, eine fremde Note mit Unsinn-Antworten sperren.
   - **Ausweg:** Der echte Halter löst eine gesperrte Note trotzdem ein, mit vollständiger
     Prüfung aller unbenutzten Qubits.
-  - **Grenze:** Einlösen ist genau ein Versuch, danach ist die Note eingelöst oder tot.
-    Raten über das Einlösen geht so nicht.
+  - **Grenze:** In der Simulation W0 ist Einlösen genau ein Versuch. Auf der Kette (W2b)
+    ist ein falsches Einlösen ein Fehlversuch mit Pfand, und die Note bleibt; sonst könnte
+    jeder Fremde jede Note für 1 AEQ töten (siehe unten).
 
 **Sicherheit, ehrlich:**
 - **Fälschen ohne Geheimnis:**
@@ -268,20 +269,43 @@ Register, Topf, Abgabe, Freischaltung und Einlösen in AEQ gibt es schon.
      - Die Prägestelle erfährt nichts. Jeder Validator kennt nur seinen Teil der Note.
      - Das ist mit heutiger QKD-Technik im Labor machbar und gehört zum Partnerversuch.
 
-**Ausführbare Regeln (W2a):** `wiesner_kette.py` ist die Spezifikation. Je Stelle steht
-beim Prägen nur eine gesalzene Prüfsumme auf der Kette (Merkle-Wurzel); das Geheimnis
-(Basis, Bit, 124 Bit Salz) liegt als Shamir-Anteile (t von v) bei den Validatoren der
-Note. Eine Prüfung: **Anfrage** mit 1 AEQ Pfand; der **nächste Block** zieht Stellen und
-Basen aus einem Blockhash, den beim Absenden niemand kannte – ab da sind die Stellen
-verbraucht. (Sonst könnte eine Absprache, die einen Teil der Stellen kennt, auf einen
-günstigen Hash warten.) **Antwort** des Anfragenden innerhalb von 10 Blöcken;
-**Offenlegen** von t Anteilen je Stelle. Jeder Knoten setzt selbst zusammen, prüft
-Prüfsumme und Pfad und urteilt; ein falscher Anteil fällt an der Prüfsumme auf.
-Weniger als 4 Treffer: unentschieden (Pfand zurück, kein Fehlversuch). 3 Fehlversuche
-sperren die Note; Einlösen geht auch gesperrt, genau einmal. Ein falsches Einlösen geht
-ans Grundeinkommen. Eine Note hat mindestens 8 Stellen (sonst wäre sie nie prüfbar und
-ihre Deckung läge für immer im Topf). Selbsttest mit Missbrauchsfällen; der Knoten rechnet in Go genau
-gleich (`quanten_w_test.go` gegen `testdata/quanten_w_vektor.json`).
+**Ausführbare Regeln (W2a, geschärft für W2b am 16.11.2026):** `wiesner_kette.py` ist die
+Spezifikation. Je Stelle steht beim Prägen nur eine gesalzene Prüfsumme auf der Kette
+(Merkle-Wurzel); das Geheimnis (Basis, Bit, 124 Bit Salz) liegt als Shamir-Anteile (t von v)
+bei den Validatoren der Note. Eine Prüfung: **Anfrage** mit Pfand; **Zufall**: jeder Validator
+der Note legt den nächsten Wert seiner Hash-Kette offen, deren Anker er beim Prägen bestätigt
+hat – erst wenn alle da sind, stehen Stellen und Basen fest, und ab da sind die Stellen
+verbraucht; **Antwort** des Anfragenden innerhalb von 10 Minuten nach dem Zufall; **Offenlegen** von t
+Anteilen je Stelle. Jeder Knoten setzt selbst zusammen, prüft Prüfsumme und Pfad und urteilt;
+ein falscher Anteil fällt an der Prüfsumme auf, ein falscher Zufall an der Hash-Kette.
+Weniger als 4 Treffer: unentschieden (Pfand zurück, kein Fehlversuch). 3 Fehlversuche sperren
+die Note für Prüfungen; Einlösen geht auch gesperrt.
+
+Drei Lücken der ersten Fassung, vor dem Einhängen geschlossen:
+
+1. **Zufall:** Der Blockhash als Quelle der Aufforderung war vom Erzeuger steuerbar (S1 der
+   Prüfung von #539). Die Hash-Ketten stehen seit dem Prägen fest. Für den Zufall gibt es
+   keine Frist: Die Anfrage bleibt offen, ihr Pfand gesperrt, bis alle Werte da sind. Mit
+   einer Frist (Pfand zurück, Stellen trotzdem verbraucht) hätte ein Erzeuger, der einen Wert
+   zurückhält, eine Note kostenlos erschöpfen können.
+2. **Prüfgröße beim Einlösen:** Wählbar hieß, ein Fälscher wählt k = 8 und kommt mit Raten in
+   ~3 % durch. Jetzt gilt beim Einlösen fest k = min(64, freie Stellen). Prüfungen lassen
+   min(64, n) Stellen als Reserve für das Einlösen stehen.
+3. **Note töten für 1 AEQ:** Ein falsches Einlösen machte die Note tot, und jeder Fremde konnte
+   das versuchen. Jetzt zählt es wie eine falsche Prüfung (Pfand weg, Fehlversuch), und die
+   Note bleibt. Das Pfand trägt den Wert der verbrauchten Stellen: max(1 AEQ, Wert · k / n).
+   Bleiben weniger als 8 Stellen frei, ist die Note erschöpft und ihr Wert geht ans
+   Grundeinkommen. Dahin kommt nur, wer zusammen etwa den Wert der Note an Pfand verloren hat.
+
+Jeder Validator bestätigt beim Prägen Wurzel, Anker und Prägezeit. Eine Bestätigung gilt
+höchstens einen Tag, und K bleibt belegt: Eine tote Note lässt sich nicht mit alten Ankern neu
+prägen, deren Hash-Ketten teils schon offen sind. Eine Note hat mindestens 8 Stellen (sonst wäre
+sie nie prüfbar und ihre Deckung läge für immer im Topf). Selbsttest mit Missbrauchsfällen; der Knoten rechnet in Go genau gleich
+(`quanten_w_test.go` gegen `testdata/quanten_w_vektor.json`).
+
+**Grenze, ehrlich:** Der Zufall braucht alle v Validatoren der Note. Fällt einer für immer aus,
+steht die Note: Es geht kein Wert verloren, aber es kommt auch keiner heraus (fail-closed).
+Eine Schwellen-Signatur (t von v) wäre lebendiger; das ist eine spätere Stufe.
 
 **Ehrlich zur Stärke einer Prüfung:** Mit 15 % Toleranz ist **eine** Prüfung schwach.
 Bei 64 geprüften Stellen besteht ein Fälscher ohne Wissen mit 3,8·10⁻⁵, eine Absprache,
@@ -297,7 +321,7 @@ bessere Speicher. Genau das misst W1.
 | W1 | Fehlerraten auf echter Hardware (IBM, Ionenfalle) → Notengröße und Toleranz | Aequitas; Läufe mit Freigabe | Rauschmodell gemessen (HEUTE.md 3.3); IBM-Lauf wartet auf Freigabe; Ionenfalle braucht ein Konto |
 | W2 | Kettenseite schlafend: Satzart „privat“, verteilte Schlüsselerzeugung, Prüf-Transaktion, Zähler, Sperre, Einlösen | Aequitas | **W2a fertig** (16.11.2026): Regeln als ausführbare Spezifikation `wiesner_kette.py` und im Knoten `x/humanity/keeper/quanten_w.go`, `quanten_w_register.go` (schlafend), Byte für Byte gleich (Prüfvektor). **W2b offen:** Einhängen in Blöcke, Unterschriften, Buchungen, StateRoot, Snapshot |
 | W3 | Prägung ohne Vertrauen (Weg 2 oder 3 oben) als Protokoll und Simulation | Aequitas | **fertig** (16.11.2026): Weg 3 als Schaltkreis (`wiesner_hardware.note_fern`), Simulation mit Absprache-Rechnung (`wiesner_praegen.py`), Läufer `hardware_ibm.py --wiesner --fern` |
-| W4 | Partnerversuch: echte Note in einem Speicher (Stunden), Ausgabe über ein Aequitas-Testnetz, Weitergabe des Geräts, klassische Prüfung, Einlösen | BMFTR-Verbund + Aequitas | Kontakt offen. **Ohne Partner** (Labormaßstab, Note lebt µs): `hardware_ibm.py --wiesner --kette` – Prägen auf der Kette, Bezahlen per Teleportation, Einlösen mit Aufforderung aus dem Block, Offenlegen, Urteil, AEQ beim Empfänger; ideal und im Rauschmodell gelaufen, IBM wartet auf Freigabe |
+| W4 | Partnerversuch: echte Note in einem Speicher (Stunden), Ausgabe über ein Aequitas-Testnetz, Weitergabe des Geräts, klassische Prüfung, Einlösen | BMFTR-Verbund + Aequitas | Kontakt offen. **Ohne Partner** (Labormaßstab, Note lebt µs): `hardware_ibm.py --wiesner --kette` – Prägen auf der Kette, Bezahlen per Teleportation, Einlösen mit Aufforderung aus den Hash-Ketten der Validatoren, Offenlegen, Urteil, AEQ beim Empfänger; ideal und im Rauschmodell gelaufen, IBM wartet auf Freigabe |
 | W5 | Gutachten (Prüfauftrag um Variante W erweitert), Pilot im Testnetz | extern + Aequitas | offen |
 | W6 | Satz „privat“ im Hauptnetz freischalten (⅔ der Prüfer, mindestens 5, 30 Tage Vorlauf), anfangs mit kleiner Höchstdeckung je Note | Prüfer | erst nach W4 und W5 |
 

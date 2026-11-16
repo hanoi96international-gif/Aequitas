@@ -168,42 +168,63 @@
    "22549770021450370066394921163902777401"
   ]
  ],
- "blockhash": "589e9d1f7fc1ce3b2f316824bf1ee9f8f6cb4ee2f4196d278cee0590339c0bf7",
+ "anker": [
+  "9559e2eb4e6bb2606178bb9e4024980b5bea5ef89cffec4bc3599b66eb3601d1",
+  "d27c1320481730af74fce56403a9d7bf6dc4705e2f7e1017297318cb16f46f0b",
+  "37f368518eb519cd1cdd87f8297fb4e8387d5590f952be6cb5d56a7814cf0038",
+  "d42d5af8840344fe052f8408c14450ad215a7710fa63cabdca5da75869ab290b",
+  "2e4f5ef956c4ca493917a03708f9e1deb1f7f1f5998b7d78eb4dacd12296e55d"
+ ],
+ "zufall0": [
+  "21e03e1efc3d393fc1b3252fc9603cbdbe782e409ff1fe6e0679778f1fac926e",
+  "e43a05bdb0dac3fc250d49cf708a7a43c889bc9faf3fae24e1c6de0c44f60fa6",
+  "51ebb85308d3b8f7dd5ea80aa7528b1763cc44f09edee7fcef8afc4bffaf5037",
+  "f8ce2396eb51d9c9d389a36323c91c80b199bb0ab7d31c4789729ad7388eca9e",
+  "d39339c1f4e85e314dc1d4b65d87350d46513b681e7bae5a62d592273f5a8d83"
+ ],
+ "zufall3": [
+  "f59b94b9145ac0a5eddae58c0036d0a9920c0b2e7030932932b35b1ecda1501d",
+  "a216fcd1cbf1a7a3127ef83e530359c09336c432d4d5283ccfb65aeffae5da12",
+  "ef21023cc09ea49b13600fa9402ed51835b0b0ba7f7945aefe7dfdd58f885f00",
+  "edfd334ba7ba541586cff1a233f3fddb06ea43d6f75217cd70d5dec11939506b",
+  "88f80c5f55c7eff1658563bbb94d2c2bb43e99e4b4073c27794358599d01d422"
+ ],
+ "saat": "f7fde34fb6b3f8b78712f217064a23df77644ddcf4f1d362737c8dad8e3799b7",
  "anfrage_id": "59bfec1cb16caded3d94c4f71931df80c5b2746c06c4f209160b290dc47b7622:0",
  "stellen": [
-  0,
   1,
+  2,
   3,
-  4,
   5,
   6,
   7,
-  8
+  8,
+  9
  ],
  "aufforderung": [
   0,
   0,
-  1,
+  0,
   0,
   1,
-  0,
   1,
-  0
+  1,
+  1
  ],
  "antwort": [
-  0,
-  0,
-  0,
+  1,
   0,
   1,
   0,
+  1,
   0,
-  0
+  1,
+  1
  ],
- "treffer": 2,
- "fehler": 1,
- "urteil": null,
- "bestaetigung": "aequitas-quanten-w-anteile-v1|chain:1926|59bfec1cb16caded3d94c4f71931df80c5b2746c06c4f209160b290dc47b7622|6e5affa0fbcacd1e3a50e9fd38b822b45cde2edfc86900b3bef0d483ea2a87ab|10|3|v1,v2,v3,v4,v5",
+ "treffer": 4,
+ "fehler": 0,
+ "urteil": true,
+ "bestaetigung2": "aequitas-quanten-w-anteile-v2|chain:1926|59bfec1cb16caded3d94c4f71931df80c5b2746c06c4f209160b290dc47b7622|6e5affa0fbcacd1e3a50e9fd38b822b45cde2edfc86900b3bef0d483ea2a87ab|10|3|v1,v2,v3,v4,v5|2|d27c1320481730af74fce56403a9d7bf6dc4705e2f7e1017297318cb16f46f0b|1794758400",
  "fall2_aufforderung": [
   0,
   1,
@@ -239,5 +260,31 @@
   1,
   1,
   0
+ ],
+ "pfand": [
+  [
+   5000000,
+   64,
+   200,
+   1600000
+  ],
+  [
+   5000000,
+   8,
+   2048,
+   1000000
+  ],
+  [
+   3000001,
+   1,
+   3,
+   1000001
+  ],
+  [
+   9000000000000000,
+   64,
+   65,
+   8861538461538462
+  ]
  ]
 }
