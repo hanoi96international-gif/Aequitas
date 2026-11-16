@@ -66,8 +66,13 @@ type StateSnapshot struct {
 	// Koepfe: ab dem Stichtag der Checkpoint-Transaktionen die Blockkoepfe
 	// der letzten Minuten (snapshot_koepfe.go). omitempty: bisherige
 	// Snapshots bleiben byte-gleich.
-	Koepfe    []SnapshotKopf `json:"koepfe,omitempty"`
-	Signature string         `json:"signature,omitempty"` // ECDSA over SHA256(JSON without this field)
+	Koepfe []SnapshotKopf `json:"koepfe,omitempty"`
+	// QuantenNoten: die angemeldeten Quanten-Noten (quanten_geld.go, QG3:
+	// eigene Tabelle, die Saetze stehen weiter in ChainConfig). Konsens --
+	// das Register steht in der StateRoot. omitempty: ohne Noten bleibt der
+	// Snapshot byte-gleich.
+	QuantenNoten []quantenNoteEintrag `json:"quanten_noten,omitempty"`
+	Signature    string               `json:"signature,omitempty"` // ECDSA over SHA256(JSON without this field)
 }
 
 type SnapshotBioRegistration struct {
@@ -141,6 +146,9 @@ func (cs *ChainState) ExportSnapshot(signingKey *ecdsa.PrivateKey, height int64,
 	// bei den gemessenen 2.037 Konten Mikrosekunden. Dafuer ist er dann das,
 	// was sein Name behauptet.
 	cs.mu.Lock()
+	// Die Noten aus dem Speicher, zum selben Zeitpunkt wie die Konten (der
+	// Topf, an dem ihr Wert haengt, ist eines davon).
+	quantenNoten := append([]quantenNoteEintrag(nil), cs.quantenGeldJetzt().Noten...)
 	accounts := make([]*AccountState, 0, cs.accounts.Len())
 	cs.accounts.Range(func(_ string, acc *AccountState) bool {
 		cp := *acc
@@ -177,6 +185,7 @@ func (cs *ChainState) ExportSnapshot(signingKey *ecdsa.PrivateKey, height int64,
 		Nullifiers:         nullifiers,
 		NullifiersRedacted: !includeSensitive,
 		Unternehmen:        cs.unternehmenFuerSnapshot(),
+		QuantenNoten:       quantenNoten,
 	}
 	// Treuhand und Validator-Register stehen in der StateRoot. Sind sie
 	// nicht lesbar, gibt es KEINEN Snapshot: ohne sie truege er einen
@@ -512,6 +521,9 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) (
 	if err := pruefeSnapshotVerlauf(snap.ValidatorVerlauf, validatorenBis); err != nil {
 		return fmt.Errorf("snapshot import: validator history: %w", err)
 	}
+	if err := pruefeSnapshotQuantenNoten(snap.QuantenNoten); err != nil {
+		return fmt.Errorf("snapshot import: %w", err)
+	}
 
 	// Apply in-memory under lock, then persist outside lock to avoid deadlock.
 	// Existing accounts are NOT overwritten — only missing ones are added.
@@ -568,6 +580,7 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) (
 	ctx := withTx(context.Background(), tx)
 	prevPool := cs.pool
 	poolChanged := false
+	vorherRegister := cs.registerSicherungLocked()
 	for _, acc := range snap.Accounts {
 		acc.Address = strings.ToLower(acc.Address)
 		if existingHumans > 0 && systemAddresses[acc.Address] {
@@ -594,6 +607,7 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) (
 	}
 
 	revertInMemory := func() {
+		cs.registerSicherungZurueckLocked(vorherRegister)
 		for _, acc := range accountsToPersist {
 			cs.accounts.Delete(acc.Address)
 		}
@@ -679,6 +693,9 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) (
 			if err := verlaufImportieren(tx, snap.ValidatorVerlauf, snap.Validatoren, false); err != nil {
 				return fmt.Errorf("saving validator history: %w", err)
 			}
+			// Vor der Schleife: hatte der Knoten schon ein Quantengeld-Register?
+			// (Saetze in chain_config oder Noten in der Tabelle.)
+			quantenRegisterLeer := cs.getConfigValue(quantenGeldKonfigSchluessel) == "" && len(cs.quantenGeldJetzt().Noten) == 0
 			// Import chain_config timing values. Do NOT overwrite if already set —
 			// the primary's live value takes precedence over the snapshot's snapshot-time value.
 			for key, val := range snap.ChainConfig {
@@ -692,6 +709,15 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) (
 					if err := cs.setConfigValueCtx(ctx, key, val); err != nil {
 						return fmt.Errorf("setting config %s: %w", key, err)
 					}
+				}
+			}
+			// Quanten-Noten (QG3) nur zusammen mit den Saetzen: nur in einen
+			// Knoten, der noch gar kein Quantengeld-Register hatte (wie vor
+			// QG3, als beides ein Wert in chain_config war). Ob Noten und
+			// Saetze zusammenpassen, prueft quantenGeldLaden.
+			if quantenRegisterLeer {
+				if err := quantenNotenImportieren(tx, snap.QuantenNoten, false); err != nil {
+					return fmt.Errorf("saving quantum notes: %w", err)
 				}
 			}
 			// Der Satzplan (satz_plan.go) geht in die StateRoot und in jeden
@@ -850,6 +876,9 @@ func (cs *ChainState) holeResyncSnapshot(peerURL, expectedSignerHex string) (*re
 	if err := pruefeSnapshotVerlauf(snap.ValidatorVerlauf, validatorenBis); err != nil {
 		return nil, fmt.Errorf("resync: validator history: %w", err)
 	}
+	if err := pruefeSnapshotQuantenNoten(snap.QuantenNoten); err != nil {
+		return nil, fmt.Errorf("resync: %w", err)
+	}
 
 	// FIX (audit 2026-08-15, after a live near-miss): refuse a snapshot that
 	// would move this node BACKWARDS by more than a rollout's worth of blocks.
@@ -962,10 +991,12 @@ func (cs *ChainState) wendeResyncSnapshotAn(g *resyncSnapshot) (err error) {
 	for k, v := range cs.nullifiers {
 		backupNullifiers[k] = v
 	}
+	backupRegister := cs.registerSicherungLocked()
 	restoreInMemory := func() {
 		cs.accounts = backupAccounts
 		cs.pool = backupPool
 		cs.nullifiers = backupNullifiers
+		cs.registerSicherungZurueckLocked(backupRegister)
 	}
 
 	cs.setActiveTx(tx)
@@ -1029,6 +1060,10 @@ func (cs *ChainState) wendeResyncSnapshotAn(g *resyncSnapshot) (err error) {
 	// der StateRoot, also gilt hier der Stand des Snapshots.
 	if _, err := tx.Exec(`TRUNCATE escrow_accounts`); err != nil {
 		return fail(fmt.Errorf("resync: could not clear escrow_accounts: %w", err))
+	}
+	// Quanten-Noten ersetzend wie die Konten (QG3).
+	if err := quantenNotenImportieren(tx, snap.QuantenNoten, true); err != nil {
+		return fail(fmt.Errorf("resync: %w", err))
 	}
 	// chain_blocks wird NICHT mehr mitgeleert -- nur der abweichende Teil
 	// oberhalb der Snapshot-Hoehe.

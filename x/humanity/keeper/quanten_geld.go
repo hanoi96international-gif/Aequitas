@@ -61,6 +61,7 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -81,6 +82,10 @@ const (
 	quantenDomaeneFreischaltung = "aequitas-quanten-freischaltung-v1"
 	quantenDomaenePraegen       = "aequitas-quanten-praegen-v1"
 	quantenGeldKonfigSchluessel = "quanten_geld"
+	// quantenNotenTabelle: je angemeldete Note eine Zeile (QG3). In
+	// chain_config unter quantenGeldKonfigSchluessel stehen nur noch die
+	// Saetze.
+	quantenNotenTabelle = "quanten_noten"
 
 	// Hoechstens so viele Parametersaetze.
 	quantenSaetzeHoechstens = 8
@@ -97,9 +102,12 @@ const (
 	// sich der Wert aendert und schon ein Satz eingetragen ist
 	// (.github/neustart/quantengeld-mindest-pruefer.sh).
 	quantenFreischaltungMindestPruefer = 5
-	// Angemeldete Noten insgesamt und je Anmelder (das Register wird je
-	// Aenderung ganz neu geschrieben, wie das Umzugs-Register; darueber
-	// gehoert es in eine eigene Tabelle).
+	// Angemeldete Noten insgesamt und je Anmelder. Seit QG3 (16.11.2026)
+	// steht jede Note als eigene Zeile in quantenNotenTabelle: eine
+	// Anmeldung schreibt eine Zeile, ein Einloesen loescht eine (bis dahin
+	// wurde das ganze Register je Aenderung neu geschrieben, bei 50.000
+	// Noten ~10 MB je Transaktion). Im Speicher bleibt das Register eine
+	// sortierte Liste (Kopie je Aenderung, Wurzel einmal je Stand).
 	quantenNotenHoechstens   = 50000
 	quantenNotenJeAnmelder   = 1000
 	quantenMindestDeckungMik = 1_000_000 // 1 AEQ
@@ -177,6 +185,20 @@ type quantenNoteEintrag struct {
 type quantenGeldRegister struct {
 	Saetze []quantenSatzEintrag `json:"saetze,omitempty"` // nach Name
 	Noten  []quantenNoteEintrag `json:"noten,omitempty"`  // nach K
+	// wurzel: der StateRoot-Teil dieses Stands, einmal gerechnet. Ein
+	// Register wird nach dem Anlegen nie mehr veraendert (jede Aenderung
+	// ist eine Kopie, mitNote/ohneNote/mitSatz), darum darf er bleiben.
+	wurzel *quantenWurzel
+}
+
+type quantenWurzel struct {
+	einmal sync.Once
+	teil   string
+}
+
+// neuesQuantenRegister: ein Stand mit eigener Wurzel-Ablage.
+func neuesQuantenRegister(saetze []quantenSatzEintrag, noten []quantenNoteEintrag) *quantenGeldRegister {
+	return &quantenGeldRegister{Saetze: saetze, Noten: noten, wurzel: &quantenWurzel{}}
 }
 
 func (r *quantenGeldRegister) leer() bool {
@@ -192,10 +214,12 @@ func (r *quantenGeldRegister) kodiert() string {
 }
 
 func (r *quantenGeldRegister) kopie() *quantenGeldRegister {
-	return &quantenGeldRegister{
-		Saetze: append([]quantenSatzEintrag(nil), r.Saetze...),
-		Noten:  append([]quantenNoteEintrag(nil), r.Noten...),
-	}
+	return neuesQuantenRegister(append([]quantenSatzEintrag(nil), r.Saetze...), append([]quantenNoteEintrag(nil), r.Noten...))
+}
+
+// nurSaetze: was in chain_config steht -- die Saetze ohne Noten (QG3).
+func (r *quantenGeldRegister) nurSaetze() *quantenGeldRegister {
+	return &quantenGeldRegister{Saetze: r.Saetze}
 }
 
 func (r *quantenGeldRegister) satz(name string) (quantenSatzEintrag, bool) {
@@ -365,22 +389,33 @@ func quantenGeldRegisterLesen(s string) (*quantenGeldRegister, error) {
 	if err := dec.Decode(r); err != nil {
 		return nil, fmt.Errorf("Quantengeld-Register nicht lesbar: %w", err)
 	}
+	if err := r.pruefen(); err != nil {
+		return nil, err
+	}
+	r.wurzel = &quantenWurzel{}
+	return r, nil
+}
+
+// pruefen: ein Register von aussen (chain_config, Tabelle, Snapshot eines
+// Peers) streng -- Grenzen, Form, Ordnung, jede Note zu einem bekannten
+// Satz, Summe der Anteile.
+func (r *quantenGeldRegister) pruefen() error {
 	if len(r.Saetze) > quantenSaetzeHoechstens || len(r.Noten) > quantenNotenHoechstens {
-		return nil, errors.New("Quantengeld-Register ueber seinen Grenzen")
+		return errors.New("Quantengeld-Register ueber seinen Grenzen")
 	}
 	for i, x := range r.Saetze {
 		if _, ok := quantenOrdnungGueltig(x.Ordnung); !ok || !quantenSatzGueltig(x.Name) || x.Ab <= 0 || x.Seit <= 0 ||
 			(i > 0 && x.Name <= r.Saetze[i-1].Name) {
-			return nil, fmt.Errorf("Quantengeld-Register: Satz %d ungueltig", i)
+			return fmt.Errorf("Quantengeld-Register: Satz %d ungueltig", i)
 		}
 	}
 	for i, e := range r.Noten {
 		if !istHash64(e.K) || !kanonischeAdresse(e.Von) || !quantenSatzGueltig(e.Satz) || e.Anteile <= 0 || e.Anteile > quantenAnteileHoechstens ||
 			(i > 0 && e.K <= r.Noten[i-1].K) {
-			return nil, fmt.Errorf("Quantengeld-Register: Note %d ungueltig", i)
+			return fmt.Errorf("Quantengeld-Register: Note %d ungueltig", i)
 		}
 		if _, ok := r.satz(e.Satz); !ok {
-			return nil, fmt.Errorf("Quantengeld-Register: Note %d zu unbekanntem Satz", i)
+			return fmt.Errorf("Quantengeld-Register: Note %d zu unbekanntem Satz", i)
 		}
 	}
 	// Auch die SUMME der Anteile: ein Register von aussen (Snapshot eines
@@ -389,11 +424,11 @@ func quantenGeldRegisterLesen(s string) (*quantenGeldRegister, error) {
 	var summe int64
 	for _, e := range r.Noten {
 		if summe > quantenAnteileHoechstens-e.Anteile {
-			return nil, errors.New("Quantengeld-Register: Summe der Anteile ueber der Grenze")
+			return errors.New("Quantengeld-Register: Summe der Anteile ueber der Grenze")
 		}
 		summe += e.Anteile
 	}
-	return r, nil
+	return nil
 }
 
 func (cs *ChainState) quantenGeldJetzt() *quantenGeldRegister {
@@ -409,7 +444,7 @@ func (cs *ChainState) quantenGeldLaden(ctx context.Context) error {
 	if cs.db == nil {
 		return nil
 	}
-	r, err := quantenGeldRegisterLesen(cs.getConfigValueCtx(ctx, quantenGeldKonfigSchluessel))
+	r, err := quantenGeldAusDB(cs.getConfigValueCtx(ctx, quantenGeldKonfigSchluessel), cs.dbExecCtx(ctx))
 	if err != nil {
 		return err
 	}
@@ -417,24 +452,112 @@ func (cs *ChainState) quantenGeldLaden(ctx context.Context) error {
 	return nil
 }
 
-// quantenGeldSetzenLocked: in derselben Datenbank-Transaktion wie der Rest
-// des Blocks; der Zeiger geht mit blockRollbackSnapshot zurueck.
-func (cs *ChainState) quantenGeldSetzenLocked(ctx context.Context, r *quantenGeldRegister) error {
+// quantenGeldAusDB: die Saetze aus chain_config, die Noten aus
+// quantenNotenTabelle -- zusammen streng geprueft (pruefen). Stehen Noten
+// noch in chain_config (Format vor QG3), startet der Knoten nicht: der
+// Deploy-Waechter (quantengeld-noten-tabelle.sh) laesst den Wechsel nur zu,
+// solange es keine Note gibt.
+func quantenGeldAusDB(konfig string, db sqlExecutor) (*quantenGeldRegister, error) {
+	saetze, err := quantenGeldRegisterLesen(konfig)
+	if err != nil {
+		return nil, err
+	}
+	if len(saetze.Noten) != 0 {
+		return nil, fmt.Errorf("Quantengeld-Register: %d Noten in chain_config (Format vor QG3) -- erst in %s umziehen", len(saetze.Noten), quantenNotenTabelle)
+	}
+	rows, err := db.Query(`SELECT k, satz, von, anteile FROM `+quantenNotenTabelle+` LIMIT $1`, quantenNotenHoechstens+1)
+	if err != nil {
+		return nil, fmt.Errorf("Quantengeld-Noten nicht lesbar: %w", err)
+	}
+	defer rows.Close()
+	var noten []quantenNoteEintrag
+	for rows.Next() {
+		var e quantenNoteEintrag
+		if err := rows.Scan(&e.K, &e.Satz, &e.Von, &e.Anteile); err != nil {
+			return nil, fmt.Errorf("Quantengeld-Noten nicht lesbar: %w", err)
+		}
+		noten = append(noten, e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("Quantengeld-Noten nicht lesbar: %w", err)
+	}
+	// Geordnet in Go, nicht per ORDER BY: die Reihenfolge der Datenbank
+	// haengt an ihrer Sortierung (Collation), die StateRoot nicht.
+	sort.Slice(noten, func(i, j int) bool { return noten[i].K < noten[j].K })
+	r := neuesQuantenRegister(saetze.Saetze, noten)
+	if err := r.pruefen(); err != nil {
+		return nil, err
+	}
+	return r, nil
+}
+
+// Die drei Schreibwege (QG3), jeder in derselben Datenbank-Transaktion wie
+// der Rest des Blocks oder der Annahme; der Zeiger im Speicher geht mit
+// blockRollbackSnapshot zurueck. Es gibt keinen Weg, das ganze Register
+// auf einmal zu schreiben.
+
+// quantenSatzSpeichernLocked: ein neuer Satz -- nur die Saetze nach
+// chain_config.
+func (cs *ChainState) quantenSatzSpeichernLocked(ctx context.Context, neu *quantenGeldRegister) error {
 	if cs.db != nil {
-		if err := cs.setConfigValueCtx(ctx, quantenGeldKonfigSchluessel, r.kodiert()); err != nil {
-			return fmt.Errorf("Quantengeld-Register speichern: %w", err)
+		if err := cs.setConfigValueCtx(ctx, quantenGeldKonfigSchluessel, neu.nurSaetze().kodiert()); err != nil {
+			return fmt.Errorf("Quantengeld-Saetze speichern: %w", err)
 		}
 	}
-	cs.quantenGeld.Store(r)
+	cs.quantenGeld.Store(neu)
+	return nil
+}
+
+// quantenNoteSpeichernLocked: eine neu angemeldete Note -- genau eine neue
+// Zeile. Gibt es K schon in der Tabelle, ist das ein Fehler (der Block geht
+// zurueck), nie ein stilles Ueberschreiben.
+func (cs *ChainState) quantenNoteSpeichernLocked(ctx context.Context, neu *quantenGeldRegister, e quantenNoteEintrag) error {
+	if cs.db != nil {
+		res, err := cs.dbExecCtx(ctx).Exec(`INSERT INTO `+quantenNotenTabelle+` (k, satz, von, anteile) VALUES ($1, $2, $3, $4) ON CONFLICT (k) DO NOTHING`,
+			e.K, e.Satz, e.Von, e.Anteile)
+		if err != nil {
+			return fmt.Errorf("Quantengeld-Note speichern: %w", err)
+		}
+		if n, err := res.RowsAffected(); err != nil || n != 1 {
+			return fmt.Errorf("Quantengeld-Note %s: %d Zeilen geschrieben (%v), erwartet 1", kurzHash(e.K), n, err)
+		}
+	}
+	cs.quantenGeld.Store(neu)
+	return nil
+}
+
+// quantenNoteEntfernenLocked: eine eingeloeste Note -- genau eine Zeile
+// weniger.
+func (cs *ChainState) quantenNoteEntfernenLocked(ctx context.Context, neu *quantenGeldRegister, k string) error {
+	if cs.db != nil {
+		res, err := cs.dbExecCtx(ctx).Exec(`DELETE FROM `+quantenNotenTabelle+` WHERE k = $1`, k)
+		if err != nil {
+			return fmt.Errorf("Quantengeld-Note entfernen: %w", err)
+		}
+		if n, err := res.RowsAffected(); err != nil || n != 1 {
+			return fmt.Errorf("Quantengeld-Note %s: %d Zeilen geloescht (%v), erwartet 1", kurzHash(k), n, err)
+		}
+	}
+	cs.quantenGeld.Store(neu)
 	return nil
 }
 
 // quantenStateRootTeil: Teil der StateRoot -- nur, wenn das Register nicht
-// leer ist; sonst byte-gleich wie vorher.
+// leer ist; sonst byte-gleich wie vorher. Definition unveraendert seit
+// 15.11.2026: SHA-256 ueber das ganze Register als JSON (Saetze und Noten),
+// ganz gleich, wo die Noten gespeichert sind. Je Stand einmal gerechnet.
 func (r *quantenGeldRegister) stateRootTeil() string {
 	if r.leer() {
 		return ""
 	}
+	if r.wurzel == nil {
+		return r.stateRootTeilRechnen()
+	}
+	r.wurzel.einmal.Do(func() { r.wurzel.teil = r.stateRootTeilRechnen() })
+	return r.wurzel.teil
+}
+
+func (r *quantenGeldRegister) stateRootTeilRechnen() string {
 	h := sha256.Sum256([]byte(r.kodiert()))
 	return "|quanten:" + hex.EncodeToString(h[:])
 }
@@ -713,7 +836,7 @@ func (cs *ChainState) quantenNoteEintragenLocked(ctx context.Context, e quantenN
 	}
 	e.Anteile = anteile
 	e.topfVor = 0
-	return anteile, cs.quantenGeldSetzenLocked(ctx, reg.mitNote(e))
+	return anteile, cs.quantenNoteSpeichernLocked(ctx, reg.mitNote(e), e)
 }
 
 // applyQuantenFreischaltungLocked: beim Nachspielen. Ungueltig: nie
@@ -726,7 +849,7 @@ func (cs *ChainState) applyQuantenFreischaltungLocked(ctx context.Context, tx *T
 	if u.regel != "" {
 		return fmt.Errorf("quanten_freischaltung %s: %s", u.regel, u.text)
 	}
-	return cs.quantenGeldSetzenLocked(ctx, cs.quantenGeldJetzt().mitSatz(u.satz))
+	return cs.quantenSatzSpeichernLocked(ctx, cs.quantenGeldJetzt().mitSatz(u.satz))
 }
 
 // ------------------------------------------------------------ Annahme
@@ -963,7 +1086,7 @@ func (a *APIServer) quantenFreischaltungAnnehmen(tx Transaction, jetzt int64) er
 		if u.regel != "" {
 			return Transaction{}, &quantenAbgelehnt{text: u.regel + ": " + u.text, stimme: u.stimme}
 		}
-		if err := a.state.quantenGeldSetzenLocked(ctx, a.state.quantenGeldJetzt().mitSatz(u.satz)); err != nil {
+		if err := a.state.quantenSatzSpeichernLocked(ctx, a.state.quantenGeldJetzt().mitSatz(u.satz)); err != nil {
 			return Transaction{}, err
 		}
 		return tx, nil
@@ -983,7 +1106,9 @@ func quantenStatus() map[string]interface{} {
 	// mindest_pruefer: daran erkennt der Deploy-Waechter, welche Regel der
 	// laufende Knoten fuer eine Freischaltung anwendet
 	// (.github/neustart/quantengeld-mindest-pruefer.sh).
-	m := map[string]interface{}{"topf": quantenTopfAddr, "mindest_pruefer": quantenFreischaltungMindestPruefer}
+	// noten_tabelle: der Knoten speichert Noten je Zeile (QG3) --
+	// Waechter quantengeld-noten-tabelle.sh.
+	m := map[string]interface{}{"topf": quantenTopfAddr, "mindest_pruefer": quantenFreischaltungMindestPruefer, "noten_tabelle": true}
 	if ab := quantenGeldAb(); ab != math.MaxInt64 {
 		m["ab"] = ab
 	}

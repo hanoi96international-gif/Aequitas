@@ -172,7 +172,7 @@ func (cs *ChainState) applyQuantenEinloesenLocked(ctx context.Context, tx *Trans
 			return u, fmt.Errorf("quanten_einloesen: %w", err)
 		}
 	}
-	if err := cs.quantenGeldSetzenLocked(ctx, cs.quantenGeldJetzt().ohneNote(u.note.K)); err != nil {
+	if err := cs.quantenNoteEntfernenLocked(ctx, cs.quantenGeldJetzt().ohneNote(u.note.K), u.note.K); err != nil {
 		return u, err
 	}
 	return u, nil
