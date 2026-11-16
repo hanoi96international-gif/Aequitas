@@ -132,6 +132,41 @@ Freigabe der Umgebung `quantenhardware`.
 - Der nächste Schritt ist derselbe Lauf auf der echten Maschine. Workflow, Modus `ibm`,
   `wiesner` an, `bezahlen` an, Wartezeiten `0,20,50,100`.
 
+**Prägen ohne Vertrauen (W3, nachgetragen 16.11.2026):** Dieselbe Messung, aber die
+Note entsteht durch Fern-Präparation (`hardware_ibm.py --wiesner --fern`): je Stelle ein
+verschränktes Paar, die Validatoren messen ihre Hälften in eigenen Zufallsbasen. Das
+Geheimnis kennt nur der Validator, nicht die Prägestelle. Rauschmodell `ibm_marrakesh`,
+6 Stellen, 4 Noten je Fall, 500 Schüsse:
+
+| Wartezeit | Fehler je Treffer | mit Bezahlen | Annahme | mit Bezahlen |
+|---|---|---|---|---|
+| 0 µs | 1,6 % | 3,0 % | 0,94 | 0,89 |
+| 20 µs | 6,1 % | 5,6 % | 0,81 | 0,83 |
+| 50 µs | 8,5 % | 9,6 % | 0,78 | 0,75 |
+| 100 µs | 20,5 % | 22,6 % | 0,37 | 0,34 |
+
+Die Fern-Präparation kostet im Modell etwa einen Prozentpunkt (ein CNOT mehr je Stelle).
+
+**Von Anfang bis Ende mit der Kette (W4 ohne Partner):** `hardware_ibm.py --wiesner
+--kette --bezahlen` lässt eine Note aus 16 Qubits durch die Regeln der Kette laufen
+(`wiesner_kette.KetteW`, dieselben Regeln wie im Knoten): Prägen mit Prüfsummen und
+Bestätigung von 5 Validatoren (Schwelle 3) → Einlösen angefragt, Aufforderung aus dem
+Block → Note 20 µs gehalten, per Teleportation an den Empfänger, **ein** Schuss als
+Messung → Antwort → drei Validatoren legen offen, jeder Knoten rechnet → Urteil, AEQ
+beim Empfänger, Summe erhalten.
+- Ideal: echt (6 Treffer, 0 Fehler), 10 AEQ beim Empfänger.
+- Rauschmodell `ibm_marrakesh`: echt (5 Treffer, 0 Fehler). Über alle 200 Schüsse
+  desselben Schaltkreises: 10,7 % Fehler je Treffer, Annahme 0,57 – bei 16 Stellen
+  erlaubt die Toleranz nur einen Fehler, jede zweite Note fiele durch.
+- Auf der echten Maschine: Workflow, Modus `ibm`, `wiesner` = `kette`, `bezahlen` an.
+
+**Zählt das als Quantengeld?** Als Vorführung: ja, das ist der ganze Ablauf einer
+privat prüfbaren Quanten-Note mit dezentraler Prüfung – auf echter Hardware, sobald der
+IBM-Lauf freigegeben ist. Als Zahlungsmittel: nein. Die Note lebt Mikrosekunden, eine
+Prüfung mit 16 Stellen ist schwach, und Prägen ohne Vertrauen läuft im selben
+Schaltkreis statt über eine Quantenleitung. Dafür bleibt der Partnerversuch (W4 mit
+Speicher, ANALYSE.md).
+
 ### 3.4 Bargeld-Verhalten ohne Quanten (Offline-Bargeld)
 
 Was Menschen sich von Quantengeld wünschen, ist meist offline zu zahlen, wie mit

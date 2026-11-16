@@ -61,9 +61,10 @@ on:
         options: [aus, phase, bit, beide]
         default: aus
       wiesner:
-        description: "Variante W (wiesner_hardware.py): BB84-Note, klassische Pruefung, Fehlerrate je Wartezeit; mit bezahlen auch teleportiert (nur rauschen/ibm)"
-        type: boolean
-        default: false
+        description: "Variante W: messen = Fehlerrate je Wartezeit (wiesner_hardware.py); fern = dasselbe, gepraegt ohne Vertrauen (W3, Validatoren messen verschraenkte Haelften); kette = Note von Anfang bis Ende mit der Kettenseite (W4, wiesner_kette.py; erste Wartezeit, bezahlen = Teleportation). Nur rauschen/ibm."
+        type: choice
+        options: [aus, messen, fern, kette]
+        default: aus
 
 permissions:
   contents: read
@@ -100,7 +101,7 @@ jobs:
         run: |
           set -euo pipefail
           extra=()
-          if [ "$WIESNER" = "true" ]; then extra+=(--wiesner); fi
+          case "$WIESNER" in aus|false) ;; messen|true) extra+=(--wiesner) ;; fern) extra+=(--wiesner --fern) ;; kette) extra+=(--wiesner --kette) ;; *) echo "wiesner: $WIESNER unbekannt"; exit 1 ;; esac
           if [ "$DYNAMISCH" = "true" ]; then extra+=(--dynamisch); fi
           if [ -n "$WARTEN" ]; then extra+=(--warten-reihe "$WARTEN"); fi
           if [ "$BEZAHLEN" = "true" ]; then extra+=(--bezahlen); fi
@@ -142,7 +143,7 @@ jobs:
         run: |
           set -euo pipefail
           extra=()
-          if [ "$WIESNER" = "true" ]; then extra+=(--wiesner); fi
+          case "$WIESNER" in aus|false) ;; messen|true) extra+=(--wiesner) ;; fern) extra+=(--wiesner --fern) ;; kette) extra+=(--wiesner --kette) ;; *) echo "wiesner: $WIESNER unbekannt"; exit 1 ;; esac
           if [ "$UNTERDRUECKUNG" = "true" ]; then extra+=(--unterdrueckung); fi
           if [ "$DYNAMISCH" = "true" ]; then extra+=(--dynamisch); fi
           if [ -n "$WARTEN" ]; then extra+=(--warten-reihe "$WARTEN"); fi
