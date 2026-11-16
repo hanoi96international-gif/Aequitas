@@ -37,26 +37,33 @@ Gemergt am 16.11.: #540 (HEUTE.md, IBM-Läufe), #541 (W2b Teil 1: Regeln geschä
 `quantenWAbUnix = MaxInt64`; W5: Prüfauftrag um Variante W erweitert). Einzelheiten zu
 W2b stehen im PR #542 und im Kopf von `x/humanity/keeper/quanten_w_kette.go`.
 
-## In Arbeit: Unruhe im Vier-Knoten-Test (Aufgabe #65)
+## Unruhe im Vier-Knoten-Test (Aufgabe #65) — Korrektur im PR
 
 `TestVierKnoten_RealDB` kippte am 16.11. zweimal im Push-Lauf (`db-tests`), mit zwei
-verschiedenen Bildern:
+verschiedenen Ursachen. Beide lagen im Test, nicht im Knoten; keine Prüfung wurde
+gelockert.
 
-1. **Lauf von d75ba6ca:** `TrustedSeedsFromSync` → „Schwelle ohne Beleg nicht als abgewehrt
-   gezaehlt“. Ursache: Die Replay-Mauer zählt Abweisungen in Folge und löscht die Zählung
-   bei jedem erfolgreich nachgespielten Block. Die Ruhe begann erst nach dem Bau des
-   Angriffsblocks; ein spät ankommender ehrlicher Block setzte die Folge zurück, die
-   Schleife endete nach drei Abweisungen insgesamt. Korrektur im Test
-   (`vier_knoten_snapshot_seeds_test.go`): Ruhe vor dem Bau, `warteStill`, gewartet wird
-   auf die beiden Ereignisse selbst.
-2. **Lauf von 3e0dec65:** `LeiterFaelltAusUndZiehtNach` und danach `TrustedSeedsFromSync`
-   laufen in `pruefeGleichstand` 90 s ohne Einigkeit: alle vier auf Höhe 124 mit derselben
-   Wurzel, Knoten 0 (alter Leiter) mit einer Spitze, die anderen mit zweien. Ursache noch
-   **nicht belegt**. `spitzenBefund` schreibt bei Uneinigkeit jetzt auf, wer welche Spitze
-   kennt. Idee der Vorsitzung: in der Ruhe `reannounceTips` (tip_reannounce.go) rufen –
-   erst einbauen, wenn der Befund zeigt, dass der Knoten die Spitze über den Push annimmt.
+1. **Lauf von 3e0dec65** (`LeiterFaelltAusUndZiehtNach`, 90 s „keine Einigkeit“): Holt der
+   alte Leiter seinen Zustand per Snapshot, während der Spender zwei Geschwister-Spitzen
+   auf der Snapshot-Höhe führt, setzt er nur die kanonische als Spitze (block.go, so
+   gewollt). Wurzel und Konten sind gleich, die Spitzen erst nach dem nächsten Block – und
+   in der Ruhe des Tests erzeugt niemand. Korrektur: Steht alles außer den Spitzen 5 s
+   gleich, erzeugt ein Knoten genau einen Block; danach gilt die volle Prüfung
+   unverändert. `leiterAusfall` stellt die Lage jetzt bei jedem Lauf her
+   (`zweiGeschwisterSpitzen`). Gegenprobe: ohne die Zusammenführung kippt der Lauf lokal
+   genau wie in der CI. Erneutes Anbieten der Spitzen (Idee der Vorsitzung) hilft nicht:
+   der Knoten kennt den Block bereits.
+2. **Lauf von d75ba6ca** (`TrustedSeedsFromSync`, „Schwelle ohne Beleg nicht als abgewehrt
+   gezaehlt“): Die Replay-Mauer zählt Abweisungen in Folge und löscht die Zählung bei jedem
+   erfolgreich nachgespielten Block. Die Ruhe begann erst nach dem Bau des Angriffsblocks;
+   ein spät ankommender ehrlicher Block setzte die Folge zurück. Korrektur: Ruhe vor dem
+   Bau, `warteStill`, gewartet wird auf die beiden Ereignisse selbst. Diese Ursache ist aus
+   Code und CI-Meldung abgeleitet, lokal nicht nachgestellt.
 
-Lokal nachstellen: PostgreSQL 16 liegt im Container (`pg_ctlcluster 16 main start`,
+Dazu: `spitzenBefund` (wer kennt welche Spitze) bei Uneinigkeit, und `db-tests` druckt bei
+Rot die letzten Testmeldungen.
+
+Lokal laufen lassen: PostgreSQL 16 liegt im Container (`pg_ctlcluster 16 main start`,
 Passwort per `ALTER USER postgres PASSWORD 'postgres'`), dann
 
 ```
@@ -64,13 +71,12 @@ AEQUITAS_TPS_BENCH=1 DATABASE_URL="postgres://postgres:postgres@localhost:5432/a
   go test ./x/humanity/keeper/ -run 'TestVierKnoten_RealDB$' -v -timeout 15m
 ```
 
-Ein Lauf dauert rund 130 s und ist ohne Last grün; rot wird er nur gelegentlich.
-
 ## Danach (Reihenfolge)
 
 1. **W5 (Aufgabe #64):** `docs/QUANTENGELD_PRUEFAUFTRAG.md` ist um Variante W erweitert
    (#542). Offen: Gutachter suchen (Anschreiben wie `ANSCHREIBEN.md`).
-2. **Flake (#65):** siehe „In Arbeit“ oben. Test robust machen, nicht abschwächen.
+2. **Flake (#65):** Korrektur im PR (Abschnitt oben). Nach dem Merge ein paar Push-Läufe
+   beobachten; kippt `db-tests` wieder, stehen die Meldungen jetzt am Ende des Protokolls.
 3. **Ionenfalle:** Konto des Betreibers nötig (Quantinuum Nexus oder die Alternativen in
    ANALYSE.md), als GitHub-Secret `QUANTINUUM_TOKEN`. Erst fragen, wenn der Betreiber so weit
    ist.

@@ -433,6 +433,51 @@ func (n *vierKnotenNetz) warteSpitzenUeber(t *testing.T, hoehe int64, frist time
 	}
 }
 
+// warteStill: in der Ruhe (niemand erzeugt) warten, bis kein Block mehr
+// unterwegs ist -- alle lebenden Knoten nennen dieselbe Hoehe und dieselben
+// Spitzen, und nach der Laufzeit eines Pushes gilt das unveraendert.
+// Hoechstens frist, sonst rot. Der Aufrufer haelt die Ruhe (ruheAn).
+func (n *vierKnotenNetz) warteStill(t *testing.T, frist time.Duration) {
+	t.Helper()
+	if !n.inRuhe() {
+		t.Fatal("warteStill ohne Ruhe: solange erzeugt wird, ist nie Stille")
+	}
+	lage := func() string {
+		var teile []string
+		for _, k := range n.ks {
+			if k.aus.Load() {
+				continue
+			}
+			_, dag, _ := k.teile()
+			tips := dag.GetTips()
+			sort.Strings(tips)
+			teile = append(teile, fmt.Sprintf("%d|%s", dag.heightSchnell.Load(), strings.Join(tips, ",")))
+		}
+		for _, x := range teile[1:] {
+			if x != teile[0] {
+				return ""
+			}
+		}
+		return teile[0]
+	}
+	ende := time.Now().Add(frist)
+	for {
+		if vorher := lage(); vorher != "" {
+			// Ein Push laeuft hoechstens 3 s (HTTPBroadcastBlock); was
+			// danach nicht angekommen ist, kommt nicht mehr.
+			time.Sleep(3500 * time.Millisecond)
+			if lage() == vorher {
+				return
+			}
+		}
+		if time.Now().After(ende) {
+			n.spitzenBefund(t)
+			t.Fatalf("nach %s Ruhe sind die Knoten nicht still (Hoehe und Spitzen verschieden oder noch in Bewegung)", frist)
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+}
+
 // ------------------------------------------------------------- Trusted Seeds
 
 // trustedSeedsFromSync: ein Peer ausserhalb des Netzes liefert per
@@ -457,6 +502,25 @@ func (n *vierKnotenNetz) trustedSeedsFromSync(t *testing.T) {
 	b := n.ks[(leiter+2)%len(n.ks)]
 	_, dagA, _ := a.teile()
 	_, dagB, _ := b.teile()
+
+	// Ab hier erzeugt niemand mehr, und es geht erst weiter, wenn auch kein
+	// ehrlicher Block mehr unterwegs ist (warteStill). Zwei Gruende:
+	//
+	//   - Die Finalitaet: rueckt sie weiter, liesse B (kein Seed, kein
+	//     FromSync) den Angriffsblock noch vor dem dritten Nachspielen schon
+	//     im Sync als "unter der Finalitaet" fallen -- A als Seed nicht
+	//     (FromSync entbindet dort bis zum Stichtag, fromsync_stichtag.go).
+	//     Das ist ein anderer Unterschied als der, um den es hier geht.
+	//   - Die Zaehlung der Replay-Mauer: sie zaehlt Abweisungen IN FOLGE und
+	//     wird von jedem erfolgreich nachgespielten Block geloescht
+	//     (merkeBlockErfolg). Die Ruhe begann frueher erst nach dem Bau des
+	//     Angriffsblocks; ein ehrlicher Block, der zwischen zwei Abweisungen
+	//     noch ankam, setzte die Folge bei B zurueck, die Schleife unten
+	//     endete nach drei Abweisungen INSGESAMT, die Schwelle war aber nie
+	//     erreicht -- "Schwelle ohne Beleg nicht als abgewehrt gezaehlt" (CI,
+	//     Push-Lauf von d75ba6ca am 16.11.2026, im PR-Lauf gruen).
+	defer n.ruheAn()()
+	n.warteStill(t, 60*time.Second)
 
 	fremd, _ := crypto.GenerateKey()
 	fremdAddr := strings.ToLower(crypto.PubkeyToAddress(fremd.PublicKey).Hex())
@@ -526,36 +590,30 @@ func (n *vierKnotenNetz) trustedSeedsFromSync(t *testing.T) {
 	// replayBackoffFor(n) wieder nachgespielt (5 s, 10 s, ...; block.go) --
 	// davor zaehlt ein Abruf nicht. Der Peer liefert ihn also ueber die Zeit
 	// immer wieder, wie ein Seed, dessen Kette ihn fuehrt, bis jeder Knoten
-	// ihn replayMauerSchwelle-mal nachgespielt und abgewiesen hat.
+	// ihn replayMauerSchwelle-mal in Folge nachgespielt und abgewiesen hat.
 	//
-	// Waehrenddessen erzeugt niemand (ruhe): sonst rueckt die Finalitaet
-	// weiter, und B (kein Seed, kein FromSync) liesse den Block noch vor dem
-	// dritten Nachspielen schon im Sync als "unter der Finalitaet" fallen --
-	// A als Seed nicht (FromSync entbindet dort bis zum Stichtag,
-	// fromsync_stichtag.go). Das ist ein anderer Unterschied als der, um den
-	// es hier geht.
-	n.ruhe.Store(true)
-	defer n.ruhe.Store(false)
-	ende := time.Now().Add(90 * time.Second)
-	for time.Now().Before(ende) &&
-		(dagA.replayMauer.abweisungen.Load()-abweisungenA < replayMauerSchwelle ||
-			dagB.replayMauer.abweisungen.Load()-abweisungenB < replayMauerSchwelle) {
-		dagB.doSyncOnce(peer.URL)
-		dagA.doSyncOnce(peer.URL)
-		time.Sleep(time.Second)
-	}
-	// loeseHeilungAus entscheidet in einer Goroutine: bei A (Beleg) ruft sie
-	// replayMauerHeilen, bei B (kein Beleg) zaehlt sie abgewehrt. Eine feste
-	// Pause von 500 ms war auf einem ausgelasteten Runner zu kurz (CI am
-	// 24.10.2026, lokal nie). Gewartet wird auf genau diese beiden Ereignisse,
-	// hoechstens 10 s; geprueft wird danach unveraendert.
+	// Gewartet wird auf genau die beiden Ereignisse, die die Schwelle
+	// ausloest -- bei A (Beleg) ruft loeseHeilungAus replayMauerHeilen, bei B
+	// (kein Beleg) zaehlt sie abgewehrt --, nicht auf die Zahl der
+	// Abweisungen insgesamt: die sagt nicht, ob sie in Folge waren. Beides
+	// geschieht in einer Goroutine; eine feste Pause von 500 ms danach war
+	// auf einem ausgelasteten Runner zu kurz (CI am 24.10.2026, lokal nie).
+	// Hoechstens 90 s; geprueft wird danach unveraendert.
 	geheilt := func() bool {
 		mu.Lock()
 		defer mu.Unlock()
 		return len(heilungen[dagA]) > 0
 	}
-	for frist := time.Now().Add(10 * time.Second); time.Now().Before(frist) &&
-		(!geheilt() || dagB.replayMauer.abgewehrt.Load() <= abgewehrtB); {
+	fertig := func() bool {
+		return geheilt() && dagB.replayMauer.abgewehrt.Load() > abgewehrtB
+	}
+	naechsterAbruf := time.Now()
+	for ende := time.Now().Add(90 * time.Second); time.Now().Before(ende) && !fertig(); {
+		if !time.Now().Before(naechsterAbruf) {
+			dagB.doSyncOnce(peer.URL)
+			dagA.doSyncOnce(peer.URL)
+			naechsterAbruf = time.Now().Add(time.Second)
+		}
 		time.Sleep(50 * time.Millisecond)
 	}
 

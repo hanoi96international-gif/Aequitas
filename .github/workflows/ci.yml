@@ -250,6 +250,11 @@ jobs:
               grep -E '^\s*--- FAIL' "out_${name}.txt" | sed "s/^ *//" | while read -r z; do echo "::error title=db-tests ${name}::${z}"; done || true
               echo "===== ${name}: fehlgeschlagene Tests ====="
               grep -E -A25 '^\s*--- FAIL|^panic:' "out_${name}.txt" | head -300 || true
+              # Die Meldung selbst (t.Fatalf, t.Logf) steht bei -v dort, wo sie
+              # entstand, nicht bei "--- FAIL": am 16.11.2026 zeigte der Block
+              # oben nur, WELCHER Teiltest kippte, nicht warum.
+              echo "===== ${name}: letzte Testmeldungen ====="
+              grep -E '^\s+[A-Za-z0-9_]+_test\.go:[0-9]+: ' "out_${name}.txt" | tail -60 | cut -c1-400 || true
               exit "$rc"
             fi
             # A group where everything skipped is a green tick that proves

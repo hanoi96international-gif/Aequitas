@@ -203,10 +203,21 @@ type vierKnotenNetz struct {
 	// entstehen sonst laufend Zusammenfuehrungsbloecke (zwei Spitzen ->
 	// jeder fuehrt zusammen -> wieder zwei Spitzen, so gewollt, main.go), und
 	// ein Gleichstand laesst sich nie in einem Augenblick ablesen.
-	ruhe    atomic.Bool
+	ruhe    atomic.Int32 // > 0: Ruhe; Zaehler, damit sie sich schachteln laesst (ruheAn)
 	erzeugt atomic.Int64
 	ende    chan struct{}
 }
+
+// ruheAn haelt die Erzeugung an und gibt die Funktion zurueck, die sie wieder
+// freigibt. Geschachtelt erlaubt: erzeugt wird erst wieder, wenn jeder
+// Aufrufer freigegeben hat.
+func (n *vierKnotenNetz) ruheAn() func() {
+	n.ruhe.Add(1)
+	var einmal sync.Once
+	return func() { einmal.Do(func() { n.ruhe.Add(-1) }) }
+}
+
+func (n *vierKnotenNetz) inRuhe() bool { return n.ruhe.Load() > 0 }
 
 // vierAdminURL: dieselbe Instanz wie DATABASE_URL, Datenbank "postgres".
 func vierDBURL(t *testing.T, dbname string) string {
@@ -562,13 +573,13 @@ func (n *vierKnotenNetz) taktStarten(k *vierKnoten) {
 			}
 			runde++
 			SafeCall("vier-takt", func() {
-				if n.ruhe.Load() {
+				if n.inRuhe() {
 					// nur nachziehen
 				} else if b := dag.ProduceBlock(); b != nil {
 					n.erzeugt.Add(1)
 					dag.HTTPBroadcastBlock(b)
 				}
-				if runde%3 == 0 || n.ruhe.Load() {
+				if runde%3 == 0 || n.inRuhe() {
 					for _, o := range n.ks {
 						if o != k && !o.aus.Load() {
 							dag.doSyncOnce(o.srv.URL)
@@ -797,6 +808,29 @@ func (n *vierKnotenNetz) standVon(k *vierKnoten) vierStand {
 
 // pruefeGleichstand: Erzeugung anhalten, nachziehen lassen, bis alle vier
 // dasselbe sagen -- hoechstens 90 s.
+//
+// EINE LAGE LOEST DIE RUHE NICHT VON SELBST (CI am 16.11.2026, Push-Lauf von
+// 3e0dec65: alle vier auf Hoehe 124 mit derselben Wurzel, der zurueckgekehrte
+// Leiter mit einer Spitze, die anderen mit zweien, 90 s lang). Wer seinen
+// Zustand per Snapshot holt, waehrend der Spender zwei Geschwister-Bloecke
+// auf der Snapshot-Hoehe als Spitzen fuehrt, setzt nur den kanonischen als
+// Spitze; das Geschwister laedt er als bekannten Block, ausdruecklich nicht
+// als Spitze (block.go, "NOT dag.tips -- the canonical block above remains
+// the sole starting tip"; SeedTrustedCheckpoint, snapshot.go). Kontostaende
+// und Wurzel sind dann gleich, die Spitzen nicht -- bis der naechste Block
+// beide zusammenfuehrt. Im Betrieb kommt der mit dem naechsten Takt; in der
+// Ruhe erzeugt niemand, also nie. Nachziehen und erneutes Anbieten
+// (tip_reannounce.go) aendern daran nichts: der Knoten KENNT den Block ja.
+//
+// Darum: stehen Hoehe, Wurzel und Konten bei allen gleich und nur die Spitzen
+// seit vierSpitzenGeduld verschieden, erzeugt EIN Knoten -- einer, der alle
+// Spitzen fuehrt -- genau einen Block, wie es der naechste Takt taete. Danach
+// gilt die Pruefung unveraendert und vollstaendig: gleiche Hoehe, gleiche
+// Spitzen, gleiche Wurzel, gleiche Konten. Nimmt der zurueckgekehrte Knoten
+// den Block nicht an, bleibt der Test rot -- das ist dann ein Fehler des
+// Knotens, kein Zufall des Tests. leiterAusfall stellt die Lage seither bei
+// jedem Lauf her (zweiGeschwisterSpitzen), statt auf den Zufall zu warten.
+// Gegenprobe: ohne die Zusammenfuehrung kippt der Lauf dort wie in der CI.
 func (n *vierKnotenNetz) pruefeGleichstand(t *testing.T, wann string) vierStand {
 	t.Helper()
 	// Erst alles Angenommene verblocken lassen, dann die Erzeugung anhalten.
@@ -807,30 +841,99 @@ func (n *vierKnotenNetz) pruefeGleichstand(t *testing.T, wann string) vierStand 
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	n.ruhe.Store(true)
-	defer n.ruhe.Store(false)
+	defer n.ruheAn()()
 	ende = time.Now().Add(90 * time.Second)
 	var letzte []vierStand
+	var nurSpitzenSeit time.Time
+	zusammengefuehrt := 0
 	for time.Now().Before(ende) {
 		letzte = letzte[:0]
+		var lebende []*vierKnoten
 		for _, k := range n.ks {
 			if k.aus.Load() {
 				continue
 			}
 			letzte = append(letzte, n.standVon(k))
+			lebende = append(lebende, k)
 		}
 		if vierGleich(letzte) && n.alleUeberweisungenVerbucht(letzte[0]) {
 			t.Logf("%s: %d Knoten gleich -- Hoehe %d, StateRoot %s, %d Ueberweisungen verbucht, %d Bloecke erzeugt",
 				wann, len(letzte), letzte[0].hoehe, letzte[0].root, n.gesamt.Load(), n.erzeugt.Load())
 			return letzte[0]
 		}
+		// Nur die Spitzen verschieden -- siehe Kopf.
+		if !vierGleichBisAufSpitzen(letzte) {
+			nurSpitzenSeit = time.Time{}
+		} else if nurSpitzenSeit.IsZero() {
+			nurSpitzenSeit = time.Now()
+		} else if time.Since(nurSpitzenSeit) >= vierSpitzenGeduld && zusammengefuehrt < vierZusammenfuehrenHoechstens {
+			zusammengefuehrt++
+			nurSpitzenSeit = time.Time{}
+			n.spitzenBefund(t)
+			n.einBlockFuehrtZusammen(t, wann, lebende)
+		}
 		time.Sleep(500 * time.Millisecond)
 	}
 	for i, s := range letzte {
 		t.Logf("Stand %d: Hoehe %d Spitzen %s Root %s Guthaben %v Nonces %v", i, s.hoehe, s.spitzen, s.root, s.guthaben, s.nonces)
 	}
+	n.spitzenBefund(t)
 	t.Fatalf("%s: nach 90 s keine Einigkeit unter den Knoten", wann)
 	return vierStand{}
+}
+
+// spitzenBefund schreibt bei Uneinigkeit auf, welcher Knoten welche Spitze
+// fuehrt, kennt oder nicht kennt -- mit Hoehe, Erzeuger, Eltern und der
+// Finalitaet des Knotens. Ohne das stand im CI-Protokoll nur "keine
+// Einigkeit" (16.11.2026), und die Ursache liess sich nicht ablesen.
+func (n *vierKnotenNetz) spitzenBefund(t *testing.T) {
+	t.Helper()
+	alle := map[string]*Block{}
+	for _, k := range n.ks {
+		if k.aus.Load() {
+			continue
+		}
+		cs, dag, _ := k.teile()
+		fin, _ := cs.GetFinalizedCheckpoint()
+		tips := dag.GetTips()
+		sort.Strings(tips)
+		t.Logf("Knoten %d (%s): Hoehe %d, Finalitaet %d, %d Spitze(n), fehlende Eltern %v",
+			k.i, kurzAdresse(k.addr), dag.heightSchnell.Load(), fin, len(tips), dag.MissingParentHashes())
+		for _, h := range tips {
+			if b := dag.GetBlockByHash(h); b != nil {
+				alle[h] = b
+			}
+		}
+	}
+	for h, b := range alle {
+		eltern := make([]string, 0, len(b.ParentHashes))
+		for _, e := range b.ParentHashes {
+			eltern = append(eltern, fmt.Sprintf("%.12s", e))
+		}
+		var lage []string
+		for _, k := range n.ks {
+			if k.aus.Load() {
+				continue
+			}
+			_, dag, _ := k.teile()
+			istSpitze := false
+			for _, s := range dag.GetTips() {
+				if s == h {
+					istSpitze = true
+				}
+			}
+			switch {
+			case istSpitze:
+				lage = append(lage, fmt.Sprintf("%d:Spitze", k.i))
+			case dag.hasBlockInMemory(h):
+				lage = append(lage, fmt.Sprintf("%d:bekannt", k.i))
+			default:
+				lage = append(lage, fmt.Sprintf("%d:fehlt", k.i))
+			}
+		}
+		t.Logf("Spitze %.12s: Hoehe %d, Erzeuger %s, Eltern %v, %d Txs -- %s",
+			h, b.Height, kurzAdresse(b.Proposer), eltern, len(b.Transactions), strings.Join(lage, " "))
+	}
 }
 
 // ausgangLeer: kein lebender Knoten hat noch Angenommenes, das in keinem
@@ -865,6 +968,65 @@ func vierGleich(st []vierStand) bool {
 		}
 	}
 	return true
+}
+
+// vierSpitzenGeduld: so lange muessen Hoehe, Wurzel und Konten gleich und nur
+// die Spitzen verschieden sein, bevor ein Block sie zusammenfuehrt. In der
+// Ruhe zieht jeder Knoten alle 400 ms bei jedem nach; was nach 5 s nicht
+// gleich ist, wird es durch Nachziehen nicht mehr.
+const vierSpitzenGeduld = 5 * time.Second
+
+// vierZusammenfuehrenHoechstens begrenzt die Zusammenfuehrungen je Pruefung.
+// Eine reicht fuer die Lage im Kopf von pruefeGleichstand; die zweite deckt
+// den Fall, dass waehrend der ersten noch ein Push unterwegs war.
+const vierZusammenfuehrenHoechstens = 2
+
+// vierGleichBisAufSpitzen: Hoehe, Wurzel und Konten bei allen gleich, die
+// Spitzen bei mindestens einem anders.
+func vierGleichBisAufSpitzen(st []vierStand) bool {
+	if len(st) < 2 {
+		return false
+	}
+	ohne := make([]vierStand, len(st))
+	spitzenVerschieden := false
+	for i, s := range st {
+		if s.spitzen != st[0].spitzen {
+			spitzenVerschieden = true
+		}
+		s.spitzen = ""
+		ohne[i] = s
+	}
+	return spitzenVerschieden && vierGleich(ohne)
+}
+
+// einBlockFuehrtZusammen: genau ein Knoten erzeugt genau einen Block und
+// schiebt ihn an die anderen -- ProduceBlock und HTTPBroadcastBlock wie im
+// Takt (taktStarten), nur eben einmal statt laufend. Gewaehlt wird der Knoten
+// mit den meisten Spitzen (bei Gleichstand der mit der kleinsten Nummer): nur
+// er kann alle als Eltern nennen. Die Ruhe bleibt fuer alle anderen bestehen.
+func (n *vierKnotenNetz) einBlockFuehrtZusammen(t *testing.T, wann string, lebende []*vierKnoten) {
+	t.Helper()
+	var wer *vierKnoten
+	meiste := -1
+	for _, k := range lebende {
+		_, dag, _ := k.teile()
+		if z := len(dag.GetTips()); z > meiste {
+			wer, meiste = k, z
+		}
+	}
+	if wer == nil {
+		return
+	}
+	_, dag, _ := wer.teile()
+	b := dag.ProduceBlock()
+	if b == nil {
+		t.Logf("%s: nur die Spitzen sind verschieden, aber Knoten %d erzeugt gerade keinen Block", wann, wer.i)
+		return
+	}
+	n.erzeugt.Add(1)
+	dag.HTTPBroadcastBlock(b)
+	t.Logf("%s: Hoehe, Wurzel und Konten gleich, nur die Spitzen nicht -- Knoten %d fuehrt sie mit Block #%d (%.12s, %d Eltern) zusammen",
+		wann, wer.i, b.Height, b.Hash, len(b.ParentHashes))
 }
 
 // alleUeberweisungenVerbucht: die Summe der Nonces ist die Zahl der
@@ -1190,6 +1352,82 @@ func (n *vierKnotenNetz) pruefeFalscheBloecke(t *testing.T) {
 		vorher.root, nachher.root)
 }
 
+// zweiGeschwisterSpitzen: in der Ruhe erzeugen zwei lebende Knoten
+// gleichzeitig je einen Block auf denselben Eltern -- zwei Geschwister
+// derselben Hoehe -- und schieben sie an alle. Zurueck erst, wenn jeder
+// lebende Knoten genau diese beiden als Spitzen fuehrt. Der Aufrufer haelt
+// die Ruhe; ohne sie fuehrte der naechste Takt die beiden sofort zusammen.
+func (n *vierKnotenNetz) zweiGeschwisterSpitzen(t *testing.T) {
+	t.Helper()
+	if !n.inRuhe() {
+		t.Fatal("zweiGeschwisterSpitzen ohne Ruhe")
+	}
+	var lebende []*vierKnoten
+	for _, k := range n.ks {
+		if !k.aus.Load() {
+			lebende = append(lebende, k)
+		}
+	}
+	if len(lebende) < 2 {
+		t.Fatalf("zwei Geschwister brauchen zwei lebende Knoten, es leben %d", len(lebende))
+	}
+	n.warteStill(t, 60*time.Second)
+	// Gleichzeitig, damit keiner den Block des anderen schon als Eltern
+	// nimmt. Gelingt das einmal nicht (einer zog zwischen den beiden
+	// Aufrufen nach), noch einmal -- hoechstens fuenf Versuche.
+	for versuch := 1; versuch <= 5; versuch++ {
+		var bl [2]*Block
+		var wg sync.WaitGroup
+		for i := 0; i < 2; i++ {
+			wg.Add(1)
+			go func(i int) {
+				defer wg.Done()
+				_, dag, _ := lebende[i].teile()
+				bl[i] = dag.ProduceBlock()
+			}(i)
+		}
+		wg.Wait()
+		for i := 0; i < 2; i++ {
+			if bl[i] != nil {
+				n.erzeugt.Add(1)
+				_, dag, _ := lebende[i].teile()
+				dag.HTTPBroadcastBlock(bl[i])
+			}
+		}
+		if bl[0] == nil || bl[1] == nil || bl[0].Height != bl[1].Height || bl[0].Hash == bl[1].Hash {
+			n.warteStill(t, 60*time.Second)
+			continue
+		}
+		paar := []string{bl[0].Hash, bl[1].Hash}
+		sort.Strings(paar)
+		soll := strings.Join(paar, ",")
+		ende := time.Now().Add(30 * time.Second)
+		for {
+			alle := true
+			for _, k := range lebende {
+				_, dag, _ := k.teile()
+				tips := dag.GetTips()
+				sort.Strings(tips)
+				if strings.Join(tips, ",") != soll {
+					alle = false
+				}
+			}
+			if alle {
+				t.Logf("zwei Geschwister-Spitzen auf Hoehe %d bei %d Knoten: %.12s (Knoten %d) und %.12s (Knoten %d)",
+					bl[0].Height, len(lebende), bl[0].Hash, lebende[0].i, bl[1].Hash, lebende[1].i)
+				return
+			}
+			if time.Now().After(ende) {
+				n.spitzenBefund(t)
+				t.Fatalf("die beiden Geschwister %.12s und %.12s sind nach 30 s nicht bei allen %d Knoten die Spitzen",
+					bl[0].Hash, bl[1].Hash, len(lebende))
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
+	t.Fatal("in fuenf Versuchen keine zwei Geschwister-Bloecke derselben Hoehe")
+}
+
 // ------------------------------------------------------------- (b)
 
 func (n *vierKnotenNetz) leiterAusfall(t *testing.T) {
@@ -1212,10 +1450,24 @@ func (n *vierKnotenNetz) leiterAusfall(t *testing.T) {
 	ohne := n.pruefeGleichstand(t, "drei Knoten ohne den alten Leiter")
 
 	// Rueckkehr: dieselbe Datenbank, neue Instanz -- ein Neustart.
+	//
+	// Und zwar in die Lage, die am 16.11.2026 nur zufaellig eintrat und den
+	// Lauf dann kippte (Kopf von pruefeGleichstand): die drei fuehren ZWEI
+	// Geschwister-Spitzen auf derselben Hoehe, waehrend der alte Leiter
+	// seinen Zustand per Snapshot holt. Er setzt nur die kanonische als
+	// Spitze; den naechsten Block, der beide als Eltern nennt, muss er
+	// trotzdem einhaengen -- das Geschwister kennt er aus dem Resync
+	// (SeedTrustedCheckpoint, snapshot.go) oder holt es als fehlenden
+	// Elternblock nach. Geprueft wird das Ergebnis: nach genau einem
+	// Zusammenfuehrungsblock sind alle vier gleich. Die Ruhe haelt bis nach
+	// seinem Start, damit kein Takt die beiden vorher zusammenfuehrt.
+	frei := n.ruheAn()
+	n.zweiGeschwisterSpitzen(t)
 	k.aus.Store(false)
 	n.starte(t, k)
 	n.taktStarten(k)
 	mit := n.pruefeGleichstand(t, "der alte Leiter ist zurueck und hat nachgezogen")
+	frei()
 	if mit.hoehe < ohne.hoehe {
 		t.Fatalf("Hoehe nach der Rueckkehr %d < %d", mit.hoehe, ohne.hoehe)
 	}
