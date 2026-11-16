@@ -343,12 +343,25 @@ gerechnet; die Tabelle gibt `python3 -I wiesner_parameter.py` aus):
 
   Gegen die alten Regeln besteht eine geklonte Kopie bei k = 16 / 32 / 64 mit
   0,58 / 0,55 / 0,55; beide Kopien zusammen mit rund 0,3.
-- **Was folgt:**
-  1. Die Regeln in Spezifikation und Knoten bekommen neue Grenzen: Toleranz an e
-     gekoppelt, große k.
-  2. Das Offenlegen muss in Teilen gehen, weil Pfade und Anteile für ~1000 Stellen nicht
-     in eine Transaktion passen.
-  3. Bis dahin darf Variante W nicht freigeschaltet werden.
+- **Umgesetzt (W2c, 16.11.2026 abends), in Spezifikation und Knoten:**
+  1. **Toleranz je Note:** 2, 3, 4, 5, 6, 8 oder 10 % (`tol`). Die Validatoren
+     bestätigen sie mit.
+  2. **Prüfgröße k_note:** kommt aus der Tabelle
+     `K_TABELLE[tol][f16]` mit f16 = ⌈16(t−1)/v⌉. Eine Absprache unter der Schwelle kennt
+     höchstens diesen Anteil der Stellen. Die Tabelle ist exakt gerechnet, als ganze Zahlen
+     ohne Gleitkomma im Konsens.
+  3. **Unsichere Felder sind 0,** und dafür wird das Prägen abgewiesen. Ein Beispiel:
+     t = 3 und v = 5 erzwingen bei 4 % k = 3.472.
+  4. **Einlösen genau mit k_note.** Prüfungen lassen k_note Stellen und den letzten Wert
+     der Hash-Ketten frei. Eine Note ist erschöpft, wenn weniger als k_note Stellen frei
+     sind oder die Ketten verbraucht sind.
+  5. **Offenlegen in Teilen** zu höchstens 64 Stellen, der Reihe nach, jeder Teil ganz
+     oder gar nicht. Geurteilt wird erst über alle k.
+  6. **Neue Grenzen:** `N_MAX` = 16.384, `K_MAX` = 8.192, Pfad ≤ 14, Register höchstens 16
+     Noten, benutzte Stellen als Bitfeld.
+  7. **Prüfung:** Knoten und Spezifikation sind per Prüfvektor gleich (inkl. Tabelle).
+     Jede neue Regel hat einen Missbrauchstest und eine Gegenprobe durch Mutation.
+  8. **Freischalten erst nach W4/W5.**
 - **Grenze der Aussage:** Gerechnet ist der Produktangriff je Kopie. Dass dieselbe
   Schwelle auch gegen verschränkte Angriffe in genau unserem Schema gilt (jede Stelle wird
   nur einmal gefragt), gehört ins Gutachten (W5).
@@ -359,7 +372,7 @@ gerechnet; die Tabelle gibt `python3 -I wiesner_parameter.py` aus):
 |---|---|---|---|
 | W0 | Simulation, Analyse, Schaltkreise | Aequitas | fertig (`wiesner_verteilt.py`, `wiesner_hardware.py`) |
 | W1 | Fehlerraten auf echter Hardware (IBM, Ionenfalle) → Notengröße und Toleranz | Aequitas; Läufe mit Freigabe | Rauschmodell gemessen (HEUTE.md 3.3); IBM-Lauf wartet auf Freigabe; Ionenfalle braucht ein Konto |
-| W2 | Kettenseite schlafend: Satzart „privat“, verteilte Schlüsselerzeugung, Prüf-Transaktion, Zähler, Sperre, Einlösen | Aequitas | **W2a fertig** (16.11.2026): Regeln als ausführbare Spezifikation `wiesner_kette.py` und im Knoten `x/humanity/keeper/quanten_w.go`, `quanten_w_register.go` (schlafend), Byte für Byte gleich (Prüfvektor). **W2b** (16.11.2026): Regeln geschärft (#541), eingehängt in Blöcke mit Unterschriften, Buchungen, StateRoot, Snapshot, schlafend (`quanten_w_kette.go`) |
+| W2 | Kettenseite schlafend: Satzart „privat“, verteilte Schlüsselerzeugung, Prüf-Transaktion, Zähler, Sperre, Einlösen | Aequitas | **W2a fertig** (16.11.2026): Regeln als ausführbare Spezifikation `wiesner_kette.py` und im Knoten `x/humanity/keeper/quanten_w.go`, `quanten_w_register.go` (schlafend), Byte für Byte gleich (Prüfvektor). **W2b** (16.11.2026): Regeln geschärft (#541), eingehängt in Blöcke mit Unterschriften, Buchungen, StateRoot, Snapshot, schlafend (`quanten_w_kette.go`). **W2c** (16.11. abends): sichere Prüfgrößen nach dem Befund Klonangriff (Toleranz je Note, k aus der Tabelle, Offenlegen in Teilen) |
 | W3 | Prägung ohne Vertrauen (Weg 2 oder 3 oben) als Protokoll und Simulation | Aequitas | **fertig** (16.11.2026): Weg 3 als Schaltkreis (`wiesner_hardware.note_fern`), Simulation mit Absprache-Rechnung (`wiesner_praegen.py`), Läufer `hardware_ibm.py --wiesner --fern` |
 | W4 | Partnerversuch: echte Note in einem Speicher (Stunden), Ausgabe über ein Aequitas-Testnetz, Weitergabe des Geräts, klassische Prüfung, Einlösen | BMFTR-Verbund + Aequitas | Kontakt offen. **Ohne Partner** (Labormaßstab, Note lebt µs): `hardware_ibm.py --wiesner --kette` – Prägen auf der Kette, Bezahlen per Teleportation, Einlösen mit Aufforderung aus den Hash-Ketten der Validatoren, Offenlegen, Urteil, AEQ beim Empfänger; ideal und im Rauschmodell gelaufen, IBM wartet auf Freigabe |
 | W5 | Gutachten (Prüfauftrag um Variante W erweitert), Pilot im Testnetz | extern + Aequitas | Prüfauftrag erweitert (`docs/QUANTENGELD_PRUEFAUFTRAG.md`); Gutachter und Pilot offen |

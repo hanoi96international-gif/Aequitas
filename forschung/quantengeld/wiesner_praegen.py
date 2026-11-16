@@ -96,11 +96,13 @@ def ende_zu_ende(rng: random.Random, n: int = 32, bezahlen: bool = True,
     Einloesende hat keine Note, er raet."""
     VAL = {f"v{j}": bytes([j]) * 16 for j in range(1, 6)}
     vliste, t = list(VAL), 3
-    kette = wk.KetteW(VAL)
+    # Labor: kleine Pruefgroesse (k = n), damit der Ablauf in Sekunden laeuft --
+    # NICHT sicher; sichere Groessen: wk.K_TABELLE, wiesner_parameter.py.
+    kette = wk.KetteW(VAL, labor_k=n)
     kette.konto("praeger", 50_000_000, b"p" * 16)
     # Einloesen prueft k = min(K_MAX, n) Stellen, nicht waehlbar; das Pfand
     # traegt den Wert dieser Stellen (bei n <= K_MAX der ganze Wert).
-    k = min(wk.K_MAX, n)
+    k = n  # Einloesen: genau k_note (hier die Laborgroesse)
     pfand = wk.pfand_fuer(10_000_000, k, n)
     kette.konto("empfaenger", pfand, b"e" * 16)  # genau das Pfand der Anfrage
     summe0 = kette.summe()

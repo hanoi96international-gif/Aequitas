@@ -15,8 +15,10 @@ package keeper
 //     zurueckhaelt, eine Note kostenlos erschoepfen koennen (Einloesen
 //     anfragen, verfallen lassen, 64 Stellen weg) -- gefunden in der
 //     Sicherheitspruefung von W2b Teil 1.
-//   - Einloesen mit fester Pruefgroesse k = min(K_MAX, frei): ein Faelscher
-//     kann nicht k = 8 waehlen. Pruefungen lassen quantenWReserve stehen.
+//   - Einloesen mit fester Pruefgroesse k_note (W2c: aus der Toleranz der
+//     Note und der Absprache-Grenze, quantenWKNote): ein Faelscher kann kein
+//     kleines k waehlen. Pruefungen lassen k_note Stellen und den letzten
+//     Wert der Hash-Ketten stehen. Offenlegen in Teilen (quantenWOffenTeil).
 //   - Ein falsches Einloesen toetet die Note nicht (sonst toetet jeder Fremde
 //     jede Note fuer 1 AEQ): Pfand weg, Fehlversuch, die Note bleibt. Das
 //     Pfand traegt den Wert der verbrauchten Stellen (quantenWPfandFuer).
@@ -40,6 +42,11 @@ type quantenWAnfrage struct {
 	Antwort     []int
 	AntwortZeit int64
 	EinloesenAn string // leer = nur pruefen
+	// Offenlegen in Teilen: so viele Stellen sind offen, mit diesen
+	// Treffern und Fehlern bisher.
+	Offen   int
+	Treffer int
+	Fehler  int
 }
 
 // quantenWNote: was die Kette ueber eine Variante-W-Note weiss.
@@ -48,6 +55,8 @@ type quantenWNote struct {
 	Wurzel      [32]byte
 	Validatoren []string
 	T           int
+	Tol         int // Toleranz der Note in Prozent
+	KNote       int // Pruefgroesse beim Einloesen = Reserve (quantenWKNote)
 	Benutzt     map[int]bool
 	Fehl        int
 	Gesperrt    bool
@@ -71,38 +80,42 @@ type quantenWBuchung struct {
 // quantenWPfand: kleinstes Pfand (1 AEQ).
 const quantenWPfand int64 = 1_000_000
 
-// quantenWPraegenPruefen: Form einer neuen Note. Unterschriften und Deckung
-// prueft die Einbindung; bestaetigt = Zahl der Validatoren, deren
-// Bestaetigung (mit ihrem Anker) gilt -- es muessen ALLE sein, sonst gaebe es
-// fuer einen von ihnen keinen Zufall.
-func quantenWPraegenPruefen(vorhanden bool, K string, n, t int, validatoren []string, anker int, bestaetigt int) error {
+// quantenWPraegenPruefen: Form einer neuen Note; gibt k_note zurueck.
+// Unterschriften und Deckung prueft die Einbindung; bestaetigt = Zahl der
+// Validatoren, deren Bestaetigung (mit ihrem Anker und der Toleranz) gilt --
+// es muessen ALLE sein, sonst gaebe es fuer einen von ihnen keinen Zufall.
+func quantenWPraegenPruefen(vorhanden bool, K string, n, t int, validatoren []string, anker int, bestaetigt int, tol int) (int, error) {
 	if vorhanden || !istHash64(K) {
-		return quantenWFehler("K ungueltig oder schon da")
+		return 0, quantenWFehler("K ungueltig oder schon da")
 	}
-	// n >= quantenWKMin: sonst liesse sich die Note nie pruefen oder
-	// einloesen, ihre Deckung laege fuer immer im Topf.
-	if n < quantenWKMin || n > quantenWNMax || t < 1 || t > quantenWTMax || len(validatoren) < t || len(validatoren) > quantenWVMax {
-		return quantenWFehler("Groessen")
+	if n < 1 || n > quantenWNMax || t < 1 || t > quantenWTMax || len(validatoren) < t || len(validatoren) > quantenWVMax {
+		return 0, quantenWFehler("Groessen")
+	}
+	// Sichere Pruefgroesse; n >= k_note, sonst liesse sich die Note nie
+	// einloesen und ihre Deckung laege fuer immer im Topf.
+	kn := quantenWKNote(tol, t, len(validatoren))
+	if kn < quantenWKMin || kn > quantenWKMax || n < kn {
+		return 0, quantenWFehler("Toleranz %d %%: Pruefgroesse %d bei n = %d nicht sicher moeglich", tol, kn, n)
 	}
 	gesehen := map[string]bool{}
 	for _, v := range validatoren {
 		if v == "" || gesehen[v] {
-			return quantenWFehler("Validatorenliste")
+			return 0, quantenWFehler("Validatorenliste")
 		}
 		gesehen[v] = true
 	}
 	if anker != len(validatoren) {
-		return quantenWFehler("Anker: %d, noetig %d", anker, len(validatoren))
+		return 0, quantenWFehler("Anker: %d, noetig %d", anker, len(validatoren))
 	}
 	if bestaetigt != len(validatoren) {
-		return quantenWFehler("Bestaetigungen: %d gueltig, noetig alle %d", bestaetigt, len(validatoren))
+		return 0, quantenWFehler("Bestaetigungen: %d gueltig, noetig alle %d", bestaetigt, len(validatoren))
 	}
-	return nil
+	return kn, nil
 }
 
 // neueQuantenWNote: nach quantenWPraegenPruefen.
-func neueQuantenWNote(n, t int, wurzel [32]byte, validatoren []string, anker [][32]byte) *quantenWNote {
-	e := &quantenWNote{N: n, T: t, Wurzel: wurzel, Validatoren: append([]string(nil), validatoren...),
+func neueQuantenWNote(n, t int, wurzel [32]byte, validatoren []string, anker [][32]byte, tol, kNote int) *quantenWNote {
+	e := &quantenWNote{N: n, T: t, Tol: tol, KNote: kNote, Wurzel: wurzel, Validatoren: append([]string(nil), validatoren...),
 		Z: append([][32]byte(nil), anker...), ZIndex: make([]int, len(anker))}
 	for i := range e.ZIndex {
 		e.ZIndex[i] = -1
@@ -129,9 +142,25 @@ func (e *quantenWNote) verbrauchen(stellen []int) {
 	}
 }
 
-// erschoepft: weniger als K_MIN frei, nichts offen -> tot, Wert verfaellt.
+// quantenWKMinPruefen: kleinste Pruefung einer Note mit n Stellen,
+// max(K_MIN, ceil(n / (ZufallL - 1))). Sonst liessen sich die Hash-Ketten mit
+// vielen billigen Pruefungen (je 1 AEQ Pfand) leeren, bevor die Stellen
+// ausgehen, und ein letztes falsches Einloesen toetete die Note -- fuer
+// ~255 AEQ, egal wie viel sie wert ist (Sicherheitspruefung W2c). So gehen
+// die Stellen zuerst aus, und das kostet Pfaender von etwa dem Wert der Note.
+func quantenWKMinPruefen(n int) int {
+	return max(quantenWKMin, (n+quantenWZufallL-2)/(quantenWZufallL-1))
+}
+
+// erschoepftNoetig: kein Einloesen mehr moeglich -- weniger als k_note frei
+// oder die Hash-Ketten verbraucht.
+func (e *quantenWNote) erschoepftNoetig() bool {
+	return e.N-len(e.Benutzt) < e.KNote || e.Zaehl >= quantenWZufallL
+}
+
+// erschoepft: kein Einloesen mehr moeglich, nichts offen -> tot, Wert verfaellt.
 func (e *quantenWNote) erschoepft(b *quantenWBuchung) {
-	if !e.Tot && e.Anfrage == nil && e.N-len(e.Benutzt) < quantenWKMin {
+	if !e.Tot && e.Anfrage == nil && e.erschoepftNoetig() {
 		e.Tot = true
 		b.WertVerfaellt = true
 	}
@@ -168,11 +197,13 @@ func (e *quantenWNote) anfragen(von string, k int, einloesenAn string, pfand, ze
 	}
 	frei := e.N - len(e.Benutzt)
 	if einloesenAn != "" {
-		if k != min(quantenWKMax, frei) || k < quantenWKMin {
-			return quantenWFehler("k = %d: beim Einloesen fest min(%d, frei = %d)", k, quantenWKMax, frei)
+		if k != e.KNote || frei < k {
+			return quantenWFehler("k = %d: beim Einloesen fest k_note = %d (frei %d)", k, e.KNote, frei)
 		}
-	} else if k < quantenWKMin || k > quantenWKMax || frei-k < quantenWReserve(e.N) {
-		return quantenWFehler("k = %d (Reserve fuer das Einloesen: %d von %d frei)", k, quantenWReserve(e.N), frei)
+	} else if k < quantenWKMinPruefen(e.N) || k > quantenWKMax || frei-k < e.KNote || e.Zaehl >= quantenWZufallL-1 {
+		// Reserve fuer das Einloesen: k_note Stellen und der letzte Wert der
+		// Hash-Ketten (sonst pruefte jemand die Ketten leer).
+		return quantenWFehler("k = %d (Reserve fuer das Einloesen: %d von %d frei, Anfrage %d)", k, e.KNote, frei, e.Zaehl)
 	}
 	if pfand < quantenWPfand {
 		return quantenWFehler("Pfand")
@@ -250,35 +281,45 @@ func (e *quantenWNote) antworten(von string, bits []int, zeit int64) error {
 	return nil
 }
 
-// offenlegen: jeder Knoten wertet aus und urteilt; Fehler = die
-// Offenlegung ist ungueltig und aendert nichts. Nach der Frist nicht mehr
-// (dann gilt frist(): Pfand zurueck) -- sonst haenge das Ergebnis davon ab,
-// wer zuerst einreicht.
-func (e *quantenWNote) offenlegen(K string, offen []quantenWOffenStelle, zeit int64) (quantenWErgebnis, quantenWBuchung, error) {
+// offenlegen: ein Teil der Offenlegung -- die Stellen a.Stellen[ab:ab+len]
+// der Reihe nach (ab = a.Offen), hoechstens quantenWOffenTeil. Jeder Knoten
+// wertet aus; ist der Teil ungueltig, aendert sich nichts. fertig = alle k
+// Stellen offen, dann gilt das Urteil. Nach der Frist nicht mehr (dann gilt
+// frist(): Pfand zurueck) -- sonst haenge das Ergebnis davon ab, wer zuerst
+// einreicht.
+func (e *quantenWNote) offenlegen(K string, ab int, offen []quantenWOffenStelle, zeit int64) (u quantenWErgebnis, b quantenWBuchung, fertig bool, err error) {
 	a := e.Anfrage
 	if a == nil || a.Antwort == nil {
-		return 0, quantenWBuchung{}, quantenWFehler("erst die Antwort")
+		return 0, quantenWBuchung{}, false, quantenWFehler("erst die Antwort")
 	}
 	if zeit > a.AntwortZeit+quantenWFristOffen {
-		return 0, quantenWBuchung{}, quantenWFehler("Offenlegung nach der Frist")
+		return 0, quantenWBuchung{}, false, quantenWFehler("Offenlegung nach der Frist")
 	}
-	treffer, fehler, err := quantenWAuswerten(K, e.N, e.T, len(e.Validatoren), e.Wurzel, a.Stellen, a.Basen, a.Antwort, offen)
+	if ab != a.Offen || len(offen) < 1 || len(offen) > quantenWOffenTeil || ab+len(offen) > len(a.Stellen) {
+		return 0, quantenWBuchung{}, false, quantenWFehler("Teil: ab %d (faellig %d), %d Stellen", ab, a.Offen, len(offen))
+	}
+	bis := ab + len(offen)
+	tr, fe, err := quantenWAuswerten(K, e.N, e.T, len(e.Validatoren), e.Wurzel, a.Stellen[ab:bis], a.Basen[ab:bis], a.Antwort[ab:bis], offen)
 	if err != nil {
-		return 0, quantenWBuchung{}, err
+		return 0, quantenWBuchung{}, false, err
 	}
-	u := quantenWUrteil(treffer, fehler)
+	a.Offen, a.Treffer, a.Fehler = bis, a.Treffer+tr, a.Fehler+fe
+	if a.Offen < len(a.Stellen) {
+		return 0, quantenWBuchung{}, false, nil
+	}
+	u = quantenWUrteil(a.Treffer, a.Fehler, e.Tol)
 	if u == quantenWAbgewiesen {
-		return u, e.durchgefallen(), nil
+		return u, e.durchgefallen(), true, nil
 	}
-	b := quantenWBuchung{PfandZurueckAn: a.Von}
+	b = quantenWBuchung{PfandZurueckAn: a.Von}
 	e.Anfrage = nil
 	if u == quantenWEcht && a.EinloesenAn != "" {
 		b.WertAn = a.EinloesenAn
 		e.Tot = true
-		return u, b, nil
+		return u, b, true, nil
 	}
 	e.erschoepft(&b)
-	return u, b, nil
+	return u, b, true, nil
 }
 
 // frist: beendet eine Anfrage, deren Frist abgelaufen ist (quanten_w_frist;

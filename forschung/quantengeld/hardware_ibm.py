@@ -393,7 +393,9 @@ def wiesner_kette_lauf(schuesse: int, rng: random.Random) -> None:
         sys.argv.append("--dynamisch")
     VAL = {f"v{j}": os.urandom(16) for j in range(1, 6)}
     vliste, t = list(VAL), 3
-    kette = wk.KetteW(VAL)
+    # Labor: kleine Pruefgroesse (k = n, hoechstens 16 Qubits je Schaltkreis) --
+    # NICHT sicher; sichere Groessen braucht Hunderte Stellen (wk.K_TABELLE).
+    kette = wk.KetteW(VAL, labor_k=min(n, wk.K_MAX))
     sk_p, sk_e = os.urandom(16), os.urandom(16)
     kette.konto("praeger", 50_000_000, sk_p)
     k = min(n, wk.K_MAX)  # Einloesen: k fest, nicht waehlbar
@@ -439,7 +441,7 @@ def wiesner_kette_lauf(schuesse: int, rng: random.Random) -> None:
     stat = wh.auswerten(s, r.data.c.get_counts())
     zeilen = [f"## Quanten-Note von Anfang bis Ende auf {wo}", "",
               f"Note aus {n} Qubits (BB84), {warten:g} us gehalten" + (", per Teleportation bezahlt" if bez else "")
-              + f", eingeloest mit Pruefung von {k} Stellen (Toleranz {wk.TOLERANZ:.0%}).", ""]
+              + f", eingeloest mit Pruefung von {k} Stellen (Toleranz {wk.TOLERANZ:.0%}; LABORGROESSE, nicht sicher -- sicher erst ab Hunderten Stellen, wk.K_TABELLE).", ""]
     zeilen += [f"- {z}" for z in log]
     zeilen += ["", f"Kontostand Empfaenger: {kette.konten['empfaenger'] / 1e6:g} AEQ, Topf {kette.topf / 1e6:g} AEQ, "
                f"Summe erhalten: {'ja' if kette.summe() == summe0 else 'NEIN'}.",

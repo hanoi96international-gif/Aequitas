@@ -33,6 +33,7 @@ type qwWelt struct {
 func neueQwWelt(t *testing.T, n int) *qwWelt {
 	t.Helper()
 	quantenWAbOverride.Store(qwT0 - 86400)
+	qwLabor(t) // Ablaeufe mit k_note = 64; sichere Groessen: TestQuantenW_SicherePruefgroesse
 	alt := quantenWBetreiberVon
 	t.Cleanup(func() { quantenWAbOverride.Store(0); quantenWBetreiberVon = alt })
 	w := &qwWelt{t: t, cs: newTestState(), nach: newTestState(), p: qwPraegen(n, 3, 5, int64(n)),
@@ -84,11 +85,11 @@ func (w *qwWelt) ankerHex() []string {
 func (w *qwWelt) praegenTx(zeit, deckung int64) Transaction {
 	p := w.p
 	wurzel := hex.EncodeToString(p.wurzel[:])
-	q := &QuantenWAngaben{K: p.K, N: p.n, T: p.t, Wurzel: wurzel, Validatoren: w.val, Anker: w.ankerHex(), Deckung: deckung}
+	q := &QuantenWAngaben{K: p.K, N: p.n, T: p.t, Wurzel: wurzel, Validatoren: w.val, Anker: w.ankerHex(), Deckung: deckung, Tol: quantenWTolStandard}
 	for x := range w.val {
-		q.Bestaetigungen = append(q.Bestaetigungen, personalSign(w.t, w.valKeys[x], quantenWBestaetigungNachricht(p.K, p.wurzel, p.n, p.t, w.val, x+1, p.anker[x], zeit)))
+		q.Bestaetigungen = append(q.Bestaetigungen, personalSign(w.t, w.valKeys[x], quantenWBestaetigungNachricht(p.K, p.wurzel, p.n, p.t, w.val, x+1, p.anker[x], zeit, q.Tol)))
 	}
-	q.WalletSig = personalSign(w.t, w.keys[w.praeger], quantenWPraegenNachricht(w.praeger, p.K, p.n, p.t, wurzel, w.val, q.Anker, deckung, zeit))
+	q.WalletSig = personalSign(w.t, w.keys[w.praeger], quantenWPraegenNachricht(w.praeger, p.K, p.n, p.t, wurzel, w.val, q.Anker, deckung, zeit, q.Tol))
 	return Transaction{Type: quantenWPraegenTxArt, Wallet: w.praeger, DistributionAt: zeit, QuantenW: q}
 }
 
@@ -117,7 +118,12 @@ func (w *qwWelt) antwortTx(von string, index int, bits []int) Transaction {
 }
 
 func (w *qwWelt) offenTx(index int, stellen []int) Transaction {
-	q := &QuantenWAngaben{K: w.p.K, Index: index}
+	return w.offenTeilTx(index, 0, stellen)
+}
+
+// offenTeilTx: ein Teil der Offenlegung, beginnend bei Stelle ab der Aufforderung.
+func (w *qwWelt) offenTeilTx(index, ab int, stellen []int) Transaction {
+	q := &QuantenWAngaben{K: w.p.K, Index: index, Ab: ab}
 	for _, o := range w.p.offen(stellen, 1, 3, 5) {
 		var of QuantenWOffen
 		for _, a := range o.Anteile {
@@ -212,7 +218,7 @@ func TestQuantenWKette_Gutfall(t *testing.T) {
 		t.Fatalf("Pruefung: %+v", tx.QuantenW.gerechnet())
 	}
 	// Einloesen durch bert an bert: k = 64, Pfand 10 AEQ * 64 / 200 = 3,2 AEQ.
-	tx = w.annehmen(w.anfrageTx(w.bert, 1, quantenWKMax, w.bert, z+100), z+101)
+	tx = w.annehmen(w.anfrageTx(w.bert, 1, qwLK, w.bert, z+100), z+101)
 	if tx.QuantenW.Pfand != 3_200_000 {
 		t.Fatalf("Pfand beim Einloesen %d", tx.QuantenW.Pfand)
 	}
@@ -346,7 +352,7 @@ func TestQuantenWKette_AblaufMissbrauch(t *testing.T) {
 			return tx
 		}(), "quanten_w_unterschrift"},
 		"Anfrage mit falscher Nummer": {w.anfrageTx(w.anna, 1, 16, "", z+5), "quanten_w_form"},
-		"Einloesen an einen Topf":     {w.anfrageTx(w.anna, 0, quantenWKMax, quantenWTopfAddr, z+5), "quanten_w_form"},
+		"Einloesen an einen Topf":     {w.anfrageTx(w.anna, 0, qwLK, quantenWTopfAddr, z+5), "quanten_w_form"},
 		"Einloesen mit k = 8":         {w.anfrageTx(w.anna, 0, 8, w.anna, z+5), "quanten_w_regel"},
 		"Pruefung frisst die Reserve": {w.anfrageTx(w.anna, 0, 137, "", z+5), "quanten_w_regel"},
 		"Zufall vor der Anfrage":      {w.zufallTx(0), "quanten_w_regel"},
@@ -550,11 +556,21 @@ func TestQuantenWKette_RegisterLesen(t *testing.T) {
 		"Anfrage mit anderer Nummer": func(m map[string]interface{}) {
 			note(m)["anfrage"].(map[string]interface{})["Index"] = 3.0
 		},
-		"Stelle ausserhalb":  func(m map[string]interface{}) { note(m)["benutzt"].([]interface{})[0] = 999.0 },
-		"Validator doppelt":  func(m map[string]interface{}) { v := note(m)["validatoren"].([]interface{}); v[1] = v[0] },
-		"keine Anteile":      func(m map[string]interface{}) { note(m)["anteile"] = 0.0 },
-		"Pfand unter 1 AEQ":  func(m map[string]interface{}) { note(m)["anfrage"].(map[string]interface{})["Pfand"] = 5.0 },
-		"Basen ohne Stellen": func(m map[string]interface{}) { note(m)["anfrage"].(map[string]interface{})["Stellen"] = nil },
+		"Bitfeld zu lang": func(m map[string]interface{}) { note(m)["benutzt"] = note(m)["benutzt"].(string) + "00" },
+		"Bitfeld gross":   func(m map[string]interface{}) { note(m)["benutzt"] = strings.ToUpper(note(m)["benutzt"].(string)) },
+		"Bitfeld leer kodiert": func(m map[string]interface{}) {
+			note(m)["benutzt"] = strings.Repeat("0", len(note(m)["benutzt"].(string)))
+		},
+		"k_note falsch":               func(m map[string]interface{}) { note(m)["k_note"] = 8.0 },
+		"Toleranz alt (15)":           func(m map[string]interface{}) { note(m)["tol"] = 15.0 },
+		"Toleranz fehlt":              func(m map[string]interface{}) { note(m)["tol"] = 0.0 },
+		"offen ohne Antwort":          func(m map[string]interface{}) { note(m)["anfrage"].(map[string]interface{})["Offen"] = 3.0 },
+		"Treffer ohne offene Stellen": func(m map[string]interface{}) { note(m)["anfrage"].(map[string]interface{})["Treffer"] = 1.0 },
+		"Fehler ueber den Treffern":   func(m map[string]interface{}) { note(m)["anfrage"].(map[string]interface{})["Fehler"] = 1.0 },
+		"Validator doppelt":           func(m map[string]interface{}) { v := note(m)["validatoren"].([]interface{}); v[1] = v[0] },
+		"keine Anteile":               func(m map[string]interface{}) { note(m)["anteile"] = 0.0 },
+		"Pfand unter 1 AEQ":           func(m map[string]interface{}) { note(m)["anfrage"].(map[string]interface{})["Pfand"] = 5.0 },
+		"Basen ohne Stellen":          func(m map[string]interface{}) { note(m)["anfrage"].(map[string]interface{})["Stellen"] = nil },
 		"tote Note doppelt": func(m map[string]interface{}) {
 			m["tote"] = []interface{}{map[string]interface{}{"k": w.p.K, "zeit": 1.0}}
 		},
@@ -676,9 +692,9 @@ func TestQuantenWKette_ToteGegenZurueckdatieren(t *testing.T) {
 	a := w.anfrage(w.cs)
 	w.annehmen(w.antwortTx(w.anna, 0, w.p.ehrlich(a.Stellen, a.Basen)), z+13)
 	w.annehmen(w.offenTx(0, a.Stellen), z+14)
-	w.annehmen(w.anfrageTx(w.bert, 1, quantenWKMax, w.bert, z+20), z+21)
+	w.annehmen(w.anfrageTx(w.bert, 1, qwLK, w.bert, z+20), z+21)
 	w.annehmen(w.zufallTx(1), z+22)
-	w.annehmen(w.antwortTx(w.bert, 1, make([]int, quantenWKMax)), z+23)
+	w.annehmen(w.antwortTx(w.bert, 1, make([]int, qwLK)), z+23)
 	a = w.anfrage(w.cs)
 	if tx := w.annehmen(w.offenTx(1, a.Stellen), z+24); tx.QuantenW.Urteil == "echt" {
 		t.Fatal("Nullantwort bestand -- Saat des Tests aendern (deterministisch)")
