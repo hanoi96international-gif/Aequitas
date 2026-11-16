@@ -175,6 +175,13 @@ beim Empfänger, Summe erhalten.
   20 µs 23 %, Annahme 0,53. Heißt: auf dem echten Chip trägt die Note heute nur, wenn
   sie nicht warten muss. Für alles mit Wartezeit braucht es den geschützten Speicher
   (Fehlerkorrektur, #528) oder die Ionenfalle (Sekunden statt Mikrosekunden).
+- **Auf der echten Maschine, ohne Warten** (16.11.2026, `ibm_marrakesh`, [Lauf 43895622629](https://github.com/hanoi96international-gif/Aequitas/actions/runs/43895622629),
+  IBM-Job `dbti2t369a3s73fp0uq0`): Prägen → Anfrage → Aufforderung aus dem nächsten Block
+  → Antwort mit Messwerten vom Chip → drei Validatoren legen offen → jeder Knoten rechnet:
+  **10 Treffer, 0 Fehler → ECHT, 10 AEQ beim Empfänger**, Topf 0, Summe erhalten. Über
+  alle 1000 Schüsse: 0,7 % Fehler je Treffer, **Annahme 0,998**. Damit läuft der ganze
+  Ablauf einer Quanten-Note mit dezentraler Prüfung durch die Validatoren heute auf
+  echter Quanten-Hardware – solange die Note nicht gelagert werden muss.
 
 **Zählt das als Quantengeld?** Als Vorführung: ja, das ist der ganze Ablauf einer
 privat prüfbaren Quanten-Note mit dezentraler Prüfung – auf echter Hardware, sobald der
