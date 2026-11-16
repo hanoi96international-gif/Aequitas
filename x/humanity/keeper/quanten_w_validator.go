@@ -402,10 +402,7 @@ func (d *quantenWDienst) bestaetigen(q QuantenWBestaetigenAnfrage) (anker string
 	// Derselbe Auftrag noch einmal (die Antwort ging verloren): dieselbe
 	// Bestaetigung mit demselben Anker -- sonst braeuchte der Praeger ein
 	// neues K. Ein ANDERER Auftrag fuer dasselbe K bleibt abgewiesen.
-	d.mu.Lock()
-	vorher, da := d.eintraege[q.K]
-	d.mu.Unlock()
-	if da {
+	if vorher, da := d.eintragVon(q.K); da {
 		if !quantenWGleicherAuftrag(vorher, q) {
 			return "", "", quantenWFehler("schon bestaetigt (anderer Auftrag)")
 		}
@@ -462,6 +459,14 @@ func (d *quantenWDienst) bestaetigungUnterschreiben(q QuantenWBestaetigenAnfrage
 	}
 	s[64] += 27
 	return hex.EncodeToString(a[:]), "0x" + hex.EncodeToString(s), nil
+}
+
+// eintragVon: der Tresor-Eintrag zu K (unter der Sperre, mit defer).
+func (d *quantenWDienst) eintragVon(k string) (*quantenWTresorEintrag, bool) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	e, da := d.eintraege[k]
+	return e, da
 }
 
 // quantenWGleicherAuftrag: dieselbe Note, derselbe Praeger, dieselben
