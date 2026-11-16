@@ -143,6 +143,22 @@ Nicht übernommen, als Beobachtung für später:
    - Mit Teleportation 12,5 %: keine sichere Toleranz unter 14,6 %.
    - Ab 20 µs 29–40 %, die Note ist verloren.
    - `wiesner_hardware.TOLERANZ` steht jetzt auf 4 % statt 15 %.
+10. **S3 – Ausgabe über eine echte Leitung gerechnet** (ANALYSE.md 5c,
+    `wiesner_parameter.py` Abschnitt S3, Prüfauftrag S Fragen 6 und 7):
+    - Kent u. a. 2022, QT1 (Lemma 2/3, Satz 1) ist umgesetzt, ihre Abb. 5 nachgerechnet.
+      Mutationen: sechs von sechs erkannt.
+    - Befund 1: Kents Handsender ist sicher, sobald Basen und Werte aus dem Zufall der
+      Validatoren kommen (β = 0).
+    - Befund 2: Die Tabelle für ideale Qubits reicht über eine Leitung nicht. Bei 10° und
+      3 % käme ein Fälscher in 1,4 % durch. `s3_stichprobe` rechnet mit λ(θ) und dem
+      Mehrphotonen-Anteil.
+    - **Lücke geschlossen:** Die Größe der Stichprobe prüfte niemand. Jetzt lädt
+      `s_kette.stelle_laden` nur mit mindestens k_note Stellen (fail-closed, `labor_k` nur
+      für Tests). Mutationen: drei von drei erkannt, Prüfvektor unverändert. Der Knoten
+      prüft die Größe bewusst nicht: Beim Anmelden ist die Annahme schon geschehen. Die
+      App der Annahmestelle muss dieselbe Regel bekommen.
+    - Danach: die Tabelle im Knoten mit θ und dem Anteil freier Stellen, dazu die Meldung
+      Λ und die öffentliche Teilmenge im Ablauf (vor S3 mit Gerät).
 
 ## Offene PRs
 

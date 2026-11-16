@@ -89,8 +89,20 @@ bauen kann.
      Bindung, Wahl, Anmeldung der bei der Ausgabe **festgelegten** Annahmestelle (sonst
      könnte ein Dritter die offengelegte Stichprobe aus der Warteschlange kopieren und
      zuerst einlösen), Offenlegen in Teilen, Frist, Wert über Anteile im W-Topf.
-     **Offen:** Validator-Dienst für S (Offenlegen der Stichprobe), App, Vorlage 4
-     abschicken (Nutzer).
+     Validator-Dienst für S mit #554. **Offen:** App, Vorlage 4 abschicken (Nutzer).
+   - **S3 über eine echte Leitung gerechnet (ANALYSE.md 5c, `wiesner_parameter.py`):**
+     - Verluste, Mehrphotonen-Pulse und verkippte Basen sind eingerechnet, nach Kent u. a.
+       2022. Ihre Abb. 5 ist nachgerechnet.
+     - Kents Handsender ist sicher, sobald Basen und Werte aus dem Zufall der
+       Validatoren kommen (β = 0).
+     - Die Tabelle für ideale Qubits reicht über eine Leitung nicht: Bei 10° Verkippung
+       käme ein Fälscher in 1,4 % durch.
+     - **Offen:** Die Tabelle im Knoten braucht θ und den Anteil freier Stellen als
+       Eingang. Dazu kommen die Meldung Λ und die öffentliche Teilmenge im Ablauf.
+     - ~~**Lücke: Die Größe der Stichprobe prüfte niemand.**~~ Geschlossen: Die Annahmestelle
+       lädt nur mit mindestens k_note Stellen (`stelle_laden`, fail-closed). Der Knoten
+       bleibt bewusst ohne diese Prüfung, denn beim Anmelden ist die Annahme schon
+       geschehen (ANALYSE.md 5c). Für die App der Annahmestelle gilt dieselbe Regel.
    - Zu klären: Lässt sich „Ort“ auf Aequitas als „Prüfer bzw. Region + Block-Fenster“
      abbilden, und wie viel Sicherheit bleibt dann übrig?
 2. **Zustellen statt Aufbewahren:**
@@ -101,7 +113,9 @@ bauen kann.
 3. **Praktisches Quantengeld mit schwachen Lichtpulsen:**
    - Quelle: Bozzio u. a., „Experimental investigation of practical unforgeable quantum
      money“ (npj QI 2018).
-   - Vergleichen: ihre Rauschtoleranz und Verluste mit den Parametern von Variante W.
+   - ~~Vergleichen~~ – erledigt (ANALYSE.md 5c): Bei ihnen gelten Mehrphotonen-Pulse als
+     frei, µ ≤ 0,40, gemessen 3–5 % Fehler, 10⁴–10⁵ Paare. Das ist dasselbe Muster wie
+     S3, aber mit Speicher für echte Karten.
 4. **Halb-quantisches Geld (Radian & Sattath):**
    - Bank und Prüfung sind rein klassisch, das passt zur dezentralen Prüfung.
    - Beim Halter braucht es weiter einen Quantenspeicher.

@@ -485,10 +485,120 @@ erprobt.
 | S0 | Analyse, Spezifikation mit Stichproben-Annahmestellen und Einlösen auf der Kette | **fertig** (`s_kette.py`, Selbsttest, Mutationen) |
 | S1 | Vorführung auf echter Hardware | **fertig**: IBM `ibm_marrakesh`, 1.680 Qubits, 0,46 % Fehler, angenommen; Doppelvorlage abgewiesen (HEUTE.md 3.3b) |
 | S2a | Regeln im Knoten, schlafend, Byte für Byte wie die Spezifikation | **fertig** (`quanten_s.go`, Prüfvektor) |
-| S2b | In die Kette eingehängt (Transaktionsarten, Register, StateRoot, Snapshot), schlafend | offen |
-| S3 | Ausgabe über eine echte Quantenleitung (QKD-Sender bei den Validatoren, Empfänger bei der Nutzerin) | Partner nötig (Vorlage 4: Cambridge, Bristol) |
-| S4 | Gutachten (Prüfauftrag um S erweitern), Pilot im Testnetz | offen |
+| S2b | In die Kette eingehängt (Transaktionsarten, Register, StateRoot, Snapshot), schlafend | **fertig**: Einlösen in Teilen (#547), sechs Satzarten im W-Modul mit festen Annahmestellen (#551), Validator-Dienst für S (#554) |
+| S3 | Ausgabe über eine echte Quantenleitung (QKD-Sender bei den Validatoren, Empfänger bei der Nutzerin) | gerechnet (5c: Verluste, Mehrphotonen, Verkippung; Zufall der Validatoren macht Kents Handsender sicher); Gerät und Partner nötig (Vorlage 4: Cambridge, Bristol); Tabelle im Knoten mit θ und freiem Anteil offen |
+| S4 | Gutachten (Prüfauftrag um S erweitert, `docs/QUANTENGELD_PRUEFAUFTRAG.md`), Pilot im Testnetz | Prüfauftrag fertig; Gutachter und Pilot offen |
 | S5 | Freischalten (Prüfer, wie W6) | nach S3 und S4 |
+
+## 5c. S3: Ausgabe über eine echte Quantenleitung (nachgetragen 16.11.2026 nachts)
+
+**Frage:** Was ändert sich, wenn ein S-Token nicht auf einem IBM-Chip entsteht, sondern
+über heutige QKD-Technik zur Nutzerin kommt? Beide Quellen sind selbst gelesen:
+- Kent, Lowndes, Pitalúa-García, Rarity, npj Quantum Information 8, 28 (2022),
+  arXiv:2104.11717: Schema QT1, Lemma 2 und 3, Satz 1, Tabellen V und VI.
+- Bozzio, Orieux, Trigo Vidarte, Zaquine, Kerenidis, Diamanti, npj Quantum Information 4,
+  5 (2018), arXiv:1705.01428.
+
+**Drei Unterschiede zum Chip:**
+1. **Verluste.**
+   - Über die Leitung kommt nur ein kleiner Teil der Pulse an. Bei Kents Handsender im
+     Freiraum waren es P_det = 1,9 %, bei 4·10⁷ Pulsen in 4 s.
+   - Die Nutzerin meldet zuerst die Menge Λ der gemessenen Pulse. Die Ausgabe gilt nur,
+     wenn |Λ| ≥ γ_det·N.
+   - Damit die Meldung nichts über ihre Basen verrät (Privatsphäre), braucht es gleiche
+     Detektor-Effizienzen und Kents Meldestrategie 1.
+2. **Mehrphotonen-Pulse.**
+   - Ein schwacher Laserpuls mit mittlerer Photonenzahl µ enthält mit
+     P_noqub = 1 − (1 + µ)·e^−µ zwei oder mehr Photonen. Bei µ = 0,09 sind das 0,38 %.
+   - Solche Stellen kann eine Betrügerin in beiden Basen messen, und sie meldet sie
+     bevorzugt. Unter den gemeldeten Stellen sind dann bis zu ν/γ_det „frei“, beim
+     Handsender 22 %.
+   - Bozzio u. a. rechnen genauso: Ein Puls mit zwei Photonen gilt als perfekt
+     fälschbar. Bei ihnen muss µ ≤ 0,4 sein.
+3. **Verkippte Basen (θ) und schiefer Zufall (β).**
+   - Die Fehlerrate des besten Fälschers ist
+     λ(θ, β) = ½·(1 − √(1 − (1 − O(θ)²)·(1 − 4β²))) mit O(θ) = (cos θ + sin θ)/√2.
+   - Ideal sind das 14,64 %, bei 5° Verkippung 11,7 % und bei 10° nur noch 9,0 %.
+
+**Gerechnet (`wiesner_parameter.py`, Abschnitt S3):**
+- **`kent_qt1`** setzt Lemma 2, Lemma 3 und Satz 1 der Arbeit um. Der Selbsttest rechnet
+  ihre Abb. 5 nach: β_max 5,9·10⁻⁴ / 2,2·10⁻⁴ / 7,0·10⁻⁶, die Arbeit nennt „≈ 6·10⁻⁴ /
+  2,3·10⁻⁴ / 6·10⁻⁶“. Mutationen am Werkzeug: sechs von sechs erkannt.
+- **Befund 1 – der Zufall gehört den Validatoren.**
+  - Kents Versuch scheiterte nicht an der Physik, sondern am schiefen Zufall des
+    Sendegeräts: β_PB = 2,4·10⁻³ und β_PS = 3,6·10⁻³, nötig wären 6·10⁻⁶.
+  - In Aequitas legen die Validatoren Basen und Werte aus ihrem eigenen Zufall fest, mit
+    Anteilen und Prüfsummen auf der Kette wie bei W. Das Gerät setzt sie nur um, damit
+    ist β = 0.
+  - Dann ist derselbe Handsender (5,8 % Fehler, θ ≤ 10°) nach Satz 1 auf 10⁻⁹
+    unfälschbar.
+  - **Voraussetzung:** Das Gerät verrät den Zustand über keinen Seitenkanal (Wellenlänge,
+    Zeitpunkt, Phase). Das sind Tabelle VI, Annahmen A und G, und es muss am Gerät
+    gemessen werden.
+- **Befund 2 – die Tabelle für ideale Qubits reicht über eine Leitung nicht.**
+  - `K_TABELLE` rechnet mit 14,64 %. Bei 3 % Fehler und 10° Verkippung käme ein Fälscher
+    damit in 1,4 % der Fälle durch, bei 5° in 1,6·10⁻⁶. Erlaubt sind höchstens 2⁻⁴⁰.
+  - Für S3, und ebenso für W über eine Leitung, muss die Prüfgröße mit λ(θ) und dem
+    Anteil freier Stellen gerechnet werden. Das tut `s3_stichprobe`.
+- **Prüfgröße je Annahmestelle** (Fälscher ≤ 2⁻⁴⁰, ehrliche Vorlage fällt ≤ 10⁻⁶;
+  γ_det = 0,95·P_det):
+
+  | Leitung | Fehler E | θ | frei | λ | Toleranz | k je Annahmestelle |
+  |---|---|---|---|---|---|---|
+  | Handsender der Arbeit, gemessen (µ 0,09, P_det 1,9 %) | 5,8 % | 10° | 22 % | 9,0 % | – | nicht sicher bis 8.192 |
+  | derselbe, verbessert | 3 % | 5° | 22 % | 11,7 % | 5 % | 4.064 |
+  | schwacher Puls µ 0,02 (P_det 0,42 %, 2·10⁸ Pulse) | 3 % | 5° | 5 % | 11,7 % | 6 % | 3.232 |
+  | derselbe, besser justiert | 1 % | 2° | 5 % | 13,4 % | 4 % | 1.120 |
+  | angekündigte Einzelphotonen (P_det 5 %, 10⁷ Pulse) | 1 % | 2° | 0 | 13,4 % | 4 % | 1.000 |
+
+  Nur die erste Zeile ist gemessen, die anderen sind angenommene Geräte. Den gemessenen
+  Handsender trägt Kents Prüfung aller gemeldeten Stellen (mindestens 720.000, mit β = 0), aber
+  nicht unsere Stichprobe von höchstens 8.192 Stellen. Ab 3 % Fehler und 5° reicht er.
+
+**Was das für Variante S heißt (Ablauf S3, Entwurf):**
+1. **Senden.**
+   - Mehrere Validatoren senden je einen Teil der Pulse über ihre eigene Leitung.
+   - Basen und Werte kommen aus ihrem eigenen Zufall und sind durch Prüfsummen auf der
+     Kette gebunden.
+   - Kein einzelner Sender kennt den ganzen Token. Eine Absprache kennt nur ihren Anteil
+     f, wie bei W.
+2. **Melden.** Die Nutzerin meldet Λ mit |Λ| ≥ γ_det·N, bevor sie d nennt.
+3. **Auswählen.**
+   - Erst nach der Meldung zieht der Zufall der Kette aus Λ eine öffentliche Teilmenge
+     von höchstens N_MAX = 16.384 Stellen. Nur sie bildet den Token.
+   - Darin wählen die Validatoren die geheimen, getrennten Stichproben (je k Stellen) und
+     binden sie.
+   - Die Teilmenge ändert den Anteil freier Stellen nicht: Sie wird gezogen, nachdem Λ
+     feststeht.
+4. **Weiter wie S2b:** Bindung d, Wahl c, Anmeldung, Offenlegen.
+5. **Prüfgröße im Knoten:** Die Tabelle bekommt θ und den Anteil freier Stellen als
+   Eingang. Heute kennt sie nur die Toleranz und f = (t−1)/v. **Bis dahin gilt S nur für
+   ideale Qubits (Chip), nicht für eine Leitung.**
+
+**Vergleich mit Bozzio u. a. (C3):**
+- **Schema:** Kreditkarte mit Qubit-Paaren, klassische Prüfung mit einer von zwei Fragen;
+  ein Fälscher gewinnt ein Paar höchstens mit ¾.
+- **Hardware:** Polarisation mit schwachen Laserpulsen.
+- **Gemessen:** richtig je Paar c = 0,953–0,966 bei µ = 0,025–1. Sicher gegen alle
+  Angriffe nur mit µ ≤ 0,40.
+- **Größe:** Nötig sind 10⁴–10⁵ gemessene Paare, mit schwachen Pulsen um 10⁵.
+  Gespeichert wird nichts; für echte Karten wäre ein Quantenspeicher nötig.
+- **Für Aequitas:** Es ist dasselbe Muster (Mehrphotonen gelten als frei, die Toleranz
+  hängt an µ). Variante S kommt ohne Speicher aus und ist darum der heute machbare Weg.
+
+**Zweite Lücke, gefunden beim Durchsehen: Die Größe der Stichprobe prüfte niemand.**
+- `s_kette.stelle_laden` und der Knoten (`quanten_s.go`, `anmelden`) nahmen jede
+  Stichprobe, die zur Bindung passt, auch eine mit nur wenigen Stellen.
+- **Geschlossen in der Spezifikation:** Die Annahmestelle lädt nur eine Stichprobe mit
+  mindestens k_note(tol, t, v) verschiedenen Stellen, sonst gar nicht (fail-closed).
+  Kleinere Größen gibt es nur ausdrücklich als `labor_k` für Vorführung und Tests.
+- **Missbrauchstests:** zu kleine Stichprobe, eine Stelle zu wenig, eine doppelte Stelle,
+  die die Zahl aufbläht, eine Toleranz außerhalb der Tabelle. Mutationen: drei von drei
+  erkannt.
+- **Der Knoten bleibt bewusst ohne diese Prüfung.** Die Stichprobe ist bis zur Einlösung
+  geheim. Beim Anmelden könnte der Knoten nur noch die Auszahlung an die Stelle
+  verweigern, die schon angenommen hat. Schützen kann sich nur die Stelle selbst, vor
+  der Annahme.
 
 ## 6. Zugang, Geld, Begutachtung – andere Wege
 

@@ -52,7 +52,8 @@ SICHERHEIT IN ZAHLEN (wiesner_parameter.py)
 GRENZEN (ehrlich)
   - Kein Bargeld von Hand zu Hand: wer x weitergibt, kennt es weiter.
   - Gueltig an genau einer von 2^M vorher festgelegten Stellen (oder
-    Zeitfenstern). Die Stellen muessen ihre Stichproben geheim halten.
+    Zeitfenstern). Die Stellen muessen ihre Stichproben geheim halten und
+    laden nur mit mindestens k_note Stellen (stelle_laden).
   - Die Ausgabe braucht QKD-Empfaengertechnik bei der Nutzerin.
 
 Aufruf:  python3 -I s_kette.py [--selbsttest]
@@ -339,12 +340,25 @@ class Annahmestelle:
 
 
 def stelle_laden(nummer: int, K: str, n: int, wurzel: bytes, t: int, n_val: int,
-                 stichprobe: list[int], offen) -> "Annahmestelle":
+                 stichprobe: list[int], offen, tol: int = TOL_PROZENT,
+                 labor_k: int | None = None) -> "Annahmestelle":
     """DEZENTRALE AUSGABE: die Annahmestelle bekommt ihre Stichprobe nicht von
     einer Bank, sondern als Anteile von t Validatoren (wiesner_kette.Praegung,
     v = Basis + 2*Wert + 4*Salz) und prueft JEDE Stelle selbst gegen die
     Pruefsumme und die Merkle-Wurzel auf der Kette. Ein falscher Anteil oder
-    Pfad: die Stelle laedt nicht (fail-closed) -- sie glaubt keinem Validator."""
+    Pfad: die Stelle laedt nicht (fail-closed) -- sie glaubt keinem Validator.
+
+    GROESSE: Die Stelle nimmt ohne Netz an und traegt damit das Risiko einer
+    Doppelvorlage. Darum laedt sie nur eine Stichprobe mit mindestens
+    k_note(tol, t, v) verschiedenen Stellen (wiesner_kette.K_TABELLE). Pruefen
+    kann das NUR sie: die Stichprobe ist bis zur Einloesung geheim, und der
+    Knoten koennte beim Anmelden nur noch die Auszahlung an die Stelle
+    verweigern, die schon angenommen hat. labor_k: kleinere Groesse nur fuer
+    Vorfuehrung und Tests."""
+    k_soll = wk.k_note(tol, t, n_val) if labor_k is None else labor_k
+    if k_soll <= 0 or len(set(stichprobe)) != len(stichprobe) or len(stichprobe) < k_soll \
+            or any(not 0 <= i < n for i in stichprobe):
+        raise Abgewiesen(f"Ladung: Stichprobe zu klein oder ungueltig ({len(stichprobe)} Stellen, verlangt {k_soll})")
     if len(offen) != len(stichprobe):
         raise Abgewiesen("Ladung: Zahl der Stellen")
     u, tt = [0] * n, [0] * n
@@ -507,8 +521,8 @@ def selbsttest() -> bool:
         K = hashlib.sha256(rng.randbytes(16)).hexdigest()
         pr = wk.Praegung(K, u, t, 3, val, rng)
         proben = stichproben(n, 2, 64, rng)
-        st = [stelle_laden(b, K, n, pr.wurzel, 3, 5, proben[b], pr.offenlegung(proben[b], [1, 3, 5] if b else [2, 4, 5]))
-              for b in (0, 1)]
+        st = [stelle_laden(b, K, n, pr.wurzel, 3, 5, proben[b], pr.offenlegung(proben[b], [1, 3, 5] if b else [2, 4, 5]),
+                          labor_k=64) for b in (0, 1)]
         soll(all(st[b].daten == {i: (u[i], t[i]) for i in proben[b]} for b in (0, 1)), "dezentral geladen: falsche Daten")
         kette = KetteS()
         kette.ausgeben(K, n, "anna")
@@ -519,12 +533,12 @@ def selbsttest() -> bool:
         # zu wenige oder doppelte Anteile, fremde Wurzel -- die Stelle laedt nicht.
         of = pr.offenlegung(proben[0], [1, 2, 3])
         falsch = [([(a[0][0], (a[0][1] + 1) % wk.P)] + a[1:], p_) if j == 0 else (a, p_) for j, (a, p_) in enumerate(of)]
-        abgewiesen(lambda: stelle_laden(0, K, n, pr.wurzel, 3, 5, proben[0], falsch), "falscher Anteil")
-        abgewiesen(lambda: stelle_laden(0, K, n, pr.wurzel, 3, 5, proben[0], [(a, p_[::-1]) for a, p_ in of]), "falscher Pfad")
-        abgewiesen(lambda: stelle_laden(0, K, n, pr.wurzel, 3, 5, proben[0], [(a[:2], p_) for a, p_ in of]), "zu wenige Anteile")
-        abgewiesen(lambda: stelle_laden(0, K, n, pr.wurzel, 3, 5, proben[0], [([a[0], a[0], a[1]], p_) for a, p_ in of]), "doppeltes x")
-        abgewiesen(lambda: stelle_laden(0, K, n, wk.h(b"fremd"), 3, 5, proben[0], of), "fremde Wurzel")
-        abgewiesen(lambda: stelle_laden(0, K, n, pr.wurzel, 3, 5, proben[0], of[:-1]), "Stelle fehlt")
+        abgewiesen(lambda: stelle_laden(0, K, n, pr.wurzel, 3, 5, proben[0], falsch, labor_k=64), "falscher Anteil")
+        abgewiesen(lambda: stelle_laden(0, K, n, pr.wurzel, 3, 5, proben[0], [(a, p_[::-1]) for a, p_ in of], labor_k=64), "falscher Pfad")
+        abgewiesen(lambda: stelle_laden(0, K, n, pr.wurzel, 3, 5, proben[0], [(a[:2], p_) for a, p_ in of], labor_k=64), "zu wenige Anteile")
+        abgewiesen(lambda: stelle_laden(0, K, n, pr.wurzel, 3, 5, proben[0], [([a[0], a[0], a[1]], p_) for a, p_ in of], labor_k=64), "doppeltes x")
+        abgewiesen(lambda: stelle_laden(0, K, n, wk.h(b"fremd"), 3, 5, proben[0], of, labor_k=64), "fremde Wurzel")
+        abgewiesen(lambda: stelle_laden(0, K, n, pr.wurzel, 3, 5, proben[0], of[:-1], labor_k=64), "Stelle fehlt")
         # Anteile, die ein richtiges v ergeben, aber gegen die Regel verstossen:
         # t+1 Anteile; ein Anteil an x = 9 (ausserhalb 1..v, aus dem Polynom
         # nachgerechnet). Die Pruefsumme allein faengt das NICHT -- die Regel schon.
@@ -538,12 +552,22 @@ def selbsttest() -> bool:
                 sm = (sm + yj * z * pow(nn, -1, wk.P)) % wk.P
             return sm
         of4 = pr.offenlegung(proben[0], [1, 2, 3, 4])
-        abgewiesen(lambda: stelle_laden(0, K, n, pr.wurzel, 3, 5, proben[0], of4), "t+1 Anteile")
+        abgewiesen(lambda: stelle_laden(0, K, n, pr.wurzel, 3, 5, proben[0], of4, labor_k=64), "t+1 Anteile")
         aussen = [([(9, am(a, 9))] + a[1:], p_) for a, p_ in of]
         soll(all(wk.zusammensetzen(a) == wk.zusammensetzen(b) for (a, _), (b, _) in zip(aussen, of)), "Probe x = 9 falsch gebaut")
-        abgewiesen(lambda: stelle_laden(0, K, n, pr.wurzel, 3, 5, proben[0], aussen), "Anteil an x = 9")
+        abgewiesen(lambda: stelle_laden(0, K, n, pr.wurzel, 3, 5, proben[0], aussen, labor_k=64), "Anteil an x = 9")
         # Gegenprobe: dieselbe Ladung unveraendert geht durch.
-        soll(stelle_laden(0, K, n, pr.wurzel, 3, 5, proben[0], of).daten == st[0].daten, "Gegenprobe Ladung")
+        soll(stelle_laden(0, K, n, pr.wurzel, 3, 5, proben[0], of, labor_k=64).daten == st[0].daten, "Gegenprobe Ladung")
+        # Missbrauch: zu kleine Stichprobe. Ohne Laborgroesse verlangt die Stelle
+        # k_note(4 %, 3 von 5) = 3472 Stellen; 64 laedt sie nicht. Auch nicht mit
+        # einer Stelle zu wenig oder mit einer doppelten Stelle, die die Zahl aufblaeht.
+        soll(wk.k_note(TOL_PROZENT, 3, 5) == 3472, "k_note(4, 3, 5)")
+        abgewiesen(lambda: stelle_laden(0, K, n, pr.wurzel, 3, 5, proben[0], of), "Stichprobe kleiner als k_note")
+        abgewiesen(lambda: stelle_laden(0, K, n, pr.wurzel, 3, 5, proben[0], of, labor_k=65), "eine Stelle zu wenig")
+        doppelt = proben[0][:-1] + proben[0][:1]          # 64 Eintraege, 63 verschiedene, Anteile passend
+        abgewiesen(lambda: stelle_laden(0, K, n, pr.wurzel, 3, 5, doppelt, pr.offenlegung(doppelt, [1, 2, 3]), labor_k=64),
+                   "doppelte Stelle in der Stichprobe")
+        abgewiesen(lambda: stelle_laden(0, K, n, pr.wurzel, 3, 5, proben[0], of, tol=15), "Toleranz nicht in der Tabelle")
 
         # 5. Einloesen auf der Kette: die Stelle reicht die unterschriebene
         # Vorlage ein, die Validatoren legen ihre Stichprobe offen, jeder Knoten
@@ -560,7 +584,7 @@ def selbsttest() -> bool:
                                           stellen=["laden0", "laden0"]), "zweimal dieselbe Annahmestelle")
         kette.ausgeben(K, n, "anna", pr.wurzel, 10_000_000, [probe_hash(K, b, proben[b]) for b in (0, 1)], 3, 5, von="ausgabe",
                        stellen=["laden0", "laden1"])
-        st = [stelle_laden(b, K, n, pr.wurzel, 3, 5, proben[b], pr.offenlegung(proben[b], [1, 2, 3])) for b in (0, 1)]
+        st = [stelle_laden(b, K, n, pr.wurzel, 3, 5, proben[b], pr.offenlegung(proben[b], [1, 2, 3]), labor_k=len(proben[b])) for b in (0, 1)]
         y, x = messen_ehrlich(u, t, rng, 0.0)
         z = rng.randrange(2)
         festlegen(kette, K, st, [yk ^ z for yk in y], 1 ^ z)

@@ -284,6 +284,15 @@ tolerance below 14.6 % meets both targets up to k = 8,192.
 - **What S-tokens are not.** They need no memory, but they are not hand-to-hand cash. They
   need a QKD-type receiver at the user, and their advantage over a ledger alone is instant
   offline acceptance plus physical unforgeability at the acceptance points.
+- **Issuance over a real link (S3).** Losses, multi-photon pulses and basis misalignment θ
+  change the parameters. We treat multi-photon positions among the reported ones as known
+  to the forger (fraction ν/γ_det) and use the forger bound λ(θ, β) of Kent et al. instead
+  of 14.64 %. Our tool reproduces their Fig. 5. Two findings:
+  - Their hand-held sender is unforgeable by their Theorem 1 once bases and values come
+    from the validators' randomness (β = 0). What blocked them was the bias of the device's
+    random numbers.
+  - The ideal-qubit table is not safe over a link: at 10° misalignment and 3 % error a
+    forger would pass 1.4 % of the time.
 - **Liveness.** A note stalls if one validator disappears forever. A unique threshold
   signature (t of v) would be a better randomness source.
 - **Consistent shares.** Verifiable secret sharing (Feldman or Pedersen) would protect
