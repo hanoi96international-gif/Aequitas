@@ -255,23 +255,26 @@ func TestPrueferPQ_KoerperGrenze(t *testing.T) {
 // zwei Dritteln der Pruefer ableitet, keinen Quantengeld-Satz freischalten.
 func TestPrueferPQ_QuantengeldFreischaltung(t *testing.T) {
 	f := neuerVrFall(t)
-	f.aufnehmen(1, vrAb+100, 0)
+	// Fuenf Pruefer -- die Mindestzahl einer Freischaltung (quanten_geld.go).
+	zeit := qgPruefer(f, 5) + 1000
 	qgAktiv(t)
-	zeit := vrAb + 100 + erzeugerFrist + 1000
 	ab := zeit + quantenFreischaltungVorlauf
 	n := qgSatzN.String()
 	prueferPQStichtag(t, zeit)
-	k0, k1 := neuerPrueferPQ(t), neuerPrueferPQ(t)
-	zusageEintragen(f.cs, f.m(0), k0)
-	zusageEintragen(f.cs, f.m(1), k1)
+	var schluessel []prueferPQSchluessel
+	for i := 0; i < 5; i++ {
+		k := neuerPrueferPQ(t)
+		zusageEintragen(f.cs, f.m(i), k)
+		schluessel = append(schluessel, k)
+	}
 
 	// Nur Ed25519: abgewiesen.
-	if u := qgUrteil(t, f.cs, qgFreischaltung(f, "isogenie-8192", n, ab, zeit, 0, 1), zeit); u.regel != "quanten_stimme_pq" {
+	if u := qgUrteil(t, f.cs, qgFreischaltung(f, "isogenie-8192", n, ab, zeit, qgBis(5)...), zeit); u.regel != "quanten_stimme_pq" {
 		t.Fatalf("Freischaltung ohne PQ-Teil nach dem Stichtag: %q (%s)", u.regel, u.text)
 	}
 	mitPQ := func(ordnung string, abX int64) Transaction {
-		tx := qgFreischaltung(f, "isogenie-8192", n, ab, zeit, 0, 1)
-		for i, k := range []prueferPQSchluessel{k0, k1} {
+		tx := qgFreischaltung(f, "isogenie-8192", n, ab, zeit, qgBis(5)...)
+		for i, k := range schluessel {
 			s := &tx.Quanten.Stimmen[i]
 			satz := quantenFreischaltungNachricht("isogenie-8192", ordnung, abX)("", s.Zeit)
 			s.PQ = &PrueferPQ{Pub: k.pub, Sig: k.unterschreiben(t, prueferPQNachricht(f.m(i), satz))}

@@ -14,7 +14,7 @@ für eine Freischaltung.
 | Anmeldung und Register | `quanten_geld.go` | Note genau einmal, Deckung in AEQ, Anteile am Topf |
 | Umlaufabgabe im Topf | `wirtschaft.go` (`umlaufArt`), `quanten_geld.go` | Noten verlieren anteilig wie jedes Guthaben |
 | Einlösen | `quanten_einloesen.go` | Einmal-Unterschrift der Note → Auszahlung des aktuellen Werts |
-| Freischaltung | `quanten_geld.go`, `pruefer_pq.go` | ⅔ der Prüfer, hybrid unterschrieben, N ≥ 2²⁵⁶, 30 Tage Vorlauf |
+| Freischaltung | `quanten_geld.go`, `pruefer_pq.go` | ⅔ der Prüfer, mindestens 5 verschiedene, hybrid unterschrieben, N ≥ 2²⁵⁶, 30 Tage Vorlauf |
 
 ## Fragen an die Begutachtung
 
@@ -36,8 +36,9 @@ für eine Freischaltung.
    `quanten_*_test.go`, `kein_entzug_test.go`.)
 5. **Anteile und Abgabe.** Ist die Rechnung (`quantenAnteileFuer`, `quantenWert`)
    rundungsfest, nie zugunsten des Einlösenden, und hält Topf = Summe der Noten?
-6. **Freischaltung.** Genügen ⅔ der Prüfer (hybrid: EIP-191 + ML-DSA-65), Vorlauf und
-   N ≥ 2²⁵⁶ als Schutz gegen eine voreilige oder böswillige Freischaltung?
+6. **Freischaltung.** Genügen ⅔ der Prüfer, mindestens 5 verschiedene (hybrid: EIP-191 +
+   ML-DSA-65), Vorlauf und N ≥ 2²⁵⁶ als Schutz gegen eine voreilige oder böswillige
+   Freischaltung? Ist 5 als Untergrenze angemessen, solange es nur wenige Prüfer gibt?
 
 ## Was erst die Hardware entscheidet (keine Frage an die Kryptografie)
 

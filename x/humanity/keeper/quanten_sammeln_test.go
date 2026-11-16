@@ -14,17 +14,15 @@ func qsFrisch(t *testing.T) {
 	t.Cleanup(func() { quantenSammel = vorher })
 }
 
-// qsFall: drei Pruefer (0 Gruender, 1 und 2 aufgenommen), Quantengeld aktiv.
-func qsFall(t *testing.T) (*vrFall, *APIServer, int64, quantenVorschlag) {
+// qsFall: n Pruefer (0 Gruender, 1..n-1 aufgenommen), Quantengeld aktiv.
+func qsFall(t *testing.T, n int) (*vrFall, *APIServer, int64, quantenVorschlag) {
 	t.Helper()
 	f := neuerVrFall(t)
-	f.aufnehmen(1, vrAb+100, 0)
-	z2 := vrAb + 100 + erzeugerFrist + 10
-	f.aufnehmen(2, z2, 0, 1)
+	z := qgPruefer(f, n)
 	qgAktiv(t)
 	qsFrisch(t)
 	f.cs.annehmendAusdruecklich.Store(true)
-	now := z2 + erzeugerFrist + 1000
+	now := z + 1000
 	v := quantenVorschlag{Satz: "isogenie-8192", Ordnung: qgSatzN.String(), Ab: now + quantenFreischaltungVorlauf}
 	return f, &APIServer{state: f.cs}, now, v
 }
@@ -44,19 +42,22 @@ func qsAbgeben(t *testing.T, f *vrFall, a *APIServer, v quantenVorschlag, s Veri
 	return a.quantenSammelEinreichen(v, now)
 }
 
-func TestQuantenSammeln_ZweiDrittelReichtEin(t *testing.T) {
-	f, a, now, v := qsFall(t)
-	// Drei Pruefer: zwei Stimmen noetig.
-	out := qsAbgeben(t, f, a, v, f.qsStimme(0, v, now-10), now)
-	if out["eingereicht"] != false || out["stimmen"] != 1 || out["noetig"] != 2 {
-		t.Fatalf("nach einer Stimme: %v", out)
+// Fuenf Pruefer: zwei Drittel waeren 4, die Mindestzahl verlangt 5. Mit
+// vier Stimmen wird nichts eingereicht, mit der fuenften schon.
+func TestQuantenSammeln_MindestzahlReichtEin(t *testing.T) {
+	f, a, now, v := qsFall(t, 5)
+	for i := 0; i < 4; i++ {
+		out := qsAbgeben(t, f, a, v, f.qsStimme(i, v, now-10+int64(i)), now)
+		if out["eingereicht"] != false || out["stimmen"] != i+1 || out["noetig"] != 5 {
+			t.Fatalf("nach %d Stimmen: %v", i+1, out)
+		}
 	}
 	if _, da := f.cs.quantenGeldJetzt().satz(v.Satz); da {
-		t.Fatal("Satz nach einer Stimme eingetragen")
+		t.Fatal("Satz nach vier Stimmen eingetragen")
 	}
-	out = qsAbgeben(t, f, a, v, f.qsStimme(1, v, now-5), now)
+	out := qsAbgeben(t, f, a, v, f.qsStimme(4, v, now-5), now)
 	if out["eingereicht"] != true {
-		t.Fatalf("nach zwei Stimmen nicht eingereicht: %v", out)
+		t.Fatalf("nach fuenf Stimmen nicht eingereicht: %v", out)
 	}
 	if _, da := f.cs.quantenGeldJetzt().satz(v.Satz); !da {
 		t.Fatal("Satz nicht eingetragen")
@@ -66,8 +67,24 @@ func TestQuantenSammeln_ZweiDrittelReichtEin(t *testing.T) {
 	}
 }
 
+// Missbrauch: ein einziger Pruefer (wie direkt nach dem Neustart bei null)
+// sammelt seine Stimme, eingereicht wird nichts.
+func TestQuantenSammeln_EinPrueferReichtNichtEin(t *testing.T) {
+	f, a, now, v := qsFall(t, 1)
+	out := qsAbgeben(t, f, a, v, f.qsStimme(0, v, now-10), now)
+	if out["eingereicht"] != false || out["noetig"] != 5 {
+		t.Fatalf("ein Pruefer: %v", out)
+	}
+	if _, da := f.cs.quantenGeldJetzt().satz(v.Satz); da {
+		t.Fatal("ein Pruefer hat einen Satz freigeschaltet")
+	}
+	if a.state.QuantenStand("")["noetig_stimmen"] != 5 {
+		t.Fatal("Stand nennt nicht die noetigen Stimmen")
+	}
+}
+
 func TestQuantenSammeln_Missbrauch(t *testing.T) {
-	f, _, now, v := qsFall(t)
+	f, _, now, v := qsFall(t, 5)
 	reg := f.cs.verifierRegisterJetzt()
 	pruefe := func(name string, v quantenVorschlag, s VerifierStimme) {
 		t.Helper()
@@ -86,8 +103,8 @@ func TestQuantenSammeln_Missbrauch(t *testing.T) {
 	andereOrdnung := v
 	andereOrdnung.Ordnung = new(big.Int).Add(qgSatzN, big.NewInt(1)).String()
 	pruefe("Stimme fuer andere Ordnung", andereOrdnung, f.qsStimme(0, v, now-10))
-	// Kein Pruefer (Mensch 3 hat Schluessel, ist aber nicht aufgenommen).
-	pruefe("Nicht-Pruefer", v, f.qsStimme(3, v, now-10))
+	// Kein Pruefer (Mensch 5 hat Schluessel, ist aber nicht aufgenommen).
+	pruefe("Nicht-Pruefer", v, f.qsStimme(5, v, now-10))
 	// Spielzeug und Labor.
 	klein := v
 	klein.Ordnung = "1491"
@@ -112,7 +129,7 @@ func TestQuantenSammeln_Missbrauch(t *testing.T) {
 }
 
 func TestQuantenSammeln_Grenzen(t *testing.T) {
-	f, _, now, v := qsFall(t)
+	f, _, now, v := qsFall(t, 3)
 	vorschlag := func(i int) quantenVorschlag {
 		x := v
 		x.Ab = v.Ab + int64(i)
@@ -158,13 +175,14 @@ func TestQuantenSammeln_Grenzen(t *testing.T) {
 
 // Eine Stimme, die erst im Annahme-Tor scheitert (offene Staffel -- nur mit
 // dem Kontostand pruefbar), faellt heraus; mit den uebrigen geht es weiter.
+// Sechs Pruefer: ohne die schlechte Stimme fehlt eine, die sechste reicht ein.
 func TestQuantenSammeln_SchlechteStimmeFaelltHeraus(t *testing.T) {
-	f, a, now, v := qsFall(t)
+	f, a, now, v := qsFall(t, 6)
 	f.cs.mu.Lock()
 	acc, _ := f.cs.accounts.Get(f.m(1))
 	acc.GrantStagedRest = NewDecimal(5)
 	f.cs.mu.Unlock()
-	for _, i := range []int{1, 0} {
+	for _, i := range []int{1, 0, 2, 3, 4} {
 		s := f.qsStimme(i, v, now-10)
 		if _, err := quantenSammel.ablegen(v, s, now); err != nil {
 			t.Fatal(err)
@@ -173,10 +191,10 @@ func TestQuantenSammeln_SchlechteStimmeFaelltHeraus(t *testing.T) {
 	if out := a.quantenSammelEinreichen(v, now); out["eingereicht"] != false {
 		t.Fatalf("mit der schlechten Stimme eingereicht: %v", out)
 	}
-	if s := quantenSammel.offen[v.schluessel()]; s == nil || len(s.stimmen) != 1 {
+	if s := quantenSammel.offen[v.schluessel()]; s == nil || len(s.stimmen) != 4 {
 		t.Fatal("die schlechte Stimme ist nicht herausgefallen")
 	}
-	out := qsAbgeben(t, f, a, v, f.qsStimme(2, v, now-5), now)
+	out := qsAbgeben(t, f, a, v, f.qsStimme(5, v, now-5), now)
 	if out["eingereicht"] != true {
 		t.Fatalf("mit den guten Stimmen nicht eingereicht: %v", out)
 	}
