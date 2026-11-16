@@ -30,7 +30,11 @@ die Note wird per Teleportation an ein anderes Register geschickt;
 hardware.bezahlen),
 --geschuetzt phase|bit|beide (Speicher mit Fehlerkorrektur: je Wartezeit
 die ungeschuetzte Note gegen dieselbe Note im 3-Qubit-Code; ohne
---warten-reihe 0,20,50,100,200 us; hardware.praegen_geschuetzt).
+--warten-reihe 0,20,50,100,200 us; hardware.praegen_geschuetzt),
+--wiesner (Variante W, wiesner_hardware.py: BB84-Note praegen, halten,
+mit --bezahlen auch teleportieren, klassisch pruefen; misst die Fehlerrate
+je Treffer nach jeder Wartezeit und laesst die erste Note durch die Pruefung
+der Kette auf Anteilen laufen; --qubits N je Note, Standard 6, hoechstens 16).
 
 Mit echter Maschine oder Rauschmodell wird zusaetzlich die Auslese der
 Pruefqubits kalibriert (2 Schaltkreise) und die Annahme auch
@@ -53,6 +57,9 @@ _hier = os.path.dirname(os.path.abspath(__file__))
 _spec = importlib.util.spec_from_file_location("hardware", os.path.join(_hier, "hardware.py"))
 hw = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(hw)
+_spec_w = importlib.util.spec_from_file_location("wiesner_hardware", os.path.join(_hier, "wiesner_hardware.py"))
+wh = importlib.util.module_from_spec(_spec_w)
+_spec_w.loader.exec_module(wh)
 
 MAX_LAEUFE = 64      # Schaltkreise je Fall (Kosten auf echter Hardware!)
 MAX_SCHUESSE = 4000
@@ -206,6 +213,8 @@ def selbsttest() -> None:
         namen += [f"geschuetzt({c}) nach {w:g} us" for c in hw.CODES]
     for name in namen:
         hw.erwartet(fall_fuer_ideal(name), 3, 3)
+    # Variante W: die Schaltkreise entstehen ohne qiskit und sind ideal fehlerfrei.
+    assert wh.selbsttest()
     assert fall_fuer_ideal("ungeschuetzt nach 0 us") == "echt"
     assert fall_fuer_ideal("fremd") == "fremd"
     print("selbsttest ok")
@@ -270,6 +279,85 @@ def backend_und_sampler():
     raise SystemExit("Modus fehlt: --ideal | --rauschen NAME | --ibm")
 
 
+def uebersetzen(backend, qcs):
+    """Mehrere Uebersetzungen, je Schaltkreis die mit den wenigsten
+    2-Qubit-Gattern (dann geringster Tiefe)."""
+    from qiskit.transpiler import generate_preset_pass_manager
+
+    beste = [None] * len(qcs)
+    for seed in range(VERSUCHE_UEBERSETZUNG):
+        pm = generate_preset_pass_manager(optimization_level=3, backend=backend, seed_transpiler=seed)
+        for i, q in enumerate(pm.run(qcs)):
+            guete = (zwei_qubit(q), q.depth())
+            if beste[i] is None or guete < beste[i][0]:
+                beste[i] = (guete, q)
+    return [b[1] for b in beste]
+
+
+def wiesner_lauf(laeufe: int, schuesse: int, rng: random.Random) -> None:
+    """Variante W (HEUTE.md 3.3): Fehlerrate je Treffer und Annahme je
+    Wartezeit, mit und ohne Bezahlen; die erste Note durch die Kette."""
+    n = zahl("--qubits", 6, wh.MAX_QUBITS_NOTE)
+    reihe = warten_reihe() or [0, 20, 50, 100]
+    bez = "--bezahlen" in sys.argv
+    if bez and "--dynamisch" not in sys.argv:
+        # Teleportation braucht Rueckkopplung im Lauf; im Rauschmodell rechnet
+        # dann nur die Matrix-Produkt-Methode (backend_und_sampler).
+        sys.argv.append("--dynamisch")
+    kreise = wh.satz(n, reihe, laeufe, bez, rng)
+    backend, sampler, wo = backend_und_sampler()
+    qcs = [nach_qiskit(s) for s in kreise]
+    if backend is not None:
+        qcs = uebersetzen(backend, qcs)
+    job = sampler.run(qcs, shots=schuesse)
+    job_id = job.job_id() if hasattr(job, "job_id") else ""
+    ergebnisse = job.result()
+    faelle: dict[str, dict] = {}
+    erste = None
+    for s, qc, r in zip(kreise, qcs, ergebnisse):
+        zaehl = r.data.c.get_counts()
+        e = wh.auswerten(s, zaehl)
+        name = ("praegen+bezahlen+pruefen" if s.bedeutung["bezahlt"] else "praegen+pruefen") + f" nach {s.bedeutung['warten_us']:g} us"
+        f = faelle.setdefault(name, {"fehler": [], "annahme": [], "tiefe": 0, "zwei": 0, "qubits": s.q})
+        f["fehler"].append(e["fehlerrate"])
+        f["annahme"].append(e["annahme"])
+        f["tiefe"] = max(f["tiefe"], qc.depth())
+        f["zwei"] = max(f["zwei"], zwei_qubit(qc))
+        if erste is None:
+            # Note Nr. 1: das haeufigste Ergebnis ihres Laufs durch die Kette.
+            k = max(zaehl.items(), key=lambda kv: kv[1])[0]
+            tr, fe, ok = wh.kette_pruefen(s, wh.antworten(s, k), rng)
+            erste = {"warten_us": s.bedeutung["warten_us"], "bezahlt": s.bedeutung["bezahlt"], "ergebnis": k,
+                     "treffer": tr, "fehler": fe, "urteil": "echt" if ok else "abgewiesen"}
+    zeilen = [f"## Variante W auf {wo}", "",
+              f"Note aus {n} Qubits (BB84), {laeufe} Noten je Fall, {schuesse} Schuesse je Note, "
+              f"Toleranz {wh.TOLERANZ:.0%} der Treffer" + (f", Job {job_id}" if job_id else "") + ".", "",
+              "| Fall | Qubits | Tiefe | 2-Qubit-Gatter | Fehlerrate je Treffer | Annahme | ideal |",
+              "|---|---|---|---|---|---|---|"]
+    aus = {"wo": wo, "job": job_id, "qubits_je_note": n, "laeufe": laeufe, "schuesse": schuesse,
+           "toleranz": wh.TOLERANZ, "faelle": {}, "note_nr_1": erste}
+    for name, f in faelle.items():
+        fr = sum(f["fehler"]) / len(f["fehler"])
+        an = sum(f["annahme"]) / len(f["annahme"])
+        zeilen.append(f"| {name} | {f['qubits']} | {f['tiefe']} | {f['zwei']} | {fr:.3f} | {an:.3f} | 0,000 / 1,000 |")
+        aus["faelle"][name] = {"fehlerrate": fr, "annahme": an, "tiefe": f["tiefe"], "zwei_qubit": f["zwei"]}
+    if erste:
+        zeilen += ["", f"**Note Nr. 1** (nach {erste['warten_us']:g} us{', bezahlt' if erste['bezahlt'] else ''}): "
+                   f"Ergebnis {erste['ergebnis']}, von den Validatoren auf Anteilen gezaehlt: "
+                   f"{erste['treffer']} Treffer, {erste['fehler']} Fehler -> {erste['urteil']}."]
+    zeilen += ["", "Vorfuehrung, kein Schutz: die Note ist klein und lebt Mikrosekunden, Praegestelle und Halter "
+               "sind derselbe Schaltkreis, den Lauf bezeugt nur der Betreiber. Die Fehlerrate je Treffer ist die "
+               "Groesse, nach der sich Toleranz und Notengroesse der Variante W richten (wiesner_verteilt.py)."]
+    text = "\n".join(zeilen)
+    print(text)
+    if os.environ.get("GITHUB_STEP_SUMMARY"):
+        with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as fh:
+            fh.write(text + "\n")
+    if "--json" in sys.argv:
+        with open(sys.argv[sys.argv.index("--json") + 1], "w") as fh:
+            json.dump(aus, fh, indent=2)
+
+
 def main() -> None:
     if "--selbsttest" in sys.argv:
         selbsttest()
@@ -279,6 +367,9 @@ def main() -> None:
     T = zahl("--tests", 3, MAX_TESTS)
     n = 3
     rng = random.Random(int.from_bytes(os.urandom(8), "big"))
+    if "--wiesner" in sys.argv:
+        wiesner_lauf(laeufe, schuesse, rng)
+        return
     dyn = "--dynamisch" in sys.argv
     reihe = warten_reihe()
     codes = schutz_codes()

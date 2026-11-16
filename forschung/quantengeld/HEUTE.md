@@ -109,6 +109,29 @@ es auch dastehen: als **Vorführung**, mit Symbolwert, nie mit echten AEQ.
 **Kosten:** wenige Sekunden Rechenzeit aus dem Freikontingent. Ein Lauf braucht deine
 Freigabe der Umgebung `quantenhardware`.
 
+**Gebaut (16.11.2026):**
+- `wiesner_hardware.py`: Schaltkreise und Prüfung, mit Selbsttest in der CI.
+- `hardware_ibm.py --wiesner [--bezahlen]` und im Workflow „Quantengeld auf
+  Quanten-Hardware“ der Schalter `wiesner`.
+- Ideal (Aer ohne Rauschen) läuft alles fehlerfrei, auch mit Teleportation.
+
+**Rauschmodell `ibm_marrakesh`** (FakeMarrakesh, nicht die Maschine; Note aus 6 Qubits,
+4 Noten je Fall, 500 Schüsse, Toleranz 15 %):
+
+| Wartezeit | Fehler je Treffer | mit Bezahlen | Annahme | mit Bezahlen |
+|---|---|---|---|---|
+| 0 µs | 0,4 % | 2,0 % | 0,98 | 0,92 |
+| 20 µs | 6,5 % | 8,9 % | 0,79 | 0,73 |
+| 50 µs | 8,1 % | 16,2 % | 0,79 | 0,68 |
+| 100 µs | 23 % | 30 % | 0,44 | 0,33 |
+
+**Lesart:**
+- Eine Variante-W-Note hält im Modell etwa **50 µs** innerhalb der Toleranz. Die alte
+  Gruppenaktions-Note war nach rund 20 µs verloren (`HARDWARE_WEG.md`).
+- Die Teleportation kostet etwa 2 Prozentpunkte.
+- Der nächste Schritt ist derselbe Lauf auf der echten Maschine. Workflow, Modus `ibm`,
+  `wiesner` an, `bezahlen` an, Wartezeiten `0,20,50,100`.
+
 ### 3.4 Bargeld-Verhalten ohne Quanten (Offline-Bargeld)
 
 Was Menschen sich von Quantengeld wünschen, ist meist offline zu zahlen, wie mit
