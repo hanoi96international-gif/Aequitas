@@ -182,6 +182,21 @@ beim Empfänger, Summe erhalten.
   alle 1000 Schüsse: 0,7 % Fehler je Treffer, **Annahme 0,998**. Damit läuft der ganze
   Ablauf einer Quanten-Note mit dezentraler Prüfung durch die Validatoren heute auf
   echter Quanten-Hardware – solange die Note nicht gelagert werden muss.
+- **Geschützte Note auf der echten Maschine** (Fehlerkorrektur im Speicher, #528;
+  16.11.2026, `ibm_marrakesh`, [Lauf 43895628489](https://github.com/hanoi96international-gif/Aequitas/actions/runs/43895628489),
+  IBM-Job `dbti3djsbsbs73cb321g`; Gruppenaktions-Note Z₈, Annahme lesekorrigiert):
+
+  | Wartezeit | ungeschützt | 3-Qubit-Code (Phase) | 3-Qubit-Code (Bit) |
+  |---|---|---|---|
+  | 0 µs | 0,71 | 0,63 | 0,61 |
+  | 20 µs | 0,32 | 0,32 | 0,22 |
+  | 50 µs | 0,37 | 0,36 | 0,34 |
+  | 100 µs | 0,30 | 0,32 | 0,30 |
+
+  Kein messbarer Gewinn: die rund 40 zusätzlichen 2-Qubit-Gatter kosten so viel, wie der
+  Schutz zurückgibt; nur bei 100 µs liegt der Phasen-Code knapp vorn (im Rauschen).
+  Fehlerkorrektur verlängert die Lebensdauer erst mit kleineren Gatterfehlern
+  (Ionenfalle) oder größeren Codes mit Korrektur in Echtzeit.
 
 **Zählt das als Quantengeld?** Als Vorführung: ja, das ist der ganze Ablauf einer
 privat prüfbaren Quanten-Note mit dezentraler Prüfung – auf echter Hardware, sobald der
