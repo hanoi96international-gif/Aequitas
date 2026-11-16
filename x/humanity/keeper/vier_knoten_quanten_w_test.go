@@ -93,7 +93,7 @@ func TestVierKnotenQuantenW_RealDB(t *testing.T) {
 			r.Anteile = append(r.Anteile, p.anteile[i][x-1].Text(16))
 			r.Blaetter = append(r.Blaetter, hex.EncodeToString(p.blaetter[i][:]))
 		}
-		r.PraegerSig = personalSign(t, praeger.key, quantenWAuftragNachricht(praeger.addr, p.K, p.n, p.t, r.Tol, x, wurzel, validatoren, zeit))
+		r.PraegerSig = personalSign(t, praeger.key, quantenWAuftragNachricht(praeger.addr, p.K, p.n, p.t, r.Tol, x, wurzel, validatoren, zeit, quantenWAnteileHash(r.Anteile)))
 		return r
 	}
 
