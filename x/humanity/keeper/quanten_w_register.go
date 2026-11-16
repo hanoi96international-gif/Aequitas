@@ -142,6 +142,16 @@ func (e *quantenWNote) verbrauchen(stellen []int) {
 	}
 }
 
+// quantenWKMinPruefen: kleinste Pruefung einer Note mit n Stellen,
+// max(K_MIN, ceil(n / (ZufallL - 1))). Sonst liessen sich die Hash-Ketten mit
+// vielen billigen Pruefungen (je 1 AEQ Pfand) leeren, bevor die Stellen
+// ausgehen, und ein letztes falsches Einloesen toetete die Note -- fuer
+// ~255 AEQ, egal wie viel sie wert ist (Sicherheitspruefung W2c). So gehen
+// die Stellen zuerst aus, und das kostet Pfaender von etwa dem Wert der Note.
+func quantenWKMinPruefen(n int) int {
+	return max(quantenWKMin, (n+quantenWZufallL-2)/(quantenWZufallL-1))
+}
+
 // erschoepftNoetig: kein Einloesen mehr moeglich -- weniger als k_note frei
 // oder die Hash-Ketten verbraucht.
 func (e *quantenWNote) erschoepftNoetig() bool {
@@ -190,7 +200,7 @@ func (e *quantenWNote) anfragen(von string, k int, einloesenAn string, pfand, ze
 		if k != e.KNote || frei < k {
 			return quantenWFehler("k = %d: beim Einloesen fest k_note = %d (frei %d)", k, e.KNote, frei)
 		}
-	} else if k < quantenWKMin || k > quantenWKMax || frei-k < e.KNote || e.Zaehl >= quantenWZufallL-1 {
+	} else if k < quantenWKMinPruefen(e.N) || k > quantenWKMax || frei-k < e.KNote || e.Zaehl >= quantenWZufallL-1 {
 		// Reserve fuer das Einloesen: k_note Stellen und der letzte Wert der
 		// Hash-Ketten (sonst pruefte jemand die Ketten leer).
 		return quantenWFehler("k = %d (Reserve fuer das Einloesen: %d von %d frei, Anfrage %d)", k, e.KNote, frei, e.Zaehl)

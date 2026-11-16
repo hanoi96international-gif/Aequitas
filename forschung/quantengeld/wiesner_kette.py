@@ -290,6 +290,16 @@ def pfand_fuer(wert_: int, k: int, n: int) -> int:
     return max(PFAND, -(-wert_ * k // n))
 
 
+def k_min_pruefen(n: int) -> int:
+    """Kleinste Pruefung einer Note mit n Stellen: max(K_MIN, ceil(n / (ZUFALL_L - 1))).
+    Sonst liessen sich die Hash-Ketten mit vielen billigen Pruefungen leeren,
+    bevor die Stellen ausgehen -- und ein letztes falsches Einloesen toetete
+    die Note fuer ~255 AEQ, egal wie viel sie wert ist (Sicherheitspruefung
+    W2c). So gehen die Stellen zuerst aus, und das kostet Pfaender von etwa
+    dem Wert der Note."""
+    return max(K_MIN, -(-n // (ZUFALL_L - 1)))
+
+
 def reserve(e: dict) -> int:
     """So viele Stellen bleiben fuer das Einloesen frei: k_note der Note."""
     return e["k"]
@@ -436,7 +446,7 @@ class KetteW:
                 raise Abgewiesen("k beim Einloesen fest: k_note")
             if einloesen_an not in self.konten:
                 raise Abgewiesen("Ziel")
-        elif not K_MIN <= k <= K_MAX or frei - k < reserve(e) or e["zaehl"] >= ZUFALL_L - 1:
+        elif not k_min_pruefen(e["n"]) <= k <= K_MAX or frei - k < reserve(e) or e["zaehl"] >= ZUFALL_L - 1:
             # Reserve fuer das Einloesen: k_note Stellen UND der letzte Wert
             # der Hash-Ketten (sonst pruefte jemand die Ketten leer).
             raise Abgewiesen("k (Reserve fuer das Einloesen)")
@@ -916,6 +926,16 @@ def _selbsttest(fehler: list[str]) -> None:
     e = k.noten[K]
     abgewiesen(lambda: k.anfrage("bert", K, 64, KetteW.sig(b"b" * 16, f"anfrage|{K}|64|bert|0"), "bert"), "Einloesen mit k = 64 statt 552")
     abgewiesen(lambda: k.anfrage("bert", K, 553, KetteW.sig(b"b" * 16, f"anfrage|{K}|553|None|0")), "Pruefung frisst die Reserve (552)")
+    # Hash-Ketten leeren mit vielen billigen Pruefungen: bei n = 16384 ist die
+    # kleinste Pruefung ceil(16384 / 255) = 65 Stellen.
+    soll(k_min_pruefen(16384) == 65 and k_min_pruefen(1104) == K_MIN and k_min_pruefen(2041) == 9, "k_min_pruefen")
+    k3 = KetteW(V1)
+    k3.konto("bert", 20_000_000, b"b" * 16)
+    n3, K3 = 16384, "f" * 64
+    pr3 = Praegung(K3, [0] * n3, [0] * n3, 1, ["v1"], rng)
+    k3.praegen("bert", K3, n3, pr3.wurzel, 5_000_000, ["v1"], 1, pr3.anker, pr3.bestaetigungen(V1, tol=2), tol=2)
+    abgewiesen(lambda: k3.anfrage("bert", K3, 64, KetteW.sig(b"b" * 16, f"anfrage|{K3}|64|None|0")), "Pruefung kleiner als n / 255")
+    soll(k3.anfrage("bert", K3, 65, KetteW.sig(b"b" * 16, f"anfrage|{K3}|65|None|0")) == 0, "Pruefung mit n / 255 Stellen")
     j = k.anfrage("bert", K, 552, KetteW.sig(b"b" * 16, f"anfrage|{K}|552|bert|0"), "bert")
     k.zufall(K, j, pr.zufall(j))
     st, ch = k.aufforderung_von(K)

@@ -482,6 +482,23 @@ func TestQuantenW_SicherePruefgroesse(t *testing.T) {
 	if quantenWF16(3, 5) != 7 || quantenWF16(1, 1) != 0 || quantenWF16(9, 16) != 8 || quantenWF16(2, 64) != 1 {
 		t.Fatal("f16")
 	}
+	// Hash-Ketten leeren mit vielen billigen Pruefungen: die kleinste
+	// Pruefung waechst mit n (bei 16384 Stellen 65), so gehen die Stellen zuerst aus.
+	if quantenWKMinPruefen(16384) != 65 || quantenWKMinPruefen(1104) != quantenWKMin || quantenWKMinPruefen(2041) != 9 {
+		t.Fatal("quantenWKMinPruefen")
+	}
+	g := neueQuantenWNote(16384, 1, [32]byte{1}, []string{"a"}, [][32]byte{{2}}, 2, 552)
+	if g.anfragen("x", 64, "", quantenWPfand, 1) == nil {
+		t.Fatal("Pruefung kleiner als n / 255 angenommen")
+	}
+	if err := g.anfragen("x", 65, "", quantenWPfand, 1); err != nil {
+		t.Fatalf("Pruefung mit n / 255: %v", err)
+	}
+	// So viele Pruefungen, wie Ketten-Werte da sind, verbrauchen mehr Stellen,
+	// als die Note hat: die Ketten gehen nie vor den Stellen aus.
+	if (quantenWZufallL-1)*quantenWKMinPruefen(quantenWNMax) < quantenWNMax {
+		t.Fatal("Ketten koennen vor den Stellen ausgehen")
+	}
 	// Einloesen nur mit genau k_note; Pruefen laesst k_note und den letzten
 	// Wert der Hash-Ketten stehen.
 	e := neueQuantenWNote(1200, 1, [32]byte{1}, []string{"a"}, [][32]byte{{2}}, 2, 552)
