@@ -69,6 +69,19 @@ damit Aequitas ernstzunehmendes Quantengeld ist. Die Liste steht in
   Übergabe zu #543.
 - Wenn jene Sitzung weiterläuft: zuerst committen und pushen. Nicht doppelt bauen.
 
+## Offene PRs
+
+| Repo | PR | Inhalt | Nächster Schritt |
+|---|---|---|---|
+| Aequitas | #545 | Befund Klonangriff, `wiesner_parameter.py`, Variante S (ANALYSE.md 5b), diese Übergabe | CI grün abwarten, squash-mergen |
+
+Gemergt am 16.11.:
+- #544 (OFFEN.md)
+- #539 (Variante W: Regeln im Knoten W2a, Prägen ohne Vertrauen W3, Ablauf mit der Kette
+  W4 ohne Partner)
+- #540, #541, #542 (W2b schlafend eingehängt, W5 Prüfauftrag)
+- #543 (Vier-Knoten-Test)
+
 ## Danach (Reihenfolge)
 
 0. **App 1.23.2:** Die APK ist veröffentlicht, die **iOS-IPA fehlt im Release**
