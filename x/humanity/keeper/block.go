@@ -1443,7 +1443,8 @@ func bekannteTxArt(typ string, blockZeit int64) bool {
 		return prueferDienstPQAktiv(blockZeit)
 	case offlinePfandTxArt, offlineEinloesungTxArt, offlineKuendigungTxArt, offlineAbschlussTxArt: // offline_einbindung.go, schlafend bis offlineAb
 		return offlineAktiv(blockZeit)
-	case quantenWPraegenTxArt, quantenWAnfrageTxArt, quantenWZufallTxArt, quantenWAntwortTxArt, quantenWOffenlegenTxArt, quantenWFristTxArt: // quanten_w_kette.go, schlafend bis quantenWAb
+	case quantenWPraegenTxArt, quantenWAnfrageTxArt, quantenWZufallTxArt, quantenWAntwortTxArt, quantenWOffenlegenTxArt, quantenWFristTxArt,
+		quantenWSAusgebenTxArt, quantenWSBindenTxArt, quantenWSWaehlenTxArt, quantenWSAnmeldenTxArt, quantenWSOffenlegenTxArt, quantenWSFristTxArt: // quanten_w_kette.go, schlafend bis quantenWAb
 		return quantenWAktiv(blockZeit)
 	case "vorbehalt", "vorbehalt_ausfuehrung", "kappung":
 		// Stufe 2 (vorbehalt.go, kappung_verteilt.go). Fehlten hier bis
@@ -8294,7 +8295,8 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 				hardFailure = true
 				continue
 			}
-		case quantenWPraegenTxArt, quantenWAnfrageTxArt, quantenWZufallTxArt, quantenWAntwortTxArt, quantenWOffenlegenTxArt, quantenWFristTxArt:
+		case quantenWPraegenTxArt, quantenWAnfrageTxArt, quantenWZufallTxArt, quantenWAntwortTxArt, quantenWOffenlegenTxArt, quantenWFristTxArt,
+			quantenWSAusgebenTxArt, quantenWSBindenTxArt, quantenWSWaehlenTxArt, quantenWSAnmeldenTxArt, quantenWSOffenlegenTxArt, quantenWSFristTxArt:
 			// quanten_w_kette.go: jeder Knoten prueft Unterschriften (Wallet,
 			// Validatoren), Hash-Ketten, Pruefsummen, Fristen und Deckung selbst
 			// und rechnet Anteile, Pfand und Wert nach; sie muessen genau die im

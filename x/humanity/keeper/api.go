@@ -1266,7 +1266,8 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	mux.HandleFunc("/api/offline/einloesung", a.zumLeiter(a.handleOffline(offlineEinloesungTxArt)))
 	mux.HandleFunc("/api/offline/kuendigung", a.zumLeiter(a.handleOffline(offlineKuendigungTxArt)))
 	// quanten_w_kette.go: Variante W, vor dem Stichtag 409; Stand einer Note fuer jeden.
-	for _, art := range []string{quantenWPraegenTxArt, quantenWAnfrageTxArt, quantenWZufallTxArt, quantenWAntwortTxArt, quantenWOffenlegenTxArt, quantenWFristTxArt} {
+	for _, art := range []string{quantenWPraegenTxArt, quantenWAnfrageTxArt, quantenWZufallTxArt, quantenWAntwortTxArt, quantenWOffenlegenTxArt, quantenWFristTxArt,
+		quantenWSAusgebenTxArt, quantenWSBindenTxArt, quantenWSWaehlenTxArt, quantenWSAnmeldenTxArt, quantenWSOffenlegenTxArt, quantenWSFristTxArt} {
 		mux.HandleFunc("/api/quanten-w/"+strings.TrimPrefix(art, "quanten_w_"), a.zumLeiter(a.handleQuantenW(art)))
 	}
 	mux.HandleFunc("/api/quanten-w/note", a.lesenBegrenzt("/api/quanten-w/note", a.handleQuantenWNote))

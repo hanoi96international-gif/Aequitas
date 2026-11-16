@@ -141,6 +141,9 @@ func quantenWAb() int64 {
 func quantenWAktiv(t int64) bool { return t >= quantenWAb() }
 
 func istQuantenWTxArt(t string) bool {
+	if istQuantenWSTxArt(t) {
+		return true
+	}
 	switch t {
 	case quantenWPraegenTxArt, quantenWAnfrageTxArt, quantenWZufallTxArt, quantenWAntwortTxArt, quantenWOffenlegenTxArt, quantenWFristTxArt:
 		return true
@@ -178,6 +181,19 @@ type QuantenWAngaben struct {
 	Bits   string           `json:"bits,omitempty"` // Antwort: "0101..."
 	Offen  []QuantenWOffen  `json:"offen,omitempty"`
 	Ab     int              `json:"ab,omitempty"` // Offenlegen: erste Stelle dieses Teils
+	// Variante S (quanten_w_s_kette.go): Ausgabe (Inhaber, Stellen, Proben),
+	// Bindung D und Wahl C der Inhaberin, Anmeldung der Stelle B mit der
+	// Vorlage X, ihrer Stichprobe und der Unterschrift der Inhaberin. Bits als
+	// Text "0101..." ("0"/"1" fuer B und C, wegen omitempty).
+	Inhaber string   `json:"inhaber,omitempty"`
+	Annahme []string `json:"annahme,omitempty"` // die zwei Annahmestellen
+	Proben  []string `json:"proben,omitempty"`
+	D       string   `json:"d,omitempty"`
+	C       string   `json:"c,omitempty"`
+	B       string   `json:"b,omitempty"`
+	X       string   `json:"x,omitempty"`
+	Probe   []int    `json:"probe,omitempty"`
+	Vorlage string   `json:"vorlage,omitempty"`
 	// Unterschrift der Wallet (Praegen, Anfrage, Antwort): EIP-191 ODER ML-DSA.
 	WalletSig string   `json:"wallet_sig,omitempty"`
 	PQ        *PQKonto `json:"pq,omitempty"`
@@ -242,6 +258,9 @@ func quantenWNurEigeneFelder(tx *Transaction) bool {
 		}
 		return reflect.DeepEqual(q, QuantenWAngaben{}) && tx.Wallet == "" && tx.DistributionAt == 0
 	default:
+		if istQuantenWSTxArt(tx.Type) {
+			return quantenWSNurEigeneFelder(tx, q)
+		}
 		return false
 	}
 	return reflect.DeepEqual(q, QuantenWAngaben{})
@@ -309,13 +328,21 @@ type quantenWEintrag struct {
 
 type quantenWRegister struct {
 	Noten map[string]*quantenWEintrag
-	Tote  map[string]int64 // K -> Praegezeit
+	Token map[string]*quantenWSEintrag // Variante S (quanten_w_s_kette.go)
+	Tote  map[string]int64             // K -> Praege- bzw. Ausgabezeit
+}
+
+func neuesQuantenWRegister() *quantenWRegister {
+	return &quantenWRegister{Noten: map[string]*quantenWEintrag{}, Token: map[string]*quantenWSEintrag{}, Tote: map[string]int64{}}
 }
 
 func (r *quantenWRegister) kopie() *quantenWRegister {
-	n := &quantenWRegister{Noten: make(map[string]*quantenWEintrag, len(r.Noten)), Tote: make(map[string]int64, len(r.Tote))}
+	n := &quantenWRegister{Noten: make(map[string]*quantenWEintrag, len(r.Noten)), Token: make(map[string]*quantenWSEintrag, len(r.Token)), Tote: make(map[string]int64, len(r.Tote))}
 	for k, e := range r.Noten {
 		n.Noten[k] = e
+	}
+	for k, e := range r.Token {
+		n.Token[k] = e
 	}
 	for k, z := range r.Tote {
 		n.Tote[k] = z
@@ -326,6 +353,9 @@ func (r *quantenWRegister) kopie() *quantenWRegister {
 func (r *quantenWRegister) summeAnteile() int64 {
 	var s int64
 	for _, e := range r.Noten {
+		s = plusGesaettigt(s, e.Anteile)
+	}
+	for _, e := range r.Token {
 		s = plusGesaettigt(s, e.Anteile)
 	}
 	return s
@@ -376,12 +406,13 @@ type quantenWTotForm struct {
 }
 
 type quantenWRegisterForm struct {
-	Noten []quantenWNoteForm `json:"noten,omitempty"`
-	Tote  []quantenWTotForm  `json:"tote,omitempty"`
+	Noten []quantenWNoteForm   `json:"noten,omitempty"`
+	Token []quantenWSTokenForm `json:"token,omitempty"`
+	Tote  []quantenWTotForm    `json:"tote,omitempty"`
 }
 
 func (r *quantenWRegister) kodiert() string {
-	if len(r.Noten) == 0 && len(r.Tote) == 0 {
+	if len(r.Noten) == 0 && len(r.Token) == 0 && len(r.Tote) == 0 {
 		return ""
 	}
 	var f quantenWRegisterForm
@@ -394,9 +425,13 @@ func (r *quantenWRegister) kodiert() string {
 		}
 		f.Noten = append(f.Noten, nf)
 	}
+	for k, e := range r.Token {
+		f.Token = append(f.Token, e.form(k))
+	}
 	for k, z := range r.Tote {
 		f.Tote = append(f.Tote, quantenWTotForm{K: k, Zeit: z})
 	}
+	sort.Slice(f.Token, func(i, j int) bool { return f.Token[i].K < f.Token[j].K })
 	sort.Slice(f.Noten, func(i, j int) bool { return f.Noten[i].K < f.Noten[j].K })
 	sort.Slice(f.Tote, func(i, j int) bool { return f.Tote[i].K < f.Tote[j].K })
 	roh, err := json.Marshal(f)
@@ -454,7 +489,7 @@ func quantenWBitsGueltig(b []int) bool {
 // quantenWRegisterLesen: Start, Snapshot, Checkpoint. Alles wird geprueft
 // (fail-closed): ein Register, das so nie entstehen konnte, wird abgewiesen.
 func quantenWRegisterLesen(s string) (*quantenWRegister, error) {
-	r := &quantenWRegister{Noten: map[string]*quantenWEintrag{}, Tote: map[string]int64{}}
+	r := neuesQuantenWRegister()
 	if s == "" {
 		return r, nil
 	}
@@ -464,11 +499,11 @@ func quantenWRegisterLesen(s string) (*quantenWRegister, error) {
 	if err := dec.Decode(&f); err != nil {
 		return nil, fmt.Errorf("quanten_w: Register: %w", err)
 	}
-	if len(f.Noten) == 0 && len(f.Tote) == 0 {
+	if len(f.Noten) == 0 && len(f.Token) == 0 && len(f.Tote) == 0 {
 		return nil, errors.New("quanten_w: leeres Register muss leer kodiert sein")
 	}
 	// Tote: bis zur Grenze praegen, danach sterben noch die lebenden Noten.
-	if len(f.Noten) > quantenWNotenHoechstens || len(f.Tote) > quantenWToteHoechstens+quantenWNotenHoechstens {
+	if len(f.Noten) > quantenWNotenHoechstens || len(f.Token) > quantenWTokenHoechstens || len(f.Tote) > quantenWToteHoechstens+quantenWNotenHoechstens+quantenWTokenHoechstens {
 		return nil, errors.New("quanten_w: Register ueber der Grenze")
 	}
 	var summe int64
@@ -528,8 +563,22 @@ func quantenWRegisterLesen(s string) (*quantenWRegister, error) {
 		}
 		r.Noten[nf.K] = &quantenWEintrag{note: e, Anteile: nf.Anteile, Zeit: nf.Zeit}
 	}
+	for i, tf := range f.Token {
+		if !istHash64(tf.K) || (i > 0 && tf.K <= f.Token[i-1].K) || r.Noten[tf.K] != nil {
+			return nil, fmt.Errorf("quanten_w: Token %d: K oder Ordnung", i)
+		}
+		e, err := quantenWSTokenLesen(tf)
+		if err != nil {
+			return nil, err
+		}
+		if e.Anteile > quantenAnteileHoechstens-summe {
+			return nil, fmt.Errorf("quanten_w: Token %s: Anteile", tf.K[:12])
+		}
+		summe += e.Anteile
+		r.Token[tf.K] = e
+	}
 	for i, t := range f.Tote {
-		if !istHash64(t.K) || (i > 0 && t.K <= f.Tote[i-1].K) || r.Noten[t.K] != nil || t.Zeit <= 0 {
+		if !istHash64(t.K) || (i > 0 && t.K <= f.Tote[i-1].K) || r.Noten[t.K] != nil || r.Token[t.K] != nil || t.Zeit <= 0 {
 			return nil, fmt.Errorf("quanten_w: tote Note %d", i)
 		}
 		r.Tote[t.K] = t.Zeit
@@ -557,7 +606,7 @@ func (cs *ChainState) quantenWStandJetzt() *quantenWStand {
 	if st := cs.quantenWReg.Load(); st != nil {
 		return st
 	}
-	return &quantenWStand{reg: &quantenWRegister{Noten: map[string]*quantenWEintrag{}, Tote: map[string]int64{}}}
+	return &quantenWStand{reg: neuesQuantenWRegister()}
 }
 
 func (cs *ChainState) quantenWJetzt() *quantenWRegister { return cs.quantenWStandJetzt().reg }
@@ -624,7 +673,7 @@ func quantenWFeldErlaubt(tx *Transaction, blockZeit int64) error {
 // quantenWZeitGueltig: Praegen und Anfrage tragen ihre unterschriebene Zeit.
 func quantenWZeitGueltig(tx *Transaction, blockZeit int64) bool {
 	switch tx.Type {
-	case quantenWPraegenTxArt, quantenWAnfrageTxArt:
+	case quantenWPraegenTxArt, quantenWAnfrageTxArt, quantenWSAusgebenTxArt:
 		z := tx.DistributionAt
 		return z > 0 && z <= sattAdd(blockZeit, quantenWVoraus) && blockZeit-z <= quantenWAlt
 	}
@@ -668,6 +717,9 @@ func (cs *ChainState) quantenWBescheidLocked(ctx context.Context, tx *Transactio
 	wallet := strings.ToLower(strings.TrimSpace(tx.Wallet))
 	if tx.Type == quantenWPraegenTxArt {
 		return cs.quantenWPraegenBescheidLocked(ctx, tx, wallet, reg, blockZeit)
+	}
+	if istQuantenWSTxArt(tx.Type) {
+		return cs.quantenWSBescheidLocked(ctx, tx, wallet, reg, blockZeit)
 	}
 	alt := reg.Noten[q.K]
 	if alt == nil {
@@ -809,7 +861,7 @@ func (cs *ChainState) quantenWPraegenBescheidLocked(ctx context.Context, tx *Tra
 	if !kanonischeAdresse(wallet) || istSystemAdresse(wallet) {
 		return quantenWBefund("quanten_w_form", "Praeger nicht kanonisch"), nil
 	}
-	if reg.Noten[q.K] != nil {
+	if reg.Noten[q.K] != nil || reg.Token[q.K] != nil {
 		return quantenWBefund("quanten_w_doppelt", "Note %s gibt es schon", q.K[:12]), nil
 	}
 	if _, tot := reg.Tote[q.K]; tot {
@@ -839,10 +891,40 @@ func (cs *ChainState) quantenWPraegenBescheidLocked(ctx context.Context, tx *Tra
 	}
 	// Jeder Validator: Bestaetigung (mit Anker und Praegezeit), gebunden an
 	// einen Menschen, und alle an verschiedene.
+	if u, err := cs.quantenWValidatorenLocked(ctx, q.Validatoren, q.Bestaetigungen, func(x int) string {
+		return quantenWBestaetigungNachricht(q.K, wurzel, q.N, q.T, q.Validatoren, x+1, anker[x], zeit, q.Tol)
+	}); err != nil || u.regel != "" {
+		return u, err
+	}
+	if q.Deckung < quantenMindestDeckungMik {
+		return quantenWBefund("quanten_w_deckung", "Deckung %d, mindestens %d Mikro-AEQ", q.Deckung, quantenMindestDeckungMik), nil
+	}
+	if cs.quantenWMikroLocked(ctx, wallet) < q.Deckung {
+		return quantenWBefund("quanten_w_deckung", "%s hat keine %d Mikro-AEQ", kurzAdresse(wallet), q.Deckung), nil
+	}
+	anteile, ok := quantenAnteileFuer(q.Deckung, cs.quantenWMikroLocked(ctx, quantenWTopfAddr), reg.summeAnteile())
+	if !ok {
+		return quantenWBefund("quanten_w_voll", "Topf nimmt keine Note an (Anteile)"), nil
+	}
+	neu := reg.kopie()
+	if !quantenWToteAufraeumen(neu, blockZeit) {
+		return quantenWBefund("quanten_w_voll", "zu viele tote Noten im Praegefenster"), nil
+	}
+	neu.Noten[q.K] = &quantenWEintrag{note: neueQuantenWNote(q.N, q.T, wurzel, q.Validatoren, anker, q.Tol, kn), Anteile: anteile, Zeit: zeit}
+	return quantenWBescheid{reg: neu, wege: []quantenWWeg{{wallet, quantenWTopfAddr, q.Deckung}}, felder: QuantenWAngaben{Anteile: anteile}}, nil
+}
+
+// quantenWValidatorenLocked: jeder Validator hat nachricht(x) per EIP-191
+// unterschrieben, ist im Validator-Register an einen Menschen gebunden, und
+// alle an VERSCHIEDENE Menschen -- sonst hielte einer mehrere Anteile. Fuer
+// W-Noten und S-Token. Fehler = Register nicht lesbar (fail-closed).
+func (cs *ChainState) quantenWValidatorenLocked(ctx context.Context, validatoren, bestaetigungen []string, nachricht func(x int) string) (quantenWBescheid, error) {
+	if len(bestaetigungen) != len(validatoren) {
+		return quantenWBefund("quanten_w_form", "Bestaetigungen"), nil
+	}
 	betreiber := map[string]bool{}
-	for x, v := range q.Validatoren {
-		msg := quantenWBestaetigungNachricht(q.K, wurzel, q.N, q.T, q.Validatoren, x+1, anker[x], zeit, q.Tol)
-		if !kanonischeSignatur(q.Bestaetigungen[x]) || pruefePersonalSignGemerkt(msg, q.Bestaetigungen[x], v) != nil {
+	for x, v := range validatoren {
+		if !kanonischeSignatur(bestaetigungen[x]) || pruefePersonalSignGemerkt(nachricht(x), bestaetigungen[x], v) != nil {
 			return quantenWBefund("quanten_w_bestaetigung", "Validator %d (%s) hat nicht bestaetigt", x+1, kurzAdresse(v)), nil
 		}
 		b, err := quantenWBetreiberVon(cs, ctx, v)
@@ -858,32 +940,22 @@ func (cs *ChainState) quantenWPraegenBescheidLocked(ctx context.Context, tx *Tra
 			return quantenWBefund("quanten_w_validator", "Betreiber von %s ist kein Mensch", kurzAdresse(v)), nil
 		}
 		if betreiber[b] {
-			return quantenWBefund("quanten_w_validator", "zwei Validatoren der Note gehoeren demselben Menschen (%s)", kurzAdresse(b)), nil
+			return quantenWBefund("quanten_w_validator", "zwei Validatoren gehoeren demselben Menschen (%s)", kurzAdresse(b)), nil
 		}
 		betreiber[b] = true
 	}
-	if q.Deckung < quantenMindestDeckungMik {
-		return quantenWBefund("quanten_w_deckung", "Deckung %d, mindestens %d Mikro-AEQ", q.Deckung, quantenMindestDeckungMik), nil
-	}
-	if cs.quantenWMikroLocked(ctx, wallet) < q.Deckung {
-		return quantenWBefund("quanten_w_deckung", "%s hat keine %d Mikro-AEQ", kurzAdresse(wallet), q.Deckung), nil
-	}
-	anteile, ok := quantenAnteileFuer(q.Deckung, cs.quantenWMikroLocked(ctx, quantenWTopfAddr), reg.summeAnteile())
-	if !ok {
-		return quantenWBefund("quanten_w_voll", "Topf nimmt keine Note an (Anteile)"), nil
-	}
-	neu := reg.kopie()
-	// Tote, deren Bestaetigungen nicht mehr gelten koennen, vergessen.
+	return quantenWBescheid{}, nil
+}
+
+// quantenWToteAufraeumen: Tote, deren Bestaetigungen nicht mehr gelten
+// koennen, vergessen; voll = kein neues Praegen oder Ausgeben (fail-closed).
+func quantenWToteAufraeumen(neu *quantenWRegister, blockZeit int64) bool {
 	for k, z := range neu.Tote {
 		if z < blockZeit-quantenWToteBehalten {
 			delete(neu.Tote, k)
 		}
 	}
-	if len(neu.Tote) >= quantenWToteHoechstens {
-		return quantenWBefund("quanten_w_voll", "zu viele tote Noten im Praegefenster"), nil
-	}
-	neu.Noten[q.K] = &quantenWEintrag{note: neueQuantenWNote(q.N, q.T, wurzel, q.Validatoren, anker, q.Tol, kn), Anteile: anteile, Zeit: zeit}
-	return quantenWBescheid{reg: neu, wege: []quantenWWeg{{wallet, quantenWTopfAddr, q.Deckung}}, felder: QuantenWAngaben{Anteile: anteile}}, nil
+	return len(neu.Tote) < quantenWToteHoechstens
 }
 
 // quantenWOffenLesen: Anteile und Pfade aus der Transaktion (Form, Grenzen).
@@ -1128,6 +1200,9 @@ func (cs *ChainState) quantenWNoteAnsicht(ctx context.Context, k string) map[str
 			"frei": e.note.N - len(e.note.Benutzt), "fehl": e.note.Fehl, "gesperrt": e.note.Gesperrt, "zaehl": e.note.Zaehl,
 			"wert_mikro": quantenWert(e.Anteile, cs.quantenWMikroLocked(ctx, quantenWTopfAddr), reg.summeAnteile()),
 			"anfrage":    e.note.Anfrage}
+	}
+	if v := cs.quantenWSTokenAnsichtLocked(ctx, reg, k); v != nil {
+		return v
 	}
 	if _, tot := reg.Tote[k]; tot {
 		return map[string]interface{}{"k": k, "tot": true}
