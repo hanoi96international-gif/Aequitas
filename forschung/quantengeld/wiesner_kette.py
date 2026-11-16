@@ -33,15 +33,18 @@ ZUFALL OHNE STEUERUNG (W2b, ersetzt den Blockhash aus W2a)
   zuletzt bekannten Wert (Index m). Die Saat der Aufforderung ist
   SHA-256(Domaene | K | j | z_1 .. z_v). Alle Werte stehen seit dem Praegen
   fest: ein Erzeuger, der mehrere Bloecke versuchen koennte, aendert daran
-  nichts (beim Blockhash konnte er waehlen). Zurueckhalten hilft auch nicht:
-  laeuft die Zufallsfrist ab, verbraucht die Note die Stellen dieser
-  Anfrage trotzdem, sobald der Zufall nachgereicht ist ("wartet"), und nimmt
-  bis dahin keine neue Anfrage an. Wer eine unguenstige Aufforderung
-  verfallen laesst, bekommt also keine neue fuer dieselben Stellen.
+  nichts (beim Blockhash konnte er waehlen). Fuer den Zufall gibt es KEINE
+  Frist: die Anfrage bleibt offen und ihr Pfand gesperrt, bis er
+  vollstaendig ist; die Antwortfrist laeuft erst ab dann. Mit einer Frist
+  (Pfand zurueck, Stellen trotzdem verbraucht) haette ein Erzeuger, der einen
+  Wert zurueckhaelt, eine Note kostenlos erschoepfen koennen: Einloesen
+  anfragen, verfallen lassen, 64 Stellen weg, ohne Pfand.
 
 REGELN (Missbrauch in Klammern)
   - Praegen nur mit Deckung und mit der Bestaetigung ALLER v Validatoren der
-    Note (je mit ihrem Anker), K neu, K_MIN <= n <= N_MAX.
+    Note (je mit ihrem Anker und der Praegezeit, hoechstens einen Tag alt),
+    K neu und fuer immer belegt, K_MIN <= n <= N_MAX (tote Note mit alten
+    Bestaetigungen neu praegen: ihr Zufall waere vorhersagbar).
   - Eine offene Anfrage je Note; Pfand. Pfand = max(1 AEQ, Wert * k / n):
     wer Stellen verbraucht, setzt so viel ein, wie diese Stellen vom Wert
     der Note tragen (sonst: fremde Noten fuer 1 AEQ leerpruefen).
@@ -50,8 +53,8 @@ REGELN (Missbrauch in Klammern)
     sie nur noch schwach einloesbar ist).
   - Einloesen: k = min(K_MAX, freie Stellen), nicht waehlbar (sonst: ein
     Faelscher waehlt k = 8 und hat mit Raten ~3 % Erfolg).
-  - Zufall: nur fuer die faellige Anfrage, nur passende Hash-Kette, jeder
-    Wert nur einmal (zu frueh, falscher Wert, Wiederholung).
+  - Zufall: nur fuer die offene Anfrage, nur passende Hash-Kette, jeder
+    Wert nur einmal (zu frueh, falscher Wert, Wiederholung); ohne Frist.
   - Antwort nur vom Anfragenden, erst nach dem Zufall, nur bis zur Frist
     (Wiederholung, fremde Antwort, Antwort vor der Aufforderung).
   - Offenlegen erst nach der Antwort; genau t Anteile mit verschiedenen
@@ -98,11 +101,11 @@ TOLERANZ = 0.15
 TOL_PROZENT = 15             # ganzzahlig, wie im Knoten: Fehler*100 <= 15*Treffer
 MIN_TREFFER = 4
 FEHL_MAX = 3
-FRIST_ZUFALL = 600           # Sekunden nach der Anfrage: Validatoren legen den Zufall offen
-FRIST_ANTWORT = 600          # Sekunden nach dem Zufall
+FRIST_ANTWORT = 600          # Sekunden nach dem vollstaendigen Zufall
 FRIST_OFFENLEGEN = 1800      # Sekunden nach der Antwort
 BLOCKZEIT = 5                # Sekunden (nur fuer warten() ohne Angabe)
 PFAND = 1_000_000            # Mikro-AEQ (1 AEQ), kleinstes Pfand
+PRAEGEN_VORAUS, PRAEGEN_ALT = 300, 86400  # Praegezeit hoechstens 5 min nach / 1 Tag vor dem Block
 ZUFALL_L = 256               # Laenge der Hash-Kette je Validator = hoechstens Anfragen je Note (N_MAX / K_MIN)
 MIN_DECKUNG = 1_000_000
 T_MAX, V_MAX = 16, 64
@@ -230,10 +233,13 @@ def zufall_saat(K: str, j: int, werte: list[bytes]) -> bytes:
     return h(DOM_ZUF, K.encode(), b"|", str(j).encode(), b"|", *werte)
 
 
-def bestaetigung_text(K: str, wurzel: bytes, n: int, t: int, validatoren: list[str], x: int, anker: bytes) -> str:
+def bestaetigung_text(K: str, wurzel: bytes, n: int, t: int, validatoren: list[str], x: int, anker: bytes, zeit: int) -> str:
     """Was Validator x (1-basiert) beim Praegen unterschreibt: er haelt die
-    Anteile zu dieser Wurzel, und das ist sein Anker."""
-    return f"{DOM_BEST}{K}|{wurzel.hex()}|{n}|{t}|{','.join(validatoren)}|{x}|{anker.hex()}"
+    Anteile zu dieser Wurzel, das ist sein Anker, und das ist die Praegezeit.
+    Die Zeit macht alte Bestaetigungen nach einem Tag wertlos: eine tote Note
+    laesst sich nicht mit denselben Ankern neu praegen (ihre Hash-Ketten
+    waeren teils schon offen, der Zufall vorhersagbar)."""
+    return f"{DOM_BEST}{K}|{wurzel.hex()}|{n}|{t}|{','.join(validatoren)}|{x}|{anker.hex()}|{zeit}"
 
 
 def pfand_fuer(wert_: int, k: int, n: int) -> int:
@@ -294,14 +300,8 @@ class KetteW:
         if a is None:
             return
         if a["stellen"] is None:
-            if self.zeit > a["zeit"] + FRIST_ZUFALL:
-                # Zufall nicht rechtzeitig offengelegt: nicht die Schuld des
-                # Anfragenden -- Pfand zurueck, kein Fehlversuch. Die Stellen
-                # dieser Anfrage verbraucht die Note, sobald ihr Zufall
-                # nachgereicht ist; bis dahin keine neue Anfrage (wartet).
-                self._pfand_zurueck(a)
-                e["wartet"], e["anfrage"] = (a["index"], a["k"]), None
-        elif a["antwort"] is None:
+            return  # Zufall unvollstaendig: keine Frist (siehe oben)
+        if a["antwort"] is None:
             if self.zeit > a["gezogen"] + FRIST_ANTWORT:
                 self._durchgefallen(e)
         elif self.zeit > a["antwort_zeit"] + FRIST_OFFENLEGEN:
@@ -326,16 +326,21 @@ class KetteW:
         self._erschoepft(e)
 
     def _erschoepft(self, e: dict):
-        if not e["tot"] and e["anfrage"] is None and e["wartet"] is None and len(self.frei(e)) < K_MIN:
+        if not e["tot"] and e["anfrage"] is None and len(self.frei(e)) < K_MIN:
             self.grundeinkommen += e["wert"]
             self.topf -= e["wert"]
             e["tot"] = True
 
     # -- 1. Praegen
     def praegen(self, von: str, K: str, n: int, wurzel: bytes, deckung: int,
-                validatoren: list[str], t: int, anker: list[bytes], bestaetigungen: dict[str, str]):
+                validatoren: list[str], t: int, anker: list[bytes], bestaetigungen: dict[str, str], zeit: int = 0):
+        # K bleibt fuer immer belegt, auch wenn die Note tot ist (im Knoten:
+        # tot und im Fenster der Praegezeit gemerkt -- danach gilt keine
+        # alte Bestaetigung mehr).
         if K in self.noten or len(K) != 64 or any(c not in "0123456789abcdef" for c in K):
             raise Abgewiesen("K ungueltig oder schon da")
+        if not self.zeit - PRAEGEN_ALT <= zeit <= self.zeit + PRAEGEN_VORAUS:
+            raise Abgewiesen("Praegezeit ausserhalb des Fensters")
         # n >= K_MIN: sonst liesse sich die Note nie pruefen oder einloesen,
         # ihre Deckung laege fuer immer im Topf.
         if not K_MIN <= n <= N_MAX or not 1 <= t <= T_MAX or not t <= len(validatoren) <= V_MAX:
@@ -349,14 +354,14 @@ class KetteW:
         # ALLE Validatoren bestaetigen, jeder mit seinem Anker: ohne den Anker
         # eines Validators gaebe es fuer ihn keinen Zufall.
         for x, v in enumerate(validatoren, 1):
-            if not self._sig_ok(self.val_schluessel[v], bestaetigung_text(K, wurzel, n, t, validatoren, x, anker[x - 1]),
+            if not self._sig_ok(self.val_schluessel[v], bestaetigung_text(K, wurzel, n, t, validatoren, x, anker[x - 1], zeit),
                                 bestaetigungen.get(v, "")):
                 raise Abgewiesen("Bestaetigung der Validatoren fehlt oder passt nicht")
         self.konten[von] -= deckung
         self.topf += deckung
         self.noten[K] = {"n": n, "wurzel": wurzel, "wert": deckung, "validatoren": list(validatoren), "t": t,
                          "benutzt": set(), "fehl": 0, "gesperrt": False, "tot": False, "anfrage": None, "zaehl": 0,
-                         "z": list(anker), "z_index": [-1] * len(validatoren), "wartet": None}
+                         "z": list(anker), "z_index": [-1] * len(validatoren)}
 
     # -- 2. Anfrage
     def anfrage(self, von: str, K: str, k: int, sig: str, einloesen_an: str | None = None) -> int:
@@ -366,8 +371,6 @@ class KetteW:
         self._frist(e)
         if e["anfrage"] is not None:
             raise Abgewiesen("schon eine offene Anfrage")
-        if e["wartet"] is not None:
-            raise Abgewiesen("Note wartet auf den Zufall einer verfallenen Anfrage")
         if einloesen_an is None and e["gesperrt"]:
             raise Abgewiesen("Note gesperrt (Einloesen geht noch)")
         if e["zaehl"] >= ZUFALL_L:
@@ -397,19 +400,16 @@ class KetteW:
     # -- 3. Zufall (jeder darf einreichen; die Hash-Kette beweist die Herkunft)
     def zufall(self, K: str, j: int, werte: dict[int, bytes]) -> bool:
         """Werte der Hash-Ketten (Validator-Index 1-basiert -> Wert) fuer die
-        Anfrage j. True, sobald alle da sind und die Stellen verbraucht."""
+        offene Anfrage j. True, sobald alle da sind: dann steht die
+        Aufforderung, und ihre Stellen sind verbraucht."""
         e = self.noten.get(K)
         if e is None or e["tot"]:
             raise Abgewiesen("Note unbekannt oder tot")
         self._frist(e)
         a = e["anfrage"]
-        if a is not None and a["stellen"] is None:
-            faellig, k = a["index"], a["k"]
-        elif e["wartet"] is not None:
-            faellig, k = e["wartet"]
-        else:
+        if a is None or a["stellen"] is not None:
             raise Abgewiesen("kein Zufall faellig")
-        if j != faellig or not werte:
+        if j != a["index"] or not werte:
             raise Abgewiesen("Zufall fuer eine andere Anfrage")
         z_neu, m_neu = list(e["z"]), list(e["z_index"])  # alles oder nichts
         for x, z in werte.items():
@@ -423,16 +423,9 @@ class KetteW:
         if any(m < j for m in e["z_index"]):
             return False
         saat = zufall_saat(K, j, e["z"])
-        frei = self.frei(e)
-        if a is not None and a["index"] == j:
-            a["stellen"], a["basen"] = aufforderung(K, f"{K}:{j}", saat, frei, k)
-            e["benutzt"].update(a["stellen"])  # ab jetzt verbraucht, auch ohne Antwort
-            a["gezogen"] = self.zeit
-        else:
-            st, _ = aufforderung(K, f"{K}:{j}", saat, frei, min(k, len(frei)))
-            e["benutzt"].update(st)            # nachgeholt verbraucht
-            e["wartet"] = None
-            self._erschoepft(e)
+        a["stellen"], a["basen"] = aufforderung(K, f"{K}:{j}", saat, self.frei(e), a["k"])
+        e["benutzt"].update(a["stellen"])  # ab jetzt verbraucht, auch ohne Antwort
+        a["gezogen"] = self.zeit
         return True
 
     def aufforderung_von(self, K: str) -> tuple[list[int], list[int]]:
@@ -523,9 +516,9 @@ class Praegung:
         self.geheim = [h(b"zufall", rng.randbytes(32)) for _ in validatoren]
         self.anker = [kette_anker(g) for g in self.geheim]
 
-    def bestaetigungen(self, schluessel: dict[str, bytes]) -> dict[str, str]:
-        """Jeder Validator bestaetigt Wurzel und seinen Anker."""
-        return {v: KetteW.sig(schluessel[v], bestaetigung_text(self.K, self.wurzel, self.n, self.t, self.validatoren, x, self.anker[x - 1]))
+    def bestaetigungen(self, schluessel: dict[str, bytes], zeit: int = 0) -> dict[str, str]:
+        """Jeder Validator bestaetigt Wurzel, seinen Anker und die Praegezeit."""
+        return {v: KetteW.sig(schluessel[v], bestaetigung_text(self.K, self.wurzel, self.n, self.t, self.validatoren, x, self.anker[x - 1], zeit))
                 for x, v in enumerate(self.validatoren, 1)}
 
     def zufall(self, j: int, wer: list[int] | None = None) -> dict[int, bytes]:
@@ -715,24 +708,25 @@ def _selbsttest(fehler: list[str]) -> None:
     abgewiesen(lambda: k.offenlegen(K, of[:-1]), "Stelle fehlt")
     soll(k.offenlegen(K, of), "gueltige Offenlegung nach den Angriffen")
 
-    # Zufall zurueckhalten: Frist -> Pfand zurueck, kein Fehlversuch; die
-    # Note wartet, bis der Zufall nachgereicht ist, und verbraucht dann die
-    # Stellen dieser Anfrage trotzdem. Wer die Aufforderung schon kennt und
-    # sie verfallen laesst, gewinnt nichts.
+    # Zufall zurueckhalten: KEINE Frist -- die Anfrage bleibt offen, das Pfand
+    # gesperrt, nichts verbraucht, keine neue Anfrage. Nachgereicht: die
+    # Aufforderung steht, die Antwortfrist laeuft erst ab dann. (Mit einer
+    # Frist haette ein Erzeuger eine Note kostenlos erschoepfen koennen.)
     k, K, pr, basen, bits = aufbau()
     e = k.noten[K]
     v0 = k.konten["anna"]
     j = anfragen(k, K, "anna", 16)
     k.zufall(K, j, pr.zufall(j, [1, 2, 3, 4]))
-    k.warten(FRIST_ZUFALL + 1)
-    soll(e["anfrage"] is None and e["wartet"] == (0, 16) and e["fehl"] == 0 and k.konten["anna"] == v0 and not e["benutzt"],
-         "Zufallsfrist")
-    abgewiesen(lambda: anfragen(k, K, "anna", 16), "neue Anfrage, waehrend die Note wartet")
-    abgewiesen(lambda: anfragen(k, K, "anna", einloesen="anna"), "Einloesen, waehrend die Note wartet")
-    soll(k.zufall(K, 0, pr.zufall(0, [5])) and e["wartet"] is None, "nachgereichter Zufall")
-    soll(set(aufforderung(K, f"{K}:0", zufall_saat(K, 0, [kette_wert(g_, 0) for g_ in pr.geheim]), list(range(200)), 16)[0]) == e["benutzt"],
-         "nachgeholt verbraucht: falsche Stellen")
-    soll(runde(k, K, pr, "bert", lambda s, c: ehrlich(basen, bits, s, c)) and e["zaehl"] == 2, "Pruefung nach dem Warten")
+    k.warten(30 * 86400)
+    soll(e["anfrage"] is not None and e["fehl"] == 0 and k.konten["anna"] == v0 - PFAND and not e["benutzt"], "Zufall zurueckgehalten")
+    abgewiesen(lambda: anfragen(k, K, "bert", 16), "neue Anfrage, waehrend der Zufall aussteht")
+    abgewiesen(lambda: anfragen(k, K, "bert", einloesen="bert"), "Einloesen, waehrend der Zufall aussteht")
+    soll(k.zufall(K, 0, pr.zufall(0, [5])) and e["anfrage"]["gezogen"] == k.zeit, "nachgereichter Zufall")
+    k.warten(FRIST_ANTWORT)
+    st, ch = k.aufforderung_von(K)
+    ant = ehrlich(basen, bits, st, ch)
+    k.antwort("anna", K, ant, sg(k, "anna", f"antwort|{K}|0|{ant}"))
+    soll(k.offenlegen(K, pr.offenlegung(st, [1, 2, 3])) and k.konten["anna"] == v0, "Pruefung nach dem Warten")
 
     # Anfragen fischen: Aufforderung verfallen lassen kostet Pfand, verbraucht
     # die Stellen, zaehlt als Fehlversuch.
@@ -795,8 +789,16 @@ def _selbsttest(fehler: list[str]) -> None:
     abgewiesen(lambda: k.praegen("anna", K, m - 1, pr.wurzel, 5_000_000, vliste, 3, pr.anker, best),
                "zu klein (nie pruefbar, Deckung fuer immer im Topf)")
     abgewiesen(lambda: k.praegen("anna", "B" * 64, m, pr.wurzel, 5_000_000, vliste, 3, pr.anker, best), "K nicht kanonisch")
-    k.praegen("anna", K, m, pr.wurzel, 5_000_000, vliste, 3, pr.anker, best)  # Gegenprobe: so geht es durch
-    abgewiesen(lambda: k.praegen("anna", K, m, pr.wurzel, 5_000_000, vliste, 3, pr.anker, best), "K doppelt")
+    k.zeit = 10 * PRAEGEN_ALT
+    abgewiesen(lambda: k.praegen("anna", K, m, pr.wurzel, 5_000_000, vliste, 3, pr.anker, best), "alte Bestaetigung (Praegezeit zu alt)")
+    abgewiesen(lambda: k.praegen("anna", K, m, pr.wurzel, 5_000_000, vliste, 3, pr.anker, best, k.zeit), "Bestaetigung fuer eine andere Praegezeit")
+    best = pr.bestaetigungen(VAL, k.zeit + PRAEGEN_VORAUS + 1)
+    abgewiesen(lambda: k.praegen("anna", K, m, pr.wurzel, 5_000_000, vliste, 3, pr.anker, best, k.zeit + PRAEGEN_VORAUS + 1), "Praegezeit in der Zukunft")
+    best = pr.bestaetigungen(VAL, k.zeit)
+    k.praegen("anna", K, m, pr.wurzel, 5_000_000, vliste, 3, pr.anker, best, k.zeit)  # Gegenprobe: so geht es durch
+    abgewiesen(lambda: k.praegen("anna", K, m, pr.wurzel, 5_000_000, vliste, 3, pr.anker, best, k.zeit), "K doppelt")
+    k.noten[K]["tot"] = True
+    abgewiesen(lambda: k.praegen("anna", K, m, pr.wurzel, 5_000_000, vliste, 3, pr.anker, best, k.zeit), "tote Note neu gepraegt")
 
 
 def vektor() -> dict:
@@ -831,7 +833,7 @@ def vektor() -> dict:
         "stellen": stellen, "aufforderung": aufford, "antwort": antwort,
         "treffer": treffer, "fehler": fehler,
         "urteil": None if treffer < MIN_TREFFER else fehler * 100 <= TOL_PROZENT * treffer,
-        "bestaetigung2": bestaetigung_text(K, pr.wurzel, n, t, val, 2, pr.anker[1]),
+        "bestaetigung2": bestaetigung_text(K, pr.wurzel, n, t, val, 2, pr.anker[1], 1794758400),
         # Fall 2: alle Stellen, Aufforderung = Basen (10 Treffer); 1 Fehler
         # ist erlaubt (floor(0,15 * 10) = 1), 2 nicht.
         "fall2_aufforderung": list(basen),

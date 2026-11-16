@@ -8,10 +8,13 @@ package keeper
 //
 // Geschaerft vor dem Einhaengen (W2b, 16.11.2026; ANALYSE.md Abschnitt 5):
 //   - Zufall aus vorab festgelegten Hash-Ketten ALLER Validatoren der Note
-//     statt aus dem Blockhash (den konnte ein Erzeuger waehlen). Wer den
-//     Zufall zurueckhaelt und die Anfrage verfallen laesst, gewinnt nichts:
-//     die Note verbraucht die Stellen dieser Anfrage, sobald der Zufall
-//     nachgereicht ist (Wartet), und nimmt bis dahin keine Anfrage an.
+//     statt aus dem Blockhash (den konnte ein Erzeuger waehlen). Fuer den
+//     Zufall gibt es KEINE Frist: die Anfrage bleibt offen und ihr Pfand
+//     gesperrt, bis er vollstaendig ist. Mit einer Frist (Pfand zurueck,
+//     Stellen trotzdem verbraucht) haette ein Erzeuger, der einen Wert
+//     zurueckhaelt, eine Note kostenlos erschoepfen koennen (Einloesen
+//     anfragen, verfallen lassen, 64 Stellen weg) -- gefunden in der
+//     Sicherheitspruefung von W2b Teil 1.
 //   - Einloesen mit fester Pruefgroesse k = min(K_MAX, frei): ein Faelscher
 //     kann nicht k = 8 waehlen. Pruefungen lassen quantenWReserve stehen.
 //   - Ein falsches Einloesen toetet die Note nicht (sonst toetet jeder Fremde
@@ -33,7 +36,7 @@ type quantenWAnfrage struct {
 	Basen       []int // nil, bis der Zufall vollstaendig ist
 	Pfand       int64
 	Zeit        int64
-	Gezogen     int64
+	Gezogen     int64 // Zeit des vollstaendigen Zufalls
 	Antwort     []int
 	AntwortZeit int64
 	EinloesenAn string // leer = nur pruefen
@@ -55,10 +58,6 @@ type quantenWNote struct {
 	// Anker) und seine Stelle (-1 = Anker).
 	Z      [][32]byte
 	ZIndex []int
-	// Wartet: eine verfallene Anfrage ohne vollstaendigen Zufall (Index,
-	// Stellenzahl); WartetK == 0 heisst: keine.
-	Wartet  int
-	WartetK int
 }
 
 // quantenWBuchung: was die Einbindung ausfuehrt (Mikro-AEQ).
@@ -132,7 +131,7 @@ func (e *quantenWNote) verbrauchen(stellen []int) {
 
 // erschoepft: weniger als K_MIN frei, nichts offen -> tot, Wert verfaellt.
 func (e *quantenWNote) erschoepft(b *quantenWBuchung) {
-	if !e.Tot && e.Anfrage == nil && e.WartetK == 0 && e.N-len(e.Benutzt) < quantenWKMin {
+	if !e.Tot && e.Anfrage == nil && e.N-len(e.Benutzt) < quantenWKMin {
 		e.Tot = true
 		b.WertVerfaellt = true
 	}
@@ -161,9 +160,6 @@ func (e *quantenWNote) anfragen(von string, k int, einloesenAn string, pfand, ze
 	if e.Anfrage != nil {
 		return quantenWFehler("schon eine offene Anfrage")
 	}
-	if e.WartetK != 0 {
-		return quantenWFehler("Note wartet auf den Zufall einer verfallenen Anfrage")
-	}
 	if einloesenAn == "" && e.Gesperrt {
 		return quantenWFehler("Note gesperrt (Einloesen geht noch)")
 	}
@@ -187,60 +183,44 @@ func (e *quantenWNote) anfragen(von string, k int, einloesenAn string, pfand, ze
 }
 
 // zufall: Werte der Hash-Ketten (Validator-Index 0-basiert -> Wert) fuer die
-// faellige Anfrage j. Jeder darf sie einreichen; die Kette beweist die
+// offene Anfrage j. Jeder darf sie einreichen; die Kette beweist die
 // Herkunft. Alles oder nichts. gezogen = der Zufall ist vollstaendig, die
-// Stellen sind verbraucht (bei einer offenen Anfrage: die Aufforderung steht).
-func (e *quantenWNote) zufall(K string, j int, werte map[int][32]byte, zeit int64) (gezogen bool, b quantenWBuchung, err error) {
-	if e.Tot {
-		return false, b, quantenWFehler("Note tot")
-	}
+// Aufforderung steht und ihre Stellen sind verbraucht.
+func (e *quantenWNote) zufall(K string, j int, werte map[int][32]byte, zeit int64) (gezogen bool, err error) {
 	a := e.Anfrage
-	var faellig, k int
-	switch {
-	case a != nil && a.Basen == nil:
-		faellig, k = a.Index, a.K
-	case e.WartetK != 0:
-		faellig, k = e.Wartet, e.WartetK
-	default:
-		return false, b, quantenWFehler("kein Zufall faellig")
+	if e.Tot || a == nil || a.Basen != nil {
+		return false, quantenWFehler("kein Zufall faellig")
 	}
-	if j != faellig || len(werte) == 0 {
-		return false, b, quantenWFehler("Zufall fuer eine andere Anfrage")
+	if j != a.Index || len(werte) == 0 {
+		return false, quantenWFehler("Zufall fuer eine andere Anfrage")
 	}
 	z := append([][32]byte(nil), e.Z...)
 	zi := append([]int(nil), e.ZIndex...)
 	for x, w := range werte {
 		if x < 0 || x >= len(z) {
-			return false, b, quantenWFehler("Zufall: Validator %d", x)
+			return false, quantenWFehler("Zufall: Validator %d", x)
 		}
 		if zi[x] >= j || quantenWKetteVor(w, j-zi[x]) != z[x] {
-			return false, b, quantenWFehler("Zufall von Validator %d passt nicht zur Hash-Kette oder ist schon da", x+1)
+			return false, quantenWFehler("Zufall von Validator %d passt nicht zur Hash-Kette oder ist schon da", x+1)
 		}
 		z[x], zi[x] = w, j
 	}
 	e.Z, e.ZIndex = z, zi
 	for _, m := range zi {
 		if m < j {
-			return false, b, nil
+			return false, nil
 		}
 	}
 	saat := quantenWZufallSaat(K, j, z)
-	frei := e.frei()
-	id := K + ":" + strconv.Itoa(j)
-	if a != nil && a.Index == j {
-		stellen, basen := quantenWAufforderung(K, id, saat[:], frei, k)
-		if len(stellen) != k {
-			return false, b, quantenWFehler("Aufforderung: zu wenige freie Stellen")
-		}
-		e.verbrauchen(stellen) // ab jetzt verbraucht, auch ohne Antwort
-		a.Stellen, a.Basen, a.Gezogen = stellen, basen, zeit
-		return true, b, nil
+	stellen, basen := quantenWAufforderung(K, K+":"+strconv.Itoa(j), saat[:], e.frei(), a.K)
+	if len(stellen) != a.K {
+		// Kann nicht eintreten (anfragen prueft die freien Stellen, und bis
+		// zum Zufall verbraucht nichts anderes welche); fail-closed.
+		return false, quantenWFehler("Aufforderung: zu wenige freie Stellen")
 	}
-	stellen, _ := quantenWAufforderung(K, id, saat[:], frei, min(k, len(frei)))
-	e.verbrauchen(stellen) // nachgeholt verbraucht
-	e.Wartet, e.WartetK = 0, 0
-	e.erschoepft(&b)
-	return true, b, nil
+	e.verbrauchen(stellen) // ab jetzt verbraucht, auch ohne Antwort
+	a.Stellen, a.Basen, a.Gezogen = stellen, basen, zeit
+	return true, nil
 }
 
 // antworten: nur der Anfragende, erst nach dem Zufall, bis zur Frist.
@@ -271,11 +251,16 @@ func (e *quantenWNote) antworten(von string, bits []int, zeit int64) error {
 }
 
 // offenlegen: jeder Knoten wertet aus und urteilt; Fehler = die
-// Offenlegung ist ungueltig und aendert nichts.
-func (e *quantenWNote) offenlegen(K string, offen []quantenWOffenStelle) (quantenWErgebnis, quantenWBuchung, error) {
+// Offenlegung ist ungueltig und aendert nichts. Nach der Frist nicht mehr
+// (dann gilt frist(): Pfand zurueck) -- sonst haenge das Ergebnis davon ab,
+// wer zuerst einreicht.
+func (e *quantenWNote) offenlegen(K string, offen []quantenWOffenStelle, zeit int64) (quantenWErgebnis, quantenWBuchung, error) {
 	a := e.Anfrage
 	if a == nil || a.Antwort == nil {
 		return 0, quantenWBuchung{}, quantenWFehler("erst die Antwort")
+	}
+	if zeit > a.AntwortZeit+quantenWFristOffen {
+		return 0, quantenWBuchung{}, quantenWFehler("Offenlegung nach der Frist")
 	}
 	treffer, fehler, err := quantenWAuswerten(K, e.N, e.T, len(e.Validatoren), e.Wurzel, a.Stellen, a.Basen, a.Antwort, offen)
 	if err != nil {
@@ -296,21 +281,16 @@ func (e *quantenWNote) offenlegen(K string, offen []quantenWOffenStelle) (quante
 	return u, b, nil
 }
 
-// frist: vor jeder Aenderung an der Note und mit quanten_w_frist.
-//   - Zufall nicht vollstaendig: Pfand zurueck, kein Fehlversuch; die Note
-//     wartet auf diesen Zufall (Wartet).
+// frist: beendet eine Anfrage, deren Frist abgelaufen ist (quanten_w_frist;
+// die Spezifikation ruft sie vor jeder Aktion).
+//   - Zufall unvollstaendig: KEINE Frist -- die Anfrage wartet (siehe oben).
 //   - Keine Antwort: durchgefallen (Pruefen wie Einloesen).
 //   - Antwort da, aber die Validatoren legen nicht offen: Pfand zurueck.
 func (e *quantenWNote) frist(zeit int64) (bool, quantenWBuchung) {
 	a := e.Anfrage
 	switch {
-	case a == nil:
+	case a == nil || a.Basen == nil:
 		return false, quantenWBuchung{}
-	case a.Basen == nil:
-		if zeit > a.Zeit+quantenWFristZufall {
-			e.Wartet, e.WartetK, e.Anfrage = a.Index, a.K, nil
-			return true, quantenWBuchung{PfandZurueckAn: a.Von}
-		}
 	case a.Antwort == nil:
 		if zeit > a.Gezogen+quantenWFristAntwort {
 			return true, e.durchgefallen()

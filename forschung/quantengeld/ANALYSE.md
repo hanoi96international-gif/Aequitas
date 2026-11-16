@@ -275,7 +275,7 @@ Spezifikation. Je Stelle steht beim Prägen nur eine gesalzene Prüfsumme auf de
 bei den Validatoren der Note. Eine Prüfung: **Anfrage** mit Pfand; **Zufall**: jeder Validator
 der Note legt den nächsten Wert seiner Hash-Kette offen, deren Anker er beim Prägen bestätigt
 hat – erst wenn alle da sind, stehen Stellen und Basen fest, und ab da sind die Stellen
-verbraucht; **Antwort** des Anfragenden innerhalb von 10 Minuten; **Offenlegen** von t
+verbraucht; **Antwort** des Anfragenden innerhalb von 10 Minuten nach dem Zufall; **Offenlegen** von t
 Anteilen je Stelle. Jeder Knoten setzt selbst zusammen, prüft Prüfsumme und Pfad und urteilt;
 ein falscher Anteil fällt an der Prüfsumme auf, ein falscher Zufall an der Hash-Kette.
 Weniger als 4 Treffer: unentschieden (Pfand zurück, kein Fehlversuch). 3 Fehlversuche sperren
@@ -284,9 +284,10 @@ die Note für Prüfungen; Einlösen geht auch gesperrt.
 Drei Lücken der ersten Fassung, vor dem Einhängen geschlossen:
 
 1. **Zufall:** Der Blockhash als Quelle der Aufforderung war vom Erzeuger steuerbar (S1 der
-   Prüfung von #539). Die Hash-Ketten stehen seit dem Prägen fest. Wer den Zufall zurückhält
-   und die Anfrage verfallen lässt, gewinnt nichts: Die Note verbraucht die Stellen dieser
-   Anfrage, sobald der Zufall nachgereicht ist, und nimmt bis dahin keine neue Anfrage an.
+   Prüfung von #539). Die Hash-Ketten stehen seit dem Prägen fest. Für den Zufall gibt es
+   keine Frist: Die Anfrage bleibt offen, ihr Pfand gesperrt, bis alle Werte da sind. Mit
+   einer Frist (Pfand zurück, Stellen trotzdem verbraucht) hätte ein Erzeuger, der einen Wert
+   zurückhält, eine Note kostenlos erschöpfen können.
 2. **Prüfgröße beim Einlösen:** Wählbar hieß, ein Fälscher wählt k = 8 und kommt mit Raten in
    ~3 % durch. Jetzt gilt beim Einlösen fest k = min(64, freie Stellen). Prüfungen lassen
    min(64, n) Stellen als Reserve für das Einlösen stehen.
@@ -296,8 +297,10 @@ Drei Lücken der ersten Fassung, vor dem Einhängen geschlossen:
    Bleiben weniger als 8 Stellen frei, ist die Note erschöpft und ihr Wert geht ans
    Grundeinkommen. Dahin kommt nur, wer zusammen etwa den Wert der Note an Pfand verloren hat.
 
-Eine Note hat mindestens 8 Stellen (sonst wäre sie nie prüfbar und ihre Deckung läge für immer
-im Topf). Selbsttest mit Missbrauchsfällen; der Knoten rechnet in Go genau gleich
+Jeder Validator bestätigt beim Prägen Wurzel, Anker und Prägezeit. Eine Bestätigung gilt
+höchstens einen Tag, und K bleibt belegt: Eine tote Note lässt sich nicht mit alten Ankern neu
+prägen, deren Hash-Ketten teils schon offen sind. Eine Note hat mindestens 8 Stellen (sonst wäre
+sie nie prüfbar und ihre Deckung läge für immer im Topf). Selbsttest mit Missbrauchsfällen; der Knoten rechnet in Go genau gleich
 (`quanten_w_test.go` gegen `testdata/quanten_w_vektor.json`).
 
 **Grenze, ehrlich:** Der Zufall braucht alle v Validatoren der Note. Fällt einer für immer aus,

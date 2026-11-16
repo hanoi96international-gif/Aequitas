@@ -173,8 +173,8 @@ func TestQuantenW_GleichWieSpezifikation(t *testing.T) {
 			t.Fatalf("Fall 2: %d Treffer, %d Fehler -> %v, soll %v (%v)", tr, fe, quantenWUrteil(tr, fe), c.soll, err)
 		}
 	}
-	// Bestaetigungssatz von Validator 2 (mit seinem Anker) wie die Spezifikation.
-	if b := quantenWBestaetigungNachricht(v.K, wurzel, v.N, v.T, v.Validatoren, 2, qwH32(t, v.Anker[1])); b != v.Bestaetigung {
+	// Bestaetigungssatz von Validator 2 (mit Anker und Praegezeit) wie die Spezifikation.
+	if b := quantenWBestaetigungNachricht(v.K, wurzel, v.N, v.T, v.Validatoren, 2, qwH32(t, v.Anker[1]), 1794758400); b != v.Bestaetigung {
 		t.Fatalf("Bestaetigung %q, Spezifikation %q", b, v.Bestaetigung)
 	}
 	// Pfand wie die Spezifikation (auch nahe am Ueberlauf).
@@ -362,14 +362,14 @@ func qwRunde(t *testing.T, p *qwPraegung, e *quantenWNote, von string, k int, ei
 		t.Fatalf("anfragen: %v", err)
 	}
 	j := e.Anfrage.Index
-	if g, _, err := e.zufall(p.K, j, p.zufall(j), zeit+5); err != nil || !g {
+	if g, err := e.zufall(p.K, j, p.zufall(j), zeit+5); err != nil || !g {
 		t.Fatalf("zufall: %v %v", g, err)
 	}
 	a := e.Anfrage
 	if err := e.antworten(von, antwort(a.Stellen, a.Basen), zeit+10); err != nil {
 		t.Fatalf("antworten: %v", err)
 	}
-	u, b, err := e.offenlegen(p.K, p.offen(a.Stellen, 1, 2, 3))
+	u, b, err := e.offenlegen(p.K, p.offen(a.Stellen, 1, 2, 3), zeit+15)
 	if err != nil {
 		t.Fatalf("offenlegen: %v", err)
 	}
@@ -427,7 +427,7 @@ func TestQuantenW_Gutfall(t *testing.T) {
 func TestQuantenW_ZufallMissbrauch(t *testing.T) {
 	p := qwPraegen(200, 3, 5, 2)
 	e := p.note()
-	if _, _, err := e.zufall(p.K, 0, p.zufall(0), 1); err == nil {
+	if _, err := e.zufall(p.K, 0, p.zufall(0), 1); err == nil {
 		t.Fatal("Zufall vor der Anfrage angenommen")
 	}
 	if err := e.anfragen("anna", 16, "", quantenWPfand, 10); err != nil {
@@ -448,7 +448,7 @@ func TestQuantenW_ZufallMissbrauch(t *testing.T) {
 		if name == "andere Anfrage" {
 			j = 1
 		}
-		if _, _, err := e.zufall(p.K, j, w, 11); err == nil {
+		if _, err := e.zufall(p.K, j, w, 11); err == nil {
 			t.Errorf("%s: angenommen", name)
 		}
 	}
@@ -457,23 +457,23 @@ func TestQuantenW_ZufallMissbrauch(t *testing.T) {
 	for i := 0; i < 64; i++ {
 		w := p.zufall(0, 0, 1, 2)
 		w[3] = [32]byte{byte(i)}
-		if _, _, err := e.zufall(p.K, 0, w, 11); err == nil {
+		if _, err := e.zufall(p.K, 0, w, 11); err == nil {
 			t.Fatal("einer falsch unter vier: angenommen")
 		}
 	}
 	if !reflect.DeepEqual(e.ZIndex, []int{-1, -1, -1, -1, -1}) {
 		t.Fatalf("abgewiesener Zufall hat etwas geaendert: %v", e.ZIndex)
 	}
-	if g, _, err := e.zufall(p.K, 0, p.zufall(0, 0, 1, 2, 3), 12); err != nil || g || e.Anfrage.Basen != nil || len(e.Benutzt) != 0 {
+	if g, err := e.zufall(p.K, 0, p.zufall(0, 0, 1, 2, 3), 12); err != nil || g || e.Anfrage.Basen != nil || len(e.Benutzt) != 0 {
 		t.Fatalf("Teil-Zufall: %v %v", g, err)
 	}
-	if _, _, err := e.zufall(p.K, 0, p.zufall(0, 0), 13); err == nil {
+	if _, err := e.zufall(p.K, 0, p.zufall(0, 0), 13); err == nil {
 		t.Fatal("Zufall wiederholt angenommen")
 	}
 	if e.antworten("anna", make([]int, 16), 13) == nil {
 		t.Fatal("Antwort vor dem Zufall angenommen")
 	}
-	if g, _, err := e.zufall(p.K, 0, p.zufall(0, 4), 14); err != nil || !g {
+	if g, err := e.zufall(p.K, 0, p.zufall(0, 4), 14); err != nil || !g {
 		t.Fatalf("voller Zufall zieht nicht: %v", err)
 	}
 	frei := make([]int, 200)
@@ -485,7 +485,7 @@ func TestQuantenW_ZufallMissbrauch(t *testing.T) {
 	if !reflect.DeepEqual(st, e.Anfrage.Stellen) || !reflect.DeepEqual(ba, e.Anfrage.Basen) || !reflect.DeepEqual(e.benutztListe(), st) {
 		t.Fatal("Aufforderung nicht aus den Hash-Ketten aller Validatoren")
 	}
-	if _, _, err := e.zufall(p.K, 0, p.zufall(0), 15); err == nil {
+	if _, err := e.zufall(p.K, 0, p.zufall(0), 15); err == nil {
 		t.Fatal("Zufall nach dem Ziehen angenommen")
 	}
 	// Antwort: fremd, Form, Wiederholung.
@@ -493,7 +493,7 @@ func TestQuantenW_ZufallMissbrauch(t *testing.T) {
 	if e.antworten("fremd", gut, 16) == nil || e.antworten("anna", gut[1:], 16) == nil || e.antworten("anna", append([]int{2}, gut[1:]...), 16) == nil {
 		t.Fatal("falsche Antwort angenommen")
 	}
-	if _, _, err := e.offenlegen(p.K, p.offen(st, 1, 2, 3)); err == nil {
+	if _, _, err := e.offenlegen(p.K, p.offen(st, 1, 2, 3), 16); err == nil {
 		t.Fatal("Offenlegen vor der Antwort angenommen")
 	}
 	if err := e.antworten("anna", gut, 16); err != nil {
@@ -502,7 +502,10 @@ func TestQuantenW_ZufallMissbrauch(t *testing.T) {
 	if e.antworten("anna", gut, 17) == nil {
 		t.Fatal("Antwort wiederholt angenommen")
 	}
-	if u, b, err := e.offenlegen(p.K, p.offen(st, 2, 4, 5)); err != nil || u != quantenWEcht || b.PfandZurueckAn != "anna" {
+	if _, _, err := e.offenlegen(p.K, p.offen(st, 2, 4, 5), 16+quantenWFristOffen+1); err == nil {
+		t.Fatal("Offenlegen nach der Frist angenommen")
+	}
+	if u, b, err := e.offenlegen(p.K, p.offen(st, 2, 4, 5), 16+quantenWFristOffen); err != nil || u != quantenWEcht || b.PfandZurueckAn != "anna" {
 		t.Fatalf("Offenlegen: %v %+v %v", u, b, err)
 	}
 }
@@ -600,73 +603,71 @@ func TestQuantenW_Erschoepft(t *testing.T) {
 	}
 }
 
-// Fristen: Zufall zurueckgehalten -> Pfand zurueck, Note wartet, keine neue
-// Anfrage; nachgereicht -> genau die Stellen dieser Anfrage verbraucht.
-// Antwort verpasst -> durchgefallen. Offenlegung verpasst -> Pfand zurueck.
+// Fristen: Zufall zurueckgehalten -> KEINE Frist, die Anfrage bleibt offen
+// (Pfand gesperrt, keine neue Anfrage, nichts verbraucht); nachgereicht ->
+// Aufforderung, die Antwortfrist laeuft ab dem Zufall. Antwort verpasst ->
+// durchgefallen. Offenlegung verpasst -> Pfand zurueck.
 func TestQuantenW_Fristen(t *testing.T) {
 	p := qwPraegen(200, 3, 5, 6)
 	e := p.note()
 	if err := e.anfragen("anna", 16, "", quantenWPfand, 100); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := e.zufall(p.K, 0, p.zufall(0, 0, 1, 2, 3), 101); err != nil {
+	if _, err := e.zufall(p.K, 0, p.zufall(0, 0, 1, 2, 3), 101); err != nil {
 		t.Fatal(err)
 	}
-	if ab, _ := e.frist(100 + quantenWFristZufall); ab {
-		t.Fatal("Zufallsfrist zu frueh")
+	if ab, b := e.frist(100 + 30*86400); ab || b != (quantenWBuchung{}) || e.Anfrage == nil || len(e.Benutzt) != 0 {
+		t.Fatalf("Zufall zurueckgehalten: Anfrage beendet (%v %+v)", ab, b)
 	}
-	ab, b := e.frist(100 + quantenWFristZufall + 1)
-	if !ab || b != (quantenWBuchung{PfandZurueckAn: "anna"}) || e.Fehl != 0 || e.WartetK != 16 || e.Wartet != 0 || len(e.Benutzt) != 0 {
-		t.Fatalf("Zufallsfrist: %v %+v", ab, b)
+	if e.anfragen("bert", 16, "", quantenWPfand, 200) == nil || e.anfragen("bert", quantenWKMax, "bert", quantenWPfand, 200) == nil {
+		t.Fatal("zweite Anfrage angenommen, waehrend der Zufall aussteht")
 	}
-	if e.anfragen("anna", 16, "", quantenWPfand, 800) == nil || e.anfragen("anna", quantenWKMax, "anna", quantenWPfand, 800) == nil {
-		t.Fatal("Anfrage angenommen, waehrend die Note wartet")
-	}
-	if g, _, err := e.zufall(p.K, 0, p.zufall(0, 4), 900); err != nil || !g || e.WartetK != 0 {
+	spaet := int64(100 + 30*86400)
+	if g, err := e.zufall(p.K, 0, p.zufall(0, 4), spaet); err != nil || !g || e.Anfrage.Gezogen != spaet {
 		t.Fatalf("nachgereichter Zufall: %v %v", g, err)
 	}
-	frei := make([]int, 200)
-	for i := range frei {
-		frei[i] = i
+	if ab, _ := e.frist(spaet + quantenWFristAntwort); ab {
+		t.Fatal("Antwortfrist laeuft ab der Anfrage statt ab dem Zufall")
 	}
-	saat := p.saat(0)
-	if st, _ := quantenWAufforderung(p.K, p.K+":0", saat[:], frei, 16); !reflect.DeepEqual(st, e.benutztListe()) {
-		t.Fatal("nachgeholt: falsche Stellen verbraucht")
+	if err := e.antworten("anna", p.ehrlich(e.Anfrage.Stellen, e.Anfrage.Basen), spaet+quantenWFristAntwort); err != nil {
+		t.Fatalf("Antwort am Ende der Frist: %v", err)
 	}
-	if u, _ := qwRunde(t, p, e, "bert", 16, "", p.ehrlich, 1000); u != quantenWEcht || e.Zaehl != 2 {
-		t.Fatalf("Pruefung nach dem Warten: %v", u)
+	if u, _, err := e.offenlegen(p.K, p.offen(e.Anfrage.Stellen, 1, 2, 3), spaet+quantenWFristAntwort+1); err != nil || u != quantenWEcht || e.Zaehl != 1 {
+		t.Fatalf("Pruefung nach dem Warten: %v %v", u, err)
 	}
 	// Antwort verpasst: durchgefallen, Stellen verbraucht.
-	if err := e.anfragen("fremd", 16, "", quantenWPfand, 2000); err != nil {
+	z := spaet + 10_000
+	if err := e.anfragen("fremd", 16, "", quantenWPfand, z); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := e.zufall(p.K, 2, p.zufall(2), 2001); err != nil {
+	if _, err := e.zufall(p.K, 1, p.zufall(1), z+1); err != nil {
 		t.Fatal(err)
 	}
-	if e.antworten("fremd", make([]int, 16), 2001+quantenWFristAntwort+1) == nil {
+	if e.antworten("fremd", make([]int, 16), z+1+quantenWFristAntwort+1) == nil {
 		t.Fatal("Antwort nach der Frist angenommen")
 	}
-	if ab, _ := e.frist(2001 + quantenWFristAntwort); ab {
+	if ab, _ := e.frist(z + 1 + quantenWFristAntwort); ab {
 		t.Fatal("Antwortfrist zu frueh")
 	}
-	ab, b = e.frist(2001 + quantenWFristAntwort + 1)
-	if !ab || b != (quantenWBuchung{PfandVerfaellt: true}) || e.Fehl != 1 || len(e.Benutzt) != 48 {
+	ab, b := e.frist(z + 1 + quantenWFristAntwort + 1)
+	if !ab || b != (quantenWBuchung{PfandVerfaellt: true}) || e.Fehl != 1 || len(e.Benutzt) != 32 {
 		t.Fatalf("Antwortfrist: %v %+v", ab, b)
 	}
 	// Offenlegung verpasst: Pfand zurueck, kein Fehlversuch.
-	if err := e.anfragen("anna", 8, "", quantenWPfand, 3000); err != nil {
+	z += 10_000
+	if err := e.anfragen("anna", 8, "", quantenWPfand, z); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := e.zufall(p.K, 3, p.zufall(3), 3001); err != nil {
+	if _, err := e.zufall(p.K, 2, p.zufall(2), z+1); err != nil {
 		t.Fatal(err)
 	}
-	if err := e.antworten("anna", make([]int, 8), 3002); err != nil {
+	if err := e.antworten("anna", make([]int, 8), z+2); err != nil {
 		t.Fatal(err)
 	}
-	if ab, _ := e.frist(3002 + quantenWFristOffen); ab {
+	if ab, _ := e.frist(z + 2 + quantenWFristOffen); ab {
 		t.Fatal("Offenlegungsfrist zu frueh")
 	}
-	if ab, b := e.frist(3002 + quantenWFristOffen + 1); !ab || b != (quantenWBuchung{PfandZurueckAn: "anna"}) || e.Fehl != 1 {
+	if ab, b := e.frist(z + 2 + quantenWFristOffen + 1); !ab || b != (quantenWBuchung{PfandZurueckAn: "anna"}) || e.Fehl != 1 {
 		t.Fatalf("Offenlegungsfrist: %v %+v", ab, b)
 	}
 }

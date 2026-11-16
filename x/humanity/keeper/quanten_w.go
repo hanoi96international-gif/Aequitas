@@ -57,8 +57,7 @@ const (
 
 // Fristen in Sekunden Blockzeit.
 const (
-	quantenWFristZufall  int64 = 600  // nach der Anfrage: Validatoren legen den Zufall offen
-	quantenWFristAntwort int64 = 600  // nach dem Zufall
+	quantenWFristAntwort int64 = 600  // nach dem vollstaendigen Zufall
 	quantenWFristOffen   int64 = 1800 // nach der Antwort
 )
 
@@ -347,8 +346,11 @@ func quantenWAuswerten(K string, n, t, v int, wurzel [32]byte, stellen, basen, a
 }
 
 // quantenWBestaetigungNachricht: was Validator x (1-basiert) beim Praegen
-// bestaetigt -- er haelt die Anteile zu genau dieser Wurzel, und das ist der
-// Anker seiner Hash-Kette.
-func quantenWBestaetigungNachricht(K string, wurzel [32]byte, n, t int, validatoren []string, x int, anker [32]byte) string {
-	return fmt.Sprintf("%s%s|%x|%d|%d|%s|%d|%x", quantenWDomBest, K, wurzel, n, t, strings.Join(validatoren, ","), x, anker)
+// bestaetigt -- er haelt die Anteile zu genau dieser Wurzel, das ist der
+// Anker seiner Hash-Kette, und das ist die Praegezeit. Die Zeit macht alte
+// Bestaetigungen nach dem Praegefenster wertlos: eine tote Note laesst sich
+// nicht mit denselben Ankern neu praegen (ihre Hash-Ketten waeren teils
+// schon offen, der Zufall vorhersagbar).
+func quantenWBestaetigungNachricht(K string, wurzel [32]byte, n, t int, validatoren []string, x int, anker [32]byte, zeit int64) string {
+	return fmt.Sprintf("%s%s|%x|%d|%d|%s|%d|%x|%d", quantenWDomBest, K, wurzel, n, t, strings.Join(validatoren, ","), x, anker, zeit)
 }
