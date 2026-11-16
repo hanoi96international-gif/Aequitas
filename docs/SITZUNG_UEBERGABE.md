@@ -119,6 +119,9 @@ Nicht übernommen, als Beobachtung für später:
 7. **Gutachten (W5/S4):** Der Prüfauftrag (`docs/QUANTENGELD_PRUEFAUFTRAG.md`) ist auf
    den Stand von W2c, W2d und Variante S gebracht. Vorher fragte er noch nach 15 % und
    k = min(64, frei). Es fehlt nur noch ein Gutachter (Betreiber).
+9. **ePrint-Entwurf** (`forschung/quantengeld/EPRINT_ENTWURF.md`, englisch): Varianten W
+   und S, Parameter und Klon-Befund, Umsetzung, Ergebnisse auf IBM, offene Fragen. Die
+   Literatur ist an arXiv geprüft. Veröffentlichen (IACR ePrint) nur durch den Betreiber.
 8. **W3 auf dem echten Chip:** IBM-Lauf `wiesner = fern` mit Bezahlen, 4 Noten je Fall,
    500 Schüsse (Lauf 43973771243). Er wartet auf die Freigabe von `quantenhardware`;
    danach die Ergebnisse in HEUTE.md 3.3 eintragen.
