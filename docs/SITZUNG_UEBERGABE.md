@@ -31,7 +31,7 @@ für dezentrales Quantengeld“).
 
 | Repo | PR | Inhalt | Nächster Schritt |
 |---|---|---|---|
-| Aequitas | (W2b Teil 2, Zweig `claude/aequitas-fortsetzen-osrea1`) | Variante W schlafend in die Kette eingehängt (`quanten_w_kette.go`) und W5 (Prüfauftrag) | Mutationen, `-race`, PR öffnen, eigene Sicherheitsprüfung als Kommentar, CI, mergen |
+| Aequitas | #542 | Variante W schlafend in die Kette eingehängt (`quanten_w_kette.go`) und W5 (Prüfauftrag) | Sicherheitsprüfung als Kommentar posten, CI grün abwarten, squash-mergen |
 
 Gemergt in dieser Sitzung: #540 (HEUTE.md, IBM-Läufe), #541 (W2b Teil 1: Regeln geschärft).
 
@@ -64,8 +64,10 @@ Validator-Register an einen Menschen gebunden, alle an **verschiedene** Menschen
 - StateRoot-Teil `|quantenw:` + Hash, nur wenn das Register nicht leer ist.
 - Der Block nennt die gerechneten Felder (Anteile, Pfand, PfandAn, Wert, WertAn, Urteil),
   jeder Knoten rechnet nach.
-- Die Annahme prüft dieselbe Transaktion auch 60 s später (`quantenWAnnahmeRand`), damit
-  der Block nach einer Frist nicht abweicht.
+- **BuchAt** wie bei Überweisungen: Der Erzeuger stempelt die Annahmezeit, jeder Knoten
+  rechnet mit ihr, wenn sie zum Block passt (`quantenWBuchZeit`: ≤ 60 s nach,
+  ≤ 7 Tage + 60 s vor dem Block). Tote bleiben entsprechend länger gemerkt
+  (`quantenWToteBehalten`).
 
 **Eingehängt:**
 - block.go: `bekannteTxArt`, Replay-Fall, `quantenWFeldErlaubt`
@@ -78,7 +80,7 @@ Validator-Register an einen Menschen gebunden, alle an **verschiedene** Menschen
 - api.go: `POST /api/quanten-w/<art>`, `GET /api/quanten-w/note?k=`
 - `kein_entzug_test.go` (Einordnung der Arten)
 
-**Tests:** `quanten_w_kette_test.go` mit 8 Tests. Alle Keeper-Tests grün.
+**Tests:** `quanten_w_kette_test.go` mit 11 Tests. Alle Keeper-Tests grün; 19 Mutationen, alle rot.
 
 ## Danach (Reihenfolge)
 

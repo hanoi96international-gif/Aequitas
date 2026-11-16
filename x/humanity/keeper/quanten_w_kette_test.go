@@ -153,13 +153,14 @@ func (w *qwWelt) annehmen(tx Transaction, zeit int64) Transaction {
 	q := *tx.QuantenW
 	q.Anteile, q.Pfand, q.PfandAn, q.Wert, q.WertAn, q.Urteil = u.felder.Anteile, u.felder.Pfand, u.felder.PfandAn, u.felder.Wert, u.felder.WertAn, u.felder.Urteil
 	tx.QuantenW = &q
+	tx.BuchAt = zeit
 	w.cs.mu.Lock()
 	err := w.cs.quantenWAnwendenLocked(context.Background(), u)
 	w.cs.mu.Unlock()
 	if err != nil {
 		w.t.Fatal(err)
 	}
-	if err := w.nachspielen(tx, zeit); err != nil {
+	if err := w.nachspielen(tx, zeit+7); err != nil {
 		w.t.Fatalf("Nachspielen %s: %v", tx.Type, err)
 	}
 	if w.cs.quantenWJetzt().kodiert() != w.nach.quantenWJetzt().kodiert() || w.cs.quantenWWurzel() != w.nach.quantenWWurzel() {
@@ -574,41 +575,132 @@ func TestQuantenWKette_RegisterLesen(t *testing.T) {
 	}
 }
 
-// Annahme mit Rand: eine Antwort kurz vor der Frist nimmt der Knoten nicht
-// an (der Block traegt eine spaetere Zeit, jeder andere Knoten wiese sie dort
-// ab); mit genug Abstand schon. Ebenso die Frist erst mit Rand danach.
-func TestQuantenWKette_AnnahmeRand(t *testing.T) {
+// BuchAt: Annahme und Nachspielen rechnen mit derselben Zeit (der Annahme),
+// auch wenn der Block spaeter kommt -- sonst wichen Register und StateRoot
+// ab. Ein BuchAt, das nicht zum Block passt, macht den Block falsch.
+func TestQuantenWKette_BuchZeit(t *testing.T) {
+	w := neueQwWelt(t, 200)
+	z := qwT0
+	w.annehmen(w.praegenTx(z, 10_000_000), z+1)
+	w.annehmen(w.anfrageTx(w.anna, 0, 16, "", z+10), z+11)
+	// Zufall angenommen um z+12, Block erst eine Stunde spaeter: die Zufallszeit
+	// im Register ist bei beiden Knoten z+12.
+	u := w.bescheid(w.cs, w.zufallTx(0), z+12)
+	tx := w.zufallTx(0)
+	tx.BuchAt = z + 12
+	for name, bt := range map[string]struct{ buch, block int64 }{
+		"ohne BuchAt":           {0, z + 12},
+		"BuchAt nach dem Block": {z + 12, z + 12 - 61},
+		"BuchAt zu alt":         {z + 12, z + 12 + quantenWBuchSpiel + 1},
+	} {
+		tx.BuchAt = bt.buch
+		if err := w.nachspielen(tx, bt.block); err == nil {
+			t.Errorf("%s: Block angenommen", name)
+		}
+	}
+	w.cs.mu.Lock()
+	w.cs.quantenWAnwendenLocked(context.Background(), u)
+	w.cs.mu.Unlock()
+	tx.BuchAt = z + 12
+	if err := w.nachspielen(tx, z+3600); err != nil {
+		t.Fatalf("Block eine Stunde spaeter: %v", err)
+	}
+	if w.cs.quantenWJetzt().kodiert() != w.nach.quantenWJetzt().kodiert() || w.anfrage(w.nach).Gezogen != z+12 {
+		t.Fatal("Register weichen ab: Nachspielende rechnen nicht mit BuchAt")
+	}
+	// Eine Antwort nach der Frist laesst sich nicht in einen spaeteren Block
+	// mit passender Zeit schmuggeln: BuchAt nach der Frist ist abgewiesen.
+	a := w.anfrage(w.cs)
+	spaet := w.antwortTx(w.anna, 0, w.p.ehrlich(a.Stellen, a.Basen))
+	spaet.BuchAt = z + 12 + quantenWFristAntwort + 1
+	if err := w.nachspielen(spaet, spaet.BuchAt); err == nil {
+		t.Fatal("Antwort nach der Frist nachgespielt")
+	}
+	// block_tauglich: nur Bloecke, zu denen BuchAt passt.
+	ok := w.antwortTx(w.anna, 0, w.p.ehrlich(a.Stellen, a.Basen))
+	ok.BuchAt = z + 20
+	if fenster := auftragsFenster(&ok, z+20); fenster.von > z+20 || fenster.bis < z+20+quantenWBuchSpiel-1 || fenster.von < z+20-60 {
+		t.Fatalf("Zeitfenster %+v", fenster)
+	}
+}
+
+// Die Annahme stempelt BuchAt und rechnet selbst (gerechnete Felder aus der
+// Einreichung zaehlen nicht).
+func TestQuantenWKette_Annahme(t *testing.T) {
 	w := neueQwWelt(t, 200)
 	quantenWAbOverride.Store(1)
 	jetzt := nowUnix()
-	w.annehmen(w.praegenTx(jetzt, 10_000_000), jetzt)
-	w.annehmen(w.anfrageTx(w.anna, 0, 16, "", jetzt), jetzt)
-	w.annehmen(w.zufallTx(0), jetzt)
-	a := w.anfrage(w.cs)
-	antwort := w.antwortTx(w.anna, 0, w.p.ehrlich(a.Stellen, a.Basen))
-	a.Gezogen = jetzt - quantenWFristAntwort + 30 // Frist endet in 30 s
-	if _, err := w.cs.quantenWAnnehmen(antwort); err == nil || !strings.Contains(err.Error(), "quanten_w_knapp") {
-		t.Fatalf("Antwort 30 s vor der Frist angenommen: %v", err)
-	}
-	a.Gezogen = jetzt - quantenWFristAntwort + 2*quantenWAnnahmeRand
-	fertig, err := w.cs.quantenWAnnehmen(antwort)
-	if err != nil || fertig.TxHash == "" || w.anfrage(w.cs).Antwort == nil {
-		t.Fatalf("Antwort mit Abstand abgewiesen: %v", err)
-	}
-	// Frist der Offenlegung: erst mit Rand danach.
-	w.anfrage(w.cs).AntwortZeit = jetzt - quantenWFristOffen - 10
-	frist := Transaction{Type: quantenWFristTxArt, QuantenW: &QuantenWAngaben{K: w.p.K}}
-	if _, err := w.cs.quantenWAnnehmen(frist); err != nil {
-		t.Fatalf("Frist nach Ablauf abgewiesen: %v", err)
-	}
-	// Gerechnete Felder aus der Einreichung zaehlen nicht: der Knoten rechnet selbst.
-	w.p = qwPraegen(200, 3, 5, 77)
 	tx := w.praegenTx(jetzt, 10_000_000)
 	tx.QuantenW.Anteile = 1
-	if _, err := w.cs.quantenWAnnehmen(tx); err != nil {
-		t.Fatalf("Praegen mit vorgegebenen Anteilen: %v", err)
+	fertig, err := w.cs.quantenWAnnehmen(tx)
+	if err != nil {
+		t.Fatalf("Praegen: %v", err)
 	}
-	if got := w.cs.quantenWJetzt().Noten[w.p.K].Anteile; got == 1 {
-		t.Fatal("Anteile aus der Einreichung uebernommen")
+	if fertig.BuchAt < jetzt || fertig.TxHash == "" || fertig.QuantenW.Anteile != 10_000_000 || w.cs.quantenWJetzt().Noten[w.p.K].Anteile != 10_000_000 {
+		t.Fatalf("Annahme: BuchAt %d, Anteile %d", fertig.BuchAt, fertig.QuantenW.Anteile)
+	}
+	if err := w.nachspielen(fertig, fertig.BuchAt+5); err != nil {
+		t.Fatalf("Nachspielen der angenommenen Transaktion: %v", err)
+	}
+	if _, err := w.cs.quantenWAnnehmen(w.praegenTx(jetzt, 10_000_000)); err == nil || !strings.Contains(err.Error(), "quanten_w_doppelt") {
+		t.Fatalf("zweimal angenommen: %v", err)
+	}
+}
+
+// Ein ungebundener Validator faellt an der Bindung auf (nicht erst daran, dass
+// "" kein Mensch ist).
+func TestQuantenWKette_UngebundenerValidator(t *testing.T) {
+	w := neueQwWelt(t, 200)
+	op := w.betreiber[w.val[2]]
+	delete(w.betreiber, w.val[2])
+	u := w.bescheid(w.cs, w.praegenTx(qwT0, 10_000_000), qwT0+1)
+	if u.regel != "quanten_w_validator" || !strings.Contains(u.text, "kein gebundener Validator") {
+		t.Fatalf("ungebundener Validator: %q %q", u.regel, u.text)
+	}
+	w.betreiber[w.val[2]] = op
+}
+
+// Tote Note neu praegen mit zurueckdatiertem BuchAt: ein spaeterer Block hat
+// die Liste der Toten schon aufgeraeumt, der Erzeuger datiert BuchAt um fast
+// 7 Tage zurueck, damit die alte Bestaetigung (Praegezeit z) wieder ins
+// Fenster passt. Die Note muss trotzdem gemerkt sein.
+func TestQuantenWKette_ToteGegenZurueckdatieren(t *testing.T) {
+	w := neueQwWelt(t, 72)
+	z := qwT0
+	alt := w.p
+	altPraegen := w.praegenTx(z, 5_000_000)
+	w.annehmen(altPraegen, z+1)
+	// Erschoepfen (Stoerer): eine Pruefung, ein falsches Einloesen.
+	w.annehmen(w.anfrageTx(w.anna, 0, 8, "", z+10), z+11)
+	w.annehmen(w.zufallTx(0), z+12)
+	a := w.anfrage(w.cs)
+	w.annehmen(w.antwortTx(w.anna, 0, w.p.ehrlich(a.Stellen, a.Basen)), z+13)
+	w.annehmen(w.offenTx(0, a.Stellen), z+14)
+	w.annehmen(w.anfrageTx(w.bert, 1, quantenWKMax, w.bert, z+20), z+21)
+	w.annehmen(w.zufallTx(1), z+22)
+	w.annehmen(w.antwortTx(w.bert, 1, make([]int, quantenWKMax)), z+23)
+	a = w.anfrage(w.cs)
+	if tx := w.annehmen(w.offenTx(1, a.Stellen), z+24); tx.QuantenW.Urteil == "echt" {
+		t.Fatal("Nullantwort bestand -- Saat des Tests aendern (deterministisch)")
+	}
+	if len(w.cs.quantenWJetzt().Noten) != 0 {
+		t.Fatal("Note nicht erschoepft")
+	}
+	// Spaeterer Block praegt eine andere Note -- und raeumt die Toten auf, die
+	// nicht mehr gemerkt werden muessen.
+	spaeter := z + quantenWAlt + quantenWVoraus + quantenWBuchSpiel/2
+	w.p = qwPraegen(200, 3, 5, 4711)
+	w.annehmen(w.praegenTx(spaeter, 5_000_000), spaeter)
+	if _, da := w.cs.quantenWJetzt().Tote[alt.K]; !da {
+		t.Fatal("tote Note zu frueh vergessen")
+	}
+	// Erzeuger datiert BuchAt zurueck (im erlaubten Spiel vor dem Block).
+	neu := altPraegen
+	neu.BuchAt = z + 100
+	q := *neu.QuantenW
+	q.Anteile = 5_000_000
+	neu.QuantenW = &q
+	if err := w.nachspielen(neu, spaeter+60); err == nil || !strings.Contains(err.Error(), "quanten_w_doppelt") {
+		t.Fatalf("tote Note mit zurueckdatiertem BuchAt neu gepraegt: %v", err)
 	}
 }

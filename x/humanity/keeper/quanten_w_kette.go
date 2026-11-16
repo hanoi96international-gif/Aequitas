@@ -93,13 +93,26 @@ const (
 	// und 11 Pfadknoten je Stelle sind ~95 KB JSON.
 	quantenWKoerperMax = 160 << 10
 	burstQuantenWJeIP  = 20
-	// quantenWAnnahmeRand: die Annahme prueft dieselbe Transaktion auch
-	// 60 s spaeter und nimmt sie nur an, wenn das Ergebnis gleich bleibt. Der
-	// Block, der sie traegt, hat eine spaetere Zeit als die Annahme; ohne
-	// Rand koennte eine Antwort eine Sekunde vor der Frist angenommen und von
-	// jedem anderen Knoten nach der Frist nachgespielt (und abgewiesen) werden.
-	quantenWAnnahmeRand int64 = 60
+	// quantenWBuchSpiel: wie weit BuchAt (die Zeit der Annahme, mit der jeder
+	// Knoten rechnet) hoechstens vor dem Block liegen darf -- dieselbe Regel
+	// wie buchZeitBeimNachspielen (7 Tage, 60 s Uhrenspiel nach vorn).
+	quantenWBuchSpiel int64 = 7*86400 + 60
+	// quantenWToteBehalten: so lange bleibt eine tote Note gemerkt. Eine alte
+	// Bestaetigung gilt bis Praegezeit + quantenWAlt, und ein Erzeuger darf
+	// BuchAt um quantenWBuchSpiel zurueckdatieren: kuerzer gemerkt, liesse
+	// sich eine tote Note mit zurueckdatiertem BuchAt neu praegen.
+	quantenWToteBehalten = quantenWAlt + quantenWVoraus + quantenWBuchSpiel + 3600
 )
+
+// quantenWBuchZeit: die Zeit, mit der jeder Knoten eine W-Transaktion
+// rechnet -- BuchAt des Erzeugers (die Zeit der Annahme), wenn sie zum Block
+// passt; sonst ist der Block falsch (block_tauglich nimmt sie dann nicht auf).
+// So rechnen Annahme und Nachspielen mit DERSELBEN Zeit, und die Register
+// (Anfrage-, Zufall-, Antwortzeit) und damit die StateRoot sind gleich.
+func quantenWBuchZeit(buchAt, blockZeit int64) (int64, bool) {
+	ok := buchAt > 0 && buchAt <= sattAdd(blockZeit, 60) && buchAt >= blockZeit-quantenWBuchSpiel
+	return buchAt, ok
+}
 
 func quantenWAdresse(domaene string) string {
 	h := sha256.Sum256([]byte(domaene))
@@ -200,7 +213,7 @@ func (q *QuantenWAngaben) gerechnet() QuantenWAngaben {
 // Felder, und je Art nur die Angaben dieser Art.
 func quantenWNurEigeneFelder(tx *Transaction) bool {
 	k := *tx
-	k.Type, k.Wallet, k.DistributionAt, k.QuantenW, k.TxHash = "", "", 0, nil, ""
+	k.Type, k.Wallet, k.DistributionAt, k.QuantenW, k.TxHash, k.BuchAt = "", "", 0, nil, "", 0
 	if !reflect.DeepEqual(k, Transaction{}) || tx.QuantenW == nil {
 		return false
 	}
@@ -734,7 +747,7 @@ func (cs *ChainState) quantenWBescheidLocked(ctx context.Context, tx *Transactio
 		u.wege = append(u.wege, quantenWWeg{quantenWTopfAddr, an, wert})
 		u.felder.Wert = wert
 		delete(u.reg.Noten, q.K)
-		if alt.Zeit >= blockZeit-quantenWAlt-quantenWVoraus {
+		if alt.Zeit >= blockZeit-quantenWToteBehalten {
 			u.reg.Tote[q.K] = alt.Zeit
 		}
 	} else {
@@ -816,7 +829,7 @@ func (cs *ChainState) quantenWPraegenBescheidLocked(ctx context.Context, tx *Tra
 	neu := reg.kopie()
 	// Tote, deren Bestaetigungen nicht mehr gelten koennen, vergessen.
 	for k, z := range neu.Tote {
-		if z < blockZeit-quantenWAlt-quantenWVoraus {
+		if z < blockZeit-quantenWToteBehalten {
 			delete(neu.Tote, k)
 		}
 	}
@@ -904,7 +917,11 @@ func (cs *ChainState) quantenWAnwendenLocked(ctx context.Context, u quantenWBesc
 // muessen genau die gerechneten sein. Fehler: der Block ist falsch (oder
 // der Zustand nicht lesbar) -- nichts angewandt.
 func (cs *ChainState) applyQuantenWLocked(ctx context.Context, tx *Transaction, blockZeit int64) error {
-	u, err := cs.quantenWBescheidLocked(ctx, tx, blockZeit)
+	zeit, ok := quantenWBuchZeit(tx.BuchAt, blockZeit)
+	if !ok {
+		return fmt.Errorf("%s: gebucht um %d passt nicht zu Block %d", tx.Type, tx.BuchAt, blockZeit)
+	}
+	u, err := cs.quantenWBescheidLocked(ctx, tx, zeit)
 	if err != nil {
 		return err
 	}
@@ -960,19 +977,13 @@ func (cs *ChainState) quantenWAnnehmen(tx Transaction) (Transaction, error) {
 	var fertig Transaction
 	err := cs.runAtomicWithOutbox(konten, false, func(ctx context.Context) (Transaction, error) {
 		at := nowUnix()
+		tx.BuchAt = at // jeder Nachspielende rechnet mit dieser Zeit (quantenWBuchZeit)
 		u, err := cs.quantenWBescheidLocked(ctx, &tx, at)
 		if err != nil {
 			return Transaction{}, err
 		}
 		if u.regel != "" {
 			return Transaction{}, &quantenWAbweisung{text: u.regel + ": " + u.text}
-		}
-		spaeter, err := cs.quantenWBescheidLocked(ctx, &tx, at+quantenWAnnahmeRand)
-		if err != nil {
-			return Transaction{}, err
-		}
-		if spaeter.regel != "" || !reflect.DeepEqual(spaeter.felder, u.felder) {
-			return Transaction{}, &quantenWAbweisung{text: "quanten_w_knapp: zu nah an einer Frist oder einem Zeitfenster, bitte spaeter erneut einreichen"}
 		}
 		for _, w := range u.wege {
 			if !slices.Contains(konten, w.von) || !slices.Contains(konten, w.an) {

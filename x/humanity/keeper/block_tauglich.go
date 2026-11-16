@@ -150,6 +150,9 @@ func auftragsFenster(tx *Transaction, jetzt int64) zeitFenster {
 			return zeitFenster{1, 0}
 		}
 		f.eng(quantenWAb(), math.MaxInt64)
+		// Jeder Knoten rechnet mit BuchAt (quantenWBuchZeit): nur in Bloecke,
+		// zu denen es passt.
+		f.eng(sattAdd(tx.BuchAt, -60), sattAdd(tx.BuchAt, quantenWBuchSpiel))
 		if tx.Type == quantenWPraegenTxArt || tx.Type == quantenWAnfrageTxArt {
 			f.eng(sattAdd(tx.DistributionAt, -quantenWVoraus), sattAdd(tx.DistributionAt, quantenWAlt))
 		}
@@ -376,8 +379,14 @@ func blockTauglich(tx *Transaction, blockZeit int64) error {
 	if err := quantenWFeldErlaubt(tx, blockZeit); err != nil {
 		return err
 	}
-	if istQuantenWTxArt(tx.Type) && !quantenWZeitGueltig(tx, blockZeit) {
-		return fmt.Errorf("%s: Zeit %d passt nicht zu Block %d", tx.Type, tx.DistributionAt, blockZeit)
+	if istQuantenWTxArt(tx.Type) {
+		zeit, ok := quantenWBuchZeit(tx.BuchAt, blockZeit)
+		if !ok {
+			return fmt.Errorf("%s: gebucht um %d passt nicht zu Block %d", tx.Type, tx.BuchAt, blockZeit)
+		}
+		if !quantenWZeitGueltig(tx, zeit) {
+			return fmt.Errorf("%s: Zeit %d passt nicht zu %d", tx.Type, tx.DistributionAt, zeit)
+		}
 	}
 	if tx.Type == quantenFreischaltungTxArt {
 		if !quantenGeldAktiv(blockZeit) {
