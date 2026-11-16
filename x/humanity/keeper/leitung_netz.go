@@ -958,6 +958,13 @@ func (dag *BlockDAG) leitungPeers() []string {
 	return out
 }
 
+// QuantenWNachbarn: die Nachbarn fuer den Validator-Dienst von Variante W
+// (leitungPeers, ungefiltert -- der Dienst laesst nur erlaubte Adressen zu
+// und ruft sie nur ueber pinningDialer ab, quantenWDienst.peerListe).
+func (dag *BlockDAG) QuantenWNachbarn() []string {
+	return dag.leitungPeers()
+}
+
 // validatorIPsFrei: weitergeleitete Anfragen kommen von den Validatoren
 // selbst; die Ratenbegrenzung eines einzelnen Menschen darf sie nicht
 // treffen (der weiterleitende Knoten hat seine eigene schon angewandt).
