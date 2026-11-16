@@ -230,6 +230,7 @@ Fälschungen 3,7× teurer als die volle (`schwache_pruefung.py`).
   Grundlage ist Coladangelo & Sattath (2020). Das Protokollmodell hat einen
   Selbsttest mit Angriffen.
 - `FORSCHUNGSSTAND.md`: Arbeiten, mögliche Ansprechpartner, Förderung.
+- **`OFFEN.md`**: offene Punkte für die nächste Sitzung (Prüfung stärker machen, Wege ohne Quantenspeicher, Freigaben).
 - `ANSCHREIBEN.md`: Vorlage für den ersten Kontakt. Verschickt wird sie nur
   vom Betreiber.
 
