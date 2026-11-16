@@ -60,6 +60,7 @@ Aufruf:  python3 -I s_kette.py [--selbsttest]
 from __future__ import annotations
 
 import hashlib
+import hmac
 import importlib.util
 import math
 import os
@@ -106,18 +107,159 @@ def messen_breidbart(u, t, rng: random.Random) -> list[int]:
 
 
 # ---------------------------------------------------------------- Kette
+DOM_PROBE = b"aequitas-quanten-s-probe-v1|"
+DOM_VORLAGE = "aequitas-quanten-s-vorlage-v1|"
+
+
+def probe_hash(K: str, b: int, probe: list[int]) -> bytes:
+    """Bindet die Stichprobe der Stelle b schon bei der Ausgabe -- eine Stelle
+    kann spaeter keine guenstigere behaupten."""
+    return wk.h(DOM_PROBE, K.encode(), b"|", str(b).encode(), b"|", ",".join(map(str, sorted(probe))).encode())
+
+
+def vorlage_text(K: str, b: int, x: list[int]) -> str:
+    """Was die Nutzerin bei der Vorlage unterschreibt: dieses Token, diese
+    Stelle, dieses x. Ohne ihre Unterschrift kann keine Stelle einloesen --
+    sonst loeste eine Stelle, die ihre Stichprobe kennt, jeden Token selbst ein."""
+    return f"{DOM_VORLAGE}{K}|{b}|{wk.h(bytes(x)).hex()}"
+
+
+def sig(schluessel: bytes, text: str) -> str:
+    return wk.KetteW.sig(schluessel, text)
+
+
 class KetteS:
     """Was die Kette je Token weiss: Inhaber, d (Bindung) und c (Wahl), je
-    einmal. (Ausgabe, Anteile und Offenlegen wie Variante W; hier nur der
-    Teil, den die Annahmestellen brauchen.)"""
+    einmal; mit Deckung auch Wurzel, Stichproben-Bindungen und den Stand
+    des Einloesens. Ausgabe und Offenlegen wie Variante W (Anteile bei den
+    Validatoren, Pruefsummen und Merkle-Wurzel auf der Kette)."""
 
     def __init__(self):
         self.token: dict[str, dict] = {}
+        self.konto_schluessel: dict[str, bytes] = {}
+        self.konten: dict[str, int] = {}
+        self.topf = 0
+        self.grundeinkommen = 0
 
-    def ausgeben(self, K: str, n: int, inhaber: str):
+    def konto(self, name: str, guthaben: int, schluessel: bytes):
+        self.konten[name] = guthaben
+        self.konto_schluessel[name] = schluessel
+
+    def ausgeben(self, K: str, n: int, inhaber: str, wurzel: bytes | None = None, deckung: int = 0,
+                 proben: list[bytes] | None = None, t: int = 1, n_val: int = 1, tol: int = TOL_PROZENT,
+                 von: str | None = None):
+        """Ausgabe. Mit Deckung (von zahlt sie in den Topf): Wurzel der
+        Pruefsummen, je Stelle die Bindung ihrer Stichprobe, Schwelle t
+        von n_val Validatoren, Toleranz."""
         if K in self.token:
             raise Abgewiesen("K schon da")
-        self.token[K] = {"n": n, "inhaber": inhaber, "d": None, "c": None}
+        if deckung:
+            if von is None or self.konten.get(von, 0) < deckung or wurzel is None or not proben or len(proben) != 2:
+                raise Abgewiesen("Ausgabe: Deckung, Wurzel oder Stichproben")
+            self.konten[von] -= deckung
+            self.topf += deckung
+        self.token[K] = {"n": n, "inhaber": inhaber, "d": None, "c": None, "wurzel": wurzel, "deckung": deckung,
+                         "proben": list(proben or []), "t": t, "n_val": n_val, "tol": tol, "eingeloest": False,
+                         "tot": False, "fehl": 0, "anmeldung": None}
+
+    # -- Einloesen auf der Kette (S2b): anmelden, dann Offenlegen in Teilen
+    def anmelden(self, K: str, b: int, stelle_konto: str, x: list[int], vorlage_sig: str, probe: list[int],
+                 zeit: int = 0):
+        """Die Annahmestelle b meldet einen angenommenen Token zum Einloesen
+        an: mit der Unterschrift der Nutzerin unter ihre Vorlage und ihrer
+        Stichprobe (passt zur Bindung bei der Ausgabe). Je Token hoechstens
+        eine offene Anmeldung."""
+        e = self.token.get(K)
+        if e is None or not e["deckung"] or e["eingeloest"] or e["tot"]:
+            raise Abgewiesen("Einloesen: unbekannt, ohne Deckung, eingeloest oder tot")
+        self._frist(e, zeit)
+        if e["anmeldung"] is not None:
+            raise Abgewiesen("Einloesen: schon eine offene Anmeldung")
+        if e["d"] is None or e["c"] is None or b not in (0, 1) or stelle_konto not in self.konten:
+            raise Abgewiesen("Einloesen: Bindung, Wahl, Stelle")
+        if len(x) != e["n"] or any(v not in (0, 1) for v in x):
+            raise Abgewiesen("Einloesen: Form von x")
+        if not hmac.compare_digest(sig(self.konto_schluessel[e["inhaber"]], vorlage_text(K, b, x)), vorlage_sig):
+            raise Abgewiesen("Einloesen: Vorlage nicht von der Inhaberin unterschrieben")
+        sortiert = sorted(probe)
+        if len(set(sortiert)) != len(sortiert) or probe_hash(K, b, sortiert) != e["proben"][b]:
+            raise Abgewiesen("Einloesen: Stichprobe passt nicht zur Ausgabe")
+        e["anmeldung"] = {"b": b, "stelle": stelle_konto, "x": list(x), "probe": sortiert, "offen": 0,
+                          "treffer": 0, "fehler": 0, "zeit": zeit}
+
+    def offenlegen(self, K: str, ab: int, je_stelle, zeit: int = 0):
+        """Ein Teil der Offenlegung (hoechstens wk.OFFEN_TEIL Stellen der Probe,
+        der Reihe nach, jeder Teil ganz oder gar nicht). Rueckgabe "teil",
+        solange Stellen fehlen; dann True (Deckung an die Stelle, Token
+        verbraucht) oder False (nicht bestanden: Anmeldung weg, Fehlversuch;
+        nach FEHL_MAX ist der Token tot und die Deckung geht ans Grundeinkommen)."""
+        e = self.token.get(K)
+        if e is None:
+            raise Abgewiesen("Offenlegen: unbekannt")
+        self._frist(e, zeit)
+        a = e["anmeldung"]
+        if a is None:
+            raise Abgewiesen("Offenlegen: keine Anmeldung")
+        if ab != a["offen"] or not 1 <= len(je_stelle) <= wk.OFFEN_TEIL or ab + len(je_stelle) > len(a["probe"]):
+            raise Abgewiesen("Offenlegen: Teil (Beginn oder Laenge)")
+        treffer = fehler = 0
+        for j, (anteile, pfad) in enumerate(je_stelle, ab):
+            i = a["probe"][j]
+            xs = [xx for xx, _ in anteile]
+            if len(anteile) != e["t"] or len(set(xs)) != len(xs) or any(not 1 <= xx <= e["n_val"] for xx in xs) \
+                    or any(not 0 <= y < wk.P for _, y in anteile):
+                raise Abgewiesen("Offenlegen: Anteile")
+            v = wk.zusammensetzen(anteile)
+            if v >> (wk.SALZ_BITS + 2) or not wk.merkle_pruefen(e["wurzel"], wk.pruefsumme(K, i, v), i, pfad, e["n"]):
+                raise Abgewiesen("Offenlegen: Pruefsumme oder Pfad")
+            uk, tk = wk.zerlegen(v)
+            if (e["d"][i] ^ a["b"] ^ e["c"]) == uk:
+                treffer += 1
+                fehler += a["x"][i] != tk
+        a["offen"] += len(je_stelle)
+        a["treffer"] += treffer
+        a["fehler"] += fehler
+        if a["offen"] < len(a["probe"]):
+            return "teil"
+        e["anmeldung"] = None
+        if a["treffer"] < wk.MIN_TREFFER or a["fehler"] * 100 > e["tol"] * a["treffer"]:
+            e["fehl"] += 1
+            if e["fehl"] >= wk.FEHL_MAX:
+                e["tot"] = True
+                self.topf -= e["deckung"]
+                self.grundeinkommen += e["deckung"]
+            return False
+        e["eingeloest"] = True
+        self.topf -= e["deckung"]
+        self.konten[a["stelle"]] += e["deckung"]
+        return True
+
+    def _frist(self, e: dict, zeit: int):
+        """Legen die Validatoren nicht in der Frist offen, endet die Anmeldung
+        ohne Fehlversuch (nicht die Schuld der Stelle); sie darf neu anmelden."""
+        a = e["anmeldung"]
+        if a is not None and zeit > a["zeit"] + wk.FRIST_OFFENLEGEN:
+            e["anmeldung"] = None
+
+    def einloesen(self, K: str, b: int, stelle_konto: str, x: list[int], vorlage_sig: str,
+                  probe: list[int], offen, zeit: int = 0) -> bool:
+        """Bequemlichkeit: anmelden und alle Teile offenlegen. Nicht bestanden
+        wirft Abgewiesen (wie bisher)."""
+        self.anmelden(K, b, stelle_konto, x, vorlage_sig, probe, zeit)
+        e = self.token[K]
+        if len(offen) != len(e["anmeldung"]["probe"]):
+            e["anmeldung"] = None
+            raise Abgewiesen("Einloesen: Zahl der offengelegten Stellen")
+        r = None
+        try:
+            for ab in range(0, len(offen), wk.OFFEN_TEIL):
+                r = self.offenlegen(K, ab, offen[ab:ab + wk.OFFEN_TEIL], zeit)
+        except Abgewiesen:
+            e["anmeldung"] = None
+            raise
+        if r is not True:
+            raise Abgewiesen("Einloesen: Pruefung nicht bestanden")
+        return True
 
     def binden(self, K: str, von: str, d: list[int]):
         e = self.token.get(K)
@@ -394,6 +536,95 @@ def selbsttest() -> bool:
         # Gegenprobe: dieselbe Ladung unveraendert geht durch.
         soll(stelle_laden(0, K, n, pr.wurzel, 3, 5, proben[0], of).daten == st[0].daten, "Gegenprobe Ladung")
 
+        # 5. Einloesen auf der Kette: die Stelle reicht die unterschriebene
+        # Vorlage ein, die Validatoren legen ihre Stichprobe offen, jeder Knoten
+        # prueft; die Deckung geht an die Stelle -- genau einmal.
+        n, k5 = 2 * 128, 128
+        u, t = ausgabe(n, rng)
+        K = hashlib.sha256(rng.randbytes(16)).hexdigest()
+        pr = wk.Praegung(K, u, t, 3, val, rng)
+        proben = stichproben(n, 2, k5, rng)
+        kette = KetteS()
+        for name in ("ausgabe", "anna", "laden0", "laden1"):
+            kette.konto(name, 50_000_000 if name == "ausgabe" else 0, name.encode() * 4)
+        kette.ausgeben(K, n, "anna", pr.wurzel, 10_000_000, [probe_hash(K, b, proben[b]) for b in (0, 1)], 3, 5, von="ausgabe")
+        st = [stelle_laden(b, K, n, pr.wurzel, 3, 5, proben[b], pr.offenlegung(proben[b], [1, 2, 3])) for b in (0, 1)]
+        y, x = messen_ehrlich(u, t, rng, 0.0)
+        z = rng.randrange(2)
+        festlegen(kette, K, st, [yk ^ z for yk in y], 1 ^ z)
+        vs = sig(kette.konto_schluessel["anna"], vorlage_text(K, 1, x))
+        soll(st[1].pruefen(K, x) is True, "Vorlage an Stelle 1")
+        of1 = pr.offenlegung(proben[1], [2, 4, 5])
+        # Missbrauch: ohne Unterschrift der Nutzerin (die Stelle kennt ihre
+        # Stichprobe und koennte jeden Token selbst einloesen), mit fremder
+        # Stichprobe, fuer die andere Stelle, mit falschem Anteil.
+        xf = [t[i] if i in st[1].daten else 0 for i in range(n)]  # aus dem Wissen der Stelle gebaut
+        abgewiesen(lambda: kette.einloesen(K, 1, "laden1", xf, sig(b"laden1" * 4, vorlage_text(K, 1, xf)), proben[1], of1),
+                   "Stelle loest ohne Vorlage der Nutzerin ein")
+        abgewiesen(lambda: kette.einloesen(K, 1, "laden1", x, vs, proben[0], pr.offenlegung(proben[0], [1, 2, 3])), "fremde Stichprobe")
+        abgewiesen(lambda: kette.einloesen(K, 0, "laden0", x, vs, proben[0], pr.offenlegung(proben[0], [1, 2, 3])), "Vorlage fuer Stelle 1 bei Stelle 0")
+        falsch = [([(a_[0][0], (a_[0][1] + 1) % wk.P)] + a_[1:], p_) if j == 0 else (a_, p_) for j, (a_, p_) in enumerate(of1)]
+        abgewiesen(lambda: kette.einloesen(K, 1, "laden1", x, vs, proben[1], falsch), "falscher Anteil")
+        abgewiesen(lambda: kette.einloesen(K, 1, "laden1", x, vs, proben[1], of1[:-1]), "Stelle fehlt")
+        soll(kette.einloesen(K, 1, "laden1", x, vs, proben[1], of1) and kette.konten["laden1"] == 10_000_000 and kette.topf == 0,
+             "Einloesen auf der Kette")
+        abgewiesen(lambda: kette.einloesen(K, 1, "laden1", x, vs, proben[1], of1), "zweimal eingeloest")
+        # Die Nutzerin unterschreibt einen geratenen Token fuer die andere
+        # Stelle: die Physik weist ihn ab (Gegenbasis), auch auf der Kette.
+        K2 = hashlib.sha256(rng.randbytes(16)).hexdigest()
+        pr2 = wk.Praegung(K2, u, t, 3, val, rng)
+        kette.konto("ausgabe", 50_000_000, b"ausgabe" * 4)
+        kette.ausgeben(K2, n, "anna", pr2.wurzel, 10_000_000, [probe_hash(K2, b, proben[b]) for b in (0, 1)], 3, 5, von="ausgabe")
+        kette.binden(K2, "anna", [yk ^ z for yk in y])
+        kette.waehlen(K2, "anna", 1 ^ z)
+        vs0 = sig(kette.konto_schluessel["anna"], vorlage_text(K2, 0, x))
+        abgewiesen(lambda: kette.einloesen(K2, 0, "laden0", x, vs0, proben[0], pr2.offenlegung(proben[0], [1, 2, 3])),
+                   "Token an der nicht gewaehlten Stelle eingeloest")
+
+        # 6. Einloesen in Teilen (S2b): 128 Stellen = zwei Teile; Missbrauch der
+        # Teile; Frist ohne Fehlversuch; drei falsche Vorlagen -> tot.
+        K3 = hashlib.sha256(rng.randbytes(16)).hexdigest()
+        pr3 = wk.Praegung(K3, u, t, 3, val, rng)
+        kette.konto("ausgabe", 50_000_000, b"ausgabe" * 4)
+        kette.ausgeben(K3, n, "anna", pr3.wurzel, 10_000_000, [probe_hash(K3, bb, proben[bb]) for bb in (0, 1)], 3, 5, von="ausgabe")
+        kette.binden(K3, "anna", [yk ^ z for yk in y])
+        kette.waehlen(K3, "anna", 1 ^ z)
+        vs3 = sig(kette.konto_schluessel["anna"], vorlage_text(K3, 1, x))
+        of3 = pr3.offenlegung(proben[1], [1, 2, 3])
+        kette.anmelden(K3, 1, "laden1", x, vs3, proben[1], 100)
+        abgewiesen(lambda: kette.anmelden(K3, 1, "laden1", x, vs3, proben[1], 100), "zweite Anmeldung")
+        abgewiesen(lambda: kette.offenlegen(K3, 64, of3[64:], 101), "Teil nicht der Reihe")
+        abgewiesen(lambda: kette.offenlegen(K3, 0, of3[:65], 101), "Teil zu gross")
+        soll(kette.offenlegen(K3, 0, of3[:64], 101) == "teil", "erster Teil")
+        abgewiesen(lambda: kette.offenlegen(K3, 0, of3[:64], 101), "Teil wiederholt")
+        # Frist: die Validatoren legen den Rest nicht offen -> Anmeldung weg, kein Fehlversuch.
+        abgewiesen(lambda: kette.offenlegen(K3, 64, of3[64:], 100 + wk.FRIST_OFFENLEGEN + 1), "Teil nach der Frist")
+        e3 = kette.token[K3]
+        soll(e3["anmeldung"] is None and e3["fehl"] == 0 and not e3["eingeloest"], "Frist")
+        # Neu anmelden, ganz offenlegen: eingeloest.
+        kette.anmelden(K3, 1, "laden1", x, vs3, proben[1], 5000)
+        soll(kette.offenlegen(K3, 0, of3[:64], 5001) == "teil" and kette.offenlegen(K3, 64, of3[64:], 5002) is True
+             and e3["eingeloest"], "Einloesen in Teilen")
+        # Drei falsche Vorlagen (geratenes x, von der Nutzerin unterschrieben) -> tot,
+        # die Deckung geht ans Grundeinkommen.
+        K4 = hashlib.sha256(rng.randbytes(16)).hexdigest()
+        pr4 = wk.Praegung(K4, u, t, 3, val, rng)
+        kette.konto("ausgabe", 50_000_000, b"ausgabe" * 4)
+        kette.ausgeben(K4, n, "anna", pr4.wurzel, 10_000_000, [probe_hash(K4, bb, proben[bb]) for bb in (0, 1)], 3, 5, von="ausgabe")
+        kette.binden(K4, "anna", [yk ^ z for yk in y])
+        kette.waehlen(K4, "anna", 1 ^ z)
+        of4 = pr4.offenlegung(proben[1], [1, 2, 3])
+        ge0 = kette.grundeinkommen if hasattr(kette, "grundeinkommen") else 0
+        for versuch in range(wk.FEHL_MAX):
+            xr = [rng.randrange(2) for _ in range(n)]
+            kette.anmelden(K4, 1, "laden1", xr, sig(kette.konto_schluessel["anna"], vorlage_text(K4, 1, xr)), proben[1], 9000)
+            r = [kette.offenlegen(K4, ab, of4[ab:ab + 64], 9000) for ab in (0, 64)][-1]
+            soll(r is False, f"geratene Vorlage {versuch} bestanden")
+        e4 = kette.token[K4]
+        soll(e4["tot"] and kette.grundeinkommen == ge0 + 10_000_000, "nach FEHL_MAX nicht tot")
+        abgewiesen(lambda: kette.anmelden(K4, 1, "laden1", x, sig(kette.konto_schluessel["anna"], vorlage_text(K4, 1, x)), proben[1], 9001),
+                   "Anmeldung an toten Token")
+
         # Stichproben disjunkt und vollstaendig.
         pr = stichproben(40, 2, 20, rng)
         soll(not set(pr[0]) & set(pr[1]) and len(set(pr[0]) | set(pr[1])) == 40, "Stichproben")
@@ -410,5 +641,48 @@ def selbsttest() -> bool:
     return not fehler
 
 
+def vektor() -> dict:
+    """Fester Pruefvektor fuer den Knoten (quanten_s_test.go): Bindung der
+    Stichprobe, Vorlage-Text, ein Einloesen mit offengelegten Anteilen und
+    sein Ergebnis -- alles deterministisch."""
+    rng = random.Random(1926)
+    n, k, val = 40, 20, ["v1", "v2", "v3", "v4", "v5"]
+    u, t = ausgabe(n, rng)
+    K = hashlib.sha256(b"aequitas-quanten-s-vektor").hexdigest()
+    pr = wk.Praegung(K, u, t, 3, val, rng)
+    proben = stichproben(n, 2, k, rng)
+    y = [rng.randrange(2) for _ in range(n)]
+    x = [t[i] if y[i] == u[i] else rng.randrange(2) for i in range(n)]
+    erster = next(i for i in proben[1] if y[i] == u[i])
+    x_fehler = list(x)
+    x_fehler[erster] ^= 1  # genau ein Fehler an einem Treffer
+    z = 1
+    d = [yi ^ z for yi in y]
+    b, c = 1, 1 ^ z
+    treffer = sum((d[i] ^ b ^ c) == u[i] for i in proben[1])
+    fehler = sum((d[i] ^ b ^ c) == u[i] and x[i] != t[i] for i in proben[1])
+    return {
+        "K": K, "n": n, "t": 3, "n_val": 5, "tol": TOL_PROZENT,
+        "wurzel": pr.wurzel.hex(),
+        "proben": proben, "probe_hash": [probe_hash(K, bb, proben[bb]).hex() for bb in (0, 1)],
+        "d": d, "c": c, "b": b, "x": x,
+        "vorlage_text": vorlage_text(K, b, x),
+        "offen": [{"anteile": [[xx, str(yy)] for xx, yy in a_], "pfad": [p_.hex() for p_ in pf]}
+                  for a_, pf in pr.offenlegung(proben[1], [1, 3, 5])],
+        # Die Stichprobe der ANDEREN Stelle mit gueltigen Anteilen: ohne die
+        # Bindung bei der Ausgabe kaeme eine Stelle damit durch.
+        "offen_andere": [{"anteile": [[xx, str(yy)] for xx, yy in a_], "pfad": [p_.hex() for p_ in pf]}
+                         for a_, pf in pr.offenlegung(proben[0], [1, 3, 5])],
+        "treffer": treffer, "fehler": fehler,
+        "urteil": treffer >= wk.MIN_TREFFER and fehler * 100 <= TOL_PROZENT * treffer,
+        # Ein Fehler bei ~10 Treffern liegt ueber 4 %: abgewiesen.
+        "x_fehler": x_fehler, "urteil_fehler": treffer >= wk.MIN_TREFFER and 100 <= TOL_PROZENT * treffer,
+    }
+
+
 if __name__ == "__main__":
-    sys.exit(0 if selbsttest() else 1) if "--selbsttest" in sys.argv else print(__doc__)
+    if "--vektor" in sys.argv:
+        import json
+        print(json.dumps(vektor(), indent=1))
+    else:
+        sys.exit(0 if selbsttest() else 1) if "--selbsttest" in sys.argv else print(__doc__)

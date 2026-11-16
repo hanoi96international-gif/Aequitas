@@ -76,8 +76,11 @@ bauen kann.
      machbar, unfälschbar, privat und dezentral prüfbar, aber kein Hand-zu-Hand-Bargeld.
      Doppelvorlage per Breidbart-Messung: 14,6 % Fehler, also dieselbe Schwelle wie bei
      W. `s_kette.py` steht (Stichproben-Annahmestellen, Wahl c auf der Kette). Die
-     S-Vorführung (`--s-token`) ist ideal und im Rauschmodell gelaufen. **IBM wartet auf
-     Freigabe.** Offen sind die Knoten-Regeln und die Vorlage 4 abschicken.
+     S-Vorführung (`--s-token`) ist gelaufen: ideal, im Rauschmodell und **auf echter
+     IBM-Hardware** (0,46 % Fehler, angenommen; Doppelvorlage abgewiesen). Das Einlösen
+     auf der Kette ist spezifiziert (`KetteS.einloesen`: Vorlage von der Nutzerin
+     unterschrieben, Stichprobe gebunden, Anteile offengelegt). **Offen:** die
+     Knoten-Regeln für S in Go und die Vorlage 4 abschicken (Nutzer).
    - Zu klären: Lässt sich „Ort“ auf Aequitas als „Prüfer bzw. Region + Block-Fenster“
      abbilden, und wie viel Sicherheit bleibt dann übrig?
 2. **Zustellen statt Aufbewahren:**
@@ -112,8 +115,13 @@ wird.
    - Offen sind `fern` auf dem echten Chip und die Ionenfalle (Sekunden statt
      Mikrosekunden).
    - Aus den Fehlerraten folgen die Parameter für Abschnitt B.
-2. **Prüfer-Dienst für Validatoren:** Anteile verwahren, offenlegen und bestätigen, als
-   Gegenstück zur schlafenden Kettenseite.
+2. ~~**Prüfer-Dienst für Validatoren**~~ – **gebaut (W2d, 16.11. abends,
+   `quanten_w_validator.go`):**
+   - verschlüsselter Tresor;
+   - Prägebestätigung mit Prüfung der Blätter gegen die Wurzel;
+   - Anteile erst nach der Antwort;
+   - Hintergrund für Zufall, Offenlegen in Teilen über die Nachbarn (`QUANTEN_W_PEERS`)
+     und Fristen.
 3. **App:** eine Variante-W-Note und ihren Prüfstand anzeigen.
 4. **Vor jeder Freischaltung (W6):**
    - Gutachten ohne offene kritische Punkte (W5).

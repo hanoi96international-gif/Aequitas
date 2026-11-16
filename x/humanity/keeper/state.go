@@ -254,6 +254,8 @@ type ChainState struct {
 	// quantenWReg: das Register der Variante W (quanten_w_kette.go), ohne
 	// Sperre lesbar; im Rueckroll-Snapshot und in der StateRoot.
 	quantenWReg atomic.Pointer[quantenWStand]
+	// quantenWDienstZeiger: der Validator-Dienst der Variante W (W2d; nil = keiner).
+	quantenWDienstZeiger atomic.Pointer[quantenWDienst]
 	// kappungsKandidaten: Konten, die ueber der Grenze liegen koennten und
 	// deren Kappung Stufe 2 dem Zustaendigen ueberlaesst.
 	kappungsMu         sync.Mutex
