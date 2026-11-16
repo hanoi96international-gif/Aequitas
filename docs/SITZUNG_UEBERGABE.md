@@ -112,8 +112,18 @@ Nicht übernommen, als Beobachtung für später:
      - Damit dauern 82 Teile rund 1 Minute statt 7, sofern die Teile sofort im Zustand
        stehen (der Knoten ist Leiter). Sonst begrenzt die Blockzeit.
 4. **W:** mehrstufige Prüfung; Fehlerkorrektur messen; ~~Ende-zu-Ende-Test mit vier
-   Knoten für den Dienst~~ (erledigt, siehe oben); Peer-Liste aus dem Validator-Register;
-   Register als Tabelle (vor W6); die vier Beobachtungen oben.
+   Knoten für den Dienst~~ (erledigt, siehe oben); Register als Tabelle (vor W6).
+   - **Peers aus dem Knoten** (PR „Validator-Dienst: Nachbarn des Knotens“, NUMMER):
+     - Der Dienst fragt die Sync-Peers und Seeds (`BlockDAG.QuantenWNachbarn`) und dazu
+       `QUANTEN_W_PEERS` ab. Alle gleichzeitig, mit 5 s Frist und 1 s Nachlauf, sobald
+       t beisammen sind.
+     - Nachbarn nur öffentlich, über `pinningDialer`, ohne Weiterleitung. Auch die
+       Adressen des Betreibers folgen keiner Weiterleitung mehr.
+     - Die Anteile-API unterschreibt (`sig`, `quantenWAnteilNachricht`). Von Nachbarn
+       zählt nur, was Validator X der Note unterschrieben hat.
+     - Offen: Die Liste ist „alle bekannten Knoten“, nicht „die Validatoren der Note“.
+       Eine Zuordnung Validator → URL im Register gibt es noch nicht; mit der
+       Unterschrift ist das für die Sicherheit nicht nötig, nur für weniger Abrufe.
 5. **App:** W- und S-Anzeige.
 6. **Ionenfalle** (Konto des Betreibers), Vorlage 4 abschicken (Betreiber).
 7. **Gutachten (W5/S4):** Der Prüfauftrag (`docs/QUANTENGELD_PRUEFAUFTRAG.md`) ist auf
@@ -174,7 +184,10 @@ Dazu: `spitzenBefund` (wer kennt welche Spitze) bei Uneinigkeit, und `db-tests` 
 Rot die letzten Testmeldungen.
 
 Lokal laufen lassen: PostgreSQL 16 liegt im Container (`pg_ctlcluster 16 main start`,
-Passwort per `ALTER USER postgres PASSWORD 'postgres'`), dann
+Passwort per `ALTER USER postgres PASSWORD 'postgres'`). Liegt schon ein Cluster in
+`/home/postgres/pgdata` (Vertrauen ohne Passwort): eine alte `postmaster.pid` löschen, dann
+`su postgres -c "/usr/lib/postgresql/16/bin/pg_ctl -D /home/postgres/pgdata -o '-p 5432 -k /tmp' -l /home/postgres/pgdata/pg.log start"`.
+Danach
 
 ```
 AEQUITAS_TPS_BENCH=1 DATABASE_URL="postgres://postgres:postgres@localhost:5432/aeq_ci_realdb?sslmode=disable" \

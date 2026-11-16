@@ -129,8 +129,10 @@ wird.
    - verschlüsselter Tresor;
    - Prägebestätigung mit Prüfung der Blätter gegen die Wurzel;
    - Anteile erst nach der Antwort;
-   - Hintergrund für Zufall, Offenlegen in Teilen über die Nachbarn (`QUANTEN_W_PEERS`)
-     und Fristen.
+   - Hintergrund für Zufall, Offenlegen in Teilen über die Nachbarn und Fristen.
+     Nachbarn sind die Sync-Peers und Seeds des Knotens, dazu `QUANTEN_W_PEERS`. Sie
+     werden gleichzeitig abgefragt, nur öffentlich und ohne Weiterleitung. Es zählen nur
+     Anteile, die der Validator selbst unterschrieben hat.
 3. **App:** eine Variante-W-Note und ihren Prüfstand anzeigen.
 4. **Vor jeder Freischaltung (W6):**
    - Gutachten ohne offene kritische Punkte (W5).

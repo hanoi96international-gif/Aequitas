@@ -32,13 +32,24 @@ package keeper
 //     Hoehe und Finalitaet wird nichts reif (fail-closed).
 //   - HINTERGRUND (quantenWDienst.takt): eigenen Zufall einreichen, sobald eine
 //     Anfrage auf ihn wartet; Teile der Offenlegung sammeln (eigene Anteile +
-//     die der anderen Validatoren ueber QUANTEN_W_PEERS) und einreichen;
-//     abgelaufene Fristen einreichen; tote Noten aus dem Tresor entfernen.
+//     die der anderen Validatoren von den Nachbarn des Knotens und aus
+//     QUANTEN_W_PEERS) und einreichen; abgelaufene Fristen einreichen; tote
+//     Noten aus dem Tresor entfernen.
 //
 // Jeder Knoten prueft jede eingereichte Transaktion selbst (Pruefsummen,
 // Hash-Ketten): der Dienst ist bequem, nicht vertraut. Ein falscher Anteil
 // eines Nachbarn faellt an der Pruefsumme auf; dann wird eine andere Auswahl
 // versucht (hoechstens quantenWSammelVersuche).
+//
+// NACHBARN SIND FREMDE. Die Liste kommt aus den Sync-Peers und Seeds des
+// Knotens (QuantenWNachbarn) -- dorthin kommt jeder oeffentliche Knoten.
+// Deshalb: nur oeffentliche Adressen, DNS einmal aufgeloest, keine
+// Weiterleitung (fremdKlient, wie jeder Abruf an eine Adresse, die nicht der
+// Betreiber gesetzt hat); alle gleichzeitig unter EINER Frist (ein Nachbar,
+// der nicht antwortet, haelt den Takt nicht auf); und jede Ausgabe ist vom
+// Validator unterschrieben, dessen Anteile sie traegt (quantenWAnteilEcht).
+// Ohne die Unterschrift belegte ein Fremder, der schneller antwortet, mit
+// erfundenen Anteilen jeden Platz, und keine Auswahl passte je.
 
 import (
 	"context"
@@ -54,6 +65,7 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -79,9 +91,12 @@ const (
 	quantenWTresorKoerperMax = 2 << 20
 	quantenWDienstTakt       = 5 * time.Second
 	quantenWPeerZeit         = 5 * time.Second
-	quantenWPeerAntwortMax   = 256 << 10
-	quantenWPeersHoechstens  = 32
-	quantenWSammelVersuche   = 8
+	// Sind schon t Validatoren beisammen, wird auf weitere (fuer andere
+	// Auswahlen, falls einer falsche Anteile liefert) nur so lange gewartet.
+	quantenWPeerNachlauf    = time.Second
+	quantenWPeerAntwortMax  = 256 << 10
+	quantenWPeersHoechstens = 32
+	quantenWSammelVersuche  = 8
 	// Staffel beim Offenlegen (Beobachtung aus #549): je Versuch EIN
 	// zustaendiger Validator (quantenWZustaendig) reicht die Teile ohne Pause
 	// nacheinander ein, hoechstens quantenWTeileJeTakt je Takt; die anderen
@@ -93,6 +108,7 @@ const (
 	quantenWStaffelWarten   = 2 * int64(quantenWDienstTakt/time.Second)
 	burstQuantenWDienstJeIP = 30
 	quantenWDomTresor       = "aequitas-quanten-w-tresor-v1|"
+	quantenWDomAnteil       = "aequitas-quanten-w-anteil-v1|"
 )
 
 // quantenWTresorEintrag: was ein Validator zu einer Note haelt (Klartext nur
@@ -190,8 +206,17 @@ type quantenWDienst struct {
 	aead      cipher.AEAD
 	ablage    quantenWAblage
 	eintraege map[string]*quantenWTresorEintrag
-	peers     []string
-	client    *http.Client
+	// peers: vom Betreiber gesetzt (QUANTEN_W_PEERS, auch private Netze),
+	// abgerufen ueber client. nachbarn: die Nachbarn des Knotens -- nur
+	// Adressen, die erlaubt zulaesst, abgerufen ueber fremd.
+	// peerZeit/nachlauf: Fristen eines Abrufs (Tests verkuerzen sie).
+	peers    []string
+	client   *http.Client
+	nachbarn func() []string
+	erlaubt  func(string) bool
+	fremd    *http.Client
+	peerZeit time.Duration
+	nachlauf time.Duration
 	// einreichen: eine W-Transaktion an die Kette (im Betrieb ueber die
 	// eigene API zum Leiter; in Tests direkt).
 	einreichen func(art string, q QuantenWAngaben) error
@@ -310,7 +335,8 @@ func neuerQuantenWDienst(cs *ChainState, key *ecdsa.PrivateKey, ablage quantenWA
 	}
 	d := &quantenWDienst{cs: cs, key: key, adresse: strings.ToLower(crypto.PubkeyToAddress(key.PublicKey).Hex()),
 		aead: aead, ablage: ablage, eintraege: map[string]*quantenWTresorEintrag{}, peers: peers,
-		client: &http.Client{Timeout: quantenWPeerZeit}, einreichen: einreichen, jetzt: nowUnix,
+		client: quantenWPeerKlient(nil), erlaubt: isAllowedPeerURL, fremd: quantenWPeerKlient(pinningDialer),
+		peerZeit: quantenWPeerZeit, nachlauf: quantenWPeerNachlauf, einreichen: einreichen, jetzt: nowUnix,
 		hoehe: func() int64 { return 0 }, final: func() int64 { return -1 }, sicht: map[string]int64{}, faellig: map[string]int64{}}
 	roh, err := ablage.alle()
 	if err != nil {
@@ -619,6 +645,38 @@ type QuantenWAnteilAusgabe struct {
 	Stellen []int      `json:"stellen"`
 	Y       []string   `json:"y"`
 	Pfade   [][]string `json:"pfade"`
+	// Sig: Unterschrift des Validators X ueber alles andere
+	// (quantenWAnteilNachricht) -- ein Nachbar, der nicht Validator X ist,
+	// kann keine Anteile in seinem Namen liefern.
+	Sig string `json:"sig,omitempty"`
+}
+
+// quantenWAnteilNachricht: was der Validator zu seiner Ausgabe unterschreibt
+// (JSON ohne Sig: eindeutig, jede Laenge und Grenze steht darin).
+func quantenWAnteilNachricht(a QuantenWAnteilAusgabe) string {
+	a.Sig = ""
+	b, _ := json.Marshal(a)
+	h := sha256.Sum256(b)
+	return quantenWDomAnteil + hex.EncodeToString(h[:])
+}
+
+// anteilUnterschreiben: die eigene Ausgabe unterschreiben.
+func (d *quantenWDienst) anteilUnterschreiben(a *QuantenWAnteilAusgabe) error {
+	s, err := crypto.Sign(accounts.TextHash([]byte(quantenWAnteilNachricht(*a))), d.key)
+	if err != nil {
+		return err
+	}
+	s[64] += 27
+	a.Sig = "0x" + hex.EncodeToString(s)
+	return nil
+}
+
+// quantenWAnteilEcht: die Ausgabe stammt vom Validator X der Note.
+func quantenWAnteilEcht(e *quantenWTresorEintrag, a QuantenWAnteilAusgabe) bool {
+	if a.X < 1 || a.X > len(e.Validatoren) || a.Sig == "" {
+		return false
+	}
+	return verifyPersonalSign(quantenWAnteilNachricht(a), a.Sig, e.Validatoren[a.X-1]) == nil
 }
 
 // anteile: eigene Anteile fuer a.Stellen[ab : ab+quantenWOffenTeil] -- nur
@@ -802,15 +860,126 @@ func quantenWAuswahlen(m, t, grenze int) [][]int {
 	return out
 }
 
+// quantenWPeerKlient: ein Klient fuer Nachbarn -- folgt keiner Weiterleitung
+// (eine erlaubte Adresse duerfte sonst ins interne Netz umleiten). dial nil:
+// der gewoehnliche Dialer (nur fuer die Adressen des Betreibers).
+func quantenWPeerKlient(dial func(context.Context, string, string) (net.Conn, error)) *http.Client {
+	c := &http.Client{Timeout: quantenWPeerZeit, CheckRedirect: ohneUmleitung}
+	if dial != nil {
+		c.Transport = &http.Transport{DialContext: dial}
+	}
+	return c
+}
+
+// quantenWPeer: eine Basis-URL; fremd = ein Nachbar des Knotens (nicht vom
+// Betreiber gesetzt).
+type quantenWPeer struct {
+	url   string
+	fremd bool
+}
+
+// peerListe: erst die Adressen des Betreibers, dann die Nachbarn des Knotens,
+// soweit erlaubt -- ohne Doppelte, hoechstens quantenWPeersHoechstens.
+func (d *quantenWDienst) peerListe() []quantenWPeer {
+	var out []quantenWPeer
+	schon := map[string]bool{}
+	dazu := func(u string, fremd bool) {
+		u = strings.TrimRight(strings.TrimSpace(u), "/")
+		if u == "" || schon[u] || (fremd && !d.erlaubt(u)) {
+			return
+		}
+		schon[u] = true
+		out = append(out, quantenWPeer{url: u, fremd: fremd})
+	}
+	for _, p := range d.peers {
+		if len(out) >= quantenWPeersHoechstens {
+			return out
+		}
+		dazu(p, false)
+	}
+	if d.nachbarn != nil {
+		for _, p := range d.nachbarn() {
+			if len(out) >= quantenWPeersHoechstens {
+				return out
+			}
+			dazu(p, true)
+		}
+	}
+	return out
+}
+
+// nachbarAnteile: die Ausgaben der anderen Validatoren -- alle Peers
+// gleichzeitig unter einer gemeinsamen Frist (peerZeit). Es zaehlt nur eine
+// vom Validator X der Note unterschriebene Ausgabe fuer genau die Stellen
+// dieses Teils (wie die eigene: eine alte, echt unterschriebene Ausgabe mit
+// anderer Stichprobe -- S nach einer Frist, gleiche Nummer -- belegte sonst
+// den Platz von X), je Validator die erste.
+// Schluss, sobald alle anderen Validatoren da sind, alle Peers geantwortet
+// haben oder die Frist ablaeuft; sind schon t beisammen, wird nur noch
+// nachlauf gewartet. Hoechstens quantenWPeersHoechstens Abrufe; keiner
+// ueberlebt die Rueckkehr lange (die Frist wird abgebrochen, der Kanal ist
+// gepuffert, kein Sender bleibt haengen).
+func (d *quantenWDienst) nachbarAnteile(ctx context.Context, K string, e *quantenWTresorEintrag, eigen QuantenWAnteilAusgabe) []QuantenWAnteilAusgabe {
+	peers := d.peerListe()
+	if len(peers) == 0 {
+		return nil
+	}
+	ctx, abbrechen := context.WithTimeout(ctx, d.peerZeit)
+	defer abbrechen()
+	antworten := make(chan QuantenWAnteilAusgabe, len(peers))
+	for _, p := range peers {
+		c := d.client
+		if p.fremd {
+			c = d.fremd
+		}
+		go func(c *http.Client, basis string) {
+			a, err := d.peerAnteile(ctx, c, basis, K, eigen.Index, eigen.Ab)
+			if err != nil || !slices.Equal(a.Stellen, eigen.Stellen) || !quantenWAnteilEcht(e, a) {
+				a = QuantenWAnteilAusgabe{} // X = 0: nichts Brauchbares
+			}
+			antworten <- a
+		}(c, p.url)
+	}
+	var out []QuantenWAnteilAusgabe
+	da := map[int]bool{eigen.X: true}
+	var nachlauf <-chan time.Time
+	var uhr *time.Timer
+	defer func() {
+		if uhr != nil {
+			uhr.Stop()
+		}
+	}()
+	for offen := len(peers); offen > 0 && len(da) < len(e.Validatoren); {
+		select {
+		case <-ctx.Done():
+			return out
+		case <-nachlauf:
+			return out
+		case a := <-antworten:
+			offen--
+			if a.X == 0 || da[a.X] {
+				continue
+			}
+			da[a.X] = true
+			out = append(out, a)
+			if uhr == nil && len(da) >= e.T {
+				uhr = time.NewTimer(d.nachlauf)
+				nachlauf = uhr.C
+			}
+		}
+	}
+	return out
+}
+
 // peerAnteile: die Ausgabe eines Nachbarn (Grenzen: Zeit, Groesse, Form).
-func (d *quantenWDienst) peerAnteile(ctx context.Context, basis, K string, index, ab int) (QuantenWAnteilAusgabe, error) {
+func (d *quantenWDienst) peerAnteile(ctx context.Context, c *http.Client, basis, K string, index, ab int) (QuantenWAnteilAusgabe, error) {
 	u := strings.TrimRight(basis, "/") + "/api/quanten-w/validator/anteile?" + url.Values{
 		"k": {K}, "index": {strconv.Itoa(index)}, "ab": {strconv.Itoa(ab)}}.Encode()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		return QuantenWAnteilAusgabe{}, err
 	}
-	res, err := d.client.Do(req)
+	res, err := c.Do(req)
 	if err != nil {
 		return QuantenWAnteilAusgabe{}, err
 	}
@@ -943,15 +1112,7 @@ func (d *quantenWDienst) teilOffenlegen(ctx context.Context, K string, e *quante
 	if err != nil {
 		return false
 	}
-	aus := []QuantenWAnteilAusgabe{eigen}
-	for _, p := range d.peers {
-		if len(aus) >= len(e.Validatoren) {
-			break
-		}
-		if pa, err := d.peerAnteile(ctx, p, K, index, ab); err == nil && pa.X != eigen.X {
-			aus = append(aus, pa)
-		}
-	}
+	aus := append([]QuantenWAnteilAusgabe{eigen}, d.nachbarAnteile(ctx, K, e, eigen)...)
 	for _, wahl := range quantenWAuswahlen(len(aus), e.T, quantenWSammelVersuche) {
 		offen := quantenWSammeln(aus, wahl, e.T)
 		if offen == nil {
@@ -1047,6 +1208,10 @@ func (a *APIServer) handleQuantenWAnteile(w http.ResponseWriter, r *http.Request
 		jsonError(w, "rejected: "+err.Error(), http.StatusConflict)
 		return
 	}
+	if err := d.anteilUnterschreiben(&out); err != nil {
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
 	json.NewEncoder(w).Encode(out)
 }
 
@@ -1056,11 +1221,13 @@ func (cs *ChainState) quantenWDienstJetzt() *quantenWDienst {
 }
 
 // StarteQuantenWDienst: Tresor oeffnen und Hintergrund starten -- nur mit
-// Signierschluessel. Die Peers (Basis-URLs der anderen Validatoren) kommen
-// aus QUANTEN_W_PEERS (vom Betreiber gesetzt, kommagetrennt, nur http(s));
-// eingereicht wird ueber die eigene API (apiBasis), die zum Leiter leitet.
-// hoehe: die DAG-Hoehe dieses Knotens (fuer reif); nil = nichts wird reif.
-func (cs *ChainState) StarteQuantenWDienst(ctx context.Context, key *ecdsa.PrivateKey, apiBasis string, hoehe func() int64) error {
+// Signierschluessel. Die Peers (Basis-URLs der anderen Validatoren): die
+// Nachbarn des Knotens (nachbarn, bei jedem Abruf neu; fremd, also nur
+// oeffentliche Adressen) und dazu QUANTEN_W_PEERS (vom Betreiber gesetzt,
+// kommagetrennt, nur http(s), auch private Netze); eingereicht wird ueber
+// die eigene API (apiBasis), die zum Leiter leitet. hoehe: die DAG-Hoehe
+// dieses Knotens (fuer reif); nil = nichts wird reif.
+func (cs *ChainState) StarteQuantenWDienst(ctx context.Context, key *ecdsa.PrivateKey, apiBasis string, hoehe func() int64, nachbarn func() []string) error {
 	if key == nil {
 		return nil
 	}
@@ -1099,6 +1266,7 @@ func (cs *ChainState) StarteQuantenWDienst(ctx context.Context, key *ecdsa.Priva
 	if err != nil {
 		return err
 	}
+	d.nachbarn = nachbarn
 	if hoehe != nil {
 		d.hoehe = hoehe
 		d.final = func() int64 {

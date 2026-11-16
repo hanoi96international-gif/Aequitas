@@ -19,7 +19,8 @@ import (
 // eigener Signierschluessel, echter HTTP-Server, Leitung), jeder mit seinem
 // Validator-Dienst (quanten_w_validator.go, StarteQuantenWDienst wie in
 // main.go: Tresor in der eigenen Datenbank, Einreichen ueber die eigene API,
-// Nachbarn aus QUANTEN_W_PEERS). Der Test spielt nur die beiden
+// Nachbarn aus QUANTEN_W_PEERS; die Nachbarn des Knotens liegen auf
+// Loopback und fallen heraus). Der Test spielt nur die beiden
 // Menschen: den Praeger und den, der einloest. Alles dazwischen -- Zufall,
 // Anteile sammeln, Offenlegen -- muessen die Dienste selbst tun, ueber echtes
 // HTTP, erst nach der Finalitaet, und jeder Knoten rechnet das Urteil nach.
@@ -74,7 +75,7 @@ func TestVierKnotenQuantenW_RealDB(t *testing.T) {
 	t.Cleanup(halt) // vor dem Anhalten der Knoten (deren Cleanup laeuft danach)
 	for _, k := range netz.ks {
 		cs, dag, _ := k.teile()
-		if err := cs.StarteQuantenWDienst(ctx, k.key, k.srv.URL, dag.Height); err != nil {
+		if err := cs.StarteQuantenWDienst(ctx, k.key, k.srv.URL, dag.Height, dag.QuantenWNachbarn); err != nil {
 			t.Fatalf("Knoten %d: Validator-Dienst: %v", k.i, err)
 		}
 		d := cs.quantenWDienstJetzt()

@@ -72,7 +72,11 @@ func neueQwDienste(t *testing.T, n int) *qwDienste {
 				return
 			}
 			if q.falsch[xx] && len(out.Y) > 0 {
-				out.Y[0] = "1" // falscher Anteil
+				out.Y[0] = "1" // falscher Anteil (vom Validator selbst unterschrieben)
+			}
+			if err := d.anteilUnterschreiben(&out); err != nil {
+				http.Error(rw, err.Error(), http.StatusInternalServerError)
+				return
 			}
 			json.NewEncoder(rw).Encode(out)
 		}))
