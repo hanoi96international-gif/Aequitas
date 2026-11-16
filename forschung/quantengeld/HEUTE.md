@@ -165,7 +165,16 @@ beim Empfänger, Summe erhalten.
   Im Workflow bestätigt (16.11.2026, [Lauf 43894251112](https://github.com/hanoi96international-gif/Aequitas/actions/runs/43894251112),
   Aufforderung erst aus dem Block nach der Anfrage): echt (7 Treffer, 0 Fehler), 10 AEQ
   beim Empfänger, Topf 0, Summe erhalten.
-- Auf der echten Maschine: Workflow, Modus `ibm`, `wiesner` = `kette`, `bezahlen` an.
+- **Auf der echten Maschine** (16.11.2026, `ibm_marrakesh`, [Lauf 43894950189](https://github.com/hanoi96international-gif/Aequitas/actions/runs/43894950189),
+  IBM-Job `dbthuqr69a3s73fp0qq0`): der Ablauf läuft vollständig – Prägen, Anfrage,
+  Aufforderung aus dem Block, Antwort mit Messwerten vom Chip, Offenlegen, Urteil. Die
+  Note hat die 20 µs Halten plus Teleportation aber **nicht überstanden**: 9 Treffer,
+  3 Fehler (33 %, Toleranz 15 %) → **abgewiesen**, kein Wert an den Empfänger, Summe
+  erhalten. Über alle 1000 Schüsse: 39,1 % Fehler je Treffer, Annahme 0,056.
+  Zum Vergleich (Lauf von #538): **sofort** geprüft 0,8 % Fehler, Annahme 0,98; nach
+  20 µs 23 %, Annahme 0,53. Heißt: auf dem echten Chip trägt die Note heute nur, wenn
+  sie nicht warten muss. Für alles mit Wartezeit braucht es den geschützten Speicher
+  (Fehlerkorrektur, #528) oder die Ionenfalle (Sekunden statt Mikrosekunden).
 
 **Zählt das als Quantengeld?** Als Vorführung: ja, das ist der ganze Ablauf einer
 privat prüfbaren Quanten-Note mit dezentraler Prüfung – auf echter Hardware, sobald der
