@@ -95,7 +95,12 @@ Nicht übernommen, als Beobachtung für später:
    - Gemergt mit #551. `s_kette.py` ist um die festen Stellen nachgezogen (#552). Die
      Fehlversuche in der Unterschrift der Stelle sind nur im Knoten modelliert, die
      Spezifikation kennt keine Stellen-Unterschrift.
-   - Offen: Validator-Dienst für S (Offenlegen der Stichprobe).
+   - Validator-Dienst für S im Folge-PR (`quanten_w_validator.go`):
+     - Auftrag mit `art: "s"` und Stichproben-Bindungen, Bestätigung ohne Anker.
+     - Anteile nur für die Stichprobe einer **finalen** Anmeldung und den laufenden Versuch
+       (Nummer = Fehlversuche).
+     - Takt: in Teilen offenlegen, nach der Frist die Frist einreichen. Lebende Token
+       bleiben im Tresor.
 3. **Validator-Dienst W, Beobachtungen aus #549:**
    - Erledigt mit #552: (1) Der Auftrag bindet den Hash der Anteile
      (`quantenWAuftragNachricht` v2). (2) Ein identischer Auftrag bekommt dieselbe
@@ -112,7 +117,7 @@ Nicht übernommen, als Beobachtung für später:
 
 | Repo | PR | Inhalt | Nächster Schritt |
 |---|---|---|---|
-| – | – | keine offenen PRs | – |
+| Aequitas | (Zweig `claude/aequitas-fortsetzen-osrea1`) | Validator-Dienst für Variante S: Ausgabe bestätigen, Stichprobe nach der Finalität in Teilen offenlegen, Frist | CI, Sicherheitsprüfung, mergen |
 
 Gemergt am 16.11.:
 - #552 (Validator-Dienst W: Auftrag bindet Anteile, Bestätigen wiederholbar; `s_kette.py`

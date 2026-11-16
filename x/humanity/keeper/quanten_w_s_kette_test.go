@@ -30,6 +30,13 @@ const qsTol = 4
 func neueQsWelt(t *testing.T, n, probeLaenge int) *qsWelt {
 	t.Helper()
 	w := &qsWelt{qwWelt: neueQwWelt(t, n)}
+	w.vorbereiten(probeLaenge)
+	return w
+}
+
+// vorbereiten: Annahmestellen, Stichproben und die Messung der Inhaberin.
+func (w *qsWelt) vorbereiten(probeLaenge int) {
+	t, n := w.t, w.p.n
 	for b := 0; b < 2; b++ {
 		k, a := neuerSchluessel(t)
 		w.stelle[b], w.keys[a] = a, k
@@ -49,7 +56,6 @@ func neueQsWelt(t *testing.T, n, probeLaenge int) *qsWelt {
 			w.x = append(w.x, r.Intn(2))
 		}
 	}
-	return w
 }
 
 func qsBits(b []int) string {

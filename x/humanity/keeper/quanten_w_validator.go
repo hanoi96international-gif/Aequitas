@@ -101,6 +101,10 @@ type quantenWTresorEintrag struct {
 	Anteile     []string `json:"anteile"`  // hex, je Stelle der eigene Anteil
 	Blaetter    []string `json:"blaetter"` // hex, Merkle-Blaetter
 	Praeger     string   `json:"praeger"`
+	// Variante S (quanten_w_s_kette.go): "s" und die zwei Stichproben-
+	// Bindungen; ohne Hash-Kette (Geheim leer).
+	Art    string   `json:"art,omitempty"`
+	Proben []string `json:"proben,omitempty"`
 }
 
 // quantenWAblage: wohin der Tresor schreibt (Datenbank oder Speicher).
@@ -315,6 +319,21 @@ type QuantenWBestaetigenAnfrage struct {
 	// nur ein Mensch mit Deckung belegt Platz im Tresor.
 	Praeger    string `json:"praeger"`
 	PraegerSig string `json:"praeger_sig"`
+	// Variante S: Art "s" und die zwei Stichproben-Bindungen (hex); der
+	// Auftrag ist dann quantenWSAuftragNachricht, die Bestaetigung die der
+	// S-Ausgabe (quantenWSBestaetigungNachricht), ohne Anker.
+	Art    string   `json:"art,omitempty"`
+	Proben []string `json:"proben,omitempty"`
+}
+
+const quantenWSDomAuftrag = "aequitas-quanten-s-auftrag-v1"
+
+// quantenWSAuftragNachricht: der Auftrag des Ausgebers eines S-Tokens an
+// einen Validator -- wie bei W mit dem Hash seiner Anteile, dazu die
+// Stichproben-Bindungen.
+func quantenWSAuftragNachricht(praeger, K string, n, t, tol, x int, wurzel string, validatoren, proben []string, zeit int64, anteileHash string) string {
+	return fmt.Sprintf("%s|chain:%d|%s|%s|%d|%d|%d|%d|%s|%s|%s|%d|%s", quantenWSDomAuftrag, eingefroreneChainID,
+		strings.ToLower(praeger), K, n, t, tol, x, wurzel, strings.Join(validatoren, ","), strings.Join(proben, ","), zeit, anteileHash)
 }
 
 // quantenWAuftragNachricht: was der Praeger dem Validator unterschreibt --
@@ -341,19 +360,41 @@ func (d *quantenWDienst) bestaetigen(q QuantenWBestaetigenAnfrage) (anker string
 		return "", "", quantenWFehler("K")
 	}
 	reg := d.cs.quantenWJetzt()
-	if _, da := reg.Noten[q.K]; da {
+	if reg.Noten[q.K] != nil || reg.Token[q.K] != nil {
 		return "", "", quantenWFehler("Note schon gepraegt")
 	}
 	if _, tot := reg.Tote[q.K]; tot {
 		return "", "", quantenWFehler("Note war schon gepraegt")
 	}
+	gesehenV := map[string]bool{}
 	for _, v := range q.Validatoren {
-		if !kanonischeAdresse(v) {
-			return "", "", quantenWFehler("Validator nicht kanonisch")
+		if !kanonischeAdresse(v) || gesehenV[v] {
+			return "", "", quantenWFehler("Validator nicht kanonisch oder doppelt")
 		}
+		gesehenV[v] = true
 	}
-	if _, err := quantenWPraegenPruefen(false, q.K, q.N, q.T, q.Validatoren, len(q.Validatoren), len(q.Validatoren), q.Tol); err != nil {
-		return "", "", err
+	var proben [2][32]byte
+	switch q.Art {
+	case "":
+		if q.Proben != nil {
+			return "", "", quantenWFehler("Stichproben nur bei Variante S")
+		}
+		if _, err := quantenWPraegenPruefen(false, q.K, q.N, q.T, q.Validatoren, len(q.Validatoren), len(q.Validatoren), q.Tol); err != nil {
+			return "", "", err
+		}
+	case "s":
+		ok := len(q.Proben) == 2
+		for i := 0; ok && i < 2; i++ {
+			proben[i], ok = quantenWHex32(q.Proben[i])
+		}
+		if !ok {
+			return "", "", quantenWFehler("S: zwei Stichproben-Bindungen")
+		}
+		if _, err := neuerQuantenSToken(q.N, d.adresse, [32]byte{}, 1, proben, q.T, len(q.Validatoren), q.Tol); err != nil {
+			return "", "", err
+		}
+	default:
+		return "", "", quantenWFehler("Art %q", q.Art)
 	}
 	if q.X < 1 || q.X > len(q.Validatoren) || q.Validatoren[q.X-1] != d.adresse {
 		return "", "", quantenWFehler("Nummer %d gehoert nicht zu diesem Validator", q.X)
@@ -362,7 +403,7 @@ func (d *quantenWDienst) bestaetigen(q QuantenWBestaetigenAnfrage) (anker string
 	// kleinsten Deckung (sonst belegt ein Fremder kostenlos den Tresor).
 	q.Praeger = strings.ToLower(strings.TrimSpace(q.Praeger))
 	if !kanonischeAdresse(q.Praeger) || !kanonischeSignatur(q.PraegerSig) ||
-		verifyPersonalSign(quantenWAuftragNachricht(q.Praeger, q.K, q.N, q.T, q.Tol, q.X, q.Wurzel, q.Validatoren, q.Zeit, quantenWAnteileHash(q.Anteile)), q.PraegerSig, q.Praeger) != nil {
+		verifyPersonalSign(quantenWDienstAuftrag(q), q.PraegerSig, q.Praeger) != nil {
 		return "", "", quantenWFehler("Auftrag nicht vom Praeger unterschrieben")
 	}
 	if !d.praegerTauglich(q.Praeger) {
@@ -406,6 +447,9 @@ func (d *quantenWDienst) bestaetigen(q QuantenWBestaetigenAnfrage) (anker string
 		if !quantenWGleicherAuftrag(vorher, q) {
 			return "", "", quantenWFehler("schon bestaetigt (anderer Auftrag)")
 		}
+		if q.Art == "s" {
+			return d.bestaetigungSUnterschreiben(q, wurzel, proben)
+		}
 		g, ok := quantenWHex32(vorher.Geheim)
 		if !ok {
 			return "", "", quantenWFehler("Tresor: Geheimnis unlesbar")
@@ -413,13 +457,17 @@ func (d *quantenWDienst) bestaetigen(q QuantenWBestaetigenAnfrage) (anker string
 		return d.bestaetigungUnterschreiben(q, wurzel, quantenWKetteVor(g, quantenWZufallL))
 	}
 	var geheim [32]byte
-	if _, err := rand.Read(geheim[:]); err != nil {
-		return "", "", err
-	}
-	a := quantenWKetteVor(geheim, quantenWZufallL)
+	var a [32]byte
 	e := &quantenWTresorEintrag{K: q.K, N: q.N, T: q.T, Tol: q.Tol, X: q.X, Validatoren: append([]string(nil), q.Validatoren...),
-		Wurzel: q.Wurzel, Zeit: q.Zeit, Geheim: hex.EncodeToString(geheim[:]), Anteile: append([]string(nil), q.Anteile...),
-		Blaetter: append([]string(nil), q.Blaetter...), Praeger: q.Praeger}
+		Wurzel: q.Wurzel, Zeit: q.Zeit, Anteile: append([]string(nil), q.Anteile...),
+		Blaetter: append([]string(nil), q.Blaetter...), Praeger: q.Praeger, Art: q.Art, Proben: append([]string(nil), q.Proben...)}
+	if q.Art == "" {
+		if _, err := rand.Read(geheim[:]); err != nil {
+			return "", "", err
+		}
+		a = quantenWKetteVor(geheim, quantenWZufallL)
+		e.Geheim, e.Proben = hex.EncodeToString(geheim[:]), nil
+	}
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if _, da := d.eintraege[q.K]; da {
@@ -430,7 +478,7 @@ func (d *quantenWDienst) bestaetigen(q QuantenWBestaetigenAnfrage) (anker string
 	}
 	offen, jePraeger := 0, 0
 	for k, x := range d.eintraege {
-		if _, gepraegt := reg.Noten[k]; !gepraegt {
+		if reg.Noten[k] == nil && reg.Token[k] == nil {
 			offen++
 			if x.Praeger == q.Praeger {
 				jePraeger++
@@ -448,7 +496,29 @@ func (d *quantenWDienst) bestaetigen(q QuantenWBestaetigenAnfrage) (anker string
 		return "", "", err
 	}
 	d.eintraege[q.K] = e
+	if q.Art == "s" {
+		return d.bestaetigungSUnterschreiben(q, wurzel, proben)
+	}
 	return d.bestaetigungUnterschreiben(q, wurzel, a)
+}
+
+// quantenWDienstAuftrag: was der Praeger bzw. Ausgeber unterschrieben hat.
+func quantenWDienstAuftrag(q QuantenWBestaetigenAnfrage) string {
+	if q.Art == "s" {
+		return quantenWSAuftragNachricht(q.Praeger, q.K, q.N, q.T, q.Tol, q.X, q.Wurzel, q.Validatoren, q.Proben, q.Zeit, quantenWAnteileHash(q.Anteile))
+	}
+	return quantenWAuftragNachricht(q.Praeger, q.K, q.N, q.T, q.Tol, q.X, q.Wurzel, q.Validatoren, q.Zeit, quantenWAnteileHash(q.Anteile))
+}
+
+// bestaetigungSUnterschreiben: die Bestaetigung einer S-Ausgabe (kein Anker).
+func (d *quantenWDienst) bestaetigungSUnterschreiben(q QuantenWBestaetigenAnfrage, wurzel [32]byte, proben [2][32]byte) (string, string, error) {
+	msg := quantenWSBestaetigungNachricht(q.K, wurzel, q.N, q.T, q.Validatoren, q.X, proben, q.Zeit, q.Tol)
+	s, err := crypto.Sign(accounts.TextHash([]byte(msg)), d.key)
+	if err != nil {
+		return "", "", err
+	}
+	s[64] += 27
+	return "", "0x" + hex.EncodeToString(s), nil
 }
 
 func (d *quantenWDienst) bestaetigungUnterschreiben(q QuantenWBestaetigenAnfrage, wurzel, a [32]byte) (string, string, error) {
@@ -473,7 +543,8 @@ func (d *quantenWDienst) eintragVon(k string) (*quantenWTresorEintrag, bool) {
 // Anteile und Blaetter -- dann darf die Bestaetigung wiederholt werden.
 func quantenWGleicherAuftrag(e *quantenWTresorEintrag, q QuantenWBestaetigenAnfrage) bool {
 	return e.K == q.K && e.N == q.N && e.T == q.T && e.Tol == q.Tol && e.X == q.X && e.Wurzel == q.Wurzel && e.Zeit == q.Zeit &&
-		e.Praeger == q.Praeger && slices.Equal(e.Validatoren, q.Validatoren) && slices.Equal(e.Anteile, q.Anteile) && slices.Equal(e.Blaetter, q.Blaetter)
+		e.Praeger == q.Praeger && slices.Equal(e.Validatoren, q.Validatoren) && slices.Equal(e.Anteile, q.Anteile) && slices.Equal(e.Blaetter, q.Blaetter) &&
+		e.Art == q.Art && slices.Equal(e.Proben, q.Proben)
 }
 
 // praegerTauglich: ein Mensch mit mindestens der kleinsten Deckung.
@@ -526,6 +597,9 @@ func (d *quantenWDienst) anteile(K string, index, ab int) (QuantenWAnteilAusgabe
 	if e == nil {
 		return QuantenWAnteilAusgabe{}, quantenWFehler("Note nicht im Tresor")
 	}
+	if tok := d.cs.quantenWJetzt().Token[K]; tok != nil {
+		return d.anteileS(K, e, tok.token, index, ab)
+	}
 	ein := d.cs.quantenWJetzt().Noten[K]
 	if ein == nil || ein.note.Anfrage == nil || ein.note.Anfrage.Index != index {
 		return QuantenWAnteilAusgabe{}, quantenWFehler("keine offene Anfrage %d", index)
@@ -537,10 +611,40 @@ func (d *quantenWDienst) anteile(K string, index, ab int) (QuantenWAnteilAusgabe
 	if !d.reif(quantenWAntwortSicht(K, a)) {
 		return QuantenWAnteilAusgabe{}, quantenWFehler("die Antwort ist noch nicht final -- vorher kein Anteil")
 	}
-	if ab < 0 || ab >= len(a.Stellen) {
+	return d.anteilAusgabe(K, e, index, ab, a.Stellen)
+}
+
+// anteileS: eigene Anteile fuer die Stichprobe einer S-Anmeldung, Teil ab --
+// nur wenn die Anmeldung final ist (sonst laege die Stichprobe nach einem
+// Rueckroll offen, ohne dass eingeloest wurde). index = Zahl der bisherigen
+// Fehlversuche des Tokens (benennt den Versuch).
+func (d *quantenWDienst) anteileS(K string, e *quantenWTresorEintrag, t *quantenSToken, index, ab int) (QuantenWAnteilAusgabe, error) {
+	if e.Art != "s" {
+		return QuantenWAnteilAusgabe{}, quantenWFehler("kein S-Token im Tresor")
+	}
+	if t.Anmeldung == nil || index != t.Fehl {
+		return QuantenWAnteilAusgabe{}, quantenWFehler("keine offene Anmeldung %d", index)
+	}
+	if !d.reif(quantenWSAnmeldungSicht(K, t)) {
+		return QuantenWAnteilAusgabe{}, quantenWFehler("die Anmeldung ist noch nicht final -- vorher kein Anteil")
+	}
+	return d.anteilAusgabe(K, e, index, ab, t.Anmeldung.Probe)
+}
+
+// quantenWSAnmeldungSicht: alles, was die Offenlegung einer S-Anmeldung
+// bestimmt (als Hash: die Stichprobe kann lang sein).
+func quantenWSAnmeldungSicht(K string, t *quantenSToken) string {
+	a := t.Anmeldung
+	h := sha256.Sum256([]byte(fmt.Sprintf("%d|%d|%s|%d|%v|%s", t.Fehl, a.B, a.Stelle, a.Zeit, a.Probe, quantenWBitsHex(a.X))))
+	return "s|" + K + "|" + hex.EncodeToString(h[:])
+}
+
+// anteilAusgabe: eigene Anteile und Merkle-Pfade fuer stellen[ab : ab+Teil].
+func (d *quantenWDienst) anteilAusgabe(K string, e *quantenWTresorEintrag, index, ab int, stellen []int) (QuantenWAnteilAusgabe, error) {
+	if ab < 0 || ab >= len(stellen) {
 		return QuantenWAnteilAusgabe{}, quantenWFehler("ab %d", ab)
 	}
-	bis := min(ab+quantenWOffenTeil, len(a.Stellen))
+	bis := min(ab+quantenWOffenTeil, len(stellen))
 	blaetter := make([][32]byte, e.N)
 	for i, h := range e.Blaetter {
 		blaetter[i], _ = quantenWHex32(h)
@@ -549,7 +653,7 @@ func (d *quantenWDienst) anteile(K string, index, ab int) (QuantenWAnteilAusgabe
 	// sonst ~2 Mio. Hashes je Abruf -- Sicherheitspruefung W2d).
 	ebenen := quantenWMerkleEbenen(blaetter)
 	out := QuantenWAnteilAusgabe{K: K, Index: index, Ab: ab, X: e.X}
-	for _, i := range a.Stellen[ab:bis] {
+	for _, i := range stellen[ab:bis] {
 		if i < 0 || i >= e.N {
 			return QuantenWAnteilAusgabe{}, quantenWFehler("Stelle %d", i)
 		}
@@ -690,6 +794,10 @@ func (d *quantenWDienst) takt(ctx context.Context) {
 		if e == nil {
 			continue
 		}
+		if tok := reg.Token[K]; tok != nil {
+			d.taktS(ctx, K, e, tok.token, jetzt, gesehen)
+			continue
+		}
 		ein := reg.Noten[K]
 		if ein == nil {
 			// Tot oder nie gepraegt: nach dem Praegefenster vergessen.
@@ -728,8 +836,37 @@ func (d *quantenWDienst) takt(ctx context.Context) {
 	}
 }
 
+// taktS: ein S-Token mit offener Anmeldung -- nach der Finalitaet in Teilen
+// offenlegen; nach der Frist die Frist einreichen.
+func (d *quantenWDienst) taktS(ctx context.Context, K string, e *quantenWTresorEintrag, t *quantenSToken, jetzt int64, gesehen map[string]bool) {
+	a := t.Anmeldung
+	if a == nil || e.Art != "s" {
+		return
+	}
+	sicht := quantenWSAnmeldungSicht(K, t)
+	gesehen[sicht] = true
+	if jetzt > a.Zeit+quantenWFristOffen {
+		_ = d.einreichen(quantenWSFristTxArt, QuantenWAngaben{K: K})
+		return
+	}
+	if !d.reif(sicht) {
+		return // die Anmeldung ist noch nicht final
+	}
+	d.teilOffenlegen(ctx, K, e, t.Fehl, a.Offen, func(offen []QuantenWOffen) error {
+		return d.einreichen(quantenWSOffenlegenTxArt, QuantenWAngaben{K: K, Ab: a.Offen, Offen: offen})
+	})
+}
+
 func (d *quantenWDienst) offenlegenTeil(ctx context.Context, K string, e *quantenWTresorEintrag, a *quantenWAnfrage) {
-	eigen, err := d.anteile(K, a.Index, a.Offen)
+	d.teilOffenlegen(ctx, K, e, a.Index, a.Offen, func(offen []QuantenWOffen) error {
+		return d.einreichen(quantenWOffenlegenTxArt, QuantenWAngaben{K: K, Index: a.Index, Ab: a.Offen, Offen: offen})
+	})
+}
+
+// teilOffenlegen: eigene Anteile und die von Nachbarn sammeln, t passende
+// zusammenstellen und einreichen (fuer W-Anfragen und S-Anmeldungen).
+func (d *quantenWDienst) teilOffenlegen(ctx context.Context, K string, e *quantenWTresorEintrag, index, ab int, einreichen func([]QuantenWOffen) error) {
+	eigen, err := d.anteile(K, index, ab)
 	if err != nil {
 		return
 	}
@@ -738,7 +875,7 @@ func (d *quantenWDienst) offenlegenTeil(ctx context.Context, K string, e *quante
 		if len(aus) >= len(e.Validatoren) {
 			break
 		}
-		if pa, err := d.peerAnteile(ctx, p, K, a.Index, a.Offen); err == nil && pa.X != eigen.X {
+		if pa, err := d.peerAnteile(ctx, p, K, index, ab); err == nil && pa.X != eigen.X {
 			aus = append(aus, pa)
 		}
 	}
@@ -747,7 +884,7 @@ func (d *quantenWDienst) offenlegenTeil(ctx context.Context, K string, e *quante
 		if offen == nil {
 			continue
 		}
-		if d.einreichen(quantenWOffenlegenTxArt, QuantenWAngaben{K: K, Index: a.Index, Ab: a.Offen, Offen: offen}) == nil {
+		if einreichen(offen) == nil {
 			return
 		}
 	}
