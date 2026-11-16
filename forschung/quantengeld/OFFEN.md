@@ -112,8 +112,13 @@ wird.
    - Offen sind `fern` auf dem echten Chip und die Ionenfalle (Sekunden statt
      Mikrosekunden).
    - Aus den Fehlerraten folgen die Parameter für Abschnitt B.
-2. **Prüfer-Dienst für Validatoren:** Anteile verwahren, offenlegen und bestätigen, als
-   Gegenstück zur schlafenden Kettenseite.
+2. ~~**Prüfer-Dienst für Validatoren**~~ – **gebaut (W2d, 16.11. abends,
+   `quanten_w_validator.go`):**
+   - verschlüsselter Tresor;
+   - Prägebestätigung mit Prüfung der Blätter gegen die Wurzel;
+   - Anteile erst nach der Antwort;
+   - Hintergrund für Zufall, Offenlegen in Teilen über die Nachbarn (`QUANTEN_W_PEERS`)
+     und Fristen.
 3. **App:** eine Variante-W-Note und ihren Prüfstand anzeigen.
 4. **Vor jeder Freischaltung (W6):**
    - Gutachten ohne offene kritische Punkte (W5).
