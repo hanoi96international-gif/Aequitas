@@ -79,8 +79,14 @@ bauen kann.
      S-Vorführung (`--s-token`) ist gelaufen: ideal, im Rauschmodell und **auf echter
      IBM-Hardware** (0,46 % Fehler, angenommen; Doppelvorlage abgewiesen). Das Einlösen
      auf der Kette ist spezifiziert (`KetteS.einloesen`: Vorlage von der Nutzerin
-     unterschrieben, Stichprobe gebunden, Anteile offengelegt). **Offen:** die
-     Knoten-Regeln für S in Go und die Vorlage 4 abschicken (Nutzer).
+     unterschrieben, Stichprobe gebunden, Anteile offengelegt). **Im Knoten (schlafend):**
+     Regeln S2a und S2b Teil 1 (#547); die Einhängung in die Kette als Satzart im W-Modul
+     (S2b Teil 2, `quanten_w_s_kette.go`): Ausgabe mit Bestätigung aller Validatoren,
+     Bindung, Wahl, Anmeldung der bei der Ausgabe **festgelegten** Annahmestelle (sonst
+     könnte ein Dritter die offengelegte Stichprobe aus der Warteschlange kopieren und
+     zuerst einlösen), Offenlegen in Teilen, Frist, Wert über Anteile im W-Topf.
+     **Offen:** Validator-Dienst für S (Offenlegen der Stichprobe), App, Vorlage 4
+     abschicken (Nutzer).
    - Zu klären: Lässt sich „Ort“ auf Aequitas als „Prüfer bzw. Region + Block-Fenster“
      abbilden, und wie viel Sicherheit bleibt dann übrig?
 2. **Zustellen statt Aufbewahren:**

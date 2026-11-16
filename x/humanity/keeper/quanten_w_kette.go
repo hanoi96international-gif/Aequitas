@@ -1084,6 +1084,10 @@ func (cs *ChainState) quantenWAnnehmen(tx Transaction) (Transaction, error) {
 	tx.QuantenW = &q
 	tx.TxHash = quantenWTxHash(&tx)
 	konten := quantenWKonten(&tx)
+	// Variante S: die angemeldete Stelle bekommt beim Offenlegen den Wert.
+	if e := cs.quantenWJetzt().Token[q.K]; e != nil && e.token.Anmeldung != nil {
+		konten = append(konten, e.token.Anmeldung.Stelle)
+	}
 	if e := cs.quantenWJetzt().Noten[q.K]; e != nil {
 		if a := e.note.Anfrage; a != nil {
 			konten = append(konten, a.Von)

@@ -136,13 +136,17 @@ func quantenWSWahlNachricht(wallet, K, c string) string {
 	return fmt.Sprintf("%s|chain:%d|%s|%s|%s", quantenWSDomWahl, eingefroreneChainID, strings.ToLower(wallet), K, c)
 }
 
-func quantenWSAnmeldenNachricht(wallet, K, b, x string, probe []int) string {
+// quantenWSAnmeldenNachricht: bindet auch die Zahl der bisherigen
+// Fehlversuche des Tokens. Sonst koennte jeder eine fehlgeschlagene Anmeldung
+// unveraendert wieder einreichen, bis der Token tot ist -- und die ehrliche
+// andere Stelle bekaeme nichts.
+func quantenWSAnmeldenNachricht(wallet, K, b, x string, probe []int, fehl int) string {
 	teile := make([]string, len(probe))
 	for i, v := range probe {
 		teile[i] = strconv.Itoa(v)
 	}
-	return fmt.Sprintf("%s|chain:%d|%s|%s|%s|%s|%s", quantenWSDomAnmelden, eingefroreneChainID, strings.ToLower(wallet), K, b,
-		quantenWSHash(x), quantenWSHash(strings.Join(teile, ",")))
+	return fmt.Sprintf("%s|chain:%d|%s|%s|%s|%s|%s|%d", quantenWSDomAnmelden, eingefroreneChainID, strings.ToLower(wallet), K, b,
+		quantenWSHash(x), quantenWSHash(strings.Join(teile, ",")), fehl)
 }
 
 // quantenWSBitsLesen: "0101..." genau n Zeichen.
@@ -262,7 +266,7 @@ func (e *quantenWSEintrag) form(K string) quantenWSTokenForm {
 	t := e.token
 	f := quantenWSTokenForm{K: K, N: t.N, Inhaber: t.Inhaber, Wurzel: hex.EncodeToString(t.Wurzel[:]), Deckung: t.Deckung,
 		Proben: [2]string{hex.EncodeToString(t.Proben[0][:]), hex.EncodeToString(t.Proben[1][:])},
-		T: t.T, NVal: t.NVal, Tol: t.Tol, C: t.C, Fehl: t.Fehl, Anteile: e.Anteile, Zeit: e.Zeit, Stellen: e.Stellen}
+		T:      t.T, NVal: t.NVal, Tol: t.Tol, C: t.C, Fehl: t.Fehl, Anteile: e.Anteile, Zeit: e.Zeit, Stellen: e.Stellen}
 	if t.D != nil {
 		f.D = quantenWBitsHex(t.D)
 	}
@@ -391,7 +395,7 @@ func (cs *ChainState) quantenWSBescheidLocked(ctx context.Context, tx *Transacti
 		if !ok || len(q.Probe) == 0 || len(q.Probe) > e.N {
 			return quantenWBefund("quanten_w_form", "Anmelden: Vorlage (%d Bits) oder Stichprobe", e.N), nil
 		}
-		if err := quantenWUnterschrift(q, quantenWSAnmeldenNachricht(wallet, q.K, q.B, q.X, q.Probe), wallet, blockZeit); err != nil {
+		if err := quantenWUnterschrift(q, quantenWSAnmeldenNachricht(wallet, q.K, q.B, q.X, q.Probe, e.Fehl), wallet, blockZeit); err != nil {
 			return quantenWBefund("quanten_w_unterschrift", "Stelle %s: %v", kurzAdresse(wallet), err), nil
 		}
 		if !kanonischeSignatur(q.Vorlage) || pruefePersonalSignGemerkt(quantenSVorlageText(q.K, b, x), q.Vorlage, e.Inhaber) != nil {
