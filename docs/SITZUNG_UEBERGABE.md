@@ -53,7 +53,7 @@ steht in `forschung/quantengeld/OFFEN.md`.
 - **S-Token auf echter IBM-Hardware** (Lauf 43927782462): 1.680 Qubits, 0,46 % Fehler,
   angenommen; Doppelvorlage abgewiesen.
 
-**Zusammengeführt mit der Sitzung „Weiter“ (16.11. ~19:45 UTC, PR siehe „Offene PRs“):**
+**Zusammengeführt mit der Sitzung „Weiter“ (#549, gemergt 16.11. ~20:15 UTC):**
 Deren eigener Validator-Dienst liegt nur zum Nachlesen im Zweig `claude/weiter-8vzgu9`
 (Commit 64861990, nicht gemergt). Der Dienst aus #547 deckt ihn ab. Übernommen wurde nur,
 was zusätzlich war:
@@ -110,9 +110,10 @@ Nicht übernommen, als Beobachtung für später:
 
 | Repo | PR | Inhalt | Nächster Schritt |
 |---|---|---|---|
-| Aequitas | #549 | Validator-Dienst W: nichts vor der Finalität, Ende-zu-Ende-Test auf vier Knoten, drei Testlücken geschlossen | **Nicht mergen ohne Wort des Betreibers** (er wollte erst den Vergleich sehen). CI abwarten. |
+| – | – | keine offenen PRs | – |
 
 Gemergt am 16.11.:
+- #549 (Validator-Dienst W: nichts vor der Finalität, Ende-zu-Ende-Test auf vier Knoten)
 - #544 (OFFEN.md), #545 (Klonangriff, Variante S), #546 (W2c), #547 (W2d, S2a, S2b Teil 1)
 - #539 (Variante W: Regeln im Knoten W2a, Prägen ohne Vertrauen W3, Ablauf mit der Kette
   W4 ohne Partner)
