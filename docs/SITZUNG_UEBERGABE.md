@@ -30,14 +30,16 @@ für dezentrales Quantengeld“).
 
 ## Offene PRs
 
-Keine (Stand dieser Zeile; den PR zur Aufgabe #65 unten nachtragen, sobald er offen ist).
+| Repo | PR | Inhalt | Nächster Schritt |
+|---|---|---|---|
+| Aequitas | #543 | Vier-Knoten-Test: zwei Ursachen der Unruhe behoben (#65) | CI grün abwarten (besonders `db-tests`), squash-mergen |
 
 Gemergt am 16.11.: #540 (HEUTE.md, IBM-Läufe), #541 (W2b Teil 1: Regeln geschärft),
 #542 (W2b Teil 2: Variante W schlafend in der Kette, `quanten_w_kette.go`, bis
 `quantenWAbUnix = MaxInt64`; W5: Prüfauftrag um Variante W erweitert). Einzelheiten zu
 W2b stehen im PR #542 und im Kopf von `x/humanity/keeper/quanten_w_kette.go`.
 
-## Unruhe im Vier-Knoten-Test (Aufgabe #65) — Korrektur im PR
+## Unruhe im Vier-Knoten-Test (Aufgabe #65) — Korrektur in #543
 
 `TestVierKnoten_RealDB` kippte am 16.11. zweimal im Push-Lauf (`db-tests`), mit zwei
 verschiedenen Ursachen. Beide lagen im Test, nicht im Knoten; keine Prüfung wurde
