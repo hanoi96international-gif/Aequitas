@@ -46,6 +46,7 @@ package keeper
 import (
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -415,6 +416,11 @@ func (r *quantenWRegister) kodiert() string {
 	if len(r.Noten) == 0 && len(r.Token) == 0 && len(r.Tote) == 0 {
 		return ""
 	}
+	return r.form().kodiert()
+}
+
+// form: das Register in kanonischer Form (sortiert, ohne Karten).
+func (r *quantenWRegister) form() quantenWRegisterForm {
 	var f quantenWRegisterForm
 	for k, e := range r.Noten {
 		nf := quantenWNoteForm{K: k, N: e.note.N, T: e.note.T, Wurzel: hex.EncodeToString(e.note.Wurzel[:]),
@@ -434,6 +440,11 @@ func (r *quantenWRegister) kodiert() string {
 	sort.Slice(f.Token, func(i, j int) bool { return f.Token[i].K < f.Token[j].K })
 	sort.Slice(f.Noten, func(i, j int) bool { return f.Noten[i].K < f.Noten[j].K })
 	sort.Slice(f.Tote, func(i, j int) bool { return f.Tote[i].K < f.Tote[j].K })
+	return f
+}
+
+// kodiert: die Bytes des ganzen Registers (StateRoot, Snapshot).
+func (f quantenWRegisterForm) kodiert() string {
 	roh, err := json.Marshal(f)
 	if err != nil {
 		panic(fmt.Sprintf("quanten_w: Register nicht kodierbar: %v", err)) // nur Zahlen, Texte, Listen
@@ -587,14 +598,17 @@ func quantenWRegisterLesen(s string) (*quantenWRegister, error) {
 }
 
 // quantenWStand: das geltende Register, seine Kodierung und sein Teil der
-// StateRoot -- einmal beim Setzen gerechnet.
+// StateRoot -- einmal beim Setzen gerechnet. zeilen: wie es in der Tabelle
+// steht (quanten_w_tabelle.go; nur mit Datenbank).
 type quantenWStand struct {
-	reg    *quantenWRegister
-	wurzel string
+	reg     *quantenWRegister
+	wurzel  string
+	kodiert string
+	zeilen  map[quantenWZeile]string
 }
 
 func neuerQuantenWStand(r *quantenWRegister, kodiert string) *quantenWStand {
-	st := &quantenWStand{reg: r}
+	st := &quantenWStand{reg: r, kodiert: kodiert}
 	if kodiert != "" {
 		h := sha256.Sum256([]byte(kodiert))
 		st.wurzel = "|quantenw:" + hex.EncodeToString(h[:])
@@ -614,28 +628,83 @@ func (cs *ChainState) quantenWJetzt() *quantenWRegister { return cs.quantenWStan
 // quantenWWurzel: der Teil der StateRoot ("" bei leerem Register: byte-gleich).
 func (cs *ChainState) quantenWWurzel() string { return cs.quantenWStandJetzt().wurzel }
 
-// quantenWLaden: das Register aus chain_config (Start, Snapshot, Resync).
+// quantenWLaden: das Register aus der Tabelle (Start, Snapshot, Resync;
+// quanten_w_tabelle.go). Steht in chain_config noch ein Register (Knoten
+// vor der Tabelle, oder gerade aus einem Snapshot uebernommen) und ist die
+// Tabelle leer, zieht es in die Tabelle um; danach ist der Wert in
+// chain_config leer. Hat die Tabelle schon Zeilen, gelten sie (ein
+// laufender Knoten behaelt seinen Stand).
 func (cs *ChainState) quantenWLaden(ctx context.Context) error {
 	if cs.db == nil {
 		return nil
 	}
-	r, err := quantenWRegisterLesen(cs.getConfigValueCtx(ctx, quantenWKonfigSchluessel))
+	if txFromContext(ctx) == nil {
+		tx, err := cs.db.BeginTx(ctx, nil)
+		if err != nil {
+			return fmt.Errorf("quanten_w: Register laden: %w", err)
+		}
+		defer tx.Rollback()
+		if err := cs.quantenWLadenIn(withTx(ctx, tx)); err != nil {
+			return err
+		}
+		return tx.Commit()
+	}
+	return cs.quantenWLadenIn(ctx)
+}
+
+func (cs *ChainState) quantenWLadenIn(ctx context.Context) error {
+	q := cs.dbExecCtx(ctx)
+	ausTabelle, zeilen, err := quantenWZeilenLesen(q)
 	if err != nil {
 		return err
 	}
-	cs.quantenWReg.Store(neuerQuantenWStand(r, r.kodiert()))
+	// Streng gelesen (getConfigValueCtx verschluckte einen Fehler; dann
+	// fehlte beim Umzug das ganze Register).
+	var alt string
+	if err := q.QueryRow(`SELECT value FROM chain_config WHERE key = $1`, quantenWKonfigSchluessel).Scan(&alt); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("quanten_w: %s lesen: %w", quantenWKonfigSchluessel, err)
+	}
+	quelle := ausTabelle
+	umziehen := zeilen == 0 && alt != ""
+	if umziehen {
+		quelle = alt
+	}
+	r, err := quantenWRegisterLesen(quelle)
+	if err != nil {
+		return err
+	}
+	st := neuerQuantenWStand(r, r.kodiert())
+	st.zeilen = r.form().zeilen()
+	if umziehen {
+		if err := quantenWZeilenSchreiben(q, nil, st.zeilen); err != nil {
+			return err
+		}
+	}
+	if alt != "" {
+		if err := cs.setConfigValueCtx(ctx, quantenWKonfigSchluessel, ""); err != nil {
+			return fmt.Errorf("quanten_w: alten Wert in chain_config leeren: %w", err)
+		}
+	}
+	cs.quantenWReg.Store(st)
 	return nil
 }
 
-// quantenWSetzenLocked: in der laufenden Datenbank-Transaktion schreiben.
+// quantenWSetzenLocked: in der laufenden Datenbank-Transaktion schreiben --
+// nur die Zeilen, die sich geaendert haben.
 func (cs *ChainState) quantenWSetzenLocked(ctx context.Context, r *quantenWRegister) error {
-	k := r.kodiert()
+	f := r.form()
+	k := ""
+	if len(r.Noten) != 0 || len(r.Token) != 0 || len(r.Tote) != 0 {
+		k = f.kodiert()
+	}
+	st := neuerQuantenWStand(r, k)
 	if cs.db != nil {
-		if err := cs.setConfigValueCtx(ctx, quantenWKonfigSchluessel, k); err != nil {
+		st.zeilen = f.zeilen()
+		if err := quantenWZeilenSchreiben(cs.dbExecCtx(ctx), cs.quantenWStandJetzt().zeilen, st.zeilen); err != nil {
 			return fmt.Errorf("quanten_w: Register speichern: %w", err)
 		}
 	}
-	cs.quantenWReg.Store(neuerQuantenWStand(r, k))
+	cs.quantenWReg.Store(st)
 	return nil
 }
 

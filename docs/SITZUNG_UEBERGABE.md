@@ -30,10 +30,10 @@ für dezentrales Quantengeld“).
 
 ## Hauptaugenmerk: dezentrales Quantengeld (Stand 16.11. ~23 UTC)
 
-**Als Nächstes:** Register von W und S als eigene Tabelle statt JSON in
-`chain_config` (`quanten_w`), vor jeder Freischaltung (W6). Vorbild ist QG3
-(Register von Quantengeld in eigener Tabelle). Danach: mehrstufige Prüfung bei W,
-App-Anzeige für W und S.
+**Im PR:** Register von W und S als eigene Tabelle `quanten_w_eintraege`
+(`quanten_w_tabelle.go`): eine Zeile je Note, Token und toter Note, nur Geändertes
+wird geschrieben, StateRoot und Snapshot-Format unverändert, Umzug aus `chain_config`
+beim Laden. **Danach:** mehrstufige Prüfung bei W, App-Anzeige für W und S.
 
 Auftrag des Betreibers: dezentrales Quantengeld auf heutigem Stand funktionsfähig, damit
 Aequitas ernstzunehmendes Quantengeld ist. „Alles umsetzen.“ Die Liste der offenen Punkte

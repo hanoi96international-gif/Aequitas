@@ -149,6 +149,9 @@ func (cs *ChainState) ExportSnapshot(signingKey *ecdsa.PrivateKey, height int64,
 	// Die Noten aus dem Speicher, zum selben Zeitpunkt wie die Konten (der
 	// Topf, an dem ihr Wert haengt, ist eines davon).
 	quantenNoten := append([]quantenNoteEintrag(nil), cs.quantenGeldJetzt().Noten...)
+	// Ebenso das Register der Variante W (quanten_w_tabelle.go): steht in
+	// der Tabelle, reist im Snapshot als ein Wert wie bisher.
+	quantenWKodiert := cs.quantenWStandJetzt().kodiert
 	accounts := make([]*AccountState, 0, cs.accounts.Len())
 	cs.accounts.Range(func(_ string, acc *AccountState) bool {
 		cp := *acc
@@ -241,10 +244,13 @@ func (cs *ChainState) ExportSnapshot(signingKey *ecdsa.PrivateKey, height int64,
 	// above — this read must use the plain DB-only variant, never
 	// cs.dbExec()/cs.activeTx.
 	snap.ChainConfig = map[string]string{}
-	for _, key := range []string{"last_ubi_at", "last_validators_at", "last_lp_at", "last_treasury_at", letzterCheckpointSchluessel, satzKonfigSchluessel, verifierKonfigSchluessel, umzugKonfigSchluessel, quantenGeldKonfigSchluessel, offlineKonfigSchluessel, quantenWKonfigSchluessel} {
+	for _, key := range []string{"last_ubi_at", "last_validators_at", "last_lp_at", "last_treasury_at", letzterCheckpointSchluessel, satzKonfigSchluessel, verifierKonfigSchluessel, umzugKonfigSchluessel, quantenGeldKonfigSchluessel, offlineKonfigSchluessel} {
 		if val := cs.getConfigValueDB(key); val != "" {
 			snap.ChainConfig[key] = val
 		}
+	}
+	if quantenWKodiert != "" {
+		snap.ChainConfig[quantenWKonfigSchluessel] = quantenWKodiert
 	}
 
 	// Koepfe fuer die Vorfahren-Suche (snapshot_koepfe.go), nur ab dem
@@ -1067,6 +1073,12 @@ func (cs *ChainState) wendeResyncSnapshotAn(g *resyncSnapshot) (err error) {
 	// Quanten-Noten ersetzend wie die Konten (QG3).
 	if err := quantenNotenImportieren(tx, snap.QuantenNoten, true); err != nil {
 		return fail(fmt.Errorf("resync: %w", err))
+	}
+	// Ebenso das Register der Variante W (quanten_w_tabelle.go): die Tabelle
+	// leeren; quantenWLaden zieht unten den Wert des Snapshots ein (oder
+	// laesst sie leer, wenn der Snapshot keinen traegt).
+	if _, err := tx.Exec(`DELETE FROM ` + quantenWTabelle); err != nil {
+		return fail(fmt.Errorf("resync: could not clear %s: %w", quantenWTabelle, err))
 	}
 	// chain_blocks wird NICHT mehr mitgeleert -- nur der abweichende Teil
 	// oberhalb der Snapshot-Hoehe.

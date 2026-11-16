@@ -1436,6 +1436,15 @@ satz TEXT NOT NULL,
 von TEXT NOT NULL,
 anteile BIGINT NOT NULL
 )`)
+	// quanten_w_eintraege (quanten_w_tabelle.go): das Register der Variante W
+	// (und S) je Eintrag eine Zeile -- Art (note, token, tot), K, die Form
+	// des Eintrags als JSON. Konsens: das Register steht in der StateRoot.
+	dbExec(`CREATE TABLE IF NOT EXISTS quanten_w_eintraege (
+art TEXT NOT NULL,
+k TEXT NOT NULL,
+daten TEXT NOT NULL,
+PRIMARY KEY (art, k)
+)`)
 	// synthetic_checkpoint_events: durable audit trail for every
 	// synthetic-checkpoint stub this node has ever inserted (see
 	// BridgeHistoricalGap and queueOrphan's runtime-bridge branch). A stub
