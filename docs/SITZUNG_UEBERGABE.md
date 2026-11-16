@@ -95,7 +95,7 @@ Nicht übernommen, als Beobachtung für später:
    - Gemergt mit #551. `s_kette.py` ist um die festen Stellen nachgezogen (#552). Die
      Fehlversuche in der Unterschrift der Stelle sind nur im Knoten modelliert, die
      Spezifikation kennt keine Stellen-Unterschrift.
-   - Validator-Dienst für S im Folge-PR (`quanten_w_validator.go`):
+   - Validator-Dienst für S mit #554 (`quanten_w_validator.go`):
      - Auftrag mit `art: "s"` und Stichproben-Bindungen, Bestätigung ohne Anker.
      - Anteile nur für die Stichprobe einer **finalen** Anmeldung und den laufenden Versuch
        (Nummer = Fehlversuche).
@@ -105,8 +105,12 @@ Nicht übernommen, als Beobachtung für später:
    - Erledigt mit #552: (1) Der Auftrag bindet den Hash der Anteile
      (`quantenWAuftragNachricht` v2). (2) Ein identischer Auftrag bekommt dieselbe
      Bestätigung, ein anderer für dasselbe K bleibt abgewiesen.
-   - Offen: (3) Staffel beim gleichzeitigen Einreichen der Teile. (4) Bei k_note = 5200
-     dauert die Offenlegung ~7 Minuten, die Frist ist 30.
+   - (3) und (4) im Folge-PR:
+     - Je Versuch ein zuständiger Validator (`quantenWZustaendig`, verteilt über K). Er
+       reicht bis zu 8 Teile je Takt ein; die anderen springen erst ein, wenn ein Teil
+       10 s offen ist.
+     - Damit dauern 82 Teile rund 1 Minute statt 7, sofern die Teile sofort im Zustand
+       stehen (der Knoten ist Leiter). Sonst begrenzt die Blockzeit.
 4. **W:** mehrstufige Prüfung; Fehlerkorrektur messen; ~~Ende-zu-Ende-Test mit vier
    Knoten für den Dienst~~ (erledigt, siehe oben); Peer-Liste aus dem Validator-Register;
    Register als Tabelle (vor W6); die vier Beobachtungen oben.
@@ -117,9 +121,10 @@ Nicht übernommen, als Beobachtung für später:
 
 | Repo | PR | Inhalt | Nächster Schritt |
 |---|---|---|---|
-| Aequitas | (Zweig `claude/aequitas-fortsetzen-osrea1`) | Validator-Dienst für Variante S: Ausgabe bestätigen, Stichprobe nach der Finalität in Teilen offenlegen, Frist | CI, Sicherheitsprüfung, mergen |
+| Aequitas | (Zweig `claude/aequitas-fortsetzen-osrea1`) | Validator-Dienst: Staffel beim Offenlegen, bis 8 Teile je Takt | CI, Sicherheitsprüfung, mergen |
 
 Gemergt am 16.11.:
+- #554 (Validator-Dienst für Variante S)
 - #552 (Validator-Dienst W: Auftrag bindet Anteile, Bestätigen wiederholbar; `s_kette.py`
   feste Annahmestellen; Stichtag-Wächter-Tests warten auf den Testserver statt `sleep 1`)
 - #551 (S2b Teil 2: Variante S schlafend in der Kette)

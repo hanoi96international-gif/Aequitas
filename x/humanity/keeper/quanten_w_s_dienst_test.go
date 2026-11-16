@@ -1,7 +1,6 @@
 package keeper
 
 import (
-	"context"
 	"encoding/hex"
 	"strings"
 	"testing"
@@ -84,11 +83,7 @@ func TestQuantenWSDienst_Gutfall(t *testing.T) {
 	if _, err := q.d[1].anteile(w.p.K, 0, len(s.probe[0])); err == nil {
 		t.Fatal("Anteile hinter der Stichprobe herausgegeben")
 	}
-	q.d[0].takt(context.Background())
-	if a := s.token(w.cs).Anmeldung; a == nil || a.Offen != quantenWOffenTeil {
-		t.Fatalf("erster Teil nicht offengelegt: %+v", a)
-	}
-	q.d[0].takt(context.Background())
+	q.takt() // der Zustaendige reicht beide Teile in einem Takt ein
 	if s.token(w.cs) != nil || w.stand(w.cs, s.stelle[0]) != 10_000_000 {
 		t.Fatalf("Einloesen nicht durch: Stelle %d", w.stand(w.cs, s.stelle[0]))
 	}
