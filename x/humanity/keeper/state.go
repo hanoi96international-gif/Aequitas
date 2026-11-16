@@ -251,6 +251,9 @@ type ChainState struct {
 	// ohne Sperre lesbar; im Rueckroll-Snapshot und (nur nicht leer) in der
 	// StateRoot.
 	offlineReg atomic.Pointer[offlineStand]
+	// quantenWReg: das Register der Variante W (quanten_w_kette.go), ohne
+	// Sperre lesbar; im Rueckroll-Snapshot und in der StateRoot.
+	quantenWReg atomic.Pointer[quantenWStand]
 	// kappungsKandidaten: Konten, die ueber der Grenze liegen koennten und
 	// deren Kappung Stufe 2 dem Zustaendigen ueberlaesst.
 	kappungsMu         sync.Mutex
@@ -2785,6 +2788,10 @@ func (cs *ChainState) loadFromDB() {
 	if err := cs.offlineLaden(context.Background()); err != nil {
 		panic(fmt.Sprintf("Offline-Register (%s) nicht lesbar: %v", offlineKonfigSchluessel, err))
 	}
+	// quanten_w_kette.go: ebenso.
+	if err := cs.quantenWLaden(context.Background()); err != nil {
+		panic(fmt.Sprintf("Register der Variante W (%s) nicht lesbar: %v", quantenWKonfigSchluessel, err))
+	}
 }
 
 // loadOrInitPool reads the single liquidity_pool row, creating it (at
@@ -4620,7 +4627,9 @@ func isTokenomicsPoolAddress(addr string) bool {
 	// Guthaben: fuer die bisherige Kette aendert sich nichts.
 	// Offline-Topf (offline_einbindung.go): Deckung der Offline-Pfaender --
 	// ebenso. Neu (SHA-256 ohne Urbild), bis zum Stichtag ohne Guthaben.
-	return addr == quantenTopfAddr || addr == offlineTopfAddr
+	// Variante W (quanten_w_kette.go): Deckung der Noten und offene
+	// Pfaender -- ebenso. Neu (SHA-256 ohne Urbild), bis zum Stichtag leer.
+	return addr == quantenTopfAddr || addr == offlineTopfAddr || addr == quantenWTopfAddr || addr == quantenWPfandAddr
 }
 
 // bootstrapMultiplierLocked returns the effective wealth cap multiplier.
@@ -7988,6 +7997,8 @@ func (cs *ChainState) stateRootLocked(lastUBIAt, letzterCP string) string {
 	sb.WriteString(cs.quantenGeldJetzt().stateRootTeil())
 	// Offline-Register (offline_einbindung.go): nur nicht leer, als Hash.
 	sb.WriteString(cs.offlineWurzel())
+	// Register der Variante W (quanten_w_kette.go): nur nicht leer, als Hash.
+	sb.WriteString(cs.quantenWWurzel())
 	hash := sha256.Sum256([]byte(sb.String()))
 	return hex.EncodeToString(hash[:])
 }
@@ -8620,6 +8631,7 @@ type blockRollbackSnapshot struct {
 	umzugReg       *umzugRegister
 	quantenGeld    *quantenGeldRegister
 	offlineReg     *offlineStand
+	quantenWReg    *quantenWStand
 	// vorbehalte: die offenen Vorbehalte (cs.vorbehalte) der Vorbehaltskonten
 	// unter den Adressen. Die Tabelle vorbehalte_offen geht mit der
 	// Transaktion zurueck, die Karte im Speicher nur hiermit.
@@ -8679,6 +8691,12 @@ func blockTouchedAddresses(block *Block) (addrs []string, needsFullSnapshot bool
 		// Offline-Bargeld (offline_einbindung.go): Topf, Halter (nur wenn
 		// sein Konto belastet wird) und die Empfaenger eines Abschlusses.
 		// Jeder Knoten prueft, dass genau diese Konten bewegt werden.
+		// Variante W (quanten_w_kette.go): Toepfe, Grundeinkommen und die
+		// Empfaenger von Pfand und Wert, wie sie der Block nennt.
+		case quantenWPraegenTxArt, quantenWAnfrageTxArt, quantenWZufallTxArt, quantenWAntwortTxArt, quantenWOffenlegenTxArt, quantenWFristTxArt:
+			for _, a := range quantenWKonten(&tx) {
+				add(a)
+			}
 		case offlinePfandTxArt, offlineEinloesungTxArt, offlineAbschlussTxArt:
 			add(offlineTopfAddr)
 			if tx.Offline != nil {
@@ -8814,6 +8832,7 @@ func (cs *ChainState) snapshotForRollbackLocked(addrs []string, full bool, chain
 	snap.umzugReg = cs.umzugRegisterJetzt()
 	snap.quantenGeld = cs.quantenGeldJetzt()
 	snap.offlineReg = cs.offlineStandJetzt()
+	snap.quantenWReg = cs.quantenWStandJetzt()
 	snap.vorbehalte = cs.vorbehaltSichern(addrs, full)
 	return snap
 }
@@ -8942,6 +8961,9 @@ func (cs *ChainState) restoreFromRollbackLockedCtx(ctx context.Context, snap *bl
 	}
 	if snap.offlineReg != nil {
 		cs.offlineReg.Store(snap.offlineReg)
+	}
+	if snap.quantenWReg != nil {
+		cs.quantenWReg.Store(snap.quantenWReg)
 	}
 	cs.vorbehaltZurueck(snap.vorbehalte)
 	var toDelete []string

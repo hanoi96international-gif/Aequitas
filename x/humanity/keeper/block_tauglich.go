@@ -143,6 +143,17 @@ func auftragsFenster(tx *Transaction, jetzt int64) zeitFenster {
 			f.eng(sattAdd(z, -60), math.MaxInt64)
 		}
 	}
+	// Variante W (quanten_w_kette.go): Angaben nur an den W-Arten, erst ab
+	// dem Stichtag; Praegen und Anfrage im Fenster ihrer unterschriebenen Zeit.
+	if tx.QuantenW != nil || istQuantenWTxArt(tx.Type) {
+		if tx.QuantenW == nil || !istQuantenWTxArt(tx.Type) {
+			return zeitFenster{1, 0}
+		}
+		f.eng(quantenWAb(), math.MaxInt64)
+		if tx.Type == quantenWPraegenTxArt || tx.Type == quantenWAnfrageTxArt {
+			f.eng(sattAdd(tx.DistributionAt, -quantenWVoraus), sattAdd(tx.DistributionAt, quantenWAlt))
+		}
+	}
 	// PQ-Schluessel eines Pruefer-Dienstes (pruefer_dienst_pq.go): nur an
 	// seiner Art, erst ab dem Stichtag, issued_at im Nachweisfenster.
 	if tx.DienstPQ != nil || tx.Type == prueferDienstPQTxArt {
@@ -360,6 +371,12 @@ func blockTauglich(tx *Transaction, blockZeit int64) error {
 		return err
 	}
 	if istOfflineTxArt(tx.Type) && !offlineZeitGueltig(tx, blockZeit) {
+		return fmt.Errorf("%s: Zeit %d passt nicht zu Block %d", tx.Type, tx.DistributionAt, blockZeit)
+	}
+	if err := quantenWFeldErlaubt(tx, blockZeit); err != nil {
+		return err
+	}
+	if istQuantenWTxArt(tx.Type) && !quantenWZeitGueltig(tx, blockZeit) {
 		return fmt.Errorf("%s: Zeit %d passt nicht zu Block %d", tx.Type, tx.DistributionAt, blockZeit)
 	}
 	if tx.Type == quantenFreischaltungTxArt {

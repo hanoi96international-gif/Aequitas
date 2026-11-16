@@ -94,6 +94,7 @@ type registerSicherung struct {
 	umzug    *umzugRegister
 	quanten  *quantenGeldRegister
 	offline  *offlineStand
+	quantenW *quantenWStand
 }
 
 // registerSicherungLocked: Caller haelt cs.mu.
@@ -104,6 +105,7 @@ func (cs *ChainState) registerSicherungLocked() registerSicherung {
 		umzug:    cs.umzugReg.Load(),
 		quanten:  cs.quantenGeld.Load(),
 		offline:  cs.offlineReg.Load(),
+		quantenW: cs.quantenWReg.Load(),
 	}
 }
 
@@ -114,4 +116,5 @@ func (cs *ChainState) registerSicherungZurueckLocked(s registerSicherung) {
 	cs.umzugReg.Store(s.umzug)
 	cs.quantenGeld.Store(s.quanten)
 	cs.offlineReg.Store(s.offline)
+	cs.quantenWReg.Store(s.quantenW)
 }

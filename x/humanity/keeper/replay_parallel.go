@@ -184,7 +184,7 @@ func collectDisjointTransferBatch(txs []Transaction, start int) (batch []Transac
 		}
 		// Anmeldung einer Quanten-Note (quanten_geld.go): schreibt das
 		// Register -- immer seriell.
-		if tx.Quanten != nil {
+		if tx.Quanten != nil || tx.QuantenW != nil {
 			if i == start {
 				merkeBuendelAblehnung(&baFelder)
 			}

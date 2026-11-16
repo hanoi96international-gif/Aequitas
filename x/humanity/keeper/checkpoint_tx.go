@@ -308,6 +308,11 @@ func pruefeSnapshotKonfig(key, wert string) error {
 			return err
 		}
 	}
+	if key == quantenWKonfigSchluessel {
+		if _, err := quantenWRegisterLesen(wert); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
