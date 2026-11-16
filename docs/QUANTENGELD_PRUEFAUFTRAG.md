@@ -162,6 +162,25 @@ Annahmestellen. Ebenfalls **schlafend** (dasselbe `quantenWAbUnix`).
    Schaltkreis. Was davon muss vor einer Freischaltung anders werden?
 5. **Kettenseite.** Wie bei W, Punkt 7; Tests: `quanten_s_test.go`, `quanten_w_s_kette_test.go`,
    Mutationen zu jeder Regel.
+6. **Ausgabe über eine echte Leitung (S3, `forschung/quantengeld/ANALYSE.md` 5c,
+   `wiesner_parameter.py` Abschnitt S3).**
+   - Grundlage sind Kent u. a. 2022, Schema QT1, Lemma 2, Lemma 3 und Satz 1. Das Werkzeug
+     rechnet ihre Abb. 5 nach.
+   - Für unsere Stichprobe je Annahmestelle setzen wir die Mehrphotonen-Stellen als
+     bekannt an (Anteil ν/γ_det der gemeldeten). Auf den übrigen Stellen hat der Fälscher
+     mindestens λ(θ, β) Fehler. Daraus folgt eine exakte Binomialrechnung wie bei W. Ist
+     diese Übertragung von Satz 1 auf eine Stichprobe zulässig?
+   - Kents Satz 1 wird mit β = 0 angesetzt, weil Basen und Werte aus dem Zufall der
+     Validatoren kommen und das Gerät sie nur umsetzt. Welche Seitenkanäle des Senders
+     (Wellenlänge, Zeitpunkt, Phase; Tabelle VI, Annahmen A und G) müssen gemessen werden,
+     damit das trägt?
+   - Die Nutzerin meldet Λ. Danach zieht der Zufall der Kette eine öffentliche Teilmenge
+     von höchstens 16.384 Stellen, und darin liegen die geheimen Stichproben. Bleibt der
+     Anteil freier Stellen dabei erhalten, auch wenn die Nutzerin Λ geschickt wählt?
+7. **Größe der Stichprobe.** Heute prüft weder die Annahmestelle (`s_kette.py`) noch der
+   Knoten (`quanten_s.go`, `anmelden`), dass eine Stichprobe mindestens k Stellen hat. Wir
+   halten das für eine Lücke (ANALYSE.md 5c). Reicht es, wenn die Annahmestelle beim Laden
+   und der Knoten beim Anmelden mindestens k_note verlangen?
 
 ## Was erst die Hardware entscheidet (keine Frage an die Kryptografie)
 

@@ -113,7 +113,7 @@ Nicht übernommen, als Beobachtung für später:
        stehen (der Knoten ist Leiter). Sonst begrenzt die Blockzeit.
 4. **W:** mehrstufige Prüfung; Fehlerkorrektur messen; ~~Ende-zu-Ende-Test mit vier
    Knoten für den Dienst~~ (erledigt, siehe oben); Register als Tabelle (vor W6).
-   - **Peers aus dem Knoten** (PR „Validator-Dienst: Nachbarn des Knotens“, NUMMER):
+   - **Peers aus dem Knoten** (#557, gemergt):
      - Der Dienst fragt die Sync-Peers und Seeds (`BlockDAG.QuantenWNachbarn`) und dazu
        `QUANTEN_W_PEERS` ab. Alle gleichzeitig, mit 5 s Frist und 1 s Nachlauf, sobald
        t beisammen sind.
@@ -138,6 +138,21 @@ Nicht übernommen, als Beobachtung für später:
    - Mit Teleportation 12,5 %: keine sichere Toleranz unter 14,6 %.
    - Ab 20 µs 29–40 %, die Note ist verloren.
    - `wiesner_hardware.TOLERANZ` steht jetzt auf 4 % statt 15 %.
+10. **S3 – Ausgabe über eine echte Leitung gerechnet** (ANALYSE.md 5c,
+    `wiesner_parameter.py` Abschnitt S3, Prüfauftrag S Fragen 6 und 7):
+    - Kent u. a. 2022, QT1 (Lemma 2/3, Satz 1) ist umgesetzt, ihre Abb. 5 nachgerechnet.
+      Mutationen: sechs von sechs erkannt.
+    - Befund 1: Kents Handsender ist sicher, sobald Basen und Werte aus dem Zufall der
+      Validatoren kommen (β = 0).
+    - Befund 2: Die Tabelle für ideale Qubits reicht über eine Leitung nicht. Bei 10° und
+      3 % käme ein Fälscher in 1,4 % durch. `s3_stichprobe` rechnet mit λ(θ) und dem
+      Mehrphotonen-Anteil.
+    - **Nächster Schritt (Lücke):** Die Größe der Stichprobe prüft niemand. In
+      `s_kette.Annahmestelle`/`stelle_laden` und in `quanten_s.go` (`anmelden`) muss
+      mindestens k_note verlangt werden, fail-closed, mit Missbrauchstest und Prüfvektor.
+      Das berührt `quanten_w_s_kette.go` nicht.
+    - Danach: die Tabelle im Knoten mit θ und dem Anteil freier Stellen, dazu die Meldung
+      Λ und die öffentliche Teilmenge im Ablauf (vor S3 mit Gerät).
 
 ## Offene PRs
 
