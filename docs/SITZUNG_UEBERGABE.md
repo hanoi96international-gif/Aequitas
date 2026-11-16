@@ -116,12 +116,19 @@ Nicht übernommen, als Beobachtung für später:
    Register als Tabelle (vor W6); die vier Beobachtungen oben.
 5. **App:** W- und S-Anzeige.
 6. **Ionenfalle** (Konto des Betreibers), Vorlage 4 abschicken (Betreiber).
+7. **Gutachten (W5/S4):** Der Prüfauftrag (`docs/QUANTENGELD_PRUEFAUFTRAG.md`) ist auf
+   den Stand von W2c, W2d und Variante S gebracht. Vorher fragte er noch nach 15 % und
+   k = min(64, frei). Es fehlt nur noch ein Gutachter (Betreiber).
+8. **W3 auf dem echten Chip:** IBM-Lauf `wiesner = fern` mit Bezahlen, 4 Noten je Fall,
+   500 Schüsse (Lauf 43973771243). Er wartet auf die Freigabe von `quantenhardware`;
+   danach die Ergebnisse in HEUTE.md 3.3 eintragen.
 
 ## Offene PRs
 
 | Repo | PR | Inhalt | Nächster Schritt |
 |---|---|---|---|
-| – | – | keine offenen PRs | – |
+| Aequitas | #557 | Validator-Dienst: Nachbarn des Knotens (andere Sitzung, `claude/aequitas-fortsetzen-osrea1`) | deren Sache |
+| Aequitas | (dieser Zweig `claude/friendly-davinci-i4iww1`) | Prüfauftrag auf heutigen Stand, OFFEN.md aufgeräumt | CI grün abwarten, squash-mergen |
 
 Gemergt am 16.11.:
 - #555 (Validator-Dienst: Staffel, bis 8 Teile je Takt)

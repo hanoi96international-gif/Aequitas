@@ -22,11 +22,12 @@ bleibt: Nichts wird behauptet, was nicht gemessen oder bewiesen ist (QUANTENSICH
   - **3-Qubit-Schutz:** kein messbarer Gewinn.
 - **Ehrliche Grenze:** Geld zum Mitnehmen gibt es erst mit einem Quantenspeicher. Heute
   lebt eine Note Mikrosekunden.
-- **Ehrliche Schwäche, noch nicht behoben:** Die Toleranz liegt bei 15 %, geprüft werden
-  höchstens 64 Stellen (`K_MAX`). **Schlimmer als gedacht (Befund 16.11. abends,
-  `wiesner_parameter.py`):** Ein optimaler Kloner macht zwei Kopien mit je 14,6 % Fehler,
-  und das liegt unter 15 %. Eine geklonte Kopie besteht bei k = 64 mit 0,55. Die frühere
-  Angabe (3,8·10⁻⁵) beruhte auf einem Fälscher, der nur rät.
+- **Die frühere Schwäche ist behoben (W2c, #546):**
+  - **Befund:** Die alte Toleranz von 15 % bei höchstens 64 Stellen war gegen einen
+    optimalen Kloner gebrochen (14,6 % Fehler je Kopie). Eine geklonte Kopie bestand mit
+    0,55.
+  - **Jetzt:** Toleranz je Note und k_note aus der exakten Tabelle. Ein Fälscher kommt
+    damit höchstens mit 2⁻⁴⁰ durch.
 
 ## B. Zuerst: die Prüfung deutlich stärker machen
 
@@ -55,8 +56,10 @@ Prüfung) und Punkt 6 (Fehlerkorrektur messen).
    einem sequenziellen Test. Die Absprache-Rechnung dafür aufstellen.
 6. **Fehlerkorrektur je Stelle** (`hardware.praegen_geschuetzt`) gegen die Fehlerrate
    messen. Sie senkt e und damit τ.
-7. **Quantenmechanische Schranke** (0,927ⁿ, Molina–Vidick–Watrous) zusätzlich zum
-   klassischen Fälschermodell rechnen und in die Tabelle aufnehmen.
+7. ~~**Quantenmechanische Schranke**~~ – erledigt: Die Tabelle rechnet mit dem
+   optimalen quantenmechanischen Kloner (14,64 %), nicht mehr mit einem ratenden Fälscher.
+   Ob verschränkte Angriffe über mehrere Stellen mehr bringen, ist Frage 1 im Prüfauftrag
+   (`docs/QUANTENGELD_PRUEFAUFTRAG.md`).
 
 ## C. Weiter analysieren: Lösungen, die ohne Quantenspeicher auskommen
 
@@ -138,9 +141,10 @@ wird.
 
 - **IBM-Lauf `wiesner = fern` auf dem echten Chip:** Workflow „Quantengeld auf
   Quanten-Hardware“, Modus `ibm`. Den Lauf startet die Sitzung, die Freigabe gibst du.
-- **App 1.23.2:** Die APK ist veröffentlicht. Die **iOS-IPA fehlt noch im Release**:
-  release-ios mit Lauf 43884174136, danach `quelle.json` prüfen.
+- ~~**App 1.23.2**~~ – vollständig veröffentlicht (APK und IPA, `quelle.json` geprüft).
 - **Konto für eine Ionenfalle** (Quantinuum oder IonQ), für C.6 und W1.
 - **Anschreiben an den BMFTR-Verbund** verschicken (`ANSCHREIBEN.md`, Vorlage 2). Das ist
   W4 mit Speicher.
-- **Außerdem offen:** Stufe-0-Schlüssel, eigene Registrierung (Stufe 1 scharf), Gutachten.
+- **Gutachten:** Der Prüfauftrag (`docs/QUANTENGELD_PRUEFAUFTRAG.md`) ist auf dem Stand
+  vom 16.11. abends (W2c, W2d, Variante S). Einen Gutachter suchen.
+- **Außerdem offen:** Stufe-0-Schlüssel, eigene Registrierung (Stufe 1 scharf).
