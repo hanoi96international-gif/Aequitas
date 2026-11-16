@@ -36,24 +36,76 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 )
 
 const (
-	quantenWNMax       = 2048
+	quantenWNMax       = 16384
 	quantenWKMin       = 8
-	quantenWKMax       = 64
+	quantenWKMax       = 8192 // Pruefen hoechstens; Einloesen genau k_note
 	quantenWMinTreffer = 4
 	quantenWFehlMax    = 3
 	quantenWTMax       = 16
 	// quantenWZufallL: Laenge der Hash-Kette je Validator = hoechstens so
-	// viele Anfragen je Note (quantenWNMax / quantenWKMin).
+	// viele Anfragen je Note; der letzte Wert bleibt dem Einloesen.
 	quantenWZufallL  = 256
 	quantenWVMax     = 64
 	quantenWSalzBits = 124
-	// Toleranz 15 %: Fehler <= floor(15 * Treffer / 100) -- ganzzahlig,
-	// damit jeder Knoten genau gleich rundet.
-	quantenWTolProzent = 15
+	// Offenlegen in Teilen zu hoechstens so vielen Stellen, der Reihe nach.
+	quantenWOffenTeil = 64
+	// Merkle-Pfad hoechstens so lang (Tiefe bei quantenWNMax Blaettern).
+	quantenWPfadMax = 14
+	// Standard-Toleranz einer Note in Prozent (die Note waehlt ihre eigene).
+	quantenWTolStandard = 4
 )
+
+// SICHERE PRUEFGROESSE (W2c, ANALYSE.md „Befund Klonangriff“): ein optimaler
+// Kloner macht zwei Kopien mit je 14,6 % Fehler je Treffer; die alte feste
+// Toleranz von 15 % lag darueber. Jetzt hat jede Note ihre Toleranz tol
+// (Prozent, Schluessel der Tabelle; die Validatoren bestaetigen sie mit)
+// und daraus ihre Pruefgroesse k_note = quantenWKTabelle[tol][f16],
+// f16 = ceil(16 (t-1) / v) -- eine Absprache unter der Schwelle kennt
+// hoechstens den Anteil (t-1)/v der Stellen. Die Tabelle rechnet die
+// Spezifikation exakt (wiesner_parameter.py): ein Faelscher besteht
+// hoechstens mit 2^-40. Ganze Zahlen, kein Gleitkomma im Konsens; 0 = nicht
+// sicher moeglich (Praegen abgewiesen). Pruefvektor: k_tabelle.
+var quantenWKTabelle = map[int][9]int{
+	2:  {552, 600, 672, 752, 856, 984, 1168, 1408, 1760},
+	3:  {672, 752, 856, 984, 1144, 1368, 1680, 2144, 2880},
+	4:  {840, 960, 1112, 1304, 1576, 1960, 2536, 3472, 5200},
+	5:  {1064, 1240, 1464, 1784, 2240, 2936, 4096, 6264, 0},
+	6:  {1360, 1632, 2000, 2536, 3360, 4752, 7416, 0, 0},
+	8:  {2440, 3144, 4256, 6184, 0, 0, 0, 0, 0},
+	10: {5240, 7808, 0, 0, 0, 0, 0, 0, 0},
+}
+
+// quantenWF16: ceil(16 (t-1) / v).
+func quantenWF16(t, v int) int {
+	if v <= 0 || t < 1 {
+		return 1 << 30
+	}
+	return (16*(t-1) + v - 1) / v
+}
+
+// quantenWKNoteOverride: NUR Tests der Ablaeufe (0 = Tabelle gilt).
+var quantenWKNoteOverride atomic.Int64
+
+// quantenWKNote: Pruefgroesse einer Note mit Toleranz tol, Schwelle t und v
+// Validatoren; 0 = nicht sicher moeglich.
+func quantenWKNote(tol, t, v int) int {
+	if o := quantenWKNoteOverride.Load(); o != 0 {
+		if _, ok := quantenWKTabelle[tol]; !ok {
+			return 0
+		}
+		return int(o)
+	}
+	z, ok := quantenWKTabelle[tol]
+	f := quantenWF16(t, v)
+	if !ok || f < 0 || f >= len(z) {
+		return 0
+	}
+	return z[f]
+}
 
 // Fristen in Sekunden Blockzeit.
 const (
@@ -64,7 +116,7 @@ const (
 var (
 	quantenWDomPos  = []byte("aequitas-quanten-w-pos-v1|chain:1926|")
 	quantenWDomAuf  = []byte("aequitas-quanten-w-aufforderung-v1|chain:1926|")
-	quantenWDomBest = "aequitas-quanten-w-anteile-v2|chain:1926|"
+	quantenWDomBest = "aequitas-quanten-w-anteile-v3|chain:1926|"
 	quantenWDomZK   = []byte("aequitas-quanten-w-zufallskette-v1|")
 	quantenWDomZuf  = []byte("aequitas-quanten-w-zufall-v1|chain:1926|")
 	// quantenWP: 2^127 - 1 (Mersenne-Primzahl), Koerper der Anteile.
@@ -223,14 +275,6 @@ func quantenWPfandFuer(wert int64, k, n int) int64 {
 	return quantenWPfand
 }
 
-// quantenWReserve: so viele Stellen lassen Pruefungen fuer das Einloesen frei.
-func quantenWReserve(n int) int {
-	if n < quantenWKMax {
-		return n
-	}
-	return quantenWKMax
-}
-
 // quantenWAufforderung: k Stellen aus frei und je eine Basis, deterministisch
 // aus K, Anfrage und Saat (quantenWZufallSaat; SHA-256-Strom, Verwerfen gegen
 // Verzerrung, Fisher-Yates -- genau wie die Spezifikation).
@@ -283,12 +327,12 @@ const (
 )
 
 // quantenWUrteil: weniger als quantenWMinTreffer Treffer -> unentschieden;
-// sonst echt, wenn Fehler <= floor(15 % der Treffer).
-func quantenWUrteil(treffer, fehler int) quantenWErgebnis {
+// sonst echt, wenn Fehler * 100 <= tol * Treffer (tol der Note, ganzzahlig).
+func quantenWUrteil(treffer, fehler, tol int) quantenWErgebnis {
 	if treffer < quantenWMinTreffer {
 		return quantenWUnentschieden
 	}
-	if fehler*100 <= quantenWTolProzent*treffer {
+	if fehler*100 <= tol*treffer {
 		return quantenWEcht
 	}
 	return quantenWAbgewiesen
@@ -351,6 +395,6 @@ func quantenWAuswerten(K string, n, t, v int, wurzel [32]byte, stellen, basen, a
 // Bestaetigungen nach dem Praegefenster wertlos: eine tote Note laesst sich
 // nicht mit denselben Ankern neu praegen (ihre Hash-Ketten waeren teils
 // schon offen, der Zufall vorhersagbar).
-func quantenWBestaetigungNachricht(K string, wurzel [32]byte, n, t int, validatoren []string, x int, anker [32]byte, zeit int64) string {
-	return fmt.Sprintf("%s%s|%x|%d|%d|%s|%d|%x|%d", quantenWDomBest, K, wurzel, n, t, strings.Join(validatoren, ","), x, anker, zeit)
+func quantenWBestaetigungNachricht(K string, wurzel [32]byte, n, t int, validatoren []string, x int, anker [32]byte, zeit int64, tol int) string {
+	return fmt.Sprintf("%s%s|%x|%d|%d|%s|%d|%x|%d|%d", quantenWDomBest, K, wurzel, n, t, strings.Join(validatoren, ","), x, anker, zeit, tol)
 }

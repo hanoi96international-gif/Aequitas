@@ -74,23 +74,25 @@ const (
 	quantenWFristTxArt      = "quanten_w_frist"
 
 	quantenWKonfigSchluessel = "quanten_w"
-	quantenWDomPraegen       = "aequitas-quanten-w-praegen-v1"
+	quantenWDomPraegen       = "aequitas-quanten-w-praegen-v2"
 	quantenWDomAnfrage       = "aequitas-quanten-w-anfrage-v1"
 	quantenWDomAntwort       = "aequitas-quanten-w-antwort-v1"
 
 	// Lebende Noten im Register (das Register steht als EIN Wert in
-	// chain_config und wird je Aenderung ganz geschrieben, hoechstens
-	// ~10 KB je Note). Mehr Noten brauchen eine eigene Tabelle (wie QG3) --
-	// eine Entscheidung fuer W6, nicht fuer den schlafenden Stand.
-	quantenWNotenHoechstens = 64
+	// chain_config und wird je Aenderung ganz geschrieben). Mit sicheren
+	// Pruefgroessen (W2c) traegt eine Note bis ~4 KB Bitfeld und eine offene
+	// Anfrage bis ~80 KB; darum hoechstens 16 Noten. Mehr Noten brauchen eine
+	// eigene Tabelle (wie QG3) -- eine Entscheidung fuer W6.
+	quantenWNotenHoechstens = 16
 	// Gemerkte tote Noten; voll = kein neues Praegen bis zum Ablauf (fail-closed).
 	quantenWToteHoechstens = 1024
 	// Praegen und Anfrage: hoechstens 5 min nach und einen Tag vor dem Block
 	// unterschrieben (wie Offline-Bargeld und Umzug).
 	quantenWVoraus int64 = 300
 	quantenWAlt    int64 = 86400
-	// Koerper der Endpunkte: eine Offenlegung mit 64 Stellen, 16 Anteilen
-	// und 11 Pfadknoten je Stelle sind ~95 KB JSON.
+	// Koerper der Endpunkte: ein Teil der Offenlegung mit 64 Stellen, 16
+	// Anteilen und 14 Pfadknoten je Stelle sind ~110 KB JSON; eine Antwort
+	// mit 8192 Bits ~8 KB.
 	quantenWKoerperMax = 160 << 10
 	burstQuantenWJeIP  = 20
 	// quantenWBuchSpiel: wie weit BuchAt (die Zeit der Annahme, mit der jeder
@@ -166,6 +168,7 @@ type QuantenWAngaben struct {
 	Anker          []string `json:"anker,omitempty"`
 	Bestaetigungen []string `json:"bestaetigungen,omitempty"`
 	Deckung        int64    `json:"deckung,omitempty"`
+	Tol            int      `json:"tol,omitempty"` // Toleranz in Prozent (quantenWKTabelle)
 	// Anfrage
 	Stellen int    `json:"stellen,omitempty"`
 	An      string `json:"an,omitempty"` // Einloesen an ("" = pruefen)
@@ -174,6 +177,7 @@ type QuantenWAngaben struct {
 	Zufall []QuantenWZufall `json:"zufall,omitempty"`
 	Bits   string           `json:"bits,omitempty"` // Antwort: "0101..."
 	Offen  []QuantenWOffen  `json:"offen,omitempty"`
+	Ab     int              `json:"ab,omitempty"` // Offenlegen: erste Stelle dieses Teils
 	// Unterschrift der Wallet (Praegen, Anfrage, Antwort): EIP-191 ODER ML-DSA.
 	WalletSig string   `json:"wallet_sig,omitempty"`
 	PQ        *PQKonto `json:"pq,omitempty"`
@@ -221,7 +225,7 @@ func quantenWNurEigeneFelder(tx *Transaction) bool {
 	q.K, q.Index = "", 0
 	switch tx.Type {
 	case quantenWPraegenTxArt:
-		q.N, q.T, q.Wurzel, q.Validatoren, q.Anker, q.Bestaetigungen, q.Deckung, q.WalletSig, q.PQ, q.Anteile = 0, 0, "", nil, nil, nil, 0, "", nil, 0
+		q.N, q.T, q.Wurzel, q.Validatoren, q.Anker, q.Bestaetigungen, q.Deckung, q.WalletSig, q.PQ, q.Anteile, q.Tol = 0, 0, "", nil, nil, nil, 0, "", nil, 0, 0
 		return reflect.DeepEqual(q, QuantenWAngaben{}) && tx.QuantenW.Index == 0
 	case quantenWAnfrageTxArt:
 		q.Stellen, q.An, q.WalletSig, q.PQ, q.Pfand = 0, "", "", nil, 0
@@ -232,8 +236,8 @@ func quantenWNurEigeneFelder(tx *Transaction) bool {
 		q.Bits, q.WalletSig, q.PQ = "", "", nil
 		return reflect.DeepEqual(q, QuantenWAngaben{}) && tx.DistributionAt == 0
 	case quantenWOffenlegenTxArt, quantenWFristTxArt:
-		q.Offen, q.Pfand, q.PfandAn, q.Wert, q.WertAn, q.Urteil = nil, 0, "", 0, "", ""
-		if tx.Type == quantenWFristTxArt && tx.QuantenW.Offen != nil {
+		q.Offen, q.Ab, q.Pfand, q.PfandAn, q.Wert, q.WertAn, q.Urteil = nil, 0, 0, "", 0, "", ""
+		if tx.Type == quantenWFristTxArt && (tx.QuantenW.Offen != nil || tx.QuantenW.Ab != 0) {
 			return false
 		}
 		return reflect.DeepEqual(q, QuantenWAngaben{}) && tx.Wallet == "" && tx.DistributionAt == 0
@@ -245,9 +249,9 @@ func quantenWNurEigeneFelder(tx *Transaction) bool {
 
 // ------------------------------------------------------------ Saetze
 
-func quantenWPraegenNachricht(wallet, K string, n, t int, wurzel string, validatoren, anker []string, deckung, zeit int64) string {
-	return fmt.Sprintf("%s|chain:%d|%s|%s|%d|%d|%s|%s|%s|%d|%d", quantenWDomPraegen, eingefroreneChainID,
-		strings.ToLower(wallet), K, n, t, wurzel, strings.Join(validatoren, ","), strings.Join(anker, ","), deckung, zeit)
+func quantenWPraegenNachricht(wallet, K string, n, t int, wurzel string, validatoren, anker []string, deckung, zeit int64, tol int) string {
+	return fmt.Sprintf("%s|chain:%d|%s|%s|%d|%d|%s|%s|%s|%d|%d|%d", quantenWDomPraegen, eingefroreneChainID,
+		strings.ToLower(wallet), K, n, t, wurzel, strings.Join(validatoren, ","), strings.Join(anker, ","), deckung, zeit, tol)
 }
 
 func quantenWAnfrageNachricht(wallet, K string, index, k int, an string, zeit int64) string {
@@ -353,11 +357,13 @@ type quantenWNoteForm struct {
 	T           int              `json:"t"`
 	Wurzel      string           `json:"wurzel"`
 	Validatoren []string         `json:"validatoren"`
+	Tol         int              `json:"tol"`
+	KNote       int              `json:"k_note"`
 	Z           []string         `json:"z"`
 	ZIndex      []int            `json:"z_index"`
 	Anteile     int64            `json:"anteile"`
 	Zeit        int64            `json:"zeit"`
-	Benutzt     []int            `json:"benutzt,omitempty"`
+	Benutzt     string           `json:"benutzt,omitempty"` // Bitfeld, quantenWBitfeld
 	Fehl        int              `json:"fehl,omitempty"`
 	Gesperrt    bool             `json:"gesperrt,omitempty"`
 	Zaehl       int              `json:"zaehl,omitempty"`
@@ -381,11 +387,8 @@ func (r *quantenWRegister) kodiert() string {
 	var f quantenWRegisterForm
 	for k, e := range r.Noten {
 		nf := quantenWNoteForm{K: k, N: e.note.N, T: e.note.T, Wurzel: hex.EncodeToString(e.note.Wurzel[:]),
-			Validatoren: e.note.Validatoren, ZIndex: e.note.ZIndex, Anteile: e.Anteile, Zeit: e.Zeit,
-			Benutzt: e.note.benutztListe(), Fehl: e.note.Fehl, Gesperrt: e.note.Gesperrt, Zaehl: e.note.Zaehl, Anfrage: e.note.Anfrage}
-		if len(nf.Benutzt) == 0 {
-			nf.Benutzt = nil
-		}
+			Validatoren: e.note.Validatoren, Tol: e.note.Tol, KNote: e.note.KNote, ZIndex: e.note.ZIndex, Anteile: e.Anteile, Zeit: e.Zeit,
+			Benutzt: quantenWBitfeld(e.note.Benutzt, e.note.N), Fehl: e.note.Fehl, Gesperrt: e.note.Gesperrt, Zaehl: e.note.Zaehl, Anfrage: e.note.Anfrage}
 		for _, z := range e.note.Z {
 			nf.Z = append(nf.Z, hex.EncodeToString(z[:]))
 		}
@@ -401,6 +404,42 @@ func (r *quantenWRegister) kodiert() string {
 		panic(fmt.Sprintf("quanten_w: Register nicht kodierbar: %v", err)) // nur Zahlen, Texte, Listen
 	}
 	return string(roh)
+}
+
+// quantenWBitfeld: die benutzten Stellen als Bitfeld (Stelle i = Bit i%8
+// von Byte i/8), hexadezimal, genau ceil(n/8) Bytes; leer, wenn keine.
+// Kanonisch: jeder Knoten schreibt dieselben Bytes.
+func quantenWBitfeld(benutzt map[int]bool, n int) string {
+	if len(benutzt) == 0 {
+		return ""
+	}
+	b := make([]byte, (n+7)/8)
+	for i := range benutzt {
+		b[i/8] |= 1 << (i % 8)
+	}
+	return hex.EncodeToString(b)
+}
+
+// quantenWBitfeldLesen: die Stellen aus dem Bitfeld; nur die kanonische Form
+// (Laenge, Kleinschreibung, keine Bits ab n, nicht leer kodiert).
+func quantenWBitfeldLesen(s string, n int) ([]int, bool) {
+	if s == "" {
+		return nil, true
+	}
+	b, err := hex.DecodeString(s)
+	if err != nil || len(b) != (n+7)/8 || s != hex.EncodeToString(b) {
+		return nil, false
+	}
+	var out []int
+	for i := 0; i < len(b)*8; i++ {
+		if b[i/8]&(1<<(i%8)) != 0 {
+			if i >= n {
+				return nil, false
+			}
+			out = append(out, i)
+		}
+	}
+	return out, len(out) > 0
 }
 
 func quantenWBitsGueltig(b []int) bool {
@@ -438,7 +477,8 @@ func quantenWRegisterLesen(s string) (*quantenWRegister, error) {
 			return nil, fmt.Errorf("quanten_w: Note %d: K oder Ordnung", i)
 		}
 		wurzel, ok := quantenWHex32(nf.Wurzel)
-		if !ok || quantenWPraegenPruefen(false, nf.K, nf.N, nf.T, nf.Validatoren, len(nf.Z), len(nf.Validatoren)) != nil ||
+		kn, errForm := quantenWPraegenPruefen(false, nf.K, nf.N, nf.T, nf.Validatoren, len(nf.Z), len(nf.Validatoren), nf.Tol)
+		if !ok || errForm != nil || nf.KNote != kn ||
 			len(nf.ZIndex) != len(nf.Validatoren) || nf.Anteile <= 0 || nf.Anteile > quantenAnteileHoechstens-summe ||
 			nf.Fehl < 0 || nf.Gesperrt != (nf.Fehl >= quantenWFehlMax) || nf.Zaehl < 0 || nf.Zaehl > quantenWZufallL || nf.Zeit <= 0 {
 			return nil, fmt.Errorf("quanten_w: Note %s: Form", nf.K[:12])
@@ -452,18 +492,17 @@ func quantenWRegisterLesen(s string) (*quantenWRegister, error) {
 			}
 			anker = append(anker, z)
 		}
-		e := neueQuantenWNote(nf.N, nf.T, wurzel, nf.Validatoren, anker)
+		e := neueQuantenWNote(nf.N, nf.T, wurzel, nf.Validatoren, anker, nf.Tol, kn)
 		copy(e.ZIndex, nf.ZIndex)
-		for i, b := range nf.Benutzt {
-			if b < 0 || b >= nf.N || (i > 0 && b <= nf.Benutzt[i-1]) {
-				return nil, fmt.Errorf("quanten_w: Note %s: benutzte Stellen", nf.K[:12])
-			}
+		benutzt, ok := quantenWBitfeldLesen(nf.Benutzt, nf.N)
+		if !ok {
+			return nil, fmt.Errorf("quanten_w: Note %s: benutzte Stellen", nf.K[:12])
 		}
-		e.verbrauchen(nf.Benutzt)
-		if nf.N-len(e.Benutzt) < quantenWKMin && nf.Anfrage == nil {
+		e.verbrauchen(benutzt)
+		e.Fehl, e.Gesperrt, e.Zaehl = nf.Fehl, nf.Gesperrt, nf.Zaehl
+		if e.erschoepftNoetig() && nf.Anfrage == nil {
 			return nil, fmt.Errorf("quanten_w: Note %s: erschoepft, aber lebendig", nf.K[:12])
 		}
-		e.Fehl, e.Gesperrt, e.Zaehl = nf.Fehl, nf.Gesperrt, nf.Zaehl
 		if a := nf.Anfrage; a != nil {
 			gezogen := a.Basen != nil
 			if a.Index != nf.Zaehl-1 || a.K < quantenWKMin || a.K > quantenWKMax || !kanonischeAdresse(a.Von) || a.Pfand < quantenWPfand ||
@@ -471,7 +510,9 @@ func quantenWRegisterLesen(s string) (*quantenWRegister, error) {
 				(gezogen != (a.Stellen != nil)) || (!gezogen && (a.Antwort != nil || a.Gezogen != 0)) ||
 				(gezogen && (len(a.Stellen) != a.K || len(a.Basen) != a.K || !quantenWBitsGueltig(a.Basen) || a.Gezogen < a.Zeit)) ||
 				(a.Antwort != nil && (len(a.Antwort) != a.K || !quantenWBitsGueltig(a.Antwort) || a.AntwortZeit < a.Gezogen)) ||
-				(a.Antwort == nil && a.AntwortZeit != 0) {
+				(a.Antwort == nil && a.AntwortZeit != 0) ||
+				(a.EinloesenAn != "" && a.K != kn) || a.Offen < 0 || a.Offen > a.K || (a.Antwort == nil && a.Offen != 0) ||
+				a.Fehler < 0 || a.Fehler > a.Treffer || a.Treffer > a.Offen || (a.Offen == a.K && a.K > 0) {
 				return nil, fmt.Errorf("quanten_w: Note %s: offene Anfrage", nf.K[:12])
 			}
 			for i, st := range a.Stellen {
@@ -697,20 +738,24 @@ func (cs *ChainState) quantenWBescheidLocked(ctx context.Context, tx *Transactio
 
 	case quantenWOffenlegenTxArt:
 		a := e.Anfrage
-		if a == nil || q.Index != a.Index || len(q.Offen) == 0 || len(q.Offen) > quantenWKMax {
-			return quantenWBefund("quanten_w_form", "Offenlegen: Nummer oder Zahl der Stellen"), nil
+		if a == nil || q.Index != a.Index || len(q.Offen) == 0 || len(q.Offen) > quantenWOffenTeil || q.Ab < 0 {
+			return quantenWBefund("quanten_w_form", "Offenlegen: Nummer, Beginn oder Zahl der Stellen"), nil
 		}
 		offen, ok := quantenWOffenLesen(q.Offen)
 		if !ok {
 			return quantenWBefund("quanten_w_form", "Offenlegen: Anteile oder Pfade nicht in gueltiger Form"), nil
 		}
 		pfand = a.Pfand
-		urteil, b, err := e.offenlegen(q.K, offen, blockZeit)
+		urteil, b, fertig, err := e.offenlegen(q.K, q.Ab, offen, blockZeit)
 		if err != nil {
 			return quantenWBefund("quanten_w_regel", "%v", err), nil
 		}
 		buchung = b
-		u.felder.Urteil = map[quantenWErgebnis]string{quantenWEcht: "echt", quantenWAbgewiesen: "abgewiesen", quantenWUnentschieden: "unentschieden"}[urteil]
+		if fertig {
+			u.felder.Urteil = map[quantenWErgebnis]string{quantenWEcht: "echt", quantenWAbgewiesen: "abgewiesen", quantenWUnentschieden: "unentschieden"}[urteil]
+		} else {
+			u.felder.Urteil = "teil"
+		}
 
 	case quantenWFristTxArt:
 		a := e.Anfrage
@@ -785,17 +830,18 @@ func (cs *ChainState) quantenWPraegenBescheidLocked(ctx context.Context, tx *Tra
 		}
 		anker = append(anker, a)
 	}
-	if err := quantenWPraegenPruefen(false, q.K, q.N, q.T, q.Validatoren, len(anker), len(q.Validatoren)); err != nil {
+	kn, err := quantenWPraegenPruefen(false, q.K, q.N, q.T, q.Validatoren, len(anker), len(q.Validatoren), q.Tol)
+	if err != nil {
 		return quantenWBefund("quanten_w_form", "%v", err), nil
 	}
-	if err := quantenWUnterschrift(q, quantenWPraegenNachricht(wallet, q.K, q.N, q.T, q.Wurzel, q.Validatoren, q.Anker, q.Deckung, zeit), wallet, blockZeit); err != nil {
+	if err := quantenWUnterschrift(q, quantenWPraegenNachricht(wallet, q.K, q.N, q.T, q.Wurzel, q.Validatoren, q.Anker, q.Deckung, zeit, q.Tol), wallet, blockZeit); err != nil {
 		return quantenWBefund("quanten_w_unterschrift", "Praeger %s: %v", kurzAdresse(wallet), err), nil
 	}
 	// Jeder Validator: Bestaetigung (mit Anker und Praegezeit), gebunden an
 	// einen Menschen, und alle an verschiedene.
 	betreiber := map[string]bool{}
 	for x, v := range q.Validatoren {
-		msg := quantenWBestaetigungNachricht(q.K, wurzel, q.N, q.T, q.Validatoren, x+1, anker[x], zeit)
+		msg := quantenWBestaetigungNachricht(q.K, wurzel, q.N, q.T, q.Validatoren, x+1, anker[x], zeit, q.Tol)
 		if !kanonischeSignatur(q.Bestaetigungen[x]) || pruefePersonalSignGemerkt(msg, q.Bestaetigungen[x], v) != nil {
 			return quantenWBefund("quanten_w_bestaetigung", "Validator %d (%s) hat nicht bestaetigt", x+1, kurzAdresse(v)), nil
 		}
@@ -836,7 +882,7 @@ func (cs *ChainState) quantenWPraegenBescheidLocked(ctx context.Context, tx *Tra
 	if len(neu.Tote) >= quantenWToteHoechstens {
 		return quantenWBefund("quanten_w_voll", "zu viele tote Noten im Praegefenster"), nil
 	}
-	neu.Noten[q.K] = &quantenWEintrag{note: neueQuantenWNote(q.N, q.T, wurzel, q.Validatoren, anker), Anteile: anteile, Zeit: zeit}
+	neu.Noten[q.K] = &quantenWEintrag{note: neueQuantenWNote(q.N, q.T, wurzel, q.Validatoren, anker, q.Tol, kn), Anteile: anteile, Zeit: zeit}
 	return quantenWBescheid{reg: neu, wege: []quantenWWeg{{wallet, quantenWTopfAddr, q.Deckung}}, felder: QuantenWAngaben{Anteile: anteile}}, nil
 }
 
@@ -844,7 +890,7 @@ func (cs *ChainState) quantenWPraegenBescheidLocked(ctx context.Context, tx *Tra
 func quantenWOffenLesen(in []QuantenWOffen) ([]quantenWOffenStelle, bool) {
 	var out []quantenWOffenStelle
 	for _, o := range in {
-		if len(o.Anteile) == 0 || len(o.Anteile) > quantenWTMax || len(o.Pfad) > 12 {
+		if len(o.Anteile) == 0 || len(o.Anteile) > quantenWTMax || len(o.Pfad) > quantenWPfadMax {
 			return nil, false
 		}
 		var s quantenWOffenStelle
@@ -1078,6 +1124,7 @@ func (cs *ChainState) quantenWNoteAnsicht(ctx context.Context, k string) map[str
 	reg := cs.quantenWJetzt()
 	if e := reg.Noten[k]; e != nil {
 		return map[string]interface{}{"k": k, "n": e.note.N, "t": e.note.T, "validatoren": e.note.Validatoren,
+			"tol": e.note.Tol, "k_note": e.note.KNote,
 			"frei": e.note.N - len(e.note.Benutzt), "fehl": e.note.Fehl, "gesperrt": e.note.Gesperrt, "zaehl": e.note.Zaehl,
 			"wert_mikro": quantenWert(e.Anteile, cs.quantenWMikroLocked(ctx, quantenWTopfAddr), reg.summeAnteile()),
 			"anfrage":    e.note.Anfrage}

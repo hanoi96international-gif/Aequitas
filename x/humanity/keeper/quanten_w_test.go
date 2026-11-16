@@ -4,11 +4,13 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"math"
 	"math/big"
 	"math/rand"
 	"os"
 	"reflect"
+	"strconv"
 	"testing"
 )
 
@@ -18,31 +20,35 @@ import (
 // jeden Missbrauch ab.
 
 type qwVektor struct {
-	K            string     `json:"K"`
-	N            int        `json:"n"`
-	T            int        `json:"t"`
-	Validatoren  []string   `json:"validatoren"`
-	Werte        []string   `json:"werte"`
-	Pruefsummen  []string   `json:"pruefsummen"`
-	Wurzel       string     `json:"wurzel"`
-	Pfade        [][]string `json:"pfade"`
-	Anteile      [][]string `json:"anteile"`
-	Anker        []string   `json:"anker"`
-	Zufall0      []string   `json:"zufall0"`
-	Zufall3      []string   `json:"zufall3"`
-	Saat         string     `json:"saat"`
-	AnfrageID    string     `json:"anfrage_id"`
-	Stellen      []int      `json:"stellen"`
-	Aufforderung []int      `json:"aufforderung"`
-	Antwort      []int      `json:"antwort"`
-	Treffer      int        `json:"treffer"`
-	Fehler       int        `json:"fehler"`
-	Urteil       *bool      `json:"urteil"`
-	Bestaetigung string     `json:"bestaetigung2"`
-	Pfand        [][4]int64 `json:"pfand"`
-	F2Auf        []int      `json:"fall2_aufforderung"`
-	F2Ein        []int      `json:"fall2_antwort_1fehler"`
-	F2Zwei       []int      `json:"fall2_antwort_2fehler"`
+	K            string           `json:"K"`
+	N            int              `json:"n"`
+	T            int              `json:"t"`
+	Validatoren  []string         `json:"validatoren"`
+	Werte        []string         `json:"werte"`
+	Pruefsummen  []string         `json:"pruefsummen"`
+	Wurzel       string           `json:"wurzel"`
+	Pfade        [][]string       `json:"pfade"`
+	Anteile      [][]string       `json:"anteile"`
+	Anker        []string         `json:"anker"`
+	Zufall0      []string         `json:"zufall0"`
+	Zufall3      []string         `json:"zufall3"`
+	Saat         string           `json:"saat"`
+	AnfrageID    string           `json:"anfrage_id"`
+	Stellen      []int            `json:"stellen"`
+	Aufforderung []int            `json:"aufforderung"`
+	Antwort      []int            `json:"antwort"`
+	Treffer      int              `json:"treffer"`
+	Fehler       int              `json:"fehler"`
+	Urteil       *bool            `json:"urteil"`
+	Bestaetigung string           `json:"bestaetigung2"`
+	Pfand        [][4]int64       `json:"pfand"`
+	Tol          int              `json:"tol"`
+	F2Tol        int              `json:"fall2_tol"`
+	KTabelle     map[string][]int `json:"k_tabelle"`
+	KNote        [][4]int         `json:"k_note"`
+	F2Auf        []int            `json:"fall2_aufforderung"`
+	F2Ein        []int            `json:"fall2_antwort_1fehler"`
+	F2Zwei       []int            `json:"fall2_antwort_2fehler"`
 }
 
 func qwLaden(t *testing.T) qwVektor {
@@ -158,7 +164,7 @@ func TestQuantenW_GleichWieSpezifikation(t *testing.T) {
 	if err != nil || tr != v.Treffer || fe != v.Fehler {
 		t.Fatalf("Auswerten %d/%d (%v), Spezifikation %d/%d", tr, fe, err, v.Treffer, v.Fehler)
 	}
-	u := quantenWUrteil(tr, fe)
+	u := quantenWUrteil(tr, fe, v.Tol)
 	if (v.Urteil == nil) != (u == quantenWUnentschieden) || (v.Urteil != nil && *v.Urteil != (u == quantenWEcht)) {
 		t.Fatalf("Urteil %v, Spezifikation %v", u, v.Urteil)
 	}
@@ -169,12 +175,26 @@ func TestQuantenW_GleichWieSpezifikation(t *testing.T) {
 		soll    quantenWErgebnis
 	}{{v.F2Ein, quantenWEcht}, {v.F2Zwei, quantenWAbgewiesen}} {
 		tr, fe, err := quantenWAuswerten(v.K, v.N, v.T, 5, wurzel, alle, v.F2Auf, c.antwort, qwOffen(t, v, alle, 2, 3, 5))
-		if err != nil || quantenWUrteil(tr, fe) != c.soll {
-			t.Fatalf("Fall 2: %d Treffer, %d Fehler -> %v, soll %v (%v)", tr, fe, quantenWUrteil(tr, fe), c.soll, err)
+		if err != nil || quantenWUrteil(tr, fe, v.F2Tol) != c.soll {
+			t.Fatalf("Fall 2: %d Treffer, %d Fehler -> %v, soll %v (%v)", tr, fe, quantenWUrteil(tr, fe, v.F2Tol), c.soll, err)
 		}
 	}
 	// Bestaetigungssatz von Validator 2 (mit Anker und Praegezeit) wie die Spezifikation.
-	if b := quantenWBestaetigungNachricht(v.K, wurzel, v.N, v.T, v.Validatoren, 2, qwH32(t, v.Anker[1]), 1794758400); b != v.Bestaetigung {
+	// Sichere Pruefgroessen: Tabelle und k_note wie die Spezifikation.
+	if len(v.KTabelle) != len(quantenWKTabelle) {
+		t.Fatalf("k_tabelle: %d Toleranzen, Knoten %d", len(v.KTabelle), len(quantenWKTabelle))
+	}
+	for tol, zeile := range quantenWKTabelle {
+		if fmt.Sprint(v.KTabelle[strconv.Itoa(tol)]) != fmt.Sprint(zeile[:]) {
+			t.Fatalf("k_tabelle[%d]: Spezifikation %v, Knoten %v", tol, v.KTabelle[strconv.Itoa(tol)], zeile)
+		}
+	}
+	for _, c := range v.KNote {
+		if got := quantenWKNote(c[0], c[1], c[2]); got != c[3] {
+			t.Fatalf("k_note(tol %d, t %d, v %d) = %d, Spezifikation %d", c[0], c[1], c[2], got, c[3])
+		}
+	}
+	if b := quantenWBestaetigungNachricht(v.K, wurzel, v.N, v.T, v.Validatoren, 2, qwH32(t, v.Anker[1]), 1794758400, v.Tol); b != v.Bestaetigung {
 		t.Fatalf("Bestaetigung %q, Spezifikation %q", b, v.Bestaetigung)
 	}
 	// Pfand wie die Spezifikation (auch nahe am Ueberlauf).
@@ -294,8 +314,39 @@ func (p *qwPraegung) validatoren() []string {
 	return out
 }
 
+// qwLK: Pruefgroesse der Ablauf-Tests (labor; sicher ist erst k_note aus
+// quantenWKTabelle -- eigene Tests unten).
+const qwLK = 64
+
 func (p *qwPraegung) note() *quantenWNote {
-	return neueQuantenWNote(p.n, p.t, p.wurzel, p.validatoren(), p.anker)
+	return neueQuantenWNote(p.n, p.t, p.wurzel, p.validatoren(), p.anker, quantenWTolStandard, qwLK)
+}
+
+// qwLabor: k_note fuer Ablauf-Tests ueber die Kette auf qwLK.
+func qwLabor(t *testing.T) {
+	t.Helper()
+	quantenWKNoteOverride.Store(qwLK)
+	t.Cleanup(func() { quantenWKNoteOverride.Store(0) })
+}
+
+// qwOffenlegen: alle Stellen in Teilen; Fehler des ersten fehlerhaften Teils.
+func qwOffenlegen(e *quantenWNote, K string, offen []quantenWOffenStelle, zeit int64) (quantenWErgebnis, quantenWBuchung, error) {
+	ab := 0
+	if e.Anfrage != nil {
+		ab = e.Anfrage.Offen
+	}
+	for {
+		bis := min(ab+quantenWOffenTeil, len(offen))
+		if bis <= ab {
+			_, _, _, err := e.offenlegen(K, ab, offen[ab:bis], zeit)
+			return 0, quantenWBuchung{}, err
+		}
+		u, b, fertig, err := e.offenlegen(K, ab, offen[ab:bis], zeit)
+		if err != nil || fertig {
+			return u, b, err
+		}
+		ab = bis
+	}
 }
 
 // zufall: die Werte fuer Anfrage j (Validatoren 0-basiert; ohne Angabe alle).
@@ -356,7 +407,7 @@ func qwRaten(r *rand.Rand, n int) []int {
 func qwRunde(t *testing.T, p *qwPraegung, e *quantenWNote, von string, k int, einloesenAn string, antwort func(st, ba []int) []int, zeit int64) (quantenWErgebnis, quantenWBuchung) {
 	t.Helper()
 	if einloesenAn != "" {
-		k = min(quantenWKMax, e.N-len(e.Benutzt))
+		k = e.KNote
 	}
 	if err := e.anfragen(von, k, einloesenAn, quantenWPfandFuer(5_000_000, k, e.N), zeit); err != nil {
 		t.Fatalf("anfragen: %v", err)
@@ -369,7 +420,7 @@ func qwRunde(t *testing.T, p *qwPraegung, e *quantenWNote, von string, k int, ei
 	if err := e.antworten(von, antwort(a.Stellen, a.Basen), zeit+10); err != nil {
 		t.Fatalf("antworten: %v", err)
 	}
-	u, b, err := e.offenlegen(p.K, p.offen(a.Stellen, 1, 2, 3), zeit+15)
+	u, b, err := qwOffenlegen(e, p.K, p.offen(a.Stellen, 1, 2, 3), zeit+15)
 	if err != nil {
 		t.Fatalf("offenlegen: %v", err)
 	}
@@ -377,29 +428,81 @@ func qwRunde(t *testing.T, p *qwPraegung, e *quantenWNote, von string, k int, ei
 }
 
 func TestQuantenW_PraegenForm(t *testing.T) {
+	qwLabor(t)
 	val := []string{"a", "b", "c", "d", "e"}
 	K := "ab" + "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcd"
-	if err := quantenWPraegenPruefen(false, K, 200, 3, val, 5, 5); err != nil {
+	pp := func(vorhanden bool, K string, n, tt int, val []string, anker, best int) error {
+		_, err := quantenWPraegenPruefen(vorhanden, K, n, tt, val, anker, best, quantenWTolStandard)
+		return err
+	}
+	if err := pp(false, K, 200, 3, val, 5, 5); err != nil {
 		t.Fatalf("gute Note abgewiesen: %v", err)
 	}
 	for name, f := range map[string]func() error{
-		"doppelt":                  func() error { return quantenWPraegenPruefen(true, K, 200, 3, val, 5, 5) },
-		"K gross":                  func() error { return quantenWPraegenPruefen(false, "AB"+K[2:], 200, 3, val, 5, 5) },
-		"zu gross":                 func() error { return quantenWPraegenPruefen(false, K, quantenWNMax+1, 3, val, 5, 5) },
-		"zu klein":                 func() error { return quantenWPraegenPruefen(false, K, quantenWKMin-1, 3, val, 5, 5) },
-		"t ueber v":                func() error { return quantenWPraegenPruefen(false, K, 200, 6, val, 5, 5) },
-		"Validator doppelt":        func() error { return quantenWPraegenPruefen(false, K, 200, 2, []string{"a", "a", "b"}, 3, 3) },
-		"Validator leer":           func() error { return quantenWPraegenPruefen(false, K, 200, 2, []string{"a", "", "b"}, 3, 3) },
-		"ein Validator fehlt":      func() error { return quantenWPraegenPruefen(false, K, 200, 3, val, 5, 4) },
-		"Anker fehlt":              func() error { return quantenWPraegenPruefen(false, K, 200, 3, val, 4, 5) },
-		"t erfuellt, nicht alle v": func() error { return quantenWPraegenPruefen(false, K, 200, 3, val, 5, 3) },
+		"doppelt":                  func() error { return pp(true, K, 200, 3, val, 5, 5) },
+		"K gross":                  func() error { return pp(false, "AB"+K[2:], 200, 3, val, 5, 5) },
+		"zu gross":                 func() error { return pp(false, K, quantenWNMax+1, 3, val, 5, 5) },
+		"kleiner als k_note":       func() error { return pp(false, K, qwLK-1, 3, val, 5, 5) },
+		"t ueber v":                func() error { return pp(false, K, 200, 6, val, 5, 5) },
+		"Validator doppelt":        func() error { return pp(false, K, 200, 2, []string{"a", "a", "b"}, 3, 3) },
+		"Validator leer":           func() error { return pp(false, K, 200, 2, []string{"a", "", "b"}, 3, 3) },
+		"ein Validator fehlt":      func() error { return pp(false, K, 200, 3, val, 5, 4) },
+		"Anker fehlt":              func() error { return pp(false, K, 200, 3, val, 4, 5) },
+		"t erfuellt, nicht alle v": func() error { return pp(false, K, 200, 3, val, 5, 3) },
 	} {
 		if f() == nil {
 			t.Errorf("Praegen %s: angenommen", name)
 		}
 	}
-	if quantenWPraegenPruefen(false, K, quantenWKMin, 3, val, 5, 5) != nil {
+	if pp(false, K, qwLK, 3, val, 5, 5) != nil {
 		t.Error("Gegenprobe: kleinste pruefbare Note abgewiesen")
+	}
+}
+
+// Sichere Pruefgroessen (W2c): k_note aus Toleranz und Absprache-Grenze,
+// Toleranz ausserhalb der Tabelle, unsichere Felder, n < k_note.
+func TestQuantenW_SicherePruefgroesse(t *testing.T) {
+	val := []string{"a", "b", "c", "d", "e"}
+	K := "ab" + "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcd"
+	if kn, err := quantenWPraegenPruefen(false, K, 3472, 3, val, 5, 5, 4); err != nil || kn != 3472 {
+		t.Fatalf("t = 3, v = 5, tol 4: %d %v", kn, err)
+	}
+	for name, f := range map[string]func() (int, error){
+		"n < k_note":              func() (int, error) { return quantenWPraegenPruefen(false, K, 3471, 3, val, 5, 5, 4) },
+		"Toleranz 7":              func() (int, error) { return quantenWPraegenPruefen(false, K, 8000, 3, val, 5, 5, 7) },
+		"Toleranz 15 (alt)":       func() (int, error) { return quantenWPraegenPruefen(false, K, 8000, 3, val, 5, 5, 15) },
+		"Toleranz 0":              func() (int, error) { return quantenWPraegenPruefen(false, K, 8000, 3, val, 5, 5, 0) },
+		"tol 10 bei f = 7/16":     func() (int, error) { return quantenWPraegenPruefen(false, K, 16000, 3, val, 5, 5, 10) },
+		"f > 8/16 (t = 4, v = 5)": func() (int, error) { return quantenWPraegenPruefen(false, K, 16000, 4, val, 5, 5, 2) },
+	} {
+		if _, err := f(); err == nil {
+			t.Errorf("%s: angenommen", name)
+		}
+	}
+	if quantenWF16(3, 5) != 7 || quantenWF16(1, 1) != 0 || quantenWF16(9, 16) != 8 || quantenWF16(2, 64) != 1 {
+		t.Fatal("f16")
+	}
+	// Einloesen nur mit genau k_note; Pruefen laesst k_note und den letzten
+	// Wert der Hash-Ketten stehen.
+	e := neueQuantenWNote(1200, 1, [32]byte{1}, []string{"a"}, [][32]byte{{2}}, 2, 552)
+	if e.anfragen("x", 64, "x", quantenWPfand, 1) == nil || e.anfragen("x", 553, "x", quantenWPfand, 1) == nil {
+		t.Fatal("Einloesen mit k != k_note angenommen")
+	}
+	if e.anfragen("x", 1200-552+1, "", quantenWPfand, 1) == nil {
+		t.Fatal("Pruefung frisst die Reserve")
+	}
+	e.Zaehl = quantenWZufallL - 1
+	if e.anfragen("x", 8, "", quantenWPfand, 1) == nil {
+		t.Fatal("Pruefung mit dem letzten Wert der Hash-Ketten")
+	}
+	if err := e.anfragen("x", 552, "x", quantenWPfand, 1); err != nil {
+		t.Fatalf("Einloesen mit dem letzten Wert der Hash-Ketten: %v", err)
+	}
+	e.Anfrage, e.Zaehl = nil, quantenWZufallL
+	var b quantenWBuchung
+	e.erschoepft(&b)
+	if !e.Tot || !b.WertVerfaellt {
+		t.Fatal("Hash-Ketten verbraucht: nicht erschoepft")
 	}
 }
 
@@ -413,10 +516,10 @@ func TestQuantenW_Gutfall(t *testing.T) {
 		t.Fatalf("Pruefung: %v %+v", u, b)
 	}
 	u, b = qwRunde(t, p, e, "bert", 0, "carl", p.ehrlich, 200)
-	if u != quantenWEcht || b != (quantenWBuchung{PfandZurueckAn: "bert", WertAn: "carl"}) || !e.Tot || len(e.Benutzt) != 16+quantenWKMax {
+	if u != quantenWEcht || b != (quantenWBuchung{PfandZurueckAn: "bert", WertAn: "carl"}) || !e.Tot || len(e.Benutzt) != 16+qwLK {
 		t.Fatalf("Einloesen: %v %+v", u, b)
 	}
-	if e.anfragen("bert", quantenWKMax, "bert", quantenWPfand, 300) == nil {
+	if e.anfragen("bert", qwLK, "bert", quantenWPfand, 300) == nil {
 		t.Fatal("zweimal eingeloest")
 	}
 }
@@ -493,7 +596,7 @@ func TestQuantenW_ZufallMissbrauch(t *testing.T) {
 	if e.antworten("fremd", gut, 16) == nil || e.antworten("anna", gut[1:], 16) == nil || e.antworten("anna", append([]int{2}, gut[1:]...), 16) == nil {
 		t.Fatal("falsche Antwort angenommen")
 	}
-	if _, _, err := e.offenlegen(p.K, p.offen(st, 1, 2, 3), 16); err == nil {
+	if _, _, err := qwOffenlegen(e, p.K, p.offen(st, 1, 2, 3), 16); err == nil {
 		t.Fatal("Offenlegen vor der Antwort angenommen")
 	}
 	if err := e.antworten("anna", gut, 16); err != nil {
@@ -502,10 +605,10 @@ func TestQuantenW_ZufallMissbrauch(t *testing.T) {
 	if e.antworten("anna", gut, 17) == nil {
 		t.Fatal("Antwort wiederholt angenommen")
 	}
-	if _, _, err := e.offenlegen(p.K, p.offen(st, 2, 4, 5), 16+quantenWFristOffen+1); err == nil {
+	if _, _, err := qwOffenlegen(e, p.K, p.offen(st, 2, 4, 5), 16+quantenWFristOffen+1); err == nil {
 		t.Fatal("Offenlegen nach der Frist angenommen")
 	}
-	if u, b, err := e.offenlegen(p.K, p.offen(st, 2, 4, 5), 16+quantenWFristOffen); err != nil || u != quantenWEcht || b.PfandZurueckAn != "anna" {
+	if u, b, err := qwOffenlegen(e, p.K, p.offen(st, 2, 4, 5), 16+quantenWFristOffen); err != nil || u != quantenWEcht || b.PfandZurueckAn != "anna" {
 		t.Fatalf("Offenlegen: %v %+v %v", u, b, err)
 	}
 }
@@ -516,15 +619,20 @@ func TestQuantenW_PruefgroesseFest(t *testing.T) {
 	p := qwPraegen(200, 3, 5, 3)
 	e := p.note()
 	for name, f := range map[string]func() error{
-		"Einloesen k = 8":  func() error { return e.anfragen("fremd", 8, "fremd", quantenWPfand, 1) },
-		"Einloesen k = 65": func() error { return e.anfragen("fremd", 65, "fremd", quantenWPfand*2, 1) },
-		"Pruefung k = 65":  func() error { return e.anfragen("bert", 65, "", quantenWPfand*2, 1) },
-		"Pruefung k = 7":   func() error { return e.anfragen("bert", 7, "", quantenWPfand, 1) },
+		"Einloesen k = 8":    func() error { return e.anfragen("fremd", 8, "fremd", quantenWPfand, 1) },
+		"Einloesen k = 65":   func() error { return e.anfragen("fremd", 65, "fremd", quantenWPfand*2, 1) },
+		"Pruefung k > K_MAX": func() error { return e.anfragen("bert", quantenWKMax+1, "", quantenWPfand*2, 1) },
+		"Pruefung k = 7":     func() error { return e.anfragen("bert", 7, "", quantenWPfand, 1) },
 		"Pruefung frisst die Reserve": func() error {
 			e.Benutzt = map[int]bool{}
 			return qwVerbraucht(e, 130).anfragen("bert", 8, "", quantenWPfand, 1)
 		},
 		"Pfand zu klein": func() error { e.Benutzt = nil; return e.anfragen("bert", 8, "", quantenWPfand-1, 1) },
+		"Pruefung mit dem letzten Wert der Hash-Ketten": func() error {
+			e.Benutzt = nil
+			e.Zaehl = quantenWZufallL - 1
+			return e.anfragen("bert", 8, "", quantenWPfand, 1)
+		},
 		"Hash-Ketten verbraucht": func() error {
 			e.Benutzt = nil
 			e.Zaehl = quantenWZufallL
@@ -542,8 +650,8 @@ func TestQuantenW_PruefgroesseFest(t *testing.T) {
 		t.Fatalf("Pruefung bis an die Reserve abgewiesen: %v", err)
 	}
 	e.Anfrage = nil
-	if err := e.anfragen("bert", quantenWKMax, "bert", quantenWPfand, 1); err != nil {
-		t.Fatalf("Einloesen mit k = K_MAX abgewiesen: %v", err)
+	if err := e.anfragen("bert", qwLK, "bert", quantenWPfand, 1); err != nil {
+		t.Fatalf("Einloesen mit k = k_note abgewiesen: %v", err)
 	}
 }
 
@@ -567,7 +675,7 @@ func TestQuantenW_FaelscherToetetNicht(t *testing.T) {
 		t.Fatalf("Faelscher-Einloesen: %v %+v tot=%v", u, b, e.Tot)
 	}
 	for i := 0; i < 2; i++ {
-		if u, _ := qwRunde(t, p, e, "fremd", quantenWKMax, "", raten, int64(100+100*i)); u != quantenWAbgewiesen {
+		if u, _ := qwRunde(t, p, e, "fremd", qwLK, "", raten, int64(100+100*i)); u != quantenWAbgewiesen {
 			t.Fatalf("geratene Pruefung %d: %v", i, u)
 		}
 	}
@@ -598,7 +706,7 @@ func TestQuantenW_Erschoepft(t *testing.T) {
 	if u != quantenWAbgewiesen || b != (quantenWBuchung{PfandVerfaellt: true, WertVerfaellt: true}) || !e.Tot || len(e.Benutzt) != 72 {
 		t.Fatalf("erschoepft: %v %+v tot=%v frei=%d", u, b, e.Tot, 72-len(e.Benutzt))
 	}
-	if quantenWPfandFuer(5_000_000, quantenWKMax, 72) < 4_000_000 {
+	if quantenWPfandFuer(5_000_000, qwLK, 72) < 4_000_000 {
 		t.Fatal("Erschoepfen ist billiger als der Wert")
 	}
 }
@@ -619,7 +727,7 @@ func TestQuantenW_Fristen(t *testing.T) {
 	if ab, b := e.frist(100 + 30*86400); ab || b != (quantenWBuchung{}) || e.Anfrage == nil || len(e.Benutzt) != 0 {
 		t.Fatalf("Zufall zurueckgehalten: Anfrage beendet (%v %+v)", ab, b)
 	}
-	if e.anfragen("bert", 16, "", quantenWPfand, 200) == nil || e.anfragen("bert", quantenWKMax, "bert", quantenWPfand, 200) == nil {
+	if e.anfragen("bert", 16, "", quantenWPfand, 200) == nil || e.anfragen("bert", qwLK, "bert", quantenWPfand, 200) == nil {
 		t.Fatal("zweite Anfrage angenommen, waehrend der Zufall aussteht")
 	}
 	spaet := int64(100 + 30*86400)
@@ -632,7 +740,7 @@ func TestQuantenW_Fristen(t *testing.T) {
 	if err := e.antworten("anna", p.ehrlich(e.Anfrage.Stellen, e.Anfrage.Basen), spaet+quantenWFristAntwort); err != nil {
 		t.Fatalf("Antwort am Ende der Frist: %v", err)
 	}
-	if u, _, err := e.offenlegen(p.K, p.offen(e.Anfrage.Stellen, 1, 2, 3), spaet+quantenWFristAntwort+1); err != nil || u != quantenWEcht || e.Zaehl != 1 {
+	if u, _, err := qwOffenlegen(e, p.K, p.offen(e.Anfrage.Stellen, 1, 2, 3), spaet+quantenWFristAntwort+1); err != nil || u != quantenWEcht || e.Zaehl != 1 {
 		t.Fatalf("Pruefung nach dem Warten: %v %v", u, err)
 	}
 	// Antwort verpasst: durchgefallen, Stellen verbraucht.
@@ -678,7 +786,7 @@ func TestQuantenW_Unentschieden(t *testing.T) {
 	p := qwPraegen(600, 3, 5, 7)
 	e := p.note()
 	gesehen := false
-	for i := 0; e.N-len(e.Benutzt)-8 >= quantenWReserve(e.N); i++ {
+	for i := 0; e.N-len(e.Benutzt)-8 >= e.KNote; i++ {
 		u, b := qwRunde(t, p, e, "anna", 8, "", p.ehrlich, int64(10+100*i))
 		switch u {
 		case quantenWUnentschieden:
@@ -692,5 +800,109 @@ func TestQuantenW_Unentschieden(t *testing.T) {
 	}
 	if !gesehen {
 		t.Fatal("kein Fall mit wenigen Treffern erzeugt")
+	}
+}
+
+// Offenlegen in Teilen (W2c): der Reihe nach, hoechstens quantenWOffenTeil,
+// jeder Teil ganz oder gar nicht; geurteilt erst, wenn alle k offen sind;
+// die Frist laeuft fuer alle Teile zusammen.
+func TestQuantenW_OffenlegenInTeilen(t *testing.T) {
+	p := qwPraegen(400, 3, 5, 11)
+	neu := func() *quantenWNote {
+		return neueQuantenWNote(p.n, p.t, p.wurzel, p.validatoren(), p.anker, quantenWTolStandard, 200)
+	}
+	vorbereiten := func(e *quantenWNote) []quantenWOffenStelle {
+		if err := e.anfragen("bert", 200, "carl", quantenWPfandFuer(5_000_000, 200, p.n), 10); err != nil {
+			t.Fatal(err)
+		}
+		if g, err := e.zufall(p.K, 0, p.zufall(0), 11); err != nil || !g {
+			t.Fatal(g, err)
+		}
+		a := e.Anfrage
+		if err := e.antworten("bert", p.ehrlich(a.Stellen, a.Basen), 12); err != nil {
+			t.Fatal(err)
+		}
+		return p.offen(a.Stellen, 1, 2, 3)
+	}
+	e := neu()
+	of := vorbereiten(e)
+	teil := func(ab, bis int) error {
+		_, _, _, err := e.offenlegen(p.K, ab, of[ab:bis], 13)
+		return err
+	}
+	for name, f := range map[string]func() error{
+		"Teil zu gross":        func() error { return teil(0, quantenWOffenTeil+1) },
+		"Teil leer":            func() error { return teil(0, 0) },
+		"Teil nicht der Reihe": func() error { return teil(64, 128) },
+		"Stelle uebersprungen": func() error { _, _, _, err := e.offenlegen(p.K, 0, of[1:65], 13); return err },
+		"Teil ueber das Ende":  func() error { _, _, _, err := e.offenlegen(p.K, 190, of[190:], 13); return err },
+		"ab negativ":           func() error { _, _, _, err := e.offenlegen(p.K, -1, of[0:1], 13); return err },
+		"Teil mit falschem Pfad": func() error {
+			o := append([]quantenWOffenStelle(nil), of[:64]...)
+			o[63].Pfad = o[62].Pfad
+			_, _, _, err := e.offenlegen(p.K, 0, o, 13)
+			return err
+		},
+	} {
+		if err := f(); err == nil {
+			t.Errorf("%s: angenommen", name)
+		}
+		if e.Anfrage.Offen != 0 || e.Anfrage.Treffer != 0 {
+			t.Fatalf("%s: abgewiesener Teil hat etwas geaendert", name)
+		}
+	}
+	// Gutfall: 64 + 64 + 64 + 8, erst der letzte Teil urteilt.
+	for _, g := range [][2]int{{0, 64}, {64, 128}, {128, 192}} {
+		u, b, fertig, err := e.offenlegen(p.K, g[0], of[g[0]:g[1]], 13)
+		if err != nil || fertig || u != 0 || b != (quantenWBuchung{}) || e.Anfrage.Offen != g[1] {
+			t.Fatalf("Teil %v: %v %+v %v %v", g, u, b, fertig, err)
+		}
+	}
+	if teil(128, 192) == nil {
+		t.Fatal("Teil wiederholt")
+	}
+	u, b, fertig, err := e.offenlegen(p.K, 192, of[192:], 13)
+	if err != nil || !fertig || u != quantenWEcht || b != (quantenWBuchung{PfandZurueckAn: "bert", WertAn: "carl"}) || !e.Tot {
+		t.Fatalf("letzter Teil: %v %+v %v %v", u, b, fertig, err)
+	}
+	// Frist mitten im Offenlegen: Pfand zurueck, kein Fehlversuch, Stellen bleiben verbraucht.
+	e = neu()
+	of = vorbereiten(e)
+	if _, _, fertig, err := e.offenlegen(p.K, 0, of[:64], 13); err != nil || fertig {
+		t.Fatal(err)
+	}
+	if _, _, _, err := e.offenlegen(p.K, 64, of[64:128], 12+quantenWFristOffen+1); err == nil {
+		t.Fatal("Teil nach der Frist angenommen")
+	}
+	if ab, b := e.frist(12 + quantenWFristOffen + 1); !ab || b.PfandZurueckAn != "bert" || e.Fehl != 0 || len(e.Benutzt) != 200 {
+		t.Fatalf("Frist mitten im Offenlegen: %v %+v fehl=%d", ab, b, e.Fehl)
+	}
+	// Faelscher in Teilen: die Fehler addieren sich ueber die Teile.
+	e = neu()
+	if err := e.anfragen("x", 200, "x", quantenWPfandFuer(5_000_000, 200, p.n), 10); err != nil {
+		t.Fatal(err)
+	}
+	e.zufall(p.K, 0, p.zufall(0), 11)
+	a := e.Anfrage
+	// Genau 8 % Fehler je Treffer, ueber alle Teile verteilt: ueber der
+	// Toleranz der Note (4 %), unter der alten (15 %).
+	falsch := p.ehrlich(a.Stellen, a.Basen)
+	var treffer []int
+	for j := range falsch {
+		if a.Basen[j] == p.basen[a.Stellen[j]] {
+			treffer = append(treffer, j)
+		}
+	}
+	m := len(treffer) * 8 / 100
+	for i := 0; i < m; i++ {
+		falsch[treffer[i*len(treffer)/m]] ^= 1
+	}
+	if m*100 <= 4*len(treffer) || m*100 > 15*len(treffer) {
+		t.Fatalf("Testaufbau: %d Fehler bei %d Treffern", m, len(treffer))
+	}
+	e.antworten("x", falsch, 12)
+	u, _, err = qwOffenlegen(e, p.K, p.offen(a.Stellen, 1, 2, 3), 13)
+	if err != nil || u != quantenWAbgewiesen || e.Tot || e.Fehl != 1 {
+		t.Fatalf("verteilte Fehler: %v %v tot=%v", u, err, e.Tot)
 	}
 }

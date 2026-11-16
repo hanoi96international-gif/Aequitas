@@ -30,6 +30,11 @@ bleibt: Nichts wird behauptet, was nicht gemessen oder bewiesen ist (QUANTENSICH
 
 ## B. Zuerst: die Prüfung deutlich stärker machen
 
+**Stand 16.11. abends:** Die Punkte 1–4 und 7 sind in Spezifikation und Knoten
+umgesetzt (W2c: Toleranz je Note, k_note aus der exakten Tabelle mit Absprache-Grenze
+f = (t−1)/v, Offenlegen in Teilen, neue Grenzen). Offen sind noch Punkt 5 (mehrstufige
+Prüfung) und Punkt 6 (Fehlerkorrektur messen).
+
 1. **Ziel:** Ein Fälscher besteht höchstens mit 2⁻⁴⁰ je Prüfung. Das gilt auch für eine
    Absprache, die einen Anteil f der Stellen kennt (bei Fern-Präparation f = 1/v).
    **Gerechnet (`wiesner_parameter.py`):** Bei e = 0,7 % (IBM ohne Warten) braucht es
