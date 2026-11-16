@@ -395,10 +395,28 @@ type QuantenWAnteilAusgabe struct {
 
 // anteile: eigene Anteile fuer a.Stellen[ab : ab+quantenWOffenTeil] -- nur
 // wenn die Anfrage index offen ist und ihre Antwort steht (fail-closed).
-func (d *quantenWDienst) anteile(K string, index, ab int) (QuantenWAnteilAusgabe, error) {
+// eintrag: der Eintrag zu K (nil = keiner); Eintraege werden nach dem
+// Anlegen nicht veraendert, nur ersetzt oder entfernt.
+func (d *quantenWDienst) eintrag(K string) *quantenWTresorEintrag {
 	d.mu.Lock()
-	e := d.eintraege[K]
-	d.mu.Unlock()
+	defer d.mu.Unlock()
+	return d.eintraege[K]
+}
+
+// schluessel: die K im Tresor, sortiert.
+func (d *quantenWDienst) schluessel() []string {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	ks := make([]string, 0, len(d.eintraege))
+	for k := range d.eintraege {
+		ks = append(ks, k)
+	}
+	sort.Strings(ks)
+	return ks
+}
+
+func (d *quantenWDienst) anteile(K string, index, ab int) (QuantenWAnteilAusgabe, error) {
+	e := d.eintrag(K)
 	if e == nil {
 		return QuantenWAnteilAusgabe{}, quantenWFehler("Note nicht im Tresor")
 	}
@@ -556,17 +574,11 @@ func (d *quantenWDienst) takt(ctx context.Context) {
 		return
 	}
 	reg := d.cs.quantenWJetzt()
-	d.mu.Lock()
-	var ks []string
-	for k := range d.eintraege {
-		ks = append(ks, k)
-	}
-	d.mu.Unlock()
-	sort.Strings(ks)
-	for _, K := range ks {
-		d.mu.Lock()
-		e := d.eintraege[K]
-		d.mu.Unlock()
+	for _, K := range d.schluessel() {
+		e := d.eintrag(K)
+		if e == nil {
+			continue
+		}
 		ein := reg.Noten[K]
 		if ein == nil {
 			// Tot oder nie gepraegt: nach dem Praegefenster vergessen.
@@ -639,7 +651,8 @@ func (d *quantenWDienst) laufen(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-t.C:
-			d.takt(ctx)
+			// Eine Panik in einem Takt beendet den Arbeiter nicht.
+			SafeCall("quanten-w-dienst", func() { d.takt(ctx) })
 		}
 	}
 }
