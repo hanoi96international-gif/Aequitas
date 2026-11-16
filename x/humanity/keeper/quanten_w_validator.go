@@ -212,6 +212,17 @@ func (d *quantenWDienst) reif(schluessel string) bool {
 	return d.final() >= h
 }
 
+// sichtRaeumen: Sichtungen, deren Stand es nicht mehr gibt, vergessen.
+func (d *quantenWDienst) sichtRaeumen(gesehen map[string]bool) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	for s := range d.sicht {
+		if !gesehen[s] {
+			delete(d.sicht, s)
+		}
+	}
+}
+
 // quantenWAnfrageSicht, quantenWAntwortSicht: alles, was die Aufforderung
 // bzw. das Urteil bestimmt -- eine ANDERE Anfrage oder Antwort an derselben
 // Stelle ist ein anderer Stand und wartet neu.
@@ -629,16 +640,7 @@ func (d *quantenWDienst) takt(ctx context.Context) {
 	}
 	reg := d.cs.quantenWJetzt()
 	gesehen := map[string]bool{}
-	defer func() {
-		// Sichtungen, deren Stand es nicht mehr gibt, vergessen.
-		d.mu.Lock()
-		for s := range d.sicht {
-			if !gesehen[s] {
-				delete(d.sicht, s)
-			}
-		}
-		d.mu.Unlock()
-	}()
+	defer d.sichtRaeumen(gesehen)
 	for _, K := range d.schluessel() {
 		e := d.eintrag(K)
 		if e == nil {
