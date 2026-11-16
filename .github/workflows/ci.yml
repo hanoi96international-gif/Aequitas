@@ -65,6 +65,7 @@ jobs:
       # Forschung Quantengeld (forschung/quantengeld/README.md): die
       # Simulationen rechnen exakt und pruefen sich selbst -- kein Produktcode.
       - run: python3 -I forschung/quantengeld/wiesner.py --selbsttest
+      - run: python3 -I forschung/quantengeld/wiesner_verteilt.py --selbsttest
       - run: python3 -I forschung/quantengeld/zhandry_spielzeug.py --selbsttest
       - run: python3 -I forschung/quantengeld/bruecke.py --selbsttest
       - run: python3 -I forschung/quantengeld/rauschen.py --selbsttest

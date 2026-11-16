@@ -208,6 +208,12 @@ Fälschungen 3,7× teurer als die volle (`schwache_pruefung.py`).
 
 ## 4. Weitere Dokumente
 
+- **`ANALYSE.md`** (16.11.2026): vollständige Analyse aller Lösungswege – warum der
+  öffentlich prüfbare Weg noch nicht trägt, die **Variante W** (privat prüfbar, klassische
+  Prüfung, Geheimnis verteilt bei den Validatoren), Offline-Bargeld als Weg für jetzt,
+  andere Wege zu Hardware, Geld und Begutachtung.
+- `wiesner_verteilt.py`: Simulation der Variante W – Shamir-Anteile bei den Validatoren,
+  klassische Prüfung gemeinsam auf den Anteilen (Beaver), Angriffe A1–A7 mit Gegenproben.
 - `BRUECKE.md` und `bruecke.py`: der Entwurf der Brücke AEQ ↔ Quanten-Note.
   Grundlage ist Coladangelo & Sattath (2020). Das Protokollmodell hat einen
   Selbsttest mit Angriffen.
