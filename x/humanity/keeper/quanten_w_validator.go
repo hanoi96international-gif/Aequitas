@@ -57,6 +57,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -73,7 +74,7 @@ const (
 	// je Praeger (sonst belegt ein Fremder den Tresor -- Sicherheitspruefung W2d).
 	quantenWOffeneHoechstens = 32
 	quantenWOffeneJePraeger  = 4
-	quantenWDomAuftrag       = "aequitas-quanten-w-auftrag-v1"
+	quantenWDomAuftrag       = "aequitas-quanten-w-auftrag-v2"
 	// Bestaetigen: n bis 16384 Anteile (~34 Zeichen) und Blaetter (~66 Zeichen).
 	quantenWTresorKoerperMax = 2 << 20
 	quantenWDienstTakt       = 5 * time.Second
@@ -316,10 +317,21 @@ type QuantenWBestaetigenAnfrage struct {
 	PraegerSig string `json:"praeger_sig"`
 }
 
-// quantenWAuftragNachricht: was der Praeger dem Validator unterschreibt.
-func quantenWAuftragNachricht(praeger, K string, n, t, tol, x int, wurzel string, validatoren []string, zeit int64) string {
-	return fmt.Sprintf("%s|chain:%d|%s|%s|%d|%d|%d|%d|%s|%s|%d", quantenWDomAuftrag, eingefroreneChainID,
-		strings.ToLower(praeger), K, n, t, tol, x, wurzel, strings.Join(validatoren, ","), zeit)
+// quantenWAuftragNachricht: was der Praeger dem Validator unterschreibt --
+// seit v2 auch den Hash SEINER Anteile (quantenWAnteileHash). Sonst koennte
+// wer den Auftrag auf dem Weg abfaengt, ihn mit anderen Anteilen zuerst
+// einreichen: der Validator bestaetigte die Note, haette aber Anteile, die
+// nicht zur Wurzel passen -- die Note waere unpruefbar und K belegt.
+func quantenWAuftragNachricht(praeger, K string, n, t, tol, x int, wurzel string, validatoren []string, zeit int64, anteileHash string) string {
+	return fmt.Sprintf("%s|chain:%d|%s|%s|%d|%d|%d|%d|%s|%s|%d|%s", quantenWDomAuftrag, eingefroreneChainID,
+		strings.ToLower(praeger), K, n, t, tol, x, wurzel, strings.Join(validatoren, ","), zeit, anteileHash)
+}
+
+// quantenWAnteileHash: SHA-256 ueber die Anteile eines Validators (hex, in
+// Reihenfolge der Stellen, durch Komma getrennt).
+func quantenWAnteileHash(anteile []string) string {
+	h := sha256.Sum256([]byte(strings.Join(anteile, ",")))
+	return hex.EncodeToString(h[:])
 }
 
 // bestaetigen: pruefen, ablegen, unterschreiben. Gibt Anker und Bestaetigung.
@@ -350,7 +362,7 @@ func (d *quantenWDienst) bestaetigen(q QuantenWBestaetigenAnfrage) (anker string
 	// kleinsten Deckung (sonst belegt ein Fremder kostenlos den Tresor).
 	q.Praeger = strings.ToLower(strings.TrimSpace(q.Praeger))
 	if !kanonischeAdresse(q.Praeger) || !kanonischeSignatur(q.PraegerSig) ||
-		verifyPersonalSign(quantenWAuftragNachricht(q.Praeger, q.K, q.N, q.T, q.Tol, q.X, q.Wurzel, q.Validatoren, q.Zeit), q.PraegerSig, q.Praeger) != nil {
+		verifyPersonalSign(quantenWAuftragNachricht(q.Praeger, q.K, q.N, q.T, q.Tol, q.X, q.Wurzel, q.Validatoren, q.Zeit, quantenWAnteileHash(q.Anteile)), q.PraegerSig, q.Praeger) != nil {
 		return "", "", quantenWFehler("Auftrag nicht vom Praeger unterschrieben")
 	}
 	if !d.praegerTauglich(q.Praeger) {
@@ -386,6 +398,19 @@ func (d *quantenWDienst) bestaetigen(q QuantenWBestaetigenAnfrage) (anker string
 	}
 	if quantenWMerkleWurzel(blaetter) != wurzel {
 		return "", "", quantenWFehler("Blaetter ergeben nicht die Wurzel")
+	}
+	// Derselbe Auftrag noch einmal (die Antwort ging verloren): dieselbe
+	// Bestaetigung mit demselben Anker -- sonst braeuchte der Praeger ein
+	// neues K. Ein ANDERER Auftrag fuer dasselbe K bleibt abgewiesen.
+	if vorher, da := d.eintragVon(q.K); da {
+		if !quantenWGleicherAuftrag(vorher, q) {
+			return "", "", quantenWFehler("schon bestaetigt (anderer Auftrag)")
+		}
+		g, ok := quantenWHex32(vorher.Geheim)
+		if !ok {
+			return "", "", quantenWFehler("Tresor: Geheimnis unlesbar")
+		}
+		return d.bestaetigungUnterschreiben(q, wurzel, quantenWKetteVor(g, quantenWZufallL))
 	}
 	var geheim [32]byte
 	if _, err := rand.Read(geheim[:]); err != nil {
@@ -423,6 +448,10 @@ func (d *quantenWDienst) bestaetigen(q QuantenWBestaetigenAnfrage) (anker string
 		return "", "", err
 	}
 	d.eintraege[q.K] = e
+	return d.bestaetigungUnterschreiben(q, wurzel, a)
+}
+
+func (d *quantenWDienst) bestaetigungUnterschreiben(q QuantenWBestaetigenAnfrage, wurzel, a [32]byte) (string, string, error) {
 	msg := quantenWBestaetigungNachricht(q.K, wurzel, q.N, q.T, q.Validatoren, q.X, a, q.Zeit, q.Tol)
 	s, err := crypto.Sign(accounts.TextHash([]byte(msg)), d.key)
 	if err != nil {
@@ -430,6 +459,21 @@ func (d *quantenWDienst) bestaetigen(q QuantenWBestaetigenAnfrage) (anker string
 	}
 	s[64] += 27
 	return hex.EncodeToString(a[:]), "0x" + hex.EncodeToString(s), nil
+}
+
+// eintragVon: der Tresor-Eintrag zu K (unter der Sperre, mit defer).
+func (d *quantenWDienst) eintragVon(k string) (*quantenWTresorEintrag, bool) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	e, da := d.eintraege[k]
+	return e, da
+}
+
+// quantenWGleicherAuftrag: dieselbe Note, derselbe Praeger, dieselben
+// Anteile und Blaetter -- dann darf die Bestaetigung wiederholt werden.
+func quantenWGleicherAuftrag(e *quantenWTresorEintrag, q QuantenWBestaetigenAnfrage) bool {
+	return e.K == q.K && e.N == q.N && e.T == q.T && e.Tol == q.Tol && e.X == q.X && e.Wurzel == q.Wurzel && e.Zeit == q.Zeit &&
+		e.Praeger == q.Praeger && slices.Equal(e.Validatoren, q.Validatoren) && slices.Equal(e.Anteile, q.Anteile) && slices.Equal(e.Blaetter, q.Blaetter)
 }
 
 // praegerTauglich: ein Mensch mit mindestens der kleinsten Deckung.

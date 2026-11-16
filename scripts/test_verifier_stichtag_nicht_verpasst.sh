@@ -9,8 +9,20 @@ D=$(mktemp -d); trap 'kill $PID 2>/dev/null || true; rm -rf "$D"' EXIT
 mkdir -p "$D/api"
 echo '{}' > "$D/api/status"
 PORT=$((20000 + RANDOM % 20000))
-(cd "$D" && python3 -m http.server "$PORT" --bind 127.0.0.1 >/dev/null 2>&1) & PID=$!
-sleep 1
+# Testserver starten und warten, bis er antwortet. Ein starres "sleep 1"
+# kippte auf ausgelasteten Runnern (Pruefung meldete "halt" statt "ok");
+# ein belegter Port nimmt einen anderen.
+for _versuch in 1 2 3 4 5; do
+  PORT=$((20000 + RANDOM % 20000))
+  (cd "$D" && exec python3 -m http.server "$PORT" --bind 127.0.0.1 >/dev/null 2>&1) & PID=$!
+  for _i in $(seq 1 150); do
+    curl -s -o /dev/null "http://127.0.0.1:$PORT/" && break 2
+    kill -0 "$PID" 2>/dev/null || break
+    sleep 0.1
+  done
+  kill "$PID" 2>/dev/null || true
+done
+curl -s -o /dev/null "http://127.0.0.1:$PORT/" || { echo "FEHLER: Testserver startet nicht"; exit 1; }
 lauf() { # inhalt jetzt erwartung
   # Ohne Endpunkt antwortet der echte Knoten mit {"error":"no such endpoint"}.
   if [ -n "$1" ]; then printf '%s' "$1" > "$D/api/verifier"; else printf '%s' '{"error":"no such endpoint"}' > "$D/api/verifier"; fi

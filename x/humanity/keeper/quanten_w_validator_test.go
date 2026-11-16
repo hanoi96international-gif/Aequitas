@@ -103,7 +103,7 @@ func (q *qwDienste) anfrageBestaetigen(x int) QuantenWBestaetigenAnfrage {
 // auftrag: der Praeger (wer) unterschreibt den Auftrag.
 func (q *qwDienste) auftrag(r QuantenWBestaetigenAnfrage, wer string) QuantenWBestaetigenAnfrage {
 	r.Praeger = wer
-	r.PraegerSig = personalSign(q.w.t, q.w.keys[wer], quantenWAuftragNachricht(wer, r.K, r.N, r.T, r.Tol, r.X, r.Wurzel, r.Validatoren, r.Zeit))
+	r.PraegerSig = personalSign(q.w.t, q.w.keys[wer], quantenWAuftragNachricht(wer, r.K, r.N, r.T, r.Tol, r.X, r.Wurzel, r.Validatoren, r.Zeit, quantenWAnteileHash(r.Anteile)))
 	return r
 }
 
@@ -253,11 +253,31 @@ func TestQuantenWDienst_BestaetigenMissbrauch(t *testing.T) {
 	if len(d.eintraege) != 0 {
 		t.Fatal("abgewiesene Bestaetigung abgelegt")
 	}
-	if _, _, err := d.bestaetigen(gut); err != nil {
+	// Abgefangener Auftrag mit anderen Anteilen: die Unterschrift des
+	// Praegers deckt seit v2 den Hash der Anteile.
+	umgeschrieben := gut
+	umgeschrieben.Anteile = append([]string{"1"}, gut.Anteile[1:]...)
+	if _, _, err := d.bestaetigen(umgeschrieben); err == nil {
+		t.Fatal("Auftrag mit ausgetauschten Anteilen bestaetigt")
+	}
+	anker1, sig1, err := d.bestaetigen(gut)
+	if err != nil {
 		t.Fatalf("Gegenprobe: %v", err)
 	}
-	if _, _, err := d.bestaetigen(gut); err == nil {
-		t.Fatal("zweimal bestaetigt")
+	// Derselbe Auftrag noch einmal (Antwort verloren): dieselbe Bestaetigung.
+	anker2, sig2, err := d.bestaetigen(gut)
+	if err != nil || anker2 != anker1 || sig2 != sig1 {
+		t.Fatalf("Wiederholung: %v, Anker gleich %v", err, anker2 == anker1)
+	}
+	// Ein ANDERER Auftrag fuer dasselbe K: abgewiesen, der Tresor bleibt.
+	anders := gut
+	anders.Zeit = gut.Zeit + 1
+	anders = q.auftrag(anders, q.w.praeger)
+	if _, _, err := d.bestaetigen(anders); err == nil || !strings.Contains(err.Error(), "anderer Auftrag") {
+		t.Fatalf("zweiter Auftrag fuer dasselbe K: %v", err)
+	}
+	if len(d.eintraege) != 1 {
+		t.Fatal("Tresor hat mehr als einen Eintrag")
 	}
 	// Ein Praeger ohne Deckung belegt keinen Platz.
 	alt := quantenWPraegerTauglich

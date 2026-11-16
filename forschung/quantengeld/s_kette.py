@@ -147,12 +147,19 @@ class KetteS:
 
     def ausgeben(self, K: str, n: int, inhaber: str, wurzel: bytes | None = None, deckung: int = 0,
                  proben: list[bytes] | None = None, t: int = 1, n_val: int = 1, tol: int = TOL_PROZENT,
-                 von: str | None = None):
+                 von: str | None = None, stellen: list[str] | None = None):
         """Ausgabe. Mit Deckung (von zahlt sie in den Topf): Wurzel der
         Pruefsummen, je Stelle die Bindung ihrer Stichprobe, Schwelle t
         von n_val Validatoren, Toleranz."""
         if K in self.token:
             raise Abgewiesen("K schon da")
+        # Die zwei Annahmestellen stehen bei der Ausgabe fest (im Knoten
+        # Pflicht, quanten_w_s_kette.go): die Vorlage der Nutzerin bindet die
+        # Adresse der Stelle nicht, und die Anmeldung legt die geheime
+        # Stichprobe offen -- wer sie in der Warteschlange sieht, koennte sonst
+        # zuerst anmelden und einloesen.
+        if stellen is not None and (len(stellen) != 2 or stellen[0] == stellen[1] or inhaber in stellen):
+            raise Abgewiesen("Ausgabe: Annahmestellen")
         if deckung:
             if von is None or self.konten.get(von, 0) < deckung or wurzel is None or not proben or len(proben) != 2:
                 raise Abgewiesen("Ausgabe: Deckung, Wurzel oder Stichproben")
@@ -160,7 +167,7 @@ class KetteS:
             self.topf += deckung
         self.token[K] = {"n": n, "inhaber": inhaber, "d": None, "c": None, "wurzel": wurzel, "deckung": deckung,
                          "proben": list(proben or []), "t": t, "n_val": n_val, "tol": tol, "eingeloest": False,
-                         "tot": False, "fehl": 0, "anmeldung": None}
+                         "tot": False, "fehl": 0, "anmeldung": None, "stellen": list(stellen) if stellen else None}
 
     # -- Einloesen auf der Kette (S2b): anmelden, dann Offenlegen in Teilen
     def anmelden(self, K: str, b: int, stelle_konto: str, x: list[int], vorlage_sig: str, probe: list[int],
@@ -177,6 +184,8 @@ class KetteS:
             raise Abgewiesen("Einloesen: schon eine offene Anmeldung")
         if e["d"] is None or e["c"] is None or b not in (0, 1) or stelle_konto not in self.konten:
             raise Abgewiesen("Einloesen: Bindung, Wahl, Stelle")
+        if e["stellen"] is not None and stelle_konto != e["stellen"][b]:
+            raise Abgewiesen("Einloesen: nicht die Annahmestelle b dieses Tokens")
         if len(x) != e["n"] or any(v not in (0, 1) for v in x):
             raise Abgewiesen("Einloesen: Form von x")
         if not hmac.compare_digest(sig(self.konto_schluessel[e["inhaber"]], vorlage_text(K, b, x)), vorlage_sig):
@@ -545,9 +554,12 @@ def selbsttest() -> bool:
         pr = wk.Praegung(K, u, t, 3, val, rng)
         proben = stichproben(n, 2, k5, rng)
         kette = KetteS()
-        for name in ("ausgabe", "anna", "laden0", "laden1"):
+        for name in ("ausgabe", "anna", "laden0", "laden1", "dieb"):
             kette.konto(name, 50_000_000 if name == "ausgabe" else 0, name.encode() * 4)
-        kette.ausgeben(K, n, "anna", pr.wurzel, 10_000_000, [probe_hash(K, b, proben[b]) for b in (0, 1)], 3, 5, von="ausgabe")
+        abgewiesen(lambda: kette.ausgeben("f" * 64, n, "anna", pr.wurzel, 10_000_000, [b"x" * 32] * 2, 3, 5, von="ausgabe",
+                                          stellen=["laden0", "laden0"]), "zweimal dieselbe Annahmestelle")
+        kette.ausgeben(K, n, "anna", pr.wurzel, 10_000_000, [probe_hash(K, b, proben[b]) for b in (0, 1)], 3, 5, von="ausgabe",
+                       stellen=["laden0", "laden1"])
         st = [stelle_laden(b, K, n, pr.wurzel, 3, 5, proben[b], pr.offenlegung(proben[b], [1, 2, 3])) for b in (0, 1)]
         y, x = messen_ehrlich(u, t, rng, 0.0)
         z = rng.randrange(2)
@@ -566,6 +578,10 @@ def selbsttest() -> bool:
         falsch = [([(a_[0][0], (a_[0][1] + 1) % wk.P)] + a_[1:], p_) if j == 0 else (a_, p_) for j, (a_, p_) in enumerate(of1)]
         abgewiesen(lambda: kette.einloesen(K, 1, "laden1", x, vs, proben[1], falsch), "falscher Anteil")
         abgewiesen(lambda: kette.einloesen(K, 1, "laden1", x, vs, proben[1], of1[:-1]), "Stelle fehlt")
+        # Vorauslaufen: ein Dritter kopiert Vorlage und Stichprobe aus der
+        # Warteschlange und meldet mit seinem Konto an.
+        abgewiesen(lambda: kette.einloesen(K, 1, "dieb", x, vs, proben[1], of1), "Dritter mit kopierter Stichprobe")
+        abgewiesen(lambda: kette.einloesen(K, 1, "laden0", x, vs, proben[1], of1), "andere Stelle mit kopierter Stichprobe")
         soll(kette.einloesen(K, 1, "laden1", x, vs, proben[1], of1) and kette.konten["laden1"] == 10_000_000 and kette.topf == 0,
              "Einloesen auf der Kette")
         abgewiesen(lambda: kette.einloesen(K, 1, "laden1", x, vs, proben[1], of1), "zweimal eingeloest")
