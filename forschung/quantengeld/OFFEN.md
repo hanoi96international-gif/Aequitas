@@ -67,6 +67,10 @@ bauen kann.
      Token. Es gilt nur an genau einem der vorgesehenen Orte bzw. Zeitpunkte.
    - Möglicherweise **der heute machbare Weg**: QKD-Technik statt Speicher, Prüfung
      durch die Kette.
+   - **Analysiert (16.11. abends, ANALYSE.md 5b „Variante S“):** Der Weg ist heute
+     machbar, unfälschbar, privat und dezentral prüfbar, aber kein Hand-zu-Hand-Bargeld.
+     Doppelvorlage per Breidbart-Messung: 14,6 % Fehler, also dieselbe Schwelle wie bei
+     W. Als Nächstes kommen `s_kette.py` und die S-Vorführung auf IBM.
    - Zu klären: Lässt sich „Ort“ auf Aequitas als „Prüfer bzw. Region + Block-Fenster“
      abbilden, und wie viel Sicherheit bleibt dann übrig?
 2. **Zustellen statt Aufbewahren:**

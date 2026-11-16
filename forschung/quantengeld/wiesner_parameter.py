@@ -99,6 +99,22 @@ def klon_fehler() -> list[tuple[float, float]]:
 KLON_FEHLER = 0.5 - 1 / math.sqrt(8)        # 0,14645 -- klon_fehler() rechnet es nach
 
 
+def breidbart_fehler() -> list[float]:
+    """Variante S (S-Token, ANALYSE.md 5b): wer an ZWEI Stellen vorlegen will,
+    braucht Ergebnisse in beiden Basen und misst am besten in der Basis
+    zwischen X und Z (Breidbart, Winkel pi/8). Fehler je BB84-Zustand --
+    dieselben 14,6 % wie der Kloner, also dieselbe Toleranzschwelle."""
+    c, s = math.cos(math.pi / 8), math.sin(math.pi / 8)
+    b0, b1 = (c, s), (-s, c)                    # Ergebnis 0 bzw. 1 in beiden Basen
+    w = 1 / math.sqrt(2)
+    zustaende = {((1, 0), 0), ((0, 1), 1), ((w, w), 0), ((w, -w), 1)}
+    aus = []
+    for psi, bit in zustaende:
+        richtig = b0 if bit == 0 else b1
+        aus.append(1 - (richtig[0] * psi[0] + richtig[1] * psi[1]) ** 2)
+    return aus
+
+
 # ---------------------------------------------------------------- Pruefung
 def _log_bin(n: int, k: int, p: float) -> float:
     if p <= 0:
@@ -200,6 +216,9 @@ def selbsttest() -> bool:
         # Gegenprobe: ohne die Drehung in die x-z-Ebene ist |0> perfekt, |+> schlecht --
         # der Kloner MUSS zur Ebene von BB84 passen.
         soll(KLON_FEHLER < 0.15 < 1 / 6, "Ordnung der Schwellen")
+        # Variante S: Doppelvorlage per Breidbart-Messung hat denselben Fehler.
+        bf = breidbart_fehler()
+        soll(len(bf) == 4 and all(abs(x - KLON_FEHLER) < 1e-12 for x in bf), f"Breidbart: {bf}")
 
         # 2. Missbrauchstest -- der Angriff gegen die ALTEN Parameter:
         # eine geklonte Kopie besteht bei k = 64 mit rund 0,5, beide Kopien

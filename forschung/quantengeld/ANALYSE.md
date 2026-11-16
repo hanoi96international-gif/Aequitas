@@ -128,7 +128,7 @@ Hersteller für die Zeit um 2029 und später ankündigen (S, Roadmaps).
 |---|---|---|---|---|---|---|---|---|
 | **A** Öffentlich prüfbar + Lightning (bisher) | ja | ja | ja | ja (mit Gerät) | ja | nein (H1–H3) | Gruppenaktion, iO + LWE für Einlösen | fehlertolerante Ära |
 | **B** **Variante W**: privat prüfbar, klassische Prüfung, Geheimnis verteilt | ja | **teilweise**: klassisch online, kurze Nachricht | teilweise | ja (Gerät) | ja (Schwelle der Validatoren) | **Labor heute** (Speicher > 10 h, Token-Geräte im Bau) | No-Cloning, ohne Rechenannahme; Schwelle t von n | **nah**: Demonstrator mit Partnern |
-| **C** S-Token ohne Speicher (Kent et al.) | ja | nein (Raumzeit-Prüfung im Netz vertrauter Stellen) | ja | nein | nein (vertraute Stellen) | **ja**, voll gezeigt 2024 (V) | No-Cloning + Relativität | heute, aber kein Bargeld |
+| **C** S-Token ohne Speicher (Kent et al.) | ja | nein (Raumzeit-Prüfung im Netz vertrauter Stellen) | ja | nein | nein (vertraute Stellen) → **ja als Variante S** (Abschnitt 5b) | **ja**, voll gezeigt 2024 (V) | No-Cloning + Relativität | heute, aber kein Bargeld |
 | **D** Quanten-digitale Zahlungen (Schiansky et al.) | ja | nein (online) | ja | nein | nein (Bank) | **ja**, über Stadtglasfaser gezeigt (V) | No-Cloning | heute, aber Kartenzahlung |
 | **E** Quanten-PUF (physikalische Fingerabdrücke) | teilweise | ja | – | – | ja | Labor | Unkenntnis der Struktur | Baustein, kein Geld |
 | **F** **Offline-Bargeld** (Secure Element + Haftung über „ein Mensch, ein Konto“) | nein (Betrug beweisbar, nicht unmöglich) | **ja** | teilweise | ja | ja | **ja** (Android Keystore) | Haftung + Pfand + Geräteschlüssel | **jetzt** (Stufe 1 fertig) |
@@ -353,6 +353,80 @@ gerechnet; die Tabelle gibt `python3 -I wiesner_parameter.py` aus):
 | W4 | Partnerversuch: echte Note in einem Speicher (Stunden), Ausgabe über ein Aequitas-Testnetz, Weitergabe des Geräts, klassische Prüfung, Einlösen | BMFTR-Verbund + Aequitas | Kontakt offen. **Ohne Partner** (Labormaßstab, Note lebt µs): `hardware_ibm.py --wiesner --kette` – Prägen auf der Kette, Bezahlen per Teleportation, Einlösen mit Aufforderung aus den Hash-Ketten der Validatoren, Offenlegen, Urteil, AEQ beim Empfänger; ideal und im Rauschmodell gelaufen, IBM wartet auf Freigabe |
 | W5 | Gutachten (Prüfauftrag um Variante W erweitert), Pilot im Testnetz | extern + Aequitas | Prüfauftrag erweitert (`docs/QUANTENGELD_PRUEFAUFTRAG.md`); Gutachter und Pilot offen |
 | W6 | Satz „privat“ im Hauptnetz freischalten (⅔ der Prüfer, mindestens 5, 30 Tage Vorlauf), anfangs mit kleiner Höchstdeckung je Note | Prüfer | erst nach W4 und W5 |
+
+## 5b. Ohne Quantenspeicher, heute: Variante S (S-Token, dezentral geprüft)
+
+Nachgetragen am 16.11.2026 abends. Frage des Betreibers: Gibt es unter heutigen Umständen
+eine Lösung ohne das Speichergerät?
+
+**Antwort:** Ja, aber mit klarer Grenze. Unfälschbare, private Quanten-Token, die
+niemand speichern muss, sind heute machbar. Bargeld, das als Quantenzustand von Hand zu
+Hand geht, ist es nicht. Der Weg dorthin sind die **S-Token** (S-money) von Kent u. a.:
+„Practical quantum tokens without quantum memories and experimental tests“, npj Quantum
+Information 8, 28 (2022), arXiv:2104.11717. Sie wurden mit handelsüblicher QKD-Technik
+erprobt.
+
+**So funktioniert ein S-Token (Schema IQT1 der Arbeit):**
+1. **Ausgabe.** Die Ausgabestelle B schickt N Qubits in zufälligen BB84-Zuständen
+   (Basen u, Werte t). Die Nutzerin A misst **sofort**, jede Stelle in einer zufälligen
+   Basis y, und hat danach nur noch Klartext-Ergebnisse x. **Nichts muss gespeichert
+   werden.**
+2. **Maskierte Basenwahl.** A gibt B ihre Basen nur maskiert: d = y oder d = ȳ, je nach
+   einem geheimen Bit z.
+3. **Einlösen.** Erst beim Einlösen wählt A eine von 2^M Vorlagestellen (Ort oder
+   Zeitfenster), sendet c = b ⊕ z und legt x vor. Geprüft werden nur die Stellen, deren
+   Basis zur gewählten Vorlagestelle passt.
+4. **Unfälschbar:** Wer an zwei Stellen vorlegen will, braucht die richtigen Ergebnisse
+   in beiden Basen. Am besten misst man dafür in der Basis zwischen X und Z
+   (Breidbart). Das ergibt **14,6 % Fehler**, genau wie beim Kloner der Variante W.
+   Dieselbe Toleranzschwelle gilt also, und `wiesner_parameter.py` rechnet auch hier die
+   Prüfgröße (bei 0,7 % Hardware-Fehler: Toleranz 4 %, rund 840 geprüfte Stellen).
+5. **Privat:** B erfährt erst beim Einlösen, wo A einlöst.
+
+**Was Aequitas daraus machen kann (Variante S, Entwurf):**
+- **Dezentrale Ausgabe:**
+  - Die Werte (t, u) kennt nicht eine Bank. Sie entstehen wie bei W3 durch
+    Fern-Präparation bei den Validatoren und liegen als Shamir-Anteile bei ihnen
+    (`note_fern`, Abschnitt 5).
+  - Auf der Kette stehen nur Prüfsummen, wie bei Variante W.
+- **Prüfung durch die Kette:**
+  - Die Vorlagestelle ist ein Satz von Validatoren bzw. ein Block-Fenster.
+  - Beim Einlösen legen die Validatoren die Anteile der geprüften Stellen offen, und
+    jeder Knoten urteilt selbst.
+  - Das ist derselbe Ablauf wie das Offenlegen der Variante W (`quanten_w*.go`), nur
+    ohne den Teil, in dem gemessen und geantwortet wird.
+- **Was der Nutzer braucht:**
+  - **Bei der Ausgabe:** einen Empfänger, der Einzelphotonen in zwei Basen misst.
+    Das ist QKD-Empfängertechnik (handelsüblich; Handgeräte als Prototypen, u. a. Bristol).
+  - **Danach:** nur das Telefon mit Klartext-Daten.
+- **Heute vorführbar:**
+  - Teil 1 (Ausgabe und sofortiges Messen) ist genau der Schaltkreis, der auf IBM schon
+    gelaufen ist: Prägen und ohne Warten in zufälligen Basen messen, 0,7 % Fehler.
+  - Teil 2 ist reine Klassik und läuft auf der Kette.
+  - Eine S-Vorführung auf dem echten Chip geht also **sofort**, mit den vorhandenen
+    Werkzeugen.
+
+**Was Variante S nicht ist:**
+- **Kein Bargeld von Hand zu Hand.** Weitergeben heißt: klassische Daten übergeben. Der
+  Weitergebende kennt sie dann weiter, es gilt „wer zuerst einlöst“. Kent u. a.
+  beschreiben übertragbare Varianten mit klassischer Nachricht; ob sie auf eine Kette
+  passen, ist offen.
+- **Auf einer Kette weniger einzigartig als ohne.** Der Vorteil „sofort gültig ohne
+  Rückfrage“ zählt dort, wo nicht auf einen Block gewartet werden kann, etwa an
+  Annahmestellen ohne Netz. Die Prüfgeheimnisse müssen dann vorher bei der Annahmestelle
+  liegen, und die braucht dafür vertrauenswürdige Hardware (wie beim Offline-Bargeld).
+
+**Einordnung:**
+- **Variante S ist das Quantengeld, das unter heutigen Umständen funktioniert:**
+  unfälschbar durch Physik, privat, ohne Quantenspeicher, dezentral geprüft.
+- **Variante W** bleibt der Weg zu echtem Quanten-Bargeld, sobald Speicher tragen.
+- **Beide** brauchen die neuen Prüfgrößen (Befund in Abschnitt 5) und ein Gutachten.
+- **Nächste Schritte:**
+  1. Spezifikation `s_kette.py` (Ausgabe, maskierte Basen, Vorlage, Offenlegen, Urteil;
+     mit Missbrauch: zwei Vorlagen, fremde Vorlage, Wiederholung).
+  2. S-Vorführung auf IBM.
+  3. Anschreiben an die Autoren (Cambridge: Kent, Pitalúa-García; Bristol: Rarity) als
+     Vorlage 4.
 
 ## 6. Zugang, Geld, Begutachtung – andere Wege
 
