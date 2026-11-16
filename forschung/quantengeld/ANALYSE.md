@@ -268,15 +268,36 @@ Register, Topf, Abgabe, Freischaltung und Einlösen in AEQ gibt es schon.
      - Die Prägestelle erfährt nichts. Jeder Validator kennt nur seinen Teil der Note.
      - Das ist mit heutiger QKD-Technik im Labor machbar und gehört zum Partnerversuch.
 
+**Ausführbare Regeln (W2a):** `wiesner_kette.py` ist die Spezifikation. Je Stelle steht
+beim Prägen nur eine gesalzene Prüfsumme auf der Kette (Merkle-Wurzel); das Geheimnis
+(Basis, Bit, 124 Bit Salz) liegt als Shamir-Anteile (t von v) bei den Validatoren der
+Note. Eine Prüfung: **Anfrage** mit 1 AEQ Pfand; der **nächste Block** zieht Stellen und
+Basen aus einem Blockhash, den beim Absenden niemand kannte – ab da sind die Stellen
+verbraucht. (Sonst könnte eine Absprache, die einen Teil der Stellen kennt, auf einen
+günstigen Hash warten.) **Antwort** des Anfragenden innerhalb von 10 Blöcken;
+**Offenlegen** von t Anteilen je Stelle. Jeder Knoten setzt selbst zusammen, prüft
+Prüfsumme und Pfad und urteilt; ein falscher Anteil fällt an der Prüfsumme auf.
+Weniger als 4 Treffer: unentschieden (Pfand zurück, kein Fehlversuch). 3 Fehlversuche
+sperren die Note; Einlösen geht auch gesperrt, genau einmal. Ein falsches Einlösen geht
+ans Grundeinkommen. Eine Note hat mindestens 8 Stellen (sonst wäre sie nie prüfbar und
+ihre Deckung läge für immer im Topf). Selbsttest mit Missbrauchsfällen; der Knoten rechnet in Go genau
+gleich (`quanten_w_test.go` gegen `testdata/quanten_w_vektor.json`).
+
+**Ehrlich zur Stärke einer Prüfung:** Mit 15 % Toleranz ist **eine** Prüfung schwach.
+Bei 64 geprüften Stellen besteht ein Fälscher ohne Wissen mit 3,8·10⁻⁵, eine Absprache,
+die ein Fünftel der Stellen kennt, mit 1,5·10⁻³ (`wiesner_praegen.py`, exakt gerechnet).
+Für echtes Geld braucht es Hunderte Stellen je Prüfung oder weniger Toleranz – also
+bessere Speicher. Genau das misst W1.
+
 **Stufenplan der Variante W:**
 
 | Stufe | Was | Wer | Stand |
 |---|---|---|---|
 | W0 | Simulation, Analyse, Schaltkreise | Aequitas | fertig (`wiesner_verteilt.py`, `wiesner_hardware.py`) |
-| W1 | Fehlerraten auf echter Hardware (IBM, Ionenfalle) → Notengröße und Toleranz | Aequitas; Läufe mit Freigabe | IBM-Lauf bereit; Ionenfalle braucht ein Konto |
-| W2 | Kettenseite schlafend: Satzart „privat“, verteilte Schlüsselerzeugung, Prüf-Transaktion, Zähler, Sperre, Einlösen | Aequitas | offen |
-| W3 | Prägung ohne Vertrauen (Weg 2 oder 3 oben) als Protokoll und Simulation | Aequitas | offen |
-| W4 | Partnerversuch: echte Note in einem Speicher (Stunden), Ausgabe über ein Aequitas-Testnetz, Weitergabe des Geräts, klassische Prüfung, Einlösen | BMFTR-Verbund + Aequitas | Kontakt offen |
+| W1 | Fehlerraten auf echter Hardware (IBM, Ionenfalle) → Notengröße und Toleranz | Aequitas; Läufe mit Freigabe | Rauschmodell gemessen (HEUTE.md 3.3); IBM-Lauf wartet auf Freigabe; Ionenfalle braucht ein Konto |
+| W2 | Kettenseite schlafend: Satzart „privat“, verteilte Schlüsselerzeugung, Prüf-Transaktion, Zähler, Sperre, Einlösen | Aequitas | **W2a fertig** (16.11.2026): Regeln als ausführbare Spezifikation `wiesner_kette.py` und im Knoten `x/humanity/keeper/quanten_w.go`, `quanten_w_register.go` (schlafend), Byte für Byte gleich (Prüfvektor). **W2b offen:** Einhängen in Blöcke, Unterschriften, Buchungen, StateRoot, Snapshot |
+| W3 | Prägung ohne Vertrauen (Weg 2 oder 3 oben) als Protokoll und Simulation | Aequitas | **fertig** (16.11.2026): Weg 3 als Schaltkreis (`wiesner_hardware.note_fern`), Simulation mit Absprache-Rechnung (`wiesner_praegen.py`), Läufer `hardware_ibm.py --wiesner --fern` |
+| W4 | Partnerversuch: echte Note in einem Speicher (Stunden), Ausgabe über ein Aequitas-Testnetz, Weitergabe des Geräts, klassische Prüfung, Einlösen | BMFTR-Verbund + Aequitas | Kontakt offen. **Ohne Partner** (Labormaßstab, Note lebt µs): `hardware_ibm.py --wiesner --kette` – Prägen auf der Kette, Bezahlen per Teleportation, Einlösen mit Aufforderung aus dem Block, Offenlegen, Urteil, AEQ beim Empfänger; ideal und im Rauschmodell gelaufen, IBM wartet auf Freigabe |
 | W5 | Gutachten (Prüfauftrag um Variante W erweitert), Pilot im Testnetz | extern + Aequitas | offen |
 | W6 | Satz „privat“ im Hauptnetz freischalten (⅔ der Prüfer, mindestens 5, 30 Tage Vorlauf), anfangs mit kleiner Höchstdeckung je Note | Prüfer | erst nach W4 und W5 |
 

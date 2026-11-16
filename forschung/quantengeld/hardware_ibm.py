@@ -34,7 +34,14 @@ die ungeschuetzte Note gegen dieselbe Note im 3-Qubit-Code; ohne
 --wiesner (Variante W, wiesner_hardware.py: BB84-Note praegen, halten,
 mit --bezahlen auch teleportieren, klassisch pruefen; misst die Fehlerrate
 je Treffer nach jeder Wartezeit und laesst die erste Note durch die Pruefung
-der Kette auf Anteilen laufen; --qubits N je Note, Standard 6, hoechstens 16).
+der Kette auf Anteilen laufen; --qubits N je Note, Standard 6, hoechstens 16),
+--wiesner --fern (W3, Praegen ohne Vertrauen: je Stelle ein verschraenktes
+Paar, der Validator misst seine Haelfte in eigener Zufallsbasis; das Geheimnis
+kennt nur er, nicht die Praegestelle; wiesner_hardware.note_fern),
+--wiesner --kette (W4 ohne Partner: der ganze Ablauf mit der Kettenseite
+wiesner_kette.KetteW -- Praegen auf der Kette, Bezahlen per Teleportation,
+Einloesen beim Empfaenger: Aufforderung aus dem Block, EIN Schuss als
+Messung der Note, Offenlegen, Urteil, AEQ beim Empfaenger).
 
 Mit echter Maschine oder Rauschmodell wird zusaetzlich die Auslese der
 Pruefqubits kalibriert (2 Schaltkreise) und die Annahme auch
@@ -60,6 +67,9 @@ _spec.loader.exec_module(hw)
 _spec_w = importlib.util.spec_from_file_location("wiesner_hardware", os.path.join(_hier, "wiesner_hardware.py"))
 wh = importlib.util.module_from_spec(_spec_w)
 _spec_w.loader.exec_module(wh)
+_spec_k = importlib.util.spec_from_file_location("wiesner_kette", os.path.join(_hier, "wiesner_kette.py"))
+wk = importlib.util.module_from_spec(_spec_k)
+_spec_k.loader.exec_module(wk)
 
 MAX_LAEUFE = 64      # Schaltkreise je Fall (Kosten auf echter Hardware!)
 MAX_SCHUESSE = 4000
@@ -232,10 +242,12 @@ def zahl(arg: str, standard: int, grenze: int) -> int:
 def backend_und_sampler():
     if "--ideal" in sys.argv:
         if "--dynamisch" in sys.argv:
-            # dynamische Schaltkreise kann nur Aer (ohne Rauschen)
+            # dynamische Schaltkreise kann nur Aer (ohne Rauschen); die
+            # Matrix-Produkt-Methode rechnet auch 48 Qubits, solange wenig
+            # verschraenkt ist (Note mit Teleportation), exakt.
             from qiskit_aer.primitives import SamplerV2 as AerSampler
 
-            return None, AerSampler(), "ideal (Aer ohne Rauschen)"
+            return None, AerSampler(options={"backend_options": {"method": "matrix_product_state"}}), "ideal (Aer ohne Rauschen)"
         from qiskit.primitives import StatevectorSampler
 
         return None, StatevectorSampler(), "ideal (Qiskit StatevectorSampler)"
@@ -304,7 +316,8 @@ def wiesner_lauf(laeufe: int, schuesse: int, rng: random.Random) -> None:
         # Teleportation braucht Rueckkopplung im Lauf; im Rauschmodell rechnet
         # dann nur die Matrix-Produkt-Methode (backend_und_sampler).
         sys.argv.append("--dynamisch")
-    kreise = wh.satz(n, reihe, laeufe, bez, rng)
+    fern = "--fern" in sys.argv
+    kreise = wh.satz(n, reihe, laeufe, bez, rng, fern=fern)
     backend, sampler, wo = backend_und_sampler()
     qcs = [nach_qiskit(s) for s in kreise]
     if backend is not None:
@@ -317,7 +330,7 @@ def wiesner_lauf(laeufe: int, schuesse: int, rng: random.Random) -> None:
     for s, qc, r in zip(kreise, qcs, ergebnisse):
         zaehl = r.data.c.get_counts()
         e = wh.auswerten(s, zaehl)
-        name = ("praegen+bezahlen+pruefen" if s.bedeutung["bezahlt"] else "praegen+pruefen") + f" nach {s.bedeutung['warten_us']:g} us"
+        name = ("fern: " if fern else "") + ("praegen+bezahlen+pruefen" if s.bedeutung["bezahlt"] else "praegen+pruefen") + f" nach {s.bedeutung['warten_us']:g} us"
         f = faelle.setdefault(name, {"fehler": [], "annahme": [], "tiefe": 0, "zwei": 0, "qubits": s.q})
         f["fehler"].append(e["fehlerrate"])
         f["annahme"].append(e["annahme"])
@@ -326,7 +339,8 @@ def wiesner_lauf(laeufe: int, schuesse: int, rng: random.Random) -> None:
         if erste is None:
             # Note Nr. 1: das haeufigste Ergebnis ihres Laufs durch die Kette.
             k = max(zaehl.items(), key=lambda kv: kv[1])[0]
-            tr, fe, ok = wh.kette_pruefen(s, wh.antworten(s, k), rng)
+            geheim = wh.geheimnis_aus_lauf(s, k) if fern else None
+            tr, fe, ok = wh.kette_pruefen(s, wh.antworten(s, k), rng, bits=geheim)
             erste = {"warten_us": s.bedeutung["warten_us"], "bezahlt": s.bedeutung["bezahlt"], "ergebnis": k,
                      "treffer": tr, "fehler": fe, "urteil": "echt" if ok else "abgewiesen"}
     zeilen = [f"## Variante W auf {wo}", "",
@@ -358,6 +372,86 @@ def wiesner_lauf(laeufe: int, schuesse: int, rng: random.Random) -> None:
             json.dump(aus, fh, indent=2)
 
 
+def wiesner_kette_lauf(schuesse: int, rng: random.Random) -> None:
+    """W4 ohne Partner (HEUTE.md, ANALYSE.md Stufenplan): Praegen auf der
+    Kette -> Bezahlen (Teleportation) -> Einloesen beim Empfaenger. Die
+    Praegestelle ist hier der Laeufer (vertraut, Stufe W4 Weg 1)."""
+    n = zahl("--qubits", 16, wh.MAX_QUBITS_NOTE)
+    if n < wk.K_MIN:
+        raise SystemExit(f"--qubits: mindestens {wk.K_MIN} fuer die Pruefung")
+    reihe = warten_reihe() or [20]
+    warten = reihe[0]
+    bez = "--bezahlen" in sys.argv
+    if bez and "--dynamisch" not in sys.argv:
+        sys.argv.append("--dynamisch")
+    VAL = {f"v{j}": os.urandom(16) for j in range(1, 6)}
+    vliste, t = list(VAL), 3
+    kette = wk.KetteW(VAL)
+    sk_p, sk_e = os.urandom(16), os.urandom(16)
+    kette.konto("praeger", 50_000_000, sk_p)
+    kette.konto("empfaenger", wk.PFAND, sk_e)
+    summe0 = kette.summe()
+    log = []
+    basen = [rng.randrange(2) for _ in range(n)]
+    bits = [rng.randrange(2) for _ in range(n)]
+    K = os.urandom(32).hex()
+    pr = wk.Praegung(K, basen, bits, t, vliste, rng)
+    text = f"{wk.DOM_BEST}{K}|{pr.wurzel.hex()}|{n}|{t}|{','.join(vliste)}"
+    kette.praegen("praeger", K, n, pr.wurzel, 10_000_000, vliste, t, {v: wk.KetteW.sig(VAL[v], text) for v in vliste})
+    log.append(f"Block {kette.hoehe}: Note {K[:12]}… gepraegt -- {n} Stellen, Deckung 10 AEQ, 5 Validatoren, Schwelle {t}, Merkle-Wurzel {pr.wurzel.hex()[:12]}…")
+    kette.block()
+    k = min(n, wk.K_MAX)
+    kette.anfrage("empfaenger", K, k, wk.KetteW.sig(sk_e, f"anfrage|{K}|{k}|empfaenger|0"), "empfaenger")
+    log.append(f"Block {kette.hoehe}: Einloesen angefragt (Empfaenger, Pfand 1 AEQ)")
+    kette.block()
+    st, ch = kette.aufforderung_von(K)  # gezogen erst im naechsten Block
+    log.append(f"Block {kette.hoehe}: Aufforderung aus dem Blockhash: {k} Stellen, Basen {''.join('ZX'[b] for b in ch)}")
+    aufforderung = [0] * n
+    for i, beta in zip(st, ch):
+        aufforderung[i] = beta
+    s = wh.note(basen, bits, aufforderung, warten_us=warten, bezahlen=bez)
+    backend, sampler, wo = backend_und_sampler()
+    qc = nach_qiskit(s)
+    if backend is not None:
+        qc = uebersetzen(backend, [qc])[0]
+    job = sampler.run([qc], shots=schuesse)
+    job_id = job.job_id() if hasattr(job, "job_id") else ""
+    r = job.result()[0]
+    erster = r.data.c.get_bitstrings()[0]  # EIN Schuss = die Messung der Note
+    gemessen = wh.antworten(s, erster)
+    antwort = [gemessen[i] for i in st]
+    kette.antwort("empfaenger", K, antwort, wk.KetteW.sig(sk_e, f"antwort|{K}|0|{antwort}"))
+    log.append(f"Block {kette.hoehe}: Antwort des Empfaengers -- Messwerte vom Quantenrechner ({wo}" + (f", Job {job_id}" if job_id else "") + ")")
+    kette.block()
+    urteil = kette.offenlegen(K, pr.offenlegung(st, [1, 3, 5]))
+    treffer = sum(basen[i] == b for i, b in zip(st, ch))
+    fehler = sum(basen[i] == b and o != bits[i] for i, b, o in zip(st, ch, antwort))
+    wort = {True: "ECHT -- 10 AEQ an den Empfaenger", False: "abgewiesen -- Wert ans Grundeinkommen", None: "unentschieden -- Pfand zurueck, Note bleibt"}[urteil]
+    log.append(f"Block {kette.hoehe}: Validatoren 1, 3, 5 legen ihre Anteile offen; jeder Knoten rechnet: {treffer} Treffer, {fehler} Fehler -> {wort}")
+    stat = wh.auswerten(s, r.data.c.get_counts())
+    zeilen = [f"## Quanten-Note von Anfang bis Ende auf {wo}", "",
+              f"Note aus {n} Qubits (BB84), {warten:g} us gehalten" + (", per Teleportation bezahlt" if bez else "")
+              + f", eingeloest mit Pruefung von {k} Stellen (Toleranz {wk.TOLERANZ:.0%}).", ""]
+    zeilen += [f"- {z}" for z in log]
+    zeilen += ["", f"Kontostand Empfaenger: {kette.konten['empfaenger'] / 1e6:g} AEQ, Topf {kette.topf / 1e6:g} AEQ, "
+               f"Summe erhalten: {'ja' if kette.summe() == summe0 else 'NEIN'}.",
+               f"Alle {schuesse} Schuesse desselben Schaltkreises: Fehlerrate je Treffer {stat['fehlerrate']:.3f}, Annahme {stat['annahme']:.3f}.",
+               "", "Vorfuehrung (Testnetz-Logik, Symbolwert): die Praegestelle ist hier der Laeufer (vertraut), die Note lebt "
+               "Mikrosekunden, den Lauf bezeugt der Betreiber der Maschine. Ohne Vertrauen in die Praegestelle: "
+               "Fern-Praeparation (wiesner_praegen.py, note_fern)."]
+    text = "\n".join(zeilen)
+    print(text)
+    if os.environ.get("GITHUB_STEP_SUMMARY"):
+        with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as fh:
+            fh.write(text + "\n")
+    if "--json" in sys.argv:
+        with open(sys.argv[sys.argv.index("--json") + 1], "w") as fh:
+            json.dump({"wo": wo, "job": job_id, "n": n, "k": k, "warten_us": warten, "bezahlt": bez, "K": K,
+                       "urteil": urteil, "treffer": treffer, "fehler": fehler, "erster_schuss": erster,
+                       "fehlerrate_alle_schuesse": stat["fehlerrate"], "annahme_alle_schuesse": stat["annahme"],
+                       "empfaenger_aeq": kette.konten["empfaenger"] / 1e6, "log": log}, fh, indent=2)
+
+
 def main() -> None:
     if "--selbsttest" in sys.argv:
         selbsttest()
@@ -368,7 +462,10 @@ def main() -> None:
     n = 3
     rng = random.Random(int.from_bytes(os.urandom(8), "big"))
     if "--wiesner" in sys.argv:
-        wiesner_lauf(laeufe, schuesse, rng)
+        if "--kette" in sys.argv:
+            wiesner_kette_lauf(schuesse, rng)
+        else:
+            wiesner_lauf(laeufe, schuesse, rng)
         return
     dyn = "--dynamisch" in sys.argv
     reihe = warten_reihe()

@@ -60,8 +60,11 @@ def note(basen: list[int], bits: list[int], aufforderung: list[int],
         raise ValueError("Note: Laengen")
     if any(v not in (0, 1) for v in basen + bits + aufforderung):
         raise ValueError("Note: nur 0/1")
-    B = list(range(n))
-    q = 3 * n if bezahlen else n
+    # Qubits je Stelle nebeneinander (B_j, E_j, C_j): dieselbe Physik, aber
+    # der Matrix-Produkt-Simulator bleibt klein (die Paare kreuzen sich nicht).
+    w = 3 if bezahlen else 1
+    B = [w * j for j in range(n)]
+    q = w * n
     s = hw.Schaltkreis(q, f"wiesner n={n} warten={warten_us:g}us" + (" bezahlt" if bezahlen else ""))
     for a, b, x in zip(B, basen, bits):
         if x:
@@ -71,8 +74,8 @@ def note(basen: list[int], bits: list[int], aufforderung: list[int],
     s.warten(warten_us, B)
     ziel = B
     if bezahlen:
-        E = list(range(n, 2 * n))
-        C = list(range(2 * n, 3 * n))
+        E = [3 * j + 1 for j in range(n)]
+        C = [3 * j + 2 for j in range(n)]
         for e, c in zip(E, C):
             s.h(e)
             s.cx(e, c)
@@ -97,6 +100,66 @@ def note(basen: list[int], bits: list[int], aufforderung: list[int],
     return s
 
 
+def note_fern(val_basen: list[int], aufforderung: list[int], warten_us: float = 0.0, bezahlen: bool = False):
+    """W3, Praegen ohne Vertrauen (Fern-Praeparation): die Praegestelle
+    erzeugt je Stelle ein verschraenktes Paar (Note N_i, Haelfte V_i) und
+    misst NICHTS. Der Validator misst V_i in seiner Basis und bekommt r_i --
+    damit steht N_i fest: Basis Z -> |r_i>, Basis X -> |+> (r=0) / |-> (r=1).
+    Das Geheimnis (Basis, r_i) kennt nur der Validator; die Praegestelle
+    nicht. Messbits: 0..n-1 Note (Aufforderung), n..2n-1 Validatoren,
+    danach die Bits der Teleportation."""
+    n = len(val_basen)
+    if not (1 <= n <= MAX_QUBITS_NOTE and len(aufforderung) == n):
+        raise ValueError("Note: Laengen")
+    if any(v not in (0, 1) for v in val_basen + aufforderung):
+        raise ValueError("Note: nur 0/1")
+    # Qubits je Stelle nebeneinander (N_j, V_j[, E_j, C_j]), siehe note().
+    w = 4 if bezahlen else 2
+    N = [w * j for j in range(n)]
+    V = [w * j + 1 for j in range(n)]
+    q = w * n
+    s = hw.Schaltkreis(q, f"wiesner-fern n={n} warten={warten_us:g}us" + (" bezahlt" if bezahlen else ""))
+    for a, v in zip(N, V):
+        s.h(v)
+        s.cx(v, a)
+    s.barriere(N + V)
+    for j, (v, b) in enumerate(zip(V, val_basen)):
+        if b:
+            s.h(v)
+        s.messen([v], [n + j])
+    s.warten(warten_us, N)
+    ziel = N
+    if bezahlen:
+        E = [4 * j + 2 for j in range(n)]
+        C = [4 * j + 3 for j in range(n)]
+        for e, c in zip(E, C):
+            s.h(e)
+            s.cx(e, c)
+        s.barriere(N + E + C)
+        for j, (b, e) in enumerate(zip(N, E)):
+            s.cx(b, e)
+            s.h(b)
+            s.messen([b, e], [2 * n + 2 * j, 2 * n + 2 * j + 1])
+        for j, c in enumerate(C):
+            s.wenn_x(2 * n + 2 * j + 1, c)
+            s.wenn(2 * n + 2 * j, math.pi, c)
+        ziel = C
+    s.barriere(ziel)
+    for a, beta in zip(ziel, aufforderung):
+        if beta:
+            s.h(a)
+    s.messen(ziel, list(range(n)))
+    s.bedeutung = {"fall": "wiesner-fern", "n": n, "basen": list(val_basen), "bits": None,
+                   "aufforderung": list(aufforderung), "warten_us": float(warten_us), "bezahlt": bezahlen}
+    return s
+
+
+def geheimnis_aus_lauf(s, schluessel: str) -> list[int]:
+    """Bei Fern-Praeparation: die Bits, die die Validatoren gemessen haben."""
+    n = s.bedeutung["n"]
+    return [int(schluessel[-1 - (n + i)]) for i in range(n)]
+
+
 def antworten(s, schluessel: str) -> list[int]:
     """Messwerte der Note aus einem Ergebnis-Schluessel (Bit 0 ganz rechts)."""
     n = s.bedeutung["n"]
@@ -105,12 +168,14 @@ def antworten(s, schluessel: str) -> list[int]:
 
 def auswerten(s, zaehl: dict[str, float], toleranz: float = TOLERANZ) -> dict:
     """Fehlerrate je Treffer (passende Basis) und Annahme mit Toleranz."""
-    b, x, a = s.bedeutung["basen"], s.bedeutung["bits"], s.bedeutung["aufforderung"]
+    b, a = s.bedeutung["basen"], s.bedeutung["aufforderung"]
     treffer = [i for i in range(len(b)) if a[i] == b[i]]
     gesamt = sum(zaehl.values())
     fehler_summe = an = 0.0
     for k, v in zaehl.items():
         o = antworten(s, k)
+        # Fern-Praeparation: das Geheimnis ist je Schuss, was die Validatoren gemessen haben.
+        x = s.bedeutung["bits"] if s.bedeutung["bits"] is not None else geheimnis_aus_lauf(s, k)
         f = sum(o[i] != x[i] for i in treffer)
         fehler_summe += f * v
         if f <= math.floor(toleranz * len(treffer)):
@@ -123,29 +188,42 @@ def auswerten(s, zaehl: dict[str, float], toleranz: float = TOLERANZ) -> dict:
 
 
 def kette_pruefen(s, ergebnis: list[int], rng: random.Random, t: int = 3, v: int = 5,
-                  toleranz: float = TOLERANZ) -> tuple[int, int, bool]:
+                  toleranz: float = TOLERANZ, bits: list[int] | None = None) -> tuple[int, int, bool]:
     """Pruefung wie auf der Kette: Geheimnis als Anteile (t von v), gezaehlt
-    auf den Anteilen (wiesner_verteilt.Kette), nur Treffer/Fehler geoeffnet."""
+    auf den Anteilen (wiesner_verteilt.Kette), nur Treffer/Fehler geoeffnet.
+    bits: bei Fern-Praeparation die Messwerte der Validatoren (geheimnis_aus_lauf)."""
+    if bits is None:
+        bits = s.bedeutung["bits"]
+    if bits is None:
+        raise ValueError("Fern-Praeparation: Bits der Validatoren fehlen")
     V = wv.Validatoren(t, v, rng)
     K = wv.Kette(V, toleranz=toleranz, mindest_treffer=1)
     n = s.bedeutung["n"]
     K.noten[0] = {"n": n, "basis": [V.teile(b) for b in s.bedeutung["basen"]],
-                  "bit": [V.teile(x) for x in s.bedeutung["bits"]],
+                  "bit": [V.teile(x) for x in bits],
                   "benutzt": set(), "gesperrt": False, "eingeloest": False}
     stellen = list(range(n))
     tr, fe = K.zaehlen(0, stellen, s.bedeutung["aufforderung"], ergebnis)
     return tr, fe, K.pruefen(0, stellen, s.bedeutung["aufforderung"], ergebnis)
 
 
-def satz(n: int, reihe: list[float], laeufe: int, bezahlen: bool, rng: random.Random) -> list:
+def satz(n: int, reihe: list[float], laeufe: int, bezahlen: bool, rng: random.Random,
+         fern: bool = False) -> list:
     """Je Wartezeit `laeufe` Noten mit frischen Basen, Bits, Aufforderungen;
-    mit bezahlen dieselbe Note zusaetzlich teleportiert."""
+    mit bezahlen dieselbe Note zusaetzlich teleportiert. fern: Praegen ohne
+    Vertrauen (note_fern) -- die Basen sind die der Validatoren, die Bits
+    entstehen erst bei deren Messung."""
     out = []
     for w in reihe:
         for _ in range(laeufe):
             b = [rng.randrange(2) for _ in range(n)]
             x = [rng.randrange(2) for _ in range(n)]
             a = [rng.randrange(2) for _ in range(n)]
+            if fern:
+                out.append(note_fern(b, a, warten_us=w))
+                if bezahlen:
+                    out.append(note_fern(b, a, warten_us=w, bezahlen=True))
+                continue
             out.append(note(b, x, a, warten_us=w))
             if bezahlen:
                 out.append(note(b, x, a, warten_us=w, bezahlen=True))
@@ -192,6 +270,34 @@ def selbsttest() -> bool:
     # Die Kette weist eine Antwort mit vielen Fehlern ab.
     tr, fe, ok = kette_pruefen(falsch, [1 - y for y in x], rng)
     soll(not ok and fe == n, f"Kette weist Faelschung nicht ab: {tr} {fe} {ok}")
+
+    # W3 Fern-Praeparation, ideal: die Note folgt genau dem, was die
+    # Validatoren messen -- mit und ohne Bezahlen keine Fehler; ihre Bits sind
+    # gleichverteilt (die Praegestelle kann sie nicht festlegen).
+    for bez in (False, True):
+        n = 3
+        vb, a = [rng.randrange(2) for _ in range(n)], [rng.randrange(2) for _ in range(n)]
+        s = note_fern(vb, a, warten_us=10, bezahlen=bez)
+        vert = hw.verteilung(s)
+        e = auswerten(s, vert)
+        soll(abs(e["fehlerrate"]) < 1e-9 and abs(e["annahme"] - 1) < 1e-9, f"fern ideal bezahlt={bez}: {e}")
+        p_r = {}
+        for k, w in vert.items():
+            r = tuple(geheimnis_aus_lauf(s, k))
+            p_r[r] = p_r.get(r, 0) + w
+        soll(len(p_r) == 2 ** n and all(abs(w - 2 ** -n) < 1e-9 for w in p_r.values()), f"Validator-Bits nicht gleichverteilt: {p_r}")
+        # Die Kette prueft gegen die Bits der Validatoren: jedes Ergebnis echt,
+        # mit fremden (geratenen) Bits nicht jedes.
+        for k in vert:
+            tr, fe, ok = kette_pruefen(s, antworten(s, k), rng, bits=geheimnis_aus_lauf(s, k))
+            soll(ok and fe == 0, f"fern Kette: {k} {tr} {fe}")
+    try:
+        kette_pruefen(note_fern([0], [0]), [0], rng)
+        soll(False, "fern ohne Bits geprueft")
+    except ValueError:
+        pass
+    k = satz(3, [0], 2, True, rng, fern=True)
+    soll(len(k) == 4 and all(x.bedeutung["fall"] == "wiesner-fern" for x in k) and k[1].bedeutung["bezahlt"], "satz(fern)")
 
     # Grenzen.
     for kaputt in (([], [], []), ([2], [0], [0]), ([0] * 17, [0] * 17, [0] * 17)):

@@ -217,6 +217,13 @@ Fälschungen 3,7× teurer als die volle (`schwache_pruefung.py`).
   Offline-Bargeld – und das Heute-Paket mit Reihenfolge und Zuständigkeit.
 - `wiesner_hardware.py`: dieselbe Note auf echter Hardware (`hardware_ibm.py --wiesner`):
   prägen, halten, teleportieren, klassisch prüfen, die erste Note durch die Prüfung der Kette.
+- `wiesner_kette.py`: die Regeln der Variante W auf der Kette als ausführbare Spezifikation
+  (Prägen mit Prüfsummen, Anfrage, Antwort, Offenlegen, Urteil, Sperre, Einlösen), mit
+  Missbrauchsfällen; `--vektor` erzeugt den Prüfvektor für den Knoten
+  (`x/humanity/keeper/quanten_w.go`).
+- `wiesner_praegen.py`: Prägen ohne Vertrauen (Fern-Präparation) – Absprache-Rechnung und
+  der ganze Ablauf im Simulator. Auf Hardware: `hardware_ibm.py --wiesner --fern`; von
+  Anfang bis Ende mit der Kette: `hardware_ibm.py --wiesner --kette`.
 - `wiesner_verteilt.py`: Simulation der Variante W – Shamir-Anteile bei den Validatoren,
   klassische Prüfung gemeinsam auf den Anteilen (Beaver), Angriffe A1–A7 mit Gegenproben.
 - `BRUECKE.md` und `bruecke.py`: der Entwurf der Brücke AEQ ↔ Quanten-Note.
