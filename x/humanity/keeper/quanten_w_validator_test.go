@@ -561,6 +561,24 @@ func TestQuantenWDienst_NummerTresorStichtag(t *testing.T) {
 	if len(q.d[0].eintraege) != 0 {
 		t.Fatal("abgewiesen und trotzdem verwahrt")
 	}
+	// Die Praegezeit ausserhalb des Fensters, vom Praeger gueltig
+	// unterschrieben: eine Bestaetigung, die fuer kein Praegen mehr gilt
+	// (zu alt) oder die Uhr vorwegnimmt, belegte nur den Tresor.
+	for name, zeit := range map[string]int64{"zu alt": q.zeit - quantenWAlt - 1, "zu weit voraus": q.zeit + quantenWVoraus + 1} {
+		r := q.anfrageBestaetigen(1)
+		r.Zeit = zeit
+		if _, _, err := q.d[0].bestaetigen(q.auftrag(r, w.praeger)); err == nil {
+			t.Fatalf("Praegezeit %s bestaetigt", name)
+		}
+	}
+	for name, zeit := range map[string]int64{"gerade noch alt": q.zeit - quantenWAlt, "gerade noch voraus": q.zeit + quantenWVoraus} {
+		r := q.anfrageBestaetigen(1)
+		r.Zeit = zeit
+		if _, _, err := q.d[0].bestaetigen(q.auftrag(r, w.praeger)); err != nil {
+			t.Fatalf("Praegezeit %s abgewiesen: %v", name, err)
+		}
+		delete(q.d[0].eintraege, r.K)
+	}
 	// Voller Tresor: fail-closed, auch fuer einen sonst gueltigen Auftrag.
 	voll := q.d[1]
 	for i := 0; i < quantenWTresorHoechstens; i++ {
@@ -579,10 +597,17 @@ func TestQuantenWDienst_NummerTresorStichtag(t *testing.T) {
 	q.zeit += 10
 	w.annehmen(w.anfrageTx(w.anna, 0, 16, "", q.zeit), q.zeit+1)
 	q.zeit += 2
+	// Gezaehlt wird, was der Dienst einreichen WILL: die Kette wiese es vor
+	// dem Stichtag ohnehin ab, der Takt soll es gar nicht erst versuchen.
+	versuche := 0
+	for _, d := range q.d {
+		echt := d.einreichen
+		d.einreichen = func(art string, a QuantenWAngaben) error { versuche++; return echt(art, a) }
+	}
 	quantenWAbOverride.Store(0) // die Konstante gilt: schlafend
 	q.takt()
-	if a := w.anfrage(w.cs); a == nil || a.Basen != nil {
-		t.Fatal("der Takt hat vor dem Stichtag Zufall eingereicht")
+	if a := w.anfrage(w.cs); a == nil || a.Basen != nil || versuche != 0 {
+		t.Fatalf("der Takt arbeitet vor dem Stichtag (%d Einreichungen versucht)", versuche)
 	}
 	quantenWAbOverride.Store(qwT0 - 86400)
 	q.takt()

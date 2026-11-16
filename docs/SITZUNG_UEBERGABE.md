@@ -63,7 +63,9 @@ was zusätzlich war:
   `StarteQuantenWDienst` bekommt dafür die DAG-Höhe.
 - **Ende-zu-Ende-Test mit vier Knoten** (`TestVierKnotenQuantenW_RealDB`, läuft in
   `db-tests`): Präger und Halter über echtes HTTP, alles Übrige tun die Dienste.
-- **Gegenprobe:** 17 Mutationen am Dienst (Ergebnis im PR).
+- **Gegenprobe:** 17 Mutationen am Dienst, alle rot. Drei blieben zuerst grün (fremde
+  Nummer, voller Tresor, Takt vor dem Stichtag) und eine baute nicht (Zeitfenster); dafür
+  gibt es jetzt `TestQuantenWDienst_NummerTresorStichtag`.
 
 Nicht übernommen, als Beobachtung für später:
 - Der Auftrag des Prägers (`quantenWAuftragNachricht`) bindet die Wurzel, aber nicht die
@@ -108,7 +110,7 @@ Nicht übernommen, als Beobachtung für später:
 
 | Repo | PR | Inhalt | Nächster Schritt |
 |---|---|---|---|
-| – | – | keine offenen PRs aus dieser Sitzung | – |
+| Aequitas | #549 | Validator-Dienst W: nichts vor der Finalität, Ende-zu-Ende-Test auf vier Knoten, drei Testlücken geschlossen | **Nicht mergen ohne Wort des Betreibers** (er wollte erst den Vergleich sehen). CI abwarten. |
 
 Gemergt am 16.11.:
 - #544 (OFFEN.md), #545 (Klonangriff, Variante S), #546 (W2c), #547 (W2d, S2a, S2b Teil 1)
