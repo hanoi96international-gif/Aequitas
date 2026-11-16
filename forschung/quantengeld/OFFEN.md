@@ -23,14 +23,18 @@ bleibt: Nichts wird behauptet, was nicht gemessen oder bewiesen ist (QUANTENSICH
 - **Ehrliche Grenze:** Geld zum Mitnehmen gibt es erst mit einem Quantenspeicher. Heute
   lebt eine Note Mikrosekunden.
 - **Ehrliche Schwäche, noch nicht behoben:** Die Toleranz liegt bei 15 %, geprüft werden
-  höchstens 64 Stellen (`K_MAX`). Ein Fälscher ohne Wissen besteht mit 3,8·10⁻⁵. Eine
-  Absprache, die ein Fünftel der Stellen kennt, besteht mit 1,5·10⁻³. **Das muss deutlich
-  besser werden.**
+  höchstens 64 Stellen (`K_MAX`). **Schlimmer als gedacht (Befund 16.11. abends,
+  `wiesner_parameter.py`):** Ein optimaler Kloner macht zwei Kopien mit je 14,6 % Fehler,
+  und das liegt unter 15 %. Eine geklonte Kopie besteht bei k = 64 mit 0,55. Die frühere
+  Angabe (3,8·10⁻⁵) beruhte auf einem Fälscher, der nur rät.
 
 ## B. Zuerst: die Prüfung deutlich stärker machen
 
 1. **Ziel:** Ein Fälscher besteht höchstens mit 2⁻⁴⁰ je Prüfung. Das gilt auch für eine
    Absprache, die einen Anteil f der Stellen kennt (bei Fern-Präparation f = 1/v).
+   **Gerechnet (`wiesner_parameter.py`):** Bei e = 0,7 % (IBM ohne Warten) braucht es
+   eine Toleranz von 4 % und k = 840. Die Toleranz muss immer deutlich unter 14,6 %
+   liegen (Pastawski u. a. 2012).
 2. **Toleranz an die gemessene Fehlerrate koppeln:**
    - τ liegt knapp über der Fehlerrate e der Hardware (aus den W1-Läufen), statt fest
      bei 15 %.
@@ -63,6 +67,12 @@ bauen kann.
      Token. Es gilt nur an genau einem der vorgesehenen Orte bzw. Zeitpunkte.
    - Möglicherweise **der heute machbare Weg**: QKD-Technik statt Speicher, Prüfung
      durch die Kette.
+   - **Analysiert (16.11. abends, ANALYSE.md 5b „Variante S“):** Der Weg ist heute
+     machbar, unfälschbar, privat und dezentral prüfbar, aber kein Hand-zu-Hand-Bargeld.
+     Doppelvorlage per Breidbart-Messung: 14,6 % Fehler, also dieselbe Schwelle wie bei
+     W. `s_kette.py` steht (Stichproben-Annahmestellen, Wahl c auf der Kette). Die
+     S-Vorführung (`--s-token`) ist ideal und im Rauschmodell gelaufen. **IBM wartet auf
+     Freigabe.** Offen sind die Knoten-Regeln und die Vorlage 4 abschicken.
    - Zu klären: Lässt sich „Ort“ auf Aequitas als „Prüfer bzw. Region + Block-Fenster“
      abbilden, und wie viel Sicherheit bleibt dann übrig?
 2. **Zustellen statt Aufbewahren:**

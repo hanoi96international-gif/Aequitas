@@ -28,38 +28,59 @@ für dezentrales Quantengeld“).
 - Lokale Go-Tests: Erst `df -h /` prüfen. Bei vollem Platz `go clean -cache`. Die
   Fehlermeldung „MB of disk left“ kommt vom Container, nicht vom Code.
 
-## Hauptaugenmerk nächste Sitzung: dezentrales Quantengeld
+## Hauptaugenmerk: dezentrales Quantengeld (Stand 16.11. ~18:30 UTC)
 
-Auftrag des Betreibers (16.11. abends): Dezentrales Quantengeld soll auf heutigem Stand
-funktionsfähig werden, damit Aequitas ernstzunehmendes Quantengeld ist. Die vollständige
-Liste steht in **`forschung/quantengeld/OFFEN.md`**. Die Kurzfassung:
+Auftrag des Betreibers: Dezentrales Quantengeld soll auf heutigem Stand funktionieren,
+damit Aequitas ernstzunehmendes Quantengeld ist. Die Liste steht in
+`forschung/quantengeld/OFFEN.md`.
 
-1. **Die Prüfung deutlich stärker machen.** Heute gelten 15 % Toleranz bei höchstens
-   64 Stellen. Damit kommt eine Absprache, die ein Fünftel der Stellen kennt, mit
-   1,5·10⁻³ durch. Ziel ist ≤ 2⁻⁴⁰. Die Toleranz soll an die gemessene Fehlerrate
-   gekoppelt werden; dazu größere k, mehr Validatoren und eine mehrstufige Prüfung.
-2. **Wege ohne Quantenspeicher analysieren.** „Geld zum Mitnehmen“ gibt es heute erst
-   mit einem Speicher. Kandidaten: Raumzeit-Token ohne Quantenspeicher (Kent u. a. 2022,
-   Quelle prüfen), Zustellen über QKD-Netze, Ionenfalle als Verwahrung, Abgrenzung zum
-   Offline-Bargeld. Das Ergebnis kommt als neuer Abschnitt in ANALYSE.md, mit
-   Empfehlung.
-3. **Danach bauen:** Prüfer-Dienst für Validatoren, App-Anzeige, `fern` auf dem echten
-   Chip, Ionenfalle.
+**Neu seit #544 (PR #545, Zweig `claude/friendly-davinci-i4iww1`):**
+1. **Befund Klonangriff:**
+   - Der optimale Kloner macht zwei Kopien mit je 14,6 % Fehler. Damit ist die
+     Toleranz von 15 % gebrochen: Eine geklonte Kopie besteht bei k = 64 mit 0,55.
+   - Rechner: `wiesner_parameter.py`.
+   - Sicher bei 0,7 % Hardware-Fehler: Toleranz 4 %, k = 840.
+   - Die Kettenseite schläft, es gibt keinen Schaden. **Vor jeder Freischaltung müssen
+     die Grenzen neu gesetzt werden.**
+2. **Variante S (ANALYSE.md 5b):**
+   - S-Token nach Kent u. a. 2022: ohne Quantenspeicher, unfälschbar, privat, dezentral
+     prüfbar. Das ist das Quantengeld, das heute geht – aber kein Hand-zu-Hand-Bargeld.
+   - Doppelvorlage per Breidbart-Messung: ebenfalls 14,6 % Fehler.
+
+**Nächste Schritte, in dieser Reihenfolge:**
+1. #545 nach grüner CI mergen.
+2. **Neue Grenzen in Spezifikation und Knoten:**
+   - Toleranz an e gekoppelt (z. B. 4 %), k bis ~1000+, `N_MAX` größer.
+   - Offenlegen in Teilen (Pfade und Anteile für ~1000 Stellen passen nicht in eine
+     Transaktion).
+   - Prüfvektor neu erzeugen, Missbrauchstests.
+   - Eigener PR mit Sicherheitsprüfung.
+3. **Variante S als Spezifikation (`s_kette.py`):**
+   - Ausgabe, maskierte Basen, Vorlage, Offenlegen, Urteil.
+   - Missbrauch: Doppelvorlage, fremde Vorlage, Wiederholung.
+   - Danach die S-Vorführung auf IBM (Teil 1 = vorhandener Schaltkreis ohne Warten).
+4. **Anschreiben Vorlage 4** an Kent und Pitalúa-García (Cambridge) und Rarity (Bristol).
+
+**Achtung, Arbeit einer anderen Sitzung:**
+- Die Sitzung „Weiter“ hat einen Validator-Dienst begonnen: `quanten_w_validator.go`
+  (Tresor, Prägebestätigung, Anteilsherausgabe, Ende-zu-Ende-Test mit vier Knoten,
+  28 Mutationen).
+- Bis 17:41 UTC war er **nicht gepusht**; `claude/weiter-8vzgu9` endet bei der
+  Übergabe zu #543.
+- Wenn jene Sitzung weiterläuft: zuerst committen und pushen. Nicht doppelt bauen.
 
 ## Offene PRs
 
 | Repo | PR | Inhalt | Nächster Schritt |
 |---|---|---|---|
-| Aequitas | (dieser Zweig) | `forschung/quantengeld/OFFEN.md` und diese Übergabe | CI grün abwarten, squash-mergen |
+| Aequitas | #545 | Befund Klonangriff, `wiesner_parameter.py`, Variante S (ANALYSE.md 5b), diese Übergabe | CI grün abwarten, squash-mergen |
 
-Gemergt am 16.11.: #539 (Variante W: Regeln im Knoten W2a, Prägen ohne Vertrauen W3,
-Ablauf mit der Kette W4 ohne Partner; Sicherheitsprüfung als PR-Kommentar), #543
-(Vier-Knoten-Test).
-
-Gemergt am 16.11.: #540 (HEUTE.md, IBM-Läufe), #541 (W2b Teil 1: Regeln geschärft),
-#542 (W2b Teil 2: Variante W schlafend in der Kette, `quanten_w_kette.go`, bis
-`quantenWAbUnix = MaxInt64`; W5: Prüfauftrag um Variante W erweitert). Einzelheiten zu
-W2b stehen im PR #542 und im Kopf von `x/humanity/keeper/quanten_w_kette.go`.
+Gemergt am 16.11.:
+- #544 (OFFEN.md)
+- #539 (Variante W: Regeln im Knoten W2a, Prägen ohne Vertrauen W3, Ablauf mit der Kette
+  W4 ohne Partner)
+- #540, #541, #542 (W2b schlafend eingehängt, W5 Prüfauftrag)
+- #543 (Vier-Knoten-Test)
 
 ## Unruhe im Vier-Knoten-Test (Aufgabe #65) — Korrektur in #543
 

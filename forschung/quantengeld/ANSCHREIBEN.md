@@ -115,3 +115,40 @@ nennen, die es gibt; kein Ergebnis versprechen.
 >    verification of a few-qubit note).
 >
 > **Open source:** everything stays public in the repository.
+
+## Vorlage 4: an die Autoren der S-Token (Cambridge, Bristol; englisch)
+
+An: Adrian Kent, Damián Pitalúa-García (Cambridge, DAMTP), John Rarity (Bristol). Die
+Adressen stehen in der Arbeit (arXiv:2104.11717). Verschickt wird nur vom Betreiber.
+
+> **Subject:** S-money tokens on a public ledger with offline sample-based verifiers –
+> request for feedback
+>
+> Dear Professor Kent, Dr Pitalúa-García, Professor Rarity,
+>
+> we build Aequitas, an open-source ledger with a universal basic income. We read your
+> paper “Practical quantum tokens without quantum memories and experimental tests”
+> (npj Quantum Information 8, 28, 2022). It is the most realistic route we found to
+> unforgeable quantum tokens today. We have built an open model of it
+> (`forschung/quantengeld/s_kette.py` in our public repository) and would value your
+> view on three points:
+>
+> 1. **Decentralised issuance (design, not yet in the model).** The issuer's records
+>    (bases u, values t) are created by remote state preparation at several validators. They are kept only as Shamir shares
+>    and checked against hash commitments on the ledger.
+> 2. **Sample-based acceptance points.** Each of the 2^M acceptance points receives the
+>    records for a secret, disjoint random sample of k positions only. It validates
+>    offline and instantly. A corrupted acceptance point therefore cannot forge at another
+>    point. The user's bases d and choice c are committed once on the ledger, as in your
+>    IQT1, and acceptance points synchronise them beforehand.
+> 3. **Parameters.** For a double presentation we use the Breidbart bound of 14.6 % error
+>    per position. With 0.7 % measured hardware error (IBM, immediate measurement) we
+>    arrive at a 4 % tolerance and k = 840 positions per acceptance point, for a forging
+>    probability ≤ 2^-40. Does this match your analysis of IQT1 under noise and losses?
+>
+> We would also be glad to hear whether a joint test with your QKD setup would be of
+> interest.
+>
+> Kind regards,
+> [Name], Aequitas
+> [E-Mail]

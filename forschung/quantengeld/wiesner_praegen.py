@@ -18,6 +18,11 @@ DIE LOESUNG HIER: FERN-PRAEPARATION (wiesner_hardware.note_fern)
   Praegestelle noch ein Validator. Wer faelschen will, braucht eine Absprache,
   die einen grossen Teil der Stellen kennt.
 
+ACHTUNG (16.11.2026): Das Faelschermodell hier (unbekannte Stellen werden
+geraten, 50 % Fehler) ist ZU GUENSTIG. Ein Faelscher mit echter Note klont
+jede Stelle mit 14,6 % Fehler -- unter der Toleranz von 15 %. Massgeblich
+sind wiesner_parameter.py und ANALYSE.md (Befund Klonangriff).
+
 WIE SCHLIMM IST EINE ABSPRACHE? (faelschen_wahrscheinlichkeit, exakt)
   Eine Absprache kennt den Anteil f der Stellen. Fuer jede gepruefte Stelle
   passt die Basis der Aufforderung mit 1/2; ist die Stelle bekannt, ist die

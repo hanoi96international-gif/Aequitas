@@ -128,7 +128,7 @@ Hersteller für die Zeit um 2029 und später ankündigen (S, Roadmaps).
 |---|---|---|---|---|---|---|---|---|
 | **A** Öffentlich prüfbar + Lightning (bisher) | ja | ja | ja | ja (mit Gerät) | ja | nein (H1–H3) | Gruppenaktion, iO + LWE für Einlösen | fehlertolerante Ära |
 | **B** **Variante W**: privat prüfbar, klassische Prüfung, Geheimnis verteilt | ja | **teilweise**: klassisch online, kurze Nachricht | teilweise | ja (Gerät) | ja (Schwelle der Validatoren) | **Labor heute** (Speicher > 10 h, Token-Geräte im Bau) | No-Cloning, ohne Rechenannahme; Schwelle t von n | **nah**: Demonstrator mit Partnern |
-| **C** S-Token ohne Speicher (Kent et al.) | ja | nein (Raumzeit-Prüfung im Netz vertrauter Stellen) | ja | nein | nein (vertraute Stellen) | **ja**, voll gezeigt 2024 (V) | No-Cloning + Relativität | heute, aber kein Bargeld |
+| **C** S-Token ohne Speicher (Kent et al.) | ja | nein (Raumzeit-Prüfung im Netz vertrauter Stellen) | ja | nein | nein (vertraute Stellen) → **ja als Variante S** (Abschnitt 5b) | **ja**, voll gezeigt 2024 (V) | No-Cloning + Relativität | heute, aber kein Bargeld |
 | **D** Quanten-digitale Zahlungen (Schiansky et al.) | ja | nein (online) | ja | nein | nein (Bank) | **ja**, über Stadtglasfaser gezeigt (V) | No-Cloning | heute, aber Kartenzahlung |
 | **E** Quanten-PUF (physikalische Fingerabdrücke) | teilweise | ja | – | – | ja | Labor | Unkenntnis der Struktur | Baustein, kein Geld |
 | **F** **Offline-Bargeld** (Secure Element + Haftung über „ein Mensch, ein Konto“) | nein (Betrug beweisbar, nicht unmöglich) | **ja** | teilweise | ja | ja | **ja** (Android Keystore) | Haftung + Pfand + Geräteschlüssel | **jetzt** (Stufe 1 fertig) |
@@ -307,11 +307,51 @@ sie nie prüfbar und ihre Deckung läge für immer im Topf). Selbsttest mit Miss
 steht die Note: Es geht kein Wert verloren, aber es kommt auch keiner heraus (fail-closed).
 Eine Schwellen-Signatur (t von v) wäre lebendiger; das ist eine spätere Stufe.
 
-**Ehrlich zur Stärke einer Prüfung:** Mit 15 % Toleranz ist **eine** Prüfung schwach.
-Bei 64 geprüften Stellen besteht ein Fälscher ohne Wissen mit 3,8·10⁻⁵, eine Absprache,
-die ein Fünftel der Stellen kennt, mit 1,5·10⁻³ (`wiesner_praegen.py`, exakt gerechnet).
-Für echtes Geld braucht es Hunderte Stellen je Prüfung oder weniger Toleranz – also
-bessere Speicher. Genau das misst W1.
+**Befund 16.11.2026 abends: Die Toleranz von 15 % ist gegen einen Kloner gebrochen**
+(`wiesner_parameter.py`).
+- **Der Angriff:** Wer eine echte Note hat, klont jede Stelle mit dem optimalen
+  phasenkovarianten Kloner (Bruß u. a. 1999). Beide Kopien haben dann **14,64 %**
+  Fehler je Treffer, in jeder BB84-Basis (nachgerechnet am Zustandsvektor). Das liegt
+  **unter** 15 %.
+- **Was dabei herauskommt:** Gegen die heutigen Regeln (k ≤ 64, Mindesttreffer 4)
+  besteht eine geklonte Kopie mit **0,55**, beide Kopien mit rund 0,3. Der Fälscher
+  bezahlt zweimal, nur einer der Empfänger kann einlösen.
+- **Die Literatur sagt dasselbe:** Klassisch geprüfte Quanten-Token sind nur sicher,
+  wenn weniger als 14,6 % Fehler erlaubt sind (Pastawski u. a., PNAS 2012, cv-qtickets:
+  Treue-Schwelle (1 + 1/√2)/2).
+- **Das alte Modell war zu günstig:** Es ließ einen Fälscher raten (50 % Fehler) und
+  kam so auf 3,8·10⁻⁵. Ein Kloner ist viel besser als Raten.
+- **Schaden:** keiner. Die Kettenseite ist schlafend.
+
+**Sichere Parameter** (Fälscher ≤ 2⁻⁴⁰ je Prüfung, echte Note fällt ≤ 10⁻⁶ durch, exakt
+gerechnet; die Tabelle gibt `python3 -I wiesner_parameter.py` aus):
+- **Die Toleranz muss deutlich unter 14,6 % liegen** und knapp über der Fehlerrate der
+  Hardware. Bei der auf IBM gemessenen Fehlerrate (0,7 % ohne Warten) sind das **4 %**.
+- **Die Prüfung muss groß sein:** bei 4 % **k = 840** Stellen (rund 420 Treffer).
+  `K_MAX` = 64 und `N_MAX` = 2048 reichen dafür nicht. Nötig sind k im Bereich von
+  Tausend und Noten mit einigen Tausend bis Zehntausend Stellen.
+- **Eine Absprache, die den Anteil f der Stellen kennt,** senkt die Fehlerrate des
+  Fälschers auf (1 − f)·14,6 %. Mit vielen Validatoren je Note bleibt f klein.
+
+  | Hardware-Fehler e | Absprache f | Toleranz | k (geprüfte Stellen) |
+  |---|---|---|---|
+  | 0,4 % | 0 / 1/64 / 0,2 | 3 % | 672 / 696 / 1.008 |
+  | 0,7 % (IBM ohne Warten) | 0 / 1/64 / 0,2 | 4 / 4 / 3 % | 840 / 864 / 1.072 |
+  | 2 % | 0 / 1/64 / 0,2 | 6 / 5 / 5 % | 1.360 / 1.376 / 1.864 |
+  | 3 % (mit Bezahlen) | 0 / 1/64 / 0,2 | 7 / 6 / 6 % | 1.792 / 1.864 / 2.672 |
+  | 6 % (20 µs gehalten) | 0 / 1/64 / 0,2 | 9 / 9 / 8 % | 3.464 / 3.728 / 6.976 |
+
+  Gegen die alten Regeln besteht eine geklonte Kopie bei k = 16 / 32 / 64 mit
+  0,58 / 0,55 / 0,55; beide Kopien zusammen mit rund 0,3.
+- **Was folgt:**
+  1. Die Regeln in Spezifikation und Knoten bekommen neue Grenzen: Toleranz an e
+     gekoppelt, große k.
+  2. Das Offenlegen muss in Teilen gehen, weil Pfade und Anteile für ~1000 Stellen nicht
+     in eine Transaktion passen.
+  3. Bis dahin darf Variante W nicht freigeschaltet werden.
+- **Grenze der Aussage:** Gerechnet ist der Produktangriff je Kopie. Dass dieselbe
+  Schwelle auch gegen verschränkte Angriffe in genau unserem Schema gilt (jede Stelle wird
+  nur einmal gefragt), gehört ins Gutachten (W5).
 
 **Stufenplan der Variante W:**
 
@@ -324,6 +364,95 @@ bessere Speicher. Genau das misst W1.
 | W4 | Partnerversuch: echte Note in einem Speicher (Stunden), Ausgabe über ein Aequitas-Testnetz, Weitergabe des Geräts, klassische Prüfung, Einlösen | BMFTR-Verbund + Aequitas | Kontakt offen. **Ohne Partner** (Labormaßstab, Note lebt µs): `hardware_ibm.py --wiesner --kette` – Prägen auf der Kette, Bezahlen per Teleportation, Einlösen mit Aufforderung aus den Hash-Ketten der Validatoren, Offenlegen, Urteil, AEQ beim Empfänger; ideal und im Rauschmodell gelaufen, IBM wartet auf Freigabe |
 | W5 | Gutachten (Prüfauftrag um Variante W erweitert), Pilot im Testnetz | extern + Aequitas | Prüfauftrag erweitert (`docs/QUANTENGELD_PRUEFAUFTRAG.md`); Gutachter und Pilot offen |
 | W6 | Satz „privat“ im Hauptnetz freischalten (⅔ der Prüfer, mindestens 5, 30 Tage Vorlauf), anfangs mit kleiner Höchstdeckung je Note | Prüfer | erst nach W4 und W5 |
+
+## 5b. Ohne Quantenspeicher, heute: Variante S (S-Token, dezentral geprüft)
+
+Nachgetragen am 16.11.2026 abends. Frage des Betreibers: Gibt es unter heutigen Umständen
+eine Lösung ohne das Speichergerät?
+
+**Antwort:** Ja, aber mit klarer Grenze. Unfälschbare, private Quanten-Token, die
+niemand speichern muss, sind heute machbar. Bargeld, das als Quantenzustand von Hand zu
+Hand geht, ist es nicht. Der Weg dorthin sind die **S-Token** (S-money) von Kent u. a.:
+„Practical quantum tokens without quantum memories and experimental tests“, npj Quantum
+Information 8, 28 (2022), arXiv:2104.11717. Sie wurden mit handelsüblicher QKD-Technik
+erprobt.
+
+**So funktioniert ein S-Token (Schema IQT1 der Arbeit):**
+1. **Ausgabe.** Die Ausgabestelle B schickt N Qubits in zufälligen BB84-Zuständen
+   (Basen u, Werte t). Die Nutzerin A misst **sofort**, jede Stelle in einer zufälligen
+   Basis y, und hat danach nur noch Klartext-Ergebnisse x. **Nichts muss gespeichert
+   werden.**
+2. **Maskierte Basenwahl.** A gibt B ihre Basen nur maskiert: d = y oder d = ȳ, je nach
+   einem geheimen Bit z.
+3. **Einlösen.** Erst beim Einlösen wählt A eine von 2^M Vorlagestellen (Ort oder
+   Zeitfenster), sendet c = b ⊕ z und legt x vor. Geprüft werden nur die Stellen, deren
+   Basis zur gewählten Vorlagestelle passt.
+4. **Unfälschbar:** Wer an zwei Stellen vorlegen will, braucht die richtigen Ergebnisse
+   in beiden Basen. Am besten misst man dafür in der Basis zwischen X und Z
+   (Breidbart). Das ergibt **14,6 % Fehler**, genau wie beim Kloner der Variante W.
+   Dieselbe Toleranzschwelle gilt also, und `wiesner_parameter.py` rechnet auch hier die
+   Prüfgröße (bei 0,7 % Hardware-Fehler: Toleranz 4 %, rund 840 geprüfte Stellen).
+5. **Privat:** B erfährt erst beim Einlösen, wo A einlöst.
+
+**Was Aequitas daraus machen kann (Variante S, Entwurf):**
+- **Dezentrale Ausgabe:**
+  - Die Werte (t, u) kennt nicht eine Bank. Sie entstehen wie bei W3 durch
+    Fern-Präparation bei den Validatoren und liegen als Shamir-Anteile bei ihnen
+    (`note_fern`, Abschnitt 5).
+  - Auf der Kette stehen nur Prüfsummen, wie bei Variante W.
+- **Prüfung durch die Kette:**
+  - Die Vorlagestelle ist ein Satz von Validatoren bzw. ein Block-Fenster.
+  - Beim Einlösen legen die Validatoren die Anteile der geprüften Stellen offen, und
+    jeder Knoten urteilt selbst.
+  - Das ist derselbe Ablauf wie das Offenlegen der Variante W (`quanten_w*.go`), nur
+    ohne den Teil, in dem gemessen und geantwortet wird.
+- **Was der Nutzer braucht:**
+  - **Bei der Ausgabe:** einen Empfänger, der Einzelphotonen in zwei Basen misst.
+    Das ist QKD-Empfängertechnik (handelsüblich; Handgeräte als Prototypen, u. a. Bristol).
+  - **Danach:** nur das Telefon mit Klartext-Daten.
+- **Heute vorführbar:**
+  - Teil 1 (Ausgabe und sofortiges Messen) ist genau der Schaltkreis, der auf IBM schon
+    gelaufen ist: Prägen und ohne Warten in zufälligen Basen messen, 0,7 % Fehler.
+  - Teil 2 ist reine Klassik und läuft auf der Kette.
+  - Eine S-Vorführung auf dem echten Chip geht also **sofort**, mit den vorhandenen
+    Werkzeugen.
+
+**Was Variante S nicht ist:**
+- **Kein Bargeld von Hand zu Hand.** Weitergeben heißt: klassische Daten übergeben. Der
+  Weitergebende kennt sie dann weiter, es gilt „wer zuerst einlöst“. Kent u. a.
+  beschreiben übertragbare Varianten mit klassischer Nachricht; ob sie auf eine Kette
+  passen, ist offen.
+- **Auf einer Kette weniger einzigartig als ohne.** Der Vorteil „sofort gültig ohne
+  Rückfrage“ zählt dort, wo nicht auf einen Block gewartet werden kann, etwa an
+  Annahmestellen ohne Netz. Die Prüfgeheimnisse müssen dann vorher bei der Annahmestelle
+  liegen, und die braucht dafür vertrauenswürdige Hardware (wie beim Offline-Bargeld).
+
+**Einordnung:**
+- **Variante S ist das Quantengeld, das unter heutigen Umständen funktioniert:**
+  unfälschbar durch Physik, privat, ohne Quantenspeicher, dezentral geprüft.
+- **Variante W** bleibt der Weg zu echtem Quanten-Bargeld, sobald Speicher tragen.
+- **Beide** brauchen die neuen Prüfgrößen (Befund in Abschnitt 5) und ein Gutachten.
+- **Spezifikation `s_kette.py` (16.11. abends):**
+  - **Stichproben-Annahmestellen:** Jede Stelle bekommt (u, t) nur auf einer eigenen,
+    geheimen, disjunkten Stichprobe von k Stellen. Sie prüft sofort und ohne Netz. Eine
+    bestochene Stelle kann an einer anderen Stelle nicht fälschen.
+  - **Die Nutzerin braucht kein vertrauenswürdiges Gerät.**
+  - **Die Wahl c steht einmal auf der Kette:** Bindung d und Wahl c je einmal; die
+    Stellen holen sie vorab. Der Selbsttest zeigt, warum: Dürfte man c je Stelle selbst
+    nennen, käme ein Token an beiden Stellen durch.
+  - **Missbrauchstests:** zwei Vorlagen (ehrlich gemessen und Breidbart), bestochene
+    Stelle, fremde Bindung, zweite Wahl, Vorlage ohne Abgleich, Wiederholung, Abgleich
+    auf der Kette. Gegenproben mit alter Toleranz, mit c je Stelle und mit vollem Wissen.
+- **Nächste Schritte:**
+  1. ~~Spezifikation `s_kette.py`~~ – erledigt (oben), auch die **dezentrale
+     Ausgabe** (`stelle_laden`): Jede Annahmestelle lädt ihre Stichprobe als Anteile
+     von t Validatoren und prüft jede Stelle gegen Prüfsumme und Merkle-Wurzel auf der
+     Kette. Ein falscher Anteil oder Pfad, zu wenige oder zu viele Anteile, ein doppeltes
+     x, ein x außerhalb 1..v oder eine fremde Wurzel: Die Stelle lädt nicht. Gegenprobe
+     durch Mutation: fünf von fünf erkannt. Offen: Knoten-Regeln.
+  2. S-Vorführung auf IBM.
+  3. Anschreiben an die Autoren (Cambridge: Kent, Pitalúa-García; Bristol: Rarity) als
+     Vorlage 4.
 
 ## 6. Zugang, Geld, Begutachtung – andere Wege
 
