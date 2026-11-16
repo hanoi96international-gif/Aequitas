@@ -205,6 +205,13 @@ Prüfung mit 16 Stellen ist schwach, und Prägen ohne Vertrauen läuft im selben
 Schaltkreis statt über eine Quantenleitung. Dafür bleibt der Partnerversuch (W4 mit
 Speicher, ANALYSE.md).
 
+**Nachtrag 16.11.2026 abends:** Die Toleranz von 15 % ist gegen einen optimalen Kloner
+gebrochen. Jede Kopie hat 14,6 % Fehler; eine geklonte Kopie besteht bei 64 Stellen mit
+0,55. Sicher wären bei 0,7 % Hardware-Fehler eine Toleranz von 4 % und 840 geprüfte
+Stellen (`wiesner_parameter.py`, ANALYSE.md „Befund“). Der Ablauf der Vorführung bleibt
+richtig; die Prüfgrößen der Kettenseite müssen vor jeder Freischaltung neu gesetzt
+werden.
+
 ### 3.4 Bargeld-Verhalten ohne Quanten (Offline-Bargeld)
 
 Was Menschen sich von Quantengeld wünschen, ist meist offline zu zahlen, wie mit

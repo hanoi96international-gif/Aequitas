@@ -23,14 +23,18 @@ bleibt: Nichts wird behauptet, was nicht gemessen oder bewiesen ist (QUANTENSICH
 - **Ehrliche Grenze:** Geld zum Mitnehmen gibt es erst mit einem Quantenspeicher. Heute
   lebt eine Note Mikrosekunden.
 - **Ehrliche Schwäche, noch nicht behoben:** Die Toleranz liegt bei 15 %, geprüft werden
-  höchstens 64 Stellen (`K_MAX`). Ein Fälscher ohne Wissen besteht mit 3,8·10⁻⁵. Eine
-  Absprache, die ein Fünftel der Stellen kennt, besteht mit 1,5·10⁻³. **Das muss deutlich
-  besser werden.**
+  höchstens 64 Stellen (`K_MAX`). **Schlimmer als gedacht (Befund 16.11. abends,
+  `wiesner_parameter.py`):** Ein optimaler Kloner macht zwei Kopien mit je 14,6 % Fehler,
+  und das liegt unter 15 %. Eine geklonte Kopie besteht bei k = 64 mit 0,55. Die frühere
+  Angabe (3,8·10⁻⁵) beruhte auf einem Fälscher, der nur rät.
 
 ## B. Zuerst: die Prüfung deutlich stärker machen
 
 1. **Ziel:** Ein Fälscher besteht höchstens mit 2⁻⁴⁰ je Prüfung. Das gilt auch für eine
    Absprache, die einen Anteil f der Stellen kennt (bei Fern-Präparation f = 1/v).
+   **Gerechnet (`wiesner_parameter.py`):** Bei e = 0,7 % (IBM ohne Warten) braucht es
+   eine Toleranz von 4 % und k = 840. Die Toleranz muss immer deutlich unter 14,6 %
+   liegen (Pastawski u. a. 2012).
 2. **Toleranz an die gemessene Fehlerrate koppeln:**
    - τ liegt knapp über der Fehlerrate e der Hardware (aus den W1-Läufen), statt fest
      bei 15 %.

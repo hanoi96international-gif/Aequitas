@@ -71,6 +71,8 @@ jobs:
       # Knoten und Spezifikation rechnen gleich: der Pruefvektor kommt aus der Spezifikation.
       - run: python3 -I forschung/quantengeld/wiesner_kette.py --vektor | cmp - x/humanity/keeper/testdata/quanten_w_vektor.json
       - run: python3 -I forschung/quantengeld/wiesner_praegen.py --selbsttest
+      # Klonangriff gegen die alte Toleranz und sichere Parameter (~2 min, exakte Summen).
+      - run: python3 -I forschung/quantengeld/wiesner_parameter.py --selbsttest
       - run: python3 -I forschung/quantengeld/zhandry_spielzeug.py --selbsttest
       - run: python3 -I forschung/quantengeld/bruecke.py --selbsttest
       - run: python3 -I forschung/quantengeld/rauschen.py --selbsttest

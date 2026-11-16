@@ -224,6 +224,9 @@ Fälschungen 3,7× teurer als die volle (`schwache_pruefung.py`).
 - `wiesner_praegen.py`: Prägen ohne Vertrauen (Fern-Präparation) – Absprache-Rechnung und
   der ganze Ablauf im Simulator. Auf Hardware: `hardware_ibm.py --wiesner --fern`; von
   Anfang bis Ende mit der Kette: `hardware_ibm.py --wiesner --kette`.
+- `wiesner_parameter.py`: Wie stark ist eine Prüfung wirklich? Der optimale Kloner
+  (14,6 % Fehler je Kopie) bricht die alte Toleranz von 15 %; Rechner für sichere
+  Toleranz und Prüfgröße zu einer gemessenen Fehlerrate (ANALYSE.md, Befund).
 - `wiesner_verteilt.py`: Simulation der Variante W – Shamir-Anteile bei den Validatoren,
   klassische Prüfung gemeinsam auf den Anteilen (Beaver), Angriffe A1–A7 mit Gegenproben.
 - `BRUECKE.md` und `bruecke.py`: der Entwurf der Brücke AEQ ↔ Quanten-Note.

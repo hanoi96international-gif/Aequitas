@@ -307,11 +307,40 @@ sie nie prüfbar und ihre Deckung läge für immer im Topf). Selbsttest mit Miss
 steht die Note: Es geht kein Wert verloren, aber es kommt auch keiner heraus (fail-closed).
 Eine Schwellen-Signatur (t von v) wäre lebendiger; das ist eine spätere Stufe.
 
-**Ehrlich zur Stärke einer Prüfung:** Mit 15 % Toleranz ist **eine** Prüfung schwach.
-Bei 64 geprüften Stellen besteht ein Fälscher ohne Wissen mit 3,8·10⁻⁵, eine Absprache,
-die ein Fünftel der Stellen kennt, mit 1,5·10⁻³ (`wiesner_praegen.py`, exakt gerechnet).
-Für echtes Geld braucht es Hunderte Stellen je Prüfung oder weniger Toleranz – also
-bessere Speicher. Genau das misst W1.
+**Befund 16.11.2026 abends: Die Toleranz von 15 % ist gegen einen Kloner gebrochen**
+(`wiesner_parameter.py`).
+- **Der Angriff:** Wer eine echte Note hat, klont jede Stelle mit dem optimalen
+  phasenkovarianten Kloner (Bruß u. a. 1999). Beide Kopien haben dann **14,64 %**
+  Fehler je Treffer, in jeder BB84-Basis (nachgerechnet am Zustandsvektor). Das liegt
+  **unter** 15 %.
+- **Was dabei herauskommt:** Gegen die heutigen Regeln (k ≤ 64, Mindesttreffer 4)
+  besteht eine geklonte Kopie mit **0,55**, beide Kopien mit rund 0,3. Der Fälscher
+  bezahlt zweimal, nur einer der Empfänger kann einlösen.
+- **Die Literatur sagt dasselbe:** Klassisch geprüfte Quanten-Token sind nur sicher,
+  wenn weniger als 14,6 % Fehler erlaubt sind (Pastawski u. a., PNAS 2012, cv-qtickets:
+  Treue-Schwelle (1 + 1/√2)/2).
+- **Das alte Modell war zu günstig:** Es ließ einen Fälscher raten (50 % Fehler) und
+  kam so auf 3,8·10⁻⁵. Ein Kloner ist viel besser als Raten.
+- **Schaden:** keiner. Die Kettenseite ist schlafend.
+
+**Sichere Parameter** (Fälscher ≤ 2⁻⁴⁰ je Prüfung, echte Note fällt ≤ 10⁻⁶ durch, exakt
+gerechnet; die Tabelle gibt `python3 -I wiesner_parameter.py` aus):
+- **Die Toleranz muss deutlich unter 14,6 % liegen** und knapp über der Fehlerrate der
+  Hardware. Bei der auf IBM gemessenen Fehlerrate (0,7 % ohne Warten) sind das **4 %**.
+- **Die Prüfung muss groß sein:** bei 4 % **k = 840** Stellen (rund 420 Treffer).
+  `K_MAX` = 64 und `N_MAX` = 2048 reichen dafür nicht. Nötig sind k im Bereich von
+  Tausend und Noten mit einigen Tausend bis Zehntausend Stellen.
+- **Eine Absprache, die den Anteil f der Stellen kennt,** senkt die Fehlerrate des
+  Fälschers auf (1 − f)·14,6 %. Mit vielen Validatoren je Note bleibt f klein.
+- **Was folgt:**
+  1. Die Regeln in Spezifikation und Knoten bekommen neue Grenzen: Toleranz an e
+     gekoppelt, große k.
+  2. Das Offenlegen muss in Teilen gehen, weil Pfade und Anteile für ~1000 Stellen nicht
+     in eine Transaktion passen.
+  3. Bis dahin darf Variante W nicht freigeschaltet werden.
+- **Grenze der Aussage:** Gerechnet ist der Produktangriff je Kopie. Dass dieselbe
+  Schwelle auch gegen verschränkte Angriffe in genau unserem Schema gilt (jede Stelle wird
+  nur einmal gefragt), gehört ins Gutachten (W5).
 
 **Stufenplan der Variante W:**
 
