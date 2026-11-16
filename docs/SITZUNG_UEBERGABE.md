@@ -105,7 +105,7 @@ Nicht übernommen, als Beobachtung für später:
    - Erledigt mit #552: (1) Der Auftrag bindet den Hash der Anteile
      (`quantenWAuftragNachricht` v2). (2) Ein identischer Auftrag bekommt dieselbe
      Bestätigung, ein anderer für dasselbe K bleibt abgewiesen.
-   - (3) und (4) im Folge-PR:
+   - (3) und (4) mit #555:
      - Je Versuch ein zuständiger Validator (`quantenWZustaendig`, verteilt über K). Er
        reicht bis zu 8 Teile je Takt ein; die anderen springen erst ein, wenn ein Teil
        10 s offen ist.
@@ -121,9 +121,10 @@ Nicht übernommen, als Beobachtung für später:
 
 | Repo | PR | Inhalt | Nächster Schritt |
 |---|---|---|---|
-| Aequitas | (Zweig `claude/aequitas-fortsetzen-osrea1`) | Validator-Dienst: Staffel beim Offenlegen, bis 8 Teile je Takt | CI, Sicherheitsprüfung, mergen |
+| – | – | keine offenen PRs | – |
 
 Gemergt am 16.11.:
+- #555 (Validator-Dienst: Staffel, bis 8 Teile je Takt)
 - #554 (Validator-Dienst für Variante S)
 - #552 (Validator-Dienst W: Auftrag bindet Anteile, Bestätigen wiederholbar; `s_kette.py`
   feste Annahmestellen; Stichtag-Wächter-Tests warten auf den Testserver statt `sleep 1`)
