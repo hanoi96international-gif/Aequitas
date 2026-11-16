@@ -277,10 +277,9 @@ Register, Topf, Abgabe, Freischaltung und Einlösen in AEQ gibt es schon.
 2. **Spezifikation der Kettenseite W** als ausführbares Modell, wie `bruecke_kette.py`.
    Danach schlafend im Knoten, wie bisher.
 3. **Offline-Bargeld Stufe 2** (Knoten-API, Zertifikat, Stand) weiterbauen.
-4. **Vorlagen schreiben:**
-   - deutsches Anschreiben an den BMFTR-Token-Verbund;
-   - Antrag bei der Unitary Foundation;
-   - ePrint-Entwurf zur Variante W.
+4. **Vorlagen:** Das deutsche Anschreiben an den BMFTR-Token-Verbund und der Entwurf
+   für die Unitary Foundation stehen in `ANSCHREIBEN.md` (Vorlagen 2 und 3). Offen ist
+   noch der ePrint-Entwurf zur Variante W.
 
 **Brauche ich von dir:**
 1. **Konto bei Open Quantum** (frei) oder Quantinuum. Dann laufen Prägen und Prüfen auf
