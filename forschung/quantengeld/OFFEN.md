@@ -20,6 +20,7 @@ bleibt: Nichts wird behauptet, was nicht gemessen oder bewiesen ist (QUANTENSICH
     10 AEQ beim Empfänger, Annahme 0,998.
   - **Mit 20 µs Halten und Teleportation:** abgewiesen, 39 % Fehler je Treffer.
   - **3-Qubit-Schutz:** kein messbarer Gewinn.
+  - **Prägen ohne Vertrauen (`fern`, `ibm_fez`):** ohne Warten 2,4 % Fehler, Annahme 0,90.
 - **Ehrliche Grenze:** Geld zum Mitnehmen gibt es erst mit einem Quantenspeicher. Heute
   lebt eine Note Mikrosekunden.
 - **Die frühere Schwäche ist behoben (W2c, #546):**
@@ -121,8 +122,10 @@ wird.
 
 1. **W1 vervollständigen:**
    - IBM ist gemessen (siehe A).
-   - Offen sind `fern` auf dem echten Chip und die Ionenfalle (Sekunden statt
-     Mikrosekunden).
+   - `fern` auf dem echten Chip ist gelaufen (`ibm_fez`, HEUTE.md 3.3): ohne Warten 2,4 %
+     Fehler, also Toleranz 6 % und 1.360 Stellen; mit Teleportation 12,5 %, das ist nicht
+     sicher prüfbar.
+   - Offen ist die Ionenfalle (Sekunden statt Mikrosekunden).
    - Aus den Fehlerraten folgen die Parameter für Abschnitt B.
 2. ~~**Prüfer-Dienst für Validatoren**~~ – **gebaut (W2d, 16.11. abends,
    `quanten_w_validator.go`):**
@@ -141,8 +144,7 @@ wird.
 
 ## E. Wartet auf dich (Freigaben und Konten)
 
-- **IBM-Lauf `wiesner = fern` auf dem echten Chip:** Workflow „Quantengeld auf
-  Quanten-Hardware“, Modus `ibm`. Den Lauf startet die Sitzung, die Freigabe gibst du.
+- ~~**IBM-Lauf `wiesner = fern` auf dem echten Chip**~~ – gelaufen (HEUTE.md 3.3).
 - ~~**App 1.23.2**~~ – vollständig veröffentlicht (APK und IPA, `quelle.json` geprüft).
 - **Konto für eine Ionenfalle** (Quantinuum oder IonQ), für C.6 und W1.
 - **Anschreiben an den BMFTR-Verbund** verschicken (`ANSCHREIBEN.md`, Vorlage 2). Das ist

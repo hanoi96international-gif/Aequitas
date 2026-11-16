@@ -63,7 +63,7 @@ hardware. We also ask what can be shown on real devices now.
 4. **Implementation and experiments:**
    - an executable specification, a node implementation that matches it byte for byte, and
      abuse tests checked by mutation (§6);
-   - runs on IBM `ibm_marrakesh` (§7).
+   - runs on IBM `ibm_marrakesh` and `ibm_fez` (§7).
 
 ## 2 Background
 
@@ -146,7 +146,8 @@ hardware. We also ask what can be shown on real devices now.
   who measures it in its own random basis, which fixes the note's state at that position.
 - No single party knows the whole note. A coalition of m validators knows a fraction m/v
   of the positions.
-- We have run this as a circuit (`note_fern`); over a real quantum link it is future work.
+- We have run this as a circuit (`note_fern`), also on real hardware (§7); over a real
+  quantum link it is future work.
 
 ## 4 Variant S: memoryless tokens with sample-based acceptance points
 
@@ -255,13 +256,14 @@ hit), tolerance 4 % and k = 840 give an honest failure probability below 10⁻�
 
 ## 7 Experiments
 
-All runs are on IBM `ibm_marrakesh` (Heron) through the public Qiskit Runtime. Circuits
-and raw results are in the repository's workflow runs.
+All runs are on IBM Heron devices (`ibm_marrakesh`, and `ibm_fez` where marked) through
+the public Qiskit Runtime. Circuits and raw results are in the repository's workflow runs.
 
 | What | Size | Result |
 |---|---|---|
 | W note, mint → challenge → answer → reveal → verdict, no waiting | 16 positions | accepted: 10 hits, 0 errors; 0.7 % error per hit over 1,000 shots, acceptance 0.998 |
 | Same, 20 µs storage plus teleportation | 16 positions | rejected: 9 hits, 3 errors; 39.1 % error per hit |
+| W note minted without trust (§3.5), no waiting, `ibm_fez` | 6 positions, 4 notes × 500 shots | 2.4 % error per hit, acceptance 0.90; with teleportation 12.5 %; after 20 µs 29 % |
 | S-token, secure parameters (tol 4 %, k = 840 per point) | 1,680 qubits, 105 circuits × 1 shot | 0.46 % error per matching basis; chosen point accepted (438 hits, 4 errors), other point rejected (401 hits, 196 errors) |
 
 These are demonstrations, not security experiments:
@@ -270,7 +272,9 @@ These are demonstrations, not security experiments:
 - the W note lives microseconds.
 
 They show the error rates the parameters must accommodate, and that the protocol logic
-works end-to-end with real measurement data.
+works end-to-end with real measurement data. The 2.4 % of remote preparation still admits
+secure parameters (tolerance 6 %, k = 1,360). The 12.5 % with teleportation does not: no
+tolerance below 14.6 % meets both targets up to k = 8,192.
 
 ## 8 Limitations and open questions
 

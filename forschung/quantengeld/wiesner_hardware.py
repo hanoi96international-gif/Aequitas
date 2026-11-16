@@ -47,7 +47,11 @@ def _laden(name: str):
 hw = _laden("hardware")
 wv = _laden("wiesner_verteilt")
 
-TOLERANZ = 0.15        # wie im Selbsttest von wiesner_verteilt.py
+# Standard-Toleranz der Kette (wiesner_kette.TOL_PROZENT, W2c). Die fruehere
+# 15 % war gegen einen optimalen Kloner gebrochen (14,6 % je Kopie, ANALYSE.md
+# "Befund"). Bei Noten bis 6 Stellen aendert das die Annahme nicht (dort ist
+# so oder so kein Fehler erlaubt), bei der 16er-Note der Kette schon.
+TOLERANZ = 0.04
 MAX_QUBITS_NOTE = 16
 
 
