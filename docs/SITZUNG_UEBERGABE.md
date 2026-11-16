@@ -28,55 +28,51 @@ für dezentrales Quantengeld“).
 - Lokale Go-Tests: Erst `df -h /` prüfen. Bei vollem Platz `go clean -cache`. Die
   Fehlermeldung „MB of disk left“ kommt vom Container, nicht vom Code.
 
-## Hauptaugenmerk: dezentrales Quantengeld (Stand 16.11. ~18:30 UTC)
+## Hauptaugenmerk: dezentrales Quantengeld (Stand 16.11. ~19:05 UTC)
 
-Auftrag des Betreibers: Dezentrales Quantengeld soll auf heutigem Stand funktionieren,
-damit Aequitas ernstzunehmendes Quantengeld ist. Die Liste steht in
-`forschung/quantengeld/OFFEN.md`.
+Auftrag des Betreibers: dezentrales Quantengeld auf heutigem Stand funktionsfähig, damit
+Aequitas ernstzunehmendes Quantengeld ist. „Alles umsetzen.“ Die Liste der offenen Punkte
+steht in `forschung/quantengeld/OFFEN.md`.
 
-**Neu seit #544 (PR #545, Zweig `claude/friendly-davinci-i4iww1`):**
-1. **Befund Klonangriff:**
-   - Der optimale Kloner macht zwei Kopien mit je 14,6 % Fehler. Damit ist die
-     Toleranz von 15 % gebrochen: Eine geklonte Kopie besteht bei k = 64 mit 0,55.
-   - Rechner: `wiesner_parameter.py`.
-   - Sicher bei 0,7 % Hardware-Fehler: Toleranz 4 %, k = 840.
-   - Die Kettenseite schläft, es gibt keinen Schaden. **Vor jeder Freischaltung müssen
-     die Grenzen neu gesetzt werden.**
-2. **Variante S (ANALYSE.md 5b):**
-   - S-Token nach Kent u. a. 2022: ohne Quantenspeicher, unfälschbar, privat, dezentral
-     prüfbar. Das ist das Quantengeld, das heute geht – aber kein Hand-zu-Hand-Bargeld.
-   - Doppelvorlage per Breidbart-Messung: ebenfalls 14,6 % Fehler.
+**Erledigt heute Abend:**
+- **#545 Befund Klonangriff:** Die Toleranz von 15 % war gebrochen (Kloner 14,6 %).
+  Dazu kamen `wiesner_parameter.py` und Variante S (S-Token ohne Speicher,
+  Stichproben-Annahmestellen, `s_kette.py`).
+- **#546 W2c sichere Prüfgrößen** (Knoten und Spezifikation):
+  - Toleranz je Note, k_note aus einer exakten Tabelle mit Absprache-Grenze
+    f = (t−1)/v.
+  - Offenlegen in Teilen.
+  - Kleinste Prüfung ⌈n/255⌉, damit die Ketten nicht billig leerbar sind.
+- **#547 W2d Validator-Dienst** (`quanten_w_validator.go`): Tresor, Bestätigung mit
+  unterschriebenem Auftrag, Anteile erst nach der Antwort, Hintergrund (Zufall, Teile
+  über `QUANTEN_W_PEERS`, Fristen).
+- **S-Token auf echter IBM-Hardware** (Lauf 43927782462): 1.680 Qubits, 0,46 % Fehler,
+  angenommen; Doppelvorlage abgewiesen.
 
-**Nächste Schritte, in dieser Reihenfolge:**
-1. #545 nach grüner CI mergen.
-2. **Neue Grenzen in Spezifikation und Knoten:**
-   - Toleranz an e gekoppelt (z. B. 4 %), k bis ~1000+, `N_MAX` größer.
-   - Offenlegen in Teilen (Pfade und Anteile für ~1000 Stellen passen nicht in eine
-     Transaktion).
-   - Prüfvektor neu erzeugen, Missbrauchstests.
-   - Eigener PR mit Sicherheitsprüfung.
-3. **Variante S als Spezifikation (`s_kette.py`):**
-   - Ausgabe, maskierte Basen, Vorlage, Offenlegen, Urteil.
-   - Missbrauch: Doppelvorlage, fremde Vorlage, Wiederholung.
-   - Danach die S-Vorführung auf IBM (Teil 1 = vorhandener Schaltkreis ohne Warten).
-4. **Anschreiben Vorlage 4** an Kent und Pitalúa-García (Cambridge) und Rarity (Bristol).
+**Arbeit einer anderen Sitzung („Weiter“):** Ihr eigener Validator-Dienst war bis
+19:00 UTC nicht gepusht. Der Dienst aus #547 deckt ihn ab. Wird er später doch gepusht,
+erst vergleichen, dann zusammenführen; nicht doppelt bauen.
 
-**Achtung, Arbeit einer anderen Sitzung:**
-- Die Sitzung „Weiter“ hat einen Validator-Dienst begonnen: `quanten_w_validator.go`
-  (Tresor, Prägebestätigung, Anteilsherausgabe, Ende-zu-Ende-Test mit vier Knoten,
-  28 Mutationen).
-- Bis 17:41 UTC war er **nicht gepusht**; `claude/weiter-8vzgu9` endet bei der
-  Übergabe zu #543.
-- Wenn jene Sitzung weiterläuft: zuerst committen und pushen. Nicht doppelt bauen.
+**Nächste Schritte:**
+1. **S2a** (dieser Zweig, nach #547): Regeln für Variante S im Knoten (`quanten_s.go`,
+   Prüfvektor), Einlösen auf der Kette in der Spezifikation (`KetteS.einloesen`), Doku.
+2. **S2b:** S in die Kette einhängen (Transaktionsarten, Register, StateRoot,
+   Snapshot), schlafend; nach dem Muster von `quanten_w_kette.go`.
+3. **W:** mehrstufige Prüfung; Fehlerkorrektur messen; Ende-zu-Ende-Test mit vier
+   Knoten für den Dienst; Peer-Liste aus dem Validator-Register; Register als Tabelle
+   (vor W6).
+4. **App:** W- und S-Anzeige.
+5. **Ionenfalle** (Konto des Betreibers), Vorlage 4 abschicken (Betreiber).
 
 ## Offene PRs
 
 | Repo | PR | Inhalt | Nächster Schritt |
 |---|---|---|---|
-| Aequitas | #545 | Befund Klonangriff, `wiesner_parameter.py`, Variante S (ANALYSE.md 5b), diese Übergabe | CI grün abwarten, squash-mergen |
+| Aequitas | #547 | W2d Validator-Dienst | CI grün abwarten, squash-mergen |
+| Aequitas-App | – | iOS-IPA zu v1.23.2: release-ios wartet auf Freigabe (Lauf 43932916186) | nach Freigabe Assets und `quelle.json` prüfen |
 
 Gemergt am 16.11.:
-- #544 (OFFEN.md)
+- #544 (OFFEN.md), #545 (Klonangriff, Variante S), #546 (W2c)
 - #539 (Variante W: Regeln im Knoten W2a, Prägen ohne Vertrauen W3, Ablauf mit der Kette
   W4 ohne Partner)
 - #540, #541, #542 (W2b schlafend eingehängt, W5 Prüfauftrag)

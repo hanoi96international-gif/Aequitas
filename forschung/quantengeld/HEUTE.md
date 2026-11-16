@@ -233,9 +233,12 @@ Variante S ist der Teil, der **heute ohne Quantenspeicher** funktioniert (ANALYS
 - **Rauschmodell `ibm_marrakesh`:** Fehler 0,50 %. Die gewählte Stelle nimmt an
   (395 Treffer, 2 Fehler, Toleranz 4 %), die Doppelvorlage wird abgewiesen (437 Treffer,
   218 Fehler).
-- **Auf der echten Maschine:** Workflow, Modus `ibm`, `wiesner` = `s-token`. Das braucht
-  die Freigabe von `quantenhardware`; die Kosten liegen bei Sekunden, weil es keine
-  Wartezeit und keine Rückkopplung gibt.
+- **Auf der echten Maschine** (16.11.2026, `ibm_marrakesh`,
+  [Lauf 43927782462](https://github.com/hanoi96international-gif/Aequitas/actions/runs/43927782462),
+  IBM-Job `dbtkmcbrto6s73fsvl20`): Fehler 0,46 %. Die gewählte Stelle nimmt an
+  (**438 Treffer, 4 Fehler**, Toleranz 4 %), die Doppelvorlage wird abgewiesen (401 Treffer,
+  196 Fehler). **Damit läuft der erste Quanten-Token mit sicheren Prüfgrößen
+  (Fälscher ≤ 2⁻⁴⁰) auf echter Quanten-Hardware, ohne Quantenspeicher.**
 
 **Was das ist:** ein Quanten-Token mit sicheren Prüfgrößen. Ein Fälscher kommt mit
 höchstens 2⁻⁴⁰ an zwei Stellen durch (`wiesner_parameter.py`).

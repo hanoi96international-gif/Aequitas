@@ -457,6 +457,17 @@ erprobt.
     Stelle, fremde Bindung, zweite Wahl, Vorlage ohne Abgleich, Wiederholung, Abgleich
     auf der Kette. Gegenproben mit alter Toleranz, mit c je Stelle und mit vollem Wissen.
 - **Nächste Schritte:**
+  0. **Einlösen auf der Kette (16.11. abends, `KetteS.einloesen`):**
+     - Die Annahmestelle reicht die Vorlage ein, **von der Nutzerin unterschrieben**.
+       Sonst könnte eine Stelle, die ihre Stichprobe kennt, jeden Token selbst
+       einlösen.
+     - Ihre Stichprobe muss zur Bindung bei der Ausgabe passen.
+     - Die Validatoren legen die Anteile dieser Stellen offen, und jeder Knoten prüft
+       selbst.
+     - Die Deckung geht an die Stelle, genau einmal.
+     - Missbrauchstests und Mutation: vier von vier erkannt.
+     - Auf echter IBM-Hardware: angenommen bei 0,46 % Fehler, die Doppelvorlage
+       abgewiesen (HEUTE.md 3.3b).
   1. ~~Spezifikation `s_kette.py`~~ – erledigt (oben), auch die **dezentrale
      Ausgabe** (`stelle_laden`): Jede Annahmestelle lädt ihre Stichprobe als Anteile
      von t Validatoren und prüft jede Stelle gegen Prüfsumme und Merkle-Wurzel auf der
@@ -466,6 +477,18 @@ erprobt.
   2. S-Vorführung auf IBM.
   3. Anschreiben an die Autoren (Cambridge: Kent, Pitalúa-García; Bristol: Rarity) als
      Vorlage 4.
+
+**Stufenplan der Variante S:**
+
+| Stufe | Was | Stand |
+|---|---|---|
+| S0 | Analyse, Spezifikation mit Stichproben-Annahmestellen und Einlösen auf der Kette | **fertig** (`s_kette.py`, Selbsttest, Mutationen) |
+| S1 | Vorführung auf echter Hardware | **fertig**: IBM `ibm_marrakesh`, 1.680 Qubits, 0,46 % Fehler, angenommen; Doppelvorlage abgewiesen (HEUTE.md 3.3b) |
+| S2a | Regeln im Knoten, schlafend, Byte für Byte wie die Spezifikation | **fertig** (`quanten_s.go`, Prüfvektor) |
+| S2b | In die Kette eingehängt (Transaktionsarten, Register, StateRoot, Snapshot), schlafend | offen |
+| S3 | Ausgabe über eine echte Quantenleitung (QKD-Sender bei den Validatoren, Empfänger bei der Nutzerin) | Partner nötig (Vorlage 4: Cambridge, Bristol) |
+| S4 | Gutachten (Prüfauftrag um S erweitern), Pilot im Testnetz | offen |
+| S5 | Freischalten (Prüfer, wie W6) | nach S3 und S4 |
 
 ## 6. Zugang, Geld, Begutachtung – andere Wege
 

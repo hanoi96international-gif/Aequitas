@@ -76,8 +76,11 @@ bauen kann.
      machbar, unfälschbar, privat und dezentral prüfbar, aber kein Hand-zu-Hand-Bargeld.
      Doppelvorlage per Breidbart-Messung: 14,6 % Fehler, also dieselbe Schwelle wie bei
      W. `s_kette.py` steht (Stichproben-Annahmestellen, Wahl c auf der Kette). Die
-     S-Vorführung (`--s-token`) ist ideal und im Rauschmodell gelaufen. **IBM wartet auf
-     Freigabe.** Offen sind die Knoten-Regeln und die Vorlage 4 abschicken.
+     S-Vorführung (`--s-token`) ist gelaufen: ideal, im Rauschmodell und **auf echter
+     IBM-Hardware** (0,46 % Fehler, angenommen; Doppelvorlage abgewiesen). Das Einlösen
+     auf der Kette ist spezifiziert (`KetteS.einloesen`: Vorlage von der Nutzerin
+     unterschrieben, Stichprobe gebunden, Anteile offengelegt). **Offen:** die
+     Knoten-Regeln für S in Go und die Vorlage 4 abschicken (Nutzer).
    - Zu klären: Lässt sich „Ort“ auf Aequitas als „Prüfer bzw. Region + Block-Fenster“
      abbilden, und wie viel Sicherheit bleibt dann übrig?
 2. **Zustellen statt Aufbewahren:**
