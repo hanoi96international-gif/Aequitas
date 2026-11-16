@@ -81,25 +81,20 @@ Nicht übernommen, als Beobachtung für später:
 
 **Nächste Schritte:**
 1. ~~S2a und S2b Teil 1~~ – gemergt (#547).
-2. **S2b Teil 2 – Variante S in die Kette einhängen, schlafend.**
-   - **Spezifikation steht:** `s_kette.py`, `KetteS.anmelden`/`offenlegen`/`_frist`,
-     mit Missbrauch und Mutation 4/4.
-   - **Plan für Go:** S als weitere Satzart IM W-Modul. Damit gelten Stichtag
-     `quantenWAbUnix`, BuchZeit, StateRoot, Snapshot, Checkpoint und Replay automatisch.
-   - **Arten:** `quanten_w_s_ausgeben` (Präger plus Bestätigung aller Validatoren über
-     K, Wurzel, n, t, Validatoren, Stichproben-Hashes, Zeit, Toleranz),
-     `quanten_w_s_binden` und `quanten_w_s_waehlen` (Inhaberin, unterschrieben),
-     `quanten_w_s_anmelden` (Annahmestelle, unterschrieben, mit Vorlage-Unterschrift der
-     Inhaberin), `quanten_w_s_offenlegen` (Teile ≤ 64, ohne Wallet),
-     `quanten_w_s_frist`.
-   - **Code-Stellen:** `istQuantenWTxArt`, `quantenWNurEigeneFelder`, die Case-Liste in
-     `block.go` (Replay), die API-Routen-Schleife; neue Felder in `QuantenWAngaben`
-     (b und c als Text „0“/„1“ wegen omitempty).
-   - **Register:** `quantenWRegister.Token`, höchstens 16; d und x als Bitfeld.
-   - **Geld:** Der Wert hängt an den Anteilen im W-Topf. Bestanden: Wert an die Stelle.
-     Nach `FEHL_MAX` falschen Vorlagen ist der Token tot, der Wert geht ans
-     Grundeinkommen.
-   - **Danach:** eigene Sicherheitsprüfung, Missbrauchstests, Mutation.
+2. **S2b Teil 2 – Variante S in die Kette eingehängt, schlafend** (#551,
+   `quanten_w_s_kette.go`): sechs Arten im W-Modul
+   (`quanten_w_s_ausgeben`, `_binden`, `_waehlen`, `_anmelden`, `_offenlegen`, `_frist`).
+   - Register `token` (höchstens 16), d und x als Bitfeld.
+   - Wert über Anteile im W-Topf, mit Umlaufabgabe.
+   - Validatorprüfung gemeinsam mit W (`quantenWValidatorenLocked`).
+   - **Abweichung von `s_kette.py`:** Die zwei Annahmestellen stehen bei der Ausgabe fest,
+     und nur Stelle b darf anmelden. Die Vorlage bindet die Adresse der Stelle nicht, und
+     die Stichprobe wäre sonst aus der Warteschlange kopierbar (Vorauslaufen).
+   - Die Unterschrift der Stelle bindet die Zahl der Fehlversuche. Sonst ließe sich eine
+     fehlgeschlagene Anmeldung wiederholen, bis der Token tot ist.
+   - Offen:
+     - Validator-Dienst für S (Offenlegen der Stichprobe).
+     - `s_kette.py` nachziehen: feste Stellen, Fehlversuche in der Unterschrift.
 3. **W:** mehrstufige Prüfung; Fehlerkorrektur messen; ~~Ende-zu-Ende-Test mit vier
    Knoten für den Dienst~~ (erledigt, siehe oben); Peer-Liste aus dem Validator-Register;
    Register als Tabelle (vor W6); die vier Beobachtungen oben.
@@ -110,9 +105,10 @@ Nicht übernommen, als Beobachtung für später:
 
 | Repo | PR | Inhalt | Nächster Schritt |
 |---|---|---|---|
-| – | – | keine offenen PRs | – |
+| Aequitas | #551 | Variante S schlafend in die Kette (S2b Teil 2); Prüfung als Kommentar (S1 Vorauslaufen, S2 Annahme-Sperre, S3 wiederholte Anmeldung, behoben) | CI grün abwarten, squash-mergen |
 
 Gemergt am 16.11.:
+- #550 (Übergabe nach #549)
 - #549 (Validator-Dienst W: nichts vor der Finalität, Ende-zu-Ende-Test auf vier Knoten)
 - #544 (OFFEN.md), #545 (Klonangriff, Variante S), #546 (W2c), #547 (W2d, S2a, S2b Teil 1)
 - #539 (Variante W: Regeln im Knoten W2a, Prägen ohne Vertrauen W3, Ablauf mit der Kette

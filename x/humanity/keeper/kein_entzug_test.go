@@ -94,12 +94,21 @@ var replayArten = map[string]geldArt{
 	// quanten_w_kette.go: Variante W. Geld verlaesst ein Menschenkonto nur mit
 	// seiner Unterschrift (Deckung beim Praegen, Pfand bei der Anfrage);
 	// Zufall, Offenlegen und Frist zahlen nur aus den W-Toepfen aus.
-	"quanten_w_praegen":                geldUnterschrieben,
-	"quanten_w_anfrage":                geldUnterschrieben,
-	"quanten_w_zufall":                 geldNurGutschrift,
-	"quanten_w_antwort":                geldNurGutschrift,
-	"quanten_w_offenlegen":             geldNurGutschrift,
-	"quanten_w_frist":                  geldNurGutschrift,
+	"quanten_w_praegen":    geldUnterschrieben,
+	"quanten_w_anfrage":    geldUnterschrieben,
+	"quanten_w_zufall":     geldNurGutschrift,
+	"quanten_w_antwort":    geldNurGutschrift,
+	"quanten_w_offenlegen": geldNurGutschrift,
+	"quanten_w_frist":      geldNurGutschrift,
+	// Variante S (quanten_w_s_kette.go): Geld verlaesst ein Menschenkonto nur
+	// mit seiner Unterschrift (Deckung bei der Ausgabe); Bindung, Wahl und
+	// Anmeldung bewegen kein Geld, Offenlegen und Frist zahlen nur aus dem W-Topf.
+	"quanten_w_s_ausgeben":             geldUnterschrieben,
+	"quanten_w_s_binden":               geldNurGutschrift,
+	"quanten_w_s_waehlen":              geldNurGutschrift,
+	"quanten_w_s_anmelden":             geldNurGutschrift,
+	"quanten_w_s_offenlegen":           geldNurGutschrift,
+	"quanten_w_s_frist":                geldNurGutschrift,
 	"umlauf":                           geldRegelAusnahme,
 	"unternehmen_eroeffnen":            geldUnterschrieben,
 	"vorbehalt":                        geldUnterschrieben,
@@ -172,6 +181,13 @@ var ersetzbareKonstanten = map[string]string{
 	"quantenWAntwortTxArt":    quantenWAntwortTxArt,
 	"quantenWOffenlegenTxArt": quantenWOffenlegenTxArt,
 	"quantenWFristTxArt":      quantenWFristTxArt,
+	// quanten_w_s_kette.go
+	"quantenWSAusgebenTxArt":   quantenWSAusgebenTxArt,
+	"quantenWSBindenTxArt":     quantenWSBindenTxArt,
+	"quantenWSWaehlenTxArt":    quantenWSWaehlenTxArt,
+	"quantenWSAnmeldenTxArt":   quantenWSAnmeldenTxArt,
+	"quantenWSOffenlegenTxArt": quantenWSOffenlegenTxArt,
+	"quantenWSFristTxArt":      quantenWSFristTxArt,
 }
 
 // replaySwitchArten liest die Arten des Nachspiel-Switches aus block.go
