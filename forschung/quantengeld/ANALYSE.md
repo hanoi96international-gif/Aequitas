@@ -332,6 +332,17 @@ gerechnet; die Tabelle gibt `python3 -I wiesner_parameter.py` aus):
   Tausend und Noten mit einigen Tausend bis Zehntausend Stellen.
 - **Eine Absprache, die den Anteil f der Stellen kennt,** senkt die Fehlerrate des
   Fälschers auf (1 − f)·14,6 %. Mit vielen Validatoren je Note bleibt f klein.
+
+  | Hardware-Fehler e | Absprache f | Toleranz | k (geprüfte Stellen) |
+  |---|---|---|---|
+  | 0,4 % | 0 / 1/64 / 0,2 | 3 % | 672 / 696 / 1.008 |
+  | 0,7 % (IBM ohne Warten) | 0 / 1/64 / 0,2 | 4 / 4 / 3 % | 840 / 864 / 1.072 |
+  | 2 % | 0 / 1/64 / 0,2 | 6 / 5 / 5 % | 1.360 / 1.376 / 1.864 |
+  | 3 % (mit Bezahlen) | 0 / 1/64 / 0,2 | 7 / 6 / 6 % | 1.792 / 1.864 / 2.672 |
+  | 6 % (20 µs gehalten) | 0 / 1/64 / 0,2 | 9 / 9 / 8 % | 3.464 / 3.728 / 6.976 |
+
+  Gegen die alten Regeln besteht eine geklonte Kopie bei k = 16 / 32 / 64 mit
+  0,58 / 0,55 / 0,55; beide Kopien zusammen mit rund 0,3.
 - **Was folgt:**
   1. Die Regeln in Spezifikation und Knoten bekommen neue Grenzen: Toleranz an e
      gekoppelt, große k.
@@ -421,9 +432,20 @@ erprobt.
   unfälschbar durch Physik, privat, ohne Quantenspeicher, dezentral geprüft.
 - **Variante W** bleibt der Weg zu echtem Quanten-Bargeld, sobald Speicher tragen.
 - **Beide** brauchen die neuen Prüfgrößen (Befund in Abschnitt 5) und ein Gutachten.
+- **Spezifikation `s_kette.py` (16.11. abends):**
+  - **Stichproben-Annahmestellen:** Jede Stelle bekommt (u, t) nur auf einer eigenen,
+    geheimen, disjunkten Stichprobe von k Stellen. Sie prüft sofort und ohne Netz. Eine
+    bestochene Stelle kann an einer anderen Stelle nicht fälschen.
+  - **Die Nutzerin braucht kein vertrauenswürdiges Gerät.**
+  - **Die Wahl c steht einmal auf der Kette:** Bindung d und Wahl c je einmal; die
+    Stellen holen sie vorab. Der Selbsttest zeigt, warum: Dürfte man c je Stelle selbst
+    nennen, käme ein Token an beiden Stellen durch.
+  - **Missbrauchstests:** zwei Vorlagen (ehrlich gemessen und Breidbart), bestochene
+    Stelle, fremde Bindung, zweite Wahl, Vorlage ohne Abgleich, Wiederholung, Abgleich
+    auf der Kette. Gegenproben mit alter Toleranz, mit c je Stelle und mit vollem Wissen.
 - **Nächste Schritte:**
-  1. Spezifikation `s_kette.py` (Ausgabe, maskierte Basen, Vorlage, Offenlegen, Urteil;
-     mit Missbrauch: zwei Vorlagen, fremde Vorlage, Wiederholung).
+  1. ~~Spezifikation `s_kette.py`~~ – erledigt (oben). Offen: Ausgabe über Anteile und
+     Offenlegen wie W, Knoten-Regeln.
   2. S-Vorführung auf IBM.
   3. Anschreiben an die Autoren (Cambridge: Kent, Pitalúa-García; Bristol: Rarity) als
      Vorlage 4.

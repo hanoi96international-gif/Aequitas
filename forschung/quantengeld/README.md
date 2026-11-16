@@ -227,6 +227,8 @@ Fälschungen 3,7× teurer als die volle (`schwache_pruefung.py`).
 - `wiesner_parameter.py`: Wie stark ist eine Prüfung wirklich? Der optimale Kloner
   (14,6 % Fehler je Kopie) bricht die alte Toleranz von 15 %; Rechner für sichere
   Toleranz und Prüfgröße zu einer gemessenen Fehlerrate (ANALYSE.md, Befund).
+- `s_kette.py`: Variante S – Quanten-Token ohne Quantenspeicher (S-money nach Kent u. a.
+  2022) mit Stichproben-Annahmestellen, die ohne Netz prüfen (ANALYSE.md 5b).
 - `wiesner_verteilt.py`: Simulation der Variante W – Shamir-Anteile bei den Validatoren,
   klassische Prüfung gemeinsam auf den Anteilen (Beaver), Angriffe A1–A7 mit Gegenproben.
 - `BRUECKE.md` und `bruecke.py`: der Entwurf der Brücke AEQ ↔ Quanten-Note.

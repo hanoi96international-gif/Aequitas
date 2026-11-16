@@ -1,0 +1,337 @@
+#!/usr/bin/env python3
+"""Variante S: Quanten-Token OHNE Quantenspeicher, angenommen ohne Netz.
+
+Forschung, kein Produkt. Keine Abhaengigkeiten. Grundlage: S-money von Kent
+u. a., „Practical quantum tokens without quantum memories and experimental
+tests“, npj Quantum Information 8, 28 (2022), arXiv:2104.11717, Schema IQT1.
+Einordnung: ANALYSE.md, Abschnitt 5b.
+
+ABLAUF
+  1. Ausgabe: N Qubits in zufaelligen BB84-Zustaenden (Basen u, Werte t). Die
+     Nutzerin misst SOFORT, jede Stelle in einer zufaelligen Basis y, und hat
+     danach nur Klartext x. Nichts wird gespeichert. (u, t) liegen als Anteile
+     bei den Validatoren (Fern-Praeparation wie W3); hier vereinfacht.
+  2. Bindung auf der Kette: die Nutzerin veroeffentlicht d = y XOR z (z ein
+     geheimes Bit, maskiert ihre Basen).
+  3. Wahl auf der Kette, EINMAL je Token: c = b XOR z fuer die Stelle b, an der
+     sie vorlegen wird. Wer nur die Kette sieht, erfaehrt b nicht (z ist
+     geheim). Die Annahmestellen holen sich (d, c) VOR der Vorlage
+     (abgleichen, solange Netz da ist).
+  4. Vorlage an der Stelle b, OHNE Netz: sie zeigt x. Die Stelle b prueft die
+     Stellen, deren Basis u_k gleich d_k XOR b XOR c ist (fuer die ehrliche
+     Nutzerin genau ihre Basen y), nur auf IHRER Stichprobe. An jeder anderen
+     Stelle ist das die GEGENbasis -- dort hat sie nur Zufall.
+  WARUM c AUF DIE KETTE MUSS: duerfte die Nutzerin c an jeder Stelle selbst
+  nennen, waehlte sie es so, dass ueberall ihre Basen geprueft werden -- und
+  kaeme ueberall durch (der Selbsttest zeigt genau das). Bei Kent u. a. schickt
+  deshalb die Ausgabestelle dasselbe c an alle ihre Pruefstellen.
+
+WAS NEU IST GEGENUEBER KENT U. A.: STICHPROBEN-ANNAHMESTELLEN
+  Jede Annahmestelle bekommt vorab nur (u, t) auf einer eigenen, geheimen,
+  zu den anderen disjunkten Stichprobe von k Stellen. Folgen:
+  - Sie prueft sofort, OHNE Netz und ohne Rueckfrage (der Vorteil der S-Token).
+  - Eine bestochene Stelle kennt nur ihre Stichprobe; an einer anderen Stelle
+    durchzukommen braucht die Werte auf deren Stichprobe -- sie faelscht nicht.
+  - Die Nutzerin braucht KEIN vertrauenswuerdiges Geraet (anders als
+    Offline-Bargeld mit Secure Element): ihr Token ist Klartext, aber an zwei
+    Stellen durchzukommen verbietet die Physik.
+  Abgleich auf der Kette (spaeter, wenn Netz da ist): jede Stelle meldet ihre
+  Vorlagen; doppelte Vorlagen eines Tokens fallen auf. Die Physik sorgt dafuer,
+  dass hoechstens eine davon die Pruefung bestanden haben kann.
+
+SICHERHEIT IN ZAHLEN (wiesner_parameter.py)
+  An zwei Stellen vorlegen heisst: richtige Ergebnisse in beiden Basen. Bestes
+  Messen dafuer ist die Breidbart-Basis: 14,64 % Fehler in beiden -- dieselbe
+  Schwelle wie der Kloner der Variante W. Darum: Toleranz deutlich darunter,
+  Pruefgroesse aus wiesner_parameter.suche(). Bei 0,7 % Hardware-Fehler:
+  Toleranz 4 %, k = 840 Stellen je Annahmestelle, N = 2 * 840 Qubits.
+
+GRENZEN (ehrlich)
+  - Kein Bargeld von Hand zu Hand: wer x weitergibt, kennt es weiter.
+  - Gueltig an genau einer von 2^M vorher festgelegten Stellen (oder
+    Zeitfenstern). Die Stellen muessen ihre Stichproben geheim halten.
+  - Die Ausgabe braucht QKD-Empfaengertechnik bei der Nutzerin.
+
+Aufruf:  python3 -I s_kette.py [--selbsttest]
+"""
+from __future__ import annotations
+
+import hashlib
+import math
+import random
+import sys
+
+TOL_PROZENT = 4          # wiesner_parameter.suche(0.007): Toleranz 4 %
+K_STELLE = 840           # Stellen je Annahmestelle (je Stichprobe)
+MIN_TREFFER = 1
+BREIDBART_RICHTIG = math.cos(math.pi / 8) ** 2   # 0,8536 in beiden Basen
+
+
+class Abgewiesen(Exception):
+    pass
+
+
+# ---------------------------------------------------------------- Ausgabe
+def ausgabe(n: int, rng: random.Random) -> tuple[list[int], list[int]]:
+    """Basen u und Werte t der Ausgabestelle (bei Aequitas: Fern-Praeparation,
+    als Anteile bei den Validatoren)."""
+    return [rng.randrange(2) for _ in range(n)], [rng.randrange(2) for _ in range(n)]
+
+
+def messen_ehrlich(u, t, rng: random.Random, e: float) -> tuple[list[int], list[int]]:
+    """Die Nutzerin misst sofort, jede Stelle in zufaelliger Basis y. Passt die
+    Basis, ist das Ergebnis t (mit Hardware-Fehler e), sonst Zufall."""
+    y, x = [], []
+    for uk, tk in zip(u, t):
+        yk = rng.randrange(2)
+        xk = (tk ^ (rng.random() < e)) if yk == uk else rng.randrange(2)
+        y.append(yk)
+        x.append(int(xk))
+    return y, x
+
+
+def messen_breidbart(u, t, rng: random.Random) -> list[int]:
+    """Der Faelscher misst jede Stelle in der Basis zwischen X und Z: in BEIDEN
+    Basen mit 0,854 richtig -- das Beste, um an zwei Stellen vorzulegen."""
+    return [tk if rng.random() < BREIDBART_RICHTIG else 1 - tk for tk in t]
+
+
+# ---------------------------------------------------------------- Kette
+class KetteS:
+    """Was die Kette je Token weiss: Inhaber, d (Bindung) und c (Wahl), je
+    einmal. (Ausgabe, Anteile und Offenlegen wie Variante W; hier nur der
+    Teil, den die Annahmestellen brauchen.)"""
+
+    def __init__(self):
+        self.token: dict[str, dict] = {}
+
+    def ausgeben(self, K: str, n: int, inhaber: str):
+        if K in self.token:
+            raise Abgewiesen("K schon da")
+        self.token[K] = {"n": n, "inhaber": inhaber, "d": None, "c": None}
+
+    def binden(self, K: str, von: str, d: list[int]):
+        e = self.token.get(K)
+        if e is None or von != e["inhaber"] or e["d"] is not None:
+            raise Abgewiesen("Bindung: fremd oder schon gebunden")
+        if len(d) != e["n"] or any(v not in (0, 1) for v in d):
+            raise Abgewiesen("Bindung: Form")
+        e["d"] = list(d)
+
+    def waehlen(self, K: str, von: str, c: int):
+        e = self.token.get(K)
+        if e is None or von != e["inhaber"] or e["d"] is None or e["c"] is not None:
+            raise Abgewiesen("Wahl: fremd, ungebunden oder schon gewaehlt")
+        if c not in (0, 1):
+            raise Abgewiesen("Wahl: Form")
+        e["c"] = c
+
+
+# ---------------------------------------------------------------- Annahmestellen
+def stichproben(n: int, stellen: int, k: int, rng: random.Random) -> list[list[int]]:
+    """Disjunkte, geheime Stichproben je Annahmestelle."""
+    if stellen * k > n:
+        raise ValueError("zu wenige Qubits fuer die Stichproben")
+    perm = list(range(n))
+    rng.shuffle(perm)
+    return [sorted(perm[i * k:(i + 1) * k]) for i in range(stellen)]
+
+
+class Annahmestelle:
+    """Prueft sofort und ohne Netz. Kennt (u, t) NUR auf ihrer Stichprobe."""
+
+    def __init__(self, nummer: int, K: str, stichprobe: list[int], u, t):
+        self.nummer = nummer
+        self.K = K
+        self.daten = {i: (u[i], t[i]) for i in stichprobe}
+        self.gesehen: set[str] = set()
+        self.meldungen: list[dict] = []
+        self.stand: dict[str, tuple[list[int], int]] = {}
+
+    def abgleichen(self, kette: KetteS):
+        """Solange Netz da ist: (d, c) der Token holen, die schon gewaehlt sind."""
+        e = kette.token.get(self.K)
+        if e and e["d"] is not None and e["c"] is not None:
+            self.stand[self.K] = (list(e["d"]), e["c"])
+
+    def pruefen(self, K: str, x: list[int], tol: int = TOL_PROZENT,
+                min_treffer: int = MIN_TREFFER) -> bool | None:
+        """Ohne Netz: nur mit dem abgeglichenen (d, c); ohne Abgleich keine
+        Annahme (fail-closed)."""
+        if K != self.K or K in self.gesehen:
+            raise Abgewiesen("fremder Token oder schon vorgelegt")
+        if K not in self.stand:
+            raise Abgewiesen("Wahl nicht abgeglichen")
+        d, c = self.stand[K]
+        if len(x) != len(d) or any(v not in (0, 1) for v in x):
+            raise Abgewiesen("Form")
+        self.gesehen.add(K)
+        b = self.nummer
+        treffer = fehler = 0
+        for i, (uk, tk) in self.daten.items():
+            if (d[i] ^ b ^ c) == uk:      # Basis der Nutzerin passt zur Ausgabe
+                treffer += 1
+                fehler += x[i] != tk
+        urteil = None if treffer < min_treffer else fehler * 100 <= tol * treffer
+        self.meldungen.append({"K": K, "stelle": b, "treffer": treffer, "fehler": fehler, "urteil": urteil,
+                               "x_hash": hashlib.sha256(bytes(x)).hexdigest()})
+        return urteil
+
+
+def abgleich(meldungen: list[dict]) -> dict[str, list[dict]]:
+    """Spaeter auf der Kette: angenommene Vorlagen je Token. Mehr als eine
+    bestandene Vorlage eines Tokens waere ein Doppelverbrauch."""
+    je: dict[str, list[dict]] = {}
+    for m in meldungen:
+        if m["urteil"] is True:
+            je.setdefault(m["K"], []).append(m)
+    return je
+
+
+def token(rng: random.Random, e: float = 0.007, k: int = K_STELLE):
+    """Ein Token mit zwei Annahmestellen: (kette, K, u, t, stellen)."""
+    n = 2 * k
+    u, t = ausgabe(n, rng)
+    K = hashlib.sha256(rng.randbytes(16)).hexdigest()
+    kette = KetteS()
+    kette.ausgeben(K, n, "anna")
+    proben = stichproben(n, 2, k, rng)
+    stellen = [Annahmestelle(b, K, proben[b], u, t) for b in (0, 1)]
+    return kette, K, u, t, stellen
+
+
+def festlegen(kette: KetteS, K: str, stellen, d: list[int], c: int, von: str = "anna"):
+    kette.binden(K, von, d)
+    kette.waehlen(K, von, c)
+    for s in stellen:
+        s.abgleichen(kette)
+
+
+# ---------------------------------------------------------------- Selbsttest
+def selbsttest() -> bool:
+    fehler: list[str] = []
+
+    def soll(bed, text):
+        if not bed:
+            fehler.append(text)
+
+    def abgewiesen(f, text):
+        try:
+            f()
+            fehler.append(f"nicht abgewiesen: {text}")
+        except Abgewiesen:
+            pass
+
+    try:
+        rng = random.Random(2022)
+        laeufe = 300
+        # 1. Ehrlich: an der gewaehlten Stelle angenommen (0,7 % Hardware-Fehler).
+        durch = 0
+        for _ in range(laeufe):
+            kette, K, u, t, st = token(rng)
+            y, x = messen_ehrlich(u, t, rng, 0.007)
+            z, b = rng.randrange(2), rng.randrange(2)
+            festlegen(kette, K, st, [yk ^ z for yk in y], b ^ z)
+            durch += st[b].pruefen(K, x) is True
+        soll(durch == laeufe, f"ehrlich: {durch}/{laeufe}")
+
+        # 2. Missbrauch -- an BEIDEN Stellen vorlegen.
+        # a) ehrlich gemessen: an der anderen Stelle wird die Gegenbasis geprueft.
+        # b) Breidbart (das Beste gegen zwei Basen): 14,6 % > 4 % -- faellt durch.
+        beide_a = beide_b = 0
+        for _ in range(laeufe):
+            kette, K, u, t, st = token(rng)
+            y, x = messen_ehrlich(u, t, rng, 0.007)
+            z = rng.randrange(2)
+            festlegen(kette, K, st, [yk ^ z for yk in y], 0 ^ z)
+            beide_a += st[0].pruefen(K, x) is True and st[1].pruefen(K, x) is True
+            kette, K, u, t, st = token(rng)
+            xb = messen_breidbart(u, t, rng)
+            festlegen(kette, K, st, [rng.randrange(2) for _ in u], rng.randrange(2))
+            beide_b += st[0].pruefen(K, xb) is True and st[1].pruefen(K, xb) is True
+        soll(beide_a == 0, f"ehrlich gemessen, an zwei Stellen angenommen: {beide_a}")
+        soll(beide_b == 0, f"Breidbart an zwei Stellen angenommen: {beide_b}")
+        # Gegenprobe: mit der ALTEN Toleranz (15 %) kommt Breidbart durch.
+        alt = 0
+        for _ in range(100):
+            kette, K, u, t, st = token(rng, k=64)
+            xb = messen_breidbart(u, t, rng)
+            festlegen(kette, K, st, [rng.randrange(2) for _ in u], 0)
+            alt += st[0].pruefen(K, xb, tol=15) is True and st[1].pruefen(K, xb, tol=15) is True
+        soll(alt >= 10, f"Gegenprobe: Breidbart gegen 15 % nur {alt}/100 -- Test zu schwach?")
+        # Gegenprobe zur Wahl auf der Kette: duerfte man c je Stelle selbst nennen,
+        # kaeme ein ehrlich gemessener Token an BEIDEN Stellen durch.
+        frei = 0
+        for _ in range(50):
+            kette, K, u, t, st = token(rng, k=64)
+            y, x = messen_ehrlich(u, t, rng, 0.0)
+            z = rng.randrange(2)
+            d = [yk ^ z for yk in y]
+            for b in (0, 1):
+                st[b].stand[K] = (d, b ^ z)          # je Stelle ein anderes c
+            frei += st[0].pruefen(K, x) is True and st[1].pruefen(K, x) is True
+        soll(frei == 50, f"Gegenprobe c je Stelle: {frei}/50")
+
+        # c) Bestochene Stelle 0 kennt (u, t) auf IHRER Stichprobe und ist selbst
+        # Inhaberin: bei Stelle 1 kennt sie nichts -- abgewiesen.
+        bestochen = 0
+        for _ in range(laeufe):
+            kette, K, u, t, st = token(rng)
+            x = [rng.randrange(2) for _ in u]
+            d = [rng.randrange(2) for _ in u]
+            for i, (uk, tk) in st[0].daten.items():
+                x[i], d[i] = tk, uk ^ 1            # fuer Stelle 1 mit c = 0: d^1 == u
+            festlegen(kette, K, st, d, 0)
+            bestochen += st[1].pruefen(K, x) is True
+        soll(bestochen == 0, f"bestochene Stelle faelscht: {bestochen}")
+        # Gegenprobe: kennt sie ALLES (keine Stichproben), kommt sie durch.
+        kette, K, u, t, st = token(rng)
+        festlegen(kette, K, st, [uk ^ 1 for uk in u], 0)
+        soll(st[1].pruefen(K, list(t)) is True, "Gegenprobe: wer alles kennt, muss durchkommen")
+
+        # d) Kette: nur der Inhaber, je einmal; Stelle ohne Abgleich nimmt nicht an.
+        kette, K, u, t, st = token(rng, k=16)
+        y, x = messen_ehrlich(u, t, rng, 0.0)
+        abgewiesen(lambda: st[0].pruefen(K, x), "Vorlage ohne Abgleich")
+        abgewiesen(lambda: kette.binden(K, "fremd", y), "fremde Bindung")
+        abgewiesen(lambda: kette.waehlen(K, "anna", 0), "Wahl vor der Bindung")
+        abgewiesen(lambda: kette.binden(K, "anna", y[:-1]), "kurze Bindung")
+        kette.binden(K, "anna", y)
+        abgewiesen(lambda: kette.binden(K, "anna", y), "zweite Bindung")
+        abgewiesen(lambda: kette.waehlen(K, "anna", 2), "c = 2")
+        kette.waehlen(K, "anna", 0)
+        abgewiesen(lambda: kette.waehlen(K, "anna", 1), "zweite Wahl")
+        abgewiesen(lambda: kette.ausgeben(K, 32, "x"), "K doppelt")
+        for s_ in st:
+            s_.abgleichen(kette)
+        soll(st[0].pruefen(K, x) is True, "Gutfall klein")
+        abgewiesen(lambda: st[0].pruefen(K, x), "zweite Vorlage an derselben Stelle")
+        abgewiesen(lambda: st[1].pruefen("f" * 64, x), "fremder Token")
+        abgewiesen(lambda: st[1].pruefen(K, x[:-1]), "kurze Vorlage")
+
+        # 3. Abgleich: zwei bestandene Vorlagen desselben Tokens fielen auf
+        # (nur mit vollem Wissen ueberhaupt moeglich).
+        kette, K, u, t, st = token(rng, k=16)
+        festlegen(kette, K, st, list(u), 0)
+        st[0].pruefen(K, list(t))
+        st[1].daten = {i: (1 - uk, tk) for i, (uk, tk) in st[1].daten.items()}  # Wissen: alles
+        st[1].pruefen(K, list(t))
+        soll(len(abgleich(st[0].meldungen + st[1].meldungen).get(K, [])) == 2, "Abgleich erkennt Doppelverbrauch nicht")
+        # Stichproben disjunkt und vollstaendig.
+        pr = stichproben(40, 2, 20, rng)
+        soll(not set(pr[0]) & set(pr[1]) and len(set(pr[0]) | set(pr[1])) == 40, "Stichproben")
+        try:
+            stichproben(10, 2, 6, rng)
+            fehler.append("zu grosse Stichproben angenommen")
+        except ValueError:
+            pass
+    except Exception as ex:
+        fehler.append(f"Ausnahme: {type(ex).__name__}: {ex}")
+    for f in fehler:
+        print("FEHLER:", f)
+    print("s_kette: Selbsttest", "bestanden" if not fehler else "NICHT bestanden")
+    return not fehler
+
+
+if __name__ == "__main__":
+    sys.exit(0 if selbsttest() else 1) if "--selbsttest" in sys.argv else print(__doc__)

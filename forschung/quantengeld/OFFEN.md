@@ -70,7 +70,8 @@ bauen kann.
    - **Analysiert (16.11. abends, ANALYSE.md 5b „Variante S“):** Der Weg ist heute
      machbar, unfälschbar, privat und dezentral prüfbar, aber kein Hand-zu-Hand-Bargeld.
      Doppelvorlage per Breidbart-Messung: 14,6 % Fehler, also dieselbe Schwelle wie bei
-     W. Als Nächstes kommen `s_kette.py` und die S-Vorführung auf IBM.
+     W. `s_kette.py` steht (Stichproben-Annahmestellen, Wahl c auf der Kette). Als Nächstes
+     kommen die S-Vorführung auf IBM und die Knoten-Regeln.
    - Zu klären: Lässt sich „Ort“ auf Aequitas als „Prüfer bzw. Region + Block-Fenster“
      abbilden, und wie viel Sicherheit bleibt dann übrig?
 2. **Zustellen statt Aufbewahren:**
