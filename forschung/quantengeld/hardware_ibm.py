@@ -83,7 +83,8 @@ _spec_k.loader.exec_module(wk)
 _spec_s = importlib.util.spec_from_file_location("s_kette", os.path.join(os.path.dirname(os.path.abspath(__file__)), "s_kette.py"))
 sk = importlib.util.module_from_spec(_spec_s)
 _spec_s.loader.exec_module(sk)
-MAX_S_STELLEN = 2048     # k je Annahmestelle; Token = 2k Qubits in Schaltkreisen zu 16
+MAX_S_STELLEN = 8192     # k je Annahmestelle; Token = 2k Qubits in Schaltkreisen zu 16
+                         # (2k <= quantenWNMax = 16384; 3 von 4 Validatoren brauchen k = 5200)
 
 MAX_LAEUFE = 64      # Schaltkreise je Fall (Kosten auf echter Hardware!)
 MAX_SCHUESSE = 4000

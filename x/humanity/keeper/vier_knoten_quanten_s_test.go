@@ -44,9 +44,9 @@ func TestVierKnotenQuantenSAusfall_RealDB(t *testing.T) { qsVierKnoten(t, true) 
 // Token nicht aus dem Zufall des Tests, sondern vom Chip -- Praegen bis
 // Einloesen mit 3 von 4 Validatoren. Die Datei wird so streng gelesen wie
 // in `aequitasd quanten-s-ausgabe` (Groesse, unbekannte Felder); was sie
-// enthaelt, prueft das Werkzeug. k je Stelle = n/2 (die Tabelle verlangt
-// fuer 3 von 4 mehr, siehe oben -- das ist eine Vorfuehrung des Ablaufs,
-// keine Aussage ueber die volle Sicherheitsstufe).
+// enthaelt, prueft das Werkzeug. k je Stelle = n/2, und die Tabelle wird
+// NICHT ausser Kraft gesetzt: fuer 3 von 4 verlangt sie 5.200 Stellen je
+// Annahmestelle, eine kleinere Messung weist das Werkzeug ab (fail-closed).
 func qsMessungAusDatei(t *testing.T) (QuantenSMessung, bool) {
 	pfad := strings.TrimSpace(os.Getenv("AEQUITAS_QS_MESSUNG"))
 	if pfad == "" {
@@ -100,7 +100,9 @@ func qsVierKnoten(t *testing.T, ausfall bool) {
 		t.Logf("Messung aus %s: n = %d, k je Stelle = %d, Geraet %q, Job %q", os.Getenv("AEQUITAS_QS_MESSUNG"), echt.N, kJeStelle, echt.Wo, echt.Jo)
 	}
 	quantenWAbOverride.Store(nowUnix() - 86400)
-	quantenWKNoteOverride.Store(int64(kJeStelle))
+	if !ausDatei {
+		quantenWKNoteOverride.Store(int64(kJeStelle))
+	}
 	altBetreiber := quantenWBetreiberVon
 	t.Cleanup(func() {
 		quantenWAbOverride.Store(0)

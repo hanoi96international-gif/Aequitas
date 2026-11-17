@@ -7,8 +7,9 @@
 # je ein Validator-Dienst) wie TestVierKnotenQuantenS_RealDB, das Geheimnis
 # des Tokens 3-von-4 geteilt. Der Token selbst kommt vom Chip:
 #
-#   1. messen: hardware_ibm.py --s-messen -- 1680 Qubits in BB84-Zustaenden,
-#      sofort gemessen. Modus ibm: echter Chip (Umgebung quantenhardware,
+#   1. messen: hardware_ibm.py --s-messen --k K -- 2K Qubits in
+#      BB84-Zustaenden, in Schaltkreisen zu 16 sofort gemessen (S braucht
+#      keinen Speicher, die Groesse ist also nur eine Frage der Schaltkreise). Modus ibm: echter Chip (Umgebung quantenhardware,
 #      Freigabe). Modus rauschen: Rauschmodell, kostet nichts.
 #   2. pilot: die vier Knoten pruefen die Messung -- Ausgabe mit den
 #      Bestaetigungen aller vier Validatoren, Doppelvorlage an der falschen
@@ -20,9 +21,9 @@
 # keine Secrets. Die Messung geht als Job-Ausgabe von 1 nach 2; sie schuetzt
 # hier keinen Wert (die Knoten leben nur in diesem Job).
 #
-# Ehrliche Grenze: k je Stelle = 840 (n/2). Die Tabelle verlangt fuer 3 von 4
-# Validatoren 5.200 -- der Lauf zeigt den Ablauf auf echter Hardware mit
-# mehreren Validatoren, nicht die volle Sicherheitsstufe dafuer.
+# Die Tabelle im Knoten gilt unveraendert: fuer 3 von 4 Validatoren und
+# Toleranz 4 % verlangt sie k = 5.200 Stellen je Annahmestelle (Vorgabe hier,
+# 10.400 Qubits). Ein kleineres k weist das Werkzeug ab (fail-closed).
 name: Quantengeld S -- Pilot mit vier Validatoren
 
 on:
@@ -33,6 +34,9 @@ on:
         type: choice
         options: [rauschen, ibm]
         default: rauschen
+      k:
+        description: "Stellen je Annahmestelle (Token = 2k Qubits); die Tabelle verlangt fuer 3 von 4 Validatoren 5200"
+        default: "5200"
 
 permissions:
   contents: read
@@ -40,6 +44,9 @@ permissions:
 concurrency:
   group: quanten-s-pilot
   cancel-in-progress: false
+
+env:
+  K: ${{ inputs.k }}
 
 jobs:
   rauschen:
@@ -49,6 +56,10 @@ jobs:
     outputs:
       messung: ${{ steps.lauf.outputs.messung }}
     steps:
+      - name: Eingabe pruefen
+        run: |
+          set -euo pipefail
+          [[ "$K" =~ ^[1-9][0-9]{0,3}$ ]] && [ "$K" -le 8192 ] || { echo "::error::k = $K (1 bis 8192)"; exit 1; }
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -61,7 +72,7 @@ jobs:
         id: lauf
         run: |
           set -euo pipefail
-          python3 -I forschung/quantengeld/hardware_ibm.py --rauschen FakeMarrakesh --s-messen "$RUNNER_TEMP/messung.json"
+          python3 -I forschung/quantengeld/hardware_ibm.py --rauschen FakeMarrakesh --s-messen "$RUNNER_TEMP/messung.json" --k "$K"
           echo "messung=$(gzip -9c "$RUNNER_TEMP/messung.json" | base64 -w0)" >> "$GITHUB_OUTPUT"
           rm -f "$RUNNER_TEMP/messung.json"
 
@@ -73,6 +84,10 @@ jobs:
     outputs:
       messung: ${{ steps.lauf.outputs.messung }}
     steps:
+      - name: Eingabe pruefen
+        run: |
+          set -euo pipefail
+          [[ "$K" =~ ^[1-9][0-9]{0,3}$ ]] && [ "$K" -le 8192 ] || { echo "::error::k = $K (1 bis 8192)"; exit 1; }
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -89,7 +104,7 @@ jobs:
           IBM_QUANTUM_BACKEND: ${{ vars.IBM_QUANTUM_BACKEND }}
         run: |
           set -euo pipefail
-          python3 -I forschung/quantengeld/hardware_ibm.py --ibm --s-messen "$RUNNER_TEMP/messung.json"
+          python3 -I forschung/quantengeld/hardware_ibm.py --ibm --s-messen "$RUNNER_TEMP/messung.json" --k "$K"
           echo "messung=$(gzip -9c "$RUNNER_TEMP/messung.json" | base64 -w0)" >> "$GITHUB_OUTPUT"
           rm -f "$RUNNER_TEMP/messung.json"
 
@@ -129,7 +144,7 @@ jobs:
           set -euo pipefail
           umask 077
           printf '%s' "$MESSUNG" | base64 -d | gunzip -c > "$RUNNER_TEMP/m.json"
-          jq -e '.n == 1680 and (.x | length) == 1680' "$RUNNER_TEMP/m.json" >/dev/null || { echo "::error::Messung unvollstaendig"; exit 1; }
+          jq -e --argjson n "$((2 * K))" '.n == $n and (.x | length) == $n' "$RUNNER_TEMP/m.json" >/dev/null || { echo "::error::Messung unvollstaendig"; exit 1; }
           jq -r '"Geraet: \(.wo)  Job: \(.job)"' "$RUNNER_TEMP/m.json"
       - name: Vier Knoten, 3 von 4 -- mit und ohne Ausfall
         env:
