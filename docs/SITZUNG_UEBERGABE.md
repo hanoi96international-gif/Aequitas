@@ -416,7 +416,14 @@ AEQUITAS_TPS_BENCH=1 DATABASE_URL="postgres://postgres:postgres@localhost:5432/a
    ist.
 4. **PQ Stufe 1 (#44):** Registrierung des Nutzers (Höhe 4304, tx 0x34233121…) auf den
    PQ-Teil prüfen, dann `pq_ab_unix` setzen.
-5. **Ältere offene Aufgaben:**
+5. **Analyse der Wirtschaftsregeln (Wunsch des Betreibers, 17.11.):** Umlaufabgabe seit dem
+   Gleichgewicht (07.11.2026): 0,5 %/Monat auf das ganze Guthaben, ohne Freibetrag, täglich
+   anteilig, unter 0,001 AEQ je Tag nicht eingezogen, alles ins Grundeinkommen. Der alte
+   Freibetrag (5 × 1.000 AEQ) steht noch im Code, gilt aber nur vor dem Stichtag. Prüfen:
+   Wirkung, Fairness, Umgehung, Anzeige. Idee: In der App Grundeinkommen und Abgabe desselben
+   Durchlaufs in einer Zeile zeigen (bei einem einzigen Menschen heben sie sich auf). Erst
+   nach dem Quantengeld.
+6. **Ältere offene Aufgaben:**
    - #42 Play Store
    - #45 Stufe 0
    - #54 und #56: wahrscheinlich durch #516–#518 erledigt, prüfen
