@@ -229,6 +229,9 @@ Fälschungen 3,7× teurer als die volle (`schwache_pruefung.py`).
   Toleranz und Prüfgröße zu einer gemessenen Fehlerrate (ANALYSE.md, Befund). Dazu S3,
   die Ausgabe über eine echte Leitung mit Verlusten, Mehrphotonen-Pulsen und verkippten
   Basen, nach Kent u. a. 2022, mit deren Abb. 5 als Selbsttest (ANALYSE.md 5c).
+- `wiesner_schutz.py`: B6 – lohnt sich Fehlerkorrektur je Stelle (Steane-Code)? Exakte
+  Rechnung im Pauli-Rahmen; mit IBM-Werten nie, mit Werten einer Ionenfalle in einem
+  Fenster (HEUTE.md 3.3).
 - `s_kette.py`: Variante S – Quanten-Token ohne Quantenspeicher (S-money nach Kent u. a.
   2022) mit Stichproben-Annahmestellen, die ohne Netz prüfen (ANALYSE.md 5b).
 - `wiesner_verteilt.py`: Simulation der Variante W – Shamir-Anteile bei den Validatoren,

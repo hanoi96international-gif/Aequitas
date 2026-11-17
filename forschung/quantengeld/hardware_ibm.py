@@ -38,6 +38,10 @@ der Kette auf Anteilen laufen; --qubits N je Note, Standard 6, hoechstens 16),
 --wiesner --fern (W3, Praegen ohne Vertrauen: je Stelle ein verschraenktes
 Paar, der Validator misst seine Haelfte in eigener Zufallsbasis; das Geheimnis
 kennt nur er, nicht die Praegestelle; wiesner_hardware.note_fern),
+--wiesner --steane (B6, Schutz je Stelle: dieselbe Note ungeschuetzt und mit
+jeder Stelle im Steane-Code [[7,1,3]], transversal gemessen und klassisch
+dekodiert; --qubits = Stellen, Standard und hoechstens 2, also 14 Qubits;
+wiesner_hardware.note_steane),
 --s-token [--k K] (Variante S, s_kette.py: 2K Qubits, sofort gemessen, kein
 Speicher; Vorlage an der gewaehlten Annahmestelle und als Angriff an der
 anderen; Standard K = 840, hoechstens 2048),
@@ -316,15 +320,18 @@ def uebersetzen(backend, qcs):
 def wiesner_lauf(laeufe: int, schuesse: int, rng: random.Random) -> None:
     """Variante W (HEUTE.md 3.3): Fehlerrate je Treffer und Annahme je
     Wartezeit, mit und ohne Bezahlen; die erste Note durch die Kette."""
-    n = zahl("--qubits", 6, wh.MAX_QUBITS_NOTE)
-    reihe = warten_reihe() or [0, 20, 50, 100]
+    steane = "--steane" in sys.argv
+    n = zahl("--qubits", 2, wh.MAX_STELLEN_STEANE) if steane else zahl("--qubits", 6, wh.MAX_QUBITS_NOTE)
+    reihe = warten_reihe() or ([0, 5, 10, 20, 50] if steane else [0, 20, 50, 100])
     bez = "--bezahlen" in sys.argv
+    if steane and (bez or "--fern" in sys.argv):
+        sys.exit("--steane geht nur ohne --bezahlen und --fern")
     if bez and "--dynamisch" not in sys.argv:
         # Teleportation braucht Rueckkopplung im Lauf; im Rauschmodell rechnet
         # dann nur die Matrix-Produkt-Methode (backend_und_sampler).
         sys.argv.append("--dynamisch")
     fern = "--fern" in sys.argv
-    kreise = wh.satz(n, reihe, laeufe, bez, rng, fern=fern)
+    kreise = wh.satz(n, reihe, laeufe, bez, rng, fern=fern, steane=steane)
     backend, sampler, wo = backend_und_sampler()
     qcs = [nach_qiskit(s) for s in kreise]
     if backend is not None:
@@ -337,7 +344,8 @@ def wiesner_lauf(laeufe: int, schuesse: int, rng: random.Random) -> None:
     for s, qc, r in zip(kreise, qcs, ergebnisse):
         zaehl = r.data.c.get_counts()
         e = wh.auswerten(s, zaehl)
-        name = ("fern: " if fern else "") + ("praegen+bezahlen+pruefen" if s.bedeutung["bezahlt"] else "praegen+pruefen") + f" nach {s.bedeutung['warten_us']:g} us"
+        vorsatz = "fern: " if fern else ("steane: " if s.bedeutung["fall"] == "wiesner-steane" else ("ungeschuetzt: " if steane else ""))
+        name = vorsatz + ("praegen+bezahlen+pruefen" if s.bedeutung["bezahlt"] else "praegen+pruefen") + f" nach {s.bedeutung['warten_us']:g} us"
         f = faelle.setdefault(name, {"fehler": [], "annahme": [], "tiefe": 0, "zwei": 0, "qubits": s.q})
         f["fehler"].append(e["fehlerrate"])
         f["annahme"].append(e["annahme"])
@@ -351,11 +359,12 @@ def wiesner_lauf(laeufe: int, schuesse: int, rng: random.Random) -> None:
             erste = {"warten_us": s.bedeutung["warten_us"], "bezahlt": s.bedeutung["bezahlt"], "ergebnis": k,
                      "treffer": tr, "fehler": fe, "urteil": "echt" if ok else "abgewiesen"}
     zeilen = [f"## Variante W auf {wo}", "",
-              f"Note aus {n} Qubits (BB84), {laeufe} Noten je Fall, {schuesse} Schuesse je Note, "
+              (f"Note aus {n} Stellen (BB84), ungeschuetzt je Stelle 1 Qubit, im Steane-Code je Stelle 7 Qubits, "
+               if steane else f"Note aus {n} Qubits (BB84), ") + f"{laeufe} Noten je Fall, {schuesse} Schuesse je Note, "
               f"Toleranz {wh.TOLERANZ:.0%} der Treffer" + (f", Job {job_id}" if job_id else "") + ".", "",
               "| Fall | Qubits | Tiefe | 2-Qubit-Gatter | Fehlerrate je Treffer | Annahme | ideal |",
               "|---|---|---|---|---|---|---|"]
-    aus = {"wo": wo, "job": job_id, "qubits_je_note": n, "laeufe": laeufe, "schuesse": schuesse,
+    aus = {"wo": wo, "job": job_id, "qubits_je_note": n, "steane": steane, "laeufe": laeufe, "schuesse": schuesse,
            "toleranz": wh.TOLERANZ, "faelle": {}, "note_nr_1": erste}
     for name, f in faelle.items():
         fr = sum(f["fehler"]) / len(f["fehler"])

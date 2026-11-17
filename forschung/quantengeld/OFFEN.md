@@ -35,7 +35,7 @@ bleibt: Nichts wird behauptet, was nicht gemessen oder bewiesen ist (QUANTENSICH
 **Stand 16.11. abends:** Die Punkte 1–4 und 7 sind in Spezifikation und Knoten
 umgesetzt (W2c: Toleranz je Note, k_note aus der exakten Tabelle mit Absprache-Grenze
 f = (t−1)/v, Offenlegen in Teilen, neue Grenzen). Offen sind noch Punkt 5 (mehrstufige
-Prüfung) und Punkt 6 (Fehlerkorrektur messen).
+Prüfung). Punkt 6 ist beantwortet (17.11.).
 
 1. **Ziel:** Ein Fälscher besteht höchstens mit 2⁻⁴⁰ je Prüfung. Das gilt auch für eine
    Absprache, die einen Anteil f der Stellen kennt (bei Fern-Präparation f = 1/v).
@@ -55,8 +55,14 @@ Prüfung) und Punkt 6 (Fehlerkorrektur messen).
    Note (kleines f).
 5. **Mehrstufige Prüfung:** Einlösen erst nach zwei unabhängigen Ziehungen oder nach
    einem sequenziellen Test. Die Absprache-Rechnung dafür aufstellen.
-6. **Fehlerkorrektur je Stelle** (`hardware.praegen_geschuetzt`) gegen die Fehlerrate
-   messen. Sie senkt e und damit τ.
+6. ~~**Fehlerkorrektur je Stelle messen**~~ – beantwortet (17.11., HEUTE.md 3.3,
+   `wiesner_schutz.py`):
+   - Steane-Code je Stelle im Rauschmodell `ibm_marrakesh`: bei jeder Wartezeit
+     schlechter als ungeschützt, ohne Warten 0,8 % gegen 0,3 %, nach 20 µs 9,8 % gegen
+     3,0 %.
+   - Exakt gerechnet hilft der Code mit IBM-Werten nie. Mit Werten einer Ionenfalle hilft
+     er bei 0,3–6 % Rohfehler.
+   - Der Lauf auf dem echten Chip (`wiesner = steane`) wartet auf deine Freigabe.
 7. ~~**Quantenmechanische Schranke**~~ – erledigt: Die Tabelle rechnet mit dem
    optimalen quantenmechanischen Kloner (14,64 %), nicht mehr mit einem ratenden Fälscher.
    Ob verschränkte Angriffe über mehrere Stellen mehr bringen, ist Frage 1 im Prüfauftrag
