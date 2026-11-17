@@ -2,7 +2,7 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 17.11.2026 ~06:15 UTC, Sitzung „Weiter“ (Auftrag des Betreibers: „Alles erledigen
+Stand: 17.11.2026 ~06:35 UTC nach #563, Sitzung „Weiter“ (Auftrag des Betreibers: „Alles erledigen
 für dezentrales Quantengeld“).
 
 ## Arbeitsweise (vom Betreiber festgelegt)
@@ -30,13 +30,18 @@ für dezentrales Quantengeld“).
 
 ## Hauptaugenmerk: dezentrales Quantengeld (Stand 16.11. ~23 UTC)
 
-**Im PR:** Register von W und S als eigene Tabelle `quanten_w_eintraege`
+**Gemergt (#563):** Register von W und S als eigene Tabelle `quanten_w_eintraege`
 (`quanten_w_tabelle.go`): eine Zeile je Note, Token und toter Note, nur Geändertes
 wird geschrieben, StateRoot und Snapshot-Format unverändert, Umzug aus `chain_config`
 beim Laden. Dazu im selben PR die Rechnung zu **B5** (`wiesner_mehrstufig.py`):
 zwei Stufen sparen einer echten Note im Mittel 20–52 % Stellen bei unverändert 2⁻⁴⁰.
-**Danach:** W2e (zwei Stufen in `wiesner_kette.py`, Prüfvektor, dann Knoten), App-Anzeige
-für W und S.
+**Als Nächstes:** W2e – zwei Stufen der Prüfung:
+1. Spezifikation `wiesner_kette.py`: ganzzahlige Grenztabelle je Treffer-Zahl h
+   (höchstens a(h) Fehler → echt, mindestens r(h) Fehler → fällt), s1 und k_max je
+   (Toleranz, Absprache) wie `quantenWKTabelle`; die Anfrage bekommt eine zweite Runde
+   (neuer Zufall, neue Antwort); ohne Entscheidung nach k_max: fällt.
+2. Prüfvektor neu, dann Knoten (`quanten_w.go`, `quanten_w_register.go`), Dienst und Tests.
+Danach: App-Anzeige für W und S.
 
 Auftrag des Betreibers: dezentrales Quantengeld auf heutigem Stand funktionsfähig, damit
 Aequitas ernstzunehmendes Quantengeld ist. „Alles umsetzen.“ Die Liste der offenen Punkte
@@ -194,7 +199,7 @@ Nicht übernommen, als Beobachtung für später:
 
 | Repo | PR | Inhalt | Nächster Schritt |
 |---|---|---|---|
-| Aequitas | „Register von Variante W und S als eigene Tabelle“ (Sitzung „Weiter“, Zweig `claude/aequitas-fortsetzen-osrea1`) | W/S-Register je Zeile in `quanten_w_eintraege`; B5-Rechnung | CI grün abwarten, Sicherheitsprüfung als Kommentar, squash-mergen |
+| – | – | keine offenen PRs der Sitzung „Weiter“ | – |
 
 Gemergt am 16./17.11. (diese Sitzung): #561 (B6 Steane-Code je Stelle, Abschnitt C
 analysiert, S3-Bausteine), #560 (S3 über eine echte Leitung, Mindestgröße der Stichprobe),
@@ -202,6 +207,10 @@ analysiert, S3-Bausteine), #560 (S3 über eine echte Leitung, Mindestgröße der
 
 **Wartet auf Freigabe des Betreibers:**
 - Deploy von #557 auf C1 ([43974452277](https://github.com/hanoi96international-gif/Aequitas/actions/runs/43974452277)).
+
+Gemergt am 17.11. (Sitzung „Weiter“):
+- #563 (W/S-Register als Tabelle; B5 gerechnet, `wiesner_mehrstufig.py`)
+- #559 (Übergabe)
 
 Gemergt am 16.11.:
 - #558 (andere Sitzung: Prüfauftrag auf Stand W2c/W2d/S, ePrint-Entwurf, `OFFEN.md`
