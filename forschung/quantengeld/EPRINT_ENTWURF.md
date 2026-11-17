@@ -264,6 +264,7 @@ the public Qiskit Runtime. Circuits and raw results are in the repository's work
 | W note, mint → challenge → answer → reveal → verdict, no waiting | 16 positions | accepted: 10 hits, 0 errors; 0.7 % error per hit over 1,000 shots, acceptance 0.998 |
 | Same, 20 µs storage plus teleportation | 16 positions | rejected: 9 hits, 3 errors; 39.1 % error per hit |
 | W note minted without trust (§3.5), no waiting, `ibm_fez` | 6 positions, 4 notes × 500 shots | 2.4 % error per hit, acceptance 0.90; with teleportation 12.5 %; after 20 µs 29 % |
+| W positions in the Steane code [[7,1,3]], transversal readout, classical decoding, `ibm_fez` | 2 positions (14 qubits), 4 notes × 1,000 shots | worse than unprotected at every delay: 4.6 % vs 0.6 % at 0 µs, 11.4 % vs 5.3 % at 5 µs |
 | S-token, secure parameters (tol 4 %, k = 840 per point) | 1,680 qubits, 105 circuits × 1 shot | 0.46 % error per matching basis; chosen point accepted (438 hits, 4 errors), other point rejected (401 hits, 196 errors) |
 
 These are demonstrations, not security experiments:
