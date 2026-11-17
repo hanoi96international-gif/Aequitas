@@ -64,14 +64,14 @@ import (
 
 const (
 	// quantenWAbUnix: Stichtag (math.MaxInt64 = schlafend). Freigeschaltet
-	// vom Betreiber am 17.11.2026 fuer den 18.11.2026 18:00 UTC -- vor dem
+	// vom Betreiber am 17.11.2026 fuer den 17.11.2026 17:00 UTC (vorgezogen vom 18.11. 18:00) -- vor dem
 	// Gutachten (W5) und ohne Pilot mit Partner (W4 mit Speicher). Bewusst:
 	// eine W-Note haelt auf heutiger Hardware nur Mikrosekunden, wer Deckung
 	// in eine Note sperrt, die er nicht halten kann, verliert sie an das
 	// Grundeinkommen; Variante S braucht keinen Speicher. Der Deploy-Waechter
 	// .github/neustart/quanten-w-nicht-verpasst.sh haelt den Ausroll an, wenn
 	// der Stichtag nicht mindestens 30 min in der Zukunft liegt.
-	quantenWAbUnix int64 = 1795024800
+	quantenWAbUnix int64 = 1794934800
 
 	quantenWPraegenTxArt    = "quanten_w_praegen"
 	quantenWAnfrageTxArt    = "quanten_w_anfrage"

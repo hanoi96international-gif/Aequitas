@@ -63,7 +63,7 @@ unten).
   6.0.24, React Native 0.81.5).
 
 **W/S im Hauptnetz freigeschaltet (Entscheidung des Betreibers, 17.11., #568 gemergt):**
-- Stichtag 18.11.2026 18:00 UTC (`quantenWAbUnix = 1795024800`).
+- Stichtag **17.11.2026 17:00 UTC** (`quantenWAbUnix = 1794934800`), auf Wunsch des Betreibers vom 18.11. 18:00 vorgezogen.
 - **Deploy auf C1 wartet auf die Freigabe des Betreibers:**
   [44092755346](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44092755346).
   Nach dem Deploy prüfen: `/api/status` zeigt `quanten_w.ab = 1795024800`.
