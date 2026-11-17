@@ -175,6 +175,13 @@ func qsVierKnoten(t *testing.T, ausfall bool) {
 		h.klient = qwKlient
 		h.takt = 500 * time.Millisecond
 	}
+	// Frist je Schritt: 4 min fuer 128 Stellen; eine echte Messung in voller
+	// Groesse (5.200 Stellen je Annahmestelle, 82 Teile der Offenlegung)
+	// bekommt die Vorgabe des Werkzeugs im Hauptnetz (15 min).
+	frist := 4 * time.Minute
+	if ausDatei {
+		frist = 15 * time.Minute
+	}
 	var log bytes.Buffer
 	var werkzeugNetz quantenSNetz = &quantenSMehrNetz{quantenSHTTP: eigen, validatoren: netze}
 	var weg *vierKnoten
@@ -186,9 +193,10 @@ func qsVierKnoten(t *testing.T, ausfall bool) {
 			weg.anhalten()
 		}}
 	}
+	beginn := time.Now()
 	erg, err := quantenSAusgabeLauf(context.Background(), QuantenSAusgabeAuftrag{Messung: m, Schluessel: ausgeber.key, Deckung: 2_000_000,
-		Tol: quantenWTolStandard, Frist: 4 * time.Minute}, adressen, 3, werkzeugNetz, &log)
-	t.Logf("Werkzeug:\n%s", log.String())
+		Tol: quantenWTolStandard, Frist: frist}, adressen, 3, werkzeugNetz, &log)
+	t.Logf("Werkzeug (%s):\n%s", time.Since(beginn).Round(time.Second), log.String())
 	if err != nil {
 		t.Fatal(err)
 	}
