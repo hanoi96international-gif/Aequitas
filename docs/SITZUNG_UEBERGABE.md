@@ -2,7 +2,7 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 17.11.2026 ~07:30 UTC nach #565, #557 und #563 auf C1, Sitzung „Weiter“ (Auftrag des Betreibers: „Alles erledigen
+Stand: 17.11.2026 ~10 UTC nach #566 und App #79, Sitzung „Weiter“ (Auftrag des Betreibers: „Alles erledigen
 für dezentrales Quantengeld“).
 
 ## Arbeitsweise (vom Betreiber festgelegt)
@@ -51,9 +51,20 @@ unten).
     Der Entwurf gilt dort fürs Einlösen; sinnvoll ist er aber für die volle Prüfung, mit e
     aus der heutigen Garantie statt einem neuen Feld.
 
-**Als Nächstes (Sitzung „Weiter“):** App-Anzeige für W und S (App-Repo, vorher die
-Expo-Doku v54 lesen, siehe AGENTS.md der App); danach W6-Voraussetzungen (Gutachten über
-die Vorlagen, Pilot im Testnetz).
+**App-Anzeige für W und S erledigt (App #79, gemergt 17.11.):**
+- Auf der Quantengeld-Seite „Note oder Token nachsehen“: Kennung K eingeben, dann den
+  Stand von `GET /api/quanten-w/note` anzeigen. Gilt für W-Note, S-Token, tot, unbekannt.
+- Nur Anzeige; die Antwort wird streng gelesen (`lib/quantenW.ts`). Texte in 12 Sprachen.
+- Noch nicht in einer veröffentlichten Version. Kommt mit dem nächsten App-Release, das
+  braucht die Freigabe des Betreibers.
+- `docs.expo.dev` ist in der Umgebung erlaubt, war aber in der Sitzung noch nicht
+  erreichbar. Geprüft wurde gegen die installierten Pakete (Expo 54.0.35, expo-router
+  6.0.24, React Native 0.81.5).
+
+**Als Nächstes:** Voraussetzungen von W6.
+- Gutachten: Vorlagen in `ANSCHREIBEN.md`, verschickt der Betreiber.
+- Pilot im Testnetz: mehrere Validatoren mit Dienst, Prägen bis Einlösen auf echter
+  Hardware.
 
 Auftrag des Betreibers: dezentrales Quantengeld auf heutigem Stand funktionsfähig, damit
 Aequitas ernstzunehmendes Quantengeld ist. „Alles umsetzen.“ Die Liste der offenen Punkte

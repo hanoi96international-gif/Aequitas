@@ -181,7 +181,8 @@ In Abschnitt C ist nur noch C6 offen (Konto des Betreibers).
      Nachbarn sind die Sync-Peers und Seeds des Knotens, dazu `QUANTEN_W_PEERS`. Sie
      werden gleichzeitig abgefragt, nur öffentlich und ohne Weiterleitung. Es zählen nur
      Anteile, die der Validator selbst unterschrieben hat.
-3. **App:** eine Variante-W-Note und ihren Prüfstand anzeigen.
+3. ~~**App:** eine Variante-W-Note und ihren Prüfstand anzeigen~~ – erledigt (App #79,
+   17.11.): „Note oder Token nachsehen“ auf der Quantengeld-Seite, für W und S.
 4. **Vor jeder Freischaltung (W6):**
    - Gutachten ohne offene kritische Punkte (W5).
    - Parameter aus Abschnitt B.
