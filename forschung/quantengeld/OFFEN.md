@@ -34,8 +34,8 @@ bleibt: Nichts wird behauptet, was nicht gemessen oder bewiesen ist (QUANTENSICH
 
 **Stand 16.11. abends:** Die Punkte 1–4 und 7 sind in Spezifikation und Knoten
 umgesetzt (W2c: Toleranz je Note, k_note aus der exakten Tabelle mit Absprache-Grenze
-f = (t−1)/v, Offenlegen in Teilen, neue Grenzen). Offen sind noch Punkt 5 (mehrstufige
-Prüfung). Punkt 6 ist beantwortet (17.11.).
+f = (t−1)/v, Offenlegen in Teilen, neue Grenzen). Punkt 5 (mehrstufige
+Prüfung) ist gerechnet, der Einbau in Spezifikation und Knoten ist offen (W2e). Punkt 6 ist beantwortet (17.11.).
 
 1. **Ziel:** Ein Fälscher besteht höchstens mit 2⁻⁴⁰ je Prüfung. Das gilt auch für eine
    Absprache, die einen Anteil f der Stellen kennt (bei Fern-Präparation f = 1/v).
@@ -53,8 +53,16 @@ Prüfung). Punkt 6 ist beantwortet (17.11.).
      bekommen.
 4. **Mehr Validatoren je Note** (v bis 64): Jeder kennt dann nur einen kleinen Teil der
    Note (kleines f).
-5. **Mehrstufige Prüfung:** Einlösen erst nach zwei unabhängigen Ziehungen oder nach
-   einem sequenziellen Test. Die Absprache-Rechnung dafür aufstellen.
+5. **Mehrstufige Prüfung** – gerechnet (17.11., `wiesner_mehrstufig.py`):
+   - Zwei unabhängige feste Ziehungen sparen nichts (meist mehr Stellen).
+   - Ein sequenzieller Test (Wald) hält den Fälscher streng bei 2⁻⁴⁰, auch mit Absprache
+     f. Er entscheidet für eine echte Note im Mittel nach 36–64 % weniger Stellen, braucht
+     aber höchstens 2–62 % mehr als die feste Prüfung.
+   - **Zwei Stufen** (erst s1 Stellen ziehen, nur bei „unentschieden“ eine zweite Ziehung
+     bis k_max): eine echte Note verbraucht im Mittel 20–52 % weniger Stellen, nur 4–12 %
+     der Prüfungen brauchen die zweite Stufe.
+   - **Offen (W2e, Konsens):** ganzzahlige Grenztabelle je Treffer-Zahl, zweite Runde in
+     der Anfrage; erst Spezifikation und Prüfvektor, dann Knoten.
 6. ~~**Fehlerkorrektur je Stelle messen**~~ – beantwortet (17.11., HEUTE.md 3.3,
    `wiesner_schutz.py`):
    - Steane-Code je Stelle im Rauschmodell `ibm_marrakesh`: bei jeder Wartezeit
