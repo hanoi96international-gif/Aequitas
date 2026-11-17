@@ -898,6 +898,13 @@ func quantenWAuswahlen(m, t, grenze int) [][]int {
 // quantenWPeerKlient: ein Klient fuer Nachbarn -- folgt keiner Weiterleitung
 // (eine erlaubte Adresse duerfte sonst ins interne Netz umleiten). dial nil:
 // der gewoehnliche Dialer (nur fuer die Adressen des Betreibers).
+// quantenWTestQuelle: NUR in Tests gesetzt (im Betrieb nil). Mehrere Knoten
+// in einem Prozess fragen sonst alle von 127.0.0.1 ab und teilen sich die
+// Burst-Grenze je Absender -- im Betrieb hat jeder Validator seine eigene
+// Adresse. Liefert den Dialer, der von der Adresse des eigenen Knotens aus
+// verbindet.
+var quantenWTestQuelle func(apiBasis string) func(context.Context, string, string) (net.Conn, error)
+
 func quantenWPeerKlient(dial func(context.Context, string, string) (net.Conn, error)) *http.Client {
 	c := &http.Client{Timeout: quantenWPeerZeit, CheckRedirect: ohneUmleitung}
 	if dial != nil {
@@ -1353,6 +1360,9 @@ func (cs *ChainState) StarteQuantenWDienst(ctx context.Context, key *ecdsa.Priva
 		}
 	}
 	client := &http.Client{Timeout: quantenWPeerZeit}
+	if quantenWTestQuelle != nil {
+		client.Transport = &http.Transport{DialContext: quantenWTestQuelle(apiBasis)}
+	}
 	einreichen := func(art string, q QuantenWAngaben) error {
 		body, err := json.Marshal(map[string]interface{}{"wallet": "", "zeit": 0, "quanten_w": q})
 		if err != nil {
@@ -1374,6 +1384,9 @@ func (cs *ChainState) StarteQuantenWDienst(ctx context.Context, key *ecdsa.Priva
 		return err
 	}
 	d.nachbarn = nachbarn
+	if quantenWTestQuelle != nil {
+		d.client = quantenWPeerKlient(quantenWTestQuelle(apiBasis))
+	}
 	if hoehe != nil {
 		d.hoehe = hoehe
 		d.final = func() int64 {

@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"io"
 	"math/rand"
+	"net"
+	"net/url"
 	"os"
 	"strings"
 	"testing"
@@ -129,6 +131,21 @@ func qsVierKnoten(t *testing.T, ausfall bool) {
 	t.Setenv("QUANTEN_W_PEERS", strings.Join(urls, ","))
 	ctx, halt := context.WithCancel(context.Background())
 	t.Cleanup(halt)
+	// Jeder Knoten fragt von SEINER Adresse aus ab (wie im Betrieb), nicht
+	// alle von 127.0.0.1 -- sonst teilen sich vier Dienste eine Burst-Grenze.
+	quantenWTestQuelle = func(apiBasis string) func(context.Context, string, string) (net.Conn, error) {
+		u, err := url.Parse(apiBasis)
+		if err != nil {
+			return nil
+		}
+		ip := net.ParseIP(u.Hostname())
+		if ip == nil {
+			return nil
+		}
+		d := &net.Dialer{LocalAddr: &net.TCPAddr{IP: ip}, Timeout: 5 * time.Second}
+		return d.DialContext
+	}
+	t.Cleanup(func() { quantenWTestQuelle = nil })
 	var dienste []*quantenWDienst
 	for _, k := range netz.ks {
 		cs, dag, _ := k.teile()
