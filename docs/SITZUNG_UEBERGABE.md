@@ -2,8 +2,8 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 17.11.2026 ~16 UTC (S-Ausgabe-Werkzeug im PR), Sitzung „Weitermachen“ (Zweig
-`claude/weitermachen-qbkbfs`); davor ~10 UTC nach #566 und App #79, Sitzung „Weiter“ (Auftrag des Betreibers: „Alles erledigen
+Stand: 17.11.2026 ~18:45 UTC, Sitzung „Übergabe“ (Zweig `claude/ubergabe-v2cgv1`, alle
+vier Repos); davor ~18:30 UTC Sitzung „Weitermachen“ (Zweig `claude/weitermachen-qbkbfs`); davor ~10 UTC nach #566 und App #79, Sitzung „Weiter“ (Auftrag des Betreibers: „Alles erledigen
 für dezentrales Quantengeld“).
 
 ## Arbeitsweise (vom Betreiber festgelegt)
@@ -99,19 +99,36 @@ Neu gebaut, darum: **lokale Arbeit sofort committen und pushen.**
 - Der erste Versuch scheiterte, weil die **Signieradresse von C1**
   (`0x3066639af1653325100c1074a9696612dbdc42dc`) keine Deckung hatte. `0x0be8…d016` ist die
   Betreiber-Wallet, nicht C1. Der Betreiber hat 2 AEQ an C1 überwiesen (1 AEQ bleibt dort).
-- **Stand 17.11. ~18:30 UTC (Sitzungsende am Nutzungslimit):**
-  - PR #571 (Website `/quanten`, Schild und Band auf der Startseite, Leitsatz, FAQ, Testfix
-    Lebensnachweis, dazu S mit mehreren Validatoren) offen: CI abwarten, mergen, dann
-    C1-Deploy freigeben lassen.
-  - S mit mehreren Validatoren: `aequitasd quanten-s-ausgabe --validatoren adr=api,... --t N`;
-    `TestVierKnotenQuantenS_RealDB` und `...Ausfall_RealDB` (3 von 4, ein Knoten faellt aus)
-    lokal gruen. Gegenprobe t=4 bei Ausfall nicht zu Ende gelaufen (abgebrochen).
-  - App: #81, #82 gemergt; PR #83 (1.24.1) offen -> mergen, dann build-apk/build-ios und
-    release-apk/release-ios v1.24.1 (Freigaben Betreiber). iOS-Release 1.24.0 wartet auf Freigabe.
-- **Befund im Protokoll:** C1 läuft mit `AEQUITAS_RPC_RATE_LIMIT_MAX` (1000 je 10 s statt 200)
-  und `AEQUITAS_RPC_QUIET_TX=1`; laut Knoten nur für Lastprüfstände gedacht. Prüfen und
-  zurücksetzen (Schutzgrenzen nicht lockern, AGENTS.md).
-- App 1.24.0 (App #80) gemergt; Bau läuft, Veröffentlichung wartet auf Freigaben.
+- **Stand 17.11. ~18:45 UTC (Sitzung „Übergabe“):**
+  - **#571 gemergt** (Website `/quanten`, S mit mehreren Validatoren); Sicherheitsprüfung als
+    PR-Kommentar. **C1-Deploy wartet auf Freigabe:**
+    [44147906409](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44147906409).
+  - **Gegenprobe t = 4 bei Ausfall:** erster Lauf ungültig (zwei Vier-Knoten-Tests liefen
+    gleichzeitig auf denselben Datenbanken `aeq_vier_0..3`). **Zwei Vier-Knoten-Tests nie
+    gleichzeitig ohne eigenes `AEQUITAS_VIER_DB_PRAEFIX` laufen lassen** -- der zweite
+    löscht dem ersten die Datenbanken (`DROP ... WITH (FORCE)`), die Knoten laufen
+    auseinander (tausende StateRoot-Abweichungen). Wiederholung allein: Ergebnis als
+    Kommentar an #571.
+  - **Pilot mit vier Validatoren auf echter Hardware** (PR dieser Sitzung):
+    `quanten-s-pilot.yml` misst auf IBM (`quantenhardware`) oder im Rauschmodell und lässt
+    vier echte Knoten im Job prägen, Doppelvorlage abweisen, einlösen (3 von 4, mit und ohne
+    Ausfall). Kein Server, keine Server-Schlüssel. Der Vier-Knoten-Test liest die Messung
+    aus `AEQUITAS_QS_MESSUNG`. Lokal mit 1.680 Stellen grün (420 s, 3/831 Fehler, vier
+    Knoten gleich). Ehrliche Grenze: 840 Stellen je Stelle, die Tabelle verlangt für 3 von 4
+    5.200 -- Ablauf, nicht volle Sicherheitsstufe. Nach dem Merge: Modus `rauschen` selbst
+    starten, Modus `ibm` braucht die Freigabe in `quantenhardware`.
+  - **Ratengrenze C1:** `perf-c1-setzen.sh` setzt `AEQUITAS_RPC_RATE_LIMIT_MAX` jetzt leer
+    (Vorgabe 200 je 10 s) und bricht ab, wenn der Knoten noch eine Anhebung meldet (im
+    selben PR, Test `TestRPCRatengrenzeAusUmgebung`). Wirksam erst, wenn der Betreiber
+    `perf-c1.yml` startet und freigibt. Vor C1 liegt nur Caddy (kein CDN), die Vorgabe
+    trifft also je Nutzer. `AEQUITAS_RPC_QUIET_TX=1` bleibt (nur Protokollzeilen, keine
+    Schutzgrenze; steht auch in `docker-compose.yml`).
+  - **App 1.24.1:** #83 gemergt. APK-Bau
+    [44146926619](https://github.com/hanoi96international-gif/Aequitas-App/actions/runs/44146926619),
+    iOS-Bau [44146933331](https://github.com/hanoi96international-gif/Aequitas-App/actions/runs/44146933331)
+    (erster Versuch rot: Netzabbruch beim Laden von hermes-engine von Maven, neu gestartet).
+    Danach `release-apk.yml` (run_id, Tag `v1.24.1`) und `release-ios.yml` -- Freigaben
+    Betreiber. iOS-Release 1.24.0 wartet ebenfalls auf Freigabe.
 
 **Als Nächstes:** Voraussetzungen von W6 (für eine Freischaltung mit Gutachten).
 - Gutachten: Vorlagen in `ANSCHREIBEN.md`, verschickt der Betreiber.
