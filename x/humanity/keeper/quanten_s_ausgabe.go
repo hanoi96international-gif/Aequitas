@@ -411,7 +411,12 @@ func quantenSVorlegen(ctx context.Context, netz quantenSNetz, a QuantenSAusgabeA
 	}); err != nil {
 		return "", err
 	}
-	nach, err := quantenSWartenAuf(ctx, netz, K, a.Frist, "Urteil", func(st map[string]interface{}) bool {
+	// Auf das Urteil wartet das Werkzeug mindestens so lange, wie die Kette
+	// der Offenlegung gibt (quantenWFristOffen ab der Anmeldung), plus
+	// quantenSUrteilNachlauf fuer Finalitaet und die Frist-Einreichung der
+	// Dienste. Vorher meldete es nach a.Frist einen Fehlschlag, obwohl die
+	// Kette noch pruefte (Pilot 17.11.2026: k = 5.200, Offenlegung > 15 min).
+	nach, err := quantenSWartenAuf(ctx, netz, K, quantenSUrteilFrist(a.Frist), "Urteil", func(st map[string]interface{}) bool {
 		return st == nil || st["tot"] == true || st["anmeldung"] == nil
 	})
 	if err != nil {
@@ -426,6 +431,17 @@ func quantenSVorlegen(ctx context.Context, netz quantenSNetz, a QuantenSAusgabeA
 		return "frist", nil
 	}
 	return "", fmt.Errorf("Stand nach der Vorlage unlesbar (fehl %v)", nach["fehl"])
+}
+
+// quantenSUrteilNachlauf: Zeit nach der Kettenfrist, bis die Dienste die
+// Frist eingereicht haben und sie im Stand steht.
+const quantenSUrteilNachlauf = 3 * time.Minute
+
+// quantenSUrteilFrist: so lange wartet das Werkzeug auf das Urteil --
+// hoechstens Kettenfrist plus Nachlauf, ausser die Frist je Schritt ist
+// groesser (begrenzt auf 1 h beim Aufruf).
+func quantenSUrteilFrist(schritt time.Duration) time.Duration {
+	return max(schritt, time.Duration(quantenWFristOffen)*time.Second+quantenSUrteilNachlauf)
 }
 
 func quantenSZahl(v interface{}) int {

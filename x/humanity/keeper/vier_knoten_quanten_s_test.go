@@ -194,7 +194,8 @@ func qsVierKnoten(t *testing.T, ausfall bool) {
 	}
 	// Frist je Schritt: 4 min fuer 128 Stellen; eine echte Messung in voller
 	// Groesse (5.200 Stellen je Annahmestelle, 82 Teile der Offenlegung)
-	// bekommt die Vorgabe des Werkzeugs im Hauptnetz (15 min).
+	// bekommt die Vorgabe des Werkzeugs im Hauptnetz (15 min je Schritt; auf
+	// das Urteil wartet das Werkzeug bis zur Kettenfrist, quantenSUrteilFrist).
 	frist := 4 * time.Minute
 	if ausDatei {
 		frist = 15 * time.Minute
