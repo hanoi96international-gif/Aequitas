@@ -2,7 +2,7 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 17.11.2026 ~06:15 UTC, Sitzung „Weiter“ (Auftrag des Betreibers: „Alles erledigen
+Stand: 17.11.2026 ~06:35 UTC nach #563, Sitzung „Weiter“ (Auftrag des Betreibers: „Alles erledigen
 für dezentrales Quantengeld“).
 
 ## Arbeitsweise (vom Betreiber festgelegt)
@@ -30,13 +30,56 @@ für dezentrales Quantengeld“).
 
 ## Hauptaugenmerk: dezentrales Quantengeld (Stand 16.11. ~23 UTC)
 
-**Im PR:** Register von W und S als eigene Tabelle `quanten_w_eintraege`
+**Gemergt (#563):** Register von W und S als eigene Tabelle `quanten_w_eintraege`
 (`quanten_w_tabelle.go`): eine Zeile je Note, Token und toter Note, nur Geändertes
 wird geschrieben, StateRoot und Snapshot-Format unverändert, Umzug aus `chain_config`
 beim Laden. Dazu im selben PR die Rechnung zu **B5** (`wiesner_mehrstufig.py`):
 zwei Stufen sparen einer echten Note im Mittel 20–52 % Stellen bei unverändert 2⁻⁴⁰.
-**Danach:** W2e (zwei Stufen in `wiesner_kette.py`, Prüfvektor, dann Knoten), App-Anzeige
-für W und S.
+**Als Nächstes:** W2e – zwei Stufen der Prüfung:
+1. Spezifikation `wiesner_kette.py`: ganzzahlige Grenztabelle je Treffer-Zahl h
+   (höchstens a(h) Fehler → echt, mindestens r(h) Fehler → fällt), s1 und k_max je
+   (Toleranz, Absprache) wie `quantenWKTabelle`; die Anfrage bekommt eine zweite Runde
+   (neuer Zufall, neue Antwort); ohne Entscheidung nach k_max: fällt.
+2. Prüfvektor neu, dann Knoten (`quanten_w.go`, `quanten_w_register.go`), Dienst und Tests.
+Danach: App-Anzeige für W und S.
+
+**Entwurf W2e (17.11., Grundlage `wiesner_mehrstufig.py`):**
+- Nur beim **Einlösen** (k fest), Prüfen ohne Einlösen bleibt wie es ist.
+- Parameter je Note: **e = höchste Fehlerrate einer echten Note**, als eigenes Feld in
+  Promille (z. B. 4, 7, 20 ‰ aus den W1-Messungen), und `c = (1 − f16/16) · 14,64 %` als
+  kleinste Fehlerrate eines Fälschers (f16 wie heute). Nötig: e < c.
+  - **Nicht** e = tol/100 setzen. Gerechnet am 17.11. (`w2e_eintrag`): Dann sind s1 und k_max
+    größer als das feste k_note (z. B. tol 4, f16 0: s1 1216, k_max 3072 gegen 840).
+  - Die feste Tabelle bindet nur den Fälscher; eine echte Note mit Fehlerrate gleich der
+    Toleranz fiele dort etwa in jedem zweiten Fall durch.
+  - Der Gewinn von 20–52 % gilt im fairen Vergleich (`main()`): gleiches e für beide.
+- **Entscheidung ganzzahlig**, kein Gleitkomma im Konsens. L = F·ln(c/e) + (T−F)·ln((1−c)/(1−e))
+  bei T Treffern, F Fehlern.
+  - echt, wenn L ≤ −A (A = 40 ln 2): F·Q ≤ T·P − R
+  - fällt, wenn L ≥ B (B = ln 2·10⁶): F·Q ≥ T·P + S
+  - Q, P, R, S sind ganze Zahlen je (tol, f16), offline gerechnet und **zur sicheren Seite
+    gerundet**: Annahme- und Ablehnungsbereich je Teilmenge des exakten. Die Tabelle
+    steht in Spezifikation und Knoten wie heute `K_TABELLE`/`quantenWKTabelle`. Der
+    Selbsttest rechnet nach: Fälscher ≤ 2⁻⁴⁰ (Wald gilt für jede Abbruchregel), echt fällt
+    ≤ 10⁻⁶ (Chernoff mit den gerundeten Zahlen).
+- **Ablauf:**
+  1. Anfrage zum Einlösen zieht `s1` Stellen; Antwort; Offenlegen in Teilen.
+  2. Nach Stufe 1: echt → einlösen; fällt → durchgefallen; sonst Stufe 2.
+  3. **Stufe 2** ist eine neue Runde in derselben Anfrage: nächster Wert der Hash-Ketten
+     (`zaehl + 1`), neuer Zufall, `k_max − s1` weitere Stellen, neue Antwort (eigene
+     Unterschrift mit Stufe), Offenlegen; dann echt oder fällt, **kein Unentschieden**.
+  4. Fristen wie heute je Stufe. Pfand für k_max von Anfang an.
+  5. Reserve und Erschöpfung rechnen mit k_max statt k_note, Hash-Ketten mit zwei Werten.
+- **Tabelle je (tol, f16):** s1, k_max, Q, P, R, S. s1 so, dass die erwarteten Stellen
+  minimal sind. Die Entscheidung fällt nur an den Stufenenden; `zwei_stufen` dafür mit
+  „L(s1) ≤ −A“ statt „vorher gekreuzt“ neu rechnen.
+- **Missbrauch zu testen:**
+  - Stufe 2 ohne Bedarf;
+  - Antwort der Stufe 1 in Stufe 2 wiederholt;
+  - Frist zwischen den Stufen;
+  - Rundung der Tabelle zum Vorteil des Fälschers (Mutation);
+  - Einlösen mit k ≠ s1;
+  - zweite Stufe mit falscher Zahl Stellen.
 
 Auftrag des Betreibers: dezentrales Quantengeld auf heutigem Stand funktionsfähig, damit
 Aequitas ernstzunehmendes Quantengeld ist. „Alles umsetzen.“ Die Liste der offenen Punkte
@@ -194,7 +237,7 @@ Nicht übernommen, als Beobachtung für später:
 
 | Repo | PR | Inhalt | Nächster Schritt |
 |---|---|---|---|
-| Aequitas | „Register von Variante W und S als eigene Tabelle“ (Sitzung „Weiter“, Zweig `claude/aequitas-fortsetzen-osrea1`) | W/S-Register je Zeile in `quanten_w_eintraege`; B5-Rechnung | CI grün abwarten, Sicherheitsprüfung als Kommentar, squash-mergen |
+| – | – | keine offenen PRs der Sitzung „Weiter“ | – |
 
 Gemergt am 16./17.11. (diese Sitzung): #561 (B6 Steane-Code je Stelle, Abschnitt C
 analysiert, S3-Bausteine), #560 (S3 über eine echte Leitung, Mindestgröße der Stichprobe),
@@ -202,6 +245,10 @@ analysiert, S3-Bausteine), #560 (S3 über eine echte Leitung, Mindestgröße der
 
 **Wartet auf Freigabe des Betreibers:**
 - Deploy von #557 auf C1 ([43974452277](https://github.com/hanoi96international-gif/Aequitas/actions/runs/43974452277)).
+
+Gemergt am 17.11. (Sitzung „Weiter“):
+- #563 (W/S-Register als Tabelle; B5 gerechnet, `wiesner_mehrstufig.py`)
+- #559 (Übergabe)
 
 Gemergt am 16.11.:
 - #558 (andere Sitzung: Prüfauftrag auf Stand W2c/W2d/S, ePrint-Entwurf, `OFFEN.md`

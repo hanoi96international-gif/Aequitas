@@ -185,6 +185,86 @@ def zwei_ziehungen(e: float, f: float) -> int | None:
     return None if r is None else 2 * r["k"]
 
 
+# ------------------------------------------------- W2e: Tabelle fuer die Kette
+# Ganzzahlige Grenzen (kein Gleitkomma im Konsens). Mit T Treffern, F Fehlern:
+#   echt,  wenn F*QA <= T*PA - RA      (Teilmenge von L <= -A)
+#   faellt, wenn F*QR >= T*PR + SR     (Teilmenge von L >= B)
+# Gerundet je zur sicheren Seite (Massstab M = 2^20): die Annahme ist hoechstens
+# so leicht wie exakt (Faelscher <= 2^-40 bleibt), die Ablehnung hoechstens so
+# leicht wie exakt (Fehlalarm <= e^-B bleibt). e = hoechste Fehlerrate einer
+# echten Note (eigener Parameter in Promille, NICHT die Toleranz: mit e = tol
+# waeren s1 und k_max groesser als das feste k_note), c = (1 - f16/16) * 14,64 %.
+M = 1 << 20
+
+
+def w2e_grenzen(e: float, c: float) -> tuple[int, int, int, int, int, int]:
+    al, be = math.log(c / e), -math.log((1 - c) / (1 - e))   # al > 0, be > 0
+    qa, pa, ra = math.ceil((al + be) * M), math.floor(be * M), math.ceil(A * M)
+    qr, pr, sr = math.floor((al + be) * M), math.ceil(be * M), math.ceil(B * M)
+    return qa, pa, ra, qr, pr, sr
+
+
+def w2e_echt(t: int, f: int, g) -> bool:
+    return f * g[0] <= t * g[1] - g[2]
+
+
+def w2e_faellt(t: int, f: int, g) -> bool:
+    return f * g[3] >= t * g[4] + g[5]
+
+
+def w2e_chernoff(k: int, e: float, g) -> float:
+    """P_echt(nach k Stellen NICHT echt) <= ... (Chernoff mit den ganzen Zahlen)."""
+    qa, pa, ra = g[0], g[1], g[2]
+    best = 1.0
+    for i in range(1, 400):
+        lam = i / 400 / pa                   # Schritt je Treffer ~ pa
+        mg = 0.5 + 0.5 * (e * math.exp(lam * (qa - pa)) + (1 - e) * math.exp(-lam * pa))
+        best = min(best, math.exp(min(k * math.log(mg) + lam * ra, 0.0)))
+    return best
+
+
+def w2e_unentschieden(s1: int, e: float, g) -> tuple[float, float]:
+    """Exakt fuer eine echte Note nach s1 Stellen: (P weder echt noch faellt,
+    P faellt)."""
+    und = faellt = 0.0
+    for t in range(s1 + 1):
+        pt = math.exp(wp._log_bin(s1, t, 0.5))
+        if pt < 1e-300:
+            continue
+        for f in range(t + 1):
+            pf = math.exp(wp._log_bin(t, f, e))
+            if pf < 1e-300 and f > e * t:
+                break
+            if w2e_faellt(t, f, g):
+                faellt += pt * pf
+            elif not w2e_echt(t, f, g):
+                und += pt * pf
+    return und, faellt
+
+
+def w2e_eintrag(e_promille: int, f16: int, grenze: int = 8192) -> tuple[int, ...] | None:
+    """(s1, k_max, QA, PA, RA, QR, PR, SR) oder None (nicht sicher moeglich).
+    Langsam (exakte Binomialsummen fuer s1): Minuten je Tabelle."""
+    e, c = e_promille / 1000, (1 - f16 / 16) * wp.KLON_FEHLER
+    if not e < c:
+        return None
+    g = w2e_grenzen(e, c)
+    km = None
+    for k in range(TEIL, grenze + 1, TEIL):
+        if math.exp(-B) + w2e_chernoff(k, e, g) <= ZIEL_ECHT:
+            km = k
+            break
+    if km is None:
+        return None
+    best = None
+    for s1 in range(TEIL, km + 1, TEIL):
+        und, _ = w2e_unentschieden(s1, e, g)
+        erw = s1 + und * (km - s1)
+        if best is None or erw < best[1]:
+            best = (s1, erw)
+    return (best[0], km) + g
+
+
 # ---------------------------------------------------------------- Selbsttest
 def selbsttest() -> bool:
     fehler: list[str] = []
@@ -244,6 +324,28 @@ def selbsttest() -> bool:
         soll(abs(zm - (s1 + sum(k > s1 for _, k in laeufe) / len(laeufe) * (km - s1))) < 1e-9 and (zw == 0 or zm > s1),
              f"zwei Stufen: Erwartung {zm} bei s1 {s1}, zweite {zw}")
         soll(zm < r["k"], f"zwei Stufen ({zm:.0f}) nicht besser als fest ({r['k']})")
+        # W2e: die ganzzahligen Grenzen sind Teilmengen der exakten (zur
+        # sicheren Seite gerundet), und nicht leer.
+        for ee, ff in ((0.007, 0), (0.02, 8)):
+            cc = (1 - ff / 16) * wp.KLON_FEHLER
+            g = w2e_grenzen(ee, cc)
+            hoch, tief = schritte(ee, cc)
+            # Rundungsrichtung je Koeffizient (das macht die Bereiche zu
+            # Teilmengen, fuer jedes T und F).
+            al, be = hoch, -tief
+            soll(g[0] >= (al + be) * M and g[1] <= be * M and g[2] >= A * M, f"W2e: Annahme falsch gerundet {g[:3]}")
+            soll(g[3] <= (al + be) * M and g[4] >= be * M and g[5] >= B * M, f"W2e: Ablehnung falsch gerundet {g[3:]}")
+            echt_n = faellt_n = 0
+            for t in range(0, 900, 7):
+                for f in range(t + 1):
+                    L = f * hoch + (t - f) * tief
+                    if w2e_echt(t, f, g):
+                        echt_n += 1
+                        soll(L <= -A, f"W2e: ganzzahlig echt, exakt nicht (T={t}, F={f})")
+                    if w2e_faellt(t, f, g):
+                        faellt_n += 1
+                        soll(L >= B, f"W2e: ganzzahlig faellt, exakt nicht (T={t}, F={f})")
+            soll(echt_n > 0 and faellt_n > 0, "W2e: Grenzen leer -- die Pruefung prueft nichts")
         # Keine Toleranz ohne Abstand: e >= c -> kein Test.
         soll(k_max(0.2, 0.146) is None, "e >= c muss scheitern")
     except Exception as ex:  # noqa: BLE001
