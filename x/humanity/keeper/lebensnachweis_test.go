@@ -1004,6 +1004,10 @@ func TestLebensnachweis_HandlerVorDerDatenbank(t *testing.T) {
 		t.Fatalf("vor dem Stichtag: %d %s", rec.Code, rec.Body.String())
 	}
 	lebensnachweisAbOverride.Store(lnStichtag)
+	// Deutlich ueber der erlaubten Vorausgrenze: mit genau +61 s kippte der
+	// Fall, wenn zwischen jetzt und dem Handler eine Sekunde verging (dann nur
+	// noch 60 s voraus, erlaubt -> Signaturpruefung -> 403 statt 400).
+	zukunft := jetzt + lebensnachweisAnnahmeVoraus + 30
 	faelle := map[string]struct {
 		body string
 		code int
@@ -1012,7 +1016,7 @@ func TestLebensnachweis_HandlerVorDerDatenbank(t *testing.T) {
 		"zu gross":            {`{"wallet":"` + strings.Repeat("a", 9<<10) + `"}`, http.StatusBadRequest},
 		"keine Adresse":       {koerper("0x1234", jetzt, "00"), http.StatusBadRequest},
 		"zu alt":              {koerper(lnWallet, jetzt-901, f.signiere(lebensnachweisNachricht(lnWallet, jetzt-901))), http.StatusBadRequest},
-		"aus der Zukunft":     {koerper(lnWallet, jetzt+61, f.signiere(lebensnachweisNachricht(lnWallet, jetzt+61))), http.StatusBadRequest},
+		"aus der Zukunft":     {koerper(lnWallet, zukunft, f.signiere(lebensnachweisNachricht(lnWallet, zukunft))), http.StatusBadRequest},
 		"Erneuerungs-Domaene": {koerper(lnWallet, jetzt, f.signiere(erneuerungsNachricht(lnWallet, jetzt))), http.StatusForbidden},
 		"fremde Wallet":       {koerper(lnWallet, jetzt, f.signiere(lebensnachweisNachricht(lnAndere, jetzt))), http.StatusForbidden},
 	}
