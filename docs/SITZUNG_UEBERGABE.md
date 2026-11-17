@@ -29,7 +29,7 @@ für dezentrales Quantengeld“).
 - Lokale Go-Tests: Erst `df -h /` prüfen. Bei vollem Platz `go clean -cache`. Die
   Fehlermeldung „MB of disk left“ kommt vom Container, nicht vom Code.
 
-## Hauptaugenmerk: dezentrales Quantengeld (Stand 17.11. ~16 UTC)
+## Hauptaugenmerk: dezentrales Quantengeld (Stand 17.11. ~17:35 UTC)
 
 **Gemergt (#563):** Register von W und S als eigene Tabelle `quanten_w_eintraege`
 (`quanten_w_tabelle.go`): eine Zeile je Note, Token und toter Note, nur Geändertes
@@ -92,9 +92,17 @@ Neu gebaut, darum: **lokale Arbeit sofort committen und pushen.**
   `secrets.IBM_QUANTUM_TOKEN`.
 - Geprüft: Rauschmodell `ibm_marrakesh` (2/847 Fehler) durch die volle Kette in-process,
   Doppelvorlage abgewiesen, ehrliche eingelöst. Gegenprobe: 22 Mutationen, alle rot.
-- **Starten (Betreiber), frühestens 18.11. 18:00 UTC:** Signieradresse von C1 braucht
-  mindestens 1 AEQ (Deckung), dann den Workflow mit `modus = ibm` starten und beide Jobs
-  freigeben.
+- Stichtag mit #570 auf **17.11. 17:00 UTC** vorgezogen, auf C1 ausgerollt.
+- **ERLEDIGT 17.11. 17:32 UTC: erster S-Token im Hauptnetz** (Lauf 44132434033, `ibm_fez`,
+  1/794 Fehler): Doppelvorlage abgewiesen, ehrliche Vorlage eingelöst. Details in
+  `forschung/quantengeld/HEUTE.md` 3.3c.
+- Der erste Versuch scheiterte, weil die **Signieradresse von C1**
+  (`0x3066639af1653325100c1074a9696612dbdc42dc`) keine Deckung hatte. `0x0be8…d016` ist die
+  Betreiber-Wallet, nicht C1. Der Betreiber hat 2 AEQ an C1 überwiesen (1 AEQ bleibt dort).
+- **Befund im Protokoll:** C1 läuft mit `AEQUITAS_RPC_RATE_LIMIT_MAX` (1000 je 10 s statt 200)
+  und `AEQUITAS_RPC_QUIET_TX=1`; laut Knoten nur für Lastprüfstände gedacht. Prüfen und
+  zurücksetzen (Schutzgrenzen nicht lockern, AGENTS.md).
+- App 1.24.0 (App #80) gemergt; Bau läuft, Veröffentlichung wartet auf Freigaben.
 
 **Als Nächstes:** Voraussetzungen von W6 (für eine Freischaltung mit Gutachten).
 - Gutachten: Vorlagen in `ANSCHREIBEN.md`, verschickt der Betreiber.
