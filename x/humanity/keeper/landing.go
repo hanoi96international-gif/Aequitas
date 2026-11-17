@@ -80,6 +80,9 @@ nav::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;backgro
 /* ── HERO ────────────────────────────────────────────────────── */
 .hero{min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:170px 20px 64px;position:relative;overflow:hidden}
 .hero::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 80% 50% at 50% 0%,rgba(91,140,255,0.14) 0%,transparent 60%),radial-gradient(ellipse 55% 40% at 85% 100%,rgba(61,220,151,0.06) 0%,transparent 60%);pointer-events:none}
+.hero-q{display:flex;align-items:center;gap:10px;width:fit-content;max-width:100%;background:linear-gradient(90deg,rgba(91,140,255,0.22),rgba(61,220,151,0.14));border:1.5px solid rgba(91,140,255,0.7);border-radius:var(--radius-pill);padding:10px 18px;margin:-8px 0 22px;color:#fff;font-weight:800;font-size:0.95rem;text-decoration:none;box-shadow:0 0 24px rgba(91,140,255,0.35)}
+.hero-q .ico{width:20px;height:20px;flex:none;color:var(--accent)}
+.hero-q:hover{transform:translateY(-1px)}
 .hero-badge{display:inline-flex;align-items:center;gap:8px;background:rgba(245,165,36,0.12);border:1px solid rgba(245,165,36,0.35);border-radius:var(--radius-pill);padding:7px 16px;font-size:0.75rem;color:var(--warn);font-weight:700;letter-spacing:0.4px;margin-bottom:24px}
 .pulse{width:7px;height:7px;border-radius:50%;background:var(--green);animation:pulse 2s infinite}
 @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.5;transform:scale(0.85)}}
@@ -265,6 +268,10 @@ section{padding:56px 16px}
 .tab-tool{font-weight:500;font-size:0.76rem;padding:10px 12px}
 .btn-biz{border-color:rgba(245,165,36,0.45);color:var(--gold)}
 .btn-biz:hover{background:rgba(245,165,36,0.1);border-color:var(--gold)}
+.band-q{background:linear-gradient(180deg,rgba(91,140,255,0.16),rgba(91,140,255,0.04));border-top:2px solid rgba(91,140,255,0.55);border-bottom:2px solid rgba(91,140,255,0.35)}
+.band-q .section-label{color:var(--accent)}
+.band-q h2{max-width:820px;font-size:clamp(1.7rem,4.2vw,2.6rem)}
+.band-q .band-btns .btn-primary{background:var(--accent);color:#fff}
 .band-biz{background:linear-gradient(180deg,rgba(245,165,36,0.07),rgba(245,165,36,0.02));border-top:1px solid rgba(245,165,36,0.25);border-bottom:1px solid rgba(245,165,36,0.25)}
 .band-biz .section-label{color:var(--gold)}
 .band-biz h2{max-width:760px}
@@ -557,7 +564,7 @@ section{padding:64px 16px}
   <div class="nav-top">
     <a href="/" class="logo-wrap">
       <div class="logo-icon">⚖</div>
-      <div><div class="logo-text">AEQUITAS</div><div class="logo-sub" data-i18n="logo-sub">On the way to the fairest money in the world</div></div>
+      <div><div class="logo-text">AEQUITAS</div><div class="logo-sub" data-i18n="logo-sub">The fairest counterfeit-proof money – from one person for all people</div></div>
     </a>
     <select class="lang-sel" id="lang-sel" aria-label="Language">
       <option value="en">🌐 EN</option>
@@ -583,6 +590,7 @@ section{padding:64px 16px}
     <a href="/economy" class="tab" data-i18n="nav-how">How it works</a>
     <a href="/business" class="tab tab-biz" data-i18n="nav-biz">For businesses</a>
     <a href="/mitmachen" class="tab" data-i18n="nav-join">Join</a>
+    <a href="/quanten" class="tab tab-q" data-i18n="nav-q">Counterfeit-proof</a>
     <a href="/transparenz" class="tab" data-i18n="nav-trans">Transparency</a>
     <span class="tab-sep" aria-hidden="true"></span>
     <a href="/explorer" class="tab tab-tool" data-i18n="nav-explorer">Explorer</a>
@@ -600,6 +608,7 @@ section{padding:64px 16px}
         <span class="pulse"></span>
         <span data-i18n="hero-badge">Beta · public test</span>
       </div>
+      <a href="/quanten" class="hero-q"><svg class="ico" aria-hidden="true"><use href="#i-shield"/></svg><span data-i18n="hero-q">Counterfeit-proof – even against quantum computers →</span></a>
       <h1 data-i18n="hero-h1">Money, because <span>people</span> exist.</h1>
       <p class="hero-sub" data-i18n="hero-sub">Every person receives the same share: 1,000 AEQ. Nobody can print more. No bank account, no ID needed.</p>
       <div class="hero-btns">
@@ -672,6 +681,24 @@ section{padding:64px 16px}
   </div>
   <div class="stats-live"><span class="live-dot"></span><span data-i18n="ubi-pre">Next equal split in</span> <strong id="ubi-next">—</strong> <span data-i18n="ubi-mid">· the pool holds</span> <strong id="ubi-pool">—</strong> AEQ</div>
 </div>
+
+<section id="qmarke" class="band-q">
+  <div class="section-inner">
+    <div class="reveal">
+      <div class="section-label" data-i18n="nav-q">Counterfeit-proof</div>
+      <h2 data-i18n="logo-sub">The fairest counterfeit-proof money – from one person for all people</h2>
+      <p class="section-sub" data-i18n="qm-sub">Even quantum computers cannot forge it: one person exists only once, wallets can be protected against quantum computers today, and the first real quantum token already runs on the main network.</p>
+      <div class="ben">
+        <div class="ben-item"><span class="ben-ico"><svg class="ico" aria-hidden="true"><use href="#i-user"/></svg></span><div><p data-i18n="qm-1">Every person exists only once – nobody can create money for invented people.</p></div></div>
+        <div class="ben-item"><span class="ben-ico"><svg class="ico" aria-hidden="true"><use href="#i-shield"/></svg></span><div><p data-i18n="qm-2">Your wallet can be protected against future quantum computers; new wallets are protected automatically.</p></div></div>
+        <div class="ben-item"><span class="ben-ico"><svg class="ico" aria-hidden="true"><use href="#i-cpu"/></svg></span><div><p data-i18n="qm-3">Quantum money: since 17 Nov 2026 the first real quantum token runs on the main network – the chain rejected a copy.</p></div></div>
+      </div>
+      <div class="band-btns">
+        <a href="/quanten" class="btn-primary" data-i18n="qm-btn">How Aequitas stays counterfeit-proof →</a>
+      </div>
+    </div>
+  </div>
+</section>
 
 <section id="prinzip">
   <div class="section-inner">
@@ -1313,6 +1340,57 @@ section{padding:64px 16px}
       <details><summary data-i18n="faq-q6">Why do rules per person work here?</summary><p data-i18n="faq-a6">Every person exists exactly once at Aequitas. A free amount per person cannot be multiplied with more accounts. No other money can do that.</p></details>
       <details><summary data-i18n="faq-q7">Has money like this ever worked?</summary><p data-i18n="faq-a7">Yes. Wörgl (Austria, 1932) had money that lost 1 % a month; it circulated so fast that the town built roads and bridges with it until the national bank banned it. The Chiemgauer (Bavaria, since 2003) has a circulation levy and hundreds of shops. The WIR Bank (Switzerland, since 1934) runs settlement money between businesses.</p></details>
       <details><summary data-i18n="faq-q8">Why aren't the limits tied to the dollar?</summary><p data-i18n="faq-a8">Because fairness is about each person's share of all the money, not about dollar amounts. The average person always holds exactly one fair share (1,000 AEQ), and every limit is a multiple of it. A dollar link would need a price source that someone could push, and a rising price would quietly tighten the limits. Only the monthly allowances depend on how much of life is paid in AEQ: after the pilot town, the fee-free monthly amount and the exchange allowance are to follow what the median person really spends each month, never less than 1× the fair share.</p></details>
+      <details><summary data-i18n="faq-q9">Is my wallet protected against quantum computers?</summary><p data-i18n="faq-a9">Yes, once it is set up. Your wallet records once the fingerprint of a quantum-safe key (ML-DSA, FIPS 204) derived from your seed phrase. Should a quantum computer one day break today's wallet keys, this record proves the wallet is yours. Wallets created or imported with the phrase in the Aequitas app (version 1.23.2 or later) do this automatically. Older wallets, and wallets used through MetaMask or WalletConnect, need the seed phrase once on the “Quantum protection” card in the app: it stays on the phone, is never sent and is not stored. Why not without the phrase? A quantum computer could compute today's wallet key from your address, so the protection has to come from the phrase, which it cannot compute. You do not need to back up anything new.</p></details>
+    </div>
+  </div>
+</section>
+
+<section id="qschutz">
+  <div class="section-inner">
+    <div class="center-head reveal">
+      <div class="section-label" data-i18n="qs-label">Quantum protection</div>
+      <h2 data-i18n="qs-h2">Your wallet, safe against quantum computers</h2>
+    </div>
+    <div class="fn3">
+      <div class="fn reveal"><div class="fn-ico"><svg class="ico" aria-hidden="true"><use href="#i-shield"/></svg></div><div class="fn-n">1</div><h3 data-i18n="qs-c1-h">What it does</h3><p data-i18n="qs-c1-p">Your wallet records once the fingerprint of a quantum-safe key (ML-DSA, FIPS 204). Should a quantum computer one day break today's wallet keys, this record proves the wallet is yours.</p></div>
+      <div class="fn reveal"><div class="fn-ico"><svg class="ico" aria-hidden="true"><use href="#i-phone"/></svg></div><div class="fn-n">2</div><h3 data-i18n="qs-c2-h">Who is protected automatically</h3><p data-i18n="qs-c2-p">Wallets created or imported with the seed phrase in the Aequitas app (version 1.23.2 or later) are protected without you doing anything. Older wallets and wallets used through MetaMask or WalletConnect need the seed phrase <strong>once</strong> on the “Quantum protection” card.</p></div>
+      <div class="fn reveal"><div class="fn-ico"><svg class="ico" aria-hidden="true"><use href="#i-lock"/></svg></div><div class="fn-n">3</div><h3 data-i18n="qs-c3-h">Why the phrase is needed</h3><p data-i18n="qs-c3-p">A quantum computer could compute today's wallet key from your address – but not your seed phrase. So the quantum-safe key comes from the phrase. It stays on your phone, is never sent and is not stored. You do not need to back up anything new.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="qtresor">
+  <div class="section-inner">
+    <div class="reveal">
+      <div class="section-label" data-i18n="qt-label">Quantum-safe vault</div>
+      <h2 data-i18n="qt-h2">The vault: money only a quantum-safe key can move</h2>
+      <p class="section-sub" data-i18n="qt-p1">The vault is a second address of your own. Anything in it can only be spent with your quantum-safe key, which the app derives from your seed phrase and keeps on your phone. Even someone who one day cracks today's wallet key cannot touch it. Deposits and transfers work today.</p>
+      <p class="section-sub" data-i18n="qt-p2"><strong>Good to know:</strong> as long as your human status stays with your wallet, the vault counts as an ordinary address and can hold at most 250 AEQ. If you want, you can move your human status into the vault later (face check once; with your recovery code immediately, otherwise after 14 days). Then your basic income arrives there and the limit no longer applies. <strong>Today this is not necessary</strong>: no quantum computer can break wallet keys yet.</p>
+    </div>
+  </div>
+</section>
+
+<section id="qgeld">
+  <div class="section-inner">
+    <div class="center-head reveal">
+      <div class="section-label" data-i18n="qg-label">Quantum money</div>
+      <h2 data-i18n="qg-h2">Money that physics makes impossible to copy</h2>
+    </div>
+    <div class="fn3">
+      <div class="fn reveal"><div class="fn-ico"><svg class="ico" aria-hidden="true"><use href="#i-cpu"/></svg></div><div class="fn-n">1</div><h3 data-i18n="qg-c1-h">The idea</h3><p data-i18n="qg-c1-p">A quantum money note is made of qubits in random states. Quantum physics forbids copying an unknown quantum state (no-cloning theorem). Whoever tries to copy a note destroys the information that makes it genuine – the forgery fails the check.</p></div>
+      <div class="fn reveal"><div class="fn-ico"><svg class="ico" aria-hidden="true"><use href="#i-users"/></svg></div><div class="fn-n">2</div><h3 data-i18n="qg-c2-h">Checked decentrally</h3><p data-i18n="qg-c2-p">No central bank keeps the secret. The secret of each note is split among the validators of the network, each holding only one share. The chain itself decides whether a note is genuine; each node checks it on its own.</p></div>
+      <div class="fn reveal"><div class="fn-ico"><svg class="ico" aria-hidden="true"><use href="#i-layers"/></svg></div><div class="fn-n">3</div><h3 data-i18n="qg-c3-h">Two variants</h3><p data-i18n="qg-c3-p"><strong>Variant W</strong>: a note held in a quantum memory and checked when spent. <strong>Variant S</strong>: a token measured immediately, so it needs no quantum memory, accepted at one of two fixed acceptance points. Both run on the Aequitas main network since 17 November 2026.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="qerster">
+  <div class="section-inner">
+    <div class="reveal">
+      <div class="section-label" data-i18n="qe-label">17 November 2026</div>
+      <h2 data-i18n="qe-h2">The first real quantum token on the main network</h2>
+      <p class="section-sub" data-i18n="qe-p1">On 17 November 2026 an IBM quantum computer (ibm_fez) prepared and measured 1,680 qubits – with 1 error in 794 matching positions. The Aequitas main network issued the token from it, backed by 1 AEQ. Presented a second time at the wrong acceptance point, the chain itself <strong>rejected</strong> it. The honest presentation was <strong>accepted</strong>, and the value went where it belonged.</p>
+      <p class="section-sub" data-i18n="qe-p2"><strong>Honestly:</strong> this was a demonstration. Preparation and measurement ran in the same IBM circuit, there was only one validator, and no independent review exists yet. Today's quantum chips hold a note for only microseconds, so money you can carry needs better quantum memories. Next steps: several independent validators, an external review and a pilot with partners.</p>
     </div>
   </div>
 </section>

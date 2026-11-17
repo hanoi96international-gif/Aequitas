@@ -616,16 +616,93 @@ func (h *quantenSHTTP) warten(ctx context.Context) error {
 	}
 }
 
+// QuantenSValidator: ein Validator der Ausgabe -- Signieradresse und die
+// API seines Knotens (dort liegt sein Tresor, dort bestaetigt er).
+type QuantenSValidator struct {
+	Adresse string
+	API     string
+}
+
+// quantenSMehrNetz: Einreichen und Stand beim eigenen Knoten, die
+// Bestaetigung bei jedem Validator an seiner eigenen API. Die Bestaetigung
+// wird im Ablauf gegen die Adresse des Validators geprueft -- eine falsche
+// API kann also nur verweigern, nicht faelschen.
+type quantenSMehrNetz struct {
+	*quantenSHTTP
+	validatoren []*quantenSHTTP
+}
+
+func (m *quantenSMehrNetz) bestaetigen(ctx context.Context, req QuantenWBestaetigenAnfrage) (string, error) {
+	if req.X < 1 || req.X > len(m.validatoren) {
+		return "", fmt.Errorf("Validator %d unbekannt", req.X)
+	}
+	return m.validatoren[req.X-1].bestaetigen(ctx, req)
+}
+
+// quantenSValidatorenPruefen: Adressen kanonisch und verschieden, APIs wie
+// die eigene (QuantenSAPIBasis), 1 <= t <= v <= quantenWVMax.
+func quantenSValidatorenPruefen(vs []QuantenSValidator, t int) ([]string, []*quantenSHTTP, error) {
+	if len(vs) == 0 || len(vs) > quantenWVMax || t < 1 || t > len(vs) || t > quantenWTMax {
+		return nil, nil, fmt.Errorf("Validatoren: %d, Schwelle %d", len(vs), t)
+	}
+	gesehen := map[string]bool{}
+	var adressen []string
+	var netze []*quantenSHTTP
+	for i, v := range vs {
+		a := strings.ToLower(strings.TrimSpace(v.Adresse))
+		if !kanonischeAdresse(a) || gesehen[a] {
+			return nil, nil, fmt.Errorf("Validator %d: Adresse nicht kanonisch oder doppelt", i+1)
+		}
+		gesehen[a] = true
+		h, err := neuerQuantenSHTTP(v.API)
+		if err != nil {
+			return nil, nil, fmt.Errorf("Validator %d: %v", i+1, err)
+		}
+		adressen, netze = append(adressen, a), append(netze, h)
+	}
+	return adressen, netze, nil
+}
+
+// QuantenSValidatorenLesen: "0xadr=https://knoten,0xadr2=https://knoten2"
+// (hoechstens quantenWVMax Eintraege).
+func QuantenSValidatorenLesen(roh string) ([]QuantenSValidator, error) {
+	roh = strings.TrimSpace(roh)
+	if roh == "" {
+		return nil, nil
+	}
+	teile := strings.Split(roh, ",")
+	if len(teile) > quantenWVMax {
+		return nil, fmt.Errorf("Validatoren: hoechstens %d", quantenWVMax)
+	}
+	var out []QuantenSValidator
+	for _, t := range teile {
+		a, u, ok := strings.Cut(strings.TrimSpace(t), "=")
+		if !ok {
+			return nil, errors.New("Validatoren: Form adresse=api")
+		}
+		out = append(out, QuantenSValidator{Adresse: a, API: u})
+	}
+	return out, nil
+}
+
 // QuantenSAusgabe: `aequitasd quanten-s-ausgabe`. Der Schluessel ist der des
-// Knotens (RELAYER_PRIVATE_KEY), die Messung kommt auf stdin.
-func QuantenSAusgabe(ctx context.Context, apiBasis, schluesselHex string, deckung int64, frist time.Duration, mess io.Reader, aus, log io.Writer) error {
-	netz, err := neuerQuantenSHTTP(apiBasis)
+// Knotens (RELAYER_PRIVATE_KEY), die Messung kommt auf stdin. Ohne
+// Validatorenliste ist der Knoten selbst der einzige Validator (t = 1).
+func QuantenSAusgabe(ctx context.Context, apiBasis, schluesselHex string, deckung int64, frist time.Duration, validatoren []QuantenSValidator, t int, mess io.Reader, aus, log io.Writer) error {
+	eigen, err := neuerQuantenSHTTP(apiBasis)
 	if err != nil {
 		return err
 	}
 	key, err := crypto.HexToECDSA(strings.TrimPrefix(strings.TrimSpace(schluesselHex), "0x"))
 	if err != nil {
 		return errors.New("Knotenschluessel unlesbar") // ohne den Schluessel im Text
+	}
+	if len(validatoren) == 0 {
+		validatoren, t = []QuantenSValidator{{Adresse: quantenSAdresse(key), API: apiBasis}}, 1
+	}
+	adressen, netze, err := quantenSValidatorenPruefen(validatoren, t)
+	if err != nil {
+		return err
 	}
 	roh, err := io.ReadAll(io.LimitReader(mess, quantenSAusgabeMessMax+1))
 	if err != nil || len(roh) > quantenSAusgabeMessMax {
@@ -641,7 +718,7 @@ func QuantenSAusgabe(ctx context.Context, apiBasis, schluesselHex string, deckun
 		return errors.New("Frist: 1 s bis 1 h")
 	}
 	erg, err := quantenSAusgabeLauf(ctx, QuantenSAusgabeAuftrag{Messung: m, Schluessel: key, Deckung: deckung, Tol: quantenWTolStandard, Frist: frist},
-		[]string{quantenSAdresse(key)}, 1, netz, log)
+		adressen, t, &quantenSMehrNetz{quantenSHTTP: eigen, validatoren: netze}, log)
 	if erg != nil {
 		enc := json.NewEncoder(aus)
 		enc.SetIndent("", "  ")

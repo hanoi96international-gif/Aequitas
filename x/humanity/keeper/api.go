@@ -1088,6 +1088,7 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	mux.HandleFunc("/idee", a.handleSeite(ideeHTML))
 	mux.HandleFunc("/mitmachen", a.handleSeite(mitmachenHTML))
 	mux.HandleFunc("/transparenz", a.handleSeite(transparenzHTML))
+	mux.HandleFunc("/quanten", a.handleSeite(quantenHTML))
 	// alte Adressen bleiben erreichbar
 	mux.HandleFunc("/people", a.handleSeite(mitmachenHTML))
 	mux.HandleFunc("/economy", a.handleSeite(economyHTML))

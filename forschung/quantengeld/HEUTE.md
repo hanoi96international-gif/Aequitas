@@ -328,6 +328,22 @@ höchstens 2⁻⁴⁰ an zwei Stellen durch (`wiesner_parameter.py`).
   Schaltkreis beim Betreiber der Maschine. Unfälschbar wird es erst, wenn die Nutzerin
   selbst misst (QKD-Empfänger) und die Ausgabe über die Validatoren läuft.
 
+### 3.3c Erster S-Token im Hauptnetz (17.11.2026, 17:22–17:32 UTC)
+
+Lauf [44132434033](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44132434033),
+Werkzeug `aequitasd quanten-s-ausgabe` (#569), Stichtag 17.11. 17:00 UTC (#570).
+
+- **Messung:** IBM `ibm_fez`, Job `dbu8i549po4c73cen9p0`. 1680 Qubits in 105 Schaltkreisen,
+  je ein Schuss. Fehler bei passender Basis: 1/794 (0,13 %).
+- **Ausgabe:** K = `13664054520c66b595d1ad2e365b2ecd118515b7ba33ea67ba1bd6807666d086`,
+  Deckung 1 AEQ. Ausgeber und einziger Validator: C1 (`0x3066…42dc`, gebunden an den
+  Betreiber). 840 Stellen je Annahmestelle, Toleranz 4 %.
+- **Doppelvorlage** an Stelle 0 (Wegwerfschlüssel): **abgewiesen**, ein Fehlversuch.
+- **Ehrliche Vorlage** an Stelle 1 (C1): **eingelöst**, der Wert ging an C1 zurück.
+- Ehrlich: Präparation und Messung liefen im selben IBM-Schaltkreis (Vorführung), es gab
+  nur einen Validator, und es liegt kein Gutachten vor. Neu ist der ganze Ablauf auf der
+  laufenden Kette mit Anteilen beim Validator-Dienst.
+
 ### 3.4 Bargeld-Verhalten ohne Quanten (Offline-Bargeld)
 
 Was Menschen sich von Quantengeld wünschen, ist meist offline zu zahlen, wie mit

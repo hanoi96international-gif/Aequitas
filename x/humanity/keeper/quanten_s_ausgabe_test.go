@@ -295,12 +295,12 @@ func TestQuantenSHTTP_WiederholenBegrenzt(t *testing.T) {
 func TestQuantenSAusgabe_MessungStreng(t *testing.T) {
 	for _, roh := range []string{`{"n":2,"u":"01","t":"01","y":"01","x":"01","extra":1}`, `kein json`, strings.Repeat(" ", quantenSAusgabeMessMax+1)} {
 		err := QuantenSAusgabe(context.Background(), "http://127.0.0.1:1", strings.Repeat("1", 64), 1_000_000, time.Second,
-			strings.NewReader(roh), &bytes.Buffer{}, &bytes.Buffer{})
+			nil, 0, strings.NewReader(roh), &bytes.Buffer{}, &bytes.Buffer{})
 		if err == nil || !strings.Contains(err.Error(), "Messung") {
 			t.Fatalf("%.30q: %v", roh, err)
 		}
 	}
-	err := QuantenSAusgabe(context.Background(), "http://127.0.0.1:1", "nicht-hex-geheim", 1_000_000, time.Second, strings.NewReader("{}"), &bytes.Buffer{}, &bytes.Buffer{})
+	err := QuantenSAusgabe(context.Background(), "http://127.0.0.1:1", "nicht-hex-geheim", 1_000_000, time.Second, nil, 0, strings.NewReader("{}"), &bytes.Buffer{}, &bytes.Buffer{})
 	if err == nil || strings.Contains(err.Error(), "geheim") {
 		t.Fatalf("Schluessel im Fehlertext oder angenommen: %v", err)
 	}
@@ -343,5 +343,43 @@ func TestQuantenWPraegerTauglich_Gebunden(t *testing.T) {
 	}
 	if !quantenWPraegerTauglich(cs, mensch) {
 		t.Fatal("Mensch braucht das Register nicht")
+	}
+}
+
+// Liste der Validatoren: Form, Grenzen, keine Benutzerangabe in der API,
+// keine doppelte Adresse, Schwelle in 1..v.
+func TestQuantenSValidatoren_Lesen(t *testing.T) {
+	a1, a2 := "0x"+strings.Repeat("1", 40), "0x"+strings.Repeat("2", 40)
+	gut, err := QuantenSValidatorenLesen(a1 + "=https://a.example," + a2 + "=http://127.0.0.1:8080")
+	if err != nil || len(gut) != 2 {
+		t.Fatalf("%v %v", gut, err)
+	}
+	if _, _, err := quantenSValidatorenPruefen(gut, 2); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range []struct {
+		roh string
+		t   int
+	}{
+		{a1 + "=https://a.example," + a1 + "=https://b.example", 1}, // doppelt
+		{a1 + "=https://x@a.example", 1},                            // Benutzerangabe
+		{a1 + "=http://10.0.0.1:8080", 1},                           // http nach aussen
+		{"0x1234=https://a.example", 1},                             // Adresse
+		{a1 + "=https://a.example", 2},                              // t > v
+		{a1 + "=https://a.example", 0},                              // t = 0
+	} {
+		vs, err := QuantenSValidatorenLesen(f.roh)
+		if err == nil {
+			_, _, err = quantenSValidatorenPruefen(vs, f.t)
+		}
+		if err == nil {
+			t.Fatalf("angenommen: %q t=%d", f.roh, f.t)
+		}
+	}
+	if _, err := QuantenSValidatorenLesen("ohne-gleich"); err == nil {
+		t.Fatal("Form ohne = angenommen")
+	}
+	if _, err := QuantenSValidatorenLesen(strings.TrimSuffix(strings.Repeat(a1+"=https://a.example,", quantenWVMax+1), ",")); err == nil {
+		t.Fatal("zu viele angenommen")
 	}
 }
