@@ -478,15 +478,15 @@ func TestQuantenWKette_BlockFalsch(t *testing.T) {
 
 // Schlafend: vor dem Stichtag unbekannt, im Block verboten, 409, und das
 // leere Register aendert keine Wurzel. Der Stichtag im Hauptnetz ist gesetzt
-// (17.11.2026 fuer den 18.11.2026 18:00 UTC); geprueft wird hier die Zeit
+// (17.11.2026 fuer den 17.11.2026 17:00 UTC); geprueft wird hier die Zeit
 // davor -- mit einem Stichtag eine Stunde in der Zukunft, damit der Test
 // nicht von der Uhr abhaengt.
 func TestQuantenWKette_Schlafend(t *testing.T) {
 	quantenWAbOverride.Store(0)
-	if quantenWAb() != 1795024800 || quantenWAbUnix == math_MaxInt64() {
-		t.Fatalf("Stichtag im Hauptnetz %d, erwartet 1795024800", quantenWAb())
+	if quantenWAb() != 1794934800 || quantenWAbUnix == math_MaxInt64() {
+		t.Fatalf("Stichtag im Hauptnetz %d, erwartet 1794934800", quantenWAb())
 	}
-	if quantenWAktiv(1795024800-1) || !quantenWAktiv(1795024800) {
+	if quantenWAktiv(1794934800-1) || !quantenWAktiv(1794934800) {
 		t.Fatal("Stichtag: eine Sekunde davor aktiv oder am Stichtag nicht")
 	}
 	quantenWAbOverride.Store(nowUnix() + 3600)
