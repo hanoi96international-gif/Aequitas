@@ -39,9 +39,9 @@ DER BEWEIS (Skizze, Argument wie Molina, Vidick, Watrous 2012, arXiv:1202.4010):
  6. Absprache, die einen Anteil f der Stellen kennt: dort Summe 2 statt 2*BETA.
 
 ERGEBNIS: P(beide bestehen) <= Schranke(k, n, tol, f), streng fuer jeden
-Angriff, der die zweite Vorlage nicht von Rueckmeldungen der ersten abhaengig
-macht. Rueckmeldung von b Bits kostet hoechstens b Bits (Faktor 2^b), mehrere
-Versuche je einen Faktor.
+nicht-adaptiven Angriff; fuer adaptive siehe ADAPTIV unten. Rueckmeldung von
+b Bits, die nicht Stelle fuer Stelle zerfaellt, kostet hoechstens b Bits
+(Faktor 2^b), mehrere Versuche je einen Faktor.
 
 DER BEFUND (17.11.2026): Die Tabelle (wiesner_parameter.suche, quantenWKTabelle)
 rechnet JE KOPIE mit 14,64 % Fehler. Das traegt nur gegen den symmetrischen
@@ -50,11 +50,24 @@ schlecht -- "je Kopie" ist dann nicht vorsichtig. Richtig ist die Schranke fuer
 "beide bestehen". Sie liegt fuer die Eintraege der Tabelle -- siehe
 python3 -I kohaerent.py.
 
+ADAPTIV (W, Argument vom 17.11.2026, zur Pruefung): Kopie B darf nach der
+Pruefung von A bearbeitet werden; der Faelscher sieht dann A's Stellen, die
+Antworten und die offengelegten Werte. Jede dieser Nachrichten betrifft nur
+IHRE Stelle -- der Pruefer ist ein Tensorprodukt von Pruefern je Stelle mit
+zwei Runden. Fuer Strategien gilt die Dualitaet
+    max_Q <Q, R> = min { p : R <= p S, S Gegenstrategie }   (R >= 0)
+(Gutoski, Watrous, "Toward a general theory of quantum games", STOC 2007);
+R_1 <= p_1 S_1 und R_2 <= p_2 S_2 ergeben R_1(x)R_2 <= p_1 p_2 S_1(x)S_2, und
+ein Produkt von Gegenstrategien ist eine. Also ist auch das adaptive
+Optimum ein Produkt. Je Stelle wird A ODER B geprueft, nie beide; fuer B
+erfaehrt der Faelscher nur "nicht bei A", unabhaengig vom Geheimnis der
+Stelle. Erste und zweite Runde zusammen sind ein Kloner 1 -> 2, also bleibt
+F_A + F_B <= 1 + 1/sqrt 2 -- dieselbe Schranke. (Das Bit "A angenommen"
+ist eine Funktion der Antworten und Werte je Stelle, also mit drin.)
+
 GRENZEN (ehrlich):
-  - Adaptive Angriffe bei W: Kopie B darf nach der Pruefung von A bearbeitet
-    werden (A's Stellen und Basen stehen dann offen auf der Kette, und B wird
-    nur noch an anderen Stellen gefragt). Das deckt Schritt 3 nicht ab; dafuer
-    braucht es das SDP fuer Strategien mit zwei Runden (Gutoski-Watrous).
+  - Das Argument fuer adaptive Angriffe stuetzt sich auf die Dualitaet fuer
+    Strategien aus der Literatur; das gehoert in das Gutachten.
   - Schritt 4 nutzt die bekannte Ein-Stellen-Grenze aus der Literatur; der
     Selbsttest prueft sie nur numerisch fuer eine Familie von Klonern und
     Messungen, nicht als SDP.

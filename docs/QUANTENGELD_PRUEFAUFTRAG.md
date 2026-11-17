@@ -95,9 +95,13 @@ gegen einen optimalen Kloner gebrochen war:
      Korrektur dabei: „je Kopie“ ist nicht vorsichtig, weil ein asymmetrischer Kloner eine
      Kopie fast perfekt macht. Maßgeblich ist „beide bestehen“.
      **Bitte prüfen:** den Beweis, die Ein-Stellen-Grenze F_A + F_B ≤ 1 + 1/√2 (auch
-     asymmetrisch) und vor allem den **adaptiven** Angriff. Dabei wird Kopie B erst nach der
-     Prüfung von A bearbeitet; deren Stellen und Basen stehen dann offen, und B wird nur
-     noch an anderen Stellen gefragt. Das deckt das Argument nicht ab.
+     asymmetrisch) und den **adaptiven** Angriff. Dabei wird Kopie B erst nach der Prüfung
+     von A bearbeitet; deren Stellen und Basen stehen dann offen, und B wird nur noch an
+     anderen Stellen gefragt. Unser Argument dazu (`kohaerent.py`, ADAPTIV): Jede
+     Rückmeldung betrifft nur ihre Stelle, der Prüfer ist also ein Produkt von Prüfern mit
+     zwei Runden. Mit der Dualität für Strategien (Gutoski und Watrous 2007) bleibt das
+     Optimum ein Produkt. Je Stelle wird A oder B geprüft, nie beide, und beide Runden
+     zusammen sind ein Kloner. Also gilt dieselbe Schranke. Trägt das?
    - Mehrere Prüfungen nacheinander: Wächst die Erfolgsaussicht über die Fehlversuche
      hinweg? Drei Fehlversuche sperren Prüfungen, aber nicht das Einlösen.
 2. **Absprachen.**
