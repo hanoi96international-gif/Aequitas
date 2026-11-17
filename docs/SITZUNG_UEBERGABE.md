@@ -416,7 +416,11 @@ AEQUITAS_TPS_BENCH=1 DATABASE_URL="postgres://postgres:postgres@localhost:5432/a
    ist.
 4. **PQ Stufe 1 (#44):** Registrierung des Nutzers (Höhe 4304, tx 0x34233121…) auf den
    PQ-Teil prüfen, dann `pq_ab_unix` setzen.
-5. **Analyse der Wirtschaftsregeln (Wunsch des Betreibers, 17.11.):** Umlaufabgabe seit dem
+5. **Analyse der Wirtschaftsregeln (Wunsch des Betreibers, 17.11.):** Erster Teil erledigt:
+   `docs/WIRTSCHAFT_STARTBETRAG.md`. Frage 100 statt 1.000 AEQ: bei 1.000 bleiben (nominal
+   neutral, g/P = y/V; Umstellung kostet Konsensänderung und Umrechnung aller Bestände).
+   Vorschläge dort: Staffel scharf schalten, sobald ihre Voraussetzungen stehen, App-Anzeige
+   netto und als Anteil am fairen Anteil, feste Beträge als Vielfache. Bisheriger Text: Umlaufabgabe seit dem
    Gleichgewicht (07.11.2026): 0,5 %/Monat auf das ganze Guthaben, ohne Freibetrag, täglich
    anteilig, unter 0,001 AEQ je Tag nicht eingezogen, alles ins Grundeinkommen. Der alte
    Freibetrag (5 × 1.000 AEQ) steht noch im Code, gilt aber nur vor dem Stichtag. Prüfen:
