@@ -3,6 +3,7 @@ package keeper
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -73,5 +74,58 @@ func TestQuantenWTeilKuerzen_PasstImmer(t *testing.T) {
 	// Kleine Teile bleiben unveraendert (kein unnoetiges Kuerzen).
 	if k := quantenWTeilKuerzen(qwTeil(quantenWOffenTeil, 1, 11)); len(k) != quantenWOffenTeil {
 		t.Fatalf("Teil mit Tiefe 11 und t = 1 unnoetig gekuerzt: %d", len(k))
+	}
+}
+
+// Der Rest eines gekuerzten Teils wird nur fuer GENAU den naechsten Teil
+// desselben Versuchs mit denselben Positionen wiederverwendet; alles andere
+// (anderer Versuch, andere Startstelle, andere Stichprobe nach einer neuen
+// Anmeldung, unbekannte Note) faellt durch -- dann wird wie sonst geholt,
+// und die Kette prueft ohnehin jeden Teil selbst.
+func TestQuantenWRest_NurPassend(t *testing.T) {
+	K := strings.Repeat("a", 64)
+	d := &quantenWDienst{eintraege: map[string]*quantenWTresorEintrag{K: {}}}
+	stellen := []int{10, 12, 15, 20}
+	offen := qwTeil(4, 3, 2)
+
+	d.restMerken("fremd", 0, 32, stellen, offen) // unbekannte Note: nichts merken
+	if _, ok := d.restNehmen("fremd", 0, 32, stellen); ok {
+		t.Fatal("Rest fuer eine Note, die nicht im Tresor ist")
+	}
+	for _, f := range []struct {
+		name      string
+		index, ab int
+		st        []int
+	}{
+		{"anderer Versuch", 1, 32, stellen},
+		{"andere Startstelle", 0, 64, stellen},
+		{"andere Positionen", 0, 32, []int{10, 13, 15, 20}},
+		{"keine Positionen", 0, 32, nil},
+	} {
+		d.restMerken(K, 0, 32, stellen, offen)
+		if _, ok := d.restNehmen(K, f.index, f.ab, f.st); ok {
+			t.Fatalf("%s: Rest wiederverwendet", f.name)
+		}
+		if _, ok := d.rest[K]; ok {
+			t.Fatalf("%s: unpassender Rest nicht vergessen", f.name)
+		}
+	}
+	// Passt: die eigene Seite ist laenger (64 Stellen ab ab) -- verglichen
+	// wird der gemeinsame Anfang, zurueck kommt nur der gemerkte Rest.
+	d.restMerken(K, 0, 32, stellen, offen)
+	r, ok := d.restNehmen(K, 0, 32, append(slices.Clone(stellen), 30, 31))
+	if !ok || len(r.offen) != 4 || r.offen[0].Pfad[0] != offen[0].Pfad[0] {
+		t.Fatalf("passender Rest nicht genommen: %v %d", ok, len(r.offen))
+	}
+	// Leerer Rest und Vergessen der Note raeumen auf.
+	d.restMerken(K, 0, 36, nil, nil)
+	if _, ok := d.rest[K]; ok {
+		t.Fatal("leerer Rest gemerkt")
+	}
+	d.restMerken(K, 0, 32, stellen, offen)
+	d.ablage = &quantenWSpeicherAblage{m: map[string][]byte{}}
+	d.vergessen(K)
+	if _, ok := d.rest[K]; ok {
+		t.Fatal("Rest nach dem Vergessen der Note noch da")
 	}
 }

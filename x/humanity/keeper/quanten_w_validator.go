@@ -231,6 +231,18 @@ type quantenWDienst struct {
 	// faellig: seit wann ein Teil offen ist, den ein anderer zuerst
 	// einreichen soll (Staffel); wie sicht begrenzt und aufgeraeumt.
 	faellig map[string]int64
+	// rest: was von einem gekuerzten, angenommenen Teil uebrig ist (je K
+	// hoechstens einer, unter mu; mit der Note vergessen). Spart den
+	// Nachbarn die zweite Abfrage derselben Seite (quantenWTeilKuerzen).
+	rest map[string]quantenWRest
+}
+
+// quantenWRest: zusammengesetzte Offenlegung ab Stelle ab des Versuchs index,
+// mit den Positionen, fuer die sie gilt.
+type quantenWRest struct {
+	index, ab int
+	stellen   []int
+	offen     []QuantenWOffen
 }
 
 // quantenWZustaendig: welcher Validator (1-basiert) die Teile eines Versuchs
@@ -1131,9 +1143,19 @@ func (d *quantenWDienst) offenlegenTeil(ctx context.Context, K string, e *quante
 // teilOffenlegen: eigene Anteile und die von Nachbarn sammeln, t passende
 // zusammenstellen und einreichen (fuer W-Anfragen und S-Anmeldungen).
 func (d *quantenWDienst) teilOffenlegen(ctx context.Context, K string, e *quantenWTresorEintrag, index, ab int, einreichen func([]QuantenWOffen) error) bool {
+	// Die eigene Pruefung laeuft IMMER (Finalitaet, offene Anfrage/Anmeldung)
+	// -- auch wenn der Rest eines frueheren Teils wiederverwendet wird.
 	eigen, err := d.anteile(K, index, ab)
 	if err != nil {
 		return false
+	}
+	if r, ok := d.restNehmen(K, index, ab, eigen.Stellen); ok {
+		teil := quantenWTeilKuerzen(r.offen)
+		if einreichen(teil) == nil {
+			d.restMerken(K, index, ab+len(teil), r.stellen[len(teil):], r.offen[len(teil):])
+			return true
+		}
+		// Abgewiesen: wie sonst bei den Nachbarn neu holen.
 	}
 	aus := append([]QuantenWAnteilAusgabe{eigen}, d.nachbarAnteile(ctx, K, e, eigen)...)
 	for _, wahl := range quantenWAuswahlen(len(aus), e.T, quantenWSammelVersuche) {
@@ -1141,11 +1163,47 @@ func (d *quantenWDienst) teilOffenlegen(ctx context.Context, K string, e *quante
 		if offen == nil {
 			continue
 		}
-		if einreichen(quantenWTeilKuerzen(offen)) == nil {
+		teil := quantenWTeilKuerzen(offen)
+		if einreichen(teil) == nil {
+			d.restMerken(K, index, ab+len(teil), eigen.Stellen[len(teil):], offen[len(teil):])
 			return true
 		}
 	}
 	return false
+}
+
+// restMerken: den Rest eines gekuerzten Teils fuer den naechsten Teil
+// behalten (leer: vergessen).
+func (d *quantenWDienst) restMerken(K string, index, ab int, stellen []int, offen []QuantenWOffen) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if len(offen) == 0 || len(stellen) != len(offen) || d.eintraege[K] == nil {
+		delete(d.rest, K)
+		return
+	}
+	if d.rest == nil {
+		d.rest = map[string]quantenWRest{}
+	}
+	d.rest[K] = quantenWRest{index: index, ab: ab, stellen: slices.Clone(stellen), offen: slices.Clone(offen)}
+}
+
+// restNehmen: der gemerkte Rest, wenn er genau zu diesem Teil passt -- selber
+// Versuch, selbe Startstelle und dieselben Positionen wie die eigene Seite
+// (die aus dem aktuellen Stand kommt). Sonst nichts (und vergessen).
+func (d *quantenWDienst) restNehmen(K string, index, ab int, stellen []int) (quantenWRest, bool) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	r, ok := d.rest[K]
+	if !ok {
+		return quantenWRest{}, false
+	}
+	n := min(len(r.stellen), len(stellen))
+	if r.index != index || r.ab != ab || n == 0 || !slices.Equal(r.stellen[:n], stellen[:n]) {
+		delete(d.rest, K)
+		return quantenWRest{}, false
+	}
+	r.stellen, r.offen = r.stellen[:n], r.offen[:n]
+	return r, true
 }
 
 // quantenWTeilRumpfBudget: so gross darf die JSON-Liste eines Teils werden,
@@ -1178,6 +1236,7 @@ func (d *quantenWDienst) vergessen(K string) {
 	defer d.mu.Unlock()
 	if d.ablage.loeschen(K) == nil {
 		delete(d.eintraege, K)
+		delete(d.rest, K)
 	}
 }
 
