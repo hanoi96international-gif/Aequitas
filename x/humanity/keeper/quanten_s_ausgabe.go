@@ -39,6 +39,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"math/big"
 	"net"
 	"net/http"
@@ -105,7 +106,24 @@ type QuantenSAusgabeAuftrag struct {
 	Jetzt func() int64
 	// bz: Stelle b und Maske z fest (nur Tests; nil = Zufall).
 	bz *[2]int
+	// log, beginn: Protokoll des Laufs mit Zeiten (gesetzt von
+	// quantenSAusgabeLauf), damit jeder Lauf zeigt, wie lange jeder Schritt
+	// und die Offenlegung gedauert haben.
+	log    io.Writer
+	beginn time.Time
 }
+
+// quantenSNach: seit Beginn des Laufs, auf Sekunden gerundet.
+func (a QuantenSAusgabeAuftrag) quantenSNach() string {
+	if a.beginn.IsZero() {
+		return "?"
+	}
+	return time.Since(a.beginn).Round(time.Second).String()
+}
+
+// quantenSFortschrittTakt: so oft schreibt das Werkzeug waehrend der
+// Offenlegung den Stand ins Protokoll (hoechstens Urteilsfrist / Takt Zeilen).
+const quantenSFortschrittTakt = time.Minute
 
 func quantenSBitsText(s string, n int) ([]int, error) {
 	if len(s) != n {
@@ -186,6 +204,7 @@ func quantenSPraegen(K string, u, tw []int, t, v int) (*quantenSPraegung, error)
 // quantenSAusgabeLauf: der ganze Ablauf. validatoren: hier genau der
 // Ausgeber selbst (C1); Tests duerfen mehrere setzen.
 func quantenSAusgabeLauf(ctx context.Context, a QuantenSAusgabeAuftrag, validatoren []string, t int, netz quantenSNetz, log io.Writer) (*QuantenSAusgabeErgebnis, error) {
+	a.log, a.beginn = log, time.Now()
 	m := a.Messung
 	if m.N < 2 || m.N%2 != 0 || m.N > quantenWNMax {
 		return nil, fmt.Errorf("Messung: n = %d (gerade, 2..%d)", m.N, quantenWNMax)
@@ -314,7 +333,7 @@ func quantenSAusgabeLauf(ctx context.Context, a QuantenSAusgabeAuftrag, validato
 	if _, err := quantenSWartenAuf(ctx, netz, K, a.Frist, "ausgegeben", func(s map[string]interface{}) bool { return s != nil && s["art"] == "s" }); err != nil {
 		return nil, err
 	}
-	fmt.Fprintln(log, "ausgegeben")
+	fmt.Fprintf(log, "ausgegeben (nach %s)\n", a.quantenSNach())
 
 	// 3. Bindung und Wahl der Inhaberin.
 	d := make([]int, m.N)
@@ -343,7 +362,7 @@ func quantenSAusgabeLauf(ctx context.Context, a QuantenSAusgabeAuftrag, validato
 	if _, err := quantenSWartenAuf(ctx, netz, K, a.Frist, "gewaehlt", func(s map[string]interface{}) bool { return s != nil && s["gewaehlt"] == true }); err != nil {
 		return nil, err
 	}
-	fmt.Fprintln(log, "gebunden und gewaehlt")
+	fmt.Fprintf(log, "gebunden und gewaehlt (nach %s)\n", a.quantenSNach())
 
 	erg := &QuantenSAusgabeErgebnis{K: K, N: m.N, KJeStelle: k, Ausgeber: ausgeber, Inhaberin: inhaber, Stellen: stellen[:], B: b,
 		Deckung: a.Deckung, FehlerrateMess: fmt.Sprintf("%d/%d", falsch, passend), Wo: m.Wo, Job: m.Jo}
@@ -356,13 +375,13 @@ func quantenSAusgabeLauf(ctx context.Context, a QuantenSAusgabeAuftrag, validato
 		}
 		if i == 0 {
 			erg.Doppelvorlage = urteil
-			fmt.Fprintln(log, "Doppelvorlage:", urteil)
+			fmt.Fprintf(log, "Doppelvorlage: %s (nach %s)\n", urteil, a.quantenSNach())
 			if urteil != "abgewiesen" {
 				return erg, fmt.Errorf("BEFUND: Doppelvorlage an Stelle %d nicht abgewiesen (%s)", s, urteil)
 			}
 		} else {
 			erg.Vorlage = urteil
-			fmt.Fprintln(log, "ehrliche Vorlage:", urteil)
+			fmt.Fprintf(log, "ehrliche Vorlage: %s (nach %s)\n", urteil, a.quantenSNach())
 			if urteil != "eingeloest" {
 				return erg, fmt.Errorf("ehrliche Vorlage an Stelle %d nicht eingeloest (%s)", s, urteil)
 			}
@@ -416,12 +435,30 @@ func quantenSVorlegen(ctx context.Context, netz quantenSNetz, a QuantenSAusgabeA
 	// quantenSUrteilNachlauf fuer Finalitaet und die Frist-Einreichung der
 	// Dienste. Vorher meldete es nach a.Frist einen Fehlschlag, obwohl die
 	// Kette noch pruefte (Pilot 17.11.2026: k = 5.200, Offenlegung > 15 min).
+	// Nachvollziehbar: Beginn der Offenlegung, je Minute der Stand, am Ende
+	// Dauer und Rate (Stellen je Minute) -- im Protokoll jedes Laufs.
+	logW := a.log
+	if logW == nil {
+		logW = io.Discard
+	}
+	angemeldet := time.Now()
+	fmt.Fprintf(logW, "Stelle %d: angemeldet, %d Stellen offenzulegen (nach %s)\n", s, len(probe), a.quantenSNach())
+	letzte := angemeldet
 	nach, err := quantenSWartenAuf(ctx, netz, K, quantenSUrteilFrist(a.Frist), "Urteil", func(st map[string]interface{}) bool {
-		return st == nil || st["tot"] == true || st["anmeldung"] == nil
+		fertig := st == nil || st["tot"] == true || st["anmeldung"] == nil
+		if !fertig && time.Since(letzte) >= quantenSFortschrittTakt {
+			letzte = time.Now()
+			fmt.Fprintf(logW, "  Stelle %d: %s (nach %s)\n", s, quantenSStandKurz(st), a.quantenSNach())
+		}
+		return fertig
 	})
+	dauer := time.Since(angemeldet)
 	if err != nil {
+		fmt.Fprintf(logW, "Stelle %d: kein Urteil nach %s\n", s, dauer.Round(time.Second))
 		return "", err
 	}
+	fmt.Fprintf(logW, "Stelle %d: Urteil nach %s Offenlegung, %.0f Stellen/min\n", s, dauer.Round(time.Second),
+		float64(len(probe))/math.Max(dauer.Minutes(), 1.0/60))
 	switch {
 	case nach == nil || nach["tot"] == true:
 		return "eingeloest", nil // fehl+1 < quantenWFehlMax: tot ist ausgeschlossen

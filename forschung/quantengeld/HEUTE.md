@@ -357,7 +357,11 @@ auch die gescheiterten.
 | [44164912648](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44164912648) | `main` nach #572 | rot: `Urteil: nicht in 15m0s (fehl 0, … offen 3456 von 5200)` (mit Ausfall) | Keine falsche Prüfung, nur zu langsam (rund 230 Stellen/min). Der Dienst reichte denselben Teil mehrfach ein, gegen die Burst-Grenzen → #573. Das Werkzeug gab vor der Kettenfrist auf → #574. |
 | [44166377116](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44166377116) | Zweig mit #573 | rot nach Erfolg (mit Ausfall): Werkzeug 16m20s, **Doppelvorlage abgewiesen, ehrliche Vorlage eingelöst**; danach `Knoten 0: Token lebt=true tot=false` | Der Test las den Stand der anderen Knoten nur einmal, Knoten 0 war einen Block hinterher. Der Test wartet jetzt bis zu 2 min (#575); der Gleichstand wird weiter streng geprüft. |
 | [44178246231](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44178246231) | `main` nach #574 | abgebrochen | Neu gestartet mit der Test-Korrektur (nächste Zeile). |
-| [44178445416](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44178445416) | Zweig mit #574 und Test-Korrektur | läuft | – |
+| [44178445416](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44178445416) | Zweig mit #574 und Test-Korrektur (f90b7cd) | **grün**, beide Tests. Mit Ausfall: Werkzeug **12m50s**, Fehlerrate bei passender Basis 24/5208, Doppelvorlage **abgewiesen**, ehrliche Vorlage **eingelöst**, die drei lebenden Knoten gleich (Höhe 5821, StateRoot `cebc24bb…51bd07`). Paket `ok` nach 1917,7 s | Ohne Ausfall: bestanden (Paket `ok`); Dauer und Einzelzeilen liegen vor dem abrufbaren Protokollende und sind nicht belegt. |
+
+**Ergebnis:** Variante S läuft mit vier Validatoren (3 von 4) in voller Größe der Tabelle
+durch, auch wenn ein Validator ausfällt. Dabei gilt: Messung im Rauschmodell, Knoten in
+einem Job, kein Gutachten.
 
 **Grenzen der Nachvollziehbarkeit bis hier:** Bei den ersten Läufen ist nur das Ende des
 Protokolls abrufbar (GitHub liefert über die Schnittstelle höchstens 5.000 Zeilen). Ob der
