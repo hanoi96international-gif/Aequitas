@@ -158,6 +158,86 @@ def note_fern(val_basen: list[int], aufforderung: list[int], warten_us: float = 
     return s
 
 
+# ------------------------------------------------ B6: Schutz je Stelle (Steane)
+#
+# Jede Stelle der Note liegt im Steane-Code [[7,1,3]]. Der Code ist CSS und
+# selbstdual: |0_L> ist die gleichmaessige Ueberlagerung der 8 Codewoerter des
+# Zeilenraums von H (gerades Gewicht), X_L = X auf {0,1,2}, und die
+# transversale Hadamard macht aus |0_L>/|1_L> genau |+_L>/|-_L>. Gemessen
+# wird transversal (alle 7 Qubits in der Basis der Aufforderung) und klassisch
+# dekodiert: Syndrom H*b zeigt auf das falsche Bit, der Wert ist die Paritaet.
+# Ein Fehler je Stelle und Basis wird so korrigiert -- ohne Syndrom-Runden auf
+# dem Chip. Der Schutz aendert die Sicherheit nicht: Der Code ist oeffentlich,
+# ein Faelscher kann jede Stelle dekodieren und hat dann ein BB84-Qubit.
+
+STEANE_H = ((0, 0, 0, 1, 1, 1, 1), (0, 1, 1, 0, 0, 1, 1), (1, 0, 1, 0, 1, 0, 1))
+STEANE_LOGISCH = (0, 1, 2)        # Traeger von X_L (und, nach Hadamard, Z_L)
+MAX_STELLEN_STEANE = 2            # 14 Qubits
+
+
+def steane_null(s, q: list[int]) -> None:
+    """|0_L> auf den 7 Qubits q: Hadamard auf die Pivot-Qubits 3, 1, 0 der drei
+    Zeilen von H, dann je 3 CNOT auf den Rest der Zeile (9 CNOT)."""
+    for piv in (3, 1, 0):
+        s.h(q[piv])
+    for piv, rest in ((3, (4, 5, 6)), (1, (2, 5, 6)), (0, (2, 4, 6))):
+        for z in rest:
+            s.cx(q[piv], q[z])
+
+
+def steane_syndrom(b7: list[int]) -> int:
+    """1..7 = Position+1 des einen falschen Bits, 0 = kein Fehler erkannt."""
+    return sum((sum(h * x for h, x in zip(zeile, b7)) & 1) << (2 - r) for r, zeile in enumerate(STEANE_H))
+
+
+def steane_dekodieren(b7: list[int]) -> int:
+    """Logischer Wert aus 7 transversal gemessenen Bits (ein Fehler korrigiert)."""
+    b = list(b7)
+    syn = steane_syndrom(b)
+    if syn:
+        b[syn - 1] ^= 1
+    return sum(b) & 1
+
+
+def note_steane(basen: list[int], bits: list[int], aufforderung: list[int], warten_us: float = 0.0,
+                fehler: list[tuple[str, int]] | None = None):
+    """Wie note(), aber jede Stelle j auf den Qubits 7j..7j+6 im Steane-Code.
+    Messbits 7j+k = Qubit k der Stelle j. fehler: nur fuer den Selbsttest
+    (("x"|"z", qubit) mitten im Speicher)."""
+    n = len(basen)
+    if not (1 <= n <= MAX_STELLEN_STEANE and len(bits) == n and len(aufforderung) == n):
+        raise ValueError("Steane-Note: Laengen")
+    if any(v not in (0, 1) for v in basen + bits + aufforderung):
+        raise ValueError("Steane-Note: nur 0/1")
+    Q = [list(range(7 * j, 7 * j + 7)) for j in range(n)]
+    alle = list(range(7 * n))
+    s = hw.Schaltkreis(7 * n, f"wiesner-steane n={n} warten={warten_us:g}us")
+    for q, b, x in zip(Q, basen, bits):
+        steane_null(s, q)
+        if x:
+            for k in STEANE_LOGISCH:
+                s.x(q[k])
+        if b:
+            for a in q:
+                s.h(a)
+    s.barriere(alle)
+    s.warten(warten_us, alle)
+    for art, a in (fehler or []):
+        if art == "z":
+            s.p(math.pi, a)
+        else:
+            s.x(a)
+    s.barriere(alle)
+    for q, beta in zip(Q, aufforderung):
+        if beta:
+            for a in q:
+                s.h(a)
+    s.messen(alle, alle)
+    s.bedeutung = {"fall": "wiesner-steane", "n": n, "basen": list(basen), "bits": list(bits),
+                   "aufforderung": list(aufforderung), "warten_us": float(warten_us), "bezahlt": False}
+    return s
+
+
 def geheimnis_aus_lauf(s, schluessel: str) -> list[int]:
     """Bei Fern-Praeparation: die Bits, die die Validatoren gemessen haben."""
     n = s.bedeutung["n"]
@@ -165,8 +245,11 @@ def geheimnis_aus_lauf(s, schluessel: str) -> list[int]:
 
 
 def antworten(s, schluessel: str) -> list[int]:
-    """Messwerte der Note aus einem Ergebnis-Schluessel (Bit 0 ganz rechts)."""
+    """Messwerte der Note aus einem Ergebnis-Schluessel (Bit 0 ganz rechts).
+    Steane-Note: je Stelle die 7 Bits dekodiert (steane_dekodieren)."""
     n = s.bedeutung["n"]
+    if s.bedeutung.get("fall") == "wiesner-steane":
+        return [steane_dekodieren([int(schluessel[-1 - (7 * j + k)]) for k in range(7)]) for j in range(n)]
     return [int(schluessel[-1 - i]) for i in range(n)]
 
 
@@ -212,17 +295,24 @@ def kette_pruefen(s, ergebnis: list[int], rng: random.Random, t: int = 3, v: int
 
 
 def satz(n: int, reihe: list[float], laeufe: int, bezahlen: bool, rng: random.Random,
-         fern: bool = False) -> list:
+         fern: bool = False, steane: bool = False) -> list:
     """Je Wartezeit `laeufe` Noten mit frischen Basen, Bits, Aufforderungen;
     mit bezahlen dieselbe Note zusaetzlich teleportiert. fern: Praegen ohne
     Vertrauen (note_fern) -- die Basen sind die der Validatoren, die Bits
-    entstehen erst bei deren Messung."""
+    entstehen erst bei deren Messung. steane: dieselbe Note ungeschuetzt und
+    im Steane-Code (B6), Seite an Seite."""
+    if steane and (fern or bezahlen or n > MAX_STELLEN_STEANE):
+        raise ValueError("Steane: ohne fern/bezahlen, hoechstens 2 Stellen")
     out = []
     for w in reihe:
         for _ in range(laeufe):
             b = [rng.randrange(2) for _ in range(n)]
             x = [rng.randrange(2) for _ in range(n)]
             a = [rng.randrange(2) for _ in range(n)]
+            if steane:
+                out.append(note(b, x, a, warten_us=w))
+                out.append(note_steane(b, x, a, warten_us=w))
+                continue
             if fern:
                 out.append(note_fern(b, a, warten_us=w))
                 if bezahlen:
@@ -302,6 +392,38 @@ def selbsttest() -> bool:
         pass
     k = satz(3, [0], 2, True, rng, fern=True)
     soll(len(k) == 4 and all(x.bedeutung["fall"] == "wiesner-fern" for x in k) and k[1].bedeutung["bezahlt"], "satz(fern)")
+
+    # B6 Steane: ideal immer richtig; JEDER einzelne X- oder Z-Fehler auf
+    # jedem der 7 Qubits wird korrigiert; zwei X-Fehler kippen den Wert
+    # (Abstand 3) -- dann muss die Pruefung den Fehler sehen.
+    soll(all(steane_syndrom([0] * 7) == 0 for _ in [0]) and
+         all(steane_syndrom([int(j == k) for j in range(7)]) == k + 1 for k in range(7)), "Steane-Syndrom")
+    for b0 in (0, 1):
+        for x0 in (0, 1):
+            for a0 in (0, 1):
+                s = note_steane([b0], [x0], [a0])
+                vert = hw.verteilung(s)
+                ok = all(antworten(s, k)[0] == x0 for k in vert) if a0 == b0 else \
+                    abs(sum(w for k, w in vert.items() if antworten(s, k)[0] == 1) - 0.5) < 1e-9
+                soll(ok, f"Steane ideal b={b0} x={x0} a={a0}")
+                if a0 != b0:
+                    continue
+                # Ein Fehler, der in der Messbasis zaehlt: X bei Z-Messung, Z bei X-Messung.
+                art = "z" if b0 else "x"
+                for q in range(7):
+                    s = note_steane([b0], [x0], [a0], fehler=[(art, q)])
+                    soll(all(antworten(s, k)[0] == x0 for k in hw.verteilung(s)), f"Steane korrigiert {art}{q} nicht")
+                s = note_steane([b0], [x0], [a0], fehler=[(art, 0), (art, 1)])
+                soll(all(antworten(s, k)[0] != x0 for k in hw.verteilung(s)), "zwei Fehler muessen den Wert kippen")
+    k = satz(2, [0], 1, False, rng, steane=True)
+    soll(len(k) == 2 and k[0].bedeutung["fall"] == "wiesner" and k[1].bedeutung["fall"] == "wiesner-steane"
+         and k[0].bedeutung["basen"] == k[1].bedeutung["basen"] and k[1].q == 14, "satz(steane)")
+    for kaputt in (dict(fern=True), dict(n=3)):
+        try:
+            satz(kaputt.get("n", 2), [0], 1, False, rng, steane=True, fern=kaputt.get("fern", False))
+            soll(False, f"satz(steane) angenommen: {kaputt}")
+        except ValueError:
+            pass
 
     # Grenzen.
     for kaputt in (([], [], []), ([2], [0], [0]), ([0] * 17, [0] * 17, [0] * 17)):

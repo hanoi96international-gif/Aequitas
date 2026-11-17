@@ -288,6 +288,48 @@ class KetteS:
         e["c"] = c
 
 
+# ------------------------------------------- S3: Ausgabe ueber eine echte Leitung
+#
+# Bausteine fuer ANALYSE.md 5c (noch nicht in KetteS eingebunden; das kommt mit
+# einem Geraet). Ueber eine Leitung kommt nur ein Teil der N Pulse an. Die
+# Nutzerin meldet zuerst die Menge Lambda der gemessenen Pulse; erst danach zieht
+# der Zufall der Kette daraus eine oeffentliche Teilmenge von hoechstens N_MAX
+# Stellen, die den Token bildet. Die geheimen Stichproben liegen in ihr. Weil die
+# Teilmenge nach der Meldung gezogen wird, kann eine Betruegerin den Anteil
+# freier Stellen (Mehrphotonen-Pulse) darin nicht erhoehen; wiesner_parameter.
+# s3_stichprobe rechnet die Pruefgroesse mit diesem Anteil.
+
+DOM_S3_TEIL = b"aequitas-quanten-s3-teilmenge-v1|"
+N_PULS_MAX = 1 << 26        # Pulse je Ausgabe (Kents Handsender: 4e7 in 4 s)
+
+
+def s3_meldung(n_puls: int, gamma_det_ppm: int, meldung: list[int]) -> list[int]:
+    """Prueft die Meldung Lambda: verschiedene Pulse in 0..n_puls-1, mindestens
+    gamma_det * n_puls (ganzzahlig, ppm). Gibt sie sortiert zurueck."""
+    if not (1 <= n_puls <= N_PULS_MAX and 1 <= gamma_det_ppm <= 1_000_000):
+        raise Abgewiesen("S3-Meldung: Groessen")
+    lam = sorted(meldung)
+    if len(set(lam)) != len(lam) or any(not 0 <= i < n_puls for i in lam):
+        raise Abgewiesen("S3-Meldung: doppelter oder fremder Puls")
+    if len(lam) * 1_000_000 < gamma_det_ppm * n_puls:
+        raise Abgewiesen(f"S3-Meldung: {len(lam)} Pulse, verlangt {gamma_det_ppm} ppm von {n_puls}")
+    return lam
+
+
+def s3_teilmenge(K: str, lam: list[int], zufall: bytes, meldung_hoehe: int, zufall_hoehe: int,
+                 n_max: int = wk.N_MAX) -> list[int]:
+    """Oeffentliche Teilmenge der gemeldeten Pulse, die den Token bildet.
+    zufall muss aus einem Block NACH der Meldung stammen (sonst koennte die
+    Nutzerin Lambda passend zur Teilmenge waehlen). Jeder Knoten rechnet sie
+    gleich: die n_max Pulse mit den kleinsten h(dom|K|zufall|i), sortiert."""
+    if zufall_hoehe <= meldung_hoehe:
+        raise Abgewiesen("S3-Teilmenge: Zufall nicht nach der Meldung")
+    if len(zufall) != 32 or not 1 <= n_max <= wk.N_MAX:
+        raise Abgewiesen("S3-Teilmenge: Form")
+    rang = sorted(lam, key=lambda i: wk.h(DOM_S3_TEIL, K.encode(), b"|", zufall, b"|", str(i).encode()))
+    return sorted(rang[:n_max])
+
+
 # ---------------------------------------------------------------- Annahmestellen
 def stichproben(n: int, stellen: int, k: int, rng: random.Random) -> list[list[int]]:
     """Disjunkte, geheime Stichproben je Annahmestelle."""
@@ -568,6 +610,30 @@ def selbsttest() -> bool:
         abgewiesen(lambda: stelle_laden(0, K, n, pr.wurzel, 3, 5, doppelt, pr.offenlegung(doppelt, [1, 2, 3]), labor_k=64),
                    "doppelte Stelle in der Stichprobe")
         abgewiesen(lambda: stelle_laden(0, K, n, pr.wurzel, 3, 5, proben[0], of, tol=15), "Toleranz nicht in der Tabelle")
+
+        # 4b. S3-Bausteine: Meldung und oeffentliche Teilmenge.
+        n_puls, ppm = 200_000, 18_000          # gamma_det = 1,8 % wie bei Kent
+        gemeldet = sorted(rng.sample(range(n_puls), 3700))
+        lam = s3_meldung(n_puls, ppm, gemeldet)
+        abgewiesen(lambda: s3_meldung(n_puls, ppm, gemeldet[:3599]), "Meldung unter gamma_det")
+        abgewiesen(lambda: s3_meldung(n_puls, ppm, gemeldet + gemeldet[:1]), "Meldung mit doppeltem Puls")
+        abgewiesen(lambda: s3_meldung(n_puls, ppm, gemeldet[:-1] + [n_puls]), "Meldung mit fremdem Puls")
+        z1, z2 = wk.h(b"block-101"), wk.h(b"block-102")
+        abgewiesen(lambda: s3_teilmenge(K, lam, z1, 100, 100), "Zufall nicht nach der Meldung")
+        abgewiesen(lambda: s3_teilmenge(K, lam, b"kurz", 100, 101), "Zufall in falscher Form")
+        t1 = s3_teilmenge(K, lam, z1, 100, 101, n_max=2048)
+        soll(len(t1) == 2048 and set(t1) <= set(lam) and t1 == sorted(t1), "Teilmenge: Groesse, in Lambda, sortiert")
+        soll(t1 == s3_teilmenge(K, list(reversed(lam)), z1, 100, 101, n_max=2048), "Teilmenge haengt von der Reihenfolge ab")
+        soll(t1 != s3_teilmenge(K, lam, z2, 100, 101, n_max=2048), "anderer Zufall, gleiche Teilmenge")
+        soll(s3_teilmenge(K, lam[:100], z1, 100, 101, n_max=2048) == lam[:100], "kleines Lambda: alles")
+        # Missbrauch: eine Betruegerin meldet alle 700 Mehrphotonen-Pulse plus 3000
+        # andere (Anteil frei 19 %). Die Teilmenge, gezogen NACH der Meldung, hat
+        # denselben Anteil (Abweichung im Bereich weniger Standardabweichungen) --
+        # sie kann ihn nicht hochtreiben.
+        mehr = set(rng.sample(range(n_puls), 700))
+        lam_b = s3_meldung(n_puls, ppm, sorted(mehr) + sorted(rng.sample(sorted(set(range(n_puls)) - mehr), 3000)))
+        anteil = len(mehr & set(s3_teilmenge(K, lam_b, z2, 100, 101, n_max=2048))) / 2048
+        soll(abs(anteil - 700 / 3700) < 4 * math.sqrt(0.19 * 0.81 / 2048), f"Anteil frei in der Teilmenge {anteil:.3f}")
 
         # 5. Einloesen auf der Kette: die Stelle reicht die unterschriebene
         # Vorlage ein, die Validatoren legen ihre Stichprobe offen, jeder Knoten
