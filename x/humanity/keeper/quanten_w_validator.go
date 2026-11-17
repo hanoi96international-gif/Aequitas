@@ -234,6 +234,10 @@ type quantenWDienst struct {
 	// gesendet: wann dieser Dienst einen Teil (K, Versuch, ab) zuletzt
 	// erfolgreich eingereicht hat; wie sicht begrenzt und aufgeraeumt.
 	gesendet map[string]int64
+	// eingesprungen: Versuche (K, index), fuer die dieser Dienst anstelle
+	// des Zustaendigen eingereicht hat -- er macht ohne Wartezeit weiter;
+	// wie sicht begrenzt und aufgeraeumt.
+	eingesprungen map[string]bool
 	// rest: was von einem gekuerzten, angenommenen Teil uebrig ist (je K
 	// hoechstens einer, unter mu; mit der Note vergessen). Spart den
 	// Nachbarn die zweite Abfrage derselben Seite (quantenWTeilKuerzen).
@@ -262,16 +266,37 @@ func quantenWZustaendig(K string, index, v int) int {
 	return (start+index)%v + 1
 }
 
-// darfEinreichen: der Zustaendige sofort; jeder andere erst, wenn der Teil
-// seit quantenWStaffelWarten offen ist (der Zustaendige faellt aus).
+// darfEinreichen: der Zustaendige sofort; jeder andere in fester Reihenfolge
+// (Rang r = Abstand zum Zustaendigen, 1 .. v-1), wenn der Teil seit
+// r * quantenWStaffelWarten offen ist (der Zustaendige faellt aus). Wer einmal
+// eingesprungen ist, macht die folgenden Teile desselben Versuchs ohne
+// Wartezeit weiter.
+//
+// Befund 17.11.2026: Vorher wartete JEDER Teil die Staffel neu ab, und alle
+// uebrigen Validatoren sprangen gleichzeitig ein. Fiel der Zustaendige aus,
+// dauerten 5.200 Stellen (~163 Teile zu 10-15 s) etwa so lange wie die
+// Kettenfrist (30 min), und das Einloesen scheiterte an einem einzigen
+// fehlenden Validator; die doppelten Einreichungen gingen gegen die
+// Burst-Grenze.
 func (d *quantenWDienst) darfEinreichen(K string, e *quantenWTresorEintrag, index, ab int, jetzt int64, gesehen map[string]bool) bool {
-	if quantenWZustaendig(K, index, len(e.Validatoren)) == e.X {
+	v := len(e.Validatoren)
+	if v <= 0 || e.X < 1 || e.X > v {
+		return false // kein gueltiger Eintrag: nichts einreichen (fail-closed)
+	}
+	z := quantenWZustaendig(K, index, v)
+	if z == e.X {
 		return true
 	}
+	rang := int64(((e.X-z)%v + v) % v)
+	dran := fmt.Sprintf("d|%s|%d", K, index)
 	key := fmt.Sprintf("f|%s|%d|%d", K, index, ab)
 	gesehen[key] = true
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	if d.eingesprungen[dran] {
+		gesehen[dran] = true
+		return true
+	}
 	t0, da := d.faellig[key]
 	if !da {
 		if len(d.faellig) < quantenWSichtHoechstens {
@@ -279,7 +304,14 @@ func (d *quantenWDienst) darfEinreichen(K string, e *quantenWTresorEintrag, inde
 		}
 		return false
 	}
-	return jetzt-t0 >= quantenWStaffelWarten
+	if rang < 1 || jetzt-t0 < rang*quantenWStaffelWarten {
+		return false
+	}
+	if len(d.eingesprungen) < quantenWSichtHoechstens {
+		d.eingesprungen[dran] = true
+		gesehen[dran] = true
+	}
+	return true
 }
 
 // quantenWSichtHoechstens: gemerkte Sichtungen -- je Note hoechstens eine
@@ -320,6 +352,11 @@ func (d *quantenWDienst) sichtRaeumen(gesehen map[string]bool) {
 	for s := range d.gesendet {
 		if !gesehen[s] {
 			delete(d.gesendet, s)
+		}
+	}
+	for s := range d.eingesprungen {
+		if !gesehen[s] {
+			delete(d.eingesprungen, s)
 		}
 	}
 }
@@ -409,7 +446,7 @@ func neuerQuantenWDienst(cs *ChainState, key *ecdsa.PrivateKey, ablage quantenWA
 		aead: aead, ablage: ablage, eintraege: map[string]*quantenWTresorEintrag{}, peers: peers,
 		client: quantenWPeerKlient(nil), erlaubt: isAllowedPeerURL, fremd: quantenWPeerKlient(pinningDialer),
 		peerZeit: quantenWPeerZeit, nachlauf: quantenWPeerNachlauf, einreichen: einreichen, jetzt: nowUnix,
-		hoehe: func() int64 { return 0 }, final: func() int64 { return -1 }, sicht: map[string]int64{}, faellig: map[string]int64{}, gesendet: map[string]int64{}}
+		hoehe: func() int64 { return 0 }, final: func() int64 { return -1 }, sicht: map[string]int64{}, faellig: map[string]int64{}, gesendet: map[string]int64{}, eingesprungen: map[string]bool{}}
 	roh, err := ablage.alle()
 	if err != nil {
 		return nil, fmt.Errorf("quanten_w: Tresor nicht lesbar: %w", err)
@@ -1157,8 +1194,10 @@ func (d *quantenWDienst) takt(ctx context.Context) {
 				}
 				na := ein.note.Anfrage
 				ab := na.Offen
-				if na.Antwort == nil || ab >= len(na.Stellen) || d.schonGesendet(K, na.Index, ab, jetzt, gesehen) ||
-					!d.darfEinreichen(K, e, na.Index, ab, jetzt, gesehen) || !d.offenlegenTeil(ctx, K, e, na) {
+				// darfEinreichen vor schonGesendet: es haelt das Einspringen
+				// auch in einem Takt fest, der nur auf den Stand wartet.
+				if na.Antwort == nil || ab >= len(na.Stellen) || !d.darfEinreichen(K, e, na.Index, ab, jetzt, gesehen) ||
+					d.schonGesendet(K, na.Index, ab, jetzt, gesehen) || !d.offenlegenTeil(ctx, K, e, na) {
 					break
 				}
 				d.gesendetMerken(K, na.Index, ab, jetzt, gesehen)
@@ -1198,7 +1237,7 @@ func (d *quantenWDienst) taktS(ctx context.Context, K string, e *quantenWTresorE
 			return
 		}
 		ab := tok.token.Anmeldung.Offen
-		if d.schonGesendet(K, t.Fehl, ab, jetzt, gesehen) || !d.darfEinreichen(K, e, t.Fehl, ab, jetzt, gesehen) {
+		if !d.darfEinreichen(K, e, t.Fehl, ab, jetzt, gesehen) || d.schonGesendet(K, t.Fehl, ab, jetzt, gesehen) {
 			return
 		}
 		if !d.teilOffenlegen(ctx, K, e, t.Fehl, ab, func(offen []QuantenWOffen) error {

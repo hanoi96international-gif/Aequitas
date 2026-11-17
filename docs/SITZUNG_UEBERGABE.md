@@ -7,22 +7,22 @@ Repos); davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
-**Zuletzt (Sitzung „Weiter“, 17.11. ~20:15 UTC):**
+**Zuletzt (Sitzung „Weiter“, 17.11. ~20:55 UTC):**
 - **#572 gemergt** (Nachtrag zur Sicherheitsprüfung als Kommentar). **C1-Deploy wartet auf
   Freigabe:** [44164664693](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44164664693).
   Die Ratengrenze auf C1 sinkt erst, wenn der Betreiber `perf-c1.yml` startet und freigibt.
-- **Pilot im Rauschmodell, k = 5.200, Stand von `main`** (zum Vergleich):
-  [44164912648](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44164912648).
-- **Zweig `claude/weiter-uw2p42` (noch kein PR):**
-  - Befund zur Pilot-Rate: Ist der Zuständige nicht der Leiter, reichte der Dienst
-    denselben Teil mehrmals ein, bis der Block kam, und holte jedes Mal die Anteile neu.
-    Beides ging gegen die Burst-Grenzen. Jetzt gilt: kein zweites Einreichen vor
-    `quantenWStaffelWarten`, und der Takt wartet höchstens 2 s auf den Stand. Tests W/S,
-    7 Mutationen rot.
-  - Flake `test_bio_pq_bereit.sh`: Bei belegtem Port nimmt der Test jetzt einen anderen.
-  - Als Nächstes: PR, danach Pilot auf dem Zweig starten und mit dem Lauf oben vergleichen.
-    Reicht es nicht für 15 min, die Frist des Werkzeugs bei voller Größe auf 25 min setzen
-    (Kette: 30).
+- **#573 gemergt:** Kein zweites Einreichen desselben Teils vor `quantenWStaffelWarten`, und
+  der Takt wartet höchstens 2 s auf den Stand. Flake `test_bio_pq_bereit.sh` behoben.
+- **Pilot auf `main` vor #573** (Lauf 44164912648): Mit Ausfall `Urteil: nicht in 15m0s
+  (fehl 0, offen 3456 von 5200)`, also rund 230 Stellen/min. Kein Fehler, nur zu langsam für
+  die Frist des Werkzeugs.
+- **Pilot mit #573** (Lauf 44166377116, Zweig auf d737cf6) läuft. Das Ergebnis steht nur im
+  Protokollende (Zusammenfassung erst ab #574 mit Laufzeit).
+- **PR #574 offen:** Das Werkzeug wartet auf das Urteil bis zur Kettenfrist (30 min + 3 min),
+  der Pilot-Job läuft bis 90 min, die Zusammenfassung nennt die Laufzeit. Nach dem Merge den
+  Pilot (Rauschmodell, k = 5.200) erneut starten.
+- Protokolle der Pilot-Läufe: Der Download über `blob.core.windows.net` ist hier gesperrt,
+  `get_job_logs` liefert höchstens die letzten 5.000 Zeilen.
 
 ## Arbeitsweise (vom Betreiber festgelegt)
 

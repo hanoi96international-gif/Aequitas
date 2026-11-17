@@ -113,7 +113,9 @@ jobs:
     # Genau einer der beiden Mess-Jobs laeuft, der andere ist uebersprungen.
     if: always() && (needs.rauschen.result == 'success' || needs.messen.result == 'success')
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # Zwei Laeufe; je Urteil wartet das Werkzeug bis zur Kettenfrist (30 min)
+    # plus Nachlauf (quantenSUrteilFrist).
+    timeout-minutes: 90
     services:
       postgres:
         image: postgres:16-alpine
@@ -152,7 +154,7 @@ jobs:
         run: |
           set -euo pipefail
           set +e
-          go test ./x/humanity/keeper/ -run 'TestVierKnotenQuantenS(Ausfall)?_RealDB$' -v -count=1 -timeout 40m 2>&1 | tee out.txt
+          go test ./x/humanity/keeper/ -run 'TestVierKnotenQuantenS(Ausfall)?_RealDB$' -v -count=1 -timeout 80m 2>&1 | tee out.txt
           RC=${PIPESTATUS[0]}
           set -e
           rm -f "$RUNNER_TEMP/m.json"
@@ -166,7 +168,7 @@ jobs:
             fi
             echo
             echo '```'
-            grep -E 'Messung aus|faellt aus|Variante S auf vier Knoten|^\s*--- (PASS|FAIL)|^(ok|FAIL)\s' out.txt || true
+            grep -E 'Messung aus|faellt aus|Variante S auf vier Knoten|Werkzeug \(|Urteil|offen [0-9]+ von|^\s*--- (PASS|FAIL)|^(ok|FAIL)\s' out.txt || true
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           exit "$RC"

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -640,47 +641,138 @@ func TestQuantenWDienst_NummerTresorStichtag(t *testing.T) {
 	}
 }
 
-// Staffel: nur der zustaendige Validator reicht sofort ein; die anderen erst,
-// wenn der Teil quantenWStaffelWarten lang offen ist (Zustaendiger faellt aus).
+// Staffel: nur der zustaendige Validator reicht sofort ein; die anderen in
+// fester Reihenfolge -- Rang r (Abstand zum Zustaendigen) erst, wenn der Teil
+// r * quantenWStaffelWarten lang offen ist (Zustaendiger faellt aus). Wer
+// eingesprungen ist, macht den Versuch ohne weitere Wartezeit zu Ende.
 func TestQuantenWDienst_Staffel(t *testing.T) {
-	q := neueQwDienste(t, 400)
-	w := q.w
-	q.praegen(t)
-	q.zeit += 10
-	w.annehmen(w.anfrageTx(w.anna, 0, 150, "", q.zeit), q.zeit+1)
-	q.zeit += 2
-	q.takt()
-	a := w.anfrage(w.cs)
-	w.annehmen(w.antwortTx(w.anna, 0, w.p.ehrlich(a.Stellen, a.Basen)), q.zeit+1)
-	q.zeit += 2
-	z := quantenWZustaendig(w.p.K, 0, len(w.val))
-	andere := q.d[z%len(q.d)] // ein anderer als der Zustaendige
-	andere.takt(context.Background())
-	if w.anfrage(w.cs).Offen != 0 {
-		t.Fatal("ein nicht zustaendiger Validator reicht sofort ein")
+	bereit := func(t *testing.T) (*qwDienste, int) {
+		q := neueQwDienste(t, 400)
+		w := q.w
+		q.praegen(t)
+		q.zeit += 10
+		w.annehmen(w.anfrageTx(w.anna, 0, 150, "", q.zeit), q.zeit+1) // 150 Stellen: drei Teile
+		q.zeit += 2
+		q.takt()
+		a := w.anfrage(w.cs)
+		w.annehmen(w.antwortTx(w.anna, 0, w.p.ehrlich(a.Stellen, a.Basen)), q.zeit+1)
+		q.zeit += 2
+		return q, quantenWZustaendig(w.p.K, 0, len(w.val))
 	}
-	q.zeit += quantenWStaffelWarten - 1
-	andere.takt(context.Background())
-	if w.anfrage(w.cs).Offen != 0 {
-		t.Fatal("eingesprungen vor der Wartezeit")
-	}
-	q.zeit++
-	andere.takt(context.Background())
-	if w.anfrage(w.cs).Offen != quantenWOffenTeil {
-		t.Fatalf("nicht eingesprungen, Offen %d", w.anfrage(w.cs).Offen)
-	}
-	// Der Zustaendige erledigt den Rest in einem Takt.
-	q.d[z-1].takt(context.Background())
-	if w.anfrage(w.cs) != nil {
-		t.Fatal("der Zustaendige hat den Rest nicht eingereicht")
-	}
-	// Die Wartezeiten offener Teile vergisst der naechste Takt.
-	q.takt()
-	for x, d := range q.d {
-		if len(d.faellig) != 0 {
-			t.Fatalf("Validator %d merkt sich noch %d offene Teile", x+1, len(d.faellig))
+	t.Run("Rang 1 springt ein und macht weiter", func(t *testing.T) {
+		q, z := bereit(t)
+		w := q.w
+		v := len(q.d)
+		rang1, rang2 := q.d[z%v], q.d[(z+1)%v]
+		rang1.takt(context.Background())
+		rang2.takt(context.Background())
+		if w.anfrage(w.cs).Offen != 0 {
+			t.Fatal("ein nicht zustaendiger Validator reicht sofort ein")
 		}
-	}
+		q.zeit += quantenWStaffelWarten - 1
+		rang1.takt(context.Background())
+		if w.anfrage(w.cs).Offen != 0 {
+			t.Fatal("eingesprungen vor der Wartezeit")
+		}
+		q.zeit++
+		rang2.takt(context.Background())
+		if w.anfrage(w.cs).Offen != 0 {
+			t.Fatal("Rang 2 springt zugleich mit Rang 1 ein")
+		}
+		// Rang 1 legt alle drei Teile in einem Takt offen -- ohne fuer jeden
+		// Teil die Staffel neu abzuwarten.
+		rang1.takt(context.Background())
+		if w.anfrage(w.cs) != nil {
+			t.Fatalf("Rang 1 hat nach dem Einspringen nicht weitergemacht (Offen %d)", w.anfrage(w.cs).Offen)
+		}
+		// Wartezeiten und Einspringen vergisst der naechste Takt.
+		q.takt()
+		for x, d := range q.d {
+			if len(d.faellig) != 0 || len(d.eingesprungen) != 0 {
+				t.Fatalf("Validator %d merkt sich noch %d offene Teile, %d Versuche", x+1, len(d.faellig), len(d.eingesprungen))
+			}
+		}
+	})
+	t.Run("dranbleiben ueber Takte", func(t *testing.T) {
+		q, z := bereit(t)
+		w := q.w
+		rang1 := q.d[z%len(q.d)]
+		echt := rang1.einreichen
+		teile := 0
+		// Nur der erste Teil geht in diesem Takt durch (die anderen weist der
+		// Leiter gerade ab, etwa wegen der Burst-Grenze).
+		rang1.einreichen = func(art string, x QuantenWAngaben) error {
+			if art == quantenWOffenlegenTxArt {
+				if teile++; teile > 1 {
+					return errors.New("Status 429")
+				}
+			}
+			return echt(art, x)
+		}
+		rang1.takt(context.Background())
+		q.zeit += quantenWStaffelWarten
+		rang1.takt(context.Background())
+		if o := w.anfrage(w.cs).Offen; o != quantenWOffenTeil {
+			t.Fatalf("Rang 1 nicht eingesprungen (Offen %d)", o)
+		}
+		// Naechster Takt, eine Sekunde spaeter: Rang 1 macht ohne neue
+		// Wartezeit weiter.
+		rang1.einreichen = echt
+		q.zeit++
+		rang1.takt(context.Background())
+		if w.anfrage(w.cs) != nil {
+			t.Fatal("Rang 1 wartet nach dem Einspringen fuer den naechsten Teil wieder die Staffel ab")
+		}
+	})
+	t.Run("dranbleiben, waehrend der Stand nachzieht", func(t *testing.T) {
+		q, z := bereit(t)
+		w := q.w
+		rang1 := q.d[z%len(q.d)]
+		echt := rang1.einreichen
+		var unterwegs []QuantenWAngaben
+		// Angenommen, aber noch nicht im Stand (Weiterleitung zum Leiter).
+		rang1.einreichen = func(art string, x QuantenWAngaben) error {
+			if art == quantenWOffenlegenTxArt {
+				unterwegs = append(unterwegs, x)
+				return nil
+			}
+			return echt(art, x)
+		}
+		rang1.takt(context.Background())
+		q.zeit += quantenWStaffelWarten
+		rang1.takt(context.Background()) // springt ein, Teil unterwegs
+		q.zeit++
+		rang1.takt(context.Background()) // wartet nur auf den Stand
+		if len(unterwegs) != 1 || len(rang1.eingesprungen) != 1 {
+			t.Fatalf("%d Teile unterwegs, Einspringen gemerkt: %d", len(unterwegs), len(rang1.eingesprungen))
+		}
+		// Der Block kommt; danach geht es ohne neue Wartezeit weiter.
+		if err := echt(quantenWOffenlegenTxArt, unterwegs[0]); err != nil {
+			t.Fatal(err)
+		}
+		rang1.einreichen = echt
+		q.zeit++
+		rang1.takt(context.Background())
+		if w.anfrage(w.cs) != nil {
+			t.Fatal("nach dem Warten auf den Stand wieder die Staffel abgewartet")
+		}
+	})
+	t.Run("Rang 2 erst nach doppelter Wartezeit", func(t *testing.T) {
+		q, z := bereit(t)
+		w := q.w
+		rang2 := q.d[(z+1)%len(q.d)]
+		rang2.takt(context.Background())
+		q.zeit += 2*quantenWStaffelWarten - 1
+		rang2.takt(context.Background())
+		if w.anfrage(w.cs).Offen != 0 {
+			t.Fatal("Rang 2 springt vor der doppelten Wartezeit ein")
+		}
+		q.zeit++
+		rang2.takt(context.Background())
+		if w.anfrage(w.cs) != nil {
+			t.Fatal("Rang 2 springt nicht ein, obwohl Zustaendiger und Rang 1 fehlen")
+		}
+	})
 }
 
 // Nicht nochmal einreichen: Steht ein eingereichter Teil noch nicht im
@@ -735,5 +827,23 @@ func TestQuantenWDienst_TeilNichtDoppelt(t *testing.T) {
 	q.takt()
 	if len(d.gesendet) != 0 {
 		t.Fatalf("%d eingereichte Teile noch gemerkt", len(d.gesendet))
+	}
+}
+
+// Ein Tresor-Eintrag ohne gueltige Validatorenliste oder Nummer reicht nie
+// ein (und loest keine Panik aus).
+func TestQuantenWDienst_DarfEinreichenKaputterEintrag(t *testing.T) {
+	d := &quantenWDienst{faellig: map[string]int64{}, eingesprungen: map[string]bool{}}
+	K := strings.Repeat("ab", 32)
+	for _, e := range []*quantenWTresorEintrag{
+		{X: 1},
+		{X: 0, Validatoren: []string{"a", "b"}},
+		{X: 3, Validatoren: []string{"a", "b"}},
+	} {
+		for zeit := int64(0); zeit <= 10*quantenWStaffelWarten; zeit += quantenWStaffelWarten {
+			if d.darfEinreichen(K, e, 0, 0, zeit, map[string]bool{}) {
+				t.Fatalf("Eintrag X=%d, %d Validatoren darf einreichen", e.X, len(e.Validatoren))
+			}
+		}
 	}
 }

@@ -383,3 +383,21 @@ func TestQuantenSValidatoren_Lesen(t *testing.T) {
 		t.Fatal("zu viele angenommen")
 	}
 }
+
+// Das Werkzeug gibt die Vorlage nicht frueher verloren als die Kette: auf
+// das Urteil wartet es mindestens quantenWFristOffen plus Nachlauf, auch
+// wenn die Frist je Schritt kuerzer ist; eine laengere bleibt.
+func TestQuantenSUrteilFrist(t *testing.T) {
+	kette := time.Duration(quantenWFristOffen) * time.Second
+	for _, schritt := range []time.Duration{time.Second, 15 * time.Minute, kette} {
+		if f := quantenSUrteilFrist(schritt); f < kette+quantenSUrteilNachlauf {
+			t.Fatalf("Schritt %s: Urteil nur %s, die Kette prueft %s", schritt, f, kette)
+		}
+	}
+	if f := quantenSUrteilFrist(time.Hour); f != time.Hour {
+		t.Fatalf("laengere Frist gekuerzt: %s", f)
+	}
+	if f := quantenSUrteilFrist(time.Minute); f > kette+quantenSUrteilNachlauf {
+		t.Fatalf("Urteil unbegrenzt lang: %s", f)
+	}
+}
