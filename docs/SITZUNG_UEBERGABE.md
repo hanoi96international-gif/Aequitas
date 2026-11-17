@@ -20,8 +20,20 @@ dezentrales Quantengeld“.
     Ob der Lauf ohne Ausfall grün war, ist unbekannt (Protokollende reicht nicht).
   - **Läuft:** Pilot auf `claude/weiter-uw2p42` (#574 und Test-Korrektur). Ergebnis in der
     Zusammenfassung des Laufs (Werkzeug-Dauer, Urteil, offen x von k).
-- **PR #575 offen:** `docs/WIRTSCHAFT_STARTBETRAG.md` (bei 1.000 AEQ bleiben) und die
-  Test-Korrektur. Mergen, wenn der Pilot grün ist.
+- **Leitlinie des Betreibers (17.11. abends): „Alles muss perfekt nachvollziehbar und
+  transparent sein.“** Umgesetzt:
+  - Quellen der Wirtschaftsanalyse per Websuche geprüft, mit DOI und Prüfstand;
+    Unbelegtes gestrichen.
+  - `/api/wirtschaft/regeln` nennt `geltend`.
+  - Pilot-Läufe legen alle Testmeldungen und die ganze Ausgabe als Artefakt ab, mit SHA-256.
+  - `HEUTE.md` 3.3d listet jeden Pilot-Lauf, auch die gescheiterten.
+  - App: Die Netto-Zeile ist aufklappbar, mit beiden Buchungen (Block, Tx) und Rechenweg.
+
+  **Offen:** eine Abfrage je Runde (Topf, Empfänger, Anteil je Mensch), damit man eine
+  Runde mit Zahlen nachrechnen kann.
+- **PR #575 offen:** alles oben im Repo Aequitas plus die Test-Korrektur. Mergen, wenn der
+  Pilot grün ist. **App-PR #84 offen:** Netto-Zeile; mergen nach grüner CI, Release braucht
+  die Freigabe des Betreibers.
 - **Danach:**
   - Pilot `modus=ibm` (Freigabe `quantenhardware`, 10.400 Qubits).
   - Wirtschaft: App-Anzeige netto und Anteil am fairen Anteil (Frage an den Betreiber offen).
