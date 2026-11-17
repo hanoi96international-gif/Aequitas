@@ -260,8 +260,22 @@ beim Empfänger, Summe erhalten.
   - **Lesart:** Auf heutigen IBM-Chips macht Fehlerkorrektur je Stelle die Note
     schlechter, nicht besser. Damit ist B6 beantwortet. Längeres Halten braucht kleinere
     Gatterfehler und volle Verbindung (Ionenfalle) oder einen fehlertoleranten Codierer
-    mit Korrektur in Echtzeit. Die Messung auf dem echten Chip ist vorbereitet
-    (Workflow-Schalter `wiesner = steane`).
+    mit Korrektur in Echtzeit.
+  - **Auf der echten Maschine** (17.11.2026, `ibm_fez`, [Lauf 43986013444](https://github.com/hanoi96international-gif/Aequitas/actions/runs/43986013444),
+    IBM-Job `dbtv0apjbrss73a721l0`; 2 Stellen, 4 Noten je Fall, 1000 Schüsse):
+
+    | Wartezeit | ungeschützt | Steane | Annahme ungeschützt | Annahme Steane |
+    |---|---|---|---|---|
+    | 0 µs | 0,6 % | 4,6 % | 0,99 | 0,91 |
+    | 5 µs | 5,3 % | 11,4 % | 0,94 | 0,85 |
+    | 10 µs | 15,4 % | 27,3 % | 0,85 | 0,73 |
+    | 20 µs | 17,1 % | 24,2 % | 0,75 | 0,65 |
+    | 50 µs | 26,8 % | 40,4 % | 0,63 | 0,41 |
+
+    Der echte Chip bestätigt das Modell: Der Steane-Code ist bei jeder Wartezeit
+    schlechter. Der Chip altert die Note dabei viel schneller als sein Rauschmodell:
+    nach 5 µs 5,3 % statt 1,0 %. Note Nr. 1 (0 µs, ungeschützt): 2 Treffer, 0 Fehler,
+    echt.
 
 **Zählt das als Quantengeld?** Als Vorführung: ja, das ist der ganze Ablauf einer
 privat prüfbaren Quanten-Note mit dezentraler Prüfung – auf echter Hardware, sobald der

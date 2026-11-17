@@ -62,7 +62,8 @@ Prüfung). Punkt 6 ist beantwortet (17.11.).
      3,0 %.
    - Exakt gerechnet hilft der Code mit IBM-Werten nie. Mit Werten einer Ionenfalle hilft
      er bei 0,3–6 % Rohfehler.
-   - Der Lauf auf dem echten Chip (`wiesner = steane`) wartet auf deine Freigabe.
+   - Der echte Chip bestätigt es (`ibm_fez`, Lauf 43986013444): ohne Warten 4,6 % gegen
+     0,6 %, nach 5 µs 11,4 % gegen 5,3 %.
 7. ~~**Quantenmechanische Schranke**~~ – erledigt: Die Tabelle rechnet mit dem
    optimalen quantenmechanischen Kloner (14,64 %), nicht mehr mit einem ratenden Fälscher.
    Ob verschränkte Angriffe über mehrere Stellen mehr bringen, ist Frage 1 im Prüfauftrag
