@@ -1,6 +1,7 @@
 package keeper
 
 import (
+	"context"
 	"encoding/hex"
 	"strings"
 	"testing"
@@ -175,5 +176,44 @@ func TestQuantenWSDienst_BestaetigenMissbrauch(t *testing.T) {
 	w := q.anfrageBestaetigen(1)
 	if _, _, err := d.bestaetigen(w); err == nil {
 		t.Fatal("W-Auftrag fuer ein schon bestaetigtes S-K")
+	}
+}
+
+// Wie TestQuantenWDienst_TeilNichtDoppelt, fuer Variante S: ein eingereichter
+// Teil, der noch nicht im Stand steht, wird erst nach quantenWStaffelWarten
+// erneut eingereicht.
+func TestQuantenWSDienst_TeilNichtDoppelt(t *testing.T) {
+	q := neueQsDienste(t, 128, 80)
+	s, w := q.s, q.w
+	q.ausgeben(t)
+	q.zeit += 10
+	w.annehmen(s.anmeldenTx(s.stelle[0], 0, s.probe[0], s.vorlage(0, w.keys[w.anna])), q.zeit)
+	q.zeit += 5
+	d := q.d[quantenWZustaendig(w.p.K, 0, len(w.val))-1]
+	echt := d.einreichen
+	gesendet := 0
+	d.einreichen = func(art string, x QuantenWAngaben) error {
+		if art == quantenWSOffenlegenTxArt {
+			gesendet++
+			return nil // angenommen, aber noch nicht im Stand
+		}
+		return echt(art, x)
+	}
+	d.takt(context.Background())
+	q.zeit += quantenWStaffelWarten - 1
+	d.takt(context.Background())
+	if gesendet != 1 {
+		t.Fatalf("%d-mal eingereicht vor der Wartezeit, erwartet 1", gesendet)
+	}
+	q.zeit++
+	d.takt(context.Background())
+	if gesendet != 2 {
+		t.Fatalf("nach der Wartezeit nicht erneut eingereicht (%d)", gesendet)
+	}
+	d.einreichen = echt
+	q.zeit += quantenWStaffelWarten
+	d.takt(context.Background())
+	if s.token(w.cs) != nil || w.stand(w.cs, s.stelle[0]) != 10_000_000 {
+		t.Fatalf("Einloesen nicht durch: Stelle %d", w.stand(w.cs, s.stelle[0]))
 	}
 }
