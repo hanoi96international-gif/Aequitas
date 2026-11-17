@@ -21,6 +21,12 @@ SICHERUNG_SSH_KEY erlaubt -- einem Schluessel, der auf C1 nur den erzwungenen
 Befehl deploy/sicherung/sicherung-befehl.sh ausfuehren darf. Jedes andere
 Secret dort, die Klammerform oder ein anderer Workflow in `sicherung` ist ein
 Verstoss: sonst kaeme ein Root-Schluessel ohne Freigabe an die Reihe.
+
+Zweite Ausnahme (17.11.2026): die Umgebung `quantenhardware` (eigene Freigabe)
+fuer einen Mess-Job in einem Server-Workflow (quanten-s-ausgabe.yml: erst
+auf dem IBM-Chip messen, dann auf C1 ausgeben). Dort ist NUR
+secrets.IBM_QUANTUM_TOKEN erlaubt -- kein Server-Schluessel, keine
+Klammerform; der Job auf dem Server laeuft weiter in `produktion`.
 """
 import glob
 import os
@@ -34,6 +40,8 @@ SICHERUNG = "sicherung"
 SICHERUNG_WORKFLOWS = {"backup-ledger.yml", "backup-biometrie-verschluesselt.yml"}
 SICHERUNG_SECRET = "SICHERUNG_SSH_KEY"
 DARF_PUSH = {"deploy-c1.yml"}
+QUANTEN = "quantenhardware"
+QUANTEN_SECRETS = {"IBM_QUANTUM_TOKEN"}
 # Ein Secret per Name mit SSH/KEY -- oder per Klammer, deren Name erst zur
 # Laufzeit feststeht (secrets[matrix.key]); die zaehlt immer als Schluessel.
 SCHLUESSEL = re.compile(r"secrets\.[A-Z0-9_]*(SSH|KEY)|secrets\s*\[", re.I)
@@ -62,6 +70,10 @@ def befunde(name, text):
             for m in GEHEIM_NAME.finditer(text_job):
                 if m.group(2) or m.group(1) != SICHERUNG_SECRET:
                     fehler.append(f"{name}: Job '{job}' in '{SICHERUNG}' nutzt {m.group(0)!r} -- dort ist nur secrets.{SICHERUNG_SECRET} erlaubt")
+        elif umgebung == QUANTEN:
+            for m in GEHEIM_NAME.finditer(text_job):
+                if m.group(2) or m.group(1) not in QUANTEN_SECRETS:
+                    fehler.append(f"{name}: Job '{job}' in '{QUANTEN}' nutzt {m.group(0)!r} -- dort ist nur {sorted(QUANTEN_SECRETS)} erlaubt")
         elif GEHEIM.search(text_job) and umgebung != UMGEBUNG:
             fehler.append(f"{name}: Job '{job}' nutzt secrets ohne 'environment: {UMGEBUNG}'")
     return fehler
@@ -94,6 +106,16 @@ def selbsttest():
         ("test.yml", wf(sich, "secrets.SICHERUNG_SSH_KEY"), 1),
         ("backup-ledger.yml", "on: {push: {}}\njobs:\n  j:\n    runs-on: x\n" + sich +
          "    steps:\n      - env: {KEY: '${{ secrets.SICHERUNG_SSH_KEY }}'}\n        run: echo\n", 1),
+    ]
+    qh = "    environment: quantenhardware\n"
+    zwei = lambda key: (wf(mit, "secrets.CONTABO_SSH_KEY") + "  m:\n    runs-on: x\n" + qh +
+                        "    steps:\n      - env: {T: '${{ " + key + " }}'}\n        run: echo\n")
+    faelle += [
+        ("quanten-s-ausgabe.yml", zwei("secrets.IBM_QUANTUM_TOKEN"), 0),
+        ("quanten-s-ausgabe.yml", zwei("secrets.CONTABO_SSH_KEY"), 1),
+        ("quanten-s-ausgabe.yml", zwei("secrets[matrix.k]"), 1),
+        ("quanten-s-ausgabe.yml", zwei("secrets.QUANTINUUM_TOKEN"), 1),
+        ("quanten-s-ausgabe.yml", zwei("secrets.IBM_QUANTUM_TOKEN_X"), 1),
     ]
     falsch = 0
     for i, (name, text, n) in enumerate(faelle):

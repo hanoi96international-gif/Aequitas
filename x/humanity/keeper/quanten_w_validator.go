@@ -624,12 +624,35 @@ func quantenWGleicherAuftrag(e *quantenWTresorEintrag, q QuantenWBestaetigenAnfr
 		e.Art == q.Art && slices.Equal(e.Proben, q.Proben)
 }
 
-// praegerTauglich: ein Mensch mit mindestens der kleinsten Deckung.
+// praegerTauglich: mindestens die kleinste Deckung, und entweder selbst ein
+// Mensch oder die Signieradresse eines Validators, die im Validator-Register
+// an einen Menschen gebunden ist (so gibt C1 mit dem eigenen Schluessel aus,
+// quanten_s_ausgabe.go). Das Register erlaubt je Mensch EINE Signieradresse:
+// ein Mensch belegt damit hoechstens doppelt so viele offene Plaetze
+// (quantenWOffeneJePraeger), die Gesamtgrenze quantenWOffeneHoechstens bleibt.
+// Register nicht lesbar = nicht tauglich (fail-closed).
 // var: Tests ohne Datenbank setzen ein.
 var quantenWPraegerTauglich = func(cs *ChainState, wallet string) bool {
-	cs.ensureAccountLoadedCtx(context.Background(), wallet)
+	ctx := context.Background()
+	cs.ensureAccountLoadedCtx(ctx, wallet)
 	acc, ok := cs.accounts.Get(wallet)
-	return ok && acc.IsHuman && acc.Balance.Micro() >= quantenMindestDeckungMik
+	if !ok || acc.Balance.Micro() < quantenMindestDeckungMik {
+		return false
+	}
+	if acc.IsHuman {
+		return true
+	}
+	// Oeffentlicher Eingang: die Abfrage des Registers hat eine feste Frist.
+	rctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	b, err := quantenWBetreiberVon(cs, rctx, wallet)
+	b = strings.ToLower(b)
+	if err != nil || b == "" {
+		return false
+	}
+	cs.ensureAccountLoadedCtx(ctx, b)
+	mensch, ok := cs.accounts.Get(b)
+	return ok && mensch.IsHuman
 }
 
 func (d *quantenWDienst) praegerTauglich(wallet string) bool {

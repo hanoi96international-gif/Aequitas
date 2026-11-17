@@ -1,0 +1,150 @@
+# Die erste echte Ausgabe eines S-Tokens (Quantengeld Variante S) auf dem
+# Hauptnetz, mit IBM als Geraet der Inhaberin.
+#
+#   1. messen (Umgebung quantenhardware, Freigabe): hardware_ibm.py
+#      --s-messen -- 1680 Qubits in BB84-Zustaenden, sofort gemessen.
+#      Modus rauschen: dasselbe mit dem Rauschmodell, NUR die Messung, keine
+#      Ausgabe (Probe, kostet nichts).
+#   2. ausgeben (Umgebung produktion, Freigabe): deploy/quanten-s-ausgabe.sh
+#      auf C1 -- `aequitasd quanten-s-ausgabe` im Knoten-Container mit dem
+#      Schluessel von C1: Ausgabe (C1 ist Ausgeber und einziger Validator),
+#      Bindung und Wahl der Inhaberin, Doppelvorlage an der falschen Stelle
+#      (muss abgewiesen werden), ehrliche Vorlage an C1 (Wert kommt zurueck).
+#
+# Voraussetzungen: Stichtag von W/S erreicht (quanten_w.ab in /api/status),
+# C1 im Validator-Register an einen Menschen gebunden, auf der Signieradresse
+# von C1 mindestens die Deckung (Standard 1 AEQ).
+#
+# Die Messung geht als Job-Ausgabe von 1 nach 2. Sie ist in diesem Lauf kein
+# Schutz des Werts: anmelden duerfen nur die zwei bei der Ausgabe
+# festgelegten Stellen (C1 und ein Wegwerfschluessel, der nur im Speicher
+# des Werkzeugs lebt), und der Token wird im selben Lauf eingeloest.
+name: Quantengeld S -- erste Ausgabe auf dem Hauptnetz
+
+on:
+  workflow_dispatch:
+    inputs:
+      modus:
+        description: "ibm = echter Chip und Ausgabe auf C1; rauschen = nur Messung mit dem Rauschmodell (Probe)"
+        type: choice
+        options: [rauschen, ibm]
+        default: rauschen
+      deckung:
+        description: "Deckung des Tokens in Mikro-AEQ (1000000 = 1 AEQ, hoechstens 10000000)"
+        default: "1000000"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quanten-s-ausgabe
+  cancel-in-progress: false
+
+env:
+  C1: 188.172.229.121
+  C1_HOSTKEY: SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA
+  NETZ: https://aequitas.digital
+
+jobs:
+  rauschen:
+    if: inputs.modus == 'rauschen'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+      - run: pip install --require-hashes --no-deps -r forschung/quantengeld/hardware-anforderungen.txt
+      - run: python3 -I forschung/quantengeld/hardware_ibm.py --selbsttest
+      - run: python3 -I forschung/quantengeld/hardware_ibm.py --rauschen FakeMarrakesh --s-messen "$RUNNER_TEMP/messung.json"
+
+  messen:
+    if: inputs.modus == 'ibm'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    environment: quantenhardware
+    outputs:
+      messung: ${{ steps.lauf.outputs.messung }}
+    steps:
+      - name: Eingabe pruefen
+        env:
+          DECKUNG: ${{ inputs.deckung }}
+        run: |
+          set -euo pipefail
+          [[ "$DECKUNG" =~ ^[1-9][0-9]{6,7}$ ]] && [ "$DECKUNG" -le 10000000 ] || { echo "::error::Deckung $DECKUNG (1000000 bis 10000000)"; exit 1; }
+      - name: Stichtag erreicht?
+        run: |
+          set -euo pipefail
+          AB=$(curl -fsS -m 15 "$NETZ/api/status" | jq -r '.quanten_w.ab // empty')
+          [[ "$AB" =~ ^[0-9]{10}$ ]] || { echo "::error::quanten_w.ab nicht lesbar -- laeuft #568 auf C1?"; exit 1; }
+          [ "$(date +%s)" -ge "$AB" ] || { echo "::error::W/S erst ab $(date -u -d @"$AB") aktiv"; exit 1; }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+      - run: pip install --require-hashes --no-deps -r forschung/quantengeld/hardware-anforderungen.txt
+      - run: python3 -I forschung/quantengeld/hardware_ibm.py --selbsttest
+      - name: Messung auf dem IBM-Chip
+        id: lauf
+        env:
+          IBM_QUANTUM_TOKEN: ${{ secrets.IBM_QUANTUM_TOKEN }}
+          IBM_QUANTUM_INSTANCE: ${{ vars.IBM_QUANTUM_INSTANCE }}
+          IBM_QUANTUM_BACKEND: ${{ vars.IBM_QUANTUM_BACKEND }}
+        run: |
+          set -euo pipefail
+          python3 -I forschung/quantengeld/hardware_ibm.py --ibm --s-messen "$RUNNER_TEMP/messung.json"
+          echo "messung=$(gzip -9c "$RUNNER_TEMP/messung.json" | base64 -w0)" >> "$GITHUB_OUTPUT"
+          rm -f "$RUNNER_TEMP/messung.json"
+
+  ausgeben:
+    needs: messen
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: produktion
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Schluessel und Host-Pruefung
+        env:
+          KEY: ${{ secrets.CONTABO_SSH_KEY }}
+        run: |
+          set -eu
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s' "$KEY" | perl -0777 -pe 's/\r//g; s/(?:-|\xE2\x80[\x93\x94])+ *(BEGIN|END) OPENSSH PRIVATE KEY *(?:-|\xE2\x80[\x93\x94])+/-----$1 OPENSSH PRIVATE KEY-----/g; unless (/-----BEGIN OPENSSH PRIVATE KEY-----/) { (my $z = $_) =~ s/\s//g; if ($z =~ m|^[A-Za-z0-9+/]+=*$|) { require MIME::Base64; my $d = MIME::Base64::decode_base64($z); if ($d =~ /-----BEGIN OPENSSH PRIVATE KEY-----/) { $_ = $d; } elsif ($d =~ /\Aopenssh-key-v1\x00/) { $_ = qq{-----BEGIN OPENSSH PRIVATE KEY-----\n$z\n-----END OPENSSH PRIVATE KEY-----\n}; } } } s/\s*(-----BEGIN OPENSSH PRIVATE KEY-----)\s*(.*?)\s*(-----END OPENSSH PRIVATE KEY-----)\s*/my ($k, $b, $f) = ($1, $2, $3); $b =~ s|\s||g; $b =~ s|(.{70})|$1\n|g; $b =~ s|\n\z||; "$k\n$b\n$f\n"/se' > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -t ed25519 $C1 2>/dev/null > ~/.ssh/kh1
+          ssh-keygen -lf ~/.ssh/kh1 | awk '{print $2}' | grep -qx "$C1_HOSTKEY" || { echo "::error::Host-Schluessel von C1 passt nicht"; exit 1; }
+          cp ~/.ssh/kh1 ~/.ssh/known_hosts
+      - name: Ausgabe auf C1
+        env:
+          MESSUNG: ${{ needs.messen.outputs.messung }}
+          DECKUNG: ${{ inputs.deckung }}
+        run: |
+          set -euo pipefail
+          [[ "$DECKUNG" =~ ^[1-9][0-9]{6,7}$ ]] && [ "$DECKUNG" -le 10000000 ] || { echo "::error::Deckung $DECKUNG"; exit 1; }
+          umask 077
+          printf '%s' "$MESSUNG" | base64 -d | gunzip -c > "$RUNNER_TEMP/m.json"
+          jq -e '.n == 1680 and (.x | length) == 1680' "$RUNNER_TEMP/m.json" >/dev/null || { echo "::error::Messung unvollstaendig"; exit 1; }
+          ssh -o BatchMode=yes root@$C1 'umask 077; cat > /root/qs-messung.json' < "$RUNNER_TEMP/m.json"
+          rm -f "$RUNNER_TEMP/m.json"
+          scp -q -o BatchMode=yes deploy/quanten-s-ausgabe.sh root@$C1:/root/quanten-s-ausgabe.sh
+          set +e
+          ssh -o BatchMode=yes root@$C1 "DECKUNG=$DECKUNG bash /root/quanten-s-ausgabe.sh" > ergebnis.json
+          RC=$?
+          set -e
+          cat ergebnis.json
+          {
+            echo "## Quantengeld S: erste Ausgabe auf dem Hauptnetz"
+            echo
+            if [ "$RC" = 0 ]; then echo "**Erfolg:** Doppelvorlage abgewiesen, ehrliche Vorlage eingeloest."; else echo "**Gescheitert (Exit $RC)** -- Verlauf im Protokoll."; fi
+            echo
+            echo '```json'
+            cat ergebnis.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$RC"
