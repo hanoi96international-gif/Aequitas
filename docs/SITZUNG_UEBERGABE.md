@@ -28,7 +28,7 @@ für dezentrales Quantengeld“).
 - Lokale Go-Tests: Erst `df -h /` prüfen. Bei vollem Platz `go clean -cache`. Die
   Fehlermeldung „MB of disk left“ kommt vom Container, nicht vom Code.
 
-## Hauptaugenmerk: dezentrales Quantengeld (Stand 17.11. ~07:30 UTC)
+## Hauptaugenmerk: dezentrales Quantengeld (Stand 17.11. ~13:30 UTC)
 
 **Gemergt (#563):** Register von W und S als eigene Tabelle `quanten_w_eintraege`
 (`quanten_w_tabelle.go`): eine Zeile je Note, Token und toter Note, nur Geändertes
@@ -61,8 +61,11 @@ unten).
   erreichbar. Geprüft wurde gegen die installierten Pakete (Expo 54.0.35, expo-router
   6.0.24, React Native 0.81.5).
 
-**W/S im Hauptnetz freigeschaltet (Entscheidung des Betreibers, 17.11.):**
+**W/S im Hauptnetz freigeschaltet (Entscheidung des Betreibers, 17.11., #568 gemergt):**
 - Stichtag 18.11.2026 18:00 UTC (`quantenWAbUnix = 1795024800`).
+- **Deploy auf C1 wartet auf die Freigabe des Betreibers:**
+  [44092755346](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44092755346).
+  Nach dem Deploy prüfen: `/api/status` zeigt `quanten_w.ab = 1795024800`.
 - Ohne Gutachten und ohne Pilot mit Partner; die Risiken sind im Code und im PR genannt.
 - Deploy-Wächter `.github/neustart/quanten-w-nicht-verpasst.sh` mit Test; `/api/status`
   nennt `quanten_w.ab`.
@@ -238,9 +241,12 @@ analysiert, S3-Bausteine), #560 (S3 über eine echte Leitung, Mindestgröße der
 #558.
 
 **Wartet auf Freigabe des Betreibers:**
-- Deploy von #557 auf C1 ([43974452277](https://github.com/hanoi96international-gif/Aequitas/actions/runs/43974452277)).
+- Deploy von #568 auf C1 ([44092755346](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44092755346)),
+  spätestens 18.11. 17:30 UTC.
 
 Gemergt am 17.11. (Sitzung „Weiter“):
+- #568 (W/S im Hauptnetz freischalten, Stichtag 18.11. 18:00 UTC)
+- #565, #566, #567 (W2e gerechnet und entschieden, Übergabe)
 - #563 (W/S-Register als Tabelle; B5 gerechnet, `wiesner_mehrstufig.py`)
 - #559 (Übergabe)
 
