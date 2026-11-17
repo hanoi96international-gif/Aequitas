@@ -24,7 +24,14 @@ setze AEQUITAS_MAX_TXS_PER_BLOCK 7000
 setze AEQUITAS_COMPRESS_BLOCK_PAYLOAD 1
 setze AEQUITAS_DB_MAX_CONNS 100
 setze AEQUITAS_PRODUCE_WHEN_BACKLOG_SHRINKING 1
-setze AEQUITAS_RPC_RATE_LIMIT_MAX 1000
+# Ratengrenze je IP wieder auf der Vorgabe des Knotens (200 je 10 s, evm_rpc.go).
+# Bis zum 17.11.2026 stand hier 1000 -- ein Wert fuer Lastlaeufe, den der Knoten
+# selbst beim Start als "intended for a load-test box only" meldet. C1 ist das
+# Hauptnetz mit echten Nutzern; vor C1 liegt nur Caddy (kein CDN), der Knoten
+# sieht also die echte Adresse jedes Nutzers. Schutzgrenzen werden fuer Messungen
+# nicht gelockert (AGENTS.md). Leer gesetzt, damit ein erneuter Lauf einen alten
+# Wert auch entfernt; leer heisst im Knoten: Vorgabe.
+setze AEQUITAS_RPC_RATE_LIMIT_MAX ""
 setze AEQUITAS_RPC_QUIET_TX 1
 setze AEQUITAS_EIGENLAST_BREMSE 0
 setze AEQUITAS_PEER_LAG_BODEN 1500
@@ -61,6 +68,12 @@ for i in $(seq 1 72); do
 done
 echo "$S" | grep -qE '"nimmt_an": ?true' || { echo "FEHLER: C1 nimmt nach dem Neustart nicht an"; exit 1; }
 echo "C1 nimmt an."
+# Die Ratengrenze muss nach dem Neustart auf der Vorgabe stehen: der Knoten
+# meldet jede Anhebung beim Start mit "rate limit raised".
+if docker logs --since 10m aequitas-node 2>&1 | grep -q 'Per-IP RPC rate limit raised'; then
+  echo "FEHLER: Ratengrenze je IP nach dem Neustart noch angehoben"; exit 1
+fi
+echo "Ratengrenze je IP: Vorgabe."
 # Der Speicherkorb muss nach dem Neustart wirklich an sein -- sonst laeuft der
 # Knoten still auf dem alten Weg weiter, waehrend die .env etwas anderes sagt.
 echo "$S" | python3 -c "
