@@ -166,7 +166,7 @@ jobs:
             fi
             echo
             echo '```'
-            grep -E 'Messung aus|faellt aus|Variante S auf vier Knoten|^\s*--- (PASS|FAIL)|^(ok|FAIL)\s' out.txt || true
+            grep -E 'Messung aus|faellt aus|Variante S auf vier Knoten|Werkzeug \(|Urteil|offen [0-9]+ von|^\s*--- (PASS|FAIL)|^(ok|FAIL)\s' out.txt || true
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           exit "$RC"
