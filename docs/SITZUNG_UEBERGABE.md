@@ -99,6 +99,25 @@ Neu gebaut, darum: **lokale Arbeit sofort committen und pushen.**
 - Der erste Versuch scheiterte, weil die **Signieradresse von C1**
   (`0x3066639af1653325100c1074a9696612dbdc42dc`) keine Deckung hatte. `0x0be8…d016` ist die
   Betreiber-Wallet, nicht C1. Der Betreiber hat 2 AEQ an C1 überwiesen (1 AEQ bleibt dort).
+- **Stand 17.11. ~19:50 UTC (Sitzung „Übergabe“, Nutzungslimit fast erreicht):**
+  - **PR #572 offen** (Zweig `claude/ubergabe-v2cgv1`): Sicherheitsprüfung als Kommentar
+    (keine Einwände). CI abwarten, dann Squash-Merge mit voller SHA, danach C1-Deploy
+    freigeben lassen. Inhalt: Pilot-Workflow, Ratengrenze C1, Fuß 15.11.2026,
+    `kohaerent.py`, `sdp_nachpruefung.py`, Teil-Kürzung, Rest-Wiederverwendung.
+  - **Befund und Korrektur (in #572):** Bei voller Tabellengröße (k = 5.200, 3 von 4) war ein
+    Teil der Offenlegung (64 Stellen, 14 Pfadknoten) > 64 KiB (`zumLeiterRumpfHoechstens`)
+    → 413, Offenlegung blieb bei 0. Jetzt kürzt der Dienst Teile (`quantenWTeilKuerzen`) und
+    verwendet den Rest wieder (`restMerken/restNehmen`). Keine Grenze gelockert, keine
+    Kettenregel geändert.
+  - **Strenge Schranke (`kohaerent.py`):** Gegen jeden verschränkten und adaptiven Angriff
+    hält die Tabelle 2⁻⁴⁰ mit 27–43 Bit Reserve; exakte SDPs bestätigen 1 und 2 Stellen
+    (`sdp_nachpruefung.py`, braucht cvxpy). Möglich nach Gutachten: k 550 statt 840.
+  - **Pilot lokal in voller Größe** lief zuletzt (Präfix `aeq_pw_`): Offenlegung kommt voran.
+    Nächster Schritt: Ergebnis prüfen; falls die Frist (15 min) knapp wird, Takt/Teile messen.
+    **Nie zwei Vier-Knoten-Tests gleichzeitig mit demselben Präfix** (`DROP ... FORCE`).
+  - Nach dem Merge: `quanten-s-pilot.yml` mit `modus=rauschen` selbst starten; `modus=ibm`
+    braucht die Freigabe in `quantenhardware` (k = 5.200 → 10.400 Qubits).
+  - App 1.24.1 komplett veröffentlicht (APK und IPA).
 - **Stand 17.11. ~18:45 UTC (Sitzung „Übergabe“):**
   - **#571 gemergt** (Website `/quanten`, S mit mehreren Validatoren); Sicherheitsprüfung als
     PR-Kommentar. **C1-Deploy wartet auf Freigabe:**
