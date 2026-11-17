@@ -99,7 +99,8 @@ const (
 	quantenWAlt    int64 = 86400
 	// Koerper der Endpunkte: ein Teil der Offenlegung mit 64 Stellen, 16
 	// Anteilen und 14 Pfadknoten je Stelle sind ~110 KB JSON; eine Antwort
-	// mit 8192 Bits ~8 KB.
+	// mit 8192 Bits ~8 KB. Die Routen liegen hinter zumLeiter (64 KiB): der
+	// Validator-Dienst kuerzt Teile darunter (quantenWTeilKuerzen).
 	quantenWKoerperMax = 160 << 10
 	burstQuantenWJeIP  = 20
 	// quantenWBuchSpiel: wie weit BuchAt (die Zeit der Annahme, mit der jeder

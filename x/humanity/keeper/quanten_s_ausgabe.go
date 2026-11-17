@@ -443,18 +443,38 @@ func quantenSZahl(v interface{}) int {
 func quantenSWartenAuf(ctx context.Context, netz quantenSNetz, K string, frist time.Duration, was string, fertig func(map[string]interface{}) bool) (map[string]interface{}, error) {
 	ctx, cancel := context.WithTimeout(ctx, frist)
 	defer cancel()
+	var zuletzt map[string]interface{}
 	for {
 		s, err := netz.stand(ctx, K)
 		if err == nil && fertig(s) {
 			return s, nil
 		}
+		if err == nil && s != nil {
+			zuletzt = s
+		}
 		if ctx.Err() != nil {
-			return nil, fmt.Errorf("%s: nicht in %s (%v)", was, frist, err)
+			return nil, fmt.Errorf("%s: nicht in %s (%v; %s)", was, frist, err, quantenSStandKurz(zuletzt))
 		}
 		if err := netz.warten(ctx); err != nil {
-			return nil, fmt.Errorf("%s: nicht in %s", was, frist)
+			return nil, fmt.Errorf("%s: nicht in %s (%s)", was, frist, quantenSStandKurz(zuletzt))
 		}
 	}
+}
+
+// quantenSStandKurz: der zuletzt gelesene Stand in einer Zeile (Fehlversuche,
+// Anmeldung: offengelegt von Stichprobe) -- damit ein Abbruch sagt, WO es
+// haengt, ohne die Stichprobe oder Werte auszugeben.
+func quantenSStandKurz(s map[string]interface{}) string {
+	if s == nil {
+		return "kein Stand gelesen"
+	}
+	t := fmt.Sprintf("fehl %v", s["fehl"])
+	a, ok := s["anmeldung"].(map[string]interface{})
+	if !ok {
+		return t + ", keine Anmeldung"
+	}
+	probe, _ := a["probe"].([]interface{})
+	return fmt.Sprintf("%s, Anmeldung von Stelle %v: offen %v von %d", t, a["b"], a["offen"], len(probe))
 }
 
 // ------------------------------------------------------------ HTTP

@@ -80,6 +80,20 @@ Prüfung) ist gerechnet, der Einbau in Spezifikation und Knoten ist offen (W2e).
    optimalen quantenmechanischen Kloner (14,64 %), nicht mehr mit einem ratenden Fälscher.
    Ob verschränkte Angriffe über mehrere Stellen mehr bringen, ist Frage 1 im Prüfauftrag
    (`docs/QUANTENGELD_PRUEFAUFTRAG.md`).
+   **Beantwortet für nicht-adaptive Angriffe (17.11., `kohaerent.py`):** Sie bringen nichts.
+   Das Optimum über alle verschränkten Strategien ist ein Produkt. Die strenge Schranke
+   für „beide bestehen“ hält alle Tabelleneinträge mit 27–43 Bit Reserve. Korrektur:
+   „je Kopie“ war nicht vorsichtig (asymmetrischer Kloner); maßgeblich ist „beide“.
+   **Adaptiv bei W (Kopie B nach der Prüfung von A):** Argument in `kohaerent.py`
+   (ADAPTIV). Jede Rückmeldung betrifft nur ihre Stelle; mit der Dualität für Strategien
+   (Gutoski und Watrous 2007) bleibt das Optimum ein Produkt, also dieselbe Schranke. Das
+   Argument liegt dem Gutachten zur Prüfung vor. Numerisch bestätigt
+   (`sdp_nachpruefung.py`): Das exakte SDP über alle verschränkten und adaptiven
+   Strategien ergibt für zwei Stellen genau das Quadrat des Werts für eine Stelle. Bei S entfällt der Fall, weil die
+   Stellen ohne Netz prüfen.
+   **Möglich, nicht gebaut:** Mit der strengen Schranke reichten bei f = 0 schon k = 550
+   statt 840, bei t = 3, v = 4 k = 3.400 statt 5.200. Kleinere Prüfgrößen erst nach dem
+   Gutachten.
 
 ## C. Weiter analysieren: Lösungen, die ohne Quantenspeicher auskommen
 

@@ -2,8 +2,8 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 17.11.2026 ~16 UTC (S-Ausgabe-Werkzeug im PR), Sitzung „Weitermachen“ (Zweig
-`claude/weitermachen-qbkbfs`); davor ~10 UTC nach #566 und App #79, Sitzung „Weiter“ (Auftrag des Betreibers: „Alles erledigen
+Stand: 17.11.2026 ~18:45 UTC, Sitzung „Übergabe“ (Zweig `claude/ubergabe-v2cgv1`, alle
+vier Repos); davor ~18:30 UTC Sitzung „Weitermachen“ (Zweig `claude/weitermachen-qbkbfs`); davor ~10 UTC nach #566 und App #79, Sitzung „Weiter“ (Auftrag des Betreibers: „Alles erledigen
 für dezentrales Quantengeld“).
 
 ## Arbeitsweise (vom Betreiber festgelegt)
@@ -99,19 +99,61 @@ Neu gebaut, darum: **lokale Arbeit sofort committen und pushen.**
 - Der erste Versuch scheiterte, weil die **Signieradresse von C1**
   (`0x3066639af1653325100c1074a9696612dbdc42dc`) keine Deckung hatte. `0x0be8…d016` ist die
   Betreiber-Wallet, nicht C1. Der Betreiber hat 2 AEQ an C1 überwiesen (1 AEQ bleibt dort).
-- **Stand 17.11. ~18:30 UTC (Sitzungsende am Nutzungslimit):**
-  - PR #571 (Website `/quanten`, Schild und Band auf der Startseite, Leitsatz, FAQ, Testfix
-    Lebensnachweis, dazu S mit mehreren Validatoren) offen: CI abwarten, mergen, dann
-    C1-Deploy freigeben lassen.
-  - S mit mehreren Validatoren: `aequitasd quanten-s-ausgabe --validatoren adr=api,... --t N`;
-    `TestVierKnotenQuantenS_RealDB` und `...Ausfall_RealDB` (3 von 4, ein Knoten faellt aus)
-    lokal gruen. Gegenprobe t=4 bei Ausfall nicht zu Ende gelaufen (abgebrochen).
-  - App: #81, #82 gemergt; PR #83 (1.24.1) offen -> mergen, dann build-apk/build-ios und
-    release-apk/release-ios v1.24.1 (Freigaben Betreiber). iOS-Release 1.24.0 wartet auf Freigabe.
-- **Befund im Protokoll:** C1 läuft mit `AEQUITAS_RPC_RATE_LIMIT_MAX` (1000 je 10 s statt 200)
-  und `AEQUITAS_RPC_QUIET_TX=1`; laut Knoten nur für Lastprüfstände gedacht. Prüfen und
-  zurücksetzen (Schutzgrenzen nicht lockern, AGENTS.md).
-- App 1.24.0 (App #80) gemergt; Bau läuft, Veröffentlichung wartet auf Freigaben.
+- **Stand 17.11. ~19:50 UTC (Sitzung „Übergabe“, Nutzungslimit fast erreicht):**
+  - **PR #572 offen** (Zweig `claude/ubergabe-v2cgv1`): Sicherheitsprüfung als Kommentar
+    (keine Einwände). CI abwarten, dann Squash-Merge mit voller SHA, danach C1-Deploy
+    freigeben lassen. Inhalt: Pilot-Workflow, Ratengrenze C1, Fuß 15.11.2026,
+    `kohaerent.py`, `sdp_nachpruefung.py`, Teil-Kürzung, Rest-Wiederverwendung.
+  - **Befund und Korrektur (in #572):** Bei voller Tabellengröße (k = 5.200, 3 von 4) war ein
+    Teil der Offenlegung (64 Stellen, 14 Pfadknoten) > 64 KiB (`zumLeiterRumpfHoechstens`)
+    → 413, Offenlegung blieb bei 0. Jetzt kürzt der Dienst Teile (`quantenWTeilKuerzen`) und
+    verwendet den Rest wieder (`restMerken/restNehmen`). Keine Grenze gelockert, keine
+    Kettenregel geändert.
+  - **Strenge Schranke (`kohaerent.py`):** Gegen jeden verschränkten und adaptiven Angriff
+    hält die Tabelle 2⁻⁴⁰ mit 27–43 Bit Reserve; exakte SDPs bestätigen 1 und 2 Stellen
+    (`sdp_nachpruefung.py`, braucht cvxpy). Möglich nach Gutachten: k 550 statt 840.
+  - **Pilot lokal in voller Größe** lief zuletzt (Präfix `aeq_pw_`): Offenlegung kommt voran.
+    Gemessen mit Kürzung, Rest und eigener Adresse je Knoten: ~224 Stellen/min, also
+    ~23 min für 5.200 Stellen > 15 min Frist des Werkzeugs (Kette: 30 min). Vermuteter
+    Engpass: Burst-Grenze beim Einreichen (`burstQuantenWJeIP` = 20/min je IP) bei
+    ~32 Stellen je Teil -- NICHT lockern. Nächste Schritte: (1) mit Diagnose messen,
+    welche Grenze bindet; (2) mehr Stellen je Einreichung ohne Grenzänderung (z. B. Teile
+    nicht halbieren, sondern auf das Budget genau zuschneiden); (3) Frist des Werkzeugs
+    für volle Größe an die Kettenfrist anlehnen (25 min), im Test ebenso.
+    **Nie zwei Vier-Knoten-Tests gleichzeitig mit demselben Präfix** (`DROP ... FORCE`).
+  - Nach dem Merge: `quanten-s-pilot.yml` mit `modus=rauschen` selbst starten; `modus=ibm`
+    braucht die Freigabe in `quantenhardware` (k = 5.200 → 10.400 Qubits).
+  - App 1.24.1 komplett veröffentlicht (APK und IPA).
+- **Stand 17.11. ~18:45 UTC (Sitzung „Übergabe“):**
+  - **#571 gemergt** (Website `/quanten`, S mit mehreren Validatoren); Sicherheitsprüfung als
+    PR-Kommentar. **C1-Deploy wartet auf Freigabe:**
+    [44147906409](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44147906409).
+  - **Gegenprobe t = 4 bei Ausfall:** erster Lauf ungültig (zwei Vier-Knoten-Tests liefen
+    gleichzeitig auf denselben Datenbanken `aeq_vier_0..3`). **Zwei Vier-Knoten-Tests nie
+    gleichzeitig ohne eigenes `AEQUITAS_VIER_DB_PRAEFIX` laufen lassen** -- der zweite
+    löscht dem ersten die Datenbanken (`DROP ... WITH (FORCE)`), die Knoten laufen
+    auseinander (tausende StateRoot-Abweichungen). Wiederholung allein: Ergebnis als
+    Kommentar an #571.
+  - **Pilot mit vier Validatoren auf echter Hardware** (PR dieser Sitzung):
+    `quanten-s-pilot.yml` misst auf IBM (`quantenhardware`) oder im Rauschmodell und lässt
+    vier echte Knoten im Job prägen, Doppelvorlage abweisen, einlösen (3 von 4, mit und ohne
+    Ausfall). Kein Server, keine Server-Schlüssel. Der Vier-Knoten-Test liest die Messung
+    aus `AEQUITAS_QS_MESSUNG`. Lokal mit 1.680 Stellen grün (420 s, 3/831 Fehler, vier
+    Knoten gleich). Ehrliche Grenze: 840 Stellen je Stelle, die Tabelle verlangt für 3 von 4
+    5.200 -- Ablauf, nicht volle Sicherheitsstufe. Nach dem Merge: Modus `rauschen` selbst
+    starten, Modus `ibm` braucht die Freigabe in `quantenhardware`.
+  - **Ratengrenze C1:** `perf-c1-setzen.sh` setzt `AEQUITAS_RPC_RATE_LIMIT_MAX` jetzt leer
+    (Vorgabe 200 je 10 s) und bricht ab, wenn der Knoten noch eine Anhebung meldet (im
+    selben PR, Test `TestRPCRatengrenzeAusUmgebung`). Wirksam erst, wenn der Betreiber
+    `perf-c1.yml` startet und freigibt. Vor C1 liegt nur Caddy (kein CDN), die Vorgabe
+    trifft also je Nutzer. `AEQUITAS_RPC_QUIET_TX=1` bleibt (nur Protokollzeilen, keine
+    Schutzgrenze; steht auch in `docker-compose.yml`).
+  - **App 1.24.1:** #83 gemergt. APK-Bau
+    [44146926619](https://github.com/hanoi96international-gif/Aequitas-App/actions/runs/44146926619),
+    iOS-Bau [44146933331](https://github.com/hanoi96international-gif/Aequitas-App/actions/runs/44146933331)
+    (erster Versuch rot: Netzabbruch beim Laden von hermes-engine von Maven, neu gestartet).
+    Danach `release-apk.yml` (run_id, Tag `v1.24.1`) und `release-ios.yml` -- Freigaben
+    Betreiber. iOS-Release 1.24.0 wartet ebenfalls auf Freigabe.
 
 **Als Nächstes:** Voraussetzungen von W6 (für eine Freischaltung mit Gutachten).
 - Gutachten: Vorlagen in `ANSCHREIBEN.md`, verschickt der Betreiber.

@@ -231,6 +231,18 @@ type quantenWDienst struct {
 	// faellig: seit wann ein Teil offen ist, den ein anderer zuerst
 	// einreichen soll (Staffel); wie sicht begrenzt und aufgeraeumt.
 	faellig map[string]int64
+	// rest: was von einem gekuerzten, angenommenen Teil uebrig ist (je K
+	// hoechstens einer, unter mu; mit der Note vergessen). Spart den
+	// Nachbarn die zweite Abfrage derselben Seite (quantenWTeilKuerzen).
+	rest map[string]quantenWRest
+}
+
+// quantenWRest: zusammengesetzte Offenlegung ab Stelle ab des Versuchs index,
+// mit den Positionen, fuer die sie gilt.
+type quantenWRest struct {
+	index, ab int
+	stellen   []int
+	offen     []QuantenWOffen
 }
 
 // quantenWZustaendig: welcher Validator (1-basiert) die Teile eines Versuchs
@@ -886,6 +898,13 @@ func quantenWAuswahlen(m, t, grenze int) [][]int {
 // quantenWPeerKlient: ein Klient fuer Nachbarn -- folgt keiner Weiterleitung
 // (eine erlaubte Adresse duerfte sonst ins interne Netz umleiten). dial nil:
 // der gewoehnliche Dialer (nur fuer die Adressen des Betreibers).
+// quantenWTestQuelle: NUR in Tests gesetzt (im Betrieb nil). Mehrere Knoten
+// in einem Prozess fragen sonst alle von 127.0.0.1 ab und teilen sich die
+// Burst-Grenze je Absender -- im Betrieb hat jeder Validator seine eigene
+// Adresse. Liefert den Dialer, der von der Adresse des eigenen Knotens aus
+// verbindet.
+var quantenWTestQuelle func(apiBasis string) func(context.Context, string, string) (net.Conn, error)
+
 func quantenWPeerKlient(dial func(context.Context, string, string) (net.Conn, error)) *http.Client {
 	c := &http.Client{Timeout: quantenWPeerZeit, CheckRedirect: ohneUmleitung}
 	if dial != nil {
@@ -1131,9 +1150,19 @@ func (d *quantenWDienst) offenlegenTeil(ctx context.Context, K string, e *quante
 // teilOffenlegen: eigene Anteile und die von Nachbarn sammeln, t passende
 // zusammenstellen und einreichen (fuer W-Anfragen und S-Anmeldungen).
 func (d *quantenWDienst) teilOffenlegen(ctx context.Context, K string, e *quantenWTresorEintrag, index, ab int, einreichen func([]QuantenWOffen) error) bool {
+	// Die eigene Pruefung laeuft IMMER (Finalitaet, offene Anfrage/Anmeldung)
+	// -- auch wenn der Rest eines frueheren Teils wiederverwendet wird.
 	eigen, err := d.anteile(K, index, ab)
 	if err != nil {
 		return false
+	}
+	if r, ok := d.restNehmen(K, index, ab, eigen.Stellen); ok {
+		teil := quantenWTeilKuerzen(r.offen)
+		if einreichen(teil) == nil {
+			d.restMerken(K, index, ab+len(teil), r.stellen[len(teil):], r.offen[len(teil):])
+			return true
+		}
+		// Abgewiesen: wie sonst bei den Nachbarn neu holen.
 	}
 	aus := append([]QuantenWAnteilAusgabe{eigen}, d.nachbarAnteile(ctx, K, e, eigen)...)
 	for _, wahl := range quantenWAuswahlen(len(aus), e.T, quantenWSammelVersuche) {
@@ -1141,11 +1170,72 @@ func (d *quantenWDienst) teilOffenlegen(ctx context.Context, K string, e *quante
 		if offen == nil {
 			continue
 		}
-		if einreichen(offen) == nil {
+		teil := quantenWTeilKuerzen(offen)
+		if einreichen(teil) == nil {
+			d.restMerken(K, index, ab+len(teil), eigen.Stellen[len(teil):], offen[len(teil):])
 			return true
 		}
 	}
 	return false
+}
+
+// restMerken: den Rest eines gekuerzten Teils fuer den naechsten Teil
+// behalten (leer: vergessen).
+func (d *quantenWDienst) restMerken(K string, index, ab int, stellen []int, offen []QuantenWOffen) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if len(offen) == 0 || len(stellen) != len(offen) || d.eintraege[K] == nil {
+		delete(d.rest, K)
+		return
+	}
+	if d.rest == nil {
+		d.rest = map[string]quantenWRest{}
+	}
+	d.rest[K] = quantenWRest{index: index, ab: ab, stellen: slices.Clone(stellen), offen: slices.Clone(offen)}
+}
+
+// restNehmen: der gemerkte Rest, wenn er genau zu diesem Teil passt -- selber
+// Versuch, selbe Startstelle und dieselben Positionen wie die eigene Seite
+// (die aus dem aktuellen Stand kommt). Sonst nichts (und vergessen).
+func (d *quantenWDienst) restNehmen(K string, index, ab int, stellen []int) (quantenWRest, bool) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	r, ok := d.rest[K]
+	if !ok {
+		return quantenWRest{}, false
+	}
+	n := min(len(r.stellen), len(stellen))
+	if r.index != index || r.ab != ab || n == 0 || !slices.Equal(r.stellen[:n], stellen[:n]) {
+		delete(d.rest, K)
+		return quantenWRest{}, false
+	}
+	r.stellen, r.offen = r.stellen[:n], r.offen[:n]
+	return r, true
+}
+
+// quantenWTeilRumpfBudget: so gross darf die JSON-Liste eines Teils werden,
+// damit der ganze Rumpf (mit Wallet, Zeit, K, Ab) unter
+// zumLeiterRumpfHoechstens bleibt -- dort liegen die W/S-Routen (zumLeiter).
+// Befund 17.11.2026: Ein Teil mit 64 Stellen, t = 3 und 14 Pfadknoten je
+// Stelle (n = 10.400, volle Tabelle fuer 3 von 4) war groesser als 64 KiB; die
+// Weiterleitung antwortete 413, die Offenlegung blieb bei 0 stehen, und die
+// Wiederholungen jedes Takts fuellten die Burst-Grenze der Nachbarn.
+const quantenWTeilRumpfBudget = zumLeiterRumpfHoechstens - 8<<10
+
+// quantenWTeilKuerzen: haelt einen Teil unter quantenWTeilRumpfBudget, indem
+// er von hinten gekuerzt wird (halbieren, mindestens eine Stelle). Die Kette
+// nimmt Teile mit 1 bis quantenWOffenTeil Stellen ab a.Offen; der naechste
+// Teil beginnt dort, wo dieser endet. Keine Grenze wird gelockert, keine
+// Regel der Kette geaendert.
+func quantenWTeilKuerzen(offen []QuantenWOffen) []QuantenWOffen {
+	for len(offen) > 1 {
+		roh, err := json.Marshal(offen)
+		if err == nil && len(roh) <= quantenWTeilRumpfBudget {
+			break
+		}
+		offen = offen[:len(offen)/2]
+	}
+	return offen
 }
 
 func (d *quantenWDienst) vergessen(K string) {
@@ -1153,6 +1243,7 @@ func (d *quantenWDienst) vergessen(K string) {
 	defer d.mu.Unlock()
 	if d.ablage.loeschen(K) == nil {
 		delete(d.eintraege, K)
+		delete(d.rest, K)
 	}
 }
 
@@ -1269,6 +1360,9 @@ func (cs *ChainState) StarteQuantenWDienst(ctx context.Context, key *ecdsa.Priva
 		}
 	}
 	client := &http.Client{Timeout: quantenWPeerZeit}
+	if quantenWTestQuelle != nil {
+		client.Transport = &http.Transport{DialContext: quantenWTestQuelle(apiBasis)}
+	}
 	einreichen := func(art string, q QuantenWAngaben) error {
 		body, err := json.Marshal(map[string]interface{}{"wallet": "", "zeit": 0, "quanten_w": q})
 		if err != nil {
@@ -1290,6 +1384,9 @@ func (cs *ChainState) StarteQuantenWDienst(ctx context.Context, key *ecdsa.Priva
 		return err
 	}
 	d.nachbarn = nachbarn
+	if quantenWTestQuelle != nil {
+		d.client = quantenWPeerKlient(quantenWTestQuelle(apiBasis))
+	}
 	if hoehe != nil {
 		d.hoehe = hoehe
 		d.final = func() int64 {

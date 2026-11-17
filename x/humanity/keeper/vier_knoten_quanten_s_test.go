@@ -3,7 +3,12 @@ package keeper
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"io"
 	"math/rand"
+	"net"
+	"net/url"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -36,6 +41,40 @@ func TestVierKnotenQuantenS_RealDB(t *testing.T) { qsVierKnoten(t, false) }
 // trotzdem. Genau dafuer ist das Geheimnis t-von-v geteilt.
 func TestVierKnotenQuantenSAusfall_RealDB(t *testing.T) { qsVierKnoten(t, true) }
 
+// PILOT AUF ECHTER HARDWARE (Workflow quanten-s-pilot.yml): Steht in
+// AEQUITAS_QS_MESSUNG eine Datei von `hardware_ibm.py --s-messen`, kommt der
+// Token nicht aus dem Zufall des Tests, sondern vom Chip -- Praegen bis
+// Einloesen mit 3 von 4 Validatoren. Die Datei wird so streng gelesen wie
+// in `aequitasd quanten-s-ausgabe` (Groesse, unbekannte Felder); was sie
+// enthaelt, prueft das Werkzeug. k je Stelle = n/2, und die Tabelle wird
+// NICHT ausser Kraft gesetzt: fuer 3 von 4 verlangt sie 5.200 Stellen je
+// Annahmestelle, eine kleinere Messung weist das Werkzeug ab (fail-closed).
+func qsMessungAusDatei(t *testing.T) (QuantenSMessung, bool) {
+	pfad := strings.TrimSpace(os.Getenv("AEQUITAS_QS_MESSUNG"))
+	if pfad == "" {
+		return QuantenSMessung{}, false
+	}
+	f, err := os.Open(pfad)
+	if err != nil {
+		t.Fatalf("AEQUITAS_QS_MESSUNG: %v", err)
+	}
+	defer f.Close()
+	roh, err := io.ReadAll(io.LimitReader(f, quantenSAusgabeMessMax+1))
+	if err != nil || len(roh) > quantenSAusgabeMessMax {
+		t.Fatal("AEQUITAS_QS_MESSUNG: unlesbar oder zu gross")
+	}
+	var m QuantenSMessung
+	dec := json.NewDecoder(bytes.NewReader(roh))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&m); err != nil {
+		t.Fatalf("AEQUITAS_QS_MESSUNG: %v", err)
+	}
+	if m.N < 2 || m.N%2 != 0 {
+		t.Fatalf("AEQUITAS_QS_MESSUNG: n = %d", m.N)
+	}
+	return m, true
+}
+
 // qsAusfallNetz: nimmt beim ersten Anmelden einen Knoten vom Netz.
 type qsAusfallNetz struct {
 	*quantenSMehrNetz
@@ -56,9 +95,16 @@ func qsVierKnoten(t *testing.T, ausfall bool) {
 	if testing.Short() {
 		t.Skip("laeuft in echter Zeit")
 	}
-	const kJeStelle = 128
+	kJeStelle := 128
+	echt, ausDatei := qsMessungAusDatei(t)
+	if ausDatei {
+		kJeStelle = echt.N / 2
+		t.Logf("Messung aus %s: n = %d, k je Stelle = %d, Geraet %q, Job %q", os.Getenv("AEQUITAS_QS_MESSUNG"), echt.N, kJeStelle, echt.Wo, echt.Jo)
+	}
 	quantenWAbOverride.Store(nowUnix() - 86400)
-	quantenWKNoteOverride.Store(kJeStelle)
+	if !ausDatei {
+		quantenWKNoteOverride.Store(int64(kJeStelle))
+	}
 	altBetreiber := quantenWBetreiberVon
 	t.Cleanup(func() {
 		quantenWAbOverride.Store(0)
@@ -85,6 +131,21 @@ func qsVierKnoten(t *testing.T, ausfall bool) {
 	t.Setenv("QUANTEN_W_PEERS", strings.Join(urls, ","))
 	ctx, halt := context.WithCancel(context.Background())
 	t.Cleanup(halt)
+	// Jeder Knoten fragt von SEINER Adresse aus ab (wie im Betrieb), nicht
+	// alle von 127.0.0.1 -- sonst teilen sich vier Dienste eine Burst-Grenze.
+	quantenWTestQuelle = func(apiBasis string) func(context.Context, string, string) (net.Conn, error) {
+		u, err := url.Parse(apiBasis)
+		if err != nil {
+			return nil
+		}
+		ip := net.ParseIP(u.Hostname())
+		if ip == nil {
+			return nil
+		}
+		d := &net.Dialer{LocalAddr: &net.TCPAddr{IP: ip}, Timeout: 5 * time.Second}
+		return d.DialContext
+	}
+	t.Cleanup(func() { quantenWTestQuelle = nil })
 	var dienste []*quantenWDienst
 	for _, k := range netz.ks {
 		cs, dag, _ := k.teile()
@@ -107,6 +168,9 @@ func qsVierKnoten(t *testing.T, ausfall bool) {
 		}
 	}
 	m := QuantenSMessung{N: n, U: qsBitsText(u), T: qsBitsText(tw), Y: qsBitsText(y), X: qsBitsText(x), Wo: "vier Knoten"}
+	if ausDatei {
+		m = echt
+	}
 
 	// Das Netz des Werkzeugs: Bestaetigung je Validator an seiner API,
 	// Einreichen und Stand beim Folger -- dieselben Wege wie im Betrieb.
@@ -128,6 +192,13 @@ func qsVierKnoten(t *testing.T, ausfall bool) {
 		h.klient = qwKlient
 		h.takt = 500 * time.Millisecond
 	}
+	// Frist je Schritt: 4 min fuer 128 Stellen; eine echte Messung in voller
+	// Groesse (5.200 Stellen je Annahmestelle, 82 Teile der Offenlegung)
+	// bekommt die Vorgabe des Werkzeugs im Hauptnetz (15 min).
+	frist := 4 * time.Minute
+	if ausDatei {
+		frist = 15 * time.Minute
+	}
 	var log bytes.Buffer
 	var werkzeugNetz quantenSNetz = &quantenSMehrNetz{quantenSHTTP: eigen, validatoren: netze}
 	var weg *vierKnoten
@@ -139,9 +210,10 @@ func qsVierKnoten(t *testing.T, ausfall bool) {
 			weg.anhalten()
 		}}
 	}
+	beginn := time.Now()
 	erg, err := quantenSAusgabeLauf(context.Background(), QuantenSAusgabeAuftrag{Messung: m, Schluessel: ausgeber.key, Deckung: 2_000_000,
-		Tol: quantenWTolStandard, Frist: 4 * time.Minute}, adressen, 3, werkzeugNetz, &log)
-	t.Logf("Werkzeug:\n%s", log.String())
+		Tol: quantenWTolStandard, Frist: frist}, adressen, 3, werkzeugNetz, &log)
+	t.Logf("Werkzeug (%s):\n%s", time.Since(beginn).Round(time.Second), log.String())
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -83,6 +83,30 @@ gegen einen optimalen Kloner gebrochen war:
      Schwelle für ihre cv-qtickets; gilt die Schranke exp(−h·D(tol‖0,146)) auch hier?
    - Trägt die Tabelle (`wiesner_parameter.py`, `quantenWKTabelle`) die behauptete
      Schranke 2⁻⁴⁰? Sie rechnet je Kopie und lässt unentschiedene Prüfungen wiederholen.
+   - **Eigene Antwort zur Prüfung (17.11.2026, `forschung/quantengeld/kohaerent.py`):**
+     Gegen jeden **nicht-adaptiven** Angriff, auch verschränkt über alle Stellen, gilt
+     eine strenge Schranke für „beide Kopien bestehen“. Argument: Das SDP über alle
+     Kanäle zerfällt Stelle für Stelle, weil Produkte dual zulässiger Lösungen dual
+     zulässig bleiben (wie Molina, Vidick, Watrous 2012). Je Stelle zählt nur F_A + F_B
+     ≤ 1 + 1/√2. Dazu kommen eine Chernoff-Schranke und das Bedingen auf die feste
+     Prüfgröße. Alle Einträge der Tabelle halten 2⁻⁴⁰ mit 27–43 Bit Reserve, zum
+     Beispiel k = 840 (f = 0): 2⁻⁶⁷; k = 5.200 (t = 3, v = 4): 2⁻⁶⁷·⁵. Gegenprobe: Der beste
+     Produktangriff, auch asymmetrisch, liegt mit 2⁻⁸⁰ darunter.
+     Korrektur dabei: „je Kopie“ ist nicht vorsichtig, weil ein asymmetrischer Kloner eine
+     Kopie fast perfekt macht. Maßgeblich ist „beide bestehen“.
+     **Bitte prüfen:** den Beweis, die Ein-Stellen-Grenze F_A + F_B ≤ 1 + 1/√2 (auch
+     asymmetrisch) und den **adaptiven** Angriff. Dabei wird Kopie B erst nach der Prüfung
+     von A bearbeitet; deren Stellen und Basen stehen dann offen, und B wird nur noch an
+     anderen Stellen gefragt. Unser Argument dazu (`kohaerent.py`, ADAPTIV): Jede
+     Rückmeldung betrifft nur ihre Stelle, der Prüfer ist also ein Produkt von Prüfern mit
+     zwei Runden. Mit der Dualität für Strategien (Gutoski und Watrous 2007) bleibt das
+     Optimum ein Produkt. Je Stelle wird A oder B geprüft, nie beide, und beide Runden
+     zusammen sind ein Kloner. Also gilt dieselbe Schranke. Trägt das?
+     **Numerisch nachgerechnet** (`sdp_nachpruefung.py`, exakte SDPs über alle
+     Strategien): Die Grenze je Stelle ist 1 + 1/√2 für jeden Kloner. Für zwei Stellen
+     gemeinsam ist das Optimum genau das Quadrat, für verschränkte Strategien ebenso wie
+     für adaptive mit zwei Runden. Bei S gilt dasselbe (Breidbart 0,8536, zwei Stellen
+     gleich dem Quadrat).
    - Mehrere Prüfungen nacheinander: Wächst die Erfolgsaussicht über die Fehlversuche
      hinweg? Drei Fehlversuche sperren Prüfungen, aber nicht das Einlösen.
 2. **Absprachen.**
@@ -146,6 +170,12 @@ Annahmestellen. Ebenfalls **schlafend** (dasselbe `quantenWAbUnix`).
 1. **Doppelvorlage.** Wer an beiden Stellen vorlegen will, braucht Ergebnisse in beiden
    Basen. Ist die Breidbart-Messung (14,64 % Fehler in beiden Basen) der beste Angriff, auch
    mit verschränkten Strategien über viele Qubits? Gilt damit dieselbe Tabelle wie bei W?
+   **Eigene Antwort zur Prüfung (17.11.2026, `kohaerent.py`):** Ja, für jede Messung, auch
+   kollektiv über alle Qubits. Je Stelle ist die Summe der Treffsicherheiten in beiden
+   Basen höchstens 2 · (1/2 + 1/√8), und das Optimum zerfällt in ein Produkt. Es gilt
+   dieselbe strenge Schranke wie bei W. Die Stellen prüfen ohne Netz, Rückmeldungen
+   zwischen den Vorlagen sind also höchstens das Bit „angenommen“, und das kostet
+   höchstens 1 Bit.
 2. **Stichproben-Annahmestellen** (Ergänzung zu Kent u. a.). Jede Stelle kennt (u, t) nur auf
    ihrer geheimen, disjunkten Stichprobe und prüft ohne Netz.
    - Kann eine bestochene Stelle an der anderen Stelle durchkommen?

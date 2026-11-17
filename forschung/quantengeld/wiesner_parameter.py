@@ -42,11 +42,13 @@ WAS DIESES WERKZEUG RECHNET (exakt, Binomialsummen):
 
 GRENZEN DER AUSSAGE (ehrlich):
   - Gerechnet ist der Kloner Stelle fuer Stelle (Produktangriff) und je
-    Kopie (der Faelscher braucht ZWEI bestehende Kopien; je Kopie ist also
-    vorsichtig). Fuer beliebige verschraenkte Angriffe beweisen Pastawski u. a.
-    dieselbe Schwelle und eine Schranke derselben Form exp(-h*D(tol||0,146));
-    die Uebertragung auf Variante W (jede Stelle wird nur einmal gefragt)
-    gehoert in das Gutachten (W5).
+    Kopie. KORREKTUR 17.11.2026 (kohaerent.py): "je Kopie" ist NICHT
+    vorsichtig -- ein asymmetrischer Kloner macht eine Kopie fast perfekt.
+    Massgeblich ist "beide Kopien bestehen". Dafuer gibt kohaerent.py eine
+    strenge Schranke gegen JEDEN nicht-adaptiven Angriff, auch verschraenkt
+    (Produkt-Argument wie Molina-Vidick-Watrous, Chernoff, feste Groesse):
+    alle Eintraege der Tabelle halten 2^-40 mit 27-43 Bit Reserve. Offen
+    bleibt der adaptive Angriff bei W (Kopie B nach der Pruefung von A).
   - Es zaehlen nur Treffer (passende Basis): je Pruefung im Mittel k/2.
 
 Aufruf:  python3 -I wiesner_parameter.py [--selbsttest]
