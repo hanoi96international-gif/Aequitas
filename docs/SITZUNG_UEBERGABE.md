@@ -177,8 +177,8 @@ Nicht übernommen, als Beobachtung für später:
       als ungeschützt: ohne Warten 0,8 % gegen 0,3 %, nach 20 µs 9,8 % gegen 3,0 %.
     - Exakt gerechnet hilft er mit IBM-Werten nie, mit Werten einer Ionenfalle bei 0,3–6 %
       Rohfehler. Mutationen: sieben von sieben erkannt.
-    - **Offen:** der Lauf auf dem echten Chip. Die Sitzung startet ihn, der Betreiber gibt
-      `quantenhardware` frei.
+    - **Offen:** der Lauf auf dem echten Chip (43986013444, gestartet 17.11. 00:14 UTC). Er
+      wartet auf die Freigabe von `quantenhardware`.
 12. **Aufteilung zwischen den Sitzungen** (17.11., Sitzung „friendly-davinci“, Zweig
     `claude/friendly-davinci-i4iww1`; eine Nachricht an die andere Sitzung kam nicht an):
     - **Hier:** S3, B6, Abschnitt C von OFFEN.md als Analyse, S3-Ablauf in `s_kette.py`.
@@ -190,10 +190,16 @@ Nicht übernommen, als Beobachtung für später:
 
 | Repo | PR | Inhalt | Nächster Schritt |
 |---|---|---|---|
-| Aequitas | Zweig `claude/friendly-davinci-i4iww1` | B6: Steane-Code je Stelle, `wiesner_schutz.py`, Workflow `wiesner = steane` | CI grün, squash-mergen, dann IBM-Lauf zur Freigabe |
+| – | – | keine offenen PRs dieser Sitzung | – |
 
-Gemergt am 16./17.11. (diese Sitzung): #560 (S3 über eine echte Leitung, Mindestgröße der
-Stichprobe), #558.
+Gemergt am 16./17.11. (diese Sitzung): #561 (B6 Steane-Code je Stelle, Abschnitt C
+analysiert, S3-Bausteine), #560 (S3 über eine echte Leitung, Mindestgröße der Stichprobe),
+#558.
+
+**Wartet auf Freigabe des Betreibers:**
+- IBM-Lauf `wiesner = steane` ([43986013444](https://github.com/hanoi96international-gif/Aequitas/actions/runs/43986013444),
+  Umgebung `quantenhardware`). Danach die Ergebnisse in HEUTE.md 3.3 (B6) eintragen.
+- Deploy von #557 auf C1 ([43974452277](https://github.com/hanoi96international-gif/Aequitas/actions/runs/43974452277)).
 
 Gemergt am 16.11.:
 - #558 (andere Sitzung: Prüfauftrag auf Stand W2c/W2d/S, ePrint-Entwurf, `OFFEN.md`
