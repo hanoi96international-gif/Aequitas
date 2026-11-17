@@ -2,7 +2,8 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 17.11.2026 ~10 UTC nach #566 und App #79, Sitzung „Weiter“ (Auftrag des Betreibers: „Alles erledigen
+Stand: 17.11.2026 ~16 UTC (S-Ausgabe-Werkzeug im PR), Sitzung „Weitermachen“ (Zweig
+`claude/weitermachen-qbkbfs`); davor ~10 UTC nach #566 und App #79, Sitzung „Weiter“ (Auftrag des Betreibers: „Alles erledigen
 für dezentrales Quantengeld“).
 
 ## Arbeitsweise (vom Betreiber festgelegt)
@@ -28,7 +29,7 @@ für dezentrales Quantengeld“).
 - Lokale Go-Tests: Erst `df -h /` prüfen. Bei vollem Platz `go clean -cache`. Die
   Fehlermeldung „MB of disk left“ kommt vom Container, nicht vom Code.
 
-## Hauptaugenmerk: dezentrales Quantengeld (Stand 17.11. ~07:30 UTC)
+## Hauptaugenmerk: dezentrales Quantengeld (Stand 17.11. ~16 UTC)
 
 **Gemergt (#563):** Register von W und S als eigene Tabelle `quanten_w_eintraege`
 (`quanten_w_tabelle.go`): eine Zeile je Note, Token und toter Note, nur Geändertes
@@ -61,14 +62,39 @@ unten).
   erreichbar. Geprüft wurde gegen die installierten Pakete (Expo 54.0.35, expo-router
   6.0.24, React Native 0.81.5).
 
-**W/S im Hauptnetz freigeschaltet (Entscheidung des Betreibers, 17.11.):**
+**W/S im Hauptnetz freigeschaltet (Entscheidung des Betreibers, 17.11., #568 gemergt):**
 - Stichtag 18.11.2026 18:00 UTC (`quantenWAbUnix = 1795024800`).
+- **Deploy auf C1 wartet auf die Freigabe des Betreibers:**
+  [44092755346](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44092755346).
+  Nach dem Deploy prüfen: `/api/status` zeigt `quanten_w.ab = 1795024800`.
 - Ohne Gutachten und ohne Pilot mit Partner; die Risiken sind im Code und im PR genannt.
 - Deploy-Wächter `.github/neustart/quanten-w-nicht-verpasst.sh` mit Test; `/api/status`
   nennt `quanten_w.ab`.
 - C1 muss vor 17:30 UTC am 18.11. mit diesem Stand laufen, sonst hält der Wächter an.
 - Danach: erste S-Ausgabe auf dem Hauptnetz über einen Workflow, mit IBM als Gerät des
   Halters.
+
+**Erste S-Ausgabe: Werkzeug gebaut (PR „Quantengeld S: Werkzeug für die erste Ausgabe“).**
+Eine frühere Sitzung hatte das schon lokal gebaut, aber nie gepusht; der Container war weg.
+Neu gebaut, darum: **lokale Arbeit sofort committen und pushen.**
+- `aequitasd quanten-s-ausgabe` (`x/humanity/keeper/quanten_s_ausgabe.go`): C1 ist mit
+  seinem Knotenschlüssel Ausgeber und einziger Validator (t = v = 1, k = 840 je Stelle,
+  Toleranz 4 %). Inhaberin und die zweite Stelle sind Wegwerfschlüssel, nur im Speicher.
+  Erst die Doppelvorlage an der falschen Stelle (muss abgewiesen werden), dann die
+  ehrliche an C1 (der Wert kommt zurück). Das Urteil kommt aus dem Stand, die
+  Bestätigung des Dienstes wird nachgeprüft.
+- Prüfer-Dienst: Aufträge auch von einer an einen Menschen gebundenen Signieradresse mit
+  Deckung (`quantenWPraegerTauglich`), nicht nur vom Menschen selbst.
+- `hardware_ibm.py --s-messen DATEI`, `deploy/quanten-s-ausgabe.sh` (läuft als UID 10001
+  im Container, Messung nur über stdin, danach gelöscht) und der Workflow
+  `quanten-s-ausgabe.yml` (Mess-Job in `quantenhardware`, Ausgabe in `produktion`). Der
+  Linter `lint_server_freigabe.py` erlaubt dafür in `quantenhardware` genau
+  `secrets.IBM_QUANTUM_TOKEN`.
+- Geprüft: Rauschmodell `ibm_marrakesh` (2/847 Fehler) durch die volle Kette in-process,
+  Doppelvorlage abgewiesen, ehrliche eingelöst. Gegenprobe: 22 Mutationen, alle rot.
+- **Starten (Betreiber), frühestens 18.11. 18:00 UTC:** Signieradresse von C1 braucht
+  mindestens 1 AEQ (Deckung), dann den Workflow mit `modus = ibm` starten und beide Jobs
+  freigeben.
 
 **Als Nächstes:** Voraussetzungen von W6 (für eine Freischaltung mit Gutachten).
 - Gutachten: Vorlagen in `ANSCHREIBEN.md`, verschickt der Betreiber.

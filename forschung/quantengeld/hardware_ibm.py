@@ -45,6 +45,9 @@ wiesner_hardware.note_steane),
 --s-token [--k K] (Variante S, s_kette.py: 2K Qubits, sofort gemessen, kein
 Speicher; Vorlage an der gewaehlten Annahmestelle und als Angriff an der
 anderen; Standard K = 840, hoechstens 2048),
+--s-messen DATEI [--k K] (nur die Messung von 2K Qubits fuer die echte
+Ausgabe auf der Kette: u, t, y, x als JSON, Zufall aus dem Betriebssystem;
+weiter mit aequitasd quanten-s-ausgabe, deploy/quanten-s-ausgabe.sh),
 --wiesner --kette (W4 ohne Partner: der ganze Ablauf mit der Kettenseite
 wiesner_kette.KetteW -- Praegen auf der Kette, Bezahlen per Teleportation,
 Einloesen beim Empfaenger: Aufforderung aus dem Block, EIN Schuss als
@@ -471,14 +474,9 @@ def wiesner_kette_lauf(schuesse: int, rng: random.Random) -> None:
                        "empfaenger_aeq": kette.konten["empfaenger"] / 1e6, "log": log}, fh, indent=2)
 
 
-def s_token_lauf(rng: random.Random) -> None:
-    """Variante S auf echter Hardware (ANALYSE.md 5b, s_kette.py): Ausgabe von
-    2k Qubits in zufaelligen BB84-Zustaenden, die Nutzerin misst SOFORT in
-    zufaelligen Basen (kein Speicher), dann Bindung und Wahl auf der Kette,
-    Vorlage an der gewaehlten Annahmestelle (ohne Netz) und -- als Angriff --
-    derselbe Token an der anderen Stelle."""
-    k = zahl("--k", sk.K_STELLE, MAX_S_STELLEN)
-    n = 2 * k
+def s_messen(n: int, rng: random.Random):
+    """Ausgabe von n Qubits in zufaelligen BB84-Zustaenden (Basen u, Werte t),
+    die Inhaberin misst SOFORT in zufaelligen Basen y (Ergebnisse x)."""
     m = wh.MAX_QUBITS_NOTE
     u = [rng.randrange(2) for _ in range(n)]
     t = [rng.randrange(2) for _ in range(n)]
@@ -493,6 +491,43 @@ def s_token_lauf(rng: random.Random) -> None:
     x: list[int] = []
     for s, r in zip(kreise, job.result()):
         x += wh.antworten(s, r.data.c.get_bitstrings()[0])
+    if len(x) != n:
+        raise SystemExit(f"Messung: {len(x)} statt {n} Ergebnisse")
+    return u, t, y, x, kreise, job_id, wo
+
+
+def s_messen_lauf(datei: str) -> None:
+    """--s-messen DATEI: NUR messen, fuer die echte Ausgabe auf der Kette
+    (aequitasd quanten-s-ausgabe). Zufall aus dem Betriebssystem. Die Datei
+    enthaelt u, t (das Geheimnis der Ausgabe) und x (den Token); sie wird nur
+    fuer den Eigentuemer lesbar angelegt."""
+    k = zahl("--k", sk.K_STELLE, MAX_S_STELLEN)
+    n = 2 * k
+    u, t, y, x, kreise, job_id, wo = s_messen(n, random.SystemRandom())
+    bits = lambda b: "".join(map(str, b))
+    passend = [i for i in range(n) if y[i] == u[i]]
+    falsch = sum(x[i] != t[i] for i in passend)
+    fd = os.open(datei, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w") as fh:
+        json.dump({"n": n, "u": bits(u), "t": bits(t), "y": bits(y), "x": bits(x), "wo": wo, "job": job_id}, fh)
+    text = (f"## S-Messung fuer die Ausgabe auf {wo}\n\n{n} Qubits in {len(kreise)} Schaltkreisen, je ein Schuss"
+            + (f", Job {job_id}" if job_id else "") + f". Fehler bei passender Basis: {falsch}/{len(passend)}.")
+    print(text)
+    if os.environ.get("GITHUB_STEP_SUMMARY"):
+        with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as fh:
+            fh.write(text + "\n")
+
+
+def s_token_lauf(rng: random.Random) -> None:
+    """Variante S auf echter Hardware (ANALYSE.md 5b, s_kette.py): Ausgabe von
+    2k Qubits in zufaelligen BB84-Zustaenden, die Nutzerin misst SOFORT in
+    zufaelligen Basen (kein Speicher), dann Bindung und Wahl auf der Kette,
+    Vorlage an der gewaehlten Annahmestelle (ohne Netz) und -- als Angriff --
+    derselbe Token an der anderen Stelle."""
+    k = zahl("--k", sk.K_STELLE, MAX_S_STELLEN)
+    n = 2 * k
+    m = wh.MAX_QUBITS_NOTE
+    u, t, y, x, kreise, job_id, wo = s_messen(n, rng)
     K = os.urandom(32).hex()
     kette = sk.KetteS()
     kette.ausgeben(K, n, "anna")
@@ -537,6 +572,9 @@ def main() -> None:
     T = zahl("--tests", 3, MAX_TESTS)
     n = 3
     rng = random.Random(int.from_bytes(os.urandom(8), "big"))
+    if "--s-messen" in sys.argv:
+        s_messen_lauf(sys.argv[sys.argv.index("--s-messen") + 1])
+        return
     if "--s-token" in sys.argv:
         s_token_lauf(rng)
         return

@@ -335,6 +335,12 @@ func main() {
 		}
 		return
 	}
+	// `aequitasd quanten-s-ausgabe`: die erste echte S-Ausgabe
+	// (keeper/quanten_s_ausgabe.go), aufgerufen von
+	// deploy/quanten-s-ausgabe.sh im laufenden Knoten-Container.
+	if len(os.Args) > 1 && os.Args[1] == "quanten-s-ausgabe" {
+		os.Exit(quantenSAusgabeBefehl(os.Args[2:]))
+	}
 	// Root-Rechte ablegen, bevor irgendetwas geoeffnet wird oder lauscht
 	// (rechte.go). Scheitert es, startet der Knoten nicht.
 	if err := rechteAblegen(echteRechteUmgebung()); err != nil {
