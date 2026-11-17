@@ -2,9 +2,27 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 17.11.2026 ~18:45 UTC, Sitzung „Übergabe“ (Zweig `claude/ubergabe-v2cgv1`, alle
-vier Repos); davor ~18:30 UTC Sitzung „Weitermachen“ (Zweig `claude/weitermachen-qbkbfs`); davor ~10 UTC nach #566 und App #79, Sitzung „Weiter“ (Auftrag des Betreibers: „Alles erledigen
-für dezentrales Quantengeld“).
+Stand: 17.11.2026 ~20:15 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
+Repos); davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18:30 UTC Sitzung
+„Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
+dezentrales Quantengeld“.
+
+**Zuletzt (Sitzung „Weiter“, 17.11. ~20:15 UTC):**
+- **#572 gemergt** (Nachtrag zur Sicherheitsprüfung als Kommentar). **C1-Deploy wartet auf
+  Freigabe:** [44164664693](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44164664693).
+  Die Ratengrenze auf C1 sinkt erst, wenn der Betreiber `perf-c1.yml` startet und freigibt.
+- **Pilot im Rauschmodell, k = 5.200, Stand von `main`** (zum Vergleich):
+  [44164912648](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44164912648).
+- **Zweig `claude/weiter-uw2p42` (noch kein PR):**
+  - Befund zur Pilot-Rate: Ist der Zuständige nicht der Leiter, reichte der Dienst
+    denselben Teil mehrmals ein, bis der Block kam, und holte jedes Mal die Anteile neu.
+    Beides ging gegen die Burst-Grenzen. Jetzt gilt: kein zweites Einreichen vor
+    `quantenWStaffelWarten`, und der Takt wartet höchstens 2 s auf den Stand. Tests W/S,
+    7 Mutationen rot.
+  - Flake `test_bio_pq_bereit.sh`: Bei belegtem Port nimmt der Test jetzt einen anderen.
+  - Als Nächstes: PR, danach Pilot auf dem Zweig starten und mit dem Lauf oben vergleichen.
+    Reicht es nicht für 15 min, die Frist des Werkzeugs bei voller Größe auf 25 min setzen
+    (Kette: 30).
 
 ## Arbeitsweise (vom Betreiber festgelegt)
 
