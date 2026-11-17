@@ -682,3 +682,58 @@ func TestQuantenWDienst_Staffel(t *testing.T) {
 		}
 	}
 }
+
+// Nicht nochmal einreichen: Steht ein eingereichter Teil noch nicht im
+// eigenen Stand (der Zustaendige ist nicht der Leiter, der Block kommt erst),
+// reicht der Dienst ihn weder im selben Takt noch im naechsten erneut ein --
+// erst nach quantenWStaffelWarten (falls er unterwegs verloren ging).
+// Befund 17.11.2026: Vorher holte jede Runde die Anteile neu und reichte
+// denselben Teil wieder ein, gegen die Burst-Grenzen.
+func TestQuantenWDienst_TeilNichtDoppelt(t *testing.T) {
+	q := neueQwDienste(t, 400)
+	w := q.w
+	q.praegen(t)
+	q.zeit += 10
+	w.annehmen(w.anfrageTx(w.anna, 0, 150, "", q.zeit), q.zeit+1)
+	q.zeit += 2
+	q.takt()
+	a := w.anfrage(w.cs)
+	w.annehmen(w.antwortTx(w.anna, 0, w.p.ehrlich(a.Stellen, a.Basen)), q.zeit+1)
+	q.zeit += 2
+	d := q.d[quantenWZustaendig(w.p.K, 0, len(w.val))-1]
+	echt := d.einreichen
+	gesendet := 0
+	// Angenommen, aber (noch) nicht im Stand: wie die Weiterleitung zum Leiter.
+	d.einreichen = func(art string, x QuantenWAngaben) error {
+		if art == quantenWOffenlegenTxArt {
+			gesendet++
+			return nil
+		}
+		return echt(art, x)
+	}
+	d.takt(context.Background())
+	if gesendet != 1 {
+		t.Fatalf("im selben Takt %d-mal eingereicht, erwartet 1", gesendet)
+	}
+	q.zeit += quantenWStaffelWarten - 1
+	d.takt(context.Background())
+	if gesendet != 1 {
+		t.Fatalf("vor der Wartezeit erneut eingereicht (%d)", gesendet)
+	}
+	q.zeit++
+	d.takt(context.Background())
+	if gesendet != 2 {
+		t.Fatalf("nach der Wartezeit nicht erneut eingereicht (%d)", gesendet)
+	}
+	// Kommt der Stand nach, geht es ohne Wartezeit weiter.
+	d.einreichen = echt
+	q.zeit += quantenWStaffelWarten
+	d.takt(context.Background())
+	if w.anfrage(w.cs) != nil {
+		t.Fatal("der Zustaendige hat die Offenlegung nicht abgeschlossen")
+	}
+	q.takt()
+	if len(d.gesendet) != 0 {
+		t.Fatalf("%d eingereichte Teile noch gemerkt", len(d.gesendet))
+	}
+}

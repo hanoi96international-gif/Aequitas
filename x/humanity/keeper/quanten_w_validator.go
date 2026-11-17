@@ -231,6 +231,9 @@ type quantenWDienst struct {
 	// faellig: seit wann ein Teil offen ist, den ein anderer zuerst
 	// einreichen soll (Staffel); wie sicht begrenzt und aufgeraeumt.
 	faellig map[string]int64
+	// gesendet: wann dieser Dienst einen Teil (K, Versuch, ab) zuletzt
+	// erfolgreich eingereicht hat; wie sicht begrenzt und aufgeraeumt.
+	gesendet map[string]int64
 	// rest: was von einem gekuerzten, angenommenen Teil uebrig ist (je K
 	// hoechstens einer, unter mu; mit der Note vergessen). Spart den
 	// Nachbarn die zweite Abfrage derselben Seite (quantenWTeilKuerzen).
@@ -314,6 +317,63 @@ func (d *quantenWDienst) sichtRaeumen(gesehen map[string]bool) {
 			delete(d.faellig, s)
 		}
 	}
+	for s := range d.gesendet {
+		if !gesehen[s] {
+			delete(d.gesendet, s)
+		}
+	}
+}
+
+// schonGesendet: Hat dieser Dienst den Teil ab schon eingereicht und steht
+// er noch nicht im eigenen Stand, wartet er quantenWStaffelWarten, bevor er
+// ihn noch einmal einreicht. Befund 17.11.2026 (Pilot, k = 5.200): Ist der
+// Zustaendige nicht der Leiter, kommt sein Teil erst mit dem naechsten Block
+// in seinen Stand; vorher las die Schleife denselben Offen-Stand, holte die
+// Anteile bei den Nachbarn neu und reichte denselben Teil noch einmal ein --
+// beides zaehlte gegen die Burst-Grenzen (burstQuantenWJeIP,
+// burstQuantenWDienstJeIP). Die Grenzen bleiben, wie sie sind.
+func (d *quantenWDienst) schonGesendet(K string, index, ab int, jetzt int64, gesehen map[string]bool) bool {
+	key := fmt.Sprintf("g|%s|%d|%d", K, index, ab)
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	t0, da := d.gesendet[key]
+	if da {
+		gesehen[key] = true
+	}
+	return da && jetzt-t0 < quantenWStaffelWarten
+}
+
+// gesendetMerken: den eingereichten Teil fuer schonGesendet merken
+// (hoechstens quantenWSichtHoechstens Eintraege).
+func (d *quantenWDienst) gesendetMerken(K string, index, ab int, jetzt int64, gesehen map[string]bool) {
+	key := fmt.Sprintf("g|%s|%d|%d", K, index, ab)
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if _, da := d.gesendet[key]; da || len(d.gesendet) < quantenWSichtHoechstens {
+		d.gesendet[key] = jetzt
+		gesehen[key] = true
+	}
+}
+
+// quantenWNachziehenWarten: so lange wartet ein Takt hoechstens darauf, dass
+// ein eingereichter Teil im eigenen Stand steht, bevor er den naechsten
+// angeht (sonst erst im naechsten Takt).
+const quantenWNachziehenWarten = 2 * time.Second
+
+// nachziehen: wartet (begrenzt, abbrechbar), bis weiter() wahr ist.
+func (d *quantenWDienst) nachziehen(ctx context.Context, weiter func() bool) bool {
+	ende := time.Now().Add(quantenWNachziehenWarten)
+	for !weiter() {
+		if time.Now().After(ende) {
+			return false
+		}
+		select {
+		case <-ctx.Done():
+			return false
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+	return true
 }
 
 // quantenWAnfrageSicht, quantenWAntwortSicht: alles, was die Aufforderung
@@ -349,7 +409,7 @@ func neuerQuantenWDienst(cs *ChainState, key *ecdsa.PrivateKey, ablage quantenWA
 		aead: aead, ablage: ablage, eintraege: map[string]*quantenWTresorEintrag{}, peers: peers,
 		client: quantenWPeerKlient(nil), erlaubt: isAllowedPeerURL, fremd: quantenWPeerKlient(pinningDialer),
 		peerZeit: quantenWPeerZeit, nachlauf: quantenWPeerNachlauf, einreichen: einreichen, jetzt: nowUnix,
-		hoehe: func() int64 { return 0 }, final: func() int64 { return -1 }, sicht: map[string]int64{}, faellig: map[string]int64{}}
+		hoehe: func() int64 { return 0 }, final: func() int64 { return -1 }, sicht: map[string]int64{}, faellig: map[string]int64{}, gesendet: map[string]int64{}}
 	roh, err := ablage.alle()
 	if err != nil {
 		return nil, fmt.Errorf("quanten_w: Tresor nicht lesbar: %w", err)
@@ -1096,8 +1156,16 @@ func (d *quantenWDienst) takt(ctx context.Context) {
 					break
 				}
 				na := ein.note.Anfrage
-				if na.Antwort == nil || na.Offen >= len(na.Stellen) || !d.darfEinreichen(K, e, na.Index, na.Offen, jetzt, gesehen) ||
-					!d.offenlegenTeil(ctx, K, e, na) {
+				ab := na.Offen
+				if na.Antwort == nil || ab >= len(na.Stellen) || d.schonGesendet(K, na.Index, ab, jetzt, gesehen) ||
+					!d.darfEinreichen(K, e, na.Index, ab, jetzt, gesehen) || !d.offenlegenTeil(ctx, K, e, na) {
+					break
+				}
+				d.gesendetMerken(K, na.Index, ab, jetzt, gesehen)
+				if !d.nachziehen(ctx, func() bool {
+					n := d.cs.quantenWJetzt().Noten[K]
+					return n == nil || n.note.Anfrage == nil || n.note.Anfrage.Index != na.Index || n.note.Anfrage.Offen != ab
+				}) {
 					break
 				}
 			}
@@ -1130,11 +1198,18 @@ func (d *quantenWDienst) taktS(ctx context.Context, K string, e *quantenWTresorE
 			return
 		}
 		ab := tok.token.Anmeldung.Offen
-		if !d.darfEinreichen(K, e, t.Fehl, ab, jetzt, gesehen) {
+		if d.schonGesendet(K, t.Fehl, ab, jetzt, gesehen) || !d.darfEinreichen(K, e, t.Fehl, ab, jetzt, gesehen) {
 			return
 		}
 		if !d.teilOffenlegen(ctx, K, e, t.Fehl, ab, func(offen []QuantenWOffen) error {
 			return d.einreichen(quantenWSOffenlegenTxArt, QuantenWAngaben{K: K, Ab: ab, Offen: offen})
+		}) {
+			return
+		}
+		d.gesendetMerken(K, t.Fehl, ab, jetzt, gesehen)
+		if !d.nachziehen(ctx, func() bool {
+			n := d.cs.quantenWJetzt().Token[K]
+			return n == nil || n.token.Anmeldung == nil || n.token.Fehl != t.Fehl || n.token.Anmeldung.Offen != ab
 		}) {
 			return
 		}
