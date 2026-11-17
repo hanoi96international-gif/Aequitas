@@ -27,6 +27,8 @@ func quantenSAusgabeMit(args []string, uid int, schluessel string, ein io.Reader
 	api := fs.String("api", "http://127.0.0.1:8080", "API des eigenen Knotens")
 	deckung := fs.Int64("deckung", 1_000_000, "Deckung des Tokens in Mikro-AEQ")
 	frist := fs.Duration("frist", 15*time.Minute, "Frist je Schritt")
+	validatoren := fs.String("validatoren", "", "mehrere Validatoren: adresse=api,adresse=api (leer = nur dieser Knoten)")
+	schwelle := fs.Int("t", 1, "Schwelle: so viele Validatoren muessen ihre Anteile offenlegen")
 	if err := fs.Parse(args); err != nil || fs.NArg() != 0 {
 		return 2
 	}
@@ -38,9 +40,14 @@ func quantenSAusgabeMit(args []string, uid int, schluessel string, ein io.Reader
 		fmt.Fprintln(log, "ABBRUCH: RELAYER_PRIVATE_KEY fehlt")
 		return 2
 	}
+	vs, err := keeper.QuantenSValidatorenLesen(*validatoren)
+	if err != nil {
+		fmt.Fprintln(log, "ABBRUCH:", err)
+		return 2
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
-	if err := keeper.QuantenSAusgabe(ctx, *api, schluessel, *deckung, *frist, ein, aus, log); err != nil {
+	if err := keeper.QuantenSAusgabe(ctx, *api, schluessel, *deckung, *frist, vs, *schwelle, ein, aus, log); err != nil {
 		fmt.Fprintln(log, "FEHLER:", err)
 		return 1
 	}

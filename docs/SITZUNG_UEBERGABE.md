@@ -99,6 +99,15 @@ Neu gebaut, darum: **lokale Arbeit sofort committen und pushen.**
 - Der erste Versuch scheiterte, weil die **Signieradresse von C1**
   (`0x3066639af1653325100c1074a9696612dbdc42dc`) keine Deckung hatte. `0x0be8…d016` ist die
   Betreiber-Wallet, nicht C1. Der Betreiber hat 2 AEQ an C1 überwiesen (1 AEQ bleibt dort).
+- **Stand 17.11. ~18:30 UTC (Sitzungsende am Nutzungslimit):**
+  - PR #571 (Website `/quanten`, Schild und Band auf der Startseite, Leitsatz, FAQ, Testfix
+    Lebensnachweis, dazu S mit mehreren Validatoren) offen: CI abwarten, mergen, dann
+    C1-Deploy freigeben lassen.
+  - S mit mehreren Validatoren: `aequitasd quanten-s-ausgabe --validatoren adr=api,... --t N`;
+    `TestVierKnotenQuantenS_RealDB` und `...Ausfall_RealDB` (3 von 4, ein Knoten faellt aus)
+    lokal gruen. Gegenprobe t=4 bei Ausfall nicht zu Ende gelaufen (abgebrochen).
+  - App: #81, #82 gemergt; PR #83 (1.24.1) offen -> mergen, dann build-apk/build-ios und
+    release-apk/release-ios v1.24.1 (Freigaben Betreiber). iOS-Release 1.24.0 wartet auf Freigabe.
 - **Befund im Protokoll:** C1 läuft mit `AEQUITAS_RPC_RATE_LIMIT_MAX` (1000 je 10 s statt 200)
   und `AEQUITAS_RPC_QUIET_TX=1`; laut Knoten nur für Lastprüfstände gedacht. Prüfen und
   zurücksetzen (Schutzgrenzen nicht lockern, AGENTS.md).
