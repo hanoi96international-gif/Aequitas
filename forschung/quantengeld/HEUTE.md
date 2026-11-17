@@ -344,6 +344,28 @@ Werkzeug `aequitasd quanten-s-ausgabe` (#569), Stichtag 17.11. 17:00 UTC (#570).
   nur einen Validator, und es liegt kein Gutachten vor. Neu ist der ganze Ablauf auf der
   laufenden Kette mit Anteilen beim Validator-Dienst.
 
+### 3.3d Pilot mit vier Validatoren in voller Größe (17.11.2026, Rauschmodell)
+
+Workflow `quanten-s-pilot.yml`: vier echte Knoten im Job, Geheimnis 3-von-4 geteilt,
+k = 5.200 Stellen je Annahmestelle (die Tabelle für 3 von 4 bei Toleranz 4 %), also 10.400
+Qubits. Gemessen im Rauschmodell `ibm_marrakesh`, nicht auf dem Chip. Je Lauf zwei Tests:
+alle vier Knoten und ein Knoten fällt vor der ersten Vorlage aus. Hier stehen alle Läufe,
+auch die gescheiterten.
+
+| Lauf | Stand | Ergebnis | Ursache, Folge |
+|---|---|---|---|
+| [44164912648](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44164912648) | `main` nach #572 | rot: `Urteil: nicht in 15m0s (fehl 0, … offen 3456 von 5200)` (mit Ausfall) | Keine falsche Prüfung, nur zu langsam (rund 230 Stellen/min). Der Dienst reichte denselben Teil mehrfach ein, gegen die Burst-Grenzen → #573. Das Werkzeug gab vor der Kettenfrist auf → #574. |
+| [44166377116](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44166377116) | Zweig mit #573 | rot nach Erfolg (mit Ausfall): Werkzeug 16m20s, **Doppelvorlage abgewiesen, ehrliche Vorlage eingelöst**; danach `Knoten 0: Token lebt=true tot=false` | Der Test las den Stand der anderen Knoten nur einmal, Knoten 0 war einen Block hinterher. Der Test wartet jetzt bis zu 2 min (#575); der Gleichstand wird weiter streng geprüft. |
+| [44178246231](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44178246231) | `main` nach #574 | abgebrochen | Neu gestartet mit der Test-Korrektur (nächste Zeile). |
+| [44178445416](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44178445416) | Zweig mit #574 und Test-Korrektur | läuft | – |
+
+**Grenzen der Nachvollziehbarkeit bis hier:** Bei den ersten Läufen ist nur das Ende des
+Protokolls abrufbar (GitHub liefert über die Schnittstelle höchstens 5.000 Zeilen). Ob der
+Test ohne Ausfall in den Läufen 44164912648 und 44166377116 grün war, ist darum nicht
+belegt. Seit #575 legt jeder Lauf die Meldungen der Tests vollständig in die
+Zusammenfassung und hebt `ergebnis.txt` und die ganze Ausgabe `ausgabe.txt.gz` 90 Tage als
+Artefakt auf, mit SHA-256 in der Zusammenfassung.
+
 ### 3.4 Bargeld-Verhalten ohne Quanten (Offline-Bargeld)
 
 Was Menschen sich von Quantengeld wünschen, ist meist offline zu zahlen, wie mit
