@@ -628,7 +628,7 @@ func TestQuantenWDienst_NummerTresorStichtag(t *testing.T) {
 		echt := d.einreichen
 		d.einreichen = func(art string, a QuantenWAngaben) error { versuche++; return echt(art, a) }
 	}
-	quantenWAbOverride.Store(0) // die Konstante gilt: schlafend
+	quantenWAbOverride.Store(q.zeit + 3600) // der Stichtag liegt noch vor uns
 	q.takt()
 	if a := w.anfrage(w.cs); a == nil || a.Basen != nil || versuche != 0 {
 		t.Fatalf("der Takt arbeitet vor dem Stichtag (%d Einreichungen versucht)", versuche)

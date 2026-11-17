@@ -477,12 +477,20 @@ func TestQuantenWKette_BlockFalsch(t *testing.T) {
 }
 
 // Schlafend: vor dem Stichtag unbekannt, im Block verboten, 409, und das
-// leere Register aendert keine Wurzel.
+// leere Register aendert keine Wurzel. Der Stichtag im Hauptnetz ist gesetzt
+// (17.11.2026 fuer den 18.11.2026 18:00 UTC); geprueft wird hier die Zeit
+// davor -- mit einem Stichtag eine Stunde in der Zukunft, damit der Test
+// nicht von der Uhr abhaengt.
 func TestQuantenWKette_Schlafend(t *testing.T) {
 	quantenWAbOverride.Store(0)
-	if quantenWAb() != math_MaxInt64() {
-		t.Fatal("Stichtag nicht schlafend")
+	if quantenWAb() != 1795024800 || quantenWAbUnix == math_MaxInt64() {
+		t.Fatalf("Stichtag im Hauptnetz %d, erwartet 1795024800", quantenWAb())
 	}
+	if quantenWAktiv(1795024800-1) || !quantenWAktiv(1795024800) {
+		t.Fatal("Stichtag: eine Sekunde davor aktiv oder am Stichtag nicht")
+	}
+	quantenWAbOverride.Store(nowUnix() + 3600)
+	t.Cleanup(func() { quantenWAbOverride.Store(0) })
 	jetzt := nowUnix()
 	for _, art := range []string{quantenWPraegenTxArt, quantenWAnfrageTxArt, quantenWZufallTxArt, quantenWAntwortTxArt, quantenWOffenlegenTxArt, quantenWFristTxArt} {
 		if bekannteTxArt(art, jetzt) {
@@ -500,6 +508,21 @@ func TestQuantenWKette_Schlafend(t *testing.T) {
 			t.Errorf("%s: Endpunkt %d statt 409", art, rec.Code)
 		}
 	}
+	// Ab dem Stichtag bekannt; /api/status nennt ihn (Deploy-Waechter
+	// quanten-w-nicht-verpasst.sh), schlafend fehlt er.
+	for _, art := range []string{quantenWPraegenTxArt, quantenWAnfrageTxArt, quantenWZufallTxArt, quantenWAntwortTxArt, quantenWOffenlegenTxArt, quantenWFristTxArt} {
+		if !bekannteTxArt(art, quantenWAb()) {
+			t.Errorf("%s am Stichtag unbekannt", art)
+		}
+	}
+	if st := quantenWStatus(); st["ab"] != quantenWAb() {
+		t.Fatalf("Status ohne Stichtag: %v", st)
+	}
+	quantenWAbOverride.Store(math_MaxInt64())
+	if _, da := quantenWStatus()["ab"]; da {
+		t.Fatal("schlafend und trotzdem ein Stichtag im Status")
+	}
+	quantenWAbOverride.Store(nowUnix() + 3600)
 	cs := newTestState()
 	if cs.quantenWWurzel() != "" {
 		t.Fatal("leeres Register in der StateRoot")

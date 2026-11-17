@@ -84,6 +84,8 @@ jobs:
         run: bash .github/neustart/pq-ueberweisung-nicht-verpasst.sh http://$C1:8080
       - name: Stichtag des Quantengelds nicht verpasst
         run: bash .github/neustart/quantengeld-nicht-verpasst.sh http://$C1:8080
+      - name: Stichtag von Quantengeld W und S nicht verpasst
+        run: bash .github/neustart/quanten-w-nicht-verpasst.sh http://$C1:8080
       - name: Mindestzahl der Pruefer fuers Quantengeld nur ohne eingetragenen Satz aendern
         run: bash .github/neustart/quantengeld-mindest-pruefer.sh http://$C1:8080
       - name: Quantengeld-Noten je Zeile nur, solange der laufende Knoten keine im alten Format hat

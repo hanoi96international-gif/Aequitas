@@ -63,9 +63,15 @@ import (
 )
 
 const (
-	// quantenWAbUnix: Stichtag (math.MaxInt64 = schlafend). Setzen ist W6:
-	// Entscheidung der Pruefer, nach W4 und W5; eigene Sicherheitspruefung.
-	quantenWAbUnix int64 = math.MaxInt64
+	// quantenWAbUnix: Stichtag (math.MaxInt64 = schlafend). Freigeschaltet
+	// vom Betreiber am 17.11.2026 fuer den 18.11.2026 18:00 UTC -- vor dem
+	// Gutachten (W5) und ohne Pilot mit Partner (W4 mit Speicher). Bewusst:
+	// eine W-Note haelt auf heutiger Hardware nur Mikrosekunden, wer Deckung
+	// in eine Note sperrt, die er nicht halten kann, verliert sie an das
+	// Grundeinkommen; Variante S braucht keinen Speicher. Der Deploy-Waechter
+	// .github/neustart/quanten-w-nicht-verpasst.sh haelt den Ausroll an, wenn
+	// der Stichtag nicht mindestens 30 min in der Zukunft liegt.
+	quantenWAbUnix int64 = 1795024800
 
 	quantenWPraegenTxArt    = "quanten_w_praegen"
 	quantenWAnfrageTxArt    = "quanten_w_anfrage"
@@ -140,6 +146,17 @@ func quantenWAb() int64 {
 }
 
 func quantenWAktiv(t int64) bool { return t >= quantenWAb() }
+
+// quantenWStatus: fuer /api/status -- ab: der Stichtag des laufenden Knotens
+// (fehlt = schlafend). Daran erkennt der Deploy-Waechter
+// .github/neustart/quanten-w-nicht-verpasst.sh, ob ein Wechsel rueckwirkend waere.
+func quantenWStatus() map[string]interface{} {
+	m := map[string]interface{}{}
+	if ab := quantenWAb(); ab != math.MaxInt64 {
+		m["ab"] = ab
+	}
+	return m
+}
 
 func istQuantenWTxArt(t string) bool {
 	if istQuantenWSTxArt(t) {

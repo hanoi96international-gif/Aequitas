@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# Missbrauchs- und Gutfaelle fuer .github/neustart/quanten-w-nicht-verpasst.sh
+# mit einem kleinen HTTP-Server, der einen laufenden Knoten spielt.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+REPO=$(sed -n 's/^\tquantenWAbUnix int64 = \([0-9]\{1,\}\)$/\1/p' x/humanity/keeper/quanten_w_kette.go)
+[ -n "$REPO" ] || { echo "FEHLER: quantenWAbUnix nicht lesbar"; exit 1; }
+D=$(mktemp -d); trap 'kill $PID 2>/dev/null || true; rm -rf "$D"' EXIT
+mkdir -p "$D/api"
+PORT=$((20000 + RANDOM % 20000))
+# Testserver starten und warten, bis er antwortet. Ein starres "sleep 1"
+# kippte auf ausgelasteten Runnern (Pruefung meldete "halt" statt "ok");
+# ein belegter Port nimmt einen anderen.
+for _versuch in 1 2 3 4 5; do
+  PORT=$((20000 + RANDOM % 20000))
+  (cd "$D" && exec python3 -m http.server "$PORT" --bind 127.0.0.1 >/dev/null 2>&1) & PID=$!
+  for _i in $(seq 1 150); do
+    curl -s -o /dev/null "http://127.0.0.1:$PORT/" && break 2
+    kill -0 "$PID" 2>/dev/null || break
+    sleep 0.1
+  done
+  kill "$PID" 2>/dev/null || true
+done
+curl -s -o /dev/null "http://127.0.0.1:$PORT/" || { echo "FEHLER: Testserver startet nicht"; exit 1; }
+lauf() { # status-inhalt jetzt erwartung
+  printf '%s' "$1" > "$D/api/status"
+  if bash .github/neustart/quanten-w-nicht-verpasst.sh "http://127.0.0.1:$PORT" "$2" >/dev/null 2>&1; then e=ok; else e=halt; fi
+  [ "$e" = "$3" ] || { echo "FEHLER: status=$1 jetzt=$2 -> $e, erwartet $3"; exit 1; }
+  echo "ok: status=$1 jetzt=$2 -> $e"
+}
+lauf "{\"quanten_w\":{\"ab\":$REPO}}" $((REPO + 999999)) ok     # gleicher Stichtag: immer erlaubt
+lauf '{}' $((REPO - 7200)) ok                                    # aelterer Knoten, zwei Stunden voraus
+lauf '{"quanten_w":{}}' $((REPO - 7200)) ok    # laufender Knoten schlafend (ohne ab)
+lauf '{}' $((REPO - 600)) halt                                   # nur zehn Minuten voraus
+lauf '{}' $((REPO + 60)) halt                                    # schon vorbei
+lauf '{"quanten_w":{"ab":1700000000}}' $((REPO - 7200)) halt   # laufender Knoten nimmt sie schon an
+lauf '{"quanten_w":{"ab":"x"}}' $((REPO - 7200)) halt          # unlesbar
+lauf 'kein json' $((REPO - 7200)) halt                                                    # kaputte Antwort
+lauf '{"quanten_w":{"ab":99999999999999999999}}' $((REPO - 7200)) halt          # riesige Zahl
+lauf '{"quanten_w":{"ab":"0001794247200"}}' $((REPO - 7200)) halt               # fuehrende Nullen
+rm -f "$D/api/status"
+if bash .github/neustart/quanten-w-nicht-verpasst.sh "http://127.0.0.1:$PORT" 0 >/dev/null 2>&1; then echo "FEHLER: ohne Antwort erlaubt"; exit 1; fi
+echo "ok: ohne Antwort -> halt"

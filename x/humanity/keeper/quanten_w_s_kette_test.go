@@ -487,7 +487,10 @@ func TestQuantenWSKette_RegisterLesen(t *testing.T) {
 
 // Schlafend: die S-Arten sind vor dem Stichtag unbekannt und im Block verboten.
 func TestQuantenWSKette_Schlafend(t *testing.T) {
-	quantenWAbOverride.Store(0)
+	// Stichtag eine Stunde in der Zukunft: geprueft wird die Zeit davor,
+	// unabhaengig vom Stichtag im Hauptnetz und von der Uhr.
+	quantenWAbOverride.Store(nowUnix() + 3600)
+	t.Cleanup(func() { quantenWAbOverride.Store(0) })
 	jetzt := nowUnix()
 	for _, art := range []string{quantenWSAusgebenTxArt, quantenWSBindenTxArt, quantenWSWaehlenTxArt, quantenWSAnmeldenTxArt, quantenWSOffenlegenTxArt, quantenWSFristTxArt} {
 		if bekannteTxArt(art, jetzt) || !istQuantenWTxArt(art) {
@@ -502,6 +505,9 @@ func TestQuantenWSKette_Schlafend(t *testing.T) {
 		a.handleQuantenW(art)(rec, httptest.NewRequest(http.MethodPost, "/api/quanten-w/x", strings.NewReader(`{}`)))
 		if rec.Code != http.StatusConflict {
 			t.Errorf("%s: Endpunkt %d statt 409", art, rec.Code)
+		}
+		if !bekannteTxArt(art, quantenWAb()) {
+			t.Errorf("%s am Stichtag unbekannt", art)
 		}
 	}
 	var _ = context.Background
