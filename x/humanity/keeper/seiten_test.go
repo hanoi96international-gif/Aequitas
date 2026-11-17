@@ -16,6 +16,7 @@ var seitenFuerTest = map[string]string{
 	"/business":    businessHTML,
 	"/mitmachen":   mitmachenHTML,
 	"/transparenz": transparenzHTML,
+	"/quanten":     quantenHTML,
 }
 
 // Jeder Abschnitt der Quelle landet auf genau einer Seite. Ein neuer
