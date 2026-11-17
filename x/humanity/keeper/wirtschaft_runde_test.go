@@ -214,6 +214,23 @@ func TestWirtschaftRunde_RealDB(t *testing.T) {
 	if code, _ := frage("zeit=4000"); code != http.StatusNotFound {
 		t.Fatal("die naechste Runde wurde beim Nachtragen mitgenommen")
 	}
+	// Ein gespeicherter, aber NICHT angewendeter Block (replayed = false,
+	// etwa von einem Peer, dessen Pruefung scheiterte) liefert keine Runde --
+	// auch nicht, wenn er eine erfundene Runde traegt.
+	falsch := []Transaction{
+		{Type: "ubi_distribution", Wallet: "0xdead", Amount: 999999, DistributionAt: 7000},
+		{Type: "distribution_round_marker", DistributionAt: 7000},
+	}
+	if err := cs.SaveBlockToDB(&Block{Height: 700, Hash: fmt.Sprintf("0x%064d", 700), Timestamp: 7000, Transactions: falsch}, false); err != nil {
+		t.Fatal(err)
+	}
+	if code, _ := frage("hoehe=700"); code != http.StatusNotFound {
+		t.Fatalf("nicht angewendeter Block lieferte eine Runde: %d", code)
+	}
+	if code, _ := frage("zeit=7000"); code != http.StatusNotFound {
+		t.Fatal("erfundene Runde aus einem nicht angewendeten Block im Index")
+	}
+
 	// Ein Block ohne Rundenbuchung: 404.
 	if code, _ := frage("hoehe=500"); code != http.StatusNotFound {
 		t.Fatalf("Block ohne Runde: %d", code)

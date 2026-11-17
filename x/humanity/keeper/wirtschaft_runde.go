@@ -51,9 +51,10 @@ import (
 //
 // Der Schreiber beginnt mit dem Einspielen dieser Datei. Fragt jemand nach
 // dem Block einer aelteren Runde (hoehe=), traegt die Abfrage genau diese
-// Runde aus den Bloecken nach: die zusammenhaengenden Hoehen mit Buchungen
-// derselben Rundenzeit, hoechstens rundeNachtragHoehen, eine Nachtragung
-// zugleich, hinter der Lesegrenze je Absender.
+// Runde aus den Bloecken nach: nur angewendete Bloecke (replayed), die
+// zusammenhaengenden Hoehen mit Buchungen derselben Rundenzeit, hoechstens
+// rundeNachtragHoehen, eine Nachtragung zugleich, hinter der Lesegrenze je
+// Absender.
 
 // rundenArten: was zu einer Tagesrunde gehoert (state.go,
 // RunDailyDistributionAtomic). Die Marke steht immer am Ende der Runde.
@@ -272,9 +273,14 @@ func (cs *ChainState) rundeNachtragen(hoehe int64) (int64, error) {
 	gelesen := 0
 	lies := func(h int64) []rundenBuchung {
 		gelesen++
+		// Nur Bloecke, die dieser Knoten ANGEWENDET hat (replayed): ein
+		// gespeicherter, aber nicht nachgespielter Block -- etwa von einem
+		// Peer, dessen Pruefung scheiterte -- darf keine Rundenzahlen liefern
+		// (und mit "erste Zeile gewinnt" die echten verdecken).
+		angewendet := cs.angewendeteHashesAufHoehe(h)
 		var bu []rundenBuchung
 		for _, b := range cs.LoadBlocksAtHeightFromDB(h) {
-			if b == nil {
+			if b == nil || !angewendet[b.Hash] {
 				continue
 			}
 			bu = append(bu, rundenBuchungen(b.Transactions)...)
@@ -313,6 +319,28 @@ func (cs *ChainState) rundeNachtragen(hoehe int64) (int64, error) {
 }
 
 var errRundeBeschaeftigt = errors.New("eine andere Runde wird gerade nachgetragen")
+
+// angewendeteHashesAufHoehe: die Bloecke einer Hoehe, die dieser Knoten
+// angewendet hat (chain_blocks.replayed, siehe ensureReplayedColumn).
+func (cs *ChainState) angewendeteHashesAufHoehe(h int64) map[string]bool {
+	out := map[string]bool{}
+	if cs.db == nil {
+		return out
+	}
+	cs.ensureReplayedColumn()
+	rows, err := cs.db.Query(`SELECT hash FROM chain_blocks WHERE height = $1 AND replayed`, h)
+	if err != nil {
+		return out // fail-closed: nichts nachtragen
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var x string
+		if rows.Scan(&x) == nil {
+			out[x] = true
+		}
+	}
+	return out
+}
 
 // RundeStand: die Antwort fuer eine Runde (zeit > 0) oder die juengste (0).
 func (cs *ChainState) RundeStand(zeit int64) (map[string]interface{}, error) {
