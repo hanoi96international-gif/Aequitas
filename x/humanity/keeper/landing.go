@@ -80,6 +80,9 @@ nav::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;backgro
 /* ── HERO ────────────────────────────────────────────────────── */
 .hero{min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:170px 20px 64px;position:relative;overflow:hidden}
 .hero::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 80% 50% at 50% 0%,rgba(91,140,255,0.14) 0%,transparent 60%),radial-gradient(ellipse 55% 40% at 85% 100%,rgba(61,220,151,0.06) 0%,transparent 60%);pointer-events:none}
+.hero-q{display:flex;align-items:center;gap:10px;width:fit-content;max-width:100%;background:linear-gradient(90deg,rgba(91,140,255,0.22),rgba(61,220,151,0.14));border:1.5px solid rgba(91,140,255,0.7);border-radius:var(--radius-pill);padding:10px 18px;margin:-8px 0 22px;color:#fff;font-weight:800;font-size:0.95rem;text-decoration:none;box-shadow:0 0 24px rgba(91,140,255,0.35)}
+.hero-q .ico{width:20px;height:20px;flex:none;color:var(--accent)}
+.hero-q:hover{transform:translateY(-1px)}
 .hero-badge{display:inline-flex;align-items:center;gap:8px;background:rgba(245,165,36,0.12);border:1px solid rgba(245,165,36,0.35);border-radius:var(--radius-pill);padding:7px 16px;font-size:0.75rem;color:var(--warn);font-weight:700;letter-spacing:0.4px;margin-bottom:24px}
 .pulse{width:7px;height:7px;border-radius:50%;background:var(--green);animation:pulse 2s infinite}
 @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.5;transform:scale(0.85)}}
@@ -265,6 +268,10 @@ section{padding:56px 16px}
 .tab-tool{font-weight:500;font-size:0.76rem;padding:10px 12px}
 .btn-biz{border-color:rgba(245,165,36,0.45);color:var(--gold)}
 .btn-biz:hover{background:rgba(245,165,36,0.1);border-color:var(--gold)}
+.band-q{background:linear-gradient(180deg,rgba(91,140,255,0.16),rgba(91,140,255,0.04));border-top:2px solid rgba(91,140,255,0.55);border-bottom:2px solid rgba(91,140,255,0.35)}
+.band-q .section-label{color:var(--accent)}
+.band-q h2{max-width:820px;font-size:clamp(1.7rem,4.2vw,2.6rem)}
+.band-q .band-btns .btn-primary{background:var(--accent);color:#fff}
 .band-biz{background:linear-gradient(180deg,rgba(245,165,36,0.07),rgba(245,165,36,0.02));border-top:1px solid rgba(245,165,36,0.25);border-bottom:1px solid rgba(245,165,36,0.25)}
 .band-biz .section-label{color:var(--gold)}
 .band-biz h2{max-width:760px}
@@ -601,6 +608,7 @@ section{padding:64px 16px}
         <span class="pulse"></span>
         <span data-i18n="hero-badge">Beta · public test</span>
       </div>
+      <a href="/quanten" class="hero-q"><svg class="ico" aria-hidden="true"><use href="#i-shield"/></svg><span data-i18n="hero-q">Counterfeit-proof – even against quantum computers →</span></a>
       <h1 data-i18n="hero-h1">Money, because <span>people</span> exist.</h1>
       <p class="hero-sub" data-i18n="hero-sub">Every person receives the same share: 1,000 AEQ. Nobody can print more. No bank account, no ID needed.</p>
       <div class="hero-btns">
@@ -673,6 +681,24 @@ section{padding:64px 16px}
   </div>
   <div class="stats-live"><span class="live-dot"></span><span data-i18n="ubi-pre">Next equal split in</span> <strong id="ubi-next">—</strong> <span data-i18n="ubi-mid">· the pool holds</span> <strong id="ubi-pool">—</strong> AEQ</div>
 </div>
+
+<section id="qmarke" class="band-q">
+  <div class="section-inner">
+    <div class="reveal">
+      <div class="section-label" data-i18n="nav-q">Counterfeit-proof</div>
+      <h2 data-i18n="logo-sub">The fairest counterfeit-proof money – from one person for all people</h2>
+      <p class="section-sub" data-i18n="qm-sub">Even quantum computers cannot forge it: one person exists only once, wallets can be protected against quantum computers today, and the first real quantum token already runs on the main network.</p>
+      <div class="ben">
+        <div class="ben-item"><span class="ben-ico"><svg class="ico" aria-hidden="true"><use href="#i-user"/></svg></span><div><p data-i18n="qm-1">Every person exists only once – nobody can create money for invented people.</p></div></div>
+        <div class="ben-item"><span class="ben-ico"><svg class="ico" aria-hidden="true"><use href="#i-shield"/></svg></span><div><p data-i18n="qm-2">Your wallet can be protected against future quantum computers; new wallets are protected automatically.</p></div></div>
+        <div class="ben-item"><span class="ben-ico"><svg class="ico" aria-hidden="true"><use href="#i-cpu"/></svg></span><div><p data-i18n="qm-3">Quantum money: since 17 Nov 2026 the first real quantum token runs on the main network – the chain rejected a copy.</p></div></div>
+      </div>
+      <div class="band-btns">
+        <a href="/quanten" class="btn-primary" data-i18n="qm-btn">How Aequitas stays counterfeit-proof →</a>
+      </div>
+    </div>
+  </div>
+</section>
 
 <section id="prinzip">
   <div class="section-inner">

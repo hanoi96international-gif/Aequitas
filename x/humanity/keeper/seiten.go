@@ -23,7 +23,7 @@ import (
 
 var (
 	landingHTML = baueSeite("/", "", "", []string{
-		"prinzip", "warum", "vergleich", "zugang", "forbiz", "news", "gruender", "faqkurz", "cta"})
+		"qmarke", "prinzip", "warum", "vergleich", "zugang", "forbiz", "news", "gruender", "faqkurz", "cta"})
 	ideeHTML = baueSeite("/idee", "Aequitas — Why Aequitas", seitenKopfIdee, []string{
 		"problem", "funktionen", "menge", "vision"})
 	economyHTML = baueSeite("/economy", "Aequitas — How it works", seitenKopfEco, []string{
