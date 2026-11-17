@@ -225,6 +225,11 @@ func (cs *ChainState) ensureTxIndexWorker() {
 				txIndexNachtragen(job.height, job.blockHash)
 				fmt.Printf("[VERLAUF] ⚠ %v (wird nachgetragen)\n", err)
 			}
+			// Rundenbuchungen (wirtschaft_runde.go), ebenso idempotent.
+			if err := cs.schreibeRundenBuchungen(job.height, job.txs); err != nil {
+				txIndexNachtragen(job.height, job.blockHash)
+				fmt.Printf("[RUNDE] ⚠ %v (wird nachgetragen)\n", err)
+			}
 		}
 	})
 	SafeGoroutine("txBlockIndexNachtraeger", func() { cs.txIndexNachtraeger() })

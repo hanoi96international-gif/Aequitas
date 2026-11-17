@@ -1296,6 +1296,7 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	// Unternehmen (wirtschaft.go, wirtschaft_api.go)
 	mux.HandleFunc("/api/wirtschaft/regeln", a.handleWirtschaftRegeln)
 	mux.HandleFunc("/api/wirtschaft/konto", a.lesenBegrenzt("/api/wirtschaft/konto", a.handleWirtschaftKonto))
+	mux.HandleFunc("/api/wirtschaft/runde", a.lesenBegrenzt("/api/wirtschaft/runde", a.handleWirtschaftRunde))
 	mux.HandleFunc("/api/verlauf", a.lesenBegrenzt("/api/verlauf", a.handleKontoVerlauf))
 	mux.HandleFunc("/api/unternehmen", a.handleUnternehmenListe)
 	// Wie Swap und Ueberweisung durch die Weiterleitung: sie nehmen an
