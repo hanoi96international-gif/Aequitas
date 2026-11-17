@@ -45,8 +45,14 @@ Danach: App-Anzeige für W und S.
 
 **Entwurf W2e (17.11., Grundlage `wiesner_mehrstufig.py`):**
 - Nur beim **Einlösen** (k fest), Prüfen ohne Einlösen bleibt wie es ist.
-- Parameter je Note: `e = tol/100` gilt als höchste Fehlerrate einer echten Note,
-  `c = (1 − f16/16) · 14,64 %` als kleinste eines Fälschers (f16 wie heute). Nötig: e < c.
+- Parameter je Note: **e = höchste Fehlerrate einer echten Note**, als eigenes Feld in
+  Promille (z. B. 4, 7, 20 ‰ aus den W1-Messungen), und `c = (1 − f16/16) · 14,64 %` als
+  kleinste Fehlerrate eines Fälschers (f16 wie heute). Nötig: e < c.
+  - **Nicht** e = tol/100 setzen. Gerechnet am 17.11. (`w2e_eintrag`): Dann sind s1 und k_max
+    größer als das feste k_note (z. B. tol 4, f16 0: s1 1216, k_max 3072 gegen 840).
+  - Die feste Tabelle bindet nur den Fälscher; eine echte Note mit Fehlerrate gleich der
+    Toleranz fiele dort etwa in jedem zweiten Fall durch.
+  - Der Gewinn von 20–52 % gilt im fairen Vergleich (`main()`): gleiches e für beide.
 - **Entscheidung ganzzahlig**, kein Gleitkomma im Konsens. L = F·ln(c/e) + (T−F)·ln((1−c)/(1−e))
   bei T Treffern, F Fehlern.
   - echt, wenn L ≤ −A (A = 40 ln 2): F·Q ≤ T·P − R
