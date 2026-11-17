@@ -7,45 +7,35 @@ Repos); davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
-**Zuletzt (Sitzung „Weiter“, 17.11. ~21:30 UTC):**
-- **Gemergt:** #572 (Pilot-Workflow, Ratengrenze), #573 (kein doppeltes Einreichen), #574
-  (Urteil bis zur Kettenfrist, Ersatz-Validatoren in fester Reihenfolge, Zusammenfassung).
-  **C1-Deploy von #572 ist durch.** Die Ratengrenze auf C1 sinkt erst, wenn der Betreiber
-  `perf-c1.yml` startet und freigibt.
-- **Pilot in voller Größe (k = 5.200, 3 von 4, Rauschmodell):**
-  - Vor #573: Das Urteil kam nicht in 15 min (offen 3456 von 5200, rund 230 Stellen/min).
-  - Mit #573 (Lauf 44166377116): Mit Ausfall **erstmals durchgekommen**. Doppelvorlage
-    abgewiesen, ehrliche Vorlage eingelöst, Werkzeug 16m20s. Rot nur, weil Knoten 0 den
-    Einlöse-Block beim einmaligen Lesen noch nicht hatte. Korrektur im Test (PR #575).
-    Ob der Lauf ohne Ausfall grün war, ist unbekannt (Protokollende reicht nicht).
-  - **Läuft:** Pilot auf `claude/weiter-uw2p42` (#574 und Test-Korrektur). Ergebnis in der
-    Zusammenfassung des Laufs (Werkzeug-Dauer, Urteil, offen x von k).
-- **Leitlinie des Betreibers (17.11. abends): „Alles muss perfekt nachvollziehbar und
-  transparent sein.“** Umgesetzt:
-  - Quellen der Wirtschaftsanalyse per Websuche geprüft, mit DOI und Prüfstand;
-    Unbelegtes gestrichen.
-  - `/api/wirtschaft/regeln` nennt `geltend`.
-  - Pilot-Läufe legen alle Testmeldungen und die ganze Ausgabe als Artefakt ab, mit SHA-256.
-  - `HEUTE.md` 3.3d listet jeden Pilot-Lauf, auch die gescheiterten.
-  - App: Die Netto-Zeile ist aufklappbar, mit beiden Buchungen (Block, Tx) und Rechenweg.
-
-  - **Neu: `/api/wirtschaft/runde`** (`wirtschaft_runde.go`, PR #575). Jede Tagesrunde ist
-    mit Zahlen nachrechenbar:
-    - Rest der Vorrunde + Abgaben + andere Zuflüsse = Topf vor der Auszahlung
-      = Grundeinkommen + Rest; Grundeinkommen = Menschen × Anteil.
-    - Eine Zeile je (Rundenzeit, Art, Konto), Doppel aus Geschwisterblöcken fallen heraus.
-    - Ältere Runden mit `?hoehe=` aus angewendeten Blöcken (höchstens 200 Höhen, einer
-      zugleich).
-    - Die App zeigt die Zahlen beim Aufklappen (App #84).
-    - Kein Konsens: zum Prüfen einen zweiten Knoten fragen.
-- **PR #575 offen:** alles oben im Repo Aequitas plus die Test-Korrektur. Mergen, wenn der
-  Pilot grün ist. **App-PR #84 offen:** Netto-Zeile; mergen nach grüner CI, Release braucht
-  die Freigabe des Betreibers.
-- **Danach:**
-  - Pilot `modus=ibm` (Freigabe `quantenhardware`, 10.400 Qubits).
-  - Wirtschaft: App-Anzeige netto und Anteil am fairen Anteil (Frage an den Betreiber offen).
-- Protokolle: Der Download über `blob.core.windows.net` ist gesperrt, `get_job_logs` liefert
-  höchstens die letzten 5.000 Zeilen.
+**Zuletzt (Sitzung „Weiter“, 17.11. ~22:10 UTC):**
+- **Gemergt:** #572 bis #575, App #84.
+  - #575: `/api/wirtschaft/runde`, `regeln.geltend`, geprüfte Quellen, Pilot-Artefakt und
+    Zeiten im Ausgabe-Werkzeug.
+  - App #84: Netto-Zeile mit Einzelbuchungen und Rundenzahlen; das Release braucht die
+    Freigabe des Betreibers.
+- **Pilot S in voller Größe GRÜN** (Lauf 44178445416, Rauschmodell, k = 5.200, 3 von 4).
+  Mit Ausfall: 12m50s, Doppelvorlage abgewiesen, ehrliche Vorlage eingelöst, drei Knoten
+  gleich. Details in `HEUTE.md` 3.3d.
+- **Läuft bzw. wartet:**
+  - Pilot auf `main`, Rauschmodell: 44186803503.
+  - Pilot auf `main`, **IBM**: 44186826204, wartet auf die Schlange, dann auf die
+    Freigabe in `quantenhardware`.
+  - C1-Deploy von #575: 44186789036, Freigabe Betreiber.
+- **Auftrag des Betreibers (1–3, 22:05):**
+  1. Pilot auf `main` mit Artefakt.
+  2. Pilot auf dem echten IBM-Chip.
+  3. Rate der Offenlegung auswerten und, wenn nötig, beschleunigen, ohne Grenzen zu
+     lockern.
+- **Messen von hier aus:** Zusammenfassung und Artefakte sind gesperrt (Host
+  `blob.core.windows.net`). Ab dem Zweig nach #575 schreibt der Pilot das Ergebnis
+  zusätzlich ans Protokollende (`get_job_logs` mit `tail_lines` ≤ 5000). Das Werkzeug
+  schreibt die Zeiten je Schritt, den Stand der Offenlegung je Minute und die Rate in
+  Stellen/min.
+- Wirtschaft: Startbetrag-Analyse fertig (bei 1.000 bleiben). Offen ist nur, was in
+  `WIRTSCHAFT_STARTBETRAG.md` Abschnitt 5 steht (Staffel scharf schalten, feste Beträge
+  als Vielfache).
+- Protokolle: Der Download über `blob.core.windows.net` ist gesperrt, `get_job_logs`
+  liefert höchstens 5.000 Zeilen.
 
 ## Arbeitsweise (vom Betreiber festgelegt)
 

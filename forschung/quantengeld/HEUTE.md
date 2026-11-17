@@ -359,6 +359,9 @@ auch die gescheiterten.
 | [44178246231](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44178246231) | `main` nach #574 | abgebrochen | Neu gestartet mit der Test-Korrektur (nächste Zeile). |
 | [44178445416](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44178445416) | Zweig mit #574 und Test-Korrektur (f90b7cd) | **grün**, beide Tests. Mit Ausfall: Werkzeug **12m50s**, Fehlerrate bei passender Basis 24/5208, Doppelvorlage **abgewiesen**, ehrliche Vorlage **eingelöst**, die drei lebenden Knoten gleich (Höhe 5821, StateRoot `cebc24bb…51bd07`). Paket `ok` nach 1917,7 s | Ohne Ausfall: bestanden (Paket `ok`); Dauer und Einzelzeilen liegen vor dem abrufbaren Protokollende und sind nicht belegt. |
 
+| [44186803503](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44186803503) | `main` nach #575 (7fb0a38), Rauschmodell | läuft | erster Lauf mit vollständiger Zusammenfassung, Artefakt und Zeiten je Schritt |
+| [44186826204](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44186826204) | `main` nach #575, **IBM-Chip** (10.400 Qubits) | wartet: Schlange, dann Freigabe in `quantenhardware` | – |
+
 **Ergebnis:** Variante S läuft mit vier Validatoren (3 von 4) in voller Größe der Tabelle
 durch, auch wenn ein Validator ausfällt. Dabei gilt: Messung im Rauschmodell, Knoten in
 einem Job, kein Gutachten.

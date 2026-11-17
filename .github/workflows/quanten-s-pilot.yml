@@ -186,6 +186,13 @@ jobs:
             sha256sum ergebnis.txt ausgabe.txt.gz
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+          # Auch ans Ende des Protokolls: die Schnittstelle liefert nur dessen
+          # letzte 5.000 Zeilen, Zusammenfassung und Artefakt sind von manchen
+          # Arbeitsumgebungen aus nicht abrufbar.
+          echo "===== Ergebnis der Tests ====="
+          cat ergebnis.txt
+          sha256sum ergebnis.txt ausgabe.txt.gz
+          echo "===== Ende Ergebnis ====="
           exit "$RC"
       - name: Ergebnis und ganze Ausgabe aufbewahren
         if: always()
