@@ -61,8 +61,12 @@ Prüfung) ist gerechnet, der Einbau in Spezifikation und Knoten ist offen (W2e).
    - **Zwei Stufen** (erst s1 Stellen ziehen, nur bei „unentschieden“ eine zweite Ziehung
      bis k_max): eine echte Note verbraucht im Mittel 20–52 % weniger Stellen, nur 4–12 %
      der Prüfungen brauchen die zweite Stufe.
-   - **Offen (W2e, Konsens):** ganzzahlige Grenztabelle je Treffer-Zahl, zweite Runde in
-     der Anfrage; erst Spezifikation und Prüfvektor, dann Knoten.
+   - **Mit der heutigen Garantie gerechnet (W2e, 17.11.):** gleiche Garantie wie die feste
+     Prüfung. Eine volle Prüfung braucht dann im Mittel 16–31 % weniger Stellen, aber k_max
+     = 1,5–1,9 × k_note frei. Beim Einlösen hilft es der Lebensdauer nicht.
+   - **Entscheidung:** W2e ist eine Optimierung, keine Sicherheitsfrage. Gebaut wird sie
+     erst, wenn die Stellen je Note im Pilot der Engpass sind; vorher haben Gutachten und
+     Pilot (W6) Vorrang. Grenzen und Tabelle liegen fertig in `wiesner_mehrstufig.py`.
 6. ~~**Fehlerkorrektur je Stelle messen**~~ – beantwortet (17.11., HEUTE.md 3.3,
    `wiesner_schutz.py`):
    - Steane-Code je Stelle im Rauschmodell `ibm_marrakesh`: bei jeder Wartezeit

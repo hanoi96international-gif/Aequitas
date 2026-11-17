@@ -2,7 +2,7 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 17.11.2026 ~06:35 UTC nach #563, Sitzung „Weiter“ (Auftrag des Betreibers: „Alles erledigen
+Stand: 17.11.2026 ~07:30 UTC nach #565, #557 und #563 auf C1, Sitzung „Weiter“ (Auftrag des Betreibers: „Alles erledigen
 für dezentrales Quantengeld“).
 
 ## Arbeitsweise (vom Betreiber festgelegt)
@@ -28,58 +28,32 @@ für dezentrales Quantengeld“).
 - Lokale Go-Tests: Erst `df -h /` prüfen. Bei vollem Platz `go clean -cache`. Die
   Fehlermeldung „MB of disk left“ kommt vom Container, nicht vom Code.
 
-## Hauptaugenmerk: dezentrales Quantengeld (Stand 16.11. ~23 UTC)
+## Hauptaugenmerk: dezentrales Quantengeld (Stand 17.11. ~07:30 UTC)
 
 **Gemergt (#563):** Register von W und S als eigene Tabelle `quanten_w_eintraege`
 (`quanten_w_tabelle.go`): eine Zeile je Note, Token und toter Note, nur Geändertes
 wird geschrieben, StateRoot und Snapshot-Format unverändert, Umzug aus `chain_config`
 beim Laden. Dazu im selben PR die Rechnung zu **B5** (`wiesner_mehrstufig.py`):
-zwei Stufen sparen einer echten Note im Mittel 20–52 % Stellen bei unverändert 2⁻⁴⁰.
-**Als Nächstes:** W2e – zwei Stufen der Prüfung:
-1. Spezifikation `wiesner_kette.py`: ganzzahlige Grenztabelle je Treffer-Zahl h
-   (höchstens a(h) Fehler → echt, mindestens r(h) Fehler → fällt), s1 und k_max je
-   (Toleranz, Absprache) wie `quantenWKTabelle`; die Anfrage bekommt eine zweite Runde
-   (neuer Zufall, neue Antwort); ohne Entscheidung nach k_max: fällt.
-2. Prüfvektor neu, dann Knoten (`quanten_w.go`, `quanten_w_register.go`), Dienst und Tests.
-Danach: App-Anzeige für W und S.
+zwei Stufen sparen einer echten Note im Mittel 20–52 % Stellen bei unverändert 2⁻⁴⁰
+(Vergleich bei gleichem e; mit der Garantie der heutigen Prüfung sind es 16–31 %, siehe
+unten).
+**W2e entschieden (17.11., `wiesner_mehrstufig.py`):** nicht jetzt bauen.
+- **Gerechnet mit der Garantie, die die feste Prüfung heute gibt:** Eine volle Prüfung in
+  zwei Stufen braucht im Mittel 16–31 % weniger Stellen. Dafür müssen k_max = 1,5–1,9 ×
+  k_note frei sein, und 3–11 % der Prüfungen brauchen eine zweite Runde.
+- Beim **Einlösen** hilft es der Lebensdauer nicht, Einlösen ist das Letzte einer Note.
+- Es ist eine Optimierung, keine Sicherheitsfrage. Bauen, wenn die Stellen je Note im
+  Pilot der Engpass sind.
+- **Was bereitliegt:**
+  - In `wiesner_mehrstufig.py` (Docstring und `w2e_*`): die Grenzen, ganzzahlig und zur
+    sicheren Seite gerundet, und die Tabelle.
+  - Ablauf-Entwurf und Missbrauchsfälle: PR #565, Abschnitt „Entwurf W2e“ in dieser Datei.
+    Der Entwurf gilt dort fürs Einlösen; sinnvoll ist er aber für die volle Prüfung, mit e
+    aus der heutigen Garantie statt einem neuen Feld.
 
-**Entwurf W2e (17.11., Grundlage `wiesner_mehrstufig.py`):**
-- Nur beim **Einlösen** (k fest), Prüfen ohne Einlösen bleibt wie es ist.
-- Parameter je Note: **e = höchste Fehlerrate einer echten Note**, als eigenes Feld in
-  Promille (z. B. 4, 7, 20 ‰ aus den W1-Messungen), und `c = (1 − f16/16) · 14,64 %` als
-  kleinste Fehlerrate eines Fälschers (f16 wie heute). Nötig: e < c.
-  - **Nicht** e = tol/100 setzen. Gerechnet am 17.11. (`w2e_eintrag`): Dann sind s1 und k_max
-    größer als das feste k_note (z. B. tol 4, f16 0: s1 1216, k_max 3072 gegen 840).
-  - Die feste Tabelle bindet nur den Fälscher; eine echte Note mit Fehlerrate gleich der
-    Toleranz fiele dort etwa in jedem zweiten Fall durch.
-  - Der Gewinn von 20–52 % gilt im fairen Vergleich (`main()`): gleiches e für beide.
-- **Entscheidung ganzzahlig**, kein Gleitkomma im Konsens. L = F·ln(c/e) + (T−F)·ln((1−c)/(1−e))
-  bei T Treffern, F Fehlern.
-  - echt, wenn L ≤ −A (A = 40 ln 2): F·Q ≤ T·P − R
-  - fällt, wenn L ≥ B (B = ln 2·10⁶): F·Q ≥ T·P + S
-  - Q, P, R, S sind ganze Zahlen je (tol, f16), offline gerechnet und **zur sicheren Seite
-    gerundet**: Annahme- und Ablehnungsbereich je Teilmenge des exakten. Die Tabelle
-    steht in Spezifikation und Knoten wie heute `K_TABELLE`/`quantenWKTabelle`. Der
-    Selbsttest rechnet nach: Fälscher ≤ 2⁻⁴⁰ (Wald gilt für jede Abbruchregel), echt fällt
-    ≤ 10⁻⁶ (Chernoff mit den gerundeten Zahlen).
-- **Ablauf:**
-  1. Anfrage zum Einlösen zieht `s1` Stellen; Antwort; Offenlegen in Teilen.
-  2. Nach Stufe 1: echt → einlösen; fällt → durchgefallen; sonst Stufe 2.
-  3. **Stufe 2** ist eine neue Runde in derselben Anfrage: nächster Wert der Hash-Ketten
-     (`zaehl + 1`), neuer Zufall, `k_max − s1` weitere Stellen, neue Antwort (eigene
-     Unterschrift mit Stufe), Offenlegen; dann echt oder fällt, **kein Unentschieden**.
-  4. Fristen wie heute je Stufe. Pfand für k_max von Anfang an.
-  5. Reserve und Erschöpfung rechnen mit k_max statt k_note, Hash-Ketten mit zwei Werten.
-- **Tabelle je (tol, f16):** s1, k_max, Q, P, R, S. s1 so, dass die erwarteten Stellen
-  minimal sind. Die Entscheidung fällt nur an den Stufenenden; `zwei_stufen` dafür mit
-  „L(s1) ≤ −A“ statt „vorher gekreuzt“ neu rechnen.
-- **Missbrauch zu testen:**
-  - Stufe 2 ohne Bedarf;
-  - Antwort der Stufe 1 in Stufe 2 wiederholt;
-  - Frist zwischen den Stufen;
-  - Rundung der Tabelle zum Vorteil des Fälschers (Mutation);
-  - Einlösen mit k ≠ s1;
-  - zweite Stufe mit falscher Zahl Stellen.
+**Als Nächstes (Sitzung „Weiter“):** App-Anzeige für W und S (App-Repo, vorher die
+Expo-Doku v54 lesen, siehe AGENTS.md der App); danach W6-Voraussetzungen (Gutachten über
+die Vorlagen, Pilot im Testnetz).
 
 Auftrag des Betreibers: dezentrales Quantengeld auf heutigem Stand funktionsfähig, damit
 Aequitas ernstzunehmendes Quantengeld ist. „Alles umsetzen.“ Die Liste der offenen Punkte

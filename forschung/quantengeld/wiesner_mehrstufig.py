@@ -58,6 +58,34 @@ BEFUND (17.11.2026, Tabelle von main()):
     (neuer Zufall, neue Antwort), ohne Entscheidung nach k_max: faellt.
     Erst Spezifikation (wiesner_kette.py) und Pruefvektor, dann Knoten.
 
+W2E, GERECHNET MIT DER HEUTIGEN GARANTIE (17.11.2026):
+  Je (Toleranz, f16) e = groesste Fehlerrate einer echten Note, die die
+  heutige feste Pruefung (k_note, Regel der Kette) hoechstens mit 1e-6
+  durchfallen laesst; damit w2e_eintrag(e, f16). Beide Pruefungen geben
+  also DIESELBE Garantie (Faelscher <= 2^-40, echt faellt <= 1e-6).
+    tol f16 | k_note |  e (Promille) |   s1 | k_max | erwartet | zweite | Ersparnis
+      2   0 |    552 |   1           |  448 |   896 |      462 |  3,2 % |   16 %
+      2   8 |   1760 |   5           | 1216 |  2752 |     1347 |  8,5 % |   23 %
+      3   4 |   1144 |   7           |  768 |  1792 |      867 |  9,7 % |   24 %
+      4   0 |    840 |   9           |  576 |  1280 |      627 |  7,2 % |   25 %
+      4   8 |   5200 |  24           | 3200 |  7936 |     3579 |  8,0 % |   31 %
+      5   4 |   2240 |  24           | 1408 |  3392 |     1555 |  7,4 % |   31 %
+      6   4 |   3360 |  36           | 2048 |  5120 |     2319 |  8,8 % |   31 %
+  (alle 41 gerechneten Eintraege tol 2-6: 16-31 % Ersparnis, k_max 1,5-1,9 x
+  k_note, zweite Stufe in 3-11 % der Pruefungen; tol 5/f16 7 nicht moeglich.)
+  ABWAEGUNG:
+  - Beim EINLOESEN bringt es nichts fuer die Lebensdauer: Einloesen ist das
+    Letzte, was eine Note tut. Es spart nur Offenlegungs-Teile.
+  - Bei einer VOLLEN PRUEFUNG vor dem Einloesen (Annahme einer Note mit der
+    Sicherheit des Einloesens) braucht jede Pruefung im Mittel 16-31 %
+    weniger Stellen; eine Note haelt also etwa 20-45 % mehr volle Pruefungen
+    aus. Dafuer muessen k_max (1,5-1,9 x k_note) frei sein, ein Teil der
+    Pruefungen braucht eine zweite Runde (Zufall, Antwort, Offenlegen), und
+    die Kette bekommt einen zweiten Ablauf.
+  - Empfehlung: W2e ist eine Optimierung, keine Sicherheitsfrage. Erst bauen,
+    wenn die Zahl der Stellen je Note im Pilot der Engpass ist; vorher haben
+    die Voraussetzungen von W6 (Gutachten, Pilot) Vorrang.
+
 Aufruf:  python3 -I wiesner_mehrstufig.py [--selbsttest]
 """
 from __future__ import annotations
