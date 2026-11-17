@@ -61,7 +61,16 @@ unten).
   erreichbar. Geprüft wurde gegen die installierten Pakete (Expo 54.0.35, expo-router
   6.0.24, React Native 0.81.5).
 
-**Als Nächstes:** Voraussetzungen von W6.
+**W/S im Hauptnetz freigeschaltet (Entscheidung des Betreibers, 17.11.):**
+- Stichtag 18.11.2026 18:00 UTC (`quantenWAbUnix = 1795024800`).
+- Ohne Gutachten und ohne Pilot mit Partner; die Risiken sind im Code und im PR genannt.
+- Deploy-Wächter `.github/neustart/quanten-w-nicht-verpasst.sh` mit Test; `/api/status`
+  nennt `quanten_w.ab`.
+- C1 muss vor 17:30 UTC am 18.11. mit diesem Stand laufen, sonst hält der Wächter an.
+- Danach: erste S-Ausgabe auf dem Hauptnetz über einen Workflow, mit IBM als Gerät des
+  Halters.
+
+**Als Nächstes:** Voraussetzungen von W6 (für eine Freischaltung mit Gutachten).
 - Gutachten: Vorlagen in `ANSCHREIBEN.md`, verschickt der Betreiber.
 - Pilot im Testnetz: mehrere Validatoren mit Dienst, Prägen bis Einlösen auf echter
   Hardware.

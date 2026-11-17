@@ -1493,7 +1493,8 @@ func (a *APIServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 		"produzenten_geschlossen": a.blockchain.ProduzentenGeschlossen(),
 		// quanten_geld.go: Stichtag und Topf des dezentralen Quantengelds
 		// (ab fehlt, solange schlafend -- der Waechter liest das so).
-		"quanten": quantenStatus(),
+		"quanten":   quantenStatus(),
+		"quanten_w": quantenWStatus(),
 		// offline_einbindung.go: Stichtag des Offline-Bargelds (ab fehlt,
 		// solange schlafend) und der Topf.
 		"offline": offlineStatus(),
