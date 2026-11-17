@@ -113,7 +113,13 @@ Neu gebaut, darum: **lokale Arbeit sofort committen und pushen.**
     hält die Tabelle 2⁻⁴⁰ mit 27–43 Bit Reserve; exakte SDPs bestätigen 1 und 2 Stellen
     (`sdp_nachpruefung.py`, braucht cvxpy). Möglich nach Gutachten: k 550 statt 840.
   - **Pilot lokal in voller Größe** lief zuletzt (Präfix `aeq_pw_`): Offenlegung kommt voran.
-    Nächster Schritt: Ergebnis prüfen; falls die Frist (15 min) knapp wird, Takt/Teile messen.
+    Gemessen mit Kürzung, Rest und eigener Adresse je Knoten: ~224 Stellen/min, also
+    ~23 min für 5.200 Stellen > 15 min Frist des Werkzeugs (Kette: 30 min). Vermuteter
+    Engpass: Burst-Grenze beim Einreichen (`burstQuantenWJeIP` = 20/min je IP) bei
+    ~32 Stellen je Teil -- NICHT lockern. Nächste Schritte: (1) mit Diagnose messen,
+    welche Grenze bindet; (2) mehr Stellen je Einreichung ohne Grenzänderung (z. B. Teile
+    nicht halbieren, sondern auf das Budget genau zuschneiden); (3) Frist des Werkzeugs
+    für volle Größe an die Kettenfrist anlehnen (25 min), im Test ebenso.
     **Nie zwei Vier-Knoten-Tests gleichzeitig mit demselben Präfix** (`DROP ... FORCE`).
   - Nach dem Merge: `quanten-s-pilot.yml` mit `modus=rauschen` selbst starten; `modus=ibm`
     braucht die Freigabe in `quantenhardware` (k = 5.200 → 10.400 Qubits).
