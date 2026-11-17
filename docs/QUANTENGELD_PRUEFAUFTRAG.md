@@ -102,6 +102,11 @@ gegen einen optimalen Kloner gebrochen war:
      zwei Runden. Mit der Dualität für Strategien (Gutoski und Watrous 2007) bleibt das
      Optimum ein Produkt. Je Stelle wird A oder B geprüft, nie beide, und beide Runden
      zusammen sind ein Kloner. Also gilt dieselbe Schranke. Trägt das?
+     **Numerisch nachgerechnet** (`sdp_nachpruefung.py`, exakte SDPs über alle
+     Strategien): Die Grenze je Stelle ist 1 + 1/√2 für jeden Kloner. Für zwei Stellen
+     gemeinsam ist das Optimum genau das Quadrat, für verschränkte Strategien ebenso wie
+     für adaptive mit zwei Runden. Bei S gilt dasselbe (Breidbart 0,8536, zwei Stellen
+     gleich dem Quadrat).
    - Mehrere Prüfungen nacheinander: Wächst die Erfolgsaussicht über die Fehlversuche
      hinweg? Drei Fehlversuche sperren Prüfungen, aber nicht das Einlösen.
 2. **Absprachen.**

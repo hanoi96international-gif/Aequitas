@@ -12,7 +12,7 @@ den kohaerent.py annimmt. Stand 17.11.2026 (SCS, eps 1e-8/1e-9):
   S  beste Antwort in beiden Basen                  0,853553 = 1/2 + 1/sqrt 8
   S  zwei Stellen gemeinsam (Gewicht s = 1,3)       1,577702 = Quadrat
   W  adaptiv (Kamm mit zwei Runden), eine Stelle    0,995228 = nicht adaptiv
-  W  adaptiv, zwei Stellen gemeinsam                siehe Ausgabe
+  W  adaptiv, zwei Stellen gemeinsam                0,990478 = Quadrat (3 min 48 s)
 
 Aufruf:  python3 sdp_nachpruefung.py
 """
