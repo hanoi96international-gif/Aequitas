@@ -29,8 +29,15 @@ dezentrales Quantengeld“.
   - `HEUTE.md` 3.3d listet jeden Pilot-Lauf, auch die gescheiterten.
   - App: Die Netto-Zeile ist aufklappbar, mit beiden Buchungen (Block, Tx) und Rechenweg.
 
-  **Offen:** eine Abfrage je Runde (Topf, Empfänger, Anteil je Mensch), damit man eine
-  Runde mit Zahlen nachrechnen kann.
+  - **Neu: `/api/wirtschaft/runde`** (`wirtschaft_runde.go`, PR #575). Jede Tagesrunde ist
+    mit Zahlen nachrechenbar:
+    - Rest der Vorrunde + Abgaben + andere Zuflüsse = Topf vor der Auszahlung
+      = Grundeinkommen + Rest; Grundeinkommen = Menschen × Anteil.
+    - Eine Zeile je (Rundenzeit, Art, Konto), Doppel aus Geschwisterblöcken fallen heraus.
+    - Ältere Runden mit `?hoehe=` aus angewendeten Blöcken (höchstens 200 Höhen, einer
+      zugleich).
+    - Die App zeigt die Zahlen beim Aufklappen (App #84).
+    - Kein Konsens: zum Prüfen einen zweiten Knoten fragen.
 - **PR #575 offen:** alles oben im Repo Aequitas plus die Test-Korrektur. Mergen, wenn der
   Pilot grün ist. **App-PR #84 offen:** Netto-Zeile; mergen nach grüner CI, Release braucht
   die Freigabe des Betreibers.
