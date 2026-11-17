@@ -571,6 +571,16 @@ erprobt.
    - Die Teilmenge ändert den Anteil freier Stellen nicht: Sie wird gezogen, nachdem Λ
      feststeht.
 4. **Weiter wie S2b:** Bindung d, Wahl c, Anmeldung, Offenlegen.
+- **Bausteine spezifiziert (17.11.):**
+  - `s_kette.s3_meldung` prüft Λ: verschiedene Pulse, im Bereich, mindestens
+    γ_det·N.
+  - `s_kette.s3_teilmenge` zieht die Teilmenge mit dem Zufall eines Blocks **nach** der
+    Meldung, für jeden Knoten gleich.
+  - **Missbrauchstests:** Meldung zu klein, mit doppeltem oder fremdem Puls, Zufall vor
+    der Meldung. Eine Betrügerin, die alle Mehrphotonen-Pulse meldet, findet in der
+    Teilmenge denselben Anteil freier Stellen wie in Λ. Mutationen: vier von vier
+    erkannt.
+  - Eingebunden in `KetteS` und den Knoten werden sie erst mit einem Gerät.
 5. **Prüfgröße im Knoten:** Die Tabelle bekommt θ und den Anteil freier Stellen als
    Eingang. Heute kennt sie nur die Toleranz und f = (t−1)/v. **Bis dahin gilt S nur für
    ideale Qubits (Chip), nicht für eine Leitung.**
@@ -599,6 +609,109 @@ erprobt.
   geheim. Beim Anmelden könnte der Knoten nur noch die Auszahlung an die Stelle
   verweigern, die schon angenommen hat. Schützen kann sich nur die Stelle selbst, vor
   der Annahme.
+
+## 5d. Weitere Wege ohne Speicher (OFFEN.md, Abschnitt C) und was zuerst kommt
+
+Nachgetragen am 17.11.2026. C3 (Bozzio u. a.) steht in 5c. C6 (Ionenfalle) braucht ein
+Konto des Betreibers. Markierung wie oben: (V) selbst gelesen, (S) nur aus einer Suche,
+vor Nutzung prüfen.
+
+### C1 – „Ort“ auf Aequitas: Was bleibt vom Vorteil der S-Token?
+
+- **Bei Kent u. a. (V)** ist ein Ort ein Raumzeit-Punkt. Rein klassische Token erreichen
+  leicht je zwei von drei Eigenschaften mit bedingungsloser Sicherheit: Unfälschbarkeit,
+  sofortige Annahme ohne Rückfrage und Privatsphäre der Nutzerin. Dass alle drei
+  zugleich gehen, ist nach ihrem Wissen nicht gezeigt. S-Token erreichen alle drei.
+- **Auf Aequitas** ist ein Ort eine bei der Ausgabe festgelegte Annahmestelle: eine
+  Adresse mit ihrer geheimen Stichprobe. Die Zeit ist die Frist der Einlösung.
+- **Die Wahl c muss vorher auf die Kette.** Sonst käme ein Token an beiden Stellen durch
+  (Selbsttest von `s_kette.py`); auch bei Kent geht c an alle Stellen. Die Stellen holen
+  c vorab und nehmen danach ohne Netz an.
+- **Raumartige Trennung gibt es auf einer Kette nicht:** Blöcke kommen in Sekunden,
+  nicht in Mikrosekunden. Der relativistische Vorteil fällt damit weg.
+- **Was bleibt:**
+  - **Unfälschbarkeit ohne Rechenannahme.** Die Physik verbietet, an zwei Stellen
+    durchzukommen.
+  - **Privatsphäre:** d und c verraten einzeln nichts über die gewählte Stelle.
+  - **Annahme ohne Netz,** sobald c abgeglichen ist.
+- **Ehrlich:** Ein klassischer Token mit einer Hash-Bindung an die Stelle auf der Kette
+  leistet praktisch dasselbe. Er stützt sich aber auf eine Rechenannahme (Kollisionen von
+  SHA-256), nicht auf die Physik. Genau dieser Unterschied ist es, der „Quantengeld“
+  rechtfertigt, und mehr sollte Aequitas nicht behaupten.
+
+### C2 – Zustellen über ein Quantennetz (Quanten-Scheck)
+
+- **Stand laut Suche (S):**
+  - Laut Strategie der EU-Kommission vom Juli 2025 bauen 26 Mitgliedstaaten nationale
+    Quantennetze (EuroQCI). Der Satellit Eagle-1 soll 2026/27 starten.
+  - In Deutschland gibt es QuNET. Deutsche Telekom (T-Labs) hat Feldversuche gemacht,
+    u. a. Teleportation über 30 km Glasfaser in Berlin mit Qunnect.
+  - Kommerzielle Dienste: Toshiba mit BT (Stadtnetz London) und Orange (Frankreich,
+    seit 2025).
+  - Das Berliner Testbett aus OPENQKD sollte offen für alle Arten von QKD-Geräten sein.
+- **Was das für uns heißt:**
+  - Die kommerziellen Dienste liefern **Schlüssel** aus geschlossenen Geräten. Eigene
+    BB84-Zustände mit Basen von den Validatoren lassen sich darüber nicht senden.
+  - Ein Quanten-Scheck braucht deshalb Zugang zur Sende- und Empfangstechnik selbst.
+    Das ist ein Testbett oder ein Partner, wie bei S3 (5c).
+  - Ein Zugangsweg für Dritte war nicht zu finden.
+- **Schritt:** Testbetten als weitere Ansprechpartner neben Vorlage 4 aufnehmen (QuNET,
+  T-Labs, Berliner Testbett). Das braucht den Betreiber.
+
+### C4 – Halb-quantisches Geld (Radian und Sattath, „Semi-Quantum Money“, arXiv:1908.08889, V)
+
+- **Idee:**
+  - Die Bank ist vollständig klassisch, auch beim Prägen. Die Nutzerin erzeugt die Note
+    selbst, nach Vorgaben der Bank.
+  - Die Bank prüft mit klassischer Kommunikation. Ein Quantennetz braucht es nicht.
+- **Zwei Bauarten:**
+  - **Privat und ohne Gedächtnis:** auf Basis von NTCF, also mit LWE-Annahme. Das
+    Geheimnis der Bank ist eine Falltür.
+  - **Öffentlich und mit Gedächtnis:** auf Basis von Quantum Lightning mit
+    Bolt-to-Certificate (Zhandry; Coladangelo). Die Bank führt eine Liste der
+    verbrauchten Noten. Diese Liste kann die Kette sein; `BRUECKE.md` nutzt dieselbe
+    Linie (Coladangelo und Sattath).
+- **Was die Nutzerin braucht:** einen Quantencomputer, der LWE-Funktionen in Überlagerung
+  rechnet, und einen Speicher für lange Zeit. Die Autoren schreiben selbst, dass es solche
+  Geräte auf absehbare Zeit nicht gibt.
+- **Für Aequitas:**
+  - Die Form passt sehr gut: Die Kette ist eine klassische Bank, und es braucht kein
+    Quantennetz.
+  - Bei der privaten Bauart müssten die Validatoren die Falltür gemeinsam halten
+    (Mehrparteienrechnung über LWE). Das ist Forschung.
+  - **Heute nicht baubar.** Beobachten, nicht bauen.
+
+### C5 – Offline-Bargeld: Was darf „Quantengeld“ heißen?
+
+| Was | Woher die Sicherheit kommt | Darf heißen |
+|---|---|---|
+| Variante W (Wiesner-Noten) | Physik: Kein Kopieren unbekannter Quantenzustände; Prüfung durch die Validatoren | Quantengeld (heute nur als Vorführung) |
+| Variante S (S-Token) | Physik: Unschärfe verhindert Ergebnisse in beiden Basen | Quantengeld bzw. Quanten-Token (Vorführung; Ausgabe über eine Leitung braucht S3) |
+| Quantensichere Unterschriften (ML-DSA, PQ-Adressen) | Rechenannahme, auch gegen Quantenrechner | **quantensicher**, nicht Quantengeld |
+| Offline-Bargeld (`docs/OFFLINE_BARGELD.md`) | Sicherheitschip + beweisbarer Betrug + Haftung über „ein Mensch, ein Konto“ + Pfand höchstens 50 AEQ | Offline-Bargeld, **nicht** Quantengeld |
+
+- **Nie „Quantenwährung“.** Aequitas ist eine Währung mit quantensicheren Unterschriften
+  und mit Quantengeld als Vorführung und Forschung.
+- **Kombination S-Token plus Offline-Bargeld:**
+  - Die Annahmestelle ohne Netz ist bei beiden dieselbe Idee.
+  - Die **Weitergabe** eines S-Token von Hand zu Hand bliebe klassisch: Wer x
+    weitergibt, kennt es weiter. Schutz gäbe es nur über Chip und Haftung wie beim
+    Offline-Bargeld.
+  - Ehrlich benannt hieße das „Quanten-Ausgabe, klassische Weitergabe“, nicht
+    Quanten-Bargeld.
+
+### Empfehlung: Was zuerst kommt
+
+1. **Variante S bleibt der heute machbare Weg.** Der nächste Schritt ist die echte
+   Leitung (S3): ein Partner mit QKD-Sender, Kents Handsender genügt bei β = 0 (5c).
+   Dafür Vorlage 4 abschicken und Testbetten anfragen (C2). Beides macht der Betreiber.
+2. **Ionenfalle für W.** Dort öffnet sich das Fenster, in dem Fehlerkorrektur hilft (B6,
+   HEUTE.md 3.3). Dafür braucht es ein Konto.
+3. **Offline-Bargeld** bleibt der Weg zum Alltag, klar getrennt und nicht als Quantengeld
+   benannt (C5).
+4. **Halb-quantisches Geld** beobachten (C4); nichts bauen, bis es Geräte gibt.
+5. **Im Knoten** vor jeder Freischaltung: W6 (Register als Tabelle, mehrstufige Prüfung;
+   andere Sitzung) und die Tabelle mit θ und freiem Anteil für S3 (5c).
 
 ## 6. Zugang, Geld, Begutachtung – andere Wege
 
@@ -630,7 +743,9 @@ erprobt.
 2. **Spezifikation der Kettenseite W** als ausführbares Modell, wie `bruecke_kette.py`.
    Danach schlafend im Knoten, wie bisher.
 3. **Offline-Bargeld Stufe 2** (Knoten-API, Zertifikat, Stand) weiterbauen.
-4. **Vorlagen:** Das deutsche Anschreiben an den BMFTR-Token-Verbund und der Entwurf
+4. **Abschnitt C von OFFEN.md** ist analysiert (5c, 5d) und hat eine Empfehlung, was
+   zuerst kommt (5d).
+5. **Vorlagen:** Das deutsche Anschreiben an den BMFTR-Token-Verbund und der Entwurf
    für die Unitary Foundation stehen in `ANSCHREIBEN.md` (Vorlagen 2 und 3). Der
    ePrint-Entwurf zu den Varianten W und S steht in `EPRINT_ENTWURF.md` (englisch).
 
@@ -658,6 +773,8 @@ Selbst gelesen (V):
 - Brodutch, Nagaj, Sattath, Unruh: *An adaptive attack on Wiesner's quantum money*, arXiv 1404.1507.
 - Kumar: *Practically feasible robust quantum money with classical verification*, arXiv 1908.04114.
 - Bozzio et al.: *Experimental investigation of practical unforgeable quantum money*, arXiv 1705.01428.
+- Kent, Lowndes, Pitalúa-García, Rarity: *Practical quantum tokens without quantum memories and experimental tests*, npj Quantum Inf. 8, 28 (2022), arXiv 2104.11717 (5b, 5c).
+- Radian, Sattath: *Semi-Quantum Money*, arXiv 1908.08889 (5d, C4).
 - Jiang, Kent, Pitalúa-García et al.: *Experimental practical quantum tokens with transaction time advantage*, arXiv 2408.13063.
 - Schiansky et al.: *Demonstration of quantum-digital payments*, arXiv 2305.14504.
 - Yuen: *Noise-tolerant public-key quantum money from a classical oracle*, arXiv 2407.06463.

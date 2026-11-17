@@ -104,18 +104,25 @@ bauen kann.
      - Die Tabelle für ideale Qubits reicht über eine Leitung nicht: Bei 10° Verkippung
        käme ein Fälscher in 1,4 % durch.
      - **Offen:** Die Tabelle im Knoten braucht θ und den Anteil freier Stellen als
-       Eingang. Dazu kommen die Meldung Λ und die öffentliche Teilmenge im Ablauf.
+       Eingang. Meldung Λ und öffentliche Teilmenge sind als Bausteine spezifiziert
+       (`s_kette.s3_meldung`, `s3_teilmenge`). Die Einbindung in Ablauf und Knoten kommt
+       mit einem Gerät.
      - ~~**Lücke: Die Größe der Stichprobe prüfte niemand.**~~ Geschlossen: Die Annahmestelle
        lädt nur mit mindestens k_note Stellen (`stelle_laden`, fail-closed). Der Knoten
        bleibt bewusst ohne diese Prüfung, denn beim Anmelden ist die Annahme schon
        geschehen (ANALYSE.md 5c). Für die App der Annahmestelle gilt dieselbe Regel.
-   - Zu klären: Lässt sich „Ort“ auf Aequitas als „Prüfer bzw. Region + Block-Fenster“
-     abbilden, und wie viel Sicherheit bleibt dann übrig?
+   - ~~Zu klären: „Ort“ auf Aequitas~~ – analysiert (ANALYSE.md 5d, C1). Ort ist die feste
+     Annahmestelle, raumartige Trennung gibt es auf einer Kette nicht. Es bleibt
+     Unfälschbarkeit ohne Rechenannahme, Privatsphäre und Annahme ohne Netz nach dem
+     Abgleich von c.
 2. **Zustellen statt Aufbewahren:**
    - Die Note geht über ein QKD-Netz (EuroQCI-Testnetze, kommerzielle Strecken) direkt
      zum Prüfer oder Empfänger und wird dort sofort gemessen.
    - Das ergibt einen Quanten-Scheck, kein Bargeld.
-   - Zu klären: Welche Strecken sind heute zugänglich?
+   - ~~Zu klären: Welche Strecken sind heute zugänglich?~~ – analysiert (ANALYSE.md 5d, C2).
+     Die kommerziellen Dienste liefern nur Schlüssel aus geschlossenen Geräten. Es braucht
+     ein Testbett oder einen Partner, wie bei S3. Anfragen (QuNET, T-Labs, Berliner
+     Testbett) macht der Betreiber.
 3. **Praktisches Quantengeld mit schwachen Lichtpulsen:**
    - Quelle: Bozzio u. a., „Experimental investigation of practical unforgeable quantum
      money“ (npj QI 2018).
@@ -125,18 +132,23 @@ bauen kann.
 4. **Halb-quantisches Geld (Radian & Sattath):**
    - Bank und Prüfung sind rein klassisch, das passt zur dezentralen Prüfung.
    - Beim Halter braucht es weiter einen Quantenspeicher.
+   - ~~Analysieren~~ – erledigt (ANALYSE.md 5d, C4): Beim Halter braucht es einen
+     Quantencomputer für LWE in Überlagerung und einen langen Speicher. Beobachten, nicht
+     bauen.
 5. **Offline-Bargeld als Träger:**
    - Das Bargeld-Verhalten liefern heute Secure Element und Offline-Bargeld Stufe 1b.
    - Der Quanten-Teil steckt nur in Prägung und Einlösung.
-   - Genau abgrenzen, was davon „Quantengeld“ heißen darf.
+   - ~~Genau abgrenzen, was davon „Quantengeld“ heißen darf~~ – erledigt (ANALYSE.md 5d,
+     C5, mit Tabelle): Quantengeld heißen nur W und S. Quantensichere Unterschriften heißen
+     „quantensicher“. Das Offline-Bargeld ist kein Quantengeld. Nie „Quantenwährung“.
 6. **Gemietete Speicherzeit in der Ionenfalle:**
    - Quantinuum und IonQ halten Qubits Sekunden bis Minuten.
    - Ablauf: Note in der Cloud prägen, halten, über die Kette übertragen, prüfen.
      „Mitnehmen“ heißt hier Verwahrung beim Betreiber, nachprüfbar über die Kette.
    - Dafür braucht es ein Konto.
 
-**Ergebnis:** ein neuer Abschnitt in ANALYSE.md mit einer Empfehlung, was zuerst gebaut
-wird.
+**Ergebnis:** steht in ANALYSE.md 5c und 5d, mit der Empfehlung, was zuerst gebaut wird.
+In Abschnitt C ist nur noch C6 offen (Konto des Betreibers).
 
 ## D. Bauen und messen
 
