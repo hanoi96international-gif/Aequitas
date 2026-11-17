@@ -3,7 +3,10 @@ package keeper
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"io"
 	"math/rand"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -36,6 +39,40 @@ func TestVierKnotenQuantenS_RealDB(t *testing.T) { qsVierKnoten(t, false) }
 // trotzdem. Genau dafuer ist das Geheimnis t-von-v geteilt.
 func TestVierKnotenQuantenSAusfall_RealDB(t *testing.T) { qsVierKnoten(t, true) }
 
+// PILOT AUF ECHTER HARDWARE (Workflow quanten-s-pilot.yml): Steht in
+// AEQUITAS_QS_MESSUNG eine Datei von `hardware_ibm.py --s-messen`, kommt der
+// Token nicht aus dem Zufall des Tests, sondern vom Chip -- Praegen bis
+// Einloesen mit 3 von 4 Validatoren. Die Datei wird so streng gelesen wie
+// in `aequitasd quanten-s-ausgabe` (Groesse, unbekannte Felder); was sie
+// enthaelt, prueft das Werkzeug. k je Stelle = n/2 (die Tabelle verlangt
+// fuer 3 von 4 mehr, siehe oben -- das ist eine Vorfuehrung des Ablaufs,
+// keine Aussage ueber die volle Sicherheitsstufe).
+func qsMessungAusDatei(t *testing.T) (QuantenSMessung, bool) {
+	pfad := strings.TrimSpace(os.Getenv("AEQUITAS_QS_MESSUNG"))
+	if pfad == "" {
+		return QuantenSMessung{}, false
+	}
+	f, err := os.Open(pfad)
+	if err != nil {
+		t.Fatalf("AEQUITAS_QS_MESSUNG: %v", err)
+	}
+	defer f.Close()
+	roh, err := io.ReadAll(io.LimitReader(f, quantenSAusgabeMessMax+1))
+	if err != nil || len(roh) > quantenSAusgabeMessMax {
+		t.Fatal("AEQUITAS_QS_MESSUNG: unlesbar oder zu gross")
+	}
+	var m QuantenSMessung
+	dec := json.NewDecoder(bytes.NewReader(roh))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&m); err != nil {
+		t.Fatalf("AEQUITAS_QS_MESSUNG: %v", err)
+	}
+	if m.N < 2 || m.N%2 != 0 {
+		t.Fatalf("AEQUITAS_QS_MESSUNG: n = %d", m.N)
+	}
+	return m, true
+}
+
 // qsAusfallNetz: nimmt beim ersten Anmelden einen Knoten vom Netz.
 type qsAusfallNetz struct {
 	*quantenSMehrNetz
@@ -56,9 +93,14 @@ func qsVierKnoten(t *testing.T, ausfall bool) {
 	if testing.Short() {
 		t.Skip("laeuft in echter Zeit")
 	}
-	const kJeStelle = 128
+	kJeStelle := 128
+	echt, ausDatei := qsMessungAusDatei(t)
+	if ausDatei {
+		kJeStelle = echt.N / 2
+		t.Logf("Messung aus %s: n = %d, k je Stelle = %d, Geraet %q, Job %q", os.Getenv("AEQUITAS_QS_MESSUNG"), echt.N, kJeStelle, echt.Wo, echt.Jo)
+	}
 	quantenWAbOverride.Store(nowUnix() - 86400)
-	quantenWKNoteOverride.Store(kJeStelle)
+	quantenWKNoteOverride.Store(int64(kJeStelle))
 	altBetreiber := quantenWBetreiberVon
 	t.Cleanup(func() {
 		quantenWAbOverride.Store(0)
@@ -107,6 +149,9 @@ func qsVierKnoten(t *testing.T, ausfall bool) {
 		}
 	}
 	m := QuantenSMessung{N: n, U: qsBitsText(u), T: qsBitsText(tw), Y: qsBitsText(y), X: qsBitsText(x), Wo: "vier Knoten"}
+	if ausDatei {
+		m = echt
+	}
 
 	// Das Netz des Werkzeugs: Bestaetigung je Validator an seiner API,
 	// Einreichen und Stand beim Folger -- dieselben Wege wie im Betrieb.

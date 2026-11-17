@@ -1,0 +1,157 @@
+# Pilot fuer Quantengeld Variante S mit MEHREREN Validatoren, auf echter
+# Hardware -- Voraussetzung fuer W6 ("Pilot im Testnetz").
+#
+# Das Hauptnetz hat heute nur einen Validator (C1); ein Testnetz mit
+# mehreren Servern gibt es nicht. Dieser Lauf baut es fuer die Dauer des
+# Jobs: vier echte Knoten (eigene Datenbank, eigener Schluessel, echtes HTTP,
+# je ein Validator-Dienst) wie TestVierKnotenQuantenS_RealDB, das Geheimnis
+# des Tokens 3-von-4 geteilt. Der Token selbst kommt vom Chip:
+#
+#   1. messen: hardware_ibm.py --s-messen -- 1680 Qubits in BB84-Zustaenden,
+#      sofort gemessen. Modus ibm: echter Chip (Umgebung quantenhardware,
+#      Freigabe). Modus rauschen: Rauschmodell, kostet nichts.
+#   2. pilot: die vier Knoten pruefen die Messung -- Ausgabe mit den
+#      Bestaetigungen aller vier Validatoren, Doppelvorlage an der falschen
+#      Stelle (muss abgewiesen werden), ehrliche Vorlage (wird eingeloest).
+#      Einmal mit allen vier, einmal faellt ein Validator vor der ersten
+#      Vorlage aus (3 von 4 genuegen).
+#
+# Kein Server, kein Hauptnetz, kein Server-Schluessel. Der Job "pilot" hat
+# keine Secrets. Die Messung geht als Job-Ausgabe von 1 nach 2; sie schuetzt
+# hier keinen Wert (die Knoten leben nur in diesem Job).
+#
+# Ehrliche Grenze: k je Stelle = 840 (n/2). Die Tabelle verlangt fuer 3 von 4
+# Validatoren 5.200 -- der Lauf zeigt den Ablauf auf echter Hardware mit
+# mehreren Validatoren, nicht die volle Sicherheitsstufe dafuer.
+name: Quantengeld S -- Pilot mit vier Validatoren
+
+on:
+  workflow_dispatch:
+    inputs:
+      modus:
+        description: "ibm = echter Chip (Freigabe quantenhardware); rauschen = Rauschmodell (Probe)"
+        type: choice
+        options: [rauschen, ibm]
+        default: rauschen
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quanten-s-pilot
+  cancel-in-progress: false
+
+jobs:
+  rauschen:
+    if: inputs.modus == 'rauschen'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    outputs:
+      messung: ${{ steps.lauf.outputs.messung }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+      - run: pip install --require-hashes --no-deps -r forschung/quantengeld/hardware-anforderungen.txt
+      - run: python3 -I forschung/quantengeld/hardware_ibm.py --selbsttest
+      - name: Messung im Rauschmodell
+        id: lauf
+        run: |
+          set -euo pipefail
+          python3 -I forschung/quantengeld/hardware_ibm.py --rauschen FakeMarrakesh --s-messen "$RUNNER_TEMP/messung.json"
+          echo "messung=$(gzip -9c "$RUNNER_TEMP/messung.json" | base64 -w0)" >> "$GITHUB_OUTPUT"
+          rm -f "$RUNNER_TEMP/messung.json"
+
+  messen:
+    if: inputs.modus == 'ibm'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    environment: quantenhardware
+    outputs:
+      messung: ${{ steps.lauf.outputs.messung }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+      - run: pip install --require-hashes --no-deps -r forschung/quantengeld/hardware-anforderungen.txt
+      - run: python3 -I forschung/quantengeld/hardware_ibm.py --selbsttest
+      - name: Messung auf dem IBM-Chip
+        id: lauf
+        env:
+          IBM_QUANTUM_TOKEN: ${{ secrets.IBM_QUANTUM_TOKEN }}
+          IBM_QUANTUM_INSTANCE: ${{ vars.IBM_QUANTUM_INSTANCE }}
+          IBM_QUANTUM_BACKEND: ${{ vars.IBM_QUANTUM_BACKEND }}
+        run: |
+          set -euo pipefail
+          python3 -I forschung/quantengeld/hardware_ibm.py --ibm --s-messen "$RUNNER_TEMP/messung.json"
+          echo "messung=$(gzip -9c "$RUNNER_TEMP/messung.json" | base64 -w0)" >> "$GITHUB_OUTPUT"
+          rm -f "$RUNNER_TEMP/messung.json"
+
+  pilot:
+    needs: [rauschen, messen]
+    # Genau einer der beiden Mess-Jobs laeuft, der andere ist uebersprungen.
+    if: always() && (needs.rauschen.result == 'success' || needs.messen.result == 'success')
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: aeq_pilot
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+        ports:
+          - 5432:5432
+    env:
+      DATABASE_URL: "postgres://postgres:postgres@localhost:5432/aeq_pilot?sslmode=disable"
+      AEQUITAS_TPS_BENCH: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Messung uebernehmen
+        env:
+          MESSUNG: ${{ needs.messen.outputs.messung || needs.rauschen.outputs.messung }}
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s' "$MESSUNG" | base64 -d | gunzip -c > "$RUNNER_TEMP/m.json"
+          jq -e '.n == 1680 and (.x | length) == 1680' "$RUNNER_TEMP/m.json" >/dev/null || { echo "::error::Messung unvollstaendig"; exit 1; }
+          jq -r '"Geraet: \(.wo)  Job: \(.job)"' "$RUNNER_TEMP/m.json"
+      - name: Vier Knoten, 3 von 4 -- mit und ohne Ausfall
+        env:
+          AEQUITAS_QS_MESSUNG: ${{ runner.temp }}/m.json
+        run: |
+          set -euo pipefail
+          set +e
+          go test ./x/humanity/keeper/ -run 'TestVierKnotenQuantenS(Ausfall)?_RealDB$' -v -count=1 -timeout 40m 2>&1 | tee out.txt
+          RC=${PIPESTATUS[0]}
+          set -e
+          rm -f "$RUNNER_TEMP/m.json"
+          {
+            echo "## Quantengeld S: Pilot mit vier Validatoren (Modus ${{ inputs.modus }})"
+            echo
+            if [ "$RC" = 0 ]; then
+              echo "**Erfolg:** in beiden Laeufen Doppelvorlage abgewiesen, ehrliche Vorlage eingeloest, alle Knoten im Gleichstand."
+            else
+              echo "**Gescheitert (Exit $RC)** -- Verlauf im Protokoll."
+            fi
+            echo
+            echo '```'
+            grep -E 'Messung aus|faellt aus|Variante S auf vier Knoten|^\s*--- (PASS|FAIL)|^(ok|FAIL)\s' out.txt || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$RC"
