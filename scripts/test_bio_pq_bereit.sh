@@ -5,13 +5,21 @@ cd "$(dirname "$0")/.."
 SKRIPT="$PWD/.github/neustart/bio-pq-bereit.sh"
 D=$(mktemp -d); trap 'kill $PID 2>/dev/null || true; rm -rf "$D"' EXIT
 mkdir -p "$D/web/api" "$D/repo"
-PORT=$((20000 + RANDOM % 20000))
-(cd "$D/web" && python3 -m http.server "$PORT" --bind 127.0.0.1 >/dev/null 2>&1) & PID=$!
-# Erst weiter, wenn der Server antwortet (hoechstens 10 s) -- eine feste
-# Sekunde reichte auf vollen CI-Runnern nicht: dann lief "nichts gesetzt"
-# gegen einen stummen Server und hielt an (15.11.2026, zweimal).
+# Erst weiter, wenn der Server antwortet (hoechstens 15 s je Versuch) -- eine
+# feste Sekunde reichte auf vollen CI-Runnern nicht (15.11.2026, zweimal). Ein
+# belegter Port nimmt einen anderen (17.11.2026: "Testserver startet nicht" im
+# Push-Lauf von 602aefad, der PR-Lauf derselben SHA war gruen).
 : > "$D/web/bereit"
-for _ in $(seq 1 50); do curl -sf -m 1 "http://127.0.0.1:$PORT/bereit" >/dev/null && break; sleep 0.2; done
+for _versuch in 1 2 3 4 5; do
+  PORT=$((20000 + RANDOM % 20000))
+  (cd "$D/web" && exec python3 -m http.server "$PORT" --bind 127.0.0.1 >/dev/null 2>&1) & PID=$!
+  for _i in $(seq 1 150); do
+    curl -sf -m 1 "http://127.0.0.1:$PORT/bereit" >/dev/null && break 2
+    kill -0 "$PID" 2>/dev/null || break
+    sleep 0.1
+  done
+  kill "$PID" 2>/dev/null || true
+done
 curl -sf -m 1 "http://127.0.0.1:$PORT/bereit" >/dev/null || { echo "FEHLER: Testserver startet nicht"; exit 1; }
 J=1800000000
 gen() { printf '{"bescheinigung":{"ab_unix":1,"pq_ab_unix":%s}}' "$1" > "$D/repo/genesis.json"; }
