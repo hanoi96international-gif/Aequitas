@@ -43,6 +43,38 @@ zwei Stufen sparen einer echten Note im Mittel 20–52 % Stellen bei unveränder
 2. Prüfvektor neu, dann Knoten (`quanten_w.go`, `quanten_w_register.go`), Dienst und Tests.
 Danach: App-Anzeige für W und S.
 
+**Entwurf W2e (17.11., Grundlage `wiesner_mehrstufig.py`):**
+- Nur beim **Einlösen** (k fest), Prüfen ohne Einlösen bleibt wie es ist.
+- Parameter je Note: `e = tol/100` gilt als höchste Fehlerrate einer echten Note,
+  `c = (1 − f16/16) · 14,64 %` als kleinste eines Fälschers (f16 wie heute). Nötig: e < c.
+- **Entscheidung ganzzahlig**, kein Gleitkomma im Konsens. L = F·ln(c/e) + (T−F)·ln((1−c)/(1−e))
+  bei T Treffern, F Fehlern.
+  - echt, wenn L ≤ −A (A = 40 ln 2): F·Q ≤ T·P − R
+  - fällt, wenn L ≥ B (B = ln 2·10⁶): F·Q ≥ T·P + S
+  - Q, P, R, S sind ganze Zahlen je (tol, f16), offline gerechnet und **zur sicheren Seite
+    gerundet**: Annahme- und Ablehnungsbereich je Teilmenge des exakten. Die Tabelle
+    steht in Spezifikation und Knoten wie heute `K_TABELLE`/`quantenWKTabelle`. Der
+    Selbsttest rechnet nach: Fälscher ≤ 2⁻⁴⁰ (Wald gilt für jede Abbruchregel), echt fällt
+    ≤ 10⁻⁶ (Chernoff mit den gerundeten Zahlen).
+- **Ablauf:**
+  1. Anfrage zum Einlösen zieht `s1` Stellen; Antwort; Offenlegen in Teilen.
+  2. Nach Stufe 1: echt → einlösen; fällt → durchgefallen; sonst Stufe 2.
+  3. **Stufe 2** ist eine neue Runde in derselben Anfrage: nächster Wert der Hash-Ketten
+     (`zaehl + 1`), neuer Zufall, `k_max − s1` weitere Stellen, neue Antwort (eigene
+     Unterschrift mit Stufe), Offenlegen; dann echt oder fällt, **kein Unentschieden**.
+  4. Fristen wie heute je Stufe. Pfand für k_max von Anfang an.
+  5. Reserve und Erschöpfung rechnen mit k_max statt k_note, Hash-Ketten mit zwei Werten.
+- **Tabelle je (tol, f16):** s1, k_max, Q, P, R, S. s1 so, dass die erwarteten Stellen
+  minimal sind. Die Entscheidung fällt nur an den Stufenenden; `zwei_stufen` dafür mit
+  „L(s1) ≤ −A“ statt „vorher gekreuzt“ neu rechnen.
+- **Missbrauch zu testen:**
+  - Stufe 2 ohne Bedarf;
+  - Antwort der Stufe 1 in Stufe 2 wiederholt;
+  - Frist zwischen den Stufen;
+  - Rundung der Tabelle zum Vorteil des Fälschers (Mutation);
+  - Einlösen mit k ≠ s1;
+  - zweite Stufe mit falscher Zahl Stellen.
+
 Auftrag des Betreibers: dezentrales Quantengeld auf heutigem Stand funktionsfähig, damit
 Aequitas ernstzunehmendes Quantengeld ist. „Alles umsetzen.“ Die Liste der offenen Punkte
 steht in `forschung/quantengeld/OFFEN.md`.
