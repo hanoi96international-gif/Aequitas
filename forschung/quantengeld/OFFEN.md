@@ -35,7 +35,7 @@ bleibt: Nichts wird behauptet, was nicht gemessen oder bewiesen ist (QUANTENSICH
 **Stand 16.11. abends:** Die Punkte 1–4 und 7 sind in Spezifikation und Knoten
 umgesetzt (W2c: Toleranz je Note, k_note aus der exakten Tabelle mit Absprache-Grenze
 f = (t−1)/v, Offenlegen in Teilen, neue Grenzen). Offen sind noch Punkt 5 (mehrstufige
-Prüfung) und Punkt 6 (Fehlerkorrektur messen).
+Prüfung). Punkt 6 ist beantwortet (17.11.).
 
 1. **Ziel:** Ein Fälscher besteht höchstens mit 2⁻⁴⁰ je Prüfung. Das gilt auch für eine
    Absprache, die einen Anteil f der Stellen kennt (bei Fern-Präparation f = 1/v).
@@ -55,8 +55,14 @@ Prüfung) und Punkt 6 (Fehlerkorrektur messen).
    Note (kleines f).
 5. **Mehrstufige Prüfung:** Einlösen erst nach zwei unabhängigen Ziehungen oder nach
    einem sequenziellen Test. Die Absprache-Rechnung dafür aufstellen.
-6. **Fehlerkorrektur je Stelle** (`hardware.praegen_geschuetzt`) gegen die Fehlerrate
-   messen. Sie senkt e und damit τ.
+6. ~~**Fehlerkorrektur je Stelle messen**~~ – beantwortet (17.11., HEUTE.md 3.3,
+   `wiesner_schutz.py`):
+   - Steane-Code je Stelle im Rauschmodell `ibm_marrakesh`: bei jeder Wartezeit
+     schlechter als ungeschützt, ohne Warten 0,8 % gegen 0,3 %, nach 20 µs 9,8 % gegen
+     3,0 %.
+   - Exakt gerechnet hilft der Code mit IBM-Werten nie. Mit Werten einer Ionenfalle hilft
+     er bei 0,3–6 % Rohfehler.
+   - Der Lauf auf dem echten Chip (`wiesner = steane`) wartet auf deine Freigabe.
 7. ~~**Quantenmechanische Schranke**~~ – erledigt: Die Tabelle rechnet mit dem
    optimalen quantenmechanischen Kloner (14,64 %), nicht mehr mit einem ratenden Fälscher.
    Ob verschränkte Angriffe über mehrere Stellen mehr bringen, ist Frage 1 im Prüfauftrag
@@ -89,34 +95,60 @@ bauen kann.
      Bindung, Wahl, Anmeldung der bei der Ausgabe **festgelegten** Annahmestelle (sonst
      könnte ein Dritter die offengelegte Stichprobe aus der Warteschlange kopieren und
      zuerst einlösen), Offenlegen in Teilen, Frist, Wert über Anteile im W-Topf.
-     **Offen:** Validator-Dienst für S (Offenlegen der Stichprobe), App, Vorlage 4
-     abschicken (Nutzer).
-   - Zu klären: Lässt sich „Ort“ auf Aequitas als „Prüfer bzw. Region + Block-Fenster“
-     abbilden, und wie viel Sicherheit bleibt dann übrig?
+     Validator-Dienst für S mit #554. **Offen:** App, Vorlage 4 abschicken (Nutzer).
+   - **S3 über eine echte Leitung gerechnet (ANALYSE.md 5c, `wiesner_parameter.py`):**
+     - Verluste, Mehrphotonen-Pulse und verkippte Basen sind eingerechnet, nach Kent u. a.
+       2022. Ihre Abb. 5 ist nachgerechnet.
+     - Kents Handsender ist sicher, sobald Basen und Werte aus dem Zufall der
+       Validatoren kommen (β = 0).
+     - Die Tabelle für ideale Qubits reicht über eine Leitung nicht: Bei 10° Verkippung
+       käme ein Fälscher in 1,4 % durch.
+     - **Offen:** Die Tabelle im Knoten braucht θ und den Anteil freier Stellen als
+       Eingang. Meldung Λ und öffentliche Teilmenge sind als Bausteine spezifiziert
+       (`s_kette.s3_meldung`, `s3_teilmenge`). Die Einbindung in Ablauf und Knoten kommt
+       mit einem Gerät.
+     - ~~**Lücke: Die Größe der Stichprobe prüfte niemand.**~~ Geschlossen: Die Annahmestelle
+       lädt nur mit mindestens k_note Stellen (`stelle_laden`, fail-closed). Der Knoten
+       bleibt bewusst ohne diese Prüfung, denn beim Anmelden ist die Annahme schon
+       geschehen (ANALYSE.md 5c). Für die App der Annahmestelle gilt dieselbe Regel.
+   - ~~Zu klären: „Ort“ auf Aequitas~~ – analysiert (ANALYSE.md 5d, C1). Ort ist die feste
+     Annahmestelle, raumartige Trennung gibt es auf einer Kette nicht. Es bleibt
+     Unfälschbarkeit ohne Rechenannahme, Privatsphäre und Annahme ohne Netz nach dem
+     Abgleich von c.
 2. **Zustellen statt Aufbewahren:**
    - Die Note geht über ein QKD-Netz (EuroQCI-Testnetze, kommerzielle Strecken) direkt
      zum Prüfer oder Empfänger und wird dort sofort gemessen.
    - Das ergibt einen Quanten-Scheck, kein Bargeld.
-   - Zu klären: Welche Strecken sind heute zugänglich?
+   - ~~Zu klären: Welche Strecken sind heute zugänglich?~~ – analysiert (ANALYSE.md 5d, C2).
+     Die kommerziellen Dienste liefern nur Schlüssel aus geschlossenen Geräten. Es braucht
+     ein Testbett oder einen Partner, wie bei S3. Anfragen (QuNET, T-Labs, Berliner
+     Testbett) macht der Betreiber.
 3. **Praktisches Quantengeld mit schwachen Lichtpulsen:**
    - Quelle: Bozzio u. a., „Experimental investigation of practical unforgeable quantum
      money“ (npj QI 2018).
-   - Vergleichen: ihre Rauschtoleranz und Verluste mit den Parametern von Variante W.
+   - ~~Vergleichen~~ – erledigt (ANALYSE.md 5c): Bei ihnen gelten Mehrphotonen-Pulse als
+     frei, µ ≤ 0,40, gemessen 3–5 % Fehler, 10⁴–10⁵ Paare. Das ist dasselbe Muster wie
+     S3, aber mit Speicher für echte Karten.
 4. **Halb-quantisches Geld (Radian & Sattath):**
    - Bank und Prüfung sind rein klassisch, das passt zur dezentralen Prüfung.
    - Beim Halter braucht es weiter einen Quantenspeicher.
+   - ~~Analysieren~~ – erledigt (ANALYSE.md 5d, C4): Beim Halter braucht es einen
+     Quantencomputer für LWE in Überlagerung und einen langen Speicher. Beobachten, nicht
+     bauen.
 5. **Offline-Bargeld als Träger:**
    - Das Bargeld-Verhalten liefern heute Secure Element und Offline-Bargeld Stufe 1b.
    - Der Quanten-Teil steckt nur in Prägung und Einlösung.
-   - Genau abgrenzen, was davon „Quantengeld“ heißen darf.
+   - ~~Genau abgrenzen, was davon „Quantengeld“ heißen darf~~ – erledigt (ANALYSE.md 5d,
+     C5, mit Tabelle): Quantengeld heißen nur W und S. Quantensichere Unterschriften heißen
+     „quantensicher“. Das Offline-Bargeld ist kein Quantengeld. Nie „Quantenwährung“.
 6. **Gemietete Speicherzeit in der Ionenfalle:**
    - Quantinuum und IonQ halten Qubits Sekunden bis Minuten.
    - Ablauf: Note in der Cloud prägen, halten, über die Kette übertragen, prüfen.
      „Mitnehmen“ heißt hier Verwahrung beim Betreiber, nachprüfbar über die Kette.
    - Dafür braucht es ein Konto.
 
-**Ergebnis:** ein neuer Abschnitt in ANALYSE.md mit einer Empfehlung, was zuerst gebaut
-wird.
+**Ergebnis:** steht in ANALYSE.md 5c und 5d, mit der Empfehlung, was zuerst gebaut wird.
+In Abschnitt C ist nur noch C6 offen (Konto des Betreibers).
 
 ## D. Bauen und messen
 

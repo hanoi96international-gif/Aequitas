@@ -233,6 +233,35 @@ beim Empfänger, Summe erhalten.
   Schutz zurückgibt; nur bei 100 µs liegt der Phasen-Code knapp vorn (im Rauschen).
   Fehlerkorrektur verlängert die Lebensdauer erst mit kleineren Gatterfehlern
   (Ionenfalle) oder größeren Codes mit Korrektur in Echtzeit.
+- **Wiesner-Stellen im Steane-Code (B6, nachgetragen 17.11.2026):**
+  - **Aufbau:** Jede Stelle der Note liegt in 7 Qubits (Steane-Code [[7,1,3]],
+    `wiesner_hardware.note_steane`). Gemessen wird transversal in der Basis der
+    Aufforderung, dekodiert wird klassisch. Ein Fehler je Stelle wird korrigiert, auch
+    ein Lesefehler, und es braucht keine Syndrom-Runden auf dem Chip. Die Sicherheit
+    ändert sich nicht: Der Code ist öffentlich.
+  - **Rauschmodell `ibm_marrakesh`** (2 Stellen, 8 Noten je Fall, 1000 Schüsse; aus 18
+    CNOT werden auf dem Gitter des Chips 43):
+
+    | Wartezeit | ungeschützt | Steane |
+    |---|---|---|
+    | 0 µs | 0,3 % | 0,8 % |
+    | 5 µs | 1,0 % | 1,5 % |
+    | 10 µs | 1,3 % | 2,1 % |
+    | 20 µs | 3,0 % | 9,8 % |
+    | 50 µs | 6,1 % | 16,8 % |
+
+  - **Exakt gerechnet (`wiesner_schutz.py`):** Pauli-Rahmen über alle 2⁷ Fehlermuster,
+    Codierer, Speicher und Messung. Mit Werten in der Größenordnung von IBM Heron (CNOT
+    0,3 %, Lesen 0,5 %, Gitterfaktor 2,4) hilft der Code **bei keinem Speicherfehler**.
+    Der Codierer ist nicht fehlertolerant: 6 von 27 Einzelfehlern kippen die Stelle.
+  - **Mit voller Verbindung und Werten einer Ionenfalle** (CNOT 0,15 %, Lesen 0,2 %)
+    hilft er in einem Fenster: ungeschützt 0,3 % bis 6 % Fehler. Bei 1 % Speicherfehler
+    sind es 0,4 % statt 0,9 %.
+  - **Lesart:** Auf heutigen IBM-Chips macht Fehlerkorrektur je Stelle die Note
+    schlechter, nicht besser. Damit ist B6 beantwortet. Längeres Halten braucht kleinere
+    Gatterfehler und volle Verbindung (Ionenfalle) oder einen fehlertoleranten Codierer
+    mit Korrektur in Echtzeit. Die Messung auf dem echten Chip ist vorbereitet
+    (Workflow-Schalter `wiesner = steane`).
 
 **Zählt das als Quantengeld?** Als Vorführung: ja, das ist der ganze Ablauf einer
 privat prüfbaren Quanten-Note mit dezentraler Prüfung – auf echter Hardware, sobald der

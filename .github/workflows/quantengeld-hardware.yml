@@ -61,9 +61,9 @@ on:
         options: [aus, phase, bit, beide]
         default: aus
       wiesner:
-        description: "Variante W: messen = Fehlerrate je Wartezeit (wiesner_hardware.py); fern = dasselbe, gepraegt ohne Vertrauen (W3, Validatoren messen verschraenkte Haelften); kette = Note von Anfang bis Ende mit der Kettenseite (W4, wiesner_kette.py; erste Wartezeit, bezahlen = Teleportation); s-token = Variante S ohne Speicher (s_kette.py, 1680 Qubits sofort gemessen, zwei Annahmestellen). Nur rauschen/ibm."
+        description: "Variante W: messen = Fehlerrate je Wartezeit (wiesner_hardware.py); fern = dasselbe, gepraegt ohne Vertrauen (W3, Validatoren messen verschraenkte Haelften); kette = Note von Anfang bis Ende mit der Kettenseite (W4, wiesner_kette.py; erste Wartezeit, bezahlen = Teleportation); s-token = Variante S ohne Speicher (s_kette.py, 1680 Qubits sofort gemessen, zwei Annahmestellen); steane = B6, dieselbe Note ungeschuetzt und je Stelle im Steane-Code (wiesner_hardware.note_steane, 2 Stellen, 14 Qubits). Nur rauschen/ibm."
         type: choice
-        options: [aus, messen, fern, kette, s-token]
+        options: [aus, messen, fern, kette, s-token, steane]
         default: aus
 
 permissions:
@@ -101,7 +101,7 @@ jobs:
         run: |
           set -euo pipefail
           extra=()
-          case "$WIESNER" in aus|false) ;; messen|true) extra+=(--wiesner) ;; fern) extra+=(--wiesner --fern) ;; kette) extra+=(--wiesner --kette) ;; s-token) extra+=(--s-token) ;; *) echo "wiesner: $WIESNER unbekannt"; exit 1 ;; esac
+          case "$WIESNER" in aus|false) ;; messen|true) extra+=(--wiesner) ;; fern) extra+=(--wiesner --fern) ;; kette) extra+=(--wiesner --kette) ;; s-token) extra+=(--s-token) ;; steane) extra+=(--wiesner --steane) ;; *) echo "wiesner: $WIESNER unbekannt"; exit 1 ;; esac
           if [ "$DYNAMISCH" = "true" ]; then extra+=(--dynamisch); fi
           if [ -n "$WARTEN" ]; then extra+=(--warten-reihe "$WARTEN"); fi
           if [ "$BEZAHLEN" = "true" ]; then extra+=(--bezahlen); fi
@@ -143,7 +143,7 @@ jobs:
         run: |
           set -euo pipefail
           extra=()
-          case "$WIESNER" in aus|false) ;; messen|true) extra+=(--wiesner) ;; fern) extra+=(--wiesner --fern) ;; kette) extra+=(--wiesner --kette) ;; s-token) extra+=(--s-token) ;; *) echo "wiesner: $WIESNER unbekannt"; exit 1 ;; esac
+          case "$WIESNER" in aus|false) ;; messen|true) extra+=(--wiesner) ;; fern) extra+=(--wiesner --fern) ;; kette) extra+=(--wiesner --kette) ;; s-token) extra+=(--s-token) ;; steane) extra+=(--wiesner --steane) ;; *) echo "wiesner: $WIESNER unbekannt"; exit 1 ;; esac
           if [ "$UNTERDRUECKUNG" = "true" ]; then extra+=(--unterdrueckung); fi
           if [ "$DYNAMISCH" = "true" ]; then extra+=(--dynamisch); fi
           if [ -n "$WARTEN" ]; then extra+=(--warten-reihe "$WARTEN"); fi

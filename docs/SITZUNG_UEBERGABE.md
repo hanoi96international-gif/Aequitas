@@ -143,12 +143,63 @@ Nicht übernommen, als Beobachtung für später:
    - Mit Teleportation 12,5 %: keine sichere Toleranz unter 14,6 %.
    - Ab 20 µs 29–40 %, die Note ist verloren.
    - `wiesner_hardware.TOLERANZ` steht jetzt auf 4 % statt 15 %.
+10. **S3 – Ausgabe über eine echte Leitung gerechnet** (ANALYSE.md 5c,
+    `wiesner_parameter.py` Abschnitt S3, Prüfauftrag S Fragen 6 und 7):
+    - Kent u. a. 2022, QT1 (Lemma 2/3, Satz 1) ist umgesetzt, ihre Abb. 5 nachgerechnet.
+      Mutationen: sechs von sechs erkannt.
+    - Befund 1: Kents Handsender ist sicher, sobald Basen und Werte aus dem Zufall der
+      Validatoren kommen (β = 0).
+    - Befund 2: Die Tabelle für ideale Qubits reicht über eine Leitung nicht. Bei 10° und
+      3 % käme ein Fälscher in 1,4 % durch. `s3_stichprobe` rechnet mit λ(θ) und dem
+      Mehrphotonen-Anteil.
+    - **Lücke geschlossen:** Die Größe der Stichprobe prüfte niemand. Jetzt lädt
+      `s_kette.stelle_laden` nur mit mindestens k_note Stellen (fail-closed, `labor_k` nur
+      für Tests). Mutationen: drei von drei erkannt, Prüfvektor unverändert. Der Knoten
+      prüft die Größe bewusst nicht: Beim Anmelden ist die Annahme schon geschehen. Die
+      App der Annahmestelle muss dieselbe Regel bekommen.
+    - Meldung Λ und öffentliche Teilmenge sind als Bausteine in `s_kette.py` spezifiziert
+      (`s3_meldung`, `s3_teilmenge`; Mutationen vier von vier).
+    - Offen vor S3 mit Gerät: die Tabelle im Knoten mit θ und dem Anteil freier Stellen,
+      dazu die Einbindung der Bausteine in `KetteS` und den Knoten.
+13. **Abschnitt C analysiert** (ANALYSE.md 5d, mit Empfehlung, was zuerst kommt):
+    - **C1:** Auf einer Kette fällt der relativistische Vorteil weg. Es bleibt
+      Unfälschbarkeit ohne Rechenannahme.
+    - **C2:** Kommerzielle QKD-Dienste liefern nur Schlüssel. Es braucht ein Testbett
+      oder einen Partner.
+    - **C4:** Halb-quantisches Geld braucht beim Halter einen Quantencomputer und einen
+      Speicher. Beobachten.
+    - **C5:** Quantengeld heißen nur W und S, nie „Quantenwährung“.
+    - **Offen:** nur C6 (Ionenfalle, Konto des Betreibers).
+
+11. **B6 beantwortet – Fehlerkorrektur je Stelle** (HEUTE.md 3.3, `wiesner_schutz.py`,
+    `wiesner_hardware.note_steane`, Workflow `wiesner = steane`):
+    - Im Rauschmodell `ibm_marrakesh` ist der Steane-Code bei jeder Wartezeit schlechter
+      als ungeschützt: ohne Warten 0,8 % gegen 0,3 %, nach 20 µs 9,8 % gegen 3,0 %.
+    - Exakt gerechnet hilft er mit IBM-Werten nie, mit Werten einer Ionenfalle bei 0,3–6 %
+      Rohfehler. Mutationen: sieben von sieben erkannt.
+    - **Offen:** der Lauf auf dem echten Chip (43986013444, gestartet 17.11. 00:14 UTC). Er
+      wartet auf die Freigabe von `quantenhardware`.
+12. **Aufteilung zwischen den Sitzungen** (17.11., Sitzung „friendly-davinci“, Zweig
+    `claude/friendly-davinci-i4iww1`; eine Nachricht an die andere Sitzung kam nicht an):
+    - **Hier:** S3, B6, Abschnitt C von OFFEN.md als Analyse, S3-Ablauf in `s_kette.py`.
+    - **Bei der Sitzung „Weiter“:** Register von W und S als Tabelle, mehrstufige
+      Prüfung bei W (B5), App-Anzeige. `quanten_w*.go` und `quanten_s.go` fasst diese
+      Sitzung nicht an.
 
 ## Offene PRs
 
 | Repo | PR | Inhalt | Nächster Schritt |
 |---|---|---|---|
-| – | – | keine offenen PRs | – |
+| – | – | keine offenen PRs dieser Sitzung | – |
+
+Gemergt am 16./17.11. (diese Sitzung): #561 (B6 Steane-Code je Stelle, Abschnitt C
+analysiert, S3-Bausteine), #560 (S3 über eine echte Leitung, Mindestgröße der Stichprobe),
+#558.
+
+**Wartet auf Freigabe des Betreibers:**
+- IBM-Lauf `wiesner = steane` ([43986013444](https://github.com/hanoi96international-gif/Aequitas/actions/runs/43986013444),
+  Umgebung `quantenhardware`). Danach die Ergebnisse in HEUTE.md 3.3 (B6) eintragen.
+- Deploy von #557 auf C1 ([43974452277](https://github.com/hanoi96international-gif/Aequitas/actions/runs/43974452277)).
 
 Gemergt am 16.11.:
 - #558 (andere Sitzung: Prüfauftrag auf Stand W2c/W2d/S, ePrint-Entwurf, `OFFEN.md`
@@ -208,9 +259,7 @@ AEQUITAS_TPS_BENCH=1 DATABASE_URL="postgres://postgres:postgres@localhost:5432/a
 
 ## Danach (Reihenfolge)
 
-0. **App 1.23.2:** Die APK ist veröffentlicht, die **iOS-IPA fehlt im Release**
-   (release-ios mit Lauf 43884174136 auf der Basis `aequitas-app`). Danach `quelle.json`
-   prüfen.
+0. ~~**App 1.23.2**~~ – vollständig veröffentlicht (APK und IPA, `quelle.json` geprüft).
 
 1. **W5 (Aufgabe #64):** `docs/QUANTENGELD_PRUEFAUFTRAG.md` ist um Variante W erweitert
    (#542). Offen: Gutachter suchen (Anschreiben wie `ANSCHREIBEN.md`).

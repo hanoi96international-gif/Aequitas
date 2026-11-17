@@ -52,7 +52,8 @@ SICHERHEIT IN ZAHLEN (wiesner_parameter.py)
 GRENZEN (ehrlich)
   - Kein Bargeld von Hand zu Hand: wer x weitergibt, kennt es weiter.
   - Gueltig an genau einer von 2^M vorher festgelegten Stellen (oder
-    Zeitfenstern). Die Stellen muessen ihre Stichproben geheim halten.
+    Zeitfenstern). Die Stellen muessen ihre Stichproben geheim halten und
+    laden nur mit mindestens k_note Stellen (stelle_laden).
   - Die Ausgabe braucht QKD-Empfaengertechnik bei der Nutzerin.
 
 Aufruf:  python3 -I s_kette.py [--selbsttest]
@@ -287,6 +288,48 @@ class KetteS:
         e["c"] = c
 
 
+# ------------------------------------------- S3: Ausgabe ueber eine echte Leitung
+#
+# Bausteine fuer ANALYSE.md 5c (noch nicht in KetteS eingebunden; das kommt mit
+# einem Geraet). Ueber eine Leitung kommt nur ein Teil der N Pulse an. Die
+# Nutzerin meldet zuerst die Menge Lambda der gemessenen Pulse; erst danach zieht
+# der Zufall der Kette daraus eine oeffentliche Teilmenge von hoechstens N_MAX
+# Stellen, die den Token bildet. Die geheimen Stichproben liegen in ihr. Weil die
+# Teilmenge nach der Meldung gezogen wird, kann eine Betruegerin den Anteil
+# freier Stellen (Mehrphotonen-Pulse) darin nicht erhoehen; wiesner_parameter.
+# s3_stichprobe rechnet die Pruefgroesse mit diesem Anteil.
+
+DOM_S3_TEIL = b"aequitas-quanten-s3-teilmenge-v1|"
+N_PULS_MAX = 1 << 26        # Pulse je Ausgabe (Kents Handsender: 4e7 in 4 s)
+
+
+def s3_meldung(n_puls: int, gamma_det_ppm: int, meldung: list[int]) -> list[int]:
+    """Prueft die Meldung Lambda: verschiedene Pulse in 0..n_puls-1, mindestens
+    gamma_det * n_puls (ganzzahlig, ppm). Gibt sie sortiert zurueck."""
+    if not (1 <= n_puls <= N_PULS_MAX and 1 <= gamma_det_ppm <= 1_000_000):
+        raise Abgewiesen("S3-Meldung: Groessen")
+    lam = sorted(meldung)
+    if len(set(lam)) != len(lam) or any(not 0 <= i < n_puls for i in lam):
+        raise Abgewiesen("S3-Meldung: doppelter oder fremder Puls")
+    if len(lam) * 1_000_000 < gamma_det_ppm * n_puls:
+        raise Abgewiesen(f"S3-Meldung: {len(lam)} Pulse, verlangt {gamma_det_ppm} ppm von {n_puls}")
+    return lam
+
+
+def s3_teilmenge(K: str, lam: list[int], zufall: bytes, meldung_hoehe: int, zufall_hoehe: int,
+                 n_max: int = wk.N_MAX) -> list[int]:
+    """Oeffentliche Teilmenge der gemeldeten Pulse, die den Token bildet.
+    zufall muss aus einem Block NACH der Meldung stammen (sonst koennte die
+    Nutzerin Lambda passend zur Teilmenge waehlen). Jeder Knoten rechnet sie
+    gleich: die n_max Pulse mit den kleinsten h(dom|K|zufall|i), sortiert."""
+    if zufall_hoehe <= meldung_hoehe:
+        raise Abgewiesen("S3-Teilmenge: Zufall nicht nach der Meldung")
+    if len(zufall) != 32 or not 1 <= n_max <= wk.N_MAX:
+        raise Abgewiesen("S3-Teilmenge: Form")
+    rang = sorted(lam, key=lambda i: wk.h(DOM_S3_TEIL, K.encode(), b"|", zufall, b"|", str(i).encode()))
+    return sorted(rang[:n_max])
+
+
 # ---------------------------------------------------------------- Annahmestellen
 def stichproben(n: int, stellen: int, k: int, rng: random.Random) -> list[list[int]]:
     """Disjunkte, geheime Stichproben je Annahmestelle."""
@@ -339,12 +382,25 @@ class Annahmestelle:
 
 
 def stelle_laden(nummer: int, K: str, n: int, wurzel: bytes, t: int, n_val: int,
-                 stichprobe: list[int], offen) -> "Annahmestelle":
+                 stichprobe: list[int], offen, tol: int = TOL_PROZENT,
+                 labor_k: int | None = None) -> "Annahmestelle":
     """DEZENTRALE AUSGABE: die Annahmestelle bekommt ihre Stichprobe nicht von
     einer Bank, sondern als Anteile von t Validatoren (wiesner_kette.Praegung,
     v = Basis + 2*Wert + 4*Salz) und prueft JEDE Stelle selbst gegen die
     Pruefsumme und die Merkle-Wurzel auf der Kette. Ein falscher Anteil oder
-    Pfad: die Stelle laedt nicht (fail-closed) -- sie glaubt keinem Validator."""
+    Pfad: die Stelle laedt nicht (fail-closed) -- sie glaubt keinem Validator.
+
+    GROESSE: Die Stelle nimmt ohne Netz an und traegt damit das Risiko einer
+    Doppelvorlage. Darum laedt sie nur eine Stichprobe mit mindestens
+    k_note(tol, t, v) verschiedenen Stellen (wiesner_kette.K_TABELLE). Pruefen
+    kann das NUR sie: die Stichprobe ist bis zur Einloesung geheim, und der
+    Knoten koennte beim Anmelden nur noch die Auszahlung an die Stelle
+    verweigern, die schon angenommen hat. labor_k: kleinere Groesse nur fuer
+    Vorfuehrung und Tests."""
+    k_soll = wk.k_note(tol, t, n_val) if labor_k is None else labor_k
+    if k_soll <= 0 or len(set(stichprobe)) != len(stichprobe) or len(stichprobe) < k_soll \
+            or any(not 0 <= i < n for i in stichprobe):
+        raise Abgewiesen(f"Ladung: Stichprobe zu klein oder ungueltig ({len(stichprobe)} Stellen, verlangt {k_soll})")
     if len(offen) != len(stichprobe):
         raise Abgewiesen("Ladung: Zahl der Stellen")
     u, tt = [0] * n, [0] * n
@@ -507,8 +563,8 @@ def selbsttest() -> bool:
         K = hashlib.sha256(rng.randbytes(16)).hexdigest()
         pr = wk.Praegung(K, u, t, 3, val, rng)
         proben = stichproben(n, 2, 64, rng)
-        st = [stelle_laden(b, K, n, pr.wurzel, 3, 5, proben[b], pr.offenlegung(proben[b], [1, 3, 5] if b else [2, 4, 5]))
-              for b in (0, 1)]
+        st = [stelle_laden(b, K, n, pr.wurzel, 3, 5, proben[b], pr.offenlegung(proben[b], [1, 3, 5] if b else [2, 4, 5]),
+                          labor_k=64) for b in (0, 1)]
         soll(all(st[b].daten == {i: (u[i], t[i]) for i in proben[b]} for b in (0, 1)), "dezentral geladen: falsche Daten")
         kette = KetteS()
         kette.ausgeben(K, n, "anna")
@@ -519,12 +575,12 @@ def selbsttest() -> bool:
         # zu wenige oder doppelte Anteile, fremde Wurzel -- die Stelle laedt nicht.
         of = pr.offenlegung(proben[0], [1, 2, 3])
         falsch = [([(a[0][0], (a[0][1] + 1) % wk.P)] + a[1:], p_) if j == 0 else (a, p_) for j, (a, p_) in enumerate(of)]
-        abgewiesen(lambda: stelle_laden(0, K, n, pr.wurzel, 3, 5, proben[0], falsch), "falscher Anteil")
-        abgewiesen(lambda: stelle_laden(0, K, n, pr.wurzel, 3, 5, proben[0], [(a, p_[::-1]) for a, p_ in of]), "falscher Pfad")
-        abgewiesen(lambda: stelle_laden(0, K, n, pr.wurzel, 3, 5, proben[0], [(a[:2], p_) for a, p_ in of]), "zu wenige Anteile")
-        abgewiesen(lambda: stelle_laden(0, K, n, pr.wurzel, 3, 5, proben[0], [([a[0], a[0], a[1]], p_) for a, p_ in of]), "doppeltes x")
-        abgewiesen(lambda: stelle_laden(0, K, n, wk.h(b"fremd"), 3, 5, proben[0], of), "fremde Wurzel")
-        abgewiesen(lambda: stelle_laden(0, K, n, pr.wurzel, 3, 5, proben[0], of[:-1]), "Stelle fehlt")
+        abgewiesen(lambda: stelle_laden(0, K, n, pr.wurzel, 3, 5, proben[0], falsch, labor_k=64), "falscher Anteil")
+        abgewiesen(lambda: stelle_laden(0, K, n, pr.wurzel, 3, 5, proben[0], [(a, p_[::-1]) for a, p_ in of], labor_k=64), "falscher Pfad")
+        abgewiesen(lambda: stelle_laden(0, K, n, pr.wurzel, 3, 5, proben[0], [(a[:2], p_) for a, p_ in of], labor_k=64), "zu wenige Anteile")
+        abgewiesen(lambda: stelle_laden(0, K, n, pr.wurzel, 3, 5, proben[0], [([a[0], a[0], a[1]], p_) for a, p_ in of], labor_k=64), "doppeltes x")
+        abgewiesen(lambda: stelle_laden(0, K, n, wk.h(b"fremd"), 3, 5, proben[0], of, labor_k=64), "fremde Wurzel")
+        abgewiesen(lambda: stelle_laden(0, K, n, pr.wurzel, 3, 5, proben[0], of[:-1], labor_k=64), "Stelle fehlt")
         # Anteile, die ein richtiges v ergeben, aber gegen die Regel verstossen:
         # t+1 Anteile; ein Anteil an x = 9 (ausserhalb 1..v, aus dem Polynom
         # nachgerechnet). Die Pruefsumme allein faengt das NICHT -- die Regel schon.
@@ -538,12 +594,46 @@ def selbsttest() -> bool:
                 sm = (sm + yj * z * pow(nn, -1, wk.P)) % wk.P
             return sm
         of4 = pr.offenlegung(proben[0], [1, 2, 3, 4])
-        abgewiesen(lambda: stelle_laden(0, K, n, pr.wurzel, 3, 5, proben[0], of4), "t+1 Anteile")
+        abgewiesen(lambda: stelle_laden(0, K, n, pr.wurzel, 3, 5, proben[0], of4, labor_k=64), "t+1 Anteile")
         aussen = [([(9, am(a, 9))] + a[1:], p_) for a, p_ in of]
         soll(all(wk.zusammensetzen(a) == wk.zusammensetzen(b) for (a, _), (b, _) in zip(aussen, of)), "Probe x = 9 falsch gebaut")
-        abgewiesen(lambda: stelle_laden(0, K, n, pr.wurzel, 3, 5, proben[0], aussen), "Anteil an x = 9")
+        abgewiesen(lambda: stelle_laden(0, K, n, pr.wurzel, 3, 5, proben[0], aussen, labor_k=64), "Anteil an x = 9")
         # Gegenprobe: dieselbe Ladung unveraendert geht durch.
-        soll(stelle_laden(0, K, n, pr.wurzel, 3, 5, proben[0], of).daten == st[0].daten, "Gegenprobe Ladung")
+        soll(stelle_laden(0, K, n, pr.wurzel, 3, 5, proben[0], of, labor_k=64).daten == st[0].daten, "Gegenprobe Ladung")
+        # Missbrauch: zu kleine Stichprobe. Ohne Laborgroesse verlangt die Stelle
+        # k_note(4 %, 3 von 5) = 3472 Stellen; 64 laedt sie nicht. Auch nicht mit
+        # einer Stelle zu wenig oder mit einer doppelten Stelle, die die Zahl aufblaeht.
+        soll(wk.k_note(TOL_PROZENT, 3, 5) == 3472, "k_note(4, 3, 5)")
+        abgewiesen(lambda: stelle_laden(0, K, n, pr.wurzel, 3, 5, proben[0], of), "Stichprobe kleiner als k_note")
+        abgewiesen(lambda: stelle_laden(0, K, n, pr.wurzel, 3, 5, proben[0], of, labor_k=65), "eine Stelle zu wenig")
+        doppelt = proben[0][:-1] + proben[0][:1]          # 64 Eintraege, 63 verschiedene, Anteile passend
+        abgewiesen(lambda: stelle_laden(0, K, n, pr.wurzel, 3, 5, doppelt, pr.offenlegung(doppelt, [1, 2, 3]), labor_k=64),
+                   "doppelte Stelle in der Stichprobe")
+        abgewiesen(lambda: stelle_laden(0, K, n, pr.wurzel, 3, 5, proben[0], of, tol=15), "Toleranz nicht in der Tabelle")
+
+        # 4b. S3-Bausteine: Meldung und oeffentliche Teilmenge.
+        n_puls, ppm = 200_000, 18_000          # gamma_det = 1,8 % wie bei Kent
+        gemeldet = sorted(rng.sample(range(n_puls), 3700))
+        lam = s3_meldung(n_puls, ppm, gemeldet)
+        abgewiesen(lambda: s3_meldung(n_puls, ppm, gemeldet[:3599]), "Meldung unter gamma_det")
+        abgewiesen(lambda: s3_meldung(n_puls, ppm, gemeldet + gemeldet[:1]), "Meldung mit doppeltem Puls")
+        abgewiesen(lambda: s3_meldung(n_puls, ppm, gemeldet[:-1] + [n_puls]), "Meldung mit fremdem Puls")
+        z1, z2 = wk.h(b"block-101"), wk.h(b"block-102")
+        abgewiesen(lambda: s3_teilmenge(K, lam, z1, 100, 100), "Zufall nicht nach der Meldung")
+        abgewiesen(lambda: s3_teilmenge(K, lam, b"kurz", 100, 101), "Zufall in falscher Form")
+        t1 = s3_teilmenge(K, lam, z1, 100, 101, n_max=2048)
+        soll(len(t1) == 2048 and set(t1) <= set(lam) and t1 == sorted(t1), "Teilmenge: Groesse, in Lambda, sortiert")
+        soll(t1 == s3_teilmenge(K, list(reversed(lam)), z1, 100, 101, n_max=2048), "Teilmenge haengt von der Reihenfolge ab")
+        soll(t1 != s3_teilmenge(K, lam, z2, 100, 101, n_max=2048), "anderer Zufall, gleiche Teilmenge")
+        soll(s3_teilmenge(K, lam[:100], z1, 100, 101, n_max=2048) == lam[:100], "kleines Lambda: alles")
+        # Missbrauch: eine Betruegerin meldet alle 700 Mehrphotonen-Pulse plus 3000
+        # andere (Anteil frei 19 %). Die Teilmenge, gezogen NACH der Meldung, hat
+        # denselben Anteil (Abweichung im Bereich weniger Standardabweichungen) --
+        # sie kann ihn nicht hochtreiben.
+        mehr = set(rng.sample(range(n_puls), 700))
+        lam_b = s3_meldung(n_puls, ppm, sorted(mehr) + sorted(rng.sample(sorted(set(range(n_puls)) - mehr), 3000)))
+        anteil = len(mehr & set(s3_teilmenge(K, lam_b, z2, 100, 101, n_max=2048))) / 2048
+        soll(abs(anteil - 700 / 3700) < 4 * math.sqrt(0.19 * 0.81 / 2048), f"Anteil frei in der Teilmenge {anteil:.3f}")
 
         # 5. Einloesen auf der Kette: die Stelle reicht die unterschriebene
         # Vorlage ein, die Validatoren legen ihre Stichprobe offen, jeder Knoten
@@ -560,7 +650,7 @@ def selbsttest() -> bool:
                                           stellen=["laden0", "laden0"]), "zweimal dieselbe Annahmestelle")
         kette.ausgeben(K, n, "anna", pr.wurzel, 10_000_000, [probe_hash(K, b, proben[b]) for b in (0, 1)], 3, 5, von="ausgabe",
                        stellen=["laden0", "laden1"])
-        st = [stelle_laden(b, K, n, pr.wurzel, 3, 5, proben[b], pr.offenlegung(proben[b], [1, 2, 3])) for b in (0, 1)]
+        st = [stelle_laden(b, K, n, pr.wurzel, 3, 5, proben[b], pr.offenlegung(proben[b], [1, 2, 3]), labor_k=len(proben[b])) for b in (0, 1)]
         y, x = messen_ehrlich(u, t, rng, 0.0)
         z = rng.randrange(2)
         festlegen(kette, K, st, [yk ^ z for yk in y], 1 ^ z)

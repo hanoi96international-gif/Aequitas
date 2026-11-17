@@ -33,6 +33,12 @@ WAS DIESES WERKZEUG RECHNET (exakt, Binomialsummen):
   - suche(): zu einer gemessenen Fehlerrate e der Hardware die Toleranz und
     die kleinste Zahl k, mit der ein Faelscher hoechstens mit 2^-40 und eine
     ehrliche Note mindestens mit 1 - 10^-6 besteht.
+  - S3, Ausgabe ueber eine echte Leitung (Kent u. a. 2022, arXiv:2104.11717):
+    faelscher_schranke(theta, beta) (Faelscher-Fehlerrate bei verkippten Basen,
+    14,64 % nur im Idealfall), p_mehrphoton(mu), kent_qt1() (Lemma 2, Lemma 3,
+    Satz 1 der Arbeit; der Selbsttest rechnet ihre Abb. 5 nach) und
+    s3_stichprobe() (unsere Stichprobe je Annahmestelle: Mehrphotonen-Stellen
+    zaehlen als bekannt, der Rest mit lambda(theta)).
 
 GRENZEN DER AUSSAGE (ehrlich):
   - Gerechnet ist der Kloner Stelle fuer Stelle (Produktangriff) und je
@@ -157,10 +163,12 @@ def bedingt(k: int, p: float, tol: int, min_treffer: int) -> float:
     return e / (1 - u) if u < 1 else 0.0
 
 
-def faelscher_fehler(f: float) -> float:
+def faelscher_fehler(f: float, schranke: float = KLON_FEHLER) -> float:
     """Fehlerrate je Treffer: bekannte Stellen (Anteil f) fehlerfrei, die
-    anderen geklont."""
-    return (1 - f) * KLON_FEHLER
+    anderen geklont. schranke: Fehlerrate des besten Faelschers auf einer
+    unbekannten Stelle (ideal der Kloner; ueber eine echte Leitung kleiner,
+    faelscher_schranke)."""
+    return (1 - f) * schranke
 
 
 def _ok(k: int, e: float, c: float, tol: int, mt: int) -> tuple[bool, float, float]:
@@ -170,17 +178,22 @@ def _ok(k: int, e: float, c: float, tol: int, mt: int) -> tuple[bool, float, flo
     return fa <= ZIEL_FAELSCHER and faellt <= ZIEL_EHRLICH, fa, faellt
 
 
-def suche(e: float, f: float = 0.0, k_max: int = 8192, min_treffer: int = 1) -> dict | None:
+def suche(e: float, f: float = 0.0, k_max: int = 8192, min_treffer: int = 1,
+          schranke: float = KLON_FEHLER) -> dict | None:
     """Kleinste Pruefung (k, in Achterschritten) ueber alle ganzzahligen
     Toleranzen zwischen e und der Faelscher-Fehlerrate, die beide Ziele
     erreicht. None, wenn es keine solche Toleranz gibt."""
-    c = faelscher_fehler(f)
+    if not 0 <= f < 1:
+        return None
+    c = faelscher_fehler(f, schranke)
     best = None
     for tol in range(1, 100):
         if tol / 100 >= c:
             break
         if tol / 100 <= e:
             continue
+        if best is not None and not _ok(best["k"], e, c, tol, min_treffer)[0]:
+            continue                      # kann die beste Pruefung nicht unterbieten
         hi = 64
         while hi <= k_max and not _ok(hi, e, c, tol, min_treffer)[0]:
             hi *= 2
@@ -199,6 +212,105 @@ def suche(e: float, f: float = 0.0, k_max: int = 8192, min_treffer: int = 1) -> 
         if best is None or hi < best["k"]:
             best = {"e": e, "f": f, "tol": tol, "k": hi, "faelscher": r[1], "ehrlich_faellt": r[2], "c": c}
     return best
+
+
+# ------------------------------------------- S3: Ausgabe ueber eine echte Leitung
+#
+# Ueber eine echte Quantenleitung (QKD-Technik) kommt nur ein kleiner Teil der
+# Pulse an (P_det), ein schwacher Laserpuls enthaelt manchmal zwei Photonen
+# (P_noqub), und die Basen sind um einen Winkel theta verkippt. Quelle:
+# Kent, Lowndes, Pitalua-Garcia, Rarity, „Practical quantum tokens without
+# quantum memories and experimental tests“, npj Quantum Inf. 8, 28 (2022),
+# arXiv:2104.11717, Schema QT1: Lemma 2 (Robustheit), Lemma 3 (Korrektheit),
+# Satz 1 (Unfaelschbarkeit), Tabellen V und VI. Der Selbsttest rechnet Abb. 5
+# der Arbeit nach (beta_max 6e-4 / 2,3e-4 / 6e-6).
+#
+# Folgerung fuer Aequitas: Die Nutzerin meldet die Menge der angekommenen Pulse
+# (Lambda, mindestens gamma_det * N). Mehrphotonen-Pulse kann eine Betruegerin in
+# beiden Basen messen; sie meldet sie bevorzugt. Unter den gemeldeten Stellen sind
+# also hoechstens nu_unf / gamma_det „frei“ -- genau der Anteil f bekannter Stellen,
+# den suche() schon kennt. Auf den uebrigen Stellen hat der Faelscher mindestens die
+# Fehlerrate lambda(theta, beta_PB) statt 14,6 %.
+
+def ueberlapp(theta_grad: float) -> float:
+    """O(theta) (Kent u. a., Tabelle V Nr. 2): groesste Ueberlappung zweier
+    Zustaende verschiedener Basen, wenn die Basen bis auf theta verkippt sind."""
+    t = math.radians(theta_grad)
+    return (math.cos(t) + math.sin(t)) / math.sqrt(2)
+
+
+def faelscher_schranke(theta_grad: float = 0.0, beta_pb: float = 0.0) -> float:
+    """lambda(theta, beta_PB) (Kent u. a., Tabelle V Nr. 3): Fehlerrate je
+    Treffer, die ein Faelscher auf einer unbekannten Stelle mindestens hat.
+    theta = beta = 0 ergibt genau den Kloner (14,64 %); Verkippung und schiefe
+    Basenwahl machen es dem Faelscher leichter."""
+    o = ueberlapp(theta_grad)
+    return 0.5 * (1 - math.sqrt(1 - (1 - o * o) * (1 - 4 * beta_pb ** 2)))
+
+
+def p_mehrphoton(mu: float) -> float:
+    """Anteil der Pulse mit zwei oder mehr Photonen bei einer Poisson-Quelle
+    (schwacher Laserpuls, mittlere Photonenzahl mu)."""
+    return 1 - (1 + mu) * math.exp(-mu)
+
+
+def _kent_f(g_err: float, b_ps: float, b_pb: float, theta: float, nu: float, g_det: float) -> float:
+    """f aus Satz 1, Gl. (8)-(9). Die Klammer (gamma_det - nu) * [...] umfasst
+    beide ersten Glieder; so ergibt sich Abb. 5 der Arbeit."""
+    lam = faelscher_schranke(theta, b_pb)
+    if not 0 < nu < g_det:
+        return -1.0
+    d = g_det * g_err / (g_det - nu)
+    if d >= lam:
+        return -1.0
+    h = 2 * b_ps * math.sqrt(0.5 + 2 * b_pb ** 2 + (0.5 - 2 * b_pb ** 2) * math.sin(math.radians(2 * theta)))
+    return (g_det - nu) * (lam / 2 * (1 - d / lam) ** 2 - math.log(1 + 2 * b_ps)) - (1 - (g_det - nu)) * math.log(1 + h)
+
+
+def kent_qt1(n_puls: float, p_det: float, e: float, p_noqub: float, theta_grad: float,
+             beta_pb: float, beta_ps: float, gamma_det: float, ziel: float = 1e-9) -> dict | None:
+    """Erfuellt eine Leitung mit diesen Messwerten Robustheit, Korrektheit und
+    Unfaelschbarkeit je <= ziel (Lemmas 2, 3, Satz 1)? Wahl der freien Groessen wie
+    in der Arbeit: jeder Summand ziel/2, gamma_err so klein wie die Korrektheit
+    erlaubt (f faellt mit gamma_err). None, wenn nicht."""
+    if not (0 < gamma_det < p_det < 1 and 0 < e < 0.5 and p_noqub > 0 and n_puls > 0):
+        return None
+    l2 = math.log(2.000001 / ziel)    # je Summand knapp unter ziel/2 (Rundung)
+    rob = math.exp(-p_det * n_puls / 2 * (1 - gamma_det / p_det) ** 2)
+    a = p_det * (1 - 2 * beta_pb)
+    nu_cor = a / 2 * (1 - math.sqrt(4 * l2 / (a * n_puls)))
+    if nu_cor <= 0:
+        return None
+    g_err = e * (1 + math.sqrt(3 * l2 / (e * nu_cor * n_puls)))
+    nu = p_noqub * (1 + math.sqrt(3 * l2 / (p_noqub * n_puls)))
+    lam = faelscher_schranke(theta_grad, beta_pb)
+    if not (g_err < 2 * e and g_err < lam and nu < min(2 * p_noqub, gamma_det * (1 - g_err / lam))):
+        return None
+    f = _kent_f(g_err, beta_ps, beta_pb, theta_grad, nu, gamma_det)
+    unf = math.exp(-p_noqub * n_puls / 3 * (nu / p_noqub - 1) ** 2) + (math.exp(-n_puls * f) if f > 0 else 1.0)
+    cor = math.exp(-a * n_puls / 4 * (1 - 2 * nu_cor / a) ** 2) + math.exp(-e * nu_cor * n_puls / 3 * (g_err / e - 1) ** 2)
+    if max(rob, cor, unf) > ziel:
+        return None
+    return {"gamma_err": g_err, "nu_unf": nu, "nu_cor": nu_cor, "lambda": lam,
+            "rob": rob, "cor": cor, "unf": unf, "frei": nu / gamma_det}
+
+
+def s3_stichprobe(e: float, theta_grad: float, p_noqub: float, gamma_det: float,
+                  n_puls: float, f_absprache: float = 0.0, beta_pb: float = 0.0,
+                  ziel: float = 1e-9) -> dict | None:
+    """Pruefgroesse der Variante S (geheime Stichprobe je Annahmestelle) fuer
+    eine Ausgabe ueber eine echte Leitung: frei sind die Mehrphotonen-Stellen
+    (hoechstens nu_unf / gamma_det der gemeldeten, mit derselben Sicherheitsmarge
+    wie Satz 1) plus der Anteil einer Absprache; auf den anderen Stellen hat der
+    Faelscher mindestens lambda(theta, beta_PB). Rechnet dann suche()."""
+    if not (0 < gamma_det < 1 and p_noqub >= 0 and n_puls > 0):
+        return None
+    nu = p_noqub * (1 + math.sqrt(3 * math.log(2.000001 / ziel) / (p_noqub * n_puls))) if p_noqub > 0 else 0.0
+    frei = f_absprache + nu / gamma_det
+    r = suche(e, frei, schranke=faelscher_schranke(theta_grad, beta_pb))
+    if r is not None:
+        r["frei"], r["lambda"] = frei, faelscher_schranke(theta_grad, beta_pb)
+    return r
 
 
 # ---------------------------------------------------------------- Selbsttest
@@ -255,6 +367,39 @@ def selbsttest() -> bool:
         r0, r1 = suche(0.007, 0.0), suche(0.007, 0.2)
         soll(r0 and r1 and r1["k"] >= r0["k"], f"Absprache: {r0} {r1}")
         soll(suche(0.03, 0.8) is None, "f = 0,8 bei e = 3 % darf nicht sicher sein")
+
+        # 5. S3, Ausgabe ueber eine echte Leitung (Kent u. a. 2022).
+        soll(abs(faelscher_schranke(0, 0) - KLON_FEHLER) < 1e-15, "lambda(0, 0) muss der Kloner sein")
+        lams = [faelscher_schranke(t, 0) for t in (0, 2, 5, 10)]
+        soll(all(x > y for x, y in zip(lams, lams[1:])) and faelscher_schranke(0, 0.01) < KLON_FEHLER,
+             f"lambda muss mit Verkippung und Schieflage fallen: {lams}")
+        soll(abs(p_mehrphoton(0.09) - 3.8e-3) < 5e-5, f"P_noqub(0,09) = {p_mehrphoton(0.09)} (Arbeit: 3,8e-3)")
+        # Abb. 5 der Arbeit nachgerechnet: beta_max bei (theta, E) = (0, 1 %), (5, 3 %),
+        # (10, 5,8 %) etwa 6e-4, 2,3e-4, 6e-6 (N = 4e7, P_det = 0,019, gamma_det = 0,018).
+        def kent(theta, e, b):
+            return kent_qt1(4e7, 0.019, e, p_mehrphoton(0.09), theta, b, b, 0.018)
+        for theta, e, b in ((0, 0.01, 6e-4), (5, 0.03, 2.3e-4), (10, 0.058, 6e-6)):
+            soll(kent(theta, e, 0.8 * b) is not None and kent(theta, e, 1.3 * b) is None,
+                 f"Abb. 5 nicht nachgerechnet bei theta = {theta}, E = {e}")
+        # Die gemessenen Werte der Arbeit (beta_PB = 2,4e-3, beta_PS = 3,6e-3) reichen
+        # nicht -- so schreiben es auch die Autoren. Mit Basen und Werten aus dem
+        # Zufall der Validatoren (beta = 0) reicht derselbe Handsender.
+        soll(kent_qt1(4e7, 0.019, 0.058, p_mehrphoton(0.09), 10, 2.4e-3, 3.6e-3, 0.018) is None,
+             "gemessene Schieflage darf nicht als sicher gelten")
+        soll(kent(10, 0.058, 0.0) is not None, "Handsender mit beta = 0 sollte nach Satz 1 sicher sein")
+        # Missbrauchstest: die Tabelle fuer ideale Qubits (14,6 %) ueber eine Leitung
+        # mit 10 Grad Verkippung -- ein Faelscher kaeme bei e = 3 % in rund 1 % durch.
+        r = suche(0.03)
+        soll(bedingt(r["k"], faelscher_schranke(10), r["tol"], 1) > 1e-3,
+             "Ideal-Tabelle bei 10 Grad muesste brechen")
+        # Gegenprobe: s3_stichprobe rechnet mit lambda(theta) und den Mehrphotonen-Stellen.
+        s5 = s3_stichprobe(0.03, 5, p_mehrphoton(0.09), 0.018, 4e7)
+        s0 = s3_stichprobe(0.03, 5, 1e-10, 0.018, 4e7)
+        soll(s5 is not None and s0 is not None and s5["k"] > s0["k"] > r["k"]
+             and bedingt(s5["k"], (1 - s5["frei"]) * faelscher_schranke(5), s5["tol"], 1) <= ZIEL_FAELSCHER,
+             f"S3: {s5} {s0}")
+        soll(s3_stichprobe(0.058, 10, p_mehrphoton(0.09), 0.018, 4e7) is None,
+             "gemessener Handsender (5,8 %, 10 Grad) passt nicht in k <= 8192")
     except Exception as ex:
         fehler.append(f"Ausnahme: {type(ex).__name__}: {ex}")
     for f in fehler:
@@ -281,6 +426,22 @@ def main():
                 print(f"{e:>18.1%} | {f:>11.3f} | {'--':>8} | {'--':>5} | unmoeglich: (1-f)*14,6 % liegt nicht ueber e")
                 continue
             print(f"{e:>18.1%} | {f:>11.3f} | {r['tol']:>7}% | {r['k']:>5} | {r['faelscher']:>9.1e} | {r['ehrlich_faellt']:>11.1e}")
+    print()
+    print("S3, AUSGABE UEBER EINE ECHTE LEITUNG (Kent u. a. 2022): Stichprobe je Annahmestelle")
+    print("  frei = Mehrphotonen-Stellen unter den gemeldeten; lambda = Faelscher-Schranke bei Verkippung")
+    print(f"  {'Leitung':<44} | {'E':>5} | {'theta':>5} | {'frei':>6} | {'lambda':>6} | Toleranz | {'k':>5}")
+    for name, e, th, mu, pd, n_puls in (
+            ("Handsender der Arbeit (mu 0,09, P_det 0,019)", 0.058, 10, 0.09, 0.019, 4e7),
+            ("derselbe, verbessert", 0.03, 5, 0.09, 0.019, 4e7),
+            ("schwacher Puls mu 0,02", 0.03, 5, 0.02, 0.0042, 2e8),
+            ("schwacher Puls mu 0,02, besser justiert", 0.01, 2, 0.02, 0.0042, 2e8),
+            ("Einzelphotonen (angekuendigt)", 0.01, 2, None, 0.05, 1e7)):
+        pnq = p_mehrphoton(mu) if mu else 1e-10
+        r = s3_stichprobe(e, th, pnq, 0.95 * pd, n_puls)
+        nu = pnq * (1 + math.sqrt(3 * math.log(2.000001 / 1e-9) / (pnq * n_puls)))
+        frei, lam = nu / (0.95 * pd), faelscher_schranke(th)
+        print(f"  {name:<44} | {e:>5.1%} | {th:>4}° | {frei:>6.3f} | {lam:>6.4f} | "
+              + (f"{r['tol']:>7}% | {r['k']:>5}" if r else "  nicht sicher bis k = 8192"))
 
 
 if __name__ == "__main__":
