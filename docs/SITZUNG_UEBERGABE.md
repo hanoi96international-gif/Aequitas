@@ -92,9 +92,14 @@ Neu gebaut, darum: **lokale Arbeit sofort committen und pushen.**
   `secrets.IBM_QUANTUM_TOKEN`.
 - Geprüft: Rauschmodell `ibm_marrakesh` (2/847 Fehler) durch die volle Kette in-process,
   Doppelvorlage abgewiesen, ehrliche eingelöst. Gegenprobe: 22 Mutationen, alle rot.
-- **Starten (Betreiber), frühestens 18.11. 18:00 UTC:** Signieradresse von C1 braucht
-  mindestens 1 AEQ (Deckung), dann den Workflow mit `modus = ibm` starten und beide Jobs
-  freigeben.
+- **Stand 17.11. ~16:05 UTC:** #569 auf C1 ausgerollt (Lauf 44118612415). #570 zieht den
+  Stichtag auf **17.11. 17:00 UTC** vor; Deploy [44121195729](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44121195729)
+  muss bis 16:30 UTC freigegeben sein, sonst hält der Wächter an (dann neuen Stichtag wählen).
+- Signieradresse von C1: `0x0be8b961cbf6564bd1931b0803d35c0659e0d016` (hat ~1000 AEQ aus der
+  Registrierung, Deckung reicht).
+- **Starten (Betreiber), ab 17:00 UTC:** Workflow `quanten-s-ausgabe.yml` mit `modus = ibm`,
+  beide Jobs freigeben. Danach Ergebnis (Doppelvorlage abgewiesen, ehrliche eingelöst) hier
+  und in `forschung/quantengeld/HEUTE.md` festhalten.
 
 **Als Nächstes:** Voraussetzungen von W6 (für eine Freischaltung mit Gutachten).
 - Gutachten: Vorlagen in `ANSCHREIBEN.md`, verschickt der Betreiber.
