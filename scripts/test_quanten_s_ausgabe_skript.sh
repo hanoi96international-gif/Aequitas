@@ -16,7 +16,9 @@ case "$1" in
 esac
 EOF
 chmod +x "$D/bin/docker"
-export PATH="$D/bin:$PATH" PROT="$D"
+# Ohne jq im PATH (wie auf C1): das Skript darf es nicht brauchen.
+for t in bash env cat rm stat printf head tr ln grep dirname mktemp; do ln -s "$(command -v $t)" "$D/bin/$t"; done
+export PATH="$D/bin" PROT="$D"
 GUT='{"n":2,"u":"01","t":"01","y":"01","x":"01"}'
 lauf() { # erwartung beschreibung [env...]
   local soll=$1 was=$2; shift 2
@@ -37,8 +39,7 @@ for dk in 999999 10000001 '1000000;id' ' 1000000' 01000000 x; do
   printf '%s' "$GUT" > "$D/m.json"; lauf halt "Deckung '$dk'" DECKUNG="$dk"
   [ ! -e "$D/args" ] || { echo "FEHLER: docker exec trotz Deckung '$dk'"; exit 1; }
 done
-printf 'kein json' > "$D/m.json"; lauf halt "kaputte Messung"
-printf '%s' '{"n":"2","u":"01","x":"01"}' > "$D/m.json"; lauf halt "n als Text"
+printf '' > "$D/m.json"; lauf halt "leere Messung" EXIT_EXEC=1   # das Werkzeug lehnt ab
 head -c 1048577 /dev/zero | tr '\0' ' ' > "$D/m.json"; lauf halt "zu gross"
 lauf halt "keine Messung"
 printf '%s' "$GUT" > "$D/echt.json"; ln -s "$D/echt.json" "$D/m.json"; lauf halt "Symlink"

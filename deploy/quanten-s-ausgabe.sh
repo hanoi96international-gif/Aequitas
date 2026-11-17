@@ -24,8 +24,8 @@ trap 'rm -f -- "$QS_DATEI"' EXIT
   || { echo "ABBRUCH: DECKUNG $DECKUNG (1000000 bis 10000000 Mikro-AEQ)" >&2; exit 2; }
 [ -f "$QS_DATEI" ] && [ ! -L "$QS_DATEI" ] || { echo "ABBRUCH: keine Messung in $QS_DATEI" >&2; exit 2; }
 [ "$(stat -c %s "$QS_DATEI")" -le 1048576 ] || { echo "ABBRUCH: Messung zu gross" >&2; exit 2; }
-jq -e '(.n | type) == "number" and (.u | type) == "string" and (.x | type) == "string"' "$QS_DATEI" >/dev/null 2>&1 \
-  || { echo "ABBRUCH: Messung ist kein gueltiges JSON" >&2; exit 2; }
+# Den Inhalt prueft das Werkzeug streng (JSON ohne fremde Felder, Bits,
+# Laengen); jq ist auf C1 nicht installiert.
 [ "$(docker inspect -f '{{.State.Running}}' "$CONTAINER" 2>/dev/null)" = "true" ] \
   || { echo "ABBRUCH: Container $CONTAINER laeuft nicht" >&2; exit 2; }
 
