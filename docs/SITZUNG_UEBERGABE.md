@@ -2,7 +2,7 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 16.11.2026 ~23:20 UTC nach #557 und #558, Sitzung „Weiter“ (Auftrag des Betreibers: „Alles erledigen
+Stand: 17.11.2026 ~06:15 UTC, Sitzung „Weiter“ (Auftrag des Betreibers: „Alles erledigen
 für dezentrales Quantengeld“).
 
 ## Arbeitsweise (vom Betreiber festgelegt)
@@ -190,7 +190,7 @@ Nicht übernommen, als Beobachtung für später:
 
 | Repo | PR | Inhalt | Nächster Schritt |
 |---|---|---|---|
-| – | – | keine offenen PRs dieser Sitzung | – |
+| Aequitas | „Register von Variante W und S als eigene Tabelle“ (Sitzung „Weiter“, Zweig `claude/aequitas-fortsetzen-osrea1`) | W/S-Register je Zeile in `quanten_w_eintraege` | CI grün abwarten, Sicherheitsprüfung als Kommentar, squash-mergen |
 
 Gemergt am 16./17.11. (diese Sitzung): #561 (B6 Steane-Code je Stelle, Abschnitt C
 analysiert, S3-Bausteine), #560 (S3 über eine echte Leitung, Mindestgröße der Stichprobe),
