@@ -33,7 +33,10 @@ für dezentrales Quantengeld“).
 **Im PR:** Register von W und S als eigene Tabelle `quanten_w_eintraege`
 (`quanten_w_tabelle.go`): eine Zeile je Note, Token und toter Note, nur Geändertes
 wird geschrieben, StateRoot und Snapshot-Format unverändert, Umzug aus `chain_config`
-beim Laden. **Danach:** mehrstufige Prüfung bei W, App-Anzeige für W und S.
+beim Laden. Dazu im selben PR die Rechnung zu **B5** (`wiesner_mehrstufig.py`):
+zwei Stufen sparen einer echten Note im Mittel 20–52 % Stellen bei unverändert 2⁻⁴⁰.
+**Danach:** W2e (zwei Stufen in `wiesner_kette.py`, Prüfvektor, dann Knoten), App-Anzeige
+für W und S.
 
 Auftrag des Betreibers: dezentrales Quantengeld auf heutigem Stand funktionsfähig, damit
 Aequitas ernstzunehmendes Quantengeld ist. „Alles umsetzen.“ Die Liste der offenen Punkte
@@ -190,7 +193,7 @@ Nicht übernommen, als Beobachtung für später:
 
 | Repo | PR | Inhalt | Nächster Schritt |
 |---|---|---|---|
-| Aequitas | „Register von Variante W und S als eigene Tabelle“ (Sitzung „Weiter“, Zweig `claude/aequitas-fortsetzen-osrea1`) | W/S-Register je Zeile in `quanten_w_eintraege` | CI grün abwarten, Sicherheitsprüfung als Kommentar, squash-mergen |
+| Aequitas | „Register von Variante W und S als eigene Tabelle“ (Sitzung „Weiter“, Zweig `claude/aequitas-fortsetzen-osrea1`) | W/S-Register je Zeile in `quanten_w_eintraege`; B5-Rechnung | CI grün abwarten, Sicherheitsprüfung als Kommentar, squash-mergen |
 
 Gemergt am 16./17.11. (diese Sitzung): #561 (B6 Steane-Code je Stelle, Abschnitt C
 analysiert, S3-Bausteine), #560 (S3 über eine echte Leitung, Mindestgröße der Stichprobe),
