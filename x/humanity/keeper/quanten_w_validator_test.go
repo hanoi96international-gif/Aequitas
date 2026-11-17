@@ -829,3 +829,21 @@ func TestQuantenWDienst_TeilNichtDoppelt(t *testing.T) {
 		t.Fatalf("%d eingereichte Teile noch gemerkt", len(d.gesendet))
 	}
 }
+
+// Ein Tresor-Eintrag ohne gueltige Validatorenliste oder Nummer reicht nie
+// ein (und loest keine Panik aus).
+func TestQuantenWDienst_DarfEinreichenKaputterEintrag(t *testing.T) {
+	d := &quantenWDienst{faellig: map[string]int64{}, eingesprungen: map[string]bool{}}
+	K := strings.Repeat("ab", 32)
+	for _, e := range []*quantenWTresorEintrag{
+		{X: 1},
+		{X: 0, Validatoren: []string{"a", "b"}},
+		{X: 3, Validatoren: []string{"a", "b"}},
+	} {
+		for zeit := int64(0); zeit <= 10*quantenWStaffelWarten; zeit += quantenWStaffelWarten {
+			if d.darfEinreichen(K, e, 0, 0, zeit, map[string]bool{}) {
+				t.Fatalf("Eintrag X=%d, %d Validatoren darf einreichen", e.X, len(e.Validatoren))
+			}
+		}
+	}
+}

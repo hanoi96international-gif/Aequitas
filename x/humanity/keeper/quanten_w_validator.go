@@ -280,6 +280,9 @@ func quantenWZustaendig(K string, index, v int) int {
 // Burst-Grenze.
 func (d *quantenWDienst) darfEinreichen(K string, e *quantenWTresorEintrag, index, ab int, jetzt int64, gesehen map[string]bool) bool {
 	v := len(e.Validatoren)
+	if v <= 0 || e.X < 1 || e.X > v {
+		return false // kein gueltiger Eintrag: nichts einreichen (fail-closed)
+	}
 	z := quantenWZustaendig(K, index, v)
 	if z == e.X {
 		return true
