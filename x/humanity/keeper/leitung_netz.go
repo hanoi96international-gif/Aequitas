@@ -754,8 +754,10 @@ func leiteWeiterMit(w http.ResponseWriter, r *http.Request, ziel string, body []
 }
 
 // zumLeiterRumpfHoechstens: so gross darf der Rumpf eines POST hinter
-// zumLeiter sein -- die groesste Grenze der Handler dahinter (64 KiB bei
-// Tausch, Liquiditaet und Faucet, readBodyLimited; die uebrigen 4 bis 8 KiB).
+// zumLeiter sein (64 KiB bei Tausch, Liquiditaet und Faucet, readBodyLimited;
+// die uebrigen 4 bis 8 KiB). Ausnahme: die W/S-Routen (/api/quanten-w/*)
+// lesen bis quantenWKoerperMax; ihr Validator-Dienst haelt jeden Teil der
+// Offenlegung unter dieser Grenze (quantenWTeilKuerzen, Befund 17.11.2026).
 const zumLeiterRumpfHoechstens = 64 << 10
 
 // zumLeiterLeseFrist: so lange darf das Lesen des Rumpfs dauern. Sie ersetzt

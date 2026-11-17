@@ -1141,11 +1141,36 @@ func (d *quantenWDienst) teilOffenlegen(ctx context.Context, K string, e *quante
 		if offen == nil {
 			continue
 		}
-		if einreichen(offen) == nil {
+		if einreichen(quantenWTeilKuerzen(offen)) == nil {
 			return true
 		}
 	}
 	return false
+}
+
+// quantenWTeilRumpfBudget: so gross darf die JSON-Liste eines Teils werden,
+// damit der ganze Rumpf (mit Wallet, Zeit, K, Ab) unter
+// zumLeiterRumpfHoechstens bleibt -- dort liegen die W/S-Routen (zumLeiter).
+// Befund 17.11.2026: Ein Teil mit 64 Stellen, t = 3 und 14 Pfadknoten je
+// Stelle (n = 10.400, volle Tabelle fuer 3 von 4) war groesser als 64 KiB; die
+// Weiterleitung antwortete 413, die Offenlegung blieb bei 0 stehen, und die
+// Wiederholungen jedes Takts fuellten die Burst-Grenze der Nachbarn.
+const quantenWTeilRumpfBudget = zumLeiterRumpfHoechstens - 8<<10
+
+// quantenWTeilKuerzen: haelt einen Teil unter quantenWTeilRumpfBudget, indem
+// er von hinten gekuerzt wird (halbieren, mindestens eine Stelle). Die Kette
+// nimmt Teile mit 1 bis quantenWOffenTeil Stellen ab a.Offen; der naechste
+// Teil beginnt dort, wo dieser endet. Keine Grenze wird gelockert, keine
+// Regel der Kette geaendert.
+func quantenWTeilKuerzen(offen []QuantenWOffen) []QuantenWOffen {
+	for len(offen) > 1 {
+		roh, err := json.Marshal(offen)
+		if err == nil && len(roh) <= quantenWTeilRumpfBudget {
+			break
+		}
+		offen = offen[:len(offen)/2]
+	}
+	return offen
 }
 
 func (d *quantenWDienst) vergessen(K string) {
