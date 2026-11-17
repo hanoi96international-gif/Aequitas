@@ -642,7 +642,10 @@ var quantenWPraegerTauglich = func(cs *ChainState, wallet string) bool {
 	if acc.IsHuman {
 		return true
 	}
-	b, err := quantenWBetreiberVon(cs, ctx, wallet)
+	// Oeffentlicher Eingang: die Abfrage des Registers hat eine feste Frist.
+	rctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	b, err := quantenWBetreiberVon(cs, rctx, wallet)
 	b = strings.ToLower(b)
 	if err != nil || b == "" {
 		return false
