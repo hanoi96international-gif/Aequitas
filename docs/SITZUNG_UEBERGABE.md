@@ -2,7 +2,7 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 17.11.2026 ~16 UTC (S-Ausgabe-Werkzeug im PR), Sitzung „Weitermachen“ (Zweig
+Stand: 17.11.2026 ~16 UTC (#569 S-Ausgabe-Werkzeug gemergt), Sitzung „Weitermachen“ (Zweig
 `claude/weitermachen-qbkbfs`); davor ~10 UTC nach #566 und App #79, Sitzung „Weiter“ (Auftrag des Betreibers: „Alles erledigen
 für dezentrales Quantengeld“).
 
@@ -74,7 +74,7 @@ unten).
 - Danach: erste S-Ausgabe auf dem Hauptnetz über einen Workflow, mit IBM als Gerät des
   Halters.
 
-**Erste S-Ausgabe: Werkzeug gebaut (PR „Quantengeld S: Werkzeug für die erste Ausgabe“).**
+**Erste S-Ausgabe: Werkzeug gemergt (#569, CI grün, Sicherheitsprüfung als PR-Kommentar).**
 Eine frühere Sitzung hatte das schon lokal gebaut, aber nie gepusht; der Container war weg.
 Neu gebaut, darum: **lokale Arbeit sofort committen und pushen.**
 - `aequitasd quanten-s-ausgabe` (`x/humanity/keeper/quanten_s_ausgabe.go`): C1 ist mit
