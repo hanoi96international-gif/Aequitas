@@ -225,22 +225,34 @@ func qsVierKnoten(t *testing.T, ausfall bool) {
 	if ausfall && (weg == nil || !weg.aus.Load()) {
 		t.Fatal("der Ausfall ist nicht eingetreten")
 	}
-	// Jeder (lebende) Knoten: Token tot gemerkt, Toepfe leer.
+	// Jeder (lebende) Knoten: Token tot gemerkt, Toepfe leer. Das Werkzeug
+	// urteilt aus der Sicht EINES Knotens; die anderen duerfen einen Block
+	// hinterher sein (Pilot 17.11.2026: Knoten 0 hatte den Einloese-Block
+	// beim ersten Lesen noch nicht). Darum begrenzt warten -- der volle
+	// Gleichstand unten wird danach unveraendert streng geprueft.
 	for _, k := range netz.ks {
 		if k.aus.Load() {
 			continue
 		}
 		cs, _, _ := k.teile()
-		cs.mu.RLock()
-		reg := cs.quantenWJetzt()
-		_, tot := reg.Tote[erg.K]
-		lebt := reg.Token[erg.K] != nil
-		cs.mu.RUnlock()
-		if lebt || !tot {
-			t.Fatalf("Knoten %d: Token lebt=%v tot=%v", k.i, lebt, tot)
-		}
-		if a, ok := vierKonto(cs, quantenWTopfAddr); ok && a.Balance.Micro() != 0 {
-			t.Fatalf("Knoten %d: im W-Topf liegen noch %d Mikro-AEQ", k.i, a.Balance.Micro())
+		bis := time.Now().Add(2 * time.Minute)
+		for {
+			cs.mu.RLock()
+			reg := cs.quantenWJetzt()
+			_, tot := reg.Tote[erg.K]
+			lebt := reg.Token[erg.K] != nil
+			cs.mu.RUnlock()
+			topf := int64(0)
+			if a, ok := vierKonto(cs, quantenWTopfAddr); ok {
+				topf = a.Balance.Micro()
+			}
+			if !lebt && tot && topf == 0 {
+				break
+			}
+			if time.Now().After(bis) {
+				t.Fatalf("Knoten %d nach 2 min: Token lebt=%v tot=%v, im W-Topf %d Mikro-AEQ", k.i, lebt, tot, topf)
+			}
+			time.Sleep(250 * time.Millisecond)
 		}
 	}
 	// Jeder Dienst raeumt seinen Tresor.

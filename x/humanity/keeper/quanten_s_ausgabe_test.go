@@ -157,6 +157,17 @@ func qsGutfall(t *testing.T, bz [2]int) {
 	if strings.Contains(log.String(), "PRIVATE") {
 		t.Fatal("Log nennt Schluessel")
 	}
+	// Nachvollziehbar: jeder Schritt mit Zeit, jede Vorlage mit Beginn,
+	// Dauer und Rate der Offenlegung.
+	for _, muss := range []string{"ausgegeben (nach ", "gebunden und gewaehlt (nach ", "Doppelvorlage: abgewiesen (nach ",
+		"ehrliche Vorlage: eingeloest (nach ", "angemeldet, ", "Stellen offenzulegen", "Urteil nach ", "Stellen/min"} {
+		if !strings.Contains(log.String(), muss) {
+			t.Fatalf("Protokoll ohne %q:\n%s", muss, log.String())
+		}
+	}
+	if n := strings.Count(log.String(), "Stellen/min"); n != 2 {
+		t.Fatalf("%d Raten im Protokoll, erwartet 2 (Doppelvorlage und ehrliche)", n)
+	}
 }
 
 // Gefaelschter Knoten: behauptet nach der Doppelvorlage, der Token sei

@@ -7,22 +7,45 @@ Repos); davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
-**Zuletzt (Sitzung „Weiter“, 17.11. ~20:55 UTC):**
-- **#572 gemergt** (Nachtrag zur Sicherheitsprüfung als Kommentar). **C1-Deploy wartet auf
-  Freigabe:** [44164664693](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44164664693).
-  Die Ratengrenze auf C1 sinkt erst, wenn der Betreiber `perf-c1.yml` startet und freigibt.
-- **#573 gemergt:** Kein zweites Einreichen desselben Teils vor `quantenWStaffelWarten`, und
-  der Takt wartet höchstens 2 s auf den Stand. Flake `test_bio_pq_bereit.sh` behoben.
-- **Pilot auf `main` vor #573** (Lauf 44164912648): Mit Ausfall `Urteil: nicht in 15m0s
-  (fehl 0, offen 3456 von 5200)`, also rund 230 Stellen/min. Kein Fehler, nur zu langsam für
-  die Frist des Werkzeugs.
-- **Pilot mit #573** (Lauf 44166377116, Zweig auf d737cf6) läuft. Das Ergebnis steht nur im
-  Protokollende (Zusammenfassung erst ab #574 mit Laufzeit).
-- **PR #574 offen:** Das Werkzeug wartet auf das Urteil bis zur Kettenfrist (30 min + 3 min),
-  der Pilot-Job läuft bis 90 min, die Zusammenfassung nennt die Laufzeit. Nach dem Merge den
-  Pilot (Rauschmodell, k = 5.200) erneut starten.
-- Protokolle der Pilot-Läufe: Der Download über `blob.core.windows.net` ist hier gesperrt,
-  `get_job_logs` liefert höchstens die letzten 5.000 Zeilen.
+**Zuletzt (Sitzung „Weiter“, 17.11. ~21:30 UTC):**
+- **Gemergt:** #572 (Pilot-Workflow, Ratengrenze), #573 (kein doppeltes Einreichen), #574
+  (Urteil bis zur Kettenfrist, Ersatz-Validatoren in fester Reihenfolge, Zusammenfassung).
+  **C1-Deploy von #572 ist durch.** Die Ratengrenze auf C1 sinkt erst, wenn der Betreiber
+  `perf-c1.yml` startet und freigibt.
+- **Pilot in voller Größe (k = 5.200, 3 von 4, Rauschmodell):**
+  - Vor #573: Das Urteil kam nicht in 15 min (offen 3456 von 5200, rund 230 Stellen/min).
+  - Mit #573 (Lauf 44166377116): Mit Ausfall **erstmals durchgekommen**. Doppelvorlage
+    abgewiesen, ehrliche Vorlage eingelöst, Werkzeug 16m20s. Rot nur, weil Knoten 0 den
+    Einlöse-Block beim einmaligen Lesen noch nicht hatte. Korrektur im Test (PR #575).
+    Ob der Lauf ohne Ausfall grün war, ist unbekannt (Protokollende reicht nicht).
+  - **Läuft:** Pilot auf `claude/weiter-uw2p42` (#574 und Test-Korrektur). Ergebnis in der
+    Zusammenfassung des Laufs (Werkzeug-Dauer, Urteil, offen x von k).
+- **Leitlinie des Betreibers (17.11. abends): „Alles muss perfekt nachvollziehbar und
+  transparent sein.“** Umgesetzt:
+  - Quellen der Wirtschaftsanalyse per Websuche geprüft, mit DOI und Prüfstand;
+    Unbelegtes gestrichen.
+  - `/api/wirtschaft/regeln` nennt `geltend`.
+  - Pilot-Läufe legen alle Testmeldungen und die ganze Ausgabe als Artefakt ab, mit SHA-256.
+  - `HEUTE.md` 3.3d listet jeden Pilot-Lauf, auch die gescheiterten.
+  - App: Die Netto-Zeile ist aufklappbar, mit beiden Buchungen (Block, Tx) und Rechenweg.
+
+  - **Neu: `/api/wirtschaft/runde`** (`wirtschaft_runde.go`, PR #575). Jede Tagesrunde ist
+    mit Zahlen nachrechenbar:
+    - Rest der Vorrunde + Abgaben + andere Zuflüsse = Topf vor der Auszahlung
+      = Grundeinkommen + Rest; Grundeinkommen = Menschen × Anteil.
+    - Eine Zeile je (Rundenzeit, Art, Konto), Doppel aus Geschwisterblöcken fallen heraus.
+    - Ältere Runden mit `?hoehe=` aus angewendeten Blöcken (höchstens 200 Höhen, einer
+      zugleich).
+    - Die App zeigt die Zahlen beim Aufklappen (App #84).
+    - Kein Konsens: zum Prüfen einen zweiten Knoten fragen.
+- **PR #575 offen:** alles oben im Repo Aequitas plus die Test-Korrektur. Mergen, wenn der
+  Pilot grün ist. **App-PR #84 offen:** Netto-Zeile; mergen nach grüner CI, Release braucht
+  die Freigabe des Betreibers.
+- **Danach:**
+  - Pilot `modus=ibm` (Freigabe `quantenhardware`, 10.400 Qubits).
+  - Wirtschaft: App-Anzeige netto und Anteil am fairen Anteil (Frage an den Betreiber offen).
+- Protokolle: Der Download über `blob.core.windows.net` ist gesperrt, `get_job_logs` liefert
+  höchstens die letzten 5.000 Zeilen.
 
 ## Arbeitsweise (vom Betreiber festgelegt)
 
@@ -416,7 +439,11 @@ AEQUITAS_TPS_BENCH=1 DATABASE_URL="postgres://postgres:postgres@localhost:5432/a
    ist.
 4. **PQ Stufe 1 (#44):** Registrierung des Nutzers (Höhe 4304, tx 0x34233121…) auf den
    PQ-Teil prüfen, dann `pq_ab_unix` setzen.
-5. **Analyse der Wirtschaftsregeln (Wunsch des Betreibers, 17.11.):** Umlaufabgabe seit dem
+5. **Analyse der Wirtschaftsregeln (Wunsch des Betreibers, 17.11.):** Erster Teil erledigt:
+   `docs/WIRTSCHAFT_STARTBETRAG.md`. Frage 100 statt 1.000 AEQ: bei 1.000 bleiben (nominal
+   neutral, g/P = y/V; Umstellung kostet Konsensänderung und Umrechnung aller Bestände).
+   Vorschläge dort: Staffel scharf schalten, sobald ihre Voraussetzungen stehen, App-Anzeige
+   netto und als Anteil am fairen Anteil, feste Beträge als Vielfache. Bisheriger Text: Umlaufabgabe seit dem
    Gleichgewicht (07.11.2026): 0,5 %/Monat auf das ganze Guthaben, ohne Freibetrag, täglich
    anteilig, unter 0,001 AEQ je Tag nicht eingezogen, alles ins Grundeinkommen. Der alte
    Freibetrag (5 × 1.000 AEQ) steht noch im Code, gilt aber nur vor dem Stichtag. Prüfen:

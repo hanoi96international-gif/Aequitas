@@ -56,8 +56,20 @@ func (a *APIServer) handleWirtschaftRegeln(w http.ResponseWriter, r *http.Reques
 			kurs["pool_reserve_aeq"] = rAEQ
 		}
 	}
+	// geltend: welche Zahlen JETZT gelten. Seit dem Gleichgewicht
+	// (wirtschaft3.go, 07.11.2026) die unter "gleichgewicht"; "mensch",
+	// "unternehmen", "frei" und "ueberweisung_prozent" beschreiben dann die
+	// Regeln davor (sie gelten nur noch beim Nachspielen alter Bloecke). Ohne
+	// dieses Feld las sich die Antwort, als gaelten die alten Freibetraege
+	// noch -- die Felder bleiben, damit keine Anzeige bricht.
+	geltend, geltendHinweis := "bisher", "Es gelten die Zahlen unter mensch, unternehmen, frei und ueberweisung_prozent; gleichgewicht ist noch nicht aktiv."
+	if gleichgewichtAktiv(time.Now().Unix()) {
+		geltend, geltendHinweis = "gleichgewicht", "Es gelten die Zahlen unter gleichgewicht: jedes Guthaben gibt umlauf_prozent_monat ab, kein Freibetrag, keine Ueberweisungsgebuehr, alles als Grundeinkommen an alle Menschen. mensch, unternehmen, frei und ueberweisung_prozent beschreiben die Regeln vor gleichgewicht.aktiv_ab und gelten nur fuer aeltere Bloecke. Vermoegensgrenze, freie_adresse_grenze und ausstiegsabgabe_prozent gelten weiter."
+	}
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"kurs": kurs,
+		"geltend":         geltend,
+		"geltend_hinweis": geltendHinweis,
+		"kurs":            kurs,
 		// Was ein Mensch, der die ganzen 30 Tage dabei war, an Grundeinkommen
 		// bekommen hat (kundschaft.go). null = noch nicht berechnet.
 		"grundeinkommen_30_tage": grundeinkommenStand(a.state),
@@ -107,9 +119,9 @@ func (a *APIServer) handleWirtschaftRegeln(w http.ResponseWriter, r *http.Reques
 		"ausstiegsabgabe_prozent": float64(ausstiegsAbgabeBps) / 100,
 		"ueberweisung_prozent":    float64(ueberweisungsGebuehrBps) / 100,
 		"abgaben_gehen_an":        "grundeinkommen",
-		// Die naechste Stufe (wirtschaft3.go), schlafend bis zur Entscheidung.
-		// Ist sie aktiv, gelten ihre Zahlen statt "mensch", "unternehmen",
-		// "frei" und "ueberweisung_prozent" oben.
+		// Das Gleichgewicht (wirtschaft3.go), aktiv seit gleichgewichtAktivAbUnix.
+		// Ist es aktiv, gelten seine Zahlen statt "mensch", "unternehmen",
+		// "frei" und "ueberweisung_prozent" oben (siehe "geltend").
 		"gleichgewicht": a.state.gleichgewichtStand(time.Now().Unix()),
 	})
 }

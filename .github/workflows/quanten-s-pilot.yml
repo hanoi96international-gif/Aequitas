@@ -158,17 +158,42 @@ jobs:
           RC=${PIPESTATUS[0]}
           set -e
           rm -f "$RUNNER_TEMP/m.json"
+          # Nachvollziehbar: alle Meldungen der Tests (t.Log/t.Fatal samt
+          # Folgezeilen) und ihre Ergebnisse -- ohne die Knotenprotokolle.
+          awk '/^=== RUN|^ *--- (PASS|FAIL|SKIP)|^(ok|FAIL|PASS)([ \t]|$)/ {print; f=0; next}
+               /^    [A-Za-z0-9_]+_test\.go:[0-9]+:/ {print; f=1; next}
+               f && /^        / {print; next}
+               {f=0}' out.txt > ergebnis.txt
+          gzip -9 -c out.txt > ausgabe.txt.gz
           {
-            echo "## Quantengeld S: Pilot mit vier Validatoren (Modus ${{ inputs.modus }})"
+            echo "## Quantengeld S: Pilot mit vier Validatoren (Modus ${{ inputs.modus }}, k = $K)"
+            echo
+            echo "Commit \`${{ github.sha }}\`, Lauf ${{ github.run_id }}."
             echo
             if [ "$RC" = 0 ]; then
               echo "**Erfolg:** in beiden Laeufen Doppelvorlage abgewiesen, ehrliche Vorlage eingeloest, alle Knoten im Gleichstand."
             else
-              echo "**Gescheitert (Exit $RC)** -- Verlauf im Protokoll."
+              echo "**Gescheitert (Exit $RC).**"
             fi
             echo
+            echo "### Ergebnis der Tests (vollstaendig)"
             echo '```'
-            grep -E 'Messung aus|faellt aus|Variante S auf vier Knoten|Werkzeug \(|Urteil|offen [0-9]+ von|^\s*--- (PASS|FAIL)|^(ok|FAIL)\s' out.txt || true
+            cat ergebnis.txt
+            echo '```'
+            echo
+            echo "Artefakt \`pilot-${{ github.run_id }}\` (90 Tage): \`ergebnis.txt\` und die ganze Ausgabe \`ausgabe.txt.gz\` mit allen Knotenprotokollen. SHA-256:"
+            echo '```'
+            sha256sum ergebnis.txt ausgabe.txt.gz
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           exit "$RC"
+      - name: Ergebnis und ganze Ausgabe aufbewahren
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: pilot-${{ github.run_id }}
+          path: |
+            ergebnis.txt
+            ausgabe.txt.gz
+          retention-days: 90
+          if-no-files-found: warn

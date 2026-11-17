@@ -380,7 +380,9 @@ type ChainState struct {
 	txBlockIndexOnce sync.Once
 	// kontoVerlaufOnce: Tabelle des Kontoverlaufs (kontoverlauf.go).
 	kontoVerlaufOnce sync.Once
-	nullifiers       map[string]string // nullifier hex → wallet address (in-memory cache)
+	// rundenOnce: Tabelle der Rundenbuchungen (wirtschaft_runde.go).
+	rundenOnce sync.Once
+	nullifiers map[string]string // nullifier hex → wallet address (in-memory cache)
 	// nullifiersMu guards cs.nullifiers (a plain, non-sharded Go map — unlike
 	// cs.accounts, nullifiers were never migrated to a per-key-lockable
 	// structure) and cs.nullifierSetXOR's mutation together, specifically for

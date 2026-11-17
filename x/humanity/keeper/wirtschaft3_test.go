@@ -517,6 +517,9 @@ func TestGleichgewicht_SchnittstelleMeldetStand(t *testing.T) {
 	if g := frage("/api/wirtschaft/regeln")["gleichgewicht"].(map[string]interface{}); g["aktiv"] != false {
 		t.Fatalf("vor dem Gleichgewicht: regeln.gleichgewicht.aktiv = %v", g["aktiv"])
 	}
+	if v := frage("/api/wirtschaft/regeln")["geltend"]; v != "bisher" {
+		t.Fatalf("vor dem Gleichgewicht: regeln.geltend = %v, erwartet bisher", v)
+	}
 	gleichgewichtAktivOverride.Store(1)
 	t.Cleanup(func() { gleichgewichtAktivOverride.Store(math.MaxInt64) })
 	if v := frage(konto)["gleichgewicht"]; v != true {
@@ -525,5 +528,11 @@ func TestGleichgewicht_SchnittstelleMeldetStand(t *testing.T) {
 	g := frage("/api/wirtschaft/regeln")["gleichgewicht"].(map[string]interface{})
 	if g["aktiv"] != true || g["umlauf_prozent_monat"] != 0.5 {
 		t.Fatalf("nach der Aktivierung: regeln.gleichgewicht = %v", g)
+	}
+	// Wer die Schnittstelle liest, sieht, welche Zahlen gelten -- nicht die
+	// alten Freibetraege, als gaelten sie noch.
+	r := frage("/api/wirtschaft/regeln")
+	if r["geltend"] != "gleichgewicht" || !strings.Contains(r["geltend_hinweis"].(string), "kein Freibetrag") {
+		t.Fatalf("nach der Aktivierung: regeln.geltend = %v, Hinweis %q", r["geltend"], r["geltend_hinweis"])
 	}
 }
