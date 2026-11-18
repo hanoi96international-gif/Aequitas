@@ -200,6 +200,26 @@ gegen einen optimalen Kloner gebrochen war:
    - Tests: `quanten_w_test.go`, `quanten_w_kette_test.go`, `quanten_w_validator_test.go`,
      `quanten_w_tabelle_realdb_test.go`, `TestVierKnotenQuantenW_RealDB`; Mutationen zu jeder
      Regel.
+   - **Eigene Antwort zum Register je Zeile (18.11.2026, aus dem Code):**
+     - Die Zeilen werden in **derselben Datenbank-Transaktion** wie der Block geschrieben
+       (`quantenWSetzenLocked` → `quantenWZeilenSchreiben`, `quanten_w_kette.go`).
+     - Geht die Transaktion zurück, kehrt auch der Stand im Speicher zurück
+       (`snapshotForRollbackLocked`, `registerSicherungLocked`). Der Test dazu ist
+       `TestQuantenW_Tabelle_RealDB`, Abschnitt „Rueckroll“.
+     - Ein Absturz vor dem Commit lässt die Tabelle beim alten Stand, und beim Start gilt die
+       Tabelle.
+     - Jede Lösch- und Schreibanweisung muss genau eine Zeile treffen, sonst bricht das
+       Schreiben ab (fail-closed).
+     - **Restlücke:** Eine Zeile, die in der Tabelle steht, aber nicht im Speicher, würde nie
+       gelöscht. Das ginge nur durch einen Eingriff in die Datenbank oder einen Fehler im
+       Code.
+       - Gelesen würde sie erst beim nächsten Start, und der Knoten rechnete dann eine
+         andere Wurzel.
+       - Jeder Knoten, der nachrechnet, sähe das als StateRoot-Abweichung
+         (`stateroot_je_produzent` in `/api/health/combined`), also nicht still.
+       - Eine Zählprobe nach jedem Schreiben (Zeilen der Tabelle = Zeilen im Speicher) zeigte
+         es sofort, hielte dann aber jeden Block mit einer W- oder S-Transaktion an.
+     - **Bitte prüfen:** Ist das Anhalten vorzuziehen?
 8. **Wer offenlegt, und in welcher Reihenfolge** (neu seit 17.11., #573, #574, #578).
    - Ein Teil der Offenlegung (`quanten_w_offenlegen`, `quanten_w_s_offenlegen`) kommt ohne
      Wallet. Jeder darf einreichen; die gesalzenen Prüfsummen und Merkle-Pfade beweisen den
@@ -221,6 +241,47 @@ gegen einen optimalen Kloner gebrochen war:
        steht?
    - Gemessen (Pilot, `HEUTE.md` 3.3d): 5.200 Stellen in 5–8 min, auch wenn einer von vier
      Validatoren ausfällt.
+   - **Eigene Antwort (18.11.2026, aus dem Code):**
+     - **Ein falsches Urteil kann kein Validator erzwingen.**
+       - Ein Teil mit einem falschen oder verfälschten Anteil scheitert an Prüfsumme oder
+         Pfad (`quantenWAuswerten`, `quanten_w.go`). Die Kette weist ihn **als Ganzes** ab
+         und zählt nichts.
+       - Damit wird aus einem falschen Anteil nie ein Fehler gegen die Inhaberin oder den
+         Halter.
+       - Einen anderen Wert mit derselben gesalzenen Prüfsumme zu finden, hieße, SHA-256 zu
+         brechen.
+       - Verfrühte oder doppelte Teile (`ab` ≠ `Offen`) weist die Kette ebenso ab
+         (`offenlegen`, `offenlegenTeil`).
+     - **Blockieren können v − t + 1 Validatoren gemeinsam**, indem sie ihre Anteile
+       zurückhalten. Bei t = v = 1 kann das der eine allein.
+       - Auf der Kette kostet es sie nichts; es gibt keine Strafe für Zurückhalten.
+       - Was es die anderen kostet, hängt von der Variante ab.
+     - **Bei S:** Nach der Frist endet die Anmeldung ohne Fehlversuch (`frist`), und die Stelle
+       kann erneut anmelden (`anmelden`). Der Token bleibt erhalten. Die Inhaberin verliert
+       Zeit und, solange es dauert, die Umlaufabgabe auf den Wert im W-Topf.
+     - **Bei W:** Zum Zufall braucht es schon **alle** v Validatoren. Hält einer seinen Wert
+       zurück, wartet die Anfrage ohne Frist, und das Pfand bleibt gesperrt (Frage 3).
+     - **Bei W nach der Antwort:**
+       - Die gezogenen Stellen sind verbraucht, denn der Halter hat sie gemessen. Nach der
+         Frist geht das Pfand zurück (`frist`).
+       - War das der letzte Vorrat, ist die Note danach erschöpft (`erschoepft`: weniger als
+         k_note frei oder die Hash-Kette verbraucht). Dann ist sie tot, und **ihr Wert geht
+         an das Grundeinkommen**.
+       - So können v − t + 1 Validatoren die letzte Einlösung einer W-Note zunichtemachen,
+         ohne selbst etwas zu gewinnen.
+     - **Warum der Wert nicht an den Halter geht:** Sonst könnten v − t + 1 Validatoren mit
+       einem Fälscher eine falsche Note einlösen, einfach indem sie nicht offenlegen. Das
+       Grundeinkommen als Ziel ist die fail-closed-Wahl.
+     - **Das Muster der Abfragen** verrät nichts Neues:
+       - Wer zuständig ist, folgt aus K und dem Versuch, beides öffentlich.
+       - Die Anteile gibt ein Dienst erst heraus, wenn die Antwort (W) bzw. die Anmeldung (S)
+         final ist.
+       - Dieselben Anteile stehen danach im Teil auf der Kette.
+     - **Bitte prüfen:**
+       - Reicht das?
+       - Braucht es für W einen Ausweg, der die letzte Einlösung gegen Zurückhalten schützt,
+         ohne den Fälschungsweg zu öffnen? Ein Beispiel wäre eine Pflicht zur Offenlegung mit
+         Pfand der Validatoren.
 
 ## Variante S: Quanten-Token ohne Quantenspeicher
 
