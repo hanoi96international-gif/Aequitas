@@ -25,9 +25,10 @@ import (
 // qsaMessung: eine Messquelle im Speicher -- praepariert zufaellig und misst in
 // den Basen y (ohne Fehler), zaehlt die Aufrufe.
 type qsaMessung struct {
-	r      *rand.Rand
-	aufruf atomic.Int64
-	fehler bool
+	r          *rand.Rand
+	aufruf     atomic.Int64
+	fehler     bool
+	verrauscht int // Prozent falscher x bei passender Basis
 }
 
 func (m *qsaMessung) abschnitt(y []int) ([]int, []int, []int, string, error) {
@@ -40,6 +41,9 @@ func (m *qsaMessung) abschnitt(y []int) ([]int, []int, []int, string, error) {
 		u[i], t[i] = m.r.Intn(2), m.r.Intn(2)
 		if y[i] == u[i] {
 			x[i] = t[i]
+			if m.verrauscht > 0 && m.r.Intn(100) < m.verrauscht {
+				x[i] = 1 - t[i]
+			}
 		} else {
 			x[i] = m.r.Intn(2)
 		}

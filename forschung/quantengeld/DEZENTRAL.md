@@ -116,6 +116,9 @@ Geheimnis besser, aber zum Einlösen müssen t Validatoren erreichbar sein.
 - **Die Messung der Inhaberin** läuft im Auftrag des Validators, denn eine Quantenleitung
   zu ihr gibt es nicht. Sie muss ihm x glauben (siehe oben). Mit eigenem Empfänger (Weg C)
   misst sie selbst.
+  - Weil Präparation und Messung im selben Auftrag laufen, darf jede Stelle mehrmals
+    präpariert und in derselben Basis y gemessen werden; die Mehrheit senkt den
+    Auslesefehler, ohne über t mehr zu verraten (`HEUTE.md` 3.3f, `--wiederholen`).
 - **Menschen:** Jeder Validator muss an einen anderen Menschen gebunden sein. Heute gibt
   es einen. Weg A wirkt im Hauptnetz, sobald ein zweiter Mensch einen Validator mit eigenem
   Konto bei einem Quantenrechner betreibt. Das kann nur der Betreiber anstoßen.

@@ -48,6 +48,11 @@ on:
         type: choice
         options: [auftrag, abschnitte]
         default: auftrag
+      toleranz:
+        description: "Toleranz in Prozent (4 = Standard). 2 braucht fuer 3 von 4 nur k = 1760 statt 5200, aber kleinen Messfehler -- das Werkzeug prueft es und bricht sonst vor der Kette ab (quanten_s_toleranz.go)"
+        type: choice
+        options: ["4", "3", "2"]
+        default: "4"
 
 permissions:
   contents: read
@@ -63,6 +68,7 @@ env:
   K: ${{ inputs.k }}
   LATENZ: ${{ inputs.latenz_ms }}
   AUSGABE: ${{ inputs.ausgabe }}
+  TOL: ${{ inputs.toleranz }}
 
 jobs:
   rauschen:
@@ -230,6 +236,8 @@ jobs:
             export AEQUITAS_QS_MESSUNG="$RUNNER_TEMP/m.json"
             TESTS='TestVierKnotenQuantenS(Ausfall)?_RealDB$'
           fi
+          [[ "$TOL" =~ ^(2|3|4)$ ]] || { echo "::error::toleranz = $TOL"; exit 1; }
+          export AEQUITAS_QS_TOL="$TOL"
           set +e
           go test ./x/humanity/keeper/ -run "$TESTS" -v -count=1 -timeout 80m 2>&1 | tee out.txt
           RC=${PIPESTATUS[0]}
@@ -243,7 +251,7 @@ jobs:
                {f=0}' out.txt > ergebnis.txt
           gzip -9 -c out.txt > ausgabe.txt.gz
           {
-            echo "## Quantengeld S: Pilot mit vier Validatoren (Modus ${{ inputs.modus }}, Ausgabe $AUSGABE, k = $K, Laufzeit zwischen Knoten $LATENZ ms je Richtung)"
+            echo "## Quantengeld S: Pilot mit vier Validatoren (Modus ${{ inputs.modus }}, Ausgabe $AUSGABE, k = $K, Toleranz $TOL %, Laufzeit zwischen Knoten $LATENZ ms je Richtung)"
             echo
             echo "Commit \`${{ github.sha }}\`, Lauf ${{ github.run_id }}."
             echo
@@ -267,7 +275,7 @@ jobs:
           # letzte 5.000 Zeilen, Zusammenfassung und Artefakt sind von manchen
           # Arbeitsumgebungen aus nicht abrufbar.
           echo "===== Ergebnis der Tests ====="
-          echo "Modus ${{ inputs.modus }}, Ausgabe $AUSGABE, k = $K, Laufzeit zwischen Knoten $LATENZ ms je Richtung"
+          echo "Modus ${{ inputs.modus }}, Ausgabe $AUSGABE, k = $K, Toleranz $TOL %, Laufzeit zwischen Knoten $LATENZ ms je Richtung"
           cat ergebnis.txt
           sha256sum ergebnis.txt ausgabe.txt.gz
           echo "===== Ende Ergebnis ====="

@@ -565,6 +565,155 @@ SHA-256 (je im Artefakt `pilot-<Lauf>`, 90 Tage):
     (44347416357) und auf dem Chip `ibm_fez` (44356741223) belegt.
   - Es liegt kein Gutachten vor.
 
+### 3.3f Messfehler senken: Mehrheit aus mehreren Schüssen (18.11.2026)
+
+Auftrag des Betreibers: „Die Fehlerquote muss deutlich gesenkt werden.“ Gemeint ist der
+Fehler bei passender Basis: Die Inhaberin misst in der Basis, in der die Stelle präpariert
+wurde, und bekommt trotzdem den falschen Wert. Auf den Chips lag er bei 0,52–0,79 %
+(3.3d, 3.3e).
+
+**Woher er kommt:**
+- Fast ganz aus der **Auslese**. Die Schaltkreise haben nur 1-Qubit-Gatter (Präparation,
+  Basiswechsel) und werden sofort gemessen.
+- **Die Qubit-Wahl ist schon gut.** Die Übersetzung (Stufe 3) wählt je Schaltkreis die 16
+  Qubits mit dem kleinsten Auslesefehler. Geprüft mit den Kalibrierdaten der Rauschmodelle:
+  Der mittlere Auslesefehler der gewählten Qubits entspricht dem der besten 16 des Chips
+  (`ibm_fez` 0,28 %, `ibm_marrakesh` 0,36 %, `ibm_torino` 0,67 %; `ibm_kingston`
+  0,46 % gegen 0,40 %). Hier ist kaum etwas zu holen.
+
+**Hebel: Wiederholen und Mehrheit** (`hardware_ibm.py`, `s_messen_basen`, `--wiederholen R`,
+Standard 5):
+- Jeder Schaltkreis läuft R-mal. Das sind R Präparationen desselben Zustands, und jede wird
+  in derselben Basis y gemessen. Je Stelle entscheidet die Mehrheit.
+- **Passt die Basis** (y = u), zeigt jeder Schuss t mit Auslesefehler p. Die Mehrheit irrt
+  nur noch mit etwa 10 p³ (bei R = 5).
+- **Passt die Basis nicht** (y ≠ u), ist jeder Schuss unabhängig von t gleichverteilt, die
+  Mehrheit ebenso. Die Inhaberin erfährt über t nicht mehr als mit einem Schuss. In der
+  anderen Basis wird nie gemessen, denn der Auftrag misst jeden Schuss in y.
+- Das geht nur, weil Präparation und Messung **im selben Auftrag** laufen (`DEZENTRAL.md`
+  4). Mit eigenem Empfänger (Weg C) hat die Inhaberin ein Qubit und eine Messung.
+
+**Gemessen im Rauschmodell** (je Lauf 4.000 Stellen, derselbe Abschnitt, `--s-abschnitt`):
+
+| Rauschmodell | ein Schuss (R = 1) | Mehrheit aus 3 | Mehrheit aus 5 |
+|---|---|---|---|
+| `ibm_fez` | 10/1.995 (0,50 %) | 1/2.009 (0,05 %) | **0/1.974** |
+| `ibm_marrakesh` | 6/2.002 (0,30 %) | 0/2.031 | **0/1.967** |
+| `ibm_torino` | 11/2.021 (0,54 %) | 0/1.997 | **0/2.022** |
+
+**Gegenprobe zur Sicherheit:** Bei falscher Basis stimmt x in jedem Lauf an 48,5–51,2 % der
+Stellen mit t überein (je rund 2.000 Stellen, |z| ≤ 1,33), mit Mehrheit wie ohne. Das ist
+Zufall, wie verlangt. Der Selbsttest zählt es zusätzlich exakt: Gleichverteilte Schüsse
+ergeben eine gleichverteilte Mehrheit.
+
+**Gemessen im Pilot** (k = 5.200, zwei Ausgaben, je Validator ein eigener Auftrag, 8
+Aufträge, Mehrheit aus 5):
+
+| Lauf | Gerät | Fehler bei passender Basis mit Mehrheit | nur erster Schuss |
+|---|---|---|---|
+| [44367279629](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44367279629) | Rauschmodell `fake_marrakesh` | **0/10.260** | 42/10.260 (0,41 %) |
+| [44367782047](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44367782047) | **echter Chip `ibm_fez`** | **4/10.393 (0,04 %)** | 82/10.393 (0,79 %) |
+
+- Auf dem Chip ist das rund **zwanzigmal weniger**.
+- Die vier Restfehler liegen alle in einem Auftrag (Ausgabe 1, Validator 2). Das ist der
+  zusammenhängende Rest, den das Rauschmodell nicht zeigt, etwa ein Qubit, das in jedem
+  Schuss gleich falsch ausliest.
+- Je Auftrag mit Mehrheit (Ausgabe 1, dann 2; je Validator 1–4): 0, 4, 0, 0 und 0, 0, 0, 0.
+  Mit einem Schuss: 11, 11, 11, 8 und 6, 14, 12, 9.
+
+**Vier Knoten mit diesen Messungen, beide Tests grün:**
+
+| Lauf | Test | Fehler in den Stichproben | Doppelvorlage | ehrliche Vorlage | danach |
+|---|---|---|---|---|---|
+| Rauschmodell 44367279629 | alle vier (692,8 s) | 0/5.125 | 5m09s, 1.008/min, **abgewiesen** | 5m58s, 872/min, **eingelöst** | 4 Knoten gleich, Höhe 6494 |
+| ebenda | ein Knoten fällt aus (744,0 s) | 0/5.135 | 5m53s, 884/min, **abgewiesen** | 5m34s, 933/min, **eingelöst** | 3 Knoten gleich, Höhe 5368 |
+| **Chip `ibm_fez`** 44367782047 | alle vier (815,4 s) | 4/5.221 | 5m05s, 1.024/min, **abgewiesen** | 8m08s, 640/min, **eingelöst** | 4 Knoten gleich, Höhe 8004 |
+| ebenda | ein Knoten fällt aus (592,5 s) | 0/5.172 | 5m15s, 992/min, **abgewiesen** | 4m17s, 1.214/min, **eingelöst** | 3 Knoten gleich, Höhe 4360 |
+
+SHA-256: Lauf 44367279629 `ergebnis.txt` `a83e2c24…cf9ef0`, `ausgabe.txt.gz`
+`57b6c234…c273d0`; Lauf 44367782047 `ergebnis.txt` `a55740d0…902281`, `ausgabe.txt.gz`
+`ea5a0fa6…777469` (je im Artefakt `pilot-<Lauf>`).
+
+**Ehrlich dazu:**
+- Im Rauschmodell sind die Auslesefehler der Schüsse unabhängig voneinander. Auf echter
+  Hardware hängen sie teils zusammen (siehe oben), darum bleibt ein kleiner Rest.
+- Jede Messung gibt beide Zahlen aus: Fehler mit Mehrheit und nur mit dem ersten Schuss.
+- Kosten: R-mal so viele Schüsse; die Zahl der Schaltkreise und Aufträge bleibt gleich.
+- Die Toleranz der Kette (4 %) bleibt, wie sie ist. Liegt der Fehler auf dem Chip dauerhaft
+  weit darunter, könnte eine kleinere Toleranz die Prüfgröße k senken (Tabelle
+  `quantenWKTabelle`). Das wäre eine Änderung der Kettenregeln und ein eigener Schritt.
+
+### 3.3g Sicherheit „99,9999999 %“: die ehrliche Vorlage exakt geprüft, Toleranz wählbar (18.11.2026)
+
+Auftrag des Betreibers: „Es muss zu 99,9999999 Prozent safe sein“, also höchstens einer
+von 10⁹ Tokens darf scheitern. Ein Token kann auf zwei Arten scheitern:
+
+1. **Eine Fälschung besteht.** Die Prüfgröße k aus der Tabelle der Kette
+   (`quantenWKTabelle`, `wiesner_parameter.py`) hält das für jede Toleranz unter
+   **2⁻⁴⁰ ≈ 9 · 10⁻¹³** je Prüfung, solange weniger als t Validatoren zusammenarbeiten. Das
+   sind 99,99999999991 %, also schon über dem Auftrag.
+2. **Eine ehrliche Vorlage fällt durch, und der Wert ist verloren.**
+   - Die Tabelle rechnete hier bisher mit 10⁻⁶ und einer angenommenen Fehlerrate.
+   - Nachgerechnet: Für den ersten Token im Hauptnetz (ein Validator, k = 840, ein Schuss
+     je Stelle) läge das Durchfallen bei einer Fehlerrate am oberen Rand der Messung bei
+     rund 10⁻³. **Das reicht nicht.**
+
+**Lösung: keine Schätzung, sondern die Zählung der Kette, vor der Ausgabe.**
+- Bei S stehen beide Stichproben bei der Ausgabe fest; ihr Hash steht auf der Kette. An der
+  gewählten Stelle b prüft die Kette genau in den Messbasen y der Inhaberin
+  (`quantenSToken.einloesen`: d ⊕ b ⊕ c = y).
+- Treffer (y = u) und Fehler (x ≠ t) je Stelle kennt das Werkzeug also schon vor der
+  Ausgabe.
+- `quantenSEhrlichBesteht` rechnet das Urteil der Kette (`quantenWUrteil`) für **beide**
+  Annahmestellen nach. Das Werkzeug gibt nur aus, wenn die ehrliche Vorlage an beiden
+  besteht. Sonst bricht es ab, bevor ein Validator bestätigt oder etwas auf die Kette geht.
+- Das gilt in beiden Wegen (eine Messung, Abschnitte) und **bei jeder Toleranz**, auch beim
+  Standard 4 %.
+- **Am Messfehler fällt eine ehrliche Vorlage damit nie mehr durch.** Was bleibt, ist kein
+  Messrisiko: Validatoren, die zurückhalten (v − t + 1, Prüfauftrag W8), oder Fehler in
+  der Software.
+
+**Toleranz wählbar** (`aequitasd quanten-s-ausgabe --toleranz`, Pilot-Eingabe `toleranz`):
+- Die Kette kennt 2, 3, 4, … %; eine andere Zahl weist das Werkzeug sofort ab.
+- Kleinere Toleranz heißt kleinere Prüfgröße, bei gleicher Fälschungsschranke 2⁻⁴⁰:
+
+| 3 von 4 Validatoren | Prüfgröße k | Qubits je Token |
+|---|---|---|
+| 4 % (Standard) | 5.200 | 10.400 |
+| 3 % | 2.880 | 5.760 |
+| 2 % | 1.760 | 3.520 |
+
+- Bei kleiner Toleranz verlangt die exakte Probe kleine Fehler. Mit der Mehrheit aus
+  5 Schüssen (3.3f, 0,04 % auf dem Chip) besteht sie bei 2 % meist; sonst gibt das
+  Werkzeug nicht aus, und es wird neu gemessen.
+
+**Tests** (`quanten_s_toleranz_test.go`):
+- Die Probe zählt wie die Kette: Grenze genau auf der Toleranz, je Stelle einzeln, unter 4
+  Treffern nicht bestanden.
+- Missbrauch: Eine Messung, deren ehrliche Vorlage nicht bestünde, bricht ab, bei 2 % und
+  bei 4 %, in beiden Wegen. Danach liegt nichts auf der Kette und nichts bei den
+  Validatoren.
+- Gutfall mit der **echten** Tabelle: Mit 1.760 Stellen gibt das Werkzeug bei 2 % aus
+  (Doppelvorlage abgewiesen, ehrliche eingelöst), bei 4 % lehnt es dieselbe Größe ab.
+- Eine Toleranz, die die Kette nicht kennt, wird abgewiesen.
+- Gegenprobe: 7 Mutationen, alle rot. `go test -race` grün.
+
+**Pilot mit 2 % und k = 1.760** (Lauf
+[44372154798](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44372154798),
+Rauschmodell, Mehrheit aus 5, je Validator ein eigener Auftrag, 3.520 Qubits je Token statt
+10.400), beide Tests grün:
+
+| Test | Fehler in den Stichproben | Doppelvorlage | ehrliche Vorlage | Werkzeug | danach |
+|---|---|---|---|---|---|
+| alle vier (246,1 s) | 0/1.739 | 1m23s, 1.272/min, **abgewiesen** | 2m20s, 756/min, **eingelöst** | 3m46s | 4 Knoten gleich, Höhe 2120 |
+| ein Knoten fällt aus (238,0 s) | 0/1.802 | 1m36s, 1.101/min, **abgewiesen** | 2m01s, 872/min, **eingelöst** | 3m43s | 3 Knoten gleich, Höhe 1577 |
+
+- Ein Token braucht **ein Drittel der Qubits**, und das Werkzeug ist in knapp 4 statt 11–13
+  Minuten durch. Der ganze Pilot lief 8 statt rund 24 Minuten.
+- Die exakte Probe lief in beiden Tests mit und ließ die Ausgabe zu.
+- SHA-256: `ergebnis.txt` `ca3c511b…e88a1b9`, `ausgabe.txt.gz` `3b79038c…8fb59929`.
+- Auf dem Chip ist 2 % noch nicht gelaufen (Freigabe `quantenhardware`).
+
 ### 3.4 Bargeld-Verhalten ohne Quanten (Offline-Bargeld)
 
 Was Menschen sich von Quantengeld wünschen, ist meist offline zu zahlen, wie mit

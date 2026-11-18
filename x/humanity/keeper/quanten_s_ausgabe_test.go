@@ -306,14 +306,21 @@ func TestQuantenSHTTP_WiederholenBegrenzt(t *testing.T) {
 func TestQuantenSAusgabe_MessungStreng(t *testing.T) {
 	for _, roh := range []string{`{"n":2,"u":"01","t":"01","y":"01","x":"01","extra":1}`, `kein json`, strings.Repeat(" ", quantenSAusgabeMessMax+1)} {
 		err := QuantenSAusgabe(context.Background(), "http://127.0.0.1:1", strings.Repeat("1", 64), 1_000_000, time.Second,
-			nil, 0, strings.NewReader(roh), &bytes.Buffer{}, &bytes.Buffer{})
+			nil, 0, QuantenSToleranzStandard, strings.NewReader(roh), &bytes.Buffer{}, &bytes.Buffer{})
 		if err == nil || !strings.Contains(err.Error(), "Messung") {
 			t.Fatalf("%.30q: %v", roh, err)
 		}
 	}
-	err := QuantenSAusgabe(context.Background(), "http://127.0.0.1:1", "nicht-hex-geheim", 1_000_000, time.Second, nil, 0, strings.NewReader("{}"), &bytes.Buffer{}, &bytes.Buffer{})
+	err := QuantenSAusgabe(context.Background(), "http://127.0.0.1:1", "nicht-hex-geheim", 1_000_000, time.Second, nil, 0, QuantenSToleranzStandard, strings.NewReader("{}"), &bytes.Buffer{}, &bytes.Buffer{})
 	if err == nil || strings.Contains(err.Error(), "geheim") {
 		t.Fatalf("Schluessel im Fehlertext oder angenommen: %v", err)
+	}
+	// Eine Toleranz, fuer die die Kette keine Pruefgroesse kennt: Abbruch vor allem anderen.
+	for _, tol := range []int{0, 1, 7, 50, -2} {
+		err := QuantenSAusgabe(context.Background(), "http://127.0.0.1:1", strings.Repeat("1", 64), 1_000_000, time.Second, nil, 0, tol, strings.NewReader("{}"), &bytes.Buffer{}, &bytes.Buffer{})
+		if err == nil || !strings.Contains(err.Error(), "Toleranz") {
+			t.Fatalf("Toleranz %d: %v", tol, err)
+		}
 	}
 }
 

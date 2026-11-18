@@ -8,7 +8,7 @@ Repos); davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18
 dezentrales Quantengeld“.
 
 **Zuletzt (Sitzung „Weiter“, 18.11. ~18:00 UTC):**
-- **C1 läuft mit #587** (Deploy #98, 16:09 UTC grün; perf-c1 Lauf 4 grün). Damit sind auch
+- **C1 läuft mit #588** (Deploy #99, 17:54 UTC grün). Davor #587 (Deploy #98, 16:09 UTC; perf-c1 Lauf 4 grün). Damit sind auch
   #580 (S-Ansicht nennt v) und #585 (Abschnitts-Dienst) auf C1. C1 präpariert Abschnitte
   erst mit `AEQUITAS_QS_MESSQUELLE`; ohne weist es jeden Abschnitts-Auftrag ab (Vorgabe).
 - **Auftrag 18.11.: „Bring das dezentrale Quantengeld komplett zu laufen, ggf. mit eigener
@@ -46,15 +46,27 @@ dezentrales Quantengeld“.
     auf `ibm_fez`: beide Tests grün**, auch mit Ausfall eines Validators (Fehler
     0,52–0,68 %). **A4 fertig.** Auffällig: im Test „alle vier“ 192 von 392 Einreichungen
     abgewiesen (Doppelarbeit, nichts falsch verbucht), 772–845 Stellen/min.
+  - **#589 gemergt** (f8736ffb, nur Doku: IBM-Nachlauf grün, A4 fertig).
+  - **Auftrag 18:40 UTC: „Es muss zu 99,9999999 Prozent safe sein.“** Im selben PR #590:
+    exakte Probe der ehrlichen Vorlage vor jeder Ausgabe (`quantenSEhrlichBesteht`, beide
+    Stellen, jede Toleranz), Toleranz wählbar (`--toleranz`; 2 % → k = 1.760). Fälschung
+    bleibt ≤ 2⁻⁴⁰. Pilot 2 % / k 1.760 im Rauschmodell grün (`HEUTE.md` 3.3g).
+  - **Auftrag 18:00 UTC: „Die Fehlerquote muss deutlich gesenkt werden.“** PR (dieser Stand):
+    `hardware_ibm.py --wiederholen R` (Standard 5): je Stelle R Schüsse in derselben Basis y,
+    die Mehrheit entscheidet. Rauschmodell: ein Schuss 0,30–0,54 %, Mehrheit aus 5 je
+    0/≈2.000. Bei falscher Basis bleibt x Zufall (geprüft). Die Qubit-Wahl war schon
+    optimal (`HEUTE.md` 3.3f). Chip `ibm_fez`: 4/10.393 statt 82/10.393 (0,04 % statt
+    0,79 %); Vier-Knoten-Pilot im Rauschmodell und auf dem Chip grün, auch mit Ausfall.
   - **Nächste Schritte:** A5 (zweiter Mensch als Validator mit eigenem Server und
     Quantenkonto) ist Sache des Betreibers. Zu beobachten: Doppelarbeit beim Offenlegen
     (Zähler „abgewiesen“), falls die Rate im Betrieb knapp wird.
 - **App 1.25.0 (App #86 gemergt, a5f5cf44):** Netto-Zeile und Zahlen der Tagesrunde (#84),
   t von v Validatoren (#85).
   - iOS-Build [44342709659](https://github.com/hanoi96international-gif/Aequitas-App/actions/runs/44342709659) grün.
-  - APK signiert und als Release `v1.25.0` veröffentlicht
-    ([44360909681](https://github.com/hanoi96international-gif/Aequitas-App/actions/runs/44360909681), 17:52 UTC).
-  - `release-ios.yml` (run_id 44342709659, Tag `v1.25.0`) gestartet, wartet auf `app-signatur`.
+  - **Veröffentlicht:** APK als Release `v1.25.0`
+    ([44360909681](https://github.com/hanoi96international-gif/Aequitas-App/actions/runs/44360909681), 17:52 UTC),
+    iOS an dasselbe Release und die SideStore-Quelle
+    ([44364337989](https://github.com/hanoi96international-gif/Aequitas-App/actions/runs/44364337989), 18:01 UTC).
 - **#581 gemergt (eigene Antworten W7/W8, nur Doku):**
   - Falsche Anteile weist die Kette als Ganzes ab.
   - v − t + 1 Validatoren können blockieren. Bei W kann das die letzte Einlösung
@@ -89,8 +101,8 @@ dezentrales Quantengeld“.
   - Der Versuch „Ersatz tritt zurück“ war schlechter und wurde zurückgenommen.
 - **Wartet auf den Betreiber:**
   - Gutachter suchen. Der Prüfauftrag ist auf dem Stand vom 18.11.
-  - Freigaben: iOS-Release 1.25.0 (`app-signatur`), C1-Deploy #99 von #588
-    ([44356693056](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44356693056), `produktion`).
+  - Freigaben: der IBM-Pilot mit Mehrheit aus 5 nach dem Merge des PR „Messfehler senken“
+    (`quantenhardware`).
   - A5: ein zweiter Mensch als Validator mit eigenem Server und eigenem Quantenkonto;
     Hardware-Partner (QKD) für die Messung der Inhaberin.
 - **Offen bei Quantengeld (`OFFEN.md` D.4):** Server im echten Netz statt Knoten in einem

@@ -53,6 +53,9 @@ basen_<a>.json je Ausgabe fuer das Werkzeug; A hoechstens 4; DEZENTRAL.md 8-12),
 Abschnitt in den Basen Y der Inhaberin, Text aus 0 und 1, und legt die
 Messung als neue Datei <sha256(Y)>.json in sein Messquellen-Verzeichnis
 AEQUITAS_QS_MESSQUELLE; nie wird etwas ueberschrieben; DEZENTRAL.md 13),
+--wiederholen R (Variante S, Standard 5, ungerade bis 15: je Stelle R Schuesse
+in derselben Basis der Inhaberin, die Mehrheit entscheidet -- senkt den
+Auslesefehler, ohne ueber t mehr zu verraten; s_messen_basen),
 --s-messen DATEI [--k K] (nur die Messung von 2K Qubits fuer die echte
 Ausgabe auf der Kette: u, t, y, x als JSON, Zufall aus dem Betriebssystem;
 weiter mit aequitasd quanten-s-ausgabe, deploy/quanten-s-ausgabe.sh),
@@ -96,6 +99,8 @@ _spec_s.loader.exec_module(sk)
 MAX_S_STELLEN = 8192     # k je Annahmestelle; Token = 2k Qubits in Schaltkreisen zu 16
                          # (2k <= quantenWNMax = 16384; 3 von 4 Validatoren brauchen k = 5200)
 MAX_S_AUSGABEN = 4       # --s-abschnitte: unabhaengige Ausgaben je Lauf (Pilot: eine je Test)
+S_WIEDERHOLUNGEN = 5     # Variante S: Schuesse je Stelle, Mehrheit entscheidet (s_messen_basen)
+MAX_S_WIEDERHOLUNGEN = 15
 
 MAX_LAEUFE = 64      # Schaltkreise je Fall (Kosten auf echter Hardware!)
 MAX_SCHUESSE = 4000
@@ -274,6 +279,21 @@ def selbsttest() -> None:
         except SystemExit:
             pass
     assert s_basen_lesen("0110") == [0, 1, 1, 0]
+    # Mehrheit je Stelle; gerade Zahl oder ungleiche Laengen: Abbruch.
+    assert mehrheit([[0, 1, 1], [0, 1, 0], [1, 1, 0]]) == [0, 1, 0]
+    assert mehrheit([[1, 0]]) == [1, 0]
+    for falsch in ([], [[0], [1]], [[0, 1], [1], [0, 1]]):
+        try:
+            mehrheit(falsch)
+            raise AssertionError(f"Mehrheit angenommen: {falsch!r}")
+        except SystemExit:
+            pass
+    # Bei falscher Basis bleibt die Mehrheit Zufall: unabhaengig von t
+    # (gleichverteilte Schuesse -> gleichverteilte Mehrheit), exakt gezaehlt.
+    from itertools import product
+    for r in (3, 5):
+        eins = sum(mehrheit([[b] for b in s])[0] for s in product((0, 1), repeat=r))
+        assert eins * 2 == 2 ** r
     assert fall_fuer_ideal("ungeschuetzt nach 0 us") == "echt"
     assert fall_fuer_ideal("fremd") == "fremd"
     print("selbsttest ok")
@@ -509,19 +529,49 @@ def wiesner_kette_lauf(schuesse: int, rng: random.Random) -> None:
                        "empfaenger_aeq": kette.konten["empfaenger"] / 1e6, "log": log}, fh, indent=2)
 
 
+def s_wiederholungen() -> int:
+    """--wiederholen R (ungerade, 1 bis MAX_S_WIEDERHOLUNGEN, Standard
+    S_WIEDERHOLUNGEN): Schuesse je Stelle fuer die Mehrheit."""
+    r = zahl("--wiederholen", S_WIEDERHOLUNGEN, MAX_S_WIEDERHOLUNGEN)
+    if r % 2 == 0:
+        raise SystemExit("--wiederholen muss ungerade sein (sonst keine Mehrheit)")
+    return r
+
+
+def mehrheit(schuesse: list[list[int]]) -> list[int]:
+    """Je Stelle der Wert, den die Mehrheit der Schuesse zeigt. Ungerade Zahl
+    gleich langer Schuesse, sonst Abbruch (fail-closed)."""
+    if not schuesse or len(schuesse) % 2 == 0 or len({len(a) for a in schuesse}) != 1:
+        raise SystemExit("Mehrheit: ungerade Zahl gleich langer Schuesse noetig")
+    return [1 if 2 * sum(a[i] for a in schuesse) > len(schuesse) else 0 for i in range(len(schuesse[0]))]
+
+
 def s_messen(n: int, rng: random.Random):
     """Ausgabe von n Qubits in zufaelligen BB84-Zustaenden (Basen u, Werte t),
     die Inhaberin misst SOFORT in zufaelligen Basen y (Ergebnisse x)."""
     y = [rng.randrange(2) for _ in range(n)]
-    u, t, x, kreise, job_id, wo = s_messen_basen(y, rng)
-    return u, t, y, x, kreise, job_id, wo
+    u, t, x, x1, kreise, job_id, wo = s_messen_basen(y, rng)
+    return u, t, y, x, x1, kreise, job_id, wo
 
 
 def s_messen_basen(y: list[int], rng: random.Random):
     """Wie s_messen, aber in den vorgegebenen Basen y der Inhaberin -- EIN
-    eigener Auftrag beim Quantenrechner (Abschnitt eines Validators, A4)."""
+    eigener Auftrag beim Quantenrechner (Abschnitt eines Validators, A4).
+
+    MESSFEHLER: Jeder Schaltkreis laeuft R-mal (--wiederholen, Standard 5):
+    R Praeparationen desselben Zustands, JEDE in derselben Basis y gemessen;
+    je Stelle entscheidet die Mehrheit. Passt die Basis (y = u), zeigt jeder
+    Schuss t mit Auslesefehler p, die Mehrheit irrt nur noch mit etwa
+    C(R, (R+1)/2) p^((R+1)/2) (R = 5: 10 p^3). Passt sie nicht (y != u), ist
+    jeder Schuss unabhaengig von t gleichverteilt -- die Mehrheit ebenso: die
+    Inhaberin erfaehrt ueber t nicht mehr als mit einem Schuss, und in der
+    anderen Basis wird nie gemessen. Das geht nur, weil Praeparation und
+    Messung im selben Auftrag laufen (DEZENTRAL.md 4); mit eigenem Empfaenger
+    (Weg C) hat die Inhaberin ein Qubit. Rueckgabe: x (Mehrheit) und x1 (nur
+    der erste Schuss, zum Vergleich der Fehlerrate)."""
     n = len(y)
     m = wh.MAX_QUBITS_NOTE
+    wiederholen = s_wiederholungen()
     u = [rng.randrange(2) for _ in range(n)]
     t = [rng.randrange(2) for _ in range(n)]
     kreise = [wh.note(u[i:i + m], t[i:i + m], y[i:i + m], warten_us=0) for i in range(0, n, m)]
@@ -529,14 +579,29 @@ def s_messen_basen(y: list[int], rng: random.Random):
     qcs = [nach_qiskit(s) for s in kreise]
     if backend is not None:
         qcs = uebersetzen(backend, qcs)
-    job = sampler.run(qcs, shots=1)          # EIN Schuss je Schaltkreis: jede Stelle einmal gemessen
+    job = sampler.run(qcs, shots=wiederholen)
     job_id = job.job_id() if hasattr(job, "job_id") else ""
     x: list[int] = []
+    x1: list[int] = []
     for s, r in zip(kreise, job.result()):
-        x += wh.antworten(s, r.data.c.get_bitstrings()[0])
-    if len(x) != n:
+        schuesse = [wh.antworten(s, b) for b in r.data.c.get_bitstrings()]
+        if len(schuesse) != wiederholen:
+            raise SystemExit(f"Messung: {len(schuesse)} statt {wiederholen} Schuesse")
+        x += mehrheit(schuesse)
+        x1 += schuesse[0]
+    if len(x) != n or len(x1) != n:
         raise SystemExit(f"Messung: {len(x)} statt {n} Ergebnisse")
-    return u, t, x, kreise, job_id, wo
+    if wiederholen > 1:
+        wo += f" (Mehrheit aus {wiederholen} Schuessen)"
+    return u, t, x, x1, kreise, job_id, wo
+
+
+def s_fehler_text(y, u, t, x, x1) -> str:
+    """Fehler bei passender Basis: mit Mehrheit und nur erster Schuss."""
+    passend = [i for i in range(len(y)) if y[i] == u[i]]
+    f = sum(x[i] != t[i] for i in passend)
+    f1 = sum(x1[i] != t[i] for i in passend)
+    return f"Fehler bei passender Basis {f}/{len(passend)} (ein Schuss: {f1}/{len(passend)})"
 
 
 def s_messen_lauf(datei: str) -> None:
@@ -546,15 +611,13 @@ def s_messen_lauf(datei: str) -> None:
     fuer den Eigentuemer lesbar angelegt."""
     k = zahl("--k", sk.K_STELLE, MAX_S_STELLEN)
     n = 2 * k
-    u, t, y, x, kreise, job_id, wo = s_messen(n, random.SystemRandom())
+    u, t, y, x, x1, kreise, job_id, wo = s_messen(n, random.SystemRandom())
     bits = lambda b: "".join(map(str, b))
-    passend = [i for i in range(n) if y[i] == u[i]]
-    falsch = sum(x[i] != t[i] for i in passend)
     fd = os.open(datei, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(fd, "w") as fh:
         json.dump({"n": n, "u": bits(u), "t": bits(t), "y": bits(y), "x": bits(x), "wo": wo, "job": job_id}, fh)
-    text = (f"## S-Messung fuer die Ausgabe auf {wo}\n\n{n} Qubits in {len(kreise)} Schaltkreisen, je ein Schuss"
-            + (f", Job {job_id}" if job_id else "") + f". Fehler bei passender Basis: {falsch}/{len(passend)}.")
+    text = (f"## S-Messung fuer die Ausgabe auf {wo}\n\n{n} Qubits in {len(kreise)} Schaltkreisen"
+            + (f", Job {job_id}" if job_id else "") + f". {s_fehler_text(y, u, t, x, x1)}.")
     print(text)
     if os.environ.get("GITHUB_STEP_SUMMARY"):
         with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as fh:
@@ -586,15 +649,13 @@ def s_abschnitte_lauf(verzeichnis: str) -> None:
         basen, jobs = [], []
         for x, ab in enumerate(abschnitte, 1):
             y = [rng.randrange(2) for _ in ab]
-            u, t, xs, kreise, job_id, wo = s_messen_basen(y, rng)
-            passend = [i for i in range(len(y)) if y[i] == u[i]]
-            falsch = sum(xs[i] != t[i] for i in passend)
+            u, t, xs, x1, kreise, job_id, wo = s_messen_basen(y, rng)
             mess[x - 1].append({"u": bits(u), "t": bits(t), "y": bits(y), "x": bits(xs), "wo": wo, "job": job_id})
             basen.append(bits(y))
             jobs.append(job_id)
             zeilen.append(f"- Ausgabe {a}, Validator {x}: Stellen {ab[0]}..{ab[-1]} ({len(ab)} Qubits, "
                           f"{len(kreise)} Schaltkreise" + (f", Job {job_id}" if job_id else "")
-                          + f"), Fehler bei passender Basis {falsch}/{len(passend)}")
+                          + f"), {s_fehler_text(y, u, t, xs, x1)}")
         basen_je.append({"n": n, "basen": basen, "wo": wo, "job": ",".join(j for j in jobs if j)})
     # Erst schreiben, wenn alle Auftraege gemessen sind: ein Abbruch
     # hinterlaesst keine halbe Ausgabe (O_EXCL, nur fuer den Eigentuemer).
@@ -667,13 +728,11 @@ def s_abschnitt_lauf(verzeichnis: str) -> None:
     bits = lambda b: "".join(map(str, b))
     if os.path.lexists(os.path.join(verzeichnis, s_messquelle_name(bits(y)))):
         raise SystemExit("zu diesen Basen liegt schon eine Messung (nicht ueberschrieben)")
-    u, t, xs, kreise, job_id, wo = s_messen_basen(y, random.SystemRandom())
-    passend = [i for i in range(len(y)) if y[i] == u[i]]
-    falsch = sum(xs[i] != t[i] for i in passend)
+    u, t, xs, x1, kreise, job_id, wo = s_messen_basen(y, random.SystemRandom())
     name = s_messquelle_ablegen(verzeichnis, {"u": bits(u), "t": bits(t), "y": bits(y), "x": bits(xs),
                                               "wo": wo, "job": job_id})
-    text = (f"## S-Messung eines Abschnitts auf {wo}\n\n{len(y)} Qubits in {len(kreise)} Schaltkreisen, je ein Schuss"
-            + (f", Job {job_id}" if job_id else "") + f". Fehler bei passender Basis: {falsch}/{len(passend)}. "
+    text = (f"## S-Messung eines Abschnitts auf {wo}\n\n{len(y)} Qubits in {len(kreise)} Schaltkreisen"
+            + (f", Job {job_id}" if job_id else "") + f". {s_fehler_text(y, u, t, xs, x1)}. "
             + f"Abgelegt als {name}.")
     print(text)
     if os.environ.get("GITHUB_STEP_SUMMARY"):
@@ -690,7 +749,7 @@ def s_token_lauf(rng: random.Random) -> None:
     k = zahl("--k", sk.K_STELLE, MAX_S_STELLEN)
     n = 2 * k
     m = wh.MAX_QUBITS_NOTE
-    u, t, y, x, kreise, job_id, wo = s_messen(n, rng)
+    u, t, y, x, x1, kreise, job_id, wo = s_messen(n, rng)
     K = os.urandom(32).hex()
     kette = sk.KetteS()
     kette.ausgeben(K, n, "anna")
@@ -706,9 +765,9 @@ def s_token_lauf(rng: random.Random) -> None:
     wort = {True: "ANGENOMMEN", False: "abgewiesen", None: "unentschieden"}
     zeilen = [f"## Quanten-Token ohne Speicher (Variante S) auf {wo}", "",
               f"{n} Qubits in zufaelligen BB84-Zustaenden, sofort gemessen ({len(kreise)} Schaltkreise zu {m}, "
-              f"je ein Schuss" + (f", Job {job_id}" if job_id else "") + "). Toleranz "
+              f"je Stelle die Mehrheit der Schuesse" + (f", Job {job_id}" if job_id else "") + "). Toleranz "
               f"{sk.TOL_PROZENT} %, je Annahmestelle eine geheime Stichprobe von {k} Stellen.", "",
-              f"- Fehlerrate je passender Basis ueber alle Stellen: {fehlerrate:.2%}",
+              f"- Fehlerrate je passender Basis ueber alle Stellen: {fehlerrate:.2%} ({s_fehler_text(y, u, t, x, x1)})",
               f"- Gewaehlte Stelle {b}: {m_b['treffer']} Treffer, {m_b['fehler']} Fehler -> {wort[echt]}",
               f"- Derselbe Token an Stelle {1 - b} (Doppelvorlage): {m_a['treffer']} Treffer, {m_a['fehler']} Fehler -> {wort[doppelt]}",
               "", "Vorfuehrung: Ausgabe und Messen laufen im selben Schaltkreis beim Betreiber der Maschine; "
