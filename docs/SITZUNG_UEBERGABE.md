@@ -24,7 +24,7 @@ dezentrales Quantengeld“.
     zusammengesetzten Anteile ein (`DEZENTRAL.md` 10).
   - **#586 gemergt (A3 Werkzeug im Abschnitts-Modus):** Eingabe `basen` →
     Abschnitts-Modus. Endpunkt `schluessel`, Tests in-process (`DEZENTRAL.md` 11).
-  - **PR „A4 Pilot im Abschnitts-Modus“ (dieser Zweig):** `--s-abschnitte`, Vier-Knoten-Tests
+  - **#587 gemergt (A4 Pilot im Abschnitts-Modus):** `--s-abschnitte`, Vier-Knoten-Tests
     im Abschnitts-Modus (lokal grün), Workflow-Wahl `ausgabe`. Nach dem Merge laufen
     `quanten-s-pilot.yml` mit `modus=rauschen` und `ausgabe=abschnitte`, für IBM mit Freigabe.
   - **C1-Deploy von #585 nötig, bevor C1 Abschnitte präpariert.** Ohne
