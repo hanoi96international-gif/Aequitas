@@ -336,10 +336,7 @@ func (d *quantenWDienst) abschnittPraeparieren(q QuantenSAbschnittAnfrage) (Quan
 	}
 	// Grenzen vor der Messung (sonst verbraucht ein Auftrag ueber der Grenze
 	// einen Datensatz) und noch einmal unter derselben Sperre beim Ablegen.
-	d.mu.Lock()
-	err = d.abschnittGrenzenLocked(q.Praeger)
-	d.mu.Unlock()
-	if err != nil {
+	if err := d.abschnittGrenzen(q.Praeger); err != nil {
 		return QuantenSAbschnittAntwort{}, err
 	}
 	y, _ := quantenSBitsLesen(q.Basen, bis-von)
@@ -371,22 +368,49 @@ func (d *quantenWDienst) abschnittPraeparieren(q QuantenSAbschnittAnfrage) (Quan
 	if err != nil {
 		return QuantenSAbschnittAntwort{}, err
 	}
-	d.mu.Lock()
-	if _, da := d.eintraege[q.K]; da {
-		d.mu.Unlock()
-		return QuantenSAbschnittAntwort{}, quantenWFehler("schon ein Auftrag fuer dieses K")
-	}
-	if err := d.abschnittGrenzenLocked(q.Praeger); err != nil {
-		d.mu.Unlock()
+	if err := d.abschnittAblegen(e, roh); err != nil {
 		return QuantenSAbschnittAntwort{}, err
 	}
-	if err := d.ablage.setzen(q.K, roh); err != nil {
-		d.mu.Unlock()
-		return QuantenSAbschnittAntwort{}, err
-	}
-	d.eintraege[q.K] = e
-	d.mu.Unlock()
 	return d.abschnittAntwort(e)
+}
+
+func (d *quantenWDienst) abschnittGrenzen(praeger string) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.abschnittGrenzenLocked(praeger)
+}
+
+// abschnittAblegen: den wartenden Eintrag ablegen -- unter derselben Sperre
+// wie die erneute Pruefung der Grenzen (zwei Auftraege zugleich).
+func (d *quantenWDienst) abschnittAblegen(e *quantenWTresorEintrag, roh []byte) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if _, da := d.eintraege[e.K]; da {
+		return quantenWFehler("schon ein Auftrag fuer dieses K")
+	}
+	if err := d.abschnittGrenzenLocked(e.Praeger); err != nil {
+		return err
+	}
+	if err := d.ablage.setzen(e.K, roh); err != nil {
+		return err
+	}
+	d.eintraege[e.K] = e
+	return nil
+}
+
+// abschnittVollenden: den wartenden Eintrag durch den vollstaendigen ersetzen,
+// nur wenn ihn inzwischen niemand geaendert hat.
+func (d *quantenWDienst) abschnittVollenden(alt, neu *quantenWTresorEintrag, roh []byte) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.eintraege[alt.K] != alt {
+		return quantenWFehler("Abschnitt: gleichzeitig geaendert")
+	}
+	if err := d.ablage.setzen(alt.K, roh); err != nil {
+		return err
+	}
+	d.eintraege[alt.K] = neu
+	return nil
 }
 
 // abschnittGrenzenLocked: Tresor nicht voll, nicht zu viele offene Auftraege
@@ -697,17 +721,9 @@ func (d *quantenWDienst) bestaetigenAbschnitt(q QuantenWBestaetigenAnfrage) (str
 	if err != nil {
 		return "", "", err
 	}
-	d.mu.Lock()
-	if cur := d.eintraege[q.K]; cur != e {
-		d.mu.Unlock()
-		return "", "", quantenWFehler("Abschnitt: gleichzeitig geaendert")
-	}
-	if err := d.ablage.setzen(q.K, roh); err != nil {
-		d.mu.Unlock()
+	if err := d.abschnittVollenden(e, &neu, roh); err != nil {
 		return "", "", err
 	}
-	d.eintraege[q.K] = &neu
-	d.mu.Unlock()
 	return d.bestaetigungSUnterschreiben(q, wurzel, proben)
 }
 
