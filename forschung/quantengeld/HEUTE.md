@@ -400,8 +400,25 @@ SHA-256:
   - Ein Ersatz springt ein, sobald ein Teil einmal 10 s offen ist.
   - Er blieb danach bis zum Ende des Versuchs dran, auch wenn der Zuständige wieder
     arbeitete. Dann konkurrierten beide um jeden Teil.
-- Abhilfe auf dem Zweig (43b9c78): Der Ersatz tritt zurück, sobald ein anderer vorankommt.
-- Prüflauf: [44264862815](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44264862815).
+- **Versuch 1 (43b9c78): Der Ersatz tritt zurück, sobald ein anderer vorankommt. Gemessen
+  schlechter, zurückgenommen (0aafbfe).** Prüflauf
+  [44264862815](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44264862815):
+
+  | Test | Rate | abgewiesen | eingesprungen / zurückgetreten |
+  |---|---|---|---|
+  | alle vier | 687–793/min (vorher 934–990) | 218 | 20 / 18 |
+  | ein Knoten fällt aus | 575–613/min (vorher 1.088–1.142) | 217 (vorher 5) | 22 / 20 |
+
+  Die Ersatz-Dienste pendelten bis zu 14-mal zwischen Einspringen und Zurücktreten.
+- **Richtig gelesen zeigen die Zähler einen anderen Engpass: die Burst-Grenze je Absender**,
+  20 Einreichungen je Minute und Validator. Die Grenze bleibt so.
+  - Mit Ausfall reichten zwei Dienste je etwa 17–18 Teile/min ein. Bei 32 Stellen je Teil
+    sind das die gemessenen rund 1.100 Stellen/min.
+  - Paralleles Einreichen verteilte die Arbeit also auf mehrere Budgets. Es war nicht nur
+    Verschwendung.
+- **Versuch 2 (6f72941): mehr Stellen je Einreichung.** Der Teil wird genau auf das
+  Größenbudget zugeschnitten statt halbiert. Bei 3 von 4 Validatoren und Tiefe 14 sind das
+  50 statt 32 Stellen, also 56 % mehr je Einreichung. Prüflauf mit 40 ms folgt.
 
 **Frühere Vermutung (vor den Zählern):**
 - Bei 40 ms war die ehrliche Vorlage ohne Ausfall langsamer (646/min) als mit Ausfall
