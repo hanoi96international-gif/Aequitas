@@ -509,6 +509,8 @@ alle Läufe, auch die gescheiterten.
 | ebenda | ebenda | ein Knoten fällt aus (15,7 s) | **rot**, dieselbe Meldung |
 | [44347416357](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44347416357) | Zweig mit der Korrektur (cce644a9), Rauschmodell `fake_marrakesh`, **zwei Ausgaben, 8 Aufträge**; Ausgabe 1: Fehler 26/5.069 | alle vier (670,1 s) | **grün:** Doppelvorlage 5m03s, 1.031/min, **abgewiesen**; ehrliche Vorlage 5m45s, 905/min, **eingelöst**; Werkzeug 10m50s; 4 Knoten gleich, Höhe 6542, StateRoot `359c3184…1af3e5` |
 | ebenda | Ausgabe 2: Fehler 21/5.277 | **ein Knoten fällt aus** (722,4 s; Knoten 2 vor der ersten Vorlage) | **grün:** Doppelvorlage 5m54s, 882/min, **abgewiesen**; ehrliche Vorlage 5m14s, 994/min, **eingelöst**; Werkzeug 11m45s; 3 Knoten gleich, Höhe 5415, StateRoot `8d91e045…a965e` |
+| [44356741223](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44356741223) | `main` nach #588 (799f6783), **echter IBM-Chip `ibm_fez`** (freigegeben), **8 Aufträge**: Ausgabe 1 `dbutuhv82tmc73du3m1g`, `dbutusv82tmc73du3me0`, `dbutv3larooc73fkkq5g`, `dbutvalarooc73fkkql0`, Fehler **36/5.287 (0,68 %)** | alle vier (795,7 s) | **grün:** Doppelvorlage 6m09s, 845/min, **abgewiesen**; ehrliche Vorlage 6m44s, 772/min, **eingelöst**; Werkzeug 12m56s; 4 Knoten gleich, Höhe 7801, StateRoot `4fc4053e…fd4a38f` |
+| ebenda | Ausgabe 2: `dbutvh5arooc73fkkqug`, `dbutvnups3fc73bji6cg`, `dbutvu7f8rhs73bmvq20`, `dbuu04eps3fc73bji6p0`, Fehler **27/5.161 (0,52 %)** | **ein Knoten fällt aus** (662,4 s; Knoten 2 vor der ersten Vorlage) | **grün:** Doppelvorlage 4m41s, 1.110/min, **abgewiesen**; ehrliche Vorlage 5m59s, 870/min, **eingelöst**; Werkzeug 10m46s; 3 Knoten gleich, Höhe 4886, StateRoot `99c04a73…7a241f` |
 
 Zähler je Validator-Dienst (Test „alle vier“):
 
@@ -518,11 +520,14 @@ Zähler je Validator-Dienst (Test „alle vier“):
 | IBM, Dienst 0 / 1 / 2 / 3 | 69 / 32 / 35 / 64 | 9 / 12 / 0 / 24 | 2 / 1 / 0 / 1 | 183 / 88 / 94 / 187 |
 | Nachlauf alle vier, Dienst 0 / 1 / 2 / 3 | 72 / 27 / 33 / 68 | 3 / 3 / 12 / 10 | 2 / 1 / 0 / 1 | 186 / 68 / 93 / 193 |
 | Nachlauf mit Ausfall, Dienst 0 / 1 / 2† / 3 | 100 / 50 / 0 / 50 | 0 / 0 / 0 / 4 | 1 / 1 / 0 / 0 | 216 / 104 / 0 / 114 |
+| IBM `ibm_fez` alle vier, Dienst 0 / 1 / 2 / 3 | 31 / 46 / 66 / 57 | 7 / 30 / 59 / 96 | 1 / 1 / 1 / 2 | 82 / 145 / 216 / 199 |
+| IBM `ibm_fez` mit Ausfall, Dienst 0 / 1 / 2† / 3 | 89 / 25 / 0 / 86 | 0 / 5 / 0 / 7 | 2 / 1 / 0 / 1 | 191 / 56 / 0 / 204 |
 
 SHA-256 (je im Artefakt `pilot-<Lauf>`, 90 Tage):
 - Lauf 44340478883: `ergebnis.txt` `9646ccc5…30dad1`, `ausgabe.txt.gz` `7aeb9f3e…e91fb`.
 - Lauf 44341842380: `ergebnis.txt` `55ee4c57…168be2`, `ausgabe.txt.gz` `5bf69870…a7c603`.
 - Lauf 44347416357: `ergebnis.txt` `3ec90cda…d9b835c`, `ausgabe.txt.gz` `8dc0bd90…d0e7d4`.
+- Lauf 44356741223: `ergebnis.txt` `3059d721…7fc1598`, `ausgabe.txt.gz` `c16bb837…9b61598`.
 
 **Ursache der roten Ausfall-Tests: ein Fehler im Pilot, nicht im Dienst.**
 - Beide Tests lasen dieselbe Messung: je Validator **ein** Abschnitt in `mess_<x>.json`,
@@ -537,12 +542,17 @@ SHA-256 (je im Artefakt `pilot-<Lauf>`, 90 Tage):
   Ausgaben (8 Aufträge). Jeder Test nimmt seine eigene (`basen_1.json` ohne Ausfall,
   `basen_2.json` mit Ausfall). Der Workflow prüft genau diese sechs Dateien und je
   Messquelle zwei Abschnitte.
-- **Nachlauf im Rauschmodell (44347416357): beide Tests grün**, auch der Ausfall eines
-  Validators. Der Nachlauf auf dem Chip braucht die Freigabe `quantenhardware`.
+- **Nachlauf im Rauschmodell (44347416357) und auf dem Chip `ibm_fez` (44356741223):
+  beide Tests grün**, auch mit Ausfall eines Validators.
+- Auffällig auf dem Chip (Test „alle vier“): 192 von 392 Einreichungen wurden abgewiesen
+  (Dienst 3 allein 96), die Offenlegung lief mit 772–845 Stellen/min. Das ist langsamer
+  als sonst (800–1.110), aber 4,5-fach unter der Kettenfrist von 30 min. Abgewiesen heißt
+  hier: ein anderer Dienst war mit demselben Teil schneller, die Kette nahm ihn einmal.
+  Nichts wurde falsch verbucht.
 
 **Ergebnis bis hier:**
 - Zum ersten Mal hat **jeder Validator seinen Abschnitt selbst präpariert** und auf einem
-  echten Chip messen lassen.
+  echten Chip messen lassen (`ibm_marrakesh`, dann `ibm_fez`).
 - Der Token in voller Prüfgröße ging mit vier Validatoren (3 von 4) durch:
   Doppelvorlage abgewiesen, ehrliche Vorlage eingelöst, alle vier Knoten gleich.
 - Die Offenlegung ist so schnell wie bei der Ausgabe in einem Auftrag (835–1.048 statt
@@ -551,8 +561,8 @@ SHA-256 (je im Artefakt `pilot-<Lauf>`, 90 Tage):
   - Im Pilot kommen alle Aufträge vom selben IBM-Konto und laufen im selben Job. Dass
     niemand den ganzen Token kennt, gilt erst, wenn jeder Validator mit eigenem Konto
     selbst misst (A5, Betreiber).
-  - Der Ausfall eines Validators bei der Ausgabe in Abschnitten ist im Rauschmodell auf
-    dem Runner belegt (44347416357), auf dem Chip noch nicht.
+  - Der Ausfall eines Validators bei der Ausgabe in Abschnitten ist im Rauschmodell
+    (44347416357) und auf dem Chip `ibm_fez` (44356741223) belegt.
   - Es liegt kein Gutachten vor.
 
 ### 3.4 Bargeld-Verhalten ohne Quanten (Offline-Bargeld)
