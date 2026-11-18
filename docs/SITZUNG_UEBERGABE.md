@@ -19,9 +19,10 @@ dezentrales Quantengeld“.
     - Entwurf des Dienstes in `DEZENTRAL.md` 8.
   - **#584 gemergt (A2a, Bausteine in Go):** `quanten_s_abschnitt.go` mit Test und
     Prüfvektor aus der Spezifikation, noch nicht eingehängt.
+  - **PR „A2b Dienst“ (dieser Zweig):** Endpunkte `abschnitt` und `oeffnung`, Bestätigung
+    mit Bündeln, Messquelle `AEQUITAS_QS_MESSQUELLE`. Der Ende-zu-Ende-Test löst über die
+    zusammengesetzten Anteile ein (`DEZENTRAL.md` 10).
   - **Nächste Schritte:**
-    - A2b im Go-Dienst: Endpunkte für Auftrag und Öffnung, die Messquelle, die
-      Bestätigung mit Bündeln, Missbrauchstests.
     - A3 mit `hardware_ibm.py --s-abschnitt` und dem Werkzeug im Abschnitts-Modus.
     - A4 als Pilot mit vier Knoten.
 - **#581 gemergt (eigene Antworten W7/W8, nur Doku):**

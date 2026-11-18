@@ -1276,6 +1276,9 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	// NICHT zum Leiter: Tresor und Anteile liegen bei DIESEM Validator.
 	mux.HandleFunc("/api/quanten-w/validator/bestaetigen", a.handleQuantenWBestaetigen)
 	mux.HandleFunc("/api/quanten-w/validator/anteile", a.handleQuantenWAnteile)
+	// Ausgabe in Abschnitten (quanten_s_abschnitt_dienst.go)
+	mux.HandleFunc("/api/quanten-w/validator/abschnitt", a.handleQuantenSAbschnitt)
+	mux.HandleFunc("/api/quanten-w/validator/oeffnung", a.handleQuantenSOeffnung)
 	// PQ-Schluessel der Pruefer-Dienste (pruefer_dienst_pq.go, Audit B2).
 	mux.HandleFunc("/api/verifier/dienst-pq", a.zumLeiter(a.handlePrueferDienstPQ))
 	// Sammelweg (quanten_sammeln.go): eine Stimme je Anfrage, beim Leiter.
