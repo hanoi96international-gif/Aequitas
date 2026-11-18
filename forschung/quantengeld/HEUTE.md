@@ -418,7 +418,32 @@ SHA-256:
     Verschwendung.
 - **Versuch 2 (6f72941): mehr Stellen je Einreichung.** Der Teil wird genau auf das
   Größenbudget zugeschnitten statt halbiert. Bei 3 von 4 Validatoren und Tiefe 14 sind das
-  50 statt 32 Stellen, also 56 % mehr je Einreichung. Prüflauf mit 40 ms folgt.
+  50 statt 32 Stellen. Prüflauf
+  [44271941121](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44271941121)
+  (40 ms, beide Tests grün, Vergleich mit Lauf 44257006958):
+
+  | Test | Rate | Einreichungen | abgewiesen | Nachbarabfragen |
+  |---|---|---|---|---|
+  | alle vier, vorher / **nachher** | 934–990 / **929–993** | 325 / **200** | 171 / **95** | 506 / 582 |
+  | ein Ausfall, vorher / **nachher** | 1.088–1.142 / **947–1.360** | 326 / **200** | 5 / **0** | 341 / 426 |
+
+  - **Gleich schnell, aber 38 % weniger Einreichungen**, also weniger Transaktionen in den
+    Blöcken für dieselbe Offenlegung, und rund halb so viele Abweisungen.
+  - Dafür 15–25 % mehr Nachbarabfragen: Ein kleiner Rest wird nicht mehr eigens eingereicht.
+  - Behalten.
+- **Damit ist auch die Burst-Grenze als Engpass widerlegt.**
+  - Mit größeren Teilen reicht jeder Dienst nur noch etwa 7 Teile/min ein, weit unter 20,
+    und die Rate bleibt bei etwa 1.000 Stellen/min.
+  - Begrenzend ist die **Abfolge je Teil**: Ein Teil muss im Stand stehen, bevor der nächste
+    eingereicht werden kann, und jede Nachbarrunde wartet nach t Antworten noch
+    `quantenWPeerNachlauf` (1 s) auf weitere Anteile. Das gibt rund 20 Teile/min, gleich wie
+    viele Dienste helfen.
+- **Schluss:**
+  - Bei rund 1.000 Stellen/min dauert eine Offenlegung von 5.200 Stellen etwa 5–8 Minuten,
+    die Kettenfrist ist 30 Minuten.
+  - Weitere Beschleunigung (Vorausholen der nächsten Anteile, kürzerer Nachlauf) würde
+    Robustheit gegen nicht benötigtes Tempo tauschen und unterbleibt.
+  - Wird die Frist im Betrieb knapp, ist das Vorausholen der nächste Schritt.
 
 **Frühere Vermutung (vor den Zählern):**
 - Bei 40 ms war die ehrliche Vorlage ohne Ausfall langsamer (646/min) als mit Ausfall
