@@ -409,6 +409,27 @@ func TestQuantenSAbschnittDienst_BestaetigenMissbrauch(t *testing.T) {
 	}
 }
 
+// Grenze je Ausgeber: mehr offene Auftraege als quantenWOffeneJePraeger werden
+// abgewiesen, ohne die Messquelle zu benutzen.
+func TestQuantenSAbschnittDienst_GrenzeJeAusgeber(t *testing.T) {
+	a := neueQsaWelt(t, 140)
+	d := a.d[0]
+	for j := 0; j < quantenWOffeneJePraeger; j++ {
+		a.K = strings.Repeat(string("abcdef0123"[j]), 64)
+		if _, err := d.abschnittPraeparieren(a.auftragAbschnitt(1)); err != nil {
+			t.Fatalf("Auftrag %d: %v", j+1, err)
+		}
+	}
+	vorher := a.mess[0].aufruf.Load()
+	a.K = strings.Repeat("9", 64)
+	if _, err := d.abschnittPraeparieren(a.auftragAbschnitt(1)); err == nil || !strings.Contains(err.Error(), "offene") {
+		t.Fatalf("Auftrag ueber der Grenze: %v", err)
+	}
+	if a.mess[0].aufruf.Load() != vorher {
+		t.Fatal("Auftrag ueber der Grenze hat gemessen")
+	}
+}
+
 func TestQuantenSMessDatei(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "mess.json")

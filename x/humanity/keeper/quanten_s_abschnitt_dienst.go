@@ -334,24 +334,13 @@ func (d *quantenWDienst) abschnittPraeparieren(q QuantenSAbschnittAnfrage) (Quan
 	if d.messquelle == nil {
 		return QuantenSAbschnittAntwort{}, quantenWFehler("dieser Validator hat keine eigene Messquelle")
 	}
-	reg := d.cs.quantenWJetzt()
+	// Grenzen vor der Messung (sonst verbraucht ein Auftrag ueber der Grenze
+	// einen Datensatz) und noch einmal unter derselben Sperre beim Ablegen.
 	d.mu.Lock()
-	if len(d.eintraege) >= quantenWTresorHoechstens {
-		d.mu.Unlock()
-		return QuantenSAbschnittAntwort{}, quantenWFehler("Tresor voll")
-	}
-	offen, jePraeger := 0, 0
-	for k, x := range d.eintraege {
-		if reg.Noten[k] == nil && reg.Token[k] == nil {
-			offen++
-			if x.Praeger == q.Praeger {
-				jePraeger++
-			}
-		}
-	}
+	err = d.abschnittGrenzenLocked(q.Praeger)
 	d.mu.Unlock()
-	if offen >= quantenWOffeneHoechstens || jePraeger >= quantenWOffeneJePraeger {
-		return QuantenSAbschnittAntwort{}, quantenWFehler("zu viele offene Auftraege")
+	if err != nil {
+		return QuantenSAbschnittAntwort{}, err
 	}
 	y, _ := quantenSBitsLesen(q.Basen, bis-von)
 	u, tw, x, _, err := d.messquelle.abschnitt(y)
@@ -387,6 +376,10 @@ func (d *quantenWDienst) abschnittPraeparieren(q QuantenSAbschnittAnfrage) (Quan
 		d.mu.Unlock()
 		return QuantenSAbschnittAntwort{}, quantenWFehler("schon ein Auftrag fuer dieses K")
 	}
+	if err := d.abschnittGrenzenLocked(q.Praeger); err != nil {
+		d.mu.Unlock()
+		return QuantenSAbschnittAntwort{}, err
+	}
 	if err := d.ablage.setzen(q.K, roh); err != nil {
 		d.mu.Unlock()
 		return QuantenSAbschnittAntwort{}, err
@@ -394,6 +387,28 @@ func (d *quantenWDienst) abschnittPraeparieren(q QuantenSAbschnittAnfrage) (Quan
 	d.eintraege[q.K] = e
 	d.mu.Unlock()
 	return d.abschnittAntwort(e)
+}
+
+// abschnittGrenzenLocked: Tresor nicht voll, nicht zu viele offene Auftraege
+// insgesamt und je Ausgeber (wie bestaetigen). Caller haelt d.mu.
+func (d *quantenWDienst) abschnittGrenzenLocked(praeger string) error {
+	if len(d.eintraege) >= quantenWTresorHoechstens {
+		return quantenWFehler("Tresor voll")
+	}
+	reg := d.cs.quantenWJetzt()
+	offen, jePraeger := 0, 0
+	for k, x := range d.eintraege {
+		if reg.Noten[k] == nil && reg.Token[k] == nil {
+			offen++
+			if x.Praeger == praeger {
+				jePraeger++
+			}
+		}
+	}
+	if offen >= quantenWOffeneHoechstens || jePraeger >= quantenWOffeneJePraeger {
+		return quantenWFehler("zu viele offene Auftraege")
+	}
+	return nil
 }
 
 // abschnittAnteil: Anteil des Validators xv an Stelle Von+i (Polynom).
