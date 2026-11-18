@@ -136,9 +136,12 @@ type quantenSMessquelle interface {
 	abschnitt(y []int) (u, t, x []int, wo string, err error)
 }
 
-// quantenSMessDatei: Datei von hardware_ibm.py --s-abschnitt mit fertig
-// gemessenen Abschnitten (Basen y vorab gezogen). Ein benutzter Abschnitt wird
-// sofort aus der Datei geloescht (atomar ersetzt), bevor er verwendet wird.
+// quantenSMessDatei: Datei von hardware_ibm.py --s-abschnitte (Pilot) mit
+// fertig gemessenen Abschnitten (Basen y vorab gezogen). Ein benutzter
+// Abschnitt wird sofort aus der Datei geloescht (atomar ersetzt), bevor er
+// verwendet wird. Nur fuer Messungen, die VOR dem Start feststehen; wer
+// waehrend des Betriebs misst, nimmt ein Verzeichnis
+// (quanten_s_messverzeichnis.go).
 type quantenSMessDatei struct {
 	mu   sync.Mutex
 	pfad string
@@ -220,15 +223,20 @@ func (m *quantenSMessDatei) abschnitt(y []int) ([]int, []int, []int, string, err
 	return nil, nil, nil, "", quantenWFehler("keine Messung zu diesen Basen")
 }
 
-// quantenSMessquelleAusUmgebung: AEQUITAS_QS_MESSQUELLE = Pfad der Datei
-// (nur lesbar fuer den Knoten). Leer: dieser Validator praepariert keine
-// Abschnitte.
+// quantenSMessquelleAusUmgebung: AEQUITAS_QS_MESSQUELLE = Pfad eines
+// Verzeichnisses (Betrieb: je Messung eine Datei, hardware_ibm.py
+// --s-abschnitt) oder einer Datei (Pilot, --s-abschnitte). Leer: dieser
+// Validator praepariert keine Abschnitte.
 func quantenSMessquelleAusUmgebung() quantenSMessquelle {
 	p := strings.TrimSpace(os.Getenv("AEQUITAS_QS_MESSQUELLE"))
 	if p == "" {
 		return nil
 	}
-	return &quantenSMessDatei{pfad: filepath.Clean(p)}
+	p = filepath.Clean(p)
+	if fi, err := os.Stat(p); err == nil && fi.IsDir() {
+		return &quantenSMessVerzeichnis{dir: p}
+	}
+	return &quantenSMessDatei{pfad: p}
 }
 
 // ------------------------------------------------------------ Abschnitt

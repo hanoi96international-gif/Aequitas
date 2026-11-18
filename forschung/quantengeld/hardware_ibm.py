@@ -45,9 +45,14 @@ wiesner_hardware.note_steane),
 --s-token [--k K] (Variante S, s_kette.py: 2K Qubits, sofort gemessen, kein
 Speicher; Vorlage an der gewaehlten Annahmestelle und als Angriff an der
 anderen; Standard K = 840, hoechstens 2048),
---s-abschnitte VERZEICHNIS [--k K] [--v V] (Ausgabe in Abschnitten: je
-Validator ein eigener Auftrag fuer seinen Abschnitt, mess_<x>.json je
-Validator und basen.json fuer das Werkzeug; DEZENTRAL.md 8-11),
+--s-abschnitte VERZEICHNIS [--k K] [--v V] [--ausgaben A] (Ausgabe in
+Abschnitten: je Ausgabe und Validator ein eigener Auftrag fuer seinen
+Abschnitt, mess_<x>.json je Validator mit allen A Abschnitten und
+basen_<a>.json je Ausgabe fuer das Werkzeug; A hoechstens 4; DEZENTRAL.md 8-12),
+--s-abschnitt VERZEICHNIS --basen Y (Betrieb: EIN Validator misst SEINEN
+Abschnitt in den Basen Y der Inhaberin, Text aus 0 und 1, und legt die
+Messung als neue Datei <sha256(Y)>.json in sein Messquellen-Verzeichnis
+AEQUITAS_QS_MESSQUELLE; nie wird etwas ueberschrieben; DEZENTRAL.md 13),
 --s-messen DATEI [--k K] (nur die Messung von 2K Qubits fuer die echte
 Ausgabe auf der Kette: u, t, y, x als JSON, Zufall aus dem Betriebssystem;
 weiter mit aequitasd quanten-s-ausgabe, deploy/quanten-s-ausgabe.sh),
@@ -67,10 +72,12 @@ Aufruf: python3 -I hardware_ibm.py --ideal | --rauschen FakeTorino | --ibm
 """
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import os
 import random
+import secrets
 import sys
 
 _hier = os.path.dirname(os.path.abspath(__file__))
@@ -88,6 +95,7 @@ sk = importlib.util.module_from_spec(_spec_s)
 _spec_s.loader.exec_module(sk)
 MAX_S_STELLEN = 8192     # k je Annahmestelle; Token = 2k Qubits in Schaltkreisen zu 16
                          # (2k <= quantenWNMax = 16384; 3 von 4 Validatoren brauchen k = 5200)
+MAX_S_AUSGABEN = 4       # --s-abschnitte: unabhaengige Ausgaben je Lauf (Pilot: eine je Test)
 
 MAX_LAEUFE = 64      # Schaltkreise je Fall (Kosten auf echter Hardware!)
 MAX_SCHUESSE = 4000
@@ -243,6 +251,29 @@ def selbsttest() -> None:
         hw.erwartet(fall_fuer_ideal(name), 3, 3)
     # Variante W: die Schaltkreise entstehen ohne qiskit und sind ideal fehlerfrei.
     assert wh.selbsttest()
+    # Messquelle als Verzeichnis: Name wie im Knoten (quanten_s_messverzeichnis_test.go),
+    # nur neu anlegen, nie ueberschreiben, nichts Halbes liegen lassen.
+    assert s_messquelle_name("0110") == "a5c3dd48facf21ed5f916d0ae979091fead570e6aea6c1d8038d1f68b26fa51f.json"
+    import tempfile
+    with tempfile.TemporaryDirectory() as d:
+        e = {"u": "0101", "t": "0011", "y": "0110", "x": "0010", "wo": "probe", "job": ""}
+        name = s_messquelle_ablegen(d, e)
+        try:
+            s_messquelle_ablegen(d, dict(e, x="1111"))
+            raise AssertionError("Messquelle: vorhandener Eintrag ueberschrieben")
+        except FileExistsError:
+            pass
+        with open(os.path.join(d, name)) as fh:
+            assert json.load(fh) == e
+        assert os.listdir(d) == [name]
+        assert os.stat(os.path.join(d, name)).st_mode & 0o777 == 0o600
+    for falsch in ("", "012", "01 1", "1" * (2 * MAX_S_STELLEN + 1)):
+        try:
+            s_basen_lesen(falsch)
+            raise AssertionError(f"Basen angenommen: {falsch[:8]!r}")
+        except SystemExit:
+            pass
+    assert s_basen_lesen("0110") == [0, 1, 1, 0]
     assert fall_fuer_ideal("ungeschuetzt nach 0 us") == "echt"
     assert fall_fuer_ideal("fremd") == "fremd"
     print("selbsttest ok")
@@ -531,37 +562,119 @@ def s_messen_lauf(datei: str) -> None:
 
 
 def s_abschnitte_lauf(verzeichnis: str) -> None:
-    """--s-abschnitte VERZEICHNIS [--k K] [--v V]: Messung fuer die Ausgabe in
-    Abschnitten (forschung/quantengeld/DEZENTRAL.md 8-11). Je Validator x ein
-    EIGENER Auftrag fuer seinen Abschnitt (s_kette.abschnitte), in Basen y,
-    die hier fuer die Inhaberin gezogen werden. Schreibt mess_<x>.json (u, t,
-    y, x -- nur fuer Validator x, AEQUITAS_QS_MESSQUELLE) und basen.json (nur
-    y je Abschnitt -- fuer das Werkzeug). Im Pilot laufen alle Auftraege von
-    einem Konto aus; im Betrieb misst jeder Validator selbst."""
+    """--s-abschnitte VERZEICHNIS [--k K] [--v V] [--ausgaben A]: Messung fuer
+    die Ausgabe in Abschnitten (forschung/quantengeld/DEZENTRAL.md 8-12). Je
+    Ausgabe a und Validator x ein EIGENER Auftrag fuer seinen Abschnitt
+    (s_kette.abschnitte), in Basen y, die hier fuer die Inhaberin gezogen
+    werden. Schreibt mess_<x>.json (u, t, y, x aller A Ausgaben -- nur fuer
+    Validator x, AEQUITAS_QS_MESSQUELLE; der Dienst verbraucht jeden Abschnitt
+    genau einmal) und basen_<a>.json je Ausgabe (nur y je Abschnitt -- fuer
+    das Werkzeug). Der Pilot braucht zwei Ausgaben, eine je Test. Im Pilot
+    laufen alle Auftraege von einem Konto aus; im Betrieb misst jeder
+    Validator selbst."""
     k = zahl("--k", sk.K_STELLE, MAX_S_STELLEN)
     v = zahl("--v", 4, 64)
+    ausgaben = zahl("--ausgaben", 1, MAX_S_AUSGABEN)
     n = 2 * k
     rng = random.SystemRandom()
     bits = lambda b: "".join(map(str, b))
+    abschnitte = sk.abschnitte(n, v)
+    mess: list[list[dict]] = [[] for _ in abschnitte]
+    basen_je: list[dict] = []
+    zeilen, wo = [], ""
+    for a in range(1, ausgaben + 1):
+        basen, jobs = [], []
+        for x, ab in enumerate(abschnitte, 1):
+            y = [rng.randrange(2) for _ in ab]
+            u, t, xs, kreise, job_id, wo = s_messen_basen(y, rng)
+            passend = [i for i in range(len(y)) if y[i] == u[i]]
+            falsch = sum(xs[i] != t[i] for i in passend)
+            mess[x - 1].append({"u": bits(u), "t": bits(t), "y": bits(y), "x": bits(xs), "wo": wo, "job": job_id})
+            basen.append(bits(y))
+            jobs.append(job_id)
+            zeilen.append(f"- Ausgabe {a}, Validator {x}: Stellen {ab[0]}..{ab[-1]} ({len(ab)} Qubits, "
+                          f"{len(kreise)} Schaltkreise" + (f", Job {job_id}" if job_id else "")
+                          + f"), Fehler bei passender Basis {falsch}/{len(passend)}")
+        basen_je.append({"n": n, "basen": basen, "wo": wo, "job": ",".join(j for j in jobs if j)})
+    # Erst schreiben, wenn alle Auftraege gemessen sind: ein Abbruch
+    # hinterlaesst keine halbe Ausgabe (O_EXCL, nur fuer den Eigentuemer).
     os.makedirs(verzeichnis, mode=0o700, exist_ok=True)
-    basen, jobs, zeilen, wo = [], [], [], ""
-    for x, ab in enumerate(sk.abschnitte(n, v), 1):
-        y = [rng.randrange(2) for _ in ab]
-        u, t, xs, kreise, job_id, wo = s_messen_basen(y, rng)
-        passend = [i for i in range(len(y)) if y[i] == u[i]]
-        falsch = sum(xs[i] != t[i] for i in passend)
-        fd = os.open(os.path.join(verzeichnis, f"mess_{x}.json"), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    def neu(name: str, inhalt: dict) -> None:
+        fd = os.open(os.path.join(verzeichnis, name), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         with os.fdopen(fd, "w") as fh:
-            json.dump({"abschnitte": [{"u": bits(u), "t": bits(t), "y": bits(y), "x": bits(xs), "wo": wo, "job": job_id}]}, fh)
-        basen.append(bits(y))
-        jobs.append(job_id)
-        zeilen.append(f"- Validator {x}: Stellen {ab[0]}..{ab[-1]} ({len(ab)} Qubits, {len(kreise)} Schaltkreise"
-                      + (f", Job {job_id}" if job_id else "") + f"), Fehler bei passender Basis {falsch}/{len(passend)}")
-    fd = os.open(os.path.join(verzeichnis, "basen.json"), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    with os.fdopen(fd, "w") as fh:
-        json.dump({"n": n, "basen": basen, "wo": wo, "job": ",".join(j for j in jobs if j)}, fh)
+            json.dump(inhalt, fh)
+    for x, eintraege in enumerate(mess, 1):
+        neu(f"mess_{x}.json", {"abschnitte": eintraege})
+    for a, b in enumerate(basen_je, 1):
+        neu(f"basen_{a}.json", b)
     text = "\n".join([f"## S-Messung in {v} Abschnitten auf {wo}", "",
-                      f"{n} Qubits, je Validator ein eigener Auftrag:"] + zeilen)
+                      f"{ausgaben} Ausgabe(n) zu je {n} Qubits, je Ausgabe und Validator ein eigener Auftrag:"] + zeilen)
+    print(text)
+    if os.environ.get("GITHUB_STEP_SUMMARY"):
+        with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as fh:
+            fh.write(text + "\n")
+
+
+def s_messquelle_name(y_bits: str) -> str:
+    """Dateiname der Messung zu den Basen y (wie quantenSMessName im Knoten)."""
+    return hashlib.sha256(y_bits.encode("ascii")).hexdigest() + ".json"
+
+
+def s_messquelle_ablegen(verzeichnis: str, eintrag: dict) -> str:
+    """Legt EINE Messung als neue Datei <sha256(y)>.json ins Verzeichnis:
+    erst unter einem eigenen, zufaelligen Namen (O_EXCL, 0600, auf die Platte
+    geschrieben), dann per os.link auf den endgueltigen Namen. os.link
+    scheitert, wenn es den Namen schon gibt -- nie wird eine Messung
+    ueberschrieben, und der Dienst sieht nie eine halbe Datei (er liest nur
+    den endgueltigen Namen; quanten_s_messverzeichnis.go)."""
+    name = s_messquelle_name(eintrag["y"])
+    tmp = os.path.join(verzeichnis, f".neu-{secrets.token_hex(8)}")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        with os.fdopen(fd, "w") as fh:
+            json.dump(eintrag, fh)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.link(tmp, os.path.join(verzeichnis, name))
+    finally:
+        os.unlink(tmp)
+    return name
+
+
+def s_basen_lesen(text: str) -> list[int]:
+    """Basen der Inhaberin fuer EINEN Abschnitt: nur 0 und 1, 1 bis 2 x
+    MAX_S_STELLEN Zeichen."""
+    if not 1 <= len(text) <= 2 * MAX_S_STELLEN or set(text) - {"0", "1"}:
+        raise SystemExit("--basen: nur 0 und 1, 1 bis %d Zeichen" % (2 * MAX_S_STELLEN))
+    return [int(c) for c in text]
+
+
+def s_abschnitt_lauf(verzeichnis: str) -> None:
+    """--s-abschnitt VERZEICHNIS --basen Y: Betrieb (DEZENTRAL.md 13). EIN
+    Validator misst SEINEN Abschnitt in einem eigenen Auftrag, in den Basen Y,
+    die ihm die Inhaberin fuer seinen Abschnitt geschickt hat, und legt die
+    Messung (u, t, y, x) als neue Datei in sein Messquellen-Verzeichnis
+    (AEQUITAS_QS_MESSQUELLE). Danach kann der Auftrag des Ausgebers kommen;
+    der Dienst verwendet die Datei genau einmal. Zufall aus dem
+    Betriebssystem. Das Verzeichnis muss es geben (es gehoert dem Knoten);
+    gemessen wird als Benutzer des Knotens, sonst kann er die Datei nicht
+    lesen (dann weist er ab)."""
+    if "--basen" not in sys.argv:
+        raise SystemExit("--s-abschnitt braucht --basen Y")
+    y = s_basen_lesen(sys.argv[sys.argv.index("--basen") + 1])
+    if not os.path.isdir(verzeichnis) or os.path.islink(verzeichnis):
+        raise SystemExit(f"{verzeichnis}: kein Verzeichnis")
+    bits = lambda b: "".join(map(str, b))
+    if os.path.lexists(os.path.join(verzeichnis, s_messquelle_name(bits(y)))):
+        raise SystemExit("zu diesen Basen liegt schon eine Messung (nicht ueberschrieben)")
+    u, t, xs, kreise, job_id, wo = s_messen_basen(y, random.SystemRandom())
+    passend = [i for i in range(len(y)) if y[i] == u[i]]
+    falsch = sum(xs[i] != t[i] for i in passend)
+    name = s_messquelle_ablegen(verzeichnis, {"u": bits(u), "t": bits(t), "y": bits(y), "x": bits(xs),
+                                              "wo": wo, "job": job_id})
+    text = (f"## S-Messung eines Abschnitts auf {wo}\n\n{len(y)} Qubits in {len(kreise)} Schaltkreisen, je ein Schuss"
+            + (f", Job {job_id}" if job_id else "") + f". Fehler bei passender Basis: {falsch}/{len(passend)}. "
+            + f"Abgelegt als {name}.")
     print(text)
     if os.environ.get("GITHUB_STEP_SUMMARY"):
         with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as fh:
@@ -627,6 +740,9 @@ def main() -> None:
         return
     if "--s-abschnitte" in sys.argv:
         s_abschnitte_lauf(sys.argv[sys.argv.index("--s-abschnitte") + 1])
+        return
+    if "--s-abschnitt" in sys.argv:
+        s_abschnitt_lauf(sys.argv[sys.argv.index("--s-abschnitt") + 1])
         return
     if "--s-token" in sys.argv:
         s_token_lauf(rng)

@@ -2,13 +2,15 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 18.11.2026 ~11:00 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
+Stand: 18.11.2026 ~17:05 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
 Repos); davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18:30 UTC Sitzung
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
-**Zuletzt (Sitzung „Weiter“, 18.11. ~11:00 UTC):**
-- **C1 läuft mit #578** (Deploy #92, 10:33 UTC grün).
+**Zuletzt (Sitzung „Weiter“, 18.11. ~17:05 UTC):**
+- **C1 läuft mit #587** (Deploy #98, 16:09 UTC grün; perf-c1 Lauf 4 grün). Damit sind auch
+  #580 (S-Ansicht nennt v) und #585 (Abschnitts-Dienst) auf C1. C1 präpariert Abschnitte
+  erst mit `AEQUITAS_QS_MESSQUELLE`; ohne weist es jeden Abschnitts-Auftrag ab (Vorgabe).
 - **Auftrag 18.11.: „Bring das dezentrale Quantengeld komplett zu laufen, ggf. mit eigener
   Forschung“.** Plan und Stand in `forschung/quantengeld/DEZENTRAL.md`.
   - **#582 gemergt: Befund und A1.** Die Ausgabe präparierte alle Stellen in einem
@@ -18,20 +20,40 @@ dezentrales Quantengeld“.
     - Lösung: das Stellen-Bit im Salz (5h), Kette unverändert.
     - Entwurf des Dienstes in `DEZENTRAL.md` 8.
   - **#584 gemergt (A2a, Bausteine in Go):** `quanten_s_abschnitt.go` mit Test und
-    Prüfvektor aus der Spezifikation, noch nicht eingehängt.
+    Prüfvektor aus der Spezifikation.
   - **#585 gemergt (A2b Dienst):** Endpunkte `abschnitt` und `oeffnung`, Bestätigung
-    mit Bündeln, Messquelle `AEQUITAS_QS_MESSQUELLE`. Der Ende-zu-Ende-Test löst über die
-    zusammengesetzten Anteile ein (`DEZENTRAL.md` 10).
+    mit Bündeln, Messquelle `AEQUITAS_QS_MESSQUELLE` (`DEZENTRAL.md` 10).
   - **#586 gemergt (A3 Werkzeug im Abschnitts-Modus):** Eingabe `basen` →
-    Abschnitts-Modus. Endpunkt `schluessel`, Tests in-process (`DEZENTRAL.md` 11).
-  - **PR „A4 Pilot im Abschnitts-Modus“ (dieser Zweig):** `--s-abschnitte`, Vier-Knoten-Tests
-    im Abschnitts-Modus (lokal grün), Workflow-Wahl `ausgabe`. Nach dem Merge laufen
-    `quanten-s-pilot.yml` mit `modus=rauschen` und `ausgabe=abschnitte`, für IBM mit Freigabe.
-  - **C1-Deploy von #585 nötig, bevor C1 Abschnitte präpariert.** Ohne
-    `AEQUITAS_QS_MESSQUELLE` weist C1 jeden Abschnitts-Auftrag ab, das ist die Vorgabe.
-  - **Nächste Schritte:**
-    - A3 mit `hardware_ibm.py --s-abschnitt` und dem Werkzeug im Abschnitts-Modus.
-    - A4 als Pilot mit vier Knoten.
+    Abschnitts-Modus. Endpunkt `schluessel` (`DEZENTRAL.md` 11).
+  - **#587 gemergt (A4 Pilot im Abschnitts-Modus):** `--s-abschnitte`, Vier-Knoten-Tests
+    im Abschnitts-Modus, Workflow-Wahl `ausgabe`.
+  - **Erste Pilotläufe im Abschnitts-Modus (`HEUTE.md` 3.3e):**
+    - Rauschmodell [44340478883](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44340478883)
+      und **IBM `ibm_marrakesh`** [44341842380](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44341842380):
+      Test ohne Ausfall **grün**. Je Validator ein eigener Auftrag, Doppelvorlage
+      abgewiesen, ehrliche eingelöst, 4 Knoten gleich, Chip-Fehler 0,79 %.
+    - Ausfall-Test in beiden **rot** nach 15 s: „keine Messung zu diesen Basen“. Ursache
+      im Pilot: Beide Tests lasen dieselbe Messung, der Dienst gibt jeden Abschnitt nur
+      einmal her (richtig so).
+  - **PR #588 (Pilot mit zwei Ausgaben + A5 vorbereitet):**
+    - `--ausgaben 2`, je Test eine Ausgabe. Nachlauf im Rauschmodell
+      [44347416357](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44347416357):
+      **beide Tests grün**, auch mit Ausfall eines Validators.
+    - A5 vorbereitet (`DEZENTRAL.md` 13): Messquelle als Verzeichnis (je Messung eine Datei
+      `<sha256(y)>.json`, der Dienst entfernt vor Verwendung) und
+      `hardware_ibm.py --s-abschnitt VERZEICHNIS --basen Y` für einen Validator im Betrieb.
+  - **Nächste Schritte:** nach dem Merge von #588 IBM-Nachlauf (`modus=ibm`,
+    `ausgabe=abschnitte`, Freigabe `quantenhardware`; die Messung des gescheiterten
+    IBM-Laufs ist verbraucht, der neue misst 8 Aufträge). A5 selbst (zweiter Mensch als
+    Validator mit eigenem Server und Quantenkonto) ist Sache des Betreibers.
+- **App 1.25.0 (App #86 gemergt, a5f5cf44):** Netto-Zeile und Zahlen der Tagesrunde (#84),
+  t von v Validatoren (#85).
+  - iOS-Build [44342709659](https://github.com/hanoi96international-gif/Aequitas-App/actions/runs/44342709659) grün.
+  - APK-Build [44342702919](https://github.com/hanoi96international-gif/Aequitas-App/actions/runs/44342702919)
+    gebaut (16:47 UTC); der Job `signieren` wartet auf die Freigabe `app-signatur`.
+  - Danach: `release-apk.yml` (run_id des APK-Builds, Tag `v1.25.0`, Notiz), dann
+    `release-ios.yml` (run_id 44342709659, Tag `v1.25.0`). Beide brauchen die Freigabe
+    `app-signatur`.
 - **#581 gemergt (eigene Antworten W7/W8, nur Doku):**
   - Falsche Anteile weist die Kette als Ganzes ab.
   - v − t + 1 Validatoren können blockieren. Bei W kann das die letzte Einlösung
@@ -65,9 +87,11 @@ dezentrales Quantengeld“.
     Hebel das Vorausholen der nächsten Anteile.
   - Der Versuch „Ersatz tritt zurück“ war schlechter und wurde zurückgenommen.
 - **Wartet auf den Betreiber:**
-  - Gutachter suchen. Der Prüfauftrag ist jetzt auf dem Stand vom 18.11.
-  - App-Release mit Netto-Zeile und Rundenzahlen (App #84 ist gemergt).
-  - `perf-c1.yml`: Ratengrenze zurück auf die Vorgabe.
+  - Gutachter suchen. Der Prüfauftrag ist auf dem Stand vom 18.11.
+  - Freigaben: App-Release 1.25.0 (`app-signatur`), IBM-Nachlauf des Pilots
+    (`quantenhardware`).
+  - A5: ein zweiter Mensch als Validator mit eigenem Server und eigenem Quantenkonto;
+    Hardware-Partner (QKD) für die Messung der Inhaberin.
 - **Offen bei Quantengeld (`OFFEN.md` D.4):** Server im echten Netz statt Knoten in einem
   Job, und das Gutachten (Betreiber).
 - **Messen von hier:** Zusammenfassung und Artefakte sind gesperrt. Das Ergebnis steht am

@@ -492,6 +492,69 @@ belegt. Seit #575 legt jeder Lauf die Meldungen der Tests vollständig in die
 Zusammenfassung und hebt `ergebnis.txt` und die ganze Ausgabe `ausgabe.txt.gz` 90 Tage als
 Artefakt auf, mit SHA-256 in der Zusammenfassung.
 
+### 3.3e Ausgabe in Abschnitten: jeder Validator präpariert selbst (18.11.2026)
+
+Weg A aus `DEZENTRAL.md` (Abschnitte 3 und 7–12): Jeder der vier Validatoren präpariert
+**seinen** Abschnitt des Tokens in einem **eigenen Auftrag** am Quantenrechner, mit
+**eigener Messquelle**. Das Werkzeug sieht nur die Basen der Inhaberin, Blätter und
+Chiffrate, nie u und t. Workflow `quanten-s-pilot.yml` mit `ausgabe = abschnitte`,
+k = 5.200 (10.400 Qubits, je Abschnitt 2.600), keine künstliche Netzlaufzeit. Hier stehen
+alle Läufe, auch die gescheiterten.
+
+| Lauf | Messung | Test | Ergebnis |
+|---|---|---|---|
+| [44340478883](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44340478883) | `main` nach #587, Rauschmodell `fake_marrakesh`; 4 Aufträge (`982ef3d1…`, `f16838f2…`, `d4412178…`, `787b5904…`), Fehler bei passender Basis 13/5.133 (aus den Stichproben) | alle vier (695,4 s) | **grün:** Doppelvorlage 4m59s, 1.045 Stellen/min, **abgewiesen**; ehrliche Vorlage 6m14s, 835/min, **eingelöst**; Werkzeug 11m15s; 4 Knoten gleich, Höhe 6806, StateRoot `02d6503f…ee0b6` |
+| ebenda | ebenda | ein Knoten fällt aus (15,5 s) | **rot:** `Validator 1 praepariert nicht: HTTP 409: … keine Messung zu diesen Basen` (Ursache unten) |
+| [44341842380](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44341842380) | `main` nach #587, **echter IBM-Chip `ibm_marrakesh`** (freigegeben); 4 Aufträge `dbusn45arooc73fkip80`, `dbusnbmps3fc73bjg4m0`, `dbusnj5arooc73fkipp0`, `dbusnpv82tmc73du1mbg`; Fehler bei passender Basis **41/5.214 (0,79 %)** | alle vier (660,4 s) | **grün:** Doppelvorlage 4m58s, 1.048/min, **abgewiesen**; ehrliche Vorlage 5m39s, 920/min, **eingelöst**; Werkzeug 10m40s; 4 Knoten gleich, Höhe 6443, StateRoot `007fb794…45b1ab` |
+| ebenda | ebenda | ein Knoten fällt aus (15,7 s) | **rot**, dieselbe Meldung |
+| [44347416357](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44347416357) | Zweig mit der Korrektur (cce644a9), Rauschmodell `fake_marrakesh`, **zwei Ausgaben, 8 Aufträge**; Ausgabe 1: Fehler 26/5.069 | alle vier (670,1 s) | **grün:** Doppelvorlage 5m03s, 1.031/min, **abgewiesen**; ehrliche Vorlage 5m45s, 905/min, **eingelöst**; Werkzeug 10m50s; 4 Knoten gleich, Höhe 6542, StateRoot `359c3184…1af3e5` |
+| ebenda | Ausgabe 2: Fehler 21/5.277 | **ein Knoten fällt aus** (722,4 s; Knoten 2 vor der ersten Vorlage) | **grün:** Doppelvorlage 5m54s, 882/min, **abgewiesen**; ehrliche Vorlage 5m14s, 994/min, **eingelöst**; Werkzeug 11m45s; 3 Knoten gleich, Höhe 5415, StateRoot `8d91e045…a965e` |
+
+Zähler je Validator-Dienst (Test „alle vier“):
+
+| Lauf | eingereicht | abgewiesen | eingesprungen | Nachbarabfragen |
+|---|---|---|---|---|
+| Rauschmodell, Dienst 0 / 1 / 2 / 3 | 72 / 66 / 30 / 32 | 16 / 27 / 25 / 12 | 1 / 2 / 1 / 0 | 202 / 187 / 89 / 91 |
+| IBM, Dienst 0 / 1 / 2 / 3 | 69 / 32 / 35 / 64 | 9 / 12 / 0 / 24 | 2 / 1 / 0 / 1 | 183 / 88 / 94 / 187 |
+| Nachlauf alle vier, Dienst 0 / 1 / 2 / 3 | 72 / 27 / 33 / 68 | 3 / 3 / 12 / 10 | 2 / 1 / 0 / 1 | 186 / 68 / 93 / 193 |
+| Nachlauf mit Ausfall, Dienst 0 / 1 / 2† / 3 | 100 / 50 / 0 / 50 | 0 / 0 / 0 / 4 | 1 / 1 / 0 / 0 | 216 / 104 / 0 / 114 |
+
+SHA-256 (je im Artefakt `pilot-<Lauf>`, 90 Tage):
+- Lauf 44340478883: `ergebnis.txt` `9646ccc5…30dad1`, `ausgabe.txt.gz` `7aeb9f3e…e91fb`.
+- Lauf 44341842380: `ergebnis.txt` `55ee4c57…168be2`, `ausgabe.txt.gz` `5bf69870…a7c603`.
+- Lauf 44347416357: `ergebnis.txt` `3ec90cda…d9b835c`, `ausgabe.txt.gz` `8dc0bd90…d0e7d4`.
+
+**Ursache der roten Ausfall-Tests: ein Fehler im Pilot, nicht im Dienst.**
+- Beide Tests lasen dieselbe Messung: je Validator **ein** Abschnitt in `mess_<x>.json`,
+  dazu eine `basen.json`.
+- Der Dienst verbraucht jeden gemessenen Abschnitt genau einmal. Er löscht ihn aus der
+  Datei, bevor er ihn verwendet (`quantenSMessDatei`). So kann aus einer Messung nie ein
+  zweiter Token werden.
+- Der erste Test hatte alle vier Abschnitte verbraucht. Die zweite Ausgabe mit denselben
+  Basen wies der Dienst darum ab. Das ist das richtige Verhalten (fail-closed): Auch ein
+  echter Quantenzustand lässt sich nicht zweimal ausgeben.
+- **Korrektur:** `hardware_ibm.py --s-abschnitte … --ausgaben 2` misst zwei unabhängige
+  Ausgaben (8 Aufträge). Jeder Test nimmt seine eigene (`basen_1.json` ohne Ausfall,
+  `basen_2.json` mit Ausfall). Der Workflow prüft genau diese sechs Dateien und je
+  Messquelle zwei Abschnitte.
+- **Nachlauf im Rauschmodell (44347416357): beide Tests grün**, auch der Ausfall eines
+  Validators. Der Nachlauf auf dem Chip braucht die Freigabe `quantenhardware`.
+
+**Ergebnis bis hier:**
+- Zum ersten Mal hat **jeder Validator seinen Abschnitt selbst präpariert** und auf einem
+  echten Chip messen lassen.
+- Der Token in voller Prüfgröße ging mit vier Validatoren (3 von 4) durch:
+  Doppelvorlage abgewiesen, ehrliche Vorlage eingelöst, alle vier Knoten gleich.
+- Die Offenlegung ist so schnell wie bei der Ausgabe in einem Auftrag (835–1.048 statt
+  800–1.160 Stellen/min).
+- Ehrlich dazu:
+  - Im Pilot kommen alle Aufträge vom selben IBM-Konto und laufen im selben Job. Dass
+    niemand den ganzen Token kennt, gilt erst, wenn jeder Validator mit eigenem Konto
+    selbst misst (A5, Betreiber).
+  - Der Ausfall eines Validators bei der Ausgabe in Abschnitten ist im Rauschmodell auf
+    dem Runner belegt (44347416357), auf dem Chip noch nicht.
+  - Es liegt kein Gutachten vor.
+
 ### 3.4 Bargeld-Verhalten ohne Quanten (Offline-Bargeld)
 
 Was Menschen sich von Quantengeld wünschen, ist meist offline zu zahlen, wie mit

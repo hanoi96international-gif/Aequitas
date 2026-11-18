@@ -10,6 +10,9 @@ einer Stelle hängt, und was wir bauen.
   Doppelvorlage abgewiesen und die ehrliche Vorlage eingelöst (`HEUTE.md` 3.3c).
 - **Mit vier Validatoren** läuft es im Pilot: 3 von 4, k = 5.200, auf IBM `ibm_kingston`
   und im Rauschmodell, auch wenn einer ausfällt und mit Netzlaufzeit (`HEUTE.md` 3.3d).
+- **Ausgabe in Abschnitten (Weg A, A1–A4):** Jeder Validator präpariert seinen Abschnitt
+  in einem eigenen Auftrag mit eigener Messquelle. Im Pilot grün im Rauschmodell und auf
+  IBM `ibm_marrakesh`; mit Ausfall eines Validators grün im Rauschmodell (`HEUTE.md` 3.3e, 12).
 - **Jeder Knoten mit Signierschlüssel** startet den Validator-Dienst von selbst
   (`StarteQuantenWDienst`, `cmd/aequitasd/main.go`). Ein neuer Validator macht ohne weitere
   Einrichtung mit.
@@ -140,8 +143,8 @@ Geheimnis besser, aber zum Einlösen müssen t Validatoren erreichbar sein.
 | A1 | Spezifikation in `s_kette.py`: Ausgabe in Abschnitten, wer was weiß, Missbrauchsfälle | **fertig** (siehe unten) |
 | A2 | Validator-Dienst: eigenen Abschnitt präparieren (Messung von außen, wie heute über eine Datei), Anteile an die anderen verteilen, Stichprobe für die Annahmestellen | **fertig**: A2a Bausteine (9), A2b Dienst (10) |
 | A3 | `hardware_ibm.py --s-abschnitt`, Werkzeug `quanten-s-ausgabe` im Abschnitts-Modus | **Werkzeug fertig** (11); Messung je Abschnitt folgt mit A4 |
-| A4 | Pilot: vier Knoten, je ein eigener Auftrag (im Pilot von einem Konto, das wird benannt) | **bereit** (12): lokal grün; Läufe auf dem Runner nach dem Merge, IBM mit Freigabe |
-| A5 | Hauptnetz mit einem zweiten Menschen als Validator, wenn möglich bei einem anderen Anbieter | Betreiber |
+| A4 | Pilot: vier Knoten, je ein eigener Auftrag (im Pilot von einem Konto, das wird benannt) | **fertig** (12): ohne Ausfall grün im Rauschmodell und auf `ibm_marrakesh`; mit Ausfall grün im Rauschmodell (Nachlauf 44347416357), auf dem Chip mit Freigabe |
+| A5 | Hauptnetz mit einem zweiten Menschen als Validator, wenn möglich bei einem anderen Anbieter | **Werkzeug bereit** (13): Messquelle als Verzeichnis, `--s-abschnitt`; der zweite Mensch: Betreiber |
 | B, C, W-Härtung | wie oben | Forschung; Partner |
 
 Die Kette ändert sich in A1 bis A4 nicht. Geändert werden die Ausgabe außerhalb der Kette
@@ -287,9 +290,10 @@ beim Validator und einen neuen Weg der Bestätigung.
   - Geprüft werden: alle Schlüssel gegen die Adressen, die eigene Nummer, die Basen der
     Inhaberin auf genau diesem Abschnitt, die zwei Annahmestellen, die Mindestgröße je
     Stelle und das Zeitfenster.
-  - Die Messung kommt aus der **eigenen Messquelle** (`AEQUITAS_QS_MESSQUELLE`, eine Datei
-    von `hardware_ibm.py --s-abschnitt`). Jeder Datensatz wird vor der Verwendung aus der
-    Datei gelöscht, also nie zweimal benutzt.
+  - Die Messung kommt aus der **eigenen Messquelle** (`AEQUITAS_QS_MESSQUELLE`). Das ist
+    eine Datei von `hardware_ibm.py --s-abschnitte` (Pilot) oder ein Verzeichnis mit einer
+    Datei je Messung (Betrieb, Abschnitt 13). Jeder Datensatz wird vor der Verwendung
+    entfernt, also nie zweimal benutzt.
   - Die Antwort ist unterschrieben und enthält: die Blätter, x verschlüsselt für die
     Inhaberin und je anderem Validator ein verschlüsseltes, unterschriebenes Bündel.
   - Der Eintrag liegt danach *wartend* im Tresor und gilt wie ein offener Auftrag, für die
@@ -370,11 +374,15 @@ Die Antworten von `abschnitt` und `oeffnung` dürfen bis 8 MiB groß sein
 
 ## 12. A4: der Pilot im Abschnitts-Modus (18.11.2026)
 
-- **Messung je Abschnitt:** `hardware_ibm.py --s-abschnitte VERZEICHNIS --k K --v V`.
-  - Je Validator setzt es einen **eigenen Auftrag** für dessen Abschnitt ab, in Basen y, die
-    es für die Inhaberin zieht.
-  - Es schreibt `mess_<x>.json` (u, t, y, x, nur für Validator x) und `basen.json` (nur y,
-    für das Werkzeug), beide mit Rechten 0600.
+- **Messung je Abschnitt:** `hardware_ibm.py --s-abschnitte VERZEICHNIS --k K --v V
+  [--ausgaben A]`.
+  - Je Ausgabe und Validator setzt es einen **eigenen Auftrag** für dessen Abschnitt ab,
+    in Basen y, die es für die Inhaberin zieht.
+  - Es schreibt `mess_<x>.json` (u, t, y, x aller A Ausgaben, nur für Validator x) und
+    `basen_<a>.json` je Ausgabe (nur y, für das Werkzeug), alle mit Rechten 0600 und erst,
+    wenn alle Aufträge gemessen sind. A ist höchstens 4.
+  - Der Dienst verbraucht jeden Abschnitt genau einmal. Darum braucht der Pilot zwei
+    Ausgaben, eine je Test (Befund unten).
   - Im Rauschmodell geprüft: 5 Abschnitte, 5 Aufträge.
 - **Vier-Knoten-Test** `TestVierKnotenQuantenSAbschnitte(Ausfall)_RealDB`:
   - Jeder Knoten bekommt **seine** Messquelle. Im Pilot ist das die Datei aus
@@ -384,8 +392,98 @@ Die Antworten von `abschnitt` und `oeffnung` dürfen bis 8 MiB groß sein
     abgewiesen, ehrliche Vorlage eingelöst, alle lebenden Knoten auf derselben StateRoot.
 - **Workflow** `quanten-s-pilot.yml`: neue Wahl `ausgabe` (`auftrag` | `abschnitte`).
   - Im Abschnitts-Modus misst der Mess-Job vier Abschnitte in vier Aufträgen.
-  - Der Pilot-Job prüft, dass genau die fünf erwarteten Dateien da sind und die Basen
-    zusammen n ergeben. Danach laufen die Abschnitts-Tests.
+  - Der Pilot-Job prüft, dass genau die sechs erwarteten Dateien da sind, die Basen jeder
+    Ausgabe zusammen n ergeben und jede Messquelle zwei Abschnitte hat. Danach laufen die
+    Abschnitts-Tests, ohne Ausfall mit Ausgabe 1, mit Ausfall mit Ausgabe 2.
   - **Ehrlich:** Im Pilot kommen die vier Aufträge vom selben Konto und laufen im selben
     Job. Gezeigt wird der Ablauf. Dass niemand den ganzen Token kennt, gilt erst, wenn
     jeder Validator mit eigenem Konto selbst misst.
+
+### Erste Läufe (18.11.2026)
+
+- **Rauschmodell** (Lauf 44340478883) und **IBM `ibm_marrakesh`** (Lauf 44341842380), je
+  vier eigene Aufträge: Der Test ohne Ausfall war in beiden **grün**. Die Doppelvorlage
+  wurde abgewiesen, die ehrliche Vorlage eingelöst, alle vier Knoten standen gleich.
+  Fehler bei passender Basis auf dem Chip 0,79 %. Einzelheiten in `HEUTE.md` 3.3e.
+- **Befund:** Der Ausfall-Test scheiterte in beiden Läufen nach 15 s mit „keine Messung zu
+  diesen Basen“. Er las dieselbe Messung wie der erste Test, und der Dienst gibt jeden
+  Abschnitt nur einmal her. Das ist richtig so. Falsch war der Pilot, der nur eine
+  Ausgabe gemessen hatte.
+- **Korrektur:** `--ausgaben 2`, `basen_1.json` und `basen_2.json`, je Test eine eigene
+  Ausgabe. Der Dienst und die Kette bleiben unverändert.
+- **Nachlauf** (Lauf 44347416357, Rauschmodell, 8 Aufträge): **beide Tests grün**. Mit
+  Ausfall eines Validators vor der ersten Vorlage: Doppelvorlage abgewiesen, ehrliche
+  Vorlage eingelöst, die drei lebenden Knoten gleich.
+
+## 13. A5 vorbereitet: messen im Betrieb (18.11.2026)
+
+**Befund:** Bis hier gab es die Messung nur für den Pilot. `hardware_ibm.py --s-abschnitte`
+misst alle Abschnitte im Voraus von einem Konto aus, in eine Datei je Validator. Im Betrieb
+geht das so nicht:
+- Die Inhaberin wählt ihre Basen y erst für eine Ausgabe und schickt jedem Validator nur y
+  auf seinem Abschnitt. Der Validator misst also, **während sein Dienst läuft**.
+- Die Datei-Messquelle liest die Datei, löscht den benutzten Eintrag und schreibt sie neu.
+  Schriebe ein Messender zur selben Zeit hinein, könnte ein gerade verbrauchter Eintrag
+  zurückkommen. Dann ginge dieselbe Messung zweimal in eine Ausgabe.
+- Den Befehl `--s-abschnitt`, auf den Abschnitt 10 verwies, gab es noch nicht.
+
+**Lösung, ohne Änderung an der Kette:**
+- **Messquelle als Verzeichnis** (`quanten_s_messverzeichnis.go`). Zeigt
+  `AEQUITAS_QS_MESSQUELLE` auf ein Verzeichnis, liegt darin je Messung eine Datei
+  `<sha256(y)>.json` mit genau einem Datensatz.
+  - Der Dienst liest **nur** die Datei zu den verlangten Basen und prüft sie streng.
+    Eine gewöhnliche Datei (kein Verweis) muss es sein, dieselbe wie beim Nachsehen, höchstens
+    1 MiB, ohne fremde Felder und ohne Text danach. Die Basen im Inhalt müssen zum Namen
+    passen, die Bits müssen stimmen.
+  - Dann **entfernt** er sie und verwendet sie erst danach. Nur ein Entfernen kann
+    gelingen. Die Einmaligkeit hängt am Dateisystem, nicht an einer Absprache zwischen
+    Messen und Dienst.
+  - Abgewiesene Dateien bleiben liegen, damit der Betreiber sie ansehen kann.
+- **`hardware_ibm.py --s-abschnitt VERZEICHNIS --basen Y`:** Ein Validator misst seinen
+  Abschnitt in einem eigenen Auftrag, in den Basen der Inhaberin.
+  - Er legt das Ergebnis erst unter einem zufälligen Namen an (O_EXCL, 0600, auf die
+    Platte geschrieben) und dann per `os.link` unter dem endgültigen Namen. Das scheitert,
+    wenn es den Namen schon gibt; überschrieben wird nie.
+  - Basen werden streng gelesen: nur 0 und 1, höchstens 16.384. Das Verzeichnis muss es
+    geben. Gemessen wird als Benutzer des Knotens, sonst kann der Knoten die Datei nicht
+    lesen und weist ab.
+
+**Ablauf einer Ausgabe im Betrieb:**
+1. Die Inhaberin wählt y und schickt jedem Validator y auf seinem Abschnitt.
+2. Jeder Validator misst mit `--s-abschnitt` in sein Verzeichnis, mit seinem eigenen Konto
+   und, wenn möglich, bei einem eigenen Anbieter.
+3. Der Ausgeber startet `aequitasd quanten-s-ausgabe` mit den Basen (Abschnitts-Modus,
+   Abschnitt 11). Fehlt eine Messung noch, weist der Validator den Auftrag ab („keine
+   Messung zu diesen Basen“), und die Ausgabe beginnt nicht.
+
+**Tests** (`quanten_s_messverzeichnis_test.go`):
+- Gutfall und „genau einmal“.
+- Missbrauch, 9 Fälle; die abgewiesene Datei bleibt jeweils liegen:
+  - fremde Basen unter dem Namen, unbekanntes Feld, Text nach dem Datensatz;
+  - kaputte Bits, zu kurz, kein JSON;
+  - zu groß, Verweis auf einen gültigen Eintrag, Verzeichnis statt Datei.
+- Wettlauf zweier Messquellen ohne gemeinsame Sperre, 20 Runden mit je 16 Zugriffen:
+  genau einer bekommt die Messung.
+- Messen während des Verbrauchs: 64 Messungen, jede genau einmal verwendet, keine kommt
+  zurück.
+- Name gleich in Go und Python (Vektor in beiden Selbsttests).
+- Wahl von Datei oder Verzeichnis aus der Umgebung.
+- Quer geprüft: Python misst (ideal) und legt ab, der Go-Dienst liest genau einmal, die
+  Datei ist danach weg.
+
+**Gegenprobe:** 7 Mutationen, alle rot:
+- nicht entfernen;
+- Fehler beim Entfernen übergehen;
+- Basen im Inhalt nicht prüfen;
+- Text danach erlauben;
+- Bits nicht prüfen;
+- gewöhnliche Datei und Austausch nicht prüfen (beide Schichten zusammen);
+- Größe nicht prüfen (beide Stellen zusammen).
+
+`go test -race` grün.
+
+**Was für A5 bleibt (Betreiber):** ein zweiter Mensch, der einen Validator mit eigenem
+Server betreibt, mit eigenem Konto bei einem Quantenrechner und, wenn möglich, bei einem
+anderen Anbieter. Auf C1 braucht der Betrieb in Abschnitten dann ein Verzeichnis für den
+Knotenbenutzer und `AEQUITAS_QS_MESSQUELLE`. Beides richtet der Betreiber mit dem Deploy
+ein.
