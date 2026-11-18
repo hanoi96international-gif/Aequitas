@@ -2,27 +2,43 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 17.11.2026 ~20:15 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
+Stand: 18.11.2026 ~11:00 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
 Repos); davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18:30 UTC Sitzung
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
-**Zuletzt (Sitzung „Weiter“, 18.11. ~06:30 UTC):**
-- **Gemergt bis #577.** Der C1-Deploy von #575 ist durch (18.11. 06:18 UTC), damit ist
-  `/api/wirtschaft/runde` im Hauptnetz verfügbar.
-- **Pilot S in voller Größe grün**, auf dem Zweig und auf `main`. Rauschmodell, k = 5.200,
-  3 von 4, mit und ohne Ausfall. Offenlegung 950–1.160 Stellen/min, gut 5-fach unter der
-  Kettenfrist. Details in `HEUTE.md` 3.3d.
-- **PR #578 offen:** `latenz_ms` im Pilot (tc netem nur zwischen den Knoten, fail-closed)
-  und eine Schlange je Modus.
-  - Läufe 44251220417 (40 ms) und 44251224574 (100 ms) laufen.
-  - Danach die Ergebnisse in `HEUTE.md` 3.3d eintragen und mergen.
+**Zuletzt (Sitzung „Weiter“, 18.11. ~11:00 UTC):**
+- **C1 läuft mit #578** (Deploy #92, 10:33 UTC grün).
+- **PR „Prüfauftrag auf Stand 18.11.“ (dieser Zweig):**
+  - `docs/QUANTENGELD_PRUEFAUFTRAG.md` hat einen Abschnitt „Vorab“: W und S laufen seit
+    17.11. 17:00 UTC im Hauptnetz, vor dem Gutachten.
+  - Neue Fragen: Betrieb mit einem Validator (W2, S8), Offenlegung durch Ersatz und
+    Zuschneiden (W8), Register je Zeile (W7).
+  - `OFFEN.md` und `ANALYSE.md`: W6/S5 „anders gekommen“, die Burst-Aussage ist korrigiert.
+  - Kopfkommentare der Go-Dateien: „freigeschaltet“ statt „schlafend“, nur Kommentare.
+- **Gemergt bis #578.**
+  - Pilot S mit Netzlaufzeit `latenz_ms`: 40 und 100 ms je Richtung grün.
+  - IBM-Chip `ibm_kingston` grün: 0,59 % Fehler, Doppelvorlage abgewiesen, ehrliche eingelöst.
+  - Zähler im Validator-Dienst.
+  - Genaues Zuschneiden der Teile: gleich schnell, 38 % weniger Einreichungen.
+  - Schlange je Modus.
+  - Alle Läufe, auch fehlgeschlagene und zurückgenommene, stehen in `HEUTE.md` 3.3d.
+- **Offenlegung:** rund 1.000 Stellen/min. 5.200 Stellen brauchen 5–8 min, die Kettenfrist
+  ist 30 min.
+  - Engpass ist die Abfolge je Teil (Teil im Stand, dann der nächste; 1 s Nachlauf je
+    Nachbarrunde). Laufzeit und Burst-Grenze sind es nicht, beides gemessen.
+  - Bewusst nicht weiter beschleunigt. Wird die Frist im Betrieb knapp, ist der nächste
+    Hebel das Vorausholen der nächsten Anteile.
+  - Der Versuch „Ersatz tritt zurück“ war schlechter und wurde zurückgenommen.
 - **Wartet auf den Betreiber:**
-  - IBM-Pilot 44186826204: Freigabe in `quantenhardware`.
+  - Gutachter suchen. Der Prüfauftrag ist jetzt auf dem Stand vom 18.11.
   - App-Release mit Netto-Zeile und Rundenzahlen (App #84 ist gemergt).
   - `perf-c1.yml`: Ratengrenze zurück auf die Vorgabe.
-- **Messen von hier:** Zusammenfassung und Artefakte sind gesperrt. Seit #576 steht das
-  Ergebnis am Protokollende (`get_job_logs`, höchstens 5.000 Zeilen).
+- **Offen bei Quantengeld (`OFFEN.md` D.4):** Server im echten Netz statt Knoten in einem
+  Job, und das Gutachten (Betreiber).
+- **Messen von hier:** Zusammenfassung und Artefakte sind gesperrt. Das Ergebnis steht am
+  Protokollende (`get_job_logs`, höchstens 5.000 Zeilen). Die Zähler je Dienst stehen im
+  Ergebnisblock.
 - Wirtschaft: Analyse in `docs/WIRTSCHAFT_STARTBETRAG.md`. Offen sind die Vorschläge in
   Abschnitt 5: Staffel scharf schalten, feste Beträge als Vielfache.
 
@@ -33,7 +49,7 @@ dezentrales Quantengeld“.
 - Nie Geheimnisse im Chat erfragen (GitHub-Secrets oder Credential-Formular). Keine
   Impressum-Daten erfinden.
 - Push nur auf den Zweig, den die Sitzung vorgibt (alle vier Repos; zuletzt
-  `claude/weiter-8vzgu9`, davor `claude/aequitas-fortsetzen-osrea1`). Nach einem
+  `claude/weiter-uw2p42`, davor `claude/weiter-8vzgu9`). Nach einem
   Squash-Merge, `<zweig>` = der Zweig der Sitzung:
   1. `git checkout -B <zweig> origin/main`
   2. committen

@@ -1,6 +1,7 @@
 package keeper
 
-// QUANTENGELD VARIANTE W, STUFE W2a: DIE REGELN (schlafend, nicht eingehaengt)
+// QUANTENGELD VARIANTE W, STUFE W2a: DIE REGELN (eingehaengt in
+// quanten_w_kette.go, seit 17.11.2026 17:00 UTC im Hauptnetz freigeschaltet)
 //
 // Privat pruefbare Noten (Wiesner-Familie) mit klassischer Pruefung; das
 // Geheimnis jeder Stelle liegt als Shamir-Anteile bei den Validatoren der

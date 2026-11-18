@@ -371,12 +371,12 @@ gerechnet; die Tabelle gibt `python3 -I wiesner_parameter.py` aus):
 | Stufe | Was | Wer | Stand |
 |---|---|---|---|
 | W0 | Simulation, Analyse, Schaltkreise | Aequitas | fertig (`wiesner_verteilt.py`, `wiesner_hardware.py`) |
-| W1 | Fehlerraten auf echter Hardware (IBM, Ionenfalle) → Notengröße und Toleranz | Aequitas; Läufe mit Freigabe | Rauschmodell gemessen (HEUTE.md 3.3); IBM-Lauf wartet auf Freigabe; Ionenfalle braucht ein Konto |
+| W1 | Fehlerraten auf echter Hardware (IBM, Ionenfalle) → Notengröße und Toleranz | Aequitas; Läufe mit Freigabe | Rauschmodell und IBM gemessen (`ibm_marrakesh`, `ibm_fez`; HEUTE.md 3.3); Ionenfalle braucht ein Konto |
 | W2 | Kettenseite schlafend: Satzart „privat“, verteilte Schlüsselerzeugung, Prüf-Transaktion, Zähler, Sperre, Einlösen | Aequitas | **W2a fertig** (16.11.2026): Regeln als ausführbare Spezifikation `wiesner_kette.py` und im Knoten `x/humanity/keeper/quanten_w.go`, `quanten_w_register.go` (schlafend), Byte für Byte gleich (Prüfvektor). **W2b** (16.11.2026): Regeln geschärft (#541), eingehängt in Blöcke mit Unterschriften, Buchungen, StateRoot, Snapshot, schlafend (`quanten_w_kette.go`). **W2c** (16.11. abends): sichere Prüfgrößen nach dem Befund Klonangriff (Toleranz je Note, k aus der Tabelle, Offenlegen in Teilen). **W2d**: Dienst der Validatoren (`quanten_w_validator.go`: Tresor, Bestätigung, Anteile erst nach der Antwort, Hintergrund) |
 | W3 | Prägung ohne Vertrauen (Weg 2 oder 3 oben) als Protokoll und Simulation | Aequitas | **fertig** (16.11.2026): Weg 3 als Schaltkreis (`wiesner_hardware.note_fern`), Simulation mit Absprache-Rechnung (`wiesner_praegen.py`), Läufer `hardware_ibm.py --wiesner --fern` |
-| W4 | Partnerversuch: echte Note in einem Speicher (Stunden), Ausgabe über ein Aequitas-Testnetz, Weitergabe des Geräts, klassische Prüfung, Einlösen | BMFTR-Verbund + Aequitas | Kontakt offen. **Ohne Partner** (Labormaßstab, Note lebt µs): `hardware_ibm.py --wiesner --kette` – Prägen auf der Kette, Bezahlen per Teleportation, Einlösen mit Aufforderung aus den Hash-Ketten der Validatoren, Offenlegen, Urteil, AEQ beim Empfänger; ideal und im Rauschmodell gelaufen, IBM wartet auf Freigabe |
+| W4 | Partnerversuch: echte Note in einem Speicher (Stunden), Ausgabe über ein Aequitas-Testnetz, Weitergabe des Geräts, klassische Prüfung, Einlösen | BMFTR-Verbund + Aequitas | Kontakt offen. **Ohne Partner** (Labormaßstab, Note lebt µs): `hardware_ibm.py --wiesner --kette` – Prägen auf der Kette, Bezahlen per Teleportation, Einlösen mit Aufforderung aus den Hash-Ketten der Validatoren, Offenlegen, Urteil, AEQ beim Empfänger; ideal, im Rauschmodell und auf IBM `ibm_marrakesh` gelaufen (ohne Warten echt, 10 AEQ beim Empfänger; mit 20 µs und Teleportation abgewiesen, HEUTE.md 3.3) |
 | W5 | Gutachten (Prüfauftrag um Variante W erweitert), Pilot im Testnetz | extern + Aequitas | Prüfauftrag erweitert (`docs/QUANTENGELD_PRUEFAUFTRAG.md`); Gutachter und Pilot offen |
-| W6 | Satz „privat“ im Hauptnetz freischalten (⅔ der Prüfer, mindestens 5, 30 Tage Vorlauf), anfangs mit kleiner Höchstdeckung je Note | Prüfer | erst nach W4 und W5 |
+| W6 | Satz „privat“ im Hauptnetz freischalten (⅔ der Prüfer, mindestens 5, 30 Tage Vorlauf), anfangs mit kleiner Höchstdeckung je Note | Prüfer | **anders gekommen:** Der Betreiber hat W und S mit einem Stichtag freigeschaltet (17.11.2026 17:00 UTC, `quantenWAbUnix`, #568, #570), ohne Abstimmung der Prüfer, vor W4 und W5. Begründung und offene Fragen: `docs/QUANTENGELD_PRUEFAUFTRAG.md`, Abschnitt „Vorab“ |
 
 ## 5b. Ohne Quantenspeicher, heute: Variante S (S-Token, dezentral geprüft)
 
@@ -487,8 +487,8 @@ erprobt.
 | S2a | Regeln im Knoten, schlafend, Byte für Byte wie die Spezifikation | **fertig** (`quanten_s.go`, Prüfvektor) |
 | S2b | In die Kette eingehängt (Transaktionsarten, Register, StateRoot, Snapshot), schlafend | **fertig**: Einlösen in Teilen (#547), sechs Satzarten im W-Modul mit festen Annahmestellen (#551), Validator-Dienst für S (#554) |
 | S3 | Ausgabe über eine echte Quantenleitung (QKD-Sender bei den Validatoren, Empfänger bei der Nutzerin) | gerechnet (5c: Verluste, Mehrphotonen, Verkippung; Zufall der Validatoren macht Kents Handsender sicher); Gerät und Partner nötig (Vorlage 4: Cambridge, Bristol); Tabelle im Knoten mit θ und freiem Anteil offen |
-| S4 | Gutachten (Prüfauftrag um S erweitert, `docs/QUANTENGELD_PRUEFAUFTRAG.md`), Pilot im Testnetz | Prüfauftrag fertig; Gutachter und Pilot offen |
-| S5 | Freischalten (Prüfer, wie W6) | nach S3 und S4 |
+| S4 | Gutachten (Prüfauftrag um S erweitert, `docs/QUANTENGELD_PRUEFAUFTRAG.md`), Pilot im Testnetz | Prüfauftrag auf Stand 18.11.; **Pilot grün** (vier Knoten in einem Job, 3 von 4, k = 5.200, IBM `ibm_kingston` 0,59 %, mit Ausfall und Netzlaufzeit, HEUTE.md 3.3d); Gutachter und Server im echten Netz offen |
+| S5 | Freischalten (Prüfer, wie W6) | **anders gekommen:** mit W per Stichtag freigeschaltet (17.11.2026 17:00 UTC), vor S3 und S4; erster Token im Hauptnetz 17.11. (HEUTE.md 3.3c) |
 
 ## 5c. S3: Ausgabe über eine echte Quantenleitung (nachgetragen 16.11.2026 nachts)
 

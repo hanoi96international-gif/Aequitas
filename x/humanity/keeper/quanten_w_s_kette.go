@@ -1,6 +1,7 @@
 package keeper
 
-// QUANTENGELD VARIANTE S -- STUFE S2b TEIL 2: EINBINDUNG IN DIE KETTE (schlafend)
+// QUANTENGELD VARIANTE S -- STUFE S2b TEIL 2: EINBINDUNG IN DIE KETTE
+// (seit 17.11.2026 17:00 UTC im Hauptnetz freigeschaltet, mit W)
 //
 // Die Regeln (quanten_s.go; Spezifikation forschung/quantengeld/s_kette.py,
 // KetteS) haengen hier an der Kette -- als weitere Satzart IM W-Modul
