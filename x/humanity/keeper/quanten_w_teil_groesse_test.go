@@ -79,8 +79,9 @@ func TestQuantenWTeilKuerzen_PasstImmer(t *testing.T) {
 
 // Der gekuerzte Teil ist der LAENGSTE Anfang, der ins Budget passt -- eine
 // Stelle mehr passt nicht mehr. Befund 18.11.2026: halbieren verschenkte bei
-// 3 von 4 (Tiefe 14) gut ein Drittel jeder Einreichung, und Einreichungen
-// sind durch die Burst-Grenze je Absender der Engpass.
+// 3 von 4 (Tiefe 14) gut ein Drittel jeder Einreichung; genau zugeschnitten
+// braucht eine Offenlegung 38 % weniger Einreichungen (Transaktionen) bei
+// gleicher Rate (HEUTE.md 3.3d).
 func TestQuantenWTeilKuerzen_Laengster(t *testing.T) {
 	budget := func(o []QuantenWOffen) int {
 		roh, err := json.Marshal(o)
