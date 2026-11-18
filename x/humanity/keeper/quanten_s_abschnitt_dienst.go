@@ -332,7 +332,8 @@ func (d *quantenWDienst) abschnittPraeparieren(q QuantenSAbschnittAnfrage) (Quan
 		}
 		return d.abschnittAntwort(vorher)
 	}
-	if d.messquelle == nil {
+	mq := d.quelle()
+	if mq == nil {
 		return QuantenSAbschnittAntwort{}, quantenWFehler("dieser Validator hat keine eigene Messquelle")
 	}
 	// Grenzen vor der Messung (sonst verbraucht ein Auftrag ueber der Grenze
@@ -341,7 +342,7 @@ func (d *quantenWDienst) abschnittPraeparieren(q QuantenSAbschnittAnfrage) (Quan
 		return QuantenSAbschnittAntwort{}, err
 	}
 	y, _ := quantenSBitsLesen(q.Basen, bis-von)
-	u, tw, x, _, err := d.messquelle.abschnitt(y)
+	u, tw, x, _, err := mq.abschnitt(y)
 	if err != nil {
 		return QuantenSAbschnittAntwort{}, err
 	}
@@ -373,6 +374,20 @@ func (d *quantenWDienst) abschnittPraeparieren(q QuantenSAbschnittAnfrage) (Quan
 		return QuantenSAbschnittAntwort{}, err
 	}
 	return d.abschnittAntwort(e)
+}
+
+// messquelleSetzen / quelle: die eigene Messquelle (unter d.mu, damit ein
+// Wechsel waehrend laufender Anfragen sauber ist).
+func (d *quantenWDienst) messquelleSetzen(q quantenSMessquelle) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.messquelle = q
+}
+
+func (d *quantenWDienst) quelle() quantenSMessquelle {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.messquelle
 }
 
 func (d *quantenWDienst) abschnittGrenzen(praeger string) error {

@@ -40,6 +40,11 @@ on:
       latenz_ms:
         description: "Netzlaufzeit je Richtung zwischen den Knoten in ms (0 bis 300; 0 = wie bisher). Naehert Server im echten Netz an."
         default: "0"
+      ausgabe:
+        description: "auftrag = alle Stellen in einem Auftrag (wie bisher); abschnitte = je Validator ein eigener Auftrag fuer seinen Abschnitt (DEZENTRAL.md)"
+        type: choice
+        options: [auftrag, abschnitte]
+        default: auftrag
 
 permissions:
   contents: read
@@ -54,6 +59,7 @@ concurrency:
 env:
   K: ${{ inputs.k }}
   LATENZ: ${{ inputs.latenz_ms }}
+  AUSGABE: ${{ inputs.ausgabe }}
 
 jobs:
   rauschen:
@@ -79,9 +85,16 @@ jobs:
         id: lauf
         run: |
           set -euo pipefail
-          python3 -I forschung/quantengeld/hardware_ibm.py --rauschen FakeMarrakesh --s-messen "$RUNNER_TEMP/messung.json" --k "$K"
-          echo "messung=$(gzip -9c "$RUNNER_TEMP/messung.json" | base64 -w0)" >> "$GITHUB_OUTPUT"
-          rm -f "$RUNNER_TEMP/messung.json"
+          if [ "$AUSGABE" = abschnitte ]; then
+            # Je Validator ein eigener Auftrag fuer seinen Abschnitt.
+            python3 -I forschung/quantengeld/hardware_ibm.py --rauschen FakeMarrakesh --s-abschnitte "$RUNNER_TEMP/ab" --k "$K" --v 4
+            echo "messung=$(tar -C "$RUNNER_TEMP/ab" -czf - . | base64 -w0)" >> "$GITHUB_OUTPUT"
+            rm -rf "$RUNNER_TEMP/ab"
+          else
+            python3 -I forschung/quantengeld/hardware_ibm.py --rauschen FakeMarrakesh --s-messen "$RUNNER_TEMP/messung.json" --k "$K"
+            echo "messung=$(gzip -9c "$RUNNER_TEMP/messung.json" | base64 -w0)" >> "$GITHUB_OUTPUT"
+            rm -f "$RUNNER_TEMP/messung.json"
+          fi
 
   messen:
     if: inputs.modus == 'ibm'
@@ -111,9 +124,17 @@ jobs:
           IBM_QUANTUM_BACKEND: ${{ vars.IBM_QUANTUM_BACKEND }}
         run: |
           set -euo pipefail
-          python3 -I forschung/quantengeld/hardware_ibm.py --ibm --s-messen "$RUNNER_TEMP/messung.json" --k "$K"
-          echo "messung=$(gzip -9c "$RUNNER_TEMP/messung.json" | base64 -w0)" >> "$GITHUB_OUTPUT"
-          rm -f "$RUNNER_TEMP/messung.json"
+          if [ "$AUSGABE" = abschnitte ]; then
+            # Je Validator ein eigener Auftrag fuer seinen Abschnitt (im Pilot
+            # alle vom selben Konto -- im Betrieb misst jeder Validator selbst).
+            python3 -I forschung/quantengeld/hardware_ibm.py --ibm --s-abschnitte "$RUNNER_TEMP/ab" --k "$K" --v 4
+            echo "messung=$(tar -C "$RUNNER_TEMP/ab" -czf - . | base64 -w0)" >> "$GITHUB_OUTPUT"
+            rm -rf "$RUNNER_TEMP/ab"
+          else
+            python3 -I forschung/quantengeld/hardware_ibm.py --ibm --s-messen "$RUNNER_TEMP/messung.json" --k "$K"
+            echo "messung=$(gzip -9c "$RUNNER_TEMP/messung.json" | base64 -w0)" >> "$GITHUB_OUTPUT"
+            rm -f "$RUNNER_TEMP/messung.json"
+          fi
 
   pilot:
     needs: [rauschen, messen]
@@ -152,9 +173,18 @@ jobs:
         run: |
           set -euo pipefail
           umask 077
-          printf '%s' "$MESSUNG" | base64 -d | gunzip -c > "$RUNNER_TEMP/m.json"
-          jq -e --argjson n "$((2 * K))" '.n == $n and (.x | length) == $n' "$RUNNER_TEMP/m.json" >/dev/null || { echo "::error::Messung unvollstaendig"; exit 1; }
-          jq -r '"Geraet: \(.wo)  Job: \(.job)"' "$RUNNER_TEMP/m.json"
+          if [ "$AUSGABE" = abschnitte ]; then
+            mkdir -m 700 "$RUNNER_TEMP/ab"
+            printf '%s' "$MESSUNG" | base64 -d | tar -C "$RUNNER_TEMP/ab" --no-same-owner --no-same-permissions -xzf -
+            # Genau die erwarteten Dateien, sonst nichts.
+            [ "$(cd "$RUNNER_TEMP/ab" && ls | sort | tr '\n' ' ')" = "basen.json mess_1.json mess_2.json mess_3.json mess_4.json " ] || { echo "::error::Abschnitte unvollstaendig"; exit 1; }
+            jq -e --argjson n "$((2 * K))" '.n == $n and (.basen | length) == 4 and ([.basen[] | length] | add) == $n' "$RUNNER_TEMP/ab/basen.json" >/dev/null || { echo "::error::Basen unvollstaendig"; exit 1; }
+            jq -r '"Geraet: \(.wo)  Jobs: \(.job)"' "$RUNNER_TEMP/ab/basen.json"
+          else
+            printf '%s' "$MESSUNG" | base64 -d | gunzip -c > "$RUNNER_TEMP/m.json"
+            jq -e --argjson n "$((2 * K))" '.n == $n and (.x | length) == $n' "$RUNNER_TEMP/m.json" >/dev/null || { echo "::error::Messung unvollstaendig"; exit 1; }
+            jq -r '"Geraet: \(.wo)  Job: \(.job)"' "$RUNNER_TEMP/m.json"
+          fi
       - name: Netzlaufzeit zwischen den Knoten
         # Die Knoten lauschen auf 127.0.0.11..14 (vier_knoten_realdb_test.go)
         # und verbinden von ihrer eigenen Adresse aus: netem verzoegert nur
@@ -179,15 +209,20 @@ jobs:
           rtt=$(ping -c 3 -I 127.0.0.12 127.0.0.11 | awk -F'/' '/^rtt/ {print int($5)}')
           [ "${rtt:-0}" -ge "$LATENZ" ] || { echo "::error::Laufzeit wirkt nicht (Rundlauf ${rtt:-?} ms)"; exit 1; }
       - name: Vier Knoten, 3 von 4 -- mit und ohne Ausfall
-        env:
-          AEQUITAS_QS_MESSUNG: ${{ runner.temp }}/m.json
         run: |
           set -euo pipefail
+          if [ "$AUSGABE" = abschnitte ]; then
+            export AEQUITAS_QS_ABSCHNITTE="$RUNNER_TEMP/ab"
+            TESTS='TestVierKnotenQuantenSAbschnitte(Ausfall)?_RealDB$'
+          else
+            export AEQUITAS_QS_MESSUNG="$RUNNER_TEMP/m.json"
+            TESTS='TestVierKnotenQuantenS(Ausfall)?_RealDB$'
+          fi
           set +e
-          go test ./x/humanity/keeper/ -run 'TestVierKnotenQuantenS(Ausfall)?_RealDB$' -v -count=1 -timeout 80m 2>&1 | tee out.txt
+          go test ./x/humanity/keeper/ -run "$TESTS" -v -count=1 -timeout 80m 2>&1 | tee out.txt
           RC=${PIPESTATUS[0]}
           set -e
-          rm -f "$RUNNER_TEMP/m.json"
+          rm -rf "$RUNNER_TEMP/m.json" "$RUNNER_TEMP/ab"
           # Nachvollziehbar: alle Meldungen der Tests (t.Log/t.Fatal samt
           # Folgezeilen) und ihre Ergebnisse -- ohne die Knotenprotokolle.
           awk '/^=== RUN|^ *--- (PASS|FAIL|SKIP)|^(ok|FAIL|PASS)([ \t]|$)/ {print; f=0; next}
@@ -196,7 +231,7 @@ jobs:
                {f=0}' out.txt > ergebnis.txt
           gzip -9 -c out.txt > ausgabe.txt.gz
           {
-            echo "## Quantengeld S: Pilot mit vier Validatoren (Modus ${{ inputs.modus }}, k = $K, Laufzeit zwischen Knoten $LATENZ ms je Richtung)"
+            echo "## Quantengeld S: Pilot mit vier Validatoren (Modus ${{ inputs.modus }}, Ausgabe $AUSGABE, k = $K, Laufzeit zwischen Knoten $LATENZ ms je Richtung)"
             echo
             echo "Commit \`${{ github.sha }}\`, Lauf ${{ github.run_id }}."
             echo
@@ -220,7 +255,7 @@ jobs:
           # letzte 5.000 Zeilen, Zusammenfassung und Artefakt sind von manchen
           # Arbeitsumgebungen aus nicht abrufbar.
           echo "===== Ergebnis der Tests ====="
-          echo "Modus ${{ inputs.modus }}, k = $K, Laufzeit zwischen Knoten $LATENZ ms je Richtung"
+          echo "Modus ${{ inputs.modus }}, Ausgabe $AUSGABE, k = $K, Laufzeit zwischen Knoten $LATENZ ms je Richtung"
           cat ergebnis.txt
           sha256sum ergebnis.txt ausgabe.txt.gz
           echo "===== Ende Ergebnis ====="

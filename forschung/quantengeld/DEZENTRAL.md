@@ -140,7 +140,7 @@ Geheimnis besser, aber zum Einlösen müssen t Validatoren erreichbar sein.
 | A1 | Spezifikation in `s_kette.py`: Ausgabe in Abschnitten, wer was weiß, Missbrauchsfälle | **fertig** (siehe unten) |
 | A2 | Validator-Dienst: eigenen Abschnitt präparieren (Messung von außen, wie heute über eine Datei), Anteile an die anderen verteilen, Stichprobe für die Annahmestellen | **fertig**: A2a Bausteine (9), A2b Dienst (10) |
 | A3 | `hardware_ibm.py --s-abschnitt`, Werkzeug `quanten-s-ausgabe` im Abschnitts-Modus | **Werkzeug fertig** (11); Messung je Abschnitt folgt mit A4 |
-| A4 | Pilot: vier Knoten, je ein eigener Auftrag (im Pilot von einem Konto, das wird benannt) | wir; IBM-Lauf mit Freigabe |
+| A4 | Pilot: vier Knoten, je ein eigener Auftrag (im Pilot von einem Konto, das wird benannt) | **bereit** (12): lokal grün; Läufe auf dem Runner nach dem Merge, IBM mit Freigabe |
 | A5 | Hauptnetz mit einem zweiten Menschen als Validator, wenn möglich bei einem anderen Anbieter | Betreiber |
 | B, C, W-Härtung | wie oben | Forschung; Partner |
 
@@ -367,3 +367,25 @@ Die Fehlerrate der Hardware kommt aus den Stichproben der Stellen.
 
 Die Antworten von `abschnitt` und `oeffnung` dürfen bis 8 MiB groß sein
 (`quantenSAbschnittAntwortMax`), alle übrigen weiter 1 MiB.
+
+## 12. A4: der Pilot im Abschnitts-Modus (18.11.2026)
+
+- **Messung je Abschnitt:** `hardware_ibm.py --s-abschnitte VERZEICHNIS --k K --v V`.
+  - Je Validator setzt es einen **eigenen Auftrag** für dessen Abschnitt ab, in Basen y, die
+    es für die Inhaberin zieht.
+  - Es schreibt `mess_<x>.json` (u, t, y, x, nur für Validator x) und `basen.json` (nur y,
+    für das Werkzeug), beide mit Rechten 0600.
+  - Im Rauschmodell geprüft: 5 Abschnitte, 5 Aufträge.
+- **Vier-Knoten-Test** `TestVierKnotenQuantenSAbschnitte(Ausfall)_RealDB`:
+  - Jeder Knoten bekommt **seine** Messquelle. Im Pilot ist das die Datei aus
+    `AEQUITAS_QS_ABSCHNITTE`, sonst eine erzeugte.
+  - Das Werkzeug läuft im Abschnitts-Modus über echtes HTTP.
+  - Lokal grün, mit und ohne Ausfall eines Knotens vor der ersten Vorlage: Doppelvorlage
+    abgewiesen, ehrliche Vorlage eingelöst, alle lebenden Knoten auf derselben StateRoot.
+- **Workflow** `quanten-s-pilot.yml`: neue Wahl `ausgabe` (`auftrag` | `abschnitte`).
+  - Im Abschnitts-Modus misst der Mess-Job vier Abschnitte in vier Aufträgen.
+  - Der Pilot-Job prüft, dass genau die fünf erwarteten Dateien da sind und die Basen
+    zusammen n ergeben. Danach laufen die Abschnitts-Tests.
+  - **Ehrlich:** Im Pilot kommen die vier Aufträge vom selben Konto und laufen im selben
+    Job. Gezeigt wird der Ablauf. Dass niemand den ganzen Token kennt, gilt erst, wenn
+    jeder Validator mit eigenem Konto selbst misst.
