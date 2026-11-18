@@ -410,8 +410,8 @@ SHA-256:
   | ein Knoten fällt aus | 575–613/min (vorher 1.088–1.142) | 217 (vorher 5) | 22 / 20 |
 
   Die Ersatz-Dienste pendelten bis zu 14-mal zwischen Einspringen und Zurücktreten.
-- **Richtig gelesen zeigen die Zähler einen anderen Engpass: die Burst-Grenze je Absender**,
-  20 Einreichungen je Minute und Validator. Die Grenze bleibt so.
+- **Hypothese danach (mit Versuch 2 widerlegt, siehe unten): Engpass sei die Burst-Grenze
+  je Absender**, 20 Einreichungen je Minute und Validator. Die Grenze bleibt so.
   - Mit Ausfall reichten zwei Dienste je etwa 17–18 Teile/min ein. Bei 32 Stellen je Teil
     sind das die gemessenen rund 1.100 Stellen/min.
   - Paralleles Einreichen verteilte die Arbeit also auf mehrere Budgets. Es war nicht nur
