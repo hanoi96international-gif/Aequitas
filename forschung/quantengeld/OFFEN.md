@@ -200,7 +200,11 @@ In Abschnitt C ist nur noch C6 offen (Konto des Betreibers).
 4. **Vor jeder Freischaltung (W6):**
    - Gutachten ohne offene kritische Punkte (W5).
    - Parameter aus Abschnitt B.
-   - Pilot im Testnetz.
+   - Pilot im Testnetz. **Stand 17.11. abends:**
+     - Im Rauschmodell grün, in voller Größe: k = 5.200, 3 von 4 Validatoren, mit und ohne
+       Ausfall. Offenlegung 950–1.160 Stellen/min (HEUTE.md 3.3d).
+     - Auf dem echten Chip wartet der Lauf auf die Freigabe.
+     - Offen: Server im echten Netz statt Knoten in einem Job.
 
 ## E. Wartet auf dich (Freigaben und Konten)
 
