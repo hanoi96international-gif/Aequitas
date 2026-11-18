@@ -565,6 +565,57 @@ SHA-256 (je im Artefakt `pilot-<Lauf>`, 90 Tage):
     (44347416357) und auf dem Chip `ibm_fez` (44356741223) belegt.
   - Es liegt kein Gutachten vor.
 
+### 3.3f Messfehler senken: Mehrheit aus mehreren Schüssen (18.11.2026)
+
+Auftrag des Betreibers: „Die Fehlerquote muss deutlich gesenkt werden.“ Gemeint ist der
+Fehler bei passender Basis: Die Inhaberin misst in der Basis, in der die Stelle präpariert
+wurde, und bekommt trotzdem den falschen Wert. Auf den Chips lag er bei 0,52–0,79 %
+(3.3d, 3.3e).
+
+**Woher er kommt:**
+- Fast ganz aus der **Auslese**. Die Schaltkreise haben nur 1-Qubit-Gatter (Präparation,
+  Basiswechsel) und werden sofort gemessen.
+- **Die Qubit-Wahl ist schon gut.** Die Übersetzung (Stufe 3) wählt je Schaltkreis die 16
+  Qubits mit dem kleinsten Auslesefehler. Geprüft mit den Kalibrierdaten der Rauschmodelle:
+  Der mittlere Auslesefehler der gewählten Qubits entspricht dem der besten 16 des Chips
+  (`ibm_fez` 0,28 %, `ibm_marrakesh` 0,36 %, `ibm_torino` 0,67 %; `ibm_kingston`
+  0,46 % gegen 0,40 %). Hier ist kaum etwas zu holen.
+
+**Hebel: Wiederholen und Mehrheit** (`hardware_ibm.py`, `s_messen_basen`, `--wiederholen R`,
+Standard 5):
+- Jeder Schaltkreis läuft R-mal. Das sind R Präparationen desselben Zustands, und jede wird
+  in derselben Basis y gemessen. Je Stelle entscheidet die Mehrheit.
+- **Passt die Basis** (y = u), zeigt jeder Schuss t mit Auslesefehler p. Die Mehrheit irrt
+  nur noch mit etwa 10 p³ (bei R = 5).
+- **Passt die Basis nicht** (y ≠ u), ist jeder Schuss unabhängig von t gleichverteilt, die
+  Mehrheit ebenso. Die Inhaberin erfährt über t nicht mehr als mit einem Schuss. In der
+  anderen Basis wird nie gemessen, denn der Auftrag misst jeden Schuss in y.
+- Das geht nur, weil Präparation und Messung **im selben Auftrag** laufen (`DEZENTRAL.md`
+  4). Mit eigenem Empfänger (Weg C) hat die Inhaberin ein Qubit und eine Messung.
+
+**Gemessen im Rauschmodell** (je Lauf 4.000 Stellen, derselbe Abschnitt, `--s-abschnitt`):
+
+| Rauschmodell | ein Schuss (R = 1) | Mehrheit aus 3 | Mehrheit aus 5 |
+|---|---|---|---|
+| `ibm_fez` | 10/1.995 (0,50 %) | 1/2.009 (0,05 %) | **0/1.974** |
+| `ibm_marrakesh` | 6/2.002 (0,30 %) | 0/2.031 | **0/1.967** |
+| `ibm_torino` | 11/2.021 (0,54 %) | 0/1.997 | **0/2.022** |
+
+**Gegenprobe zur Sicherheit:** Bei falscher Basis stimmt x in jedem Lauf an 48,5–51,2 % der
+Stellen mit t überein (je rund 2.000 Stellen, |z| ≤ 1,33), mit Mehrheit wie ohne. Das ist
+Zufall, wie verlangt. Der Selbsttest zählt es zusätzlich exakt: Gleichverteilte Schüsse
+ergeben eine gleichverteilte Mehrheit.
+
+**Ehrlich dazu:**
+- Im Rauschmodell sind die Auslesefehler der Schüsse unabhängig voneinander. Auf echter
+  Hardware können sie zusammenhängen, etwa bei einem schlecht kalibrierten Qubit. Dann
+  bleibt ein Rest. Belegt wird es erst auf dem Chip (Pilot mit Freigabe `quantenhardware`).
+- Jede Messung gibt beide Zahlen aus: Fehler mit Mehrheit und nur mit dem ersten Schuss.
+- Kosten: R-mal so viele Schüsse; die Zahl der Schaltkreise und Aufträge bleibt gleich.
+- Die Toleranz der Kette (4 %) bleibt, wie sie ist. Liegt der Fehler auf dem Chip dauerhaft
+  weit darunter, könnte eine kleinere Toleranz die Prüfgröße k senken (Tabelle
+  `quantenWKTabelle`). Das wäre eine Änderung der Kettenregeln und ein eigener Schritt.
+
 ### 3.4 Bargeld-Verhalten ohne Quanten (Offline-Bargeld)
 
 Was Menschen sich von Quantengeld wünschen, ist meist offline zu zahlen, wie mit
