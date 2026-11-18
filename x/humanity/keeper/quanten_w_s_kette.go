@@ -535,7 +535,10 @@ func (cs *ChainState) quantenWSTokenAnsichtLocked(ctx context.Context, reg *quan
 		return nil
 	}
 	t := e.token
-	ansicht := map[string]interface{}{"k": k, "art": "s", "n": t.N, "t": t.T, "tol": t.Tol, "inhaber": t.Inhaber,
+	// v: Zahl der Validatoren, bei denen das Geheimnis liegt (t davon noetig).
+	// Nur Ansicht -- damit sieht jeder, wem er vertraut; bei v = 1 kennt ein
+	// einziger Validator das ganze Geheimnis (Pruefauftrag W2, S8).
+	ansicht := map[string]interface{}{"k": k, "art": "s", "n": t.N, "t": t.T, "v": t.NVal, "tol": t.Tol, "inhaber": t.Inhaber,
 		"stellen": e.Stellen, "gebunden": t.D != nil, "gewaehlt": t.C != -1, "fehl": t.Fehl,
 		"wert_mikro": quantenWert(e.Anteile, cs.quantenWMikroLocked(ctx, quantenWTopfAddr), reg.summeAnteile())}
 	if a := t.Anmeldung; a != nil {

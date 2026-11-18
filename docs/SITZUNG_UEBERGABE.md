@@ -9,7 +9,10 @@ dezentrales Quantengeld“.
 
 **Zuletzt (Sitzung „Weiter“, 18.11. ~11:00 UTC):**
 - **C1 läuft mit #578** (Deploy #92, 10:33 UTC grün).
-- **PR „Prüfauftrag auf Stand 18.11.“ (dieser Zweig):**
+- **Offen:** PR „S-Ansicht nennt v“ (dieser Zweig) und App #85. Die App zeigt bei Note und
+  Token „t von v Validatoren“, bei v = 1 einen Hinweis: ein Validator kennt das ganze
+  Geheimnis. Nach beiden Merges braucht es den C1-Deploy und ein App-Release (Betreiber).
+- **#579 gemergt (Prüfauftrag auf Stand 18.11.):**
   - `docs/QUANTENGELD_PRUEFAUFTRAG.md` hat einen Abschnitt „Vorab“: W und S laufen seit
     17.11. 17:00 UTC im Hauptnetz, vor dem Gutachten.
   - Neue Fragen: Betrieb mit einem Validator (W2, S8), Offenlegung durch Ersatz und
