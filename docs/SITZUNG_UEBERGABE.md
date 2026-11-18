@@ -2,18 +2,20 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 18.11.2026 ~20:50 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
+Stand: 18.11.2026 ~22:00 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
 Repos); davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18:30 UTC Sitzung
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
-**Zuletzt (Sitzung „Weiter“, 18.11. ~20:50 UTC):**
+**Zuletzt (Sitzung „Weiter“, 18.11. ~22:00 UTC):**
+- **#591 gemergt (69ec4382, A5-Werkzeug).** C1 braucht den Deploy (Freigabe `produktion`);
+  für C1 ändert sich nichts am Knoten (nur Skripte, Doku, Geräteangabe in `hardware_ibm.py`).
 - **C1 läuft mit #590** (Deploy #100 [44377653613](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44377653613), 20:12 UTC grün).
 - **Chip-Pilot 2 % / k = 1.760 grün** ([44388535029](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44388535029),
   `HEUTE.md` 3.3g): 0/3.497 Fehler mit Mehrheit (ein Schuss: 24), beide Tests grün, auch
   mit Ausfall. Befund: Jeder Auftrag wählt seinen Chip selbst; die Messung nannte nur
   den letzten (`ibm_fez` und `ibm_marrakesh` belegt). Jetzt steht das Gerät in jeder Zeile.
-- **PR (dieser Stand, A5-Werkzeug für den Server eines Validators, `DEZENTRAL.md` 14):**
+- **#591 (A5-Werkzeug für den Server eines Validators, `DEZENTRAL.md` 14):**
   `deploy/validator/quanten-einrichten.sh`, `quanten-messen.sh`,
   `docker-compose.quanten.yml`, Test `scripts/test_quanten_messen_skript.sh` (in CI),
   Anleitung `docs/VALIDATOR_EINRICHTEN.md` „Quantengeld“. Danach hängt A5 nur noch am
