@@ -139,7 +139,7 @@ Geheimnis besser, aber zum Einlösen müssen t Validatoren erreichbar sein.
 |---|---|---|
 | A1 | Spezifikation in `s_kette.py`: Ausgabe in Abschnitten, wer was weiß, Missbrauchsfälle | **fertig** (siehe unten) |
 | A2 | Validator-Dienst: eigenen Abschnitt präparieren (Messung von außen, wie heute über eine Datei), Anteile an die anderen verteilen, Stichprobe für die Annahmestellen | **fertig**: A2a Bausteine (9), A2b Dienst (10) |
-| A3 | `hardware_ibm.py --s-abschnitt`, Werkzeug `quanten-s-ausgabe` im Abschnitts-Modus | wir |
+| A3 | `hardware_ibm.py --s-abschnitt`, Werkzeug `quanten-s-ausgabe` im Abschnitts-Modus | **Werkzeug fertig** (11); Messung je Abschnitt folgt mit A4 |
 | A4 | Pilot: vier Knoten, je ein eigener Auftrag (im Pilot von einem Konto, das wird benannt) | wir; IBM-Lauf mit Freigabe |
 | A5 | Hauptnetz mit einem zweiten Menschen als Validator, wenn möglich bei einem anderen Anbieter | Betreiber |
 | B, C, W-Härtung | wie oben | Forschung; Partner |
@@ -333,3 +333,37 @@ beim Validator und einen neuen Weg der Bestätigung.
 **Grenze:** Ein Token mit sehr vielen Stellen (über etwa 14.000) passt mit allen Blättern und
 Bündeln nicht mehr in den Rumpf der Bestätigung (2 MiB). Er wird dann abgewiesen
 (fail-closed); die Grenze bleibt, wie sie ist.
+
+## 11. A3: das Werkzeug im Abschnitts-Modus (18.11.2026)
+
+`aequitasd quanten-s-ausgabe` erkennt die Eingabe. Steht dort `basen`, also die Messbasen
+der Inhaberin je Abschnitt (`QuantenSBasen`), läuft der Abschnitts-Modus
+(`quanten_s_ausgabe_abschnitte.go`), sonst wie bisher die Messung aller Stellen.
+
+Im Abschnitts-Modus **sieht das Werkzeug nie Basen u und Werte t der Ausgabe**. Es spielt
+Ausgeber, Inhaberin und beide Annahmestellen:
+1. Es holt die Schlüssel der Validatoren (`GET /api/quanten-w/validator/schluessel`) und
+   prüft jeden gegen seine Adresse. Danach schickt es jedem Validator seinen Auftrag.
+2. Jede Antwort muss vom Validator unterschrieben sein und zum Abschnitt passen. x der
+   Inhaberin wird entschlüsselt.
+3. Aus allen Blättern entsteht die Wurzel. Jede Stelle lädt ihre Stichprobe selbst.
+4. Es folgen die Bestätigungen mit den Bündeln.
+5. Danach läuft alles wie beim Weg mit einem Auftrag (`quantenSAusgabeAbschluss`, nur
+   herausgelöst, sonst unverändert): Ausgabe, Bindung, Wahl, Doppelvorlage, ehrliche
+   Vorlage.
+
+Die Fehlerrate der Hardware kommt aus den Stichproben der Stellen.
+
+**Geprüft** (in-process gegen den echten Dienst, durch JSON):
+- *Gutfall* für jede Stelle b und Maske z: Die Doppelvorlage wird abgewiesen, die ehrliche
+  Vorlage eingelöst, der Wert kommt zurück. Beide Knoten haben dasselbe Register, und
+  jeder Validator misst genau einmal.
+- *Fälschung durch einen Validator* (fremder Schlüssel, fremd unterschriebene Antwort,
+  vertauschte Öffnung): Das Werkzeug bricht ab, bevor etwas auf die Kette geht.
+- *Unpassende Basen*: Das Werkzeug fragt keinen Validator, und niemand misst.
+- *Gegenprobe:* 3 Mutationen rot.
+  - Eine überlebte zunächst, weil der Validator die Mindestgröße ohnehin noch einmal prüft.
+  - Danach wurde der Test geschärft: Das Werkzeug darf dann gar nicht erst ins Netz gehen.
+
+Die Antworten von `abschnitt` und `oeffnung` dürfen bis 8 MiB groß sein
+(`quantenSAbschnittAntwortMax`), alle übrigen weiter 1 MiB.
