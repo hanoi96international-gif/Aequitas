@@ -1300,7 +1300,11 @@ func (d *quantenWDienst) teilOffenlegen(ctx context.Context, K string, e *quante
 		if einreichen(teil) == nil {
 			d.zaehler.eingereicht.Add(1)
 			d.zaehler.restGenutzt.Add(1)
-			d.restMerken(K, index, ab+len(teil), r.stellen[len(teil):], r.offen[len(teil):])
+			if quantenWRestLohnt(len(teil), len(r.offen)-len(teil)) {
+				d.restMerken(K, index, ab+len(teil), r.stellen[len(teil):], r.offen[len(teil):])
+			} else {
+				d.restMerken(K, index, ab+len(teil), nil, nil) // vergessen
+			}
 			return true
 		}
 		d.zaehler.abgewiesen.Add(1)
@@ -1316,7 +1320,11 @@ func (d *quantenWDienst) teilOffenlegen(ctx context.Context, K string, e *quante
 		teil := quantenWTeilKuerzen(offen)
 		if einreichen(teil) == nil {
 			d.zaehler.eingereicht.Add(1)
-			d.restMerken(K, index, ab+len(teil), eigen.Stellen[len(teil):], offen[len(teil):])
+			if quantenWRestLohnt(len(teil), len(offen)-len(teil)) {
+				d.restMerken(K, index, ab+len(teil), eigen.Stellen[len(teil):], offen[len(teil):])
+			} else {
+				d.restMerken(K, index, ab+len(teil), nil, nil) // vergessen
+			}
 			return true
 		}
 		d.zaehler.abgewiesen.Add(1)
@@ -1368,19 +1376,44 @@ func (d *quantenWDienst) restNehmen(K string, index, ab int, stellen []int) (qua
 const quantenWTeilRumpfBudget = zumLeiterRumpfHoechstens - 8<<10
 
 // quantenWTeilKuerzen: haelt einen Teil unter quantenWTeilRumpfBudget, indem
-// er von hinten gekuerzt wird (halbieren, mindestens eine Stelle). Die Kette
-// nimmt Teile mit 1 bis quantenWOffenTeil Stellen ab a.Offen; der naechste
-// Teil beginnt dort, wo dieser endet. Keine Grenze wird gelockert, keine
-// Regel der Kette geaendert.
+// er von hinten gekuerzt wird -- auf den LAENGSTEN Anfang, der passt
+// (binaere Suche, mindestens eine Stelle). Die Kette nimmt Teile mit 1 bis
+// quantenWOffenTeil Stellen ab a.Offen; der naechste Teil beginnt dort, wo
+// dieser endet. Keine Grenze wird gelockert, keine Regel der Kette geaendert.
+//
+// Befund 18.11.2026 (Pilot, Zaehler je Dienst): Der Engpass der Offenlegung
+// ist die Burst-Grenze je Absender (20 Einreichungen je Minute und
+// Validator). Bisher wurde ein zu grosser Teil halbiert (64 -> 32 Stellen bei
+// 3 von 4, Tiefe 14), obwohl deutlich mehr passt; jede Einreichung traegt
+// jetzt so viele Stellen, wie das Budget erlaubt.
 func quantenWTeilKuerzen(offen []QuantenWOffen) []QuantenWOffen {
-	for len(offen) > 1 {
-		roh, err := json.Marshal(offen)
-		if err == nil && len(roh) <= quantenWTeilRumpfBudget {
-			break
-		}
-		offen = offen[:len(offen)/2]
+	passt := func(n int) bool {
+		roh, err := json.Marshal(offen[:n])
+		return err == nil && len(roh) <= quantenWTeilRumpfBudget
 	}
-	return offen
+	if len(offen) <= 1 || passt(len(offen)) {
+		return offen
+	}
+	// Invariante: lo passt (oder ist 1, die Untergrenze), hi passt nicht.
+	lo, hi := 1, len(offen)
+	for hi-lo > 1 {
+		mitte := (lo + hi) / 2
+		if passt(mitte) {
+			lo = mitte
+		} else {
+			hi = mitte
+		}
+	}
+	return offen[:lo]
+}
+
+// quantenWRestLohnt: Einen Rest fuer den naechsten Teil merken, nur wenn er
+// mindestens so viele Stellen hat wie der gerade eingereichte Teil. Sonst
+// traegt eine Einreichung nur fuer den Rest weniger als ein frisch
+// zugeschnittener Teil -- und Einreichungen sind das knappe Gut (20 je Minute),
+// nicht Abfragen bei den Nachbarn (30 je Minute und Absender).
+func quantenWRestLohnt(teil, rest int) bool {
+	return rest > 0 && rest >= teil
 }
 
 func (d *quantenWDienst) vergessen(K string) {

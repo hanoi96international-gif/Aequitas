@@ -77,6 +77,52 @@ func TestQuantenWTeilKuerzen_PasstImmer(t *testing.T) {
 	}
 }
 
+// Der gekuerzte Teil ist der LAENGSTE Anfang, der ins Budget passt -- eine
+// Stelle mehr passt nicht mehr. Befund 18.11.2026: halbieren verschenkte bei
+// 3 von 4 (Tiefe 14) gut ein Drittel jeder Einreichung, und Einreichungen
+// sind durch die Burst-Grenze je Absender der Engpass.
+func TestQuantenWTeilKuerzen_Laengster(t *testing.T) {
+	budget := func(o []QuantenWOffen) int {
+		roh, err := json.Marshal(o)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return len(roh)
+	}
+	for _, tc := range []struct{ stellen, t, tiefe int }{
+		{quantenWOffenTeil, quantenWTMax, 14}, {quantenWOffenTeil, 3, 14}, {quantenWOffenTeil, 4, 13},
+		{quantenWOffenTeil, 8, 14}, {40, 3, 14},
+	} {
+		voll := qwTeil(tc.stellen, tc.t, tc.tiefe)
+		k := quantenWTeilKuerzen(voll)
+		if budget(k) > quantenWTeilRumpfBudget {
+			t.Fatalf("%+v: %d Stellen passen nicht", tc, len(k))
+		}
+		if len(k) < len(voll) && budget(voll[:len(k)+1]) <= quantenWTeilRumpfBudget {
+			t.Fatalf("%+v: %d Stellen -- eine mehr haette gepasst", tc, len(k))
+		}
+		t.Logf("%+v: %d von %d Stellen je Einreichung", tc, len(k), len(voll))
+	}
+	// Bei 3 von 4 (Tiefe 14) traegt eine Einreichung deutlich mehr als die
+	// Haelfte -- der Gewinn, um den es geht.
+	if k := quantenWTeilKuerzen(qwTeil(quantenWOffenTeil, 3, 14)); len(k) <= quantenWOffenTeil/2 {
+		t.Fatalf("3 von 4, Tiefe 14: nur %d Stellen (halbieren gaebe %d)", len(k), quantenWOffenTeil/2)
+	}
+}
+
+// Ein Rest wird nur gemerkt, wenn eine Einreichung nur fuer ihn mindestens so
+// viel traegt wie ein frisch zugeschnittener Teil.
+func TestQuantenWRestLohnt(t *testing.T) {
+	for _, tc := range []struct {
+		teil, rest int
+		lohnt      bool
+	}{{47, 17, false}, {32, 32, true}, {20, 44, true}, {64, 0, false}, {1, 0, false}, {10, 11, true}} {
+		if quantenWRestLohnt(tc.teil, tc.rest) != tc.lohnt {
+			t.Fatalf("Teil %d, Rest %d: lohnt %v erwartet", tc.teil, tc.rest, tc.lohnt)
+		}
+	}
+}
+
 // Der Rest eines gekuerzten Teils wird nur fuer GENAU den naechsten Teil
 // desselben Versuchs mit denselben Positionen wiederverwendet; alles andere
 // (anderer Versuch, andere Startstelle, andere Stichprobe nach einer neuen
