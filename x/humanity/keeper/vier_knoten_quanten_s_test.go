@@ -222,6 +222,14 @@ func qsVierKnoten(t *testing.T, ausfall bool) {
 		t.Fatalf("Ergebnis: %+v", erg)
 	}
 
+	// Was jeder Validator-Dienst getan hat (nur Zaehler): zeigt, ob sich
+	// Zustaendiger und Ersatz gegenseitig behindert haben.
+	for i, d := range dienste {
+		z := d.Zaehlerstand()
+		t.Logf("Dienst %d%s: eingereicht %d, abgewiesen %d, eingesprungen %d, Nachbarabfragen %d, Rest genutzt %d",
+			i, map[bool]string{true: " (ausgefallen)", false: ""}[netz.ks[i].aus.Load()],
+			z["eingereicht"], z["abgewiesen"], z["eingesprungen"], z["nachbar_abfragen"], z["rest_genutzt"])
+	}
 	if ausfall && (weg == nil || !weg.aus.Load()) {
 		t.Fatal("der Ausfall ist nicht eingetreten")
 	}

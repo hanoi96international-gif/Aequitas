@@ -685,6 +685,14 @@ func TestQuantenWDienst_Staffel(t *testing.T) {
 		if w.anfrage(w.cs) != nil {
 			t.Fatalf("Rang 1 hat nach dem Einspringen nicht weitergemacht (Offen %d)", w.anfrage(w.cs).Offen)
 		}
+		// Die Zaehler halten es fest: einmal eingesprungen, drei Teile
+		// eingereicht, nichts abgewiesen; Rang 2 hat nichts getan.
+		if z := rang1.Zaehlerstand(); z["eingesprungen"] != 1 || z["eingereicht"] != 3 || z["abgewiesen"] != 0 {
+			t.Fatalf("Zaehler Rang 1: %v", z)
+		}
+		if z := rang2.Zaehlerstand(); z["eingesprungen"] != 0 || z["eingereicht"] != 0 {
+			t.Fatalf("Zaehler Rang 2: %v", z)
+		}
 		// Wartezeiten und Einspringen vergisst der naechste Takt.
 		q.takt()
 		for x, d := range q.d {
