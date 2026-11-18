@@ -621,6 +621,19 @@ Aufträge, Mehrheit aus 5):
 - Je Auftrag mit Mehrheit (Ausgabe 1, dann 2; je Validator 1–4): 0, 4, 0, 0 und 0, 0, 0, 0.
   Mit einem Schuss: 11, 11, 11, 8 und 6, 14, 12, 9.
 
+**Vier Knoten mit diesen Messungen, beide Tests grün:**
+
+| Lauf | Test | Fehler in den Stichproben | Doppelvorlage | ehrliche Vorlage | danach |
+|---|---|---|---|---|---|
+| Rauschmodell 44367279629 | alle vier (692,8 s) | 0/5.125 | 5m09s, 1.008/min, **abgewiesen** | 5m58s, 872/min, **eingelöst** | 4 Knoten gleich, Höhe 6494 |
+| ebenda | ein Knoten fällt aus (744,0 s) | 0/5.135 | 5m53s, 884/min, **abgewiesen** | 5m34s, 933/min, **eingelöst** | 3 Knoten gleich, Höhe 5368 |
+| **Chip `ibm_fez`** 44367782047 | alle vier (815,4 s) | 4/5.221 | 5m05s, 1.024/min, **abgewiesen** | 8m08s, 640/min, **eingelöst** | 4 Knoten gleich, Höhe 8004 |
+| ebenda | ein Knoten fällt aus (592,5 s) | 0/5.172 | 5m15s, 992/min, **abgewiesen** | 4m17s, 1.214/min, **eingelöst** | 3 Knoten gleich, Höhe 4360 |
+
+SHA-256: Lauf 44367279629 `ergebnis.txt` `a83e2c24…cf9ef0`, `ausgabe.txt.gz`
+`57b6c234…c273d0`; Lauf 44367782047 `ergebnis.txt` `a55740d0…902281`, `ausgabe.txt.gz`
+`ea5a0fa6…777469` (je im Artefakt `pilot-<Lauf>`).
+
 **Ehrlich dazu:**
 - Im Rauschmodell sind die Auslesefehler der Schüsse unabhängig voneinander. Auf echter
   Hardware hängen sie teils zusammen (siehe oben), darum bleibt ein kleiner Rest.
@@ -684,6 +697,22 @@ von 10⁹ Tokens darf scheitern. Ein Token kann auf zwei Arten scheitern:
   (Doppelvorlage abgewiesen, ehrliche eingelöst), bei 4 % lehnt es dieselbe Größe ab.
 - Eine Toleranz, die die Kette nicht kennt, wird abgewiesen.
 - Gegenprobe: 7 Mutationen, alle rot. `go test -race` grün.
+
+**Pilot mit 2 % und k = 1.760** (Lauf
+[44372154798](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44372154798),
+Rauschmodell, Mehrheit aus 5, je Validator ein eigener Auftrag, 3.520 Qubits je Token statt
+10.400), beide Tests grün:
+
+| Test | Fehler in den Stichproben | Doppelvorlage | ehrliche Vorlage | Werkzeug | danach |
+|---|---|---|---|---|---|
+| alle vier (246,1 s) | 0/1.739 | 1m23s, 1.272/min, **abgewiesen** | 2m20s, 756/min, **eingelöst** | 3m46s | 4 Knoten gleich, Höhe 2120 |
+| ein Knoten fällt aus (238,0 s) | 0/1.802 | 1m36s, 1.101/min, **abgewiesen** | 2m01s, 872/min, **eingelöst** | 3m43s | 3 Knoten gleich, Höhe 1577 |
+
+- Ein Token braucht **ein Drittel der Qubits**, und das Werkzeug ist in knapp 4 statt 11–13
+  Minuten durch. Der ganze Pilot lief 8 statt rund 24 Minuten.
+- Die exakte Probe lief in beiden Tests mit und ließ die Ausgabe zu.
+- SHA-256: `ergebnis.txt` `ca3c511b…e88a1b9`, `ausgabe.txt.gz` `3b79038c…8fb59929`.
+- Auf dem Chip ist 2 % noch nicht gelaufen (Freigabe `quantenhardware`).
 
 ### 3.4 Bargeld-Verhalten ohne Quanten (Offline-Bargeld)
 

@@ -47,11 +47,16 @@ dezentrales Quantengeld“.
     0,52–0,68 %). **A4 fertig.** Auffällig: im Test „alle vier“ 192 von 392 Einreichungen
     abgewiesen (Doppelarbeit, nichts falsch verbucht), 772–845 Stellen/min.
   - **#589 gemergt** (f8736ffb, nur Doku: IBM-Nachlauf grün, A4 fertig).
+  - **Auftrag 18:40 UTC: „Es muss zu 99,9999999 Prozent safe sein.“** Im selben PR #590:
+    exakte Probe der ehrlichen Vorlage vor jeder Ausgabe (`quantenSEhrlichBesteht`, beide
+    Stellen, jede Toleranz), Toleranz wählbar (`--toleranz`; 2 % → k = 1.760). Fälschung
+    bleibt ≤ 2⁻⁴⁰. Pilot 2 % / k 1.760 im Rauschmodell grün (`HEUTE.md` 3.3g).
   - **Auftrag 18:00 UTC: „Die Fehlerquote muss deutlich gesenkt werden.“** PR (dieser Stand):
     `hardware_ibm.py --wiederholen R` (Standard 5): je Stelle R Schüsse in derselben Basis y,
     die Mehrheit entscheidet. Rauschmodell: ein Schuss 0,30–0,54 %, Mehrheit aus 5 je
     0/≈2.000. Bei falscher Basis bleibt x Zufall (geprüft). Die Qubit-Wahl war schon
-    optimal (`HEUTE.md` 3.3f). Danach: Pilot im Rauschmodell und auf dem Chip (Freigabe).
+    optimal (`HEUTE.md` 3.3f). Chip `ibm_fez`: 4/10.393 statt 82/10.393 (0,04 % statt
+    0,79 %); Vier-Knoten-Pilot im Rauschmodell und auf dem Chip grün, auch mit Ausfall.
   - **Nächste Schritte:** A5 (zweiter Mensch als Validator mit eigenem Server und
     Quantenkonto) ist Sache des Betreibers. Zu beobachten: Doppelarbeit beim Offenlegen
     (Zähler „abgewiesen“), falls die Rate im Betrieb knapp wird.
