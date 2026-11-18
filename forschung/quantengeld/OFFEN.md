@@ -218,6 +218,16 @@ In Abschnitt C ist nur noch C6 offen (Konto des Betreibers).
        schnell und braucht 38 % weniger Einreichungen.
      - Der Engpass ist die Abfolge je Teil, nicht die Laufzeit und nicht die Burst-Grenze;
        beides ist gemessen (HEUTE.md 3.3d).
+     - **Befund 18.11. (aus dem Code, Prüfauftrag W8):**
+       - Falsche Anteile kann kein Validator unterbringen: Ein solcher Teil wird als Ganzes
+         abgewiesen, nie als Fehler gezählt.
+       - v − t + 1 Validatoren können aber durch Zurückhalten blockieren. Bei S verzögert
+         das nur, der Token bleibt.
+       - Bei W kann es die **letzte** Einlösung einer Note zunichtemachen: Die Stellen sind
+         gemessen, die Note ist danach erschöpft, und ihr Wert geht an das Grundeinkommen.
+       - Ein Ausweg ohne Fälschungsweg ist offen, zum Beispiel ein Pfand der Validatoren.
+     - **Restlücke Register je Zeile** (Prüfauftrag W7): Eine Zeile in der Tabelle ohne
+       Gegenstück im Speicher fiele erst nach einem Neustart als StateRoot-Abweichung auf.
      - Offen: Server im echten Netz statt Knoten in einem Job (braucht Server); Gutachten.
 
 ## E. Wartet auf dich (Freigaben und Konten)

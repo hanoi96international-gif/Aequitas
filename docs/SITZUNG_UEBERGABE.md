@@ -9,6 +9,12 @@ dezentrales Quantengeld“.
 
 **Zuletzt (Sitzung „Weiter“, 18.11. ~11:00 UTC):**
 - **C1 läuft mit #578** (Deploy #92, 10:33 UTC grün).
+- **PR „Eigene Antworten W7/W8“ (dieser Zweig, nur Doku):**
+  - Falsche Anteile weist die Kette als Ganzes ab.
+  - v − t + 1 Validatoren können blockieren. Bei W kann das die letzte Einlösung
+    zunichtemachen; der Wert geht dann ans Grundeinkommen.
+  - Restlücke beim Register je Zeile.
+  - Im Prüfauftrag und in `OFFEN.md` D.4.
 - **#580 und App #85 gemergt.** Die App zeigt bei Note und Token „t von v Validatoren“, bei
   v = 1 einen Hinweis: ein Validator kennt das ganze Geheimnis.
   - Wirksam erst mit dem C1-Deploy von #580 und einem App-Release; beides gibt der
