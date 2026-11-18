@@ -137,7 +137,7 @@ Geheimnis besser, aber zum Einlösen müssen t Validatoren erreichbar sein.
 
 | Abschnitt | Was | Wer |
 |---|---|---|
-| A1 | Spezifikation in `s_kette.py`: Ausgabe in Abschnitten, wer was weiß, Missbrauchsfälle, Prüfvektor | wir |
+| A1 | Spezifikation in `s_kette.py`: Ausgabe in Abschnitten, wer was weiß, Missbrauchsfälle | **fertig** (siehe unten) |
 | A2 | Validator-Dienst: eigenen Abschnitt präparieren (Messung von außen, wie heute über eine Datei), Anteile an die anderen verteilen, Stichprobe für die Annahmestellen | wir |
 | A3 | `hardware_ibm.py --s-abschnitt`, Werkzeug `quanten-s-ausgabe` im Abschnitts-Modus | wir |
 | A4 | Pilot: vier Knoten, je ein eigener Auftrag (im Pilot von einem Konto, das wird benannt) | wir; IBM-Lauf mit Freigabe |
@@ -147,3 +147,31 @@ Geheimnis besser, aber zum Einlösen müssen t Validatoren erreichbar sein.
 Die Kette ändert sich in A1 bis A4 nicht. Geändert werden die Ausgabe außerhalb der Kette
 und der Dienst der Validatoren. Jede Änderung am Dienst bekommt eine eigene
 Sicherheitsprüfung.
+
+## 7. A1: die Spezifikation (fertig, 18.11.2026)
+
+In `s_kette.py` stehen `abschnitte`, `Praeparator`, `AusgabeAbschnitte` und
+`fehler_je_abschnitt`. Der Selbsttest (Abschnitt 5) zeigt:
+
+- **Gutfall 3 von 4:** Die Annahmestellen laden ihre Stichproben dezentral aus Anteilen von
+  je drei Validatoren und prüfen sie gegen die Wurzel. Die ehrliche Vorlage besteht, die
+  Doppelvorlage fällt durch.
+- **Wer was weiß:**
+  - Jede Absprache von t − 1 Validatoren kennt genau ihre eigenen Abschnitte, also den
+    Anteil (t − 1)/v. Das ist die Annahme der Tabelle.
+  - Ab t Validatoren lässt sich alles zusammensetzen; t − 1 Anteile ergeben den Wert nicht.
+- **Missbrauch in voller Größe** (k = 5.200, 3 von 4, vier verschiedene Absprachen):
+  - Zwei Validatoren verraten der Inhaberin ihre Abschnitte, den Rest misst sie nach
+    Breidbart. Sie kommt an keiner zweiten Stelle durch.
+  - **Gegenprobe:** Wer den ganzen Token kennt, wie bei der Ausgabe mit einem Auftrag,
+    kommt an beiden Stellen durch. Genau diese Lücke schließen die Abschnitte.
+- **Störung zuordenbar:** Meldet ein Validator der ehrlichen Inhaberin falsche x, fällt sie
+  durch. Die Fehler liegen dann alle in seinem Abschnitt (`fehler_je_abschnitt`).
+- **Fail-closed:** Es gibt keine zweite Messung und keine Basen für fremde Stellen, die
+  Zahl der Basen muss stimmen, und jeder Validator braucht seinen eigenen Zufall.
+- **Gegenprobe der Tests:** 5 Mutationen (Wissen schon ab t − 1, zweite Messung erlaubt,
+  gleicher Zufall, Zuordnung über die falsche Basis, Angriff mit ganzem Wissen) machen
+  den Test rot.
+
+Die Kette bleibt unverändert. Der Prüfvektor für den Knoten (`vektor()`) ist derselbe,
+weil Wurzel, Anteile und Offenlegung dieselbe Form haben.
