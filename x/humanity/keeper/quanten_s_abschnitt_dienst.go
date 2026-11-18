@@ -41,6 +41,7 @@ import (
 	"sync"
 	"time"
 
+	ethcrypto "github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/crypto/ecies"
 )
 
@@ -762,6 +763,19 @@ func (a *APIServer) handleQuantenSAbschnitt(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	json.NewEncoder(w).Encode(out)
+}
+
+// handleQuantenSSchluessel: der oeffentliche Schluessel dieses Validators
+// (fuer die Buendel an ihn). Wer ihn abruft, prueft ihn gegen die Adresse
+// (quantenSSchluesselPruefen) -- ein falscher Schluessel faellt dort auf.
+func (a *APIServer) handleQuantenSSchluessel(w http.ResponseWriter, r *http.Request) {
+	writeJSONCORS(w)
+	d := a.state.quantenWDienstJetzt()
+	if d == nil || !quantenWAktiv(time.Now().Unix()) {
+		jsonError(w, "quantum money validator service not active", http.StatusConflict)
+		return
+	}
+	json.NewEncoder(w).Encode(map[string]string{"validator": d.adresse, "schluessel": hex.EncodeToString(ethcrypto.FromECDSAPub(&d.key.PublicKey))})
 }
 
 func (a *APIServer) handleQuantenSOeffnung(w http.ResponseWriter, r *http.Request) {

@@ -22,6 +22,8 @@ dezentrales Quantengeld“.
   - **#585 gemergt (A2b Dienst):** Endpunkte `abschnitt` und `oeffnung`, Bestätigung
     mit Bündeln, Messquelle `AEQUITAS_QS_MESSQUELLE`. Der Ende-zu-Ende-Test löst über die
     zusammengesetzten Anteile ein (`DEZENTRAL.md` 10).
+  - **PR „A3 Werkzeug im Abschnitts-Modus“ (dieser Zweig):** Eingabe `basen` →
+    Abschnitts-Modus. Endpunkt `schluessel`, Tests in-process (`DEZENTRAL.md` 11).
   - **C1-Deploy von #585 nötig, bevor C1 Abschnitte präpariert.** Ohne
     `AEQUITAS_QS_MESSQUELLE` weist C1 jeden Abschnitts-Auftrag ab, das ist die Vorgabe.
   - **Nächste Schritte:**

@@ -54,8 +54,11 @@ import (
 
 const (
 	quantenSAusgabeAntwortMax = 1 << 20 // Antwort des Knotens
-	quantenSAusgabeMessMax    = 1 << 20 // Messdatei
-	quantenSAusgabeVersuche   = 8       // je Anfrage bei 429/503/Netzfehler
+	// Antwort auf einen Abschnitts-Auftrag: Blaetter und je Validator ein
+	// Buendel (bis 16.384 Stellen, als Chiffrat in Hex).
+	quantenSAbschnittAntwortMax = 8 << 20
+	quantenSAusgabeMessMax      = 1 << 20 // Messdatei
+	quantenSAusgabeVersuche     = 8       // je Anfrage bei 429/503/Netzfehler
 )
 
 // QuantenSMessung: was der IBM-Lauf liefert (hardware_ibm.py --s-messen).
@@ -322,9 +325,45 @@ func quantenSAusgabeLauf(ctx context.Context, a QuantenSAusgabeAuftrag, validato
 		}
 		bestaetigungen = append(bestaetigungen, sig)
 	}
-	q := QuantenWAngaben{K: K, N: m.N, T: t, Wurzel: wurzel, Validatoren: validatoren, Bestaetigungen: bestaetigungen,
+	return quantenSAusgabeAbschluss(ctx, a, netz, log, quantenSVorbereitet{K: K, N: m.N, T: t, KJeStelle: k, Validatoren: validatoren,
+		Bestaetigungen: bestaetigungen, Wurzel: wurzel, ProbenHex: probenHex, Probe: probe, Stellen: stellen, StellenKey: stellenKey,
+		Ausgeber: ausgeber, Inhaber: inhaber, InhaberKey: inhaberKey, B: b, Z: z, Y: y, X: x, Zeit: zeit,
+		Fehlerrate: fmt.Sprintf("%d/%d", falsch, passend), Wo: m.Wo, Job: m.Jo})
+}
+
+// quantenSVorbereitet: was beide Wege der Ausgabe (ein Auftrag fuer alle
+// Stellen, oder Abschnitte je Validator) fuer die Kette bereithalten.
+type quantenSVorbereitet struct {
+	K              string
+	N, T           int
+	KJeStelle      int
+	Validatoren    []string
+	Bestaetigungen []string
+	Wurzel         string
+	ProbenHex      []string
+	Probe          [2][]int
+	Stellen        [2]string
+	StellenKey     [2]*ecdsa.PrivateKey
+	Ausgeber       string
+	Inhaber        string
+	InhaberKey     *ecdsa.PrivateKey
+	B, Z           int
+	Y, X           []int
+	Zeit           int64
+	Fehlerrate     string
+	Wo, Job        string
+}
+
+// quantenSAusgabeAbschluss: Ausgabe auf der Kette, Bindung, Wahl,
+// Doppelvorlage und ehrliche Vorlage -- fuer beide Wege gleich.
+func quantenSAusgabeAbschluss(ctx context.Context, a QuantenSAusgabeAuftrag, netz quantenSNetz, log io.Writer, vb quantenSVorbereitet) (*QuantenSAusgabeErgebnis, error) {
+	K, n, t, k, validatoren, bestaetigungen, wurzel, probenHex := vb.K, vb.N, vb.T, vb.KJeStelle, vb.Validatoren, vb.Bestaetigungen, vb.Wurzel, vb.ProbenHex
+	probe, stellen, stellenKey, ausgeber, inhaber, inhaberKey := vb.Probe, vb.Stellen, vb.StellenKey, vb.Ausgeber, vb.Inhaber, vb.InhaberKey
+	b, z, y, x, zeit := vb.B, vb.Z, vb.Y, vb.X, vb.Zeit
+	var err error
+	q := QuantenWAngaben{K: K, N: n, T: t, Wurzel: wurzel, Validatoren: validatoren, Bestaetigungen: bestaetigungen,
 		Deckung: a.Deckung, Tol: a.Tol, Inhaber: inhaber, Annahme: stellen[:], Proben: probenHex}
-	if q.WalletSig, err = quantenSUnterschreiben(a.Schluessel, quantenWSAusgabeNachricht(ausgeber, K, m.N, t, wurzel, validatoren, probenHex, q.Annahme, inhaber, a.Deckung, zeit, a.Tol)); err != nil {
+	if q.WalletSig, err = quantenSUnterschreiben(a.Schluessel, quantenWSAusgabeNachricht(ausgeber, K, n, t, wurzel, validatoren, probenHex, q.Annahme, inhaber, a.Deckung, zeit, a.Tol)); err != nil {
 		return nil, err
 	}
 	if err := netz.einreichen(ctx, quantenWSAusgebenTxArt, ausgeber, zeit, q); err != nil {
@@ -336,7 +375,7 @@ func quantenSAusgabeLauf(ctx context.Context, a QuantenSAusgabeAuftrag, validato
 	fmt.Fprintf(log, "ausgegeben (nach %s)\n", a.quantenSNach())
 
 	// 3. Bindung und Wahl der Inhaberin.
-	d := make([]int, m.N)
+	d := make([]int, n)
 	for i := range y {
 		d[i] = y[i] ^ z
 	}
@@ -364,8 +403,8 @@ func quantenSAusgabeLauf(ctx context.Context, a QuantenSAusgabeAuftrag, validato
 	}
 	fmt.Fprintf(log, "gebunden und gewaehlt (nach %s)\n", a.quantenSNach())
 
-	erg := &QuantenSAusgabeErgebnis{K: K, N: m.N, KJeStelle: k, Ausgeber: ausgeber, Inhaberin: inhaber, Stellen: stellen[:], B: b,
-		Deckung: a.Deckung, FehlerrateMess: fmt.Sprintf("%d/%d", falsch, passend), Wo: m.Wo, Job: m.Jo}
+	erg := &QuantenSAusgabeErgebnis{K: K, N: n, KJeStelle: k, Ausgeber: ausgeber, Inhaberin: inhaber, Stellen: stellen[:], B: b,
+		Deckung: a.Deckung, FehlerrateMess: vb.Fehlerrate, Wo: vb.Wo, Job: vb.Job}
 
 	// 4. Doppelvorlage an der anderen Stelle, 5. ehrlich an Stelle b.
 	for i, s := range []int{1 - b, b} {
@@ -559,6 +598,10 @@ type quantenSHTTP struct {
 	basis  string
 	klient *http.Client
 	takt   time.Duration
+	// max: groesste Antwort; 0 = quantenSAusgabeAntwortMax. Nur die Antwort
+	// auf einen Abschnitts-Auftrag (Buendel fuer alle Validatoren) darf
+	// groesser sein (quantenSAbschnittAntwortMax).
+	max int
 }
 
 func neuerQuantenSHTTP(basis string) (*quantenSHTTP, error) {
@@ -573,6 +616,10 @@ func neuerQuantenSHTTP(basis string) (*quantenSHTTP, error) {
 // anfrage: bei 429/503 und Netzfehlern bis zu quantenSAusgabeVersuche Mal,
 // mit wachsender Pause (hoechstens 30 s); jede andere Antwort ist endgueltig.
 func (h *quantenSHTTP) anfrage(ctx context.Context, methode, pfad string, koerper []byte) (int, []byte, error) {
+	grenze := quantenSAusgabeAntwortMax
+	if h.max > 0 {
+		grenze = h.max
+	}
 	pause := h.takt
 	var letzter error
 	for i := 0; i < quantenSAusgabeVersuche; i++ {
@@ -589,12 +636,12 @@ func (h *quantenSHTTP) anfrage(ctx context.Context, methode, pfad string, koerpe
 		}
 		resp, err := h.klient.Do(req)
 		if err == nil {
-			body, rerr := io.ReadAll(io.LimitReader(resp.Body, quantenSAusgabeAntwortMax+1))
+			body, rerr := io.ReadAll(io.LimitReader(resp.Body, int64(grenze)+1))
 			resp.Body.Close()
 			switch {
 			case rerr != nil:
 				err = rerr
-			case len(body) > quantenSAusgabeAntwortMax:
+			case len(body) > grenze:
 				return 0, nil, errors.New("Antwort zu gross")
 			case resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusServiceUnavailable:
 				err = fmt.Errorf("HTTP %d", resp.StatusCode)
@@ -781,17 +828,34 @@ func QuantenSAusgabe(ctx context.Context, apiBasis, schluesselHex string, deckun
 	if err != nil || len(roh) > quantenSAusgabeMessMax {
 		return errors.New("Messung: unlesbar oder zu gross")
 	}
-	var m QuantenSMessung
-	dec := json.NewDecoder(bytes.NewReader(roh))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&m); err != nil {
-		return fmt.Errorf("Messung: %v", err)
-	}
 	if frist <= 0 || frist > time.Hour {
 		return errors.New("Frist: 1 s bis 1 h")
 	}
-	erg, err := quantenSAusgabeLauf(ctx, QuantenSAusgabeAuftrag{Messung: m, Schluessel: key, Deckung: deckung, Tol: quantenWTolStandard, Frist: frist},
-		adressen, t, &quantenSMehrNetz{quantenSHTTP: eigen, validatoren: netze}, log)
+	auftrag := QuantenSAusgabeAuftrag{Schluessel: key, Deckung: deckung, Tol: quantenWTolStandard, Frist: frist}
+	netz := &quantenSMehrNetz{quantenSHTTP: eigen, validatoren: netze}
+	// Abschnitts-Modus (quanten_s_ausgabe_abschnitte.go): die Eingabe nennt
+	// nur die Basen der Inhaberin je Abschnitt ("basen"), keine Messung.
+	var art map[string]json.RawMessage
+	_ = json.Unmarshal(roh, &art)
+	var erg *QuantenSAusgabeErgebnis
+	if _, abschnitte := art["basen"]; abschnitte {
+		var bs QuantenSBasen
+		dec := json.NewDecoder(bytes.NewReader(roh))
+		dec.DisallowUnknownFields()
+		if err := dec.Decode(&bs); err != nil {
+			return fmt.Errorf("Basen: %v", err)
+		}
+		erg, err = quantenSAusgabeLaufAbschnitte(ctx, auftrag, bs, adressen, t, netz, log)
+	} else {
+		var m QuantenSMessung
+		dec := json.NewDecoder(bytes.NewReader(roh))
+		dec.DisallowUnknownFields()
+		if err := dec.Decode(&m); err != nil {
+			return fmt.Errorf("Messung: %v", err)
+		}
+		auftrag.Messung = m
+		erg, err = quantenSAusgabeLauf(ctx, auftrag, adressen, t, netz, log)
+	}
 	if erg != nil {
 		enc := json.NewEncoder(aus)
 		enc.SetIndent("", "  ")
