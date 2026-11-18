@@ -765,89 +765,6 @@ func TestQuantenWDienst_Staffel(t *testing.T) {
 			t.Fatal("nach dem Warten auf den Stand wieder die Staffel abgewartet")
 		}
 	})
-	t.Run("tritt zurueck, wenn der Zustaendige weitermacht", func(t *testing.T) {
-		q, z := bereit(t)
-		w := q.w
-		v := len(q.d)
-		zust, rang1 := q.d[z-1], q.d[z%v]
-		// nurEinTeil: in diesem Takt nimmt der Leiter nur einen Teil an.
-		nurEinTeil := func(d *quantenWDienst) func() {
-			echt := d.einreichen
-			n := 0
-			d.einreichen = func(art string, x QuantenWAngaben) error {
-				if art == quantenWOffenlegenTxArt {
-					if n++; n > 1 {
-						return errors.New("Status 429")
-					}
-				}
-				return echt(art, x)
-			}
-			return func() { d.einreichen = echt }
-		}
-		ctx := context.Background()
-		zurueck := nurEinTeil(rang1)
-		rang1.takt(ctx)
-		q.zeit += quantenWStaffelWarten
-		rang1.takt(ctx) // springt ein, ein Teil
-		if o := w.anfrage(w.cs).Offen; o != quantenWOffenTeil {
-			t.Fatalf("Rang 1 nicht eingesprungen (Offen %d)", o)
-		}
-		zurueck()
-		// Der Zustaendige ist wieder da und reicht den naechsten Teil ein.
-		zurueck = nurEinTeil(zust)
-		q.zeit++
-		zust.takt(ctx)
-		if o := w.anfrage(w.cs).Offen; o != 2*quantenWOffenTeil {
-			t.Fatalf("Zustaendiger hat nicht weitergemacht (Offen %d)", o)
-		}
-		zurueck()
-		// Rang 1 sieht, dass ein anderer vorankommt: zuruecktreten, nichts
-		// einreichen (sonst konkurrieren beide um jeden Teil).
-		vorher := rang1.Zaehlerstand()["eingereicht"]
-		q.zeit++
-		rang1.takt(ctx)
-		if o := w.anfrage(w.cs).Offen; o != 2*quantenWOffenTeil {
-			t.Fatalf("Rang 1 hat trotz arbeitendem Zustaendigen eingereicht (Offen %d)", o)
-		}
-		if zs := rang1.Zaehlerstand(); zs["zurueckgetreten"] != 1 || zs["eingereicht"] != vorher || len(rang1.eingesprungen) != 0 {
-			t.Fatalf("nicht zurueckgetreten: %v, gemerkt %v", zs, rang1.eingesprungen)
-		}
-		// Bleibt der Zustaendige danach stehen, springt Rang 1 nach der Staffel
-		// wieder ein und macht fertig.
-		q.zeit += quantenWStaffelWarten
-		rang1.takt(ctx)
-		if w.anfrage(w.cs) != nil {
-			t.Fatal("Rang 1 nach erneutem Stillstand nicht wieder eingesprungen")
-		}
-	})
-	t.Run("bleibt dran, wenn der erste eigene Teil abgewiesen wurde", func(t *testing.T) {
-		// Faellt der Zustaendige wirklich aus, darf ein abgewiesener erster
-		// Teil (noch kein eigenes Teilende) nicht zum Zuruecktreten fuehren --
-		// sonst pendelte der Ersatz zwischen Einspringen und Zuruecktreten.
-		q, z := bereit(t)
-		w := q.w
-		rang1 := q.d[z%len(q.d)]
-		echt := rang1.einreichen
-		rang1.einreichen = func(art string, x QuantenWAngaben) error {
-			if art == quantenWOffenlegenTxArt {
-				return errors.New("Status 429")
-			}
-			return echt(art, x)
-		}
-		ctx := context.Background()
-		rang1.takt(ctx)
-		q.zeit += quantenWStaffelWarten
-		rang1.takt(ctx) // springt ein, Teil abgewiesen
-		if len(rang1.eingesprungen) != 1 {
-			t.Fatal("nicht eingesprungen")
-		}
-		rang1.einreichen = echt
-		q.zeit++ // naechster Takt, keine neue Staffel
-		rang1.takt(ctx)
-		if w.anfrage(w.cs) != nil || rang1.Zaehlerstand()["zurueckgetreten"] != 0 {
-			t.Fatalf("nach abgewiesenem erstem Teil zurueckgetreten statt weiterzumachen: %v", rang1.Zaehlerstand())
-		}
-	})
 	t.Run("Rang 2 erst nach doppelter Wartezeit", func(t *testing.T) {
 		q, z := bereit(t)
 		w := q.w
@@ -924,7 +841,7 @@ func TestQuantenWDienst_TeilNichtDoppelt(t *testing.T) {
 // Ein Tresor-Eintrag ohne gueltige Validatorenliste oder Nummer reicht nie
 // ein (und loest keine Panik aus).
 func TestQuantenWDienst_DarfEinreichenKaputterEintrag(t *testing.T) {
-	d := &quantenWDienst{faellig: map[string]int64{}, eingesprungen: map[string]int{}}
+	d := &quantenWDienst{faellig: map[string]int64{}, eingesprungen: map[string]bool{}}
 	K := strings.Repeat("ab", 32)
 	for _, e := range []*quantenWTresorEintrag{
 		{X: 1},
