@@ -198,7 +198,6 @@ func (d quantenWDBAblage) loeschen(k string) error {
 	return err
 }
 
-// quantenWDienst: Tresor und Hintergrundarbeit eines Validators.
 // quantenWZaehler: was ein Dienst getan hat -- nur Zaehler, kein Inhalt
 // (keine Anteile, keine Stellen). Macht nachvollziehbar, woran eine
 // Offenlegung haengt (etwa zwei Validatoren, die sich gegenseitig
@@ -221,6 +220,7 @@ func (d *quantenWDienst) Zaehlerstand() map[string]int64 {
 	}
 }
 
+// quantenWDienst: Tresor und Hintergrundarbeit eines Validators.
 type quantenWDienst struct {
 	zaehler   quantenWZaehler
 	mu        sync.Mutex
@@ -1381,11 +1381,14 @@ const quantenWTeilRumpfBudget = zumLeiterRumpfHoechstens - 8<<10
 // quantenWOffenTeil Stellen ab a.Offen; der naechste Teil beginnt dort, wo
 // dieser endet. Keine Grenze wird gelockert, keine Regel der Kette geaendert.
 //
-// Befund 18.11.2026 (Pilot, Zaehler je Dienst): Der Engpass der Offenlegung
-// ist die Burst-Grenze je Absender (20 Einreichungen je Minute und
-// Validator). Bisher wurde ein zu grosser Teil halbiert (64 -> 32 Stellen bei
-// 3 von 4, Tiefe 14), obwohl deutlich mehr passt; jede Einreichung traegt
-// jetzt so viele Stellen, wie das Budget erlaubt.
+// Befund 18.11.2026 (Pilot 44271941121 gegen 44257006958, je 40 ms, Zaehler
+// je Dienst): Bisher wurde ein zu grosser Teil halbiert (64 -> 32 Stellen bei
+// 3 von 4, Tiefe 14), obwohl 50 passen. Genau zugeschnitten braucht dieselbe
+// Offenlegung 38 % weniger Einreichungen (325 -> 200, also weniger
+// Transaktionen in den Bloecken) bei gleicher Rate (rund 1.000 Stellen/min).
+// Die Burst-Grenze (20 je Minute) war also NICHT der Engpass; begrenzend ist
+// die Abfolge je Teil (Teil im Stand, dann der naechste; Nachbarrunde mit
+// quantenWPeerNachlauf). Siehe forschung/quantengeld/HEUTE.md 3.3d.
 func quantenWTeilKuerzen(offen []QuantenWOffen) []QuantenWOffen {
 	passt := func(n int) bool {
 		roh, err := json.Marshal(offen[:n])
@@ -1410,8 +1413,9 @@ func quantenWTeilKuerzen(offen []QuantenWOffen) []QuantenWOffen {
 // quantenWRestLohnt: Einen Rest fuer den naechsten Teil merken, nur wenn er
 // mindestens so viele Stellen hat wie der gerade eingereichte Teil. Sonst
 // traegt eine Einreichung nur fuer den Rest weniger als ein frisch
-// zugeschnittener Teil -- und Einreichungen sind das knappe Gut (20 je Minute),
-// nicht Abfragen bei den Nachbarn (30 je Minute und Absender).
+// zugeschnittener Teil. Abgewogen wird eine Transaktion in der Kette (jede
+// Einreichung) gegen eine Abfrage bei den Nachbarn (nicht in der Kette);
+// gemessen: 15-25 % mehr Abfragen fuer 38 % weniger Einreichungen.
 func quantenWRestLohnt(teil, rest int) bool {
 	return rest > 0 && rest >= teil
 }
