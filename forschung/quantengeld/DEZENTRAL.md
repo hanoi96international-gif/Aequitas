@@ -144,7 +144,7 @@ Geheimnis besser, aber zum Einlösen müssen t Validatoren erreichbar sein.
 | A2 | Validator-Dienst: eigenen Abschnitt präparieren (Messung von außen, wie heute über eine Datei), Anteile an die anderen verteilen, Stichprobe für die Annahmestellen | **fertig**: A2a Bausteine (9), A2b Dienst (10) |
 | A3 | `hardware_ibm.py --s-abschnitt`, Werkzeug `quanten-s-ausgabe` im Abschnitts-Modus | **Werkzeug fertig** (11); Messung je Abschnitt folgt mit A4 |
 | A4 | Pilot: vier Knoten, je ein eigener Auftrag (im Pilot von einem Konto, das wird benannt) | **auf dem Chip gezeigt** (12): ohne Ausfall grün im Rauschmodell und auf `ibm_marrakesh`; Ausfall-Test nach Pilot-Korrektur (zwei Ausgaben) im Nachlauf |
-| A5 | Hauptnetz mit einem zweiten Menschen als Validator, wenn möglich bei einem anderen Anbieter | Betreiber |
+| A5 | Hauptnetz mit einem zweiten Menschen als Validator, wenn möglich bei einem anderen Anbieter | **Werkzeug bereit** (13): Messquelle als Verzeichnis, `--s-abschnitt`; der zweite Mensch: Betreiber |
 | B, C, W-Härtung | wie oben | Forschung; Partner |
 
 Die Kette ändert sich in A1 bis A4 nicht. Geändert werden die Ausgabe außerhalb der Kette
@@ -290,9 +290,10 @@ beim Validator und einen neuen Weg der Bestätigung.
   - Geprüft werden: alle Schlüssel gegen die Adressen, die eigene Nummer, die Basen der
     Inhaberin auf genau diesem Abschnitt, die zwei Annahmestellen, die Mindestgröße je
     Stelle und das Zeitfenster.
-  - Die Messung kommt aus der **eigenen Messquelle** (`AEQUITAS_QS_MESSQUELLE`, eine Datei
-    von `hardware_ibm.py --s-abschnitt`). Jeder Datensatz wird vor der Verwendung aus der
-    Datei gelöscht, also nie zweimal benutzt.
+  - Die Messung kommt aus der **eigenen Messquelle** (`AEQUITAS_QS_MESSQUELLE`). Das ist
+    eine Datei von `hardware_ibm.py --s-abschnitte` (Pilot) oder ein Verzeichnis mit einer
+    Datei je Messung (Betrieb, Abschnitt 13). Jeder Datensatz wird vor der Verwendung
+    entfernt, also nie zweimal benutzt.
   - Die Antwort ist unterschrieben und enthält: die Blätter, x verschlüsselt für die
     Inhaberin und je anderem Validator ein verschlüsseltes, unterschriebenes Bündel.
   - Der Eintrag liegt danach *wartend* im Tresor und gilt wie ein offener Auftrag, für die
@@ -410,3 +411,76 @@ Die Antworten von `abschnitt` und `oeffnung` dürfen bis 8 MiB groß sein
   Ausgabe gemessen hatte.
 - **Korrektur:** `--ausgaben 2`, `basen_1.json` und `basen_2.json`, je Test eine eigene
   Ausgabe. Der Dienst und die Kette bleiben unverändert.
+
+## 13. A5 vorbereitet: messen im Betrieb (18.11.2026)
+
+**Befund:** Bis hier gab es die Messung nur für den Pilot. `hardware_ibm.py --s-abschnitte`
+misst alle Abschnitte im Voraus von einem Konto aus, in eine Datei je Validator. Im Betrieb
+geht das so nicht:
+- Die Inhaberin wählt ihre Basen y erst für eine Ausgabe und schickt jedem Validator nur y
+  auf seinem Abschnitt. Der Validator misst also, **während sein Dienst läuft**.
+- Die Datei-Messquelle liest die Datei, löscht den benutzten Eintrag und schreibt sie neu.
+  Schriebe ein Messender zur selben Zeit hinein, könnte ein gerade verbrauchter Eintrag
+  zurückkommen. Dann ginge dieselbe Messung zweimal in eine Ausgabe.
+- Den Befehl `--s-abschnitt`, auf den Abschnitt 10 verwies, gab es noch nicht.
+
+**Lösung, ohne Änderung an der Kette:**
+- **Messquelle als Verzeichnis** (`quanten_s_messverzeichnis.go`). Zeigt
+  `AEQUITAS_QS_MESSQUELLE` auf ein Verzeichnis, liegt darin je Messung eine Datei
+  `<sha256(y)>.json` mit genau einem Datensatz.
+  - Der Dienst liest **nur** die Datei zu den verlangten Basen und prüft sie streng.
+    Eine gewöhnliche Datei (kein Verweis) muss es sein, dieselbe wie beim Nachsehen, höchstens
+    1 MiB, ohne fremde Felder und ohne Text danach. Die Basen im Inhalt müssen zum Namen
+    passen, die Bits müssen stimmen.
+  - Dann **entfernt** er sie und verwendet sie erst danach. Nur ein Entfernen kann
+    gelingen. Die Einmaligkeit hängt am Dateisystem, nicht an einer Absprache zwischen
+    Messen und Dienst.
+  - Abgewiesene Dateien bleiben liegen, damit der Betreiber sie ansehen kann.
+- **`hardware_ibm.py --s-abschnitt VERZEICHNIS --basen Y`:** Ein Validator misst seinen
+  Abschnitt in einem eigenen Auftrag, in den Basen der Inhaberin.
+  - Er legt das Ergebnis erst unter einem zufälligen Namen an (O_EXCL, 0600, auf die
+    Platte geschrieben) und dann per `os.link` unter dem endgültigen Namen. Das scheitert,
+    wenn es den Namen schon gibt; überschrieben wird nie.
+  - Basen werden streng gelesen: nur 0 und 1, höchstens 16.384. Das Verzeichnis muss es
+    geben. Gemessen wird als Benutzer des Knotens, sonst kann der Knoten die Datei nicht
+    lesen und weist ab.
+
+**Ablauf einer Ausgabe im Betrieb:**
+1. Die Inhaberin wählt y und schickt jedem Validator y auf seinem Abschnitt.
+2. Jeder Validator misst mit `--s-abschnitt` in sein Verzeichnis, mit seinem eigenen Konto
+   und, wenn möglich, bei einem eigenen Anbieter.
+3. Der Ausgeber startet `aequitasd quanten-s-ausgabe` mit den Basen (Abschnitts-Modus,
+   Abschnitt 11). Fehlt eine Messung noch, weist der Validator den Auftrag ab („keine
+   Messung zu diesen Basen“), und die Ausgabe beginnt nicht.
+
+**Tests** (`quanten_s_messverzeichnis_test.go`):
+- Gutfall und „genau einmal“.
+- Missbrauch, 9 Fälle; die abgewiesene Datei bleibt jeweils liegen:
+  - fremde Basen unter dem Namen, unbekanntes Feld, Text nach dem Datensatz;
+  - kaputte Bits, zu kurz, kein JSON;
+  - zu groß, Verweis auf einen gültigen Eintrag, Verzeichnis statt Datei.
+- Wettlauf zweier Messquellen ohne gemeinsame Sperre, 20 Runden mit je 16 Zugriffen:
+  genau einer bekommt die Messung.
+- Messen während des Verbrauchs: 64 Messungen, jede genau einmal verwendet, keine kommt
+  zurück.
+- Name gleich in Go und Python (Vektor in beiden Selbsttests).
+- Wahl von Datei oder Verzeichnis aus der Umgebung.
+- Quer geprüft: Python misst (ideal) und legt ab, der Go-Dienst liest genau einmal, die
+  Datei ist danach weg.
+
+**Gegenprobe:** 7 Mutationen, alle rot:
+- nicht entfernen;
+- Fehler beim Entfernen übergehen;
+- Basen im Inhalt nicht prüfen;
+- Text danach erlauben;
+- Bits nicht prüfen;
+- gewöhnliche Datei und Austausch nicht prüfen (beide Schichten zusammen);
+- Größe nicht prüfen (beide Stellen zusammen).
+
+`go test -race` grün.
+
+**Was für A5 bleibt (Betreiber):** ein zweiter Mensch, der einen Validator mit eigenem
+Server betreibt, mit eigenem Konto bei einem Quantenrechner und, wenn möglich, bei einem
+anderen Anbieter. Auf C1 braucht der Betrieb in Abschnitten dann ein Verzeichnis für den
+Knotenbenutzer und `AEQUITAS_QS_MESSQUELLE`. Beides richtet der Betreiber mit dem Deploy
+ein.
