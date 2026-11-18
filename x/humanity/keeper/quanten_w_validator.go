@@ -207,6 +207,7 @@ type quantenWZaehler struct {
 	eingereicht     atomic.Int64 // Teile, die der eigene Knoten angenommen hat
 	abgewiesen      atomic.Int64 // Teile, die er abgewiesen hat
 	eingesprungen   atomic.Int64 // Versuche, fuer die dieser Dienst als Ersatz einsprang
+	zurueckgetreten atomic.Int64 // ... und wieder zuruecktrat, weil ein anderer vorankam
 	nachbarAbfragen atomic.Int64 // Runden, in denen die Nachbarn gefragt wurden
 	restGenutzt     atomic.Int64 // Teile aus dem Rest eines gekuerzten Teils
 }
@@ -216,8 +217,9 @@ func (d *quantenWDienst) Zaehlerstand() map[string]int64 {
 	z := &d.zaehler
 	return map[string]int64{
 		"eingereicht": z.eingereicht.Load(), "abgewiesen": z.abgewiesen.Load(),
-		"eingesprungen": z.eingesprungen.Load(), "nachbar_abfragen": z.nachbarAbfragen.Load(),
-		"rest_genutzt": z.restGenutzt.Load(),
+		"eingesprungen": z.eingesprungen.Load(), "zurueckgetreten": z.zurueckgetreten.Load(),
+		"nachbar_abfragen": z.nachbarAbfragen.Load(),
+		"rest_genutzt":     z.restGenutzt.Load(),
 	}
 }
 
@@ -261,7 +263,7 @@ type quantenWDienst struct {
 	// eingesprungen: Versuche (K, index), fuer die dieser Dienst anstelle
 	// des Zustaendigen eingereicht hat -- er macht ohne Wartezeit weiter;
 	// wie sicht begrenzt und aufgeraeumt.
-	eingesprungen map[string]bool
+	eingesprungen map[string]int // Wert: Ende des eigenen letzten Teils (-1: noch keiner)
 	// rest: was von einem gekuerzten, angenommenen Teil uebrig ist (je K
 	// hoechstens einer, unter mu; mit der Note vergessen). Spart den
 	// Nachbarn die zweite Abfrage derselben Seite (quantenWTeilKuerzen).
@@ -317,8 +319,20 @@ func (d *quantenWDienst) darfEinreichen(K string, e *quantenWTresorEintrag, inde
 	gesehen[key] = true
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	if d.eingesprungen[dran] {
+	if ende, da := d.eingesprungen[dran]; da {
 		gesehen[dran] = true
+		// Steht der Stand HINTER dem Ende des eigenen letzten Teils, hat ein
+		// anderer einen Teil eingereicht -- der Zustaendige arbeitet wieder
+		// (oder ein anderer Ersatz). Dann zuruecktreten und die Staffel neu
+		// abwarten, statt mit ihm um jeden Teil zu konkurrieren.
+		// Pilot 18.11.2026 (40 ms, alle vier Knoten): ohne das reichten alle
+		// vier Dienste ein, 171 von 496 Einreichungen abgewiesen.
+		if ende >= 0 && ab > ende {
+			delete(d.eingesprungen, dran)
+			d.faellig[key] = jetzt
+			d.zaehler.zurueckgetreten.Add(1)
+			return false
+		}
 		return true
 	}
 	t0, da := d.faellig[key]
@@ -332,11 +346,23 @@ func (d *quantenWDienst) darfEinreichen(K string, e *quantenWTresorEintrag, inde
 		return false
 	}
 	if len(d.eingesprungen) < quantenWSichtHoechstens {
-		d.eingesprungen[dran] = true
+		d.eingesprungen[dran] = -1
 		gesehen[dran] = true
 		d.zaehler.eingesprungen.Add(1)
 	}
 	return true
+}
+
+// eigenesTeilEnde: ein eingesprungener Dienst merkt sich, wo sein letzter
+// angenommener Teil endet (darfEinreichen erkennt daran, ob ein anderer
+// vorankommt).
+func (d *quantenWDienst) eigenesTeilEnde(K string, index, ende int) {
+	dran := fmt.Sprintf("d|%s|%d", K, index)
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if _, da := d.eingesprungen[dran]; da {
+		d.eingesprungen[dran] = ende
+	}
 }
 
 // quantenWSichtHoechstens: gemerkte Sichtungen -- je Note hoechstens eine
@@ -471,7 +497,7 @@ func neuerQuantenWDienst(cs *ChainState, key *ecdsa.PrivateKey, ablage quantenWA
 		aead: aead, ablage: ablage, eintraege: map[string]*quantenWTresorEintrag{}, peers: peers,
 		client: quantenWPeerKlient(nil), erlaubt: isAllowedPeerURL, fremd: quantenWPeerKlient(pinningDialer),
 		peerZeit: quantenWPeerZeit, nachlauf: quantenWPeerNachlauf, einreichen: einreichen, jetzt: nowUnix,
-		hoehe: func() int64 { return 0 }, final: func() int64 { return -1 }, sicht: map[string]int64{}, faellig: map[string]int64{}, gesendet: map[string]int64{}, eingesprungen: map[string]bool{}}
+		hoehe: func() int64 { return 0 }, final: func() int64 { return -1 }, sicht: map[string]int64{}, faellig: map[string]int64{}, gesendet: map[string]int64{}, eingesprungen: map[string]int{}}
 	roh, err := ablage.alle()
 	if err != nil {
 		return nil, fmt.Errorf("quanten_w: Tresor nicht lesbar: %w", err)
@@ -1300,6 +1326,7 @@ func (d *quantenWDienst) teilOffenlegen(ctx context.Context, K string, e *quante
 		if einreichen(teil) == nil {
 			d.zaehler.eingereicht.Add(1)
 			d.zaehler.restGenutzt.Add(1)
+			d.eigenesTeilEnde(K, index, ab+len(teil))
 			d.restMerken(K, index, ab+len(teil), r.stellen[len(teil):], r.offen[len(teil):])
 			return true
 		}
@@ -1316,6 +1343,7 @@ func (d *quantenWDienst) teilOffenlegen(ctx context.Context, K string, e *quante
 		teil := quantenWTeilKuerzen(offen)
 		if einreichen(teil) == nil {
 			d.zaehler.eingereicht.Add(1)
+			d.eigenesTeilEnde(K, index, ab+len(teil))
 			d.restMerken(K, index, ab+len(teil), eigen.Stellen[len(teil):], offen[len(teil):])
 			return true
 		}
