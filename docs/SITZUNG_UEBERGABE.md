@@ -2,12 +2,12 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 18.11.2026 ~17:05 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
+Stand: 18.11.2026 ~18:00 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
 Repos); davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18:30 UTC Sitzung
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
-**Zuletzt (Sitzung „Weiter“, 18.11. ~17:05 UTC):**
+**Zuletzt (Sitzung „Weiter“, 18.11. ~18:00 UTC):**
 - **C1 läuft mit #587** (Deploy #98, 16:09 UTC grün; perf-c1 Lauf 4 grün). Damit sind auch
   #580 (S-Ansicht nennt v) und #585 (Abschnitts-Dienst) auf C1. C1 präpariert Abschnitte
   erst mit `AEQUITAS_QS_MESSQUELLE`; ohne weist es jeden Abschnitts-Auftrag ab (Vorgabe).
@@ -35,25 +35,26 @@ dezentrales Quantengeld“.
     - Ausfall-Test in beiden **rot** nach 15 s: „keine Messung zu diesen Basen“. Ursache
       im Pilot: Beide Tests lasen dieselbe Messung, der Dienst gibt jeden Abschnitt nur
       einmal her (richtig so).
-  - **PR #588 (Pilot mit zwei Ausgaben + A5 vorbereitet):**
+  - **#588 gemergt (799f6783, Pilot mit zwei Ausgaben + A5 vorbereitet):**
     - `--ausgaben 2`, je Test eine Ausgabe. Nachlauf im Rauschmodell
       [44347416357](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44347416357):
       **beide Tests grün**, auch mit Ausfall eines Validators.
     - A5 vorbereitet (`DEZENTRAL.md` 13): Messquelle als Verzeichnis (je Messung eine Datei
       `<sha256(y)>.json`, der Dienst entfernt vor Verwendung) und
       `hardware_ibm.py --s-abschnitt VERZEICHNIS --basen Y` für einen Validator im Betrieb.
-  - **Nächste Schritte:** nach dem Merge von #588 IBM-Nachlauf (`modus=ibm`,
-    `ausgabe=abschnitte`, Freigabe `quantenhardware`; die Messung des gescheiterten
-    IBM-Laufs ist verbraucht, der neue misst 8 Aufträge). A5 selbst (zweiter Mensch als
-    Validator mit eigenem Server und Quantenkonto) ist Sache des Betreibers.
+  - **IBM-Nachlauf [44356741223](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44356741223)
+    auf `ibm_fez`: beide Tests grün**, auch mit Ausfall eines Validators (Fehler
+    0,52–0,68 %). **A4 fertig.** Auffällig: im Test „alle vier“ 192 von 392 Einreichungen
+    abgewiesen (Doppelarbeit, nichts falsch verbucht), 772–845 Stellen/min.
+  - **Nächste Schritte:** A5 (zweiter Mensch als Validator mit eigenem Server und
+    Quantenkonto) ist Sache des Betreibers. Zu beobachten: Doppelarbeit beim Offenlegen
+    (Zähler „abgewiesen“), falls die Rate im Betrieb knapp wird.
 - **App 1.25.0 (App #86 gemergt, a5f5cf44):** Netto-Zeile und Zahlen der Tagesrunde (#84),
   t von v Validatoren (#85).
   - iOS-Build [44342709659](https://github.com/hanoi96international-gif/Aequitas-App/actions/runs/44342709659) grün.
-  - APK-Build [44342702919](https://github.com/hanoi96international-gif/Aequitas-App/actions/runs/44342702919)
-    gebaut (16:47 UTC); der Job `signieren` wartet auf die Freigabe `app-signatur`.
-  - Danach: `release-apk.yml` (run_id des APK-Builds, Tag `v1.25.0`, Notiz), dann
-    `release-ios.yml` (run_id 44342709659, Tag `v1.25.0`). Beide brauchen die Freigabe
-    `app-signatur`.
+  - APK signiert und als Release `v1.25.0` veröffentlicht
+    ([44360909681](https://github.com/hanoi96international-gif/Aequitas-App/actions/runs/44360909681), 17:52 UTC).
+  - `release-ios.yml` (run_id 44342709659, Tag `v1.25.0`) gestartet, wartet auf `app-signatur`.
 - **#581 gemergt (eigene Antworten W7/W8, nur Doku):**
   - Falsche Anteile weist die Kette als Ganzes ab.
   - v − t + 1 Validatoren können blockieren. Bei W kann das die letzte Einlösung
@@ -88,8 +89,8 @@ dezentrales Quantengeld“.
   - Der Versuch „Ersatz tritt zurück“ war schlechter und wurde zurückgenommen.
 - **Wartet auf den Betreiber:**
   - Gutachter suchen. Der Prüfauftrag ist auf dem Stand vom 18.11.
-  - Freigaben: App-Release 1.25.0 (`app-signatur`), IBM-Nachlauf des Pilots
-    (`quantenhardware`).
+  - Freigaben: iOS-Release 1.25.0 (`app-signatur`), C1-Deploy #99 von #588
+    ([44356693056](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44356693056), `produktion`).
   - A5: ein zweiter Mensch als Validator mit eigenem Server und eigenem Quantenkonto;
     Hardware-Partner (QKD) für die Messung der Inhaberin.
 - **Offen bei Quantengeld (`OFFEN.md` D.4):** Server im echten Netz statt Knoten in einem

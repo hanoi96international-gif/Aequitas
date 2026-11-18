@@ -12,7 +12,7 @@ einer Stelle hängt, und was wir bauen.
   und im Rauschmodell, auch wenn einer ausfällt und mit Netzlaufzeit (`HEUTE.md` 3.3d).
 - **Ausgabe in Abschnitten (Weg A, A1–A4):** Jeder Validator präpariert seinen Abschnitt
   in einem eigenen Auftrag mit eigener Messquelle. Im Pilot grün im Rauschmodell und auf
-  IBM `ibm_marrakesh`; mit Ausfall eines Validators grün im Rauschmodell (`HEUTE.md` 3.3e, 12).
+  IBM (`ibm_marrakesh`, `ibm_fez`), auch mit Ausfall eines Validators (`HEUTE.md` 3.3e, 12).
 - **Jeder Knoten mit Signierschlüssel** startet den Validator-Dienst von selbst
   (`StarteQuantenWDienst`, `cmd/aequitasd/main.go`). Ein neuer Validator macht ohne weitere
   Einrichtung mit.
@@ -143,7 +143,7 @@ Geheimnis besser, aber zum Einlösen müssen t Validatoren erreichbar sein.
 | A1 | Spezifikation in `s_kette.py`: Ausgabe in Abschnitten, wer was weiß, Missbrauchsfälle | **fertig** (siehe unten) |
 | A2 | Validator-Dienst: eigenen Abschnitt präparieren (Messung von außen, wie heute über eine Datei), Anteile an die anderen verteilen, Stichprobe für die Annahmestellen | **fertig**: A2a Bausteine (9), A2b Dienst (10) |
 | A3 | `hardware_ibm.py --s-abschnitt`, Werkzeug `quanten-s-ausgabe` im Abschnitts-Modus | **Werkzeug fertig** (11); Messung je Abschnitt folgt mit A4 |
-| A4 | Pilot: vier Knoten, je ein eigener Auftrag (im Pilot von einem Konto, das wird benannt) | **fertig** (12): ohne Ausfall grün im Rauschmodell und auf `ibm_marrakesh`; mit Ausfall grün im Rauschmodell (Nachlauf 44347416357), auf dem Chip mit Freigabe |
+| A4 | Pilot: vier Knoten, je ein eigener Auftrag (im Pilot von einem Konto, das wird benannt) | **fertig** (12): beide Tests grün im Rauschmodell (44347416357) und auf dem Chip `ibm_fez` (44356741223), auch mit Ausfall eines Validators |
 | A5 | Hauptnetz mit einem zweiten Menschen als Validator, wenn möglich bei einem anderen Anbieter | **Werkzeug bereit** (13): Messquelle als Verzeichnis, `--s-abschnitt`; der zweite Mensch: Betreiber |
 | B, C, W-Härtung | wie oben | Forschung; Partner |
 
@@ -414,6 +414,8 @@ Die Antworten von `abschnitt` und `oeffnung` dürfen bis 8 MiB groß sein
 - **Nachlauf** (Lauf 44347416357, Rauschmodell, 8 Aufträge): **beide Tests grün**. Mit
   Ausfall eines Validators vor der ersten Vorlage: Doppelvorlage abgewiesen, ehrliche
   Vorlage eingelöst, die drei lebenden Knoten gleich.
+- **Auf dem Chip** (Lauf 44356741223, IBM `ibm_fez`, 8 Aufträge, Fehler 0,52–0,68 %):
+  **beide Tests grün**, auch mit Ausfall eines Validators. A4 ist damit fertig.
 
 ## 13. A5 vorbereitet: messen im Betrieb (18.11.2026)
 
