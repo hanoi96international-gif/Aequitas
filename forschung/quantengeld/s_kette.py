@@ -1160,8 +1160,39 @@ def vektor() -> dict:
     }
 
 
+def vektor_abschnitte() -> dict:
+    """Pruefvektor fuer die Ausgabe in Abschnitten (A2, quanten_s_abschnitt_test.go):
+    Grenzen der Abschnitte, gesalzene Werte mit Stellen-Bit, Blaetter, Wurzel und
+    die Stichprobe jeder Annahmestelle -- alles deterministisch."""
+    rng = random.Random(1926)
+    n, n_val, t = 40, 4, 3
+    K = hashlib.sha256(b"aequitas-quanten-s-abschnitt-vektor").hexdigest()
+    aa = AusgabeAbschnitte(K, n, t, n_val, [random.Random(rng.randrange(1 << 62)) for _ in range(n_val)])
+    werte = {}
+    for p_ in aa.praep:
+        werte.update(p_._v)
+    oe = [{}, {}]
+    for p_ in aa.praep:
+        for b in (0, 1):
+            oe[b].update(p_.oeffnung(b))
+    return {
+        "K": K, "n": n, "n_val": n_val, "t": t,
+        "abschnitte": [[a[0], a[-1] + 1] for a in aa.abschnitte],
+        "abschnitte_weitere": {f"{nn}/{vv}": [[a[0], a[-1] + 1] for a in abschnitte(nn, vv)]
+                               for nn, vv in ((10, 3), (7, 7), (10400, 4), (3920, 10), (5, 1))},
+        "werte": [str(werte[i]) for i in range(n)],
+        "stellen_bit": [stellen_bit(werte[i]) for i in range(n)],
+        "blaetter": [b.hex() for b in aa.blaetter],
+        "wurzel": aa.wurzel.hex(),
+        "stichprobe": [sorted(oe[b]) for b in (0, 1)],
+    }
+
+
 if __name__ == "__main__":
-    if "--vektor" in sys.argv:
+    if "--vektor-abschnitte" in sys.argv:
+        import json
+        print(json.dumps(vektor_abschnitte(), indent=1))
+    elif "--vektor" in sys.argv:
         import json
         print(json.dumps(vektor(), indent=1))
     else:
