@@ -17,9 +17,11 @@ dezentrales Quantengeld“.
     - Befund: Die Stichproben müssen bis zur Bindung geheim sein (5g).
     - Lösung: das Stellen-Bit im Salz (5h), Kette unverändert.
     - Entwurf des Dienstes in `DEZENTRAL.md` 8.
+  - **PR „A2a Bausteine in Go“ (dieser Zweig):** `quanten_s_abschnitt.go` mit Test und
+    Prüfvektor aus der Spezifikation, noch nicht eingehängt.
   - **Nächste Schritte:**
-    - A2 im Go-Dienst: Auftrag, Messquelle, verschlüsselte Bündel (ECIES), Öffnung für
-      die Stellen, Missbrauchstests.
+    - A2b im Go-Dienst: Endpunkte für Auftrag und Öffnung, die Messquelle, die
+      Bestätigung mit Bündeln, Missbrauchstests.
     - A3 mit `hardware_ibm.py --s-abschnitt` und dem Werkzeug im Abschnitts-Modus.
     - A4 als Pilot mit vier Knoten.
 - **#581 gemergt (eigene Antworten W7/W8, nur Doku):**

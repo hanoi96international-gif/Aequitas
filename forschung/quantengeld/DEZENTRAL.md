@@ -138,7 +138,7 @@ Geheimnis besser, aber zum Einlösen müssen t Validatoren erreichbar sein.
 | Abschnitt | Was | Wer |
 |---|---|---|
 | A1 | Spezifikation in `s_kette.py`: Ausgabe in Abschnitten, wer was weiß, Missbrauchsfälle | **fertig** (siehe unten) |
-| A2 | Validator-Dienst: eigenen Abschnitt präparieren (Messung von außen, wie heute über eine Datei), Anteile an die anderen verteilen, Stichprobe für die Annahmestellen | wir |
+| A2 | Validator-Dienst: eigenen Abschnitt präparieren (Messung von außen, wie heute über eine Datei), Anteile an die anderen verteilen, Stichprobe für die Annahmestellen | **A2a fertig** (Bausteine in Go, siehe 9); A2b (Dienst, Endpunkte) folgt |
 | A3 | `hardware_ibm.py --s-abschnitt`, Werkzeug `quanten-s-ausgabe` im Abschnitts-Modus | wir |
 | A4 | Pilot: vier Knoten, je ein eigener Auftrag (im Pilot von einem Konto, das wird benannt) | wir; IBM-Lauf mit Freigabe |
 | A5 | Hauptnetz mit einem zweiten Menschen als Validator, wenn möglich bei einem anderen Anbieter | Betreiber |
@@ -241,3 +241,37 @@ vertrauenswürdig sein. Dezentral braucht es einen anderen Weg.
 - Öffnung: nur an die Stelle aus dem Auftrag, einmal, vor der Ausgabe auf der Kette.
 - Wiederholung desselben Auftrags liefert dieselbe Antwort; ein anderer Auftrag für
   dasselbe K wird abgewiesen.
+
+## 9. A2a: die Bausteine in Go (18.11.2026)
+
+Die Datei `x/humanity/keeper/quanten_s_abschnitt.go` enthält nur reine Funktionen ohne
+Netz:
+- `quantenSAbschnitt` (Grenzen) und `quantenSStellenBit`;
+- `quantenSAbschnittWerte`: gesalzene Werte mit Stellen-Bit, je Abschnitt genau zur Hälfte
+  verteilt, gemischt mit kryptographischem Zufall;
+- `quantenSTeilen` (Shamir t-von-v) und `quantenSSchluesselPruefen` (der öffentliche
+  Schlüssel muss zur Adresse passen);
+- `quantenSBuendelVersiegeln` und `quantenSBuendelOeffnen`: ECIES aus go-ethereum, also
+  keine neue Abhängigkeit, dazu die Unterschrift des Präparators über das Chiffrat;
+- `quantenSOeffnungLaden`: das Laden bei der Annahmestelle.
+
+**Prüfvektor:** Er kommt aus der Spezifikation (`s_kette.py --vektor-abschnitte`,
+`testdata/quanten_s_abschnitt_vektor.json`), und das CI vergleicht Byte für Byte. Grenzen,
+Stellen-Bit, Blätter, Wurzel und Stichproben stimmen mit Python überein.
+
+**Missbrauchstests:**
+- *Bündel:* Abgewiesen werden ein anderer Empfänger, ein getauschtes Chiffrat, eine fremde
+  Unterschrift, ein anderer Präparator, ein anderes K, ein anderer Abschnitt, eine andere
+  Empfängernummer, Übergröße, Großbuchstaben, ein unbekanntes Feld, ein Anteil ≥ P, zu
+  wenige Anteile, eine fremde Domäne und zwei Objekte. Ein Dritter kann nicht
+  entschlüsseln.
+- *Öffnung:* Abgewiesen werden die Stelle der anderen Annahmestelle, ein falscher Wert,
+  ein Wert über der Grenze, eine Stelle außerhalb, ein fehlender Wert, eine zu kleine
+  Stichprobe, eine fremde Wurzel, getauschte Blätter, Stelle 2, ein anderes K und die
+  Mindestgröße 0.
+- *Schlüssel:* Abgewiesen werden eine fremde Adresse, eine zu kurze Form, kein Hex und ein
+  Wert, der kein Punkt der Kurve ist.
+
+**Gegenprobe:** 7 Mutationen machen die Tests rot (Bit, Wert gegen Blatt, Unterschrift,
+Abschnitt, Schlüssel-Adresse, Ausgewogenheit, Wurzel). `go test -race` ist für alle
+Quantengeld-Tests grün.
