@@ -37,16 +37,23 @@ on:
       k:
         description: "Stellen je Annahmestelle (Token = 2k Qubits); die Tabelle verlangt fuer 3 von 4 Validatoren 5200"
         default: "5200"
+      latenz_ms:
+        description: "Netzlaufzeit je Richtung zwischen den Knoten in ms (0 bis 300; 0 = wie bisher). Naehert Server im echten Netz an."
+        default: "0"
 
 permissions:
   contents: read
 
+# Je Modus eine Schlange: IBM-Laeufe verbrauchen Kontingent und laufen
+# nacheinander; ein IBM-Lauf, der auf seine Freigabe wartet, haelt keine
+# Laeufe im Rauschmodell auf (die kosten nichts und laufen je auf eigener VM).
 concurrency:
-  group: quanten-s-pilot
+  group: quanten-s-pilot-${{ inputs.modus }}
   cancel-in-progress: false
 
 env:
   K: ${{ inputs.k }}
+  LATENZ: ${{ inputs.latenz_ms }}
 
 jobs:
   rauschen:
@@ -148,6 +155,29 @@ jobs:
           printf '%s' "$MESSUNG" | base64 -d | gunzip -c > "$RUNNER_TEMP/m.json"
           jq -e --argjson n "$((2 * K))" '.n == $n and (.x | length) == $n' "$RUNNER_TEMP/m.json" >/dev/null || { echo "::error::Messung unvollstaendig"; exit 1; }
           jq -r '"Geraet: \(.wo)  Job: \(.job)"' "$RUNNER_TEMP/m.json"
+      - name: Netzlaufzeit zwischen den Knoten
+        # Die Knoten lauschen auf 127.0.0.11..14 (vier_knoten_realdb_test.go)
+        # und verbinden von ihrer eigenen Adresse aus: netem verzoegert nur
+        # Pakete AN 127.0.0.8/29 -- Hin- und Rueckweg zwischen Knoten, also
+        # Rundlauf ~ 2 x LATENZ. Datenbank (127.0.0.1) und alles andere
+        # bleiben unverzoegert. Klappt das Einrichten nicht, bricht der Lauf
+        # ab, statt still ohne Laufzeit zu messen.
+        run: |
+          set -euo pipefail
+          [[ "$LATENZ" =~ ^[0-9]{1,3}$ ]] && [ "$LATENZ" -le 300 ] || { echo "::error::latenz_ms = $LATENZ (0 bis 300)"; exit 1; }
+          if [ "$LATENZ" -eq 0 ]; then echo "keine kuenstliche Laufzeit"; exit 0; fi
+          sudo modprobe sch_prio || true
+          sudo modprobe sch_netem || true
+          sudo tc qdisc add dev lo root handle 1: prio bands 3 priomap 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2
+          sudo tc qdisc add dev lo parent 1:1 handle 10: netem delay "${LATENZ}ms"
+          sudo tc filter add dev lo parent 1:0 protocol ip prio 1 u32 match ip dst 127.0.0.8/29 flowid 1:1
+          tc qdisc show dev lo
+          tc filter show dev lo
+          echo "Rundlauf zu einem Knoten (erwartet ~ $((2 * LATENZ)) ms) und zur Datenbank (erwartet ~ 0):"
+          ping -c 3 -I 127.0.0.12 127.0.0.11 | tail -1
+          ping -c 3 127.0.0.1 | tail -1
+          rtt=$(ping -c 3 -I 127.0.0.12 127.0.0.11 | awk -F'/' '/^rtt/ {print int($5)}')
+          [ "${rtt:-0}" -ge "$LATENZ" ] || { echo "::error::Laufzeit wirkt nicht (Rundlauf ${rtt:-?} ms)"; exit 1; }
       - name: Vier Knoten, 3 von 4 -- mit und ohne Ausfall
         env:
           AEQUITAS_QS_MESSUNG: ${{ runner.temp }}/m.json
@@ -166,7 +196,7 @@ jobs:
                {f=0}' out.txt > ergebnis.txt
           gzip -9 -c out.txt > ausgabe.txt.gz
           {
-            echo "## Quantengeld S: Pilot mit vier Validatoren (Modus ${{ inputs.modus }}, k = $K)"
+            echo "## Quantengeld S: Pilot mit vier Validatoren (Modus ${{ inputs.modus }}, k = $K, Laufzeit zwischen Knoten $LATENZ ms je Richtung)"
             echo
             echo "Commit \`${{ github.sha }}\`, Lauf ${{ github.run_id }}."
             echo
@@ -190,6 +220,7 @@ jobs:
           # letzte 5.000 Zeilen, Zusammenfassung und Artefakt sind von manchen
           # Arbeitsumgebungen aus nicht abrufbar.
           echo "===== Ergebnis der Tests ====="
+          echo "Modus ${{ inputs.modus }}, k = $K, Laufzeit zwischen Knoten $LATENZ ms je Richtung"
           cat ergebnis.txt
           sha256sum ergebnis.txt ausgabe.txt.gz
           echo "===== Ende Ergebnis ====="

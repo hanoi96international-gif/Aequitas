@@ -74,6 +74,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ethereum/go-ethereum/accounts"
@@ -197,8 +198,31 @@ func (d quantenWDBAblage) loeschen(k string) error {
 	return err
 }
 
+// quantenWZaehler: was ein Dienst getan hat -- nur Zaehler, kein Inhalt
+// (keine Anteile, keine Stellen). Macht nachvollziehbar, woran eine
+// Offenlegung haengt (etwa zwei Validatoren, die sich gegenseitig
+// behindern), ohne die Knotenprotokolle zu brauchen.
+type quantenWZaehler struct {
+	eingereicht     atomic.Int64 // Teile, die der eigene Knoten angenommen hat
+	abgewiesen      atomic.Int64 // Teile, die er abgewiesen hat
+	eingesprungen   atomic.Int64 // Versuche, fuer die dieser Dienst als Ersatz einsprang
+	nachbarAbfragen atomic.Int64 // Runden, in denen die Nachbarn gefragt wurden
+	restGenutzt     atomic.Int64 // Teile aus dem Rest eines gekuerzten Teils
+}
+
+// Zaehlerstand: die Zaehler als Abbild (fuer Tests, Status, Pilot).
+func (d *quantenWDienst) Zaehlerstand() map[string]int64 {
+	z := &d.zaehler
+	return map[string]int64{
+		"eingereicht": z.eingereicht.Load(), "abgewiesen": z.abgewiesen.Load(),
+		"eingesprungen": z.eingesprungen.Load(), "nachbar_abfragen": z.nachbarAbfragen.Load(),
+		"rest_genutzt": z.restGenutzt.Load(),
+	}
+}
+
 // quantenWDienst: Tresor und Hintergrundarbeit eines Validators.
 type quantenWDienst struct {
+	zaehler   quantenWZaehler
 	mu        sync.Mutex
 	cs        *ChainState
 	key       *ecdsa.PrivateKey
@@ -310,6 +334,7 @@ func (d *quantenWDienst) darfEinreichen(K string, e *quantenWTresorEintrag, inde
 	if len(d.eingesprungen) < quantenWSichtHoechstens {
 		d.eingesprungen[dran] = true
 		gesehen[dran] = true
+		d.zaehler.eingesprungen.Add(1)
 	}
 	return true
 }
@@ -1273,11 +1298,19 @@ func (d *quantenWDienst) teilOffenlegen(ctx context.Context, K string, e *quante
 	if r, ok := d.restNehmen(K, index, ab, eigen.Stellen); ok {
 		teil := quantenWTeilKuerzen(r.offen)
 		if einreichen(teil) == nil {
-			d.restMerken(K, index, ab+len(teil), r.stellen[len(teil):], r.offen[len(teil):])
+			d.zaehler.eingereicht.Add(1)
+			d.zaehler.restGenutzt.Add(1)
+			if quantenWRestLohnt(len(teil), len(r.offen)-len(teil)) {
+				d.restMerken(K, index, ab+len(teil), r.stellen[len(teil):], r.offen[len(teil):])
+			} else {
+				d.restMerken(K, index, ab+len(teil), nil, nil) // vergessen
+			}
 			return true
 		}
+		d.zaehler.abgewiesen.Add(1)
 		// Abgewiesen: wie sonst bei den Nachbarn neu holen.
 	}
+	d.zaehler.nachbarAbfragen.Add(1)
 	aus := append([]QuantenWAnteilAusgabe{eigen}, d.nachbarAnteile(ctx, K, e, eigen)...)
 	for _, wahl := range quantenWAuswahlen(len(aus), e.T, quantenWSammelVersuche) {
 		offen := quantenWSammeln(aus, wahl, e.T)
@@ -1286,9 +1319,15 @@ func (d *quantenWDienst) teilOffenlegen(ctx context.Context, K string, e *quante
 		}
 		teil := quantenWTeilKuerzen(offen)
 		if einreichen(teil) == nil {
-			d.restMerken(K, index, ab+len(teil), eigen.Stellen[len(teil):], offen[len(teil):])
+			d.zaehler.eingereicht.Add(1)
+			if quantenWRestLohnt(len(teil), len(offen)-len(teil)) {
+				d.restMerken(K, index, ab+len(teil), eigen.Stellen[len(teil):], offen[len(teil):])
+			} else {
+				d.restMerken(K, index, ab+len(teil), nil, nil) // vergessen
+			}
 			return true
 		}
+		d.zaehler.abgewiesen.Add(1)
 	}
 	return false
 }
@@ -1337,19 +1376,48 @@ func (d *quantenWDienst) restNehmen(K string, index, ab int, stellen []int) (qua
 const quantenWTeilRumpfBudget = zumLeiterRumpfHoechstens - 8<<10
 
 // quantenWTeilKuerzen: haelt einen Teil unter quantenWTeilRumpfBudget, indem
-// er von hinten gekuerzt wird (halbieren, mindestens eine Stelle). Die Kette
-// nimmt Teile mit 1 bis quantenWOffenTeil Stellen ab a.Offen; der naechste
-// Teil beginnt dort, wo dieser endet. Keine Grenze wird gelockert, keine
-// Regel der Kette geaendert.
+// er von hinten gekuerzt wird -- auf den LAENGSTEN Anfang, der passt
+// (binaere Suche, mindestens eine Stelle). Die Kette nimmt Teile mit 1 bis
+// quantenWOffenTeil Stellen ab a.Offen; der naechste Teil beginnt dort, wo
+// dieser endet. Keine Grenze wird gelockert, keine Regel der Kette geaendert.
+//
+// Befund 18.11.2026 (Pilot 44271941121 gegen 44257006958, je 40 ms, Zaehler
+// je Dienst): Bisher wurde ein zu grosser Teil halbiert (64 -> 32 Stellen bei
+// 3 von 4, Tiefe 14), obwohl 50 passen. Genau zugeschnitten braucht dieselbe
+// Offenlegung 38 % weniger Einreichungen (325 -> 200, also weniger
+// Transaktionen in den Bloecken) bei gleicher Rate (rund 1.000 Stellen/min).
+// Die Burst-Grenze (20 je Minute) war also NICHT der Engpass; begrenzend ist
+// die Abfolge je Teil (Teil im Stand, dann der naechste; Nachbarrunde mit
+// quantenWPeerNachlauf). Siehe forschung/quantengeld/HEUTE.md 3.3d.
 func quantenWTeilKuerzen(offen []QuantenWOffen) []QuantenWOffen {
-	for len(offen) > 1 {
-		roh, err := json.Marshal(offen)
-		if err == nil && len(roh) <= quantenWTeilRumpfBudget {
-			break
-		}
-		offen = offen[:len(offen)/2]
+	passt := func(n int) bool {
+		roh, err := json.Marshal(offen[:n])
+		return err == nil && len(roh) <= quantenWTeilRumpfBudget
 	}
-	return offen
+	if len(offen) <= 1 || passt(len(offen)) {
+		return offen
+	}
+	// Invariante: lo passt (oder ist 1, die Untergrenze), hi passt nicht.
+	lo, hi := 1, len(offen)
+	for hi-lo > 1 {
+		mitte := (lo + hi) / 2
+		if passt(mitte) {
+			lo = mitte
+		} else {
+			hi = mitte
+		}
+	}
+	return offen[:lo]
+}
+
+// quantenWRestLohnt: Einen Rest fuer den naechsten Teil merken, nur wenn er
+// mindestens so viele Stellen hat wie der gerade eingereichte Teil. Sonst
+// traegt eine Einreichung nur fuer den Rest weniger als ein frisch
+// zugeschnittener Teil. Abgewogen wird eine Transaktion in der Kette (jede
+// Einreichung) gegen eine Abfrage bei den Nachbarn (nicht in der Kette);
+// gemessen: 15-25 % mehr Abfragen fuer 38 % weniger Einreichungen.
+func quantenWRestLohnt(teil, rest int) bool {
+	return rest > 0 && rest >= teil
 }
 
 func (d *quantenWDienst) vergessen(K string) {

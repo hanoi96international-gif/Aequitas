@@ -360,7 +360,102 @@ auch die gescheiterten.
 | [44178445416](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44178445416) | Zweig mit #574 und Test-Korrektur (f90b7cd) | **grün**, beide Tests. Mit Ausfall: Werkzeug **12m50s**, Fehlerrate bei passender Basis 24/5208, Doppelvorlage **abgewiesen**, ehrliche Vorlage **eingelöst**, die drei lebenden Knoten gleich (Höhe 5821, StateRoot `cebc24bb…51bd07`). Paket `ok` nach 1917,7 s | Ohne Ausfall: bestanden (Paket `ok`); Dauer und Einzelzeilen liegen vor dem abrufbaren Protokollende und sind nicht belegt. |
 
 | [44186803503](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44186803503) | `main` nach #575 (7fb0a38), Rauschmodell | **grün**, beide Tests, Paket `ok` nach 1366 s. Mit Ausfall (666,5 s): Fehlerrate 19/5189; ausgegeben nach 16 s, gebunden/gewählt nach 17 s; **Doppelvorlage**: 5.200 Stellen in 4m30s offengelegt (**1.156 Stellen/min**), **abgewiesen** (fehl 0 → 1); **ehrliche Vorlage**: 5.200 Stellen in 5m28s (**952 Stellen/min**), **eingelöst**; Werkzeug gesamt 10m50s; drei Knoten gleich (Höhe 4962, StateRoot `7803c08d…0781a3`) | Artefakt `pilot-44186803503` (90 Tage) mit ganzer Ausgabe. Ohne Ausfall: bestanden; Einzelzeilen nur im Artefakt bzw. in der Zusammenfassung. |
-| [44186826204](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44186826204) | `main` nach #575, **IBM-Chip** (10.400 Qubits) | wartet auf Freigabe in `quantenhardware` | – |
+| [44186826204](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44186826204) | `main` nach #575, **echter IBM-Chip `ibm_kingston`** (freigegeben 18.11. 06:46 UTC) | **grün**, beide Tests, Paket `ok` nach 1698,4 s. **Messung:** 10.400 Qubits in 650 Schaltkreisen, je ein Schuss, Job `dbukk3darooc73fk52hg`, Fehler bei passender Basis **31/5.241 (0,59 %)**. Mit Ausfall (653,0 s): Doppelvorlage 5m00s, 1.040 Stellen/min, **abgewiesen**; ehrliche Vorlage 4m59s, 1.042 Stellen/min, **eingelöst**; Werkzeug 10m37s; drei Knoten gleich (Höhe 4810, StateRoot `927387c0…2aff81`) | Ohne Ausfall: bestanden (Paket `ok`); die Einzelzeilen liegen vor dem abrufbaren Protokollende, im Artefakt `pilot-44186826204` vollständig. |
+
+**Mit Netzlaufzeit zwischen den Knoten** (PR #578, `latenz_ms`): `tc netem` nur auf den
+Knotenadressen, der Rundlauf ist etwa 2 × die Einstellung. Der Lauf bricht ab, wenn die
+Laufzeit nicht wirkt. Seit #576 steht das ganze Ergebnis am Protokollende und ist damit
+für beide Tests belegt.
+
+| Lauf | Laufzeit je Richtung | Test | Doppelvorlage | ehrliche Vorlage | Werkzeug | danach |
+|---|---|---|---|---|---|---|
+| [44251220417](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44251220417) | 40 ms | alle vier (803,6 s) | 4m56s, 1.053/min, **abgewiesen** | 8m03s, **646/min**, **eingelöst** | 13m06s | 4 Knoten gleich, Höhe 7895 |
+| ebenda | 40 ms | ein Knoten fällt aus (660,5 s) | 4m47s, 1.087/min, **abgewiesen** | 4m46s, 1.089/min, **eingelöst** | 10m46s | 3 Knoten gleich, Höhe 4883 |
+
+| [44251224574](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44251224574) | 100 ms | alle vier (704,9 s) | 5m15s, 992/min, **abgewiesen** | 5m59s, 869/min, **eingelöst** | 11m27s | 4 Knoten gleich, Höhe 3447 |
+| ebenda | 100 ms | ein Knoten fällt aus (711,3 s) | 4m53s, 1.065/min, **abgewiesen** | 6m28s, 805/min, **eingelöst** | 11m37s | 3 Knoten gleich, Höhe 3498 |
+
+SHA-256:
+- Lauf 44251220417: `ergebnis.txt` `090b7f52…450ea4`, `ausgabe.txt.gz` `14945d4f…26e1a4`.
+- Lauf 44251224574: `ergebnis.txt` `da95ede8…c2782a`, `ausgabe.txt.gz` `d70490ff…19d07c5`.
+- Jeweils im Artefakt `pilot-<Lauf>`.
+
+**Ergebnis Netzlaufzeit:**
+- Auch bei 200 ms Rundlauf zwischen den Knoten (interkontinentale Server) läuft die
+  Offenlegung mit 800–1.090 Stellen/min.
+- Die langsamste Offenlegung aller Läufe dauerte 8 Minuten (646/min, 40 ms, ohne Ausfall).
+  Die Kettenfrist ist 30 Minuten, der Abstand also mindestens 3,7-fach.
+- Die Laufzeit ist nicht der Engpass.
+
+**Befund mit Zählern belegt** (Lauf [44257006958](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44257006958), 40 ms, a69b1d9; beide Tests grün):
+
+| Test | Dienst | eingereicht | abgewiesen | eingesprungen | Nachbarabfragen |
+|---|---|---|---|---|---|
+| alle vier (ehrliche Vorlage 934/min) | 0 / 1 / 2 / 3 | 128 / 97 / 53 / 47 | **22 / 72 / 34 / 43** | 1 / 2 / 1 / 0 | 180 / 162 / 80 / 84 |
+| ein Knoten fällt aus (1.142/min) | 0 / 1 / 2† / 3 | 160 / 0 / 0 / 166 | **0 / 0 / 0 / 5** | 2 / 0 / 0 / 1 | 161 / 0 / 0 / 180 |
+
+- Ohne Ausfall reichten **alle vier** Dienste ein, und **171 von 496** Einreichungen wurden
+  abgewiesen. Es gab 506 statt 341 Nachbarabfragen.
+- Ursache:
+  - Ein Ersatz springt ein, sobald ein Teil einmal 10 s offen ist.
+  - Er blieb danach bis zum Ende des Versuchs dran, auch wenn der Zuständige wieder
+    arbeitete. Dann konkurrierten beide um jeden Teil.
+- **Versuch 1 (43b9c78): Der Ersatz tritt zurück, sobald ein anderer vorankommt. Gemessen
+  schlechter, zurückgenommen (0aafbfe).** Prüflauf
+  [44264862815](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44264862815):
+
+  | Test | Rate | abgewiesen | eingesprungen / zurückgetreten |
+  |---|---|---|---|
+  | alle vier | 687–793/min (vorher 934–990) | 218 | 20 / 18 |
+  | ein Knoten fällt aus | 575–613/min (vorher 1.088–1.142) | 217 (vorher 5) | 22 / 20 |
+
+  Die Ersatz-Dienste pendelten bis zu 14-mal zwischen Einspringen und Zurücktreten.
+- **Hypothese danach (mit Versuch 2 widerlegt, siehe unten): Engpass sei die Burst-Grenze
+  je Absender**, 20 Einreichungen je Minute und Validator. Die Grenze bleibt so.
+  - Mit Ausfall reichten zwei Dienste je etwa 17–18 Teile/min ein. Bei 32 Stellen je Teil
+    sind das die gemessenen rund 1.100 Stellen/min.
+  - Paralleles Einreichen verteilte die Arbeit also auf mehrere Budgets. Es war nicht nur
+    Verschwendung.
+- **Versuch 2 (6f72941): mehr Stellen je Einreichung.** Der Teil wird genau auf das
+  Größenbudget zugeschnitten statt halbiert. Bei 3 von 4 Validatoren und Tiefe 14 sind das
+  50 statt 32 Stellen. Prüflauf
+  [44271941121](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44271941121)
+  (40 ms, beide Tests grün, Vergleich mit Lauf 44257006958):
+
+  | Test | Rate | Einreichungen | abgewiesen | Nachbarabfragen |
+  |---|---|---|---|---|
+  | alle vier, vorher / **nachher** | 934–990 / **929–993** | 325 / **200** | 171 / **95** | 506 / 582 |
+  | ein Ausfall, vorher / **nachher** | 1.088–1.142 / **947–1.360** | 326 / **200** | 5 / **0** | 341 / 426 |
+
+  - **Gleich schnell, aber 38 % weniger Einreichungen**, also weniger Transaktionen in den
+    Blöcken für dieselbe Offenlegung, und rund halb so viele Abweisungen.
+  - Dafür 15–25 % mehr Nachbarabfragen: Ein kleiner Rest wird nicht mehr eigens eingereicht.
+  - Behalten.
+- **Damit ist auch die Burst-Grenze als Engpass widerlegt.**
+  - Mit größeren Teilen reicht jeder Dienst nur noch etwa 7 Teile/min ein, weit unter 20,
+    und die Rate bleibt bei etwa 1.000 Stellen/min.
+  - Begrenzend ist die **Abfolge je Teil**: Ein Teil muss im Stand stehen, bevor der nächste
+    eingereicht werden kann, und jede Nachbarrunde wartet nach t Antworten noch
+    `quantenWPeerNachlauf` (1 s) auf weitere Anteile. Das gibt rund 20 Teile/min, gleich wie
+    viele Dienste helfen.
+- **Schluss:**
+  - Bei rund 1.000 Stellen/min dauert eine Offenlegung von 5.200 Stellen etwa 5–8 Minuten,
+    die Kettenfrist ist 30 Minuten.
+  - Weitere Beschleunigung (Vorausholen der nächsten Anteile, kürzerer Nachlauf) würde
+    Robustheit gegen nicht benötigtes Tempo tauschen und unterbleibt.
+  - Wird die Frist im Betrieb knapp, ist das Vorausholen der nächste Schritt.
+
+**Frühere Vermutung (vor den Zählern):**
+- Bei 40 ms war die ehrliche Vorlage ohne Ausfall langsamer (646/min) als mit Ausfall
+  (1.089/min).
+- Bei 100 ms war sie ohne Ausfall *schneller* (869/min). Die 646/min sind also eher Streuung
+  als ein festes Muster.
+- Belegen sollen es Zähler je Validator-Dienst (eingereicht, abgewiesen, eingesprungen,
+  Nachbarabfragen), die der Pilot seit diesem Stand ausgibt.
+- Erklärung aus dem Code: Mit Laufzeit erreicht ein Teil die anderen Knoten später. Ist er
+  10 s offen, springt Rang 1 ein und bleibt dran (#574). Dann reichen zwei Validatoren
+  parallel ein und behindern sich; mit Ausfall fehlt dieser Konkurrent.
+- Selbst dann sind es 8 Minuten statt 30 Minuten Kettenfrist, also 3,7-facher Abstand.
 
 **Rate der Offenlegung (Auftrag 3 des Betreibers):**
 - Vorher (#572): rund 230 Stellen/min. Das reichte nicht für 5.200 Stellen in 15 Minuten.
@@ -373,6 +468,18 @@ auch die gescheiterten.
 - Weiteres Beschleunigen ist nicht nötig.
 - Zu beobachten bleibt, ob die Rate auf echten Servern im Netz (Latenz statt `127.0.0.x`)
   ähnlich ist. Das zeigt erst ein Testnetz mit mehreren Servern.
+
+**Erster S-Token in voller Prüfgröße auf echter Hardware mit vier Validatoren (18.11.2026):**
+- Gemessen auf IBM `ibm_kingston` mit 0,59 % Fehlern, ausgegeben mit den Bestätigungen von
+  vier Validatoren (3 von 4).
+- Die Doppelvorlage an der falschen Annahmestelle wurde abgewiesen, die ehrliche Vorlage
+  eingelöst, auch als ein Validator vor der ersten Vorlage ausfiel.
+- Ehrlich dazu:
+  - Präparation und Messung liefen im selben IBM-Schaltkreis. Es gab keine Übertragung über
+    eine Leitung und keinen Speicher; das ist bei Variante S so vorgesehen, die Leitung ist
+    S3.
+  - Die vier Knoten liefen in einem Job.
+  - Es liegt kein Gutachten vor.
 
 **Ergebnis:** Variante S läuft mit vier Validatoren (3 von 4) in voller Größe der Tabelle
 durch, auch wenn ein Validator ausfällt. Dabei gilt: Messung im Rauschmodell, Knoten in
