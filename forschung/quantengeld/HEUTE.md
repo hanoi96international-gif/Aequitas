@@ -387,7 +387,23 @@ SHA-256:
   Die Kettenfrist ist 30 Minuten, der Abstand also mindestens 3,7-fach.
 - Die Laufzeit ist nicht der Engpass.
 
-**Befund (Vermutung, durch den 100-ms-Lauf eher widerlegt):**
+**Befund mit Zählern belegt** (Lauf [44257006958](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44257006958), 40 ms, a69b1d9; beide Tests grün):
+
+| Test | Dienst | eingereicht | abgewiesen | eingesprungen | Nachbarabfragen |
+|---|---|---|---|---|---|
+| alle vier (ehrliche Vorlage 934/min) | 0 / 1 / 2 / 3 | 128 / 97 / 53 / 47 | **22 / 72 / 34 / 43** | 1 / 2 / 1 / 0 | 180 / 162 / 80 / 84 |
+| ein Knoten fällt aus (1.142/min) | 0 / 1 / 2† / 3 | 160 / 0 / 0 / 166 | **0 / 0 / 0 / 5** | 2 / 0 / 0 / 1 | 161 / 0 / 0 / 180 |
+
+- Ohne Ausfall reichten **alle vier** Dienste ein, und **171 von 496** Einreichungen wurden
+  abgewiesen. Es gab 506 statt 341 Nachbarabfragen.
+- Ursache:
+  - Ein Ersatz springt ein, sobald ein Teil einmal 10 s offen ist.
+  - Er blieb danach bis zum Ende des Versuchs dran, auch wenn der Zuständige wieder
+    arbeitete. Dann konkurrierten beide um jeden Teil.
+- Abhilfe auf dem Zweig (43b9c78): Der Ersatz tritt zurück, sobald ein anderer vorankommt.
+- Prüflauf: [44264862815](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44264862815).
+
+**Frühere Vermutung (vor den Zählern):**
 - Bei 40 ms war die ehrliche Vorlage ohne Ausfall langsamer (646/min) als mit Ausfall
   (1.089/min).
 - Bei 100 ms war sie ohne Ausfall *schneller* (869/min). Die 646/min sind also eher Streuung
