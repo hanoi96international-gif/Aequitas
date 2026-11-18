@@ -203,8 +203,12 @@ In Abschnitt C ist nur noch C6 offen (Konto des Betreibers).
    - Pilot im Testnetz. **Stand 17.11. abends:**
      - Im Rauschmodell grün, in voller Größe: k = 5.200, 3 von 4 Validatoren, mit und ohne
        Ausfall. Offenlegung 950–1.160 Stellen/min (HEUTE.md 3.3d).
-     - Auf dem echten Chip wartet der Lauf auf die Freigabe.
-     - Offen: Server im echten Netz statt Knoten in einem Job.
+     - **Auf dem echten Chip grün (18.11.):** IBM `ibm_kingston`, 10.400 Qubits, 0,59 %
+       Fehler. Doppelvorlage abgewiesen, ehrliche Vorlage eingelöst, auch mit Ausfall.
+     - Netzlaufzeit 40 und 100 ms je Richtung zwischen den Knoten (netem): grün,
+       800–1.090 Stellen/min. Der Engpass ist die Burst-Grenze je Absender (20
+       Einreichungen/min); Teile werden jetzt genau zugeschnitten.
+     - Offen: Server im echten Netz statt Knoten in einem Job (braucht Server); Gutachten.
 
 ## E. Wartet auf dich (Freigaben und Konten)
 

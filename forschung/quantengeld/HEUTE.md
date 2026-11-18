@@ -360,7 +360,7 @@ auch die gescheiterten.
 | [44178445416](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44178445416) | Zweig mit #574 und Test-Korrektur (f90b7cd) | **grün**, beide Tests. Mit Ausfall: Werkzeug **12m50s**, Fehlerrate bei passender Basis 24/5208, Doppelvorlage **abgewiesen**, ehrliche Vorlage **eingelöst**, die drei lebenden Knoten gleich (Höhe 5821, StateRoot `cebc24bb…51bd07`). Paket `ok` nach 1917,7 s | Ohne Ausfall: bestanden (Paket `ok`); Dauer und Einzelzeilen liegen vor dem abrufbaren Protokollende und sind nicht belegt. |
 
 | [44186803503](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44186803503) | `main` nach #575 (7fb0a38), Rauschmodell | **grün**, beide Tests, Paket `ok` nach 1366 s. Mit Ausfall (666,5 s): Fehlerrate 19/5189; ausgegeben nach 16 s, gebunden/gewählt nach 17 s; **Doppelvorlage**: 5.200 Stellen in 4m30s offengelegt (**1.156 Stellen/min**), **abgewiesen** (fehl 0 → 1); **ehrliche Vorlage**: 5.200 Stellen in 5m28s (**952 Stellen/min**), **eingelöst**; Werkzeug gesamt 10m50s; drei Knoten gleich (Höhe 4962, StateRoot `7803c08d…0781a3`) | Artefakt `pilot-44186803503` (90 Tage) mit ganzer Ausgabe. Ohne Ausfall: bestanden; Einzelzeilen nur im Artefakt bzw. in der Zusammenfassung. |
-| [44186826204](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44186826204) | `main` nach #575, **IBM-Chip** (10.400 Qubits) | wartet auf Freigabe in `quantenhardware` | – |
+| [44186826204](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44186826204) | `main` nach #575, **echter IBM-Chip `ibm_kingston`** (freigegeben 18.11. 06:46 UTC) | **grün**, beide Tests, Paket `ok` nach 1698,4 s. **Messung:** 10.400 Qubits in 650 Schaltkreisen, je ein Schuss, Job `dbukk3darooc73fk52hg`, Fehler bei passender Basis **31/5.241 (0,59 %)**. Mit Ausfall (653,0 s): Doppelvorlage 5m00s, 1.040 Stellen/min, **abgewiesen**; ehrliche Vorlage 4m59s, 1.042 Stellen/min, **eingelöst**; Werkzeug 10m37s; drei Knoten gleich (Höhe 4810, StateRoot `927387c0…2aff81`) | Ohne Ausfall: bestanden (Paket `ok`); die Einzelzeilen liegen vor dem abrufbaren Protokollende, im Artefakt `pilot-44186826204` vollständig. |
 
 **Mit Netzlaufzeit zwischen den Knoten** (PR #578, `latenz_ms`): `tc netem` nur auf den
 Knotenadressen, der Rundlauf ist etwa 2 × die Einstellung. Der Lauf bricht ab, wenn die
@@ -443,6 +443,18 @@ SHA-256:
 - Weiteres Beschleunigen ist nicht nötig.
 - Zu beobachten bleibt, ob die Rate auf echten Servern im Netz (Latenz statt `127.0.0.x`)
   ähnlich ist. Das zeigt erst ein Testnetz mit mehreren Servern.
+
+**Erster S-Token in voller Prüfgröße auf echter Hardware mit vier Validatoren (18.11.2026):**
+- Gemessen auf IBM `ibm_kingston` mit 0,59 % Fehlern, ausgegeben mit den Bestätigungen von
+  vier Validatoren (3 von 4).
+- Die Doppelvorlage an der falschen Annahmestelle wurde abgewiesen, die ehrliche Vorlage
+  eingelöst, auch als ein Validator vor der ersten Vorlage ausfiel.
+- Ehrlich dazu:
+  - Präparation und Messung liefen im selben IBM-Schaltkreis. Es gab keine Übertragung über
+    eine Leitung und keinen Speicher; das ist bei Variante S so vorgesehen, die Leitung ist
+    S3.
+  - Die vier Knoten liefen in einem Job.
+  - Es liegt kein Gutachten vor.
 
 **Ergebnis:** Variante S läuft mit vier Validatoren (3 von 4) in voller Größe der Tabelle
 durch, auch wenn ein Validator ausfällt. Dabei gilt: Messung im Rauschmodell, Knoten in
