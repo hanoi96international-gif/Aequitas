@@ -226,6 +226,9 @@ In Abschnitt C ist nur noch C6 offen (Konto des Betreibers).
        - Bei W kann es die **letzte** Einlösung einer Note zunichtemachen: Die Stellen sind
          gemessen, die Note ist danach erschöpft, und ihr Wert geht an das Grundeinkommen.
        - Ein Ausweg ohne Fälschungsweg ist offen, zum Beispiel ein Pfand der Validatoren.
+     - **Befund 18.11. (DEZENTRAL.md):** Die Ausgabe präpariert alle Stellen in einem
+       Auftrag, also kennen Ausgeber und Anbieter den ganzen Token. Im Bau ist Weg A,
+       die Präparation je Validator (A1–A4).
      - **Restlücke Register je Zeile** (Prüfauftrag W7): Eine Zeile in der Tabelle ohne
        Gegenstück im Speicher fiele erst nach einem Neustart als StateRoot-Abweichung auf.
      - Offen: Server im echten Netz statt Knoten in einem Job (braucht Server); Gutachten.
