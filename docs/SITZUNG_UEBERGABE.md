@@ -7,35 +7,24 @@ Repos); davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
-**Zuletzt (Sitzung „Weiter“, 17.11. ~22:10 UTC):**
-- **Gemergt:** #572 bis #575, App #84.
-  - #575: `/api/wirtschaft/runde`, `regeln.geltend`, geprüfte Quellen, Pilot-Artefakt und
-    Zeiten im Ausgabe-Werkzeug.
-  - App #84: Netto-Zeile mit Einzelbuchungen und Rundenzahlen; das Release braucht die
-    Freigabe des Betreibers.
-- **Pilot S in voller Größe GRÜN** (Lauf 44178445416, Rauschmodell, k = 5.200, 3 von 4).
-  Mit Ausfall: 12m50s, Doppelvorlage abgewiesen, ehrliche Vorlage eingelöst, drei Knoten
-  gleich. Details in `HEUTE.md` 3.3d.
-- **Läuft bzw. wartet:**
-  - Pilot auf `main`, Rauschmodell: 44186803503.
-  - Pilot auf `main`, **IBM**: 44186826204, wartet auf die Schlange, dann auf die
-    Freigabe in `quantenhardware`.
-  - C1-Deploy von #575: 44186789036, Freigabe Betreiber.
-- **Auftrag des Betreibers (1–3, 22:05):**
-  1. Pilot auf `main` mit Artefakt.
-  2. Pilot auf dem echten IBM-Chip.
-  3. Rate der Offenlegung auswerten und, wenn nötig, beschleunigen, ohne Grenzen zu
-     lockern.
-- **Messen von hier aus:** Zusammenfassung und Artefakte sind gesperrt (Host
-  `blob.core.windows.net`). Ab dem Zweig nach #575 schreibt der Pilot das Ergebnis
-  zusätzlich ans Protokollende (`get_job_logs` mit `tail_lines` ≤ 5000). Das Werkzeug
-  schreibt die Zeiten je Schritt, den Stand der Offenlegung je Minute und die Rate in
-  Stellen/min.
-- Wirtschaft: Startbetrag-Analyse fertig (bei 1.000 bleiben). Offen ist nur, was in
-  `WIRTSCHAFT_STARTBETRAG.md` Abschnitt 5 steht (Staffel scharf schalten, feste Beträge
-  als Vielfache).
-- Protokolle: Der Download über `blob.core.windows.net` ist gesperrt, `get_job_logs`
-  liefert höchstens 5.000 Zeilen.
+**Zuletzt (Sitzung „Weiter“, 18.11. ~06:30 UTC):**
+- **Gemergt bis #577.** Der C1-Deploy von #575 ist durch (18.11. 06:18 UTC), damit ist
+  `/api/wirtschaft/runde` im Hauptnetz verfügbar.
+- **Pilot S in voller Größe grün**, auf dem Zweig und auf `main`. Rauschmodell, k = 5.200,
+  3 von 4, mit und ohne Ausfall. Offenlegung 950–1.160 Stellen/min, gut 5-fach unter der
+  Kettenfrist. Details in `HEUTE.md` 3.3d.
+- **PR #578 offen:** `latenz_ms` im Pilot (tc netem nur zwischen den Knoten, fail-closed)
+  und eine Schlange je Modus.
+  - Läufe 44251220417 (40 ms) und 44251224574 (100 ms) laufen.
+  - Danach die Ergebnisse in `HEUTE.md` 3.3d eintragen und mergen.
+- **Wartet auf den Betreiber:**
+  - IBM-Pilot 44186826204: Freigabe in `quantenhardware`.
+  - App-Release mit Netto-Zeile und Rundenzahlen (App #84 ist gemergt).
+  - `perf-c1.yml`: Ratengrenze zurück auf die Vorgabe.
+- **Messen von hier:** Zusammenfassung und Artefakte sind gesperrt. Seit #576 steht das
+  Ergebnis am Protokollende (`get_job_logs`, höchstens 5.000 Zeilen).
+- Wirtschaft: Analyse in `docs/WIRTSCHAFT_STARTBETRAG.md`. Offen sind die Vorschläge in
+  Abschnitt 5: Staffel scharf schalten, feste Beträge als Vielfache.
 
 ## Arbeitsweise (vom Betreiber festgelegt)
 
