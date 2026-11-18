@@ -45,6 +45,9 @@ wiesner_hardware.note_steane),
 --s-token [--k K] (Variante S, s_kette.py: 2K Qubits, sofort gemessen, kein
 Speicher; Vorlage an der gewaehlten Annahmestelle und als Angriff an der
 anderen; Standard K = 840, hoechstens 2048),
+--s-abschnitte VERZEICHNIS [--k K] [--v V] (Ausgabe in Abschnitten: je
+Validator ein eigener Auftrag fuer seinen Abschnitt, mess_<x>.json je
+Validator und basen.json fuer das Werkzeug; DEZENTRAL.md 8-11),
 --s-messen DATEI [--k K] (nur die Messung von 2K Qubits fuer die echte
 Ausgabe auf der Kette: u, t, y, x als JSON, Zufall aus dem Betriebssystem;
 weiter mit aequitasd quanten-s-ausgabe, deploy/quanten-s-ausgabe.sh),
@@ -478,10 +481,18 @@ def wiesner_kette_lauf(schuesse: int, rng: random.Random) -> None:
 def s_messen(n: int, rng: random.Random):
     """Ausgabe von n Qubits in zufaelligen BB84-Zustaenden (Basen u, Werte t),
     die Inhaberin misst SOFORT in zufaelligen Basen y (Ergebnisse x)."""
+    y = [rng.randrange(2) for _ in range(n)]
+    u, t, x, kreise, job_id, wo = s_messen_basen(y, rng)
+    return u, t, y, x, kreise, job_id, wo
+
+
+def s_messen_basen(y: list[int], rng: random.Random):
+    """Wie s_messen, aber in den vorgegebenen Basen y der Inhaberin -- EIN
+    eigener Auftrag beim Quantenrechner (Abschnitt eines Validators, A4)."""
+    n = len(y)
     m = wh.MAX_QUBITS_NOTE
     u = [rng.randrange(2) for _ in range(n)]
     t = [rng.randrange(2) for _ in range(n)]
-    y = [rng.randrange(2) for _ in range(n)]
     kreise = [wh.note(u[i:i + m], t[i:i + m], y[i:i + m], warten_us=0) for i in range(0, n, m)]
     backend, sampler, wo = backend_und_sampler()
     qcs = [nach_qiskit(s) for s in kreise]
@@ -494,7 +505,7 @@ def s_messen(n: int, rng: random.Random):
         x += wh.antworten(s, r.data.c.get_bitstrings()[0])
     if len(x) != n:
         raise SystemExit(f"Messung: {len(x)} statt {n} Ergebnisse")
-    return u, t, y, x, kreise, job_id, wo
+    return u, t, x, kreise, job_id, wo
 
 
 def s_messen_lauf(datei: str) -> None:
@@ -513,6 +524,44 @@ def s_messen_lauf(datei: str) -> None:
         json.dump({"n": n, "u": bits(u), "t": bits(t), "y": bits(y), "x": bits(x), "wo": wo, "job": job_id}, fh)
     text = (f"## S-Messung fuer die Ausgabe auf {wo}\n\n{n} Qubits in {len(kreise)} Schaltkreisen, je ein Schuss"
             + (f", Job {job_id}" if job_id else "") + f". Fehler bei passender Basis: {falsch}/{len(passend)}.")
+    print(text)
+    if os.environ.get("GITHUB_STEP_SUMMARY"):
+        with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as fh:
+            fh.write(text + "\n")
+
+
+def s_abschnitte_lauf(verzeichnis: str) -> None:
+    """--s-abschnitte VERZEICHNIS [--k K] [--v V]: Messung fuer die Ausgabe in
+    Abschnitten (forschung/quantengeld/DEZENTRAL.md 8-11). Je Validator x ein
+    EIGENER Auftrag fuer seinen Abschnitt (s_kette.abschnitte), in Basen y,
+    die hier fuer die Inhaberin gezogen werden. Schreibt mess_<x>.json (u, t,
+    y, x -- nur fuer Validator x, AEQUITAS_QS_MESSQUELLE) und basen.json (nur
+    y je Abschnitt -- fuer das Werkzeug). Im Pilot laufen alle Auftraege von
+    einem Konto aus; im Betrieb misst jeder Validator selbst."""
+    k = zahl("--k", sk.K_STELLE, MAX_S_STELLEN)
+    v = zahl("--v", 4, 64)
+    n = 2 * k
+    rng = random.SystemRandom()
+    bits = lambda b: "".join(map(str, b))
+    os.makedirs(verzeichnis, mode=0o700, exist_ok=True)
+    basen, jobs, zeilen, wo = [], [], [], ""
+    for x, ab in enumerate(sk.abschnitte(n, v), 1):
+        y = [rng.randrange(2) for _ in ab]
+        u, t, xs, kreise, job_id, wo = s_messen_basen(y, rng)
+        passend = [i for i in range(len(y)) if y[i] == u[i]]
+        falsch = sum(xs[i] != t[i] for i in passend)
+        fd = os.open(os.path.join(verzeichnis, f"mess_{x}.json"), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "w") as fh:
+            json.dump({"abschnitte": [{"u": bits(u), "t": bits(t), "y": bits(y), "x": bits(xs), "wo": wo, "job": job_id}]}, fh)
+        basen.append(bits(y))
+        jobs.append(job_id)
+        zeilen.append(f"- Validator {x}: Stellen {ab[0]}..{ab[-1]} ({len(ab)} Qubits, {len(kreise)} Schaltkreise"
+                      + (f", Job {job_id}" if job_id else "") + f"), Fehler bei passender Basis {falsch}/{len(passend)}")
+    fd = os.open(os.path.join(verzeichnis, "basen.json"), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w") as fh:
+        json.dump({"n": n, "basen": basen, "wo": wo, "job": ",".join(j for j in jobs if j)}, fh)
+    text = "\n".join([f"## S-Messung in {v} Abschnitten auf {wo}", "",
+                      f"{n} Qubits, je Validator ein eigener Auftrag:"] + zeilen)
     print(text)
     if os.environ.get("GITHUB_STEP_SUMMARY"):
         with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as fh:
@@ -575,6 +624,9 @@ def main() -> None:
     rng = random.Random(int.from_bytes(os.urandom(8), "big"))
     if "--s-messen" in sys.argv:
         s_messen_lauf(sys.argv[sys.argv.index("--s-messen") + 1])
+        return
+    if "--s-abschnitte" in sys.argv:
+        s_abschnitte_lauf(sys.argv[sys.argv.index("--s-abschnitte") + 1])
         return
     if "--s-token" in sys.argv:
         s_token_lauf(rng)

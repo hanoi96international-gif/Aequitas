@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"math/rand"
 	"net"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -40,6 +42,35 @@ func TestVierKnotenQuantenS_RealDB(t *testing.T) { qsVierKnoten(t, false) }
 // die uebrigen drei sammeln ihre Anteile und legen offen, das Urteil steht
 // trotzdem. Genau dafuer ist das Geheimnis t-von-v geteilt.
 func TestVierKnotenQuantenSAusfall_RealDB(t *testing.T) { qsVierKnoten(t, true) }
+
+// AUSGABE IN ABSCHNITTEN (forschung/quantengeld/DEZENTRAL.md 8-11): jeder der
+// vier Validatoren praepariert seinen Abschnitt aus seiner EIGENEN Messquelle,
+// das Werkzeug bekommt nur die Basen der Inhaberin -- niemand kennt den
+// ganzen Token. Mit und ohne Ausfall eines Validators vor der ersten Vorlage.
+func TestVierKnotenQuantenSAbschnitte_RealDB(t *testing.T)        { qsVierKnotenModus(t, false, true) }
+func TestVierKnotenQuantenSAbschnitteAusfall_RealDB(t *testing.T) { qsVierKnotenModus(t, true, true) }
+
+// qsAbschnitteAusVerzeichnis: im Pilot (quanten-s-pilot.yml, ausgabe =
+// abschnitte) steht in AEQUITAS_QS_ABSCHNITTE das Verzeichnis von
+// `hardware_ibm.py --s-abschnitte`: mess_<x>.json je Validator, basen.json
+// fuer das Werkzeug. basen.json wird so streng gelesen wie im Werkzeug.
+func qsAbschnitteAusVerzeichnis(t *testing.T) (string, QuantenSBasen, bool) {
+	dir := strings.TrimSpace(os.Getenv("AEQUITAS_QS_ABSCHNITTE"))
+	if dir == "" {
+		return "", QuantenSBasen{}, false
+	}
+	roh, err := os.ReadFile(filepath.Join(dir, "basen.json"))
+	if err != nil || len(roh) > quantenSAusgabeMessMax {
+		t.Fatalf("AEQUITAS_QS_ABSCHNITTE: basen.json: %v", err)
+	}
+	var b QuantenSBasen
+	dec := json.NewDecoder(bytes.NewReader(roh))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&b); err != nil {
+		t.Fatalf("AEQUITAS_QS_ABSCHNITTE: basen.json: %v", err)
+	}
+	return dir, b, true
+}
 
 // PILOT AUF ECHTER HARDWARE (Workflow quanten-s-pilot.yml): Steht in
 // AEQUITAS_QS_MESSUNG eine Datei von `hardware_ibm.py --s-messen`, kommt der
@@ -90,14 +121,25 @@ func (a *qsAusfallNetz) einreichen(ctx context.Context, art, wallet string, zeit
 	return a.quantenSMehrNetz.einreichen(ctx, art, wallet, zeit, q)
 }
 
-func qsVierKnoten(t *testing.T, ausfall bool) {
+func qsVierKnoten(t *testing.T, ausfall bool) { qsVierKnotenModus(t, ausfall, false) }
+
+func qsVierKnotenModus(t *testing.T, ausfall, abschnitte bool) {
 	skipUnlessRealDBBenchEnv(t)
 	if testing.Short() {
 		t.Skip("laeuft in echter Zeit")
 	}
 	kJeStelle := 128
 	echt, ausDatei := qsMessungAusDatei(t)
-	if ausDatei {
+	var abDir string
+	var basen QuantenSBasen
+	if abschnitte {
+		ausDatei = false
+		abDir, basen, ausDatei = qsAbschnitteAusVerzeichnis(t)
+		if ausDatei {
+			kJeStelle = basen.N / 2
+			t.Logf("Abschnitte aus %s: n = %d, %d Abschnitte, Geraet %q, Jobs %q", abDir, basen.N, len(basen.Basen), basen.Wo, basen.Job)
+		}
+	} else if ausDatei {
 		kJeStelle = echt.N / 2
 		t.Logf("Messung aus %s: n = %d, k je Stelle = %d, Geraet %q, Job %q", os.Getenv("AEQUITAS_QS_MESSUNG"), echt.N, kJeStelle, echt.Wo, echt.Jo)
 	}
@@ -153,6 +195,28 @@ func qsVierKnoten(t *testing.T, ausfall bool) {
 			t.Fatalf("Knoten %d: Validator-Dienst: %v", k.i, err)
 		}
 		dienste = append(dienste, cs.quantenWDienstJetzt())
+	}
+	// Abschnitte: jeder Dienst bekommt SEINE Messquelle (Validator x = Knoten
+	// x-1 in der Reihenfolge der Validatoren unten).
+	if abschnitte {
+		n := 2 * kJeStelle
+		r := rand.New(rand.NewSource(time.Now().UnixNano()))
+		if !ausDatei {
+			basen = QuantenSBasen{N: n, Wo: "vier Knoten (Speicher)"}
+		}
+		for i, d := range dienste {
+			if ausDatei {
+				d.messquelleSetzen(&quantenSMessDatei{pfad: filepath.Join(abDir, fmt.Sprintf("mess_%d.json", i+1))})
+				continue
+			}
+			d.messquelleSetzen(&qsaMessung{r: rand.New(rand.NewSource(r.Int63()))})
+			von, bis, _ := quantenSAbschnitt(n, len(dienste), i+1)
+			y := make([]int, bis-von)
+			for j := range y {
+				y[j] = r.Intn(2)
+			}
+			basen.Basen = append(basen.Basen, qsBitsText(y))
+		}
 	}
 
 	// Ehrliche Messung (ohne Rauschen): 2 * 128 Stellen.
@@ -212,8 +276,14 @@ func qsVierKnoten(t *testing.T, ausfall bool) {
 		}}
 	}
 	beginn := time.Now()
-	erg, err := quantenSAusgabeLauf(context.Background(), QuantenSAusgabeAuftrag{Messung: m, Schluessel: ausgeber.key, Deckung: 2_000_000,
-		Tol: quantenWTolStandard, Frist: frist}, adressen, 3, werkzeugNetz, &log)
+	var erg *QuantenSAusgabeErgebnis
+	if abschnitte {
+		erg, err = quantenSAusgabeLaufAbschnitte(context.Background(), QuantenSAusgabeAuftrag{Schluessel: ausgeber.key, Deckung: 2_000_000,
+			Tol: quantenWTolStandard, Frist: frist}, basen, adressen, 3, werkzeugNetz.(quantenSAbschnittNetz), &log)
+	} else {
+		erg, err = quantenSAusgabeLauf(context.Background(), QuantenSAusgabeAuftrag{Messung: m, Schluessel: ausgeber.key, Deckung: 2_000_000,
+			Tol: quantenWTolStandard, Frist: frist}, adressen, 3, werkzeugNetz, &log)
+	}
 	t.Logf("Werkzeug (%s):\n%s", time.Since(beginn).Round(time.Second), log.String())
 	if err != nil {
 		t.Fatal(err)
