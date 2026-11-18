@@ -453,13 +453,22 @@ class Praeparator:
     seiner Stellen teilt er selbst t-von-v auf alle Validatoren auf. Ausserhalb
     seines Abschnitts kennt er nur je Stelle einen Anteil."""
 
-    def __init__(self, x: int, K: str, abschnitt: list[int], t: int, n_val: int, rng: random.Random):
+    def __init__(self, x: int, K: str, abschnitt: list[int], t: int, n_val: int, rng: random.Random,
+                 mit_stellen_bit: bool = False):
         if not 1 <= x <= n_val or not 1 <= t <= n_val or not abschnitt:
             raise ValueError("Praeparator: Nummer, Schwelle oder Abschnitt")
         self.x, self.K, self.abschnitt = x, K, list(abschnitt)
         self._u = {i: rng.randrange(2) for i in self.abschnitt}
         self._t = {i: rng.randrange(2) for i in self.abschnitt}
-        self._v = {i: wk.wert(self._u[i], self._t[i], rng.randrange(1 << wk.SALZ_BITS)) for i in self.abschnitt}
+        # Stellen-Bit (A2): das unterste Bit des Salzes sagt, zu welcher
+        # Annahmestelle die Stelle gehoert -- je Abschnitt genau zur Haelfte.
+        bits = {i: rng.randrange(2) for i in self.abschnitt}
+        if mit_stellen_bit:
+            reihe = list(self.abschnitt)
+            rng.shuffle(reihe)
+            bits = {i: int(j >= len(reihe) // 2) for j, i in enumerate(reihe)}
+        self._v = {i: wk.wert(self._u[i], self._t[i], bits[i] + 2 * rng.randrange(1 << (wk.SALZ_BITS - 1)))
+                   for i in self.abschnitt}
         self.blaetter = {i: wk.pruefsumme(K, i, self._v[i]) for i in self.abschnitt}
         self._anteile = {i: wk.teilen(self._v[i], t, n_val, rng) for i in self.abschnitt}
         self._gemessen = False
@@ -484,6 +493,14 @@ class Praeparator:
         """(u, t) dieses Abschnitts -- nur fuer die Rechnung, wer was weiss."""
         return {i: (self._u[i], self._t[i]) for i in self.abschnitt}
 
+    def oeffnung(self, b: int) -> dict[int, int]:
+        """Fuer Annahmestelle b, direkt und nur an sie: die gesalzenen Werte der
+        Stellen seines Abschnitts mit Stellen-Bit b. Die Stelle prueft jeden
+        Wert gegen sein Blatt -- ein Wert mit dem anderen Bit faellt auf."""
+        if b not in (0, 1):
+            raise Abgewiesen("Oeffnung: Stelle 0 oder 1")
+        return {i: v for i, v in self._v.items() if stellen_bit(v) == b}
+
 
 class AusgabeAbschnitte:
     """Ausgabe in Abschnitten. Der Ausgeber sieht nur die Blaetter (gesalzene
@@ -492,12 +509,13 @@ class AusgabeAbschnitte:
     nur als je einen Anteil. Auf der Kette ist das nicht von der Ausgabe mit
     einem Auftrag zu unterscheiden (Wurzel, Anteile, Offenlegung gleich)."""
 
-    def __init__(self, K: str, n: int, t: int, n_val: int, rngs: list[random.Random]):
+    def __init__(self, K: str, n: int, t: int, n_val: int, rngs: list[random.Random], mit_stellen_bit: bool = True):
         if len(rngs) != n_val or len({id(r) for r in rngs}) != n_val:
             raise ValueError("je Validator ein eigener Zufall")
         self.K, self.n, self.t, self.n_val = K, n, t, n_val
         self.abschnitte = abschnitte(n, n_val)
-        self.praep = [Praeparator(x, K, self.abschnitte[x - 1], t, n_val, rngs[x - 1]) for x in range(1, n_val + 1)]
+        self.praep = [Praeparator(x, K, self.abschnitte[x - 1], t, n_val, rngs[x - 1], mit_stellen_bit)
+                      for x in range(1, n_val + 1)]
         blaetter: list[bytes | None] = [None] * n
         for p in self.praep:
             for i, b in p.blaetter.items():
@@ -540,6 +558,38 @@ class AusgabeAbschnitte:
         for xv in koalition:
             out.update(self.praep[xv - 1].geheim())
         return out
+
+
+def stellen_bit(v: int) -> int:
+    """Bit 2 des gesalzenen Werts v = Basis + 2 Wert + 4 Salz, also das unterste
+    Bit des Salzes: zu welcher der zwei Annahmestellen die Stelle gehoert.
+    Fuer die Kette ist es Salz -- sie aendert sich dafuer nicht."""
+    return (v >> 2) & 1
+
+
+def stelle_laden_bit(nummer: int, K: str, n: int, wurzel: bytes, blaetter: list[bytes], t: int, n_val: int,
+                     oeffnungen: dict[int, int], tol: int = TOL_PROZENT,
+                     labor_k: int | None = None) -> "Annahmestelle":
+    """STICHPROBEN OHNE VERTRAUTEN AUSGEBER (A2, DEZENTRAL.md 8). Die Stelle b
+    bekommt von jedem Praeparator die Werte seiner Stellen mit Stellen-Bit b und
+    prueft selbst: die Blaetter ergeben die Wurzel auf der Kette, jeder Wert
+    passt zu seinem Blatt, und sein Stellen-Bit ist b. Damit sind die
+    Stichproben der zwei Stellen disjunkt, ohne dass jemand beide kennt, und
+    die Inhaberin kennt keine, bevor sie bindet (Befund 5g). Zu klein, ein
+    fremdes Bit, ein falscher Wert: die Stelle laedt nicht (fail-closed)."""
+    if nummer not in (0, 1) or len(blaetter) != n or wk.merkle_wurzel(blaetter) != wurzel:
+        raise Abgewiesen("Ladung: Blaetter passen nicht zur Wurzel")
+    k_soll = wk.k_note(tol, t, n_val) if labor_k is None else labor_k
+    if k_soll <= 0 or len(oeffnungen) < k_soll:
+        raise Abgewiesen(f"Ladung: Stichprobe zu klein ({len(oeffnungen)} Stellen, verlangt {k_soll})")
+    u, tt = [0] * n, [0] * n
+    for i, v in oeffnungen.items():
+        if not 0 <= i < n or not 0 <= v < (1 << (wk.SALZ_BITS + 2)) or wk.pruefsumme(K, i, v) != blaetter[i]:
+            raise Abgewiesen(f"Ladung: Stelle {i} passt nicht zu ihrem Blatt")
+        if stellen_bit(v) != nummer:
+            raise Abgewiesen(f"Ladung: Stelle {i} gehoert zur anderen Annahmestelle")
+        u[i], tt[i] = wk.zerlegen(v)
+    return Annahmestelle(nummer, K, sorted(oeffnungen), u, tt)
 
 
 def fehler_je_abschnitt(stelle: "Annahmestelle", K: str, x: list[int], teile: list[list[int]]) -> list[tuple[int, int]]:
@@ -979,6 +1029,83 @@ def selbsttest() -> bool:
             fehler.append("derselbe Zufall fuer alle Validatoren angenommen")
         except ValueError:
             pass
+        # 5g. BEFUND fuer A2: Die Stichproben muessen geheim bleiben, bis die
+        # Inhaberin ihre Basen gebunden hat. Kennt sie beide vorher, setzt sie d
+        # so, dass an JEDER Stelle genau ihre gemessenen Basen geprueft werden
+        # (d_i = y_i ^ c auf S_0, d_i = y_i ^ 1 ^ c auf S_1) -- und kommt an
+        # beiden durch, ohne irgendein Geheimnis zu kennen. Heute zieht der
+        # Ausgeber die Stichproben; dezentral muss das anders gehen (DEZENTRAL.md 8).
+        K7 = hashlib.sha256(rng.randbytes(16)).hexdigest()
+        u7, t7 = ausgabe(n, rng)
+        y7, x7 = messen_ehrlich(u7, t7, rng, 0.0)
+        pr7 = stichproben(n, 2, k, rng)
+        st7 = [Annahmestelle(b, K7, pr7[b], u7, t7) for b in (0, 1)]
+        k7 = KetteS()
+        k7.ausgeben(K7, n, "anna")
+        c7 = 0
+        d7 = list(y7)
+        for b in (0, 1):
+            for i in pr7[b]:
+                d7[i] = y7[i] ^ b ^ c7
+        festlegen(k7, K7, st7, d7, c7)
+        soll(st7[0].pruefen(K7, x7) is True and st7[1].pruefen(K7, x7) is True,
+             "Befund: wer beide Stichproben vor der Bindung kennt, kommt an beiden Stellen durch")
+        # 5h. LOESUNG fuer 5g: Stellen-Bit. Jeder Praeparator legt in seinem
+        # Abschnitt je Stelle fest, zu welcher Annahmestelle sie gehoert (Bit im
+        # Salz, je zur Haelfte), und oeffnet Stelle b nur ihre Stellen. Disjunkt
+        # durch das Blatt, ohne dass jemand beide Stichproben kennt.
+        K8 = hashlib.sha256(rng.randbytes(16)).hexdigest()
+        a8 = AusgabeAbschnitte(K8, n, ts, nv, [random.Random(rng.randrange(1 << 62)) for _ in range(nv)])
+        y8 = [rng.randrange(2) for _ in range(n)]
+        x8 = a8.messen(y8, 0.0, rng)
+        oe = [{}, {}]
+        for p_ in a8.praep:
+            for b in (0, 1):
+                oe[b].update(p_.oeffnung(b))
+        soll(not set(oe[0]) & set(oe[1]) and len(oe[0]) == len(oe[1]) == n // 2, "Stellen-Bit: nicht disjunkt oder nicht je zur Haelfte")
+        st8 = [stelle_laden_bit(b, K8, n, a8.wurzel, a8.blaetter, ts, nv, oe[b], labor_k=k) for b in (0, 1)]
+        k8 = KetteS()
+        k8.ausgeben(K8, n, "anna")
+        festlegen(k8, K8, st8, list(y8), 1)
+        soll(st8[1].pruefen(K8, x8) is True and st8[0].pruefen(K8, x8) is False, "Stellen-Bit: Gutfall und Doppelvorlage")
+        # Missbrauch: ein Praeparator schiebt Stelle 0 eine Stelle der anderen
+        # unter; ein falscher Wert; Werte zurueckgehalten (zu klein); fremde Wurzel.
+        fremd = dict(oe[0])
+        i1 = next(iter(oe[1]))
+        fremd[i1] = oe[1][i1]
+        abgewiesen(lambda: stelle_laden_bit(0, K8, n, a8.wurzel, a8.blaetter, ts, nv, fremd, labor_k=k), "Stelle der anderen Annahmestelle")
+        falsch8 = dict(oe[0])
+        i0 = next(iter(falsch8))
+        falsch8[i0] ^= 1
+        abgewiesen(lambda: stelle_laden_bit(0, K8, n, a8.wurzel, a8.blaetter, ts, nv, falsch8, labor_k=k), "falscher Wert")
+        weniger = dict(list(oe[0].items())[:-1])
+        abgewiesen(lambda: stelle_laden_bit(0, K8, n, a8.wurzel, a8.blaetter, ts, nv, weniger, labor_k=k), "Werte zurueckgehalten")
+        abgewiesen(lambda: stelle_laden_bit(0, K8, n, wk.h(b"fremd"), a8.blaetter, ts, nv, oe[0], labor_k=k), "fremde Wurzel")
+        # Voller Umfang (k = 5.200 je Stelle, 3 von 4): t-1 Praeparatoren verraten
+        # der Inhaberin ihre Abschnitte samt Stellen-Bits -- dort kennt sie die
+        # Werte, wie immer geprueft wird --, den Rest misst sie nach Breidbart.
+        # An der zweiten Stelle faellt sie trotzdem durch.
+        K9 = hashlib.sha256(rng.randbytes(16)).hexdigest()
+        a9 = AusgabeAbschnitte(K9, nb, ts, nv, [random.Random(rng.randrange(1 << 62)) for _ in range(nv)])
+        oe9 = [{}, {}]
+        for p_ in a9.praep:
+            for b in (0, 1):
+                oe9[b].update(p_.oeffnung(b))
+        st9 = [stelle_laden_bit(b, K9, nb, a9.wurzel, a9.blaetter, ts, nv, oe9[b]) for b in (0, 1)]
+        g9 = {}
+        for p_ in a9.praep:
+            g9.update(p_.geheim())
+        u9, t9 = [g9[i][0] for i in range(nb)], [g9[i][1] for i in range(nb)]
+        koal = {1, 2}
+        bekannt9 = a9.wissen(koal)
+        x9 = messen_breidbart(u9, t9, rng)
+        for i, (_, ti) in bekannt9.items():
+            x9[i] = ti
+        k9 = KetteS()
+        k9.ausgeben(K9, nb, "anna")
+        festlegen(k9, K9, st9, [rng.randrange(2) for _ in range(nb)], 0)
+        soll(not (st9[0].pruefen(K9, x9) and st9[1].pruefen(K9, x9)),
+             "Stellen-Bit: t-1 Praeparatoren + Inhaberin an beiden Stellen durch")
         pr = stichproben(40, 2, 20, rng)
         soll(not set(pr[0]) & set(pr[1]) and len(set(pr[0]) | set(pr[1])) == 40, "Stichproben")
         try:

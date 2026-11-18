@@ -175,3 +175,69 @@ In `s_kette.py` stehen `abschnitte`, `Praeparator`, `AusgabeAbschnitte` und
 
 Die Kette bleibt unverändert. Der Prüfvektor für den Knoten (`vektor()`) ist derselbe,
 weil Wurzel, Anteile und Offenlegung dieselbe Form haben.
+
+## 8. A2: Entwurf für den Dienst, mit zwei Befunden (18.11.2026)
+
+### Befund: Die Stichproben müssen bis zur Bindung geheim bleiben
+Kennt die Inhaberin **beide** Stichproben, bevor sie ihre Basen bindet, setzt sie d so, dass
+an jeder Stelle genau ihre gemessenen Basen geprüft werden:
+- auf S₀ gilt dᵢ = yᵢ ⊕ c,
+- auf S₁ gilt dᵢ = yᵢ ⊕ 1 ⊕ c.
+
+Dann kommt sie an **beiden** Stellen durch, ohne irgendein Geheimnis zu kennen (Selbsttest
+5g). Heute zieht der Ausgeber beide Stichproben, kennt sie also, und muss deshalb
+vertrauenswürdig sein. Dezentral braucht es einen anderen Weg.
+
+### Lösung: das Stellen-Bit
+- Jeder Präparator legt in seinem Abschnitt je Stelle fest, zu welcher Annahmestelle sie
+  gehört, je genau zur Hälfte.
+- Das Bit steht als unterstes Bit im Salz des gesalzenen Werts (`stellen_bit`). Die
+  Prüfsumme bindet es also, und für die Kette ist es Salz; sie ändert sich nicht. Das Salz
+  hat danach 123 statt 124 Bit Zufall.
+- Annahmestelle b bekommt von jedem Präparator direkt nur die Werte mit Bit b
+  (`Praeparator.oeffnung`) und prüft selbst (`stelle_laden_bit`):
+  - die Blätter ergeben die Wurzel,
+  - jeder Wert passt zu seinem Blatt,
+  - sein Bit ist b,
+  - es sind mindestens k_note Stellen.
+- Damit sind die Stichproben **durch die Blätter disjunkt**, und niemand kennt beide: Jeder
+  Präparator kennt nur seinen Abschnitt.
+- Getestet (5h):
+  - Gutfall und Doppelvorlage.
+  - Abgewiesen werden eine untergeschobene Stelle der anderen Annahmestelle, ein falscher
+    Wert, zurückgehaltene Werte und eine fremde Wurzel.
+  - In voller Größe kommen t − 1 Präparatoren zusammen mit der Inhaberin an keiner zweiten
+    Stelle durch.
+- Gegenprobe der Tests: 5 Mutationen rot (Bit nicht geprüft, Wert nicht gegen das Blatt,
+  nicht ausgewogen, Öffnung gibt alles, Wurzel nicht geprüft).
+
+### Der Entwurf für den Dienst
+1. **Auftrag** (Ausgeber an Validator j, unterschrieben wie heute `bestaetigen`): K, n, t,
+   Toleranz, die Validatoren mit ihren öffentlichen Schlüsseln (jeder prüft, dass Schlüssel
+   und Adresse zusammenpassen), Abschnitt j, die Basen der Inhaberin auf diesem Abschnitt
+   und ihr öffentlicher Schlüssel.
+2. **Messung:** Der Dienst holt sie von seiner **eigenen** Messquelle. Das ist eine Datei
+   von `hardware_ibm.py --s-abschnitt` oder später ein Dienst neben dem Knoten mit dem
+   eigenen Konto beim Quantenrechner. Sie kommt nie über die öffentliche API.
+3. **Antwort an den Ausgeber**, vom Validator unterschrieben:
+   - die Blätter seines Abschnitts;
+   - x **verschlüsselt für die Inhaberin**;
+   - je anderer Validator ein Bündel seiner Anteile, **verschlüsselt für diesen**
+     (ECIES an den secp256k1-Schlüssel, wie in go-ethereum). Der Ausgeber leitet nur
+     weiter und kann nichts lesen.
+4. **Bestätigung** (Ausgeber an jeden Validator):
+   - Mit dabei sind alle Blätter und die für ihn bestimmten Bündel.
+   - Der Validator entschlüsselt, prüft jede Unterschrift des Präparators und setzt seine
+     Anteile aller Stellen zusammen.
+   - Er prüft Blätter gegen Wurzel und unterschreibt wie heute.
+5. **Stichproben:** Annahmestelle b holt sich bei jedem Validator die Öffnung für Bit b,
+   mit Unterschrift der Stelle, nur einmal je Token, und nur von der Stelle, die im Auftrag
+   steht. Den Hash ihrer Stichprobe gibt sie dem Ausgeber für die Ausgabe auf der Kette.
+
+**Neue Eingänge und ihre Grenzen** (Missbrauchstests im Bau):
+- Auftrag: nur von einem Menschen mit Deckung, wie heute.
+- Bündel: Größe begrenzt (n ≤ 16.384 Anteile), nur vom Präparator unterschrieben, nur für
+  diesen Empfänger, nur zu einem offenen Auftrag.
+- Öffnung: nur an die Stelle aus dem Auftrag, einmal, vor der Ausgabe auf der Kette.
+- Wiederholung desselben Auftrags liefert dieselbe Antwort; ein anderer Auftrag für
+  dasselbe K wird abgewiesen.

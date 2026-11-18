@@ -9,6 +9,19 @@ dezentrales Quantengeld“.
 
 **Zuletzt (Sitzung „Weiter“, 18.11. ~11:00 UTC):**
 - **C1 läuft mit #578** (Deploy #92, 10:33 UTC grün).
+- **Auftrag 18.11.: „Bring das dezentrale Quantengeld komplett zu laufen, ggf. mit eigener
+  Forschung“.** Plan und Stand in `forschung/quantengeld/DEZENTRAL.md`.
+  - **#582 gemergt: Befund und A1.** Die Ausgabe präparierte alle Stellen in einem
+    Auftrag. Weg A: Präparation je Validator, spezifiziert in `s_kette.py`, Selbsttest 5.
+  - **PR „A2-Entwurf, Stellen-Bit“ (dieser Zweig):**
+    - Befund: Die Stichproben müssen bis zur Bindung geheim sein (5g).
+    - Lösung: das Stellen-Bit im Salz (5h), Kette unverändert.
+    - Entwurf des Dienstes in `DEZENTRAL.md` 8.
+  - **Nächste Schritte:**
+    - A2 im Go-Dienst: Auftrag, Messquelle, verschlüsselte Bündel (ECIES), Öffnung für
+      die Stellen, Missbrauchstests.
+    - A3 mit `hardware_ibm.py --s-abschnitt` und dem Werkzeug im Abschnitts-Modus.
+    - A4 als Pilot mit vier Knoten.
 - **#581 gemergt (eigene Antworten W7/W8, nur Doku):**
   - Falsche Anteile weist die Kette als Ganzes ab.
   - v − t + 1 Validatoren können blockieren. Bei W kann das die letzte Einlösung
