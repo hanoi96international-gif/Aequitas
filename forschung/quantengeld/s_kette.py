@@ -49,6 +49,14 @@ SICHERHEIT IN ZAHLEN (wiesner_parameter.py)
   Pruefgroesse aus wiesner_parameter.suche(). Bei 0,7 % Hardware-Fehler:
   Toleranz 4 %, k = 840 Stellen je Annahmestelle, N = 2 * 840 Qubits.
 
+AUSGABE IN ABSCHNITTEN (Weg A, 18.11.2026, DEZENTRAL.md)
+  Die Pruefgroesse k (Tabelle) setzt voraus, dass weniger als t Validatoren
+  hoechstens den Anteil (t-1)/v der Stellen kennen. Die erste Ausgabe im
+  Hauptnetz praeparierte aber ALLE Stellen in einem Auftrag: wer ihn absetzt,
+  kennt den ganzen Token. Hier praepariert jeder Validator SEINEN Abschnitt
+  selbst (Praeparator, AusgabeAbschnitte) und teilt dessen Geheimnis selbst
+  auf; der Ausgeber sieht nur Blaetter. Die Kette bleibt, wie sie ist.
+
 GRENZEN (ehrlich)
   - Kein Bargeld von Hand zu Hand: wer x weitergibt, kennt es weiter.
   - Gueltig an genau einer von 2^M vorher festgelegten Stellen (oder
@@ -426,6 +434,132 @@ def abgleich(meldungen: list[dict]) -> dict[str, list[dict]]:
     return je
 
 
+# ---------------------------------------------------------------- Ausgabe in Abschnitten
+# Weg A (DEZENTRAL.md): jeder Validator praepariert seinen Abschnitt selbst.
+def abschnitte(n: int, n_val: int) -> list[list[int]]:
+    """Die Stellen 0 .. n-1 in n_val zusammenhaengende Abschnitte, so gleich
+    gross wie moeglich (hoechstens eine Stelle Unterschied); Validator x
+    (1-basiert) praepariert abschnitte[x - 1]."""
+    if n_val < 1 or n < n_val:
+        raise ValueError("Abschnitte: weniger Stellen als Validatoren")
+    return [list(range(j * n // n_val, (j + 1) * n // n_val)) for j in range(n_val)]
+
+
+class Praeparator:
+    """Validator x praepariert SEINEN Abschnitt in einem eigenen Auftrag beim
+    Quantenrechner, mit eigenem Zufall: Basen u und Werte t nur dort, dazu die
+    Messung der Inhaberin in den Basen y, die sie IHM nur fuer diesen Abschnitt
+    nennt (eine Quantenleitung zu ihr gibt es heute nicht). Den Wert jeder
+    seiner Stellen teilt er selbst t-von-v auf alle Validatoren auf. Ausserhalb
+    seines Abschnitts kennt er nur je Stelle einen Anteil."""
+
+    def __init__(self, x: int, K: str, abschnitt: list[int], t: int, n_val: int, rng: random.Random):
+        if not 1 <= x <= n_val or not 1 <= t <= n_val or not abschnitt:
+            raise ValueError("Praeparator: Nummer, Schwelle oder Abschnitt")
+        self.x, self.K, self.abschnitt = x, K, list(abschnitt)
+        self._u = {i: rng.randrange(2) for i in self.abschnitt}
+        self._t = {i: rng.randrange(2) for i in self.abschnitt}
+        self._v = {i: wk.wert(self._u[i], self._t[i], rng.randrange(1 << wk.SALZ_BITS)) for i in self.abschnitt}
+        self.blaetter = {i: wk.pruefsumme(K, i, self._v[i]) for i in self.abschnitt}
+        self._anteile = {i: wk.teilen(self._v[i], t, n_val, rng) for i in self.abschnitt}
+        self._gemessen = False
+
+    def messen(self, y: dict[int, int], e: float, geraet: random.Random) -> dict[int, int]:
+        """Die Messung der Inhaberin auf diesem Abschnitt, im selben Auftrag wie
+        die Praeparation. Genau einmal und genau die Stellen des Abschnitts
+        (fail-closed): eine zweite Messung gaebe Ergebnisse in der anderen Basis."""
+        if self._gemessen:
+            raise Abgewiesen("Abschnitt: schon gemessen")
+        if sorted(y) != self.abschnitt or any(b not in (0, 1) for b in y.values()):
+            raise Abgewiesen("Abschnitt: Basen der Inhaberin passen nicht zum Abschnitt")
+        self._gemessen = True
+        return {i: int(self._t[i] ^ (geraet.random() < e)) if y[i] == self._u[i] else geraet.randrange(2)
+                for i in self.abschnitt}
+
+    def anteile_fuer(self, xv: int) -> dict[int, int]:
+        """Was Validator xv aus diesem Abschnitt bekommt: je Stelle sein Anteil."""
+        return {i: self._anteile[i][xv - 1] for i in self.abschnitt}
+
+    def geheim(self) -> dict[int, tuple[int, int]]:
+        """(u, t) dieses Abschnitts -- nur fuer die Rechnung, wer was weiss."""
+        return {i: (self._u[i], self._t[i]) for i in self.abschnitt}
+
+
+class AusgabeAbschnitte:
+    """Ausgabe in Abschnitten. Der Ausgeber sieht nur die Blaetter (gesalzene
+    Pruefsummen) und baut daraus die Wurzel. Jeder Validator haelt am Ende
+    Anteile ALLER Stellen: seinen eigenen Abschnitt kennt er ganz, die anderen
+    nur als je einen Anteil. Auf der Kette ist das nicht von der Ausgabe mit
+    einem Auftrag zu unterscheiden (Wurzel, Anteile, Offenlegung gleich)."""
+
+    def __init__(self, K: str, n: int, t: int, n_val: int, rngs: list[random.Random]):
+        if len(rngs) != n_val or len({id(r) for r in rngs}) != n_val:
+            raise ValueError("je Validator ein eigener Zufall")
+        self.K, self.n, self.t, self.n_val = K, n, t, n_val
+        self.abschnitte = abschnitte(n, n_val)
+        self.praep = [Praeparator(x, K, self.abschnitte[x - 1], t, n_val, rngs[x - 1]) for x in range(1, n_val + 1)]
+        blaetter: list[bytes | None] = [None] * n
+        for p in self.praep:
+            for i, b in p.blaetter.items():
+                if blaetter[i] is not None:
+                    raise Abgewiesen("Ausgabe: Stelle in zwei Abschnitten")
+                blaetter[i] = b
+        if any(b is None for b in blaetter):
+            raise Abgewiesen("Ausgabe: Blatt fehlt")
+        self.blaetter: list[bytes] = blaetter  # type: ignore[assignment]
+        self.wurzel = wk.merkle_wurzel(self.blaetter)
+        self.tresor: dict[int, dict[int, int]] = {xv: {} for xv in range(1, n_val + 1)}
+        for p in self.praep:
+            for xv in range(1, n_val + 1):
+                self.tresor[xv].update(p.anteile_fuer(xv))
+
+    def messen(self, y: list[int], e: float, geraet: random.Random) -> list[int]:
+        """Die Inhaberin nennt jedem Validator nur y auf dessen Abschnitt und
+        setzt x aus den Antworten zusammen."""
+        if len(y) != self.n:
+            raise Abgewiesen("Messung: Zahl der Basen")
+        x = [0] * self.n
+        for p in self.praep:
+            for i, xi in p.messen({i: y[i] for i in p.abschnitt}, e, geraet).items():
+                x[i] = xi
+        return x
+
+    def offenlegung(self, stellen: list[int], wer: list[int]):
+        """Wie wiesner_kette.Praegung.offenlegung: je Stelle die Anteile der
+        Validatoren `wer` (1-basiert) und der Merkle-Pfad."""
+        return [([(xv, self.tresor[xv][i]) for xv in wer], wk.merkle_pfad(self.blaetter, i)) for i in stellen]
+
+    def wissen(self, koalition: set[int]) -> dict[int, tuple[int, int]]:
+        """Was eine Absprache der Validatoren `koalition` ueber (u, t) weiss:
+        ihre eigenen Abschnitte ganz; ab t Validatoren jede Stelle (aus den
+        Anteilen zusammengesetzt); darunter aus fremden Abschnitten nichts."""
+        if len(koalition) >= self.t:
+            wer = sorted(koalition)[: self.t]
+            return {i: wk.zerlegen(wk.zusammensetzen([(xv, self.tresor[xv][i]) for xv in wer])) for i in range(self.n)}
+        out: dict[int, tuple[int, int]] = {}
+        for xv in koalition:
+            out.update(self.praep[xv - 1].geheim())
+        return out
+
+
+def fehler_je_abschnitt(stelle: "Annahmestelle", K: str, x: list[int], teile: list[list[int]]) -> list[tuple[int, int]]:
+    """(Treffer, Fehler) der Stelle je Abschnitt, ohne Netz und ohne den Stand
+    der Stelle zu aendern. Laesst ein Validator eine ehrliche Inhaberin mit
+    falschen x durchfallen, haeufen sich die Fehler in SEINEM Abschnitt: so
+    laesst sich die Stoerung ihm zuordnen."""
+    d, c = stelle.stand[K]
+    b = stelle.nummer
+    out = []
+    for teil in teile:
+        tr = fe = 0
+        for i in teil:
+            if i in stelle.daten and (d[i] ^ b ^ c) == stelle.daten[i][0]:
+                tr += 1
+                fe += x[i] != stelle.daten[i][1]
+        out.append((tr, fe))
+    return out
+
+
 def token(rng: random.Random, e: float = 0.007, k: int = K_STELLE):
     """Ein Token mit zwei Annahmestellen: (kette, K, u, t, stellen)."""
     n = 2 * k
@@ -732,6 +866,119 @@ def selbsttest() -> bool:
                    "Anmeldung an toten Token")
 
         # Stichproben disjunkt und vollstaendig.
+        # 5. AUSGABE IN ABSCHNITTEN (Weg A, DEZENTRAL.md): jeder Validator
+        # praepariert seinen Abschnitt selbst; der Ausgeber sieht nur Blaetter.
+        # 5a. Abschnitte: disjunkt, decken alles, hoechstens eine Stelle Unterschied.
+        for nn, vv in ((128, 4), (10, 3), (7, 7), (1680, 1)):
+            ab = abschnitte(nn, vv)
+            gr = [len(a) for a in ab]
+            soll(sorted(i for a in ab for i in a) == list(range(nn)) and max(gr) - min(gr) <= 1, f"Abschnitte {nn}/{vv}")
+        try:
+            abschnitte(3, 4)
+            fehler.append("Abschnitte mit weniger Stellen als Validatoren")
+        except ValueError:
+            pass
+        # 5b. Gutfall mit 3 von 4: Stellen laden dezentral (stelle_laden), ehrliche
+        # Vorlage an b besteht, Doppelvorlage an der anderen faellt durch.
+        nv, ts, k = 4, 3, 64
+        n = 2 * k
+        K = hashlib.sha256(rng.randbytes(16)).hexdigest()
+        aa = AusgabeAbschnitte(K, n, ts, nv, [random.Random(rng.randrange(1 << 62)) for _ in range(nv)])
+        y = [rng.randrange(2) for _ in range(n)]
+        x = aa.messen(y, 0.0, rng)
+        proben = stichproben(n, 2, k, rng)
+        st = [stelle_laden(b, K, n, aa.wurzel, ts, nv, proben[b], aa.offenlegung(proben[b], [1, 2, 4] if b else [2, 3, 4]),
+                          labor_k=k) for b in (0, 1)]
+        alle = {}
+        for p_ in aa.praep:
+            alle.update(p_.geheim())
+        soll(all(st[b].daten == {i: alle[i] for i in proben[b]} for b in (0, 1)), "Abschnitte: Stellen falsch geladen")
+        kette = KetteS()
+        kette.ausgeben(K, n, "anna")
+        festlegen(kette, K, st, list(y), 1)
+        soll(st[1].pruefen(K, x) is True and st[0].pruefen(K, x) is False, "Abschnitte: Gutfall und Doppelvorlage")
+        # 5c. Wer was weiss: jede Absprache von t-1 Validatoren kennt genau ihre
+        # Abschnitte, also den Anteil (t-1)/v -- die Annahme der Tabelle; ab t
+        # Validatoren alles (Schwelle); weniger als t Anteile ergeben nicht den Wert.
+        for koal in ({1, 2}, {1, 3}, {2, 4}, {3, 4}):
+            w = aa.wissen(koal)
+            soll(set(w) == {i for xv in koal for i in aa.abschnitte[xv - 1]} and len(w) * nv <= (ts - 1) * n + nv,
+                 f"Abschnitte: Wissen von {sorted(koal)}")
+        soll(aa.wissen({1, 2, 3}) == alle, "Abschnitte: t Validatoren setzen alles zusammen")
+        i0 = aa.abschnitte[3][0]
+        soll(wk.zusammensetzen([(1, aa.tresor[1][i0]), (2, aa.tresor[2][i0])]) != aa.praep[3]._v[i0],
+             "Abschnitte: t-1 Anteile ergeben den Wert")
+        # 5d. Missbrauch in voller Groesse (k aus der Tabelle, 3 von 4): eine
+        # Absprache von t-1 Validatoren verraet der Inhaberin ihre Abschnitte; den
+        # Rest misst sie mit Breidbart (das Beste fuer zwei Stellen). Sie kommt
+        # an keiner zweiten Stelle durch. GEGENPROBE: Kennt einer den ganzen Token
+        # (ein Auftrag fuer alle Stellen, wie bei der ersten Ausgabe), kommt sie
+        # an BEIDEN Stellen durch -- genau die Luecke, die die Abschnitte schliessen.
+        kv = wk.k_note(TOL_PROZENT, ts, nv)
+        soll(kv == 5200, f"k_note(4 %, 3 von 4) = {kv}")
+        nb = 2 * kv
+        Kb = hashlib.sha256(rng.randbytes(16)).hexdigest()
+        ab4 = AusgabeAbschnitte(Kb, nb, ts, nv, [random.Random(rng.randrange(1 << 62)) for _ in range(nv)])
+        wahr = {}
+        for p_ in ab4.praep:
+            wahr.update(p_.geheim())
+        ub = [wahr[i][0] for i in range(nb)]
+        tb = [wahr[i][1] for i in range(nb)]
+        for runde in range(4):
+            probe = stichproben(nb, 2, kv, rng)
+            stb = [Annahmestelle(b, Kb, probe[b], ub, tb) for b in (0, 1)]
+            kb = KetteS()
+            kb.ausgeben(Kb, nb, "anna")
+            yb = [rng.randrange(2) for _ in range(nb)]
+            festlegen(kb, Kb, stb, yb, 1)
+            koal = ({1, 2}, {3, 4}, {1, 4}, {2, 3})[runde]
+            bekannt = ab4.wissen(koal)
+            xb = messen_breidbart(ub, tb, rng)
+            for i, (_, ti) in bekannt.items():
+                xb[i] = ti
+            soll(not (stb[0].pruefen(Kb, xb) and stb[1].pruefen(Kb, xb)),
+                 f"Abschnitte: t-1 Validatoren {sorted(koal)} + Inhaberin an beiden Stellen durch")
+        probe = stichproben(nb, 2, kv, rng)
+        stb = [Annahmestelle(b, Kb, probe[b], ub, tb) for b in (0, 1)]
+        kb = KetteS()
+        kb.ausgeben(Kb, nb, "anna")
+        festlegen(kb, Kb, stb, [rng.randrange(2) for _ in range(nb)], 1)
+        soll(stb[0].pruefen(Kb, list(tb)) is True and stb[1].pruefen(Kb, list(tb)) is True,
+             "Gegenprobe: wer den ganzen Token kennt, kommt an beiden Stellen durch")
+        # 5e. Ein Validator meldet der ehrlichen Inhaberin falsche x auf seinem
+        # Abschnitt: sie faellt durch (Stoerung, kein Faelschen), und die Fehler
+        # liegen in SEINEM Abschnitt -- zuordenbar.
+        K5 = hashlib.sha256(rng.randbytes(16)).hexdigest()
+        a5 = AusgabeAbschnitte(K5, n, ts, nv, [random.Random(rng.randrange(1 << 62)) for _ in range(nv)])
+        y5 = [rng.randrange(2) for _ in range(n)]
+        x5 = a5.messen(y5, 0.0, rng)
+        x5 = [1 - xi if i in set(a5.abschnitte[1]) else xi for i, xi in enumerate(x5)]
+        pr5 = stichproben(n, 2, k, rng)
+        g5 = {}
+        for p_ in a5.praep:
+            g5.update(p_.geheim())
+        st5 = [Annahmestelle(b, K5, pr5[b], [g5[i][0] for i in range(n)], [g5[i][1] for i in range(n)]) for b in (0, 1)]
+        k5 = KetteS()
+        k5.ausgeben(K5, n, "anna")
+        festlegen(k5, K5, st5, list(y5), 1)
+        je = fehler_je_abschnitt(st5[1], K5, x5, a5.abschnitte)
+        soll(st5[1].pruefen(K5, x5) is False, "Abschnitte: falsche x eines Validators nicht bemerkt")
+        soll(je[1][1] == je[1][0] > 0 and all(fe == 0 for j, (_, fe) in enumerate(je) if j != 1),
+             f"Abschnitte: Fehler nicht dem Validator 2 zuzuordnen: {je}")
+        # 5f. Fail-closed: zweite Messung, fremde Stellen, falsche Zahl der Basen,
+        # derselbe Zufall fuer zwei Validatoren.
+        p6 = Praeparator(1, K, [0, 1, 2], 2, 3, random.Random(5))
+        abgewiesen(lambda: p6.messen({0: 0, 1: 1}, 0.0, rng), "Basen fuer zu wenige Stellen")
+        abgewiesen(lambda: p6.messen({0: 0, 1: 1, 2: 0, 3: 1}, 0.0, rng), "Basen fuer fremde Stellen")
+        p6.messen({0: 0, 1: 1, 2: 0}, 0.0, rng)
+        abgewiesen(lambda: p6.messen({0: 0, 1: 1, 2: 0}, 0.0, rng), "zweite Messung")
+        abgewiesen(lambda: aa.messen(y[:-1], 0.0, rng), "Zahl der Basen")
+        gleich = random.Random(7)
+        try:
+            AusgabeAbschnitte(K, n, ts, nv, [gleich] * nv)
+            fehler.append("derselbe Zufall fuer alle Validatoren angenommen")
+        except ValueError:
+            pass
         pr = stichproben(40, 2, 20, rng)
         soll(not set(pr[0]) & set(pr[1]) and len(set(pr[0]) | set(pr[1])) == 40, "Stichproben")
         try:

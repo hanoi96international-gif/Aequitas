@@ -9,7 +9,7 @@ dezentrales Quantengeld“.
 
 **Zuletzt (Sitzung „Weiter“, 18.11. ~11:00 UTC):**
 - **C1 läuft mit #578** (Deploy #92, 10:33 UTC grün).
-- **PR „Eigene Antworten W7/W8“ (dieser Zweig, nur Doku):**
+- **#581 gemergt (eigene Antworten W7/W8, nur Doku):**
   - Falsche Anteile weist die Kette als Ganzes ab.
   - v − t + 1 Validatoren können blockieren. Bei W kann das die letzte Einlösung
     zunichtemachen; der Wert geht dann ans Grundeinkommen.

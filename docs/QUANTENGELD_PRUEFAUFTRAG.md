@@ -26,6 +26,11 @@ prüft die folgenden Punkte. Das Ergebnis wird veröffentlicht.
     Toleranz 4 %.
   - Die Doppelvorlage wurde abgewiesen, die ehrliche Vorlage eingelöst.
   - Präparation und Messung liefen im selben Schaltkreis.
+- **Befund 18.11. (`forschung/quantengeld/DEZENTRAL.md`):** Die Ausgabe erzeugt Basen und
+  Werte **aller** Stellen in einem einzigen Auftrag beim Quantenrechner.
+  - Ausgeber und Anbieter kennen damit den ganzen Token. Die Tabelle für k setzt dagegen
+    voraus, dass weniger als t Validatoren nur den Anteil (t−1)/v kennen.
+  - Abhilfe im Bau: Präparation je Validator (Weg A). Die Kette ändert sich dafür nicht.
 - **Mit vier Validatoren** gibt es bisher nur den Pilot (`quanten-s-pilot.yml`), nicht das
   Hauptnetz (`HEUTE.md` 3.3d).
   - Vier echte Knoten in einem Job, Geheimnis 3 von 4, k = 5.200 je Annahmestelle.
