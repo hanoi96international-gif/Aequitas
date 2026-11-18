@@ -132,6 +132,11 @@ type quantenWTresorEintrag struct {
 	// Bindungen; ohne Hash-Kette (Geheim leer).
 	Art    string   `json:"art,omitempty"`
 	Proben []string `json:"proben,omitempty"`
+	// Ausgabe in Abschnitten (quanten_s_abschnitt_dienst.go): Wartend = nur
+	// der eigene Abschnitt ist praepariert, noch keine Bestaetigung. Solange
+	// gilt der Eintrag wie ein offener Auftrag (Grenzen, Aufraeumen).
+	Wartend   bool                    `json:"wartend,omitempty"`
+	Abschnitt *quantenSAbschnittStand `json:"abschnitt,omitempty"`
 }
 
 // quantenWAblage: wohin der Tresor schreibt (Datenbank oder Speicher).
@@ -267,6 +272,9 @@ type quantenWDienst struct {
 	// hoechstens einer, unter mu; mit der Note vergessen). Spart den
 	// Nachbarn die zweite Abfrage derselben Seite (quantenWTeilKuerzen).
 	rest map[string]quantenWRest
+	// messquelle: woher dieser Validator die Messung SEINES Abschnitts holt
+	// (quanten_s_abschnitt_dienst.go); nil = er praepariert keine Abschnitte.
+	messquelle quantenSMessquelle
 }
 
 // quantenWRest: zusammengesetzte Offenlegung ab Stelle ab des Versuchs index,
@@ -536,6 +544,12 @@ type QuantenWBestaetigenAnfrage struct {
 	// S-Ausgabe (quantenWSBestaetigungNachricht), ohne Anker.
 	Art    string   `json:"art,omitempty"`
 	Proben []string `json:"proben,omitempty"`
+	// Ausgabe in Abschnitten: je Validator (1-basiert an [x-1]) das Buendel
+	// seiner Anteile fuer den Empfaenger und die Unterschrift des
+	// Praeparators; am eigenen Platz leer. Anteile bleibt dann leer, und der
+	// Auftrag bindet den Hash der Buendel (quantenWDienstAuftrag).
+	Buendel    []string `json:"buendel,omitempty"`
+	BuendelSig []string `json:"buendel_sig,omitempty"`
 }
 
 const quantenWSDomAuftrag = "aequitas-quanten-s-auftrag-v1"
@@ -567,6 +581,9 @@ func quantenWAnteileHash(anteile []string) string {
 
 // bestaetigen: pruefen, ablegen, unterschreiben. Gibt Anker und Bestaetigung.
 func (d *quantenWDienst) bestaetigen(q QuantenWBestaetigenAnfrage) (anker string, sig string, err error) {
+	if len(q.Buendel) > 0 || len(q.BuendelSig) > 0 {
+		return d.bestaetigenAbschnitt(q) // Ausgabe in Abschnitten (quanten_s_abschnitt_dienst.go)
+	}
 	q.K = strings.ToLower(strings.TrimSpace(q.K))
 	if !istHash64(q.K) {
 		return "", "", quantenWFehler("K")
@@ -716,6 +733,11 @@ func (d *quantenWDienst) bestaetigen(q QuantenWBestaetigenAnfrage) (anker string
 
 // quantenWDienstAuftrag: was der Praeger bzw. Ausgeber unterschrieben hat.
 func quantenWDienstAuftrag(q QuantenWBestaetigenAnfrage) string {
+	if q.Art == "s" && len(q.Buendel) > 0 {
+		// Ausgabe in Abschnitten: der Ausgeber kennt die Anteile nicht, er
+		// bindet die Buendel, die er weiterleitet.
+		return quantenWSAuftragNachricht(q.Praeger, q.K, q.N, q.T, q.Tol, q.X, q.Wurzel, q.Validatoren, q.Proben, q.Zeit, quantenWAnteileHash(q.Buendel))
+	}
 	if q.Art == "s" {
 		return quantenWSAuftragNachricht(q.Praeger, q.K, q.N, q.T, q.Tol, q.X, q.Wurzel, q.Validatoren, q.Proben, q.Zeit, quantenWAnteileHash(q.Anteile))
 	}
@@ -1567,6 +1589,7 @@ func (cs *ChainState) StarteQuantenWDienst(ctx context.Context, key *ecdsa.Priva
 		return err
 	}
 	d.nachbarn = nachbarn
+	d.messquelle = quantenSMessquelleAusUmgebung()
 	if quantenWTestQuelle != nil {
 		d.client = quantenWPeerKlient(quantenWTestQuelle(apiBasis))
 	}

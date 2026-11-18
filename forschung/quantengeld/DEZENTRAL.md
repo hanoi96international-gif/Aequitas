@@ -138,7 +138,7 @@ Geheimnis besser, aber zum Einlösen müssen t Validatoren erreichbar sein.
 | Abschnitt | Was | Wer |
 |---|---|---|
 | A1 | Spezifikation in `s_kette.py`: Ausgabe in Abschnitten, wer was weiß, Missbrauchsfälle | **fertig** (siehe unten) |
-| A2 | Validator-Dienst: eigenen Abschnitt präparieren (Messung von außen, wie heute über eine Datei), Anteile an die anderen verteilen, Stichprobe für die Annahmestellen | **A2a fertig** (Bausteine in Go, siehe 9); A2b (Dienst, Endpunkte) folgt |
+| A2 | Validator-Dienst: eigenen Abschnitt präparieren (Messung von außen, wie heute über eine Datei), Anteile an die anderen verteilen, Stichprobe für die Annahmestellen | **fertig**: A2a Bausteine (9), A2b Dienst (10) |
 | A3 | `hardware_ibm.py --s-abschnitt`, Werkzeug `quanten-s-ausgabe` im Abschnitts-Modus | wir |
 | A4 | Pilot: vier Knoten, je ein eigener Auftrag (im Pilot von einem Konto, das wird benannt) | wir; IBM-Lauf mit Freigabe |
 | A5 | Hauptnetz mit einem zweiten Menschen als Validator, wenn möglich bei einem anderen Anbieter | Betreiber |
@@ -275,3 +275,61 @@ Stellen-Bit, Blätter, Wurzel und Stichproben stimmen mit Python überein.
 **Gegenprobe:** 7 Mutationen machen die Tests rot (Bit, Wert gegen Blatt, Unterschrift,
 Abschnitt, Schlüssel-Adresse, Ausgewogenheit, Wurzel). `go test -race` ist für alle
 Quantengeld-Tests grün.
+
+## 10. A2b: der Dienst (18.11.2026)
+
+Die Datei `x/humanity/keeper/quanten_s_abschnitt_dienst.go` bringt zwei neue Endpunkte
+beim Validator und einen neuen Weg der Bestätigung.
+
+- **`POST /api/quanten-w/validator/abschnitt`**
+  - Der Auftrag kommt vom Ausgeber und ist von ihm unterschrieben; der Ausgeber muss ein
+    Mensch mit Deckung sein.
+  - Geprüft werden: alle Schlüssel gegen die Adressen, die eigene Nummer, die Basen der
+    Inhaberin auf genau diesem Abschnitt, die zwei Annahmestellen, die Mindestgröße je
+    Stelle und das Zeitfenster.
+  - Die Messung kommt aus der **eigenen Messquelle** (`AEQUITAS_QS_MESSQUELLE`, eine Datei
+    von `hardware_ibm.py --s-abschnitt`). Jeder Datensatz wird vor der Verwendung aus der
+    Datei gelöscht, also nie zweimal benutzt.
+  - Die Antwort ist unterschrieben und enthält: die Blätter, x verschlüsselt für die
+    Inhaberin und je anderem Validator ein verschlüsseltes, unterschriebenes Bündel.
+  - Der Eintrag liegt danach *wartend* im Tresor und gilt wie ein offener Auftrag, für die
+    Grenzen wie fürs Aufräumen.
+  - Derselbe Auftrag noch einmal ergibt dieselben Werte; ein anderer Auftrag für dasselbe K
+    wird abgewiesen.
+- **`GET /api/quanten-w/validator/oeffnung?k=&b=`**: die Werte des eigenen Abschnitts mit
+  Stellen-Bit b, **verschlüsselt für die Annahmestelle b aus dem Auftrag**.
+- **Bestätigen mit Bündeln** statt Anteilen:
+  - Jedes Bündel muss vom Präparator unterschrieben und für diesen Validator bestimmt sein.
+  - Die eigenen Blätter müssen gleich sein, und die Blätter müssen die Wurzel ergeben.
+  - Dann folgt dieselbe Bestätigung wie bisher. Eine Bestätigung ohne Bündel für ein
+    wartendes K wird abgewiesen.
+
+**Ende-zu-Ende-Test** (`TestQuantenSAbschnittDienst_Gutfall`, 5 Validatoren, Schwelle 3):
+1. Präparation in Abschnitten.
+2. Die Inhaberin liest ihr x, und die Annahmestellen laden ihre Stichproben selbst; sie
+   sind disjunkt und je zur Hälfte.
+3. Alle bestätigen, der Token wird ausgegeben, gebunden und gewählt.
+4. Das Einlösen durch den Dienst läuft **über die aus den Bündeln zusammengesetzten
+   Anteile**. Die Stelle bekommt den Wert.
+
+**Missbrauchstests:**
+- *Auftrag*, 14 Fälle: fremde Unterschrift, veränderter Inhalt, fremder Schlüssel, falsche
+  Nummer, Basen zu kurz oder keine Bits, Stellen gleich, Stelle gleich Inhaberin,
+  Schlüssel von Stelle oder Inhaberin fremd, zu wenige Stellen, alte Zeit, doppelter
+  Validator, fremder Ausgeber.
+  - Dazu: ohne Messquelle, ohne passende Messung und ohne Deckung. Ein abgewiesener Auftrag
+    benutzt die Messquelle nie.
+- *Öffnung:* unbekanntes K, Stelle 2. Lesen kann nur die richtige Stelle, nicht die andere
+  und nicht die Inhaberin. Einem anderen Validator zugeschrieben: abgewiesen.
+- *Bestätigung*, 10 Fälle: Bündel vertauscht, fremd unterschrieben, an sich selbst oder
+  fehlend, nicht beauftragt, Auftrag über andere Bündel, Wurzel falsch, eigenes Blatt
+  anders, Anteile dazu, andere Toleranz. Der wartende Eintrag bleibt dabei unverändert;
+  eine Wiederholung ergibt dieselbe Bestätigung.
+- *Messdatei:* genau einmal; unbekanntes Feld, kaputte Bits, kein JSON und fehlende Datei
+  werden abgewiesen.
+
+**Gegenprobe:** 9 Mutationen rot. `go test -race` für alle Quantengeld-Tests grün.
+
+**Grenze:** Ein Token mit sehr vielen Stellen (über etwa 14.000) passt mit allen Blättern und
+Bündeln nicht mehr in den Rumpf der Bestätigung (2 MiB). Er wird dann abgewiesen
+(fail-closed); die Grenze bleibt, wie sie ist.
