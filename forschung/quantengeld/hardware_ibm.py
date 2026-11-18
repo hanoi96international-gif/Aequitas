@@ -45,9 +45,10 @@ wiesner_hardware.note_steane),
 --s-token [--k K] (Variante S, s_kette.py: 2K Qubits, sofort gemessen, kein
 Speicher; Vorlage an der gewaehlten Annahmestelle und als Angriff an der
 anderen; Standard K = 840, hoechstens 2048),
---s-abschnitte VERZEICHNIS [--k K] [--v V] (Ausgabe in Abschnitten: je
-Validator ein eigener Auftrag fuer seinen Abschnitt, mess_<x>.json je
-Validator und basen.json fuer das Werkzeug; DEZENTRAL.md 8-11),
+--s-abschnitte VERZEICHNIS [--k K] [--v V] [--ausgaben A] (Ausgabe in
+Abschnitten: je Ausgabe und Validator ein eigener Auftrag fuer seinen
+Abschnitt, mess_<x>.json je Validator mit allen A Abschnitten und
+basen_<a>.json je Ausgabe fuer das Werkzeug; A hoechstens 4; DEZENTRAL.md 8-12),
 --s-messen DATEI [--k K] (nur die Messung von 2K Qubits fuer die echte
 Ausgabe auf der Kette: u, t, y, x als JSON, Zufall aus dem Betriebssystem;
 weiter mit aequitasd quanten-s-ausgabe, deploy/quanten-s-ausgabe.sh),
@@ -88,6 +89,7 @@ sk = importlib.util.module_from_spec(_spec_s)
 _spec_s.loader.exec_module(sk)
 MAX_S_STELLEN = 8192     # k je Annahmestelle; Token = 2k Qubits in Schaltkreisen zu 16
                          # (2k <= quantenWNMax = 16384; 3 von 4 Validatoren brauchen k = 5200)
+MAX_S_AUSGABEN = 4       # --s-abschnitte: unabhaengige Ausgaben je Lauf (Pilot: eine je Test)
 
 MAX_LAEUFE = 64      # Schaltkreise je Fall (Kosten auf echter Hardware!)
 MAX_SCHUESSE = 4000
@@ -531,37 +533,53 @@ def s_messen_lauf(datei: str) -> None:
 
 
 def s_abschnitte_lauf(verzeichnis: str) -> None:
-    """--s-abschnitte VERZEICHNIS [--k K] [--v V]: Messung fuer die Ausgabe in
-    Abschnitten (forschung/quantengeld/DEZENTRAL.md 8-11). Je Validator x ein
-    EIGENER Auftrag fuer seinen Abschnitt (s_kette.abschnitte), in Basen y,
-    die hier fuer die Inhaberin gezogen werden. Schreibt mess_<x>.json (u, t,
-    y, x -- nur fuer Validator x, AEQUITAS_QS_MESSQUELLE) und basen.json (nur
-    y je Abschnitt -- fuer das Werkzeug). Im Pilot laufen alle Auftraege von
-    einem Konto aus; im Betrieb misst jeder Validator selbst."""
+    """--s-abschnitte VERZEICHNIS [--k K] [--v V] [--ausgaben A]: Messung fuer
+    die Ausgabe in Abschnitten (forschung/quantengeld/DEZENTRAL.md 8-12). Je
+    Ausgabe a und Validator x ein EIGENER Auftrag fuer seinen Abschnitt
+    (s_kette.abschnitte), in Basen y, die hier fuer die Inhaberin gezogen
+    werden. Schreibt mess_<x>.json (u, t, y, x aller A Ausgaben -- nur fuer
+    Validator x, AEQUITAS_QS_MESSQUELLE; der Dienst verbraucht jeden Abschnitt
+    genau einmal) und basen_<a>.json je Ausgabe (nur y je Abschnitt -- fuer
+    das Werkzeug). Der Pilot braucht zwei Ausgaben, eine je Test. Im Pilot
+    laufen alle Auftraege von einem Konto aus; im Betrieb misst jeder
+    Validator selbst."""
     k = zahl("--k", sk.K_STELLE, MAX_S_STELLEN)
     v = zahl("--v", 4, 64)
+    ausgaben = zahl("--ausgaben", 1, MAX_S_AUSGABEN)
     n = 2 * k
     rng = random.SystemRandom()
     bits = lambda b: "".join(map(str, b))
+    abschnitte = sk.abschnitte(n, v)
+    mess: list[list[dict]] = [[] for _ in abschnitte]
+    basen_je: list[dict] = []
+    zeilen, wo = [], ""
+    for a in range(1, ausgaben + 1):
+        basen, jobs = [], []
+        for x, ab in enumerate(abschnitte, 1):
+            y = [rng.randrange(2) for _ in ab]
+            u, t, xs, kreise, job_id, wo = s_messen_basen(y, rng)
+            passend = [i for i in range(len(y)) if y[i] == u[i]]
+            falsch = sum(xs[i] != t[i] for i in passend)
+            mess[x - 1].append({"u": bits(u), "t": bits(t), "y": bits(y), "x": bits(xs), "wo": wo, "job": job_id})
+            basen.append(bits(y))
+            jobs.append(job_id)
+            zeilen.append(f"- Ausgabe {a}, Validator {x}: Stellen {ab[0]}..{ab[-1]} ({len(ab)} Qubits, "
+                          f"{len(kreise)} Schaltkreise" + (f", Job {job_id}" if job_id else "")
+                          + f"), Fehler bei passender Basis {falsch}/{len(passend)}")
+        basen_je.append({"n": n, "basen": basen, "wo": wo, "job": ",".join(j for j in jobs if j)})
+    # Erst schreiben, wenn alle Auftraege gemessen sind: ein Abbruch
+    # hinterlaesst keine halbe Ausgabe (O_EXCL, nur fuer den Eigentuemer).
     os.makedirs(verzeichnis, mode=0o700, exist_ok=True)
-    basen, jobs, zeilen, wo = [], [], [], ""
-    for x, ab in enumerate(sk.abschnitte(n, v), 1):
-        y = [rng.randrange(2) for _ in ab]
-        u, t, xs, kreise, job_id, wo = s_messen_basen(y, rng)
-        passend = [i for i in range(len(y)) if y[i] == u[i]]
-        falsch = sum(xs[i] != t[i] for i in passend)
-        fd = os.open(os.path.join(verzeichnis, f"mess_{x}.json"), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    def neu(name: str, inhalt: dict) -> None:
+        fd = os.open(os.path.join(verzeichnis, name), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         with os.fdopen(fd, "w") as fh:
-            json.dump({"abschnitte": [{"u": bits(u), "t": bits(t), "y": bits(y), "x": bits(xs), "wo": wo, "job": job_id}]}, fh)
-        basen.append(bits(y))
-        jobs.append(job_id)
-        zeilen.append(f"- Validator {x}: Stellen {ab[0]}..{ab[-1]} ({len(ab)} Qubits, {len(kreise)} Schaltkreise"
-                      + (f", Job {job_id}" if job_id else "") + f"), Fehler bei passender Basis {falsch}/{len(passend)}")
-    fd = os.open(os.path.join(verzeichnis, "basen.json"), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    with os.fdopen(fd, "w") as fh:
-        json.dump({"n": n, "basen": basen, "wo": wo, "job": ",".join(j for j in jobs if j)}, fh)
+            json.dump(inhalt, fh)
+    for x, eintraege in enumerate(mess, 1):
+        neu(f"mess_{x}.json", {"abschnitte": eintraege})
+    for a, b in enumerate(basen_je, 1):
+        neu(f"basen_{a}.json", b)
     text = "\n".join([f"## S-Messung in {v} Abschnitten auf {wo}", "",
-                      f"{n} Qubits, je Validator ein eigener Auftrag:"] + zeilen)
+                      f"{ausgaben} Ausgabe(n) zu je {n} Qubits, je Ausgabe und Validator ein eigener Auftrag:"] + zeilen)
     print(text)
     if os.environ.get("GITHUB_STEP_SUMMARY"):
         with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as fh:

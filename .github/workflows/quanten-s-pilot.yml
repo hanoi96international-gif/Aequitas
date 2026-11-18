@@ -11,6 +11,9 @@
 #      BB84-Zustaenden, in Schaltkreisen zu 16 sofort gemessen (S braucht
 #      keinen Speicher, die Groesse ist also nur eine Frage der Schaltkreise). Modus ibm: echter Chip (Umgebung quantenhardware,
 #      Freigabe). Modus rauschen: Rauschmodell, kostet nichts.
+#      Ausgabe abschnitte: --s-abschnitte --ausgaben 2 -- je Validator ein
+#      eigener Auftrag fuer seinen Abschnitt, zwei Ausgaben (eine je Test,
+#      denn jede Messung gilt nur einmal): 8 Auftraege.
 #   2. pilot: die vier Knoten pruefen die Messung -- Ausgabe mit den
 #      Bestaetigungen aller vier Validatoren, Doppelvorlage an der falschen
 #      Stelle (muss abgewiesen werden), ehrliche Vorlage (wird eingeloest).
@@ -41,7 +44,7 @@ on:
         description: "Netzlaufzeit je Richtung zwischen den Knoten in ms (0 bis 300; 0 = wie bisher). Naehert Server im echten Netz an."
         default: "0"
       ausgabe:
-        description: "auftrag = alle Stellen in einem Auftrag (wie bisher); abschnitte = je Validator ein eigener Auftrag fuer seinen Abschnitt (DEZENTRAL.md)"
+        description: "auftrag = alle Stellen in einem Auftrag (wie bisher); abschnitte = je Validator ein eigener Auftrag fuer seinen Abschnitt, zwei Ausgaben (eine je Test; DEZENTRAL.md)"
         type: choice
         options: [auftrag, abschnitte]
         default: auftrag
@@ -86,8 +89,10 @@ jobs:
         run: |
           set -euo pipefail
           if [ "$AUSGABE" = abschnitte ]; then
-            # Je Validator ein eigener Auftrag fuer seinen Abschnitt.
-            python3 -I forschung/quantengeld/hardware_ibm.py --rauschen FakeMarrakesh --s-abschnitte "$RUNNER_TEMP/ab" --k "$K" --v 4
+            # Je Validator ein eigener Auftrag fuer seinen Abschnitt; zwei
+            # Ausgaben, eine je Test (die Messquelle gibt jeden Abschnitt
+            # nur einmal her).
+            python3 -I forschung/quantengeld/hardware_ibm.py --rauschen FakeMarrakesh --s-abschnitte "$RUNNER_TEMP/ab" --k "$K" --v 4 --ausgaben 2
             echo "messung=$(tar -C "$RUNNER_TEMP/ab" -czf - . | base64 -w0)" >> "$GITHUB_OUTPUT"
             rm -rf "$RUNNER_TEMP/ab"
           else
@@ -126,8 +131,9 @@ jobs:
           set -euo pipefail
           if [ "$AUSGABE" = abschnitte ]; then
             # Je Validator ein eigener Auftrag fuer seinen Abschnitt (im Pilot
-            # alle vom selben Konto -- im Betrieb misst jeder Validator selbst).
-            python3 -I forschung/quantengeld/hardware_ibm.py --ibm --s-abschnitte "$RUNNER_TEMP/ab" --k "$K" --v 4
+            # alle vom selben Konto -- im Betrieb misst jeder Validator selbst);
+            # zwei Ausgaben, eine je Test: 8 Auftraege.
+            python3 -I forschung/quantengeld/hardware_ibm.py --ibm --s-abschnitte "$RUNNER_TEMP/ab" --k "$K" --v 4 --ausgaben 2
             echo "messung=$(tar -C "$RUNNER_TEMP/ab" -czf - . | base64 -w0)" >> "$GITHUB_OUTPUT"
             rm -rf "$RUNNER_TEMP/ab"
           else
@@ -176,10 +182,16 @@ jobs:
           if [ "$AUSGABE" = abschnitte ]; then
             mkdir -m 700 "$RUNNER_TEMP/ab"
             printf '%s' "$MESSUNG" | base64 -d | tar -C "$RUNNER_TEMP/ab" --no-same-owner --no-same-permissions -xzf -
-            # Genau die erwarteten Dateien, sonst nichts.
-            [ "$(cd "$RUNNER_TEMP/ab" && ls | sort | tr '\n' ' ')" = "basen.json mess_1.json mess_2.json mess_3.json mess_4.json " ] || { echo "::error::Abschnitte unvollstaendig"; exit 1; }
-            jq -e --argjson n "$((2 * K))" '.n == $n and (.basen | length) == 4 and ([.basen[] | length] | add) == $n' "$RUNNER_TEMP/ab/basen.json" >/dev/null || { echo "::error::Basen unvollstaendig"; exit 1; }
-            jq -r '"Geraet: \(.wo)  Jobs: \(.job)"' "$RUNNER_TEMP/ab/basen.json"
+            # Genau die erwarteten Dateien, sonst nichts: zwei Ausgaben (eine
+            # je Test), je Validator eine Messquelle mit beiden Abschnitten.
+            [ "$(cd "$RUNNER_TEMP/ab" && ls | sort | tr '\n' ' ')" = "basen_1.json basen_2.json mess_1.json mess_2.json mess_3.json mess_4.json " ] || { echo "::error::Abschnitte unvollstaendig"; exit 1; }
+            for a in 1 2; do
+              jq -e --argjson n "$((2 * K))" '.n == $n and (.basen | length) == 4 and ([.basen[] | length] | add) == $n' "$RUNNER_TEMP/ab/basen_$a.json" >/dev/null || { echo "::error::Basen der Ausgabe $a unvollstaendig"; exit 1; }
+              jq -r --arg a "$a" '"Ausgabe \($a): Geraet \(.wo)  Jobs \(.job)"' "$RUNNER_TEMP/ab/basen_$a.json"
+            done
+            for x in 1 2 3 4; do
+              jq -e '(.abschnitte | length) == 2' "$RUNNER_TEMP/ab/mess_$x.json" >/dev/null || { echo "::error::Messquelle von Validator $x unvollstaendig"; exit 1; }
+            done
           else
             printf '%s' "$MESSUNG" | base64 -d | gunzip -c > "$RUNNER_TEMP/m.json"
             jq -e --argjson n "$((2 * K))" '.n == $n and (.x | length) == $n' "$RUNNER_TEMP/m.json" >/dev/null || { echo "::error::Messung unvollstaendig"; exit 1; }

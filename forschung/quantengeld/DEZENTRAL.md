@@ -10,6 +10,9 @@ einer Stelle hängt, und was wir bauen.
   Doppelvorlage abgewiesen und die ehrliche Vorlage eingelöst (`HEUTE.md` 3.3c).
 - **Mit vier Validatoren** läuft es im Pilot: 3 von 4, k = 5.200, auf IBM `ibm_kingston`
   und im Rauschmodell, auch wenn einer ausfällt und mit Netzlaufzeit (`HEUTE.md` 3.3d).
+- **Ausgabe in Abschnitten (Weg A, A1–A4):** Jeder Validator präpariert seinen Abschnitt
+  in einem eigenen Auftrag mit eigener Messquelle. Im Pilot grün im Rauschmodell und auf
+  IBM `ibm_marrakesh`, ohne Ausfall; der Ausfall-Test läuft nach (`HEUTE.md` 3.3e, 12).
 - **Jeder Knoten mit Signierschlüssel** startet den Validator-Dienst von selbst
   (`StarteQuantenWDienst`, `cmd/aequitasd/main.go`). Ein neuer Validator macht ohne weitere
   Einrichtung mit.
@@ -140,7 +143,7 @@ Geheimnis besser, aber zum Einlösen müssen t Validatoren erreichbar sein.
 | A1 | Spezifikation in `s_kette.py`: Ausgabe in Abschnitten, wer was weiß, Missbrauchsfälle | **fertig** (siehe unten) |
 | A2 | Validator-Dienst: eigenen Abschnitt präparieren (Messung von außen, wie heute über eine Datei), Anteile an die anderen verteilen, Stichprobe für die Annahmestellen | **fertig**: A2a Bausteine (9), A2b Dienst (10) |
 | A3 | `hardware_ibm.py --s-abschnitt`, Werkzeug `quanten-s-ausgabe` im Abschnitts-Modus | **Werkzeug fertig** (11); Messung je Abschnitt folgt mit A4 |
-| A4 | Pilot: vier Knoten, je ein eigener Auftrag (im Pilot von einem Konto, das wird benannt) | **bereit** (12): lokal grün; Läufe auf dem Runner nach dem Merge, IBM mit Freigabe |
+| A4 | Pilot: vier Knoten, je ein eigener Auftrag (im Pilot von einem Konto, das wird benannt) | **auf dem Chip gezeigt** (12): ohne Ausfall grün im Rauschmodell und auf `ibm_marrakesh`; Ausfall-Test nach Pilot-Korrektur (zwei Ausgaben) im Nachlauf |
 | A5 | Hauptnetz mit einem zweiten Menschen als Validator, wenn möglich bei einem anderen Anbieter | Betreiber |
 | B, C, W-Härtung | wie oben | Forschung; Partner |
 
@@ -370,11 +373,15 @@ Die Antworten von `abschnitt` und `oeffnung` dürfen bis 8 MiB groß sein
 
 ## 12. A4: der Pilot im Abschnitts-Modus (18.11.2026)
 
-- **Messung je Abschnitt:** `hardware_ibm.py --s-abschnitte VERZEICHNIS --k K --v V`.
-  - Je Validator setzt es einen **eigenen Auftrag** für dessen Abschnitt ab, in Basen y, die
-    es für die Inhaberin zieht.
-  - Es schreibt `mess_<x>.json` (u, t, y, x, nur für Validator x) und `basen.json` (nur y,
-    für das Werkzeug), beide mit Rechten 0600.
+- **Messung je Abschnitt:** `hardware_ibm.py --s-abschnitte VERZEICHNIS --k K --v V
+  [--ausgaben A]`.
+  - Je Ausgabe und Validator setzt es einen **eigenen Auftrag** für dessen Abschnitt ab,
+    in Basen y, die es für die Inhaberin zieht.
+  - Es schreibt `mess_<x>.json` (u, t, y, x aller A Ausgaben, nur für Validator x) und
+    `basen_<a>.json` je Ausgabe (nur y, für das Werkzeug), alle mit Rechten 0600 und erst,
+    wenn alle Aufträge gemessen sind. A ist höchstens 4.
+  - Der Dienst verbraucht jeden Abschnitt genau einmal. Darum braucht der Pilot zwei
+    Ausgaben, eine je Test (Befund unten).
   - Im Rauschmodell geprüft: 5 Abschnitte, 5 Aufträge.
 - **Vier-Knoten-Test** `TestVierKnotenQuantenSAbschnitte(Ausfall)_RealDB`:
   - Jeder Knoten bekommt **seine** Messquelle. Im Pilot ist das die Datei aus
@@ -384,8 +391,22 @@ Die Antworten von `abschnitt` und `oeffnung` dürfen bis 8 MiB groß sein
     abgewiesen, ehrliche Vorlage eingelöst, alle lebenden Knoten auf derselben StateRoot.
 - **Workflow** `quanten-s-pilot.yml`: neue Wahl `ausgabe` (`auftrag` | `abschnitte`).
   - Im Abschnitts-Modus misst der Mess-Job vier Abschnitte in vier Aufträgen.
-  - Der Pilot-Job prüft, dass genau die fünf erwarteten Dateien da sind und die Basen
-    zusammen n ergeben. Danach laufen die Abschnitts-Tests.
+  - Der Pilot-Job prüft, dass genau die sechs erwarteten Dateien da sind, die Basen jeder
+    Ausgabe zusammen n ergeben und jede Messquelle zwei Abschnitte hat. Danach laufen die
+    Abschnitts-Tests, ohne Ausfall mit Ausgabe 1, mit Ausfall mit Ausgabe 2.
   - **Ehrlich:** Im Pilot kommen die vier Aufträge vom selben Konto und laufen im selben
     Job. Gezeigt wird der Ablauf. Dass niemand den ganzen Token kennt, gilt erst, wenn
     jeder Validator mit eigenem Konto selbst misst.
+
+### Erste Läufe (18.11.2026)
+
+- **Rauschmodell** (Lauf 44340478883) und **IBM `ibm_marrakesh`** (Lauf 44341842380), je
+  vier eigene Aufträge: Der Test ohne Ausfall war in beiden **grün**. Die Doppelvorlage
+  wurde abgewiesen, die ehrliche Vorlage eingelöst, alle vier Knoten standen gleich.
+  Fehler bei passender Basis auf dem Chip 0,79 %. Einzelheiten in `HEUTE.md` 3.3e.
+- **Befund:** Der Ausfall-Test scheiterte in beiden Läufen nach 15 s mit „keine Messung zu
+  diesen Basen“. Er las dieselbe Messung wie der erste Test, und der Dienst gibt jeden
+  Abschnitt nur einmal her. Das ist richtig so. Falsch war der Pilot, der nur eine
+  Ausgabe gemessen hatte.
+- **Korrektur:** `--ausgaben 2`, `basen_1.json` und `basen_2.json`, je Test eine eigene
+  Ausgabe. Der Dienst und die Kette bleiben unverändert.

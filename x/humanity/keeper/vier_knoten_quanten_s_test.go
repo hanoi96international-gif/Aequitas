@@ -52,22 +52,27 @@ func TestVierKnotenQuantenSAbschnitteAusfall_RealDB(t *testing.T) { qsVierKnoten
 
 // qsAbschnitteAusVerzeichnis: im Pilot (quanten-s-pilot.yml, ausgabe =
 // abschnitte) steht in AEQUITAS_QS_ABSCHNITTE das Verzeichnis von
-// `hardware_ibm.py --s-abschnitte`: mess_<x>.json je Validator, basen.json
-// fuer das Werkzeug. basen.json wird so streng gelesen wie im Werkzeug.
-func qsAbschnitteAusVerzeichnis(t *testing.T) (string, QuantenSBasen, bool) {
+// `hardware_ibm.py --s-abschnitte --ausgaben 2`: mess_<x>.json je Validator
+// (beide Ausgaben), basen_<a>.json je Ausgabe fuer das Werkzeug. Jeder Test
+// nimmt SEINE Ausgabe (ohne Ausfall 1, mit Ausfall 2): die Messquelle gibt
+// jeden Abschnitt nur einmal her, eine zweite Ausgabe mit denselben Basen
+// weist der Dienst ab ("keine Messung zu diesen Basen"). basen_<a>.json wird
+// so streng gelesen wie im Werkzeug.
+func qsAbschnitteAusVerzeichnis(t *testing.T, ausgabe int) (string, QuantenSBasen, bool) {
 	dir := strings.TrimSpace(os.Getenv("AEQUITAS_QS_ABSCHNITTE"))
 	if dir == "" {
 		return "", QuantenSBasen{}, false
 	}
-	roh, err := os.ReadFile(filepath.Join(dir, "basen.json"))
+	name := fmt.Sprintf("basen_%d.json", ausgabe)
+	roh, err := os.ReadFile(filepath.Join(dir, name))
 	if err != nil || len(roh) > quantenSAusgabeMessMax {
-		t.Fatalf("AEQUITAS_QS_ABSCHNITTE: basen.json: %v", err)
+		t.Fatalf("AEQUITAS_QS_ABSCHNITTE: %s: %v", name, err)
 	}
 	var b QuantenSBasen
 	dec := json.NewDecoder(bytes.NewReader(roh))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&b); err != nil {
-		t.Fatalf("AEQUITAS_QS_ABSCHNITTE: basen.json: %v", err)
+		t.Fatalf("AEQUITAS_QS_ABSCHNITTE: %s: %v", name, err)
 	}
 	return dir, b, true
 }
@@ -134,10 +139,14 @@ func qsVierKnotenModus(t *testing.T, ausfall, abschnitte bool) {
 	var basen QuantenSBasen
 	if abschnitte {
 		ausDatei = false
-		abDir, basen, ausDatei = qsAbschnitteAusVerzeichnis(t)
+		ausgabe := 1
+		if ausfall {
+			ausgabe = 2
+		}
+		abDir, basen, ausDatei = qsAbschnitteAusVerzeichnis(t, ausgabe)
 		if ausDatei {
 			kJeStelle = basen.N / 2
-			t.Logf("Abschnitte aus %s: n = %d, %d Abschnitte, Geraet %q, Jobs %q", abDir, basen.N, len(basen.Basen), basen.Wo, basen.Job)
+			t.Logf("Abschnitte aus %s, Ausgabe %d: n = %d, %d Abschnitte, Geraet %q, Jobs %q", abDir, ausgabe, basen.N, len(basen.Basen), basen.Wo, basen.Job)
 		}
 	} else if ausDatei {
 		kJeStelle = echt.N / 2
