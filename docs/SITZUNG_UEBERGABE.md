@@ -17,7 +17,7 @@ dezentrales Quantengeld“.
     - Befund: Die Stichproben müssen bis zur Bindung geheim sein (5g).
     - Lösung: das Stellen-Bit im Salz (5h), Kette unverändert.
     - Entwurf des Dienstes in `DEZENTRAL.md` 8.
-  - **PR „A2a Bausteine in Go“ (dieser Zweig):** `quanten_s_abschnitt.go` mit Test und
+  - **#584 gemergt (A2a, Bausteine in Go):** `quanten_s_abschnitt.go` mit Test und
     Prüfvektor aus der Spezifikation, noch nicht eingehängt.
   - **Nächste Schritte:**
     - A2b im Go-Dienst: Endpunkte für Auftrag und Öffnung, die Messquelle, die
