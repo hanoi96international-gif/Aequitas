@@ -524,7 +524,10 @@ liest. Das gibt es jetzt mit je einem Befehl (Anleitung: `docs/VALIDATOR_EINRICH
   - Der Schlüssel geht nur über die Umgebung an die Messung, nie auf die Befehlszeile
     (dort sähe ihn jeder Benutzer in `ps`) und nie ins Log.
   - `--probe`: Selbsttest und eine ideale Messung als Knotenbenutzer in ein
-    Probeverzeichnis; prüft Besitzer und Rechte des Messverzeichnisses.
+    Probeverzeichnis; prüft Besitzer und Rechte des Messverzeichnisses. Das
+    Probeverzeichnis entsteht in einem Verzeichnis, das root gehört (aus der eigenen
+    Sicherheitsprüfung: im HOME des Knotenbenutzers hätte der es zwischen `mktemp` und
+    `chown` gegen einen Verweis tauschen können).
 
 **Geprüft in der Arbeitsumgebung, als echter root mit Benutzerwechsel:** Einrichten in
 16 s, Probe bestanden, Schlüsseldatei root 0600, Messdatei Benutzer 10001 0600; der Go-Dienst

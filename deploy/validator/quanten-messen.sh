@@ -32,7 +32,10 @@ als_knoten() { HOME="$QS_OPT/home" setpriv --reuid "$QS_UID" --regid "$QS_UID" -
 
 if [ "${1:-}" = "--probe" ]; then
   als_knoten "$PY" -I "$SKRIPT" --selbsttest
-  probe="$(mktemp -d "$QS_OPT/home/probe.XXXXXX")"
+  # Probeverzeichnis unter $QS_OPT (gehoert root), nicht in $QS_OPT/home:
+  # dort koennte der Knotenbenutzer es zwischen mktemp und chown gegen einen
+  # Verweis tauschen, und chown folgt Verweisen.
+  probe="$(mktemp -d "$QS_OPT/probe.XXXXXX")"
   chown "$QS_UID:$QS_UID" "$probe"
   trap 'rm -rf -- "$probe"' EXIT
   als_knoten "$PY" -I "$SKRIPT" --ideal --s-abschnitt "$probe" --basen 0110100101101001 | tail -1
