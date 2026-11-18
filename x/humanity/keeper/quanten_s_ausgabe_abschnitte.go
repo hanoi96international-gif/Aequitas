@@ -176,6 +176,7 @@ func quantenSAusgabeLaufAbschnitte(ctx context.Context, a QuantenSAusgabeAuftrag
 	var proben [2][32]byte
 	var probenHex []string
 	passend, falsch := 0, 0
+	var treffer, fehler [2]int
 	for s := 0; s < 2; s++ {
 		oe := map[int]*big.Int{}
 		for xi := 1; xi <= v; xi++ {
@@ -200,8 +201,10 @@ func quantenSAusgabeLaufAbschnitte(ctx context.Context, a QuantenSAusgabeAuftrag
 			probe[s] = append(probe[s], i)
 			if y[i] == ut[0] {
 				passend++
+				treffer[s]++
 				if x[i] != ut[1] {
 					falsch++
+					fehler[s]++
 				}
 			}
 		}
@@ -212,6 +215,11 @@ func quantenSAusgabeLaufAbschnitte(ctx context.Context, a QuantenSAusgabeAuftrag
 	wurzelHex := hex.EncodeToString(wurzel[:])
 	fmt.Fprintf(log, "Token %s: n=%d in %d Abschnitten, %d/%d Stellen je Annahmestelle, Fehlerrate bei passender Basis %d/%d (aus den Stichproben)\n",
 		K[:12], n, v, len(probe[0]), len(probe[1]), falsch, passend)
+	// Die ehrliche Vorlage muss an BEIDEN Stellen bestehen -- exakt wie die
+	// Kette zaehlt, vor der Bestaetigung und vor der Kette (quanten_s_toleranz.go).
+	if err := quantenSEhrlichBesteht(treffer, fehler, a.Tol); err != nil {
+		return nil, err
+	}
 	// 4. Bestaetigungen mit den Buendeln der anderen.
 	var bestaetigungen []string
 	for xi := 1; xi <= v; xi++ {

@@ -77,6 +77,7 @@ type QuantenSAusgabeErgebnis struct {
 	K              string   `json:"k"`
 	N              int      `json:"n"`
 	KJeStelle      int      `json:"k_je_stelle"`
+	Toleranz       int      `json:"toleranz_prozent"`
 	Ausgeber       string   `json:"ausgeber"`
 	Inhaberin      string   `json:"inhaberin"`
 	Stellen        []string `json:"stellen"`
@@ -304,6 +305,23 @@ func quantenSAusgabeLauf(ctx context.Context, a QuantenSAusgabeAuftrag, validato
 		zeit = a.Jetzt()
 	}
 	fmt.Fprintf(log, "Token %s: n=%d, %d Stellen je Annahmestelle, Fehlerrate bei passender Basis %d/%d\n", K[:12], m.N, k, falsch, passend)
+	// Die ehrliche Vorlage muss an BEIDEN Stellen bestehen -- exakt wie die
+	// Kette zaehlt, vor jedem Schritt bei den Validatoren und auf der Kette
+	// (quanten_s_toleranz.go).
+	var treffer, fehler [2]int
+	for s := 0; s < 2; s++ {
+		for _, i := range probe[s] {
+			if y[i] == u[i] {
+				treffer[s]++
+				if x[i] != tw[i] {
+					fehler[s]++
+				}
+			}
+		}
+	}
+	if err := quantenSEhrlichBesteht(treffer, fehler, a.Tol); err != nil {
+		return nil, err
+	}
 
 	// 2. Bestaetigungen der Validatoren -- selbst nachgeprueft.
 	var bestaetigungen []string
@@ -403,7 +421,7 @@ func quantenSAusgabeAbschluss(ctx context.Context, a QuantenSAusgabeAuftrag, net
 	}
 	fmt.Fprintf(log, "gebunden und gewaehlt (nach %s)\n", a.quantenSNach())
 
-	erg := &QuantenSAusgabeErgebnis{K: K, N: n, KJeStelle: k, Ausgeber: ausgeber, Inhaberin: inhaber, Stellen: stellen[:], B: b,
+	erg := &QuantenSAusgabeErgebnis{K: K, N: n, KJeStelle: k, Toleranz: a.Tol, Ausgeber: ausgeber, Inhaberin: inhaber, Stellen: stellen[:], B: b,
 		Deckung: a.Deckung, FehlerrateMess: vb.Fehlerrate, Wo: vb.Wo, Job: vb.Job}
 
 	// 4. Doppelvorlage an der anderen Stelle, 5. ehrlich an Stelle b.
@@ -808,7 +826,10 @@ func QuantenSValidatorenLesen(roh string) ([]QuantenSValidator, error) {
 // QuantenSAusgabe: `aequitasd quanten-s-ausgabe`. Der Schluessel ist der des
 // Knotens (RELAYER_PRIVATE_KEY), die Messung kommt auf stdin. Ohne
 // Validatorenliste ist der Knoten selbst der einzige Validator (t = 1).
-func QuantenSAusgabe(ctx context.Context, apiBasis, schluesselHex string, deckung int64, frist time.Duration, validatoren []QuantenSValidator, t int, mess io.Reader, aus, log io.Writer) error {
+func QuantenSAusgabe(ctx context.Context, apiBasis, schluesselHex string, deckung int64, frist time.Duration, validatoren []QuantenSValidator, t, tol int, mess io.Reader, aus, log io.Writer) error {
+	if quantenWKNote(tol, 1, 1) == 0 {
+		return fmt.Errorf("Toleranz %d %%: die Kette kennt nur %v", tol, quantenSToleranzen())
+	}
 	eigen, err := neuerQuantenSHTTP(apiBasis)
 	if err != nil {
 		return err
@@ -831,7 +852,7 @@ func QuantenSAusgabe(ctx context.Context, apiBasis, schluesselHex string, deckun
 	if frist <= 0 || frist > time.Hour {
 		return errors.New("Frist: 1 s bis 1 h")
 	}
-	auftrag := QuantenSAusgabeAuftrag{Schluessel: key, Deckung: deckung, Tol: quantenWTolStandard, Frist: frist}
+	auftrag := QuantenSAusgabeAuftrag{Schluessel: key, Deckung: deckung, Tol: tol, Frist: frist}
 	netz := &quantenSMehrNetz{quantenSHTTP: eigen, validatoren: netze}
 	// Abschnitts-Modus (quanten_s_ausgabe_abschnitte.go): die Eingabe nennt
 	// nur die Basen der Inhaberin je Abschnitt ("basen"), keine Messung.

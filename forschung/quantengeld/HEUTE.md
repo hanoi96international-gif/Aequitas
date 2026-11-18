@@ -630,6 +630,61 @@ Aufträge, Mehrheit aus 5):
   weit darunter, könnte eine kleinere Toleranz die Prüfgröße k senken (Tabelle
   `quantenWKTabelle`). Das wäre eine Änderung der Kettenregeln und ein eigener Schritt.
 
+### 3.3g Sicherheit „99,9999999 %“: die ehrliche Vorlage exakt geprüft, Toleranz wählbar (18.11.2026)
+
+Auftrag des Betreibers: „Es muss zu 99,9999999 Prozent safe sein“, also höchstens einer
+von 10⁹ Tokens darf scheitern. Ein Token kann auf zwei Arten scheitern:
+
+1. **Eine Fälschung besteht.** Die Prüfgröße k aus der Tabelle der Kette
+   (`quantenWKTabelle`, `wiesner_parameter.py`) hält das für jede Toleranz unter
+   **2⁻⁴⁰ ≈ 9 · 10⁻¹³** je Prüfung, solange weniger als t Validatoren zusammenarbeiten. Das
+   sind 99,99999999991 %, also schon über dem Auftrag.
+2. **Eine ehrliche Vorlage fällt durch, und der Wert ist verloren.**
+   - Die Tabelle rechnete hier bisher mit 10⁻⁶ und einer angenommenen Fehlerrate.
+   - Nachgerechnet: Für den ersten Token im Hauptnetz (ein Validator, k = 840, ein Schuss
+     je Stelle) läge das Durchfallen bei einer Fehlerrate am oberen Rand der Messung bei
+     rund 10⁻³. **Das reicht nicht.**
+
+**Lösung: keine Schätzung, sondern die Zählung der Kette, vor der Ausgabe.**
+- Bei S stehen beide Stichproben bei der Ausgabe fest; ihr Hash steht auf der Kette. An der
+  gewählten Stelle b prüft die Kette genau in den Messbasen y der Inhaberin
+  (`quantenSToken.einloesen`: d ⊕ b ⊕ c = y).
+- Treffer (y = u) und Fehler (x ≠ t) je Stelle kennt das Werkzeug also schon vor der
+  Ausgabe.
+- `quantenSEhrlichBesteht` rechnet das Urteil der Kette (`quantenWUrteil`) für **beide**
+  Annahmestellen nach. Das Werkzeug gibt nur aus, wenn die ehrliche Vorlage an beiden
+  besteht. Sonst bricht es ab, bevor ein Validator bestätigt oder etwas auf die Kette geht.
+- Das gilt in beiden Wegen (eine Messung, Abschnitte) und **bei jeder Toleranz**, auch beim
+  Standard 4 %.
+- **Am Messfehler fällt eine ehrliche Vorlage damit nie mehr durch.** Was bleibt, ist kein
+  Messrisiko: Validatoren, die zurückhalten (v − t + 1, Prüfauftrag W8), oder Fehler in
+  der Software.
+
+**Toleranz wählbar** (`aequitasd quanten-s-ausgabe --toleranz`, Pilot-Eingabe `toleranz`):
+- Die Kette kennt 2, 3, 4, … %; eine andere Zahl weist das Werkzeug sofort ab.
+- Kleinere Toleranz heißt kleinere Prüfgröße, bei gleicher Fälschungsschranke 2⁻⁴⁰:
+
+| 3 von 4 Validatoren | Prüfgröße k | Qubits je Token |
+|---|---|---|
+| 4 % (Standard) | 5.200 | 10.400 |
+| 3 % | 2.880 | 5.760 |
+| 2 % | 1.760 | 3.520 |
+
+- Bei kleiner Toleranz verlangt die exakte Probe kleine Fehler. Mit der Mehrheit aus
+  5 Schüssen (3.3f, 0,04 % auf dem Chip) besteht sie bei 2 % meist; sonst gibt das
+  Werkzeug nicht aus, und es wird neu gemessen.
+
+**Tests** (`quanten_s_toleranz_test.go`):
+- Die Probe zählt wie die Kette: Grenze genau auf der Toleranz, je Stelle einzeln, unter 4
+  Treffern nicht bestanden.
+- Missbrauch: Eine Messung, deren ehrliche Vorlage nicht bestünde, bricht ab, bei 2 % und
+  bei 4 %, in beiden Wegen. Danach liegt nichts auf der Kette und nichts bei den
+  Validatoren.
+- Gutfall mit der **echten** Tabelle: Mit 1.760 Stellen gibt das Werkzeug bei 2 % aus
+  (Doppelvorlage abgewiesen, ehrliche eingelöst), bei 4 % lehnt es dieselbe Größe ab.
+- Eine Toleranz, die die Kette nicht kennt, wird abgewiesen.
+- Gegenprobe: 7 Mutationen, alle rot. `go test -race` grün.
+
 ### 3.4 Bargeld-Verhalten ohne Quanten (Offline-Bargeld)
 
 Was Menschen sich von Quantengeld wünschen, ist meist offline zu zahlen, wie mit

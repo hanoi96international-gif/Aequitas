@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -77,6 +78,22 @@ func qsAbschnitteAusVerzeichnis(t *testing.T, ausgabe int) (string, QuantenSBase
 	return dir, b, true
 }
 
+// qsToleranzAusUmgebung: im Pilot (quanten-s-pilot.yml, Eingabe toleranz)
+// steht in AEQUITAS_QS_TOL die Toleranz in Prozent; ohne Angabe der Standard.
+// Nur Werte, fuer die die Kette eine Pruefgroesse kennt.
+func qsToleranzAusUmgebung(t *testing.T) int {
+	s := strings.TrimSpace(os.Getenv("AEQUITAS_QS_TOL"))
+	if s == "" {
+		return quantenWTolStandard
+	}
+	tol, err := strconv.Atoi(s)
+	if err != nil || quantenWKNote(tol, 1, 1) == 0 {
+		t.Fatalf("AEQUITAS_QS_TOL = %q: die Kette kennt nur %v", s, quantenSToleranzen())
+	}
+	t.Logf("Toleranz %d %%", tol)
+	return tol
+}
+
 // PILOT AUF ECHTER HARDWARE (Workflow quanten-s-pilot.yml): Steht in
 // AEQUITAS_QS_MESSUNG eine Datei von `hardware_ibm.py --s-messen`, kommt der
 // Token nicht aus dem Zufall des Tests, sondern vom Chip -- Praegen bis
@@ -134,6 +151,7 @@ func qsVierKnotenModus(t *testing.T, ausfall, abschnitte bool) {
 		t.Skip("laeuft in echter Zeit")
 	}
 	kJeStelle := 128
+	tol := qsToleranzAusUmgebung(t)
 	echt, ausDatei := qsMessungAusDatei(t)
 	var abDir string
 	var basen QuantenSBasen
@@ -288,10 +306,10 @@ func qsVierKnotenModus(t *testing.T, ausfall, abschnitte bool) {
 	var erg *QuantenSAusgabeErgebnis
 	if abschnitte {
 		erg, err = quantenSAusgabeLaufAbschnitte(context.Background(), QuantenSAusgabeAuftrag{Schluessel: ausgeber.key, Deckung: 2_000_000,
-			Tol: quantenWTolStandard, Frist: frist}, basen, adressen, 3, werkzeugNetz.(quantenSAbschnittNetz), &log)
+			Tol: tol, Frist: frist}, basen, adressen, 3, werkzeugNetz.(quantenSAbschnittNetz), &log)
 	} else {
 		erg, err = quantenSAusgabeLauf(context.Background(), QuantenSAusgabeAuftrag{Messung: m, Schluessel: ausgeber.key, Deckung: 2_000_000,
-			Tol: quantenWTolStandard, Frist: frist}, adressen, 3, werkzeugNetz, &log)
+			Tol: tol, Frist: frist}, adressen, 3, werkzeugNetz, &log)
 	}
 	t.Logf("Werkzeug (%s):\n%s", time.Since(beginn).Round(time.Second), log.String())
 	if err != nil {
