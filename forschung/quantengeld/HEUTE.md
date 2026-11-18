@@ -512,6 +512,9 @@ alle Läufe, auch die gescheiterten.
 | [44356741223](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44356741223) | `main` nach #588 (799f6783), **echter IBM-Chip `ibm_fez`** (freigegeben), **8 Aufträge**: Ausgabe 1 `dbutuhv82tmc73du3m1g`, `dbutusv82tmc73du3me0`, `dbutv3larooc73fkkq5g`, `dbutvalarooc73fkkql0`, Fehler **36/5.287 (0,68 %)** | alle vier (795,7 s) | **grün:** Doppelvorlage 6m09s, 845/min, **abgewiesen**; ehrliche Vorlage 6m44s, 772/min, **eingelöst**; Werkzeug 12m56s; 4 Knoten gleich, Höhe 7801, StateRoot `4fc4053e…fd4a38f` |
 | ebenda | Ausgabe 2: `dbutvh5arooc73fkkqug`, `dbutvnups3fc73bji6cg`, `dbutvu7f8rhs73bmvq20`, `dbuu04eps3fc73bji6p0`, Fehler **27/5.161 (0,52 %)** | **ein Knoten fällt aus** (662,4 s; Knoten 2 vor der ersten Vorlage) | **grün:** Doppelvorlage 4m41s, 1.110/min, **abgewiesen**; ehrliche Vorlage 5m59s, 870/min, **eingelöst**; Werkzeug 10m46s; 3 Knoten gleich, Höhe 4886, StateRoot `99c04a73…7a241f` |
 
+Gerät: Genannt ist das Gerät des letzten Auftrags eines Laufs. Jeder Auftrag wählte sein
+Gerät selbst; die übrigen können auf anderen Chips gelaufen sein (3.3g, „Welcher Chip?“).
+
 Zähler je Validator-Dienst (Test „alle vier“):
 
 | Lauf | eingereicht | abgewiesen | eingesprungen | Nachbarabfragen |
@@ -615,6 +618,8 @@ Aufträge, Mehrheit aus 5):
 | [44367782047](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44367782047) | **echter Chip `ibm_fez`** | **4/10.393 (0,04 %)** | 82/10.393 (0,79 %) |
 
 - Auf dem Chip ist das rund **zwanzigmal weniger**.
+- „Chip `ibm_fez`“ ist das Gerät des letzten Auftrags; die übrigen sieben können auf
+  anderen Chips gelaufen sein (3.3g, „Welcher Chip?“).
 - Die vier Restfehler liegen alle in einem Auftrag (Ausgabe 1, Validator 2). Das ist der
   zusammenhängende Rest, den das Rauschmodell nicht zeigt, etwa ein Qubit, das in jedem
   Schuss gleich falsch ausliest.
@@ -712,7 +717,35 @@ Rauschmodell, Mehrheit aus 5, je Validator ein eigener Auftrag, 3.520 Qubits je 
   Minuten durch. Der ganze Pilot lief 8 statt rund 24 Minuten.
 - Die exakte Probe lief in beiden Tests mit und ließ die Ausgabe zu.
 - SHA-256: `ergebnis.txt` `ca3c511b…e88a1b9`, `ausgabe.txt.gz` `3b79038c…8fb59929`.
-- Auf dem Chip ist 2 % noch nicht gelaufen (Freigabe `quantenhardware`).
+
+**Auf echten IBM-Chips mit 2 % und k = 1.760** (Lauf
+[44388535029](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44388535029),
+`main` nach #590 (3076da22), freigegeben, Mehrheit aus 5, 8 Aufträge), beide Tests grün:
+
+| Ausgabe, Validator 1 / 2 / 3 / 4 | Aufträge | Fehler mit Mehrheit | nur erster Schuss |
+|---|---|---|---|
+| 1 | `dbv0dn7f8rhs73bn383g`, `dbv0drn82tmc73du74b0`, `dbv0dveps3fc73bjlh4g`, `dbv0e35arooc73fko9k0` | 0/458, 0/426, 0/407, 0/466 | 2, 4, 2, 1 |
+| 2 | `dbv0e7darooc73fko9rg`, `dbv0ednf8rhs73bn399g`, `dbv0ehv82tmc73du75d0`, `dbv0em5arooc73fkoae0` | 0/419, 0/431, 0/440, 0/450 | 3, 4, 2, 6 |
+| zusammen | | **0/3.497** | 24/3.497 (0,69 %) |
+
+| Test | Fehler in den Stichproben | Doppelvorlage | ehrliche Vorlage | Werkzeug | danach |
+|---|---|---|---|---|---|
+| alle vier (230,1 s) | 0/1.757 | 1m28s, 1.196/min, **abgewiesen** | 1m59s, 885/min, **eingelöst** | 3m30s | 4 Knoten gleich, Höhe 2153, StateRoot `1453e0db…dea045b` |
+| ein Knoten fällt aus (252,4 s; Knoten 2 vor der ersten Vorlage) | 0/1.740 | 1m55s, 920/min, **abgewiesen** | 1m40s, 1.058/min, **eingelöst** | 3m56s | 3 Knoten gleich, Höhe 1848, StateRoot `1dc49c00…8b97de4` |
+
+- Kein einziger Fehler mit Mehrheit auf dem Chip; mit einem Schuss wären es 24 gewesen.
+- SHA-256: `ergebnis.txt` `92379fce…d8b27f0`, `ausgabe.txt.gz` `71535e4a…d918fe7c`
+  (Artefakt `pilot-44388535029`).
+- **Welcher Chip?** Die Kopfzeile der Messung nennt `ibm_marrakesh`, der erste Test
+  `ibm_fez`. Beides stimmt, aber nur für je einen Auftrag: Jeder Auftrag wählt sein Gerät
+  selbst (`least_busy`), und die Messung nannte bisher nur das Gerät des **letzten**
+  Auftrags (Kopfzeile: Ausgabe 2, Validator 4; `basen_1.json`: Ausgabe 1, Validator 4).
+  Belegt ist also: Die Aufträge liefen auf mindestens zwei Chips, `ibm_fez` und
+  `ibm_marrakesh`. Für die anderen sechs Aufträge steht das Gerät nicht im Protokoll; es
+  lässt sich mit den Job-Nummern im IBM-Konto nachsehen. Seit #591 steht das Gerät in jeder
+  Zeile, und Kopfzeile und `basen_<a>.json` nennen alle Geräte.
+- Dasselbe gilt für die Chip-Angaben der früheren Läufe in 3.3e und 3.3f (44341842380,
+  44356741223, 44367782047): belegt für den letzten Auftrag, nicht für jeden.
 
 ### 3.4 Bargeld-Verhalten ohne Quanten (Offline-Bargeld)
 

@@ -2,13 +2,23 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 18.11.2026 ~19:10 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
+Stand: 18.11.2026 ~20:50 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
 Repos); davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18:30 UTC Sitzung
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
-**Zuletzt (Sitzung „Weiter“, 18.11. ~19:10 UTC):**
-- **C1 läuft mit #588** (Deploy #99, 17:54 UTC grün). Davor #587 (Deploy #98, 16:09 UTC; perf-c1 Lauf 4 grün). Damit sind auch
+**Zuletzt (Sitzung „Weiter“, 18.11. ~20:50 UTC):**
+- **C1 läuft mit #590** (Deploy #100 [44377653613](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44377653613), 20:12 UTC grün).
+- **Chip-Pilot 2 % / k = 1.760 grün** ([44388535029](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44388535029),
+  `HEUTE.md` 3.3g): 0/3.497 Fehler mit Mehrheit (ein Schuss: 24), beide Tests grün, auch
+  mit Ausfall. Befund: Jeder Auftrag wählt seinen Chip selbst; die Messung nannte nur
+  den letzten (`ibm_fez` und `ibm_marrakesh` belegt). Jetzt steht das Gerät in jeder Zeile.
+- **PR (dieser Stand, A5-Werkzeug für den Server eines Validators, `DEZENTRAL.md` 14):**
+  `deploy/validator/quanten-einrichten.sh`, `quanten-messen.sh`,
+  `docker-compose.quanten.yml`, Test `scripts/test_quanten_messen_skript.sh` (in CI),
+  Anleitung `docs/VALIDATOR_EINRICHTEN.md` „Quantengeld“. Danach hängt A5 nur noch am
+  zweiten Menschen.
+- Davor: **C1 lief mit #588** (Deploy #99, 17:54 UTC grün). Davor #587 (Deploy #98, 16:09 UTC; perf-c1 Lauf 4 grün). Damit sind auch
   #580 (S-Ansicht nennt v) und #585 (Abschnitts-Dienst) auf C1. C1 präpariert Abschnitte
   erst mit `AEQUITAS_QS_MESSQUELLE`; ohne weist es jeden Abschnitts-Auftrag ab (Vorgabe).
 - **Auftrag 18.11.: „Bring das dezentrale Quantengeld komplett zu laufen, ggf. mit eigener

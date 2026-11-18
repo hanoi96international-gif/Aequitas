@@ -1,0 +1,17 @@
+# Quantengeld S: dieser Validator praepariert seinen Abschnitt eines Tokens
+# selbst (forschung/quantengeld/DEZENTRAL.md 13, docs/VALIDATOR_EINRICHTEN.md
+# "Quantengeld"). Freiwillig -- ohne diese Datei laeuft der Knoten wie bisher.
+#
+# Nur zusammen mit docker-compose.yml, und erst nach `bash quanten-einrichten.sh`
+# (das legt das Messverzeichnis mit den richtigen Rechten an):
+#
+#   docker compose -f docker-compose.yml -f docker-compose.quanten.yml up -d --build
+#
+# Der Knoten (Benutzer 10001) liest im Verzeichnis je Messung genau eine Datei
+# und entfernt sie, bevor er sie verwendet (quanten_s_messverzeichnis.go).
+services:
+  node:
+    environment:
+      AEQUITAS_QS_MESSQUELLE: /data/quanten
+    volumes:
+      - ${QS_VERZEICHNIS:-/srv/aequitas-quanten}:/data/quanten

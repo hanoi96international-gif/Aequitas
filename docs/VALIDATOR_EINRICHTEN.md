@@ -159,6 +159,7 @@ verpasst hat.
 | Signierschlüssel (`RELAYER_PRIVATE_KEY`) | nur auf dem Server, in `.env` | der Knoten unterschreibt damit seine Blöcke |
 | P2P-Schlüssel (`NODE_KEY`) | nur auf dem Server, in `.env` | seine Kennung gegenüber anderen Knoten |
 | Adresse deiner Wallet (`NODE_OPERATOR_WALLET`) | auf dem Server | wohin die Belohnungen gehen |
+| API-Schlüssel deines IBM-Quantum-Kontos (nur mit Quantengeld) | nur auf dem Server, `/etc/aequitas-quanten/ibm-token`, nur root kann ihn lesen | deine Messungen für das Quantengeld |
 | Deine Wallet, Wörterliste, privater Schlüssel | **nur bei dir**, nie auf dem Server | – |
 
 **Sichere die Datei `.env`** (zum Beispiel mit `scp root@DEINE-SERVER-IP:Aequitas/deploy/validator/.env .`
@@ -184,6 +185,53 @@ wie es war. Ohne sie ist es ein neuer Knoten: neu binden, neu aufnehmen lassen.
 | `einrichten.sh`: „Leistung nicht ausreichend“ | der Knoten schafft keine 50.000 Signaturen je Sekunde oder die Platte ist zu langsam | schnelleren Server nehmen (aktuelle CPU, NVMe) |
 | `einrichten.sh`: „Leistungsprobe des Netzes NICHT bestanden“ | das Netz hat den Server gemessen: zu langsam oder nicht erreichbar | Grund steht dabei; bei „nicht erreichbar“ Port 8080 öffnen |
 | `einrichten.sh`: „Der Knoten hat keinen Signierschlüssel gemeldet“ | der erste Start ist gescheitert | `docker compose logs node` ansehen und die letzten Zeilen dem Betreiber schicken |
+
+## Quantengeld: deinen Abschnitt selbst messen (freiwillig)
+
+Ohne diesen Schritt läuft dein Knoten wie bisher. Mit ihm präparierst du bei einer
+Ausgabe von Quantengeld (Variante S) **deinen eigenen Abschnitt** des Tokens, mit
+**deinem eigenen** Konto bei IBM Quantum. So kennt niemand außer dir die Zustände
+deines Abschnitts, auch der Ausgeber nicht (`forschung/quantengeld/DEZENTRAL.md`,
+Abschnitte 3 und 13).
+
+Du brauchst ein eigenes Konto bei IBM Quantum (der kostenlose Plan reicht für den
+Anfang, er hat eine begrenzte Rechenzeit im Monat) und dessen API-Schlüssel.
+
+**Einmal einrichten**, auf dem Server als root:
+
+```bash
+cd ~/Aequitas/deploy/validator
+bash quanten-einrichten.sh
+docker compose -f docker-compose.yml -f docker-compose.quanten.yml up -d --build
+```
+
+`quanten-einrichten.sh` fragt einmal nach dem API-Schlüssel (er wird beim Tippen nicht
+angezeigt und erscheint nie im Log) und legt an:
+- das Messverzeichnis `/srv/aequitas-quanten`, nur für den Knotenbenutzer (0700,
+  Benutzer 10001);
+- eine Python-Umgebung unter `/opt/aequitas-quanten` mit fest gepinnten Paketen
+  (`pip --require-hashes`) und den Messskripten; ändern kann beides nur root;
+- die Schlüsseldatei `/etc/aequitas-quanten/ibm-token`, nur für root lesbar.
+
+Am Ende prüft es alles ohne IBM (`bash quanten-messen.sh --probe`). Erneut aufrufen
+ist sicher: Was schon da ist, bleibt, wie es ist.
+
+**Bei jeder Ausgabe:** Die Inhaberin schickt dir die Messbasen für deinen Abschnitt
+(eine Folge aus 0 und 1). Damit misst du, bevor der Ausgeber seinen Auftrag schickt:
+
+```bash
+bash quanten-messen.sh 0110100101101001...
+```
+
+- Gemessen wird als Knotenbenutzer, je Stelle 5 Schüsse, die Mehrheit entscheidet
+  (`HEUTE.md` 3.3f). Die Ausgabe nennt die Fehler bei passender Basis.
+- Das Ergebnis liegt dann als neue Datei `<sha256(Basen)>.json` im Messverzeichnis.
+  Überschrieben wird nie. Dein Knoten verwendet sie genau einmal und entfernt sie
+  vorher.
+- Kommt der Auftrag des Ausgebers, bevor du gemessen hast, weist dein Knoten ihn ab
+  („keine Messung zu diesen Basen“). Dann wird nichts ausgegeben; messen und den
+  Ausgeber neu starten lassen.
+- Der Schlüssel steht nur in der Umgebung der Messung, nie auf der Befehlszeile.
 
 ## Für Fortgeschrittene
 
