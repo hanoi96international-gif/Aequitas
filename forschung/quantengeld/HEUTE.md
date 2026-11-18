@@ -606,10 +606,24 @@ Stellen mit t überein (je rund 2.000 Stellen, |z| ≤ 1,33), mit Mehrheit wie o
 Zufall, wie verlangt. Der Selbsttest zählt es zusätzlich exakt: Gleichverteilte Schüsse
 ergeben eine gleichverteilte Mehrheit.
 
+**Gemessen im Pilot** (k = 5.200, zwei Ausgaben, je Validator ein eigener Auftrag, 8
+Aufträge, Mehrheit aus 5):
+
+| Lauf | Gerät | Fehler bei passender Basis mit Mehrheit | nur erster Schuss |
+|---|---|---|---|
+| [44367279629](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44367279629) | Rauschmodell `fake_marrakesh` | **0/10.260** | 42/10.260 (0,41 %) |
+| [44367782047](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44367782047) | **echter Chip `ibm_fez`** | **4/10.393 (0,04 %)** | 82/10.393 (0,79 %) |
+
+- Auf dem Chip ist das rund **zwanzigmal weniger**.
+- Die vier Restfehler liegen alle in einem Auftrag (Ausgabe 1, Validator 2). Das ist der
+  zusammenhängende Rest, den das Rauschmodell nicht zeigt, etwa ein Qubit, das in jedem
+  Schuss gleich falsch ausliest.
+- Je Auftrag mit Mehrheit (Ausgabe 1, dann 2; je Validator 1–4): 0, 4, 0, 0 und 0, 0, 0, 0.
+  Mit einem Schuss: 11, 11, 11, 8 und 6, 14, 12, 9.
+
 **Ehrlich dazu:**
 - Im Rauschmodell sind die Auslesefehler der Schüsse unabhängig voneinander. Auf echter
-  Hardware können sie zusammenhängen, etwa bei einem schlecht kalibrierten Qubit. Dann
-  bleibt ein Rest. Belegt wird es erst auf dem Chip (Pilot mit Freigabe `quantenhardware`).
+  Hardware hängen sie teils zusammen (siehe oben), darum bleibt ein kleiner Rest.
 - Jede Messung gibt beide Zahlen aus: Fehler mit Mehrheit und nur mit dem ersten Schuss.
 - Kosten: R-mal so viele Schüsse; die Zahl der Schaltkreise und Aufträge bleibt gleich.
 - Die Toleranz der Kette (4 %) bleibt, wie sie ist. Liegt der Fehler auf dem Chip dauerhaft
