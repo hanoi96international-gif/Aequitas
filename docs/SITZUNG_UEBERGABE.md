@@ -35,14 +35,14 @@ dezentrales Quantengeld“.
     - Ausfall-Test in beiden **rot** nach 15 s: „keine Messung zu diesen Basen“. Ursache
       im Pilot: Beide Tests lasen dieselbe Messung, der Dienst gibt jeden Abschnitt nur
       einmal her (richtig so).
-  - **PR #588 (Pilot mit zwei Ausgaben + A5 vorbereitet):**
+  - **#588 gemergt (799f6783, Pilot mit zwei Ausgaben + A5 vorbereitet):**
     - `--ausgaben 2`, je Test eine Ausgabe. Nachlauf im Rauschmodell
       [44347416357](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44347416357):
       **beide Tests grün**, auch mit Ausfall eines Validators.
     - A5 vorbereitet (`DEZENTRAL.md` 13): Messquelle als Verzeichnis (je Messung eine Datei
       `<sha256(y)>.json`, der Dienst entfernt vor Verwendung) und
       `hardware_ibm.py --s-abschnitt VERZEICHNIS --basen Y` für einen Validator im Betrieb.
-  - **Nächste Schritte:** nach dem Merge von #588 IBM-Nachlauf (`modus=ibm`,
+  - **Nächste Schritte:** IBM-Nachlauf auf `main` (`modus=ibm`,
     `ausgabe=abschnitte`, Freigabe `quantenhardware`; die Messung des gescheiterten
     IBM-Laufs ist verbraucht, der neue misst 8 Aufträge). A5 selbst (zweiter Mensch als
     Validator mit eigenem Server und Quantenkonto) ist Sache des Betreibers.
