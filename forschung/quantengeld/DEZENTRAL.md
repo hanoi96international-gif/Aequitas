@@ -147,7 +147,7 @@ Geheimnis besser, aber zum Einlösen müssen t Validatoren erreichbar sein.
 | A2 | Validator-Dienst: eigenen Abschnitt präparieren (Messung von außen, wie heute über eine Datei), Anteile an die anderen verteilen, Stichprobe für die Annahmestellen | **fertig**: A2a Bausteine (9), A2b Dienst (10) |
 | A3 | `hardware_ibm.py --s-abschnitt`, Werkzeug `quanten-s-ausgabe` im Abschnitts-Modus | **Werkzeug fertig** (11); Messung je Abschnitt folgt mit A4 |
 | A4 | Pilot: vier Knoten, je ein eigener Auftrag (im Pilot von einem Konto, das wird benannt) | **fertig** (12): beide Tests grün im Rauschmodell (44347416357) und auf dem Chip `ibm_fez` (44356741223), auch mit Ausfall eines Validators |
-| A5 | Hauptnetz mit einem zweiten Menschen als Validator, wenn möglich bei einem anderen Anbieter | **Werkzeug bereit** (13): Messquelle als Verzeichnis, `--s-abschnitt`; der zweite Mensch: Betreiber |
+| A5 | Hauptnetz mit einem zweiten Menschen als Validator, wenn möglich bei einem anderen Anbieter | **Werkzeug bereit** (13, 14): Messquelle als Verzeichnis, `--s-abschnitt`, Einrichten und Messen auf dem eigenen Server mit je einem Befehl; der zweite Mensch: Betreiber |
 | B, C, W-Härtung | wie oben | Forschung; Partner |
 
 Die Kette ändert sich in A1 bis A4 nicht. Geändert werden die Ausgabe außerhalb der Kette
@@ -492,3 +492,63 @@ Server betreibt, mit eigenem Konto bei einem Quantenrechner und, wenn möglich, 
 anderen Anbieter. Auf C1 braucht der Betrieb in Abschnitten dann ein Verzeichnis für den
 Knotenbenutzer und `AEQUITAS_QS_MESSQUELLE`. Beides richtet der Betreiber mit dem Deploy
 ein.
+
+## 14. A5: Einrichten und Messen auf dem Server eines Validators (18.11.2026)
+
+Damit ein zweiter Mensch seinen Abschnitt wirklich selbst präparieren kann, braucht er
+auf seinem Server mehr als den Befehl `--s-abschnitt`: eine Python-Umgebung mit qiskit,
+sein IBM-Konto, ein Messverzeichnis mit den richtigen Rechten und einen Knoten, der es
+liest. Das gibt es jetzt mit je einem Befehl (Anleitung: `docs/VALIDATOR_EINRICHTEN.md`,
+„Quantengeld“):
+
+- **`deploy/validator/quanten-einrichten.sh`** (einmal, als root):
+  - Messverzeichnis `/srv/aequitas-quanten`: 0700, Benutzer 10001 (der Benutzer des
+    Knotens im Container); ein Verweis an dieser Stelle wird abgelehnt.
+  - Python-Umgebung `/opt/aequitas-quanten/venv` mit den Paketen aus
+    `hardware-anforderungen.txt` (`pip --require-hashes --no-deps`, dieselben Hashes wie
+    im Pilot) und die Messskripte daneben; beides gehört root, der Knotenbenutzer darf
+    nur lesen und ausführen. Sein HOME ist ein eigenes Verzeichnis (0700).
+  - API-Schlüssel des eigenen IBM-Kontos einmal abgefragt (ohne Anzeige) und in
+    `/etc/aequitas-quanten/ibm-token` abgelegt: Verzeichnis 0700, Datei 0600, root. Liegt
+    schon einer da, bleibt er.
+  - Am Ende eine Probe ohne IBM.
+- **`deploy/validator/docker-compose.quanten.yml`** (Zusatzdatei): bindet das Verzeichnis
+  als `/data/quanten` ein und setzt `AEQUITAS_QS_MESSQUELLE`. Ohne die Datei läuft der
+  Knoten wie bisher.
+- **`deploy/validator/quanten-messen.sh BASEN`** (bei jeder Ausgabe, als root):
+  - Basen nur aus 0 und 1, 1 bis 16.384 Zeichen, genau ein Argument; sonst Abbruch ohne
+    Messung. Die Länge wird vor dem Muster geprüft: `^[01]{1,16384}$` hätte bash bei jedem
+    Aufruf zu einem großen Automaten übersetzt (1,5 s, rund 1 GB Speicher).
+  - Misst als Knotenbenutzer (`setpriv --reuid 10001 --regid 10001 --clear-groups`), damit
+    der Knoten die Datei lesen kann; je Stelle 5 Schüsse mit Mehrheit.
+  - Der Schlüssel geht nur über die Umgebung an die Messung, nie auf die Befehlszeile
+    (dort sähe ihn jeder Benutzer in `ps`) und nie ins Log.
+  - `--probe`: Selbsttest und eine ideale Messung als Knotenbenutzer in ein
+    Probeverzeichnis; prüft Besitzer und Rechte des Messverzeichnisses. Das
+    Probeverzeichnis entsteht in einem Verzeichnis, das root gehört (aus der eigenen
+    Sicherheitsprüfung: im HOME des Knotenbenutzers hätte der es zwischen `mktemp` und
+    `chown` gegen einen Verweis tauschen können).
+
+**Geprüft in der Arbeitsumgebung, als echter root mit Benutzerwechsel:** Einrichten in
+16 s, Probe bestanden, Schlüsseldatei root 0600, Messdatei Benutzer 10001 0600; der Go-Dienst
+als Benutzer 10001 hat sie gelesen und entfernt, eine zweite Verwendung wurde abgewiesen;
+gleiche Basen überschreiben nicht; falsche Basen ohne Messung abgewiesen.
+
+**Test** `scripts/test_quanten_messen_skript.sh` (in CI), mit gefälschtem `id`, `setpriv` und
+Python, ohne root und ohne IBM:
+- Gutfall: genau der erwartete Aufruf, als 10001 ohne Zusatzgruppen, eigenes HOME,
+  Schlüssel in der Umgebung, aber nicht in Argumenten, Ausgabe oder Fehlerausgabe;
+  16.384 Stellen gehen.
+- Missbrauch, jeweils Abbruch **ohne** Messung: leer, `012`, Leerzeichen, `;id`, `'`,
+  `$(id)`, führendes `-`, 16.385 Stellen, zwei Argumente, nicht root, kein Schlüssel,
+  leerer Schlüssel, nicht eingerichtet.
+- Gegenprobe: 10 Mutationen, alle rot (Längengrenze, nur Anfang oder nur Ende geprüft,
+  ohne Benutzerwechsel, ohne `--clear-groups`, ohne root-Prüfung, leerer Schlüssel erlaubt,
+  mehrere Argumente erlaubt, Schlüssel auf der Befehlszeile, ohne eigenes HOME).
+
+**Nebenbefund aus dem Chip-Lauf mit 2 % (HEUTE.md 3.3g):** Jeder Auftrag wählt sein Gerät
+selbst; die Messung nannte nur das Gerät des letzten. Jetzt steht es in jeder Zeile.
+
+**Was weiter am Betreiber hängt:** der zweite Mensch mit eigenem Server und eigenem
+IBM-Konto. Wie die Inhaberin ihm die Basen schickt, ist noch Handarbeit (Text aus 0 und 1);
+ein Weg über die App wäre der nächste Baustein.

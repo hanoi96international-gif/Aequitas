@@ -2,13 +2,23 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 18.11.2026 ~18:00 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
+Stand: 18.11.2026 ~20:50 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
 Repos); davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18:30 UTC Sitzung
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
-**Zuletzt (Sitzung „Weiter“, 18.11. ~18:00 UTC):**
-- **C1 läuft mit #588** (Deploy #99, 17:54 UTC grün). Davor #587 (Deploy #98, 16:09 UTC; perf-c1 Lauf 4 grün). Damit sind auch
+**Zuletzt (Sitzung „Weiter“, 18.11. ~20:50 UTC):**
+- **C1 läuft mit #590** (Deploy #100 [44377653613](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44377653613), 20:12 UTC grün).
+- **Chip-Pilot 2 % / k = 1.760 grün** ([44388535029](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44388535029),
+  `HEUTE.md` 3.3g): 0/3.497 Fehler mit Mehrheit (ein Schuss: 24), beide Tests grün, auch
+  mit Ausfall. Befund: Jeder Auftrag wählt seinen Chip selbst; die Messung nannte nur
+  den letzten (`ibm_fez` und `ibm_marrakesh` belegt). Jetzt steht das Gerät in jeder Zeile.
+- **PR (dieser Stand, A5-Werkzeug für den Server eines Validators, `DEZENTRAL.md` 14):**
+  `deploy/validator/quanten-einrichten.sh`, `quanten-messen.sh`,
+  `docker-compose.quanten.yml`, Test `scripts/test_quanten_messen_skript.sh` (in CI),
+  Anleitung `docs/VALIDATOR_EINRICHTEN.md` „Quantengeld“. Danach hängt A5 nur noch am
+  zweiten Menschen.
+- Davor: **C1 lief mit #588** (Deploy #99, 17:54 UTC grün). Davor #587 (Deploy #98, 16:09 UTC; perf-c1 Lauf 4 grün). Damit sind auch
   #580 (S-Ansicht nennt v) und #585 (Abschnitts-Dienst) auf C1. C1 präpariert Abschnitte
   erst mit `AEQUITAS_QS_MESSQUELLE`; ohne weist es jeden Abschnitts-Auftrag ab (Vorgabe).
 - **Auftrag 18.11.: „Bring das dezentrale Quantengeld komplett zu laufen, ggf. mit eigener
@@ -47,6 +57,8 @@ dezentrales Quantengeld“.
     0,52–0,68 %). **A4 fertig.** Auffällig: im Test „alle vier“ 192 von 392 Einreichungen
     abgewiesen (Doppelarbeit, nichts falsch verbucht), 772–845 Stellen/min.
   - **#589 gemergt** (f8736ffb, nur Doku: IBM-Nachlauf grün, A4 fertig).
+  - **#590 gemergt (3076da22).** Nach dem Merge braucht C1 den Deploy (Freigabe
+    `produktion`); für C1 ändert sich nur das Werkzeug (Probe, `--toleranz`).
   - **Auftrag 18:40 UTC: „Es muss zu 99,9999999 Prozent safe sein.“** Im selben PR #590:
     exakte Probe der ehrlichen Vorlage vor jeder Ausgabe (`quantenSEhrlichBesteht`, beide
     Stellen, jede Toleranz), Toleranz wählbar (`--toleranz`; 2 % → k = 1.760). Fälschung
@@ -101,8 +113,8 @@ dezentrales Quantengeld“.
   - Der Versuch „Ersatz tritt zurück“ war schlechter und wurde zurückgenommen.
 - **Wartet auf den Betreiber:**
   - Gutachter suchen. Der Prüfauftrag ist auf dem Stand vom 18.11.
-  - Freigaben: der IBM-Pilot mit Mehrheit aus 5 nach dem Merge des PR „Messfehler senken“
-    (`quantenhardware`).
+  - Freigaben: C1-Deploy von #590 (`produktion`). Auf Wunsch: Chip-Pilot mit 2 % und
+    k = 1.760 (`quantenhardware`), das ist noch nicht gelaufen.
   - A5: ein zweiter Mensch als Validator mit eigenem Server und eigenem Quantenkonto;
     Hardware-Partner (QKD) für die Messung der Inhaberin.
 - **Offen bei Quantengeld (`OFFEN.md` D.4):** Server im echten Netz statt Knoten in einem

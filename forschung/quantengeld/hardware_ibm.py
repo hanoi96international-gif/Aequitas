@@ -259,6 +259,10 @@ def selbsttest() -> None:
     # Messquelle als Verzeichnis: Name wie im Knoten (quanten_s_messverzeichnis_test.go),
     # nur neu anlegen, nie ueberschreiben, nichts Halbes liegen lassen.
     assert s_messquelle_name("0110") == "a5c3dd48facf21ed5f916d0ae979091fead570e6aea6c1d8038d1f68b26fa51f.json"
+    # Geraete einer Messreihe: jedes genannt, keins doppelt, Reihenfolge bleibt.
+    assert geraete_text(["IBM ibm_fez", "IBM ibm_fez", "IBM ibm_marrakesh", "IBM ibm_fez"]) \
+        == "IBM ibm_fez + IBM ibm_marrakesh"
+    assert geraete_text(["ideal"]) == "ideal"
     import tempfile
     with tempfile.TemporaryDirectory() as d:
         e = {"u": "0101", "t": "0011", "y": "0110", "x": "0010", "wo": "probe", "job": ""}
@@ -644,19 +648,25 @@ def s_abschnitte_lauf(verzeichnis: str) -> None:
     abschnitte = sk.abschnitte(n, v)
     mess: list[list[dict]] = [[] for _ in abschnitte]
     basen_je: list[dict] = []
-    zeilen, wo = [], ""
+    # Jeder Auftrag waehlt sein Geraet selbst (least_busy): die Auftraege einer
+    # Ausgabe koennen auf verschiedenen Chips laufen. Darum steht das Geraet
+    # in jeder Zeile, und Kopfzeile und basen_<a>.json nennen alle.
+    zeilen, geraete = [], []
     for a in range(1, ausgaben + 1):
-        basen, jobs = [], []
+        basen, jobs, geraete_a = [], [], []
         for x, ab in enumerate(abschnitte, 1):
             y = [rng.randrange(2) for _ in ab]
             u, t, xs, x1, kreise, job_id, wo = s_messen_basen(y, rng)
             mess[x - 1].append({"u": bits(u), "t": bits(t), "y": bits(y), "x": bits(xs), "wo": wo, "job": job_id})
             basen.append(bits(y))
             jobs.append(job_id)
+            geraete_a.append(wo)
             zeilen.append(f"- Ausgabe {a}, Validator {x}: Stellen {ab[0]}..{ab[-1]} ({len(ab)} Qubits, "
-                          f"{len(kreise)} Schaltkreise" + (f", Job {job_id}" if job_id else "")
+                          f"{len(kreise)} Schaltkreise, {wo}" + (f", Job {job_id}" if job_id else "")
                           + f"), {s_fehler_text(y, u, t, xs, x1)}")
-        basen_je.append({"n": n, "basen": basen, "wo": wo, "job": ",".join(j for j in jobs if j)})
+        basen_je.append({"n": n, "basen": basen, "wo": geraete_text(geraete_a),
+                         "job": ",".join(j for j in jobs if j)})
+        geraete += geraete_a
     # Erst schreiben, wenn alle Auftraege gemessen sind: ein Abbruch
     # hinterlaesst keine halbe Ausgabe (O_EXCL, nur fuer den Eigentuemer).
     os.makedirs(verzeichnis, mode=0o700, exist_ok=True)
@@ -668,12 +678,18 @@ def s_abschnitte_lauf(verzeichnis: str) -> None:
         neu(f"mess_{x}.json", {"abschnitte": eintraege})
     for a, b in enumerate(basen_je, 1):
         neu(f"basen_{a}.json", b)
-    text = "\n".join([f"## S-Messung in {v} Abschnitten auf {wo}", "",
+    text = "\n".join([f"## S-Messung in {v} Abschnitten auf {geraete_text(geraete)}", "",
                       f"{ausgaben} Ausgabe(n) zu je {n} Qubits, je Ausgabe und Validator ein eigener Auftrag:"] + zeilen)
     print(text)
     if os.environ.get("GITHUB_STEP_SUMMARY"):
         with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as fh:
             fh.write(text + "\n")
+
+
+def geraete_text(geraete: list[str]) -> str:
+    """Alle Geraete einer Messreihe, jedes einmal, in der Reihenfolge des
+    ersten Auftrags darauf ("IBM ibm_fez (...) + IBM ibm_marrakesh (...)")."""
+    return " + ".join(dict.fromkeys(geraete))
 
 
 def s_messquelle_name(y_bits: str) -> str:
