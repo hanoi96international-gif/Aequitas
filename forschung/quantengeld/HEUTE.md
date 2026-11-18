@@ -362,6 +362,26 @@ auch die gescheiterten.
 | [44186803503](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44186803503) | `main` nach #575 (7fb0a38), Rauschmodell | **grün**, beide Tests, Paket `ok` nach 1366 s. Mit Ausfall (666,5 s): Fehlerrate 19/5189; ausgegeben nach 16 s, gebunden/gewählt nach 17 s; **Doppelvorlage**: 5.200 Stellen in 4m30s offengelegt (**1.156 Stellen/min**), **abgewiesen** (fehl 0 → 1); **ehrliche Vorlage**: 5.200 Stellen in 5m28s (**952 Stellen/min**), **eingelöst**; Werkzeug gesamt 10m50s; drei Knoten gleich (Höhe 4962, StateRoot `7803c08d…0781a3`) | Artefakt `pilot-44186803503` (90 Tage) mit ganzer Ausgabe. Ohne Ausfall: bestanden; Einzelzeilen nur im Artefakt bzw. in der Zusammenfassung. |
 | [44186826204](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44186826204) | `main` nach #575, **IBM-Chip** (10.400 Qubits) | wartet auf Freigabe in `quantenhardware` | – |
 
+**Mit Netzlaufzeit zwischen den Knoten** (PR #578, `latenz_ms`): `tc netem` nur auf den
+Knotenadressen, der Rundlauf ist etwa 2 × die Einstellung. Der Lauf bricht ab, wenn die
+Laufzeit nicht wirkt. Seit #576 steht das ganze Ergebnis am Protokollende und ist damit
+für beide Tests belegt.
+
+| Lauf | Laufzeit je Richtung | Test | Doppelvorlage | ehrliche Vorlage | Werkzeug | danach |
+|---|---|---|---|---|---|---|
+| [44251220417](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44251220417) | 40 ms | alle vier (803,6 s) | 4m56s, 1.053/min, **abgewiesen** | 8m03s, **646/min**, **eingelöst** | 13m06s | 4 Knoten gleich, Höhe 7895 |
+| ebenda | 40 ms | ein Knoten fällt aus (660,5 s) | 4m47s, 1.087/min, **abgewiesen** | 4m46s, 1.089/min, **eingelöst** | 10m46s | 3 Knoten gleich, Höhe 4883 |
+
+SHA-256 dieses Laufs: `ergebnis.txt` `090b7f52…450ea4`, `ausgabe.txt.gz` `14945d4f…26e1a4`
+(Artefakt `pilot-44251220417`).
+
+**Befund (Vermutung, noch nicht belegt):**
+- Ohne Ausfall war die ehrliche Vorlage langsamer (646/min) als mit Ausfall (1.089/min).
+- Erklärung aus dem Code: Mit Laufzeit erreicht ein Teil die anderen Knoten später. Ist er
+  10 s offen, springt Rang 1 ein und bleibt dran (#574). Dann reichen zwei Validatoren
+  parallel ein und behindern sich; mit Ausfall fehlt dieser Konkurrent.
+- Selbst dann sind es 8 Minuten statt 30 Minuten Kettenfrist, also 3,7-facher Abstand.
+
 **Rate der Offenlegung (Auftrag 3 des Betreibers):**
 - Vorher (#572): rund 230 Stellen/min. Das reichte nicht für 5.200 Stellen in 15 Minuten.
 - Jetzt mit einem ausgefallenen Validator: 950–1.160 Stellen/min. Das ist das 4- bis 5-fache. Ursachen:
