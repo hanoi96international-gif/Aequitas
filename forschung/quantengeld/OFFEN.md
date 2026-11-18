@@ -1,4 +1,9 @@
-# Offene Punkte – Quantengeld (Stand 16.11.2026, Sitzungsende)
+# Offene Punkte – Quantengeld (Stand 18.11.2026)
+
+**W und S sind seit 17.11.2026 17:00 UTC im Hauptnetz freigeschaltet** (Entscheidung des
+Betreibers, vor Gutachten und Partnerversuch; `docs/QUANTENGELD_PRUEFAUFTRAG.md`,
+Abschnitt „Vorab“). Abschnitt A beschreibt den Stand vom 16.11.; was seitdem dazukam,
+steht in D und in HEUTE.md 3.3c–3.3d.
 
 Hauptaugenmerk der nächsten Sitzung: **dezentrales Quantengeld, das unter heutigen
 Umständen funktioniert**, damit Aequitas ernstzunehmendes Quantengeld ist. Die Regel
@@ -10,7 +15,8 @@ bleibt: Nichts wird behauptet, was nicht gemessen oder bewiesen ist (QUANTENSICH
   bei den Validatoren.
   - Spezifikation: `wiesner_kette.py`.
   - Regeln im Knoten: `quanten_w.go`, `quanten_w_register.go` (#539).
-  - Geschärft und eingehängt, schlafend: `quanten_w_kette.go` (#541, #542).
+  - Geschärft und eingehängt: `quanten_w_kette.go` (#541, #542), damals schlafend, seit
+    17.11.2026 17:00 UTC freigeschaltet.
   - Prägen ohne Vertrauen: `note_fern`, `wiesner_praegen.py`.
   - Ablauf von Anfang bis Ende mit der Kette: `hardware_ibm.py --wiesner --kette`.
   - Workflow-Auswahl: `messen | fern | kette`.
@@ -197,17 +203,21 @@ In Abschnitt C ist nur noch C6 offen (Konto des Betreibers).
      Anteile, die der Validator selbst unterschrieben hat.
 3. ~~**App:** eine Variante-W-Note und ihren Prüfstand anzeigen~~ – erledigt (App #79,
    17.11.): „Note oder Token nachsehen“ auf der Quantengeld-Seite, für W und S.
-4. **Vor jeder Freischaltung (W6):**
-   - Gutachten ohne offene kritische Punkte (W5).
+4. **W6 (geplant vor der Freischaltung; freigeschaltet wurde schon am 17.11.):**
+   - Gutachten ohne offene kritische Punkte (W5). Der Prüfauftrag ist auf dem Stand vom
+     18.11.; die Fragen zum laufenden Betrieb haben Vorrang.
    - Parameter aus Abschnitt B.
-   - Pilot im Testnetz. **Stand 17.11. abends:**
+   - Pilot im Testnetz. **Stand 18.11.:**
      - Im Rauschmodell grün, in voller Größe: k = 5.200, 3 von 4 Validatoren, mit und ohne
        Ausfall. Offenlegung 950–1.160 Stellen/min (HEUTE.md 3.3d).
      - **Auf dem echten Chip grün (18.11.):** IBM `ibm_kingston`, 10.400 Qubits, 0,59 %
        Fehler. Doppelvorlage abgewiesen, ehrliche Vorlage eingelöst, auch mit Ausfall.
      - Netzlaufzeit 40 und 100 ms je Richtung zwischen den Knoten (netem): grün,
-       800–1.090 Stellen/min. Der Engpass ist die Burst-Grenze je Absender (20
-       Einreichungen/min); Teile werden jetzt genau zugeschnitten.
+       800–1.090 Stellen/min.
+     - Teile werden genau auf das Größenbudget zugeschnitten (#578). Das ist gleich
+       schnell und braucht 38 % weniger Einreichungen.
+     - Der Engpass ist die Abfolge je Teil, nicht die Laufzeit und nicht die Burst-Grenze;
+       beides ist gemessen (HEUTE.md 3.3d).
      - Offen: Server im echten Netz statt Knoten in einem Job (braucht Server); Gutachten.
 
 ## E. Wartet auf dich (Freigaben und Konten)

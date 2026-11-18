@@ -1,6 +1,7 @@
 package keeper
 
-// QUANTENGELD VARIANTE W -- STUFE W2d: DER DIENST DER VALIDATOREN (schlafend)
+// QUANTENGELD VARIANTE W UND S -- STUFE W2d: DER DIENST DER VALIDATOREN
+// (laeuft ab quantenWAbUnix, im Hauptnetz seit 17.11.2026 17:00 UTC)
 //
 // Was ein Validator einer W-Note tun muss, damit die Kette sie pruefen kann
 // (Regeln: quanten_w*.go, Spezifikation wiesner_kette.py):

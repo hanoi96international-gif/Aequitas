@@ -1,15 +1,19 @@
 package keeper
 
-// QUANTENGELD VARIANTE W -- STUFE W2b: EINBINDUNG IN DIE KETTE (schlafend)
+// QUANTENGELD VARIANTE W -- STUFE W2b: EINBINDUNG IN DIE KETTE
+// (seit 17.11.2026 17:00 UTC im Hauptnetz freigeschaltet, quantenWAbUnix)
 //
 // Die Regeln (quanten_w.go, quanten_w_register.go; Spezifikation
 // forschung/quantengeld/wiesner_kette.py) haengen hier an der Kette: sechs
 // Transaktionsarten, Annahme und Nachspielen mit DERSELBEN Pruefung, das
-// Register in chain_config (StateRoot nur nicht leer), Snapshot, Checkpoint
-// und Rueckroll. SCHLAFEND bis quantenWAbUnix (MaxInt64): davor sind die
-// Arten unbekannt (bekannteTxArt), die Endpunkte antworten 409, kein Block
-// traegt sie, und das leere Register aendert keine Wurzel. Freischalten ist
-// Stufe W6 (Pruefer), erst nach Partnerversuch (W4) und Gutachten (W5).
+// Register (seit #563 je Eintrag eine Zeile, quanten_w_tabelle.go; StateRoot
+// nur nicht leer), Snapshot, Checkpoint und Rueckroll. Vor quantenWAbUnix
+// sind die Arten unbekannt (bekannteTxArt), die Endpunkte antworten 409, kein
+// Block traegt sie, und das leere Register aendert keine Wurzel. Geplant war
+// das Freischalten als Stufe W6 nach Partnerversuch (W4) und Gutachten (W5);
+// der Betreiber hat W und S am 17.11.2026 fuer 17:00 UTC VORHER
+// freigeschaltet (#568, #570, Begruendung bei quantenWAbUnix). Der
+// Pruefauftrag fuer das Gutachten: docs/QUANTENGELD_PRUEFAUFTRAG.md.
 //
 // DIE SECHS ARTEN
 //
@@ -149,7 +153,7 @@ func quantenWAb() int64 {
 func quantenWAktiv(t int64) bool { return t >= quantenWAb() }
 
 // quantenWStatus: fuer /api/status -- ab: der Stichtag des laufenden Knotens
-// (fehlt = schlafend). Daran erkennt der Deploy-Waechter
+// (fehlt = schlafend, MaxInt64; im Hauptnetz seit #570 gesetzt). Daran erkennt der Deploy-Waechter
 // .github/neustart/quanten-w-nicht-verpasst.sh, ob ein Wechsel rueckwirkend waere.
 func quantenWStatus() map[string]interface{} {
 	m := map[string]interface{}{}

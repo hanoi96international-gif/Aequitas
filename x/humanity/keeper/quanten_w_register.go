@@ -1,6 +1,7 @@
 package keeper
 
-// QUANTENGELD VARIANTE W: DAS REGISTER UND SEINE UEBERGAENGE (schlafend).
+// QUANTENGELD VARIANTE W: DAS REGISTER UND SEINE UEBERGAENGE (seit
+// 17.11.2026 17:00 UTC im Hauptnetz freigeschaltet, quantenWAbUnix).
 // Regeln wie forschung/quantengeld/wiesner_kette.py, Klasse KetteW.
 // Unterschriften und Geld macht die Einbindung: der Aufrufer prueft die
 // Unterschriften VORHER und fuehrt die gemeldeten Buchungen (quantenWBuchung)

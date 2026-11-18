@@ -1,6 +1,7 @@
 package keeper
 
-// QUANTENGELD VARIANTE S -- STUFE S2a: DIE REGELN (schlafend, nicht eingehaengt)
+// QUANTENGELD VARIANTE S -- STUFE S2a: DIE REGELN (eingehaengt in
+// quanten_w_s_kette.go, seit 17.11.2026 17:00 UTC im Hauptnetz freigeschaltet)
 //
 // Quanten-Token OHNE Quantenspeicher (S-money nach Kent u. a., npj QI 2022;
 // ANALYSE.md 5b). Die Nutzerin misst die Qubits sofort und haelt danach nur

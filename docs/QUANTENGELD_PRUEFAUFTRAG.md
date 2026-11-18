@@ -1,10 +1,50 @@
 # Quantengeld – Prüfauftrag für eine externe Begutachtung
 
-Stand 15.11.2026 (Varianten W und S: 16.11.2026 abends). Bevor ein Parametersatz freigeschaltet oder eine Einmal-Unterschrift
-zum Einlösen zugelassen wird, prüft eine **unabhängige** Stelle (Kryptografie und
-Quanteninformation, nicht am Projekt beteiligt) die folgenden Punkte. Das Ergebnis wird
-veröffentlicht; ohne ein Gutachten ohne offene kritische Punkte stimmen die Prüfer nicht
-für eine Freischaltung.
+Stand 18.11.2026 (Lightning-Noten: 15.11.2026; Varianten W und S: 18.11.2026). Eine
+**unabhängige** Stelle (Kryptografie und Quanteninformation, nicht am Projekt beteiligt)
+prüft die folgenden Punkte. Das Ergebnis wird veröffentlicht.
+- **Lightning-Noten:** Bevor ein Parametersatz freigeschaltet oder eine
+  Einmal-Unterschrift zum Einlösen zugelassen wird, braucht es ein Gutachten ohne offene
+  kritische Punkte. Ohne ein solches Gutachten stimmen die Prüfer nicht für eine
+  Freischaltung.
+- **Varianten W und S:** Sie sind schon freigeschaltet (nächster Abschnitt). Das Gutachten
+  prüft dort ein laufendes System.
+
+## Vorab: Varianten W und S laufen schon im Hauptnetz
+
+- **Freigeschaltet seit 17.11.2026 17:00 UTC** (`quantenWAbUnix = 1794934800` in
+  `x/humanity/keeper/quanten_w_kette.go`, #568 und #570).
+  - Das hat der Betreiber entschieden, **vor** diesem Gutachten (W5) und ohne den
+    Partnerversuch mit einem Speicher (W4). Geplant war die Reihenfolge W4, W5, dann W6.
+  - Die Begründung steht im Code bei `quantenWAbUnix`: Eine W-Note hält auf heutiger
+    Hardware nur Mikrosekunden. Wer Deckung in eine Note sperrt, die er nicht halten kann,
+    verliert sie an das Grundeinkommen. Variante S braucht keinen Speicher.
+- **Dokumentiert im Hauptnetz:** ein S-Token, ausgegeben und eingelöst am 17.11. zwischen
+  17:22 und 17:32 UTC (Lauf 44132434033, `forschung/quantengeld/HEUTE.md` 3.3c).
+  - IBM `ibm_fez`, 1/794 Fehler bei passender Basis, Deckung 1 AEQ.
+  - C1 war Ausgeber und **einziger Validator** (t = v = 1). 840 Stellen je Annahmestelle,
+    Toleranz 4 %.
+  - Die Doppelvorlage wurde abgewiesen, die ehrliche Vorlage eingelöst.
+  - Präparation und Messung liefen im selben Schaltkreis.
+- **Mit vier Validatoren** gibt es bisher nur den Pilot (`quanten-s-pilot.yml`), nicht das
+  Hauptnetz (`HEUTE.md` 3.3d).
+  - Vier echte Knoten in einem Job, Geheimnis 3 von 4, k = 5.200 je Annahmestelle.
+  - Auf IBM `ibm_kingston` (0,59 % Fehler) und im Rauschmodell grün, auch wenn ein Knoten
+    ausfällt und mit 40 oder 100 ms Netzlaufzeit je Richtung zwischen den Knoten.
+  - Die Offenlegung schafft rund 1.000 Stellen/min. Die Kettenfrist ist 30 min
+    (`quantenWFristOffen`).
+- **Folge für das Gutachten:**
+  - Abschalten oder Parameter ändern geht nur mit einer neuen Knotenversion, also mit einer
+    Konsensänderung und einem Deploy mit Freigabe. Einen Schalter zur Laufzeit gibt es nicht
+    (`quantenWAbOverride` gilt nur in Tests).
+  - Kritische Befunde bitte **sofort** an den Betreiber melden, nicht erst mit dem Bericht.
+- **Vorrang haben die Fragen, die das Hauptnetz heute betreffen** (W2 heißt Frage 2 zu
+  Variante W, S8 Frage 8 zu Variante S):
+  - Variante S (Fragen S1–S7);
+  - der Betrieb mit nur einem Validator (W2 und S8);
+  - der Dienst der Validatoren (W5 und W8);
+  - die Kettenseite (W7).
+  W-Noten halten auf heutiger Hardware nicht so lange, wie eine Zahlung dauert.
 
 ## Gegenstand
 
@@ -42,12 +82,11 @@ für eine Freischaltung.
 
 ## Variante W: privat prüfbare Noten (Wiesner) mit verteiltem Geheimnis
 
-Stand 16.11.2026 abends (W5, nach W2c und W2d). Variante W braucht keine Gruppenaktion und
-keinen großen Quantenrechner: Eine Note ist eine Folge von BB84-Zuständen, und das
-Geheimnis jeder Stelle liegt als Shamir-Anteile bei den Validatoren der Note. Sie ist
-**schlafend** eingebaut (`quantenWAbUnix = MaxInt64`). Freischalten (W6) setzt ein
-Gutachten zu den folgenden Punkten voraus, ebenso den Partnerversuch W4 mit einem echten
-Speicher.
+Stand 18.11.2026 (W5, nach W2c und W2d, mit den Änderungen am Dienst bis #578). Variante W
+braucht keine Gruppenaktion und keinen großen Quantenrechner. Eine Note ist eine Folge von
+BB84-Zuständen, und das Geheimnis jeder Stelle liegt als Shamir-Anteile bei den
+Validatoren der Note. **Seit 17.11.2026 17:00 UTC im Hauptnetz freigeschaltet**, vor
+diesem Gutachten und vor dem Partnerversuch W4 mit einem echten Speicher (siehe „Vorab“).
 
 | Teil | Ort | Was es tut |
 |---|---|---|
@@ -55,9 +94,10 @@ Speicher.
 | Prüfgrößen | `forschung/quantengeld/wiesner_parameter.py` | Kloner und Breidbart am Zustandsvektor, exakte Annahme nach der Regel der Kette, Tabelle k_note |
 | Regeln im Knoten | `quanten_w.go`, `quanten_w_register.go` | Prüfsummen und Merkle, Shamir über 2¹²⁷−1, Hash-Ketten-Zufall, Aufforderung, Urteil, Übergänge, Offenlegen in Teilen |
 | Einbindung | `quanten_w_kette.go` | 6 Transaktionsarten, Unterschriften, Buchungen (W-Topf, Pfand-Topf, Grundeinkommen), Register, StateRoot, Snapshot |
-| Dienst der Validatoren | `quanten_w_validator.go` | Tresor, Bestätigung, Herausgabe erst nach der Finalität, Hintergrund (Zufall, Offenlegen, Fristen) |
+| Register je Zeile | `quanten_w_tabelle.go` (#563) | je Note, Token und toter Note eine Zeile, nur Geändertes wird geschrieben; StateRoot byte-gleich zum Register als ein Wert, Snapshot unverändert |
+| Dienst der Validatoren | `quanten_w_validator.go` | Tresor, Bestätigung, Herausgabe erst nach der Finalität, Hintergrund (Zufall, Offenlegen, Fristen); seit #573/#574/#578: Ersatz in fester Reihenfolge, kein doppeltes Einreichen vor dem Nachziehen des Stands, Teile genau auf das Größenbudget zugeschnitten, Zähler |
 | Prägen ohne Vertrauen | `wiesner_praegen.py`, `wiesner_hardware.py` (`note_fern`) | Validatoren messen verschränkte Hälften; niemand kennt die ganze Note |
-| Messungen | `HEUTE.md`, `hardware_ibm.py --wiesner` | IBM `ibm_marrakesh`: 0,7 % Fehler je Treffer ohne Wartezeit; mit 20 µs und Teleportation 39 % |
+| Messungen | `HEUTE.md`, `hardware_ibm.py --wiesner` | IBM `ibm_marrakesh`: 0,7 % Fehler je Treffer ohne Wartezeit; mit 20 µs und Teleportation 39 %. Prägen ohne Vertrauen (`fern`) auf `ibm_fez`: 2,4 % ohne Warten, 12,5 % mit Teleportation (HEUTE.md 3.3) |
 
 **Die Prüfgrößen (W2c, #546)** – nach dem Befund, dass die frühere Toleranz von 15 %
 gegen einen optimalen Kloner gebrochen war:
@@ -114,6 +154,13 @@ gegen einen optimalen Kloner gebrochen war:
      Fern-Präparation kennt aber jeder Validator die Stellen, die er selbst gemessen hat.
      Ist die vorsichtige Annahme f = (t−1)/v richtig, und reicht sie?
    - Darf ein Validator zugleich Prüfer oder Präger sein?
+   - **Ein einziger Validator (t = v = 1), wie bisher im Hauptnetz:**
+     - f16 = 0, also gilt die Prüfgröße für f = 0 (k = 840 bei Toleranz 4 %).
+     - Der eine Validator kennt das ganze Geheimnis. Er ist damit für die
+       Unfälschbarkeit voll vertrauenswürdig, nicht nur zu (t−1)/v.
+     - Beim ersten S-Token waren Ausgeber und Validator derselbe Knoten (C1).
+     - Ist dieser Betrieb als Übergang vertretbar? Was muss eine Anzeige der Note oder des
+       Tokens dazu sagen (App: „Note oder Token nachsehen“, `GET /api/quanten-w/note`)?
 3. **Zufall.** Die Aufforderung folgt aus den Hash-Ketten **aller** v Validatoren, deren
    Anker beim Prägen bestätigt wurden.
    - Ist die Saat für einen Erzeuger, Anfragenden oder weniger als v Validatoren
@@ -146,24 +193,52 @@ gegen einen optimalen Kloner gebrochen war:
      ziehen?
    - Kann er eine Antwort oder Anfrage wiederholen, eine Note doppelt oder neu prägen,
      Validatoren desselben Menschen einsetzen oder die Umlaufabgabe umgehen?
+   - Das Register liegt seit #563 je Eintrag als Zeile in `quanten_w_eintraege`, die
+     StateRoot wird weiter über das ganze Register gerechnet. Kann ein Knoten, dessen
+     Tabelle vom Speicher abweicht (Absturz zwischen Block und Schreiben, Rückroll), eine
+     andere Wurzel rechnen, ohne es zu merken?
    - Tests: `quanten_w_test.go`, `quanten_w_kette_test.go`, `quanten_w_validator_test.go`,
-     `TestVierKnotenQuantenW_RealDB`; Mutationen zu jeder Regel.
+     `quanten_w_tabelle_realdb_test.go`, `TestVierKnotenQuantenW_RealDB`; Mutationen zu jeder
+     Regel.
+8. **Wer offenlegt, und in welcher Reihenfolge** (neu seit 17.11., #573, #574, #578).
+   - Ein Teil der Offenlegung (`quanten_w_offenlegen`, `quanten_w_s_offenlegen`) kommt ohne
+     Wallet. Jeder darf einreichen; die gesalzenen Prüfsummen und Merkle-Pfade beweisen den
+     Teil. Der Dienst nimmt von Nachbarn nur Anteile, die deren Validator unterschrieben
+     hat.
+   - Zuständig für die Teile eines Versuchs ist ein Validator, verteilt über K und den
+     Versuch (`quantenWZustaendig`).
+   - Fällt er aus, springt Rang r = 1 … v−1 ein, sobald der Teil r · 10 s offen ist
+     (`quantenWStaffelWarten`). Wer eingesprungen ist, macht die folgenden Teile desselben
+     Versuchs ohne Wartezeit weiter. Doppelte Teile weist die Kette ab.
+   - Jeder Teil hat höchstens 64 Stellen. Er wird auf den längsten Anfang zugeschnitten,
+     dessen Liste als JSON höchstens 56 KiB groß ist (`quantenWTeilKuerzen`). So bleibt der
+     ganze Rumpf unter der Grenze der Weiterleitung von 64 KiB.
+   - **Fragen:**
+     - Kann ein Validator durch fehlende, verfrühte oder doppelte Teile ein Einlösen über
+       die Frist (30 min nach Antwort oder Anmeldung) hinaus verzögern oder kippen?
+     - Kostet ihn das etwas? Bei S endet eine Anmeldung nach der Frist ohne Fehlversuch.
+     - Verrät das Muster der Abfragen bei den Nachbarn mehr, als ohnehin auf der Kette
+       steht?
+   - Gemessen (Pilot, `HEUTE.md` 3.3d): 5.200 Stellen in 5–8 min, auch wenn einer von vier
+     Validatoren ausfällt.
 
 ## Variante S: Quanten-Token ohne Quantenspeicher
 
-Stand 16.11.2026 abends (S0–S2b). Grundlage: S-money von Kent, Lowndes, Pitalúa-García und
+Stand 18.11.2026 (S0–S2b, Werkzeug für die Ausgabe, Pilot mit vier Validatoren). Grundlage: S-money von Kent, Lowndes, Pitalúa-García und
 Rarity, „Practical quantum tokens without quantum memories and experimental tests“, npj
 Quantum Information 8, 28 (2022). Die Nutzerin misst die Zustände **sofort** und hält
 danach nur Klartext; gültig ist der Token an genau einer von zwei vorher festgelegten
-Annahmestellen. Ebenfalls **schlafend** (dasselbe `quantenWAbUnix`).
+Annahmestellen. **Seit 17.11.2026 17:00 UTC im Hauptnetz freigeschaltet** (dasselbe
+`quantenWAbUnix`). Ein Token ist dort ausgegeben und eingelöst worden (siehe „Vorab“).
 
 | Teil | Ort | Was es tut |
 |---|---|---|
 | Spezifikation | `forschung/quantengeld/s_kette.py` | Ausgabe, Bindung d, Wahl c, Stichproben-Annahmestellen ohne Netz, Einlösen auf der Kette in Teilen, Prüfvektor |
 | Regeln im Knoten | `quanten_s.go` | Stichproben-Bindung, Vorlage-Text, Bindung, Wahl, Anmelden, Offenlegen in Teilen, Frist, Fehlversuche |
 | Einbindung | `quanten_w_s_kette.go` | 6 Transaktionsarten im W-Modul (gleicher Stichtag, StateRoot, Snapshot) |
-| Dienst der Validatoren | `quanten_w_validator.go` (Art „s“) | Bestätigung der Ausgabe, Stichprobe erst nach einer finalen Anmeldung |
-| Messung | `HEUTE.md` 3.3b, `hardware_ibm.py --s-token` | IBM `ibm_marrakesh`: 1.680 Qubits, 0,46 % Fehler; angenommen, Doppelvorlage abgewiesen |
+| Dienst der Validatoren | `quanten_w_validator.go` (Art „s“) | Bestätigung der Ausgabe, Stichprobe erst nach einer finalen Anmeldung; Aufträge auch von einer an einen Menschen gebundenen Signieradresse mit Deckung (`quantenWPraegerTauglich`) |
+| Ausgabe-Werkzeug | `quanten_s_ausgabe.go` (`aequitasd quanten-s-ausgabe`), `quanten-s-ausgabe.yml`, `quanten-s-pilot.yml` | Ausgabe, Bindung, Wahl, Doppelvorlage an der falschen Stelle, ehrliche Vorlage; Urteil aus dem Stand der Kette, wartet bis zur Kettenfrist |
+| Messung | `HEUTE.md` 3.3b–3.3d, `hardware_ibm.py --s-token`, `--s-messen` | `ibm_marrakesh`: 1.680 Qubits, 0,46 %; Hauptnetz `ibm_fez`: 1/794; Pilot `ibm_kingston`: 10.400 Qubits, 0,59 %; jeweils Doppelvorlage abgewiesen, ehrliche Vorlage eingelöst |
 
 **Fragen an die Begutachtung (Variante S):**
 
@@ -214,6 +289,16 @@ Annahmestellen. Ebenfalls **schlafend** (dasselbe `quantenWAbUnix`).
      Netz schon geschehen (ANALYSE.md 5c).
    - Ist das die richtige Stelle für die Prüfung, oder braucht es eine Regel schon bei der
      Ausgabe? Dort ist die Stichprobe nur als Hash bekannt.
+8. **Die erste Ausgabe im Hauptnetz** (`quanten_s_ausgabe.go`, `HEUTE.md` 3.3c).
+   - C1 war Ausgeber, einziger Validator und zugleich Annahmestelle 1. Die Inhaberin und
+     Annahmestelle 0 waren Wegwerfschlüssel, nur im Speicher des Werkzeugs.
+   - Die Messung kam als Datei von IBM, und Präparation und Messung liefen im selben
+     Schaltkreis.
+   - Die Vorführung zeigt damit den Ablauf auf der laufenden Kette, nicht die Sicherheit
+     gegen einen Ausgeber, der zugleich Validator und Stelle ist.
+   - **Frage:** Welche Rollen müssen vor einer Ausgabe an Dritte getrennt sein (Ausgeber,
+     Validatoren, Annahmestellen, Gerät der Inhaberin)? Reicht die Regel der Kette,
+     Validatoren an verschiedene Menschen zu binden?
 
 ## Was erst die Hardware entscheidet (keine Frage an die Kryptografie)
 
