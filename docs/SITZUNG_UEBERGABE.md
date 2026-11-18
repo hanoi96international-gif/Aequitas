@@ -13,7 +13,7 @@ dezentrales Quantengeld“.
   Forschung“.** Plan und Stand in `forschung/quantengeld/DEZENTRAL.md`.
   - **#582 gemergt: Befund und A1.** Die Ausgabe präparierte alle Stellen in einem
     Auftrag. Weg A: Präparation je Validator, spezifiziert in `s_kette.py`, Selbsttest 5.
-  - **PR „A2-Entwurf, Stellen-Bit“ (dieser Zweig):**
+  - **#583 gemergt (A2-Entwurf, Stellen-Bit):**
     - Befund: Die Stichproben müssen bis zur Bindung geheim sein (5g).
     - Lösung: das Stellen-Bit im Salz (5h), Kette unverändert.
     - Entwurf des Dienstes in `DEZENTRAL.md` 8.
