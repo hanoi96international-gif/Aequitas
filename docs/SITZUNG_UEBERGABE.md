@@ -2,12 +2,20 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 18.11.2026 ~09:50 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
+Stand: 18.11.2026 ~11:00 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
 Repos); davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18:30 UTC Sitzung
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
-**Zuletzt (Sitzung „Weiter“, 18.11. ~09:50 UTC):**
+**Zuletzt (Sitzung „Weiter“, 18.11. ~11:00 UTC):**
+- **C1 läuft mit #578** (Deploy #92, 10:33 UTC grün).
+- **PR „Prüfauftrag auf Stand 18.11.“ (dieser Zweig):**
+  - `docs/QUANTENGELD_PRUEFAUFTRAG.md` hat einen Abschnitt „Vorab“: W und S laufen seit
+    17.11. 17:00 UTC im Hauptnetz, vor dem Gutachten.
+  - Neue Fragen: Betrieb mit einem Validator (W2, S8), Offenlegung durch Ersatz und
+    Zuschneiden (W8), Register je Zeile (W7).
+  - `OFFEN.md` und `ANALYSE.md`: W6/S5 „anders gekommen“, die Burst-Aussage ist korrigiert.
+  - Kopfkommentare der Go-Dateien: „freigeschaltet“ statt „schlafend“, nur Kommentare.
 - **Gemergt bis #578.**
   - Pilot S mit Netzlaufzeit `latenz_ms`: 40 und 100 ms je Richtung grün.
   - IBM-Chip `ibm_kingston` grün: 0,59 % Fehler, Doppelvorlage abgewiesen, ehrliche eingelöst.
@@ -23,8 +31,7 @@ dezentrales Quantengeld“.
     Hebel das Vorausholen der nächsten Anteile.
   - Der Versuch „Ersatz tritt zurück“ war schlechter und wurde zurückgenommen.
 - **Wartet auf den Betreiber:**
-  - C1-Deploy von #578: Betrifft nur den Validator-Dienst (größere Teile, Zähler), nicht
-    die Kette.
+  - Gutachter suchen. Der Prüfauftrag ist jetzt auf dem Stand vom 18.11.
   - App-Release mit Netto-Zeile und Rundenzahlen (App #84 ist gemergt).
   - `perf-c1.yml`: Ratengrenze zurück auf die Vorgabe.
 - **Offen bei Quantengeld (`OFFEN.md` D.4):** Server im echten Netz statt Knoten in einem
