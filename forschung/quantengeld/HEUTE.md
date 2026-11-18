@@ -372,11 +372,28 @@ für beide Tests belegt.
 | [44251220417](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44251220417) | 40 ms | alle vier (803,6 s) | 4m56s, 1.053/min, **abgewiesen** | 8m03s, **646/min**, **eingelöst** | 13m06s | 4 Knoten gleich, Höhe 7895 |
 | ebenda | 40 ms | ein Knoten fällt aus (660,5 s) | 4m47s, 1.087/min, **abgewiesen** | 4m46s, 1.089/min, **eingelöst** | 10m46s | 3 Knoten gleich, Höhe 4883 |
 
-SHA-256 dieses Laufs: `ergebnis.txt` `090b7f52…450ea4`, `ausgabe.txt.gz` `14945d4f…26e1a4`
-(Artefakt `pilot-44251220417`).
+| [44251224574](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44251224574) | 100 ms | alle vier (704,9 s) | 5m15s, 992/min, **abgewiesen** | 5m59s, 869/min, **eingelöst** | 11m27s | 4 Knoten gleich, Höhe 3447 |
+| ebenda | 100 ms | ein Knoten fällt aus (711,3 s) | 4m53s, 1.065/min, **abgewiesen** | 6m28s, 805/min, **eingelöst** | 11m37s | 3 Knoten gleich, Höhe 3498 |
 
-**Befund (Vermutung, noch nicht belegt):**
-- Ohne Ausfall war die ehrliche Vorlage langsamer (646/min) als mit Ausfall (1.089/min).
+SHA-256:
+- Lauf 44251220417: `ergebnis.txt` `090b7f52…450ea4`, `ausgabe.txt.gz` `14945d4f…26e1a4`.
+- Lauf 44251224574: `ergebnis.txt` `da95ede8…c2782a`, `ausgabe.txt.gz` `d70490ff…19d07c5`.
+- Jeweils im Artefakt `pilot-<Lauf>`.
+
+**Ergebnis Netzlaufzeit:**
+- Auch bei 200 ms Rundlauf zwischen den Knoten (interkontinentale Server) läuft die
+  Offenlegung mit 800–1.090 Stellen/min.
+- Die langsamste Offenlegung aller Läufe dauerte 8 Minuten (646/min, 40 ms, ohne Ausfall).
+  Die Kettenfrist ist 30 Minuten, der Abstand also mindestens 3,7-fach.
+- Die Laufzeit ist nicht der Engpass.
+
+**Befund (Vermutung, durch den 100-ms-Lauf eher widerlegt):**
+- Bei 40 ms war die ehrliche Vorlage ohne Ausfall langsamer (646/min) als mit Ausfall
+  (1.089/min).
+- Bei 100 ms war sie ohne Ausfall *schneller* (869/min). Die 646/min sind also eher Streuung
+  als ein festes Muster.
+- Belegen sollen es Zähler je Validator-Dienst (eingereicht, abgewiesen, eingesprungen,
+  Nachbarabfragen), die der Pilot seit diesem Stand ausgibt.
 - Erklärung aus dem Code: Mit Laufzeit erreicht ein Teil die anderen Knoten später. Ist er
   10 s offen, springt Rang 1 ein und bleibt dran (#574). Dann reichen zwei Validatoren
   parallel ein und behindern sich; mit Ausfall fehlt dieser Konkurrent.
