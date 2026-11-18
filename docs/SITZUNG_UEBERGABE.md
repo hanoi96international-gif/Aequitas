@@ -2,12 +2,12 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 18.11.2026 ~16:40 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
+Stand: 18.11.2026 ~17:05 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
 Repos); davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18:30 UTC Sitzung
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
-**Zuletzt (Sitzung „Weiter“, 18.11. ~16:40 UTC):**
+**Zuletzt (Sitzung „Weiter“, 18.11. ~17:05 UTC):**
 - **C1 läuft mit #587** (Deploy #98, 16:09 UTC grün; perf-c1 Lauf 4 grün). Damit sind auch
   #580 (S-Ansicht nennt v) und #585 (Abschnitts-Dienst) auf C1. C1 präpariert Abschnitte
   erst mit `AEQUITAS_QS_MESSQUELLE`; ohne weist es jeden Abschnitts-Auftrag ab (Vorgabe).
@@ -35,17 +35,22 @@ dezentrales Quantengeld“.
     - Ausfall-Test in beiden **rot** nach 15 s: „keine Messung zu diesen Basen“. Ursache
       im Pilot: Beide Tests lasen dieselbe Messung, der Dienst gibt jeden Abschnitt nur
       einmal her (richtig so).
-  - **PR (dieser Stand): Pilot misst zwei Ausgaben** (`--ausgaben 2`, `basen_1.json` /
-    `basen_2.json`, je Test eine). Danach: Rauschmodell-Pilot mit `ausgabe=abschnitte`
-    auf dem Zweig und nach dem Merge auf `main`, dann IBM mit Freigabe (die Messung des
-    gescheiterten IBM-Laufs ist verbraucht, ein neuer Lauf misst 8 Aufträge).
-  - **Nächste Schritte:** Pilot-Nachlauf auswerten (`HEUTE.md` 3.3e ergänzen, A4 in
-    `DEZENTRAL.md` 6 auf fertig). A5 (zweiter Mensch als Validator mit eigenem
-    Quantenkonto) ist Sache des Betreibers.
+  - **PR #588 (Pilot mit zwei Ausgaben + A5 vorbereitet):**
+    - `--ausgaben 2`, je Test eine Ausgabe. Nachlauf im Rauschmodell
+      [44347416357](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44347416357):
+      **beide Tests grün**, auch mit Ausfall eines Validators.
+    - A5 vorbereitet (`DEZENTRAL.md` 13): Messquelle als Verzeichnis (je Messung eine Datei
+      `<sha256(y)>.json`, der Dienst entfernt vor Verwendung) und
+      `hardware_ibm.py --s-abschnitt VERZEICHNIS --basen Y` für einen Validator im Betrieb.
+  - **Nächste Schritte:** nach dem Merge von #588 IBM-Nachlauf (`modus=ibm`,
+    `ausgabe=abschnitte`, Freigabe `quantenhardware`; die Messung des gescheiterten
+    IBM-Laufs ist verbraucht, der neue misst 8 Aufträge). A5 selbst (zweiter Mensch als
+    Validator mit eigenem Server und Quantenkonto) ist Sache des Betreibers.
 - **App 1.25.0 (App #86 gemergt, a5f5cf44):** Netto-Zeile und Zahlen der Tagesrunde (#84),
   t von v Validatoren (#85).
   - iOS-Build [44342709659](https://github.com/hanoi96international-gif/Aequitas-App/actions/runs/44342709659) grün.
-  - APK-Build [44342702919](https://github.com/hanoi96international-gif/Aequitas-App/actions/runs/44342702919) läuft.
+  - APK-Build [44342702919](https://github.com/hanoi96international-gif/Aequitas-App/actions/runs/44342702919)
+    gebaut (16:47 UTC); der Job `signieren` wartet auf die Freigabe `app-signatur`.
   - Danach: `release-apk.yml` (run_id des APK-Builds, Tag `v1.25.0`, Notiz), dann
     `release-ios.yml` (run_id 44342709659, Tag `v1.25.0`). Beide brauchen die Freigabe
     `app-signatur`.
