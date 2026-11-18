@@ -483,6 +483,16 @@ func TestQuantenWSKette_RegisterLesen(t *testing.T) {
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"art":"s"`) || !strings.Contains(rec.Body.String(), `"anmeldung"`) {
 		t.Fatalf("Ansicht: %d %s", rec.Code, rec.Body.String())
 	}
+	// Die Ansicht nennt, bei wie vielen Validatoren das Geheimnis liegt
+	// (v) und wie viele davon noetig sind (t) -- genau wie im Register.
+	var ans struct{ T, V int }
+	if err := json.Unmarshal(rec.Body.Bytes(), &ans); err != nil {
+		t.Fatal(err)
+	}
+	tk := w.cs.quantenWJetzt().Token[w.p.K].token
+	if ans.V != tk.NVal || ans.T != tk.T || ans.V < ans.T || ans.V < 1 {
+		t.Fatalf("Ansicht t=%d v=%d, Register t=%d v=%d", ans.T, ans.V, tk.T, tk.NVal)
+	}
 }
 
 // Schlafend: die S-Arten sind vor dem Stichtag unbekannt und im Block verboten.
