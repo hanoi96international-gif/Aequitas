@@ -920,7 +920,7 @@ seinen Werten (t − 1 Validatoren kennen genau ihre Abschnitte, Abschnitt 7).
          Verweise, Größen, Rechte und Besitzer des Verzeichnisses, Container, fehlende
          oder andere Messquelle, schon vorhandene Messung (bleibt unverändert).
        - Aufräumen auch im Fehlerfall.
-     - `scripts/test_quanten_c1_messverzeichnis.sh` (18 Fälle): anlegen, gleichbleibend,
+     - `scripts/test_quanten_c1_messverzeichnis.sh` (19 Fälle): anlegen, gleichbleibend,
        eigenes altes override ersetzt, Rechte gerichtet; fremdes override, Verweise,
        Datei statt Verzeichnis, anderes `QS_VERZEICHNIS`, fehlende Dateien und
        falscher Knotenbenutzer halten an, ohne etwas zu ändern.

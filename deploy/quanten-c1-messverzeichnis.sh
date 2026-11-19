@@ -35,7 +35,7 @@ if grep -q '^QS_VERZEICHNIS=' .env; then
 fi
 
 [ ! -L "$QSD" ] || halt "$QSD ist ein Verweis"
-[ -e "$QSD" ] || mkdir -m 700 -- "$QSD"
+[ -e "$QSD" ] || mkdir -p -m 700 -- "$QSD"
 [ -d "$QSD" ] && [ ! -L "$QSD" ] || halt "$QSD ist kein Verzeichnis"
 chown "$QS_UID:$QS_UID" -- "$QSD"
 chmod 700 -- "$QSD"

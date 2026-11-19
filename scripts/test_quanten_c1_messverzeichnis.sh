@@ -48,6 +48,7 @@ printf '%s\nalt: ja\n' "$MARKE" > "$D/val/docker-compose.override.yml"; lauf ok 
 # Verzeichnis mit falschen Rechten: wird gerichtet.
 chmod 755 "$D/srv/q"; lauf ok "Rechte 0755 werden 0700"; verz_ok "Rechte gerichtet"
 neu; printf 'QS_VERZEICHNIS=%s\n' "$D/srv/q" >> "$D/val/.env"; lauf ok "QS_VERZEICHNIS in .env gleich"
+neu; rm -rf "$D/srv"; lauf ok "Elternverzeichnis fehlt"; verz_ok "Elternverzeichnis fehlt"
 
 # Abbrueche: nichts ueberschreiben
 neu; printf 'services: {}\n' > "$D/val/docker-compose.override.yml"; lauf halt "fremdes override"
