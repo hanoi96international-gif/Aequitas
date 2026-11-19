@@ -2,12 +2,12 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 19.11.2026 ~18:00 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
+Stand: 19.11.2026 ~18:10 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
 Repos); davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18:30 UTC Sitzung
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
-**Zuletzt (Sitzung „Weiter“, 19.11. ~18:00 UTC):**
+**Zuletzt (Sitzung „Weiter“, 19.11. ~18:10 UTC):**
 - **#598 gemergt (90e0e622): Pilot mit Stichprobe v2 grün** (`HEUTE.md` 3.3h, `DEZENTRAL.md` 16
   Schritt 5). Eingabe `stichprobe_v2`, Beobachter im Vier-Knoten-Test liest im Register jedes
   Knotens `probe_art` und die nachgerechneten Salze nach. Läufe
@@ -16,16 +16,14 @@ dezentrales Quantengeld“.
   grün (beide Tests, auch mit Ausfall; Lauf 2: „probe_art 2, 4 Salze“ auf der Kette).
   Gegenprobe (Werkzeug im alten Weg bei verlangtem v2) rot. Am Knoten ändert sich nichts
   (nur Test, Workflow, Doku).
-- **C1 läuft mit #596** (Deploy #105 grün; schlafende Kettenregel und Wächter drauf).
-  Deploy #106 für #597 (nur Werkzeug) wartet auf Freigabe `produktion`:
-  [44564356053](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44564356053).
+- **C1 läuft mit #597** (Deploy #106 grün, 17:53 UTC; nur Werkzeug).
 - **Stichtag der Stichprobe v2 freigegeben** (Betreiber 19.11. ~17:50 UTC: „Stichtag heute so
   schnell wie möglich“): `quantenSProbeV2AbUnix = 1795116600` = **19.11.2026 19:30 UTC**.
-  PR (dieser Stand) mit Sicherheit und eigener Prüfung; danach C1-Deploy.
+  **#599 gemergt (cb3b4948)**, mit Sicherheit und eigener Prüfung. C1-Deploy #107
+  [44584732345](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44584732345)
+  wartet nach seinem CI-Teil auf die Freigabe `produktion`.
   - **Der Deploy muss bis 19:00 UTC laufen** (Wächter: 30 min Vorlauf). Verpasst: neuen
     Stichtag wählen, neuer PR; den Wächter nicht lockern.
-  - Deploy #106 (#597) muss vorher durch oder abgelehnt sein, sonst hängt der neue
-    Deploy dahinter (Gruppe `deploy-knoten`, `cancel-in-progress: false`).
   - Nach dem Deploy prüfen: `/api/status` → `quanten_w.probe_v2_ab = 1795116600`.
   - Danach: erster Hauptnetz-Token mit `--stichprobe-v2` (C1 hat t = v = 1; Rollen
     trennen, sobald der zweite Mensch da ist).
