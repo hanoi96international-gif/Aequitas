@@ -869,3 +869,8 @@ seinen Werten (t − 1 Validatoren kennen genau ihre Abschnitte, Abschnitt 7).
    - Tests: Der Stichtag ist im Test festgeschrieben, samt Grenze (eine Sekunde davor
      schlafend). Die Zeit davor wird per Override geprüft, unabhängig von der Uhr.
      Gegenprobe: anderer Stichtag, `>` statt `>=` und schlafend, alle drei rot.
+   - **Ausgerollt:** C1-Deploy #107
+     ([44584732345](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44584732345)),
+     freigegeben 18:33 UTC, grün. Der Wächter meldete: „Repo 1795116600, laufend schlafend,
+     jetzt 1795113226 – ausrollen erlaubt“ (57 min Vorlauf). Scharf ab 19:30 UTC nach der
+     Blockzeit. Die Wache (`wache.yml`) gibt `probe_v2_ab` seitdem alle 10 min als Hinweis aus.
