@@ -81,7 +81,9 @@ import json
 import os
 import random
 import secrets
+import stat
 import sys
+import time
 
 _hier = os.path.dirname(os.path.abspath(__file__))
 _spec = importlib.util.spec_from_file_location("hardware", os.path.join(_hier, "hardware.py"))
@@ -283,6 +285,8 @@ def selbsttest() -> None:
         except SystemExit:
             pass
     assert s_basen_lesen("0110") == [0, 1, 1, 0]
+    # Warteschlange der Vormerkungen (quanten_s_vormerken.go): ohne Quantenrechner.
+    s_warteschlange_selbsttest()
     # Mehrheit je Stelle; gerade Zahl oder ungleiche Laengen: Abbruch.
     assert mehrheit([[0, 1, 1], [0, 1, 0], [1, 1, 0]]) == [0, 1, 0]
     assert mehrheit([[1, 0]]) == [1, 0]
@@ -756,6 +760,260 @@ def s_abschnitt_lauf(verzeichnis: str) -> None:
             fh.write(text + "\n")
 
 
+# Vormerkungen des Knotens (quanten_s_vormerken.go): <Messverzeichnis>/vorgemerkt/
+# <sha256(y)>.basen mit {"basen", "praeger", "zeit"}. Gleich im Knoten.
+S_VORMERK_VERZEICHNIS = "vorgemerkt"
+S_VORMERK_ENDUNG = ".basen"
+S_VORMERK_DATEI_MAX = 64 * 1024
+S_VORMERK_LESEN_MAX = 64          # so viele Eintraege liest ein Lauf hoechstens
+S_VORMERK_VERALTET = 6 * 3600     # aelter: nicht mehr messen (das Werkzeug wartet hoechstens 4 h)
+S_JE_TAG_STANDARD = 8             # Messungen je Tag (UTC), schuetzt die Rechenzeit des Kontos
+MAX_S_JE_TAG = 64
+S_JE_LAUF_STANDARD = 4
+
+
+def s_vormerkung_lesen(vdir: str, name: str) -> tuple[list[int], int] | None:
+    """Liest EINE Vormerkung streng: gewoehnliche Datei (kein Verweis, beim
+    Oeffnen dieselbe), hoechstens S_VORMERK_DATEI_MAX, genau die drei Felder,
+    Name = sha256(basen), Basen nur 0/1 in erlaubter Laenge. None: abgewiesen.
+    Die Datei schreibt der Knoten; was von dort kommt, gilt als feindlich."""
+    pfad = os.path.join(vdir, name)
+    try:
+        st = os.lstat(pfad)
+        if not stat.S_ISREG(st.st_mode) or st.st_size > S_VORMERK_DATEI_MAX:
+            return None
+        fd = os.open(pfad, os.O_RDONLY | os.O_NOFOLLOW)
+        with os.fdopen(fd, "rb") as fh:
+            offen = os.fstat(fh.fileno())
+            if (offen.st_dev, offen.st_ino) != (st.st_dev, st.st_ino):
+                return None
+            roh = fh.read(S_VORMERK_DATEI_MAX + 1)
+        if len(roh) > S_VORMERK_DATEI_MAX:
+            return None
+        d = json.loads(roh.decode("ascii"))
+    except (OSError, ValueError, UnicodeDecodeError):
+        return None
+    if not isinstance(d, dict) or set(d) != {"basen", "praeger", "zeit"}:
+        return None
+    basen, praeger, zeit = d["basen"], d["praeger"], d["zeit"]
+    if not isinstance(basen, str) or not isinstance(praeger, str) or type(zeit) is not int:
+        return None
+    if not 1 <= len(basen) <= 2 * MAX_S_STELLEN or set(basen) - {"0", "1"}:
+        return None
+    if len(praeger) != 42 or not praeger.startswith("0x") or set(praeger[2:]) - set("0123456789abcdef"):
+        return None
+    if name != hashlib.sha256(basen.encode("ascii")).hexdigest() + S_VORMERK_ENDUNG:
+        return None
+    return [int(c) for c in basen], zeit
+
+
+def s_zaehler_lesen(pfad: str, tag: str) -> int:
+    """Messungen heute laut Zaehlerdatei; unlesbar: Abbruch (fail-closed)."""
+    try:
+        with open(pfad) as fh:
+            d = json.load(fh)
+    except FileNotFoundError:
+        return 0
+    except (OSError, ValueError):
+        raise SystemExit(f"Zaehler {pfad} unlesbar -- nichts gemessen (Datei ansehen oder entfernen)")
+    if not isinstance(d, dict) or set(d) != {"tag", "messungen"} or type(d["messungen"]) is not int or d["messungen"] < 0:
+        raise SystemExit(f"Zaehler {pfad} unlesbar -- nichts gemessen (Datei ansehen oder entfernen)")
+    return d["messungen"] if d["tag"] == tag else 0
+
+
+def s_zaehler_schreiben(pfad: str, tag: str, messungen: int) -> None:
+    tmp = f"{pfad}.neu-{secrets.token_hex(8)}"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w") as fh:
+        json.dump({"tag": tag, "messungen": messungen}, fh)
+        fh.flush()
+        os.fsync(fh.fileno())
+    os.replace(tmp, pfad)
+
+
+def s_warteschlange(verzeichnis: str, zaehler: str, je_tag: int, je_lauf: int, messen, jetzt: float, log) -> int:
+    """Misst die Vormerkungen des Knotens, aelteste zuerst: hoechstens je_lauf
+    in diesem Lauf und je_tag am Tag (Zaehler in `zaehler`, ausserhalb des
+    Verzeichnisses, das der Knoten beschreiben kann -- er kann ihn nicht
+    zuruecksetzen). Zaehlt VOR der Messung, damit ein Absturz danach nicht zu
+    wenig zaehlt. Abgewiesene Vormerkungen werden zu .abgewiesen-<name>
+    (bleiben zum Ansehen liegen, werden nicht wieder gelesen); veraltete und
+    schon gemessene werden entfernt. Rueckgabe: Zahl der Messungen."""
+    if os.path.islink(verzeichnis) or not os.path.isdir(verzeichnis):
+        raise SystemExit(f"{verzeichnis}: kein Verzeichnis")
+    vdir = os.path.join(verzeichnis, S_VORMERK_VERZEICHNIS)
+    if not os.path.lexists(vdir):
+        return 0
+    if os.path.islink(vdir) or not os.path.isdir(vdir):
+        raise SystemExit(f"{vdir}: kein Verzeichnis")
+    tag = time.strftime("%Y-%m-%d", time.gmtime(jetzt))
+    heute = s_zaehler_lesen(zaehler, tag)
+    namen = []
+    with os.scandir(vdir) as it:
+        for i, e in enumerate(it):
+            if i >= S_VORMERK_LESEN_MAX:
+                break
+            namen.append(e.name)
+    wartend = []
+    for name in sorted(namen):
+        pfad = os.path.join(vdir, name)
+        if name.startswith(".neu-"):
+            try:
+                if jetzt - os.lstat(pfad).st_mtime > 3600:
+                    os.unlink(pfad)
+            except OSError:
+                pass
+            continue
+        if not name.endswith(S_VORMERK_ENDUNG):
+            continue
+        gelesen = s_vormerkung_lesen(vdir, name)
+        if gelesen is None:
+            os.replace(pfad, os.path.join(vdir, ".abgewiesen-" + name))
+            print(f"Vormerkung {name[:16]}...: abgewiesen (liegt als .abgewiesen-{name[:16]}...)", file=log)
+            continue
+        y, zeit = gelesen
+        if zeit > jetzt + 3600:
+            os.replace(pfad, os.path.join(vdir, ".abgewiesen-" + name))
+            print(f"Vormerkung {name[:16]}...: Zeit in der Zukunft, abgewiesen", file=log)
+            continue
+        if jetzt - zeit > S_VORMERK_VERALTET:
+            os.unlink(pfad)
+            print(f"Vormerkung {name[:16]}...: veraltet, nicht gemessen", file=log)
+            continue
+        wartend.append((zeit, name, y))
+    gemessen = 0
+    for zeit, name, y in sorted(wartend):
+        pfad = os.path.join(vdir, name)
+        bits = "".join(map(str, y))
+        if os.path.lexists(os.path.join(verzeichnis, s_messquelle_name(bits))):
+            os.unlink(pfad)
+            continue
+        if gemessen >= je_lauf:
+            break
+        if heute >= je_tag:
+            print(f"Tagesgrenze {je_tag} Messungen erreicht -- {name[:16]}... wartet bis morgen (UTC)", file=log)
+            break
+        heute += 1
+        s_zaehler_schreiben(zaehler, tag, heute)
+        u, t, xs, x1, kreise, job_id, wo = messen(y)
+        try:
+            s_messquelle_ablegen(verzeichnis, {"u": "".join(map(str, u)), "t": "".join(map(str, t)), "y": bits,
+                                               "x": "".join(map(str, xs)), "wo": wo, "job": job_id})
+        except FileExistsError:
+            pass
+        os.unlink(pfad)
+        gemessen += 1
+        print(f"Vormerkung {name[:16]}...: gemessen, {len(y)} Qubits in {len(kreise)} Schaltkreisen auf {wo}"
+              + (f", Job {job_id}" if job_id else "") + f", {s_fehler_text(y, u, t, xs, x1)} "
+              + f"(heute {heute} von {je_tag})", file=log)
+    return gemessen
+
+
+def s_warteschlange_lauf(verzeichnis: str) -> None:
+    """--s-warteschlange VERZEICHNIS --zaehler DATEI [--je-tag N] [--je-lauf N]:
+    misst die Vormerkungen des Knotens (deploy/validator/quanten-messen.sh
+    --warteschlange, als Knotenbenutzer)."""
+    if "--zaehler" not in sys.argv:
+        raise SystemExit("--s-warteschlange braucht --zaehler DATEI")
+    zaehler = sys.argv[sys.argv.index("--zaehler") + 1]
+    je_tag = zahl("--je-tag", S_JE_TAG_STANDARD, MAX_S_JE_TAG)
+    je_lauf = zahl("--je-lauf", S_JE_LAUF_STANDARD, MAX_S_JE_TAG)
+    rng = random.SystemRandom()
+    n = s_warteschlange(verzeichnis, zaehler, je_tag, je_lauf, lambda y: s_messen_basen(y, rng), time.time(), sys.stdout)
+    print(f"{n} Abschnitt(e) gemessen")
+
+
+def s_warteschlange_selbsttest() -> None:
+    """Warteschlange ohne Quantenrechner: Gutfall, Missbrauch, Grenzen."""
+    import tempfile
+    jetzt = 1_800_000_000.0
+    gemessen_mit = []
+
+    def messen(y):
+        gemessen_mit.append("".join(map(str, y)))
+        return y, y, y, y, [0], "job-probe", "probe"
+
+    def vormerken(vdir, basen, zeit=int(jetzt), praeger="0x" + "ab" * 20, name=None, inhalt=None):
+        name = name or hashlib.sha256(basen.encode()).hexdigest() + S_VORMERK_ENDUNG
+        roh = inhalt if inhalt is not None else json.dumps({"basen": basen, "praeger": praeger, "zeit": zeit})
+        with open(os.path.join(vdir, name), "w") as fh:
+            fh.write(roh)
+        return name
+
+    with tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as heim:
+        z = os.path.join(heim, "zaehler")
+        log = open(os.devnull, "w")
+        assert s_warteschlange(d, z, 8, 4, messen, jetzt, log) == 0      # noch keine Vormerkungen
+        vdir = os.path.join(d, S_VORMERK_VERZEICHNIS)
+        os.mkdir(vdir, 0o700)
+        gut = vormerken(vdir, "0110", zeit=int(jetzt) - 10)
+        alt = vormerken(vdir, "0001", zeit=int(jetzt) - S_VORMERK_VERALTET - 1)
+        # Missbrauch: alles abgewiesen, nichts gemessen.
+        falsch = {
+            "Name passt nicht": vormerken(vdir, "0111", name="0" * 64 + S_VORMERK_ENDUNG),
+            "fremdes Feld": vormerken(vdir, "1000", inhalt=json.dumps({"basen": "1000", "praeger": "0x" + "ab" * 20, "zeit": 1, "x": 1})),
+            "kein JSON": vormerken(vdir, "1001", inhalt="{"),
+            "keine Bits": vormerken(vdir, "1021"),
+            "Zeit kein int": vormerken(vdir, "1010", zeit=True),
+            "Ausgeber kaputt": vormerken(vdir, "1011", praeger="0xAB"),
+            "Zeit in der Zukunft": vormerken(vdir, "1110", zeit=int(jetzt) + 3601),
+            "zu gross": vormerken(vdir, "1100", inhalt=" " * (S_VORMERK_DATEI_MAX + 1)),
+        }
+        ziel = os.path.join(heim, "fremd")
+        with open(ziel, "w") as fh:
+            json.dump({"basen": "1101", "praeger": "0x" + "ab" * 20, "zeit": int(jetzt)}, fh)
+        verweis = hashlib.sha256(b"1101").hexdigest() + S_VORMERK_ENDUNG
+        os.symlink(ziel, os.path.join(vdir, verweis))
+        falsch["Verweis"] = verweis
+        # Eine FIFO unter dem Namen einer Vormerkung: ohne S_ISREG blockierte
+        # das Oeffnen die Warteschlange fuer immer.
+        fifo = hashlib.sha256(b"0100").hexdigest() + S_VORMERK_ENDUNG
+        os.mkfifo(os.path.join(vdir, fifo), 0o600)
+        falsch["FIFO"] = fifo
+        assert s_warteschlange(d, z, 8, 4, messen, jetzt, log) == 1
+        assert gemessen_mit == ["0110"], gemessen_mit
+        with open(os.path.join(d, s_messquelle_name("0110"))) as fh:
+            assert json.load(fh)["y"] == "0110"
+        rest = sorted(os.listdir(vdir))
+        assert gut not in rest and alt not in rest, rest
+        for was, name in falsch.items():
+            assert ".abgewiesen-" + name in rest and name not in rest, (was, rest)
+        assert os.path.exists(ziel)                                       # hinter dem Verweis nichts angefasst
+        with open(z) as fh:
+            assert json.load(fh) == {"tag": "2027-01-15", "messungen": 1}
+        # Schon gemessen: nur die Vormerkung weg, keine zweite Messung.
+        vormerken(vdir, "0110")
+        assert s_warteschlange(d, z, 8, 4, messen, jetzt, log) == 0 and gemessen_mit == ["0110"]
+        # Grenzen: je Lauf und je Tag; am naechsten Tag weiter.
+        for i in range(6):
+            vormerken(vdir, format(i, "03b") + "1", zeit=int(jetzt) - 100 + i)
+        assert s_warteschlange(d, z, 4, 2, messen, jetzt, log) == 2       # je Lauf
+        assert s_warteschlange(d, z, 4, 8, messen, jetzt, log) == 1       # Tag: 1 + 2 + 1 = 4
+        assert s_warteschlange(d, z, 4, 8, messen, jetzt, log) == 0
+        assert gemessen_mit[1:] == ["0001", "0011", "0101"], gemessen_mit  # aelteste zuerst
+        s_zaehler_schreiben(z, "2027-01-14", 4)                          # Zaehler von gestern
+        assert s_warteschlange(d, z, 4, 8, messen, jetzt, log) == 3
+        # Kaputter Zaehler: Abbruch, nichts gemessen.
+        vormerken(vdir, "1111")
+        with open(z, "w") as fh:
+            fh.write("kaputt")
+        try:
+            s_warteschlange(d, z, 8, 8, messen, jetzt, log)
+            raise AssertionError("kaputter Zaehler uebergangen")
+        except SystemExit:
+            pass
+        assert "1111" not in gemessen_mit
+        # Verweis statt Verzeichnis der Vormerkungen: Abbruch.
+        os.rename(vdir, vdir + ".weg")
+        os.symlink(vdir + ".weg", vdir)
+        try:
+            s_warteschlange(d, os.path.join(heim, "z2"), 8, 8, messen, jetzt, log)
+            raise AssertionError("Verweis als Verzeichnis der Vormerkungen")
+        except SystemExit:
+            pass
+        log.close()
+
+
 def s_token_lauf(rng: random.Random) -> None:
     """Variante S auf echter Hardware (ANALYSE.md 5b, s_kette.py): Ausgabe von
     2k Qubits in zufaelligen BB84-Zustaenden, die Nutzerin misst SOFORT in
@@ -818,6 +1076,9 @@ def main() -> None:
         return
     if "--s-abschnitt" in sys.argv:
         s_abschnitt_lauf(sys.argv[sys.argv.index("--s-abschnitt") + 1])
+        return
+    if "--s-warteschlange" in sys.argv:
+        s_warteschlange_lauf(sys.argv[sys.argv.index("--s-warteschlange") + 1])
         return
     if "--s-token" in sys.argv:
         s_token_lauf(rng)

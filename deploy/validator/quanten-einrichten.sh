@@ -13,6 +13,11 @@
 #   3. fragt EINMAL nach dem API-Schluessel DEINES IBM-Quantum-Kontos und legt
 #      ihn nur fuer root lesbar ab (wie die .env). Er erscheint nie im Log.
 #   4. prueft alles ohne IBM: quanten-messen.sh --probe.
+#   5. nur mit --automatisch: ein systemd-Timer misst jede Minute, was
+#      Ausgeber beim Knoten vorgemerkt haben (quanten-messen.sh
+#      --warteschlange), hoechstens QS_JE_TAG (Standard 8) Abschnitte am Tag.
+#      Ohne --automatisch misst du von Hand (bash quanten-messen.sh BASEN
+#      oder bash quanten-messen.sh --warteschlange).
 #
 # Danach den Knoten mit der Zusatzdatei starten:
 #   docker compose -f docker-compose.yml -f docker-compose.quanten.yml up -d --build
@@ -22,8 +27,17 @@ cd "$(dirname "$0")"
 QS_VERZEICHNIS="${QS_VERZEICHNIS:-/srv/aequitas-quanten}"
 QS_OPT="${QS_OPT:-/opt/aequitas-quanten}"
 QS_SCHLUESSEL="${QS_SCHLUESSEL:-/etc/aequitas-quanten/ibm-token}"
+QS_JE_TAG="${QS_JE_TAG:-8}"
+QS_SYSTEMD="${QS_SYSTEMD:-/etc/systemd/system}"
 QS_UID=10001
 QUELLE="$(cd ../../forschung/quantengeld && pwd)"
+AUTOMATISCH=0
+for a in "$@"; do
+  case "$a" in
+    --automatisch) AUTOMATISCH=1 ;;
+    *) printf 'ABBRUCH: unbekanntes Argument %s (erlaubt: --automatisch)\n' "$a" >&2; exit 2 ;;
+  esac
+done
 
 rot() { printf '\033[31m%s\033[0m\n' "$*" >&2; }
 gruen() { printf '\033[32m%s\033[0m\n' "$*"; }
@@ -32,6 +46,12 @@ gruen() { printf '\033[32m%s\033[0m\n' "$*"; }
 command -v setpriv >/dev/null || { rot "ABBRUCH: setpriv fehlt (Paket util-linux)"; exit 2; }
 python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)' \
   || { rot "ABBRUCH: Python 3.10 oder neuer noetig"; exit 2; }
+if [ "$AUTOMATISCH" = 1 ]; then
+  [[ "$QS_JE_TAG" =~ ^[0-9]{1,2}$ ]] && [ "$QS_JE_TAG" -ge 1 ] && [ "$QS_JE_TAG" -le 64 ] \
+    || { rot "ABBRUCH: QS_JE_TAG 1 bis 64"; exit 2; }
+  command -v systemctl >/dev/null || { rot "ABBRUCH: kein systemd -- ohne --automatisch einrichten und von Hand messen"; exit 2; }
+  [ -d "$QS_SYSTEMD" ] && [ ! -L "$QS_SYSTEMD" ] || { rot "ABBRUCH: $QS_SYSTEMD ist kein Verzeichnis"; exit 2; }
+fi
 if ! python3 -c 'import ensurepip, venv' 2>/dev/null; then
   apt-get install -y python3-venv >/dev/null
 fi
@@ -49,6 +69,8 @@ install -d -m 0700 -o "$QS_UID" -g "$QS_UID" "$QS_OPT/home"
 PIP_ROOT_USER_ACTION=ignore PIP_DISABLE_PIP_VERSION_CHECK=1 \
   "$QS_OPT/venv/bin/pip" install --quiet --require-hashes --no-deps -r "$QUELLE/hardware-anforderungen.txt"
 install -m 0644 -o root -g root "$QUELLE"/*.py "$QS_OPT/quantengeld/"
+# Eine Kopie des Messskripts, die nur root aendern kann (der Timer ruft sie auf).
+install -m 0755 -o root -g root ./quanten-messen.sh "$QS_OPT/quanten-messen.sh"
 gruen "Python-Umgebung $QS_OPT (Pakete mit festen Hashes)"
 
 # 3. API-Schluessel des eigenen IBM-Quantum-Kontos, nur fuer root.
@@ -69,5 +91,34 @@ fi
 
 # 4. Probe ohne IBM.
 QS_VERZEICHNIS="$QS_VERZEICHNIS" QS_OPT="$QS_OPT" QS_SCHLUESSEL="$QS_SCHLUESSEL" bash ./quanten-messen.sh --probe
+# 5. Timer (nur mit --automatisch).
+if [ "$AUTOMATISCH" = 1 ]; then
+  printf '%s\n' \
+    "[Unit]" \
+    "Description=Aequitas Quantengeld: vorgemerkte Abschnitte messen (hoechstens $QS_JE_TAG am Tag)" \
+    "After=network-online.target" \
+    "Wants=network-online.target" \
+    "" \
+    "[Service]" \
+    "Type=oneshot" \
+    "Environment=QS_VERZEICHNIS=$QS_VERZEICHNIS QS_OPT=$QS_OPT QS_SCHLUESSEL=$QS_SCHLUESSEL QS_JE_TAG=$QS_JE_TAG" \
+    "ExecStart=/bin/bash $QS_OPT/quanten-messen.sh --warteschlange" \
+    "TimeoutStartSec=1h" > "$QS_SYSTEMD/aequitas-quanten.service"
+  printf '%s\n' \
+    "[Unit]" \
+    "Description=Aequitas Quantengeld: jede Minute nach Vormerkungen sehen" \
+    "" \
+    "[Timer]" \
+    "OnBootSec=2min" \
+    "OnUnitInactiveSec=1min" \
+    "" \
+    "[Install]" \
+    "WantedBy=timers.target" > "$QS_SYSTEMD/aequitas-quanten.timer"
+  chmod 0644 "$QS_SYSTEMD/aequitas-quanten.service" "$QS_SYSTEMD/aequitas-quanten.timer"
+  systemctl daemon-reload
+  systemctl enable --now aequitas-quanten.timer
+  gruen "Timer aequitas-quanten.timer laeuft (hoechstens $QS_JE_TAG Messungen am Tag). Protokoll: journalctl -u aequitas-quanten"
+fi
+
 gruen "Fertig. Knoten neu starten:"
 echo "  docker compose -f docker-compose.yml -f docker-compose.quanten.yml up -d --build"
