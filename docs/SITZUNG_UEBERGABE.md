@@ -2,12 +2,21 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 19.11.2026 ~12:30 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
+Stand: 19.11.2026 ~15:10 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
 Repos); davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18:30 UTC Sitzung
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
-**Zuletzt (Sitzung „Weiter“, 19.11. ~09:45 UTC):**
+**Zuletzt (Sitzung „Weiter“, 19.11. ~15:10 UTC):**
+- **C1 läuft mit #595** (Deploy #104 grün). Deploy #105 für #596 (schlafende Kettenregel,
+  neuer Wächter-Schritt) wartet auf Freigabe `produktion`:
+  [44551534119](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44551534119).
+- **PR (dieser Stand): Werkzeug im v2-Weg** (`--stichprobe-v2`, `DEZENTRAL.md` 16 Schritt 4),
+  Kopf von `quanten_s_probe_v2.go` berichtigt. 14 Mutationen rot.
+- **Danach:** Freigabe des Betreibers mit Stichtag (nur die Zahl `quantenSProbeV2AbUnix`,
+  alle Knoten vorher aktualisiert), dann ein Pilot mit `--stichprobe-v2`.
+
+**Davor (19.11. ~09:45 UTC):**
 - **C1 läuft mit #592** (Deploy #102 [44476883826](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44476883826), grün).
 - **#593 gemergt (702f4490): Befund 5i** (`DEZENTRAL.md` 16, Prüfauftrag S 2 und S 8).
   - Eine Annahmestelle, die mit der Inhaberin zusammenarbeitet, lässt sie an beiden
@@ -24,7 +33,7 @@ dezentrales Quantengeld“.
   - **#595 gemergt (bb5f5cb0): Stichprobe v2 im Dienst** (`DEZENTRAL.md` 16, Schritt 2): Teil-Hash
     und Zählung in der Antwort, Öffnung erst nach Bindung und Wahl **und deren
     Finalität** (eigener Befund); bisherige Aufträge unverändert. 14 Mutationen rot.
-  - **PR (dieser Stand): Kettenregel `probe_art = 2`, schlafend** (`DEZENTRAL.md` 16,
+  - **#596 gemergt (1cd3dcc3): Kettenregel `probe_art = 2`, schlafend** (`DEZENTRAL.md` 16,
     Schritt 3), mit Deploy-Wächter und `/api/status`. Ganzer v2-Weg im Test eingelöst.
     Wichtig: vor dem Stichtag **abweisen**, nicht übergehen, denn der Blockhash läuft
     über das JSON der Transaktionen.

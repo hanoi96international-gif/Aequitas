@@ -793,8 +793,38 @@ seinen Werten (t − 1 Validatoren kennen genau ihre Abschnitte, Abschnitt 7).
      - Register rund und fail-closed.
    - Gegenprobe: 15 Mutationen rot, zwei erst nach Schärfung der Tests (Art 3 ohne
      Anmeldung, Salze an einem bisherigen Token im Register).
-   - **Was bleibt:** das Werkzeug im v2-Weg (`quanten-s-ausgabe`, nächster Schritt) und
-     dann die Freigabe des Betreibers mit einem Stichtag.
+   - **Was bleibt:** das Werkzeug (Schritt 4, unten) und die Freigabe des Betreibers mit
+     einem Stichtag.
+4. **Werkzeug im v2-Weg: fertig (19.11.2026)** (`aequitasd quanten-s-ausgabe
+   --stichprobe-v2`, `quanten_s_ausgabe_abschnitte.go`):
+   - Vor jedem Auftrag fragt das Werkzeug den eigenen Knoten
+     (`/api/status` → `quanten_w.probe_v2_ab ≤ jetzt`). Schläft die Regel, wird nichts
+     beauftragt, und keine Messung wird verbraucht. Nur im Abschnitts-Modus.
+   - Aufträge mit `probe_art = 2`. Jede Antwort muss zwei Teil-Hashes und mögliche
+     Zählungen tragen (0 ≤ Fehler ≤ Treffer ≤ Stellen); eine v1-Antwort mit Teilen wird
+     abgewiesen.
+   - Die Bindungen der Ausgabe kommen aus den Teil-Hashes, die exakte Probe der ehrlichen
+     Vorlage aus den Zählungen. Das Werkzeug kennt dabei keine einzige Stelle.
+   - Nach Bindung und Wahl lädt jede Annahmestelle ihre Stichprobe und die Salze. Bis die
+     Validatoren sie nach der Finalität herausgeben, fragt sie begrenzt nach
+     (`--frist`). Danach prüft sie selbst:
+     - Wurzel, Blatt, Stellen-Bit und k_note;
+     - die Bindung v2 aus den Salzen;
+     - je Validator seine Zählung. Weicht sie ab, kommt ein **BEFUND mit seiner Nummer**,
+       noch vor der ersten Vorlage.
+   - Anmelden mit den Salzen.
+   - Tests (`quanten_s_ausgabe_v2_test.go`, gegen echte Dienste und Kette):
+     - Gutfall (Doppelvorlage abgewiesen, ehrliche eingelöst, keine Öffnung vor
+       Bindung und Wahl);
+     - Nachfragen bis zur Finalität; falsche Zählung (Befund mit Nummer);
+     - falsches Salz; falscher Wert; vertauschte Öffnung; Antworten ohne Teile oder mit
+       Teilen bei v1;
+     - verrauschte Messung (Abbruch vor der Ausgabe); schlafende Kette;
+     - Status des Knotens (9 Fälle); Plausibilität der Antworten (8 Fälle).
+   - Gegenprobe: 14 Mutationen rot, zwei erst nach Schärfung der Tests (falscher Wert,
+     verrauschte Messung).
+   - **Was bleibt:** die Freigabe des Betreibers mit einem Stichtag. Dann einen Pilot mit
+     `--stichprobe-v2` fahren (der Vier-Knoten-Pilot bekommt die Wahl dazu).
    - **Wichtig beim Bau (berichtigt):** Ein älterer Knoten verwirft unbekannte Felder
      beim Einlesen. Der Blockhash läuft aber über `json.Marshal` der Transaktionen
      (`calculateBlockHash`); einen Block mit `probe_art` oder `salze` kann er also nicht
