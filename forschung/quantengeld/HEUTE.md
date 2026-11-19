@@ -809,7 +809,9 @@ k = 1.760, Toleranz 2 %, je Validator ein eigener Auftrag, 8 Aufträge), beide T
   (Artefakt `pilot-44568310804`, 90 Tage).
 - Ehrlich dazu: Wie in 3.3e laufen alle Aufträge vom selben Konto im selben Job. Der
   Lauf belegt den Ablauf über echte Knoten, nicht die Trennung der Rollen. Es liegt kein
-  Gutachten vor. Im Hauptnetz gilt v2 erst ab dem Stichtag des Betreibers.
+  Gutachten vor.
+- **Stichtag im Hauptnetz:** freigegeben am 19.11.2026 für **19:30 UTC**
+  (`DEZENTRAL.md` 16 Schritt 6). Wirksam, sobald C1 mit diesem Stand läuft.
 
 ### 3.4 Bargeld-Verhalten ohne Quanten (Offline-Bargeld)
 

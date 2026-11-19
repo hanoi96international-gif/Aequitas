@@ -15,9 +15,9 @@ package keeper
 // testdata/quanten_s_probe_v2_vektor.json aus s_kette.py --vektor-probe-v2,
 // CI vergleicht Byte fuer Byte), und der Stichtag. Eingehaengt sind sie im
 // Dienst (quanten_s_abschnitt_dienst.go, #595), in der Kette
-// (quanten_w_s_kette.go, schlafend, #596) und im Werkzeug
-// (quanten_s_ausgabe_abschnitte.go, --stichprobe-v2). Scharf erst mit dem
-// Stichtag des Betreibers (Konsensaenderung).
+// (quanten_w_s_kette.go, #596) und im Werkzeug
+// (quanten_s_ausgabe_abschnitte.go, --stichprobe-v2). Scharf ab dem
+// Stichtag des Betreibers (unten, Konsensaenderung).
 
 import (
 	"sort"
@@ -26,19 +26,25 @@ import (
 	"sync/atomic"
 )
 
-// STICHTAG DER STICHPROBE V2 (Kettenregel). MaxInt64 = schlafend: vor dem
-// Stichtag gibt jeder Knoten einem S-Satz mit probe_art oder salze einen
-// Befund -- er kommt nicht in die Annahme, und ein Block mit ihm scheitert
-// beim Nachspielen. Das muss so sein: ein aelterer Knoten verwirft die
-// unbekannten Felder beim Einlesen, kann den Blockhash (json.Marshal der
-// Transaktionen) eines solchen Blocks also nicht nachrechnen und weist ihn
-// ab. Uebergehen statt Abweisen liesse alte und neue Knoten auseinanderlaufen.
-// Den Stichtag setzt nur der Betreiber (Konsensaenderung, DEZENTRAL.md 16).
-// Als Zahl geschrieben: der Deploy-Waechter liest sie
-// (.github/neustart/quanten-s-probe-v2-nicht-verpasst.sh); 9223372036854775807
-// = math.MaxInt64 = schlafend.
+// STICHTAG DER STICHPROBE V2 (Kettenregel). Vor dem Stichtag gibt jeder
+// Knoten einem S-Satz mit probe_art oder salze einen Befund -- er kommt nicht
+// in die Annahme, und ein Block mit ihm scheitert beim Nachspielen. Das muss
+// so sein: ein aelterer Knoten verwirft die unbekannten Felder beim Einlesen,
+// kann den Blockhash (json.Marshal der Transaktionen) eines solchen Blocks
+// also nicht nachrechnen und weist ihn ab. Uebergehen statt Abweisen liesse
+// alte und neue Knoten auseinanderlaufen. Ab dem Stichtag nimmt die Kette
+// Ausgaben mit probe_art 2 an; der bisherige Weg (probe_art 0) bleibt.
+//
+// Freigeschaltet vom Betreiber am 19.11.2026 ("Stichtag heute so schnell wie
+// moeglich") fuer den 19.11.2026 19:30 UTC = 1795116600. Vorher: Pilot mit
+// vier Knoten zweimal gruen (#598), C1 mit der schlafenden Regel seit
+// Deploy #105. Frueher ging nicht: Der Deploy-Waechter
+// (.github/neustart/quanten-s-probe-v2-nicht-verpasst.sh) verlangt beim
+// Ausrollen mindestens 30 min Vorlauf, davor liegen CI, Merge und die
+// Freigabe des Deploys. Als Zahl geschrieben, der Waechter liest sie;
+// 9223372036854775807 = math.MaxInt64 = schlafend.
 var (
-	quantenSProbeV2AbUnix int64 = 9223372036854775807
+	quantenSProbeV2AbUnix int64 = 1795116600
 )
 
 // quantenSProbeV2AbOverride: nur fuer Tests (0 = Stichtag oben).
