@@ -160,6 +160,11 @@ func quantenWStatus() map[string]interface{} {
 	if ab := quantenWAb(); ab != math.MaxInt64 {
 		m["ab"] = ab
 	}
+	// Stichprobe v2 (quanten_s_probe_v2.go): fehlt = schlafend (Deploy-Waechter
+	// .github/neustart/quanten-s-probe-v2-nicht-verpasst.sh).
+	if ab := quantenSProbeV2Ab(); ab != math.MaxInt64 {
+		m["probe_v2_ab"] = ab
+	}
 	return m
 }
 
@@ -217,6 +222,10 @@ type QuantenWAngaben struct {
 	X       string   `json:"x,omitempty"`
 	Probe   []int    `json:"probe,omitempty"`
 	Vorlage string   `json:"vorlage,omitempty"`
+	// Stichprobe v2 (quanten_s_probe_v2.go, schlafend bis zum Stichtag):
+	// ProbeArt 2 bei der Ausgabe; beim Anmelden je Abschnitt das Salz (hex).
+	ProbeArt int      `json:"probe_art,omitempty"`
+	Salze    []string `json:"salze,omitempty"`
 	// Unterschrift der Wallet (Praegen, Anfrage, Antwort): EIP-191 ODER ML-DSA.
 	WalletSig string   `json:"wallet_sig,omitempty"`
 	PQ        *PQKonto `json:"pq,omitempty"`

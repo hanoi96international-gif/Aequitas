@@ -76,6 +76,9 @@ type quantenSToken struct {
 	Tot       bool
 	Fehl      int
 	Anmeldung *quantenSAnmeldung
+	// Stichprobe v2 (quanten_s_probe_v2.go): 2 = Proben sind Bindungen aus
+	// Teil-Hashes; 0 = wie bisher (Hash der ganzen Stichprobe).
+	ProbeArt int
 }
 
 // quantenSAnmeldung: eine Annahmestelle hat den Token zum Einloesen angemeldet.
@@ -88,6 +91,7 @@ type quantenSAnmeldung struct {
 	Treffer int
 	Fehler  int
 	Zeit    int64
+	Salze   [][32]byte // nur bei ProbeArt 2: je Abschnitt das Salz
 }
 
 func neuerQuantenSToken(n int, inhaber string, wurzel [32]byte, deckung int64, proben [2][32]byte, t, nVal, tol int) (*quantenSToken, error) {
@@ -178,7 +182,7 @@ func (e *quantenSToken) einloesen(K string, b int, x, probe []int, offen []quant
 // der Frist offen: Anmeldung weg, kein Fehlversuch.
 
 // anmelden: hoechstens eine offene Anmeldung je Token.
-func (e *quantenSToken) anmelden(K string, b int, stelle string, x, probe []int, zeit int64) error {
+func (e *quantenSToken) anmelden(K string, b int, stelle string, x, probe []int, salze [][32]byte, zeit int64) error {
 	if e.Eingeloest || e.Tot {
 		return quantenWFehler("S-Anmelden: eingeloest oder tot")
 	}
@@ -199,11 +203,23 @@ func (e *quantenSToken) anmelden(K string, b int, stelle string, x, probe []int,
 			return quantenWFehler("S-Anmelden: Stichprobe")
 		}
 	}
-	if len(sortiert) == 0 || quantenSProbeHash(K, b, sortiert) != e.Proben[b] {
+	if len(sortiert) == 0 || !e.probePasst(K, b, sortiert, salze) {
 		return quantenWFehler("S-Anmelden: Stichprobe passt nicht zur Ausgabe")
 	}
-	e.Anmeldung = &quantenSAnmeldung{B: b, Stelle: stelle, X: append([]int(nil), x...), Probe: sortiert, Zeit: zeit}
+	e.Anmeldung = &quantenSAnmeldung{B: b, Stelle: stelle, X: append([]int(nil), x...), Probe: sortiert, Zeit: zeit,
+		Salze: append([][32]byte(nil), salze...)}
 	return nil
+}
+
+// probePasst: passt die (sortierte) Stichprobe zur Bindung der Ausgabe? Bei
+// ProbeArt 2 aus den Salzen je Abschnitt nachgerechnet; sonst der Hash der
+// ganzen Stichprobe, und dann darf es keine Salze geben.
+func (e *quantenSToken) probePasst(K string, b int, sortiert []int, salze [][32]byte) bool {
+	if e.ProbeArt == 2 {
+		h, err := quantenSProbeV2Pruefen(K, b, e.N, e.NVal, sortiert, salze)
+		return err == nil && h == e.Proben[b]
+	}
+	return len(salze) == 0 && quantenSProbeHash(K, b, sortiert) == e.Proben[b]
 }
 
 // offenlegenTeil: Stellen Probe[ab : ab+len(offen)], der Reihe nach,

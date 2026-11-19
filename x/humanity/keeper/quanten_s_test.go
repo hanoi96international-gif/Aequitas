@@ -261,13 +261,13 @@ func TestQuantenS_InTeilen(t *testing.T) {
 	offen := p.offen(proben[1], 1, 3, 5)
 	e := neu()
 	x := ehrlich(e)
-	if e.anmelden(p.K, 1, stelle, x, proben[0], 10) == nil {
+	if e.anmelden(p.K, 1, stelle, x, proben[0], nil, 10) == nil {
 		t.Fatal("fremde Stichprobe angemeldet")
 	}
-	if err := e.anmelden(p.K, 1, stelle, x, proben[1], 10); err != nil {
+	if err := e.anmelden(p.K, 1, stelle, x, proben[1], nil, 10); err != nil {
 		t.Fatal(err)
 	}
-	if e.anmelden(p.K, 1, stelle, x, proben[1], 11) == nil {
+	if e.anmelden(p.K, 1, stelle, x, proben[1], nil, 11) == nil {
 		t.Fatal("zweite Anmeldung")
 	}
 	for name, f := range map[string]func() error{
@@ -286,7 +286,7 @@ func TestQuantenS_InTeilen(t *testing.T) {
 	if _, _, err := e.offenlegenTeil(p.K, 64, offen[64:128], 10+quantenWFristOffen+1); err == nil || e.Anmeldung != nil || e.Fehl != 0 {
 		t.Fatal("Frist mitten im Offenlegen")
 	}
-	if err := e.anmelden(p.K, 1, stelle, x, proben[1], 5000); err != nil {
+	if err := e.anmelden(p.K, 1, stelle, x, proben[1], nil, 5000); err != nil {
 		t.Fatal(err)
 	}
 	var fertig, ok bool
@@ -300,7 +300,7 @@ func TestQuantenS_InTeilen(t *testing.T) {
 	if !fertig || !ok || !e.Eingeloest {
 		t.Fatal("ehrliches Einloesen in drei Teilen")
 	}
-	if e.anmelden(p.K, 1, stelle, x, proben[1], 5002) == nil {
+	if e.anmelden(p.K, 1, stelle, x, proben[1], nil, 5002) == nil {
 		t.Fatal("eingeloesten Token angemeldet")
 	}
 	// Geratene Vorlagen: jedes Mal Fehlversuch, nach quantenWFehlMax tot.
@@ -310,7 +310,7 @@ func TestQuantenS_InTeilen(t *testing.T) {
 		for i := range xr {
 			xr[i] = r.Intn(2)
 		}
-		if err := e.anmelden(p.K, 1, stelle, xr, proben[1], int64(9000+v)); err != nil {
+		if err := e.anmelden(p.K, 1, stelle, xr, proben[1], nil, int64(9000+v)); err != nil {
 			t.Fatal(err)
 		}
 		for _, g := range [][2]int{{0, 64}, {64, 128}, {128, 130}} {
@@ -320,7 +320,7 @@ func TestQuantenS_InTeilen(t *testing.T) {
 			t.Fatalf("geratene Vorlage %d bestanden", v)
 		}
 	}
-	if !e.Tot || e.anmelden(p.K, 1, stelle, x, proben[1], 9999) == nil {
+	if !e.Tot || e.anmelden(p.K, 1, stelle, x, proben[1], nil, 9999) == nil {
 		t.Fatal("nach quantenWFehlMax nicht tot")
 	}
 }
