@@ -71,6 +71,14 @@ type quantenSAbschnittStand struct {
 	Stellen           []string   `json:"stellen"`
 	StellenSchluessel []string   `json:"stellen_schluessel"`
 	AuftragHash       string     `json:"auftrag_hash"`
+	// Stichprobe v2 (quanten_s_probe_v2.go, DEZENTRAL.md 16): je Annahmestelle
+	// b das Salz (geheim bis zur Oeffnung), der Teil-Hash und die Zaehlung
+	// (Treffer, Fehler) dieses Abschnitts -- bei der Praeparation fest, damit
+	// eine Wiederholung dasselbe liefert.
+	ProbeArt int      `json:"probe_art,omitempty"`
+	Salze    []string `json:"salze,omitempty"`
+	Teile    []string `json:"teile,omitempty"`
+	Zaehlung [][2]int `json:"zaehlung,omitempty"`
 }
 
 // QuantenSAbschnittAnfrage: der Auftrag des Ausgebers an Validator X.
@@ -90,6 +98,10 @@ type QuantenSAbschnittAnfrage struct {
 	Zeit                int64    `json:"zeit"`
 	Praeger             string   `json:"praeger"`
 	PraegerSig          string   `json:"praeger_sig"`
+	// ProbeArt 2: Stichprobe erst nach der Bindung (DEZENTRAL.md 16). Der
+	// Validator meldet Teil-Hash und Zaehlung statt die Stichprobe vor der
+	// Ausgabe zu oeffnen. 0 = wie bisher.
+	ProbeArt int `json:"probe_art,omitempty"`
 }
 
 // QuantenSAbschnittAntwort: was Validator X dem Ausgeber zurueckgibt.
@@ -104,6 +116,10 @@ type QuantenSAbschnittAntwort struct {
 	BuendelSig    []string `json:"buendel_sig"`
 	Validator     string   `json:"validator"`
 	Sig           string   `json:"sig"`
+	// Nur bei ProbeArt 2: je Annahmestelle der Teil-Hash (hex) und die
+	// Zaehlung (Treffer, Fehler) dieses Abschnitts.
+	Teile    []string `json:"teile,omitempty"`
+	Zaehlung [][2]int `json:"zaehlung,omitempty"`
 }
 
 func quantenSHashListe(l []string) string {
@@ -114,17 +130,29 @@ func quantenSHashListe(l []string) string {
 // quantenSAbschnittAuftragNachricht: was der Ausgeber unterschreibt.
 func quantenSAbschnittAuftragNachricht(q QuantenSAbschnittAnfrage) string {
 	hb := sha256.Sum256([]byte(q.Basen))
-	return fmt.Sprintf("%s|chain:%d|%s|%s|%d|%d|%d|%d|%s|%s|%x|%s|%s|%s|%s|%d", quantenSDomAbschnittAuftrag, eingefroreneChainID,
+	m := fmt.Sprintf("%s|chain:%d|%s|%s|%d|%d|%d|%d|%s|%s|%x|%s|%s|%s|%s|%d", quantenSDomAbschnittAuftrag, eingefroreneChainID,
 		strings.ToLower(q.Praeger), q.K, q.N, q.T, q.Tol, q.X, strings.Join(q.Validatoren, ","), strings.Join(q.Schluessel, ","), hb,
 		strings.ToLower(q.Inhaberin), q.InhaberinSchluessel, strings.Join(q.Stellen, ","), strings.Join(q.StellenSchluessel, ","), q.Zeit)
+	if q.ProbeArt != 0 { // bisherige Auftraege: Nachricht unveraendert
+		m += fmt.Sprintf("|probe:%d", q.ProbeArt)
+	}
+	return m
 }
 
 // quantenSAbschnittAntwortNachricht: was der Validator ueber seine Antwort
 // unterschreibt -- der Ausgeber kann sie weiterleiten, nicht aendern.
 func quantenSAbschnittAntwortNachricht(a QuantenSAbschnittAntwort) string {
 	hf := sha256.Sum256([]byte(a.FuerInhaberin))
-	return fmt.Sprintf("%s|chain:%d|%s|%d|%d|%d|%s|%x|%s|%s", quantenSDomAbschnittAntwort, eingefroreneChainID, a.K, a.X, a.Von, a.Bis,
+	m := fmt.Sprintf("%s|chain:%d|%s|%d|%d|%d|%s|%x|%s|%s", quantenSDomAbschnittAntwort, eingefroreneChainID, a.K, a.X, a.Von, a.Bis,
 		quantenSHashListe(a.Blaetter), hf, quantenSHashListe(a.Buendel), quantenSHashListe(a.BuendelSig))
+	if a.Teile != nil || a.Zaehlung != nil { // nur bei ProbeArt 2
+		z := make([]string, 0, 2*len(a.Zaehlung))
+		for _, p := range a.Zaehlung {
+			z = append(z, strconv.Itoa(p[0]), strconv.Itoa(p[1]))
+		}
+		m += fmt.Sprintf("|teile:%s|zaehlung:%s", strings.Join(a.Teile, ","), strings.Join(z, ","))
+	}
+	return m
 }
 
 // ------------------------------------------------------------ Messquelle
@@ -310,6 +338,9 @@ func (d *quantenWDienst) quantenSAbschnittPruefen(q *QuantenSAbschnittAnfrage) (
 	if _, ok := quantenSBitsLesen(q.Basen, bis-von); !ok {
 		return 0, 0, quantenWFehler("Basen: nur 0 und 1")
 	}
+	if q.ProbeArt != 0 && q.ProbeArt != 2 {
+		return 0, 0, quantenWFehler("Art der Stichprobe %d", q.ProbeArt)
+	}
 	q.Praeger = strings.ToLower(strings.TrimSpace(q.Praeger))
 	if !kanonischeAdresse(q.Praeger) || !kanonischeSignatur(q.PraegerSig) ||
 		verifyPersonalSign(quantenSAbschnittAuftragNachricht(*q), q.PraegerSig, q.Praeger) != nil {
@@ -371,6 +402,11 @@ func (d *quantenWDienst) abschnittPraeparieren(q QuantenSAbschnittAnfrage) (Quan
 			koeff = append(koeff, c.Text(16))
 		}
 		st.Koeff = append(st.Koeff, koeff)
+	}
+	if q.ProbeArt == 2 {
+		if err := st.probeV2(q.K, q.X, y, u, tw, x, werte); err != nil {
+			return QuantenSAbschnittAntwort{}, err
+		}
 	}
 	e := &quantenWTresorEintrag{K: q.K, N: q.N, T: q.T, Tol: q.Tol, X: q.X, Validatoren: slices.Clone(q.Validatoren), Zeit: q.Zeit,
 		Praeger: q.Praeger, Art: "s", Wartend: true, Abschnitt: st}
@@ -536,8 +572,48 @@ func (d *quantenWDienst) abschnittAntwort(e *quantenWTresorEintrag) (QuantenSAbs
 		}
 		a.Buendel, a.BuendelSig = append(a.Buendel, ch), append(a.BuendelSig, sg)
 	}
+	if st.ProbeArt == 2 {
+		a.Teile, a.Zaehlung = slices.Clone(st.Teile), slices.Clone(st.Zaehlung)
+	}
 	a.Sig, err = quantenSUnterschreiben(d.key, quantenSAbschnittAntwortNachricht(a))
 	return a, err
+}
+
+// probeV2: Salz, Teil-Hash und Zaehlung je Annahmestelle (s_kette.py
+// Praeparator.probe_teil / probe_zaehlung). Der Validator kennt y, u, t und
+// x seines Abschnitts, weil er die Messung selbst gemacht hat; er meldet nur
+// Zahlen und einen gesalzenen Hash -- keine Stelle der Stichproben.
+func (st *quantenSAbschnittStand) probeV2(K string, xv int, y, u, tw, x []int, werte []*big.Int) error {
+	n := st.Bis - st.Von
+	if len(y) != n || len(u) != n || len(tw) != n || len(x) != n || len(werte) != n {
+		return errors.New("Stichprobe v2: Laengen")
+	}
+	st.ProbeArt, st.Salze, st.Teile, st.Zaehlung = 2, nil, nil, nil
+	for b := 0; b < 2; b++ {
+		var salz [32]byte
+		if _, err := rand.Read(salz[:]); err != nil {
+			return err
+		}
+		var stellen []int
+		tr, fe := 0, 0
+		for i, w := range werte {
+			if quantenSStellenBit(w) != b {
+				continue
+			}
+			stellen = append(stellen, st.Von+i)
+			if y[i] == u[i] {
+				tr++
+				if x[i] != tw[i] {
+					fe++
+				}
+			}
+		}
+		h := quantenSProbeTeilHash(K, b, xv, salz, stellen)
+		st.Salze = append(st.Salze, hex.EncodeToString(salz[:]))
+		st.Teile = append(st.Teile, hex.EncodeToString(h[:]))
+		st.Zaehlung = append(st.Zaehlung, [2]int{tr, fe})
+	}
+	return nil
 }
 
 // quantenSFuerInhaberinOeffnen: die Inhaberin liest x ihres Abschnitts.
@@ -582,6 +658,25 @@ func (d *quantenWDienst) oeffnungFuerStelle(K string, b int) (string, error) {
 		return "", quantenWFehler("kein Abschnitt zu diesem K")
 	}
 	st := e.Abschnitt
+	// Stichprobe v2: erst, wenn Bindung d und Wahl c auf der Kette stehen --
+	// vorher weiss die Stelle nichts, was sie der Inhaberin verraten koennte
+	// (Befund 5i, DEZENTRAL.md 16).
+	if st.ProbeArt == 2 {
+		if len(st.Salze) != 2 {
+			return "", errors.New("Tresor: Salze der Stichprobe v2")
+		}
+		tok := d.cs.quantenWJetzt().Token[K]
+		if tok == nil || tok.token == nil || tok.token.D == nil || tok.token.C == -1 {
+			return "", quantenWFehler("Oeffnung erst nach Bindung und Wahl auf der Kette (Stichprobe v2)")
+		}
+		// Nichts vor der Finalitaet (wie die Anteile, quanten_w_validator.go):
+		// faellt der Block der Bindung noch aus der Kette, haette eine
+		// bestochene Stelle die Stichprobe gesehen, und die Inhaberin baende
+		// danach mit diesem Wissen neu.
+		if !d.reif(quantenSBindungSicht(K, tok.token)) {
+			return "", quantenWFehler("Oeffnung erst, wenn Bindung und Wahl final sind (Stichprobe v2)")
+		}
+	}
 	pub, err := quantenSSchluesselPruefen(st.StellenSchluessel[b], st.Stellen[b])
 	if err != nil {
 		return "", err
@@ -596,7 +691,11 @@ func (d *quantenWDienst) oeffnungFuerStelle(K string, b int) (string, error) {
 			werte[strconv.Itoa(st.Von+i)] = w.Text(16)
 		}
 	}
-	roh, err := json.Marshal(map[string]interface{}{"dom": quantenSDomOeffnung, "k": K, "b": b, "x": e.X, "von": st.Von, "bis": st.Bis, "werte": werte})
+	inhalt := map[string]interface{}{"dom": quantenSDomOeffnung, "k": K, "b": b, "x": e.X, "von": st.Von, "bis": st.Bis, "werte": werte}
+	if st.ProbeArt == 2 {
+		inhalt["salz"] = st.Salze[b] // fuer das Anmelden: die Kette rechnet den Teil-Hash nach
+	}
+	roh, err := json.Marshal(inhalt)
 	if err != nil {
 		return "", err
 	}
@@ -607,16 +706,44 @@ func (d *quantenWDienst) oeffnungFuerStelle(K string, b int) (string, error) {
 	return hex.EncodeToString(c), nil
 }
 
+// quantenSBindungSicht: Schluessel der Sichtung von Bindung d und Wahl c
+// eines Tokens (fuer reif); aendert sich d oder c, ist es eine neue Sichtung.
+func quantenSBindungSicht(K string, t *quantenSToken) string {
+	h := sha256.Sum256([]byte(fmt.Sprintf("%s|%d", quantenWBitsHex(t.D), t.C)))
+	return "s2|" + K + "|" + hex.EncodeToString(h[:])
+}
+
 // quantenSOeffnungEntschluesseln: die Annahmestelle liest die Oeffnung von
 // Validator x (Abschnitt [von, bis)); jede Stelle muss darin liegen.
 func quantenSOeffnungEntschluesseln(schl *ecdsa.PrivateKey, chiffrat, K string, b, x, von, bis int) (map[int]*big.Int, error) {
+	out, salz, err := quantenSOeffnungLesen(schl, chiffrat, K, b, x, von, bis)
+	if err == nil && salz != nil {
+		return nil, quantenWFehler("Oeffnung: Stichprobe v2 (mit Salz) erwartet keine Ladung wie bisher")
+	}
+	return out, err
+}
+
+// quantenSOeffnungEntschluesselnV2: dasselbe fuer die Stichprobe v2 -- mit
+// dem Salz des Teil-Hashes (32 Byte); ohne Salz abgewiesen.
+func quantenSOeffnungEntschluesselnV2(schl *ecdsa.PrivateKey, chiffrat, K string, b, x, von, bis int) (map[int]*big.Int, [32]byte, error) {
+	out, salz, err := quantenSOeffnungLesen(schl, chiffrat, K, b, x, von, bis)
+	if err != nil {
+		return nil, [32]byte{}, err
+	}
+	if salz == nil {
+		return nil, [32]byte{}, quantenWFehler("Oeffnung: Salz der Stichprobe v2 fehlt")
+	}
+	return out, *salz, nil
+}
+
+func quantenSOeffnungLesen(schl *ecdsa.PrivateKey, chiffrat, K string, b, x, von, bis int) (map[int]*big.Int, *[32]byte, error) {
 	if len(chiffrat) == 0 || len(chiffrat) > quantenSBuendelHoechstens || !kleinHex(chiffrat) {
-		return nil, quantenWFehler("Oeffnung: Form")
+		return nil, nil, quantenWFehler("Oeffnung: Form")
 	}
 	c, _ := hex.DecodeString(chiffrat)
 	roh, err := ecies.ImportECDSA(schl).Decrypt(c, nil, nil)
 	if err != nil {
-		return nil, quantenWFehler("Oeffnung: nicht fuer diese Stelle")
+		return nil, nil, quantenWFehler("Oeffnung: nicht fuer diese Stelle")
 	}
 	var in struct {
 		Dom   string            `json:"dom"`
@@ -626,25 +753,34 @@ func quantenSOeffnungEntschluesseln(schl *ecdsa.PrivateKey, chiffrat, K string, 
 		Von   int               `json:"von"`
 		Bis   int               `json:"bis"`
 		Werte map[string]string `json:"werte"`
+		Salz  *string           `json:"salz"`
 	}
 	dec := json.NewDecoder(bytes.NewReader(roh))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&in); err != nil || in.Dom != quantenSDomOeffnung || in.K != K || in.B != b || in.X != x || in.Von != von || in.Bis != bis {
-		return nil, quantenWFehler("Oeffnung: passt nicht")
+		return nil, nil, quantenWFehler("Oeffnung: passt nicht")
+	}
+	var salz *[32]byte
+	if in.Salz != nil {
+		h, ok := quantenWHex32(*in.Salz)
+		if !ok {
+			return nil, nil, quantenWFehler("Oeffnung: Salz")
+		}
+		salz = &h
 	}
 	out := map[int]*big.Int{}
 	for si, wh := range in.Werte {
 		i, err := strconv.Atoi(si)
 		if err != nil || i < von || i >= bis || len(wh) == 0 || len(wh) > 33 || !kleinHex(wh) {
-			return nil, quantenWFehler("Oeffnung: Stelle %q", si)
+			return nil, nil, quantenWFehler("Oeffnung: Stelle %q", si)
 		}
 		w, ok := new(big.Int).SetString(wh, 16)
 		if !ok {
-			return nil, quantenWFehler("Oeffnung: Wert %q", si)
+			return nil, nil, quantenWFehler("Oeffnung: Wert %q", si)
 		}
 		out[i] = w
 	}
-	return out, nil
+	return out, salz, nil
 }
 
 // ------------------------------------------------------------ Bestaetigen

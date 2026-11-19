@@ -1266,6 +1266,14 @@ func (d *quantenWDienst) takt(ctx context.Context) {
 // taktS: ein S-Token mit offener Anmeldung -- nach der Finalitaet in Teilen
 // offenlegen; nach der Frist die Frist einreichen.
 func (d *quantenWDienst) taktS(ctx context.Context, K string, e *quantenWTresorEintrag, t *quantenSToken, jetzt int64, gesehen map[string]bool) {
+	// Stichprobe v2: Bindung und Wahl sichten, sobald sie stehen -- ab dann
+	// laeuft die Finalitaet fuer die Oeffnung (oeffnungFuerStelle), und die
+	// Sichtung bleibt ueber die Takte erhalten (sichtRaeumen).
+	if e.Abschnitt != nil && e.Abschnitt.ProbeArt == 2 && t.D != nil && t.C != -1 {
+		sicht := quantenSBindungSicht(K, t)
+		gesehen[sicht] = true
+		d.reif(sicht)
+	}
 	a := t.Anmeldung
 	if a == nil || e.Art != "s" {
 		return

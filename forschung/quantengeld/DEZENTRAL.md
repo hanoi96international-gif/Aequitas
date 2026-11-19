@@ -739,8 +739,40 @@ seinen Werten (t − 1 Validatoren kennen genau ihre Abschnitte, Abschnitt 7).
    - Gegenprobe: 10 Mutationen rot, 3 davon erst nach Schärfung der Tests (ein Salz zu
      viel, unsortiert, Stelle 2). Zwei Grenzen prüft auch `quantenSAbschnitt`; beide
      Schichten zusammen mutiert sind rot.
-2. Dienst: Teil-Hash und Zählung in der Abschnitts-Antwort (unterschrieben); Öffnung erst
-   nach Bindung und Wahl. Nur der Dienst, nicht die Kette; das Werkzeug zählt zusammen.
-3. Kettenregel `probe_art = 2` mit eigenem Stichtag. Das ist eine **Konsensänderung**
-   und braucht die Freigabe des Betreibers. Bis dahin gilt die Regel oben: Rollen
-   trennen, die Stellen müssen einander vertrauen.
+2. ~~Dienst~~ **fertig (19.11.2026)**, nur der Dienst, nicht die Kette
+   (`quanten_s_abschnitt_dienst.go`):
+   - Ein Auftrag mit `probe_art = 2` (in der Unterschrift des Ausgebers) bekommt je
+     Annahmestelle Teil-Hash und Zählung in der Antwort; die Unterschrift des Validators
+     deckt beides.
+   - Das Salz (32 Byte, Zufall) liegt verschlüsselt im Tresor. Die Öffnung gibt es erst,
+     wenn d und c auf der Kette stehen **und final sind**, und das Salz steckt im
+     verschlüsselten Inhalt.
+   - Die Finalität kam aus der eigenen Sicherheitsprüfung (`reif`, wie bei den Anteilen).
+     Fiele der Block der Bindung noch aus der Kette, hätte eine bestochene Stelle die
+     Stichprobe gesehen, und die Inhaberin bände danach mit diesem Wissen neu.
+   - Der Takt sichtet Bindung und Wahl, sobald sie stehen; ab dann läuft die Uhr.
+     `quantenSOeffnungEntschluesselnV2` verlangt es; die bisherige Lesart weist eine
+     Öffnung mit Salz ab.
+   - Bisherige Aufträge (`probe_art` fehlt): Nachrichten, Antwort und Öffnung bleiben
+     Wort für Wort gleich (Test gegen den alten Wortlaut).
+   - Tests (`quanten_s_probe_v2_dienst_test.go`):
+     - Gutfall gegen die Kette: keine Öffnung vor der Ausgabe und nicht vor der Wahl.
+     - Danach rechnet jede Stelle Teil-Hashes und die Bindung v2 nach, und die Summe der
+       Zählungen ist genau ihre Prüfung.
+     - Wiederholung liefert dasselbe.
+     - Missbrauch: Art 1, 3 und −2; Art ohne Unterschrift; geänderte Teile oder Zählung
+       in der Antwort; v1-Öffnung als v2 gelesen.
+   - Gegenprobe: 14 Mutationen rot, eine erst nach Schärfung des Tests (v2 ohne Salz).
+     Drei davon gelten der Finalität: Öffnung ohne `reif`, Takt sichtet nicht, Takt
+     ohne Prüfung der Wahl.
+   - Das Werkzeug nutzt v2 noch nicht. Es braucht die Kettenregel, um anzumelden.
+3. Kettenregel `probe_art = 2` mit eigenem Stichtag, dazu das Werkzeug im v2-Weg. Das ist
+   eine **Konsensänderung** und braucht die Freigabe des Betreibers. Bis dahin gilt die
+   Regel oben: Rollen trennen, die Stellen müssen einander vertrauen.
+   - **Wichtig beim Bau:** Knoten lesen die Felder einer Transaktion ohne strenge
+     Prüfung; ein älterer Knoten übergeht neue Felder (`probe_art`, `salze`).
+     „Schlafend“ heißt deshalb, dass vor dem Stichtag auch der neue Knoten diese Felder
+     übergeht und den Token wie bisher behandelt. Weist er sie ab, laufen alte und neue
+     Knoten schon vor dem Stichtag auseinander.
+   - Das Register trägt `probe_art` und die Salze nur, wenn sie gesetzt sind. Der
+     StateRoot bestehender Token bleibt so gleich.
