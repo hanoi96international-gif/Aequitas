@@ -1365,8 +1365,33 @@ def vektor_abschnitte() -> dict:
     }
 
 
+def vektor_probe_v2() -> dict:
+    """Pruefvektor fuer die Stichprobe v2 (DEZENTRAL.md 16, quanten_s_probe_v2_test.go):
+    je Annahmestelle die Stichprobe, je Abschnitt Salz und Teil-Hash, die
+    Bindung -- aus derselben Ausgabe wie vektor_abschnitte, deterministisch."""
+    rng = random.Random(1926)
+    n, n_val, t = 40, 4, 3
+    K = hashlib.sha256(b"aequitas-quanten-s-abschnitt-vektor").hexdigest()
+    aa = AusgabeAbschnitte(K, n, t, n_val, [random.Random(rng.randrange(1 << 62)) for _ in range(n_val)])
+    stellen = []
+    for b in (0, 1):
+        probe = sorted(i for p_ in aa.praep for i in p_._stellen(b))
+        salze = [p_._salz(b) for p_ in aa.praep]
+        teile = [p_.probe_teil(b) for p_ in aa.praep]
+        bindung = probe_hash_v2(K, b, teile)
+        assert probe_v2_pruefen(K, b, n, n_val, probe, salze) == bindung
+        stellen.append({"b": b, "stichprobe": probe, "salze": [x.hex() for x in salze],
+                        "teile": [x.hex() for x in teile], "bindung": bindung.hex()})
+    return {"K": K, "n": n, "n_val": n_val, "stellen": stellen,
+            "teil_einzeln": {"b": 1, "j": 3, "salz": "11" * 32, "stellen": [2, 5, 7],
+                             "hash": probe_teil_hash(K, 1, 3, bytes.fromhex("11" * 32), [7, 2, 5]).hex()}}
+
+
 if __name__ == "__main__":
-    if "--vektor-abschnitte" in sys.argv:
+    if "--vektor-probe-v2" in sys.argv:
+        import json
+        print(json.dumps(vektor_probe_v2(), indent=1))
+    elif "--vektor-abschnitte" in sys.argv:
         import json
         print(json.dumps(vektor_abschnitte(), indent=1))
     elif "--vektor" in sys.argv:
