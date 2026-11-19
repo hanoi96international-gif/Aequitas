@@ -836,3 +836,23 @@ seinen Werten (t − 1 Validatoren kennen genau ihre Abschnitte, Abschnitt 7).
        den Block an, der alte nicht.
    - Das Register trägt `probe_art` und die Salze nur, wenn sie gesetzt sind. Der
      StateRoot bestehender Token bleibt so gleich.
+5. **Pilot mit vier Validatoren im v2-Weg: grün (19.11.2026)** (`quanten-s-pilot.yml`,
+   Eingabe `stichprobe_v2 = ja`, nur mit `ausgabe = abschnitte`; `HEUTE.md` 3.3h):
+   - Lauf [44564851989](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44564851989),
+     Rauschmodell, k = 1.760, Toleranz 2 %: beide Tests grün, auch mit Ausfall eines
+     Validators vor der ersten Vorlage. Fehler 0/1.771 und 0/1.753 aus den Zählungen der
+     Validatoren; Stichproben 10 s nach der Wahl geladen; Werkzeug 3m50s und 3m37s.
+   - Die Regel wird nur im Testprozess der vier Knoten scharf geschaltet
+     (`AEQUITAS_QS_V2=1`, `t.Cleanup` setzt zurück). Ohne Abschnitts-Modus bricht der
+     Test ab, statt still den alten Weg zu gehen.
+   - Nachgeschärft: Der Test liest jetzt im Register jedes Knotens nach, welcher Weg
+     wirklich lief (`probe_art`, Zahl der nachgerechneten Salze). Vorher hätte er auch
+     grün werden können, wenn der v2-Weg nicht gegriffen hätte.
+   - Lauf 2 mit dieser Prüfung
+     [44568310804](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44568310804):
+     beide Tests grün. Auf der Kette standen jedes Mal `probe_art 2` und 4 nachgerechnete
+     Salze. Fehler 0/1.787 und 0/1.772. Die Stelle der Inhaberin war diesmal Stelle 0,
+     damit sind beide Richtungen belegt.
+   - **Was bleibt:** die Freigabe des Betreibers mit einem Stichtag
+     (`quantenSProbeV2AbUnix`). Vorher müssen alle Knoten den Stand mit der Regel haben
+     (seit #596 auf C1); der Deploy-Wächter verlangt mindestens 30 min Vorlauf.

@@ -747,6 +747,70 @@ Rauschmodell, Mehrheit aus 5, je Validator ein eigener Auftrag, 3.520 Qubits je 
 - Dasselbe gilt für die Chip-Angaben der früheren Läufe in 3.3e und 3.3f (44341842380,
   44356741223, 44367782047): belegt für den letzten Auftrag, nicht für jeden.
 
+### 3.3h Stichprobe erst nach der Bindung (v2): Pilot mit vier Validatoren (19.11.2026)
+
+Der Ausweg aus Befund 5i (`DEZENTRAL.md` 16): Bei der Ausgabe kennt niemand eine Stelle
+der Stichproben, auch das Werkzeug nicht. Jeder Validator meldet je Annahmestelle nur
+einen gesalzenen Teil-Hash und eine Zählung. Stichproben und Salze gibt er erst heraus,
+wenn Bindung und Wahl auf der Kette stehen und final sind. Die Kette rechnet die Bindung
+beim Anmelden aus den Salzen nach.
+
+Im Hauptnetz **schläft** diese Regel (Stichtag beim Betreiber). Im Pilot wird sie nur im
+Testprozess der vier Knoten scharf geschaltet (`AEQUITAS_QS_V2=1`, Eingabe
+`stichprobe_v2 = ja`). Sonst ist alles wie im Betrieb: eigene Datenbank je Knoten, echtes
+HTTP, je ein Validator-Dienst, 3 von 4.
+
+**Lauf [44564851989](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44564851989)**
+(Zweig `claude/weiter-uw2p42`, 9b6a4a95; Rauschmodell `fake_marrakesh`, Mehrheit aus 5,
+k = 1.760, Toleranz 2 %, je Validator ein eigener Auftrag, 8 Aufträge), beide Tests grün:
+
+| Test | Fehler (Zählungen der Validatoren) | Stichproben nach der Bindung | Doppelvorlage | ehrliche Vorlage | Werkzeug | danach |
+|---|---|---|---|---|---|---|
+| alle vier (250,3 s) | 0/1.771 | 1.760/1.760 Stellen, nach 12 s | 1m29s, 1.183/min, **abgewiesen** | 2m08s, 822/min, **eingelöst** | 3m50s | 4 Knoten gleich, Höhe 2355, StateRoot `7952e246…dafa058` |
+| ein Knoten fällt aus (232,3 s; Knoten 2 vor der ersten Vorlage) | 0/1.753 | 1.760/1.760 Stellen, nach 12 s | 1m45s, 1.003/min, **abgewiesen** | 1m36s, 1.103/min, **eingelöst** | 3m37s | 3 Knoten gleich, Höhe 1683, StateRoot `1b1596bf…3fc05de` |
+
+- Die Fehlerrate kommt jetzt aus den **Zählungen der Validatoren**. Das Werkzeug sieht
+  keine Stelle der Stichproben, bevor Bindung und Wahl final sind.
+- Die Stichproben kamen 10 s nach der Wahl, also nach der Finalität der echten Knoten.
+  Danach ging es so schnell wie bisher (3.3g: 3m30s–3m56s für das Werkzeug).
+- Die Messungen der Aufträge: Ausgabe 1 `8cbda979…`, `ee750313…`, `aa32e459…`,
+  `136e54df…`; Ausgabe 2 `70ff2a29…`, `cf16921a…`, `c0c441e4…`, `bb7c45ad…`
+  (Rauschmodell, keine IBM-Aufträge).
+- SHA-256: `ergebnis.txt` `0d206a82…629b036a`, `ausgabe.txt.gz` `7fc5cd3e…21c7d010`
+  (Artefakt `pilot-44564851989`, 90 Tage).
+- Zähler je Dienst (eingereicht / abgewiesen / eingesprungen / Nachbarabfragen):
+  - alle vier: 13/0/0/30, 21/8/1/59, 20/10/2/51, 6/10/1/20;
+  - mit Ausfall: 30/0/1/59, 14/0/1/26, ausgefallen, 16/0/0/36.
+- **Lücke in diesem Lauf, danach geschlossen:** Der Test prüfte nur, was das Werkzeug
+  meldet. Er wäre auch grün geworden, wenn der v2-Weg still nicht gegriffen hätte. Seit
+  #598 liest ein Beobachter im Register jedes Knotens nach: `probe_art = 2` auf
+  jedem Stand und beim Anmelden ein nachgerechnetes Salz je Validator. Sonst ist der
+  Test rot (`qsKettenSichtPruefen`, mit eigenem Test für 9 Fehlfälle).
+
+**Lauf 2 mit dem Beobachter
+[44568310804](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44568310804)**
+(40baca7b, sonst gleich), beide Tests grün. In beiden steht **„Auf der Kette: probe_art 2,
+4 Validatoren, Anmeldung mit 4 Salzen nachgerechnet“**.
+
+| Test | Fehler (Zählungen der Validatoren) | Doppelvorlage | ehrliche Vorlage | Werkzeug | danach |
+|---|---|---|---|---|---|
+| alle vier (265,1 s) | 0/1.787 | Stelle 1, 1m29s, 1.184/min, **abgewiesen** | Stelle 0, 2m23s, 737/min, **eingelöst** | 4m05s | 4 Knoten gleich, Höhe 2501, StateRoot `08b61cc9…949c0dc` |
+| ein Knoten fällt aus (227,4 s; Knoten 2 vor der ersten Vorlage) | 0/1.772 | Stelle 1, 1m40s, 1.054/min, **abgewiesen** | Stelle 0, 1m36s, 1.098/min, **eingelöst** | 3m32s | 3 Knoten gleich, Höhe 1647, StateRoot `26818b81…02b675c` |
+
+- Hier wählte die Kette Stelle 0 als Stelle der Inhaberin (Lauf 1: Stelle 1). Beide
+  Richtungen sind damit belegt.
+- Zähler je Dienst (eingereicht / abgewiesen / eingesprungen / Nachbarabfragen):
+  - alle vier: 14/0/0/31, 26/6/1/67, 20/10/2/53, **0/34/1/17**;
+  - mit Ausfall: 29/0/1/57, 15/0/1/27, ausgefallen, 16/0/0/35.
+  - Dienst 3 kam im ersten Test mit keiner Einreichung durch; ein anderer war jedes Mal
+    schneller. Die Kette nahm jeden Teil einmal. Das kostet nur Arbeit, nichts wird
+    falsch verbucht (wie in 3.3e).
+- SHA-256: `ergebnis.txt` `9c6196f1…a03558`, `ausgabe.txt.gz` `ab115112…87d2e9`
+  (Artefakt `pilot-44568310804`, 90 Tage).
+- Ehrlich dazu: Wie in 3.3e laufen alle Aufträge vom selben Konto im selben Job. Der
+  Lauf belegt den Ablauf über echte Knoten, nicht die Trennung der Rollen. Es liegt kein
+  Gutachten vor. Im Hauptnetz gilt v2 erst ab dem Stichtag des Betreibers.
+
 ### 3.4 Bargeld-Verhalten ohne Quanten (Offline-Bargeld)
 
 Was Menschen sich von Quantengeld wünschen, ist meist offline zu zahlen, wie mit
