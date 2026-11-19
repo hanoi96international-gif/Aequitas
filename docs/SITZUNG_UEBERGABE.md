@@ -2,7 +2,7 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 19.11.2026 ~19:50 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
+Stand: 19.11.2026 ~20:05 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
 Repos); davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18:30 UTC Sitzung
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
@@ -30,7 +30,7 @@ dezentrales Quantengeld“.
   - Die Wache läuft trotz `*/10` nur alle paar Stunden (GitHub drosselt). Für einen
     Beleg sofort: `wache.yml` per `workflow_dispatch` starten (nur lesend, keine Freigabe).
   - Doku zur Freischaltung: `HEUTE.md` 3.3h und 4, `DEZENTRAL.md` 16 Schritt 6,
-    Prüfauftrag S 2.
+    Prüfauftrag S 2 (**#601 gemergt, c9a964dd**).
   - **Nächste Schritte:**
     - Erster Hauptnetz-Token mit `--stichprobe-v2` (Messung auf dem Chip = Freigabe
       `quantenhardware` des Betreibers; C1 hat t = v = 1).
