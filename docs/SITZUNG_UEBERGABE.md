@@ -2,13 +2,13 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 19.11.2026 ~06:45 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
+Stand: 19.11.2026 ~07:10 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
 Repos); davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18:30 UTC Sitzung
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
-**Zuletzt (Sitzung „Weiter“, 19.11. ~06:45 UTC):**
-- **PR (dieser Stand): Basen automatisch zum Validator** (`DEZENTRAL.md` 15).
+**Zuletzt (Sitzung „Weiter“, 19.11. ~07:10 UTC):**
+- **#592 gemergt (f0ca4d53): Basen automatisch zum Validator** (`DEZENTRAL.md` 15).
   - Endpunkt `POST /api/quanten-w/validator/vormerken` (unterschrieben, Mensch mit
     Deckung, begrenzt: 8 wartend, 8 je Ausgeber und Tag, 32 am Tag).
   - Server: `quanten-messen.sh --warteschlange`; mit `quanten-einrichten.sh
@@ -18,8 +18,8 @@ dezentrales Quantengeld“.
     sie selbst.
   - Dieselben Basen höchstens einmal am Tag (gegen wiederholte Vormerkungen).
   - Gegenprobe: 36 Mutationen, 35 rot, eine gleichwertig.
-  - Nach dem Merge braucht C1 den Deploy (neuer Endpunkt; ohne Messverzeichnis weist
-    C1 jede Vormerkung ab).
+  - C1 braucht den Deploy (Freigabe `produktion`; neuer Endpunkt, ohne Messverzeichnis
+    weist C1 jede Vormerkung ab).
   - Sandbox-Rest: Ein Heredoc-Fehler hat `/aequitas-quanten.timer` im Wurzelverzeichnis
     der Sandbox angelegt. Das Entfernen hat die Sicherheitsprüfung abgelehnt; die Datei
     ist harmlos und nur in dieser Sandbox.
