@@ -755,9 +755,9 @@ einen gesalzenen Teil-Hash und eine Zählung. Stichproben und Salze gibt er erst
 wenn Bindung und Wahl auf der Kette stehen und final sind. Die Kette rechnet die Bindung
 beim Anmelden aus den Salzen nach.
 
-Im Hauptnetz **schläft** diese Regel (Stichtag beim Betreiber). Im Pilot wird sie nur im
-Testprozess der vier Knoten scharf geschaltet (`AEQUITAS_QS_V2=1`, Eingabe
-`stichprobe_v2 = ja`). Sonst ist alles wie im Betrieb: eigene Datenbank je Knoten, echtes
+Im Hauptnetz gilt diese Regel seit **19.11.2026 19:30 UTC** (Beleg unten). Für den Pilot
+wurde sie vorher nur im Testprozess der vier Knoten scharf geschaltet (`AEQUITAS_QS_V2=1`,
+Eingabe `stichprobe_v2 = ja`). Sonst ist alles wie im Betrieb: eigene Datenbank je Knoten, echtes
 HTTP, je ein Validator-Dienst, 3 von 4.
 
 **Lauf [44564851989](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44564851989)**
@@ -811,7 +811,13 @@ k = 1.760, Toleranz 2 %, je Validator ein eigener Auftrag, 8 Aufträge), beide T
   Lauf belegt den Ablauf über echte Knoten, nicht die Trennung der Rollen. Es liegt kein
   Gutachten vor.
 - **Stichtag im Hauptnetz:** freigegeben am 19.11.2026 für **19:30 UTC**
-  (`DEZENTRAL.md` 16 Schritt 6). Wirksam, sobald C1 mit diesem Stand läuft.
+  (`DEZENTRAL.md` 16 Schritt 6). C1-Deploy #107
+  ([44584732345](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44584732345))
+  um 18:33 UTC, grün.
+- **Belegt scharf:** Die Wache
+  ([44601606565](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44601606565),
+  19:45:58 UTC, grün) las aus `/api/status` von C1: „Quantengeld ab 1794934800 (aktiv),
+  probe_v2_ab 1795116600 (aktiv)“.
 
 ### 3.4 Bargeld-Verhalten ohne Quanten (Offline-Bargeld)
 
@@ -834,10 +840,16 @@ Bargeld. Das leistet das Offline-Bargeld (`docs/OFFLINE_BARGELD.md`):
 - Eine Note aus einem Cloud-Lauf als Wertträger. Sie beweist den Ablauf, nicht die
   Echtheit.
 - „Ein S-Token kann an zwei Stellen nicht doppelt ausgegeben werden“, ohne Bedingung.
-  Das gilt nur, solange keine Annahmestelle (und heute auch nicht das
-  Ausgabe-Werkzeug, das beide Stichproben lädt) vor der Bindung mit der Inhaberin
-  zusammenarbeitet. Die beiden Annahmestellen müssen einander vertrauen
-  (`DEZENTRAL.md` 16, `s_kette.py` Selbsttest 5i).
+  - **Bisheriger Weg** (`probe_art` 0): Das gilt nur, solange keine Annahmestelle (und
+    nicht das Ausgabe-Werkzeug, das beide Stichproben lädt) vor der Bindung mit der
+    Inhaberin zusammenarbeitet (`DEZENTRAL.md` 16, `s_kette.py` Selbsttest 5i).
+  - **Stichprobe v2** (`probe_art` 2, Werkzeug `--stichprobe-v2`, im Hauptnetz seit
+    19.11.2026 19:30 UTC): Vor Bindung und Wahl kennt keine Annahmestelle und nicht das
+    Werkzeug eine Stelle der Stichproben. Jeder Validator kennt nur die in seinem
+    Abschnitt. Befund 5i greift dann nicht.
+  - In beiden Wegen bleibt: Wer einen Abschnitt präpariert, kennt ihn. Heute ist C1 der
+    einzige Validator (t = v = 1) und kennt damit den ganzen Token. Dass ihn niemand
+    allein kennt, gilt erst mit mehreren Validatoren, die jeder selbst messen (A5).
 
 Diese Unterscheidung ist auch rechtlich klug, denn irreführende Werbung ist angreifbar.
 Für die Menschen, die AEQ halten, ist sie ehrlich.
