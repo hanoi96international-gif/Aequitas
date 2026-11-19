@@ -57,19 +57,31 @@ func qsp2Regel(t *testing.T, a *qsaWelt, tx Transaction, zeit int64) string {
 	return a.w.bescheid(a.w.cs, tx, zeit).regel
 }
 
+// Der Stichtag im Hauptnetz ist gesetzt (Freigabe des Betreibers am
+// 19.11.2026 fuer 19:30 UTC). Geprueft wird hier die Zeit davor -- mit einem
+// Override auf MaxInt64 (schlafend), damit der Test nicht von der Uhr und
+// nicht von der festen Testzeit (qwT0, nach dem Stichtag) abhaengt.
 func TestQuantenSProbeV2Kette_Schlafend(t *testing.T) {
-	if quantenSProbeV2Aktiv(4_000_000_000) {
-		t.Fatal("Stichprobe v2 ist ohne Freigabe des Betreibers scharf")
+	quantenSProbeV2AbOverride.Store(0)
+	if quantenSProbeV2Ab() != 1795116600 || quantenSProbeV2AbUnix == math_MaxInt64() {
+		t.Fatalf("Stichtag der Stichprobe v2 im Hauptnetz %d, erwartet 1795116600", quantenSProbeV2Ab())
 	}
-	// Der Deploy-Waechter liest den Stichtag aus /api/status: schlafend = kein Feld.
+	if quantenSProbeV2Aktiv(1795116600-1) || !quantenSProbeV2Aktiv(1795116600) {
+		t.Fatal("Stichtag: eine Sekunde davor aktiv oder am Stichtag nicht")
+	}
+	// Der Deploy-Waechter liest den Stichtag aus /api/status.
+	if quantenWStatus()["probe_v2_ab"] != int64(1795116600) {
+		t.Fatalf("Status ohne den Stichtag: %v", quantenWStatus())
+	}
+	t.Cleanup(func() { quantenSProbeV2AbOverride.Store(0) })
+	// Schlafend = kein Feld.
+	quantenSProbeV2AbOverride.Store(math_MaxInt64())
 	if _, da := quantenWStatus()["probe_v2_ab"]; da {
 		t.Fatal("Status meldet einen Stichtag der Stichprobe v2, obwohl sie schlaeft")
 	}
-	quantenSProbeV2AbOverride.Store(1_900_000_000)
-	if quantenWStatus()["probe_v2_ab"] != int64(1_900_000_000) {
-		t.Fatalf("Status: %v", quantenWStatus())
+	if quantenSProbeV2Aktiv(4_000_000_000) {
+		t.Fatal("schlafend und doch scharf")
 	}
-	quantenSProbeV2AbOverride.Store(0)
 	a := neueQsaWelt(t, 140)
 	a.praeparierenV2(t)
 	proben := a.probenV2(t)

@@ -161,6 +161,10 @@ func TestQuantenSAusgabeV2_OeffnungVertauscht(t *testing.T) {
 // Schlaeft die Stichprobe v2 auf der Kette, weist sie die Ausgabe ab (die
 // Kette hat das letzte Wort); das Werkzeug fragt deshalb vorher.
 func TestQuantenSAusgabeV2_KetteSchlaeft(t *testing.T) {
+	// Im Hauptnetz ist der Stichtag gesetzt; schlafend hier per Override
+	// (unabhaengig von Uhr und fester Testzeit).
+	quantenSProbeV2AbOverride.Store(math_MaxInt64())
+	t.Cleanup(func() { quantenSProbeV2AbOverride.Store(0) })
 	q, a, bs, _ := qsaWerkzeug(t, 256)
 	a.ProbeV2 = true
 	_, err := quantenSAusgabeLaufAbschnitte(context.Background(), a, bs, q.w.val, 3, &qsv2Netz{qsaNetz: &qsaNetz{qsNetz: &qsNetz{q: q}}}, &bytes.Buffer{})

@@ -856,3 +856,16 @@ seinen Werten (t − 1 Validatoren kennen genau ihre Abschnitte, Abschnitt 7).
    - **Was bleibt:** die Freigabe des Betreibers mit einem Stichtag
      (`quantenSProbeV2AbUnix`). Vorher müssen alle Knoten den Stand mit der Regel haben
      (seit #596 auf C1); der Deploy-Wächter verlangt mindestens 30 min Vorlauf.
+6. **Stichtag gesetzt (19.11.2026):** Der Betreiber hat freigegeben: „Stichtag heute so
+   schnell wie möglich“. `quantenSProbeV2AbUnix = 1795116600` = **19.11.2026 19:30 UTC**.
+   - Früher ging nicht. Der Deploy-Wächter verlangt beim Ausrollen mindestens 30 min
+     Vorlauf, davor liegen CI, Merge und die Freigabe des Deploys. Der Deploy muss also
+     bis 19:00 UTC laufen. Sonst hält der Wächter an, und es braucht einen neuen
+     Stichtag; der Wächter wird nicht gelockert.
+   - Wirksam ist der Stichtag erst, wenn C1 mit diesem Stand läuft (`/api/status` →
+     `quanten_w.probe_v2_ab`). Bis dahin schläft die Regel auf C1 weiter.
+   - Ab dem Stichtag: Ausgaben mit `probe_art = 2` und Anmelden mit Salzen. Der
+     bisherige Weg bleibt erlaubt; bestehende Token ändern sich nicht.
+   - Tests: Der Stichtag ist im Test festgeschrieben, samt Grenze (eine Sekunde davor
+     schlafend). Die Zeit davor wird per Override geprüft, unabhängig von der Uhr.
+     Gegenprobe: anderer Stichtag, `>` statt `>=` und schlafend, alle drei rot.
