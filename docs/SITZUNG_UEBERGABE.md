@@ -7,7 +7,14 @@ Repos); davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
-**Zuletzt (Sitzung „Weiter“, 19.11. ~09:45 UTC):**
+**Zuletzt (Sitzung „Weiter“, 19.11. ~15:10 UTC):**
+- **C1 läuft mit #595** (Deploy #104 grün). Deploy #105 für #596 (schlafende Kettenregel,
+  neuer Wächter-Schritt) wartet auf Freigabe `produktion`:
+  [44551534119](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44551534119).
+- **Nächster Schritt:** Werkzeug im v2-Weg (`quanten-s-ausgabe`), dabei den veralteten Kopf
+  von `quanten_s_probe_v2.go` („noch nicht eingehängt“) berichtigen.
+
+**Davor (19.11. ~09:45 UTC):**
 - **C1 läuft mit #592** (Deploy #102 [44476883826](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44476883826), grün).
 - **#593 gemergt (702f4490): Befund 5i** (`DEZENTRAL.md` 16, Prüfauftrag S 2 und S 8).
   - Eine Annahmestelle, die mit der Inhaberin zusammenarbeitet, lässt sie an beiden
