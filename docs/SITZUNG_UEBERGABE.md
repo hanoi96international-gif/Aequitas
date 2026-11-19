@@ -2,12 +2,12 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 19.11.2026 ~18:55 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
+Stand: 19.11.2026 ~19:05 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
 Repos); davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18:30 UTC Sitzung
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
-**Zuletzt (Sitzung „Weiter“, 19.11. ~18:55 UTC):**
+**Zuletzt (Sitzung „Weiter“, 19.11. ~19:05 UTC):**
 - **#598 gemergt (90e0e622): Pilot mit Stichprobe v2 grün** (`HEUTE.md` 3.3h, `DEZENTRAL.md` 16
   Schritt 5). Eingabe `stichprobe_v2`, Beobachter im Vier-Knoten-Test liest im Register jedes
   Knotens `probe_art` und die nachgerechneten Salze nach. Läufe
@@ -24,9 +24,9 @@ dezentrales Quantengeld“.
   Freigabe des Betreibers 19.11. ~17:50 UTC: „Stichtag heute so schnell wie möglich“
   (#599 gemergt, cb3b4948, mit Sicherheit und eigener Prüfung).
   - Aus der Sandbox ist `/api/status` von C1 nicht erreichbar (Netzsperre). Darum gibt die
-    Wache (`wache.yml`, alle 10 min) seit dem PR nach #599 `quanten_w.ab` und
+    Wache (`wache.yml`, alle 10 min) seit **#600 (fa17e401)** `quanten_w.ab` und
     `probe_v2_ab` als Hinweis aus; dort nach 19:30 UTC „probe_v2_ab 1795116600 (aktiv)“
-    nachsehen.
+    nachsehen und in `HEUTE.md` 3.3h / `DEZENTRAL.md` 16 belegen.
   - Danach: erster Hauptnetz-Token mit `--stichprobe-v2` (C1 hat t = v = 1; Rollen
     trennen, sobald der zweite Mensch da ist).
 - Davor: #597 gemergt (d079bf34, Werkzeug im v2-Weg, 14 Mutationen rot).
