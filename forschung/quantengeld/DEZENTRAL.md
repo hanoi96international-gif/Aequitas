@@ -883,3 +883,55 @@ seinen Werten (t − 1 Validatoren kennen genau ihre Abschnitte, Abschnitt 7).
        die Freigabe `quantenhardware`.
      - Der zweite Mensch als Validator (A5, Rollen trennen).
      - Ein Gutachten (Prüfauftrag S 2).
+7. **Hauptnetz-Weg im v2-Weg (vorbereitet, 19.11.2026):** Der erste Token mit
+   `probe_art = 2` auf dem Hauptnetz, C1 als Ausgeber und einziger Validator
+   (t = v = 1).
+   - **Größe:** Bei t = v = 1 verlangt die Tabelle der Kette k = 552 bei 2 % Toleranz
+     (672 bei 3 %, 840 bei 4 %). Ein Token hat also 1.104 Qubits, ein kleiner Auftrag.
+   - **C1 bekommt ein Messverzeichnis** (`deploy/quanten-c1-messverzeichnis.sh`, beim
+     Deploy vor dem Bauen):
+     - `/srv/aequitas-quanten`: Benutzer 10001, 0700, kein Verweis.
+     - `docker-compose.override.yml`: eine Kopie von `docker-compose.quanten.yml` mit
+       Kennzeile. Docker Compose liest sie bei jedem Aufruf im Verzeichnis, also auch
+       bei Rücknahme und Neustarts aus anderen Skripten. So hat der Knoten die
+       Messquelle immer oder nie.
+     - Eine fremde override-Datei, ein Verweis oder ein abweichendes `QS_VERZEICHNIS`
+       halten den Deploy an.
+     - Neu erreichbar auf C1: Abschnitts-Aufträge (ohne passende Messung abgewiesen)
+       und Vormerkungen (unterschrieben, Mensch mit Deckung, höchstens 8 wartend,
+       8 je Ausgeber und Tag, 32 am Tag; `DEZENTRAL.md` 15). C1 hat keine
+       Warteschlange, die misst; nach 8 Vormerkungen weist C1 weitere ab, bis der
+       Betreiber aufräumt.
+   - **Workflow** `quanten-s-ausgabe.yml`, Eingabe `weg = abschnitte-v2`:
+     - Prüft vor jeder Messung, dass die Stichprobe v2 auf der Kette gilt.
+     - Zieht die Basen der Inhaberin aus dem Zufall des Betriebssystems.
+     - Misst genau diesen Abschnitt (`hardware_ibm.py --s-abschnitt`, 5 Schüsse mit
+       Mehrheit).
+     - Legt die Messung über `deploy/quanten-s-ausgabe-abschnitt.sh` ins
+       Messverzeichnis: erst unter eigenem Namen 0600, dann per `ln`, nie
+       überschreiben.
+     - Startet `aequitasd quanten-s-ausgabe --stichprobe-v2`. Eine nicht verbrauchte
+       Messung wird danach entfernt.
+     - Im Modus `rauschen` nur die Messung mit dem Rauschmodell (Probe, keine Ausgabe).
+   - **Tests** (in CI):
+     - `scripts/test_quanten_s_ausgabe_abschnitt_skript.sh` (43 Fälle):
+       - Gutfall: Aufruf, Basen über stdin, Messung unter dem Namen der Basen mit 0600.
+       - Abbruch ohne Ablage und ohne Aufruf: Deckung, Toleranz, Name, Knotenbenutzer,
+         Verweise, Größen, Rechte und Besitzer des Verzeichnisses, Container, fehlende
+         oder andere Messquelle, schon vorhandene Messung (bleibt unverändert).
+       - Aufräumen auch im Fehlerfall.
+     - `scripts/test_quanten_c1_messverzeichnis.sh` (19 Fälle): anlegen, gleichbleibend,
+       eigenes altes override ersetzt, Rechte gerichtet; fremdes override, Verweise,
+       Datei statt Verzeichnis, anderes `QS_VERZEICHNIS`, fehlende Dateien und
+       falscher Knotenbenutzer halten an, ohne etwas zu ändern.
+     - Beide Tests auch ohne root grün.
+     - Gegenprobe: 14 Mutationen, 12 rot. Die 2 überlebenden sind gleichwertig (eine
+       doppelte Prüfung: `ln` scheitert ohnehin an einem vorhandenen Namen;
+       `[ -d ] && [ ! -L ]` fängt den Verweis).
+   - **Ehrlich dazu:**
+     - Für genau einen Validator im Abschnitts-Weg gibt es keinen eigenen Go-Test; die
+       Testwelten haben fünf Validatoren.
+     - Der Hauptnetz-Lauf selbst ist die Probe. Scheitert er nach der Ausgabe, kann die
+       Deckung des Tokens (1 AEQ) bis zur Frist gebunden sein.
+     - Wie am 17.11. laufen Präparation und Messung im selben Auftrag beim Betreiber,
+       und C1 kennt als einziger Validator den ganzen Token.

@@ -2,12 +2,12 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 19.11.2026 ~19:50 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
+Stand: 19.11.2026 ~20:10 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
 Repos); davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18:30 UTC Sitzung
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
-**Zuletzt (Sitzung „Weiter“, 19.11. ~19:50 UTC):**
+**Zuletzt (Sitzung „Weiter“, 19.11. ~20:10 UTC):**
 - **#598 gemergt (90e0e622): Pilot mit Stichprobe v2 grün** (`HEUTE.md` 3.3h, `DEZENTRAL.md` 16
   Schritt 5). Eingabe `stichprobe_v2`, Beobachter im Vier-Knoten-Test liest im Register jedes
   Knotens `probe_art` und die nachgerechneten Salze nach. Läufe
@@ -30,10 +30,15 @@ dezentrales Quantengeld“.
   - Die Wache läuft trotz `*/10` nur alle paar Stunden (GitHub drosselt). Für einen
     Beleg sofort: `wache.yml` per `workflow_dispatch` starten (nur lesend, keine Freigabe).
   - Doku zur Freischaltung: `HEUTE.md` 3.3h und 4, `DEZENTRAL.md` 16 Schritt 6,
-    Prüfauftrag S 2.
+    Prüfauftrag S 2 (**#601 gemergt, c9a964dd**).
   - **Nächste Schritte:**
     - Erster Hauptnetz-Token mit `--stichprobe-v2` (Messung auf dem Chip = Freigabe
-      `quantenhardware` des Betreibers; C1 hat t = v = 1).
+      `quantenhardware` des Betreibers; C1 hat t = v = 1). **Vorbereitet im PR (dieser
+      Stand, `DEZENTRAL.md` 16 Schritt 7):** Messverzeichnis auf C1 beim Deploy,
+      `quanten-s-ausgabe.yml` mit `weg = abschnitte-v2`, k = 552 bei 2 %. Reihenfolge:
+      PR mergen → C1-Deploy (Freigabe `produktion`, legt Verzeichnis und override an;
+      im Protokoll `AEQUITAS_QS_MESSQUELLE=/data/quanten`) → Workflow mit `modus = ibm`,
+      `weg = abschnitte-v2` (Freigaben `quantenhardware` und `produktion`).
     - Der zweite Mensch als Validator (Rollen trennen, A5).
     - Ein Gutachter (Prüfauftrag S 2).
 - Davor: #597 gemergt (d079bf34, Werkzeug im v2-Weg, 14 Mutationen rot).

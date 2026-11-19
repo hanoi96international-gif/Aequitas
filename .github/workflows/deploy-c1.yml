@@ -32,6 +32,7 @@ on:
       - 'deploy/deploy-c1.sh'
       - 'deploy/pruefe-knoten.sh'
       - 'deploy/rueckrollen-c1.sh'
+      - 'deploy/quanten-c1-messverzeichnis.sh'
   workflow_dispatch:
 permissions:
   contents: read
