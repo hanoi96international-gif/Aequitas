@@ -126,6 +126,45 @@ def probe_hash(K: str, b: int, probe: list[int]) -> bytes:
     return wk.h(DOM_PROBE, K.encode(), b"|", str(b).encode(), b"|", ",".join(map(str, sorted(probe))).encode())
 
 
+# STICHPROBE ERST NACH DER BINDUNG (DEZENTRAL.md 16, Befund 5i). Statt des
+# Hashes der ganzen Stichprobe (den nur kennt, wer die Stichprobe kennt) bindet
+# die Ausgabe je Annahmestelle den Hash aus den Teil-Hashes der Abschnitte.
+# Jeden Teil-Hash rechnet der Validator des Abschnitts selbst, gesalzen; das
+# Salz gibt er erst mit der Oeffnung heraus, und die erst nach der Bindung.
+DOM_PROBE_TEIL = b"aequitas-quanten-s-probe-teil-v1|"
+DOM_PROBE_V2 = b"aequitas-quanten-s-probe-v2|"
+DOM_PROBE_SALZ = b"aequitas-quanten-s-probe-salz-v1|"
+
+
+def probe_teil_hash(K: str, b: int, j: int, salz: bytes, stellen: list[int]) -> bytes:
+    """Teil-Hash des Abschnitts j (1-basiert) fuer Annahmestelle b: gesalzen,
+    damit auch kleine Abschnitte nicht durch Probieren zu erraten sind."""
+    if len(salz) != 32:
+        raise Abgewiesen("Teil-Hash: Salz")
+    return wk.h(DOM_PROBE_TEIL, K.encode(), b"|", str(b).encode(), b"|", str(j).encode(), b"|", salz, b"|",
+                ",".join(map(str, sorted(stellen))).encode())
+
+
+def probe_hash_v2(K: str, b: int, teile: list[bytes]) -> bytes:
+    """Bindung der Stichprobe von Stelle b aus den Teil-Hashes aller Abschnitte
+    (der Reihe nach)."""
+    if not teile or any(len(x) != 32 for x in teile):
+        raise Abgewiesen("Stichprobe v2: Teil-Hashes")
+    return wk.h(DOM_PROBE_V2, K.encode(), b"|", str(b).encode(), b"|", b"".join(teile))
+
+
+def probe_v2_pruefen(K: str, b: int, n: int, n_val: int, probe: list[int], salze: list[bytes]) -> bytes:
+    """Was die Kette beim Anmelden nachrechnet: die Stichprobe nach Abschnitten
+    geteilt, je Abschnitt der Teil-Hash mit dem Salz, daraus die Bindung."""
+    if len(salze) != n_val:
+        raise Abgewiesen("Stichprobe v2: ein Salz je Abschnitt")
+    teile = []
+    for j, ab in enumerate(abschnitte(n, n_val), 1):
+        lo, hi = ab[0], ab[-1]
+        teile.append(probe_teil_hash(K, b, j, salze[j - 1], [i for i in probe if lo <= i <= hi]))
+    return probe_hash_v2(K, b, teile)
+
+
 def vorlage_text(K: str, b: int, x: list[int]) -> str:
     """Was die Nutzerin bei der Vorlage unterschreibt: dieses Token, diese
     Stelle, dieses x. Ohne ihre Unterschrift kann keine Stelle einloesen --
@@ -156,7 +195,7 @@ class KetteS:
 
     def ausgeben(self, K: str, n: int, inhaber: str, wurzel: bytes | None = None, deckung: int = 0,
                  proben: list[bytes] | None = None, t: int = 1, n_val: int = 1, tol: int = TOL_PROZENT,
-                 von: str | None = None, stellen: list[str] | None = None):
+                 von: str | None = None, stellen: list[str] | None = None, probe_art: int = 1):
         """Ausgabe. Mit Deckung (von zahlt sie in den Topf): Wurzel der
         Pruefsummen, je Stelle die Bindung ihrer Stichprobe, Schwelle t
         von n_val Validatoren, Toleranz."""
@@ -176,11 +215,12 @@ class KetteS:
             self.topf += deckung
         self.token[K] = {"n": n, "inhaber": inhaber, "d": None, "c": None, "wurzel": wurzel, "deckung": deckung,
                          "proben": list(proben or []), "t": t, "n_val": n_val, "tol": tol, "eingeloest": False,
-                         "tot": False, "fehl": 0, "anmeldung": None, "stellen": list(stellen) if stellen else None}
+                         "tot": False, "fehl": 0, "anmeldung": None, "stellen": list(stellen) if stellen else None,
+                         "probe_art": probe_art}
 
     # -- Einloesen auf der Kette (S2b): anmelden, dann Offenlegen in Teilen
     def anmelden(self, K: str, b: int, stelle_konto: str, x: list[int], vorlage_sig: str, probe: list[int],
-                 zeit: int = 0):
+                 zeit: int = 0, salze: list[bytes] | None = None):
         """Die Annahmestelle b meldet einen angenommenen Token zum Einloesen
         an: mit der Unterschrift der Nutzerin unter ihre Vorlage und ihrer
         Stichprobe (passt zur Bindung bei der Ausgabe). Je Token hoechstens
@@ -200,7 +240,12 @@ class KetteS:
         if not hmac.compare_digest(sig(self.konto_schluessel[e["inhaber"]], vorlage_text(K, b, x)), vorlage_sig):
             raise Abgewiesen("Einloesen: Vorlage nicht von der Inhaberin unterschrieben")
         sortiert = sorted(probe)
-        if len(set(sortiert)) != len(sortiert) or probe_hash(K, b, sortiert) != e["proben"][b]:
+        if len(set(sortiert)) != len(sortiert) or any(not 0 <= i < e["n"] for i in sortiert):
+            raise Abgewiesen("Einloesen: Stichprobe passt nicht zur Ausgabe")
+        if e["probe_art"] == 2:
+            if salze is None or probe_v2_pruefen(K, b, e["n"], e["n_val"], sortiert, salze) != e["proben"][b]:
+                raise Abgewiesen("Einloesen: Stichprobe passt nicht zur Ausgabe (v2)")
+        elif probe_hash(K, b, sortiert) != e["proben"][b]:
             raise Abgewiesen("Einloesen: Stichprobe passt nicht zur Ausgabe")
         e["anmeldung"] = {"b": b, "stelle": stelle_konto, "x": list(x), "probe": sortiert, "offen": 0,
                           "treffer": 0, "fehler": 0, "zeit": zeit}
@@ -260,10 +305,10 @@ class KetteS:
             e["anmeldung"] = None
 
     def einloesen(self, K: str, b: int, stelle_konto: str, x: list[int], vorlage_sig: str,
-                  probe: list[int], offen, zeit: int = 0) -> bool:
+                  probe: list[int], offen, zeit: int = 0, salze: list[bytes] | None = None) -> bool:
         """Bequemlichkeit: anmelden und alle Teile offenlegen. Nicht bestanden
         wirft Abgewiesen (wie bisher)."""
-        self.anmelden(K, b, stelle_konto, x, vorlage_sig, probe, zeit)
+        self.anmelden(K, b, stelle_konto, x, vorlage_sig, probe, zeit, salze)
         e = self.token[K]
         if len(offen) != len(e["anmeldung"]["probe"]):
             e["anmeldung"] = None
@@ -500,6 +545,46 @@ class Praeparator:
         if b not in (0, 1):
             raise Abgewiesen("Oeffnung: Stelle 0 oder 1")
         return {i: v for i, v in self._v.items() if stellen_bit(v) == b}
+
+    # -- Stichprobe erst nach der Bindung (DEZENTRAL.md 16)
+    def _salz(self, b: int) -> bytes:
+        """Salz des Teil-Hashes fuer Stelle b, aus den geheimen Werten dieses
+        Abschnitts abgeleitet (nur der Validator kennt sie)."""
+        roh = b",".join(str(self._v[i]).encode() for i in self.abschnitt)
+        return wk.h(DOM_PROBE_SALZ, self.K.encode(), b"|", str(self.x).encode(), b"|", str(b).encode(), b"|", roh)
+
+    def _stellen(self, b: int) -> list[int]:
+        return sorted(i for i, v in self._v.items() if stellen_bit(v) == b)
+
+    def probe_teil(self, b: int) -> bytes:
+        """Fuer die Ausgabe: der Teil-Hash seines Abschnitts fuer Stelle b. Er
+        verraet keine Stelle (gesalzen); der Ausgeber kennt danach keine."""
+        if b not in (0, 1):
+            raise Abgewiesen("Teil-Hash: Stelle 0 oder 1")
+        return probe_teil_hash(self.K, b, self.x, self._salz(b), self._stellen(b))
+
+    def probe_zaehlung(self, b: int, y: dict[int, int], x: dict[int, int]) -> tuple[int, int]:
+        """Fuer die exakte Probe der ehrlichen Vorlage (quanten_s_toleranz.go):
+        Treffer (y = u) und Fehler (x != t) auf seinen Stellen fuer Stelle b --
+        nur Zahlen. Er kennt y und x, weil er die Messung selbst gemacht hat."""
+        if sorted(y) != self.abschnitt or sorted(x) != self.abschnitt:
+            raise Abgewiesen("Zaehlung: Basen oder Ergebnisse passen nicht zum Abschnitt")
+        tr = fe = 0
+        for i in self._stellen(b):
+            if y[i] == self._u[i]:
+                tr += 1
+                fe += x[i] != self._t[i]
+        return tr, fe
+
+    def oeffnung_nach_bindung(self, b: int, kette: "KetteS") -> tuple[dict[int, int], bytes]:
+        """Oeffnung fuer Stelle b ERST, wenn Bindung d und Wahl c auf der Kette
+        stehen -- vorher kann eine bestochene Stelle der Inhaberin nichts
+        verraten, weil sie selbst nichts weiss (Befund 5i). Dazu das Salz, damit
+        die Kette beim Anmelden den Teil-Hash nachrechnen kann."""
+        e = kette.token.get(self.K)
+        if e is None or e["d"] is None or e["c"] is None:
+            raise Abgewiesen("Oeffnung: erst nach Bindung und Wahl auf der Kette")
+        return self.oeffnung(b), self._salz(b)
 
 
 class AusgabeAbschnitte:
@@ -1096,6 +1181,70 @@ def selbsttest() -> bool:
         festlegen(k8c, K8, st8c, d8c, c8b)
         soll(not (st8c[0].pruefen(K8, x8) and st8c[1].pruefen(K8, x8)),
              "Gegenprobe 5i: ohne verratene Stellen an beiden durch")
+        # 5j. AUSWEG zu 5i: Stichprobe erst nach der Bindung (DEZENTRAL.md 16).
+        # Bei der Ausgabe meldet jeder Validator nur je Stelle einen gesalzenen
+        # Teil-Hash seines Abschnitts und die Zaehlung (Treffer, Fehler) -- der
+        # Ausgeber kennt keine Stelle der Stichproben, und eine Annahmestelle
+        # bekommt ihre erst, wenn d und c auf der Kette stehen. Eine bestochene
+        # Stelle weiss vor der Bindung nichts, was sie verraten koennte.
+        K10 = hashlib.sha256(rng.randbytes(16)).hexdigest()
+        a10 = AusgabeAbschnitte(K10, n, ts, nv, [random.Random(rng.randrange(1 << 62)) for _ in range(nv)])
+        y10 = [rng.randrange(2) for _ in range(n)]
+        x10 = a10.messen(y10, 0.0, rng)
+        teile10 = [[p_.probe_teil(b) for p_ in a10.praep] for b in (0, 1)]
+        proben10 = [probe_hash_v2(K10, b, teile10[b]) for b in (0, 1)]
+        zaehl10 = [[p_.probe_zaehlung(b, {i: y10[i] for i in p_.abschnitt}, {i: x10[i] for i in p_.abschnitt})
+                    for p_ in a10.praep] for b in (0, 1)]
+        summe10 = [(sum(z[0] for z in zaehl10[b]), sum(z[1] for z in zaehl10[b])) for b in (0, 1)]
+        k10 = KetteS()
+        for name in ("ausgabe", "anna", "laden0", "laden1"):
+            k10.konto(name, 50_000_000 if name == "ausgabe" else 0, name.encode() * 4)
+        k10.ausgeben(K10, n, "anna", a10.wurzel, 10_000_000, proben10, ts, nv, von="ausgabe",
+                     stellen=["laden0", "laden1"], probe_art=2)
+        for p_ in a10.praep:
+            for b in (0, 1):
+                abgewiesen(lambda: p_.oeffnung_nach_bindung(b, k10), "5j: Oeffnung vor der Bindung")
+        k10.binden(K10, "anna", [y10[i] ^ 1 for i in range(n)])     # ehrlich fuer Stelle 1 (c = 0)
+        for p_ in a10.praep:
+            abgewiesen(lambda: p_.oeffnung_nach_bindung(0, k10), "5j: Oeffnung vor der Wahl")
+        k10.waehlen(K10, "anna", 0)
+        oe10, salze10 = [{}, {}], [[], []]
+        for p_ in a10.praep:
+            for b in (0, 1):
+                o_, sz = p_.oeffnung_nach_bindung(b, k10)
+                oe10[b].update(o_)
+                salze10[b].append(sz)
+        st10 = [stelle_laden_bit(b, K10, n, a10.wurzel, a10.blaetter, ts, nv, oe10[b], labor_k=k) for b in (0, 1)]
+        for s_ in st10:
+            s_.abgleichen(k10)
+        soll(st10[1].pruefen(K10, x10) is True and st10[0].pruefen(K10, x10) is False, "5j: Gutfall und Doppelvorlage")
+        # Die Zaehlung der Validatoren ist genau die Pruefung der Stelle bei
+        # ehrlicher Vorlage (Basis y) -- die exakte Probe geht ohne die Stellen.
+        for b in (0, 1):
+            tr = sum(1 for i, (uk, _) in st10[b].daten.items() if y10[i] == uk)
+            fe = sum(1 for i, (uk, tk) in st10[b].daten.items() if y10[i] == uk and x10[i] != tk)
+            soll(summe10[b] == (tr, fe), f"5j: Zaehlung der Validatoren fuer Stelle {b}")
+        # Auf der Kette: die Stichprobe passt nur ganz und mit den richtigen Salzen.
+        vs10 = sig(k10.konto_schluessel["anna"], vorlage_text(K10, 1, x10))
+        probe10 = sorted(oe10[1])
+        falsches_salz = list(salze10[1])
+        falsches_salz[0] = bytes(32)
+        for name, pr_, sz_ in (("Teilmenge", probe10[:-1], salze10[1]), ("falsches Salz", probe10, falsches_salz),
+                               ("ohne Salz", probe10, None), ("Salz der anderen Stelle", probe10, salze10[0]),
+                               ("Stichprobe der anderen Stelle", sorted(oe10[0]), salze10[0]),
+                               ("eine Stelle mehr", sorted(probe10 + [next(iter(oe10[0]))]), salze10[1])):
+            abgewiesen(lambda: k10.anmelden(K10, 1, "laden1", x10, vs10, pr_, 100, sz_), f"5j: {name}")
+        soll(k10.einloesen(K10, 1, "laden1", x10, vs10, probe10, a10.offenlegung(probe10, [1, 2, 3]), 200, salze10[1]) is True,
+             "5j: Einloesen mit Teil-Hashes")
+        # Gegenprobe: dieselbe Ausgabe mit probe_art 1 (Hash der ganzen Stichprobe)
+        # nimmt die Teil-Hashes nicht an.
+        k11 = KetteS()
+        for name in ("ausgabe", "anna", "laden0", "laden1"):
+            k11.konto(name, 50_000_000 if name == "ausgabe" else 0, name.encode() * 4)
+        k11.ausgeben(K10, n, "anna", a10.wurzel, 10_000_000, proben10, ts, nv, von="ausgabe", stellen=["laden0", "laden1"])
+        k11.binden(K10, "anna", [y10[i] ^ 1 for i in range(n)])
+        k11.waehlen(K10, "anna", 0)
+        abgewiesen(lambda: k11.anmelden(K10, 1, "laden1", x10, vs10, probe10, 100, salze10[1]), "5j: v2-Stichprobe bei probe_art 1")
         # Missbrauch: ein Praeparator schiebt Stelle 0 eine Stelle der anderen
         # unter; ein falscher Wert; Werte zurueckgehalten (zu klein); fremde Wurzel.
         fremd = dict(oe[0])

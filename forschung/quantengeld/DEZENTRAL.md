@@ -677,8 +677,8 @@ durchkommen?“ **Ja, und zwar ohne ein einziges Geheimnis der Validatoren.**
   - Das ist die Antwort auf Prüfauftrag S, Punkt 8: Diese Rollen müssen getrennt sein.
     Die Bindung der Validatoren an verschiedene Menschen reicht dafür nicht.
 
-**Ausweg (Entwurf, noch nicht gebaut): Die Stichprobe bleibt bis zur Bindung bei den
-Validatoren.** Eine Annahmestelle braucht ihre Stichprobe erst, wenn die Inhaberin
+**Ausweg (spezifiziert in `s_kette.py` 5j, im Knoten noch nicht gebaut): Die Stichprobe
+bleibt bis zur Bindung bei den Validatoren.** Eine Annahmestelle braucht ihre Stichprobe erst, wenn die Inhaberin
 vorlegt, und das ist immer nach der Bindung. Vorher braucht sie niemand, wenn:
 1. **Jeder Validator die Probe für seinen Abschnitt selbst rechnet.** Er kennt dort u, t,
    x, y und die Stellen-Bits, weil er die Messung selbst gemacht hat. Er meldet dem
@@ -703,6 +703,34 @@ fest. Offen bleibt nur, was jede Stichproben-Prüfung voraussetzt: Ein Validator
 Bits verrät, verrät sie für seinen Abschnitt. Das ist dieselbe Schwelle wie heute bei
 seinen Werten (t − 1 Validatoren kennen genau ihre Abschnitte, Abschnitt 7).
 
-**Nächster Schritt:** Den Ausweg in `s_kette.py` spezifizieren, mit Angriff und
-Gegenprobe wie 5i. Danach kommen Dienst, Werkzeug und die Kettenregel mit Stichtag. Die
-Kettenregel ist eine Konsensänderung und braucht die Freigabe des Betreibers.
+**Spezifiziert (`s_kette.py`, Selbsttest 5j):**
+- `Praeparator.probe_teil(b)`: gesalzener Teil-Hash seiner Stellen für Annahmestelle b.
+  Das Salz leitet er aus seinen geheimen Werten ab; nur er kennt es.
+- `Praeparator.probe_zaehlung(b, y, x)`: Treffer und Fehler auf seinen Stellen, nur Zahlen.
+  Ihre Summe ist genau das, was die Stelle bei ehrlicher Vorlage prüft (getestet). Die
+  exakte Probe der ehrlichen Vorlage geht damit, ohne dass jemand eine Stelle kennt.
+- `probe_hash_v2`: die Bindung auf der Kette aus den Teil-Hashes der Reihe nach. Beim
+  Anmelden rechnet die Kette sie aus der Stichprobe der Stelle und den Salzen nach
+  (`probe_v2_pruefen`, Token mit `probe_art = 2`). Alte Token bleiben unverändert.
+- `Praeparator.oeffnung_nach_bindung(b, kette)`: Öffnung und Salz erst, wenn d und c auf
+  der Kette stehen.
+- Tests:
+  - Gutfall und Doppelvorlage; Einlösen auf der Kette mit Teil-Hashes.
+  - Öffnung vor der Bindung und vor der Wahl abgewiesen (für jeden Validator und jede
+    Stelle).
+  - Anmelden abgewiesen mit: Teilmenge, einer Stelle mehr, falschem Salz, ohne Salz, dem
+    Salz der anderen Stelle, der Stichprobe der anderen Stelle.
+  - Ein Token mit `probe_art = 1` nimmt Teil-Hashes nicht an.
+- Gegenprobe: 8 Mutationen, alle rot:
+  - Öffnung ohne Bindung; Öffnung ohne Wahl;
+  - v2 nicht geprüft; Salz ignoriert; Abschnitte nicht getrennt;
+  - Zählung ohne Basis; Teil-Hash über alle Stellen; Salz für beide Stellen gleich.
+- Die Prüfvektoren sind unverändert.
+
+**Nächste Schritte:**
+1. Ein Prüfvektor für `probe_hash_v2` aus der Spezifikation (wie `--vektor-abschnitte`).
+2. Dienst: Teil-Hash und Zählung in der Abschnitts-Antwort (unterschrieben); Öffnung erst
+   nach Bindung und Wahl. Nur der Dienst, nicht die Kette; das Werkzeug zählt zusammen.
+3. Kettenregel `probe_art = 2` mit eigenem Stichtag. Das ist eine **Konsensänderung**
+   und braucht die Freigabe des Betreibers. Bis dahin gilt die Regel oben: Rollen
+   trennen, die Stellen müssen einander vertrauen.
