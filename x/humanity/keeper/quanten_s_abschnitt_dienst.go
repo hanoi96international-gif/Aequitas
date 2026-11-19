@@ -669,6 +669,13 @@ func (d *quantenWDienst) oeffnungFuerStelle(K string, b int) (string, error) {
 		if tok == nil || tok.token == nil || tok.token.D == nil || tok.token.C == -1 {
 			return "", quantenWFehler("Oeffnung erst nach Bindung und Wahl auf der Kette (Stichprobe v2)")
 		}
+		// Nichts vor der Finalitaet (wie die Anteile, quanten_w_validator.go):
+		// faellt der Block der Bindung noch aus der Kette, haette eine
+		// bestochene Stelle die Stichprobe gesehen, und die Inhaberin baende
+		// danach mit diesem Wissen neu.
+		if !d.reif(quantenSBindungSicht(K, tok.token)) {
+			return "", quantenWFehler("Oeffnung erst, wenn Bindung und Wahl final sind (Stichprobe v2)")
+		}
 	}
 	pub, err := quantenSSchluesselPruefen(st.StellenSchluessel[b], st.Stellen[b])
 	if err != nil {
@@ -697,6 +704,13 @@ func (d *quantenWDienst) oeffnungFuerStelle(K string, b int) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(c), nil
+}
+
+// quantenSBindungSicht: Schluessel der Sichtung von Bindung d und Wahl c
+// eines Tokens (fuer reif); aendert sich d oder c, ist es eine neue Sichtung.
+func quantenSBindungSicht(K string, t *quantenSToken) string {
+	h := sha256.Sum256([]byte(fmt.Sprintf("%s|%d", quantenWBitsHex(t.D), t.C)))
+	return "s2|" + K + "|" + hex.EncodeToString(h[:])
 }
 
 // quantenSOeffnungEntschluesseln: die Annahmestelle liest die Oeffnung von

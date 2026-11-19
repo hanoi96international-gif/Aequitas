@@ -22,8 +22,8 @@ dezentrales Quantengeld“.
     `quanten_s_probe_v2.go` (noch nicht eingehängt). Kein C1-Deploy nötig (nichts
     aufgerufen); er kommt mit dem nächsten Merge, der den Knoten ändert.
   - **PR (dieser Stand): Stichprobe v2 im Dienst** (`DEZENTRAL.md` 16, Schritt 2): Teil-Hash
-    und Zählung in der Antwort, Öffnung erst nach Bindung und Wahl; bisherige Aufträge
-    unverändert. 11 Mutationen rot.
+    und Zählung in der Antwort, Öffnung erst nach Bindung und Wahl **und deren
+    Finalität** (eigener Befund); bisherige Aufträge unverändert. 14 Mutationen rot.
   - **Nächster Schritt:** Kettenregel `probe_art = 2` schlafend und das Werkzeug im
     v2-Weg (neue Felder vor dem Stichtag übergehen, nicht abweisen). Scharf erst mit
     Freigabe des Betreibers.

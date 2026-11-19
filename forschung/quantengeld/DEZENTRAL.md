@@ -745,7 +745,12 @@ seinen Werten (t − 1 Validatoren kennen genau ihre Abschnitte, Abschnitt 7).
      Annahmestelle Teil-Hash und Zählung in der Antwort; die Unterschrift des Validators
      deckt beides.
    - Das Salz (32 Byte, Zufall) liegt verschlüsselt im Tresor. Die Öffnung gibt es erst,
-     wenn d und c auf der Kette stehen, und das Salz steckt im verschlüsselten Inhalt.
+     wenn d und c auf der Kette stehen **und final sind**, und das Salz steckt im
+     verschlüsselten Inhalt.
+   - Die Finalität kam aus der eigenen Sicherheitsprüfung (`reif`, wie bei den Anteilen).
+     Fiele der Block der Bindung noch aus der Kette, hätte eine bestochene Stelle die
+     Stichprobe gesehen, und die Inhaberin bände danach mit diesem Wissen neu.
+   - Der Takt sichtet Bindung und Wahl, sobald sie stehen; ab dann läuft die Uhr.
      `quantenSOeffnungEntschluesselnV2` verlangt es; die bisherige Lesart weist eine
      Öffnung mit Salz ab.
    - Bisherige Aufträge (`probe_art` fehlt): Nachrichten, Antwort und Öffnung bleiben
@@ -757,7 +762,9 @@ seinen Werten (t − 1 Validatoren kennen genau ihre Abschnitte, Abschnitt 7).
      - Wiederholung liefert dasselbe.
      - Missbrauch: Art 1, 3 und −2; Art ohne Unterschrift; geänderte Teile oder Zählung
        in der Antwort; v1-Öffnung als v2 gelesen.
-   - Gegenprobe: 11 Mutationen rot, eine erst nach Schärfung des Tests (v2 ohne Salz).
+   - Gegenprobe: 14 Mutationen rot, eine erst nach Schärfung des Tests (v2 ohne Salz).
+     Drei davon gelten der Finalität: Öffnung ohne `reif`, Takt sichtet nicht, Takt
+     ohne Prüfung der Wahl.
    - Das Werkzeug nutzt v2 noch nicht. Es braucht die Kettenregel, um anzumelden.
 3. Kettenregel `probe_art = 2` mit eigenem Stichtag, dazu das Werkzeug im v2-Weg. Das ist
    eine **Konsensänderung** und braucht die Freigabe des Betreibers. Bis dahin gilt die

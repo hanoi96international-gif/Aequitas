@@ -1,6 +1,7 @@
 package keeper
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -125,6 +126,28 @@ func TestQuantenSProbeV2Dienst_Gutfall(t *testing.T) {
 		}
 	}
 	w.annehmen(s.waehlenTx(w.anna, "1"), a.zeit+3)
+	// Gewaehlt, aber noch nicht final (Checkpoint unter der Hoehe, bei der die
+	// Bindung zuerst gesehen wurde): keine Oeffnung.
+	a.hoehe.Store(50)
+	a.final.Store(40)
+	for x := 1; x <= v; x++ {
+		if _, err := a.d[x-1].oeffnungFuerStelle(a.K, 0); err == nil {
+			t.Fatalf("Validator %d oeffnet vor der Finalitaet der Bindung", x)
+		}
+	}
+	// Der Takt haelt die Sichtung fest (sonst raeumte sichtRaeumen sie weg und
+	// die Oeffnung wuerde nie reif).
+	tok := w.cs.quantenWJetzt().Token[a.K]
+	sicht := quantenSBindungSicht(a.K, tok.token)
+	for x := 1; x <= v; x++ {
+		gesehen := map[string]bool{}
+		a.d[x-1].taktS(context.Background(), a.K, a.d[x-1].eintrag(a.K), tok.token, a.zeit+4, gesehen)
+		if !gesehen[sicht] {
+			t.Fatalf("Validator %d: Takt sichtet die Bindung nicht", x)
+		}
+		a.d[x-1].sichtRaeumen(gesehen)
+	}
+	a.final.Store(50)
 	// Nach der Wahl: jede Stelle laedt ihre Stichprobe samt Salzen und rechnet
 	// die Bindung v2 nach; die Zaehlungen stimmen mit dem, was sie prueft.
 	for b := 0; b < 2; b++ {
