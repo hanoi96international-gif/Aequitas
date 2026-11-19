@@ -728,7 +728,17 @@ seinen Werten (t − 1 Validatoren kennen genau ihre Abschnitte, Abschnitt 7).
 - Die Prüfvektoren sind unverändert.
 
 **Nächste Schritte:**
-1. Ein Prüfvektor für `probe_hash_v2` aus der Spezifikation (wie `--vektor-abschnitte`).
+1. ~~Prüfvektor und Bausteine in Go~~ **fertig (19.11.2026):**
+   - `s_kette.py --vektor-probe-v2` → `testdata/quanten_s_probe_v2_vektor.json`; CI
+     vergleicht Byte für Byte.
+   - `quanten_s_probe_v2.go`: Teil-Hash, Bindung v2 und das Nachrechnen der Kette.
+     Das Nachrechnen schließt ab bei doppelten Stellen, Stellen außerhalb, falscher
+     Zahl der Salze oder Stelle ≠ 0/1. Noch nirgends eingehängt.
+   - Test gegen den Vektor (auch unsortiert) und 25 Missbrauchsfälle: andere Bindung
+     oder ausdrücklicher Fehler.
+   - Gegenprobe: 10 Mutationen rot, 3 davon erst nach Schärfung der Tests (ein Salz zu
+     viel, unsortiert, Stelle 2). Zwei Grenzen prüft auch `quantenSAbschnitt`; beide
+     Schichten zusammen mutiert sind rot.
 2. Dienst: Teil-Hash und Zählung in der Abschnitts-Antwort (unterschrieben); Öffnung erst
    nach Bindung und Wahl. Nur der Dienst, nicht die Kette; das Werkzeug zählt zusammen.
 3. Kettenregel `probe_art = 2` mit eigenem Stichtag. Das ist eine **Konsensänderung**

@@ -1,0 +1,94 @@
+{
+ "K": "8662b7af563bd58d216e0fed3f17b14729debc56a104a9e1ad3af2729ba7f495",
+ "n": 40,
+ "n_val": 4,
+ "stellen": [
+  {
+   "b": 0,
+   "stichprobe": [
+    2,
+    3,
+    4,
+    8,
+    9,
+    10,
+    13,
+    15,
+    17,
+    18,
+    20,
+    22,
+    26,
+    27,
+    29,
+    31,
+    32,
+    35,
+    36,
+    37
+   ],
+   "salze": [
+    "a872a5393884507d499ad9d09518e9d608ecb11b2a7125f36f4eda9b388263a4",
+    "9ec0c101f27a5a8e2dcfa827304f1f07b1a831eaa44082bf5eb7eeae054dffdb",
+    "c5557c911798cc9417a1876d9f6624f88d5ba713f26a36568747beb248a83c6c",
+    "f7a02c859b5f61e428892653f69f455c01c8d9be44dd93c10b31c5ae62681e3f"
+   ],
+   "teile": [
+    "dc70e5598138997a02ca27c7a2f98e7f2d289c283b4458fcef177ca4e640be89",
+    "2297d81d825e717c3ca55f80daddfbca24e5184bc72d65adff0f6a14e6b7ee6d",
+    "8dab516306a51fd3e46ab388d7f7af135588512b6c61a71bd0dcbe920cee86cc",
+    "9587ec83cba0a3f4f4b11b1cbb4e674a39fd20001df859afdbb5bb7963ccb7f4"
+   ],
+   "bindung": "f6386c679b6132b24a243ede5407780d6b1229b75ff89e6cd589e14124633d60"
+  },
+  {
+   "b": 1,
+   "stichprobe": [
+    0,
+    1,
+    5,
+    6,
+    7,
+    11,
+    12,
+    14,
+    16,
+    19,
+    21,
+    23,
+    24,
+    25,
+    28,
+    30,
+    33,
+    34,
+    38,
+    39
+   ],
+   "salze": [
+    "ebbdc8cbf148d9054731ead826b71592fb1cd9a38cbe508922e0454dd0f74dc3",
+    "5c1aed871d3998c324e48629711d69478990f10cc05e324d2be6292405f3b8fc",
+    "e069616f02a5822a5acb47da62087bbc3c3ca074e2299ad93d390ec70717d87e",
+    "31911b7c9ad3227154ee85cae212dfd6abb9feba96686d1e63e6a5d708442bdb"
+   ],
+   "teile": [
+    "0cfadb257f9e2044871acc65baabc1f95879e6e6000badca80018e6456bf9e2f",
+    "54a6336d3b9e7e45635f31f1d02598a9a18e79b4fb45a5f2bae6146a4b28d0a8",
+    "b9343c7a3e23f9325a1e38119c5ecb7c033b1abee80be69b258155f6ea98ce2e",
+    "24dab363d34ce612f7b7d45e18fabef4a940bddef712e6877ca452fd05dedf57"
+   ],
+   "bindung": "0f4375e947015c2ba2622d84d811dd7f6f56a29003c8f25fa80e722b41c88ed1"
+  }
+ ],
+ "teil_einzeln": {
+  "b": 1,
+  "j": 3,
+  "salz": "1111111111111111111111111111111111111111111111111111111111111111",
+  "stellen": [
+   2,
+   5,
+   7
+  ],
+  "hash": "a89cfda9e2afc0da4c2aa4edda7fb9cbf00cb1ed4c23e5060a977d3ea958b764"
+ }
+}
