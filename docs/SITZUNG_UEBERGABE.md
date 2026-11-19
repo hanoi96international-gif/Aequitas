@@ -20,7 +20,8 @@ dezentrales Quantengeld“.
 - **PR (dieser Stand): Pilot-Eingabe `stichprobe_v2`** und ein Beobachter im
   Vier-Knoten-Test, der im Register jedes Knotens nachliest (`probe_art 2`, ein Salz je
   Validator). Lokal unter `-race` grün; Gegenprobe: Werkzeug im alten Weg → rot.
-  Danach ein zweiter Pilot-Lauf mit dem Beobachter.
+  Zweiter Pilot-Lauf mit dem Beobachter grün ([44568310804](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44568310804),
+  „probe_art 2, 4 Salze“ in beiden Tests).
 - **Danach:** Freigabe des Betreibers mit Stichtag (nur die Zahl `quantenSProbeV2AbUnix`,
   mindestens 30 min in der Zukunft; alle Knoten vorher aktualisiert).
 

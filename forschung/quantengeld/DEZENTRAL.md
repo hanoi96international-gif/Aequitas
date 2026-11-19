@@ -848,6 +848,11 @@ seinen Werten (t − 1 Validatoren kennen genau ihre Abschnitte, Abschnitt 7).
    - Nachgeschärft: Der Test liest jetzt im Register jedes Knotens nach, welcher Weg
      wirklich lief (`probe_art`, Zahl der nachgerechneten Salze). Vorher hätte er auch
      grün werden können, wenn der v2-Weg nicht gegriffen hätte.
+   - Lauf 2 mit dieser Prüfung
+     [44568310804](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44568310804):
+     beide Tests grün. Auf der Kette standen jedes Mal `probe_art 2` und 4 nachgerechnete
+     Salze. Fehler 0/1.787 und 0/1.772. Die Stelle der Inhaberin war diesmal Stelle 0,
+     damit sind beide Richtungen belegt.
    - **Was bleibt:** die Freigabe des Betreibers mit einem Stichtag
      (`quantenSProbeV2AbUnix`). Vorher müssen alle Knoten den Stand mit der Regel haben
      (seit #596 auf C1); der Deploy-Wächter verlangt mindestens 30 min Vorlauf.
