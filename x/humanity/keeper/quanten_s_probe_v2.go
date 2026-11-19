@@ -21,7 +21,35 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 )
+
+// STICHTAG DER STICHPROBE V2 (Kettenregel). MaxInt64 = schlafend: vor dem
+// Stichtag gibt jeder Knoten einem S-Satz mit probe_art oder salze einen
+// Befund -- er kommt nicht in die Annahme, und ein Block mit ihm scheitert
+// beim Nachspielen. Das muss so sein: ein aelterer Knoten verwirft die
+// unbekannten Felder beim Einlesen, kann den Blockhash (json.Marshal der
+// Transaktionen) eines solchen Blocks also nicht nachrechnen und weist ihn
+// ab. Uebergehen statt Abweisen liesse alte und neue Knoten auseinanderlaufen.
+// Den Stichtag setzt nur der Betreiber (Konsensaenderung, DEZENTRAL.md 16).
+// Als Zahl geschrieben: der Deploy-Waechter liest sie
+// (.github/neustart/quanten-s-probe-v2-nicht-verpasst.sh); 9223372036854775807
+// = math.MaxInt64 = schlafend.
+var (
+	quantenSProbeV2AbUnix int64 = 9223372036854775807
+)
+
+// quantenSProbeV2AbOverride: nur fuer Tests (0 = Stichtag oben).
+var quantenSProbeV2AbOverride atomic.Int64
+
+func quantenSProbeV2Ab() int64 {
+	if v := quantenSProbeV2AbOverride.Load(); v != 0 {
+		return v
+	}
+	return quantenSProbeV2AbUnix
+}
+
+func quantenSProbeV2Aktiv(t int64) bool { return t >= quantenSProbeV2Ab() }
 
 var (
 	quantenSDomProbeTeil = []byte("aequitas-quanten-s-probe-teil-v1|")

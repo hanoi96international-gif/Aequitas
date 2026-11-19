@@ -160,6 +160,11 @@ func quantenWStatus() map[string]interface{} {
 	if ab := quantenWAb(); ab != math.MaxInt64 {
 		m["ab"] = ab
 	}
+	// Stichprobe v2 (quanten_s_probe_v2.go): fehlt = schlafend (Deploy-Waechter
+	// .github/neustart/quanten-s-probe-v2-nicht-verpasst.sh).
+	if ab := quantenSProbeV2Ab(); ab != math.MaxInt64 {
+		m["probe_v2_ab"] = ab
+	}
 	return m
 }
 
@@ -217,6 +222,10 @@ type QuantenWAngaben struct {
 	X       string   `json:"x,omitempty"`
 	Probe   []int    `json:"probe,omitempty"`
 	Vorlage string   `json:"vorlage,omitempty"`
+	// Stichprobe v2 (quanten_s_probe_v2.go, schlafend bis zum Stichtag):
+	// ProbeArt 2 bei der Ausgabe; beim Anmelden je Abschnitt das Salz (hex).
+	ProbeArt int      `json:"probe_art,omitempty"`
+	Salze    []string `json:"salze,omitempty"`
 	// Unterschrift der Wallet (Praegen, Anfrage, Antwort): EIP-191 ODER ML-DSA.
 	WalletSig string   `json:"wallet_sig,omitempty"`
 	PQ        *PQKonto `json:"pq,omitempty"`
@@ -262,6 +271,13 @@ func quantenWNurEigeneFelder(tx *Transaction) bool {
 	}
 	q := *tx.QuantenW
 	q.K, q.Index = "", 0
+	// Ein leeres salze (Stichprobe v2) verwirft ein aelterer Knoten wie ein
+	// fehlendes, und omitempty laesst es beim Hashen weg: fuer JEDE Art gleich
+	// behandeln -- sonst naehme der aeltere Knoten einen Block an, den der neue
+	// abweist (quantenSProbeV2AbUnix).
+	if len(q.Salze) == 0 {
+		q.Salze = nil
+	}
 	switch tx.Type {
 	case quantenWPraegenTxArt:
 		q.N, q.T, q.Wurzel, q.Validatoren, q.Anker, q.Bestaetigungen, q.Deckung, q.WalletSig, q.PQ, q.Anteile, q.Tol = 0, 0, "", nil, nil, nil, 0, "", nil, 0, 0

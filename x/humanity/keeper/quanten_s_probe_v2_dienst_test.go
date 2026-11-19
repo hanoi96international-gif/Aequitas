@@ -77,6 +77,20 @@ func (a *qsaWelt) probenV2(t *testing.T) [2][32]byte {
 // sie bei der Ausgabe nicht -- erst beim Anmelden), dann Bindung, ohne Wahl.
 func (a *qsaWelt) ausgebenV2(t *testing.T, proben [2][32]byte) {
 	t.Helper()
+	a.ausgebenV2Art(t, proben, 0)
+}
+
+// ausgebenV2Art: wie ausgebenV2; mit art = 2 als Token der Stichprobe v2
+// (die Kette muss sie dann kennen, quantenSProbeV2Aktiv).
+func (a *qsaWelt) ausgebenV2Art(t *testing.T, proben [2][32]byte, art int) {
+	t.Helper()
+	w, s := a.w, a.s
+	w.annehmen(a.ausgebenV2Tx(t, proben, art), a.zeit+1)
+	w.annehmen(s.bindenTx(w.anna), a.zeit+2)
+}
+
+func (a *qsaWelt) ausgebenV2Tx(t *testing.T, proben [2][32]byte, art int) Transaction {
+	t.Helper()
 	w, s := a.w, a.s
 	s.messbasen, s.x = a.y, a.x
 	ph := []string{hex.EncodeToString(proben[0][:]), hex.EncodeToString(proben[1][:])}
@@ -93,9 +107,9 @@ func (a *qsaWelt) ausgebenV2(t *testing.T, proben [2][32]byte) {
 		}
 		q.Bestaetigungen = append(q.Bestaetigungen, sig)
 	}
-	q.WalletSig = personalSign(w.t, w.keys[w.praeger], quantenWSAusgabeNachricht(w.praeger, a.K, a.n, 3, wurzel, w.val, ph, q.Annahme, w.anna, 10_000_000, a.zeit, qsTol))
-	w.annehmen(Transaction{Type: quantenWSAusgebenTxArt, Wallet: w.praeger, DistributionAt: a.zeit, QuantenW: q}, a.zeit+1)
-	w.annehmen(s.bindenTx(w.anna), a.zeit+2)
+	q.ProbeArt = art
+	q.WalletSig = personalSign(w.t, w.keys[w.praeger], quantenWSAusgabeNachrichtArt(w.praeger, a.K, a.n, 3, wurzel, w.val, ph, q.Annahme, w.anna, 10_000_000, a.zeit, qsTol, art))
+	return Transaction{Type: quantenWSAusgebenTxArt, Wallet: w.praeger, DistributionAt: a.zeit, QuantenW: q}
 }
 
 func TestQuantenSProbeV2Dienst_Gutfall(t *testing.T) {

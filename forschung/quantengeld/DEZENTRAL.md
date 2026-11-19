@@ -766,13 +766,43 @@ seinen Werten (t − 1 Validatoren kennen genau ihre Abschnitte, Abschnitt 7).
      Drei davon gelten der Finalität: Öffnung ohne `reif`, Takt sichtet nicht, Takt
      ohne Prüfung der Wahl.
    - Das Werkzeug nutzt v2 noch nicht. Es braucht die Kettenregel, um anzumelden.
-3. Kettenregel `probe_art = 2` mit eigenem Stichtag, dazu das Werkzeug im v2-Weg. Das ist
-   eine **Konsensänderung** und braucht die Freigabe des Betreibers. Bis dahin gilt die
-   Regel oben: Rollen trennen, die Stellen müssen einander vertrauen.
-   - **Wichtig beim Bau:** Knoten lesen die Felder einer Transaktion ohne strenge
-     Prüfung; ein älterer Knoten übergeht neue Felder (`probe_art`, `salze`).
-     „Schlafend“ heißt deshalb, dass vor dem Stichtag auch der neue Knoten diese Felder
-     übergeht und den Token wie bisher behandelt. Weist er sie ab, laufen alte und neue
-     Knoten schon vor dem Stichtag auseinander.
+3. **Kettenregel `probe_art = 2`: gebaut, schlafend (19.11.2026).** Das ist eine
+   **Konsensänderung**; scharf wird sie erst, wenn der Betreiber den Stichtag
+   `quantenSProbeV2AbUnix` setzt. Bis dahin gilt die Regel oben: Rollen trennen, die
+   Stellen müssen einander vertrauen.
+   - Ausgabe mit `probe_art = 2`: Der Ausgeber unterschreibt `|probe:2` mit. Ein Token
+     trägt die Art, andere Arten als 0 und 2 werden abgewiesen.
+   - Anmelden bei einem v2-Token: je Abschnitt ein Salz, die Kette rechnet
+     `quantenSProbeV2Pruefen` nach. Ein bisheriger Token weist Salze ab.
+   - Register: `probe_art` und `salze` nur, wenn gesetzt. Bisherige Token behalten ihr
+     Register Wort für Wort (getestet), der StateRoot bleibt gleich. Das Lesen schließt
+     ab: unbekannte Art, fehlende oder falsche Salze, Salze an einem bisherigen Token.
+   - Schlafend: Vor dem Stichtag bekommt jeder S-Satz mit diesen Feldern einen Befund
+     (Grund unten). Ein leeres `salze` gilt wie ein fehlendes, derselbe Bescheid und
+     derselbe Hash.
+   - Deploy-Wächter `.github/neustart/quanten-s-probe-v2-nicht-verpasst.sh` (nach dem
+     Muster von W/S) und `/api/status` → `quanten_w.probe_v2_ab`, nur wenn gesetzt.
+     Getestet schlafend und mit gesetztem Stichtag.
+   - Tests (`quanten_s_probe_v2_kette_test.go`): ganzer Weg nach dem Stichtag.
+     - Dienst v2 → Ausgabe v2 → Bindung, Wahl, Finalität → Stichproben mit Salzen.
+     - Doppelvorlage an Stelle 1 abgewiesen, ehrliche Vorlage an Stelle 0 eingelöst
+       (Validatoren legen offen, die Deckung geht an die Stelle).
+     - Missbrauch: Art 1 und 3; Art ohne und mit falschem Wortlaut unterschrieben;
+       Anmelden ohne Salze, mit falschem, fehlendem, fremdem oder kaputtem Salz, mit
+       Teilmenge, mit fremder Stichprobe.
+     - Register rund und fail-closed.
+   - Gegenprobe: 15 Mutationen rot, zwei erst nach Schärfung der Tests (Art 3 ohne
+     Anmeldung, Salze an einem bisherigen Token im Register).
+   - **Was bleibt:** das Werkzeug im v2-Weg (`quanten-s-ausgabe`, nächster Schritt) und
+     dann die Freigabe des Betreibers mit einem Stichtag.
+   - **Wichtig beim Bau (berichtigt):** Ein älterer Knoten verwirft unbekannte Felder
+     beim Einlesen. Der Blockhash läuft aber über `json.Marshal` der Transaktionen
+     (`calculateBlockHash`); einen Block mit `probe_art` oder `salze` kann er also nicht
+     nachrechnen und weist ihn ganz ab.
+     - „Schlafend“ heißt deshalb: Vor dem Stichtag gibt der neue Knoten jedem Satz mit
+       diesen Feldern einen Befund. Damit kommt er nicht in die Annahme, und ein Block
+       mit ihm scheitert beim Nachspielen. Alte und neue Knoten weisen denselben Block ab.
+     - „Übergehen“ (eine frühere Fassung dieser Notiz) wäre falsch: Der neue Knoten nähme
+       den Block an, der alte nicht.
    - Das Register trägt `probe_art` und die Salze nur, wenn sie gesetzt sind. Der
      StateRoot bestehender Token bleibt so gleich.

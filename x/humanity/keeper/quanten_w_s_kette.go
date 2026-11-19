@@ -84,18 +84,19 @@ func quantenWSNurEigeneFelder(tx *Transaction, q QuantenWAngaben) bool {
 	if tx.QuantenW.Index != 0 {
 		return false
 	}
+	// (Leeres salze ist schon in quantenWNurEigeneFelder wie fehlend.)
 	ohneWallet := tx.Wallet == "" && tx.DistributionAt == 0
 	switch tx.Type {
 	case quantenWSAusgebenTxArt:
 		q.N, q.T, q.Wurzel, q.Validatoren, q.Bestaetigungen, q.Deckung, q.Tol = 0, 0, "", nil, nil, 0, 0
-		q.Inhaber, q.Annahme, q.Proben, q.WalletSig, q.PQ, q.Anteile = "", nil, nil, "", nil, 0
+		q.Inhaber, q.Annahme, q.Proben, q.WalletSig, q.PQ, q.Anteile, q.ProbeArt = "", nil, nil, "", nil, 0, 0
 		return reflect.DeepEqual(q, QuantenWAngaben{})
 	case quantenWSBindenTxArt:
 		q.D, q.WalletSig, q.PQ = "", "", nil
 	case quantenWSWaehlenTxArt:
 		q.C, q.WalletSig, q.PQ = "", "", nil
 	case quantenWSAnmeldenTxArt:
-		q.B, q.X, q.Probe, q.Vorlage, q.WalletSig, q.PQ = "", "", nil, "", "", nil
+		q.B, q.X, q.Probe, q.Vorlage, q.WalletSig, q.PQ, q.Salze = "", "", nil, "", "", nil, nil
 	case quantenWSOffenlegenTxArt:
 		q.Ab, q.Offen, q.Wert, q.WertAn, q.Urteil = 0, nil, 0, "", ""
 		return reflect.DeepEqual(q, QuantenWAngaben{}) && ohneWallet
@@ -119,6 +120,33 @@ func quantenWSAusgabeNachricht(wallet, K string, n, t int, wurzel string, valida
 	return fmt.Sprintf("%s|chain:%d|%s|%s|%d|%d|%s|%s|%s|%s|%s|%d|%d|%d", quantenWSDomAusgabe, eingefroreneChainID,
 		strings.ToLower(wallet), K, n, t, wurzel, strings.Join(validatoren, ","), strings.Join(proben, ","),
 		strings.Join(stellen, ","), strings.ToLower(inhaber), deckung, zeit, tol)
+}
+
+// quantenWSAusgabeNachrichtArt: wie quantenWSAusgabeNachricht; bei der
+// Stichprobe v2 (probeArt 2) mit "|probe:2" -- der Ausgeber bindet die Art,
+// bisherige Ausgaben behalten ihren Wortlaut.
+func quantenWSAusgabeNachrichtArt(wallet, K string, n, t int, wurzel string, validatoren, proben, stellen []string, inhaber string, deckung, zeit int64, tol, probeArt int) string {
+	m := quantenWSAusgabeNachricht(wallet, K, n, t, wurzel, validatoren, proben, stellen, inhaber, deckung, zeit, tol)
+	if probeArt != 0 {
+		m += fmt.Sprintf("|probe:%d", probeArt)
+	}
+	return m
+}
+
+// quantenWSSalzeLesen: je Abschnitt ein Salz (32 Byte hex).
+func quantenWSSalzeLesen(roh []string, v int) ([][32]byte, bool) {
+	if len(roh) != v {
+		return nil, false
+	}
+	out := make([][32]byte, v)
+	for i, s := range roh {
+		h, ok := quantenWHex32(s)
+		if !ok {
+			return nil, false
+		}
+		out[i] = h
+	}
+	return out, true
 }
 
 // quantenWSBestaetigungNachricht: was Validator x (1-basiert) bei der Ausgabe
@@ -228,6 +256,10 @@ func (e *quantenWSEintrag) tiefeKopie() *quantenWSEintrag {
 	if a := e.token.Anmeldung; a != nil {
 		k := *a
 		k.X, k.Probe = append([]int(nil), a.X...), append([]int(nil), a.Probe...)
+		k.Salze = append([][32]byte(nil), a.Salze...)
+		if a.Salze == nil {
+			k.Salze = nil
+		}
 		t.Anmeldung = &k
 	}
 	return &quantenWSEintrag{token: &t, Anteile: e.Anteile, Zeit: e.Zeit, Stellen: e.Stellen}
@@ -242,6 +274,9 @@ type quantenWSAnmeldungForm struct {
 	Treffer int    `json:"treffer,omitempty"`
 	Fehler  int    `json:"fehler,omitempty"`
 	Zeit    int64  `json:"zeit"`
+	// Stichprobe v2: je Abschnitt das Salz (hex); fehlt bei bisherigen Token,
+	// damit ihr Register und der StateRoot gleich bleiben.
+	Salze []string `json:"salze,omitempty"`
 }
 
 type quantenWSTokenForm struct {
@@ -261,19 +296,23 @@ type quantenWSTokenForm struct {
 	Anteile   int64                   `json:"anteile"`
 	Zeit      int64                   `json:"zeit"`
 	Stellen   [2]string               `json:"stellen"`
+	ProbeArt  int                     `json:"probe_art,omitempty"` // 2 = Stichprobe v2; fehlt = wie bisher
 }
 
 func (e *quantenWSEintrag) form(K string) quantenWSTokenForm {
 	t := e.token
 	f := quantenWSTokenForm{K: K, N: t.N, Inhaber: t.Inhaber, Wurzel: hex.EncodeToString(t.Wurzel[:]), Deckung: t.Deckung,
 		Proben: [2]string{hex.EncodeToString(t.Proben[0][:]), hex.EncodeToString(t.Proben[1][:])},
-		T:      t.T, NVal: t.NVal, Tol: t.Tol, C: t.C, Fehl: t.Fehl, Anteile: e.Anteile, Zeit: e.Zeit, Stellen: e.Stellen}
+		T:      t.T, NVal: t.NVal, Tol: t.Tol, C: t.C, Fehl: t.Fehl, Anteile: e.Anteile, Zeit: e.Zeit, Stellen: e.Stellen, ProbeArt: t.ProbeArt}
 	if t.D != nil {
 		f.D = quantenWBitsHex(t.D)
 	}
 	if a := t.Anmeldung; a != nil {
 		f.Anmeldung = &quantenWSAnmeldungForm{B: a.B, Stelle: a.Stelle, X: quantenWBitsHex(a.X), Probe: a.Probe,
 			Offen: a.Offen, Treffer: a.Treffer, Fehler: a.Fehler, Zeit: a.Zeit}
+		for _, z := range a.Salze {
+			f.Anmeldung.Salze = append(f.Anmeldung.Salze, hex.EncodeToString(z[:]))
+		}
 	}
 	return f
 }
@@ -297,6 +336,10 @@ func quantenWSTokenLesen(f quantenWSTokenForm) (*quantenWSEintrag, error) {
 	if err != nil {
 		return falsch("Groessen")
 	}
+	if f.ProbeArt != 0 && f.ProbeArt != 2 {
+		return falsch("Art der Stichprobe")
+	}
+	t.ProbeArt = f.ProbeArt
 	if f.D != "" {
 		if t.D, ok1 = quantenWBitsAusHex(f.D, f.N); !ok1 {
 			return falsch("Bindung")
@@ -317,11 +360,17 @@ func quantenWSTokenLesen(f quantenWSTokenForm) (*quantenWSEintrag, error) {
 				return falsch("Stichprobe der Anmeldung")
 			}
 		}
-		if quantenSProbeHash(f.K, a.B, a.Probe) != t.Proben[a.B] {
+		var salze [][32]byte
+		if t.ProbeArt == 2 {
+			if salze, ok = quantenWSSalzeLesen(a.Salze, f.NVal); !ok {
+				return falsch("Salze der Anmeldung")
+			}
+		}
+		if !t.probePasst(f.K, a.B, a.Probe, salze) || (t.ProbeArt != 2 && len(a.Salze) != 0) {
 			return falsch("Stichprobe passt nicht zur Ausgabe")
 		}
 		t.Anmeldung = &quantenSAnmeldung{B: a.B, Stelle: a.Stelle, X: x, Probe: append([]int(nil), a.Probe...),
-			Offen: a.Offen, Treffer: a.Treffer, Fehler: a.Fehler, Zeit: a.Zeit}
+			Offen: a.Offen, Treffer: a.Treffer, Fehler: a.Fehler, Zeit: a.Zeit, Salze: salze}
 	}
 	return &quantenWSEintrag{token: t, Anteile: f.Anteile, Zeit: f.Zeit, Stellen: f.Stellen}, nil
 }
@@ -341,6 +390,12 @@ func quantenWSStellenGueltig(st [2]string, inhaber string) bool {
 
 func (cs *ChainState) quantenWSBescheidLocked(ctx context.Context, tx *Transaction, wallet string, reg *quantenWRegister, blockZeit int64) (quantenWBescheid, error) {
 	q := tx.QuantenW
+	// Stichprobe v2 schlaeft bis zum Stichtag: ein Satz mit ihren Feldern
+	// bekommt einen Befund (kommt so in keinen Block -- siehe
+	// quantenSProbeV2AbUnix, warum Uebergehen falsch waere).
+	if (q.ProbeArt != 0 || len(q.Salze) != 0) && !quantenSProbeV2Aktiv(blockZeit) {
+		return quantenWBefund("quanten_w_s_probe_v2", "Stichprobe v2 ist noch nicht aktiv"), nil
+	}
 	if tx.Type == quantenWSAusgebenTxArt {
 		return cs.quantenWSAusgebenBescheidLocked(ctx, tx, wallet, reg, blockZeit)
 	}
@@ -402,7 +457,15 @@ func (cs *ChainState) quantenWSBescheidLocked(ctx context.Context, tx *Transacti
 		if !kanonischeSignatur(q.Vorlage) || pruefePersonalSignGemerkt(quantenSVorlageText(q.K, b, x), q.Vorlage, e.Inhaber) != nil {
 			return quantenWBefund("quanten_w_s_vorlage", "Vorlage nicht von der Inhaberin unterschrieben"), nil
 		}
-		if err := e.anmelden(q.K, b, wallet, x, q.Probe, blockZeit); err != nil {
+		var salze [][32]byte
+		if e.ProbeArt == 2 {
+			if salze, ok = quantenWSSalzeLesen(q.Salze, e.NVal); !ok {
+				return quantenWBefund("quanten_w_form", "Anmelden: je Abschnitt ein Salz (%d)", e.NVal), nil
+			}
+		} else if len(q.Salze) != 0 {
+			return quantenWBefund("quanten_w_form", "Anmelden: Salze nur bei Stichprobe v2"), nil
+		}
+		if err := e.anmelden(q.K, b, wallet, x, q.Probe, salze, blockZeit); err != nil {
 			return quantenWBefund("quanten_w_regel", "%v", err), nil
 		}
 
@@ -497,11 +560,15 @@ func (cs *ChainState) quantenWSAusgebenBescheidLocked(ctx context.Context, tx *T
 		}
 		gesehen[v] = true
 	}
+	if q.ProbeArt != 0 && q.ProbeArt != 2 {
+		return quantenWBefund("quanten_w_form", "Art der Stichprobe %d", q.ProbeArt), nil
+	}
 	tok, err := neuerQuantenSToken(q.N, inhaber, wurzel, q.Deckung, proben, q.T, len(q.Validatoren), q.Tol)
 	if err != nil {
 		return quantenWBefund("quanten_w_form", "%v", err), nil
 	}
-	if err := quantenWUnterschrift(q, quantenWSAusgabeNachricht(wallet, q.K, q.N, q.T, q.Wurzel, q.Validatoren, q.Proben, q.Annahme, inhaber, q.Deckung, zeit, q.Tol), wallet, blockZeit); err != nil {
+	tok.ProbeArt = q.ProbeArt
+	if err := quantenWUnterschrift(q, quantenWSAusgabeNachrichtArt(wallet, q.K, q.N, q.T, q.Wurzel, q.Validatoren, q.Proben, q.Annahme, inhaber, q.Deckung, zeit, q.Tol, q.ProbeArt), wallet, blockZeit); err != nil {
 		return quantenWBefund("quanten_w_unterschrift", "Ausgeber %s: %v", kurzAdresse(wallet), err), nil
 	}
 	if u, err := cs.quantenWValidatorenLocked(ctx, q.Validatoren, q.Bestaetigungen, func(x int) string {

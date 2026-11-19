@@ -2,7 +2,7 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 19.11.2026 ~11:00 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
+Stand: 19.11.2026 ~12:30 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
 Repos); davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18:30 UTC Sitzung
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
@@ -21,12 +21,15 @@ dezentrales Quantengeld“.
   - **#594 gemergt (822dc7bb):** Prüfvektor `--vektor-probe-v2` und Go-Bausteine
     `quanten_s_probe_v2.go` (noch nicht eingehängt). Kein C1-Deploy nötig (nichts
     aufgerufen); er kommt mit dem nächsten Merge, der den Knoten ändert.
-  - **PR (dieser Stand): Stichprobe v2 im Dienst** (`DEZENTRAL.md` 16, Schritt 2): Teil-Hash
+  - **#595 gemergt (bb5f5cb0): Stichprobe v2 im Dienst** (`DEZENTRAL.md` 16, Schritt 2): Teil-Hash
     und Zählung in der Antwort, Öffnung erst nach Bindung und Wahl **und deren
     Finalität** (eigener Befund); bisherige Aufträge unverändert. 14 Mutationen rot.
-  - **Nächster Schritt:** Kettenregel `probe_art = 2` schlafend und das Werkzeug im
-    v2-Weg (neue Felder vor dem Stichtag übergehen, nicht abweisen). Scharf erst mit
-    Freigabe des Betreibers.
+  - **PR (dieser Stand): Kettenregel `probe_art = 2`, schlafend** (`DEZENTRAL.md` 16,
+    Schritt 3), mit Deploy-Wächter und `/api/status`. Ganzer v2-Weg im Test eingelöst.
+    Wichtig: vor dem Stichtag **abweisen**, nicht übergehen, denn der Blockhash läuft
+    über das JSON der Transaktionen.
+  - **Nächster Schritt:** Werkzeug im v2-Weg. Danach die Freigabe des Betreibers mit
+    Stichtag; nur die Zahl `quantenSProbeV2AbUnix` ändert sich.
 - **#592 gemergt (f0ca4d53): Basen automatisch zum Validator** (`DEZENTRAL.md` 15).
   - Endpunkt `POST /api/quanten-w/validator/vormerken` (unterschrieben, Mensch mit
     Deckung, begrenzt: 8 wartend, 8 je Ausgeber und Tag, 32 am Tag).
