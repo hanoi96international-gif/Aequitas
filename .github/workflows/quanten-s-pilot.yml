@@ -88,6 +88,7 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$K" =~ ^[1-9][0-9]{0,3}$ ]] && [ "$K" -le 8192 ] || { echo "::error::k = $K (1 bis 8192)"; exit 1; }
+          [[ "$V2" =~ ^(nein|ja)$ ]] || { echo "::error::stichprobe_v2 = $V2"; exit 1; }
           [ "$V2" = nein ] || [ "$AUSGABE" = abschnitte ] || { echo "::error::stichprobe_v2 = ja nur mit ausgabe = abschnitte"; exit 1; }
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -126,6 +127,7 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$K" =~ ^[1-9][0-9]{0,3}$ ]] && [ "$K" -le 8192 ] || { echo "::error::k = $K (1 bis 8192)"; exit 1; }
+          [[ "$V2" =~ ^(nein|ja)$ ]] || { echo "::error::stichprobe_v2 = $V2"; exit 1; }
           [ "$V2" = nein ] || [ "$AUSGABE" = abschnitte ] || { echo "::error::stichprobe_v2 = ja nur mit ausgabe = abschnitte"; exit 1; }
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

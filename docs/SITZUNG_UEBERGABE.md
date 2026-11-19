@@ -2,21 +2,27 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 19.11.2026 ~15:10 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
+Stand: 19.11.2026 ~16:40 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
 Repos); davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18:30 UTC Sitzung
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
-**Zuletzt (Sitzung „Weiter“, 19.11. ~16:20 UTC):**
-- **C1 läuft mit #595** (Deploy #104 grün). Deploy #105 für #596 (schlafende Kettenregel,
-  neuer Wächter-Schritt) wartet auf Freigabe `produktion`:
-  [44551534119](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44551534119).
+**Zuletzt (Sitzung „Weiter“, 19.11. ~16:40 UTC):**
+- **C1 läuft mit #596** (Deploy #105 [44551534119](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44551534119)
+  grün; schlafende Kettenregel und ihr Wächter sind drauf). Deploy #106 für #597 (nur
+  Werkzeug) wartet auf Freigabe `produktion`:
+  [44564356053](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44564356053).
 - **#597 gemergt (d079bf34): Werkzeug im v2-Weg** (`--stichprobe-v2`, `DEZENTRAL.md` 16 Schritt 4),
   Kopf von `quanten_s_probe_v2.go` berichtigt. 14 Mutationen rot.
-- **PR (dieser Stand): Pilot mit Stichprobe v2** (Eingabe `stichprobe_v2`, im Vier-Knoten-Test
-  `AEQUITAS_QS_V2=1`, Regel nur im Testprozess scharf). Lauf im Rauschmodell auf dem Zweig.
+- **Pilot mit Stichprobe v2 grün** ([44564851989](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44564851989),
+  Rauschmodell, k 1.760, Toleranz 2 %, beide Tests, auch mit Ausfall; `HEUTE.md` 3.3h,
+  `DEZENTRAL.md` 16 Schritt 5).
+- **PR (dieser Stand): Pilot-Eingabe `stichprobe_v2`** und ein Beobachter im
+  Vier-Knoten-Test, der im Register jedes Knotens nachliest (`probe_art 2`, ein Salz je
+  Validator). Lokal unter `-race` grün; Gegenprobe: Werkzeug im alten Weg → rot.
+  Danach ein zweiter Pilot-Lauf mit dem Beobachter.
 - **Danach:** Freigabe des Betreibers mit Stichtag (nur die Zahl `quantenSProbeV2AbUnix`,
-  alle Knoten vorher aktualisiert).
+  mindestens 30 min in der Zukunft; alle Knoten vorher aktualisiert).
 
 **Davor (19.11. ~09:45 UTC):**
 - **C1 läuft mit #592** (Deploy #102 [44476883826](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44476883826), grün).

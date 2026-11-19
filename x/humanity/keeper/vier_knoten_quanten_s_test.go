@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -99,6 +100,98 @@ func qsV2AusUmgebung(t *testing.T, abschnitte bool) bool {
 		t.Fatalf("AEQUITAS_QS_V2 = %q: 0 oder 1", os.Getenv("AEQUITAS_QS_V2"))
 		return false
 	}
+}
+
+// qsKettenSicht: was die Kette selbst zu einem S-Token festhaelt (nicht, was
+// das Werkzeug meint): jede beobachtete Art der Stichprobe, die Zahl der
+// Validatoren und die groesste Zahl Salze einer Anmeldung.
+type qsKettenSicht struct {
+	Arten []int
+	NVal  int
+	Salze int
+}
+
+// qsKetteBeobachten: liest bis zum Halt alle 200 ms das Register jedes
+// lebenden Knotens. Begrenzt: eine Goroutine, sie endet mit halt (auch per
+// t.Cleanup, falls der Test vorher abbricht). Erst nach halt wird die Sicht
+// gelesen (kein gemeinsamer Zugriff).
+func qsKetteBeobachten(t *testing.T, netz *vierKnotenNetz) (halt func() map[string]*qsKettenSicht) {
+	gesehen := map[string]*qsKettenSicht{}
+	stop, fertig := make(chan struct{}), make(chan struct{})
+	go func() {
+		defer close(fertig)
+		tick := time.NewTicker(200 * time.Millisecond)
+		defer tick.Stop()
+		for {
+			for _, k := range netz.ks {
+				if k.aus.Load() {
+					continue
+				}
+				cs, _, _ := k.teile()
+				qsRegisterLesen(cs, gesehen)
+			}
+			select {
+			case <-stop:
+				return
+			case <-tick.C:
+			}
+		}
+	}()
+	var einmal sync.Once
+	halt = func() map[string]*qsKettenSicht {
+		einmal.Do(func() { close(stop); <-fertig })
+		return gesehen
+	}
+	t.Cleanup(func() { halt() })
+	return halt
+}
+
+func qsRegisterLesen(cs *ChainState, gesehen map[string]*qsKettenSicht) {
+	cs.mu.RLock()
+	defer cs.mu.RUnlock()
+	for K, e := range cs.quantenWJetzt().Token {
+		if e == nil || e.token == nil {
+			continue
+		}
+		s := gesehen[K]
+		if s == nil {
+			s = &qsKettenSicht{}
+			gesehen[K] = s
+		}
+		neu := true
+		for _, a := range s.Arten {
+			if a == e.token.ProbeArt {
+				neu = false
+			}
+		}
+		if neu {
+			s.Arten = append(s.Arten, e.token.ProbeArt)
+		}
+		s.NVal = e.token.NVal
+		if a := e.token.Anmeldung; a != nil && len(a.Salze) > s.Salze {
+			s.Salze = len(a.Salze)
+		}
+	}
+}
+
+// qsKettenSichtPruefen: v2 = auf jedem beobachteten Stand probe_art 2, und
+// die Kette hat beim Anmelden je Validator ein Salz nachgerechnet; sonst
+// probe_art 0 und kein Salz.
+func qsKettenSichtPruefen(s *qsKettenSicht, v2 bool, validatoren int) error {
+	art, salze := 0, 0
+	if v2 {
+		art, salze = 2, validatoren
+	}
+	if s == nil {
+		return fmt.Errorf("Token nie im Register gesehen")
+	}
+	if len(s.Arten) != 1 || s.Arten[0] != art {
+		return fmt.Errorf("probe_art %v auf der Kette, erwartet %d", s.Arten, art)
+	}
+	if s.NVal != validatoren || s.Salze != salze {
+		return fmt.Errorf("%d Validatoren, Anmeldung mit %d Salzen; erwartet %d und %d", s.NVal, s.Salze, validatoren, salze)
+	}
+	return nil
 }
 
 // qsToleranzAusUmgebung: im Pilot (quanten-s-pilot.yml, Eingabe toleranz)
@@ -326,6 +419,7 @@ func qsVierKnotenModus(t *testing.T, ausfall, abschnitte bool) {
 			weg.anhalten()
 		}}
 	}
+	beobachterHalt := qsKetteBeobachten(t, netz)
 	beginn := time.Now()
 	var erg *QuantenSAusgabeErgebnis
 	if abschnitte {
@@ -342,6 +436,12 @@ func qsVierKnotenModus(t *testing.T, ausfall, abschnitte bool) {
 	if erg.Doppelvorlage != "abgewiesen" || erg.Vorlage != "eingeloest" || erg.Stellen[erg.B] != ausgeber.addr {
 		t.Fatalf("Ergebnis: %+v", erg)
 	}
+	// Welcher Weg wirklich lief, sagt die Kette, nicht das Werkzeug.
+	sicht := beobachterHalt()[erg.K]
+	if err := qsKettenSichtPruefen(sicht, v2, len(netz.ks)); err != nil {
+		t.Fatalf("Auf der Kette: %v", err)
+	}
+	t.Logf("Auf der Kette: probe_art %d, %d Validatoren, Anmeldung mit %d Salzen nachgerechnet", sicht.Arten[0], sicht.NVal, sicht.Salze)
 
 	// Was jeder Validator-Dienst getan hat (nur Zaehler): zeigt, ob sich
 	// Zustaendiger und Ersatz gegenseitig behindert haben.
@@ -406,4 +506,35 @@ func qsVierKnotenModus(t *testing.T, ausfall, abschnitte bool) {
 	}
 	stand := netz.pruefeGleichstand(t, "nach dem S-Token mit vier Validatoren")
 	t.Logf("Variante S auf vier Knoten (3 von 4): ausgegeben, Doppelvorlage abgewiesen, eingeloest -- StateRoot %s", stand.root)
+}
+
+// Die Pruefung der Kettensicht selbst (ohne Datenbank): Sie darf einen Pilot
+// nicht gruen lassen, wenn v2 verlangt war und die Kette etwas anderes sah.
+func TestQsKettenSichtPruefen(t *testing.T) {
+	gut := &qsKettenSicht{Arten: []int{2}, NVal: 4, Salze: 4}
+	if err := qsKettenSichtPruefen(gut, true, 4); err != nil {
+		t.Fatalf("Gutfall v2: %v", err)
+	}
+	if err := qsKettenSichtPruefen(&qsKettenSicht{Arten: []int{0}, NVal: 4}, false, 4); err != nil {
+		t.Fatalf("Gutfall v1: %v", err)
+	}
+	for name, f := range map[string]func() error{
+		"nie gesehen":           func() error { return qsKettenSichtPruefen(nil, true, 4) },
+		"v2 verlangt, Kette v1": func() error { return qsKettenSichtPruefen(&qsKettenSicht{Arten: []int{0}, NVal: 4}, true, 4) },
+		"v1 verlangt, Kette v2": func() error { return qsKettenSichtPruefen(gut, false, 4) },
+		"Art gewechselt": func() error {
+			return qsKettenSichtPruefen(&qsKettenSicht{Arten: []int{2, 0}, NVal: 4, Salze: 4}, true, 4)
+		},
+		"keine Art":              func() error { return qsKettenSichtPruefen(&qsKettenSicht{NVal: 4, Salze: 4}, true, 4) },
+		"ohne Salze angemeldet":  func() error { return qsKettenSichtPruefen(&qsKettenSicht{Arten: []int{2}, NVal: 4}, true, 4) },
+		"ein Salz zu wenig":      func() error { return qsKettenSichtPruefen(&qsKettenSicht{Arten: []int{2}, NVal: 4, Salze: 3}, true, 4) },
+		"andere Validatorenzahl": func() error { return qsKettenSichtPruefen(&qsKettenSicht{Arten: []int{2}, NVal: 3, Salze: 3}, true, 4) },
+		"v1 mit Salzen": func() error {
+			return qsKettenSichtPruefen(&qsKettenSicht{Arten: []int{0}, NVal: 4, Salze: 4}, false, 4)
+		},
+	} {
+		if f() == nil {
+			t.Fatalf("%s: nicht erkannt", name)
+		}
+	}
 }
