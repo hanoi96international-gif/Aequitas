@@ -572,6 +572,10 @@ messen. Bei mehreren Validatoren und jeder Ausgabe geht das nicht.
    - Antwort `vorgemerkt`, `wartet` oder `gemessen`. Wiederholen zählt nicht.
    - Grenzen unter derselben Sperre wie das Anlegen: 8 wartende, 8 je Ausgeber und Tag,
      32 am Tag. Mehr als 32 Einträge im Verzeichnis gelten als voll (fail-closed).
+   - Dieselben Basen höchstens einmal am Tag. Eine mitgelesene und wiederholte
+     Vormerkung löst nach dem Verbrauch keine zweite Messung aus (aus der eigenen
+     Sicherheitsprüfung). Nach einem Neustart des Knotens ginge es einmal mehr, dann
+     greift die Tagesgrenze des Servers.
    - Ein Verweis statt Verzeichnis oder statt Messung wird abgewiesen.
    - Nur mit einer Messquelle als Verzeichnis; im Pilot (Datei) abgewiesen.
 2. **Messen auf dem Server** (`quanten-messen.sh --warteschlange`, mit
@@ -602,7 +606,8 @@ messen. Bei mehreren Validatoren und jeder Ausgabe geht das nicht.
 
 **Tests:**
 - Go (`quanten_s_vormerken_test.go`):
-  - Gutfall mit Inhalt und Rechten, Wiederholung, `gemessen`.
+  - Gutfall mit Inhalt und Rechten, Wiederholung, `gemessen`; nach dem Verbrauch
+    dieselben Basen erst am nächsten Tag wieder.
   - 19 Missbrauchsfälle, dazu ohne Deckung, ohne Messquelle und mit Datei-Messquelle;
     danach liegt nichts.
   - Grenzen: wartende, je Ausgeber, je Tag, Tageswechsel.
@@ -622,8 +627,8 @@ messen. Bei mehreren Validatoren und jeder Ausgabe geht das nicht.
   nicht, solange die Sperre gehalten ist.
 - Quer geprüft: Der Go-Knoten merkt vor, Python misst ideal aus der Warteschlange, Go
   liest die Messung genau einmal.
-- Gegenprobe: 34 Mutationen.
-  - 33 wurden rot, zwei davon erst nach der Schärfung der Tests: Abweisung sofort, FIFO.
+- Gegenprobe: 36 Mutationen.
+  - 35 wurden rot, zwei davon erst nach der Schärfung der Tests: Abweisung sofort, FIFO.
   - Eine ist gleichwertig: Zählen auch, wenn der Link an einem schon vorhandenen Namen
     scheitert. Unter der Sperre erreicht das nur ein fremder Prozess zwischen Prüfung
     und Anlegen, und dann ist es harmlos.

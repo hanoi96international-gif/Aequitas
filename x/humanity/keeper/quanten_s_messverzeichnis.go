@@ -45,9 +45,10 @@ type quantenSMessVerzeichnis struct {
 	mu  sync.Mutex
 	dir string
 	// Vormerkungen je Tag (quanten_s_vormerken.go), unter mu.
-	vormerkTag    int64
-	vormerkGesamt int
-	vormerkJe     map[string]int
+	vormerkTag     int64
+	vormerkGesamt  int
+	vormerkJe      map[string]int
+	vormerkGesehen map[string]bool
 }
 
 // quantenSMessName: Dateiname des Abschnitts zu den Basen yText (gleich in

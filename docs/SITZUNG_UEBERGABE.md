@@ -16,7 +16,8 @@ dezentrales Quantengeld“.
     Zähler liegt außerhalb des Knoten-Verzeichnisses.
   - Werkzeug: `aequitasd quanten-s-ausgabe --messen-warten DAUER`; ohne Basen zieht es
     sie selbst.
-  - Gegenprobe: 34 Mutationen, 33 rot, eine gleichwertig.
+  - Dieselben Basen höchstens einmal am Tag (gegen wiederholte Vormerkungen).
+  - Gegenprobe: 36 Mutationen, 35 rot, eine gleichwertig.
   - Nach dem Merge braucht C1 den Deploy (neuer Endpunkt; ohne Messverzeichnis weist
     C1 jede Vormerkung ab).
   - Sandbox-Rest: Ein Heredoc-Fehler hat `/aequitas-quanten.timer` im Wurzelverzeichnis

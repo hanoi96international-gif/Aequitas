@@ -113,6 +113,21 @@ func TestQuantenSVormerken_Gutfall(t *testing.T) {
 	if basen, _ := qsvVormerkungen(t, mv); len(basen) != 0 {
 		t.Fatal("bei vorhandener Messung neu vorgemerkt")
 	}
+	// Messung verbraucht (Abschnitts-Auftrag), dann dieselbe Vormerkung noch
+	// einmal (mitgelesen und wiederholt): keine zweite Messung am selben Tag.
+	yb, _ := quantenSBitsLesen(y, len(y))
+	if _, _, _, _, err := mv.abschnitt(yb); err != nil {
+		t.Fatal(err)
+	}
+	if ans, err := d.vormerken(a.vormerkung(2, y)); err == nil {
+		t.Fatalf("Wiederholung nach dem Verbrauch angenommen: %+v", ans)
+	}
+	if basen, _ := qsvVormerkungen(t, mv); len(basen) != 0 {
+		t.Fatal("Wiederholung nach dem Verbrauch vorgemerkt")
+	}
+	if st, err := mv.vormerken(y, a.w.praeger, a.zeit+86400, a.zeit+86400); err != nil || st != quantenSVorgemerkt {
+		t.Fatalf("am naechsten Tag: %s, %v", st, err)
+	}
 }
 
 func TestQuantenSVormerken_Missbrauch(t *testing.T) {

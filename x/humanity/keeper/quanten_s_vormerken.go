@@ -206,7 +206,15 @@ func (m *quantenSMessVerzeichnis) vormerken(yText, praeger string, zeit, jetzt i
 		return "", quantenWFehler("zu viele wartende Vormerkungen")
 	}
 	if tag := jetzt / 86400; tag != m.vormerkTag || m.vormerkJe == nil {
-		m.vormerkTag, m.vormerkGesamt, m.vormerkJe = tag, 0, map[string]int{}
+		m.vormerkTag, m.vormerkGesamt, m.vormerkJe, m.vormerkGesehen = tag, 0, map[string]int{}, map[string]bool{}
+	}
+	// Dieselben Basen hoechstens einmal am Tag: weder Vormerkung noch Messung
+	// liegt mehr da, also ist die Messung verbraucht. Eine mitgelesene,
+	// wiederholte Vormerkung loest keine zweite Messung aus. Das Werkzeug
+	// zieht fuer jede Ausgabe neue Basen. (Hoechstens quantenSVormerkJeTag
+	// Eintraege, weil nur angelegte zaehlen.)
+	if m.vormerkGesehen[name] {
+		return "", quantenWFehler("diese Basen waren heute schon vorgemerkt (Messung verbraucht)")
 	}
 	if m.vormerkGesamt >= quantenSVormerkJeTag || m.vormerkJe[praeger] >= quantenSVormerkJePraegerTag {
 		return "", quantenWFehler("Tagesgrenze fuer Vormerkungen erreicht")
@@ -224,6 +232,7 @@ func (m *quantenSMessVerzeichnis) vormerken(yText, praeger string, zeit, jetzt i
 	}
 	m.vormerkGesamt++
 	m.vormerkJe[praeger]++
+	m.vormerkGesehen[name] = true
 	return quantenSVorgemerkt, nil
 }
 
