@@ -13,8 +13,10 @@ dezentrales Quantengeld“.
   [44551534119](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44551534119).
 - **#597 gemergt (d079bf34): Werkzeug im v2-Weg** (`--stichprobe-v2`, `DEZENTRAL.md` 16 Schritt 4),
   Kopf von `quanten_s_probe_v2.go` berichtigt. 14 Mutationen rot.
+- **PR (dieser Stand): Pilot mit Stichprobe v2** (Eingabe `stichprobe_v2`, im Vier-Knoten-Test
+  `AEQUITAS_QS_V2=1`, Regel nur im Testprozess scharf). Lauf im Rauschmodell auf dem Zweig.
 - **Danach:** Freigabe des Betreibers mit Stichtag (nur die Zahl `quantenSProbeV2AbUnix`,
-  alle Knoten vorher aktualisiert), dann ein Pilot mit `--stichprobe-v2`.
+  alle Knoten vorher aktualisiert).
 
 **Davor (19.11. ~09:45 UTC):**
 - **C1 läuft mit #592** (Deploy #102 [44476883826](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44476883826), grün).

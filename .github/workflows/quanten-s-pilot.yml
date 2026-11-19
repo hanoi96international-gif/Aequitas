@@ -53,6 +53,11 @@ on:
         type: choice
         options: ["4", "3", "2"]
         default: "4"
+      stichprobe_v2:
+        description: "ja = Stichprobe erst nach der Bindung (DEZENTRAL.md 16; nur mit ausgabe = abschnitte). Die Kettenregel schlaeft im Hauptnetz; nur im Testprozess der vier Knoten scharf."
+        type: choice
+        options: ["nein", "ja"]
+        default: "nein"
 
 permissions:
   contents: read
@@ -69,6 +74,7 @@ env:
   LATENZ: ${{ inputs.latenz_ms }}
   AUSGABE: ${{ inputs.ausgabe }}
   TOL: ${{ inputs.toleranz }}
+  V2: ${{ inputs.stichprobe_v2 }}
 
 jobs:
   rauschen:
@@ -82,6 +88,7 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$K" =~ ^[1-9][0-9]{0,3}$ ]] && [ "$K" -le 8192 ] || { echo "::error::k = $K (1 bis 8192)"; exit 1; }
+          [ "$V2" = nein ] || [ "$AUSGABE" = abschnitte ] || { echo "::error::stichprobe_v2 = ja nur mit ausgabe = abschnitte"; exit 1; }
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -119,6 +126,7 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$K" =~ ^[1-9][0-9]{0,3}$ ]] && [ "$K" -le 8192 ] || { echo "::error::k = $K (1 bis 8192)"; exit 1; }
+          [ "$V2" = nein ] || [ "$AUSGABE" = abschnitte ] || { echo "::error::stichprobe_v2 = ja nur mit ausgabe = abschnitte"; exit 1; }
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -238,6 +246,11 @@ jobs:
           fi
           [[ "$TOL" =~ ^(2|3|4)$ ]] || { echo "::error::toleranz = $TOL"; exit 1; }
           export AEQUITAS_QS_TOL="$TOL"
+          [[ "$V2" =~ ^(nein|ja)$ ]] || { echo "::error::stichprobe_v2 = $V2"; exit 1; }
+          if [ "$V2" = ja ]; then
+            [ "$AUSGABE" = abschnitte ] || { echo "::error::stichprobe_v2 = ja nur mit ausgabe = abschnitte"; exit 1; }
+            export AEQUITAS_QS_V2=1
+          fi
           set +e
           go test ./x/humanity/keeper/ -run "$TESTS" -v -count=1 -timeout 80m 2>&1 | tee out.txt
           RC=${PIPESTATUS[0]}
@@ -251,7 +264,7 @@ jobs:
                {f=0}' out.txt > ergebnis.txt
           gzip -9 -c out.txt > ausgabe.txt.gz
           {
-            echo "## Quantengeld S: Pilot mit vier Validatoren (Modus ${{ inputs.modus }}, Ausgabe $AUSGABE, k = $K, Toleranz $TOL %, Laufzeit zwischen Knoten $LATENZ ms je Richtung)"
+            echo "## Quantengeld S: Pilot mit vier Validatoren (Modus ${{ inputs.modus }}, Ausgabe $AUSGABE, k = $K, Toleranz $TOL %, Stichprobe v2 $V2, Laufzeit zwischen Knoten $LATENZ ms je Richtung)"
             echo
             echo "Commit \`${{ github.sha }}\`, Lauf ${{ github.run_id }}."
             echo
@@ -275,7 +288,7 @@ jobs:
           # letzte 5.000 Zeilen, Zusammenfassung und Artefakt sind von manchen
           # Arbeitsumgebungen aus nicht abrufbar.
           echo "===== Ergebnis der Tests ====="
-          echo "Modus ${{ inputs.modus }}, Ausgabe $AUSGABE, k = $K, Toleranz $TOL %, Laufzeit zwischen Knoten $LATENZ ms je Richtung"
+          echo "Modus ${{ inputs.modus }}, Ausgabe $AUSGABE, k = $K, Toleranz $TOL %, Stichprobe v2 $V2, Laufzeit zwischen Knoten $LATENZ ms je Richtung"
           cat ergebnis.txt
           sha256sum ergebnis.txt ausgabe.txt.gz
           echo "===== Ende Ergebnis ====="

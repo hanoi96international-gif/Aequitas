@@ -78,6 +78,29 @@ func qsAbschnitteAusVerzeichnis(t *testing.T, ausgabe int) (string, QuantenSBase
 	return dir, b, true
 }
 
+// qsV2AusUmgebung: im Pilot (quanten-s-pilot.yml, Eingabe stichprobe_v2)
+// steht AEQUITAS_QS_V2=1: der v2-Weg (Stichprobe erst nach der Bindung,
+// DEZENTRAL.md 16). Die Kettenregel schlaeft im Hauptnetz; NUR in diesem
+// Testprozess (alle vier Knoten) wird sie scharf geschaltet und danach
+// zurueckgesetzt. Nur im Abschnitts-Modus.
+func qsV2AusUmgebung(t *testing.T, abschnitte bool) bool {
+	switch strings.TrimSpace(os.Getenv("AEQUITAS_QS_V2")) {
+	case "", "0":
+		return false
+	case "1":
+		if !abschnitte {
+			t.Fatal("AEQUITAS_QS_V2=1 nur im Abschnitts-Modus (ausgabe = abschnitte)")
+		}
+		quantenSProbeV2AbOverride.Store(1)
+		t.Cleanup(func() { quantenSProbeV2AbOverride.Store(0) })
+		t.Log("Stichprobe v2 (erst nach der Bindung)")
+		return true
+	default:
+		t.Fatalf("AEQUITAS_QS_V2 = %q: 0 oder 1", os.Getenv("AEQUITAS_QS_V2"))
+		return false
+	}
+}
+
 // qsToleranzAusUmgebung: im Pilot (quanten-s-pilot.yml, Eingabe toleranz)
 // steht in AEQUITAS_QS_TOL die Toleranz in Prozent; ohne Angabe der Standard.
 // Nur Werte, fuer die die Kette eine Pruefgroesse kennt.
@@ -152,6 +175,7 @@ func qsVierKnotenModus(t *testing.T, ausfall, abschnitte bool) {
 	}
 	kJeStelle := 128
 	tol := qsToleranzAusUmgebung(t)
+	v2 := qsV2AusUmgebung(t, abschnitte)
 	echt, ausDatei := qsMessungAusDatei(t)
 	var abDir string
 	var basen QuantenSBasen
@@ -306,7 +330,7 @@ func qsVierKnotenModus(t *testing.T, ausfall, abschnitte bool) {
 	var erg *QuantenSAusgabeErgebnis
 	if abschnitte {
 		erg, err = quantenSAusgabeLaufAbschnitte(context.Background(), QuantenSAusgabeAuftrag{Schluessel: ausgeber.key, Deckung: 2_000_000,
-			Tol: tol, Frist: frist}, basen, adressen, 3, werkzeugNetz.(quantenSAbschnittNetz), &log)
+			Tol: tol, Frist: frist, ProbeV2: v2}, basen, adressen, 3, werkzeugNetz.(quantenSAbschnittNetz), &log)
 	} else {
 		erg, err = quantenSAusgabeLauf(context.Background(), QuantenSAusgabeAuftrag{Messung: m, Schluessel: ausgeber.key, Deckung: 2_000_000,
 			Tol: tol, Frist: frist}, adressen, 3, werkzeugNetz, &log)
