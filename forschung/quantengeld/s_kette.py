@@ -1068,6 +1068,34 @@ def selbsttest() -> bool:
         k8.ausgeben(K8, n, "anna")
         festlegen(k8, K8, st8, list(y8), 1)
         soll(st8[1].pruefen(K8, x8) is True and st8[0].pruefen(K8, x8) is False, "Stellen-Bit: Gutfall und Doppelvorlage")
+        # 5i. BEFUND (19.11.2026, Pruefauftrag S Punkt 2): Eine Annahmestelle,
+        # die mit der Inhaberin zusammenarbeitet, laesst sie an BEIDEN Stellen
+        # durchkommen -- zu Lasten der anderen. Die Stichproben sind disjunkt
+        # (mit dem Stellen-Bit sogar Gegenstuecke). Verraet Stelle 0 vor der
+        # Bindung nur, WELCHE Stellen ihre sind (nicht einmal u oder t), setzt
+        # die Inhaberin d dort auf Stelle 0 und ueberall sonst auf Stelle 1 aus.
+        # Die Physik verhindert das nicht: jede Stelle wird nur von einer
+        # Annahmestelle geprueft. Beide Annahmestellen muessen einander also
+        # vertrauen (DEZENTRAL.md 16).
+        verraten = set(oe[0])
+        k8b = KetteS()
+        k8b.ausgeben(K8, n, "anna")
+        c8b = 1
+        d8b = [y8[i] ^ (0 if i in verraten else 1) ^ c8b for i in range(n)]
+        st8b = [stelle_laden_bit(b, K8, n, a8.wurzel, a8.blaetter, ts, nv, oe[b], labor_k=k) for b in (0, 1)]
+        festlegen(k8b, K8, st8b, d8b, c8b)
+        soll(st8b[0].pruefen(K8, x8) is True and st8b[1].pruefen(K8, x8) is True,
+             "Befund 5i: mit den Stellen einer bestochenen Annahmestelle an beiden durch")
+        # Gegenprobe: ohne das Wissen (zufaellig geratene Haelfte) faellt sie an
+        # mindestens einer Stelle durch.
+        geraten = set(rng.sample(range(n), n // 2))
+        d8c = [y8[i] ^ (0 if i in geraten else 1) ^ c8b for i in range(n)]
+        st8c = [stelle_laden_bit(b, K8, n, a8.wurzel, a8.blaetter, ts, nv, oe[b], labor_k=k) for b in (0, 1)]
+        k8c = KetteS()
+        k8c.ausgeben(K8, n, "anna")
+        festlegen(k8c, K8, st8c, d8c, c8b)
+        soll(not (st8c[0].pruefen(K8, x8) and st8c[1].pruefen(K8, x8)),
+             "Gegenprobe 5i: ohne verratene Stellen an beiden durch")
         # Missbrauch: ein Praeparator schiebt Stelle 0 eine Stelle der anderen
         # unter; ein falscher Wert; Werte zurueckgehalten (zu klein); fremde Wurzel.
         fremd = dict(oe[0])
