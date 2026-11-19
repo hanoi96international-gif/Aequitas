@@ -2,28 +2,30 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 19.11.2026 ~16:40 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
+Stand: 19.11.2026 ~17:15 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
 Repos); davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18:30 UTC Sitzung
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
-**Zuletzt (Sitzung „Weiter“, 19.11. ~16:40 UTC):**
-- **C1 läuft mit #596** (Deploy #105 [44551534119](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44551534119)
-  grün; schlafende Kettenregel und ihr Wächter sind drauf). Deploy #106 für #597 (nur
-  Werkzeug) wartet auf Freigabe `produktion`:
+**Zuletzt (Sitzung „Weiter“, 19.11. ~17:15 UTC):**
+- **#598 gemergt (90e0e622): Pilot mit Stichprobe v2 grün** (`HEUTE.md` 3.3h, `DEZENTRAL.md` 16
+  Schritt 5). Eingabe `stichprobe_v2`, Beobachter im Vier-Knoten-Test liest im Register jedes
+  Knotens `probe_art` und die nachgerechneten Salze nach. Läufe
+  [44564851989](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44564851989) und
+  [44568310804](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44568310804)
+  grün (beide Tests, auch mit Ausfall; Lauf 2: „probe_art 2, 4 Salze“ auf der Kette).
+  Gegenprobe (Werkzeug im alten Weg bei verlangtem v2) rot. Am Knoten ändert sich nichts
+  (nur Test, Workflow, Doku).
+- **C1 läuft mit #596** (Deploy #105 grün; schlafende Kettenregel und Wächter drauf).
+  Deploy #106 für #597 (nur Werkzeug) wartet auf Freigabe `produktion`:
   [44564356053](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44564356053).
-- **#597 gemergt (d079bf34): Werkzeug im v2-Weg** (`--stichprobe-v2`, `DEZENTRAL.md` 16 Schritt 4),
-  Kopf von `quanten_s_probe_v2.go` berichtigt. 14 Mutationen rot.
-- **Pilot mit Stichprobe v2 grün** ([44564851989](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44564851989),
-  Rauschmodell, k 1.760, Toleranz 2 %, beide Tests, auch mit Ausfall; `HEUTE.md` 3.3h,
-  `DEZENTRAL.md` 16 Schritt 5).
-- **PR (dieser Stand): Pilot-Eingabe `stichprobe_v2`** und ein Beobachter im
-  Vier-Knoten-Test, der im Register jedes Knotens nachliest (`probe_art 2`, ein Salz je
-  Validator). Lokal unter `-race` grün; Gegenprobe: Werkzeug im alten Weg → rot.
-  Zweiter Pilot-Lauf mit dem Beobachter grün ([44568310804](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44568310804),
-  „probe_art 2, 4 Salze“ in beiden Tests).
-- **Danach:** Freigabe des Betreibers mit Stichtag (nur die Zahl `quantenSProbeV2AbUnix`,
-  mindestens 30 min in der Zukunft; alle Knoten vorher aktualisiert).
+- **Wartet auf den Betreiber: Stichtag der Stichprobe v2.** Vorgeschlagen: 20.11.2026
+  12:00 UTC (`1795176000`). Bei „Freigegeben“: PR, der nur `quantenSProbeV2AbUnix` setzt
+  (Sicherheit, eigene Prüfung), CI, Merge, C1-Deploy (Freigabe `produktion`). Der Wächter
+  verlangt beim Ausrollen mindestens 30 min Vorlauf; ist das knapp, neuen Stichtag
+  vorschlagen, nicht den Wächter lockern. Danach: erster Hauptnetz-Token mit
+  `--stichprobe-v2` (C1 hat t = v = 1; Rollen trennen, sobald der zweite Mensch da ist).
+- Davor: #597 gemergt (d079bf34, Werkzeug im v2-Weg, 14 Mutationen rot).
 
 **Davor (19.11. ~09:45 UTC):**
 - **C1 läuft mit #592** (Deploy #102 [44476883826](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44476883826), grün).
