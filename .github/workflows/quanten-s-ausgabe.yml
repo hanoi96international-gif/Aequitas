@@ -16,7 +16,8 @@
 # praepariert seinen einen Abschnitt aus einer Messung in seinem
 # Messverzeichnis (deploy/quanten-c1-messverzeichnis.sh, beim Deploy):
 #   1. messen: Basen der Inhaberin ziehen (n = 2 k, k aus der Tabelle der
-#      Kette fuer t = v = 1 und die Toleranz), hardware_ibm.py --s-abschnitt
+#      Kette fuer t = v = 1 und die Toleranz; Zufall os.urandom ueber
+#      random.SystemRandom), hardware_ibm.py --s-abschnitt
 #      in genau diesen Basen, je Stelle 5 Schuesse mit Mehrheit.
 #   2. ausgeben: Messung ins Messverzeichnis von C1
 #      (deploy/quanten-s-ausgabe-abschnitt.sh), dann `aequitasd
@@ -93,7 +94,7 @@ jobs:
             auftrag) python3 -I forschung/quantengeld/hardware_ibm.py --rauschen FakeMarrakesh --s-messen "$RUNNER_TEMP/messung.json" ;;
             abschnitte-v2)
               case "$TOL" in 2) K=552 ;; 3) K=672 ;; 4) K=840 ;; *) echo "::error::toleranz $TOL"; exit 1 ;; esac
-              Y=$(python3 -I -c 'import secrets,sys; print("".join(str(secrets.randbits(1)) for _ in range(int(sys.argv[1]))))' "$((2 * K))")
+              Y=$(python3 -I -c 'import random,sys; r = random.SystemRandom(); print("".join(str(r.getrandbits(1)) for _ in range(int(sys.argv[1]))))' "$((2 * K))")
               mkdir -m 700 "$RUNNER_TEMP/qs"
               python3 -I forschung/quantengeld/hardware_ibm.py --rauschen FakeMarrakesh --s-abschnitt "$RUNNER_TEMP/qs" --basen "$Y"
               NAME=$(printf '%s' "$Y" | sha256sum | cut -d' ' -f1)
@@ -151,7 +152,7 @@ jobs:
           if [ "$WEG" = abschnitte-v2 ]; then
             # Basen der Inhaberin: n = 2 k (Tabelle der Kette, t = v = 1).
             case "$TOL" in 2) K=552 ;; 3) K=672 ;; 4) K=840 ;; *) echo "::error::toleranz $TOL"; exit 1 ;; esac
-            Y=$(python3 -I -c 'import secrets,sys; print("".join(str(secrets.randbits(1)) for _ in range(int(sys.argv[1]))))' "$((2 * K))")
+            Y=$(python3 -I -c 'import random,sys; r = random.SystemRandom(); print("".join(str(r.getrandbits(1)) for _ in range(int(sys.argv[1]))))' "$((2 * K))")
             mkdir -m 700 "$RUNNER_TEMP/qs"
             python3 -I forschung/quantengeld/hardware_ibm.py --ibm --s-abschnitt "$RUNNER_TEMP/qs" --basen "$Y"
             NAME=$(printf '%s' "$Y" | sha256sum | cut -d' ' -f1)
