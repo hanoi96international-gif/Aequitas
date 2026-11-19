@@ -734,8 +734,8 @@ seinen Werten (t − 1 Validatoren kennen genau ihre Abschnitte, Abschnitt 7).
    - `quanten_s_probe_v2.go`: Teil-Hash, Bindung v2 und das Nachrechnen der Kette.
      Das Nachrechnen schließt ab bei doppelten Stellen, Stellen außerhalb, falscher
      Zahl der Salze oder Stelle ≠ 0/1. Noch nirgends eingehängt.
-   - Test gegen den Vektor (auch unsortiert) und 25 Missbrauchsfälle: andere Bindung
-     oder ausdrücklicher Fehler.
+   - Test gegen den Vektor (auch unsortiert) und 20 verschiedene Missbrauchsfälle:
+     andere Bindung oder ausdrücklicher Fehler.
    - Gegenprobe: 10 Mutationen rot, 3 davon erst nach Schärfung der Tests (ein Salz zu
      viel, unsortiert, Stelle 2). Zwei Grenzen prüft auch `quantenSAbschnitt`; beide
      Schichten zusammen mutiert sind rot.
