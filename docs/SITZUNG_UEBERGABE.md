@@ -7,11 +7,11 @@ Repos); davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
-**Zuletzt (Sitzung „Weiter“, 19.11. ~15:10 UTC):**
+**Zuletzt (Sitzung „Weiter“, 19.11. ~16:20 UTC):**
 - **C1 läuft mit #595** (Deploy #104 grün). Deploy #105 für #596 (schlafende Kettenregel,
   neuer Wächter-Schritt) wartet auf Freigabe `produktion`:
   [44551534119](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44551534119).
-- **PR (dieser Stand): Werkzeug im v2-Weg** (`--stichprobe-v2`, `DEZENTRAL.md` 16 Schritt 4),
+- **#597 gemergt (d079bf34): Werkzeug im v2-Weg** (`--stichprobe-v2`, `DEZENTRAL.md` 16 Schritt 4),
   Kopf von `quanten_s_probe_v2.go` berichtigt. 14 Mutationen rot.
 - **Danach:** Freigabe des Betreibers mit Stichtag (nur die Zahl `quantenSProbeV2AbUnix`,
   alle Knoten vorher aktualisiert), dann ein Pilot mit `--stichprobe-v2`.
