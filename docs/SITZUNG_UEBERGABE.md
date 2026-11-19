@@ -2,14 +2,14 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 19.11.2026 ~09:45 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
+Stand: 19.11.2026 ~09:55 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
 Repos); davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18:30 UTC Sitzung
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
 **Zuletzt (Sitzung „Weiter“, 19.11. ~09:45 UTC):**
 - **C1 läuft mit #592** (Deploy #102 [44476883826](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44476883826), grün).
-- **PR (dieser Stand): Befund 5i** (`DEZENTRAL.md` 16, Prüfauftrag S 2 und S 8).
+- **#593 gemergt (702f4490): Befund 5i** (`DEZENTRAL.md` 16, Prüfauftrag S 2 und S 8).
   - Eine Annahmestelle, die mit der Inhaberin zusammenarbeitet, lässt sie an beiden
     Stellen durchkommen. Belegt in `s_kette.py` 5i, mit Gegenprobe.
   - Heute ohne Gefahr: Das Werkzeug war in allen Läufen alle Rollen zugleich.
