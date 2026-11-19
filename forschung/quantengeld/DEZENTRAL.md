@@ -147,7 +147,7 @@ Geheimnis besser, aber zum Einlösen müssen t Validatoren erreichbar sein.
 | A2 | Validator-Dienst: eigenen Abschnitt präparieren (Messung von außen, wie heute über eine Datei), Anteile an die anderen verteilen, Stichprobe für die Annahmestellen | **fertig**: A2a Bausteine (9), A2b Dienst (10) |
 | A3 | `hardware_ibm.py --s-abschnitt`, Werkzeug `quanten-s-ausgabe` im Abschnitts-Modus | **Werkzeug fertig** (11); Messung je Abschnitt folgt mit A4 |
 | A4 | Pilot: vier Knoten, je ein eigener Auftrag (im Pilot von einem Konto, das wird benannt) | **fertig** (12): beide Tests grün im Rauschmodell (44347416357) und auf dem Chip `ibm_fez` (44356741223), auch mit Ausfall eines Validators |
-| A5 | Hauptnetz mit einem zweiten Menschen als Validator, wenn möglich bei einem anderen Anbieter | **Werkzeug bereit** (13, 14): Messquelle als Verzeichnis, `--s-abschnitt`, Einrichten und Messen auf dem eigenen Server mit je einem Befehl; der zweite Mensch: Betreiber |
+| A5 | Hauptnetz mit einem zweiten Menschen als Validator, wenn möglich bei einem anderen Anbieter | **Werkzeug bereit** (13–15): Messquelle als Verzeichnis, `--s-abschnitt`, Einrichten mit einem Befehl, Basen automatisch vorgemerkt und gemessen; der zweite Mensch: Betreiber |
 | B, C, W-Härtung | wie oben | Forschung; Partner |
 
 Die Kette ändert sich in A1 bis A4 nicht. Geändert werden die Ausgabe außerhalb der Kette
@@ -550,5 +550,90 @@ Python, ohne root und ohne IBM:
 selbst; die Messung nannte nur das Gerät des letzten. Jetzt steht es in jeder Zeile.
 
 **Was weiter am Betreiber hängt:** der zweite Mensch mit eigenem Server und eigenem
-IBM-Konto. Wie die Inhaberin ihm die Basen schickt, ist noch Handarbeit (Text aus 0 und 1);
-ein Weg über die App wäre der nächste Baustein.
+IBM-Konto. Wie die Inhaberin ihm die Basen schickt, war hier noch Handarbeit; seit
+Abschnitt 15 geht es automatisch.
+
+## 15. A5: die Basen kommen automatisch zum Validator (19.11.2026)
+
+**Befund:** Die Messung braucht Minuten (Warteschlange beim Anbieter) und läuft auf dem
+Server des Validators, nicht im Knoten. Der Abschnitts-Auftrag muss sie fertig vorfinden.
+Bisher musste die Inhaberin dem Betreiber y von Hand schicken, und er musste von Hand
+messen. Bei mehreren Validatoren und jeder Ausgabe geht das nicht.
+
+**Lösung, ohne Änderung an der Kette** (`quanten_s_vormerken.go`):
+1. **Vormerken** (`POST /api/quanten-w/validator/vormerken`):
+   - Der Ausgeber schickt y für genau den Abschnitt dieses Validators, unterschrieben
+     (eigene Domäne `aequitas-quanten-s-vormerkung-v1`, Kette, n, Nummer,
+     Validatorenliste, Hash von y, Zeit).
+   - Der Knoten prüft wie beim Auftrag: Nummer gehört zu ihm, Länge und Bits,
+     Unterschrift, Mensch mit Deckung. Die Zeit darf höchstens 10 min alt sein.
+   - Er legt `<Messverzeichnis>/vorgemerkt/<sha256(y)>.basen` neu an (Zufallsname,
+     O_EXCL, 0600, fsync, dann Link; nie überschrieben).
+   - Antwort `vorgemerkt`, `wartet` oder `gemessen`. Wiederholen zählt nicht.
+   - Grenzen unter derselben Sperre wie das Anlegen: 8 wartende, 8 je Ausgeber und Tag,
+     32 am Tag. Mehr als 32 Einträge im Verzeichnis gelten als voll (fail-closed).
+   - Dieselben Basen höchstens einmal am Tag. Eine mitgelesene und wiederholte
+     Vormerkung löst nach dem Verbrauch keine zweite Messung aus (aus der eigenen
+     Sicherheitsprüfung). Nach einem Neustart des Knotens ginge es einmal mehr, dann
+     greift die Tagesgrenze des Servers.
+   - Ein Verweis statt Verzeichnis oder statt Messung wird abgewiesen.
+   - Nur mit einer Messquelle als Verzeichnis; im Pilot (Datei) abgewiesen.
+2. **Messen auf dem Server** (`quanten-messen.sh --warteschlange`, mit
+   `quanten-einrichten.sh --automatisch` jede Minute per systemd-Timer):
+   - Gemessen wird als Knotenbenutzer, nie zwei Läufe zugleich (`flock`).
+   - `hardware_ibm.py --s-warteschlange` liest jede Vormerkung als feindlich:
+     - nur eine gewöhnliche Datei, beim Öffnen dieselbe (`O_NOFOLLOW`, Gerät und
+       Inode); eine FIFO würde sonst die Warteschlange blockieren;
+     - höchstens 64 KiB, genau drei Felder;
+     - der Name passt zu y, Ausgeber und Zeit sind wohlgeformt.
+   - Abgewiesene werden zu `.abgewiesen-<name>` (bleiben zum Ansehen liegen).
+     Veraltete (über 6 h), solche aus der Zukunft (über 1 h) und schon gemessene werden
+     nicht gemessen.
+   - Die älteste zuerst, höchstens 4 je Lauf und `QS_JE_TAG` (Standard 8) am Tag.
+   - Der Tageszähler liegt im HOME des Knotenbenutzers, außerhalb des Verzeichnisses,
+     das der Knoten beschreiben kann. Ein übernommener Knoten kann ihn also nicht
+     zurücksetzen. Gezählt wird vor der Messung; ein kaputter Zähler bricht ab.
+3. **Warten im Werkzeug** (`aequitasd quanten-s-ausgabe --messen-warten DAUER`,
+   höchstens 4 h):
+   - Ohne Basen in der Eingabe (`{"n": …, "basen": []}`) zieht das Werkzeug y selbst; es
+     spielt die Inhaberin.
+   - Es merkt bei jedem Validator vor und fragt alle 20 s nach, bis jeder `gemessen`
+     meldet. Erst dann schickt es die Abschnitts-Aufträge.
+   - Eine Abweisung bricht sofort ab; an der Frist bricht es ebenfalls ab. In beiden
+     Fällen ist nichts ausgegeben.
+   - Der Stand ist eine Auskunft, keine Zusage. Meldet ein Validator `gemessen` ohne
+     Messung, weist er danach den Auftrag ab.
+
+**Tests:**
+- Go (`quanten_s_vormerken_test.go`):
+  - Gutfall mit Inhalt und Rechten, Wiederholung, `gemessen`; nach dem Verbrauch
+    dieselben Basen erst am nächsten Tag wieder.
+  - 19 Missbrauchsfälle, dazu ohne Deckung, ohne Messquelle und mit Datei-Messquelle;
+    danach liegt nichts.
+  - Grenzen: wartende, je Ausgeber, je Tag, Tageswechsel.
+  - Verzeichnis: Verweis, Datei, Verweis als Messung, Verweis als Vormerkung, zu
+    viele Einträge.
+  - Gleichzeitig: dieselben Basen genau einmal, verschiedene genau bis zur Grenze.
+  - HTTP (Methode, kein JSON, fremdes Feld, Text danach, zu groß, falscher Typ, fremde
+    Nummer, geänderte Basen).
+  - Werkzeug: Gutfall, Frist, Abweisung sofort, fremde Antwort, Abbruch, Eingaben.
+  - Gegen den echten Dienst: vormerken, messen, warten, danach nimmt jeder Validator
+    den Auftrag an.
+- Python (Selbsttest): Gutfall und 10 Missbrauchsfälle, darunter Verweis und FIFO,
+  veraltet, schon gemessen, je Lauf, je Tag, Tageswechsel, älteste zuerst, kaputter
+  Zähler, Verweis statt Verzeichnis.
+- Shell (`test_quanten_messen_skript.sh`): Aufruf als Knotenbenutzer, Zähler im HOME,
+  `QS_JE_TAG` (7 falsche Werte), Argumente, root, Schlüssel; ein zweiter Lauf misst
+  nicht, solange die Sperre gehalten ist.
+- Quer geprüft: Der Go-Knoten merkt vor, Python misst ideal aus der Warteschlange, Go
+  liest die Messung genau einmal.
+- Gegenprobe: 36 Mutationen.
+  - 35 wurden rot, zwei davon erst nach der Schärfung der Tests: Abweisung sofort, FIFO.
+  - Eine ist gleichwertig: Zählen auch, wenn der Link an einem schon vorhandenen Namen
+    scheitert. Unter der Sperre erreicht das nur ein fremder Prozess zwischen Prüfung
+    und Anlegen, und dann ist es harmlos.
+- `go test -race` grün.
+
+**Was bleibt:** Vormerken setzt voraus, dass der Ausgeber die Validatoren über ihre API
+erreicht (wie beim Auftrag). Die App spielt die Inhaberin noch nicht; das Werkzeug zieht
+y selbst.

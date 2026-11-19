@@ -826,9 +826,13 @@ func QuantenSValidatorenLesen(roh string) ([]QuantenSValidator, error) {
 // QuantenSAusgabe: `aequitasd quanten-s-ausgabe`. Der Schluessel ist der des
 // Knotens (RELAYER_PRIVATE_KEY), die Messung kommt auf stdin. Ohne
 // Validatorenliste ist der Knoten selbst der einzige Validator (t = 1).
-func QuantenSAusgabe(ctx context.Context, apiBasis, schluesselHex string, deckung int64, frist time.Duration, validatoren []QuantenSValidator, t, tol int, mess io.Reader, aus, log io.Writer) error {
+func QuantenSAusgabe(ctx context.Context, apiBasis, schluesselHex string, deckung int64, frist time.Duration, validatoren []QuantenSValidator, t, tol int,
+	messenWarten time.Duration, mess io.Reader, aus, log io.Writer) error {
 	if quantenWKNote(tol, 1, 1) == 0 {
 		return fmt.Errorf("Toleranz %d %%: die Kette kennt nur %v", tol, quantenSToleranzen())
+	}
+	if messenWarten < 0 || messenWarten > quantenSMessenWartenMax {
+		return fmt.Errorf("Messen abwarten: 0 bis %s", quantenSMessenWartenMax)
 	}
 	eigen, err := neuerQuantenSHTTP(apiBasis)
 	if err != nil {
@@ -865,6 +869,21 @@ func QuantenSAusgabe(ctx context.Context, apiBasis, schluesselHex string, deckun
 		dec.DisallowUnknownFields()
 		if err := dec.Decode(&bs); err != nil {
 			return fmt.Errorf("Basen: %v", err)
+		}
+		// Mit --messen-warten: die Basen bei jedem Validator vormerken und
+		// warten, bis er gemessen hat (quanten_s_vormerken.go). Ohne Basen in
+		// der Eingabe zieht das Werkzeug sie selbst (es spielt die Inhaberin).
+		if messenWarten > 0 {
+			if len(bs.Basen) == 0 {
+				if bs.Basen, err = quantenSBasenZiehen(bs.N, len(adressen)); err != nil {
+					return err
+				}
+				bs.Wo = "je Validator gemessen (vorgemerkt)"
+			}
+			if err := quantenSMessungenAbwarten(ctx, key, bs, adressen, netz, messenWarten, quantenSVormerkTakt,
+				func() int64 { return time.Now().Unix() }, log); err != nil {
+				return err
+			}
 		}
 		erg, err = quantenSAusgabeLaufAbschnitte(ctx, auftrag, bs, adressen, t, netz, log)
 	} else {

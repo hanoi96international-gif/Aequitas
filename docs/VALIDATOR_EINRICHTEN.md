@@ -201,7 +201,7 @@ Anfang, er hat eine begrenzte Rechenzeit im Monat) und dessen API-Schlüssel.
 
 ```bash
 cd ~/Aequitas/deploy/validator
-bash quanten-einrichten.sh
+bash quanten-einrichten.sh --automatisch
 docker compose -f docker-compose.yml -f docker-compose.quanten.yml up -d --build
 ```
 
@@ -216,8 +216,19 @@ angezeigt und erscheint nie im Log) und legt an:
 Am Ende prüft es alles ohne IBM (`bash quanten-messen.sh --probe`). Erneut aufrufen
 ist sicher: Was schon da ist, bleibt, wie es ist.
 
-**Bei jeder Ausgabe:** Die Inhaberin schickt dir die Messbasen für deinen Abschnitt
-(eine Folge aus 0 und 1). Damit misst du, bevor der Ausgeber seinen Auftrag schickt:
+**Bei jeder Ausgabe – automatisch** (mit `--automatisch`): Der Ausgeber merkt die
+Messbasen deines Abschnitts bei deinem Knoten vor (unterschrieben, nur ein Mensch mit
+Deckung). Ein Timer sieht jede Minute nach und misst. Dafür gelten feste Grenzen:
+- Höchstens `QS_JE_TAG` Messungen am Tag (Standard 8; beim Einrichten setzen, etwa
+  `QS_JE_TAG=4 bash quanten-einrichten.sh --automatisch`). Das schützt die Rechenzeit
+  deines IBM-Kontos.
+- Dein Knoten nimmt höchstens 8 wartende Vormerkungen an, je Ausgeber 8 und insgesamt
+  32 am Tag.
+- Was der Timer getan hat: `journalctl -u aequitas-quanten`.
+
+Ohne `--automatisch` misst du von Hand, entweder alles Vorgemerkte
+(`bash quanten-messen.sh --warteschlange`, mit derselben Tagesgrenze) oder die Basen,
+die dir die Inhaberin geschickt hat (eine Folge aus 0 und 1):
 
 ```bash
 bash quanten-messen.sh 0110100101101001...

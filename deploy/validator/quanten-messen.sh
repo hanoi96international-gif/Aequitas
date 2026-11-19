@@ -6,6 +6,12 @@
 #                                    0 und 1, hoechstens 16.384 Zeichen)
 #   bash quanten-messen.sh --probe   ohne IBM: Selbsttest und eine ideale Messung
 #                                    in ein Probeverzeichnis
+#   bash quanten-messen.sh --warteschlange
+#                                    misst, was Ausgeber beim Knoten vorgemerkt
+#                                    haben (quanten_s_vormerken.go), hoechstens
+#                                    QS_JE_TAG (Standard 8) Abschnitte am Tag;
+#                                    der Timer aus quanten-einrichten.sh
+#                                    --automatisch ruft das jede Minute auf
 #
 # Gemessen wird mit DEINEM IBM-Konto (Schluessel aus quanten-einrichten.sh), als
 # Knotenbenutzer (10001), je Stelle 5 Schuesse mit Mehrheit. Das Ergebnis landet
@@ -18,6 +24,8 @@ set -euo pipefail
 QS_VERZEICHNIS="${QS_VERZEICHNIS:-/srv/aequitas-quanten}"
 QS_OPT="${QS_OPT:-/opt/aequitas-quanten}"
 QS_SCHLUESSEL="${QS_SCHLUESSEL:-/etc/aequitas-quanten/ibm-token}"
+QS_JE_TAG="${QS_JE_TAG:-8}"
+QS_SPERRE="${QS_SPERRE:-/run/aequitas-quanten.lock}"
 QS_UID=10001
 PY="$QS_OPT/venv/bin/python"
 SKRIPT="$QS_OPT/quantengeld/hardware_ibm.py"
@@ -48,13 +56,32 @@ if [ "${1:-}" = "--probe" ]; then
   exit 0
 fi
 
+schluessel_laden() {
+  [ -s "$QS_SCHLUESSEL" ] || { rot "ABBRUCH: kein IBM-Schluessel ($QS_SCHLUESSEL) -- erst bash quanten-einrichten.sh"; exit 2; }
+  IBM_QUANTUM_TOKEN="$(cat "$QS_SCHLUESSEL")"
+  export IBM_QUANTUM_TOKEN
+}
+
+if [ "${1:-}" = "--warteschlange" ]; then
+  [ $# -eq 1 ] || { rot "ABBRUCH: --warteschlange ohne weitere Argumente"; exit 2; }
+  [[ "$QS_JE_TAG" =~ ^[0-9]{1,2}$ ]] && [ "$QS_JE_TAG" -ge 1 ] && [ "$QS_JE_TAG" -le 64 ] \
+    || { rot "ABBRUCH: QS_JE_TAG 1 bis 64"; exit 2; }
+  # Nie zwei Laeufe zugleich (Timer und Hand): der zweite tut nichts.
+  exec 9>"$QS_SPERRE"
+  flock -n 9 || { echo "Warteschlange laeuft schon."; exit 0; }
+  schluessel_laden
+  # Der Zaehler liegt im HOME des Knotenbenutzers -- nicht im Messverzeichnis,
+  # das der Knoten beschreiben kann; er kann ihn nicht zuruecksetzen.
+  als_knoten "$PY" -I "$SKRIPT" --ibm --s-warteschlange "$QS_VERZEICHNIS" \
+    --zaehler "$QS_OPT/home/messungen-je-tag.json" --je-tag "$QS_JE_TAG"
+  exit 0
+fi
+
 BASEN="${1:-}"
 # Laenge zuerst und ohne Wiederholungszaehler im Muster: ^[01]{1,16384}$
 # wuerde bash bei jedem Aufruf zu einem riesigen Automaten uebersetzen.
 [ "${#BASEN}" -ge 1 ] && [ "${#BASEN}" -le 16384 ] && [[ "$BASEN" =~ ^[01]+$ ]] \
   || { rot "ABBRUCH: BASEN nur 0 und 1, 1 bis 16384 Zeichen"; exit 2; }
 [ $# -eq 1 ] || { rot "ABBRUCH: genau ein Argument"; exit 2; }
-[ -s "$QS_SCHLUESSEL" ] || { rot "ABBRUCH: kein IBM-Schluessel ($QS_SCHLUESSEL) -- erst bash quanten-einrichten.sh"; exit 2; }
-IBM_QUANTUM_TOKEN="$(cat "$QS_SCHLUESSEL")"
-export IBM_QUANTUM_TOKEN
+schluessel_laden
 als_knoten "$PY" -I "$SKRIPT" --ibm --s-abschnitt "$QS_VERZEICHNIS" --basen "$BASEN"
