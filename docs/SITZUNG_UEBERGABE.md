@@ -2,12 +2,12 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 19.11.2026 ~20:45 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
+Stand: 19.11.2026 ~21:20 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
 Repos); davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18:30 UTC Sitzung
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
-**Zuletzt (Sitzung „Weiter“, 19.11. ~20:45 UTC):**
+**Zuletzt (Sitzung „Weiter“, 19.11. ~21:20 UTC):**
 - **#598 gemergt (90e0e622): Pilot mit Stichprobe v2 grün** (`HEUTE.md` 3.3h, `DEZENTRAL.md` 16
   Schritt 5). Eingabe `stichprobe_v2`, Beobachter im Vier-Knoten-Test liest im Register jedes
   Knotens `probe_art` und die nachgerechneten Salze nach. Läufe
@@ -39,6 +39,13 @@ dezentrales Quantengeld“.
       PR mergen → C1-Deploy (Freigabe `produktion`, legt Verzeichnis und override an;
       im Protokoll `AEQUITAS_QS_MESSQUELLE=/data/quanten`) → Workflow mit `modus = ibm`,
       `weg = abschnitte-v2` (Freigaben `quantenhardware` und `produktion`).
+      **Stand 21:17 UTC:** C1-Deploy #108
+      [44611475140](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44611475140)
+      wartet seit 20:51 UTC auf die Freigabe `produktion` (CI-Teil grün). Danach: im
+      Protokoll „Messverzeichnis /srv/aequitas-quanten“ und
+      `AEQUITAS_QS_MESSQUELLE=/data/quanten` belegen, dann `quanten-s-ausgabe.yml` auf
+      `main` mit `modus=ibm, weg=abschnitte-v2, toleranz=2, deckung=1000000` starten.
+      Probelauf im Rauschmodell grün: [44605960500](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44605960500).
     - Der zweite Mensch als Validator (Rollen trennen, A5).
     - Ein Gutachter (Prüfauftrag S 2).
 - Davor: #597 gemergt (d079bf34, Werkzeug im v2-Weg, 14 Mutationen rot).
