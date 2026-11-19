@@ -11,6 +11,21 @@
 #      Bindung und Wahl der Inhaberin, Doppelvorlage an der falschen Stelle
 #      (muss abgewiesen werden), ehrliche Vorlage an C1 (Wert kommt zurueck).
 #
+# Weg abschnitte-v2 (DEZENTRAL.md 16 Schritt 7): Stichprobe erst nach der
+# Bindung (Ausweg aus Befund 5i). C1 ist einziger Validator (t = v = 1) und
+# praepariert seinen einen Abschnitt aus einer Messung in seinem
+# Messverzeichnis (deploy/quanten-c1-messverzeichnis.sh, beim Deploy):
+#   1. messen: Basen der Inhaberin ziehen (n = 2 k, k aus der Tabelle der
+#      Kette fuer t = v = 1 und die Toleranz), hardware_ibm.py --s-abschnitt
+#      in genau diesen Basen, je Stelle 5 Schuesse mit Mehrheit.
+#   2. ausgeben: Messung ins Messverzeichnis von C1
+#      (deploy/quanten-s-ausgabe-abschnitt.sh), dann `aequitasd
+#      quanten-s-ausgabe --stichprobe-v2`: Ausgabe, Bindung und Wahl,
+#      Stichproben und Salze erst danach, Doppelvorlage (muss abgewiesen
+#      werden), ehrliche Vorlage (Wert kommt zurueck).
+# Zusaetzlich verlangt: Stichtag der Stichprobe v2 erreicht
+# (quanten_w.probe_v2_ab in /api/status).
+#
 # Voraussetzungen: Stichtag von W/S erreicht (quanten_w.ab in /api/status),
 # C1 im Validator-Register an einen Menschen gebunden, auf der Signieradresse
 # von C1 mindestens die Deckung (Standard 1 AEQ).
@@ -32,6 +47,16 @@ on:
       deckung:
         description: "Deckung des Tokens in Mikro-AEQ (1000000 = 1 AEQ, hoechstens 10000000)"
         default: "1000000"
+      weg:
+        description: "auftrag = wie am 17.11. (ein Auftrag, Stichprobe bei der Ausgabe); abschnitte-v2 = Abschnitt des Validators, Stichprobe erst nach der Bindung (DEZENTRAL.md 16)"
+        type: choice
+        options: [auftrag, abschnitte-v2]
+        default: auftrag
+      toleranz:
+        description: "nur abschnitte-v2: Toleranz in Prozent (2 -> k = 552, 3 -> 672, 4 -> 840 bei einem Validator)"
+        type: choice
+        options: ["2", "3", "4"]
+        default: "2"
 
 permissions:
   contents: read
@@ -41,6 +66,8 @@ concurrency:
   cancel-in-progress: false
 
 env:
+  WEG: ${{ inputs.weg }}
+  TOL: ${{ inputs.toleranz }}
   C1: 188.172.229.121
   C1_HOSTKEY: SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA
   NETZ: https://aequitas.digital
@@ -59,7 +86,22 @@ jobs:
           python-version: "3.13"
       - run: pip install --require-hashes --no-deps -r forschung/quantengeld/hardware-anforderungen.txt
       - run: python3 -I forschung/quantengeld/hardware_ibm.py --selbsttest
-      - run: python3 -I forschung/quantengeld/hardware_ibm.py --rauschen FakeMarrakesh --s-messen "$RUNNER_TEMP/messung.json"
+      - name: Messung im Rauschmodell (Probe, keine Ausgabe)
+        run: |
+          set -euo pipefail
+          case "$WEG" in
+            auftrag) python3 -I forschung/quantengeld/hardware_ibm.py --rauschen FakeMarrakesh --s-messen "$RUNNER_TEMP/messung.json" ;;
+            abschnitte-v2)
+              case "$TOL" in 2) K=552 ;; 3) K=672 ;; 4) K=840 ;; *) echo "::error::toleranz $TOL"; exit 1 ;; esac
+              Y=$(python3 -I -c 'import secrets,sys; print("".join(str(secrets.randbits(1)) for _ in range(int(sys.argv[1]))))' "$((2 * K))")
+              mkdir -m 700 "$RUNNER_TEMP/qs"
+              python3 -I forschung/quantengeld/hardware_ibm.py --rauschen FakeMarrakesh --s-abschnitt "$RUNNER_TEMP/qs" --basen "$Y"
+              NAME=$(printf '%s' "$Y" | sha256sum | cut -d' ' -f1)
+              [ "$(ls -A "$RUNNER_TEMP/qs")" = "$NAME.json" ] || { echo "::error::Messverzeichnis: erwartet genau $NAME.json"; exit 1; }
+              jq -e --arg y "$Y" '(keys | sort) == ["job","t","u","wo","x","y"] and .y == $y and (.u | length) == ($y | length) and (.t | length) == ($y | length) and (.x | length) == ($y | length)' "$RUNNER_TEMP/qs/$NAME.json" >/dev/null \
+                || { echo "::error::Messung passt nicht zu den Basen"; exit 1; } ;;
+            *) echo "::error::weg $WEG"; exit 1 ;;
+          esac
 
   messen:
     if: inputs.modus == 'ibm'
@@ -75,12 +117,21 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$DECKUNG" =~ ^[1-9][0-9]{6,7}$ ]] && [ "$DECKUNG" -le 10000000 ] || { echo "::error::Deckung $DECKUNG (1000000 bis 10000000)"; exit 1; }
+          [[ "$WEG" =~ ^(auftrag|abschnitte-v2)$ ]] || { echo "::error::weg $WEG"; exit 1; }
+          [[ "$TOL" =~ ^[234]$ ]] || { echo "::error::toleranz $TOL"; exit 1; }
       - name: Stichtag erreicht?
         run: |
           set -euo pipefail
           AB=$(curl -fsS -m 15 "$NETZ/api/status" | jq -r '.quanten_w.ab // empty')
           [[ "$AB" =~ ^[0-9]{10}$ ]] || { echo "::error::quanten_w.ab nicht lesbar -- laeuft #568 auf C1?"; exit 1; }
           [ "$(date +%s)" -ge "$AB" ] || { echo "::error::W/S erst ab $(date -u -d @"$AB") aktiv"; exit 1; }
+          # Stichprobe v2: vor jeder Messung, sonst verbraucht eine Ausgabe,
+          # die die Kette abweist, den Auftrag beim Quantenrechner.
+          if [ "$WEG" = abschnitte-v2 ]; then
+            V2=$(curl -fsS -m 15 "$NETZ/api/status" | jq -r '.quanten_w.probe_v2_ab // empty')
+            [[ "$V2" =~ ^[0-9]{10}$ ]] || { echo "::error::quanten_w.probe_v2_ab nicht lesbar -- Stichprobe v2 schlaeft auf C1"; exit 1; }
+            [ "$(date +%s)" -ge "$V2" ] || { echo "::error::Stichprobe v2 erst ab $(date -u -d @"$V2") aktiv"; exit 1; }
+          fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -97,9 +148,21 @@ jobs:
           IBM_QUANTUM_BACKEND: ${{ vars.IBM_QUANTUM_BACKEND }}
         run: |
           set -euo pipefail
-          python3 -I forschung/quantengeld/hardware_ibm.py --ibm --s-messen "$RUNNER_TEMP/messung.json"
-          echo "messung=$(gzip -9c "$RUNNER_TEMP/messung.json" | base64 -w0)" >> "$GITHUB_OUTPUT"
-          rm -f "$RUNNER_TEMP/messung.json"
+          if [ "$WEG" = abschnitte-v2 ]; then
+            # Basen der Inhaberin: n = 2 k (Tabelle der Kette, t = v = 1).
+            case "$TOL" in 2) K=552 ;; 3) K=672 ;; 4) K=840 ;; *) echo "::error::toleranz $TOL"; exit 1 ;; esac
+            Y=$(python3 -I -c 'import secrets,sys; print("".join(str(secrets.randbits(1)) for _ in range(int(sys.argv[1]))))' "$((2 * K))")
+            mkdir -m 700 "$RUNNER_TEMP/qs"
+            python3 -I forschung/quantengeld/hardware_ibm.py --ibm --s-abschnitt "$RUNNER_TEMP/qs" --basen "$Y"
+            NAME=$(printf '%s' "$Y" | sha256sum | cut -d' ' -f1)
+            [ "$(ls -A "$RUNNER_TEMP/qs")" = "$NAME.json" ] || { echo "::error::Messverzeichnis: erwartet genau $NAME.json"; exit 1; }
+            echo "messung=$(gzip -9c "$RUNNER_TEMP/qs/$NAME.json" | base64 -w0)" >> "$GITHUB_OUTPUT"
+            rm -rf "$RUNNER_TEMP/qs"
+          else
+            python3 -I forschung/quantengeld/hardware_ibm.py --ibm --s-messen "$RUNNER_TEMP/messung.json"
+            echo "messung=$(gzip -9c "$RUNNER_TEMP/messung.json" | base64 -w0)" >> "$GITHUB_OUTPUT"
+            rm -f "$RUNNER_TEMP/messung.json"
+          fi
 
   ausgeben:
     needs: messen
@@ -127,19 +190,39 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$DECKUNG" =~ ^[1-9][0-9]{6,7}$ ]] && [ "$DECKUNG" -le 10000000 ] || { echo "::error::Deckung $DECKUNG"; exit 1; }
+          [[ "$WEG" =~ ^(auftrag|abschnitte-v2)$ ]] && [[ "$TOL" =~ ^[234]$ ]] || { echo "::error::weg $WEG / toleranz $TOL"; exit 1; }
           umask 077
           printf '%s' "$MESSUNG" | base64 -d | gunzip -c > "$RUNNER_TEMP/m.json"
-          jq -e '.n == 1680 and (.x | length) == 1680' "$RUNNER_TEMP/m.json" >/dev/null || { echo "::error::Messung unvollstaendig"; exit 1; }
-          ssh -o BatchMode=yes root@$C1 'umask 077; cat > /root/qs-messung.json' < "$RUNNER_TEMP/m.json"
-          rm -f "$RUNNER_TEMP/m.json"
-          scp -q -o BatchMode=yes deploy/quanten-s-ausgabe.sh root@$C1:/root/quanten-s-ausgabe.sh
-          set +e
-          ssh -o BatchMode=yes root@$C1 "DECKUNG=$DECKUNG bash /root/quanten-s-ausgabe.sh" > ergebnis.json
-          RC=$?
-          set -e
+          if [ "$WEG" = abschnitte-v2 ]; then
+            case "$TOL" in 2) K=552 ;; 3) K=672 ;; 4) K=840 ;; esac
+            N=$((2 * K))
+            # Genau die Felder, die der Dienst liest; Basen nur 0/1 in der Laenge n.
+            jq -e --argjson n "$N" '(keys | sort) == ["job","t","u","wo","x","y"] and (.y | test("^[01]+$")) and (.y | length) == $n and (.u | length) == $n and (.t | length) == $n and (.x | length) == $n' "$RUNNER_TEMP/m.json" >/dev/null \
+              || { echo "::error::Messung unvollstaendig"; exit 1; }
+            NAME=$(jq -j .y "$RUNNER_TEMP/m.json" | sha256sum | cut -d' ' -f1)
+            [[ "$NAME" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::Name"; exit 1; }
+            jq -c --argjson n "$N" '{n: $n, basen: [.y], wo: .wo, job: .job}' "$RUNNER_TEMP/m.json" > "$RUNNER_TEMP/b.json"
+            ssh -o BatchMode=yes root@$C1 'umask 077; cat > /root/qs-abschnitt.json' < "$RUNNER_TEMP/m.json"
+            ssh -o BatchMode=yes root@$C1 'umask 077; cat > /root/qs-basen.json' < "$RUNNER_TEMP/b.json"
+            rm -f "$RUNNER_TEMP/m.json" "$RUNNER_TEMP/b.json"
+            scp -q -o BatchMode=yes deploy/quanten-s-ausgabe-abschnitt.sh root@$C1:/root/quanten-s-ausgabe-abschnitt.sh
+            set +e
+            ssh -o BatchMode=yes root@$C1 "DECKUNG=$DECKUNG TOLERANZ=$TOL QS_NAME=$NAME bash /root/quanten-s-ausgabe-abschnitt.sh" > ergebnis.json
+            RC=$?
+            set -e
+          else
+            jq -e '.n == 1680 and (.x | length) == 1680' "$RUNNER_TEMP/m.json" >/dev/null || { echo "::error::Messung unvollstaendig"; exit 1; }
+            ssh -o BatchMode=yes root@$C1 'umask 077; cat > /root/qs-messung.json' < "$RUNNER_TEMP/m.json"
+            rm -f "$RUNNER_TEMP/m.json"
+            scp -q -o BatchMode=yes deploy/quanten-s-ausgabe.sh root@$C1:/root/quanten-s-ausgabe.sh
+            set +e
+            ssh -o BatchMode=yes root@$C1 "DECKUNG=$DECKUNG bash /root/quanten-s-ausgabe.sh" > ergebnis.json
+            RC=$?
+            set -e
+          fi
           cat ergebnis.json
           {
-            echo "## Quantengeld S: erste Ausgabe auf dem Hauptnetz"
+            echo "## Quantengeld S: Ausgabe auf dem Hauptnetz (Weg $WEG, Toleranz $TOL %)"
             echo
             if [ "$RC" = 0 ]; then echo "**Erfolg:** Doppelvorlage abgewiesen, ehrliche Vorlage eingeloest."; else echo "**Gescheitert (Exit $RC)** -- Verlauf im Protokoll."; fi
             echo

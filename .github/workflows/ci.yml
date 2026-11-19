@@ -139,6 +139,8 @@ jobs:
       - run: bash scripts/test_quantengeld_mindest_pruefer.sh
       - run: bash scripts/test_quantengeld_noten_tabelle.sh
       - run: bash scripts/test_quanten_s_ausgabe_skript.sh
+      - run: bash scripts/test_quanten_s_ausgabe_abschnitt_skript.sh
+      - run: bash scripts/test_quanten_c1_messverzeichnis.sh
       - run: bash scripts/test_quanten_messen_skript.sh
       - run: bash scripts/test_offline_nicht_verpasst.sh
       - run: bash scripts/test_pruefer_pq_nicht_verpasst.sh

@@ -29,6 +29,13 @@ git reset -q --hard origin/main
 echo "Stand: $(git rev-parse --short=7 HEAD)"
 df -h / | tail -1
 cd deploy/validator
+# Quantengeld S, Abschnitts-Weg (DEZENTRAL.md 16 Schritt 7): Messverzeichnis
+# und docker-compose.override.yml -- vor dem Bauen, damit ein Abbruch den
+# laufenden Knoten unberuehrt laesst. Die override-Datei liest jedes docker
+# compose hier (auch Ruecknahme und Neustarts); config -q prueft, dass alles
+# zusammen gueltig ist.
+bash /root/Aequitas/deploy/quanten-c1-messverzeichnis.sh
+docker compose config -q
 # Erst bauen, waehrend der alte Knoten weiterlaeuft; der Neustart danach
 # dauert nur Sekunden.
 GIT_COMMIT="$(git -C /root/Aequitas rev-parse --short=7 HEAD)" docker compose build -q node
@@ -37,7 +44,7 @@ docker image prune -f >/dev/null 2>&1 || true
 docker builder prune -af --max-used-space 10GB >/dev/null 2>&1 || true
 
 docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' \
-  | grep -E '^(ANNAHME_ROLLE|IS_PRIMARY_NODE|PROOF_SERVER_URLS|PRIMARY_NODE_URLS)=' | sort
+  | grep -E '^(ANNAHME_ROLLE|IS_PRIMARY_NODE|PROOF_SERVER_URLS|PRIMARY_NODE_URLS|AEQUITAS_QS_MESSQUELLE)=' | sort
 for i in $(seq 1 60); do
   S=$(curl -s -m 5 http://127.0.0.1:8080/api/health/combined || true)
   echo "$S" | grep -q '"nimmt_an"' && break
