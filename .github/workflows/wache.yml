@@ -109,6 +109,21 @@ jobs:
                 elif [ "$PQFALSCH" != 0 ]; then rot "$B: $PQFALSCH PQ-Stempel passen NICHT zur Genesis (pq_stempel.schluessel pruefen)"
                 else ok "PQ-Stempel: Erzeuger stempelt=$PQEIG, $PQOK geprueft, 0 falsch, Pflicht ab ${PQAB/#0/(noch nicht)}"; fi
               fi
+              # Quantengeld (quanten_w in /api/status): Stichtage von W/S ("ab") und der
+              # Stichprobe v2 ("probe_v2_ab", DEZENTRAL.md 16). Nur Hinweis, kein Rot:
+              # ein fehlendes Feld heisst, die Regel schlaeft. "aktiv" nach der Uhr der
+              # Wache; die Kette entscheidet nach der Blockzeit.
+              QW=$(curl -s --max-time 10 "http://$B:8080/api/status" | python3 -c "import sys,json,time
+          try:
+              q=json.load(sys.stdin).get('quanten_w') or {}
+              def z(k):
+                  v=q.get(k)
+                  if type(v) is not int: return k+' schlaeft'
+                  return k+' '+str(v)+(' (aktiv)' if v<=time.time() else ' (ab '+time.strftime('%d.%m.%Y %H:%M UTC',time.gmtime(v))+')')
+              print(', '.join(z(k) for k in ('ab','probe_v2_ab')))
+          except Exception:
+              print('unlesbar')" 2>/dev/null || echo "unlesbar")
+              echo "ℹ $B: Quantengeld $QW"
               J=$(h $B)
               if [ -z "$J" ]; then rot "$B antwortet nicht auf /api/health/combined"; else echo "$J" | python3 .github/wache_pruefung.py || ROT=1; fi
             fi
