@@ -767,6 +767,11 @@ Bargeld. Das leistet das Offline-Bargeld (`docs/OFFLINE_BARGELD.md`):
   nicht durch Physik.
 - Eine Note aus einem Cloud-Lauf als Wertträger. Sie beweist den Ablauf, nicht die
   Echtheit.
+- „Ein S-Token kann an zwei Stellen nicht doppelt ausgegeben werden“, ohne Bedingung.
+  Das gilt nur, solange keine Annahmestelle (und heute auch nicht das
+  Ausgabe-Werkzeug, das beide Stichproben lädt) vor der Bindung mit der Inhaberin
+  zusammenarbeitet. Die beiden Annahmestellen müssen einander vertrauen
+  (`DEZENTRAL.md` 16, `s_kette.py` Selbsttest 5i).
 
 Diese Unterscheidung ist auch rechtlich klug, denn irreführende Werbung ist angreifbar.
 Für die Menschen, die AEQ halten, ist sie ehrlich.

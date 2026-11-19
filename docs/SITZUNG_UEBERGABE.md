@@ -2,13 +2,25 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 19.11.2026 ~06:45 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
+Stand: 19.11.2026 ~09:45 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
 Repos); davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18:30 UTC Sitzung
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
-**Zuletzt (Sitzung „Weiter“, 19.11. ~06:45 UTC):**
-- **PR (dieser Stand): Basen automatisch zum Validator** (`DEZENTRAL.md` 15).
+**Zuletzt (Sitzung „Weiter“, 19.11. ~09:45 UTC):**
+- **C1 läuft mit #592** (Deploy #102 [44476883826](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44476883826), grün).
+- **PR (dieser Stand): Befund 5i** (`DEZENTRAL.md` 16, Prüfauftrag S 2 und S 8).
+  - Eine Annahmestelle, die mit der Inhaberin zusammenarbeitet, lässt sie an beiden
+    Stellen durchkommen. Belegt in `s_kette.py` 5i, mit Gegenprobe.
+  - Heute ohne Gefahr: Das Werkzeug war in allen Läufen alle Rollen zugleich.
+  - Vor einer Ausgabe an Dritte: Rollen trennen, die beiden Stellen müssen einander
+    vertrauen.
+  - Ausweg spezifiziert in `s_kette.py` 5j (8 Mutationen rot): Stichprobe erst nach der
+    Bindung (gesalzener Teil-Hash und Zählung je Abschnitt beim Validator, Öffnung erst
+    nach Bindung und Wahl, Kette rechnet `probe_hash_v2` nach).
+  - **Nächste Schritte:** Prüfvektor, Dienst (ohne Kette), dann die Kettenregel
+    `probe_art = 2` mit Stichtag (Konsensänderung, Freigabe des Betreibers).
+- **#592 gemergt (f0ca4d53): Basen automatisch zum Validator** (`DEZENTRAL.md` 15).
   - Endpunkt `POST /api/quanten-w/validator/vormerken` (unterschrieben, Mensch mit
     Deckung, begrenzt: 8 wartend, 8 je Ausgeber und Tag, 32 am Tag).
   - Server: `quanten-messen.sh --warteschlange`; mit `quanten-einrichten.sh
@@ -18,8 +30,8 @@ dezentrales Quantengeld“.
     sie selbst.
   - Dieselben Basen höchstens einmal am Tag (gegen wiederholte Vormerkungen).
   - Gegenprobe: 36 Mutationen, 35 rot, eine gleichwertig.
-  - Nach dem Merge braucht C1 den Deploy (neuer Endpunkt; ohne Messverzeichnis weist
-    C1 jede Vormerkung ab).
+  - C1 braucht den Deploy (Freigabe `produktion`; neuer Endpunkt, ohne Messverzeichnis
+    weist C1 jede Vormerkung ab).
   - Sandbox-Rest: Ein Heredoc-Fehler hat `/aequitas-quanten.timer` im Wurzelverzeichnis
     der Sandbox angelegt. Das Entfernen hat die Sicherheitsprüfung abgelehnt; die Datei
     ist harmlos und nur in dieser Sandbox.

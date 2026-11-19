@@ -320,6 +320,11 @@ Annahmestellen. **Seit 17.11.2026 17:00 UTC im Hauptnetz freigeschaltet** (dasse
 2. **Stichproben-Annahmestellen** (Ergänzung zu Kent u. a.). Jede Stelle kennt (u, t) nur auf
    ihrer geheimen, disjunkten Stichprobe und prüft ohne Netz.
    - Kann eine bestochene Stelle an der anderen Stelle durchkommen?
+     **Eigene Antwort (19.11.2026): ja**, die Inhaberin kommt dann an beiden durch. Es
+     reicht, dass die Stelle vor der Bindung verrät, welche Stellen ihre sind. Belegt in
+     `s_kette.py`, Selbsttest 5i; Ausweg im Entwurf in
+     `forschung/quantengeld/DEZENTRAL.md` 16. Bitte prüfen, ob der Ausweg trägt:
+     Stichprobe erst nach der Bindung, Hash je Abschnitt.
    - Was verrät die Wahl c, die vorab auf der Kette steht, über die Stelle, und was die
      Bindung d über die Basen der Nutzerin?
 3. **Einlösen auf der Kette.**
@@ -365,6 +370,11 @@ Annahmestellen. **Seit 17.11.2026 17:00 UTC im Hauptnetz freigeschaltet** (dasse
    - **Frage:** Welche Rollen müssen vor einer Ausgabe an Dritte getrennt sein (Ausgeber,
      Validatoren, Annahmestellen, Gerät der Inhaberin)? Reicht die Regel der Kette,
      Validatoren an verschiedene Menschen zu binden?
+   - **Eigene Antwort (19.11.2026):** Die Bindung der Validatoren reicht nicht.
+     - Wer eine Stichprobe kennt, also beide Annahmestellen und heute auch das
+       Ausgabe-Werkzeug, darf vor der Bindung nicht mit der Inhaberin zusammenarbeiten.
+     - Die beiden Annahmestellen müssen einander vertrauen.
+     - Siehe `DEZENTRAL.md` 16.
 
 ## Was erst die Hardware entscheidet (keine Frage an die Kryptografie)
 

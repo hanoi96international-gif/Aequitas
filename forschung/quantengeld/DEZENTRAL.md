@@ -637,3 +637,100 @@ messen. Bei mehreren Validatoren und jeder Ausgabe geht das nicht.
 **Was bleibt:** Vormerken setzt voraus, dass der Ausgeber die Validatoren über ihre API
 erreicht (wie beim Auftrag). Die App spielt die Inhaberin noch nicht; das Werkzeug zieht
 y selbst.
+
+## 16. Befund: Eine Annahmestelle, die mit der Inhaberin zusammenarbeitet (19.11.2026)
+
+Der Prüfauftrag fragt (S, Punkt 2): „Kann eine bestochene Stelle an der anderen Stelle
+durchkommen?“ **Ja, und zwar ohne ein einziges Geheimnis der Validatoren.**
+
+**Warum:**
+- An Stelle i prüft Annahmestelle 0 in der Basis dᵢ ⊕ c, Annahmestelle 1 in dᵢ ⊕ 1 ⊕ c.
+  Das sind immer entgegengesetzte Basen. Die Inhaberin hat jede Stelle in genau einer
+  Basis yᵢ gemessen und kann also je Stelle nur für eine Annahmestelle richtig antworten.
+- Gegen das Doppeltausgeben schützt allein, dass sie beim Binden von d **nicht weiß,
+  welche Stelle welche Annahmestelle prüft** (Befund 5g).
+- Die Stichproben sind disjunkt, mit dem Stellen-Bit (Abschnitt 8) sogar genaue
+  Gegenstücke: Was nicht zu Stelle 0 gehört, gehört zu Stelle 1.
+- Verrät Annahmestelle 0 der Inhaberin vor der Bindung nur, **welche** Stellen ihre sind
+  (nicht einmal u oder t), dann setzt sie d dort auf Annahmestelle 0 und überall sonst auf
+  Annahmestelle 1 aus. Sie besteht an beiden.
+- Die bestochene Stelle meldet zuerst auf der Kette an und bekommt die Deckung. Die andere
+  hat ohne Netz angenommen und geht leer aus.
+- Belegt in `s_kette.py`, Selbsttest 5i: Mit den verratenen Stellen besteht sie an
+  beiden. Gegenprobe: Mit einer zufällig geratenen Hälfte fällt sie an mindestens einer
+  durch. Beide Prüfungen werden bei Mutation rot (falsche Stelle verraten, Gegenprobe mit
+  Wissen).
+
+**Was das heute bedeutet:**
+- Wer eine Stichprobe kennt, darf vor der Bindung nicht mit der Inhaberin
+  zusammenarbeiten. Heute kennen sie **beide Annahmestellen und das Ausgabe-Werkzeug**:
+  Es lädt beide Stichproben, um ihren Hash auf die Kette zu legen und die ehrliche
+  Vorlage exakt nachzurechnen (`quanten_s_ausgabe_abschnitte.go`, Schritt 3).
+- Im Hauptnetz und im Pilot war das Werkzeug zugleich Ausgeber, Inhaberin und beide
+  Stellen. Es konnte nur sich selbst schaden; eine offene Gefahr gab es also nicht.
+- **Vor einer Ausgabe an Dritte gilt:**
+  - Die Inhaberin darf weder Ausgeber noch Annahmestelle sein, und sie darf mit keiner
+    der beiden zusammenarbeiten.
+  - Die beiden Annahmestellen müssen einander vertrauen, etwa zwei Kassen desselben
+    Betreibers. So steht es auch bei Kent u. a., wo die Annahmestellen Filialen einer
+    Bank sind.
+  - Das ist die Antwort auf Prüfauftrag S, Punkt 8: Diese Rollen müssen getrennt sein.
+    Die Bindung der Validatoren an verschiedene Menschen reicht dafür nicht.
+
+**Ausweg (spezifiziert in `s_kette.py` 5j, im Knoten noch nicht gebaut): Die Stichprobe
+bleibt bis zur Bindung bei den Validatoren.** Eine Annahmestelle braucht ihre Stichprobe erst, wenn die Inhaberin
+vorlegt, und das ist immer nach der Bindung. Vorher braucht sie niemand, wenn:
+1. **Jeder Validator die Probe für seinen Abschnitt selbst rechnet.** Er kennt dort u, t,
+   x, y und die Stellen-Bits, weil er die Messung selbst gemacht hat. Er meldet dem
+   Ausgeber nur, unterschrieben:
+   - je Annahmestelle die Zahl der Treffer und Fehler seines Abschnitts (für die exakte
+     Probe der ehrlichen Vorlage);
+   - einen Hash der Stellen seines Abschnitts für diese Annahmestelle, gesalzen.
+   - Das Werkzeug zählt zusammen und kennt keine einzige Stelle der Stichproben.
+2. **Die Kette den Hash der Stichprobe aus den Hashes je Abschnitt bildet.** Beim
+   Anmelden teilt sie die Stichprobe der Stelle nach Abschnitten auf und rechnet nach.
+   Das ist eine **Änderung der Kettenregel**, nur für neue Token: neue Version des
+   Stichproben-Hashes, eigener Stichtag, alte Token unverändert.
+3. **Die Validatoren die Öffnung erst herausgeben, wenn d auf der Kette gebunden ist**,
+   und nur an die Stelle aus dem Auftrag. Das ist eine Änderung im Dienst, nicht in der
+   Kette.
+4. **Die Annahmestelle sich ihre Stichprobe nach der Bindung einmal mit Netz holt.** Die
+   Annahme selbst bleibt ohne Netz.
+
+Danach kann eine Annahmestelle der Inhaberin vor der Bindung nichts verraten, weil sie
+selbst noch nichts weiß. Zusammenarbeit nach der Bindung hilft nicht mehr, denn d steht
+fest. Offen bleibt nur, was jede Stichproben-Prüfung voraussetzt: Ein Validator, der seine
+Bits verrät, verrät sie für seinen Abschnitt. Das ist dieselbe Schwelle wie heute bei
+seinen Werten (t − 1 Validatoren kennen genau ihre Abschnitte, Abschnitt 7).
+
+**Spezifiziert (`s_kette.py`, Selbsttest 5j):**
+- `Praeparator.probe_teil(b)`: gesalzener Teil-Hash seiner Stellen für Annahmestelle b.
+  Das Salz leitet er aus seinen geheimen Werten ab; nur er kennt es.
+- `Praeparator.probe_zaehlung(b, y, x)`: Treffer und Fehler auf seinen Stellen, nur Zahlen.
+  Ihre Summe ist genau das, was die Stelle bei ehrlicher Vorlage prüft (getestet). Die
+  exakte Probe der ehrlichen Vorlage geht damit, ohne dass jemand eine Stelle kennt.
+- `probe_hash_v2`: die Bindung auf der Kette aus den Teil-Hashes der Reihe nach. Beim
+  Anmelden rechnet die Kette sie aus der Stichprobe der Stelle und den Salzen nach
+  (`probe_v2_pruefen`, Token mit `probe_art = 2`). Alte Token bleiben unverändert.
+- `Praeparator.oeffnung_nach_bindung(b, kette)`: Öffnung und Salz erst, wenn d und c auf
+  der Kette stehen.
+- Tests:
+  - Gutfall und Doppelvorlage; Einlösen auf der Kette mit Teil-Hashes.
+  - Öffnung vor der Bindung und vor der Wahl abgewiesen (für jeden Validator und jede
+    Stelle).
+  - Anmelden abgewiesen mit: Teilmenge, einer Stelle mehr, falschem Salz, ohne Salz, dem
+    Salz der anderen Stelle, der Stichprobe der anderen Stelle.
+  - Ein Token mit `probe_art = 1` nimmt Teil-Hashes nicht an.
+- Gegenprobe: 8 Mutationen, alle rot:
+  - Öffnung ohne Bindung; Öffnung ohne Wahl;
+  - v2 nicht geprüft; Salz ignoriert; Abschnitte nicht getrennt;
+  - Zählung ohne Basis; Teil-Hash über alle Stellen; Salz für beide Stellen gleich.
+- Die Prüfvektoren sind unverändert.
+
+**Nächste Schritte:**
+1. Ein Prüfvektor für `probe_hash_v2` aus der Spezifikation (wie `--vektor-abschnitte`).
+2. Dienst: Teil-Hash und Zählung in der Abschnitts-Antwort (unterschrieben); Öffnung erst
+   nach Bindung und Wahl. Nur der Dienst, nicht die Kette; das Werkzeug zählt zusammen.
+3. Kettenregel `probe_art = 2` mit eigenem Stichtag. Das ist eine **Konsensänderung**
+   und braucht die Freigabe des Betreibers. Bis dahin gilt die Regel oben: Rollen
+   trennen, die Stellen müssen einander vertrauen.
