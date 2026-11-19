@@ -84,11 +84,7 @@ func quantenWSNurEigeneFelder(tx *Transaction, q QuantenWAngaben) bool {
 	if tx.QuantenW.Index != 0 {
 		return false
 	}
-	// Ein leeres salze verwirft ein aelterer Knoten wie ein fehlendes (und
-	// omitempty laesst es beim Hashen weg): gleich behandeln.
-	if len(q.Salze) == 0 {
-		q.Salze = nil
-	}
+	// (Leeres salze ist schon in quantenWNurEigeneFelder wie fehlend.)
 	ohneWallet := tx.Wallet == "" && tx.DistributionAt == 0
 	switch tx.Type {
 	case quantenWSAusgebenTxArt:

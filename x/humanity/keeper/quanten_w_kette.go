@@ -271,6 +271,13 @@ func quantenWNurEigeneFelder(tx *Transaction) bool {
 	}
 	q := *tx.QuantenW
 	q.K, q.Index = "", 0
+	// Ein leeres salze (Stichprobe v2) verwirft ein aelterer Knoten wie ein
+	// fehlendes, und omitempty laesst es beim Hashen weg: fuer JEDE Art gleich
+	// behandeln -- sonst naehme der aeltere Knoten einen Block an, den der neue
+	// abweist (quantenSProbeV2AbUnix).
+	if len(q.Salze) == 0 {
+		q.Salze = nil
+	}
 	switch tx.Type {
 	case quantenWPraegenTxArt:
 		q.N, q.T, q.Wurzel, q.Validatoren, q.Anker, q.Bestaetigungen, q.Deckung, q.WalletSig, q.PQ, q.Anteile, q.Tol = 0, 0, "", nil, nil, nil, 0, "", nil, 0, 0

@@ -228,6 +228,29 @@ func TestQuantenSProbeV2Kette_Aktiv(t *testing.T) {
 	}
 }
 
+// Auch ein W-Satz (Praegen) mit leerem salze ist wie einer ohne: derselbe
+// Bescheid und derselbe Hash -- ein aelterer Knoten sieht das Feld nicht.
+func TestQuantenSProbeV2Kette_LeeresSalzeBeiW(t *testing.T) {
+	w := neueQwWelt(t, 64)
+	z := qwT0
+	ohne := w.praegenTx(z, 10_000_000)
+	leer := w.praegenTx(z, 10_000_000)
+	leer.QuantenW.Salze = []string{}
+	r1, r2 := w.bescheid(w.cs, ohne, z).regel, w.bescheid(w.cs, leer, z).regel
+	if r1 != r2 || r1 != "" {
+		t.Fatalf("Praegen mit leerem salze: %q, ohne: %q", r2, r1)
+	}
+	if quantenWTxHash(&ohne) != quantenWTxHash(&leer) {
+		t.Fatal("leeres salze aendert den Hash")
+	}
+	// Mit einem Salz: Befund (gehoert nicht zum Praegen).
+	voll := w.praegenTx(z, 10_000_000)
+	voll.QuantenW.Salze = []string{strings.Repeat("ab", 32)}
+	if w.bescheid(w.cs, voll, z).regel == "" {
+		t.Fatal("Praegen mit salze angenommen")
+	}
+}
+
 // Bisherige Token (Art 0) behalten ihr Register Wort fuer Wort: weder
 // probe_art noch salze in der Form (StateRoot unveraendert), und nach dem
 // Stichtag weisen sie salze beim Anmelden ab.
