@@ -873,4 +873,13 @@ seinen Werten (t − 1 Validatoren kennen genau ihre Abschnitte, Abschnitt 7).
      ([44584732345](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44584732345)),
      freigegeben 18:33 UTC, grün. Der Wächter meldete: „Repo 1795116600, laufend schlafend,
      jetzt 1795113226 – ausrollen erlaubt“ (57 min Vorlauf). Scharf ab 19:30 UTC nach der
-     Blockzeit. Die Wache (`wache.yml`) gibt `probe_v2_ab` seitdem alle 10 min als Hinweis aus.
+     Blockzeit. Die Wache (`wache.yml`, #600) gibt `probe_v2_ab` als Hinweis aus.
+   - **Belegt scharf:** Wache-Lauf
+     [44601606565](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44601606565)
+     (19:45:58 UTC, grün): „Quantengeld ab 1794934800 (aktiv), probe_v2_ab 1795116600
+     (aktiv)“.
+   - **Was bleibt:**
+     - Der erste Hauptnetz-Token im v2-Weg. Er braucht eine Messung auf dem Chip, also
+       die Freigabe `quantenhardware`.
+     - Der zweite Mensch als Validator (A5, Rollen trennen).
+     - Ein Gutachten (Prüfauftrag S 2).

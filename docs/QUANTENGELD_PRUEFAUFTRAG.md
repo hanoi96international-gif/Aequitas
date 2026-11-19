@@ -322,9 +322,10 @@ Annahmestellen. **Seit 17.11.2026 17:00 UTC im Hauptnetz freigeschaltet** (dasse
    - Kann eine bestochene Stelle an der anderen Stelle durchkommen?
      **Eigene Antwort (19.11.2026): ja**, die Inhaberin kommt dann an beiden durch. Es
      reicht, dass die Stelle vor der Bindung verrät, welche Stellen ihre sind. Belegt in
-     `s_kette.py`, Selbsttest 5i; Ausweg im Entwurf in
-     `forschung/quantengeld/DEZENTRAL.md` 16. Bitte prüfen, ob der Ausweg trägt:
-     Stichprobe erst nach der Bindung, Hash je Abschnitt.
+     `s_kette.py`, Selbsttest 5i. Ausweg umgesetzt: „Stichprobe v2“
+     (`forschung/quantengeld/DEZENTRAL.md` 16, `x/humanity/keeper/quanten_s_probe_v2.go`),
+     im Hauptnetz seit 19.11.2026 19:30 UTC. Bitte prüfen, ob der Ausweg trägt:
+     Stichprobe erst nach der Bindung, gesalzener Hash je Abschnitt.
    - Was verrät die Wahl c, die vorab auf der Kette steht, über die Stelle, und was die
      Bindung d über die Basen der Nutzerin?
 3. **Einlösen auf der Kette.**
