@@ -127,8 +127,9 @@ func qsKetteBeobachten(t *testing.T, netz *vierKnotenNetz) (halt func() map[stri
 				if k.aus.Load() {
 					continue
 				}
-				cs, _, _ := k.teile()
-				qsRegisterLesen(cs, gesehen)
+				if cs, _, _ := k.teile(); cs != nil {
+					qsRegisterLesen(cs, gesehen)
+				}
 			}
 			select {
 			case <-stop:
