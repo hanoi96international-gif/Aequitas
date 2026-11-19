@@ -13,7 +13,8 @@ import (
 )
 
 // quantenSAusgabeBefehl: `aequitasd quanten-s-ausgabe [--api URL]
-// [--deckung MIKRO] [--frist DAUER] [--toleranz PROZENT] [--messen-warten DAUER] < messung.json`. Der Schluessel ist der
+// [--deckung MIKRO] [--frist DAUER] [--toleranz PROZENT] [--messen-warten DAUER]
+// [--stichprobe-v2] < messung.json`. Der Schluessel ist der
 // des Knotens (RELAYER_PRIVATE_KEY aus der Umgebung des Containers); er wird
 // nie ausgegeben. Laeuft NICHT als root: das Werkzeug braucht keine Rechte,
 // und als root liefe ein Fehler mit allen Rechten im Container.
@@ -30,6 +31,7 @@ func quantenSAusgabeMit(args []string, uid int, schluessel string, ein io.Reader
 	validatoren := fs.String("validatoren", "", "mehrere Validatoren: adresse=api,adresse=api (leer = nur dieser Knoten)")
 	schwelle := fs.Int("t", 1, "Schwelle: so viele Validatoren muessen ihre Anteile offenlegen")
 	toleranz := fs.Int("toleranz", keeper.QuantenSToleranzStandard, "Toleranz in Prozent; darunter nur mit kleinem Messfehler (hardware_ibm.py --wiederholen)")
+	stichprobeV2 := fs.Bool("stichprobe-v2", false, "Abschnitts-Modus: Stichprobe erst nach der Bindung (nur, wenn die Kette sie kennt)")
 	messenWarten := fs.Duration("messen-warten", 0, "Abschnitts-Modus: Basen bei den Validatoren vormerken und so lange warten, bis jeder gemessen hat (0 = Messungen liegen schon vor)")
 	if err := fs.Parse(args); err != nil || fs.NArg() != 0 {
 		return 2
@@ -49,7 +51,7 @@ func quantenSAusgabeMit(args []string, uid int, schluessel string, ein io.Reader
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
-	if err := keeper.QuantenSAusgabe(ctx, *api, schluessel, *deckung, *frist, vs, *schwelle, *toleranz, *messenWarten, ein, aus, log); err != nil {
+	if err := keeper.QuantenSAusgabe(ctx, *api, schluessel, *deckung, *frist, vs, *schwelle, *toleranz, *messenWarten, *stichprobeV2, ein, aus, log); err != nil {
 		fmt.Fprintln(log, "FEHLER:", err)
 		return 1
 	}

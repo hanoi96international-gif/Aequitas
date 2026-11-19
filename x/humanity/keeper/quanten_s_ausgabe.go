@@ -110,6 +110,9 @@ type QuantenSAusgabeAuftrag struct {
 	Jetzt func() int64
 	// bz: Stelle b und Maske z fest (nur Tests; nil = Zufall).
 	bz *[2]int
+	// ProbeV2: Stichprobe erst nach der Bindung (Abschnitts-Modus;
+	// quanten_s_probe_v2.go, DEZENTRAL.md 16). Die Kette muss sie kennen.
+	ProbeV2 bool
 	// log, beginn: Protokoll des Laufs mit Zeiten (gesetzt von
 	// quantenSAusgabeLauf), damit jeder Lauf zeigt, wie lange jeder Schritt
 	// und die Offenlegung gedauert haben.
@@ -370,6 +373,10 @@ type quantenSVorbereitet struct {
 	Zeit           int64
 	Fehlerrate     string
 	Wo, Job        string
+	// Stichprobe v2: Art 2, und die Stichproben (mit Salzen je Abschnitt)
+	// werden erst nach Bindung und Wahl geladen.
+	ProbeArt    int
+	ProbenLaden func(ctx context.Context) ([2][]int, [2][]string, error)
 }
 
 // quantenSAusgabeAbschluss: Ausgabe auf der Kette, Bindung, Wahl,
@@ -380,8 +387,8 @@ func quantenSAusgabeAbschluss(ctx context.Context, a QuantenSAusgabeAuftrag, net
 	b, z, y, x, zeit := vb.B, vb.Z, vb.Y, vb.X, vb.Zeit
 	var err error
 	q := QuantenWAngaben{K: K, N: n, T: t, Wurzel: wurzel, Validatoren: validatoren, Bestaetigungen: bestaetigungen,
-		Deckung: a.Deckung, Tol: a.Tol, Inhaber: inhaber, Annahme: stellen[:], Proben: probenHex}
-	if q.WalletSig, err = quantenSUnterschreiben(a.Schluessel, quantenWSAusgabeNachricht(ausgeber, K, n, t, wurzel, validatoren, probenHex, q.Annahme, inhaber, a.Deckung, zeit, a.Tol)); err != nil {
+		Deckung: a.Deckung, Tol: a.Tol, Inhaber: inhaber, Annahme: stellen[:], Proben: probenHex, ProbeArt: vb.ProbeArt}
+	if q.WalletSig, err = quantenSUnterschreiben(a.Schluessel, quantenWSAusgabeNachrichtArt(ausgeber, K, n, t, wurzel, validatoren, probenHex, q.Annahme, inhaber, a.Deckung, zeit, a.Tol, vb.ProbeArt)); err != nil {
 		return nil, err
 	}
 	if err := netz.einreichen(ctx, quantenWSAusgebenTxArt, ausgeber, zeit, q); err != nil {
@@ -420,13 +427,26 @@ func quantenSAusgabeAbschluss(ctx context.Context, a QuantenSAusgabeAuftrag, net
 		return nil, err
 	}
 	fmt.Fprintf(log, "gebunden und gewaehlt (nach %s)\n", a.quantenSNach())
+	// Stichprobe v2: erst jetzt (d und c stehen) laden die Stellen ihre
+	// Stichproben -- vorher wusste niemand, welche Stelle wem gehoert.
+	var salze [2][]string
+	if vb.ProbeArt == 2 {
+		if vb.ProbenLaden == nil {
+			return nil, errors.New("Stichprobe v2 ohne Ladeweg")
+		}
+		if probe, salze, err = vb.ProbenLaden(ctx); err != nil {
+			return nil, err
+		}
+		k = min(len(probe[0]), len(probe[1]))
+		fmt.Fprintf(log, "Stichproben nach der Bindung geladen: %d/%d Stellen (nach %s)\n", len(probe[0]), len(probe[1]), a.quantenSNach())
+	}
 
 	erg := &QuantenSAusgabeErgebnis{K: K, N: n, KJeStelle: k, Toleranz: a.Tol, Ausgeber: ausgeber, Inhaberin: inhaber, Stellen: stellen[:], B: b,
 		Deckung: a.Deckung, FehlerrateMess: vb.Fehlerrate, Wo: vb.Wo, Job: vb.Job}
 
 	// 4. Doppelvorlage an der anderen Stelle, 5. ehrlich an Stelle b.
 	for i, s := range []int{1 - b, b} {
-		urteil, err := quantenSVorlegen(ctx, netz, a, K, s, stellen[s], stellenKey[s], inhaberKey, x, probe[s], i)
+		urteil, err := quantenSVorlegen(ctx, netz, a, K, s, stellen[s], stellenKey[s], inhaberKey, x, probe[s], salze[s], i)
 		if err != nil {
 			return erg, err
 		}
@@ -458,7 +478,7 @@ func qsBitsText(b []int) string {
 // quantenSVorlegen: Stelle s meldet die Vorlage x an; die Validatoren legen
 // offen. Urteil aus dem Stand: "eingeloest" (Token weg), "abgewiesen" (ein
 // Fehlversuch mehr), "frist" (Anmeldung weg, kein Fehlversuch).
-func quantenSVorlegen(ctx context.Context, netz quantenSNetz, a QuantenSAusgabeAuftrag, K string, s int, stelle string, stelleKey, inhaberKey *ecdsa.PrivateKey, x, probe []int, fehl int) (string, error) {
+func quantenSVorlegen(ctx context.Context, netz quantenSNetz, a QuantenSAusgabeAuftrag, K string, s int, stelle string, stelleKey, inhaberKey *ecdsa.PrivateKey, x, probe []int, salze []string, fehl int) (string, error) {
 	vorher, err := netz.stand(ctx, K)
 	if err != nil {
 		return "", err
@@ -475,7 +495,7 @@ func quantenSVorlegen(ctx context.Context, netz quantenSNetz, a QuantenSAusgabeA
 		return "", err
 	}
 	bs := string(rune('0' + s))
-	q := QuantenWAngaben{K: K, B: bs, X: xs, Probe: probe, Vorlage: vorlage}
+	q := QuantenWAngaben{K: K, B: bs, X: xs, Probe: probe, Vorlage: vorlage, Salze: salze}
 	if q.WalletSig, err = quantenSUnterschreiben(stelleKey, quantenWSAnmeldenNachricht(stelle, K, bs, xs, probe, fehl)); err != nil {
 		return "", err
 	}
@@ -827,7 +847,7 @@ func QuantenSValidatorenLesen(roh string) ([]QuantenSValidator, error) {
 // Knotens (RELAYER_PRIVATE_KEY), die Messung kommt auf stdin. Ohne
 // Validatorenliste ist der Knoten selbst der einzige Validator (t = 1).
 func QuantenSAusgabe(ctx context.Context, apiBasis, schluesselHex string, deckung int64, frist time.Duration, validatoren []QuantenSValidator, t, tol int,
-	messenWarten time.Duration, mess io.Reader, aus, log io.Writer) error {
+	messenWarten time.Duration, probeV2 bool, mess io.Reader, aus, log io.Writer) error {
 	if quantenWKNote(tol, 1, 1) == 0 {
 		return fmt.Errorf("Toleranz %d %%: die Kette kennt nur %v", tol, quantenSToleranzen())
 	}
@@ -870,6 +890,15 @@ func QuantenSAusgabe(ctx context.Context, apiBasis, schluesselHex string, deckun
 		if err := dec.Decode(&bs); err != nil {
 			return fmt.Errorf("Basen: %v", err)
 		}
+		// Stichprobe v2 nur, wenn die Kette sie kennt -- vor jedem Auftrag
+		// gefragt, sonst verbraucht eine Ausgabe, die die Kette abweist, die
+		// Messungen der Validatoren.
+		if probeV2 {
+			if err := quantenSProbeV2AufKette(ctx, eigen, time.Now().Unix()); err != nil {
+				return err
+			}
+			auftrag.ProbeV2 = true
+		}
 		// Mit --messen-warten: die Basen bei jedem Validator vormerken und
 		// warten, bis er gemessen hat (quanten_s_vormerken.go). Ohne Basen in
 		// der Eingabe zieht das Werkzeug sie selbst (es spielt die Inhaberin).
@@ -887,6 +916,9 @@ func QuantenSAusgabe(ctx context.Context, apiBasis, schluesselHex string, deckun
 		}
 		erg, err = quantenSAusgabeLaufAbschnitte(ctx, auftrag, bs, adressen, t, netz, log)
 	} else {
+		if probeV2 {
+			return errors.New("Stichprobe v2 nur im Abschnitts-Modus (Eingabe mit \"basen\")")
+		}
 		var m QuantenSMessung
 		dec := json.NewDecoder(bytes.NewReader(roh))
 		dec.DisallowUnknownFields()
@@ -902,4 +934,32 @@ func QuantenSAusgabe(ctx context.Context, apiBasis, schluesselHex string, deckun
 		enc.Encode(erg)
 	}
 	return err
+}
+
+// quantenSProbeV2AufKette: kennt die Kette des eigenen Knotens die Stichprobe
+// v2 schon (/api/status: quanten_w.probe_v2_ab <= jetzt)? Fehlt das Feld,
+// schlaeft sie (Stichtag nicht gesetzt).
+func quantenSProbeV2AufKette(ctx context.Context, h *quantenSHTTP, jetzt int64) error {
+	code, body, err := h.anfrage(ctx, http.MethodGet, "/api/status", nil)
+	if err != nil {
+		return fmt.Errorf("Stichprobe v2: Status des Knotens: %w", err)
+	}
+	if code != http.StatusOK {
+		return fmt.Errorf("Stichprobe v2: Status des Knotens: HTTP %d", code)
+	}
+	var st struct {
+		QuantenW struct {
+			ProbeV2Ab *int64 `json:"probe_v2_ab"`
+		} `json:"quanten_w"`
+	}
+	if err := json.Unmarshal(body, &st); err != nil {
+		return errors.New("Stichprobe v2: Status des Knotens ist kein JSON")
+	}
+	if st.QuantenW.ProbeV2Ab == nil {
+		return errors.New("Stichprobe v2 ist auf der Kette nicht aktiv (Stichtag nicht gesetzt) -- nichts beauftragt")
+	}
+	if *st.QuantenW.ProbeV2Ab > jetzt {
+		return fmt.Errorf("Stichprobe v2 gilt erst ab %d (jetzt %d) -- nichts beauftragt", *st.QuantenW.ProbeV2Ab, jetzt)
+	}
+	return nil
 }

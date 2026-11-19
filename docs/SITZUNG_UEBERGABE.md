@@ -11,8 +11,10 @@ dezentrales Quantengeld“.
 - **C1 läuft mit #595** (Deploy #104 grün). Deploy #105 für #596 (schlafende Kettenregel,
   neuer Wächter-Schritt) wartet auf Freigabe `produktion`:
   [44551534119](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44551534119).
-- **Nächster Schritt:** Werkzeug im v2-Weg (`quanten-s-ausgabe`), dabei den veralteten Kopf
-  von `quanten_s_probe_v2.go` („noch nicht eingehängt“) berichtigen.
+- **PR (dieser Stand): Werkzeug im v2-Weg** (`--stichprobe-v2`, `DEZENTRAL.md` 16 Schritt 4),
+  Kopf von `quanten_s_probe_v2.go` berichtigt. 14 Mutationen rot.
+- **Danach:** Freigabe des Betreibers mit Stichtag (nur die Zahl `quantenSProbeV2AbUnix`,
+  alle Knoten vorher aktualisiert), dann ein Pilot mit `--stichprobe-v2`.
 
 **Davor (19.11. ~09:45 UTC):**
 - **C1 läuft mit #592** (Deploy #102 [44476883826](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44476883826), grün).

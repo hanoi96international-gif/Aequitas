@@ -11,11 +11,13 @@ package keeper
 // Teil-Hashes (Bindung v2) und rechnet sie beim Anmelden mit den Salzen nach,
 // die die Validatoren erst nach Bindung und Wahl herausgeben.
 //
-// Hier nur die reinen Funktionen, gleich der Spezifikation (Pruefvektor
+// Hier die reinen Funktionen, gleich der Spezifikation (Pruefvektor
 // testdata/quanten_s_probe_v2_vektor.json aus s_kette.py --vektor-probe-v2,
-// CI vergleicht Byte fuer Byte). Noch nicht in Kette, Dienst oder Werkzeug
-// eingehaengt: die Kettenregel ist eine Konsensaenderung mit eigenem Stichtag
-// und braucht die Freigabe des Betreibers.
+// CI vergleicht Byte fuer Byte), und der Stichtag. Eingehaengt sind sie im
+// Dienst (quanten_s_abschnitt_dienst.go, #595), in der Kette
+// (quanten_w_s_kette.go, schlafend, #596) und im Werkzeug
+// (quanten_s_ausgabe_abschnitte.go, --stichprobe-v2). Scharf erst mit dem
+// Stichtag des Betreibers (Konsensaenderung).
 
 import (
 	"sort"
