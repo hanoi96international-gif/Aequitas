@@ -2,12 +2,12 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 20.11.2026 ~08:15 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
+Stand: 20.11.2026 ~09:25 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
 Repos); davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18:30 UTC Sitzung
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
-**Zuletzt (Sitzung „Weiter“, 20.11. ~08:15 UTC):**
+**Zuletzt (Sitzung „Weiter“, 20.11. ~09:25 UTC):**
 - **#598 gemergt (90e0e622): Pilot mit Stichprobe v2 grün** (`HEUTE.md` 3.3h, `DEZENTRAL.md` 16
   Schritt 5). Eingabe `stichprobe_v2`, Beobachter im Vier-Knoten-Test liest im Register jedes
   Knotens `probe_art` und die nachgerechneten Salze nach. Läufe
@@ -32,8 +32,7 @@ dezentrales Quantengeld“.
   - Doku zur Freischaltung: `HEUTE.md` 3.3h und 4, `DEZENTRAL.md` 16 Schritt 6,
     Prüfauftrag S 2 (**#601 gemergt, c9a964dd**).
   - **Nächste Schritte:**
-    - Erster Hauptnetz-Token mit `--stichprobe-v2` (Messung auf dem Chip = Freigabe
-      `quantenhardware` des Betreibers; C1 hat t = v = 1). **Vorbereitet, #602 gemergt
+    - ~~Erster Hauptnetz-Token mit `--stichprobe-v2`~~ – erledigt 20.11. (oben). **Vorbereitet, #602 gemergt
       (a6f46747, `DEZENTRAL.md` 16 Schritt 7):** Messverzeichnis auf C1 beim Deploy,
       `quanten-s-ausgabe.yml` mit `weg = abschnitte-v2`, k = 552 bei 2 %. Reihenfolge:
       PR mergen → C1-Deploy (Freigabe `produktion`, legt Verzeichnis und override an;
@@ -43,12 +42,12 @@ dezentrales Quantengeld“.
       freigegeben 20.11. 06:56 UTC): „Messverzeichnis /srv/aequitas-quanten (10001, 0700) und
       docker-compose.override.yml aus docker-compose.quanten.yml“, im Knoten
       `AEQUITAS_QS_MESSQUELLE=/data/quanten`, C1 nimmt an, Höhe 393266 → 393296.
-      **Hauptnetz-Lauf gestartet** (20.11. 07:00 UTC, `main` a6f46747, ibm, abschnitte-v2,
-      Toleranz 2, 1 AEQ): [44691759501](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44691759501),
-      `quantenhardware` freigegeben 08:05 UTC. **Messung grün:** IBM `ibm_kingston`, 1.104 Qubits
-      in 69 Schaltkreisen, Job `dbvvuols2omc7388hnu0`, Fehler bei passender Basis 0/548 mit
-      Mehrheit aus 5 (ein Schuss 1/548), Datei `ab3e06ff…cda25.json`. `ausgeben` wartet auf
-      `produktion`. Ergebnis in `HEUTE.md` (neu 3.3i) und `DEZENTRAL.md` 16 Schritt 7 eintragen.
+      **ERSTER TOKEN MIT STICHPROBE V2 IM HAUPTNETZ: GRÜN** (20.11. 09:00–09:16 UTC,
+      [44691759501](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44691759501)):
+      `ibm_kingston`, Job `dbvvuols2omc7388hnu0`, 1.104 Qubits, Fehler 0/548 (ein Schuss 1/548);
+      K = `1a1e0800…6f23edd5`, Deckung 1 AEQ; Stichproben 5m02s nach der Wahl (Finalität);
+      Doppelvorlage an Stelle 0 abgewiesen, ehrliche Vorlage an C1 eingelöst, 15m21s.
+      Dokumentiert in `HEUTE.md` 3.3i und `DEZENTRAL.md` 16 Schritt 7 (PR, dieser Stand).
       Probelauf im Rauschmodell grün: [44605960500](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44605960500).
     - Der zweite Mensch als Validator (Rollen trennen, A5).
     - Ein Gutachter (Prüfauftrag S 2).

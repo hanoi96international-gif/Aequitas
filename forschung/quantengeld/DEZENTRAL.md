@@ -928,9 +928,20 @@ seinen Werten (t − 1 Validatoren kennen genau ihre Abschnitte, Abschnitt 7).
      - Gegenprobe: 14 Mutationen, 12 rot. Die 2 überlebenden sind gleichwertig (eine
        doppelte Prüfung: `ln` scheitert ohnehin an einem vorhandenen Namen;
        `[ -d ] && [ ! -L ]` fängt den Verweis).
+   - **Ausgerollt und gelaufen (20.11.2026):**
+     - C1-Deploy #108
+       ([44611475140](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44611475140)):
+       Messverzeichnis und `AEQUITAS_QS_MESSQUELLE=/data/quanten` belegt.
+     - **Erster Token mit Stichprobe v2 im Hauptnetz:**
+       [44691759501](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44691759501),
+       `ibm_kingston`, Fehler 0/548, K = `1a1e0800…6f23edd5`. Doppelvorlage abgewiesen,
+       ehrliche Vorlage eingelöst, 15m21s (`HEUTE.md` 3.3i).
+     - Je Schritt rund 5 Minuten Wartezeit auf die Finalität: Stichproben und Anteile
+       gibt der Dienst erst nach der Finalität heraus.
    - **Ehrlich dazu:**
      - Für genau einen Validator im Abschnitts-Weg gibt es keinen eigenen Go-Test; die
-       Testwelten haben fünf Validatoren.
+       Testwelten haben fünf Validatoren. Der Hauptnetz-Lauf vom 20.11. hat den Weg
+       belegt.
      - Der Hauptnetz-Lauf selbst ist die Probe. Scheitert er nach der Ausgabe, kann die
        Deckung des Tokens (1 AEQ) bis zur Frist gebunden sein.
      - Wie am 17.11. laufen Präparation und Messung im selben Auftrag beim Betreiber,

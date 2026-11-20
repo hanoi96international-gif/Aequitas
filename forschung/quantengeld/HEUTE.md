@@ -819,6 +819,44 @@ k = 1.760, Toleranz 2 %, je Validator ein eigener Auftrag, 8 Aufträge), beide T
   19:45:58 UTC, grün) las aus `/api/status` von C1: „Quantengeld ab 1794934800 (aktiv),
   probe_v2_ab 1795116600 (aktiv)“.
 
+### 3.3i Erster Token mit Stichprobe v2 im Hauptnetz (20.11.2026, 09:00–09:16 UTC)
+
+Lauf [44691759501](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44691759501)
+(`main` a6f46747, `quanten-s-ausgabe.yml`, Weg `abschnitte-v2`, Toleranz 2 %). Freigaben:
+`quantenhardware` 08:05 UTC, `produktion` 09:00 UTC. C1 lief mit #602 (Deploy #108, Messverzeichnis).
+
+- **Messung:** IBM `ibm_kingston`, Job `dbvvuols2omc7388hnu0`, 1.104 Qubits in
+  69 Schaltkreisen, je Stelle 5 Schüsse mit Mehrheit. Fehler bei passender Basis
+  **0/548** (mit einem Schuss wären es 1/548 gewesen). Die Basen der Inhaberin kamen
+  aus dem Zufall des Betriebssystems.
+- **Ausgabe:** K = `1a1e0800770f600a75ac4c1ab7569bbce493e8514ebdd179a2f300de6f23edd5`,
+  n = 1.104, k = 552 je Stelle, Deckung 1 AEQ.
+  - Ausgeber und einziger Validator: C1 (`0x3066…42dc`).
+  - Inhaberin: `0x314b…9919`.
+  - Stellen: 0 = Wegwerfschlüssel (`0x4e6b…afeaf`), 1 = C1. Gewählt wurde Stelle 1.
+  - **Stichprobe v2:** Die Fehlerrate kam aus der Zählung des Validators. Die Stichproben
+    gab C1 erst nach Bindung und Wahl heraus, als diese final waren (5m02s nach der
+    Wahl). Angemeldet wurde mit den Salzen.
+- **Doppelvorlage** an Stelle 0: **abgewiesen** (Urteil nach 5m08s, ein Fehlversuch).
+- **Ehrliche Vorlage** an Stelle 1 (C1): **eingelöst** (Urteil nach 5m10s), der Wert ging
+  an C1 zurück. Gesamtdauer 15m21s.
+- **Warum je rund 5 Minuten:** Der Dienst gibt Stichproben und Anteile erst heraus, wenn
+  Bindung bzw. Anmeldung final sind (`quanten_w_validator.go`, „reif“). Im Hauptnetz
+  dauert das rund 5 Minuten; im Pilot sind es Sekunden. Die Anzeige „offen 0 von 552“
+  stand so lange still, dann kam das Urteil. Das ist gewollt: kein Anteil vor der
+  Finalität.
+- **Neu gegenüber dem 17.11. (3.3c):**
+  - Keine Annahmestelle und nicht das Werkzeug kennen vor Bindung und Wahl eine Stelle
+    der Stichproben; die Kette rechnet die Bindung beim Anmelden aus den Salzen nach.
+    Damit greift Befund 5i bei diesem Token nicht.
+  - Halb so viele Qubits wie damals (1.104 statt 1.680), bei 2 % statt 4 % Toleranz.
+  - Kein Messfehler bei passender Basis.
+- **Ehrlich dazu:**
+  - Präparation und Messung liefen im selben IBM-Auftrag beim Betreiber (Vorführung).
+  - C1 ist der einzige Validator und kannte damit den ganzen Token.
+  - Die Inhaberin und die Wegwerf-Stelle lebten nur im Werkzeug.
+  - Es liegt kein Gutachten vor.
+
 ### 3.4 Bargeld-Verhalten ohne Quanten (Offline-Bargeld)
 
 Was Menschen sich von Quantengeld wünschen, ist meist offline zu zahlen, wie mit
