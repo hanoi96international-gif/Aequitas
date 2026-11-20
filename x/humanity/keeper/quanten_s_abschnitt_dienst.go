@@ -723,15 +723,17 @@ func (d *quantenWDienst) oeffnungFuerStelle(K string, b int) (string, error) {
 // Kette steht, und nur bei Stichprobe v2 (sonst kennen die Stellen ihre
 // Stichprobe schon aus der Ausgabe).
 func (d *quantenWDienst) abschnittFuerInhaberin(K string) (QuantenSPaketAbschnitt, error) {
+	// Zuerst die Kette: vor der Ausgabe dieselbe Antwort, ob ein Abschnitt im
+	// Tresor liegt oder nicht -- der Endpunkt verraet nicht, was vorbereitet ist.
+	if tok := d.cs.quantenWJetzt().Token[K]; tok == nil || tok.token == nil {
+		return QuantenSPaketAbschnitt{}, quantenWFehler("erst, wenn der Token auf der Kette steht")
+	}
 	e, da := d.eintragVon(K)
 	if !da || e.Abschnitt == nil {
 		return QuantenSPaketAbschnitt{}, quantenWFehler("kein Abschnitt zu diesem K")
 	}
 	if e.Abschnitt.ProbeArt != 2 {
 		return QuantenSPaketAbschnitt{}, quantenWFehler("nur bei Stichprobe v2")
-	}
-	if tok := d.cs.quantenWJetzt().Token[K]; tok == nil || tok.token == nil {
-		return QuantenSPaketAbschnitt{}, quantenWFehler("erst, wenn der Token auf der Kette steht")
 	}
 	a, err := d.abschnittAntwort(e)
 	if err != nil {

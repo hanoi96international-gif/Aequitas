@@ -773,8 +773,11 @@ func TestQuantenSFuerInhaberin_Dienst(t *testing.T) {
 	defer qsv2Vorbereiten(t)()
 	w := neueQsrWelt(t)
 	d := w.q.d[1]
-	if _, err := d.abschnittFuerInhaberin(strings.Repeat("0", 64)); err == nil || !strings.Contains(err.Error(), "kein Abschnitt") {
-		t.Fatalf("unbekanntes K: %v", err)
+	// Unbekanntes K und vorbereitet-aber-nicht-ausgegeben antworten gleich:
+	// der Endpunkt verraet nicht, was im Tresor liegt.
+	_, errUnbekannt := d.abschnittFuerInhaberin(strings.Repeat("0", 64))
+	if errUnbekannt == nil || !strings.Contains(errUnbekannt.Error(), "erst, wenn der Token auf der Kette steht") {
+		t.Fatalf("unbekanntes K: %v", errUnbekannt)
 	}
 	// Vorbereitet, aber noch nicht ausgegeben: nichts heraus.
 	ctx, a, best := context.Background(), w.a, w.dat.Bestellung
@@ -789,8 +792,8 @@ func TestQuantenSFuerInhaberin_Dienst(t *testing.T) {
 	if err := r.abschnitteHolen(ctx, a, basen, w.netz, best.Inhaberin, best.InhaberinSchluessel, best.stellenAdressen(), [2]string{best.Stellen[0].Schluessel, best.Stellen[1].Schluessel}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := d.abschnittFuerInhaberin(r.K); err == nil || !strings.Contains(err.Error(), "erst, wenn der Token auf der Kette steht") {
-		t.Fatalf("vor der Ausgabe: %v", err)
+	if _, err := d.abschnittFuerInhaberin(r.K); err == nil || err.Error() != errUnbekannt.Error() {
+		t.Fatalf("vor der Ausgabe: %v (unbekanntes K: %v)", err, errUnbekannt)
 	}
 	// Ausgegeben (ueber das Werkzeug): jetzt ja, unterschrieben von Validator 2.
 	w2 := neueQsrWelt(t)
@@ -806,8 +809,26 @@ func TestQuantenSFuerInhaberin_Dienst(t *testing.T) {
 	if err := quantenSPaketAbschnittPruefen(ab, p.K, p.N, len(w2.q.w.val), 2, w2.q.w.val[0]); err == nil {
 		t.Fatal("Unterschrift eines anderen Validators angenommen")
 	}
-	// Ein Abschnitt im bisherigen Weg (ohne v2) gibt nichts heraus.
+	// Auf der Kette, aber dieser Validator hat keinen Abschnitt dazu.
 	e, _ := d2.eintragVon(p.K)
+	d2.mu.Lock()
+	delete(d2.eintraege, p.K)
+	d2.mu.Unlock()
+	if _, err := d2.abschnittFuerInhaberin(p.K); err == nil || !strings.Contains(err.Error(), "kein Abschnitt") {
+		t.Fatalf("ohne Eintrag: %v", err)
+	}
+	d2.mu.Lock()
+	d2.eintraege[p.K] = e
+	d2.mu.Unlock()
+	// Ein Eintrag ohne Abschnitt (Token aus dem Weg mit einem Auftrag): nichts
+	// heraus, kein Absturz.
+	ab0 := e.Abschnitt
+	e.Abschnitt = nil
+	if _, err := d2.abschnittFuerInhaberin(p.K); err == nil || !strings.Contains(err.Error(), "kein Abschnitt") {
+		t.Fatalf("Eintrag ohne Abschnitt: %v", err)
+	}
+	e.Abschnitt = ab0
+	// Ein Abschnitt im bisherigen Weg (ohne v2) gibt nichts heraus.
 	e.Abschnitt.ProbeArt = 0
 	if _, err := d2.abschnittFuerInhaberin(p.K); err == nil || !strings.Contains(err.Error(), "nur bei Stichprobe v2") {
 		t.Fatalf("v1: %v", err)

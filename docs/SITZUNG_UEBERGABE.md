@@ -70,7 +70,7 @@ dezentrales Quantengeld“.
       - **Pilot `rollen = ja` auf GitHub grün:** [44728392142](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44728392142)
         (k = 1.760, Toleranz 2 %, beide Tests; `DEZENTRAL.md` 17). **C1-Deploy (Ansicht)
         wartet auf Freigabe `produktion`** (deploy-c1.yml nach dem Merge).
-      - **R4a – PR (dieser Stand)** (Aufgabe #29, `DEZENTRAL.md` 17 „R4a“; 31/31 Mutationen rot,
+      - **R4a – PR (dieser Stand)** (Aufgabe #29, **#606 offen**, `DEZENTRAL.md` 17 „R4a“; 33/33 Mutationen rot,
         vier Knoten lokal grün, Vorlage 486 Byte): Endpunkt `GET /api/quanten-w/validator/fuer-inhaberin?k=`
         (öffentlich, nur lesend, erst wenn der Token auf der Kette steht, nur v2),
         `quanten-s-inhaberin abholen --k` (ohne Paket des Ausgebers), Vorlage ohne Blätter

@@ -1115,6 +1115,13 @@ fällt jetzt weg:
   - Öffentlich und nur lesend. Er antwortet erst, wenn der Token auf der Kette steht, und
     nur bei Stichprobe v2. Begrenzt wie die anderen Anfragen an den Dienst (je Adresse,
     `burstQuantenWDienstJeIP`).
+  - K steht öffentlich auf der Kette; jeder kann den Endpunkt also fragen. Er gibt nichts
+    heraus, womit man einlösen könnte (keine Werte, keine Salze, x verschlüsselt).
+  - Vor der Ausgabe antwortet er gleich, ob ein Abschnitt im Tresor liegt oder nicht; er
+    verrät nicht, was vorbereitet ist (zuerst wird die Kette geprüft).
+  - Je Anfrage entsteht die Antwort neu: v − 1 Bündel versiegeln, eine Verschlüsselung,
+    eine Unterschrift. Das ist dieselbe Größenordnung wie die Öffnung und je Adresse
+    begrenzt.
 - **Die Inhaberin holt ab:** `aequitasd quanten-s-inhaberin abholen --k K --validatoren
   adr=api,…`.
   - Den Stand liest sie von ihrer Kette, jeden Abschnitt direkt vom Validator.
@@ -1133,7 +1140,9 @@ fällt jetzt weg:
     Ausgabe, v1, nur GET, K-Form, Begrenzung, Unterschrift. Kompakte Vorlage mit einem
     Validator, der über ein Blatt lügt: weder Öffnung noch Anmeldung.
   - Eine gefälschte Vorlage fragt jetzt auch keinen Abschnitt mehr ab.
-  - Gegenprobe: 9 neue Mutationen, alle rot; die 22 aus R1–R3 weiter rot.
+  - Gegenprobe: 11 neue Mutationen, alle rot; die 22 aus R1–R3 weiter rot. Eine überlebte
+    zuerst: Ein Tresor-Eintrag ohne Abschnitt (Token aus dem Weg mit einem Auftrag) war
+    nicht getestet; ohne die Prüfung gäbe es dort einen Nil-Zugriff. Jetzt mit Test.
   - Vier echte Knoten lokal, beide grün (50 s und 62 s): Die Inhaberin holte nur mit K
     ab, die Vorlage hatte 486 Byte.
 - **Verfügbarkeit, unverändert:** Die Stelle braucht zum Laden ohnehin jeden
