@@ -403,3 +403,34 @@ func TestQuantenSNachweis_AbwartenUndBefehl(t *testing.T) {
 		t.Fatal("ohne Nachweis ein Bericht")
 	}
 }
+
+// Steht die Finalitaet still, legt niemand offen -- und der Eintrag wird nach
+// dem Praegefenster trotzdem vergessen (kein Tresor, der vollaeuft).
+func TestQuantenSNachweis_FinalitaetSteht(t *testing.T) {
+	defer qsv2Vorbereiten(t)()
+	w := neueQsrWelt(t)
+	w.netz.finalNachlauf = 1
+	p := w.ausgeben(t)
+	w.annehmen(t, p)
+	vl := w.einloesen(t, 1)
+	if erg, err := quantenSAnnahmeLauf(context.Background(), w.stelle(1), vl, w.q.w.val, w.netz, &w.log); err != nil || erg.Urteil != "eingeloest" {
+		t.Fatalf("Annahme: %+v %v", erg, err)
+	}
+	w.q.hoehe.Store(w.q.hoehe.Load() + 100) // weiter, aber nichts mehr final
+	w.q.takt()
+	for x, d := range w.q.d {
+		if _, err := d.nachweis(p.K); err == nil || d.eintrag(p.K) == nil {
+			t.Fatalf("Validator %d: offengelegt oder vergessen, obwohl das Ende nicht final ist", x+1)
+		}
+	}
+	w.q.zeit += quantenWToteBehalten + 1
+	w.q.takt()
+	for x, d := range w.q.d {
+		if _, err := d.nachweis(p.K); err == nil {
+			t.Fatalf("Validator %d legt ohne Finalitaet offen", x+1)
+		}
+		if d.eintrag(p.K) != nil {
+			t.Fatalf("Validator %d haelt den Eintrag nach dem Praegefenster noch", x+1)
+		}
+	}
+}

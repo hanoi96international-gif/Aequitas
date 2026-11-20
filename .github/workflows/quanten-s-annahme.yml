@@ -97,7 +97,9 @@ jobs:
           {
             echo "## Quantengeld S: Einloesen an C1 (Annahmestelle)"
             echo
-            if [ "$RC" = 0 ]; then
+            if [ "$RC" = 3 ]; then
+              echo "**Urteil der Kette: $(jq -r '.urteil // "?"' ergebnis.json)** -- aber der Nachweis nach dem Ende ist nicht bestaetigt: $(jq -r '.nachweis_fehler // "?"' ergebnis.json)"
+            elif [ "$RC" = 0 ]; then
               echo "**Urteil der Kette: $(jq -r '.urteil // "?"' ergebnis.json)** (vorab gerechnet: $(jq -r '.vorab // "?"' ergebnis.json))"
               if jq -e '.nachweis.wurzel_gegen == "kette"' ergebnis.json >/dev/null 2>&1; then
                 echo

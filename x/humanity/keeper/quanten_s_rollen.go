@@ -177,9 +177,15 @@ type QuantenSAnnahmeErgebnis struct {
 	// (oeffentlich) -- dagegen prueft der Nachweis nach dem Ende.
 	Wurzel string   `json:"wurzel"`
 	Proben []string `json:"proben"`
-	// Nachweis nach dem Ende (quanten_s_nachweis.go), wenn verlangt.
-	Nachweis *QuantenSNachweisBericht `json:"nachweis,omitempty"`
+	// Nachweis nach dem Ende (quanten_s_nachweis.go), wenn verlangt; sonst,
+	// warum nicht (das Einloesen gilt trotzdem).
+	Nachweis       *QuantenSNachweisBericht `json:"nachweis,omitempty"`
+	NachweisFehler string                   `json:"nachweis_fehler,omitempty"`
 }
+
+// ErrQuantenSNachweis: eingeloest, aber der Nachweis nach dem Ende fehlt oder
+// passt nicht (BEFUND steht dann im Text).
+var ErrQuantenSNachweis = errors.New("eingeloest, aber Nachweis nach dem Ende nicht bestaetigt")
 
 // ------------------------------------------------------------ Inhaberin: neu
 
@@ -1074,8 +1080,14 @@ func QuantenSAnnahme(ctx context.Context, apiBasis, schluesselHex string, frist,
 	erg, err := quantenSAnnahmeLauf(ctx, a, vl, adressen, netz, log)
 	if err == nil && erg != nil && nachweisWarten > 0 {
 		// Nach dem Ende: die Nachweise aller Validatoren, gegen Wurzel und
-		// Proben, die vor dem Anmelden auf der Kette standen.
-		erg.Nachweis, err = quantenSNachweisAbwarten(ctx, netz, erg.K, adressen, erg.Wurzel, erg.Proben, time.Now().Add(nachweisWarten), log)
+		// Proben, die vor dem Anmelden auf der Kette standen. Ein Fehler hier
+		// macht das Einloesen nicht ungeschehen -- er steht im Ergebnis und
+		// kommt als eigener Fehler (ErrQuantenSNachweis) zurueck.
+		var nerr error
+		if erg.Nachweis, nerr = quantenSNachweisAbwarten(ctx, netz, erg.K, adressen, erg.Wurzel, erg.Proben, time.Now().Add(nachweisWarten), log); nerr != nil {
+			erg.NachweisFehler = nerr.Error()
+			err = fmt.Errorf("%w: %v", ErrQuantenSNachweis, nerr)
+		}
 	}
 	if erg != nil {
 		enc := json.NewEncoder(aus)

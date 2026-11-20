@@ -244,7 +244,7 @@ func qssVektorBauen(t *testing.T, gespeichert *qssVektor) qssVektor {
 	nw := QuantenSNachweis{Dom: quantenSDomNachweis, K: v.K, N: n, T: 1, X: 1, Von: 0, Bis: n, Validator: v.Validator,
 		Validatoren: []string{v.Validator}, Wurzel: hex.EncodeToString(wurzel[:]),
 		Proben: []string{hex.EncodeToString(proben[0][:]), hex.EncodeToString(proben[1][:])},
-		Salze: []string{hex.EncodeToString(salze[0][:]), hex.EncodeToString(salze[1][:])}, XInhaberin: qsBitsText(x),
+		Salze:  []string{hex.EncodeToString(salze[0][:]), hex.EncodeToString(salze[1][:])}, XInhaberin: qsBitsText(x),
 		D: qsBitsText(d), C: &cc, Stelle: &bb, Zeit: 1795180000}
 	for _, w := range werte {
 		nw.Werte = append(nw.Werte, w.Text(16))

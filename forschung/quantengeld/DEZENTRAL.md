@@ -1324,6 +1324,22 @@ Schritt öffentlich nachrechenbar.
     wer Zugang zu dem IBM-Konto hat.
   - Der Nachweis liegt nur im Speicher des Dienstes (höchstens 64, nicht über einen
     Neustart). Dauerhaft ist das Artefakt des Workflows.
+  - An die Kette gebunden sind Werte und Salze (über Wurzel und Proben). Bindung d,
+    Wahl c, Stelle und x sind Angaben des Validators, von ihm unterschrieben, aber
+    nicht gegen die Kette geprüft. Ein Validator könnte damit Treffer und Fehler
+    falsch melden, nicht die Präparation.
+  - Aus der Sicherheitsprüfung (#611, nichts Ausnutzbares), als Restrisiko notiert:
+    - Die Sichtung des Endes hängt am Token, nicht am Block des Endes. Ein Umbau des
+      DAG im Finalitätsfenster, der das Ende in einen späteren Block schiebt, ohne
+      dass ein Takt den Token dazwischen lebend sieht, könnte früher offenlegen.
+      Ausnutzbar wäre das nur mit einem zweiten Umbau, der das Ende ganz entfernt.
+      Dasselbe Muster haben die bestehenden Sichtungen.
+    - W-Noten und S-Token teilen sich die Kennungen K.
+    - Steht die Finalität still, wird ein beendeter Eintrag nach dem Prägefenster
+      ohne Nachweis vergessen (seit diesem PR, getestet).
+    - Scheitert der Nachweis nach einem erfolgreichen Einlösen, endet
+      `quanten-s-annahme` mit Code 3 („eingelöst, Nachweis nicht bestätigt“), nicht
+      als Fehlschlag des Einlösens.
 
 ### Ehrlich dazu (offen)
 

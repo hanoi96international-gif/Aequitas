@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -133,6 +134,9 @@ func quantenSAnnahmeMit(ctx context.Context, args []string, uid int, umgebung fu
 	}
 	if err := keeper.QuantenSAnnahme(ctx, *api, schluessel, *frist, *nachweis, vs, ein, aus, log); err != nil {
 		fmt.Fprintln(log, "FEHLER:", err)
+		if errors.Is(err, keeper.ErrQuantenSNachweis) {
+			return 3 // eingeloest; nur der Nachweis fehlt oder passt nicht
+		}
 		return 1
 	}
 	return 0

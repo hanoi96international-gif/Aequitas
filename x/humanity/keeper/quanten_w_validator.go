@@ -1222,7 +1222,13 @@ func (d *quantenWDienst) takt(ctx context.Context) {
 				sicht := "s-ende|" + K
 				gesehen[sicht] = true
 				if !d.reif(sicht) {
-					continue // das Ende ist noch nicht final: noch nichts offenlegen
+					// Das Ende ist noch nicht final: noch nichts offenlegen.
+					// Steht die Finalitaet still, wird der Eintrag nach dem
+					// Praegefenster trotzdem vergessen -- ohne Nachweis.
+					if e.Zeit < jetzt-quantenWToteBehalten {
+						d.vergessen(K)
+					}
+					continue
 				}
 				if n, err := d.nachweisAus(e); err == nil {
 					d.nachweisMerken(n)
