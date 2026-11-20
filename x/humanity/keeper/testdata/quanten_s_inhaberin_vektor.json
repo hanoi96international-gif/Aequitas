@@ -1,0 +1,109 @@
+{
+  "hinweis": "nur fuer Tests: feste Schluessel, nie fuer echte Werte",
+  "chain_id": 1926,
+  "inhaberin_schluessel_nur_test": "5151515151515151515151515151515151515151515151515151515151515151",
+  "inhaberin": "0xfa17c5b66a985f44bc249c8e8fabd64767f414b1",
+  "inhaberin_pub": "04baf7689c0a3558fb604589036a8d1e4b685d909f6e0e2c6018a14049ae64ec266ce6dd6dabbf244f00ca85f020992cf0e9ac1c4f2b80feff3d5883f034da9bc5",
+  "k": "ababababababababababababababababcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+  "n": 10,
+  "v": 2,
+  "abschnitte": [
+    {
+      "abschnitt": {
+        "x": 1,
+        "von": 0,
+        "bis": 5,
+        "blaetter": [
+          "9216a1a8fabc8949c09785e554018c6634a19087ee3f03dcd2a321e92181586b",
+          "0f2a3186e13e312df346fb53ceb1889f02872093ce3b74a32366ff5e6799c009",
+          "d96ce03861746f8eecf9ee018bc2715449eb485aebbc7f0c69ac4d9d8255c96c",
+          "bc0b05e5ff6529a9501b3bc69f87fa2a4ef0120683ea11f6f0bef87840c22a89",
+          "af311665c480887d1782d2aef08fe070902ea17bade2c6f4c356a44c353b3f8c"
+        ],
+        "fuer_inhaberin": "04361ba8b1dfd44b662fce4abff38e6264c612395f2ac03b44867dbe950db7459510ba90d3df20b0c977b8088d6510d489c48cd58a20bf8cac88ebba8ca28fcec6f663a44472fa7fdb1a11d0356341bd40255a02c0cb1cebc6b6c39ac20d700bfa46d205bbee47d480cccc39faeec83bbbe4984c88a2136b738e6c21f02a4167c08cbb56b3a11f082e9a14b1aae8d5825cf93f2523e73cb746ea313732f46ddcbd3d57444b2b3343dab1a874467844251771fb031000542b2d29f39b269df114308c895a579a91692505b5b6f05f7c2b2ce9933e8a22b5f8b8d55c91b0ad32da917ac9c18cbcd481c50601765846621e9a4766e2a1944abb307dbb88974e2a6a65d3",
+        "buendel_hash": "35dad7cd4aa326ea90800a46eaa30dc820b239fc35dc72c5d287db5798b5179c",
+        "buendel_sig_hash": "15f3925250e9e8ae14cb5695a1d285b387f0b336e41bf190a9e1126005f1fa14",
+        "teile": [
+          "212fbacc062a48af8fd83cbfc3d82052548a3e765f2af5f47aab77975b8cb84a",
+          "e6b56fa496d48a1e4d997fe217fcab931b3efbb9b91aef6f6af855f56ce31a30"
+        ],
+        "zaehlung": [
+          [
+            3,
+            0
+          ],
+          [
+            2,
+            0
+          ]
+        ],
+        "sig": "0x2ba1e60e0c607b590faef6c05d33af8068e86d1cec9e643dc182b4a6597c9bb634327415c13d3c08221b1684fb5661ff3f36bd4c763f594e4fb5bf3e699f021c1b"
+      },
+      "x": "10110",
+      "nachricht": "aequitas-quanten-s-abschnitt-antwort-v1|chain:1926|ababababababababababababababababcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd|1|0|5|5c2098c820e8b7c8e46b8fdea5c7b9ff8f44ccc89591f2a1534587a39777c4fd|220ac056652ac1fc3d695e3caa94afeddb1ccc914d180d431a3de9cde224a03e|35dad7cd4aa326ea90800a46eaa30dc820b239fc35dc72c5d287db5798b5179c|15f3925250e9e8ae14cb5695a1d285b387f0b336e41bf190a9e1126005f1fa14|teile:212fbacc062a48af8fd83cbfc3d82052548a3e765f2af5f47aab77975b8cb84a,e6b56fa496d48a1e4d997fe217fcab931b3efbb9b91aef6f6af855f56ce31a30|zaehlung:3,0,2,0",
+      "validator": "0xed5970f07eea5a9e7b359d3c5d3f82b34a8f1e15",
+      "validator_schluessel_nur_test": "6161616161616161616161616161616161616161616161616161616161616161",
+      "blaetter_hash": "5c2098c820e8b7c8e46b8fdea5c7b9ff8f44ccc89591f2a1534587a39777c4fd"
+    },
+    {
+      "abschnitt": {
+        "x": 2,
+        "von": 5,
+        "bis": 10,
+        "blaetter": [
+          "d3dd18855052941d36e94fe164aa24d88e55331e9bb816b4d9d9010403dc630a",
+          "422c0050697062d7f68806a43145659f6ecc61df1e3ffbf95966a4db2252338e",
+          "9d23e6e91cd34bf31a2ea9074bf9a0f5f9d697e9cba04677b7dda6370499e41e",
+          "54de1f85d624b61f188d4b3f68892552ce80c5fea8ee0621fe6cac5c54ef11f8",
+          "081af5828b9fdf2e360d1f3ba5e02cc95db31b5172b5bc4671e1225fab5a5897"
+        ],
+        "fuer_inhaberin": "0497f953e41dffce106fe1413ec36ee74cf0b529846203bc68cc6ed08d328366c5e712c7e7cc59c2d7b2c148db1098e429ab89bfe070692d57dcd3e449938d0965ca7980f4c84e95ac602a989fe8440143b79d97dbc34774719236b45c46b483705bc0c796d4a060d49fb9e9161e712cd6f83a5b5d89cde288579679c2544948e987cda891bdebda6137c454b088659b314b539938bb98301d4b5e3f3eae0e42829968494e91e75853fa2e5f3b82b24f2d1f87ccefee3df61497801c6d33cca477f65092cf7d671655e059f03e19c87e84e24a4ea4cef5a58dab51cac061ed0a6602d3ac0c55635e78cc00bb5daba679caae8a4b828ef574252269054d62e33d9b663d",
+        "buendel_hash": "35dad7cd4aa326ea90800a46eaa30dc820b239fc35dc72c5d287db5798b5179c",
+        "buendel_sig_hash": "15f3925250e9e8ae14cb5695a1d285b387f0b336e41bf190a9e1126005f1fa14",
+        "teile": [
+          "4820b0d1b17b9cf14978e9277e415a27e9900fd471c317e4b7b3b742c70e97c4",
+          "51c0feec2683f6c1dc384a3df5003c94a449e0d16129bb4751913d9ea421d506"
+        ],
+        "zaehlung": [
+          [
+            4,
+            0
+          ],
+          [
+            3,
+            0
+          ]
+        ],
+        "sig": "0x30f77f096051ce09fb883f1a8d3a4b2606d73a264894d573fd690ba1c39612f303627c6dbfb5fe5b60120a81f77c5659775f6f09b977442efc9fbc8994e1cdce1c"
+      },
+      "x": "01011",
+      "nachricht": "aequitas-quanten-s-abschnitt-antwort-v1|chain:1926|ababababababababababababababababcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd|2|5|10|31e6a6ddaafa2055028fc5fd233ad2f1dfb04443aab5584319a7392f0b0bcee2|575c08dc76633a2e9c466166359f5d7921729698d8d61094f43d6b57f97ed411|35dad7cd4aa326ea90800a46eaa30dc820b239fc35dc72c5d287db5798b5179c|15f3925250e9e8ae14cb5695a1d285b387f0b336e41bf190a9e1126005f1fa14|teile:4820b0d1b17b9cf14978e9277e415a27e9900fd471c317e4b7b3b742c70e97c4,51c0feec2683f6c1dc384a3df5003c94a449e0d16129bb4751913d9ea421d506|zaehlung:4,0,3,0",
+      "validator": "0xfa2cbbcafbb04314d07984f6a78c0063f9bc9eba",
+      "validator_schluessel_nur_test": "6262626262626262626262626262626262626262626262626262626262626262",
+      "blaetter_hash": "31e6a6ddaafa2055028fc5fd233ad2f1dfb04443aab5584319a7392f0b0bcee2"
+    }
+  ],
+  "wurzel": "1908d322b5b8153b059506b3d924d3eaf3e19196d841eb4b5ae0ff6cbad53cab",
+  "proben": [
+    "3fbe396679ad723063f95156e5c459095d6b3b536fc46d558553b7dfb143516a",
+    "dc040990b0b2c0938e17b906660c2b078be13dd161129f501eeebdf7e009e0f0"
+  ],
+  "x": "1011001011",
+  "y": "0110100110",
+  "z": 1,
+  "d": "1001011001",
+  "binden_nachricht": "aequitas-quanten-s-binden-v1|chain:1926|0xfa17c5b66a985f44bc249c8e8fabd64767f414b1|ababababababababababababababababcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd|c0895d5b304194a36f6dcf08c713c01c474262e71f800243106ff3786a402a8f",
+  "binden_sig": "0x5b7f8dd2fb27d9d2e97ecd5ecedc5768965419253a9d518f16a1b6125c1f08f20fa432499693eb916346d0c0e5e3d93a18d02b3cbf417314e61515c392cdb7591b",
+  "stelle": 1,
+  "c": "0",
+  "wahl_nachricht": "aequitas-quanten-s-wahl-v1|chain:1926|0xfa17c5b66a985f44bc249c8e8fabd64767f414b1|ababababababababababababababababcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd|0",
+  "wahl_sig": "0x5e7e403f139cec5fc8ea52ce84b496b3e2ba2692b4e48007d25ea1c957327b707971ebb34b470fa33d329ba5eee4ad93e2077e79d63df0098f640181ce20103b1b",
+  "vorlage_text": "aequitas-quanten-s-vorlage-v1|ababababababababababababababababcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd|1|86064d37b3cca9faeec9723ed2f44b8848ad109a2e3331f03ef42379f30684ed",
+  "vorlage": {
+    "k": "ababababababababababababababababcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+    "b": 1,
+    "x": "1011001011",
+    "vorlage": "0xc301c99b3d00712c0dab138274e33c2aa18755a74c1b8433d542fa9430159307147ea6b41dc663f652c0bd90a32c6f19f3efa78e6bc0c8ade812e28a2b89acb41c"
+  },
+  "falsch_fuer_inhaberin": "0436474eaa92a73ddaa34fcd7f138df855b8ca2732f811ab0b35db918f85174ec5a337c2bd71732513db936e65e2c10c5ca816a0e374a1b70a763aeebc0b817d1e718f84fd21fd4694ea823e1013c1f4dc7445c855f5be0133d02e19f3f234b31183304c01fe0222b94d09dac3fb6f6c8face2a7363a3e3b6c4c0f3afa8d783997d72e8ba8be5bb09f9450ca54686234017b8b01a3a93f4eee4789f806ee08794c43d61a465ff2ea17ca8b97afc0943c6a9d08f3fed3e1538efcd406d007561955bd8f6f6154d5e453c10d33ea96accec71c6cd08f15a4c290450fccde039622266dffaaf431562fa24e7eabd754ab5a405b4fd1c765392dec2a097e20a72c1e273d"
+}

@@ -246,15 +246,20 @@ jobs:
           # defect (verified: green in isolation, on this commit and on main),
           # and giving each group a fresh database keeps this job honest until
           # the isolation itself is fixed.
+          # run_group NAME MUSTER [AUSSER]: AUSSER (go test -skip) nimmt Tests
+          # heraus, die eine eigene Gruppe haben -- jede Gruppe hat ihre eigene
+          # Datenbank und ihre eigene 10-Minuten-Grenze.
           run_group() {
             local name="$1"; shift
             local db="aeq_ci_${name}"
+            local args=(-run "$1")
+            if [ -n "${2:-}" ]; then args+=(-skip "$2"); fi
             psql "$ADMIN_URL" -c "DROP DATABASE IF EXISTS ${db};" >/dev/null
             psql "$ADMIN_URL" -c "CREATE DATABASE ${db};" >/dev/null
             echo "::group::${name}"
             set +e
             DATABASE_URL="postgres://postgres:postgres@localhost:5432/${db}?sslmode=disable" \
-              go test ./x/humanity/keeper/ -run "$1" -v -timeout 10m 2>&1 | tee "out_${name}.txt"
+              go test ./x/humanity/keeper/ "${args[@]}" -v -timeout 10m 2>&1 | tee "out_${name}.txt"
             rc=${PIPESTATUS[0]}
             set -e
             echo "::endgroup::"
@@ -280,7 +285,12 @@ jobs:
             fi
           }
 
-          run_group realdb   '_RealDB$|RealDB$'
+          # Die Vier-Knoten-Laeufe von Quantengeld W und S (7 Tests, je bis ~1 min)
+          # in einer eigenen Gruppe: zusammen mit den anderen RealDB-Tests
+          # stiess die Gruppe an die 10-Minuten-Grenze (20.11.2026, Push-Lauf
+          # 44737311991: Abbruch in TestVierKnoten_RealDB nach 600 s).
+          run_group realdb   '_RealDB$|RealDB$' '^TestVierKnotenQuanten'
+          run_group quanten  '^TestVierKnotenQuanten.*_RealDB$'
           run_group transfer 'TestTransferConcurrent|TestTransferAtomic|TestProcessTransferBatchConcurrent'
           run_group wal      'TestWAL|TestTransferWAL'
           run_group plumbing 'TestPoolFlush|TestPendingTxs|TestEvmMirrorFlush|TestDBPoolStats'

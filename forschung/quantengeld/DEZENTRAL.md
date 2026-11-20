@@ -1145,6 +1145,42 @@ fällt jetzt weg:
     nicht getestet; ohne die Prüfung gäbe es dort einen Nil-Zugriff. Jetzt mit Test.
   - Vier echte Knoten lokal, beide grün (50 s und 62 s): Die Inhaberin holte nur mit K
     ab, die Vorlage hatte 486 Byte.
+  - **Auf GitHub in voller Größe:** Lauf
+    [44734484196](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44734484196)
+    (c85c486a; Rauschmodell, k = 1.760, n = 3.520, Toleranz 2 %, `rollen = ja`), beide
+    Tests grün:
+    - Die Vorlage hatte **3.750 Byte statt 239.603**, das Paket des Ausgebers wurde nicht
+      benutzt.
+    - Ohne Ausfall (241,7 s): Fehler 0/1.785. Doppelvorlage vorab „abgewiesen“ (427/833),
+      Kette abgewiesen; ehrlich vorab „besteht“ (0/858), eingelöst. 4 Knoten gleich,
+      StateRoot `edfab994…fdb55ea`.
+    - Mit Ausfall (370,2 s): Fehler 0/1.800. Doppelvorlage abgewiesen, ehrlich eingelöst
+      (0/923), 3 Knoten gleich, StateRoot `4738cd89…798b09`.
+    - SHA-256: `ergebnis.txt` `f144c5ce…243c9ba`, `ausgabe.txt.gz` `0432a0ca…900515d`
+      (Artefakt `pilot-44734484196`, 90 Tage).
+    - Danach kam nur noch 1a58a191 (Reihenfolge der Prüfungen im Endpunkt), durch Tests und
+      Mutationen belegt.
+- **#606 gemergt (7dcfe2e7).**
+
+### R4b: die App als Inhaberin (20.11.2026, begonnen)
+
+- **Teil 1, Bibliothek** (Aequitas-App `lib/quantenS.ts`): Sie rechnet wie das Werkzeug der
+  Inhaberin.
+  - x aus `fuer_inhaberin` lesen (ECIES wie go-ethereum: secp256k1-ECDH, Concat-KDF mit
+    SHA-256, AES-128-CTR, HMAC-SHA-256, Tag in konstanter Zeit verglichen).
+  - Jeden Abschnitt gegen die Unterschrift seines Validators prüfen; Wurzel, Proben,
+    ehrliche Vorlage und alles gegen die Kette.
+  - Bindung, Wahl und Vorlage unterschreiben.
+- **Prüfvektor des Knotens** (`testdata/quanten_s_inhaberin_vektor.json`,
+  `quanten_s_inhaberin_vektor_test.go`):
+  - Feste Test-Schlüssel, Werte und Blätter; die Chiffrate für die Inhaberin einmal
+    erzeugt und gespeichert.
+  - Go liest sie zurück, prüft jede Unterschrift und rechnet alle übrigen Felder neu. Die
+    App rechnet denselben Vektor nach.
+  - Ergebnis: dasselbe x aus denselben Chiffraten und byte-gleiche Unterschriften.
+- **Teil 2, offen:** Bildschirme (bestellen, abholen mit K, einlösen), Speicherung im
+  SecureStore (höchstens 2048 Byte je Wert, darum x und y als Hex) und die Vorlage als
+  QR-Code.
 - **Verfügbarkeit, unverändert:** Die Stelle braucht zum Laden ohnehin jeden
   präparierenden Validator (Öffnung); jetzt auch für die Blätter.
 
