@@ -12,6 +12,12 @@
 # meldet an und wartet auf das Urteil der Kette. Widersprechen sich
 # Vorab-Rechnung und Urteil: BEFUND.
 #
+# Nach dem Einloesen (DEZENTRAL.md 17, R7): Ist das Ende final, legt jeder
+# Validator seinen Abschnitt offen (Praeparation, Salze, Basen der Pruefung).
+# Die Stelle wartet darauf, prueft ihn gegen Wurzel und Proben, die sie vor dem
+# Anmelden von der Kette gelesen hat, und der Lauf legt den rohen Nachweis als
+# Artefakt ab -- jeder kann ihn mit `aequitasd quanten-s-nachweis` nachrechnen.
+#
 # Die Vorlage ist hier oeffentlich (Eingabe des Laufs). Das ist fuer C1 als
 # Stelle ohne Gefahr: anmelden kann nur die bei der Ausgabe festgelegte Stelle
 # selbst, der Wert geht an sie (C1), und eine Vorlage fuer die andere Stelle
@@ -44,7 +50,7 @@ env:
 jobs:
   einloesen:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     environment: produktion
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -84,7 +90,7 @@ jobs:
           ssh -o BatchMode=yes root@$C1 'umask 077; cat > /root/qs-vorlage.json' < "$RUNNER_TEMP/vorlage.json"
           rm -f "$RUNNER_TEMP/vorlage.json"
           set +e
-          ssh -o BatchMode=yes root@$C1 "docker exec -i -u 10001:10001 aequitas-node ./aequitasd quanten-s-annahme --api http://127.0.0.1:8080 --validatoren $C1_VALIDATOR=http://127.0.0.1:8080 < /root/qs-vorlage.json; RC=\$?; rm -f /root/qs-vorlage.json; exit \$RC" > ergebnis.json
+          ssh -o BatchMode=yes root@$C1 "docker exec -i -u 10001:10001 aequitas-node ./aequitasd quanten-s-annahme --api http://127.0.0.1:8080 --validatoren $C1_VALIDATOR=http://127.0.0.1:8080 --nachweis-warten 20m < /root/qs-vorlage.json; RC=\$?; rm -f /root/qs-vorlage.json; exit \$RC" > ergebnis.json
           RC=$?
           set -e
           cat ergebnis.json
@@ -93,6 +99,12 @@ jobs:
             echo
             if [ "$RC" = 0 ]; then
               echo "**Urteil der Kette: $(jq -r '.urteil // "?"' ergebnis.json)** (vorab gerechnet: $(jq -r '.vorab // "?"' ergebnis.json))"
+              if jq -e '.nachweis.wurzel_gegen == "kette"' ergebnis.json >/dev/null 2>&1; then
+                echo
+                echo "**Nachweis nach dem Ende:** Die offengelegte Praeparation ergibt die Wurzel und die Proben der Ausgabe."
+                echo "Ueber alle $(jq -r .nachweis.n ergebnis.json) Stellen $(jq -r .nachweis.fehler ergebnis.json) Fehler bei $(jq -r .nachweis.treffer ergebnis.json) Treffern (passende Basis);"
+                echo "an der gewaehlten Stelle $(jq -r .nachweis.fehler_stelle ergebnis.json) bei $(jq -r .nachweis.treffer_stelle ergebnis.json). Roh: Artefakt nachweis-$(jq -r .k ergebnis.json)."
+              fi
             else
               echo "**Gescheitert (Exit $RC)** -- Verlauf im Protokoll."
             fi
@@ -102,3 +114,20 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           exit "$RC"
+      - name: Nachweis holen (oeffentlich)
+        if: success()
+        run: |
+          set -euo pipefail
+          K=$(jq -r .k ergebnis.json)
+          [[ "$K" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::K"; exit 1; }
+          mkdir -p nachweis
+          curl -fsS -m 30 --max-filesize 16777216 "$NETZ/api/quanten-w/validator/nachweis?k=$K" > "nachweis/nachweis-$K-c1.json"
+          cp ergebnis.json "nachweis/ergebnis-$K.json"
+          jq -e --arg k "$K" '.k == $k and .validator == env.C1_VALIDATOR' "nachweis/nachweis-$K-c1.json" >/dev/null
+          echo "K=$K" >> "$GITHUB_ENV"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: success()
+        with:
+          name: nachweis-${{ env.K }}
+          path: nachweis/
+          retention-days: 90

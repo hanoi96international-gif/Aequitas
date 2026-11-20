@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -52,6 +53,23 @@ func TestQuantenSMessungOeffnenBefehl(t *testing.T) {
 		t.Fatal("andere Basen angenommen")
 	}
 	if rc, _, _ := lauf([]string{"--n", "8", "--name", v.Name, "--verzeichnis", dir, "ueberzaehlig"}, 10001, v.Schluessel, v.Chiffrat); rc != 2 {
+		t.Fatal("ueberzaehliges Argument angenommen")
+	}
+}
+
+func TestQuantenSNachweisBefehl(t *testing.T) {
+	lauf := func(args ...string) (int, string) {
+		var aus, log bytes.Buffer
+		rc := quantenSNachweisMit(context.Background(), args, &aus, &log)
+		return rc, log.String()
+	}
+	if rc, _ := lauf("--k", strings.Repeat("a", 64)); rc != 2 {
+		t.Fatal("ohne Validatoren gestartet")
+	}
+	if rc, log := lauf("--k", "zz", "--validatoren", "0x"+strings.Repeat("11", 20)+"=http://127.0.0.1:1"); rc != 1 || !strings.Contains(log, "K") {
+		t.Fatalf("K ohne Form: %d %s", rc, log)
+	}
+	if rc, _ := lauf("--k", strings.Repeat("a", 64), "--validatoren", "0x"+strings.Repeat("11", 20)+"=http://127.0.0.1:1", "ueberzaehlig"); rc != 2 {
 		t.Fatal("ueberzaehliges Argument angenommen")
 	}
 }

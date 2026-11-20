@@ -268,6 +268,13 @@ type quantenWDienst struct {
 	// des Zustaendigen eingereicht hat -- er macht ohne Wartezeit weiter;
 	// wie sicht begrenzt und aufgeraeumt.
 	eingesprungen map[string]bool
+	// Nachweis nach dem Ende (quanten_s_nachweis.go): ende = die letzte
+	// gesehene Anmeldung je Token (Basen auf dem eigenen Abschnitt, Stelle);
+	// nachweise = die offengelegten Abschnitte beendeter Token, hoechstens
+	// quantenSNachweiseMax (nachweisReihe: die aeltesten zuerst). Unter mu.
+	ende          map[string]quantenSEnde
+	nachweise     map[string]*QuantenSNachweis
+	nachweisReihe []string
 	// rest: was von einem gekuerzten, angenommenen Teil uebrig ist (je K
 	// hoechstens einer, unter mu; mit der Note vergessen). Spart den
 	// Nachbarn die zweite Abfrage derselben Seite (quantenWTeilKuerzen).
@@ -1207,8 +1214,23 @@ func (d *quantenWDienst) takt(ctx context.Context) {
 		}
 		ein := reg.Noten[K]
 		if ein == nil {
-			// Tot oder nie gepraegt: nach dem Praegefenster vergessen.
-			if _, tot := reg.Tote[K]; tot || e.Zeit < jetzt-quantenWToteBehalten {
+			// Tot oder nie gepraegt: nach dem Praegefenster vergessen. Ein
+			// S-Abschnitt (Stichprobe v2) wird vorher offengelegt -- erst,
+			// wenn das Ende final ist (quanten_s_nachweis.go).
+			_, tot := reg.Tote[K]
+			if tot && e.Art == "s" && e.Abschnitt != nil && e.Abschnitt.ProbeArt == 2 && !e.Wartend {
+				sicht := "s-ende|" + K
+				gesehen[sicht] = true
+				if !d.reif(sicht) {
+					continue // das Ende ist noch nicht final: noch nichts offenlegen
+				}
+				if n, err := d.nachweisAus(e); err == nil {
+					d.nachweisMerken(n)
+				} else {
+					fmt.Printf("[quanten_s] Nachweis fuer %s nicht gebaut: %v\n", K[:12], err)
+				}
+			}
+			if tot || e.Zeit < jetzt-quantenWToteBehalten {
 				d.vergessen(K)
 			}
 			continue
@@ -1273,6 +1295,7 @@ func (d *quantenWDienst) taktS(ctx context.Context, K string, e *quantenWTresorE
 		sicht := quantenSBindungSicht(K, t)
 		gesehen[sicht] = true
 		d.reif(sicht)
+		d.endeMerken(K, e, t) // fuer den Nachweis nach dem Ende
 	}
 	a := t.Anmeldung
 	if a == nil || e.Art != "s" {
@@ -1457,6 +1480,7 @@ func (d *quantenWDienst) vergessen(K string) {
 	if d.ablage.loeschen(K) == nil {
 		delete(d.eintraege, K)
 		delete(d.rest, K)
+		delete(d.ende, K)
 	}
 }
 

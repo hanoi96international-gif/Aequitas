@@ -685,6 +685,29 @@ func qsRollenVierKnoten(t *testing.T, netz *vierKnotenNetz, leiter int, ausgeber
 		t.Fatal(err)
 	}
 	erg.Vorlage, erg.KJeStelle = e2.Urteil, e2.Stichprobe
+	// Nachweis nach dem Ende (quanten_s_nachweis.go): ohne Ausfall legt jeder
+	// Validator nach der Finalitaet seinen Abschnitt offen; zusammen ergeben
+	// sie Wurzel und Proben der Ausgabe, und die Zaehlung an der Stelle ist
+	// die der Annahmestelle.
+	if !ausfall {
+		var vs []QuantenSValidator
+		for i, adr := range adressen {
+			vs = append(vs, QuantenSValidator{Adresse: adr, API: netze[i].basis})
+		}
+		_, vnetze, err := quantenSValidatorenPruefen(vs, 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ber, err := quantenSNachweisAbwarten(ctx, &quantenSMehrNetz{validatoren: vnetze}, paket.K, adressen, e2.Wurzel, e2.Proben, time.Now().Add(3*time.Minute), &log)
+		if err != nil {
+			t.Fatalf("Nachweis: %v", err)
+		}
+		if ber.WurzelGegen != "kette" || ber.Stelle == nil || *ber.Stelle != b || ber.TrefferStelle != e2.Treffer || ber.FehlerStelle != e2.Fehler {
+			t.Fatalf("Nachweis-Bericht passt nicht zur Annahme: %+v (Annahme %d Fehler bei %d Treffern)", ber, e2.Fehler, e2.Treffer)
+		}
+		t.Logf("Nachweis nach dem Ende: alle %d Validatoren, Praeparation ergibt die Wurzel der Ausgabe; ueber alle %d Stellen %d Fehler bei %d Treffern, an Stelle %d %d bei %d",
+			len(adressen), ber.N, ber.Fehler, ber.Treffer, b, ber.FehlerStelle, ber.TrefferStelle)
+	}
 	t.Logf("Rollen getrennt: Ausgeber %s (Knoten %d), Inhaberin %s (Knoten %d), Stellen %s/%s (Knoten %d); Doppelvorlage %s (vorab %s), ehrlich %s (vorab %s, %d Fehler bei %d Treffern)",
 		paket.Ausgeber, knAusgeber.i, paket.Inhaberin, knInhaberin.i, stellen[0].Adresse, stellen[1].Adresse, knStellen.i, e1.Urteil, e1.Vorab, e2.Urteil, e2.Vorab, e2.Fehler, e2.Treffer)
 	// Der Wert ging an die gewaehlte Stelle, nicht an die andere -- auf jedem

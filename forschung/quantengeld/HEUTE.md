@@ -53,7 +53,7 @@ der Code im Knoten und in der App sowie die Quellen in `ANALYSE.md`.
 |---|---|---|
 | Eine Note lebt auf IBM etwa **20 µs**, auf Ionenfallen **Sekunden** | eigene Messung (`HARDWARE_WEG.md`); Datenblatt Quantinuum | Eine Note überlebt keinen Gang von Hand zu Hand |
 | Ein Cloud-Lauf endet mit der Messung, nichts **überdauert einen Lauf** | Arbeitsweise aller Cloud-Quantenrechner | Eine Note existiert nur innerhalb **eines** Laufs |
-| Ein Cloud-Lauf ist **gegenüber Dritten nicht als echt beweisbar** | Das Ergebnis meldet der Betreiber | Eine „Quanten-Note in der Cloud“ ist nicht sicherer als eine Buchung. Sie zeigt, dass der **Ablauf** funktioniert, schützt aber nichts. |
+| Ein Cloud-Lauf ist **gegenüber Dritten nicht als echt beweisbar** | Das Ergebnis meldet der Betreiber | Eine „Quanten-Note in der Cloud“ ist nicht sicherer als eine Buchung. Sie zeigt, dass der **Ablauf** funktioniert, schützt aber nichts. Seit dem 20.11. (R7, `DEZENTRAL.md` 17) ist nach dem Einlösen öffentlich nachrechenbar, dass genau diese Präparation bei der Ausgabe festgelegt war und wie viele Messfehler es gab – nicht, dass ein Quantenrechner gemessen hat. |
 | Endnutzer haben **keinen Quantenspeicher und keine Quantenleitung** | Speicher > 10 h nur im Labor (Wang 2025); Quantennetze sind Testbetten | Keine Note in der Hosentasche, auf Jahre |
 | Öffentliche Prüfung braucht **fehlerkorrigierte Speicher**; Einlösen braucht **iO** | `rauschen_oeffentlich.py`; Huang & Vaikuntanathan 2026, Satz 1.1 | Der Weg der Bauvorgabe liegt in der fehlertoleranten Ära |
 

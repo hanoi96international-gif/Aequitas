@@ -173,6 +173,12 @@ type QuantenSAnnahmeErgebnis struct {
 	Fehler     int    `json:"fehler"`
 	Vorab      string `json:"vorab"`  // "besteht" oder "abgewiesen" (eigene Rechnung)
 	Urteil     string `json:"urteil"` // "eingeloest", "abgewiesen" oder "frist" (Kette)
+	// Wurzel und Proben der Ausgabe, vor dem Anmelden von der Kette gelesen
+	// (oeffentlich) -- dagegen prueft der Nachweis nach dem Ende.
+	Wurzel string   `json:"wurzel"`
+	Proben []string `json:"proben"`
+	// Nachweis nach dem Ende (quanten_s_nachweis.go), wenn verlangt.
+	Nachweis *QuantenSNachweisBericht `json:"nachweis,omitempty"`
 }
 
 // ------------------------------------------------------------ Inhaberin: neu
@@ -758,7 +764,8 @@ func quantenSAnnahmeLauf(ctx context.Context, a QuantenSAusgabeAuftrag, vl Quant
 	}
 	// Vorab dieselbe Rechnung wie die Kette (quantenSToken.offenlegenTeil):
 	// Basis an Stelle b ist d XOR b XOR c.
-	erg := &QuantenSAnnahmeErgebnis{K: K, B: b, Stelle: stelle, Inhaberin: inhaber, Stichprobe: len(probe), Vorab: "abgewiesen"}
+	erg := &QuantenSAnnahmeErgebnis{K: K, B: b, Stelle: stelle, Inhaberin: inhaber, Stichprobe: len(probe), Vorab: "abgewiesen",
+		Wurzel: hex.EncodeToString(wurzel[:]), Proben: append([]string(nil), proben...)}
 	for i, ut := range geladen {
 		if d[i]^b^c == ut[0] {
 			erg.Treffer++
@@ -1036,7 +1043,10 @@ func QuantenSInhaberinEinloesen(ctx context.Context, apiBasis, pfad string, s in
 // QuantenSAnnahme: `aequitasd quanten-s-annahme` < Vorlage. Der Schluessel
 // ist der der Annahmestelle; ohne Validatorenliste ist der eigene Knoten der
 // einzige Validator.
-func QuantenSAnnahme(ctx context.Context, apiBasis, schluesselHex string, frist time.Duration, validatoren []QuantenSValidator, vorlage io.Reader, aus, log io.Writer) error {
+func QuantenSAnnahme(ctx context.Context, apiBasis, schluesselHex string, frist, nachweisWarten time.Duration, validatoren []QuantenSValidator, vorlage io.Reader, aus, log io.Writer) error {
+	if nachweisWarten < 0 || nachweisWarten > time.Hour {
+		return errors.New("Nachweis abwarten: 0 bis 1 h")
+	}
 	if frist <= 0 || frist > time.Hour {
 		return errors.New("Frist: 1 s bis 1 h")
 	}
@@ -1060,7 +1070,13 @@ func QuantenSAnnahme(ctx context.Context, apiBasis, schluesselHex string, frist 
 		return err
 	}
 	a := QuantenSAusgabeAuftrag{Schluessel: key, Frist: frist}
-	erg, err := quantenSAnnahmeLauf(ctx, a, vl, adressen, &quantenSMehrNetz{quantenSHTTP: eigen, validatoren: netze}, log)
+	netz := &quantenSMehrNetz{quantenSHTTP: eigen, validatoren: netze}
+	erg, err := quantenSAnnahmeLauf(ctx, a, vl, adressen, netz, log)
+	if err == nil && erg != nil && nachweisWarten > 0 {
+		// Nach dem Ende: die Nachweise aller Validatoren, gegen Wurzel und
+		// Proben, die vor dem Anmelden auf der Kette standen.
+		erg.Nachweis, err = quantenSNachweisAbwarten(ctx, netz, erg.K, adressen, erg.Wurzel, erg.Proben, time.Now().Add(nachweisWarten), log)
+	}
 	if erg != nil {
 		enc := json.NewEncoder(aus)
 		enc.SetIndent("", "  ")

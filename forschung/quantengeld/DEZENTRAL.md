@@ -1270,6 +1270,61 @@ fällt jetzt weg:
   Stellen). Weitergeben an eine dritte Person geht nicht. Das ist gewollt: Eine
   kopierte Vorlage ist an keiner anderen Stelle etwas wert.
 
+### R7: Nachweis nach dem Ende (20.11.2026, gebaut)
+
+Auftrag des Betreibers zu „heute weltweit unmöglich“: „so gut wie möglich umsetzen“.
+Ein Cloud-Lauf lässt sich Dritten gegenüber nicht als echt beweisen. Was sich
+beweisen lässt: dass genau diese Präparation bei der Ausgabe festgelegt war, in
+welchen Basen gemessen wurde und wie viele Messfehler es gab. Das macht dieser
+Schritt öffentlich nachrechenbar.
+
+- **Wann:** erst, wenn der Token eingelöst oder tot ist **und** dieses Ende final ist.
+  Vorher bleibt die Präparation geheim (wer sie kennt und Inhaberin ist, könnte an
+  beiden Stellen bestehen). Für einen lebenden Token gibt der Dienst nie etwas
+  heraus.
+- **Was** (je Validator, von ihm unterschrieben, `GET
+  /api/quanten-w/validator/nachweis?k=`):
+  - die gesalzenen Werte seines Abschnitts (daraus Basis u, Wert t und Stellen-Bit
+    jeder Stelle);
+  - die Salze der Stichprobe v2;
+  - die Messergebnisse x der Inhaberin (sie standen schon in der Anmeldung auf der
+    Kette);
+  - Bindung d und Wahl c, wie er sie auf der Kette gesehen hat, und die Stelle b der
+    letzten Anmeldung. Daraus folgen die Basen, in denen die Kette geprüft hat
+    (d ⊕ b ⊕ c).
+- **Prüfen** (`aequitasd quanten-s-nachweis --k K --validatoren … --wurzel …
+  --proben …`; die Annahmestelle mit `quanten-s-annahme --nachweis-warten`):
+  - Unterschrift jedes Validators, Abschnitte lückenlos;
+  - aus den Werten die Blätter und die Wurzel, aus den Salzen die Proben – gegen die
+    Wurzel und Proben der Ausgabe, die die Stelle **vor** dem Anmelden von der Kette
+    gelesen hat (sonst: BEFUND);
+  - Treffer und Fehler über alle Stellen und an der gewählten Stelle.
+  - Nennen Validatoren verschiedene Stellen, bleibt die Zählung nach Basen offen,
+    statt falsch zu sein.
+- **Im Workflow** `quanten-s-annahme.yml`: Die Stelle wartet nach dem Einlösen bis zu
+  20 Minuten auf den Nachweis und prüft ihn. Der rohe Nachweis kommt als Artefakt in
+  den Lauf, das Ergebnis in die Zusammenfassung.
+- **Belegt:**
+  - in-process: nach dem Ende, erst nach der Finalität, nie für einen lebenden
+    Token; Grenze 64 im Speicher; Endpunkt begrenzt je Absender.
+  - Fälschungen abgewiesen: Wert oder Salz verändert, neu unterschrieben, fremde
+    Unterschrift, vertauschte Reihenfolge, fehlender Nachweis, andere Wahl,
+    verkürzte Bindung.
+  - Alle Validatoren erfinden zusammen eine andere Präparation: BEFUND gegen die
+    Wurzel der Ausgabe.
+  - **Vier echte Knoten** (`TestVierKnotenQuantenSRollen_RealDB`): alle 4 legen
+    offen, die Präparation ergibt die Wurzel der Ausgabe, und an der Stelle zählt der
+    Nachweis genau das, was die Annahmestelle gezählt hat (0 Fehler bei 59 Treffern).
+- **Ehrlich:**
+  - Das beweist nicht, dass ein Quantenrechner gemessen hat. Ein Betreiber, der
+    Präparation und Messung selbst erfindet und sie bei der Ausgabe festlegt, fällt
+    damit nicht auf. Dagegen helfen nur mehrere unabhängige Validatoren, von denen
+    jeder seinen Abschnitt in seinem eigenen IBM-Auftrag präpariert (Weg A, A5).
+  - Die IBM-Job-Kennung steht bei der Ausgabe auf der Kette; prüfen kann sie nur,
+    wer Zugang zu dem IBM-Konto hat.
+  - Der Nachweis liegt nur im Speicher des Dienstes (höchstens 64, nicht über einen
+    Neustart). Dauerhaft ist das Artefakt des Workflows.
+
 ### Ehrlich dazu (offen)
 
 - **Der Ausgeber sieht die Basen y.** Er reicht sie an die Validatoren weiter. Mit d auf
