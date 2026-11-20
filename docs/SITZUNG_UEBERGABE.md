@@ -2,7 +2,7 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 20.11.2026 ~12:45 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
+Stand: 20.11.2026 ~13:10 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
 Repos); davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18:30 UTC Sitzung
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
@@ -76,22 +76,28 @@ dezentrales Quantengeld“.
         `quanten-s-inhaberin abholen --k` (ohne Paket des Ausgebers), Vorlage ohne Blätter
         (Stelle holt und prüft sie selbst). Pilot [44734484196](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44734484196)
         grün (Vorlage 3.750 statt 239.603 Byte bei n = 3.520).
-      - **R4b – PR (dieser Stand): Prüfvektor für die App** (`quanten_s_inhaberin_vektor_test.go`,
+      - **R4b – #607 gemergt (f98828e6): Prüfvektor für die App** (`quanten_s_inhaberin_vektor_test.go`,
         `testdata/quanten_s_inhaberin_vektor.json`; neu schreiben mit
         `AEQUITAS_VEKTOR_SCHREIBEN=1 go test -run TestQuantenSInhaberinVektor`, danach nach
         `Aequitas-App/lib/__tests__/vektoren/` kopieren).
-        - App-Zweig `claude/weiter-uw2p42` 8cc602a: `lib/quantenS.ts` + Test (15 Fälle, gegen den
-          Vektor), neue Abhängigkeit `@noble/ciphers` 2.4.0 exakt (nur AES-CTR; mit **npm 11**
-          installiert wie im CI, npm 10 hätte WalletConnect-Abhängigkeiten umgehängt).
-          Alle 992 App-Tests und tsc grün. **Noch kein App-PR.**
+        - **App #88 gemergt (116763fa):** `lib/quantenS.ts` (Rechnung, 15 Fälle gegen den Vektor,
+          11 Mutationen rot, kanonische Unterschrift mit s ≤ N/2) und `lib/quantenSInhaberin.ts`
+          (Ablauf neu/abholen/einloesen/vergessen; 10 Fälle gegen Schein-Kette und
+          Schein-Validatoren aus dem Vektor, 12 Mutationen rot). Neue Abhängigkeit
+          `@noble/ciphers` 2.4.0 exakt (nur AES-CTR; mit **npm 11** installiert wie im CI, npm 10
+          hätte WalletConnect-Abhängigkeiten umgehängt). 1002 App-Tests, tsc grün.
         - `docs.expo.dev` ist aus dieser Umgebung gesperrt: API aus den Typen der installierten
           v54-Pakete (expo-crypto `getRandomBytes(n): Uint8Array`, SecureStore-Wert ≤ 2048 Byte).
-        - Danach Teil 2: Bildschirme, SecureStore, QR-Vorlage.
+        - **Jetzt Teil 2b:** Bildschirm (Bestellung zeigen/kopieren, K und Validatoren eingeben,
+          Stelle wählen, Vorlage als QR), i18n in 12 Sprachen (`lib/i18n/types.ts`), Test.
       - **CI: db-tests, Gruppe `realdb`, an der 10-Minuten-Grenze** (Push-Lauf 44737311991 rot:
         Abbruch in `TestVierKnoten_RealDB` nach 600 s; die zwei neuen Rollen-Läufe kosten ~2 min).
         In diesem PR: eigene Gruppe `quanten` für die 7 Vier-Knoten-Quantentests (eigene DB,
         eigene 10-Minuten-Grenze); geprüft, dass genau dieselben 282 Tests laufen. Kein Test
-        abgeschwächt oder übersprungen. App-PR #88 offen (CI grün).
+        abgeschwächt oder übersprungen. Mit #607 gemergt; Push- und PR-Lauf grün.
+      - **C1-Deploy #606 wartet auf Freigabe `produktion`:**
+        [44737199569](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44737199569)
+        (CI darin grün; ältere Deploys von #604/#605 abgebrochen, dieser enthält alle).
       - **Danach:** R4 App als Inhaberin; Hauptnetz-Lauf mit getrennten Rollen
         (Workflow); Öffnung aus Anteilen (Verfügbarkeit); y je Validator verschlüsseln.
       - Lokale Postgres für RealDB-Tests: `pg_ctlcluster 16 main start`, Datenbank
