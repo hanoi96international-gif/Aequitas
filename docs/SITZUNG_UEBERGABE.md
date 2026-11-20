@@ -2,7 +2,7 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 20.11.2026 ~18:30 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
+Stand: 20.11.2026 ~19:00 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
 Repos); davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18:30 UTC Sitzung
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
@@ -45,8 +45,12 @@ kannst / Abschnitt 5 (heute weltweit unmöglich) so gut wie möglich umsetzen“
   Härtung: der Knoten legt die geöffnete Messung selbst ab (root fasst das
   Messverzeichnis nicht an).
 - **App 1.26.0 veröffentlicht** (APK und iPhone). **App 1.27.0** (Annahmestelle): APK
-  signiert, Veröffentlichung [44792061041](https://github.com/hanoi96international-gif/Aequitas-App/actions/runs/44792061041)
-  wartet auf `app-signatur`, danach `release-ios.yml` (run_id 44783551300, Tag v1.27.0).
+  veröffentlicht (20.11. 18:53 UTC); iPhone [44797096626](https://github.com/hanoi96international-gif/Aequitas-App/actions/runs/44797096626)
+  wartet auf `app-signatur`. **App 1.28.0** (Nachweis prüfen, App #93/#94): Builds APK
+  44797387508, iOS 44797392243; danach signieren, `release-apk.yml` (Tag v1.28.0),
+  `release-ios.yml`.
+- **C1-Deploy #611** [44795136352](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44795136352)
+  wartet auf `produktion`.
 - **Lehre:** vor jedem Push die GANZE Paket-Suite laufen lassen (`go test ./x/humanity/keeper/`),
   nicht nur `-run`-Filter: `TestSperre_ImmerMitDefer` fand in #611 eine Sperre ohne `defer`.
 - **App #91 offen: die App als Annahmestelle (R6)** (`lib/quantenSStelle.ts`, Karte
