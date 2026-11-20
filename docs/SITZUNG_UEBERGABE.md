@@ -15,6 +15,19 @@ kannst / Abschnitt 5 (heute weltweit unmöglich) so gut wie möglich umsetzen“
   [44748666661](https://github.com/hanoi96international-gif/Aequitas-App/actions/runs/44748666661)
   (grün). Danach `release-apk.yml` (run_id 44748661869, Tag `v1.26.0`), dann
   `release-ios.yml` (run_id 44748666661, Tag `v1.26.0`), beide mit Freigabe `app-signatur`.
+- **Anleitung: erster Hauptnetz-Lauf mit getrennten Rollen (die App als Inhaberin)** –
+  braucht C1 mit #608 und #611 sowie App 1.27.0:
+  1. App → Quanten-Token → Bestellen: n = 1104, v = 1, Stelle 0 „C1 eintragen“, Stelle 1
+     „Mein Konto eintragen“ → Bestellung anlegen → Kopieren.
+  2. Workflow `quanten-s-ausgabe.yml`: modus `ibm`, weg `rollen`, toleranz `2`,
+     bestellung = der kopierte Text → Freigaben `quantenhardware`, `produktion`.
+  3. Zusammenfassung des Laufs: K und Validatoren-Zeile → App → Abholen (oder
+     „C1 eintragen“).
+  4. App → Einlösen an Stelle 0 (C1) → QR-Code. Den Text des QR-Codes (z. B. per
+     Bildschirmfoto und Texterkennung) in `quanten-s-annahme.yml` (Eingabe `vorlage`) →
+     Freigabe `produktion` → Urteil, Nachweis (Artefakt).
+  - Alternativ Stelle 1 (eigenes Konto): ein zweites Gerät mit der App öffnet
+    „Annahmestelle“ unter demselben Konto und scannt den QR-Code.
 - **PR (dieser Stand): R7, Nachweis nach dem Ende** (`DEZENTRAL.md` 17 „R7“, `HEUTE.md`
   Abschnitt 2): Ist ein Token eingelöst oder tot und das Ende final, legt jeder Validator
   seinen Abschnitt offen (`/api/quanten-w/validator/nachweis`); `quanten-s-nachweis`
