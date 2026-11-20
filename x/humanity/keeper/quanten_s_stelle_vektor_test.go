@@ -58,6 +58,10 @@ type qssVektor struct {
 	AnmeldenSig         string                 `json:"anmelden_sig"`
 	FalscheOeffnung     string                 `json:"falsche_oeffnung"` // fuer die andere Stelle verschluesselt
 	FuerInhaberinGeheim string                 `json:"fuer_inhaberin_nur_test"`
+	// Nachweis nach dem Ende (quanten_s_nachweis.go): was der Validator nach
+	// dem Einloesen offenlegt, und was ein Pruefer daraus nachrechnet.
+	Nachweis        QuantenSNachweis        `json:"nachweis"`
+	NachweisBericht QuantenSNachweisBericht `json:"nachweis_bericht"`
 }
 
 const qssVektorPfad = "testdata/quanten_s_stelle_vektor.json"
@@ -235,6 +239,29 @@ func qssVektorBauen(t *testing.T, gespeichert *qssVektor) qssVektor {
 		t.Fatal(err)
 	}
 	v.FuerInhaberinGeheim = strings.Repeat("51", 32)
+	// Nachweis (deterministisch: EIP-191 mit RFC 6979).
+	cc, bb := c, b
+	nw := QuantenSNachweis{Dom: quantenSDomNachweis, K: v.K, N: n, T: 1, X: 1, Von: 0, Bis: n, Validator: v.Validator,
+		Validatoren: []string{v.Validator}, Wurzel: hex.EncodeToString(wurzel[:]),
+		Proben: []string{hex.EncodeToString(proben[0][:]), hex.EncodeToString(proben[1][:])},
+		Salze: []string{hex.EncodeToString(salze[0][:]), hex.EncodeToString(salze[1][:])}, XInhaberin: qsBitsText(x),
+		D: qsBitsText(d), C: &cc, Stelle: &bb, Zeit: 1795180000}
+	for _, w := range werte {
+		nw.Werte = append(nw.Werte, w.Text(16))
+	}
+	nm, err := quantenSNachweisNachricht(nw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if nw.Sig, err = quantenSUnterschreiben(valKey, nm); err != nil {
+		t.Fatal(err)
+	}
+	v.Nachweis = nw
+	ber, err := quantenSNachweisePruefen(v.K, []string{v.Validator}, []QuantenSNachweis{nw}, &wurzel, nw.Proben)
+	if err != nil {
+		t.Fatal(err)
+	}
+	v.NachweisBericht = *ber
 	return v
 }
 
