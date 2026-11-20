@@ -1,6 +1,6 @@
 # Dezentrales Quantengeld komplett: was fehlt, und der Weg dorthin
 
-Stand 18.11.2026, Abschnitt 1 aktualisiert am 20.11.2026. Auftrag des Betreibers: „Bring das dezentrale Quantengeld komplett zu
+Stand 18.11.2026, Abschnitt 1 aktualisiert und Abschnitt 17 am 20.11.2026. Auftrag des Betreibers: „Bring das dezentrale Quantengeld komplett zu
 laufen, ggf. mit eigener Forschung“. Diese Notiz sagt, was heute läuft, wo es noch an
 einer Stelle hängt, und was wir bauen.
 
@@ -29,6 +29,10 @@ einer Stelle hängt, und was wir bauen.
     - Erster Token im Hauptnetz damit am 20.11.2026 auf `ibm_kingston`: Doppelvorlage
       abgewiesen, ehrliche Vorlage eingelöst (`HEUTE.md` 3.3i).
     - C1 hat dafür ein Messverzeichnis (Abschnitt 16, Schritt 7).
+  - **Getrennte Rollen** (Abschnitt 17, R1–R3): Inhaberin, Ausgeber und Annahmestelle
+    haben je einen eigenen Befehl und eigenen Schlüssel. Der Ausgeber sieht x nie.
+    Inhaberin und Annahmestelle prüfen gegen die Kette. Auf vier echten Knoten grün,
+    auch mit Ausfall eines Validators; im Hauptnetz noch nicht gelaufen.
   - **Was am Betreiber hängt:**
     - Der zweite Mensch als Validator mit eigenem Server und IBM-Konto (A5). Erst dann
       kennt niemand den ganzen Token.
@@ -962,3 +966,137 @@ seinen Werten (t − 1 Validatoren kennen genau ihre Abschnitte, Abschnitt 7).
        Deckung des Tokens (1 AEQ) bis zur Frist gebunden sein.
      - Wie am 17.11. laufen Präparation und Messung im selben Auftrag beim Betreiber,
        und C1 kennt als einziger Validator den ganzen Token.
+
+## 17. Getrennte Rollen: Inhaberin, Ausgeber, Annahmestelle (20.11.2026)
+
+Auftrag des Betreibers (20.11.2026): „Dezentrales Quantengeld muss komplett implementiert
+werden.“
+
+### Was „komplett“ hier heißt
+
+1. **Jetzt gebaut (R1–R3, dieser Abschnitt):** Jede Rolle mit eigenem Befehl und eigenem
+   Schlüssel. Kein Werkzeug hält mehr alles in der Hand.
+2. **Baubar, als Nächstes:**
+   - R4: Die App als Inhaberin (Bestellung, Paket annehmen, binden, Vorlage).
+   - Ein Hauptnetz-Lauf mit getrennten Rollen (Workflow).
+   - Die Öffnung aus Anteilen statt nur vom präparierenden Validator (Verfügbarkeit,
+     unten).
+   - Die Basen y je Validator verschlüsseln (Privatsphäre, unten).
+3. **Hängt am Betreiber:**
+   - Ein zweiter Mensch als Validator mit eigenem Server und IBM-Konto (A5).
+   - Ein Gutachter (Prüfauftrag S 2).
+   - Ein Partner mit eigenem Empfänger für die Inhaberin (Weg C).
+4. **Heute physikalisch nicht möglich:** Quantenzustände in den Händen der Menschen. Das
+   braucht Quantenspeicher in Geräten, und die gibt es nirgends (`HEUTE.md`, Punkt 1).
+   Variante S ist deshalb ein Token ohne Speicher: Gemessen wird bei der Präparation, die
+   Inhaberin bekommt klassische Ergebnisse x.
+
+### Das Problem
+
+`aequitasd quanten-s-ausgabe` spielte bisher alle Rollen außer den Validatoren:
+- Es erzeugte den Schlüssel der Inhaberin und den der zweiten Annahmestelle selbst.
+- Es entschlüsselte x der Inhaberin.
+- Es band, wählte und legte an beiden Stellen vor.
+
+Das belegt, dass die Kette richtig urteilt. Wer das Werkzeug laufen lässt, hält aber alles
+in der Hand, und das ist nicht dezentral. Der Validator-Dienst konnte die Trennung schon:
+- Im Auftrag stehen Inhaberin und Stellen mit ihren öffentlichen Schlüsseln.
+- x geht verschlüsselt an die Inhaberin.
+- Die Öffnung geht verschlüsselt an die jeweilige Stelle.
+
+### Gebaut (`x/humanity/keeper/quanten_s_rollen.go`)
+
+| Rolle | Befehl | Was sie prüft und tut |
+|---|---|---|
+| Inhaberin | `aequitasd quanten-s-inhaberin neu --datei F --n N --v V --stellen adr=schl,adr=schl` | Neuer Schlüssel; Basen y aus `crypto/rand`. Die Datei F hat Schlüssel und y, 0600, wird nie überschrieben. Heraus kommt die **Bestellung** (öffentlich). |
+| Ausgeber | `aequitasd quanten-s-ausgabe --fuer-inhaberin` < Bestellung | Abschnitte bei den Validatoren, Bestätigungen, Ausgabe auf der Kette. Nur mit Stichprobe v2, nicht für sich selbst. Er hat keinen Schlüssel der Inhaberin oder der Stellen. Heraus kommt das **Paket** (öffentlich, x nur für die Inhaberin verschlüsselt). |
+| Inhaberin | `aequitasd quanten-s-inhaberin annehmen --datei F --api URL --validatoren 0xadr,…` < Paket | Unterschrift jedes Validators über seinen Abschnitt; die Validatoren nennt sie selbst. Blätter gegen die Wurzel, Proben gegen die Teil-Hashes. Wurzel, Proben, n, t, v, Toleranz und Stellen gegen die **Kette**. Aus den unterschriebenen Zählungen prüft sie, dass die ehrliche Vorlage bestünde. Dann liest sie x. |
+| Inhaberin | `aequitasd quanten-s-inhaberin einloesen --datei F --api URL --stelle b` | Sie speichert die Maske z, **bevor** sie die Bindung einreicht. Sie bindet d = y ⊕ z und wählt c = b ⊕ z, jeweils nur, wenn es noch nicht auf der Kette steht. Sie unterschreibt die **Vorlage** nur für die gewählte Stelle; für die andere wäre es eine Doppelvorlage. |
+| Annahmestelle | `aequitasd quanten-s-annahme --validatoren adr=api,…` < Vorlage | Den Schlüssel liest sie aus einer Umgebungsvariablen, nicht von der Befehlszeile. Vor jeder Anfrage an einen Validator prüft sie: die Unterschrift der Vorlage gegen den Inhaber **auf der Kette**, die Blätter gegen die Wurzel auf der Kette, dass die Vorlage für **diese** Stelle ist, Bindung und Wahl stehen. Nach der Finalität lädt sie ihre Stichprobe mit ihrem eigenen Schlüssel und prüft Salze und Stichprobe gegen die Probe auf der Kette. Dann rechnet sie das Urteil der Kette **vorab** nach (Basis d ⊕ b ⊕ c), meldet an und wartet auf das Urteil. Widersprechen sich Vorab-Rechnung und Urteil, ist das ein BEFUND. |
+
+- **Kein neuer Konsens.** Die Kette prüfte das schon: Nur die Inhaberin bindet und wählt
+  (`quantenSToken.binden`/`waehlen`), die Vorlage ist von ihr unterschrieben, an Stelle b
+  wird in d ⊕ b ⊕ c geprüft (`offenlegenTeil`).
+- **Neu in der Ansicht** (`GET /api/quanten-w/note`, nur lesend): `wurzel`, `proben`,
+  `d` (erst nach der Bindung) und `c` (erst nach der Wahl). Das steht ohnehin öffentlich
+  in den Transaktionen. Damit glaubt keine Rolle einem Paket oder einer Vorlage.
+- **Die Unterschrift des Validators** über seinen Abschnitt lässt sich jetzt auch aus den
+  Hashes der Bündel nachrechnen (`quantenSAbschnittAntwortNachrichtAus`). Sie ist
+  byte-gleich mit der bisherigen; die Inhaberin bekommt die Bündel für die anderen
+  Validatoren nicht.
+- **Validator-APIs** kommen nur aus der eigenen Angabe, nie aus Paket oder Vorlage. Keine
+  Rolle fragt eine fremde Adresse an.
+- **Grenzen:**
+  - Bestellung, Paket, Vorlage und Datei höchstens 4 MiB.
+  - Strenges JSON: keine unbekannten Felder, nur ein Wert.
+  - Jede Anfrage mit Frist.
+  - Die Datei der Inhaberin wird nur gelesen, wenn sie 0600 ist und kein Verweis.
+    Ersetzt wird sie atomar.
+  - Schlüssel stehen in keiner Ausgabe und keiner Fehlermeldung.
+
+### Belegt
+
+- **Tests in CI** (`quanten_s_rollen_test.go`, gegen die echten Regeln und den echten
+  Dienst):
+  - Gutfall für beide Stellen. Der Ausgeber kann x nicht lesen. Der Wert geht an die
+    gewählte Stelle, nichts an die andere.
+  - Ein fälschender Ausgeber: x neu verschlüsselt, Blatt, Teil-Hash oder Zählung
+    vertauscht, Wurzel oder Probe anders, andere Validatoren, Inhaberin oder Stellen,
+    Abschnitte vertauscht oder fehlend, v1 statt v2.
+  - Ein böser Ausgeber, der seine Probe der ehrlichen Vorlage überspringt: Die Kette
+    nimmt die Ausgabe an, die Inhaberin nicht.
+  - Die Kette entscheidet: Steht der Token nicht auf der Kette, ist er schon gebunden
+    oder hat er eine andere Wurzel, wird nichts angenommen.
+  - Keine Doppelvorlage aus dem Werkzeug der Inhaberin. Die Maske wird zuerst
+    gespeichert.
+  - Eine böse Inhaberin unterschreibt selbst für die andere Stelle: vorab abgewiesen, von
+    der Kette abgewiesen (ein Fehlversuch); danach löst die gewählte Stelle ehrlich ein.
+  - Eine gefälschte Vorlage (Unterschrift, x, Blatt, falsche Stelle, unbekanntes K)
+    löst keine einzige Anfrage an die Validatoren aus.
+  - Vor Bindung und Wahl wird nicht angemeldet. Ein falsches Salz fliegt beim Laden auf.
+  - Vorab „abgewiesen“, aber ein lügender Knoten meldet „eingelöst“: BEFUND.
+  - Die Datei der Inhaberin: 0600, kein Verweis, nie überschrieben, keine fremden Felder.
+  - Die Befehle: Sperren (Unterbefehle, Optionen, nicht als root, kein Schlüssel auf der
+    Befehlszeile, kein Schlüssel in der Ausgabe).
+  - Unter `go test -race` grün.
+- **Gegenprobe:** 22 Mutationen, alle rot. Zwei überlebten zuerst und zeigten Lücken in
+  den Tests: die eigene Zählprobe der Inhaberin, und dass eine gefälschte Vorlage schon
+  vor der Kette auffällt. Beide haben jetzt einen Test.
+- **Vier echte Knoten** (`TestVierKnotenQuantenSRollen(Ausfall)_RealDB`; eigene
+  Datenbank, echtes HTTP, 3 von 4): Der Ausgeber spricht mit dem Folger, die Inhaberin
+  mit einem dritten Knoten, beide Stellen mit dem Leiter. Jede Übergabe geht durch JSON
+  wie eine Datei: Bestellung 918 Byte, Paket 22.651 Byte, Vorlage 17.651 Byte bei n = 256.
+  Lokal am 20.11.2026:
+  - Ohne Ausfall grün (51 s): Doppelvorlage vorab „abgewiesen“ (42 Fehler bei 69
+    Treffern), von der Kette abgewiesen. Ehrlich vorab „besteht“ (0 Fehler bei 68
+    Treffern), eingelöst. Alle vier Knoten im Gleichstand.
+  - Mit Ausfall grün (62 s): Ein Validator fällt bei der ehrlichen Anmeldung aus,
+    nachdem die Stelle ihre Stichprobe geladen hat. Die drei übrigen legen offen,
+    eingelöst. Drei Knoten im Gleichstand.
+  - Die bisherigen Wege (ein Auftrag; Abschnitte mit und ohne v2) laufen nach dem Umbau
+    unverändert grün.
+  - Auf GitHub: `quanten-s-pilot.yml` mit `rollen = ja` (dazu `ausgabe = abschnitte`
+    und `stichprobe_v2 = ja`).
+
+### Ehrlich dazu (offen)
+
+- **Der Ausgeber sieht die Basen y.** Er reicht sie an die Validatoren weiter. Mit d auf
+  der Kette kennt er damit z, und aus c die gewählte Stelle, bevor die Inhaberin vorlegt.
+  Das verrät, *wo* sie einlösen will, nicht x. Einlösen oder binden kann er nicht, denn
+  dafür braucht es ihren Schlüssel. Ausweg: y je Validator verschlüsseln. Das ist eine
+  Änderung im Dienst.
+- **Verfügbarkeit:** Bei Stichprobe v2 lädt eine Stelle ihre Stichprobe aus der Öffnung
+  **jedes** präparierenden Validators. Nur er kennt die Werte seines Abschnitts; die
+  Anteile der anderen reichen zum Offenlegen auf der Kette, nicht zum Laden. Fällt einer
+  nach der Bindung und vor dem Laden aus, muss die Stelle warten, bis er zurück ist. Der
+  Wert ist nicht verloren, denn die Anmeldung kommt erst nach dem Laden. Im Pilot fällt
+  der Validator deshalb nach dem Laden aus. Ausweg: Öffnung aus t Anteilen.
+- **Hat ein Token schon zwei Fehlversuche,** liest das Werkzeug das Urteil nicht
+  eindeutig (eingelöst und tot sehen in der Ansicht gleich aus) und meldet nicht an.
+  Das ist wie bisher.
+- **Getrennte Schlüssel heißen noch nicht getrennte Menschen.** Im Pilot laufen alle
+  Rollen im selben Testprozess. Im Hauptnetz ist C1 einziger Validator und kennt den
+  ganzen Token (Abschnitt 16). Den Token der Inhaberin einlösen kann C1 trotzdem nicht,
+  denn ohne ihre Unterschrift gibt es keine Vorlage. Mit ihr zusammen fälschen könnte er.
+  Dagegen hilft erst A5 (ein zweiter Mensch als Validator).
+- Es liegt kein Gutachten vor.

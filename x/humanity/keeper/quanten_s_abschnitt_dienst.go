@@ -142,15 +142,24 @@ func quantenSAbschnittAuftragNachricht(q QuantenSAbschnittAnfrage) string {
 // quantenSAbschnittAntwortNachricht: was der Validator ueber seine Antwort
 // unterschreibt -- der Ausgeber kann sie weiterleiten, nicht aendern.
 func quantenSAbschnittAntwortNachricht(a QuantenSAbschnittAntwort) string {
-	hf := sha256.Sum256([]byte(a.FuerInhaberin))
-	m := fmt.Sprintf("%s|chain:%d|%s|%d|%d|%d|%s|%x|%s|%s", quantenSDomAbschnittAntwort, eingefroreneChainID, a.K, a.X, a.Von, a.Bis,
-		quantenSHashListe(a.Blaetter), hf, quantenSHashListe(a.Buendel), quantenSHashListe(a.BuendelSig))
-	if a.Teile != nil || a.Zaehlung != nil { // nur bei ProbeArt 2
-		z := make([]string, 0, 2*len(a.Zaehlung))
-		for _, p := range a.Zaehlung {
+	return quantenSAbschnittAntwortNachrichtAus(a.K, a.X, a.Von, a.Bis, quantenSHashListe(a.Blaetter), a.FuerInhaberin,
+		quantenSHashListe(a.Buendel), quantenSHashListe(a.BuendelSig), a.Teile, a.Zaehlung)
+}
+
+// quantenSAbschnittAntwortNachrichtAus: dieselbe Nachricht aus den Hashes der
+// Buendel -- damit die Inhaberin die Unterschrift des Validators pruefen kann,
+// ohne die (fuer andere Validatoren verschluesselten) Buendel zu bekommen
+// (quanten_s_rollen.go). Byte-gleich mit quantenSAbschnittAntwortNachricht.
+func quantenSAbschnittAntwortNachrichtAus(K string, x, von, bis int, blaetterHash, fuerInhaberin, buendelHash, buendelSigHash string, teile []string, zaehlung [][2]int) string {
+	hf := sha256.Sum256([]byte(fuerInhaberin))
+	m := fmt.Sprintf("%s|chain:%d|%s|%d|%d|%d|%s|%x|%s|%s", quantenSDomAbschnittAntwort, eingefroreneChainID, K, x, von, bis,
+		blaetterHash, hf, buendelHash, buendelSigHash)
+	if teile != nil || zaehlung != nil { // nur bei ProbeArt 2
+		z := make([]string, 0, 2*len(zaehlung))
+		for _, p := range zaehlung {
 			z = append(z, strconv.Itoa(p[0]), strconv.Itoa(p[1]))
 		}
-		m += fmt.Sprintf("|teile:%s|zaehlung:%s", strings.Join(a.Teile, ","), strings.Join(z, ","))
+		m += fmt.Sprintf("|teile:%s|zaehlung:%s", strings.Join(teile, ","), strings.Join(z, ","))
 	}
 	return m
 }

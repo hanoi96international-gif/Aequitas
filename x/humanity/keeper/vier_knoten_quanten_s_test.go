@@ -3,6 +3,7 @@ package keeper
 import (
 	"bytes"
 	"context"
+	"crypto/ecdsa"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -16,6 +17,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/ethereum/go-ethereum/crypto"
 )
 
 // QUANTENGELD VARIANTE S AUF VIER ECHTEN KNOTEN (Pilot mit mehreren
@@ -49,8 +52,23 @@ func TestVierKnotenQuantenSAusfall_RealDB(t *testing.T) { qsVierKnoten(t, true) 
 // vier Validatoren praepariert seinen Abschnitt aus seiner EIGENEN Messquelle,
 // das Werkzeug bekommt nur die Basen der Inhaberin -- niemand kennt den
 // ganzen Token. Mit und ohne Ausfall eines Validators vor der ersten Vorlage.
-func TestVierKnotenQuantenSAbschnitte_RealDB(t *testing.T)        { qsVierKnotenModus(t, false, true) }
-func TestVierKnotenQuantenSAbschnitteAusfall_RealDB(t *testing.T) { qsVierKnotenModus(t, true, true) }
+func TestVierKnotenQuantenSAbschnitte_RealDB(t *testing.T) { qsVierKnotenModus(t, false, true, false) }
+func TestVierKnotenQuantenSAbschnitteAusfall_RealDB(t *testing.T) {
+	qsVierKnotenModus(t, true, true, false)
+}
+
+// GETRENNTE ROLLEN (quanten_s_rollen.go, DEZENTRAL.md 17, Schritt R3): wie
+// die Abschnitte mit Stichprobe v2, aber jede Rolle hat ihren eigenen
+// Schluessel und spricht mit einem ANDEREN Knoten -- der Ausgeber mit dem
+// Folger, die Inhaberin mit einem dritten, beide Annahmestellen mit dem
+// Leiter. Der Ausgeber sieht x nie, die Inhaberin prueft das Paket gegen die
+// Kette, die Annahmestelle die Vorlage. Zuerst versucht eine boese Inhaberin
+// die Doppelvorlage an der nicht gewaehlten Stelle (vorab und von der Kette
+// abgewiesen, ein Fehlversuch), dann loest die gewaehlte Stelle ehrlich ein.
+// Mit Ausfall: ein Validator faellt bei der ehrlichen Anmeldung aus (nachdem
+// die Stelle ihre Stichprobe geladen hat); 3 von 4 legen offen.
+func TestVierKnotenQuantenSRollen_RealDB(t *testing.T)        { qsVierKnotenModus(t, false, true, true) }
+func TestVierKnotenQuantenSRollenAusfall_RealDB(t *testing.T) { qsVierKnotenModus(t, true, true, true) }
 
 // qsAbschnitteAusVerzeichnis: im Pilot (quanten-s-pilot.yml, ausgabe =
 // abschnitte) steht in AEQUITAS_QS_ABSCHNITTE das Verzeichnis von
@@ -260,9 +278,9 @@ func (a *qsAusfallNetz) einreichen(ctx context.Context, art, wallet string, zeit
 	return a.quantenSMehrNetz.einreichen(ctx, art, wallet, zeit, q)
 }
 
-func qsVierKnoten(t *testing.T, ausfall bool) { qsVierKnotenModus(t, ausfall, false) }
+func qsVierKnoten(t *testing.T, ausfall bool) { qsVierKnotenModus(t, ausfall, false, false) }
 
-func qsVierKnotenModus(t *testing.T, ausfall, abschnitte bool) {
+func qsVierKnotenModus(t *testing.T, ausfall, abschnitte, rollen bool) {
 	skipUnlessRealDBBenchEnv(t)
 	if testing.Short() {
 		t.Skip("laeuft in echter Zeit")
@@ -270,6 +288,13 @@ func qsVierKnotenModus(t *testing.T, ausfall, abschnitte bool) {
 	kJeStelle := 128
 	tol := qsToleranzAusUmgebung(t)
 	v2 := qsV2AusUmgebung(t, abschnitte)
+	if rollen && !v2 {
+		// Getrennte Rollen gibt es nur mit Stichprobe v2 -- auch ohne
+		// AEQUITAS_QS_V2 nur in diesem Testprozess scharf.
+		quantenSProbeV2AbOverride.Store(1)
+		t.Cleanup(func() { quantenSProbeV2AbOverride.Store(0) })
+		v2 = true
+	}
 	echt, ausDatei := qsMessungAusDatei(t)
 	var abDir string
 	var basen QuantenSBasen
@@ -423,7 +448,9 @@ func qsVierKnotenModus(t *testing.T, ausfall, abschnitte bool) {
 	beobachterHalt := qsKetteBeobachten(t, netz)
 	beginn := time.Now()
 	var erg *QuantenSAusgabeErgebnis
-	if abschnitte {
+	if rollen {
+		erg = qsRollenVierKnoten(t, netz, leiter, ausgeber, adressen, netze, basen, tol, frist, ausfall, &weg)
+	} else if abschnitte {
 		erg, err = quantenSAusgabeLaufAbschnitte(context.Background(), QuantenSAusgabeAuftrag{Schluessel: ausgeber.key, Deckung: 2_000_000,
 			Tol: tol, Frist: frist, ProbeV2: v2}, basen, adressen, 3, werkzeugNetz.(quantenSAbschnittNetz), &log)
 	} else {
@@ -434,7 +461,7 @@ func qsVierKnotenModus(t *testing.T, ausfall, abschnitte bool) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if erg.Doppelvorlage != "abgewiesen" || erg.Vorlage != "eingeloest" || erg.Stellen[erg.B] != ausgeber.addr {
+	if erg.Doppelvorlage != "abgewiesen" || erg.Vorlage != "eingeloest" || (!rollen && erg.Stellen[erg.B] != ausgeber.addr) {
 		t.Fatalf("Ergebnis: %+v", erg)
 	}
 	// Welcher Weg wirklich lief, sagt die Kette, nicht das Werkzeug.
@@ -538,4 +565,142 @@ func TestQsKettenSichtPruefen(t *testing.T) {
 			t.Fatalf("%s: nicht erkannt", name)
 		}
 	}
+}
+
+// qsRollenVierKnoten: der Lauf mit getrennten Rollen ueber echtes HTTP.
+// Jede Uebergabe (Bestellung, Paket, Vorlage) geht durch JSON wie eine Datei.
+func qsRollenVierKnoten(t *testing.T, netz *vierKnotenNetz, leiter int, ausgeber testSchluessel, adressen []string, netze []*quantenSHTTP,
+	basen QuantenSBasen, tol int, frist time.Duration, ausfall bool, weg **vierKnoten) *QuantenSAusgabeErgebnis {
+	t.Helper()
+	ctx := context.Background()
+	api := func(k *vierKnoten) *quantenSHTTP {
+		h, err := neuerQuantenSHTTP(k.srv.URL)
+		if err != nil {
+			t.Fatal(err)
+		}
+		h.klient, h.takt = qwKlient, 500*time.Millisecond
+		return h
+	}
+	knAusgeber := netz.ks[(leiter+1)%len(netz.ks)]
+	knInhaberin := netz.ks[(leiter+3)%len(netz.ks)]
+	knStellen := netz.ks[leiter]
+	// Zwei Annahmestellen mit eigenen Schluesseln (keine Validatoren).
+	var stellenKey [2]*ecdsa.PrivateKey
+	var stellen [2]QuantenSStelle
+	for s := range stellen {
+		k, err := crypto.GenerateKey()
+		if err != nil {
+			t.Fatal(err)
+		}
+		stellenKey[s] = k
+		stellen[s] = QuantenSStelle{Adresse: quantenSAdresse(k), Schluessel: quantenSPubHex(k)}
+	}
+	// Inhaberin: neu. Mit Messungen aus dem Pilot (hardware_ibm.py) sind die
+	// Basen die gemessenen -- die Messquelle kennt nur diese.
+	dat, err := quantenSInhaberinNeu(basen.N, len(adressen), stellen)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(basen.Basen) == len(adressen) {
+		dat.Bestellung.Basen = append([]string(nil), basen.Basen...)
+		if err := dat.Bestellung.pruefen(len(adressen)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	durch := func(was string, v, ziel interface{}) {
+		roh, err := json.Marshal(v)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := quantenSJSONLesen(bytes.NewReader(roh), was, ziel); err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("%s: %d Byte", was, len(roh))
+	}
+	var best QuantenSBestellung
+	durch("Bestellung", dat.Bestellung, &best)
+
+	var log bytes.Buffer
+	defer func() { t.Logf("Rollen:\n%s", log.String()) }()
+	// Ausgeber (Folger): Abschnitte, Bestaetigungen, Ausgabe. Kein Schluessel
+	// der Inhaberin oder der Stellen.
+	p, err := quantenSAusgabeFuerInhaberin(ctx, QuantenSAusgabeAuftrag{Schluessel: ausgeber.key, Deckung: 2_000_000, Tol: tol, Frist: frist, ProbeV2: true},
+		best, adressen, 3, &quantenSMehrNetz{quantenSHTTP: api(knAusgeber), validatoren: netze}, &log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var paket QuantenSPaket
+	durch("Paket", p, &paket)
+	// Inhaberin (dritter Knoten): prueft gegen ihre Kette und liest x.
+	inh := api(knInhaberin)
+	if err := quantenSInhaberinAnnehmen(ctx, inh, dat, adressen, paket, &log); err != nil {
+		t.Fatal(err)
+	}
+	b, err := quantenSZufallInt(2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	vl, err := quantenSInhaberinEinloesen(ctx, inh, frist, dat, func() error { return nil }, b, &log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var vorlage QuantenSVorlage
+	durch("Vorlage", vl, &vorlage)
+	// Die boese Inhaberin unterschreibt selbst eine Vorlage fuer die andere
+	// Stelle (ihr Werkzeug verweigert das).
+	key, _ := dat.schluessel()
+	x, _ := quantenSBitsText(dat.X, dat.Bestellung.N)
+	boese := vorlage
+	boese.B = 1 - b
+	if boese.Vorlage, err = quantenSUnterschreiben(key, quantenSVorlageText(vorlage.K, 1-b, x)); err != nil {
+		t.Fatal(err)
+	}
+	stelleNetz := func(mitAusfall bool) quantenSAbschnittNetz {
+		m := &quantenSMehrNetz{quantenSHTTP: api(knStellen), validatoren: netze}
+		if !mitAusfall {
+			return m
+		}
+		*weg = netz.ks[(leiter+2)%len(netz.ks)]
+		return &qsAusfallNetz{quantenSMehrNetz: m, weg: func() {
+			t.Logf("Knoten %d (%s) faellt aus -- bei der ehrlichen Anmeldung, nachdem die Stelle ihre Stichprobe geladen hat", (*weg).i, (*weg).addr)
+			(*weg).aus.Store(true)
+			(*weg).anhalten()
+		}}
+	}
+	erg := &QuantenSAusgabeErgebnis{K: paket.K, N: paket.N, Toleranz: tol, Ausgeber: paket.Ausgeber, Inhaberin: paket.Inhaberin, Stellen: paket.Stellen[:], B: b, Deckung: paket.Deckung}
+	e1, err := quantenSAnnahmeLauf(ctx, QuantenSAusgabeAuftrag{Schluessel: stellenKey[1-b], Frist: frist}, boese, adressen, stelleNetz(false), &log)
+	if err == nil || e1 == nil || e1.Vorab != "abgewiesen" || e1.Urteil != "abgewiesen" {
+		t.Fatalf("Doppelvorlage an Stelle %d: %+v %v", 1-b, e1, err)
+	}
+	erg.Doppelvorlage = e1.Urteil
+	e2, err := quantenSAnnahmeLauf(ctx, QuantenSAusgabeAuftrag{Schluessel: stellenKey[b], Frist: frist}, vorlage, adressen, stelleNetz(ausfall), &log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	erg.Vorlage, erg.KJeStelle = e2.Urteil, e2.Stichprobe
+	t.Logf("Rollen getrennt: Ausgeber %s (Knoten %d), Inhaberin %s (Knoten %d), Stellen %s/%s (Knoten %d); Doppelvorlage %s (vorab %s), ehrlich %s (vorab %s, %d Fehler bei %d Treffern)",
+		paket.Ausgeber, knAusgeber.i, paket.Inhaberin, knInhaberin.i, stellen[0].Adresse, stellen[1].Adresse, knStellen.i, e1.Urteil, e1.Vorab, e2.Urteil, e2.Vorab, e2.Fehler, e2.Treffer)
+	// Der Wert ging an die gewaehlte Stelle, nicht an die andere -- auf jedem
+	// lebenden Knoten (begrenzt warten, wie unten fuer den Token).
+	for _, k := range netz.ks {
+		if k.aus.Load() {
+			continue
+		}
+		cs, _, _ := k.teile()
+		bis := time.Now().Add(2 * time.Minute)
+		for {
+			a, ok := vierKonto(cs, stellen[b].Adresse)
+			if ok && a.Balance.Micro() > 0 {
+				break
+			}
+			if time.Now().After(bis) {
+				t.Fatalf("Knoten %d: die gewaehlte Stelle hat nichts bekommen", k.i)
+			}
+			time.Sleep(250 * time.Millisecond)
+		}
+		if a, ok := vierKonto(cs, stellen[1-b].Adresse); ok && a.Balance.Micro() != 0 {
+			t.Fatalf("Knoten %d: die Stelle der Doppelvorlage hat %d Mikro-AEQ", k.i, a.Balance.Micro())
+		}
+	}
+	return erg
 }

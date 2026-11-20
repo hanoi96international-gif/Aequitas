@@ -31,6 +31,9 @@ der Code im Knoten und in der App sowie die Quellen in `ANALYSE.md`.
      Annahmestelle kennt vorher eine Stelle der Stichproben (3.3i, Befund 5i).
    - Im Pilot mit **vier Validatoren**, von denen jeder seinen Abschnitt selbst
      präpariert, auch wenn einer ausfällt (3.3d–3.3h).
+   - Seit dem 20.11.2026 mit **getrennten Rollen** gebaut: Inhaberin, Ausgeber und
+     Annahmestelle haben je einen eigenen Schlüssel, und der Ausgeber sieht x nie. Auf
+     vier echten Knoten grün, im Hauptnetz noch nicht gelaufen (3.3j).
    - **Ehrlich:** Es ist eine Vorführung. Präparation und Messung laufen im selben Auftrag
      beim Betreiber. Im Hauptnetz gibt es nur einen Validator (C1), der damit den ganzen
      Token kennt. Es liegt kein Gutachten vor. Echtes Quantengeld in den Händen der
@@ -868,6 +871,36 @@ Lauf [44691759501](https://github.com/hanoi96international-gif/Aequitas/actions/
   - C1 ist der einzige Validator und kannte damit den ganzen Token.
   - Die Inhaberin und die Wegwerf-Stelle lebten nur im Werkzeug.
   - Es liegt kein Gutachten vor.
+
+### 3.3j Getrennte Rollen: Inhaberin, Ausgeber, Annahmestelle (20.11.2026)
+
+Bis hier spielte das Ausgabe-Werkzeug alle Rollen außer den Validatoren: Es erzeugte den
+Schlüssel der Inhaberin, las ihr x, band, wählte und legte vor. Jetzt hat jede Rolle ihren
+eigenen Befehl und Schlüssel (`DEZENTRAL.md` 17):
+
+- **Die Inhaberin** zieht ihre Basen selbst und gibt dem Ausgeber nur eine öffentliche
+  Bestellung. Das Paket des Ausgebers prüft sie gegen die Unterschriften der Validatoren
+  und gegen die Kette, bevor sie x liest. Sie unterschreibt die Vorlage nur für die
+  gewählte Stelle.
+- **Der Ausgeber** hat keinen Schlüssel der Inhaberin und sieht x nie. Einlösen kann er
+  ihren Token nicht.
+- **Die Annahmestelle** prüft die Vorlage gegen die Kette, bevor sie einen Validator
+  fragt. Sie lädt ihre Stichprobe mit dem eigenen Schlüssel, rechnet das Urteil vorab
+  nach und wartet auf das Urteil der Kette.
+- **Belegt:** Auf vier echten Knoten (3 von 4) grün, auch mit Ausfall eines Validators.
+  Jede Rolle sprach mit einem anderen Knoten. Eine böse Inhaberin versuchte zuerst die
+  Doppelvorlage; sie wurde vorab und von der Kette abgewiesen. Danach wurde ehrlich
+  eingelöst. Dazu kommen 15 Tests mit Fälschungen und 22 Mutationen, alle rot.
+- **Kein neuer Konsens.** Die Kette prüfte das schon. Neu sind nur öffentliche Felder in
+  der Ansicht des Tokens (Wurzel, Proben, d, c).
+- **Ehrlich dazu:**
+  - Im Hauptnetz ist es noch nicht gelaufen.
+  - Getrennte Schlüssel sind noch keine getrennten Menschen. Die App als Inhaberin (R4)
+    und ein zweiter Mensch als Validator (A5) fehlen.
+  - Der Ausgeber sieht die Basen y und damit vorab, an welcher Stelle die Inhaberin
+    einlösen will (nicht x).
+  - Fällt ein Validator nach der Bindung aus, bevor die Stelle ihre Stichprobe geladen
+    hat, muss sie warten, bis er zurück ist.
 
 ### 3.4 Bargeld-Verhalten ohne Quanten (Offline-Bargeld)
 

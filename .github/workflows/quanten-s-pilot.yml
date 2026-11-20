@@ -58,6 +58,11 @@ on:
         type: choice
         options: ["nein", "ja"]
         default: "nein"
+      rollen:
+        description: "ja = getrennte Rollen (DEZENTRAL.md 17): Ausgeber, Inhaberin und zwei Annahmestellen mit eigenen Schluesseln, jede an einem anderen Knoten; nur mit ausgabe = abschnitte und stichprobe_v2 = ja"
+        type: choice
+        options: ["nein", "ja"]
+        default: "nein"
 
 permissions:
   contents: read
@@ -75,6 +80,7 @@ env:
   AUSGABE: ${{ inputs.ausgabe }}
   TOL: ${{ inputs.toleranz }}
   V2: ${{ inputs.stichprobe_v2 }}
+  ROLLEN: ${{ inputs.rollen }}
 
 jobs:
   rauschen:
@@ -90,6 +96,8 @@ jobs:
           [[ "$K" =~ ^[1-9][0-9]{0,3}$ ]] && [ "$K" -le 8192 ] || { echo "::error::k = $K (1 bis 8192)"; exit 1; }
           [[ "$V2" =~ ^(nein|ja)$ ]] || { echo "::error::stichprobe_v2 = $V2"; exit 1; }
           [ "$V2" = nein ] || [ "$AUSGABE" = abschnitte ] || { echo "::error::stichprobe_v2 = ja nur mit ausgabe = abschnitte"; exit 1; }
+          [[ "$ROLLEN" =~ ^(nein|ja)$ ]] || { echo "::error::rollen = $ROLLEN"; exit 1; }
+          [ "$ROLLEN" = nein ] || [ "$V2" = ja ] || { echo "::error::rollen = ja nur mit stichprobe_v2 = ja (und ausgabe = abschnitte)"; exit 1; }
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -129,6 +137,8 @@ jobs:
           [[ "$K" =~ ^[1-9][0-9]{0,3}$ ]] && [ "$K" -le 8192 ] || { echo "::error::k = $K (1 bis 8192)"; exit 1; }
           [[ "$V2" =~ ^(nein|ja)$ ]] || { echo "::error::stichprobe_v2 = $V2"; exit 1; }
           [ "$V2" = nein ] || [ "$AUSGABE" = abschnitte ] || { echo "::error::stichprobe_v2 = ja nur mit ausgabe = abschnitte"; exit 1; }
+          [[ "$ROLLEN" =~ ^(nein|ja)$ ]] || { echo "::error::rollen = $ROLLEN"; exit 1; }
+          [ "$ROLLEN" = nein ] || [ "$V2" = ja ] || { echo "::error::rollen = ja nur mit stichprobe_v2 = ja (und ausgabe = abschnitte)"; exit 1; }
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -239,16 +249,22 @@ jobs:
       - name: Vier Knoten, 3 von 4 -- mit und ohne Ausfall
         run: |
           set -euo pipefail
+          [[ "$ROLLEN" =~ ^(nein|ja)$ ]] || { echo "::error::rollen = $ROLLEN"; exit 1; }
           if [ "$AUSGABE" = abschnitte ]; then
             export AEQUITAS_QS_ABSCHNITTE="$RUNNER_TEMP/ab"
             TESTS='TestVierKnotenQuantenSAbschnitte(Ausfall)?_RealDB$'
+            # Getrennte Rollen: dieselben zwei Ausgaben (eine je Test), aber
+            # Inhaberin, Ausgeber und Annahmestellen mit eigenen Schluesseln.
+            [ "$ROLLEN" = nein ] || TESTS='TestVierKnotenQuantenSRollen(Ausfall)?_RealDB$'
           else
+            [ "$ROLLEN" = nein ] || { echo "::error::rollen = ja nur mit ausgabe = abschnitte"; exit 1; }
             export AEQUITAS_QS_MESSUNG="$RUNNER_TEMP/m.json"
             TESTS='TestVierKnotenQuantenS(Ausfall)?_RealDB$'
           fi
           [[ "$TOL" =~ ^(2|3|4)$ ]] || { echo "::error::toleranz = $TOL"; exit 1; }
           export AEQUITAS_QS_TOL="$TOL"
           [[ "$V2" =~ ^(nein|ja)$ ]] || { echo "::error::stichprobe_v2 = $V2"; exit 1; }
+          [ "$ROLLEN" = nein ] || [ "$V2" = ja ] || { echo "::error::rollen = ja nur mit stichprobe_v2 = ja"; exit 1; }
           if [ "$V2" = ja ]; then
             [ "$AUSGABE" = abschnitte ] || { echo "::error::stichprobe_v2 = ja nur mit ausgabe = abschnitte"; exit 1; }
             export AEQUITAS_QS_V2=1
@@ -266,7 +282,7 @@ jobs:
                {f=0}' out.txt > ergebnis.txt
           gzip -9 -c out.txt > ausgabe.txt.gz
           {
-            echo "## Quantengeld S: Pilot mit vier Validatoren (Modus ${{ inputs.modus }}, Ausgabe $AUSGABE, k = $K, Toleranz $TOL %, Stichprobe v2 $V2, Laufzeit zwischen Knoten $LATENZ ms je Richtung)"
+            echo "## Quantengeld S: Pilot mit vier Validatoren (Modus ${{ inputs.modus }}, Ausgabe $AUSGABE, k = $K, Toleranz $TOL %, Stichprobe v2 $V2, getrennte Rollen $ROLLEN, Laufzeit zwischen Knoten $LATENZ ms je Richtung)"
             echo
             echo "Commit \`${{ github.sha }}\`, Lauf ${{ github.run_id }}."
             echo
@@ -290,7 +306,7 @@ jobs:
           # letzte 5.000 Zeilen, Zusammenfassung und Artefakt sind von manchen
           # Arbeitsumgebungen aus nicht abrufbar.
           echo "===== Ergebnis der Tests ====="
-          echo "Modus ${{ inputs.modus }}, Ausgabe $AUSGABE, k = $K, Toleranz $TOL %, Stichprobe v2 $V2, Laufzeit zwischen Knoten $LATENZ ms je Richtung"
+          echo "Modus ${{ inputs.modus }}, Ausgabe $AUSGABE, k = $K, Toleranz $TOL %, Stichprobe v2 $V2, getrennte Rollen $ROLLEN, Laufzeit zwischen Knoten $LATENZ ms je Richtung"
           cat ergebnis.txt
           sha256sum ergebnis.txt ausgabe.txt.gz
           echo "===== Ende Ergebnis ====="
