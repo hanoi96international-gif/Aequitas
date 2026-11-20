@@ -88,18 +88,22 @@ dezentrales Quantengeld“.
           hätte WalletConnect-Abhängigkeiten umgehängt). 1002 App-Tests, tsc grün.
         - `docs.expo.dev` ist aus dieser Umgebung gesperrt: API aus den Typen der installierten
           v54-Pakete (expo-crypto `getRandomBytes(n): Uint8Array`, SecureStore-Wert ≤ 2048 Byte).
-        - **Jetzt Teil 2b:** Bildschirm (Bestellung zeigen/kopieren, K und Validatoren eingeben,
-          Stelle wählen, Vorlage als QR), i18n in 12 Sprachen (`lib/i18n/types.ts`), Test.
+        - **App #89 gemergt (ba77ee5b): Teil 2b, Bildschirm** `app/quanten-token.tsx` (Bestellung
+          als QR/kopieren, K und Validatoren, Stelle wählen, Vorlage **nur als QR**, keine
+          Zwischenablage), 29 Texte in 12 Sprachen, 5 Bildschirm-Tests, 1010 App-Tests grün.
+          Noch in keinem Build (build-apk/release-apk nur von Hand).
       - **CI: db-tests, Gruppe `realdb`, an der 10-Minuten-Grenze** (Push-Lauf 44737311991 rot:
         Abbruch in `TestVierKnoten_RealDB` nach 600 s; die zwei neuen Rollen-Läufe kosten ~2 min).
         In diesem PR: eigene Gruppe `quanten` für die 7 Vier-Knoten-Quantentests (eigene DB,
         eigene 10-Minuten-Grenze); geprüft, dass genau dieselben 282 Tests laufen. Kein Test
         abgeschwächt oder übersprungen. Mit #607 gemergt; Push- und PR-Lauf grün.
-      - **C1-Deploy #606 wartet auf Freigabe `produktion`:**
+      - **C1 läuft mit #606 (7dcfe2e7):** Deploy
         [44737199569](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44737199569)
-        (CI darin grün; ältere Deploys von #604/#605 abgebrochen, dieser enthält alle).
-      - **Danach:** R4 App als Inhaberin; Hauptnetz-Lauf mit getrennten Rollen
-        (Workflow); Öffnung aus Anteilen (Verfügbarkeit); y je Validator verschlüsseln.
+        grün (20.11. 13:10 UTC; enthält #604/#605/#606: Ansicht mit `probe_art`, `wurzel`,
+        `proben`, `d`, `c`; Endpunkt `fuer-inhaberin`). #607 änderte den Knoten nicht.
+      - **Danach:** Hauptnetz-Lauf mit getrennten Rollen (Workflow, IBM-Freigabe);
+        QR-Leser für die Annahmestelle; Öffnung aus Anteilen (Verfügbarkeit); y je
+        Validator verschlüsseln.
       - Lokale Postgres für RealDB-Tests: `pg_ctlcluster 16 main start`, Datenbank
         `aeq_pilot`, `DATABASE_URL=postgres://postgres:postgres@localhost:5432/aeq_pilot?sslmode=disable`,
         `AEQUITAS_TPS_BENCH=1`. Vorher `df -h /`; der Go-Cache wuchs bei Mutationen auf

@@ -1162,7 +1162,7 @@ fällt jetzt weg:
       Mutationen belegt.
 - **#606 gemergt (7dcfe2e7).**
 
-### R4b: die App als Inhaberin (20.11.2026, begonnen)
+### R4b: die App als Inhaberin (20.11.2026)
 
 - **Teil 1, Bibliothek** (Aequitas-App `lib/quantenS.ts`): Sie rechnet wie das Werkzeug der
   Inhaberin.
@@ -1178,9 +1178,18 @@ fällt jetzt weg:
   - Go liest sie zurück, prüft jede Unterschrift und rechnet alle übrigen Felder neu. Die
     App rechnet denselben Vektor nach.
   - Ergebnis: dasselbe x aus denselben Chiffraten und byte-gleiche Unterschriften.
-- **Teil 2, offen:** Bildschirme (bestellen, abholen mit K, einlösen), Speicherung im
-  SecureStore (höchstens 2048 Byte je Wert, darum x und y als Hex) und die Vorlage als
-  QR-Code.
+- **Teil 2a, Ablauf** (`lib/quantenSInhaberin.ts`, App #88): neu, abholen, einlösen,
+  vergessen. Speicherung im SecureStore (höchstens 2048 Byte je Wert, darum x und y als
+  Hex). Eine neue Bestellung wird abgewiesen, solange eine alte besteht, damit kein
+  bezahlter Token verloren geht.
+- **Teil 2b, Bildschirm** (`app/quanten-token.tsx`, App #89, gemergt ba77ee5b): Bestellung als
+  QR-Code (und zum Kopieren, sie enthält nichts Geheimes), K und Validatoren eingeben,
+  abholen, Stelle 0 oder 1 wählen. Die Vorlage gibt es **nur als QR-Code**, nicht in der
+  Zwischenablage, mit dem Hinweis, dass sie bei Stelle b wie Bargeld wirkt. Texte in 12
+  Sprachen, 5 Bildschirm-Tests, 1010 App-Tests und tsc grün.
+- **Noch nicht:** in keinem ausgelieferten Build (Bauen und Veröffentlichen gehen nur von
+  Hand); die Annahmestelle hat noch keinen QR-Leser (das Werkzeug liest die Vorlage von
+  der Standardeingabe); im Hauptnetz ist die App noch keinen Weg gegangen.
 - **Verfügbarkeit, unverändert:** Die Stelle braucht zum Laden ohnehin jeden
   präparierenden Validator (Öffnung); jetzt auch für die Blätter.
 
