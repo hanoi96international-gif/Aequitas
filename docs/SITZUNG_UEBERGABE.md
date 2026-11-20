@@ -2,7 +2,7 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 20.11.2026 ~14:30 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
+Stand: 20.11.2026 ~17:30 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
 Repos); davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18:30 UTC Sitzung
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
@@ -15,7 +15,19 @@ kannst / Abschnitt 5 (heute weltweit unmöglich) so gut wie möglich umsetzen“
   [44748666661](https://github.com/hanoi96international-gif/Aequitas-App/actions/runs/44748666661)
   (grün). Danach `release-apk.yml` (run_id 44748661869, Tag `v1.26.0`), dann
   `release-ios.yml` (run_id 44748666661, Tag `v1.26.0`), beide mit Freigabe `app-signatur`.
-- **PR (dieser Stand): R5, getrennte Rollen im Hauptnetz, Messung versiegelt**
+- **#608 gemergt (038df902): R5** (siehe unten). C1-Deploy
+  [44782879350](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44782879350)
+  wartet nach dem CI auf `produktion`. Sicherheitsprüfung als PR-Kommentar; daraus die
+  Härtung: der Knoten legt die geöffnete Messung selbst ab (root fasst das
+  Messverzeichnis nicht an).
+- **App 1.26.0:** APK signiert; Veröffentlichung
+  [44779318372](https://github.com/hanoi96international-gif/Aequitas-App/actions/runs/44779318372)
+  wartet auf `app-signatur`, danach `release-ios.yml` (run_id 44748666661, Tag v1.26.0).
+- **App #91 offen: die App als Annahmestelle (R6)** (`lib/quantenSStelle.ts`, Karte
+  „Annahmestelle“, „C1 eintragen“, „Mein Konto eintragen“; 1040 App-Tests). **PR (dieser
+  Stand): Prüfvektor dafür** (`quanten_s_stelle_vektor_test.go`, `DEZENTRAL.md` 17 „R6“).
+  Danach App 1.27.0 bauen.
+- **Damals: R5, getrennte Rollen im Hauptnetz, Messung versiegelt**
   (`DEZENTRAL.md` 17 „R5“): Weg `rollen` (Bestellung aus der App als Eingabe),
   `quanten-s-annahme.yml` (C1 löst als Annahmestelle ein), `s_versiegeln.py` +
   `aequitasd quanten-s-messung-oeffnen` (Messung nur als Chiffrat durch GitHub). Braucht

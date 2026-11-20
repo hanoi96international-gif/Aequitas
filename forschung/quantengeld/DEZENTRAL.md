@@ -1239,6 +1239,37 @@ fällt jetzt weg:
   nimmt sie GitHub und dem Workflow-Protokoll weg, nicht C1. Gegen C1 hilft erst
   ein zweiter Mensch als Validator (A5).
 
+### R6: die App als Annahmestelle (20.11.2026, gebaut)
+
+- **Zweck:** Eine zweite Person nimmt den Token der Inhaberin an. Sie scannt deren
+  Vorlage (QR-Code), prüft alles selbst und löst ein. Der Wert geht an ihr Konto.
+  Näher an „Quantengeld von Hand zu Hand“ kommt man heute nicht: Übergeben wird
+  kein Quantenzustand, sondern das Ergebnis einer Quantenmessung, das nur die
+  Inhaberin (und der präparierende Validator) kennt und das nur einmal und nur an
+  einer der zwei Stellen besteht.
+- **Rechnung** (Aequitas-App `lib/quantenSStelle.ts`) wie `quantenSAnnahmeLauf`:
+  - Stand und Stelle b auf der Kette prüfen.
+  - Vorlage von der Inhaberin auf der Kette unterschrieben.
+  - Blätter vom Validator (seine Unterschrift) gegen die Wurzel.
+  - Öffnung erst nach der Finalität, auf den Schlüssel dieses Kontos.
+  - Jeder Wert gegen sein Blatt und das Stellen-Bit.
+  - Stichprobe und Salze gegen die Bindung der Ausgabe.
+  - Vorab-Urteil wie die Kette, dann anmelden. Weicht das Urteil ab: BEFUND.
+- **Prüfvektor des Knotens** (`testdata/quanten_s_stelle_vektor.json`,
+  `quanten_s_stelle_vektor_test.go`):
+  - Form des Hauptnetzes: ein Validator, n = 1.104, Toleranz 2 %, k = 552.
+  - Ehrliche Vorlage mit 2 Messfehlern bei 290 Treffern.
+  - Go prüft jeden Schritt mit den Funktionen des Knotens. Die App liefert
+    dieselbe Anmelde-Nachricht, dieselbe Unterschrift und denselben Body.
+- **In der App** (App #91):
+  - Karte „Annahmestelle“: eigene Kennung als QR, Vorlage scannen und einlösen.
+  - „C1 eintragen“ (Schlüssel vom Validator-Dienst, muss zur Adresse gehören) und
+    „Mein Konto eintragen“ in der Bestellung.
+  - 16 Angriffe brechen vor dem Anmelden ab; 20 Mutationen rot.
+- **Ehrlich:** Die Stelle muss bei der Bestellung feststehen (eine der zwei
+  Stellen). Weitergeben an eine dritte Person geht nicht. Das ist gewollt: Eine
+  kopierte Vorlage ist an keiner anderen Stelle etwas wert.
+
 ### Ehrlich dazu (offen)
 
 - **Der Ausgeber sieht die Basen y.** Er reicht sie an die Validatoren weiter. Mit d auf
