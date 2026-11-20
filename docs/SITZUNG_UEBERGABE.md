@@ -2,12 +2,12 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 20.11.2026 ~07:00 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
+Stand: 20.11.2026 ~08:15 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
 Repos); davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18:30 UTC Sitzung
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
-**Zuletzt (Sitzung „Weiter“, 20.11. ~07:00 UTC):**
+**Zuletzt (Sitzung „Weiter“, 20.11. ~08:15 UTC):**
 - **#598 gemergt (90e0e622): Pilot mit Stichprobe v2 grün** (`HEUTE.md` 3.3h, `DEZENTRAL.md` 16
   Schritt 5). Eingabe `stichprobe_v2`, Beobachter im Vier-Knoten-Test liest im Register jedes
   Knotens `probe_art` und die nachgerechneten Salze nach. Läufe
@@ -45,8 +45,10 @@ dezentrales Quantengeld“.
       `AEQUITAS_QS_MESSQUELLE=/data/quanten`, C1 nimmt an, Höhe 393266 → 393296.
       **Hauptnetz-Lauf gestartet** (20.11. 07:00 UTC, `main` a6f46747, ibm, abschnitte-v2,
       Toleranz 2, 1 AEQ): [44691759501](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44691759501),
-      wartet auf `quantenhardware`, danach `produktion`. Ergebnis in `HEUTE.md` (neu 3.3i) und
-      `DEZENTRAL.md` 16 Schritt 7 eintragen.
+      `quantenhardware` freigegeben 08:05 UTC. **Messung grün:** IBM `ibm_kingston`, 1.104 Qubits
+      in 69 Schaltkreisen, Job `dbvvuols2omc7388hnu0`, Fehler bei passender Basis 0/548 mit
+      Mehrheit aus 5 (ein Schuss 1/548), Datei `ab3e06ff…cda25.json`. `ausgeben` wartet auf
+      `produktion`. Ergebnis in `HEUTE.md` (neu 3.3i) und `DEZENTRAL.md` 16 Schritt 7 eintragen.
       Probelauf im Rauschmodell grün: [44605960500](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44605960500).
     - Der zweite Mensch als Validator (Rollen trennen, A5).
     - Ein Gutachter (Prüfauftrag S 2).
