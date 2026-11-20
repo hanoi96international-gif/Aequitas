@@ -2,7 +2,7 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 20.11.2026 ~12:00 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
+Stand: 20.11.2026 ~12:45 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
 Repos); davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18:30 UTC Sitzung
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
@@ -70,11 +70,23 @@ dezentrales Quantengeld“.
       - **Pilot `rollen = ja` auf GitHub grün:** [44728392142](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44728392142)
         (k = 1.760, Toleranz 2 %, beide Tests; `DEZENTRAL.md` 17). **C1-Deploy (Ansicht)
         wartet auf Freigabe `produktion`** (deploy-c1.yml nach dem Merge).
-      - **R4a – PR (dieser Stand)** (Aufgabe #29, **#606 offen**, `DEZENTRAL.md` 17 „R4a“; 33/33 Mutationen rot,
+      - **R4a – #606 gemergt (7dcfe2e7, 20.11. ~12:40 UTC)** (Aufgabe #29, `DEZENTRAL.md` 17 „R4a“; 33/33 Mutationen rot,
         vier Knoten lokal grün, Vorlage 486 Byte): Endpunkt `GET /api/quanten-w/validator/fuer-inhaberin?k=`
         (öffentlich, nur lesend, erst wenn der Token auf der Kette steht, nur v2),
         `quanten-s-inhaberin abholen --k` (ohne Paket des Ausgebers), Vorlage ohne Blätter
-        (Stelle holt und prüft sie selbst). Danach R4b: App als Inhaberin (QR-Vorlage).
+        (Stelle holt und prüft sie selbst). Pilot [44734484196](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44734484196)
+        grün (Vorlage 3.750 statt 239.603 Byte bei n = 3.520).
+      - **R4b – PR (dieser Stand): Prüfvektor für die App** (`quanten_s_inhaberin_vektor_test.go`,
+        `testdata/quanten_s_inhaberin_vektor.json`; neu schreiben mit
+        `AEQUITAS_VEKTOR_SCHREIBEN=1 go test -run TestQuantenSInhaberinVektor`, danach nach
+        `Aequitas-App/lib/__tests__/vektoren/` kopieren).
+        - App-Zweig `claude/weiter-uw2p42` 8cc602a: `lib/quantenS.ts` + Test (15 Fälle, gegen den
+          Vektor), neue Abhängigkeit `@noble/ciphers` 2.4.0 exakt (nur AES-CTR; mit **npm 11**
+          installiert wie im CI, npm 10 hätte WalletConnect-Abhängigkeiten umgehängt).
+          Alle 992 App-Tests und tsc grün. **Noch kein App-PR.**
+        - `docs.expo.dev` ist aus dieser Umgebung gesperrt: API aus den Typen der installierten
+          v54-Pakete (expo-crypto `getRandomBytes(n): Uint8Array`, SecureStore-Wert ≤ 2048 Byte).
+        - Danach Teil 2: Bildschirme, SecureStore, QR-Vorlage.
       - **Danach:** R4 App als Inhaberin; Hauptnetz-Lauf mit getrennten Rollen
         (Workflow); Öffnung aus Anteilen (Verfügbarkeit); y je Validator verschlüsseln.
       - Lokale Postgres für RealDB-Tests: `pg_ctlcluster 16 main start`, Datenbank
