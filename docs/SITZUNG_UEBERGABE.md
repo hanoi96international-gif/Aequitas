@@ -2,10 +2,29 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 20.11.2026 ~12:45 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
+Stand: 20.11.2026 ~14:30 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
 Repos); davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18:30 UTC Sitzung
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
+
+**Jetzt (20.11. ~14:00 UTC), Auftrag: „Baue die neue App / Nimm alles vor was du selber bauen
+kannst / Abschnitt 5 (heute weltweit unmöglich) so gut wie möglich umsetzen“:**
+- **App 1.26.0:** App #90 gemergt (a437f714, nur Version). Builds gestartet: APK
+  [44748661869](https://github.com/hanoi96international-gif/Aequitas-App/actions/runs/44748661869)
+  (Signieren wartet auf Freigabe `app-signatur`), iOS
+  [44748666661](https://github.com/hanoi96international-gif/Aequitas-App/actions/runs/44748666661)
+  (grün). Danach `release-apk.yml` (run_id 44748661869, Tag `v1.26.0`), dann
+  `release-ios.yml` (run_id 44748666661, Tag `v1.26.0`), beide mit Freigabe `app-signatur`.
+- **PR (dieser Stand): R5, getrennte Rollen im Hauptnetz, Messung versiegelt**
+  (`DEZENTRAL.md` 17 „R5“): Weg `rollen` (Bestellung aus der App als Eingabe),
+  `quanten-s-annahme.yml` (C1 löst als Annahmestelle ein), `s_versiegeln.py` +
+  `aequitasd quanten-s-messung-oeffnen` (Messung nur als Chiffrat durch GitHub). Braucht
+  nach dem Merge den C1-Deploy (neuer Befehl).
+- **Aufgabenliste danach** (in dieser Reihenfolge): App: C1 als Stelle übernehmen, eigenes
+  Konto als Stelle, Annahmestelle mit QR-Leser in der App; Hardware-Beleg nach dem Einlösen
+  (Messprotokoll offenlegen, gegen die Wurzel auf der Kette prüfbar, Fehlerbild gegen die
+  Kalibrierung); Basen y je Validator verschlüsseln; Öffnung aus t Anteilen; Urteil
+  eindeutig (eingelöst/tot).
 
 **Zuletzt (Sitzung „Weiter“, 20.11. ~10:00 UTC):**
 - **#598 gemergt (90e0e622): Pilot mit Stichprobe v2 grün** (`HEUTE.md` 3.3h, `DEZENTRAL.md` 16
@@ -76,24 +95,34 @@ dezentrales Quantengeld“.
         `quanten-s-inhaberin abholen --k` (ohne Paket des Ausgebers), Vorlage ohne Blätter
         (Stelle holt und prüft sie selbst). Pilot [44734484196](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44734484196)
         grün (Vorlage 3.750 statt 239.603 Byte bei n = 3.520).
-      - **R4b – PR (dieser Stand): Prüfvektor für die App** (`quanten_s_inhaberin_vektor_test.go`,
+      - **R4b – #607 gemergt (f98828e6): Prüfvektor für die App** (`quanten_s_inhaberin_vektor_test.go`,
         `testdata/quanten_s_inhaberin_vektor.json`; neu schreiben mit
         `AEQUITAS_VEKTOR_SCHREIBEN=1 go test -run TestQuantenSInhaberinVektor`, danach nach
         `Aequitas-App/lib/__tests__/vektoren/` kopieren).
-        - App-Zweig `claude/weiter-uw2p42` 8cc602a: `lib/quantenS.ts` + Test (15 Fälle, gegen den
-          Vektor), neue Abhängigkeit `@noble/ciphers` 2.4.0 exakt (nur AES-CTR; mit **npm 11**
-          installiert wie im CI, npm 10 hätte WalletConnect-Abhängigkeiten umgehängt).
-          Alle 992 App-Tests und tsc grün. **Noch kein App-PR.**
+        - **App #88 gemergt (116763fa):** `lib/quantenS.ts` (Rechnung, 15 Fälle gegen den Vektor,
+          11 Mutationen rot, kanonische Unterschrift mit s ≤ N/2) und `lib/quantenSInhaberin.ts`
+          (Ablauf neu/abholen/einloesen/vergessen; 10 Fälle gegen Schein-Kette und
+          Schein-Validatoren aus dem Vektor, 12 Mutationen rot). Neue Abhängigkeit
+          `@noble/ciphers` 2.4.0 exakt (nur AES-CTR; mit **npm 11** installiert wie im CI, npm 10
+          hätte WalletConnect-Abhängigkeiten umgehängt). 1002 App-Tests, tsc grün.
         - `docs.expo.dev` ist aus dieser Umgebung gesperrt: API aus den Typen der installierten
           v54-Pakete (expo-crypto `getRandomBytes(n): Uint8Array`, SecureStore-Wert ≤ 2048 Byte).
-        - Danach Teil 2: Bildschirme, SecureStore, QR-Vorlage.
+        - **App #89 gemergt (ba77ee5b): Teil 2b, Bildschirm** `app/quanten-token.tsx` (Bestellung
+          als QR/kopieren, K und Validatoren, Stelle wählen, Vorlage **nur als QR**, keine
+          Zwischenablage), 29 Texte in 12 Sprachen, 5 Bildschirm-Tests, 1010 App-Tests grün.
+          Noch in keinem Build (build-apk/release-apk nur von Hand).
       - **CI: db-tests, Gruppe `realdb`, an der 10-Minuten-Grenze** (Push-Lauf 44737311991 rot:
         Abbruch in `TestVierKnoten_RealDB` nach 600 s; die zwei neuen Rollen-Läufe kosten ~2 min).
         In diesem PR: eigene Gruppe `quanten` für die 7 Vier-Knoten-Quantentests (eigene DB,
         eigene 10-Minuten-Grenze); geprüft, dass genau dieselben 282 Tests laufen. Kein Test
-        abgeschwächt oder übersprungen. App-PR #88 offen (CI grün).
-      - **Danach:** R4 App als Inhaberin; Hauptnetz-Lauf mit getrennten Rollen
-        (Workflow); Öffnung aus Anteilen (Verfügbarkeit); y je Validator verschlüsseln.
+        abgeschwächt oder übersprungen. Mit #607 gemergt; Push- und PR-Lauf grün.
+      - **C1 läuft mit #606 (7dcfe2e7):** Deploy
+        [44737199569](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44737199569)
+        grün (20.11. 13:10 UTC; enthält #604/#605/#606: Ansicht mit `probe_art`, `wurzel`,
+        `proben`, `d`, `c`; Endpunkt `fuer-inhaberin`). #607 änderte den Knoten nicht.
+      - **Danach:** Hauptnetz-Lauf mit getrennten Rollen (Workflow, IBM-Freigabe);
+        QR-Leser für die Annahmestelle; Öffnung aus Anteilen (Verfügbarkeit); y je
+        Validator verschlüsseln.
       - Lokale Postgres für RealDB-Tests: `pg_ctlcluster 16 main start`, Datenbank
         `aeq_pilot`, `DATABASE_URL=postgres://postgres:postgres@localhost:5432/aeq_pilot?sslmode=disable`,
         `AEQUITAS_TPS_BENCH=1`. Vorher `df -h /`; der Go-Cache wuchs bei Mutationen auf

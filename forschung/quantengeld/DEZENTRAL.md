@@ -1162,7 +1162,7 @@ fällt jetzt weg:
       Mutationen belegt.
 - **#606 gemergt (7dcfe2e7).**
 
-### R4b: die App als Inhaberin (20.11.2026, begonnen)
+### R4b: die App als Inhaberin (20.11.2026)
 
 - **Teil 1, Bibliothek** (Aequitas-App `lib/quantenS.ts`): Sie rechnet wie das Werkzeug der
   Inhaberin.
@@ -1178,11 +1178,66 @@ fällt jetzt weg:
   - Go liest sie zurück, prüft jede Unterschrift und rechnet alle übrigen Felder neu. Die
     App rechnet denselben Vektor nach.
   - Ergebnis: dasselbe x aus denselben Chiffraten und byte-gleiche Unterschriften.
-- **Teil 2, offen:** Bildschirme (bestellen, abholen mit K, einlösen), Speicherung im
-  SecureStore (höchstens 2048 Byte je Wert, darum x und y als Hex) und die Vorlage als
-  QR-Code.
+- **Teil 2a, Ablauf** (`lib/quantenSInhaberin.ts`, App #88): neu, abholen, einlösen,
+  vergessen. Speicherung im SecureStore (höchstens 2048 Byte je Wert, darum x und y als
+  Hex). Eine neue Bestellung wird abgewiesen, solange eine alte besteht, damit kein
+  bezahlter Token verloren geht.
+- **Teil 2b, Bildschirm** (`app/quanten-token.tsx`, App #89, gemergt ba77ee5b): Bestellung als
+  QR-Code (und zum Kopieren, sie enthält nichts Geheimes), K und Validatoren eingeben,
+  abholen, Stelle 0 oder 1 wählen. Die Vorlage gibt es **nur als QR-Code**, nicht in der
+  Zwischenablage, mit dem Hinweis, dass sie bei Stelle b wie Bargeld wirkt. Texte in 12
+  Sprachen, 5 Bildschirm-Tests, 1010 App-Tests und tsc grün.
+- **Noch nicht:** in keinem ausgelieferten Build (Bauen und Veröffentlichen gehen nur von
+  Hand); die Annahmestelle hat noch keinen QR-Leser (das Werkzeug liest die Vorlage von
+  der Standardeingabe); im Hauptnetz ist die App noch keinen Weg gegangen.
 - **Verfügbarkeit, unverändert:** Die Stelle braucht zum Laden ohnehin jeden
   präparierenden Validator (Öffnung); jetzt auch für die Blätter.
+
+### R5: getrennte Rollen im Hauptnetz, Messung versiegelt (20.11.2026, gebaut)
+
+- **Weg `rollen`** in `quanten-s-ausgabe.yml`: Die Inhaberin ist nicht der Lauf,
+  sondern z. B. die App. Ihre Bestellung (öffentlich: n, ihre Basen y, ihre Adresse
+  und ihr öffentlicher Schlüssel, die zwei Annahmestellen) kommt als Eingabe.
+  - Messen auf IBM in genau ihren Basen y.
+  - C1 gibt mit `quanten-s-ausgabe --fuer-inhaberin` aus. Die Zusammenfassung nennt
+    K und die Validatoren-Zeile; damit holt die App den Token ab.
+  - Binden, wählen und die Vorlage unterschreiben tut nur die App.
+  - Prüfung der Bestellung im Workflow: genau diese Felder, ein Abschnitt, n = 2 k
+    zur Toleranz, nur Bits. Das Werkzeug prüft danach streng (Schlüssel passt zur
+    Adresse, Stellen verschieden, nicht die Inhaberin, nicht der Ausgeber).
+- **Einlösen an C1** (`quanten-s-annahme.yml`): C1 ist Annahmestelle mit dem
+  Schlüssel seines Knotens. Eingabe ist die Vorlage aus der App (der Text im
+  QR-Code). Vorab prüft der Workflow, dass C1 die Stelle b dieses Tokens ist; alles
+  Weitere prüft `quanten-s-annahme` (R3).
+  - Die Vorlage wird damit öffentlich. Das ist für C1 ohne Gefahr: Anmelden kann nur
+    C1 selbst, der Wert geht an C1, und an der anderen Stelle besteht sie nicht.
+- **Messung versiegelt** (Wege `abschnitte-v2` und `rollen`): Die Messung (u, t, y,
+  x) ist die Präparation des Tokens. Wer sie hat und zugleich Inhaberin ist, könnte
+  an beiden Stellen bestehen. Bisher ging sie im Klartext als Job-Ausgabe durch
+  GitHub.
+  - Jetzt versiegelt der Mess-Job sie mit `forschung/quantengeld/s_versiegeln.py`
+    auf den Schlüssel von C1 (ECIES wie go-ethereum). Den Schlüssel holt er vom
+    Validator-Dienst und prüft, dass er zur festgelegten Adresse von C1 gehört
+    (Keccak-256).
+  - Nur das Chiffrat verlässt den Mess-Job. Auf C1 öffnet der Knoten es selbst
+    (`aequitasd quanten-s-messung-oeffnen`, Schlüssel aus dem Container) und legt
+    es selbst in sein Messverzeichnis: erst unter eigenem Zufallsnamen (O_EXCL,
+    0600), dann per Link auf den Namen der Basen, nie überschrieben, keinem Verweis
+    gefolgt. Root legt im Verzeichnis des Knotenbenutzers nichts an und ändert
+    nichts (Härtung aus der Sicherheitsprüfung von #608).
+  - Geprüft beim Öffnen: richtiger Schlüssel, unverändert, Domäne, Empfänger = C1,
+    genau die sechs Felder, Bits in der Länge n, Basen passen zum Namen, Größe.
+  - Belege: Prüfvektor in beide Richtungen (`testdata/quanten_s_versiegelt_vektor.json`
+    aus Python, von Go gelesen; die Chiffrate der Inhaberin aus Go, von Python
+    gelesen); 27 Missbrauchsfälle im Knoten und 5 am Befehl; 13 Mutationen im Go-Teil und 10 im Python-Teil
+    rot. Das Ablage-Skript `deploy/quanten-s-ausgabe-abschnitt.sh` mit einem
+    nachgebauten Container getestet (Gutfall, fremder Schlüssel, verändert, falsche
+    Basen, falsches n).
+- **Noch nicht gelaufen.** Dafür braucht es den C1-Deploy dieses Stands (neuer Befehl
+  im Knoten) und deine Freigaben `quantenhardware` und `produktion`.
+- **Ehrlich:** C1 ist weiter einziger Validator und kennt die Messung. Versiegeln
+  nimmt sie GitHub und dem Workflow-Protokoll weg, nicht C1. Gegen C1 hilft erst
+  ein zweiter Mensch als Validator (A5).
 
 ### Ehrlich dazu (offen)
 

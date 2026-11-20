@@ -2,7 +2,7 @@
 # Ausgabe eines S-Tokens (Quantengeld Variante S) auf C1 im Abschnitts-Weg mit
 # Stichprobe v2 (Stichprobe erst nach der Bindung, DEZENTRAL.md 16).
 # Laeuft ueber .github/workflows/quanten-s-ausgabe.yml, Weg abschnitte-v2
-# (Freigaben quantenhardware und produktion).
+# oder rollen (Freigaben quantenhardware und produktion).
 #
 # C1 ist Ausgeber und einziger Validator. Sein Dienst praepariert den einen
 # Abschnitt aus der Messung, die hier in sein Messverzeichnis gelegt wird
@@ -10,18 +10,27 @@
 # QS_VERZ). Der Dienst liest genau die Datei zu den Basen der Inhaberin,
 # prueft sie, ENTFERNT sie und verwendet sie erst danach -- einmal.
 #
-#   QS_DATEI   die Messung (ein Datensatz von hardware_ibm.py --s-abschnitt)
-#   QS_BASEN   {"n": N, "basen": ["..."]} fuer das Werkzeug (stdin)
+#   QS_DATEI   die VERSIEGELTE Messung (Hex; forschung/quantengeld/
+#              s_versiegeln.py auf den Schluessel von C1). Im Klartext liegt
+#              sie nur im Messverzeichnis, geoeffnet und abgelegt vom Knoten
+#              selbst (aequitasd quanten-s-messung-oeffnen, prueft Empfaenger,
+#              Form, Laenge und Basen).
+#   QS_BASEN   Weg abschnitte-v2: {"n": N, "basen": ["..."]} fuer das Werkzeug
+#              (stdin). Weg rollen: die Bestellung der Inhaberin (z. B. aus
+#              der App); das Werkzeug gibt fuer sie aus (--fuer-inhaberin).
+#   QS_ROLLEN  ja = Weg rollen, sonst abschnitte-v2
+#   QS_N       Stellen des Abschnitts (bei einem Validator: n des Tokens)
 #   QS_NAME    sha256 der Basen als 64 Hex-Zeichen (Dateiname im Verzeichnis;
 #              der Dienst prueft selbst, dass Name und Inhalt passen)
 #   DECKUNG    Mikro-AEQ, 1000000 bis 10000000
 #   TOLERANZ   2, 3 oder 4 (Prozent)
 #
-# Ausgabe: das Ergebnis als JSON auf stdout (nichts Geheimes), der Verlauf
-# auf stderr. Messung und Basen werden danach geloescht, auch im Fehlerfall;
-# eine hier abgelegte, aber nicht verbrauchte Messung ebenso.
+# Ausgabe: das Ergebnis als JSON auf stdout (nichts Geheimes; im Weg rollen
+# das Paket fuer die Inhaberin, x darin nur fuer sie verschluesselt), der
+# Verlauf auf stderr. Messung und Basen werden danach geloescht, auch im
+# Fehlerfall; eine hier abgelegte, aber nicht verbrauchte Messung ebenso.
 set -euo pipefail
-QS_DATEI="${QS_DATEI:-/root/qs-abschnitt.json}"
+QS_DATEI="${QS_DATEI:-/root/qs-abschnitt.versiegelt}"
 QS_BASEN="${QS_BASEN:-/root/qs-basen.json}"
 QS_VERZ="${QS_VERZ:-/srv/aequitas-quanten}"
 QS_UID="${QS_UID-10001}"
@@ -29,12 +38,13 @@ CONTAINER="${CONTAINER:-aequitas-node}"
 DECKUNG="${DECKUNG-1000000}"
 TOLERANZ="${TOLERANZ-2}"
 QS_NAME="${QS_NAME:-}"
+QS_N="${QS_N:-}"
+QS_ROLLEN="${QS_ROLLEN-nein}"
 ABGELEGT=""
-TMP=""
 aufraeumen() {
   rm -f -- "$QS_DATEI" "$QS_BASEN"
-  [ -z "$TMP" ] || rm -f -- "$TMP"
-  # Nur die eigene Datei, und nur, wenn der Dienst sie nicht verbraucht hat.
+  # Nur die eigene Datei (rm folgt keinem Verweis), und nur, wenn der Dienst
+  # sie nicht verbraucht hat.
   [ -z "$ABGELEGT" ] || rm -f -- "$ABGELEGT"
 }
 trap aufraeumen EXIT
@@ -44,10 +54,12 @@ halt() { echo "ABBRUCH: $*" >&2; exit 2; }
   || halt "DECKUNG $DECKUNG (1000000 bis 10000000 Mikro-AEQ)"
 [[ "$TOLERANZ" =~ ^[234]$ ]] || halt "TOLERANZ $TOLERANZ (2, 3 oder 4)"
 [[ "$QS_NAME" =~ ^[0-9a-f]{64}$ ]] || halt "QS_NAME: 64 Hex-Zeichen"
+[[ "$QS_N" =~ ^[1-9][0-9]{0,4}$ ]] || halt "QS_N: Stellen des Abschnitts"
+[[ "$QS_ROLLEN" =~ ^(ja|nein)$ ]] || halt "QS_ROLLEN: ja oder nein"
 [[ "$QS_UID" =~ ^[1-9][0-9]{0,9}$ ]] || halt "QS_UID"
 for f in "$QS_DATEI" "$QS_BASEN"; do
   [ -f "$f" ] && [ ! -L "$f" ] || halt "keine Datei $f"
-  [ "$(stat -c %s "$f")" -le 1048576 ] || halt "$f zu gross"
+  [ "$(stat -c %s "$f")" -le 2101248 ] || halt "$f zu gross"
 done
 # Das Messverzeichnis: kein Verweis, gehoert dem Knotenbenutzer, nur er darf
 # hinein (richtet deploy/deploy-c1.sh ein).
@@ -60,19 +72,27 @@ done
 docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$CONTAINER" 2>/dev/null \
   | grep -qx 'AEQUITAS_QS_MESSQUELLE=/data/quanten' || halt "der Knoten hat keine Messquelle (AEQUITAS_QS_MESSQUELLE)"
 
-# Ablegen wie hardware_ibm.py s_messquelle_ablegen: erst unter eigenem Namen
-# (0600, Knotenbenutzer), dann per ln auf den endgueltigen Namen -- ln
-# scheitert, wenn es ihn schon gibt; nie wird eine Messung ueberschrieben.
+# Ablegen: der Knoten selbst (als Knotenbenutzer im Container) oeffnet die
+# versiegelte Messung und legt sie in sein Messverzeichnis -- erst unter
+# eigenem Zufallsnamen (O_EXCL, 0600), dann per Link auf den endgueltigen
+# Namen; nie ueberschrieben, keinem Verweis gefolgt (aequitasd
+# quanten-s-messung-oeffnen). Root legt im Verzeichnis des Knotenbenutzers
+# nichts an und aendert nichts: ein dort untergeschobener Verweis liefe sonst
+# ins Leere des Hosts. Sein Schluessel verlaesst den Container nicht; der
+# Klartext liegt nie unter /root.
 ZIEL="$QS_VERZ/$QS_NAME.json"
 [ ! -e "$ZIEL" ] && [ ! -L "$ZIEL" ] || halt "zu diesen Basen liegt schon eine Messung"
-TMP=$(mktemp -p "$QS_VERZ" .neu.XXXXXXXX)
-cat -- "$QS_DATEI" > "$TMP"
-chmod 600 -- "$TMP"
-chown "$QS_UID:$QS_UID" -- "$TMP"
-ln -- "$TMP" "$ZIEL" || halt "zu diesen Basen liegt schon eine Messung"
+docker exec -i -u 10001:10001 "$CONTAINER" ./aequitasd quanten-s-messung-oeffnen --n "$QS_N" --name "$QS_NAME" --verzeichnis /data/quanten \
+  < "$QS_DATEI" > /dev/null || halt "versiegelte Messung nicht geoeffnet oder nicht abgelegt (nicht fuer C1, veraendert, falsche Form, schon da)"
+# Erst jetzt ist es die eigene Datei (beim Aufraeumen zu entfernen); eine,
+# die schon vorher da war, faesst das Skript nie an.
 ABGELEGT="$ZIEL"
-rm -f -- "$TMP"
-TMP=""
+[ -f "$ZIEL" ] && [ ! -L "$ZIEL" ] || halt "Messung nicht im Messverzeichnis"
 
-docker exec -i -u 10001:10001 "$CONTAINER" ./aequitasd quanten-s-ausgabe \
-  --api http://127.0.0.1:8080 --deckung "$DECKUNG" --frist 15m --toleranz "$TOLERANZ" --stichprobe-v2 < "$QS_BASEN"
+if [ "$QS_ROLLEN" = ja ]; then
+  docker exec -i -u 10001:10001 "$CONTAINER" ./aequitasd quanten-s-ausgabe \
+    --api http://127.0.0.1:8080 --deckung "$DECKUNG" --frist 15m --toleranz "$TOLERANZ" --fuer-inhaberin < "$QS_BASEN"
+else
+  docker exec -i -u 10001:10001 "$CONTAINER" ./aequitasd quanten-s-ausgabe \
+    --api http://127.0.0.1:8080 --deckung "$DECKUNG" --frist 15m --toleranz "$TOLERANZ" --stichprobe-v2 < "$QS_BASEN"
+fi

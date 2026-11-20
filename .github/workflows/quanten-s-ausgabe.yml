@@ -27,6 +27,24 @@
 # Zusaetzlich verlangt: Stichtag der Stichprobe v2 erreicht
 # (quanten_w.probe_v2_ab in /api/status).
 #
+# Weg rollen (DEZENTRAL.md 17, getrennte Rollen im Hauptnetz): Die Inhaberin
+# ist NICHT dieser Lauf, sondern z. B. die App (Quanten-Token, bestellen). Ihre
+# Bestellung (oeffentlich: n, ihre Basen y, ihre Adresse und ihr oeffentlicher
+# Schluessel, die zwei Annahmestellen) kommt als Eingabe `bestellung`.
+#   1. messen: in genau ihren Basen y.
+#   2. ausgeben: `aequitasd quanten-s-ausgabe --fuer-inhaberin` auf C1. Der
+#      Ausgeber sieht x nie; das Ergebnis nennt K und die Validatoren-Zeile,
+#      mit der die Inhaberin ihren Token abholt (nur mit K). Binden, waehlen
+#      und vorlegen tut sie selbst; einloesen laesst eine Annahmestelle
+#      (fuer C1: quanten-s-annahme.yml).
+#
+# Messung versiegelt (Wege abschnitte-v2 und rollen): Die Messung ist die
+# Praeparation des Tokens. Der Mess-Job versiegelt sie mit
+# forschung/quantengeld/s_versiegeln.py auf den Schluessel von C1 (aus
+# /api/quanten-w/validator/schluessel, gegen die hier festgelegte Adresse
+# geprueft). Durch GitHub geht nur das Chiffrat; erst der Knoten von C1
+# oeffnet es (aequitasd quanten-s-messung-oeffnen) direkt ins Messverzeichnis.
+#
 # Voraussetzungen: Stichtag von W/S erreicht (quanten_w.ab in /api/status),
 # C1 im Validator-Register an einen Menschen gebunden, auf der Signieradresse
 # von C1 mindestens die Deckung (Standard 1 AEQ).
@@ -49,15 +67,18 @@ on:
         description: "Deckung des Tokens in Mikro-AEQ (1000000 = 1 AEQ, hoechstens 10000000)"
         default: "1000000"
       weg:
-        description: "auftrag = wie am 17.11. (ein Auftrag, Stichprobe bei der Ausgabe); abschnitte-v2 = Abschnitt des Validators, Stichprobe erst nach der Bindung (DEZENTRAL.md 16)"
+        description: "auftrag = wie am 17.11. (ein Auftrag, Stichprobe bei der Ausgabe); abschnitte-v2 = Abschnitt des Validators, Stichprobe erst nach der Bindung (DEZENTRAL.md 16); rollen = fuer eine Inhaberin mit eigener Bestellung, z. B. die App (DEZENTRAL.md 17)"
         type: choice
-        options: [auftrag, abschnitte-v2]
+        options: [auftrag, abschnitte-v2, rollen]
         default: auftrag
       toleranz:
         description: "nur abschnitte-v2: Toleranz in Prozent (2 -> k = 552, 3 -> 672, 4 -> 840 bei einem Validator)"
         type: choice
         options: ["2", "3", "4"]
         default: "2"
+      bestellung:
+        description: "nur rollen: die Bestellung der Inhaberin als JSON (App: Quanten-Token, Bestellung kopieren). Nichts Geheimes. n muss zur Toleranz passen (2 -> 1104, 3 -> 1344, 4 -> 1680)."
+        default: ""
 
 permissions:
   contents: read
@@ -69,6 +90,10 @@ concurrency:
 env:
   WEG: ${{ inputs.weg }}
   TOL: ${{ inputs.toleranz }}
+  BESTELLUNG: ${{ inputs.bestellung }}
+  # Signier- und Validatoradresse von C1: der Schluessel, auf den die Messung
+  # versiegelt wird, muss zu ihr gehoeren.
+  C1_VALIDATOR: "0x3066639af1653325100c1074a9696612dbdc42dc"
   C1: 188.172.229.121
   C1_HOSTKEY: SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA
   NETZ: https://aequitas.digital
@@ -87,20 +112,44 @@ jobs:
           python-version: "3.13"
       - run: pip install --require-hashes --no-deps -r forschung/quantengeld/hardware-anforderungen.txt
       - run: python3 -I forschung/quantengeld/hardware_ibm.py --selbsttest
+      - run: python3 -I forschung/quantengeld/s_versiegeln.py --selbsttest
       - name: Messung im Rauschmodell (Probe, keine Ausgabe)
         run: |
           set -euo pipefail
           case "$WEG" in
             auftrag) python3 -I forschung/quantengeld/hardware_ibm.py --rauschen FakeMarrakesh --s-messen "$RUNNER_TEMP/messung.json" ;;
-            abschnitte-v2)
+            abschnitte-v2|rollen)
               case "$TOL" in 2) K=552 ;; 3) K=672 ;; 4) K=840 ;; *) echo "::error::toleranz $TOL"; exit 1 ;; esac
-              Y=$(python3 -I -c 'import random,sys; r = random.SystemRandom(); print("".join(str(r.getrandbits(1)) for _ in range(int(sys.argv[1]))))' "$((2 * K))")
+              if [ "$WEG" = rollen ]; then
+                # Bestellung der Inhaberin: genau diese Felder, ein Abschnitt (t = v = 1),
+                # n = 2 k zur Toleranz; Adressen und Schluessel prueft das Werkzeug
+                # streng (Form, Schluessel passt zur Adresse, Stellen verschieden).
+                [ "${#BESTELLUNG}" -le 16384 ] || { echo "::error::Bestellung zu gross"; exit 1; }
+                printf '%s' "$BESTELLUNG" > "$RUNNER_TEMP/bestellung.json"
+                jq -e --argjson n "$((2 * K))" '(keys | sort) == ["basen","inhaberin","inhaberin_schluessel","n","stellen"] and .n == $n
+                  and (.basen | type) == "array" and (.basen | length) == 1 and (.basen[0] | test("^[01]+$")) and (.basen[0] | length) == $n
+                  and (.inhaberin | test("^0x[0-9a-fA-F]{40}$")) and (.inhaberin_schluessel | test("^(0x)?04[0-9a-fA-F]{128}$"))
+                  and (.stellen | type) == "array" and (.stellen | length) == 2
+                  and all(.stellen[]; (keys | sort) == ["adresse","schluessel"] and (.adresse | test("^0x[0-9a-fA-F]{40}$")) and (.schluessel | test("^(0x)?04[0-9a-fA-F]{128}$")))' \
+                  "$RUNNER_TEMP/bestellung.json" >/dev/null \
+                  || { echo "::error::Bestellung: Form (n = $((2 * K)) zur Toleranz $TOL %, ein Abschnitt, Adressen, Schluessel)"; exit 1; }
+                Y=$(jq -r '.basen[0]' "$RUNNER_TEMP/bestellung.json")
+              else
+                Y=$(python3 -I -c 'import random,sys; r = random.SystemRandom(); print("".join(str(r.getrandbits(1)) for _ in range(int(sys.argv[1]))))' "$((2 * K))")
+              fi
               mkdir -m 700 "$RUNNER_TEMP/qs"
               python3 -I forschung/quantengeld/hardware_ibm.py --rauschen FakeMarrakesh --s-abschnitt "$RUNNER_TEMP/qs" --basen "$Y"
               NAME=$(printf '%s' "$Y" | sha256sum | cut -d' ' -f1)
               [ "$(ls -A "$RUNNER_TEMP/qs")" = "$NAME.json" ] || { echo "::error::Messverzeichnis: erwartet genau $NAME.json"; exit 1; }
               jq -e --arg y "$Y" '(keys | sort) == ["job","t","u","wo","x","y"] and .y == $y and (.u | length) == ($y | length) and (.t | length) == ($y | length) and (.x | length) == ($y | length)' "$RUNNER_TEMP/qs/$NAME.json" >/dev/null \
-                || { echo "::error::Messung passt nicht zu den Basen"; exit 1; } ;;
+                || { echo "::error::Messung passt nicht zu den Basen"; exit 1; }
+              # Auch die Versiegelung auf C1 probieren (oeffnen kann sie nur C1).
+              curl -fsS -m 15 "$NETZ/api/quanten-w/validator/schluessel" > "$RUNNER_TEMP/c1.json"
+              [ "$(jq -r .validator "$RUNNER_TEMP/c1.json")" = "$C1_VALIDATOR" ] || { echo "::error::Validator-Dienst meldet eine andere Adresse als C1"; exit 1; }
+              PUB=$(jq -r .schluessel "$RUNNER_TEMP/c1.json")
+              python3 -I forschung/quantengeld/s_versiegeln.py --fuer "$PUB" --adresse "$C1_VALIDATOR" < "$RUNNER_TEMP/qs/$NAME.json" > "$RUNNER_TEMP/versiegelt.hex"
+              grep -qxE '[0-9a-f]+' "$RUNNER_TEMP/versiegelt.hex" || { echo "::error::Versiegelung: Form"; exit 1; }
+              echo "Versiegelt fuer C1: $(stat -c %s "$RUNNER_TEMP/versiegelt.hex") Hex-Zeichen (Klartext $(stat -c %s "$RUNNER_TEMP/qs/$NAME.json") Byte)" | tee -a "$GITHUB_STEP_SUMMARY" ;;
             *) echo "::error::weg $WEG"; exit 1 ;;
           esac
 
@@ -111,6 +160,9 @@ jobs:
     environment: quantenhardware
     outputs:
       messung: ${{ steps.lauf.outputs.messung }}
+      wo: ${{ steps.lauf.outputs.wo }}
+      job: ${{ steps.lauf.outputs.job }}
+      basen: ${{ steps.lauf.outputs.basen }}
     steps:
       - name: Eingabe pruefen
         env:
@@ -118,8 +170,24 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$DECKUNG" =~ ^[1-9][0-9]{6,7}$ ]] && [ "$DECKUNG" -le 10000000 ] || { echo "::error::Deckung $DECKUNG (1000000 bis 10000000)"; exit 1; }
-          [[ "$WEG" =~ ^(auftrag|abschnitte-v2)$ ]] || { echo "::error::weg $WEG"; exit 1; }
+          [[ "$WEG" =~ ^(auftrag|abschnitte-v2|rollen)$ ]] || { echo "::error::weg $WEG"; exit 1; }
           [[ "$TOL" =~ ^[234]$ ]] || { echo "::error::toleranz $TOL"; exit 1; }
+          if [ "$WEG" = rollen ]; then
+            case "$TOL" in 2) K=552 ;; 3) K=672 ;; 4) K=840 ;; esac
+            # Bestellung der Inhaberin: genau diese Felder, ein Abschnitt (t = v = 1),
+            # n = 2 k zur Toleranz; Adressen und Schluessel prueft das Werkzeug
+            # streng (Form, Schluessel passt zur Adresse, Stellen verschieden).
+            [ "${#BESTELLUNG}" -le 16384 ] || { echo "::error::Bestellung zu gross"; exit 1; }
+            printf '%s' "$BESTELLUNG" > "$RUNNER_TEMP/bestellung.json"
+            jq -e --argjson n "$((2 * K))" '(keys | sort) == ["basen","inhaberin","inhaberin_schluessel","n","stellen"] and .n == $n
+              and (.basen | type) == "array" and (.basen | length) == 1 and (.basen[0] | test("^[01]+$")) and (.basen[0] | length) == $n
+              and (.inhaberin | test("^0x[0-9a-fA-F]{40}$")) and (.inhaberin_schluessel | test("^(0x)?04[0-9a-fA-F]{128}$"))
+              and (.stellen | type) == "array" and (.stellen | length) == 2
+              and all(.stellen[]; (keys | sort) == ["adresse","schluessel"] and (.adresse | test("^0x[0-9a-fA-F]{40}$")) and (.schluessel | test("^(0x)?04[0-9a-fA-F]{128}$")))' \
+              "$RUNNER_TEMP/bestellung.json" >/dev/null \
+              || { echo "::error::Bestellung: Form (n = $((2 * K)) zur Toleranz $TOL %, ein Abschnitt, Adressen, Schluessel)"; exit 1; }
+            Y=$(jq -r '.basen[0]' "$RUNNER_TEMP/bestellung.json")
+          fi
       - name: Stichtag erreicht?
         run: |
           set -euo pipefail
@@ -128,7 +196,7 @@ jobs:
           [ "$(date +%s)" -ge "$AB" ] || { echo "::error::W/S erst ab $(date -u -d @"$AB") aktiv"; exit 1; }
           # Stichprobe v2: vor jeder Messung, sonst verbraucht eine Ausgabe,
           # die die Kette abweist, den Auftrag beim Quantenrechner.
-          if [ "$WEG" = abschnitte-v2 ]; then
+          if [ "$WEG" != auftrag ]; then
             V2=$(curl -fsS -m 15 "$NETZ/api/status" | jq -r '.quanten_w.probe_v2_ab // empty')
             [[ "$V2" =~ ^[0-9]{10}$ ]] || { echo "::error::quanten_w.probe_v2_ab nicht lesbar -- Stichprobe v2 schlaeft auf C1"; exit 1; }
             [ "$(date +%s)" -ge "$V2" ] || { echo "::error::Stichprobe v2 erst ab $(date -u -d @"$V2") aktiv"; exit 1; }
@@ -141,24 +209,64 @@ jobs:
           python-version: "3.13"
       - run: pip install --require-hashes --no-deps -r forschung/quantengeld/hardware-anforderungen.txt
       - run: python3 -I forschung/quantengeld/hardware_ibm.py --selbsttest
+      - run: python3 -I forschung/quantengeld/s_versiegeln.py --selbsttest
+      - name: Schluessel von C1 (fuer die versiegelte Messung)
+        id: c1
+        if: inputs.weg != 'auftrag'
+        run: |
+          set -euo pipefail
+          curl -fsS -m 15 "$NETZ/api/quanten-w/validator/schluessel" > "$RUNNER_TEMP/c1.json"
+          [ "$(jq -r .validator "$RUNNER_TEMP/c1.json")" = "$C1_VALIDATOR" ] || { echo "::error::Validator-Dienst meldet eine andere Adresse als C1"; exit 1; }
+          PUB=$(jq -r .schluessel "$RUNNER_TEMP/c1.json")
+          [[ "$PUB" =~ ^04[0-9a-f]{128}$ ]] || { echo "::error::Schluessel von C1: Form"; exit 1; }
+          # Gehoert der Schluessel zur festgelegten Adresse (Keccak)? Sonst nicht versiegeln.
+          python3 -I forschung/quantengeld/s_versiegeln.py --pruefen-schluessel "$PUB" --adresse "$C1_VALIDATOR"
+          echo "pub=$PUB" >> "$GITHUB_OUTPUT"
       - name: Messung auf dem IBM-Chip
         id: lauf
         env:
           IBM_QUANTUM_TOKEN: ${{ secrets.IBM_QUANTUM_TOKEN }}
           IBM_QUANTUM_INSTANCE: ${{ vars.IBM_QUANTUM_INSTANCE }}
           IBM_QUANTUM_BACKEND: ${{ vars.IBM_QUANTUM_BACKEND }}
+          C1_PUB: ${{ steps.c1.outputs.pub }}
         run: |
           set -euo pipefail
-          if [ "$WEG" = abschnitte-v2 ]; then
+          if [ "$WEG" != auftrag ]; then
             # Basen der Inhaberin: n = 2 k (Tabelle der Kette, t = v = 1).
             case "$TOL" in 2) K=552 ;; 3) K=672 ;; 4) K=840 ;; *) echo "::error::toleranz $TOL"; exit 1 ;; esac
-            Y=$(python3 -I -c 'import random,sys; r = random.SystemRandom(); print("".join(str(r.getrandbits(1)) for _ in range(int(sys.argv[1]))))' "$((2 * K))")
+            if [ "$WEG" = rollen ]; then
+              # Bestellung der Inhaberin: genau diese Felder, ein Abschnitt (t = v = 1),
+              # n = 2 k zur Toleranz; Adressen und Schluessel prueft das Werkzeug
+              # streng (Form, Schluessel passt zur Adresse, Stellen verschieden).
+              [ "${#BESTELLUNG}" -le 16384 ] || { echo "::error::Bestellung zu gross"; exit 1; }
+              printf '%s' "$BESTELLUNG" > "$RUNNER_TEMP/bestellung.json"
+              jq -e --argjson n "$((2 * K))" '(keys | sort) == ["basen","inhaberin","inhaberin_schluessel","n","stellen"] and .n == $n
+                and (.basen | type) == "array" and (.basen | length) == 1 and (.basen[0] | test("^[01]+$")) and (.basen[0] | length) == $n
+                and (.inhaberin | test("^0x[0-9a-fA-F]{40}$")) and (.inhaberin_schluessel | test("^(0x)?04[0-9a-fA-F]{128}$"))
+                and (.stellen | type) == "array" and (.stellen | length) == 2
+                and all(.stellen[]; (keys | sort) == ["adresse","schluessel"] and (.adresse | test("^0x[0-9a-fA-F]{40}$")) and (.schluessel | test("^(0x)?04[0-9a-fA-F]{128}$")))' \
+                "$RUNNER_TEMP/bestellung.json" >/dev/null \
+                || { echo "::error::Bestellung: Form (n = $((2 * K)) zur Toleranz $TOL %, ein Abschnitt, Adressen, Schluessel)"; exit 1; }
+              Y=$(jq -r '.basen[0]' "$RUNNER_TEMP/bestellung.json")
+            else
+              Y=$(python3 -I -c 'import random,sys; r = random.SystemRandom(); print("".join(str(r.getrandbits(1)) for _ in range(int(sys.argv[1]))))' "$((2 * K))")
+            fi
             mkdir -m 700 "$RUNNER_TEMP/qs"
             python3 -I forschung/quantengeld/hardware_ibm.py --ibm --s-abschnitt "$RUNNER_TEMP/qs" --basen "$Y"
             NAME=$(printf '%s' "$Y" | sha256sum | cut -d' ' -f1)
             [ "$(ls -A "$RUNNER_TEMP/qs")" = "$NAME.json" ] || { echo "::error::Messverzeichnis: erwartet genau $NAME.json"; exit 1; }
-            echo "messung=$(gzip -9c "$RUNNER_TEMP/qs/$NAME.json" | base64 -w0)" >> "$GITHUB_OUTPUT"
+            # Nur das Chiffrat verlaesst diesen Job; wo und job sind oeffentlich
+            # (stehen auch in der Ausgabe auf der Kette).
+            umask 077
+            python3 -I forschung/quantengeld/s_versiegeln.py --fuer "$C1_PUB" --adresse "$C1_VALIDATOR" < "$RUNNER_TEMP/qs/$NAME.json" > "$RUNNER_TEMP/versiegelt.hex"
+            {
+              echo "wo=$(jq -r .wo "$RUNNER_TEMP/qs/$NAME.json" | tr -cd '[:alnum:] ._,:/()+-' | head -c 200)"
+              echo "job=$(jq -r .job "$RUNNER_TEMP/qs/$NAME.json" | tr -cd '[:alnum:]._,:-' | head -c 200)"
+              echo "basen=$Y"
+            } >> "$GITHUB_OUTPUT"
             rm -rf "$RUNNER_TEMP/qs"
+            echo "messung=$(gzip -9c "$RUNNER_TEMP/versiegelt.hex" | base64 -w0)" >> "$GITHUB_OUTPUT"
+            rm -f "$RUNNER_TEMP/versiegelt.hex"
           else
             python3 -I forschung/quantengeld/hardware_ibm.py --ibm --s-messen "$RUNNER_TEMP/messung.json"
             echo "messung=$(gzip -9c "$RUNNER_TEMP/messung.json" | base64 -w0)" >> "$GITHUB_OUTPUT"
@@ -187,28 +295,52 @@ jobs:
       - name: Ausgabe auf C1
         env:
           MESSUNG: ${{ needs.messen.outputs.messung }}
+          MESS_WO: ${{ needs.messen.outputs.wo }}
+          MESS_JOB: ${{ needs.messen.outputs.job }}
+          MESS_BASEN: ${{ needs.messen.outputs.basen }}
           DECKUNG: ${{ inputs.deckung }}
         run: |
           set -euo pipefail
           [[ "$DECKUNG" =~ ^[1-9][0-9]{6,7}$ ]] && [ "$DECKUNG" -le 10000000 ] || { echo "::error::Deckung $DECKUNG"; exit 1; }
-          [[ "$WEG" =~ ^(auftrag|abschnitte-v2)$ ]] && [[ "$TOL" =~ ^[234]$ ]] || { echo "::error::weg $WEG / toleranz $TOL"; exit 1; }
+          [[ "$WEG" =~ ^(auftrag|abschnitte-v2|rollen)$ ]] && [[ "$TOL" =~ ^[234]$ ]] || { echo "::error::weg $WEG / toleranz $TOL"; exit 1; }
           umask 077
-          printf '%s' "$MESSUNG" | base64 -d | gunzip -c > "$RUNNER_TEMP/m.json"
-          if [ "$WEG" = abschnitte-v2 ]; then
+          if [ "$WEG" != auftrag ]; then
             case "$TOL" in 2) K=552 ;; 3) K=672 ;; 4) K=840 ;; esac
             N=$((2 * K))
-            # Genau die Felder, die der Dienst liest; Basen nur 0/1 in der Laenge n.
-            jq -e --argjson n "$N" '(keys | sort) == ["job","t","u","wo","x","y"] and (.y | test("^[01]+$")) and (.y | length) == $n and (.u | length) == $n and (.t | length) == $n and (.x | length) == $n' "$RUNNER_TEMP/m.json" >/dev/null \
-              || { echo "::error::Messung unvollstaendig"; exit 1; }
-            NAME=$(jq -j .y "$RUNNER_TEMP/m.json" | sha256sum | cut -d' ' -f1)
+            # Versiegelt: nur Hex; oeffnen und streng pruefen tut der Knoten von C1.
+            printf '%s' "$MESSUNG" | base64 -d | gunzip -c > "$RUNNER_TEMP/m.versiegelt"
+            [ "$(stat -c %s "$RUNNER_TEMP/m.versiegelt")" -le 2101248 ] && grep -qxE '[0-9a-f]+' "$RUNNER_TEMP/m.versiegelt" \
+              || { echo "::error::versiegelte Messung: Form"; exit 1; }
+            if [ "$WEG" = rollen ]; then
+              # Bestellung der Inhaberin: genau diese Felder, ein Abschnitt (t = v = 1),
+              # n = 2 k zur Toleranz; Adressen und Schluessel prueft das Werkzeug
+              # streng (Form, Schluessel passt zur Adresse, Stellen verschieden).
+              [ "${#BESTELLUNG}" -le 16384 ] || { echo "::error::Bestellung zu gross"; exit 1; }
+              printf '%s' "$BESTELLUNG" > "$RUNNER_TEMP/bestellung.json"
+              jq -e --argjson n "$((2 * K))" '(keys | sort) == ["basen","inhaberin","inhaberin_schluessel","n","stellen"] and .n == $n
+                and (.basen | type) == "array" and (.basen | length) == 1 and (.basen[0] | test("^[01]+$")) and (.basen[0] | length) == $n
+                and (.inhaberin | test("^0x[0-9a-fA-F]{40}$")) and (.inhaberin_schluessel | test("^(0x)?04[0-9a-fA-F]{128}$"))
+                and (.stellen | type) == "array" and (.stellen | length) == 2
+                and all(.stellen[]; (keys | sort) == ["adresse","schluessel"] and (.adresse | test("^0x[0-9a-fA-F]{40}$")) and (.schluessel | test("^(0x)?04[0-9a-fA-F]{128}$")))' \
+                "$RUNNER_TEMP/bestellung.json" >/dev/null \
+                || { echo "::error::Bestellung: Form (n = $((2 * K)) zur Toleranz $TOL %, ein Abschnitt, Adressen, Schluessel)"; exit 1; }
+              Y=$(jq -r '.basen[0]' "$RUNNER_TEMP/bestellung.json")
+              ROLLEN=ja
+              cp "$RUNNER_TEMP/bestellung.json" "$RUNNER_TEMP/b.json"
+            else
+              Y="$MESS_BASEN"
+              ROLLEN=nein
+              jq -nc --argjson n "$N" --arg y "$Y" --arg wo "$MESS_WO" --arg job "$MESS_JOB" '{n: $n, basen: [$y], wo: $wo, job: $job}' > "$RUNNER_TEMP/b.json"
+            fi
+            [[ "$Y" =~ ^[01]+$ ]] && [ "${#Y}" -eq "$N" ] || { echo "::error::Basen: $N Bits"; exit 1; }
+            NAME=$(printf '%s' "$Y" | sha256sum | cut -d' ' -f1)
             [[ "$NAME" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::Name"; exit 1; }
-            jq -c --argjson n "$N" '{n: $n, basen: [.y], wo: .wo, job: .job}' "$RUNNER_TEMP/m.json" > "$RUNNER_TEMP/b.json"
-            ssh -o BatchMode=yes root@$C1 'umask 077; cat > /root/qs-abschnitt.json' < "$RUNNER_TEMP/m.json"
+            ssh -o BatchMode=yes root@$C1 'umask 077; cat > /root/qs-abschnitt.versiegelt' < "$RUNNER_TEMP/m.versiegelt"
             ssh -o BatchMode=yes root@$C1 'umask 077; cat > /root/qs-basen.json' < "$RUNNER_TEMP/b.json"
-            rm -f "$RUNNER_TEMP/m.json" "$RUNNER_TEMP/b.json"
+            rm -f "$RUNNER_TEMP/m.versiegelt" "$RUNNER_TEMP/b.json"
             scp -q -o BatchMode=yes deploy/quanten-s-ausgabe-abschnitt.sh root@$C1:/root/quanten-s-ausgabe-abschnitt.sh
             set +e
-            ssh -o BatchMode=yes root@$C1 "DECKUNG=$DECKUNG TOLERANZ=$TOL QS_NAME=$NAME bash /root/quanten-s-ausgabe-abschnitt.sh" > ergebnis.json
+            ssh -o BatchMode=yes root@$C1 "DECKUNG=$DECKUNG TOLERANZ=$TOL QS_N=$N QS_NAME=$NAME QS_ROLLEN=$ROLLEN bash /root/quanten-s-ausgabe-abschnitt.sh" > ergebnis.json
             RC=$?
             set -e
           else
@@ -220,6 +352,27 @@ jobs:
             ssh -o BatchMode=yes root@$C1 "DECKUNG=$DECKUNG bash /root/quanten-s-ausgabe.sh" > ergebnis.json
             RC=$?
             set -e
+          fi
+          if [ "$WEG" = rollen ]; then
+            # Das Paket ist oeffentlich (x nur fuer die Inhaberin verschluesselt),
+            # aber gross; die Zusammenfassung nennt, was die Inhaberin braucht.
+            {
+              echo "## Quantengeld S: Ausgabe fuer eine Inhaberin (getrennte Rollen, Toleranz $TOL %)"
+              echo
+              if [ "$RC" = 0 ] && jq -e '.k | test("^[0-9a-f]{64}$")' ergebnis.json >/dev/null 2>&1; then
+                echo "**Ausgegeben.** Abholen in der App (Quanten-Token, Abholen) mit (genau so eintragen):"
+                echo
+                echo "- K: \`$(jq -r .k ergebnis.json)\`"
+                echo "- Validatoren: \`$(jq -r --arg api "$NETZ" '[.validatoren[] | . + "=" + $api + "/api"] | join(",")' ergebnis.json)\`"
+                echo
+                echo "Inhaberin \`$(jq -r .inhaberin ergebnis.json)\`, Stellen \`$(jq -r '.stellen | join(", ")' ergebnis.json)\`, n = $(jq -r .n ergebnis.json), Deckung $(jq -r .deckung_mikro ergebnis.json) Mikro-AEQ."
+                echo "Einloesen an C1 als Annahmestelle: quanten-s-annahme.yml mit der Vorlage aus der App."
+              else
+                echo "**Gescheitert (Exit $RC)** -- Verlauf im Protokoll."
+              fi
+            } >> "$GITHUB_STEP_SUMMARY"
+            jq -c '{k, n, inhaberin, stellen, validatoren, deckung_mikro, probe_art}' ergebnis.json 2>/dev/null || true
+            exit "$RC"
           fi
           cat ergebnis.json
           {

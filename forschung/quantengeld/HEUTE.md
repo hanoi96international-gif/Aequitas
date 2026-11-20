@@ -94,8 +94,9 @@ der Code im Knoten und in der App sowie die Quellen in `ANALYSE.md`.
 - Einlösen, gesperrt bis zu einem geprüften Verfahren;
 - QG3 (Noten je Zeile).
 
-**Live ist nur ein Teil davon.** Mindestzahl und QG3 werden erst mit den beiden
-Deploys aktiv, die auf deine Freigabe warten. Das ist die Seite, die eine Kette
+**Das alles läuft auf C1** (Stand 20.11.: jeder Deploy seit dem 16.11. enthält es,
+zuletzt [44737199569](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44737199569)).
+Freigeschaltet ist noch kein Satz. Das ist die Seite, die eine Kette
 leisten muss, und sie ist da. Ein Satz wird erst freigeschaltet, wenn es Noten gibt,
 die tragen. Bis dahin ist „schlafend“ der ehrliche Zustand.
 
@@ -904,8 +905,10 @@ eigenen Befehl und Schlüssel (`DEZENTRAL.md` 17):
   Stelle selbst. Das ist die Grundlage für die App als Inhaberin.
 - **Ehrlich dazu:**
   - Im Hauptnetz ist es noch nicht gelaufen.
-  - Getrennte Schlüssel sind noch keine getrennten Menschen. Die App als Inhaberin (R4)
-    und ein zweiter Mensch als Validator (A5) fehlen.
+  - Getrennte Schlüssel sind noch keine getrennten Menschen. Die App kann jetzt
+    Inhaberin sein (R4b: bestellen, abholen mit K, Vorlage als QR-Code; App #88, #89),
+    ist aber in keinem ausgelieferten Build und noch keinen Weg im Hauptnetz gegangen.
+    Ein zweiter Mensch als Validator (A5) fehlt.
   - Der Ausgeber sieht die Basen y und damit vorab, an welcher Stelle die Inhaberin
     einlösen will (nicht x).
   - Fällt ein Validator nach der Bindung aus, bevor die Stelle ihre Stichprobe geladen

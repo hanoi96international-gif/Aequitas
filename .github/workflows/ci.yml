@@ -99,6 +99,11 @@ jobs:
       - run: python3 -I forschung/quantengeld/labor.py --selbsttest
       - run: python3 -I forschung/quantengeld/hardware.py --selbsttest
       - run: python3 -I forschung/quantengeld/hardware_ibm.py --selbsttest
+      # Versiegelte Messung (DEZENTRAL.md 17): go-ethereum-ECIES gegen die
+      # Pruefvektoren des Knotens. cryptography mit denselben Hashes wie in
+      # hardware-anforderungen.txt.
+      - run: pip install --require-hashes --no-deps -r forschung/quantengeld/versiegeln-anforderungen.txt
+      - run: python3 -I forschung/quantengeld/s_versiegeln.py --selbsttest
       # Ionenfalle (Quantinuum): Uebersetzung nach pytket hin und zurueck,
       # Warten als sleep, Eingaben begrenzt -- ohne Netz und ohne Token.
       # Eigene Umgebung, damit die gepinnten Pakete nichts anderes beruehren.

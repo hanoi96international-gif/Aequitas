@@ -349,6 +349,11 @@ func main() {
 	if len(os.Args) > 1 && os.Args[1] == "quanten-s-annahme" {
 		os.Exit(quantenSAnnahmeBefehl(os.Args[2:]))
 	}
+	// Versiegelte Messung (keeper/quanten_s_versiegeln.go): nur der Knoten des
+	// Validators oeffnet sie, deploy/quanten-s-ausgabe-abschnitt.sh legt sie ab.
+	if len(os.Args) > 1 && os.Args[1] == "quanten-s-messung-oeffnen" {
+		os.Exit(quantenSMessungOeffnenBefehl(os.Args[2:]))
+	}
 	// Root-Rechte ablegen, bevor irgendetwas geoeffnet wird oder lauscht
 	// (rechte.go). Scheitert es, startet der Knoten nicht.
 	if err := rechteAblegen(echteRechteUmgebung()); err != nil {
