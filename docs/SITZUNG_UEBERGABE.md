@@ -87,6 +87,11 @@ dezentrales Quantengeld“.
         - `docs.expo.dev` ist aus dieser Umgebung gesperrt: API aus den Typen der installierten
           v54-Pakete (expo-crypto `getRandomBytes(n): Uint8Array`, SecureStore-Wert ≤ 2048 Byte).
         - Danach Teil 2: Bildschirme, SecureStore, QR-Vorlage.
+      - **CI: db-tests, Gruppe `realdb`, an der 10-Minuten-Grenze** (Push-Lauf 44737311991 rot:
+        Abbruch in `TestVierKnoten_RealDB` nach 600 s; die zwei neuen Rollen-Läufe kosten ~2 min).
+        In diesem PR: eigene Gruppe `quanten` für die 7 Vier-Knoten-Quantentests (eigene DB,
+        eigene 10-Minuten-Grenze); geprüft, dass genau dieselben 282 Tests laufen. Kein Test
+        abgeschwächt oder übersprungen. App-PR #88 offen (CI grün).
       - **Danach:** R4 App als Inhaberin; Hauptnetz-Lauf mit getrennten Rollen
         (Workflow); Öffnung aus Anteilen (Verfügbarkeit); y je Validator verschlüsseln.
       - Lokale Postgres für RealDB-Tests: `pg_ctlcluster 16 main start`, Datenbank
