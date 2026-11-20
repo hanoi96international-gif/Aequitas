@@ -608,6 +608,13 @@ func (cs *ChainState) quantenWSTokenAnsichtLocked(ctx context.Context, reg *quan
 	ansicht := map[string]interface{}{"k": k, "art": "s", "n": t.N, "t": t.T, "v": t.NVal, "tol": t.Tol, "inhaber": t.Inhaber,
 		"stellen": e.Stellen, "gebunden": t.D != nil, "gewaehlt": t.C != -1, "fehl": t.Fehl,
 		"wert_mikro": quantenWert(e.Anteile, cs.quantenWMikroLocked(ctx, quantenWTopfAddr), reg.summeAnteile())}
+	// Stichprobe v2 (quanten_s_probe_v2.go): nur gesetzt, wenn der Token so
+	// ausgegeben wurde -- dann kannte vor Bindung und Wahl keine Annahmestelle
+	// eine Stelle der Stichproben (Befund 5i greift nicht). Fehlt das Feld,
+	// ist es ein Token im bisherigen Weg.
+	if t.ProbeArt != 0 {
+		ansicht["probe_art"] = t.ProbeArt
+	}
 	if a := t.Anmeldung; a != nil {
 		probe := append([]int(nil), a.Probe...)
 		sort.Ints(probe)

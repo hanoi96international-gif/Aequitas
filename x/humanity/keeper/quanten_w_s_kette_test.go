@@ -493,6 +493,10 @@ func TestQuantenWSKette_RegisterLesen(t *testing.T) {
 	if ans.V != tk.NVal || ans.T != tk.T || ans.V < ans.T || ans.V < 1 {
 		t.Fatalf("Ansicht t=%d v=%d, Register t=%d v=%d", ans.T, ans.V, tk.T, tk.NVal)
 	}
+	// Ein Token im bisherigen Weg nennt keine Art der Stichprobe.
+	if strings.Contains(rec.Body.String(), "probe_art") {
+		t.Fatalf("Ansicht eines bisherigen Tokens nennt probe_art: %s", rec.Body.String())
+	}
 }
 
 // Schlafend: die S-Arten sind vor dem Stichtag unbekannt und im Block verboten.

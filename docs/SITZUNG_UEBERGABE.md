@@ -2,12 +2,12 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 20.11.2026 ~09:40 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
+Stand: 20.11.2026 ~10:00 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
 Repos); davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18:30 UTC Sitzung
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
-**Zuletzt (Sitzung „Weiter“, 20.11. ~09:40 UTC):**
+**Zuletzt (Sitzung „Weiter“, 20.11. ~10:00 UTC):**
 - **#598 gemergt (90e0e622): Pilot mit Stichprobe v2 grün** (`HEUTE.md` 3.3h, `DEZENTRAL.md` 16
   Schritt 5). Eingabe `stichprobe_v2`, Beobachter im Vier-Knoten-Test liest im Register jedes
   Knotens `probe_art` und die nachgerechneten Salze nach. Läufe
@@ -49,6 +49,10 @@ dezentrales Quantengeld“.
       Doppelvorlage an Stelle 0 abgewiesen, ehrliche Vorlage an C1 eingelöst, 15m21s.
       Dokumentiert in `HEUTE.md` 3.3i und `DEZENTRAL.md` 16 Schritt 7 (**#603 gemergt, c8b79f9b**).
       Probelauf im Rauschmodell grün: [44605960500](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44605960500).
+    - **PR (dieser Stand):** Token-Ansicht (`/api/quanten-w/note`) nennt `probe_art: 2` bei
+      v2-Tokens (bisherige ohne Feld); Kurzfassungen `HEUTE.md` und `DEZENTRAL.md` 1 auf
+      Stand 20.11. Danach C1-Deploy (Freigabe `produktion`) und App-Anzeige
+      („Stichprobe erst nach der Bindung“).
     - Der zweite Mensch als Validator (Rollen trennen, A5).
     - Ein Gutachter (Prüfauftrag S 2).
 - Davor: #597 gemergt (d079bf34, Werkzeug im v2-Weg, 14 Mutationen rot).
