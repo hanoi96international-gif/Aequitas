@@ -1304,6 +1304,12 @@ Schritt öffentlich nachrechenbar.
 - **Im Workflow** `quanten-s-annahme.yml`: Die Stelle wartet nach dem Einlösen bis zu
   20 Minuten auf den Nachweis und prüft ihn. Der rohe Nachweis kommt als Artefakt in
   den Lauf, das Ergebnis in die Zusammenfassung.
+- **Auch im Weg `abschnitte-v2`** (`quanten-s-ausgabe.yml`, das Werkzeug spielt alle
+  Rollen): `quanten-s-ausgabe --stichprobe-v2 --nachweis-warten 20m`. Ein Lauf mit den
+  Freigaben `quantenhardware` und `produktion` erzeugt damit einen öffentlichen Nachweis
+  im Hauptnetz (Artefakt `nachweis-K`). Auf vier echten Knoten belegt
+  (`TestVierKnotenQuantenSAbschnitte_RealDB` mit Stichprobe v2: alle 4 legen offen, 0
+  Fehler bei 56 Treffern an der Stelle).
 - **Belegt:**
   - in-process: nach dem Ende, erst nach der Finalität, nie für einen lebenden
     Token; Grenze 64 im Speicher; Endpunkt begrenzt je Absender.

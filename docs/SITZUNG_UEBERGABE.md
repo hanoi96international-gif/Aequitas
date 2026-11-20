@@ -2,7 +2,7 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 20.11.2026 ~20:15 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
+Stand: 20.11.2026 ~20:35 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
 Repos); davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18:30 UTC Sitzung
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
@@ -51,6 +51,10 @@ kannst / Abschnitt 5 (heute weltweit unmöglich) so gut wie möglich umsetzen“
   grün): Nachweis nach dem Ende ist im Hauptnetz.
 - **Nächster Schritt des Betreibers:** erster Hauptnetz-Lauf mit getrennten Rollen (Anleitung
   unten), danach auswerten und in `HEUTE.md` dokumentieren (wie 3.3i).
+- **PR (dieser Stand): Nachweis auch im Weg `abschnitte-v2`** (`--nachweis-warten 20m` im
+  C1-Skript, Zusammenfassung und Artefakt im Workflow). Nach Merge und C1-Deploy erzeugt
+  ein Lauf `quanten-s-ausgabe.yml` (modus `ibm`, weg `abschnitte-v2`) den ersten
+  öffentlichen Nachweis im Hauptnetz – ohne App.
 - **Lehre:** vor jedem Push die GANZE Paket-Suite laufen lassen (`go test ./x/humanity/keeper/`),
   nicht nur `-run`-Filter: `TestSperre_ImmerMitDefer` fand in #611 eine Sperre ohne `defer`.
 - **App #91 offen: die App als Annahmestelle (R6)** (`lib/quantenSStelle.ts`, Karte

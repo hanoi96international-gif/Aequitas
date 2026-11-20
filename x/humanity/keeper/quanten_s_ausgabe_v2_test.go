@@ -238,7 +238,7 @@ func TestQuantenSAntwortV2Pruefen(t *testing.T) {
 // Der Befehl: --stichprobe-v2 nur im Abschnitts-Modus.
 func TestQuantenSAusgabe_V2NurAbschnitte(t *testing.T) {
 	err := QuantenSAusgabe(context.Background(), "http://127.0.0.1:1", strings.Repeat("1", 64), 1_000_000, time.Second,
-		nil, 0, QuantenSToleranzStandard, 0, true, strings.NewReader(`{"n":2,"u":"01","t":"01","y":"01","x":"01"}`), &bytes.Buffer{}, &bytes.Buffer{})
+		nil, 0, QuantenSToleranzStandard, 0, true, 0, strings.NewReader(`{"n":2,"u":"01","t":"01","y":"01","x":"01"}`), &bytes.Buffer{}, &bytes.Buffer{})
 	if err == nil || !strings.Contains(err.Error(), "nur im Abschnitts-Modus") {
 		t.Fatalf("v2 mit einer Messung: %v", err)
 	}
@@ -328,5 +328,19 @@ func TestQuantenSAusgabeV2_EhrlichNichtBestanden(t *testing.T) {
 	}
 	if len(q.w.cs.quantenWJetzt().Token) != 0 {
 		t.Fatal("trotzdem ausgegeben")
+	}
+}
+
+// Nachweis abwarten nur mit Stichprobe v2 und hoechstens 1 h.
+func TestQuantenSAusgabe_NachweisWartenGrenzen(t *testing.T) {
+	for _, f := range []struct {
+		v2     bool
+		warten time.Duration
+	}{{false, time.Minute}, {true, -time.Second}, {true, time.Hour + time.Second}} {
+		err := QuantenSAusgabe(context.Background(), "http://127.0.0.1:1", strings.Repeat("1", 64), 1_000_000, time.Second,
+			nil, 0, QuantenSToleranzStandard, 0, f.v2, f.warten, strings.NewReader("{}"), &bytes.Buffer{}, &bytes.Buffer{})
+		if err == nil || !strings.Contains(err.Error(), "Nachweis abwarten") {
+			t.Fatalf("v2=%v warten=%s: %v", f.v2, f.warten, err)
+		}
 	}
 }

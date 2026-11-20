@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -33,6 +34,7 @@ func quantenSAusgabeMit(args []string, uid int, schluessel string, ein io.Reader
 	toleranz := fs.Int("toleranz", keeper.QuantenSToleranzStandard, "Toleranz in Prozent; darunter nur mit kleinem Messfehler (hardware_ibm.py --wiederholen)")
 	stichprobeV2 := fs.Bool("stichprobe-v2", false, "Abschnitts-Modus: Stichprobe erst nach der Bindung (nur, wenn die Kette sie kennt)")
 	messenWarten := fs.Duration("messen-warten", 0, "Abschnitts-Modus: Basen bei den Validatoren vormerken und so lange warten, bis jeder gemessen hat (0 = Messungen liegen schon vor)")
+	nachweis := fs.Duration("nachweis-warten", 0, "Stichprobe v2: nach dem Einloesen so lange auf den Nachweis aller Validatoren warten und ihn pruefen (0 = nicht)")
 	fuerInhaberin := fs.Bool("fuer-inhaberin", false, "getrennte Rollen: Eingabe ist die Bestellung einer Inhaberin, Ausgabe das Paket fuer sie (immer Stichprobe v2)")
 	if err := fs.Parse(args); err != nil || fs.NArg() != 0 {
 		return 2
@@ -59,8 +61,11 @@ func quantenSAusgabeMit(args []string, uid int, schluessel string, ein io.Reader
 		}
 		return 0
 	}
-	if err := keeper.QuantenSAusgabe(ctx, *api, schluessel, *deckung, *frist, vs, *schwelle, *toleranz, *messenWarten, *stichprobeV2, ein, aus, log); err != nil {
+	if err := keeper.QuantenSAusgabe(ctx, *api, schluessel, *deckung, *frist, vs, *schwelle, *toleranz, *messenWarten, *stichprobeV2, *nachweis, ein, aus, log); err != nil {
 		fmt.Fprintln(log, "FEHLER:", err)
+		if errors.Is(err, keeper.ErrQuantenSNachweis) {
+			return 3 // eingeloest; nur der Nachweis fehlt oder passt nicht
+		}
 		return 1
 	}
 	return 0
