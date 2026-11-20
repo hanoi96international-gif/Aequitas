@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -109,6 +110,7 @@ func quantenSAnnahmeMit(ctx context.Context, args []string, uid int, umgebung fu
 	validatoren := fs.String("validatoren", "", "Validatoren des Tokens: adresse=api,adresse=api (in der Reihenfolge der Abschnitte)")
 	variable := fs.String("schluessel-variable", "RELAYER_PRIVATE_KEY", "Umgebungsvariable mit dem Schluessel der Annahmestelle")
 	frist := fs.Duration("frist", 15*time.Minute, "Frist je Schritt")
+	nachweis := fs.Duration("nachweis-warten", 0, "nach dem Einloesen so lange auf den Nachweis aller Validatoren warten und ihn pruefen (0 = nicht)")
 	if err := fs.Parse(args); err != nil || fs.NArg() != 0 {
 		return 2
 	}
@@ -130,8 +132,11 @@ func quantenSAnnahmeMit(ctx context.Context, args []string, uid int, umgebung fu
 		fmt.Fprintln(log, "ABBRUCH:", err)
 		return 2
 	}
-	if err := keeper.QuantenSAnnahme(ctx, *api, schluessel, *frist, vs, ein, aus, log); err != nil {
+	if err := keeper.QuantenSAnnahme(ctx, *api, schluessel, *frist, *nachweis, vs, ein, aus, log); err != nil {
 		fmt.Fprintln(log, "FEHLER:", err)
+		if errors.Is(err, keeper.ErrQuantenSNachweis) {
+			return 3 // eingeloest; nur der Nachweis fehlt oder passt nicht
+		}
 		return 1
 	}
 	return 0
@@ -169,6 +174,41 @@ func quantenSMessungOeffnenMit(args []string, uid int, schluessel string, ein io
 		return 2
 	}
 	if err := keeper.QuantenSMessungOeffnen(schluessel, ein, *n, *name, *verzeichnis, aus); err != nil {
+		fmt.Fprintln(log, "FEHLER:", err)
+		return 1
+	}
+	return 0
+}
+
+// quantenSNachweisBefehl: `aequitasd quanten-s-nachweis --k K --validatoren
+// adr=api,... [--wurzel H --proben H0,H1]` -- einen beendeten Token
+// nachpruefen (keeper/quanten_s_nachweis.go). Ohne Schluessel, nur lesend.
+func quantenSNachweisBefehl(args []string) int {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+	return quantenSNachweisMit(ctx, args, os.Stdout, os.Stderr)
+}
+
+func quantenSNachweisMit(ctx context.Context, args []string, aus, log io.Writer) int {
+	fs := flag.NewFlagSet("quanten-s-nachweis", flag.ContinueOnError)
+	fs.SetOutput(log)
+	k := fs.String("k", "", "Kennung K des Tokens")
+	validatoren := fs.String("validatoren", "", "Validatoren des Tokens: adresse=api,adresse=api (in der Reihenfolge der Abschnitte)")
+	wurzel := fs.String("wurzel", "", "Wurzel der Ausgabe (aus der Ansicht vor dem Ende oder dem Protokoll der Ausgabe)")
+	proben := fs.String("proben", "", "Proben der Ausgabe: H0,H1")
+	if err := fs.Parse(args); err != nil || fs.NArg() != 0 {
+		return 2
+	}
+	vs, err := keeper.QuantenSValidatorenLesen(*validatoren)
+	if err != nil || len(vs) == 0 {
+		fmt.Fprintln(log, "ABBRUCH: --validatoren adresse=api,...")
+		return 2
+	}
+	var pr []string
+	if strings.TrimSpace(*proben) != "" {
+		pr = strings.Split(strings.ToLower(strings.ReplaceAll(*proben, " ", "")), ",")
+	}
+	if err := keeper.QuantenSNachweisPruefenBefehl(ctx, *k, vs, *wurzel, pr, aus); err != nil {
 		fmt.Fprintln(log, "FEHLER:", err)
 		return 1
 	}

@@ -28,6 +28,9 @@ type qsNetz struct {
 	angemeldet         bool
 	// Gefaelschter Dienst: unterschreibt mit einem fremden Schluessel.
 	fremdeBestaetigung bool
+	// finalNachlauf: so viele Bloecke laeuft die Finalitaet hinter der Hoehe
+	// her (0 = alles sofort final, wie bisher).
+	finalNachlauf int64
 }
 
 func (n *qsNetz) bestaetigen(_ context.Context, req QuantenWBestaetigenAnfrage) (string, error) {
@@ -91,7 +94,7 @@ func (n *qsNetz) warten(context.Context) error {
 	n.q.zeit += 5
 	h := n.q.hoehe.Load() + 1
 	n.q.hoehe.Store(h)
-	n.q.final.Store(h)
+	n.q.final.Store(h - n.finalNachlauf)
 	n.q.takt()
 	return nil
 }

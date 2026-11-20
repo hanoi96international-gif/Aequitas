@@ -354,6 +354,10 @@ func main() {
 	if len(os.Args) > 1 && os.Args[1] == "quanten-s-messung-oeffnen" {
 		os.Exit(quantenSMessungOeffnenBefehl(os.Args[2:]))
 	}
+	// Nachweis nach dem Ende (keeper/quanten_s_nachweis.go): ohne Schluessel.
+	if len(os.Args) > 1 && os.Args[1] == "quanten-s-nachweis" {
+		os.Exit(quantenSNachweisBefehl(os.Args[2:]))
+	}
 	// Root-Rechte ablegen, bevor irgendetwas geoeffnet wird oder lauscht
 	// (rechte.go). Scheitert es, startet der Knoten nicht.
 	if err := rechteAblegen(echteRechteUmgebung()); err != nil {

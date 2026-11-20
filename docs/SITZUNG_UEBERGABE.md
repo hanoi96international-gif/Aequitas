@@ -2,7 +2,7 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 20.11.2026 ~17:30 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
+Stand: 20.11.2026 ~18:30 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
 Repos); davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18:30 UTC Sitzung
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
@@ -15,14 +15,37 @@ kannst / Abschnitt 5 (heute weltweit unmöglich) so gut wie möglich umsetzen“
   [44748666661](https://github.com/hanoi96international-gif/Aequitas-App/actions/runs/44748666661)
   (grün). Danach `release-apk.yml` (run_id 44748661869, Tag `v1.26.0`), dann
   `release-ios.yml` (run_id 44748666661, Tag `v1.26.0`), beide mit Freigabe `app-signatur`.
-- **#608 gemergt (038df902): R5** (siehe unten). C1-Deploy
-  [44782879350](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44782879350)
-  wartet nach dem CI auf `produktion`. Sicherheitsprüfung als PR-Kommentar; daraus die
+- **Anleitung: erster Hauptnetz-Lauf mit getrennten Rollen (die App als Inhaberin)** –
+  braucht C1 mit #608 und #611 sowie App 1.27.0:
+  1. App → Quanten-Token → Bestellen: n = 1104, v = 1, Stelle 0 „C1 eintragen“, Stelle 1
+     „Mein Konto eintragen“ → Bestellung anlegen → Kopieren.
+  2. Workflow `quanten-s-ausgabe.yml`: modus `ibm`, weg `rollen`, toleranz `2`,
+     bestellung = der kopierte Text → Freigaben `quantenhardware`, `produktion`.
+  3. Zusammenfassung des Laufs: K und Validatoren-Zeile → App → Abholen (oder
+     „C1 eintragen“).
+  4. App → Einlösen an Stelle 0 (C1) → QR-Code. Den Text des QR-Codes (z. B. per
+     Bildschirmfoto und Texterkennung) in `quanten-s-annahme.yml` (Eingabe `vorlage`) →
+     Freigabe `produktion` → Urteil, Nachweis (Artefakt).
+  - Alternativ Stelle 1 (eigenes Konto): ein zweites Gerät mit der App öffnet
+    „Annahmestelle“ unter demselben Konto und scannt den QR-Code.
+- **PR (dieser Stand): R7, Nachweis nach dem Ende** (`DEZENTRAL.md` 17 „R7“, `HEUTE.md`
+  Abschnitt 2): Ist ein Token eingelöst oder tot und das Ende final, legt jeder Validator
+  seinen Abschnitt offen (`/api/quanten-w/validator/nachweis`); `quanten-s-nachweis`
+  rechnet nach, `quanten-s-annahme --nachweis-warten` prüft nach dem Einlösen,
+  `quanten-s-annahme.yml` legt den Nachweis als Artefakt ab. Vier echte Knoten grün
+  (alle 7 Vier-Knoten-Quantentests 357 s), 16 Mutationen rot. Braucht C1-Deploy.
+- **#610 gemergt (c6ad8a9b): Prüfvektor Annahmestelle (R6).** App #91 und #92 (1.27.0)
+  gemergt; Builds APK 44783544816 / iOS 44783551300, danach Freigaben `app-signatur`.
+- **#608 gemergt (038df902): R5** (siehe unten). **C1 läuft mit #608** (Deploy
+  [44782879350](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44782879350),
+  grün 20.11. ~18:20 UTC). Sicherheitsprüfung als PR-Kommentar; daraus die
   Härtung: der Knoten legt die geöffnete Messung selbst ab (root fasst das
   Messverzeichnis nicht an).
-- **App 1.26.0:** APK signiert; Veröffentlichung
-  [44779318372](https://github.com/hanoi96international-gif/Aequitas-App/actions/runs/44779318372)
-  wartet auf `app-signatur`, danach `release-ios.yml` (run_id 44748666661, Tag v1.26.0).
+- **App 1.26.0 veröffentlicht** (APK und iPhone). **App 1.27.0** (Annahmestelle): APK
+  signiert, Veröffentlichung [44792061041](https://github.com/hanoi96international-gif/Aequitas-App/actions/runs/44792061041)
+  wartet auf `app-signatur`, danach `release-ios.yml` (run_id 44783551300, Tag v1.27.0).
+- **Lehre:** vor jedem Push die GANZE Paket-Suite laufen lassen (`go test ./x/humanity/keeper/`),
+  nicht nur `-run`-Filter: `TestSperre_ImmerMitDefer` fand in #611 eine Sperre ohne `defer`.
 - **App #91 offen: die App als Annahmestelle (R6)** (`lib/quantenSStelle.ts`, Karte
   „Annahmestelle“, „C1 eintragen“, „Mein Konto eintragen“; 1040 App-Tests). **PR (dieser
   Stand): Prüfvektor dafür** (`quanten_s_stelle_vektor_test.go`, `DEZENTRAL.md` 17 „R6“).

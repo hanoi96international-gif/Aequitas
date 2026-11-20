@@ -678,6 +678,10 @@ func (d *quantenWDienst) oeffnungFuerStelle(K string, b int) (string, error) {
 		if tok == nil || tok.token == nil || tok.token.D == nil || tok.token.C == -1 {
 			return "", quantenWFehler("Oeffnung erst nach Bindung und Wahl auf der Kette (Stichprobe v2)")
 		}
+		// Fuer den Nachweis nach dem Ende (quanten_s_nachweis.go): Bindung und
+		// Wahl stehen -- jeder praeparierende Validator kommt hier vorbei,
+		// bevor eine Stelle anmelden kann.
+		d.endeMerken(K, e, tok.token)
 		// Nichts vor der Finalitaet (wie die Anteile, quanten_w_validator.go):
 		// faellt der Block der Bindung noch aus der Kette, haette eine
 		// bestochene Stelle die Stichprobe gesehen, und die Inhaberin baende
