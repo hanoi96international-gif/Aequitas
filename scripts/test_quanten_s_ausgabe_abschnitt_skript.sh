@@ -9,8 +9,10 @@ mkdir -p "$D/bin"
 # Gefaelschtes docker:
 # - inspect .State.Running meldet $LAEUFT, inspect .Config.Env die Umgebung $UMGEBUNG;
 # - exec quanten-s-messung-oeffnen schreibt Argumente und stdin (das Chiffrat)
-#   mit und gibt den Klartext $KLAR aus (oder scheitert mit EXIT_OEFFNEN, oder
-#   gibt OEFFNEN_AUS aus) -- wie der Knoten, der die versiegelte Messung oeffnet;
+#   mit und legt wie der Knoten den Klartext $KLAR mit 0600 unter dem Namen ins
+#   Messverzeichnis (/data/quanten im Container = $PROT/verz); EXIT_OEFFNEN
+#   laesst es scheitern, ABLEGEN=nein legt nichts ab, ABLEGEN=verweis legt
+#   einen Verweis ab;
 # - exec quanten-s-ausgabe schreibt Argumente und stdin mit, prueft, dass die
 #   Messung unter dem richtigen Namen mit 0600 liegt, und "verbraucht" sie wie
 #   der Dienst (VERBRAUCHEN=1), bevor es ein Ergebnis ausgibt.
@@ -26,7 +28,13 @@ case "$1" in
     case "$*" in *quanten-s-messung-oeffnen*)
       printf '%s\n' "$*" > "$PROT/args_oeffnen"; cat > "$PROT/stdin_oeffnen"
       [ "${EXIT_OEFFNEN:-0}" = 0 ] || exit "$EXIT_OEFFNEN"
-      printf '%s' "${OEFFNEN_AUS-$KLAR}"; exit 0 ;;
+      z="$PROT/verz/$PROT_NAME.json"
+      [ ! -e "$z" ] && [ ! -L "$z" ] || exit 1   # nie ueberschreiben
+      case "${ABLEGEN:-ja}" in
+        ja) printf '%s' "$KLAR" > "$z"; chmod 600 "$z" ;;
+        verweis) ln -s "$PROT/nirgends" "$z" ;;
+      esac
+      echo "$PROT_NAME.json"; exit 0 ;;
     esac
     printf '%s\n' "$*" > "$PROT/args"; cat > "$PROT/stdin"
     f="$PROT/verz/$PROT_NAME.json"
@@ -76,7 +84,7 @@ nichts_abgelegt() { [ -z "$(ls -A "$D/verz" 2>/dev/null)" ] || { echo "FEHLER: $
 
 # Gutfall
 neu; lauf ok "Gutfall"
-grep -q -- "-u 10001:10001 aequitas-node ./aequitasd quanten-s-messung-oeffnen --n 2 --name $NAME" "$D/args_oeffnen" \
+grep -q -- "-u 10001:10001 aequitas-node ./aequitasd quanten-s-messung-oeffnen --n 2 --name $NAME --verzeichnis /data/quanten" "$D/args_oeffnen" \
   || { echo "FEHLER: Oeffnen: $(cat "$D/args_oeffnen")"; exit 1; }
 [ "$(cat "$D/stdin_oeffnen")" = "$MESS" ] || { echo "FEHLER: Chiffrat nicht ueber stdin an den Knoten"; exit 1; }
 grep -q -- '-u 10001:10001 aequitas-node ./aequitasd quanten-s-ausgabe --api http://127.0.0.1:8080 --deckung 1000000 --frist 15m --toleranz 2 --stichprobe-v2' "$D/args" \
@@ -84,7 +92,8 @@ grep -q -- '-u 10001:10001 aequitas-node ./aequitasd quanten-s-ausgabe --api htt
 [ "$(cat "$D/stdin")" = "$BASEN" ] || { echo "FEHLER: Basen nicht ueber stdin"; exit 1; }
 [ "$(cat "$D/gesehen")" = "$KLAR" ] || { echo "FEHLER: Messung nicht unter dem Namen der Basen abgelegt"; exit 1; }
 [ "$(cat "$D/modus")" = 600 ] || { echo "FEHLER: Messung nicht 0600"; exit 1; }
-grep -qx "$ICH:$ICH -- $D/verz/.neu."* "$D/chown" || { echo "FEHLER: chown auf den Knotenbenutzer fehlt: $(cat "$D/chown" 2>/dev/null)"; exit 1; }
+# Root legt im Verzeichnis des Knotenbenutzers nichts an und aendert nichts.
+[ ! -e "$D/chown" ] || { echo "FEHLER: root hat chown aufgerufen: $(cat "$D/chown")"; exit 1; }
 grep -q eingeloest "$D/out" || { echo "FEHLER: Ergebnis fehlt"; exit 1; }
 nichts_abgelegt "Gutfall"
 neu; lauf ok "Deckung 2 AEQ, Toleranz 4" DECKUNG=2000000 TOLERANZ=4
@@ -116,7 +125,8 @@ done
 # Der Knoten oeffnet die versiegelte Messung nicht (fremder Schluessel,
 # veraendert, falsche Form) oder liefert nichts: kein Werkzeug, nichts abgelegt.
 neu; lauf halt "Oeffnen scheitert" EXIT_OEFFNEN=1; keine_ausgabe "Oeffnen scheitert"; nichts_abgelegt "Oeffnen scheitert"
-neu; lauf halt "Oeffnen liefert nichts" OEFFNEN_AUS=; keine_ausgabe "Oeffnen liefert nichts"; nichts_abgelegt "Oeffnen liefert nichts"
+neu; lauf halt "Knoten legt nichts ab" ABLEGEN=nein; keine_ausgabe "Knoten legt nichts ab"; nichts_abgelegt "Knoten legt nichts ab"
+neu; lauf halt "Knoten legt einen Verweis ab" ABLEGEN=verweis; keine_ausgabe "Verweis abgelegt"; nichts_abgelegt "Verweis abgelegt"
 neu; rm -f "$D/m.json"; lauf halt "keine Messung"; kein_exec "keine Messung"
 neu; rm -f "$D/b.json"; lauf halt "keine Basen"; kein_exec "keine Basen"
 neu; rm -f "$D/m.json"; printf '%s' "$MESS" > "$D/echt.json"; ln -s "$D/echt.json" "$D/m.json"; lauf halt "Messung als Verweis"

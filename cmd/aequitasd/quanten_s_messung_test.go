@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -26,9 +27,17 @@ func TestQuantenSMessungOeffnenBefehl(t *testing.T) {
 		rc := quantenSMessungOeffnenMit(args, uid, key, strings.NewReader(ein), &aus, &log)
 		return rc, aus.String(), log.String()
 	}
-	args := []string{"--n", "8", "--name", v.Name}
-	if rc, aus, log := lauf(args, 10001, v.Schluessel, v.Chiffrat); rc != 0 || !strings.Contains(aus, `"y":"10011100"`) {
+	dir := t.TempDir()
+	args := []string{"--n", "8", "--name", v.Name, "--verzeichnis", dir}
+	if rc, aus, log := lauf(args, 10001, v.Schluessel, v.Chiffrat); rc != 0 || aus != v.Name+".json\n" {
 		t.Fatalf("Gutfall: %d %q %q", rc, aus, log)
+	}
+	if roh, err := os.ReadFile(filepath.Join(dir, v.Name+".json")); err != nil || !strings.Contains(string(roh), `"y":"10011100"`) {
+		t.Fatalf("nicht abgelegt: %v", err)
+	}
+	os.Remove(filepath.Join(dir, v.Name+".json"))
+	if rc, _, _ := lauf([]string{"--n", "8", "--name", v.Name}, 10001, v.Schluessel, v.Chiffrat); rc != 2 {
+		t.Fatal("ohne Verzeichnis gestartet")
 	}
 	if rc, aus, _ := lauf(args, 0, v.Schluessel, v.Chiffrat); rc != 2 || aus != "" {
 		t.Fatal("als root gestartet")
@@ -39,10 +48,10 @@ func TestQuantenSMessungOeffnenBefehl(t *testing.T) {
 	if rc, aus, log := lauf(args, 10001, strings.Repeat("72", 32), v.Chiffrat); rc != 1 || aus != "" || strings.Contains(log, strings.Repeat("72", 32)) {
 		t.Fatalf("fremder Schluessel: %d %q %q", rc, aus, log)
 	}
-	if rc, aus, _ := lauf([]string{"--n", "8", "--name", strings.Repeat("0", 64)}, 10001, v.Schluessel, v.Chiffrat); rc != 1 || aus != "" {
+	if rc, aus, _ := lauf([]string{"--n", "8", "--name", strings.Repeat("0", 64), "--verzeichnis", dir}, 10001, v.Schluessel, v.Chiffrat); rc != 1 || aus != "" {
 		t.Fatal("andere Basen angenommen")
 	}
-	if rc, _, _ := lauf([]string{"--n", "8", "--name", v.Name, "ueberzaehlig"}, 10001, v.Schluessel, v.Chiffrat); rc != 2 {
+	if rc, _, _ := lauf([]string{"--n", "8", "--name", v.Name, "--verzeichnis", dir, "ueberzaehlig"}, 10001, v.Schluessel, v.Chiffrat); rc != 2 {
 		t.Fatal("ueberzaehliges Argument angenommen")
 	}
 }

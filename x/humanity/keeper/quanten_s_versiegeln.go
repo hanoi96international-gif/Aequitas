@@ -9,7 +9,8 @@ package keeper
 // s_versiegeln.py auf den Schluessel des Validators, der den Abschnitt
 // praepariert. Durch GitHub (Job-Ausgaben) geht nur das Chiffrat; erst der
 // Knoten des Validators oeffnet es hier wieder und legt den Datensatz in sein
-// Messverzeichnis (deploy/quanten-s-ausgabe-abschnitt.sh).
+// Messverzeichnis (QuantenSMessungOeffnen, aufgerufen von
+// deploy/quanten-s-ausgabe-abschnitt.sh).
 //
 // Verfahren: ECIES wie go-ethereum (crypto/ecies), Inhalt
 // {"dom": quantenSMessungDom, "an": <Adresse>, "messung": <Datensatz>}.
@@ -20,12 +21,16 @@ package keeper
 import (
 	"bytes"
 	"crypto/ecdsa"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/crypto"
@@ -121,12 +126,27 @@ func quantenSStrengLesen(roh []byte, ziel *quantenSVersiegelt) error {
 	return nil
 }
 
-// QuantenSMessungOeffnen: `aequitasd quanten-s-messung-oeffnen --n N --name H`
-// < Chiffrat (Hex) > Datensatz (JSON, wie ihn das Messverzeichnis liest).
-func QuantenSMessungOeffnen(schluesselHex string, ein io.Reader, n int, name string, aus io.Writer) error {
+// QuantenSMessungOeffnen: `aequitasd quanten-s-messung-oeffnen --n N --name H
+// --verzeichnis D` < Chiffrat (Hex). Legt den Datensatz als D/H.json ab (wie
+// ihn das Messverzeichnis liest) und gibt nur den Namen aus.
+//
+// Das Ablegen tut der Knotenbenutzer selbst (im Container), nicht root auf dem
+// Server: Das Messverzeichnis gehoert dem Knotenbenutzer, und ein root, der
+// darin Dateien anlegt, aendert und verlinkt, folgte einem dort untergeschobenen
+// Verweis. Hier: das Verzeichnis darf kein Verweis sein; erst unter eigenem
+// Zufallsnamen (O_EXCL, 0600, auf die Platte), dann per Link auf den
+// endgueltigen Namen -- nie ueberschrieben, nie halb sichtbar, nie einem
+// Verweis gefolgt.
+func QuantenSMessungOeffnen(schluesselHex string, ein io.Reader, n int, name, verzeichnis string, aus io.Writer) error {
 	key, err := crypto.HexToECDSA(quantenSSchluesselText(schluesselHex))
 	if err != nil {
 		return errors.New("Knotenschluessel unlesbar") // ohne den Schluessel im Text
+	}
+	// Der Name wird erst Teil eines Pfads, nachdem quantenSMessungOeffnen ihn
+	// als sha256 der Basen bestaetigt hat (64 kleine Hex-Zeichen).
+	name = strings.ToLower(strings.TrimSpace(name))
+	if info, err := os.Lstat(verzeichnis); err != nil || !info.IsDir() {
+		return errors.New("Messverzeichnis: kein Verzeichnis (oder ein Verweis)")
 	}
 	// Hoechstens ein Byte ueber der Grenze lesen; quantenSMessungOeffnen
 	// weist dann ab, bevor es entschluesselt.
@@ -134,9 +154,61 @@ func QuantenSMessungOeffnen(schluesselHex string, ein io.Reader, n int, name str
 	if err != nil {
 		return err
 	}
-	m, err := quantenSMessungOeffnen(key, string(roh), n, strings.ToLower(strings.TrimSpace(name)))
+	m, err := quantenSMessungOeffnen(key, string(roh), n, name)
 	if err != nil {
 		return err
 	}
-	return json.NewEncoder(aus).Encode(m)
+	text, err := json.Marshal(m)
+	if err != nil {
+		return err
+	}
+	neu, err := quantenSDateiNeu(verzeichnis, filepath.Join(verzeichnis, name+".json"), append(text, '\n'))
+	if err != nil {
+		return err
+	}
+	if !neu {
+		return errors.New("zu diesen Basen liegt schon eine Messung (nicht ueberschrieben)")
+	}
+	_, err = fmt.Fprintln(aus, name+".json")
+	return err
+}
+
+// quantenSZufallsName: Name der Zwischendatei (im Test ersetzbar, um einen
+// untergeschobenen Verweis unter genau diesem Namen zu pruefen).
+var quantenSZufallsName = func() (string, error) {
+	var z [8]byte
+	if _, err := rand.Read(z[:]); err != nil {
+		return "", err
+	}
+	return ".neu-" + hex.EncodeToString(z[:]), nil
+}
+
+// quantenSDateiNeu: roh als neue Datei ziel in dir -- erst unter eigenem
+// Zufallsnamen (O_EXCL: scheitert auch an einem Verweis), 0600, auf die Platte,
+// dann per Link auf ziel (scheitert, wenn es ziel schon gibt, auch als
+// Verweis). false: ziel war schon vergeben. Wie quantenSVormerkAnlegen.
+func quantenSDateiNeu(dir, ziel string, roh []byte) (bool, error) {
+	zname, err := quantenSZufallsName()
+	if err != nil {
+		return false, err
+	}
+	tmp := filepath.Join(dir, zname)
+	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return false, errors.New("Messung anlegen: nicht moeglich")
+	}
+	defer os.Remove(tmp)
+	_, werr := f.Write(roh)
+	serr := f.Sync()
+	cerr := f.Close()
+	if werr != nil || serr != nil || cerr != nil {
+		return false, errors.New("Messung schreiben: nicht moeglich")
+	}
+	if err := os.Link(tmp, ziel); err != nil {
+		if errors.Is(err, fs.ErrExist) {
+			return false, nil
+		}
+		return false, errors.New("Messung ablegen: nicht moeglich")
+	}
+	return true, nil
 }

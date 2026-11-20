@@ -138,9 +138,11 @@ func quantenSAnnahmeMit(ctx context.Context, args []string, uid int, umgebung fu
 }
 
 // quantenSMessungOeffnenBefehl: `aequitasd quanten-s-messung-oeffnen --n N
-// --name SHA256(y)` < versiegelte Messung (Hex) > Datensatz. Der Schluessel ist
-// der des Knotens (RELAYER_PRIVATE_KEY aus der Umgebung des Containers), nie
-// auf der Befehlszeile. Nicht als root.
+// --name SHA256(y) --verzeichnis D` < versiegelte Messung (Hex). Legt den
+// Datensatz als D/<name>.json ab (nie ueberschrieben, keinem Verweis gefolgt)
+// und gibt nur den Dateinamen aus, nie den Inhalt. Der Schluessel ist der des
+// Knotens (RELAYER_PRIVATE_KEY aus der Umgebung des Containers), nie auf der
+// Befehlszeile. Nicht als root.
 func quantenSMessungOeffnenBefehl(args []string) int {
 	return quantenSMessungOeffnenMit(args, os.Getuid(), os.Getenv("RELAYER_PRIVATE_KEY"), os.Stdin, os.Stdout, os.Stderr)
 }
@@ -150,6 +152,7 @@ func quantenSMessungOeffnenMit(args []string, uid int, schluessel string, ein io
 	fs.SetOutput(log)
 	n := fs.Int("n", 0, "Stellen des Abschnitts")
 	name := fs.String("name", "", "sha256 der Basen (64 Hex-Zeichen, Name im Messverzeichnis)")
+	verzeichnis := fs.String("verzeichnis", "", "Messverzeichnis des Knotens (AEQUITAS_QS_MESSQUELLE, z. B. /data/quanten)")
 	if err := fs.Parse(args); err != nil || fs.NArg() != 0 {
 		return 2
 	}
@@ -161,7 +164,11 @@ func quantenSMessungOeffnenMit(args []string, uid int, schluessel string, ein io
 		fmt.Fprintln(log, "ABBRUCH: RELAYER_PRIVATE_KEY fehlt")
 		return 2
 	}
-	if err := keeper.QuantenSMessungOeffnen(schluessel, ein, *n, *name, aus); err != nil {
+	if *verzeichnis == "" {
+		fmt.Fprintln(log, "ABBRUCH: --verzeichnis fehlt")
+		return 2
+	}
+	if err := keeper.QuantenSMessungOeffnen(schluessel, ein, *n, *name, *verzeichnis, aus); err != nil {
 		fmt.Fprintln(log, "FEHLER:", err)
 		return 1
 	}

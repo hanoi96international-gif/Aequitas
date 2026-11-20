@@ -12,9 +12,9 @@
 #
 #   QS_DATEI   die VERSIEGELTE Messung (Hex; forschung/quantengeld/
 #              s_versiegeln.py auf den Schluessel von C1). Im Klartext liegt
-#              sie nur im Messverzeichnis, geoeffnet vom Knoten selbst
-#              (aequitasd quanten-s-messung-oeffnen, prueft Empfaenger, Form,
-#              Laenge und Basen).
+#              sie nur im Messverzeichnis, geoeffnet und abgelegt vom Knoten
+#              selbst (aequitasd quanten-s-messung-oeffnen, prueft Empfaenger,
+#              Form, Laenge und Basen).
 #   QS_BASEN   Weg abschnitte-v2: {"n": N, "basen": ["..."]} fuer das Werkzeug
 #              (stdin). Weg rollen: die Bestellung der Inhaberin (z. B. aus
 #              der App); das Werkzeug gibt fuer sie aus (--fuer-inhaberin).
@@ -41,11 +41,10 @@ QS_NAME="${QS_NAME:-}"
 QS_N="${QS_N:-}"
 QS_ROLLEN="${QS_ROLLEN-nein}"
 ABGELEGT=""
-TMP=""
 aufraeumen() {
   rm -f -- "$QS_DATEI" "$QS_BASEN"
-  [ -z "$TMP" ] || rm -f -- "$TMP"
-  # Nur die eigene Datei, und nur, wenn der Dienst sie nicht verbraucht hat.
+  # Nur die eigene Datei (rm folgt keinem Verweis), und nur, wenn der Dienst
+  # sie nicht verbraucht hat.
   [ -z "$ABGELEGT" ] || rm -f -- "$ABGELEGT"
 }
 trap aufraeumen EXIT
@@ -73,24 +72,22 @@ done
 docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$CONTAINER" 2>/dev/null \
   | grep -qx 'AEQUITAS_QS_MESSQUELLE=/data/quanten' || halt "der Knoten hat keine Messquelle (AEQUITAS_QS_MESSQUELLE)"
 
-# Ablegen wie hardware_ibm.py s_messquelle_ablegen: erst unter eigenem Namen
-# (0600, Knotenbenutzer), dann per ln auf den endgueltigen Namen -- ln
-# scheitert, wenn es ihn schon gibt; nie wird eine Messung ueberschrieben.
-# Geoeffnet wird die versiegelte Messung vom Knoten selbst (sein Schluessel
-# verlaesst den Container nicht); der Klartext geht direkt in die neue Datei
-# im Messverzeichnis, nie nach /root.
+# Ablegen: der Knoten selbst (als Knotenbenutzer im Container) oeffnet die
+# versiegelte Messung und legt sie in sein Messverzeichnis -- erst unter
+# eigenem Zufallsnamen (O_EXCL, 0600), dann per Link auf den endgueltigen
+# Namen; nie ueberschrieben, keinem Verweis gefolgt (aequitasd
+# quanten-s-messung-oeffnen). Root legt im Verzeichnis des Knotenbenutzers
+# nichts an und aendert nichts: ein dort untergeschobener Verweis liefe sonst
+# ins Leere des Hosts. Sein Schluessel verlaesst den Container nicht; der
+# Klartext liegt nie unter /root.
 ZIEL="$QS_VERZ/$QS_NAME.json"
 [ ! -e "$ZIEL" ] && [ ! -L "$ZIEL" ] || halt "zu diesen Basen liegt schon eine Messung"
-TMP=$(mktemp -p "$QS_VERZ" .neu.XXXXXXXX)
-chmod 600 -- "$TMP"
-docker exec -i -u 10001:10001 "$CONTAINER" ./aequitasd quanten-s-messung-oeffnen --n "$QS_N" --name "$QS_NAME" \
-  < "$QS_DATEI" > "$TMP" || halt "versiegelte Messung nicht geoeffnet (nicht fuer C1, veraendert oder falsche Form)"
-[ -s "$TMP" ] || halt "geoeffnete Messung leer"
-chown "$QS_UID:$QS_UID" -- "$TMP"
-ln -- "$TMP" "$ZIEL" || halt "zu diesen Basen liegt schon eine Messung"
+docker exec -i -u 10001:10001 "$CONTAINER" ./aequitasd quanten-s-messung-oeffnen --n "$QS_N" --name "$QS_NAME" --verzeichnis /data/quanten \
+  < "$QS_DATEI" > /dev/null || halt "versiegelte Messung nicht geoeffnet oder nicht abgelegt (nicht fuer C1, veraendert, falsche Form, schon da)"
+# Erst jetzt ist es die eigene Datei (beim Aufraeumen zu entfernen); eine,
+# die schon vorher da war, faesst das Skript nie an.
 ABGELEGT="$ZIEL"
-rm -f -- "$TMP"
-TMP=""
+[ -f "$ZIEL" ] && [ ! -L "$ZIEL" ] || halt "Messung nicht im Messverzeichnis"
 
 if [ "$QS_ROLLEN" = ja ]; then
   docker exec -i -u 10001:10001 "$CONTAINER" ./aequitasd quanten-s-ausgabe \

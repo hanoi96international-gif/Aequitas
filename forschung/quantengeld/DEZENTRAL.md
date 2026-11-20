@@ -1220,8 +1220,11 @@ fällt jetzt weg:
     Validator-Dienst und prüft, dass er zur festgelegten Adresse von C1 gehört
     (Keccak-256).
   - Nur das Chiffrat verlässt den Mess-Job. Auf C1 öffnet der Knoten es selbst
-    (`aequitasd quanten-s-messung-oeffnen`, Schlüssel aus dem Container) direkt in
-    sein Messverzeichnis.
+    (`aequitasd quanten-s-messung-oeffnen`, Schlüssel aus dem Container) und legt
+    es selbst in sein Messverzeichnis: erst unter eigenem Zufallsnamen (O_EXCL,
+    0600), dann per Link auf den Namen der Basen, nie überschrieben, keinem Verweis
+    gefolgt. Root legt im Verzeichnis des Knotenbenutzers nichts an und ändert
+    nichts (Härtung aus der Sicherheitsprüfung von #608).
   - Geprüft beim Öffnen: richtiger Schlüssel, unverändert, Domäne, Empfänger = C1,
     genau die sechs Felder, Bits in der Länge n, Basen passen zum Namen, Größe.
   - Belege: Prüfvektor in beide Richtungen (`testdata/quanten_s_versiegelt_vektor.json`

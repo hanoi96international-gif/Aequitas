@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -65,19 +66,113 @@ func TestQuantenSMessungOeffnenVektor(t *testing.T) {
 		t.Fatalf("Python-Chiffrat nicht gelesen: %v", err)
 	}
 	var aus bytes.Buffer
-	if err := QuantenSMessungOeffnen(v.Schluessel, strings.NewReader(v.Chiffrat+"\n"), 8, v.Name, &aus); err != nil {
+	dir := t.TempDir()
+	if err := QuantenSMessungOeffnen(v.Schluessel, strings.NewReader(v.Chiffrat+"\n"), 8, v.Name, dir, &aus); err != nil {
 		t.Fatal(err)
 	}
-	var m quantenSMessDatensatz
-	dec := json.NewDecoder(&aus)
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&m); err != nil || m != v.Messung {
-		t.Fatalf("Datensatz %+v %v", m, err)
+	// Ausgegeben wird nur der Name, nie der Inhalt.
+	if aus.String() != v.Name+".json\n" || quantenSMessName(v.Messung.Y) != v.Name+".json" {
+		t.Fatalf("Ausgabe %q", aus.String())
 	}
-	// Die Ausgabe ist genau das, was das Messverzeichnis liest.
-	if quantenSMessName(m.Y) != v.Name+".json" {
-		t.Fatal("Name im Messverzeichnis")
+	pfad := filepath.Join(dir, v.Name+".json")
+	info, err := os.Lstat(pfad)
+	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm() != 0o600 {
+		t.Fatalf("abgelegt: %v %v", info, err)
 	}
+	if e, _ := os.ReadDir(dir); len(e) != 1 {
+		t.Fatalf("Reste im Verzeichnis: %v", e)
+	}
+	// Genau das, was der Dienst liest: abschnitt() nimmt die Datei an und
+	// entfernt sie.
+	mv := &quantenSMessVerzeichnis{dir: dir}
+	y, _ := quantenSBitsLesen(v.Messung.Y, 8)
+	u, tt, x, wo, err := mv.abschnitt(y)
+	if err != nil || qsBitsText(u) != v.Messung.U || qsBitsText(tt) != v.Messung.T || qsBitsText(x) != v.Messung.X || wo != "Pruefvektor vektor-1" {
+		t.Fatalf("Dienst liest die abgelegte Messung nicht: %v %v", wo, err)
+	}
+}
+
+func TestQuantenSMessungAblegenMissbrauch(t *testing.T) {
+	v := qsvLesen(t)
+	lauf := func(dir, name, chiffrat string) (string, error) {
+		var aus bytes.Buffer
+		err := QuantenSMessungOeffnen(v.Schluessel, strings.NewReader(chiffrat), 8, name, dir, &aus)
+		return aus.String(), err
+	}
+	leer := func(t *testing.T, dir string, ausser ...string) {
+		t.Helper()
+		e, _ := os.ReadDir(dir)
+		if len(e) != len(ausser) {
+			t.Fatalf("Reste im Verzeichnis: %v", e)
+		}
+	}
+	// Es liegt schon eine Messung: nicht ueberschrieben.
+	dir := t.TempDir()
+	ziel := filepath.Join(dir, v.Name+".json")
+	os.WriteFile(ziel, []byte("alt"), 0o600)
+	if aus, err := lauf(dir, v.Name, v.Chiffrat); err == nil || aus != "" {
+		t.Fatal("vorhandene Messung ueberschrieben")
+	}
+	if roh, _ := os.ReadFile(ziel); string(roh) != "alt" {
+		t.Fatal("vorhandene Messung veraendert")
+	}
+	leer(t, dir, "alt")
+	// Unter dem Zielnamen liegt ein Verweis: ihm wird nicht gefolgt.
+	dir = t.TempDir()
+	draussen := filepath.Join(t.TempDir(), "opfer")
+	os.WriteFile(draussen, []byte("opfer"), 0o644)
+	os.Symlink(draussen, filepath.Join(dir, v.Name+".json"))
+	if _, err := lauf(dir, v.Name, v.Chiffrat); err == nil {
+		t.Fatal("einem Verweis gefolgt")
+	}
+	if roh, _ := os.ReadFile(draussen); string(roh) != "opfer" {
+		t.Fatal("Ziel des Verweises beschrieben")
+	}
+	leer(t, dir, "verweis")
+	// Das Verzeichnis selbst ist ein Verweis.
+	echt := t.TempDir()
+	verweis := filepath.Join(t.TempDir(), "verz")
+	os.Symlink(echt, verweis)
+	if _, err := lauf(verweis, v.Name, v.Chiffrat); err == nil {
+		t.Fatal("in ein verlinktes Verzeichnis abgelegt")
+	}
+	leer(t, echt)
+	if _, err := lauf(filepath.Join(echt, "fehlt"), v.Name, v.Chiffrat); err == nil {
+		t.Fatal("ohne Verzeichnis abgelegt")
+	}
+	// Der Name wird Teil des Pfads: nur 64 Hex-Zeichen.
+	for _, name := range []string{"../" + v.Name[3:], v.Name[:63] + "/", "", strings.ToUpper(v.Name[:1]) + "x" + v.Name[2:]} {
+		dir = t.TempDir()
+		if _, err := lauf(dir, name, v.Chiffrat); err == nil {
+			t.Fatalf("Name %q angenommen", name)
+		}
+		leer(t, dir)
+	}
+	// Unter dem Namen der Zwischendatei liegt ein Verweis (vom Knotenbenutzer
+	// untergeschoben): O_EXCL legt nicht an, dem Verweis wird nicht gefolgt.
+	dir = t.TempDir()
+	opfer := filepath.Join(t.TempDir(), "opfer")
+	os.WriteFile(opfer, []byte("opfer"), 0o644)
+	os.Symlink(opfer, filepath.Join(dir, ".neu-fest"))
+	alt := quantenSZufallsName
+	quantenSZufallsName = func() (string, error) { return ".neu-fest", nil }
+	_, err := lauf(dir, v.Name, v.Chiffrat)
+	quantenSZufallsName = alt
+	if err == nil {
+		t.Fatal("ueber einen Verweis als Zwischendatei abgelegt")
+	}
+	if roh, _ := os.ReadFile(opfer); string(roh) != "opfer" {
+		t.Fatal("Ziel des Verweises beschrieben")
+	}
+	if _, err := os.Lstat(filepath.Join(dir, v.Name+".json")); err == nil {
+		t.Fatal("trotzdem unter dem Namen abgelegt")
+	}
+	// Scheitert das Oeffnen, wird nichts angelegt.
+	dir = t.TempDir()
+	if _, err := lauf(dir, v.Name, "04"+v.Chiffrat[2:len(v.Chiffrat)-2]+"00"); err == nil {
+		t.Fatal("veraendertes Chiffrat abgelegt")
+	}
+	leer(t, dir)
 }
 
 func TestQuantenSMessungOeffnenMissbrauch(t *testing.T) {
@@ -141,12 +236,13 @@ func TestQuantenSMessungOeffnenMissbrauch(t *testing.T) {
 	}
 	// Ueber den Befehl: ein unlesbarer Schluessel taucht nicht im Fehler auf.
 	var aus bytes.Buffer
-	if err := QuantenSMessungOeffnen("geheim-kaputt", strings.NewReader(v.Chiffrat), 8, v.Name, &aus); err == nil || strings.Contains(err.Error(), "geheim") {
+	dir := t.TempDir()
+	if err := QuantenSMessungOeffnen("geheim-kaputt", strings.NewReader(v.Chiffrat), 8, v.Name, dir, &aus); err == nil || strings.Contains(err.Error(), "geheim") {
 		t.Fatalf("Schluesselfehler: %v", err)
 	}
 	// Die Grenze greift vor dem Entschluesseln (eigene Meldung), auch wenn der
 	// Text danach ein gueltiges Chiffrat waere.
-	if err := QuantenSMessungOeffnen(v.Schluessel, strings.NewReader(v.Chiffrat+strings.Repeat(" ", quantenSVersiegeltMax)), 8, v.Name, &aus); err == nil || !strings.Contains(err.Error(), "zu gross") {
+	if err := QuantenSMessungOeffnen(v.Schluessel, strings.NewReader(v.Chiffrat+strings.Repeat(" ", quantenSVersiegeltMax)), 8, v.Name, dir, &aus); err == nil || !strings.Contains(err.Error(), "zu gross") {
 		t.Fatalf("zu grosse Eingabe: %v", err)
 	}
 	if _, err := quantenSMessungOeffnen(key, strings.Repeat("00", quantenSVersiegeltMax/2+1), 8, v.Name); err == nil || !strings.Contains(err.Error(), "zu gross") {
@@ -154,5 +250,8 @@ func TestQuantenSMessungOeffnenMissbrauch(t *testing.T) {
 	}
 	if aus.Len() != 0 {
 		t.Fatal("im Fehlerfall etwas ausgegeben")
+	}
+	if e, _ := os.ReadDir(dir); len(e) != 0 {
+		t.Fatalf("im Fehlerfall etwas abgelegt: %v", e)
 	}
 }
