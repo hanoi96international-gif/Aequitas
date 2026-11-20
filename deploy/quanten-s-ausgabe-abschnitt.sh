@@ -39,7 +39,7 @@ DECKUNG="${DECKUNG-1000000}"
 TOLERANZ="${TOLERANZ-2}"
 QS_NAME="${QS_NAME:-}"
 QS_N="${QS_N:-}"
-QS_ROLLEN="${QS_ROLLEN:-nein}"
+QS_ROLLEN="${QS_ROLLEN-nein}"
 ABGELEGT=""
 TMP=""
 aufraeumen() {
