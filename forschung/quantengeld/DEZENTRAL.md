@@ -1026,12 +1026,16 @@ in der Hand, und das ist nicht dezentral. Der Validator-Dienst konnte die Trennu
   Validatoren nicht.
 - **Validator-APIs** kommen nur aus der eigenen Angabe, nie aus Paket oder Vorlage. Keine
   Rolle fragt eine fremde Adresse an.
+- **Den Stand der Kette** liest jede Rolle bei dem Knoten, den sie selbst nennt (`--api`),
+  und glaubt ihm, wie jede Wallet ohne eigenen Knoten. Die Annahmestelle nimmt darum ihren
+  eigenen Knoten (Vorgabe `127.0.0.1`). Lügt der Knoten der Inhaberin, kann sie einen Token
+  annehmen, den es nicht gibt. Einlösen kann ihn dann niemand, verloren geht kein Wert.
 - **Grenzen:**
   - Bestellung, Paket, Vorlage und Datei höchstens 4 MiB.
   - Strenges JSON: keine unbekannten Felder, nur ein Wert.
   - Jede Anfrage mit Frist.
-  - Die Datei der Inhaberin wird nur gelesen, wenn sie 0600 ist und kein Verweis.
-    Ersetzt wird sie atomar.
+  - Die Datei der Inhaberin wird nur gelesen, wenn sie 0600 ist und kein Verweis, auch
+    nicht zwischen Prüfen und Öffnen vertauscht (`os.SameFile`). Ersetzt wird sie atomar.
   - Schlüssel stehen in keiner Ausgabe und keiner Fehlermeldung.
 
 ### Belegt
@@ -1059,7 +1063,7 @@ in der Hand, und das ist nicht dezentral. Der Validator-Dienst konnte die Trennu
   - Die Befehle: Sperren (Unterbefehle, Optionen, nicht als root, kein Schlüssel auf der
     Befehlszeile, kein Schlüssel in der Ausgabe).
   - Unter `go test -race` grün.
-- **Gegenprobe:** 22 Mutationen, alle rot. Zwei überlebten zuerst und zeigten Lücken in
+- **Gegenprobe:** 24 Mutationen, alle rot. Zwei überlebten zuerst und zeigten Lücken in
   den Tests: die eigene Zählprobe der Inhaberin, und dass eine gefälschte Vorlage schon
   vor der Kette auffällt. Beide haben jetzt einen Test.
 - **Vier echte Knoten** (`TestVierKnotenQuantenSRollen(Ausfall)_RealDB`; eigene

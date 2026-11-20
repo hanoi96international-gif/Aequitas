@@ -63,7 +63,7 @@ dezentrales Quantengeld“.
       - Werkzeug in Schritte zerlegt (`quantenSRunde`, `quantenSAusgabeEinreichen`,
         `quantenSBinden`/`Waehlen`, `quantenSAnmeldenUrteil`,
         `quantenSStichprobeV2Laden` je Stelle); bisherige Tests unverändert grün.
-      - Belege: 15 Tests, 22/22 Mutationen rot, `-race` grün. Vier Knoten lokal grün
+      - **#605 offen.** Belege: 15 Tests, 24/24 Mutationen rot, `-race` grün. Vier Knoten lokal grün
         (`TestVierKnotenQuantenSRollen(Ausfall)_RealDB`, 51 s / 62 s); die bisherigen
         Vier-Knoten-Wege ebenfalls.
       - Pilot-Workflow: Eingabe `rollen = ja` (mit `abschnitte`, `stichprobe_v2 = ja`).

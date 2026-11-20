@@ -46,6 +46,9 @@ package keeper
 //     von der Kette. Ihre Vorab-Rechnung muss zum Urteil passen (sonst BEFUND).
 //   - Die Validatoren-APIs kommen aus der eigenen Angabe, nie aus Paket oder
 //     Vorlage (keine fremde Adresse wird angefragt).
+//   - Den Stand der Kette liest jede Rolle bei dem Knoten, den SIE nennt
+//     (--api), und glaubt ihm -- wie jede Wallet ohne eigenen Knoten. Die
+//     Annahmestelle nimmt darum ihren eigenen Knoten (Vorgabe 127.0.0.1).
 //
 // WAS DER AUSGEBER LERNT: die Basen y (er reicht sie an die Validatoren
 // weiter). Mit d auf der Kette kennt er z und aus c die gewaehlte Stelle,
@@ -712,17 +715,17 @@ func quantenSInhaberinLesen(pfad string) (*QuantenSInhaberinDatei, error) {
 	if err != nil {
 		return nil, fmt.Errorf("Datei der Inhaberin: %v", err)
 	}
-	if !fi.Mode().IsRegular() {
+	if !fi.Mode().IsRegular() { // auch kein FIFO, an dem Open haengen bliebe
 		return nil, errors.New("Datei der Inhaberin: keine gewoehnliche Datei (Verweis?)")
-	}
-	if fi.Mode().Perm()&0o077 != 0 {
-		return nil, errors.New("Datei der Inhaberin: fuer andere lesbar -- erst chmod 600")
 	}
 	f, err := os.Open(pfad)
 	if err != nil {
 		return nil, fmt.Errorf("Datei der Inhaberin: %v", err)
 	}
 	defer f.Close()
+	if err := quantenSInhaberinDateiPasst(f, pfad); err != nil {
+		return nil, err
+	}
 	var d QuantenSInhaberinDatei
 	if err := quantenSJSONLesen(f, "Datei der Inhaberin", &d); err != nil {
 		return nil, err
@@ -734,6 +737,22 @@ func quantenSInhaberinLesen(pfad string) (*QuantenSInhaberinDatei, error) {
 		return nil, err
 	}
 	return &d, nil
+}
+
+// quantenSInhaberinDateiPasst: die GEOEFFNETE Datei ist genau die, die jetzt
+// unter pfad liegt -- eine gewoehnliche Datei, kein Verweis, auch nicht
+// zwischen Pruefen und Oeffnen vertauscht -- und nur fuer die Eigentuemerin
+// lesbar.
+func quantenSInhaberinDateiPasst(f *os.File, pfad string) error {
+	fi, err := f.Stat()
+	li, lerr := os.Lstat(pfad)
+	if err != nil || lerr != nil || !li.Mode().IsRegular() || !fi.Mode().IsRegular() || !os.SameFile(fi, li) {
+		return errors.New("Datei der Inhaberin: keine gewoehnliche Datei (Verweis?)")
+	}
+	if fi.Mode().Perm()&0o077 != 0 {
+		return errors.New("Datei der Inhaberin: fuer andere lesbar -- erst chmod 600")
+	}
+	return nil
 }
 
 // quantenSInhaberinSchreiben: neu = die Datei darf es noch nicht geben;

@@ -890,7 +890,7 @@ eigenen Befehl und Schlüssel (`DEZENTRAL.md` 17):
 - **Belegt:** Auf vier echten Knoten (3 von 4) grün, auch mit Ausfall eines Validators.
   Jede Rolle sprach mit einem anderen Knoten. Eine böse Inhaberin versuchte zuerst die
   Doppelvorlage; sie wurde vorab und von der Kette abgewiesen. Danach wurde ehrlich
-  eingelöst. Dazu kommen 15 Tests mit Fälschungen und 22 Mutationen, alle rot.
+  eingelöst. Dazu kommen 15 Tests mit Fälschungen und 24 Mutationen, alle rot.
 - **Kein neuer Konsens.** Die Kette prüfte das schon. Neu sind nur öffentliche Felder in
   der Ansicht des Tokens (Wurzel, Proben, d, c).
 - **Ehrlich dazu:**

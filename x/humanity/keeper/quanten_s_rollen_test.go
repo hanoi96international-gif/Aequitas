@@ -581,6 +581,24 @@ func TestQuantenSInhaberinDatei(t *testing.T) {
 	if err := quantenSInhaberinSchreiben(verweis, d, false); err == nil {
 		t.Fatal("durch einen Verweis geschrieben")
 	}
+	// Zwischen Pruefen und Oeffnen vertauscht: die geoeffnete Datei ist nicht
+	// die unter dem Pfad -- abgewiesen.
+	andere := filepath.Join(dir, "andere.json")
+	if err := quantenSInhaberinSchreiben(andere, d, true); err != nil {
+		t.Fatal(err)
+	}
+	f, err := os.Open(andere)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := quantenSInhaberinDateiPasst(f, pfad); err == nil {
+		t.Fatal("vertauschte Datei angenommen")
+	}
+	if err := quantenSInhaberinDateiPasst(f, andere); err != nil {
+		t.Fatalf("dieselbe Datei abgewiesen: %v", err)
+	}
+	f.Close()
+	os.Remove(andere)
 	roh, _ := os.ReadFile(pfad)
 	for name, inhalt := range map[string]string{
 		"unbekanntes Feld": strings.Replace(string(roh), `"v":`, `"fremd": 1, "v":`, 1),
