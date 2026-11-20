@@ -2,7 +2,7 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 20.11.2026 ~10:00 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
+Stand: 20.11.2026 ~10:40 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
 Repos); davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18:30 UTC Sitzung
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
@@ -49,10 +49,15 @@ dezentrales Quantengeld“.
       Doppelvorlage an Stelle 0 abgewiesen, ehrliche Vorlage an C1 eingelöst, 15m21s.
       Dokumentiert in `HEUTE.md` 3.3i und `DEZENTRAL.md` 16 Schritt 7 (**#603 gemergt, c8b79f9b**).
       Probelauf im Rauschmodell grün: [44605960500](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44605960500).
-    - **PR (dieser Stand):** Token-Ansicht (`/api/quanten-w/note`) nennt `probe_art: 2` bei
-      v2-Tokens (bisherige ohne Feld); Kurzfassungen `HEUTE.md` und `DEZENTRAL.md` 1 auf
-      Stand 20.11. Danach C1-Deploy (Freigabe `produktion`) und App-Anzeige
-      („Stichprobe erst nach der Bindung“).
+    - **#604 gemergt (b0b8cb17, 20.11. 10:38 UTC):** Token-Ansicht (`/api/quanten-w/note`)
+      nennt `probe_art: 2` bei v2-Tokens (bisherige ohne Feld); Kurzfassungen `HEUTE.md` und
+      `DEZENTRAL.md` 1 auf Stand 20.11. **C1-Deploy wartet auf Freigabe `produktion`:**
+      [44720986652](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44720986652).
+      App-Anzeige („Stichprobe erst nach der Bindung“) gemergt (App #87, 1b0de09c).
+    - **Jetzt (Auftrag 20.11.: „Dezentrales Quantengeld muss komplett implementiert werden“):**
+      Rollen trennen R1–R4 (`DEZENTRAL.md` 17): Inhaberin, Ausgeber, Annahmestelle als eigene
+      Befehle; das Werkzeug spielt heute alle Rollen (erzeugt Inhaberin- und Fremd-Schlüssel
+      selbst, entschlüsselt `FuerInhaberin`). Der Dienst kann die Trennung schon.
     - Der zweite Mensch als Validator (Rollen trennen, A5).
     - Ein Gutachter (Prüfauftrag S 2).
 - Davor: #597 gemergt (d079bf34, Werkzeug im v2-Weg, 14 Mutationen rot).
