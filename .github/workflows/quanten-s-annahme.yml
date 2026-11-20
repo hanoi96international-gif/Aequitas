@@ -1,0 +1,104 @@
+# C1 als Annahmestelle: eine Vorlage einer Inhaberin (z. B. aus der App,
+# Quanten-Token, Einloesen) an C1 einloesen (Quantengeld S, getrennte Rollen,
+# DEZENTRAL.md 17).
+#
+# Die Annahmestelle ist hier C1 mit dem Schluessel seines Knotens
+# (RELAYER_PRIVATE_KEY im Container, nie ausgegeben). `aequitasd
+# quanten-s-annahme` prueft vor jeder Anfrage an einen Validator: die
+# Unterschrift der Vorlage gegen die Inhaberin auf der Kette, die Blaetter
+# gegen die Wurzel auf der Kette, dass die Vorlage fuer DIESE Stelle ist,
+# Bindung und Wahl stehen und sind final. Dann laedt sie ihre Stichprobe,
+# prueft Salze und Stichprobe gegen die Kette, rechnet das Urteil vorab nach,
+# meldet an und wartet auf das Urteil der Kette. Widersprechen sich
+# Vorab-Rechnung und Urteil: BEFUND.
+#
+# Die Vorlage ist hier oeffentlich (Eingabe des Laufs). Das ist fuer C1 als
+# Stelle ohne Gefahr: anmelden kann nur die bei der Ausgabe festgelegte Stelle
+# selbst, der Wert geht an sie (C1), und eine Vorlage fuer die andere Stelle
+# besteht nicht (die Kette prueft in den Basen der gewaehlten Stelle). Bei
+# einer Stelle, die fuer eine Vorlage etwas herausgibt, waere sie wie Bargeld
+# zu behandeln -- darum zeigt die App sie nur als QR-Code.
+name: Quantengeld S -- Einloesen an C1 (Annahmestelle)
+
+on:
+  workflow_dispatch:
+    inputs:
+      vorlage:
+        description: "Die Vorlage der Inhaberin als JSON {k, b, x, vorlage} (App: Quanten-Token, Einloesen; der QR-Code enthaelt genau diesen Text)"
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quanten-s-ausgabe
+  cancel-in-progress: false
+
+env:
+  VORLAGE: ${{ inputs.vorlage }}
+  C1_VALIDATOR: "0x3066639af1653325100c1074a9696612dbdc42dc"
+  C1: 188.172.229.121
+  C1_HOSTKEY: SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA
+  NETZ: https://aequitas.digital
+
+jobs:
+  einloesen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: produktion
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Vorlage pruefen
+        run: |
+          set -euo pipefail
+          [ "${#VORLAGE}" -le 16384 ] || { echo "::error::Vorlage zu gross"; exit 1; }
+          umask 077
+          printf '%s' "$VORLAGE" > "$RUNNER_TEMP/vorlage.json"
+          # Genau die Felder der kompakten Vorlage; die Unterschrift und alles
+          # gegen die Kette prueft das Werkzeug.
+          jq -e '(keys | sort) == ["b","k","vorlage","x"] and (.k | test("^[0-9a-f]{64}$")) and (.b == 0 or .b == 1)
+            and (.x | test("^[01]+$")) and (.x | length) <= 8192 and (.vorlage | test("^0x[0-9a-f]{130}$"))' \
+            "$RUNNER_TEMP/vorlage.json" >/dev/null || { echo "::error::Vorlage: Form {k, b, x, vorlage}"; exit 1; }
+          K=$(jq -r .k "$RUNNER_TEMP/vorlage.json")
+          B=$(jq -r .b "$RUNNER_TEMP/vorlage.json")
+          # Vorab, ohne C1 zu belasten: ist C1 die Stelle b dieses Tokens?
+          curl -fsS -m 15 "$NETZ/api/quanten-w/note?k=$K" > "$RUNNER_TEMP/token.json" || { echo "::error::Token $K auf der Kette nicht gefunden"; exit 1; }
+          STELLE=$(jq -r --argjson b "$B" '.stellen[$b] // empty' "$RUNNER_TEMP/token.json")
+          [ "$STELLE" = "$C1_VALIDATOR" ] || { echo "::error::Stelle $B dieses Tokens ist nicht C1 ($STELLE) -- hier nicht einloesbar"; exit 1; }
+          echo "Token $K, Stelle $B = C1"
+      - name: Schluessel und Host-Pruefung
+        env:
+          KEY: ${{ secrets.CONTABO_SSH_KEY }}
+        run: |
+          set -eu
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s' "$KEY" | perl -0777 -pe 's/\r//g; s/(?:-|\xE2\x80[\x93\x94])+ *(BEGIN|END) OPENSSH PRIVATE KEY *(?:-|\xE2\x80[\x93\x94])+/-----$1 OPENSSH PRIVATE KEY-----/g; unless (/-----BEGIN OPENSSH PRIVATE KEY-----/) { (my $z = $_) =~ s/\s//g; if ($z =~ m|^[A-Za-z0-9+/]+=*$|) { require MIME::Base64; my $d = MIME::Base64::decode_base64($z); if ($d =~ /-----BEGIN OPENSSH PRIVATE KEY-----/) { $_ = $d; } elsif ($d =~ /\Aopenssh-key-v1\x00/) { $_ = qq{-----BEGIN OPENSSH PRIVATE KEY-----\n$z\n-----END OPENSSH PRIVATE KEY-----\n}; } } } s/\s*(-----BEGIN OPENSSH PRIVATE KEY-----)\s*(.*?)\s*(-----END OPENSSH PRIVATE KEY-----)\s*/my ($k, $b, $f) = ($1, $2, $3); $b =~ s|\s||g; $b =~ s|(.{70})|$1\n|g; $b =~ s|\n\z||; "$k\n$b\n$f\n"/se' > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -t ed25519 $C1 2>/dev/null > ~/.ssh/kh1
+          ssh-keygen -lf ~/.ssh/kh1 | awk '{print $2}' | grep -qx "$C1_HOSTKEY" || { echo "::error::Host-Schluessel von C1 passt nicht"; exit 1; }
+          cp ~/.ssh/kh1 ~/.ssh/known_hosts
+      - name: Einloesen an C1
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes root@$C1 'umask 077; cat > /root/qs-vorlage.json' < "$RUNNER_TEMP/vorlage.json"
+          rm -f "$RUNNER_TEMP/vorlage.json"
+          set +e
+          ssh -o BatchMode=yes root@$C1 "docker exec -i -u 10001:10001 aequitas-node ./aequitasd quanten-s-annahme --api http://127.0.0.1:8080 --validatoren $C1_VALIDATOR=http://127.0.0.1:8080 < /root/qs-vorlage.json; RC=\$?; rm -f /root/qs-vorlage.json; exit \$RC" > ergebnis.json
+          RC=$?
+          set -e
+          cat ergebnis.json
+          {
+            echo "## Quantengeld S: Einloesen an C1 (Annahmestelle)"
+            echo
+            if [ "$RC" = 0 ]; then
+              echo "**Urteil der Kette: $(jq -r '.urteil // "?"' ergebnis.json)** (vorab gerechnet: $(jq -r '.vorab // "?"' ergebnis.json))"
+            else
+              echo "**Gescheitert (Exit $RC)** -- Verlauf im Protokoll."
+            fi
+            echo
+            echo '```json'
+            cat ergebnis.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$RC"

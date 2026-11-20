@@ -2,10 +2,29 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 20.11.2026 ~13:10 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
+Stand: 20.11.2026 ~14:30 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
 Repos); davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18:30 UTC Sitzung
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
+
+**Jetzt (20.11. ~14:00 UTC), Auftrag: „Baue die neue App / Nimm alles vor was du selber bauen
+kannst / Abschnitt 5 (heute weltweit unmöglich) so gut wie möglich umsetzen“:**
+- **App 1.26.0:** App #90 gemergt (a437f714, nur Version). Builds gestartet: APK
+  [44748661869](https://github.com/hanoi96international-gif/Aequitas-App/actions/runs/44748661869)
+  (Signieren wartet auf Freigabe `app-signatur`), iOS
+  [44748666661](https://github.com/hanoi96international-gif/Aequitas-App/actions/runs/44748666661)
+  (grün). Danach `release-apk.yml` (run_id 44748661869, Tag `v1.26.0`), dann
+  `release-ios.yml` (run_id 44748666661, Tag `v1.26.0`), beide mit Freigabe `app-signatur`.
+- **PR (dieser Stand): R5, getrennte Rollen im Hauptnetz, Messung versiegelt**
+  (`DEZENTRAL.md` 17 „R5“): Weg `rollen` (Bestellung aus der App als Eingabe),
+  `quanten-s-annahme.yml` (C1 löst als Annahmestelle ein), `s_versiegeln.py` +
+  `aequitasd quanten-s-messung-oeffnen` (Messung nur als Chiffrat durch GitHub). Braucht
+  nach dem Merge den C1-Deploy (neuer Befehl).
+- **Aufgabenliste danach** (in dieser Reihenfolge): App: C1 als Stelle übernehmen, eigenes
+  Konto als Stelle, Annahmestelle mit QR-Leser in der App; Hardware-Beleg nach dem Einlösen
+  (Messprotokoll offenlegen, gegen die Wurzel auf der Kette prüfbar, Fehlerbild gegen die
+  Kalibrierung); Basen y je Validator verschlüsseln; Öffnung aus t Anteilen; Urteil
+  eindeutig (eingelöst/tot).
 
 **Zuletzt (Sitzung „Weiter“, 20.11. ~10:00 UTC):**
 - **#598 gemergt (90e0e622): Pilot mit Stichprobe v2 grün** (`HEUTE.md` 3.3h, `DEZENTRAL.md` 16
