@@ -2,7 +2,7 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 20.11.2026 ~11:30 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
+Stand: 20.11.2026 ~12:00 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
 Repos); davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18:30 UTC Sitzung
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
@@ -63,13 +63,17 @@ dezentrales Quantengeld“.
       - Werkzeug in Schritte zerlegt (`quantenSRunde`, `quantenSAusgabeEinreichen`,
         `quantenSBinden`/`Waehlen`, `quantenSAnmeldenUrteil`,
         `quantenSStichprobeV2Laden` je Stelle); bisherige Tests unverändert grün.
-      - **#605 offen.** Belege: 15 Tests, 24/24 Mutationen rot, `-race` grün. Vier Knoten lokal grün
+      - **#605 gemergt (a90b5386, 20.11. ~12:00 UTC).** Belege: 15 Tests, 24/24 Mutationen rot, `-race` grün. Vier Knoten lokal grün
         (`TestVierKnotenQuantenSRollen(Ausfall)_RealDB`, 51 s / 62 s); die bisherigen
         Vier-Knoten-Wege ebenfalls.
       - Pilot-Workflow: Eingabe `rollen = ja` (mit `abschnitte`, `stichprobe_v2 = ja`).
       - **Pilot `rollen = ja` auf GitHub grün:** [44728392142](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44728392142)
-        (k = 1.760, Toleranz 2 %, beide Tests; `DEZENTRAL.md` 17). Nach dem Merge:
-        C1-Deploy (Ansicht) mit Freigabe `produktion`.
+        (k = 1.760, Toleranz 2 %, beide Tests; `DEZENTRAL.md` 17). **C1-Deploy (Ansicht)
+        wartet auf Freigabe `produktion`** (deploy-c1.yml nach dem Merge).
+      - **Jetzt R4a** (Aufgabe #29): Endpunkt `GET /api/quanten-w/validator/fuer-inhaberin?k=`
+        (öffentlich, nur lesend, erst wenn der Token auf der Kette steht, nur v2),
+        `quanten-s-inhaberin abholen --k` (ohne Paket des Ausgebers), Vorlage ohne Blätter
+        (Stelle holt und prüft sie selbst). Danach R4b: App als Inhaberin (QR-Vorlage).
       - **Danach:** R4 App als Inhaberin; Hauptnetz-Lauf mit getrennten Rollen
         (Workflow); Öffnung aus Anteilen (Verfügbarkeit); y je Validator verschlüsseln.
       - Lokale Postgres für RealDB-Tests: `pg_ctlcluster 16 main start`, Datenbank
