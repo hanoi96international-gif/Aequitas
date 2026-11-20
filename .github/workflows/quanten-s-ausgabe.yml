@@ -360,10 +360,10 @@ jobs:
               echo "## Quantengeld S: Ausgabe fuer eine Inhaberin (getrennte Rollen, Toleranz $TOL %)"
               echo
               if [ "$RC" = 0 ] && jq -e '.k | test("^[0-9a-f]{64}$")' ergebnis.json >/dev/null 2>&1; then
-                echo "**Ausgegeben.** Abholen in der App (Quanten-Token, Abholen) mit:"
+                echo "**Ausgegeben.** Abholen in der App (Quanten-Token, Abholen) mit (genau so eintragen):"
                 echo
                 echo "- K: \`$(jq -r .k ergebnis.json)\`"
-                echo "- Validatoren: \`$(jq -r --arg api "$NETZ" '[.validatoren[] | . + "=" + $api] | join(",")' ergebnis.json)\`"
+                echo "- Validatoren: \`$(jq -r --arg api "$NETZ" '[.validatoren[] | . + "=" + $api + "/api"] | join(",")' ergebnis.json)\`"
                 echo
                 echo "Inhaberin \`$(jq -r .inhaberin ergebnis.json)\`, Stellen \`$(jq -r '.stellen | join(", ")' ergebnis.json)\`, n = $(jq -r .n ergebnis.json), Deckung $(jq -r .deckung_mikro ergebnis.json) Mikro-AEQ."
                 echo "Einloesen an C1 als Annahmestelle: quanten-s-annahme.yml mit der Vorlage aus der App."
