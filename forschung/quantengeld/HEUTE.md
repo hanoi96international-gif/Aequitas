@@ -1,6 +1,6 @@
 # Quantengeld heute – was unter den heutigen Umständen funktionieren kann
 
-Stand 16.11.2026. Ergänzt `ANALYSE.md` um die Frage: **Was davon kann Aequitas heute
+Stand 16.11.2026, Kurzfassung aktualisiert am 20.11.2026. Ergänzt `ANALYSE.md` um die Frage: **Was davon kann Aequitas heute
 schon sein, und was fehlt dafür noch?** Grundlage sind die Messungen in diesem Ordner,
 der Code im Knoten und in der App sowie die Quellen in `ANALYSE.md`.
 
@@ -21,8 +21,20 @@ der Code im Knoten und in der App sowie die Quellen in `ANALYSE.md`.
      Vorführung im Labormaßstab;
    - **(d) Bargeld-Verhalten ohne Quanten:** offline zahlen mit Haftung (Offline-Bargeld).
 3. **Davon ist (b) fertig, (a) zu großen Teilen.** Für (a) fehlt vor allem, dass der
-   Quantenschutz **automatisch** an ist. Heute muss jeder ihn selbst einschalten. (c)
-   lässt sich mit dem vorhandenen IBM-Zugang in Tagen bauen. (d) ist zur Hälfte gebaut.
+   Quantenschutz **automatisch** an ist. Heute muss jeder ihn selbst einschalten. (d) ist
+   zur Hälfte gebaut.
+4. **(c) läuft seit dem 17.11.2026 im Hauptnetz** (Quanten-Token ohne Speicher,
+   Variante S):
+   - Ausgegeben und eingelöst auf echten IBM-Chips; die Doppelvorlage wurde jedes Mal
+     abgewiesen (3.3c).
+   - Seit dem **20.11.2026** auch mit **Stichprobe erst nach der Bindung**: Keine
+     Annahmestelle kennt vorher eine Stelle der Stichproben (3.3i, Befund 5i).
+   - Im Pilot mit **vier Validatoren**, von denen jeder seinen Abschnitt selbst
+     präpariert, auch wenn einer ausfällt (3.3d–3.3h).
+   - **Ehrlich:** Es ist eine Vorführung. Präparation und Messung laufen im selben Auftrag
+     beim Betreiber. Im Hauptnetz gibt es nur einen Validator (C1), der damit den ganzen
+     Token kennt. Es liegt kein Gutachten vor. Echtes Quantengeld in den Händen der
+     Menschen gilt weiter nicht (Punkt 1).
 
 ## 1. Drei Bedeutungen von „funktionierendem Quantengeld“
 

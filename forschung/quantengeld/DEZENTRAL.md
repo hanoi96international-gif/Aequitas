@@ -1,6 +1,6 @@
 # Dezentrales Quantengeld komplett: was fehlt, und der Weg dorthin
 
-Stand 18.11.2026. Auftrag des Betreibers: „Bring das dezentrale Quantengeld komplett zu
+Stand 18.11.2026, Abschnitt 1 aktualisiert am 20.11.2026. Auftrag des Betreibers: „Bring das dezentrale Quantengeld komplett zu
 laufen, ggf. mit eigener Forschung“. Diese Notiz sagt, was heute läuft, wo es noch an
 einer Stelle hängt, und was wir bauen.
 
@@ -18,6 +18,22 @@ einer Stelle hängt, und was wir bauen.
   Einrichtung mit.
 - **Die Prüfung ist dezentral:** Jeder Knoten wertet jede Offenlegung selbst aus, und ein
   falscher Anteil wird als Ganzes abgewiesen (`QUANTENGELD_PRUEFAUFTRAG.md`, W8).
+- **Stand 20.11.2026:**
+  - **Messfehler:** Mehrheit aus 5 Schüssen, auf dem Chip 0 Fehler bei passender Basis
+    (Abschnitt 4).
+  - **Toleranz:** 2 % statt 4 %, damit ein Drittel der Qubits; die ehrliche Vorlage wird
+    vor der Ausgabe exakt geprüft (`HEUTE.md` 3.3f, 3.3g).
+  - **Basen automatisch zum Validator** (Abschnitt 15).
+  - **Befund 5i und sein Ausweg „Stichprobe v2“** (Abschnitt 16):
+    - Im Hauptnetz scharf seit 19.11.2026 19:30 UTC.
+    - Erster Token im Hauptnetz damit am 20.11.2026 auf `ibm_kingston`: Doppelvorlage
+      abgewiesen, ehrliche Vorlage eingelöst (`HEUTE.md` 3.3i).
+    - C1 hat dafür ein Messverzeichnis (Abschnitt 16, Schritt 7).
+  - **Was am Betreiber hängt:**
+    - Der zweite Mensch als Validator mit eigenem Server und IBM-Konto (A5). Erst dann
+      kennt niemand den ganzen Token.
+    - Ein Gutachten.
+    - Ein Partner mit eigenem Empfänger für die Inhaberin (Weg C).
 
 ## 2. Befund: Die Ausgabe hängt an einer Stelle
 

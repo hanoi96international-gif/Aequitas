@@ -4,6 +4,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"math/big"
+	"net/http"
+	"net/http/httptest"
 	"sort"
 	"strings"
 	"testing"
@@ -155,6 +157,15 @@ func TestQuantenSProbeV2Kette_Aktiv(t *testing.T) {
 	a.ausgebenV2Art(t, proben, 2)
 	if tok := w.cs.quantenWJetzt().Token[a.K]; tok == nil || tok.token.ProbeArt != 2 {
 		t.Fatal("Token nicht als Stichprobe v2 ausgegeben")
+	}
+	// Die oeffentliche Ansicht nennt die Art -- wie im Register, nicht mehr.
+	rec := httptest.NewRecorder()
+	(&APIServer{state: w.cs}).handleQuantenWNote(rec, httptest.NewRequest(http.MethodGet, "/api/quanten-w/note?k="+a.K, nil))
+	var ans struct {
+		ProbeArt *int `json:"probe_art"`
+	}
+	if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &ans) != nil || ans.ProbeArt == nil || *ans.ProbeArt != 2 {
+		t.Fatalf("Ansicht eines v2-Tokens: %d %s", rec.Code, rec.Body.String())
 	}
 	w.annehmen(s.waehlenTx(w.anna, "1"), a.zeit+3)
 	probe, salze := a.stellenV2Laden(t)
