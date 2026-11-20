@@ -1079,8 +1079,26 @@ in der Hand, und das ist nicht dezentral. Der Validator-Dienst konnte die Trennu
     eingelöst. Drei Knoten im Gleichstand.
   - Die bisherigen Wege (ein Auftrag; Abschnitte mit und ohne v2) laufen nach dem Umbau
     unverändert grün.
-  - Auf GitHub: `quanten-s-pilot.yml` mit `rollen = ja` (dazu `ausgabe = abschnitte`
-    und `stichprobe_v2 = ja`).
+  - **Auf GitHub in voller Größe:** Lauf
+    [44728392142](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44728392142)
+    (`quanten-s-pilot.yml`, Zweig `claude/weiter-uw2p42`, aae3dd9b; Rauschmodell
+    `fake_marrakesh`, Mehrheit aus 5, k = 1.760, n = 3.520, Toleranz 2 %, `ausgabe =
+    abschnitte`, `stichprobe_v2 = ja`, `rollen = ja`). Beide Tests grün:
+
+    | Test | Fehler (Zählungen) | Doppelvorlage an Stelle 0 | ehrlich an Stelle 1 | Rollen gesamt | danach |
+    |---|---|---|---|---|---|
+    | alle vier (240,9 s) | 0/1.763 | vorab „abgewiesen“ (431 Fehler bei 874 Treffern), Kette **abgewiesen** nach 1m38s | vorab „besteht“ (0/877), Kette **eingelöst** nach 2m00s | 3m40s | 4 Knoten gleich, Höhe 2256, StateRoot `b1dbce17…69f897` |
+    | ein Validator fällt aus (257,6 s) | 0/1.736 | vorab „abgewiesen“ (468/908), **abgewiesen** nach 1m42s | vorab „besteht“ (0/884), **eingelöst** nach 2m10s | 4m03s | 3 Knoten gleich, Höhe 2170, StateRoot `adfcbd4e…72930` |
+
+    - In beiden Tests: „Auf der Kette: probe_art 2, 4 Validatoren, Anmeldung mit 4 Salzen
+      nachgerechnet“.
+    - Die Inhaberin wählte beide Male Stelle 1, die böse Doppelvorlage ging an Stelle 0.
+      Das ist Zufall (`quantenSZufallInt`); lokal war es umgekehrt (Stelle 1 abgewiesen,
+      Stelle 0 eingelöst), damit sind beide Richtungen belegt.
+    - Größen bei n = 3.520: Bestellung 4.183 Byte, Paket 247.897 Byte, Vorlage 239.603 Byte.
+      Fast alles davon sind Blätter (64 Hex-Zeichen je Stelle).
+    - SHA-256: `ergebnis.txt` `037778cc…048799`, `ausgabe.txt.gz` `25fc1152…ff7ee`
+      (Artefakt `pilot-44728392142`, 90 Tage).
 
 ### Ehrlich dazu (offen)
 

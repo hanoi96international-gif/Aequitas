@@ -67,8 +67,9 @@ dezentrales Quantengeld“.
         (`TestVierKnotenQuantenSRollen(Ausfall)_RealDB`, 51 s / 62 s); die bisherigen
         Vier-Knoten-Wege ebenfalls.
       - Pilot-Workflow: Eingabe `rollen = ja` (mit `abschnitte`, `stichprobe_v2 = ja`).
-      - **Nach dem Merge:** Pilot `rollen = ja` im Rauschmodell auf GitHub starten (keine
-        Freigabe nötig), danach C1-Deploy (Ansicht) mit Freigabe `produktion`.
+      - **Pilot `rollen = ja` auf GitHub grün:** [44728392142](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44728392142)
+        (k = 1.760, Toleranz 2 %, beide Tests; `DEZENTRAL.md` 17). Nach dem Merge:
+        C1-Deploy (Ansicht) mit Freigabe `produktion`.
       - **Danach:** R4 App als Inhaberin; Hauptnetz-Lauf mit getrennten Rollen
         (Workflow); Öffnung aus Anteilen (Verfügbarkeit); y je Validator verschlüsseln.
       - Lokale Postgres für RealDB-Tests: `pg_ctlcluster 16 main start`, Datenbank

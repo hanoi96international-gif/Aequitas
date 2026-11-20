@@ -891,6 +891,11 @@ eigenen Befehl und Schlüssel (`DEZENTRAL.md` 17):
   Jede Rolle sprach mit einem anderen Knoten. Eine böse Inhaberin versuchte zuerst die
   Doppelvorlage; sie wurde vorab und von der Kette abgewiesen. Danach wurde ehrlich
   eingelöst. Dazu kommen 15 Tests mit Fälschungen und 24 Mutationen, alle rot.
+  - Auf GitHub in voller Größe (k = 1.760, n = 3.520, Toleranz 2 %, Rauschmodell):
+    Lauf [44728392142](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44728392142),
+    beide Tests grün. Fehler bei passender Basis 0/1.763 und 0/1.736; Doppelvorlage vorab
+    und von der Kette abgewiesen, ehrlich eingelöst (3m40s und 4m03s); Gleichstand aller
+    lebenden Knoten (`DEZENTRAL.md` 17).
 - **Kein neuer Konsens.** Die Kette prüfte das schon. Neu sind nur öffentliche Felder in
   der Ansicht des Tokens (Wurzel, Proben, d, c).
 - **Ehrlich dazu:**
