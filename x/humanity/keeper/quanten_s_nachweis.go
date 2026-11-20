@@ -123,6 +123,14 @@ func (d *quantenWDienst) endeMerken(K string, e *quantenWTresorEintrag, t *quant
 	d.ende[K] = neu
 }
 
+// endeVon: was der Dienst vom lebenden Token K mitgeschrieben hat.
+func (d *quantenWDienst) endeVon(K string) (quantenSEnde, bool) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	en, ok := d.ende[K]
+	return en, ok
+}
+
 // nachweisAus: der Nachweis zu einem Tresor-Eintrag eines beendeten Tokens.
 func (d *quantenWDienst) nachweisAus(e *quantenWTresorEintrag) (*QuantenSNachweis, error) {
 	st := e.Abschnitt
@@ -139,8 +147,7 @@ func (d *quantenWDienst) nachweisAus(e *quantenWTresorEintrag) (*QuantenSNachwei
 		}
 		n.Werte = append(n.Werte, w.Text(16))
 	}
-	d.mu.Lock()
-	if en, ok := d.ende[e.K]; ok {
+	if en, ok := d.endeVon(e.K); ok {
 		n.D = en.d
 		c := en.c
 		n.C = &c
@@ -149,7 +156,6 @@ func (d *quantenWDienst) nachweisAus(e *quantenWTresorEintrag) (*QuantenSNachwei
 			n.Stelle = &b
 		}
 	}
-	d.mu.Unlock()
 	m, err := quantenSNachweisNachricht(*n)
 	if err != nil {
 		return nil, err
