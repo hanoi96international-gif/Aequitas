@@ -28,7 +28,10 @@ kannst / Abschnitt 5 (heute weltweit unmöglich) so gut wie möglich umsetzen“
      Freigabe `produktion` → Urteil, Nachweis (Artefakt).
   - Alternativ Stelle 1 (eigenes Konto): ein zweites Gerät mit der App öffnet
     „Annahmestelle“ unter demselben Konto und scannt den QR-Code.
-- **PR (dieser Stand): R7, Nachweis nach dem Ende** (`DEZENTRAL.md` 17 „R7“, `HEUTE.md`
+- **#611 gemergt (62da2c5a): R7, Nachweis nach dem Ende** (Sicherheitsprüfung als
+  PR-Kommentar, nichts Ausnutzbares; zwei Härtungen umgesetzt). C1-Deploy dafür wartet auf
+  `produktion`. App #93 („Nachweis prüfen“) offen, danach App 1.28.0.
+- **Damals: R7, Nachweis nach dem Ende** (`DEZENTRAL.md` 17 „R7“, `HEUTE.md`
   Abschnitt 2): Ist ein Token eingelöst oder tot und das Ende final, legt jeder Validator
   seinen Abschnitt offen (`/api/quanten-w/validator/nachweis`); `quanten-s-nachweis`
   rechnet nach, `quanten-s-annahme --nachweis-warten` prüft nach dem Einlösen,
