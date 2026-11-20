@@ -630,10 +630,17 @@ func qsRollenVierKnoten(t *testing.T, netz *vierKnotenNetz, leiter int, ausgeber
 		t.Fatal(err)
 	}
 	var paket QuantenSPaket
-	durch("Paket", p, &paket)
-	// Inhaberin (dritter Knoten): prueft gegen ihre Kette und liest x.
+	durch("Paket des Ausgebers (hier nicht gebraucht)", p, &paket)
+	// Inhaberin (dritter Knoten): holt mit nur K den Stand von IHRER Kette
+	// und jeden Abschnitt direkt vom Validator, prueft alles und liest x --
+	// das Paket des Ausgebers braucht sie nicht.
 	inh := api(knInhaberin)
-	if err := quantenSInhaberinAnnehmen(ctx, inh, dat, adressen, paket, &log); err != nil {
+	inhNetz := &quantenSMehrNetz{quantenSHTTP: inh, validatoren: netze}
+	vonKette, err := quantenSPaketVonKette(ctx, inhNetz, paket.K, adressen)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := quantenSInhaberinAnnehmen(ctx, inh, dat, adressen, vonKette, &log); err != nil {
 		t.Fatal(err)
 	}
 	b, err := quantenSZufallInt(2)

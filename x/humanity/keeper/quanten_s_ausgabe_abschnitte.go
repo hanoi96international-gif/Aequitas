@@ -59,6 +59,9 @@ type quantenSAbschnittNetz interface {
 	schluessel(ctx context.Context, x int) (string, error)
 	abschnitt(ctx context.Context, x int, req QuantenSAbschnittAnfrage) (QuantenSAbschnittAntwort, error)
 	oeffnung(ctx context.Context, x int, K string, b int) (string, error)
+	// fuerInhaberin: der Abschnitt von Validator x fuer Inhaberin und
+	// Annahmestelle (getrennte Rollen, quanten_s_rollen.go).
+	fuerInhaberin(ctx context.Context, x int, K string) (QuantenSPaketAbschnitt, error)
 }
 
 func quantenSAusgabeLaufAbschnitte(ctx context.Context, a QuantenSAusgabeAuftrag, basen QuantenSBasen, validatoren []string, t int, netz quantenSAbschnittNetz, log io.Writer) (*QuantenSAusgabeErgebnis, error) {
@@ -423,6 +426,29 @@ func (m *quantenSMehrNetz) abschnitt(ctx context.Context, x int, req QuantenSAbs
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&a); err != nil {
 		return QuantenSAbschnittAntwort{}, errors.New("Antwort ist kein passendes JSON")
+	}
+	return a, nil
+}
+
+func (m *quantenSMehrNetz) fuerInhaberin(ctx context.Context, x int, K string) (QuantenSPaketAbschnitt, error) {
+	h, err := m.validator(x)
+	if err != nil {
+		return QuantenSPaketAbschnitt{}, err
+	}
+	gross := *h
+	gross.max = quantenSAbschnittAntwortMax
+	code, body, err := gross.anfrage(ctx, http.MethodGet, "/api/quanten-w/validator/fuer-inhaberin?k="+url.QueryEscape(K), nil)
+	if err != nil {
+		return QuantenSPaketAbschnitt{}, err
+	}
+	if code != http.StatusOK {
+		return QuantenSPaketAbschnitt{}, fmt.Errorf("HTTP %d: %s", code, quantenSFehlertext(body))
+	}
+	var a QuantenSPaketAbschnitt
+	dec := json.NewDecoder(bytes.NewReader(body))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&a); err != nil {
+		return QuantenSPaketAbschnitt{}, errors.New("Antwort ist kein passendes JSON")
 	}
 	return a, nil
 }

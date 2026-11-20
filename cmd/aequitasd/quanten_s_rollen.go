@@ -18,6 +18,7 @@ import (
 //
 //	aequitasd quanten-s-inhaberin neu --datei F --n N --v V --stellen adr=schl,adr=schl
 //	aequitasd quanten-s-inhaberin annehmen --datei F --api URL --validatoren 0xadr,... < paket.json
+//	aequitasd quanten-s-inhaberin abholen --datei F --api URL --k K --validatoren adr=api,...
 //	aequitasd quanten-s-inhaberin einloesen --datei F --api URL --stelle 0|1 > vorlage.json
 //	aequitasd quanten-s-annahme --api URL --validatoren adr=api,... < vorlage.json
 //
@@ -33,7 +34,7 @@ func quantenSInhaberinBefehl(args []string) int {
 
 func quantenSInhaberinMit(ctx context.Context, args []string, ein io.Reader, aus, log io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(log, "ABBRUCH: quanten-s-inhaberin neu | annehmen | einloesen")
+		fmt.Fprintln(log, "ABBRUCH: quanten-s-inhaberin neu | annehmen | abholen | einloesen")
 		return 2
 	}
 	was := args[0]
@@ -42,7 +43,7 @@ func quantenSInhaberinMit(ctx context.Context, args []string, ein io.Reader, aus
 	datei := fs.String("datei", "", "Datei der Inhaberin (0600; enthaelt ihren Schluessel)")
 	api := fs.String("api", "", "API eines Knotens (https://... oder http://127.0.0.1:port)")
 	var n, v, stelle *int
-	var stellen, validatoren *string
+	var stellen, validatoren, k *string
 	var frist *time.Duration
 	switch was {
 	case "neu":
@@ -51,11 +52,14 @@ func quantenSInhaberinMit(ctx context.Context, args []string, ein io.Reader, aus
 		stellen = fs.String("stellen", "", "die zwei Annahmestellen: adresse=schluessel,adresse=schluessel")
 	case "annehmen":
 		validatoren = fs.String("validatoren", "", "Adressen der Validatoren, denen die Inhaberin vertraut, in der Reihenfolge der Abschnitte: 0xadr,0xadr")
+	case "abholen":
+		k = fs.String("k", "", "Kennung K des Tokens (64 Hex-Zeichen)")
+		validatoren = fs.String("validatoren", "", "Validatoren des Tokens mit ihrer API, in der Reihenfolge der Abschnitte: adresse=api,adresse=api")
 	case "einloesen":
 		stelle = fs.Int("stelle", -1, "Annahmestelle 0 oder 1")
 		frist = fs.Duration("frist", 15*time.Minute, "Frist je Schritt")
 	default:
-		fmt.Fprintln(log, "ABBRUCH: quanten-s-inhaberin neu | annehmen | einloesen")
+		fmt.Fprintln(log, "ABBRUCH: quanten-s-inhaberin neu | annehmen | abholen | einloesen")
 		return 2
 	}
 	if err := fs.Parse(args[1:]); err != nil || fs.NArg() != 0 {
@@ -76,6 +80,11 @@ func quantenSInhaberinMit(ctx context.Context, args []string, ein io.Reader, aus
 		var vs []string
 		if vs, err = keeper.QuantenSAdressenLesen(*validatoren); err == nil {
 			err = keeper.QuantenSInhaberinAnnehmen(ctx, *api, *datei, vs, ein, log)
+		}
+	case "abholen":
+		var vs []keeper.QuantenSValidator
+		if vs, err = keeper.QuantenSValidatorenLesen(*validatoren); err == nil {
+			err = keeper.QuantenSInhaberinAbholen(ctx, *api, *datei, *k, vs, log)
 		}
 	case "einloesen":
 		err = keeper.QuantenSInhaberinEinloesen(ctx, *api, *datei, *stelle, *frist, aus, log)

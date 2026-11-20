@@ -55,6 +55,10 @@ func TestQuantenSRollenBefehle_Sperren(t *testing.T) {
 	inh("annehmen ohne Validatoren", []string{"annehmen", "--datei", datei, "--api", "http://127.0.0.1:1"}, 1)
 	inh("annehmen ohne Datei auf der Platte", []string{"annehmen", "--datei", datei, "--api", "http://127.0.0.1:1", "--validatoren", "0x" + strings.Repeat("a", 40)}, 1)
 	inh("einloesen API nach aussen", []string{"einloesen", "--datei", datei, "--api", "http://10.0.0.1:1", "--stelle", "0"}, 1)
+	inh("abholen ohne Validatoren", []string{"abholen", "--datei", datei, "--api", "http://127.0.0.1:1", "--k", strings.Repeat("a", 64)}, 1)
+	inh("abholen nur Adressen", []string{"abholen", "--datei", datei, "--api", "http://127.0.0.1:1", "--k", strings.Repeat("a", 64), "--validatoren", "0x" + strings.Repeat("a", 40)}, 1)
+	inh("abholen Validator-API nach aussen", []string{"abholen", "--datei", datei, "--api", "http://127.0.0.1:1", "--k", strings.Repeat("a", 64), "--validatoren", "0x" + strings.Repeat("a", 40) + "=http://10.0.0.1:1"}, 1)
+	inh("abholen Option des anderen Unterbefehls", []string{"abholen", "--datei", datei, "--stelle", "0"}, 2)
 	if _, err := os.Stat(datei); err == nil {
 		t.Fatal("Datei angelegt, obwohl nichts gelang")
 	}
