@@ -715,6 +715,31 @@ func (d *quantenWDienst) oeffnungFuerStelle(K string, b int) (string, error) {
 	return hex.EncodeToString(c), nil
 }
 
+// abschnittFuerInhaberin: was Inhaberin und Annahmestelle zu diesem K von
+// DIESEM Validator brauchen (quanten_s_rollen.go) -- seine unterschriebene
+// Antwort, die Buendel fuer die anderen Validatoren nur als Hashes. x steht
+// nur fuer die Inhaberin verschluesselt darin; Blaetter, Teil-Hashes und
+// Zaehlungen sind Bindungen ohne Geheimnis. Erst, wenn der Token auf der
+// Kette steht, und nur bei Stichprobe v2 (sonst kennen die Stellen ihre
+// Stichprobe schon aus der Ausgabe).
+func (d *quantenWDienst) abschnittFuerInhaberin(K string) (QuantenSPaketAbschnitt, error) {
+	e, da := d.eintragVon(K)
+	if !da || e.Abschnitt == nil {
+		return QuantenSPaketAbschnitt{}, quantenWFehler("kein Abschnitt zu diesem K")
+	}
+	if e.Abschnitt.ProbeArt != 2 {
+		return QuantenSPaketAbschnitt{}, quantenWFehler("nur bei Stichprobe v2")
+	}
+	if tok := d.cs.quantenWJetzt().Token[K]; tok == nil || tok.token == nil {
+		return QuantenSPaketAbschnitt{}, quantenWFehler("erst, wenn der Token auf der Kette steht")
+	}
+	a, err := d.abschnittAntwort(e)
+	if err != nil {
+		return QuantenSPaketAbschnitt{}, err
+	}
+	return quantenSPaketAbschnittAus(a), nil
+}
+
 // quantenSBindungSicht: Schluessel der Sichtung von Bindung d und Wahl c
 // eines Tokens (fuer reif); aendert sich d oder c, ist es eine neue Sichtung.
 func quantenSBindungSicht(K string, t *quantenSToken) string {
@@ -944,6 +969,43 @@ func (a *APIServer) handleQuantenSSchluessel(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	json.NewEncoder(w).Encode(map[string]string{"validator": d.adresse, "schluessel": hex.EncodeToString(ethcrypto.FromECDSAPub(&d.key.PublicKey))})
+}
+
+// handleQuantenSFuerInhaberin: GET /api/quanten-w/validator/fuer-inhaberin?k=
+// -- der Abschnitt dieses Validators fuer Inhaberin und Annahmestelle
+// (abschnittFuerInhaberin). Oeffentlich und nur lesend; begrenzt wie die
+// anderen Anfragen an den Dienst.
+func (a *APIServer) handleQuantenSFuerInhaberin(w http.ResponseWriter, r *http.Request) {
+	writeJSONCORS(w)
+	if r.Method != http.MethodGet {
+		jsonError(w, "GET only", http.StatusMethodNotAllowed)
+		return
+	}
+	d := a.state.quantenWDienstJetzt()
+	if d == nil || !quantenWAktiv(time.Now().Unix()) {
+		jsonError(w, "quantum money validator service not active", http.StatusConflict)
+		return
+	}
+	if !burstErlaubt("quanten-w-dienst:"+erneuerungsAbsender(r), burstQuantenWDienstJeIP, burstFenster) {
+		jsonError(w, "too many requests from this address", http.StatusTooManyRequests)
+		return
+	}
+	K := strings.ToLower(r.URL.Query().Get("k"))
+	if !istHash64(K) {
+		jsonError(w, "k", http.StatusBadRequest)
+		return
+	}
+	out, err := d.abschnittFuerInhaberin(K)
+	if err != nil {
+		if errors.Is(err, errQuantenW) {
+			jsonError(w, "rejected: "+err.Error(), http.StatusConflict)
+			return
+		}
+		fmt.Printf("[quanten_s] Abschnitt fuer die Inhaberin gescheitert: %v\n", err)
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	json.NewEncoder(w).Encode(out)
 }
 
 func (a *APIServer) handleQuantenSOeffnung(w http.ResponseWriter, r *http.Request) {

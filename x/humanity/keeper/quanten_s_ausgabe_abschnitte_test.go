@@ -22,6 +22,8 @@ type qsaNetz struct {
 	antwortFremd       int // Antwort mit fremder Unterschrift
 	oeffnungVertauscht int // Oeffnung fuer die andere Stelle
 	anfragen           int // Anfragen an die Validatoren
+	abholungen         int // Abschnitte fuer Inhaberin oder Stelle (fuerInhaberin)
+	blattFalsch        int // dieser Validator nennt ein falsches Blatt
 }
 
 func (n *qsaNetz) schluessel(_ context.Context, x int) (string, error) {
@@ -49,6 +51,20 @@ func (n *qsaNetz) abschnitt(_ context.Context, x int, req QuantenSAbschnittAnfra
 	roh, _ = json.Marshal(ans)
 	var a QuantenSAbschnittAntwort
 	return a, json.Unmarshal(roh, &a)
+}
+
+func (n *qsaNetz) fuerInhaberin(_ context.Context, x int, K string) (QuantenSPaketAbschnitt, error) {
+	n.abholungen++
+	a, err := n.q.d[x-1].abschnittFuerInhaberin(K)
+	if err != nil {
+		return a, err
+	}
+	if x == n.blattFalsch && len(a.Blaetter) > 0 {
+		a.Blaetter[0] = strings.Repeat("ab", 32) // ein Validator luegt ueber ein Blatt (Unterschrift passt dann nicht)
+	}
+	roh, _ := json.Marshal(a)
+	var out QuantenSPaketAbschnitt
+	return out, json.Unmarshal(roh, &out)
 }
 
 func (n *qsaNetz) oeffnung(_ context.Context, x int, K string, b int) (string, error) {

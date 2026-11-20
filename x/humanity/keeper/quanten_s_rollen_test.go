@@ -9,6 +9,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -110,6 +112,10 @@ func TestQuantenSRollen_Gutfall(t *testing.T) {
 			}
 			w.annehmen(t, p)
 			vl := w.einloesen(t, s)
+			// Kompakt: keine Blaetter, die holt die Stelle selbst.
+			if roh, _ := json.Marshal(vl); len(vl.Blaetter) != 0 || len(roh) > p.N+400 {
+				t.Fatalf("Vorlage nicht kompakt: %d Blaetter, %d Byte", len(vl.Blaetter), len(roh))
+			}
 			wert := w.q.w.stand(w.q.w.cs, quantenSAdresse(w.stellen[s]))
 			erg, err := quantenSAnnahmeLauf(context.Background(), w.stelle(s), vl, w.q.w.val, w.netz, &w.log)
 			if err != nil {
@@ -376,27 +382,33 @@ func TestQuantenSRollen_VorlageGefaelscht(t *testing.T) {
 		stelle int
 		f      func(v *QuantenSVorlage)
 		muss   string
+		holt   bool // darf die Blaetter bei den Validatoren holen (sonst: keine Anfrage)
 	}{
 		"fremde Unterschrift": {1, func(v *QuantenSVorlage) {
 			x, _ := quantenSBitsText(v.X, len(v.X))
 			v.Vorlage = personalSign(t, fremd, quantenSVorlageText(v.K, 1, x))
-		}, "nicht von der Inhaberin"},
+		}, "nicht von der Inhaberin", false},
 		"x veraendert": {1, func(v *QuantenSVorlage) {
 			b := []byte(v.X)
 			b[7] ^= 1
 			v.X = string(b)
-		}, "nicht von der Inhaberin"},
-		"Blatt veraendert":      {1, func(v *QuantenSVorlage) { v.Blaetter[9] = strings.Repeat("ef", 32) }, "ergeben nicht die Wurzel"},
-		"Blatt fehlt":           {1, func(v *QuantenSVorlage) { v.Blaetter = v.Blaetter[1:] }, "Blaetter, n = 256"},
-		"an die falsche Stelle": {0, func(v *QuantenSVorlage) {}, "nicht diese Stelle"},
-		"Stelle 2":              {1, func(v *QuantenSVorlage) { v.B = 2 }, "K oder Stelle"},
-		"K unbekannt":           {1, func(v *QuantenSVorlage) { v.K = strings.Repeat("0", 64) }, "nicht (mehr) auf der Kette"},
+		}, "nicht von der Inhaberin", false},
+		// Mit Blaettern in der Vorlage: gegen die Wurzel auf der Kette, ohne
+		// einen Validator zu fragen.
+		"Blatt veraendert": {1, func(v *QuantenSVorlage) {
+			v.Blaetter = append([]string(nil), w.dat.Blaetter...)
+			v.Blaetter[9] = strings.Repeat("ef", 32)
+		}, "ergeben nicht die Wurzel", false},
+		"Blatt fehlt":           {1, func(v *QuantenSVorlage) { v.Blaetter = w.dat.Blaetter[1:] }, "Blaetter, n = 256", false},
+		"an die falsche Stelle": {0, func(v *QuantenSVorlage) {}, "nicht diese Stelle", false},
+		"Stelle 2":              {1, func(v *QuantenSVorlage) { v.B = 2 }, "K oder Stelle", false},
+		"K unbekannt":           {1, func(v *QuantenSVorlage) { v.K = strings.Repeat("0", 64) }, "nicht (mehr) auf der Kette", false},
 	}
 	for name, fall := range falle {
 		t.Run(name, func(t *testing.T) {
 			v := jsonWeg(t, gut)
 			fall.f(&v)
-			vorher := w.netz.oeffnungen
+			vorher, vorherAb := w.netz.oeffnungen, w.netz.abholungen
 			erg, err := quantenSAnnahmeLauf(context.Background(), w.stelle(fall.stelle), v, w.q.w.val, w.netz, &bytes.Buffer{})
 			if err == nil || !strings.Contains(err.Error(), fall.muss) || (erg != nil && erg.Urteil != "") {
 				t.Fatalf("%+v %v (erwartet %q)", erg, err, fall.muss)
@@ -407,11 +419,22 @@ func TestQuantenSRollen_VorlageGefaelscht(t *testing.T) {
 			if w.netz.oeffnungen != vorher {
 				t.Fatalf("%d Oeffnungen fuer eine gefaelschte Vorlage", w.netz.oeffnungen-vorher)
 			}
+			if !fall.holt && w.netz.abholungen != vorherAb {
+				t.Fatalf("%d Abholungen fuer eine gefaelschte Vorlage", w.netz.abholungen-vorherAb)
+			}
 			if st, _ := w.netz.stand(context.Background(), gut.K); st == nil || st["anmeldung"] != nil || quantenSZahl(st["fehl"]) != 0 {
 				t.Fatalf("trotzdem angemeldet: %v", st)
 			}
 		})
 	}
+	// Kompakte Vorlage, aber ein Validator luegt ueber ein Blatt: seine
+	// Unterschrift passt nicht -- keine Oeffnung, keine Anmeldung.
+	w.netz.blattFalsch = 2
+	vorher := w.netz.oeffnungen
+	if _, err := quantenSAnnahmeLauf(context.Background(), w.stelle(1), gut, w.q.w.val, w.netz, &bytes.Buffer{}); err == nil || !strings.Contains(err.Error(), "Abschnitt 2 ist nicht von Validator 2") || w.netz.oeffnungen != vorher {
+		t.Fatalf("falsches Blatt vom Validator: %v (%d Oeffnungen)", err, w.netz.oeffnungen-vorher)
+	}
+	w.netz.blattFalsch = 0
 	// Die Stelle mit falscher Zahl von Validatoren fragt gar nicht erst.
 	if _, err := quantenSAnnahmeLauf(context.Background(), w.stelle(1), gut, w.q.w.val[:4], w.netz, &bytes.Buffer{}); err == nil || !strings.Contains(err.Error(), "angegeben 4 Validatoren") {
 		t.Fatalf("4 statt 5 Validatoren: %v", err)
@@ -691,5 +714,148 @@ func TestQuantenSRollen_AusgeberOhneEhrlichProbe(t *testing.T) {
 	}
 	if w.dat.K != "" {
 		t.Fatal("trotzdem angenommen")
+	}
+}
+
+// Die Inhaberin holt ihren Token nur mit K: der Stand von der Kette, jeder
+// Abschnitt direkt vom Validator -- kein Paket des Ausgebers.
+func TestQuantenSRollen_AbholenMitK(t *testing.T) {
+	defer qsv2Vorbereiten(t)()
+	w := neueQsrWelt(t)
+	paket := w.ausgeben(t)
+	ctx := context.Background()
+	// Falsche Zahl von Validatoren, unbekanntes K, ein luegender Validator.
+	if _, err := quantenSPaketVonKette(ctx, w.netz, paket.K, w.q.w.val[:3]); err == nil || !strings.Contains(err.Error(), "angegeben 3") {
+		t.Fatalf("3 statt 5 Validatoren: %v", err)
+	}
+	if _, err := quantenSPaketVonKette(ctx, w.netz, strings.Repeat("0", 64), w.q.w.val); err == nil || !strings.Contains(err.Error(), "nicht auf der Kette") {
+		t.Fatalf("unbekanntes K: %v", err)
+	}
+	if _, err := quantenSPaketVonKette(ctx, w.netz, "kein K", w.q.w.val); err == nil {
+		t.Fatal("K ohne Form angenommen")
+	}
+	w.netz.blattFalsch = 4
+	p, err := quantenSPaketVonKette(ctx, w.netz, paket.K, w.q.w.val)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := *w.dat
+	if err := quantenSInhaberinAnnehmen(ctx, w.netz, &d, w.q.w.val, p, &bytes.Buffer{}); err == nil || !strings.Contains(err.Error(), "Abschnitt 4 ist nicht von Validator 4") || d.K != "" {
+		t.Fatalf("luegender Validator: %v", err)
+	}
+	w.netz.blattFalsch = 0
+	// Ehrlich: dasselbe x wie aus dem Paket des Ausgebers.
+	p, err = quantenSPaketVonKette(ctx, w.netz, paket.K, w.q.w.val)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Wurzel != paket.Wurzel || p.Proben != paket.Proben || p.Stellen != paket.Stellen || p.Inhaberin != paket.Inhaberin || p.T != paket.T || p.Tol != paket.Tol {
+		t.Fatalf("Paket von der Kette weicht ab: %+v", p)
+	}
+	ausPaket := *w.dat
+	if err := quantenSInhaberinAnnehmen(ctx, w.netz, &ausPaket, w.q.w.val, paket, &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+	w.annehmen(t, p)
+	if w.dat.X != ausPaket.X || w.dat.K != paket.K {
+		t.Fatal("x aus den Abschnitten der Validatoren weicht vom Paket ab")
+	}
+	vl := w.einloesen(t, 0)
+	erg, err := quantenSAnnahmeLauf(ctx, w.stelle(0), vl, w.q.w.val, w.netz, &w.log)
+	if err != nil || erg.Urteil != "eingeloest" {
+		t.Fatalf("%+v %v\n%s", erg, err, w.log.String())
+	}
+}
+
+// Der Endpunkt des Dienstes: nur zu Tokens auf der Kette, nur v2, nur GET,
+// begrenzt; die Antwort ist vom Validator unterschrieben.
+func TestQuantenSFuerInhaberin_Dienst(t *testing.T) {
+	defer qsv2Vorbereiten(t)()
+	w := neueQsrWelt(t)
+	d := w.q.d[1]
+	if _, err := d.abschnittFuerInhaberin(strings.Repeat("0", 64)); err == nil || !strings.Contains(err.Error(), "kein Abschnitt") {
+		t.Fatalf("unbekanntes K: %v", err)
+	}
+	// Vorbereitet, aber noch nicht ausgegeben: nichts heraus.
+	ctx, a, best := context.Background(), w.a, w.dat.Bestellung
+	basen := QuantenSBasen{N: best.N, Basen: best.Basen}
+	r, err := quantenSRundeBeginnen(a, basen, w.q.w.val, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.schluesselHolen(ctx, w.netz); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.abschnitteHolen(ctx, a, basen, w.netz, best.Inhaberin, best.InhaberinSchluessel, best.stellenAdressen(), [2]string{best.Stellen[0].Schluessel, best.Stellen[1].Schluessel}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.abschnittFuerInhaberin(r.K); err == nil || !strings.Contains(err.Error(), "erst, wenn der Token auf der Kette steht") {
+		t.Fatalf("vor der Ausgabe: %v", err)
+	}
+	// Ausgegeben (ueber das Werkzeug): jetzt ja, unterschrieben von Validator 2.
+	w2 := neueQsrWelt(t)
+	p := w2.ausgeben(t)
+	d2 := w2.q.d[1]
+	ab, err := d2.abschnittFuerInhaberin(p.K)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := quantenSPaketAbschnittPruefen(ab, p.K, p.N, len(w2.q.w.val), 2, w2.q.w.val[1]); err != nil {
+		t.Fatal(err)
+	}
+	if err := quantenSPaketAbschnittPruefen(ab, p.K, p.N, len(w2.q.w.val), 2, w2.q.w.val[0]); err == nil {
+		t.Fatal("Unterschrift eines anderen Validators angenommen")
+	}
+	// Ein Abschnitt im bisherigen Weg (ohne v2) gibt nichts heraus.
+	e, _ := d2.eintragVon(p.K)
+	e.Abschnitt.ProbeArt = 0
+	if _, err := d2.abschnittFuerInhaberin(p.K); err == nil || !strings.Contains(err.Error(), "nur bei Stichprobe v2") {
+		t.Fatalf("v1: %v", err)
+	}
+	e.Abschnitt.ProbeArt = 2
+
+	// HTTP: Methode, K, Begrenzung, strenges JSON.
+	alt := w2.q.w.cs.quantenWDienstZeiger.Swap(d2)
+	defer w2.q.w.cs.quantenWDienstZeiger.Store(alt)
+	altAb := quantenWAbOverride.Load()
+	quantenWAbOverride.Store(1)
+	defer quantenWAbOverride.Store(altAb)
+	api := &APIServer{state: w2.q.w.cs}
+	frage := func(methode, k, von string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(methode, "/api/quanten-w/validator/fuer-inhaberin?k="+k, nil)
+		req.RemoteAddr = von
+		rec := httptest.NewRecorder()
+		api.handleQuantenSFuerInhaberin(rec, req)
+		return rec
+	}
+	if rec := frage(http.MethodPost, p.K, "198.51.100.40:1"); rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("POST: %d", rec.Code)
+	}
+	if rec := frage(http.MethodGet, "zz", "198.51.100.41:1"); rec.Code != http.StatusBadRequest {
+		t.Fatalf("K ohne Form: %d", rec.Code)
+	}
+	if rec := frage(http.MethodGet, strings.Repeat("0", 64), "198.51.100.42:1"); rec.Code != http.StatusConflict {
+		t.Fatalf("unbekanntes K: %d", rec.Code)
+	}
+	rec := frage(http.MethodGet, strings.ToUpper(p.K), "198.51.100.43:1")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET: %d %s", rec.Code, rec.Body.String())
+	}
+	var ab2 QuantenSPaketAbschnitt
+	if err := quantenSJSONLesen(rec.Body, "Antwort", &ab2); err != nil {
+		t.Fatal(err)
+	}
+	if err := quantenSPaketAbschnittPruefen(ab2, p.K, p.N, len(w2.q.w.val), 2, w2.q.w.val[1]); err != nil {
+		t.Fatal(err)
+	}
+	gesperrt := false
+	for i := 0; i < burstQuantenWDienstJeIP+1; i++ {
+		if frage(http.MethodGet, p.K, "198.51.100.44:1").Code == http.StatusTooManyRequests {
+			gesperrt = true
+			break
+		}
+	}
+	if !gesperrt {
+		t.Fatalf("nach %d Anfragen von einer Adresse nicht begrenzt", burstQuantenWDienstJeIP+1)
 	}
 }

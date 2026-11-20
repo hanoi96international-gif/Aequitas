@@ -898,6 +898,10 @@ eigenen Befehl und Schlüssel (`DEZENTRAL.md` 17):
     lebenden Knoten (`DEZENTRAL.md` 17).
 - **Kein neuer Konsens.** Die Kette prüfte das schon. Neu sind nur öffentliche Felder in
   der Ansicht des Tokens (Wurzel, Proben, d, c).
+- **Ohne großes Paket (R4a):** Die Inhaberin holt ihren Token nur mit seiner Kennung K
+  direkt bei den Validatoren ab. Die Vorlage für die Annahmestelle ist kompakt (486 Byte
+  bei n = 256, rund 1,3 KB bei n = 1.104) und passt in einen QR-Code. Die Blätter holt die
+  Stelle selbst. Das ist die Grundlage für die App als Inhaberin.
 - **Ehrlich dazu:**
   - Im Hauptnetz ist es noch nicht gelaufen.
   - Getrennte Schlüssel sind noch keine getrennten Menschen. Die App als Inhaberin (R4)

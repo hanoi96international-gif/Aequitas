@@ -18,13 +18,19 @@ package keeper
 //	Inhaberin      quanten-s-inhaberin annehmen < Paket: jede Unterschrift
 //	               der Validatoren, die Blaetter gegen die Wurzel und alles
 //	               gegen die Kette; dann liest sie x.
+//	               Oder ohne Paket: quanten-s-inhaberin abholen --k K -- den
+//	               Stand von der Kette, jeden Abschnitt direkt vom Validator
+//	               (GET /api/quanten-w/validator/fuer-inhaberin), dieselbe
+//	               Pruefung.
 //	Inhaberin      quanten-s-inhaberin einloesen --stelle b: bindet
 //	               d = y XOR z, waehlt c = b XOR z und unterschreibt die
 //	               Vorlage fuer GENAU diese Stelle.
-//	Annahmestelle  quanten-s-annahme < Vorlage: Vorlage und Blaetter gegen
-//	               die Kette, nach der Finalitaet die eigene Stichprobe (mit
+//	Annahmestelle  quanten-s-annahme < Vorlage: Vorlage gegen die Kette, die
+//	               Blaetter (mitgegeben oder bei den Validatoren geholt) gegen
+//	               die Wurzel, nach der Finalitaet die eigene Stichprobe (mit
 //	               dem eigenen Schluessel), das Urteil der Kette vorab
-//	               nachgerechnet, anmelden, auf das Urteil warten.
+//	               nachgerechnet, anmelden, auf das Urteil warten. Die
+//	               Vorlage ist kompakt (K, Stelle, x, Unterschrift).
 //
 // Nur mit Stichprobe v2 (DEZENTRAL.md 16): im bisherigen Weg muessten beide
 // Stellen ihre Stichprobe schon bei der Ausgabe laden (Befund 5i).
@@ -145,13 +151,15 @@ type QuantenSInhaberinDatei struct {
 	Z *int `json:"z,omitempty"`
 }
 
-// QuantenSVorlage: was die Inhaberin der Annahmestelle gibt.
+// QuantenSVorlage: was die Inhaberin der Annahmestelle gibt. Blaetter sind
+// freiwillig (dann ohne Validatoren pruefbar gegen die Wurzel); fehlen sie,
+// holt die Stelle sie selbst bei den Validatoren.
 type QuantenSVorlage struct {
 	K        string   `json:"k"`
 	B        int      `json:"b"`
 	X        string   `json:"x"`
 	Vorlage  string   `json:"vorlage"`
-	Blaetter []string `json:"blaetter"`
+	Blaetter []string `json:"blaetter,omitempty"`
 }
 
 // QuantenSAnnahmeErgebnis: was die Annahmestelle am Ende ausgibt.
@@ -319,11 +327,17 @@ func (r *quantenSRunde) paket(a QuantenSAusgabeAuftrag, inhaberin string, stelle
 	p := &QuantenSPaket{K: r.K, N: r.n, T: r.t, Tol: a.Tol, ProbeArt: 2, Ausgeber: r.ausgeber, Inhaberin: inhaberin, Stellen: stellen,
 		Validatoren: append([]string(nil), r.validatoren...), Wurzel: hex.EncodeToString(r.wurzel[:]), Proben: [2]string{probenHex[0], probenHex[1]}, Deckung: a.Deckung}
 	for _, ans := range r.antw {
-		p.Abschnitte = append(p.Abschnitte, QuantenSPaketAbschnitt{X: ans.X, Von: ans.Von, Bis: ans.Bis, Blaetter: ans.Blaetter,
-			FuerInhaberin: ans.FuerInhaberin, BuendelHash: quantenSHashListe(ans.Buendel), BuendelSigHash: quantenSHashListe(ans.BuendelSig),
-			Teile: ans.Teile, Zaehlung: ans.Zaehlung, Sig: ans.Sig})
+		p.Abschnitte = append(p.Abschnitte, quantenSPaketAbschnittAus(ans))
 	}
 	return p
+}
+
+// quantenSPaketAbschnittAus: die Antwort eines Validators ohne die Buendel
+// fuer die anderen (nur ihre Hashes); die Unterschrift bleibt pruefbar.
+func quantenSPaketAbschnittAus(ans QuantenSAbschnittAntwort) QuantenSPaketAbschnitt {
+	return QuantenSPaketAbschnitt{X: ans.X, Von: ans.Von, Bis: ans.Bis, Blaetter: ans.Blaetter,
+		FuerInhaberin: ans.FuerInhaberin, BuendelHash: quantenSHashListe(ans.Buendel), BuendelSigHash: quantenSHashListe(ans.BuendelSig),
+		Teile: ans.Teile, Zaehlung: ans.Zaehlung, Sig: ans.Sig}
 }
 
 // ------------------------------------------------------------ Inhaberin: annehmen
@@ -428,14 +442,10 @@ func quantenSInhaberinAnnehmen(ctx context.Context, netz quantenSNetz, dat *Quan
 	var teile [2][][32]byte
 	for i, ab := range p.Abschnitte {
 		xi := i + 1
-		von, bis, ok := quantenSAbschnitt(n, v, xi)
-		if !ok || ab.X != xi || ab.Von != von || ab.Bis != bis || len(ab.Blaetter) != bis-von || !istHash64(ab.BuendelHash) || !istHash64(ab.BuendelSigHash) {
-			return fmt.Errorf("Paket: Abschnitt %d hat nicht die Form", xi)
+		if err := quantenSPaketAbschnittPruefen(ab, p.K, n, v, xi, p.Validatoren[i]); err != nil {
+			return fmt.Errorf("Paket: %v", err)
 		}
-		m := quantenSAbschnittAntwortNachrichtAus(p.K, xi, von, bis, quantenSHashListe(ab.Blaetter), ab.FuerInhaberin, ab.BuendelHash, ab.BuendelSigHash, ab.Teile, ab.Zaehlung)
-		if !kanonischeSignatur(ab.Sig) || verifyPersonalSign(m, ab.Sig, p.Validatoren[i]) != nil {
-			return fmt.Errorf("Paket: Abschnitt %d ist nicht von Validator %d unterschrieben", xi, xi)
-		}
+		von, bis, _ := quantenSAbschnitt(n, v, xi)
 		if err := quantenSAntwortV2Pruefen(QuantenSAbschnittAntwort{Teile: ab.Teile, Zaehlung: ab.Zaehlung}, bis-von); err != nil {
 			return fmt.Errorf("Paket: Abschnitt %d: %v", xi, err)
 		}
@@ -491,6 +501,84 @@ func quantenSInhaberinAnnehmen(ctx context.Context, netz quantenSNetz, dat *Quan
 	return nil
 }
 
+// quantenSPaketAbschnittPruefen: Form des Abschnitts x und die Unterschrift
+// seines Validators (Adresse aus der eigenen Liste) -- Grundlage fuer
+// Inhaberin und Annahmestelle.
+func quantenSPaketAbschnittPruefen(ab QuantenSPaketAbschnitt, K string, n, v, x int, validator string) error {
+	von, bis, ok := quantenSAbschnitt(n, v, x)
+	if !ok || ab.X != x || ab.Von != von || ab.Bis != bis || len(ab.Blaetter) != bis-von || !istHash64(ab.BuendelHash) || !istHash64(ab.BuendelSigHash) {
+		return fmt.Errorf("Abschnitt %d hat nicht die Form", x)
+	}
+	m := quantenSAbschnittAntwortNachrichtAus(K, x, von, bis, quantenSHashListe(ab.Blaetter), ab.FuerInhaberin, ab.BuendelHash, ab.BuendelSigHash, ab.Teile, ab.Zaehlung)
+	if !kanonischeSignatur(ab.Sig) || verifyPersonalSign(m, ab.Sig, validator) != nil {
+		return fmt.Errorf("Abschnitt %d ist nicht von Validator %d unterschrieben", x, x)
+	}
+	return nil
+}
+
+// quantenSBlaetterHolen: die Blaetter aller Abschnitte, jeder direkt von
+// seinem Validator und von ihm unterschrieben. Ob sie die Wurzel ergeben,
+// prueft der Aufrufer gegen die Kette.
+func quantenSBlaetterHolen(ctx context.Context, netz quantenSAbschnittNetz, K string, n, v int, validatoren []string) ([][32]byte, error) {
+	if v != len(validatoren) {
+		return nil, fmt.Errorf("%d Validatoren angegeben, %d verlangt", len(validatoren), v)
+	}
+	out := make([][32]byte, 0, n)
+	for x := 1; x <= v; x++ {
+		ab, err := netz.fuerInhaberin(ctx, x, K)
+		if err != nil {
+			return nil, fmt.Errorf("Validator %d: Abschnitt: %w", x, err)
+		}
+		if err := quantenSPaketAbschnittPruefen(ab, K, n, v, x, validatoren[x-1]); err != nil {
+			return nil, err
+		}
+		for j, h := range ab.Blaetter {
+			bl, ok := quantenWHex32(h)
+			if !ok {
+				return nil, fmt.Errorf("Abschnitt %d, Blatt %d", x, j)
+			}
+			out = append(out, bl)
+		}
+	}
+	return out, nil
+}
+
+// quantenSPaketVonKette: das Paket ohne den Ausgeber -- der Stand von der
+// Kette, jeder Abschnitt direkt von seinem Validator. Geglaubt wird nichts
+// davon: quantenSInhaberinAnnehmen prueft es danach wie ein Paket des
+// Ausgebers (Unterschriften, Wurzel, Proben, Zaehlungen, Kette).
+func quantenSPaketVonKette(ctx context.Context, netz quantenSAbschnittNetz, K string, validatoren []string) (QuantenSPaket, error) {
+	K = strings.ToLower(strings.TrimSpace(K))
+	if !istHash64(K) {
+		return QuantenSPaket{}, errors.New("K: 64 Hex-Zeichen")
+	}
+	st, err := netz.stand(ctx, K)
+	if err != nil {
+		return QuantenSPaket{}, err
+	}
+	stellen, proben := qsTexte(st, "stellen"), qsTexte(st, "proben")
+	if st == nil || len(stellen) != 2 || len(proben) != 2 {
+		return QuantenSPaket{}, errors.New("der Token steht nicht auf der Kette")
+	}
+	v := quantenSZahl(st["v"])
+	if v != len(validatoren) {
+		return QuantenSPaket{}, fmt.Errorf("die Kette nennt %d Validatoren, angegeben %d", v, len(validatoren))
+	}
+	p := QuantenSPaket{K: K, N: quantenSZahl(st["n"]), T: quantenSZahl(st["t"]), Tol: quantenSZahl(st["tol"]), ProbeArt: quantenSZahl(st["probe_art"]),
+		Inhaberin: qsText(st, "inhaber"), Stellen: [2]string{stellen[0], stellen[1]}, Wurzel: qsText(st, "wurzel"), Proben: [2]string{proben[0], proben[1]}}
+	for _, a := range validatoren {
+		p.Validatoren = append(p.Validatoren, strings.ToLower(strings.TrimSpace(a)))
+	}
+	for x := 1; x <= v; x++ {
+		ab, err := netz.fuerInhaberin(ctx, x, K)
+		if err != nil {
+			return QuantenSPaket{}, fmt.Errorf("Validator %d: Abschnitt: %w", x, err)
+		}
+		p.Abschnitte = append(p.Abschnitte, ab)
+	}
+	return p, nil
+}
+
 // ------------------------------------------------------------ Inhaberin: einloesen
 
 // quantenSInhaberinEinloesen: bindet und waehlt (je nur, wenn es noch nicht
@@ -515,8 +603,8 @@ func quantenSInhaberinEinloesen(ctx context.Context, netz quantenSNetz, frist ti
 	}
 	n, K, inhaber := dat.Bestellung.N, dat.K, dat.Bestellung.Inhaberin
 	x, err := quantenSBitsText(dat.X, n)
-	if err != nil || len(dat.Blaetter) != n {
-		return nil, errors.New("Datei der Inhaberin: x oder Blaetter")
+	if err != nil {
+		return nil, errors.New("Datei der Inhaberin: x")
 	}
 	st, err := netz.stand(ctx, K)
 	if err != nil {
@@ -579,7 +667,9 @@ func quantenSInhaberinEinloesen(ctx context.Context, netz quantenSNetz, frist ti
 	if err != nil {
 		return nil, err
 	}
-	return &QuantenSVorlage{K: K, B: s, X: dat.X, Vorlage: vorlage, Blaetter: append([]string(nil), dat.Blaetter...)}, nil
+	// Ohne Blaetter (kompakt, bei n = 1.104 rund 1,3 KB): die Annahmestelle
+	// holt sie bei den Validatoren und prueft sie gegen die Wurzel.
+	return &QuantenSVorlage{K: K, B: s, X: dat.X, Vorlage: vorlage}, nil
 }
 
 // ------------------------------------------------------------ Annahmestelle
@@ -636,17 +726,25 @@ func quantenSAnnahmeLauf(ctx context.Context, a QuantenSAusgabeAuftrag, vl Quant
 	if !ok {
 		return nil, errors.New("Stand: Proben")
 	}
-	if len(vl.Blaetter) != n {
-		return nil, fmt.Errorf("Vorlage: %d Blaetter, n = %d", len(vl.Blaetter), n)
-	}
-	blaetter := make([][32]byte, n)
-	for i, h := range vl.Blaetter {
-		if blaetter[i], ok = quantenWHex32(h); !ok {
-			return nil, fmt.Errorf("Vorlage: Blatt %d", i)
+	var blaetter [][32]byte
+	if len(vl.Blaetter) == 0 {
+		// Kompakte Vorlage: die Blaetter von den Validatoren selbst.
+		if blaetter, err = quantenSBlaetterHolen(ctx, netz, K, n, v, validatoren); err != nil {
+			return nil, err
+		}
+	} else {
+		if len(vl.Blaetter) != n {
+			return nil, fmt.Errorf("Vorlage: %d Blaetter, n = %d", len(vl.Blaetter), n)
+		}
+		blaetter = make([][32]byte, n)
+		for i, h := range vl.Blaetter {
+			if blaetter[i], ok = quantenWHex32(h); !ok {
+				return nil, fmt.Errorf("Vorlage: Blatt %d", i)
+			}
 		}
 	}
 	if quantenWMerkleWurzel(blaetter) != wurzel {
-		return nil, errors.New("die Blaetter der Vorlage ergeben nicht die Wurzel auf der Kette")
+		return nil, errors.New("die Blaetter ergeben nicht die Wurzel auf der Kette")
 	}
 	d, err := quantenSBitsText(qsText(st, "d"), n)
 	c := quantenSZahl(st["c"])
@@ -877,6 +975,36 @@ func QuantenSInhaberinAnnehmen(ctx context.Context, apiBasis, pfad string, valid
 		return err
 	}
 	if err := quantenSInhaberinAnnehmen(ctx, h, d, validatoren, p, log); err != nil {
+		return err
+	}
+	return quantenSInhaberinSchreiben(pfad, d, false)
+}
+
+// QuantenSInhaberinAbholen: `aequitasd quanten-s-inhaberin abholen --k K
+// --validatoren adr=api,...` -- ohne Paket des Ausgebers: Stand von der
+// Kette, jeder Abschnitt direkt vom Validator, dann dieselbe Pruefung.
+func QuantenSInhaberinAbholen(ctx context.Context, apiBasis, pfad, K string, validatoren []QuantenSValidator, log io.Writer) error {
+	eigen, err := neuerQuantenSHTTP(apiBasis)
+	if err != nil {
+		return err
+	}
+	if len(validatoren) == 0 {
+		return errors.New("Validatoren: adresse=api,... (bei wem die Abschnitte liegen)")
+	}
+	adressen, netze, err := quantenSValidatorenPruefen(validatoren, 1)
+	if err != nil {
+		return err
+	}
+	d, err := quantenSInhaberinLesen(pfad)
+	if err != nil {
+		return err
+	}
+	netz := &quantenSMehrNetz{quantenSHTTP: eigen, validatoren: netze}
+	p, err := quantenSPaketVonKette(ctx, netz, K, adressen)
+	if err != nil {
+		return err
+	}
+	if err := quantenSInhaberinAnnehmen(ctx, netz, d, adressen, p, log); err != nil {
 		return err
 	}
 	return quantenSInhaberinSchreiben(pfad, d, false)

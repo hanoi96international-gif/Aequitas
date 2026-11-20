@@ -977,7 +977,8 @@ werden.“
 1. **Jetzt gebaut (R1–R3, dieser Abschnitt):** Jede Rolle mit eigenem Befehl und eigenem
    Schlüssel. Kein Werkzeug hält mehr alles in der Hand.
 2. **Baubar, als Nächstes:**
-   - R4: Die App als Inhaberin (Bestellung, Paket annehmen, binden, Vorlage).
+   - ~~R4a: Abholen mit K, kompakte Vorlage~~ – gebaut (unten).
+   - R4b: Die App als Inhaberin (Bestellung, abholen mit K, binden, Vorlage als QR-Code).
    - Ein Hauptnetz-Lauf mit getrennten Rollen (Workflow).
    - Die Öffnung aus Anteilen statt nur vom präparierenden Validator (Verfügbarkeit,
      unten).
@@ -1099,6 +1100,44 @@ in der Hand, und das ist nicht dezentral. Der Validator-Dienst konnte die Trennu
       Fast alles davon sind Blätter (64 Hex-Zeichen je Stelle).
     - SHA-256: `ergebnis.txt` `037778cc…048799`, `ausgabe.txt.gz` `25fc1152…ff7ee`
       (Artefakt `pilot-44728392142`, 90 Tage).
+
+### R4a: Abholen mit K, kompakte Vorlage (20.11.2026)
+
+Das Paket des Ausgebers ist groß (247.897 Byte bei n = 3.520), und die Vorlage mit allen
+Blättern ebenso (239.603 Byte). Für ein Telefon und einen Laden taugt das nicht. Beides
+fällt jetzt weg:
+
+- **Neuer Endpunkt am Validator:** `GET /api/quanten-w/validator/fuer-inhaberin?k=K`
+  (`abschnittFuerInhaberin`, `handleQuantenSFuerInhaberin`).
+  - Er liefert den eigenen Abschnitt, von diesem Validator unterschrieben. Die Bündel für
+    die anderen Validatoren stehen nur als Hashes darin, x nur für die Inhaberin
+    verschlüsselt. Blätter, Teil-Hashes und Zählungen sind Bindungen ohne Geheimnis.
+  - Öffentlich und nur lesend. Er antwortet erst, wenn der Token auf der Kette steht, und
+    nur bei Stichprobe v2. Begrenzt wie die anderen Anfragen an den Dienst (je Adresse,
+    `burstQuantenWDienstJeIP`).
+- **Die Inhaberin holt ab:** `aequitasd quanten-s-inhaberin abholen --k K --validatoren
+  adr=api,…`.
+  - Den Stand liest sie von ihrer Kette, jeden Abschnitt direkt vom Validator.
+  - Danach prüft sie genau wie beim Paket: Unterschriften, Wurzel, Proben, Zählungen,
+    Kette. Das Paket des Ausgebers braucht sie nicht mehr; nur K muss sie erfahren.
+- **Die Vorlage ist kompakt:** K, Stelle, x und die Unterschrift, bei n = 256 nur 486 Byte
+  statt 17.651, bei n = 1.104 rund 1,3 KB. Das passt in einen QR-Code.
+  - Die Annahmestelle holt die Blätter selbst bei den Validatoren. Jeder Abschnitt muss
+    von seinem Validator unterschrieben sein, und alle zusammen müssen die Wurzel auf der
+    Kette ergeben.
+  - Blätter dürfen weiter in der Vorlage stehen. Dann prüft die Stelle sie gegen die
+    Wurzel, ohne einen Validator zu fragen.
+- **Belegt:**
+  - Tests: Abholen mit K (falsche Zahl von Validatoren, unbekanntes K, ein lügender
+    Validator; dasselbe x wie aus dem Paket). Der Endpunkt: unbekanntes K, vor der
+    Ausgabe, v1, nur GET, K-Form, Begrenzung, Unterschrift. Kompakte Vorlage mit einem
+    Validator, der über ein Blatt lügt: weder Öffnung noch Anmeldung.
+  - Eine gefälschte Vorlage fragt jetzt auch keinen Abschnitt mehr ab.
+  - Gegenprobe: 9 neue Mutationen, alle rot; die 22 aus R1–R3 weiter rot.
+  - Vier echte Knoten lokal, beide grün (50 s und 62 s): Die Inhaberin holte nur mit K
+    ab, die Vorlage hatte 486 Byte.
+- **Verfügbarkeit, unverändert:** Die Stelle braucht zum Laden ohnehin jeden
+  präparierenden Validator (Öffnung); jetzt auch für die Blätter.
 
 ### Ehrlich dazu (offen)
 
