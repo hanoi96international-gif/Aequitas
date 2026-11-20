@@ -341,6 +341,14 @@ func main() {
 	if len(os.Args) > 1 && os.Args[1] == "quanten-s-ausgabe" {
 		os.Exit(quantenSAusgabeBefehl(os.Args[2:]))
 	}
+	// Getrennte Rollen (keeper/quanten_s_rollen.go): die Inhaberin und die
+	// Annahmestelle mit eigenen Schluesseln.
+	if len(os.Args) > 1 && os.Args[1] == "quanten-s-inhaberin" {
+		os.Exit(quantenSInhaberinBefehl(os.Args[2:]))
+	}
+	if len(os.Args) > 1 && os.Args[1] == "quanten-s-annahme" {
+		os.Exit(quantenSAnnahmeBefehl(os.Args[2:]))
+	}
 	// Root-Rechte ablegen, bevor irgendetwas geoeffnet wird oder lauscht
 	// (rechte.go). Scheitert es, startet der Knoten nicht.
 	if err := rechteAblegen(echteRechteUmgebung()); err != nil {

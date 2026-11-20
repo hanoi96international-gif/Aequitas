@@ -2,7 +2,7 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 20.11.2026 ~10:00 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
+Stand: 20.11.2026 ~11:30 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
 Repos); davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18:30 UTC Sitzung
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
@@ -49,10 +49,33 @@ dezentrales Quantengeld“.
       Doppelvorlage an Stelle 0 abgewiesen, ehrliche Vorlage an C1 eingelöst, 15m21s.
       Dokumentiert in `HEUTE.md` 3.3i und `DEZENTRAL.md` 16 Schritt 7 (**#603 gemergt, c8b79f9b**).
       Probelauf im Rauschmodell grün: [44605960500](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44605960500).
-    - **PR (dieser Stand):** Token-Ansicht (`/api/quanten-w/note`) nennt `probe_art: 2` bei
-      v2-Tokens (bisherige ohne Feld); Kurzfassungen `HEUTE.md` und `DEZENTRAL.md` 1 auf
-      Stand 20.11. Danach C1-Deploy (Freigabe `produktion`) und App-Anzeige
-      („Stichprobe erst nach der Bindung“).
+    - **#604 gemergt (b0b8cb17, 20.11. 10:38 UTC):** Token-Ansicht (`/api/quanten-w/note`)
+      nennt `probe_art: 2` bei v2-Tokens (bisherige ohne Feld); Kurzfassungen `HEUTE.md` und
+      `DEZENTRAL.md` 1 auf Stand 20.11. **C1-Deploy wartet auf Freigabe `produktion`:**
+      [44720986652](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44720986652).
+      App-Anzeige („Stichprobe erst nach der Bindung“) gemergt (App #87, 1b0de09c).
+    - **Jetzt (Auftrag 20.11.: „Dezentrales Quantengeld muss komplett implementiert werden“):**
+      **PR (dieser Stand): getrennte Rollen R1–R3** (`DEZENTRAL.md` 17, `HEUTE.md` 3.3j).
+      - Neu: `quanten_s_rollen.go`; Befehle `quanten-s-inhaberin neu|annehmen|einloesen`,
+        `quanten-s-annahme`, `quanten-s-ausgabe --fuer-inhaberin`.
+      - Ansicht `/api/quanten-w/note`: zusätzlich `wurzel`, `proben`, `d` (nach der
+        Bindung), `c` (nach der Wahl). Kein Konsens geändert.
+      - Werkzeug in Schritte zerlegt (`quantenSRunde`, `quantenSAusgabeEinreichen`,
+        `quantenSBinden`/`Waehlen`, `quantenSAnmeldenUrteil`,
+        `quantenSStichprobeV2Laden` je Stelle); bisherige Tests unverändert grün.
+      - **#605 offen.** Belege: 15 Tests, 24/24 Mutationen rot, `-race` grün. Vier Knoten lokal grün
+        (`TestVierKnotenQuantenSRollen(Ausfall)_RealDB`, 51 s / 62 s); die bisherigen
+        Vier-Knoten-Wege ebenfalls.
+      - Pilot-Workflow: Eingabe `rollen = ja` (mit `abschnitte`, `stichprobe_v2 = ja`).
+      - **Pilot `rollen = ja` auf GitHub grün:** [44728392142](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44728392142)
+        (k = 1.760, Toleranz 2 %, beide Tests; `DEZENTRAL.md` 17). Nach dem Merge:
+        C1-Deploy (Ansicht) mit Freigabe `produktion`.
+      - **Danach:** R4 App als Inhaberin; Hauptnetz-Lauf mit getrennten Rollen
+        (Workflow); Öffnung aus Anteilen (Verfügbarkeit); y je Validator verschlüsseln.
+      - Lokale Postgres für RealDB-Tests: `pg_ctlcluster 16 main start`, Datenbank
+        `aeq_pilot`, `DATABASE_URL=postgres://postgres:postgres@localhost:5432/aeq_pilot?sslmode=disable`,
+        `AEQUITAS_TPS_BENCH=1`. Vorher `df -h /`; der Go-Cache wuchs bei Mutationen auf
+        26 GB (`go clean -cache`).
     - Der zweite Mensch als Validator (Rollen trennen, A5).
     - Ein Gutachter (Prüfauftrag S 2).
 - Davor: #597 gemergt (d079bf34, Werkzeug im v2-Weg, 14 Mutationen rot).

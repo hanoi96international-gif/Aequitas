@@ -63,49 +63,16 @@ type quantenSAbschnittNetz interface {
 
 func quantenSAusgabeLaufAbschnitte(ctx context.Context, a QuantenSAusgabeAuftrag, basen QuantenSBasen, validatoren []string, t int, netz quantenSAbschnittNetz, log io.Writer) (*QuantenSAusgabeErgebnis, error) {
 	a.log, a.beginn = log, time.Now()
-	v, n := len(validatoren), basen.N
-	if v < 1 || len(basen.Basen) != v || n < 2 || n > quantenWNMax {
-		return nil, fmt.Errorf("Basen: %d Abschnitte fuer %d Validatoren, n = %d", len(basen.Basen), v, n)
-	}
-	y := make([]int, 0, n)
-	klein := 0
-	for x := 1; x <= v; x++ {
-		von, bis, ok := quantenSAbschnitt(n, v, x)
-		if !ok {
-			return nil, fmt.Errorf("Abschnitte: n = %d, v = %d", n, v)
-		}
-		b, err := quantenSBitsText(basen.Basen[x-1], bis-von)
-		if err != nil {
-			return nil, fmt.Errorf("Basen, Abschnitt %d: %v", x, err)
-		}
-		y = append(y, b...)
-		klein += (bis - von) / 2
-	}
-	kn := quantenWKNote(a.Tol, t, v)
-	if kn == 0 || klein < kn {
-		return nil, fmt.Errorf("Pruefgroesse: %d Stellen je Annahmestelle, sicher erst ab %d (Toleranz %d %%, t=%d, v=%d)", klein, kn, a.Tol, t, v)
-	}
-	if a.Deckung < quantenMindestDeckungMik {
-		return nil, fmt.Errorf("Deckung %d, mindestens %d Mikro-AEQ", a.Deckung, quantenMindestDeckungMik)
-	}
-	// 1. Schluessel der Validatoren, jeder gegen seine Adresse.
-	schl := make([]string, v)
-	for x := 1; x <= v; x++ {
-		s, err := netz.schluessel(ctx, x)
-		if err != nil {
-			return nil, fmt.Errorf("Validator %d: Schluessel: %w", x, err)
-		}
-		if _, err := quantenSSchluesselPruefen(s, validatoren[x-1]); err != nil {
-			return nil, fmt.Errorf("Validator %d: %v", x, err)
-		}
-		schl[x-1] = strings.TrimPrefix(strings.ToLower(s), "0x")
-	}
-	ausgeber := quantenSAdresse(a.Schluessel)
-	var kb [32]byte
-	if _, err := rand.Read(kb[:]); err != nil {
+	r, err := quantenSRundeBeginnen(a, basen, validatoren, t)
+	if err != nil {
 		return nil, err
 	}
-	K := hex.EncodeToString(kb[:])
+	// 1. Schluessel der Validatoren, jeder gegen seine Adresse.
+	if err := r.schluesselHolen(ctx, netz); err != nil {
+		return nil, err
+	}
+	K, n, v, y, kn := r.K, r.n, r.v, r.y, r.kn
+	ausgeber := r.ausgeber
 	inhaberKey, err := crypto.GenerateKey()
 	if err != nil {
 		return nil, err
@@ -130,57 +97,21 @@ func quantenSAusgabeLaufAbschnitte(ctx context.Context, a QuantenSAusgabeAuftrag
 	var stellenKey [2]*ecdsa.PrivateKey
 	stellen[b], stellenKey[b] = ausgeber, a.Schluessel
 	stellen[1-b], stellenKey[1-b] = quantenSAdresse(fremdKey), fremdKey
-	pub := func(k *ecdsa.PrivateKey) string { return hex.EncodeToString(crypto.FromECDSAPub(&k.PublicKey)) }
-	zeit := time.Now().Unix()
-	if a.Jetzt != nil {
-		zeit = a.Jetzt()
+	// 2. Je Validator sein Abschnitt; dann x der Inhaberin (Wegwerfschluessel).
+	if err := r.abschnitteHolen(ctx, a, basen, netz, inhaber, quantenSPubHex(inhaberKey), stellen,
+		[2]string{quantenSPubHex(stellenKey[0]), quantenSPubHex(stellenKey[1])}); err != nil {
+		return nil, err
 	}
-	// 2. Je Validator sein Abschnitt.
-	antw := make([]QuantenSAbschnittAntwort, v)
+	antw, blaetter, wurzel, zeit := r.antw, r.blaetter, r.wurzel, r.zeit
 	x := make([]int, n)
-	blaetter := make([][32]byte, n)
 	for xi := 1; xi <= v; xi++ {
 		von, bis, _ := quantenSAbschnitt(n, v, xi)
-		req := QuantenSAbschnittAnfrage{K: K, N: n, T: t, Tol: a.Tol, X: xi, Validatoren: validatoren, Schluessel: schl,
-			Basen: basen.Basen[xi-1], Inhaberin: inhaber, InhaberinSchluessel: pub(inhaberKey), Stellen: stellen[:],
-			StellenSchluessel: []string{pub(stellenKey[0]), pub(stellenKey[1])}, Zeit: zeit, Praeger: ausgeber}
-		if a.ProbeV2 {
-			req.ProbeArt = 2
-		}
-		if req.PraegerSig, err = quantenSUnterschreiben(a.Schluessel, quantenSAbschnittAuftragNachricht(req)); err != nil {
-			return nil, err
-		}
-		ans, err := netz.abschnitt(ctx, xi, req)
-		if err != nil {
-			return nil, fmt.Errorf("Validator %d praepariert nicht: %w", xi, err)
-		}
-		if ans.K != K || ans.X != xi || ans.Von != von || ans.Bis != bis || len(ans.Blaetter) != bis-von ||
-			len(ans.Buendel) != v || len(ans.BuendelSig) != v || ans.Buendel[xi-1] != "" ||
-			!kanonischeSignatur(ans.Sig) || verifyPersonalSign(quantenSAbschnittAntwortNachricht(ans), ans.Sig, validatoren[xi-1]) != nil {
-			return nil, fmt.Errorf("Validator %d: Antwort passt nicht oder ist nicht von ihm", xi)
-		}
-		if a.ProbeV2 {
-			if err := quantenSAntwortV2Pruefen(ans, bis-von); err != nil {
-				return nil, fmt.Errorf("Validator %d: %v", xi, err)
-			}
-		} else if ans.Teile != nil || ans.Zaehlung != nil {
-			return nil, fmt.Errorf("Validator %d: Teil-Hashes ohne Stichprobe v2", xi)
-		}
-		xs, err := quantenSFuerInhaberinOeffnen(inhaberKey, ans.FuerInhaberin, K, von, bis)
+		xs, err := quantenSFuerInhaberinOeffnen(inhaberKey, antw[xi-1].FuerInhaberin, K, von, bis)
 		if err != nil {
 			return nil, fmt.Errorf("Validator %d: %v", xi, err)
 		}
 		copy(x[von:], xs)
-		for i, h := range ans.Blaetter {
-			bl, ok := quantenWHex32(h)
-			if !ok {
-				return nil, fmt.Errorf("Validator %d: Blatt %d", xi, i)
-			}
-			blaetter[von+i] = bl
-		}
-		antw[xi-1] = ans
 	}
-	wurzel := quantenWMerkleWurzel(blaetter)
 	// 3. Die Annahmestellen laden ihre Stichproben selbst -- oder, bei der
 	// Stichprobe v2, erst nach der Bindung (dann hier nur Teil-Hashes und
 	// Zaehlungen der Validatoren; niemand kennt eine Stelle).
@@ -191,19 +122,10 @@ func quantenSAusgabeLaufAbschnitte(ctx context.Context, a QuantenSAusgabeAuftrag
 	var treffer, fehler [2]int
 	var probenLaden func(ctx context.Context) ([2][]int, [2][]string, error)
 	if a.ProbeV2 {
+		if proben, probenHex, treffer, fehler, err = r.probenV2(); err != nil {
+			return nil, err
+		}
 		for s := 0; s < 2; s++ {
-			var teile [][32]byte
-			for xi := 1; xi <= v; xi++ {
-				h, _ := quantenWHex32(antw[xi-1].Teile[s])
-				teile = append(teile, h)
-				treffer[s] += antw[xi-1].Zaehlung[s][0]
-				fehler[s] += antw[xi-1].Zaehlung[s][1]
-			}
-			var err error
-			if proben[s], err = quantenSProbeHashV2(K, s, teile); err != nil {
-				return nil, err
-			}
-			probenHex = append(probenHex, hex.EncodeToString(proben[s][:]))
 			passend, falsch = passend+treffer[s], falsch+fehler[s]
 		}
 		probenLaden = func(ctx context.Context) ([2][]int, [2][]string, error) {
@@ -260,17 +182,179 @@ func quantenSAusgabeLaufAbschnitte(ctx context.Context, a QuantenSAusgabeAuftrag
 		return nil, err
 	}
 	// 4. Bestaetigungen mit den Buendeln der anderen.
+	bestaetigungen, err := r.bestaetigungenHolen(ctx, a, netz, proben, probenHex)
+	if err != nil {
+		return nil, err
+	}
+	return quantenSAusgabeAbschluss(ctx, a, netz, log, quantenSVorbereitet{K: K, N: n, T: t, KJeStelle: min(len(probe[0]), len(probe[1])),
+		Validatoren: validatoren, Bestaetigungen: bestaetigungen, Wurzel: wurzelHex, ProbenHex: probenHex, Probe: probe, Stellen: stellen,
+		StellenKey: stellenKey, Ausgeber: ausgeber, Inhaber: inhaber, InhaberKey: inhaberKey, B: b, Z: z, Y: y, X: x, Zeit: zeit,
+		Fehlerrate: fmt.Sprintf("%d/%d", falsch, passend), Wo: basen.Wo, Job: basen.Job, ProbeArt: probeArt(a.ProbeV2), ProbenLaden: probenLaden})
+}
+
+// quantenSPubHex: oeffentlicher Schluessel, unkomprimiert, hex ohne 0x.
+func quantenSPubHex(k *ecdsa.PrivateKey) string {
+	return hex.EncodeToString(crypto.FromECDSAPub(&k.PublicKey))
+}
+
+// quantenSRunde: die Schritte 1, 2 und 4 einer Ausgabe im Abschnitts-Modus,
+// die nichts von x wissen muessen (x kann nur die Inhaberin lesen). Beide
+// Wege benutzen sie: das Werkzeug, das alle Rollen spielt (oben), und der
+// Ausgeber bei getrennten Rollen (quanten_s_rollen.go).
+type quantenSRunde struct {
+	K           string
+	n, v, t, kn int
+	y           []int
+	zeit        int64
+	ausgeber    string
+	validatoren []string
+	schl        []string
+	antw        []QuantenSAbschnittAntwort
+	blaetter    [][32]byte
+	wurzel      [32]byte
+}
+
+// quantenSRundeBeginnen: Basen je Abschnitt, Pruefgroesse und Deckung --
+// ohne Netz, damit nichts Falsches einen Validator erreicht.
+func quantenSRundeBeginnen(a QuantenSAusgabeAuftrag, basen QuantenSBasen, validatoren []string, t int) (*quantenSRunde, error) {
+	v, n := len(validatoren), basen.N
+	if v < 1 || len(basen.Basen) != v || n < 2 || n > quantenWNMax {
+		return nil, fmt.Errorf("Basen: %d Abschnitte fuer %d Validatoren, n = %d", len(basen.Basen), v, n)
+	}
+	y := make([]int, 0, n)
+	klein := 0
+	for x := 1; x <= v; x++ {
+		von, bis, ok := quantenSAbschnitt(n, v, x)
+		if !ok {
+			return nil, fmt.Errorf("Abschnitte: n = %d, v = %d", n, v)
+		}
+		b, err := quantenSBitsText(basen.Basen[x-1], bis-von)
+		if err != nil {
+			return nil, fmt.Errorf("Basen, Abschnitt %d: %v", x, err)
+		}
+		y = append(y, b...)
+		klein += (bis - von) / 2
+	}
+	kn := quantenWKNote(a.Tol, t, v)
+	if kn == 0 || klein < kn {
+		return nil, fmt.Errorf("Pruefgroesse: %d Stellen je Annahmestelle, sicher erst ab %d (Toleranz %d %%, t=%d, v=%d)", klein, kn, a.Tol, t, v)
+	}
+	if a.Deckung < quantenMindestDeckungMik {
+		return nil, fmt.Errorf("Deckung %d, mindestens %d Mikro-AEQ", a.Deckung, quantenMindestDeckungMik)
+	}
+	return &quantenSRunde{n: n, v: v, t: t, kn: kn, y: y, validatoren: validatoren, ausgeber: quantenSAdresse(a.Schluessel)}, nil
+}
+
+// schluesselHolen: Schritt 1 -- jeder Validator nennt seinen Schluessel, er
+// muss zu seiner Adresse gehoeren. Dazu ein neues K.
+func (r *quantenSRunde) schluesselHolen(ctx context.Context, netz quantenSAbschnittNetz) error {
+	r.schl = make([]string, r.v)
+	for x := 1; x <= r.v; x++ {
+		s, err := netz.schluessel(ctx, x)
+		if err != nil {
+			return fmt.Errorf("Validator %d: Schluessel: %w", x, err)
+		}
+		if _, err := quantenSSchluesselPruefen(s, r.validatoren[x-1]); err != nil {
+			return fmt.Errorf("Validator %d: %v", x, err)
+		}
+		r.schl[x-1] = strings.TrimPrefix(strings.ToLower(s), "0x")
+	}
+	var kb [32]byte
+	if _, err := rand.Read(kb[:]); err != nil {
+		return err
+	}
+	r.K = hex.EncodeToString(kb[:])
+	return nil
+}
+
+// abschnitteHolen: Schritt 2 -- je Validator der Abschnitts-Auftrag (vom
+// Ausgeber unterschrieben) und seine Antwort, geprueft (von ihm unterschrieben,
+// Abschnitt, Buendel, bei v2 Teil-Hashes und Zaehlung); Blaetter und Wurzel.
+// x der Inhaberin bleibt verschluesselt (FuerInhaberin).
+func (r *quantenSRunde) abschnitteHolen(ctx context.Context, a QuantenSAusgabeAuftrag, basen QuantenSBasen, netz quantenSAbschnittNetz,
+	inhaber, inhaberPub string, stellen, stellenPub [2]string) error {
+	r.zeit = time.Now().Unix()
+	if a.Jetzt != nil {
+		r.zeit = a.Jetzt()
+	}
+	r.antw = make([]QuantenSAbschnittAntwort, r.v)
+	r.blaetter = make([][32]byte, r.n)
+	for xi := 1; xi <= r.v; xi++ {
+		von, bis, _ := quantenSAbschnitt(r.n, r.v, xi)
+		req := QuantenSAbschnittAnfrage{K: r.K, N: r.n, T: r.t, Tol: a.Tol, X: xi, Validatoren: r.validatoren, Schluessel: r.schl,
+			Basen: basen.Basen[xi-1], Inhaberin: inhaber, InhaberinSchluessel: inhaberPub, Stellen: stellen[:],
+			StellenSchluessel: stellenPub[:], Zeit: r.zeit, Praeger: r.ausgeber}
+		if a.ProbeV2 {
+			req.ProbeArt = 2
+		}
+		var err error
+		if req.PraegerSig, err = quantenSUnterschreiben(a.Schluessel, quantenSAbschnittAuftragNachricht(req)); err != nil {
+			return err
+		}
+		ans, err := netz.abschnitt(ctx, xi, req)
+		if err != nil {
+			return fmt.Errorf("Validator %d praepariert nicht: %w", xi, err)
+		}
+		if ans.K != r.K || ans.X != xi || ans.Von != von || ans.Bis != bis || len(ans.Blaetter) != bis-von ||
+			len(ans.Buendel) != r.v || len(ans.BuendelSig) != r.v || ans.Buendel[xi-1] != "" ||
+			!kanonischeSignatur(ans.Sig) || verifyPersonalSign(quantenSAbschnittAntwortNachricht(ans), ans.Sig, r.validatoren[xi-1]) != nil {
+			return fmt.Errorf("Validator %d: Antwort passt nicht oder ist nicht von ihm", xi)
+		}
+		if a.ProbeV2 {
+			if err := quantenSAntwortV2Pruefen(ans, bis-von); err != nil {
+				return fmt.Errorf("Validator %d: %v", xi, err)
+			}
+		} else if ans.Teile != nil || ans.Zaehlung != nil {
+			return fmt.Errorf("Validator %d: Teil-Hashes ohne Stichprobe v2", xi)
+		}
+		for i, h := range ans.Blaetter {
+			bl, ok := quantenWHex32(h)
+			if !ok {
+				return fmt.Errorf("Validator %d: Blatt %d", xi, i)
+			}
+			r.blaetter[von+i] = bl
+		}
+		r.antw[xi-1] = ans
+	}
+	r.wurzel = quantenWMerkleWurzel(r.blaetter)
+	return nil
+}
+
+// probenV2: die Bindungen der Stichproben aus den Teil-Hashes der
+// Validatoren und ihre Zaehlungen je Annahmestelle (Stichprobe v2).
+func (r *quantenSRunde) probenV2() (proben [2][32]byte, probenHex []string, treffer, fehler [2]int, err error) {
+	for s := 0; s < 2; s++ {
+		var teile [][32]byte
+		for xi := 1; xi <= r.v; xi++ {
+			h, _ := quantenWHex32(r.antw[xi-1].Teile[s])
+			teile = append(teile, h)
+			treffer[s] += r.antw[xi-1].Zaehlung[s][0]
+			fehler[s] += r.antw[xi-1].Zaehlung[s][1]
+		}
+		if proben[s], err = quantenSProbeHashV2(r.K, s, teile); err != nil {
+			return proben, nil, treffer, fehler, err
+		}
+		probenHex = append(probenHex, hex.EncodeToString(proben[s][:]))
+	}
+	return proben, probenHex, treffer, fehler, nil
+}
+
+// bestaetigungenHolen: Schritt 4 -- je Validator die Bestaetigung mit den
+// Buendeln der anderen, gegen seine Adresse geprueft.
+func (r *quantenSRunde) bestaetigungenHolen(ctx context.Context, a QuantenSAusgabeAuftrag, netz quantenSAbschnittNetz, proben [2][32]byte, probenHex []string) ([]string, error) {
+	wurzelHex := hex.EncodeToString(r.wurzel[:])
 	var bestaetigungen []string
-	for xi := 1; xi <= v; xi++ {
-		req := QuantenWBestaetigenAnfrage{K: K, N: n, T: t, Tol: a.Tol, X: xi, Wurzel: wurzelHex, Validatoren: validatoren,
-			Zeit: zeit, Art: "s", Proben: probenHex, Praeger: ausgeber}
-		for _, bl := range blaetter {
+	for xi := 1; xi <= r.v; xi++ {
+		req := QuantenWBestaetigenAnfrage{K: r.K, N: r.n, T: r.t, Tol: a.Tol, X: xi, Wurzel: wurzelHex, Validatoren: r.validatoren,
+			Zeit: r.zeit, Art: "s", Proben: probenHex, Praeger: r.ausgeber}
+		for _, bl := range r.blaetter {
 			req.Blaetter = append(req.Blaetter, hex.EncodeToString(bl[:]))
 		}
-		for p := 0; p < v; p++ {
-			req.Buendel = append(req.Buendel, antw[p].Buendel[xi-1])
-			req.BuendelSig = append(req.BuendelSig, antw[p].BuendelSig[xi-1])
+		for p := 0; p < r.v; p++ {
+			req.Buendel = append(req.Buendel, r.antw[p].Buendel[xi-1])
+			req.BuendelSig = append(req.BuendelSig, r.antw[p].BuendelSig[xi-1])
 		}
+		var err error
 		if req.PraegerSig, err = quantenSUnterschreiben(a.Schluessel, quantenWDienstAuftrag(req)); err != nil {
 			return nil, err
 		}
@@ -278,15 +362,12 @@ func quantenSAusgabeLaufAbschnitte(ctx context.Context, a QuantenSAusgabeAuftrag
 		if err != nil {
 			return nil, fmt.Errorf("Validator %d bestaetigt nicht: %w", xi, err)
 		}
-		if !kanonischeSignatur(sig) || verifyPersonalSign(quantenWSBestaetigungNachricht(K, wurzel, n, t, validatoren, xi, proben, zeit, a.Tol), sig, validatoren[xi-1]) != nil {
+		if !kanonischeSignatur(sig) || verifyPersonalSign(quantenWSBestaetigungNachricht(r.K, r.wurzel, r.n, r.t, r.validatoren, xi, proben, r.zeit, a.Tol), sig, r.validatoren[xi-1]) != nil {
 			return nil, fmt.Errorf("Validator %d: Bestaetigung ist nicht von ihm", xi)
 		}
 		bestaetigungen = append(bestaetigungen, sig)
 	}
-	return quantenSAusgabeAbschluss(ctx, a, netz, log, quantenSVorbereitet{K: K, N: n, T: t, KJeStelle: min(len(probe[0]), len(probe[1])),
-		Validatoren: validatoren, Bestaetigungen: bestaetigungen, Wurzel: wurzelHex, ProbenHex: probenHex, Probe: probe, Stellen: stellen,
-		StellenKey: stellenKey, Ausgeber: ausgeber, Inhaber: inhaber, InhaberKey: inhaberKey, B: b, Z: z, Y: y, X: x, Zeit: zeit,
-		Fehlerrate: fmt.Sprintf("%d/%d", falsch, passend), Wo: basen.Wo, Job: basen.Job, ProbeArt: probeArt(a.ProbeV2), ProbenLaden: probenLaden})
+	return bestaetigungen, nil
 }
 
 // ------------------------------------------------------------ ueber HTTP
@@ -407,44 +488,10 @@ func quantenSStichprobenV2Laden(ctx context.Context, a QuantenSAusgabeAuftrag, n
 	var salzeHex [2][]string
 	ende := time.Now().Add(a.Frist)
 	for s := 0; s < 2; s++ {
-		oe := map[int]*big.Int{}
-		var salze [][32]byte
-		for xi := 1; xi <= v; xi++ {
-			von, bis, _ := quantenSAbschnitt(n, v, xi)
-			var c string
-			for {
-				var err error
-				if c, err = netz.oeffnung(ctx, xi, K, s); err == nil {
-					break
-				} else if !time.Now().Before(ende) {
-					return probe, salzeHex, fmt.Errorf("Validator %d: Oeffnung fuer Stelle %d nach der Bindung: %w", xi, s, err)
-				}
-				select {
-				case <-ctx.Done():
-					return probe, salzeHex, ctx.Err()
-				case <-time.After(quantenSV2Nachfragen):
-				}
-			}
-			m, salz, err := quantenSOeffnungEntschluesselnV2(stellenKey[s], c, K, s, xi, von, bis)
-			if err != nil {
-				return probe, salzeHex, fmt.Errorf("Validator %d: Oeffnung fuer Stelle %d: %v", xi, s, err)
-			}
-			for i, w := range m {
-				oe[i] = w
-			}
-			salze = append(salze, salz)
-			salzeHex[s] = append(salzeHex[s], hex.EncodeToString(salz[:]))
-		}
-		geladen, err := quantenSOeffnungLaden(s, K, n, wurzel, blaetter, oe, kn)
-		if err != nil {
-			return probe, salzeHex, fmt.Errorf("Stelle %d laedt ihre Stichprobe nicht: %v", s, err)
-		}
-		for i := range geladen {
-			probe[s] = append(probe[s], i)
-		}
-		sort.Ints(probe[s])
-		if h, err := quantenSProbeV2Pruefen(K, s, n, v, probe[s], salze); err != nil || h != proben[s] {
-			return probe, salzeHex, fmt.Errorf("Stelle %d: Stichprobe und Salze passen nicht zur Bindung der Ausgabe", s)
+		var geladen map[int][2]int
+		var err error
+		if probe[s], salzeHex[s], geladen, err = quantenSStichprobeV2Laden(ctx, netz, ende, K, s, n, v, wurzel, blaetter, kn, stellenKey[s], proben[s]); err != nil {
+			return probe, salzeHex, err
 		}
 		// Zaehlung je Validator nachrechnen (Abschnitt fuer Abschnitt).
 		for xi := 1; xi <= v; xi++ {
@@ -464,6 +511,59 @@ func quantenSStichprobenV2Laden(ctx context.Context, a QuantenSAusgabeAuftrag, n
 		}
 	}
 	return probe, salzeHex, nil
+}
+
+// quantenSStichprobeV2Laden: Annahmestelle s laedt nach Bindung und Wahl ihre
+// Stichprobe aus den Oeffnungen aller Validatoren (nachgefragt bis ende, die
+// Validatoren geben sie erst nach der Finalitaet heraus), entschluesselt mit
+// IHREM Schluessel und prueft selbst: Wurzel, Blatt, Stellen-Bit, k_note
+// (quantenSOeffnungLaden) und Stichprobe mit Salzen gegen die Bindung probe
+// der Ausgabe -- dieselbe Rechnung wie die Kette beim Anmelden. Gibt die
+// sortierte Stichprobe, die Salze (hex) und je Stelle (Basis, Wert).
+func quantenSStichprobeV2Laden(ctx context.Context, netz quantenSAbschnittNetz, ende time.Time, K string, s, n, v int, wurzel [32]byte,
+	blaetter [][32]byte, kn int, key *ecdsa.PrivateKey, probeBindung [32]byte) ([]int, []string, map[int][2]int, error) {
+	oe := map[int]*big.Int{}
+	var salze [][32]byte
+	var salzeHex []string
+	for xi := 1; xi <= v; xi++ {
+		von, bis, _ := quantenSAbschnitt(n, v, xi)
+		var c string
+		for {
+			var err error
+			if c, err = netz.oeffnung(ctx, xi, K, s); err == nil {
+				break
+			} else if !time.Now().Before(ende) {
+				return nil, nil, nil, fmt.Errorf("Validator %d: Oeffnung fuer Stelle %d nach der Bindung: %w", xi, s, err)
+			}
+			select {
+			case <-ctx.Done():
+				return nil, nil, nil, ctx.Err()
+			case <-time.After(quantenSV2Nachfragen):
+			}
+		}
+		m, salz, err := quantenSOeffnungEntschluesselnV2(key, c, K, s, xi, von, bis)
+		if err != nil {
+			return nil, nil, nil, fmt.Errorf("Validator %d: Oeffnung fuer Stelle %d: %v", xi, s, err)
+		}
+		for i, w := range m {
+			oe[i] = w
+		}
+		salze = append(salze, salz)
+		salzeHex = append(salzeHex, hex.EncodeToString(salz[:]))
+	}
+	geladen, err := quantenSOeffnungLaden(s, K, n, wurzel, blaetter, oe, kn)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("Stelle %d laedt ihre Stichprobe nicht: %v", s, err)
+	}
+	probe := make([]int, 0, len(geladen))
+	for i := range geladen {
+		probe = append(probe, i)
+	}
+	sort.Ints(probe)
+	if h, err := quantenSProbeV2Pruefen(K, s, n, v, probe, salze); err != nil || h != probeBindung {
+		return nil, nil, nil, fmt.Errorf("Stelle %d: Stichprobe und Salze passen nicht zur Bindung der Ausgabe", s)
+	}
+	return probe, salzeHex, geladen, nil
 }
 
 // quantenSV2Nachfragen: so oft fragt eine Stelle nach, bis die Validatoren

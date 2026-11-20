@@ -388,13 +388,7 @@ func quantenSAusgabeAbschluss(ctx context.Context, a QuantenSAusgabeAuftrag, net
 	var err error
 	q := QuantenWAngaben{K: K, N: n, T: t, Wurzel: wurzel, Validatoren: validatoren, Bestaetigungen: bestaetigungen,
 		Deckung: a.Deckung, Tol: a.Tol, Inhaber: inhaber, Annahme: stellen[:], Proben: probenHex, ProbeArt: vb.ProbeArt}
-	if q.WalletSig, err = quantenSUnterschreiben(a.Schluessel, quantenWSAusgabeNachrichtArt(ausgeber, K, n, t, wurzel, validatoren, probenHex, q.Annahme, inhaber, a.Deckung, zeit, a.Tol, vb.ProbeArt)); err != nil {
-		return nil, err
-	}
-	if err := netz.einreichen(ctx, quantenWSAusgebenTxArt, ausgeber, zeit, q); err != nil {
-		return nil, fmt.Errorf("Ausgabe: %w", err)
-	}
-	if _, err := quantenSWartenAuf(ctx, netz, K, a.Frist, "ausgegeben", func(s map[string]interface{}) bool { return s != nil && s["art"] == "s" }); err != nil {
+	if err := quantenSAusgabeEinreichen(ctx, a, netz, q, ausgeber, zeit); err != nil {
 		return nil, err
 	}
 	fmt.Fprintf(log, "ausgegeben (nach %s)\n", a.quantenSNach())
@@ -404,26 +398,10 @@ func quantenSAusgabeAbschluss(ctx context.Context, a QuantenSAusgabeAuftrag, net
 	for i := range y {
 		d[i] = y[i] ^ z
 	}
-	ds := qsBitsText(d)
-	sigD, err := quantenSUnterschreiben(inhaberKey, quantenWSBindenNachricht(inhaber, K, ds))
-	if err != nil {
+	if err := quantenSBinden(ctx, netz, a.Frist, K, inhaber, inhaberKey, d); err != nil {
 		return nil, err
 	}
-	if err := netz.einreichen(ctx, quantenWSBindenTxArt, inhaber, 0, QuantenWAngaben{K: K, D: ds, WalletSig: sigD}); err != nil {
-		return nil, fmt.Errorf("Bindung: %w", err)
-	}
-	if _, err := quantenSWartenAuf(ctx, netz, K, a.Frist, "gebunden", func(s map[string]interface{}) bool { return s != nil && s["gebunden"] == true }); err != nil {
-		return nil, err
-	}
-	cs := string(rune('0' + (b ^ z)))
-	sigC, err := quantenSUnterschreiben(inhaberKey, quantenWSWahlNachricht(inhaber, K, cs))
-	if err != nil {
-		return nil, err
-	}
-	if err := netz.einreichen(ctx, quantenWSWaehlenTxArt, inhaber, 0, QuantenWAngaben{K: K, C: cs, WalletSig: sigC}); err != nil {
-		return nil, fmt.Errorf("Wahl: %w", err)
-	}
-	if _, err := quantenSWartenAuf(ctx, netz, K, a.Frist, "gewaehlt", func(s map[string]interface{}) bool { return s != nil && s["gewaehlt"] == true }); err != nil {
+	if err := quantenSWaehlen(ctx, netz, a.Frist, K, inhaber, inhaberKey, b^z); err != nil {
 		return nil, err
 	}
 	fmt.Fprintf(log, "gebunden und gewaehlt (nach %s)\n", a.quantenSNach())
@@ -467,6 +445,53 @@ func quantenSAusgabeAbschluss(ctx context.Context, a QuantenSAusgabeAuftrag, net
 	return erg, nil
 }
 
+// quantenSAusgabeEinreichen: die Ausgabe-Transaktion, vom Ausgeber
+// unterschrieben, und warten, bis der Token auf der Kette steht.
+func quantenSAusgabeEinreichen(ctx context.Context, a QuantenSAusgabeAuftrag, netz quantenSNetz, q QuantenWAngaben, ausgeber string, zeit int64) error {
+	var err error
+	if q.WalletSig, err = quantenSUnterschreiben(a.Schluessel, quantenWSAusgabeNachrichtArt(ausgeber, q.K, q.N, q.T, q.Wurzel, q.Validatoren, q.Proben, q.Annahme, q.Inhaber, q.Deckung, zeit, q.Tol, q.ProbeArt)); err != nil {
+		return err
+	}
+	if err := netz.einreichen(ctx, quantenWSAusgebenTxArt, ausgeber, zeit, q); err != nil {
+		return fmt.Errorf("Ausgabe: %w", err)
+	}
+	_, err = quantenSWartenAuf(ctx, netz, q.K, a.Frist, "ausgegeben", func(s map[string]interface{}) bool { return s != nil && s["art"] == "s" })
+	return err
+}
+
+// quantenSBinden: die Inhaberin bindet d (= y XOR z), unterschrieben mit
+// ihrem Schluessel; warten, bis es auf der Kette steht.
+func quantenSBinden(ctx context.Context, netz quantenSNetz, frist time.Duration, K, inhaber string, inhaberKey *ecdsa.PrivateKey, d []int) error {
+	ds := qsBitsText(d)
+	sigD, err := quantenSUnterschreiben(inhaberKey, quantenWSBindenNachricht(inhaber, K, ds))
+	if err != nil {
+		return err
+	}
+	if err := netz.einreichen(ctx, quantenWSBindenTxArt, inhaber, 0, QuantenWAngaben{K: K, D: ds, WalletSig: sigD}); err != nil {
+		return fmt.Errorf("Bindung: %w", err)
+	}
+	_, err = quantenSWartenAuf(ctx, netz, K, frist, "gebunden", func(s map[string]interface{}) bool { return s != nil && s["gebunden"] == true })
+	return err
+}
+
+// quantenSWaehlen: die Inhaberin waehlt c (= b XOR z); warten, bis es auf
+// der Kette steht.
+func quantenSWaehlen(ctx context.Context, netz quantenSNetz, frist time.Duration, K, inhaber string, inhaberKey *ecdsa.PrivateKey, c int) error {
+	if c != 0 && c != 1 {
+		return fmt.Errorf("Wahl %d", c)
+	}
+	cs := string(rune('0' + c))
+	sigC, err := quantenSUnterschreiben(inhaberKey, quantenWSWahlNachricht(inhaber, K, cs))
+	if err != nil {
+		return err
+	}
+	if err := netz.einreichen(ctx, quantenWSWaehlenTxArt, inhaber, 0, QuantenWAngaben{K: K, C: cs, WalletSig: sigC}); err != nil {
+		return fmt.Errorf("Wahl: %w", err)
+	}
+	_, err = quantenSWartenAuf(ctx, netz, K, frist, "gewaehlt", func(s map[string]interface{}) bool { return s != nil && s["gewaehlt"] == true })
+	return err
+}
+
 func qsBitsText(b []int) string {
 	var sb strings.Builder
 	for _, v := range b {
@@ -479,6 +504,16 @@ func qsBitsText(b []int) string {
 // offen. Urteil aus dem Stand: "eingeloest" (Token weg), "abgewiesen" (ein
 // Fehlversuch mehr), "frist" (Anmeldung weg, kein Fehlversuch).
 func quantenSVorlegen(ctx context.Context, netz quantenSNetz, a QuantenSAusgabeAuftrag, K string, s int, stelle string, stelleKey, inhaberKey *ecdsa.PrivateKey, x, probe []int, salze []string, fehl int) (string, error) {
+	vorlage, err := quantenSUnterschreiben(inhaberKey, quantenSVorlageText(K, s, x))
+	if err != nil {
+		return "", err
+	}
+	return quantenSAnmeldenUrteil(ctx, netz, a, K, s, stelle, stelleKey, x, vorlage, probe, salze, fehl)
+}
+
+// quantenSAnmeldenUrteil: Stelle s meldet die Vorlage (von der Inhaberin
+// unterschrieben) mit ihrer Stichprobe an und wartet auf das Urteil der Kette.
+func quantenSAnmeldenUrteil(ctx context.Context, netz quantenSNetz, a QuantenSAusgabeAuftrag, K string, s int, stelle string, stelleKey *ecdsa.PrivateKey, x []int, vorlage string, probe []int, salze []string, fehl int) (string, error) {
 	vorher, err := netz.stand(ctx, K)
 	if err != nil {
 		return "", err
@@ -490,10 +525,6 @@ func quantenSVorlegen(ctx context.Context, netz quantenSNetz, a QuantenSAusgabeA
 		return "", fmt.Errorf("zu viele Fehlversuche, um das Urteil eindeutig zu lesen")
 	}
 	xs := qsBitsText(x)
-	vorlage, err := quantenSUnterschreiben(inhaberKey, quantenSVorlageText(K, s, x))
-	if err != nil {
-		return "", err
-	}
 	bs := string(rune('0' + s))
 	q := QuantenWAngaben{K: K, B: bs, X: xs, Probe: probe, Vorlage: vorlage, Salze: salze}
 	if q.WalletSig, err = quantenSUnterschreiben(stelleKey, quantenWSAnmeldenNachricht(stelle, K, bs, xs, probe, fehl)); err != nil {

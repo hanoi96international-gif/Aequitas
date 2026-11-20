@@ -615,6 +615,18 @@ func (cs *ChainState) quantenWSTokenAnsichtLocked(ctx context.Context, reg *quan
 	if t.ProbeArt != 0 {
 		ansicht["probe_art"] = t.ProbeArt
 	}
+	// Wurzel, Proben, Bindung d und Wahl c: oeffentlich (sie stehen in den
+	// Transaktionen der Ausgabe, Bindung und Wahl). Damit pruefen Inhaberin
+	// und Annahmestelle bei getrennten Rollen (quanten_s_rollen.go) gegen die
+	// Kette, statt einem Paket des Ausgebers oder einer Vorlage zu glauben.
+	ansicht["wurzel"] = hex.EncodeToString(t.Wurzel[:])
+	ansicht["proben"] = []string{hex.EncodeToString(t.Proben[0][:]), hex.EncodeToString(t.Proben[1][:])}
+	if t.D != nil {
+		ansicht["d"] = qsBitsText(t.D)
+	}
+	if t.C != -1 {
+		ansicht["c"] = t.C
+	}
 	if a := t.Anmeldung; a != nil {
 		probe := append([]int(nil), a.Probe...)
 		sort.Ints(probe)
