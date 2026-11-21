@@ -2,7 +2,7 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 21.11.2026 ~13:25 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
+Stand: 21.11.2026 ~13:40 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
 Repos); davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18:30 UTC Sitzung
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
@@ -77,9 +77,9 @@ kannst / Abschnitt 5 (heute weltweit unmöglich) so gut wie möglich umsetzen“
     bei 540 Treffern, an Stelle 0 bei 283, gegen Wurzel und Proben der Ausgabe. **Aber:** der
     Satz in der Zusammenfassung („nicht gegen die Ausgabe geprüft“) war falsch – der Workflow
     fragte `wurzel_gegen == "angegeben"`, der Prüfer setzt bei angegebener Wurzel aber
-    `"kette"` (ein veralteter Kommentar nannte „angegeben“). **PR (dieser Stand):** Workflow
-    fragt `"kette"`, Kommentar richtig; danach `quanten-s-nachweis.yml` erneut laufen lassen
-    (richtige Zusammenfassung), dann den C1-Deploy freigeben.
+    `"kette"` (ein veralteter Kommentar nannte „angegeben“). **#614 gemergt (266eca23):**
+    Workflow fragt `"kette"`, Kommentar richtig. Zweiter Lauf von `quanten-s-nachweis.yml`
+    gestartet (richtige Zusammenfassung); danach den C1-Deploy freigeben.
   - CI zu #613: `db-tests` im Push-Lauf 44907012291 rot
     (`TestVierKnoten_RealDB/SnapshotResyncNachLoeschung`: nach 90 s keine Einigkeit, Knoten 2
     nach dem Snapshot mit fehlenden Eltern), im PR-Lauf 44907054179 mit demselben Stand grün.
