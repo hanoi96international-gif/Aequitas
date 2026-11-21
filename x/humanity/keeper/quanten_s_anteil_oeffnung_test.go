@@ -239,9 +239,13 @@ func TestQuantenSAusAnteilenZusammensetzen(t *testing.T) {
 type qaoProbeNetz struct {
 	*qsv2Netz
 	zuFrueh, spaeter int
+	// Blaetter: vor dem Token auf der Kette gibt keiner sie heraus; danach
+	// ergeben sie auch ohne Validator 2 die Wurzel (R9).
+	blaetterZuFrueh, blaetterGeprueft int
 }
 
 func (n *qaoProbeNetz) einreichen(ctx context.Context, art, wallet string, zeit int64, a QuantenWAngaben) error {
+	n.proben(a.K) // auch vor dem Schritt: zwischen Bestaetigung und Ausgabe
 	err := n.qsv2Netz.einreichen(ctx, art, wallet, zeit, a)
 	n.proben(a.K)
 	return err
@@ -249,6 +253,20 @@ func (n *qaoProbeNetz) einreichen(ctx context.Context, art, wallet string, zeit 
 
 func (n *qaoProbeNetz) proben(K string) {
 	tok := n.q.w.cs.quantenWJetzt().Token[K]
+	for _, d := range n.q.d {
+		if _, err := d.alleBlaetter(K); err == nil && (tok == nil || tok.token == nil) {
+			n.blaetterZuFrueh++
+		}
+	}
+	if tok != nil && tok.token != nil && n.blaetterGeprueft == 0 {
+		ohne := &qsaNetz{qsNetz: n.qsaNetz.qsNetz, ausgefallen: 2}
+		bl, err := quantenSBlaetterHolen(context.Background(), ohne, K, tok.token.N, len(n.q.w.val), n.q.w.val)
+		if err != nil || quantenWMerkleWurzel(bl) != tok.token.Wurzel {
+			n.blaetterGeprueft = -1
+		} else {
+			n.blaetterGeprueft = 1
+		}
+	}
 	for _, d := range n.q.d {
 		e, _ := d.eintragVon(K)
 		if e == nil {
@@ -283,6 +301,12 @@ func TestQuantenSAnteilOeffnung_NichtVorDerBindung(t *testing.T) {
 	}
 	if netz.spaeter == 0 {
 		t.Fatal("nach der Bindung kein einziges Paket -- die Probe misst nichts")
+	}
+	if netz.blaetterZuFrueh != 0 {
+		t.Fatalf("%d mal Blaetter vor dem Token auf der Kette herausgegeben", netz.blaetterZuFrueh)
+	}
+	if netz.blaetterGeprueft != 1 {
+		t.Fatal("ohne Validator 2 ergeben die Blaetter nicht die Wurzel")
 	}
 }
 
