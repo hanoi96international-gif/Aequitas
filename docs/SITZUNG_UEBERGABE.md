@@ -42,7 +42,12 @@ dezentrales Quantengeld“.
     grün (#615–#618 auf C1, auch der CGNAT-Fix der Kette). App 1.29.0 veröffentlicht
     (APK Release-Lauf 44947017301, iPhone 44947153941). Coordinator und Vergleichsdienst
     mit Image edc3d7a0 (biometric #125), Proof-Server mit 4f84295e (#33), alle drei grün.
-  - **In Arbeit (Zweig `claude/cl-uebergabe-weitermachen-jdz5h7`, noch kein PR):** R9
+  - **PRs offen: Aequitas #619 (R9) und App #99 (Annahmestelle aus Anteilen).**
+    Sicherheitsprüfung als Kommentar in #619 (nichts Ausnutzbares). Alle 8
+    Vier-Knoten-Quantentests lokal grün (597 s). Nach CI: #619 mergen, C1-Deploy
+    (Freigabe-Link an den Betreiber), dann App #99 mergen (kein neuer Build nötig, bis
+    es mehrere Validatoren gibt).
+  - **Damals in Arbeit:** R9
     Öffnung aus t Anteilen (`quanten_s_anteil_oeffnung.go`, DEZENTRAL.md 17 R9). Pakete
     je Annahmestelle im Bündel, `GET /api/quanten-w/validator/anteil-oeffnung` und
     `/blaetter`, Ausweichweg in `quantenSStichprobeV2Laden` und `quantenSBlaetterHolen`.
