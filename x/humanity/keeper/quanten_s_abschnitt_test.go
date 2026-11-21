@@ -269,7 +269,7 @@ func TestQuantenSBuendel(t *testing.T) {
 		"anderer Abschnitt":      func() error { _, err := quantenSBuendelOeffnen(empf, c, sig, praepAdr, K, 2, 3, 11, 14); return err },
 		"anderer Empfaenger-Nr.": func() error { _, err := quantenSBuendelOeffnen(empf, c, sig, praepAdr, K, 2, 4, 10, 13); return err },
 		"zu gross": func() error {
-			_, err := quantenSBuendelOeffnen(empf, strings.Repeat("a", quantenSBuendelHoechstens+2), sig, praepAdr, K, 2, 3, 10, 13)
+			_, err := quantenSBuendelOeffnen(empf, strings.Repeat("a", quantenSBuendelMitOeffnungHoechstens+2), sig, praepAdr, K, 2, 3, 10, 13)
 			return err
 		},
 		"Grossbuchstaben": func() error {

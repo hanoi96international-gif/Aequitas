@@ -613,7 +613,11 @@ func (d *quantenWDienst) abschnittAntwort(e *quantenWTresorEintrag) (QuantenSAbs
 		if err != nil {
 			return a, err
 		}
-		ch, sg, err := quantenSBuendelVersiegeln(d.key, pub, quantenSBuendelInhalt{K: e.K, Von: st.Von, Bis: st.Bis, Praeparator: e.X, Empfaenger: xv, Anteile: an})
+		pakete, err := st.anteilOeffnungPakete(e.K, e.X, xv)
+		if err != nil {
+			return a, err
+		}
+		ch, sg, err := quantenSBuendelVersiegeln(d.key, pub, quantenSBuendelInhalt{K: e.K, Von: st.Von, Bis: st.Bis, Praeparator: e.X, Empfaenger: xv, Anteile: an, Oeffnung: pakete})
 		if err != nil {
 			return a, err
 		}
@@ -930,6 +934,7 @@ func (d *quantenWDienst) bestaetigenAbschnitt(q QuantenWBestaetigenAnfrage) (str
 		}
 		anteile[st.Von+i] = eigen[i]
 	}
+	var oeffnungen map[string][]string
 	for xv := 1; xv <= v; xv++ {
 		if xv == e.X {
 			if q.Buendel[xv-1] != "" || q.BuendelSig[xv-1] != "" {
@@ -938,9 +943,20 @@ func (d *quantenWDienst) bestaetigenAbschnitt(q QuantenWBestaetigenAnfrage) (str
 			continue
 		}
 		von, bis, _ := quantenSAbschnitt(q.N, v, xv)
-		an, err := quantenSBuendelOeffnen(d.key, q.Buendel[xv-1], q.BuendelSig[xv-1], e.Validatoren[xv-1], q.K, xv, e.X, von, bis)
+		an, pakete, err := quantenSBuendelOeffnenPakete(d.key, q.Buendel[xv-1], q.BuendelSig[xv-1], e.Validatoren[xv-1], q.K, xv, e.X, von, bis)
 		if err != nil {
 			return "", "", err
+		}
+		// Stichprobe v2: ohne die Pakete fuer die Annahmestellen kein
+		// Bestaetigen -- sonst haengt das Laden wieder allein am Praeparator.
+		if st.ProbeArt == 2 {
+			if len(pakete) != 2 {
+				return "", "", quantenWFehler("Abschnitt: Buendel von %d ohne Pakete fuer die Annahmestellen (Stichprobe v2)", xv)
+			}
+			if oeffnungen == nil {
+				oeffnungen = map[string][]string{}
+			}
+			oeffnungen[strconv.Itoa(xv)] = pakete
 		}
 		for i, y := range an {
 			anteile[von+i] = y.Text(16)
@@ -956,6 +972,7 @@ func (d *quantenWDienst) bestaetigenAbschnitt(q QuantenWBestaetigenAnfrage) (str
 	}
 	neu := *e
 	neu.Wartend, neu.Wurzel, neu.Anteile, neu.Blaetter, neu.Proben = false, q.Wurzel, anteile, slices.Clone(q.Blaetter), slices.Clone(q.Proben)
+	neu.AnteilOeffnung = oeffnungen
 	roh, err := d.versiegeln(&neu)
 	if err != nil {
 		return "", "", err

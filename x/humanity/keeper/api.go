@@ -1279,6 +1279,8 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	// Ausgabe in Abschnitten (quanten_s_abschnitt_dienst.go)
 	mux.HandleFunc("/api/quanten-w/validator/abschnitt", a.handleQuantenSAbschnitt)
 	mux.HandleFunc("/api/quanten-w/validator/oeffnung", a.handleQuantenSOeffnung)
+	mux.HandleFunc("/api/quanten-w/validator/anteil-oeffnung", a.handleQuantenSAnteilOeffnung)
+	mux.HandleFunc("/api/quanten-w/validator/blaetter", a.handleQuantenSBlaetter)
 	mux.HandleFunc("/api/quanten-w/validator/schluessel", a.handleQuantenSSchluessel)
 	mux.HandleFunc("/api/quanten-w/validator/vormerken", a.handleQuantenSVormerken)
 	mux.HandleFunc("/api/quanten-w/validator/fuer-inhaberin", a.handleQuantenSFuerInhaberin)

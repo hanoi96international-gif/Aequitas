@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/rand"
 	"strings"
@@ -18,12 +19,16 @@ import (
 // qsaNetz: qsNetz plus der Weg zu jedem Validator, mit Faelschungen.
 type qsaNetz struct {
 	*qsNetz
-	fremderSchluessel  int // Validator nennt den Schluessel eines anderen
-	antwortFremd       int // Antwort mit fremder Unterschrift
-	oeffnungVertauscht int // Oeffnung fuer die andere Stelle
-	anfragen           int // Anfragen an die Validatoren
-	abholungen         int // Abschnitte fuer Inhaberin oder Stelle (fuerInhaberin)
-	blattFalsch        int // dieser Validator nennt ein falsches Blatt
+	fremderSchluessel  int          // Validator nennt den Schluessel eines anderen
+	antwortFremd       int          // Antwort mit fremder Unterschrift
+	oeffnungVertauscht int          // Oeffnung fuer die andere Stelle
+	anfragen           int          // Anfragen an die Validatoren
+	abholungen         int          // Abschnitte fuer Inhaberin oder Stelle (fuerInhaberin)
+	blattFalsch        int          // dieser Validator nennt ein falsches Blatt
+	ausgefallen        int          // dieser Praeparator gibt keine Oeffnung heraus (R9)
+	paketFalsch        map[int]bool // diese Validatoren geben das Paket fuer die andere Stelle heraus (R9)
+	pakete             int          // abgefragte Pakete (R9)
+	ohnePakete         int          // dieser Praeparator laesst die Pakete in seinen Buendeln weg (R9, selbst unterschrieben)
 }
 
 func (n *qsaNetz) schluessel(_ context.Context, x int) (string, error) {
@@ -48,12 +53,42 @@ func (n *qsaNetz) abschnitt(_ context.Context, x int, req QuantenSAbschnittAnfra
 		k, _ := neuerSchluessel(n.q.w.t)
 		ans.Sig = personalSign(n.q.w.t, k, quantenSAbschnittAntwortNachricht(ans))
 	}
+	if x == n.ohnePakete {
+		for j, c := range ans.Buendel {
+			if c == "" {
+				continue
+			}
+			an, _, err := quantenSBuendelOeffnenPakete(n.q.w.valKeys[j], c, ans.BuendelSig[j], n.q.w.val[x-1], ans.K, x, j+1, ans.Von, ans.Bis)
+			if err != nil {
+				return ans, err
+			}
+			hx := make([]string, len(an))
+			for i, y := range an {
+				hx[i] = y.Text(16)
+			}
+			if ans.Buendel[j], ans.BuendelSig[j], err = quantenSBuendelVersiegeln(n.q.w.valKeys[x-1], &n.q.w.valKeys[j].PublicKey,
+				quantenSBuendelInhalt{K: ans.K, Von: ans.Von, Bis: ans.Bis, Praeparator: x, Empfaenger: j + 1, Anteile: hx}); err != nil {
+				return ans, err
+			}
+		}
+		ans.Sig = personalSign(n.q.w.t, n.q.w.valKeys[x-1], quantenSAbschnittAntwortNachricht(ans))
+	}
 	roh, _ = json.Marshal(ans)
 	var a QuantenSAbschnittAntwort
 	return a, json.Unmarshal(roh, &a)
 }
 
+func (n *qsaNetz) alleBlaetter(_ context.Context, j int, K string) ([]string, error) {
+	if j == n.ausgefallen {
+		return nil, errors.New("nicht erreichbar")
+	}
+	return n.q.d[j-1].alleBlaetter(K)
+}
+
 func (n *qsaNetz) fuerInhaberin(_ context.Context, x int, K string) (QuantenSPaketAbschnitt, error) {
+	if x == n.ausgefallen {
+		return QuantenSPaketAbschnitt{}, errors.New("nicht erreichbar")
+	}
 	n.abholungen++
 	a, err := n.q.d[x-1].abschnittFuerInhaberin(K)
 	if err != nil {
@@ -68,10 +103,25 @@ func (n *qsaNetz) fuerInhaberin(_ context.Context, x int, K string) (QuantenSPak
 }
 
 func (n *qsaNetz) oeffnung(_ context.Context, x int, K string, b int) (string, error) {
+	if x == n.ausgefallen {
+		return "", errors.New("nicht erreichbar")
+	}
 	if x == n.oeffnungVertauscht {
 		b = 1 - b
 	}
 	return n.q.d[x-1].oeffnungFuerStelle(K, b)
+}
+
+func (n *qsaNetz) anteilOeffnung(_ context.Context, j, x int, K string, b int) (string, error) {
+	n.pakete++
+	if j == n.ausgefallen {
+		return "", errors.New("nicht erreichbar")
+	}
+	if n.paketFalsch[j] {
+		b = 1 - b
+	}
+	c, _, err := n.q.d[j-1].anteilOeffnungFuerStelle(K, x, b)
+	return c, err
 }
 
 func qsaWerkzeug(t *testing.T, n int) (*qwDienste, QuantenSAusgabeAuftrag, QuantenSBasen, []*qsaMessung) {

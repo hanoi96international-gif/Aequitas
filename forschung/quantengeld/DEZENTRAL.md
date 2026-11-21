@@ -1,6 +1,6 @@
 # Dezentrales Quantengeld komplett: was fehlt, und der Weg dorthin
 
-Stand 18.11.2026, Abschnitt 1 aktualisiert und Abschnitt 17 am 20.11.2026, R8 am 21.11.2026. Auftrag des Betreibers: „Bring das dezentrale Quantengeld komplett zu
+Stand 18.11.2026, Abschnitt 1 aktualisiert und Abschnitt 17 am 20.11.2026, R8 und R9 am 21.11.2026. Auftrag des Betreibers: „Bring das dezentrale Quantengeld komplett zu
 laufen, ggf. mit eigener Forschung“. Diese Notiz sagt, was heute läuft, wo es noch an
 einer Stelle hängt, und was wir bauen.
 
@@ -36,6 +36,9 @@ einer Stelle hängt, und was wir bauen.
   - **Basen y je Validator verschlüsselt** (Abschnitt 17, R8, 21.11.2026): Die
     Inhaberin kann y an die Validatoren verschlüsseln; der Ausgeber sieht dann nicht
     mehr, wo sie einlösen will.
+  - **Öffnung aus t Anteilen** (Abschnitt 17, R9, 21.11.2026): Fällt ein präparierender
+    Validator nach der Bindung aus, lädt die Annahmestelle seinen Abschnitt aus t
+    Paketen der anderen. Wirkt erst ab mehreren Validatoren.
   - **Was am Betreiber hängt:**
     - Der zweite Mensch als Validator mit eigenem Server und IBM-Konto (A5). Erst dann
       kennt niemand den ganzen Token.
@@ -983,8 +986,8 @@ werden.“
    - ~~R4a: Abholen mit K, kompakte Vorlage~~ – gebaut (unten).
    - R4b: Die App als Inhaberin (Bestellung, abholen mit K, binden, Vorlage als QR-Code).
    - Ein Hauptnetz-Lauf mit getrennten Rollen (Workflow).
-   - Die Öffnung aus Anteilen statt nur vom präparierenden Validator (Verfügbarkeit,
-     unten).
+   - ~~Die Öffnung aus Anteilen statt nur vom präparierenden Validator (Verfügbarkeit)~~
+     – gebaut (R9, unten).
    - ~~Die Basen y je Validator verschlüsseln (Privatsphäre)~~ – gebaut (R8, unten).
 3. **Hängt am Betreiber:**
    - Ein zweiter Mensch als Validator mit eigenem Server und IBM-Konto (A5).
@@ -1422,6 +1425,73 @@ Stelle, bevor die Inhaberin vorlegte. Er wusste also, **wo** sie einlösen will 
   - Die App bestellt noch im Klartext. Verschlüsseln in der App ist der nächste
     Schritt (dieselbe ECIES-Form; die App kann schon für die Inhaberin entschlüsseln).
 
+### R9: Öffnung aus t Anteilen (21.11.2026, gebaut)
+
+- **Problem:** Bei Stichprobe v2 lädt eine Annahmestelle ihre Stichprobe aus der Öffnung
+  jedes präparierenden Validators. Nur er kennt die Werte seines Abschnitts und weiß,
+  welche Stelle zu welcher Annahmestelle gehört (Stellen-Bit). Fällt er nach der Bindung
+  und vor dem Laden aus, wartet die Stelle.
+- **Warum nicht einfach die Anteile der anderen:** Die anderen kennen das Stellen-Bit
+  nicht. Gäben sie der Stelle ihre Anteile an allen Stellen, lernte sie auch die
+  Stichprobe der anderen Stelle. Damit wären die Stichproben nicht mehr getrennt
+  (Selbsttest 5g).
+- **Gebaut** (`quanten_s_anteil_oeffnung.go`):
+  - Der Präparator x legt in sein Bündel an jeden anderen Validator j je Annahmestelle b
+    ein **Paket**: die Anteile von j an genau den Stellen mit Stellen-Bit b, dazu das Salz
+    des Teil-Hashes von b. Das Paket ist an den Schlüssel der Stelle b verschlüsselt und
+    an K, b, x, j und den Abschnitt gebunden. Es liegt im unterschriebenen Bündel, der
+    Ausgeber kann es weder lesen noch tauschen.
+  - j kann das Paket nicht lesen. Es erfährt weder Werte noch die Aufteilung, die bis
+    zur Bindung geheim bleibt (Befund 5i). Bei Stichprobe v2 bestätigt j nur Bündel mit
+    genau zwei Paketen.
+  - j hält die Pakete im Tresor und gibt sie erst heraus, wenn Bindung und Wahl auf der
+    Kette stehen und final sind. Das prüft j selbst wie der Präparator
+    (`GET /api/quanten-w/validator/anteil-oeffnung?k=&x=&b=`).
+  - Antwortet x nicht, holt die Stelle die Pakete der anderen. Sie setzt die Werte aus t
+    Paketen zusammen (Lagrange) und prüft jeden Wert gegen sein Blatt und sein
+    Stellen-Bit. Ist ein Paket falsch, probiert sie weitere Teilmengen, höchstens 64.
+    Danach folgen dieselben Prüfungen wie bisher: Wurzel, k_note, Bindung v2 aus den
+    Salzen, Zählungen der Validatoren.
+  - Bei der kompakten Vorlage holt die Stelle die Blätter bei jedem Validator. Fehlt
+    einer, nennt ein anderer alle Blätter (`GET /api/quanten-w/validator/blaetter?k=`,
+    erst, wenn der Token auf der Kette steht). Blätter sind Bindungen ohne Geheimnis; die
+    Stelle prüft sie gegen die Wurzel auf der Kette.
+  - Keine Kettenänderung; Stichprobe v1 und bisherige Nachrichten sind unverändert.
+- **Grenzen:**
+  - Wer t Validatoren hat, kennt den Token ohnehin. Weniger als t, die zu früh
+    herausgeben, liefern weniger als t Anteile und damit nichts.
+  - Bei v = 1 (Hauptnetz heute) gibt es keine anderen Validatoren. R9 wirkt erst mit A5.
+  - Die Bündel werden größer: je Stelle kommt ein Anteil dazu, verschachtelt
+    verschlüsselt, grob das 2,5-Fache. Die Grenze für die Bestätigung (2 MiB) bleibt.
+    Damit sinkt das größte mögliche n·v, für n = 1104 bei wenigen Validatoren reicht es.
+  - Alle Validatoren müssen diese Fassung haben, bevor ein Präparator Pakete mitschickt.
+    Eine ältere Fassung weist Bündel mit dem neuen Feld ab (fail-closed).
+- **Belegt:**
+  - Gutfall: Präparator 1 oder 3 fällt nach der Bindung aus, die Ausgabe läuft durch
+    (Doppelvorlage abgewiesen, ehrliche Vorlage eingelöst).
+  - Vier echte Knoten über HTTP (`TestVierKnotenQuantenSRollenAusfallVorDemLaden_RealDB`):
+    Knoten 2 fällt nach der Bindung und vor dem Laden aus. Die Stelle lädt seinen
+    Abschnitt aus den Paketen der drei anderen und die Blätter von einem anderen
+    Validator. Doppelvorlage abgewiesen, ehrlich eingelöst (0 Fehler bei 62 Treffern).
+  - Ohne Ausfall fragt niemand nach Paketen.
+  - Nach jedem Schritt der Ausgabe fragt ein Prüfnetz jeden Validator nach jedem Paket:
+    Vor Bindung und Wahl gibt keiner eines heraus, ohne Finalität auch nicht.
+  - Missbrauch abgewiesen:
+    - nur t − 1 lesbare Pakete (die anderen für die falsche Stelle): kein Laden, keine
+      Vorlage;
+    - ein Bündel ohne Pakete bei v2 (selbst unterschrieben): keine Bestätigung;
+    - beim Lesen 13 Fälle: fremde Stelle, anderes K, andere Stelle b, anderer
+      Präparator, anderer Validator, anderer Abschnitt, Stelle außerhalb oder mit
+      führender Null, Anteil ≥ P, Großbuchstaben, Salz, Übergröße;
+    - beim Zusammensetzen: ein falscher Anteil unter vier Paketen (die ehrliche
+      Teilmenge wird gefunden), einer unter drei (abgewiesen), doppelter Validator,
+      andere Stellen oder anderes Salz;
+    - Bündel mit einem, drei, zu großen oder falsch geformten Paketen.
+  - Gegenprobe: 19 Mutationen, 17 rot. Zwei doppelte Absicherungen überleben, weil eine
+    spätere Prüfung dasselbe abfängt: Präparator gleich sich selbst (dafür gibt es kein
+    Paket im Tresor) und das Stellen-Bit beim Zusammensetzen (prüft danach
+    `quantenSOeffnungLaden`).
+
 ### Ehrlich dazu (offen)
 
 - **Der Ausgeber sieht die Basen y**, wenn die Inhaberin im Klartext bestellt (heute die
@@ -1434,7 +1504,8 @@ Stelle, bevor die Inhaberin vorlegte. Er wusste also, **wo** sie einlösen will 
   Anteile der anderen reichen zum Offenlegen auf der Kette, nicht zum Laden. Fällt einer
   nach der Bindung und vor dem Laden aus, muss die Stelle warten, bis er zurück ist. Der
   Wert ist nicht verloren, denn die Anmeldung kommt erst nach dem Laden. Im Pilot fällt
-  der Validator deshalb nach dem Laden aus. Ausweg: Öffnung aus t Anteilen.
+  der Validator deshalb nach dem Laden aus. Seit R9 lädt die Stelle aus t Paketen der
+  anderen; das wirkt erst ab mehreren Validatoren (A5).
 - **Hat ein Token schon zwei Fehlversuche,** liest das Werkzeug das Urteil nicht
   eindeutig (eingelöst und tot sehen in der Ansicht gleich aus) und meldet nicht an.
   Das ist wie bisher.

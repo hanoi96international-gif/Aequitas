@@ -64,6 +64,13 @@ type quantenSAbschnittNetz interface {
 	schluessel(ctx context.Context, x int) (string, error)
 	abschnitt(ctx context.Context, x int, req QuantenSAbschnittAnfrage) (QuantenSAbschnittAntwort, error)
 	oeffnung(ctx context.Context, x int, K string, b int) (string, error)
+	// anteilOeffnung: das Paket, das Praeparator x dem Validator j fuer
+	// Stelle b mitgab (R9, quanten_s_anteil_oeffnung.go).
+	anteilOeffnung(ctx context.Context, j, x int, K string, b int) (string, error)
+	// alleBlaetter: alle n Blaetter, wie Validator j sie beim Bestaetigen
+	// pruefte (R9: Ausweg, wenn ein Validator fuer seinen Abschnitt fehlt;
+	// geprueft wird gegen die Wurzel auf der Kette).
+	alleBlaetter(ctx context.Context, j int, K string) ([]string, error)
 	// fuerInhaberin: der Abschnitt von Validator x fuer Inhaberin und
 	// Annahmestelle (getrennte Rollen, quanten_s_rollen.go).
 	fuerInhaberin(ctx context.Context, x int, K string) (QuantenSPaketAbschnitt, error)
@@ -140,7 +147,7 @@ func quantenSAusgabeLaufAbschnitte(ctx context.Context, a QuantenSAusgabeAuftrag
 			passend, falsch = passend+treffer[s], falsch+fehler[s]
 		}
 		probenLaden = func(ctx context.Context) ([2][]int, [2][]string, error) {
-			return quantenSStichprobenV2Laden(ctx, a, netz, K, n, v, wurzel, blaetter, kn, stellenKey, proben, antw, y, x)
+			return quantenSStichprobenV2Laden(ctx, a, netz, K, n, t, v, wurzel, blaetter, kn, stellenKey, proben, antw, y, x)
 		}
 	} else {
 		for s := 0; s < 2; s++ {
@@ -516,6 +523,52 @@ func (m *quantenSMehrNetz) oeffnung(ctx context.Context, x int, K string, b int)
 	return a.Oeffnung, nil
 }
 
+func (m *quantenSMehrNetz) anteilOeffnung(ctx context.Context, j, x int, K string, b int) (string, error) {
+	h, err := m.validator(j)
+	if err != nil {
+		return "", err
+	}
+	gross := *h
+	gross.max = quantenSAbschnittAntwortMax
+	code, body, err := gross.anfrage(ctx, http.MethodGet, "/api/quanten-w/validator/anteil-oeffnung?k="+url.QueryEscape(K)+"&x="+strconv.Itoa(x)+"&b="+strconv.Itoa(b), nil)
+	if err != nil {
+		return "", err
+	}
+	if code != http.StatusOK {
+		return "", fmt.Errorf("HTTP %d: %s", code, quantenSFehlertext(body))
+	}
+	var a struct {
+		Paket string `json:"paket"`
+	}
+	if err := json.Unmarshal(body, &a); err != nil {
+		return "", errors.New("Antwort ist kein JSON")
+	}
+	return a.Paket, nil
+}
+
+func (m *quantenSMehrNetz) alleBlaetter(ctx context.Context, j int, K string) ([]string, error) {
+	h, err := m.validator(j)
+	if err != nil {
+		return nil, err
+	}
+	gross := *h
+	gross.max = quantenSAbschnittAntwortMax
+	code, body, err := gross.anfrage(ctx, http.MethodGet, "/api/quanten-w/validator/blaetter?k="+url.QueryEscape(K), nil)
+	if err != nil {
+		return nil, err
+	}
+	if code != http.StatusOK {
+		return nil, fmt.Errorf("HTTP %d: %s", code, quantenSFehlertext(body))
+	}
+	var a struct {
+		Blaetter []string `json:"blaetter"`
+	}
+	if err := json.Unmarshal(body, &a); err != nil {
+		return nil, errors.New("Antwort ist kein JSON")
+	}
+	return a.Blaetter, nil
+}
+
 func probeArt(v2 bool) int {
 	if v2 {
 		return 2
@@ -548,7 +601,7 @@ func quantenSAntwortV2Pruefen(ans QuantenSAbschnittAntwort, stellen int) error {
 // k_note (quantenSOeffnungLaden), die Bindung v2 aus den Salzen, und ob die
 // Zaehlung jedes Validators stimmte (sonst Befund mit seinem Namen) -- alles
 // vor der ersten Vorlage.
-func quantenSStichprobenV2Laden(ctx context.Context, a QuantenSAusgabeAuftrag, netz quantenSAbschnittNetz, K string, n, v int, wurzel [32]byte,
+func quantenSStichprobenV2Laden(ctx context.Context, a QuantenSAusgabeAuftrag, netz quantenSAbschnittNetz, K string, n, t, v int, wurzel [32]byte,
 	blaetter [][32]byte, kn int, stellenKey [2]*ecdsa.PrivateKey, proben [2][32]byte, antw []QuantenSAbschnittAntwort, y, x []int) ([2][]int, [2][]string, error) {
 	var probe [2][]int
 	var salzeHex [2][]string
@@ -556,7 +609,7 @@ func quantenSStichprobenV2Laden(ctx context.Context, a QuantenSAusgabeAuftrag, n
 	for s := 0; s < 2; s++ {
 		var geladen map[int][2]int
 		var err error
-		if probe[s], salzeHex[s], geladen, err = quantenSStichprobeV2Laden(ctx, netz, ende, K, s, n, v, wurzel, blaetter, kn, stellenKey[s], proben[s]); err != nil {
+		if probe[s], salzeHex[s], geladen, err = quantenSStichprobeV2Laden(ctx, netz, ende, K, s, n, t, v, wurzel, blaetter, kn, stellenKey[s], proben[s]); err != nil {
 			return probe, salzeHex, err
 		}
 		// Zaehlung je Validator nachrechnen (Abschnitt fuer Abschnitt).
@@ -586,30 +639,36 @@ func quantenSStichprobenV2Laden(ctx context.Context, a QuantenSAusgabeAuftrag, n
 // (quantenSOeffnungLaden) und Stichprobe mit Salzen gegen die Bindung probe
 // der Ausgabe -- dieselbe Rechnung wie die Kette beim Anmelden. Gibt die
 // sortierte Stichprobe, die Salze (hex) und je Stelle (Basis, Wert).
-func quantenSStichprobeV2Laden(ctx context.Context, netz quantenSAbschnittNetz, ende time.Time, K string, s, n, v int, wurzel [32]byte,
+func quantenSStichprobeV2Laden(ctx context.Context, netz quantenSAbschnittNetz, ende time.Time, K string, s, n, t, v int, wurzel [32]byte,
 	blaetter [][32]byte, kn int, key *ecdsa.PrivateKey, probeBindung [32]byte) ([]int, []string, map[int][2]int, error) {
 	oe := map[int]*big.Int{}
 	var salze [][32]byte
 	var salzeHex []string
 	for xi := 1; xi <= v; xi++ {
 		von, bis, _ := quantenSAbschnitt(n, v, xi)
-		var c string
+		var m map[int]*big.Int
+		var salz [32]byte
 		for {
-			var err error
-			if c, err = netz.oeffnung(ctx, xi, K, s); err == nil {
+			c, err := netz.oeffnung(ctx, xi, K, s)
+			if err == nil {
+				if m, salz, err = quantenSOeffnungEntschluesselnV2(key, c, K, s, xi, von, bis); err != nil {
+					return nil, nil, nil, fmt.Errorf("Validator %d: Oeffnung fuer Stelle %d: %v", xi, s, err)
+				}
 				break
-			} else if !time.Now().Before(ende) {
-				return nil, nil, nil, fmt.Errorf("Validator %d: Oeffnung fuer Stelle %d nach der Bindung: %w", xi, s, err)
+			}
+			// R9: Praeparator nicht erreichbar -- aus t Paketen der anderen.
+			var errA error
+			if m, salz, errA = quantenSAusAnteilenLaden(ctx, netz, K, s, xi, t, v, von, bis, blaetter, key); errA == nil {
+				break
+			}
+			if !time.Now().Before(ende) {
+				return nil, nil, nil, fmt.Errorf("Validator %d: Oeffnung fuer Stelle %d nach der Bindung: %w; aus Anteilen: %v", xi, s, err, errA)
 			}
 			select {
 			case <-ctx.Done():
 				return nil, nil, nil, ctx.Err()
 			case <-time.After(quantenSV2Nachfragen):
 			}
-		}
-		m, salz, err := quantenSOeffnungEntschluesselnV2(key, c, K, s, xi, von, bis)
-		if err != nil {
-			return nil, nil, nil, fmt.Errorf("Validator %d: Oeffnung fuer Stelle %d: %v", xi, s, err)
 		}
 		for i, w := range m {
 			oe[i] = w

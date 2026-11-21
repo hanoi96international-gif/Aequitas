@@ -295,7 +295,12 @@ jobs:
           # stiess die Gruppe an die 10-Minuten-Grenze (20.11.2026, Push-Lauf
           # 44737311991: Abbruch in TestVierKnoten_RealDB nach 600 s).
           run_group realdb   '_RealDB$|RealDB$' '^TestVierKnotenQuanten'
-          run_group quanten  '^TestVierKnotenQuanten.*_RealDB$'
+          # R9 (21.11.2026): der Ausfall VOR dem Laden dauert allein ~4 min (die
+          # Stelle fragt den toten Knoten je Aufruf bis zu 8-mal nach) -- mit
+          # den uebrigen sieben zusammen ueber 600 s. Eigene Gruppe statt
+          # laengerer Grenze.
+          run_group quanten  '^TestVierKnotenQuanten.*_RealDB$' '^TestVierKnotenQuantenSRollenAusfallVorDemLaden_RealDB$'
+          run_group quantenr9 '^TestVierKnotenQuantenSRollenAusfallVorDemLaden_RealDB$'
           run_group transfer 'TestTransferConcurrent|TestTransferAtomic|TestProcessTransferBatchConcurrent'
           run_group wal      'TestWAL|TestTransferWAL'
           run_group plumbing 'TestPoolFlush|TestPendingTxs|TestEvmMirrorFlush|TestDBPoolStats'
