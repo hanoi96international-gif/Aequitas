@@ -137,6 +137,10 @@ type quantenWTresorEintrag struct {
 	// gilt der Eintrag wie ein offener Auftrag (Grenzen, Aufraeumen).
 	Wartend   bool                    `json:"wartend,omitempty"`
 	Abschnitt *quantenSAbschnittStand `json:"abschnitt,omitempty"`
+	// AnteilOeffnung: je anderer Praeparator x (dezimal) die zwei Pakete,
+	// die er diesem Validator fuer die Annahmestellen mitgab (R9,
+	// quanten_s_anteil_oeffnung.go). Nur bei Stichprobe v2.
+	AnteilOeffnung map[string][]string `json:"anteil_oeffnung,omitempty"`
 }
 
 // quantenWAblage: wohin der Tresor schreibt (Datenbank oder Speicher).

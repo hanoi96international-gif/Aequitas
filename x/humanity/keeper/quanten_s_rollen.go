@@ -863,7 +863,7 @@ func quantenSAnnahmeLauf(ctx context.Context, a QuantenSAusgabeAuftrag, vl Quant
 		return nil, errors.New("Stand: Bindung oder Wahl")
 	}
 	fmt.Fprintf(log, "Token %s: Vorlage fuer Stelle %d von %s geprueft; Stichprobe von %d Validatoren nach der Finalitaet\n", K[:12], b, inhaber, v)
-	probe, salze, geladen, err := quantenSStichprobeV2Laden(ctx, netz, time.Now().Add(a.Frist), K, b, n, v, wurzel, blaetter, kn, a.Schluessel, probeBindung)
+	probe, salze, geladen, err := quantenSStichprobeV2Laden(ctx, netz, time.Now().Add(a.Frist), K, b, n, t, v, wurzel, blaetter, kn, a.Schluessel, probeBindung)
 	if err != nil {
 		return nil, err
 	}

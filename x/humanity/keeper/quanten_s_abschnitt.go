@@ -158,6 +158,10 @@ type quantenSBuendelInhalt struct {
 	Praeparator int      `json:"praeparator"`
 	Empfaenger  int      `json:"empfaenger"`
 	Anteile     []string `json:"anteile"`
+	// Oeffnung: bei Stichprobe v2 je Annahmestelle b ein Paket mit den
+	// Anteilen des Empfaengers an den Stellen von b, verschluesselt an b
+	// (quanten_s_anteil_oeffnung.go). Der Empfaenger kann es nicht lesen.
+	Oeffnung []string `json:"oeffnung,omitempty"`
 }
 
 // quantenSBuendelNachricht: was der Praeparator ueber das Chiffrat
@@ -188,42 +192,58 @@ func quantenSBuendelVersiegeln(praep *ecdsa.PrivateKey, empf *ecdsa.PublicKey, i
 // streng lesen. Fail-closed: zu gross, fremde Unterschrift, fremder Empfaenger,
 // anderes K oder anderer Abschnitt, falsche Zahl oder Form der Anteile.
 func quantenSBuendelOeffnen(empf *ecdsa.PrivateKey, chiffrat, sig, praepAdresse, K string, praeparator, empfaenger, von, bis int) ([]*big.Int, error) {
-	if len(chiffrat) == 0 || len(chiffrat) > quantenSBuendelHoechstens || !kleinHex(chiffrat) {
-		return nil, quantenWFehler("Buendel: Form oder Groesse")
+	an, _, err := quantenSBuendelOeffnenPakete(empf, chiffrat, sig, praepAdresse, K, praeparator, empfaenger, von, bis)
+	return an, err
+}
+
+// quantenSBuendelOeffnenPakete: dasselbe, dazu die zwei Pakete fuer die
+// Annahmestellen (leer bei Buendeln ohne Stichprobe v2). Von den Paketen
+// prueft der Empfaenger nur Form und Groesse -- lesen kann er sie nicht.
+func quantenSBuendelOeffnenPakete(empf *ecdsa.PrivateKey, chiffrat, sig, praepAdresse, K string, praeparator, empfaenger, von, bis int) ([]*big.Int, []string, error) {
+	if len(chiffrat) == 0 || len(chiffrat) > quantenSBuendelMitOeffnungHoechstens || !kleinHex(chiffrat) {
+		return nil, nil, quantenWFehler("Buendel: Form oder Groesse")
 	}
 	if !kanonischeSignatur(sig) || verifyPersonalSign(quantenSBuendelNachricht(K, praeparator, empfaenger, chiffrat), sig, praepAdresse) != nil {
-		return nil, quantenWFehler("Buendel: nicht vom Praeparator %d unterschrieben", praeparator)
+		return nil, nil, quantenWFehler("Buendel: nicht vom Praeparator %d unterschrieben", praeparator)
 	}
 	c, err := hex.DecodeString(chiffrat)
 	if err != nil {
-		return nil, quantenWFehler("Buendel: Hex")
+		return nil, nil, quantenWFehler("Buendel: Hex")
 	}
 	roh, err := ecies.ImportECDSA(empf).Decrypt(c, nil, nil)
 	if err != nil {
-		return nil, quantenWFehler("Buendel: nicht fuer diesen Validator")
+		return nil, nil, quantenWFehler("Buendel: nicht fuer diesen Validator")
 	}
 	var in quantenSBuendelInhalt
 	dec := json.NewDecoder(bytes.NewReader(roh))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&in); err != nil || dec.More() {
-		return nil, quantenWFehler("Buendel: Inhalt unlesbar")
+		return nil, nil, quantenWFehler("Buendel: Inhalt unlesbar")
 	}
 	if in.Dom != quantenSDomBuendel || in.K != K || in.Von != von || in.Bis != bis || in.Praeparator != praeparator ||
 		in.Empfaenger != empfaenger || len(in.Anteile) != bis-von {
-		return nil, quantenWFehler("Buendel: passt nicht zu K, Abschnitt oder Empfaenger")
+		return nil, nil, quantenWFehler("Buendel: passt nicht zu K, Abschnitt oder Empfaenger")
 	}
 	out := make([]*big.Int, len(in.Anteile))
 	for i, y := range in.Anteile {
 		if len(y) == 0 || len(y) > 32 || !kleinHex(y) {
-			return nil, quantenWFehler("Buendel: Anteil %d", i)
+			return nil, nil, quantenWFehler("Buendel: Anteil %d", i)
 		}
 		v, ok := new(big.Int).SetString(y, 16)
 		if !ok || v.Cmp(quantenWP) >= 0 {
-			return nil, quantenWFehler("Buendel: Anteil %d", i)
+			return nil, nil, quantenWFehler("Buendel: Anteil %d", i)
 		}
 		out[i] = v
 	}
-	return out, nil
+	if len(in.Oeffnung) != 0 && len(in.Oeffnung) != 2 {
+		return nil, nil, quantenWFehler("Buendel: Pakete fuer die Annahmestellen")
+	}
+	for _, c := range in.Oeffnung {
+		if !quantenSAnteilOeffnungFormOk(c) {
+			return nil, nil, quantenWFehler("Buendel: Paket fuer eine Annahmestelle (Form oder Groesse)")
+		}
+	}
+	return out, in.Oeffnung, nil
 }
 
 // quantenSOeffnungLaden: die Annahmestelle b laedt ihre Stichprobe aus den
