@@ -634,24 +634,58 @@ func quantenSBlaetterHolen(ctx context.Context, netz quantenSAbschnittNetz, K st
 	if v != len(validatoren) {
 		return nil, fmt.Errorf("%d Validatoren angegeben, %d verlangt", len(validatoren), v)
 	}
-	out := make([][32]byte, 0, n)
+	if n < 1 || n > quantenWNMax {
+		return nil, fmt.Errorf("n = %d", n)
+	}
+	out := make([][32]byte, n)
+	var fehlend []int
+	var fehler []string
 	for x := 1; x <= v; x++ {
 		ab, err := netz.fuerInhaberin(ctx, x, K)
 		if err != nil {
-			return nil, fmt.Errorf("Validator %d: Abschnitt: %w", x, err)
+			// R9: nicht erreichbar -- seine Blaetter kann jeder andere
+			// Validator nennen; ob sie stimmen, prueft der Aufrufer an der
+			// Wurzel auf der Kette.
+			fehlend = append(fehlend, x)
+			fehler = append(fehler, fmt.Sprintf("Validator %d: Abschnitt: %v", x, err))
+			continue
 		}
 		if err := quantenSPaketAbschnittPruefen(ab, K, n, v, x, validatoren[x-1]); err != nil {
 			return nil, err
 		}
+		von, _, _ := quantenSAbschnitt(n, v, x)
 		for j, h := range ab.Blaetter {
 			bl, ok := quantenWHex32(h)
 			if !ok {
 				return nil, fmt.Errorf("Abschnitt %d, Blatt %d", x, j)
 			}
-			out = append(out, bl)
+			out[von+j] = bl
 		}
 	}
-	return out, nil
+	if len(fehlend) == 0 {
+		return out, nil
+	}
+	for j := 1; j <= v; j++ {
+		if slices.Contains(fehlend, j) {
+			continue
+		}
+		alle, err := netz.alleBlaetter(ctx, j, K)
+		if err != nil || len(alle) != n {
+			continue
+		}
+		voll := slices.Clone(out)
+		ok := true
+		for _, x := range fehlend {
+			von, bis, _ := quantenSAbschnitt(n, v, x)
+			for i := von; i < bis && ok; i++ {
+				voll[i], ok = quantenWHex32(alle[i])
+			}
+		}
+		if ok {
+			return voll, nil
+		}
+	}
+	return nil, errors.New(strings.Join(fehler, "; ") + "; kein anderer Validator nannte die Blaetter")
 }
 
 // quantenSPaketVonKette: das Paket ohne den Ausgeber -- der Stand von der

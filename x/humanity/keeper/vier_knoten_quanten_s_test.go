@@ -70,6 +70,20 @@ func TestVierKnotenQuantenSAbschnitteAusfall_RealDB(t *testing.T) {
 func TestVierKnotenQuantenSRollen_RealDB(t *testing.T)        { qsVierKnotenModus(t, false, true, true) }
 func TestVierKnotenQuantenSRollenAusfall_RealDB(t *testing.T) { qsVierKnotenModus(t, true, true, true) }
 
+// OEFFNUNG AUS t ANTEILEN (R9, quanten_s_anteil_oeffnung.go): ein Validator
+// faellt nach der Bindung und VOR dem Laden aus. Die Stelle laedt seinen
+// Abschnitt aus den Paketen der drei anderen (t = 3) ueber echtes HTTP und
+// loest ein; 3 von 4 legen offen.
+func TestVierKnotenQuantenSRollenAusfallVorDemLaden_RealDB(t *testing.T) {
+	qsAusfallVorDemLaden = true
+	t.Cleanup(func() { qsAusfallVorDemLaden = false })
+	qsVierKnotenModus(t, true, true, true)
+}
+
+// qsAusfallVorDemLaden: im Rollen-Lauf faellt der Validator schon vor dem
+// Laden der ehrlichen Stelle aus (R9), nicht erst bei der Anmeldung.
+var qsAusfallVorDemLaden bool
+
 // qsAbschnitteAusVerzeichnis: im Pilot (quanten-s-pilot.yml, ausgabe =
 // abschnitte) steht in AEQUITAS_QS_ABSCHNITTE das Verzeichnis von
 // `hardware_ibm.py --s-abschnitte --ausgaben 2`: mess_<x>.json je Validator
@@ -689,6 +703,12 @@ func qsRollenVierKnoten(t *testing.T, netz *vierKnotenNetz, leiter int, ausgeber
 			return m
 		}
 		*weg = netz.ks[(leiter+2)%len(netz.ks)]
+		if qsAusfallVorDemLaden {
+			t.Logf("Knoten %d (%s) faellt aus -- nach der Bindung, bevor die Stelle ihre Stichprobe laedt (R9)", (*weg).i, (*weg).addr)
+			(*weg).aus.Store(true)
+			(*weg).anhalten()
+			return m
+		}
 		return &qsAusfallNetz{quantenSMehrNetz: m, weg: func() {
 			t.Logf("Knoten %d (%s) faellt aus -- bei der ehrlichen Anmeldung, nachdem die Stelle ihre Stichprobe geladen hat", (*weg).i, (*weg).addr)
 			(*weg).aus.Store(true)

@@ -36,6 +36,7 @@ import (
 	"fmt"
 	"math/big"
 	"net/http"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -357,4 +358,42 @@ func quantenSAusAnteilenLaden(ctx context.Context, netz quantenSAbschnittNetz, K
 		}
 		return nil
 	})
+}
+
+// alleBlaetter: alle n Blaetter, wie dieser Validator sie beim Bestaetigen
+// gegen die Wurzel pruefte -- Bindungen ohne Geheimnis. Erst, wenn der Token
+// auf der Kette steht (vorher verraet der Endpunkt nicht, was vorbereitet ist).
+func (d *quantenWDienst) alleBlaetter(K string) ([]string, error) {
+	if tok := d.cs.quantenWJetzt().Token[K]; tok == nil || tok.token == nil {
+		return nil, quantenWFehler("erst, wenn der Token auf der Kette steht")
+	}
+	e, da := d.eintragVon(K)
+	if !da || e.Wartend || len(e.Blaetter) != e.N {
+		return nil, quantenWFehler("keine Blaetter zu diesem K")
+	}
+	return slices.Clone(e.Blaetter), nil
+}
+
+func (a *APIServer) handleQuantenSBlaetter(w http.ResponseWriter, r *http.Request) {
+	writeJSONCORS(w)
+	d := a.state.quantenWDienstJetzt()
+	if d == nil || !quantenWAktiv(time.Now().Unix()) {
+		jsonError(w, "quantum money validator service not active", http.StatusConflict)
+		return
+	}
+	if !burstErlaubt("quanten-w-dienst:"+erneuerungsAbsender(r), burstQuantenWDienstJeIP, burstFenster) {
+		jsonError(w, "too many requests from this address", http.StatusTooManyRequests)
+		return
+	}
+	K := strings.ToLower(r.URL.Query().Get("k"))
+	if !istHash64(K) {
+		jsonError(w, "k", http.StatusBadRequest)
+		return
+	}
+	bl, err := d.alleBlaetter(K)
+	if err != nil {
+		jsonError(w, "rejected: "+err.Error(), http.StatusConflict)
+		return
+	}
+	json.NewEncoder(w).Encode(map[string]interface{}{"k": K, "validator": d.adresse, "blaetter": bl})
 }

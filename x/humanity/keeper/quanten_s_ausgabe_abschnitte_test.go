@@ -78,7 +78,17 @@ func (n *qsaNetz) abschnitt(_ context.Context, x int, req QuantenSAbschnittAnfra
 	return a, json.Unmarshal(roh, &a)
 }
 
+func (n *qsaNetz) alleBlaetter(_ context.Context, j int, K string) ([]string, error) {
+	if j == n.ausgefallen {
+		return nil, errors.New("nicht erreichbar")
+	}
+	return n.q.d[j-1].alleBlaetter(K)
+}
+
 func (n *qsaNetz) fuerInhaberin(_ context.Context, x int, K string) (QuantenSPaketAbschnitt, error) {
+	if x == n.ausgefallen {
+		return QuantenSPaketAbschnitt{}, errors.New("nicht erreichbar")
+	}
 	n.abholungen++
 	a, err := n.q.d[x-1].abschnittFuerInhaberin(K)
 	if err != nil {

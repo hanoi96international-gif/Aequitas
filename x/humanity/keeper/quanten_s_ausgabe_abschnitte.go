@@ -67,6 +67,10 @@ type quantenSAbschnittNetz interface {
 	// anteilOeffnung: das Paket, das Praeparator x dem Validator j fuer
 	// Stelle b mitgab (R9, quanten_s_anteil_oeffnung.go).
 	anteilOeffnung(ctx context.Context, j, x int, K string, b int) (string, error)
+	// alleBlaetter: alle n Blaetter, wie Validator j sie beim Bestaetigen
+	// pruefte (R9: Ausweg, wenn ein Validator fuer seinen Abschnitt fehlt;
+	// geprueft wird gegen die Wurzel auf der Kette).
+	alleBlaetter(ctx context.Context, j int, K string) ([]string, error)
 	// fuerInhaberin: der Abschnitt von Validator x fuer Inhaberin und
 	// Annahmestelle (getrennte Rollen, quanten_s_rollen.go).
 	fuerInhaberin(ctx context.Context, x int, K string) (QuantenSPaketAbschnitt, error)
@@ -540,6 +544,29 @@ func (m *quantenSMehrNetz) anteilOeffnung(ctx context.Context, j, x int, K strin
 		return "", errors.New("Antwort ist kein JSON")
 	}
 	return a.Paket, nil
+}
+
+func (m *quantenSMehrNetz) alleBlaetter(ctx context.Context, j int, K string) ([]string, error) {
+	h, err := m.validator(j)
+	if err != nil {
+		return nil, err
+	}
+	gross := *h
+	gross.max = quantenSAbschnittAntwortMax
+	code, body, err := gross.anfrage(ctx, http.MethodGet, "/api/quanten-w/validator/blaetter?k="+url.QueryEscape(K), nil)
+	if err != nil {
+		return nil, err
+	}
+	if code != http.StatusOK {
+		return nil, fmt.Errorf("HTTP %d: %s", code, quantenSFehlertext(body))
+	}
+	var a struct {
+		Blaetter []string `json:"blaetter"`
+	}
+	if err := json.Unmarshal(body, &a); err != nil {
+		return nil, errors.New("Antwort ist kein JSON")
+	}
+	return a.Blaetter, nil
 }
 
 func probeArt(v2 bool) int {
