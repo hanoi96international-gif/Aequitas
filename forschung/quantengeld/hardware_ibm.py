@@ -98,6 +98,9 @@ _spec_k.loader.exec_module(wk)
 _spec_s = importlib.util.spec_from_file_location("s_kette", os.path.join(os.path.dirname(os.path.abspath(__file__)), "s_kette.py"))
 sk = importlib.util.module_from_spec(_spec_s)
 _spec_s.loader.exec_module(sk)
+_spec_f = importlib.util.spec_from_file_location("fehlerbild", os.path.join(os.path.dirname(os.path.abspath(__file__)), "fehlerbild.py"))
+fb = importlib.util.module_from_spec(_spec_f)
+_spec_f.loader.exec_module(fb)
 MAX_S_STELLEN = 8192     # k je Annahmestelle; Token = 2k Qubits in Schaltkreisen zu 16
                          # (2k <= quantenWNMax = 16384; 3 von 4 Validatoren brauchen k = 5200)
 MAX_S_AUSGABEN = 4       # --s-abschnitte: unabhaengige Ausgaben je Lauf (Pilot: eine je Test)
@@ -177,6 +180,75 @@ def mess_qubits(qc) -> dict[int, int]:
         if ins.operation.name == "measure":
             out[qc.find_bit(ins.clbits[0]).index] = qc.find_bit(ins.qubits[0]).index
     return out
+
+
+def auslesefehler(backend, qubits) -> dict:
+    """Auslesefehler je physischem Qubit aus der Tageskalibrierung des Chips
+    (qiskit Target, measure.error). Fehlt einer, leer (dann kein Fehlerbild)."""
+    out = {}
+    try:
+        messen = backend.target["measure"]
+        for q in set(qubits):
+            e = messen.get((q,))
+            if e is None or e.error is None or not (0 < float(e.error) < 1):
+                return {}
+            out[q] = float(e.error)
+    except Exception:  # kein Target (lokaler Simulator ohne Rauschen)
+        return {}
+    return out
+
+
+def gatterfehler_je_stelle(backend, qc, zuordnung: dict) -> dict | None:
+    """Je klassischem Bit (Stelle) die Summe der Fehler der 1-Qubit-Gatter auf
+    seinem Qubit vor der Messung, aus der Kalibrierung (Target). rz ist
+    virtuell (Fehler 0). Nennt die Kalibrierung ein Gatter nicht: None."""
+    je_qubit: dict[int, float] = {}
+    try:
+        for ins in qc.data:
+            name = ins.operation.name
+            if name in ("measure", "barrier", "delay") or len(ins.qubits) != 1:
+                continue
+            q = qc.find_bit(ins.qubits[0]).index
+            e = backend.target[name].get((q,))
+            if e is None or (e.error is None and name != "rz"):
+                return None
+            je_qubit[q] = je_qubit.get(q, 0.0) + float(e.error or 0.0)
+    except Exception:
+        return None
+    return {i: je_qubit.get(q, 0.0) for i, q in zuordnung.items()}
+
+
+def kalibrierzeit(backend) -> str:
+    """Zeit der Kalibrierung, wenn der Chip sie nennt (sonst leer)."""
+    try:
+        t = backend.properties().last_update_date
+        return t.isoformat() if t is not None else ""
+    except Exception:
+        return ""
+
+
+# Das Fehlerbild des letzten Auftrags (nur Summen, fehlerbild.auswerten) --
+# die rohen Schuesse bleiben im Lauf.
+LETZTES_FEHLERBILD: dict | None = None
+
+
+def fehlerbild_ausgeben(wo: str) -> str:
+    """Text fuer die Zusammenfassung und, mit --fehlerbild DATEI, die Summen als JSON."""
+    if LETZTES_FEHLERBILD is None:
+        return "Fehlerbild: keine Kalibrierung (Simulator ohne Rauschmodell)."
+    if "--fehlerbild" in sys.argv:
+        with open(sys.argv[sys.argv.index("--fehlerbild") + 1], "w") as fh:
+            json.dump(LETZTES_FEHLERBILD, fh, indent=1)
+    return fb.text(LETZTES_FEHLERBILD, wo)
+
+
+def fehlerbild_kurz() -> str:
+    """Eine Zeile je Auftrag (Pilot mit mehreren Abschnitten)."""
+    f = LETZTES_FEHLERBILD
+    if f is None:
+        return "Fehlerbild: keine Kalibrierung"
+    return (f"Fehlerbild {f['urteil']} ({f['fehler_beobachtet']} Fehler je Schuss, erwartet ~{f['fehler_erwartet']:.1f}"
+            + (f"; {'; '.join(f['befunde'])}" if f["befunde"] else "") + ")")
 
 
 def kalibrierung(backend, sampler, qubits: list[int], schuesse: int) -> tuple[dict, dict]:
@@ -591,12 +663,34 @@ def s_messen_basen(y: list[int], rng: random.Random):
     job_id = job.job_id() if hasattr(job, "job_id") else ""
     x: list[int] = []
     x1: list[int] = []
-    for s, r in zip(kreise, job.result()):
+    qubits: list[int] = []
+    je_stelle: list[list[int]] = []
+    gatter: list[float] | None = []
+    for j, (s, r) in enumerate(zip(kreise, job.result())):
         schuesse = [wh.antworten(s, b) for b in r.data.c.get_bitstrings()]
         if len(schuesse) != wiederholen:
             raise SystemExit(f"Messung: {len(schuesse)} statt {wiederholen} Schuesse")
         x += mehrheit(schuesse)
         x1 += schuesse[0]
+        zuordnung = mess_qubits(qcs[j]) if backend is not None else {}
+        gf = gatterfehler_je_stelle(backend, qcs[j], zuordnung) if backend is not None else None
+        if gf is None:
+            gatter = None
+        for i in range(len(schuesse[0])):
+            qubits.append(zuordnung.get(i, -1))
+            je_stelle.append([a[i] for a in schuesse])
+            if gatter is not None:
+                gatter.append(gf.get(i, 0.0))
+    # Fehlerbild gegen die Kalibrierung (fehlerbild.py): nur, wenn der Chip
+    # (oder das Rauschmodell) fuer jedes benutzte Qubit einen Auslesefehler
+    # nennt. Gemerkt werden nur die Summen.
+    global LETZTES_FEHLERBILD
+    LETZTES_FEHLERBILD = None
+    fehler = auslesefehler(backend, qubits) if backend is not None and -1 not in qubits else {}
+    if fehler:
+        LETZTES_FEHLERBILD = fb.auswerten(u, t, y, qubits, je_stelle, fehler, gatter)
+        LETZTES_FEHLERBILD["kalibriert"] = kalibrierzeit(backend)
+        LETZTES_FEHLERBILD["job"] = job_id
     if len(x) != n or len(x1) != n:
         raise SystemExit(f"Messung: {len(x)} statt {n} Ergebnisse")
     if wiederholen > 1:
@@ -625,7 +719,7 @@ def s_messen_lauf(datei: str) -> None:
     with os.fdopen(fd, "w") as fh:
         json.dump({"n": n, "u": bits(u), "t": bits(t), "y": bits(y), "x": bits(x), "wo": wo, "job": job_id}, fh)
     text = (f"## S-Messung fuer die Ausgabe auf {wo}\n\n{n} Qubits in {len(kreise)} Schaltkreisen"
-            + (f", Job {job_id}" if job_id else "") + f". {s_fehler_text(y, u, t, x, x1)}.")
+            + (f", Job {job_id}" if job_id else "") + f". {s_fehler_text(y, u, t, x, x1)}.\n\n" + fehlerbild_ausgeben(wo))
     print(text)
     if os.environ.get("GITHUB_STEP_SUMMARY"):
         with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as fh:
@@ -667,7 +761,7 @@ def s_abschnitte_lauf(verzeichnis: str) -> None:
             geraete_a.append(wo)
             zeilen.append(f"- Ausgabe {a}, Validator {x}: Stellen {ab[0]}..{ab[-1]} ({len(ab)} Qubits, "
                           f"{len(kreise)} Schaltkreise, {wo}" + (f", Job {job_id}" if job_id else "")
-                          + f"), {s_fehler_text(y, u, t, xs, x1)}")
+                          + f"), {s_fehler_text(y, u, t, xs, x1)}; {fehlerbild_kurz()}")
         basen_je.append({"n": n, "basen": basen, "wo": geraete_text(geraete_a),
                          "job": ",".join(j for j in jobs if j)})
         geraete += geraete_a
@@ -753,7 +847,7 @@ def s_abschnitt_lauf(verzeichnis: str) -> None:
                                               "wo": wo, "job": job_id})
     text = (f"## S-Messung eines Abschnitts auf {wo}\n\n{len(y)} Qubits in {len(kreise)} Schaltkreisen"
             + (f", Job {job_id}" if job_id else "") + f". {s_fehler_text(y, u, t, xs, x1)}. "
-            + f"Abgelegt als {name}.")
+            + f"Abgelegt als {name}.\n\n" + fehlerbild_ausgeben(wo))
     print(text)
     if os.environ.get("GITHUB_STEP_SUMMARY"):
         with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as fh:

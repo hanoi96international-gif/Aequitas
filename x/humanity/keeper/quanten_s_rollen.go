@@ -188,7 +188,7 @@ type QuantenSAnnahmeErgebnis struct {
 	Treffer    int    `json:"treffer"`
 	Fehler     int    `json:"fehler"`
 	Vorab      string `json:"vorab"`  // "besteht" oder "abgewiesen" (eigene Rechnung)
-	Urteil     string `json:"urteil"` // "eingeloest", "abgewiesen" oder "frist" (Kette)
+	Urteil     string `json:"urteil"` // "eingeloest", "abgewiesen", "tot" (letzter Versuch, ab dem Stichtag) oder "frist" (Kette)
 	// Wurzel und Proben der Ausgabe, vor dem Anmelden von der Kette gelesen
 	// (oeffentlich) -- dagegen prueft der Nachweis nach dem Ende.
 	Wurzel string   `json:"wurzel"`

@@ -527,8 +527,12 @@ func quantenSAnmeldenUrteil(ctx context.Context, netz quantenSNetz, a QuantenSAu
 	if vorher == nil || quantenSZahl(vorher["fehl"]) != fehl {
 		return "", fmt.Errorf("vor der Vorlage an Stelle %d: Token fehlt oder %v statt %d Fehlversuche", s, vorher["fehl"], fehl)
 	}
-	if fehl+1 >= quantenWFehlMax {
-		return "", fmt.Errorf("zu viele Fehlversuche, um das Urteil eindeutig zu lesen")
+	// Beim letzten Versuch endet der Token in jedem Fall (eingeloest oder
+	// tot). Anmelden nur, wenn die Kette das Urteil eindeutig schreibt
+	// (quanten_w_urteil.go) -- sonst liesse es sich nicht lesen.
+	letzter := fehl+1 >= quantenWFehlMax
+	if letzter && vorher["urteil_eindeutig"] != true {
+		return "", fmt.Errorf("zu viele Fehlversuche, um das Urteil eindeutig zu lesen (die Kette schreibt es erst ab dem Stichtag)")
 	}
 	xs := qsBitsText(x)
 	bs := string(rune('0' + s))
@@ -573,8 +577,30 @@ func quantenSAnmeldenUrteil(ctx context.Context, netz quantenSNetz, a QuantenSAu
 	}
 	fmt.Fprintf(logW, "Stelle %d: Urteil nach %s Offenlegung, %.0f Stellen/min\n", s, dauer.Round(time.Second),
 		float64(len(probe))/math.Max(dauer.Minutes(), 1.0/60))
+	return quantenSUrteilLesen(nach, fehl, letzter)
+}
+
+// quantenSUrteilLesen: das Urteil aus dem Stand nach der Vorlage. Mit dem
+// Urteil der Kette (ab dem Stichtag) gilt nur dieses. Ohne: verschwunden nach
+// 0 oder 1 Fehlversuchen kann nur eingeloest sein; beim letzten Versuch ist
+// es offen (fail-closed, kein Erfolg behauptet).
+func quantenSUrteilLesen(nach map[string]interface{}, fehl int, letzter bool) (string, error) {
+	if nach != nil && nach["tot"] == true {
+		switch u, _ := nach["urteil"].(string); u {
+		case quantenWUrteilEingeloest:
+			return "eingeloest", nil
+		case quantenWUrteilTot:
+			return "tot", nil
+		case "":
+		default:
+			return "", fmt.Errorf("Urteil der Kette unbekannt: %q", u)
+		}
+	}
 	switch {
 	case nach == nil || nach["tot"] == true:
+		if letzter {
+			return "", errors.New("der Token ist beendet, aber die Kette nennt kein Urteil (eingeloest oder tot ist offen)")
+		}
 		return "eingeloest", nil // fehl+1 < quantenWFehlMax: tot ist ausgeschlossen
 	case quantenSZahl(nach["fehl"]) == fehl+1:
 		return "abgewiesen", nil

@@ -165,6 +165,7 @@ func quantenWStatus() map[string]interface{} {
 	if ab := quantenSProbeV2Ab(); ab != math.MaxInt64 {
 		m["probe_v2_ab"] = ab
 	}
+	quantenWUrteilStatus(m) // eindeutiges Urteil (quanten_w_urteil.go)
 	return m
 }
 
@@ -369,14 +370,18 @@ type quantenWRegister struct {
 	Noten map[string]*quantenWEintrag
 	Token map[string]*quantenWSEintrag // Variante S (quanten_w_s_kette.go)
 	Tote  map[string]int64             // K -> Praege- bzw. Ausgabezeit
+	// Enden: ab dem Stichtag des eindeutigen Urteils (quanten_w_urteil.go)
+	// je K in Tote Urteil und Zeit des Endes; Schluessel immer auch in Tote.
+	Enden map[string]quantenWEnde
 }
 
 func neuesQuantenWRegister() *quantenWRegister {
-	return &quantenWRegister{Noten: map[string]*quantenWEintrag{}, Token: map[string]*quantenWSEintrag{}, Tote: map[string]int64{}}
+	return &quantenWRegister{Noten: map[string]*quantenWEintrag{}, Token: map[string]*quantenWSEintrag{}, Tote: map[string]int64{}, Enden: map[string]quantenWEnde{}}
 }
 
 func (r *quantenWRegister) kopie() *quantenWRegister {
-	n := &quantenWRegister{Noten: make(map[string]*quantenWEintrag, len(r.Noten)), Token: make(map[string]*quantenWSEintrag, len(r.Token)), Tote: make(map[string]int64, len(r.Tote))}
+	n := &quantenWRegister{Noten: make(map[string]*quantenWEintrag, len(r.Noten)), Token: make(map[string]*quantenWSEintrag, len(r.Token)), Tote: make(map[string]int64, len(r.Tote)),
+		Enden: make(map[string]quantenWEnde, len(r.Enden))}
 	for k, e := range r.Noten {
 		n.Noten[k] = e
 	}
@@ -385,6 +390,9 @@ func (r *quantenWRegister) kopie() *quantenWRegister {
 	}
 	for k, z := range r.Tote {
 		n.Tote[k] = z
+	}
+	for k, e := range r.Enden {
+		n.Enden[k] = e
 	}
 	return n
 }
@@ -442,6 +450,10 @@ type quantenWNoteForm struct {
 type quantenWTotForm struct {
 	K    string `json:"k"`
 	Zeit int64  `json:"zeit"`
+	// Ab dem Stichtag des eindeutigen Urteils (quanten_w_urteil.go); vorher
+	// fehlen beide, die Bytes sind unveraendert.
+	Ende   int64  `json:"ende,omitempty"`
+	Urteil string `json:"urteil,omitempty"`
 }
 
 type quantenWRegisterForm struct {
@@ -473,7 +485,8 @@ func (r *quantenWRegister) form() quantenWRegisterForm {
 		f.Token = append(f.Token, e.form(k))
 	}
 	for k, z := range r.Tote {
-		f.Tote = append(f.Tote, quantenWTotForm{K: k, Zeit: z})
+		en := r.Enden[k]
+		f.Tote = append(f.Tote, quantenWTotForm{K: k, Zeit: z, Ende: en.Ende, Urteil: en.Urteil})
 	}
 	sort.Slice(f.Token, func(i, j int) bool { return f.Token[i].K < f.Token[j].K })
 	sort.Slice(f.Noten, func(i, j int) bool { return f.Noten[i].K < f.Noten[j].K })
@@ -627,10 +640,14 @@ func quantenWRegisterLesen(s string) (*quantenWRegister, error) {
 		r.Token[tf.K] = e
 	}
 	for i, t := range f.Tote {
-		if !istHash64(t.K) || (i > 0 && t.K <= f.Tote[i-1].K) || r.Noten[t.K] != nil || r.Token[t.K] != nil || t.Zeit <= 0 {
+		if !istHash64(t.K) || (i > 0 && t.K <= f.Tote[i-1].K) || r.Noten[t.K] != nil || r.Token[t.K] != nil || t.Zeit <= 0 ||
+			!quantenWUrteilGueltig(t.Ende, t.Urteil) {
 			return nil, fmt.Errorf("quanten_w: tote Note %d", i)
 		}
 		r.Tote[t.K] = t.Zeit
+		if t.Urteil != "" {
+			r.Enden[t.K] = quantenWEnde{Ende: t.Ende, Urteil: t.Urteil}
+		}
 	}
 	return r, nil
 }
@@ -951,9 +968,11 @@ func (cs *ChainState) quantenWBescheidLocked(ctx context.Context, tx *Transactio
 		u.wege = append(u.wege, quantenWWeg{quantenWTopfAddr, an, wert})
 		u.felder.Wert = wert
 		delete(u.reg.Noten, q.K)
-		if alt.Zeit >= blockZeit-quantenWToteBehalten {
-			u.reg.Tote[q.K] = alt.Zeit
+		urteil := quantenWUrteilTot // gesperrt: der Wert geht ans Grundeinkommen
+		if buchung.WertAn != "" {
+			urteil = quantenWUrteilEingeloest
 		}
+		u.reg.toteMerken(q.K, alt.Zeit, blockZeit, urteil)
 	} else {
 		u.reg.Noten[q.K] = neu
 	}
@@ -1058,8 +1077,13 @@ func (cs *ChainState) quantenWValidatorenLocked(ctx context.Context, validatoren
 // koennen, vergessen; voll = kein neues Praegen oder Ausgeben (fail-closed).
 func quantenWToteAufraeumen(neu *quantenWRegister, blockZeit int64) bool {
 	for k, z := range neu.Tote {
+		// Mit Urteil: ab dem spaeteren von Ausgabe und Ende gezaehlt.
+		if en, ok := neu.Enden[k]; ok && en.Ende > z {
+			z = en.Ende
+		}
 		if z < blockZeit-quantenWToteBehalten {
 			delete(neu.Tote, k)
+			delete(neu.Enden, k)
 		}
 	}
 	return len(neu.Tote) < quantenWToteHoechstens
@@ -1316,7 +1340,13 @@ func (cs *ChainState) quantenWNoteAnsicht(ctx context.Context, k string) map[str
 		return v
 	}
 	if _, tot := reg.Tote[k]; tot {
-		return map[string]interface{}{"k": k, "tot": true}
+		// "tot" heisst hier: beendet (eingeloest oder tot). Das Urteil steht
+		// ab dem Stichtag dabei (quanten_w_urteil.go); fehlt es, ist es offen.
+		v := map[string]interface{}{"k": k, "tot": true}
+		if en, ok := reg.Enden[k]; ok {
+			v["urteil"], v["ende"] = en.Urteil, en.Ende
+		}
+		return v
 	}
 	return nil
 }
