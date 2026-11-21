@@ -53,9 +53,14 @@ kannst / Abschnitt 5 (heute weltweit unmöglich) so gut wie möglich umsetzen“
   unten), danach auswerten und in `HEUTE.md` dokumentieren (wie 3.3i).
 - **App 1.28.1** (Fix „Mein Konto eintragen“ ohne eigene Wallet, Fehler als Fenster; App #95
   gemergt): APK signiert und veröffentlicht (Release `v1.28.1`, 21.11. 11:04 UTC, Run
-  44897252646). iPhone: `release-ios.yml` (Run
+  44897252646). iPhone veröffentlicht (`release-ios.yml`, Run
   [44898168375](https://github.com/hanoi96international-gif/Aequitas-App/actions/runs/44898168375),
-  Build 44882531177) wartet auf Freigabe `app-signatur`.
+  grün 21.11. 12:28 UTC).
+- **Erster öffentlicher Nachweis im Hauptnetz: Lauf läuft** (`quanten-s-ausgabe.yml`, modus
+  `ibm`, weg `abschnitte-v2`, Toleranz 2, Deckung 1 AEQ; Run
+  [44904131085](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44904131085),
+  gestartet 21.11. 12:29 UTC, `quantenhardware` freigegeben). Danach: Job `ausgeben` braucht
+  `produktion`; Ergebnis (Urteil, Doppelvorlage, Nachweis-Artefakt) in `HEUTE.md` auswerten.
 - **C1 läuft mit #612** (Deploy [44882966225](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44882966225),
   grün 21.11. 11:04 UTC, C1 lebt, Höhe steigt, keine Rücknahme). Damit ist der nächste Schritt
   des Betreibers möglich: `quanten-s-ausgabe.yml` (modus `ibm`, weg `abschnitte-v2`) →
