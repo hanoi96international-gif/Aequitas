@@ -53,7 +53,7 @@
 > | 20 | 8.259 | 18.751 | 7.623 | 0 |
 > | 35 | **13.279** | **21.775** | **9.219** | 0 |
 >
-> Rund ein Drittel der Blöcke ist leer: C2 produziert, nimmt aber nicht an. Mehr geht mit Stufe 2 (≥ 3 Validatoren, `docs/VALIDATOR_RAILWAY.md` für einen dritten ohne eigenen Server).
+> Rund ein Drittel der Blöcke ist leer: C2 produziert, nimmt aber nicht an. Mehr geht mit Stufe 2 (≥ 3 Validatoren, `docs/VALIDATOR_EINRICHTEN.md`; Railway gibt es nicht mehr).
 >
 > **Heute gefundene und behobene Beta-Lücken:**
 > - Die Website lieferte **app-v1.6.0** (hängt am abgeschalteten Railway-Coordinator, Registrierung unmöglich). Jetzt zeigt der Rückfall auf das neueste Release; Prüfstand: Website, C1 und C2 liefern app-v1.7.4.

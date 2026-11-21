@@ -35,8 +35,10 @@ Aequitas's Gini coefficient is measured live (explorer → Equality) — for com
 
 ## Live / Website
 
-> Alle Dienste laufen auf den Contabo-Validatoren; Railway ist seit August 2026 abgeschaltet
-> ([`docs/MIGRATION_RAILWAY_TO_CONTABO.md`](docs/MIGRATION_RAILWAY_TO_CONTABO.md)).
+> Alle Dienste laufen auf C1 (netcup); Railway und die früheren Contabo-Server gibt es nicht mehr
+> (Geschichte: [`docs/MIGRATION_RAILWAY_TO_CONTABO.md`](docs/MIGRATION_RAILWAY_TO_CONTABO.md)).
+> Einen eigenen Validator betreiben: [`docs/VALIDATOR_EINRICHTEN.md`](docs/VALIDATOR_EINRICHTEN.md),
+> als PDF in 12 Sprachen unter `downloads/`.
 
 | | URL |
 |---|---|

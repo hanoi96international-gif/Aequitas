@@ -8027,8 +8027,9 @@ func (cs *ChainState) stateRootLocked(lastUBIAt, letzterCP string) string {
 // (total_supply, gini, every pool) matched bit-for-bit across all three
 // nodes while the roots disagreed on every single block, which narrows the
 // cause to a component with no aggregate of its own — but "narrows" is not
-// "identifies", and the primary runs on Railway with no SSH/psql access, so
-// the only way to read its side of the comparison is over HTTP.
+// "identifies", and the primary then ran on a host with no SSH/psql access
+// (Railway, decommissioned 2026-08-14), so the only way to read its side of
+// the comparison was over HTTP -- still the cheapest way for any operator.
 //
 // Deliberately exposes no wallet addresses and no per-account data: the two
 // accumulators are already-public set commitments (every block header

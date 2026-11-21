@@ -19,7 +19,7 @@ import (
 //
 // HTTPBroadcastBlock (sync_blocks.go) gives each push a THREE SECOND context
 // timeout, and the push path is the primary relay whenever port 4001 is
-// firewalled — which is the normal case on Railway. A full block at
+// firewalled (the normal case on the former Railway primary). A full block at
 // maxTxsPerBlock is megabytes of JSON (SCALING_ARCHITECTURE.md measured
 // 11.59 MB at 50,000 transactions). Under load that payload does not reliably
 // finish inside 3 s, the push fails, and the peer never adopts the tip — so

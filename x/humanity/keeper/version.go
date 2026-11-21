@@ -26,8 +26,8 @@ import (
 //
 // Computed once at startup; "unknown" when no VCS info is present.
 //
-// This exists so every node in the fleet (Railway primary, Contabo 1,
-// Contabo 2) can be checked against the others from its own /api/status —
+// This exists so every node in the fleet can be checked against the others
+// from its own /api/status —
 // see handleStatus in api.go — without needing SSH or CI access to each one
 // individually, which was the actual blocker behind repeatedly having to
 // ask "are all nodes really on the same commit?" instead of just checking.

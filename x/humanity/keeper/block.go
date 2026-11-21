@@ -4551,9 +4551,9 @@ func (dag *BlockDAG) isCatchingUpLocked() bool {
 // failure is invisible from the outside and indistinguishable from a genuine
 // fork, which is exactly the confusion it caused.
 //
-// pprof would answer this too, but the primary runs on Railway: its pprof
-// listener is deliberately localhost-only and there is no docker exec. So the
-// node has to be able to say it itself.
+// pprof would answer this too, but its listener is deliberately
+// localhost-only (and, when this was written, the primary ran on a host
+// without docker exec). So the node has to be able to say it itself.
 func (dag *BlockDAG) DAGGates() map[string]interface{} {
 	dag.orphansMu.Lock()
 	orphanKeys := len(dag.orphans)

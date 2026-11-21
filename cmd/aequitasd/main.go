@@ -23,11 +23,10 @@ import (
 // ── ENVIRONMENT VARIABLES ──────────────────────────────────────────────────
 // Setup-simplification audit: this node reads ~30 env vars total, but the
 // overwhelming majority are advanced/recovery-only and must never be touched
-// by someone just standing up a validator node on their own VPS (Contabo or
-// similar -- Railway is this project's test/demo deployment, not the target
-// for "any human can run a node"). Tiered here once as the single source of
-// truth for the node operator guide (see api_html.go's Network tab and
-// build/generate_all_guides.py).
+// by someone just standing up a validator node on their own server (a VPS or
+// root server; Railway is gone since 2026-08-14). Tiered here once as the
+// single source of truth; the operator guide is docs/VALIDATOR_EINRICHTEN.md,
+// the explorer's Network tab and the PDFs from build/node_guide.py.
 //
 // REQUIRED (3 vars -- a fresh VPS, a fresh Postgres, nothing else):
 //   DATABASE_URL        Postgres connection string for this node's own DB.

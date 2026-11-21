@@ -83,3 +83,4 @@ __pycache__/
 
 # Gebautes Lastprogramm (lag bis 03.11.2026 versehentlich im Repo, #363)
 /contabo-loadtest
+build/node_guide_html/

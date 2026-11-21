@@ -28,6 +28,15 @@ dezentrales Quantengeld“.
   und ein öffentlicher Nachweis“ (21.11., ibm_kingston, 0 Fehler bei 540; R8; ehrlich:
   ein Validator) in 12 Sprachen. Nach dem Merge: **ein** C1-Deploy (`produktion`) für #615
   und die Website; der Deploy-Lauf zu #615 ist damit überholt.
+- **#616 gemergt (12f2567b).** C1-Deploy für #615 + #616: Lauf 44943089221 (wartet auf
+  `produktion`); der Lauf zu #615 (44941819960) ist abgebrochen (überholt). App 1.29.0:
+  Builds APK 44941892943 (Signieren mit `app-signatur`), iOS 44941895660; danach
+  `release-apk.yml`/`release-ios.yml` mit Tag `v1.29.0`.
+- **PR (dieser Stand): Node-Guides und Railway** – die 12 PDFs (`downloads/`) und
+  `docs/aequitas-node-guide.pdf` neu aus `build/node_guide.py` (Mindestwerte aus
+  `einrichten.sh`, Druck mit Chromium: `node build/node_guide_pdf.cjs`); alte Generatoren
+  und `docs/VALIDATOR_RAILWAY.md` entfernt; README/Whitepaper auf C1 (netcup). Gleiches in
+  App, biometric-beta und proof-server (Railway-Reste).
 - **Danach (Reihenfolge):** Öffnung aus t
   Anteilen (Verfügbarkeit); Urteil eindeutig (eingelöst/tot); Fehlerbild gegen die
   Kalibrierung.
