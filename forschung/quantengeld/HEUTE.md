@@ -31,6 +31,11 @@ der Code im Knoten und in der App sowie die Quellen in `ANALYSE.md`.
      Annahmestelle kennt vorher eine Stelle der Stichproben (3.3i, Befund 5i).
    - Im Pilot mit **vier Validatoren**, von denen jeder seinen Abschnitt selbst
      präpariert, auch wenn einer ausfällt (3.3d–3.3h).
+   - Seit dem **21.11.2026** mit **öffentlichem Nachweis nach dem Ende**: Nach dem
+     Einlösen legt der Validator die Präparation offen. Jeder kann nachrechnen, dass
+     sie genau die bei der Ausgabe festgelegte war, und die Messfehler zählen. Im
+     Hauptnetz: 0 Fehler bei 540 Treffern (3.3k). Das beweist nicht, dass ein
+     Quantenrechner gemessen hat.
    - Seit dem 20.11.2026 mit **getrennten Rollen** gebaut: Inhaberin, Ausgeber und
      Annahmestelle haben je einen eigenen Schlüssel, und der Ausgeber sieht x nie. Auf
      vier echten Knoten grün, im Hauptnetz noch nicht gelaufen (3.3j).
@@ -913,6 +918,56 @@ eigenen Befehl und Schlüssel (`DEZENTRAL.md` 17):
     einlösen will (nicht x).
   - Fällt ein Validator nach der Bindung aus, bevor die Stelle ihre Stichprobe geladen
     hat, muss sie warten, bis er zurück ist.
+
+### 3.3k Erster öffentlicher Nachweis nach dem Ende im Hauptnetz (21.11.2026, 12:29–12:51 UTC)
+
+Lauf [44904131085](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44904131085)
+(`main` 4b252ab5, `quanten-s-ausgabe.yml`, Weg `abschnitte-v2`, Toleranz 2 %, Deckung
+1 AEQ). C1 lief mit #612 (Deploy 44882966225, 11:04 UTC). Freigaben `quantenhardware`
+und `produktion` durch den Betreiber.
+
+- **Messung:** IBM `ibm_kingston`, Job `dc0otnthdvas73bjqts0`, 1.104 Qubits in
+  69 Schaltkreisen, je Stelle 5 Schüsse mit Mehrheit. Fehler bei passender Basis
+  **0/540** (mit einem Schuss wären es 2/540 gewesen). Die Messung ging nur
+  versiegelt auf den Schlüssel von C1 durch GitHub (R5).
+- **Ausgabe:** K = `a5acd86829f9b42e88e1f53c537e20f364bdc498f9e62919fc7fdfd5b161ab0f`,
+  n = 1.104, k = 552 je Stelle, Stichprobe v2.
+  - Ausgeber und einziger Validator: C1 (`0x3066…42dc`); Inhaberin `0x68c6…0217`.
+  - Stellen: 0 = C1, 1 = Wegwerfschlüssel (`0x1f2d…3d07`). Gewählt wurde Stelle 0.
+  - Wurzel `20aebc24…f77c`, Proben `167c8af9…fe2c` und `132c68ba…b254`.
+- **Doppelvorlage** an Stelle 1: **abgewiesen** (Urteil nach 10m13s, danach ein
+  Fehlversuch auf dem Token).
+- **Ehrliche Vorlage** an Stelle 0 (C1): **eingelöst** (nach 15m23s), der Wert ging an
+  C1 zurück. Die Stichproben gab C1 erst nach der Finalität von Bindung und Wahl
+  heraus (5m02s), wie in 3.3i.
+- **Nachweis nach dem Ende (neu):** Rund 5 Minuten nach dem Einlösen war das Ende
+  final. C1 legte seinen Abschnitt offen; das Werkzeug holte ihn und rechnete nach:
+  - Die offengelegten Werte ergeben die **Wurzel der Ausgabe**, die Salze die
+    **Proben** – geprüft gegen das, was vor dem Anmelden auf der Kette stand
+    (`wurzel_gegen: kette`).
+  - Über alle 1.104 Stellen: **0 Fehler bei 540 Treffern** (passende Basis). An der
+    gewählten Stelle: **0 Fehler bei 283 Treffern**.
+  - Das passt zur Zählung bei der Ausgabe (0/540) – jetzt aber für jeden aus der
+    offengelegten Präparation nachrechenbar, nicht nur aus der Zählung des Validators.
+- **Panne und Behebung:** Der letzte Schritt des Laufs, der den Nachweis über die
+  öffentliche Adresse holen und als Artefakt ablegen sollte, brach ab. Das Ergebnis des
+  Werkzeugs begann mit einer Warnzeile des Knotens (`[RPC] ⚠ AEQUITAS_RPC_QUIET_TX=1 …`):
+  Auf C1 ist dieser Leistungsschalter gesetzt, und jeder `aequitasd`-Befehl im Container
+  schrieb die Warnung beim Start auf stdout statt stderr. Am Ergebnis selbst ändert das
+  nichts (es steht vollständig im Protokoll des Laufs). Behoben in PR „stdout rein“:
+  Warnung nach stderr, ein Test startet das Werkzeug mit genau der Umgebung von C1, die
+  Workflows lesen das JSON ab der Zeile `{`. Neuer Workflow `quanten-s-nachweis.yml`
+  holt jeden Nachweis ohne Schlüssel und Freigabe, rechnet ihn nach und legt ihn als
+  Artefakt ab. Der Validator hält den Nachweis nur im Speicher; ein Neustart von C1
+  löscht ihn.
+- **Ehrlich dazu:**
+  - Der Nachweis zeigt, dass genau diese Präparation bei der Ausgabe festgelegt war, in
+    welchen Basen geprüft wurde und wie viele Fehler es gab. Er zeigt **nicht**, dass
+    ein Quantenrechner gemessen hat (R7).
+  - Präparation und Messung liefen im selben IBM-Auftrag beim Betreiber (Vorführung).
+  - C1 ist der einzige Validator und kannte damit den ganzen Token.
+  - Die Inhaberin und die Wegwerf-Stelle lebten nur im Werkzeug.
+  - Es liegt kein Gutachten vor.
 
 ### 3.4 Bargeld-Verhalten ohne Quanten (Offline-Bargeld)
 

@@ -1310,6 +1310,13 @@ Schritt öffentlich nachrechenbar.
   im Hauptnetz (Artefakt `nachweis-K`). Auf vier echten Knoten belegt
   (`TestVierKnotenQuantenSAbschnitte_RealDB` mit Stichprobe v2: alle 4 legen offen, 0
   Fehler bei 56 Treffern an der Stelle).
+- **Im Hauptnetz (21.11.2026, `HEUTE.md` 3.3k):** Lauf 44904131085, IBM `ibm_kingston`:
+  Token `a5acd868…ab0f` eingelöst, Doppelvorlage abgewiesen. C1 legte nach dem Ende
+  offen; die Präparation ergibt Wurzel und Proben der Ausgabe, 0 Fehler bei 540 Treffern
+  (an der Stelle 0 bei 283).
+- **Nachweis sichern:** Der Validator hält ihn nur im Speicher (höchstens 64, nach einem
+  Neustart weg). `quanten-s-nachweis.yml` holt ihn ohne Schlüssel und Freigabe über die
+  öffentliche Adresse, rechnet ihn nach und legt ihn als Artefakt ab (90 Tage).
 - **Belegt:**
   - in-process: nach dem Ende, erst nach der Finalität, nie für einen lebenden
     Token; Grenze 64 im Speicher; Endpunkt begrenzt je Absender.
