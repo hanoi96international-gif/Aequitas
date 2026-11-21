@@ -12,6 +12,7 @@ import (
 // einen Proxy auf Loopback jeden Nutzer unter seiner eigenen Adresse zaehlen,
 // ein zusaetzlicher liesse Fremde ihre Adresse waehlen.
 func TestClientIP_WemDerKopfGeglaubtWird(t *testing.T) {
+	keinKopf := map[string]bool{"100.64.0.1": true, "100.127.255.255": true, "100.101.102.103": true, "::ffff:100.64.0.1": true}
 	for _, f := range []struct {
 		quelle string
 		privat bool
@@ -20,7 +21,12 @@ func TestClientIP_WemDerKopfGeglaubtWird(t *testing.T) {
 		{"10.0.0.1", true}, {"10.255.255.255", true},
 		{"172.16.0.1", true}, {"172.31.255.255", true}, {"172.32.0.1", false}, {"172.15.255.255", false},
 		{"192.168.1.1", true}, {"192.169.0.1", false},
-		{"100.64.0.1", true}, {"100.127.255.255", true}, {"100.128.0.1", false}, {"100.63.255.255", false},
+		// CGNAT ist privat (Freiliste, Wege nur fuers eigene Netz), darf aber
+		// seit 21.11.2026 kein X-Forwarded-For mehr setzen (Railway abgeschaltet;
+		// Provider-NAT oder ein geteiltes Tailscale-Netz waehlte sonst den Zaehler).
+		{"100.64.0.1", true}, {"100.127.255.255", true}, {"100.101.102.103", true},
+		{"::ffff:100.64.0.1", true},
+		{"100.128.0.1", false}, {"100.63.255.255", false},
 		{"fc00::1", true}, {"fdff::1", true}, {"fe00::1", false},
 		{"::ffff:10.0.0.1", true}, {"::ffff:198.51.100.9", false},
 		{"198.51.100.9", false}, {"2001:db8::1", false}, {"fe80::1", false}, {"::2", false},
@@ -41,7 +47,7 @@ func TestClientIP_WemDerKopfGeglaubtWird(t *testing.T) {
 		// IPv6 je /64 (absenderSchluessel).
 		r.Header.Set("X-Forwarded-For", "10.9.9.9, 203.0.113.77")
 		want := absenderSchluessel(f.quelle)
-		if f.privat {
+		if f.privat && !keinKopf[f.quelle] {
 			want = "203.0.113.77"
 		}
 		if got := clientIP(r); got != want {
