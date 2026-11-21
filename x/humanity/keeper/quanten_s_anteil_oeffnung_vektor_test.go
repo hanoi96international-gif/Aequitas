@@ -1,6 +1,7 @@
 package keeper
 
 import (
+	"context"
 	"encoding/hex"
 	"encoding/json"
 	"math/big"
@@ -48,6 +49,10 @@ type qsaoVektor struct {
 	PaketAndere      string            `json:"paket_andere_stelle"`
 	PaketFalsch      string            `json:"paket_falscher_anteil"` // von Validator 4, ein Anteil um 1 verschoben
 	PaketGross       string            `json:"paket_anteil_zu_gross"` // von Validator 3, ein Anteil = P (nicht in F_P)
+	// An diese Stelle verschluesselt, aber mit den Stellen der ANDEREN Stelle
+	// (ein boeser Praeparator): die Werte passen zu ihren Blaettern und muessen
+	// trotzdem abgewiesen werden.
+	PaketeAndereBits map[string]string `json:"pakete_andere_bits"`
 }
 
 func qsaoVektorBauen(t *testing.T, gespeichert *qsaoVektor) qsaoVektor {
@@ -110,6 +115,7 @@ func qsaoVektorBauen(t *testing.T, gespeichert *qsaoVektor) qsaoVektor {
 	}
 	if gespeichert != nil {
 		g.Pakete, g.PaketAndere, g.PaketFalsch, g.PaketGross = gespeichert.Pakete, gespeichert.PaketAndere, gespeichert.PaketFalsch, gespeichert.PaketGross
+		g.PaketeAndereBits = gespeichert.PaketeAndereBits
 		return g
 	}
 	for _, j := range []int{1, 3, 4} {
@@ -125,6 +131,16 @@ func qsaoVektorBauen(t *testing.T, gespeichert *qsaoVektor) qsaoVektor {
 	}
 	if g.PaketFalsch, err = quantenSAnteilOeffnungVersiegeln(&stelleKey.PublicKey, inhalt(4, b, true)); err != nil {
 		t.Fatal(err)
+	}
+	g.PaketeAndereBits = map[string]string{}
+	for _, j := range []int{1, 3, 4} {
+		in := inhalt(j, 1-b, false)
+		in.B = b // als Paket fuer Stelle b ausgegeben
+		c, err := quantenSAnteilOeffnungVersiegeln(&stelleKey.PublicKey, in)
+		if err != nil {
+			t.Fatal(err)
+		}
+		g.PaketeAndereBits[strconv.Itoa(j)] = c
 	}
 	gross := inhalt(3, b, false)
 	for i := range gross.Anteile {
@@ -204,5 +220,47 @@ func TestQuantenSAnteilOeffnungVektor(t *testing.T) {
 	falsch := []quantenSAnteilPaket{pakete[0], pakete[1], lesen(4, g.PaketFalsch)}
 	if _, _, err := quantenSAusAnteilenZusammensetzen(falsch, g.T, pruefen); err == nil {
 		t.Fatal("mit einem falschen Anteil zusammengesetzt")
+	}
+}
+
+// qsaoVektorNetz: liefert nur die Pakete des Vektors (alles andere bleibt
+// unbenutzt).
+type qsaoVektorNetz struct {
+	quantenSAbschnittNetz
+	pakete map[string]string
+}
+
+func (n qsaoVektorNetz) anteilOeffnung(_ context.Context, j, _ int, _ string, _ int) (string, error) {
+	if c, ok := n.pakete[strconv.Itoa(j)]; ok {
+		return c, nil
+	}
+	return "", quantenWFehler("nicht erreichbar")
+}
+
+// Der Weg der Stelle (quantenSAusAnteilenLaden) mit den Paketen des Vektors:
+// ehrlich geladen; Pakete mit den Stellen der anderen Stelle abgewiesen,
+// obwohl jeder Wert zu seinem Blatt passt.
+func TestQuantenSAusAnteilenLaden_Vektor(t *testing.T) {
+	roh, err := os.ReadFile(qsaoVektorPfad)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var g qsaoVektor
+	if err := json.Unmarshal(roh, &g); err != nil {
+		t.Fatal(err)
+	}
+	key, _ := crypto.HexToECDSA(g.StelleSchluessel)
+	blaetter := make([][32]byte, g.N)
+	for si, h := range g.Blaetter {
+		i, _ := strconv.Atoi(si)
+		blaetter[i], _ = quantenWHex32(h)
+	}
+	werte, _, err := quantenSAusAnteilenLaden(context.Background(), qsaoVektorNetz{pakete: g.Pakete}, g.K, g.B, g.Praeparator, g.T, g.V, g.Von, g.Bis, blaetter, key)
+	if err != nil || len(werte) != len(g.Werte) {
+		t.Fatalf("ehrlich: %v", err)
+	}
+	_, _, err = quantenSAusAnteilenLaden(context.Background(), qsaoVektorNetz{pakete: g.PaketeAndereBits}, g.K, g.B, g.Praeparator, g.T, g.V, g.Von, g.Bis, blaetter, key)
+	if err == nil || !strings.Contains(err.Error(), "anderen Annahmestelle") {
+		t.Fatalf("Stellen der anderen Stelle: %v", err)
 	}
 }

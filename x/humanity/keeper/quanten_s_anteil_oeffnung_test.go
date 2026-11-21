@@ -242,6 +242,7 @@ type qaoProbeNetz struct {
 	// Blaetter: vor dem Token auf der Kette gibt keiner sie heraus; danach
 	// ergeben sie auch ohne Validator 2 die Wurzel (R9).
 	blaetterZuFrueh, blaetterGeprueft int
+	selbst                            int // Pakete "fuer sich selbst" nicht ausdruecklich abgewiesen
 }
 
 func (n *qaoProbeNetz) einreichen(ctx context.Context, art, wallet string, zeit int64, a QuantenWAngaben) error {
@@ -274,7 +275,15 @@ func (n *qaoProbeNetz) proben(K string) {
 		}
 		for x := 1; x <= len(e.Validatoren); x++ {
 			for b := 0; b < 2; b++ {
-				if _, _, err := d.anteilOeffnungFuerStelle(K, x, b); err == nil {
+				_, _, err := d.anteilOeffnungFuerStelle(K, x, b)
+				if x == e.X && tok != nil && tok.token != nil && tok.token.D != nil && tok.token.C != -1 && !e.Wartend && d.reif(quantenSBindungSicht(K, tok.token)) {
+					// Fuer sich selbst als Praeparator nie, und ausdruecklich so benannt.
+					if err == nil || !strings.Contains(err.Error(), "kein anderer Validator") {
+						n.selbst++
+					}
+					continue
+				}
+				if err == nil {
 					if tok == nil || tok.token.D == nil || tok.token.C == -1 || !d.reif(quantenSBindungSicht(K, tok.token)) {
 						n.zuFrueh++
 					} else {
@@ -301,6 +310,9 @@ func TestQuantenSAnteilOeffnung_NichtVorDerBindung(t *testing.T) {
 	}
 	if netz.spaeter == 0 {
 		t.Fatal("nach der Bindung kein einziges Paket -- die Probe misst nichts")
+	}
+	if netz.selbst != 0 {
+		t.Fatalf("%d mal ein Paket fuer sich selbst als Praeparator nicht ausdruecklich abgewiesen", netz.selbst)
 	}
 	if netz.blaetterZuFrueh != 0 {
 		t.Fatalf("%d mal Blaetter vor dem Token auf der Kette herausgegeben", netz.blaetterZuFrueh)
