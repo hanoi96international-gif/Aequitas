@@ -79,7 +79,11 @@ kannst / Abschnitt 5 (heute weltweit unmöglich) so gut wie möglich umsetzen“
     fragte `wurzel_gegen == "angegeben"`, der Prüfer setzt bei angegebener Wurzel aber
     `"kette"` (ein veralteter Kommentar nannte „angegeben“). **#614 gemergt (266eca23):**
     Workflow fragt `"kette"`, Kommentar richtig. Zweiter Lauf von `quanten-s-nachweis.yml`
-    gestartet (richtige Zusammenfassung); danach den C1-Deploy freigeben.
+    ([44909811057](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44909811057),
+    grün, Artefakt-ID 14709715416 bis 19.02.2027). **Nachweis gesichert.**
+  - C1-Deploy: Lauf zu #613 (44908253368) abgebrochen (überholt), Lauf zu #614
+    [44909800768](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44909800768)
+    enthält beides und wartet nach dem CI auf `produktion`.
   - CI zu #613: `db-tests` im Push-Lauf 44907012291 rot
     (`TestVierKnoten_RealDB/SnapshotResyncNachLoeschung`: nach 90 s keine Einigkeit, Knoten 2
     nach dem Snapshot mit fehlenden Eltern), im PR-Lauf 44907054179 mit demselben Stand grün.
