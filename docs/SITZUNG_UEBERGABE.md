@@ -28,6 +28,40 @@ dezentrales Quantengeld“.
   und ein öffentlicher Nachweis“ (21.11., ibm_kingston, 0 Fehler bei 540; R8; ehrlich:
   ein Validator) in 12 Sprachen. Nach dem Merge: **ein** C1-Deploy (`produktion`) für #615
   und die Website; der Deploy-Lauf zu #615 ist damit überholt.
+- **#616 gemergt (12f2567b).** C1-Deploy für #615 + #616: Lauf 44943089221 (wartet auf
+  `produktion`); der Lauf zu #615 (44941819960) ist abgebrochen (überholt). App 1.29.0:
+  Builds APK 44941892943 (Signieren mit `app-signatur`), iOS 44941895660; danach
+  `release-apk.yml`/`release-ios.yml` mit Tag `v1.29.0`.
+- **PR (dieser Stand): Node-Guides und Railway** – die 12 PDFs (`downloads/`) und
+  `docs/aequitas-node-guide.pdf` neu aus `build/node_guide.py` (Mindestwerte aus
+  `einrichten.sh`, Druck mit Chromium: `node build/node_guide_pdf.cjs`); alte Generatoren
+  und `docs/VALIDATOR_RAILWAY.md` entfernt; README/Whitepaper auf C1 (netcup). Gleiches in
+  App, biometric-beta und proof-server (Railway-Reste).
+- **Stand 21.11. ~20:30 UTC (Sitzungslimit nahe) – offen:**
+  - **Aequitas #617** (Node-Guides neu, Railway raus): CI abwarten, mergen.
+  - **App #98** (Railway-Hosts nie verwenden, ENDPOINTS.md): CI abwarten, mergen.
+    Danach ggf. App 1.29.1 (nur wenn gewünscht; Laufzeit-Schutz wirkt erst mit neuem Build).
+  - **Freigaben beim Betreiber:** C1-Deploy 44943089221 (`produktion`, #615+#616);
+    APK-Signatur in 44941892943 (`app-signatur`); danach `release-apk.yml` und
+    `release-ios.yml` (run_id iOS 44941895660) mit Tag `v1.29.0`.
+  - **Railway-Reste noch nicht bearbeitet:**
+    - aequitas-biometric-beta (Zweig `claude/admiring-bohr-ob0u0p` lokal, nichts
+      committet): `railway.json` + `matching-service/railway.json` löschen,
+      `.gitignore` Railway-Zeilen, `DEPLOY.md` Abschnitt „Auf Railway“ auf Server/C1
+      umschreiben, `render.yaml`/Dockerfile/`build-and-publish-image.yml`-Kommentare;
+      Code: `widerspruch.py` (Railway-Dauerhaftigkeitszweig), CGNAT `100.64.0.0/10`
+      als vertrauter Proxy in `mengengrenze.py` und `matching-service/app/main.py`
+      entfernen (Härtung, mit Missbrauchstest), `test_quorum_fails_closed.py`-URL;
+      DSGVO-Unterlagen (`docs/dsgvo/*`, `DATENSCHUTZ_PHASE2.md`, `BEZEUGUNGS_QUORUM.md`)
+      auf Stand: Railway entfallen seit 14.09.2026, nichts Neues erfinden.
+      Vorbestehend rot auf main: `coordinator/tests/test_zerlegung_sandbox.py` (3 Tests),
+      unabhängig von Railway – prüfen.
+    - aequitas-proof-server: `RAILWAY_ENVIRONMENT`-Zweige in `server.js` (trust proxy,
+      Dev/Prod-Wächter) und `bio_store.js` (TLS-Ausnahme) entfernen, Tests in
+      `test/startup_guard.test.js` anpassen, README.
+  - **Beantwortet:** Validator-Hardware (8 dedizierte Kerne, 16 GB, 60 GB NVMe, 20–40 €/Monat,
+    IBM nur fürs Quantengeld zusätzlich); Railway reicht nicht als zweiter Validator
+    (zweiter Mensch nötig, Leistung/Ports/root fehlen).
 - **Danach (Reihenfolge):** Öffnung aus t
   Anteilen (Verfügbarkeit); Urteil eindeutig (eingelöst/tot); Fehlerbild gegen die
   Kalibrierung.

@@ -407,15 +407,15 @@ Aequitas maintains two synchronized ledgers in parallel:
 ### 5.2 Netzwerk-Topologie / Network Topology
 
 ```
-Contabo 1 (Lauterbourg, FR)           Contabo 2 (Lauterbourg, FR)
+C1 (netcup, Wien, AT)                 weitere Knoten (je eigener Server)
 ├── Validator-Node + eigene DB        ├── Validator-Node + eigene DB
-├── Proof-Server                      ├── Proof-Server
-├── Vergleichsdienst (proof1)         ├── Vergleichsdienst (proof2)
-└── Coordinator                       └── Coordinator
+├── Proof-Server                      └── (optional) Quantengeld-Messung
+├── Vergleichsdienst (proof1)              mit eigenem IBM-Quantum-Konto
+└── Coordinator
           └──────── P2P (libp2p) + HTTP-Blocksync ────────┘
 ```
 
-Zwei Server mit je eigener PostgreSQL-Datenbank, zwei Eigentümer der Vergleichsdienste. Railway ist seit August 2026 für die Kette und seit 14.09.2026 auch für den Vergleichsdienst abgeschaltet. Jeder registrierte Mensch kann einen weiteren Knoten betreiben.
+Beta: Ein Server (C1) erzeugt Blöcke und betreibt den Vergleichsdienst, beides von einer Person. Andere Knoten prüfen Signaturen und Nonces selbst. Jeder registrierte Mensch kann einen weiteren Knoten betreiben (mindestens 8 dedizierte Kerne, 16 GB RAM, 60 GB NVMe; `docs/VALIDATOR_EINRICHTEN.md`). Railway und die beiden Contabo-Server gibt es nicht mehr.
 
 Beta: one server (C1) produces blocks and runs the matching service, both operated by one person. Other nodes check signatures and nonces themselves, but cannot yet verify by themselves that a registration passed the face check (AUDIT_2026-10-21.md, K1); until that is part of consensus, the operator could create AEQ. Any registered human can run a further node.
 

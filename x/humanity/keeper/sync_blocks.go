@@ -2395,7 +2395,7 @@ func (st *syncTaktStand) runde(validatoren func(), abgleich func() bool, neuerTa
 //	                     the peer/validator list from.
 //	PEER_NODES        — comma-separated static peer list (optional fallback)
 //
-// Flow for secondary nodes (Railway/VPS/self-hosted):
+// Flow for secondary nodes (VPS/self-hosted):
 //  1. POST /api/peers/register to EVERY configured seed (PRIMARY_NODE_URL
 //     plus PRIMARY_NODE_URLS) with our own URL, merging whichever respond
 //  2. Receive current peer list, start syncing each peer
@@ -2405,8 +2405,8 @@ func (st *syncTaktStand) runde(validatoren func(), abgleich func() bool, neuerTa
 //   - Accepts registrations, serves peer list — no outbound registration needed
 //
 // NormalizeNodeURL prepends "https://" to rawURL if it has no http(s) scheme.
-// Several hosting providers' "public domain" variables (e.g. Railway's
-// RAILWAY_PUBLIC_DOMAIN) are bare hostnames with no scheme; SELF_URL/
+// Hosting providers' "public domain" variables are often bare hostnames with
+// no scheme; SELF_URL/
 // PRIMARY_NODE_URL set from those would otherwise fail isAllowedPeerURL's
 // "must be public HTTPS" check and silently break peer registration.
 func NormalizeNodeURL(rawURL string) string {

@@ -1,7 +1,8 @@
 # Einen Aequitas-Validator betreiben
 
-**Stand 30.09.2026, nach dem Neustart des Netzes bei null.** Ersetzt die
-Fassung vom 12.09.2026.
+**Stand 21.11.2026** (Einrichten mit einem Befehl seit dem Neustart bei null am
+30.09.2026). Dieselbe Anleitung als PDF in 12 Sprachen: `downloads/Aequitas_Node_Guide_*.pdf`
+(erzeugt mit `build/node_guide.py`, Mindestwerte aus `einrichten.sh`).
 
 ## Worum es geht, in drei Sätzen
 
@@ -254,7 +255,7 @@ bash quanten-messen.sh 0110100101101001...
   `AEQUITAS_DIVERGENZ_AUTORESYNC` in der Compose-Datei).
 - Registrierungen neuer Menschen nimmt nur ein Knoten mit eigenem Proof-Server
   an. Für einen Validator ist das nicht nötig.
-- Ohne eigenen Server: `VALIDATOR_RAILWAY.md` (Railway-Pro-Plan und eigene
-  Adresse nötig, nichts für den Einstieg).
+- Ohne eigenen Server geht es nicht: Railway gibt es nicht mehr, und ein Validator
+  braucht dedizierte Kerne, die die Leistungsprobe des Netzes bestehen.
 - Die zweite Rolle, der Verifier (Schutz gegen Doppelregistrierung), hat eine
   eigene Anleitung mit ebenfalls einem Befehl: `VERIFIER_EINRICHTEN.md`.
