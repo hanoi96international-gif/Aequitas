@@ -37,6 +37,20 @@ dezentrales Quantengeld“.
   `einrichten.sh`, Druck mit Chromium: `node build/node_guide_pdf.cjs`); alte Generatoren
   und `docs/VALIDATOR_RAILWAY.md` entfernt; README/Whitepaper auf C1 (netcup). Gleiches in
   App, biometric-beta und proof-server (Railway-Reste).
+- **Stand 21.11. ~21:20 UTC (dieselbe Sitzung):**
+  - **Ausgerollt und freigegeben:** C1-Deploy [44946689259](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44946689259)
+    grün (#615–#618 auf C1, auch der CGNAT-Fix der Kette). App 1.29.0 veröffentlicht
+    (APK Release-Lauf 44947017301, iPhone 44947153941). Coordinator und Vergleichsdienst
+    mit Image edc3d7a0 (biometric #125), Proof-Server mit 4f84295e (#33), alle drei grün.
+  - **In Arbeit (Zweig `claude/cl-uebergabe-weitermachen-jdz5h7`, noch kein PR):** R9
+    Öffnung aus t Anteilen (`quanten_s_anteil_oeffnung.go`, DEZENTRAL.md 17 R9). Pakete
+    je Annahmestelle im Bündel, `GET /api/quanten-w/validator/anteil-oeffnung` und
+    `/blaetter`, Ausweichweg in `quantenSStichprobeV2Laden` und `quantenSBlaetterHolen`.
+    Keeper-Suite grün; neuer Vier-Knoten-Test `…RollenAusfallVorDemLaden_RealDB` lokal
+    grün (Postgres 16 im Container: `pg_ctlcluster 16 main start`, Passwort postgres).
+    Mutationen 18 von 20 rot (zwei doppelte Absicherungen). Offen: alle Vier-Knoten-Tests,
+    PR, eigene Sicherheitsprüfung (Validator-Dienst, Netzwerk-Eingang), Merge, C1-Deploy.
+    Danach: App-Annahmestelle (lib/quantenSStelle.ts) mit demselben Ausweichweg.
 - **Stand 21.11. ~20:15 UTC, Sitzung „CL Übergabe weitermachen“ (Zweig
   `claude/cl-uebergabe-weitermachen-jdz5h7`):**
   - **Gemergt:** Aequitas #617 (a44d707e, Node-Guides, Railway raus), App #98 (12f2367b,
