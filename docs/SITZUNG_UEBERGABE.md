@@ -2,7 +2,7 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 21.11.2026 ~18:00 UTC, Sitzung „Weiter“ (Zweig `claude/admiring-bohr-ob0u0p`, alle vier
+Stand: 21.11.2026 ~20:15 UTC, Sitzung „CL Übergabe weitermachen“; davor ~18:00 UTC Sitzung „Weiter“ (Zweig `claude/admiring-bohr-ob0u0p`, alle vier
 Repos); davor ~13:40 UTC Sitzung „Weiter“ (`claude/weiter-uw2p42`), davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18:30 UTC Sitzung
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
@@ -37,6 +37,25 @@ dezentrales Quantengeld“.
   `einrichten.sh`, Druck mit Chromium: `node build/node_guide_pdf.cjs`); alte Generatoren
   und `docs/VALIDATOR_RAILWAY.md` entfernt; README/Whitepaper auf C1 (netcup). Gleiches in
   App, biometric-beta und proof-server (Railway-Reste).
+- **Stand 21.11. ~20:15 UTC, Sitzung „CL Übergabe weitermachen“ (Zweig
+  `claude/cl-uebergabe-weitermachen-jdz5h7`):**
+  - **Gemergt:** Aequitas #617 (a44d707e, Node-Guides, Railway raus), App #98 (12f2367b,
+    Railway-Hosts nie), proof-server #33 (4f84295e: `RAILWAY_ENVIRONMENT` lockert weder
+    `trust proxy` noch TLS der Datenbank), biometric-beta #125 (edc3d7a0: CGNAT
+    100.64/10 nicht mehr als Proxy vertraut, Vergleichsdienst nimmt den LETZTEN
+    XFF-Eintrag, Widerspruch prüft den Einhängepunkt statt Railway-Variablen,
+    railway.json weg, DEPLOY/DSGVO auf Stand). Sicherheitsprüfung je als PR-Kommentar.
+    Damit sind die Railway-Reste unten erledigt.
+  - **Freigaben beim Betreiber (Links immer direkt schicken, Wunsch des Betreibers):**
+    C1-Deploy jetzt Lauf [44945069368](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44945069368)
+    (#615+#616+#617; ersetzt 44943089221). APK-Signatur
+    [44941892943](https://github.com/hanoi96international-gif/Aequitas-App/actions/runs/44941892943),
+    danach `release-apk.yml`/`release-ios.yml` (iOS-run_id 44941895660) mit Tag `v1.29.0`.
+  - Coordinator/Vergleichsdienst (#125) und Proof-Server (#33) wirken erst nach einem
+    Ausrollen über die `bio-*.yml`-Workflows bzw. den Proof-Server-Weg (Freigabe).
+  - **Offen (eigener PR mit Sicherheitsprüfung):** Die Kette vertraut CGNAT noch
+    (`x/humanity/keeper/register.go`, `clientIP()`/`isPrivateOrLoopback()`), gleiche
+    Begründung wie #125.
 - **Stand 21.11. ~20:30 UTC (Sitzungslimit nahe) – offen:**
   - **Aequitas #617** (Node-Guides neu, Railway raus): CI abwarten, mergen.
   - **App #98** (Railway-Hosts nie verwenden, ENDPOINTS.md): CI abwarten, mergen.
