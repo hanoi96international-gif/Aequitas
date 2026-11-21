@@ -11,7 +11,7 @@ dezentrales Quantengeld“.
 - **C1 läuft mit #614** (Deploy [44909800768](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44909800768),
   `produktion` freigegeben, grün 21.11. 17:27 UTC, Höhe steigt, keine Rücknahme). Der
   Nachweis von 3.3k war vorher gesichert (Artefakt 14709715416).
-- **PR (dieser Stand): R8, Basen y je Validator verschlüsselt** (`DEZENTRAL.md` 17 „R8“,
+- **#615 gemergt (b47bb04c): R8, Basen y je Validator verschlüsselt** (`DEZENTRAL.md` 17 „R8“,
   `quanten_s_basen_chiffrat.go`): `quanten-s-inhaberin neu --verschluesseln adr=api,…`;
   Ausgeber reicht nur Chiffrate weiter (Vormerkung, Auftrag), Validator öffnet nach der
   Unterschrift des Ausgebers, unterschreibt den Hash, Inhaberin erkennt Tausch (BEFUND).
@@ -20,8 +20,15 @@ dezentrales Quantengeld“.
   Validatorenliste gebunden“ im selben PR geschlossen). 8 Tests, 22 Mutationen rot. Nach dem Merge: C1-Deploy (Dienst) bei
   Gelegenheit; wirkt erst, wenn ein Validator selbst misst (A5). Hauptnetz-Workflow
   (Weg `rollen`) nimmt weiter nur Klartext.
-- **Danach (Reihenfolge):** App: Bestellung mit verschlüsselten Basen (ECIES an den
-  Validator-Schlüssel, Hash in der Antwort prüfen; Prüfvektor Go↔App); Öffnung aus t
+- **App #96 gemergt (a16b94b6): Bestellung mit verschlüsselten Basen** (Schalter beim
+  Bestellen, Hash in der Antwort geprüft, 1068 Tests). **App #97: Version 1.29.0** (danach
+  Builds APK/iOS, Freigabe `app-signatur`).
+- **PR (dieser Stand): Prüfvektor R8 Go↔App** (`testdata/quanten_s_basen_vektor.json`, Go
+  öffnet das App-Chiffrat) **und Website `/quanten`**: neuer Abschnitt „Getrennte Rollen
+  und ein öffentlicher Nachweis“ (21.11., ibm_kingston, 0 Fehler bei 540; R8; ehrlich:
+  ein Validator) in 12 Sprachen. Nach dem Merge: **ein** C1-Deploy (`produktion`) für #615
+  und die Website; der Deploy-Lauf zu #615 ist damit überholt.
+- **Danach (Reihenfolge):** Öffnung aus t
   Anteilen (Verfügbarkeit); Urteil eindeutig (eingelöst/tot); Fehlerbild gegen die
   Kalibrierung.
 

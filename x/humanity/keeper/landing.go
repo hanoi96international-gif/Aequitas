@@ -1395,6 +1395,18 @@ section{padding:64px 16px}
   </div>
 </section>
 
+<section id="qnachweis">
+  <div class="section-inner">
+    <div class="reveal">
+      <div class="section-label" data-i18n="qn-label">21 November 2026</div>
+      <h2 data-i18n="qn-h2">Separate roles and a public proof</h2>
+      <p class="section-sub" data-i18n="qn-p1">Holder, issuer and acceptance point are separate. In the Aequitas app the holder orders her token, collects it directly from the validators and presents it as a QR code; the issuer never sees her key or her measurement results. The app can also act as an acceptance point itself.</p>
+      <p class="section-sub" data-i18n="qn-p2">On 21 November 2026 an IBM quantum computer (ibm_kingston) prepared a token on the main network. After it was redeemed, the validator disclosed its preparation: anyone can recompute that it matches the issuance exactly – 0 errors in 540 matching positions. The chain rejected the double presentation.</p>
+      <p class="section-sub" data-i18n="qn-p3"><strong>New:</strong> the holder can encrypt her measurement bases to the validators, so not even the issuer knows where she will redeem. This takes effect once every validator measures on its own. <strong>Honestly:</strong> a single validator is still at work, and the proof shows that the preparation was fixed in advance – not that a quantum computer measured. Only several independent validators help against that.</p>
+    </div>
+  </div>
+</section>
+
 <section id="disclaimer" style="padding-top:40px;padding-bottom:40px">
   <div class="disclaimer-card">
     <h3 data-i18n="disc-title">Beta notice</h3>
