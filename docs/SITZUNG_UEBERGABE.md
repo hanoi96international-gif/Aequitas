@@ -16,7 +16,8 @@ dezentrales Quantengeld“.
   Ausgeber reicht nur Chiffrate weiter (Vormerkung, Auftrag), Validator öffnet nach der
   Unterschrift des Ausgebers, unterschreibt den Hash, Inhaberin erkennt Tausch (BEFUND).
   Keine Kettenänderung; Änderung am Validator-Dienst → eigene Sicherheitsprüfung als
-  PR-Kommentar. 8 Tests, 21 Mutationen rot. Nach dem Merge: C1-Deploy (Dienst) bei
+  PR-Kommentar (#615: nichts Ausnutzbares; Restrisiko „Chiffrat nicht an die
+  Validatorenliste gebunden“ im selben PR geschlossen). 8 Tests, 22 Mutationen rot. Nach dem Merge: C1-Deploy (Dienst) bei
   Gelegenheit; wirkt erst, wenn ein Validator selbst misst (A5). Hauptnetz-Workflow
   (Weg `rollen`) nimmt weiter nur Klartext.
 - **Danach (Reihenfolge):** App: Bestellung mit verschlüsselten Basen (ECIES an den

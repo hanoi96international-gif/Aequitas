@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -157,7 +158,7 @@ func TestQuantenSBasenChiffrat_Getauscht(t *testing.T) {
 				best.BasenVerschluesselt, best.Basen = nil, eigene
 			} else {
 				best.BasenVerschluesselt = append([]string(nil), best.BasenVerschluesselt...)
-				c, err := quantenSBasenVerschluesseln(pubHex(w.q.w.valKeys[1]), w.q.w.val[1], best.N, v, 2, best.Inhaberin, eigene[1])
+				c, err := quantenSBasenVerschluesseln(pubHex(w.q.w.valKeys[1]), w.q.w.val, best.N, 2, best.Inhaberin, eigene[1])
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -193,15 +194,21 @@ func TestQuantenSBasenChiffrat_Getauscht(t *testing.T) {
 func TestQuantenSBasenChiffrat_Auftrag(t *testing.T) {
 	a := neueQsaWelt(t, 140)
 	w := a.w
-	v := len(w.val)
 	chiffrat := func(x, fuerX int, inhaberin string, basen string) string {
 		t.Helper()
-		c, err := quantenSBasenVerschluesseln(pubHex(w.valKeys[fuerX-1]), w.val[fuerX-1], a.n, v, x, inhaberin, basen)
-		if err != nil {
-			t.Fatal(err)
+		if x == fuerX {
+			c, err := quantenSBasenVerschluesseln(pubHex(w.valKeys[x-1]), w.val, a.n, x, inhaberin, basen)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return c
 		}
-		return c
+		return qsbRoh(t, w.valKeys[fuerX-1], w.val[fuerX-1], a.n, w.val, x, inhaberin, basen)
 	}
+	// Dieselbe Nummer und derselbe Empfaenger, aber die uebrigen Validatoren
+	// sind andere (Adressen des Ausgebers): nicht dieser Auftrag.
+	_, fremdAdr := neuerSchluessel(t)
+	andereListe := append([]string{fremdAdr}, w.val[1:]...)
 	auftrag := func(x int, aendern func(q *QuantenSAbschnittAnfrage)) QuantenSAbschnittAnfrage {
 		q := a.auftragAbschnitt(x)
 		aendern(&q)
@@ -243,6 +250,9 @@ func TestQuantenSBasenChiffrat_Auftrag(t *testing.T) {
 	}{
 		"an einen anderen Validator": {f: func(q *QuantenSAbschnittAnfrage) { q.Basen, q.BasenVerschluesselt = "", chiffrat(3, 4, w.anna, y3) }, muss: "nicht fuer diesen Validator"},
 		"anderer Abschnitt":          {f: func(q *QuantenSAbschnittAnfrage) { q.Basen, q.BasenVerschluesselt = "", chiffrat(2, 3, w.anna, y2) }, muss: "anderen Abschnitt"},
+		"andere Validatorenliste": {f: func(q *QuantenSAbschnittAnfrage) {
+			q.Basen, q.BasenVerschluesselt = "", qsbRoh(t, w.valKeys[2], w.val[2], a.n, andereListe, 3, w.anna, y3)
+		}, muss: "anderen Abschnitt"},
 		"andere Inhaberin": {f: func(q *QuantenSAbschnittAnfrage) {
 			q.Basen, q.BasenVerschluesselt = "", chiffrat(3, 3, w.praeger, y3)
 		}, muss: "andere Inhaberin"},
@@ -285,6 +295,19 @@ func TestQuantenSBasenChiffrat_Auftrag(t *testing.T) {
 	}
 }
 
+// qsbRoh: Chiffrat mit frei gewaehltem Inhalt an den Schluessel key (fuer
+// Faelle, die quantenSBasenVerschluesseln nicht baut).
+func qsbRoh(t *testing.T, key *ecdsa.PrivateKey, an string, n int, val []string, x int, inhaberin, basen string) string {
+	t.Helper()
+	b, _ := json.Marshal(quantenSBasenInhalt{Dom: quantenSDomBasen, Chain: eingefroreneChainID, An: an, N: n, V: len(val), X: x,
+		Validatoren: quantenSValidatorenHash(val), Inhaberin: inhaberin, Basen: basen})
+	c, err := ecies.Encrypt(rand.Reader, ecies.ImportECDSAPublic(&key.PublicKey), b, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return hex.EncodeToString(c)
+}
+
 func kippeHex(c string) string {
 	b, _ := hex.DecodeString(c)
 	b[len(b)/2] ^= 1
@@ -311,9 +334,10 @@ func TestQuantenSBasenChiffrat_Inhalt(t *testing.T) {
 		return hex.EncodeToString(c)
 	}
 	basis := func() map[string]interface{} {
-		return map[string]interface{}{"dom": quantenSDomBasen, "chain": eingefroreneChainID, "an": w.val[0], "n": a.n, "v": v, "x": 1, "inhaberin": w.anna, "basen": y}
+		return map[string]interface{}{"dom": quantenSDomBasen, "chain": eingefroreneChainID, "an": w.val[0], "n": a.n, "v": v, "x": 1,
+			"validatoren": quantenSValidatorenHash(w.val), "inhaberin": w.anna, "basen": y}
 	}
-	if got, err := quantenSBasenOeffnen(w.valKeys[0], w.val[0], roh(basis()), a.n, v, 1, w.anna); err != nil || got != y {
+	if got, err := quantenSBasenOeffnen(w.valKeys[0], w.val[0], roh(basis()), a.n, w.val, 1, w.anna); err != nil || got != y {
 		t.Fatalf("Gutfall: %v", err)
 	}
 	falle := map[string]func(m map[string]interface{}){
@@ -322,6 +346,7 @@ func TestQuantenSBasenChiffrat_Inhalt(t *testing.T) {
 		"Empfaenger":       func(m map[string]interface{}) { m["an"] = w.val[1] },
 		"n":                func(m map[string]interface{}) { m["n"] = a.n + 2 },
 		"v":                func(m map[string]interface{}) { m["v"] = v - 1 },
+		"Validatorenliste": func(m map[string]interface{}) { m["validatoren"] = quantenSValidatorenHash(w.val[1:]) },
 		"Feld zu viel":     func(m map[string]interface{}) { m["k"] = a.K },
 		"Feld fehlt":       func(m map[string]interface{}) { delete(m, "inhaberin") },
 		"Basen kurz":       func(m map[string]interface{}) { m["basen"] = y[1:] },
@@ -330,21 +355,21 @@ func TestQuantenSBasenChiffrat_Inhalt(t *testing.T) {
 	for name, f := range falle {
 		m := basis()
 		f(m)
-		if _, err := quantenSBasenOeffnen(w.valKeys[0], w.val[0], roh(m), a.n, v, 1, w.anna); err == nil {
+		if _, err := quantenSBasenOeffnen(w.valKeys[0], w.val[0], roh(m), a.n, w.val, 1, w.anna); err == nil {
 			t.Errorf("%s: angenommen", name)
 		}
 	}
 	// Daten nach dem JSON.
 	b, _ := json.Marshal(basis())
 	c, _ := ecies.Encrypt(rand.Reader, ecies.ImportECDSAPublic(pub), append(b, []byte(`{}`)...), nil, nil)
-	if _, err := quantenSBasenOeffnen(w.valKeys[0], w.val[0], hex.EncodeToString(c), a.n, v, 1, w.anna); err == nil {
+	if _, err := quantenSBasenOeffnen(w.valKeys[0], w.val[0], hex.EncodeToString(c), a.n, w.val, 1, w.anna); err == nil {
 		t.Error("Daten nach dem Inhalt angenommen")
 	}
 	// Verschluesseln nur an einen Schluessel, der zur Adresse gehoert.
-	if _, err := quantenSBasenVerschluesseln(pubHex(w.valKeys[1]), w.val[0], a.n, v, 1, w.anna, y); err == nil {
+	if _, err := quantenSBasenVerschluesseln(pubHex(w.valKeys[1]), w.val, a.n, 1, w.anna, y); err == nil {
 		t.Error("an einen fremden Schluessel verschluesselt")
 	}
-	if _, err := quantenSBasenVerschluesseln(pubHex(w.valKeys[0]), w.val[0], a.n, v, 1, w.anna, y+"0"); err == nil {
+	if _, err := quantenSBasenVerschluesseln(pubHex(w.valKeys[0]), w.val, a.n, 1, w.anna, y+"0"); err == nil {
 		t.Error("Basen falscher Laenge verschluesselt")
 	}
 }
@@ -355,22 +380,24 @@ func TestQuantenSBasenChiffrat_Vormerken(t *testing.T) {
 	a, mv := qsvWelt(t)
 	w := a.w
 	d := a.d[1]
-	v := len(w.val)
 	y := a.basenVon(2)
 	vm := func(c, inhaberin, basen string) QuantenSVormerkung {
 		q := QuantenSVormerkung{N: a.n, X: 2, Validatoren: w.val, Basen: basen, BasenVerschluesselt: c, Inhaberin: inhaberin, Zeit: a.zeit, Praeger: w.praeger}
 		q.PraegerSig = personalSign(w.t, w.keys[w.praeger], quantenSVormerkNachricht(q))
 		return q
 	}
-	c, err := quantenSBasenVerschluesseln(pubHex(w.valKeys[1]), w.val[1], a.n, v, 2, w.anna, y)
+	c, err := quantenSBasenVerschluesseln(pubHex(w.valKeys[1]), w.val, a.n, 2, w.anna, y)
 	if err != nil {
 		t.Fatal(err)
 	}
-	fremd, _ := quantenSBasenVerschluesseln(pubHex(w.valKeys[2]), w.val[2], a.n, v, 2, w.anna, y)
-	andere, _ := quantenSBasenVerschluesseln(pubHex(w.valKeys[1]), w.val[1], a.n, v, 2, w.praeger, y)
+	fremd := qsbRoh(t, w.valKeys[2], w.val[2], a.n, w.val, 2, w.anna, y)
+	andere, _ := quantenSBasenVerschluesseln(pubHex(w.valKeys[1]), w.val, a.n, 2, w.praeger, y)
+	_, fremdAdr := neuerSchluessel(t)
+	andereListe := qsbRoh(t, w.valKeys[1], w.val[1], a.n, append([]string{fremdAdr}, w.val[1:]...), 2, w.anna, y)
 	for name, q := range map[string]QuantenSVormerkung{
 		"an einen anderen Validator": vm(fremd, w.anna, ""),
 		"andere Inhaberin":           vm(andere, w.anna, ""),
+		"andere Validatorenliste":    vm(andereListe, w.anna, ""),
 		"ohne Inhaberin":             vm(c, "", ""),
 		"Inhaberin ohne Chiffrat":    vm("", w.anna, y),
 		"Klartext und Chiffrat":      vm(c, w.anna, y),
@@ -466,14 +493,14 @@ func TestQuantenSBasenChiffrat_Groesste(t *testing.T) {
 	k, adr := neuerSchluessel(t)
 	_, inh := neuerSchluessel(t)
 	y := strings.Repeat("01", quantenWNMax/2)
-	c, err := quantenSBasenVerschluesseln(pubHex(k), adr, quantenWNMax, 1, 1, inh, y)
+	c, err := quantenSBasenVerschluesseln(pubHex(k), []string{adr}, quantenWNMax, 1, inh, y)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !quantenSBasenChiffratForm(c) {
 		t.Fatalf("groesstes Chiffrat (%d Zeichen) ausserhalb der Form (hoechstens %d)", len(c), quantenSBasenChiffratMax)
 	}
-	if got, err := quantenSBasenOeffnen(k, adr, c, quantenWNMax, 1, 1, inh); err != nil || got != y {
+	if got, err := quantenSBasenOeffnen(k, adr, c, quantenWNMax, []string{adr}, 1, inh); err != nil || got != y {
 		t.Fatalf("groesstes Chiffrat nicht lesbar: %v", err)
 	}
 	q := QuantenSAbschnittAnfrage{K: strings.Repeat("ab", 32), N: quantenWNMax, T: 1, Tol: 2, X: 1, Validatoren: []string{adr}, Schluessel: []string{pubHex(k)},

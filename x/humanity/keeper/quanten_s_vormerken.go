@@ -172,7 +172,7 @@ func (d *quantenWDienst) vormerkungPruefen(q *QuantenSVormerkung) (string, error
 	if q.BasenVerschluesselt == "" {
 		return q.Basen, nil
 	}
-	return quantenSBasenOeffnen(d.key, d.adresse, q.BasenVerschluesselt, q.N, v, q.X, q.Inhaberin)
+	return quantenSBasenOeffnen(d.key, d.adresse, q.BasenVerschluesselt, q.N, q.Validatoren, q.X, q.Inhaberin)
 }
 
 // vormerken: pruefen, dann im eigenen Messverzeichnis vormerken.

@@ -393,7 +393,7 @@ func (d *quantenWDienst) quantenSAbschnittPruefen(q *QuantenSAbschnittAnfrage) (
 		return von, bis, q.Basen, nil
 	}
 	// Erst jetzt oeffnen: Auftrag unterschrieben, Ausgeber tauglich, Zeit im Fenster.
-	y, err = quantenSBasenOeffnen(d.key, d.adresse, q.BasenVerschluesselt, q.N, v, q.X, q.Inhaberin)
+	y, err = quantenSBasenOeffnen(d.key, d.adresse, q.BasenVerschluesselt, q.N, q.Validatoren, q.X, q.Inhaberin)
 	if err != nil {
 		return 0, 0, "", err
 	}

@@ -1373,12 +1373,16 @@ Stelle, bevor die Inhaberin vorlegte. Er wusste also, **wo** sie einlösen will 
     Abschnitts-Auftrag. Er unterschreibt dessen Hash mit.
   - Der Validator öffnet es mit seinem eigenen Schlüssel, misst bzw. präpariert in
     genau diesem y und legt die Vormerkung unter diesem y ab.
-- **Gebunden:** Im Chiffrat stehen Domäne, Kette, Empfänger, n, v, Nummer und die
-  Inhaberin. Der Validator prüft jedes Feld gegen den Auftrag.
+- **Gebunden:** Im Chiffrat stehen Domäne, Kette, Empfänger, n, v, Nummer, der Hash der
+  ganzen Validatorenliste und die Inhaberin. Der Validator prüft jedes Feld gegen den
+  Auftrag.
   - Ein Chiffrat gilt nur bei dem Validator, für den es gemacht ist, nur für diesen
     Abschnitt und nur für diese Inhaberin.
   - Ohne die Bindung an die Inhaberin könnte ein Ausgeber ihr Chiffrat in einem
     eigenen Token verbrauchen und aus dessen Nachweis Teile von y lernen.
+  - Ohne die Bindung an die Liste könnte er es in einem Auftrag wiederholen, der eigene
+    Adressen als übrige Validatoren nennt, und bekäme Anteile und Zählungen zu ihren
+    Basen (Restrisiko aus der Sicherheitsprüfung, im selben PR geschlossen).
 - **Gegen Tausch:** Der Validator unterschreibt in seiner Antwort den Hash des
   Chiffrats, das er geöffnet hat. Die Inhaberin vergleicht ihn beim Annehmen und beim
   Abholen mit ihrem eigenen Chiffrat.
@@ -1399,16 +1403,16 @@ Stelle, bevor die Inhaberin vorlegte. Er wusste also, **wo** sie einlösen will 
     enthalten kein y. Jeder Validator misst in genau dem y der Inhaberin. Annehmen,
     Abholen, Einlösen und Annahme laufen wie bisher.
   - Missbrauch abgewiesen, ohne zu messen:
-    - Chiffrat an einen anderen Validator, für einen anderen Abschnitt, für eine
-      andere Inhaberin;
+    - Chiffrat an einen anderen Validator, für einen anderen Abschnitt, eine andere
+      Validatorenliste oder eine andere Inhaberin;
     - Klartext und Chiffrat zugleich, Großbuchstaben, ungerade Länge, zu groß,
       verändert;
     - Chiffrat nach der Unterschrift getauscht, nicht unterschrieben.
-  - Inhalt streng: falsche Domäne, Kette, Empfänger, n oder v, ein Feld zu viel oder zu
-    wenig, falsche Bits, Daten nach dem JSON.
+  - Inhalt streng: falsche Domäne, Kette, Empfänger, n, v oder Validatorenliste, ein
+    Feld zu viel oder zu wenig, falsche Bits, Daten nach dem JSON.
   - Tausch durch den Ausgeber (eigenes Chiffrat, Klartext): BEFUND beim Annehmen und
     beim Abholen. Ein Validator ohne Hash: der Ausgeber gibt nichts aus.
-  - Gegenprobe: 21 Mutationen, alle rot.
+  - Gegenprobe: 22 Mutationen, alle rot.
 - **Ehrlich:**
   - **Wer misst, kennt y.** Das bringt erst etwas, wenn der Validator auf seinem
     eigenen Server misst (A5, Vormerken). Im Hauptnetz misst heute ein GitHub-Lauf des

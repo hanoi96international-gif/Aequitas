@@ -290,12 +290,14 @@ func quantenSInhaberinNeu(n, v int, stellen [2]QuantenSStelle, validatoren []Qua
 			if !kanonischeAdresse(a) || slices.Contains(d.Validatoren, a) {
 				return nil, fmt.Errorf("Validator %d: Adresse nicht kanonisch oder doppelt", x)
 			}
-			c, err := quantenSBasenVerschluesseln(validatoren[x-1].Schluessel, a, n, v, x, inhaberin, basen[x-1])
+			d.Validatoren = append(d.Validatoren, a)
+		}
+		for x := 1; x <= v; x++ {
+			c, err := quantenSBasenVerschluesseln(validatoren[x-1].Schluessel, d.Validatoren, n, x, inhaberin, basen[x-1])
 			if err != nil {
 				return nil, fmt.Errorf("Validator %d: %v", x, err)
 			}
 			b.BasenVerschluesselt = append(b.BasenVerschluesselt, c)
-			d.Validatoren = append(d.Validatoren, a)
 		}
 		d.Basen = basen
 	}

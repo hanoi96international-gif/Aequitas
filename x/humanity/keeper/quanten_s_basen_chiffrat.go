@@ -15,12 +15,15 @@ package keeper
 // Schluessel.
 //
 // GEBUNDEN: Im Klartext stehen Domaene, Kette, Empfaenger (Adresse des
-// Validators), n, v, Nummer X und die Inhaberin. Der Validator prueft jedes
-// Feld gegen den Auftrag. So laesst sich ein Chiffrat weder bei einem anderen
-// Validator noch fuer einen anderen Abschnitt noch fuer eine andere Inhaberin
-// verwenden (sonst koennte der Ausgeber als "Inhaberin" eines eigenen Tokens
-// die Messung in ihren Basen verbrauchen und aus seinem Nachweis Teile von y
-// lernen).
+// Validators), n, v, Nummer X, der Hash der ganzen Validatorenliste und die
+// Inhaberin. Der Validator prueft jedes Feld gegen den Auftrag. So laesst sich
+// ein Chiffrat weder bei einem anderen Validator noch fuer einen anderen
+// Abschnitt noch fuer eine andere Inhaberin verwenden (sonst koennte der
+// Ausgeber als "Inhaberin" eines eigenen Tokens die Messung in ihren Basen
+// verbrauchen und aus seinem Nachweis Teile von y lernen) -- und auch nicht in
+// einem Auftrag, in dem der Ausgeber eigene Adressen als uebrige Validatoren
+// nennt (dann bekaeme er Anteile und Zaehlungen zu ihren Basen; aus der
+// Sicherheitspruefung von R8).
 //
 // GEGEN TAUSCH: Der Validator unterschreibt in seiner Antwort den Hash des
 // Chiffrats, das er geoeffnet hat (quantenSAbschnittAntwortNachrichtAus,
@@ -62,20 +65,36 @@ const (
 
 // quantenSBasenInhalt: was im Chiffrat steht.
 type quantenSBasenInhalt struct {
-	Dom       string `json:"dom"`
-	Chain     int64  `json:"chain"`
-	An        string `json:"an"`
-	N         int    `json:"n"`
-	V         int    `json:"v"`
-	X         int    `json:"x"`
-	Inhaberin string `json:"inhaberin"`
-	Basen     string `json:"basen"`
+	Dom   string `json:"dom"`
+	Chain int64  `json:"chain"`
+	An    string `json:"an"`
+	N     int    `json:"n"`
+	V     int    `json:"v"`
+	X     int    `json:"x"`
+	// Validatoren: sha256 der Liste (klein, mit Komma verbunden).
+	Validatoren string `json:"validatoren"`
+	Inhaberin   string `json:"inhaberin"`
+	Basen       string `json:"basen"`
+}
+
+// quantenSValidatorenHash: woran das Chiffrat die Validatorenliste bindet.
+func quantenSValidatorenHash(validatoren []string) string {
+	l := make([]string, len(validatoren))
+	for i, a := range validatoren {
+		l[i] = strings.ToLower(strings.TrimSpace(a))
+	}
+	return quantenSHashListe(l)
 }
 
 // quantenSBasenVerschluesseln: die Inhaberin verschluesselt y ihres Abschnitts
-// X an den Validator (Adresse an, oeffentlicher Schluessel pub). Der Schluessel
-// muss zur Adresse gehoeren.
-func quantenSBasenVerschluesseln(pubHex, an string, n, v, x int, inhaberin, basen string) (string, error) {
+// X an dessen Validator validatoren[X-1] (oeffentlicher Schluessel pub). Der
+// Schluessel muss zur Adresse gehoeren.
+func quantenSBasenVerschluesseln(pubHex string, validatoren []string, n, x int, inhaberin, basen string) (string, error) {
+	v := len(validatoren)
+	if x < 1 || x > v {
+		return "", quantenWFehler("Nummer %d bei %d Validatoren", x, v)
+	}
+	an := strings.ToLower(strings.TrimSpace(validatoren[x-1]))
 	pub, err := quantenSSchluesselPruefen(pubHex, an)
 	if err != nil {
 		return "", err
@@ -87,8 +106,8 @@ func quantenSBasenVerschluesseln(pubHex, an string, n, v, x int, inhaberin, base
 	if _, ok := quantenSBitsLesen(basen, bis-von); !ok {
 		return "", quantenWFehler("Basen: %d Bits verlangt, nur 0 und 1", bis-von)
 	}
-	roh, err := json.Marshal(quantenSBasenInhalt{Dom: quantenSDomBasen, Chain: eingefroreneChainID, An: strings.ToLower(an),
-		N: n, V: v, X: x, Inhaberin: strings.ToLower(inhaberin), Basen: basen})
+	roh, err := json.Marshal(quantenSBasenInhalt{Dom: quantenSDomBasen, Chain: eingefroreneChainID, An: an,
+		N: n, V: v, X: x, Validatoren: quantenSValidatorenHash(validatoren), Inhaberin: strings.ToLower(inhaberin), Basen: basen})
 	if err != nil {
 		return "", err
 	}
@@ -112,8 +131,10 @@ func quantenSBasenHash(c string) string {
 }
 
 // quantenSBasenOeffnen: der Validator (Schluessel key, Adresse an) oeffnet das
-// Chiffrat und prueft jedes Feld gegen den Auftrag. Heraus kommt y als Text.
-func quantenSBasenOeffnen(key *ecdsa.PrivateKey, an string, c string, n, v, x int, inhaberin string) (string, error) {
+// Chiffrat und prueft jedes Feld gegen den Auftrag (Validatorenliste, Nummer
+// x, Inhaberin). Heraus kommt y als Text.
+func quantenSBasenOeffnen(key *ecdsa.PrivateKey, an string, c string, n int, validatoren []string, x int, inhaberin string) (string, error) {
+	v := len(validatoren)
 	if !quantenSBasenChiffratForm(c) {
 		return "", quantenWFehler("verschluesselte Basen: Form oder Groesse")
 	}
@@ -135,7 +156,7 @@ func quantenSBasenOeffnen(key *ecdsa.PrivateKey, an string, c string, n, v, x in
 	if in.Dom != quantenSDomBasen || in.Chain != eingefroreneChainID || in.An != strings.ToLower(an) {
 		return "", quantenWFehler("verschluesselte Basen: Domaene, Kette oder Empfaenger")
 	}
-	if in.N != n || in.V != v || in.X != x {
+	if in.N != n || in.V != v || in.X != x || in.Validatoren != quantenSValidatorenHash(validatoren) {
 		return "", quantenWFehler("verschluesselte Basen: fuer einen anderen Abschnitt")
 	}
 	if in.Inhaberin != strings.ToLower(strings.TrimSpace(inhaberin)) {
