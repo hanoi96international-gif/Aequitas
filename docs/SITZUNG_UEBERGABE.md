@@ -56,8 +56,8 @@ dezentrales Quantengeld“.
       `delete(neu.Enden, k)` in `quantenWToteAufraeumen` wiederhergestellt -- Diff prüfen!),
       DEZENTRAL.md 17 „R10“ und HEUTE.md 3.3l schreiben, Sicherheitsprüfung als PR-Kommentar
       (Konsensänderung!), Vier-Knoten-Tests (`pg_ctlcluster 16 main start`).
-    - App (Zweig lokal `urteil-lokal` in Aequitas-App, NICHT gepusht -- falls verloren: neu
-      bauen): `lib/quantenSStelle.ts` `urteilLesen`, letzter Versuch nur mit
+    - App: als WIP-Commit auf dem Zweig von App #99 gepusht (vor dem Merge von #99 entscheiden:
+      mit #99 mergen ist harmlos, solange die Kette schläft): `lib/quantenSStelle.ts` `urteilLesen`, letzter Versuch nur mit
       `urteil_eindeutig`; Tests in `quantenSStelle.test.ts` (43 grün).
     - Fehlerbild (`forschung/quantengeld/fehlerbild.py`, Selbsttest grün): beobachtete gegen
       erwartete Fehler je Schuss (Auslese + 1-Qubit-Gatter aus der Tageskalibrierung, Target),
