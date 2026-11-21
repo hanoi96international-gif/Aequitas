@@ -51,6 +51,11 @@ type QuantenSBasen struct {
 	Basen []string `json:"basen"`
 	Wo    string   `json:"wo"`
 	Job   string   `json:"job"`
+	// Nur bei getrennten Rollen (quanten_s_rollen.go), nie aus einer Datei:
+	// y je Abschnitt von der Inhaberin an den Validator verschluesselt, und
+	// fuer wen (quanten_s_basen_chiffrat.go). Dann ist Basen leer.
+	Verschluesselt []string `json:"-"`
+	Inhaberin      string   `json:"-"`
 }
 
 // quantenSAbschnittNetz: dazu der Weg zu jedem Validator (1-basiert).
@@ -66,6 +71,9 @@ type quantenSAbschnittNetz interface {
 
 func quantenSAusgabeLaufAbschnitte(ctx context.Context, a QuantenSAusgabeAuftrag, basen QuantenSBasen, validatoren []string, t int, netz quantenSAbschnittNetz, log io.Writer) (*QuantenSAusgabeErgebnis, error) {
 	a.log, a.beginn = log, time.Now()
+	if basen.Verschluesselt != nil {
+		return nil, errors.New("verschluesselte Basen nur bei getrennten Rollen (das Werkzeug spielt hier die Inhaberin und braucht y)")
+	}
 	r, err := quantenSRundeBeginnen(a, basen, validatoren, t)
 	if err != nil {
 		return nil, err
@@ -221,6 +229,22 @@ type quantenSRunde struct {
 // ohne Netz, damit nichts Falsches einen Validator erreicht.
 func quantenSRundeBeginnen(a QuantenSAusgabeAuftrag, basen QuantenSBasen, validatoren []string, t int) (*quantenSRunde, error) {
 	v, n := len(validatoren), basen.N
+	if basen.Verschluesselt != nil {
+		// Der Ausgeber kennt y nicht: nur die Form, und keine Runde, die x
+		// oder y der Inhaberin braucht (r.y bleibt leer).
+		if basen.Basen != nil || v < 1 || len(basen.Verschluesselt) != v || n < 2 || n > quantenWNMax || !kanonischeAdresse(basen.Inhaberin) {
+			return nil, fmt.Errorf("verschluesselte Basen: %d Abschnitte fuer %d Validatoren, n = %d", len(basen.Verschluesselt), v, n)
+		}
+		klein := 0
+		for x := 1; x <= v; x++ {
+			von, bis, ok := quantenSAbschnitt(n, v, x)
+			if !ok || !quantenSBasenChiffratForm(basen.Verschluesselt[x-1]) {
+				return nil, fmt.Errorf("verschluesselte Basen, Abschnitt %d: Form", x)
+			}
+			klein += (bis - von) / 2
+		}
+		return quantenSRundeFertig(a, n, v, t, klein, nil, validatoren)
+	}
 	if v < 1 || len(basen.Basen) != v || n < 2 || n > quantenWNMax {
 		return nil, fmt.Errorf("Basen: %d Abschnitte fuer %d Validatoren, n = %d", len(basen.Basen), v, n)
 	}
@@ -238,6 +262,11 @@ func quantenSRundeBeginnen(a QuantenSAusgabeAuftrag, basen QuantenSBasen, valida
 		y = append(y, b...)
 		klein += (bis - von) / 2
 	}
+	return quantenSRundeFertig(a, n, v, t, klein, y, validatoren)
+}
+
+// quantenSRundeFertig: Pruefgroesse und Deckung, dann die Runde.
+func quantenSRundeFertig(a QuantenSAusgabeAuftrag, n, v, t, klein int, y []int, validatoren []string) (*quantenSRunde, error) {
 	kn := quantenWKNote(a.Tol, t, v)
 	if kn == 0 || klein < kn {
 		return nil, fmt.Errorf("Pruefgroesse: %d Stellen je Annahmestelle, sicher erst ab %d (Toleranz %d %%, t=%d, v=%d)", klein, kn, a.Tol, t, v)
@@ -285,8 +314,18 @@ func (r *quantenSRunde) abschnitteHolen(ctx context.Context, a QuantenSAusgabeAu
 	for xi := 1; xi <= r.v; xi++ {
 		von, bis, _ := quantenSAbschnitt(r.n, r.v, xi)
 		req := QuantenSAbschnittAnfrage{K: r.K, N: r.n, T: r.t, Tol: a.Tol, X: xi, Validatoren: r.validatoren, Schluessel: r.schl,
-			Basen: basen.Basen[xi-1], Inhaberin: inhaber, InhaberinSchluessel: inhaberPub, Stellen: stellen[:],
+			Inhaberin: inhaber, InhaberinSchluessel: inhaberPub, Stellen: stellen[:],
 			StellenSchluessel: stellenPub[:], Zeit: r.zeit, Praeger: r.ausgeber}
+		basenHash := ""
+		if basen.Verschluesselt != nil {
+			if basen.Inhaberin != inhaber {
+				return errors.New("verschluesselte Basen: fuer eine andere Inhaberin")
+			}
+			req.BasenVerschluesselt = basen.Verschluesselt[xi-1]
+			basenHash = quantenSBasenHash(req.BasenVerschluesselt)
+		} else {
+			req.Basen = basen.Basen[xi-1]
+		}
 		if a.ProbeV2 {
 			req.ProbeArt = 2
 		}
@@ -300,6 +339,7 @@ func (r *quantenSRunde) abschnitteHolen(ctx context.Context, a QuantenSAusgabeAu
 		}
 		if ans.K != r.K || ans.X != xi || ans.Von != von || ans.Bis != bis || len(ans.Blaetter) != bis-von ||
 			len(ans.Buendel) != r.v || len(ans.BuendelSig) != r.v || ans.Buendel[xi-1] != "" ||
+			ans.BasenHash != basenHash ||
 			!kanonischeSignatur(ans.Sig) || verifyPersonalSign(quantenSAbschnittAntwortNachricht(ans), ans.Sig, r.validatoren[xi-1]) != nil {
 			return fmt.Errorf("Validator %d: Antwort passt nicht oder ist nicht von ihm", xi)
 		}

@@ -2,12 +2,29 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 21.11.2026 ~13:25 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
-Repos); davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18:30 UTC Sitzung
+Stand: 21.11.2026 ~18:00 UTC, Sitzung „Weiter“ (Zweig `claude/admiring-bohr-ob0u0p`, alle vier
+Repos); davor ~13:40 UTC Sitzung „Weiter“ (`claude/weiter-uw2p42`), davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18:30 UTC Sitzung
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
-**Jetzt (20.11. ~14:00 UTC), Auftrag: „Baue die neue App / Nimm alles vor was du selber bauen
+**Jetzt (21.11. ~18:00 UTC):**
+- **C1 läuft mit #614** (Deploy [44909800768](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44909800768),
+  `produktion` freigegeben, grün 21.11. 17:27 UTC, Höhe steigt, keine Rücknahme). Der
+  Nachweis von 3.3k war vorher gesichert (Artefakt 14709715416).
+- **PR (dieser Stand): R8, Basen y je Validator verschlüsselt** (`DEZENTRAL.md` 17 „R8“,
+  `quanten_s_basen_chiffrat.go`): `quanten-s-inhaberin neu --verschluesseln adr=api,…`;
+  Ausgeber reicht nur Chiffrate weiter (Vormerkung, Auftrag), Validator öffnet nach der
+  Unterschrift des Ausgebers, unterschreibt den Hash, Inhaberin erkennt Tausch (BEFUND).
+  Keine Kettenänderung; Änderung am Validator-Dienst → eigene Sicherheitsprüfung als
+  PR-Kommentar. 8 Tests, 21 Mutationen rot. Nach dem Merge: C1-Deploy (Dienst) bei
+  Gelegenheit; wirkt erst, wenn ein Validator selbst misst (A5). Hauptnetz-Workflow
+  (Weg `rollen`) nimmt weiter nur Klartext.
+- **Danach (Reihenfolge):** App: Bestellung mit verschlüsselten Basen (ECIES an den
+  Validator-Schlüssel, Hash in der Antwort prüfen; Prüfvektor Go↔App); Öffnung aus t
+  Anteilen (Verfügbarkeit); Urteil eindeutig (eingelöst/tot); Fehlerbild gegen die
+  Kalibrierung.
+
+**Davor (20.11. ~14:00 UTC), Auftrag: „Baue die neue App / Nimm alles vor was du selber bauen
 kannst / Abschnitt 5 (heute weltweit unmöglich) so gut wie möglich umsetzen“:**
 - **App 1.26.0:** App #90 gemergt (a437f714, nur Version). Builds gestartet: APK
   [44748661869](https://github.com/hanoi96international-gif/Aequitas-App/actions/runs/44748661869)
@@ -77,9 +94,13 @@ kannst / Abschnitt 5 (heute weltweit unmöglich) so gut wie möglich umsetzen“
     bei 540 Treffern, an Stelle 0 bei 283, gegen Wurzel und Proben der Ausgabe. **Aber:** der
     Satz in der Zusammenfassung („nicht gegen die Ausgabe geprüft“) war falsch – der Workflow
     fragte `wurzel_gegen == "angegeben"`, der Prüfer setzt bei angegebener Wurzel aber
-    `"kette"` (ein veralteter Kommentar nannte „angegeben“). **PR (dieser Stand):** Workflow
-    fragt `"kette"`, Kommentar richtig; danach `quanten-s-nachweis.yml` erneut laufen lassen
-    (richtige Zusammenfassung), dann den C1-Deploy freigeben.
+    `"kette"` (ein veralteter Kommentar nannte „angegeben“). **#614 gemergt (266eca23):**
+    Workflow fragt `"kette"`, Kommentar richtig. Zweiter Lauf von `quanten-s-nachweis.yml`
+    ([44909811057](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44909811057),
+    grün, Artefakt-ID 14709715416 bis 19.02.2027). **Nachweis gesichert.**
+  - C1-Deploy: Lauf zu #613 (44908253368) abgebrochen (überholt), Lauf zu #614
+    [44909800768](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44909800768)
+    enthält beides und wartet nach dem CI auf `produktion`.
   - CI zu #613: `db-tests` im Push-Lauf 44907012291 rot
     (`TestVierKnoten_RealDB/SnapshotResyncNachLoeschung`: nach 90 s keine Einigkeit, Knoten 2
     nach dem Snapshot mit fehlenden Eltern), im PR-Lauf 44907054179 mit demselben Stand grün.
@@ -380,7 +401,7 @@ kannst / Abschnitt 5 (heute weltweit unmöglich) so gut wie möglich umsetzen“
 - Nie Geheimnisse im Chat erfragen (GitHub-Secrets oder Credential-Formular). Keine
   Impressum-Daten erfinden.
 - Push nur auf den Zweig, den die Sitzung vorgibt (alle vier Repos; zuletzt
-  `claude/weiter-uw2p42`, davor `claude/weiter-8vzgu9`). Nach einem
+  `claude/admiring-bohr-ob0u0p`, davor `claude/weiter-uw2p42`). Nach einem
   Squash-Merge, `<zweig>` = der Zweig der Sitzung:
   1. `git checkout -B <zweig> origin/main`
   2. committen

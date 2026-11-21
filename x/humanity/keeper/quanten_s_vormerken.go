@@ -79,6 +79,11 @@ type QuantenSVormerkung struct {
 	Zeit        int64    `json:"zeit"`
 	Praeger     string   `json:"praeger"`
 	PraegerSig  string   `json:"praeger_sig"`
+	// BasenVerschluesselt: statt Basen -- y, von der Inhaberin an diesen
+	// Validator verschluesselt (quanten_s_basen_chiffrat.go); dann nennt
+	// Inhaberin, fuer wen (steht auch im Chiffrat). Genau eines von beiden.
+	BasenVerschluesselt string `json:"basen_verschluesselt,omitempty"`
+	Inhaberin           string `json:"inhaberin,omitempty"`
 }
 
 // QuantenSVormerkAntwort: Stand beim Validator.
@@ -105,64 +110,82 @@ const (
 // quantenSVormerkNachricht: was der Ausgeber unterschreibt.
 func quantenSVormerkNachricht(q QuantenSVormerkung) string {
 	hb := sha256.Sum256([]byte(q.Basen))
-	return fmt.Sprintf("%s|chain:%d|%s|%d|%d|%s|%x|%d", quantenSDomVormerkung, eingefroreneChainID,
+	m := fmt.Sprintf("%s|chain:%d|%s|%d|%d|%s|%x|%d", quantenSDomVormerkung, eingefroreneChainID,
 		strings.ToLower(q.Praeger), q.N, q.X, strings.Join(q.Validatoren, ","), hb, q.Zeit)
+	if q.BasenVerschluesselt != "" || q.Inhaberin != "" { // Klartext-Vormerkungen unveraendert
+		m += "|basen:" + quantenSBasenHash(q.BasenVerschluesselt) + "|inhaberin:" + strings.ToLower(q.Inhaberin)
+	}
+	return m
 }
 
 // vormerkungPruefen: alles, was ohne Verzeichnis geprueft werden kann.
-func (d *quantenWDienst) vormerkungPruefen(q *QuantenSVormerkung) error {
+// Heraus kommt y des Abschnitts (bei verschluesselten Basen erst nach der
+// Unterschrift des Ausgebers geoeffnet).
+func (d *quantenWDienst) vormerkungPruefen(q *QuantenSVormerkung) (string, error) {
 	v := len(q.Validatoren)
 	if v < 1 || v > quantenWVMax {
-		return quantenWFehler("Zahl der Validatoren")
+		return "", quantenWFehler("Zahl der Validatoren")
 	}
 	gesehen := map[string]bool{}
 	for _, a := range q.Validatoren {
 		if !kanonischeAdresse(a) || gesehen[a] {
-			return quantenWFehler("Validator nicht kanonisch oder doppelt")
+			return "", quantenWFehler("Validator nicht kanonisch oder doppelt")
 		}
 		gesehen[a] = true
 	}
 	if q.X < 1 || q.X > v || q.Validatoren[q.X-1] != d.adresse {
-		return quantenWFehler("Nummer %d gehoert nicht zu diesem Validator", q.X)
+		return "", quantenWFehler("Nummer %d gehoert nicht zu diesem Validator", q.X)
 	}
 	if q.N < 2 || q.N > quantenWNMax {
-		return quantenWFehler("n")
+		return "", quantenWFehler("n")
 	}
 	von, bis, ok := quantenSAbschnitt(q.N, v, q.X)
 	if !ok {
-		return quantenWFehler("Abschnitte")
+		return "", quantenWFehler("Abschnitte")
 	}
-	if len(q.Basen) != bis-von {
-		return quantenWFehler("Basen: %d statt %d", len(q.Basen), bis-von)
-	}
-	if _, ok := quantenSBitsLesen(q.Basen, bis-von); !ok {
-		return quantenWFehler("Basen: nur 0 und 1")
+	if q.BasenVerschluesselt != "" || q.Inhaberin != "" {
+		// Genau eines: verschluesselt (mit Inhaberin) ODER Klartext.
+		q.Inhaberin = strings.ToLower(strings.TrimSpace(q.Inhaberin))
+		if q.Basen != "" || !quantenSBasenChiffratForm(q.BasenVerschluesselt) || !kanonischeAdresse(q.Inhaberin) {
+			return "", quantenWFehler("verschluesselte Basen: Form, Inhaberin, oder zugleich Klartext")
+		}
+	} else {
+		if len(q.Basen) != bis-von {
+			return "", quantenWFehler("Basen: %d statt %d", len(q.Basen), bis-von)
+		}
+		if _, ok := quantenSBitsLesen(q.Basen, bis-von); !ok {
+			return "", quantenWFehler("Basen: nur 0 und 1")
+		}
 	}
 	q.Praeger = strings.ToLower(strings.TrimSpace(q.Praeger))
 	if !kanonischeAdresse(q.Praeger) || !kanonischeSignatur(q.PraegerSig) ||
 		verifyPersonalSign(quantenSVormerkNachricht(*q), q.PraegerSig, q.Praeger) != nil {
-		return quantenWFehler("Vormerkung nicht vom Ausgeber unterschrieben")
+		return "", quantenWFehler("Vormerkung nicht vom Ausgeber unterschrieben")
 	}
 	if !d.praegerTauglich(q.Praeger) {
-		return quantenWFehler("Ausgeber ist kein Mensch mit Deckung")
+		return "", quantenWFehler("Ausgeber ist kein Mensch mit Deckung")
 	}
 	jetzt := d.jetzt()
 	if q.Zeit < jetzt-quantenSVormerkAlt || q.Zeit > jetzt+quantenWVoraus {
-		return quantenWFehler("Zeit ausserhalb des Fensters")
+		return "", quantenWFehler("Zeit ausserhalb des Fensters")
 	}
-	return nil
+	if q.BasenVerschluesselt == "" {
+		return q.Basen, nil
+	}
+	return quantenSBasenOeffnen(d.key, d.adresse, q.BasenVerschluesselt, q.N, v, q.X, q.Inhaberin)
 }
 
 // vormerken: pruefen, dann im eigenen Messverzeichnis vormerken.
 func (d *quantenWDienst) vormerken(q QuantenSVormerkung) (QuantenSVormerkAntwort, error) {
-	if err := d.vormerkungPruefen(&q); err != nil {
+	y, err := d.vormerkungPruefen(&q)
+	if err != nil {
 		return QuantenSVormerkAntwort{}, err
 	}
 	mv, ok := d.quelle().(*quantenSMessVerzeichnis)
 	if !ok || mv == nil {
 		return QuantenSVormerkAntwort{}, quantenWFehler("dieser Validator nimmt keine Vormerkungen an (Messquelle ist kein Verzeichnis)")
 	}
-	st, err := mv.vormerken(q.Basen, q.Praeger, q.Zeit, d.jetzt())
+	st, err := mv.vormerken(y, q.Praeger, q.Zeit, d.jetzt())
 	if err != nil {
 		return QuantenSVormerkAntwort{}, err
 	}
@@ -378,8 +401,9 @@ func quantenSBasenZiehen(n, v int) ([]string, error) {
 func quantenSMessungenAbwarten(ctx context.Context, key *ecdsa.PrivateKey, basen QuantenSBasen, validatoren []string, netz quantenSVormerkNetz,
 	warten, takt time.Duration, jetzt func() int64, log io.Writer) error {
 	v := len(validatoren)
-	if v < 1 || len(basen.Basen) != v {
-		return fmt.Errorf("Vormerken: %d Abschnitte fuer %d Validatoren", len(basen.Basen), v)
+	verschl := basen.Verschluesselt != nil
+	if v < 1 || (!verschl && len(basen.Basen) != v) || (verschl && (basen.Basen != nil || len(basen.Verschluesselt) != v)) {
+		return fmt.Errorf("Vormerken: %d Abschnitte fuer %d Validatoren", max(len(basen.Basen), len(basen.Verschluesselt)), v)
 	}
 	if warten <= 0 || warten > quantenSMessenWartenMax || takt <= 0 {
 		return fmt.Errorf("Vormerken: Wartezeit %s (hoechstens %s)", warten, quantenSMessenWartenMax)
@@ -394,7 +418,12 @@ func quantenSMessungenAbwarten(ctx context.Context, key *ecdsa.PrivateKey, basen
 			if stand[x-1] == quantenSGemessen {
 				continue
 			}
-			q := QuantenSVormerkung{N: basen.N, X: x, Validatoren: validatoren, Basen: basen.Basen[x-1], Zeit: jetzt(), Praeger: ausgeber}
+			q := QuantenSVormerkung{N: basen.N, X: x, Validatoren: validatoren, Zeit: jetzt(), Praeger: ausgeber}
+			if verschl {
+				q.BasenVerschluesselt, q.Inhaberin = basen.Verschluesselt[x-1], basen.Inhaberin
+			} else {
+				q.Basen = basen.Basen[x-1]
+			}
 			sig, err := quantenSUnterschreiben(key, quantenSVormerkNachricht(q))
 			if err != nil {
 				return err

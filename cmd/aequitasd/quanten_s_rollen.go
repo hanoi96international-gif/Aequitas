@@ -17,7 +17,7 @@ import (
 // Quantengeld S mit getrennten Rollen (keeper/quanten_s_rollen.go,
 // DEZENTRAL.md 17):
 //
-//	aequitasd quanten-s-inhaberin neu --datei F --n N --v V --stellen adr=schl,adr=schl
+//	aequitasd quanten-s-inhaberin neu --datei F --n N --v V --stellen adr=schl,adr=schl [--verschluesseln adr=api,...]
 //	aequitasd quanten-s-inhaberin annehmen --datei F --api URL --validatoren 0xadr,... < paket.json
 //	aequitasd quanten-s-inhaberin abholen --datei F --api URL --k K --validatoren adr=api,...
 //	aequitasd quanten-s-inhaberin einloesen --datei F --api URL --stelle 0|1 > vorlage.json
@@ -51,6 +51,7 @@ func quantenSInhaberinMit(ctx context.Context, args []string, ein io.Reader, aus
 		n = fs.Int("n", 0, "Stellen des Tokens")
 		v = fs.Int("v", 1, "Zahl der Validatoren (Abschnitte)")
 		stellen = fs.String("stellen", "", "die zwei Annahmestellen: adresse=schluessel,adresse=schluessel")
+		validatoren = fs.String("verschluesseln", "", "Basen je Abschnitt an diese Validatoren verschluesseln (der Ausgeber sieht sie dann nicht): adresse=api,adresse=api")
 	case "annehmen":
 		validatoren = fs.String("validatoren", "", "Adressen der Validatoren, denen die Inhaberin vertraut, in der Reihenfolge der Abschnitte: 0xadr,0xadr")
 	case "abholen":
@@ -74,8 +75,11 @@ func quantenSInhaberinMit(ctx context.Context, args []string, ein io.Reader, aus
 	switch was {
 	case "neu":
 		var st [2]keeper.QuantenSStelle
+		var vs []keeper.QuantenSValidator
 		if st, err = keeper.QuantenSStellenLesen(*stellen); err == nil {
-			err = keeper.QuantenSInhaberinNeu(*datei, *n, *v, st, aus)
+			if vs, err = keeper.QuantenSValidatorenLesen(*validatoren); err == nil {
+				err = keeper.QuantenSInhaberinNeu(ctx, *datei, *n, *v, st, vs, aus)
+			}
 		}
 	case "annehmen":
 		var vs []string
