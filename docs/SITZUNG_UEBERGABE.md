@@ -2,7 +2,7 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 20.11.2026 ~18:30 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
+Stand: 20.11.2026 ~20:35 UTC, Sitzung „Weiter“ (Zweig `claude/weiter-uw2p42`, alle vier
 Repos); davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18:30 UTC Sitzung
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
@@ -28,7 +28,10 @@ kannst / Abschnitt 5 (heute weltweit unmöglich) so gut wie möglich umsetzen“
      Freigabe `produktion` → Urteil, Nachweis (Artefakt).
   - Alternativ Stelle 1 (eigenes Konto): ein zweites Gerät mit der App öffnet
     „Annahmestelle“ unter demselben Konto und scannt den QR-Code.
-- **PR (dieser Stand): R7, Nachweis nach dem Ende** (`DEZENTRAL.md` 17 „R7“, `HEUTE.md`
+- **#611 gemergt (62da2c5a): R7, Nachweis nach dem Ende** (Sicherheitsprüfung als
+  PR-Kommentar, nichts Ausnutzbares; zwei Härtungen umgesetzt). C1-Deploy dafür wartet auf
+  `produktion`. App #93 („Nachweis prüfen“) offen, danach App 1.28.0.
+- **Damals: R7, Nachweis nach dem Ende** (`DEZENTRAL.md` 17 „R7“, `HEUTE.md`
   Abschnitt 2): Ist ein Token eingelöst oder tot und das Ende final, legt jeder Validator
   seinen Abschnitt offen (`/api/quanten-w/validator/nachweis`); `quanten-s-nachweis`
   rechnet nach, `quanten-s-annahme --nachweis-warten` prüft nach dem Einlösen,
@@ -42,8 +45,16 @@ kannst / Abschnitt 5 (heute weltweit unmöglich) so gut wie möglich umsetzen“
   Härtung: der Knoten legt die geöffnete Messung selbst ab (root fasst das
   Messverzeichnis nicht an).
 - **App 1.26.0 veröffentlicht** (APK und iPhone). **App 1.27.0** (Annahmestelle): APK
-  signiert, Veröffentlichung [44792061041](https://github.com/hanoi96international-gif/Aequitas-App/actions/runs/44792061041)
-  wartet auf `app-signatur`, danach `release-ios.yml` (run_id 44783551300, Tag v1.27.0).
+  und iPhone veröffentlicht (20.11. ~19:00 UTC). **App 1.28.0** (Nachweis prüfen, App #93/#94): APK veröffentlicht
+  (20.11. 19:57 UTC); iPhone (`release-ios.yml`, run_id 44797392243) wartet auf `app-signatur`.
+- **C1 läuft mit #611** (Deploy [44795136352](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44795136352),
+  grün): Nachweis nach dem Ende ist im Hauptnetz.
+- **Nächster Schritt des Betreibers:** erster Hauptnetz-Lauf mit getrennten Rollen (Anleitung
+  unten), danach auswerten und in `HEUTE.md` dokumentieren (wie 3.3i).
+- **PR (dieser Stand): Nachweis auch im Weg `abschnitte-v2`** (`--nachweis-warten 20m` im
+  C1-Skript, Zusammenfassung und Artefakt im Workflow). Nach Merge und C1-Deploy erzeugt
+  ein Lauf `quanten-s-ausgabe.yml` (modus `ibm`, weg `abschnitte-v2`) den ersten
+  öffentlichen Nachweis im Hauptnetz – ohne App.
 - **Lehre:** vor jedem Push die GANZE Paket-Suite laufen lassen (`go test ./x/humanity/keeper/`),
   nicht nur `-run`-Filter: `TestSperre_ImmerMitDefer` fand in #611 eine Sperre ohne `defer`.
 - **App #91 offen: die App als Annahmestelle (R6)** (`lib/quantenSStelle.ts`, Karte

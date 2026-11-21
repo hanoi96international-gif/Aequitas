@@ -470,6 +470,27 @@ func qsVierKnotenModus(t *testing.T, ausfall, abschnitte, rollen bool) {
 		t.Fatalf("Auf der Kette: %v", err)
 	}
 	t.Logf("Auf der Kette: probe_art %d, %d Validatoren, Anmeldung mit %d Salzen nachgerechnet", sicht.Arten[0], sicht.NVal, sicht.Salze)
+	// Nachweis nach dem Ende auch im Weg, in dem das Werkzeug alle Rollen
+	// spielt (Stichprobe v2, ohne Ausfall): gegen Wurzel und Proben der Ausgabe.
+	if abschnitte && v2 && !rollen && !ausfall {
+		var vs []QuantenSValidator
+		for i, adr := range adressen {
+			vs = append(vs, QuantenSValidator{Adresse: adr, API: netze[i].basis})
+		}
+		_, vnetze, err := quantenSValidatorenPruefen(vs, 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ber, err := quantenSNachweisAbwarten(context.Background(), &quantenSMehrNetz{validatoren: vnetze}, erg.K, adressen, erg.Wurzel, erg.Proben, time.Now().Add(3*time.Minute), &log)
+		if err != nil {
+			t.Fatalf("Nachweis: %v", err)
+		}
+		if ber.WurzelGegen != "kette" || ber.Stelle == nil || *ber.Stelle != erg.B || ber.TrefferStelle == 0 {
+			t.Fatalf("Nachweis-Bericht: %+v (gewaehlte Stelle %d)", ber, erg.B)
+		}
+		t.Logf("Nachweis nach dem Ende: alle %d Validatoren, Praeparation ergibt die Wurzel der Ausgabe; ueber alle %d Stellen %d Fehler bei %d Treffern, an Stelle %d %d bei %d",
+			len(adressen), ber.N, ber.Fehler, ber.Treffer, erg.B, ber.FehlerStelle, ber.TrefferStelle)
+	}
 
 	// Was jeder Validator-Dienst getan hat (nur Zaehler): zeigt, ob sich
 	// Zustaendiger und Ersatz gegenseitig behindert haben.

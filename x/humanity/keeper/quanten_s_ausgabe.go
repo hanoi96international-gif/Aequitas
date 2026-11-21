@@ -88,6 +88,12 @@ type QuantenSAusgabeErgebnis struct {
 	FehlerrateMess string   `json:"fehlerrate_passende_basis"`
 	Wo             string   `json:"wo"`
 	Job            string   `json:"job"`
+	// Wurzel und Proben der Ausgabe (oeffentlich, Abschnitts-Modus) und, wenn
+	// verlangt, der Nachweis nach dem Ende (quanten_s_nachweis.go).
+	Wurzel         string                   `json:"wurzel,omitempty"`
+	Proben         []string                 `json:"proben,omitempty"`
+	Nachweis       *QuantenSNachweisBericht `json:"nachweis,omitempty"`
+	NachweisFehler string                   `json:"nachweis_fehler,omitempty"`
 }
 
 // quantenSNetz: was das Werkzeug vom Knoten braucht (Tests setzen ein).
@@ -420,7 +426,7 @@ func quantenSAusgabeAbschluss(ctx context.Context, a QuantenSAusgabeAuftrag, net
 	}
 
 	erg := &QuantenSAusgabeErgebnis{K: K, N: n, KJeStelle: k, Toleranz: a.Tol, Ausgeber: ausgeber, Inhaberin: inhaber, Stellen: stellen[:], B: b,
-		Deckung: a.Deckung, FehlerrateMess: vb.Fehlerrate, Wo: vb.Wo, Job: vb.Job}
+		Deckung: a.Deckung, FehlerrateMess: vb.Fehlerrate, Wo: vb.Wo, Job: vb.Job, Wurzel: vb.Wurzel, Proben: append([]string(nil), vb.ProbenHex...)}
 
 	// 4. Doppelvorlage an der anderen Stelle, 5. ehrlich an Stelle b.
 	for i, s := range []int{1 - b, b} {
@@ -878,12 +884,15 @@ func QuantenSValidatorenLesen(roh string) ([]QuantenSValidator, error) {
 // Knotens (RELAYER_PRIVATE_KEY), die Messung kommt auf stdin. Ohne
 // Validatorenliste ist der Knoten selbst der einzige Validator (t = 1).
 func QuantenSAusgabe(ctx context.Context, apiBasis, schluesselHex string, deckung int64, frist time.Duration, validatoren []QuantenSValidator, t, tol int,
-	messenWarten time.Duration, probeV2 bool, mess io.Reader, aus, log io.Writer) error {
+	messenWarten time.Duration, probeV2 bool, nachweisWarten time.Duration, mess io.Reader, aus, log io.Writer) error {
 	if quantenWKNote(tol, 1, 1) == 0 {
 		return fmt.Errorf("Toleranz %d %%: die Kette kennt nur %v", tol, quantenSToleranzen())
 	}
 	if messenWarten < 0 || messenWarten > quantenSMessenWartenMax {
 		return fmt.Errorf("Messen abwarten: 0 bis %s", quantenSMessenWartenMax)
+	}
+	if nachweisWarten < 0 || nachweisWarten > time.Hour || (nachweisWarten > 0 && !probeV2) {
+		return errors.New("Nachweis abwarten: 0 bis 1 h, nur mit Stichprobe v2")
 	}
 	eigen, err := neuerQuantenSHTTP(apiBasis)
 	if err != nil {
@@ -958,6 +967,16 @@ func QuantenSAusgabe(ctx context.Context, apiBasis, schluesselHex string, deckun
 		}
 		auftrag.Messung = m
 		erg, err = quantenSAusgabeLauf(ctx, auftrag, adressen, t, netz, log)
+	}
+	if err == nil && erg != nil && nachweisWarten > 0 {
+		// Nach dem Ende (eingeloest): der Nachweis aller Validatoren gegen
+		// Wurzel und Proben der Ausgabe. Ein Fehler hier macht das Einloesen
+		// nicht ungeschehen (ErrQuantenSNachweis).
+		var nerr error
+		if erg.Nachweis, nerr = quantenSNachweisAbwarten(ctx, netz, erg.K, adressen, erg.Wurzel, erg.Proben, time.Now().Add(nachweisWarten), log); nerr != nil {
+			erg.NachweisFehler = nerr.Error()
+			err = fmt.Errorf("%w: %v", ErrQuantenSNachweis, nerr)
+		}
 	}
 	if erg != nil {
 		enc := json.NewEncoder(aus)

@@ -25,6 +25,10 @@
 #   DECKUNG    Mikro-AEQ, 1000000 bis 10000000
 #   TOLERANZ   2, 3 oder 4 (Prozent)
 #
+# Weg abschnitte-v2: nach dem Einloesen wartet das Werkzeug bis zu 20 Minuten
+# auf den Nachweis nach dem Ende (DEZENTRAL.md 17 R7) und prueft ihn; Exit 3 =
+# eingeloest, aber der Nachweis ist nicht bestaetigt.
+#
 # Ausgabe: das Ergebnis als JSON auf stdout (nichts Geheimes; im Weg rollen
 # das Paket fuer die Inhaberin, x darin nur fuer sie verschluesselt), der
 # Verlauf auf stderr. Messung und Basen werden danach geloescht, auch im
@@ -94,5 +98,5 @@ if [ "$QS_ROLLEN" = ja ]; then
     --api http://127.0.0.1:8080 --deckung "$DECKUNG" --frist 15m --toleranz "$TOLERANZ" --fuer-inhaberin < "$QS_BASEN"
 else
   docker exec -i -u 10001:10001 "$CONTAINER" ./aequitasd quanten-s-ausgabe \
-    --api http://127.0.0.1:8080 --deckung "$DECKUNG" --frist 15m --toleranz "$TOLERANZ" --stichprobe-v2 < "$QS_BASEN"
+    --api http://127.0.0.1:8080 --deckung "$DECKUNG" --frist 15m --toleranz "$TOLERANZ" --stichprobe-v2 --nachweis-warten 20m < "$QS_BASEN"
 fi

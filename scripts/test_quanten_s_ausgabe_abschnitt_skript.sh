@@ -87,7 +87,7 @@ neu; lauf ok "Gutfall"
 grep -q -- "-u 10001:10001 aequitas-node ./aequitasd quanten-s-messung-oeffnen --n 2 --name $NAME --verzeichnis /data/quanten" "$D/args_oeffnen" \
   || { echo "FEHLER: Oeffnen: $(cat "$D/args_oeffnen")"; exit 1; }
 [ "$(cat "$D/stdin_oeffnen")" = "$MESS" ] || { echo "FEHLER: Chiffrat nicht ueber stdin an den Knoten"; exit 1; }
-grep -q -- '-u 10001:10001 aequitas-node ./aequitasd quanten-s-ausgabe --api http://127.0.0.1:8080 --deckung 1000000 --frist 15m --toleranz 2 --stichprobe-v2' "$D/args" \
+grep -q -- '-u 10001:10001 aequitas-node ./aequitasd quanten-s-ausgabe --api http://127.0.0.1:8080 --deckung 1000000 --frist 15m --toleranz 2 --stichprobe-v2 --nachweis-warten 20m' "$D/args" \
   || { echo "FEHLER: Aufruf: $(cat "$D/args")"; exit 1; }
 [ "$(cat "$D/stdin")" = "$BASEN" ] || { echo "FEHLER: Basen nicht ueber stdin"; exit 1; }
 [ "$(cat "$D/gesehen")" = "$KLAR" ] || { echo "FEHLER: Messung nicht unter dem Namen der Basen abgelegt"; exit 1; }
@@ -100,7 +100,7 @@ neu; lauf ok "Deckung 2 AEQ, Toleranz 4" DECKUNG=2000000 TOLERANZ=4
 grep -q -- '--deckung 2000000 --frist 15m --toleranz 4 --stichprobe-v2' "$D/args" || { echo "FEHLER: Deckung/Toleranz nicht weitergegeben"; exit 1; }
 # Weg rollen: die Bestellung geht ueber stdin, das Werkzeug gibt fuer die Inhaberin aus.
 neu; lauf ok "Weg rollen" QS_ROLLEN=ja
-grep -q -- '--toleranz 2 --fuer-inhaberin' "$D/args" && ! grep -q -- '--stichprobe-v2' "$D/args" || { echo "FEHLER: rollen: $(cat "$D/args")"; exit 1; }
+grep -q -- '--toleranz 2 --fuer-inhaberin' "$D/args" && ! grep -q -- '--stichprobe-v2' "$D/args" && ! grep -q -- '--nachweis-warten' "$D/args" || { echo "FEHLER: rollen: $(cat "$D/args")"; exit 1; }
 [ "$(cat "$D/stdin")" = "$BASEN" ] || { echo "FEHLER: Bestellung nicht ueber stdin"; exit 1; }
 nichts_abgelegt "Weg rollen"
 neu; lauf ok "Weg abschnitte-v2 ausdruecklich" QS_ROLLEN=nein
