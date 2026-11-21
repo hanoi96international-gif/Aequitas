@@ -115,7 +115,7 @@ func qsiVektorBauen(t *testing.T, fi []string, falsch string) qsiVektor {
 			}
 			ab.FuerInhaberin = hex.EncodeToString(c)
 		}
-		m := quantenSAbschnittAntwortNachrichtAus(v.K, xi, von, bis, quantenSHashListe(ab.Blaetter), ab.FuerInhaberin, ab.BuendelHash, ab.BuendelSigHash, ab.Teile, ab.Zaehlung)
+		m := quantenSAbschnittAntwortNachrichtAus(v.K, xi, von, bis, quantenSHashListe(ab.Blaetter), ab.FuerInhaberin, ab.BuendelHash, ab.BuendelSigHash, ab.Teile, ab.Zaehlung, ab.BasenHash)
 		if ab.Sig, err = quantenSUnterschreiben(key, m); err != nil {
 			t.Fatal(err)
 		}

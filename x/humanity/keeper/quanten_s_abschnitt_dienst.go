@@ -79,18 +79,25 @@ type quantenSAbschnittStand struct {
 	Salze    []string `json:"salze,omitempty"`
 	Teile    []string `json:"teile,omitempty"`
 	Zaehlung [][2]int `json:"zaehlung,omitempty"`
+	// BasenHash: Hash des Chiffrats der Basen, wenn die Inhaberin y
+	// verschluesselt hat (quanten_s_basen_chiffrat.go); sonst leer.
+	BasenHash string `json:"basen_hash,omitempty"`
 }
 
 // QuantenSAbschnittAnfrage: der Auftrag des Ausgebers an Validator X.
 type QuantenSAbschnittAnfrage struct {
-	K                   string   `json:"k"`
-	N                   int      `json:"n"`
-	T                   int      `json:"t"`
-	Tol                 int      `json:"tol"`
-	X                   int      `json:"x"`
-	Validatoren         []string `json:"validatoren"`
-	Schluessel          []string `json:"schluessel"`
-	Basen               string   `json:"basen"` // y der Inhaberin auf Abschnitt X, '0'/'1'
+	K           string   `json:"k"`
+	N           int      `json:"n"`
+	T           int      `json:"t"`
+	Tol         int      `json:"tol"`
+	X           int      `json:"x"`
+	Validatoren []string `json:"validatoren"`
+	Schluessel  []string `json:"schluessel"`
+	Basen       string   `json:"basen"` // y der Inhaberin auf Abschnitt X, '0'/'1'
+	// BasenVerschluesselt: statt Basen -- y, von der Inhaberin an diesen
+	// Validator verschluesselt (quanten_s_basen_chiffrat.go). Genau eines
+	// von beiden.
+	BasenVerschluesselt string   `json:"basen_verschluesselt,omitempty"`
 	Inhaberin           string   `json:"inhaberin"`
 	InhaberinSchluessel string   `json:"inhaberin_schluessel"`
 	Stellen             []string `json:"stellen"`
@@ -120,6 +127,9 @@ type QuantenSAbschnittAntwort struct {
 	// Zaehlung (Treffer, Fehler) dieses Abschnitts.
 	Teile    []string `json:"teile,omitempty"`
 	Zaehlung [][2]int `json:"zaehlung,omitempty"`
+	// BasenHash: Hash des geoeffneten Chiffrats (nur bei verschluesselten
+	// Basen); unterschrieben, damit die Inhaberin einen Tausch erkennt.
+	BasenHash string `json:"basen_hash,omitempty"`
 }
 
 func quantenSHashListe(l []string) string {
@@ -136,6 +146,9 @@ func quantenSAbschnittAuftragNachricht(q QuantenSAbschnittAnfrage) string {
 	if q.ProbeArt != 0 { // bisherige Auftraege: Nachricht unveraendert
 		m += fmt.Sprintf("|probe:%d", q.ProbeArt)
 	}
+	if q.BasenVerschluesselt != "" { // Basen ist dann leer; Klartext-Auftraege unveraendert
+		m += "|basen:" + quantenSBasenHash(q.BasenVerschluesselt)
+	}
 	return m
 }
 
@@ -143,14 +156,14 @@ func quantenSAbschnittAuftragNachricht(q QuantenSAbschnittAnfrage) string {
 // unterschreibt -- der Ausgeber kann sie weiterleiten, nicht aendern.
 func quantenSAbschnittAntwortNachricht(a QuantenSAbschnittAntwort) string {
 	return quantenSAbschnittAntwortNachrichtAus(a.K, a.X, a.Von, a.Bis, quantenSHashListe(a.Blaetter), a.FuerInhaberin,
-		quantenSHashListe(a.Buendel), quantenSHashListe(a.BuendelSig), a.Teile, a.Zaehlung)
+		quantenSHashListe(a.Buendel), quantenSHashListe(a.BuendelSig), a.Teile, a.Zaehlung, a.BasenHash)
 }
 
 // quantenSAbschnittAntwortNachrichtAus: dieselbe Nachricht aus den Hashes der
 // Buendel -- damit die Inhaberin die Unterschrift des Validators pruefen kann,
 // ohne die (fuer andere Validatoren verschluesselten) Buendel zu bekommen
 // (quanten_s_rollen.go). Byte-gleich mit quantenSAbschnittAntwortNachricht.
-func quantenSAbschnittAntwortNachrichtAus(K string, x, von, bis int, blaetterHash, fuerInhaberin, buendelHash, buendelSigHash string, teile []string, zaehlung [][2]int) string {
+func quantenSAbschnittAntwortNachrichtAus(K string, x, von, bis int, blaetterHash, fuerInhaberin, buendelHash, buendelSigHash string, teile []string, zaehlung [][2]int, basenHash string) string {
 	hf := sha256.Sum256([]byte(fuerInhaberin))
 	m := fmt.Sprintf("%s|chain:%d|%s|%d|%d|%d|%s|%x|%s|%s", quantenSDomAbschnittAntwort, eingefroreneChainID, K, x, von, bis,
 		blaetterHash, hf, buendelHash, buendelSigHash)
@@ -160,6 +173,9 @@ func quantenSAbschnittAntwortNachrichtAus(K string, x, von, bis int, blaetterHas
 			z = append(z, strconv.Itoa(p[0]), strconv.Itoa(p[1]))
 		}
 		m += fmt.Sprintf("|teile:%s|zaehlung:%s", strings.Join(teile, ","), strings.Join(z, ","))
+	}
+	if basenHash != "" { // nur bei verschluesselten Basen
+		m += "|basen:" + basenHash
 	}
 	return m
 }
@@ -279,97 +295,116 @@ func quantenSMessquelleAusUmgebung() quantenSMessquelle {
 // ------------------------------------------------------------ Abschnitt
 
 // quantenSAbschnittPruefen: alles, was ohne Tresor geprueft werden kann.
-func (d *quantenWDienst) quantenSAbschnittPruefen(q *QuantenSAbschnittAnfrage) (von, bis int, err error) {
+//
+// Heraus kommt auch y des Abschnitts: aus Basen oder, bei verschluesselten
+// Basen, erst nach der Unterschrift des Ausgebers mit dem eigenen Schluessel
+// geoeffnet (quanten_s_basen_chiffrat.go).
+func (d *quantenWDienst) quantenSAbschnittPruefen(q *QuantenSAbschnittAnfrage) (von, bis int, y string, err error) {
 	q.K = strings.ToLower(strings.TrimSpace(q.K))
 	if !istHash64(q.K) {
-		return 0, 0, quantenWFehler("K")
+		return 0, 0, "", quantenWFehler("K")
 	}
 	reg := d.cs.quantenWJetzt()
 	if reg.Noten[q.K] != nil || reg.Token[q.K] != nil {
-		return 0, 0, quantenWFehler("schon ausgegeben")
+		return 0, 0, "", quantenWFehler("schon ausgegeben")
 	}
 	if _, tot := reg.Tote[q.K]; tot {
-		return 0, 0, quantenWFehler("war schon ausgegeben")
+		return 0, 0, "", quantenWFehler("war schon ausgegeben")
 	}
 	v := len(q.Validatoren)
 	if len(q.Schluessel) != v || len(q.Stellen) != 2 || len(q.StellenSchluessel) != 2 {
-		return 0, 0, quantenWFehler("Zahl der Schluessel oder Annahmestellen")
+		return 0, 0, "", quantenWFehler("Zahl der Schluessel oder Annahmestellen")
 	}
 	gesehen := map[string]bool{}
 	for j, a := range q.Validatoren {
 		if !kanonischeAdresse(a) || gesehen[a] {
-			return 0, 0, quantenWFehler("Validator nicht kanonisch oder doppelt")
+			return 0, 0, "", quantenWFehler("Validator nicht kanonisch oder doppelt")
 		}
 		gesehen[a] = true
 		if _, err := quantenSSchluesselPruefen(q.Schluessel[j], a); err != nil {
-			return 0, 0, quantenWFehler("Validator %d: %v", j+1, err)
+			return 0, 0, "", quantenWFehler("Validator %d: %v", j+1, err)
 		}
 	}
 	if q.X < 1 || q.X > v || q.Validatoren[q.X-1] != d.adresse {
-		return 0, 0, quantenWFehler("Nummer %d gehoert nicht zu diesem Validator", q.X)
+		return 0, 0, "", quantenWFehler("Nummer %d gehoert nicht zu diesem Validator", q.X)
 	}
 	q.Inhaberin = strings.ToLower(strings.TrimSpace(q.Inhaberin))
 	if !kanonischeAdresse(q.Inhaberin) {
-		return 0, 0, quantenWFehler("Inhaberin")
+		return 0, 0, "", quantenWFehler("Inhaberin")
 	}
 	if _, err := quantenSSchluesselPruefen(q.InhaberinSchluessel, q.Inhaberin); err != nil {
-		return 0, 0, quantenWFehler("Inhaberin: %v", err)
+		return 0, 0, "", quantenWFehler("Inhaberin: %v", err)
 	}
 	for b := 0; b < 2; b++ {
 		s := q.Stellen[b]
 		if !kanonischeAdresse(s) || s == q.Inhaberin || (b == 1 && s == q.Stellen[0]) {
-			return 0, 0, quantenWFehler("Annahmestelle %d", b)
+			return 0, 0, "", quantenWFehler("Annahmestelle %d", b)
 		}
 		if _, err := quantenSSchluesselPruefen(q.StellenSchluessel[b], s); err != nil {
-			return 0, 0, quantenWFehler("Annahmestelle %d: %v", b, err)
+			return 0, 0, "", quantenWFehler("Annahmestelle %d: %v", b, err)
 		}
 	}
 	// Form des Tokens (wie die Kette); jede Stelle bekommt mindestens k_note.
 	if _, err := neuerQuantenSToken(q.N, q.Inhaberin, [32]byte{}, 1, [2][32]byte{}, q.T, v, q.Tol); err != nil {
-		return 0, 0, err
+		return 0, 0, "", err
 	}
 	kn := quantenWKNote(q.Tol, q.T, v)
 	klein := 0
 	for x := 1; x <= v; x++ {
 		a, b, ok := quantenSAbschnitt(q.N, v, x)
 		if !ok {
-			return 0, 0, quantenWFehler("Abschnitte")
+			return 0, 0, "", quantenWFehler("Abschnitte")
 		}
 		klein += (b - a) / 2
 	}
 	if kn <= 0 || klein < kn {
-		return 0, 0, quantenWFehler("zu wenige Stellen je Annahmestelle (%d, verlangt %d)", klein, kn)
+		return 0, 0, "", quantenWFehler("zu wenige Stellen je Annahmestelle (%d, verlangt %d)", klein, kn)
 	}
 	von, bis, _ = quantenSAbschnitt(q.N, v, q.X)
-	if len(q.Basen) != bis-von {
-		return 0, 0, quantenWFehler("Basen: %d statt %d", len(q.Basen), bis-von)
-	}
-	if _, ok := quantenSBitsLesen(q.Basen, bis-von); !ok {
-		return 0, 0, quantenWFehler("Basen: nur 0 und 1")
+	if q.BasenVerschluesselt != "" {
+		// Genau eines: verschluesselt ODER Klartext, nie beides.
+		if q.Basen != "" || !quantenSBasenChiffratForm(q.BasenVerschluesselt) {
+			return 0, 0, "", quantenWFehler("verschluesselte Basen: Form, oder zugleich Klartext")
+		}
+	} else {
+		if len(q.Basen) != bis-von {
+			return 0, 0, "", quantenWFehler("Basen: %d statt %d", len(q.Basen), bis-von)
+		}
+		if _, ok := quantenSBitsLesen(q.Basen, bis-von); !ok {
+			return 0, 0, "", quantenWFehler("Basen: nur 0 und 1")
+		}
 	}
 	if q.ProbeArt != 0 && q.ProbeArt != 2 {
-		return 0, 0, quantenWFehler("Art der Stichprobe %d", q.ProbeArt)
+		return 0, 0, "", quantenWFehler("Art der Stichprobe %d", q.ProbeArt)
 	}
 	q.Praeger = strings.ToLower(strings.TrimSpace(q.Praeger))
 	if !kanonischeAdresse(q.Praeger) || !kanonischeSignatur(q.PraegerSig) ||
 		verifyPersonalSign(quantenSAbschnittAuftragNachricht(*q), q.PraegerSig, q.Praeger) != nil {
-		return 0, 0, quantenWFehler("Auftrag nicht vom Ausgeber unterschrieben")
+		return 0, 0, "", quantenWFehler("Auftrag nicht vom Ausgeber unterschrieben")
 	}
 	if !d.praegerTauglich(q.Praeger) {
-		return 0, 0, quantenWFehler("Ausgeber ist kein Mensch mit Deckung")
+		return 0, 0, "", quantenWFehler("Ausgeber ist kein Mensch mit Deckung")
 	}
 	jetzt := d.jetzt()
 	if q.Zeit < jetzt-quantenWAlt || q.Zeit > jetzt+quantenWVoraus {
-		return 0, 0, quantenWFehler("Ausgabezeit ausserhalb des Fensters")
+		return 0, 0, "", quantenWFehler("Ausgabezeit ausserhalb des Fensters")
 	}
-	return von, bis, nil
+	if q.BasenVerschluesselt == "" {
+		return von, bis, q.Basen, nil
+	}
+	// Erst jetzt oeffnen: Auftrag unterschrieben, Ausgeber tauglich, Zeit im Fenster.
+	y, err = quantenSBasenOeffnen(d.key, d.adresse, q.BasenVerschluesselt, q.N, q.Validatoren, q.X, q.Inhaberin)
+	if err != nil {
+		return 0, 0, "", err
+	}
+	return von, bis, y, nil
 }
 
 // abschnittPraeparieren: Auftrag pruefen, eigene Messung holen, Werte,
 // Anteile, Buendel; wartend ablegen. Derselbe Auftrag noch einmal: dieselben
 // Werte und Anteile (neu verschluesselt).
 func (d *quantenWDienst) abschnittPraeparieren(q QuantenSAbschnittAnfrage) (QuantenSAbschnittAntwort, error) {
-	von, bis, err := d.quantenSAbschnittPruefen(&q)
+	von, bis, yText, err := d.quantenSAbschnittPruefen(&q)
 	if err != nil {
 		return QuantenSAbschnittAntwort{}, err
 	}
@@ -389,7 +424,7 @@ func (d *quantenWDienst) abschnittPraeparieren(q QuantenSAbschnittAnfrage) (Quan
 	if err := d.abschnittGrenzen(q.Praeger); err != nil {
 		return QuantenSAbschnittAntwort{}, err
 	}
-	y, _ := quantenSBitsLesen(q.Basen, bis-von)
+	y, _ := quantenSBitsLesen(yText, bis-von)
 	u, tw, x, _, err := mq.abschnitt(y)
 	if err != nil {
 		return QuantenSAbschnittAntwort{}, err
@@ -401,6 +436,9 @@ func (d *quantenWDienst) abschnittPraeparieren(q QuantenSAbschnittAnfrage) (Quan
 	st := &quantenSAbschnittStand{Von: von, Bis: bis, X: qsBitsText(x), Inhaberin: q.Inhaberin, InhaberinSchl: q.InhaberinSchluessel,
 		Schluessel: slices.Clone(q.Schluessel), Stellen: slices.Clone(q.Stellen), StellenSchluessel: slices.Clone(q.StellenSchluessel),
 		AuftragHash: hex.EncodeToString(auftragHash[:])}
+	if q.BasenVerschluesselt != "" {
+		st.BasenHash = quantenSBasenHash(q.BasenVerschluesselt)
+	}
 	for _, w := range werte {
 		koeff := []string{w.Text(16)}
 		for j := 1; j < q.T; j++ {
@@ -584,6 +622,7 @@ func (d *quantenWDienst) abschnittAntwort(e *quantenWTresorEintrag) (QuantenSAbs
 	if st.ProbeArt == 2 {
 		a.Teile, a.Zaehlung = slices.Clone(st.Teile), slices.Clone(st.Zaehlung)
 	}
+	a.BasenHash = st.BasenHash
 	a.Sig, err = quantenSUnterschreiben(d.key, quantenSAbschnittAntwortNachricht(a))
 	return a, err
 }

@@ -56,11 +56,14 @@ package keeper
 //     (--api), und glaubt ihm -- wie jede Wallet ohne eigenen Knoten. Die
 //     Annahmestelle nimmt darum ihren eigenen Knoten (Vorgabe 127.0.0.1).
 //
-// WAS DER AUSGEBER LERNT: die Basen y (er reicht sie an die Validatoren
-// weiter). Mit d auf der Kette kennt er z und aus c die gewaehlte Stelle,
-// bevor die Inhaberin vorlegt -- also WO sie einloesen will, nicht x;
-// einloesen oder binden kann er nicht. Offen (DEZENTRAL.md 17): y je
-// Validator verschluesseln.
+// WAS DER AUSGEBER LERNT: mit Basen im Klartext die Basen y (er reicht sie an
+// die Validatoren weiter). Mit d auf der Kette kennt er z und aus c die
+// gewaehlte Stelle, bevor die Inhaberin vorlegt -- also WO sie einloesen
+// will, nicht x; einloesen oder binden kann er nicht. Darum kann die
+// Inhaberin y je Validator verschluesseln (quanten-s-inhaberin neu
+// --verschluesseln, quanten_s_basen_chiffrat.go): Dann sieht der Ausgeber nur
+// Chiffrate, und jeder Validator unterschreibt den Hash des Chiffrats, das er
+// geoeffnet hat -- einen Tausch erkennt die Inhaberin beim Annehmen.
 //
 // GRENZEN: Bestellung, Paket und Vorlage hoechstens quantenSRollenDateiMax,
 // jede Anfrage mit Frist (quantenSHTTP), die Datei der Inhaberin nur 0600 und
@@ -77,6 +80,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -96,8 +100,12 @@ type QuantenSStelle struct {
 
 // QuantenSBestellung: was die Inhaberin dem Ausgeber gibt. Nichts Geheimes.
 type QuantenSBestellung struct {
-	N                   int               `json:"n"`
-	Basen               []string          `json:"basen"`
+	N     int      `json:"n"`
+	Basen []string `json:"basen,omitempty"`
+	// BasenVerschluesselt: statt Basen -- y je Abschnitt, an den Validator
+	// dieses Abschnitts verschluesselt (quanten_s_basen_chiffrat.go).
+	// Genau eines von beiden.
+	BasenVerschluesselt []string          `json:"basen_verschluesselt,omitempty"`
 	Inhaberin           string            `json:"inhaberin"`
 	InhaberinSchluessel string            `json:"inhaberin_schluessel"`
 	Stellen             [2]QuantenSStelle `json:"stellen"`
@@ -135,6 +143,9 @@ type QuantenSPaketAbschnitt struct {
 	Teile          []string `json:"teile"`
 	Zaehlung       [][2]int `json:"zaehlung"`
 	Sig            string   `json:"sig"`
+	// BasenHash: nur bei verschluesselten Basen -- Hash des Chiffrats, das
+	// der Validator geoeffnet hat (mit unterschrieben).
+	BasenHash string `json:"basen_hash,omitempty"`
 }
 
 // QuantenSInhaberinDatei: was die Inhaberin aufbewahrt (0600). GEHEIM: der
@@ -143,9 +154,14 @@ type QuantenSInhaberinDatei struct {
 	Schluessel string             `json:"schluessel"`
 	Bestellung QuantenSBestellung `json:"bestellung"`
 	V          int                `json:"v"`
-	K          string             `json:"k,omitempty"`
-	X          string             `json:"x,omitempty"`
-	Blaetter   []string           `json:"blaetter,omitempty"`
+	// Nur bei verschluesselten Basen: y je Abschnitt im Klartext (GEHEIM --
+	// in der Bestellung stehen nur die Chiffrate) und die Validatoren, an die
+	// verschluesselt ist (in der Reihenfolge der Abschnitte).
+	Basen       []string `json:"basen,omitempty"`
+	Validatoren []string `json:"validatoren,omitempty"`
+	K           string   `json:"k,omitempty"`
+	X           string   `json:"x,omitempty"`
+	Blaetter    []string `json:"blaetter,omitempty"`
 	// Z: die Maske der Bindung, gespeichert BEVOR die Bindung eingereicht
 	// wird -- ein Abbruch danach verliert sie nicht.
 	Z *int `json:"z,omitempty"`
@@ -196,13 +212,25 @@ func quantenSSchluesselText(s string) string {
 // pruefen: Form der Bestellung fuer v Validatoren; Adressen klein, Schluessel
 // ohne 0x (so unterschreibt der Ausgeber sie im Auftrag).
 func (b *QuantenSBestellung) pruefen(v int) error {
-	if b.N < 2 || b.N > quantenWNMax || v < 1 || v > quantenWVMax || len(b.Basen) != v {
-		return fmt.Errorf("Bestellung: n = %d, %d Abschnitte fuer %d Validatoren", b.N, len(b.Basen), v)
+	verschl := b.BasenVerschluesselt != nil
+	abschnitte := len(b.Basen)
+	if verschl {
+		abschnitte = len(b.BasenVerschluesselt)
+	}
+	if b.N < 2 || b.N > quantenWNMax || v < 1 || v > quantenWVMax || abschnitte != v || (verschl && b.Basen != nil) {
+		return fmt.Errorf("Bestellung: n = %d, %d Abschnitte fuer %d Validatoren (Basen genau einmal: Klartext oder verschluesselt)", b.N, abschnitte, v)
 	}
 	for x := 1; x <= v; x++ {
 		von, bis, ok := quantenSAbschnitt(b.N, v, x)
 		if !ok {
 			return fmt.Errorf("Bestellung: Abschnitte n = %d, v = %d", b.N, v)
+		}
+		if verschl {
+			// Oeffnen kann nur der Validator; hier nur die Form.
+			if !quantenSBasenChiffratForm(b.BasenVerschluesselt[x-1]) {
+				return fmt.Errorf("Bestellung: verschluesselte Basen, Abschnitt %d: Form oder Groesse", x)
+			}
+			continue
 		}
 		if _, err := quantenSBitsText(b.Basen[x-1], bis-von); err != nil {
 			return fmt.Errorf("Bestellung: Basen, Abschnitt %d: %v", x, err)
@@ -235,8 +263,11 @@ func (b QuantenSBestellung) stellenAdressen() [2]string {
 }
 
 // quantenSInhaberinNeu: neuer Schluessel und Basen y je Abschnitt (aus
-// crypto/rand) fuer einen Token mit n Stellen bei v Validatoren.
-func quantenSInhaberinNeu(n, v int, stellen [2]QuantenSStelle) (*QuantenSInhaberinDatei, error) {
+// crypto/rand) fuer einen Token mit n Stellen bei v Validatoren. Mit
+// validatoren (Adresse und oeffentlicher Schluessel je Abschnitt, Schluessel
+// gegen die Adresse geprueft) stehen in der Bestellung nur Chiffrate; y
+// bleibt in der Datei der Inhaberin.
+func quantenSInhaberinNeu(n, v int, stellen [2]QuantenSStelle, validatoren []QuantenSStelle) (*QuantenSInhaberinDatei, error) {
 	basen, err := quantenSBasenZiehen(n, v)
 	if err != nil {
 		return nil, err
@@ -245,11 +276,39 @@ func quantenSInhaberinNeu(n, v int, stellen [2]QuantenSStelle) (*QuantenSInhaber
 	if err != nil {
 		return nil, err
 	}
-	b := QuantenSBestellung{N: n, Basen: basen, Inhaberin: quantenSAdresse(key), InhaberinSchluessel: quantenSPubHex(key), Stellen: stellen}
+	inhaberin := quantenSAdresse(key)
+	b := QuantenSBestellung{N: n, Inhaberin: inhaberin, InhaberinSchluessel: quantenSPubHex(key), Stellen: stellen}
+	d := &QuantenSInhaberinDatei{V: v}
+	if validatoren == nil {
+		b.Basen = basen
+	} else {
+		if len(validatoren) != v {
+			return nil, fmt.Errorf("%d Validatoren mit Schluessel fuer %d Abschnitte", len(validatoren), v)
+		}
+		for x := 1; x <= v; x++ {
+			a := strings.ToLower(strings.TrimSpace(validatoren[x-1].Adresse))
+			if !kanonischeAdresse(a) || slices.Contains(d.Validatoren, a) {
+				return nil, fmt.Errorf("Validator %d: Adresse nicht kanonisch oder doppelt", x)
+			}
+			d.Validatoren = append(d.Validatoren, a)
+		}
+		for x := 1; x <= v; x++ {
+			c, err := quantenSBasenVerschluesseln(validatoren[x-1].Schluessel, d.Validatoren, n, x, inhaberin, basen[x-1])
+			if err != nil {
+				return nil, fmt.Errorf("Validator %d: %v", x, err)
+			}
+			b.BasenVerschluesselt = append(b.BasenVerschluesselt, c)
+		}
+		d.Basen = basen
+	}
 	if err := b.pruefen(v); err != nil {
 		return nil, err
 	}
-	return &QuantenSInhaberinDatei{Schluessel: hex.EncodeToString(crypto.FromECDSA(key)), Bestellung: b, V: v}, nil
+	d.Schluessel, d.Bestellung = hex.EncodeToString(crypto.FromECDSA(key)), b
+	if _, err := d.y(); err != nil {
+		return nil, err
+	}
+	return d, nil
 }
 
 // schluessel: der private Schluessel der Datei; er muss zur Inhaberin der
@@ -265,18 +324,46 @@ func (d *QuantenSInhaberinDatei) schluessel() (*ecdsa.PrivateKey, error) {
 	return key, nil
 }
 
-// y: die Basen der Inhaberin ueber alle Abschnitte.
+// y: die Basen der Inhaberin ueber alle Abschnitte -- aus der Bestellung
+// oder, bei verschluesselten Basen, aus der Datei (dann muss auch die Liste
+// der Validatoren passen).
 func (d *QuantenSInhaberinDatei) y() ([]int, error) {
 	if err := d.Bestellung.pruefen(d.V); err != nil {
 		return nil, err
 	}
+	basen := d.Bestellung.Basen
+	if d.Bestellung.BasenVerschluesselt != nil {
+		if len(d.Basen) != d.V || len(d.Validatoren) != d.V {
+			return nil, errors.New("Datei der Inhaberin: verschluesselte Bestellung ohne eigene Basen oder Validatoren")
+		}
+		basen = d.Basen
+	} else if d.Basen != nil || d.Validatoren != nil {
+		return nil, errors.New("Datei der Inhaberin: Basen doppelt (Bestellung im Klartext)")
+	}
 	var y []int
 	for x := 1; x <= d.V; x++ {
 		von, bis, _ := quantenSAbschnitt(d.Bestellung.N, d.V, x)
-		b, _ := quantenSBitsText(d.Bestellung.Basen[x-1], bis-von)
+		b, err := quantenSBitsText(basen[x-1], bis-von)
+		if err != nil {
+			return nil, fmt.Errorf("Datei der Inhaberin: Basen, Abschnitt %d: %v", x, err)
+		}
 		y = append(y, b...)
 	}
 	return y, nil
+}
+
+// basenHash: was Validator x in seiner Antwort unterschrieben haben muss --
+// der Hash des eigenen Chiffrats, oder leer bei Basen im Klartext.
+func (b QuantenSBestellung) basenHash(x int) string {
+	if b.BasenVerschluesselt == nil || x < 1 || x > len(b.BasenVerschluesselt) {
+		return ""
+	}
+	return quantenSBasenHash(b.BasenVerschluesselt[x-1])
+}
+
+// basenFuerRunde: was der Ausgeber den Validatoren weiterreicht.
+func (b QuantenSBestellung) basenFuerRunde() QuantenSBasen {
+	return QuantenSBasen{N: b.N, Basen: b.Basen, Verschluesselt: b.BasenVerschluesselt, Inhaberin: b.Inhaberin}
 }
 
 // ------------------------------------------------------------ Ausgeber
@@ -297,7 +384,7 @@ func quantenSAusgabeFuerInhaberin(ctx context.Context, a QuantenSAusgabeAuftrag,
 	if best.Inhaberin == ausgeber {
 		return nil, errors.New("Bestellung: die Inhaberin ist der Ausgeber selbst -- das ist keine Trennung der Rollen")
 	}
-	basen := QuantenSBasen{N: best.N, Basen: best.Basen}
+	basen := best.basenFuerRunde()
 	r, err := quantenSRundeBeginnen(a, basen, validatoren, t)
 	if err != nil {
 		return nil, err
@@ -349,7 +436,7 @@ func (r *quantenSRunde) paket(a QuantenSAusgabeAuftrag, inhaberin string, stelle
 func quantenSPaketAbschnittAus(ans QuantenSAbschnittAntwort) QuantenSPaketAbschnitt {
 	return QuantenSPaketAbschnitt{X: ans.X, Von: ans.Von, Bis: ans.Bis, Blaetter: ans.Blaetter,
 		FuerInhaberin: ans.FuerInhaberin, BuendelHash: quantenSHashListe(ans.Buendel), BuendelSigHash: quantenSHashListe(ans.BuendelSig),
-		Teile: ans.Teile, Zaehlung: ans.Zaehlung, Sig: ans.Sig}
+		Teile: ans.Teile, Zaehlung: ans.Zaehlung, Sig: ans.Sig, BasenHash: ans.BasenHash}
 }
 
 // ------------------------------------------------------------ Inhaberin: annehmen
@@ -432,6 +519,12 @@ func quantenSInhaberinAnnehmen(ctx context.Context, netz quantenSNetz, dat *Quan
 			return fmt.Errorf("das Paket nennt als Validator %d einen anderen als angegeben", i+1)
 		}
 	}
+	if _, err := dat.y(); err != nil {
+		return err
+	}
+	if dat.Validatoren != nil && !slices.Equal(dat.Validatoren, p.Validatoren) {
+		return errors.New("die Basen sind an andere Validatoren verschluesselt als angegeben")
+	}
 	if p.T < 1 || p.T > v || quantenWKNote(p.Tol, p.T, v) == 0 {
 		return fmt.Errorf("Paket: Schwelle %d oder Toleranz %d", p.T, p.Tol)
 	}
@@ -456,6 +549,11 @@ func quantenSInhaberinAnnehmen(ctx context.Context, netz quantenSNetz, dat *Quan
 		xi := i + 1
 		if err := quantenSPaketAbschnittPruefen(ab, p.K, n, v, xi, p.Validatoren[i]); err != nil {
 			return fmt.Errorf("Paket: %v", err)
+		}
+		// Hat der Validator genau das eigene Chiffrat geoeffnet? (Leer bei
+		// Basen im Klartext.) Sonst hat jemand die Basen getauscht.
+		if ab.BasenHash != best.basenHash(xi) {
+			return fmt.Errorf("BEFUND: Validator %d hat nicht in den eigenen Basen praepariert (Chiffrat getauscht)", xi)
 		}
 		von, bis, _ := quantenSAbschnitt(n, v, xi)
 		if err := quantenSAntwortV2Pruefen(QuantenSAbschnittAntwort{Teile: ab.Teile, Zaehlung: ab.Zaehlung}, bis-von); err != nil {
@@ -518,10 +616,11 @@ func quantenSInhaberinAnnehmen(ctx context.Context, netz quantenSNetz, dat *Quan
 // Inhaberin und Annahmestelle.
 func quantenSPaketAbschnittPruefen(ab QuantenSPaketAbschnitt, K string, n, v, x int, validator string) error {
 	von, bis, ok := quantenSAbschnitt(n, v, x)
-	if !ok || ab.X != x || ab.Von != von || ab.Bis != bis || len(ab.Blaetter) != bis-von || !istHash64(ab.BuendelHash) || !istHash64(ab.BuendelSigHash) {
+	if !ok || ab.X != x || ab.Von != von || ab.Bis != bis || len(ab.Blaetter) != bis-von || !istHash64(ab.BuendelHash) || !istHash64(ab.BuendelSigHash) ||
+		(ab.BasenHash != "" && !istHash64(ab.BasenHash)) {
 		return fmt.Errorf("Abschnitt %d hat nicht die Form", x)
 	}
-	m := quantenSAbschnittAntwortNachrichtAus(K, x, von, bis, quantenSHashListe(ab.Blaetter), ab.FuerInhaberin, ab.BuendelHash, ab.BuendelSigHash, ab.Teile, ab.Zaehlung)
+	m := quantenSAbschnittAntwortNachrichtAus(K, x, von, bis, quantenSHashListe(ab.Blaetter), ab.FuerInhaberin, ab.BuendelHash, ab.BuendelSigHash, ab.Teile, ab.Zaehlung, ab.BasenHash)
 	if !kanonischeSignatur(ab.Sig) || verifyPersonalSign(m, ab.Sig, validator) != nil {
 		return fmt.Errorf("Abschnitt %d ist nicht von Validator %d unterschrieben", x, x)
 	}
@@ -960,8 +1059,31 @@ func QuantenSAdressenLesen(roh string) ([]string, error) {
 
 // QuantenSInhaberinNeu: `aequitasd quanten-s-inhaberin neu`. Legt die Datei
 // an (0600, es darf sie noch nicht geben) und schreibt die Bestellung auf aus.
-func QuantenSInhaberinNeu(pfad string, n, v int, stellen [2]QuantenSStelle, aus io.Writer) error {
-	d, err := quantenSInhaberinNeu(n, v, stellen)
+// Mit validatoren (adresse=api, in der Reihenfolge der Abschnitte;
+// --verschluesseln) holt sie bei jedem den oeffentlichen Schluessel, prueft
+// ihn gegen die Adresse und verschluesselt y seines Abschnitts an ihn; v ist
+// dann die Zahl der Validatoren.
+func QuantenSInhaberinNeu(ctx context.Context, pfad string, n, v int, stellen [2]QuantenSStelle, validatoren []QuantenSValidator, aus io.Writer) error {
+	var schl []QuantenSStelle
+	if len(validatoren) > 0 {
+		if v != len(validatoren) {
+			return fmt.Errorf("v = %d, aber %d Validatoren angegeben", v, len(validatoren))
+		}
+		adressen, netze, err := quantenSValidatorenPruefen(validatoren, 1)
+		if err != nil {
+			return err
+		}
+		netz := &quantenSMehrNetz{validatoren: netze}
+		for x := 1; x <= v; x++ {
+			pub, err := netz.schluessel(ctx, x)
+			if err != nil {
+				return fmt.Errorf("Validator %d: Schluessel: %w", x, err)
+			}
+			// Gegen die Adresse geprueft in quantenSBasenVerschluesseln.
+			schl = append(schl, QuantenSStelle{Adresse: adressen[x-1], Schluessel: pub})
+		}
+	}
+	d, err := quantenSInhaberinNeu(n, v, stellen, schl)
 	if err != nil {
 		return err
 	}
@@ -1139,7 +1261,7 @@ func QuantenSAusgabeFuerInhaberin(ctx context.Context, apiBasis, schluesselHex s
 	auftrag := QuantenSAusgabeAuftrag{Schluessel: key, Deckung: deckung, Tol: tol, Frist: frist, ProbeV2: true}
 	netz := &quantenSMehrNetz{quantenSHTTP: eigen, validatoren: netze}
 	if messenWarten > 0 {
-		if err := quantenSMessungenAbwarten(ctx, key, QuantenSBasen{N: best.N, Basen: best.Basen}, adressen, netz, messenWarten, quantenSVormerkTakt,
+		if err := quantenSMessungenAbwarten(ctx, key, best.basenFuerRunde(), adressen, netz, messenWarten, quantenSVormerkTakt,
 			func() int64 { return time.Now().Unix() }, log); err != nil {
 			return err
 		}

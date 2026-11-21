@@ -1,6 +1,6 @@
 # Dezentrales Quantengeld komplett: was fehlt, und der Weg dorthin
 
-Stand 18.11.2026, Abschnitt 1 aktualisiert und Abschnitt 17 am 20.11.2026. Auftrag des Betreibers: „Bring das dezentrale Quantengeld komplett zu
+Stand 18.11.2026, Abschnitt 1 aktualisiert und Abschnitt 17 am 20.11.2026, R8 am 21.11.2026. Auftrag des Betreibers: „Bring das dezentrale Quantengeld komplett zu
 laufen, ggf. mit eigener Forschung“. Diese Notiz sagt, was heute läuft, wo es noch an
 einer Stelle hängt, und was wir bauen.
 
@@ -33,6 +33,9 @@ einer Stelle hängt, und was wir bauen.
     haben je einen eigenen Befehl und eigenen Schlüssel. Der Ausgeber sieht x nie.
     Inhaberin und Annahmestelle prüfen gegen die Kette. Auf vier echten Knoten grün,
     auch mit Ausfall eines Validators; im Hauptnetz noch nicht gelaufen.
+  - **Basen y je Validator verschlüsselt** (Abschnitt 17, R8, 21.11.2026): Die
+    Inhaberin kann y an die Validatoren verschlüsseln; der Ausgeber sieht dann nicht
+    mehr, wo sie einlösen will.
   - **Was am Betreiber hängt:**
     - Der zweite Mensch als Validator mit eigenem Server und IBM-Konto (A5). Erst dann
       kennt niemand den ganzen Token.
@@ -982,7 +985,7 @@ werden.“
    - Ein Hauptnetz-Lauf mit getrennten Rollen (Workflow).
    - Die Öffnung aus Anteilen statt nur vom präparierenden Validator (Verfügbarkeit,
      unten).
-   - Die Basen y je Validator verschlüsseln (Privatsphäre, unten).
+   - ~~Die Basen y je Validator verschlüsseln (Privatsphäre)~~ – gebaut (R8, unten).
 3. **Hängt am Betreiber:**
    - Ein zweiter Mensch als Validator mit eigenem Server und IBM-Konto (A5).
    - Ein Gutachter (Prüfauftrag S 2).
@@ -1354,13 +1357,78 @@ Schritt öffentlich nachrechenbar.
       `quanten-s-annahme` mit Code 3 („eingelöst, Nachweis nicht bestätigt“), nicht
       als Fehlschlag des Einlösens.
 
+### R8: die Basen y je Validator verschlüsselt (21.11.2026, gebaut)
+
+Bisher stand y der Inhaberin im Klartext in der Bestellung. Der Ausgeber reichte es an
+die Validatoren weiter. Mit d = y ⊕ z auf der Kette kannte er z, und aus c die gewählte
+Stelle, bevor die Inhaberin vorlegte. Er wusste also, **wo** sie einlösen will (nicht x).
+
+- **Was neu ist** (`x/humanity/keeper/quanten_s_basen_chiffrat.go`):
+  - `quanten-s-inhaberin neu --verschluesseln adr=api,…`: Die Inhaberin holt bei jedem
+    Validator den öffentlichen Schlüssel und prüft ihn gegen die Adresse. Dann
+    verschlüsselt sie y seines Abschnitts an ihn (ECIES wie die Bündel).
+  - In der Bestellung stehen nur die Chiffrate (`basen_verschluesselt`). y bleibt in
+    ihrer Datei (0600).
+  - Der Ausgeber reicht das Chiffrat weiter: in der Vormerkung (Abschnitt 15) und im
+    Abschnitts-Auftrag. Er unterschreibt dessen Hash mit.
+  - Der Validator öffnet es mit seinem eigenen Schlüssel, misst bzw. präpariert in
+    genau diesem y und legt die Vormerkung unter diesem y ab.
+- **Gebunden:** Im Chiffrat stehen Domäne, Kette, Empfänger, n, v, Nummer, der Hash der
+  ganzen Validatorenliste und die Inhaberin. Der Validator prüft jedes Feld gegen den
+  Auftrag.
+  - Ein Chiffrat gilt nur bei dem Validator, für den es gemacht ist, nur für diesen
+    Abschnitt und nur für diese Inhaberin.
+  - Ohne die Bindung an die Inhaberin könnte ein Ausgeber ihr Chiffrat in einem
+    eigenen Token verbrauchen und aus dessen Nachweis Teile von y lernen.
+  - Ohne die Bindung an die Liste könnte er es in einem Auftrag wiederholen, der eigene
+    Adressen als übrige Validatoren nennt, und bekäme Anteile und Zählungen zu ihren
+    Basen (Restrisiko aus der Sicherheitsprüfung, im selben PR geschlossen).
+- **Gegen Tausch:** Der Validator unterschreibt in seiner Antwort den Hash des
+  Chiffrats, das er geöffnet hat. Die Inhaberin vergleicht ihn beim Annehmen und beim
+  Abholen mit ihrem eigenen Chiffrat.
+  - Setzt der Ausgeber eigene Basen ein (an denselben Validator verschlüsselt oder im
+    Klartext), meldet sie BEFUND und bindet nicht.
+  - Auch der Ausgeber prüft den Hash schon bei der Ausgabe.
+- **Reihenfolge, fail-closed:** Geöffnet wird erst nach allen billigen Prüfungen, nach
+  der Unterschrift des Ausgebers, der Deckung und dem Zeitfenster. Jede Abweichung ist
+  ein Fehler, nie ein Rückfall auf Klartext. Klartext und Chiffrat zugleich wird
+  abgewiesen.
+- **Grenzen:** Ein Chiffrat hat höchstens 2 · (16.384 + 1.024) Hex-Zeichen (nur
+  Kleinbuchstaben, gerade Länge). Der Inhalt wird streng gelesen (genau diese Felder,
+  nichts danach). Der größte Auftrag passt in die 64 KiB des Endpunkts (Test).
+- **Unverändert:** die Kette, das Format für Klartext-Bestellungen, die Nachrichten
+  bisheriger Aufträge und Antworten. Der Zusatz `|basen:` steht nur bei Chiffraten.
+- **Belegt:**
+  - Gutfall über alle Rollen: Bestellung, Aufträge, Paket und Protokoll des Ausgebers
+    enthalten kein y. Jeder Validator misst in genau dem y der Inhaberin. Annehmen,
+    Abholen, Einlösen und Annahme laufen wie bisher.
+  - Missbrauch abgewiesen, ohne zu messen:
+    - Chiffrat an einen anderen Validator, für einen anderen Abschnitt, eine andere
+      Validatorenliste oder eine andere Inhaberin;
+    - Klartext und Chiffrat zugleich, Großbuchstaben, ungerade Länge, zu groß,
+      verändert;
+    - Chiffrat nach der Unterschrift getauscht, nicht unterschrieben.
+  - Inhalt streng: falsche Domäne, Kette, Empfänger, n, v oder Validatorenliste, ein
+    Feld zu viel oder zu wenig, falsche Bits, Daten nach dem JSON.
+  - Tausch durch den Ausgeber (eigenes Chiffrat, Klartext): BEFUND beim Annehmen und
+    beim Abholen. Ein Validator ohne Hash: der Ausgeber gibt nichts aus.
+  - Gegenprobe: 22 Mutationen, alle rot.
+- **Ehrlich:**
+  - **Wer misst, kennt y.** Das bringt erst etwas, wenn der Validator auf seinem
+    eigenen Server misst (A5, Vormerken). Im Hauptnetz misst heute ein GitHub-Lauf des
+    Betreibers für C1, und dort ist C1 zugleich Ausgeber. Darum nimmt
+    `quanten-s-ausgabe.yml` (Weg `rollen`) weiter nur Bestellungen im Klartext an.
+  - Der Anbieter des Quantenrechners sieht y weiterhin (Abschnitt 4).
+  - Die App bestellt noch im Klartext. Verschlüsseln in der App ist der nächste
+    Schritt (dieselbe ECIES-Form; die App kann schon für die Inhaberin entschlüsseln).
+
 ### Ehrlich dazu (offen)
 
-- **Der Ausgeber sieht die Basen y.** Er reicht sie an die Validatoren weiter. Mit d auf
-  der Kette kennt er damit z, und aus c die gewählte Stelle, bevor die Inhaberin vorlegt.
-  Das verrät, *wo* sie einlösen will, nicht x. Einlösen oder binden kann er nicht, denn
-  dafür braucht es ihren Schlüssel. Ausweg: y je Validator verschlüsseln. Das ist eine
-  Änderung im Dienst.
+- **Der Ausgeber sieht die Basen y**, wenn die Inhaberin im Klartext bestellt (heute die
+  App und der Hauptnetz-Workflow). Mit d auf der Kette kennt er damit z, und aus c die
+  gewählte Stelle, bevor die Inhaberin vorlegt. Das verrät, *wo* sie einlösen will,
+  nicht x. Einlösen oder binden kann er nicht. Mit `--verschluesseln` (R8) sieht er y
+  nicht mehr; das wirkt, sobald ein Validator selbst misst.
 - **Verfügbarkeit:** Bei Stichprobe v2 lädt eine Stelle ihre Stichprobe aus der Öffnung
   **jedes** präparierenden Validators. Nur er kennt die Werte seines Abschnitts; die
   Anteile der anderen reichen zum Offenlegen auf der Kette, nicht zum Laden. Fällt einer

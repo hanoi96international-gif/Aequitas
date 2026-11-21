@@ -45,7 +45,7 @@ func neueQsrWelt(t *testing.T) *qsrWelt {
 		w.stellen[s] = k
 		st[s] = QuantenSStelle{Adresse: adr, Schluessel: "0x" + strings.ToUpper(pubHex(k))} // Form wird vereinheitlicht
 	}
-	dat, err := quantenSInhaberinNeu(256, len(q.w.val), st)
+	dat, err := quantenSInhaberinNeu(256, len(q.w.val), st, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -532,7 +532,7 @@ func TestQuantenSAbschnittAntwortNachricht_AusHashes(t *testing.T) {
 			Teile: []string{"11", "22"}, Zaehlung: [][2]int{{3, 1}, {4, 0}}},
 	} {
 		alt := quantenSAbschnittAntwortNachricht(a)
-		neu := quantenSAbschnittAntwortNachrichtAus(a.K, a.X, a.Von, a.Bis, quantenSHashListe(a.Blaetter), a.FuerInhaberin, quantenSHashListe(a.Buendel), quantenSHashListe(a.BuendelSig), a.Teile, a.Zaehlung)
+		neu := quantenSAbschnittAntwortNachrichtAus(a.K, a.X, a.Von, a.Bis, quantenSHashListe(a.Blaetter), a.FuerInhaberin, quantenSHashListe(a.Buendel), quantenSHashListe(a.BuendelSig), a.Teile, a.Zaehlung, a.BasenHash)
 		if alt != neu {
 			t.Fatalf("%q != %q", alt, neu)
 		}
@@ -555,7 +555,7 @@ func TestQuantenSInhaberinDatei(t *testing.T) {
 		st[s] = QuantenSStelle{Adresse: adr, Schluessel: pubHex(k)}
 	}
 	var aus bytes.Buffer
-	if err := QuantenSInhaberinNeu(pfad, 256, 2, st, &aus); err != nil {
+	if err := QuantenSInhaberinNeu(context.Background(), pfad, 256, 2, st, nil, &aus); err != nil {
 		t.Fatal(err)
 	}
 	fi, _ := os.Stat(pfad)
@@ -573,7 +573,7 @@ func TestQuantenSInhaberinDatei(t *testing.T) {
 	if strings.Contains(fmt.Sprint(best), d.Schluessel) {
 		t.Fatal("Schluessel in der Bestellung")
 	}
-	if err := QuantenSInhaberinNeu(pfad, 256, 2, st, &bytes.Buffer{}); err == nil {
+	if err := QuantenSInhaberinNeu(context.Background(), pfad, 256, 2, st, nil, &bytes.Buffer{}); err == nil {
 		t.Fatal("bestehende Datei ueberschrieben")
 	}
 	if d2, _ := quantenSInhaberinLesen(pfad); d2 == nil || d2.Schluessel != d.Schluessel {

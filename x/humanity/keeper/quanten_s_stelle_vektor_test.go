@@ -205,7 +205,7 @@ func qssVektorBauen(t *testing.T, gespeichert *qssVektor) qssVektor {
 		v.Oeffnung = oeffnungFuer(&stelleKey.PublicKey, b)
 		v.FalscheOeffnung = oeffnungFuer(&andereKey.PublicKey, b) // richtiger Inhalt, falscher Schluessel
 	}
-	m := quantenSAbschnittAntwortNachrichtAus(v.K, 1, 0, n, quantenSHashListe(ab.Blaetter), ab.FuerInhaberin, ab.BuendelHash, ab.BuendelSigHash, ab.Teile, ab.Zaehlung)
+	m := quantenSAbschnittAntwortNachrichtAus(v.K, 1, 0, n, quantenSHashListe(ab.Blaetter), ab.FuerInhaberin, ab.BuendelHash, ab.BuendelSigHash, ab.Teile, ab.Zaehlung, ab.BasenHash)
 	var err error
 	if ab.Sig, err = quantenSUnterschreiben(valKey, m); err != nil {
 		t.Fatal(err)

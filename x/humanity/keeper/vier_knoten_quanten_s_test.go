@@ -618,7 +618,7 @@ func qsRollenVierKnoten(t *testing.T, netz *vierKnotenNetz, leiter int, ausgeber
 	}
 	// Inhaberin: neu. Mit Messungen aus dem Pilot (hardware_ibm.py) sind die
 	// Basen die gemessenen -- die Messquelle kennt nur diese.
-	dat, err := quantenSInhaberinNeu(basen.N, len(adressen), stellen)
+	dat, err := quantenSInhaberinNeu(basen.N, len(adressen), stellen, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
