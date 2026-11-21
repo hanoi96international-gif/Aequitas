@@ -1,0 +1,121 @@
+# Nachweis nach dem Ende eines S-Tokens holen und nachrechnen (DEZENTRAL.md 17,
+# R7) -- ohne Schluessel, ohne SSH, ohne Freigabe; nur lesend.
+#
+# Ist ein Token eingeloest oder tot und das Ende final, legt jeder Validator
+# seinen Abschnitt offen (Praeparation, Salze, Basen der Pruefung) unter
+# /api/quanten-w/validator/nachweis?k=. Der Validator haelt ihn nur im
+# Speicher (hoechstens 64, nach einem Neustart weg). Dieser Lauf holt ihn ueber
+# die oeffentliche Adresse, rechnet ihn mit `aequitasd quanten-s-nachweis`
+# (aus genau diesem Stand gebaut) nach und legt beides als Artefakt ab -- so
+# bleibt er erhalten, und jeder kann ihn mit demselben Befehl nachpruefen.
+#
+# Wurzel und Proben der Ausgabe (aus dem Protokoll der Ausgabe oder der Ansicht
+# des Tokens vor dem Ende) machen die Pruefung vollstaendig: dann zeigt sie,
+# dass die offengelegte Praeparation genau die bei der Ausgabe festgelegte ist.
+# Ohne sie prueft der Lauf nur Unterschrift und inneren Zusammenhang und sagt
+# das. Er zeigt in keinem Fall, dass ein Quantenrechner gemessen hat.
+name: Quantengeld S -- Nachweis nach dem Ende holen und nachrechnen
+
+on:
+  workflow_dispatch:
+    inputs:
+      k:
+        description: "Kennung K des Tokens (64 Hex-Zeichen)"
+        required: true
+      wurzel:
+        description: "Wurzel der Ausgabe (64 Hex-Zeichen; aus dem Protokoll der Ausgabe). Leer: nur Unterschrift und Zusammenhang"
+        default: ""
+      proben:
+        description: "Proben der Ausgabe: H0,H1 (je 64 Hex-Zeichen). Nur zusammen mit der Wurzel"
+        default: ""
+
+permissions:
+  contents: read
+
+env:
+  K: ${{ inputs.k }}
+  WURZEL: ${{ inputs.wurzel }}
+  PROBEN: ${{ inputs.proben }}
+  C1_VALIDATOR: "0x3066639af1653325100c1074a9696612dbdc42dc"
+  NETZ: https://aequitas.digital
+
+jobs:
+  nachweis:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Eingaben pruefen
+        run: |
+          set -euo pipefail
+          [[ "$K" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::K: 64 Hex-Zeichen (klein)"; exit 1; }
+          [ -z "$WURZEL" ] || [[ "$WURZEL" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::Wurzel: 64 Hex-Zeichen (klein)"; exit 1; }
+          [ -z "$PROBEN" ] || [[ "$PROBEN" =~ ^[0-9a-f]{64},[0-9a-f]{64}$ ]] || { echo "::error::Proben: H0,H1"; exit 1; }
+          [ -n "$WURZEL" ] || [ -z "$PROBEN" ] || { echo "::error::Proben nur zusammen mit der Wurzel"; exit 1; }
+      - name: Nachweis holen (oeffentlich, roh)
+        id: roh
+        run: |
+          set -euo pipefail
+          mkdir -p nachweis
+          curl -fsS -m 30 --max-filesize 16777216 "$NETZ/api/quanten-w/validator/nachweis?k=$K" > "nachweis/nachweis-$K-c1.json" \
+            || { echo "::error::Kein Nachweis von C1 (Token lebt, Ende nicht final, nie von C1 praepariert oder C1 inzwischen neu gestartet)"; exit 1; }
+          jq -e '.k == env.K and .validator == env.C1_VALIDATOR' "nachweis/nachweis-$K-c1.json" >/dev/null \
+            || { echo "::error::Antwort ist kein Nachweis von C1 fuer dieses K"; exit 1; }
+          echo "Roh: $(stat -c %s "nachweis/nachweis-$K-c1.json") Byte, $(jq -r '.werte | length' "nachweis/nachweis-$K-c1.json") Werte"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          path: quelle
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: quelle/go.mod
+          cache-dependency-path: quelle/go.sum
+      - name: Werkzeug bauen (aus diesem Stand)
+        working-directory: quelle
+        run: go build -o "$RUNNER_TEMP/aequitasd" ./cmd/aequitasd
+      - name: Nachrechnen
+        run: |
+          set -euo pipefail
+          ARGS=(--k "$K" --validatoren "$C1_VALIDATOR=$NETZ")
+          [ -z "$WURZEL" ] || ARGS+=(--wurzel "$WURZEL")
+          [ -z "$PROBEN" ] || ARGS+=(--proben "$PROBEN")
+          set +e
+          "$RUNNER_TEMP/aequitasd" quanten-s-nachweis "${ARGS[@]}" > "nachweis/bericht-$K.json" 2> fehler.txt
+          RC=$?
+          set -e
+          cat fehler.txt >&2
+          cat "nachweis/bericht-$K.json"
+          {
+            echo "## Quantengeld S: Nachweis nach dem Ende"
+            echo
+            echo "Token \`$K\`, Validator C1 (\`$C1_VALIDATOR\`), geholt von $NETZ."
+            echo
+            if [ "$RC" != 0 ]; then
+              echo "**NICHT bestaetigt (Exit $RC):** $(head -c 2000 fehler.txt)"
+            elif jq -e '.wurzel_gegen == "angegeben"' "nachweis/bericht-$K.json" >/dev/null; then
+              echo "**Bestaetigt:** Unterschrift von C1 gueltig; die offengelegte Praeparation ergibt die angegebene Wurzel und die Proben der Ausgabe."
+            else
+              echo "**Unterschrift und Zusammenhang bestaetigt** -- ohne Wurzel und Proben der Ausgabe nicht gegen die Ausgabe geprueft."
+            fi
+            if [ "$RC" = 0 ]; then
+              echo
+              echo "Ueber alle $(jq -r .n "nachweis/bericht-$K.json") Stellen $(jq -r .fehler "nachweis/bericht-$K.json") Fehler bei $(jq -r .treffer "nachweis/bericht-$K.json") Treffern (passende Basis); an der gewaehlten Stelle $(jq -r '.fehler_stelle // "?"' "nachweis/bericht-$K.json") bei $(jq -r '.treffer_stelle // "?"' "nachweis/bericht-$K.json")."
+              echo
+              echo "Selbst nachrechnen: \`aequitasd quanten-s-nachweis --k $K --validatoren $C1_VALIDATOR=$NETZ${WURZEL:+ --wurzel $WURZEL}${PROBEN:+ --proben $PROBEN}\`"
+              echo "(solange C1 den Nachweis haelt), sonst mit dem Artefakt \`nachweis-$K\`."
+              echo
+              echo "Das zeigt, dass genau diese Praeparation bei der Ausgabe festgelegt war -- nicht, dass ein Quantenrechner gemessen hat."
+            fi
+            echo
+            echo '```json'
+            cat "nachweis/bericht-$K.json"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$RC"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        # Auch wenn das Nachrechnen scheitert: der rohe Nachweis bleibt erhalten.
+        if: ${{ !cancelled() && steps.roh.outcome == 'success' }}
+        with:
+          name: nachweis-${{ env.K }}
+          path: nachweis/
+          retention-days: 90
+          if-no-files-found: ignore

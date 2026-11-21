@@ -56,11 +56,21 @@ kannst / Abschnitt 5 (heute weltweit unmöglich) so gut wie möglich umsetzen“
   44897252646). iPhone veröffentlicht (`release-ios.yml`, Run
   [44898168375](https://github.com/hanoi96international-gif/Aequitas-App/actions/runs/44898168375),
   grün 21.11. 12:28 UTC).
-- **Erster öffentlicher Nachweis im Hauptnetz: Lauf läuft** (`quanten-s-ausgabe.yml`, modus
-  `ibm`, weg `abschnitte-v2`, Toleranz 2, Deckung 1 AEQ; Run
+- **Erster öffentlicher Nachweis im Hauptnetz: gelaufen** (`HEUTE.md` 3.3k; Run
   [44904131085](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44904131085),
-  gestartet 21.11. 12:29 UTC, `quantenhardware` freigegeben). Danach: Job `ausgeben` braucht
-  `produktion`; Ergebnis (Urteil, Doppelvorlage, Nachweis-Artefakt) in `HEUTE.md` auswerten.
+  21.11. 12:29–12:51 UTC, IBM `ibm_kingston`, Job `dc0otnthdvas73bjqts0`): Token
+  `a5acd86829f9b42e88e1f53c537e20f364bdc498f9e62919fc7fdfd5b161ab0f` eingelöst,
+  Doppelvorlage abgewiesen, Nachweis: Präparation ergibt Wurzel und Proben der Ausgabe,
+  0 Fehler bei 540 Treffern (an Stelle 0 bei 283). Wurzel
+  `20aebc24f11eb6c595f733c149ea0e80a6085f5da03a889b8f85af63a933f77c`, Proben
+  `167c8af901ba1dd1d84a1319b436e29c49e21c5f988a76ce7aa2de76cddafe2c,132c68ba827d1f81cda9e4f18c702d69201aa070af6a37ef1d67009489a5b254`.
+  - **Panne:** Schritt „Nachweis holen“ brach ab (`[RPC] ⚠ AEQUITAS_RPC_QUIET_TX=1` vor dem
+    JSON, weil die Warnung auf stdout ging). **PR (dieser Stand): stdout rein** – Warnung nach
+    stderr, Test mit der Umgebung von C1, Workflows lesen JSON ab `{`, neuer Workflow
+    `quanten-s-nachweis.yml` (holt, rechnet nach, Artefakt; ohne Schlüssel/Freigabe).
+  - **Reihenfolge nach dem Merge:** ZUERST `quanten-s-nachweis.yml` mit K, Wurzel, Proben
+    (oben) laufen lassen – der Nachweis liegt auf C1 nur im Speicher. ERST DANACH den
+    C1-Deploy (`produktion`) freigeben; der Neustart löscht ihn.
 - **C1 läuft mit #612** (Deploy [44882966225](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44882966225),
   grün 21.11. 11:04 UTC, C1 lebt, Höhe steigt, keine Rücknahme). Damit ist der nächste Schritt
   des Betreibers möglich: `quanten-s-ausgabe.yml` (modus `ibm`, weg `abschnitte-v2`) →

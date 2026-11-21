@@ -340,7 +340,7 @@ jobs:
             rm -f "$RUNNER_TEMP/m.versiegelt" "$RUNNER_TEMP/b.json"
             scp -q -o BatchMode=yes deploy/quanten-s-ausgabe-abschnitt.sh root@$C1:/root/quanten-s-ausgabe-abschnitt.sh
             set +e
-            ssh -o BatchMode=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=10 root@$C1 "DECKUNG=$DECKUNG TOLERANZ=$TOL QS_N=$N QS_NAME=$NAME QS_ROLLEN=$ROLLEN bash /root/quanten-s-ausgabe-abschnitt.sh" > ergebnis.json
+            ssh -o BatchMode=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=10 root@$C1 "DECKUNG=$DECKUNG TOLERANZ=$TOL QS_N=$N QS_NAME=$NAME QS_ROLLEN=$ROLLEN bash /root/quanten-s-ausgabe-abschnitt.sh" > ausgabe-roh.txt
             RC=$?
             set -e
           else
@@ -349,9 +349,18 @@ jobs:
             rm -f "$RUNNER_TEMP/m.json"
             scp -q -o BatchMode=yes deploy/quanten-s-ausgabe.sh root@$C1:/root/quanten-s-ausgabe.sh
             set +e
-            ssh -o BatchMode=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=10 root@$C1 "DECKUNG=$DECKUNG bash /root/quanten-s-ausgabe.sh" > ergebnis.json
+            ssh -o BatchMode=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=10 root@$C1 "DECKUNG=$DECKUNG bash /root/quanten-s-ausgabe.sh" > ausgabe-roh.txt
             RC=$?
             set -e
+          fi
+          # Das Ergebnis ist das JSON-Objekt ab der Zeile "{". Zeilen davor
+          # (Hinweise beim Start des Werkzeugs) gehoeren nach stderr; stehen doch
+          # welche auf stdout, nennt sie das Protokoll, statt dass jq am Ergebnis
+          # scheitert (21.11.2026, Lauf 44904131085: "[RPC] ..." vor dem JSON).
+          awk 'f || /^\{$/ {f = 1; print}' ausgabe-roh.txt > ergebnis.json
+          if [ -s ergebnis.json ] && ! cmp -s ausgabe-roh.txt ergebnis.json; then
+            echo "::warning::Zeilen vor dem Ergebnis (nicht Teil des JSON):"
+            awk '/^\{$/ {exit} {print}' ausgabe-roh.txt
           fi
           if [ "$WEG" = rollen ]; then
             # Das Paket ist oeffentlich (x nur fuer die Inhaberin verschluesselt),
@@ -374,7 +383,7 @@ jobs:
             jq -c '{k, n, inhaberin, stellen, validatoren, deckung_mikro, probe_art}' ergebnis.json 2>/dev/null || true
             exit "$RC"
           fi
-          cat ergebnis.json
+          cat ausgabe-roh.txt
           {
             echo "## Quantengeld S: Ausgabe auf dem Hauptnetz (Weg $WEG, Toleranz $TOL %)"
             echo

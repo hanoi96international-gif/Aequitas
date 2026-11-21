@@ -103,6 +103,9 @@ func rpcQuietTxFromEnv() bool {
 	if raw != "1" {
 		return false
 	}
-	fmt.Println("[RPC] ⚠ AEQUITAS_RPC_QUIET_TX=1 — per-transaction log lines suppressed (two fmt.Printf/tx, unaffordable at 50k TPS). Applied-transfer throughput is still reported once per second.")
+	// stderr, nicht stdout: dieselbe Initialisierung laeuft in jedem
+	// Werkzeug-Befehl (docker exec im Container erbt die Umgebung), und deren
+	// stdout ist JSON fuer die Workflows (cmd/aequitasd/stdout_rein_test.go).
+	fmt.Fprintln(os.Stderr, "[RPC] ⚠ AEQUITAS_RPC_QUIET_TX=1 — per-transaction log lines suppressed (two fmt.Printf/tx, unaffordable at 50k TPS). Applied-transfer throughput is still reported once per second.")
 	return true
 }
