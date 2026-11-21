@@ -73,7 +73,13 @@ kannst / Abschnitt 5 (heute weltweit unmöglich) so gut wie möglich umsetzen“
     C1-Deploy (`produktion`) freigeben; der Neustart löscht ihn.
   - `quanten-s-nachweis.yml` für diesen Token gestartet (Run
     [44908263239](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44908263239)).
-    Danach den C1-Deploy zu #613 freigeben (Warnung nach stderr).
+    Grün, Artefakt `nachweis-a5acd868…` (ID 14708432454, 90 Tage): Roh und Bericht, 0 Fehler
+    bei 540 Treffern, an Stelle 0 bei 283, gegen Wurzel und Proben der Ausgabe. **Aber:** der
+    Satz in der Zusammenfassung („nicht gegen die Ausgabe geprüft“) war falsch – der Workflow
+    fragte `wurzel_gegen == "angegeben"`, der Prüfer setzt bei angegebener Wurzel aber
+    `"kette"` (ein veralteter Kommentar nannte „angegeben“). **PR (dieser Stand):** Workflow
+    fragt `"kette"`, Kommentar richtig; danach `quanten-s-nachweis.yml` erneut laufen lassen
+    (richtige Zusammenfassung), dann den C1-Deploy freigeben.
   - CI zu #613: `db-tests` im Push-Lauf 44907012291 rot
     (`TestVierKnoten_RealDB/SnapshotResyncNachLoeschung`: nach 90 s keine Einigkeit, Knoten 2
     nach dem Snapshot mit fehlenden Eltern), im PR-Lauf 44907054179 mit demselben Stand grün.

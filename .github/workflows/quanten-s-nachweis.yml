@@ -91,7 +91,7 @@ jobs:
             echo
             if [ "$RC" != 0 ]; then
               echo "**NICHT bestaetigt (Exit $RC):** $(head -c 2000 fehler.txt)"
-            elif jq -e '.wurzel_gegen == "angegeben"' "nachweis/bericht-$K.json" >/dev/null; then
+            elif jq -e '.wurzel_gegen == "kette"' "nachweis/bericht-$K.json" >/dev/null; then
               echo "**Bestaetigt:** Unterschrift von C1 gueltig; die offengelegte Praeparation ergibt die angegebene Wurzel und die Proben der Ausgabe."
             else
               echo "**Unterschrift und Zusammenhang bestaetigt** -- ohne Wurzel und Proben der Ausgabe nicht gegen die Ausgabe geprueft."
