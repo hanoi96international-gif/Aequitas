@@ -140,10 +140,17 @@ func eigeneGateways() *gatewayStand {
 
 // kopfQuelleVertrauenswuerdig: darf clientIP dem X-Forwarded-For einer
 // Verbindung von host glauben? Nur einer privaten oder Loopback-Adresse, die
-// nicht das Gateway der eigenen Routen ist.
+// nicht das Gateway der eigenen Routen ist -- und nie einer aus CGNAT
+// (100.64.0.0/10). Dort stand bis 21.11.2026 Railways Edge (abgeschaltet);
+// heute kaeme von dort nur ein fremdes Netz (Provider-NAT, ein geteiltes
+// Tailscale-Netz), dessen Gegenstelle sich per Kopf jede Adresse aussuchen und
+// so die Grenzen je Absender und den Block-Push-Schutz umgehen koennte. Der
+// eigene Proxy (Caddy) steht im Docker-Netz. isPrivateOrLoopback selbst behaelt
+// CGNAT: die Freiliste (freistellbar) und die Wege nur fuers eigene Netz
+// brauchen es dort.
 func kopfQuelleVertrauenswuerdig(host string) bool {
 	ip := net.ParseIP(host)
-	if ip == nil || !isPrivateOrLoopback(host) {
+	if ip == nil || !isPrivateOrLoopback(host) || inNetzen(ip, cgnatNetz) {
 		return false
 	}
 	if ip.IsLoopback() {

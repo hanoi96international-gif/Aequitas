@@ -172,6 +172,10 @@ func sperrKartenAufraeumen(now time.Time) {
 // real, valid block pushes and starving Primary/Contabo's catch-up sync of
 // data it needed, worsening the exact orphan-flood/cadence symptoms this
 // audit pass was trying to fix elsewhere.
+// Seit 21.11.2026 (Railway abgeschaltet) glaubt clientIP einer Quelle aus
+// 100.64.0.0/10 kein X-Forwarded-For mehr (kopfQuelleVertrauenswuerdig).
+// Hier bleibt der Bereich: die Freiliste und die Wege nur fuers eigene Netz
+// (Tailscale) brauchen ihn.
 // Einmal geparst statt bei jedem Aufruf: clientIP und die Freiliste fragen
 // das auf dem Heissweg (Pruefung von #320, INFO-7).
 var privatOderLoopbackNetze = mussNetze(
