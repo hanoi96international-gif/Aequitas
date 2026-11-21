@@ -240,9 +240,11 @@ type QuantenSNachweisBericht struct {
 	V      int      `json:"v"`
 	Wurzel string   `json:"wurzel"`
 	Proben []string `json:"proben"`
-	// WurzelGegen: gegen welche Wurzel geprueft wurde ("kette" = vor dem Ende
-	// von der Kette gelesen, "angegeben" = von Hand, "" = nur die Nachweise
-	// untereinander).
+	// WurzelGegen: "kette" = gegen Wurzel und Proben der Ausgabe geprueft (von
+	// der Annahmestelle vor dem Anmelden von der Kette gelesen, oder bei
+	// quanten-s-nachweis mit --wurzel/--proben angegeben, etwa aus dem
+	// Protokoll der Ausgabe); "" = nur die Nachweise untereinander. Einen
+	// dritten Wert gibt es nicht (die App liest genau diese zwei).
 	WurzelGegen string `json:"wurzel_gegen"`
 	// Je Annahmestelle: Stellen der Stichprobe; dazu, wo die Basen bekannt
 	// sind, Treffer (Basis der Messung = praeparierte Basis) und Fehler
