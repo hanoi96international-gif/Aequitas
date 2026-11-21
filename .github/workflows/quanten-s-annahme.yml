@@ -90,7 +90,7 @@ jobs:
           ssh -o BatchMode=yes root@$C1 'umask 077; cat > /root/qs-vorlage.json' < "$RUNNER_TEMP/vorlage.json"
           rm -f "$RUNNER_TEMP/vorlage.json"
           set +e
-          ssh -o BatchMode=yes root@$C1 "docker exec -i -u 10001:10001 aequitas-node ./aequitasd quanten-s-annahme --api http://127.0.0.1:8080 --validatoren $C1_VALIDATOR=http://127.0.0.1:8080 --nachweis-warten 20m < /root/qs-vorlage.json; RC=\$?; rm -f /root/qs-vorlage.json; exit \$RC" > ergebnis.json
+          ssh -o BatchMode=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=10 root@$C1 "docker exec -i -u 10001:10001 aequitas-node ./aequitasd quanten-s-annahme --api http://127.0.0.1:8080 --validatoren $C1_VALIDATOR=http://127.0.0.1:8080 --nachweis-warten 20m < /root/qs-vorlage.json; RC=\$?; rm -f /root/qs-vorlage.json; exit \$RC" > ergebnis.json
           RC=$?
           set -e
           cat ergebnis.json

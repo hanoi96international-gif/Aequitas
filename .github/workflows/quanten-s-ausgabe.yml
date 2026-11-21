@@ -340,7 +340,7 @@ jobs:
             rm -f "$RUNNER_TEMP/m.versiegelt" "$RUNNER_TEMP/b.json"
             scp -q -o BatchMode=yes deploy/quanten-s-ausgabe-abschnitt.sh root@$C1:/root/quanten-s-ausgabe-abschnitt.sh
             set +e
-            ssh -o BatchMode=yes root@$C1 "DECKUNG=$DECKUNG TOLERANZ=$TOL QS_N=$N QS_NAME=$NAME QS_ROLLEN=$ROLLEN bash /root/quanten-s-ausgabe-abschnitt.sh" > ergebnis.json
+            ssh -o BatchMode=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=10 root@$C1 "DECKUNG=$DECKUNG TOLERANZ=$TOL QS_N=$N QS_NAME=$NAME QS_ROLLEN=$ROLLEN bash /root/quanten-s-ausgabe-abschnitt.sh" > ergebnis.json
             RC=$?
             set -e
           else
@@ -349,7 +349,7 @@ jobs:
             rm -f "$RUNNER_TEMP/m.json"
             scp -q -o BatchMode=yes deploy/quanten-s-ausgabe.sh root@$C1:/root/quanten-s-ausgabe.sh
             set +e
-            ssh -o BatchMode=yes root@$C1 "DECKUNG=$DECKUNG bash /root/quanten-s-ausgabe.sh" > ergebnis.json
+            ssh -o BatchMode=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=10 root@$C1 "DECKUNG=$DECKUNG bash /root/quanten-s-ausgabe.sh" > ergebnis.json
             RC=$?
             set -e
           fi
