@@ -47,6 +47,7 @@ type qsaoVektor struct {
 	Pakete           map[string]string `json:"pakete"`   // Validator j -> Paket fuer Stelle b
 	PaketAndere      string            `json:"paket_andere_stelle"`
 	PaketFalsch      string            `json:"paket_falscher_anteil"` // von Validator 4, ein Anteil um 1 verschoben
+	PaketGross       string            `json:"paket_anteil_zu_gross"` // von Validator 3, ein Anteil = P (nicht in F_P)
 }
 
 func qsaoVektorBauen(t *testing.T, gespeichert *qsaoVektor) qsaoVektor {
@@ -108,7 +109,7 @@ func qsaoVektorBauen(t *testing.T, gespeichert *qsaoVektor) qsaoVektor {
 		return quantenSAnteilOeffnungInhalt{K: g.K, B: bb, Praeparator: x, Empfaenger: j, Von: von, Bis: bis, Anteile: an, Salz: g.Salz}
 	}
 	if gespeichert != nil {
-		g.Pakete, g.PaketAndere, g.PaketFalsch = gespeichert.Pakete, gespeichert.PaketAndere, gespeichert.PaketFalsch
+		g.Pakete, g.PaketAndere, g.PaketFalsch, g.PaketGross = gespeichert.Pakete, gespeichert.PaketAndere, gespeichert.PaketFalsch, gespeichert.PaketGross
 		return g
 	}
 	for _, j := range []int{1, 3, 4} {
@@ -123,6 +124,14 @@ func qsaoVektorBauen(t *testing.T, gespeichert *qsaoVektor) qsaoVektor {
 		t.Fatal(err)
 	}
 	if g.PaketFalsch, err = quantenSAnteilOeffnungVersiegeln(&stelleKey.PublicKey, inhalt(4, b, true)); err != nil {
+		t.Fatal(err)
+	}
+	gross := inhalt(3, b, false)
+	for i := range gross.Anteile {
+		gross.Anteile[i] = quantenWP.Text(16)
+		break
+	}
+	if g.PaketGross, err = quantenSAnteilOeffnungVersiegeln(&stelleKey.PublicKey, gross); err != nil {
 		t.Fatal(err)
 	}
 	return g
@@ -188,6 +197,9 @@ func TestQuantenSAnteilOeffnungVektor(t *testing.T) {
 	}
 	if _, _, err := quantenSAnteilOeffnungLesen(key, g.PaketAndere, g.K, g.B, g.Praeparator, 3, g.Von, g.Bis); err == nil {
 		t.Fatal("Paket fuer die andere Stelle gelesen")
+	}
+	if _, _, err := quantenSAnteilOeffnungLesen(key, g.PaketGross, g.K, g.B, g.Praeparator, 3, g.Von, g.Bis); err == nil {
+		t.Fatal("Anteil = P gelesen")
 	}
 	falsch := []quantenSAnteilPaket{pakete[0], pakete[1], lesen(4, g.PaketFalsch)}
 	if _, _, err := quantenSAusAnteilenZusammensetzen(falsch, g.T, pruefen); err == nil {
