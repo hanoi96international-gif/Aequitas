@@ -1407,6 +1407,18 @@ section{padding:64px 16px}
   </div>
 </section>
 
+<section id="qapp">
+  <div class="section-inner">
+    <div class="reveal">
+      <div class="section-label" data-i18n="qa-label">22 November 2026</div>
+      <h2 data-i18n="qa-h2">First quantum money redeemed entirely through the app</h2>
+      <p class="section-sub" data-i18n="qa-p1">For the first time the whole path ran through the Aequitas app: the holder ordered her token in the app, an IBM quantum computer (ibm_marrakesh) prepared it – 0 errors in 585 matching positions –, the app collected it from the validator, checked it against the chain itself, bound it to an acceptance point and presented it as a QR code.</p>
+      <p class="section-sub" data-i18n="qa-p2">The acceptance point – also the app – scanned the presentation and recomputed 301 positions of the sample: 0 errors. Independently, the chain ruled <strong>redeemed</strong>, and the 1 AEQ backing went to the acceptance point. Presented a second time, the same token was refused. Anyone can query the verdict: <a href="/api/quanten-w/note?k=ffb9ff3538bd51abaad2c303adc8f55a07aff983c2c366d456d6b93d114aad84">token ffb9ff35… on the chain</a>.</p>
+      <p class="section-sub" data-i18n="qa-p3"><strong>Honestly:</strong> the token consists of stored measurement data, not quantum states in your hand – protection comes from secret bases, the sample and the chain. And a single validator is still at work. The next step is several independent validators that measure on their own.</p>
+    </div>
+  </div>
+</section>
+
 <section id="disclaimer" style="padding-top:40px;padding-bottom:40px">
   <div class="disclaimer-card">
     <h3 data-i18n="disc-title">Beta notice</h3>
