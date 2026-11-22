@@ -37,6 +37,16 @@ dezentrales Quantengeld“.
   `einrichten.sh`, Druck mit Chromium: `node build/node_guide_pdf.cjs`); alte Generatoren
   und `docs/VALIDATOR_RAILWAY.md` entfernt; README/Whitepaper auf C1 (netcup). Gleiches in
   App, biometric-beta und proof-server (Railway-Reste).
+- **Stand 22.11. ~18:40 UTC (diese Sitzung):**
+  - **Aequitas #627 offen:** Website `/quanten` Abschnitt `qapp` (erstes S über die App, 12 Sprachen),
+    `docs/QUANTENGELD_S_2026-11-22.md` (dauerhafter Nachweis; beendete Token verschwinden nach ~8 Tagen
+    aus dem Register), neuer Lese-Endpunkt `GET /api/quanten-w/stand` (Überblick, 15 s gecacht,
+    lesenBegrenzt, 5 Mutationen rot). Sicherheitsprüfung als PR-Kommentar gepostet. Nach Merge:
+    C1-Deploy (`produktion`), dann App zeigt die Karte.
+  - **Aequitas-App #105 offen:** `beendetAbweisen` (Inhaberin + Annahmestelle: „bereits eingeloest“
+    statt irreführender Meldungen) und Quantengeld-Seite mit Überblick W/S und Urteil je Token.
+    Suite 1123 grün. Kommt mit dem nächsten App-Release (1.30.2 o. ä.).
+  - Beide PRs abonniert; nach grünem CI mergen.
 - **Stand 22.11. ~17:55 UTC (diese Sitzung, Zweig `claude/cl-uebergabe-weitermachen-jdz5h7`):**
   - **#626 gemergt (690daf98): C1 aufräumen.** Prüflauf 45050955665: belegt 161 von 251 GB;
     48 anonyme unbenutzte Volumes 78,8 GB (Reste der dind-Prüfstände), 89 unbenutzte Images
