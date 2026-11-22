@@ -2,7 +2,7 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 22.11.2026 ~18:45 UTC, Sitzung „CL Übergabe weitermachen“ (`claude/cl-uebergabe-weitermachen-jdz5h7`); davor ~16:40 UTC Sitzung „Weiter Übergabe“ (`claude/weiter-uebergabe-1a9yql`); davor 21.11. ~20:15 UTC Sitzung „CL Übergabe weitermachen“; davor ~18:00 UTC Sitzung „Weiter“ (Zweig `claude/admiring-bohr-ob0u0p`, alle vier
+Stand: 22.11.2026 ~18:50 UTC, Sitzung „CL Übergabe weitermachen“ (`claude/cl-uebergabe-weitermachen-jdz5h7`); davor ~16:40 UTC Sitzung „Weiter Übergabe“ (`claude/weiter-uebergabe-1a9yql`); davor 21.11. ~20:15 UTC Sitzung „CL Übergabe weitermachen“; davor ~18:00 UTC Sitzung „Weiter“ (Zweig `claude/admiring-bohr-ob0u0p`, alle vier
 Repos); davor ~13:40 UTC Sitzung „Weiter“ (`claude/weiter-uw2p42`), davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18:30 UTC Sitzung
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
@@ -37,6 +37,19 @@ dezentrales Quantengeld“.
   `einrichten.sh`, Druck mit Chromium: `node build/node_guide_pdf.cjs`); alte Generatoren
   und `docs/VALIDATOR_RAILWAY.md` entfernt; README/Whitepaper auf C1 (netcup). Gleiches in
   App, biometric-beta und proof-server (Railway-Reste).
+- **Stand 22.11. ~18:50 UTC — SITZUNGSENDE (Limit 95 %). Nächste Sitzung macht hier weiter:**
+  1. **#627 (Aequitas) mergen**, sobald CI auf dem Kopf grün ist (enthält auch `quanten_s_los.go` +
+     Vektor `testdata/quanten_s_los_vektor.json`, drand-Prüfung mit echtem Beacon Runde 1.000.000).
+     Danach `deploy-c1.yml` starten, Betreiber gibt `produktion` frei. Prüfen: `/api/quanten-w/stand`
+     antwortet, `/quanten` zeigt Abschnitt `qapp`.
+  2. **App 1.30.2:** #105 und #106 gemergt (ffbf0b81). Builds laufen: APK 45056590596 (wartet auf
+     Freigabe `app-signatur` durch den Betreiber), iOS 45056593213. Danach `release-apk.yml`
+     (run_id 45056590596, Tag `v1.30.2`) und `release-ios.yml` starten, Links an den Betreiber.
+  3. **B2 weiter (eigener PR NACH #627):** Register-Tx (melden/abmelden mit Zeit, nur IsHuman, ein Mensch
+     ein Eintrag), Bestellung Weg B, `_losen` mit drand (`drandQuicknet.pruefen`, Rundenzeit ≥ Bestellzeit
+     + Abstand), Los aus dem Stand ZUR Bestellung (`quantenSLos`), S-Ausgabe verlangt `Validatoren == Los`,
+     Stichtag, Sicherheitsprüfung als PR-Kommentar. Pfand als B2b.
+  4. Geplante Rückfragen (send_later) um 19:08 und 19:15 UTC sind gesetzt; sie prüfen Builds und #627.
 - **Stand 22.11. ~18:45 UTC (diese Sitzung, Zweig `claude/cl-uebergabe-weitermachen-jdz5h7`) — NÄCHSTE SCHRITTE:**
   1. **#627 mergen**, sobald CI auf dem Kopf (`acbc63e8` oder neuer) grün ist; dann C1-Deploy
      (`deploy-c1.yml`, Freigabe `produktion`) starten und dem Betreiber den Link schicken. #627 enthält:
