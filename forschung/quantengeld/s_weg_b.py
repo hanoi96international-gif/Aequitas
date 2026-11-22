@@ -104,6 +104,10 @@ class Register:
         # Konto -> Mensch (aus dem Biometrie-Register; hier vorgegeben)
         self.menschen = dict(menschen)
         self.eintraege: dict[str, int] = {}      # Konto -> Meldehoehe
+        # Abgemeldete bleiben mit Abmeldehoehe stehen: fuer das Los zaehlt der
+        # Stand zur Bestellung, nicht zum Losen. Sonst koennte, wer den Zufall
+        # schon kennt, sich vor dem Los abmelden und es so verschieben.
+        self.abgemeldet: dict[str, int] = {}     # Konto -> Abmeldehoehe
         self._mensch_von: dict[str, str] = {}    # Mensch -> Konto
 
     def melden(self, konto: str, hoehe: int) -> None:
@@ -117,16 +121,16 @@ class Register:
         self.eintraege[konto] = hoehe
         self._mensch_von[m] = konto
 
-    def abmelden(self, konto: str) -> None:
-        if konto not in self.eintraege:
+    def abmelden(self, konto: str, hoehe: int) -> None:
+        if konto not in self.eintraege or konto in self.abgemeldet:
             raise Abgewiesen("Register: nicht gemeldet")
-        del self.eintraege[konto]
-        del self._mensch_von[self.menschen[konto]]
+        self.abgemeldet[konto] = hoehe
 
     def abbild(self, bestell_hoehe: int) -> list[str]:
         """Wer zum Zeitpunkt der Bestellung im Los ist: mindestens
         MELDE_VORLAUF Bloecke vorher gemeldet. Sortiert (deterministisch)."""
-        return sorted(k for k, hm in self.eintraege.items() if hm + MELDE_VORLAUF <= bestell_hoehe)
+        return sorted(k for k, hm in self.eintraege.items()
+                      if hm + MELDE_VORLAUF <= bestell_hoehe and self.abgemeldet.get(k, 1 << 62) > bestell_hoehe)
 
 
 # ---------------------------------------------------------------- Zufall und Los
@@ -172,8 +176,9 @@ class KetteB:
             raise Abgewiesen("Bestellung: Schwelle")
         if wk.k_note(sk.TOL_PROZENT, t, v) <= 0:
             raise Abgewiesen("Bestellung: t von v ist nicht sicher moeglich")
-        self.bestellungen[K] = {"hoehe": hoehe, "v": v, "t": t,
-                                "abbild": self.register.abbild(hoehe), "los": None}
+        # Das Abbild wird erst beim Losen gerechnet -- aus dem Stand ZUR
+        # Bestellung (Meldung und Abmeldung mit Hoehe), nicht zum Losen.
+        self.bestellungen[K] = {"hoehe": hoehe, "v": v, "t": t, "los": None}
 
     def losen(self, K: str, hoehe_jetzt: int, zufall: bytes) -> list[str]:
         b = self.bestellungen.get(K)
@@ -183,7 +188,7 @@ class KetteB:
             raise Abgewiesen("Los: schon gelost")
         if hoehe_jetzt < b["hoehe"] + LOS_ABSTAND:
             raise Abgewiesen("Los: Zufall der Hoehe h + LOS_ABSTAND noch nicht da")
-        b["los"] = auslosen(b["abbild"], zufall, K, b["v"])
+        b["los"] = auslosen(self.register.abbild(b["hoehe"]), zufall, K, b["v"])
         return list(b["los"])
 
     def ausgabe_pruefen(self, K: str, praeparatoren: list[str]) -> None:
@@ -285,9 +290,12 @@ def selbsttest() -> bool:
     spaet.melden("0xa", 0)
     spaet.melden("0xb", 600)
     soll(spaet.abbild(1000) == ["0xa"], "Vorlauf: zu spaet Gemeldeter im Los")
-    reg.abmelden(f"0x{60:040x}")
-    soll(f"0x{60:040x}" not in reg.abbild(5000), "abgemeldet, aber im Los")
-    reg.melden(f"0x{60:040x}", 100)
+    ab_reg = Register({"0xa": "a"})
+    ab_reg.melden("0xa", 0)
+    ab_reg.abmelden("0xa", 4000)
+    soll("0xa" not in ab_reg.abbild(5000), "abgemeldet, aber im Los")
+    soll("0xa" in ab_reg.abbild(3000), "Abmeldung wirkt rueckwirkend auf fruehere Bestellungen")
+    abgewiesen(lambda: ab_reg.abmelden("0xa", 4100), "zweimal abgemeldet")
 
     # 2. Zufall: Zusage und Offenlegung; mindestens zwei Beitraege.
     beitr = {"c1": b"a" * 32, "c2": b"b" * 32}
@@ -310,6 +318,14 @@ def selbsttest() -> bool:
     soll(los == auslosen(reg.abbild(5000), z, K, v), "Los nicht nachrechenbar")
     soll(auslosen(reg.abbild(5000), h(b"anderer Zufall"), K, v) != los, "Los haengt nicht vom Zufall ab")
     abgewiesen(lambda: kette.losen(K, 6000, z), "zweimal gelost")
+    # Angriff: Wer den Zufall schon kennt, meldet sich zwischen Bestellung und
+    # Los ab, um das Los zu verschieben. Fuer das Los zaehlt der Stand zur
+    # Bestellung -- das Ergebnis bleibt gleich.
+    K_ab = hashlib.sha256(b"weg-b-abmelden").hexdigest()
+    kette.bestellen(K_ab, 5000, v, t)
+    vorher = auslosen(reg.abbild(5000), z, K_ab, v)
+    reg.abmelden(vorher[0], 5005)
+    soll(kette.losen(K_ab, 5000 + LOS_ABSTAND, z) == vorher, "Abmeldung nach der Bestellung verschiebt das Los")
     abgewiesen(lambda: auslosen(reg.abbild(5000)[:3 * v - 1], z, K, v), "Register zu klein")
     abgewiesen(lambda: auslosen(reg.abbild(5000), z, K, V_MAX + 1), "v zu gross")
     # v = 1 ist bestellbar (k_note > 0), scheitert aber am Los: kein Weg B.

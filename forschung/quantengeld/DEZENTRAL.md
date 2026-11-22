@@ -1569,7 +1569,10 @@ Präparation, Anteile, Stichprobe v2, Stellen-Bit und R9 bleiben unverändert.
 
 1. **Register:** nur aktive Menschen aus dem Menschenregister, je Mensch höchstens ein
    Präparator. Im Los ist nur, wer mindestens `MELDE_VORLAUF` Blöcke vor der Bestellung
-   gemeldet war. Abmelden nimmt aus dem Los.
+   gemeldet war. Abmelden nimmt aus dem Los, aber nur für Bestellungen nach der Abmeldung:
+   Für das Los zählt der Stand **zur Bestellung**, nicht zum Losen. Sonst könnte, wer die
+   drand-Runde schon kennt, sich vor dem Los abmelden und es so verschieben (Angriffstest im
+   Selbsttest; die Kette behält Abmeldungen mit Zeitpunkt).
 2. **Los:** Die Bestellung wird auf Höhe h endgültig. Gelost wird mit dem Zufall der Höhe
    h + `LOS_ABSTAND` aus dem Abbild des Registers auf Höhe h: die v Konten mit dem
    kleinsten H(Zufall, K, Konto). Jeder Knoten rechnet das Los nach.
