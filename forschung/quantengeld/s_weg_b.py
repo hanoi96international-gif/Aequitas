@@ -430,8 +430,23 @@ def selbsttest() -> bool:
     return not fehler
 
 
+def vektor() -> dict:
+    """Pruefvektor fuer den Knoten (testdata/quanten_s_los_vektor.json): das
+    Los aus einem festen Abbild, Zufall (32 Byte hex) und K, fuer mehrere v."""
+    abbild = [f"0x{(i * 7919) % (1 << 160):040x}" for i in range(1, 41)]
+    zufall = bytes.fromhex("b22aad4794f7451896f7a371aa46106fd84d919f3f569acd5b2fddf1d1440af3")
+    faelle = []
+    for j, v in enumerate((4, 7, 13)):
+        K = hashlib.sha256(f"los-vektor-{j}".encode()).hexdigest()
+        faelle.append({"K": K, "v": v, "los": auslosen(abbild, zufall, K, v)})
+    return {"abbild": abbild, "zufall": zufall.hex(), "faelle": faelle}
+
+
 if __name__ == "__main__":
-    if "--tabelle" in sys.argv:
+    if "--vektor" in sys.argv:
+        import json
+        print(json.dumps(vektor(), indent=1))
+    elif "--tabelle" in sys.argv:
         print(" t   v      k   Erfassung(20 %)   verfuegbar(p=0,8)   verfuegbar(p=0,6)")
         for t, v, k, e, a8, a6 in tabelle():
             print(f"{t:2d}  {v:2d}  {k:5d}   {e:15.5f}   {a8:17.4f}   {a6:17.4f}")
