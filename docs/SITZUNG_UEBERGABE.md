@@ -37,6 +37,28 @@ dezentrales Quantengeld“.
   `einrichten.sh`, Druck mit Chromium: `node build/node_guide_pdf.cjs`); alte Generatoren
   und `docs/VALIDATOR_RAILWAY.md` entfernt; README/Whitepaper auf C1 (netcup). Gleiches in
   App, biometric-beta und proof-server (Railway-Reste).
+- **Stand 22.11. ~16:10 UTC (Sitzungsende) — NÄCHSTE SCHRITTE IN DIESER REIHENFOLGE:**
+  1. **APP-FEHLER (dringend, vom Betreiber gemeldet, Screenshot):** Annahmestelle/Bestellung
+     bricht ab mit `expo-crypto: getRandomBytes(1104) expected a valid number from range
+     0...1024`. Ursache: `getRandomBytes` liefert höchstens 1024 Byte je Aufruf; die App fragt
+     bei n = 1104 auf einmal. Fix in Aequitas-App: `u.zufall(n)` in Stücken ≤ 1024 ziehen
+     (zentral in der Umgebung, `lib/quantenSInhaberin.ts` `zufall: (n) => getRandomBytes(n)`),
+     Test mit n > 1024 (Mock, der > 1024 wirft), dann App 1.30.1 (versionCode/buildNumber 67),
+     Build + Release (Freigaben `app-signatur`, Links an den Betreiber).
+  2. **Beta-Stufe Validatoren:** Commit 42d881ea auf dem Zweig (lokal committet; prüfen, ob
+     gepusht, sonst pushen), noch **kein PR**: Knoten `leistungsVorgabe` 4 Kerne / 20.000 Sig/s /
+     5 ms, `einrichten.sh` 4 Kerne / 7500 MB / 40 GB + Steal-Prüfung (>5 % abgelehnt), neuer
+     Test `leistungsnachweis_einrichten_test.go` (Knoten = einrichten.sh), Anleitung (12 PDFs neu),
+     Website `ng-need-d` (12 Sprachen), `VALIDATOR_EINRICHTEN.md` mit Zusage (Erhöhung nur nach
+     Messung, 3 Monate Vorlauf). Keeper-Suite grün. PR mit Sicherheit-Abschnitt + getrennte
+     Sicherheitsprüfung (Leistungsprobe = Zulassung neuer Validatoren); danach C1-Deploy
+     (Freigabe `produktion`, keine Frist). Wichtig für den Umzug: ohne diese Senkung wäre ein
+     neuer C1 mit 4 Kernen nicht mehr „leiterfähig“.
+  3. **Umzug C1 (23.12.):** Betreiber startet `auslastung-c1.yml` (dauer 3600) und schickt das
+     Ergebnis; dann Servergröße empfehlen. Betreiber erwägt Contabo Cloud VPS Plus 4 (4 GETEILTE
+     vCPU, 8 GB, 16,34 €): Steal mit `neuer-c1-pruefen.yml` prüfen; einrichten.sh lehnt > 5 % ab.
+  4. iOS-Release 1.30.0 (run 45037104268) wartete auf `app-signatur` — prüfen.
+  Arbeitsweise: Betreiber will Antworten auf **Deutsch** und zu jeder Freigabe den direkten Link.
 - **App 1.30.0:** Android-Release v1.30.0 veröffentlicht; iOS-Release (run 45037104268) wartet auf `app-signatur`.
 - **Stand 22.11. ~14:45 UTC: UMZUG C1 am 23.12.2026 auf kleineren Server (Betreiber).**
   Vorbereitet (PR offen): `docs/UMZUG_C1_2026-12-23.md` (Ablauf, Abnahme, Rückweg,
