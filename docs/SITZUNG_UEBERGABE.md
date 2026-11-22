@@ -50,7 +50,10 @@ dezentrales Quantengeld“.
     („angenommen“), an Stelle 1 gebunden + gewählt, Vorlage gescannt; **wartet auf Öffnung
     (Finalität) und Urteil (≤ 33 min)**. Danach Urteil „eingeloest“ prüfen
     (`/api/quanten-w/note?k=…`; aus dieser Umgebung blockt der Proxy aequitas.digital → Screenshot
-    vom Betreiber). Fehlerbild-Artefakt fehlerbild-45050231784 noch ungelesen (Proxy blockt Download).
+    vom Betreiber). **ERLEDIGT 17:55 UTC: Urteil der Kette „eingeloest“, vorab selbst gerechnet „besteht“
+    (0 Fehler bei 301 Treffern), Annahmestelle 0x5abc…60b4.** Erstes Quantengeld S ist damit Ende-zu-Ende
+    ausgegeben, abgeholt und eingelöst. Nächster Test: dieselbe Vorlage erneut scannen → muss abgelehnt
+    werden (Doppelausgabe). Fehlerbild-Artefakt fehlerbild-45050231784 noch ungelesen (Proxy blockt Download).
 - **Stand 22.11. ~17:25 UTC (nur diese Sitzung arbeitet weiter, Zweig `claude/cl-uebergabe-weitermachen-jdz5h7`):**
   - **App 1.30.1 veröffentlicht** (Android release 45047533683; iOS release 45048474002 freigegeben).
   - **Beta-Stufe #624 auf C1** (Deploy 45044230412 grün).
