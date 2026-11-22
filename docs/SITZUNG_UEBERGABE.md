@@ -53,8 +53,8 @@ dezentrales Quantengeld“.
      **Entwurf mit Entscheidungsfrage an den Betreiber in DEZENTRAL 18** („Entwurf: Beweisweg …“; Empfehlung:
      Pfand der Inhaberin + kleiner Anteil je Gelostem). Erst nach seiner Antwort bauen.
      dann B3 Briefkasten, B4 App als Präparatorin, B5 Pilot (7 Menschen).
-  4. **Betreiber hat alles freigegeben (22:00 UTC).** `release-apk.yml` v1.30.2 gestartet; danach noch
-     `release-ios.yml` (run_id 45056593213, Tag `v1.30.2`) starten. Früher hieß es: APK 1.30.2 Freigabe `app-signatur` (Lauf 45056590596), danach
+  4. **App 1.30.2:** Android-Release veröffentlicht (45074127310); iOS-Release 45074539717 gestartet (ggf.
+     Freigabe `app-signatur`). Aequitas-Zweige aufgeräumt (253 → 5). Früher hieß es: APK 1.30.2 Freigabe `app-signatur` (Lauf 45056590596), danach
      `release-apk.yml` (run_id 45056590596, Tag `v1.30.2`) und `release-ios.yml` (run_id 45056593213, Tag
      `v1.30.2`); Aufräumen Aequitas-Zweige (`zweige-aufraeumen.yml` Lauf 45069778900, `produktion`).
   5. Betreiber will: Übergabe oft aktualisieren und PRs offen halten, damit nichts verloren geht.
