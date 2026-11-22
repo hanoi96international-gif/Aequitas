@@ -2,7 +2,7 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 22.11.2026 ~16:40 UTC, Sitzung „Weiter Übergabe“ (`claude/weiter-uebergabe-1a9yql`); davor 21.11. ~20:15 UTC Sitzung „CL Übergabe weitermachen“; davor ~18:00 UTC Sitzung „Weiter“ (Zweig `claude/admiring-bohr-ob0u0p`, alle vier
+Stand: 22.11.2026 ~17:10 UTC, Sitzung „Weiter Übergabe“ (`claude/weiter-uebergabe-1a9yql`); davor 21.11. ~20:15 UTC Sitzung „CL Übergabe weitermachen“; davor ~18:00 UTC Sitzung „Weiter“ (Zweig `claude/admiring-bohr-ob0u0p`, alle vier
 Repos); davor ~13:40 UTC Sitzung „Weiter“ (`claude/weiter-uw2p42`), davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18:30 UTC Sitzung
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
@@ -37,6 +37,33 @@ dezentrales Quantengeld“.
   `einrichten.sh`, Druck mit Chromium: `node build/node_guide_pdf.cjs`); alte Generatoren
   und `docs/VALIDATOR_RAILWAY.md` entfernt; README/Whitepaper auf C1 (netcup). Gleiches in
   App, biometric-beta und proof-server (Railway-Reste).
+- **ÜBERGABE 22.11. ~17:10 UTC (Sitzung „Weiter Übergabe“, Zweig `claude/weiter-uebergabe-1a9yql` in allen vier Repos)
+  — NÄCHSTE SCHRITTE IN DIESER REIHENFOLGE:**
+  1. **App 1.30.1 freigeben und veröffentlichen.** APK-Build
+     [45042698436](https://github.com/hanoi96international-gif/Aequitas-App/actions/runs/45042698436) wartet auf
+     `app-signatur` (Betreiber). Danach `release-apk.yml` (run_id 45042698436, tag `v1.30.1`, notes „Bestellung: Zufall
+     in Stücken von höchstens 1024 Byte (getRandomBytes-Fehler behoben)“), dann `release-ios.yml` (run_id 45042700994,
+     tag `v1.30.1`; iOS-Build ist grün).
+  2. **Auslastung C1 auswerten** (Lauf [45043076420](https://github.com/hanoi96international-gif/Aequitas/actions/runs/45043076420),
+     3600 s ab 16:18:46, fertig ~17:19 UTC): Log lesen (`get_job_logs`), CPU/RAM je Container. Der C1-Deploy von #624
+     (16:47–16:48) fiel in die Messung → Neustart-Spitze herausrechnen; reicht der Rest nicht, `auslastung-c1.yml` mit
+     dauer 1800 neu. Dann Servergröße für den Umzug 23.12. empfehlen (Beta-Stufe: ≥4 dedizierte Kerne, 8 GB, 40 GB,
+     Steal < 5 %; Contabo VPS mit geteilten Kernen nur nach `neuer-c1-pruefen.yml`).
+  3. **Zweige aufräumen fertig machen.** Fehler gefunden und behoben: `for-each-ref 'refs/remotes/origin/*'` erfasste keine
+     Namen mit Schrägstrich → die ersten Läufe (App, proof-server, biometric-beta) haben NUR die Listen-Zweige gelöscht
+     (gesichert im Artefakt `zweige-sicherung` je Lauf), die gemergten Zweige stehen noch. Korrektur: PRs App #104,
+     proof-server #36, biometric-beta #128 und in Aequitas #625 (dort auch Liste, Audit 14.11., Iris-Liste, Übergabe).
+     Wenn grün: mergen (volle SHA), dann je Repo `zweige-aufraeumen.yml` mit `modus=loeschen`, `liste=true` starten
+     (ref: Hauptzweig; App-Basis `aequitas-app`). Ergebnis prüfen (`git ls-remote --heads origin | wc -l`; übrig bleiben
+     sollen Hauptzweig, Sitzungszweige < 2 Tage, `claude/weiter-gehts-vm8979-kegel`).
+     **Achtung:** In App, proof-server und biometric-beta hat die Umgebung `produktion` keine Freigaberegel — die Läufe
+     liefen ohne Freigabe (Betreiber konnte nichts freigeben). Betreiber fragen, ob dort Schutzregeln wie in Aequitas
+     gesetzt werden sollen (Settings → Environments → produktion → Required reviewers).
+  4. Danach offen: Kegel (#340, Konsens, HOCH 2 offen) — Betreiber entscheidet, ob er kommt; erster IBM-Lauf mit
+     Fehlerbild; erster Token mit Urteil (R10).
+  - Diese Sitzung erledigt: App #101 (getRandomBytes in Stücken, 1.30.1), #624 (Beta-Stufe, auf C1), Aufräum-Workflow
+    (App #102/#103, proof-server #34/#35, biometric-beta #126/#127), #609, Dependabot biometric #100/#106/#107/#108,
+    geschlossen #79/#98/#99/#101/#110.
 - **Stand 22.11. ~17:05 UTC (Sitzung „Weiter Übergabe“):**
   - **#624 gemergt (d0d82b81) und auf C1 ausgerollt** (Deploy 45044230412, 16:47–16:48 UTC, Höhe steigt):
     Beta-Stufe 4 Kerne / 20.000 Sig/s gilt auf C1.
