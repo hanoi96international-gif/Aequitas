@@ -45,8 +45,8 @@ dezentrales Quantengeld“.
   [45024947456](https://github.com/hanoi96international-gif/Aequitas/actions/runs/45024947456) wartet auf `produktion` (keine Frist, kein Stichtag).
 - **Stand 22.11. ~12:30 UTC:** **C1-Deploy 45016276994 erfolgreich** (freigegeben 12:22, ausgerollt
   12:23, alle Stichtag-Wächter grün, Höhe steigt). R10 (eindeutiges Urteil) gilt ab **13:00 UTC**.
-  Noch offen: `/api/status` -> `quanten_w.urteil_ab = 1795352400` von außen prüfen (aus dem
-  Cloud-Container ist C1:8080 nicht erreichbar); erster Token mit `urteil`; erster Hauptnetz-Lauf
+  **Bestätigt (Betreiber, /api/status): `quanten_w.urteil_ab = 1795352400`, git_commit bd9a905.**
+  Noch offen: erster Token mit `urteil`; erster Hauptnetz-Lauf
   `quanten-s-ausgabe.yml` liefert das erste Fehlerbild. Danach: Annahmestelle schneller auf Anteile,
   App 1.30.0.
 - **Stand 22.11. ~11:00 UTC:** C1-Deploy 44997306685 (#620) **fehlgeschlagen**: erst 10:52 freigegeben,
