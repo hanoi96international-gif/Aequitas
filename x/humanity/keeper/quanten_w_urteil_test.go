@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"context"
+	"math"
 	"strings"
 	"testing"
 )
@@ -44,6 +45,8 @@ func (w *qsWelt) ansicht() map[string]interface{} {
 // Schlafend: wie bisher -- eingeloest und tot sehen gleich aus, das Register
 // traegt kein Urteil (StateRoot unveraendert), lebende Token sagen nichts.
 func TestQuantenWUrteil_SchlafendWieBisher(t *testing.T) {
+	quantenWUrteilAbOverride.Store(math.MaxInt64) // schlafend, unabhaengig vom Stichtag im Repo
+	t.Cleanup(func() { quantenWUrteilAbOverride.Store(0) })
 	for _, tot := range []bool{false, true} {
 		w := neueQsWelt(t, 128, 80)
 		z := qwT0
@@ -107,6 +110,8 @@ func TestQuantenWUrteil_SpaetesEnde(t *testing.T) {
 	for _, aktiv := range []bool{false, true} {
 		if aktiv {
 			qwuAktiv(t)
+		} else {
+			quantenWUrteilAbOverride.Store(math.MaxInt64)
 		}
 		w := neueQsWelt(t, 128, 80)
 		z := qwT0

@@ -1,6 +1,6 @@
 # Dezentrales Quantengeld komplett: was fehlt, und der Weg dorthin
 
-Stand 18.11.2026, Abschnitt 1 aktualisiert und Abschnitt 17 am 20.11.2026, R8 und R9 am 21.11.2026. Auftrag des Betreibers: „Bring das dezentrale Quantengeld komplett zu
+Stand 18.11.2026, Abschnitt 1 aktualisiert und Abschnitt 17 am 20.11.2026, R8 und R9 am 21.11.2026, R10 am 22.11.2026. Auftrag des Betreibers: „Bring das dezentrale Quantengeld komplett zu
 laufen, ggf. mit eigener Forschung“. Diese Notiz sagt, was heute läuft, wo es noch an
 einer Stelle hängt, und was wir bauen.
 
@@ -1492,6 +1492,43 @@ Stelle, bevor die Inhaberin vorlegte. Er wusste also, **wo** sie einlösen will 
     Paket im Tresor) und das Stellen-Bit beim Zusammensetzen (prüft danach
     `quantenSOeffnungLaden`).
 
+### R10: eindeutiges Urteil – eingelöst oder tot (22.11.2026, gebaut, Stichtag 22.11.2026 09:30 UTC)
+
+- **Befund:** Endet ein Token, legt die Kette ihn in beiden Fällen (eingelöst oder tot nach
+  drei falschen Vorlagen) unter `Tote` ab. Die Ansicht antwortet für beide nur
+  `{"tot": true}`. Das Urteil stand nur in der entscheidenden Offenlegung (`urteil: "echt"`
+  mit `wert_an` an die Stelle, oder `"abgewiesen"` mit dem Wert an das Grundeinkommen).
+  - Die Werkzeuge schlossen deshalb aus der Zahl der Fehlversuche: Nach 0 oder 1 kann ein
+    verschwundener Token nur eingelöst sein. Beim letzten Versuch ging das nicht mehr, also
+    meldeten sie dann gar nicht erst an. Ein Token mit zwei Fehlversuchen ließ sich mit den
+    Werkzeugen nicht mehr einlösen.
+  - Außerdem merkte sich die Kette einen Token nur, wenn er höchstens
+    `quantenWToteBehalten` (gut 8 Tage) nach der Ausgabe endete. Später verschwand er
+    spurlos und sah aus wie „nie ausgegeben“.
+- **Gebaut** (`quanten_w_urteil.go`, Konsensregel ab Stichtag):
+  - Jeder Knoten schreibt beim Ende selbst `urteil` (`eingeloest` oder `tot`) und `ende`
+    (Blockzeit) in den Eintrag unter `Tote`, aus dem Block, den er nachrechnet. Das gilt
+    immer, auch bei langer Laufzeit, für Variante S und W.
+  - Aufgeräumt wird `quantenWToteBehalten` nach dem späteren von Ausgabe und Ende. Die
+    Grenze `quantenWToteHoechstens` bleibt (voll heißt keine neue Ausgabe, fail-closed).
+  - Ansicht: Beendete Token zeigen `urteil` und `ende`, lebende `urteil_eindeutig: true`.
+  - Werkzeug und App melden beim letzten Versuch nur an, wenn `urteil_eindeutig` steht.
+    Danach gilt nur das Urteil der Kette. Fehlt es, behaupten sie keinen Erfolg.
+  - Vor dem Stichtag ist alles byte-gleich: Die Felder fehlen, die StateRoot ist dieselbe.
+    Lesen ist fail-closed: Erlaubt ist nur `eingeloest`/`tot` mit einer Endzeit oder beides
+    leer.
+  - Stichtag `quantenWUrteilAbUnix`, Status `quanten_w.urteil_ab`, Deploy-Wächter
+    `.github/neustart/quanten-urteil-nicht-verpasst.sh` (mindestens 30 min Vorlauf, nie
+    rückwirkend). Ein älterer Knoten rechnete nach dem Stichtag eine andere StateRoot; darum
+    müssen alle Validatoren vorher diese Fassung haben (heute nur C1).
+- **Belegt:** `quanten_w_urteil_test.go`, jeweils mit annehmendem und nachspielendem Knoten:
+  - schlafend wie bisher: kein Urteil, Kodierung ohne die Felder;
+  - aktiv: eingelöst und tot unterscheidbar;
+  - spätes Ende: schlafend spurlos, aktiv mit Urteil, aufgeräumt erst nach dem Ende;
+  - Register lesen: 6 Fehlformen abgewiesen, Rundweg byte-gleich;
+  - W-Note eingelöst;
+  - Werkzeug (10 Fälle); App 43 Tests.
+
 ### Ehrlich dazu (offen)
 
 - **Der Ausgeber sieht die Basen y**, wenn die Inhaberin im Klartext bestellt (heute die
@@ -1506,9 +1543,8 @@ Stelle, bevor die Inhaberin vorlegte. Er wusste also, **wo** sie einlösen will 
   Wert ist nicht verloren, denn die Anmeldung kommt erst nach dem Laden. Im Pilot fällt
   der Validator deshalb nach dem Laden aus. Seit R9 lädt die Stelle aus t Paketen der
   anderen; das wirkt erst ab mehreren Validatoren (A5).
-- **Hat ein Token schon zwei Fehlversuche,** liest das Werkzeug das Urteil nicht
-  eindeutig (eingelöst und tot sehen in der Ansicht gleich aus) und meldet nicht an.
-  Das ist wie bisher.
+- **Hat ein Token schon zwei Fehlversuche,** meldet das Werkzeug nur an, wenn die Kette das
+  Urteil schreibt (R10, ab dem Stichtag); vorher wie bisher nicht.
 - **Getrennte Schlüssel heißen noch nicht getrennte Menschen.** Im Pilot laufen alle
   Rollen im selben Testprozess. Im Hauptnetz ist C1 einziger Validator und kennt den
   ganzen Token (Abschnitt 16). Den Token der Inhaberin einlösen kann C1 trotzdem nicht,

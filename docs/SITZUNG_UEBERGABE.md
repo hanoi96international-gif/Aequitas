@@ -37,7 +37,11 @@ dezentrales Quantengeld“.
   `einrichten.sh`, Druck mit Chromium: `node build/node_guide_pdf.cjs`); alte Generatoren
   und `docs/VALIDATOR_RAILWAY.md` entfernt; README/Whitepaper auf C1 (netcup). Gleiches in
   App, biometric-beta und proof-server (Railway-Reste).
-- **Stand 21.11. ~22:15 UTC (Sitzungslimit voll) -- HIER WEITERMACHEN:**
+- **Stand 22.11. ~07:10 UTC:** R10 und Fehlerbild fertig, Stichtag des eindeutigen Urteils
+  **22.11.2026 09:30 UTC = 1795339800** (Betreiber: „sofort“). PR offen (siehe unten), danach
+  Merge und C1-Deploy **vor 09:00 UTC** freigeben (Wächter: 30 min Vorlauf). Verpasst: neuen
+  Stichtag wählen (nie rückwirkend). Mutationen 17/17 rot, Keeper-Suite grün auch mit aktiver Regel.
+- **Stand 21.11. ~22:15 UTC (Sitzungslimit voll):**
   - **#619 (R9) gemergt (f3c4f01b).** C1-Deploy dafür startet durch den Merge -> Link an den
     Betreiber zur Freigabe `produktion`. **App #99** (R9 in der App) grün -> nach #619 mergen.
   - **IN ARBEIT, auf diesem Zweig committet (WIP, noch kein PR): R10 eindeutiges Urteil +
