@@ -47,7 +47,8 @@ dezentrales Quantengeld“.
     (Deploy 45058105105 grün); der doppelte Lauf 45058108805 ist abgebrochen.
   - **Wartet auf den Betreiber:** APK 1.30.2 (45056590596) Freigabe `app-signatur`; danach `release-apk.yml`
     (run_id 45056590596, Tag `v1.30.2`) und `release-ios.yml` (run_id 45056593213, Tag `v1.30.2`).
-  - **Nächste Schritte:** B2-Rest vor dem Stichtag (Umzug meldet ab, Pfand, Begrenzung), dann B3 Briefkasten,
+  - **Umzug meldet den Präparator-Eintrag der alten Wallet ab** (im selben PR).
+  - **Nächste Schritte:** B2-Rest vor dem Stichtag (Pfand, Begrenzung der Bestellungen), dann B3 Briefkasten,
     B4 App als Präparatorin, B5 Pilot (7 Menschen).
 - **Zweige aufräumen (Sitzung „Weiter Übergabe“, Zweig `claude/weiter-uebergabe-1a9yql`, Stand 22.11. ~20:50 UTC):**
   - Betreiber: „Alles, was gebraucht wird, übernehmen und umsetzen, alles andere löschen.“ Durchsicht aller

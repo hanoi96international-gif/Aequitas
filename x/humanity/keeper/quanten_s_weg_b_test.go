@@ -597,3 +597,38 @@ func TestQuantenSWegB_AusgabeMissbrauch(t *testing.T) {
 		t.Fatalf("Weg A ohne Bindung: %q", u.regel)
 	}
 }
+
+// Umzug: der Vollzug meldet den Praeparator-Eintrag der alten Wallet ab, die
+// neue Wallet kann sich sofort melden; ohne Eintrag aendert sich nichts.
+func TestQuantenSWegB_UmzugMeldetAb(t *testing.T) {
+	w := neueQbWelt(t, 2)
+	z := qbBestellZeit
+	alt, n := w.menschen[0], w.null[w.menschen[0]]
+	w.annehmen(w.melden(alt, z), z)
+	kNeu, neu := neuerSchluessel(t) // noch kein Mensch; das Menschsein zieht um
+	w.keys[neu] = kNeu
+	vorher := w.cs.quantenWJetzt().kodiert()
+	for _, cs := range []*ChainState{w.cs, w.nach} {
+		cs.mu.Lock()
+		err := cs.umzugVollziehenLocked(context.Background(), n, alt, neu, z+100)
+		cs.mu.Unlock()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	reg := w.cs.quantenWJetzt()
+	if reg.Praep[alt].Abgemeldet != z+100 || reg.kodiert() != w.nach.quantenWJetzt().kodiert() || reg.kodiert() == vorher {
+		t.Fatalf("Umzug: alter Eintrag %+v", reg.Praep[alt])
+	}
+	w.annehmen(w.melden(neu, z+200), z+200)
+	// Umzug eines Menschen ohne Eintrag: Register unveraendert.
+	ohne, n2 := w.menschen[1], w.null[w.menschen[1]]
+	_, neu2 := neuerSchluessel(t)
+	vorher = w.cs.quantenWJetzt().kodiert()
+	w.cs.mu.Lock()
+	err := w.cs.umzugVollziehenLocked(context.Background(), n2, ohne, neu2, z+300)
+	w.cs.mu.Unlock()
+	if err != nil || w.cs.quantenWJetzt().kodiert() != vorher {
+		t.Fatalf("Umzug ohne Eintrag aendert das Register (%v)", err)
+	}
+}

@@ -471,3 +471,19 @@ func quantenSLosBestaetigt(los, bestaetigungen []string, nachricht func(x int) s
 	}
 	return quantenWBescheid{}
 }
+
+// quantenSUmzugLocked: beim Vollzug eines Umzugs den aktiven Eintrag der
+// alten Wallet abmelden (zur Umzugszeit; fuer fruehere Bestellungen zaehlt er
+// weiter, wie jede Abmeldung). Caller haelt cs.mu, in der Transaktion des
+// Blocks.
+func (cs *ChainState) quantenSUmzugLocked(ctx context.Context, alt string, t int64) error {
+	reg := cs.quantenWJetzt()
+	p, da := reg.Praep[alt]
+	if !da || p.Abgemeldet != 0 {
+		return nil
+	}
+	neu := reg.kopie()
+	p.Abgemeldet = max(t, p.Gemeldet)
+	neu.Praep[alt] = p
+	return cs.quantenWSetzenLocked(ctx, neu)
+}

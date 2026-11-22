@@ -1674,9 +1674,10 @@ Kein Geld bewegt sich bei Melden, Bestellen und Losen. Leer ändert das Register
 Bytes (StateRoot unverändert). Tests mit dem echten quicknet-Beacon und einem Test-Verbund;
 27 Gegenproben rot.
 
-**Vor dem Scharfschalten offen:** (1) Ein Umzug muss den Eintrag der alten Wallet selbst
-abmelden; heute bleibt er aktiv, bis der Mensch sich mit der neuen Wallet meldet, und eine
-gestohlene alte Wallet könnte bis dahin gelost werden. (2) Pfand je Präparator (B2b-Pfand).
+**Umzug:** Der Vollzug eines Umzugs meldet den Eintrag der alten Wallet selbst ab (eine
+gestohlene alte Wallet kann nicht mehr gelost werden; Test, Gegenprobe rot).
+
+**Vor dem Scharfschalten offen:** (2) Pfand je Präparator (B2b-Pfand).
 (3) Bestellungen sind kostenlos; 32 Menschen könnten Weg B je eine Stunde lang belegen.
 (4) Weg B braucht B3/B4 (Briefkasten, App als Präparatorin), sonst gibt es keine Präparatoren.
 
@@ -1684,7 +1685,7 @@ gestohlene alte Wallet könnte bis dahin gelost werden. (2) Pfand je Präparator
 
 | Schritt | Was |
 |---|---|
-| B2 | **Schlafend fertig (siehe oben).** Offen vor dem Stichtag: Umzug meldet ab, Pfand, Begrenzung der Bestellungen. |
+| B2 | **Schlafend fertig (siehe oben).** Offen vor dem Stichtag: Pfand, Begrenzung der Bestellungen. |
 | B3 | Briefkasten bei den Knoten: verschlüsselte Pakete (Basen y, Anteile, Öffnungen) ablegen und abholen, begrenzt je Absender und Größe. |
 | B4 | App als Präparatorin: IBM-Schlüssel nur im Gerät, Auftrag über die REST-Schnittstelle, Abschnitt präparieren, Anteile verteilen, nach der Bindung öffnen. |
 | B5 | Pilot im Hauptnetz mit mindestens 7 Menschen (4 von 7); erst danach größere v. |
