@@ -52,7 +52,8 @@ dezentrales Quantengeld“.
   3. **Vor dem Scharfschalten von Weg B offen:** Beweisweg für den Verfall des Präparator-Pfands bei
      nachgewiesener Fälschung (Designfrage: auf der Kette nur eine Einlösung je Token — Entwurf nötig),
      dann B3 Briefkasten, B4 App als Präparatorin, B5 Pilot (7 Menschen).
-  4. **Wartet auf den Betreiber:** APK 1.30.2 Freigabe `app-signatur` (Lauf 45056590596), danach
+  4. **Betreiber hat alles freigegeben (22:00 UTC).** `release-apk.yml` v1.30.2 gestartet; danach noch
+     `release-ios.yml` (run_id 45056593213, Tag `v1.30.2`) starten. Früher hieß es: APK 1.30.2 Freigabe `app-signatur` (Lauf 45056590596), danach
      `release-apk.yml` (run_id 45056590596, Tag `v1.30.2`) und `release-ios.yml` (run_id 45056593213, Tag
      `v1.30.2`); Aufräumen Aequitas-Zweige (`zweige-aufraeumen.yml` Lauf 45069778900, `produktion`).
   5. Betreiber will: Übergabe oft aktualisieren und PRs offen halten, damit nichts verloren geht.
