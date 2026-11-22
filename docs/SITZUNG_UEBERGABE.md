@@ -38,15 +38,17 @@ dezentrales Quantengeld“.
   und `docs/VALIDATOR_RAILWAY.md` entfernt; README/Whitepaper auf C1 (netcup). Gleiches in
   App, biometric-beta und proof-server (Railway-Reste).
 - **Stand 22.11. ~16:40 UTC, Sitzung „Weiter Übergabe“ (Zweig `claude/weiter-uebergabe-1a9yql`, alle vier Repos):**
-  1. **App-Fehler getRandomBytes(1104) behoben: App #101** (1.30.1, versionCode/buildNumber 67).
+  1. **App-Fehler getRandomBytes(1104) behoben: App #101 gemergt (cdedf15a)** (1.30.1, versionCode/buildNumber 67).
      `zufallInStuecken` in `lib/quantenSInhaberin.ts` zieht höchstens 1024 Byte je Aufruf, fail-closed.
-     15 Tests, Gegenprobe 6 rot, Suite 1108 grün. Nach CI: mergen, dann Builds APK/iOS, danach
-     `release-apk.yml`/`release-ios.yml` mit Tag `v1.30.1` (Freigabe `app-signatur`, Links an den Betreiber).
+     15 Tests, Gegenprobe 6 rot, Suite 1108 grün. Builds laufen: APK
+     [45042698436](https://github.com/hanoi96international-gif/Aequitas-App/actions/runs/45042698436) (Signieren:
+     Freigabe `app-signatur`), iOS [45042700994](https://github.com/hanoi96international-gif/Aequitas-App/actions/runs/45042700994).
+     Danach `release-apk.yml` (run_id 45042698436, Tag `v1.30.1`) und `release-ios.yml`. iOS-Release 1.30.0 war erfolgreich (45037104268).
   2. **Beta-Stufe (42d881e) als PR auf diesem Zweig.** Die Schwelle wirkt nur lokal (Leistungsnachweis
      des eigenen Knotens, Kandidatenprobe beim Anmeldeknoten), sie ist kein Kettenzustand, also gibt es
      keine Spaltung beim Umstellen. Gegenprobe: Knoten oder einrichten.sh einzeln geändert → Test rot.
      Danach: eigene Sicherheitsprüfung als PR-Kommentar, Merge, C1-Deploy (`produktion`).
-  3. Unverändert offen: Umzug-Messung (`auslastung-c1.yml`, Betreiber), iOS-Release 1.30.0 (wird durch 1.30.1 überholt).
+  3. Unverändert offen: Umzug-Messung (`auslastung-c1.yml`, Betreiber).
 - **Stand 22.11. ~16:10 UTC (Sitzungsende) — NÄCHSTE SCHRITTE IN DIESER REIHENFOLGE:**
   1. **APP-FEHLER (dringend, vom Betreiber gemeldet, Screenshot):** Annahmestelle/Bestellung
      bricht ab mit `expo-crypto: getRandomBytes(1104) expected a valid number from range
