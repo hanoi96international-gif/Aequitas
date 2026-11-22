@@ -15,7 +15,7 @@ dezentrales Quantengeld“.
 - **B2a gebaut (PR von diesem Zweig): Register der Präparatoren**, schlafend (`quantenSWegBAbUnix` = MaxInt64),
   `x/humanity/keeper/quanten_s_praeparatoren.go`, `DEZENTRAL.md` 18 „B2a“. Arten `quanten_w_s_praep_melden`/`_abmelden`
   (ohne Wallet = Aufräumen nach Umzug), Abbild zur Zeit T für B2b, `GET /api/quanten-w/praeparatoren`.
-  9 Tests (auch echte DB), 12 Mutationen rot. Vor dem Merge: eigene Sicherheitsprüfung als PR-Kommentar (Konsens).
+  9 Tests (auch echte DB), 13 Mutationen rot. Vor dem Merge: eigene Sicherheitsprüfung als PR-Kommentar (Konsens).
 - **Nächster Schritt B2b** (eigener PR, danach Stichtag mit Deploy-Wächter): Bestellung Weg B mit Abbild in der
   Bestellung (Frist < `quantenSPraepNachlauf`), `_losen` mit drand, Ausgabe gegen das Los. Pfand als B2c.
 - Offen beim Betreiber: Freigaberegel für Umgebung `produktion` in App, proof-server, biometric-beta; #340 (Kegel).

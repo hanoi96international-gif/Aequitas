@@ -203,6 +203,11 @@ func (cs *ChainState) quantenSPraepBescheidLocked(ctx context.Context, tx *Trans
 		return quantenWBefund("quanten_s_praep_inaktiv", "Weg B (Praeparatoren) ist noch nicht aktiv"), nil
 	}
 	q := tx.QuantenW
+	// Die Wallet steht genau so im Satz, wie sie gelesen wird: sonst sagte
+	// die Formpruefung "mit Wallet" und der Bescheid "ohne" (etwa bei " ").
+	if tx.Wallet != wallet {
+		return quantenWBefund("quanten_w_form", "Wallet nicht kanonisch"), nil
+	}
 	neu := reg.kopie()
 	switch tx.Type {
 	case quantenSPraepMeldenTxArt:

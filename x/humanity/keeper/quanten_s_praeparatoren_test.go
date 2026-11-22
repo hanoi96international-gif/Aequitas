@@ -260,6 +260,11 @@ func TestQuantenSPraep_AbmeldenMissbrauch(t *testing.T) {
 	ohneZeit.DistributionAt = z
 	ohneSig := praepAufraeumenTx(w.anna)
 	ohneSig.QuantenW.WalletSig = fremd.QuantenW.WalletSig
+	// Wallet aus Leerzeichen bzw. in Grossbuchstaben.
+	leer := praepTx(t, quantenSPraepAbmeldenTxArt, w.anna, w.keys[w.anna], z+1)
+	leer.Wallet = " "
+	gross := praepTx(t, quantenSPraepAbmeldenTxArt, w.anna, w.keys[w.anna], z+1)
+	gross.Wallet = strings.ToUpper(w.anna[:2]) + w.anna[2:]
 	// Unbekannter Praeparator.
 	_, nie := neuerSchluessel(t)
 	addHuman(w.cs, nie, 0)
@@ -271,7 +276,8 @@ func TestQuantenSPraep_AbmeldenMissbrauch(t *testing.T) {
 		r    string
 	}{{"fremdes Konto", fremd, "quanten_s_praep_fremd"}, {"fremder Schluessel", falsch, "quanten_w_unterschrift"},
 		{"ohne Wallet, Mensch", ohne, "quanten_s_praep_mensch"}, {"ohne Wallet mit Zeit", ohneZeit, "quanten_w_form"},
-		{"ohne Wallet mit Unterschrift", ohneSig, "quanten_w_form"}, {"nie gemeldet", unbekannt, "quanten_s_praep_unbekannt"}} {
+		{"ohne Wallet mit Unterschrift", ohneSig, "quanten_w_form"},
+		{"Wallet aus Leerzeichen", leer, "quanten_w_form"}, {"Wallet nicht kanonisch", gross, "quanten_w_form"}, {"nie gemeldet", unbekannt, "quanten_s_praep_unbekannt"}} {
 		if r := w.praepRegel(f.tx, z+1); r != f.r {
 			t.Errorf("%s: Regel %q, erwartet %q", f.name, r, f.r)
 		}

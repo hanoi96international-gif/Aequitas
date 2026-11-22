@@ -1687,7 +1687,7 @@ drand-Runde nach der Bestellung.
 Tests: Gutfall, Schlafen, Missbrauch beim Melden (kein Mensch, fremder Schlüssel, alte
 Unterschrift, K eines anderen, fremde Felder, Wiedereinspielen nach dem Vergessen), Abmelden
 (fremdes Konto, ohne Wallet bei einem Menschen), Umzug, volles Register, strenges Lesen,
-echte Datenbank. 12 Mutationen machen sie rot.
+echte Datenbank, nicht kanonische Wallet. 13 Mutationen machen sie rot.
 
 ### Nächste Schritte
 
