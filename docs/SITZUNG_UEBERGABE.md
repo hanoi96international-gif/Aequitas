@@ -37,6 +37,12 @@ dezentrales Quantengeld“.
   `einrichten.sh`, Druck mit Chromium: `node build/node_guide_pdf.cjs`); alte Generatoren
   und `docs/VALIDATOR_RAILWAY.md` entfernt; README/Whitepaper auf C1 (netcup). Gleiches in
   App, biometric-beta und proof-server (Railway-Reste).
+- **Stand 22.11. ~12:30 UTC:** **C1-Deploy 45016276994 erfolgreich** (freigegeben 12:22, ausgerollt
+  12:23, alle Stichtag-Wächter grün, Höhe steigt). R10 (eindeutiges Urteil) gilt ab **13:00 UTC**.
+  Noch offen: `/api/status` -> `quanten_w.urteil_ab = 1795352400` von außen prüfen (aus dem
+  Cloud-Container ist C1:8080 nicht erreichbar); erster Token mit `urteil`; erster Hauptnetz-Lauf
+  `quanten-s-ausgabe.yml` liefert das erste Fehlerbild. Danach: Annahmestelle schneller auf Anteile,
+  App 1.30.0.
 - **Stand 22.11. ~11:00 UTC:** C1-Deploy 44997306685 (#620) **fehlgeschlagen**: erst 10:52 freigegeben,
   Wächter `quanten-urteil-nicht-verpasst.sh` lehnte Stichtag 09:30 korrekt ab (C1 läuft weiter ohne
   R10/Fehlerbild, schlafend). **Neuer Stichtag 22.11.2026 13:00 UTC = 1795352400** (**#621 gemergt, bd9a9055**).
