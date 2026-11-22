@@ -57,7 +57,8 @@ jobs:
       - run: python3 scripts/test_c1_ziel_wechseln.py
       # Datenumzug (verschluesselt Box zu Box, Sperren gegen zwei Knoten mit
       # demselben Schluessel, Rueckweg) mit echtem Docker geprobt.
-      - run: sudo bash scripts/test_umzug_c1.sh
+      - run: sudo timeout 600 bash scripts/test_umzug_c1.sh
+        timeout-minutes: 12
       # Die Biometrie-Sicherung laedt nur age-Chiffrat hoch und bricht ohne
       # oeffentlichen Empfaenger ab. Kopf von scripts/lint_bio_sicherung.py.
       - run: python3 scripts/lint_bio_sicherung.py
