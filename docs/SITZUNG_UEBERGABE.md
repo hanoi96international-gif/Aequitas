@@ -37,6 +37,11 @@ dezentrales Quantengeld“.
   `einrichten.sh`, Druck mit Chromium: `node build/node_guide_pdf.cjs`); alte Generatoren
   und `docs/VALIDATOR_RAILWAY.md` entfernt; README/Whitepaper auf C1 (netcup). Gleiches in
   App, biometric-beta und proof-server (Railway-Reste).
+- **Stand 22.11. ~13:00 UTC:** Annahmestelle (Go-Werkzeug `quanten_s_ausgabe`) fragt Öffnung und
+  Anteil-Pakete je Aufruf nur noch **einmal** (`quantenSHTTP.versuche = 1`); die Schleife in
+  `quantenSStichprobeV2Laden` fragt nach und weicht sofort auf die Anteile aus. Vorher hielt ein toter
+  Präparator die Stelle 8 Versuche (bis ~6 min) auf. Andere Anfragen unverändert 8, nie mehr.
+  Die App fragte schon nur einmal (`oeffnungEinmal`). PR offen (siehe GitHub).
 - **Stand 22.11. ~12:30 UTC:** **C1-Deploy 45016276994 erfolgreich** (freigegeben 12:22, ausgerollt
   12:23, alle Stichtag-Wächter grün, Höhe steigt). R10 (eindeutiges Urteil) gilt ab **13:00 UTC**.
   Noch offen: `/api/status` -> `quanten_w.urteil_ab = 1795352400` von außen prüfen (aus dem

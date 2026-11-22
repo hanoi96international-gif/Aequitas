@@ -422,3 +422,47 @@ func TestQuantenSUrteilFrist(t *testing.T) {
 		t.Fatalf("Urteil unbegrenzt lang: %s", f)
 	}
 }
+
+// Toter Praeparator (R9): Oeffnung und Anteil-Pakete fragt die Stelle je
+// Aufruf genau einmal -- die Schleife in quantenSStichprobeV2Laden fragt nach
+// und weicht auf die Anteile aus. Andere Anfragen bleiben bei
+// quantenSAusgabeVersuche, und der geteilte Klient wird nicht veraendert.
+func TestQuantenSHTTP_OeffnungEinmal(t *testing.T) {
+	var zahl atomic.Int64
+	tot := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		zahl.Add(1)
+		http.Error(w, `{"error":"weg"}`, http.StatusServiceUnavailable)
+	}))
+	defer tot.Close()
+	h, err := neuerQuantenSHTTP(tot.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.takt = time.Millisecond
+	netz := &quantenSMehrNetz{validatoren: []*quantenSHTTP{h, h}}
+	K := strings.Repeat("a", 64)
+	ctx := context.Background()
+	if _, err := netz.oeffnung(ctx, 1, K, 0); err == nil || zahl.Load() != 1 {
+		t.Fatalf("Oeffnung: %d Anfragen, %v", zahl.Load(), err)
+	}
+	zahl.Store(0)
+	if _, err := netz.anteilOeffnung(ctx, 2, 1, K, 0); err == nil || zahl.Load() != 1 {
+		t.Fatalf("Anteil: %d Anfragen, %v", zahl.Load(), err)
+	}
+	if h.versuche != 0 {
+		t.Fatalf("geteilter Klient veraendert: versuche=%d", h.versuche)
+	}
+	zahl.Store(0)
+	if _, err := netz.schluessel(ctx, 1); err == nil || zahl.Load() != quantenSAusgabeVersuche {
+		t.Fatalf("Schluessel: %d Anfragen, %v", zahl.Load(), err)
+	}
+	// Nie mehr als quantenSAusgabeVersuche, auch wenn jemand mehr verlangt.
+	zahl.Store(0)
+	viel := *h
+	viel.versuche = 1000
+	kurz, aus := context.WithTimeout(ctx, 5*time.Second)
+	defer aus()
+	if _, err := viel.stand(kurz, K); err == nil || zahl.Load() != quantenSAusgabeVersuche {
+		t.Fatalf("versuche=1000: %d Anfragen, %v", zahl.Load(), err)
+	}
+}
