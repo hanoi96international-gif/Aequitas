@@ -41,8 +41,8 @@ dezentrales Quantengeld“.
   - **#626 gemergt (690daf98): C1 aufräumen.** Prüflauf 45050955665: belegt 161 von 251 GB;
     48 anonyme unbenutzte Volumes 78,8 GB (Reste der dind-Prüfstände), 89 unbenutzte Images
     (~43,9 GB), Build-Cache ~10,7 GB; nichts Benanntes unbenutzt. Betreiber hat „Ja“ gesagt →
-    **Löschlauf 45051960318** (modus=loeschen, AUFRAEUMEN) freigegeben und läuft; danach Log lesen
-    (Nachher-Belegung, „Knoten antwortet.“) und hier eintragen.
+    **Löschlauf 45051960318 grün: belegt jetzt 14 GB von 251 GB (6 %)**, Images 7,3 GB, Volumes
+    0,99 GB (nur benutzte), Build-Cache 0; „Knoten antwortet.“ Umzug muss nur noch ~1 GB Daten tragen.
   - **Erstes Quantengeld S Ende-zu-Ende:** Ausgabe quanten-s-ausgabe.yml 45050231784 grün
     (ibm_marrakesh, Mehrheit aus 5 Schüssen, Job dc1ifvlhdvas73bksj8g, 0/585 Fehler bei passender
     Basis), K = `ffb9ff3538bd51abaad2c303adc8f55a07aff983c2c366d456d6b93d114aad84`, n = 1104,
