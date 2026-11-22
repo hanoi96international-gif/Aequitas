@@ -37,12 +37,16 @@ dezentrales Quantengeld“.
   `einrichten.sh`, Druck mit Chromium: `node build/node_guide_pdf.cjs`); alte Generatoren
   und `docs/VALIDATOR_RAILWAY.md` entfernt; README/Whitepaper auf C1 (netcup). Gleiches in
   App, biometric-beta und proof-server (Railway-Reste).
+- **App 1.30.0:** Android-Release v1.30.0 veröffentlicht; iOS-Release (run 45037104268) wartet auf `app-signatur`.
 - **Stand 22.11. ~14:45 UTC: UMZUG C1 am 23.12.2026 auf kleineren Server (Betreiber).**
   Vorbereitet (PR offen): `docs/UMZUG_C1_2026-12-23.md` (Ablauf, Abnahme, Rückweg,
   Fehlerbilder); `c1-umzug.yml` (inventar/vorbereiten/probe/umziehen/zurueck/aufraeumen,
   age-verschlüsselt Box zu Box, nie zwei Knoten mit demselben Schlüssel);
   `auslastung-c1.yml` (Größe messen); `neuer-c1-pruefen.yml`; `scripts/c1_ziel_wechseln.py`
-  + `lint_c1_ziel.py` (IP + Host-Schlüssel in einem Schritt). Nächste Schritte des
+  + `lint_c1_ziel.py` (IP + Host-Schlüssel in einem Schritt). **#623 gemergt (1340a0fd).**
+  Befund im CI behoben: Auspacken setzte / /var /var/lib auf 0700 (jetzt nur Manifest-Pfade,
+  --no-overwrite-dir, Test prüft Rechte). Betreiber erwägt Contabo Cloud VPS Plus 4 (4 geteilte
+  vCPU, 8 GB): erst messen; Steal-Zeit mit neuer-c1-pruefen.yml prüfen. Nächste Schritte des
   Betreibers: `auslastung-c1.yml` (dauer 3600) laufen lassen, danach Server wählen.
   Danach (offen): Beta-Mindeststufe für Validatoren (4 dedizierte Kerne, 8 GB, 40 GB,
   Erhöhung nur nach Messung und 3 Monaten Vorlauf) — vom Betreiber gewollt.
