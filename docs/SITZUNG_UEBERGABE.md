@@ -39,8 +39,8 @@ dezentrales Quantengeld“.
   App, biometric-beta und proof-server (Railway-Reste).
 - **Stand 22.11. ~11:00 UTC:** C1-Deploy 44997306685 (#620) **fehlgeschlagen**: erst 10:52 freigegeben,
   Wächter `quanten-urteil-nicht-verpasst.sh` lehnte Stichtag 09:30 korrekt ab (C1 läuft weiter ohne
-  R10/Fehlerbild, schlafend). **Neuer Stichtag 22.11.2026 13:00 UTC = 1795352400** (PR, siehe unten).
-  Nach Merge: C1-Deploy **bis 12:30 UTC** freigeben; danach `/api/status` -> `quanten_w.urteil_ab`.
+  R10/Fehlerbild, schlafend). **Neuer Stichtag 22.11.2026 13:00 UTC = 1795352400** (**#621 gemergt, bd9a9055**).
+  C1-Deploy [45016276994](https://github.com/hanoi96international-gif/Aequitas/actions/runs/45016276994): **bis 12:30 UTC** freigeben; danach `/api/status` -> `quanten_w.urteil_ab`.
   Wieder verpasst: neuen Stichtag wählen (nie rückwirkend).
 - **Stand 22.11. ~07:35 UTC:** **#620 (R10 + Fehlerbild) gemergt (870cc66e), App #99 gemergt
   (47d10f46).** C1-Deploy [44997306685](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44997306685)
