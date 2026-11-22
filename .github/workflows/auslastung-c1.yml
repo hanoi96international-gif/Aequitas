@@ -1,0 +1,42 @@
+name: Auslastung C1 (nur lesend) -- Groesse fuer den Umzug
+# Misst CPU und RAM je Container auf C1 ueber eine Dauer (Standard 10 min,
+# hoechstens 60 min) und gibt nur Zahlen aus (deploy/auslastung-lesen.sh).
+# Zweck: den kleineren Server fuer den Umzug (geplant 23.12.2026) nach
+# Messung waehlen, nicht nach Gefuehl. Aendert nichts auf C1.
+on:
+  workflow_dispatch:
+    inputs:
+      dauer:
+        description: Messdauer in Sekunden (30 bis 3600)
+        default: "600"
+permissions:
+  contents: read
+concurrency: auslastung-c1
+jobs:
+  c1:
+    runs-on: ubuntu-latest
+    environment: produktion
+    timeout-minutes: 75
+    env:
+      C1: 188.172.229.121
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Schluessel
+        env:
+          KEY: ${{ secrets.CONTABO_SSH_KEY }}
+        run: |
+          set -eu
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s' "$KEY" | perl -0777 -pe 's/\r//g; s/(?:-|\xE2\x80[\x93\x94])+ *(BEGIN|END) OPENSSH PRIVATE KEY *(?:-|\xE2\x80[\x93\x94])+/-----$1 OPENSSH PRIVATE KEY-----/g; unless (/-----BEGIN OPENSSH PRIVATE KEY-----/) { (my $z = $_) =~ s/\s//g; if ($z =~ m|^[A-Za-z0-9+/]+=*$|) { require MIME::Base64; my $d = MIME::Base64::decode_base64($z); if ($d =~ /-----BEGIN OPENSSH PRIVATE KEY-----/) { $_ = $d; } elsif ($d =~ /\Aopenssh-key-v1\x00/) { $_ = qq{-----BEGIN OPENSSH PRIVATE KEY-----\n$z\n-----END OPENSSH PRIVATE KEY-----\n}; } } } s/\s*(-----BEGIN OPENSSH PRIVATE KEY-----)\s*(.*?)\s*(-----END OPENSSH PRIVATE KEY-----)\s*/my ($k, $b, $f) = ($1, $2, $3); $b =~ s|\s||g; $b =~ s|(.{70})|$1\n|g; $b =~ s|\n\z||; "$k\n$b\n$f\n"/se' > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          # Host-Schluessel von C1 gepinnt: genau eine ed25519-Zeile, Fingerabdruck muss stimmen.
+          ssh-keyscan -t ed25519 188.172.229.121 2>/dev/null | { grep -v '^#' || true; } > ~/.ssh/kh1
+          [ "$(grep -c . ~/.ssh/kh1)" = 1 ] || { echo "::error::Host-Schluessel von C1: nicht genau eine ed25519-Zeile"; exit 1; }
+          [ "$(ssh-keygen -lf ~/.ssh/kh1 | awk '{print $2}')" = "SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA" ] || { echo "::error::Host-Schluessel von C1 passt nicht"; exit 1; }
+          cp ~/.ssh/kh1 ~/.ssh/known_hosts
+      - name: Messen
+        env:
+          DAUER: ${{ inputs.dauer }}
+        run: |
+          set -eu
+          case "$DAUER" in ''|*[!0-9]*) echo "::error::dauer: nur Ziffern"; exit 1 ;; esac
+          ssh -o StrictHostKeyChecking=yes -o BatchMode=yes -o ServerAliveInterval=30 root@$C1 "DAUER=$DAUER bash -s" < deploy/auslastung-lesen.sh
