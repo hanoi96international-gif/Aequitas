@@ -457,3 +457,17 @@ func (cs *ChainState) quantenSWegBBescheidLocked(ctx context.Context, tx *Transa
 	}
 	return quantenWBescheid{reg: neu}, nil
 }
+
+// quantenSLosBestaetigt: jeder Geloste hat nachricht(x) per EIP-191
+// unterschrieben (Ausgabe gegen das Los, B2b).
+func quantenSLosBestaetigt(los, bestaetigungen []string, nachricht func(x int) string) quantenWBescheid {
+	if len(bestaetigungen) != len(los) {
+		return quantenWBefund("quanten_w_form", "Bestaetigungen")
+	}
+	for x, v := range los {
+		if !kanonischeSignatur(bestaetigungen[x]) || pruefePersonalSignGemerkt(nachricht(x), bestaetigungen[x], v) != nil {
+			return quantenWBefund("quanten_w_bestaetigung", "Praeparator %d (%s) hat nicht bestaetigt", x+1, kurzAdresse(v))
+		}
+	}
+	return quantenWBescheid{}
+}

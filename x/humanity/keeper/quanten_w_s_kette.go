@@ -46,6 +46,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"reflect"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -537,10 +538,17 @@ func (cs *ChainState) quantenWSAusgebenBescheidLocked(ctx context.Context, tx *T
 	if _, tot := reg.Tote[q.K]; tot {
 		return quantenWBefund("quanten_w_doppelt", "%s war schon ausgegeben (tot)", q.K[:12]), nil
 	}
-	// Weg B (quanten_s_weg_b.go): ein bestelltes K gibt nur das Los aus (B2b);
-	// bis dahin keine Ausgabe dazu.
-	if _, bestellt := reg.Bestellt[q.K]; bestellt {
-		return quantenWBefund("quanten_s_bestellung", "%s ist bestellt; die Ausgabe gegen das Los folgt (B2b)", q.K[:12]), nil
+	// Weg B (quanten_s_weg_b.go, B2b): ein bestelltes K gibt nur der
+	// Besteller aus, nur nach dem Los, mit t wie bestellt und genau den
+	// Gelosten in Losreihenfolge als "Validatoren" (Praeparatoren).
+	best, bestellt := reg.Bestellt[q.K]
+	if bestellt {
+		if best.Runde == 0 {
+			return quantenWBefund("quanten_s_bestellung", "%s ist bestellt, aber noch nicht gelost", q.K[:12]), nil
+		}
+		if wallet != best.Von || q.T != best.T || !slices.Equal(q.Validatoren, best.Los) || zeit < best.Zeit {
+			return quantenWBefund("quanten_s_los", "Ausgabe zu %s nicht vom Besteller, mit anderem t, nicht genau das Los oder vor der Bestellung", q.K[:12]), nil
+		}
 	}
 	if len(reg.Token) >= quantenWTokenHoechstens {
 		return quantenWBefund("quanten_w_voll", "Register voll (%d Token)", len(reg.Token)), nil
@@ -579,9 +587,16 @@ func (cs *ChainState) quantenWSAusgebenBescheidLocked(ctx context.Context, tx *T
 	if err := quantenWUnterschrift(q, quantenWSAusgabeNachrichtArt(wallet, q.K, q.N, q.T, q.Wurzel, q.Validatoren, q.Proben, q.Annahme, inhaber, q.Deckung, zeit, q.Tol, q.ProbeArt), wallet, blockZeit); err != nil {
 		return quantenWBefund("quanten_w_unterschrift", "Ausgeber %s: %v", kurzAdresse(wallet), err), nil
 	}
-	if u, err := cs.quantenWValidatorenLocked(ctx, q.Validatoren, q.Bestaetigungen, func(x int) string {
+	bestaetigung := func(x int) string {
 		return quantenWSBestaetigungNachricht(q.K, wurzel, q.N, q.T, q.Validatoren, x+1, proben, zeit, q.Tol)
-	}); err != nil || u.regel != "" {
+	}
+	if bestellt {
+		// Weg B: die Gelosten sind Menschen aus dem Praeparatoren-Register
+		// (ein Mensch, ein Eintrag); jeder bestaetigt selbst.
+		if u := quantenSLosBestaetigt(q.Validatoren, q.Bestaetigungen, bestaetigung); u.regel != "" {
+			return u, nil
+		}
+	} else if u, err := cs.quantenWValidatorenLocked(ctx, q.Validatoren, q.Bestaetigungen, bestaetigung); err != nil || u.regel != "" {
 		return u, err
 	}
 	if q.Deckung < quantenMindestDeckungMik {
@@ -599,6 +614,7 @@ func (cs *ChainState) quantenWSAusgebenBescheidLocked(ctx context.Context, tx *T
 		return quantenWBefund("quanten_w_voll", "zu viele tote Noten und Token im Ausgabefenster"), nil
 	}
 	neu.Token[q.K] = &quantenWSEintrag{token: tok, Anteile: anteile, Zeit: zeit, Stellen: stellen}
+	delete(neu.Bestellt, q.K) // Weg B: die Bestellung ist erledigt
 	return quantenWBescheid{reg: neu, wege: []quantenWWeg{{wallet, quantenWTopfAddr, q.Deckung}}, felder: QuantenWAngaben{Anteile: anteile}}, nil
 }
 

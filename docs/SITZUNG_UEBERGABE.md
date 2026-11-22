@@ -37,6 +37,18 @@ dezentrales Quantengeld“.
   `einrichten.sh`, Druck mit Chromium: `node build/node_guide_pdf.cjs`); alte Generatoren
   und `docs/VALIDATOR_RAILWAY.md` entfernt; README/Whitepaper auf C1 (netcup). Gleiches in
   App, biometric-beta und proof-server (Railway-Reste).
+- **Stand 22.11. ~21:30 UTC (Sitzung „Weiter Übergabe“, Zweig `claude/weiter-uebergabe-1a9yql`):**
+  - **B2 (Weg B in der Kette) fertig, schlafend** (`quanten_s_weg_b.go`, Stichtag `quantenSWegBAbUnix` = MaxInt64):
+    melden/abmelden/bestellen/losen + Ausgabe gegen das Los (B2b). Details und offene Punkte vor dem
+    Scharfschalten: `forschung/quantengeld/DEZENTRAL.md` 18 „B2 in der Kette“. PR dieser Stand, mit eigener
+    Sicherheitsprüfung als Kommentar. Nach dem Merge: C1-Deploy (`produktion`) ist harmlos (schlafend).
+  - **Erledigt seit 18:50:** #625 gemergt (007d44cd); Aufräumen App/proof-server/biometric-beta durch
+    (39→5, 24→3, 57→4 Zweige); Aequitas-Lauf 45069778900 wartet auf `produktion`. #627 war schon auf C1
+    (Deploy 45058105105 grün); der doppelte Lauf 45058108805 ist abgebrochen.
+  - **Wartet auf den Betreiber:** APK 1.30.2 (45056590596) Freigabe `app-signatur`; danach `release-apk.yml`
+    (run_id 45056590596, Tag `v1.30.2`) und `release-ios.yml` (run_id 45056593213, Tag `v1.30.2`).
+  - **Nächste Schritte:** B2-Rest vor dem Stichtag (Umzug meldet ab, Pfand, Begrenzung), dann B3 Briefkasten,
+    B4 App als Präparatorin, B5 Pilot (7 Menschen).
 - **Zweige aufräumen (Sitzung „Weiter Übergabe“, Zweig `claude/weiter-uebergabe-1a9yql`, Stand 22.11. ~20:50 UTC):**
   - Betreiber: „Alles, was gebraucht wird, übernehmen und umsetzen, alles andere löschen.“ Durchsicht aller
     nicht gemergten Zweige: übernommen `docs/AUDIT_2026-11-14.md` und `docs/IRIS_PROTOTYP_EINKAUFSLISTE.md`;

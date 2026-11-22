@@ -460,3 +460,134 @@ func TestQuantenSWegB_AbbildGrenzen(t *testing.T) {
 		t.Fatalf("Abbild %v", a)
 	}
 }
+
+// ------------------------------------------------------------ B2b
+
+// qbsWelt: eine S-Welt (echte Praeparation, Inhaberin, Annahmestellen) mit
+// Praeparatoren-Register; gelost wird mit einem Test-drand-Netz.
+type qbsWelt struct {
+	*qsWelt
+	praep    []string
+	los      []string
+	signiere func(uint64) string
+}
+
+func neueQbsWelt(t *testing.T, gelost bool) *qbsWelt {
+	t.Helper()
+	w := &qbsWelt{qsWelt: neueQsWelt(t, 128, 80)}
+	quantenSWegBAbOverride.Store(1)
+	netz, sig := drandTestNetz(t, 777)
+	alt := quantenSDrand
+	quantenSDrand, w.signiere = netz, sig
+	t.Cleanup(func() { quantenSWegBAbOverride.Store(0); quantenSDrand = alt })
+	w.cs.nullifiers, w.nach.nullifiers = map[string]string{}, map[string]string{}
+	melde := qwT0 - 86400
+	for i := 0; i < 16; i++ {
+		k, a := neuerSchluessel(t)
+		w.keys[a] = k
+		addHuman(w.cs, a, 1)
+		addHuman(w.nach, a, 1)
+		n := fmt.Sprintf("praep-%02d", i)
+		w.cs.nullifiers[n], w.nach.nullifiers[n] = a, a
+		w.praep = append(w.praep, a)
+		w.annehmen(Transaction{Type: quantenSMeldenTxArt, Wallet: a, DistributionAt: melde,
+			QuantenW: &QuantenWAngaben{WalletSig: personalSign(t, k, quantenSMeldenNachricht(a, melde))}}, melde)
+	}
+	v := len(w.val)
+	w.annehmen(Transaction{Type: quantenSBestellenTxArt, Wallet: w.praeger, DistributionAt: qwT0, QuantenW: &QuantenWAngaben{K: w.p.K, V: v, T: w.p.t,
+		WalletSig: personalSign(t, w.keys[w.praeger], quantenSBestellenNachricht(w.praeger, w.p.K, v, w.p.t, qwT0))}}, qwT0)
+	if gelost {
+		r := quantenSLosRunde(qwT0)
+		w.annehmen(qbLosen(w.p.K, r, w.signiere(r)), qwT0+40)
+		w.los = w.cs.quantenWJetzt().Bestellt[w.p.K].Los
+		w.setzeValidatoren(w.los)
+	}
+	return w
+}
+
+// setzeValidatoren: die Ausgabe nennt diese Konten (mit ihren Schluesseln).
+func (w *qbsWelt) setzeValidatoren(konten []string) {
+	w.val, w.valKeys = slices.Clone(konten), nil
+	for _, a := range konten {
+		w.valKeys = append(w.valKeys, w.keys[a])
+	}
+}
+
+// Gutfall: Ausgabe genau gegen das Los, dann binden, waehlen, anmelden,
+// offenlegen -- der Token ist echt eingeloest; die Bestellung ist erledigt.
+func TestQuantenSWegB_AusgabeGegenDasLos(t *testing.T) {
+	w := neueQbsWelt(t, true)
+	z := qwT0 + 60
+	w.annehmen(w.ausgebenTx(z, 10_000_000), z+1)
+	reg := w.cs.quantenWJetzt()
+	if reg.Token[w.p.K] == nil || reg.Token[w.p.K].token.NVal != len(w.los) {
+		t.Fatal("Token nicht ausgegeben")
+	}
+	if _, da := reg.Bestellt[w.p.K]; da {
+		t.Fatal("Bestellung nach der Ausgabe noch offen")
+	}
+	w.annehmen(w.bindenTx(w.anna), z+2)
+	w.annehmen(w.waehlenTx(w.anna, "1"), z+3)
+	w.annehmen(w.anmeldenTx(w.stelle[0], 0, w.probe[0], w.vorlage(0, w.keys[w.anna])), z+10)
+	if g := w.offenlegenAlle(0, z+20); g.Urteil != "echt" || g.WertAn != w.stelle[0] {
+		t.Fatalf("Einloesen: %+v", g)
+	}
+}
+
+// Missbrauch der Ausgabe zu einem bestellten K.
+func TestQuantenSWegB_AusgabeMissbrauch(t *testing.T) {
+	z := qwT0 + 60
+	// Vor dem Los: abgewiesen.
+	vor := neueQbsWelt(t, false)
+	vor.setzeValidatoren(vor.praep[:len(vor.val)])
+	if u := vor.bescheid(vor.cs, vor.ausgebenTx(z, 10_000_000), z+1); u.regel != "quanten_s_bestellung" {
+		t.Fatalf("vor dem Los: %q", u.regel)
+	}
+	w := neueQbsWelt(t, true)
+	fremd := ""
+	for _, a := range w.praep {
+		if !slices.Contains(w.los, a) {
+			fremd = a
+			break
+		}
+	}
+	vertauscht := slices.Clone(w.los)
+	vertauscht[0], vertauscht[1] = vertauscht[1], vertauscht[0]
+	ersetzt := slices.Clone(w.los)
+	ersetzt[2] = fremd
+	for name, konten := range map[string][]string{"Reihenfolge": vertauscht, "fremder Praeparator": ersetzt, "einer weniger": w.los[:len(w.los)-1]} {
+		w.setzeValidatoren(konten)
+		if u := w.bescheid(w.cs, w.ausgebenTx(z, 10_000_000), z+1); u.regel != "quanten_s_los" {
+			t.Fatalf("%s: %q", name, u.regel)
+		}
+	}
+	w.setzeValidatoren(w.los)
+	// Nicht der Besteller.
+	andere := w.ausgebenTx(z, 10_000_000)
+	andere.Wallet = w.anna
+	if u := w.bescheid(w.cs, andere, z+1); u.regel != "quanten_s_los" {
+		t.Fatalf("nicht der Besteller: %q", u.regel)
+	}
+	// Anderes t als bestellt.
+	tAnders := w.ausgebenTx(z, 10_000_000)
+	tAnders.QuantenW.T = w.p.t - 1
+	if u := w.bescheid(w.cs, tAnders, z+1); u.regel != "quanten_s_los" {
+		t.Fatalf("anderes t: %q", u.regel)
+	}
+	// Ein Geloster hat nicht bestaetigt (fremde Unterschrift an seiner Stelle).
+	ohne := w.ausgebenTx(z, 10_000_000)
+	ohne.QuantenW.Bestaetigungen[1] = ohne.QuantenW.Bestaetigungen[0]
+	if u := w.bescheid(w.cs, ohne, z+1); u.regel != "quanten_w_bestaetigung" {
+		t.Fatalf("Bestaetigung fehlt: %q", u.regel)
+	}
+	// Ohne Bestellung gilt weiter Weg A: dieselben Konten sind keine
+	// gebundenen Validatoren.
+	ohneBest := neueQsWelt(t, 128, 80)
+	ohneBest.val, ohneBest.valKeys = w.val, w.valKeys
+	for i, a := range w.val {
+		ohneBest.keys[a] = w.valKeys[i]
+	}
+	if u := ohneBest.bescheid(ohneBest.cs, ohneBest.ausgebenTx(z, 10_000_000), z+1); u.regel != "quanten_w_validator" {
+		t.Fatalf("Weg A ohne Bindung: %q", u.regel)
+	}
+}

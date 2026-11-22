@@ -1658,11 +1658,33 @@ die nur, wenn sie mit Ausgeber und Inhaberin zusammenarbeitet.
 Ehrlich: Das ist eine Abhängigkeit von einem externen Verbund. Fällt drand aus, wird
 nicht gelost und nicht ausgegeben (fail-closed); ausgegebene Token sind nicht betroffen.
 
+### B2 in der Kette (22.11.2026, schlafend: `quantenSWegBAbUnix` = MaxInt64)
+
+`x/humanity/keeper/quanten_s_weg_b.go`, Ausgabe in `quanten_w_s_kette.go`:
+
+| Art | Regel |
+|---|---|
+| `quanten_w_s_melden` | Nur Menschen mit Nullifier. Je Wallet ein Eintrag, je Mensch ein aktiver: Meldet sich derselbe Mensch mit einer neuen Wallet (Umzug), wird der alte Eintrag abgemeldet. |
+| `quanten_w_s_abmelden` | Die Unterschrift bindet die Meldezeit; eine alte Unterschrift trifft keine spätere Meldung. Abgemeldete bleiben, bis alte Melde-Unterschriften abgelaufen sind. |
+| `quanten_w_s_bestellen` | K, v (4–16), t (2–v); nur Menschen, je Mensch eine offene Bestellung, höchstens 32. |
+| `quanten_w_s_losen` | Die drand-Runde ist **fest**: die erste mit Zeit ≥ Bestellung + 30 s. Wer einreicht, wählt keine Runde (Test mit gültig signierten fremden Runden). Jeder Knoten prüft die BLS-Signatur selbst und lost aus dem Register **zur Bestellung** (Vorlauf 1 Tag; spätere Abmeldung verschiebt nichts). Frist 1 h, sonst verfällt die Bestellung. |
+| `quanten_w_s_ausgeben` zu einem bestellten K | Nur nach dem Los, nur vom Besteller, t wie bestellt, als Präparatoren genau die Gelosten in Losreihenfolge, jeder hat bestätigt. Danach ist die Bestellung erledigt. Ohne Bestellung gilt Weg A unverändert. |
+
+Kein Geld bewegt sich bei Melden, Bestellen und Losen. Leer ändert das Register keine
+Bytes (StateRoot unverändert). Tests mit dem echten quicknet-Beacon und einem Test-Verbund;
+27 Gegenproben rot.
+
+**Vor dem Scharfschalten offen:** (1) Ein Umzug muss den Eintrag der alten Wallet selbst
+abmelden; heute bleibt er aktiv, bis der Mensch sich mit der neuen Wallet meldet, und eine
+gestohlene alte Wallet könnte bis dahin gelost werden. (2) Pfand je Präparator (B2b-Pfand).
+(3) Bestellungen sind kostenlos; 32 Menschen könnten Weg B je eine Stunde lang belegen.
+(4) Weg B braucht B3/B4 (Briefkasten, App als Präparatorin), sonst gibt es keine Präparatoren.
+
 ### Nächste Schritte
 
 | Schritt | Was |
 |---|---|
-| B2 | Kette: Präparatoren-Register (Melden/Abmelden mit Menschenbindung), Zufall aus Zusage und Offenlegung, Los, Prüfung der Ausgabe gegen das Los, Pfand. Konsensänderung mit Stichtag, eigene Sicherheitsprüfung, Prüfvektor aus `s_weg_b.py`. |
+| B2 | **Schlafend fertig (siehe oben).** Offen vor dem Stichtag: Umzug meldet ab, Pfand, Begrenzung der Bestellungen. |
 | B3 | Briefkasten bei den Knoten: verschlüsselte Pakete (Basen y, Anteile, Öffnungen) ablegen und abholen, begrenzt je Absender und Größe. |
 | B4 | App als Präparatorin: IBM-Schlüssel nur im Gerät, Auftrag über die REST-Schnittstelle, Abschnitt präparieren, Anteile verteilen, nach der Bindung öffnen. |
 | B5 | Pilot im Hauptnetz mit mindestens 7 Menschen (4 von 7); erst danach größere v. |
