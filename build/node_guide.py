@@ -74,7 +74,7 @@ T["de"] = dict(
         ("Leistung", "<b>{sig} Signaturen je Sekunde</b>, Datenbank-Commit höchstens {ms} ms"),
         ("Du selbst", "in der Aequitas-App registriert (Gesichtsprüfung abgeschlossen)"),
     ],
-    kosten="So ein Server kostet bei den meisten Anbietern etwa <b>20 bis 40 Euro im Monat</b>. Wähle „8 vCPU dediziert“ oder einen Root-Server, <b>nicht</b> die kleinste Klasse mit geteilten vCPU.",
+    kosten="So ein Server kostet bei den meisten Anbietern etwa <b>10 bis 15 Euro im Monat</b>. Wähle „4 vCPU dediziert“ oder einen Root-Server, <b>nicht</b> die kleinste Klasse mit geteilten vCPU.",
     pruef_h="Zu schwache Hardware wird abgelehnt – an drei Stellen",
     pruef=[
         "Das Einrichtungsskript prüft vor dem Bauen Kerne, Arbeitsspeicher und Platz.",
@@ -138,7 +138,7 @@ T["en"] = dict(
         ("Performance", "<b>{sig} signatures per second</b>, database commit at most {ms} ms"),
         ("You", "registered in the Aequitas app (face check completed)"),
     ],
-    kosten="Such a server costs about <b>20 to 40 euros a month</b> at most providers. Choose “8 vCPU dedicated” or a root server, <b>not</b> the smallest class with shared vCPUs.",
+    kosten="Such a server costs about <b>10 to 15 euros a month</b> at most providers. Choose “4 vCPU dedicated” or a root server, <b>not</b> the smallest class with shared vCPUs.",
     pruef_h="Hardware that is too weak is rejected – at three points",
     pruef=[
         "The setup script checks cores, memory and space before building.",
@@ -211,7 +211,7 @@ T["es"] = dict(
         ("Rendimiento", "<b>{sig} firmas por segundo</b>, commit de la base de datos como máximo {ms} ms"),
         ("Tú", "registrado en la app de Aequitas (verificación facial completada)"),
     ],
-    kosten="Un servidor así cuesta unos <b>20 a 40 euros al mes</b> en la mayoría de proveedores. Elige «8 vCPU dedicadas» o un servidor dedicado, <b>no</b> la clase más pequeña con vCPU compartidas.",
+    kosten="Un servidor así cuesta unos <b>10 a 15 euros al mes</b> en la mayoría de proveedores. Elige «4 vCPU dedicadas» o un servidor dedicado, <b>no</b> la clase más pequeña con vCPU compartidas.",
     pruef_h="El hardware demasiado débil se rechaza, en tres puntos",
     pruef=[
         "El script de instalación comprueba núcleos, memoria y espacio antes de compilar.",
@@ -275,7 +275,7 @@ T["fr"] = dict(
         ("Performance", "<b>{sig} signatures par seconde</b>, commit de la base de données en {ms} ms au plus"),
         ("Toi", "inscrit dans l’application Aequitas (contrôle du visage terminé)"),
     ],
-    kosten="Un tel serveur coûte environ <b>20 à 40 euros par mois</b> chez la plupart des hébergeurs. Choisis « 8 vCPU dédiés » ou un serveur dédié, <b>pas</b> la plus petite offre à vCPU partagés.",
+    kosten="Un tel serveur coûte environ <b>10 à 15 euros par mois</b> chez la plupart des hébergeurs. Choisis « 4 vCPU dédiés » ou un serveur dédié, <b>pas</b> la plus petite offre à vCPU partagés.",
     pruef_h="Un matériel trop faible est refusé – à trois endroits",
     pruef=[
         "Le script d’installation vérifie cœurs, mémoire et espace avant la compilation.",
@@ -339,7 +339,7 @@ T["it"] = dict(
         ("Prestazioni", "<b>{sig} firme al secondo</b>, commit del database al massimo {ms} ms"),
         ("Tu", "registrato nell'app Aequitas (verifica del volto completata)"),
     ],
-    kosten="Un server così costa circa <b>da 20 a 40 euro al mese</b> presso la maggior parte dei fornitori. Scegli «8 vCPU dedicate» o un server dedicato, <b>non</b> la classe più piccola con vCPU condivise.",
+    kosten="Un server così costa circa <b>da 10 a 15 euro al mese</b> presso la maggior parte dei fornitori. Scegli «4 vCPU dedicate» o un server dedicato, <b>non</b> la classe più piccola con vCPU condivise.",
     pruef_h="L'hardware troppo debole viene respinto – in tre punti",
     pruef=[
         "Lo script di installazione controlla core, memoria e spazio prima della compilazione.",
@@ -403,7 +403,7 @@ T["pt"] = dict(
         ("Desempenho", "<b>{sig} assinaturas por segundo</b>, commit da base de dados em no máximo {ms} ms"),
         ("Tu", "registado na app Aequitas (verificação facial concluída)"),
     ],
-    kosten="Um servidor destes custa cerca de <b>20 a 40 euros por mês</b> na maioria dos fornecedores. Escolhe «8 vCPU dedicadas» ou um servidor dedicado, <b>não</b> a classe mais pequena com vCPU partilhadas.",
+    kosten="Um servidor destes custa cerca de <b>10 a 15 euros por mês</b> na maioria dos fornecedores. Escolhe «4 vCPU dedicadas» ou um servidor dedicado, <b>não</b> a classe mais pequena com vCPU partilhadas.",
     pruef_h="Hardware fraco demais é recusado – em três pontos",
     pruef=[
         "O script de instalação verifica núcleos, memória e espaço antes de compilar.",
@@ -467,7 +467,7 @@ T["tr"] = dict(
         ("Performans", "saniyede <b>{sig} imza</b>, veritabanı commit en fazla {ms} ms"),
         ("Sen", "Aequitas uygulamasında kayıtlı (yüz kontrolü tamamlanmış)"),
     ],
-    kosten="Böyle bir sunucu çoğu sağlayıcıda ayda yaklaşık <b>20 ila 40 euro</b> tutar. “8 vCPU ayrılmış” veya bir kök sunucu seç; paylaşılan vCPU’lu en küçük sınıfı <b>seçme</b>.",
+    kosten="Böyle bir sunucu çoğu sağlayıcıda ayda yaklaşık <b>10 ila 15 euro</b> tutar. “4 vCPU ayrılmış” veya bir kök sunucu seç; paylaşılan vCPU’lu en küçük sınıfı <b>seçme</b>.",
     pruef_h="Zayıf donanım reddedilir – üç noktada",
     pruef=[
         "Kurulum betiği derlemeden önce çekirdekleri, belleği ve alanı kontrol eder.",
@@ -531,7 +531,7 @@ T["id"] = dict(
         ("Kinerja", "<b>{sig} tanda tangan per detik</b>, commit basis data paling lama {ms} ms"),
         ("Kamu", "terdaftar di aplikasi Aequitas (pemeriksaan wajah selesai)"),
     ],
-    kosten="Server seperti ini berbiaya sekitar <b>20 sampai 40 euro per bulan</b> di kebanyakan penyedia. Pilih “8 vCPU dedicated” atau server dedicated, <b>bukan</b> kelas terkecil dengan vCPU bersama.",
+    kosten="Server seperti ini berbiaya sekitar <b>10 sampai 15 euro per bulan</b> di kebanyakan penyedia. Pilih “4 vCPU dedicated” atau server dedicated, <b>bukan</b> kelas terkecil dengan vCPU bersama.",
     pruef_h="Perangkat keras yang terlalu lemah ditolak – di tiga titik",
     pruef=[
         "Skrip pemasangan memeriksa inti, memori, dan ruang sebelum membangun.",
@@ -595,7 +595,7 @@ T["ru"] = dict(
         ("Производительность", "<b>{sig} подписей в секунду</b>, коммит базы данных не дольше {ms} мс"),
         ("Ты", "зарегистрирован в приложении Aequitas (проверка лица пройдена)"),
     ],
-    kosten="Такой сервер у большинства провайдеров стоит примерно <b>20–40 евро в месяц</b>. Выбирай «8 выделенных vCPU» или выделенный сервер, <b>не</b> самый маленький тариф с общими vCPU.",
+    kosten="Такой сервер у большинства провайдеров стоит примерно <b>10–15 евро в месяц</b>. Выбирай «4 выделенных vCPU» или выделенный сервер, <b>не</b> самый маленький тариф с общими vCPU.",
     pruef_h="Слишком слабое оборудование отклоняется — в трёх местах",
     pruef=[
         "Скрипт установки проверяет ядра, память и место до сборки.",
@@ -659,7 +659,7 @@ T["zh"] = dict(
         ("性能", "<b>每秒 {sig} 次签名</b>，数据库提交不超过 {ms} 毫秒"),
         ("你本人", "已在 Aequitas 应用中注册（已完成人脸检查）"),
     ],
-    kosten="在大多数服务商处，这样的服务器每月约 <b>20 至 40 欧元</b>。请选择“8 个独享 vCPU”或独立服务器，<b>不要</b>选共享 vCPU 的最小规格。",
+    kosten="在大多数服务商处，这样的服务器每月约 <b>10 至 15 欧元</b>。请选择“4 个独享 vCPU”或独立服务器，<b>不要</b>选共享 vCPU 的最小规格。",
     pruef_h="硬件太弱会被拒绝——共有三道关",
     pruef=[
         "安装脚本在构建前检查核心数、内存和空间。",
@@ -723,7 +723,7 @@ T["ar"] = dict(
         ("الأداء", "<b>{sig} توقيع في الثانية</b>، وحفظ قاعدة البيانات في {ms} ms على الأكثر"),
         ("أنت", "مسجّل في تطبيق Aequitas (اكتمل فحص الوجه)"),
     ],
-    kosten="تبلغ كلفة مثل هذا الخادم لدى معظم المزوّدين نحو <b>20 إلى 40 يورو شهريًا</b>. اختر «8 vCPU مخصصة» أو خادمًا مخصصًا، و<b>ليس</b> أصغر فئة بأنوية مشتركة.",
+    kosten="تبلغ كلفة مثل هذا الخادم لدى معظم المزوّدين نحو <b>10 إلى 15 يورو شهريًا</b>. اختر «4 vCPU مخصصة» أو خادمًا مخصصًا، و<b>ليس</b> أصغر فئة بأنوية مشتركة.",
     pruef_h="يُرفض العتاد الضعيف — في ثلاثة مواضع",
     pruef=[
         "يفحص سكربت الإعداد الأنوية والذاكرة والمساحة قبل البناء.",
@@ -787,7 +787,7 @@ T["hi"] = dict(
         ("प्रदर्शन", "<b>प्रति सेकंड {sig} हस्ताक्षर</b>, डेटाबेस कमिट अधिकतम {ms} ms"),
         ("तुम ख़ुद", "Aequitas ऐप में पंजीकृत (चेहरे की जाँच पूरी)"),
     ],
-    kosten="ऐसा सर्वर ज़्यादातर प्रदाताओं के यहाँ लगभग <b>20 से 40 यूरो प्रति माह</b> का होता है। “8 vCPU समर्पित” या रूट सर्वर चुनो, साझा vCPU वाली सबसे छोटी श्रेणी <b>नहीं</b>।",
+    kosten="ऐसा सर्वर ज़्यादातर प्रदाताओं के यहाँ लगभग <b>10 से 15 यूरो प्रति माह</b> का होता है। “4 vCPU समर्पित” या रूट सर्वर चुनो, साझा vCPU वाली सबसे छोटी श्रेणी <b>नहीं</b>।",
     pruef_h="कमज़ोर हार्डवेयर अस्वीकार होता है – तीन जगहों पर",
     pruef=[
         "सेटअप स्क्रिप्ट बनाने से पहले कोर, मेमोरी और जगह जाँचती है।",

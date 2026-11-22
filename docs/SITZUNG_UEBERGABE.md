@@ -2,7 +2,7 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 21.11.2026 ~20:15 UTC, Sitzung „CL Übergabe weitermachen“; davor ~18:00 UTC Sitzung „Weiter“ (Zweig `claude/admiring-bohr-ob0u0p`, alle vier
+Stand: 22.11.2026 ~16:40 UTC, Sitzung „Weiter Übergabe“ (`claude/weiter-uebergabe-1a9yql`); davor 21.11. ~20:15 UTC Sitzung „CL Übergabe weitermachen“; davor ~18:00 UTC Sitzung „Weiter“ (Zweig `claude/admiring-bohr-ob0u0p`, alle vier
 Repos); davor ~13:40 UTC Sitzung „Weiter“ (`claude/weiter-uw2p42`), davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18:30 UTC Sitzung
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
@@ -37,12 +37,50 @@ dezentrales Quantengeld“.
   `einrichten.sh`, Druck mit Chromium: `node build/node_guide_pdf.cjs`); alte Generatoren
   und `docs/VALIDATOR_RAILWAY.md` entfernt; README/Whitepaper auf C1 (netcup). Gleiches in
   App, biometric-beta und proof-server (Railway-Reste).
+- **Stand 22.11. ~16:40 UTC, Sitzung „Weiter Übergabe“ (Zweig `claude/weiter-uebergabe-1a9yql`, alle vier Repos):**
+  1. **App-Fehler getRandomBytes(1104) behoben: App #101 gemergt (cdedf15a)** (1.30.1, versionCode/buildNumber 67).
+     `zufallInStuecken` in `lib/quantenSInhaberin.ts` zieht höchstens 1024 Byte je Aufruf, fail-closed.
+     15 Tests, Gegenprobe 6 rot, Suite 1108 grün. Builds laufen: APK
+     [45042698436](https://github.com/hanoi96international-gif/Aequitas-App/actions/runs/45042698436) (Signieren:
+     Freigabe `app-signatur`), iOS [45042700994](https://github.com/hanoi96international-gif/Aequitas-App/actions/runs/45042700994).
+     Danach `release-apk.yml` (run_id 45042698436, Tag `v1.30.1`) und `release-ios.yml`. iOS-Release 1.30.0 war erfolgreich (45037104268).
+  2. **Beta-Stufe (42d881e) als PR auf diesem Zweig.** Die Schwelle wirkt nur lokal (Leistungsnachweis
+     des eigenen Knotens, Kandidatenprobe beim Anmeldeknoten), sie ist kein Kettenzustand, also gibt es
+     keine Spaltung beim Umstellen. Gegenprobe: Knoten oder einrichten.sh einzeln geändert → Test rot.
+     Danach: eigene Sicherheitsprüfung als PR-Kommentar, Merge, C1-Deploy (`produktion`).
+  3. Unverändert offen: Umzug-Messung (`auslastung-c1.yml`, Betreiber).
+- **Stand 22.11. ~16:10 UTC (Sitzungsende) — NÄCHSTE SCHRITTE IN DIESER REIHENFOLGE:**
+  1. **APP-FEHLER (dringend, vom Betreiber gemeldet, Screenshot):** Annahmestelle/Bestellung
+     bricht ab mit `expo-crypto: getRandomBytes(1104) expected a valid number from range
+     0...1024`. Ursache: `getRandomBytes` liefert höchstens 1024 Byte je Aufruf; die App fragt
+     bei n = 1104 auf einmal. Fix in Aequitas-App: `u.zufall(n)` in Stücken ≤ 1024 ziehen
+     (zentral in der Umgebung, `lib/quantenSInhaberin.ts` `zufall: (n) => getRandomBytes(n)`),
+     Test mit n > 1024 (Mock, der > 1024 wirft), dann App 1.30.1 (versionCode/buildNumber 67),
+     Build + Release (Freigaben `app-signatur`, Links an den Betreiber).
+  2. **Beta-Stufe Validatoren:** Commit 42d881ea auf dem Zweig (lokal committet; prüfen, ob
+     gepusht, sonst pushen), noch **kein PR**: Knoten `leistungsVorgabe` 4 Kerne / 20.000 Sig/s /
+     5 ms, `einrichten.sh` 4 Kerne / 7500 MB / 40 GB + Steal-Prüfung (>5 % abgelehnt), neuer
+     Test `leistungsnachweis_einrichten_test.go` (Knoten = einrichten.sh), Anleitung (12 PDFs neu),
+     Website `ng-need-d` (12 Sprachen), `VALIDATOR_EINRICHTEN.md` mit Zusage (Erhöhung nur nach
+     Messung, 3 Monate Vorlauf). Keeper-Suite grün. PR mit Sicherheit-Abschnitt + getrennte
+     Sicherheitsprüfung (Leistungsprobe = Zulassung neuer Validatoren); danach C1-Deploy
+     (Freigabe `produktion`, keine Frist). Wichtig für den Umzug: ohne diese Senkung wäre ein
+     neuer C1 mit 4 Kernen nicht mehr „leiterfähig“.
+  3. **Umzug C1 (23.12.):** Betreiber startet `auslastung-c1.yml` (dauer 3600) und schickt das
+     Ergebnis; dann Servergröße empfehlen. Betreiber erwägt Contabo Cloud VPS Plus 4 (4 GETEILTE
+     vCPU, 8 GB, 16,34 €): Steal mit `neuer-c1-pruefen.yml` prüfen; einrichten.sh lehnt > 5 % ab.
+  4. iOS-Release 1.30.0 (run 45037104268) wartete auf `app-signatur` — prüfen.
+  Arbeitsweise: Betreiber will Antworten auf **Deutsch** und zu jeder Freigabe den direkten Link.
+- **App 1.30.0:** Android-Release v1.30.0 veröffentlicht; iOS-Release (run 45037104268) wartet auf `app-signatur`.
 - **Stand 22.11. ~14:45 UTC: UMZUG C1 am 23.12.2026 auf kleineren Server (Betreiber).**
   Vorbereitet (PR offen): `docs/UMZUG_C1_2026-12-23.md` (Ablauf, Abnahme, Rückweg,
   Fehlerbilder); `c1-umzug.yml` (inventar/vorbereiten/probe/umziehen/zurueck/aufraeumen,
   age-verschlüsselt Box zu Box, nie zwei Knoten mit demselben Schlüssel);
   `auslastung-c1.yml` (Größe messen); `neuer-c1-pruefen.yml`; `scripts/c1_ziel_wechseln.py`
-  + `lint_c1_ziel.py` (IP + Host-Schlüssel in einem Schritt). Nächste Schritte des
+  + `lint_c1_ziel.py` (IP + Host-Schlüssel in einem Schritt). **#623 gemergt (1340a0fd).**
+  Befund im CI behoben: Auspacken setzte / /var /var/lib auf 0700 (jetzt nur Manifest-Pfade,
+  --no-overwrite-dir, Test prüft Rechte). Betreiber erwägt Contabo Cloud VPS Plus 4 (4 geteilte
+  vCPU, 8 GB): erst messen; Steal-Zeit mit neuer-c1-pruefen.yml prüfen. Nächste Schritte des
   Betreibers: `auslastung-c1.yml` (dauer 3600) laufen lassen, danach Server wählen.
   Danach (offen): Beta-Mindeststufe für Validatoren (4 dedizierte Kerne, 8 GB, 40 GB,
   Erhöhung nur nach Messung und 3 Monaten Vorlauf) — vom Betreiber gewollt.
