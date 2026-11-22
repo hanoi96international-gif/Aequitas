@@ -92,3 +92,27 @@ func kippeLetztesHex(s string) string {
 	b[len(b)-1] ^= 1
 	return hex.EncodeToString(b)
 }
+
+// Echter Beacon des League-of-Entropy-Netzes quicknet (Runde 1.000.000, vom
+// Betreiber am 22.11.2026 aus api.drand.sh/v2/beacons/quicknet/rounds/1000000
+// abgerufen): die Pruefung muss ihn mit dem festen Schluessel annehmen und
+// jede Abweichung abweisen.
+const drandEchtRunde = 1000000
+const drandEchtSig = "83ad29e4c409f9470fc2ef02f90214df49e02b441a1a241a82d622d9f608ef98fd8b11a029f1bee9d9e83b45088abe72"
+
+func TestDrand_EchterQuicknetBeacon(t *testing.T) {
+	z, err := drandQuicknet.pruefen(drandEchtRunde, drandEchtSig)
+	if err != nil {
+		t.Fatalf("echter quicknet-Beacon abgewiesen: %v", err)
+	}
+	if hex.EncodeToString(z[:]) == strings.Repeat("00", 32) {
+		t.Fatal("Zufall leer")
+	}
+	if _, err := drandQuicknet.pruefen(drandEchtRunde+1, drandEchtSig); err == nil {
+		t.Fatal("echte Signatur fuer eine andere Runde angenommen")
+	}
+	if _, err := drandQuicknet.pruefen(drandEchtRunde, kippeLetztesHex(drandEchtSig)); err == nil {
+		t.Fatal("veraenderte echte Signatur angenommen")
+	}
+	t.Logf("Runde %d: Zufall %x", drandEchtRunde, z)
+}
