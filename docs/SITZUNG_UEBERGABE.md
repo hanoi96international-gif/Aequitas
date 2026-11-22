@@ -41,7 +41,8 @@ dezentrales Quantengeld“.
   Anteil-Pakete je Aufruf nur noch **einmal** (`quantenSHTTP.versuche = 1`); die Schleife in
   `quantenSStichprobeV2Laden` fragt nach und weicht sofort auf die Anteile aus. Vorher hielt ein toter
   Präparator die Stelle 8 Versuche (bis ~6 min) auf. Andere Anfragen unverändert 8, nie mehr.
-  Die App fragte schon nur einmal (`oeffnungEinmal`). PR offen (siehe GitHub).
+  Die App fragte schon nur einmal (`oeffnungEinmal`). **#622 gemergt (972468c9)**; C1-Deploy
+  [45024947456](https://github.com/hanoi96international-gif/Aequitas/actions/runs/45024947456) wartet auf `produktion` (keine Frist, kein Stichtag).
 - **Stand 22.11. ~12:30 UTC:** **C1-Deploy 45016276994 erfolgreich** (freigegeben 12:22, ausgerollt
   12:23, alle Stichtag-Wächter grün, Höhe steigt). R10 (eindeutiges Urteil) gilt ab **13:00 UTC**.
   Noch offen: `/api/status` -> `quanten_w.urteil_ab = 1795352400` von außen prüfen (aus dem
