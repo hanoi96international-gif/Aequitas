@@ -2,7 +2,7 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 22.11.2026 ~16:40 UTC, Sitzung „Weiter Übergabe“ (`claude/weiter-uebergabe-1a9yql`); davor 21.11. ~20:15 UTC Sitzung „CL Übergabe weitermachen“; davor ~18:00 UTC Sitzung „Weiter“ (Zweig `claude/admiring-bohr-ob0u0p`, alle vier
+Stand: 22.11.2026 ~17:55 UTC, Sitzung „CL Übergabe weitermachen“ (`claude/cl-uebergabe-weitermachen-jdz5h7`); davor ~16:40 UTC Sitzung „Weiter Übergabe“ (`claude/weiter-uebergabe-1a9yql`); davor 21.11. ~20:15 UTC Sitzung „CL Übergabe weitermachen“; davor ~18:00 UTC Sitzung „Weiter“ (Zweig `claude/admiring-bohr-ob0u0p`, alle vier
 Repos); davor ~13:40 UTC Sitzung „Weiter“ (`claude/weiter-uw2p42`), davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18:30 UTC Sitzung
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
@@ -37,6 +37,20 @@ dezentrales Quantengeld“.
   `einrichten.sh`, Druck mit Chromium: `node build/node_guide_pdf.cjs`); alte Generatoren
   und `docs/VALIDATOR_RAILWAY.md` entfernt; README/Whitepaper auf C1 (netcup). Gleiches in
   App, biometric-beta und proof-server (Railway-Reste).
+- **Stand 22.11. ~17:55 UTC (diese Sitzung, Zweig `claude/cl-uebergabe-weitermachen-jdz5h7`):**
+  - **#626 gemergt (690daf98): C1 aufräumen.** Prüflauf 45050955665: belegt 161 von 251 GB;
+    48 anonyme unbenutzte Volumes 78,8 GB (Reste der dind-Prüfstände), 89 unbenutzte Images
+    (~43,9 GB), Build-Cache ~10,7 GB; nichts Benanntes unbenutzt. Betreiber hat „Ja“ gesagt →
+    **Löschlauf 45051960318** (modus=loeschen, AUFRAEUMEN) freigegeben und läuft; danach Log lesen
+    (Nachher-Belegung, „Knoten antwortet.“) und hier eintragen.
+  - **Erstes Quantengeld S Ende-zu-Ende:** Ausgabe quanten-s-ausgabe.yml 45050231784 grün
+    (ibm_marrakesh, Mehrheit aus 5 Schüssen, Job dc1ifvlhdvas73bksj8g, 0/585 Fehler bei passender
+    Basis), K = `ffb9ff3538bd51abaad2c303adc8f55a07aff983c2c366d456d6b93d114aad84`, n = 1104,
+    Inhaberin 0x3797…47d9, Stellen 0x3066…42dc (C1) / 0x5abc…60b4 (Betreiber). App: abgeholt
+    („angenommen“), an Stelle 1 gebunden + gewählt, Vorlage gescannt; **wartet auf Öffnung
+    (Finalität) und Urteil (≤ 33 min)**. Danach Urteil „eingeloest“ prüfen
+    (`/api/quanten-w/note?k=…`; aus dieser Umgebung blockt der Proxy aequitas.digital → Screenshot
+    vom Betreiber). Fehlerbild-Artefakt fehlerbild-45050231784 noch ungelesen (Proxy blockt Download).
 - **Stand 22.11. ~17:25 UTC (nur diese Sitzung arbeitet weiter, Zweig `claude/cl-uebergabe-weitermachen-jdz5h7`):**
   - **App 1.30.1 veröffentlicht** (Android release 45047533683; iOS release 45048474002 freigegeben).
   - **Beta-Stufe #624 auf C1** (Deploy 45044230412 grün).
