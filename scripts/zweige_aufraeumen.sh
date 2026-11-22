@@ -59,14 +59,14 @@ while read -r sha ref; do
   elif [ "$(git merge-tree --write-tree "$D" "$sha" 2>/dev/null | head -1)" = "$DT" ]; then
     grund="B Inhalt im Hauptzweig"
   else
-    for pr in $(git for-each-ref --format='%(objectname) %(refname)' 'refs/pr/*' | awk -v s="$sha" '$1==s {sub("refs/pr/","",$2); print $2}'); do
+    for pr in $(git for-each-ref --format='%(objectname) %(refname)' 'refs/pr/' | awk -v s="$sha" '$1==s {sub("refs/pr/","",$2); print $2}'); do
       if grep -qx -- "$pr" <<<"$GEMERGT"; then grund="D Squash-PR #$pr"; break; fi
     done
   fi
   if [ -z "$grund" ]; then echo "bleibt  $z (eigener Inhalt)"; continue; fi
   echo "weg     $z $sha ($grund)"
   liste+=("$sha $z")
-done < <(git for-each-ref --format='%(objectname) %(refname)' 'refs/remotes/origin/*')
+done < <(git for-each-ref --format='%(objectname) %(refname)' 'refs/remotes/origin/')
 
 if [ -n "${LISTE:-}" ]; then
   [ -f "$LISTE" ] || { echo "LISTE $LISTE fehlt" >&2; exit 1; }

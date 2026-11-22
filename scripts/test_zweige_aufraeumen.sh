@@ -20,6 +20,9 @@ neu() { git checkout -q -b "$1" main; echo "$2" > "$3"; git add "$3"; alt git co
 
 # A: normal gemergt
 neu gemergt x x; git merge -q --ff-only gemergt
+# Namen mit Schraegstrich (wie claude/...): gemergt und eigener Inhalt
+neu claude/tief/gemergt t t; git merge -q --no-edit claude/tief/gemergt
+neu claude/tief/eigen u u
 # B: gleicher Inhalt per Rosinenpicken in main
 neu inhalt y y; git checkout -q inhalt -- y; alt git commit -qm "y uebernommen"
 # D: Squash-PR #7 (Zweigspitze = refs/pull/7/head)
@@ -41,7 +44,8 @@ git push -q origin main
 git fetch -q origin '+refs/heads/*:refs/remotes/origin/*' '+refs/pull/*/head:refs/pr/*'
 export HAUPTZWEIG=main OFFENE_PR_ZWEIGE="offen"
 aus="$("$SKRIPT" pruefen)"; echo "$aus"
-for z in gemergt inhalt squash; do grep -q "^weg     $z " <<<"$aus" || fehl "$z sollte weg"; done
+for z in gemergt inhalt squash claude/tief/gemergt; do grep -q "^weg     $z " <<<"$aus" || fehl "$z sollte weg"; done
+grep -q "^bleibt  claude/tief/eigen (eigener Inhalt)" <<<"$aus" || fehl "claude/tief/eigen muss bleiben"
 grep -q "^weg     squash .*(D Squash-PR #7)" <<<"$aus" || fehl "squash nicht ueber D erkannt"
 for z in eigen offen jung pr_offen_ohne_merge falscher_pr; do grep -q "^bleibt  $z " <<<"$aus" || fehl "$z muss bleiben"; done
 grep -q "^weg     main" <<<"$aus" && fehl "Hauptzweig"
