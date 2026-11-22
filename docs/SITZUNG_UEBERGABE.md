@@ -37,16 +37,61 @@ dezentrales Quantengeld“.
   `einrichten.sh`, Druck mit Chromium: `node build/node_guide_pdf.cjs`); alte Generatoren
   und `docs/VALIDATOR_RAILWAY.md` entfernt; README/Whitepaper auf C1 (netcup). Gleiches in
   App, biometric-beta und proof-server (Railway-Reste).
+- **Stand 22.11. ~17:05 UTC (Sitzung „Weiter Übergabe“):**
+  - **#624 gemergt (d0d82b81) und auf C1 ausgerollt** (Deploy 45044230412, 16:47–16:48 UTC, Höhe steigt):
+    Beta-Stufe 4 Kerne / 20.000 Sig/s gilt auf C1.
+  - **App 1.30.1** (#101, getRandomBytes-Fix): iOS-Build 45042700994 grün, APK-Build 45042698436 läuft. Danach
+    `release-apk.yml` (run_id 45042698436, Tag `v1.30.1`, Freigabe `app-signatur`), dann `release-ios.yml`
+    (run_id 45042700994, Tag `v1.30.1`).
+  - **Auslastung C1** (`auslastung-c1.yml`, Lauf 45043076420, 3600 s ab 16:18:46 UTC): Der Deploy von #624 fiel in die
+    Messung (~16:47) → Neustart-Spitze herausrechnen; reicht der Rest nicht, eine zweite Messung (z. B. 1800 s).
+    Danach Servergröße für den Umzug am 23.12. empfehlen.
+  - **Zweige aufräumen:** Workflow gemergt in App (#102), proof-server (#34), biometric-beta (#126); Aequitas #625
+    wartet auf CI. Betreiber startet je Repo `pruefen`, dann `loeschen`.
 - **Aufräumen (22.11. ~17:00 UTC, Betreiber: „alles aufräumen, was nicht gebraucht wird“):**
   - Workflow `zweige-aufraeumen.yml` in allen vier Repos (PRs dieser Sitzung). Er löscht nur nachweislich
     erledigte Zweige (gemergt, Inhalt im Hauptzweig, Squash-PR gemergt); Stand 22.11.: Aequitas 214,
     App 29, proof-server 18, biometric-beta 42. Erst `modus=pruefen`, dann `loeschen` (Freigabe `produktion`).
     Diese Sitzung selbst kann keine fremden Zweige löschen (Proxy: 403).
-  - **Behalten (eigener, nicht gemergter Inhalt) – der Betreiber entscheidet einzeln:**
-    - Aequitas (38): `claude/complete-audit-8p8484`, `claude/50k-tps-umbau-28aurd`, `claude/complete-implementation-no-fake-fixes-scd5zj`, `claude/firma-ki-agenten-7psy4s`, `claude/nodes-merge-issue-x27mvc`, `claude/market-signal-agents-ujdi7z`, `claude/enable-backlog-escape-c1`, `claude/measure-blocksave-phases`, `claude/count-streak-resets`, `claude/measure-compression-effect`, `claude/minibuch-60-geburtstag-wusqbi` (PR #110), `claude/lsob-trade-agent-49ukz0`, `backup/master-worktree-2026-08-16`, `claude/x-telegram-setup-lue2pf`, `claude/session-memory-br9cr9`, `stash/stateroot-drift-2026-08-16`, `audit/wal-compact`, `feat/mpc-authoritative`, `fix/mpc-triple-allocator` (PR #154), `tps/shard-locks-slow-path`, `claude/weitermachen-php71e`, `ops/c2-emergency-apex-prep`, `claude/registrierung-zeiten`, `claude/tps-messung`, `claude/v8`, `claude/aktueller-workflow-fortsetzen-e49akc`, `claude/iris-scanner-prototype-shopping-la83jc`, `claude/weiter-gehts-r7rb9w-register3b`, `claude/weitermachen-hxfyzs-komitee`, `claude/weiter-gehts-hklfhc` (PR #334), `claude/weiter-gehts-r7rb9w-kontenindex` (PR #333), `claude/weiter-gehts-vm8979-kegel` (PR #340), `claude/weiter-gehts-r7rb9w-leiterrumpf` (PR #414), `claude/ecstatic-fermat-9vg14h`, `claude/aequitas-fortsetzen-osrea1`, `claude/weiter-uw2p42`, `dependabot/github_actions/actions/setup-go-7.1.0` (PR #609), `claude/cl-uebergabe-weitermachen-jdz5h7`
-    - Aequitas-App (8): `main`, `claude/eas-build`, `rescue/uncommitted-tests-2026-08-22`, `claude/aequitas-fortsetzen-93nmoo`, `claude/hier-weitermachen-xfsfqx`, `claude/continue-current-pr-i9in2o`, `claude/aktuellen-stand-fhd5bh`, `claude/app-neubau`
-    - aequitas-proof-server (5): `claude/bio-attestation` (PR #3), `claude/deutsch-indonesisch-market-analysis-wbbulq`, `claude/mobile-uniqueness-markers-bscf20`, `claude/vollstaendiges-audit-mgdrko`, `claude/continue-current-pr-i9in2o`
-    - aequitas-biometric-beta (14): `claude/security-fixes` (PR #1), `rescue/no-whole-templates-2026-08-22`, `claude/hier-weitermachen-xfsfqx`, `claude/continue-current-pr-i9in2o`, `dependabot/pip/matching-service/av-19.0.1` (PR #74), `claude/weiter-machen-vwv9as`, `dependabot/pip/coordinator/av-19.0.2` (PR #99), `dependabot/pip/matching-service/av-19.0.2` (PR #101), `dependabot/pip/matching-service/onnxruntime-1.31.1` (PR #98), `dependabot/pip/matching-service/mediapipe-1.1.1` (PR #79), `dependabot/pip/coordinator/cbor2-6.2.0.post2` (PR #108), `dependabot/pip/coordinator/google-auth-2.62.1` (PR #106), `dependabot/pip/coordinator/python-multipart-0.0.33` (PR #107), `dependabot/pip/coordinator/fastapi-0.162.0` (PR #100)
+  - **Durchsicht der 66 nicht gemergten Zweige (22.11. ~17:05 UTC).** Je Zweig geprüft: eigene
+    Commits, welche Dateien im Hauptzweig fehlen oder anders sind. Empfehlung:
+    - **WEG – überholt, der Hauptzweig hat es neuer oder bewusst anders (nichts geht verloren):**
+      Aequitas: `claude/aequitas-fortsetzen-osrea1`, `claude/weiter-uw2p42`, `claude/cl-uebergabe-weitermachen-jdz5h7`
+      (nur alte Übergabe-Stände), `backup/master-worktree-2026-08-16` (laut eigenem Text Duplikat von #111),
+      `claude/complete-audit-8p8484`, `claude/complete-implementation-no-fake-fixes-scd5zj`, `claude/50k-tps-umbau-28aurd`,
+      `claude/count-streak-resets`, `claude/measure-blocksave-phases`, `claude/measure-compression-effect`,
+      `claude/enable-backlog-escape-c1`, `claude/nodes-merge-issue-x27mvc` (Juli, alte Kette/Diagnosen),
+      `stash/stateroot-drift-2026-08-16`, `audit/wal-compact` (WAL-Kompaktierung steht im Hauptzweig),
+      `feat/mpc-authoritative`, `fix/mpc-triple-allocator` (#154 zu; `mpc_triple_sync.go` identisch im Hauptzweig),
+      `tps/shard-locks-slow-path`, `claude/weitermachen-php71e`, `ops/c2-emergency-apex-prep` (C2 gibt es nicht mehr),
+      `claude/tps-messung`, `claude/registrierung-zeiten`, `claude/v8` (V8_ENTWURF neuer im Hauptzweig),
+      `claude/aktueller-workflow-fortsetzen-e49akc`, `claude/x-telegram-setup-lue2pf` (Website heute 12 Sprachen),
+      `claude/session-memory-br9cr9`, `claude/weiter-gehts-hklfhc` (#334 zu; WAL-Ausgang steht im Hauptzweig),
+      `claude/weiter-gehts-r7rb9w-kontenindex` (#333 zu; Test im Hauptzweig), `claude/weiter-gehts-r7rb9w-leiterrumpf`
+      (#414 zu), `claude/weiter-gehts-r7rb9w-register3b` (Lohn heute `validator_lohn_kette.go`),
+      `claude/weitermachen-hxfyzs-komitee`.
+      App: `main` (alter Stand vom Juni, Basis ist `aequitas-app`), `claude/eas-build`, `claude/aequitas-fortsetzen-93nmoo`,
+      `claude/aktuellen-stand-fhd5bh`, `claude/app-neubau` (V8-Registrierung und Tresor anders umgesetzt),
+      `claude/continue-current-pr-i9in2o`, `claude/hier-weitermachen-xfsfqx`, `rescue/uncommitted-tests-2026-08-22`
+      (Tests zu Code, den es so nicht mehr gibt).
+      proof-server: `claude/bio-attestation`, `claude/continue-current-pr-i9in2o`, `claude/vollstaendiges-audit-mgdrko`
+      (/store-Befund als Audit H4 behoben).
+      biometric-beta: `claude/continue-current-pr-i9in2o`, `claude/hier-weitermachen-xfsfqx`, `claude/security-fixes`
+      (Railway), `claude/weiter-machen-vwv9as`, `rescue/no-whole-templates-2026-08-22` (heute Sketch statt Vorlage,
+      `test_sketch_replaces_template.py`), dazu die überholten Dependabot-Zweige ohne offenen PR
+      (`…/matching-service/av-19.0.1`).
+    - **BETREIBER ENTSCHEIDET – nicht Aequitas, eigene Projekte (sonst in ein eigenes Repo):**
+      `claude/firma-ki-agenten-7psy4s` (Content-Agentur), `claude/market-signal-agents-ujdi7z` und
+      `claude/lsob-trade-agent-49ukz0` (Handels-Agenten), `claude/minibuch-60-geburtstag-wusqbi` + PR #110 (Buch, 107 Commits),
+      proof-server `claude/deutsch-indonesisch-market-analysis-wbbulq` (Marktanalyse),
+      proof-server `claude/mobile-uniqueness-markers-bscf20` (11 Forschungstexte: Passive Zeugen, Prämissen, Weltlinie …,
+      nirgends sonst).
+    - **BRAUCHBAR – übernehmen oder bewusst behalten:**
+      `claude/ecstatic-fermat-9vg14h` (`docs/AUDIT_2026-11-14.md`, Audit vom 14.11., fehlt im Hauptzweig → übernehmen),
+      `claude/iris-scanner-prototype-shopping-la83jc` (Einkaufsliste Iris-Prototyp, fehlt im Hauptzweig → übernehmen, falls
+      der Prototyp noch geplant ist), `claude/weiter-gehts-vm8979-kegel` + PR #340 (Entwurf Validatoren-Lohn „Kegel“,
+      HOCH 2 offen → behalten, bis entschieden ist, ob der Kegel kommt), Dependabot #609 und die offenen Dependabot-PRs
+      in biometric-beta (prüfen und mergen oder schließen).
   - **Alte offene PRs (behalten):** Aequitas #340 (Kegel-Entwurf), #110 (Minibuch), #609 (setup-go 7.1.0);
     biometric-beta Dependabot #79, #98, #99, #100, #101, #106, #107, #108.
 
