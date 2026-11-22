@@ -38,7 +38,9 @@ dezentrales Quantengeld“.
   und `docs/VALIDATOR_RAILWAY.md` entfernt; README/Whitepaper auf C1 (netcup). Gleiches in
   App, biometric-beta und proof-server (Railway-Reste).
 - **Stand 22.11. ~18:50 UTC — SITZUNGSENDE (Limit 95 %). Nächste Sitzung macht hier weiter:**
-  1. **#627 (Aequitas) mergen**, sobald CI auf dem Kopf grün ist (enthält auch `quanten_s_los.go` +
+  0. **ERLEDIGT 18:59 UTC: #627 gemergt (e9918877), C1-Deploy 45058108805 gestartet** — wartet auf
+     Freigabe `produktion` durch den Betreiber. Danach prüfen: `/api/quanten-w/stand`, `/quanten` (qapp).
+  1. (erledigt) **#627 (Aequitas) mergen**, sobald CI auf dem Kopf grün ist (enthält auch `quanten_s_los.go` +
      Vektor `testdata/quanten_s_los_vektor.json`, drand-Prüfung mit echtem Beacon Runde 1.000.000).
      Danach `deploy-c1.yml` starten, Betreiber gibt `produktion` frei. Prüfen: `/api/quanten-w/stand`
      antwortet, `/quanten` zeigt Abschnitt `qapp`.
