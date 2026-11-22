@@ -546,6 +546,9 @@ func (cs *ChainState) quantenWSAusgebenBescheidLocked(ctx context.Context, tx *T
 		if best.Runde == 0 {
 			return quantenWBefund("quanten_s_bestellung", "%s ist bestellt, aber noch nicht gelost", q.K[:12]), nil
 		}
+		if blockZeit > sattAdd(best.Zeit, quantenSAusgabeFrist) {
+			return quantenWBefund("quanten_s_bestellung", "Bestellung zu %s ist verfallen", q.K[:12]), nil
+		}
 		if wallet != best.Von || q.T != best.T || !slices.Equal(q.Validatoren, best.Los) || zeit < best.Zeit {
 			return quantenWBefund("quanten_s_los", "Ausgabe zu %s nicht vom Besteller, mit anderem t, nicht genau das Los oder vor der Bestellung", q.K[:12]), nil
 		}

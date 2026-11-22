@@ -580,6 +580,12 @@ func TestQuantenSWegB_AusgabeMissbrauch(t *testing.T) {
 	if u := w.bescheid(w.cs, ohne, z+1); u.regel != "quanten_w_bestaetigung" {
 		t.Fatalf("Bestaetigung fehlt: %q", u.regel)
 	}
+	// Nach der Ausgabefrist verfallen -- auch ohne dass eine Weg-B-Art
+	// aufgeraeumt hat.
+	spaet := qwT0 + quantenSAusgabeFrist + 10
+	if u := w.bescheid(w.cs, w.ausgebenTx(spaet, 10_000_000), spaet); u.regel != "quanten_s_bestellung" {
+		t.Fatalf("nach der Ausgabefrist: %q", u.regel)
+	}
 	// Ohne Bestellung gilt weiter Weg A: dieselben Konten sind keine
 	// gebundenen Validatoren.
 	ohneBest := neueQsWelt(t, 128, 80)
