@@ -8709,7 +8709,7 @@ func blockTouchedAddresses(block *Block) (addrs []string, needsFullSnapshot bool
 		// Empfaenger von Pfand und Wert, wie sie der Block nennt.
 		case quantenWPraegenTxArt, quantenWAnfrageTxArt, quantenWZufallTxArt, quantenWAntwortTxArt, quantenWOffenlegenTxArt, quantenWFristTxArt,
 			quantenWSAusgebenTxArt, quantenWSBindenTxArt, quantenWSWaehlenTxArt, quantenWSAnmeldenTxArt, quantenWSOffenlegenTxArt, quantenWSFristTxArt,
-			quantenSMeldenTxArt, quantenSAbmeldenTxArt, quantenSBestellenTxArt, quantenSLosenTxArt:
+			quantenSMeldenTxArt, quantenSAbmeldenTxArt, quantenSBestellenTxArt, quantenSLosenTxArt, quantenSVerfallenTxArt, quantenSPfandZurueckTxArt:
 			for _, a := range quantenWKonten(&tx) {
 				add(a)
 			}

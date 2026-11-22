@@ -865,8 +865,8 @@ func (cs *ChainState) quantenWBescheidLocked(ctx context.Context, tx *Transactio
 	if !quantenWAktiv(blockZeit) {
 		return quantenWBefund("quanten_w_inaktiv", "Variante W ist noch nicht aktiv"), nil
 	}
-	// Melden und Abmelden tragen kein K (quantenSWegBNurEigeneFelder).
-	ohneK := tx.Type == quantenSMeldenTxArt || tx.Type == quantenSAbmeldenTxArt
+	// Melden, Abmelden und Pfand zurueck tragen kein K (quantenSWegBNurEigeneFelder).
+	ohneK := tx.Type == quantenSMeldenTxArt || tx.Type == quantenSAbmeldenTxArt || tx.Type == quantenSPfandZurueckTxArt
 	if q == nil || !istQuantenWTxArt(tx.Type) || !quantenWNurEigeneFelder(tx) || (!ohneK && !istHash64(q.K)) {
 		return quantenWBefund("quanten_w_form", "keine W-Transaktion in gueltiger Form"), nil
 	}
@@ -1260,6 +1260,15 @@ func (cs *ChainState) quantenWAnnehmen(tx Transaction) (Transaction, error) {
 	// Variante S: die angemeldete Stelle bekommt beim Offenlegen den Wert.
 	if e := cs.quantenWJetzt().Token[q.K]; e != nil && e.token.Anmeldung != nil {
 		konten = append(konten, e.token.Anmeldung.Stelle)
+	}
+	// Weg B: das Praeparator-Pfand geht an das Konto oder seinen Erben.
+	if tx.Type == quantenSPfandZurueckTxArt {
+		if k := strings.ToLower(strings.TrimSpace(q.An)); kanonischeAdresse(k) {
+			konten = append(konten, k)
+			if e := cs.quantenWJetzt().Praep[k].Erbe; e != "" {
+				konten = append(konten, e)
+			}
+		}
 	}
 	if e := cs.quantenWJetzt().Noten[q.K]; e != nil {
 		if a := e.note.Anfrage; a != nil {

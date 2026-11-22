@@ -43,8 +43,8 @@ func neueQbWelt(t *testing.T, menschen int) *qbWelt {
 func (w *qbWelt) mensch(n string) string {
 	k, a := neuerSchluessel(w.t)
 	w.keys[a] = k
-	addHuman(w.cs, a, 10)
-	addHuman(w.nach, a, 10)
+	addHuman(w.cs, a, 100)
+	addHuman(w.nach, a, 100)
 	if n != "" {
 		w.cs.nullifiers[n], w.nach.nullifiers[n] = a, a
 		w.null[a] = n
@@ -99,6 +99,9 @@ func (w *qbWelt) annehmen(tx Transaction, zeit int64) {
 	if err != nil {
 		w.t.Fatal(err)
 	}
+	g := *tx.QuantenW
+	g.Anteile, g.Pfand, g.PfandAn, g.Wert, g.WertAn, g.Urteil = u.felder.Anteile, u.felder.Pfand, u.felder.PfandAn, u.felder.Wert, u.felder.WertAn, u.felder.Urteil
+	tx.QuantenW = &g
 	tx.BuchAt = zeit
 	w.nach.mu.Lock()
 	err = quantenWFeldErlaubt(&tx, zeit)
@@ -314,19 +317,28 @@ func TestQuantenSWegB_RegisterMissbrauch(t *testing.T) {
 	if r := w.abgewiesen(w.abmelden(neu, z+50, z+61), z+61); r != "quanten_s_register" {
 		t.Fatalf("zweimal abgemeldet: %q", r)
 	}
-	// Wieder melden erst, wenn der alte Eintrag weg ist (dann ist auch eine
-	// alte Melde-Unterschrift abgelaufen).
+	// Wieder melden erst, wenn das Pfand zurueck und der Eintrag weg ist
+	// (dann ist auch eine alte Melde-Unterschrift abgelaufen).
 	if r := w.abgewiesen(w.melden(neu, z+100), z+100); r != "quanten_s_register" {
 		t.Fatalf("sofort wieder gemeldet: %q", r)
 	}
-	spaeter := z + 60 + quantenWToteBehalten + 1
-	w.annehmen(w.melden(neu, spaeter), spaeter)
-	if p := w.cs.quantenWJetzt().Praep[neu]; p.Gemeldet != spaeter || p.Abgemeldet != 0 {
+	frei := z + 60 + quantenSPfandHalten + 1
+	if r := w.abgewiesen(qbPfandZurueck(neu), frei-2); r != "quanten_s_register" {
+		t.Fatalf("Pfand vor der Haltezeit zurueck: %q", r)
+	}
+	w.annehmen(qbPfandZurueck(neu), frei)
+	w.annehmen(w.melden(neu, frei+1), frei+1)
+	if p := w.cs.quantenWJetzt().Praep[neu]; p.Gemeldet != frei+1 || p.Abgemeldet != 0 {
 		t.Fatalf("neu gemeldet: %+v", p)
 	}
-	if _, da := w.cs.quantenWJetzt().Praep[a]; da {
-		t.Fatal("alter Eintrag nicht aufgeraeumt")
-	}
+}
+
+func qbPfandZurueck(konto string) Transaction {
+	return Transaction{Type: quantenSPfandZurueckTxArt, QuantenW: &QuantenWAngaben{An: konto}}
+}
+
+func qbVerfallen(K string) Transaction {
+	return Transaction{Type: quantenSVerfallenTxArt, QuantenW: &QuantenWAngaben{K: K}}
 }
 
 // Bestellen: nur Menschen, v und t in Grenzen, K frei, je Wallet eine offene
@@ -376,9 +388,28 @@ func TestQuantenSWegB_BestellenMissbrauch(t *testing.T) {
 	if err != nil || u.regel != "quanten_s_bestellung" {
 		t.Fatalf("Ausgabe zum bestellten K: %q (%v)", u.regel, err)
 	}
-	// Ungelost nach der Frist verfallen: das K ist wieder frei, die Wallet darf neu bestellen.
+	// Ungelost nach der Frist: erst quanten_w_s_verfallen (Pfand ans
+	// Grundeinkommen), dann ist das K frei und die Wallet darf neu bestellen.
 	spaet := z + quantenSLosFrist + 1
-	w.annehmen(w.bestellen(a, qbK(10), 4, 3, spaet), spaet)
+	if r := w.abgewiesen(w.bestellen(a, qbK(10), 4, 3, spaet), spaet); r != "quanten_s_bestellung" {
+		t.Fatalf("neu bestellt ohne Verfallen: %q", r)
+	}
+	if r := w.abgewiesen(qbVerfallen(qbK(10)), z+quantenSLosFrist); r != "quanten_s_bestellung" {
+		t.Fatalf("vor der Frist verfallen: %q", r)
+	}
+	ubi := qbStand(w.cs, ubiPoolAddr)
+	w.annehmen(qbVerfallen(qbK(10)), spaet)
+	if qbStand(w.cs, ubiPoolAddr)-ubi != quantenSBestellPfand {
+		t.Fatal("Bestell-Pfand nicht ans Grundeinkommen")
+	}
+	w.annehmen(w.bestellen(a, qbK(10), 4, 3, spaet+1), spaet+1)
+}
+
+func qbStand(cs *ChainState, a string) int64 {
+	if acc, ok := cs.accounts.Get(a); ok {
+		return acc.Balance.Micro()
+	}
+	return 0
 }
 
 // Schlafend: vor dem Stichtag von Weg B weist jeder Knoten jede Weg-B-Art
@@ -422,22 +453,22 @@ func TestQuantenSWegB_RegisterLesenStreng(t *testing.T) {
 	K := strings.Repeat("c", 64)
 	los := []string{a, b, "0x" + strings.Repeat("3", 40), "0x" + strings.Repeat("4", 40)}
 	for name, f := range map[string]quantenWRegisterForm{
-		"Mensch zweimal aktiv":   {Praep: []quantenSPraepForm{{Konto: a, Nullifier: "n1", Gemeldet: 5}, {Konto: b, Nullifier: "n1", Gemeldet: 6}}},
+		"Mensch zweimal aktiv":   {Praep: []quantenSPraepForm{{Konto: a, Nullifier: "n1", Gemeldet: 5, Pfand: 1}, {Konto: b, Nullifier: "n1", Gemeldet: 6, Pfand: 1}}},
 		"Abmeldung vor Meldung":  {Praep: []quantenSPraepForm{{Konto: a, Nullifier: "n1", Gemeldet: 5, Abgemeldet: 4}}},
-		"Ordnung":                {Praep: []quantenSPraepForm{{Konto: b, Nullifier: "n1", Gemeldet: 5}, {Konto: a, Nullifier: "n2", Gemeldet: 6}}},
-		"Bestellung zu Totem":    {Tote: []quantenWTotForm{{K: K, Zeit: 5}}, Bestellt: []quantenSBestellForm{{K: K, Von: a, V: 4, T: 3, Zeit: 5}}},
-		"Los ohne Runde":         {Bestellt: []quantenSBestellForm{{K: K, Von: a, V: 4, T: 3, Zeit: 5, Los: los}}},
-		"Runde nicht die feste":  {Bestellt: []quantenSBestellForm{{K: K, Von: a, V: 4, T: 3, Zeit: qbBestellZeit, Runde: drandEchtRunde + 1, Los: los}}},
+		"Ordnung":                {Praep: []quantenSPraepForm{{Konto: b, Nullifier: "n1", Gemeldet: 5, Pfand: 1}, {Konto: a, Nullifier: "n2", Gemeldet: 6, Pfand: 1}}},
+		"Bestellung zu Totem":    {Tote: []quantenWTotForm{{K: K, Zeit: 5}}, Bestellt: []quantenSBestellForm{{K: K, Von: a, V: 4, T: 3, Zeit: 5, Pfand: 1}}},
+		"Los ohne Runde":         {Bestellt: []quantenSBestellForm{{K: K, Von: a, V: 4, T: 3, Zeit: 5, Los: los, Pfand: 1}}},
+		"Runde nicht die feste":  {Bestellt: []quantenSBestellForm{{K: K, Von: a, V: 4, T: 3, Zeit: qbBestellZeit, Runde: drandEchtRunde + 1, Los: los, Pfand: 1}}},
 		"Los mit doppeltem":      {Bestellt: []quantenSBestellForm{{K: K, Von: a, V: 4, T: 3, Zeit: qbBestellZeit, Runde: drandEchtRunde, Los: []string{a, a, b, b}}}},
-		"v ausserhalb":           {Bestellt: []quantenSBestellForm{{K: K, Von: a, V: 2, T: 2, Zeit: 5}}},
-		"zwei Bestellungen je W": {Bestellt: []quantenSBestellForm{{K: K, Von: a, V: 4, T: 3, Zeit: 5}, {K: strings.Repeat("d", 64), Von: a, V: 4, T: 3, Zeit: 5}}},
+		"v ausserhalb":           {Bestellt: []quantenSBestellForm{{K: K, Von: a, V: 2, T: 2, Zeit: 5, Pfand: 1}}},
+		"zwei Bestellungen je W": {Bestellt: []quantenSBestellForm{{K: K, Von: a, V: 4, T: 3, Zeit: 5, Pfand: 1}, {K: strings.Repeat("d", 64), Von: a, V: 4, T: 3, Zeit: 5, Pfand: 1}}},
 	} {
 		if _, err := quantenWRegisterLesen(f.kodiert()); err == nil {
 			t.Fatalf("%s: angenommen", name)
 		}
 	}
-	gut := quantenWRegisterForm{Praep: []quantenSPraepForm{{Konto: a, Nullifier: "n1", Gemeldet: 5}},
-		Bestellt: []quantenSBestellForm{{K: K, Von: a, V: 4, T: 3, Zeit: qbBestellZeit, Runde: drandEchtRunde, Los: los}}}
+	gut := quantenWRegisterForm{Praep: []quantenSPraepForm{{Konto: a, Nullifier: "n1", Gemeldet: 5, Pfand: 1}},
+		Bestellt: []quantenSBestellForm{{K: K, Von: a, V: 4, T: 3, Zeit: qbBestellZeit, Runde: drandEchtRunde, Los: los, Pfand: 1}}}
 	r, err := quantenWRegisterLesen(gut.kodiert())
 	if err != nil || r.kodiert() != gut.kodiert() {
 		t.Fatalf("gutes Register: %v", err)
@@ -485,8 +516,8 @@ func neueQbsWelt(t *testing.T, gelost bool) *qbsWelt {
 	for i := 0; i < 16; i++ {
 		k, a := neuerSchluessel(t)
 		w.keys[a] = k
-		addHuman(w.cs, a, 1)
-		addHuman(w.nach, a, 1)
+		addHuman(w.cs, a, 20)
+		addHuman(w.nach, a, 20)
 		n := fmt.Sprintf("praep-%02d", i)
 		w.cs.nullifiers[n], w.nach.nullifiers[n] = a, a
 		w.praep = append(w.praep, a)
@@ -620,6 +651,10 @@ func TestQuantenSWegB_UmzugMeldetAb(t *testing.T) {
 	if reg.Praep[alt].Abgemeldet != z+100 || reg.kodiert() != w.nach.quantenWJetzt().kodiert() || reg.kodiert() == vorher {
 		t.Fatalf("Umzug: alter Eintrag %+v", reg.Praep[alt])
 	}
+	for _, cs := range []*ChainState{w.cs, w.nach} {
+		acc, _ := cs.accounts.Get(neu)
+		acc.Balance = NewDecimal(100)
+	}
 	w.annehmen(w.melden(neu, z+200), z+200)
 	// Umzug eines Menschen ohne Eintrag: Register unveraendert.
 	ohne, n2 := w.menschen[1], w.null[w.menschen[1]]
@@ -630,5 +665,68 @@ func TestQuantenSWegB_UmzugMeldetAb(t *testing.T) {
 	w.cs.mu.Unlock()
 	if err != nil || w.cs.quantenWJetzt().kodiert() != vorher {
 		t.Fatalf("Umzug ohne Eintrag aendert das Register (%v)", err)
+	}
+}
+
+// Pfaender: Melden und Bestellen ziehen das Pfand ein (zu wenig Guthaben:
+// abgewiesen), die Ausgabe zahlt das Bestell-Pfand zurueck, nach einem Umzug
+// geht das Praeparator-Pfand an die neue Wallet -- nie an die alte.
+func TestQuantenSWegB_Pfaender(t *testing.T) {
+	w := neueQbWelt(t, 1)
+	z := qbBestellZeit
+	a := w.menschen[0]
+	vorher := qbStand(w.cs, a)
+	w.annehmen(w.melden(a, z), z)
+	if qbStand(w.cs, a) != vorher-quantenSPraepPfand || w.cs.quantenWJetzt().Praep[a].Pfand != quantenSPraepPfand {
+		t.Fatal("Praeparator-Pfand nicht eingezogen")
+	}
+	arm := w.mensch("null-arm")
+	for _, cs := range []*ChainState{w.cs, w.nach} {
+		acc, _ := cs.accounts.Get(arm)
+		acc.Balance = NewDecimal(0.5)
+	}
+	if r := w.abgewiesen(w.melden(arm, z), z); r != "quanten_w_deckung" {
+		t.Fatalf("zu wenig fuer das Pfand: %q", r)
+	}
+	if r := w.abgewiesen(w.bestellen(arm, qbK(20), 4, 3, z), z); r != "quanten_w_deckung" {
+		t.Fatal("Bestellen ohne Pfand angenommen")
+	}
+	// Umzug: Erbe ist die neue Wallet; ein zweiter Umzug gibt das Pfand weiter.
+	kB, b := neuerSchluessel(t)
+	w.keys[b] = kB
+	_, c := neuerSchluessel(t)
+	n := w.null[a]
+	for _, cs := range []*ChainState{w.cs, w.nach} {
+		cs.mu.Lock()
+		if err := cs.umzugVollziehenLocked(context.Background(), n, a, b, z+10); err != nil {
+			t.Fatal(err)
+		}
+		if err := cs.umzugVollziehenLocked(context.Background(), n, b, c, z+20); err != nil {
+			t.Fatal(err)
+		}
+		cs.mu.Unlock()
+	}
+	if e := w.cs.quantenWJetzt().Praep[a].Erbe; e != c {
+		t.Fatalf("Erbe %s, erwartet %s", e, c)
+	}
+	altStand, cStand := qbStand(w.cs, a), qbStand(w.cs, c)
+	w.annehmen(qbPfandZurueck(a), z+10+quantenSPfandHalten+1)
+	if qbStand(w.cs, c)-cStand != quantenSPraepPfand || qbStand(w.cs, a) != altStand {
+		t.Fatal("Pfand nicht an die neue Wallet")
+	}
+	if _, da := w.cs.quantenWJetzt().Praep[a]; da {
+		t.Fatal("Eintrag nach dem Pfand noch da")
+	}
+}
+
+// Die Ausgabe gegen das Los zahlt das Bestell-Pfand an den Besteller zurueck.
+func TestQuantenSWegB_AusgabeZahltBestellPfandZurueck(t *testing.T) {
+	w := neueQbsWelt(t, true)
+	z := qwT0 + 60
+	vorher := qbStand(w.cs, w.praeger)
+	tx := w.annehmen(w.ausgebenTx(z, 10_000_000), z+1)
+	if tx.QuantenW.Pfand != quantenSBestellPfand || tx.QuantenW.PfandAn != w.praeger ||
+		qbStand(w.cs, w.praeger) != vorher-10_000_000+quantenSBestellPfand {
+		t.Fatalf("Bestell-Pfand: %+v, Stand %d -> %d", tx.QuantenW.gerechnet(), vorher, qbStand(w.cs, w.praeger))
 	}
 }

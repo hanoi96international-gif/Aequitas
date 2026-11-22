@@ -109,10 +109,12 @@ var replayArten = map[string]geldArt{
 	"quanten_w_s_anmelden":             geldNurGutschrift,
 	"quanten_w_s_offenlegen":           geldNurGutschrift,
 	"quanten_w_s_frist":                geldNurGutschrift,
-	"quanten_w_s_melden":               geldNurGutschrift, // Weg B: kein Geld
+	"quanten_w_s_melden":               geldUnterschrieben, // Weg B: Pfand vom Unterschreibenden
 	"quanten_w_s_abmelden":             geldNurGutschrift,
-	"quanten_w_s_bestellen":            geldNurGutschrift,
+	"quanten_w_s_bestellen":            geldUnterschrieben, // Pfand vom Unterschreibenden
 	"quanten_w_s_losen":                geldNurGutschrift,
+	"quanten_w_s_verfallen":            geldNurGutschrift, // Pfand aus dem Topf ans Grundeinkommen
+	"quanten_w_s_pfand_zurueck":        geldNurGutschrift, // Pfand aus dem Topf an den Menschen
 	"umlauf":                           geldRegelAusnahme,
 	"unternehmen_eroeffnen":            geldUnterschrieben,
 	"vorbehalt":                        geldUnterschrieben,
@@ -186,16 +188,18 @@ var ersetzbareKonstanten = map[string]string{
 	"quantenWOffenlegenTxArt": quantenWOffenlegenTxArt,
 	"quantenWFristTxArt":      quantenWFristTxArt,
 	// quanten_w_s_kette.go
-	"quantenWSAusgebenTxArt":   quantenWSAusgebenTxArt,
-	"quantenWSBindenTxArt":     quantenWSBindenTxArt,
-	"quantenWSWaehlenTxArt":    quantenWSWaehlenTxArt,
-	"quantenWSAnmeldenTxArt":   quantenWSAnmeldenTxArt,
-	"quantenWSOffenlegenTxArt": quantenWSOffenlegenTxArt,
-	"quantenWSFristTxArt":      quantenWSFristTxArt,
-	"quantenSMeldenTxArt":      quantenSMeldenTxArt,
-	"quantenSAbmeldenTxArt":    quantenSAbmeldenTxArt,
-	"quantenSBestellenTxArt":   quantenSBestellenTxArt,
-	"quantenSLosenTxArt":       quantenSLosenTxArt,
+	"quantenWSAusgebenTxArt":    quantenWSAusgebenTxArt,
+	"quantenWSBindenTxArt":      quantenWSBindenTxArt,
+	"quantenWSWaehlenTxArt":     quantenWSWaehlenTxArt,
+	"quantenWSAnmeldenTxArt":    quantenWSAnmeldenTxArt,
+	"quantenWSOffenlegenTxArt":  quantenWSOffenlegenTxArt,
+	"quantenWSFristTxArt":       quantenWSFristTxArt,
+	"quantenSMeldenTxArt":       quantenSMeldenTxArt,
+	"quantenSAbmeldenTxArt":     quantenSAbmeldenTxArt,
+	"quantenSBestellenTxArt":    quantenSBestellenTxArt,
+	"quantenSLosenTxArt":        quantenSLosenTxArt,
+	"quantenSVerfallenTxArt":    quantenSVerfallenTxArt,
+	"quantenSPfandZurueckTxArt": quantenSPfandZurueckTxArt,
 }
 
 // replaySwitchArten liest die Arten des Nachspiel-Switches aus block.go

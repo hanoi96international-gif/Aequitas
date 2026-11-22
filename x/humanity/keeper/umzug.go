@@ -765,7 +765,7 @@ func (cs *ChainState) umzugVollziehenLocked(ctx context.Context, n, alt, neu str
 	// Quantengeld Weg B (quanten_s_weg_b.go): ein aktiver Praeparator-Eintrag
 	// der alten Wallet ist ab jetzt abgemeldet -- eine gestohlene alte Wallet
 	// kann nicht mehr gelost werden. Ohne Eintrag: nichts geschrieben.
-	if err := cs.quantenSUmzugLocked(ctx, alt, t); err != nil {
+	if err := cs.quantenSUmzugLocked(ctx, alt, neu, t); err != nil {
 		return fmt.Errorf("umzug: %w", err)
 	}
 	reg := cs.umzugRegisterJetzt().ohneOffen(n).ohneCode(alt).mitErledigt(umzugErledigt{Nullifier: n, Alt: alt, Neu: neu, Am: t})
