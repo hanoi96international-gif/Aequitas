@@ -64,4 +64,39 @@ git ls-remote --heads origin | grep -q refs/heads/gemergt || fehl "bewegter Zwei
 for z in inhalt squash; do git ls-remote --heads origin | grep -q "refs/heads/$z$" && fehl "$z nicht geloescht"; done
 for z in eigen offen jung main; do git ls-remote --heads origin | grep -q "refs/heads/$z$" || fehl "$z faelschlich geloescht"; done
 grep -q "^geloescht [0-9a-f]\{40\} squash$" <<<"$aus" || fehl "Spitze nicht im Log"
+
+# Liste des Betreibers: "eigen" (eigener Inhalt) nur mit passender Spitze,
+# "falscher_pr" mit falscher Spitze bleibt, offener PR und Hauptzweig bleiben.
+git fetch -q --prune origin '+refs/heads/*:refs/remotes/origin/*'
+L="$T/liste.txt"
+{ echo "# Kommentar"
+  echo "$(git rev-parse origin/eigen) eigen"
+  echo "$(git rev-parse origin/main) falscher_pr"
+  echo "$(git rev-parse origin/offen) offen"
+  echo "$(git rev-parse origin/main) main"; } > "$L"
+aus="$(LISTE="$L" "$SKRIPT" pruefen)"; echo "$aus"
+grep -q "^weg     eigen .*(L Liste" <<<"$aus" || fehl "Liste: eigen nicht vorgesehen"
+grep -q "^bleibt  falscher_pr (bewegt" <<<"$aus" || fehl "Liste: falsche Spitze angenommen"
+grep -q "^bleibt  offen (offener PR, auch auf der Liste)" <<<"$aus" || fehl "Liste: offener PR"
+grep -q "^bleibt  main (Hauptzweig" <<<"$aus" || fehl "Liste: Hauptzweig"
+echo "kaputt" > "$T/kaputt.txt"
+LISTE="$T/kaputt.txt" "$SKRIPT" pruefen >/dev/null 2>&1 && fehl "Liste: ungueltige Zeile angenommen"
+LISTE="$T/gibtsnicht" "$SKRIPT" pruefen >/dev/null 2>&1 && fehl "Liste: fehlende Datei angenommen"
+eigen_sha="$(git rev-parse origin/eigen)"
+# Ohne Sicherung, mit unschreibbarem Pfad oder mit einer Sicherung, in der
+# der Zweig fehlt: nichts darf geloescht werden.
+LISTE="$L" BUNDLE="$T/gibtsnicht/x.bundle" NUR_SICHERN=1 "$SKRIPT" loeschen >/dev/null 2>&1 && fehl "Bundle-Fehler ignoriert"
+LISTE="$L" BUNDLE="$T/gibtsnicht/x.bundle" "$SKRIPT" loeschen >/dev/null 2>&1 && fehl "ohne Sicherung geloescht"
+git bundle create -q "$T/leer.bundle" refs/remotes/origin/main
+aus="$(LISTE="$L" BUNDLE="$T/leer.bundle" "$SKRIPT" loeschen)" || true
+grep -q "^bleibt  eigen (nicht in der Sicherung)" <<<"$aus" || fehl "nicht gesicherter Zweig nicht erkannt"
+git ls-remote --heads origin | grep -q "refs/heads/eigen$" || fehl "nicht gesicherter Zweig geloescht"
+LISTE="$L" BUNDLE="$T/s.bundle" NUR_SICHERN=1 "$SKRIPT" loeschen >/dev/null
+git ls-remote --heads origin | grep -q "refs/heads/eigen$" || fehl "Sichern hat geloescht"
+aus="$(LISTE="$L" BUNDLE="$T/s.bundle" "$SKRIPT" loeschen)" || true; echo "$aus"
+git ls-remote --heads origin | grep -q "refs/heads/eigen$" && fehl "Liste: eigen nicht geloescht"
+git ls-remote --heads origin | grep -q "refs/heads/falscher_pr$" || fehl "Liste: falscher_pr geloescht"
+git bundle list-heads "$T/s.bundle" | grep -q "^$eigen_sha refs/remotes/origin/eigen$" || fehl "eigen nicht im Bundle"
+git init -q --bare "$T/zurueck.git"; git -C "$T/zurueck.git" fetch -q "$T/s.bundle" "refs/remotes/origin/eigen:refs/heads/eigen"
+[ "$(git -C "$T/zurueck.git" rev-parse eigen)" = "$eigen_sha" ] || fehl "aus dem Bundle nicht wiederherstellbar"
 echo "OK zweige_aufraeumen"

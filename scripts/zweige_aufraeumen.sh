@@ -19,6 +19,12 @@
 # Jede geloeschte Spitze steht im Log (Wiederherstellen:
 # git push origin <sha>:refs/heads/<zweig>).
 #
+# Zusaetzlich (LISTE=<datei>): vom Betreiber entschiedene Zweige, je Zeile
+# "<sha> <zweig>". Geloescht wird nur, wenn die Spitze noch genau <sha> ist
+# (sonst "bewegt", bleibt); Hauptzweig und offene PRs bleiben auch hier.
+# Mit BUNDLE=<datei> werden alle zu loeschenden Zweige vorher in ein
+# Git-Bundle gesichert (fehlt es danach, wird nichts geloescht).
+#
 # Erwartet einen Klon mit allen Zweigen unter refs/remotes/origin/* und
 # den PR-Staenden unter refs/pr/* (refs/pull/*/head).
 set -euo pipefail
@@ -62,9 +68,47 @@ while read -r sha ref; do
   liste+=("$sha $z")
 done < <(git for-each-ref --format='%(objectname) %(refname)' 'refs/remotes/origin/*')
 
+if [ -n "${LISTE:-}" ]; then
+  [ -f "$LISTE" ] || { echo "LISTE $LISTE fehlt" >&2; exit 1; }
+  while read -r soll z rest; do
+    case "$soll" in ''|\#*) continue ;; esac
+    [[ "$soll" =~ ^[0-9a-f]{40}$ ]] && [ -n "$z" ] && [ -z "$rest" ] || { echo "LISTE: ungueltige Zeile: $soll $z $rest" >&2; exit 1; }
+    if [ "$z" = "$HAUPT" ]; then echo "bleibt  $z (Hauptzweig, auch auf der Liste)"; continue; fi
+    if [ -n "$OFFEN" ] && grep -qxF -- "$z" <<<"$OFFEN"; then echo "bleibt  $z (offener PR, auch auf der Liste)"; continue; fi
+    ist="$(git rev-parse -q --verify "refs/remotes/origin/$z" || true)"
+    if [ -z "$ist" ]; then echo "fehlt   $z (schon weg)"; continue; fi
+    if [ "$ist" != "$soll" ]; then echo "bleibt  $z (bewegt: $ist statt $soll)"; continue; fi
+    doppelt=0; for e in "${liste[@]}"; do [ "${e#* }" = "$z" ] && doppelt=1; done
+    [ "$doppelt" = 1 ] && continue
+    echo "weg     $z $soll (L Liste des Betreibers)"
+    liste+=("$soll $z")
+  done < "$LISTE"
+fi
+
 echo "Zusammen: ${#liste[@]} Zweige erledigt."
 [ "${#liste[@]}" -le "$HOECHSTENS" ] || { echo "Mehr als $HOECHSTENS -- abgebrochen, bitte pruefen." >&2; exit 1; }
 [ "$MODUS" = loeschen ] || exit 0
+[ "${#liste[@]}" -gt 0 ] || exit 0
+
+if [ -n "${BUNDLE:-}" ]; then
+  if [ "${NUR_SICHERN:-}" = 1 ]; then
+    # Schritt 1: sichern, nichts loeschen (der Workflow laedt das Bundle hoch).
+    refs=(); for e in "${liste[@]}"; do refs+=("refs/remotes/origin/${e#* }"); done
+    git bundle create -q "$BUNDLE" "${refs[@]}" || { echo "Bundle fehlgeschlagen" >&2; exit 1; }
+    git bundle verify -q "$BUNDLE" >/dev/null || { echo "Bundle ungueltig" >&2; exit 1; }
+    echo "Sicherung: $BUNDLE ($(du -h "$BUNDLE" | cut -f1), ${#refs[@]} Zweige)"
+    exit 0
+  fi
+  # Schritt 2: nur loeschen, was mit genau dieser Spitze im Bundle steckt.
+  [ -f "$BUNDLE" ] || { echo "Keine Sicherung $BUNDLE -- nichts geloescht" >&2; exit 1; }
+  git bundle verify -q "$BUNDLE" >/dev/null || { echo "Sicherung ungueltig -- nichts geloescht" >&2; exit 1; }
+  koepfe="$(git bundle list-heads "$BUNDLE")"
+  gesichert=()
+  for e in "${liste[@]}"; do
+    if grep -qxF -- "${e%% *} refs/remotes/origin/${e#* }" <<<"$koepfe"; then gesichert+=("$e"); else echo "bleibt  ${e#* } (nicht in der Sicherung)"; fi
+  done
+  liste=("${gesichert[@]}")
+fi
 
 fehler=0
 for e in "${liste[@]}"; do

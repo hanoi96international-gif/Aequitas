@@ -1,0 +1,39 @@
+# Vom Betreiber am 22.11.2026 entschieden: nicht gemergt, aber nicht mehr gebraucht
+# (Durchsicht in Aequitas docs/SITZUNG_UEBERGABE.md). Je Zeile: <spitze> <zweig>.
+# Geloescht wird nur mit genau dieser Spitze, vorher gesichert (Artefakt zweige-sicherung).
+0ac8e1bc94f48b9e5fc2c25e0d918f9138b09ca4 audit/wal-compact
+fe00224c593427be80fe155a6765e16f1ac35c49 backup/master-worktree-2026-08-16
+e5f68577d4cd90d61fcc0b21785d695ef32a6454 claude/50k-tps-umbau-28aurd
+c8bc91bae675190031863036a07bcdbd64ba1109 claude/aequitas-fortsetzen-osrea1
+fbc9f394afc86bc94d49fb62b5d5af17ecc7cfe2 claude/aktueller-workflow-fortsetzen-e49akc
+91f1fc8cc21cd15abe8dc112dcbe26404fa42fa1 claude/cl-uebergabe-weitermachen-jdz5h7
+b955280d2ba5d1bedafd6b05f3978d63ee440914 claude/complete-audit-8p8484
+4840ea2847e5342f6be04038ca62e457dc19cdab claude/complete-implementation-no-fake-fixes-scd5zj
+330f19d2e9a273e44a381e354b7abc87e89445c0 claude/count-streak-resets
+abd3883feea1aa423bbf1ba4fa3295dc216d82bf claude/ecstatic-fermat-9vg14h
+a7c3073eafdba604ac7718ab850b67e7f0ba577f claude/enable-backlog-escape-c1
+2ffedb71708557f9b1c0cb4d6aed2f7211fd0a45 claude/firma-ki-agenten-7psy4s
+07af9244bf452be3869ffcfda63c639dbffa565a claude/iris-scanner-prototype-shopping-la83jc
+772f2904fd96c06245a79e9b24839a423e721600 claude/lsob-trade-agent-49ukz0
+1e91e9589782e8394fafa4f16cf963d4a5cf61cf claude/market-signal-agents-ujdi7z
+245e611bb1fd57a1bb171b5ca05ba8584fc3fe16 claude/measure-blocksave-phases
+426f4b1abb4eb0933849cf5f9766a5b22c9f112e claude/measure-compression-effect
+617684135668c7d4426984f141134c51fcf2e992 claude/minibuch-60-geburtstag-wusqbi
+fb04fc1d7bcc4e4a9c7d6448f73223f983ceccc0 claude/nodes-merge-issue-x27mvc
+299fc5ad4c682de2ea96a3fd6d263520fabe7189 claude/registrierung-zeiten
+476e2aaaa388a944fd014af5e3914605bbd489c4 claude/session-memory-br9cr9
+11ae6b3651ddbe83986c021f3d6807efe7ab2b47 claude/tps-messung
+eb9521bc37a57a96a665db931186c382ad0b3d5f claude/v8
+e0ec4b8a2161b2e54bdb9de9bae51b2f20605657 claude/weiter-gehts-hklfhc
+dde34d10408a3d8ec8d9fa75a63e07ef801f13b2 claude/weiter-gehts-r7rb9w-kontenindex
+76fa3e7101e3a46bdefe6aa195e483873c05653d claude/weiter-gehts-r7rb9w-leiterrumpf
+f0e2632fc0250f296b17879b57c32eaf594970c0 claude/weiter-gehts-r7rb9w-register3b
+add9778221d24a31f8450ceceef178ee77d068fe claude/weiter-uw2p42
+b2cde6f1c8801781d6ce3304ea11ff814cf0f928 claude/weitermachen-hxfyzs-komitee
+e5dba0fd34d454caf011133d537fbd8f7edea7c2 claude/weitermachen-php71e
+3567da289c977d34a92fcb8e77bdc29c686d03d3 claude/x-telegram-setup-lue2pf
+0b50431a87b9c4dcc4f2780c48c721c48847c228 feat/mpc-authoritative
+669b9ef415673a97e84bbcc730e34a848090e0cc fix/mpc-triple-allocator
+54a0c6d60c6fc5528a84ca1aa2e00a94d00a06d2 ops/c2-emergency-apex-prep
+51cad72bc1894a3260ab9709363a269151ea079c stash/stateroot-drift-2026-08-16
+54608cae7269122a6bf998bb292e06074a34187e tps/shard-locks-slow-path

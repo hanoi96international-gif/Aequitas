@@ -4,7 +4,9 @@ name: Zweige aufraeumen (nur erledigte)
 # gemergt). Zweige mit offenem PR und Zweige mit Commits der letzten zwei
 # Tage bleiben. Standard ist "pruefen" (nur Liste). "loeschen" braucht die
 # Freigabe "produktion". Jede geloeschte Spitze steht im Log;
-# wiederherstellen: git push origin <sha>:refs/heads/<zweig>.
+# wiederherstellen: git push origin <sha>:refs/heads/<zweig>. Vor dem
+# Loeschen werden alle betroffenen Zweige als Git-Bundle gesichert
+# (Artefakt "zweige-sicherung", 90 Tage).
 on:
   workflow_dispatch:
     inputs:
@@ -13,6 +15,10 @@ on:
         type: choice
         options: [pruefen, loeschen]
         default: pruefen
+      liste:
+        description: Auch die vom Betreiber entschiedenen Zweige aus .github/zweige-loeschen.txt (nur mit genau dieser Spitze)
+        type: boolean
+        default: false
 permissions: {}
 concurrency: zweige-aufraeumen
 jobs:
@@ -40,11 +46,37 @@ jobs:
           set -eu
           gh pr list --repo "$GITHUB_REPOSITORY" --state open --limit 500 --json headRefName --jq '.[].headRefName' > "$RUNNER_TEMP/offen.txt"
           echo "Offene PRs: $(wc -l < "$RUNNER_TEMP/offen.txt")"
-      - name: Aufraeumen
+      - name: Pruefen und sichern
         env:
           MODUS: ${{ inputs.modus }}
+          MIT_LISTE: ${{ inputs.liste }}
           HAUPTZWEIG: ${{ github.event.repository.default_branch }}
         run: |
           set -eu
           export OFFENE_PR_ZWEIGE="$(cat "$RUNNER_TEMP/offen.txt")"
-          bash scripts/zweige_aufraeumen.sh "$MODUS"
+          if [ "$MIT_LISTE" = "true" ]; then export LISTE=.github/zweige-loeschen.txt; fi
+          if [ "$MODUS" = loeschen ]; then
+            mkdir -p "$RUNNER_TEMP/sicherung"
+            BUNDLE="$RUNNER_TEMP/sicherung/zweige.bundle" NUR_SICHERN=1 bash scripts/zweige_aufraeumen.sh loeschen
+          else
+            bash scripts/zweige_aufraeumen.sh pruefen
+          fi
+      - name: Sicherung hochladen (vor dem Loeschen)
+        if: inputs.modus == 'loeschen'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: zweige-sicherung
+          path: ${{ runner.temp }}/sicherung/
+          retention-days: 90
+          if-no-files-found: ignore
+      - name: Loeschen (nur Gesichertes)
+        if: inputs.modus == 'loeschen'
+        env:
+          MIT_LISTE: ${{ inputs.liste }}
+          HAUPTZWEIG: ${{ github.event.repository.default_branch }}
+        run: |
+          set -eu
+          export OFFENE_PR_ZWEIGE="$(cat "$RUNNER_TEMP/offen.txt")"
+          if [ "$MIT_LISTE" = "true" ]; then export LISTE=.github/zweige-loeschen.txt; fi
+          [ -f "$RUNNER_TEMP/sicherung/zweige.bundle" ] || { echo "Nichts zu loeschen."; exit 0; }
+          BUNDLE="$RUNNER_TEMP/sicherung/zweige.bundle" bash scripts/zweige_aufraeumen.sh loeschen

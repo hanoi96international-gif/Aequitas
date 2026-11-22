@@ -53,6 +53,13 @@ dezentrales Quantengeld“.
     erledigte Zweige (gemergt, Inhalt im Hauptzweig, Squash-PR gemergt); Stand 22.11.: Aequitas 214,
     App 29, proof-server 18, biometric-beta 42. Erst `modus=pruefen`, dann `loeschen` (Freigabe `produktion`).
     Diese Sitzung selbst kann keine fremden Zweige löschen (Proxy: 403).
+  - **Entscheidung des Betreibers (22.11. ~17:15 UTC): „Alles, was gebraucht wird, übernehmen und umsetzen, alles andere
+    löschen.“** Übernommen: `docs/AUDIT_2026-11-14.md`, `docs/IRIS_PROTOTYP_EINKAUFSLISTE.md`; #609 (setup-go 7.1.0)
+    gemergt; biometric-beta Dependabot #100, #106, #107, #108 gemergt, #79, #98, #99 (Tests rot), #101 geschlossen
+    (Konflikt; Dependabot legt neu an, falls nötig); #110 (Minibuch) geschlossen. Alle übrigen Zweige stehen in
+    `.github/zweige-loeschen.txt` je Repo und werden vom Workflow `zweige-aufraeumen.yml` (`liste = true`) gelöscht,
+    vorher als Git-Bundle gesichert (Artefakt `zweige-sicherung`, 90 Tage). **Bleibt:** `claude/weiter-gehts-vm8979-kegel`
+    + #340 (Konsensänderung mit offenem HOCH-Befund, eigene Sitzung; Betreiber entscheidet, ob der Kegel kommt).
   - **Durchsicht der 66 nicht gemergten Zweige (22.11. ~17:05 UTC).** Je Zweig geprüft: eigene
     Commits, welche Dateien im Hauptzweig fehlen oder anders sind. Empfehlung:
     - **WEG – überholt, der Hauptzweig hat es neuer oder bewusst anders (nichts geht verloren):**
