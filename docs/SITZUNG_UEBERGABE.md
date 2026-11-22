@@ -37,6 +37,12 @@ dezentrales Quantengeld“.
   `einrichten.sh`, Druck mit Chromium: `node build/node_guide_pdf.cjs`); alte Generatoren
   und `docs/VALIDATOR_RAILWAY.md` entfernt; README/Whitepaper auf C1 (netcup). Gleiches in
   App, biometric-beta und proof-server (Railway-Reste).
+- **Stand 22.11. ~14:00 UTC:** **C1 hat #622** (Deploy 45024947456 ausgerollt 13:31 UTC, git 972468c).
+  **App 1.30.0** (versionCode/buildNumber 66) gemergt (App #100, 1b53524); APK-Build
+  [45028306511](https://github.com/hanoi96international-gif/Aequitas-App/actions/runs/45028306511) und
+  iOS-Build laufen. Danach `release-apk.yml` (run_id, tag v1.30.0, Umgebung `app-signatur` ->
+  Betreiber freigeben), dann `release-ios.yml`. Offen danach: erster IBM-Lauf (Fehlerbild),
+  erster Token mit Urteil.
 - **Stand 22.11. ~13:00 UTC:** Annahmestelle (Go-Werkzeug `quanten_s_ausgabe`) fragt Öffnung und
   Anteil-Pakete je Aufruf nur noch **einmal** (`quantenSHTTP.versuche = 1`); die Schleife in
   `quantenSStichprobeV2Laden` fragt nach und weicht sofort auf die Anteile aus. Vorher hielt ein toter
