@@ -2,7 +2,7 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 22.11.2026 ~17:10 UTC, Sitzung „Weiter Übergabe“ (`claude/weiter-uebergabe-1a9yql`); davor 21.11. ~20:15 UTC Sitzung „CL Übergabe weitermachen“; davor ~18:00 UTC Sitzung „Weiter“ (Zweig `claude/admiring-bohr-ob0u0p`, alle vier
+Stand: 22.11.2026 ~18:50 UTC, Sitzung „CL Übergabe weitermachen“ (`claude/cl-uebergabe-weitermachen-jdz5h7`); davor ~16:40 UTC Sitzung „Weiter Übergabe“ (`claude/weiter-uebergabe-1a9yql`); davor 21.11. ~20:15 UTC Sitzung „CL Übergabe weitermachen“; davor ~18:00 UTC Sitzung „Weiter“ (Zweig `claude/admiring-bohr-ob0u0p`, alle vier
 Repos); davor ~13:40 UTC Sitzung „Weiter“ (`claude/weiter-uw2p42`), davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18:30 UTC Sitzung
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
@@ -37,98 +37,94 @@ dezentrales Quantengeld“.
   `einrichten.sh`, Druck mit Chromium: `node build/node_guide_pdf.cjs`); alte Generatoren
   und `docs/VALIDATOR_RAILWAY.md` entfernt; README/Whitepaper auf C1 (netcup). Gleiches in
   App, biometric-beta und proof-server (Railway-Reste).
-- **ÜBERGABE 22.11. ~17:10 UTC (Sitzung „Weiter Übergabe“, Zweig `claude/weiter-uebergabe-1a9yql` in allen vier Repos)
-  — NÄCHSTE SCHRITTE IN DIESER REIHENFOLGE:**
-  1. **App 1.30.1 freigeben und veröffentlichen.** APK-Build
-     [45042698436](https://github.com/hanoi96international-gif/Aequitas-App/actions/runs/45042698436) wartet auf
-     `app-signatur` (Betreiber). Danach `release-apk.yml` (run_id 45042698436, tag `v1.30.1`, notes „Bestellung: Zufall
-     in Stücken von höchstens 1024 Byte (getRandomBytes-Fehler behoben)“), dann `release-ios.yml` (run_id 45042700994,
-     tag `v1.30.1`; iOS-Build ist grün).
-  2. **Auslastung C1 auswerten** (Lauf [45043076420](https://github.com/hanoi96international-gif/Aequitas/actions/runs/45043076420),
-     3600 s ab 16:18:46, fertig ~17:19 UTC): Log lesen (`get_job_logs`), CPU/RAM je Container. Der C1-Deploy von #624
-     (16:47–16:48) fiel in die Messung → Neustart-Spitze herausrechnen; reicht der Rest nicht, `auslastung-c1.yml` mit
-     dauer 1800 neu. Dann Servergröße für den Umzug 23.12. empfehlen (Beta-Stufe: ≥4 dedizierte Kerne, 8 GB, 40 GB,
-     Steal < 5 %; Contabo VPS mit geteilten Kernen nur nach `neuer-c1-pruefen.yml`).
-  3. **Zweige aufräumen fertig machen.** Fehler gefunden und behoben: `for-each-ref 'refs/remotes/origin/*'` erfasste keine
-     Namen mit Schrägstrich → die ersten Läufe (App, proof-server, biometric-beta) haben NUR die Listen-Zweige gelöscht
-     (gesichert im Artefakt `zweige-sicherung` je Lauf), die gemergten Zweige stehen noch. Korrektur: PRs App #104,
-     proof-server #36, biometric-beta #128 und in Aequitas #625 (dort auch Liste, Audit 14.11., Iris-Liste, Übergabe).
-     Wenn grün: mergen (volle SHA), dann je Repo `zweige-aufraeumen.yml` mit `modus=loeschen`, `liste=true` starten
-     (ref: Hauptzweig; App-Basis `aequitas-app`). Ergebnis prüfen (`git ls-remote --heads origin | wc -l`; übrig bleiben
-     sollen Hauptzweig, Sitzungszweige < 2 Tage, `claude/weiter-gehts-vm8979-kegel`).
-     **Achtung:** In App, proof-server und biometric-beta hat die Umgebung `produktion` keine Freigaberegel — die Läufe
-     liefen ohne Freigabe (Betreiber konnte nichts freigeben). Betreiber fragen, ob dort Schutzregeln wie in Aequitas
-     gesetzt werden sollen (Settings → Environments → produktion → Required reviewers).
-  4. Danach offen: Kegel (#340, Konsens, HOCH 2 offen) — Betreiber entscheidet, ob er kommt; erster IBM-Lauf mit
-     Fehlerbild; erster Token mit Urteil (R10).
-  - Diese Sitzung erledigt: App #101 (getRandomBytes in Stücken, 1.30.1), #624 (Beta-Stufe, auf C1), Aufräum-Workflow
-    (App #102/#103, proof-server #34/#35, biometric-beta #126/#127), #609, Dependabot biometric #100/#106/#107/#108,
-    geschlossen #79/#98/#99/#101/#110.
-- **Stand 22.11. ~17:05 UTC (Sitzung „Weiter Übergabe“):**
-  - **#624 gemergt (d0d82b81) und auf C1 ausgerollt** (Deploy 45044230412, 16:47–16:48 UTC, Höhe steigt):
-    Beta-Stufe 4 Kerne / 20.000 Sig/s gilt auf C1.
-  - **App 1.30.1** (#101, getRandomBytes-Fix): iOS-Build 45042700994 grün, APK-Build 45042698436 läuft. Danach
-    `release-apk.yml` (run_id 45042698436, Tag `v1.30.1`, Freigabe `app-signatur`), dann `release-ios.yml`
-    (run_id 45042700994, Tag `v1.30.1`).
-  - **Auslastung C1** (`auslastung-c1.yml`, Lauf 45043076420, 3600 s ab 16:18:46 UTC): Der Deploy von #624 fiel in die
-    Messung (~16:47) → Neustart-Spitze herausrechnen; reicht der Rest nicht, eine zweite Messung (z. B. 1800 s).
-    Danach Servergröße für den Umzug am 23.12. empfehlen.
-  - **Zweige aufräumen:** Workflow gemergt in App (#102), proof-server (#34), biometric-beta (#126); Aequitas #625
-    wartet auf CI. Betreiber startet je Repo `pruefen`, dann `loeschen`.
-- **Aufräumen (22.11. ~17:00 UTC, Betreiber: „alles aufräumen, was nicht gebraucht wird“):**
-  - Workflow `zweige-aufraeumen.yml` in allen vier Repos (PRs dieser Sitzung). Er löscht nur nachweislich
-    erledigte Zweige (gemergt, Inhalt im Hauptzweig, Squash-PR gemergt); Stand 22.11.: Aequitas 214,
-    App 29, proof-server 18, biometric-beta 42. Erst `modus=pruefen`, dann `loeschen` (Freigabe `produktion`).
-    Diese Sitzung selbst kann keine fremden Zweige löschen (Proxy: 403).
-  - **Entscheidung des Betreibers (22.11. ~17:15 UTC): „Alles, was gebraucht wird, übernehmen und umsetzen, alles andere
-    löschen.“** Übernommen: `docs/AUDIT_2026-11-14.md`, `docs/IRIS_PROTOTYP_EINKAUFSLISTE.md`; #609 (setup-go 7.1.0)
-    gemergt; biometric-beta Dependabot #100, #106, #107, #108 gemergt, #79, #98, #99 (Tests rot), #101 geschlossen
-    (Konflikt; Dependabot legt neu an, falls nötig); #110 (Minibuch) geschlossen. Alle übrigen Zweige stehen in
-    `.github/zweige-loeschen.txt` je Repo und werden vom Workflow `zweige-aufraeumen.yml` (`liste = true`) gelöscht,
-    vorher als Git-Bundle gesichert (Artefakt `zweige-sicherung`, 90 Tage). **Bleibt:** `claude/weiter-gehts-vm8979-kegel`
-    + #340 (Konsensänderung mit offenem HOCH-Befund, eigene Sitzung; Betreiber entscheidet, ob der Kegel kommt).
-  - **Durchsicht der 66 nicht gemergten Zweige (22.11. ~17:05 UTC).** Je Zweig geprüft: eigene
-    Commits, welche Dateien im Hauptzweig fehlen oder anders sind. Empfehlung:
-    - **WEG – überholt, der Hauptzweig hat es neuer oder bewusst anders (nichts geht verloren):**
-      Aequitas: `claude/aequitas-fortsetzen-osrea1`, `claude/weiter-uw2p42`, `claude/cl-uebergabe-weitermachen-jdz5h7`
-      (nur alte Übergabe-Stände), `backup/master-worktree-2026-08-16` (laut eigenem Text Duplikat von #111),
-      `claude/complete-audit-8p8484`, `claude/complete-implementation-no-fake-fixes-scd5zj`, `claude/50k-tps-umbau-28aurd`,
-      `claude/count-streak-resets`, `claude/measure-blocksave-phases`, `claude/measure-compression-effect`,
-      `claude/enable-backlog-escape-c1`, `claude/nodes-merge-issue-x27mvc` (Juli, alte Kette/Diagnosen),
-      `stash/stateroot-drift-2026-08-16`, `audit/wal-compact` (WAL-Kompaktierung steht im Hauptzweig),
-      `feat/mpc-authoritative`, `fix/mpc-triple-allocator` (#154 zu; `mpc_triple_sync.go` identisch im Hauptzweig),
-      `tps/shard-locks-slow-path`, `claude/weitermachen-php71e`, `ops/c2-emergency-apex-prep` (C2 gibt es nicht mehr),
-      `claude/tps-messung`, `claude/registrierung-zeiten`, `claude/v8` (V8_ENTWURF neuer im Hauptzweig),
-      `claude/aktueller-workflow-fortsetzen-e49akc`, `claude/x-telegram-setup-lue2pf` (Website heute 12 Sprachen),
-      `claude/session-memory-br9cr9`, `claude/weiter-gehts-hklfhc` (#334 zu; WAL-Ausgang steht im Hauptzweig),
-      `claude/weiter-gehts-r7rb9w-kontenindex` (#333 zu; Test im Hauptzweig), `claude/weiter-gehts-r7rb9w-leiterrumpf`
-      (#414 zu), `claude/weiter-gehts-r7rb9w-register3b` (Lohn heute `validator_lohn_kette.go`),
-      `claude/weitermachen-hxfyzs-komitee`.
-      App: `main` (alter Stand vom Juni, Basis ist `aequitas-app`), `claude/eas-build`, `claude/aequitas-fortsetzen-93nmoo`,
-      `claude/aktuellen-stand-fhd5bh`, `claude/app-neubau` (V8-Registrierung und Tresor anders umgesetzt),
-      `claude/continue-current-pr-i9in2o`, `claude/hier-weitermachen-xfsfqx`, `rescue/uncommitted-tests-2026-08-22`
-      (Tests zu Code, den es so nicht mehr gibt).
-      proof-server: `claude/bio-attestation`, `claude/continue-current-pr-i9in2o`, `claude/vollstaendiges-audit-mgdrko`
-      (/store-Befund als Audit H4 behoben).
-      biometric-beta: `claude/continue-current-pr-i9in2o`, `claude/hier-weitermachen-xfsfqx`, `claude/security-fixes`
-      (Railway), `claude/weiter-machen-vwv9as`, `rescue/no-whole-templates-2026-08-22` (heute Sketch statt Vorlage,
-      `test_sketch_replaces_template.py`), dazu die überholten Dependabot-Zweige ohne offenen PR
-      (`…/matching-service/av-19.0.1`).
-    - **BETREIBER ENTSCHEIDET – nicht Aequitas, eigene Projekte (sonst in ein eigenes Repo):**
-      `claude/firma-ki-agenten-7psy4s` (Content-Agentur), `claude/market-signal-agents-ujdi7z` und
-      `claude/lsob-trade-agent-49ukz0` (Handels-Agenten), `claude/minibuch-60-geburtstag-wusqbi` + PR #110 (Buch, 107 Commits),
-      proof-server `claude/deutsch-indonesisch-market-analysis-wbbulq` (Marktanalyse),
-      proof-server `claude/mobile-uniqueness-markers-bscf20` (11 Forschungstexte: Passive Zeugen, Prämissen, Weltlinie …,
-      nirgends sonst).
-    - **BRAUCHBAR – übernehmen oder bewusst behalten:**
-      `claude/ecstatic-fermat-9vg14h` (`docs/AUDIT_2026-11-14.md`, Audit vom 14.11., fehlt im Hauptzweig → übernehmen),
-      `claude/iris-scanner-prototype-shopping-la83jc` (Einkaufsliste Iris-Prototyp, fehlt im Hauptzweig → übernehmen, falls
-      der Prototyp noch geplant ist), `claude/weiter-gehts-vm8979-kegel` + PR #340 (Entwurf Validatoren-Lohn „Kegel“,
-      HOCH 2 offen → behalten, bis entschieden ist, ob der Kegel kommt), Dependabot #609 und die offenen Dependabot-PRs
-      in biometric-beta (prüfen und mergen oder schließen).
-  - **Alte offene PRs (behalten):** Aequitas #340 (Kegel-Entwurf), #110 (Minibuch), #609 (setup-go 7.1.0);
-    biometric-beta Dependabot #79, #98, #99, #100, #101, #106, #107, #108.
-
+- **Zweige aufräumen (Sitzung „Weiter Übergabe“, Zweig `claude/weiter-uebergabe-1a9yql`, Stand 22.11. ~20:50 UTC):**
+  - Betreiber: „Alles, was gebraucht wird, übernehmen und umsetzen, alles andere löschen.“ Durchsicht aller
+    nicht gemergten Zweige: übernommen `docs/AUDIT_2026-11-14.md` und `docs/IRIS_PROTOTYP_EINKAUFSLISTE.md`;
+    #609 und biometric Dependabot #100/#106/#107/#108 gemergt, #79/#98/#99/#101/#110 geschlossen. Alle übrigen
+    nicht gemergten Zweige stehen je Repo in `.github/zweige-loeschen.txt` (Spitze + Name). **Bleibt:**
+    `claude/weiter-gehts-vm8979-kegel` + #340 (Kegel, Konsens, HOCH 2 offen; Betreiber entscheidet).
+  - Workflow `zweige-aufraeumen.yml` (alle vier Repos): löscht gemergte Zweige und mit `liste=true` die Liste;
+    vorher Git-Bundle als Artefakt `zweige-sicherung` (90 Tage), gelöscht wird nur, was mit genau dieser Spitze
+    im Bundle steckt; offene PRs und Zweige < 2 Tage bleiben.
+  - **Stand:** In App, proof-server und biometric-beta sind die Listen-Zweige gelöscht (gesichert). Die gemergten
+    Zweige stehen noch: Fehler `for-each-ref 'refs/remotes/origin/*'` traf keine Namen mit Schrägstrich, behoben
+    (Präfix-Abgleich, Test mit `claude/tief/…`). Korrektur-PRs: App #104, proof-server #36 (beide grün),
+    biometric-beta #128, Aequitas: dieser PR #625 (auch Liste und die zwei Dokumente).
+  - **Nächste Schritte:** #625, #104, #36, #128 mergen (volle SHA), dann je Repo `zweige-aufraeumen.yml` mit
+    `modus=loeschen`, `liste=true` (App: ref `aequitas-app`). Ergebnis mit `git ls-remote --heads origin | wc -l`
+    prüfen. In App, proof-server, biometric-beta hat die Umgebung `produktion` keine Freigaberegel (Läufe ohne
+    Freigabe) — Betreiber fragen, ob Required reviewers gesetzt werden sollen.
+- **Stand 22.11. ~18:50 UTC — SITZUNGSENDE (Limit 95 %). Nächste Sitzung macht hier weiter:**
+  1. **#627 (Aequitas) mergen**, sobald CI auf dem Kopf grün ist (enthält auch `quanten_s_los.go` +
+     Vektor `testdata/quanten_s_los_vektor.json`, drand-Prüfung mit echtem Beacon Runde 1.000.000).
+     Danach `deploy-c1.yml` starten, Betreiber gibt `produktion` frei. Prüfen: `/api/quanten-w/stand`
+     antwortet, `/quanten` zeigt Abschnitt `qapp`.
+  2. **App 1.30.2:** #105 und #106 gemergt (ffbf0b81). Builds laufen: APK 45056590596 (wartet auf
+     Freigabe `app-signatur` durch den Betreiber), iOS 45056593213. Danach `release-apk.yml`
+     (run_id 45056590596, Tag `v1.30.2`) und `release-ios.yml` starten, Links an den Betreiber.
+  3. **B2 weiter (eigener PR NACH #627):** Register-Tx (melden/abmelden mit Zeit, nur IsHuman, ein Mensch
+     ein Eintrag), Bestellung Weg B, `_losen` mit drand (`drandQuicknet.pruefen`, Rundenzeit ≥ Bestellzeit
+     + Abstand), Los aus dem Stand ZUR Bestellung (`quantenSLos`), S-Ausgabe verlangt `Validatoren == Los`,
+     Stichtag, Sicherheitsprüfung als PR-Kommentar. Pfand als B2b.
+  4. Geplante Rückfragen (send_later) um 19:08 und 19:15 UTC sind gesetzt; sie prüfen Builds und #627.
+- **Stand 22.11. ~18:45 UTC (diese Sitzung, Zweig `claude/cl-uebergabe-weitermachen-jdz5h7`) — NÄCHSTE SCHRITTE:**
+  1. **#627 mergen**, sobald CI auf dem Kopf (`acbc63e8` oder neuer) grün ist; dann C1-Deploy
+     (`deploy-c1.yml`, Freigabe `produktion`) starten und dem Betreiber den Link schicken. #627 enthält:
+     Website `qapp` (12 Sprachen), `docs/QUANTENGELD_S_2026-11-22.md`, `/api/quanten-w/stand`
+     (Sicherheitsprüfung als PR-Kommentar), Weg B B1 (`s_weg_b.py`, CI), drand-Prüfung
+     (`drand_zufall.go`, noch nicht verdrahtet; echter quicknet-Beacon Runde 1.000.000 als Test grün;
+     gnark-crypto direkt), Abmelde-Lücke im Los geschlossen.
+  2. **App-Release** für #105 (Überblick W/S, klare Meldungen): Version erhöhen (1.30.2), Builds,
+     Freigabe `app-signatur`, Links an den Betreiber.
+  3. **B2 (Kette, eigener PR, Stichtag, eigene Sicherheitsprüfung):** Tx `quanten_w_s_praeparator_melden`/
+     `_abmelden` (nur IsHuman-Konten, ein Mensch ein Eintrag, Meldezeit und Abmeldezeit im Register),
+     Bestellung Weg B (K, v, t, Zeit), `_losen` mit drand-Runde (Zeit der Runde ≥ Bestellzeit + Abstand,
+     `drandQuicknet.pruefen`), Los = v kleinste H(Zufall, K, Konto) aus dem Stand ZUR Bestellung,
+     S-Ausgabe mit Bestellung verlangt `Validatoren == Los` (Präparatoren statt gebundener Validatoren),
+     Pfand (B2b). Prüfvektor aus `s_weg_b.py` erzeugen (`--vektor`).
+  4. Danach B3 (Briefkasten), B4 (App als Präparatorin), B5 (Pilot, 7 Menschen).
+- **Stand 22.11. ~18:40 UTC (diese Sitzung):**
+  - **Aequitas #627 offen:** Website `/quanten` Abschnitt `qapp` (erstes S über die App, 12 Sprachen),
+    `docs/QUANTENGELD_S_2026-11-22.md` (dauerhafter Nachweis; beendete Token verschwinden nach ~8 Tagen
+    aus dem Register), neuer Lese-Endpunkt `GET /api/quanten-w/stand` (Überblick, 15 s gecacht,
+    lesenBegrenzt, 5 Mutationen rot). Sicherheitsprüfung als PR-Kommentar gepostet. Nach Merge:
+    C1-Deploy (`produktion`), dann App zeigt die Karte.
+  - **Aequitas-App #105 offen:** `beendetAbweisen` (Inhaberin + Annahmestelle: „bereits eingeloest“
+    statt irreführender Meldungen) und Quantengeld-Seite mit Überblick W/S und Urteil je Token.
+    Suite 1123 grün. Kommt mit dem nächsten App-Release (1.30.2 o. ä.).
+  - **App #105 gemergt (ba03fc7d).** #627 abonniert; nach grünem CI mergen, dann C1-Deploy-Link an den Betreiber.
+  - **Betreiber hat Weg B gewählt („Präparieren per App“).** B1 fertig auf diesem Zweig (in #627):
+    `forschung/quantengeld/s_weg_b.py` (Selbsttest im CI, 8 Mutationen rot), `DEZENTRAL.md` 18 mit Zahlen
+    und B2-Entwurf (Zufall für das Los aus drand, BLS-Prüfung in jedem Knoten mit gnark-crypto).
+    **Nächster Schritt B2:** Kette (Präparatoren-Register mit Menschenbindung, drand-Los, Ausgabe gegen
+    das Los, Pfand) mit Stichtag, Prüfvektor aus `s_weg_b.py`, eigene Sicherheitsprüfung.
+- **Stand 22.11. ~17:55 UTC (diese Sitzung, Zweig `claude/cl-uebergabe-weitermachen-jdz5h7`):**
+  - **#626 gemergt (690daf98): C1 aufräumen.** Prüflauf 45050955665: belegt 161 von 251 GB;
+    48 anonyme unbenutzte Volumes 78,8 GB (Reste der dind-Prüfstände), 89 unbenutzte Images
+    (~43,9 GB), Build-Cache ~10,7 GB; nichts Benanntes unbenutzt. Betreiber hat „Ja“ gesagt →
+    **Löschlauf 45051960318 grün: belegt jetzt 14 GB von 251 GB (6 %)**, Images 7,3 GB, Volumes
+    0,99 GB (nur benutzte), Build-Cache 0; „Knoten antwortet.“ Umzug muss nur noch ~1 GB Daten tragen.
+  - **Erstes Quantengeld S Ende-zu-Ende:** Ausgabe quanten-s-ausgabe.yml 45050231784 grün
+    (ibm_marrakesh, Mehrheit aus 5 Schüssen, Job dc1ifvlhdvas73bksj8g, 0/585 Fehler bei passender
+    Basis), K = `ffb9ff3538bd51abaad2c303adc8f55a07aff983c2c366d456d6b93d114aad84`, n = 1104,
+    Inhaberin 0x3797…47d9, Stellen 0x3066…42dc (C1) / 0x5abc…60b4 (Betreiber). App: abgeholt
+    („angenommen“), an Stelle 1 gebunden + gewählt, Vorlage gescannt; **wartet auf Öffnung
+    (Finalität) und Urteil (≤ 33 min)**. Danach Urteil „eingeloest“ prüfen
+    (`/api/quanten-w/note?k=…`; aus dieser Umgebung blockt der Proxy aequitas.digital → Screenshot
+    vom Betreiber). **ERLEDIGT 17:55 UTC: Urteil der Kette „eingeloest“, vorab selbst gerechnet „besteht“
+    (0 Fehler bei 301 Treffern), Annahmestelle 0x5abc…60b4.** Erstes Quantengeld S ist damit Ende-zu-Ende
+    ausgegeben, abgeholt und eingelöst. Nächster Test: dieselbe Vorlage erneut scannen → muss abgelehnt
+    werden (Doppelausgabe). Fehlerbild-Artefakt fehlerbild-45050231784 noch ungelesen (Proxy blockt Download).
+- **Stand 22.11. ~17:25 UTC (nur diese Sitzung arbeitet weiter, Zweig `claude/cl-uebergabe-weitermachen-jdz5h7`):**
+  - **App 1.30.1 veröffentlicht** (Android release 45047533683; iOS release 45048474002 freigegeben).
+  - **Beta-Stufe #624 auf C1** (Deploy 45044230412 grün).
+  - **Auslastung C1 gemessen** (auslastung-c1.yml 45043076420, 60 min): alle Dienste zusammen
+    **~1,8 GB RAM** (Postgres 1,2 GB, Vergleichsdienst 0,26 GB, Rest < 0,13 GB je Dienst), CPU im
+    Mittel **0,04 Kerne**, Spitze je Dienst ≤ 0,1 Kern, Last-Spitze 3,7 (kurz). Nutzdaten klein
+    (validator_pgdata 830 MB); auf C1 liegen 79 GB verwaiste anonyme Volumes und 44 GB alte
+    Images (freigebbar) — der Umzug nimmt nur Volumes laufender Container mit.
+    **Urteil:** 4 Kerne / 8 GB reichen mit viel Luft (RAM 4×, CPU > 50×). Offen bleibt nur die
+    Geteiltheit der Kerne: nach Bestellung `neuer-c1-pruefen.yml` (Steal < 5 %, ≥ 20.000 Sig/s).
 - **Stand 22.11. ~16:40 UTC, Sitzung „Weiter Übergabe“ (Zweig `claude/weiter-uebergabe-1a9yql`, alle vier Repos):**
   1. **App-Fehler getRandomBytes(1104) behoben: App #101 gemergt (cdedf15a)** (1.30.1, versionCode/buildNumber 67).
      `zufallInStuecken` in `lib/quantenSInhaberin.ts` zieht höchstens 1024 Byte je Aufruf, fail-closed.
