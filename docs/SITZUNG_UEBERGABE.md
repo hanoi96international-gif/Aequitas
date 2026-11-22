@@ -49,8 +49,9 @@ dezentrales Quantengeld“.
      suchen, kein Wiederholen ohne Grund. **Lokal 21:55 UTC: realdb 273 PASS, 0 FAIL;** die Gruppe quanten
      lief lokal mit 0 Tests (Gate/Umgebung prüfen), im CI auf 7f2cacec grün.
   2. Nach dem Merge: C1-Deploy (`produktion`) ist harmlos (schlafend), Link an den Betreiber.
-  3. **Vor dem Scharfschalten von Weg B offen:** Beweisweg für den Verfall des Präparator-Pfands bei
-     nachgewiesener Fälschung (Designfrage: auf der Kette nur eine Einlösung je Token — Entwurf nötig),
+  3. **Vor dem Scharfschalten von Weg B offen:** Beweisweg für den Verfall des Präparator-Pfands —
+     **Entwurf mit Entscheidungsfrage an den Betreiber in DEZENTRAL 18** („Entwurf: Beweisweg …“; Empfehlung:
+     Pfand der Inhaberin + kleiner Anteil je Gelostem). Erst nach seiner Antwort bauen.
      dann B3 Briefkasten, B4 App als Präparatorin, B5 Pilot (7 Menschen).
   4. **Betreiber hat alles freigegeben (22:00 UTC).** `release-apk.yml` v1.30.2 gestartet; danach noch
      `release-ios.yml` (run_id 45056593213, Tag `v1.30.2`) starten. Früher hieß es: APK 1.30.2 Freigabe `app-signatur` (Lauf 45056590596), danach

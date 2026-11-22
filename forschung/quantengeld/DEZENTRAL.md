@@ -1688,6 +1688,29 @@ Wallet des Menschen (auch über mehrere Umzüge), nie an die alte. 10 Gegenprobe
 Fälschung: Das Pfand bleibt dafür gesperrt, aber den Beweisweg auf der Kette gibt es noch
 nicht. (3) Weg B braucht B3/B4 (Briefkasten, App als Präparatorin), sonst gibt es keine Präparatoren.
 
+### Entwurf: Beweisweg für den Verfall des Präparator-Pfands (offen, 22.11.)
+
+**Was beweisbar ist:** Ein Token K ist eingelöst (Urteil `eingeloest` an Stelle A). Danach legt die
+*andere* festgelegte Stelle B eine Vorlage zu K vor, die die Inhaberin unterschrieben hat und die
+B's geheime Stichprobe besteht (dieselbe Prüfung wie bei der Anmeldung: Offenlegung in Teilen,
+Prüfsummen gegen die Wurzel). Beides zugleich kann ohne Kopie des Zustands nicht gelingen. Also
+haben mindestens t Gelöste ihr Wissen (Basen y, Anteile) mit der Inhaberin geteilt.
+
+**Was nicht beweisbar ist:** *welche* t der v Gelosten. Die Kette sieht nur, dass es t waren.
+
+**Möglichkeiten (Entscheidung des Betreibers):**
+1. Alle v Gelosten verlieren ihr Pfand (abschreckend, trifft aber v − t Ehrliche).
+2. Nur die Inhaberin haftet (ein Pfand der Inhaberin bei der Bindung); die Präparatoren-Pfänder
+   decken nur Ausfall (nicht erreichbar), nicht Fälschung.
+3. Präparatoren legen bei der Bestätigung eine Verpflichtung auf ihr y offen, die nur sie kennen;
+   bei einem Nachweis müssen alle v ihr y nachweislich nicht geteilt haben. Das ist nicht
+   beweisbar (Schweigen lässt sich nicht beweisen), also kein gangbarer Weg.
+
+Empfehlung: (2) plus (1) nur mit kleinem Anteil (z. B. 10 % je Gelostem). Grundsatz: Ehrliche
+sollen kaum verlieren, eine Absprache soll sich trotzdem nicht lohnen. Erst nach der
+Entscheidung bauen (neue Art `quanten_w_s_faelschung`, Tote mit Stellen behalten, Prüfung wie
+Anmelden/Offenlegen).
+
 ### Nächste Schritte
 
 | Schritt | Was |
