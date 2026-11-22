@@ -99,6 +99,7 @@ jobs:
       - run: python3 -I forschung/quantengeld/labor.py --selbsttest
       - run: python3 -I forschung/quantengeld/hardware.py --selbsttest
       - run: python3 -I forschung/quantengeld/hardware_ibm.py --selbsttest
+      - run: python3 -I forschung/quantengeld/fehlerbild.py --selbsttest
       # Versiegelte Messung (DEZENTRAL.md 17): go-ethereum-ECIES gegen die
       # Pruefvektoren des Knotens. cryptography mit denselben Hashes wie in
       # hardware-anforderungen.txt.
@@ -141,6 +142,7 @@ jobs:
       - run: bash scripts/test_quantengeld_nicht_verpasst.sh
       - run: bash scripts/test_quanten_w_nicht_verpasst.sh
       - run: bash scripts/test_quanten_s_probe_v2_nicht_verpasst.sh
+      - run: bash scripts/test_quanten_urteil_nicht_verpasst.sh
       - run: bash scripts/test_quantengeld_mindest_pruefer.sh
       - run: bash scripts/test_quantengeld_noten_tabelle.sh
       - run: bash scripts/test_quanten_s_ausgabe_skript.sh

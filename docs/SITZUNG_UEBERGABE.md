@@ -37,6 +37,40 @@ dezentrales Quantengeld“.
   `einrichten.sh`, Druck mit Chromium: `node build/node_guide_pdf.cjs`); alte Generatoren
   und `docs/VALIDATOR_RAILWAY.md` entfernt; README/Whitepaper auf C1 (netcup). Gleiches in
   App, biometric-beta und proof-server (Railway-Reste).
+- **Stand 22.11. ~07:10 UTC:** R10 und Fehlerbild fertig, Stichtag des eindeutigen Urteils
+  **22.11.2026 09:30 UTC = 1795339800** (Betreiber: „sofort“). PR offen (siehe unten), danach
+  Merge und C1-Deploy **vor 09:00 UTC** freigeben (Wächter: 30 min Vorlauf). Verpasst: neuen
+  Stichtag wählen (nie rückwirkend). Mutationen 17/17 rot, Keeper-Suite grün auch mit aktiver Regel.
+- **Stand 21.11. ~22:15 UTC (Sitzungslimit voll):**
+  - **#619 (R9) gemergt (f3c4f01b).** C1-Deploy dafür startet durch den Merge -> Link an den
+    Betreiber zur Freigabe `produktion`. **App #99** (R9 in der App) grün -> nach #619 mergen.
+  - **IN ARBEIT, auf diesem Zweig committet (WIP, noch kein PR): R10 eindeutiges Urteil +
+    Fehlerbild gegen die Kalibrierung.**
+    - Urteil (Konsensregel, `x/humanity/keeper/quanten_w_urteil.go`): `Tote`-Einträge bekommen
+      optional `urteil` (eingeloest/tot) und `ende`; Register `Enden`; `toteMerken` in W und S;
+      Aufräumen ab dem späteren von Ausgabe und Ende; Ansicht zeigt `urteil`, lebende Token
+      `urteil_eindeutig`; Werkzeug `quantenSUrteilLesen` (letzter Versuch nur mit Urteil der
+      Kette). Status `quanten_w.urteil_ab`; Wächter `.github/neustart/quanten-urteil-nicht-verpasst.sh`
+      + `scripts/test_quanten_urteil_nicht_verpasst.sh` (CI, deploy-c1). Tests
+      `quanten_w_urteil_test.go` grün, Keeper-Suite grün.
+    - **Betreiber will den Stichtag SOFORT:** `quantenWUrteilAbUnix` (heute MaxInt64 = schlafend)
+      auf jetzt + Vorlauf setzen. Der Wächter verlangt beim Deploy >= 30 min Zukunft; CI + Merge +
+      Deploy-CI dauern ~45 min -> z. B. Merge-Zeit + 75 min, als Zahl in Sekunden.
+    - **Offen vor dem PR:** Mutationsprüfung des Urteils (Skript wurde abgebrochen; danach
+      `delete(neu.Enden, k)` in `quantenWToteAufraeumen` wiederhergestellt -- Diff prüfen!),
+      DEZENTRAL.md 17 „R10“ und HEUTE.md 3.3l schreiben, Sicherheitsprüfung als PR-Kommentar
+      (Konsensänderung!), Vier-Knoten-Tests (`pg_ctlcluster 16 main start`).
+    - App: als WIP-Commit auf dem Zweig von App #99 gepusht (vor dem Merge von #99 entscheiden:
+      mit #99 mergen ist harmlos, solange die Kette schläft): `lib/quantenSStelle.ts` `urteilLesen`, letzter Versuch nur mit
+      `urteil_eindeutig`; Tests in `quantenSStelle.test.ts` (43 grün).
+    - Fehlerbild (`forschung/quantengeld/fehlerbild.py`, Selbsttest grün): beobachtete gegen
+      erwartete Fehler je Schuss (Auslese + 1-Qubit-Gatter aus der Tageskalibrierung, Target),
+      Lage je Qubit (LR), andere Basis fair und unabhängig. Nur Summen werden veröffentlicht.
+      `hardware_ibm.py` misst je Stelle Qubit, Schüsse, Gatterfehler; `--fehlerbild DATEI`;
+      Workflow `quanten-s-ausgabe.yml` lädt Artefakt `fehlerbild-<run>` hoch; CI ruft den
+      Selbsttest. Lokal mit FakeMarrakesh dreimal „passt“ (8–10 Fehler, erwartet ~10,7).
+    - Offen danach: Annahmestelle wechselt schneller zu den Anteilen (heute 8 Versuche je Aufruf
+      an einen toten Knoten).
 - **Stand 21.11. ~21:20 UTC (dieselbe Sitzung):**
   - **Ausgerollt und freigegeben:** C1-Deploy [44946689259](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44946689259)
     grün (#615–#618 auf C1, auch der CGNAT-Fix der Kette). App 1.29.0 veröffentlicht

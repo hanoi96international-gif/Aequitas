@@ -969,6 +969,40 @@ und `produktion` durch den Betreiber.
   - Die Inhaberin und die Wegwerf-Stelle lebten nur im Werkzeug.
   - Es liegt kein Gutachten vor.
 
+### 3.3l Fehlerbild gegen die Kalibrierung (22.11.2026)
+
+Der Nachweis nach dem Ende (3.3k, R7) zeigt, dass genau diese Präparation bei der Ausgabe
+festgelegt war. Er zeigt nicht, dass ein Quantenrechner gemessen hat. Das Fehlerbild
+(`fehlerbild.py`) ist ein zweiter, unabhängiger Blick: Passen die Fehler der einzelnen Schüsse
+zur Tageskalibrierung der benutzten Qubits?
+
+- **Was gemessen wird** (`hardware_ibm.py`, je Stelle): das physische Qubit, alle R Schüsse
+  (Standard 5), der Auslesefehler des Qubits und die Fehler der 1-Qubit-Gatter davor, beides
+  aus dem Target des Chips.
+- **Drei Prüfungen:**
+  1. **Passende Basis:** beobachtete Fehler je Schuss gegen die erwarteten (Auslese plus
+     Gatter). Viel weniger heißt „zu glatt“ und passt zu einer Rechnung ohne Rauschen. Viel
+     mehr passt zu Drift, falschen Qubits oder einem Eingriff.
+  2. **Lage der Fehler:** Sitzen sie dort, wo die Kalibrierung sie erwartet
+     (Likelihood-Verhältnis)? Bei wenigen Fehlern schwach, deshalb nur berichtet.
+  3. **Andere Basis:** Jeder Schuss ist eine neue Präparation, also ein fairer Münzwurf,
+     unabhängig von t und von den anderen Schüssen. Kopierte Schüsse oder ein
+     durchgesickertes t fallen auf.
+- **Was veröffentlicht wird:** nur die Summen. Sie verraten keine Stelle, kein t und kein x
+  und dürfen deshalb sofort raus. Der Workflow `quanten-s-ausgabe.yml` legt sie als Artefakt
+  `fehlerbild-<Lauf>` ab und schreibt sie in die Zusammenfassung. Die rohen Schüsse verlassen
+  den Messlauf nicht.
+- **Belegt:**
+  - Selbsttest (in der CI): Eine ehrliche Messung passt; zu glatt, zu viel Rauschen,
+    kopierte Schüsse, durchgesickertes t, fehlende Gatterfehler und kaputte Eingaben werden
+    erkannt.
+  - Rauschmodell `FakeMarrakesh`, drei Läufe zu 1.104 Stellen: jeweils „passt“ (8, 10 und
+    10 Fehler je Schuss, erwartet ~10,6–11,2).
+- **Ehrlich:** „Passt“ heißt nur „kein Widerspruch“. Ein Simulator mit demselben Rauschmodell
+  besteht genauso; die Probe im Rauschmodell zeigt genau das. Ausschließen lässt sich damit
+  die einfache Fälschung und ein Chip, der schlechter misst als kalibriert. Im Hauptnetz ist
+  es noch nicht gelaufen (der nächste `quanten-s-ausgabe.yml`-Lauf liefert das erste).
+
 ### 3.4 Bargeld-Verhalten ohne Quanten (Offline-Bargeld)
 
 Was Menschen sich von Quantengeld wünschen, ist meist offline zu zahlen, wie mit

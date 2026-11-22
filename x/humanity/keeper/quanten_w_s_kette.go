@@ -49,6 +49,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const (
@@ -511,9 +512,11 @@ func (cs *ChainState) quantenWSBescheidLocked(ctx context.Context, tx *Transacti
 		u.wege = append(u.wege, quantenWWeg{quantenWTopfAddr, an, wert})
 		u.felder.Wert = wert
 		delete(u.reg.Token, q.K)
-		if alt.Zeit >= blockZeit-quantenWToteBehalten {
-			u.reg.Tote[q.K] = alt.Zeit
+		urteil := quantenWUrteilTot
+		if e.Eingeloest {
+			urteil = quantenWUrteilEingeloest
 		}
+		u.reg.toteMerken(q.K, alt.Zeit, blockZeit, urteil)
 	} else {
 		u.reg.Token[q.K] = neu
 	}
@@ -614,6 +617,12 @@ func (cs *ChainState) quantenWSTokenAnsichtLocked(ctx context.Context, reg *quan
 	// ist es ein Token im bisherigen Weg.
 	if t.ProbeArt != 0 {
 		ansicht["probe_art"] = t.ProbeArt
+	}
+	// Ab dem Stichtag steht das Urteil nach dem Ende in der Ansicht
+	// (quanten_w_urteil.go) -- erst dann lohnt sich der letzte Versuch fuer
+	// ein Werkzeug, das das Urteil lesen muss.
+	if quantenWUrteilAktiv(time.Now().Unix()) {
+		ansicht["urteil_eindeutig"] = true
 	}
 	// Wurzel, Proben, Bindung d und Wahl c: oeffentlich (sie stehen in den
 	// Transaktionen der Ausgabe, Bindung und Wahl). Damit pruefen Inhaberin
