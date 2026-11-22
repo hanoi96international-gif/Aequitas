@@ -31,14 +31,16 @@ import (
 // STICHTAG DES EINDEUTIGEN URTEILS (Kettenregel). Als Zahl geschrieben, der
 // Waechter liest sie; 9223372036854775807 = math.MaxInt64 = schlafend.
 //
-// Vom Betreiber am 21.11.2026 verlangt ("Stichtag muss sofort sein") fuer den
-// 22.11.2026 09:30 UTC = 1795339800. Frueher ging nicht: CI, Merge und die CI des
+// Vom Betreiber am 21.11.2026 verlangt ("Stichtag muss sofort sein"). Der erste
+// Stichtag (22.11.2026 09:30 UTC) wurde verpasst -- der Deploy wurde erst danach
+// freigegeben, der Waechter hat ihn korrekt abgelehnt. Neu, nie rueckwirkend:
+// 22.11.2026 13:00 UTC = 1795352400. Frueher ging nicht: CI, Merge und die CI des
 // Deploys liegen davor, und der Deploy-Waechter
 // (.github/neustart/quanten-urteil-nicht-verpasst.sh) verlangt beim Ausrollen
 // mindestens 30 min Vorlauf. Einziger Validator im Hauptnetz ist C1; er
 // bekommt die Regel mit diesem Deploy.
 var (
-	quantenWUrteilAbUnix int64 = 1795339800
+	quantenWUrteilAbUnix int64 = 1795352400
 )
 
 // quantenWUrteilAbOverride: nur fuer Tests (0 = Stichtag oben).
