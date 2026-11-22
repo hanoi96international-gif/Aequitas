@@ -7,6 +7,19 @@ Repos); davor ~13:40 UTC Sitzung „Weiter“ (`claude/weiter-uw2p42`), davor ~1
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
+**Stand 22.11. ~22:30 UTC, Sitzung „Weiter nach Übergabe“ (Zweig `claude/weiter-nach-uebergabe-r1zjrz`, alle vier Repos) — HIER WEITERMACHEN:**
+- **Erledigt seit der letzten Übergabe (geprüft):** #627 gemergt (e9918877) und auf C1 (Deploy 45058105105 grün,
+  der doppelte Handlauf 45058108805 abgebrochen). App **1.30.2 veröffentlicht** (Android 45074127310, iOS 45074539717,
+  Tag `v1.30.2`). Zweige aufgeräumt: je Repo nur noch Hauptzweig, laufende Sitzungszweige und
+  `claude/weiter-gehts-vm8979-kegel` (#340, Betreiber entscheidet); biometric-beta noch `dependabot/pip/matching-service/av-19.0.1`.
+- **B2a gebaut (PR von diesem Zweig): Register der Präparatoren**, schlafend (`quantenSWegBAbUnix` = MaxInt64),
+  `x/humanity/keeper/quanten_s_praeparatoren.go`, `DEZENTRAL.md` 18 „B2a“. Arten `quanten_w_s_praep_melden`/`_abmelden`
+  (ohne Wallet = Aufräumen nach Umzug), Abbild zur Zeit T für B2b, `GET /api/quanten-w/praeparatoren`.
+  9 Tests (auch echte DB), 12 Mutationen rot. Vor dem Merge: eigene Sicherheitsprüfung als PR-Kommentar (Konsens).
+- **Nächster Schritt B2b** (eigener PR, danach Stichtag mit Deploy-Wächter): Bestellung Weg B mit Abbild in der
+  Bestellung (Frist < `quantenSPraepNachlauf`), `_losen` mit drand, Ausgabe gegen das Los. Pfand als B2c.
+- Offen beim Betreiber: Freigaberegel für Umgebung `produktion` in App, proof-server, biometric-beta; #340 (Kegel).
+
 **Jetzt (21.11. ~18:00 UTC):**
 - **C1 läuft mit #614** (Deploy [44909800768](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44909800768),
   `produktion` freigegeben, grün 21.11. 17:27 UTC, Höhe steigt, keine Rücknahme). Der

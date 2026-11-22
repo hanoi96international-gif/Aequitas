@@ -1268,9 +1268,12 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	mux.HandleFunc("/api/offline/kuendigung", a.zumLeiter(a.handleOffline(offlineKuendigungTxArt)))
 	// quanten_w_kette.go: Variante W, vor dem Stichtag 409; Stand einer Note fuer jeden.
 	for _, art := range []string{quantenWPraegenTxArt, quantenWAnfrageTxArt, quantenWZufallTxArt, quantenWAntwortTxArt, quantenWOffenlegenTxArt, quantenWFristTxArt,
-		quantenWSAusgebenTxArt, quantenWSBindenTxArt, quantenWSWaehlenTxArt, quantenWSAnmeldenTxArt, quantenWSOffenlegenTxArt, quantenWSFristTxArt} {
+		quantenWSAusgebenTxArt, quantenWSBindenTxArt, quantenWSWaehlenTxArt, quantenWSAnmeldenTxArt, quantenWSOffenlegenTxArt, quantenWSFristTxArt,
+		quantenSPraepMeldenTxArt, quantenSPraepAbmeldenTxArt} {
 		mux.HandleFunc("/api/quanten-w/"+strings.TrimPrefix(art, "quanten_w_"), a.zumLeiter(a.handleQuantenW(art)))
 	}
+	// Weg B (quanten_s_praeparatoren.go): das Register der Praeparatoren fuer jeden.
+	mux.HandleFunc("/api/quanten-w/praeparatoren", a.lesenBegrenzt("/api/quanten-w/praeparatoren", a.handleQuantenSPraeparatoren))
 	mux.HandleFunc("/api/quanten-w/note", a.lesenBegrenzt("/api/quanten-w/note", a.handleQuantenWNote))
 	mux.HandleFunc("/api/quanten-w/stand", a.lesenBegrenzt("/api/quanten-w/stand", a.handleQuantenWStand))
 	// quanten_w_validator.go: Dienst der Validatoren (W2d), vor dem Stichtag 409.
