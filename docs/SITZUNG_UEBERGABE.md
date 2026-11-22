@@ -2,7 +2,7 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 22.11.2026 ~17:55 UTC, Sitzung „CL Übergabe weitermachen“ (`claude/cl-uebergabe-weitermachen-jdz5h7`); davor ~16:40 UTC Sitzung „Weiter Übergabe“ (`claude/weiter-uebergabe-1a9yql`); davor 21.11. ~20:15 UTC Sitzung „CL Übergabe weitermachen“; davor ~18:00 UTC Sitzung „Weiter“ (Zweig `claude/admiring-bohr-ob0u0p`, alle vier
+Stand: 22.11.2026 ~18:45 UTC, Sitzung „CL Übergabe weitermachen“ (`claude/cl-uebergabe-weitermachen-jdz5h7`); davor ~16:40 UTC Sitzung „Weiter Übergabe“ (`claude/weiter-uebergabe-1a9yql`); davor 21.11. ~20:15 UTC Sitzung „CL Übergabe weitermachen“; davor ~18:00 UTC Sitzung „Weiter“ (Zweig `claude/admiring-bohr-ob0u0p`, alle vier
 Repos); davor ~13:40 UTC Sitzung „Weiter“ (`claude/weiter-uw2p42`), davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18:30 UTC Sitzung
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
@@ -37,6 +37,22 @@ dezentrales Quantengeld“.
   `einrichten.sh`, Druck mit Chromium: `node build/node_guide_pdf.cjs`); alte Generatoren
   und `docs/VALIDATOR_RAILWAY.md` entfernt; README/Whitepaper auf C1 (netcup). Gleiches in
   App, biometric-beta und proof-server (Railway-Reste).
+- **Stand 22.11. ~18:45 UTC (diese Sitzung, Zweig `claude/cl-uebergabe-weitermachen-jdz5h7`) — NÄCHSTE SCHRITTE:**
+  1. **#627 mergen**, sobald CI auf dem Kopf (`acbc63e8` oder neuer) grün ist; dann C1-Deploy
+     (`deploy-c1.yml`, Freigabe `produktion`) starten und dem Betreiber den Link schicken. #627 enthält:
+     Website `qapp` (12 Sprachen), `docs/QUANTENGELD_S_2026-11-22.md`, `/api/quanten-w/stand`
+     (Sicherheitsprüfung als PR-Kommentar), Weg B B1 (`s_weg_b.py`, CI), drand-Prüfung
+     (`drand_zufall.go`, noch nicht verdrahtet; echter quicknet-Beacon Runde 1.000.000 als Test grün;
+     gnark-crypto direkt), Abmelde-Lücke im Los geschlossen.
+  2. **App-Release** für #105 (Überblick W/S, klare Meldungen): Version erhöhen (1.30.2), Builds,
+     Freigabe `app-signatur`, Links an den Betreiber.
+  3. **B2 (Kette, eigener PR, Stichtag, eigene Sicherheitsprüfung):** Tx `quanten_w_s_praeparator_melden`/
+     `_abmelden` (nur IsHuman-Konten, ein Mensch ein Eintrag, Meldezeit und Abmeldezeit im Register),
+     Bestellung Weg B (K, v, t, Zeit), `_losen` mit drand-Runde (Zeit der Runde ≥ Bestellzeit + Abstand,
+     `drandQuicknet.pruefen`), Los = v kleinste H(Zufall, K, Konto) aus dem Stand ZUR Bestellung,
+     S-Ausgabe mit Bestellung verlangt `Validatoren == Los` (Präparatoren statt gebundener Validatoren),
+     Pfand (B2b). Prüfvektor aus `s_weg_b.py` erzeugen (`--vektor`).
+  4. Danach B3 (Briefkasten), B4 (App als Präparatorin), B5 (Pilot, 7 Menschen).
 - **Stand 22.11. ~18:40 UTC (diese Sitzung):**
   - **Aequitas #627 offen:** Website `/quanten` Abschnitt `qapp` (erstes S über die App, 12 Sprachen),
     `docs/QUANTENGELD_S_2026-11-22.md` (dauerhafter Nachweis; beendete Token verschwinden nach ~8 Tagen
