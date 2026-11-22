@@ -37,6 +37,23 @@ dezentrales Quantengeld“.
   `einrichten.sh`, Druck mit Chromium: `node build/node_guide_pdf.cjs`); alte Generatoren
   und `docs/VALIDATOR_RAILWAY.md` entfernt; README/Whitepaper auf C1 (netcup). Gleiches in
   App, biometric-beta und proof-server (Railway-Reste).
+- **Zweige aufräumen (Sitzung „Weiter Übergabe“, Zweig `claude/weiter-uebergabe-1a9yql`, Stand 22.11. ~20:50 UTC):**
+  - Betreiber: „Alles, was gebraucht wird, übernehmen und umsetzen, alles andere löschen.“ Durchsicht aller
+    nicht gemergten Zweige: übernommen `docs/AUDIT_2026-11-14.md` und `docs/IRIS_PROTOTYP_EINKAUFSLISTE.md`;
+    #609 und biometric Dependabot #100/#106/#107/#108 gemergt, #79/#98/#99/#101/#110 geschlossen. Alle übrigen
+    nicht gemergten Zweige stehen je Repo in `.github/zweige-loeschen.txt` (Spitze + Name). **Bleibt:**
+    `claude/weiter-gehts-vm8979-kegel` + #340 (Kegel, Konsens, HOCH 2 offen; Betreiber entscheidet).
+  - Workflow `zweige-aufraeumen.yml` (alle vier Repos): löscht gemergte Zweige und mit `liste=true` die Liste;
+    vorher Git-Bundle als Artefakt `zweige-sicherung` (90 Tage), gelöscht wird nur, was mit genau dieser Spitze
+    im Bundle steckt; offene PRs und Zweige < 2 Tage bleiben.
+  - **Stand:** In App, proof-server und biometric-beta sind die Listen-Zweige gelöscht (gesichert). Die gemergten
+    Zweige stehen noch: Fehler `for-each-ref 'refs/remotes/origin/*'` traf keine Namen mit Schrägstrich, behoben
+    (Präfix-Abgleich, Test mit `claude/tief/…`). Korrektur-PRs: App #104, proof-server #36 (beide grün),
+    biometric-beta #128, Aequitas: dieser PR #625 (auch Liste und die zwei Dokumente).
+  - **Nächste Schritte:** #625, #104, #36, #128 mergen (volle SHA), dann je Repo `zweige-aufraeumen.yml` mit
+    `modus=loeschen`, `liste=true` (App: ref `aequitas-app`). Ergebnis mit `git ls-remote --heads origin | wc -l`
+    prüfen. In App, proof-server, biometric-beta hat die Umgebung `produktion` keine Freigaberegel (Läufe ohne
+    Freigabe) — Betreiber fragen, ob Required reviewers gesetzt werden sollen.
 - **Stand 22.11. ~18:50 UTC — SITZUNGSENDE (Limit 95 %). Nächste Sitzung macht hier weiter:**
   1. **#627 (Aequitas) mergen**, sobald CI auf dem Kopf grün ist (enthält auch `quanten_s_los.go` +
      Vektor `testdata/quanten_s_los_vektor.json`, drand-Prüfung mit echtem Beacon Runde 1.000.000).
