@@ -1492,7 +1492,7 @@ Stelle, bevor die Inhaberin vorlegte. Er wusste also, **wo** sie einlösen will 
     Paket im Tresor) und das Stellen-Bit beim Zusammensetzen (prüft danach
     `quantenSOeffnungLaden`).
 
-### R10: eindeutiges Urteil – eingelöst oder tot (22.11.2026, gebaut, Stichtag 22.11.2026 09:30 UTC)
+### R10: eindeutiges Urteil – eingelöst oder tot (22.11.2026, gebaut, Stichtag 22.11.2026 13:00 UTC; der erste Stichtag 09:30 UTC wurde verpasst)
 
 - **Befund:** Endet ein Token, legt die Kette ihn in beiden Fällen (eingelöst oder tot nach
   drei falschen Vorlagen) unter `Tote` ab. Die Ansicht antwortet für beide nur
