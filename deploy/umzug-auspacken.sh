@@ -87,7 +87,14 @@ case "$MODUS" in
     grep '^volume ' "$M/manifest" | cut -d' ' -f2 | while read -r v; do
       docker volume inspect "$v" >/dev/null 2>&1 || docker volume create "$v" >/dev/null
     done
-    tar -C "$ZIEL" --exclude=umzug-meta -cf - . | tar -C / --numeric-owner -xpf -
+    # NUR die Pfade aus dem Manifest, und vorhandene Verzeichnisse behalten
+    # ihre Rechte (--no-overwrite-dir): sonst bekaemen /, /root, /var, /var/lib
+    # die Rechte des Zwischenstands (0700) -- der Server waere fuer alle ausser
+    # root kaputt (im CI am 22.11.2026 so passiert).
+    awk '$1=="volume"{print "var/lib/docker/volumes/"$2"/_data"} $1=="pfad"{sub(/^\//,"",$2); print $2}' "$M/manifest" \
+      | while read -r p; do [ -e "$ZIEL/$p" ] && printf '%s\n' "$p"; done > /root/.umzug/liste
+    tar -C "$ZIEL" -cf - -T /root/.umzug/liste | tar -C / --numeric-owner --no-overwrite-dir -xpf -
+    rm -f /root/.umzug/liste
     mkdir -p /root/.umzug/meta && cp -a "$M"/. /root/.umzug/meta/
     rm -rf "$ZIEL"
     cat /root/.umzug/meta/stand > /root/.umzug/ausgepackt

@@ -53,6 +53,7 @@ MODUS=ernst bash deploy/umzug-auspacken.sh < "$T/p.age" >/dev/null 2>&1 && fehl 
 MODUS=probe EMPF="kein-schluessel" bash deploy/umzug-packen.sh >/dev/null 2>&1 && fehl "ungueltiger Empfaenger angenommen"
 
 schritt "Ernst packen"
+RECHTE_VORHER="$(stat -c '%n %a %U' / /root /var /var/lib /var/lib/docker /var/lib/docker/volumes)"
 SUMME_VORHER="$(cd /root/umzugtest-daten && sha256sum ./* | sha256sum)"
 MODUS=ernst EMPF="$EMPF" bash deploy/umzug-packen.sh 2>/dev/null > "$T/e.age" || fehl "ernstes Packen scheitert"
 [ "$(docker inspect umzugtest-dienst --format '{{.State.Status}} {{.HostConfig.RestartPolicy.Name}}')" = "exited no" ] || fehl "Dienst laeuft noch oder startet neu"
@@ -75,6 +76,7 @@ MODUS=ernst bash deploy/umzug-auspacken.sh < "$T/e.age" >/dev/null 2>&1 && fehl 
 docker rm -f aequitas-node >/dev/null
 MODUS=ernst bash deploy/umzug-auspacken.sh < "$T/e.age" 2>/dev/null || fehl "ernstes Auspacken scheitert"
 [ "$(cat /var/lib/docker/volumes/umzugtest-vol/_data/x)" = inhalt ] || fehl "Volume nicht wiederhergestellt"
+[ "$(stat -c '%n %a %U' / /root /var /var/lib /var/lib/docker /var/lib/docker/volumes)" = "$RECHTE_VORHER" ] || fehl "Rechte von Systemverzeichnissen veraendert"
 [ "$(cd /root/umzugtest-daten && sha256sum ./* | sha256sum)" = "$SUMME_VORHER" ] || fehl "gebundene Daten weichen ab"
 MODUS=ernst bash deploy/umzug-auspacken.sh < "$T/e.age" >/dev/null 2>&1 && fehl "zweites Auspacken angenommen"
 MODUS=aufraeumen bash deploy/umzug-auspacken.sh 2>/dev/null
