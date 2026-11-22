@@ -507,6 +507,7 @@ func (m *quantenSMehrNetz) oeffnung(ctx context.Context, x int, K string, b int)
 	}
 	gross := *h
 	gross.max = quantenSAbschnittAntwortMax
+	gross.versuche = 1 // die Schleife in quantenSStichprobeV2Laden fragt nach
 	code, body, err := gross.anfrage(ctx, http.MethodGet, "/api/quanten-w/validator/oeffnung?k="+url.QueryEscape(K)+"&b="+strconv.Itoa(b), nil)
 	if err != nil {
 		return "", err
@@ -530,6 +531,7 @@ func (m *quantenSMehrNetz) anteilOeffnung(ctx context.Context, j, x int, K strin
 	}
 	gross := *h
 	gross.max = quantenSAbschnittAntwortMax
+	gross.versuche = 1 // die Schleife in quantenSStichprobeV2Laden fragt nach
 	code, body, err := gross.anfrage(ctx, http.MethodGet, "/api/quanten-w/validator/anteil-oeffnung?k="+url.QueryEscape(K)+"&x="+strconv.Itoa(x)+"&b="+strconv.Itoa(b), nil)
 	if err != nil {
 		return "", err

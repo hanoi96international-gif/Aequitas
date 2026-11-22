@@ -703,6 +703,10 @@ type quantenSHTTP struct {
 	// auf einen Abschnitts-Auftrag (Buendel fuer alle Validatoren) darf
 	// groesser sein (quantenSAbschnittAntwortMax).
 	max int
+	// versuche: 0 = quantenSAusgabeVersuche. 1 dort, wo eine aeussere Schleife
+	// ohnehin nachfragt und einen anderen Weg hat (Oeffnung -> Anteile, R9):
+	// ein toter Praeparator haelt die Stelle dann nicht 8 Versuche lang auf.
+	versuche int
 }
 
 func neuerQuantenSHTTP(basis string) (*quantenSHTTP, error) {
@@ -714,16 +718,21 @@ func neuerQuantenSHTTP(basis string) (*quantenSHTTP, error) {
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}, nil
 }
 
-// anfrage: bei 429/503 und Netzfehlern bis zu quantenSAusgabeVersuche Mal,
-// mit wachsender Pause (hoechstens 30 s); jede andere Antwort ist endgueltig.
+// anfrage: bei 429/503 und Netzfehlern bis zu quantenSAusgabeVersuche Mal
+// (oder h.versuche, nie mehr), mit wachsender Pause (hoechstens 30 s); jede
+// andere Antwort ist endgueltig.
 func (h *quantenSHTTP) anfrage(ctx context.Context, methode, pfad string, koerper []byte) (int, []byte, error) {
 	grenze := quantenSAusgabeAntwortMax
 	if h.max > 0 {
 		grenze = h.max
 	}
+	versuche := quantenSAusgabeVersuche
+	if h.versuche > 0 && h.versuche < versuche {
+		versuche = h.versuche
+	}
 	pause := h.takt
 	var letzter error
-	for i := 0; i < quantenSAusgabeVersuche; i++ {
+	for i := 0; i < versuche; i++ {
 		var rd io.Reader
 		if koerper != nil {
 			rd = bytes.NewReader(koerper)
@@ -751,6 +760,9 @@ func (h *quantenSHTTP) anfrage(ctx context.Context, methode, pfad string, koerpe
 			}
 		}
 		letzter = err
+		if i+1 == versuche {
+			break
+		}
 		select {
 		case <-ctx.Done():
 			return 0, nil, ctx.Err()
@@ -758,7 +770,7 @@ func (h *quantenSHTTP) anfrage(ctx context.Context, methode, pfad string, koerpe
 		}
 		pause = min(2*pause, 30*time.Second)
 	}
-	return 0, nil, fmt.Errorf("%s %s: aufgegeben nach %d Versuchen: %v", methode, pfad, quantenSAusgabeVersuche, letzter)
+	return 0, nil, fmt.Errorf("%s %s: aufgegeben nach %d Versuchen: %v", methode, pfad, versuche, letzter)
 }
 
 func quantenSFehlertext(body []byte) string {
