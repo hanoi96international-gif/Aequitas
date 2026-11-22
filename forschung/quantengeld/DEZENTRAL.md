@@ -1631,6 +1631,30 @@ R9-Schwelle aus.
   Anteile). Dafür braucht es einen Briefkasten bei den Knoten (verschlüsselt, nur
   Ablegen und Abholen) und Hintergrundabfragen in der App.
 
+### B2-Entwurf: woher der Zufall für das Los kommt
+
+Den Zufall dürfen weder Ausgeber noch Inhaberin bestimmen, denn genau sie wären bei einer
+Fälschung Komplizen. Auch C1 als einziger Blockerzeuger scheidet aus. Geprüfte Wege:
+
+| Weg | Wer bestimmt mit | Bewertung |
+|---|---|---|
+| Blockhash von h + Δ | der Blockerzeuger (heute C1 allein) | **ungeeignet** |
+| Zusage/Offenlegung der Inhaberin + Blockhash | Inhaberin und Blockerzeuger, die zusammen fälschen wollen | **ungeeignet** |
+| Zusage/Offenlegung der Gemeldeten | die Gemeldeten selbst; wer zuletzt offenlegt, kann zurückhalten | möglich, aufwendig (Fristen, Pfand fürs Zurückhalten) |
+| **drand** (League of Entropy, Runde nach h + Δ) | ein Schwellenverbund unabhängiger Organisationen | **empfohlen** |
+
+**drand:** Die Runde r wird erst nach der Bestellung erzeugt (die Kette verlangt, dass ihre
+Zeit nach der Blockzeit der Bestellung plus Abstand liegt). Wer das Los einreicht, legt
+Runde und Signatur bei. **Jeder Knoten prüft die BLS-Signatur selbst** gegen den
+öffentlichen Schlüssel des Verbunds, der fest im Knoten steht. Der Knoten holt nichts aus
+dem Netz und glaubt keinem Server; eine falsche Signatur wird abgewiesen. Zufall =
+SHA-256 der Signatur. Bibliothek: `gnark-crypto` (BLS12-381, schon im Projekt, wird
+direkte Abhängigkeit). Verzerren könnte das Los nur eine Mehrheit des Verbunds, und auch
+die nur, wenn sie mit Ausgeber und Inhaberin zusammenarbeitet.
+
+Ehrlich: Das ist eine Abhängigkeit von einem externen Verbund. Fällt drand aus, wird
+nicht gelost und nicht ausgegeben (fail-closed); ausgegebene Token sind nicht betroffen.
+
 ### Nächste Schritte
 
 | Schritt | Was |
