@@ -1677,15 +1677,22 @@ Bytes (StateRoot unverändert). Tests mit dem echten quicknet-Beacon und einem T
 **Umzug:** Der Vollzug eines Umzugs meldet den Eintrag der alten Wallet selbst ab (eine
 gestohlene alte Wallet kann nicht mehr gelost werden; Test, Gegenprobe rot).
 
-**Vor dem Scharfschalten offen:** (2) Pfand je Präparator (B2b-Pfand).
-(3) Bestellungen sind kostenlos; 32 Menschen könnten Weg B je eine Stunde lang belegen.
-(4) Weg B braucht B3/B4 (Briefkasten, App als Präparatorin), sonst gibt es keine Präparatoren.
+**Pfänder (Entscheidung des Betreibers, 22.11.):** Melden hinterlegt 10 AEQ, Bestellen 1 AEQ
+im W-Pfandtopf (Betrag im Eintrag). Die Ausgabe gegen das Los zahlt das Bestell-Pfand zurück.
+`quanten_w_s_verfallen` (ohne Wallet) räumt eine abgelaufene Bestellung, ihr Pfand geht ans
+Grundeinkommen; still verschwindet nichts. `quanten_w_s_pfand_zurueck` (ohne Wallet) zahlt das
+Präparator-Pfand frühestens 30 Tage nach der Abmeldung zurück, nach einem Umzug an die neue
+Wallet des Menschen (auch über mehrere Umzüge), nie an die alte. 10 Gegenproben rot.
+
+**Vor dem Scharfschalten offen:** (2) Verfall des Präparator-Pfands bei nachgewiesener
+Fälschung: Das Pfand bleibt dafür gesperrt, aber den Beweisweg auf der Kette gibt es noch
+nicht. (3) Weg B braucht B3/B4 (Briefkasten, App als Präparatorin), sonst gibt es keine Präparatoren.
 
 ### Nächste Schritte
 
 | Schritt | Was |
 |---|---|
-| B2 | **Schlafend fertig (siehe oben).** Offen vor dem Stichtag: Pfand, Begrenzung der Bestellungen. |
+| B2 | **Schlafend fertig (siehe oben).** Offen vor dem Stichtag: Beweisweg für den Verfall des Präparator-Pfands. |
 | B3 | Briefkasten bei den Knoten: verschlüsselte Pakete (Basen y, Anteile, Öffnungen) ablegen und abholen, begrenzt je Absender und Größe. |
 | B4 | App als Präparatorin: IBM-Schlüssel nur im Gerät, Auftrag über die REST-Schnittstelle, Abschnitt präparieren, Anteile verteilen, nach der Bindung öffnen. |
 | B5 | Pilot im Hauptnetz mit mindestens 7 Menschen (4 von 7); erst danach größere v. |

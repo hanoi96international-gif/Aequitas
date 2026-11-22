@@ -48,7 +48,10 @@ dezentrales Quantengeld“.
   - **Wartet auf den Betreiber:** APK 1.30.2 (45056590596) Freigabe `app-signatur`; danach `release-apk.yml`
     (run_id 45056590596, Tag `v1.30.2`) und `release-ios.yml` (run_id 45056593213, Tag `v1.30.2`).
   - **Umzug meldet den Präparator-Eintrag der alten Wallet ab** (im selben PR).
-  - **Nächste Schritte:** B2-Rest vor dem Stichtag (Pfand, Begrenzung der Bestellungen), dann B3 Briefkasten,
+  - **Pfänder (Betreiber: „Bestell- + Präparator-Pfand“):** 1 AEQ je Bestellung, 10 AEQ je Präparator,
+    `quanten_w_s_verfallen`, `quanten_w_s_pfand_zurueck` (30 Tage Haltezeit, Erbe nach Umzug) — im selben PR #628.
+  - **Nächste Schritte:** #628 mergen (nach grüner CI); vor dem Stichtag noch der Beweisweg für den Verfall
+    des Präparator-Pfands, dann B3 Briefkasten,
     B4 App als Präparatorin, B5 Pilot (7 Menschen).
 - **Zweige aufräumen (Sitzung „Weiter Übergabe“, Zweig `claude/weiter-uebergabe-1a9yql`, Stand 22.11. ~20:50 UTC):**
   - Betreiber: „Alles, was gebraucht wird, übernehmen und umsetzen, alles andere löschen.“ Durchsicht aller
