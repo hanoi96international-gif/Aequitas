@@ -4,6 +4,8 @@ name: C1-Umzug (Inventar, Probe, Umziehen, Zurueck)
 #
 #   inventar   nur lesend: was liegt auf C1 (Container, Volumes, Pfade,
 #              Groessen) -- nie Werte (deploy/umzug-inventar.sh)
+#   vorbereiten  neuer Server: Docker, Firewall, Repos, Images bauen
+#              (deploy/server-vorbereiten.sh) -- startet NICHTS. Vor probe.
 #   probe      Transport-Probe, C1 laeuft weiter: der neue Server erzeugt
 #              einen age-Schluessel, C1 packt alles verschluesselt an ihn,
 #              er entpackt, zaehlt und LOESCHT wieder. Beliebig oft.
@@ -26,7 +28,7 @@ on:
       phase:
         description: Phase
         type: choice
-        options: [inventar, probe, umziehen, zurueck, aufraeumen]
+        options: [inventar, vorbereiten, probe, umziehen, zurueck, aufraeumen]
         default: inventar
       neu_ip:
         description: IPv4 des neuen Servers (nicht fuer inventar)
@@ -62,7 +64,7 @@ jobs:
           python3 - <<'PY'
           import ipaddress, os, re, sys
           phase, ip, fp, ok = (os.environ[k].strip() for k in ("PHASE", "IP", "FP", "OK"))
-          if phase not in ("inventar", "probe", "umziehen", "zurueck", "aufraeumen"):
+          if phase not in ("inventar", "vorbereiten", "probe", "umziehen", "zurueck", "aufraeumen"):
               sys.exit("::error::phase unbekannt")
           if phase != "inventar":
               try:
@@ -102,6 +104,15 @@ jobs:
       - name: Inventar (nur lesend)
         if: env.PHASE == 'inventar'
         run: ssh -o StrictHostKeyChecking=yes -o BatchMode=yes root@$C1 'bash -s' < deploy/umzug-inventar.sh
+      - name: Neuen Server vorbereiten (startet nichts)
+        if: env.PHASE == 'vorbereiten'
+        run: |
+          set -eu
+          if ! ssh -o StrictHostKeyChecking=yes -o BatchMode=yes -o ConnectTimeout=20 root@$NEU true; then
+            echo "::error::Anmeldung per Schluessel scheitert. Beim Anbieter den SSH-Schluessel 'Aequitas' hinterlegen."
+            exit 1
+          fi
+          ssh -o StrictHostKeyChecking=yes -o BatchMode=yes -o ServerAliveInterval=30 root@$NEU 'bash -s' < deploy/server-vorbereiten.sh
       - name: Packen (alt) und Auspacken (neu)
         if: env.PHASE == 'probe' || env.PHASE == 'umziehen'
         run: |

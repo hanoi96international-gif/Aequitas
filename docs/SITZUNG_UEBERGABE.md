@@ -37,6 +37,15 @@ dezentrales Quantengeld“.
   `einrichten.sh`, Druck mit Chromium: `node build/node_guide_pdf.cjs`); alte Generatoren
   und `docs/VALIDATOR_RAILWAY.md` entfernt; README/Whitepaper auf C1 (netcup). Gleiches in
   App, biometric-beta und proof-server (Railway-Reste).
+- **Stand 22.11. ~14:45 UTC: UMZUG C1 am 23.12.2026 auf kleineren Server (Betreiber).**
+  Vorbereitet (PR offen): `docs/UMZUG_C1_2026-12-23.md` (Ablauf, Abnahme, Rückweg,
+  Fehlerbilder); `c1-umzug.yml` (inventar/vorbereiten/probe/umziehen/zurueck/aufraeumen,
+  age-verschlüsselt Box zu Box, nie zwei Knoten mit demselben Schlüssel);
+  `auslastung-c1.yml` (Größe messen); `neuer-c1-pruefen.yml`; `scripts/c1_ziel_wechseln.py`
+  + `lint_c1_ziel.py` (IP + Host-Schlüssel in einem Schritt). Nächste Schritte des
+  Betreibers: `auslastung-c1.yml` (dauer 3600) laufen lassen, danach Server wählen.
+  Danach (offen): Beta-Mindeststufe für Validatoren (4 dedizierte Kerne, 8 GB, 40 GB,
+  Erhöhung nur nach Messung und 3 Monaten Vorlauf) — vom Betreiber gewollt.
 - **Stand 22.11. ~14:00 UTC:** **C1 hat #622** (Deploy 45024947456 ausgerollt 13:31 UTC, git 972468c).
   **App 1.30.0** (versionCode/buildNumber 66) gemergt (App #100, 1b53524); APK-Build
   [45028306511](https://github.com/hanoi96international-gif/Aequitas-App/actions/runs/45028306511) und
