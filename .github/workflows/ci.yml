@@ -49,6 +49,16 @@ jobs:
       # Kein Workflow spricht einen abgeschalteten Server an (alte IPs werden
       # neu vergeben). Kopf von scripts/lint_alte_hosts.py.
       - run: python3 scripts/lint_alte_hosts.py
+      # Alle Stellen meinen denselben C1 (eine IP, ein gepinnter Host-
+      # Schluessel); Umzug mit scripts/c1_ziel_wechseln.py, auf einer Kopie
+      # geprobt. Kopf von scripts/lint_c1_ziel.py.
+      - run: python3 scripts/lint_c1_ziel.py --selbsttest
+      - run: python3 scripts/lint_c1_ziel.py
+      - run: python3 scripts/test_c1_ziel_wechseln.py
+      # Datenumzug (verschluesselt Box zu Box, Sperren gegen zwei Knoten mit
+      # demselben Schluessel, Rueckweg) mit echtem Docker geprobt.
+      - run: sudo timeout 600 bash scripts/test_umzug_c1.sh
+        timeout-minutes: 12
       # Die Biometrie-Sicherung laedt nur age-Chiffrat hoch und bricht ohne
       # oeffentlichen Empfaenger ab. Kopf von scripts/lint_bio_sicherung.py.
       - run: python3 scripts/lint_bio_sicherung.py

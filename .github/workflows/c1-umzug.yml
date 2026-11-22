@@ -1,0 +1,155 @@
+name: C1-Umzug (Inventar, Probe, Umziehen, Zurueck)
+# Umzug von C1 auf einen neuen Server (geplant 23.12.2026). Ablauf und
+# Abnahme: docs/UMZUG_C1_2026-12-23.md.
+#
+#   inventar   nur lesend: was liegt auf C1 (Container, Volumes, Pfade,
+#              Groessen) -- nie Werte (deploy/umzug-inventar.sh)
+#   vorbereiten  neuer Server: Docker, Firewall, Repos, Images bauen
+#              (deploy/server-vorbereiten.sh) -- startet NICHTS. Vor probe.
+#   probe      Transport-Probe, C1 laeuft weiter: der neue Server erzeugt
+#              einen age-Schluessel, C1 packt alles verschluesselt an ihn,
+#              er entpackt, zaehlt und LOESCHT wieder. Beliebig oft.
+#   umziehen   ERNST: C1 haelt ALLE Container an (Neustart aus), packt,
+#              der neue Server packt an Ort und Stelle aus. Gestartet wird
+#              dort noch nichts (Ablaufplan). Bestaetigung "C1 UMZIEHEN".
+#   zurueck    Rueckweg: alles auf dem neuen Server anhalten, dann auf dem
+#              alten wieder starten, was vorher lief. Bestaetigung "ZURUECK".
+#   aufraeumen Umzugsschluessel auf dem neuen Server loeschen (nach Abnahme).
+#
+# SICHERHEIT. Nie zwei Knoten mit demselben Validator-Schluessel: umziehen
+# prueft, dass der alte Knoten nicht mehr antwortet; zurueck haelt zuerst den
+# neuen an und prueft das, bevor der alte startet. Der Runner sieht nur
+# age-Chiffrat (Empfaenger: Schluessel, den der neue Server selbst erzeugt
+# hat); das Log nur Namen, Anzahlen, Groessen. Der Host-Schluessel des neuen
+# Servers kommt aus der Anbieter-Konsole (Eingabe), nicht vom Runner.
+on:
+  workflow_dispatch:
+    inputs:
+      phase:
+        description: Phase
+        type: choice
+        options: [inventar, vorbereiten, probe, umziehen, zurueck, aufraeumen]
+        default: inventar
+      neu_ip:
+        description: IPv4 des neuen Servers (nicht fuer inventar)
+        required: false
+      neu_fingerabdruck:
+        description: "ed25519-Host-Schluessel des neuen Servers, SHA256:... (Anbieter-Konsole)"
+        required: false
+      bestaetigung:
+        description: 'umziehen: "C1 UMZIEHEN", zurueck: "ZURUECK"'
+        required: false
+permissions:
+  contents: read
+concurrency:
+  group: c1-umzug
+  cancel-in-progress: false
+jobs:
+  umzug:
+    runs-on: ubuntu-latest
+    environment: produktion
+    timeout-minutes: 120
+    env:
+      C1: 188.172.229.121
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Eingaben pruefen
+        env:
+          PHASE: ${{ inputs.phase }}
+          IP: ${{ inputs.neu_ip }}
+          FP: ${{ inputs.neu_fingerabdruck }}
+          OK: ${{ inputs.bestaetigung }}
+        run: |
+          set -eu
+          python3 - <<'PY'
+          import ipaddress, os, re, sys
+          phase, ip, fp, ok = (os.environ[k].strip() for k in ("PHASE", "IP", "FP", "OK"))
+          if phase not in ("inventar", "vorbereiten", "probe", "umziehen", "zurueck", "aufraeumen"):
+              sys.exit("::error::phase unbekannt")
+          if phase != "inventar":
+              try:
+                  a = ipaddress.IPv4Address(ip)
+              except ValueError:
+                  sys.exit("::error::neu_ip: keine IPv4-Adresse")
+              if not a.is_global or ip == "188.172.229.121":
+                  sys.exit("::error::neu_ip: nicht oeffentlich oder die alte IP")
+              if not re.fullmatch(r"SHA256:[A-Za-z0-9+/]{43}", fp):
+                  sys.exit("::error::neu_fingerabdruck: Form SHA256:<43 Zeichen>")
+          if phase == "umziehen" and ok != "C1 UMZIEHEN":
+              sys.exit('::error::bestaetigung muss "C1 UMZIEHEN" lauten')
+          if phase == "zurueck" and ok != "ZURUECK":
+              sys.exit('::error::bestaetigung muss "ZURUECK" lauten')
+          with open(os.environ["GITHUB_ENV"], "a") as f:
+              f.write(f"PHASE={phase}\nNEU={ip}\nNEU_FP={fp}\n")
+          PY
+      - name: Schluessel und Host-Schluessel
+        env:
+          KEY: ${{ secrets.CONTABO_SSH_KEY }}
+        run: |
+          set -eu
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s' "$KEY" | perl -0777 -pe 's/\r//g; s/(?:-|\xE2\x80[\x93\x94])+ *(BEGIN|END) OPENSSH PRIVATE KEY *(?:-|\xE2\x80[\x93\x94])+/-----$1 OPENSSH PRIVATE KEY-----/g; unless (/-----BEGIN OPENSSH PRIVATE KEY-----/) { (my $z = $_) =~ s/\s//g; if ($z =~ m|^[A-Za-z0-9+/]+=*$|) { require MIME::Base64; my $d = MIME::Base64::decode_base64($z); if ($d =~ /-----BEGIN OPENSSH PRIVATE KEY-----/) { $_ = $d; } elsif ($d =~ /\Aopenssh-key-v1\x00/) { $_ = qq{-----BEGIN OPENSSH PRIVATE KEY-----\n$z\n-----END OPENSSH PRIVATE KEY-----\n}; } } } s/\s*(-----BEGIN OPENSSH PRIVATE KEY-----)\s*(.*?)\s*(-----END OPENSSH PRIVATE KEY-----)\s*/my ($k, $b, $f) = ($1, $2, $3); $b =~ s|\s||g; $b =~ s|(.{70})|$1\n|g; $b =~ s|\n\z||; "$k\n$b\n$f\n"/se' > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          # Alter C1: gepinnt wie ueberall.
+          ssh-keyscan -t ed25519 188.172.229.121 2>/dev/null | { grep -v '^#' || true; } > ~/.ssh/kh1
+          [ "$(grep -c . ~/.ssh/kh1)" = 1 ] || { echo "::error::Host-Schluessel von C1: nicht genau eine ed25519-Zeile"; exit 1; }
+          [ "$(ssh-keygen -lf ~/.ssh/kh1 | awk '{print $2}')" = "SHA256:MAkOsPuhsFZUZViP8NPq+WxW1k6ykAF4mOy81wYNURA" ] || { echo "::error::Host-Schluessel von C1 passt nicht"; exit 1; }
+          cp ~/.ssh/kh1 ~/.ssh/known_hosts
+          # Neuer Server: gegen die Eingabe aus der Anbieter-Konsole.
+          if [ "$PHASE" != inventar ]; then
+            ssh-keyscan -t ed25519 "$NEU" 2>/dev/null | { grep -v '^#' || true; } > ~/.ssh/kh2
+            [ "$(grep -c . ~/.ssh/kh2)" = 1 ] || { echo "::error::Neuer Server: nicht genau eine ed25519-Zeile"; exit 1; }
+            [ "$(ssh-keygen -lf ~/.ssh/kh2 | awk '{print $2}')" = "$NEU_FP" ] || { echo "::error::Host-Schluessel des neuen Servers passt NICHT zur Eingabe -- nicht anmelden"; exit 1; }
+            cat ~/.ssh/kh2 >> ~/.ssh/known_hosts
+          fi
+      - name: Inventar (nur lesend)
+        if: env.PHASE == 'inventar'
+        run: ssh -o StrictHostKeyChecking=yes -o BatchMode=yes root@$C1 'bash -s' < deploy/umzug-inventar.sh
+      - name: Neuen Server vorbereiten (startet nichts)
+        if: env.PHASE == 'vorbereiten'
+        run: |
+          set -eu
+          if ! ssh -o StrictHostKeyChecking=yes -o BatchMode=yes -o ConnectTimeout=20 root@$NEU true; then
+            echo "::error::Anmeldung per Schluessel scheitert. Beim Anbieter den SSH-Schluessel 'Aequitas' hinterlegen."
+            exit 1
+          fi
+          ssh -o StrictHostKeyChecking=yes -o BatchMode=yes -o ServerAliveInterval=30 root@$NEU 'bash -s' < deploy/server-vorbereiten.sh
+      - name: Packen (alt) und Auspacken (neu)
+        if: env.PHASE == 'probe' || env.PHASE == 'umziehen'
+        run: |
+          set -euo pipefail
+          S="ssh -o StrictHostKeyChecking=yes -o BatchMode=yes -o ServerAliveInterval=30"
+          MODUS=probe; [ "$PHASE" = umziehen ] && MODUS=ernst
+          EMPF="$($S root@$NEU "MODUS=schluessel bash -s" < deploy/umzug-auspacken.sh | tail -1)"
+          case "$EMPF" in age1*) ;; *) echo "::error::neuer Server lieferte keinen age-Schluessel"; exit 1 ;; esac
+          [ "${#EMPF}" = 62 ] || { echo "::error::age-Schluessel hat nicht 62 Zeichen"; exit 1; }
+          echo "Empfaenger (oeffentlich): ${EMPF:0:12}..."
+          # Das Skript wird zuerst auf die Box kopiert, weil stdin den Datenstrom traegt.
+          $S root@$NEU 'mkdir -p /root/.umzug && cat > /root/.umzug/auspacken.sh' < deploy/umzug-auspacken.sh
+          $S root@$C1 "MODUS=$MODUS EMPF=$EMPF bash -s" < deploy/umzug-packen.sh \
+            | $S root@$NEU "MODUS=$MODUS bash /root/.umzug/auspacken.sh"
+      - name: Alter Knoten schweigt (nach umziehen)
+        if: env.PHASE == 'umziehen'
+        run: |
+          set -eu
+          if curl -fsS -m 5 "http://$C1:8080/api/status" >/dev/null 2>&1; then
+            echo "::error::Der alte Knoten antwortet noch! Neuen Server NICHT starten."; exit 1
+          fi
+          echo "Alter Knoten antwortet nicht mehr. Weiter nach Ablaufplan (Schritt: Zielwechsel)."
+      - name: Zurueck (neu anhalten, alt starten)
+        if: env.PHASE == 'zurueck'
+        run: |
+          set -euo pipefail
+          S="ssh -o StrictHostKeyChecking=yes -o BatchMode=yes -o ServerAliveInterval=30"
+          $S root@$NEU 'for c in $(docker ps --format "{{.Names}}"); do docker update --restart=no "$c" >/dev/null; docker stop -t 60 "$c" >/dev/null; done; echo "neu laeuft: $(docker ps -q | wc -l) Container"'
+          if curl -fsS -m 5 "http://$NEU:8080/api/status" >/dev/null 2>&1; then
+            echo "::error::Der neue Knoten antwortet noch -- den alten NICHT starten."; exit 1
+          fi
+          $S root@$C1 'bash -s' < deploy/umzug-zurueck.sh
+          for i in $(seq 1 30); do
+            curl -fsS -m 5 "http://$C1:8080/api/status" >/dev/null 2>&1 && { echo "Alter C1 antwortet wieder."; exit 0; }
+            sleep 10
+          done
+          echo "::error::Alter C1 antwortet nach 5 min nicht"; exit 1
+      - name: Aufraeumen (neuer Server)
+        if: env.PHASE == 'aufraeumen'
+        run: ssh -o StrictHostKeyChecking=yes -o BatchMode=yes root@$NEU "MODUS=aufraeumen bash -s" < deploy/umzug-auspacken.sh
