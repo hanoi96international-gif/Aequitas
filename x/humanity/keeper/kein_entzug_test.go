@@ -103,12 +103,15 @@ var replayArten = map[string]geldArt{
 	// Variante S (quanten_w_s_kette.go): Geld verlaesst ein Menschenkonto nur
 	// mit seiner Unterschrift (Deckung bei der Ausgabe); Bindung, Wahl und
 	// Anmeldung bewegen kein Geld, Offenlegen und Frist zahlen nur aus dem W-Topf.
-	"quanten_w_s_ausgeben":             geldUnterschrieben,
-	"quanten_w_s_binden":               geldNurGutschrift,
-	"quanten_w_s_waehlen":              geldNurGutschrift,
-	"quanten_w_s_anmelden":             geldNurGutschrift,
-	"quanten_w_s_offenlegen":           geldNurGutschrift,
-	"quanten_w_s_frist":                geldNurGutschrift,
+	"quanten_w_s_ausgeben":   geldUnterschrieben,
+	"quanten_w_s_binden":     geldNurGutschrift,
+	"quanten_w_s_waehlen":    geldNurGutschrift,
+	"quanten_w_s_anmelden":   geldNurGutschrift,
+	"quanten_w_s_offenlegen": geldNurGutschrift,
+	"quanten_w_s_frist":      geldNurGutschrift,
+	// Weg B (quanten_s_praeparatoren.go): Register, bewegt kein Geld.
+	"quanten_w_s_praep_melden":         geldNurGutschrift,
+	"quanten_w_s_praep_abmelden":       geldNurGutschrift,
 	"umlauf":                           geldRegelAusnahme,
 	"unternehmen_eroeffnen":            geldUnterschrieben,
 	"vorbehalt":                        geldUnterschrieben,
@@ -188,6 +191,9 @@ var ersetzbareKonstanten = map[string]string{
 	"quantenWSAnmeldenTxArt":   quantenWSAnmeldenTxArt,
 	"quantenWSOffenlegenTxArt": quantenWSOffenlegenTxArt,
 	"quantenWSFristTxArt":      quantenWSFristTxArt,
+	// quanten_s_praeparatoren.go
+	"quantenSPraepMeldenTxArt":   quantenSPraepMeldenTxArt,
+	"quantenSPraepAbmeldenTxArt": quantenSPraepAbmeldenTxArt,
 }
 
 // replaySwitchArten liest die Arten des Nachspiel-Switches aus block.go
