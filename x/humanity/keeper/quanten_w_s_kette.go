@@ -537,6 +537,11 @@ func (cs *ChainState) quantenWSAusgebenBescheidLocked(ctx context.Context, tx *T
 	if _, tot := reg.Tote[q.K]; tot {
 		return quantenWBefund("quanten_w_doppelt", "%s war schon ausgegeben (tot)", q.K[:12]), nil
 	}
+	// Weg B (quanten_s_weg_b.go): ein bestelltes K gibt nur das Los aus (B2b);
+	// bis dahin keine Ausgabe dazu.
+	if _, bestellt := reg.Bestellt[q.K]; bestellt {
+		return quantenWBefund("quanten_s_bestellung", "%s ist bestellt; die Ausgabe gegen das Los folgt (B2b)", q.K[:12]), nil
+	}
 	if len(reg.Token) >= quantenWTokenHoechstens {
 		return quantenWBefund("quanten_w_voll", "Register voll (%d Token)", len(reg.Token)), nil
 	}

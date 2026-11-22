@@ -153,7 +153,11 @@ func auftragsFenster(tx *Transaction, jetzt int64) zeitFenster {
 		// Jeder Knoten rechnet mit BuchAt (quantenWBuchZeit): nur in Bloecke,
 		// zu denen es passt.
 		f.eng(sattAdd(tx.BuchAt, -60), sattAdd(tx.BuchAt, quantenWBuchSpiel))
-		if tx.Type == quantenWPraegenTxArt || tx.Type == quantenWAnfrageTxArt {
+		if istQuantenSWegBTxArt(tx.Type) {
+			f.eng(quantenSWegBAb(), math.MaxInt64) // Weg B (quanten_s_weg_b.go)
+		}
+		if tx.Type == quantenWPraegenTxArt || tx.Type == quantenWAnfrageTxArt ||
+			tx.Type == quantenSMeldenTxArt || tx.Type == quantenSAbmeldenTxArt || tx.Type == quantenSBestellenTxArt {
 			f.eng(sattAdd(tx.DistributionAt, -quantenWVoraus), sattAdd(tx.DistributionAt, quantenWAlt))
 		}
 	}

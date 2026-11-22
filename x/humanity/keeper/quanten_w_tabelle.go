@@ -41,7 +41,8 @@ const (
 	// So viele Zeilen kann es geben (quantenWRegisterLesen: Tote bis zur
 	// Grenze plus die, die danach noch sterben).
 	quantenWZeilenHoechstens = quantenWNotenHoechstens + quantenWTokenHoechstens +
-		quantenWToteHoechstens + quantenWNotenHoechstens + quantenWTokenHoechstens
+		quantenWToteHoechstens + quantenWNotenHoechstens + quantenWTokenHoechstens +
+		quantenSPraepHoechstens + quantenSBestellHoechstens // Weg B
 )
 
 // quantenWZeile: Schluessel einer Zeile.
@@ -67,6 +68,12 @@ func (f quantenWRegisterForm) zeilen() map[quantenWZeile]string {
 	}
 	for _, t := range f.Tote {
 		dazu(quantenWArtTot, t.K, t)
+	}
+	for _, p := range f.Praep {
+		dazu(quantenWArtPraep, p.Konto, p)
+	}
+	for _, b := range f.Bestellt {
+		dazu(quantenWArtBest, b.K, b)
 	}
 	return out
 }
@@ -174,6 +181,16 @@ func quantenWZeilenLesen(db sqlExecutor) (string, int, error) {
 			err = quantenWZeileLesen(daten, &e)
 			kImEintrag = e.K
 			f.Tote = append(f.Tote, e)
+		case quantenWArtPraep:
+			var e quantenSPraepForm
+			err = quantenWZeileLesen(daten, &e)
+			kImEintrag = e.Konto
+			f.Praep = append(f.Praep, e)
+		case quantenWArtBest:
+			var e quantenSBestellForm
+			err = quantenWZeileLesen(daten, &e)
+			kImEintrag = e.K
+			f.Bestellt = append(f.Bestellt, e)
 		default:
 			return "", 0, fmt.Errorf("quanten_w: Zeile mit unbekannter Art %q", art)
 		}
@@ -190,5 +207,7 @@ func quantenWZeilenLesen(db sqlExecutor) (string, int, error) {
 	sort.Slice(f.Noten, func(i, j int) bool { return f.Noten[i].K < f.Noten[j].K })
 	sort.Slice(f.Token, func(i, j int) bool { return f.Token[i].K < f.Token[j].K })
 	sort.Slice(f.Tote, func(i, j int) bool { return f.Tote[i].K < f.Tote[j].K })
+	sort.Slice(f.Praep, func(i, j int) bool { return f.Praep[i].Konto < f.Praep[j].Konto })
+	sort.Slice(f.Bestellt, func(i, j int) bool { return f.Bestellt[i].K < f.Bestellt[j].K })
 	return f.kodiert(), n, nil
 }
