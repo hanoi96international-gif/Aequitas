@@ -2,7 +2,7 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 21.11.2026 ~20:15 UTC, Sitzung „CL Übergabe weitermachen“; davor ~18:00 UTC Sitzung „Weiter“ (Zweig `claude/admiring-bohr-ob0u0p`, alle vier
+Stand: 22.11.2026 ~16:40 UTC, Sitzung „Weiter Übergabe“ (`claude/weiter-uebergabe-1a9yql`); davor 21.11. ~20:15 UTC Sitzung „CL Übergabe weitermachen“; davor ~18:00 UTC Sitzung „Weiter“ (Zweig `claude/admiring-bohr-ob0u0p`, alle vier
 Repos); davor ~13:40 UTC Sitzung „Weiter“ (`claude/weiter-uw2p42`), davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18:30 UTC Sitzung
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
@@ -37,6 +37,31 @@ dezentrales Quantengeld“.
   `einrichten.sh`, Druck mit Chromium: `node build/node_guide_pdf.cjs`); alte Generatoren
   und `docs/VALIDATOR_RAILWAY.md` entfernt; README/Whitepaper auf C1 (netcup). Gleiches in
   App, biometric-beta und proof-server (Railway-Reste).
+<<<<<<< HEAD
+=======
+- **Stand 22.11. ~17:25 UTC (nur diese Sitzung arbeitet weiter, Zweig `claude/cl-uebergabe-weitermachen-jdz5h7`):**
+  - **App 1.30.1 veröffentlicht** (Android release 45047533683; iOS release 45048474002 freigegeben).
+  - **Beta-Stufe #624 auf C1** (Deploy 45044230412 grün).
+  - **Auslastung C1 gemessen** (auslastung-c1.yml 45043076420, 60 min): alle Dienste zusammen
+    **~1,8 GB RAM** (Postgres 1,2 GB, Vergleichsdienst 0,26 GB, Rest < 0,13 GB je Dienst), CPU im
+    Mittel **0,04 Kerne**, Spitze je Dienst ≤ 0,1 Kern, Last-Spitze 3,7 (kurz). Nutzdaten klein
+    (validator_pgdata 830 MB); auf C1 liegen 79 GB verwaiste anonyme Volumes und 44 GB alte
+    Images (freigebbar) — der Umzug nimmt nur Volumes laufender Container mit.
+    **Urteil:** 4 Kerne / 8 GB reichen mit viel Luft (RAM 4×, CPU > 50×). Offen bleibt nur die
+    Geteiltheit der Kerne: nach Bestellung `neuer-c1-pruefen.yml` (Steal < 5 %, ≥ 20.000 Sig/s).
+- **Stand 22.11. ~16:40 UTC, Sitzung „Weiter Übergabe“ (Zweig `claude/weiter-uebergabe-1a9yql`, alle vier Repos):**
+  1. **App-Fehler getRandomBytes(1104) behoben: App #101 gemergt (cdedf15a)** (1.30.1, versionCode/buildNumber 67).
+     `zufallInStuecken` in `lib/quantenSInhaberin.ts` zieht höchstens 1024 Byte je Aufruf, fail-closed.
+     15 Tests, Gegenprobe 6 rot, Suite 1108 grün. Builds laufen: APK
+     [45042698436](https://github.com/hanoi96international-gif/Aequitas-App/actions/runs/45042698436) (Signieren:
+     Freigabe `app-signatur`), iOS [45042700994](https://github.com/hanoi96international-gif/Aequitas-App/actions/runs/45042700994).
+     Danach `release-apk.yml` (run_id 45042698436, Tag `v1.30.1`) und `release-ios.yml`. iOS-Release 1.30.0 war erfolgreich (45037104268).
+  2. **Beta-Stufe (42d881e) als PR auf diesem Zweig.** Die Schwelle wirkt nur lokal (Leistungsnachweis
+     des eigenen Knotens, Kandidatenprobe beim Anmeldeknoten), sie ist kein Kettenzustand, also gibt es
+     keine Spaltung beim Umstellen. Gegenprobe: Knoten oder einrichten.sh einzeln geändert → Test rot.
+     Danach: eigene Sicherheitsprüfung als PR-Kommentar, Merge, C1-Deploy (`produktion`).
+  3. Unverändert offen: Umzug-Messung (`auslastung-c1.yml`, Betreiber).
+>>>>>>> origin/main
 - **Stand 22.11. ~16:10 UTC (Sitzungsende) — NÄCHSTE SCHRITTE IN DIESER REIHENFOLGE:**
   1. **APP-FEHLER (dringend, vom Betreiber gemeldet, Screenshot):** Annahmestelle/Bestellung
      bricht ab mit `expo-crypto: getRandomBytes(1104) expected a valid number from range
