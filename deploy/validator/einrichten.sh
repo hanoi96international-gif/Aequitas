@@ -7,8 +7,8 @@
 # dann fragt das Skript nur noch, ob die IP stimmt.
 #
 # Was das Skript tut (docs/VALIDATOR_EINRICHTEN.md):
-#   1. prueft Docker, Compose, git und die Mindestausstattung (8 Kerne,
-#      16 GB, 60 GB frei) -- ein zu schwacher Server wird abgelehnt,
+#   1. prueft Docker, Compose, git und die Mindestausstattung (4 Kerne,
+#      8 GB, 40 GB frei, dedizierte Kerne) -- ein zu schwacher Server wird abgelehnt,
 #   2. fragt nach deiner Wallet-Adresse (die in der App registrierte) und
 #      ermittelt die oeffentliche IP dieses Servers,
 #   3. schreibt .env (nur fuer root lesbar) mit einem zufaelligen
@@ -54,12 +54,15 @@ command -v openssl >/dev/null || { rot "openssl fehlt: apt-get install -y openss
 command -v python3 >/dev/null || { rot "python3 fehlt: apt-get install -y python3"; exit 1; }
 gruen "Docker, Compose, git: vorhanden"
 
-# LEISTUNG (Stand 30.09.2026): Ziel des Netzes sind 20.000-30.000
-# Ueberweisungen je Sekunde. Ein zu schwacher Validator bremst alle -- er wird
+# LEISTUNG (Beta-Stufe seit 22.11.2026, vorher 8 Kerne / 16 GB / 60 GB /
+# 50.000 Signaturen): 4 dedizierte Kerne, 8 GB, 40 GB, 20.000 Signaturen je
+# Sekunde -- dieselben Werte wie im Knoten (leistungsVorgabe, geprueft in
+# leistungsnachweis_einrichten_test.go). Erhoeht wird nur nach Messung und mit
+# drei Monaten Vorlauf. Ein zu schwacher Validator bremst alle -- er wird
 # abgewiesen. Hier die Teile, die das Netz nicht messen kann (Kerne,
 # Arbeitsspeicher, Platz); die Rechenleistung misst danach der Knoten selbst
 # und zuletzt das Netz (Leistungsprobe bei der Anmeldung).
-MIN_KERNE=8; MIN_RAM_MB=15000; MIN_PLATZ_GB=60
+MIN_KERNE=4; MIN_RAM_MB=7500; MIN_PLATZ_GB=40
 KERNE="$(nproc 2>/dev/null || echo 0)"
 RAM_MB="$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo 2>/dev/null || echo 0)"
 PLATZ_GB="$(df -Pk . 2>/dev/null | awk 'NR==2 {print int($4/1048576)}' || echo 0)"
@@ -67,9 +70,25 @@ echo "  Server: $KERNE Kerne/cores, $((RAM_MB/1024)) GB RAM, $PLATZ_GB GB frei/f
 if { [ "$KERNE" -lt "$MIN_KERNE" ] || [ "$RAM_MB" -lt "$MIN_RAM_MB" ] || [ "$PLATZ_GB" -lt "$MIN_PLATZ_GB" ]; }; then
   rot "Dieser Server ist zu schwach fuer einen Validator -- abgelehnt.
 This server is too weak for a validator -- rejected.
-  Mindestens / at least: $MIN_KERNE Kerne/cores, 16 GB RAM, $MIN_PLATZ_GB GB freie SSD/free SSD.
+  Mindestens / at least: $MIN_KERNE Kerne/cores, 8 GB RAM, $MIN_PLATZ_GB GB freie SSD/free SSD.
   Hier / here:           $KERNE Kerne/cores, $((RAM_MB/1024)) GB RAM, $PLATZ_GB GB.
 Einen groesseren Server nehmen und neu starten. / Use a bigger server and run again."
+  exit 1
+fi
+
+# GETEILTE KERNE: Bei ueberbuchten VPS nimmt der Anbieter dem Server einen Teil
+# der Rechenzeit fuer andere Kunden ("steal"). Dann faellt der Knoten unter
+# Last zurueck und bremst alle. 30 s messen; ueber 5 % wird abgelehnt.
+CPU1="$(head -1 /proc/stat)"
+sleep 30
+CPU2="$(head -1 /proc/stat)"
+# Felder der cpu-Zeile: user nice system idle iowait irq softirq steal ($2..$9).
+STEAL_PROMILLE="$(printf '%s\n%s\n' "$CPU1" "$CPU2" | awk 'NR==1 {for (i = 2; i <= 9; i++) a[i] = $i} NR==2 {g = 0; for (i = 2; i <= 9; i++) g += $i - a[i]; print (g > 0) ? int(1000 * ($9 - a[9]) / g) : 0}')"
+echo "  Steal (geteilte Kerne): $((STEAL_PROMILLE / 10)).$((STEAL_PROMILLE % 10)) %"
+if [ "$STEAL_PROMILLE" -gt 50 ]; then
+  rot "Die Kerne dieses Servers sind stark geteilt (Steal ueber 5 %) -- abgelehnt.
+This server's cores are heavily shared (steal above 5 %) -- rejected.
+Einen Server mit dedizierten Kernen nehmen (z. B. \"VDS\", \"Root-Server\", \"dedicated vCPU\"). / Use dedicated cores."
   exit 1
 fi
 
@@ -168,7 +187,7 @@ if [ "${ERG%% *}" != "ja" ]; then
   rot "Leistung nicht ausreichend -- als Validator abgelehnt. Der Knoten wurde angehalten.
 Performance not sufficient -- rejected as a validator. The node was stopped.
   Messung / measured: $SIGS Signaturen/s -- $GRUND
-  Gebraucht / required: mindestens 50000 Signaturen/s, Datenbank-Commit hoechstens 5 ms, 8 Kerne.
+  Gebraucht / required: mindestens 20000 Signaturen/s, Datenbank-Commit hoechstens 5 ms, 4 Kerne.
 Einen schnelleren Server nehmen (aktuelle CPU-Generation, NVMe-SSD). / Use a faster server (current CPU generation, NVMe SSD)."
   exit 1
 fi

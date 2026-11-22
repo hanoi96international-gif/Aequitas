@@ -68,9 +68,9 @@ func TestLeistungsnachweis_BetreiberUeberstimmt(t *testing.T) {
 func TestLeistungsSchwellenAusUmgebung(t *testing.T) {
 	t.Setenv(leistungMinSigEnv, "12345")
 	t.Setenv(leistungMaxComEnv, "7.5")
-	t.Setenv(leistungMinKernEnv, "8")
+	t.Setenv(leistungMinKernEnv, "6")
 	s := leistungsSchwellenAusUmgebung()
-	if s.MinSigProSek != 12345 || s.MaxCommitMs != 7.5 || s.MinKerne != 8 {
+	if s.MinSigProSek != 12345 || s.MaxCommitMs != 7.5 || s.MinKerne != 6 {
 		t.Fatalf("%+v", s)
 	}
 	t.Setenv(leistungMaxComEnv, "-1")
