@@ -12,7 +12,7 @@ dezentrales Quantengeld“.
   der doppelte Handlauf 45058108805 abgebrochen). App **1.30.2 veröffentlicht** (Android 45074127310, iOS 45074539717,
   Tag `v1.30.2`). Zweige aufgeräumt: je Repo nur noch Hauptzweig, laufende Sitzungszweige und
   `claude/weiter-gehts-vm8979-kegel` (#340, Betreiber entscheidet); biometric-beta noch `dependabot/pip/matching-service/av-19.0.1`.
-- **B2a gebaut: PR #629 (Register der Präparatoren)**, Sicherheitsprüfung als PR-Kommentar gepostet, nach grünem CI mergen; schlafend (`quantenSWegBAbUnix` = MaxInt64),
+- **B2a gebaut: PR #629 (Register der Präparatoren)**, Sicherheitsprüfung als PR-Kommentar gepostet, CI grün (f5a04bf4), mergebar; Merge erst nach Freigabe des Betreibers; schlafend (`quantenSWegBAbUnix` = MaxInt64),
   `x/humanity/keeper/quanten_s_praeparatoren.go`, `DEZENTRAL.md` 18 „B2a“. Arten `quanten_w_s_praep_melden`/`_abmelden`
   (ohne Wallet = Aufräumen nach Umzug), Abbild zur Zeit T für B2b, `GET /api/quanten-w/praeparatoren`.
   9 Tests (auch echte DB), 13 Mutationen rot. Vor dem Merge: eigene Sicherheitsprüfung als PR-Kommentar (Konsens).
