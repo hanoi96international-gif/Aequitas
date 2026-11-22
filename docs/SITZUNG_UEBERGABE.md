@@ -37,6 +37,24 @@ dezentrales Quantengeld“.
   `einrichten.sh`, Druck mit Chromium: `node build/node_guide_pdf.cjs`); alte Generatoren
   und `docs/VALIDATOR_RAILWAY.md` entfernt; README/Whitepaper auf C1 (netcup). Gleiches in
   App, biometric-beta und proof-server (Railway-Reste).
+- **ÜBERGABE 22.11. ~21:50 UTC (Sitzung „Weiter Übergabe“, Kontext 86 %) — HIER WEITERMACHEN:**
+  1. **PR #628 (Weg B, B2 komplett, schlafend) mergen**, sobald die CI auf dem Kopf (4a60c78e oder neuer) grün
+     ist (volle SHA, squash). Inhalt: `quanten_s_weg_b.go` (melden/abmelden/bestellen/losen/verfallen/
+     pfand_zurueck), Ausgabe gegen das Los (`quanten_w_s_kette.go`), Umzug meldet ab und vererbt das Pfand
+     (`umzug.go`), Pfänder 1 AEQ/10 AEQ (Betreiber-Entscheidung). Sicherheitsprüfungen: 3 Kommentare im PR.
+     **db-tests offen klären:** auf 5133c79 einmal rot (Protokoll nicht lesbar, Download gesperrt), auf
+     7f2cacec grün. Lokal liefen `quanten`/`realdb` gerade (Postgres: `pg_ctlcluster 16 main start`,
+     Passwort per `su postgres -c "psql -c \"ALTER USER postgres PASSWORD 'postgres';\""` setzen; Befehle
+     wie `ci.yml` db-tests, je Gruppe eigene DB). Ist der Kopf grün: mergen. Wiederholt sich Rot: Ursache
+     suchen, kein Wiederholen ohne Grund.
+  2. Nach dem Merge: C1-Deploy (`produktion`) ist harmlos (schlafend), Link an den Betreiber.
+  3. **Vor dem Scharfschalten von Weg B offen:** Beweisweg für den Verfall des Präparator-Pfands bei
+     nachgewiesener Fälschung (Designfrage: auf der Kette nur eine Einlösung je Token — Entwurf nötig),
+     dann B3 Briefkasten, B4 App als Präparatorin, B5 Pilot (7 Menschen).
+  4. **Wartet auf den Betreiber:** APK 1.30.2 Freigabe `app-signatur` (Lauf 45056590596), danach
+     `release-apk.yml` (run_id 45056590596, Tag `v1.30.2`) und `release-ios.yml` (run_id 45056593213, Tag
+     `v1.30.2`); Aufräumen Aequitas-Zweige (`zweige-aufraeumen.yml` Lauf 45069778900, `produktion`).
+  5. Betreiber will: Übergabe oft aktualisieren und PRs offen halten, damit nichts verloren geht.
 - **Stand 22.11. ~21:30 UTC (Sitzung „Weiter Übergabe“, Zweig `claude/weiter-uebergabe-1a9yql`):**
   - **B2 (Weg B in der Kette) fertig, schlafend** (`quanten_s_weg_b.go`, Stichtag `quantenSWegBAbUnix` = MaxInt64):
     melden/abmelden/bestellen/losen + Ausgabe gegen das Los (B2b). Details und offene Punkte vor dem
