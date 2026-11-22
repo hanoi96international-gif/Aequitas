@@ -37,6 +37,16 @@ dezentrales Quantengeld“.
   `einrichten.sh`, Druck mit Chromium: `node build/node_guide_pdf.cjs`); alte Generatoren
   und `docs/VALIDATOR_RAILWAY.md` entfernt; README/Whitepaper auf C1 (netcup). Gleiches in
   App, biometric-beta und proof-server (Railway-Reste).
+- **Stand 22.11. ~17:25 UTC (nur diese Sitzung arbeitet weiter, Zweig `claude/cl-uebergabe-weitermachen-jdz5h7`):**
+  - **App 1.30.1 veröffentlicht** (Android release 45047533683; iOS release 45048474002 freigegeben).
+  - **Beta-Stufe #624 auf C1** (Deploy 45044230412 grün).
+  - **Auslastung C1 gemessen** (auslastung-c1.yml 45043076420, 60 min): alle Dienste zusammen
+    **~1,8 GB RAM** (Postgres 1,2 GB, Vergleichsdienst 0,26 GB, Rest < 0,13 GB je Dienst), CPU im
+    Mittel **0,04 Kerne**, Spitze je Dienst ≤ 0,1 Kern, Last-Spitze 3,7 (kurz). Nutzdaten klein
+    (validator_pgdata 830 MB); auf C1 liegen 79 GB verwaiste anonyme Volumes und 44 GB alte
+    Images (freigebbar) — der Umzug nimmt nur Volumes laufender Container mit.
+    **Urteil:** 4 Kerne / 8 GB reichen mit viel Luft (RAM 4×, CPU > 50×). Offen bleibt nur die
+    Geteiltheit der Kerne: nach Bestellung `neuer-c1-pruefen.yml` (Steal < 5 %, ≥ 20.000 Sig/s).
 - **Stand 22.11. ~16:40 UTC, Sitzung „Weiter Übergabe“ (Zweig `claude/weiter-uebergabe-1a9yql`, alle vier Repos):**
   1. **App-Fehler getRandomBytes(1104) behoben: App #101 gemergt (cdedf15a)** (1.30.1, versionCode/buildNumber 67).
      `zufallInStuecken` in `lib/quantenSInhaberin.ts` zieht höchstens 1024 Byte je Aufruf, fail-closed.
