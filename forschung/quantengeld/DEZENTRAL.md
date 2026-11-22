@@ -174,7 +174,9 @@ Geheimnis besser, aber zum Einlösen müssen t Validatoren erreichbar sein.
 | A3 | `hardware_ibm.py --s-abschnitt`, Werkzeug `quanten-s-ausgabe` im Abschnitts-Modus | **Werkzeug fertig** (11); Messung je Abschnitt folgt mit A4 |
 | A4 | Pilot: vier Knoten, je ein eigener Auftrag (im Pilot von einem Konto, das wird benannt) | **fertig** (12): beide Tests grün im Rauschmodell (44347416357) und auf dem Chip `ibm_fez` (44356741223), auch mit Ausfall eines Validators |
 | A5 | Hauptnetz mit einem zweiten Menschen als Validator, wenn möglich bei einem anderen Anbieter | **Werkzeug bereit** (13–15): Messquelle als Verzeichnis, `--s-abschnitt`, Einrichten mit einem Befehl, Basen automatisch vorgemerkt und gemessen; der zweite Mensch: Betreiber |
-| B, C, W-Härtung | wie oben | Forschung; Partner |
+| B1 | Weg B, Spezifikation: Präparatoren-Register, Los, Verfügbarkeit, Kontingent, Missbrauch (`s_weg_b.py`) | **fertig** (18) |
+| B2–B5 | Weg B: Kette (Register, Zufall, Los), Dienst/Briefkasten, App als Präparatorin, Pilot | offen (18) |
+| C, W-Härtung | wie oben | Forschung; Partner |
 
 Die Kette ändert sich in A1 bis A4 nicht. Geändert werden die Ausgabe außerhalb der Kette
 und der Dienst der Validatoren. Jede Änderung am Dienst bekommt eine eigene
@@ -1551,3 +1553,90 @@ Stelle, bevor die Inhaberin vorlegte. Er wusste also, **wo** sie einlösen will 
   denn ohne ihre Unterschrift gibt es keine Vorlage. Mit ihr zusammen fälschen könnte er.
   Dagegen hilft erst A5 (ein zweiter Mensch als Validator).
 - Es liegt kein Gutachten vor.
+
+## 18. Weg B: Präparieren per App, Spezifikation (B1, 22.11.2026)
+
+**Ziel:** Die Hürde für Dezentralität sinkt von „einen Server betreiben“ auf „ein Handy und
+ein kostenloses Konto bei einem Quantenrechner“. Jeder registrierte Mensch kann sich als
+Präparator melden. Je Token **lost die Kette** v Präparatoren aus. Jeder präpariert seinen
+Abschnitt in seinem eigenen Auftrag und hält Anteile der anderen, genau wie ein Validator
+in Weg A. Der Ausgeber wählt niemanden.
+
+**Spezifikation:** `s_weg_b.py` (Selbsttest im CI). Sie setzt auf `s_kette.py` auf;
+Präparation, Anteile, Stichprobe v2, Stellen-Bit und R9 bleiben unverändert.
+
+### Regeln (neu gegenüber Weg A)
+
+1. **Register:** nur aktive Menschen aus dem Menschenregister, je Mensch höchstens ein
+   Präparator. Im Los ist nur, wer mindestens `MELDE_VORLAUF` Blöcke vor der Bestellung
+   gemeldet war. Abmelden nimmt aus dem Los.
+2. **Los:** Die Bestellung wird auf Höhe h endgültig. Gelost wird mit dem Zufall der Höhe
+   h + `LOS_ABSTAND` aus dem Abbild des Registers auf Höhe h: die v Konten mit dem
+   kleinsten H(Zufall, K, Konto). Jeder Knoten rechnet das Los nach.
+3. **Zufall:** aus Beiträgen mehrerer (Zusage, dann Offenlegung; mindestens zwei).
+   Kennt ihn einer vorher, kann er durch Probieren vieler K t Komplizen erzwingen. Der
+   Selbsttest zeigt genau das als Gegenprobe.
+4. **Ausgabe:** Es liefern genau die Gelosten in Losreihenfolge. Ein fremdes Konto, eine
+   vertauschte Reihenfolge oder ein fehlender Präparator werden abgewiesen.
+5. **Einlösen mit Handys:** Die Stelle lädt ihre Stichprobe von jedem erreichbaren
+   Präparator, für die anderen aus t Anteilen (R9). Sind weniger als t erreichbar,
+   wartet die Einlösung; der Wert geht nicht verloren.
+
+### Zahlen (`python3 -I s_weg_b.py --tabelle`, 200 Gemeldete, davon 20 % böse)
+
+| t von v | Stichprobe k | P(Fälschung möglich) | einlösbar, p = 0,8 | einlösbar, p = 0,6 |
+|---|---|---|---|---|
+| 3 von 4 | 5.200 | 2,6 % | 81,9 % | 47,5 % |
+| 4 von 7 | 3.472 | 3,1 % | 96,7 % | 71,0 % |
+| 5 von 9 | 5.200 | 1,7 % | 98,0 % | 73,3 % |
+| 6 von 11 | 5.200 | 0,95 % | 98,8 % | 75,4 % |
+| 7 von 13 | 5.200 | 0,53 % | 99,3 % | 77,1 % |
+
+„P(Fälschung möglich)“ heißt: Unter den Gelosten sind mindestens t Böse. Nur dann kann
+die Inhaberin mit ihnen an zwei Stellen durchkommen, und nur bei diesem einen Token.
+p ist die Wahrscheinlichkeit, dass ein Handy in der Frist erreichbar ist.
+
+**Kontingent:** Das kostenlose IBM-Konto hat 10 Minuten je 28 Tage. Bei geschätzt 10 s je
+Auftrag sind das 60 Abschnitte je Mensch und Monat. Die 10 s sind eine Schätzung und
+werden im ersten Lauf gemessen.
+
+### Selbsttest und Gegenproben
+
+Der Selbsttest prüft: Register (ein Mensch, ein Präparator; ohne Menschen; Vorlauf;
+Abmelden), Zufall (ein Beitrag, falsche Offenlegung), Los (nachrechenbar, hängt vom
+Zufall ab, nicht vor dem Zufall, nicht zweimal, Register zu klein, v außerhalb der
+Grenzen), Ausgabe nur durch die Gelosten, ehrliches Einlösen mit 3 von 7 Handys offline
+(R9), Verschworene unter t plus Inhaberin kommen an keiner zweiten Stelle durch
+(Gegenprobe: t vom Ausgeber gewählte Komplizen kommen durch), Probieren vieler K mit
+unbekanntem Zufall bleibt bei der Erwartung (Gegenprobe: mit bekanntem Zufall nicht),
+Zahlen. **8 Mutationen** machen ihn rot: ein Mensch zweimal, Vorlauf aus, Los vor dem
+Zufall, Ausgabeprüfung als Menge, R9 mit t − 1, Zusage ungeprüft, Los ohne Zufall,
+R9-Schwelle aus.
+
+### Ehrlich dazu
+
+- **Die Zahlen reichen noch nicht für echtes Geld.** Bei 20 % Bösen gelingt bei 4 von 7
+  etwa jede 33. Fälschung. Dagegen helfen größere v (7 von 13: etwa jede 190.), ein
+  **Pfand** je Präparator, das bei nachgewiesener Fälschung verfällt (Doppelvorlage auf
+  der Kette mit beiden Stellen bestanden), und eine Obergrenze des Werts je Token. Das
+  Pfand gehört in B2.
+- **Zufall:** Heute erzeugt C1 allein die Blöcke. Ohne Beiträge mehrerer könnte C1 das
+  Los steuern. Weg B braucht darum den Zufall aus Zusage und Offenlegung (wie W3), und
+  wer zuletzt offenlegt, kann zurückhalten und so eine neue Losung erzwingen. Die Kette
+  muss das begrenzen.
+- **Anbieter:** Nutzen alle IBM, sieht IBM jeden Abschnitt (wie Weg A).
+- **Messung:** Die Inhaberin muss dem Präparator ihr x glauben. Stört er, fällt das auf
+  seinen Abschnitt zurück (`fehler_je_abschnitt`); fälschen kann er allein nicht.
+- **Handys:** Ein Handy muss nach der Bindung einmal erreichbar sein (Öffnung oder
+  Anteile). Dafür braucht es einen Briefkasten bei den Knoten (verschlüsselt, nur
+  Ablegen und Abholen) und Hintergrundabfragen in der App.
+
+### Nächste Schritte
+
+| Schritt | Was |
+|---|---|
+| B2 | Kette: Präparatoren-Register (Melden/Abmelden mit Menschenbindung), Zufall aus Zusage und Offenlegung, Los, Prüfung der Ausgabe gegen das Los, Pfand. Konsensänderung mit Stichtag, eigene Sicherheitsprüfung, Prüfvektor aus `s_weg_b.py`. |
+| B3 | Briefkasten bei den Knoten: verschlüsselte Pakete (Basen y, Anteile, Öffnungen) ablegen und abholen, begrenzt je Absender und Größe. |
+| B4 | App als Präparatorin: IBM-Schlüssel nur im Gerät, Auftrag über die REST-Schnittstelle, Abschnitt präparieren, Anteile verteilen, nach der Bindung öffnen. |
+| B5 | Pilot im Hauptnetz mit mindestens 7 Menschen (4 von 7); erst danach größere v. |
+
