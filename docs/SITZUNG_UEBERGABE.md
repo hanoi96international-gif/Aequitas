@@ -37,8 +37,6 @@ dezentrales Quantengeld“.
   `einrichten.sh`, Druck mit Chromium: `node build/node_guide_pdf.cjs`); alte Generatoren
   und `docs/VALIDATOR_RAILWAY.md` entfernt; README/Whitepaper auf C1 (netcup). Gleiches in
   App, biometric-beta und proof-server (Railway-Reste).
-<<<<<<< HEAD
-=======
 - **Stand 22.11. ~17:25 UTC (nur diese Sitzung arbeitet weiter, Zweig `claude/cl-uebergabe-weitermachen-jdz5h7`):**
   - **App 1.30.1 veröffentlicht** (Android release 45047533683; iOS release 45048474002 freigegeben).
   - **Beta-Stufe #624 auf C1** (Deploy 45044230412 grün).
@@ -61,7 +59,6 @@ dezentrales Quantengeld“.
      keine Spaltung beim Umstellen. Gegenprobe: Knoten oder einrichten.sh einzeln geändert → Test rot.
      Danach: eigene Sicherheitsprüfung als PR-Kommentar, Merge, C1-Deploy (`produktion`).
   3. Unverändert offen: Umzug-Messung (`auslastung-c1.yml`, Betreiber).
->>>>>>> origin/main
 - **Stand 22.11. ~16:10 UTC (Sitzungsende) — NÄCHSTE SCHRITTE IN DIESER REIHENFOLGE:**
   1. **APP-FEHLER (dringend, vom Betreiber gemeldet, Screenshot):** Annahmestelle/Bestellung
      bricht ab mit `expo-crypto: getRandomBytes(1104) expected a valid number from range
