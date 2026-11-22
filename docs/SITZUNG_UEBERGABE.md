@@ -37,6 +37,13 @@ dezentrales Quantengeld“.
   `einrichten.sh`, Druck mit Chromium: `node build/node_guide_pdf.cjs`); alte Generatoren
   und `docs/VALIDATOR_RAILWAY.md` entfernt; README/Whitepaper auf C1 (netcup). Gleiches in
   App, biometric-beta und proof-server (Railway-Reste).
+- **Stand 22.11. ~07:35 UTC:** **#620 (R10 + Fehlerbild) gemergt (870cc66e), App #99 gemergt
+  (47d10f46).** C1-Deploy [44997306685](https://github.com/hanoi96international-gif/Aequitas/actions/runs/44997306685)
+  wartet auf `produktion` -- muss **vor 09:00 UTC** freigegeben sein (Stichtag 09:30 UTC).
+  Danach: nach 09:30 `/api/status` -> `quanten_w.urteil_ab` prüfen; erster Token mit Urteil;
+  erster Hauptnetz-Lauf `quanten-s-ausgabe.yml` liefert das erste Fehlerbild (HEUTE.md 3.3l).
+  Neuer App-Build (1.30.0) für R9/R10 erst sinnvoll mit mehreren Validatoren bzw. nach dem Stichtag.
+  Offen: Annahmestelle wechselt schneller zu den Anteilen (heute 8 Versuche je Aufruf).
 - **Stand 22.11. ~07:10 UTC:** R10 und Fehlerbild fertig, Stichtag des eindeutigen Urteils
   **22.11.2026 09:30 UTC = 1795339800** (Betreiber: „sofort“). PR offen (siehe unten), danach
   Merge und C1-Deploy **vor 09:00 UTC** freigeben (Wächter: 30 min Vorlauf). Verpasst: neuen
