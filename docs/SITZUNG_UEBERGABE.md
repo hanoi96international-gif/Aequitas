@@ -46,7 +46,12 @@ dezentrales Quantengeld“.
   - **Aequitas-App #105 offen:** `beendetAbweisen` (Inhaberin + Annahmestelle: „bereits eingeloest“
     statt irreführender Meldungen) und Quantengeld-Seite mit Überblick W/S und Urteil je Token.
     Suite 1123 grün. Kommt mit dem nächsten App-Release (1.30.2 o. ä.).
-  - Beide PRs abonniert; nach grünem CI mergen.
+  - **App #105 gemergt (ba03fc7d).** #627 abonniert; nach grünem CI mergen, dann C1-Deploy-Link an den Betreiber.
+  - **Betreiber hat Weg B gewählt („Präparieren per App“).** B1 fertig auf diesem Zweig (in #627):
+    `forschung/quantengeld/s_weg_b.py` (Selbsttest im CI, 8 Mutationen rot), `DEZENTRAL.md` 18 mit Zahlen
+    und B2-Entwurf (Zufall für das Los aus drand, BLS-Prüfung in jedem Knoten mit gnark-crypto).
+    **Nächster Schritt B2:** Kette (Präparatoren-Register mit Menschenbindung, drand-Los, Ausgabe gegen
+    das Los, Pfand) mit Stichtag, Prüfvektor aus `s_weg_b.py`, eigene Sicherheitsprüfung.
 - **Stand 22.11. ~17:55 UTC (diese Sitzung, Zweig `claude/cl-uebergabe-weitermachen-jdz5h7`):**
   - **#626 gemergt (690daf98): C1 aufräumen.** Prüflauf 45050955665: belegt 161 von 251 GB;
     48 anonyme unbenutzte Volumes 78,8 GB (Reste der dind-Prüfstände), 89 unbenutzte Images
