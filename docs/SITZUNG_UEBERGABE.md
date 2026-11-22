@@ -46,7 +46,8 @@ dezentrales Quantengeld“.
      7f2cacec grün. Lokal liefen `quanten`/`realdb` gerade (Postgres: `pg_ctlcluster 16 main start`,
      Passwort per `su postgres -c "psql -c \"ALTER USER postgres PASSWORD 'postgres';\""` setzen; Befehle
      wie `ci.yml` db-tests, je Gruppe eigene DB). Ist der Kopf grün: mergen. Wiederholt sich Rot: Ursache
-     suchen, kein Wiederholen ohne Grund.
+     suchen, kein Wiederholen ohne Grund. **Lokal 21:55 UTC: realdb 273 PASS, 0 FAIL;** die Gruppe quanten
+     lief lokal mit 0 Tests (Gate/Umgebung prüfen), im CI auf 7f2cacec grün.
   2. Nach dem Merge: C1-Deploy (`produktion`) ist harmlos (schlafend), Link an den Betreiber.
   3. **Vor dem Scharfschalten von Weg B offen:** Beweisweg für den Verfall des Präparator-Pfands bei
      nachgewiesener Fälschung (Designfrage: auf der Kette nur eine Einlösung je Token — Entwurf nötig),
