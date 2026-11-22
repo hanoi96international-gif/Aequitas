@@ -1,0 +1,50 @@
+name: Zweige aufraeumen (nur erledigte)
+# Loescht nur Zweige, deren Inhalt nachweislich im Hauptzweig steht
+# (scripts/zweige_aufraeumen.sh: gemergt, Inhalt enthalten oder Squash-PR
+# gemergt). Zweige mit offenem PR und Zweige mit Commits der letzten zwei
+# Tage bleiben. Standard ist "pruefen" (nur Liste). "loeschen" braucht die
+# Freigabe "produktion". Jede geloeschte Spitze steht im Log;
+# wiederherstellen: git push origin <sha>:refs/heads/<zweig>.
+on:
+  workflow_dispatch:
+    inputs:
+      modus:
+        description: pruefen (nur Liste) oder loeschen
+        type: choice
+        options: [pruefen, loeschen]
+        default: pruefen
+permissions: {}
+concurrency: zweige-aufraeumen
+jobs:
+  zweige:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.modus == 'loeschen' && 'produktion' || '' }}
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Selbsttest
+        run: bash scripts/test_zweige_aufraeumen.sh
+      - name: Zweige und PR-Staende holen
+        run: |
+          set -eu
+          git fetch -q --prune origin '+refs/heads/*:refs/remotes/origin/*' '+refs/pull/*/head:refs/pr/*'
+      - name: Offene PRs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          gh pr list --repo "$GITHUB_REPOSITORY" --state open --limit 500 --json headRefName --jq '.[].headRefName' > "$RUNNER_TEMP/offen.txt"
+          echo "Offene PRs: $(wc -l < "$RUNNER_TEMP/offen.txt")"
+      - name: Aufraeumen
+        env:
+          MODUS: ${{ inputs.modus }}
+          HAUPTZWEIG: ${{ github.event.repository.default_branch }}
+        run: |
+          set -eu
+          export OFFENE_PR_ZWEIGE="$(cat "$RUNNER_TEMP/offen.txt")"
+          bash scripts/zweige_aufraeumen.sh "$MODUS"

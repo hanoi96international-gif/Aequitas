@@ -62,6 +62,7 @@ jobs:
       # Die Biometrie-Sicherung laedt nur age-Chiffrat hoch und bricht ohne
       # oeffentlichen Empfaenger ab. Kopf von scripts/lint_bio_sicherung.py.
       - run: python3 scripts/lint_bio_sicherung.py
+      - run: bash scripts/test_zweige_aufraeumen.sh
       # Die Server-Haertung prueft per Voreinstellung nur, laedt sshd erst nach
       # authorized_keys- und sshd -t-Pruefung neu und startet nichts neu.
       # Kopf von scripts/lint_server_haerten.py.
