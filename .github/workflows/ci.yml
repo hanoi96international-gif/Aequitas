@@ -90,6 +90,8 @@ jobs:
       - run: python3 -I forschung/quantengeld/wiesner_mehrstufig.py --selbsttest
       - run: python3 -I forschung/quantengeld/kohaerent.py --selbsttest
       - run: python3 -I forschung/quantengeld/s_kette.py --selbsttest
+      - run: python3 -I forschung/quantengeld/s_weg_b.py --selbsttest
+      - run: python3 -I forschung/quantengeld/s_weg_b.py --vektor | cmp - x/humanity/keeper/testdata/quanten_s_los_vektor.json
       - run: python3 -I forschung/quantengeld/s_kette.py --vektor | cmp - x/humanity/keeper/testdata/quanten_s_vektor.json
       - run: python3 -I forschung/quantengeld/s_kette.py --vektor-abschnitte | cmp - x/humanity/keeper/testdata/quanten_s_abschnitt_vektor.json
       - run: python3 -I forschung/quantengeld/s_kette.py --vektor-probe-v2 | cmp - x/humanity/keeper/testdata/quanten_s_probe_v2_vektor.json
