@@ -574,9 +574,17 @@ func (cs *ChainState) quantenWSAusgebenBescheidLocked(ctx context.Context, tx *T
 	if err := quantenWUnterschrift(q, quantenWSAusgabeNachrichtArt(wallet, q.K, q.N, q.T, q.Wurzel, q.Validatoren, q.Proben, q.Annahme, inhaber, q.Deckung, zeit, q.Tol, q.ProbeArt), wallet, blockZeit); err != nil {
 		return quantenWBefund("quanten_w_unterschrift", "Ausgeber %s: %v", kurzAdresse(wallet), err), nil
 	}
-	if u, err := cs.quantenWValidatorenLocked(ctx, q.Validatoren, q.Bestaetigungen, func(x int) string {
+	bestaetigt := func(x int) string {
 		return quantenWSBestaetigungNachricht(q.K, wurzel, q.N, q.T, q.Validatoren, x+1, proben, zeit, q.Tol)
-	}); err != nil || u.regel != "" {
+	}
+	// Weg B (quanten_s_bestellung.go): ein bestelltes K nur durch die
+	// Gelosten, mit dem Schluessel ihrer Konten. Sonst Weg A: gebundene
+	// Validatoren verschiedener Menschen.
+	if b := reg.Best[q.K]; b != nil {
+		if u := quantenSAusgabeGegenLos(b, wallet, q, blockZeit, bestaetigt); u.regel != "" {
+			return u, nil
+		}
+	} else if u, err := cs.quantenWValidatorenLocked(ctx, q.Validatoren, q.Bestaetigungen, bestaetigt); err != nil || u.regel != "" {
 		return u, err
 	}
 	if q.Deckung < quantenMindestDeckungMik {
@@ -594,6 +602,7 @@ func (cs *ChainState) quantenWSAusgebenBescheidLocked(ctx context.Context, tx *T
 		return quantenWBefund("quanten_w_voll", "zu viele tote Noten und Token im Ausgabefenster"), nil
 	}
 	neu.Token[q.K] = &quantenWSEintrag{token: tok, Anteile: anteile, Zeit: zeit, Stellen: stellen}
+	delete(neu.Best, q.K) // Weg B: die Bestellung ist verbraucht
 	return quantenWBescheid{reg: neu, wege: []quantenWWeg{{wallet, quantenWTopfAddr, q.Deckung}}, felder: QuantenWAngaben{Anteile: anteile}}, nil
 }
 

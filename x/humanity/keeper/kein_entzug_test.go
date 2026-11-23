@@ -110,8 +110,11 @@ var replayArten = map[string]geldArt{
 	"quanten_w_s_offenlegen": geldNurGutschrift,
 	"quanten_w_s_frist":      geldNurGutschrift,
 	// Weg B (quanten_s_praeparatoren.go): Register, bewegt kein Geld.
-	"quanten_w_s_praep_melden":         geldNurGutschrift,
-	"quanten_w_s_praep_abmelden":       geldNurGutschrift,
+	"quanten_w_s_praep_melden":   geldNurGutschrift,
+	"quanten_w_s_praep_abmelden": geldNurGutschrift,
+	// Weg B (quanten_s_bestellung.go): Bestellung und Los, bewegen kein Geld.
+	"quanten_w_s_bestellen":            geldNurGutschrift,
+	"quanten_w_s_losen":                geldNurGutschrift,
 	"umlauf":                           geldRegelAusnahme,
 	"unternehmen_eroeffnen":            geldUnterschrieben,
 	"vorbehalt":                        geldUnterschrieben,
@@ -194,6 +197,9 @@ var ersetzbareKonstanten = map[string]string{
 	// quanten_s_praeparatoren.go
 	"quantenSPraepMeldenTxArt":   quantenSPraepMeldenTxArt,
 	"quantenSPraepAbmeldenTxArt": quantenSPraepAbmeldenTxArt,
+	// quanten_s_bestellung.go
+	"quantenSBestellenTxArt": quantenSBestellenTxArt,
+	"quantenSLosenTxArt":     quantenSLosenTxArt,
 }
 
 // replaySwitchArten liest die Arten des Nachspiel-Switches aus block.go

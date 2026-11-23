@@ -282,14 +282,20 @@ func (a *APIServer) handleQuantenSPraeparatoren(w http.ResponseWriter, r *http.R
 		jsonError(w, "GET only", http.StatusMethodNotAllowed)
 		return
 	}
+	reg := a.state.quantenWJetzt() // ein Stand fuer Register und Bestellungen
 	liste := []map[string]interface{}{}
-	for _, f := range quantenSPraepFormen(a.state.quantenWJetzt().Praep) {
+	for _, f := range quantenSPraepFormen(reg.Praep) {
 		e := map[string]interface{}{"konto": f.Konto, "gemeldet": f.Gemeldet, "im_los_ab": sattAdd(f.Gemeldet, quantenSPraepVorlauf)}
 		if f.Abgemeldet != 0 {
 			e["abgemeldet"] = f.Abgemeldet
 		}
 		liste = append(liste, e)
 	}
+	bestellungen := []map[string]interface{}{}
+	for _, f := range quantenSBestellungenFormen(reg.Best) {
+		bestellungen = append(bestellungen, quantenSBestellungAnsicht(f.K, reg.Best[f.K]))
+	}
 	json.NewEncoder(w).Encode(map[string]interface{}{"aktiv": quantenSWegBAktiv(time.Now().Unix()), "vorlauf": quantenSPraepVorlauf,
-		"nachlauf": quantenSPraepNachlauf, "hoechstens": quantenSPraepHoechstens, "praeparatoren": liste})
+		"nachlauf": quantenSPraepNachlauf, "hoechstens": quantenSPraepHoechstens, "praeparatoren": liste,
+		"bestellungen": bestellungen, "los_abstand": quantenSLosAbstand, "bestell_frist": quantenSBestellFrist})
 }

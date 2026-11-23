@@ -175,7 +175,7 @@ Geheimnis besser, aber zum Einlösen müssen t Validatoren erreichbar sein.
 | A4 | Pilot: vier Knoten, je ein eigener Auftrag (im Pilot von einem Konto, das wird benannt) | **fertig** (12): beide Tests grün im Rauschmodell (44347416357) und auf dem Chip `ibm_fez` (44356741223), auch mit Ausfall eines Validators |
 | A5 | Hauptnetz mit einem zweiten Menschen als Validator, wenn möglich bei einem anderen Anbieter | **Werkzeug bereit** (13–15): Messquelle als Verzeichnis, `--s-abschnitt`, Einrichten mit einem Befehl, Basen automatisch vorgemerkt und gemessen; der zweite Mensch: Betreiber |
 | B1 | Weg B, Spezifikation: Präparatoren-Register, Los, Verfügbarkeit, Kontingent, Missbrauch (`s_weg_b.py`) | **fertig** (18) |
-| B2–B5 | Weg B: Kette (Register, Zufall, Los), Dienst/Briefkasten, App als Präparatorin, Pilot | B2a gebaut, schlafend (18); B2b–B5 offen |
+| B2–B5 | Weg B: Kette (Register, Zufall, Los), Dienst/Briefkasten, App als Präparatorin, Pilot | B2a, B2b gebaut, schlafend (18); B2c–B5 offen |
 | C, W-Härtung | wie oben | Forschung; Partner |
 
 Die Kette ändert sich in A1 bis A4 nicht. Geändert werden die Ausgabe außerhalb der Kette
@@ -1689,11 +1689,45 @@ Unterschrift, K eines anderen, fremde Felder, Wiedereinspielen nach dem Vergesse
 (fremdes Konto, ohne Wallet bei einem Menschen), Umzug, volles Register, strenges Lesen,
 echte Datenbank, nicht kanonische Wallet. 13 Mutationen machen sie rot.
 
+### B2b: Bestellung, Los, Ausgabe gegen das Los (23.11.2026, gebaut, schlafend)
+
+`x/humanity/keeper/quanten_s_bestellung.go`, zwei neue Arten (schlafend wie B2a):
+
+- `quanten_w_s_bestellen` (Ausgeber, unterschrieben; K, v = `praep_zahl`, t): nur ein
+  Mensch, eine offene Bestellung je Ausgeber, höchstens 32. Die Kette rechnet das Abbild
+  **in der Bestellung** und hält es fest. Die Buchzeit darf höchstens 120 s vor dem Block
+  liegen (sonst wäre die Runde des Loses schon bekannt).
+- `quanten_w_s_losen` (jeder, ohne Wallet): die **feste** Runde = erste drand-Runde mit Zeit
+  ≥ Bestellzeit + 10 min, ihre Signatur prüft jeder Knoten selbst. Los = `quantenSLos`.
+- `quanten_w_s_ausgeben` für ein bestelltes K: nur der Ausgeber der Bestellung, t wie
+  bestellt, Validatoren = Los in Losreihenfolge, jeder Geloste bestätigt mit dem Schlüssel
+  seines Kontos. Weg A ist für ein bestelltes K gesperrt. Danach ist die Bestellung verbraucht.
+- Frist 2 Tage für Losen und Ausgabe; eine verfallene Bestellung sperrt ihren Ausgeber bis
+  zum Ende der Frist.
+
+**Befund (neu, in `s_weg_b.py` 7b):** Je Los ist der Zufall unverzerrt, aber ein Ausgeber
+kann nach dem Los **abbrechen und neu bestellen**, bis ein Los t Komplizen trägt:
+1 − (1 − p)^m nach m Versuchen (4 von 7, 20 % Böse: p ≈ 2,5 %, nach 40 Versuchen ≈ 63 %).
+Die Grenze „eine Bestellung je Mensch und Frist“ bremst das nur (40 Versuche ≈ 80 Tage je
+Mensch). **Weg B wird erst scharf, wenn ein Pfand je Bestellung beim Abbruch verfällt
+(B2c).**
+
+Ehrlich: Solange C1 allein Blöcke erzeugt, kann C1 die Blockzeit hinter der echten Zeit
+halten (Knoten prüfen nur „nicht in der Zukunft“ und „nicht vor den Eltern“). Dann läge die
+feste Runde schon in der Vergangenheit. Das ist von außen sichtbar (Blockzeit gegen
+drand-Zeit); ein Wächter dafür gehört vor den Stichtag.
+
+Tests: Gutfall, Abbild fest (Vorlauf, Abmeldung und Meldung danach), Missbrauch bei
+Bestellen, Losen (andere Runde echt signiert, fremder Verbund, gekippte Signatur, doppelt,
+nach der Frist) und Ausgabe (vor dem Los, Fremder, Reihenfolge, einer fehlt/zu viel,
+fremder Schlüssel, fremder Ausgeber, nach der Frist), Buchzeit, echter quicknet-Beacon
+(Runde 1.000.000), strenges Lesen, keine W-Note mit bestelltem K (sonst wäre das Register nicht mehr ladbar). 19 Mutationen rot.
+
 ### Nächste Schritte
 
 | Schritt | Was |
 |---|---|
-| B2b | Bestellung Weg B (K, v, t; Abbild in der Bestellung festgehalten, Frist kürzer als der Nachlauf), `_losen` mit drand-Runde (Zeit der Runde ≥ Bestellzeit + Abstand, `drandQuicknet.pruefen`), Los = `quantenSLos`, S-Ausgabe verlangt `Validatoren == Los`, Stichtag mit Deploy-Wächter, eigene Sicherheitsprüfung. Pfand als B2c. |
+| B2c | Pfand je Bestellung (verfällt beim Abbruch ans Grundeinkommen, zurück bei Ausgabe) und Gebühr; Wächter Blockzeit gegen drand-Zeit; dann Stichtag mit Deploy-Wächter (Betreiber entscheidet). |
 | B2 (gesamt) | Kette: Präparatoren-Register (B2a gebaut), Zufall aus Zusage und Offenlegung, Los, Prüfung der Ausgabe gegen das Los, Pfand. Konsensänderung mit Stichtag, eigene Sicherheitsprüfung, Prüfvektor aus `s_weg_b.py`. |
 | B3 | Briefkasten bei den Knoten: verschlüsselte Pakete (Basen y, Anteile, Öffnungen) ablegen und abholen, begrenzt je Absender und Größe. |
 | B4 | App als Präparatorin: IBM-Schlüssel nur im Gerät, Auftrag über die REST-Schnittstelle, Abschnitt präparieren, Anteile verteilen, nach der Bindung öffnen. |
