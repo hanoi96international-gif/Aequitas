@@ -10,7 +10,7 @@ dezentrales Quantengeld“.
 **Stand 23.11. ~01:00 UTC (dieselbe Sitzung) — HIER WEITERMACHEN:**
 - **#629 (B2a) gemergt** (bfb25203) nach „Weiter“ des Betreibers. C1-Deploy dazu: Lauf nach dem Push auf main
   (wartet auf `produktion`; Code schläft, kein Eilbedarf).
-- **B2b gebaut (PR von diesem Zweig):** `quanten_s_bestellung.go` — Bestellen (Abbild in der Bestellung, Buchzeit
+- **B2b gebaut: PR #630** (Sicherheitsprüfung als PR-Kommentar; Merge erst nach Freigabe des Betreibers): `quanten_s_bestellung.go` — Bestellen (Abbild in der Bestellung, Buchzeit
   ≤ 120 s vor dem Block), Losen mit fester drand-Runde (Bestellzeit + 10 min), Ausgabe nur durch die Gelosten.
   11 Tests (auch echter Beacon), 19 Mutationen rot; Prägen mit bestelltem K gesperrt. **Befund:** Abbruch und neu bestellen (1 − (1 − p)^m), in
   `s_weg_b.py` 7b; gebremst durch eine Bestellung je Mensch und Frist. **Weg B bleibt schlafend bis B2c (Pfand).**
