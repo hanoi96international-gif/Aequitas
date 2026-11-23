@@ -1840,8 +1840,20 @@ seinen Schlüssel, EIP-191 über den Hash des Chiffrats). Zufall nur vom Aufrufe
 Verwerfen gleichverteilt, schlechter Zufall bricht ab. Prüfvektor
 `testdata/quanten_s_praep_buendel_vektor.json` entsteht in der App mit festem Zufall; der
 Knoten öffnet genau diese Bündel mit seinem eigenen Code (`quanten_s_praep_buendel_vektor_test.go`).
-Noch offen (B4b-3b): Pakete für die Annahmestellen (Stichprobe v2), `fuer_inhaberin`,
-Antwort-Nachricht und Bestätigung.
+
+### B4b-3b: Antwort der Präparatorin in der App (23.11.2026, gebaut)
+
+Dazu in `lib/quantenSPraeparieren.ts`: Stichprobe v2 (Salz, Teil-Hash und Zählung je
+Annahmestelle, `probeV2`), je anderem Validator zwei Pakete für die Annahmestellen mit seinen
+Anteilen an genau den Stellen mit Stellen-Bit b und dem Salz von b (R9,
+`anteilOeffnungPakete`), Bündel mit diesen Paketen, `fuer_inhaberin` (x verschlüsselt an die
+Inhaberin), die Öffnung für Stelle b (`oeffnungFuerStelle`; herausgeben erst nach finaler
+Bindung und Wahl, das prüft der Ablauf) und die unterschriebene Antwort
+(`antwortUnterschreiben`). Jeder Schlüssel muss zu seiner Adresse gehören. Zweiter Prüfvektor
+`testdata/quanten_s_praep_antwort_vektor.json` aus der App; der Knoten prüft ihn ganz mit
+seinem eigenen Code (`quanten_s_praep_antwort_vektor_test.go`): Unterschrift, x der
+Inhaberin, Zählung, Bündel mit Paketen, Zusammensetzen aus t Paketen gegen die Blätter,
+Teil-Hash, Öffnung. Noch offen (B4b-3c): die Bestätigung nach der Wurzel.
 
 ### Nächste Schritte
 
