@@ -91,6 +91,7 @@ func quantenWSNurEigeneFelder(tx *Transaction, q QuantenWAngaben) bool {
 	case quantenWSAusgebenTxArt:
 		q.N, q.T, q.Wurzel, q.Validatoren, q.Bestaetigungen, q.Deckung, q.Tol = 0, 0, "", nil, nil, 0, 0
 		q.Inhaber, q.Annahme, q.Proben, q.WalletSig, q.PQ, q.Anteile, q.ProbeArt = "", nil, nil, "", nil, 0, 0
+		q.Pfand, q.PfandAn = 0, "" // gerechnet: Weg B gibt das Pfand der Bestellung zurueck
 		return reflect.DeepEqual(q, QuantenWAngaben{})
 	case quantenWSBindenTxArt:
 		q.D, q.WalletSig, q.PQ = "", "", nil
@@ -602,8 +603,14 @@ func (cs *ChainState) quantenWSAusgebenBescheidLocked(ctx context.Context, tx *T
 		return quantenWBefund("quanten_w_voll", "zu viele tote Noten und Token im Ausgabefenster"), nil
 	}
 	neu.Token[q.K] = &quantenWSEintrag{token: tok, Anteile: anteile, Zeit: zeit, Stellen: stellen}
-	delete(neu.Best, q.K) // Weg B: die Bestellung ist verbraucht
-	return quantenWBescheid{reg: neu, wege: []quantenWWeg{{wallet, quantenWTopfAddr, q.Deckung}}, felder: QuantenWAngaben{Anteile: anteile}}, nil
+	u := quantenWBescheid{reg: neu, wege: []quantenWWeg{{wallet, quantenWTopfAddr, q.Deckung}}, felder: QuantenWAngaben{Anteile: anteile}}
+	// Weg B: die Bestellung ist verbraucht, ihr Pfand geht zurueck.
+	if b := reg.Best[q.K]; b != nil {
+		delete(neu.Best, q.K)
+		u.wege = append(u.wege, quantenWWeg{quantenWPfandAddr, wallet, b.Pfand})
+		u.felder.Pfand, u.felder.PfandAn = b.Pfand, wallet
+	}
+	return u, nil
 }
 
 // quantenWSTokenAnsicht: der oeffentliche Stand eines Tokens (GET

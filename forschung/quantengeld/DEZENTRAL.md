@@ -175,7 +175,7 @@ Geheimnis besser, aber zum Einlösen müssen t Validatoren erreichbar sein.
 | A4 | Pilot: vier Knoten, je ein eigener Auftrag (im Pilot von einem Konto, das wird benannt) | **fertig** (12): beide Tests grün im Rauschmodell (44347416357) und auf dem Chip `ibm_fez` (44356741223), auch mit Ausfall eines Validators |
 | A5 | Hauptnetz mit einem zweiten Menschen als Validator, wenn möglich bei einem anderen Anbieter | **Werkzeug bereit** (13–15): Messquelle als Verzeichnis, `--s-abschnitt`, Einrichten mit einem Befehl, Basen automatisch vorgemerkt und gemessen; der zweite Mensch: Betreiber |
 | B1 | Weg B, Spezifikation: Präparatoren-Register, Los, Verfügbarkeit, Kontingent, Missbrauch (`s_weg_b.py`) | **fertig** (18) |
-| B2–B5 | Weg B: Kette (Register, Zufall, Los), Dienst/Briefkasten, App als Präparatorin, Pilot | B2a, B2b gebaut, schlafend (18); B2c–B5 offen |
+| B2–B5 | Weg B: Kette (Register, Zufall, Los), Dienst/Briefkasten, App als Präparatorin, Pilot | B2a–B2c gebaut, schlafend (18); B2d–B5 offen |
 | C, W-Härtung | wie oben | Forschung; Partner |
 
 Die Kette ändert sich in A1 bis A4 nicht. Geändert werden die Ausgabe außerhalb der Kette
@@ -1723,11 +1723,28 @@ nach der Frist) und Ausgabe (vor dem Los, Fremder, Reihenfolge, einer fehlt/zu v
 fremder Schlüssel, fremder Ausgeber, nach der Frist), Buchzeit, echter quicknet-Beacon
 (Runde 1.000.000), strenges Lesen, keine W-Note mit bestelltem K (sonst wäre das Register nicht mehr ladbar). 19 Mutationen rot.
 
+### B2c: Pfand je Bestellung (23.11.2026, gebaut, schlafend)
+
+Die Bestellung legt die Deckung D fest; der Ausgeber hinterlegt ein **Pfand** von
+max(1 AEQ, ⌈10 % von D⌉) im W-Pfandtopf. Bei der Ausgabe (nur mit genau dieser Deckung) geht
+es zurück. Verfällt die Bestellung, geht es ans Grundeinkommen — über die neue Art
+`quanten_w_s_bestellung_frist` (jeder, ohne Wallet) oder beim nächsten Bestellen.
+
+Warum 10 %: Ein Los mit t Komplizen gibt es je Bestellung mit p ≤ ~3,1 % (Tabelle oben).
+Wer abbricht, bis eines kommt, verliert im Mittel Pfand / p ≥ 3 D — mehr, als die
+Doppeleinlösung (D) einbringt. Damit ist der Befund aus B2b nicht mehr lohnend; die Bremse
+„eine Bestellung je Mensch und Frist“ bleibt zusätzlich.
+
+Tests: Pfand genommen, zurück bei Ausgabe, verfallen über die Frist-Art und beim nächsten
+Bestellen, kein Pfand ohne Guthaben, Deckung unter dem Mindestwert, Deckung durch die
+Unterschrift gebunden, andere Deckung bei der Ausgabe, Höhe (Rundung, Überlauf, ≥ 3 D bei
+p = 3,1 %), strenges Lesen. 11 Mutationen rot; die 18 aus B2b weiter rot.
+
 ### Nächste Schritte
 
 | Schritt | Was |
 |---|---|
-| B2c | Pfand je Bestellung (verfällt beim Abbruch ans Grundeinkommen, zurück bei Ausgabe) und Gebühr; Wächter Blockzeit gegen drand-Zeit; dann Stichtag mit Deploy-Wächter (Betreiber entscheidet). |
+| B2d | Wächter Blockzeit gegen echte Zeit (C1 könnte die Blockzeit zurückhalten und so eine schon bekannte Runde losen lassen); dazu klären, ob C1 bei Leerlauf leere Blöcke erzeugt. Dann Stichtag mit Deploy-Wächter (Betreiber entscheidet). |
 | B2 (gesamt) | Kette: Präparatoren-Register (B2a gebaut), Zufall aus Zusage und Offenlegung, Los, Prüfung der Ausgabe gegen das Los, Pfand. Konsensänderung mit Stichtag, eigene Sicherheitsprüfung, Prüfvektor aus `s_weg_b.py`. |
 | B3 | Briefkasten bei den Knoten: verschlüsselte Pakete (Basen y, Anteile, Öffnungen) ablegen und abholen, begrenzt je Absender und Größe. |
 | B4 | App als Präparatorin: IBM-Schlüssel nur im Gerät, Auftrag über die REST-Schnittstelle, Abschnitt präparieren, Anteile verteilen, nach der Bindung öffnen. |

@@ -3,6 +3,7 @@ package keeper
 import (
 	"context"
 	"crypto/ecdsa"
+	"math"
 	"slices"
 	"strings"
 	"testing"
@@ -49,9 +50,20 @@ func neueBWelt(t *testing.T) *bWelt {
 	return w
 }
 
+// bwDeckung: die Deckung, die bestellt und ausgegeben wird (ausgabeMit).
+const bwDeckung int64 = 10_000_000
+
 func (w *bWelt) bestellenTx(von string, key *ecdsa.PrivateKey, K string, v, tt int, zeit int64) Transaction {
-	return Transaction{Type: quantenSBestellenTxArt, Wallet: von, DistributionAt: zeit, QuantenW: &QuantenWAngaben{K: K, PraepZahl: v, T: tt,
-		WalletSig: personalSign(w.t, key, quantenSBestellNachricht(von, K, v, tt, zeit))}}
+	return w.bestellenTxD(von, key, K, v, tt, bwDeckung, zeit)
+}
+
+func (w *bWelt) bestellenTxD(von string, key *ecdsa.PrivateKey, K string, v, tt int, deckung, zeit int64) Transaction {
+	return Transaction{Type: quantenSBestellenTxArt, Wallet: von, DistributionAt: zeit, QuantenW: &QuantenWAngaben{K: K, PraepZahl: v, T: tt, Deckung: deckung,
+		WalletSig: personalSign(w.t, key, quantenSBestellNachricht(von, K, v, tt, deckung, zeit))}}
+}
+
+func (w *bWelt) fristTx(K string) Transaction {
+	return Transaction{Type: quantenSBestellFristTxArt, QuantenW: &QuantenWAngaben{K: K}}
 }
 
 func (w *bWelt) losenTx(K string, r uint64, sig string) Transaction {
@@ -74,7 +86,7 @@ func (w *bWelt) ausgabeMit(praep []string, zeit int64) Transaction {
 	for _, a := range praep {
 		w.valKeys = append(w.valKeys, w.keys[a])
 	}
-	return w.ausgebenTx(zeit, 10_000_000)
+	return w.ausgebenTx(zeit, bwDeckung)
 }
 
 func (w *bWelt) best(cs *ChainState) *quantenSBestellung {
@@ -280,7 +292,7 @@ func TestQuantenSBestellung_AusgabeMissbrauch(t *testing.T) {
 	z := w.z + 900
 	// Vor dem Los: keine Ausgabe, auch nicht mit Weg A.
 	w.annehmen(w.bestellenTx(w.praeger, w.keys[w.praeger], w.p.K, 5, w.p.t, w.z), w.z)
-	if r := w.praepRegel(w.ausgebenTx(z, 10_000_000), z); r != "quanten_s_los_offen" {
+	if r := w.praepRegel(w.ausgebenTx(z, bwDeckung), z); r != "quanten_s_los_offen" {
 		t.Fatalf("Ausgabe vor dem Los: %q", r)
 	}
 	r := w.runde()
@@ -299,7 +311,7 @@ func TestQuantenSBestellung_AusgabeMissbrauch(t *testing.T) {
 	vertauscht[0], vertauscht[1] = vertauscht[1], vertauscht[0]
 	w.ausgabeMit(los, z)
 	w.valKeys[3] = w.keys[draussen]
-	falscherSchluessel := w.ausgebenTx(z, 10_000_000)
+	falscherSchluessel := w.ausgebenTx(z, bwDeckung)
 	weitere := w.ausgabeMit(append(slices.Clone(los), draussen), z)
 	for _, f := range []struct {
 		name string
@@ -407,6 +419,8 @@ func TestQuantenSBestellung_RegisterLesen(t *testing.T) {
 		"Abbild zu klein":   func(f *quantenSBestellungForm) { f.Abbild = f.Abbild[:3*f.V-1] },
 		"v zu gross":        func(f *quantenSBestellungForm) { f.V = 17 },
 		"ohne Zeit":         func(f *quantenSBestellungForm) { f.Zeit = 0 },
+		"Pfand zu klein":    func(f *quantenSBestellungForm) { f.Pfand-- },
+		"Deckung zu klein":  func(f *quantenSBestellungForm) { f.Deckung = 1; f.Pfand = quantenSBestellPfandFuer(1) },
 	}
 	for name, aendern := range kaputt {
 		f := gut
@@ -442,5 +456,102 @@ func TestQuantenSBestellung_Schlafend(t *testing.T) {
 	tx := Transaction{Type: quantenSLosenTxArt, QuantenW: &QuantenWAngaben{K: strings.Repeat("a", 64), Runde: 1, RundeSig: "00"}}
 	if u := w.bescheid(w.cs, tx, qwT0); u.regel != "quanten_s_praep_inaktiv" {
 		t.Fatalf("vor dem Stichtag: %q", u.regel)
+	}
+}
+
+// Pfand (B2c): genommen bei der Bestellung, zurueck bei der Ausgabe, ans
+// Grundeinkommen nach der Frist -- ueber die eigene Art oder beim naechsten
+// Bestellen. Geld bleibt erhalten.
+func TestQuantenSBestellung_Pfand(t *testing.T) {
+	w := neueBWelt(t)
+	pfand := quantenSBestellPfandFuer(bwDeckung)
+	vorher, topf, ubi := w.stand(w.cs, w.praeger), w.stand(w.cs, quantenWPfandAddr), w.stand(w.cs, ubiPoolAddr)
+	g := w.annehmen(w.bestellenTx(w.praeger, w.keys[w.praeger], w.p.K, 5, w.p.t, w.z), w.z).QuantenW.gerechnet()
+	if g.Pfand != pfand || w.stand(w.cs, w.praeger) != vorher-pfand || w.stand(w.cs, quantenWPfandAddr) != topf+pfand {
+		t.Fatalf("Pfand beim Bestellen: %+v", g)
+	}
+	r := w.runde()
+	w.annehmen(w.losenTx(w.p.K, r, w.sig(r)), w.z+quantenSLosAbstand+5)
+	los := slices.Clone(w.best(w.cs).Los)
+	// Andere Deckung als bestellt: abgewiesen.
+	w.ausgabeMit(los, w.z+900)
+	anders := w.ausgebenTx(w.z+900, bwDeckung+1)
+	if g := w.praepRegel(anders, w.z+900); g != "quanten_s_los_ausgeber" {
+		t.Fatalf("Ausgabe mit anderer Deckung: %q", g)
+	}
+	g = w.annehmen(w.ausgabeMit(los, w.z+900), w.z+900).QuantenW.gerechnet()
+	if g.Pfand != pfand || g.PfandAn != w.praeger || w.stand(w.cs, w.praeger) != vorher-bwDeckung ||
+		w.stand(w.cs, quantenWPfandAddr) != topf || w.stand(w.nach, w.praeger) != vorher-bwDeckung {
+		t.Fatalf("Pfand nach der Ausgabe nicht zurueck: %+v, Ausgeber %d", g, w.stand(w.cs, w.praeger))
+	}
+	if w.stand(w.cs, ubiPoolAddr) != ubi {
+		t.Fatal("Grundeinkommen bei ehrlicher Ausgabe veraendert")
+	}
+
+	// Abbruch: Frist abgelaufen, Pfand ans Grundeinkommen ueber die Frist-Art.
+	w2 := neueBWelt(t)
+	vorher, ubi = w2.stand(w2.cs, w2.praeger), w2.stand(w2.cs, ubiPoolAddr)
+	w2.annehmen(w2.bestellenTx(w2.praeger, w2.keys[w2.praeger], w2.p.K, 5, w2.p.t, w2.z), w2.z)
+	ende := w2.z + quantenSBestellFrist
+	if g := w2.praepRegel(w2.fristTx(w2.p.K), ende-1); g != "quanten_w_frist" {
+		t.Fatalf("Frist vor dem Ende: %q", g)
+	}
+	if g := w2.praepRegel(w2.fristTx(strings.Repeat("e", 64)), ende); g != "quanten_w_unbekannt" {
+		t.Fatalf("Frist ohne Bestellung: %q", g)
+	}
+	mitWallet := w2.fristTx(w2.p.K)
+	mitWallet.Wallet = w2.anna
+	if g := w2.praepRegel(mitWallet, ende); g != "quanten_w_form" {
+		t.Fatalf("Frist mit Wallet: %q", g)
+	}
+	g = w2.annehmen(w2.fristTx(w2.p.K), ende).QuantenW.gerechnet()
+	if g.Pfand != pfand || w2.best(w2.cs) != nil || w2.stand(w2.cs, w2.praeger) != vorher-pfand || w2.stand(w2.cs, ubiPoolAddr) != ubi+pfand {
+		t.Fatalf("Frist: %+v", g)
+	}
+
+	// Abbruch ohne Frist-Art: das naechste Bestellen nimmt das alte Pfand mit.
+	w3 := neueBWelt(t)
+	ubi = w3.stand(w3.cs, ubiPoolAddr)
+	w3.annehmen(w3.bestellenTx(w3.praeger, w3.keys[w3.praeger], w3.p.K, 5, w3.p.t, w3.z), w3.z)
+	ende = w3.z + quantenSBestellFrist
+	w3.annehmen(w3.bestellenTx(w3.anna, w3.keys[w3.anna], strings.Repeat("9", 64), 5, 3, ende), ende)
+	if w3.stand(w3.cs, ubiPoolAddr) != ubi+pfand || w3.stand(w3.nach, ubiPoolAddr) != ubi+pfand {
+		t.Fatal("verfallenes Pfand nicht beim naechsten Bestellen ans Grundeinkommen")
+	}
+
+	// Zu wenig fuer das Pfand, Deckung unter dem Mindestwert.
+	w4 := neueBWelt(t)
+	if g := w4.praepRegel(w4.bestellenTxD(w4.anna, w4.keys[w4.anna], w4.p.K, 5, 3, 2_000_000_000, w4.z), w4.z); g != "quanten_w_deckung" {
+		t.Fatalf("Pfand ohne Guthaben: %q", g)
+	}
+	if g := w4.praepRegel(w4.bestellenTxD(w4.anna, w4.keys[w4.anna], w4.p.K, 5, 3, quantenMindestDeckungMik-1, w4.z), w4.z); g != "quanten_w_form" {
+		t.Fatalf("Deckung unter dem Mindestwert: %q", g)
+	}
+	// Die Unterschrift bindet die Deckung.
+	gefaelscht := w4.bestellenTx(w4.anna, w4.keys[w4.anna], w4.p.K, 5, 3, w4.z)
+	gefaelscht.QuantenW.Deckung = quantenMindestDeckungMik
+	if g := w4.praepRegel(gefaelscht, w4.z); g != "quanten_w_unterschrift" {
+		t.Fatalf("Deckung nach der Unterschrift geaendert: %q", g)
+	}
+}
+
+// Die Hoehe des Pfands: 10 % aufgerundet, mindestens quantenWPfand, ohne
+// Ueberlauf; und genug gegen Abbruch und neu bestellen: im Mittel kostet ein
+// Los mit t Komplizen Pfand / p mehr als die bestellte Deckung.
+func TestQuantenSBestellung_PfandHoehe(t *testing.T) {
+	for _, f := range []struct{ d, p int64 }{
+		{1, quantenWPfand}, {quantenMindestDeckungMik, quantenWPfand}, {10_000_000, 1_000_000}, {10_000_001, 1_000_001},
+		{123_456_789, 12_345_679}, {math.MaxInt64, math.MaxInt64/100*10 + 1},
+	} {
+		if g := quantenSBestellPfandFuer(f.d); g != f.p {
+			t.Errorf("Pfand fuer %d: %d, erwartet %d", f.d, g, f.p)
+		}
+	}
+	// p je Los hoechstens ~3,1 % (DEZENTRAL 18, Tabelle): Pfand / p >= 3 D.
+	const pHoechstens = 0.031
+	for _, d := range []int64{quantenMindestDeckungMik, 10_000_000, 1_000_000_000} {
+		if kosten := float64(quantenSBestellPfandFuer(d)) / pHoechstens; kosten < 3*float64(d) {
+			t.Errorf("Deckung %d: Abbruch kostet im Mittel nur %.0f", d, kosten)
+		}
 	}
 }

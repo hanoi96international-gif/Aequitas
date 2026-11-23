@@ -7,7 +7,16 @@ Repos); davor ~13:40 UTC Sitzung „Weiter“ (`claude/weiter-uw2p42`), davor ~1
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
-**Stand 23.11. ~01:00 UTC (dieselbe Sitzung) — HIER WEITERMACHEN:**
+**Stand 23.11. ~07:00 UTC (dieselbe Sitzung) — HIER WEITERMACHEN:**
+- **#630 (B2b) gemergt** (a5ceb51d) nach „Weiter“ des Betreibers. C1-Deploy wartet auf `produktion` (Code schläft).
+- **B2c gebaut (PR von diesem Zweig): Pfand je Bestellung** — max(1 AEQ, 10 % der bestellten Deckung), zurück bei
+  der Ausgabe, verfällt ans Grundeinkommen (neue Art `quanten_w_s_bestellung_frist` oder beim nächsten Bestellen).
+  Macht „Abbruch und neu bestellen“ unwirtschaftlich (≥ 3 D erwartete Kosten). 11 Mutationen rot.
+- **Nächster Schritt B2d:** Wächter Blockzeit gegen echte Zeit (vorher klären, ob C1 bei Leerlauf leere Blöcke
+  erzeugt, sonst Fehlalarme); danach Stichtag für Weg B — nur auf Entscheidung des Betreibers. Dann B3 (Briefkasten),
+  B4 (App als Präparatorin), B5 (Pilot).
+
+**Stand 23.11. ~01:00 UTC (dieselbe Sitzung):**
 - **#629 (B2a) gemergt** (bfb25203) nach „Weiter“ des Betreibers. C1-Deploy dazu: Lauf nach dem Push auf main
   (wartet auf `produktion`; Code schläft, kein Eilbedarf).
 - **B2b gebaut: PR #630** (Sicherheitsprüfung als PR-Kommentar; Merge erst nach Freigabe des Betreibers): `quanten_s_bestellung.go` — Bestellen (Abbild in der Bestellung, Buchzeit
@@ -16,7 +25,7 @@ dezentrales Quantengeld“.
   `s_weg_b.py` 7b; gebremst durch eine Bestellung je Mensch und Frist. **Weg B bleibt schlafend bis B2c (Pfand).**
 - Nächster Schritt **B2c**: Pfand je Bestellung, Wächter Blockzeit gegen drand, dann Stichtag (Betreiber).
 
-**Stand 22.11. ~22:30 UTC, Sitzung „Weiter nach Übergabe“ (Zweig `claude/weiter-nach-uebergabe-r1zjrz`, alle vier Repos) — HIER WEITERMACHEN:**
+**Stand 22.11. ~22:30 UTC, Sitzung „Weiter nach Übergabe“ (Zweig `claude/weiter-nach-uebergabe-r1zjrz`, alle vier Repos):**
 - **Erledigt seit der letzten Übergabe (geprüft):** #627 gemergt (e9918877) und auf C1 (Deploy 45058105105 grün,
   der doppelte Handlauf 45058108805 abgebrochen). App **1.30.2 veröffentlicht** (Android 45074127310, iOS 45074539717,
   Tag `v1.30.2`). Zweige aufgeräumt: je Repo nur noch Hauptzweig, laufende Sitzungszweige und
