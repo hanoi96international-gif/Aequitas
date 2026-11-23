@@ -175,7 +175,7 @@ Geheimnis besser, aber zum Einlösen müssen t Validatoren erreichbar sein.
 | A4 | Pilot: vier Knoten, je ein eigener Auftrag (im Pilot von einem Konto, das wird benannt) | **fertig** (12): beide Tests grün im Rauschmodell (44347416357) und auf dem Chip `ibm_fez` (44356741223), auch mit Ausfall eines Validators |
 | A5 | Hauptnetz mit einem zweiten Menschen als Validator, wenn möglich bei einem anderen Anbieter | **Werkzeug bereit** (13–15): Messquelle als Verzeichnis, `--s-abschnitt`, Einrichten mit einem Befehl, Basen automatisch vorgemerkt und gemessen; der zweite Mensch: Betreiber |
 | B1 | Weg B, Spezifikation: Präparatoren-Register, Los, Verfügbarkeit, Kontingent, Missbrauch (`s_weg_b.py`) | **fertig** (18) |
-| B2–B5 | Weg B: Kette (Register, Zufall, Los), Dienst/Briefkasten, App als Präparatorin, Pilot | offen (18) |
+| B2–B5 | Weg B: Kette (Register, Zufall, Los), Dienst/Briefkasten, App als Präparatorin, Pilot | B2a gebaut, schlafend (18); B2b–B5 offen |
 | C, W-Härtung | wie oben | Forschung; Partner |
 
 Die Kette ändert sich in A1 bis A4 nicht. Geändert werden die Ausgabe außerhalb der Kette
@@ -1658,11 +1658,43 @@ die nur, wenn sie mit Ausgeber und Inhaberin zusammenarbeitet.
 Ehrlich: Das ist eine Abhängigkeit von einem externen Verbund. Fällt drand aus, wird
 nicht gelost und nicht ausgegeben (fail-closed); ausgegebene Token sind nicht betroffen.
 
+### B2a: Register der Präparatoren (22.11.2026, gebaut, schlafend)
+
+`x/humanity/keeper/quanten_s_praeparatoren.go`. Zwei neue Arten im W-Modul, beide **schlafend**
+(`quantenSWegBAbUnix` = MaxInt64; vorher im Block unbekannt, Endpunkt 409, Register und
+StateRoot byte-gleich):
+
+- `quanten_w_s_praep_melden` (Wallet = Konto, unterschrieben): nur ein Konto, das jetzt
+  `is_human` ist. Ein Mensch hat genau eine Wallet mit `is_human` (Nullifier), also höchstens
+  einen Eintrag im Abbild. Meldezeit = Buchzeit des Knotens, nicht die unterschriebene Zeit.
+- `quanten_w_s_praep_abmelden` (Wallet = Konto, unterschrieben): der Eintrag bleibt mit
+  Abmeldezeit stehen (Stand zur Bestellung zählt). **Ohne Wallet** räumt jeder einen Eintrag
+  auf, dessen Konto kein Mensch mehr ist (nach einem Umzug auf eine neue Wallet); ein Mensch
+  kann so nicht abgemeldet werden.
+- Grenzen: höchstens 256 Einträge; Abgemeldete werden `quantenWToteBehalten` (gut 8 Tage)
+  nach der Abmeldung vergessen, erst dann darf das Konto neu melden. So lässt sich keine alte
+  Melde-Unterschrift wieder einspielen (dieselbe Rechnung wie bei den Toten).
+- Abbild zur Zeit T (`quantenSPraepAbbildLocked`, für B2b): gemeldet spätestens T − 1 Tag,
+  zu T nicht abgemeldet, zu T ein Mensch. B2b rechnet es **in der Bestellung** und hält es
+  fest; eine Bestellung muss verfallen, bevor ein Eintrag aus ihrem Abbild vergessen wird.
+- Lesen: `GET /api/quanten-w/praeparatoren` (begrenzt wie die anderen Lese-Endpunkte).
+
+Abweichung von `s_weg_b.py`: Zeiten statt Blockhöhen (das W-Modul rechnet mit der Buchzeit).
+Ehrlich: den Vorlauf kann der einzige Blockerzeuger heute um bis zu 7 Tage verkürzen
+(Buchzeit zurückdatiert). Das schadet dem Los nicht, denn sein Zufall kommt aus einer
+drand-Runde nach der Bestellung.
+
+Tests: Gutfall, Schlafen, Missbrauch beim Melden (kein Mensch, fremder Schlüssel, alte
+Unterschrift, K eines anderen, fremde Felder, Wiedereinspielen nach dem Vergessen), Abmelden
+(fremdes Konto, ohne Wallet bei einem Menschen), Umzug, volles Register, strenges Lesen,
+echte Datenbank, nicht kanonische Wallet. 13 Mutationen machen sie rot.
+
 ### Nächste Schritte
 
 | Schritt | Was |
 |---|---|
-| B2 | Kette: Präparatoren-Register (Melden/Abmelden mit Menschenbindung), Zufall aus Zusage und Offenlegung, Los, Prüfung der Ausgabe gegen das Los, Pfand. Konsensänderung mit Stichtag, eigene Sicherheitsprüfung, Prüfvektor aus `s_weg_b.py`. |
+| B2b | Bestellung Weg B (K, v, t; Abbild in der Bestellung festgehalten, Frist kürzer als der Nachlauf), `_losen` mit drand-Runde (Zeit der Runde ≥ Bestellzeit + Abstand, `drandQuicknet.pruefen`), Los = `quantenSLos`, S-Ausgabe verlangt `Validatoren == Los`, Stichtag mit Deploy-Wächter, eigene Sicherheitsprüfung. Pfand als B2c. |
+| B2 (gesamt) | Kette: Präparatoren-Register (B2a gebaut), Zufall aus Zusage und Offenlegung, Los, Prüfung der Ausgabe gegen das Los, Pfand. Konsensänderung mit Stichtag, eigene Sicherheitsprüfung, Prüfvektor aus `s_weg_b.py`. |
 | B3 | Briefkasten bei den Knoten: verschlüsselte Pakete (Basen y, Anteile, Öffnungen) ablegen und abholen, begrenzt je Absender und Größe. |
 | B4 | App als Präparatorin: IBM-Schlüssel nur im Gerät, Auftrag über die REST-Schnittstelle, Abschnitt präparieren, Anteile verteilen, nach der Bindung öffnen. |
 | B5 | Pilot im Hauptnetz mit mindestens 7 Menschen (4 von 7); erst danach größere v. |
