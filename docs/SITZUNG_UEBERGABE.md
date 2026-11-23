@@ -15,7 +15,7 @@ dezentrales Quantengeld“.
 - **#636 und App #110 gemergt** (45eacc52 / c49fec41): Probe und App finden Instanz (Global Search) und Gerät selbst.
 - **Probe Lauf 2 (45183774130, 13:26 UTC):** Anmeldung und Instanzsuche gingen, dann „kein freies Gerät“. Ursache
   (aus qiskit-ibm-runtime): API-Adresse hängt von der Region ab (`eu-de` → `eu-de.quantum.cloud.ibm.com/api/v1`).
-- **Offen (neue PRs von diesem Zweig):** App und Probe nehmen die Adresse aus fester Tabelle (us-east, eu-de); Probe
+- **Offen: Aequitas #637 und App #111** (CI lief bei Übergabe; Merge nur nach „Weiter“): App und Probe nehmen die Adresse aus fester Tabelle (us-east, eu-de); Probe
   schreibt bei Scheitern der Suche Regionen, Antwortcodes und Gerätedaten (ohne CRN) in Log und Artefakt; IBM-Gründe
   ohne CRN. Nach Merge („Weiter“) Probe Lauf 3 starten (`actions_run_trigger`), Betreiber gibt `quantenhardware` frei.
 - Check-in 13:51 UTC (Lauf 2 auswerten) ist durch den Befund erledigt.
