@@ -7,7 +7,16 @@ Repos); davor ~13:40 UTC Sitzung „Weiter“ (`claude/weiter-uw2p42`), davor ~1
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
-**Stand 23.11. ~08:30 UTC (dieselbe Sitzung) — HIER WEITERMACHEN:**
+**Stand 23.11. ~11:30 UTC (dieselbe Sitzung) — HIER WEITERMACHEN:**
+- **#632 (B2d, Wächter Blockzeit) gemergt** (2b433761). Dabei behoben: db-tests 429 durch geteilte Ratenzähler
+  zwischen Vier-Knoten-Tests (Test-Isolation, `neuesVierKnotenNetz` leert `ipBurst`).
+- **B4a gebaut (PRs von diesem Zweig in Aequitas und Aequitas-App):** die App meldet/abmeldet sich als Präparatorin
+  mit der Menschen-Wallet (`lib/quantenSPraeparator.ts`, Karte auf der Quantengeld-Seite, 12 Sprachen);
+  Prüfvektor `testdata/quanten_s_praep_vektor.json` in beiden Repos. Wirkt erst mit Stichtag von Weg B.
+- **Nächste Schritte:** B3 (Briefkasten bei den Knoten), dann B4b (präparieren auf dem Handy), Stichtag (Betreiber),
+  Pilot B5. App-Release (1.30.3) erst, wenn es für Nutzer etwas zu tun gibt (Weg B schläft).
+
+**Stand 23.11. ~08:30 UTC (dieselbe Sitzung):**
 - **#631 (B2c, Pfand) gemergt** (bb89a8f8) nach „Weiter“. C1-Deploys zu #629–#631 warten auf `produktion` (Code schläft).
 - **B2d gebaut: PR #632 (Wächter Blockzeit)**, Merge erst nach Freigabe; — `chain.neuester_block_zeit` in `/api/health/combined`
   (`blockzeit_waechter.go`, ohne Warten auf dag.mu), Wache rot bei > 300 s Rückstand gegen die eigene Uhr. Keine

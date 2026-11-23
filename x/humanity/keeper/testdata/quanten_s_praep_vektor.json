@@ -1,0 +1,18 @@
+{
+  "hinweis": "Pruefvektor B4a: Praeparatorin melden/abmelden (quanten_s_praeparatoren.go). Schluessel NUR fuer Tests. Neu: AEQUITAS_VEKTOR_SCHREIBEN=1 go test -run TestQuantenSPraepVektor ./x/humanity/keeper/",
+  "chain_id": 1926,
+  "schluessel_nur_test": "6161616161616161616161616161616161616161616161616161616161616161",
+  "konto": "0xed5970f07eea5a9e7b359d3c5d3f82b34a8f1e15",
+  "k": "8f773d4b45781260ebe664368e821fb1eef6079a06438f0b2aa1aeaf49b3b26f",
+  "zeit": 1795400000,
+  "melden_nachricht": "aequitas-quanten-s-praep-melden-v1|chain:1926|0xed5970f07eea5a9e7b359d3c5d3f82b34a8f1e15|8f773d4b45781260ebe664368e821fb1eef6079a06438f0b2aa1aeaf49b3b26f|1795400000",
+  "melden_sig": "0xc600600af9502d3d8800a7be0b01840af4da5da91dec7b2668d121c82b03566f397d6892a01c75e8d66f5fe7d48423572ef583e2c04d34d5d2d6b9538aa99a861b",
+  "abmelden_nachricht": "aequitas-quanten-s-praep-abmelden-v1|chain:1926|0xed5970f07eea5a9e7b359d3c5d3f82b34a8f1e15|8f773d4b45781260ebe664368e821fb1eef6079a06438f0b2aa1aeaf49b3b26f|1795400060",
+  "abmelden_sig": "0x2312348bbeeaf6d1252586d94918b92f8d9572422a90c04c201bafe2e73b2cc7628c4dd8d020c625d9ec2d374798c1b92e7bd784a2c1fb0c7e4a63ac53d51da61c",
+  "melden_pfad": "/api/quanten-w/s_praep_melden",
+  "abmelden_pfad": "/api/quanten-w/s_praep_abmelden",
+  "register_pfad": "/api/quanten-w/praeparatoren",
+  "vorlauf_sekunden": 86400,
+  "nachlauf_sekunden": 695160,
+  "hoechstens_eintraege": 256
+}
