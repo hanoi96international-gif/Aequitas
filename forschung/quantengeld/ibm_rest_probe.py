@@ -231,6 +231,16 @@ def suche_selbsttest() -> None:
         assert instanzen_suchen("t") == [c1, c2], "Instanzen falsch"
         st, liste = geraete_liste("t", c1)
         assert st == 200 and [n for _, n, _ in liste] == ["ibm_klein", "ibm_a"], f"Geraete falsch: {liste}"
+        sicht: list = []
+        geraete_liste("t", c1, sicht)
+        assert [g["grund"] for g in sicht] == ["frei", "status", "attrappe", "name", "frei"], f"Sicht falsch: {sicht}"
+        antworten[c1] = (200, {"devices": [dev("ibm_e", None), dev("ibm_f", 0, status="online"), "x", dev("ibm_g\n\x1b", 0)]})
+        sicht = []
+        assert geraete_liste("t", c1, sicht) == (200, [])
+        assert [g["grund"] for g in sicht] == ["schlange", "status", "kein Objekt", "name"], f"Sicht falsch: {sicht}"
+        assert sicht[0]["schlange"] == "NoneType" and sicht[3]["name"] == "ibm_g", f"Sicht nicht bereinigt: {sicht}"
+        antworten[c1] = (200, {"devices": [dev("ibm_a", 5), dev("ibm_b", 1, status={"name": "paused"}), dev("ibm_c", 0, **{"class": "mock"}),
+                               dev("ibm/x", 0), dev("ibm_klein", 0, qubits=5)]})
         for falsch in ({"items": [{"crn": "crn:v1:evil"}]}, {"items": [{"crn": c1}] * 101}, {"items": {}}):
             antworten[SUCHE_URL] = (200, falsch)
             try:
@@ -283,8 +293,16 @@ def instanzen_suchen(tok: str) -> list[str]:
     return crns[:8]
 
 
-def geraete_liste(tok: str, crn: str) -> tuple[int, list[tuple[int, str, int]]]:
-    """Wie die App (geraeteListe): freie Geraete (online, keine Attrappe), kuerzeste Schlange zuerst."""
+def _kurz(v) -> str:
+    """Fremden Wert fuer den Bericht: nur druckbares ASCII, hoechstens 40 Zeichen."""
+    return re.sub(r"[^\x20-\x7e]", "", v if isinstance(v, str) else type(v).__name__)[:40]
+
+
+def geraete_liste(tok: str, crn: str, sicht: list | None = None) -> tuple[int, list[tuple[int, str, int]]]:
+    """Wie die App (geraeteListe): freie Geraete (online, keine Attrappe), kuerzeste Schlange zuerst.
+
+    Mit sicht: je Geraet Name, Status, Schlange, Qubits und der Grund, warum es nicht frei ist
+    (fuer den Bericht, wenn kein Geraet passt; oeffentliche Geraetedaten, nichts Geheimes)."""
     st, roh = anfrage(f"{API_BASIS}/backends", "GET", {"Authorization": f"Bearer {tok}", "Service-CRN": crn,
                                                        "IBM-API-Version": API_VERSION, "Accept": "application/json"})
     if st != 200:
@@ -294,11 +312,32 @@ def geraete_liste(tok: str, crn: str) -> tuple[int, list[tuple[int, str, int]]]:
         raise ProbeFehler("Geraete: Antwort")
     frei = []
     for d in devices:
-        if not isinstance(d, dict) or (d.get("status") or {}).get("name") != "online" or d.get("class") == "mock":
-            continue
-        n, q, qb = d.get("name"), d.get("queue_length"), d.get("qubits")
-        if isinstance(n, str) and GERAET_FORM.fullmatch(n) and isinstance(q, int) and q >= 0 and isinstance(qb, int) and qb >= 1:
-            frei.append((q, n, qb))
+        grund = ""
+        if not isinstance(d, dict):
+            grund = "kein Objekt"
+        else:
+            n, q, qb = d.get("name"), d.get("queue_length"), d.get("qubits")
+            stat = d.get("status")
+            if not isinstance(stat, dict) or stat.get("name") != "online":
+                grund = "status"
+            elif d.get("class") == "mock":
+                grund = "attrappe"
+            elif not (isinstance(n, str) and GERAET_FORM.fullmatch(n)):
+                grund = "name"
+            elif not (isinstance(q, int) and q >= 0):
+                grund = "schlange"
+            elif not (isinstance(qb, int) and qb >= 1):
+                grund = "qubits"
+            else:
+                frei.append((q, n, qb))
+        if sicht is not None:
+            e = {"grund": grund or "frei"}
+            if isinstance(d, dict):
+                stat = d.get("status")
+                e.update({"name": _kurz(d.get("name")), "status": _kurz(stat.get("name") if isinstance(stat, dict) else stat),
+                          "schlange": d.get("queue_length") if isinstance(d.get("queue_length"), int) else _kurz(d.get("queue_length")),
+                          "qubits": d.get("qubits") if isinstance(d.get("qubits"), int) else _kurz(d.get("qubits"))})
+            sicht.append(e)
     return st, sorted(frei)
 
 
@@ -324,11 +363,16 @@ def probe(ausgabe: str) -> None:
                "geraet_quelle": "Variable" if backend else "kuerzeste Schlange"}
     if not crn or not backend:
         best = None
+        bericht["min_qubits"] = min_qubits
+        bericht["instanzen"] = []  # Nummer statt CRN
         for c in ([crn] if crn else instanzen_suchen(tok)):
-            st, liste = geraete_liste(tok, c)
+            sicht: list = []
+            st, liste = geraete_liste(tok, c, sicht)
+            bericht["instanzen"].append({"http": st, "geraete": sicht})
             if st in (401, 403):
                 continue
             if st != 200:
+                json.dump(bericht, open(ausgabe, "w"), indent=1)
                 raise ProbeFehler(f"Geraete: HTTP {st}")
             for q, n, qb in liste:
                 if qb >= min_qubits and (not backend or n == backend):
@@ -336,7 +380,11 @@ def probe(ausgabe: str) -> None:
                         best = (q, n, c)
                     break
         if best is None:
-            raise ProbeFehler("Geraete: kein freies Geraet")
+            json.dump(bericht, open(ausgabe, "w"), indent=1)
+            uebersicht = "; ".join(f"Instanz {i + 1}: HTTP {x['http']}, " + ", ".join(
+                f"{g.get('name', '?')}={g['grund']}/{g.get('status', '?')}/{g.get('qubits', '?')}q" for g in x["geraete"][:16])
+                for i, x in enumerate(bericht["instanzen"]))
+            raise ProbeFehler(f"Geraete: kein freies Geraet (mindestens {min_qubits} Qubits). {uebersicht}"[:1500])
         bericht["schlange"], backend, crn = best
     bericht["backend"] = backend
     k = json.loads(a["koerper"])
