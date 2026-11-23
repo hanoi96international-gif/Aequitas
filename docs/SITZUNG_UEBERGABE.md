@@ -7,7 +7,16 @@ Repos); davor ~13:40 UTC Sitzung „Weiter“ (`claude/weiter-uw2p42`), davor ~1
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
-**Stand 23.11. ~13:10 UTC, Sitzung „Weiter nach Übergabe“ (Zweig `claude/weiter-nach-uebergabe-r1zjrz`, alle vier Repos) — HIER WEITERMACHEN:**
+**Stand 23.11. (spaeter), Sitzung „Weiter nach Übergabe“ (Zweig `claude/weiter-nach-uebergabe-zyl7c6`, alle vier Repos) — HIER WEITERMACHEN:**
+- #636 und App #110 sind gemergt. **Probe Lauf 2** ([45183774130](https://github.com/hanoi96international-gif/Aequitas/actions/runs/45183774130),
+  13:25 UTC): Instanz gefunden, dann `kein freies Geraet`, ohne Artefakt und ohne Grund. Die Auswahl entspricht
+  `least_busy` aus qiskit-ibm-runtime 0.52.1.
+- **PR #638 (offen):** Die Probe nennt je Instanz HTTP und je Gerät Name, Status, Schlange, Qubits und den Grund
+  (Artefakt + Fehlermeldung). Nach dem Merge Probe erneut starten (ref `main`), den Betreiber um Freigabe von
+  `quantenhardware` bitten (Link), Grund lesen. Dann Probe **und** App (`geraeteListe`/`geraetWaehlen` in
+  `lib/ibmQuantum.ts`) anpassen.
+
+**Stand 23.11. ~13:10 UTC, Sitzung „Weiter nach Übergabe“ (Zweig `claude/weiter-nach-uebergabe-r1zjrz`, alle vier Repos):**
 - **Gemergt nach „Weiter“ (12:40 UTC):** Aequitas **#635** (971ab3ba; B4b-1 qiskit-Gegenprobe + B4b-2 IBM-REST-Probe)
   und Aequitas-App **#109** (236c9814; B4b-2 `lib/ibmQuantum.ts`). Kein offener PR mehr aus dieser Sitzung.
 - **Probe Lauf 1 (45179139174, 13:02 UTC) abgebrochen:** `IBM_QUANTUM_INSTANCE`/`IBM_QUANTUM_BACKEND` sind im Repo
