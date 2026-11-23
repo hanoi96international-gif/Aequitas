@@ -2,7 +2,7 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 23.11.2026 ~18:00 UTC (Sitzung „Weiter nach Übergabe“, Zweig `claude/weiter-nach-uebergabe-zyl7c6`); davor 22.11.2026 ~18:50 UTC, Sitzung „CL Übergabe weitermachen“ (`claude/cl-uebergabe-weitermachen-jdz5h7`); davor ~16:40 UTC Sitzung „Weiter Übergabe“ (`claude/weiter-uebergabe-1a9yql`); davor 21.11. ~20:15 UTC Sitzung „CL Übergabe weitermachen“; davor ~18:00 UTC Sitzung „Weiter“ (Zweig `claude/admiring-bohr-ob0u0p`, alle vier
+Stand: 23.11.2026 ~18:05 UTC (Sitzung „Weiter nach Übergabe“, Zweig `claude/weiter-nach-uebergabe-zyl7c6`); davor 22.11.2026 ~18:50 UTC, Sitzung „CL Übergabe weitermachen“ (`claude/cl-uebergabe-weitermachen-jdz5h7`); davor ~16:40 UTC Sitzung „Weiter Übergabe“ (`claude/weiter-uebergabe-1a9yql`); davor 21.11. ~20:15 UTC Sitzung „CL Übergabe weitermachen“; davor ~18:00 UTC Sitzung „Weiter“ (Zweig `claude/admiring-bohr-ob0u0p`, alle vier
 Repos); davor ~13:40 UTC Sitzung „Weiter“ (`claude/weiter-uw2p42`), davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18:30 UTC Sitzung
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
@@ -21,6 +21,15 @@ dezentrales Quantengeld“.
   Rennen, kein Fehler von #644 (derselbe Stand im Push-Lauf grün). Ursache auch im Betrieb möglich: die Inhaberin liest
   den Stand von einem Knoten, ein anderer Validator hat den Block noch nicht. `quantenSFuerInhaberinNachzug` fragt bei
   genau dieser Antwort bis 20 × 0,5 s erneut, jeder andere Fehler sofort. Merge nach „Weiter“.
+- **Befund vor B4b-4 (Lücke im Protokoll):** Ausgeber und Inhaberin müssen den Auftrag an eine geloste Präparatorin
+  verschlüsseln (Basen y sind geheim), kennen aber ihren öffentlichen Schlüssel nicht — das Register
+  (`quantenSPraep`: Konto, Gemeldet, Abgemeldet) speichert keinen. **Plan B4b-4a (Kette, schlafend):** jeder Knoten stellt
+  den Schlüssel aus der Melde-Unterschrift wieder her (`quantenWUnterschrift` in `quanten_s_praeparatoren.go` prüft sie
+  schon) und legt ihn im Eintrag ab (`pub`, 65 Byte unkomprimiert), API zeigt ihn. App ändert nichts. Konsensänderung,
+  aber Weg B schläft (Stichtag MaxInt64) → ohne Risiko jetzt; eigene Sicherheitsprüfung als PR-Kommentar, Missbrauchstest.
+  **B4b-4b:** Nachrichten über den Briefkasten (Auftrag, Antwort, Bündel direkt an die Empfänger, Bestätigung, Öffnung),
+  jede selbst unterschrieben (der Knoten des Kastens ist nicht vertrauenswürdig), große Abschnitte in Teile ≤ 64 KB
+  (ein Bündel braucht grob 250 Byte je Stelle → ab ~260 Stellen je Abschnitt mehrere Briefe). **B4b-4c:** Oberfläche.
 - **Nächster Schritt B4b-4: Ablauf und Oberfläche der Präparatorin in der App** — IBM-Schlüssel und Tresor (Werte,
   Koeffizienten, Salze, Anteile) sicher im Gerät (SecureStore, Größe beachten), gelost werden erkennen (Register/Los,
   `lib/quantenSPraeparator.ts`), Messung über `lib/ibmQuantum.ts` + `lib/quantenSSchaltkreis.ts`, Antwort über den
