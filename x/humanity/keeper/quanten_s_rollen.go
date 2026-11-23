@@ -641,7 +641,7 @@ func quantenSBlaetterHolen(ctx context.Context, netz quantenSAbschnittNetz, K st
 	var fehlend []int
 	var fehler []string
 	for x := 1; x <= v; x++ {
-		ab, err := netz.fuerInhaberin(ctx, x, K)
+		ab, err := quantenSFuerInhaberinNachzug(ctx, netz, x, K)
 		if err != nil {
 			// R9: nicht erreichbar -- seine Blaetter kann jeder andere
 			// Validator nennen; ob sie stimmen, prueft der Aufrufer an der
@@ -688,6 +688,32 @@ func quantenSBlaetterHolen(ctx context.Context, netz quantenSAbschnittNetz, K st
 	return nil, errors.New(strings.Join(fehler, "; ") + "; kein anderer Validator nannte die Blaetter")
 }
 
+// NACHZUG: Die Inhaberin liest den Stand von EINEM Knoten; ein anderer
+// Validator kann den Block mit der Ausgabe noch nicht haben und antwortet
+// "erst, wenn der Token auf der Kette steht" (abschnittFuerInhaberin). Dann
+// kurz warten und erneut fragen -- hoechstens quantenSNachzugVersuche Mal,
+// nur bei genau dieser Antwort; jeder andere Fehler sofort. Geprueft wird
+// danach alles wie bisher (fail-closed).
+const quantenSNachzugVersuche = 20
+
+var quantenSNachzugPause = 500 * time.Millisecond
+
+const quantenSNachzugGrund = "erst, wenn der Token auf der Kette steht"
+
+func quantenSFuerInhaberinNachzug(ctx context.Context, netz quantenSAbschnittNetz, x int, K string) (QuantenSPaketAbschnitt, error) {
+	for i := 1; ; i++ {
+		ab, err := netz.fuerInhaberin(ctx, x, K)
+		if err == nil || i >= quantenSNachzugVersuche || !strings.Contains(err.Error(), quantenSNachzugGrund) {
+			return ab, err
+		}
+		select {
+		case <-ctx.Done():
+			return QuantenSPaketAbschnitt{}, ctx.Err()
+		case <-time.After(quantenSNachzugPause):
+		}
+	}
+}
+
 // quantenSPaketVonKette: das Paket ohne den Ausgeber -- der Stand von der
 // Kette, jeder Abschnitt direkt von seinem Validator. Geglaubt wird nichts
 // davon: quantenSInhaberinAnnehmen prueft es danach wie ein Paket des
@@ -715,7 +741,7 @@ func quantenSPaketVonKette(ctx context.Context, netz quantenSAbschnittNetz, K st
 		p.Validatoren = append(p.Validatoren, strings.ToLower(strings.TrimSpace(a)))
 	}
 	for x := 1; x <= v; x++ {
-		ab, err := netz.fuerInhaberin(ctx, x, K)
+		ab, err := quantenSFuerInhaberinNachzug(ctx, netz, x, K)
 		if err != nil {
 			return QuantenSPaket{}, fmt.Errorf("Validator %d: Abschnitt: %w", x, err)
 		}
