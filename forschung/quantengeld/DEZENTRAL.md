@@ -1886,6 +1886,24 @@ byte-gleich. Ehrlich: Ein Mensch, dessen Wallet nach einem Umzug nur noch ML-DSA
 sich so nicht als Präparatorin melden; dafür braucht es später einen eigenen, mitunterschriebenen
 Verschlüsselungsschlüssel.
 
+### Offen vor dem Stichtag: Pfand je Präparator und Beweisweg (aus PR #628, 22.11.)
+
+PR #628 (B2 als ein Stück, geschlossen am 23.11., durch B2a–B2d ersetzt; Zweig
+`claude/weiter-uebergabe-1a9yql` bleibt) enthielt zwei Punkte, die `main` noch nicht hat:
+
+- **Pfand je Präparator** (damals Entscheidung des Betreibers: 10 AEQ beim Melden; heute gibt es
+  nur das Pfand je Bestellung aus B2c). Zurück frühestens 30 Tage nach der Abmeldung, nach einem
+  Umzug an die neue Wallet, nie an die alte. Code dazu im Zweig (`quanten_w_s_pfand_zurueck`).
+- **Beweisweg für den Verfall** (Entwurf, Entscheidung des Betreibers offen). Beweisbar: Token K
+  ist eingelöst (Urteil `eingeloest` an Stelle A), danach legt die andere Stelle B eine von der
+  Inhaberin unterschriebene Vorlage zu K vor, die B's geheime Stichprobe besteht. Beides zugleich
+  geht ohne Kopie nicht, also haben mindestens t Geloste ihr Wissen geteilt. Nicht beweisbar:
+  *welche* t der v. Möglichkeiten: (1) alle v verlieren ihr Pfand (trifft v − t Ehrliche);
+  (2) nur die Inhaberin haftet (Pfand bei der Bindung), Präparatoren-Pfänder decken nur Ausfall;
+  (3) Nachweis, dass jemand nicht geteilt hat, ist unmöglich (Schweigen lässt sich nicht beweisen).
+  Empfehlung damals: (2) plus (1) mit kleinem Anteil (z. B. 10 % je Gelostem). Erst nach der
+  Entscheidung bauen (neue Art `quanten_w_s_faelschung`).
+
 ### Nächste Schritte
 
 | Schritt | Was |

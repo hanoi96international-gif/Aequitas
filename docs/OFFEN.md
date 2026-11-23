@@ -39,7 +39,12 @@ Kurzliste für die nächste Sitzung. Die vollständige Liste steht in
    die Runde ab). Mit dem Kegel zählen nur Vorfahren des Ankers; fehlt einem
    Knoten einer, rechnet er nicht nach statt falsch. Bausteine liegen in
    `claude/weiter-gehts-r7rb9w-register3b` (`bloeckeImKegel`,
-   `validatorAnkerWaehlen`, Tests).
+   `validatorAnkerWaehlen`, Tests). Entwurf mit Anker in der Gutschrift und
+   Vorfahr-Prüfung: PR #340 (geschlossen am 23.11.2026, Basis einen Monat alt,
+   nicht mehr mergebar; Zweig `claude/weiter-gehts-vm8979-kegel` bleibt).
+   Blockiert war er durch HOCH 2 (Punkt 10); inzwischen gibt es signierte
+   Checkpoints (`checkpoint_zertifikat.go`) und `kegel_vorfahr.go` — der
+   Entwurf ist neu auf `main` aufzusetzen, nicht zu mergen.
 4. **Strenger Modus** spätestens mit der Staffel; Stichtag
    `nachrechnenStrengAbUnix`, sobald `/api/wirtschaft/regeln` über mehrere
    Runden 0 Abweichungen zeigt.
