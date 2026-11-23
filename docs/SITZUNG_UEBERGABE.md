@@ -9,7 +9,7 @@ dezentrales Quantengeld“.
 
 **Stand 23.11. ~08:30 UTC (dieselbe Sitzung) — HIER WEITERMACHEN:**
 - **#631 (B2c, Pfand) gemergt** (bb89a8f8) nach „Weiter“. C1-Deploys zu #629–#631 warten auf `produktion` (Code schläft).
-- **B2d gebaut (PR von diesem Zweig): Wächter Blockzeit** — `chain.neuester_block_zeit` in `/api/health/combined`
+- **B2d gebaut: PR #632 (Wächter Blockzeit)**, Merge erst nach Freigabe; — `chain.neuester_block_zeit` in `/api/health/combined`
   (`blockzeit_waechter.go`, ohne Warten auf dag.mu), Wache rot bei > 300 s Rückstand gegen die eigene Uhr. Keine
   Konsensänderung. Wirkt erst nach einem C1-Deploy (vorher nur Hinweis).
 - **Weg B ist damit fertig bis auf den Stichtag** — Entscheidung des Betreibers. Sinnvolle Reihenfolge: B4 (App als
