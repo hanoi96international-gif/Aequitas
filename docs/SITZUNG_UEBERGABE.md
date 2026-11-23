@@ -7,7 +7,17 @@ Repos); davor ~13:40 UTC Sitzung „Weiter“ (`claude/weiter-uw2p42`), davor ~1
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
-**Stand 23.11. ~12:00 UTC (dieselbe Sitzung) — HIER WEITERMACHEN:**
+**Stand 23.11. ~12:30 UTC (dieselbe Sitzung) — HIER WEITERMACHEN:**
+- **#634 (B3 Briefkasten) gemergt** (6bbe85dd). Betreiber hat B4b **Weg 1** gewählt (alles im Handy, IBM-Schlüssel
+  bleibt im Gerät).
+- **App #108 offen (B4b-1, grün):** `lib/quantenSSchaltkreis.ts` (Schaltkreis eines Abschnitts in nativen Gattern als
+  OpenQASM 3, Mehrheit), gegen qiskit geprüft (`forschung/quantengeld/app_schaltkreis_pruefen.py`). Merge nach Freigabe.
+- **Blockiert: IBM-REST-Anbindung.** Die Doku auf quantum.cloud.ibm.com ist aus der Sitzung nicht lesbar (Host
+  freigegeben, aber Abruf abgelehnt). Wege: Betreiber legt die Doku-Seiten als Datei bei, oder ein Probe-Workflow
+  (Umgebung `quantenhardware`) reicht die App-Schaltkreise per reiner REST-Schnittstelle ein und zeigt die Antwortform.
+- Danach B4b-2: Anteile, Merkle und Bestätigung in TS (Prüfvektoren aus dem Knoten), B4b-3: UI und Briefkasten.
+
+**Stand 23.11. ~12:00 UTC (dieselbe Sitzung):**
 - **#633 (B4a-Vektor) und App #107 (B4a) gemergt** (d980bf63 / 010bcbcc) nach „Weiter“.
 - **B3 gebaut (PR von diesem Zweig): Briefkasten** `briefkasten.go` — ablegen (nur Menschen, unterschrieben),
   abholen/quittieren (nur Empfänger), alle Grenzen fest, 8 Tage Verfall, kein Konsens. Neuer öffentlicher Eingang:

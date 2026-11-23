@@ -1777,6 +1777,22 @@ Keine Konsensregel: ein Dienst des einzelnen Knotens (keine StateRoot, kein Snap
 sicher gehen will, legt bei mehreren Knoten ab und holt bei mehreren ab. 3 Tests (auch gegen
 echtes PostgreSQL), 16 Mutationen rot.
 
+### B4b-1: Schaltkreis eines Abschnitts im Handy (23.11.2026, gebaut; Weg 1: alles im Gerät)
+
+Aequitas-App `lib/quantenSSchaltkreis.ts`: je Stelle X (t), H (u), Barriere, H (y), messen
+— dieselbe Physik wie `hardware_ibm.py` `s_messen_basen`, aber ohne qiskit direkt in den
+nativen Gattern (`rz`, `sx`, `x`) auf physischen Qubits als OpenQASM 3 (H = rz(π/2)·sx·rz(π/2)
+bis auf eine globale Phase); Auswertung mit Mehrheit je Stelle wie im Python. Belegt durch
+exakte Simulation und einen Prüfvektor (40 Fälle), den `app_schaltkreis_pruefen.py` mit
+qiskit 2.6.2 gegen `wiesner_hardware.note` prüft (Operator gleich, Messbits richtig).
+
+Offen: die IBM-REST-Anbindung. Aus `qiskit-ibm-runtime` 0.52.1 belegt: `…/api/v1/jobs`,
+Kopfzeilen `Authorization: Bearer` (IAM-Token von iam.cloud.ibm.com), `Service-CRN`,
+`IBM-API-Version: 2026-04-15`, Status unter `state.status`, Ergebnis unter `…/results`. Nicht
+belegt: ob der Server OpenQASM-Text in `pubs` annimmt (der Python-Client schickt QPY) und die
+genaue Ergebnisform. Dafür braucht es die Doku oder eine Probe auf echter Hardware mit dem
+IBM-Konto des Betreibers.
+
 ### Nächste Schritte
 
 | Schritt | Was |
