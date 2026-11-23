@@ -1,0 +1,230 @@
+#!/usr/bin/env python3
+"""Probe der IBM-REST-Schnittstelle fuer die App (Quantengeld Weg B, B4b-2).
+
+Forschung, nicht im Knoten. Nur Standardbibliothek (kein qiskit).
+
+Die App (Aequitas-App lib/ibmQuantum.ts) reicht die Schaltkreise eines Abschnitts
+ohne qiskit direkt ueber die REST-Schnittstelle von IBM ein. Belegt ist die Form
+aus dem Quelltext von qiskit-ibm-runtime 0.52.1; NICHT belegt ist, dass der Server
+OpenQASM-Text in pubs annimmt, und wie das Ergebnis dann aussieht. Diese Probe
+schickt GENAU den Koerper der App (testdata/ibm_auftrag_vektor.json, Kopie aus der
+App; nur "backend" wird durch das Geraet der Umgebung ersetzt) mit dem Konto des
+Betreibers an echte Hardware, liest das Ergebnis so wie die App und prueft die
+Physik: wo die Basis der Inhaberin passt (u = y), muss die Mehrheit t zeigen.
+
+Zugang NUR ueber die Umgebung: IBM_QUANTUM_TOKEN (IBM-Cloud-API-Schluessel),
+IBM_QUANTUM_INSTANCE (CRN), IBM_QUANTUM_BACKEND. Nichts davon wird ausgegeben.
+
+Aufruf:
+  python3 -I ibm_rest_probe.py --selbsttest        (ohne Netz: Lesen am App-Vektor)
+  python3 -I ibm_rest_probe.py --probe AUSGABE.json (echte Hardware)
+"""
+from __future__ import annotations
+
+import base64
+import json
+import os
+import re
+import sys
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+import zlib
+
+HIER = os.path.dirname(os.path.abspath(__file__))
+AUFTRAG = os.path.join(HIER, "testdata", "ibm_auftrag_vektor.json")
+ERGEBNIS = os.path.join(HIER, "testdata", "ibm_ergebnis_vektor.json")
+
+IAM_URL = "https://iam.cloud.ibm.com/identity/token"
+API_BASIS = "https://quantum.cloud.ibm.com/api/v1"
+API_VERSION = "2026-04-15"
+WARTEN_MAX_S = 3600
+FEHLERRATE_MAX = 0.10   # Treffer (u = y), deren Mehrheit nicht t zeigt
+
+
+class ProbeFehler(Exception):
+    pass
+
+
+# ------------------------------------------------------------ Lesen (wie die App)
+
+def huelle(o, typ: str):
+    if not isinstance(o, dict) or o.get("__type__") != typ or "__value__" not in o:
+        raise ProbeFehler(f"Ergebnis: {typ} erwartet")
+    return o["__value__"]
+
+
+def npy_zeilen(roh: bytes) -> list[bytes]:
+    if len(roh) < 10 or roh[:6] != b"\x93NUMPY":
+        raise ProbeFehler("npy: Kopf")
+    if roh[6] == 1:
+        lang, ab = roh[8] | (roh[9] << 8), 10
+    elif roh[6] in (2, 3):
+        lang, ab = int.from_bytes(roh[8:12], "little"), 12
+    else:
+        raise ProbeFehler("npy: Version")
+    kopf = roh[ab:ab + lang].decode("latin-1")
+    if not re.search(r"'descr':\s*'\|u1'", kopf) or not re.search(r"'fortran_order':\s*False", kopf):
+        raise ProbeFehler("npy: Typ")
+    m = re.search(r"'shape':\s*\((\d+),\s*(\d+)\)", kopf)
+    if not m:
+        raise ProbeFehler("npy: Form")
+    zeilen, breite = int(m.group(1)), int(m.group(2))
+    daten = roh[ab + lang:]
+    if not (1 <= zeilen <= 15 and 1 <= breite <= 8 and len(daten) == zeilen * breite):
+        raise ProbeFehler("npy: Groesse")
+    return [daten[i * breite:(i + 1) * breite] for i in range(zeilen)]
+
+
+def ndarray_zeilen(nd) -> list[bytes]:
+    v = huelle(nd, "ndarray")
+    if isinstance(v, str):
+        return npy_zeilen(zlib.decompress(base64.standard_b64decode(v)))
+    if isinstance(v, list):
+        return [bytes(z) for z in v]
+    raise ProbeFehler("ndarray: Form")
+
+
+def ergebnis_schuesse(roh, kreise_n: list[int]) -> list[list[str]]:
+    pubs = huelle(roh, "PrimitiveResult").get("pub_results")
+    if not isinstance(pubs, list) or len(pubs) != len(kreise_n):
+        raise ProbeFehler("Ergebnis: Zahl der Schaltkreise")
+    out = []
+    for p, n in zip(pubs, kreise_n):
+        ba = huelle(huelle(huelle(p, "SamplerPubResult").get("data"), "DataBin").get("fields", {}).get("c"), "BitArray")
+        if ba.get("num_bits") != n:
+            raise ProbeFehler("Ergebnis: Zahl der Bits")
+        schuesse = []
+        for z in ndarray_zeilen(ba.get("array")):
+            if len(z) != (n + 7) // 8:
+                raise ProbeFehler("Ergebnis: Breite")
+            v = int.from_bytes(z, "big")
+            if v >> n:
+                raise ProbeFehler("Ergebnis: Bits ueber n")
+            schuesse.append(hex(v))
+        out.append(schuesse)
+    return out
+
+
+def mehrheit_x(kreise_n: list[int], schuesse_hex: list[list[str]], r: int) -> list[int]:
+    x = []
+    for n, schuesse in zip(kreise_n, schuesse_hex):
+        if len(schuesse) != r or r % 2 == 0:
+            raise ProbeFehler(f"{len(schuesse)} statt {r} Schuesse")
+        bits = [[(int(h, 16) >> i) & 1 for i in range(n)] for h in schuesse]
+        x += [1 if 2 * sum(b[i] for b in bits) > r else 0 for i in range(n)]
+    return x
+
+
+# ------------------------------------------------------------ Selbsttest
+
+def selbsttest() -> None:
+    e = json.load(open(ERGEBNIS))
+    soll = [f["schuesse_hex"] for f in e["erwartet"]]
+    ist = ergebnis_schuesse(e["ergebnis"], [f["n"] for f in e["erwartet"]])
+    assert ist == soll, "Lesen weicht vom Vektor ab"
+    kaputt = json.loads(json.dumps(e["ergebnis"]))
+    kaputt["__value__"]["pub_results"][0]["__value__"]["data"]["__value__"]["fields"]["c"]["__value__"]["num_bits"] = 15
+    try:
+        ergebnis_schuesse(kaputt, [f["n"] for f in e["erwartet"]])
+        raise AssertionError("falsche Bitzahl angenommen")
+    except ProbeFehler:
+        pass
+    a = json.load(open(AUFTRAG))
+    k = json.loads(a["koerper"])
+    assert k["program_id"] == "sampler" and len(k["params"]["pubs"]) == len(a["kreise_n"])
+    assert json.dumps(k, separators=(",", ":"), ensure_ascii=False) == a["koerper"], "Koerper nicht byte-gleich wiederherstellbar"
+    print(f"Selbsttest IBM-REST-Probe: gut ({len(soll)} Schaltkreise gelesen, Koerper byte-gleich)")
+
+
+# ------------------------------------------------------------ Probe
+
+def anfrage(url: str, methode: str, kopf: dict, daten: bytes | None = None) -> tuple[int, bytes]:
+    req = urllib.request.Request(url, data=daten, method=methode, headers=kopf)
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            return r.status, r.read(8 * 1024 * 1024 + 1)
+    except urllib.error.HTTPError as e:
+        return e.code, e.read(65536)
+
+
+def ibm_grund(roh: bytes) -> str:
+    try:
+        j = json.loads(roh)
+        m = (j.get("errors") or [{}])[0].get("message") or j.get("message") or j.get("errorMessage") or ""
+    except Exception:
+        m = ""
+    return re.sub(r"[^\x20-\x7e]", "", str(m))[:300]
+
+
+def probe(ausgabe: str) -> None:
+    schl, crn, backend = (os.environ.get(k, "").strip() for k in ("IBM_QUANTUM_TOKEN", "IBM_QUANTUM_INSTANCE", "IBM_QUANTUM_BACKEND"))
+    if not schl or not crn.startswith("crn:v1:") or not re.fullmatch(r"[a-z][a-z0-9_]{2,40}", backend):
+        raise ProbeFehler("IBM_QUANTUM_TOKEN, IBM_QUANTUM_INSTANCE (CRN) und IBM_QUANTUM_BACKEND noetig")
+    a = json.load(open(AUFTRAG))
+    k = json.loads(a["koerper"])
+    k["backend"] = backend
+    koerper = json.dumps(k, separators=(",", ":"), ensure_ascii=False).encode()
+
+    st, roh = anfrage(IAM_URL, "POST", {"Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json"},
+                      ("grant_type=urn%3Aibm%3Aparams%3Aoauth%3Agrant-type%3Aapikey&apikey=" + urllib.parse.quote(schl, safe="")).encode())
+    if st != 200:
+        raise ProbeFehler(f"IAM: HTTP {st}")
+    tok = json.loads(roh)["access_token"]
+    kopf = {"Authorization": f"Bearer {tok}", "Service-CRN": crn, "IBM-API-Version": API_VERSION, "Accept": "application/json"}
+
+    bericht = {"backend": backend, "api_version": API_VERSION, "koerper_bytes": len(koerper)}
+    st, roh = anfrage(f"{API_BASIS}/jobs", "POST", {**kopf, "Content-Type": "application/json"}, koerper)
+    bericht["einreichen_http"] = st
+    if st not in (200, 201):
+        bericht["ibm_grund"] = ibm_grund(roh)
+        json.dump(bericht, open(ausgabe, "w"), indent=1)
+        raise ProbeFehler(f"Auftrag abgelehnt: HTTP {st} {bericht['ibm_grund']}")
+    job = json.loads(roh)["id"]
+    bericht["job"] = job
+    ende = time.time() + WARTEN_MAX_S
+    while True:
+        st, roh = anfrage(f"{API_BASIS}/jobs/{job}", "GET", kopf)
+        zustand = json.loads(roh).get("state", {}) if st == 200 else {}
+        status = str(zustand.get("status", "")).upper()
+        if status in ("COMPLETED", "FAILED", "CANCELLED") or time.time() > ende:
+            break
+        time.sleep(15)
+    bericht["status"] = status
+    if status != "COMPLETED":
+        bericht["grund"] = re.sub(r"[^\x20-\x7e]", "", str(zustand.get("reason", "")))[:300]
+        json.dump(bericht, open(ausgabe, "w"), indent=1)
+        raise ProbeFehler(f"Auftrag {job}: {status} {bericht.get('grund', '')}")
+    st, roh = anfrage(f"{API_BASIS}/jobs/{job}/results", "GET", kopf)
+    if st != 200:
+        raise ProbeFehler(f"Ergebnis: HTTP {st}")
+    ergebnis = json.loads(roh)
+    bericht["ergebnis"] = ergebnis  # nur Messdaten und Metadaten des Auftrags, nichts Geheimes
+    schuesse = ergebnis_schuesse(ergebnis, a["kreise_n"])
+    x = mehrheit_x(a["kreise_n"], schuesse, a["schuesse"])
+    treffer = [i for i in range(len(x)) if a["u"][i] == a["y"][i]]
+    fehler = sum(x[i] != a["t"][i] for i in treffer)
+    bericht.update({"schuesse_hex": schuesse, "treffer": len(treffer), "fehler": fehler})
+    json.dump(bericht, open(ausgabe, "w"), indent=1)
+    text = (f"## IBM-REST-Probe auf {backend}\n\nAuftrag `{job}` (Koerper der App, {len(koerper)} Byte): angenommen, "
+            f"{status}. Gelesen wie die App: {len(schuesse)} Schaltkreise. Physik: {fehler} Fehler bei {len(treffer)} Treffern "
+            f"(Grenze {FEHLERRATE_MAX:.0%}).\n")
+    print(text)
+    if os.environ.get("GITHUB_STEP_SUMMARY"):
+        open(os.environ["GITHUB_STEP_SUMMARY"], "a").write(text)
+    if not treffer or fehler > FEHLERRATE_MAX * len(treffer):
+        raise ProbeFehler("Physik: zu viele Fehler bei passender Basis")
+
+
+if __name__ == "__main__":
+    try:
+        if "--selbsttest" in sys.argv:
+            selbsttest()
+        elif "--probe" in sys.argv:
+            probe(sys.argv[sys.argv.index("--probe") + 1])
+        else:
+            print(__doc__)
+    except ProbeFehler as e:
+        print(f"::error::{e}")
+        sys.exit(1)

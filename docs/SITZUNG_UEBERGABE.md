@@ -12,9 +12,11 @@ dezentrales Quantengeld“.
   bleibt im Gerät).
 - **App #108 offen (B4b-1, grün):** `lib/quantenSSchaltkreis.ts` (Schaltkreis eines Abschnitts in nativen Gattern als
   OpenQASM 3, Mehrheit), gegen qiskit geprüft (`forschung/quantengeld/app_schaltkreis_pruefen.py`). Merge nach Freigabe.
-- **Blockiert: IBM-REST-Anbindung.** Die Doku auf quantum.cloud.ibm.com ist aus der Sitzung nicht lesbar (Host
-  freigegeben, aber Abruf abgelehnt). Wege: Betreiber legt die Doku-Seiten als Datei bei, oder ein Probe-Workflow
-  (Umgebung `quantenhardware`) reicht die App-Schaltkreise per reiner REST-Schnittstelle ein und zeigt die Antwortform.
+- **App #108 gemergt (6520f2c0).** Betreiber: „Weg 1 so umsetzen“.
+- **B4b-2 gebaut:** App `lib/ibmQuantum.ts` (IBM direkt aus dem Handy, Form aus qiskit-ibm-runtime belegt, Ergebnis
+  bitgenau wie RuntimeEncoder) + Aequitas `quanten-s-rest-probe.yml` / `ibm_rest_probe.py`: schickt GENAU den
+  Auftrag der App an echte Hardware. **Nächster Schritt: Betreiber startet die Probe** (Umgebung `quantenhardware`);
+  Ergebnis im Artefakt `ibm-rest-probe`. Wird OpenQASM abgewiesen: Grund lesen, Form anpassen (z. B. QPY).
 - Danach B4b-2: Anteile, Merkle und Bestätigung in TS (Prüfvektoren aus dem Knoten), B4b-3: UI und Briefkasten.
 
 **Stand 23.11. ~12:00 UTC (dieselbe Sitzung):**

@@ -1786,12 +1786,22 @@ bis auf eine globale Phase); Auswertung mit Mehrheit je Stelle wie im Python. Be
 exakte Simulation und einen Prüfvektor (40 Fälle), den `app_schaltkreis_pruefen.py` mit
 qiskit 2.6.2 gegen `wiesner_hardware.note` prüft (Operator gleich, Messbits richtig).
 
-Offen: die IBM-REST-Anbindung. Aus `qiskit-ibm-runtime` 0.52.1 belegt: `…/api/v1/jobs`,
-Kopfzeilen `Authorization: Bearer` (IAM-Token von iam.cloud.ibm.com), `Service-CRN`,
-`IBM-API-Version: 2026-04-15`, Status unter `state.status`, Ergebnis unter `…/results`. Nicht
-belegt: ob der Server OpenQASM-Text in `pubs` annimmt (der Python-Client schickt QPY) und die
-genaue Ergebnisform. Dafür braucht es die Doku oder eine Probe auf echter Hardware mit dem
-IBM-Konto des Betreibers.
+### B4b-2: IBM Quantum direkt aus dem Handy (23.11.2026, gebaut; Probe auf Hardware offen)
+
+Aequitas-App `lib/ibmQuantum.ts`: Token aus dem IBM-Schlüssel (IBM Cloud IAM), Sampler-Auftrag
+mit den Schaltkreisen des Abschnitts, Status, Ergebnis — Schlüssel und Instanz bleiben im
+Gerät. Belegt aus `qiskit-ibm-runtime` 0.52.1: Pfade (`…/api/v1/jobs`, `…/jobs/{id}`,
+`…/results`), Kopfzeilen (`Authorization: Bearer`, `Service-CRN`, `IBM-API-Version:
+2026-04-15`), Status unter `state.status`, Ergebnis mit `__type__`-Hüllen bis zum BitArray
+(ndarray als base64(zlib(npy))). Die App liest ein mit `RuntimeEncoder` kodiertes Ergebnis
+bitgenau (Prüfvektor).
+
+**Noch nicht belegt:** dass der Server OpenQASM-Text in `pubs` annimmt (der Python-Client
+schickt QPY). Dafür `quanten-s-rest-probe.yml` (Umgebung `quantenhardware`, Freigabe des
+Betreibers): schickt **genau den Körper der App** (`testdata/ibm_auftrag_vektor.json`, nur das
+Gerät wird ersetzt), liest das Ergebnis wie die App und prüft die Physik (Treffer mit u = y
+müssen t zeigen, ≤ 10 % Fehler). Kosten: 3 Schaltkreise × 5 Schüsse. Wird der Text abgewiesen,
+legt der Lauf den Grund von IBM ab; dann folgt QPY oder eine andere Form.
 
 ### Nächste Schritte
 
