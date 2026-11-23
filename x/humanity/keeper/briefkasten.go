@@ -49,17 +49,17 @@ const (
 	briefDomAbholen    = "aequitas-briefkasten-abholen-v1"
 	briefDomQuittieren = "aequitas-briefkasten-quittieren-v1"
 
-	briefInhaltMax             = 64 << 10
-	briefKoerperMax            = 2*briefInhaltMax + 4096
-	briefZeitSpiel       int64 = 300
-	briefBehalten        int64 = 8 * 86400
-	briefJeAbsender            = 512
-	briefBytesJeAbsender       = 32 << 20
-	briefJeEmpfaenger          = 1024
-	briefBytesGesamt           = 1 << 30
-	briefAbholenHoechstens     = 32
-	briefAbholenBytes          = 2 << 20
-	briefJeIP                  = 60
+	briefInhaltMax               = 64 << 10
+	briefKoerperMax              = 2*briefInhaltMax + 4096
+	briefZeitSpiel         int64 = 300
+	briefBehalten          int64 = 8 * 86400
+	briefJeAbsender              = 512
+	briefBytesJeAbsender         = 32 << 20
+	briefJeEmpfaenger            = 1024
+	briefBytesGesamt             = 1 << 30
+	briefAbholenHoechstens       = 32
+	briefAbholenBytes            = 2 << 20
+	briefJeIP                    = 60
 )
 
 // briefMu: Kontingente pruefen und ablegen in einem Schritt (ein Knoten).
