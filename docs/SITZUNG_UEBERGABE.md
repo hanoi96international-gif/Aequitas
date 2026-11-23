@@ -2,12 +2,44 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 23.11.2026 ~16:30 UTC (Sitzung „Weiter nach Übergabe“, Zweig `claude/weiter-nach-uebergabe-zyl7c6`); davor 22.11.2026 ~18:50 UTC, Sitzung „CL Übergabe weitermachen“ (`claude/cl-uebergabe-weitermachen-jdz5h7`); davor ~16:40 UTC Sitzung „Weiter Übergabe“ (`claude/weiter-uebergabe-1a9yql`); davor 21.11. ~20:15 UTC Sitzung „CL Übergabe weitermachen“; davor ~18:00 UTC Sitzung „Weiter“ (Zweig `claude/admiring-bohr-ob0u0p`, alle vier
+Stand: 23.11.2026 ~18:05 UTC (Sitzung „Weiter nach Übergabe“, Zweig `claude/weiter-nach-uebergabe-zyl7c6`); davor 22.11.2026 ~18:50 UTC, Sitzung „CL Übergabe weitermachen“ (`claude/cl-uebergabe-weitermachen-jdz5h7`); davor ~16:40 UTC Sitzung „Weiter Übergabe“ (`claude/weiter-uebergabe-1a9yql`); davor 21.11. ~20:15 UTC Sitzung „CL Übergabe weitermachen“; davor ~18:00 UTC Sitzung „Weiter“ (Zweig `claude/admiring-bohr-ob0u0p`, alle vier
 Repos); davor ~13:40 UTC Sitzung „Weiter“ (`claude/weiter-uw2p42`), davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18:30 UTC Sitzung
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
-**Stand 23.11. (spaeter), Sitzung „Weiter nach Übergabe“ (Zweig `claude/weiter-nach-uebergabe-zyl7c6`, alle vier Repos) — HIER WEITERMACHEN:**
+**Stand 23.11. ~18:00 UTC, Sitzung „Weiter nach Übergabe“ (Zweig `claude/weiter-nach-uebergabe-zyl7c6`, alle vier Repos) — HIER WEITERMACHEN:**
+- **B4b-2 auf Hardware belegt** (Probe Lauf 5, `ibm_marrakesh`, App-Körper angenommen, 0 Fehler bei 18 Treffern; die 403
+  davor kamen von der Kennung `Python-urllib`). App schickt feste Kennung (App #113).
+- **B4b-3 vollständig gemergt** (Bausteine der Präparatorin in `lib/quantenSPraeparieren.ts`, je gegen einen Prüfvektor,
+  den der Knoten mit eigenem Code prüft):
+  - 3a App #114 / #642: Werte mit Stellen-Bit, Shamir, Blätter, Bündel (`quanten_s_praep_buendel_vektor_test.go`).
+  - 3b App #115 / #643: Stichprobe v2, Pakete für die Annahmestellen, `fuer_inhaberin`, Öffnung, Antwort
+    (`quanten_s_praep_antwort_vektor_test.go`).
+  - 3c App #116 / #644: `bestaetigen()` wie `bestaetigenAbschnitt` (`quanten_s_praep_bestaetigen_vektor_test.go`).
+- **Offen: PR (dieser Zweig) Nachzug der Inhaberin:** db-tests von #644 war einmal rot
+  (`TestVierKnotenQuantenSRollen_RealDB`: „Validator 3: Abschnitt: HTTP 409: erst, wenn der Token auf der Kette steht“) —
+  Rennen, kein Fehler von #644 (derselbe Stand im Push-Lauf grün). Ursache auch im Betrieb möglich: die Inhaberin liest
+  den Stand von einem Knoten, ein anderer Validator hat den Block noch nicht. `quantenSFuerInhaberinNachzug` fragt bei
+  genau dieser Antwort bis 20 × 0,5 s erneut, jeder andere Fehler sofort. Merge nach „Weiter“.
+- **Befund vor B4b-4 (Lücke im Protokoll):** Ausgeber und Inhaberin müssen den Auftrag an eine geloste Präparatorin
+  verschlüsseln (Basen y sind geheim), kennen aber ihren öffentlichen Schlüssel nicht — das Register
+  (`quantenSPraep`: Konto, Gemeldet, Abgemeldet) speichert keinen. **Plan B4b-4a (Kette, schlafend):** jeder Knoten stellt
+  den Schlüssel aus der Melde-Unterschrift wieder her (`quantenWUnterschrift` in `quanten_s_praeparatoren.go` prüft sie
+  schon) und legt ihn im Eintrag ab (`pub`, 65 Byte unkomprimiert), API zeigt ihn. App ändert nichts. Konsensänderung,
+  aber Weg B schläft (Stichtag MaxInt64) → ohne Risiko jetzt; eigene Sicherheitsprüfung als PR-Kommentar, Missbrauchstest.
+  **B4b-4b:** Nachrichten über den Briefkasten (Auftrag, Antwort, Bündel direkt an die Empfänger, Bestätigung, Öffnung),
+  jede selbst unterschrieben (der Knoten des Kastens ist nicht vertrauenswürdig), große Abschnitte in Teile ≤ 64 KB
+  (ein Bündel braucht grob 250 Byte je Stelle → ab ~260 Stellen je Abschnitt mehrere Briefe). **B4b-4c:** Oberfläche.
+- **Nächster Schritt B4b-4: Ablauf und Oberfläche der Präparatorin in der App** — IBM-Schlüssel und Tresor (Werte,
+  Koeffizienten, Salze, Anteile) sicher im Gerät (SecureStore, Größe beachten), gelost werden erkennen (Register/Los,
+  `lib/quantenSPraeparator.ts`), Messung über `lib/ibmQuantum.ts` + `lib/quantenSSchaltkreis.ts`, Antwort über den
+  Briefkasten (B3), Bestätigen, Öffnung und Pakete erst nach finaler Bindung und Wahl. 12 Sprachen. App-Release erst,
+  wenn Nutzer damit etwas tun können; Stichtag Weg B entscheidet der Betreiber.
+- C1-Deploys zu #629–#634 warten weiter auf Freigabe der Umgebung `produktion`.
+- Werkzeuge: App-`npm ci` mit `npx -y npm@11 ci --ignore-scripts`; Prüfvektoren der App neu schreiben mit
+  `AEQUITAS_VEKTOR_SCHREIBEN=1 npx jest quantenSPraeparieren` und nach `x/humanity/keeper/testdata/` kopieren.
+
+**Stand 23.11. (spaeter), Sitzung „Weiter nach Übergabe“ (Zweig `claude/weiter-nach-uebergabe-zyl7c6`):**
 - #636 und App #110 sind gemergt. **Probe Lauf 2** ([45183774130](https://github.com/hanoi96international-gif/Aequitas/actions/runs/45183774130),
   13:25 UTC): Instanz gefunden, dann `kein freies Geraet`, ohne Artefakt und ohne Grund. Die Auswahl entspricht
   `least_busy` aus qiskit-ibm-runtime 0.52.1.
