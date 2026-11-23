@@ -17,7 +17,11 @@ dezentrales Quantengeld“.
   Merge nach grüner CI (Konsens, aber schlafend).
 - **App #117:** `registerLesen` verlangt `pub` und prüft ihn selbst (`pubPasst` über `schluesselPruefen`);
   1242 Tests grün, 4 Mutationen rot. Merge nach #646.
-- **Nächster Schritt B4b-4b (Rest):** Nachrichten über den Briefkasten (Auftrag an `pub` der Gelosten, Antwort,
+- **B4b-4b Teil 2 gebaut (PRs offen):** Prüfvektor `testdata/briefkasten_vektor.json` (Knoten lässt genau diese
+  Anfragen durch) und App `lib/briefkasten.ts` (ablegen/abholen/quittieren, Antwort streng gelesen; 1277 Tests grün,
+  10 Mutationen rot). Kein Konsens. **Danach Teil 3:** Hülle der Protokoll-Nachrichten (Art, K, Absender-Unterschrift
+  IM Inhalt, ECIES an `pub` des Empfängers, Teile ≤ 64 KB), dann B4b-4c Oberfläche.
+- _War nächster Schritt:_ **B4b-4b (Rest):** Nachrichten über den Briefkasten (Auftrag an `pub` der Gelosten, Antwort,
   Bündel, Bestätigung, Öffnung), jede selbst unterschrieben, große Abschnitte in Teile ≤ 64 KB. Dann B4b-4c Oberfläche.
 - **Ältere PRs geprüft und geschlossen (Auftrag des Betreibers):** #637 und App #111 (durch #639/#640 bzw. App
   #112/#113 ersetzt), #628 (Code durch B2a–B2d ersetzt; Pfand je Präparator und Beweisweg-Entwurf nach
