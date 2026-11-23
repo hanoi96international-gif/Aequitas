@@ -19,6 +19,9 @@ dezentrales Quantengeld“.
   1242 Tests grün, 4 Mutationen rot. Merge nach #646.
 - **#647 und App #118 gemergt** (6289741a / 4a259612).
 - **#648 und App #119 gemergt** (572f4cbb / 26f24d05). B4b-4b vollständig. Kein offener PR.
+- **HIER WEITER: B4b-4c nach Plan in `DEZENTRAL.md` („Plan B4b-4c“).** Erst 4c-1 (Ablauf der Präparatorin als
+  Bibliothek), dann 4c-2 (Ausgeber/Inhaberin in Weg B über den Briefkasten — fehlt bisher ganz), dann 4c-3
+  Oberfläche. Vor UI-Code die Expo-54-Doku lesen (AGENTS.md der App).
 - B4b-4b Teil 3: App `lib/quantenSHuelle.ts` (Hülle: unterschreiben mit Empfänger, dann
   ECIES; Teile ≤ 30.000 Byte; Zusammensetzer begrenzt, gegen Wiederholung, speicherbar); 1307 Tests grün,
   17 Mutationen rot. Doku in `DEZENTRAL.md` „B4b-4b“. **HIER WEITER nach dem Merge: B4b-4c Ablauf und Oberfläche.**

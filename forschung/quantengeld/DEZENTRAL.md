@@ -1898,8 +1898,26 @@ Verschlüsselungsschlüssel.
   30.000 Byte (ein voller Teil bleibt unter 64 KiB), höchstens 64 Teile. Der Zusammensetzer begrenzt offene
   Nachrichten (32), Byte darin (8 MiB) und erledigte Kennungen (16.384; voll = abweisen, nie vergessen) und
   weist Wiederholungen ab; die Liste wird gespeichert und übersteht einen Neustart.
-- Kein Konsens, der Knoten sieht nur Chiffrat. **Nächster Schritt B4b-4c:** Ablauf und Oberfläche (gelost
-  werden erkennen, Auftrag öffnen, messen, Antwort und Bündel als Hüllen verschicken, abholen, bestätigen).
+- Kein Konsens, der Knoten sieht nur Chiffrat.
+
+### Plan B4b-4c: Ablauf und Oberfläche (23.11.2026)
+
+Befund: In Weg A schickt der Ausgeber den Abschnitts-Auftrag per HTTP an den Validator-Dienst
+(`quanten_s_abschnitt_dienst.go`). Für Weg B fehlt die Gegenseite, die den Auftrag als Hülle an die gelosten
+Handys schickt und Antworten und Bündel einsammelt. Reihenfolge:
+
+1. **4c-1 Präparatorin, Ablauf ohne Oberfläche** (App `lib/quantenSPraepAblauf.ts`): Briefe abholen, Hüllen
+   öffnen, Auftrag (Art `auftrag`, Felder wie der Abschnitts-Auftrag des Dienstes) prüfen, auch „bin ich für
+   diese Bestellung gelost“ (Register, Bestellung, Los vom Knoten, selbst nachgerechnet), messen (`ibmQuantum`,
+   `quantenSSchaltkreis`), Antwort an den Ausgeber und Bündel an die anderen Gelosten als Hüllen, Bestätigung,
+   Öffnung erst nach finaler Bindung und Wahl. Tresor im Gerät: Schlüssel in SecureStore (Biometrie, nur dieses
+   Gerät), große Teile verschlüsselt in Dateien wie bei der Inhaberin; Liste der erledigten Hüllen gespeichert.
+   Prüfvektor gegen den Knoten, wo Nachrichten die Kette berühren.
+2. **4c-2 Ausgeber/Inhaberin in Weg B**: bestellen, Los abwarten, je Gelosten den Auftrag als Hülle, Antworten
+   einsammeln, Ausgabe gegen das Los einreichen (wie `quanten_s_rollen.go`, aber über den Briefkasten).
+3. **4c-3 Oberfläche** (Expo 54, vorher die Doku der Version lesen): Karte der Präparatorin (IBM-Schlüssel
+   eingeben, Stand, offene Aufträge), Karte der Ausgabe in Weg B; 12 Sprachen.
+4. Danach: App-Release, Stichtag Weg B (Betreiber), Pilot B5 mit mindestens 7 Menschen.
 
 ### Offen vor dem Stichtag: Pfand je Präparator und Beweisweg (aus PR #628, 22.11.)
 
