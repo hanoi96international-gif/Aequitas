@@ -1768,14 +1768,14 @@ Unterschriften bytegleich; der Knoten nimmt genau diese Sätze an). 8 Mutationen
 Wallet über Absender, Empfänger, SHA-256 des Inhalts und Zeit), `…/abholen` und
 `…/quittieren` (nur der Empfänger, unterschrieben). Der Knoten sieht nur Chiffrat.
 
-Grenzen: Inhalt ≤ 64 KB; je Absender ≤ 512 Briefe und ≤ 32 MB, je Empfänger ≤ 1024 Briefe,
+Grenzen: Inhalt ≤ 64 KB; je Absender ≤ 512 Briefe und ≤ 32 MB, je Empfänger ≤ 1024 Briefe (davon je Absender ≤ 64),
 im ganzen Kasten ≤ 1 GB; nach 8 Tagen verfällt ein Brief; Abholen ≤ 32 Briefe bzw. 2 MB je
 Aufruf; 60 Anfragen je IP und Minute; unterschriebene Zeiten ± 5 min. Dieselbe Ablage zweimal
 wird abgewiesen. Ohne Datenbank oder bei einem Lesefehler nimmt der Kasten nichts an (503).
 
 Keine Konsensregel: ein Dienst des einzelnen Knotens (keine StateRoot, kein Snapshot). Wer
 sicher gehen will, legt bei mehreren Knoten ab und holt bei mehreren ab. 3 Tests (auch gegen
-echtes PostgreSQL), 15 Mutationen rot.
+echtes PostgreSQL), 16 Mutationen rot.
 
 ### Nächste Schritte
 

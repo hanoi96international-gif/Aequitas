@@ -216,6 +216,14 @@ func TestBriefkasten_RealDB(t *testing.T) {
 		t.Fatalf("Empfaenger voll: %v", err)
 	}
 	leeren()
+	fuellen(a.addr, d.addr, briefJePaar, 1)
+	if _, err := ablegen(a, d.addr, bkInhalt(4, 1), bkJetzt); bkCode(err) != http.StatusTooManyRequests {
+		t.Fatalf("Paar voll: %v", err)
+	}
+	if _, err := ablegen(c, d.addr, bkInhalt(4, 2), bkJetzt); err != nil {
+		t.Fatalf("anderer Absender an denselben Empfaenger: %v", err)
+	}
+	leeren()
 	fuellen(d.addr, c.addr, briefJeAbsender, 1)
 	if _, err := ablegen(d, b.addr, bkInhalt(4, 1), bkJetzt); bkCode(err) != http.StatusTooManyRequests {
 		t.Fatalf("Absender voll (Anzahl): %v", err)

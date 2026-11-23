@@ -20,7 +20,8 @@ package keeper
 //
 // GRENZEN: Inhalt hoechstens briefInhaltMax; je Absender hoechstens
 // briefJeAbsender Briefe und briefBytesJeAbsender im Kasten; je Empfaenger
-// briefJeEmpfaenger; im ganzen Kasten briefBytesGesamt. Nach briefBehalten
+// briefJeEmpfaenger, davon je Absender briefJePaar; im ganzen Kasten
+// briefBytesGesamt. Nach briefBehalten
 // verfaellt ein Brief. Je Absender-IP briefJeIP Anfragen im Fenster.
 // Unterschriebene Zeiten hoechstens briefZeitSpiel von der Uhr des Knotens.
 //
@@ -49,17 +50,21 @@ const (
 	briefDomAbholen    = "aequitas-briefkasten-abholen-v1"
 	briefDomQuittieren = "aequitas-briefkasten-quittieren-v1"
 
-	briefInhaltMax               = 64 << 10
-	briefKoerperMax              = 2*briefInhaltMax + 4096
-	briefZeitSpiel         int64 = 300
-	briefBehalten          int64 = 8 * 86400
-	briefJeAbsender              = 512
-	briefBytesJeAbsender         = 32 << 20
-	briefJeEmpfaenger            = 1024
-	briefBytesGesamt             = 1 << 30
-	briefAbholenHoechstens       = 32
-	briefAbholenBytes            = 2 << 20
-	briefJeIP                    = 60
+	briefInhaltMax             = 64 << 10
+	briefKoerperMax            = 2*briefInhaltMax + 4096
+	briefZeitSpiel       int64 = 300
+	briefBehalten        int64 = 8 * 86400
+	briefJeAbsender            = 512
+	briefBytesJeAbsender       = 32 << 20
+	briefJeEmpfaenger          = 1024
+	// je Absender und Empfaenger: ein Postfach (briefJeEmpfaenger) zu fuellen
+	// braucht so mindestens 16 verschiedene Menschen. Das Protokoll braucht je
+	// Token nur wenige Pakete zwischen zwei Praeparatorinnen.
+	briefJePaar            = 64
+	briefBytesGesamt       = 1 << 30
+	briefAbholenHoechstens = 32
+	briefAbholenBytes      = 2 << 20
+	briefJeIP              = 60
 )
 
 // briefMu: Kontingente pruefen und ablegen in einem Schritt (ein Knoten).
@@ -154,16 +159,19 @@ func (cs *ChainState) briefAblegen(von, an, inhaltHex string, zeit int64, sig st
 	if _, err := cs.db.Exec(`DELETE FROM briefkasten WHERE abgelegt < $1`, jetzt-briefBehalten); err != nil {
 		return 0, err
 	}
-	var nVon, nAn int
+	var nVon, nAn, nPaar int
 	var bytesVon, bytesGesamt int64
 	if err := cs.db.QueryRow(`SELECT
 		(SELECT count(*) FROM briefkasten WHERE von = $1),
 		(SELECT COALESCE(sum(groesse), 0) FROM briefkasten WHERE von = $1),
 		(SELECT count(*) FROM briefkasten WHERE an = $2),
-		(SELECT COALESCE(sum(groesse), 0) FROM briefkasten)`, von, an).Scan(&nVon, &bytesVon, &nAn, &bytesGesamt); err != nil {
+		(SELECT count(*) FROM briefkasten WHERE an = $2 AND von = $1),
+		(SELECT COALESCE(sum(groesse), 0) FROM briefkasten)`, von, an).Scan(&nVon, &bytesVon, &nAn, &nPaar, &bytesGesamt); err != nil {
 		return 0, err
 	}
 	switch {
+	case nPaar >= briefJePaar:
+		return 0, briefFalsch(http.StatusTooManyRequests, "zu viele Briefe dieses Absenders an diesen Empfaenger")
 	case nVon >= briefJeAbsender || bytesVon+int64(len(inhalt)) > briefBytesJeAbsender:
 		return 0, briefFalsch(http.StatusTooManyRequests, "Kontingent des Absenders voll")
 	case nAn >= briefJeEmpfaenger:
