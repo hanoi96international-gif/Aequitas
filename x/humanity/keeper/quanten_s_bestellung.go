@@ -51,8 +51,9 @@ import (
 )
 
 const (
-	quantenSBestellenTxArt = "quanten_w_s_bestellen"
-	quantenSLosenTxArt     = "quanten_w_s_losen"
+	quantenSBestellenTxArt    = "quanten_w_s_bestellen"
+	quantenSLosenTxArt        = "quanten_w_s_losen"
+	quantenSBestellFristTxArt = "quanten_w_s_bestellung_frist"
 
 	quantenSDomBestellen = "aequitas-quanten-s-bestellen-v1"
 
@@ -67,10 +68,30 @@ const (
 	quantenSBestellBuchSpiel int64 = 120
 	// Abstand zwischen Bestellung und der Runde, die lost.
 	quantenSLosAbstand int64 = 600
+	// Pfand je Bestellung in Prozent der bestellten Deckung (mindestens
+	// quantenWPfand). Siehe quantenSBestellPfandFuer.
+	quantenSBestellPfandProzent = 10
 )
 
+// quantenSBestellPfandFuer: max(quantenWPfand, ceil(D * 10 %)). Wer nach dem
+// Los abbricht, verliert das Pfand ans Grundeinkommen (B2c). Lohnt sich ein
+// Los mit t Komplizen nur mit Wahrscheinlichkeit p je Bestellung (s_weg_b.py
+// erfassung; 4 von 7 bei 20 % Boesen ~2,5 %, in der Tabelle hoechstens ~3,1 %),
+// kostet ein solches Los im Mittel Pfand / p >= 3 D -- mehr, als die Doppel-
+// einloesung einbringt (D).
+func quantenSBestellPfandFuer(deckung int64) int64 {
+	p := deckung / 100 * quantenSBestellPfandProzent
+	if r := deckung % 100 * quantenSBestellPfandProzent; r > 0 {
+		p += (r + 99) / 100
+	}
+	if p < quantenWPfand {
+		return quantenWPfand
+	}
+	return p
+}
+
 func istQuantenSBestellTxArt(t string) bool {
-	return t == quantenSBestellenTxArt || t == quantenSLosenTxArt
+	return t == quantenSBestellenTxArt || t == quantenSLosenTxArt || t == quantenSBestellFristTxArt
 }
 
 // quantenSBestellung: eine offene Bestellung (Los leer = noch nicht gelost).
@@ -78,6 +99,8 @@ type quantenSBestellung struct {
 	Ausgeber string
 	V, T     int
 	Zeit     int64
+	Deckung  int64 // die Ausgabe muss genau sie decken
+	Pfand    int64 // im W-Pfandtopf bis Ausgabe (zurueck) oder Frist (verfaellt)
 	Abbild   []string
 	Runde    uint64
 	Zufall   [32]byte
@@ -90,6 +113,8 @@ type quantenSBestellungForm struct {
 	V        int      `json:"v"`
 	T        int      `json:"t"`
 	Zeit     int64    `json:"zeit"`
+	Deckung  int64    `json:"deckung"`
+	Pfand    int64    `json:"pfand"`
 	Abbild   []string `json:"abbild"`
 	Runde    uint64   `json:"runde,omitempty"`
 	Zufall   string   `json:"zufall,omitempty"`
@@ -118,8 +143,8 @@ func quantenSLosRunde(bestellZeit int64) (uint64, bool) {
 	return drandQuicknet.rundeAb(sattAdd(bestellZeit, quantenSLosAbstand))
 }
 
-func quantenSBestellNachricht(wallet, K string, v, t int, zeit int64) string {
-	return fmt.Sprintf("%s|chain:%d|%s|%s|%d|%d|%d", quantenSDomBestellen, eingefroreneChainID, strings.ToLower(wallet), K, v, t, zeit)
+func quantenSBestellNachricht(wallet, K string, v, t int, deckung, zeit int64) string {
+	return fmt.Sprintf("%s|chain:%d|%s|%s|%d|%d|%d|%d", quantenSDomBestellen, eingefroreneChainID, strings.ToLower(wallet), K, v, t, deckung, zeit)
 }
 
 // quantenSBestellungGroessen: v, t wie fuer ein Los und einen Token moeglich.
@@ -128,7 +153,7 @@ func quantenSBestellungGroessen(v, t int) bool {
 }
 
 func (b *quantenSBestellung) form(K string) quantenSBestellungForm {
-	f := quantenSBestellungForm{K: K, Ausgeber: b.Ausgeber, V: b.V, T: b.T, Zeit: b.Zeit, Abbild: b.Abbild, Runde: b.Runde, Los: b.Los}
+	f := quantenSBestellungForm{K: K, Ausgeber: b.Ausgeber, V: b.V, T: b.T, Zeit: b.Zeit, Deckung: b.Deckung, Pfand: b.Pfand, Abbild: b.Abbild, Runde: b.Runde, Los: b.Los}
 	if b.Runde != 0 {
 		f.Zufall = hex.EncodeToString(b.Zufall[:])
 	}
@@ -146,7 +171,8 @@ func quantenSBestellungenLesen(fs []quantenSBestellungForm) (map[string]*quanten
 	for i, f := range fs {
 		falsch := fmt.Errorf("quanten_w: Bestellung %d: Form", i)
 		if !istHash64(f.K) || (i > 0 && f.K <= fs[i-1].K) || !kanonischeAdresse(f.Ausgeber) || ausgeber[f.Ausgeber] ||
-			!quantenSBestellungGroessen(f.V, f.T) || f.Zeit <= 0 || len(f.Abbild) < quantenSLosPoolFaktor*f.V || len(f.Abbild) > quantenSPraepHoechstens {
+			!quantenSBestellungGroessen(f.V, f.T) || f.Zeit <= 0 || len(f.Abbild) < quantenSLosPoolFaktor*f.V || len(f.Abbild) > quantenSPraepHoechstens ||
+			f.Deckung < quantenMindestDeckungMik || f.Pfand != quantenSBestellPfandFuer(f.Deckung) {
 			return nil, falsch
 		}
 		ausgeber[f.Ausgeber] = true
@@ -155,7 +181,7 @@ func quantenSBestellungenLesen(fs []quantenSBestellungForm) (map[string]*quanten
 				return nil, falsch
 			}
 		}
-		b := &quantenSBestellung{Ausgeber: f.Ausgeber, V: f.V, T: f.T, Zeit: f.Zeit, Abbild: slices.Clone(f.Abbild)}
+		b := &quantenSBestellung{Ausgeber: f.Ausgeber, V: f.V, T: f.T, Zeit: f.Zeit, Deckung: f.Deckung, Pfand: f.Pfand, Abbild: slices.Clone(f.Abbild)}
 		if f.Runde == 0 {
 			if f.Zufall != "" || f.Los != nil {
 				return nil, falsch
@@ -186,13 +212,27 @@ func quantenSBestellungenFormen(m map[string]*quantenSBestellung) []quantenSBest
 	return out
 }
 
-// quantenSBestellungenAufraeumen: Bestellungen nach ihrer Frist vergessen.
-func quantenSBestellungenAufraeumen(r *quantenWRegister, zeit int64) {
+// quantenSBestellungVerfallen: nach der Frist (Losen und Ausgabe vorbei).
+func quantenSBestellungVerfallen(b *quantenSBestellung, zeit int64) bool {
+	return sattAdd(b.Zeit, quantenSBestellFrist) <= zeit
+}
+
+// quantenSBestellungenAufraeumen: verfallene Bestellungen vergessen; ihr Pfand
+// geht ans Grundeinkommen (Wege in fester Reihenfolge nach K).
+func quantenSBestellungenAufraeumen(r *quantenWRegister, zeit int64) []quantenWWeg {
+	var ks []string
 	for k, b := range r.Best {
-		if sattAdd(b.Zeit, quantenSBestellFrist) <= zeit {
-			delete(r.Best, k)
+		if quantenSBestellungVerfallen(b, zeit) {
+			ks = append(ks, k)
 		}
 	}
+	sort.Strings(ks)
+	var wege []quantenWWeg
+	for _, k := range ks {
+		wege = append(wege, quantenWWeg{quantenWPfandAddr, ubiPoolAddr, r.Best[k].Pfand})
+		delete(r.Best, k)
+	}
+	return wege
 }
 
 // quantenSBestellNurEigeneFelder: Bestellen traegt T, praep_zahl und die
@@ -201,11 +241,15 @@ func quantenSBestellNurEigeneFelder(tx *Transaction, q QuantenWAngaben) bool {
 	if tx.QuantenW.Index != 0 {
 		return false
 	}
-	if tx.Type == quantenSLosenTxArt {
+	switch tx.Type {
+	case quantenSLosenTxArt:
 		q.Runde, q.RundeSig = 0, ""
 		return reflect.DeepEqual(q, QuantenWAngaben{}) && tx.Wallet == "" && tx.DistributionAt == 0
+	case quantenSBestellFristTxArt:
+		q.Pfand = 0 // gerechnet
+		return reflect.DeepEqual(q, QuantenWAngaben{}) && tx.Wallet == "" && tx.DistributionAt == 0
 	}
-	q.T, q.PraepZahl, q.WalletSig, q.PQ = 0, 0, "", nil
+	q.T, q.PraepZahl, q.Deckung, q.WalletSig, q.PQ, q.Pfand = 0, 0, 0, "", nil, 0
 	return reflect.DeepEqual(q, QuantenWAngaben{}) && tx.Wallet != ""
 }
 
@@ -221,10 +265,10 @@ func (cs *ChainState) quantenSBestellBescheidLocked(ctx context.Context, tx *Tra
 	neu := reg.kopie()
 	switch tx.Type {
 	case quantenSBestellenTxArt:
-		if !kanonischeAdresse(wallet) || istSystemAdresse(wallet) || !quantenSBestellungGroessen(q.PraepZahl, q.T) {
-			return quantenWBefund("quanten_w_form", "Bestellen: Ausgeber, v (%d) oder t (%d)", q.PraepZahl, q.T), nil
+		if !kanonischeAdresse(wallet) || istSystemAdresse(wallet) || !quantenSBestellungGroessen(q.PraepZahl, q.T) || q.Deckung < quantenMindestDeckungMik {
+			return quantenWBefund("quanten_w_form", "Bestellen: Ausgeber, v (%d), t (%d) oder Deckung (%d)", q.PraepZahl, q.T, q.Deckung), nil
 		}
-		if err := quantenWUnterschrift(q, quantenSBestellNachricht(wallet, q.K, q.PraepZahl, q.T, tx.DistributionAt), wallet, zeit); err != nil {
+		if err := quantenWUnterschrift(q, quantenSBestellNachricht(wallet, q.K, q.PraepZahl, q.T, q.Deckung, tx.DistributionAt), wallet, zeit); err != nil {
 			return quantenWBefund("quanten_w_unterschrift", "Ausgeber %s: %v", kurzAdresse(wallet), err), nil
 		}
 		if !cs.quantenSPraepIstMenschLocked(ctx, wallet) {
@@ -236,7 +280,7 @@ func (cs *ChainState) quantenSBestellBescheidLocked(ctx context.Context, tx *Tra
 		if _, tot := reg.Tote[q.K]; tot {
 			return quantenWBefund("quanten_w_doppelt", "%s war schon ausgegeben (tot)", q.K[:12]), nil
 		}
-		quantenSBestellungenAufraeumen(neu, zeit)
+		wege := quantenSBestellungenAufraeumen(neu, zeit)
 		if neu.Best[q.K] != nil {
 			return quantenWBefund("quanten_w_doppelt", "%s ist schon bestellt", q.K[:12]), nil
 		}
@@ -255,7 +299,23 @@ func (cs *ChainState) quantenSBestellBescheidLocked(ctx context.Context, tx *Tra
 		if len(abbild) < quantenSLosPoolFaktor*q.PraepZahl {
 			return quantenWBefund("quanten_s_los_register", "Register zu klein: %d im Los, noetig %d fuer v = %d", len(abbild), quantenSLosPoolFaktor*q.PraepZahl, q.PraepZahl), nil
 		}
-		neu.Best[q.K] = &quantenSBestellung{Ausgeber: wallet, V: q.PraepZahl, T: q.T, Zeit: zeit, Abbild: abbild}
+		pfand := quantenSBestellPfandFuer(q.Deckung)
+		if cs.quantenWMikroLocked(ctx, wallet) < pfand {
+			return quantenWBefund("quanten_w_deckung", "%s hat keine %d Mikro-AEQ Pfand", kurzAdresse(wallet), pfand), nil
+		}
+		neu.Best[q.K] = &quantenSBestellung{Ausgeber: wallet, V: q.PraepZahl, T: q.T, Zeit: zeit, Deckung: q.Deckung, Pfand: pfand, Abbild: abbild}
+		return quantenWBescheid{reg: neu, wege: append(wege, quantenWWeg{wallet, quantenWPfandAddr, pfand}), felder: QuantenWAngaben{Pfand: pfand}}, nil
+
+	case quantenSBestellFristTxArt:
+		b := reg.Best[q.K]
+		if b == nil {
+			return quantenWBefund("quanten_w_unbekannt", "keine Bestellung %s", q.K[:12]), nil
+		}
+		if !quantenSBestellungVerfallen(b, zeit) {
+			return quantenWBefund("quanten_w_frist", "Bestellung %s gilt bis %d", q.K[:12], sattAdd(b.Zeit, quantenSBestellFrist)), nil
+		}
+		delete(neu.Best, q.K)
+		return quantenWBescheid{reg: neu, wege: []quantenWWeg{{quantenWPfandAddr, ubiPoolAddr, b.Pfand}}, felder: QuantenWAngaben{Pfand: b.Pfand}}, nil
 
 	case quantenSLosenTxArt:
 		b := reg.Best[q.K]
@@ -265,7 +325,7 @@ func (cs *ChainState) quantenSBestellBescheidLocked(ctx context.Context, tx *Tra
 		if b.Runde != 0 {
 			return quantenWBefund("quanten_s_los_doppelt", "%s ist schon gelost", q.K[:12]), nil
 		}
-		if sattAdd(b.Zeit, quantenSBestellFrist) <= zeit {
+		if quantenSBestellungVerfallen(b, zeit) {
 			return quantenWBefund("quanten_w_frist", "Bestellung %s ist verfallen", q.K[:12]), nil
 		}
 		r, ok := quantenSLosRunde(b.Zeit)
@@ -294,11 +354,11 @@ func quantenSAusgabeGegenLos(b *quantenSBestellung, wallet string, q *QuantenWAn
 	if b.Runde == 0 {
 		return quantenWBefund("quanten_s_los_offen", "%s ist bestellt, aber noch nicht gelost", q.K[:12])
 	}
-	if sattAdd(b.Zeit, quantenSBestellFrist) <= zeit {
+	if quantenSBestellungVerfallen(b, zeit) {
 		return quantenWBefund("quanten_w_frist", "Bestellung %s ist verfallen", q.K[:12])
 	}
-	if wallet != b.Ausgeber || q.T != b.T {
-		return quantenWBefund("quanten_s_los_ausgeber", "Ausgabe passt nicht zur Bestellung (Ausgeber oder t)")
+	if wallet != b.Ausgeber || q.T != b.T || q.Deckung != b.Deckung {
+		return quantenWBefund("quanten_s_los_ausgeber", "Ausgabe passt nicht zur Bestellung (Ausgeber, t oder Deckung)")
 	}
 	if !slices.Equal(q.Validatoren, b.Los) {
 		return quantenWBefund("quanten_s_los_fremd", "Praeparatoren sind nicht die Gelosten in Losreihenfolge")
@@ -319,7 +379,7 @@ func quantenSAusgabeGegenLos(b *quantenSBestellung, wallet string, q *QuantenWAn
 func quantenSBestellungAnsicht(K string, b *quantenSBestellung) map[string]interface{} {
 	r, _ := quantenSLosRunde(b.Zeit)
 	m := map[string]interface{}{"k": K, "ausgeber": b.Ausgeber, "v": b.V, "t": b.T, "zeit": b.Zeit,
-		"frist": sattAdd(b.Zeit, quantenSBestellFrist), "im_abbild": len(b.Abbild), "runde": r}
+		"frist": sattAdd(b.Zeit, quantenSBestellFrist), "im_abbild": len(b.Abbild), "runde": r, "deckung": b.Deckung, "pfand": b.Pfand}
 	if b.Runde != 0 {
 		m["los"] = b.Los
 	}

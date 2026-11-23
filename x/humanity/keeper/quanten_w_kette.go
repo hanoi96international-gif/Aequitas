@@ -873,7 +873,7 @@ func quantenWZeitGueltig(tx *Transaction, blockZeit int64) bool {
 	case quantenSBestellenTxArt:
 		z := tx.DistributionAt
 		return z > 0 && z <= sattAdd(blockZeit, quantenWVoraus) && blockZeit-z <= quantenWAlt
-	case quantenSLosenTxArt:
+	case quantenSLosenTxArt, quantenSBestellFristTxArt:
 		return tx.DistributionAt == 0
 	case quantenSPraepMeldenTxArt, quantenSPraepAbmeldenTxArt:
 		// Abmelden ohne Wallet (Aufraeumen) traegt keine Zeit.
