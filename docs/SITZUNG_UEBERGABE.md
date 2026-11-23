@@ -8,10 +8,9 @@ Repos); davor ~13:40 UTC Sitzung „Weiter“ (`claude/weiter-uw2p42`), davor ~1
 dezentrales Quantengeld“.
 
 **Stand 23.11. ~12:30 UTC, Sitzung „Weiter nach Übergabe“ (Zweig `claude/weiter-nach-uebergabe-r1zjrz`, alle vier Repos) — HIER WEITERMACHEN:**
-- **Offen, CI lief bei Übergabe:** Aequitas **#635** (B4b-1 qiskit-Gegenprobe + B4b-2 IBM-REST-Probe, Kopf 586dffbc) und
-  Aequitas-App **#109** (B4b-2 `lib/ibmQuantum.ts`, Kopf cce5be0, Basis `aequitas-app`). Beide lokal grün
-  (App: tsc, lint, 1203 Jest-Tests; Aequitas: `ibm_rest_probe.py --selbsttest`). Merge nur nach „Weiter“ des Betreibers;
-  bei Rot Ursache suchen und beheben, nie Tests abschwächen.
+- **Gemergt nach „Weiter“ (12:40 UTC):** Aequitas **#635** (971ab3ba; B4b-1 qiskit-Gegenprobe + B4b-2 IBM-REST-Probe)
+  und Aequitas-App **#109** (236c9814; B4b-2 `lib/ibmQuantum.ts`). Kein offener PR mehr aus dieser Sitzung.
+- **Wartet auf den Betreiber:** Probe `quanten-s-rest-probe.yml` starten (siehe unten).
 - **IBM-Doku über die Websuche gelesen** (direkter Abruf aus der Sitzung gesperrt; nicht umgehen): OpenQASM-3-Text in
   `pubs` ist der dokumentierte Weg. Ergebnis ohne `support_qiskit` in der einfachen Form `results[i].data.c.samples`
   (Hex je Schuss); mit `support_qiskit: true` (Python-Client) die kodierte Form mit `__type__`-Hüllen. App und Probe
