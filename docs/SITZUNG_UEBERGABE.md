@@ -10,7 +10,10 @@ dezentrales Quantengeld“.
 **Stand 23.11. ~12:30 UTC, Sitzung „Weiter nach Übergabe“ (Zweig `claude/weiter-nach-uebergabe-r1zjrz`, alle vier Repos) — HIER WEITERMACHEN:**
 - **Gemergt nach „Weiter“ (12:40 UTC):** Aequitas **#635** (971ab3ba; B4b-1 qiskit-Gegenprobe + B4b-2 IBM-REST-Probe)
   und Aequitas-App **#109** (236c9814; B4b-2 `lib/ibmQuantum.ts`). Kein offener PR mehr aus dieser Sitzung.
-- **Wartet auf den Betreiber:** Probe `quanten-s-rest-probe.yml` starten (siehe unten).
+- **Probe Lauf 1 (45179139174, 13:02 UTC) abgebrochen:** `IBM_QUANTUM_INSTANCE`/`IBM_QUANTUM_BACKEND` sind im Repo
+  nicht gesetzt (qiskit findet sie selbst). Lösung gebaut (neue PRs von diesem Zweig): App und Probe suchen Instanz
+  (IBM Cloud Global Search) und Gerät (kürzeste Schlange) selbst, wie `qiskit-ibm-runtime`. Nach Merge Probe erneut
+  starten (`actions_run_trigger` auf `main`; Betreiber gibt `quantenhardware` frei).
 - **IBM-Doku über die Websuche gelesen** (direkter Abruf aus der Sitzung gesperrt; nicht umgehen): OpenQASM-3-Text in
   `pubs` ist der dokumentierte Weg. Ergebnis ohne `support_qiskit` in der einfachen Form `results[i].data.c.samples`
   (Hex je Schuss); mit `support_qiskit: true` (Python-Client) die kodierte Form mit `__type__`-Hüllen. App und Probe
