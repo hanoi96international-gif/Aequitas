@@ -3,12 +3,15 @@ package keeper
 import (
 	"context"
 	"crypto/ecdsa"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/ethereum/go-ethereum/crypto"
 )
 
 // Weg B, Register der Praeparatoren (quanten_s_praeparatoren.go): ein
@@ -27,6 +30,11 @@ func praepTx(t *testing.T, art, wallet string, k *ecdsa.PrivateKey, zeit int64) 
 	K := quantenSPraepK(wallet)
 	return Transaction{Type: art, Wallet: wallet, DistributionAt: zeit,
 		QuantenW: &QuantenWAngaben{K: K, WalletSig: personalSign(t, k, quantenSPraepNachricht(art, wallet, K, zeit))}}
+}
+
+// praepPubTest: der Schluessel, den der Knoten aus der Meldung wiederherstellt.
+func praepPubTest(k *ecdsa.PrivateKey) string {
+	return hex.EncodeToString(crypto.FromECDSAPub(&k.PublicKey))
 }
 
 func praepAufraeumenTx(konto string) Transaction {
@@ -58,7 +66,7 @@ func TestQuantenSPraep_Gutfall(t *testing.T) {
 	w.annehmen(praepTx(t, quantenSPraepMeldenTxArt, w.anna, w.keys[w.anna], z-600), z)
 	w.annehmen(praepTx(t, quantenSPraepMeldenTxArt, w.bert, w.keys[w.bert], z+10), z+10)
 	e := w.cs.quantenWJetzt().Praep[quantenSPraepK(w.anna)]
-	if e.Konto != w.anna || e.Gemeldet != z || e.Abgemeldet != 0 {
+	if e.Konto != w.anna || e.Pub != praepPubTest(w.keys[w.anna]) || e.Gemeldet != z || e.Abgemeldet != 0 {
 		t.Fatalf("Eintrag: %+v", e)
 	}
 	if a := w.abbild(w.cs, z+quantenSPraepVorlauf-1); len(a) != 0 {
@@ -168,12 +176,19 @@ func TestQuantenSPraep_MeldenMissbrauch(t *testing.T) {
 	// Unterschrift fuer Abmelden als Melden eingereicht (Domaene).
 	falscheArt := praepTx(t, quantenSPraepAbmeldenTxArt, w.anna, w.keys[w.anna], z)
 	falscheArt.Type = quantenSPraepMeldenTxArt
+	// Melden mit ML-DSA (B4b-4a): kein secp256k1-Schluessel fuer die
+	// Auftraege, also abgewiesen -- auch mit EIP-191 daneben.
+	mitPQ := praepTx(t, quantenSPraepMeldenTxArt, w.anna, w.keys[w.anna], z)
+	mitPQ.QuantenW.PQ = &PQKonto{Pub: strings.Repeat("ab", pqPubHex/2), Sig: strings.Repeat("cd", pqSigHex/2)}
+	nurPQ := praepTx(t, quantenSPraepMeldenTxArt, w.anna, w.keys[w.anna], z)
+	nurPQ.QuantenW.WalletSig, nurPQ.QuantenW.PQ = "", &PQKonto{Pub: strings.Repeat("ab", pqPubHex/2), Sig: strings.Repeat("cd", pqSigHex/2)}
 	for _, f := range []struct {
 		name string
 		tx   Transaction
 		r    string
 	}{{"fremdes Feld", mitN, "quanten_w_form"}, {"Nummer", mitIndex, "quanten_w_form"}, {"Empfaenger", mitTo, "quanten_w_form"},
-		{"Abmelde-Unterschrift", falscheArt, "quanten_w_unterschrift"}} {
+		{"Abmelde-Unterschrift", falscheArt, "quanten_w_unterschrift"},
+		{"ML-DSA neben EIP-191", mitPQ, "quanten_s_praep_schluessel"}, {"nur ML-DSA", nurPQ, "quanten_s_praep_schluessel"}} {
 		faelle = append(faelle, struct {
 			name, regel string
 			tx          Transaction
@@ -219,8 +234,8 @@ func TestQuantenSPraep_Voll(t *testing.T) {
 	z := qwT0
 	reg := w.cs.quantenWJetzt().kopie()
 	for i := 0; i < quantenSPraepHoechstens; i++ {
-		_, a := neuerSchluessel(t)
-		reg.Praep[quantenSPraepK(a)] = quantenSPraep{Konto: a, Gemeldet: z, Abgemeldet: z + 1}
+		k, a := neuerSchluessel(t)
+		reg.Praep[quantenSPraepK(a)] = quantenSPraep{Konto: a, Pub: praepPubTest(k), Gemeldet: z, Abgemeldet: z + 1}
 	}
 	for _, cs := range []*ChainState{w.cs, w.nach} {
 		cs.mu.Lock()
@@ -351,7 +366,7 @@ func TestQuantenSPraep_AnnahmeUndAnsicht(t *testing.T) {
 		Praeparatoren []map[string]interface{} `json:"praeparatoren"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &antwort); err != nil || !antwort.Aktiv || len(antwort.Praeparatoren) != 1 ||
-		antwort.Praeparatoren[0]["konto"] != w.anna {
+		antwort.Praeparatoren[0]["konto"] != w.anna || antwort.Praeparatoren[0]["pub"] != praepPubTest(w.keys[w.anna]) {
 		t.Fatalf("Ansicht: %s (%v)", rec.Body.String(), err)
 	}
 	rec = httptest.NewRecorder()
@@ -364,10 +379,11 @@ func TestQuantenSPraep_AnnahmeUndAnsicht(t *testing.T) {
 // Register lesen: was so nie entstehen konnte, wird abgewiesen; was entstand,
 // liest sich byte-gleich zurueck (auch ueber die Zeilen der Tabelle).
 func TestQuantenSPraep_RegisterLesen(t *testing.T) {
-	_, a := neuerSchluessel(t)
-	_, b := neuerSchluessel(t)
-	_, c := neuerSchluessel(t)
-	gut := []quantenSPraepForm{{K: quantenSPraepK(a), Konto: a, Gemeldet: 100}, {K: quantenSPraepK(b), Konto: b, Gemeldet: 100, Abgemeldet: 200}}
+	ka, a := neuerSchluessel(t)
+	kb, b := neuerSchluessel(t)
+	kc, c := neuerSchluessel(t)
+	gut := []quantenSPraepForm{{K: quantenSPraepK(a), Konto: a, Pub: praepPubTest(ka), Gemeldet: 100},
+		{K: quantenSPraepK(b), Konto: b, Pub: praepPubTest(kb), Gemeldet: 100, Abgemeldet: 200}}
 	if gut[0].K > gut[1].K {
 		gut[0], gut[1] = gut[1], gut[0]
 	}
@@ -390,6 +406,27 @@ func TestQuantenSPraep_RegisterLesen(t *testing.T) {
 			return f
 		},
 		"negativ abgemeldet": func(f []quantenSPraepForm) []quantenSPraepForm { f[0].Abgemeldet = -1; return f },
+		// Schluessel (B4b-4a): fehlt, gehoert einem anderen, falsche Form,
+		// kein Punkt der Kurve -- nie ein Eintrag, an den niemand sicher
+		// verschluesseln kann.
+		"ohne Schluessel":      func(f []quantenSPraepForm) []quantenSPraepForm { f[0].Pub = ""; return f },
+		"fremder Schluessel":   func(f []quantenSPraepForm) []quantenSPraepForm { f[0].Pub = praepPubTest(kc); return f },
+		"Schluessel getauscht": func(f []quantenSPraepForm) []quantenSPraepForm { f[0].Pub, f[1].Pub = f[1].Pub, f[0].Pub; return f },
+		"Schluessel gross":     func(f []quantenSPraepForm) []quantenSPraepForm { f[0].Pub = strings.ToUpper(f[0].Pub); return f },
+		"Schluessel komprimiert": func(f []quantenSPraepForm) []quantenSPraepForm {
+			f[0].Pub = hex.EncodeToString(crypto.CompressPubkey(&ka.PublicKey))
+			return f
+		},
+		"Schluessel neben der Kurve": func(f []quantenSPraepForm) []quantenSPraepForm {
+			b := []byte(f[0].Pub)
+			if b[129] == '0' {
+				b[129] = '1'
+			} else {
+				b[129] = '0'
+			}
+			f[0].Pub = string(b)
+			return f
+		},
 	}
 	for name, aendern := range kaputt {
 		f := aendern(append([]quantenSPraepForm(nil), gut...))
@@ -402,8 +439,8 @@ func TestQuantenSPraep_RegisterLesen(t *testing.T) {
 	}
 	var zuViele []quantenSPraepForm
 	for i := 0; i <= quantenSPraepHoechstens; i++ {
-		_, k := neuerSchluessel(t)
-		zuViele = append(zuViele, quantenSPraepForm{K: quantenSPraepK(k), Konto: k, Gemeldet: 1})
+		sk, k := neuerSchluessel(t)
+		zuViele = append(zuViele, quantenSPraepForm{K: quantenSPraepK(k), Konto: k, Pub: praepPubTest(sk), Gemeldet: 1})
 	}
 	if _, err := quantenSPraepLesen(zuViele); err == nil {
 		t.Error("zu viele Praeparatoren angenommen")
@@ -423,9 +460,9 @@ func TestQuantenSPraep_Tabelle_RealDB(t *testing.T) {
 	r := neuesQuantenWRegister()
 	var konten []string
 	for i := 0; i < 3; i++ {
-		_, a := neuerSchluessel(t)
+		k, a := neuerSchluessel(t)
 		konten = append(konten, a)
-		r.Praep[quantenSPraepK(a)] = quantenSPraep{Konto: a, Gemeldet: qwT0 + int64(i)}
+		r.Praep[quantenSPraepK(a)] = quantenSPraep{Konto: a, Pub: praepPubTest(k), Gemeldet: qwT0 + int64(i)}
 	}
 	if err := qwtSetzen(t, cs, ctx, r); err != nil {
 		t.Fatal(err)

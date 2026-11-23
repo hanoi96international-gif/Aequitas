@@ -2,12 +2,30 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 23.11.2026 ~18:05 UTC (Sitzung „Weiter nach Übergabe“, Zweig `claude/weiter-nach-uebergabe-zyl7c6`); davor 22.11.2026 ~18:50 UTC, Sitzung „CL Übergabe weitermachen“ (`claude/cl-uebergabe-weitermachen-jdz5h7`); davor ~16:40 UTC Sitzung „Weiter Übergabe“ (`claude/weiter-uebergabe-1a9yql`); davor 21.11. ~20:15 UTC Sitzung „CL Übergabe weitermachen“; davor ~18:00 UTC Sitzung „Weiter“ (Zweig `claude/admiring-bohr-ob0u0p`, alle vier
+Stand: 23.11.2026 ~18:30 UTC (Sitzung „Weiter mit Übergabe“, Zweig `claude/uebergabe-fortsetzen-g5xqox`); davor ~18:05 UTC (Sitzung „Weiter nach Übergabe“, Zweig `claude/weiter-nach-uebergabe-zyl7c6`); davor 22.11.2026 ~18:50 UTC, Sitzung „CL Übergabe weitermachen“ (`claude/cl-uebergabe-weitermachen-jdz5h7`); davor ~16:40 UTC Sitzung „Weiter Übergabe“ (`claude/weiter-uebergabe-1a9yql`); davor 21.11. ~20:15 UTC Sitzung „CL Übergabe weitermachen“; davor ~18:00 UTC Sitzung „Weiter“ (Zweig `claude/admiring-bohr-ob0u0p`, alle vier
 Repos); davor ~13:40 UTC Sitzung „Weiter“ (`claude/weiter-uw2p42`), davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18:30 UTC Sitzung
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
-**Stand 23.11. ~18:00 UTC, Sitzung „Weiter nach Übergabe“ (Zweig `claude/weiter-nach-uebergabe-zyl7c6`, alle vier Repos) — HIER WEITERMACHEN:**
+**Stand 23.11. ~18:30 UTC, Sitzung „Weiter mit Übergabe“ (Zweig `claude/uebergabe-fortsetzen-g5xqox`, alle vier Repos) — HIER WEITERMACHEN:**
+- **#645 gemergt** (71700871, Nachzug der Inhaberin; CI ganz grün).
+- **B4b-4a gebaut: PR #646 (offen)** — Register der Präparatoren trägt `pub` (secp256k1, 04…, 130 Hex), den jeder
+  Knoten aus der EIP-191-Meldung wiederherstellt (`quantenSPraepPubAusSig`); Lesen prüft Form, Kurve und Konto
+  (`quantenSPraepPubPasst`); Melden mit ML-DSA → `quanten_s_praep_schluessel`; API zeigt `pub`; Prüfvektor B4a um
+  `pub` ergänzt. Paket lokal grün, RealDB grün, 7 Mutationen rot. **Sicherheitsprüfung als PR-Kommentar gepostet.**
+  Merge nach grüner CI (Konsens, aber schlafend).
+- **App #117 (offen):** `registerLesen` verlangt `pub` und prüft ihn selbst (`pubPasst` über `schluesselPruefen`);
+  1242 Tests grün, 4 Mutationen rot. Merge nach #646.
+- **Nächster Schritt B4b-4b (Rest):** Nachrichten über den Briefkasten (Auftrag an `pub` der Gelosten, Antwort,
+  Bündel, Bestätigung, Öffnung), jede selbst unterschrieben, große Abschnitte in Teile ≤ 64 KB. Dann B4b-4c Oberfläche.
+- **Ältere PRs geprüft und geschlossen (Auftrag des Betreibers):** #637 und App #111 (durch #639/#640 bzw. App
+  #112/#113 ersetzt), #628 (Code durch B2a–B2d ersetzt; Pfand je Präparator und Beweisweg-Entwurf nach
+  `DEZENTRAL.md` „Offen vor dem Stichtag“ übernommen), #340 (Kegel-Anker, Basis zu alt; Verweis in `docs/OFFEN.md`
+  Punkt 3). Zweige bleiben bestehen. Damit keine fremden offenen PRs mehr.
+- Postgres lokal: `pg_ctlcluster 16 main start`, Passwort `postgres`, DB `aequitas_ci`, Tests mit
+  `AEQUITAS_TPS_BENCH=1 DATABASE_URL=postgres://postgres:postgres@localhost:5432/aequitas_ci?sslmode=disable`.
+
+**Stand 23.11. ~18:00 UTC, Sitzung „Weiter nach Übergabe“ (Zweig `claude/weiter-nach-uebergabe-zyl7c6`, alle vier Repos):**
 - **B4b-2 auf Hardware belegt** (Probe Lauf 5, `ibm_marrakesh`, App-Körper angenommen, 0 Fehler bei 18 Treffern; die 403
   davor kamen von der Kennung `Python-urllib`). App schickt feste Kennung (App #113).
 - **B4b-3 vollständig gemergt** (Bausteine der Präparatorin in `lib/quantenSPraeparieren.ts`, je gegen einen Prüfvektor,

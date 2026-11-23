@@ -1,6 +1,7 @@
 package keeper
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"reflect"
@@ -27,6 +28,7 @@ type qspVektor struct {
 	ChainID             int64  `json:"chain_id"`
 	Schluessel          string `json:"schluessel_nur_test"`
 	Konto               string `json:"konto"`
+	Pub                 string `json:"pub"` // B4b-4a: was der Knoten aus melden_sig wiederherstellt
 	K                   string `json:"k"`
 	Zeit                int64  `json:"zeit"`
 	MeldenNachricht     string `json:"melden_nachricht"`
@@ -58,7 +60,7 @@ func qspVektorBauen(t *testing.T) qspVektor {
 	return qspVektor{
 		Hinweis: "Pruefvektor B4a: Praeparatorin melden/abmelden (quanten_s_praeparatoren.go). Schluessel NUR fuer Tests. " +
 			"Neu: AEQUITAS_VEKTOR_SCHREIBEN=1 go test -run TestQuantenSPraepVektor ./x/humanity/keeper/",
-		ChainID: eingefroreneChainID, Schluessel: schl, Konto: konto, K: K, Zeit: zeit,
+		ChainID: eingefroreneChainID, Schluessel: schl, Konto: konto, Pub: hex.EncodeToString(crypto.FromECDSAPub(&k.PublicKey)), K: K, Zeit: zeit,
 		MeldenNachricht: m, MeldenSig: personalSign(t, k, m),
 		AbmeldenNachricht: a, AbmeldenSig: personalSign(t, k, a),
 		MeldenPfad:      "/api/quanten-w/" + strings.TrimPrefix(quantenSPraepMeldenTxArt, "quanten_w_"),
@@ -99,6 +101,10 @@ func TestQuantenSPraepVektor(t *testing.T) {
 	melden := Transaction{Type: quantenSPraepMeldenTxArt, Wallet: gelesen.Konto, DistributionAt: gelesen.Zeit,
 		QuantenW: &QuantenWAngaben{K: gelesen.K, WalletSig: gelesen.MeldenSig}}
 	w.annehmen(melden, gelesen.Zeit+5)
+	// B4b-4a: der Knoten legt genau den Schluessel aus dem Vektor ab.
+	if e := w.cs.quantenWJetzt().Praep[gelesen.K]; e.Pub != gelesen.Pub {
+		t.Fatalf("Schluessel im Register %q, Vektor %q", e.Pub, gelesen.Pub)
+	}
 	abmelden := Transaction{Type: quantenSPraepAbmeldenTxArt, Wallet: gelesen.Konto, DistributionAt: gelesen.Zeit + 60,
 		QuantenW: &QuantenWAngaben{K: gelesen.K, WalletSig: gelesen.AbmeldenSig}}
 	w.annehmen(abmelden, gelesen.Zeit+65)
