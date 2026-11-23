@@ -42,7 +42,9 @@ ERGEBNIS = os.path.join(HIER, "testdata", "ibm_ergebnis_vektor.json")
 ERGEBNIS_EINFACH = os.path.join(HIER, "testdata", "ibm_ergebnis_einfach_vektor.json")
 
 IAM_URL = "https://iam.cloud.ibm.com/identity/token"
-API_BASIS = "https://quantum.cloud.ibm.com/api/v1"
+# Wie qiskit-ibm-runtime (api/utils.py default_runtime_url_resolver): der Host folgt der Region im CRN.
+# Feste Liste statt Region in den Hostnamen einsetzen (kein Host aus fremden Daten).
+API_BASIS_JE_REGION = {"us-east": "https://quantum.cloud.ibm.com/api/v1", "eu-de": "https://eu-de.quantum.cloud.ibm.com/api/v1"}
 API_VERSION = "2026-04-15"
 SUCHE_URL = "https://api.global-search-tagging.cloud.ibm.com/v3/resources/search?limit=100"
 CRN_FORM = re.compile(r"crn:v1:bluemix:public:quantum-computing:[a-z0-9-]{2,20}:a/[0-9a-f]{32}:[0-9a-f-]{36}::")
@@ -217,18 +219,30 @@ def suche_selbsttest() -> None:
     """Instanzen und Geraete finden ohne Netz: anfrage durch feste Antworten ersetzt."""
     global anfrage
     c1 = "crn:v1:bluemix:public:quantum-computing:us-east:a/0123456789abcdef0123456789abcdef:01234567-89ab-cdef-0123-456789abcdef::"
-    c2 = c1.replace("01234567-89ab", "11111111-89ab")
+    c2 = c1.replace("01234567-89ab", "11111111-89ab").replace(":us-east:", ":eu-de:")
+    c3 = c1.replace(":us-east:", ":jp-tok:")
     dev = lambda n, q, **x: {"name": n, "status": {"name": "online"}, "queue_length": q, "qubits": 156, **x}
     antworten = {
-        SUCHE_URL: (200, {"items": [{"crn": c2}, {"crn": c1}, {"crn": "crn:v1:evil"}, {"name": "ohne"}]}),
+        SUCHE_URL: (200, {"items": [{"crn": c2}, {"crn": c1}, {"crn": c3}, {"crn": "crn:v1:evil"}, {"name": "ohne"}]}),
         c1: (200, {"devices": [dev("ibm_a", 5), dev("ibm_b", 1, status={"name": "paused"}), dev("ibm_c", 0, **{"class": "mock"}),
                                dev("ibm/x", 0), dev("ibm_klein", 0, qubits=5)]}),
         c2: (200, {"devices": [dev("ibm_d", 3)]}),
     }
     alt = anfrage
     try:
-        anfrage = lambda url, m, kopf, daten=None: (lambda st, j: (st, json.dumps(j).encode()))(*antworten[kopf.get("Service-CRN", url)])
-        assert instanzen_suchen("t") == [c1, c2], "Instanzen falsch"
+        urls: list = []
+        anfrage = lambda url, m, kopf, daten=None: (urls.append(url), (lambda st, j: (st, json.dumps(j).encode()))(*antworten[kopf.get("Service-CRN", url)]))[1]
+        assert instanzen_suchen("t") == [c2, c1], "Instanzen falsch (unbekannte Region muss fehlen)"
+        geraete_liste("t", c2)
+        assert urls[-1] == "https://eu-de.quantum.cloud.ibm.com/api/v1/backends", f"Host fuer eu-de falsch: {urls[-1]}"
+        geraete_liste("t", c1)
+        assert urls[-1] == "https://quantum.cloud.ibm.com/api/v1/backends", f"Host fuer us-east falsch: {urls[-1]}"
+        for falsch in (c3, "crn:v1:evil"):
+            try:
+                api_basis(falsch)
+                raise AssertionError(f"api_basis angenommen: {falsch}")
+            except ProbeFehler:
+                pass
         st, liste = geraete_liste("t", c1)
         assert st == 200 and [n for _, n, _ in liste] == ["ibm_klein", "ibm_a"], f"Geraete falsch: {liste}"
         sicht: list = []
@@ -278,6 +292,16 @@ def ibm_grund(roh: bytes) -> str:
     return re.sub(r"[^\x20-\x7e]", "", str(m))[:300]
 
 
+def api_basis(crn: str) -> str:
+    """API-Host der Instanz nach ihrer Region; unbekannte Region wird abgewiesen."""
+    if not CRN_FORM.fullmatch(crn):
+        raise ProbeFehler("CRN: Form")
+    basis = API_BASIS_JE_REGION.get(crn.split(":")[5])
+    if not basis:
+        raise ProbeFehler(f"CRN: unbekannte Region {_kurz(crn.split(':')[5])}")
+    return basis
+
+
 def instanzen_suchen(tok: str) -> list[str]:
     """Wie die App (instanzenSuchen): IBM Cloud Global Search nach Quantum-Instanzen."""
     st, roh = anfrage(SUCHE_URL, "POST", {"Authorization": f"Bearer {tok}", "Content-Type": "application/json", "Accept": "application/json"},
@@ -287,7 +311,8 @@ def instanzen_suchen(tok: str) -> list[str]:
     items = json.loads(roh).get("items")
     if not isinstance(items, list) or len(items) > 100:
         raise ProbeFehler("Instanzen: Antwort")
-    crns = sorted({i.get("crn") for i in items if isinstance(i, dict) and isinstance(i.get("crn"), str) and CRN_FORM.fullmatch(i["crn"])})
+    crns = sorted({i.get("crn") for i in items if isinstance(i, dict) and isinstance(i.get("crn"), str) and CRN_FORM.fullmatch(i["crn"])
+             and i["crn"].split(":")[5] in API_BASIS_JE_REGION})
     if not crns:
         raise ProbeFehler("Instanzen: keine Quantum-Instanz im Konto")
     return crns[:8]
@@ -303,7 +328,7 @@ def geraete_liste(tok: str, crn: str, sicht: list | None = None) -> tuple[int, l
 
     Mit sicht: je Geraet Name, Status, Schlange, Qubits und der Grund, warum es nicht frei ist
     (fuer den Bericht, wenn kein Geraet passt; oeffentliche Geraetedaten, nichts Geheimes)."""
-    st, roh = anfrage(f"{API_BASIS}/backends", "GET", {"Authorization": f"Bearer {tok}", "Service-CRN": crn,
+    st, roh = anfrage(f"{api_basis(crn)}/backends", "GET", {"Authorization": f"Bearer {tok}", "Service-CRN": crn,
                                                        "IBM-API-Version": API_VERSION, "Accept": "application/json"})
     if st != 200:
         return st, []
@@ -368,7 +393,7 @@ def probe(ausgabe: str) -> None:
         for c in ([crn] if crn else instanzen_suchen(tok)):
             sicht: list = []
             st, liste = geraete_liste(tok, c, sicht)
-            bericht["instanzen"].append({"http": st, "geraete": sicht})
+            bericht["instanzen"].append({"region": _kurz(c.split(":")[5]), "http": st, "geraete": sicht})
             if st in (401, 403):
                 continue
             if st != 200:
@@ -381,7 +406,7 @@ def probe(ausgabe: str) -> None:
                     break
         if best is None:
             json.dump(bericht, open(ausgabe, "w"), indent=1)
-            uebersicht = "; ".join(f"Instanz {i + 1}: HTTP {x['http']}, " + ", ".join(
+            uebersicht = "; ".join(f"Instanz {i + 1} ({x['region']}): HTTP {x['http']}, " + ", ".join(
                 f"{g.get('name', '?')}={g['grund']}/{g.get('status', '?')}/{g.get('qubits', '?')}q" for g in x["geraete"][:16])
                 for i, x in enumerate(bericht["instanzen"]))
             raise ProbeFehler(f"Geraete: kein freies Geraet (mindestens {min_qubits} Qubits). {uebersicht}"[:1500])
@@ -392,7 +417,7 @@ def probe(ausgabe: str) -> None:
     koerper = json.dumps(k, separators=(",", ":"), ensure_ascii=False).encode()
     bericht["koerper_bytes"] = len(koerper)
     kopf = {"Authorization": f"Bearer {tok}", "Service-CRN": crn, "IBM-API-Version": API_VERSION, "Accept": "application/json"}
-    st, roh = anfrage(f"{API_BASIS}/jobs", "POST", {**kopf, "Content-Type": "application/json"}, koerper)
+    st, roh = anfrage(f"{api_basis(crn)}/jobs", "POST", {**kopf, "Content-Type": "application/json"}, koerper)
     bericht["einreichen_http"] = st
     if st not in (200, 201):
         bericht["ibm_grund"] = ibm_grund(roh)
@@ -402,7 +427,7 @@ def probe(ausgabe: str) -> None:
     bericht["job"] = job
     ende = time.time() + WARTEN_MAX_S
     while True:
-        st, roh = anfrage(f"{API_BASIS}/jobs/{job}", "GET", kopf)
+        st, roh = anfrage(f"{api_basis(crn)}/jobs/{job}", "GET", kopf)
         zustand = json.loads(roh).get("state", {}) if st == 200 else {}
         status = str(zustand.get("status", "")).upper()
         if status in ("COMPLETED", "FAILED", "CANCELLED") or time.time() > ende:
@@ -413,7 +438,7 @@ def probe(ausgabe: str) -> None:
         bericht["grund"] = re.sub(r"[^\x20-\x7e]", "", str(zustand.get("reason", "")))[:300]
         json.dump(bericht, open(ausgabe, "w"), indent=1)
         raise ProbeFehler(f"Auftrag {job}: {status} {bericht.get('grund', '')}")
-    st, roh = anfrage(f"{API_BASIS}/jobs/{job}/results", "GET", kopf)
+    st, roh = anfrage(f"{api_basis(crn)}/jobs/{job}/results", "GET", kopf)
     if st != 200:
         raise ProbeFehler(f"Ergebnis: HTTP {st}")
     ergebnis = json.loads(roh)

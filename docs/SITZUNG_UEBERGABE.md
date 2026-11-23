@@ -15,6 +15,11 @@ dezentrales Quantengeld“.
   (Artefakt + Fehlermeldung). Nach dem Merge Probe erneut starten (ref `main`), den Betreiber um Freigabe von
   `quantenhardware` bitten (Link), Grund lesen. Dann Probe **und** App (`geraeteListe`/`geraetWaehlen` in
   `lib/ibmQuantum.ts`) anpassen.
+- **#638 gemergt.** Lauf 3 ([45189335566](https://github.com/hanoi96international-gif/Aequitas/actions/runs/45189335566)):
+  `Instanz 1: HTTP 403` bei `/backends`. Ursache (am Quelltext von qiskit-ibm-runtime 0.52.1 belegt): Der Host folgt
+  der Region im CRN (`us-east` → `quantum.cloud.ibm.com`, `eu-de` → `eu-de.quantum.cloud.ibm.com`); Probe und App
+  schickten immer an us-east. **PRs (offen):** Aequitas (Probe `api_basis`, Region im Bericht) und App
+  (`apiBasis`, Suche übergeht unbekannte Regionen). Nach dem Merge Probe erneut starten (Freigabe `quantenhardware`).
 
 **Stand 23.11. ~13:10 UTC, Sitzung „Weiter nach Übergabe“ (Zweig `claude/weiter-nach-uebergabe-r1zjrz`, alle vier Repos):**
 - **Gemergt nach „Weiter“ (12:40 UTC):** Aequitas **#635** (971ab3ba; B4b-1 qiskit-Gegenprobe + B4b-2 IBM-REST-Probe)
