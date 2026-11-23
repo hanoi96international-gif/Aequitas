@@ -37,9 +37,7 @@ dezentrales Quantengeld“.
   `fuer_inhaberin`, Öffnung, unterschriebene Antwort (App), Knoten prüft den zweiten Vektor ganz
   (`quanten_s_praep_antwort_vektor_test.go`); 7 + 2 Mutationen rot. **Nächster Schritt B4b-3c:** Bestätigung nach
   der Wurzel (`bestaetigenAbschnitt`, `bestaetigungSUnterschreiben`), dann B4b-4 Ablauf/UI.
-  _Erledigt:_ B4b-3b: Pakete für die Annahmestellen (Stichprobe v2, `quanten_s_anteil_oeffnung.go`),
-  `fuer_inhaberin`, Antwort-Nachricht (`quantenSAbschnittAntwortNachrichtAus`) und Bestätigung. Danach B4b-4
-  Präparator-Seite (Schlüssel sicher im Gerät, Ablauf gelost → präparieren → Anteile über Briefkasten → öffnen).
+  B4b-4: Präparator-Seite (Schlüssel sicher im Gerät, Ablauf gelost → präparieren → Anteile über Briefkasten → öffnen).
 
 **Stand 23.11. ~13:10 UTC, Sitzung „Weiter nach Übergabe“ (Zweig `claude/weiter-nach-uebergabe-r1zjrz`, alle vier Repos):**
 - **Gemergt nach „Weiter“ (12:40 UTC):** Aequitas **#635** (971ab3ba; B4b-1 qiskit-Gegenprobe + B4b-2 IBM-REST-Probe)
