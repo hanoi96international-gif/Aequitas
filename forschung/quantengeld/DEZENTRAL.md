@@ -1853,7 +1853,23 @@ Bindung und Wahl, das prüft der Ablauf) und die unterschriebene Antwort
 `testdata/quanten_s_praep_antwort_vektor.json` aus der App; der Knoten prüft ihn ganz mit
 seinem eigenen Code (`quanten_s_praep_antwort_vektor_test.go`): Unterschrift, x der
 Inhaberin, Zählung, Bündel mit Paketen, Zusammensetzen aus t Paketen gegen die Blätter,
-Teil-Hash, Öffnung. Noch offen (B4b-3c): die Bestätigung nach der Wurzel.
+Teil-Hash, Öffnung.
+
+### B4b-3c: Die App bestätigt eine S-Ausgabe in Abschnitten (23.11.2026, gebaut)
+
+`bestaetigen()` in `lib/quantenSPraeparieren.ts`, Schritt für Schritt wie
+`bestaetigenAbschnitt`: Auftrag passt zum eigenen Abschnitt und ist vom Ausgeber über den Hash
+der Bündel unterschrieben (`quantenWSAuftragNachricht`), Größen eines gültigen Tokens, Blätter
+ergeben die Wurzel, eigene Blätter unverändert, jedes Bündel vom jeweiligen Präparator und für
+diese Validatorin (streng gelesen wie `quantenSBuendelOeffnenPakete`), bei Stichprobe v2 mit
+Paketen; erst dann die Bestätigung (`quantenWSBestaetigungNachricht`). Dritter Prüfvektor
+`testdata/quanten_s_praep_bestaetigen_vektor.json` aus der App (drei Präparatoren, Validator 1
+bestätigt); der Knoten prüft Auftrag, Wurzel, Bündel, Anteile, Pakete und die Bestätigung mit
+seinem eigenen Code (`quanten_s_praep_bestaetigen_vektor_test.go`).
+
+Damit sind die Bausteine der Präparatorin in der App vollständig. **Nächster Schritt B4b-4:**
+Ablauf und Oberfläche (Schlüssel und Tresor sicher im Gerät, gelost werden erkennen, IBM-Auftrag,
+Antwort über den Briefkasten, Bestätigen, Öffnung erst nach finaler Bindung und Wahl).
 
 ### Nächste Schritte
 

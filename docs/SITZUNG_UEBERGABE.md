@@ -33,7 +33,10 @@ dezentrales Quantengeld“.
 - **App #113 und #641 gemergt.** **B4b-3a gebaut (PRs offen, Zweig `claude/weiter-nach-uebergabe-zyl7c6`):** App
   `lib/quantenSPraeparieren.ts` (Werte mit Stellen-Bit, Shamir, Blätter, Bündel), Prüfvektor aus der App mit festem
   Zufall, Knoten öffnet genau diese Bündel (`quanten_s_praep_buendel_vektor_test.go`); 6 + 2 Mutationen rot.
-  **App #114 und #642 gemergt. B4b-3b gebaut (PRs offen):** Stichprobe v2, Pakete für die Annahmestellen,
+  **App #115 und #643 gemergt (B4b-3b). B4b-3c gebaut:** App #116 (`bestaetigen()`, offen, CI grün) und Aequitas-PR
+  (Knoten prüft den dritten Vektor, `quanten_s_praep_bestaetigen_vektor_test.go`); 9 + 4 Mutationen rot. Bausteine der
+  Präparatorin damit vollständig. **Nächster Schritt B4b-4:** Ablauf und Oberfläche in der App.
+  _Vorher:_ **App #114 und #642 gemergt. B4b-3b gebaut:** Stichprobe v2, Pakete für die Annahmestellen,
   `fuer_inhaberin`, Öffnung, unterschriebene Antwort (App), Knoten prüft den zweiten Vektor ganz
   (`quanten_s_praep_antwort_vektor_test.go`); 7 + 2 Mutationen rot. **Nächster Schritt B4b-3c:** Bestätigung nach
   der Wurzel (`bestaetigenAbschnitt`, `bestaetigungSUnterschreiben`), dann B4b-4 Ablauf/UI.
