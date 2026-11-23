@@ -2,7 +2,7 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 22.11.2026 ~18:50 UTC, Sitzung „CL Übergabe weitermachen“ (`claude/cl-uebergabe-weitermachen-jdz5h7`); davor ~16:40 UTC Sitzung „Weiter Übergabe“ (`claude/weiter-uebergabe-1a9yql`); davor 21.11. ~20:15 UTC Sitzung „CL Übergabe weitermachen“; davor ~18:00 UTC Sitzung „Weiter“ (Zweig `claude/admiring-bohr-ob0u0p`, alle vier
+Stand: 23.11.2026 ~16:30 UTC (Sitzung „Weiter nach Übergabe“, Zweig `claude/weiter-nach-uebergabe-zyl7c6`); davor 22.11.2026 ~18:50 UTC, Sitzung „CL Übergabe weitermachen“ (`claude/cl-uebergabe-weitermachen-jdz5h7`); davor ~16:40 UTC Sitzung „Weiter Übergabe“ (`claude/weiter-uebergabe-1a9yql`); davor 21.11. ~20:15 UTC Sitzung „CL Übergabe weitermachen“; davor ~18:00 UTC Sitzung „Weiter“ (Zweig `claude/admiring-bohr-ob0u0p`, alle vier
 Repos); davor ~13:40 UTC Sitzung „Weiter“ (`claude/weiter-uw2p42`), davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18:30 UTC Sitzung
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
@@ -25,6 +25,13 @@ dezentrales Quantengeld“.
   entspricht qiskit). qiskit kam mit demselben Schlüssel am 22.11. durch (quanten-s-ausgabe 45050231784). Nächster
   Verdacht: `urllib` schickt `User-Agent: Python-urllib/3.13`, den vorgeschaltete Schutzsysteme oft mit 403 abweisen.
   **PR (offen):** eigene Kennung, Text und `server`-Kopf der Fehlerantwort im Bericht. Danach Lauf 5.
+- **#640 gemergt. Probe Lauf 5 GRÜN** ([45213805068](https://github.com/hanoi96international-gif/Aequitas/actions/runs/45213805068),
+  23.11. 16:14 UTC): `ibm_marrakesh`, Auftrag `dc26bvqnj2vs73dg7i0g`, **Körper der App angenommen**, COMPLETED,
+  **einfache Ergebnisform** (`results[i].data.c.samples`), **0 Fehler bei 18 Treffern**. Ursache der 403 war die
+  Kennung `Python-urllib` (einzige Änderung zwischen Lauf 4 und 5). App bekommt dieselbe feste Kennung
+  (App-PR offen). **B4b-2 damit belegt.**
+- **Nächster Schritt B4b-3:** Anteile, Merkle und Bestätigung in TS (Prüfvektoren aus dem Knoten). Danach B4b-4
+  Präparator-Seite (Schlüssel sicher im Gerät, Ablauf gelost → präparieren → Anteile über Briefkasten → öffnen).
 
 **Stand 23.11. ~13:10 UTC, Sitzung „Weiter nach Übergabe“ (Zweig `claude/weiter-nach-uebergabe-r1zjrz`, alle vier Repos):**
 - **Gemergt nach „Weiter“ (12:40 UTC):** Aequitas **#635** (971ab3ba; B4b-1 qiskit-Gegenprobe + B4b-2 IBM-REST-Probe)
