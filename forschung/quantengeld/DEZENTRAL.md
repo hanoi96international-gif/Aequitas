@@ -1777,6 +1777,43 @@ Keine Konsensregel: ein Dienst des einzelnen Knotens (keine StateRoot, kein Snap
 sicher gehen will, legt bei mehreren Knoten ab und holt bei mehreren ab. 3 Tests (auch gegen
 echtes PostgreSQL), 16 Mutationen rot.
 
+### B4b-1: Schaltkreis eines Abschnitts im Handy (23.11.2026, gebaut; Weg 1: alles im Gerät)
+
+Aequitas-App `lib/quantenSSchaltkreis.ts`: je Stelle X (t), H (u), Barriere, H (y), messen
+— dieselbe Physik wie `hardware_ibm.py` `s_messen_basen`, aber ohne qiskit direkt in den
+nativen Gattern (`rz`, `sx`, `x`) auf physischen Qubits als OpenQASM 3 (H = rz(π/2)·sx·rz(π/2)
+bis auf eine globale Phase); Auswertung mit Mehrheit je Stelle wie im Python. Belegt durch
+exakte Simulation und einen Prüfvektor (40 Fälle), den `app_schaltkreis_pruefen.py` mit
+qiskit 2.6.2 gegen `wiesner_hardware.note` prüft (Operator gleich, Messbits richtig).
+
+### B4b-2: IBM Quantum direkt aus dem Handy (23.11.2026, gebaut; Probe auf Hardware offen)
+
+Aequitas-App `lib/ibmQuantum.ts`: Token aus dem IBM-Schlüssel (IBM Cloud IAM), Sampler-Auftrag
+mit den Schaltkreisen des Abschnitts, Status, Ergebnis — Schlüssel und Instanz bleiben im
+Gerät. Belegt aus `qiskit-ibm-runtime` 0.52.1: Pfade (`…/api/v1/jobs`, `…/jobs/{id}`,
+`…/results`), Kopfzeilen (`Authorization: Bearer`, `Service-CRN`, `IBM-API-Version:
+2026-04-15`), Status unter `state.status`, Ergebnis mit `__type__`-Hüllen bis zum BitArray
+(ndarray als base64(zlib(npy))). Die App liest ein mit `RuntimeEncoder` kodiertes Ergebnis
+bitgenau (Prüfvektor).
+
+**Nachtrag (Doku gelesen):** Die IBM-Doku „Sampler with the REST API“ (über die Websuche;
+der direkte Abruf war aus der Entwicklung gesperrt) belegt: Schaltkreise gehen als
+**OpenQASM-3-Text** in `pubs`, `program_id` `sampler`, Kopfzeilen `Service-CRN` und
+`IBM-API-Version` (2026-04-15). Die Doku liest das Ergebnis aber in einer **einfachen Form**:
+`results[i].data.c.samples`, je Schuss ein Hex-Wert. Die kodierte Form mit `__type__`-Hüllen
+bekommt nur, wer `"support_qiskit": true` schickt, wie der Python-Client
+(`options.py`). Die App schickt den Schalter nicht und liest jetzt **beide Formen**, jede
+streng: nur Register `c`, Bitzahl, höchstens 15 Schüsse, Hex mit höchstens 4 Stellen, keine
+Bits über n. Ein zweiter Prüfvektor (`testdata/ibm_ergebnis_einfach_vektor.json`) muss
+dieselben Schüsse ergeben.
+
+**Auf echter Hardware noch offen:** dass der Körper der App genau so angenommen wird und
+welche Form zurückkommt. Dafür `quanten-s-rest-probe.yml` (Umgebung `quantenhardware`,
+Freigabe des Betreibers): schickt **genau den Körper der App** (`testdata/ibm_auftrag_vektor.json`,
+nur das Gerät wird ersetzt), liest das Ergebnis wie die App (Bericht nennt die Form) und prüft
+die Physik (Treffer mit u = y müssen t zeigen, ≤ 10 % Fehler). Kosten: 3 Schaltkreise × 5
+Schüsse. Wird der Auftrag abgewiesen, legt der Lauf den Grund von IBM ab.
+
 ### Nächste Schritte
 
 | Schritt | Was |

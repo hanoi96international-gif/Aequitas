@@ -1,0 +1,163 @@
+{
+ "hinweis": "PrimitiveResult wie qiskit-ibm-runtime 0.52.1 (RuntimeEncoder) es kodiert: 4 Schaltkreise (16, 16, 8, 3 Bits), je 5 Schuesse; erwartet: die Schuesse als Hex (Bit 0 rechts).",
+ "ergebnis": {
+  "__type__": "PrimitiveResult",
+  "__value__": {
+   "pub_results": [
+    {
+     "__type__": "SamplerPubResult",
+     "__value__": {
+      "data": {
+       "__type__": "DataBin",
+       "__value__": {
+        "field_names": [
+         "c"
+        ],
+        "shape": [],
+        "fields": {
+         "c": {
+          "__type__": "BitArray",
+          "__value__": {
+           "array": {
+            "__type__": "ndarray",
+            "__value__": "eJyb7BfqGxDJyFDGUK2eklqcXKRupaBeU2qorqOgnpZfVFKUmBefX5SSChJ3S8wpTgWKF2ckFqQC+RqmOgpGmjoKtQpkAy4JVx9F+5asms92AJv6H14="
+           },
+           "num_bits": 16
+          }
+         }
+        }
+       }
+      },
+      "metadata": {}
+     }
+    },
+    {
+     "__type__": "SamplerPubResult",
+     "__value__": {
+      "data": {
+       "__type__": "DataBin",
+       "__value__": {
+        "field_names": [
+         "c"
+        ],
+        "shape": [],
+        "fields": {
+         "c": {
+          "__type__": "BitArray",
+          "__value__": {
+           "array": {
+            "__type__": "ndarray",
+            "__value__": "eJyb7BfqGxDJyFDGUK2eklqcXKRupaBeU2qorqOgnpZfVFKUmBefX5SSChJ3S8wpTgWKF2ckFqQC+RqmOgpGmjoKtQpkA64iX+Z3z02EpM+7AACitB/F"
+           },
+           "num_bits": 16
+          }
+         }
+        }
+       }
+      },
+      "metadata": {}
+     }
+    },
+    {
+     "__type__": "SamplerPubResult",
+     "__value__": {
+      "data": {
+       "__type__": "DataBin",
+       "__value__": {
+        "field_names": [
+         "c"
+        ],
+        "shape": [],
+        "fields": {
+         "c": {
+          "__type__": "BitArray",
+          "__value__": {
+           "array": {
+            "__type__": "ndarray",
+            "__value__": "eJyb7BfqGxDJyFDGUK2eklqcXKRupaBeU2qorqOgnpZfVFKUmBefX5SSChJ3S8wpTgWKF2ckFqQC+RqmOgqGmjoKtQpkA67jE8NS3gEACgAeuQ=="
+           },
+           "num_bits": 8
+          }
+         }
+        }
+       }
+      },
+      "metadata": {}
+     }
+    },
+    {
+     "__type__": "SamplerPubResult",
+     "__value__": {
+      "data": {
+       "__type__": "DataBin",
+       "__value__": {
+        "field_names": [
+         "c"
+        ],
+        "shape": [],
+        "fields": {
+         "c": {
+          "__type__": "BitArray",
+          "__value__": {
+           "array": {
+            "__type__": "ndarray",
+            "__value__": "eJyb7BfqGxDJyFDGUK2eklqcXKRupaBeU2qorqOgnpZfVFKUmBefX5SSChJ3S8wpTgWKF2ckFqQC+RqmOgqGmjoKtQpkAy5GFiZWRgABRxvG"
+           },
+           "num_bits": 3
+          }
+         }
+        }
+       }
+      },
+      "metadata": {}
+     }
+    }
+   ],
+   "metadata": {
+    "version": 2
+   }
+  }
+ },
+ "erwartet": [
+  {
+   "n": 16,
+   "schuesse_hex": [
+    "0x1845",
+    "0x4c21",
+    "0x3f84",
+    "0x6a7c",
+    "0xf33e"
+   ]
+  },
+  {
+   "n": 16,
+   "schuesse_hex": [
+    "0x724d",
+    "0x3ee",
+    "0xe734",
+    "0x121b",
+    "0xcf44"
+   ]
+  },
+  {
+   "n": 8,
+   "schuesse_hex": [
+    "0xc7",
+    "0x91",
+    "0x56",
+    "0x64",
+    "0xee"
+   ]
+  },
+  {
+   "n": 3,
+   "schuesse_hex": [
+    "0x1",
+    "0x4",
+    "0x2",
+    "0x5",
+    "0x1"
+   ]
+  }
+ ]
+}

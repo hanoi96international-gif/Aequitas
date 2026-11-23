@@ -1,0 +1,51 @@
+# Probe der IBM-REST-Schnittstelle fuer die App als Praeparatorin (Quantengeld
+# Weg B, B4b-2; forschung/quantengeld/DEZENTRAL.md 18).
+#
+# Die App (Aequitas-App lib/ibmQuantum.ts) reicht die Schaltkreise eines
+# Abschnitts ohne qiskit direkt bei IBM ein. Dieser Lauf schickt GENAU den
+# Koerper der App (forschung/quantengeld/testdata/ibm_auftrag_vektor.json; nur
+# das Geraet wird ersetzt) mit dem Konto des Betreibers an echte Hardware,
+# liest das Ergebnis wie die App und prueft die Physik. Kosten: ein Auftrag mit
+# 3 Schaltkreisen zu je 5 Schuessen (wenige Sekunden Rechenzeit).
+#
+# Freigabe: Umgebung quantenhardware (Betreiber). Der Schluessel steht nur in
+# der Umgebung des Schritts und wird nie ausgegeben; das Artefakt enthaelt nur
+# Messdaten, Status und die Auftragskennung.
+name: Quantengeld S -- IBM-REST-Probe (App)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quanten-s-rest-probe
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    environment: quantenhardware
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+      - run: python3 -I forschung/quantengeld/ibm_rest_probe.py --selbsttest
+      - name: Auftrag der App auf dem IBM-Chip
+        env:
+          IBM_QUANTUM_TOKEN: ${{ secrets.IBM_QUANTUM_TOKEN }}
+          IBM_QUANTUM_INSTANCE: ${{ vars.IBM_QUANTUM_INSTANCE }}
+          IBM_QUANTUM_BACKEND: ${{ vars.IBM_QUANTUM_BACKEND }}
+        run: python3 -I forschung/quantengeld/ibm_rest_probe.py --probe "$RUNNER_TEMP/ibm_rest_probe.json"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: ibm-rest-probe
+          path: ${{ runner.temp }}/ibm_rest_probe.json
+          if-no-files-found: ignore
+          retention-days: 90

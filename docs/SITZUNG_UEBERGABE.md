@@ -7,7 +7,41 @@ Repos); davor ~13:40 UTC Sitzung „Weiter“ (`claude/weiter-uw2p42`), davor ~1
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
-**Stand 23.11. ~12:00 UTC (dieselbe Sitzung) — HIER WEITERMACHEN:**
+**Stand 23.11. ~12:30 UTC, Sitzung „Weiter nach Übergabe“ (Zweig `claude/weiter-nach-uebergabe-r1zjrz`, alle vier Repos) — HIER WEITERMACHEN:**
+- **Offen, CI lief bei Übergabe:** Aequitas **#635** (B4b-1 qiskit-Gegenprobe + B4b-2 IBM-REST-Probe, Kopf 586dffbc) und
+  Aequitas-App **#109** (B4b-2 `lib/ibmQuantum.ts`, Kopf cce5be0, Basis `aequitas-app`). Beide lokal grün
+  (App: tsc, lint, 1203 Jest-Tests; Aequitas: `ibm_rest_probe.py --selbsttest`). Merge nur nach „Weiter“ des Betreibers;
+  bei Rot Ursache suchen und beheben, nie Tests abschwächen.
+- **IBM-Doku über die Websuche gelesen** (direkter Abruf aus der Sitzung gesperrt; nicht umgehen): OpenQASM-3-Text in
+  `pubs` ist der dokumentierte Weg. Ergebnis ohne `support_qiskit` in der einfachen Form `results[i].data.c.samples`
+  (Hex je Schuss); mit `support_qiskit: true` (Python-Client) die kodierte Form mit `__type__`-Hüllen. App und Probe
+  lesen beide Formen streng; Prüfvektoren `ibm_ergebnis_vektor.json` (echt, RuntimeEncoder) und
+  `ibm_ergebnis_einfach_vektor.json` (Form der Doku) in beiden Repos, gleiche Schüsse.
+- **Nach dem Merge:** Betreiber startet `quanten-s-rest-probe.yml` (Actions, Umgebung `quantenhardware` freigeben;
+  3 Schaltkreise × 5 Schüsse). Artefakt `ibm-rest-probe` lesen: `ergebnis_form`, Fehler bei Treffern (≤ 10 %).
+  Wird der Auftrag abgewiesen, steht der Grund von IBM im Bericht → Körper in `auftragKoerper` anpassen, Vektor in
+  beiden Repos neu, Probe wiederholen.
+- **Danach:** B4b-3 Anteile, Merkle und Bestätigung in TS (Prüfvektoren aus dem Knoten); B4b-4 Präparator-Seite
+  (Schlüssel sicher im Gerät speichern, Qubit-Auswahl, Ablauf gelost → präparieren → Anteile über Briefkasten → öffnen);
+  App-Release erst, wenn Nutzer etwas tun können. Stichtag Weg B entscheidet der Betreiber; dann Pilot B5.
+- **C1-Deploys zu #629–#634** warten weiter auf Freigabe der Umgebung `produktion` durch den Betreiber (Code schläft).
+- **Werkzeuge in dieser Sitzung:** App-`npm ci` nur mit `npx -y npm@11 ci --ignore-scripts`; Postgres für realdb-Tests
+  unter `/var/tmp/aeq-pgtest` (Port 5433, Start siehe frühere Abschnitte); nach Squash-Merge Zweig neu von main und
+  `git merge -s ours` des alten Kopfs (Force-Push ist gesperrt, siehe „Arbeitsweise“).
+
+**Stand 23.11. ~12:30 UTC (dieselbe Sitzung):**
+- **#634 (B3 Briefkasten) gemergt** (6bbe85dd). Betreiber hat B4b **Weg 1** gewählt (alles im Handy, IBM-Schlüssel
+  bleibt im Gerät).
+- **App #108 offen (B4b-1, grün):** `lib/quantenSSchaltkreis.ts` (Schaltkreis eines Abschnitts in nativen Gattern als
+  OpenQASM 3, Mehrheit), gegen qiskit geprüft (`forschung/quantengeld/app_schaltkreis_pruefen.py`). Merge nach Freigabe.
+- **App #108 gemergt (6520f2c0).** Betreiber: „Weg 1 so umsetzen“.
+- **B4b-2 gebaut:** App `lib/ibmQuantum.ts` (IBM direkt aus dem Handy, Form aus qiskit-ibm-runtime belegt, Ergebnis
+  bitgenau wie RuntimeEncoder) + Aequitas `quanten-s-rest-probe.yml` / `ibm_rest_probe.py`: schickt GENAU den
+  Auftrag der App an echte Hardware. **Nächster Schritt: Betreiber startet die Probe** (Umgebung `quantenhardware`);
+  Ergebnis im Artefakt `ibm-rest-probe`. Wird der Auftrag abgewiesen: Grund lesen, Form anpassen.
+- Danach B4b-2: Anteile, Merkle und Bestätigung in TS (Prüfvektoren aus dem Knoten), B4b-3: UI und Briefkasten.
+
+**Stand 23.11. ~12:00 UTC (dieselbe Sitzung):**
 - **#633 (B4a-Vektor) und App #107 (B4a) gemergt** (d980bf63 / 010bcbcc) nach „Weiter“.
 - **B3 gebaut (PR von diesem Zweig): Briefkasten** `briefkasten.go` — ablegen (nur Menschen, unterschrieben),
   abholen/quittieren (nur Empfänger), alle Grenzen fest, 8 Tage Verfall, kein Konsens. Neuer öffentlicher Eingang:
