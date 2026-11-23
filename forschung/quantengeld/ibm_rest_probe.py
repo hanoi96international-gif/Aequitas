@@ -4,9 +4,11 @@
 Forschung, nicht im Knoten. Nur Standardbibliothek (kein qiskit).
 
 Die App (Aequitas-App lib/ibmQuantum.ts) reicht die Schaltkreise eines Abschnitts
-ohne qiskit direkt ueber die REST-Schnittstelle von IBM ein. Belegt ist die Form
-aus dem Quelltext von qiskit-ibm-runtime 0.52.1; NICHT belegt ist, dass der Server
-OpenQASM-Text in pubs annimmt, und wie das Ergebnis dann aussieht. Diese Probe
+ohne qiskit direkt ueber die REST-Schnittstelle von IBM ein. Belegt sind die Form
+aus dem Quelltext von qiskit-ibm-runtime 0.52.1 und aus der IBM-Doku "Sampler
+with the REST API" (OpenQASM-3-Text in pubs; Ergebnis results[i].data.c.samples).
+Der Python-Client schickt "support_qiskit": true und bekommt eine kodierte Form;
+die App schickt den Schalter nicht und liest beide Formen. Diese Probe
 schickt GENAU den Koerper der App (testdata/ibm_auftrag_vektor.json, Kopie aus der
 App; nur "backend" wird durch das Geraet der Umgebung ersetzt) mit dem Konto des
 Betreibers an echte Hardware, liest das Ergebnis so wie die App und prueft die
@@ -35,6 +37,7 @@ import zlib
 HIER = os.path.dirname(os.path.abspath(__file__))
 AUFTRAG = os.path.join(HIER, "testdata", "ibm_auftrag_vektor.json")
 ERGEBNIS = os.path.join(HIER, "testdata", "ibm_ergebnis_vektor.json")
+ERGEBNIS_EINFACH = os.path.join(HIER, "testdata", "ibm_ergebnis_einfach_vektor.json")
 
 IAM_URL = "https://iam.cloud.ibm.com/identity/token"
 API_BASIS = "https://quantum.cloud.ibm.com/api/v1"
@@ -86,7 +89,7 @@ def ndarray_zeilen(nd) -> list[bytes]:
     raise ProbeFehler("ndarray: Form")
 
 
-def ergebnis_schuesse(roh, kreise_n: list[int]) -> list[list[str]]:
+def kodierte_schuesse(roh, kreise_n: list[int]) -> list[list[str]]:
     pubs = huelle(roh, "PrimitiveResult").get("pub_results")
     if not isinstance(pubs, list) or len(pubs) != len(kreise_n):
         raise ProbeFehler("Ergebnis: Zahl der Schaltkreise")
@@ -105,6 +108,54 @@ def ergebnis_schuesse(roh, kreise_n: list[int]) -> list[list[str]]:
             schuesse.append(hex(v))
         out.append(schuesse)
     return out
+
+
+HEX_SCHUSS = re.compile(r"0x[0-9a-fA-F]{1,4}")
+
+
+def einfache_schuesse(roh, kreise_n: list[int]) -> list[list[str]]:
+    """Form der IBM-Doku (ohne support_qiskit): results[i].data.c.samples."""
+    res = roh.get("results")
+    if not isinstance(res, list) or len(res) != len(kreise_n):
+        raise ProbeFehler("Ergebnis: Zahl der Schaltkreise")
+    out = []
+    for r, n in zip(res, kreise_n):
+        data = r.get("data") if isinstance(r, dict) else None
+        if not isinstance(data, dict) or list(data) != ["c"]:
+            raise ProbeFehler("Ergebnis: Register")
+        c = data["c"]
+        if not isinstance(c, dict) or ("num_bits" in c and c["num_bits"] != n):
+            raise ProbeFehler("Ergebnis: Zahl der Bits")
+        s = c.get("samples")
+        if not isinstance(s, list) or not 1 <= len(s) <= 15:
+            raise ProbeFehler("Ergebnis: Schuesse")
+        schuesse = []
+        for h in s:
+            if not isinstance(h, str) or not HEX_SCHUSS.fullmatch(h):
+                raise ProbeFehler("Ergebnis: Schuss")
+            v = int(h, 16)
+            if v >> n:
+                raise ProbeFehler("Ergebnis: Bits ueber n")
+            schuesse.append(hex(v))
+        out.append(schuesse)
+    return out
+
+
+def ergebnis_form(roh) -> str:
+    if isinstance(roh, dict) and "__type__" in roh:
+        return "kodiert"
+    if isinstance(roh, dict) and "results" in roh:
+        return "einfach"
+    raise ProbeFehler("Ergebnis: Form")
+
+
+def ergebnis_schuesse(roh, kreise_n: list[int]) -> list[list[str]]:
+    """Beide Formen, jede streng -- wie die App (lib/ibmQuantum.ts ergebnisSchuesse)."""
+    if not kreise_n or len(kreise_n) > 64 or not all(isinstance(n, int) and 1 <= n <= 16 for n in kreise_n):
+        raise ProbeFehler("Ergebnis: Schaltkreise")
+    if ergebnis_form(roh) == "kodiert":
+        return kodierte_schuesse(roh, kreise_n)
+    return einfache_schuesse(roh, kreise_n)
 
 
 def mehrheit_x(kreise_n: list[int], schuesse_hex: list[list[str]], r: int) -> list[int]:
@@ -131,11 +182,29 @@ def selbsttest() -> None:
         raise AssertionError("falsche Bitzahl angenommen")
     except ProbeFehler:
         pass
+    einf = json.load(open(ERGEBNIS_EINFACH))
+    assert ergebnis_schuesse(einf["ergebnis"], [f["n"] for f in einf["erwartet"]]) == soll, "einfache Form weicht ab"
+    for name, aendern in [
+        ("Bits ueber n", lambda r: r["results"][3]["data"]["c"]["samples"].__setitem__(0, "0x8")),
+        ("anderes Register", lambda r: r["results"][0]["data"].__setitem__("meas", r["results"][0]["data"].pop("c"))),
+        ("kein Hex", lambda r: r["results"][0]["data"]["c"]["samples"].__setitem__(0, "17")),
+        ("zu lang", lambda r: r["results"][0]["data"]["c"]["samples"].__setitem__(0, "0x00001")),
+        ("zu viele Schuesse", lambda r: r["results"][0]["data"]["c"].__setitem__("samples", ["0x1"] * 16)),
+        ("ein Schaltkreis zu wenig", lambda r: r["results"].pop()),
+        ("falsche Bitzahl", lambda r: r["results"][0]["data"]["c"].__setitem__("num_bits", 15)),
+    ]:
+        kaputt = json.loads(json.dumps(einf["ergebnis"]))
+        aendern(kaputt)
+        try:
+            ergebnis_schuesse(kaputt, [f["n"] for f in einf["erwartet"]])
+            raise AssertionError(f"einfache Form: {name} angenommen")
+        except ProbeFehler:
+            pass
     a = json.load(open(AUFTRAG))
     k = json.loads(a["koerper"])
     assert k["program_id"] == "sampler" and len(k["params"]["pubs"]) == len(a["kreise_n"])
     assert json.dumps(k, separators=(",", ":"), ensure_ascii=False) == a["koerper"], "Koerper nicht byte-gleich wiederherstellbar"
-    print(f"Selbsttest IBM-REST-Probe: gut ({len(soll)} Schaltkreise gelesen, Koerper byte-gleich)")
+    print(f"Selbsttest IBM-REST-Probe: gut ({len(soll)} Schaltkreise in beiden Formen gelesen, Koerper byte-gleich)")
 
 
 # ------------------------------------------------------------ Probe
@@ -201,6 +270,7 @@ def probe(ausgabe: str) -> None:
         raise ProbeFehler(f"Ergebnis: HTTP {st}")
     ergebnis = json.loads(roh)
     bericht["ergebnis"] = ergebnis  # nur Messdaten und Metadaten des Auftrags, nichts Geheimes
+    bericht["ergebnis_form"] = ergebnis_form(ergebnis)
     schuesse = ergebnis_schuesse(ergebnis, a["kreise_n"])
     x = mehrheit_x(a["kreise_n"], schuesse, a["schuesse"])
     treffer = [i for i in range(len(x)) if a["u"][i] == a["y"][i]]
@@ -208,7 +278,7 @@ def probe(ausgabe: str) -> None:
     bericht.update({"schuesse_hex": schuesse, "treffer": len(treffer), "fehler": fehler})
     json.dump(bericht, open(ausgabe, "w"), indent=1)
     text = (f"## IBM-REST-Probe auf {backend}\n\nAuftrag `{job}` (Koerper der App, {len(koerper)} Byte): angenommen, "
-            f"{status}. Gelesen wie die App: {len(schuesse)} Schaltkreise. Physik: {fehler} Fehler bei {len(treffer)} Treffern "
+            f"{status}. Gelesen wie die App ({bericht['ergebnis_form']}e Form): {len(schuesse)} Schaltkreise. Physik: {fehler} Fehler bei {len(treffer)} Treffern "
             f"(Grenze {FEHLERRATE_MAX:.0%}).\n")
     print(text)
     if os.environ.get("GITHUB_STEP_SUMMARY"):

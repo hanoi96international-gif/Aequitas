@@ -7,7 +7,15 @@ Repos); davor ~13:40 UTC Sitzung „Weiter“ (`claude/weiter-uw2p42`), davor ~1
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
-**Stand 23.11. ~12:30 UTC (dieselbe Sitzung) — HIER WEITERMACHEN:**
+**Stand 23.11. ~13:00 UTC (dieselbe Sitzung) — HIER WEITERMACHEN:**
+- **Offen: Aequitas #635 (B4b-1/2) und App #109 (B4b-2)**, Merge nach Freigabe („Weiter“).
+- **IBM-Doku über die Websuche gelesen** (direkter Abruf gesperrt): OpenQASM-3-Text in `pubs` ist der
+  dokumentierte Weg. Ergebnis kommt ohne `support_qiskit` in der einfachen Form `results[i].data.c.samples`
+  (Hex je Schuss). App und Probe lesen jetzt beide Formen streng; Prüfvektor
+  `ibm_ergebnis_einfach_vektor.json` in beiden Repos. Hardware-Probe weiter offen (Betreiber startet
+  `quanten-s-rest-probe.yml`); der Bericht nennt die Form, die IBM liefert.
+
+**Stand 23.11. ~12:30 UTC (dieselbe Sitzung):**
 - **#634 (B3 Briefkasten) gemergt** (6bbe85dd). Betreiber hat B4b **Weg 1** gewählt (alles im Handy, IBM-Schlüssel
   bleibt im Gerät).
 - **App #108 offen (B4b-1, grün):** `lib/quantenSSchaltkreis.ts` (Schaltkreis eines Abschnitts in nativen Gattern als
@@ -16,7 +24,7 @@ dezentrales Quantengeld“.
 - **B4b-2 gebaut:** App `lib/ibmQuantum.ts` (IBM direkt aus dem Handy, Form aus qiskit-ibm-runtime belegt, Ergebnis
   bitgenau wie RuntimeEncoder) + Aequitas `quanten-s-rest-probe.yml` / `ibm_rest_probe.py`: schickt GENAU den
   Auftrag der App an echte Hardware. **Nächster Schritt: Betreiber startet die Probe** (Umgebung `quantenhardware`);
-  Ergebnis im Artefakt `ibm-rest-probe`. Wird OpenQASM abgewiesen: Grund lesen, Form anpassen (z. B. QPY).
+  Ergebnis im Artefakt `ibm-rest-probe`. Wird der Auftrag abgewiesen: Grund lesen, Form anpassen.
 - Danach B4b-2: Anteile, Merkle und Bestätigung in TS (Prüfvektoren aus dem Knoten), B4b-3: UI und Briefkasten.
 
 **Stand 23.11. ~12:00 UTC (dieselbe Sitzung):**

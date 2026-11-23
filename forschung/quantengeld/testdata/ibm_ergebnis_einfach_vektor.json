@@ -1,0 +1,123 @@
+{
+ "hinweis": "Ergebnis in der einfachen Form, wie die IBM-Doku 'Sampler with the REST API' es liest (results[i].data.c.samples, je Schuss ein Hex-Wert). Aus denselben Schuessen wie ibm_ergebnis_vektor.json gebaut (dieselbe Erwartung); die echte Antwort haelt die Hardware-Probe (Aequitas quanten-s-rest-probe.yml) fest.",
+ "ergebnis": {
+  "results": [
+   {
+    "data": {
+     "c": {
+      "samples": [
+       "0x1845",
+       "0x4c21",
+       "0x3f84",
+       "0x6a7c",
+       "0xf33e"
+      ],
+      "num_bits": 16
+     }
+    },
+    "metadata": {
+     "circuit_metadata": {}
+    }
+   },
+   {
+    "data": {
+     "c": {
+      "samples": [
+       "0x724d",
+       "0x3ee",
+       "0xe734",
+       "0x121b",
+       "0xcf44"
+      ],
+      "num_bits": 16
+     }
+    },
+    "metadata": {
+     "circuit_metadata": {}
+    }
+   },
+   {
+    "data": {
+     "c": {
+      "samples": [
+       "0xc7",
+       "0x91",
+       "0x56",
+       "0x64",
+       "0xee"
+      ],
+      "num_bits": 8
+     }
+    },
+    "metadata": {
+     "circuit_metadata": {}
+    }
+   },
+   {
+    "data": {
+     "c": {
+      "samples": [
+       "0x1",
+       "0x4",
+       "0x2",
+       "0x5",
+       "0x1"
+      ],
+      "num_bits": 3
+     }
+    },
+    "metadata": {
+     "circuit_metadata": {}
+    }
+   }
+  ],
+  "metadata": {
+   "execution": {
+    "execution_spans": []
+   },
+   "version": 2
+  }
+ },
+ "erwartet": [
+  {
+   "n": 16,
+   "schuesse_hex": [
+    "0x1845",
+    "0x4c21",
+    "0x3f84",
+    "0x6a7c",
+    "0xf33e"
+   ]
+  },
+  {
+   "n": 16,
+   "schuesse_hex": [
+    "0x724d",
+    "0x3ee",
+    "0xe734",
+    "0x121b",
+    "0xcf44"
+   ]
+  },
+  {
+   "n": 8,
+   "schuesse_hex": [
+    "0xc7",
+    "0x91",
+    "0x56",
+    "0x64",
+    "0xee"
+   ]
+  },
+  {
+   "n": 3,
+   "schuesse_hex": [
+    "0x1",
+    "0x4",
+    "0x2",
+    "0x5",
+    "0x1"
+   ]
+  }
+ ]
+}

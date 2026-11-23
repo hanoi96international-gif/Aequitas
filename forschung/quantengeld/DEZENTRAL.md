@@ -1796,12 +1796,23 @@ Gerät. Belegt aus `qiskit-ibm-runtime` 0.52.1: Pfade (`…/api/v1/jobs`, `…/j
 (ndarray als base64(zlib(npy))). Die App liest ein mit `RuntimeEncoder` kodiertes Ergebnis
 bitgenau (Prüfvektor).
 
-**Noch nicht belegt:** dass der Server OpenQASM-Text in `pubs` annimmt (der Python-Client
-schickt QPY). Dafür `quanten-s-rest-probe.yml` (Umgebung `quantenhardware`, Freigabe des
-Betreibers): schickt **genau den Körper der App** (`testdata/ibm_auftrag_vektor.json`, nur das
-Gerät wird ersetzt), liest das Ergebnis wie die App und prüft die Physik (Treffer mit u = y
-müssen t zeigen, ≤ 10 % Fehler). Kosten: 3 Schaltkreise × 5 Schüsse. Wird der Text abgewiesen,
-legt der Lauf den Grund von IBM ab; dann folgt QPY oder eine andere Form.
+**Nachtrag (Doku gelesen):** Die IBM-Doku „Sampler with the REST API“ (über die Websuche;
+der direkte Abruf war aus der Entwicklung gesperrt) belegt: Schaltkreise gehen als
+**OpenQASM-3-Text** in `pubs`, `program_id` `sampler`, Kopfzeilen `Service-CRN` und
+`IBM-API-Version` (2026-04-15). Die Doku liest das Ergebnis aber in einer **einfachen Form**:
+`results[i].data.c.samples`, je Schuss ein Hex-Wert. Die kodierte Form mit `__type__`-Hüllen
+bekommt nur, wer `"support_qiskit": true` schickt, wie der Python-Client
+(`options.py`). Die App schickt den Schalter nicht und liest jetzt **beide Formen**, jede
+streng: nur Register `c`, Bitzahl, höchstens 15 Schüsse, Hex mit höchstens 4 Stellen, keine
+Bits über n. Ein zweiter Prüfvektor (`testdata/ibm_ergebnis_einfach_vektor.json`) muss
+dieselben Schüsse ergeben.
+
+**Auf echter Hardware noch offen:** dass der Körper der App genau so angenommen wird und
+welche Form zurückkommt. Dafür `quanten-s-rest-probe.yml` (Umgebung `quantenhardware`,
+Freigabe des Betreibers): schickt **genau den Körper der App** (`testdata/ibm_auftrag_vektor.json`,
+nur das Gerät wird ersetzt), liest das Ergebnis wie die App (Bericht nennt die Form) und prüft
+die Physik (Treffer mit u = y müssen t zeigen, ≤ 10 % Fehler). Kosten: 3 Schaltkreise × 5
+Schüsse. Wird der Auftrag abgewiesen, legt der Lauf den Grund von IBM ab.
 
 ### Nächste Schritte
 
