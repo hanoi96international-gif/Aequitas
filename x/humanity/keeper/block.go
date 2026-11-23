@@ -426,6 +426,10 @@ type BlockDAG struct {
 	// Siehe setHeight fuer den Unterschied zu "zuletzt einen Block
 	// angehaengt" -- der zweite Wert luegt bei einem abgehaengten Knoten.
 	lastHeightAdvanceAt atomic.Int64
+	// neuesteBlockZeit: Zeitstempel des kanonisch neuesten Blocks, zuletzt
+	// gelesen von NeuesteBlockZeit (blockzeit_waechter.go) -- fuer Auskuenfte
+	// ohne Warten auf dag.mu.
+	neuesteBlockZeit atomic.Int64
 	// bootHeight is dag.height's value at construction time (after restoring
 	// it from the persisted "max_block_height" — see createGenesisBlock's
 	// caller), captured ONCE and never updated again. Used by

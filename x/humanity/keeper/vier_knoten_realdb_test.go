@@ -299,6 +299,24 @@ func neuesVierKnotenNetz(t *testing.T) *vierKnotenNetz {
 	netz := &vierKnotenNetz{t: t, ende: make(chan struct{})}
 	praefix := vierDBPraefix(t)
 
+	// Ratenzaehler (ip_burst.go) leeren, vorher und nachher: Die vier Knoten
+	// laufen hier in EINEM Prozess und alle Anfragen kommen von 127.0.0.1 --
+	// ipBurst ist paketweit. Lief kurz davor ein anderer Vier-Knoten-Test,
+	// zaehlten seine Anfragen an die Validator-Dienste noch im Fenster mit,
+	// und dieser Lauf bekam 429 (CI 23.11.2026, TestVierKnotenQuantenW_RealDB
+	// nach den S-Laeufen: "too many requests from this address"). Echte
+	// Knoten sind getrennte Prozesse mit eigenen Zaehlern. Die Grenzen selbst
+	// bleiben, wie sie sind.
+	ratenLeeren := func() {
+		var ks []any
+		ipBurst.Range(func(k, _ any) bool { ks = append(ks, k); return true })
+		for _, k := range ks {
+			ipBurst.Delete(k)
+		}
+	}
+	ratenLeeren()
+	t.Cleanup(ratenLeeren)
+
 	// Die Regeln des Betriebs, nicht die des TestMain: signierte Ueberweisungen
 	// und Wirtschaftsregeln nach ihren echten Stichtagen (0 = Konstante gilt).
 	// TestMain schaltet beides fuer die alten Tests ab (wirtschaft_main_test.go).
