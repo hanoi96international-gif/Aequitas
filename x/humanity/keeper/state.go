@@ -1441,6 +1441,22 @@ anteile BIGINT NOT NULL
 	// quanten_w_eintraege (quanten_w_tabelle.go): das Register der Variante W
 	// (und S) je Eintrag eine Zeile -- Art (note, token, tot), K, die Form
 	// des Eintrags als JSON. Konsens: das Register steht in der StateRoot.
+	// briefkasten (briefkasten.go): Pakete zwischen Praeparatorinnen (Weg B),
+	// nur Chiffrat. KEIN Konsens: Dienst des einzelnen Knotens, nicht in
+	// StateRoot oder Snapshot.
+	dbExec(`CREATE TABLE IF NOT EXISTS briefkasten (
+id BIGSERIAL PRIMARY KEY,
+schluessel TEXT NOT NULL UNIQUE,
+von TEXT NOT NULL,
+an TEXT NOT NULL,
+inhalt BYTEA NOT NULL,
+groesse INTEGER NOT NULL,
+zeit BIGINT NOT NULL,
+abgelegt BIGINT NOT NULL
+)`)
+	dbExec(`CREATE INDEX IF NOT EXISTS briefkasten_an ON briefkasten (an, id)`)
+	dbExec(`CREATE INDEX IF NOT EXISTS briefkasten_von ON briefkasten (von)`)
+	dbExec(`CREATE INDEX IF NOT EXISTS briefkasten_abgelegt ON briefkasten (abgelegt)`)
 	dbExec(`CREATE TABLE IF NOT EXISTS quanten_w_eintraege (
 art TEXT NOT NULL,
 k TEXT NOT NULL,

@@ -1275,6 +1275,11 @@ func (a *APIServer) buildMux() *http.ServeMux {
 		quantenSPraepMeldenTxArt, quantenSPraepAbmeldenTxArt, quantenSBestellenTxArt, quantenSLosenTxArt, quantenSBestellFristTxArt} {
 		mux.HandleFunc("/api/quanten-w/"+strings.TrimPrefix(art, "quanten_w_"), a.zumLeiter(a.handleQuantenW(art)))
 	}
+	// Weg B, Briefkasten (briefkasten.go): Dienst dieses Knotens, nicht ueber
+	// den Leiter -- abgelegt wird, wo der Absender ablegt.
+	for _, art := range []string{"ablegen", "abholen", "quittieren"} {
+		mux.HandleFunc("/api/briefkasten/"+art, a.handleBriefkasten(art))
+	}
 	// Weg B (quanten_s_praeparatoren.go): das Register der Praeparatoren fuer jeden.
 	mux.HandleFunc("/api/quanten-w/praeparatoren", a.lesenBegrenzt("/api/quanten-w/praeparatoren", a.handleQuantenSPraeparatoren))
 	mux.HandleFunc("/api/quanten-w/note", a.lesenBegrenzt("/api/quanten-w/note", a.handleQuantenWNote))
