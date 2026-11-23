@@ -9,7 +9,7 @@ dezentrales Quantengeld“.
 
 **Stand 23.11. ~07:00 UTC (dieselbe Sitzung) — HIER WEITERMACHEN:**
 - **#630 (B2b) gemergt** (a5ceb51d) nach „Weiter“ des Betreibers. C1-Deploy wartet auf `produktion` (Code schläft).
-- **B2c gebaut (PR von diesem Zweig): Pfand je Bestellung** — max(1 AEQ, 10 % der bestellten Deckung), zurück bei
+- **B2c gebaut: PR #631 (Pfand je Bestellung)**, Sicherheitsprüfung als PR-Kommentar, Merge erst nach Freigabe; — max(1 AEQ, 10 % der bestellten Deckung), zurück bei
   der Ausgabe, verfällt ans Grundeinkommen (neue Art `quanten_w_s_bestellung_frist` oder beim nächsten Bestellen).
   Macht „Abbruch und neu bestellen“ unwirtschaftlich (≥ 3 D erwartete Kosten). 11 Mutationen rot.
 - **Nächster Schritt B2d:** Wächter Blockzeit gegen echte Zeit (vorher klären, ob C1 bei Leerlauf leere Blöcke
