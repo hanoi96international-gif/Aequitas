@@ -30,7 +30,11 @@ dezentrales Quantengeld“.
   **einfache Ergebnisform** (`results[i].data.c.samples`), **0 Fehler bei 18 Treffern**. Ursache der 403 war die
   Kennung `Python-urllib` (einzige Änderung zwischen Lauf 4 und 5). App bekommt dieselbe feste Kennung
   (App-PR offen). **B4b-2 damit belegt.**
-- **Nächster Schritt B4b-3:** Anteile, Merkle und Bestätigung in TS (Prüfvektoren aus dem Knoten). Danach B4b-4
+- **App #113 und #641 gemergt.** **B4b-3a gebaut (PRs offen, Zweig `claude/weiter-nach-uebergabe-zyl7c6`):** App
+  `lib/quantenSPraeparieren.ts` (Werte mit Stellen-Bit, Shamir, Blätter, Bündel), Prüfvektor aus der App mit festem
+  Zufall, Knoten öffnet genau diese Bündel (`quanten_s_praep_buendel_vektor_test.go`); 6 + 2 Mutationen rot.
+  **Nächster Schritt B4b-3b:** Pakete für die Annahmestellen (Stichprobe v2, `quanten_s_anteil_oeffnung.go`),
+  `fuer_inhaberin`, Antwort-Nachricht (`quantenSAbschnittAntwortNachrichtAus`) und Bestätigung. Danach B4b-4
   Präparator-Seite (Schlüssel sicher im Gerät, Ablauf gelost → präparieren → Anteile über Briefkasten → öffnen).
 
 **Stand 23.11. ~13:10 UTC, Sitzung „Weiter nach Übergabe“ (Zweig `claude/weiter-nach-uebergabe-r1zjrz`, alle vier Repos):**
