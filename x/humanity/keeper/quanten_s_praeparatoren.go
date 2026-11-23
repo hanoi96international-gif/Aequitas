@@ -42,6 +42,17 @@ package keeper
 // (das Feld praep fehlt in der Kodierung). Ein Stichtag kommt erst mit B2b,
 // mit Deploy-Waechter wie bei den anderen Stichtagen.
 //
+// SCHLUESSEL (B4b-4a): Ausgeber und Inhaberin verschluesseln den Auftrag an
+// eine geloste Praeparatorin (die Basen y sind geheim; ECIES wie die Buendel,
+// quanten_s_anteil_oeffnung.go). Dazu steht im Eintrag ihr oeffentlicher
+// secp256k1-Schluessel (pub, 65 Byte unkomprimiert, Hex). Jeder Knoten stellt
+// ihn selbst aus der EIP-191-Unterschrift der Meldung wieder her -- niemand
+// reicht ihn ein, keiner glaubt einem anderen. Beim Lesen des Registers muss
+// er ein Punkt der Kurve sein und genau die Adresse des Kontos ergeben
+// (fail-closed). Melden mit ML-DSA wird abgewiesen: diese Unterschrift
+// liefert keinen secp256k1-Schluessel, die Praeparatorin waere im Los, aber
+// nicht erreichbar.
+//
 // EHRLICH: Den Vorlauf (1 Tag) kann der einzige Blockerzeuger (C1) heute um
 // bis zu quantenWBuchSpiel verkuerzen (Buchzeit zurueckdatiert). Das schadet
 // dem Los nicht: der Zufall des Loses kommt aus einer drand-Runde NACH der
@@ -61,6 +72,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/ethereum/go-ethereum/crypto"
 )
 
 const (
@@ -126,6 +139,7 @@ func quantenSPraepNachricht(art, wallet, K string, zeit int64) string {
 // quantenSPraep: ein Eintrag (Abgemeldet 0 = gemeldet).
 type quantenSPraep struct {
 	Konto      string
+	Pub        string // secp256k1 unkomprimiert, 130 Hex-Zeichen (siehe SCHLUESSEL)
 	Gemeldet   int64
 	Abgemeldet int64
 }
@@ -134,6 +148,7 @@ type quantenSPraep struct {
 type quantenSPraepForm struct {
 	K          string `json:"k"`
 	Konto      string `json:"konto"`
+	Pub        string `json:"pub"`
 	Gemeldet   int64  `json:"gemeldet"`
 	Abgemeldet int64  `json:"abgemeldet,omitempty"`
 }
@@ -147,11 +162,11 @@ func quantenSPraepLesen(fs []quantenSPraepForm) (map[string]quantenSPraep, error
 	out := make(map[string]quantenSPraep, len(fs))
 	for i, f := range fs {
 		if !istHash64(f.K) || (i > 0 && f.K <= fs[i-1].K) || !kanonischeAdresse(f.Konto) || istSystemAdresse(f.Konto) ||
-			f.K != quantenSPraepK(f.Konto) || f.Gemeldet <= 0 || f.Gemeldet == math.MaxInt64 ||
+			f.K != quantenSPraepK(f.Konto) || !quantenSPraepPubPasst(f.Pub, f.Konto) || f.Gemeldet <= 0 || f.Gemeldet == math.MaxInt64 ||
 			f.Abgemeldet < 0 || (f.Abgemeldet != 0 && f.Abgemeldet < f.Gemeldet) {
 			return nil, fmt.Errorf("quanten_w: Praeparator %d: Form", i)
 		}
-		out[f.K] = quantenSPraep{Konto: f.Konto, Gemeldet: f.Gemeldet, Abgemeldet: f.Abgemeldet}
+		out[f.K] = quantenSPraep{Konto: f.Konto, Pub: f.Pub, Gemeldet: f.Gemeldet, Abgemeldet: f.Abgemeldet}
 	}
 	return out, nil
 }
@@ -160,10 +175,52 @@ func quantenSPraepLesen(fs []quantenSPraepForm) (map[string]quantenSPraep, error
 func quantenSPraepFormen(m map[string]quantenSPraep) []quantenSPraepForm {
 	var out []quantenSPraepForm
 	for k, e := range m {
-		out = append(out, quantenSPraepForm{K: k, Konto: e.Konto, Gemeldet: e.Gemeldet, Abgemeldet: e.Abgemeldet})
+		out = append(out, quantenSPraepForm{K: k, Konto: e.Konto, Pub: e.Pub, Gemeldet: e.Gemeldet, Abgemeldet: e.Abgemeldet})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].K < out[j].K })
 	return out
+}
+
+// quantenSPraepPubPasst: ist pub ein secp256k1-Schluessel in kanonischer Form
+// (04 || X || Y, Kleinbuchstaben-Hex, Punkt der Kurve), der genau die Adresse
+// konto ergibt?
+func quantenSPraepPubPasst(pub, konto string) bool {
+	if len(pub) != 130 || !kleinHex(pub) || !strings.HasPrefix(pub, "04") {
+		return false
+	}
+	roh, err := hex.DecodeString(pub)
+	if err != nil {
+		return false
+	}
+	p, err := crypto.UnmarshalPubkey(roh)
+	if err != nil {
+		return false
+	}
+	return strings.ToLower(crypto.PubkeyToAddress(*p).Hex()) == konto
+}
+
+// quantenSPraepPubAusSig: der Schluessel hinter einer EIP-191-Unterschrift
+// (dieselbe Rechnung wie verifyPersonalSign), kanonisch als Hex. Nur nach
+// quantenWUnterschrift aufrufen; prueft trotzdem selbst, dass er zum Konto
+// passt.
+func quantenSPraepPubAusSig(nachricht, sig, konto string) (string, error) {
+	roh, err := hex.DecodeString(strings.TrimPrefix(sig, "0x"))
+	if err != nil || len(roh) != 65 {
+		return "", fmt.Errorf("Unterschrift nicht lesbar")
+	}
+	if roh[64] >= 27 {
+		roh[64] -= 27
+	}
+	h := crypto.Keccak256([]byte(fmt.Sprintf("\x19Ethereum Signed Message:\n%d%s", len(nachricht), nachricht)))
+	p, err := crypto.SigToPub(h, roh)
+	if err != nil {
+		return "", fmt.Errorf("Schluessel nicht wiederherstellbar")
+	}
+	pub := hex.EncodeToString(crypto.FromECDSAPub(p))
+	if !quantenSPraepPubPasst(pub, konto) {
+		return "", fmt.Errorf("Schluessel passt nicht zum Konto")
+	}
+	return pub, nil
 }
 
 // quantenSPraepAufraeumen: Abgemeldete nach dem Nachlauf vergessen.
@@ -214,8 +271,17 @@ func (cs *ChainState) quantenSPraepBescheidLocked(ctx context.Context, tx *Trans
 		if !kanonischeAdresse(wallet) || istSystemAdresse(wallet) || q.K != quantenSPraepK(wallet) {
 			return quantenWBefund("quanten_w_form", "Melden: Wallet nicht kanonisch oder K passt nicht zum Konto"), nil
 		}
-		if err := quantenWUnterschrift(q, quantenSPraepNachricht(tx.Type, wallet, q.K, tx.DistributionAt), wallet, zeit); err != nil {
+		// Nur EIP-191: ML-DSA liefert keinen Schluessel fuer ECIES (SCHLUESSEL).
+		if q.PQ != nil {
+			return quantenWBefund("quanten_s_praep_schluessel", "Melden nur mit der secp256k1-Unterschrift der Wallet (Schluessel fuer die Auftraege)"), nil
+		}
+		nachricht := quantenSPraepNachricht(tx.Type, wallet, q.K, tx.DistributionAt)
+		if err := quantenWUnterschrift(q, nachricht, wallet, zeit); err != nil {
 			return quantenWBefund("quanten_w_unterschrift", "%s: %v", kurzAdresse(wallet), err), nil
+		}
+		pub, err := quantenSPraepPubAusSig(nachricht, q.WalletSig, wallet)
+		if err != nil {
+			return quantenWBefund("quanten_s_praep_schluessel", "%s: %v", kurzAdresse(wallet), err), nil
 		}
 		if !cs.quantenSPraepIstMenschLocked(ctx, wallet) {
 			return quantenWBefund("quanten_s_praep_mensch", "%s ist kein registrierter Mensch", kurzAdresse(wallet)), nil
@@ -230,7 +296,7 @@ func (cs *ChainState) quantenSPraepBescheidLocked(ctx context.Context, tx *Trans
 		if len(neu.Praep) >= quantenSPraepHoechstens {
 			return quantenWBefund("quanten_s_praep_voll", "Register der Praeparatoren voll (%d)", len(neu.Praep)), nil
 		}
-		neu.Praep[q.K] = quantenSPraep{Konto: wallet, Gemeldet: zeit}
+		neu.Praep[q.K] = quantenSPraep{Konto: wallet, Pub: pub, Gemeldet: zeit}
 
 	case quantenSPraepAbmeldenTxArt:
 		e, da := reg.Praep[q.K]
@@ -274,7 +340,8 @@ func (cs *ChainState) quantenSPraepAbbildLocked(ctx context.Context, reg *quante
 }
 
 // handleQuantenSPraeparatoren: GET /api/quanten-w/praeparatoren -- das
-// Register fuer jeden (Konto, Melde- und Abmeldezeit, ab wann im Los). Nur
+// Register fuer jeden (Konto, Schluessel fuer die Auftraege, Melde- und
+// Abmeldezeit, ab wann im Los). Nur
 // Lesen, hoechstens quantenSPraepHoechstens Eintraege.
 func (a *APIServer) handleQuantenSPraeparatoren(w http.ResponseWriter, r *http.Request) {
 	writeJSONCORS(w)
@@ -285,7 +352,7 @@ func (a *APIServer) handleQuantenSPraeparatoren(w http.ResponseWriter, r *http.R
 	reg := a.state.quantenWJetzt() // ein Stand fuer Register und Bestellungen
 	liste := []map[string]interface{}{}
 	for _, f := range quantenSPraepFormen(reg.Praep) {
-		e := map[string]interface{}{"konto": f.Konto, "gemeldet": f.Gemeldet, "im_los_ab": sattAdd(f.Gemeldet, quantenSPraepVorlauf)}
+		e := map[string]interface{}{"konto": f.Konto, "pub": f.Pub, "gemeldet": f.Gemeldet, "im_los_ab": sattAdd(f.Gemeldet, quantenSPraepVorlauf)}
 		if f.Abgemeldet != 0 {
 			e["abgemeldet"] = f.Abgemeldet
 		}

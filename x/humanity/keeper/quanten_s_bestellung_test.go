@@ -38,7 +38,7 @@ func neueBWelt(t *testing.T) *bWelt {
 		w.praep = append(w.praep, a)
 		addHuman(w.cs, a, 0)
 		addHuman(w.nach, a, 0)
-		reg.Praep[quantenSPraepK(a)] = quantenSPraep{Konto: a, Gemeldet: w.z - 2*86400}
+		reg.Praep[quantenSPraepK(a)] = quantenSPraep{Konto: a, Pub: praepPubTest(w.keys[a]), Gemeldet: w.z - 2*86400}
 	}
 	for _, cs := range []*ChainState{w.cs, w.nach} {
 		cs.mu.Lock()
@@ -381,7 +381,7 @@ func TestQuantenSBestellung_EchterBeacon(t *testing.T) {
 	quantenSWegBAbOverride.Store(w.z - 30*86400)
 	reg := neuesQuantenWRegister()
 	for _, a := range w.praep {
-		reg.Praep[quantenSPraepK(a)] = quantenSPraep{Konto: a, Gemeldet: w.z - 2*86400}
+		reg.Praep[quantenSPraepK(a)] = quantenSPraep{Konto: a, Pub: praepPubTest(w.keys[a]), Gemeldet: w.z - 2*86400}
 	}
 	for _, cs := range []*ChainState{w.cs, w.nach} {
 		cs.mu.Lock()

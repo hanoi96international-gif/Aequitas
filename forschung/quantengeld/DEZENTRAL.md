@@ -175,7 +175,7 @@ Geheimnis besser, aber zum Einlösen müssen t Validatoren erreichbar sein.
 | A4 | Pilot: vier Knoten, je ein eigener Auftrag (im Pilot von einem Konto, das wird benannt) | **fertig** (12): beide Tests grün im Rauschmodell (44347416357) und auf dem Chip `ibm_fez` (44356741223), auch mit Ausfall eines Validators |
 | A5 | Hauptnetz mit einem zweiten Menschen als Validator, wenn möglich bei einem anderen Anbieter | **Werkzeug bereit** (13–15): Messquelle als Verzeichnis, `--s-abschnitt`, Einrichten mit einem Befehl, Basen automatisch vorgemerkt und gemessen; der zweite Mensch: Betreiber |
 | B1 | Weg B, Spezifikation: Präparatoren-Register, Los, Verfügbarkeit, Kontingent, Missbrauch (`s_weg_b.py`) | **fertig** (18) |
-| B2–B5 | Weg B: Kette (Register, Zufall, Los), Dienst/Briefkasten, App als Präparatorin, Pilot | B2a–B2d gebaut, schlafend; B3 und B4a gebaut (18); B4b, Stichtag, B5 offen |
+| B2–B5 | Weg B: Kette (Register, Zufall, Los), Dienst/Briefkasten, App als Präparatorin, Pilot | B2a–B2d gebaut, schlafend; B3, B4a, B4b-1 bis B4b-4a gebaut (18); B4b-4b/c, Stichtag, B5 offen |
 | C, W-Härtung | wie oben | Forschung; Partner |
 
 Die Kette ändert sich in A1 bis A4 nicht. Geändert werden die Ausgabe außerhalb der Kette
@@ -1870,6 +1870,21 @@ seinem eigenen Code (`quanten_s_praep_bestaetigen_vektor_test.go`).
 Damit sind die Bausteine der Präparatorin in der App vollständig. **Nächster Schritt B4b-4:**
 Ablauf und Oberfläche (Schlüssel und Tresor sicher im Gerät, gelost werden erkennen, IBM-Auftrag,
 Antwort über den Briefkasten, Bestätigen, Öffnung erst nach finaler Bindung und Wahl).
+
+### B4b-4a: Schlüssel der Präparatorin im Register (23.11.2026, gebaut, schlafend)
+
+Befund vor B4b-4: Ausgeber und Inhaberin müssen den Auftrag an eine geloste Präparatorin
+verschlüsseln (die Basen y sind geheim), das Register kannte aber nur Konto und Zeiten. Jetzt
+steht im Eintrag ihr öffentlicher secp256k1-Schlüssel (`pub`, 65 Byte unkomprimiert, Hex), den
+**jeder Knoten selbst** aus der EIP-191-Unterschrift der Meldung wiederherstellt
+(`quantenSPraepPubAusSig`); niemand reicht ihn ein. Beim Lesen des Registers muss er ein Punkt der
+Kurve sein und genau die Adresse des Kontos ergeben (fail-closed). Melden mit ML-DSA wird
+abgewiesen (`quanten_s_praep_schluessel`): diese Unterschrift liefert keinen Schlüssel für ECIES,
+die Präparatorin wäre im Los, aber nicht erreichbar. `GET /api/quanten-w/praeparatoren` zeigt
+`pub`. Die App meldet unverändert. Weg B schläft, das Register ist leer, die StateRoot bleibt
+byte-gleich. Ehrlich: Ein Mensch, dessen Wallet nach einem Umzug nur noch ML-DSA kann, kann
+sich so nicht als Präparatorin melden; dafür braucht es später einen eigenen, mitunterschriebenen
+Verschlüsselungsschlüssel.
 
 ### Nächste Schritte
 
