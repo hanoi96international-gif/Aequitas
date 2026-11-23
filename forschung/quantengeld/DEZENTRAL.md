@@ -1886,6 +1886,21 @@ byte-gleich. Ehrlich: Ein Mensch, dessen Wallet nach einem Umzug nur noch ML-DSA
 sich so nicht als Präparatorin melden; dafür braucht es später einen eigenen, mitunterschriebenen
 Verschlüsselungsschlüssel.
 
+### B4b-4b: Briefkasten aus der App und Hülle der Nachrichten (23.11.2026, gebaut)
+
+- **Briefkasten-Client** (App `lib/briefkasten.ts`, Prüfvektor `testdata/briefkasten_vektor.json`): ablegen,
+  abholen, quittieren genau wie `briefkasten.go`; Antwort streng gelesen. Der Absender, den der Knoten beim
+  Abholen nennt, zählt nicht.
+- **Hülle** (App `lib/quantenSHuelle.ts`): erst unterschreiben (Art, Absender, **Empfänger**, Kennung, Zeit,
+  Teil, Teilezahl, Hash der ganzen Nutzlast, Hash des Teils), dann ECIES an `pub` des Empfängers aus dem
+  Register. Öffnen prüft Form, Empfänger = ich, Art (`auftrag`, `antwort`, `buendel`, `bestaetigung`,
+  `oeffnung`), Zeit (höchstens 8 Tage + Spiel alt), Teilgrößen und die Unterschrift. Teile zu höchstens
+  30.000 Byte (ein voller Teil bleibt unter 64 KiB), höchstens 64 Teile. Der Zusammensetzer begrenzt offene
+  Nachrichten (32), Byte darin (8 MiB) und erledigte Kennungen (16.384; voll = abweisen, nie vergessen) und
+  weist Wiederholungen ab; die Liste wird gespeichert und übersteht einen Neustart.
+- Kein Konsens, der Knoten sieht nur Chiffrat. **Nächster Schritt B4b-4c:** Ablauf und Oberfläche (gelost
+  werden erkennen, Auftrag öffnen, messen, Antwort und Bündel als Hüllen verschicken, abholen, bestätigen).
+
 ### Offen vor dem Stichtag: Pfand je Präparator und Beweisweg (aus PR #628, 22.11.)
 
 PR #628 (B2 als ein Stück, geschlossen am 23.11., durch B2a–B2d ersetzt; Zweig
