@@ -1807,6 +1807,17 @@ streng: nur Register `c`, Bitzahl, höchstens 15 Schüsse, Hex mit höchstens 4 
 Bits über n. Ein zweiter Prüfvektor (`testdata/ibm_ergebnis_einfach_vektor.json`) muss
 dieselben Schüsse ergeben.
 
+**Instanz und Gerät selbst finden (23.11., nach Lauf 1 der Probe):** Lauf 1 brach ab, weil
+`IBM_QUANTUM_INSTANCE` und `IBM_QUANTUM_BACKEND` im Repo nicht gesetzt sind. Die bisherigen
+qiskit-Läufe brauchen sie nicht: `qiskit-ibm-runtime` sucht die Instanzen über IBM Cloud Global
+Search (`POST api.global-search-tagging.cloud.ibm.com/v3/resources/search`, Abfrage
+`service_name:quantum-computing`) und nimmt das freie Gerät mit der kürzesten Schlange
+(`GET …/backends`, `status.name` `online`, keine Attrappe, `queue_length`). App
+(`instanzenSuchen`, `geraeteListe`, `geraetWaehlen`) und Probe tun jetzt dasselbe; die
+Präparatorin gibt nur ihren Schlüssel ein. Grenzen: höchstens 100 Suchtreffer, 8 Instanzen,
+256 Geräte; nur strenge CRN- und Gerätenamen; eine Instanz ohne Zugang (401/403) wird
+übersprungen, jeder andere Fehler bricht ab.
+
 **Auf echter Hardware noch offen:** dass der Körper der App genau so angenommen wird und
 welche Form zurückkommt. Dafür `quanten-s-rest-probe.yml` (Umgebung `quantenhardware`,
 Freigabe des Betreibers): schickt **genau den Körper der App** (`testdata/ibm_auftrag_vektor.json`,

@@ -14,8 +14,10 @@ App; nur "backend" wird durch das Geraet der Umgebung ersetzt) mit dem Konto des
 Betreibers an echte Hardware, liest das Ergebnis so wie die App und prueft die
 Physik: wo die Basis der Inhaberin passt (u = y), muss die Mehrheit t zeigen.
 
-Zugang NUR ueber die Umgebung: IBM_QUANTUM_TOKEN (IBM-Cloud-API-Schluessel),
-IBM_QUANTUM_INSTANCE (CRN), IBM_QUANTUM_BACKEND. Nichts davon wird ausgegeben.
+Zugang NUR ueber die Umgebung: IBM_QUANTUM_TOKEN (IBM-Cloud-API-Schluessel), wahlweise
+IBM_QUANTUM_INSTANCE (CRN) und IBM_QUANTUM_BACKEND. Fehlen die beiden, findet die Probe
+sie wie die App: Instanzen ueber IBM Cloud Global Search, Geraet mit der kuerzesten
+Schlange. Schluessel und CRN werden nie ausgegeben.
 
 Aufruf:
   python3 -I ibm_rest_probe.py --selbsttest        (ohne Netz: Lesen am App-Vektor)
@@ -42,6 +44,9 @@ ERGEBNIS_EINFACH = os.path.join(HIER, "testdata", "ibm_ergebnis_einfach_vektor.j
 IAM_URL = "https://iam.cloud.ibm.com/identity/token"
 API_BASIS = "https://quantum.cloud.ibm.com/api/v1"
 API_VERSION = "2026-04-15"
+SUCHE_URL = "https://api.global-search-tagging.cloud.ibm.com/v3/resources/search?limit=100"
+CRN_FORM = re.compile(r"crn:v1:bluemix:public:quantum-computing:[a-z0-9-]{2,20}:a/[0-9a-f]{32}:[0-9a-f-]{36}::")
+GERAET_FORM = re.compile(r"[a-z][a-z0-9_]{2,40}")
 WARTEN_MAX_S = 3600
 FEHLERRATE_MAX = 0.10   # Treffer (u = y), deren Mehrheit nicht t zeigt
 
@@ -204,7 +209,43 @@ def selbsttest() -> None:
     k = json.loads(a["koerper"])
     assert k["program_id"] == "sampler" and len(k["params"]["pubs"]) == len(a["kreise_n"])
     assert json.dumps(k, separators=(",", ":"), ensure_ascii=False) == a["koerper"], "Koerper nicht byte-gleich wiederherstellbar"
-    print(f"Selbsttest IBM-REST-Probe: gut ({len(soll)} Schaltkreise in beiden Formen gelesen, Koerper byte-gleich)")
+    suche_selbsttest()
+    print(f"Selbsttest IBM-REST-Probe: gut ({len(soll)} Schaltkreise in beiden Formen gelesen, Koerper byte-gleich, Suche)")
+
+
+def suche_selbsttest() -> None:
+    """Instanzen und Geraete finden ohne Netz: anfrage durch feste Antworten ersetzt."""
+    global anfrage
+    c1 = "crn:v1:bluemix:public:quantum-computing:us-east:a/0123456789abcdef0123456789abcdef:01234567-89ab-cdef-0123-456789abcdef::"
+    c2 = c1.replace("01234567-89ab", "11111111-89ab")
+    dev = lambda n, q, **x: {"name": n, "status": {"name": "online"}, "queue_length": q, "qubits": 156, **x}
+    antworten = {
+        SUCHE_URL: (200, {"items": [{"crn": c2}, {"crn": c1}, {"crn": "crn:v1:evil"}, {"name": "ohne"}]}),
+        c1: (200, {"devices": [dev("ibm_a", 5), dev("ibm_b", 1, status={"name": "paused"}), dev("ibm_c", 0, **{"class": "mock"}),
+                               dev("ibm/x", 0), dev("ibm_klein", 0, qubits=5)]}),
+        c2: (200, {"devices": [dev("ibm_d", 3)]}),
+    }
+    alt = anfrage
+    try:
+        anfrage = lambda url, m, kopf, daten=None: (lambda st, j: (st, json.dumps(j).encode()))(*antworten[kopf.get("Service-CRN", url)])
+        assert instanzen_suchen("t") == [c1, c2], "Instanzen falsch"
+        st, liste = geraete_liste("t", c1)
+        assert st == 200 and [n for _, n, _ in liste] == ["ibm_klein", "ibm_a"], f"Geraete falsch: {liste}"
+        for falsch in ({"items": [{"crn": "crn:v1:evil"}]}, {"items": [{"crn": c1}] * 101}, {"items": {}}):
+            antworten[SUCHE_URL] = (200, falsch)
+            try:
+                instanzen_suchen("t")
+                raise AssertionError(f"Suche angenommen: {str(falsch)[:40]}")
+            except ProbeFehler:
+                pass
+        antworten[c1] = (200, {"devices": [dev("ibm_a", 1)] * 257})
+        try:
+            geraete_liste("t", c1)
+            raise AssertionError("zu lange Geraeteliste angenommen")
+        except ProbeFehler:
+            pass
+    finally:
+        anfrage = alt
 
 
 # ------------------------------------------------------------ Probe
@@ -227,23 +268,82 @@ def ibm_grund(roh: bytes) -> str:
     return re.sub(r"[^\x20-\x7e]", "", str(m))[:300]
 
 
+def instanzen_suchen(tok: str) -> list[str]:
+    """Wie die App (instanzenSuchen): IBM Cloud Global Search nach Quantum-Instanzen."""
+    st, roh = anfrage(SUCHE_URL, "POST", {"Authorization": f"Bearer {tok}", "Content-Type": "application/json", "Accept": "application/json"},
+                      json.dumps({"query": "service_name:quantum-computing", "fields": ["crn", "name"]}).encode())
+    if st != 200:
+        raise ProbeFehler(f"Instanzen: HTTP {st} {ibm_grund(roh)}")
+    items = json.loads(roh).get("items")
+    if not isinstance(items, list) or len(items) > 100:
+        raise ProbeFehler("Instanzen: Antwort")
+    crns = sorted({i.get("crn") for i in items if isinstance(i, dict) and isinstance(i.get("crn"), str) and CRN_FORM.fullmatch(i["crn"])})
+    if not crns:
+        raise ProbeFehler("Instanzen: keine Quantum-Instanz im Konto")
+    return crns[:8]
+
+
+def geraete_liste(tok: str, crn: str) -> tuple[int, list[tuple[int, str, int]]]:
+    """Wie die App (geraeteListe): freie Geraete (online, keine Attrappe), kuerzeste Schlange zuerst."""
+    st, roh = anfrage(f"{API_BASIS}/backends", "GET", {"Authorization": f"Bearer {tok}", "Service-CRN": crn,
+                                                       "IBM-API-Version": API_VERSION, "Accept": "application/json"})
+    if st != 200:
+        return st, []
+    devices = json.loads(roh).get("devices")
+    if not isinstance(devices, list) or len(devices) > 256:
+        raise ProbeFehler("Geraete: Antwort")
+    frei = []
+    for d in devices:
+        if not isinstance(d, dict) or (d.get("status") or {}).get("name") != "online" or d.get("class") == "mock":
+            continue
+        n, q, qb = d.get("name"), d.get("queue_length"), d.get("qubits")
+        if isinstance(n, str) and GERAET_FORM.fullmatch(n) and isinstance(q, int) and q >= 0 and isinstance(qb, int) and qb >= 1:
+            frei.append((q, n, qb))
+    return st, sorted(frei)
+
+
 def probe(ausgabe: str) -> None:
     schl, crn, backend = (os.environ.get(k, "").strip() for k in ("IBM_QUANTUM_TOKEN", "IBM_QUANTUM_INSTANCE", "IBM_QUANTUM_BACKEND"))
-    if not schl or not crn.startswith("crn:v1:") or not re.fullmatch(r"[a-z][a-z0-9_]{2,40}", backend):
-        raise ProbeFehler("IBM_QUANTUM_TOKEN, IBM_QUANTUM_INSTANCE (CRN) und IBM_QUANTUM_BACKEND noetig")
+    if not schl:
+        raise ProbeFehler("IBM_QUANTUM_TOKEN noetig")
+    if crn and not CRN_FORM.fullmatch(crn):
+        raise ProbeFehler("IBM_QUANTUM_INSTANCE: keine Quantum-CRN")
+    if backend and not GERAET_FORM.fullmatch(backend):
+        raise ProbeFehler("IBM_QUANTUM_BACKEND: Form")
     a = json.load(open(AUFTRAG))
-    k = json.loads(a["koerper"])
-    k["backend"] = backend
-    koerper = json.dumps(k, separators=(",", ":"), ensure_ascii=False).encode()
+    min_qubits = max(a["kreise_n"])
 
     st, roh = anfrage(IAM_URL, "POST", {"Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json"},
                       ("grant_type=urn%3Aibm%3Aparams%3Aoauth%3Agrant-type%3Aapikey&apikey=" + urllib.parse.quote(schl, safe="")).encode())
     if st != 200:
         raise ProbeFehler(f"IAM: HTTP {st}")
     tok = json.loads(roh)["access_token"]
-    kopf = {"Authorization": f"Bearer {tok}", "Service-CRN": crn, "IBM-API-Version": API_VERSION, "Accept": "application/json"}
 
-    bericht = {"backend": backend, "api_version": API_VERSION, "koerper_bytes": len(koerper)}
+    # Ohne Vorgabe wie die App: Instanz und Geraet selbst finden (kuerzeste Schlange, genug Qubits).
+    bericht = {"api_version": API_VERSION, "instanz": "Variable" if crn else "Global Search",
+               "geraet_quelle": "Variable" if backend else "kuerzeste Schlange"}
+    if not crn or not backend:
+        best = None
+        for c in ([crn] if crn else instanzen_suchen(tok)):
+            st, liste = geraete_liste(tok, c)
+            if st in (401, 403):
+                continue
+            if st != 200:
+                raise ProbeFehler(f"Geraete: HTTP {st}")
+            for q, n, qb in liste:
+                if qb >= min_qubits and (not backend or n == backend):
+                    if best is None or q < best[0]:
+                        best = (q, n, c)
+                    break
+        if best is None:
+            raise ProbeFehler("Geraete: kein freies Geraet")
+        bericht["schlange"], backend, crn = best
+    bericht["backend"] = backend
+    k = json.loads(a["koerper"])
+    k["backend"] = backend
+    koerper = json.dumps(k, separators=(",", ":"), ensure_ascii=False).encode()
+    bericht["koerper_bytes"] = len(koerper)
+    kopf = {"Authorization": f"Bearer {tok}", "Service-CRN": crn, "IBM-API-Version": API_VERSION, "Accept": "application/json"}
     st, roh = anfrage(f"{API_BASIS}/jobs", "POST", {**kopf, "Content-Type": "application/json"}, koerper)
     bericht["einreichen_http"] = st
     if st not in (200, 201):
