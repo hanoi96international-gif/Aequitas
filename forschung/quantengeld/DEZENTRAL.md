@@ -1818,6 +1818,15 @@ Präparatorin gibt nur ihren Schlüssel ein. Grenzen: höchstens 100 Suchtreffer
 256 Geräte; nur strenge CRN- und Gerätenamen; eine Instanz ohne Zugang (401/403) wird
 übersprungen, jeder andere Fehler bricht ab.
 
+**Region der Instanz (nach Lauf 2):** Lauf 2 kam bis zur Gerätesuche (Anmeldung und Global
+Search gingen), fand aber kein freies Gerät. Ursache laut `qiskit-ibm-runtime`
+(`api/utils.py`, `default_runtime_url_resolver`): Die API-Adresse hängt von der Region der
+Instanz ab. Für `us-east` ist es `quantum.cloud.ibm.com/api/v1`, für andere Regionen
+`<region>.quantum.cloud.ibm.com/api/v1`, etwa `eu-de` (Frankfurt). App und Probe nehmen die
+Adresse jetzt aus einer festen Tabelle (us-east, eu-de; nie ein Hostname aus der CRN).
+Instanzen anderer Regionen werden übergangen. Die Probe schreibt zudem bei jedem Scheitern
+der Suche, was sie gesehen hat: Regionen, Antwortcodes, öffentliche Gerätedaten, ohne CRN.
+
 **Auf echter Hardware noch offen:** dass der Körper der App genau so angenommen wird und
 welche Form zurückkommt. Dafür `quanten-s-rest-probe.yml` (Umgebung `quantenhardware`,
 Freigabe des Betreibers): schickt **genau den Körper der App** (`testdata/ibm_auftrag_vektor.json`,

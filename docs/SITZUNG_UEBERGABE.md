@@ -7,20 +7,18 @@ Repos); davor ~13:40 UTC Sitzung „Weiter“ (`claude/weiter-uw2p42`), davor ~1
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
-**Stand 23.11. ~13:10 UTC, Sitzung „Weiter nach Übergabe“ (Zweig `claude/weiter-nach-uebergabe-r1zjrz`, alle vier Repos) — HIER WEITERMACHEN:**
+**Stand 23.11. ~13:40 UTC, Sitzung „Weiter nach Übergabe“ (Zweig `claude/weiter-nach-uebergabe-r1zjrz`, alle vier Repos) — HIER WEITERMACHEN:**
 - **Gemergt nach „Weiter“ (12:40 UTC):** Aequitas **#635** (971ab3ba; B4b-1 qiskit-Gegenprobe + B4b-2 IBM-REST-Probe)
   und Aequitas-App **#109** (236c9814; B4b-2 `lib/ibmQuantum.ts`). Kein offener PR mehr aus dieser Sitzung.
 - **Probe Lauf 1 (45179139174, 13:02 UTC) abgebrochen:** `IBM_QUANTUM_INSTANCE`/`IBM_QUANTUM_BACKEND` sind im Repo
   nicht gesetzt (qiskit findet sie selbst). IBM wurde nicht erreicht; der Schlüssel kam an.
-- **Offen, CI lief bei Übergabe (13:10 UTC):** Aequitas **#636** (Kopf 7fac971d: Probe findet Instanz über IBM Cloud
-  Global Search und Gerät mit kürzester Schlange selbst; Selbsttest ohne Netz) und Aequitas-App **#110** (Kopf 205ab0f:
-  `instanzenSuchen`, `geraeteListe`, `geraetWaehlen` in `lib/ibmQuantum.ts`; 1215 Tests, 14 Mutationen rot). Beide
-  lokal grün. Merge nur nach „Weiter“.
-- **Nach dem Merge:** Probe erneut starten (`mcp__github__actions_run_trigger`, `run_workflow`,
-  `quanten-s-rest-probe.yml`, ref `main`) — der Betreiber hat gesagt „Mach du das“, er klickt nur die Freigabe von
-  `quantenhardware` (Link zum Lauf schicken). Dann Logs/Artefakt lesen: angenommen? `ergebnis_form`? Fehler bei
-  Treffern ≤ 10 %? Bei Ablehnung Grund lesen und App + Vektor anpassen.
-- Geplanter Check-in 13:28 UTC (Probe auswerten) läuft noch; Abonnements auf #636 und App #110 aktiv.
+- **#636 und App #110 gemergt** (45eacc52 / c49fec41): Probe und App finden Instanz (Global Search) und Gerät selbst.
+- **Probe Lauf 2 (45183774130, 13:26 UTC):** Anmeldung und Instanzsuche gingen, dann „kein freies Gerät“. Ursache
+  (aus qiskit-ibm-runtime): API-Adresse hängt von der Region ab (`eu-de` → `eu-de.quantum.cloud.ibm.com/api/v1`).
+- **Offen (neue PRs von diesem Zweig):** App und Probe nehmen die Adresse aus fester Tabelle (us-east, eu-de); Probe
+  schreibt bei Scheitern der Suche Regionen, Antwortcodes und Gerätedaten (ohne CRN) in Log und Artefakt; IBM-Gründe
+  ohne CRN. Nach Merge („Weiter“) Probe Lauf 3 starten (`actions_run_trigger`), Betreiber gibt `quantenhardware` frei.
+- Check-in 13:51 UTC (Lauf 2 auswerten) ist durch den Befund erledigt.
 - **IBM-Doku über die Websuche gelesen** (direkter Abruf aus der Sitzung gesperrt; nicht umgehen): OpenQASM-3-Text in
   `pubs` ist der dokumentierte Weg. Ergebnis ohne `support_qiskit` in der einfachen Form `results[i].data.c.samples`
   (Hex je Schuss); mit `support_qiskit: true` (Python-Client) die kodierte Form mit `__type__`-Hüllen. App und Probe
