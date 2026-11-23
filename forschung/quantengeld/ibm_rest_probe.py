@@ -212,7 +212,33 @@ def selbsttest() -> None:
     assert k["program_id"] == "sampler" and len(k["params"]["pubs"]) == len(a["kreise_n"])
     assert json.dumps(k, separators=(",", ":"), ensure_ascii=False) == a["koerper"], "Koerper nicht byte-gleich wiederherstellbar"
     suche_selbsttest()
+    kennung_selbsttest()
     print(f"Selbsttest IBM-REST-Probe: gut ({len(soll)} Schaltkreise in beiden Formen gelesen, Koerper byte-gleich, Suche)")
+
+
+def kennung_selbsttest() -> None:
+    """Jede Anfrage traegt die eigene Kennung, auch wenn der Aufrufer Koepfe mitgibt."""
+    gesehen: list = []
+
+    class Antwort:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def read(self, n):
+            return b"{}"
+
+    alt = urllib.request.urlopen
+    try:
+        urllib.request.urlopen = lambda req, timeout: (gesehen.append(req.get_header("User-agent")), Antwort())[1]
+        anfrage("https://quantum.cloud.ibm.com/api/v1/backends", "GET", {"Accept": "application/json"})
+    finally:
+        urllib.request.urlopen = alt
+    assert gesehen == [USER_AGENT], f"Kennung falsch: {gesehen}"
 
 
 def suche_selbsttest() -> None:
@@ -262,6 +288,11 @@ def suche_selbsttest() -> None:
                 raise AssertionError(f"Suche angenommen: {str(falsch)[:40]}")
             except ProbeFehler:
                 pass
+        antworten[c1] = (403, {"errors": [{"message": "Forbidden\x1b[31m: kein Zugang"}]})
+        sicht = []
+        assert geraete_liste("t", c1, sicht) == (403, [])
+        assert sicht == [{"grund": "http 403", "fehler": "Forbidden[31m: kein Zugang"}], f"403-Grund falsch: {sicht}"
+        assert fehler_text(b"<html><body><h1>Access Denied</h1>\x00 Ref 1</body></html>") == "Access Denied Ref 1"
         antworten[c1] = (200, {"devices": [dev("ibm_a", 1)] * 257})
         try:
             geraete_liste("t", c1)
@@ -274,13 +305,32 @@ def suche_selbsttest() -> None:
 
 # ------------------------------------------------------------ Probe
 
+# Eigene Kennung statt "Python-urllib/x" (die weisen vorgeschaltete Schutzsysteme oft mit 403 ab).
+USER_AGENT = "aequitas-ibm-rest-probe/1"
+# Letzte Fehlerantwort (nur Status, Server-Kopf, bereinigter Textanfang) fuer den Bericht.
+LETZTER_FEHLER: dict = {}
+
+
 def anfrage(url: str, methode: str, kopf: dict, daten: bytes | None = None) -> tuple[int, bytes]:
-    req = urllib.request.Request(url, data=daten, method=methode, headers=kopf)
+    req = urllib.request.Request(url, data=daten, method=methode, headers={"User-Agent": USER_AGENT, **kopf})
     try:
         with urllib.request.urlopen(req, timeout=60) as r:
             return r.status, r.read(8 * 1024 * 1024 + 1)
     except urllib.error.HTTPError as e:
-        return e.code, e.read(65536)
+        roh = e.read(65536)
+        LETZTER_FEHLER.clear()
+        LETZTER_FEHLER.update({"http": e.code, "server": _kurz(e.headers.get("server", "")),
+                               "text": fehler_text(roh)})
+        return e.code, roh
+
+
+def fehler_text(roh: bytes) -> str:
+    """Grund aus einer Fehlerantwort: JSON-Meldung, sonst Textanfang ohne Tags; nur druckbar, gekuerzt."""
+    g = ibm_grund(roh)
+    if g:
+        return g
+    t = re.sub(r"<[^>]{0,200}>", " ", roh[:4096].decode("utf-8", "replace"))
+    return re.sub(r"\s+", " ", re.sub(r"[^\x20-\x7e]", " ", t)).strip()[:200]
 
 
 def ibm_grund(roh: bytes) -> str:
@@ -331,6 +381,8 @@ def geraete_liste(tok: str, crn: str, sicht: list | None = None) -> tuple[int, l
     st, roh = anfrage(f"{api_basis(crn)}/backends", "GET", {"Authorization": f"Bearer {tok}", "Service-CRN": crn,
                                                        "IBM-API-Version": API_VERSION, "Accept": "application/json"})
     if st != 200:
+        if sicht is not None:
+            sicht.append({"grund": f"http {st}", "fehler": fehler_text(roh)})
         return st, []
     devices = json.loads(roh).get("devices")
     if not isinstance(devices, list) or len(devices) > 256:
@@ -405,11 +457,14 @@ def probe(ausgabe: str) -> None:
                         best = (q, n, c)
                     break
         if best is None:
+            bericht["letzter_fehler"] = dict(LETZTER_FEHLER)
             json.dump(bericht, open(ausgabe, "w"), indent=1)
             uebersicht = "; ".join(f"Instanz {i + 1} ({x['region']}): HTTP {x['http']}, " + ", ".join(
-                f"{g.get('name', '?')}={g['grund']}/{g.get('status', '?')}/{g.get('qubits', '?')}q" for g in x["geraete"][:16])
+                (f"{g.get('name', '?')}={g['grund']}/{g.get('status', '?')}/{g.get('qubits', '?')}q" if "fehler" not in g
+                 else f"IBM: {g['fehler'] or '(leer)'}") for g in x["geraete"][:16])
                 for i, x in enumerate(bericht["instanzen"]))
-            raise ProbeFehler(f"Geraete: kein freies Geraet (mindestens {min_qubits} Qubits). {uebersicht}"[:1500])
+            raise ProbeFehler(f"Geraete: kein freies Geraet (mindestens {min_qubits} Qubits). {uebersicht}. "
+                             f"Server: {LETZTER_FEHLER.get('server', '?')}"[:1500])
         bericht["schlange"], backend, crn = best
     bericht["backend"] = backend
     k = json.loads(a["koerper"])
