@@ -18,8 +18,10 @@ dezentrales Quantengeld“.
   1242 Tests grün, 4 Mutationen rot. Merge nach #646.
 - **Nächster Schritt B4b-4b (Rest):** Nachrichten über den Briefkasten (Auftrag an `pub` der Gelosten, Antwort,
   Bündel, Bestätigung, Öffnung), jede selbst unterschrieben, große Abschnitte in Teile ≤ 64 KB. Dann B4b-4c Oberfläche.
-- Ältere offene PRs, vermutlich überholt (nicht angefasst, Betreiber entscheidet): #637 und App #111 (B4b-2, durch
-  #639/App #112 ersetzt), #628 (B2, durch #629–#632 ersetzt), #340 (Kegel-Entwurf).
+- **Ältere PRs geprüft und geschlossen (Auftrag des Betreibers):** #637 und App #111 (durch #639/#640 bzw. App
+  #112/#113 ersetzt), #628 (Code durch B2a–B2d ersetzt; Pfand je Präparator und Beweisweg-Entwurf nach
+  `DEZENTRAL.md` „Offen vor dem Stichtag“ übernommen), #340 (Kegel-Anker, Basis zu alt; Verweis in `docs/OFFEN.md`
+  Punkt 3). Zweige bleiben bestehen. Damit keine fremden offenen PRs mehr.
 - Postgres lokal: `pg_ctlcluster 16 main start`, Passwort `postgres`, DB `aequitas_ci`, Tests mit
   `AEQUITAS_TPS_BENCH=1 DATABASE_URL=postgres://postgres:postgres@localhost:5432/aequitas_ci?sslmode=disable`.
 
