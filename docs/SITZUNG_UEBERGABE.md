@@ -20,6 +20,11 @@ dezentrales Quantengeld“.
   der Region im CRN (`us-east` → `quantum.cloud.ibm.com`, `eu-de` → `eu-de.quantum.cloud.ibm.com`); Probe und App
   schickten immer an us-east. **PRs (offen):** Aequitas (Probe `api_basis`, Region im Bericht) und App
   (`apiBasis`, Suche übergeht unbekannte Regionen). Nach dem Merge Probe erneut starten (Freigabe `quantenhardware`).
+- **#639 und App #112 gemergt.** Lauf 4 ([45207545850](https://github.com/hanoi96international-gif/Aequitas/actions/runs/45207545850)):
+  Instanz liegt in **us-east**, `/backends` trotzdem **403** — die Region war nicht die Ursache (Änderung bleibt, sie
+  entspricht qiskit). qiskit kam mit demselben Schlüssel am 22.11. durch (quanten-s-ausgabe 45050231784). Nächster
+  Verdacht: `urllib` schickt `User-Agent: Python-urllib/3.13`, den vorgeschaltete Schutzsysteme oft mit 403 abweisen.
+  **PR (offen):** eigene Kennung, Text und `server`-Kopf der Fehlerantwort im Bericht. Danach Lauf 5.
 
 **Stand 23.11. ~13:10 UTC, Sitzung „Weiter nach Übergabe“ (Zweig `claude/weiter-nach-uebergabe-r1zjrz`, alle vier Repos):**
 - **Gemergt nach „Weiter“ (12:40 UTC):** Aequitas **#635** (971ab3ba; B4b-1 qiskit-Gegenprobe + B4b-2 IBM-REST-Probe)
