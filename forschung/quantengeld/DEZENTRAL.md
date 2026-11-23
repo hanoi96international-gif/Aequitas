@@ -175,7 +175,7 @@ Geheimnis besser, aber zum Einlösen müssen t Validatoren erreichbar sein.
 | A4 | Pilot: vier Knoten, je ein eigener Auftrag (im Pilot von einem Konto, das wird benannt) | **fertig** (12): beide Tests grün im Rauschmodell (44347416357) und auf dem Chip `ibm_fez` (44356741223), auch mit Ausfall eines Validators |
 | A5 | Hauptnetz mit einem zweiten Menschen als Validator, wenn möglich bei einem anderen Anbieter | **Werkzeug bereit** (13–15): Messquelle als Verzeichnis, `--s-abschnitt`, Einrichten mit einem Befehl, Basen automatisch vorgemerkt und gemessen; der zweite Mensch: Betreiber |
 | B1 | Weg B, Spezifikation: Präparatoren-Register, Los, Verfügbarkeit, Kontingent, Missbrauch (`s_weg_b.py`) | **fertig** (18) |
-| B2–B5 | Weg B: Kette (Register, Zufall, Los), Dienst/Briefkasten, App als Präparatorin, Pilot | B2a–B2d gebaut, schlafend (18); Stichtag, B3–B5 offen |
+| B2–B5 | Weg B: Kette (Register, Zufall, Los), Dienst/Briefkasten, App als Präparatorin, Pilot | B2a–B2d gebaut, schlafend; B3 und B4a gebaut (18); B4b, Stichtag, B5 offen |
 | C, W-Härtung | wie oben | Forschung; Partner |
 
 Die Kette ändert sich in A1 bis A4 nicht. Geändert werden die Ausgabe außerhalb der Kette
@@ -1760,6 +1760,22 @@ prüft die Unterschrift der Wallet selbst (kanonisch, gehört zur eigenen Adress
 sonst nichts ein. Solange Weg B schläft, zeigt die Karte das an und bietet nichts an.
 Prüfvektor Knoten ↔ App: `testdata/quanten_s_praep_vektor.json` (K, Nachrichten und
 Unterschriften bytegleich; der Knoten nimmt genau diese Sätze an). 8 Mutationen in der App rot.
+
+### B3: Briefkasten bei den Knoten (23.11.2026, gebaut)
+
+`x/humanity/keeper/briefkasten.go`: Handys tauschen verschlüsselte Pakete über den Knoten.
+`POST /api/briefkasten/ablegen` (nur ein registrierter Mensch, unterschrieben mit seiner
+Wallet über Absender, Empfänger, SHA-256 des Inhalts und Zeit), `…/abholen` und
+`…/quittieren` (nur der Empfänger, unterschrieben). Der Knoten sieht nur Chiffrat.
+
+Grenzen: Inhalt ≤ 64 KB; je Absender ≤ 512 Briefe und ≤ 32 MB, je Empfänger ≤ 1024 Briefe,
+im ganzen Kasten ≤ 1 GB; nach 8 Tagen verfällt ein Brief; Abholen ≤ 32 Briefe bzw. 2 MB je
+Aufruf; 60 Anfragen je IP und Minute; unterschriebene Zeiten ± 5 min. Dieselbe Ablage zweimal
+wird abgewiesen. Ohne Datenbank oder bei einem Lesefehler nimmt der Kasten nichts an (503).
+
+Keine Konsensregel: ein Dienst des einzelnen Knotens (keine StateRoot, kein Snapshot). Wer
+sicher gehen will, legt bei mehreren Knoten ab und holt bei mehreren ab. 3 Tests (auch gegen
+echtes PostgreSQL), 15 Mutationen rot.
 
 ### Nächste Schritte
 

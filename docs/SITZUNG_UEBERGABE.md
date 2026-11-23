@@ -7,7 +7,15 @@ Repos); davor ~13:40 UTC Sitzung „Weiter“ (`claude/weiter-uw2p42`), davor ~1
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
-**Stand 23.11. ~11:30 UTC (dieselbe Sitzung) — HIER WEITERMACHEN:**
+**Stand 23.11. ~12:00 UTC (dieselbe Sitzung) — HIER WEITERMACHEN:**
+- **#633 (B4a-Vektor) und App #107 (B4a) gemergt** (d980bf63 / 010bcbcc) nach „Weiter“.
+- **B3 gebaut (PR von diesem Zweig): Briefkasten** `briefkasten.go` — ablegen (nur Menschen, unterschrieben),
+  abholen/quittieren (nur Empfänger), alle Grenzen fest, 8 Tage Verfall, kein Konsens. Neuer öffentlicher Eingang:
+  eigene Sicherheitsprüfung als PR-Kommentar vor dem Merge.
+- **Nächster Schritt B4b:** App als Präparatorin, Teil 2 (gelost werden erkennen, Abschnitt präparieren mit
+  IBM-Schlüssel nur im Gerät, Anteile über den Briefkasten verteilen, öffnen). Danach Stichtag (Betreiber) und Pilot B5.
+
+**Stand 23.11. ~11:30 UTC (dieselbe Sitzung):**
 - **#632 (B2d, Wächter Blockzeit) gemergt** (2b433761). Dabei behoben: db-tests 429 durch geteilte Ratenzähler
   zwischen Vier-Knoten-Tests (Test-Isolation, `neuesVierKnotenNetz` leert `ipBurst`).
 - **B4a gebaut (PRs von diesem Zweig in Aequitas und Aequitas-App):** die App meldet/abmeldet sich als Präparatorin
