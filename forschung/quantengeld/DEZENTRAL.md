@@ -1750,10 +1750,22 @@ liegt. Damit fällt auf, wenn C1 die Blockzeit zurückhält (und so eine schon b
 drand-Runde losen ließe) oder hängt. Keine Konsensregel. Lint mit 6 neuen Fällen,
 Gegenprobe rot.
 
+### B4a: die App als Präparatorin — melden und abmelden (23.11.2026, gebaut)
+
+Aequitas-App `lib/quantenSPraeparator.ts` und eine Karte auf der Quantengeld-Seite (12
+Sprachen): das Register lesen (streng, ≤ 256 Einträge, ≤ 128 KB), den eigenen Stand zeigen
+(nicht gemeldet, wartet auf den Vorlauf, im Los, abgemeldet bis …) und mit der
+**Menschen-Wallet** melden oder abmelden — erst nach ausdrücklicher Bestätigung. Die App
+prüft die Unterschrift der Wallet selbst (kanonisch, gehört zur eigenen Adresse) und reicht
+sonst nichts ein. Solange Weg B schläft, zeigt die Karte das an und bietet nichts an.
+Prüfvektor Knoten ↔ App: `testdata/quanten_s_praep_vektor.json` (K, Nachrichten und
+Unterschriften bytegleich; der Knoten nimmt genau diese Sätze an). 8 Mutationen in der App rot.
+
 ### Nächste Schritte
 
 | Schritt | Was |
 |---|---|
+| B4b | App als Präparatorin, Teil 2: gelost werden erkennen, Abschnitt präparieren (IBM-Schlüssel nur im Gerät, REST-Auftrag), Anteile verteilen, nach der Bindung öffnen. Braucht B3 (Briefkasten) für Pakete zwischen Handys. |
 | Stichtag | Weg B scharf schalten: nur auf Entscheidung des Betreibers, mit Deploy-Wächter wie bei den anderen Stichtagen; vorher Pfand-Höhe am echten Register prüfen (`s_weg_b.py --tabelle`). Ohne B4 (App als Präparatorin) kann sich noch niemand bequem melden. |
 | B2 (gesamt) | Kette: Präparatoren-Register (B2a gebaut), Zufall aus Zusage und Offenlegung, Los, Prüfung der Ausgabe gegen das Los, Pfand. Konsensänderung mit Stichtag, eigene Sicherheitsprüfung, Prüfvektor aus `s_weg_b.py`. |
 | B3 | Briefkasten bei den Knoten: verschlüsselte Pakete (Basen y, Anteile, Öffnungen) ablegen und abholen, begrenzt je Absender und Größe. |
