@@ -2,7 +2,7 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 23.11.2026 ~19:15 UTC (Sitzung „Weiter mit Übergabe“, Zweig `claude/uebergabe-fortsetzen-g5xqox`); davor ~18:05 UTC (Sitzung „Weiter nach Übergabe“, Zweig `claude/weiter-nach-uebergabe-zyl7c6`); davor 22.11.2026 ~18:50 UTC, Sitzung „CL Übergabe weitermachen“ (`claude/cl-uebergabe-weitermachen-jdz5h7`); davor ~16:40 UTC Sitzung „Weiter Übergabe“ (`claude/weiter-uebergabe-1a9yql`); davor 21.11. ~20:15 UTC Sitzung „CL Übergabe weitermachen“; davor ~18:00 UTC Sitzung „Weiter“ (Zweig `claude/admiring-bohr-ob0u0p`, alle vier
+Stand: 23.11.2026 ~19:40 UTC (Sitzung „Weiter mit Übergabe“, Zweig `claude/uebergabe-fortsetzen-g5xqox`); davor ~18:05 UTC (Sitzung „Weiter nach Übergabe“, Zweig `claude/weiter-nach-uebergabe-zyl7c6`); davor 22.11.2026 ~18:50 UTC, Sitzung „CL Übergabe weitermachen“ (`claude/cl-uebergabe-weitermachen-jdz5h7`); davor ~16:40 UTC Sitzung „Weiter Übergabe“ (`claude/weiter-uebergabe-1a9yql`); davor 21.11. ~20:15 UTC Sitzung „CL Übergabe weitermachen“; davor ~18:00 UTC Sitzung „Weiter“ (Zweig `claude/admiring-bohr-ob0u0p`, alle vier
 Repos); davor ~13:40 UTC Sitzung „Weiter“ (`claude/weiter-uw2p42`), davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18:30 UTC Sitzung
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
@@ -17,7 +17,10 @@ dezentrales Quantengeld“.
   Merge nach grüner CI (Konsens, aber schlafend).
 - **App #117:** `registerLesen` verlangt `pub` und prüft ihn selbst (`pubPasst` über `schluesselPruefen`);
   1242 Tests grün, 4 Mutationen rot. Merge nach #646.
-- **#647 und App #118 gemergt** (6289741a / 4a259612). Kein offener PR. **HIER WEITER: Teil 3 (Hülle).**
+- **#647 und App #118 gemergt** (6289741a / 4a259612).
+- **B4b-4b Teil 3 gebaut (PRs offen):** App `lib/quantenSHuelle.ts` (Hülle: unterschreiben mit Empfänger, dann
+  ECIES; Teile ≤ 30.000 Byte; Zusammensetzer begrenzt, gegen Wiederholung, speicherbar); 1307 Tests grün,
+  17 Mutationen rot. Doku in `DEZENTRAL.md` „B4b-4b“. **HIER WEITER nach dem Merge: B4b-4c Ablauf und Oberfläche.**
 - B4b-4b Teil 2: Prüfvektor `testdata/briefkasten_vektor.json` (Knoten lässt genau diese
   Anfragen durch) und App `lib/briefkasten.ts` (ablegen/abholen/quittieren, Antwort streng gelesen; 1277 Tests grün,
   10 Mutationen rot). Kein Konsens. **Danach Teil 3:** Hülle der Protokoll-Nachrichten (Art, K, Absender-Unterschrift
