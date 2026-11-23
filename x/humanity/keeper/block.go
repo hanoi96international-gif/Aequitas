@@ -1446,7 +1446,7 @@ func bekannteTxArt(typ string, blockZeit int64) bool {
 	case quantenWPraegenTxArt, quantenWAnfrageTxArt, quantenWZufallTxArt, quantenWAntwortTxArt, quantenWOffenlegenTxArt, quantenWFristTxArt,
 		quantenWSAusgebenTxArt, quantenWSBindenTxArt, quantenWSWaehlenTxArt, quantenWSAnmeldenTxArt, quantenWSOffenlegenTxArt, quantenWSFristTxArt: // quanten_w_kette.go, schlafend bis quantenWAb
 		return quantenWAktiv(blockZeit)
-	case quantenSPraepMeldenTxArt, quantenSPraepAbmeldenTxArt: // quanten_s_praeparatoren.go, schlafend bis quantenSWegBAb
+	case quantenSPraepMeldenTxArt, quantenSPraepAbmeldenTxArt, quantenSBestellenTxArt, quantenSLosenTxArt: // quanten_s_praeparatoren.go, quanten_s_bestellung.go, schlafend bis quantenSWegBAb
 		return quantenSWegBAktiv(blockZeit)
 	case "vorbehalt", "vorbehalt_ausfuehrung", "kappung":
 		// Stufe 2 (vorbehalt.go, kappung_verteilt.go). Fehlten hier bis
@@ -8299,7 +8299,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			}
 		case quantenWPraegenTxArt, quantenWAnfrageTxArt, quantenWZufallTxArt, quantenWAntwortTxArt, quantenWOffenlegenTxArt, quantenWFristTxArt,
 			quantenWSAusgebenTxArt, quantenWSBindenTxArt, quantenWSWaehlenTxArt, quantenWSAnmeldenTxArt, quantenWSOffenlegenTxArt, quantenWSFristTxArt,
-			quantenSPraepMeldenTxArt, quantenSPraepAbmeldenTxArt:
+			quantenSPraepMeldenTxArt, quantenSPraepAbmeldenTxArt, quantenSBestellenTxArt, quantenSLosenTxArt:
 			// quanten_w_kette.go: jeder Knoten prueft Unterschriften (Wallet,
 			// Validatoren), Hash-Ketten, Pruefsummen, Fristen und Deckung selbst
 			// und rechnet Anteile, Pfand und Wert nach; sie muessen genau die im

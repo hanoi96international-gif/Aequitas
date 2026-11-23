@@ -123,9 +123,20 @@ const (
 // passt; sonst ist der Block falsch (block_tauglich nimmt sie dann nicht auf).
 // So rechnen Annahme und Nachspielen mit DERSELBEN Zeit, und die Register
 // (Anfrage-, Zufall-, Antwortzeit) und damit die StateRoot sind gleich.
-func quantenWBuchZeit(buchAt, blockZeit int64) (int64, bool) {
-	ok := buchAt > 0 && buchAt <= sattAdd(blockZeit, 60) && buchAt >= blockZeit-quantenWBuchSpiel
+func quantenWBuchZeit(art string, buchAt, blockZeit int64) (int64, bool) {
+	ok := buchAt > 0 && buchAt <= sattAdd(blockZeit, 60) && buchAt >= blockZeit-quantenWBuchSpielFuer(art)
 	return buchAt, ok
+}
+
+// quantenWBuchSpielFuer: wie weit die Buchzeit vor dem Block liegen darf. Eine
+// Bestellung von Weg B nur kurz (quantenSBestellBuchSpiel): ihre Buchzeit legt
+// die drand-Runde des Loses fest; zurueckdatiert laege sie in der
+// Vergangenheit, und wer den Block erzeugt, kennte das Los vorher.
+func quantenWBuchSpielFuer(art string) int64 {
+	if art == quantenSBestellenTxArt {
+		return quantenSBestellBuchSpiel
+	}
+	return quantenWBuchSpiel
 }
 
 func quantenWAdresse(domaene string) string {
@@ -174,7 +185,7 @@ func quantenWStatus() map[string]interface{} {
 }
 
 func istQuantenWTxArt(t string) bool {
-	if istQuantenWSTxArt(t) || istQuantenSPraepTxArt(t) {
+	if istQuantenWSTxArt(t) || istQuantenSPraepTxArt(t) || istQuantenSBestellTxArt(t) {
 		return true
 	}
 	switch t {
@@ -231,6 +242,11 @@ type QuantenWAngaben struct {
 	// ProbeArt 2 bei der Ausgabe; beim Anmelden je Abschnitt das Salz (hex).
 	ProbeArt int      `json:"probe_art,omitempty"`
 	Salze    []string `json:"salze,omitempty"`
+	// Weg B (quanten_s_bestellung.go, schlafend): Bestellen mit v
+	// Praeparatoren (praep_zahl), Losen mit drand-Runde und ihrer Signatur.
+	PraepZahl int    `json:"praep_zahl,omitempty"`
+	Runde     uint64 `json:"runde,omitempty"`
+	RundeSig  string `json:"runde_sig,omitempty"`
 	// Unterschrift der Wallet (Praegen, Anfrage, Antwort): EIP-191 ODER ML-DSA.
 	WalletSig string   `json:"wallet_sig,omitempty"`
 	PQ        *PQKonto `json:"pq,omitempty"`
@@ -308,6 +324,9 @@ func quantenWNurEigeneFelder(tx *Transaction) bool {
 		if istQuantenSPraepTxArt(tx.Type) {
 			return quantenSPraepNurEigeneFelder(tx, q)
 		}
+		if istQuantenSBestellTxArt(tx.Type) {
+			return quantenSBestellNurEigeneFelder(tx, q)
+		}
 		return false
 	}
 	return reflect.DeepEqual(q, QuantenWAngaben{})
@@ -383,20 +402,25 @@ type quantenWRegister struct {
 	// Praep: Weg B, Register der Praeparatoren (quanten_s_praeparatoren.go),
 	// je K = quantenSPraepK(Konto). Leer bis zum Stichtag von Weg B.
 	Praep map[string]quantenSPraep
+	// Best: Weg B, offene Bestellungen mit Abbild und Los
+	// (quanten_s_bestellung.go), je K.
+	Best map[string]*quantenSBestellung
 }
 
 // leer: nichts im Register (kodiert als "", StateRoot ohne W-Teil).
 func (r *quantenWRegister) leer() bool {
-	return len(r.Noten) == 0 && len(r.Token) == 0 && len(r.Tote) == 0 && len(r.Praep) == 0
+	return len(r.Noten) == 0 && len(r.Token) == 0 && len(r.Tote) == 0 && len(r.Praep) == 0 && len(r.Best) == 0
 }
 
 func neuesQuantenWRegister() *quantenWRegister {
-	return &quantenWRegister{Noten: map[string]*quantenWEintrag{}, Token: map[string]*quantenWSEintrag{}, Tote: map[string]int64{}, Enden: map[string]quantenWEnde{}, Praep: map[string]quantenSPraep{}}
+	return &quantenWRegister{Noten: map[string]*quantenWEintrag{}, Token: map[string]*quantenWSEintrag{}, Tote: map[string]int64{}, Enden: map[string]quantenWEnde{}, Praep: map[string]quantenSPraep{},
+		Best: map[string]*quantenSBestellung{}}
 }
 
 func (r *quantenWRegister) kopie() *quantenWRegister {
 	n := &quantenWRegister{Noten: make(map[string]*quantenWEintrag, len(r.Noten)), Token: make(map[string]*quantenWSEintrag, len(r.Token)), Tote: make(map[string]int64, len(r.Tote)),
-		Enden: make(map[string]quantenWEnde, len(r.Enden)), Praep: make(map[string]quantenSPraep, len(r.Praep))}
+		Enden: make(map[string]quantenWEnde, len(r.Enden)), Praep: make(map[string]quantenSPraep, len(r.Praep)),
+		Best: make(map[string]*quantenSBestellung, len(r.Best))}
 	for k, e := range r.Noten {
 		n.Noten[k] = e
 	}
@@ -411,6 +435,9 @@ func (r *quantenWRegister) kopie() *quantenWRegister {
 	}
 	for k, e := range r.Praep {
 		n.Praep[k] = e
+	}
+	for k, b := range r.Best {
+		n.Best[k] = b // unveraenderlich: Aenderungen ersetzen den Eintrag
 	}
 	return n
 }
@@ -481,6 +508,8 @@ type quantenWRegisterForm struct {
 	// Weg B (quanten_s_praeparatoren.go); fehlt, solange leer -- vor dem
 	// Stichtag von Weg B sind die Bytes unveraendert.
 	Praep []quantenSPraepForm `json:"praep,omitempty"`
+	// Weg B, Bestellungen (quanten_s_bestellung.go); fehlt, solange leer.
+	Best []quantenSBestellungForm `json:"best,omitempty"`
 }
 
 func (r *quantenWRegister) kodiert() string {
@@ -513,6 +542,7 @@ func (r *quantenWRegister) form() quantenWRegisterForm {
 	sort.Slice(f.Noten, func(i, j int) bool { return f.Noten[i].K < f.Noten[j].K })
 	sort.Slice(f.Tote, func(i, j int) bool { return f.Tote[i].K < f.Tote[j].K })
 	f.Praep = quantenSPraepFormen(r.Praep)
+	f.Best = quantenSBestellungenFormen(r.Best)
 	return f
 }
 
@@ -583,7 +613,7 @@ func quantenWRegisterLesen(s string) (*quantenWRegister, error) {
 	if err := dec.Decode(&f); err != nil {
 		return nil, fmt.Errorf("quanten_w: Register: %w", err)
 	}
-	if len(f.Noten) == 0 && len(f.Token) == 0 && len(f.Tote) == 0 && len(f.Praep) == 0 {
+	if len(f.Noten) == 0 && len(f.Token) == 0 && len(f.Tote) == 0 && len(f.Praep) == 0 && len(f.Best) == 0 {
 		return nil, errors.New("quanten_w: leeres Register muss leer kodiert sein")
 	}
 	// Tote: bis zur Grenze praegen, danach sterben noch die lebenden Noten.
@@ -676,6 +706,19 @@ func quantenWRegisterLesen(s string) (*quantenWRegister, error) {
 		return nil, err
 	}
 	r.Praep = praep
+	best, err := quantenSBestellungenLesen(f.Best)
+	if err != nil {
+		return nil, err
+	}
+	for k := range best {
+		if r.Noten[k] != nil || r.Token[k] != nil {
+			return nil, fmt.Errorf("quanten_w: Bestellung %s ist schon ausgegeben", k[:12])
+		}
+		if _, tot := r.Tote[k]; tot {
+			return nil, fmt.Errorf("quanten_w: Bestellung %s ist schon tot", k[:12])
+		}
+	}
+	r.Best = best
 	return r, nil
 }
 
@@ -827,6 +870,11 @@ func quantenWZeitGueltig(tx *Transaction, blockZeit int64) bool {
 	case quantenWPraegenTxArt, quantenWAnfrageTxArt, quantenWSAusgebenTxArt:
 		z := tx.DistributionAt
 		return z > 0 && z <= sattAdd(blockZeit, quantenWVoraus) && blockZeit-z <= quantenWAlt
+	case quantenSBestellenTxArt:
+		z := tx.DistributionAt
+		return z > 0 && z <= sattAdd(blockZeit, quantenWVoraus) && blockZeit-z <= quantenWAlt
+	case quantenSLosenTxArt:
+		return tx.DistributionAt == 0
 	case quantenSPraepMeldenTxArt, quantenSPraepAbmeldenTxArt:
 		// Abmelden ohne Wallet (Aufraeumen) traegt keine Zeit.
 		z := tx.DistributionAt
@@ -881,6 +929,9 @@ func (cs *ChainState) quantenWBescheidLocked(ctx context.Context, tx *Transactio
 	}
 	if istQuantenSPraepTxArt(tx.Type) {
 		return cs.quantenSPraepBescheidLocked(ctx, tx, wallet, reg, blockZeit)
+	}
+	if istQuantenSBestellTxArt(tx.Type) {
+		return cs.quantenSBestellBescheidLocked(ctx, tx, wallet, reg, blockZeit)
 	}
 	alt := reg.Noten[q.K]
 	if alt == nil {
@@ -1026,6 +1077,11 @@ func (cs *ChainState) quantenWPraegenBescheidLocked(ctx context.Context, tx *Tra
 	}
 	if reg.Noten[q.K] != nil || reg.Token[q.K] != nil {
 		return quantenWBefund("quanten_w_doppelt", "Note %s gibt es schon", q.K[:12]), nil
+	}
+	// Weg B: ein bestelltes K gehoert der Bestellung (quanten_s_bestellung.go);
+	// das Register laesst beides zugleich nicht zu (quantenWRegisterLesen).
+	if reg.Best[q.K] != nil {
+		return quantenWBefund("quanten_w_doppelt", "%s ist fuer Weg B bestellt", q.K[:12]), nil
 	}
 	if _, tot := reg.Tote[q.K]; tot {
 		return quantenWBefund("quanten_w_doppelt", "Note %s war schon gepraegt (tot)", q.K[:12]), nil
@@ -1203,7 +1259,7 @@ func (cs *ChainState) quantenWAnwendenLocked(ctx context.Context, u quantenWBesc
 // muessen genau die gerechneten sein. Fehler: der Block ist falsch (oder
 // der Zustand nicht lesbar) -- nichts angewandt.
 func (cs *ChainState) applyQuantenWLocked(ctx context.Context, tx *Transaction, blockZeit int64) error {
-	zeit, ok := quantenWBuchZeit(tx.BuchAt, blockZeit)
+	zeit, ok := quantenWBuchZeit(tx.Type, tx.BuchAt, blockZeit)
 	if !ok {
 		return fmt.Errorf("%s: gebucht um %d passt nicht zu Block %d", tx.Type, tx.BuchAt, blockZeit)
 	}
@@ -1305,7 +1361,7 @@ func (a *APIServer) handleQuantenW(art string) http.HandlerFunc {
 			jsonError(w, "quantum money variant W not active", http.StatusConflict)
 			return
 		}
-		if istQuantenSPraepTxArt(art) && !quantenSWegBAktiv(time.Now().Unix()) {
+		if (istQuantenSPraepTxArt(art) || istQuantenSBestellTxArt(art)) && !quantenSWegBAktiv(time.Now().Unix()) {
 			jsonError(w, "quantum money way B (preparators) not active", http.StatusConflict)
 			return
 		}

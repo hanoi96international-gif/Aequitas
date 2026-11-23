@@ -1269,7 +1269,7 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	// quanten_w_kette.go: Variante W, vor dem Stichtag 409; Stand einer Note fuer jeden.
 	for _, art := range []string{quantenWPraegenTxArt, quantenWAnfrageTxArt, quantenWZufallTxArt, quantenWAntwortTxArt, quantenWOffenlegenTxArt, quantenWFristTxArt,
 		quantenWSAusgebenTxArt, quantenWSBindenTxArt, quantenWSWaehlenTxArt, quantenWSAnmeldenTxArt, quantenWSOffenlegenTxArt, quantenWSFristTxArt,
-		quantenSPraepMeldenTxArt, quantenSPraepAbmeldenTxArt} {
+		quantenSPraepMeldenTxArt, quantenSPraepAbmeldenTxArt, quantenSBestellenTxArt, quantenSLosenTxArt} {
 		mux.HandleFunc("/api/quanten-w/"+strings.TrimPrefix(art, "quanten_w_"), a.zumLeiter(a.handleQuantenW(art)))
 	}
 	// Weg B (quanten_s_praeparatoren.go): das Register der Praeparatoren fuer jeden.

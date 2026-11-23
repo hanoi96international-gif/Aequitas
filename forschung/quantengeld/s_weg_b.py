@@ -216,6 +216,14 @@ def verfuegbar(v: int, t: int, p: float) -> float:
     return sum(math.comb(v, m) * p ** m * (1 - p) ** (v - m) for m in range(t, v + 1))
 
 
+def abbruch(p: float, versuche: int) -> float:
+    """BEFUND B2b: Wer nach dem Los abbrechen und neu bestellen darf, kommt nach
+    `versuche` Bestellungen mit P = 1 - (1 - p)^versuche zu einem Los mit t
+    Komplizen (p = erfassung je Los). Die Kette bremst mit einer offenen
+    Bestellung je Mensch und Frist; teuer machen muss es ein Pfand (B2c)."""
+    return 1 - (1 - p) ** versuche
+
+
 def kontingent(sekunden: int = IBM_OPEN_SEKUNDEN, je_auftrag: int = SEKUNDEN_JE_AUFTRAG) -> int:
     """So viele Abschnitte (Auftraege) praepariert ein Mensch je 28 Tage im
     kostenlosen Konto -- auf Grundlage der Schaetzung je Auftrag."""
@@ -413,6 +421,19 @@ def selbsttest() -> bool:
                      if sum(k in boese for k in auslosen(ab, bekannt, hashlib.sha256(i.to_bytes(4, "big")).hexdigest(), v)) >= t),
                     None)
     soll(gefunden is not None, "Gegenprobe: mit bekanntem Zufall findet Probieren kein K mit t Boesen")
+
+    # 7b. BEFUND B2b: Abbruch. Je Los bleibt es bei der Erwartung, aber wer
+    #     nach dem Los abbrechen darf, waehlt das guenstige: Erfolg nach m
+    #     Bestellungen = 1 - (1 - p)^m, gemessen in 200 Folgen von je 40
+    #     Bestellungen. Mit einer Bestellung je Mensch und Frist (2 Tage)
+    #     dauern 40 Versuche ~80 Tage je Mensch -- gebremst, nicht verhindert.
+    p_los = erwartet
+    soll(abs(abbruch(p_los, 1) - p_los) < 1e-12 and abbruch(p_los, 0) == 0.0, "abbruch: Raender")
+    zuege = [sum(k in boese for k in auslosen(ab, h(b"abbruch", i.to_bytes(4, "big")), f"{i:064x}", v)) >= t for i in range(8000)]
+    erste = next((i for i, z in enumerate(zuege) if z), None)
+    soll(erste is not None, "Abbruch: kein guenstiges Los in 8000 Bestellungen")
+    gemessen = sum(any(zuege[j:j + 40]) for j in range(0, 8000, 40)) / 200
+    soll(abs(gemessen - abbruch(p_los, 40)) < 0.12, f"Abbruch m = 40: gemessen {gemessen:.2f}, gerechnet {abbruch(p_los, 40):.2f}")
 
     # 8. Zahlen: Erfassung, Verfuegbarkeit, Kontingent.
     soll(erfassung(60, 0, v, t) == 0.0 and erfassung(60, 60, v, t) == 1.0, "erfassung: Raender")
