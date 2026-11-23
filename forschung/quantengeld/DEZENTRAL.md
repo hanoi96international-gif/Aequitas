@@ -1825,6 +1825,24 @@ nur das Gerät wird ersetzt), liest das Ergebnis wie die App (Bericht nennt die 
 die Physik (Treffer mit u = y müssen t zeigen, ≤ 10 % Fehler). Kosten: 3 Schaltkreise × 5
 Schüsse. Wird der Auftrag abgewiesen, legt der Lauf den Grund von IBM ab.
 
+**Auf echter Hardware belegt (23.11.2026, Lauf 5, 45213805068):** `ibm_marrakesh`, Auftrag
+`dc26bvqnj2vs73dg7i0g` — der Körper der App wurde angenommen (COMPLETED), das Ergebnis kam in
+der **einfachen Form**, 0 Fehler bei 18 Treffern. Die 403 der Läufe 2–4 kamen von der Kennung
+`Python-urllib` (einzige Änderung zu Lauf 5); Probe und App schicken eine feste eigene Kennung.
+
+### B4b-3a: Bausteine der Präparatorin in der App (23.11.2026, gebaut)
+
+Aequitas-App `lib/quantenSPraeparieren.ts`, genau wie der Validator-Dienst
+(`quanten_s_abschnitt.go`): gesalzene Werte mit Stellen-Bit (je Abschnitt genau zur Hälfte,
+123 Bit Salz), Shamir t-von-v über F_P (Koeffizienten, Anteil je Validator), Blätter
+(Prüfsumme je Stelle), je Empfänger ein Bündel (JSON wie `quantenSBuendelInhalt`, ECIES an
+seinen Schlüssel, EIP-191 über den Hash des Chiffrats). Zufall nur vom Aufrufer, durch
+Verwerfen gleichverteilt, schlechter Zufall bricht ab. Prüfvektor
+`testdata/quanten_s_praep_buendel_vektor.json` entsteht in der App mit festem Zufall; der
+Knoten öffnet genau diese Bündel mit seinem eigenen Code (`quanten_s_praep_buendel_vektor_test.go`).
+Noch offen (B4b-3b): Pakete für die Annahmestellen (Stichprobe v2), `fuer_inhaberin`,
+Antwort-Nachricht und Bestätigung.
+
 ### Nächste Schritte
 
 | Schritt | Was |
