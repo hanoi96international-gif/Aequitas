@@ -175,7 +175,7 @@ Geheimnis besser, aber zum Einlösen müssen t Validatoren erreichbar sein.
 | A4 | Pilot: vier Knoten, je ein eigener Auftrag (im Pilot von einem Konto, das wird benannt) | **fertig** (12): beide Tests grün im Rauschmodell (44347416357) und auf dem Chip `ibm_fez` (44356741223), auch mit Ausfall eines Validators |
 | A5 | Hauptnetz mit einem zweiten Menschen als Validator, wenn möglich bei einem anderen Anbieter | **Werkzeug bereit** (13–15): Messquelle als Verzeichnis, `--s-abschnitt`, Einrichten mit einem Befehl, Basen automatisch vorgemerkt und gemessen; der zweite Mensch: Betreiber |
 | B1 | Weg B, Spezifikation: Präparatoren-Register, Los, Verfügbarkeit, Kontingent, Missbrauch (`s_weg_b.py`) | **fertig** (18) |
-| B2–B5 | Weg B: Kette (Register, Zufall, Los), Dienst/Briefkasten, App als Präparatorin, Pilot | B2a–B2c gebaut, schlafend (18); B2d–B5 offen |
+| B2–B5 | Weg B: Kette (Register, Zufall, Los), Dienst/Briefkasten, App als Präparatorin, Pilot | B2a–B2d gebaut, schlafend (18); Stichtag, B3–B5 offen |
 | C, W-Härtung | wie oben | Forschung; Partner |
 
 Die Kette ändert sich in A1 bis A4 nicht. Geändert werden die Ausgabe außerhalb der Kette
@@ -1740,11 +1740,21 @@ Bestellen, kein Pfand ohne Guthaben, Deckung unter dem Mindestwert, Deckung durc
 Unterschrift gebunden, andere Deckung bei der Ausgabe, Höhe (Rundung, Überlauf, ≥ 3 D bei
 p = 3,1 %), strenges Lesen. 11 Mutationen rot; die 18 aus B2b weiter rot.
 
+### B2d: Wächter Blockzeit (23.11.2026, gebaut)
+
+Der Takt erzeugt jede Sekunde einen Block, auch leer (`block_cadence.go`). Der neueste Block
+liegt also nur Sekunden hinter der echten Zeit. `/api/health/combined` meldet seinen
+Zeitstempel (`chain.neuester_block_zeit`, ohne auf die DAG-Sperre zu warten), und die Wache
+(`.github/wache_pruefung.py`) wird rot, wenn er mehr als 300 s hinter **ihrer eigenen** Uhr
+liegt. Damit fällt auf, wenn C1 die Blockzeit zurückhält (und so eine schon bekannte
+drand-Runde losen ließe) oder hängt. Keine Konsensregel. Lint mit 6 neuen Fällen,
+Gegenprobe rot.
+
 ### Nächste Schritte
 
 | Schritt | Was |
 |---|---|
-| B2d | Wächter Blockzeit gegen echte Zeit (C1 könnte die Blockzeit zurückhalten und so eine schon bekannte Runde losen lassen); dazu klären, ob C1 bei Leerlauf leere Blöcke erzeugt. Dann Stichtag mit Deploy-Wächter (Betreiber entscheidet). |
+| Stichtag | Weg B scharf schalten: nur auf Entscheidung des Betreibers, mit Deploy-Wächter wie bei den anderen Stichtagen; vorher Pfand-Höhe am echten Register prüfen (`s_weg_b.py --tabelle`). Ohne B4 (App als Präparatorin) kann sich noch niemand bequem melden. |
 | B2 (gesamt) | Kette: Präparatoren-Register (B2a gebaut), Zufall aus Zusage und Offenlegung, Los, Prüfung der Ausgabe gegen das Los, Pfand. Konsensänderung mit Stichtag, eigene Sicherheitsprüfung, Prüfvektor aus `s_weg_b.py`. |
 | B3 | Briefkasten bei den Knoten: verschlüsselte Pakete (Basen y, Anteile, Öffnungen) ablegen und abholen, begrenzt je Absender und Größe. |
 | B4 | App als Präparatorin: IBM-Schlüssel nur im Gerät, Auftrag über die REST-Schnittstelle, Abschnitt präparieren, Anteile verteilen, nach der Bindung öffnen. |

@@ -843,6 +843,9 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 			// zwei Boxen falsch aussehen -- siehe status_hoehe.go.
 			"height":         a.blockchain.HeightSchnell(),
 			"dag_tips_count": a.blockchain.TipsCount(),
+			// Zeitstempel des neuesten Blocks: die Wache vergleicht ihn mit
+			// ihrer eigenen Uhr (blockzeit_waechter.go).
+			"neuester_block_zeit": a.blockchain.NeuesteBlockZeit(),
 			// FIX (Monster Audit 2026-07-12, P2): documenting the trust model
 			// this counter represents, for anyone building against this API —
 			// StateRoot is a diagnostic drift signal, not a consensus

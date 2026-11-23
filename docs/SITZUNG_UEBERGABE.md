@@ -7,7 +7,15 @@ Repos); davor ~13:40 UTC Sitzung „Weiter“ (`claude/weiter-uw2p42`), davor ~1
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
-**Stand 23.11. ~07:00 UTC (dieselbe Sitzung) — HIER WEITERMACHEN:**
+**Stand 23.11. ~08:30 UTC (dieselbe Sitzung) — HIER WEITERMACHEN:**
+- **#631 (B2c, Pfand) gemergt** (bb89a8f8) nach „Weiter“. C1-Deploys zu #629–#631 warten auf `produktion` (Code schläft).
+- **B2d gebaut (PR von diesem Zweig): Wächter Blockzeit** — `chain.neuester_block_zeit` in `/api/health/combined`
+  (`blockzeit_waechter.go`, ohne Warten auf dag.mu), Wache rot bei > 300 s Rückstand gegen die eigene Uhr. Keine
+  Konsensänderung. Wirkt erst nach einem C1-Deploy (vorher nur Hinweis).
+- **Weg B ist damit fertig bis auf den Stichtag** — Entscheidung des Betreibers. Sinnvolle Reihenfolge: B4 (App als
+  Präparatorin: melden, bestellen, losen, Abschnitt präparieren), B3 (Briefkasten), dann Stichtag und Pilot B5.
+
+**Stand 23.11. ~07:00 UTC (dieselbe Sitzung):**
 - **#630 (B2b) gemergt** (a5ceb51d) nach „Weiter“ des Betreibers. C1-Deploy wartet auf `produktion` (Code schläft).
 - **B2c gebaut: PR #631 (Pfand je Bestellung)**, Sicherheitsprüfung als PR-Kommentar, Merge erst nach Freigabe; — max(1 AEQ, 10 % der bestellten Deckung), zurück bei
   der Ausgabe, verfällt ans Grundeinkommen (neue Art `quanten_w_s_bestellung_frist` oder beim nächsten Bestellen).
