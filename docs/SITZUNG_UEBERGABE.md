@@ -2,7 +2,7 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 23.11.2026 ~19:45 UTC (Sitzung „Weiter mit Übergabe“, Zweig `claude/uebergabe-fortsetzen-g5xqox`); davor ~18:05 UTC (Sitzung „Weiter nach Übergabe“, Zweig `claude/weiter-nach-uebergabe-zyl7c6`); davor 22.11.2026 ~18:50 UTC, Sitzung „CL Übergabe weitermachen“ (`claude/cl-uebergabe-weitermachen-jdz5h7`); davor ~16:40 UTC Sitzung „Weiter Übergabe“ (`claude/weiter-uebergabe-1a9yql`); davor 21.11. ~20:15 UTC Sitzung „CL Übergabe weitermachen“; davor ~18:00 UTC Sitzung „Weiter“ (Zweig `claude/admiring-bohr-ob0u0p`, alle vier
+Stand: 24.11.2026 ~07:20 UTC (Sitzung „Weiter mit Übergabe“, Zweig `claude/uebergabe-fortsetzen-g5xqox`); davor ~18:05 UTC (Sitzung „Weiter nach Übergabe“, Zweig `claude/weiter-nach-uebergabe-zyl7c6`); davor 22.11.2026 ~18:50 UTC, Sitzung „CL Übergabe weitermachen“ (`claude/cl-uebergabe-weitermachen-jdz5h7`); davor ~16:40 UTC Sitzung „Weiter Übergabe“ (`claude/weiter-uebergabe-1a9yql`); davor 21.11. ~20:15 UTC Sitzung „CL Übergabe weitermachen“; davor ~18:00 UTC Sitzung „Weiter“ (Zweig `claude/admiring-bohr-ob0u0p`, alle vier
 Repos); davor ~13:40 UTC Sitzung „Weiter“ (`claude/weiter-uw2p42`), davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18:30 UTC Sitzung
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
@@ -19,6 +19,10 @@ dezentrales Quantengeld“.
   1242 Tests grün, 4 Mutationen rot. Merge nach #646.
 - **#647 und App #118 gemergt** (6289741a / 4a259612).
 - **#648 und App #119 gemergt** (572f4cbb / 26f24d05). B4b-4b vollständig. Kein offener PR.
+- **24.11. ~07:20 UTC: 4c-1a gebaut (PRs offen):** App `lib/quantenSPraepAuftrag.ts` (Auftrag prüfen gegen
+  die Bestellung, Basen öffnen; 1344 Tests grün, 20 Mutationen rot) und Knoten-Prüfvektor
+  `quanten_s_praep_auftrag_vektor_test.go`. Merge nach grüner CI. Danach Rest von 4c-1 (messen, Antwort/Bündel
+  als Hüllen, Tresor, Bestätigung, Öffnung).
 - **HIER WEITER: B4b-4c nach Plan in `DEZENTRAL.md` („Plan B4b-4c“).** Erst 4c-1 (Ablauf der Präparatorin als
   Bibliothek), dann 4c-2 (Ausgeber/Inhaberin in Weg B über den Briefkasten — fehlt bisher ganz), dann 4c-3
   Oberfläche. Vor UI-Code die Expo-54-Doku lesen (AGENTS.md der App).

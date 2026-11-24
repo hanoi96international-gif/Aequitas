@@ -1919,6 +1919,15 @@ Handys schickt und Antworten und Bündel einsammelt. Reihenfolge:
    eingeben, Stand, offene Aufträge), Karte der Ausgabe in Weg B; 12 Sprachen.
 4. Danach: App-Release, Stichtag Weg B (Betreiber), Pilot B5 mit mindestens 7 Menschen.
 
+**4c-1a gebaut (24.11.2026):** App `lib/quantenSPraepAuftrag.ts` — Auftrag streng lesen, Nachricht wie
+`quantenSAbschnittAuftragNachricht`, prüfen wie `quantenSAbschnittPruefen`; statt des Kettenstands des Dienstes
+die Bestellung (gelost, nicht verfallen, Ausgeber, t, v, Validatoren = Los in Reihenfolge). In Weg B nur
+verschlüsselte Basen (sonst kennt der Ausgeber y) und nur Stichprobe v2 (Befund 5i). Basen erst zuletzt
+öffnen, wie `quantenSBasenOeffnen`. Prüfvektor `testdata/quanten_s_praep_auftrag_vektor.json`: ein echter,
+unterschriebener Auftrag mit verschlüsselten Basen; der Knoten prüft ihn mit eigenem Code. **Rest von 4c-1:**
+messen (IBM), Antwort an den Ausgeber und Bündel an die anderen als Hüllen, Tresor im Gerät, Bestätigung,
+Öffnung nach finaler Bindung.
+
 ### Offen vor dem Stichtag: Pfand je Präparator und Beweisweg (aus PR #628, 22.11.)
 
 PR #628 (B2 als ein Stück, geschlossen am 23.11., durch B2a–B2d ersetzt; Zweig
