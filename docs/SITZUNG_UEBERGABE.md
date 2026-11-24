@@ -2,7 +2,7 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 24.11.2026 ~08:30 UTC (Sitzung „Weiter mit Übergabe“, Zweig `claude/uebergabe-fortsetzen-g5xqox`); davor ~18:05 UTC (Sitzung „Weiter nach Übergabe“, Zweig `claude/weiter-nach-uebergabe-zyl7c6`); davor 22.11.2026 ~18:50 UTC, Sitzung „CL Übergabe weitermachen“ (`claude/cl-uebergabe-weitermachen-jdz5h7`); davor ~16:40 UTC Sitzung „Weiter Übergabe“ (`claude/weiter-uebergabe-1a9yql`); davor 21.11. ~20:15 UTC Sitzung „CL Übergabe weitermachen“; davor ~18:00 UTC Sitzung „Weiter“ (Zweig `claude/admiring-bohr-ob0u0p`, alle vier
+Stand: 24.11.2026 ~09:10 UTC (Sitzung „Weiter mit Übergabe“, Zweig `claude/uebergabe-fortsetzen-g5xqox`); davor ~18:05 UTC (Sitzung „Weiter nach Übergabe“, Zweig `claude/weiter-nach-uebergabe-zyl7c6`); davor 22.11.2026 ~18:50 UTC, Sitzung „CL Übergabe weitermachen“ (`claude/cl-uebergabe-weitermachen-jdz5h7`); davor ~16:40 UTC Sitzung „Weiter Übergabe“ (`claude/weiter-uebergabe-1a9yql`); davor 21.11. ~20:15 UTC Sitzung „CL Übergabe weitermachen“; davor ~18:00 UTC Sitzung „Weiter“ (Zweig `claude/admiring-bohr-ob0u0p`, alle vier
 Repos); davor ~13:40 UTC Sitzung „Weiter“ (`claude/weiter-uw2p42`), davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18:30 UTC Sitzung
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
@@ -33,7 +33,14 @@ dezentrales Quantengeld“.
     Instanz, ≤ 64 Kreise je Auftrag, Status bis Frist 2 h, Mehrheit aus 5 Schüssen), IBM-Zugang geheim in SecureStore.
   - **App #124 gemergt** (556c7c9f, 4c-1f): `bestaetigungBeantworten` im Ablauf (Anfrage als Hülle `bestaetigung`,
     Werte aus dem Seed, `bestaetigen`, Unterschrift + Anteile + Pakete im Tresor, nur EINE Ausgabe je K).
-  - **Nächster Schritt 4c-1g Öffnung:** Anfrage der Annahmestelle (Hülle Art `oeffnung`), nur wenn der Token auf der
+  - **App #125 gemergt** (99b6c793, 4c-1g): `oeffnungBeantworten` — nur an Stelle b, Token = bestätigte Ausgabe
+    (eigene Unterschrift gegen Wurzel/Proben der Kette), Bindung+Wahl final (Sichtung mit Höhe, `finalized_height`
+    aus `/api/health/combined`), alle befragten Knoten einig, Stichprobe v2. **4c-1 damit vollständig.**
+  - **HIER WEITER: 4c-2** Ausgeber/Inhaberin in Weg B über den Briefkasten (Gegenstück zu 4c-1: bestellen, Los
+    abwarten, Aufträge als Hüllen an die Gelosten, Antworten prüfen/sammeln, Bestätigungs-Anfragen, Ausgabe gegen
+    das Los einreichen; Stellen holen Öffnungen per Hülle). Vorbild `quanten_s_ausgabe_abschnitte.go`
+    (`quantenSRunde`), App `quantenSInhaberin.ts`. Danach 4c-3 Oberfläche (Expo 54, 12 Sprachen).
+  - _War:_ 4c-1g Öffnung: Anfrage der Annahmestelle (Hülle Art `oeffnung`), nur wenn der Token auf der
     Kette final gebunden und gewählt ist (Stand vom Knoten lesen, selbst prüfen; b = Wahl, Absender = Stelle b), dann
     `oeffnungFuerStelle` + gespeicherte Pakete der anderen, Stand `geoeffnet`. Danach 4c-2, 4c-3.
   - _War:_ 4c-1f Bestätigung (`bestaetigen` aus `quantenSPraeparieren` mit `EigenerAbschnitt` aus
