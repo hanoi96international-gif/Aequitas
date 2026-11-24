@@ -1953,6 +1953,21 @@ Prüfvektor `testdata/quanten_s_ausgeber_bestellen_vektor.json` aus der App (ech
 Rundentabelle und nimmt Bestellen und Losen auf einer Testkette an
 (`quanten_s_ausgeber_bestellen_vektor_test.go`). Kein Konsens.
 
+**Pfand gegen Fälschung (24.11.2026):** Das Pfand reicht niemand ein; die Kette rechnet es (`quantenSBestellPfandFuer`,
+gerechnetes Feld). Ein Blockerzeuger, der ein anderes Pfand oder einen anderen Empfänger einträgt, fällt beim
+Nachspielen durch (`applyQuantenWLocked`: gerechnete Felder müssen genau stimmen; fremde Felder weist
+`quantenWNurEigeneFelder` ab). Missbrauchstest `TestQuantenSBestellung_PfandGefaelschtImBlock` (zu klein, null, zu groß,
+an jemanden, Wert dazu). Die App rechnet das Pfand der Register-Ansicht selbst nach und weist eine Abweichung ab.
+
+### B4b-4c-2b: Inhaberin verschlüsselt an die Gelosten (24.11.2026, gebaut)
+
+App `neuWegB` in `lib/quantenSInhaberin.ts`: Register und Bestellung streng gelesen (Weg B aktiv, K genau einmal
+bestellt, gelost, nicht verfallen), je Geloster genau ein Eintrag, dessen `pub` genau seine Adresse ergibt
+(`registerLesen`/`pubPasst`, dann noch einmal `basenVerschluesseln`); y je Abschnitt an die Gelosten in
+Losreihenfolge. Der Zustand merkt sich K (`wegB`). Jede Geloste öffnet genau ihren Abschnitt mit dem Code der
+Präparatorin (`basenOeffnen`), keine andere. Grenze: Der Zustand liegt in SecureStore (2048 Byte); bei v = 16 passen
+nur kleinere n (abgewiesen, bevor Zufall gezogen wird). Kein Konsens.
+
 **4c-1a gebaut (24.11.2026):** App `lib/quantenSPraepAuftrag.ts` — Auftrag streng lesen, Nachricht wie
 `quantenSAbschnittAuftragNachricht`, prüfen wie `quantenSAbschnittPruefen`; statt des Kettenstands des Dienstes
 die Bestellung (gelost, nicht verfallen, Ausgeber, t, v, Validatoren = Los in Reihenfolge). In Weg B nur

@@ -14,7 +14,8 @@ in allen vier Repos):
   PRs: Aequitas (Vektor + Doku) und App — siehe PR-Liste; Merge nach grüner CI, erst Aequitas, dann App.
 - **Plan 4c-2** steht in `DEZENTRAL.md` („Plan 4c-2“): 2b Inhaberin verschlüsselt an `pub` der Gelosten, 2c Aufträge
   als Hüllen + Antworten prüfen, 2d Bestätigungen, 2e Ausgabe gegen das Los + Paket, 2f Annehmen + Öffnungen.
-  **Nächster Schritt 2b.**
+  **2a gemergt** (#651 / App #126). **2b gebaut** (App `neuWegB`, 1436 Tests grün; Aequitas: Missbrauchstest
+  gefälschtes Pfand im Block + Doku) — PRs offen, Merge nach grüner CI auf Wunsch des Betreibers. **Danach 2c.**
 - Befund 2a: Niemand reichte bisher `quanten_w_s_losen` ein; das macht jetzt der Ausgeber (drand-Relais, feste Liste).
 
 **Stand 24.11. ~09:20 UTC** (frühere Sitzung) (Sitzung „Weiter mit Übergabe“, Zweig `claude/uebergabe-fortsetzen-g5xqox`):
