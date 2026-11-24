@@ -1919,6 +1919,14 @@ Handys schickt und Antworten und Bündel einsammelt. Reihenfolge:
    eingeben, Stand, offene Aufträge), Karte der Ausgabe in Weg B; 12 Sprachen.
 4. Danach: App-Release, Stichtag Weg B (Betreiber), Pilot B5 mit mindestens 7 Menschen.
 
+**4c-1 vollständig (24.11.2026, App #120–#125):** 4c-1b `antwortBauen`/`antwortAufAuftrag` (der B4b-3b-Vektor
+entsteht Byte für Byte gleich), 4c-1c Tresor (Seed + `drbg` statt großer Werte, AES-256-GCM in der Ablage, Schlüssel
+in SecureStore), 4c-1d Ablauf `runde()` (abholen, Hüllen, Auftrag beantworten, quittieren nur vor unvollständigen
+Nachrichten; Schlüssel des Ausgebers aus der Unterschrift seiner Hülle), 4c-1e IBM-Messer (nur eigene Instanz,
+Frist, Mehrheit), 4c-1f Bestätigung (nur EINE Ausgabe je K), 4c-1g Öffnung (nur an Stelle b, Token = bestätigte
+Ausgabe, Bindung/Wahl final per Sichtung + `finalized_height`, alle befragten Knoten einig). Ehrlich: Die Finalität
+kennt das Handy nur von den befragten Knoten. **Nächster Schritt 4c-2** (Ausgeber/Inhaberin über den Briefkasten).
+
 **4c-1a gebaut (24.11.2026):** App `lib/quantenSPraepAuftrag.ts` — Auftrag streng lesen, Nachricht wie
 `quantenSAbschnittAuftragNachricht`, prüfen wie `quantenSAbschnittPruefen`; statt des Kettenstands des Dienstes
 die Bestellung (gelost, nicht verfallen, Ausgeber, t, v, Validatoren = Los in Reihenfolge). In Weg B nur
