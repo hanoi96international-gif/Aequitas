@@ -1,0 +1,105 @@
+{
+ "hinweis": "Aus der App (lib/__tests__/quantenSAusgeber.test.ts); der Knoten prüft ihn mit eigenem Code.",
+ "schluessel_nur_test": "4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b",
+ "wallet": "0x504e4fbab7bc2962b361e3730b965e61f289d0cc",
+ "k": "c1ba57bf272a370477be9d6385a43036d53d1a47e795766077f8c49abe47573d",
+ "v": 5,
+ "t": 3,
+ "deckung": 12345678,
+ "zeit": 1695802764,
+ "nachricht": "aequitas-quanten-s-bestellen-v1|chain:1926|0x504e4fbab7bc2962b361e3730b965e61f289d0cc|c1ba57bf272a370477be9d6385a43036d53d1a47e795766077f8c49abe47573d|5|3|12345678|1695802764",
+ "wallet_sig": "0xdaeb0230b46bb5384c37d610960be88cba71e8406000074889ff8db5dcb5e4cc6e58f9059dc6e9bb96e7e79c7831aaee143944741ff1473d7fcce4e76ab419121b",
+ "pfand": 1234568,
+ "koerper_bestellen": "{\"wallet\":\"0x504e4fbab7bc2962b361e3730b965e61f289d0cc\",\"zeit\":1695802764,\"quanten_w\":{\"k\":\"c1ba57bf272a370477be9d6385a43036d53d1a47e795766077f8c49abe47573d\",\"t\":3,\"praep_zahl\":5,\"deckung\":12345678,\"wallet_sig\":\"0xdaeb0230b46bb5384c37d610960be88cba71e8406000074889ff8db5dcb5e4cc6e58f9059dc6e9bb96e7e79c7831aaee143944741ff1473d7fcce4e76ab419121b\"}}",
+ "runde": 1000000,
+ "runde_sig": "83ad29e4c409f9470fc2ef02f90214df49e02b441a1a241a82d622d9f608ef98fd8b11a029f1bee9d9e83b45088abe72",
+ "koerper_losen": "{\"wallet\":\"\",\"zeit\":0,\"quanten_w\":{\"k\":\"c1ba57bf272a370477be9d6385a43036d53d1a47e795766077f8c49abe47573d\",\"runde\":1000000,\"runde_sig\":\"83ad29e4c409f9470fc2ef02f90214df49e02b441a1a241a82d622d9f608ef98fd8b11a029f1bee9d9e83b45088abe72\"}}",
+ "pfand_tabelle": [
+  [
+   1,
+   1000000
+  ],
+  [
+   999999,
+   1000000
+  ],
+  [
+   1000000,
+   1000000
+  ],
+  [
+   10000000,
+   1000000
+  ],
+  [
+   10000001,
+   1000001
+  ],
+  [
+   10000009,
+   1000001
+  ],
+  [
+   10000010,
+   1000001
+  ],
+  [
+   10000011,
+   1000002
+  ],
+  [
+   123456789,
+   12345679
+  ],
+  [
+   9007199254740991,
+   900719925474100
+  ]
+ ],
+ "runden_tabelle": [
+  [
+   1695802761,
+   999999
+  ],
+  [
+   1695802762,
+   1000000
+  ],
+  [
+   1695802763,
+   1000000
+  ],
+  [
+   1695802764,
+   1000000
+  ],
+  [
+   1695802765,
+   1000001
+  ],
+  [
+   1695802766,
+   1000001
+  ],
+  [
+   1695802767,
+   1000001
+  ],
+  [
+   1695802768,
+   1000002
+  ],
+  [
+   1,
+   1
+  ],
+  [
+   1692802767,
+   1
+  ],
+  [
+   1692802768,
+   2
+  ]
+ ]
+}

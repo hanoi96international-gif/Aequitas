@@ -2,12 +2,22 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 24.11.2026 ~09:20 UTC (Sitzung „Weiter mit Übergabe“, Zweig `claude/uebergabe-fortsetzen-g5xqox`); davor ~18:05 UTC (Sitzung „Weiter nach Übergabe“, Zweig `claude/weiter-nach-uebergabe-zyl7c6`); davor 22.11.2026 ~18:50 UTC, Sitzung „CL Übergabe weitermachen“ (`claude/cl-uebergabe-weitermachen-jdz5h7`); davor ~16:40 UTC Sitzung „Weiter Übergabe“ (`claude/weiter-uebergabe-1a9yql`); davor 21.11. ~20:15 UTC Sitzung „CL Übergabe weitermachen“; davor ~18:00 UTC Sitzung „Weiter“ (Zweig `claude/admiring-bohr-ob0u0p`, alle vier
+Stand: 24.11.2026 ~11:30 UTC (Sitzung „Weiter nach Übergabe“, Zweig `claude/weiter-nach-uebergabe-gqogtx`); davor ~09:20 UTC (Sitzung „Weiter mit Übergabe“, Zweig `claude/uebergabe-fortsetzen-g5xqox`); davor ~18:05 UTC (Sitzung „Weiter nach Übergabe“, Zweig `claude/weiter-nach-uebergabe-zyl7c6`); davor 22.11.2026 ~18:50 UTC, Sitzung „CL Übergabe weitermachen“ (`claude/cl-uebergabe-weitermachen-jdz5h7`); davor ~16:40 UTC Sitzung „Weiter Übergabe“ (`claude/weiter-uebergabe-1a9yql`); davor 21.11. ~20:15 UTC Sitzung „CL Übergabe weitermachen“; davor ~18:00 UTC Sitzung „Weiter“ (Zweig `claude/admiring-bohr-ob0u0p`, alle vier
 Repos); davor ~13:40 UTC Sitzung „Weiter“ (`claude/weiter-uw2p42`), davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18:30 UTC Sitzung
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
-**Stand 24.11. ~09:20 UTC — HIER WEITERMACHEN** (Sitzung „Weiter mit Übergabe“, Zweig `claude/uebergabe-fortsetzen-g5xqox`):
+**Stand 24.11. ~11:30 UTC — HIER WEITERMACHEN** (Sitzung „Weiter nach Übergabe“, Zweig `claude/weiter-nach-uebergabe-gqogtx`
+in allen vier Repos):
+- **4c-2a gebaut** (Ausgeber bestellt und lost): App `lib/quantenSAusgeber.ts` + Tests (1423 grün, 18 Mutationen rot),
+  Knoten-Prüfvektor `quanten_s_ausgeber_bestellen_vektor_test.go` (Bestellen + Losen mit echtem Beacon angenommen).
+  PRs: Aequitas (Vektor + Doku) und App — siehe PR-Liste; Merge nach grüner CI, erst Aequitas, dann App.
+- **Plan 4c-2** steht in `DEZENTRAL.md` („Plan 4c-2“): 2b Inhaberin verschlüsselt an `pub` der Gelosten, 2c Aufträge
+  als Hüllen + Antworten prüfen, 2d Bestätigungen, 2e Ausgabe gegen das Los + Paket, 2f Annehmen + Öffnungen.
+  **Nächster Schritt 2b.**
+- Befund 2a: Niemand reichte bisher `quanten_w_s_losen` ein; das macht jetzt der Ausgeber (drand-Relais, feste Liste).
+
+**Stand 24.11. ~09:20 UTC** (frühere Sitzung) (Sitzung „Weiter mit Übergabe“, Zweig `claude/uebergabe-fortsetzen-g5xqox`):
 - **Offene PRs:** keine in der App. Aequitas: dieser Übergabe-PR (nur Doku), Merge nach grüner CI.
 - **Erledigt in dieser Sitzung (alles gemergt):**
   - Aequitas #645 (Nachzug Inhaberin), #646 (B4b-4a: `pub` der Präparatorin im Register, schlafend, Sicherheitsprüfung
