@@ -2,12 +2,40 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 24.11.2026 ~09:10 UTC (Sitzung „Weiter mit Übergabe“, Zweig `claude/uebergabe-fortsetzen-g5xqox`); davor ~18:05 UTC (Sitzung „Weiter nach Übergabe“, Zweig `claude/weiter-nach-uebergabe-zyl7c6`); davor 22.11.2026 ~18:50 UTC, Sitzung „CL Übergabe weitermachen“ (`claude/cl-uebergabe-weitermachen-jdz5h7`); davor ~16:40 UTC Sitzung „Weiter Übergabe“ (`claude/weiter-uebergabe-1a9yql`); davor 21.11. ~20:15 UTC Sitzung „CL Übergabe weitermachen“; davor ~18:00 UTC Sitzung „Weiter“ (Zweig `claude/admiring-bohr-ob0u0p`, alle vier
+Stand: 24.11.2026 ~09:20 UTC (Sitzung „Weiter mit Übergabe“, Zweig `claude/uebergabe-fortsetzen-g5xqox`); davor ~18:05 UTC (Sitzung „Weiter nach Übergabe“, Zweig `claude/weiter-nach-uebergabe-zyl7c6`); davor 22.11.2026 ~18:50 UTC, Sitzung „CL Übergabe weitermachen“ (`claude/cl-uebergabe-weitermachen-jdz5h7`); davor ~16:40 UTC Sitzung „Weiter Übergabe“ (`claude/weiter-uebergabe-1a9yql`); davor 21.11. ~20:15 UTC Sitzung „CL Übergabe weitermachen“; davor ~18:00 UTC Sitzung „Weiter“ (Zweig `claude/admiring-bohr-ob0u0p`, alle vier
 Repos); davor ~13:40 UTC Sitzung „Weiter“ (`claude/weiter-uw2p42`), davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18:30 UTC Sitzung
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
-**Stand 23.11. ~18:30 UTC, Sitzung „Weiter mit Übergabe“ (Zweig `claude/uebergabe-fortsetzen-g5xqox`, alle vier Repos) — HIER WEITERMACHEN:**
+**Stand 24.11. ~09:20 UTC — HIER WEITERMACHEN** (Sitzung „Weiter mit Übergabe“, Zweig `claude/uebergabe-fortsetzen-g5xqox`):
+- **Offene PRs:** keine in der App. Aequitas: dieser Übergabe-PR (nur Doku), Merge nach grüner CI.
+- **Erledigt in dieser Sitzung (alles gemergt):**
+  - Aequitas #645 (Nachzug Inhaberin), #646 (B4b-4a: `pub` der Präparatorin im Register, schlafend, Sicherheitsprüfung
+    als PR-Kommentar), #647/#648 (Prüfvektor Briefkasten, Doku), #649 (Prüfvektor Abschnitts-Auftrag, Plan B4b-4c,
+    **gorilla/websocket auf d67f41855da4 wegen GO-2026-6278** — neu in der Datenbank am 24.11., ohne Tag behoben).
+  - Ältere PRs geprüft und geschlossen: #637, #628, #340, App #111 (Inhalte gesichert: `DEZENTRAL.md` „Offen vor dem
+    Stichtag“, `docs/OFFEN.md` Punkt 3).
+  - App #117 (Register liest `pub`), #118 (Briefkasten-Client), #119 (Hülle), #120 (4c-1a Auftrag prüfen, 4c-1b
+    `antwortBauen`), #121 (4c-1c Tresor: Seed + `drbg`, AES-GCM, SecureStore), #122 (4c-1d Ablauf `runde()`),
+    #123 (4c-1e IBM-Messer), #124 (4c-1f Bestätigung, nur EINE Ausgabe je K), #125 (4c-1g Öffnung nach finaler
+    Bindung/Wahl). **4c-1 (die App als Präparatorin, ohne Oberfläche) ist damit vollständig.**
+- **Nächster Schritt 4c-2:** Ausgeber/Inhaberin in Weg B über den Briefkasten — bestellen, Los abwarten, Aufträge
+  (`QuantenSAbschnittAnfrage` mit an die Gelosten verschlüsselten Basen, `basenVerschluesseln`) als Hüllen Art `auftrag`
+  an die Gelosten (Schlüssel aus dem Register, `pubPasst`), Antworten prüfen und sammeln (wie
+  `quanten_s_ausgabe_abschnitte.go`: Unterschrift, Abschnitt, `basen_hash`, Stichprobe v2), Wurzel und Proben,
+  Bestätigungs-Anfragen (`BestaetigenAnfrage`, Hülle Art `bestaetigung`, Bündel der anderen weiterreichen),
+  Bestätigungen sammeln, Ausgabe gegen das Los einreichen; Annahmestellen holen Öffnungen per Hülle Art `oeffnung`.
+  Vorlage für die Testhilfe: `anfrageBauen` in `lib/__tests__/quantenSPraepAblauf.test.ts`. Danach 4c-3 Oberfläche
+  (Expo 54 — vorher die Doku der Version lesen, AGENTS.md der App; 12 Sprachen), dann App-Release, Stichtag Weg B
+  (Betreiber), Pilot B5.
+- **Arbeitsweise bewährt:** je Schritt eigener PR, Tests + Missbrauchstests + Mutationen (Mutationen mit `timeout`,
+  eine hängende Mutation zählt als rot), Merge mit voller SHA, danach Zweig neu + `merge -s ours`, Check-in per
+  `send_later` statt Warten. App-CI ~1–3 min, Aequitas-CI ~15 min.
+- **Werkzeuge:** App-`npm ci` mit `npx -y npm@11 ci --ignore-scripts`; Postgres lokal `pg_ctlcluster 16 main start`,
+  DB `aequitas_ci`, `AEQUITAS_TPS_BENCH=1 DATABASE_URL=postgres://postgres:postgres@localhost:5432/aequitas_ci?sslmode=disable`.
+- C1-Deploys zu #629–#634 warten weiter auf Freigabe der Umgebung `produktion` (Code schläft, kein Eilbedarf).
+
+**Verlauf 23.11./24.11., Sitzung „Weiter mit Übergabe“ (Zweig `claude/uebergabe-fortsetzen-g5xqox`) — Einzelschritte:**
 - **#645 gemergt** (71700871, Nachzug der Inhaberin; CI ganz grün).
 - **#646 (B4b-4a) und App #117 gemergt** (4b3e484a / fc849bdd), CI grün. Kein offener PR mehr.
 - _War:_ **B4b-4a gebaut: PR #646** — Register der Präparatoren trägt `pub` (secp256k1, 04…, 130 Hex), den jeder
@@ -19,7 +47,7 @@ dezentrales Quantengeld“.
   1242 Tests grün, 4 Mutationen rot. Merge nach #646.
 - **#647 und App #118 gemergt** (6289741a / 4a259612).
 - **#648 und App #119 gemergt** (572f4cbb / 26f24d05). B4b-4b vollständig. Kein offener PR.
-- **24.11. ~07:40 UTC — HIER WEITERMACHEN:**
+- **24.11. ~07:40 UTC:**
   - **Gemergt:** Aequitas #649 (9f452d21: Prüfvektor Abschnitts-Auftrag, Plan B4b-4c, **gorilla/websocket auf
     d67f41855da4 wegen GO-2026-6278** — seit 24.11. in der Datenbank, über libp2p/go-ethereum erreichbar, ohne Tag
     behoben), App #120 (f42a8401: 4c-1a Auftrag prüfen, 4c-1b `antwortBauen`/`antwortAufAuftrag`/`messbitsZiehen`),
@@ -36,7 +64,7 @@ dezentrales Quantengeld“.
   - **App #125 gemergt** (99b6c793, 4c-1g): `oeffnungBeantworten` — nur an Stelle b, Token = bestätigte Ausgabe
     (eigene Unterschrift gegen Wurzel/Proben der Kette), Bindung+Wahl final (Sichtung mit Höhe, `finalized_height`
     aus `/api/health/combined`), alle befragten Knoten einig, Stichprobe v2. **4c-1 damit vollständig.**
-  - **HIER WEITER: 4c-2** Ausgeber/Inhaberin in Weg B über den Briefkasten (Gegenstück zu 4c-1: bestellen, Los
+  - **(siehe oben) 4c-2** Ausgeber/Inhaberin in Weg B über den Briefkasten (Gegenstück zu 4c-1: bestellen, Los
     abwarten, Aufträge als Hüllen an die Gelosten, Antworten prüfen/sammeln, Bestätigungs-Anfragen, Ausgabe gegen
     das Los einreichen; Stellen holen Öffnungen per Hülle). Vorbild `quanten_s_ausgabe_abschnitte.go`
     (`quantenSRunde`), App `quantenSInhaberin.ts`. Danach 4c-3 Oberfläche (Expo 54, 12 Sprachen).
@@ -59,12 +87,12 @@ dezentrales Quantengeld“.
   die Bestellung, Basen öffnen; 1344 Tests grün, 20 Mutationen rot) und Knoten-Prüfvektor
   `quanten_s_praep_auftrag_vektor_test.go`. Merge nach grüner CI. Danach Rest von 4c-1 (messen, Antwort/Bündel
   als Hüllen, Tresor, Bestätigung, Öffnung).
-- **HIER WEITER: B4b-4c nach Plan in `DEZENTRAL.md` („Plan B4b-4c“).** Erst 4c-1 (Ablauf der Präparatorin als
+- _(erledigt)_ **B4b-4c nach Plan in `DEZENTRAL.md` („Plan B4b-4c“).** Erst 4c-1 (Ablauf der Präparatorin als
   Bibliothek), dann 4c-2 (Ausgeber/Inhaberin in Weg B über den Briefkasten — fehlt bisher ganz), dann 4c-3
   Oberfläche. Vor UI-Code die Expo-54-Doku lesen (AGENTS.md der App).
 - B4b-4b Teil 3: App `lib/quantenSHuelle.ts` (Hülle: unterschreiben mit Empfänger, dann
   ECIES; Teile ≤ 30.000 Byte; Zusammensetzer begrenzt, gegen Wiederholung, speicherbar); 1307 Tests grün,
-  17 Mutationen rot. Doku in `DEZENTRAL.md` „B4b-4b“. **HIER WEITER nach dem Merge: B4b-4c Ablauf und Oberfläche.**
+  17 Mutationen rot. Doku in `DEZENTRAL.md` „B4b-4b“. _(erledigt: B4b-4c-1)_
 - B4b-4b Teil 2: Prüfvektor `testdata/briefkasten_vektor.json` (Knoten lässt genau diese
   Anfragen durch) und App `lib/briefkasten.ts` (ablegen/abholen/quittieren, Antwort streng gelesen; 1277 Tests grün,
   10 Mutationen rot). Kein Konsens. **Danach Teil 3:** Hülle der Protokoll-Nachrichten (Art, K, Absender-Unterschrift
