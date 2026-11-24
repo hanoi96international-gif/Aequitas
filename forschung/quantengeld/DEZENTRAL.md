@@ -1927,6 +1927,32 @@ Frist, Mehrheit), 4c-1f Bestätigung (nur EINE Ausgabe je K), 4c-1g Öffnung (nu
 Ausgabe, Bindung/Wahl final per Sichtung + `finalized_height`, alle befragten Knoten einig). Ehrlich: Die Finalität
 kennt das Handy nur von den befragten Knoten. **Nächster Schritt 4c-2** (Ausgeber/Inhaberin über den Briefkasten).
 
+**Plan 4c-2 (24.11.2026):** Gegenstück zu 4c-1, in Teilschritten je eigener PR:
+- **2a** Ausgeber bestellt und lost (gebaut, unten).
+- **2b** Inhaberin in Weg B: Bestellung mit y je Abschnitt an `pub` der Gelosten aus dem Register verschlüsselt
+  (statt Schlüssel vom Validator-Dienst), `pubPasst` selbst geprüft.
+- **2c** Ausgeber: je Gelosten den Abschnitts-Auftrag als Hülle `auftrag`, Antworten aus dem eigenen Briefkasten
+  sammeln und prüfen wie `abschnitteHolen` (Unterschrift, Abschnitt, `basen_hash`, Stichprobe v2), Wurzel und Proben.
+- **2d** Bestätigungs-Anfragen als Hülle `bestaetigung` (Bündel der anderen weiterreichen), Bestätigungen prüfen.
+- **2e** Ausgabe gegen das Los einreichen (`quanten_w_s_ausgeben`, Validatoren = Los), Paket für die Inhaberin.
+- **2f** Inhaberin nimmt das Paket an (wie `annehmen`), Annahmestelle holt Öffnungen per Hülle `oeffnung`.
+
+### B4b-4c-2a: Ausgeber bestellt und lost (24.11.2026, gebaut)
+
+App `lib/quantenSAusgeber.ts`: `bestellen` (Menschen-Wallet, EIP-191 über `quantenSBestellNachricht`, K aus dem
+Zufall des Geräts; Zustand mit K **vor** dem Einreichen gesichert; abgewiesen = Zustand gelöscht, Netzfehler =
+später am Register geklärt), `losStand` (Register streng: Runde **selbst** aus der Buchzeit nachgerechnet wie
+`quantenSLosRunde`, Pfand wie `quantenSBestellPfandFuer`, Frist, Los = v verschiedene kanonische Konten; ab der
+festen Runde ihre Signatur bei einer festen Liste von drand-Relais holen, streng lesen — Runde gleich,
+48 Byte, `randomness` = SHA-256 der Signatur — und `quanten_w_s_losen` einreichen; weist der Knoten eine Signatur
+ab, das nächste Relais, höchstens jedes einmal). Befund: Bisher reichte niemand das Losen ein; jetzt tut es der
+Ausgeber (erlaubt ist es jedem, die BLS-Signatur prüft jeder Knoten selbst). Ehrlich: Das Los selbst kann die App
+nicht nachrechnen (die Ansicht des Registers zeigt das Abbild nicht) — das tut jeder Knoten.
+Prüfvektor `testdata/quanten_s_ausgeber_bestellen_vektor.json` aus der App (echter quicknet-Beacon, Runde
+1.000.000); der Knoten liest die Körper wie `handleQuantenW`, prüft Nachricht, Unterschrift, Pfand- und
+Rundentabelle und nimmt Bestellen und Losen auf einer Testkette an
+(`quanten_s_ausgeber_bestellen_vektor_test.go`). Kein Konsens.
+
 **4c-1a gebaut (24.11.2026):** App `lib/quantenSPraepAuftrag.ts` — Auftrag streng lesen, Nachricht wie
 `quantenSAbschnittAuftragNachricht`, prüfen wie `quantenSAbschnittPruefen`; statt des Kettenstands des Dienstes
 die Bestellung (gelost, nicht verfallen, Ausgeber, t, v, Validatoren = Los in Reihenfolge). In Weg B nur
