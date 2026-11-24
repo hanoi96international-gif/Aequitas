@@ -2,7 +2,7 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 24.11.2026 ~07:20 UTC (Sitzung „Weiter mit Übergabe“, Zweig `claude/uebergabe-fortsetzen-g5xqox`); davor ~18:05 UTC (Sitzung „Weiter nach Übergabe“, Zweig `claude/weiter-nach-uebergabe-zyl7c6`); davor 22.11.2026 ~18:50 UTC, Sitzung „CL Übergabe weitermachen“ (`claude/cl-uebergabe-weitermachen-jdz5h7`); davor ~16:40 UTC Sitzung „Weiter Übergabe“ (`claude/weiter-uebergabe-1a9yql`); davor 21.11. ~20:15 UTC Sitzung „CL Übergabe weitermachen“; davor ~18:00 UTC Sitzung „Weiter“ (Zweig `claude/admiring-bohr-ob0u0p`, alle vier
+Stand: 24.11.2026 ~07:00 UTC (Sitzung „Weiter mit Übergabe“, Zweig `claude/uebergabe-fortsetzen-g5xqox`); davor ~18:05 UTC (Sitzung „Weiter nach Übergabe“, Zweig `claude/weiter-nach-uebergabe-zyl7c6`); davor 22.11.2026 ~18:50 UTC, Sitzung „CL Übergabe weitermachen“ (`claude/cl-uebergabe-weitermachen-jdz5h7`); davor ~16:40 UTC Sitzung „Weiter Übergabe“ (`claude/weiter-uebergabe-1a9yql`); davor 21.11. ~20:15 UTC Sitzung „CL Übergabe weitermachen“; davor ~18:00 UTC Sitzung „Weiter“ (Zweig `claude/admiring-bohr-ob0u0p`, alle vier
 Repos); davor ~13:40 UTC Sitzung „Weiter“ (`claude/weiter-uw2p42`), davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18:30 UTC Sitzung
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
@@ -19,7 +19,22 @@ dezentrales Quantengeld“.
   1242 Tests grün, 4 Mutationen rot. Merge nach #646.
 - **#647 und App #118 gemergt** (6289741a / 4a259612).
 - **#648 und App #119 gemergt** (572f4cbb / 26f24d05). B4b-4b vollständig. Kein offener PR.
-- **24.11. ~07:20 UTC: 4c-1a gebaut (PRs offen):** App `lib/quantenSPraepAuftrag.ts` (Auftrag prüfen gegen
+- **24.11. ~07:00 UTC — HIER WEITERMACHEN:**
+  - **Offen, CI lief:** Aequitas **#649** (Prüfvektor Abschnitts-Auftrag, Plan B4b-4c, Doku) und App **#120**
+    (`lib/quantenSPraepAuftrag.ts`, 4c-1a). Beide lokal grün. Squash-Merge mit voller SHA, dann Zweige neu von
+    main/aequitas-app + `git merge -s ours` (Arbeitsweise). Check-in 07:11 UTC war geplant.
+  - **4c-1b fertig, NUR LOKAL im App-Stash** (`git stash list` → „4c-1b“; Container kann verloren gehen!):
+    `antwortBauen` in `lib/quantenSPraeparieren.ts` (Zusammensetzung aus dem Vektortest in die Bibliothek; der
+    B4b-3b-Vektor bleibt Byte für Byte gleich, also vom Knoten geprüft), `messbitsZiehen` und
+    `antwortAufAuftrag` in `lib/quantenSPraepAuftrag.ts`, Tests (1348 grün, 7 Mutationen rot). Nach dem Merge von
+    App #120: `git stash pop`, committen, PR. Geht der Stash verloren: neu bauen nach dieser Beschreibung.
+  - **Danach Rest von 4c-1:** Tresor im Gerät (Schlüssel in SecureStore mit Biometrie, große Teile verschlüsselt
+    in Dateien wie `quantenSInhaberin`), Messung über `ibmQuantum` + `abschnittKreise`/`abschnittAuswerten`,
+    Antwort an den Ausgeber und Bündel an die anderen als Hüllen (`einpacken`, `ablegen`), Bestätigung
+    (`bestaetigen`), Öffnung erst nach finaler Bindung und Wahl, Liste erledigter Hüllen speichern.
+  - **4c-2 Hinweis:** Das Ausgeber-Werkzeug `quanten_s_ausgabe_abschnitte.go` spricht die Validatoren über die
+    Schnittstelle `quantenSAbschnittNetz` an — der Briefkasten kann dort eine zweite Umsetzung werden.
+- **24.11. ~06:45 UTC: 4c-1a gebaut (PRs #649 / App #120):** App `lib/quantenSPraepAuftrag.ts` (Auftrag prüfen gegen
   die Bestellung, Basen öffnen; 1344 Tests grün, 20 Mutationen rot) und Knoten-Prüfvektor
   `quanten_s_praep_auftrag_vektor_test.go`. Merge nach grüner CI. Danach Rest von 4c-1 (messen, Antwort/Bündel
   als Hüllen, Tresor, Bestätigung, Öffnung).
