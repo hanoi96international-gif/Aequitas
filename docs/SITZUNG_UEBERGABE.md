@@ -2,7 +2,7 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 24.11.2026 ~07:50 UTC (Sitzung „Weiter mit Übergabe“, Zweig `claude/uebergabe-fortsetzen-g5xqox`); davor ~18:05 UTC (Sitzung „Weiter nach Übergabe“, Zweig `claude/weiter-nach-uebergabe-zyl7c6`); davor 22.11.2026 ~18:50 UTC, Sitzung „CL Übergabe weitermachen“ (`claude/cl-uebergabe-weitermachen-jdz5h7`); davor ~16:40 UTC Sitzung „Weiter Übergabe“ (`claude/weiter-uebergabe-1a9yql`); davor 21.11. ~20:15 UTC Sitzung „CL Übergabe weitermachen“; davor ~18:00 UTC Sitzung „Weiter“ (Zweig `claude/admiring-bohr-ob0u0p`, alle vier
+Stand: 24.11.2026 ~08:10 UTC (Sitzung „Weiter mit Übergabe“, Zweig `claude/uebergabe-fortsetzen-g5xqox`); davor ~18:05 UTC (Sitzung „Weiter nach Übergabe“, Zweig `claude/weiter-nach-uebergabe-zyl7c6`); davor 22.11.2026 ~18:50 UTC, Sitzung „CL Übergabe weitermachen“ (`claude/cl-uebergabe-weitermachen-jdz5h7`); davor ~16:40 UTC Sitzung „Weiter Übergabe“ (`claude/weiter-uebergabe-1a9yql`); davor 21.11. ~20:15 UTC Sitzung „CL Übergabe weitermachen“; davor ~18:00 UTC Sitzung „Weiter“ (Zweig `claude/admiring-bohr-ob0u0p`, alle vier
 Repos); davor ~13:40 UTC Sitzung „Weiter“ (`claude/weiter-uw2p42`), davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18:30 UTC Sitzung
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
@@ -29,9 +29,12 @@ dezentrales Quantengeld“.
     öffnen (Hülle liefert jetzt `pub` des Absenders aus der Unterschrift), Auftrag beantworten (Absender =
     Ausgeber, gleiche Antwort aus dem Seed bei Wiederholung, Fall sichern vor dem Senden, Antwort als Hülle an
     den Ausgeber; Bündel stecken in der Antwort), quittieren nur vor der ersten unvollständigen Nachricht.
-  - **Nächster Schritt 4c-1e:** echter `Messer` aus `ibmQuantum` (Token, `geraetWaehlen`, `abschnittKreise`,
-    `einreichen`, Status pollen begrenzt, `ergebnisSchuesse`, `abschnittAuswerten`), IBM-Schlüssel in SecureStore.
-    Danach 4c-1f Bestätigung (`bestaetigen`) und Öffnung nach finaler Bindung/Wahl; eigener Neuversand der Antwort.
+  - **App #123 gemergt** (a0bdc562, 4c-1e): `lib/quantenSPraepIbm.ts` — `ibmMesser` (Gerät nur aus der eigenen
+    Instanz, ≤ 64 Kreise je Auftrag, Status bis Frist 2 h, Mehrheit aus 5 Schüssen), IBM-Zugang geheim in SecureStore.
+  - **Nächster Schritt 4c-1f:** Bestätigung (`bestaetigen` aus `quantenSPraeparieren` mit `EigenerAbschnitt` aus
+    dem Fall: Werte/Koeffizienten über `antwortAusFall`/`drbg` wiederherstellen; Anfrage des Ausgebers als Hülle Art
+    `bestaetigung`, Antwort als Hülle zurück, Stand `bestaetigt`), dann Öffnung (Art `oeffnung`) erst nach finaler
+    Bindung und Wahl auf der Kette, Stand `geoeffnet`. Danach 4c-2 (Ausgeber Weg B) und 4c-3 (Oberfläche).
   - _War:_ 4c-1d Ablauf der Präparatorin (`lib/quantenSPraepAblauf.ts`): Briefe abholen
     (`briefkasten.abholen`), Hüllen öffnen (`oeffnen` + `Zusammensetzer`, Liste `gesehenListe` speichern), Auftrag
     prüfen (`auftragPruefen` mit `bestellungenLesen` aus dem Register), Fall mit neuem Seed in den Tresor, messen
