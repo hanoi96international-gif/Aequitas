@@ -555,3 +555,47 @@ func TestQuantenSBestellung_PfandHoehe(t *testing.T) {
 		}
 	}
 }
+
+// Missbrauch: ein Blockerzeuger traegt bei Bestellen, Ausgabe oder Frist ein
+// anderes Pfand ein, als die Regel ergibt (zu klein: der Ausgeber zahlt
+// weniger; zu gross oder an einen anderen: Geld wandert falsch). Jeder
+// Nachspielende rechnet das Pfand selbst (quantenSBestellPfandFuer) und weist
+// den Block ab; das richtige Pfand nimmt er an.
+func TestQuantenSBestellung_PfandGefaelschtImBlock(t *testing.T) {
+	w := neueBWelt(t)
+	// Nur rechnen (nicht anwenden): der Nachspielende sieht jede Variante frisch.
+	tx := w.bestellenTx(w.praeger, w.keys[w.praeger], w.p.K, 5, w.p.t, w.z)
+	u := w.bescheid(w.cs, tx, w.z)
+	if u.regel != "" {
+		t.Fatalf("Bestellen abgewiesen: %s", u.text)
+	}
+	gq := *tx.QuantenW
+	gq.Pfand, gq.PfandAn, gq.Wert, gq.WertAn = u.felder.Pfand, u.felder.PfandAn, u.felder.Wert, u.felder.WertAn
+	tx.QuantenW, tx.BuchAt = &gq, w.z
+	pfand := quantenSBestellPfandFuer(bwDeckung)
+	if tx.QuantenW.Pfand != pfand {
+		t.Fatalf("Pfand %d, Regel %d", tx.QuantenW.Pfand, pfand)
+	}
+	for name, f := range map[string]func(q *QuantenWAngaben){
+		"zu klein":    func(q *QuantenWAngaben) { q.Pfand = pfand - 1 },
+		"null":        func(q *QuantenWAngaben) { q.Pfand = 0 },
+		"zu gross":    func(q *QuantenWAngaben) { q.Pfand = pfand + 1 },
+		"an jemanden": func(q *QuantenWAngaben) { q.PfandAn = w.praep[0] },
+		"Wert dazu":   func(q *QuantenWAngaben) { q.Wert = 1 },
+	} {
+		g := tx
+		q := *tx.QuantenW
+		f(&q)
+		g.QuantenW = &q
+		err := w.nachspielen(g, w.z)
+		if err == nil || !(strings.Contains(err.Error(), "Block nennt") || strings.Contains(err.Error(), "quanten_w_form")) {
+			t.Fatalf("%s: Block mit gefaelschtem Pfand nicht wegen des Pfands abgewiesen: %v", name, err)
+		}
+	}
+	if err := w.nachspielen(tx, w.z); err != nil {
+		t.Fatalf("richtiges Pfand abgewiesen: %v", err)
+	}
+	if b := w.best(w.nach); b == nil || b.Pfand != pfand {
+		t.Fatal("Nachspielender hat das Pfand nicht wie die Regel")
+	}
+}
