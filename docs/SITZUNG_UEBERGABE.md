@@ -23,11 +23,11 @@ dezentrales Quantengeld“.
   - **Offen, CI lief:** Aequitas **#649** (Prüfvektor Abschnitts-Auftrag, Plan B4b-4c, Doku) und App **#120**
     (`lib/quantenSPraepAuftrag.ts`, 4c-1a). Beide lokal grün. Squash-Merge mit voller SHA, dann Zweige neu von
     main/aequitas-app + `git merge -s ours` (Arbeitsweise). Check-in 07:11 UTC war geplant.
-  - **4c-1b fertig, NUR LOKAL im App-Stash** (`git stash list` → „4c-1b“; Container kann verloren gehen!):
+  - **4c-1b fertig und mit in App #120 gepusht** (eigener Commit, damit nichts nur lokal liegt):
     `antwortBauen` in `lib/quantenSPraeparieren.ts` (Zusammensetzung aus dem Vektortest in die Bibliothek; der
     B4b-3b-Vektor bleibt Byte für Byte gleich, also vom Knoten geprüft), `messbitsZiehen` und
     `antwortAufAuftrag` in `lib/quantenSPraepAuftrag.ts`, Tests (1348 grün, 7 Mutationen rot). Nach dem Merge von
-    App #120: `git stash pop`, committen, PR. Geht der Stash verloren: neu bauen nach dieser Beschreibung.
+    App #120 ist 4c-1b damit auch auf `aequitas-app`.
   - **Danach Rest von 4c-1:** Tresor im Gerät (Schlüssel in SecureStore mit Biometrie, große Teile verschlüsselt
     in Dateien wie `quantenSInhaberin`), Messung über `ibmQuantum` + `abschnittKreise`/`abschnittAuswerten`,
     Antwort an den Ausgeber und Bündel an die anderen als Hüllen (`einpacken`, `ablegen`), Bestätigung
