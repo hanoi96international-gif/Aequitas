@@ -2097,6 +2097,17 @@ Annahme durch die Inhaberin, Öffnungen für die Stellen per Hülle `oeffnung`. 
   (Adapter: Dienst `blaetter` aus dem Paket). Ohne Paket oder mit weniger als t Antworten: kein Einlösen.
 - Danach 4c-3 Oberfläche.
 
+### Der Ausgeber nie im eigenen Los (25.11.2026, Konsens, schlafend)
+
+Befund 2c: Das Abbild des Registers schloss den Ausgeber nicht aus — als gemeldete Präparatorin konnte er für die
+eigene Ausgabe gelost werden. Dann hielte er selbst einen der v Abschnitte (Werte, Koeffizienten, dazu die Basen y
+der Inhaberin für diesen Abschnitt) und bräuchte nur t − 1 weitere. **Entscheidung:** Beim Bestellen fällt der
+Ausgeber aus dem Abbild, **bevor** die Mindestgröße (3·v) zählt; ein gespeicherter Stand, dessen Abbild den Ausgeber
+enthält, wird beim Lesen abgewiesen (fail-closed). Spezifikation `s_weg_b.py` (Selbsttest) gleich. Weg B schläft
+(Stichtag), es gibt keine Bestellungen auf der Kette, die StateRoot bleibt byte-gleich. Missbrauchstests:
+`TestQuantenSBestellung_AusgeberNieImEigenenLos` (gemeldeter Ausgeber: nicht im Abbild, nie gelost; v = 7 mit ihm als
+einzigem Fehlenden: Register zu klein), `TestQuantenSBestellung_RegisterLesen` („Ausgeber im Abbild“).
+
 ### Messung in Pilot-Größe (25.11.2026)
 
 Ende zu Ende im Test (Node, Server-CPU) mit v = 7, t = 4, n = 2822 (kleinstes n für k_note bei Toleranz 2 %):

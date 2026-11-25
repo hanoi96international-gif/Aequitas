@@ -421,6 +421,12 @@ func TestQuantenSBestellung_RegisterLesen(t *testing.T) {
 		"ohne Zeit":         func(f *quantenSBestellungForm) { f.Zeit = 0 },
 		"Pfand zu klein":    func(f *quantenSBestellungForm) { f.Pfand-- },
 		"Deckung zu klein":  func(f *quantenSBestellungForm) { f.Deckung = 1; f.Pfand = quantenSBestellPfandFuer(1) },
+		// Der Ausgeber im eigenen Abbild (ungelost, damit nur diese Regel greift).
+		"Ausgeber im Abbild": func(f *quantenSBestellungForm) {
+			f.Runde, f.Zufall, f.Los = 0, "", nil
+			f.Abbild = append(f.Abbild, f.Ausgeber)
+			slices.Sort(f.Abbild)
+		},
 	}
 	for name, aendern := range kaputt {
 		f := gut
@@ -597,5 +603,46 @@ func TestQuantenSBestellung_PfandGefaelschtImBlock(t *testing.T) {
 	}
 	if b := w.best(w.nach); b == nil || b.Pfand != pfand {
 		t.Fatal("Nachspielender hat das Pfand nicht wie die Regel")
+	}
+}
+
+// Der Ausgeber praepariert nie fuer die eigene Ausgabe (25.11.2026): auch als
+// gemeldeter Praeparator faellt er aus dem Abbild seiner Bestellung -- und
+// zaehlt nicht fuer die Mindestgroesse des Registers.
+func TestQuantenSBestellung_AusgeberNieImEigenenLos(t *testing.T) {
+	w := neueBWelt(t)
+	// Der Ausgeber ist (wie die anderen) seit zwei Tagen gemeldet -- direkt im Register beider Knoten.
+	for _, cs := range []*ChainState{w.cs, w.nach} {
+		cs.mu.Lock()
+		reg := cs.quantenWJetzt().kopie()
+		reg.Praep[quantenSPraepK(w.praeger)] = quantenSPraep{Konto: w.praeger, Pub: praepPubTest(w.keys[w.praeger]), Gemeldet: w.z - 2*86400}
+		if err := cs.quantenWSetzenLocked(context.Background(), reg); err != nil {
+			t.Fatal(err)
+		}
+		cs.mu.Unlock()
+	}
+	w.cs.mu.Lock()
+	im := w.cs.quantenSPraepAbbildLocked(context.Background(), w.cs.quantenWJetzt(), w.z)
+	w.cs.mu.Unlock()
+	if !slices.Contains(im, w.praeger) || len(im) != bwPraep+1 {
+		t.Fatalf("Vorbedingung: der Ausgeber ist gemeldet und im Register-Abbild (%d)", len(im))
+	}
+	// v = 7: 3*7 = 21 = 20 andere + der Ausgeber -- ohne ihn zu klein.
+	if r := w.praepRegel(w.bestellenTx(w.praeger, w.keys[w.praeger], w.p.K, 7, 4, w.z), w.z); r != "quanten_s_los_register" {
+		t.Fatalf("v = 7 mit dem Ausgeber als einzigem Fehlenden: Regel %q", r)
+	}
+	// v = 5: das Abbild ohne ihn, das Los nie mit ihm.
+	w.annehmen(w.bestellenTx(w.praeger, w.keys[w.praeger], w.p.K, 5, w.p.t, w.z), w.z)
+	b := w.best(w.cs)
+	if slices.Contains(b.Abbild, w.praeger) || len(b.Abbild) != bwPraep {
+		t.Fatalf("Abbild mit dem Ausgeber oder falsch gross: %d", len(b.Abbild))
+	}
+	if nb := w.best(w.nach); nb == nil || !slices.Equal(nb.Abbild, b.Abbild) {
+		t.Fatal("nachspielender Knoten rechnet ein anderes Abbild")
+	}
+	r := w.runde()
+	w.annehmen(w.losenTx(w.p.K, r, w.sig(r)), w.z+quantenSLosAbstand+5)
+	if slices.Contains(w.best(w.cs).Los, w.praeger) {
+		t.Fatal("Ausgeber im eigenen Los")
 	}
 }
