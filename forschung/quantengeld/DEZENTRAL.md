@@ -2165,6 +2165,25 @@ Ehrlich offen: Nichts davon lief bisher auf einem echten Gerät (Dateiablage, Se
 einer Runde). Vor dem Pilot: ein Build mit gesetzten Ausweich-Knoten, ein Durchlauf mit 7 Geräten im Testnetz oder,
 nach dem Stichtag, im Hauptnetz.
 
+### B4b-4c-4: Messung der Präparatorin fortsetzbar (25.11.2026, gebaut)
+
+Befund beim Blick auf echte Geräte: Eine Messung bei IBM wartet bis zu Stunden in der Schlange; iOS hält JavaScript
+im Hintergrund nach Sekunden an, Android im Doze-Modus. Bisher ging dann der IBM-Auftrag verloren (Kennung nicht
+gesichert), und der Brief galt beim nächsten Abholen als schon erhalten -- quittiert, Auftrag weg, neue Messung erst,
+wenn der Ausgeber neu sendet.
+
+Gebaut (App #139): Vor dem ersten IBM-Auftrag liegt eine **laufende Messung** im Tresor (Auftrag, Seed, Schlüssel des
+Ausgebers, IBM-Kennungen; AES-GCM, eigene Domäne, getrennt vom Fall, höchstens 4 zu je höchstens 64 Aufträgen). Der
+Messer merkt jede neue Kennung, bevor er wartet, und setzt gemerkte Aufträge fort statt neu einzureichen;
+FAILED/CANCELLED werden vergessen, eine überschrittene Frist der Runde nicht. `runde()` setzt laufende Messungen fort,
+auch ohne neuen Brief, und prüft den gesicherten Auftrag dabei voll neu (Los, Frist, Unterschrift, Weg B aktiv); zu alt
+(`AUFTRAG_ALT` + 1 h) wird gelöscht, ohne dass etwas gesendet wurde. Derselbe Seed ergibt dieselben u, t -- es gibt zu
+einem K nie zwei verschiedene Messungen oder Antworten. 15 Mutationen rot.
+
+Für den Pilot heißt das: Die Präparatorin darf die App schließen; beim nächsten „Briefkasten prüfen und antworten“
+geht es weiter. Eine Benachrichtigung im Hintergrund (Push) gibt es noch nicht -- sie wäre der nächste Schritt, falls
+der Pilot zeigt, dass Menschen zu selten nachsehen.
+
 ### Offen vor dem Stichtag: Pfand je Präparator und Beweisweg (aus PR #628, 22.11.)
 
 PR #628 (B2 als ein Stück, geschlossen am 23.11., durch B2a–B2d ersetzt; Zweig

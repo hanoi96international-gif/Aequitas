@@ -47,6 +47,10 @@ allen vier Repos):
   IBM-Zugang + Runde), App #137 (1d7ad782, Ausgeber-Seite `quanten-ausgabe`), App #138 (feddfda3, Inhaberin und
   Annahmestelle in Weg B auf der Token-Seite). App-Zweig danach zurückgesetzt. Aequitas #662
   (Übergabe) gemergt (ea4de7b5).
+- Aequitas #663 (Übergabe 4c-3) gemergt (64ab6357).
+- **4c-4 gebaut** (Messung der Präparatorin fortsetzbar, `DEZENTRAL.md` „B4b-4c-4“): **gemergt** App #139 (0b53d6bc),
+  App-Zweig zurückgesetzt. Befund: Auf echten Geräten wäre der IBM-Auftrag beim Schließen der App verloren
+  gegangen und der Auftrag quittiert worden.
 - **Nächste Schritte:**
   1. App-Release (Build von Hand, `build-apk.yml`): **Repo-Variable `EXPO_PUBLIC_API_FALLBACKS` setzen** (mindestens
      ein zweiter Knoten; sonst fragt die Präparatorin vor einer Öffnung nur den eigenen) — Betreiber:
