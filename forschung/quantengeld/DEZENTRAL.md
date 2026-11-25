@@ -2090,10 +2090,30 @@ Annahme durch die Inhaberin, Öffnungen für die Stellen per Hülle `oeffnung`. 
   Weg A unverändert (Wurzel, Blatt, Stellen-Bit, Bindung der Stichprobe, Vorab-Rechnung, Anmelden, Urteil, BEFUND).
   Test Ende zu Ende: Bestellung → Los → Aufträge → Antworten → Bestätigungen → Ausgabe → Paket → Annahme durch die
   Inhaberin → Bindung/Wahl → Öffnungen über den Briefkasten → eingelöst.
-- **2f-2c:** R9-Ausweg — fehlt eine Geloste, aus t Paketen der anderen (`ausAnteilenZusammensetzen`; die Pakete
-  stecken schon in den Antworten der anderen); ihre Blätter dann aus ihrem Abschnitt im Paket der Inhaberin oder
-  einer zweiten Quelle, geprüft an der Wurzel.
+- **2f-2c (gebaut, 25.11.):** R9-Ausweg. Der Ausgeber schickt sein Paket (alle unterschriebenen Abschnitte) auch an
+  beide Annahmestellen. Fehlt eine Geloste, nimmt die Stelle ihre Blätter aus dem Paket (beim Sammeln geprüft: jeder
+  Abschnitt von seiner Gelosten unterschrieben, alle Blätter die Wurzel der Kette; wer es schickt, zählt nicht) und
+  ihre Werte aus mindestens t Paketen der anderen (in deren Öffnungen) — beides läuft wieder durch `annehmenAlsStelle`
+  (Adapter: Dienst `blaetter` aus dem Paket). Ohne Paket oder mit weniger als t Antworten: kein Einlösen.
 - Danach 4c-3 Oberfläche.
+
+### Messung in Pilot-Größe (25.11.2026)
+
+Ende zu Ende im Test (Node, Server-CPU) mit v = 7, t = 4, n = 2822 (kleinstes n für k_note bei Toleranz 2 %):
+- **Antwort einer Präparatorin:** ~600 KB als JSON, im Briefkasten ~1,25 MB in 21 Briefen (die Hülle kodiert die
+  Nutzlast noch einmal als Hex). An den Ausgeber zusammen 147 Briefe, 8,8 MB. Die Grenzen des Briefkastens halten
+  (je Absender 512 Briefe/32 MB, je Paar 64, Abholen 32 Briefe/2 MB je Seite, die Runde liest bis 8 Seiten).
+- **Befund:** Der Ausgeber kann die sieben Antworten nicht sichern — zusammen ~4,2 MB, Grenze `ANTWORTEN_MAX` 4 MB
+  (gewählt für AsyncStorage: Android ~6 MB gesamt ohne eigene Einstellung). Die Bündel darin braucht er bis zur
+  Bestätigung (2d). **Abhilfe (nächster Schritt):** große, nicht geheime Daten (Antworten des Ausgebers, Paket der
+  Stelle) in Dateien (expo-file-system), Grenze nach Bedarf, Integrität wie beim Zustand der Inhaberin (Hash im
+  geschützten Speicher). Die Grenze wird erst mit der neuen Ablage geändert, nie zum Messen.
+- **Tresor der Präparatorin:** ~10 KB je Fall (Seed statt großer Werte) — passt.
+- **Zeit:** alle sieben Antworten zusammen ~12,7 s (~1,8 s je Präparatorin, ohne IBM). Auf einem Handy grob 5–20×
+  langsamer, also eher Sekunden bis eine Minute — noch auf einem echten Gerät messen.
+- Bestätigungs-Anfrage (geschätzt): alle Blätter (~186 KB) plus sechs Bündel (~570 KB), ~1,5 MB im Briefkasten je
+  Geloster — innerhalb der Grenzen.
+- Später zu optimieren: doppelte Hex-Kodierung (Nutzlast binär statt Hex in der Hülle halbiert die Briefe).
 
 **4c-1a gebaut (24.11.2026):** App `lib/quantenSPraepAuftrag.ts` — Auftrag streng lesen, Nachricht wie
 `quantenSAbschnittAuftragNachricht`, prüfen wie `quantenSAbschnittPruefen`; statt des Kettenstands des Dienstes
