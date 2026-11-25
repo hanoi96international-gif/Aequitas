@@ -1938,7 +1938,8 @@ kennt das Handy nur von den befragten Knoten. **Nächster Schritt 4c-2** (Ausgeb
   (gebaut, unten).
 - **2d** Bestätigungs-Anfragen als Hülle `bestaetigung` (Bündel der anderen weiterreichen), Bestätigungen prüfen
   (gebaut, unten).
-- **2e** Ausgabe gegen das Los einreichen (`quanten_w_s_ausgeben`, Validatoren = Los), Paket für die Inhaberin.
+- **2e** Ausgabe gegen das Los einreichen (`quanten_w_s_ausgeben`, Validatoren = Los) (gebaut, unten), Paket für die
+  Inhaberin (offen, mit 2f).
 - **2f** Inhaberin nimmt das Paket an (wie `annehmen`), Annahmestelle holt Öffnungen per Hülle `oeffnung`.
 
 ### B4b-4c-2a: Ausgeber bestellt und lost (24.11.2026, gebaut)
@@ -2036,6 +2037,24 @@ App `lib/quantenSAusgeberRunde.ts`:
 Prüfvektor `testdata/quanten_s_ausgeber_bestaetigen_vektor.json` (dieselbe Ausgabe wie 2c; Blätter und Bündel nur als
 Hash): der Knoten prüft Anfrage (Felder wie der Dienst), Nachricht und Unterschrift des Ausgebers, Wurzel und Proben
 gegen 2c und jede Bestätigung von genau ihrer Gelosten (`quanten_s_ausgeber_bestaetigen_vektor_test.go`). Kein Konsens.
+
+### B4b-4c-2e: Ausgabe gegen das Los (25.11.2026, gebaut)
+
+App `ausgeben` in `lib/quantenSAusgeberRunde.ts` (ab Stand `bestaetigt`): `quanten_w_s_ausgeben` mit Validatoren =
+Gelosten in Losreihenfolge, ihren Bestätigungen, Deckung wie bestellt, Inhaberin, Annahmestellen, Proben v2,
+`probe_art` 2 und der Zeit des Rahmens (dieselbe wie in Aufträgen und Bestätigungen), unterschrieben wie
+`quantenWSAusgabeNachrichtArt`. Vorher noch einmal: Register (gelost, nicht verfallen, Ausgeber, t, Deckung und Los
+unverändert) und jede Bestätigung aus der Ablage gegen genau diese Ausgabe (wie `quantenSAusgabeGegenLos`). Steht K
+schon auf der Kette, wird nicht noch einmal eingereicht; Stand `ausgegeben` erst, wenn der Knoten den Token mit genau
+dieser Wurzel, diesen Proben, n, t, v, Toleranz, Inhaberin und Stellen zeigt — steht K dort anders, wird abgewiesen.
+Das Pfand reicht niemand ein (gerechnetes Feld, beim Anwenden genau geprüft, #652).
+
+Prüfvektor `testdata/quanten_s_ausgeber_ausgeben_vektor.json` (dieselbe Ausgabe wie 2c/2d): der Knoten liest den
+Körper wie `handleQuantenW`, prüft `quantenWNurEigeneFelder`, die Unterschrift der Wallet, Wurzel/Proben/Zeit gegen 2c
+und `quantenSAusgabeGegenLos` gegen eine Bestellung mit genau diesem Los, mit Gegenproben (anderes Los, andere Deckung,
+fremde Wallet, vertauschte Bestätigungen, verfallen, ungelost) (`quanten_s_ausgeber_ausgeben_vektor_test.go`).
+**Offen (2f):** Paket für die Inhaberin (Abschnitte ohne Bündel, wie `quantenSPaketAbschnittAus`) über eine Hülle,
+Annahme durch die Inhaberin, Öffnungen für die Stellen per Hülle `oeffnung`. Kein Konsens.
 
 **4c-1a gebaut (24.11.2026):** App `lib/quantenSPraepAuftrag.ts` — Auftrag streng lesen, Nachricht wie
 `quantenSAbschnittAuftragNachricht`, prüfen wie `quantenSAbschnittPruefen`; statt des Kettenstands des Dienstes
