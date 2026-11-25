@@ -44,8 +44,8 @@ allen vier Repos):
 - **GitHub hing am 25.11. ~16 Uhr** beim Merge von App #135 (502/500, „Merge already in progress“) — später
   ging es ohne Änderung. Bei so etwas: Zustand lesen, später erneut, notfalls dem Betreiber den Link schicken.
 - **4c-3 Oberfläche gebaut** (Details `DEZENTRAL.md` „B4b-4c-3“): **gemergt** App #136 (bdf18fd0, Präparatorin:
-  IBM-Zugang + Runde), App #137 (1d7ad782, Ausgeber-Seite `quanten-ausgabe`); **offen** App #138 (Inhaberin und
-  Annahmestelle in Weg B auf der Token-Seite) — Merge nach grüner CI, dann Zweig zurücksetzen. Aequitas #662
+  IBM-Zugang + Runde), App #137 (1d7ad782, Ausgeber-Seite `quanten-ausgabe`), App #138 (feddfda3, Inhaberin und
+  Annahmestelle in Weg B auf der Token-Seite). App-Zweig danach zurückgesetzt. Aequitas #662
   (Übergabe) gemergt (ea4de7b5).
 - **Nächste Schritte:**
   1. App-Release (Build von Hand, `build-apk.yml`): **Repo-Variable `EXPO_PUBLIC_API_FALLBACKS` setzen** (mindestens
@@ -55,7 +55,7 @@ allen vier Repos):
      von Tests).
   3. Stichtag Weg B (nur Betreiber, mit Deploy-Wächter), danach Pilot B5 mit 7 Menschen.
   4. Später, falls nötig: K und Bestellung über den Briefkasten statt Kopieren (neue Hüllen-Art).
-- Offene PRs: App #138 und dieser Übergabe-PR.
+- Offene PRs: nur dieser Übergabe-PR (Merge nach grüner CI).
 - Freigaben: keine offen (25.11. ~07:40 UTC geprüft: kein Lauf wartet). Die C1-Deploys zu #629–#634 sind erledigt
   (letzter Deploy 24.11. erfolgreich). Wunsch des Betreibers: bei jeder Freigabe sofort den direkten Link schicken.
 - _(erledigt 25.11., #661/App #135)_ Der Ausgeber stand ggf. im eigenen Los — die Kette schließt ihn jetzt aus.
