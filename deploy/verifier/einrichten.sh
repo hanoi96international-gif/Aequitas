@@ -82,18 +82,26 @@ if [ -f .env ]; then
   gruen ".env gibt es schon -- sie bleibt, wie sie ist / kept as is."
 else
   schritt "2/6 Eine Angabe / One question"
-  WALLET=""
+  # deploy/knoten/einrichten.sh fragt einmal fuer beide und gibt Wallet und IP
+  # mit (AEQUITAS_WALLET, AEQUITAS_IP) -- uebernommen wird nur, was gueltig ist.
+  WALLET="${AEQUITAS_WALLET:-}"
+  [ -z "$WALLET" ] || [[ "$WALLET" =~ ^0x[0-9a-fA-F]{40}$ ]] || { echo "  Das ist keine Wallet-Adresse: $WALLET"; WALLET=""; }
   while ! [[ "$WALLET" =~ ^0x[0-9a-fA-F]{40}$ ]]; do
     read -r -p "Deine Wallet-Adresse aus der App / Your wallet address from the app (0x..., 42): " WALLET
     [[ "$WALLET" =~ ^0x[0-9a-fA-F]{40}$ ]] || echo "  Keine Adresse / Not an address: 0x + 40 Zeichen/characters (0-9, a-f)."
   done
   WALLET="$(printf '%s' "$WALLET" | tr 'A-F' 'a-f')"
-  IP="$(curl -4 -fsS -m 10 https://api.ipify.org 2>/dev/null || true)"
-  if ! [[ "$IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    read -r -p "Oeffentliche IPv4 dieses Servers / Public IPv4 of this server: " IP
+  IP="${AEQUITAS_IP:-}"
+  if [[ "$IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "  IP (bestaetigt / confirmed): $IP"
+  else
+    IP="$(curl -4 -fsS -m 10 https://api.ipify.org 2>/dev/null || true)"
+    if ! [[ "$IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+      read -r -p "Oeffentliche IPv4 dieses Servers / Public IPv4 of this server: " IP
+    fi
+    read -r -p "Oeffentliche IP / Public IP: $IP -- stimmt das? / correct? [J/n, Y/n] " OK
+    case "${OK:-j}" in n|N) read -r -p "Richtige IPv4 / Correct IPv4: " IP ;; esac
   fi
-  read -r -p "Oeffentliche IP / Public IP: $IP -- stimmt das? / correct? [J/n, Y/n] " OK
-  case "${OK:-j}" in n|N) read -r -p "Richtige IPv4 / Correct IPv4: " IP ;; esac
   [[ "$IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || { rot "Keine gueltige IPv4 / not a valid IPv4: $IP"; exit 1; }
   HOST="$(printf '%s' "$IP" | tr '.' '-').sslip.io"
 

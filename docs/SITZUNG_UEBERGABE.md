@@ -62,9 +62,15 @@ allen vier Repos):
 - Anleitung für Betreiber und Pilot: `docs/PILOT_WEG_B.md` (Rollen, Ablauf, Stichtag, was hängt).
 - **Stichtag Weg B: 26.11.2026 09:00 UTC** (Betreiber 25.11. „morgen Vormittag“), in diesem PR mit neuem
   Deploy-Wächter; Deploy von C1 MUSS vor 08:30 UTC laufen (Wächter: 30 min Puffer), Freigabe durch den Betreiber.
-  **#665 gemergt** (0b6e7f11); Deploy-Lauf 45696380801 wartet auf Freigabe (`produktion`) — VOR 08:30 UTC.
-  App 1.31.0: #140 gemergt (f955ef12), Build 45694153436 läuft; danach Signieren (`app-signatur`) und
-  `release-apk.yml` (run_id, Tag v1.31.0) — beides mit Freigabe des Betreibers.
+  **#665 gemergt** (0b6e7f11) und **auf C1 ausgerollt** (Deploy 45696380801, 25.11. 21:15 UTC; Wächter Weg B
+  bestanden, „C1 lebt und die Höhe steigt“ grün). Weg B gilt ab 26.11. 09:00 UTC.
+  **App 1.31.0 veröffentlicht** (#140 f955ef12, Build 45694153436 signiert, Release 45702424871, Tag v1.31.0).
+  Nächster Schritt: Pilot nach `docs/PILOT_WEG_B.md` (Betreiber: Menschen, IBM-Konten); P1 Spezifikation der Pfänder.
+- **Rollen zusammengefasst** (Betreiber 25.11.: „immer das Beste“): für Menschen nur noch **Nutzer**, **Präparatorin**
+  (Handy, IBM) und **Knotenbetreiber** (Server: Validator + Verifier); „zugelassen“ (Prüfer-Register, 2/3-Abstimmung)
+  ist ein Status, kein Job. Neu `deploy/knoten/einrichten.sh` (ein Befehl für beide, gemeinsame Mindestwerte
+  4 Kerne/12 GB/80 GB, Wallet und IP einmal; Test `scripts/test_knoten_einrichten.sh`), `docs/KNOTEN_EINRICHTEN.md`.
+  Nächster Schritt dazu: App „Knoten“-Tab zeigt zuerst den gemeinsamen Befehl.
 - **Beweisweg entschieden** (25.11.): Inhaberin haftet + 10 % je Gelostem. Plan P1–P5 in `DEZENTRAL.md`
   („Entscheidung Beweisweg und Plan Pfänder“), eigener Stichtag nach dem Pilotstart. **Offen (Betreiber):** Höhe des
   Pfands der Inhaberin (Vorschlag D) und Frist für den Nachweis (Vorschlag 7 Tage). Nächster Schritt: P1 Spezifikation.

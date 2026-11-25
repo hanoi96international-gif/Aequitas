@@ -102,12 +102,19 @@ else
     read -r -p "Deine Wallet-Adresse aus der App / Your wallet address from the app (0x..., 42): " WALLET
     [[ "$WALLET" =~ ^0x[0-9a-fA-F]{40}$ ]] || echo "  Keine Adresse / Not an address: 0x + 40 Zeichen/characters (0-9, a-f)."
   done
-  IP="$(curl -4 -fsS -m 10 https://api.ipify.org 2>/dev/null || true)"
-  if ! [[ "$IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    read -r -p "Oeffentliche IPv4 dieses Servers / Public IPv4 of this server: " IP
+  # deploy/knoten/einrichten.sh hat die IP schon bestaetigen lassen und gibt
+  # sie mit (AEQUITAS_IP) -- nur eine gueltige IPv4 wird uebernommen.
+  IP="${AEQUITAS_IP:-}"
+  if [[ "$IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "  IP (bestaetigt / confirmed): $IP"
+  else
+    IP="$(curl -4 -fsS -m 10 https://api.ipify.org 2>/dev/null || true)"
+    if ! [[ "$IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+      read -r -p "Oeffentliche IPv4 dieses Servers / Public IPv4 of this server: " IP
+    fi
+    read -r -p "Oeffentliche IP / Public IP: $IP -- stimmt das? / correct? [J/n, Y/n] " OK
+    case "${OK:-j}" in n|N) read -r -p "Richtige IPv4 / Correct IPv4: " IP ;; esac
   fi
-  read -r -p "Oeffentliche IP / Public IP: $IP -- stimmt das? / correct? [J/n, Y/n] " OK
-  case "${OK:-j}" in n|N) read -r -p "Richtige IPv4 / Correct IPv4: " IP ;; esac
   [[ "$IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || { rot "Keine gueltige IPv4: $IP"; exit 1; }
 
   schritt "3/6 Konfiguration schreiben"

@@ -4,6 +4,9 @@
 30.09.2026). Dieselbe Anleitung als PDF in 12 Sprachen: `downloads/Aequitas_Node_Guide_*.pdf`
 (erzeugt mit `build/node_guide.py`, Mindestwerte aus `einrichten.sh`).
 
+> **Beides auf einem Server?** Validator und Verifier zusammen mit einem Befehl: `KNOTEN_EINRICHTEN.md`
+> (`deploy/knoten/einrichten.sh`). Diese Anleitung gilt für den einzelnen Teil.
+
 ## Worum es geht, in drei Sätzen
 
 Ein Validator ist ein Rechner, der die Kette mitführt, jeden Block selbst
