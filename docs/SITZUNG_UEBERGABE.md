@@ -12,13 +12,16 @@ allen vier Repos):
 - **4c-2c gebaut** (Ausgeber beauftragt und sammelt): App `lib/quantenSAusgeberRunde.ts` (`beauftragen`,
   `auftraegeSenden`, `antwortAufnehmen`, `antwortenStand`), Antworten kommen über die gemeinsame Briefkasten-Runde
   `runde` (ein Leser je Wallet, verteilt nach Art). Tests Ende zu Ende mit vier Präparatorinnen + Missbrauch;
-  Knoten-Prüfvektor `quanten_s_ausgeber_auftrag_vektor_test.go`. PRs siehe unten; Merge nach grüner CI, erst
-  Aequitas, dann App.
-- **Befund 2c → nächster Schritt 2b′** (vor 2d): Der Zustand der Inhaberin liegt in SecureStore (≤ 2048 Byte je Wert).
-  In Weg B geht damit nur v = 4 mit t = 1 (n ≤ 1596); k_note verlangt für den Pilot 4 von 7 n ≥ 2816, möglich wären
-  656. Abhilfe: nur ein Schlüssel in SecureStore, y/x/Listen AES-256-GCM in der Ablage (wie `PraepTresor`).
-  Details `DEZENTRAL.md` „B4b-4c-2c“. Danach 2d (Bestätigungen; Achtung: Art `bestaetigung` gilt für Anfrage UND
-  Antwort — in `runde` nach Absender/Inhalt unterscheiden), 2e, 2f.
+  Knoten-Prüfvektor `quanten_s_ausgeber_auftrag_vektor_test.go`. **Gemergt:** Aequitas #653 (d80718b4), App #128
+  (471aaa81, zusammen mit 2b′).
+- **2b′ gebaut und gemergt** (App #128): Zustand der Inhaberin AES-256-GCM in der Ablage, im SecureStore nur der
+  Anker (Schlüssel, Platz, Hash) — vorher ging in Weg B nur v = 4 mit t = 1, der Pilot 4 von 7 nicht. Details
+  `DEZENTRAL.md` „B4b-4c-2b′“.
+- **Nächster Schritt 2d** (Bestätigungen): `BestaetigenAnfrage` je Geloster als Hülle `bestaetigung` mit den Bündeln
+  der anderen (aus den gesicherten Antworten), Bestätigungen prüfen (`sBestaetigungNachricht`, Wurzel/Proben aus
+  dem Zustand `beantwortet`). **Achtung:** Art `bestaetigung` gilt für Anfrage UND Antwort — in `runde` nach
+  Absender/Inhalt unterscheiden (Antwort hat Felder `k,x,sig`). Danach 2e (Ausgabe gegen das Los), 2f.
+- Offene PRs: keine.
 - Befund am Rande: Der Ausgeber kann selbst im eigenen Los stehen (das Abbild schließt ihn nicht aus); die
   gemeinsame Runde verträgt das (Auftrag an sich selbst).
 

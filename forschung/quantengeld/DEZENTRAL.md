@@ -1934,7 +1934,8 @@ kennt das Handy nur von den befragten Knoten. **Nächster Schritt 4c-2** (Ausgeb
 - **2c** Ausgeber: je Gelosten den Abschnitts-Auftrag als Hülle `auftrag`, Antworten aus dem eigenen Briefkasten
   sammeln und prüfen wie `abschnitteHolen` (Unterschrift, Abschnitt, `basen_hash`, Stichprobe v2), Wurzel und Proben
   (gebaut, unten).
-- **2b′** (Befund 2c, vor dem Pilot): Zustand der Inhaberin ohne die Grenze von SecureStore (2048 Byte je Wert).
+- **2b′** (Befund 2c, vor dem Pilot): Zustand der Inhaberin ohne die Grenze von SecureStore (2048 Byte je Wert)
+  (gebaut, unten).
 - **2d** Bestätigungs-Anfragen als Hülle `bestaetigung` (Bündel der anderen weiterreichen), Bestätigungen prüfen.
 - **2e** Ausgabe gegen das Los einreichen (`quanten_w_s_ausgeben`, Validatoren = Los), Paket für die Inhaberin.
 - **2f** Inhaberin nimmt das Paket an (wie `annehmen`), Annahmestelle holt Öffnungen per Hülle `oeffnung`.
@@ -2003,6 +2004,17 @@ Validatoren und Hashes) in SecureStore, höchstens 2048 Byte je Wert. In Weg B p
 v = 7 nur n ≤ 656, bei v = 16 gar nichts. k_note verlangt aber (Toleranz 2 %) für v = 4, t = 2 schon n ≥ 1712 und für
 den Pilot 4 von 7 n ≥ 2816. **Heute geht in Weg B nur v = 4 mit t = 1.** Abhilfe: im SecureStore nur ein Schlüssel,
 y, x und die Listen AES-256-GCM-verschlüsselt in der Ablage (wie der Tresor der Präparatorin). Danach 2d.
+
+### B4b-4c-2b′: Zustand der Inhaberin verschlüsselt in der Ablage (25.11.2026, gebaut)
+
+App `lib/quantenSInhaberin.ts`: Mit Ablage liegt der Zustand AES-256-GCM-verschlüsselt dort, abwechselnd in zwei
+Plätzen (Domäne mit Platz); im SecureStore nur der **Anker** (Schlüssel, gültiger Platz, SHA-256 des Chiffrats, ~200
+Byte). Gelesen wird nur, was genau zum Anker passt: ein getauschtes, gekipptes oder zurückgespieltes Chiffrat (auch
+ein alter Stand im passenden Platz) wird abgewiesen. Geschrieben wird erst der neue Platz, dann der Anker, dann der
+alte Platz gelöscht: ein Abbruch dazwischen lässt den alten Stand gelten (wichtig für die Maske z, die zuerst
+gespeichert wird). Ein alter Zustand im SecureStore wird gelesen und beim nächsten Schreiben übernommen; ohne Ablage
+bleibt die Grenze von 2048 Byte. Grenze 256 KB, defekter Zufall wird abgewiesen. Damit passt auch n = 16384 bei
+v = 16; der Pilot 4 von 7 ist nicht mehr blockiert. App #128 (zusammen mit 2c). Kein Konsens.
 
 **4c-1a gebaut (24.11.2026):** App `lib/quantenSPraepAuftrag.ts` — Auftrag streng lesen, Nachricht wie
 `quantenSAbschnittAuftragNachricht`, prüfen wie `quantenSAbschnittPruefen`; statt des Kettenstands des Dienstes
