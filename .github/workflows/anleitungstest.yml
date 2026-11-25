@@ -33,6 +33,13 @@ jobs:
           sed -e 's/\x1b\[[0-9;]*m//g' ausgabe.txt
           [ "$rc" != 0 ] && grep -q 'zu schwach' ausgabe.txt || { echo "::error::Erwartet: Ablehnung 'zu schwach'"; exit 1; }
           echo "ERGEBNIS: sauber abgelehnt"
+          # Validator und Verifier zusammen (deploy/knoten): der GitHub-Rechner hat zu wenig Platz
+          # fuer beide -- ebenfalls sauber abgelehnt, bevor etwas gefragt oder geladen wird.
+          cd ../knoten
+          rc=0; bash einrichten.sh < /dev/null > ausgabe.txt 2>&1 || rc=$?
+          sed -e 's/\x1b\[[0-9;]*m//g' ausgabe.txt
+          [ "$rc" != 0 ] && grep -q 'zu schwach' ausgabe.txt || { echo "::error::Erwartet: Ablehnung 'zu schwach' (Knoten)"; exit 1; }
+          echo "ERGEBNIS: Knoten sauber abgelehnt"
   verifier:
     runs-on: ubuntu-latest
     timeout-minutes: 40

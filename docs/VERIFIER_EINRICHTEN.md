@@ -3,6 +3,9 @@
 **Stand 30.09.2026.** Ersetzt den elfstufigen Verifier-Leitfaden vom August
 2026 (Explorer, „Run a Verifier“).
 
+> **Beides auf einem Server?** Validator und Verifier zusammen mit einem Befehl: `KNOTEN_EINRICHTEN.md`
+> (`deploy/knoten/einrichten.sh`). Diese Anleitung gilt für den einzelnen Teil.
+
 ## Worum es geht, in drei Sätzen
 
 Ein Verifier (Vergleichsdienst) prüft bei jeder Registrierung, ob dieses
