@@ -2199,6 +2199,36 @@ Kontostände und das Register; es bekommt einen eigenen PR mit eigener Sicherhei
 späteren Stichtag. Für den Pilot (Menschen, die sich kennen) trägt das Pfand je Bestellung (B2c); wer als Geloste
 nicht antwortet, kostet den Ausgeber Zeit, nicht Geld (R9 ersetzt eine fehlende Geloste).
 
+### Entscheidung Beweisweg und Plan „Pfänder“ (Betreiber, 25.11.2026)
+
+**Entscheidung:** Die **Inhaberin haftet** mit einem Pfand bei der Bindung, und **jede Geloste verliert 10 % ihres
+Pfands** (1 AEQ von 10 AEQ), wenn eine Fälschung nachgewiesen ist. Ehrliche verlieren wenig, eine Absprache lohnt sich
+trotzdem nicht.
+
+Warum das Pfand je Präparator nicht allein kommt: Ohne Beweisweg verfällt es nie; es bindet nur Geld. Wirksam ist
+es erst mit `quanten_w_s_faelschung`. Darum ein Paket, ein eigener Stichtag nach dem Pilotstart, in Stufen mit
+eigener Sicherheitsprüfung je Stufe:
+
+1. **P1 Spezifikation** (`s_weg_b.py`): Pfand je Präparator (10 AEQ beim Melden, zurück frühestens 30 Tage nach der
+   Abmeldung an die Wallet, die der Mensch dann hat — nach einem Umzug die neue, nie die alte), Pfand der Inhaberin
+   bei der Bindung, Nachweis und Verteilung, Selbsttest mit Angriffen (Absprache t von v, falscher Nachweis,
+   doppelter Nachweis, Nachweis nach der Frist, Umzug, Rückgabe zu früh).
+2. **P2 Präparator-Pfand** im Register (Feld `pfand`, Haltezeit statt Vergessen nach `quantenWToteBehalten`:
+   ein Eintrag mit Pfand bleibt bis zur Rückgabe), neue Art `quanten_w_s_pfand_zurueck`. Einträge vor dem Stichtag
+   tragen kein Pfand (nicht rückwirkend).
+3. **P3 Pfand der Inhaberin** bei `quanten_w_s_binden`. **Offen (Betreiber):** die Höhe. Vorschlag: die Deckung D —
+   genau der Schaden der zweiten Stelle, die in gutem Glauben angenommen hat. Zurück, wenn der Token endet und die
+   Frist für einen Nachweis (Vorschlag 7 Tage) verstrichen ist.
+4. **P4 Nachweis** `quanten_w_s_faelschung`: Token K eingelöst an Stelle A (Urteil `eingeloest`), danach legt Stelle
+   B eine von der Inhaberin unterschriebene Vorlage vor, die B's geheime Stichprobe besteht (Prüfung wie
+   Anmelden/Offenlegen, gegen die Wurzel). Dafür behält die Kette eingelöste Token mit Stellen, Proben und Wurzel bis
+   zum Ende der Frist. Folge: Pfand der Inhaberin an Stelle B, je Geloster 10 % ihres Pfands an Stelle B; ein
+   Nachweis je K.
+5. **P5 App**: Pfand beim Melden anzeigen und bestätigen; Rückgabe; Pfand bei der Bindung; Nachweis an der Stelle.
+
+Bis dahin (Pilot ab 26.11.): kein Pfand je Präparator, kein Nachweis. Es tragen das Pfand je Bestellung (B2c), eine
+Bestellung je Mensch und R9.
+
 ### Offen vor dem Stichtag: Pfand je Präparator und Beweisweg (aus PR #628, 22.11.)
 
 PR #628 (B2 als ein Stück, geschlossen am 23.11., durch B2a–B2d ersetzt; Zweig
