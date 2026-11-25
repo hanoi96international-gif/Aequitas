@@ -453,6 +453,9 @@ func TestQuantenSBestellung_RegisterLesen(t *testing.T) {
 
 // Schlafend: die beiden Arten vor dem Stichtag von Weg B unbekannt.
 func TestQuantenSBestellung_Schlafend(t *testing.T) {
+	// Schlafend ausdruecklich (der Stichtag im Code liegt vor qwT0): geprueft wird der Mechanismus.
+	quantenSWegBAbOverride.Store(math.MaxInt64)
+	t.Cleanup(func() { quantenSWegBAbOverride.Store(0) })
 	for _, art := range []string{quantenSBestellenTxArt, quantenSLosenTxArt} {
 		if bekannteTxArt(art, qwT0) || !istQuantenWTxArt(art) {
 			t.Errorf("%s vor dem Stichtag bekannt oder nicht im W-Modul", art)

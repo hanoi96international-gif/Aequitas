@@ -5,6 +5,7 @@ import (
 	"crypto/ecdsa"
 	"encoding/hex"
 	"encoding/json"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -98,7 +99,10 @@ func TestQuantenSPraep_Gutfall(t *testing.T) {
 // Schlafend: vor dem Stichtag von Weg B unbekannt, Befund, 409, und die
 // Kodierung des Registers ist byte-gleich (kein Feld praep).
 func TestQuantenSPraep_Schlafend(t *testing.T) {
-	w := neueQwWelt(t, 64) // Variante W aktiv, Weg B nicht (MaxInt64)
+	w := neueQwWelt(t, 64) // Variante W aktiv
+	// Weg B ausdruecklich schlafend (der Stichtag im Code liegt vor qwT0): geprueft wird der Mechanismus.
+	quantenSWegBAbOverride.Store(math.MaxInt64)
+	t.Cleanup(func() { quantenSWegBAbOverride.Store(0) })
 	z := qwT0
 	for _, art := range []string{quantenSPraepMeldenTxArt, quantenSPraepAbmeldenTxArt} {
 		if bekannteTxArt(art, z) {
@@ -501,5 +505,32 @@ func TestQuantenSPraep_Tabelle_RealDB(t *testing.T) {
 	}
 	if err := qwtLaden(cs); err == nil {
 		t.Fatal("manipulierte Zeile geladen")
+	}
+}
+
+// Der Stichtag von Weg B im Hauptnetz (Betreiber, 25.11.2026): 26.11.2026
+// 09:00 UTC, genau ab dieser Sekunde; Variante W ist dann schon aktiv (Weg B
+// setzt sie voraus), und /api/status nennt ihn (Deploy-Waechter).
+func TestQuantenSWegB_Stichtag(t *testing.T) {
+	const ab int64 = 1795683600
+	if quantenSWegBAbUnix != ab {
+		t.Fatalf("Stichtag Weg B %d, erwartet %d (26.11.2026 09:00 UTC)", quantenSWegBAbUnix, ab)
+	}
+	if quantenSWegBAbOverride.Load() != 0 || quantenWAbOverride.Load() != 0 {
+		t.Fatal("Override gesetzt")
+	}
+	if quantenWAbUnix > ab {
+		t.Fatalf("Variante W (%d) erst nach Weg B (%d) aktiv", quantenWAbUnix, ab)
+	}
+	if quantenSWegBAktiv(ab-1) || !quantenSWegBAktiv(ab) {
+		t.Fatal("Stichtag wirkt nicht auf die Sekunde")
+	}
+	for _, art := range []string{quantenSPraepMeldenTxArt, quantenSPraepAbmeldenTxArt, quantenSBestellenTxArt, quantenSLosenTxArt, quantenSBestellFristTxArt} {
+		if bekannteTxArt(art, ab-1) || !bekannteTxArt(art, ab) {
+			t.Errorf("%s: vor dem Stichtag bekannt oder danach unbekannt", art)
+		}
+	}
+	if v, da := quantenWStatus()["weg_b_ab"]; !da || v != ab {
+		t.Fatalf("Status nennt den Stichtag nicht: %v", v)
 	}
 }

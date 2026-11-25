@@ -36,7 +36,7 @@ package keeper
 // verfallen, bevor ein Eintrag aus ihrem Abbild vergessen werden kann
 // (Frist der Bestellung < quantenSPraepNachlauf).
 //
-// SCHLAFEND: quantenSWegBAbUnix = MaxInt64. Vor dem Stichtag ist jede der
+// SCHLAFEND bis quantenSWegBAbUnix (MaxInt64 = nie). Vor dem Stichtag ist jede der
 // beiden Arten im Block unbekannt (bekannteTxArt), ihr Bescheid ein Befund und
 // der Endpunkt 409; das Register bleibt leer und die StateRoot byte-gleich
 // (das Feld praep fehlt in der Kodierung). Ein Stichtag kommt erst mit B2b,
@@ -97,9 +97,13 @@ const (
 )
 
 // STICHTAG VON WEG B (Kettenregel). 9223372036854775807 = math.MaxInt64 =
-// schlafend. Gesetzt wird er erst mit B2b (Bestellung, Los, Ausgabe gegen das
-// Los), nie rueckwirkend.
-var quantenSWegBAbUnix int64 = 9223372036854775807
+// schlafend. Gesetzt vom Betreiber am 25.11.2026: 26.11.2026 09:00 UTC
+// (10:00 MEZ), nach B2b (Bestellung, Los, Ausgabe gegen das Los) und der
+// App 1.31.0. Nie rueckwirkend: der Deploy-Waechter
+// .github/neustart/quanten-s-weg-b-nicht-verpasst.sh haelt jeden Wechsel an,
+// der nicht mindestens 30 Minuten in der Zukunft liegt oder einen laufenden
+// Stichtag aendern wuerde.
+var quantenSWegBAbUnix int64 = 1795683600
 
 // quantenSWegBAbOverride: nur fuer Tests (0 = Stichtag oben).
 var quantenSWegBAbOverride atomic.Int64

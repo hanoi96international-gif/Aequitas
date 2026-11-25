@@ -10,7 +10,8 @@ Technischer Hintergrund: `forschung/quantengeld/DEZENTRAL.md` (Abschnitte B2b, B
    **keinen zweiten Knoten** (proof2 ist seit 03.10. abgeschaltet, Launch-Checkliste Punkt 16).
    Steht dort noch proof2, leeren. Die App filtert proof2 zwar selbst heraus, aber die Variable
    soll nichts Falsches behaupten.
-2. **Stichtag Weg B festlegen.** Weg B schläft im Knoten (`quantenSWegBAbUnix` = MaxInt64).
+2. **Stichtag Weg B: 26.11.2026, 10:00 Uhr MEZ (09:00 UTC)**, gesetzt am 25.11. (`quantenSWegBAbUnix` = 1795683600).
+   Zum Verfahren:
    Der Betreiber nennt Datum und Uhrzeit (UTC). Dann kommt ein PR, der den Stichtag setzt.
    Er gilt als Konsensänderung und bekommt eine eigene Sicherheitsprüfung. Nach dem Merge läuft
    der Deploy (`deploy-c1.yml`) mit Freigabe durch den Betreiber.

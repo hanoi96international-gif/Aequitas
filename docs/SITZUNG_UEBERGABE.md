@@ -60,6 +60,10 @@ allen vier Repos):
   3. Stichtag Weg B (nur Betreiber, mit Deploy-Wächter), danach Pilot B5 mit 7 Menschen.
   4. Später, falls nötig: K und Bestellung über den Briefkasten statt Kopieren (neue Hüllen-Art).
 - Anleitung für Betreiber und Pilot: `docs/PILOT_WEG_B.md` (Rollen, Ablauf, Stichtag, was hängt).
+- **Stichtag Weg B: 26.11.2026 09:00 UTC** (Betreiber 25.11. „morgen Vormittag“), in diesem PR mit neuem
+  Deploy-Wächter; Deploy von C1 MUSS vor 08:30 UTC laufen (Wächter: 30 min Puffer), Freigabe durch den Betreiber.
+  Danach: App 1.31.0 (App #140) bauen, signieren, veröffentlichen. Pfand je Präparator: eigener PR + späterer
+  Stichtag; Beweisweg: Entscheidung des Betreibers offen.
 - Offene PRs: nur dieser Übergabe-PR (Merge nach grüner CI).
 - Freigaben: keine offen (25.11. ~07:40 UTC geprüft: kein Lauf wartet). Die C1-Deploys zu #629–#634 sind erledigt
   (letzter Deploy 24.11. erfolgreich). Wunsch des Betreibers: bei jeder Freigabe sofort den direkten Link schicken.

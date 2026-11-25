@@ -2184,6 +2184,21 @@ Für den Pilot heißt das: Die Präparatorin darf die App schließen; beim näch
 geht es weiter. Eine Benachrichtigung im Hintergrund (Push) gibt es noch nicht -- sie wäre der nächste Schritt, falls
 der Pilot zeigt, dass Menschen zu selten nachsehen.
 
+### Stichtag Weg B: 26.11.2026 09:00 UTC (Betreiber, 25.11.2026)
+
+`quantenSWegBAbUnix` = 1795683600 (10:00 MEZ). Ab dieser Sekunde kennt die Kette Melden, Abmelden, Bestellen,
+Losen und die Bestell-Frist (vorher: unbekannte Art, Befund, 409). Neuer Deploy-Wächter
+`.github/neustart/quanten-s-weg-b-nicht-verpasst.sh` (im Deploy von C1, Missbrauchstest in der CI): hält jeden
+Wechsel an, der nicht mindestens 30 Minuten voraus liegt oder einen schon laufenden Stichtag ändern würde. Die
+Schlafend-Tests setzen den Schlafzustand jetzt ausdrücklich (sie prüfen den Mechanismus, nicht das Datum);
+`TestQuantenSWegB_Stichtag` hält den echten Stichtag fest. Gegenprobe: alle Knoten-Tests einmal mit einem Stichtag
+in der Vergangenheit (wie ab morgen) gelaufen.
+
+Bewusst **nicht** mit diesem Stichtag: das Pfand je Präparator und der Beweisweg (unten). Das Pfand ändert
+Kontostände und das Register; es bekommt einen eigenen PR mit eigener Sicherheitsprüfung und einen eigenen,
+späteren Stichtag. Für den Pilot (Menschen, die sich kennen) trägt das Pfand je Bestellung (B2c); wer als Geloste
+nicht antwortet, kostet den Ausgeber Zeit, nicht Geld (R9 ersetzt eine fehlende Geloste).
+
 ### Offen vor dem Stichtag: Pfand je Präparator und Beweisweg (aus PR #628, 22.11.)
 
 PR #628 (B2 als ein Stück, geschlossen am 23.11., durch B2a–B2d ersetzt; Zweig
