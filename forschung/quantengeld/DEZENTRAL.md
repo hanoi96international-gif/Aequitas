@@ -1936,7 +1936,8 @@ kennt das Handy nur von den befragten Knoten. **Nächster Schritt 4c-2** (Ausgeb
   (gebaut, unten).
 - **2b′** (Befund 2c, vor dem Pilot): Zustand der Inhaberin ohne die Grenze von SecureStore (2048 Byte je Wert)
   (gebaut, unten).
-- **2d** Bestätigungs-Anfragen als Hülle `bestaetigung` (Bündel der anderen weiterreichen), Bestätigungen prüfen.
+- **2d** Bestätigungs-Anfragen als Hülle `bestaetigung` (Bündel der anderen weiterreichen), Bestätigungen prüfen
+  (gebaut, unten).
 - **2e** Ausgabe gegen das Los einreichen (`quanten_w_s_ausgeben`, Validatoren = Los), Paket für die Inhaberin.
 - **2f** Inhaberin nimmt das Paket an (wie `annehmen`), Annahmestelle holt Öffnungen per Hülle `oeffnung`.
 
@@ -2015,6 +2016,26 @@ alte Platz gelöscht: ein Abbruch dazwischen lässt den alten Stand gelten (wich
 gespeichert wird). Ein alter Zustand im SecureStore wird gelesen und beim nächsten Schreiben übernommen; ohne Ablage
 bleibt die Grenze von 2048 Byte. Grenze 256 KB, defekter Zufall wird abgewiesen. Damit passt auch n = 16384 bei
 v = 16; der Pilot 4 von 7 ist nicht mehr blockiert. App #128 (zusammen mit 2c). Kein Konsens.
+
+### B4b-4c-2d: Ausgeber holt die Bestätigungen (25.11.2026, gebaut)
+
+App `lib/quantenSAusgeberRunde.ts`:
+- `bestaetigungenAnfordern` (ab Stand `beantwortet`): alle Antworten noch einmal streng aus der Ablage gelesen und
+  geprüft, Wurzel und Proben neu gerechnet und mit dem Zustand verglichen; dann je Geloster ohne Bestätigung die
+  Anfrage (`QuantenWBestaetigenAnfrage`, Art `s`) als Hülle `bestaetigung`: alle Blätter, Wurzel, Proben, Zeit der
+  Ausgabe und die Bündel der ANDEREN an sie (Platz x aus jeder Antwort), vom Ausgeber über den Hash der Bündel
+  unterschrieben (`quantenWSAuftragNachricht`). Deterministisch: dieselbe Anfrage noch einmal ergibt dieselbe
+  Bestätigung. Nicht mehr, wenn die Ausgabezeit für die Kette zu alt würde.
+- Die Geloste prüft mit ihrem eigenen Ablauf (`bestaetigen`: Auftrag, Wurzel, eigene Blätter, jedes Bündel vom
+  jeweiligen Präparator und für sie, Pakete für Stichprobe v2) und antwortet mit `{k, x, sig}`.
+- `bestaetigungAufnehmen` aus der Runde: Art `bestaetigung` gilt in beide Richtungen; genau die Felder `k, sig, x`
+  sind die Antwort einer Gelosten (an den Ausgeber), jede andere ist eine Anfrage (an die Präparatorin). Geprüft:
+  Hülle von der Gelosten x, K, Unterschrift über genau diese Ausgabe (`quantenWSBestaetigungNachricht`: Wurzel,
+  Proben, Zeit, Platz). Nur die erste je x; sind alle da, Stand `bestaetigt` (Grundlage für 2e).
+
+Prüfvektor `testdata/quanten_s_ausgeber_bestaetigen_vektor.json` (dieselbe Ausgabe wie 2c; Blätter und Bündel nur als
+Hash): der Knoten prüft Anfrage (Felder wie der Dienst), Nachricht und Unterschrift des Ausgebers, Wurzel und Proben
+gegen 2c und jede Bestätigung von genau ihrer Gelosten (`quanten_s_ausgeber_bestaetigen_vektor_test.go`). Kein Konsens.
 
 **4c-1a gebaut (24.11.2026):** App `lib/quantenSPraepAuftrag.ts` — Auftrag streng lesen, Nachricht wie
 `quantenSAbschnittAuftragNachricht`, prüfen wie `quantenSAbschnittPruefen`; statt des Kettenstands des Dienstes

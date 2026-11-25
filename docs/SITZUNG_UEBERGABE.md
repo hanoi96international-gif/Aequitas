@@ -17,11 +17,15 @@ allen vier Repos):
 - **2b′ gebaut und gemergt** (App #128): Zustand der Inhaberin AES-256-GCM in der Ablage, im SecureStore nur der
   Anker (Schlüssel, Platz, Hash) — vorher ging in Weg B nur v = 4 mit t = 1, der Pilot 4 von 7 nicht. Details
   `DEZENTRAL.md` „B4b-4c-2b′“.
-- **Nächster Schritt 2d** (Bestätigungen): `BestaetigenAnfrage` je Geloster als Hülle `bestaetigung` mit den Bündeln
-  der anderen (aus den gesicherten Antworten), Bestätigungen prüfen (`sBestaetigungNachricht`, Wurzel/Proben aus
-  dem Zustand `beantwortet`). **Achtung:** Art `bestaetigung` gilt für Anfrage UND Antwort — in `runde` nach
-  Absender/Inhalt unterscheiden (Antwort hat Felder `k,x,sig`). Danach 2e (Ausgabe gegen das Los), 2f.
-- Offene PRs: keine.
+- **2d gebaut** (Ausgeber holt die Bestätigungen): App `bestaetigungenAnfordern`/`bestaetigungAufnehmen`, `runde`
+  unterscheidet Art `bestaetigung` nach Inhalt (genau `{k,x,sig}` = Antwort an den Ausgeber). Knoten-Prüfvektor
+  `quanten_s_ausgeber_bestaetigen_vektor_test.go`. PRs: Aequitas (dieser Zweig) und App #129; Merge nach grüner CI,
+  erst Aequitas, dann App.
+- **Nächster Schritt 2e** (Ausgabe gegen das Los): `quanten_w_s_ausgeben` einreichen (Validatoren = Los,
+  Bestätigungen aus dem Stand `bestaetigt`, Deckung, Inhaberin, Stellen, Proben, Zeit = Rahmen), Vorbild
+  `quantenSAusgabeEinreichen` in `quanten_s_rollen.go`; danach Paket für die Inhaberin (`quantenSPaketAbschnittAus`
+  aus den Antworten) über eine Hülle. Dann 2f (Inhaberin nimmt an, Stellen holen Öffnungen per Hülle `oeffnung`).
+- Offene PRs: siehe oben (2d).
 - Befund am Rande: Der Ausgeber kann selbst im eigenen Los stehen (das Abbild schließt ihn nicht aus); die
   gemeinsame Runde verträgt das (Auftrag an sich selbst).
 
