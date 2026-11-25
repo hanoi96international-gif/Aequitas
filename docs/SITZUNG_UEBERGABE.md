@@ -32,7 +32,16 @@ allen vier Repos):
   Ende durchgespielt. Entscheidung: Liste der Gelosten kommt mit der Vorlage.
 - **2f-2c gebaut** (R9-Ausweg: Paket des Ausgebers auch an die Stellen; fehlende Geloste aus Paket + Paketen der
   anderen). App-PR und dieser Doku-PR offen.
-- **Nächster Schritt 4c-3 Oberfläche** (Expo 54 — vorher die versionierte Doku lesen, AGENTS.md der App; 12 Sprachen):
+- **Messung in Pilot-Größe (v = 7, t = 4, n = 2822), Ergebnis in `DEZENTRAL.md`:** Antworten zusammen ~4,2 MB >
+  Grenze 4 MB des Ausgebers — **blockiert den Pilot**. Vorrang vor der Oberfläche (Betreiber: „alles zum Besten von
+  Aequitas“, 25.11.):
+  1. **Große Daten in Dateien** (expo-file-system): Antworten des Ausgebers, Paket/Antworten der Stelle; Integrität per
+     Hash im geschützten Speicher; dann Grenzen nach Bedarf (nie zum Messen lockern — AGENTS.md). Danach den Test in
+     Pilot-Größe dauerhaft (aber schlank) in die Tests aufnehmen.
+  2. **Ausgeber aus dem eigenen Los ausschließen** (entschieden: ja; Konsensänderung, Weg B schläft, eigene
+     Sicherheitsprüfung als PR-Kommentar, Missbrauchstest). Heute kann das Abbild den Ausgeber enthalten.
+  3. In der Oberfläche standardmäßig zwei Knoten fragen.
+- **Danach: 4c-3 Oberfläche** (Expo 54 — vorher die versionierte Doku lesen, AGENTS.md der App; 12 Sprachen):
   Karte der Präparatorin (IBM-Schlüssel, Stand, Runde), Karte des Ausgebers in Weg B (bestellen, losen, beauftragen,
   Bestätigungen, ausgeben, Paket), Inhaberin (Paket abholen, einlösen mit Vorlage samt Gelosten), Annahmestelle
   (Öffnungen anfordern, sammeln, einlösen). Danach App-Release, Stichtag Weg B (Betreiber), Pilot B5.
