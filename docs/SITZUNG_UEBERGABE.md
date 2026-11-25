@@ -19,15 +19,17 @@ allen vier Repos):
   `DEZENTRAL.md` „B4b-4c-2b′“.
 - **2d gebaut** (Ausgeber holt die Bestätigungen): App `bestaetigungenAnfordern`/`bestaetigungAufnehmen`, `runde`
   unterscheidet Art `bestaetigung` nach Inhalt (genau `{k,x,sig}` = Antwort an den Ausgeber). Knoten-Prüfvektor
-  `quanten_s_ausgeber_bestaetigen_vektor_test.go`. PRs: Aequitas #655 und App #129 (mit 2e); Merge nach grüner CI,
-  erst Aequitas, dann App.
+  `quanten_s_ausgeber_bestaetigen_vektor_test.go`. **Gemergt:** Aequitas #655 (d9f4fd4d), App #129
+  (8a30362a, mit 2e).
 - **2e gebaut** (Ausgabe gegen das Los): App `ausgeben`, Knoten-Prüfvektor `quanten_s_ausgeber_ausgeben_vektor_test.go`
-  (im selben PR wie 2d). Details `DEZENTRAL.md` „B4b-4c-2e“.
+  (im selben PR wie 2d, gemergt). Details `DEZENTRAL.md` „B4b-4c-2e“.
 - **Nächster Schritt 2f:** Paket für die Inhaberin (Abschnitte aus den gesicherten Antworten ohne Bündel, wie
   `quantenSPaketAbschnittAus`, dazu K, n, t, tol, Stellen, Los, Wurzel, Proben, Deckung) als Hülle an die Inhaberin —
   dafür braucht die Hülle eine neue Art (`paket`); die Inhaberin nimmt an (`annehmen` gegen die Kette); Annahmestellen
   holen Öffnungen per Hülle `oeffnung` (Präparatorin beantwortet das schon, 4c-1g). Danach 4c-3 Oberfläche.
-- Offene PRs: Aequitas #655 und App #129 (2d + 2e).
+- Offene PRs: keine (außer diesem Übergabe-PR).
+- Freigaben: keine offen (25.11. ~07:40 UTC geprüft: kein Lauf wartet). Die C1-Deploys zu #629–#634 sind erledigt
+  (letzter Deploy 24.11. erfolgreich). Wunsch des Betreibers: bei jeder Freigabe sofort den direkten Link schicken.
 - Befund am Rande: Der Ausgeber kann selbst im eigenen Los stehen (das Abbild schließt ihn nicht aus); die
   gemeinsame Runde verträgt das (Auftrag an sich selbst).
 
@@ -68,7 +70,7 @@ in allen vier Repos):
   `send_later` statt Warten. App-CI ~1–3 min, Aequitas-CI ~15 min.
 - **Werkzeuge:** App-`npm ci` mit `npx -y npm@11 ci --ignore-scripts`; Postgres lokal `pg_ctlcluster 16 main start`,
   DB `aequitas_ci`, `AEQUITAS_TPS_BENCH=1 DATABASE_URL=postgres://postgres:postgres@localhost:5432/aequitas_ci?sslmode=disable`.
-- C1-Deploys zu #629–#634 warten weiter auf Freigabe der Umgebung `produktion` (Code schläft, kein Eilbedarf).
+- _(erledigt 24.11.)_ C1-Deploys zu #629–#634.
 
 **Verlauf 23.11./24.11., Sitzung „Weiter mit Übergabe“ (Zweig `claude/uebergabe-fortsetzen-g5xqox`) — Einzelschritte:**
 - **#645 gemergt** (71700871, Nachzug der Inhaberin; CI ganz grün).
