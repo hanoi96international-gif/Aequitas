@@ -43,11 +43,19 @@ allen vier Repos):
   3. In der Oberfläche standardmäßig zwei Knoten fragen.
 - **GitHub hing am 25.11. ~16 Uhr** beim Merge von App #135 (502/500, „Merge already in progress“) — später
   ging es ohne Änderung. Bei so etwas: Zustand lesen, später erneut, notfalls dem Betreiber den Link schicken.
-- **Jetzt: 4c-3 Oberfläche** (Expo 54 — vorher die versionierte Doku lesen, AGENTS.md der App; 12 Sprachen):
-  Karte der Präparatorin (IBM-Schlüssel, Stand, Runde), Karte des Ausgebers in Weg B (bestellen, losen, beauftragen,
-  Bestätigungen, ausgeben, Paket), Inhaberin (Paket abholen, einlösen mit Vorlage samt Gelosten), Annahmestelle
-  (Öffnungen anfordern, sammeln, einlösen). Danach App-Release, Stichtag Weg B (Betreiber), Pilot B5.
-- Offene PRs: keine (außer diesem Übergabe-PR).
+- **4c-3 Oberfläche gebaut** (Details `DEZENTRAL.md` „B4b-4c-3“): **gemergt** App #136 (bdf18fd0, Präparatorin:
+  IBM-Zugang + Runde), App #137 (1d7ad782, Ausgeber-Seite `quanten-ausgabe`); **offen** App #138 (Inhaberin und
+  Annahmestelle in Weg B auf der Token-Seite) — Merge nach grüner CI, dann Zweig zurücksetzen. Aequitas #662
+  (Übergabe) gemergt (ea4de7b5).
+- **Nächste Schritte:**
+  1. App-Release (Build von Hand, `build-apk.yml`): **Repo-Variable `EXPO_PUBLIC_API_FALLBACKS` setzen** (mindestens
+     ein zweiter Knoten; sonst fragt die Präparatorin vor einer Öffnung nur den eigenen) — Betreiber:
+     https://github.com/hanoi96international-gif/Aequitas-App/settings/variables/actions
+  2. Echtes Gerät: Dateiablage, SecureStore, IBM-Warteschlange, Dauer einer Runde (nichts davon lief bisher außerhalb
+     von Tests).
+  3. Stichtag Weg B (nur Betreiber, mit Deploy-Wächter), danach Pilot B5 mit 7 Menschen.
+  4. Später, falls nötig: K und Bestellung über den Briefkasten statt Kopieren (neue Hüllen-Art).
+- Offene PRs: App #138 und dieser Übergabe-PR.
 - Freigaben: keine offen (25.11. ~07:40 UTC geprüft: kein Lauf wartet). Die C1-Deploys zu #629–#634 sind erledigt
   (letzter Deploy 24.11. erfolgreich). Wunsch des Betreibers: bei jeder Freigabe sofort den direkten Link schicken.
 - _(erledigt 25.11., #661/App #135)_ Der Ausgeber stand ggf. im eigenen Los — die Kette schließt ihn jetzt aus.

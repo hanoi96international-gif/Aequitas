@@ -2135,6 +2135,36 @@ unterschriebener Auftrag mit verschlüsselten Basen; der Knoten prüft ihn mit e
 messen (IBM), Antwort an den Ausgeber und Bündel an die anderen als Hüllen, Tresor im Gerät, Bestätigung,
 Öffnung nach finaler Bindung.
 
+### B4b-4c-3: Oberfläche (25.11.2026, gebaut)
+
+Die vier Rollen von Weg B sind jetzt in der App bedienbar (Expo 54, 12 Sprachen). Jede Prüfung bleibt in `lib/`; die
+Seiten zeigen nur und reichen durch. Was Wert bindet (Bestellung mit Pfand, Ausgabe), läuft erst nach ausdrücklicher
+Bestätigung.
+
+- **4c-3a Präparatorin** (App #136, Quantengeld-Seite, Karte der Präparatorin): IBM-Schlüssel (verdeckt) und CRN,
+  nur im SecureStore dieses Geräts (nur entsperrt, ohne eigene Biometrie-Abfrage; die Runde entsperrt die Wallet), danach
+  nie wieder angezeigt, löschbar. „Briefkasten prüfen und antworten“ = `runde()` mit Bericht; ohne IBM-Zugang keine
+  Runde. Befragte Knoten: der eigene und die eingebauten Ausweich-Knoten (`EXPO_PUBLIC_API_FALLBACKS`, höchstens 8);
+  die Öffnung geht nur heraus, wenn alle einig sind.
+- **4c-3b Ausgeber** (App #137, eigene Seite `quanten-ausgabe`): bestellen (v, t, Deckung; Bestätigung nennt Deckung
+  und Pfand) → Stand prüfen und losen → K kopieren → Bestellung der Inhaberin als **Text** einfügen (bei v = 7,
+  n = 2822 ~12 KB, zu groß für einen QR-Code; höchstens 64 KB, vor dem Parsen geprüft, nur Weg-B-Felder) →
+  beauftragen → Briefkasten (Antworten, Bestätigungen; ohne IBM-Zugang werden Aufträge an diese Wallet abgelehnt, nie
+  ungemessen beantwortet) → Bestätigungen anfordern → ausgeben → Paket senden. Große Antworten in Dateien
+  (`dateiAblage()`).
+- **4c-3c Inhaberin** (App #138, Token-Seite): Schalter „Weg B“ — K vom Ausgeber (64 hex), n vorbelegt 2822,
+  `neuWegB`; danach „Paket abholen und prüfen“ statt K und Validatoren; Einlösen wie bisher (Vorlage mit Gelosten).
+- **4c-3d Annahmestelle** (App #138): eigener Knopf „Vorlage aus Weg B scannen“ (nur Vorlagen mit Liste der
+  Gelosten), Öffnungen anfordern, sammeln, annehmen (erst nach einem Sammeln; fehlende Gelosten nach R9 aus dem Paket).
+
+Übergabe zwischen Menschen: K vom Ausgeber zur Inhaberin und die Bestellung zurück gehen außerhalb der App (Kopieren,
+Nachricht). Beides ist nicht geheim (K steht im Register, die Basen sind an die Gelosten verschlüsselt). Eine
+Übergabe über den Briefkasten wäre bequemer, braucht aber eine neue Hüllen-Art — erst nach dem Pilot, wenn sie fehlt.
+
+Ehrlich offen: Nichts davon lief bisher auf einem echten Gerät (Dateiablage, SecureStore, IBM-Warteschlange, Dauer
+einer Runde). Vor dem Pilot: ein Build mit gesetzten Ausweich-Knoten, ein Durchlauf mit 7 Geräten im Testnetz oder,
+nach dem Stichtag, im Hauptnetz.
+
 ### Offen vor dem Stichtag: Pfand je Präparator und Beweisweg (aus PR #628, 22.11.)
 
 PR #628 (B2 als ein Stück, geschlossen am 23.11., durch B2a–B2d ersetzt; Zweig
