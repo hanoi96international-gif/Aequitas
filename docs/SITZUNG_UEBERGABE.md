@@ -62,8 +62,12 @@ allen vier Repos):
 - Anleitung für Betreiber und Pilot: `docs/PILOT_WEG_B.md` (Rollen, Ablauf, Stichtag, was hängt).
 - **Stichtag Weg B: 26.11.2026 09:00 UTC** (Betreiber 25.11. „morgen Vormittag“), in diesem PR mit neuem
   Deploy-Wächter; Deploy von C1 MUSS vor 08:30 UTC laufen (Wächter: 30 min Puffer), Freigabe durch den Betreiber.
-  Danach: App 1.31.0 (App #140) bauen, signieren, veröffentlichen. Pfand je Präparator: eigener PR + späterer
-  Stichtag; Beweisweg: Entscheidung des Betreibers offen.
+  **#665 gemergt** (0b6e7f11); Deploy-Lauf 45696380801 wartet auf Freigabe (`produktion`) — VOR 08:30 UTC.
+  App 1.31.0: #140 gemergt (f955ef12), Build 45694153436 läuft; danach Signieren (`app-signatur`) und
+  `release-apk.yml` (run_id, Tag v1.31.0) — beides mit Freigabe des Betreibers.
+- **Beweisweg entschieden** (25.11.): Inhaberin haftet + 10 % je Gelostem. Plan P1–P5 in `DEZENTRAL.md`
+  („Entscheidung Beweisweg und Plan Pfänder“), eigener Stichtag nach dem Pilotstart. **Offen (Betreiber):** Höhe des
+  Pfands der Inhaberin (Vorschlag D) und Frist für den Nachweis (Vorschlag 7 Tage). Nächster Schritt: P1 Spezifikation.
 - Offene PRs: nur dieser Übergabe-PR (Merge nach grüner CI).
 - Freigaben: keine offen (25.11. ~07:40 UTC geprüft: kein Lauf wartet). Die C1-Deploys zu #629–#634 sind erledigt
   (letzter Deploy 24.11. erfolgreich). Wunsch des Betreibers: bei jeder Freigabe sofort den direkten Link schicken.
