@@ -50,8 +50,9 @@ allen vier Repos):
 - Offene PRs: keine (außer diesem Übergabe-PR).
 - Freigaben: keine offen (25.11. ~07:40 UTC geprüft: kein Lauf wartet). Die C1-Deploys zu #629–#634 sind erledigt
   (letzter Deploy 24.11. erfolgreich). Wunsch des Betreibers: bei jeder Freigabe sofort den direkten Link schicken.
-- Befund am Rande: Der Ausgeber kann selbst im eigenen Los stehen (das Abbild schließt ihn nicht aus); die
-  gemeinsame Runde verträgt das (Auftrag an sich selbst).
+- _(erledigt 25.11., #661/App #135)_ Der Ausgeber stand ggf. im eigenen Los — die Kette schließt ihn jetzt aus.
+- Hinweis 4c-3: `docs.expo.dev` ist aus der Cloud-Umgebung nicht erreichbar; die Expo-54-APIs an den Typen in
+  `node_modules` prüfen (so bei `expo-file-system` 19 geschehen) und auf einem echten Gerät testen.
 
 **Stand 24.11. ~11:30 UTC (frühere Sitzung)** (Sitzung „Weiter nach Übergabe“, Zweig `claude/weiter-nach-uebergabe-gqogtx`
 in allen vier Repos):
