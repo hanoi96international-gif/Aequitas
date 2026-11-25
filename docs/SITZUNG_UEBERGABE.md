@@ -52,13 +52,14 @@ allen vier Repos):
   App-Zweig zurückgesetzt. Befund: Auf echten Geräten wäre der IBM-Auftrag beim Schließen der App verloren
   gegangen und der Auftrag quittiert worden.
 - **Nächste Schritte:**
-  1. App-Release (Build von Hand, `build-apk.yml`): **Repo-Variable `EXPO_PUBLIC_API_FALLBACKS` setzen** (mindestens
-     ein zweiter Knoten; sonst fragt die Präparatorin vor einer Öffnung nur den eigenen) — Betreiber:
-     https://github.com/hanoi96international-gif/Aequitas-App/settings/variables/actions
+  1. App-Release (Build von Hand, `build-apk.yml`). **Korrektur:** Es gibt zurzeit keinen zweiten Knoten (proof2
+     seit 03.10. aus, Launch-Checkliste Punkt 16) — `EXPO_PUBLIC_*_FALLBACKS` also nicht setzen, sondern prüfen/leeren.
+     Im Pilot fragt die Präparatorin vor einer Öffnung nur C1 (ehrlich offen in `docs/PILOT_WEG_B.md`).
   2. Echtes Gerät: Dateiablage, SecureStore, IBM-Warteschlange, Dauer einer Runde (nichts davon lief bisher außerhalb
      von Tests).
   3. Stichtag Weg B (nur Betreiber, mit Deploy-Wächter), danach Pilot B5 mit 7 Menschen.
   4. Später, falls nötig: K und Bestellung über den Briefkasten statt Kopieren (neue Hüllen-Art).
+- Anleitung für Betreiber und Pilot: `docs/PILOT_WEG_B.md` (Rollen, Ablauf, Stichtag, was hängt).
 - Offene PRs: nur dieser Übergabe-PR (Merge nach grüner CI).
 - Freigaben: keine offen (25.11. ~07:40 UTC geprüft: kein Lauf wartet). Die C1-Deploys zu #629–#634 sind erledigt
   (letzter Deploy 24.11. erfolgreich). Wunsch des Betreibers: bei jeder Freigabe sofort den direkten Link schicken.
