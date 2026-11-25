@@ -172,6 +172,7 @@ func quantenSBestellungenLesen(fs []quantenSBestellungForm) (map[string]*quanten
 		falsch := fmt.Errorf("quanten_w: Bestellung %d: Form", i)
 		if !istHash64(f.K) || (i > 0 && f.K <= fs[i-1].K) || !kanonischeAdresse(f.Ausgeber) || ausgeber[f.Ausgeber] ||
 			!quantenSBestellungGroessen(f.V, f.T) || f.Zeit <= 0 || len(f.Abbild) < quantenSLosPoolFaktor*f.V || len(f.Abbild) > quantenSPraepHoechstens ||
+			slices.Contains(f.Abbild, f.Ausgeber) || // nie im eigenen Los (s. bestellen)
 			f.Deckung < quantenMindestDeckungMik || f.Pfand != quantenSBestellPfandFuer(f.Deckung) {
 			return nil, falsch
 		}
@@ -296,6 +297,11 @@ func (cs *ChainState) quantenSBestellBescheidLocked(ctx context.Context, tx *Tra
 			return quantenWBefund("quanten_w_zeit", "keine drand-Runde zu %d", zeit), nil
 		}
 		abbild := cs.quantenSPraepAbbildLocked(ctx, reg, zeit)
+		// Der Ausgeber praepariert nie fuer die eigene Ausgabe (Entscheidung
+		// 25.11.2026): sonst hielte er selbst einen der v Abschnitte (Werte,
+		// Koeffizienten, die Basen y der Inhaberin dazu) und braeuchte nur
+		// t-1 weitere. Er faellt aus dem Abbild, bevor die Groesse zaehlt.
+		abbild = slices.DeleteFunc(abbild, func(a string) bool { return a == wallet })
 		if len(abbild) < quantenSLosPoolFaktor*q.PraepZahl {
 			return quantenWBefund("quanten_s_los_register", "Register zu klein: %d im Los, noetig %d fuer v = %d", len(abbild), quantenSLosPoolFaktor*q.PraepZahl, q.PraepZahl), nil
 		}

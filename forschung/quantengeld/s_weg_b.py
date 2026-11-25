@@ -169,7 +169,7 @@ class KetteB:
         self.register = register
         self.bestellungen: dict[str, dict] = {}
 
-    def bestellen(self, K: str, hoehe: int, v: int, t: int) -> None:
+    def bestellen(self, K: str, hoehe: int, v: int, t: int, ausgeber: str = "") -> None:
         if K in self.bestellungen:
             raise Abgewiesen("Bestellung: K schon bestellt")
         if not 1 <= t <= v:
@@ -178,7 +178,9 @@ class KetteB:
             raise Abgewiesen("Bestellung: t von v ist nicht sicher moeglich")
         # Das Abbild wird erst beim Losen gerechnet -- aus dem Stand ZUR
         # Bestellung (Meldung und Abmeldung mit Hoehe), nicht zum Losen.
-        self.bestellungen[K] = {"hoehe": hoehe, "v": v, "t": t, "los": None}
+        # Der Ausgeber praepariert nie fuer die eigene Ausgabe (25.11.2026):
+        # er faellt aus dem Abbild, bevor die Groesse zaehlt.
+        self.bestellungen[K] = {"hoehe": hoehe, "v": v, "t": t, "los": None, "ausgeber": ausgeber}
 
     def losen(self, K: str, hoehe_jetzt: int, zufall: bytes) -> list[str]:
         b = self.bestellungen.get(K)
@@ -188,7 +190,8 @@ class KetteB:
             raise Abgewiesen("Los: schon gelost")
         if hoehe_jetzt < b["hoehe"] + LOS_ABSTAND:
             raise Abgewiesen("Los: Zufall der Hoehe h + LOS_ABSTAND noch nicht da")
-        b["los"] = auslosen(self.register.abbild(b["hoehe"]), zufall, K, b["v"])
+        abbild = [k for k in self.register.abbild(b["hoehe"]) if k != b.get("ausgeber", "")]
+        b["los"] = auslosen(abbild, zufall, K, b["v"])
         return list(b["los"])
 
     def ausgabe_pruefen(self, K: str, praeparatoren: list[str]) -> None:
@@ -335,6 +338,13 @@ def selbsttest() -> bool:
     reg.abmelden(vorher[0], 5005)
     soll(kette.losen(K_ab, 5000 + LOS_ABSTAND, z) == vorher, "Abmeldung nach der Bestellung verschiebt das Los")
     abgewiesen(lambda: auslosen(reg.abbild(5000)[:3 * v - 1], z, K, v), "Register zu klein")
+    # Der Ausgeber nie im eigenen Los (25.11.2026): auch wenn er gemeldet ist und
+    # ohne die Regel gelost wuerde.
+    ausgeber = auslosen(reg.abbild(5000), z, hashlib.sha256(b"weg-b-ausgeber").hexdigest(), v)[0]
+    K_aus = hashlib.sha256(b"weg-b-ausgeber").hexdigest()
+    kette.bestellen(K_aus, 5000, v, t, ausgeber=ausgeber)
+    los_aus = kette.losen(K_aus, 5000 + LOS_ABSTAND, z)
+    soll(ausgeber not in los_aus and len(los_aus) == v, "Ausgeber im eigenen Los")
     abgewiesen(lambda: auslosen(reg.abbild(5000), z, K, V_MAX + 1), "v zu gross")
     # v = 1 ist bestellbar (k_note > 0), scheitert aber am Los: kein Weg B.
     k1 = KetteB(reg)
