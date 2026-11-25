@@ -2090,9 +2090,11 @@ Annahme durch die Inhaberin, Öffnungen für die Stellen per Hülle `oeffnung`. 
   Weg A unverändert (Wurzel, Blatt, Stellen-Bit, Bindung der Stichprobe, Vorab-Rechnung, Anmelden, Urteil, BEFUND).
   Test Ende zu Ende: Bestellung → Los → Aufträge → Antworten → Bestätigungen → Ausgabe → Paket → Annahme durch die
   Inhaberin → Bindung/Wahl → Öffnungen über den Briefkasten → eingelöst.
-- **2f-2c:** R9-Ausweg — fehlt eine Geloste, aus t Paketen der anderen (`ausAnteilenZusammensetzen`; die Pakete
-  stecken schon in den Antworten der anderen); ihre Blätter dann aus ihrem Abschnitt im Paket der Inhaberin oder
-  einer zweiten Quelle, geprüft an der Wurzel.
+- **2f-2c (gebaut, 25.11.):** R9-Ausweg. Der Ausgeber schickt sein Paket (alle unterschriebenen Abschnitte) auch an
+  beide Annahmestellen. Fehlt eine Geloste, nimmt die Stelle ihre Blätter aus dem Paket (beim Sammeln geprüft: jeder
+  Abschnitt von seiner Gelosten unterschrieben, alle Blätter die Wurzel der Kette; wer es schickt, zählt nicht) und
+  ihre Werte aus mindestens t Paketen der anderen (in deren Öffnungen) — beides läuft wieder durch `annehmenAlsStelle`
+  (Adapter: Dienst `blaetter` aus dem Paket). Ohne Paket oder mit weniger als t Antworten: kein Einlösen.
 - Danach 4c-3 Oberfläche.
 
 **4c-1a gebaut (24.11.2026):** App `lib/quantenSPraepAuftrag.ts` — Auftrag streng lesen, Nachricht wie
