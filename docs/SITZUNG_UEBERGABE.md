@@ -26,9 +26,11 @@ allen vier Repos):
 - **2f-1 gebaut** (Paket an die Inhaberin): App `paketSenden` (Ausgeber), `paketAbholen` in
   `lib/quantenSInhaberinPaket.ts` (Inhaberin, geprüft mit `annehmen` gegen die Kette und ihre Liste der Gelosten).
   App-PR und dieser Doku-PR offen; Merge nach grüner CI.
-- **Nächster Schritt 2f-2:** Annahmestellen holen Öffnungen per Hülle `oeffnung` (Präparatorin beantwortet sie schon,
-  4c-1g), Stichprobe v2 prüfen wie `quantenSStichprobeV2Laden`, R9-Ausweg. Danach 4c-3 Oberfläche (Expo 54).
-- Offene PRs: 2f-1 (App und dieser Aequitas-Doku-PR).
+- **2f-1 gemergt** (Aequitas #657 0bfeaf0f, App #130 70b9c032).
+- **2f-2a gebaut** (Öffnung der Präparatorin mit ihrem unterschriebenen Abschnitt). **Nächster Schritt 2f-2b:**
+  Annahmestelle in Weg B (`lib/quantenSStelleWegB.ts`), Plan in `DEZENTRAL.md` „Plan 2f-2“ — offene Frage dort:
+  die Liste der Gelosten kommt mit der Vorlage (Kette speichert sie nicht); begründet, warum das sicher ist.
+- Offene PRs: 2f-2a (App und dieser Aequitas-Doku-PR).
 - Freigaben: keine offen (25.11. ~07:40 UTC geprüft: kein Lauf wartet). Die C1-Deploys zu #629–#634 sind erledigt
   (letzter Deploy 24.11. erfolgreich). Wunsch des Betreibers: bei jeder Freigabe sofort den direkten Link schicken.
 - Befund am Rande: Der Ausgeber kann selbst im eigenen Los stehen (das Abbild schließt ihn nicht aus); die
