@@ -1932,7 +1932,9 @@ kennt das Handy nur von den befragten Knoten. **Nächster Schritt 4c-2** (Ausgeb
 - **2b** Inhaberin in Weg B: Bestellung mit y je Abschnitt an `pub` der Gelosten aus dem Register verschlüsselt
   (statt Schlüssel vom Validator-Dienst), `pubPasst` selbst geprüft.
 - **2c** Ausgeber: je Gelosten den Abschnitts-Auftrag als Hülle `auftrag`, Antworten aus dem eigenen Briefkasten
-  sammeln und prüfen wie `abschnitteHolen` (Unterschrift, Abschnitt, `basen_hash`, Stichprobe v2), Wurzel und Proben.
+  sammeln und prüfen wie `abschnitteHolen` (Unterschrift, Abschnitt, `basen_hash`, Stichprobe v2), Wurzel und Proben
+  (gebaut, unten).
+- **2b′** (Befund 2c, vor dem Pilot): Zustand der Inhaberin ohne die Grenze von SecureStore (2048 Byte je Wert).
 - **2d** Bestätigungs-Anfragen als Hülle `bestaetigung` (Bündel der anderen weiterreichen), Bestätigungen prüfen.
 - **2e** Ausgabe gegen das Los einreichen (`quanten_w_s_ausgeben`, Validatoren = Los), Paket für die Inhaberin.
 - **2f** Inhaberin nimmt das Paket an (wie `annehmen`), Annahmestelle holt Öffnungen per Hülle `oeffnung`.
@@ -1967,6 +1969,40 @@ bestellt, gelost, nicht verfallen), je Geloster genau ein Eintrag, dessen `pub` 
 Losreihenfolge. Der Zustand merkt sich K (`wegB`). Jede Geloste öffnet genau ihren Abschnitt mit dem Code der
 Präparatorin (`basenOeffnen`), keine andere. Grenze: Der Zustand liegt in SecureStore (2048 Byte); bei v = 16 passen
 nur kleinere n (abgewiesen, bevor Zufall gezogen wird). Kein Konsens.
+
+### B4b-4c-2c: Ausgeber beauftragt und sammelt (25.11.2026, gebaut)
+
+App `lib/quantenSAusgeberRunde.ts`:
+- `beauftragen(bestellung, tol)`: die Bestellung der Inhaberin aus `neuWegB` und die Toleranz. Geprüft, was die
+  Präparatorin prüfen wird (`auftragPruefen`), damit keine Geloste für einen Auftrag misst, den sie ablehnt: Größen,
+  Prüfgröße k_note, Schlüssel zu ihren Adressen, Stellen verschieden und nicht die Inhaberin, Inhaberin nicht der
+  Ausgeber selbst (wie `quantenSAusgabeFuerInhaberin`), Basen nur verschlüsselt, je Geloster genau ein Chiffrat. Die
+  Schlüssel der Gelosten kommen aus dem Register (`registerLesen`/`pubPasst`), die Bestellung muss dort unverändert
+  gelost stehen. Der **Rahmen** (alles, woraus die Aufträge entstehen, auch die Ausgabezeit) wird zuerst gesichert,
+  Reste einer früheren Runde gelöscht, dann gesendet.
+- `auftraegeSenden`: je Geloster ohne Antwort ihr Auftrag als Hülle `auftrag`. Die Unterschrift ist deterministisch
+  (RFC 6979), ein wiederholter Auftrag also Byte für Byte derselbe; die Präparatorin antwortet dann aus ihrem Tresor
+  dasselbe noch einmal. Nicht mehr, wenn die Aufträge älter als das Zeitfenster der Präparatorin (1 Tag) würden.
+- `antwortAufnehmen` aus der **Runde des Briefkastens** (`runde`): Präparatorin und Ausgeber teilen sich die Wallet
+  und damit den Kasten, darum gibt es genau einen Leser, der nach Art verteilt. Geprüft wie `abschnitteHolen`: Hülle
+  und Unterschrift von der Gelosten x, K, Abschnitt, Längen, eigenes Bündel leer, die anderen der Form nach,
+  `basen_hash` = Hash des Chiffrats, das ihr geschickt wurde, Stichprobe v2 (zwei Teil-Hashes, Zählung möglich).
+  Gesichert wird nur die erste gültige Antwort je x (vor dem Quittieren); eine andere wird abgewiesen, nie
+  überschrieben. Sind alle da: Wurzel, Bindungen der Stichproben v2, Zählungen; die ehrliche Vorlage muss an beiden
+  Stellen bestehen, sonst Abbruch, bevor etwas auf die Kette geht. Stand `beantwortet`.
+- Grenzen: eine Antwort ≤ 1 MB, alle zusammen ≤ 4 MB in der Ablage (gemessen: n = 1200, v = 4 → je ~240 KB).
+
+Prüfvektor `testdata/quanten_s_ausgeber_auftrag_vektor.json` aus der App (Ende zu Ende: Inhaberin, Ausgeber, vier
+Präparatorinnen mit ihrem eigenen Ablauf); der Knoten prüft ihn mit eigenem Code
+(`quanten_s_ausgeber_auftrag_vektor_test.go`): Auftrag wie der Dienst ihn liest, Nachricht, Unterschrift, Basen öffnet
+genau die Geloste, jede Antwort (`quantenSPaketAbschnittPruefen`) mit dem Hash ihrer Basen, Wurzel, Proben,
+Zählungen. Kein Konsens.
+
+**Befund 2c (vor dem Pilot zu beheben, Schritt 2b′):** Die Inhaberin hält ihren Zustand (y, x hex, Listen der
+Validatoren und Hashes) in SecureStore, höchstens 2048 Byte je Wert. In Weg B passt damit nur v = 4 (n ≤ 1596), bei
+v = 7 nur n ≤ 656, bei v = 16 gar nichts. k_note verlangt aber (Toleranz 2 %) für v = 4, t = 2 schon n ≥ 1712 und für
+den Pilot 4 von 7 n ≥ 2816. **Heute geht in Weg B nur v = 4 mit t = 1.** Abhilfe: im SecureStore nur ein Schlüssel,
+y, x und die Listen AES-256-GCM-verschlüsselt in der Ablage (wie der Tresor der Präparatorin). Danach 2d.
 
 **4c-1a gebaut (24.11.2026):** App `lib/quantenSPraepAuftrag.ts` — Auftrag streng lesen, Nachricht wie
 `quantenSAbschnittAuftragNachricht`, prüfen wie `quantenSAbschnittPruefen`; statt des Kettenstands des Dienstes
