@@ -2069,9 +2069,23 @@ Annahme durch die Inhaberin, Öffnungen für die Stellen per Hülle `oeffnung`. 
 - Befund beim Bauen: ein Import von Briefkasten/Hülle in `quantenSInhaberin.ts` schloss einen Importring
   (`ALTER_MAX` = NaN beim Laden, Hüllen-Test rot) — darum eigenes Modul.
 
-**Nächster Schritt 2f-2:** Annahmestellen holen ihre Öffnungen per Hülle `oeffnung` bei den Gelosten (die
-Präparatorin beantwortet sie seit 4c-1g), Stichprobe v2 prüfen wie `quantenSStichprobeV2Laden`; Ausweg aus den
-Paketen der anderen, wenn eine Geloste fehlt (R9). Danach 4c-3 Oberfläche.
+**Plan 2f-2 (Annahmestelle in Weg B, 25.11.2026):**
+- **2f-2a (gebaut):** Die Präparatorin legt ihrer Öffnung ihren eigenen, unterschriebenen Abschnitt bei
+  (`paketAbschnittAus`) — in Weg A nannte ihn der Validator-Dienst, in Weg B gibt es keinen.
+- **2f-2b:** App `lib/quantenSStelleWegB.ts` (eigenes Modul, Importring beachten): wie `annehmenAlsStelle`, aber
+  zweiphasig über den Briefkasten der Stelle (Adresse = Schlüssel der Stelle): (1) `oeffnungenAnfordern` — Kette
+  prüfen (gebunden, gewählt, Stelle b = ich, v, Vorlage von der Inhaberin auf der Kette), dann je Geloster die Hülle
+  `oeffnung` {k, b}; (2) `oeffnungenSammeln` — Antworten {k, b, x, oeffnung, pakete, abschnitt}: Absender = Geloste x,
+  Abschnitt mit ihrer Unterschrift (`abschnittPruefen`), alle Blätter ergeben die Wurzel der Kette, Öffnung lesen
+  (`oeffnungLesen`), Stichprobe und Salze gegen die Bindung (`probeV2Pruefen`); dann Vorab-Rechnung und Anmelden wie
+  bisher. **Woher kennt die Stelle die Gelosten?** Die Kette speichert sie nicht (nur v). Vorschlag: die Vorlage der
+  Inhaberin nennt sie (ihre Liste aus der Bestellung). Fälschen bringt nichts: falsche Namen liefern keine Werte, die
+  zu den Blättern der Wurzel passen (die Werte kennt nur die echte Präparatorin) — die Stelle kann dann nur nicht
+  einlösen, verliert aber nichts. Die Schlüssel für die Hüllen kommen aus dem Register (`pubPasst`).
+- **2f-2c:** R9-Ausweg — fehlt eine Geloste, aus t Paketen der anderen (`ausAnteilenZusammensetzen`; die Pakete
+  stecken schon in den Antworten der anderen); ihre Blätter dann aus ihrem Abschnitt im Paket der Inhaberin oder
+  einer zweiten Quelle, geprüft an der Wurzel.
+- Danach 4c-3 Oberfläche.
 
 **4c-1a gebaut (24.11.2026):** App `lib/quantenSPraepAuftrag.ts` — Auftrag streng lesen, Nachricht wie
 `quantenSAbschnittAuftragNachricht`, prüfen wie `quantenSAbschnittPruefen`; statt des Kettenstands des Dienstes
