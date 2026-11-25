@@ -35,22 +35,24 @@ allen vier Repos):
 - **Messung in Pilot-Größe (v = 7, t = 4, n = 2822), Ergebnis in `DEZENTRAL.md`:** Antworten zusammen ~4,2 MB >
   Grenze 4 MB des Ausgebers — **blockiert den Pilot**. Vorrang vor der Oberfläche (Betreiber: „alles zum Besten von
   Aequitas“, 25.11.):
-  1. **Große Daten in Dateien — gebaut** (App #134: `lib/dateiAblage.ts`, Ausgeber mit `dateien`, Grenzen an den
+  1. **Große Daten in Dateien — gemergt** (App #134 bc909991: `lib/dateiAblage.ts`, Ausgeber mit `dateien`, Grenzen an den
      Transport gekoppelt; Test in Pilot-Größe `quantenSWegBPilot.test.ts`). Das Paket der Stelle ist klein genug
      (~200 KB), bleibt in der Ablage. In der Oberfläche `dateien: dateiAblage()` setzen.
-  2. **Ausgeber aus dem eigenen Los ausschließen — gebaut** (Aequitas-PR dieses Zweigs, Konsens schlafend,
-     Sicherheitsprüfung als PR-Kommentar). App: zusätzlich prüfen, dass der Ausgeber nicht unter den Gelosten ist
-     (Präparatorin `auftragPruefen`, Ausgeber `rahmenPruefen`) — kleiner Folge-PR.
+  2. **Ausgeber aus dem eigenen Los ausschließen — gemergt** (Aequitas #661 0168d7f0, Konsens schlafend,
+     Sicherheitsprüfung als PR-Kommentar; App #135 eccaf69e: die App prüft es an drei Stellen selbst).
   3. In der Oberfläche standardmäßig zwei Knoten fragen.
-- **Danach: 4c-3 Oberfläche** (Expo 54 — vorher die versionierte Doku lesen, AGENTS.md der App; 12 Sprachen):
+- **GitHub hing am 25.11. ~16 Uhr** beim Merge von App #135 (502/500, „Merge already in progress“) — später
+  ging es ohne Änderung. Bei so etwas: Zustand lesen, später erneut, notfalls dem Betreiber den Link schicken.
+- **Jetzt: 4c-3 Oberfläche** (Expo 54 — vorher die versionierte Doku lesen, AGENTS.md der App; 12 Sprachen):
   Karte der Präparatorin (IBM-Schlüssel, Stand, Runde), Karte des Ausgebers in Weg B (bestellen, losen, beauftragen,
   Bestätigungen, ausgeben, Paket), Inhaberin (Paket abholen, einlösen mit Vorlage samt Gelosten), Annahmestelle
   (Öffnungen anfordern, sammeln, einlösen). Danach App-Release, Stichtag Weg B (Betreiber), Pilot B5.
-- Offene PRs: 2f-2c (App und dieser Aequitas-Doku-PR).
+- Offene PRs: keine (außer diesem Übergabe-PR).
 - Freigaben: keine offen (25.11. ~07:40 UTC geprüft: kein Lauf wartet). Die C1-Deploys zu #629–#634 sind erledigt
   (letzter Deploy 24.11. erfolgreich). Wunsch des Betreibers: bei jeder Freigabe sofort den direkten Link schicken.
-- Befund am Rande: Der Ausgeber kann selbst im eigenen Los stehen (das Abbild schließt ihn nicht aus); die
-  gemeinsame Runde verträgt das (Auftrag an sich selbst).
+- _(erledigt 25.11., #661/App #135)_ Der Ausgeber stand ggf. im eigenen Los — die Kette schließt ihn jetzt aus.
+- Hinweis 4c-3: `docs.expo.dev` ist aus der Cloud-Umgebung nicht erreichbar; die Expo-54-APIs an den Typen in
+  `node_modules` prüfen (so bei `expo-file-system` 19 geschehen) und auf einem echten Gerät testen.
 
 **Stand 24.11. ~11:30 UTC (frühere Sitzung)** (Sitzung „Weiter nach Übergabe“, Zweig `claude/weiter-nach-uebergabe-gqogtx`
 in allen vier Repos):
