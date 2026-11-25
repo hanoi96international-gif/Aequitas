@@ -2,12 +2,27 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 24.11.2026 ~11:30 UTC (Sitzung „Weiter nach Übergabe“, Zweig `claude/weiter-nach-uebergabe-gqogtx`); davor ~09:20 UTC (Sitzung „Weiter mit Übergabe“, Zweig `claude/uebergabe-fortsetzen-g5xqox`); davor ~18:05 UTC (Sitzung „Weiter nach Übergabe“, Zweig `claude/weiter-nach-uebergabe-zyl7c6`); davor 22.11.2026 ~18:50 UTC, Sitzung „CL Übergabe weitermachen“ (`claude/cl-uebergabe-weitermachen-jdz5h7`); davor ~16:40 UTC Sitzung „Weiter Übergabe“ (`claude/weiter-uebergabe-1a9yql`); davor 21.11. ~20:15 UTC Sitzung „CL Übergabe weitermachen“; davor ~18:00 UTC Sitzung „Weiter“ (Zweig `claude/admiring-bohr-ob0u0p`, alle vier
+Stand: 25.11.2026 (Sitzung „Weiter mit Übergabe“, Zweig `claude/uebergabe-fortsetzen-8sor22`); davor 24.11. ~11:30 UTC (Sitzung „Weiter nach Übergabe“, Zweig `claude/weiter-nach-uebergabe-gqogtx`); davor ~09:20 UTC (Sitzung „Weiter mit Übergabe“, Zweig `claude/uebergabe-fortsetzen-g5xqox`); davor ~18:05 UTC (Sitzung „Weiter nach Übergabe“, Zweig `claude/weiter-nach-uebergabe-zyl7c6`); davor 22.11.2026 ~18:50 UTC, Sitzung „CL Übergabe weitermachen“ (`claude/cl-uebergabe-weitermachen-jdz5h7`); davor ~16:40 UTC Sitzung „Weiter Übergabe“ (`claude/weiter-uebergabe-1a9yql`); davor 21.11. ~20:15 UTC Sitzung „CL Übergabe weitermachen“; davor ~18:00 UTC Sitzung „Weiter“ (Zweig `claude/admiring-bohr-ob0u0p`, alle vier
 Repos); davor ~13:40 UTC Sitzung „Weiter“ (`claude/weiter-uw2p42`), davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18:30 UTC Sitzung
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
-**Stand 24.11. ~11:30 UTC — HIER WEITERMACHEN** (Sitzung „Weiter nach Übergabe“, Zweig `claude/weiter-nach-uebergabe-gqogtx`
+**Stand 25.11. — HIER WEITERMACHEN** (Sitzung „Weiter mit Übergabe“, Zweig `claude/uebergabe-fortsetzen-8sor22` in
+allen vier Repos):
+- **4c-2c gebaut** (Ausgeber beauftragt und sammelt): App `lib/quantenSAusgeberRunde.ts` (`beauftragen`,
+  `auftraegeSenden`, `antwortAufnehmen`, `antwortenStand`), Antworten kommen über die gemeinsame Briefkasten-Runde
+  `runde` (ein Leser je Wallet, verteilt nach Art). Tests Ende zu Ende mit vier Präparatorinnen + Missbrauch;
+  Knoten-Prüfvektor `quanten_s_ausgeber_auftrag_vektor_test.go`. PRs siehe unten; Merge nach grüner CI, erst
+  Aequitas, dann App.
+- **Befund 2c → nächster Schritt 2b′** (vor 2d): Der Zustand der Inhaberin liegt in SecureStore (≤ 2048 Byte je Wert).
+  In Weg B geht damit nur v = 4 mit t = 1 (n ≤ 1596); k_note verlangt für den Pilot 4 von 7 n ≥ 2816, möglich wären
+  656. Abhilfe: nur ein Schlüssel in SecureStore, y/x/Listen AES-256-GCM in der Ablage (wie `PraepTresor`).
+  Details `DEZENTRAL.md` „B4b-4c-2c“. Danach 2d (Bestätigungen; Achtung: Art `bestaetigung` gilt für Anfrage UND
+  Antwort — in `runde` nach Absender/Inhalt unterscheiden), 2e, 2f.
+- Befund am Rande: Der Ausgeber kann selbst im eigenen Los stehen (das Abbild schließt ihn nicht aus); die
+  gemeinsame Runde verträgt das (Auftrag an sich selbst).
+
+**Stand 24.11. ~11:30 UTC (frühere Sitzung)** (Sitzung „Weiter nach Übergabe“, Zweig `claude/weiter-nach-uebergabe-gqogtx`
 in allen vier Repos):
 - **4c-2a gebaut** (Ausgeber bestellt und lost): App `lib/quantenSAusgeber.ts` + Tests (1423 grün, 18 Mutationen rot),
   Knoten-Prüfvektor `quanten_s_ausgeber_bestellen_vektor_test.go` (Bestellen + Losen mit echtem Beacon angenommen).
