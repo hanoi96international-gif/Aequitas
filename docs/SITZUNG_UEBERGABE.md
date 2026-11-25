@@ -48,8 +48,8 @@ allen vier Repos):
   Annahmestelle in Weg B auf der Token-Seite). App-Zweig danach zurückgesetzt. Aequitas #662
   (Übergabe) gemergt (ea4de7b5).
 - Aequitas #663 (Übergabe 4c-3) gemergt (64ab6357).
-- **4c-4 gebaut** (Messung der Präparatorin fortsetzbar, `DEZENTRAL.md` „B4b-4c-4“): App #139 offen — Merge nach
-  grüner CI, dann Zweig zurücksetzen. Befund: Auf echten Geräten wäre der IBM-Auftrag beim Schließen der App verloren
+- **4c-4 gebaut** (Messung der Präparatorin fortsetzbar, `DEZENTRAL.md` „B4b-4c-4“): **gemergt** App #139 (0b53d6bc),
+  App-Zweig zurückgesetzt. Befund: Auf echten Geräten wäre der IBM-Auftrag beim Schließen der App verloren
   gegangen und der Auftrag quittiert worden.
 - **Nächste Schritte:**
   1. App-Release (Build von Hand, `build-apk.yml`): **Repo-Variable `EXPO_PUBLIC_API_FALLBACKS` setzen** (mindestens
@@ -59,7 +59,7 @@ allen vier Repos):
      von Tests).
   3. Stichtag Weg B (nur Betreiber, mit Deploy-Wächter), danach Pilot B5 mit 7 Menschen.
   4. Später, falls nötig: K und Bestellung über den Briefkasten statt Kopieren (neue Hüllen-Art).
-- Offene PRs: App #139 und dieser Übergabe-PR (Merge nach grüner CI).
+- Offene PRs: nur dieser Übergabe-PR (Merge nach grüner CI).
 - Freigaben: keine offen (25.11. ~07:40 UTC geprüft: kein Lauf wartet). Die C1-Deploys zu #629–#634 sind erledigt
   (letzter Deploy 24.11. erfolgreich). Wunsch des Betreibers: bei jeder Freigabe sofort den direkten Link schicken.
 - _(erledigt 25.11., #661/App #135)_ Der Ausgeber stand ggf. im eigenen Los — die Kette schließt ihn jetzt aus.
