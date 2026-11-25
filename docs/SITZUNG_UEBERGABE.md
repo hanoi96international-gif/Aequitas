@@ -27,10 +27,16 @@ allen vier Repos):
   `lib/quantenSInhaberinPaket.ts` (Inhaberin, geprüft mit `annehmen` gegen die Kette und ihre Liste der Gelosten).
   App-PR und dieser Doku-PR offen; Merge nach grüner CI.
 - **2f-1 gemergt** (Aequitas #657 0bfeaf0f, App #130 70b9c032).
-- **2f-2a gebaut** (Öffnung der Präparatorin mit ihrem unterschriebenen Abschnitt). **Nächster Schritt 2f-2b:**
-  Annahmestelle in Weg B (`lib/quantenSStelleWegB.ts`), Plan in `DEZENTRAL.md` „Plan 2f-2“ — offene Frage dort:
-  die Liste der Gelosten kommt mit der Vorlage (Kette speichert sie nicht); begründet, warum das sicher ist.
-- Offene PRs: 2f-2a (App und dieser Aequitas-Doku-PR).
+- **2f-2a gemergt** (Aequitas #658 6dc5c16d, App #131 0722c324).
+- **2f-2b gebaut** (Annahmestelle in Weg B, `lib/quantenSStelleWegB.ts`; Entscheidung: Liste der Gelosten kommt mit
+  der Vorlage). Damit ist Weg B in der App **Ende zu Ende** durchgespielt (Test in `quantenSAusgeberRunde.test.ts`).
+  App-PR und dieser Doku-PR offen.
+- **Nächste Schritte:** 2f-2c (R9-Ausweg, wenn eine Geloste fehlt), dann **4c-3 Oberfläche** (Expo 54 — vorher die
+  versionierte Doku lesen, AGENTS.md der App; 12 Sprachen): Karte der Präparatorin (IBM-Schlüssel, Stand, Runde),
+  Karte des Ausgebers in Weg B (bestellen, losen, beauftragen, Bestätigungen, ausgeben, Paket), Inhaberin (Paket
+  abholen), Annahmestelle (Öffnungen anfordern/sammeln/einlösen). Danach App-Release, Stichtag Weg B (Betreiber),
+  Pilot B5.
+- Offene PRs: 2f-2b (App und dieser Aequitas-Doku-PR).
 - Freigaben: keine offen (25.11. ~07:40 UTC geprüft: kein Lauf wartet). Die C1-Deploys zu #629–#634 sind erledigt
   (letzter Deploy 24.11. erfolgreich). Wunsch des Betreibers: bei jeder Freigabe sofort den direkten Link schicken.
 - Befund am Rande: Der Ausgeber kann selbst im eigenen Los stehen (das Abbild schließt ihn nicht aus); die

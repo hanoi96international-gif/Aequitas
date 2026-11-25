@@ -2072,16 +2072,24 @@ Annahme durch die Inhaberin, Öffnungen für die Stellen per Hülle `oeffnung`. 
 **Plan 2f-2 (Annahmestelle in Weg B, 25.11.2026):**
 - **2f-2a (gebaut):** Die Präparatorin legt ihrer Öffnung ihren eigenen, unterschriebenen Abschnitt bei
   (`paketAbschnittAus`) — in Weg A nannte ihn der Validator-Dienst, in Weg B gibt es keinen.
-- **2f-2b:** App `lib/quantenSStelleWegB.ts` (eigenes Modul, Importring beachten): wie `annehmenAlsStelle`, aber
+- **2f-2b (gebaut, 25.11.):** App `lib/quantenSStelleWegB.ts` (eigenes Modul, Importring beachten): wie `annehmenAlsStelle`, aber
   zweiphasig über den Briefkasten der Stelle (Adresse = Schlüssel der Stelle): (1) `oeffnungenAnfordern` — Kette
   prüfen (gebunden, gewählt, Stelle b = ich, v, Vorlage von der Inhaberin auf der Kette), dann je Geloster die Hülle
   `oeffnung` {k, b}; (2) `oeffnungenSammeln` — Antworten {k, b, x, oeffnung, pakete, abschnitt}: Absender = Geloste x,
   Abschnitt mit ihrer Unterschrift (`abschnittPruefen`), alle Blätter ergeben die Wurzel der Kette, Öffnung lesen
   (`oeffnungLesen`), Stichprobe und Salze gegen die Bindung (`probeV2Pruefen`); dann Vorab-Rechnung und Anmelden wie
-  bisher. **Woher kennt die Stelle die Gelosten?** Die Kette speichert sie nicht (nur v). Vorschlag: die Vorlage der
-  Inhaberin nennt sie (ihre Liste aus der Bestellung). Fälschen bringt nichts: falsche Namen liefern keine Werte, die
+  bisher. **Woher kennt die Stelle die Gelosten?** Die Kette speichert sie nicht (nur v). **Entschieden (25.11.):**
+  die Vorlage der Inhaberin nennt sie (`Vorlage.validatoren`, nur in Weg B; ihre Liste aus der Bestellung). Fälschen bringt nichts: falsche Namen liefern keine Werte, die
   zu den Blättern der Wurzel passen (die Werte kennt nur die echte Präparatorin) — die Stelle kann dann nur nicht
   einlösen, verliert aber nichts. Die Schlüssel für die Hüllen kommen aus dem Register (`pubPasst`).
+  **Umsetzung:** Phase 1 `oeffnungenAnfordern` (Vorprüfung gegen die Kette, Hülle `oeffnung` je Geloster an ihren
+  Schlüssel aus dem Register), Phase 2 `oeffnungenSammeln` (eigener Kasten; Absender = Geloste x, ihr Abschnitt von ihr
+  unterschrieben, Öffnung lesbar und passend; nur die erste gültige je x), Phase 3 `annehmenWegB`: läuft **genau**
+  `annehmenAlsStelle` — ein Adapter im Gerät liefert die gesicherten Antworten an Stelle der Validator-Dienste
+  (Adressen `https://geloste-<x>.weg-b.invalid`, nie im Netz; Test prüft das). Damit gelten dieselben Prüfungen wie in
+  Weg A unverändert (Wurzel, Blatt, Stellen-Bit, Bindung der Stichprobe, Vorab-Rechnung, Anmelden, Urteil, BEFUND).
+  Test Ende zu Ende: Bestellung → Los → Aufträge → Antworten → Bestätigungen → Ausgabe → Paket → Annahme durch die
+  Inhaberin → Bindung/Wahl → Öffnungen über den Briefkasten → eingelöst.
 - **2f-2c:** R9-Ausweg — fehlt eine Geloste, aus t Paketen der anderen (`ausAnteilenZusammensetzen`; die Pakete
   stecken schon in den Antworten der anderen); ihre Blätter dann aus ihrem Abschnitt im Paket der Inhaberin oder
   einer zweiten Quelle, geprüft an der Wurzel.
