@@ -2056,6 +2056,23 @@ fremde Wallet, vertauschte Bestätigungen, verfallen, ungelost) (`quanten_s_ausg
 **Offen (2f):** Paket für die Inhaberin (Abschnitte ohne Bündel, wie `quantenSPaketAbschnittAus`) über eine Hülle,
 Annahme durch die Inhaberin, Öffnungen für die Stellen per Hülle `oeffnung`. Kein Konsens.
 
+### B4b-4c-2f-1: Paket an die Inhaberin (25.11.2026, gebaut)
+
+- Hülle: neue Art `paket` (nur App; der Knoten sieht Chiffrat).
+- Ausgeber `paketSenden` (ab `ausgegeben`): je Abschnitt die unterschriebene Antwort ohne Bündel (nur deren Hashes, wie
+  `quantenSPaketAbschnittAus`) an den Schlüssel der Inhaberin aus der Bestellung.
+- Inhaberin `paketAbholen` (App `lib/quantenSInhaberinPaket.ts`): eigener Briefkasten (Adresse = Schlüssel der
+  Inhaberin, nicht die Wallet), erst wenn der Token auf der Kette steht; das Paket streng gelesen und mit `annehmen`
+  gegen die Kette geprüft (Unterschrift jeder Gelosten, Hash ihres Chiffrats, Wurzel, Proben, Zählungen, ehrliche
+  Vorlage) — gegen **ihre** Liste der Gelosten (an die sie verschlüsselt hat), nie gegen eine Liste im Paket. Wer das
+  Paket schickt, zählt nicht. Falsche Pakete gelten als erledigt; quittiert wird erst nach dem Sichern.
+- Befund beim Bauen: ein Import von Briefkasten/Hülle in `quantenSInhaberin.ts` schloss einen Importring
+  (`ALTER_MAX` = NaN beim Laden, Hüllen-Test rot) — darum eigenes Modul.
+
+**Nächster Schritt 2f-2:** Annahmestellen holen ihre Öffnungen per Hülle `oeffnung` bei den Gelosten (die
+Präparatorin beantwortet sie seit 4c-1g), Stichprobe v2 prüfen wie `quantenSStichprobeV2Laden`; Ausweg aus den
+Paketen der anderen, wenn eine Geloste fehlt (R9). Danach 4c-3 Oberfläche.
+
 **4c-1a gebaut (24.11.2026):** App `lib/quantenSPraepAuftrag.ts` — Auftrag streng lesen, Nachricht wie
 `quantenSAbschnittAuftragNachricht`, prüfen wie `quantenSAbschnittPruefen`; statt des Kettenstands des Dienstes
 die Bestellung (gelost, nicht verfallen, Ausgeber, t, v, Validatoren = Los in Reihenfolge). In Weg B nur

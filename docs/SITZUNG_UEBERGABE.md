@@ -23,11 +23,12 @@ allen vier Repos):
   (8a30362a, mit 2e).
 - **2e gebaut** (Ausgabe gegen das Los): App `ausgeben`, Knoten-Prüfvektor `quanten_s_ausgeber_ausgeben_vektor_test.go`
   (im selben PR wie 2d, gemergt). Details `DEZENTRAL.md` „B4b-4c-2e“.
-- **Nächster Schritt 2f:** Paket für die Inhaberin (Abschnitte aus den gesicherten Antworten ohne Bündel, wie
-  `quantenSPaketAbschnittAus`, dazu K, n, t, tol, Stellen, Los, Wurzel, Proben, Deckung) als Hülle an die Inhaberin —
-  dafür braucht die Hülle eine neue Art (`paket`); die Inhaberin nimmt an (`annehmen` gegen die Kette); Annahmestellen
-  holen Öffnungen per Hülle `oeffnung` (Präparatorin beantwortet das schon, 4c-1g). Danach 4c-3 Oberfläche.
-- Offene PRs: keine (außer diesem Übergabe-PR).
+- **2f-1 gebaut** (Paket an die Inhaberin): App `paketSenden` (Ausgeber), `paketAbholen` in
+  `lib/quantenSInhaberinPaket.ts` (Inhaberin, geprüft mit `annehmen` gegen die Kette und ihre Liste der Gelosten).
+  App-PR und dieser Doku-PR offen; Merge nach grüner CI.
+- **Nächster Schritt 2f-2:** Annahmestellen holen Öffnungen per Hülle `oeffnung` (Präparatorin beantwortet sie schon,
+  4c-1g), Stichprobe v2 prüfen wie `quantenSStichprobeV2Laden`, R9-Ausweg. Danach 4c-3 Oberfläche (Expo 54).
+- Offene PRs: 2f-1 (App und dieser Aequitas-Doku-PR).
 - Freigaben: keine offen (25.11. ~07:40 UTC geprüft: kein Lauf wartet). Die C1-Deploys zu #629–#634 sind erledigt
   (letzter Deploy 24.11. erfolgreich). Wunsch des Betreibers: bei jeder Freigabe sofort den direkten Link schicken.
 - Befund am Rande: Der Ausgeber kann selbst im eigenen Los stehen (das Abbild schließt ihn nicht aus); die
