@@ -159,6 +159,7 @@ jobs:
       - run: bash scripts/test_quantengeld_nicht_verpasst.sh
       - run: bash scripts/test_quanten_w_nicht_verpasst.sh
       - run: bash scripts/test_quanten_s_probe_v2_nicht_verpasst.sh
+      - run: bash scripts/test_quanten_s_weg_b_nicht_verpasst.sh
       - run: bash scripts/test_quanten_urteil_nicht_verpasst.sh
       - run: bash scripts/test_quantengeld_mindest_pruefer.sh
       - run: bash scripts/test_quantengeld_noten_tabelle.sh
