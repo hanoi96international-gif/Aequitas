@@ -91,6 +91,8 @@ jobs:
         run: bash .github/neustart/quanten-s-probe-v2-nicht-verpasst.sh http://$C1:8080
       - name: Stichtag von Weg B (Quantengeld S, Handys als Praeparatorinnen) nicht verpasst
         run: bash .github/neustart/quanten-s-weg-b-nicht-verpasst.sh http://$C1:8080
+      - name: Stichtag "Los je Token behalten" (Quantengeld S, P2a) nicht verpasst
+        run: bash .github/neustart/quanten-s-los-nicht-verpasst.sh http://$C1:8080
       - name: Stichtag des eindeutigen Urteils (Quantengeld W und S) nicht verpasst
         run: bash .github/neustart/quanten-urteil-nicht-verpasst.sh http://$C1:8080
       - name: Mindestzahl der Pruefer fuers Quantengeld nur ohne eingetragenen Satz aendern

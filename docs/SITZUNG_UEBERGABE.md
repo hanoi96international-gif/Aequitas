@@ -2,7 +2,7 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 25.11.2026 (Sitzung „Weiter mit Übergabe“, Zweig `claude/uebergabe-fortsetzen-8sor22`); davor 24.11. ~11:30 UTC (Sitzung „Weiter nach Übergabe“, Zweig `claude/weiter-nach-uebergabe-gqogtx`); davor ~09:20 UTC (Sitzung „Weiter mit Übergabe“, Zweig `claude/uebergabe-fortsetzen-g5xqox`); davor ~18:05 UTC (Sitzung „Weiter nach Übergabe“, Zweig `claude/weiter-nach-uebergabe-zyl7c6`); davor 22.11.2026 ~18:50 UTC, Sitzung „CL Übergabe weitermachen“ (`claude/cl-uebergabe-weitermachen-jdz5h7`); davor ~16:40 UTC Sitzung „Weiter Übergabe“ (`claude/weiter-uebergabe-1a9yql`); davor 21.11. ~20:15 UTC Sitzung „CL Übergabe weitermachen“; davor ~18:00 UTC Sitzung „Weiter“ (Zweig `claude/admiring-bohr-ob0u0p`, alle vier
+Stand: 26.11.2026 (Sitzung „Weiter mit Übergabe“, Zweig `claude/uebergabe-fortsetzen-8sor22`); davor 24.11. ~11:30 UTC (Sitzung „Weiter nach Übergabe“, Zweig `claude/weiter-nach-uebergabe-gqogtx`); davor ~09:20 UTC (Sitzung „Weiter mit Übergabe“, Zweig `claude/uebergabe-fortsetzen-g5xqox`); davor ~18:05 UTC (Sitzung „Weiter nach Übergabe“, Zweig `claude/weiter-nach-uebergabe-zyl7c6`); davor 22.11.2026 ~18:50 UTC, Sitzung „CL Übergabe weitermachen“ (`claude/cl-uebergabe-weitermachen-jdz5h7`); davor ~16:40 UTC Sitzung „Weiter Übergabe“ (`claude/weiter-uebergabe-1a9yql`); davor 21.11. ~20:15 UTC Sitzung „CL Übergabe weitermachen“; davor ~18:00 UTC Sitzung „Weiter“ (Zweig `claude/admiring-bohr-ob0u0p`, alle vier
 Repos); davor ~13:40 UTC Sitzung „Weiter“ (`claude/weiter-uw2p42`), davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18:30 UTC Sitzung
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
@@ -76,6 +76,15 @@ allen vier Repos):
   Los wird bei der Ausgabe gelöscht). **Nächster Schritt: P2a „Los je Token behalten“** (Konsens, schlafend, mit
   Sicherheitsprüfung), dann P2–P5 (`DEZENTRAL.md`, „Entscheidung Beweisweg und Plan Pfänder“). Ein angefangener
   Entwurf von P2 wurde verworfen, nichts davon ist auf `main`.
+- **P2a gebaut (26.11.)**: `quanten_s_los_behalten.go`, Konsens, schlafend hinter eigenem Stichtag
+  `quantenSLosBehaltenAbUnix` (MaxInt64) mit Deploy-Wächter `.github/neustart/quanten-s-los-nicht-verpasst.sh`
+  (Test `scripts/test_quanten_s_los_nicht_verpasst.sh` in `ci.yml`, Wächter in `deploy-c1.yml`). Die Kette hält
+  bei der Ausgabe aus Weg B das Los fest, bis der tote Eintrag aufgeräumt wird (gut 8 Tage nach dem Ende, also
+  länger als die Frist von 7 Tagen). Mutationen 26/26 rot, Tabelle gegen echtes Postgres geprüft. PR mit eigener
+  Sicherheitsprüfung (PR-Kommentar). **Empfehlung an den Betreiber:** den Stichtag von P2a bald setzen, damit die
+  Token des Pilots ihr Los tragen. Danach P2 (Pfand je Präparatorin).
+- Lokales Postgres für `_RealDB`-Tests: `/usr/lib/postgresql/16/bin` (initdb als Nutzer postgres in `/var/tmp`),
+  dann `AEQUITAS_TPS_BENCH=1 DATABASE_URL=postgres://postgres@localhost:5432/<db>?sslmode=disable`.
 - **Beweisweg entschieden** (25.11.): Inhaberin haftet + 10 % je Gelostem. Plan P1–P5 in `DEZENTRAL.md`
   („Entscheidung Beweisweg und Plan Pfänder“), eigener Stichtag nach dem Pilotstart. **Offen (Betreiber):** Höhe des
   Pfands der Inhaberin (Vorschlag D) und Frist für den Nachweis (Vorschlag 7 Tage). Nächster Schritt: P1 Spezifikation.

@@ -2259,6 +2259,29 @@ Werte (Betreiber hat nicht widersprochen, 26.11.): Pfand der Inhaberin = D, Fris
 Bis dahin (Pilot ab 26.11.): kein Pfand je Präparator, kein Nachweis. Es tragen das Pfand je Bestellung (B2c), eine
 Bestellung je Mensch und R9.
 
+**P2a gebaut** (26.11., Konsens, schlafend hinter eigenem Stichtag `quantenSLosBehaltenAbUnix`;
+`x/humanity/keeper/quanten_s_los_behalten.go`):
+- Bei der Ausgabe eines bestellten K (Weg B) schreibt die Kette `Lose[K]` = das Los in Losreihenfolge. Es ist
+  dieselbe Liste wie die Validatoren der Ausgabe; `quantenSAusgabeGegenLos` hat die Gleichheit geprüft.
+- Das Los bleibt, solange K als Token lebt oder als tot gemerkt ist. Es geht zusammen mit dem toten Eintrag
+  (`quantenWToteAufraeumen`). Tote bleiben `quantenWToteBehalten` (gut 8 Tage) ab dem Ende stehen. Das ist
+  länger als die Frist von 7 Tagen (`quantenSNachweisFrist`); ein Test hält das fest. Die Frist selbst prüft P4.
+  Endet ein Token, ohne gemerkt zu werden (nur möglich, solange das Urteil schläft), geht sein Los sofort mit.
+- Grenzen: ein Eintrag je lebendem oder totem K (höchstens `quantenSLoseHoechstens`), je Eintrag 4 bis 16 Konten.
+- Kodierung: Feld `lose` im Register und eine Zeile der Art `los` in der Tabelle. Vor dem Stichtag fehlt beides,
+  die StateRoot ist byte-gleich.
+- Lesen ist fail-closed. Abgewiesen wird: ein K ohne Token und ohne toten Eintrag, eine falsche Ordnung, eine
+  Länge außerhalb 4..16, ein v, das nicht zum lebenden Token passt, ein doppeltes oder nicht kanonisches Konto,
+  eine Systemadresse und ein unbekanntes Feld.
+- Ansicht: `/api/quanten-w/note` zeigt `los` beim lebenden und beim beendeten Token. So nimmt eine Annahmestelle
+  die Liste der Gelosten von der Kette, statt der Vorlage zu glauben. `/api/status` zeigt `los_ab`, sobald der
+  Stichtag gesetzt ist; daran hängt der Deploy-Wächter `.github/neustart/quanten-s-los-nicht-verpasst.sh`.
+- Abweichung vom Plan („ein Stichtag für alles“): P2a hat einen **eigenen** Stichtag. Nur Token, die nach ihm
+  ausgegeben werden, tragen ihr Los. Wird er früh gesetzt, sind die Token des Pilots später nachweisbar. Wartet
+  er auf P4, wären sie es nicht.
+- Tests: Gutfall (eingelöst und tot), schlafend ohne Spur, Weg A ohne Los, spätes Ende ohne toten Eintrag, Lesen
+  mit 15 Missbrauchsfällen, Tabelle gegen echtes Postgres. Mutationen: 26 von 26 rot.
+
 ### Offen vor dem Stichtag: Pfand je Präparator und Beweisweg (aus PR #628, 22.11.)
 
 PR #628 (B2 als ein Stück, geschlossen am 23.11., durch B2a–B2d ersetzt; Zweig

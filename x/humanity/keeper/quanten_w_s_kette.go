@@ -46,6 +46,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"reflect"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -518,6 +519,10 @@ func (cs *ChainState) quantenWSBescheidLocked(ctx context.Context, tx *Transacti
 			urteil = quantenWUrteilEingeloest
 		}
 		u.reg.toteMerken(q.K, alt.Zeit, blockZeit, urteil)
+		// P2a: das Los bleibt nur zusammen mit dem toten Eintrag (Frist, P4).
+		if _, tot := u.reg.Tote[q.K]; !tot {
+			delete(u.reg.Lose, q.K)
+		}
 	} else {
 		u.reg.Token[q.K] = neu
 	}
@@ -607,6 +612,10 @@ func (cs *ChainState) quantenWSAusgebenBescheidLocked(ctx context.Context, tx *T
 	// Weg B: die Bestellung ist verbraucht, ihr Pfand geht zurueck.
 	if b := reg.Best[q.K]; b != nil {
 		delete(neu.Best, q.K)
+		// P2a: die Kette behaelt, wer gelost war (quanten_s_los_behalten.go).
+		if quantenSLosBehaltenAktiv(blockZeit) {
+			neu.Lose[q.K] = slices.Clone(b.Los)
+		}
 		u.wege = append(u.wege, quantenWWeg{quantenWPfandAddr, wallet, b.Pfand})
 		u.felder.Pfand, u.felder.PfandAn = b.Pfand, wallet
 	}
@@ -657,5 +666,8 @@ func (cs *ChainState) quantenWSTokenAnsichtLocked(ctx context.Context, reg *quan
 		sort.Ints(probe)
 		ansicht["anmeldung"] = map[string]interface{}{"b": a.B, "stelle": a.Stelle, "probe": probe, "offen": a.Offen, "zeit": a.Zeit}
 	}
+	// P2a: wer gelost war (Weg B, ab dem Stichtag), aus der Kette statt aus
+	// dem Paket des Ausgebers.
+	quantenSLosAnsicht(reg, k, ansicht)
 	return ansicht
 }
