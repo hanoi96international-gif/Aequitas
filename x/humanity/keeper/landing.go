@@ -608,7 +608,7 @@ section{padding:64px 16px}
         <span class="pulse"></span>
         <span data-i18n="hero-badge">Beta · public test</span>
       </div>
-      <a href="/quanten" class="hero-q"><svg class="ico" aria-hidden="true"><use href="#i-shield"/></svg><span data-i18n="hero-q">Counterfeit-proof – even against quantum computers →</span></a>
+      <a href="/quanten" class="hero-q"><svg class="ico" aria-hidden="true"><use href="#i-shield"/></svg><span data-i18n="hero-q">Built to stay counterfeit-proof – even against quantum computers →</span></a>
       <h1 data-i18n="hero-h1">Money, because <span>people</span> exist.</h1>
       <p class="hero-sub" data-i18n="hero-sub">Every person receives the same share: 1,000 AEQ. Nobody can print more. No bank account, no ID needed.</p>
       <div class="hero-btns">
@@ -687,9 +687,9 @@ section{padding:64px 16px}
     <div class="reveal">
       <div class="section-label" data-i18n="nav-q">Counterfeit-proof</div>
       <h2 data-i18n="logo-sub">The fairest counterfeit-proof money – from one person for all people</h2>
-      <p class="section-sub" data-i18n="qm-sub">Even quantum computers cannot forge it: one person exists only once, wallets can be protected against quantum computers today, and the first real quantum token already runs on the main network.</p>
+      <p class="section-sub" data-i18n="qm-sub">Built to stay counterfeit-proof against quantum computers too: one person exists only once, wallets are protected against quantum computers, and the first quantum tokens run on the main network.</p>
       <div class="ben">
-        <div class="ben-item"><span class="ben-ico"><svg class="ico" aria-hidden="true"><use href="#i-user"/></svg></span><div><p data-i18n="qm-1">Every person exists only once – nobody can create money for invented people.</p></div></div>
+        <div class="ben-item"><span class="ben-ico"><svg class="ico" aria-hidden="true"><use href="#i-user"/></svg></span><div><p data-i18n="qm-1">Every person should exist only once: a face check blocks a second account. In the beta a single matching service does this; independent services and the iris scan are to follow.</p></div></div>
         <div class="ben-item"><span class="ben-ico"><svg class="ico" aria-hidden="true"><use href="#i-shield"/></svg></span><div><p data-i18n="qm-2">Your wallet can be protected against future quantum computers; new wallets are protected automatically.</p></div></div>
         <div class="ben-item"><span class="ben-ico"><svg class="ico" aria-hidden="true"><use href="#i-cpu"/></svg></span><div><p data-i18n="qm-3">Quantum tokens: on the main network since 17 Nov 2026 – the chain redeems each token only once and rejected a second presentation.</p></div></div>
       </div>
