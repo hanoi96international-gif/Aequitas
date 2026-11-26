@@ -2226,6 +2226,20 @@ eigener Sicherheitsprüfung je Stufe:
    Nachweis je K.
 5. **P5 App**: Pfand beim Melden anzeigen und bestätigen; Rückgabe; Pfand bei der Bindung; Nachweis an der Stelle.
 
+**P1 gebaut** (26.11.): `forschung/quantengeld/s_pfaender.py`, Spezifikation mit Selbsttest (in der CI). Regeln
+R-P1 bis R-P6:
+- Melden kostet 10 AEQ.
+- Das Pfand gehört dem Menschen, nach einem Umzug zählt die neue Wallet.
+- Zurück frühestens 30 Tage nach der Abmeldung **und** erst, wenn jeder Token, in dessen Los sie stand, geendet hat
+  und seine Frist verstrichen ist. Sonst meldete sich ab, wer gerade mitgefälscht hat, und holte das Pfand vor dem
+  Nachweis.
+- Das Pfand der Inhaberin liegt bei der Bindung.
+- Nachweis nur durch die andere Stelle, in der Frist, einmal, mit gültigem Beweis.
+- Geld bleibt erhalten.
+Angriffe im Selbsttest; 16 Mutationen rot. Die Wirtschaft ist geprüft: Inhaberin plus t Verschworene verlieren mit
+einer Fälschung (D − Pfand der Inhaberin − t · 1 AEQ < 0); Stelle B ist schadlos. Die zwei offenen Werte sind
+Parameter (`inhaberin_pfand`, `NACHWEIS_FRIST`). Nächster Schritt: P2 im Knoten, sobald der Betreiber sie bestätigt.
+
 Bis dahin (Pilot ab 26.11.): kein Pfand je Präparator, kein Nachweis. Es tragen das Pfand je Bestellung (B2c), eine
 Bestellung je Mensch und R9.
 
