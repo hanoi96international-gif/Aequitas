@@ -13,6 +13,18 @@ dezentrales Quantengeld“.
   zeigen `los` in `/api/quanten-w/note`. Die App liest Token-Stand und Register nicht streng; neue Felder stören nicht.
 - **P4 gemergt** (#674 f12f20d2; Mutationen 41 rot, 9 gleichwertig). Deploy 45874676871 wartet auf Freigabe;
   nicht eilig, der Code schläft.
+- **#675 gemergt** (355e3d47): Pfandgeber an der Bindung (`pfand_von`, `pfand_sig`, Domäne
+  `aequitas-quanten-s-ipfand-v1|chain|pfand_von|K|inhaber|betrag`).
+  - Grund: Der Schlüssel der Inhaberin ist je Token frisch und hat kein Guthaben.
+  - Die App muss bei der Bindung die Menschen-Wallet als Pfandgeber unterschreiben lassen.
+- **App P5a gemergt** (App #142 e639cd84): Pfand der Präparatorin anzeigen, nachlegen, zurückholen.
+- **Nächster Schritt P5b (App):** Bindung mit Pfandgeber.
+  - In `lib/quantenSInhaberin.ts` `einloesen`: ab dem Stichtag `pfand_von` = Menschen-Wallet, `pfand_sig` =
+    Unterschrift der Menschen-Wallet über die Nachricht oben, Betrag = Deckung auf der Kette (`deckung` aus der
+    Ansicht).
+  - Vorher anzeigen und bestätigen.
+  - Rückgabe `s_ipfand_zurueck {k}` nach `pfand_inhaberin_zurueck_nach`.
+  - Danach P5c (Stelle B, Nachweis).
 - **Plan Pfänder im Knoten fertig: P1, P2a, P2, P3, P4.** Alles hinter `quantenSPfaenderAbUnix` (schlafend).
 - **Nächster Schritt P5: App** (Repo Aequitas-App, Zweig `claude/uebergabe-fortsetzen-8sor22`, Basis `aequitas-app`):
   1. Status lesen: `quanten_w.pfaender_ab`. Daran erkennt die App, ob die Pfänder gelten.
