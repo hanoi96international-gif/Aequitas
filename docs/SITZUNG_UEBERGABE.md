@@ -7,16 +7,25 @@ Repos); davor ~13:40 UTC Sitzung „Weiter“ (`claude/weiter-uw2p42`), davor ~1
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
+**Nachtrag 26.11. ~17:30 UTC:**
+- **Stichtag P2a = 27.11.2026 07:00 UTC** (Betreiber „morgen früh“, 08:00 MEZ). Im PR „Stichtag P2a“; Deploy von C1
+  **vor 06:30 UTC** freigeben.
+- Die Pfänder bleiben schlafend.
+- **P4 ist aus dem Zweig per Revert herausgenommen** (Commits 28b18009, b25a98cc nehmen ae4de829 und 3805df3e
+  zurück), damit der Stichtag-PR nur den Stichtag enthält.
+  - Nach dem Merge P4 zurückholen: `git revert 28b18009 b25a98cc` auf dem zurückgesetzten Zweig, oder die
+    Dateien aus 3805df3e holen.
+  - Danach die **16 überlebenden Mutationen** (Liste in `scratchpad/mut_p4.txt`, sonst neu laufen lassen) mit
+    Tests töten.
+
 **Stand 26.11. ~16:00 UTC — HIER WEITERMACHEN** (Sitzung „Weiter mit Übergabe“, Zweig
 `claude/uebergabe-fortsetzen-8sor22` in allen vier Repos):
 - **Plan Pfänder (P1–P5, `DEZENTRAL.md` „Entscheidung Beweisweg und Plan Pfänder“):**
   - **P1** (Spezifikation `s_pfaender.py`): gemergt, #668.
   - **P2a** (Los je Token behalten, eigener Stichtag `quantenSLosBehaltenAbUnix`): gemergt, #670 d9bb7fc5.
   - **P2** (Pfand je Präparatorin, 10 AEQ, Rückgabe `quanten_w_s_pfand_zurueck`): gemergt, #671 1a08955e.
-  - **P3** (Pfand der Inhaberin = D bei der Bindung, Rückgabe `quanten_w_s_ipfand_zurueck`): **PR #672 offen**.
-    - Sicherheitsprüfung als PR-Kommentar; ein Befund (Grenze 256 → 1072) ist im PR behoben.
-    - Lokal: alle Tests mit `-race` grün, Mutationen 38/38.
-    - Bei grüner CI mergen (Squash, volle SHA), dann Zweig zurücksetzen.
+  - **P3** (Pfand der Inhaberin = D bei der Bindung, Rückgabe `quanten_w_s_ipfand_zurueck`): gemergt, #672 95dd0a65
+    (Sicherheitsprüfung als PR-Kommentar, ein Befund im PR behoben, Mutationen 38/38). Keine PRs offen.
   - Alles **schläft**: P2a hinter `quantenSLosBehaltenAbUnix`; P2, P3 (und später P4) hinter
     `quantenSPfaenderAbUnix`, der „Los behalten“ voraussetzt. Je ein Deploy-Wächter in `.github/neustart/`.
 - **Nächster Schritt P4: Nachweis `quanten_w_s_faelschung`.**
@@ -33,9 +42,9 @@ dezentrales Quantengeld“.
   - Danach **P5 App**: Pfand anzeigen und bestätigen (Melden, Binden), Rückgaben, Nachweis an der Stelle. Erst
     dann den Stichtag der Pfänder setzen (Betreiber).
 - **Wartet auf den Betreiber:**
-  - Deploy von C1 für P2a/P2 (Code schläft, Wächter lässt „schlafend“ durch):
-    https://github.com/hanoi96international-gif/Aequitas/actions/runs/45838608998.
-    Der alte, wartende Deploy von #667 (Run 45706825000) ist überholt und kann abgelehnt werden.
+  - Deploys P2a (#670) und #667 sind auf C1 ausgerollt (freigegeben, erfolgreich). Offen: Deploy für P3 (#672,
+    enthält P2): https://github.com/hanoi96international-gif/Aequitas/actions/runs/45857153706 (Code schläft).
+    Der wartende Deploy für P2 (Run 45850259983) ist dadurch überholt und kann abgelehnt werden.
   - Stichtag P2a (Empfehlung: bald, damit Token des Pilots ihr Los tragen): Datum und Uhrzeit in UTC nennen,
     dann PR mit Sicherheitsprüfung.
   - Pilot Weg B (Menschen, IBM-Konten) nach `docs/PILOT_WEG_B.md`.

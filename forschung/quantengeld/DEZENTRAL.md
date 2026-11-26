@@ -2345,6 +2345,44 @@ und P4 tragen wird; `x/humanity/keeper/quanten_s_pfaender.go`):
   Ein überlebender Mutant zeigte vor dem Test einen echten Fehlerfall: Stünde nur noch ein Pfand im Register und
   zählte `leer()` es nicht mit, fiele es aus Kodierung und StateRoot.
 
+**Stichtag P2a: 27.11.2026 07:00 UTC** (08:00 MEZ; Betreiber 26.11. „Stichtag morgen früh“, „was das Beste für
+aequitas ist“). Gesetzt wird **nur** „Los behalten“ (`quantenSLosBehaltenAbUnix` = 1795762800). Ab dann tragen neue
+Weg-B-Token ihr Los auf der Kette; für Nutzer ändert sich nichts, und es braucht kein App-Update.
+
+Die Pfänder (P2, P3, P4) schlafen weiter hinter `quantenSPfaenderAbUnix`, aus drei Gründen:
+- Die App zeigt die Pfänder noch nicht an (P5).
+- P4 ist noch nicht fertig: Beim ersten Mutationslauf blieben 16 von 51 Mutationen am Leben.
+- Ab dem Stichtag der Pfänder kommt nur mit Pfand ins Los, und Weg B stünde still, bis nachgelegt ist.
+
+Der Deploy von C1 muss vor 06:30 UTC freigegeben sein; der Wächter verlangt 30 Minuten Vorlauf.
+
+**Entwurf P4: Nachweis einer Fälschung (26.11., vor dem Bau).**
+
+- **Nachweis-Eintrag:** Wird ein Token mit Pfand der Inhaberin (P3) ab dem Stichtag an Stelle A eingelöst, legt die
+  Kette einen Nachweis-Eintrag an. Er enthält:
+  - die Form des Tokens beim Ende (Wurzel, Proben, Bindung d, Wahl c, Stellen; ohne Anmeldung, Fehlversuche auf 0),
+  - welche Stelle eingelöst hat (A),
+  - die Zeit des Endes.
+
+  Der Eintrag bleibt, bis das Pfand der Inhaberin zurück ist. Es gibt ihn nur zusammen mit diesem Pfand, also gilt
+  dieselbe Grenze. Gespeichert wird kompakt als Form (Bits als Hex), nicht als `[]int`.
+- **Nachweis führen:** Er nutzt dieselben Regeln wie das Einlösen, auf einer Kopie des beendeten Tokens.
+  - `quanten_w_s_faelschung_anmelden`: nur die **andere** Stelle B, unterschrieben, mit einer Vorlage, die die
+    Inhaberin für B unterschrieben hat, und B's Stichprobe (passt zur Bindung der Ausgabe). Nur bis Ende + 7 Tage.
+  - `quanten_w_s_faelschung_offenlegen`: in Teilen, wie beim Einlösen gegen die Wurzel.
+- **Folge, wenn der Nachweis besteht** (B's Stichprobe wird erfüllt, obwohl A schon eingelöst hat; das geht nur,
+  wenn mindestens t Geloste ihr Wissen geteilt haben):
+  - Das Pfand der Inhaberin geht an B.
+  - Jede Geloste (`Lose[K]`, nur aus dem eigenen Register) verliert 10 % ihres Pfands an B.
+  - Der Eintrag ist danach weg; ein Nachweis je K.
+- **Folge, wenn er nicht besteht:** Es zählt als Fehlversuch. Nach `quantenWFehlMax` ist der Eintrag weg.
+- **Zeit:** Die Frist ist ein „spätestens“. Beide Arten bekommen nur ein kurzes Buchspiel (wie die Bestellung,
+  120 s), damit eine zurückdatierte Buchzeit sie nicht verlängert.
+- **Bindung:** Eine offene, noch nicht verfallene Nachweis-Anmeldung hält beide Pfänder fest:
+  - das Pfand der Inhaberin,
+  - die Pfänder der Gelosten; ihr Los bleibt dafür auch über das Aufräumen der Toten hinaus.
+- **Ohne Pfand der Inhaberin** (vor dem Stichtag gebunden) gibt es keinen Nachweis. Er brächte B nichts.
+
 ### Offen vor dem Stichtag: Pfand je Präparator und Beweisweg (aus PR #628, 22.11.)
 
 PR #628 (B2 als ein Stück, geschlossen am 23.11., durch B2a–B2d ersetzt; Zweig

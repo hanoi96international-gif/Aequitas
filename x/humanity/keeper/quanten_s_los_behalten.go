@@ -45,12 +45,13 @@ const (
 )
 
 // STICHTAG "LOS BEHALTEN" (Kettenregel). 9223372036854775807 = math.MaxInt64
-// = schlafend. Der Betreiber nennt Datum und Uhrzeit (UTC); der PR, der ihn
-// setzt, bekommt eine eigene Sicherheitspruefung, und der Deploy-Waechter
-// .github/neustart/quanten-s-los-nicht-verpasst.sh haelt jeden Wechsel an,
-// der nicht mindestens 30 Minuten in der Zukunft liegt oder einen laufenden
-// Stichtag aendern wuerde.
-var quantenSLosBehaltenAbUnix int64 = 9223372036854775807
+// = schlafend. Gesetzt vom Betreiber am 26.11.2026 ("Stichtag morgen frueh",
+// 08:00 MEZ): 27.11.2026 07:00 UTC. Nur P2a -- die Pfaender (P2-P4) schlafen
+// weiter hinter quantenSPfaenderAbUnix, bis die App sie zeigt. Nie
+// rueckwirkend: der Deploy-Waechter .github/neustart/quanten-s-los-nicht-verpasst.sh
+// haelt jeden Wechsel an, der nicht mindestens 30 Minuten in der Zukunft
+// liegt oder einen laufenden Stichtag aendern wuerde.
+var quantenSLosBehaltenAbUnix int64 = 1795762800
 
 // quantenSLosBehaltenAbOverride: nur fuer Tests (0 = Stichtag oben).
 var quantenSLosBehaltenAbOverride atomic.Int64
