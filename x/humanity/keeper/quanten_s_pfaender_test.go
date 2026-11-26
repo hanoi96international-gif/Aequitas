@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"context"
+	"errors"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -628,5 +629,47 @@ func TestQuantenSPfand_EigenerStichtag(t *testing.T) {
 	// Kein "Nachlegen" ohne P2: ein zweites Melden bleibt doppelt.
 	if r := w.praepRegel(praepTx(t, quantenSPraepMeldenTxArt, w.anna, w.keys[w.anna], z+10), z+10); r != "quanten_s_praep_doppelt" {
 		t.Fatalf("zweites Melden ohne P2: %q", r)
+	}
+}
+
+// Der echte Stichtag der Pfaender (Betreiber, 26.11.2026): 27.11.2026
+// 09:00 UTC, auf die Sekunde; nach "Los behalten"; Status; Grenze der
+// Blockzeit und Pause greifen; das Pfand je Praeparatorin (P2) bleibt
+// schlafend.
+func TestQuantenSPfaender_Stichtag(t *testing.T) {
+	const ab int64 = 1795770000
+	if quantenSPfaenderAbUnix != ab {
+		t.Fatalf("Stichtag Pfaender %d, erwartet %d (27.11.2026 09:00 UTC)", quantenSPfaenderAbUnix, ab)
+	}
+	if quantenSPfaenderAbOverride.Load() != 0 || quantenSLosBehaltenAbOverride.Load() != 0 ||
+		quantenSWegBAbOverride.Load() != 0 || quantenSPraepPfandAbOverride.Load() != 0 {
+		t.Fatal("Override gesetzt")
+	}
+	if quantenSLosBehaltenAbUnix >= ab {
+		t.Fatalf("Los behalten (%d) muss vor den Pfaendern (%d) gelten", quantenSLosBehaltenAbUnix, ab)
+	}
+	if quantenSPfaenderAktiv(ab-1) || !quantenSPfaenderAktiv(ab) {
+		t.Fatal("Stichtag wirkt nicht auf die Sekunde")
+	}
+	if v, da := quantenWStatus()["pfaender_ab"]; !da || v != ab {
+		t.Fatalf("Status nennt den Stichtag nicht: %v", v)
+	}
+	// P2 schlaeft weiter, auch lange nach dem Stichtag.
+	if quantenSPraepPfandAktiv(ab+365*86400) || quantenSPraepPfandAbUnix != math.MaxInt64 {
+		t.Fatal("Pfand je Praeparatorin mitgeschaltet")
+	}
+	if _, da := quantenWStatus()["praep_pfand_ab"]; da {
+		t.Fatal("praep_pfand_ab im Status")
+	}
+	// Missbrauch: Buchzeit vor dem Stichtag in einem Block danach ist falsch.
+	if quantenSPfaenderGrenzeOk(ab-1, ab) || !quantenSPfaenderGrenzeOk(ab-1, ab-1) || !quantenSPfaenderGrenzeOk(ab, ab) {
+		t.Fatal("Grenze der Blockzeit greift nicht am echten Stichtag")
+	}
+	// Annahmepause genau die 5 Minuten davor.
+	if quantenSPfaenderPausePruefen(ab-quantenSPfaenderPause-1) != nil ||
+		!errors.Is(quantenSPfaenderPausePruefen(ab-quantenSPfaenderPause), ErrAnnahmePausiert) ||
+		!errors.Is(quantenSPfaenderPausePruefen(ab-1), ErrAnnahmePausiert) ||
+		quantenSPfaenderPausePruefen(ab) != nil {
+		t.Fatal("Annahmepause am echten Stichtag falsch")
 	}
 }

@@ -345,10 +345,9 @@ func TestQuantenSLosBehalten_Stichtag(t *testing.T) {
 	if v, da := quantenWStatus()["los_ab"]; !da || v != ab {
 		t.Fatalf("Status nennt den Stichtag nicht: %v", v)
 	}
-	if quantenSPfaenderAktiv(ab + 365*86400) {
-		t.Fatal("Pfaender mitgeschaltet")
-	}
-	if _, da := quantenWStatus()["pfaender_ab"]; da {
-		t.Fatal("pfaender_ab im Status")
+	// Die Pfaender haben ihren eigenen, spaeteren Stichtag
+	// (TestQuantenSPfaender_Stichtag); "Los behalten" schaltet sie nicht mit.
+	if quantenSPfaenderAktiv(ab) || quantenSPfaenderAb() <= ab {
+		t.Fatal("Pfaender mit Los behalten mitgeschaltet")
 	}
 }

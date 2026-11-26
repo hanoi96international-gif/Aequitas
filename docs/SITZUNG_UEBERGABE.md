@@ -7,7 +7,20 @@ Repos); davor ~13:40 UTC Sitzung „Weiter“ (`claude/weiter-uw2p42`), davor ~1
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
-**Stand 26.11. ~21:45 UTC — HIER WEITERMACHEN** (Sitzung „Überprüfe alle Arbeiten“, Zweig `claude/zen-bohr-aull6p`
+**Stand 26.11. ~22:15 UTC — HIER WEITERMACHEN** (Sitzung „Quantengeld Revolution“, Zweig
+`claude/quantengeld-revolution-eskpsn` in allen vier Repos):
+- **Stichtag der Pfänder = 27.11.2026 09:00 UTC** (Betreiber, 26.11.: „27.11. 09 Uhr“, gelesen als UTC wie in der
+  Frage). PR „Stichtag der Pfänder“ in Aequitas, mit Sicherheitsprüfung als Kommentar. P2 bleibt schlafend.
+- **Reihenfolge, damit nichts bricht:**
+  1. App 1.32.0 freigeben (Signieren `app-signatur`, dann `release-apk.yml` mit run_id 45898897668, Tag `v1.32.0`).
+     Mit 1.31 scheitert ab dem Stichtag jede Bindung eines S-Tokens (kein Pfandgeber).
+  2. PR mergen, Deploy von C1 (`produktion`) **vor 08:30 UTC** freigeben.
+  3. Nach 09:00 UTC: `/api/status` → `quanten_w.pfaender_ab = 1795770000`; eine Bindung zeigt `pfand_inhaberin`.
+- **App #147 (offen):** Automatik für Präparatorin und Ausgeber im Pilot (Briefkasten-Runden von selbst, solange
+  die Seite offen ist; Ausgeben bleibt von Hand). Kommt ins nächste Release nach 1.32.0.
+- Danach offen: Pilot Weg B (mind. 21 Gemeldete für 4 von 7), `PILOT_WEG_B.md`.
+
+**Stand 26.11. ~21:45 UTC — (überholt, Stichtag siehe oben)** (Sitzung „Überprüfe alle Arbeiten“, Zweig `claude/zen-bohr-aull6p`
 in Aequitas und Aequitas-App; Aequitas-Basis `main`, App-Basis `aequitas-app`). Keine PRs offen.
 - **Gemergt:**
   - Aequitas #678 (fb817d61): Stichtag der Pfänder nach der Blockzeit, Spezifikation `s_pfaender.py`, Pilot-Größe.
