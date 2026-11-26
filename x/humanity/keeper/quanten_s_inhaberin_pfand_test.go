@@ -501,3 +501,14 @@ func TestQuantenSIPfand_AnsichtDeckung(t *testing.T) {
 		t.Fatalf("deckung in der Ansicht: %v", w.ansicht()["deckung"])
 	}
 }
+
+// Die Nachricht des Pfandgebers -- dieselbe Zeichenkette prueft die App
+// (Aequitas-App lib/__tests__/quantenSInhaberin.test.ts, ipfandNachricht).
+func TestQuantenSIPfand_NachrichtWieApp(t *testing.T) {
+	von := "0xAB" + strings.Repeat("00", 19)
+	inhaber := "0xCD" + strings.Repeat("00", 19)
+	soll := "aequitas-quanten-s-ipfand-v1|chain:1926|0xab" + strings.Repeat("00", 19) + "|" + strings.Repeat("a", 64) + "|0xcd" + strings.Repeat("00", 19) + "|10000000"
+	if got := quantenSIPfandNachricht(von, strings.Repeat("a", 64), inhaber, 10_000_000); got != soll {
+		t.Fatalf("Nachricht\n %s\nerwartet\n %s", got, soll)
+	}
+}
