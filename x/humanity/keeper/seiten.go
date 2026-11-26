@@ -35,7 +35,7 @@ var (
 	transparenzHTML = baueSeite("/transparenz", "Aequitas — Transparency", seitenKopfTrans, []string{
 		"werkzeuge", "status", "roadmap", "open", "disclaimer"})
 	quantenHTML = baueSeite("/quanten", "Aequitas — Counterfeit-proof money", seitenKopfQuanten, []string{
-		"qschutz", "qtresor", "qgeld", "qerster", "qnachweis", "qapp"})
+		"qschutz", "qtresor", "qgeld", "qerster", "qnachweis", "qapp", "qwegb"})
 )
 
 // landingTeile zerlegt landingQuelle in Kopf, Hero (alles vor dem ersten
@@ -177,7 +177,7 @@ const seitenKopfQuanten = `<section class="page-head">
     <a href="/" class="pg-back" data-i18n="pg-back">← Back to the overview</a>
     <h1 data-i18n="pg-q-h1">Counterfeit-proof money</h1>
     <p class="section-sub" data-i18n="pg-q-sub">Aequitas is built to stay counterfeit-proof even when quantum computers arrive: every person exists only once, wallets can be protected against quantum computers today, and Aequitas is developing quantum money that physics itself makes impossible to copy.</p>
-    <div class="toc" role="navigation" aria-label="On this page"><span class="toc-lbl" data-i18n="toc-label">On this page</span><a href="#qschutz" data-i18n="toc-qs">Your wallet</a><a href="#qtresor" data-i18n="toc-qt">The vault</a><a href="#qgeld" data-i18n="toc-qg">Quantum money</a><a href="#qerster" data-i18n="toc-qe">First token</a><a href="#qnachweis" data-i18n="toc-qn">Public proof</a><a href="#qapp" data-i18n="toc-qa">Via the app</a></div>
+    <div class="toc" role="navigation" aria-label="On this page"><span class="toc-lbl" data-i18n="toc-label">On this page</span><a href="#qschutz" data-i18n="toc-qs">Your wallet</a><a href="#qtresor" data-i18n="toc-qt">The vault</a><a href="#qgeld" data-i18n="toc-qg">Quantum money</a><a href="#qerster" data-i18n="toc-qe">First token</a><a href="#qnachweis" data-i18n="toc-qn">Public proof</a><a href="#qapp" data-i18n="toc-qa">Via the app</a><a href="#qwegb" data-i18n="toc-qb">Your phone</a></div>
   </div>
 </section>
 `

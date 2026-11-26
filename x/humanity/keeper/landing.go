@@ -691,7 +691,7 @@ section{padding:64px 16px}
       <div class="ben">
         <div class="ben-item"><span class="ben-ico"><svg class="ico" aria-hidden="true"><use href="#i-user"/></svg></span><div><p data-i18n="qm-1">Every person exists only once – nobody can create money for invented people.</p></div></div>
         <div class="ben-item"><span class="ben-ico"><svg class="ico" aria-hidden="true"><use href="#i-shield"/></svg></span><div><p data-i18n="qm-2">Your wallet can be protected against future quantum computers; new wallets are protected automatically.</p></div></div>
-        <div class="ben-item"><span class="ben-ico"><svg class="ico" aria-hidden="true"><use href="#i-cpu"/></svg></span><div><p data-i18n="qm-3">Quantum money: since 17 Nov 2026 the first real quantum token runs on the main network – the chain rejected a copy.</p></div></div>
+        <div class="ben-item"><span class="ben-ico"><svg class="ico" aria-hidden="true"><use href="#i-cpu"/></svg></span><div><p data-i18n="qm-3">Quantum tokens: on the main network since 17 Nov 2026 – the chain redeems each token only once and rejected a second presentation.</p></div></div>
       </div>
       <div class="band-btns">
         <a href="/quanten" class="btn-primary" data-i18n="qm-btn">How Aequitas stays counterfeit-proof →</a>
@@ -1379,7 +1379,7 @@ section{padding:64px 16px}
     <div class="fn3">
       <div class="fn reveal"><div class="fn-ico"><svg class="ico" aria-hidden="true"><use href="#i-cpu"/></svg></div><div class="fn-n">1</div><h3 data-i18n="qg-c1-h">The idea</h3><p data-i18n="qg-c1-p">A quantum money note is made of qubits in random states. Quantum physics forbids copying an unknown quantum state (no-cloning theorem). Whoever tries to copy a note destroys the information that makes it genuine – the forgery fails the check.</p></div>
       <div class="fn reveal"><div class="fn-ico"><svg class="ico" aria-hidden="true"><use href="#i-users"/></svg></div><div class="fn-n">2</div><h3 data-i18n="qg-c2-h">Checked decentrally</h3><p data-i18n="qg-c2-p">No central bank keeps the secret. The secret of each note is split among the validators of the network, each holding only one share. The chain itself decides whether a note is genuine; each node checks it on its own.</p></div>
-      <div class="fn reveal"><div class="fn-ico"><svg class="ico" aria-hidden="true"><use href="#i-layers"/></svg></div><div class="fn-n">3</div><h3 data-i18n="qg-c3-h">Two variants</h3><p data-i18n="qg-c3-p"><strong>Variant W</strong>: a note held in a quantum memory and checked when spent. <strong>Variant S</strong>: a token measured immediately, so it needs no quantum memory, accepted at one of two fixed acceptance points. Both run on the Aequitas main network since 17 November 2026.</p></div>
+      <div class="fn reveal"><div class="fn-ico"><svg class="ico" aria-hidden="true"><use href="#i-layers"/></svg></div><div class="fn-n">3</div><h3 data-i18n="qg-c3-h">Two variants</h3><p data-i18n="qg-c3-p"><strong>Variant W</strong>: a note made of quantum states. Physics forbids copying it, but today's chips hold it only for microseconds, so it remains a laboratory demonstration. <strong>Variant S</strong>: a token measured immediately. Afterwards it is ordinary data, protected by secret bases, a threshold of independent preparers and the chain, which redeems it only once. Variant S is what runs on the main network. Next: <strong>Way C</strong> – the holder measures single photons herself with a receiver. Then physics itself makes the token impossible to copy.</p></div>
     </div>
   </div>
 </section>
@@ -1416,6 +1416,20 @@ section{padding:64px 16px}
       <p class="section-sub" data-i18n="qa-p2">The acceptance point – also the app – scanned the presentation and recomputed 301 positions of the sample: 0 errors. Independently, the chain ruled <strong>redeemed</strong>, and the 1 AEQ backing went to the acceptance point. Presented a second time, the same token was refused. All details are recorded in the <a href="https://github.com/hanoi96international-gif/Aequitas/blob/main/docs/QUANTENGELD_S_2026-11-22.md">public proof</a>.</p>
       <p class="section-sub" data-i18n="qa-p3"><strong>Honestly:</strong> the token consists of stored measurement data, not quantum states in your hand – protection comes from secret bases, the sample and the chain. And a single validator is still at work. The next step is several independent validators that measure on their own.</p>
     </div>
+  </div>
+</section>
+<section id="qwegb">
+  <div class="section-inner">
+    <div class="center-head reveal">
+      <div class="section-label" data-i18n="qb-label">From 27 November 2026</div>
+      <h2 data-i18n="qb-h2">Your phone as a quantum preparer</h2>
+    </div>
+    <div class="fn3">
+      <div class="fn reveal"><div class="fn-ico"><svg class="ico" aria-hidden="true"><use href="#i-phone"/></svg></div><div class="fn-n">1</div><h3 data-i18n="qb-c1-h">Anyone can prepare</h3><p data-i18n="qb-c1-p">Every registered person can sign up in the app as a preparer, with a free IBM Quantum account. For each token the chain draws the preparers by public lottery (drand). The issuer chooses no one and is never drawn itself.</p></div>
+      <div class="fn reveal"><div class="fn-ico"><svg class="ico" aria-hidden="true"><use href="#i-cpu"/></svg></div><div class="fn-n">2</div><h3 data-i18n="qb-c2-h">Runs by itself</h3><p data-i18n="qb-c2-p">With the next app version, preparers and issuers tap “Continue automatically” once. While the page is open, the app answers, confirms and opens by itself. Only issuing value is confirmed by a person.</p></div>
+      <div class="fn reveal"><div class="fn-ico"><svg class="ico" aria-hidden="true"><use href="#i-shield"/></svg></div><div class="fn-n">3</div><h3 data-i18n="qb-c3-h">A deposit against fraud</h3><p data-i18n="qb-c3-p">From 27 Nov 2026, 09:00 UTC, the holder deposits the backing plus 10 % when binding. If the other acceptance point proves a double presentation, the deposit goes to it. Otherwise it returns 7 days after the end.</p></div>
+    </div>
+    <p class="section-sub reveal" data-i18n="qb-p"><strong>Honestly:</strong> this has not yet run on real phones. The pilot needs at least 21 registered preparers for 4 of 7. Whoever prepares a section – and their quantum provider – knows it. Protection comes from fewer than 4 of the 7 working together. <strong>Join:</strong> app → Quantum money → “Sign up as preparer”.</p>
   </div>
 </section>
 
