@@ -662,7 +662,7 @@ func (cs *ChainState) quantenWSTokenAnsichtLocked(ctx context.Context, reg *quan
 		"stellen": e.Stellen, "gebunden": t.D != nil, "gewaehlt": t.C != -1, "fehl": t.Fehl,
 		// Die Deckung (oeffentlich, steht in der Ausgabe): die App braucht sie fuer
 		// die Unterschrift des Pfandgebers (P3, Betrag = Deckung).
-		"deckung": t.Deckung,
+		"deckung":    t.Deckung,
 		"wert_mikro": quantenWert(e.Anteile, cs.quantenWMikroLocked(ctx, quantenWTopfAddr), reg.summeAnteile())}
 	// Stichprobe v2 (quanten_s_probe_v2.go): nur gesetzt, wenn der Token so
 	// ausgegeben wurde -- dann kannte vor Bindung und Wahl keine Annahmestelle
