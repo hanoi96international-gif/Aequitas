@@ -2334,6 +2334,11 @@ und P4 tragen wird; `x/humanity/keeper/quanten_s_pfaender.go`):
   - Ein laufendes Pfand gehört zu einem gebundenen Token derselben Inhaberin, mit Betrag = D.
   - Ein beendetes gehört zu keinem lebenden Token.
 - Die Annahme sperrt den Empfänger vorher (wie P2). Das Feld `pfand_inhaberin` steht in der Ansicht des Tokens.
+- Tests: schlafend, Gutfall eingelöst und tot (Geld erhalten, Pfand überlebt das Aufräumen), ohne Deckung, Umzug,
+  Mensch ohne Wallet, gefälscht im Block, Form, voll, K nicht wiederverwenden, Lesen (laufend, beendet,
+  ungebunden), nur Pfand im Register ist nicht leer, echte Annahme, Tabelle gegen Postgres. Mutationen: 38 von 38 rot.
+  Ein überlebender Mutant zeigte vor dem Test einen echten Fehlerfall: Stünde nur noch ein Pfand im Register und
+  zählte `leer()` es nicht mit, fiele es aus Kodierung und StateRoot.
 
 ### Offen vor dem Stichtag: Pfand je Präparator und Beweisweg (aus PR #628, 22.11.)
 

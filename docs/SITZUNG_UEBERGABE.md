@@ -90,6 +90,11 @@ allen vier Repos):
   Stichtag der Pfänder `quantenSPfaenderAbUnix` (auch für P3, P4) mit Wächter `quanten-s-pfaender-nicht-verpasst.sh`.
   PR mit Sicherheitsprüfung. **Für P4 merken:** die Frist des Nachweises mit der Blockzeit prüfen, nicht mit der
   Buchzeit (zurückdatierbar um `quantenWBuchSpiel`). Danach P3 (Pfand der Inhaberin = D bei der Bindung).
+  **#671 gemergt** (1a08955e). CI-Lehre: neue Arten in `kein_entzug_test.go` (ersetzbareKonstanten + Geld-Einordnung)
+  eintragen; sonst wird db-tests/test/race rot.
+- **P3 gebaut (26.11.)**: `quanten_s_inhaberin_pfand.go`, Pfand der Inhaberin = D bei der Bindung, Rückgabe
+  `quanten_w_s_ipfand_zurueck` nach Ende + 7 Tagen; gleicher Stichtag der Pfänder. PR mit Sicherheitsprüfung.
+  Danach **P4** (Nachweis `quanten_w_s_faelschung`; Frist mit Blockzeit!) und **P5** (App).
 - Lokales Postgres für `_RealDB`-Tests: `/usr/lib/postgresql/16/bin` (initdb als Nutzer postgres in `/var/tmp`),
   dann `AEQUITAS_TPS_BENCH=1 DATABASE_URL=postgres://postgres@localhost:5432/<db>?sslmode=disable`.
 - **Beweisweg entschieden** (25.11.): Inhaberin haftet + 10 % je Gelostem. Plan P1–P5 in `DEZENTRAL.md`

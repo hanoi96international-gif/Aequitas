@@ -326,3 +326,87 @@ func TestQuantenSIPfand_Annahme(t *testing.T) {
 		t.Fatalf("Nachspielen: %v", err)
 	}
 }
+
+// Lesen eines beendeten Pfands (der Token ist weg): dann tragen allein die
+// Formpruefungen. Und ein Pfand zu einem lebenden, aber ungebundenen Token.
+func TestQuantenSIPfand_RegisterLesenBeendet(t *testing.T) {
+	w := neueIPfandWelt(t, true)
+	w.bereit(qwT0)
+	w.einloesen(qwT0 + 50)
+	gut := w.cs.quantenWJetzt().form()
+	if len(gut.IPfand) != 1 || gut.IPfand[0].Ende == 0 || len(gut.Token) != 0 {
+		t.Fatalf("Vorbedingung: %+v", gut.IPfand)
+	}
+	for name, aendern := range map[string]func(f *quantenSIPfandForm){
+		"Betrag 0":        func(f *quantenSIPfandForm) { f.Betrag = 0 },
+		"Betrag negativ":  func(f *quantenSIPfandForm) { f.Betrag = -1 },
+		"Konto kaputt":    func(f *quantenSIPfandForm) { f.Konto = "0x12" },
+		"Konto gross":     func(f *quantenSIPfandForm) { f.Konto = strings.ToUpper(f.Konto) },
+		"Systemadresse":   func(f *quantenSIPfandForm) { f.Konto = ubiPoolAddr },
+		"Ende negativ":    func(f *quantenSIPfandForm) { f.Ende = -1 },
+		"N nicht dezimal": func(f *quantenSIPfandForm) { f.N = "abc" },
+	} {
+		f := gut
+		p := gut.IPfand[0]
+		aendern(&p)
+		f.IPfand = []quantenSIPfandForm{p}
+		if _, err := quantenWRegisterLesen(f.kodiert()); err == nil {
+			t.Errorf("beendet, %s: angenommen", name)
+		}
+	}
+	// Ungebunden: der Token lebt, ist aber nicht gebunden -- dazu kann es
+	// kein laufendes Pfand geben.
+	w2 := neueIPfandWelt(t, true)
+	w2.annehmen(w2.ausgebenTx(qwT0, ipDeckung), qwT0+1)
+	f := w2.cs.quantenWJetzt().form()
+	f.IPfand = []quantenSIPfandForm{{K: w2.p.K, Betrag: ipDeckung, Konto: w2.anna}}
+	if _, err := quantenWRegisterLesen(f.kodiert()); err == nil {
+		t.Error("Pfand zu einem ungebundenen Token angenommen")
+	}
+}
+
+// Nur noch ein Pfand im Register (Token und Tote weg): das Register ist
+// nicht leer -- sonst fiele das Pfand aus Kodierung und StateRoot.
+func TestQuantenSIPfand_NurPfandNichtLeer(t *testing.T) {
+	_, konto := neuerSchluessel(t)
+	r := neuesQuantenWRegister()
+	r.IPfand[strings.Repeat("a", 64)] = quantenSIPfand{Betrag: ipDeckung, Konto: konto, Ende: 5}
+	if r.leer() || r.kodiert() == "" {
+		t.Fatal("Register mit Pfand gilt als leer")
+	}
+	g, err := quantenWRegisterLesen(r.kodiert())
+	if err != nil || g.IPfand[strings.Repeat("a", 64)].Betrag != ipDeckung {
+		t.Fatalf("Rundweg: %v", err)
+	}
+	if neuerQuantenWStand(r, r.kodiert()).wurzel == "" {
+		t.Fatal("Pfand nicht in der StateRoot")
+	}
+}
+
+// Tabelle gegen eine echte Datenbank: das Pfand als eigene Zeile, auch wenn
+// Token und Tote weg sind; Neustart liest es zurueck.
+func TestQuantenSIPfand_Tabelle_RealDB(t *testing.T) {
+	w := neueIPfandWelt(t, true)
+	w.bereit(qwT0)
+	w.einloesen(qwT0 + 50)
+	reg := w.cs.quantenWJetzt().kopie()
+	quantenWToteAufraeumen(reg, reg.IPfand[w.p.K].Ende+quantenWToteBehalten+1)
+	if len(reg.Tote) != 0 || len(reg.Token) != 0 || len(reg.IPfand) != 1 {
+		t.Fatalf("Vorbedingung: %d Tote, %d Token, %d Pfaender", len(reg.Tote), len(reg.Token), len(reg.IPfand))
+	}
+	truncateDistTestTables(t)
+	cs := testKnoten(t, "unused-quanten-s-ipfand-realdb-test.json")
+	if !cs.useDB {
+		t.Fatal("erwartet eine echte PostgreSQL-Verbindung")
+	}
+	if err := qwtSetzen(t, cs, context.Background(), reg); err != nil {
+		t.Fatal(err)
+	}
+	if z := qwtZeilen(t, cs)[quantenWArtIPfand+"|"+w.p.K]; z.daten == "" {
+		t.Fatal("keine Zeile der Art ipfand")
+	}
+	neu := testKnoten(t, "unused-quanten-s-ipfand-realdb-test-2.json")
+	if neu.quantenWWurzel() != cs.quantenWWurzel() || neu.quantenWJetzt().IPfand[w.p.K].Betrag != ipDeckung {
+		t.Fatal("nach dem Neustart ein anderes Register")
+	}
+}
