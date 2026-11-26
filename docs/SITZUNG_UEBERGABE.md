@@ -7,7 +7,31 @@ Repos); davor ~13:40 UTC Sitzung „Weiter“ (`claude/weiter-uw2p42`), davor ~1
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
-**Nachtrag 26.11. ~23:00 UTC — P5c gebaut** (Sitzung „Überprüfe alle Arbeiten“, Zweig `claude/zen-bohr-aull6p`):
+**Stand 26.11. ~21:45 UTC — HIER WEITERMACHEN** (Sitzung „Überprüfe alle Arbeiten“, Zweig `claude/zen-bohr-aull6p`
+in Aequitas und Aequitas-App; Aequitas-Basis `main`, App-Basis `aequitas-app`). Keine PRs offen.
+- **Gemergt:**
+  - Aequitas #678 (fb817d61): Stichtag der Pfänder nach der Blockzeit, Spezifikation `s_pfaender.py`, Pilot-Größe.
+    Deploy auf C1 erfolgreich (Run 45893823830).
+  - App #145 (95bb716b): ehrliche Texte (12 Sprachen), Größe des Loses vor dem Bestellen.
+  - Aequitas #679 (0eba6ef8): P5c im Knoten (Ansicht `nachweis_fehl`/`nachweis_offen`, Prüfvektor). Nur Ansicht.
+    Deploy 45899276496 lief an; die Freigabe von `produktion` gibt der Betreiber (eilt nicht).
+  - App #146 (eabad024): **1.32.0** mit P5c (Stoff sichern, Nachweis führen, Karte „Fälschung nachweisen“).
+- **Release 1.32.0 läuft:** Build https://github.com/hanoi96international-gif/Aequitas-App/actions/runs/45898897668
+  (`build-apk.yml`, Variante release, ~40 min).
+  1. Das Signieren wartet auf die Freigabe der Umgebung `app-signatur` (Betreiber).
+  2. Danach `release-apk.yml` mit `run_id` = 45898897668, `tag` = `v1.32.0`, Notiz z. B. „Quantengeld: Nachweis
+     einer Fälschung für Annahmestellen, ehrliche Texte, Größe des Loses vor dem Bestellen“. Auch das braucht die
+     Freigabe von `app-signatur`.
+  3. Danach prüfen: die Kette meldet die neue Version (`/download/app.apk` zeigt auf das neue Release).
+- **Danach (Betreiber):** Stichtag der Pfänder (`quantenSPfaenderAbUnix`) mit Datum und Uhrzeit in UTC nennen; dann
+  PR mit Sicherheitsprüfung und Deploy-Wächter, Deploy mindestens 30 min vorher. `quantenSPraepPfandAbUnix` bleibt
+  schlafend. Seit #678 nimmt der Knoten 5 min vor dem Stichtag der Pfänder keine W-Transaktion an (wiederholbar).
+- **Stichtag P2a** (27.11.2026 07:00 UTC) ist ausgerollt; nach 07:00 UTC `/api/status` → `quanten_w.los_ab =
+  1795762800` prüfen.
+- **Pilot Weg B:** mindestens 3·v Gemeldete (21 für 4 von 7, 12 für 3 von 4); die App zeigt die Zahl vor dem
+  Bestellen.
+
+**Nachtrag 26.11. ~21:20 UTC — P5c gebaut** (erledigt, siehe oben) (Sitzung „Überprüfe alle Arbeiten“, Zweig `claude/zen-bohr-aull6p`):
 - **#678 und App #145 gemergt** (Prüfung: Stichtag der Pfänder nach der Blockzeit, Spezifikation, Pilot-Größe,
   ehrliche App-Texte). Deploy von C1 für #678 wartet auf Freigabe (schläft, eilt nicht).
 - **P5c (Nachweis einer Fälschung in der App) gebaut**, Details `DEZENTRAL.md` „P5c“. PRs: Aequitas (Ansicht
