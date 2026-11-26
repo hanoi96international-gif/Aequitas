@@ -7,15 +7,25 @@ Repos); davor ~13:40 UTC Sitzung „Weiter“ (`claude/weiter-uw2p42`), davor ~1
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
-**Stand 26.11. ~23:15 UTC — HIER WEITERMACHEN** (Sitzung „Quantengeld Revolution“):
-- **Neu im PR #682: „Der Betreiber allein erschafft keine Menschen“** (`bio_bescheinigung_zwei_menschen.go`, Konsens,
-  Stichtag **27.11.2026 12:00 UTC**, Betreiber 26.11.). Sobald das Prüfer-Register einen zweiten Menschen hat (zur
-  Zeit der Bescheinigung oder des Blocks), weist jeder Knoten eine Registrierung/einen Umzug ab, die nur die
-  Genesis-Schlüssel (= Betreiber) tragen. Mit einem Prüfer ändert sich nichts. Wächter
-  `zwei-menschen-stichtag-nicht-verpasst.sh`. **#682 muss vor dem Deploy morgen früh gemergt sein**, dann deckt
-  ein Deploy (vor 08:30 UTC) Pfänder und diese Regel.
+**Stand 26.11. ~23:35 UTC — HIER WEITERMACHEN** (Sitzung „Quantengeld Revolution“, Zweig
+`claude/quantengeld-revolution-eskpsn` in Aequitas und Aequitas-App; Basis `main` bzw. `aequitas-app`). Keine PRs offen.
+- **Gemergt:**
+  - Aequitas #681 (c9429bae): Stichtag der Pfänder 27.11.2026 09:00 UTC; Deploy 45905267726 erfolgreich. App 1.32.0
+    ist veröffentlicht (#683).
+  - Aequitas #682 (bb765cf1): **„Der Betreiber allein erschafft keine Menschen“** (`bio_bescheinigung_zwei_menschen.go`,
+    Konsens, Stichtag **27.11.2026 12:00 UTC**): Sobald das Prüfer-Register einen zweiten Menschen hat, weist jeder
+    Knoten Registrierung/Umzug ab, die nur Genesis-Schlüssel (= Betreiber) tragen. Dazu Weg C mit C1 (Prüfgröße über
+    eine echte Leitung, `WEG_C.md`, nur Rechnung) und die Website ohne Überversprechen (12 Sprachen).
+  - App #147 (0c87e51f): Automatik für Präparatorin und Ausgeber; `marke.p1` ehrlich. Kommt ins nächste Release
+    (Version noch nicht hochgezählt).
+- **Betreiber, eilig:** Deploy von C1 für #682 (Run 45911249854) **vor 11:30 UTC am 27.11.** freigeben (`produktion`);
+  sonst hält der Wächter jeden späteren Deploy an, und der Stichtag muss neu gesetzt werden. Danach
+  `/api/status` → `bescheinigung_konsens.zwei_menschen_ab = 1795780800`.
 - **Damit das Versprechen gilt, fehlt nur noch ein Mensch:** ein zweiter Prüfer mit eigenem Coordinator und
-  Vergleichsdienst (`docs/VERIFIER_EINRICHTEN.md`), aufgenommen mit der Stimme des Gründers.
+  Vergleichsdienst (`docs/VERIFIER_EINRICHTEN.md`). Erst aufnehmen, wenn sein Dienst angemeldet ist (sonst stehen
+  Registrierungen still, fail-closed).
+- **Nächste Schritte (Code):** Weg C2 (Token-Art „Leitung“ im Knoten, schlafend, eigene Sicherheitsprüfung), C3
+  (Format Empfänger ↔ App mit Nachbau). App-Release mit #147 (Version hochzählen, `build-apk.yml`).
 
 **Stand 26.11. ~22:35 UTC (überholt)** (Sitzung „Quantengeld Revolution“, Zweig
 `claude/quantengeld-revolution-eskpsn`):
