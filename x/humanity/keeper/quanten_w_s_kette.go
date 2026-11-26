@@ -95,7 +95,7 @@ func quantenWSNurEigeneFelder(tx *Transaction, q QuantenWAngaben) bool {
 		q.Pfand, q.PfandAn = 0, "" // gerechnet: Weg B gibt das Pfand der Bestellung zurueck
 		return reflect.DeepEqual(q, QuantenWAngaben{})
 	case quantenWSBindenTxArt:
-		q.D, q.WalletSig, q.PQ = "", "", nil
+		q.D, q.WalletSig, q.PQ, q.Pfand = "", "", nil, 0 // Pfand: gerechnet (P3)
 	case quantenWSWaehlenTxArt:
 		q.C, q.WalletSig, q.PQ = "", "", nil
 	case quantenWSAnmeldenTxArt:
@@ -519,12 +519,18 @@ func (cs *ChainState) quantenWSBescheidLocked(ctx context.Context, tx *Transacti
 			urteil = quantenWUrteilEingeloest
 		}
 		u.reg.toteMerken(q.K, alt.Zeit, blockZeit, urteil)
+		quantenSIPfandEnde(u.reg, q.K, blockZeit) // P3: die Frist laeuft ab dem Ende
 		// P2a: das Los bleibt nur zusammen mit dem toten Eintrag (Frist, P4).
 		if _, tot := u.reg.Tote[q.K]; !tot {
 			delete(u.reg.Lose, q.K)
 		}
 	} else {
 		u.reg.Token[q.K] = neu
+	}
+	// P3 (quanten_s_inhaberin_pfand.go): ab dem Stichtag der Pfaender nimmt die
+	// Bindung die Deckung als Pfand der Inhaberin.
+	if tx.Type == quantenWSBindenTxArt && quantenSPfaenderAktiv(blockZeit) {
+		return cs.quantenSIPfandBindenLocked(ctx, &u, q.K, wallet, e.Deckung)
 	}
 	return u, nil
 }
@@ -542,6 +548,12 @@ func (cs *ChainState) quantenWSAusgebenBescheidLocked(ctx context.Context, tx *T
 	}
 	if _, tot := reg.Tote[q.K]; tot {
 		return quantenWBefund("quanten_w_doppelt", "%s war schon ausgegeben (tot)", q.K[:12]), nil
+	}
+	// P3: solange das Pfand einer frueheren Inhaberin zu K liegt, kein neuer
+	// Token mit K (es ueberschriebe das Pfand, und das Register waere nicht
+	// mehr lesbar).
+	if _, da := reg.IPfand[q.K]; da {
+		return quantenWBefund("quanten_w_doppelt", "zu %s liegt noch das Pfand einer Inhaberin", q.K[:12]), nil
 	}
 	if len(reg.Token) >= quantenWTokenHoechstens {
 		return quantenWBefund("quanten_w_voll", "Register voll (%d Token)", len(reg.Token)), nil
@@ -669,5 +681,6 @@ func (cs *ChainState) quantenWSTokenAnsichtLocked(ctx context.Context, reg *quan
 	// P2a: wer gelost war (Weg B, ab dem Stichtag), aus der Kette statt aus
 	// dem Paket des Ausgebers.
 	quantenSLosAnsicht(reg, k, ansicht)
+	quantenSIPfandAnsicht(reg, k, ansicht)
 	return ansicht
 }

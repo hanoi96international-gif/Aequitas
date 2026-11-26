@@ -104,7 +104,7 @@ var replayArten = map[string]geldArt{
 	// mit seiner Unterschrift (Deckung bei der Ausgabe); Bindung, Wahl und
 	// Anmeldung bewegen kein Geld, Offenlegen und Frist zahlen nur aus dem W-Topf.
 	"quanten_w_s_ausgeben":   geldUnterschrieben,
-	"quanten_w_s_binden":     geldNurGutschrift,
+	"quanten_w_s_binden":     geldUnterschrieben, // P3: nimmt mit Unterschrift das Pfand der Inhaberin (= D)
 	"quanten_w_s_waehlen":    geldNurGutschrift,
 	"quanten_w_s_anmelden":   geldNurGutschrift,
 	"quanten_w_s_offenlegen": geldNurGutschrift,
@@ -115,6 +115,8 @@ var replayArten = map[string]geldArt{
 	"quanten_w_s_praep_abmelden": geldNurGutschrift,
 	// P2 (quanten_s_pfaender.go): Rueckgabe vom Topf an den Menschen.
 	"quanten_w_s_pfand_zurueck": geldNurGutschrift,
+	// P3 (quanten_s_inhaberin_pfand.go): Rueckgabe vom Topf an die Inhaberin.
+	"quanten_w_s_ipfand_zurueck": geldNurGutschrift,
 	// Weg B (quanten_s_bestellung.go): Bestellung (Pfand mit Unterschrift), Los und Frist.
 	"quanten_w_s_bestellen":            geldUnterschrieben, // nimmt mit Unterschrift das Pfand vom Ausgeber
 	"quanten_w_s_losen":                geldNurGutschrift,
@@ -207,6 +209,8 @@ var ersetzbareKonstanten = map[string]string{
 	"quantenSBestellFristTxArt": quantenSBestellFristTxArt,
 	// quanten_s_pfaender.go
 	"quantenSPfandZurueckTxArt": quantenSPfandZurueckTxArt,
+	// quanten_s_inhaberin_pfand.go
+	"quantenSIPfandZurueckTxArt": quantenSIPfandZurueckTxArt,
 }
 
 // replaySwitchArten liest die Arten des Nachspiel-Switches aus block.go
