@@ -95,7 +95,7 @@ func quantenWSNurEigeneFelder(tx *Transaction, q QuantenWAngaben) bool {
 		q.Pfand, q.PfandAn = 0, "" // gerechnet: Weg B gibt das Pfand der Bestellung zurueck
 		return reflect.DeepEqual(q, QuantenWAngaben{})
 	case quantenWSBindenTxArt:
-		q.D, q.WalletSig, q.PQ, q.Pfand = "", "", nil, 0 // Pfand: gerechnet (P3)
+		q.D, q.WalletSig, q.PQ, q.Pfand, q.PfandVon, q.PfandSig = "", "", nil, 0, "", "" // Pfand: gerechnet; Pfandgeber (P3)
 	case quantenWSWaehlenTxArt:
 		q.C, q.WalletSig, q.PQ = "", "", nil
 	case quantenWSAnmeldenTxArt:
@@ -538,7 +538,12 @@ func (cs *ChainState) quantenWSBescheidLocked(ctx context.Context, tx *Transacti
 	// P3 (quanten_s_inhaberin_pfand.go): ab dem Stichtag der Pfaender nimmt die
 	// Bindung die Deckung als Pfand der Inhaberin.
 	if tx.Type == quantenWSBindenTxArt && quantenSPfaenderAktiv(blockZeit) {
-		return cs.quantenSIPfandBindenLocked(ctx, &u, q.K, wallet, e.Deckung)
+		return cs.quantenSIPfandBindenLocked(ctx, &u, q, wallet, e.Deckung)
+	}
+	// Vor dem Stichtag gibt es keinen Pfandgeber: ein Satz mit seinen Feldern
+	// wird abgewiesen, nicht still uebergangen.
+	if q.PfandVon != "" || q.PfandSig != "" {
+		return quantenWBefund("quanten_w_form", "Pfandgeber erst ab dem Stichtag der Pfaender"), nil
 	}
 	return u, nil
 }

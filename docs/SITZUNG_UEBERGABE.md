@@ -7,15 +7,25 @@ Repos); davor ~13:40 UTC Sitzung „Weiter“ (`claude/weiter-uw2p42`), davor ~1
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
-**Nachtrag 26.11. ~17:45 UTC — HIER WEITERMACHEN:**
-- **Stichtag P2a = 27.11.2026 07:00 UTC, gemergt** (#673 92a92bb0). Die Pfänder bleiben schlafend.
-  **Deploy von C1 muss vor 06:30 UTC freigegeben sein:**
-  https://github.com/hanoi96international-gif/Aequitas/actions/runs/45869279201.
-  Er ersetzt den wartenden Deploy für P3 (Run 45857153706), der abgelehnt werden kann.
-  Nach 07:00 UTC prüfen: `/api/status` zeigt `quanten_w.los_ab = 1795762800`.
-- **P4 gebaut, PR offen** (Mutationen 41 rot, 9 gleichwertig, 0 offen). Danach **P5 App**: Pfänder anzeigen und
-  bestätigen, Rückgaben auslösen, Nachweis an der Stelle B (Öffnungen aufbewahren!). Erst danach den Stichtag der
-  Pfänder setzen.
+**Nachtrag 26.11. ~18:30 UTC — HIER WEITERMACHEN:**
+- **Stichtag P2a = 27.11.2026 07:00 UTC**: gemergt (#673 92a92bb0) und **auf C1 ausgerollt** (Deploy 45869279201
+  erfolgreich). Nach 07:00 UTC prüfen: `/api/status` zeigt `quanten_w.los_ab = 1795762800`, und neue Weg-B-Token
+  zeigen `los` in `/api/quanten-w/note`. Die App liest Token-Stand und Register nicht streng; neue Felder stören nicht.
+- **P4 gemergt** (#674 f12f20d2; Mutationen 41 rot, 9 gleichwertig). Deploy 45874676871 wartet auf Freigabe;
+  nicht eilig, der Code schläft.
+- **Plan Pfänder im Knoten fertig: P1, P2a, P2, P3, P4.** Alles hinter `quantenSPfaenderAbUnix` (schlafend).
+- **Nächster Schritt P5: App** (Repo Aequitas-App, Zweig `claude/uebergabe-fortsetzen-8sor22`, Basis `aequitas-app`):
+  1. Status lesen: `quanten_w.pfaender_ab`. Daran erkennt die App, ob die Pfänder gelten.
+  2. Präparatorin: Pfand 10 AEQ vor dem Melden anzeigen und bestätigen; „nachlegen“ für Gemeldete ohne Pfand;
+     Rückgabe `s_pfand_zurueck {k}` ab `pfand_zurueck_ab`. Das Register liefert `pfand` und `pfand_zurueck_ab`.
+  3. Inhaberin: vor der Bindung „Pfand = Deckung D“ zeigen; Guthaben ≥ D prüfen; nach dem Ende + 7 Tagen
+     `s_ipfand_zurueck {k}`. Die Token-Ansicht liefert `pfand_inhaberin` und `pfand_inhaberin_zurueck_nach`.
+  4. Stelle B: Öffnungen der Gelosten und Vorlage **7 Tage aufbewahren**. Ist der Token an A eingelöst
+     (`nachweis_stelle` = eigene Stelle, `nachweis_bis` in der Zukunft): `s_faelschung_anmelden` (eigene Domäne
+     `aequitas-quanten-s-faelschung-anmelden-v1`, sonst wie `anmeldenNachricht`), dann `s_faelschung_offenlegen` in
+     Teilen wie beim Einlösen.
+  5. Die App rechnet das Abbild nicht nach (das tut die Kette), keine Änderung nötig.
+  Erst nach dem Release mit P5 den Stichtag der Pfänder setzen (Betreiber).
 
 **Stand 26.11. ~16:00 UTC — HIER WEITERMACHEN** (Sitzung „Weiter mit Übergabe“, Zweig
 `claude/uebergabe-fortsetzen-8sor22` in allen vier Repos):
