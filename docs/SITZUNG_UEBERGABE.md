@@ -18,13 +18,21 @@ dezentrales Quantengeld“.
   - Grund: Der Schlüssel der Inhaberin ist je Token frisch und hat kein Guthaben.
   - Die App muss bei der Bindung die Menschen-Wallet als Pfandgeber unterschreiben lassen.
 - **App P5a gemergt** (App #142 e639cd84): Pfand der Präparatorin anzeigen, nachlegen, zurückholen.
-- **Nächster Schritt P5b (App):** Bindung mit Pfandgeber.
-  - In `lib/quantenSInhaberin.ts` `einloesen`: ab dem Stichtag `pfand_von` = Menschen-Wallet, `pfand_sig` =
-    Unterschrift der Menschen-Wallet über die Nachricht oben, Betrag = Deckung auf der Kette (`deckung` aus der
-    Ansicht).
-  - Vorher anzeigen und bestätigen.
-  - Rückgabe `s_ipfand_zurueck {k}` nach `pfand_inhaberin_zurueck_nach`.
-  - Danach P5c (Stelle B, Nachweis).
+- **#676 gemergt** (e33115bc): Die Token-Ansicht nennt `deckung`. Deploy 45883930887 wartet auf Freigabe;
+  nötig, bevor die App mit P5b veröffentlicht wird.
+- **App P5b gemergt** (App #143 1d9e71ff): Pfand der Inhaberin (Pfandgeber = Menschen-Wallet, Bestätigung,
+  Rückgabe).
+- **Nächster Schritt P5c (App, Stelle B):** Fälschungsnachweis.
+  1. Beim Annehmen (`lib/quantenSStelle.ts` `annehmenAlsStelle`, `lib/quantenSStelleWegB.ts`): Vorlage (K, b, x,
+     Unterschrift), Stichprobe, Salze und die gesammelten Öffnungen (Anteile + Pfade je Stelle der Stichprobe)
+     verschlüsselt in der Ablage aufbewahren, mindestens bis `nachweis_bis`.
+  2. Scheitert das Anmelden, weil der Token an der anderen Stelle eingelöst ist (Ansicht: `tot`, `urteil`
+     eingelöst, `nachweis_stelle` = eigene Stelle, `nachweis_bis` > jetzt): Karte „Fälschung nachweisen“.
+  3. `s_faelschung_anmelden`: Unterschrift der Stelle über
+     `aequitas-quanten-s-faelschung-anmelden-v1|chain|wallet|K|b|sha256(x)|sha256(probe)|fehl`, sonst wie
+     `anmeldenNachricht`. Danach `s_faelschung_offenlegen` in Teilen, genau wie `s_offenlegen`.
+  4. Erfolg: Urteil `faelschung`, B bekommt Pfand der Inhaberin + 10 % je Geloster.
+  Danach: App-Release (Build, Version hochzählen), dann Stichtag der Pfänder (Betreiber).
 - **Plan Pfänder im Knoten fertig: P1, P2a, P2, P3, P4.** Alles hinter `quantenSPfaenderAbUnix` (schlafend).
 - **Nächster Schritt P5: App** (Repo Aequitas-App, Zweig `claude/uebergabe-fortsetzen-8sor22`, Basis `aequitas-app`):
   1. Status lesen: `quanten_w.pfaender_ab`. Daran erkennt die App, ob die Pfänder gelten.
