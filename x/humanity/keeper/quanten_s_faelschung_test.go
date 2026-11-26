@@ -2,7 +2,9 @@ package keeper
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
+	"math/big"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -59,6 +61,21 @@ func neueFwWelt(t *testing.T, aktiv bool) (*qsWelt, int64) {
 	return w, w.cs.quantenWJetzt().Tote[w.p.K]
 }
 
+// fwWerteTx: ein Teil des Nachweises -- je Stelle der Wert w (aus den
+// Anteilen der Test-Welt zusammengesetzt, wie ihn Stelle B aus den Oeffnungen
+// kennt) und der Merkle-Pfad; KEINE Anteile (P4b).
+func (w *qsWelt) fwWerteTx(ab int, stellen []int) Transaction {
+	q := &QuantenWAngaben{K: w.p.K, Ab: ab}
+	for _, o := range w.p.offen(stellen, 1, 3, 5) {
+		of := QuantenWOffen{W: quantenWZusammensetzen(o.Anteile).Text(16)}
+		for _, h := range o.Pfad {
+			of.Pfad = append(of.Pfad, hex.EncodeToString(h[:]))
+		}
+		q.Offen = append(q.Offen, of)
+	}
+	return Transaction{Type: quantenSFaelschungOffenlegenTxArt, QuantenW: q}
+}
+
 func (w *qsWelt) fwEnde() int64 { return w.cs.quantenWJetzt().IPfand[w.p.K].Ende }
 
 func (w *qsWelt) fwAnmeldenTx(von string, b int, x []int, vorlageVon string) Transaction {
@@ -79,7 +96,7 @@ func (w *qsWelt) fwOffenlegenAlle(zeit int64) QuantenWAngaben {
 	p := w.probe[1]
 	for ab := 0; ab < len(p); ab += quantenWOffenTeil {
 		bis := min(ab+quantenWOffenTeil, len(p))
-		tx := w.offenTx(ab, p[ab:bis])
+		tx := w.fwWerteTx(ab, p[ab:bis])
 		tx.Type = quantenSFaelschungOffenlegenTxArt
 		g = w.annehmen(tx, zeit).QuantenW.gerechnet()
 		if bis < len(p) && g.Urteil != "teil" {
@@ -264,12 +281,12 @@ func TestQuantenSFaelschung_GefaelschtImBlock(t *testing.T) {
 	w.annehmen(w.fwAnmeldenTx(w.stelle[1], 1, w.p.bits, w.anna), z)
 	p := w.probe[1]
 	for ab := 0; ab+quantenWOffenTeil < len(p); ab += quantenWOffenTeil {
-		tx := w.offenTx(ab, p[ab:ab+quantenWOffenTeil])
+		tx := w.fwWerteTx(ab, p[ab:ab+quantenWOffenTeil])
 		tx.Type = quantenSFaelschungOffenlegenTxArt
 		w.annehmen(tx, z+5)
 	}
 	ab := (len(p) - 1) / quantenWOffenTeil * quantenWOffenTeil
-	letzt := w.offenTx(ab, p[ab:])
+	letzt := w.fwWerteTx(ab, p[ab:])
 	letzt.Type = quantenSFaelschungOffenlegenTxArt
 	soll := ipDeckung + fwGelost*quantenSPraepPfand/10
 	for name, f := range map[string]func(q *QuantenWAngaben){
@@ -366,7 +383,7 @@ func TestQuantenSFaelschung_Annahme(t *testing.T) {
 	p := w.probe[1]
 	b0 := w.stand(w.cs, w.stelle[1])
 	for ab := 0; ab < len(p); ab += quantenWOffenTeil {
-		tx := w.offenTx(ab, p[ab:min(ab+quantenWOffenTeil, len(p))])
+		tx := w.fwWerteTx(ab, p[ab:min(ab+quantenWOffenTeil, len(p))])
 		tx.Type = quantenSFaelschungOffenlegenTxArt
 		if fertig, err = w.cs.quantenWAnnehmen(tx); err != nil {
 			t.Fatalf("Offenlegen %d: %v", ab, err)
@@ -490,4 +507,67 @@ func TestQuantenSFaelschung_RegisterLesenOhneAnmeldung(t *testing.T) {
 			t.Errorf("Anmelden %s angenommen", name)
 		}
 	}
+}
+
+// P4b: der Nachweis legt Werte offen, keine Anteile -- und nur die echten.
+func TestQuantenSFaelschung_WerteStattAnteile(t *testing.T) {
+	w, _ := neueFwWelt(t, true)
+	z := w.fwEnde() + 100
+	w.annehmen(w.fwAnmeldenTx(w.stelle[1], 1, w.p.bits, w.anna), z)
+	p := w.probe[1]
+	bis := min(quantenWOffenTeil, len(p))
+	gut := w.fwWerteTx(0, p[:bis])
+	// Fuer "gross geschrieben" eine Stelle mit Buchstaben im Wert nach vorn.
+	for i, o := range gut.QuantenW.Offen {
+		if strings.ContainsAny(o.W, "abcdef") {
+			gut.QuantenW.Offen[0], gut.QuantenW.Offen[i] = gut.QuantenW.Offen[i], gut.QuantenW.Offen[0]
+			break
+		}
+	}
+	kaputt := map[string]func(o *QuantenWOffen){
+		"Wert + 1": func(o *QuantenWOffen) {
+			x, _ := new(big.Int).SetString(o.W, 16)
+			o.W = x.Add(x, big.NewInt(1)).Text(16)
+		},
+		"Wert zu gross":            func(o *QuantenWOffen) { o.W = strings.Repeat("f", 32) },
+		"Wert mit fuehrender Null": func(o *QuantenWOffen) { o.W = strings.Repeat("0", 33-len(o.W)) + o.W },
+		"Wert gross geschrieben":   func(o *QuantenWOffen) { o.W = strings.ToUpper(o.W) },
+		"ohne Wert":                func(o *QuantenWOffen) { o.W = "" },
+		"Wert und Anteile":         func(o *QuantenWOffen) { o.Anteile = []QuantenWAnteilAngabe{{X: 1, Y: "1"}} },
+		"Pfad fremd":               func(o *QuantenWOffen) { o.Pfad[0] = strings.Repeat("0", 64) },
+		"Pfad zu lang":             func(o *QuantenWOffen) { o.Pfad = append(o.Pfad, make([]string, quantenWPfadMax)...) },
+	}
+	for name, f := range kaputt {
+		tx := gut
+		q := *gut.QuantenW
+		q.Offen = append([]QuantenWOffen(nil), gut.QuantenW.Offen...)
+		o := q.Offen[0]
+		o.Pfad = append([]string(nil), o.Pfad...)
+		f(&o)
+		q.Offen[0] = o
+		tx.QuantenW = &q
+		if r := w.praepRegel(tx, z+5); r == "" {
+			t.Errorf("%s: angenommen", name)
+		}
+	}
+	// Das Einloesen nimmt keine Werte (nur Anteile): sonst koennte eine Stelle
+	// ohne die Validatoren offenlegen.
+	w2 := neueIPfandWelt(t, true)
+	w2.bereit(qwT0)
+	w2.annehmen(w2.anmeldenTx(w2.stelle[0], 0, w2.probe[0], w2.vorlage(0, w2.keys[w2.anna])), qwT0+20)
+	tx := w2.offenTx(0, w2.probe[0][:min(quantenWOffenTeil, len(w2.probe[0]))])
+	tx.QuantenW.Offen[0].W = "1"
+	if r := w2.praepRegel(tx, qwT0+25); r != "quanten_w_form" {
+		t.Errorf("Einloesen mit Wert: %q", r)
+	}
+	// Ausser der Reihe: erst der zweite Teil -- abgewiesen.
+	if len(p) > quantenWOffenTeil {
+		if r := w.praepRegel(w.fwWerteTx(quantenWOffenTeil, p[quantenWOffenTeil:min(2*quantenWOffenTeil, len(p))]), z+5); r != "quanten_w_regel" {
+			t.Errorf("Teil ausser der Reihe: %q", r)
+		}
+	} else {
+		t.Fatal("Vorbedingung: Stichprobe laenger als ein Teil")
+	}
+	gut = w.fwWerteTx(0, p[:bis]) // unvertauscht
+	w.annehmen(gut, z+5)
 }
