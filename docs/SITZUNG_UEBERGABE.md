@@ -29,13 +29,9 @@ in Aequitas und Aequitas-App; Aequitas-Basis `main`, App-Basis `aequitas-app`). 
   - Aequitas #679 (0eba6ef8): P5c im Knoten (Ansicht `nachweis_fehl`/`nachweis_offen`, Prüfvektor). Nur Ansicht.
     Deploy 45899276496 lief an; die Freigabe von `produktion` gibt der Betreiber (eilt nicht).
   - App #146 (eabad024): **1.32.0** mit P5c (Stoff sichern, Nachweis führen, Karte „Fälschung nachweisen“).
-- **Release 1.32.0 läuft:** Build https://github.com/hanoi96international-gif/Aequitas-App/actions/runs/45898897668
-  (`build-apk.yml`, Variante release, ~40 min).
-  1. Das Signieren wartet auf die Freigabe der Umgebung `app-signatur` (Betreiber).
-  2. Danach `release-apk.yml` mit `run_id` = 45898897668, `tag` = `v1.32.0`, Notiz z. B. „Quantengeld: Nachweis
-     einer Fälschung für Annahmestellen, ehrliche Texte, Größe des Loses vor dem Bestellen“. Auch das braucht die
-     Freigabe von `app-signatur`.
-  3. Danach prüfen: die Kette meldet die neue Version (`/download/app.apk` zeigt auf das neue Release).
+- **App 1.32.0 veröffentlicht** (26.11. 22:56 UTC): Build 45898897668 signiert, Release-Lauf 45905584327,
+  Tag `v1.32.0`, Asset `app-release.apk`. Noch prüfen (aus der Cloud-Umgebung nicht erreichbar): die Kette meldet
+  die neue Version, `/download/app.apk` zeigt auf das neue Release.
 - **Danach (Betreiber):** Stichtag der Pfänder (`quantenSPfaenderAbUnix`) mit Datum und Uhrzeit in UTC nennen; dann
   PR mit Sicherheitsprüfung und Deploy-Wächter, Deploy mindestens 30 min vorher. `quantenSPraepPfandAbUnix` bleibt
   schlafend. Seit #678 nimmt der Knoten 5 min vor dem Stichtag der Pfänder keine W-Transaktion an (wiederholbar).
