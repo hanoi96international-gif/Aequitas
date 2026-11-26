@@ -70,7 +70,9 @@ allen vier Repos):
   (Handy, IBM) und **Knotenbetreiber** (Server: Validator + Verifier); „zugelassen“ (Prüfer-Register, 2/3-Abstimmung)
   ist ein Status, kein Job. Neu `deploy/knoten/einrichten.sh` (ein Befehl für beide, gemeinsame Mindestwerte
   4 Kerne/12 GB/80 GB, Wallet und IP einmal; Test `scripts/test_knoten_einrichten.sh`), `docs/KNOTEN_EINRICHTEN.md`.
-  Nächster Schritt dazu: App „Knoten“-Tab zeigt zuerst den gemeinsamen Befehl.
+  App-Tab „Knoten“ zeigt zuerst den gemeinsamen Befehl: **gemergt** App #141 (7922ccd2), Aequitas #667 (ecd7e45f).
+- **P1 Pfänder gebaut** (26.11., `s_pfaender.py`, Selbsttest in der CI, 16 Mutationen rot). P2 (Knoten) erst, wenn
+  der Betreiber Höhe des Pfands der Inhaberin (Vorschlag D) und Frist (Vorschlag 7 Tage) bestätigt.
 - **Beweisweg entschieden** (25.11.): Inhaberin haftet + 10 % je Gelostem. Plan P1–P5 in `DEZENTRAL.md`
   („Entscheidung Beweisweg und Plan Pfänder“), eigener Stichtag nach dem Pilotstart. **Offen (Betreiber):** Höhe des
   Pfands der Inhaberin (Vorschlag D) und Frist für den Nachweis (Vorschlag 7 Tage). Nächster Schritt: P1 Spezifikation.
