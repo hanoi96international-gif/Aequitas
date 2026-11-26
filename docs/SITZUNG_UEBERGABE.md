@@ -7,6 +7,15 @@ Repos); davor ~13:40 UTC Sitzung „Weiter“ (`claude/weiter-uw2p42`), davor ~1
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
+**Nachtrag 26.11. ~23:00 UTC — P5c gebaut** (Sitzung „Überprüfe alle Arbeiten“, Zweig `claude/zen-bohr-aull6p`):
+- **#678 und App #145 gemergt** (Prüfung: Stichtag der Pfänder nach der Blockzeit, Spezifikation, Pilot-Größe,
+  ehrliche App-Texte). Deploy von C1 für #678 wartet auf Freigabe (schläft, eilt nicht).
+- **P5c (Nachweis einer Fälschung in der App) gebaut**, Details `DEZENTRAL.md` „P5c“. PRs: Aequitas (Ansicht
+  `nachweis_fehl`/`nachweis_offen`, Prüfvektor, Doku) und App (Stoff sichern, Nachweis führen, Karte, 12 Sprachen).
+  **Punkt 1 der „Nächsten Schritte“ unten ist damit erledigt.**
+- **Danach:** App-Release (Version hochzählen, `build-apk.yml`), dann setzt der Betreiber den Stichtag der Pfänder.
+  `quantenSPraepPfandAbUnix` bleibt schlafend.
+
 **Nachtrag 26.11. ~22:00 UTC — Prüfung aller Arbeiten zum Quantengeld** (Sitzung „Überprüfe alle Arbeiten“,
 Zweig `claude/zen-bohr-aull6p` in Aequitas und Aequitas-App; Details `DEZENTRAL.md`, Abschnitt „Prüfung der Arbeiten
 zum Quantengeld (26.11.2026, zweite Sitzung)“). Lief parallel zur Sitzung unten; beide auf `main` abgestimmt.

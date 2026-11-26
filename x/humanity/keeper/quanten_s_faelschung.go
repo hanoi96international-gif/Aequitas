@@ -387,8 +387,15 @@ func quantenSNachweisAnsicht(reg *quantenWRegister, k string, v map[string]inter
 	if n, ok := reg.Nachweis[k]; ok {
 		v["nachweis_bis"] = sattAdd(n.Ende, quantenSNachweisFrist)
 		v["nachweis_stelle"] = 1 - n.An
+		// Fehlversuche: die Stelle unterschreibt sie beim Anmelden mit
+		// (quantenSFaelschungAnmeldenNachricht); ohne sie scheiterte jeder
+		// zweite Versuch an der Unterschrift (P5c, App).
+		v["nachweis_fehl"] = n.Token.Fehl
 		if a := n.Token.Anmeldung; a != nil {
 			v["nachweis_angemeldet"] = a.Zeit
+			// So viele Stellen der Stichprobe sind offengelegt: ein
+			// unterbrochener Nachweis setzt dort fort (Ab des naechsten Teils).
+			v["nachweis_offen"] = a.Offen
 		}
 	}
 }
