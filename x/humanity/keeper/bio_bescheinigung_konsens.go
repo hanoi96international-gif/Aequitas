@@ -295,6 +295,9 @@ func BescheinigungStand() map[string]any {
 		// Ab hier zaehlen auch Schluessel von Pruefern mit Bindung (B1b);
 		// die Bindungen stehen in /api/verifier/dienste.
 		"register_ab": bescheinigungRegisterAb(),
+		// Ab hier reicht der Betreiber allein nicht mehr, sobald es einen
+		// zweiten Pruefer gibt (bio_bescheinigung_zwei_menschen.go).
+		"zwei_menschen_ab": bescheinigungZweiMenschenAb(),
 		// Quantensicher (bio_bescheinigung_pq.go): Stichtag und wie viele
 		// Schluessel einen ML-DSA-Schluessel haben.
 		"pq_ab_unix":    k.PQAbUnix,
@@ -502,6 +505,11 @@ func pruefeV3Kern(b *BioBescheinigung, k bescheinigungKonfig, bindungMsg, aussag
 	}
 	if len(bezeugt) < k.Quorum {
 		return nil, nil, fmt.Errorf("bescheinigung: %d von %d noetigen Schluesseln", len(bezeugt), k.Quorum)
+	}
+	// Nur Schluessel der Genesis (= ein Mensch, der Betreiber): ab dem zweiten
+	// Pruefer reicht das nicht mehr (bio_bescheinigung_zwei_menschen.go).
+	if zweiMenschenNoetig(b.Zeit, blockZeit, pruefer) {
+		return nil, nil, errors.New("bescheinigung: nur Schluessel des Betreibers -- es gibt einen zweiten Pruefer, er muss mit bezeugen")
 	}
 	return bindet, bezeugt, nil
 }

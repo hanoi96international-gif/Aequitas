@@ -689,7 +689,7 @@ section{padding:64px 16px}
       <h2 data-i18n="logo-sub">The fairest counterfeit-proof money – from one person for all people</h2>
       <p class="section-sub" data-i18n="qm-sub">Built to stay counterfeit-proof against quantum computers too: one person exists only once, wallets are protected against quantum computers, and the first quantum tokens run on the main network.</p>
       <div class="ben">
-        <div class="ben-item"><span class="ben-ico"><svg class="ico" aria-hidden="true"><use href="#i-user"/></svg></span><div><p data-i18n="qm-1">Every person should exist only once: a face check blocks a second account. In the beta a single matching service does this; independent services and the iris scan are to follow.</p></div></div>
+        <div class="ben-item"><span class="ben-ico"><svg class="ico" aria-hidden="true"><use href="#i-user"/></svg></span><div><p data-i18n="qm-1">Every person should exist only once: a face check blocks a second account. In the beta a single matching service does this. From the second independent verifier on, the operator alone can no longer register anyone – every node checks this.</p></div></div>
         <div class="ben-item"><span class="ben-ico"><svg class="ico" aria-hidden="true"><use href="#i-shield"/></svg></span><div><p data-i18n="qm-2">Your wallet can be protected against future quantum computers; new wallets are protected automatically.</p></div></div>
         <div class="ben-item"><span class="ben-ico"><svg class="ico" aria-hidden="true"><use href="#i-cpu"/></svg></span><div><p data-i18n="qm-3">Quantum tokens: on the main network since 17 Nov 2026 – the chain redeems each token only once and rejected a second presentation.</p></div></div>
       </div>

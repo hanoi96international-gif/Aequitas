@@ -144,6 +144,9 @@ func sortierteSchluessel(m map[string]string) []string {
 type prueferQuelle interface {
 	mitglied(m string, t int64) bool
 	dienstPQ(ed, mensch string, t int64) (string, bool)
+	// menschenZu: verschiedene Menschen im Register zur Zeit t (Gruender als
+	// einer); -1 = unbekannt (bio_bescheinigung_zwei_menschen.go).
+	menschenZu(t int64) int
 }
 
 // prueferNurMitglied: nur das Stimmrecht, keine PQ-Schluessel (Tests, alte

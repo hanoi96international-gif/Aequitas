@@ -47,6 +47,10 @@ func TestMain(m *testing.M) {
 	// K1 mit Pruefer-Schluesseln (bio_bescheinigung_register.go), Stichtag
 	// 08.11.2026 18:00 UTC: schlafend, die B1b-Tests setzen ihren eigenen.
 	bescheinigungRegisterOverride.Store(math.MaxInt64)
+	// "Betreiber allein reicht nicht" (bio_bescheinigung_zwei_menschen.go),
+	// Stichtag 27.11.2026 12:00 UTC: schlafend; die Tests der Regel
+	// (zmFall) setzen ihren eigenen und stellen ihn zurueck.
+	bescheinigungZweiMenschenOverride.Store(math.MaxInt64)
 	os.Exit(m.Run())
 }
 

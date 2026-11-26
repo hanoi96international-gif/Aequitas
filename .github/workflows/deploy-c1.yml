@@ -73,6 +73,8 @@ jobs:
         run: bash .github/neustart/verifier-stichtag-nicht-verpasst.sh http://$C1:8080
       - name: Stichtag von K1 mit Pruefer-Schluesseln (B1b) nicht verpasst
         run: bash .github/neustart/b1b-stichtag-nicht-verpasst.sh http://$C1:8080
+      - name: Stichtag "Betreiber allein reicht nicht" (zwei Menschen je Bescheinigung) nicht verpasst
+        run: bash .github/neustart/zwei-menschen-stichtag-nicht-verpasst.sh http://$C1:8080
       - name: Stichtag des Umzugs nicht verpasst
         run: bash .github/neustart/umzug-stichtag-nicht-verpasst.sh http://$C1:8080
       - name: Stichtag der Code-Regeln des Umzugs nicht verpasst

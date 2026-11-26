@@ -97,7 +97,7 @@ Schlüssel aus der Genesis.
 | 1 | Prüfer-Register mit Abstimmung (B1) | Code | **gebaut, scharf ab 07.11. 17:00 UTC** |
 | 2 | B1b: K1 nimmt die Schlüssel der Prüfer an; Dienste melden sich selbst an; Abstimmung per App | Code (Kette, Coordinator, Vergleichsdienst, Proof-Server, App) | **gebaut, scharf ab 08.11.2026 18:00 UTC** |
 | 3 | Zweiter Prüfer mit eigenem Coordinator und Vergleichsdienst | **einen Menschen** | offen |
-| 4 | K1-Quorum auf 2 verschiedene Menschen | Schritt 2 und 3 | offen |
+| 4 | K1: der Betreiber allein reicht nicht – sobald es einen zweiten Prüfer gibt, braucht jede Bescheinigung (Registrierung, Umzug) zwei verschiedene Menschen (`bio_bescheinigung_zwei_menschen.go`) | Schritt 2; greift automatisch mit Schritt 3 | **gebaut, Stichtag 27.11.2026 12:00 UTC** |
 | 5 | Staffel scharf | Schritt 1 aktiv, dann Test `TestStaffel_SchlaeftBisZulassungUndStreng` bewusst anpassen | offen |
 | 6 | Zweiter und dritter Validator | **zwei Menschen mit Server** | offen |
 | 7 | Stufe 2: alle nehmen an | Schritt 6 | gebaut, schlafend |

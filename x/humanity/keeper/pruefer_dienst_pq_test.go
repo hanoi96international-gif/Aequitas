@@ -217,6 +217,7 @@ func (q pdQuelle) mitglied(m string, t int64) bool { return q.f.istPruefer(m, t)
 func (q pdQuelle) dienstPQ(ed, mensch string, t int64) (string, bool) {
 	return q.reg.dienstPQ(ed, mensch, t)
 }
+func (q pdQuelle) menschenZu(int64) int { return -1 }
 
 func TestPrueferDienstPQ_BescheinigungNachDemStichtag(t *testing.T) {
 	coord, zeuge := neuerPQ(t), neuerPQ(t)
