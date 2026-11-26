@@ -125,6 +125,9 @@ const (
 // (Anfrage-, Zufall-, Antwortzeit) und damit die StateRoot sind gleich.
 func quantenWBuchZeit(art string, buchAt, blockZeit int64) (int64, bool) {
 	ok := buchAt > 0 && buchAt <= sattAdd(blockZeit, 60) && buchAt >= blockZeit-quantenWBuchSpielFuer(art)
+	// Nie ueber den Stichtag der Pfaender hinweg zurueckdatiert
+	// (quanten_s_pfaender_grenze.go).
+	ok = ok && quantenSPfaenderGrenzeOk(buchAt, blockZeit)
 	return buchAt, ok
 }
 
@@ -1438,6 +1441,11 @@ func (cs *ChainState) quantenWAnnehmen(tx Transaction) (Transaction, error) {
 	var fertig Transaction
 	err := cs.runAtomicWithOutbox(konten, false, func(ctx context.Context) (Transaction, error) {
 		at := nowUnix()
+		// Kurz vor dem Stichtag der Pfaender keine Annahme: sonst laege die
+		// Buchzeit davor und der Block danach (quanten_s_pfaender_grenze.go).
+		if err := quantenSPfaenderPausePruefen(at); err != nil {
+			return Transaction{}, err
+		}
 		tx.BuchAt = at // jeder Nachspielende rechnet mit dieser Zeit (quantenWBuchZeit)
 		u, err := cs.quantenWBescheidLocked(ctx, &tx, at)
 		if err != nil {

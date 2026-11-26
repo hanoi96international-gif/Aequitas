@@ -7,6 +7,22 @@ Repos); davor ~13:40 UTC Sitzung „Weiter“ (`claude/weiter-uw2p42`), davor ~1
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
+**Nachtrag 26.11. ~22:00 UTC — Prüfung aller Arbeiten zum Quantengeld** (Sitzung „Überprüfe alle Arbeiten“,
+Zweig `claude/zen-bohr-aull6p` in Aequitas und Aequitas-App; Details `DEZENTRAL.md`, Abschnitt „Prüfung der Arbeiten
+zum Quantengeld (26.11.2026, zweite Sitzung)“). Lief parallel zur Sitzung unten; beide auf `main` abgestimmt.
+- **Erledigt in diesem Zweig (PRs offen):**
+  - Spezifikation `s_pfaender.py` an die Entscheidung angepasst (nur Inhaberin, D + 10 %, kein Verfall) —
+    **Punkt 2 der „Nächsten Schritte“ unten ist damit erledigt, nicht doppelt anfassen.**
+  - Stichtag der Pfänder nach der Blockzeit (`quanten_s_pfaender_grenze.go`, Konsens, schlafend): Buchzeit vor dem
+    Stichtag ⇒ Block davor, Annahmepause 5 min vor dem Stichtag.
+  - Missbrauchstest `TestQuantenSFaelschung_EigeneStelleB`, Kopf von `quanten_s_faelschung.go` berichtigt.
+  - Pilot: **mindestens 3·v Gemeldete** (21 für v = 7, 12 für v = 4) in `docs/PILOT_WEG_B.md`; die App zeigt die
+    Zahl vor dem Bestellen und bestellt nicht, wenn sie nicht reicht.
+  - App-Texte ehrlich (12 Sprachen): kein „niemand kann sie kopieren“ mehr; gewöhnliche Daten, Schwelle t von v,
+    wer einen Abschnitt präpariert (samt Anbieter), kennt ihn.
+- **Beim Merge beachten:** Der App-PR berührt die Sprachdateien (neue Schlüssel nach `qaT`, geänderte `qKarte`,
+  `qtText`, `marke.p3`); App-PR #144 ändert andere Schlüssel derselben Dateien.
+
 **Stand 26.11. ~21:00 UTC — HIER WEITERMACHEN** (Sitzung „Weiter mit Übergabe“, Zweig
 `claude/uebergabe-fortsetzen-8sor22` in allen vier Repos; Aequitas-Basis `main`, App-Basis `aequitas-app`):
 

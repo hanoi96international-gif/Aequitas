@@ -24,13 +24,17 @@ Technischer Hintergrund: `forschung/quantengeld/DEZENTRAL.md` (Abschnitte B2b, B
 
 | Rolle | Wie viele | Was sie brauchen |
 |---|---|---|
-| Präparatorin | mindestens 7 im Los, besser 9–10 gemeldet (Ausfälle) | App, Menschen-Wallet, **eigenes IBM-Quantum-Konto** (kostenlos: 10 Minuten je 28 Tage) mit API-Schlüssel und Instanz (CRN) |
+| Präparatorin | **mindestens 3·v gemeldet** (Kettenregel): für v = 7 also **21**, für v = 4 **12** — jede mindestens einen Tag vor der Bestellung gemeldet; der Ausgeber zählt nicht mit. Gelost werden davon v. | App, Menschen-Wallet, **eigenes IBM-Quantum-Konto** (kostenlos: 10 Minuten je 28 Tage) mit API-Schlüssel und Instanz (CRN) |
 | Ausgeber | 1 | App, Menschen-Wallet, AEQ für Deckung + Pfand (Pfand = 10 % der Deckung; die App nennt beides vor dem Bestellen) |
 | Inhaberin | 1 | App |
 | Annahmestellen | 2 (Stelle 0 und Stelle 1) | App; zwei verschiedene Konten, beide nicht die Inhaberin |
 
 Der Ausgeber kommt nie in sein eigenes Los (Kettenregel). Ist er selbst als Präparatorin gemeldet,
 braucht es also eine Gemeldete mehr.
+
+Sind weniger gemeldet, weist die Kette die Bestellung ab („Register zu klein“). Die App zeigt vor dem
+Bestellen, wie viele im Los wären und wie viele für das gewählte v nötig sind. Für einen kleineren
+Pilot geht v = 4, t = 3 (12 Gemeldete; die Tabelle in `DEZENTRAL.md` 18 nennt die Sicherheit); weniger als v = 4 lässt die Kette nicht zu.
 
 ## Ablauf
 

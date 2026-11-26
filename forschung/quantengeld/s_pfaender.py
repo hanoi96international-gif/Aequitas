@@ -4,19 +4,28 @@
 Forschung, kein Produkt. Keine Abhaengigkeiten. Einordnung: DEZENTRAL.md,
 "Entscheidung Beweisweg und Plan Pfaender" (Betreiber, 25.11.2026).
 
-ENTSCHEIDUNG DES BETREIBERS
-  Die Inhaberin haftet mit einem Pfand bei der Bindung, und jede Geloste
-  verliert VERFALL_PROZENT ihres Pfands, wenn eine Faelschung nachgewiesen ist.
-  Ehrliche verlieren wenig, eine Absprache lohnt sich trotzdem nicht.
+ENTSCHEIDUNG DES BETREIBERS (25.11.2026, geaendert am 26.11.2026)
+  Nur die Inhaberin haftet: mit einem Pfand bei der Bindung von D + 10 %
+  (aufgerundet; Knoten quantenSIPfandFuer). Urspruenglich sollte zusaetzlich
+  jede Geloste 10 % ihres Pfands verlieren -- das ist gestrichen (siehe WAS
+  BEWEISBAR IST). Das Pfand je Praeparatorin (R-P1..R-P3) verfaellt nie; im
+  Knoten schlaeft es hinter einem eigenen Stichtag (quantenSPraepPfandAbUnix).
 
 WAS BEWEISBAR IST
   Token K endet mit dem Urteil "eingeloest" an Stelle A. Danach legt die
   ANDERE festgelegte Stelle B eine Vorlage zu K vor, die die Inhaberin
   unterschrieben hat und die B's geheime Stichprobe besteht (Pruefung wie
-  Anmelden/Offenlegen, gegen die Wurzel auf der Kette). Beides zugleich geht
-  ohne Kopie nicht: mindestens t Geloste haben ihr Wissen geteilt. WELCHE, ist
-  nicht beweisbar -- darum verlieren alle v Gelosten einen kleinen Anteil und
-  die Inhaberin (die beide Vorlagen unterschrieben hat) ihr ganzes Pfand.
+  Anmelden/Offenlegen, gegen die Wurzel auf der Kette). Bewiesen ist damit
+  NUR: die Inhaberin hat zwei Vorlagen unterschrieben, die beide bestehen.
+  NICHT bewiesen ist, dass Geloste ihr Wissen geteilt haben: jede ehrliche
+  Geloste schickt die Oeffnung ihres Abschnitts an BEIDE Stellen (welche die
+  gewaehlte ist, ist verdeckt), und die Oeffnung nennt Basis und Wert jeder
+  Stelle der Stichprobe. Gehoert B der Inhaberin -- die Stellen muessen nur
+  verschieden sein --, baut sie daraus eine bestehende Vorlage ohne eine
+  einzige unehrliche Geloste. Eine Strafe der Gelosten traefe dann
+  beweisbar Unschuldige und zahlte sie an die Taeterin aus. Darum haftet
+  allein die Inhaberin: bei einer ehrlichen B nur, wenn sie gefaelscht hat;
+  gehoert B ihr selbst, geht ihr eigenes Pfand an sie zurueck.
 
 REGELN (jeder Knoten prueft sie selbst)
   R-P1  Melden kostet PRAEP_PFAND (10 AEQ) von der Wallet in den Pfandtopf.
@@ -32,17 +41,17 @@ REGELN (jeder Knoten prueft sie selbst)
         darf jeder; das Geld geht immer an die Wallet des Menschen.
   R-P4  Die Inhaberin hinterlegt bei der Bindung INHABERIN_PFAND(D). Zurueck
         an die Wallet der Inhaberin, wenn der Token geendet hat, seine Frist
-        verstrichen ist und kein Nachweis kam.
+        verstrichen ist und kein Nachweis kam. INHABERIN_PFAND(D) = D + 10 %.
   R-P5  Nachweis (neue Art quanten_w_s_faelschung): nur Stelle B (die andere
         als die, an der eingeloest wurde), nur innerhalb der Frist, nur einmal
-        je K, nur mit gueltigem Beweis. Folge: das Pfand der Inhaberin an B;
-        je Geloster VERFALL_PROZENT ihres Pfands an B.
+        je K, nur mit gueltigem Beweis. Folge: das Pfand der Inhaberin an B.
+        Die Gelosten verlieren nichts.
   R-P6  Geld bleibt erhalten: Summe aller Konten plus Pfandtopf ist vor und
         nach jedem Schritt gleich.
 
-OFFEN (Betreiber): INHABERIN_PFAND (Vorschlag: die Deckung D -- genau der
-Schaden der Stelle B) und NACHWEIS_FRIST (Vorschlag: 7 Tage). Beide hier als
-Parameter; der Selbsttest prueft die Regeln fuer jeden Wert.
+WERTE (Betreiber, 26.11.2026): INHABERIN_PFAND = D + 10 % (der Schaden der
+Stelle B plus ein sicherer Verlust fuer jede Faelschung), NACHWEIS_FRIST = 7
+Tage. Der Selbsttest prueft die Regeln fuer jeden Wert.
 
 Aufruf:  python3 -I s_pfaender.py --selbsttest
 """
@@ -53,15 +62,15 @@ import sys
 MIKRO = 1_000_000
 PRAEP_PFAND = 10 * MIKRO                 # 10 AEQ je Praeparatorin (Betreiber, 22.11.)
 PRAEP_HALTEZEIT = 30 * 86400             # zurueck frueestens 30 Tage nach der Abmeldung
-VERFALL_PROZENT = 10                     # je Geloster bei nachgewiesener Faelschung (Betreiber, 25.11.)
-NACHWEIS_FRIST = 7 * 86400               # VORSCHLAG, Betreiber offen
+NACHWEIS_FRIST = 7 * 86400               # Betreiber, 26.11.
+INHABERIN_AUFSCHLAG_PROZENT = 10         # Betreiber, 26.11. (Knoten quantenSIPfandAufschlagProzent)
 TOPF = "pfandtopf"
 OFFEN = 1 << 62                          # "noch nicht geendet"
 
 
 def inhaberin_pfand(deckung: int) -> int:
-    """VORSCHLAG, Betreiber offen: die Deckung D (Schaden der Stelle B)."""
-    return deckung
+    """D + 10 %, aufgerundet -- wie quantenSIPfandFuer im Knoten."""
+    return deckung + -(-deckung * INHABERIN_AUFSCHLAG_PROZENT // 100)
 
 
 class Abgewiesen(Exception):
@@ -196,11 +205,6 @@ class Kette:
         t["nachweis"] = True
         an_b = t["pfand"]
         t["pfand"] = 0
-        for m in t["los"]:
-            e = self.praep[m]
-            anteil = e["pfand"] * VERFALL_PROZENT // 100
-            e["pfand"] -= anteil
-            an_b += anteil
         self._ueberweisen(TOPF, stelle, an_b)
         return an_b
 
@@ -291,13 +295,13 @@ def selbsttest() -> bool:
     abgewiesen(lambda: k.faelschung("K1", "stelleB", False, T + 3 * TAG), "Nachweis mit ungueltigem Beweis")
     abgewiesen(lambda: k.faelschung("K1", "stelleB", True, T + 2 * TAG + NACHWEIS_FRIST + 1), "Nachweis nach der Frist")
     an_b = k.faelschung("K1", "stelleB", True, T + 3 * TAG)
-    erwartet = inhaberin_pfand(D) + v * (PRAEP_PFAND * VERFALL_PROZENT // 100)
+    erwartet = inhaberin_pfand(D)
     soll(an_b == erwartet and k.konto["stelleB"] == erwartet, f"Nachweis: B bekam {an_b}, erwartet {erwartet}")
-    soll(all(k.praep[m]["pfand"] == PRAEP_PFAND * (100 - VERFALL_PROZENT) // 100 for m in los), "Gelosten nicht je 10 % verloren")
+    soll(all(k.praep[m]["pfand"] == PRAEP_PFAND for m in los), "Gelosten verlieren beim Nachweis Pfand")
     abgewiesen(lambda: k.faelschung("K1", "stelleB", True, T + 3 * TAG + 1), "Nachweis zweimal")
     abgewiesen(lambda: k.inhaberin_zurueck("K1", T + 400 * TAG), "Inhaberin zurueck nach dem Nachweis")
     # Nach der Frist bekommen die Gelosten den Rest zurueck.
-    soll(k.praep_zurueck("m1", T + 2 * TAG + NACHWEIS_FRIST + PRAEP_HALTEZEIT) == PRAEP_PFAND * 9 // 10, "Rest nach dem Verfall")
+    soll(k.praep_zurueck("m1", T + 2 * TAG + NACHWEIS_FRIST + PRAEP_HALTEZEIT) == PRAEP_PFAND, "Gelosten nach dem Nachweis: volles Pfand zurueck")
     soll(k.summe() == s0, "Geld nicht erhalten (Nachweis)")
     soll(k.konto["stelleB"] >= D, "Stelle B ist nicht schadlos (Pfand der Inhaberin < D)")
 
@@ -314,12 +318,32 @@ def selbsttest() -> bool:
     soll(k.praep_zurueck("m3", T + 2 + PRAEP_HALTEZEIT) == PRAEP_PFAND, "Gelost, ohne Nachweis: volles Pfand zurueck")
     soll(k.summe() == s0, "Geld nicht erhalten (ohne Nachweis)")
 
-    # Wirtschaft: Inhaberin und t Verschworene gewinnen mit einer Faelschung nichts.
-    # Gewinn der Faelschung: die zweite Einloesung (D); Verlust: Pfand der Inhaberin + t * 10 %.
-    gewinn = D - inhaberin_pfand(D) - t * (PRAEP_PFAND * VERFALL_PROZENT // 100)
+    # Angriff (Pruefung 26.11.2026): Stelle B gehoert der Inhaberin. Sie baut die
+    # bestehende Vorlage aus der Oeffnung, die jede ehrliche Geloste an B schickt,
+    # und fuehrt den Nachweis selbst. Er gelingt (nicht verhinderbar) -- aber
+    # ohne Gewinn fuer sie und ohne Verlust fuer die Gelosten.
+    k = welt()
+    s0 = k.summe()
+    k.ausgeben("K4", los, D)
+    k.konto["eigeneB"] = 0
+    k.binden("K4", "m9", ("stelleA", "eigeneB"))
+    inhaberin_vorher = k.konto[k.wallet_von["m9"]] + inhaberin_pfand(D)   # ihr Geld samt Pfand
+    pfaender = {m: k.praep[m]["pfand"] for m in los}
+    k.einloesen("K4", "stelleA", T + TAG)
+    an_b = k.faelschung("K4", "eigeneB", True, T + 2 * TAG)
+    soll(an_b == inhaberin_pfand(D), f"eigene Stelle B bekam {an_b}, nur das Pfand der Inhaberin waere richtig")
+    soll(k.konto[k.wallet_von["m9"]] + k.konto["eigeneB"] == inhaberin_vorher, "Nachweis ueber die eigene Stelle B bringt der Inhaberin etwas")
+    soll(all(k.praep[m]["pfand"] == pfaender[m] for m in los), "Gelosten zahlen fuer einen Nachweis ueber eine eigene Stelle B")
+    soll(k.summe() == s0, "Geld nicht erhalten (eigene Stelle B)")
+
+    # Wirtschaft: die Inhaberin verliert mit einer Faelschung bei einer ehrlichen B
+    # sicher. Gewinn: die zweite Einloesung (Ware im Wert D); Verlust: ihr Pfand
+    # D + 10 %. B ist schadlos (bekommt mehr als D).
+    gewinn = D - inhaberin_pfand(D)
     soll(gewinn < 0, f"Faelschung lohnt sich ({gewinn})")
-    # Ehrliche verlieren hoechstens 10 % ihres Pfands je nachgewiesener Faelschung.
-    soll(PRAEP_PFAND * VERFALL_PROZENT // 100 == MIKRO, "Verlust einer Ehrlichen nicht 1 AEQ")
+    # Aufrunden wie im Knoten (quantenSIPfandFuer): nie weniger als 10 %.
+    for d, p in ((1_000_000, 1_100_000), (1_000_001, 1_100_002), (19, 21), (10, 11), (0, 0)):
+        soll(inhaberin_pfand(d) == p, f"Pfand der Inhaberin zu {d}: {inhaberin_pfand(d)}, erwartet {p}")
 
     for f in fehler:
         print("FEHLER:", f)

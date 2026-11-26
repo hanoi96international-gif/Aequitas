@@ -16,11 +16,13 @@ package keeper
 //     Nur bis Ende + quantenSNachweisFrist.
 //   - quanten_w_s_faelschung_offenlegen: in Teilen, dieselbe Pruefung wie
 //     beim Einloesen (quantenSToken.offenlegenTeil gegen die Wurzel).
-//   - Besteht die Vorlage B's Stichprobe, obwohl A schon eingeloest hat,
-//     haben mindestens t Geloste ihr Wissen geteilt (physikalisch geht es
-//     sonst nicht). Folge: das Pfand der Inhaberin an B, je Geloster (Lose[K],
-//     aus dem eigenen Register) quantenSVerfallProzent ihres Pfands an B.
-//     Ein Nachweis je K. Besteht sie nicht: Fehlversuch; nach quantenWFehlMax
+//   - Besteht die Vorlage B's Stichprobe, obwohl A schon eingeloest hat, hat
+//     die Inhaberin zwei Vorlagen unterschrieben, die beide bestehen. Folge:
+//     NUR das Pfand der Inhaberin an B (quantenSFaelschungStrafe). Dass
+//     Geloste ihr Wissen geteilt haben, beweist das NICHT: die Oeffnungen
+//     gehen an beide Stellen, eine Stelle B der Inhaberin kennt also die
+//     Werte ihrer Stichprobe (TestQuantenSFaelschung_EigeneStelleB). Ein
+//     Nachweis je K. Besteht sie nicht: Fehlversuch; nach quantenWFehlMax
 //     ist der Eintrag weg.
 //
 // ZEIT: die Frist ist ein "spaetestens". Beide Arten haben nur ein kurzes
@@ -28,8 +30,9 @@ package keeper
 // verlaengert sie also hoechstens um zwei Minuten.
 //
 // BINDUNG: eine offene, nicht verfallene Anmeldung haelt das Pfand der
-// Inhaberin und die der Gelosten fest; ihr Los bleibt dafuer stehen, auch
-// wenn der tote Eintrag aufgeraeumt wird.
+// Inhaberin fest. Das Los bleibt dafuer stehen, auch wenn der tote Eintrag
+// aufgeraeumt wird; ein Pfand der Gelosten (P2, eigener Stichtag) bleibt
+// gebunden, verfaellt aber nie.
 //
 // GRENZE: ein Eintrag nur zusammen mit einem Pfand der Inhaberin
 // (quantenSIPfandHoechstens). Gespeichert als Form (Bits als Hex).
