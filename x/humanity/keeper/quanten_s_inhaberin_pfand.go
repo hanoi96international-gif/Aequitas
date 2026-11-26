@@ -68,6 +68,21 @@ type quantenSIPfandForm struct {
 
 func istQuantenSIPfandTxArt(t string) bool { return t == quantenSIPfandZurueckTxArt }
 
+// quantenSIPfandAufschlagProzent: das Pfand der Inhaberin ist die Deckung D
+// plus dieser Aufschlag (Betreiber, 26.11.2026: "D + 10 %"). Bei genau D ging
+// eine Faelschung fuer die Faelscher plus/minus null aus (Gewinn D, Verlust
+// D); so kostet sie sicher 10 % -- es bleibt nichts, um Geloste zu bestechen.
+const quantenSIPfandAufschlagProzent = 10
+
+// quantenSIPfandFuer: D + ceil(D * 10 %), gesaettigt.
+func quantenSIPfandFuer(deckung int64) int64 {
+	a := deckung / 100 * quantenSIPfandAufschlagProzent
+	if r := deckung % 100 * quantenSIPfandAufschlagProzent; r > 0 {
+		a += (r + 99) / 100
+	}
+	return sattAdd(deckung, a)
+}
+
 // quantenSIPfandNurEigeneFelder: die Rueckgabe traegt nur K (des Tokens).
 func quantenSIPfandNurEigeneFelder(tx *Transaction, q QuantenWAngaben) bool {
 	q.Pfand, q.PfandAn = 0, ""
@@ -102,7 +117,7 @@ func quantenSIPfandLesen(fs []quantenSIPfandForm, r *quantenWRegister) (map[stri
 		e := r.Token[f.K]
 		if f.Ende == 0 {
 			// Konto: die Inhaberin oder ihr Pfandgeber -- beides kanonisch, oben geprueft.
-			if e == nil || e.token.D == nil || e.token.Deckung != f.Betrag {
+			if e == nil || e.token.D == nil || quantenSIPfandFuer(e.token.Deckung) != f.Betrag {
 				return nil, fmt.Errorf("quanten_w: Pfand der Inhaberin %s: kein gebundener Token dazu", f.K[:12])
 			}
 		} else if e != nil {
@@ -132,6 +147,7 @@ func quantenSIPfandNachricht(pfandVon, K, inhaber string, betrag int64) string {
 // Nullifier sind die des Pfandgebers, die Rueckgabe geht an ihn.
 func (cs *ChainState) quantenSIPfandBindenLocked(ctx context.Context, u *quantenWBescheid, q *QuantenWAngaben, wallet string, deckung int64) (quantenWBescheid, error) {
 	K := q.K
+	betrag := quantenSIPfandFuer(deckung)
 	if len(u.reg.IPfand) >= quantenSIPfandHoechstens {
 		return quantenWBefund("quanten_w_voll", "zu viele Pfaender von Inhaberinnen (%d)", len(u.reg.IPfand)), nil
 	}
@@ -140,7 +156,7 @@ func (cs *ChainState) quantenSIPfandBindenLocked(ctx context.Context, u *quanten
 		if !kanonischeAdresse(von) || istSystemAdresse(von) || von == wallet {
 			return quantenWBefund("quanten_w_form", "Pfandgeber nicht kanonisch, Systemadresse oder die Inhaberin selbst"), nil
 		}
-		if !kanonischeSignatur(q.PfandSig) || pruefePersonalSignGemerkt(quantenSIPfandNachricht(von, K, wallet, deckung), q.PfandSig, von) != nil {
+		if !kanonischeSignatur(q.PfandSig) || pruefePersonalSignGemerkt(quantenSIPfandNachricht(von, K, wallet, betrag), q.PfandSig, von) != nil {
 			return quantenWBefund("quanten_w_unterschrift", "Pfandgeber %s hat nicht fuer diesen Token unterschrieben", kurzAdresse(von)), nil
 		}
 		wallet = von
@@ -152,12 +168,12 @@ func (cs *ChainState) quantenSIPfandBindenLocked(ctx context.Context, u *quanten
 	if mehrere || (n != "" && !umzugNullifierKanonisch(n)) {
 		return quantenWBefund("quanten_s_pfand_mensch", "%s: Nullifier nicht eindeutig", kurzAdresse(wallet)), nil
 	}
-	if cs.quantenWMikroLocked(ctx, wallet) < deckung {
-		return quantenWBefund("quanten_w_deckung", "%s hat keine %d Mikro-AEQ fuer das Pfand der Bindung (= Deckung)", kurzAdresse(wallet), deckung), nil
+	if cs.quantenWMikroLocked(ctx, wallet) < betrag {
+		return quantenWBefund("quanten_w_deckung", "%s hat keine %d Mikro-AEQ fuer das Pfand der Bindung (Deckung + %d %%)", kurzAdresse(wallet), betrag, quantenSIPfandAufschlagProzent), nil
 	}
-	u.reg.IPfand[K] = quantenSIPfand{Betrag: deckung, Konto: wallet, N: n}
-	u.wege = append(u.wege, quantenWWeg{wallet, quantenWPfandAddr, deckung})
-	u.felder.Pfand = deckung
+	u.reg.IPfand[K] = quantenSIPfand{Betrag: betrag, Konto: wallet, N: n}
+	u.wege = append(u.wege, quantenWWeg{wallet, quantenWPfandAddr, betrag})
+	u.felder.Pfand = betrag
 	return *u, nil
 }
 

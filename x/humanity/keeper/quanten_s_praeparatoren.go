@@ -308,7 +308,7 @@ func (cs *ChainState) quantenSPraepBescheidLocked(ctx context.Context, tx *Trans
 		e, da := neu.Praep[q.K]
 		// P2: wer vor dem Stichtag ohne Pfand gemeldet ist, legt es mit einem
 		// neuen Melden nach (Meldezeit und Schluessel bleiben).
-		nachlegen := da && e.Abgemeldet == 0 && e.Pfand == 0 && quantenSPfaenderAktiv(zeit)
+		nachlegen := da && e.Abgemeldet == 0 && e.Pfand == 0 && quantenSPraepPfandAktiv(zeit)
 		if da && !nachlegen {
 			if e.Abgemeldet != 0 {
 				return quantenWBefund("quanten_s_praep_doppelt", "%s ist abgemeldet; neu melden ab %d", kurzAdresse(wallet), sattAdd(e.Abgemeldet, quantenSPraepNachlauf)), nil
@@ -321,7 +321,7 @@ func (cs *ChainState) quantenSPraepBescheidLocked(ctx context.Context, tx *Trans
 		if !da {
 			e = quantenSPraep{Konto: wallet, Pub: pub, Gemeldet: zeit}
 		}
-		if !quantenSPfaenderAktiv(zeit) {
+		if !quantenSPraepPfandAktiv(zeit) {
 			neu.Praep[q.K] = e
 			break
 		}
@@ -366,7 +366,7 @@ func (cs *ChainState) quantenSPraepAbbildLocked(ctx context.Context, reg *quante
 			continue
 		}
 		// P2: ab dem Stichtag der Pfaender nur mit Pfand.
-		if e.Pfand == 0 && quantenSPfaenderAktiv(T) {
+		if e.Pfand == 0 && quantenSPraepPfandAktiv(T) {
 			continue
 		}
 		if cs.quantenSPraepIstMenschLocked(ctx, e.Konto) {

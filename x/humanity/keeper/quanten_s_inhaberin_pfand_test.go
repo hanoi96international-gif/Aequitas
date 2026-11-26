@@ -14,6 +14,9 @@ import (
 
 const ipDeckung int64 = 10_000_000 // wie qsWelt.bereit
 
+// ipPfand: das Pfand der Inhaberin zu ipPfand (Deckung + 10 %).
+var ipPfand = quantenSIPfandFuer(ipDeckung)
+
 func neueIPfandWelt(t *testing.T, aktiv bool) *qsWelt {
 	t.Helper()
 	w := neueQsWelt(t, 128, 80)
@@ -67,11 +70,11 @@ func TestQuantenSIPfand_Gutfall(t *testing.T) {
 		w.annehmen(w.ausgebenTx(z, ipDeckung), z+1)
 		tx := w.annehmen(w.bindenTx(w.anna), z+2)
 		p := w.cs.quantenWJetzt().IPfand[w.p.K]
-		if tx.QuantenW.Pfand != ipDeckung || p.Betrag != ipDeckung || p.Konto != w.anna || p.N != pfNAnna || p.Ende != 0 ||
-			w.stand(w.cs, w.anna) != anna0-ipDeckung {
+		if tx.QuantenW.Pfand != ipPfand || p.Betrag != ipPfand || p.Konto != w.anna || p.N != pfNAnna || p.Ende != 0 ||
+			w.stand(w.cs, w.anna) != anna0-ipPfand {
 			t.Fatalf("Bindung: %+v, Anna %d", p, w.stand(w.cs, w.anna))
 		}
-		if w.ansicht()["pfand_inhaberin"] != ipDeckung {
+		if w.ansicht()["pfand_inhaberin"] != ipPfand {
 			t.Fatalf("Ansicht: %v", w.ansicht())
 		}
 		if r := w.praepRegel(ipZurueckTx(w.p.K), z+5); r != "quanten_s_pfand_gebunden" {
@@ -97,7 +100,7 @@ func TestQuantenSIPfand_Gutfall(t *testing.T) {
 			if _, da := reg.Tote[w.p.K]; da {
 				t.Fatal("Vorbedingung: nicht aufgeraeumt")
 			}
-			if _, err := quantenWRegisterLesen(reg.kodiert()); err != nil || reg.IPfand[w.p.K].Betrag != ipDeckung {
+			if _, err := quantenWRegisterLesen(reg.kodiert()); err != nil || reg.IPfand[w.p.K].Betrag != ipPfand {
 				t.Fatalf("nach dem Aufraeumen: %v", err)
 			}
 			cs.mu.Lock()
@@ -109,7 +112,7 @@ func TestQuantenSIPfand_Gutfall(t *testing.T) {
 		vorher := w.stand(w.cs, w.anna)
 		zz := ende + quantenWToteBehalten + 2
 		tx = w.annehmen(ipZurueckTx(w.p.K), zz)
-		if tx.QuantenW.PfandAn != w.anna || w.stand(w.cs, w.anna) != vorher+ipDeckung || len(w.cs.quantenWJetzt().IPfand) != 0 {
+		if tx.QuantenW.PfandAn != w.anna || w.stand(w.cs, w.anna) != vorher+ipPfand || len(w.cs.quantenWJetzt().IPfand) != 0 {
 			t.Fatalf("Rueckgabe: %+v", tx.QuantenW.gerechnet())
 		}
 		if summe() != summe0 {
@@ -127,7 +130,7 @@ func TestQuantenSIPfand_OhneDeckung(t *testing.T) {
 	w.annehmen(w.ausgebenTx(qwT0, ipDeckung), qwT0+1)
 	for _, cs := range []*ChainState{w.cs, w.nach} {
 		a, _ := cs.accounts.Get(w.anna)
-		a.Balance = Decimal(ipDeckung - 1)
+		a.Balance = Decimal(ipPfand - 1)
 	}
 	if r := w.praepRegel(w.bindenTx(w.anna), qwT0+2); r != "quanten_w_deckung" {
 		t.Fatalf("ohne Deckung: %q", r)
@@ -147,7 +150,7 @@ func TestQuantenSIPfand_Umzug(t *testing.T) {
 	}
 	w.nullifier(pfNAnna, neu)
 	tx := w.annehmen(ipZurueckTx(w.p.K), ende+quantenSNachweisFrist+1)
-	if tx.QuantenW.PfandAn != neu || w.stand(w.cs, neu) != ipDeckung {
+	if tx.QuantenW.PfandAn != neu || w.stand(w.cs, neu) != ipPfand {
 		t.Fatalf("nach dem Umzug an %s", tx.QuantenW.PfandAn)
 	}
 	w2 := neueIPfandWelt(t, true)
@@ -166,7 +169,7 @@ func TestQuantenSIPfand_GefaelschtImBlock(t *testing.T) {
 	z := qwT0
 	w.annehmen(w.ausgebenTx(z, ipDeckung), z+1)
 	binden := w.bindenTx(w.anna)
-	for _, pfand := range []int64{0, ipDeckung - 1, ipDeckung + 1} {
+	for _, pfand := range []int64{0, ipPfand - 1, ipPfand + 1} {
 		tx := binden
 		q := *tx.QuantenW
 		q.Pfand = pfand
@@ -181,8 +184,8 @@ func TestQuantenSIPfand_GefaelschtImBlock(t *testing.T) {
 	zz := w.cs.quantenWJetzt().IPfand[w.p.K].Ende + quantenSNachweisFrist + 1
 	gut := ipZurueckTx(w.p.K)
 	for name, f := range map[string]func(q *QuantenWAngaben){
-		"fremder Empfaenger": func(q *QuantenWAngaben) { q.Pfand, q.PfandAn = ipDeckung, w.bert },
-		"mehr Pfand":         func(q *QuantenWAngaben) { q.Pfand, q.PfandAn = ipDeckung+1, w.anna },
+		"fremder Empfaenger": func(q *QuantenWAngaben) { q.Pfand, q.PfandAn = ipPfand, w.bert },
+		"mehr Pfand":         func(q *QuantenWAngaben) { q.Pfand, q.PfandAn = ipPfand+1, w.anna },
 	} {
 		tx := gut
 		q := *gut.QuantenW
@@ -318,7 +321,7 @@ func TestQuantenSIPfand_Annahme(t *testing.T) {
 	}
 	w.nullifier(pfNAnna, neu)
 	fertig, err := w.cs.quantenWAnnehmen(ipZurueckTx(w.p.K))
-	if err != nil || fertig.QuantenW.PfandAn != neu || w.stand(w.cs, neu) != ipDeckung {
+	if err != nil || fertig.QuantenW.PfandAn != neu || w.stand(w.cs, neu) != ipPfand {
 		t.Fatalf("Annahme: %v %+v", err, fertig.QuantenW)
 	}
 	if err := w.nachspielen(fertig, fertig.BuchAt+3); err != nil {
@@ -358,7 +361,7 @@ func TestQuantenSIPfand_RegisterLesenBeendet(t *testing.T) {
 	w2 := neueIPfandWelt(t, true)
 	w2.annehmen(w2.ausgebenTx(qwT0, ipDeckung), qwT0+1)
 	f := w2.cs.quantenWJetzt().form()
-	f.IPfand = []quantenSIPfandForm{{K: w2.p.K, Betrag: ipDeckung, Konto: w2.anna}}
+	f.IPfand = []quantenSIPfandForm{{K: w2.p.K, Betrag: ipPfand, Konto: w2.anna}}
 	if _, err := quantenWRegisterLesen(f.kodiert()); err == nil {
 		t.Error("Pfand zu einem ungebundenen Token angenommen")
 	}
@@ -369,12 +372,12 @@ func TestQuantenSIPfand_RegisterLesenBeendet(t *testing.T) {
 func TestQuantenSIPfand_NurPfandNichtLeer(t *testing.T) {
 	_, konto := neuerSchluessel(t)
 	r := neuesQuantenWRegister()
-	r.IPfand[strings.Repeat("a", 64)] = quantenSIPfand{Betrag: ipDeckung, Konto: konto, Ende: 5}
+	r.IPfand[strings.Repeat("a", 64)] = quantenSIPfand{Betrag: ipPfand, Konto: konto, Ende: 5}
 	if r.leer() || r.kodiert() == "" {
 		t.Fatal("Register mit Pfand gilt als leer")
 	}
 	g, err := quantenWRegisterLesen(r.kodiert())
-	if err != nil || g.IPfand[strings.Repeat("a", 64)].Betrag != ipDeckung {
+	if err != nil || g.IPfand[strings.Repeat("a", 64)].Betrag != ipPfand {
 		t.Fatalf("Rundweg: %v", err)
 	}
 	if neuerQuantenWStand(r, r.kodiert()).wurzel == "" {
@@ -405,7 +408,7 @@ func TestQuantenSIPfand_Tabelle_RealDB(t *testing.T) {
 		t.Fatal("keine Zeile der Art ipfand")
 	}
 	neu := testKnoten(t, "unused-quanten-s-ipfand-realdb-test-2.json")
-	if neu.quantenWWurzel() != cs.quantenWWurzel() || neu.quantenWJetzt().IPfand[w.p.K].Betrag != ipDeckung {
+	if neu.quantenWWurzel() != cs.quantenWWurzel() || neu.quantenWJetzt().IPfand[w.p.K].Betrag != ipPfand {
 		t.Fatal("nach dem Neustart ein anderes Register")
 	}
 }
@@ -426,9 +429,9 @@ func TestQuantenSIPfand_Pfandgeber(t *testing.T) {
 	w.nullifier(pfNBert, w.bert)
 	w.annehmen(w.ausgebenTx(z, ipDeckung), z+1)
 	anna0, bert0 := w.stand(w.cs, w.anna), w.stand(w.cs, w.bert)
-	tx := w.annehmen(w.ipGeberTx(w.bert, w.bert, w.p.K, w.anna, ipDeckung), z+2)
+	tx := w.annehmen(w.ipGeberTx(w.bert, w.bert, w.p.K, w.anna, ipPfand), z+2)
 	p := w.cs.quantenWJetzt().IPfand[w.p.K]
-	if tx.QuantenW.Pfand != ipDeckung || p.Konto != w.bert || p.N != pfNBert || w.stand(w.cs, w.bert) != bert0-ipDeckung || w.stand(w.cs, w.anna) != anna0 {
+	if tx.QuantenW.Pfand != ipPfand || p.Konto != w.bert || p.N != pfNBert || w.stand(w.cs, w.bert) != bert0-ipPfand || w.stand(w.cs, w.anna) != anna0 {
 		t.Fatalf("Pfandgeber: %+v, Bert %d, Anna %d", p, w.stand(w.cs, w.bert)-bert0, w.stand(w.cs, w.anna)-anna0)
 	}
 	if _, err := quantenWRegisterLesen(w.cs.quantenWJetzt().kodiert()); err != nil {
@@ -452,25 +455,25 @@ func TestQuantenSIPfand_PfandgeberMissbrauch(t *testing.T) {
 		tx   Transaction
 		soll string
 	}{
-		"fremde Unterschrift": {w.ipGeberTx(w.bert, w.praeger, w.p.K, w.anna, ipDeckung), "quanten_w_unterschrift"},
-		"anderes K":           {w.ipGeberTx(w.bert, w.bert, strings.Repeat("e", 64), w.anna, ipDeckung), "quanten_w_unterschrift"},
-		"andere Inhaberin":    {w.ipGeberTx(w.bert, w.bert, w.p.K, w.praeger, ipDeckung), "quanten_w_unterschrift"},
-		"anderer Betrag":      {w.ipGeberTx(w.bert, w.bert, w.p.K, w.anna, ipDeckung-1), "quanten_w_unterschrift"},
-		"Inhaberin selbst":    {w.ipGeberTx(w.anna, w.anna, w.p.K, w.anna, ipDeckung), "quanten_w_form"},
+		"fremde Unterschrift": {w.ipGeberTx(w.bert, w.praeger, w.p.K, w.anna, ipPfand), "quanten_w_unterschrift"},
+		"anderes K":           {w.ipGeberTx(w.bert, w.bert, strings.Repeat("e", 64), w.anna, ipPfand), "quanten_w_unterschrift"},
+		"andere Inhaberin":    {w.ipGeberTx(w.bert, w.bert, w.p.K, w.praeger, ipPfand), "quanten_w_unterschrift"},
+		"anderer Betrag":      {w.ipGeberTx(w.bert, w.bert, w.p.K, w.anna, ipPfand-1), "quanten_w_unterschrift"},
+		"Inhaberin selbst":    {w.ipGeberTx(w.anna, w.anna, w.p.K, w.anna, ipPfand), "quanten_w_form"},
 	}
-	ohneSig := w.ipGeberTx(w.bert, w.bert, w.p.K, w.anna, ipDeckung)
+	ohneSig := w.ipGeberTx(w.bert, w.bert, w.p.K, w.anna, ipPfand)
 	ohneSig.QuantenW.PfandSig = ""
 	faelle["ohne Unterschrift"] = struct {
 		tx   Transaction
 		soll string
 	}{ohneSig, "quanten_w_unterschrift"}
-	sys := w.ipGeberTx(w.bert, w.bert, w.p.K, w.anna, ipDeckung)
+	sys := w.ipGeberTx(w.bert, w.bert, w.p.K, w.anna, ipPfand)
 	sys.QuantenW.PfandVon = ubiPoolAddr
 	faelle["Systemadresse"] = struct {
 		tx   Transaction
 		soll string
 	}{sys, "quanten_w_form"}
-	nurSig := w.ipGeberTx(w.bert, w.bert, w.p.K, w.anna, ipDeckung)
+	nurSig := w.ipGeberTx(w.bert, w.bert, w.p.K, w.anna, ipPfand)
 	nurSig.QuantenW.PfandVon = ""
 	faelle["Unterschrift ohne Pfandgeber"] = struct {
 		tx   Transaction
@@ -481,14 +484,14 @@ func TestQuantenSIPfand_PfandgeberMissbrauch(t *testing.T) {
 			t.Errorf("%s: %q, erwartet %q", name, r, f.soll)
 		}
 	}
-	w.fwGuthaben(w.bert, ipDeckung-1)
-	if r := w.praepRegel(w.ipGeberTx(w.bert, w.bert, w.p.K, w.anna, ipDeckung), z+2); r != "quanten_w_deckung" {
+	w.fwGuthaben(w.bert, ipPfand-1)
+	if r := w.praepRegel(w.ipGeberTx(w.bert, w.bert, w.p.K, w.anna, ipPfand), z+2); r != "quanten_w_deckung" {
 		t.Errorf("Pfandgeber ohne Deckung: %q", r)
 	}
 	// Vor dem Stichtag: Felder des Pfandgebers abgewiesen, nicht uebergangen.
 	w2 := neueIPfandWelt(t, false)
 	w2.annehmen(w2.ausgebenTx(z, ipDeckung), z+1)
-	if r := w2.praepRegel(w2.ipGeberTx(w2.bert, w2.bert, w2.p.K, w2.anna, ipDeckung), z+2); r != "quanten_w_form" {
+	if r := w2.praepRegel(w2.ipGeberTx(w2.bert, w2.bert, w2.p.K, w2.anna, ipPfand), z+2); r != "quanten_w_form" {
 		t.Errorf("Pfandgeber vor dem Stichtag: %q", r)
 	}
 }
@@ -500,6 +503,9 @@ func TestQuantenSIPfand_AnsichtDeckung(t *testing.T) {
 	if d, _ := w.ansicht()["deckung"].(int64); d != ipDeckung {
 		t.Fatalf("deckung in der Ansicht: %v", w.ansicht()["deckung"])
 	}
+	if p, _ := w.ansicht()["pfand_bindung"].(int64); p != ipPfand || ipPfand != ipDeckung+ipDeckung/10 {
+		t.Fatalf("pfand_bindung in der Ansicht: %v", w.ansicht()["pfand_bindung"])
+	}
 }
 
 // Die Nachricht des Pfandgebers -- dieselbe Zeichenkette prueft die App
@@ -510,5 +516,17 @@ func TestQuantenSIPfand_NachrichtWieApp(t *testing.T) {
 	soll := "aequitas-quanten-s-ipfand-v1|chain:1926|0xab" + strings.Repeat("00", 19) + "|" + strings.Repeat("a", 64) + "|0xcd" + strings.Repeat("00", 19) + "|10000000"
 	if got := quantenSIPfandNachricht(von, strings.Repeat("a", 64), inhaber, 10_000_000); got != soll {
 		t.Fatalf("Nachricht\n %s\nerwartet\n %s", got, soll)
+	}
+}
+
+// Pfand = D + ceil(D * 10 %), auch bei krummen Betraegen und gesaettigt.
+func TestQuantenSIPfand_Hoehe(t *testing.T) {
+	for d, soll := range map[int64]int64{1_000_000: 1_100_000, 1_000_001: 1_100_002, 99: 109, 100: 110, 1: 2} {
+		if got := quantenSIPfandFuer(d); got != soll {
+			t.Errorf("Pfand zu %d: %d, erwartet %d", d, got, soll)
+		}
+	}
+	if quantenSIPfandFuer(math.MaxInt64) != math.MaxInt64 {
+		t.Error("nicht gesaettigt")
 	}
 }

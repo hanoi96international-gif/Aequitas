@@ -25,7 +25,12 @@ func neuePfandWelt(t *testing.T, ab int64) *qwWelt {
 	w := neuePraepWelt(t)
 	quantenSLosBehaltenAbOverride.Store(qwT0 - 86400)
 	quantenSPfaenderAbOverride.Store(ab)
-	t.Cleanup(func() { quantenSLosBehaltenAbOverride.Store(0); quantenSPfaenderAbOverride.Store(0) })
+	quantenSPraepPfandAbOverride.Store(ab) // P2 hat seit dem 26.11. einen eigenen Stichtag
+	t.Cleanup(func() {
+		quantenSLosBehaltenAbOverride.Store(0)
+		quantenSPfaenderAbOverride.Store(0)
+		quantenSPraepPfandAbOverride.Store(0)
+	})
 	w.nullifier(pfNAnna, w.anna)
 	return w
 }
@@ -510,7 +515,7 @@ func TestQuantenSPfand_Nullifier_RealDB(t *testing.T) {
 // vorher gesperrt sein muss -- und der zweite Knoten spielt sie nach.
 func TestQuantenSPfand_Annahme(t *testing.T) {
 	w := neuePfandWelt(t, 1)
-	for _, o := range []*atomic.Int64{&quantenWAbOverride, &quantenSWegBAbOverride, &quantenSLosBehaltenAbOverride} {
+	for _, o := range []*atomic.Int64{&quantenWAbOverride, &quantenSWegBAbOverride, &quantenSLosBehaltenAbOverride, &quantenSPraepPfandAbOverride} {
 		o.Store(1)
 	}
 	jetzt := nowUnix()
@@ -580,7 +585,7 @@ func TestQuantenSPfand_Annahme(t *testing.T) {
 // HTTP: vor dem Stichtag der Pfaender antwortet die Rueckgabe mit 409.
 func TestQuantenSPfand_HTTPSchlafend(t *testing.T) {
 	w := neuePfandWelt(t, math.MaxInt64)
-	for _, o := range []*atomic.Int64{&quantenWAbOverride, &quantenSWegBAbOverride, &quantenSLosBehaltenAbOverride} {
+	for _, o := range []*atomic.Int64{&quantenWAbOverride, &quantenSWegBAbOverride, &quantenSLosBehaltenAbOverride, &quantenSPraepPfandAbOverride} {
 		o.Store(1)
 	}
 	a := &APIServer{state: w.cs}
@@ -596,5 +601,32 @@ func TestQuantenSPfand_HTTPSchlafend(t *testing.T) {
 	quantenSPfaenderAbOverride.Store(1)
 	if b := rufe(); !strings.Contains(b, "quanten_s_pfand_unbekannt") {
 		t.Fatalf("aktiv, ohne Pfand: %s", b)
+	}
+}
+
+// Seit dem 26.11. (Befund, Betreiber): der Stichtag der Pfaender schaltet das
+// Pfand je Praeparatorin NICHT ein -- Melden kostet nichts, ins Los kommt man
+// ohne Pfand.
+func TestQuantenSPfand_EigenerStichtag(t *testing.T) {
+	w := neuePfandWelt(t, qwT0-86400)
+	quantenSPraepPfandAbOverride.Store(math.MaxInt64)
+	z := qwT0
+	anna := w.stand(w.cs, w.anna)
+	tx := w.annehmen(praepTx(t, quantenSPraepMeldenTxArt, w.anna, w.keys[w.anna], z), z)
+	if tx.QuantenW.Pfand != 0 || w.stand(w.cs, w.anna) != anna || w.praep(w.anna).Pfand != 0 {
+		t.Fatal("Pfand genommen, obwohl P2 schlaeft")
+	}
+	if a := w.abbild(w.cs, z+quantenSPraepVorlauf+10); len(a) != 1 || a[0] != w.anna {
+		t.Fatalf("ohne Pfand nicht im Los: %v", a)
+	}
+	if _, da := quantenWStatus()["praep_pfand_ab"]; da {
+		t.Error("praep_pfand_ab im Status, obwohl schlafend")
+	}
+	if !quantenSPfaenderAktiv(z) || quantenSPraepPfandAktiv(z) {
+		t.Fatal("Vorbedingung: Pfaender aktiv, P2 schlafend")
+	}
+	// Kein "Nachlegen" ohne P2: ein zweites Melden bleibt doppelt.
+	if r := w.praepRegel(praepTx(t, quantenSPraepMeldenTxArt, w.anna, w.keys[w.anna], z+10), z+10); r != "quanten_s_praep_doppelt" {
+		t.Fatalf("zweites Melden ohne P2: %q", r)
 	}
 }

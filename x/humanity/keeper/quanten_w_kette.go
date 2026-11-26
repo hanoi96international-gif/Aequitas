@@ -281,6 +281,9 @@ type QuantenWZufall struct {
 type QuantenWOffen struct {
 	Anteile []QuantenWAnteilAngabe `json:"anteile"`
 	Pfad    []string               `json:"pfad"`
+	// P4b, nur beim Nachweis einer Faelschung (quanten_s_faelschung.go): der
+	// Wert w selbst (hex) statt der Anteile. Sonst immer leer.
+	W string `json:"w,omitempty"`
 }
 
 // QuantenWAnteilAngabe: Y hexadezimal (hoechstens 32 Zeichen, < 2^127 - 1).
@@ -1270,7 +1273,7 @@ func quantenWToteAufraeumen(neu *quantenWRegister, blockZeit int64) bool {
 func quantenWOffenLesen(in []QuantenWOffen) ([]quantenWOffenStelle, bool) {
 	var out []quantenWOffenStelle
 	for _, o := range in {
-		if len(o.Anteile) == 0 || len(o.Anteile) > quantenWTMax || len(o.Pfad) > quantenWPfadMax {
+		if len(o.Anteile) == 0 || len(o.Anteile) > quantenWTMax || len(o.Pfad) > quantenWPfadMax || o.W != "" {
 			return nil, false
 		}
 		var s quantenWOffenStelle

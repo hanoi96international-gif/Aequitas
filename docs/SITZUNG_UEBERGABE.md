@@ -7,37 +7,66 @@ Repos); davor ~13:40 UTC Sitzung „Weiter“ (`claude/weiter-uw2p42`), davor ~1
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
-**Nachtrag 26.11. ~18:30 UTC — HIER WEITERMACHEN:**
-- **Stichtag P2a = 27.11.2026 07:00 UTC**: gemergt (#673 92a92bb0) und **auf C1 ausgerollt** (Deploy 45869279201
-  erfolgreich). Nach 07:00 UTC prüfen: `/api/status` zeigt `quanten_w.los_ab = 1795762800`, und neue Weg-B-Token
-  zeigen `los` in `/api/quanten-w/note`. Die App liest Token-Stand und Register nicht streng; neue Felder stören nicht.
-- **P4 gemergt** (#674 f12f20d2; Mutationen 41 rot, 9 gleichwertig). Deploy 45874676871 wartet auf Freigabe;
-  nicht eilig, der Code schläft.
-- **#675 gemergt** (355e3d47): Pfandgeber an der Bindung (`pfand_von`, `pfand_sig`, Domäne
-  `aequitas-quanten-s-ipfand-v1|chain|pfand_von|K|inhaber|betrag`).
-  - Grund: Der Schlüssel der Inhaberin ist je Token frisch und hat kein Guthaben.
-  - Die App muss bei der Bindung die Menschen-Wallet als Pfandgeber unterschreiben lassen.
-- **App P5a gemergt** (App #142 e639cd84): Pfand der Präparatorin anzeigen, nachlegen, zurückholen.
-- **Nächster Schritt P5b (App):** Bindung mit Pfandgeber.
-  - In `lib/quantenSInhaberin.ts` `einloesen`: ab dem Stichtag `pfand_von` = Menschen-Wallet, `pfand_sig` =
-    Unterschrift der Menschen-Wallet über die Nachricht oben, Betrag = Deckung auf der Kette (`deckung` aus der
-    Ansicht).
-  - Vorher anzeigen und bestätigen.
-  - Rückgabe `s_ipfand_zurueck {k}` nach `pfand_inhaberin_zurueck_nach`.
-  - Danach P5c (Stelle B, Nachweis).
-- **Plan Pfänder im Knoten fertig: P1, P2a, P2, P3, P4.** Alles hinter `quantenSPfaenderAbUnix` (schlafend).
-- **Nächster Schritt P5: App** (Repo Aequitas-App, Zweig `claude/uebergabe-fortsetzen-8sor22`, Basis `aequitas-app`):
-  1. Status lesen: `quanten_w.pfaender_ab`. Daran erkennt die App, ob die Pfänder gelten.
-  2. Präparatorin: Pfand 10 AEQ vor dem Melden anzeigen und bestätigen; „nachlegen“ für Gemeldete ohne Pfand;
-     Rückgabe `s_pfand_zurueck {k}` ab `pfand_zurueck_ab`. Das Register liefert `pfand` und `pfand_zurueck_ab`.
-  3. Inhaberin: vor der Bindung „Pfand = Deckung D“ zeigen; Guthaben ≥ D prüfen; nach dem Ende + 7 Tagen
-     `s_ipfand_zurueck {k}`. Die Token-Ansicht liefert `pfand_inhaberin` und `pfand_inhaberin_zurueck_nach`.
-  4. Stelle B: Öffnungen der Gelosten und Vorlage **7 Tage aufbewahren**. Ist der Token an A eingelöst
-     (`nachweis_stelle` = eigene Stelle, `nachweis_bis` in der Zukunft): `s_faelschung_anmelden` (eigene Domäne
-     `aequitas-quanten-s-faelschung-anmelden-v1`, sonst wie `anmeldenNachricht`), dann `s_faelschung_offenlegen` in
-     Teilen wie beim Einlösen.
-  5. Die App rechnet das Abbild nicht nach (das tut die Kette), keine Änderung nötig.
-  Erst nach dem Release mit P5 den Stichtag der Pfänder setzen (Betreiber).
+**Stand 26.11. ~21:00 UTC — HIER WEITERMACHEN** (Sitzung „Weiter mit Übergabe“, Zweig
+`claude/uebergabe-fortsetzen-8sor22` in allen vier Repos; Aequitas-Basis `main`, App-Basis `aequitas-app`):
+
+**Offen, in dieser Reihenfolge:**
+1. **Knoten-PR #677** (Aequitas). Inhalt:
+   - P4b: Der Nachweis legt Werte w mit Merkle-Pfad offen statt Anteilen.
+   - Die Entscheidung des Betreibers ist umgesetzt (siehe unten).
+   - Zwei Sicherheitskommentare stehen im PR.
+   - Lokal: Race-Suite grün, Mutationen rot.
+   - Bei grüner CI mergen (Squash, volle 40-stellige SHA **lesen, nicht raten**), dann den Zweig zurücksetzen
+     (`git checkout -B <zweig> origin/main` + `git merge -s ours origin/<zweig>` + Push).
+2. **App-PR #144** (Aequitas-App). Die App liest `praep_pfand_ab` und `pfand_bindung`, Text „Deckung plus 10 %“.
+   Merge nach #677.
+3. **Deploys von C1 (Betreiber gibt frei):** #676 (Run 45883930887, Feld `deckung`) wartet. Nach dem Merge von #677
+   kommt ein neuer Lauf, der beides enthält; die älteren wartenden Läufe kann der Betreiber ablehnen. Alles darin
+   schläft.
+4. **Stichtag P2a** (Los je Token): 27.11.2026 07:00 UTC, auf C1 ausgerollt. Danach prüfen:
+   `/api/status` → `quanten_w.los_ab = 1795762800`; ein neuer Weg-B-Token zeigt `los` in `/api/quanten-w/note`.
+
+**Entscheidungen des Betreibers am 26.11.** (Details in `DEZENTRAL.md`, Abschnitte „BEFUND, Blocker“ und
+„Entscheidung des Betreibers (26.11.)“):
+- **Nur die Inhaberin haftet.** Ein bestandener Nachweis (P4) gibt nur ihr Pfand an Stelle B.
+  - Grund: Die Öffnungen gehen an beide Stellen. Eine Stelle B, die mit der Inhaberin zusammenarbeitet, kennt die
+    Werte ihrer Stichprobe; ein Verfall der Gelosten ließe ehrliche Präparatorinnen abschöpfen.
+- **Pfand der Inhaberin = Deckung + 10 %** (`quantenSIPfandFuer`). Es kommt vom **Pfandgeber** (Menschen-Wallet,
+  #675), weil der Schlüssel der Inhaberin je Token frisch ist und kein Guthaben hat.
+- **Pfand der Präparatorinnen (P2) wird nicht verlangt.** Es hat einen eigenen Stichtag `quantenSPraepPfandAbUnix`
+  und schläft. Der Stichtag der Pfänder schaltet es nicht ein.
+- Stichtag P2a: 27.11. 07:00 UTC (früher am Tag entschieden).
+
+**Nächste Schritte (nach 1–3):**
+1. **P5c (App, Stelle B): Nachweis einer Fälschung**, mit Werten statt Anteilen.
+   - **Aufbewahren:** Beim Annehmen (`lib/quantenSStelle.ts` `annehmenAlsStelle`; Weg B `lib/quantenSStelleWegB.ts`)
+     verschlüsselt in der Ablage aufbewahren, bis `nachweis_bis` (7 Tage nach dem Ende) vorbei ist:
+     - Vorlage (K, b, x, Unterschrift der Inhaberin), Stichprobe, Salze;
+     - je Stelle der Stichprobe den Wert w (aus den Öffnungen, `oe`) und den Merkle-Pfad aus den Blättern.
+   - **Auslöser:** Das eigene Anmelden scheitert, weil der Token an der anderen Stelle eingelöst ist. In der Ansicht
+     steht dann `tot`, Urteil eingelöst, `nachweis_stelle` = eigene Nummer und `nachweis_bis` > jetzt. Dann
+     erscheint die Karte „Fälschung nachweisen“.
+   - **Anmelden:** `s_faelschung_anmelden` mit {k, b, x, probe, vorlage, salze, wallet_sig}. Die Unterschrift der
+     Stelle geht über `aequitas-quanten-s-faelschung-anmelden-v1|chain:1926|wallet|K|b|sha256(x)|sha256(probe)|fehl`
+     (`fehl` aus der Ansicht des Nachweises, anfangs 0).
+   - **Offenlegen:** `s_faelschung_offenlegen` in Teilen zu höchstens 64 Stellen, ohne Wallet und Zeit, je Stelle
+     `{anteile: [], pfad: [...], w: "<hex, klein, ohne führende Null>"}`. `anteile` muss leer sein.
+   - **Erfolg:** Urteil `faelschung`; B bekommt das Pfand der Inhaberin (D + 10 %).
+   - **Gegenprobe:** Knoten-Test `TestQuantenSFaelschung_WerteStattAnteile`, Helfer `fwWerteTx`.
+2. **Spezifikation nachziehen:** `forschung/quantengeld/s_pfaender.py` (P1) rechnet noch mit „10 % je Gelostem“
+   und Pfand = D. An die Entscheidung anpassen (nur Inhaberin, D + 10 %, P2 ohne Verfall), Selbsttest grün halten.
+3. **App-Release:** Version hochzählen, `build-apk.yml` (Variante release), Signieren, `release-apk.yml`.
+4. **Stichtag der Pfänder** (`quantenSPfaenderAbUnix`) erst nach dem Release mit P5c; der Betreiber nennt Datum
+   und Uhrzeit. `quantenSPraepPfandAbUnix` bleibt schlafend.
+
+**Lehren dieser Sitzung** (ergänzt die Liste im Abschnitt von 16:00 UTC):
+- **Jede „Beweis“-Regel gegen Absprachen prüfen.** Wer bekommt die Daten legal? Die Öffnungen gehen an beide
+  Stellen, also beweist „B besteht nach A“ kein Leck der Gelosten.
+- **Einen Nachweis nicht von den Beschuldigten abhängig machen.** Anteile der Mitfälscher waren nötig, jetzt
+  reichen Werte mit Pfad.
+- **Konten, die Geld geben sollen, auf Guthaben prüfen.** Der Inhaberin-Schlüssel ist frisch, daher der
+  Pfandgeber.
+- **Merge-SHA immer mit `git rev-parse` lesen, nie aus Kurzform raten** (409 bei #676).
 
 **Stand 26.11. ~16:00 UTC — HIER WEITERMACHEN** (Sitzung „Weiter mit Übergabe“, Zweig
 `claude/uebergabe-fortsetzen-8sor22` in allen vier Repos):

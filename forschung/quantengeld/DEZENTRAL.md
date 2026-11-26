@@ -2345,6 +2345,54 @@ und P4 tragen wird; `x/humanity/keeper/quanten_s_pfaender.go`):
   Ein überlebender Mutant zeigte vor dem Test einen echten Fehlerfall: Stünde nur noch ein Pfand im Register und
   zählte `leer()` es nicht mit, fiele es aus Kodierung und StateRoot.
 
+**BEFUND, Blocker für den Stichtag der Pfänder (26.11.): Die Strafe der Gelosten ist durch eine Absprache von
+Inhaberin und Stelle B ausnutzbar.**
+
+- **Warum der Nachweis nichts beweist:** Die Validatoren geben die Öffnung für Stelle b an **jede** der beiden
+  Stellen, sobald Bindung und Wahl final sind (`oeffnungFuerStelle`). Das muss so sein: Die gewählte Stelle verbirgt
+  die Maske z, und jede Stelle muss offline prüfen können.
+- **Ablauf des Angriffs:** Eine Stelle B, die mit der Inhaberin zusammenarbeitet, kennt damit die Werte ihrer
+  Stichprobe. Die Inhaberin baut eine passende Vorlage für B und löst bei A ein. B führt den „Nachweis“, und er
+  besteht.
+- **Folge:** B bekommt das Pfand der Inhaberin, also Geld zwischen den beiden. Dazu bekommt B **je 10 % des Pfands
+  jeder ehrlichen Gelosten**. Das ist pro Token wiederholbar.
+- **Damit fällt die Annahme der Spezifikation** („beides zugleich geht ohne Kopie nicht, also haben ≥ t Geloste
+  geteilt“): Die andere Stelle kann die Kopie selbst geliefert haben.
+- **Was trägt:** Der Teil „Pfand der Inhaberin an B“. Bei einer Absprache bewegt er nur Geld zwischen den
+  Beteiligten, bei echtem Betrug ersetzt er B genau den Schaden D.
+
+**Entscheidung des Betreibers (26.11.):** Er verlangte zuerst eine genaue Prüfung, was das Beste ist; danach galten
+diese Punkte:
+- **Nur die Inhaberin haftet.** Ein bestandener Nachweis gibt nur ihr Pfand an Stelle B. Begründung der Prüfung:
+  - Die Kette kann eine echte Fälschung (Geloste haben geteilt) nicht von einer Absprache mit B unterscheiden.
+    Beide hinterlassen dieselben Spuren; die Öffnungen müssen an beide Stellen gehen; die gewählte Stelle ist durch
+    die Maske verborgen.
+  - Wer geleakt hat, ist nicht zuordenbar (t von v Anteilen, jede t-Gruppe reicht).
+  - Abschreckung trägt allein das Pfand der Inhaberin: Mit D + 10 % verliert der Ring je Fälschung sicher 10 % von
+    D, also bleibt kein Geld, um Geloste zu bestechen.
+  - B bekommt mehr als ihren Schaden und führt den Nachweis deshalb.
+- **Pfand der Inhaberin = D + 10 %** (`quantenSIPfandFuer`, aufgerundet, gesättigt). Die Ansicht nennt
+  `pfand_bindung`; das unterschreibt der Pfandgeber.
+- **Pfand der Präparatorinnen wird nicht verlangt.** Ohne Verfall wäre es nur gebundenes Geld. Der Code von P2
+  bleibt, schläft aber hinter einem eigenen Stichtag `quantenSPraepPfandAbUnix` (Status `praep_pfand_ab`); der
+  Stichtag der Pfänder schaltet ihn nicht mit ein.
+
+**Befund beim Bau von P5c (26.11.): Der Nachweis bräuchte die Anteile der Mitfälscher.**
+
+`quanten_w_s_faelschung_offenlegen` nutzt wie das Einlösen `quantenWAuswerten`. Die Kette setzt dabei den Wert w jeder
+Stelle aus t Anteilen der Gelosten zusammen. Bei einer Fälschung haben aber mindestens t Gelosten ihr Wissen
+geteilt. Halten sie ihre Anteile zurück, bleiben v − t Ehrliche, oft weniger als t (bei 4 von 7 sind es 3). Der
+Nachweis wäre also genau im Betrugsfall nicht führbar.
+
+**Lösung (P4b, Konsens, schlafend):** Der Nachweis legt die Werte w selbst offen, je Stelle mit dem Merkle-Pfad,
+ohne Anteile.
+- Stelle B hat diese Werte schon aus den Öffnungen beim Annehmen und hat sie gegen die Blätter und die Wurzel
+  geprüft (`oeffnungLaden`).
+- Die Kette prüft dieselbe Prüfsumme `quantenWPruefsumme(K, i, w)` gegen die Wurzel wie beim Einlösen und zerlegt
+  w in Basis und Bit.
+- Ein falsches w scheitert an der Wurzel. Die Anteile waren nur der Weg zu w, nicht der Schutz.
+- Danach P5c (App): Werte und Pfade beim Annehmen aufbewahren, den Nachweis selbst einreichen.
+
 **Befund beim Bau von P5 (App, 26.11.): Die Inhaberin hat kein Guthaben.**
 
 Die App erzeugt je Token einen frischen Schlüssel der Inhaberin. P3 nahm das Pfand (= D) von genau dieser Adresse,

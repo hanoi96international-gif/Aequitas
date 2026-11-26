@@ -662,8 +662,11 @@ func (cs *ChainState) quantenWSTokenAnsichtLocked(ctx context.Context, reg *quan
 		"stellen": e.Stellen, "gebunden": t.D != nil, "gewaehlt": t.C != -1, "fehl": t.Fehl,
 		// Die Deckung (oeffentlich, steht in der Ausgabe): die App braucht sie fuer
 		// die Unterschrift des Pfandgebers (P3, Betrag = Deckung).
-		"deckung":    t.Deckung,
-		"wert_mikro": quantenWert(e.Anteile, cs.quantenWMikroLocked(ctx, quantenWTopfAddr), reg.summeAnteile())}
+		"deckung": t.Deckung,
+		// P3: was die Bindung ab dem Stichtag der Pfaender als Pfand nimmt
+		// (Deckung + 10 %) -- die App unterschreibt genau diesen Betrag.
+		"pfand_bindung": quantenSIPfandFuer(t.Deckung),
+		"wert_mikro":    quantenWert(e.Anteile, cs.quantenWMikroLocked(ctx, quantenWTopfAddr), reg.summeAnteile())}
 	// Stichprobe v2 (quanten_s_probe_v2.go): nur gesetzt, wenn der Token so
 	// ausgegeben wurde -- dann kannte vor Bindung und Wahl keine Annahmestelle
 	// eine Stelle der Stichproben (Befund 5i greift nicht). Fehlt das Feld,

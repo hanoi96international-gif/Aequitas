@@ -37,6 +37,7 @@ package keeper
 import (
 	"context"
 	"fmt"
+	"math/big"
 	"reflect"
 	"sort"
 	"strconv"
@@ -52,8 +53,6 @@ const (
 	// Zeile in quantenWTabelle (quanten_w_tabelle.go).
 	quantenWArtNachweis = "nachweis"
 
-	// Je Geloster so viel Prozent ihres Pfands an die Stelle B (Betreiber, 25.11.2026).
-	quantenSVerfallProzent = 10
 	// So weit darf die Buchzeit eines Nachweises vor seinem Block liegen.
 	quantenSFaelschungBuchSpiel int64 = 120
 
@@ -235,11 +234,11 @@ func (cs *ChainState) quantenSFaelschungBescheidLocked(ctx context.Context, tx *
 		if t.Anmeldung == nil || q.Ab < 0 || len(q.Offen) == 0 || len(q.Offen) > quantenWOffenTeil {
 			return quantenWBefund("quanten_w_form", "Nachweis offenlegen: Anmeldung, Beginn oder Zahl der Stellen"), nil
 		}
-		offen, ok := quantenWOffenLesen(q.Offen)
+		werte, ok := quantenSWerteLesen(q.Offen)
 		if !ok {
-			return quantenWBefund("quanten_w_form", "Nachweis offenlegen: Anteile oder Pfade nicht in gueltiger Form"), nil
+			return quantenWBefund("quanten_w_form", "Nachweis offenlegen: Werte oder Pfade nicht in gueltiger Form"), nil
 		}
-		fertig, bestanden, err := t.offenlegenTeil(q.K, q.Ab, offen, zeit)
+		fertig, bestanden, err := t.nachweisOffenlegenTeil(q.K, q.Ab, werte, zeit)
 		if err != nil {
 			return quantenWBefund("quanten_w_regel", "%v", err), nil
 		}
@@ -263,28 +262,119 @@ func (cs *ChainState) quantenSFaelschungBescheidLocked(ctx context.Context, tx *
 	return quantenWBefund("quanten_w_form", "keine Art des Nachweises"), nil
 }
 
-// quantenSFaelschungStrafe: der Nachweis besteht. Pfand der Inhaberin und je
-// Geloster quantenSVerfallProzent ihres Pfands an die Stelle an.
+// P4b: der Nachweis legt die WERTE w offen, nicht die Anteile. Bei einer
+// Faelschung haben mindestens t Geloste ihr Wissen geteilt -- halten sie ihre
+// Anteile zurueck, blieben oft weniger als t Ehrliche, und der Nachweis waere
+// genau im Betrugsfall nicht fuehrbar. Stelle B hat die Werte ihrer
+// Stichprobe aus den Oeffnungen beim Annehmen. Geprueft wird dieselbe
+// Pruefsumme gegen die Wurzel wie beim Einloesen: ein falsches w scheitert
+// dort (die Anteile waren nur der Weg zu w, nicht der Schutz).
+
+type quantenSWertStelle struct {
+	W    *big.Int
+	Pfad [][32]byte
+}
+
+// quantenSWerteLesen: je Stelle genau ein Wert (hex, hoechstens 32 Zeichen),
+// keine Anteile, hoechstens quantenWPfadMax Pfadglieder.
+func quantenSWerteLesen(in []QuantenWOffen) ([]quantenSWertStelle, bool) {
+	var out []quantenSWertStelle
+	for _, o := range in {
+		if len(o.Anteile) != 0 || o.W == "" || len(o.W) > 32 || !kleinHex(o.W) || len(o.Pfad) > quantenWPfadMax {
+			return nil, false
+		}
+		w, ok := new(big.Int).SetString(o.W, 16)
+		if !ok {
+			return nil, false
+		}
+		s := quantenSWertStelle{W: w}
+		for _, p := range o.Pfad {
+			h, ok := quantenWHex32(p)
+			if !ok {
+				return nil, false
+			}
+			s.Pfad = append(s.Pfad, h)
+		}
+		out = append(out, s)
+	}
+	return out, true
+}
+
+// quantenSWerteAuswerten: wie quantenWAuswerten, mit dem Wert statt der Anteile.
+func quantenSWerteAuswerten(K string, n int, wurzel [32]byte, stellen, basen, antwort []int, werte []quantenSWertStelle) (treffer, fehler int, err error) {
+	if len(werte) != len(stellen) || len(antwort) != len(stellen) || len(basen) != len(stellen) {
+		return 0, 0, quantenWFehler("Zahl der Stellen")
+	}
+	grenze := new(big.Int).Lsh(big.NewInt(1), quantenWSalzBits+2)
+	for j, i := range stellen {
+		w := werte[j].W
+		if w.Sign() < 0 || w.Cmp(grenze) >= 0 {
+			return 0, 0, quantenWFehler("Stelle %d: Wert zu gross", i)
+		}
+		if !quantenWMerklePruefen(wurzel, quantenWPruefsumme(K, i, w), i, werte[j].Pfad, n) {
+			return 0, 0, quantenWFehler("Stelle %d: Pruefsumme oder Pfad passt nicht", i)
+		}
+		basis, bit := quantenWZerlegen(w)
+		if basis == basen[j] {
+			treffer++
+			if antwort[j] != bit {
+				fehler++
+			}
+		}
+	}
+	return treffer, fehler, nil
+}
+
+// nachweisOffenlegenTeil: wie offenlegenTeil (quanten_s.go), mit Werten.
+func (e *quantenSToken) nachweisOffenlegenTeil(K string, ab int, werte []quantenSWertStelle, zeit int64) (fertig, bestanden bool, err error) {
+	e.frist(zeit)
+	a := e.Anmeldung
+	if a == nil {
+		return false, false, quantenWFehler("Nachweis offenlegen: keine Anmeldung")
+	}
+	if ab != a.Offen || len(werte) < 1 || len(werte) > quantenWOffenTeil || ab+len(werte) > len(a.Probe) {
+		return false, false, quantenWFehler("Nachweis offenlegen: Teil (ab %d, faellig %d, %d Stellen)", ab, a.Offen, len(werte))
+	}
+	bis := ab + len(werte)
+	stellen := a.Probe[ab:bis]
+	basen := make([]int, len(stellen))
+	antwort := make([]int, len(stellen))
+	for j, i := range stellen {
+		basen[j] = e.D[i] ^ a.B ^ e.C
+		antwort[j] = a.X[i]
+	}
+	tr, fe, err := quantenSWerteAuswerten(K, e.N, e.Wurzel, stellen, basen, antwort, werte)
+	if err != nil {
+		return false, false, err
+	}
+	a.Offen, a.Treffer, a.Fehler = bis, a.Treffer+tr, a.Fehler+fe
+	if a.Offen < len(a.Probe) {
+		return false, false, nil
+	}
+	e.Anmeldung = nil
+	if quantenWUrteil(a.Treffer, a.Fehler, e.Tol) != quantenWEcht {
+		e.Fehl++
+		if e.Fehl >= quantenWFehlMax {
+			e.Tot = true
+		}
+		return true, false, nil
+	}
+	return true, true, nil
+}
+
+// quantenSFaelschungStrafe: der Nachweis besteht -- das Pfand der Inhaberin
+// (Deckung + 10 %) an die Stelle an. NUR dieses (Befund 26.11.2026,
+// Entscheidung des Betreibers): Die Oeffnungen gehen an beide Stellen; eine
+// Stelle B, die mit der Inhaberin zusammenarbeitet, kennt also die Werte
+// ihrer Stichprobe und kann einen "Nachweis" bauen. Ein Verfall der Gelosten
+// liesse so ehrliche Praeparatorinnen abschoepfen. Das Pfand der Inhaberin
+// dagegen bewegt bei einer Absprache nur Geld zwischen den Beteiligten und
+// ersetzt bei echtem Betrug den Schaden D (mit Aufschlag).
 func quantenSFaelschungStrafe(u *quantenWBescheid, K, an string) {
 	r := u.reg
 	summe := r.IPfand[K].Betrag
 	u.wege = append(u.wege, quantenWWeg{quantenWPfandAddr, an, summe})
 	delete(r.IPfand, K)
-	for _, konto := range r.Lose[K] {
-		pk := quantenSPraepK(konto)
-		e, ok := r.Praep[pk]
-		if !ok || e.Pfand <= 0 {
-			continue
-		}
-		teil := e.Pfand * quantenSVerfallProzent / 100
-		if teil <= 0 {
-			continue
-		}
-		e.Pfand -= teil // bleibt > 0: teil ist hoechstens ein Zehntel
-		r.Praep[pk] = e
-		u.wege = append(u.wege, quantenWWeg{quantenWPfandAddr, an, teil})
-		summe += teil
-	}
 	quantenSNachweisWeg(r, K)
 	u.felder.Pfand, u.felder.PfandAn, u.felder.Urteil = summe, an, quantenSUrteilFaelschung
 }
