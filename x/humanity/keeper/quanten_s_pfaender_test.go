@@ -466,7 +466,9 @@ func TestQuantenSPfand_Nullifier_RealDB(t *testing.T) {
 	ctx := context.Background()
 	_, a := neuerSchluessel(t)
 	_, b := neuerSchluessel(t)
-	t.Cleanup(func() { cs.db.Exec(`DELETE FROM nullifiers WHERE nullifier IN ($1, $2, $3)`, pfNAnna, pfNBert, "3"+pfNAnna[1:]) })
+	t.Cleanup(func() {
+		cs.db.Exec(`DELETE FROM nullifiers WHERE nullifier IN ($1, $2, $3)`, pfNAnna, pfNBert, "3"+pfNAnna[1:])
+	})
 	frage := func(w string) (string, bool) {
 		cs.mu.Lock()
 		defer cs.mu.Unlock()
