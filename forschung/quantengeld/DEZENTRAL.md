@@ -1917,7 +1917,7 @@ Handys schickt und Antworten und Bündel einsammelt. Reihenfolge:
    einsammeln, Ausgabe gegen das Los einreichen (wie `quanten_s_rollen.go`, aber über den Briefkasten).
 3. **4c-3 Oberfläche** (Expo 54, vorher die Doku der Version lesen): Karte der Präparatorin (IBM-Schlüssel
    eingeben, Stand, offene Aufträge), Karte der Ausgabe in Weg B; 12 Sprachen.
-4. Danach: App-Release, Stichtag Weg B (Betreiber), Pilot B5 mit mindestens 7 Menschen.
+4. Danach: App-Release, Stichtag Weg B (Betreiber), Pilot B5 (4 von 7 braucht mindestens 21 gemeldete Präparatorinnen, Kettenregel 3·v).
 
 **4c-1 vollständig (24.11.2026, App #120–#125):** 4c-1b `antwortBauen`/`antwortAufAuftrag` (der B4b-3b-Vektor
 entsteht Byte für Byte gleich), 4c-1c Tresor (Seed + `drbg` statt großer Werte, AES-256-GCM in der Ablage, Schlüssel
@@ -2463,6 +2463,44 @@ Der Deploy von C1 muss vor 06:30 UTC freigegeben sein; der Wächter verlangt 30 
   - Ohne die Bedingung „nur mit Pfand der Inhaberin“ entstünde ein Nachweis, der das Register unlesbar macht.
   - Ohne die Prüfung von `An` (0 oder 1) beim Lesen stürzte ein späterer Nachweis ab.
 
+### Prüfung der Arbeiten zum Quantengeld (26.11.2026, zweite Sitzung): Befunde und Korrekturen
+
+Auftrag des Betreibers: „Überprüfe alle bisher gemachten Arbeiten zum Quantengeld“, dann „Alles beheben“ und „so
+bauen, dass die App nicht zu viel verspricht“. Parallel zur Sitzung, die P4b gebaut hat.
+
+**1. Strafe der Gelosten im Nachweis** — derselbe Befund wie oben („BEFUND, Blocker“), unabhängig gefunden und mit
+einem Test belegt: Mit **nur** den Öffnungsdaten ihrer eigenen Stichprobe besteht eine Stelle B der Inhaberin den
+Nachweis (`TestQuantenSFaelschung_EigeneStelleB`; im Versuch 16 geänderte Stellen, ohne unehrliche Geloste). Im
+Knoten mit #677 behoben (nur die Inhaberin haftet). Nachgezogen: die Spezifikation `s_pfaender.py` (Pfand der
+Inhaberin = D + 10 %, kein Verfall der Gelosten, Angriff „eigene Stelle B“ im Selbsttest) und der veraltete Kopf von
+`quanten_s_faelschung.go`.
+
+**2. Der Pilot passte nicht zur Kettenregel.**
+- Die Kette verlangt mindestens 3·v Gemeldete im Abbild (`quanten_s_bestellung.go`), ohne den Ausgeber und nur
+  solche, die mindestens einen Tag vor der Bestellung gemeldet sind: **21 für v = 7, 12 für v = 4.**
+- `docs/PILOT_WEG_B.md` nannte „9–10 gemeldet“, die App gab v = 7 vor. Jetzt: Anleitung mit den richtigen Zahlen;
+  die App zeigt vor dem Bestellen, wie viele im Los wären und wie viele nötig sind, und bestellt nicht, wenn es nicht
+  reicht (`losGroesse`, gleiche Auswahl wie `quantenSPraepAbbildLocked`; die Kette prüft weiter selbst).
+
+**3. Die App versprach mehr, als das Verfahren hält.**
+- „niemand kann sie kopieren, auch nicht, wer sie prägt“ gilt für Quantenzustände (Variante W), die heute niemand
+  halten kann. Die S-Token, die laufen, sind nach der Ausgabe gewöhnliche Daten. Wer einen Abschnitt präpariert,
+  misst auf dem Quantenrechner auch für die Inhaberin; er und sein Anbieter (heute IBM) kennen den Abschnitt. Gegen
+  Fälschung schützt, dass weniger als t der v zusammenarbeiten, und dass die Kette jeden Token nur einmal einlöst.
+- Die App sagt das jetzt so (12 Sprachen; Test `quantengeldVersprechen.test.ts`). Auch die Markenzeile sagt statt
+  „eine Kopie hat die Kette abgewiesen“ jetzt „eine zweite Vorlage desselben Tokens“.
+
+**4. Stichtag der Pfänder nach der Buchzeit (Konsens, schlafend).**
+- Die Buchzeit darf gut 7 Tage vor dem Block liegen; über sie entschied sich, ob die Pfänder gelten. Ein
+  Blockerzeuger hätte eine Bindung nach dem Stichtag mit Buchzeit davor verbuchen können (ohne Pfand der Inhaberin).
+- Jetzt wie beim Wechsel der Chain-ID (`quanten_s_pfaender_grenze.go`): Buchzeit vor dem Stichtag ⇒ Block vor dem
+  Stichtag (sonst ist der Block falsch), der Erzeuger wählt die Blockzeit danach, und 5 Minuten vor dem Stichtag
+  nimmt der Knoten keine W-Transaktion an (wiederholbar, 503). Schlafend ändert sich nichts.
+- Bewusst **nicht** für „Los behalten“ (P2a, Stichtag 27.11.2026 07:00 UTC, schon ausgerollt): eine Regeländerung
+  dort bräuchte einen eigenen Stichtag; seit #677 hängt am Los kein Geld mehr.
+- Tests: Missbrauch (zurückdatiert über den Stichtag, Fenster des Erzeugers, Pause über den echten Annahmeweg);
+  6 Mutationen rot (Grenze, Vergleich, Fenster, Pause-Beginn, Pause in der Annahme, Fenster im Erzeuger).
+
 ### Offen vor dem Stichtag: Pfand je Präparator und Beweisweg (aus PR #628, 22.11.)
 
 PR #628 (B2 als ein Stück, geschlossen am 23.11., durch B2a–B2d ersetzt; Zweig
@@ -2490,5 +2528,5 @@ PR #628 (B2 als ein Stück, geschlossen am 23.11., durch B2a–B2d ersetzt; Zwei
 | B2 (gesamt) | Kette: Präparatoren-Register (B2a gebaut), Zufall aus Zusage und Offenlegung, Los, Prüfung der Ausgabe gegen das Los, Pfand. Konsensänderung mit Stichtag, eigene Sicherheitsprüfung, Prüfvektor aus `s_weg_b.py`. |
 | B3 | Briefkasten bei den Knoten: verschlüsselte Pakete (Basen y, Anteile, Öffnungen) ablegen und abholen, begrenzt je Absender und Größe. |
 | B4 | App als Präparatorin: IBM-Schlüssel nur im Gerät, Auftrag über die REST-Schnittstelle, Abschnitt präparieren, Anteile verteilen, nach der Bindung öffnen. |
-| B5 | Pilot im Hauptnetz mit mindestens 7 Menschen (4 von 7); erst danach größere v. |
+| B5 | Pilot im Hauptnetz, 4 von 7 (mindestens 21 gemeldete Präparatorinnen, Kettenregel 3·v); erst danach größere v. |
 

@@ -153,6 +153,9 @@ func auftragsFenster(tx *Transaction, jetzt int64) zeitFenster {
 		// Jeder Knoten rechnet mit BuchAt (quantenWBuchZeit): nur in Bloecke,
 		// zu denen es passt.
 		f.eng(sattAdd(tx.BuchAt, -60), sattAdd(tx.BuchAt, quantenWBuchSpielFuer(tx.Type)))
+		// Buchzeit vor dem Stichtag der Pfaender: Block vor dem Stichtag
+		// (quanten_s_pfaender_grenze.go).
+		quantenSPfaenderFenster(tx, &f)
 		if tx.Type == quantenWPraegenTxArt || tx.Type == quantenWAnfrageTxArt {
 			f.eng(sattAdd(tx.DistributionAt, -quantenWVoraus), sattAdd(tx.DistributionAt, quantenWAlt))
 		}
