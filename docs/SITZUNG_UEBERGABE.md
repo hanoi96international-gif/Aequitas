@@ -10,7 +10,10 @@ dezentrales Quantengeld“.
 **Stand 26.11. ~21:00 UTC — HIER WEITERMACHEN** (Sitzung „Weiter mit Übergabe“, Zweig
 `claude/uebergabe-fortsetzen-8sor22` in allen vier Repos; Aequitas-Basis `main`, App-Basis `aequitas-app`):
 
-**Offen, in dieser Reihenfolge:**
+**Erledigt ~20:20 UTC:** #677 gemergt (35b1ff97), App #144 gemergt (cc4ead49), Zweige zurückgesetzt. Der neue Deploy
+von C1 (nach #677) enthält #676 und #677; die älteren wartenden Läufe kann der Betreiber ablehnen.
+
+**Offen, in dieser Reihenfolge (Punkte 1 und 2 erledigt):**
 1. **Knoten-PR #677** (Aequitas). Inhalt:
    - P4b: Der Nachweis legt Werte w mit Merkle-Pfad offen statt Anteilen.
    - Die Entscheidung des Betreibers ist umgesetzt (siehe unten).
