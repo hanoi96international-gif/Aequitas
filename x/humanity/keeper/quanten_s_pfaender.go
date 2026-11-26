@@ -200,16 +200,6 @@ func quantenSPraepGebunden(reg *quantenWRegister, konto string, zeit int64) bool
 		if reg.Token[k] != nil {
 			return true
 		}
-		// P4: ein Nachweis bindet bis zum Ende seiner Frist und, ist er
-		// angemeldet, bis die Anmeldung verfaellt.
-		if n := reg.Nachweis[k]; n != nil {
-			if quantenSNachweisOffen(n, zeit) || zeit <= sattAdd(n.Ende, quantenSNachweisFrist) {
-				return true
-			}
-			if _, tot := reg.Tote[k]; !tot {
-				continue // nur noch fuer den Nachweis da: Frist vorbei, keine Anmeldung offen
-			}
-		}
 		en, ok := reg.Enden[k]
 		if !ok || zeit <= sattAdd(en.Ende, quantenSNachweisFrist) {
 			return true

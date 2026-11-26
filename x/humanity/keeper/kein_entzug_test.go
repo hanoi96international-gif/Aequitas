@@ -117,9 +117,6 @@ var replayArten = map[string]geldArt{
 	"quanten_w_s_pfand_zurueck": geldNurGutschrift,
 	// P3 (quanten_s_inhaberin_pfand.go): Rueckgabe vom Topf an die Inhaberin.
 	"quanten_w_s_ipfand_zurueck": geldNurGutschrift,
-	// P4 (quanten_s_faelschung.go): Nachweis; zahlt nur aus dem Pfandtopf an die Stelle.
-	"quanten_w_s_faelschung_anmelden":   geldNurGutschrift,
-	"quanten_w_s_faelschung_offenlegen": geldNurGutschrift,
 	// Weg B (quanten_s_bestellung.go): Bestellung (Pfand mit Unterschrift), Los und Frist.
 	"quanten_w_s_bestellen":            geldUnterschrieben, // nimmt mit Unterschrift das Pfand vom Ausgeber
 	"quanten_w_s_losen":                geldNurGutschrift,
@@ -214,9 +211,6 @@ var ersetzbareKonstanten = map[string]string{
 	"quantenSPfandZurueckTxArt": quantenSPfandZurueckTxArt,
 	// quanten_s_inhaberin_pfand.go
 	"quantenSIPfandZurueckTxArt": quantenSIPfandZurueckTxArt,
-	// quanten_s_faelschung.go
-	"quantenSFaelschungAnmeldenTxArt":   quantenSFaelschungAnmeldenTxArt,
-	"quantenSFaelschungOffenlegenTxArt": quantenSFaelschungOffenlegenTxArt,
 }
 
 // replaySwitchArten liest die Arten des Nachspiel-Switches aus block.go

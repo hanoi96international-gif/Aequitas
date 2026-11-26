@@ -129,7 +129,7 @@ func quantenSLoseLesen(fs []quantenSLosForm, r *quantenWRegister) (map[string][]
 			if e.token.NVal != len(f.Los) {
 				return nil, fmt.Errorf("quanten_w: Los %s: v passt nicht zum Token", f.K[:12])
 			}
-		} else if _, tot := r.Tote[f.K]; !tot && r.Nachweis[f.K] == nil {
+		} else if _, tot := r.Tote[f.K]; !tot {
 			return nil, fmt.Errorf("quanten_w: Los %s ohne Token", f.K[:12])
 		}
 		out[f.K] = slices.Clone(f.Los)
