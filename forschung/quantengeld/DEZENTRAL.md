@@ -2319,6 +2319,32 @@ und P4 tragen wird; `x/humanity/keeper/quanten_s_pfaender.go`):
   „wiederholen“ abgewiesen worden. Die Tests hatten nur den Bescheid aufgerufen. Jetzt sperrt die Annahme beide.
   Ein Test über den echten Annahmeweg deckt beide Fälle ab (Umzug und ohne Nullifier), dazu 2 Mutationen rot.
 
+**P3 gebaut** (26.11., Konsens, schlafend hinter dem Stichtag der Pfänder; `quanten_s_inhaberin_pfand.go`):
+- **Bindung:** Ab dem Stichtag nimmt die Bindung eines S-Tokens die Deckung D als Pfand von der Inhaberin
+  (Wallet → Pfandtopf). Ohne Deckung gibt es keine Bindung. Der Eintrag merkt sich Konto und Nullifier.
+- **Ende:** Endet der Token (eingelöst oder tot), hält der Eintrag die Zeit des Endes fest. Er bleibt, bis das Pfand
+  zurück ist, auch nachdem der tote Eintrag aufgeräumt ist.
+- **Rückgabe:** Neue Art `quanten_w_s_ipfand_zurueck`; jeder darf sie auslösen. Sie geht erst nach Ende + 7 Tagen,
+  an die Wallet des Nullifiers, ohne Nullifier an das Konto.
+- **Gilt für jeden S-Token, auch für Weg A.** Auch dort können die Validatoren mit der Inhaberin zusammen fälschen.
+- **Kein neuer Token mit K, solange zu K ein Pfand liegt.** Sonst überschriebe der neue Token das alte Pfand: Das
+  Geld läge für immer im Topf, und das Register wäre nicht mehr lesbar. Dieser Befund kam beim Bau.
+- **Grenze:** So viele Pfänder, wie Token leben und tot gemerkt sein können (1072). Ist das Register voll, wird
+  keine Bindung angenommen (fail-closed).
+  - Zuerst waren 256 geplant. Die eigene Sicherheitsprüfung fand: Mit 256 Token zu je 1 AEQ wäre die Grenze in
+    7 Tagen gefüllt, und keine Bindung ginge mehr.
+  - Jetzt füllt, wer die Grenze füllen will, auch die Toten, und das hält die Ausgabe ohnehin an.
+  - Fällige Pfänder kann jeder zurückgeben.
+- **Lesen ist fail-closed:**
+  - Ein laufendes Pfand gehört zu einem gebundenen Token derselben Inhaberin, mit Betrag = D.
+  - Ein beendetes gehört zu keinem lebenden Token.
+- Die Annahme sperrt den Empfänger vorher (wie P2). Das Feld `pfand_inhaberin` steht in der Ansicht des Tokens.
+- Tests: schlafend, Gutfall eingelöst und tot (Geld erhalten, Pfand überlebt das Aufräumen), ohne Deckung, Umzug,
+  Mensch ohne Wallet, gefälscht im Block, Form, voll, K nicht wiederverwenden, Lesen (laufend, beendet,
+  ungebunden), nur Pfand im Register ist nicht leer, echte Annahme, Tabelle gegen Postgres. Mutationen: 38 von 38 rot.
+  Ein überlebender Mutant zeigte vor dem Test einen echten Fehlerfall: Stünde nur noch ein Pfand im Register und
+  zählte `leer()` es nicht mit, fiele es aus Kodierung und StateRoot.
+
 ### Offen vor dem Stichtag: Pfand je Präparator und Beweisweg (aus PR #628, 22.11.)
 
 PR #628 (B2 als ein Stück, geschlossen am 23.11., durch B2a–B2d ersetzt; Zweig
