@@ -7,7 +7,20 @@ Repos); davor ~13:40 UTC Sitzung „Weiter“ (`claude/weiter-uw2p42`), davor ~1
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
-**Stand 26.11. ~22:15 UTC — HIER WEITERMACHEN** (Sitzung „Quantengeld Revolution“, Zweig
+**Stand 26.11. ~22:35 UTC — HIER WEITERMACHEN** (Sitzung „Quantengeld Revolution“, Zweig
+`claude/quantengeld-revolution-eskpsn`):
+- **#681 gemergt** (c9429bae): Stichtag der Pfänder 27.11.2026 09:00 UTC. **Deploy von C1 vor 08:30 UTC freigeben**
+  (Betreiber), vorher App 1.32.0 freigeben (`app-signatur`).
+- **Offen:** PR „Weg C und ehrliche Website“ (dieser Zweig) und App #147 (Automatik + `marke.p1` ehrlich).
+- **Weg C** (`forschung/quantengeld/WEG_C.md`): Der Leitsatz „Quantengeld, das die Physik selbst unkopierbar macht“
+  wird wahr, wenn die Inhaberin Photonen selbst misst. Nächster Schritt **C1**: Prüfgröße im Knoten mit Verkippung θ
+  und freiem Anteil (Prüfvektor aus `wiesner_parameter.py` `s3_stichprobe`). Dann C2 (Token-Art „Leitung“,
+  schlafend), C3 (Format Empfänger ↔ App mit Nachbau). C4 Partner/Gerät: Betreiber.
+- **Website:** Leitsatz als Ziel („entwickelt“). Überversprechen berichtigt („cannot forge it“, „Kopie abgewiesen“,
+  „niemand kann Geld für erfundene Menschen erschaffen“, absolutes „fälschungssicher“ im Hero). Test
+  `TestLanding_QuantengeldEhrlichMitWegC`.
+
+**Stand 26.11. ~22:15 UTC (überholt)** (Sitzung „Quantengeld Revolution“, Zweig
 `claude/quantengeld-revolution-eskpsn` in allen vier Repos):
 - **Stichtag der Pfänder = 27.11.2026 09:00 UTC** (Betreiber, 26.11.: „27.11. 09 Uhr“, gelesen als UTC wie in der
   Frage). PR „Stichtag der Pfänder“ in Aequitas, mit Sicherheitsprüfung als Kommentar. P2 bleibt schlafend.
