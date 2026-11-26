@@ -2463,6 +2463,38 @@ Der Deploy von C1 muss vor 06:30 UTC freigegeben sein; der Wächter verlangt 30 
   - Ohne die Bedingung „nur mit Pfand der Inhaberin“ entstünde ein Nachweis, der das Register unlesbar macht.
   - Ohne die Prüfung von `An` (0 oder 1) beim Lesen stürzte ein späterer Nachweis ab.
 
+### P5c: Nachweis einer Fälschung in der App (26.11.2026, gebaut)
+
+App `lib/quantenSStelleNachweis.ts`, Stoff in `lib/quantenSStelle.ts`, Karte „Fälschung nachweisen“ auf der Token-Seite
+der Annahmestelle (12 Sprachen). Knoten: Ansicht und Prüfvektor.
+
+- **Aufbewahren:** `annehmenAlsStelle` (Weg A und, über den Adapter, Weg B) sichert **vor dem Anmelden** den Stoff:
+  Vorlage (x und Unterschrift der Inhaberin), Stichprobe, Bindung d und Wahl c, Toleranz, alle Blätter, Wurzel, die
+  eigene Rechnung (`vorab`) und, mit ECIES auf den eigenen Schlüssel verschlüsselt, die Werte w der Stichprobe und
+  die Salze.
+  - Grenzen: höchstens 32 Einträge (der älteste fällt heraus), je höchstens 1,5 Mio. Zeichen (Pilot n = 2822: rund
+    200 KB). Zu groß heißt: nicht gesichert, das Einlösen läuft trotzdem.
+  - Nach dem eigenen Einlösen wird der Stoff gelöscht.
+  - Gelesen wird fail-closed: genau diese Felder, jeder Wert gegen sein Blatt, die Blätter gegen die Wurzel, nur mit
+    dem Schlüssel dieser Stelle.
+- **Lage aus der Kette:** möglich nur, wenn die Ansicht des Tokens `tot`, Urteil `eingeloest`, `nachweis_stelle` =
+  eigene Nummer, `nachweis_bis` ≥ jetzt und höchstens zwei Fehlversuche zeigt. Läuft der Token noch, bleibt der
+  Stoff; sonst räumt „Nachweise prüfen“ ihn weg.
+- **Führen:** nur wenn die eigene Rechnung „besteht“ war (sonst kostete es nur einen Fehlversuch).
+  - Anmelden mit der Unterschrift über `…|fehl`; `fehl` kommt aus der Ansicht.
+  - Offenlegen in Teilen zu 64 Stellen, je Stelle `{anteile: [], pfad, w}`, ab dem Stand der Kette (`nachweis_offen`).
+    Ein unterbrochener Nachweis setzt dort fort.
+  - BEFUND, wenn das Pfand nicht an diese Stelle ginge.
+- **Knoten:** Die Ansicht des Nachweises nennt jetzt `nachweis_fehl` (ohne ihn scheiterte jeder zweite Versuch an der
+  Unterschrift) und `nachweis_offen` (Fortsetzen). Nur Ansicht, kein Konsens.
+- **Prüfvektor** `testdata/quanten_s_faelschung_vektor.json` aus der App: Der Knoten liest die Körper wie
+  `handleQuantenW`, prüft Nachricht und Unterschrift der Stelle, die Vorlage der Inhaberin, je Teil die Werte mit
+  `quantenSWerteLesen`/`quantenSWerteAuswerten` gegen die Wurzel, das Urteil „besteht“. Gegenproben: falscher Wert,
+  falscher Pfad, Anteile dazu, anderer Zähler der Fehlversuche.
+- **Tests (App):** Merkle-Pfade gegen die Wurzel, Stoff hin und zurück und verfälscht (fremder Schlüssel, Blatt,
+  Wurzel, Feld, Ordnung, Wert), Grenzen, Lage, Gutfall gegen einen nachgebauten Knoten, Fortsetzen, kein Versuch ohne
+  „besteht“, nicht angeboten, BEFUND, Aufräumen, Stoff liegt vor dem Anmelden im Gerät, Seite.
+
 ### Prüfung der Arbeiten zum Quantengeld (26.11.2026, zweite Sitzung): Befunde und Korrekturen
 
 Auftrag des Betreibers: „Überprüfe alle bisher gemachten Arbeiten zum Quantengeld“, dann „Alles beheben“ und „so
