@@ -31,6 +31,7 @@ import (
 	"fmt"
 	"reflect"
 	"sort"
+	"strings"
 )
 
 const (
@@ -100,7 +101,8 @@ func quantenSIPfandLesen(fs []quantenSIPfandForm, r *quantenWRegister) (map[stri
 		}
 		e := r.Token[f.K]
 		if f.Ende == 0 {
-			if e == nil || e.token.D == nil || e.token.Inhaber != f.Konto || e.token.Deckung != f.Betrag {
+			// Konto: die Inhaberin oder ihr Pfandgeber -- beides kanonisch, oben geprueft.
+			if e == nil || e.token.D == nil || e.token.Deckung != f.Betrag {
 				return nil, fmt.Errorf("quanten_w: Pfand der Inhaberin %s: kein gebundener Token dazu", f.K[:12])
 			}
 		} else if e != nil {
@@ -111,11 +113,37 @@ func quantenSIPfandLesen(fs []quantenSIPfandForm, r *quantenWRegister) (map[stri
 	return out, nil
 }
 
+const quantenSDomIPfand = "aequitas-quanten-s-ipfand-v1"
+
+// quantenSIPfandNachricht: was der Pfandgeber unterschreibt -- fuer genau
+// diesen Token (K), diese Inhaberin und diesen Betrag (= Deckung). Eine
+// Bindung gibt es je K nur einmal; die Unterschrift passt auf nichts anderes.
+func quantenSIPfandNachricht(pfandVon, K, inhaber string, betrag int64) string {
+	return fmt.Sprintf("%s|chain:%d|%s|%s|%s|%d", quantenSDomIPfand, eingefroreneChainID, strings.ToLower(pfandVon), K, strings.ToLower(inhaber), betrag)
+}
+
 // quantenSIPfandBindenLocked: R-P4 bei der Bindung (ab dem Stichtag). u traegt
 // schon das neue Register; das Pfand kommt dazu -- oder ein Befund.
-func (cs *ChainState) quantenSIPfandBindenLocked(ctx context.Context, u *quantenWBescheid, K, wallet string, deckung int64) (quantenWBescheid, error) {
+//
+// PFANDGEBER: Der Schluessel der Inhaberin ist je Token frisch (App) und hat
+// kein Guthaben. Darum darf ein anderes Konto -- die Menschen-Wallet der
+// Inhaberin -- das Pfand geben (q.PfandVon), mit eigener Unterschrift ueber
+// K, Inhaberin und Betrag (q.PfandSig). Dann gehoert das Pfand ihm: Konto und
+// Nullifier sind die des Pfandgebers, die Rueckgabe geht an ihn.
+func (cs *ChainState) quantenSIPfandBindenLocked(ctx context.Context, u *quantenWBescheid, q *QuantenWAngaben, wallet string, deckung int64) (quantenWBescheid, error) {
+	K := q.K
 	if len(u.reg.IPfand) >= quantenSIPfandHoechstens {
 		return quantenWBefund("quanten_w_voll", "zu viele Pfaender von Inhaberinnen (%d)", len(u.reg.IPfand)), nil
+	}
+	if q.PfandVon != "" || q.PfandSig != "" {
+		von := q.PfandVon
+		if !kanonischeAdresse(von) || istSystemAdresse(von) || von == wallet {
+			return quantenWBefund("quanten_w_form", "Pfandgeber nicht kanonisch, Systemadresse oder die Inhaberin selbst"), nil
+		}
+		if !kanonischeSignatur(q.PfandSig) || pruefePersonalSignGemerkt(quantenSIPfandNachricht(von, K, wallet, deckung), q.PfandSig, von) != nil {
+			return quantenWBefund("quanten_w_unterschrift", "Pfandgeber %s hat nicht fuer diesen Token unterschrieben", kurzAdresse(von)), nil
+		}
+		wallet = von
 	}
 	n, mehrere, err := cs.quantenSNullifierVonLocked(ctx, wallet)
 	if err != nil {

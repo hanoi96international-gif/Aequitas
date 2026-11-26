@@ -265,7 +265,6 @@ func TestQuantenSIPfand_RegisterLesen(t *testing.T) {
 	kaputt := map[string]func(f *quantenSIPfandForm){
 		"Betrag != D":   func(f *quantenSIPfandForm) { f.Betrag-- },
 		"Betrag 0":      func(f *quantenSIPfandForm) { f.Betrag = 0 },
-		"fremdes Konto": func(f *quantenSIPfandForm) { f.Konto = w.bert },
 		"Konto kaputt":  func(f *quantenSIPfandForm) { f.Konto = "0x12" },
 		"Systemadresse": func(f *quantenSIPfandForm) { f.Konto = ubiPoolAddr },
 		"N kaputt":      func(f *quantenSIPfandForm) { f.N = "x" },
@@ -408,5 +407,88 @@ func TestQuantenSIPfand_Tabelle_RealDB(t *testing.T) {
 	neu := testKnoten(t, "unused-quanten-s-ipfand-realdb-test-2.json")
 	if neu.quantenWWurzel() != cs.quantenWWurzel() || neu.quantenWJetzt().IPfand[w.p.K].Betrag != ipDeckung {
 		t.Fatal("nach dem Neustart ein anderes Register")
+	}
+}
+
+// ipGeberTx: die Bindung, das Pfand gibt von (mit eigener Unterschrift).
+func (w *qsWelt) ipGeberTx(von string, sigVon string, K, inhaber string, betrag int64) Transaction {
+	tx := w.bindenTx(w.anna)
+	tx.QuantenW.PfandVon = von
+	tx.QuantenW.PfandSig = personalSign(w.t, w.keys[sigVon], quantenSIPfandNachricht(von, K, inhaber, betrag))
+	return tx
+}
+
+// Pfandgeber: die Menschen-Wallet gibt das Pfand fuer den frischen Schluessel
+// der Inhaberin; es gehoert ihr (Konto, Nullifier) und geht an sie zurueck.
+func TestQuantenSIPfand_Pfandgeber(t *testing.T) {
+	w := neueIPfandWelt(t, true)
+	z := qwT0
+	w.nullifier(pfNBert, w.bert)
+	w.annehmen(w.ausgebenTx(z, ipDeckung), z+1)
+	anna0, bert0 := w.stand(w.cs, w.anna), w.stand(w.cs, w.bert)
+	tx := w.annehmen(w.ipGeberTx(w.bert, w.bert, w.p.K, w.anna, ipDeckung), z+2)
+	p := w.cs.quantenWJetzt().IPfand[w.p.K]
+	if tx.QuantenW.Pfand != ipDeckung || p.Konto != w.bert || p.N != pfNBert || w.stand(w.cs, w.bert) != bert0-ipDeckung || w.stand(w.cs, w.anna) != anna0 {
+		t.Fatalf("Pfandgeber: %+v, Bert %d, Anna %d", p, w.stand(w.cs, w.bert)-bert0, w.stand(w.cs, w.anna)-anna0)
+	}
+	if _, err := quantenWRegisterLesen(w.cs.quantenWJetzt().kodiert()); err != nil {
+		t.Fatalf("Register mit Pfandgeber: %v", err)
+	}
+	w.annehmen(w.waehlenTx(w.anna, string(rune('0'+w.c))), z+3)
+	w.einloesen(z + 50)
+	tx = w.annehmen(ipZurueckTx(w.p.K), w.fwEnde()+quantenSNachweisFrist+1)
+	if tx.QuantenW.PfandAn != w.bert || w.stand(w.cs, w.bert) != bert0 {
+		t.Fatalf("Rueckgabe an %s", tx.QuantenW.PfandAn)
+	}
+}
+
+// Missbrauch: fremde, falsche oder fehlende Unterschrift, Systemadresse, die
+// Inhaberin selbst, zu wenig Deckung, vor dem Stichtag.
+func TestQuantenSIPfand_PfandgeberMissbrauch(t *testing.T) {
+	w := neueIPfandWelt(t, true)
+	z := qwT0
+	w.annehmen(w.ausgebenTx(z, ipDeckung), z+1)
+	faelle := map[string]struct {
+		tx   Transaction
+		soll string
+	}{
+		"fremde Unterschrift": {w.ipGeberTx(w.bert, w.praeger, w.p.K, w.anna, ipDeckung), "quanten_w_unterschrift"},
+		"anderes K":           {w.ipGeberTx(w.bert, w.bert, strings.Repeat("e", 64), w.anna, ipDeckung), "quanten_w_unterschrift"},
+		"andere Inhaberin":    {w.ipGeberTx(w.bert, w.bert, w.p.K, w.praeger, ipDeckung), "quanten_w_unterschrift"},
+		"anderer Betrag":      {w.ipGeberTx(w.bert, w.bert, w.p.K, w.anna, ipDeckung-1), "quanten_w_unterschrift"},
+		"Inhaberin selbst":    {w.ipGeberTx(w.anna, w.anna, w.p.K, w.anna, ipDeckung), "quanten_w_form"},
+	}
+	ohneSig := w.ipGeberTx(w.bert, w.bert, w.p.K, w.anna, ipDeckung)
+	ohneSig.QuantenW.PfandSig = ""
+	faelle["ohne Unterschrift"] = struct {
+		tx   Transaction
+		soll string
+	}{ohneSig, "quanten_w_unterschrift"}
+	sys := w.ipGeberTx(w.bert, w.bert, w.p.K, w.anna, ipDeckung)
+	sys.QuantenW.PfandVon = ubiPoolAddr
+	faelle["Systemadresse"] = struct {
+		tx   Transaction
+		soll string
+	}{sys, "quanten_w_form"}
+	nurSig := w.ipGeberTx(w.bert, w.bert, w.p.K, w.anna, ipDeckung)
+	nurSig.QuantenW.PfandVon = ""
+	faelle["Unterschrift ohne Pfandgeber"] = struct {
+		tx   Transaction
+		soll string
+	}{nurSig, "quanten_w_form"}
+	for name, f := range faelle {
+		if r := w.praepRegel(f.tx, z+2); r != f.soll {
+			t.Errorf("%s: %q, erwartet %q", name, r, f.soll)
+		}
+	}
+	w.fwGuthaben(w.bert, ipDeckung-1)
+	if r := w.praepRegel(w.ipGeberTx(w.bert, w.bert, w.p.K, w.anna, ipDeckung), z+2); r != "quanten_w_deckung" {
+		t.Errorf("Pfandgeber ohne Deckung: %q", r)
+	}
+	// Vor dem Stichtag: Felder des Pfandgebers abgewiesen, nicht uebergangen.
+	w2 := neueIPfandWelt(t, false)
+	w2.annehmen(w2.ausgebenTx(z, ipDeckung), z+1)
+	if r := w2.praepRegel(w2.ipGeberTx(w2.bert, w2.bert, w2.p.K, w2.anna, ipDeckung), z+2); r != "quanten_w_form" {
+		t.Errorf("Pfandgeber vor dem Stichtag: %q", r)
 	}
 }

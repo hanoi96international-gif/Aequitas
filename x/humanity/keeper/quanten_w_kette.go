@@ -254,6 +254,11 @@ type QuantenWAngaben struct {
 	PraepZahl int    `json:"praep_zahl,omitempty"`
 	Runde     uint64 `json:"runde,omitempty"`
 	RundeSig  string `json:"runde_sig,omitempty"`
+	// P3, Bindung (quanten_s_inhaberin_pfand.go): wer das Pfand der Inhaberin
+	// gibt (die Menschen-Wallet), und dessen EIP-191-Unterschrift darueber.
+	// Fehlt = das Pfand kommt vom Konto der Inhaberin. Nur ab dem Stichtag der Pfaender.
+	PfandVon string `json:"pfand_von,omitempty"`
+	PfandSig string `json:"pfand_sig,omitempty"`
 	// Unterschrift der Wallet (Praegen, Anfrage, Antwort): EIP-191 ODER ML-DSA.
 	WalletSig string   `json:"wallet_sig,omitempty"`
 	PQ        *PQKonto `json:"pq,omitempty"`

@@ -2345,6 +2345,21 @@ und P4 tragen wird; `x/humanity/keeper/quanten_s_pfaender.go`):
   Ein überlebender Mutant zeigte vor dem Test einen echten Fehlerfall: Stünde nur noch ein Pfand im Register und
   zählte `leer()` es nicht mit, fiele es aus Kodierung und StateRoot.
 
+**Befund beim Bau von P5 (App, 26.11.): Die Inhaberin hat kein Guthaben.**
+
+Die App erzeugt je Token einen frischen Schlüssel der Inhaberin. P3 nahm das Pfand (= D) von genau dieser Adresse,
+also wäre ab dem Stichtag der Pfänder jede Bindung an fehlender Deckung gescheitert. Die Adresse vorher aufzuladen
+und das Geld danach zurückzuholen, kostete zwei Überweisungen und verknüpfte die Haupt-Wallet zweimal sichtbar mit
+dem Token.
+
+**Behoben mit einem Pfandgeber an der Bindung** (`pfand_von`, `pfand_sig`):
+- Die Menschen-Wallet der Inhaberin gibt das Pfand. Sie unterschreibt über K, Inhaberin und Betrag (Domäne
+  `aequitas-quanten-s-ipfand-v1`). Das Pfand gehört dann ihr (Konto, Nullifier) und geht an sie zurück.
+- Ohne Pfandgeber kommt das Pfand wie bisher vom Konto der Inhaberin.
+- Vor dem Stichtag wird eine Bindung mit diesen Feldern abgewiesen.
+
+Die Verknüpfung von Mensch und Token entsteht einmal, und zwar genau durch die gewollte Haftung.
+
 **Stichtag P2a: 27.11.2026 07:00 UTC** (08:00 MEZ; Betreiber 26.11. „Stichtag morgen früh“, „was das Beste für
 aequitas ist“). Gesetzt wird **nur** „Los behalten“ (`quantenSLosBehaltenAbUnix` = 1795762800). Ab dann tragen neue
 Weg-B-Token ihr Los auf der Kette; für Nutzer ändert sich nichts, und es braucht kein App-Update.

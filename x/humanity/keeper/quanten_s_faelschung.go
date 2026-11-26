@@ -162,7 +162,7 @@ func quantenSNachweiseLesen(fs []quantenSNachweisForm, r *quantenWRegister) (map
 			return nil, fmt.Errorf("quanten_w: Nachweis %s: %w", f.K[:12], err)
 		}
 		t := e.token
-		if t.D == nil || t.C == -1 || t.Fehl >= quantenWFehlMax || t.Inhaber != r.IPfand[f.K].Konto {
+		if t.D == nil || t.C == -1 || t.Fehl >= quantenWFehlMax {
 			return nil, fmt.Errorf("quanten_w: Nachweis %s: Token", f.K[:12])
 		}
 		if a := t.Anmeldung; a != nil && (a.B != 1-f.An || a.Stelle != e.Stellen[1-f.An]) {

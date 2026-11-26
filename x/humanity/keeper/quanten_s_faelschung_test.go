@@ -316,16 +316,15 @@ func TestQuantenSFaelschung_RegisterLesen(t *testing.T) {
 		t.Fatal("keine Zeile")
 	}
 	kaputt := map[string]func(f *quantenSNachweisForm){
-		"An 2":             func(f *quantenSNachweisForm) { f.An = 2 },
-		"Ende 0":           func(f *quantenSNachweisForm) { f.Ende = 0 },
-		"Ende anders":      func(f *quantenSNachweisForm) { f.Ende++ },
-		"K anders":         func(f *quantenSNachweisForm) { f.Token.K = strings.Repeat("e", 64) },
-		"ungebunden":       func(f *quantenSNachweisForm) { f.Token.D = "" },
-		"ungewaehlt":       func(f *quantenSNachweisForm) { f.Token.C = -1 },
-		"fremde Inhaberin": func(f *quantenSNachweisForm) { f.Token.Inhaber = w.bert },
-		"Fehl voll":        func(f *quantenSNachweisForm) { f.Token.Fehl = quantenWFehlMax },
-		"Anmeldung von A":  func(f *quantenSNachweisForm) { f.An = 1 },
-		"ohne Pfand dazu":  func(f *quantenSNachweisForm) { f.K = strings.Repeat("e", 64); f.Token.K = f.K },
+		"An 2":            func(f *quantenSNachweisForm) { f.An = 2 },
+		"Ende 0":          func(f *quantenSNachweisForm) { f.Ende = 0 },
+		"Ende anders":     func(f *quantenSNachweisForm) { f.Ende++ },
+		"K anders":        func(f *quantenSNachweisForm) { f.Token.K = strings.Repeat("e", 64) },
+		"ungebunden":      func(f *quantenSNachweisForm) { f.Token.D = "" },
+		"ungewaehlt":      func(f *quantenSNachweisForm) { f.Token.C = -1 },
+		"Fehl voll":       func(f *quantenSNachweisForm) { f.Token.Fehl = quantenWFehlMax },
+		"Anmeldung von A": func(f *quantenSNachweisForm) { f.An = 1 },
+		"ohne Pfand dazu": func(f *quantenSNachweisForm) { f.K = strings.Repeat("e", 64); f.Token.K = f.K },
 	}
 	for name, aendern := range kaputt {
 		f := gut
