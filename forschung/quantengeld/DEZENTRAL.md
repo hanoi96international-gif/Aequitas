@@ -2361,8 +2361,21 @@ Inhaberin und Stelle B ausnutzbar.**
 - **Was trägt:** Der Teil „Pfand der Inhaberin an B“. Bei einer Absprache bewegt er nur Geld zwischen den
   Beteiligten, bei echtem Betrug ersetzt er B genau den Schaden D.
 
-**Vorschlag:** P4 nimmt nur das Pfand der Inhaberin. Damit stellt sich die Frage, ob P2 (Pfand der Präparatorinnen)
-ohne Verfall verlangt wird. Das entscheidet der Betreiber.
+**Entscheidung des Betreibers (26.11.):** Er verlangte zuerst eine genaue Prüfung, was das Beste ist; danach galten
+diese Punkte:
+- **Nur die Inhaberin haftet.** Ein bestandener Nachweis gibt nur ihr Pfand an Stelle B. Begründung der Prüfung:
+  - Die Kette kann eine echte Fälschung (Geloste haben geteilt) nicht von einer Absprache mit B unterscheiden.
+    Beide hinterlassen dieselben Spuren; die Öffnungen müssen an beide Stellen gehen; die gewählte Stelle ist durch
+    die Maske verborgen.
+  - Wer geleakt hat, ist nicht zuordenbar (t von v Anteilen, jede t-Gruppe reicht).
+  - Abschreckung trägt allein das Pfand der Inhaberin: Mit D + 10 % verliert der Ring je Fälschung sicher 10 % von
+    D, also bleibt kein Geld, um Geloste zu bestechen.
+  - B bekommt mehr als ihren Schaden und führt den Nachweis deshalb.
+- **Pfand der Inhaberin = D + 10 %** (`quantenSIPfandFuer`, aufgerundet, gesättigt). Die Ansicht nennt
+  `pfand_bindung`; das unterschreibt der Pfandgeber.
+- **Pfand der Präparatorinnen wird nicht verlangt.** Ohne Verfall wäre es nur gebundenes Geld. Der Code von P2
+  bleibt, schläft aber hinter einem eigenen Stichtag `quantenSPraepPfandAbUnix` (Status `praep_pfand_ab`); der
+  Stichtag der Pfänder schaltet ihn nicht mit ein.
 
 **Befund beim Bau von P5c (26.11.): Der Nachweis bräuchte die Anteile der Mitfälscher.**
 

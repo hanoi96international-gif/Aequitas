@@ -144,7 +144,7 @@ func TestQuantenSFaelschung_Nachgewiesen(t *testing.T) {
 	z := w.fwEnde() + 100
 	w.annehmen(w.fwAnmeldenTx(w.stelle[1], 1, w.p.bits, w.anna), z)
 	g := w.fwOffenlegenAlle(z + 10)
-	soll := ipDeckung + fwGelost*quantenSPraepPfand/10
+	soll := ipPfand
 	if g.Urteil != quantenSUrteilFaelschung || g.Pfand != soll || g.PfandAn != w.stelle[1] || w.stand(w.cs, w.stelle[1]) != b0+soll {
 		t.Fatalf("Nachweis: %+v, B %d", g, w.stand(w.cs, w.stelle[1])-b0)
 	}
@@ -152,9 +152,11 @@ func TestQuantenSFaelschung_Nachgewiesen(t *testing.T) {
 	if reg.Nachweis[w.p.K] != nil || len(reg.IPfand) != 0 {
 		t.Fatal("Nachweis oder Pfand der Inhaberin nicht weg")
 	}
+	// Befund 26.11.: die Gelosten verlieren nichts (der Nachweis beweist ihr
+	// Mitwirken nicht -- B kennt die Werte ihrer Stichprobe aus den Oeffnungen).
 	for i := 0; i < fwGelost; i++ {
-		if p := reg.Praep[quantenSPraepK(w.val[i])].Pfand; p != quantenSPraepPfand-quantenSPraepPfand/10 {
-			t.Fatalf("Geloste %d: Pfand %d", i, p)
+		if p := reg.Praep[quantenSPraepK(w.val[i])].Pfand; p != quantenSPraepPfand {
+			t.Fatalf("Geloste %d: Pfand %d (nichts darf verfallen)", i, p)
 		}
 	}
 	if summe() != s0 {
@@ -186,7 +188,7 @@ func TestQuantenSFaelschung_EhrlichKeinNachweis(t *testing.T) {
 		}
 	}
 	reg := w.cs.quantenWJetzt()
-	if reg.Nachweis[w.p.K] != nil || reg.IPfand[w.p.K].Betrag != ipDeckung || w.stand(w.cs, w.stelle[1]) != b0 {
+	if reg.Nachweis[w.p.K] != nil || reg.IPfand[w.p.K].Betrag != ipPfand || w.stand(w.cs, w.stelle[1]) != b0 {
 		t.Fatal("ehrlich: Strafe oder Eintrag geblieben")
 	}
 	for i := 0; i < fwGelost; i++ {
@@ -288,12 +290,12 @@ func TestQuantenSFaelschung_GefaelschtImBlock(t *testing.T) {
 	ab := (len(p) - 1) / quantenWOffenTeil * quantenWOffenTeil
 	letzt := w.fwWerteTx(ab, p[ab:])
 	letzt.Type = quantenSFaelschungOffenlegenTxArt
-	soll := ipDeckung + fwGelost*quantenSPraepPfand/10
+	soll := ipPfand
 	for name, f := range map[string]func(q *QuantenWAngaben){
 		"an Stelle A": func(q *QuantenWAngaben) { q.Pfand, q.PfandAn, q.Urteil = soll, w.stelle[0], quantenSUrteilFaelschung },
 		"mehr":        func(q *QuantenWAngaben) { q.Pfand, q.PfandAn, q.Urteil = soll+1, w.stelle[1], quantenSUrteilFaelschung },
 		"ohne Strafe": func(q *QuantenWAngaben) { q.Urteil = "abgewiesen" },
-		"Gelosten frei": func(q *QuantenWAngaben) {
+		"ohne Aufschlag": func(q *QuantenWAngaben) {
 			q.Pfand, q.PfandAn, q.Urteil = ipDeckung, w.stelle[1], quantenSUrteilFaelschung
 		},
 	} {
@@ -392,7 +394,7 @@ func TestQuantenSFaelschung_Annahme(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if fertig.QuantenW.Urteil != quantenSUrteilFaelschung || w.stand(w.cs, w.stelle[1]) != b0+ipDeckung {
+	if fertig.QuantenW.Urteil != quantenSUrteilFaelschung || w.stand(w.cs, w.stelle[1]) != b0+ipPfand {
 		t.Fatalf("Annahme: %+v", fertig.QuantenW.gerechnet())
 	}
 }

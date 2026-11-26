@@ -53,8 +53,6 @@ const (
 	// Zeile in quantenWTabelle (quanten_w_tabelle.go).
 	quantenWArtNachweis = "nachweis"
 
-	// Je Geloster so viel Prozent ihres Pfands an die Stelle B (Betreiber, 25.11.2026).
-	quantenSVerfallProzent = 10
 	// So weit darf die Buchzeit eines Nachweises vor seinem Block liegen.
 	quantenSFaelschungBuchSpiel int64 = 120
 
@@ -364,28 +362,19 @@ func (e *quantenSToken) nachweisOffenlegenTeil(K string, ab int, werte []quanten
 	return true, true, nil
 }
 
-// quantenSFaelschungStrafe: der Nachweis besteht. Pfand der Inhaberin und je
-// Geloster quantenSVerfallProzent ihres Pfands an die Stelle an.
+// quantenSFaelschungStrafe: der Nachweis besteht -- das Pfand der Inhaberin
+// (Deckung + 10 %) an die Stelle an. NUR dieses (Befund 26.11.2026,
+// Entscheidung des Betreibers): Die Oeffnungen gehen an beide Stellen; eine
+// Stelle B, die mit der Inhaberin zusammenarbeitet, kennt also die Werte
+// ihrer Stichprobe und kann einen "Nachweis" bauen. Ein Verfall der Gelosten
+// liesse so ehrliche Praeparatorinnen abschoepfen. Das Pfand der Inhaberin
+// dagegen bewegt bei einer Absprache nur Geld zwischen den Beteiligten und
+// ersetzt bei echtem Betrug den Schaden D (mit Aufschlag).
 func quantenSFaelschungStrafe(u *quantenWBescheid, K, an string) {
 	r := u.reg
 	summe := r.IPfand[K].Betrag
 	u.wege = append(u.wege, quantenWWeg{quantenWPfandAddr, an, summe})
 	delete(r.IPfand, K)
-	for _, konto := range r.Lose[K] {
-		pk := quantenSPraepK(konto)
-		e, ok := r.Praep[pk]
-		if !ok || e.Pfand <= 0 {
-			continue
-		}
-		teil := e.Pfand * quantenSVerfallProzent / 100
-		if teil <= 0 {
-			continue
-		}
-		e.Pfand -= teil // bleibt > 0: teil ist hoechstens ein Zehntel
-		r.Praep[pk] = e
-		u.wege = append(u.wege, quantenWWeg{quantenWPfandAddr, an, teil})
-		summe += teil
-	}
 	quantenSNachweisWeg(r, K)
 	u.felder.Pfand, u.felder.PfandAn, u.felder.Urteil = summe, an, quantenSUrteilFaelschung
 }

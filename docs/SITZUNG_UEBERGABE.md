@@ -27,7 +27,12 @@ dezentrales Quantengeld“.
   und kann einen „Nachweis“ bauen, der ehrlichen Gelosten je 10 % nimmt.
   - **Entscheidung des Betreibers nötig** (siehe `DEZENTRAL.md`, Abschnitt „BEFUND, Blocker“). Der Stichtag der
     Pfänder bleibt bis dahin schlafend.
-  - Vorschlag: P4 nimmt nur das Pfand der Inhaberin.
+  - **Entschieden (Betreiber, 26.11.):** Nur die Inhaberin haftet, ihr Pfand ist D + 10 %. Das Pfand der
+    Präparatorinnen wird nicht verlangt (eigener Stichtag, schlafend). Gebaut im Zweig, kommt mit PR #677.
+  - **App danach anpassen:**
+    - Die Präparatorinnen-Karte liest `praep_pfand_ab` statt `pfaender_ab`.
+    - Die Inhaberin unterschreibt `pfand_bindung` statt `deckung`.
+    - Texte: „Deckung + 10 %“.
 - **Befund vor P5c:** Der Nachweis (P4) bräuchte t Anteile; die Mitfälscher halten sie zurück. **Zuerst P4b
   (Knoten):** `s_faelschung_offenlegen` nimmt je Stelle den Wert w und den Merkle-Pfad statt Anteilen. Die Prüfung
   ist `quantenWMerklePruefen(wurzel, quantenWPruefsumme(K, i, w), i, pfad, n)`, Grenze `w < 2^(quantenWSalzBits+2)`,

@@ -80,10 +80,36 @@ func quantenSPfaenderAktiv(t int64) bool {
 	return quantenSLosBehaltenAktiv(t) && t >= quantenSPfaenderAb()
 }
 
+// STICHTAG DES PFANDS JE PRAEPARATORIN (P2). Seit dem Befund vom 26.11.2026
+// (der Verfall der Gelosten ist nicht beweisbar, siehe quanten_s_faelschung.go)
+// hat das Pfand keinen Verfall mehr und wird nicht verlangt (Betreiber,
+// 26.11.2026). Der Code bleibt, schlafend hinter diesem eigenen Stichtag --
+// der Stichtag der Pfaender schaltet ihn NICHT ein.
+var quantenSPraepPfandAbUnix int64 = 9223372036854775807
+
+// quantenSPraepPfandAbOverride: nur fuer Tests (0 = Stichtag oben).
+var quantenSPraepPfandAbOverride atomic.Int64
+
+func quantenSPraepPfandAb() int64 {
+	if v := quantenSPraepPfandAbOverride.Load(); v != 0 {
+		return v
+	}
+	return quantenSPraepPfandAbUnix
+}
+
+// quantenSPraepPfandAktiv: das Pfand je Praeparatorin (P2) -- setzt die
+// Pfaender voraus und hat einen eigenen Stichtag.
+func quantenSPraepPfandAktiv(t int64) bool {
+	return quantenSPfaenderAktiv(t) && t >= quantenSPraepPfandAb()
+}
+
 // quantenSPfaenderStatus: fuer /api/status (fehlt = schlafend).
 func quantenSPfaenderStatus(m map[string]interface{}) {
 	if ab := quantenSPfaenderAb(); ab != math.MaxInt64 {
 		m["pfaender_ab"] = ab
+	}
+	if ab := quantenSPraepPfandAb(); ab != math.MaxInt64 {
+		m["praep_pfand_ab"] = ab
 	}
 }
 
