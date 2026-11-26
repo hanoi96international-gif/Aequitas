@@ -7,7 +7,53 @@ Repos); davor ~13:40 UTC Sitzung „Weiter“ (`claude/weiter-uw2p42`), davor ~1
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
-**Stand 25.11. — HIER WEITERMACHEN** (Sitzung „Weiter mit Übergabe“, Zweig `claude/uebergabe-fortsetzen-8sor22` in
+**Stand 26.11. ~16:00 UTC — HIER WEITERMACHEN** (Sitzung „Weiter mit Übergabe“, Zweig
+`claude/uebergabe-fortsetzen-8sor22` in allen vier Repos):
+- **Plan Pfänder (P1–P5, `DEZENTRAL.md` „Entscheidung Beweisweg und Plan Pfänder“):**
+  - **P1** (Spezifikation `s_pfaender.py`): gemergt, #668.
+  - **P2a** (Los je Token behalten, eigener Stichtag `quantenSLosBehaltenAbUnix`): gemergt, #670 d9bb7fc5.
+  - **P2** (Pfand je Präparatorin, 10 AEQ, Rückgabe `quanten_w_s_pfand_zurueck`): gemergt, #671 1a08955e.
+  - **P3** (Pfand der Inhaberin = D bei der Bindung, Rückgabe `quanten_w_s_ipfand_zurueck`): **PR #672 offen**.
+    - Sicherheitsprüfung als PR-Kommentar; ein Befund (Grenze 256 → 1072) ist im PR behoben.
+    - Lokal: alle Tests mit `-race` grün, Mutationen 38/38.
+    - Bei grüner CI mergen (Squash, volle SHA), dann Zweig zurücksetzen.
+  - Alles **schläft**: P2a hinter `quantenSLosBehaltenAbUnix`; P2, P3 (und später P4) hinter
+    `quantenSPfaenderAbUnix`, der „Los behalten“ voraussetzt. Je ein Deploy-Wächter in `.github/neustart/`.
+- **Nächster Schritt P4: Nachweis `quanten_w_s_faelschung`.**
+  - Bedingungen: Token eingelöst an Stelle A; die andere Stelle B legt eine von der Inhaberin unterschriebene
+    Vorlage vor, die B's Stichprobe besteht (Prüfung wie Anmelden/Offenlegen gegen die Wurzel). Nur in der Frist,
+    einmal je K.
+  - Folge: das Pfand der Inhaberin (`IPfand`) an B, je Geloster (`Lose[K]`) 10 % ihres Pfands (`Praep[..].Pfand`)
+    an B.
+  - **Die Frist mit der Blockzeit prüfen, nicht mit der Buchzeit.** Die Buchzeit kann um `quantenWBuchSpiel`
+    zurückdatiert werden und würde ein „spätestens“ verlängern.
+  - Das Los nur aus dem eigenen Register nehmen, nie aus dem Nachweis.
+  - Offen für P4: Wurzel, Proben und Stellen des eingelösten Tokens müssen bis zum Ende der Frist bleiben. Heute
+    löscht das Ende den Token, und nur Tote/Enden/Lose/IPfand bleiben; P4 braucht dazu einen Eintrag.
+  - Danach **P5 App**: Pfand anzeigen und bestätigen (Melden, Binden), Rückgaben, Nachweis an der Stelle. Erst
+    dann den Stichtag der Pfänder setzen (Betreiber).
+- **Wartet auf den Betreiber:**
+  - Deploy von C1 für P2a/P2 (Code schläft, Wächter lässt „schlafend“ durch):
+    https://github.com/hanoi96international-gif/Aequitas/actions/runs/45838608998.
+    Der alte, wartende Deploy von #667 (Run 45706825000) ist überholt und kann abgelehnt werden.
+  - Stichtag P2a (Empfehlung: bald, damit Token des Pilots ihr Los tragen): Datum und Uhrzeit in UTC nennen,
+    dann PR mit Sicherheitsprüfung.
+  - Pilot Weg B (Menschen, IBM-Konten) nach `docs/PILOT_WEG_B.md`.
+- **Lehren dieser Sitzung:**
+  - Neue Arten **immer** in `kein_entzug_test.go` eintragen (`ersetzbareKonstanten` und die Geld-Einordnung).
+    Sonst werden test, race und db-tests rot.
+  - Tests über den **echten Annahmeweg** (`quantenWAnnehmen`) schreiben. Sie sperrt die Konten vor dem Bescheid,
+    und ein Empfänger, der erst im Bescheid feststeht, muss vorher gesperrt werden (Befund P2).
+  - Mutationen erst auf **grüner** Basis werten. Während ein Mutationslauf läuft, nichts committen: er tauscht
+    Quelldateien aus.
+  - Prüfungen des Registers auch für den Fall ohne Token/Tote testen (`leer()`; Befund P3).
+- **Werkzeug:**
+  - Lokales Postgres: `/usr/lib/postgresql/16/bin`, Daten in `/var/tmp/pgdata_los`, Start mit
+    `su postgres -c "pg_ctl -D /var/tmp/pgdata_los -o '-p 5432 -k /tmp' start"`.
+  - `_RealDB`-Tests mit `AEQUITAS_TPS_BENCH=1 DATABASE_URL=postgres://postgres@localhost:5432/aeq_los?sslmode=disable`.
+  - CI-Logs: `curl -sL https://api.github.com/repos/hanoi96international-gif/Aequitas/actions/jobs/<id>/logs`.
+
+**Stand 25.11. (frühere Sitzung)** (Sitzung „Weiter mit Übergabe“, Zweig `claude/uebergabe-fortsetzen-8sor22` in
 allen vier Repos):
 - **4c-2c gebaut** (Ausgeber beauftragt und sammelt): App `lib/quantenSAusgeberRunde.ts` (`beauftragen`,
   `auftraegeSenden`, `antwortAufnehmen`, `antwortenStand`), Antworten kommen über die gemeinsame Briefkasten-Runde
