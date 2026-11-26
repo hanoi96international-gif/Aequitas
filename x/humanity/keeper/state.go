@@ -8726,7 +8726,7 @@ func blockTouchedAddresses(block *Block) (addrs []string, needsFullSnapshot bool
 		case quantenWPraegenTxArt, quantenWAnfrageTxArt, quantenWZufallTxArt, quantenWAntwortTxArt, quantenWOffenlegenTxArt, quantenWFristTxArt,
 			quantenWSAusgebenTxArt, quantenWSBindenTxArt, quantenWSWaehlenTxArt, quantenWSAnmeldenTxArt, quantenWSOffenlegenTxArt, quantenWSFristTxArt,
 			quantenSPraepMeldenTxArt, quantenSPraepAbmeldenTxArt, quantenSBestellenTxArt, quantenSLosenTxArt, quantenSBestellFristTxArt,
-			quantenSPfandZurueckTxArt, quantenSIPfandZurueckTxArt:
+			quantenSPfandZurueckTxArt, quantenSIPfandZurueckTxArt, quantenSFaelschungAnmeldenTxArt, quantenSFaelschungOffenlegenTxArt:
 			for _, a := range quantenWKonten(&tx) {
 				add(a)
 			}
