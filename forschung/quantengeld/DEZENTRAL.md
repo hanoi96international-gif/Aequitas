@@ -2345,6 +2345,22 @@ und P4 tragen wird; `x/humanity/keeper/quanten_s_pfaender.go`):
   Ein überlebender Mutant zeigte vor dem Test einen echten Fehlerfall: Stünde nur noch ein Pfand im Register und
   zählte `leer()` es nicht mit, fiele es aus Kodierung und StateRoot.
 
+**Befund beim Bau von P5c (26.11.): Der Nachweis bräuchte die Anteile der Mitfälscher.**
+
+`quanten_w_s_faelschung_offenlegen` nutzt wie das Einlösen `quantenWAuswerten`. Die Kette setzt dabei den Wert w jeder
+Stelle aus t Anteilen der Gelosten zusammen. Bei einer Fälschung haben aber mindestens t Gelosten ihr Wissen
+geteilt. Halten sie ihre Anteile zurück, bleiben v − t Ehrliche, oft weniger als t (bei 4 von 7 sind es 3). Der
+Nachweis wäre also genau im Betrugsfall nicht führbar.
+
+**Lösung (P4b, Konsens, schlafend):** Der Nachweis legt die Werte w selbst offen, je Stelle mit dem Merkle-Pfad,
+ohne Anteile.
+- Stelle B hat diese Werte schon aus den Öffnungen beim Annehmen und hat sie gegen die Blätter und die Wurzel
+  geprüft (`oeffnungLaden`).
+- Die Kette prüft dieselbe Prüfsumme `quantenWPruefsumme(K, i, w)` gegen die Wurzel wie beim Einlösen und zerlegt
+  w in Basis und Bit.
+- Ein falsches w scheitert an der Wurzel. Die Anteile waren nur der Weg zu w, nicht der Schutz.
+- Danach P5c (App): Werte und Pfade beim Annehmen aufbewahren, den Nachweis selbst einreichen.
+
 **Befund beim Bau von P5 (App, 26.11.): Die Inhaberin hat kein Guthaben.**
 
 Die App erzeugt je Token einen frischen Schlüssel der Inhaberin. P3 nahm das Pfand (= D) von genau dieser Adresse,

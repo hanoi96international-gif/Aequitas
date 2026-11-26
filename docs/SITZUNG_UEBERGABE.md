@@ -22,7 +22,11 @@ dezentrales Quantengeld“.
   nötig, bevor die App mit P5b veröffentlicht wird.
 - **App P5b gemergt** (App #143 1d9e71ff): Pfand der Inhaberin (Pfandgeber = Menschen-Wallet, Bestätigung,
   Rückgabe).
-- **Nächster Schritt P5c (App, Stelle B):** Fälschungsnachweis.
+- **Befund vor P5c:** Der Nachweis (P4) bräuchte t Anteile; die Mitfälscher halten sie zurück. **Zuerst P4b
+  (Knoten):** `s_faelschung_offenlegen` nimmt je Stelle den Wert w und den Merkle-Pfad statt Anteilen. Die Prüfung
+  ist `quantenWMerklePruefen(wurzel, quantenWPruefsumme(K, i, w), i, pfad, n)`, Grenze `w < 2^(quantenWSalzBits+2)`,
+  dann `quantenWZerlegen(w)`. Details in `DEZENTRAL.md`, Abschnitt „Befund beim Bau von P5c“.
+- **Danach P5c (App, Stelle B):** Fälschungsnachweis (nimmt dann Werte statt Anteilen).
   1. Beim Annehmen (`lib/quantenSStelle.ts` `annehmenAlsStelle`, `lib/quantenSStelleWegB.ts`): Vorlage (K, b, x,
      Unterschrift), Stichprobe, Salze und die gesammelten Öffnungen (Anteile + Pfade je Stelle der Stichprobe)
      verschlüsselt in der Ablage aufbewahren, mindestens bis `nachweis_bis`.
