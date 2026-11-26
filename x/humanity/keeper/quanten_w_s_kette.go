@@ -520,6 +520,14 @@ func (cs *ChainState) quantenWSBescheidLocked(ctx context.Context, tx *Transacti
 		}
 		u.reg.toteMerken(q.K, alt.Zeit, blockZeit, urteil)
 		quantenSIPfandEnde(u.reg, q.K, blockZeit) // P3: die Frist laeuft ab dem Ende
+		// P4: eingeloest mit Pfand der Inhaberin -- der Stoff fuer einen Nachweis.
+		if e.Eingeloest && quantenSPfaenderAktiv(blockZeit) {
+			an := 0
+			if alt.Stellen[1] == u.felder.WertAn {
+				an = 1
+			}
+			quantenSNachweisAnlegen(u.reg, q.K, neu, an, blockZeit)
+		}
 		// P2a: das Los bleibt nur zusammen mit dem toten Eintrag (Frist, P4).
 		if _, tot := u.reg.Tote[q.K]; !tot {
 			delete(u.reg.Lose, q.K)

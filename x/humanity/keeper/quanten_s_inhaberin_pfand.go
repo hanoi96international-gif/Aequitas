@@ -174,6 +174,10 @@ func (cs *ChainState) quantenSIPfandZurueckBescheidLocked(ctx context.Context, t
 	if zeit <= sattAdd(p.Ende, quantenSNachweisFrist) {
 		return quantenWBefund("quanten_s_pfand_frist", "Pfand zu %s zurueck nach %d", q.K[:12], sattAdd(p.Ende, quantenSNachweisFrist)), nil
 	}
+	// P4: solange ein Nachweis angemeldet ist und nicht verfallen, bleibt das Pfand.
+	if n := reg.Nachweis[q.K]; n != nil && quantenSNachweisOffen(n, zeit) {
+		return quantenWBefund("quanten_s_pfand_gebunden", "zu %s laeuft ein Nachweis", q.K[:12]), nil
+	}
 	an, err := cs.quantenSEmpfaengerLocked(ctx, p.Konto, p.N)
 	if err != nil {
 		return quantenWBescheid{}, err
@@ -183,6 +187,7 @@ func (cs *ChainState) quantenSIPfandZurueckBescheidLocked(ctx context.Context, t
 	}
 	neu := reg.kopie()
 	delete(neu.IPfand, q.K)
+	quantenSNachweisWeg(neu, q.K) // P4: ohne Pfand kein Nachweis mehr
 	return quantenWBescheid{reg: neu, wege: []quantenWWeg{{quantenWPfandAddr, an, p.Betrag}}, felder: QuantenWAngaben{Pfand: p.Betrag, PfandAn: an}}, nil
 }
 

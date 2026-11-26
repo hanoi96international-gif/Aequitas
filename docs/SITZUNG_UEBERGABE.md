@@ -7,16 +7,15 @@ Repos); davor ~13:40 UTC Sitzung „Weiter“ (`claude/weiter-uw2p42`), davor ~1
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
-**Nachtrag 26.11. ~17:30 UTC:**
-- **Stichtag P2a = 27.11.2026 07:00 UTC** (Betreiber „morgen früh“, 08:00 MEZ). Im PR „Stichtag P2a“; Deploy von C1
-  **vor 06:30 UTC** freigeben.
-- Die Pfänder bleiben schlafend.
-- **P4 ist aus dem Zweig per Revert herausgenommen** (Commits 28b18009, b25a98cc nehmen ae4de829 und 3805df3e
-  zurück), damit der Stichtag-PR nur den Stichtag enthält.
-  - Nach dem Merge P4 zurückholen: `git revert 28b18009 b25a98cc` auf dem zurückgesetzten Zweig, oder die
-    Dateien aus 3805df3e holen.
-  - Danach die **16 überlebenden Mutationen** (Liste in `scratchpad/mut_p4.txt`, sonst neu laufen lassen) mit
-    Tests töten.
+**Nachtrag 26.11. ~17:45 UTC — HIER WEITERMACHEN:**
+- **Stichtag P2a = 27.11.2026 07:00 UTC, gemergt** (#673 92a92bb0). Die Pfänder bleiben schlafend.
+  **Deploy von C1 muss vor 06:30 UTC freigegeben sein:**
+  https://github.com/hanoi96international-gif/Aequitas/actions/runs/45869279201.
+  Er ersetzt den wartenden Deploy für P3 (Run 45857153706), der abgelehnt werden kann.
+  Nach 07:00 UTC prüfen: `/api/status` zeigt `quanten_w.los_ab = 1795762800`.
+- **P4 gebaut, PR offen** (Mutationen 41 rot, 9 gleichwertig, 0 offen). Danach **P5 App**: Pfänder anzeigen und
+  bestätigen, Rückgaben auslösen, Nachweis an der Stelle B (Öffnungen aufbewahren!). Erst danach den Stichtag der
+  Pfänder setzen.
 
 **Stand 26.11. ~16:00 UTC — HIER WEITERMACHEN** (Sitzung „Weiter mit Übergabe“, Zweig
 `claude/uebergabe-fortsetzen-8sor22` in allen vier Repos):
