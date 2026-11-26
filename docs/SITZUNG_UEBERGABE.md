@@ -12,9 +12,9 @@ dezentrales Quantengeld“.
 - **Stichtag der Pfänder = 27.11.2026 09:00 UTC** (Betreiber, 26.11.: „27.11. 09 Uhr“, gelesen als UTC wie in der
   Frage). PR „Stichtag der Pfänder“ in Aequitas, mit Sicherheitsprüfung als Kommentar. P2 bleibt schlafend.
 - **Reihenfolge, damit nichts bricht:**
-  1. App 1.32.0 freigeben (Signieren `app-signatur`, dann `release-apk.yml` mit run_id 45898897668, Tag `v1.32.0`).
-     Mit 1.31 scheitert ab dem Stichtag jede Bindung eines S-Tokens (kein Pfandgeber).
-  2. PR mergen, Deploy von C1 (`produktion`) **vor 08:30 UTC** freigeben.
+  1. ~~App 1.32.0 freigeben~~ **erledigt** (26.11. 22:56 UTC, Release `v1.32.0`, Lauf 45905584327).
+     Mit 1.31 scheitert ab dem Stichtag jede Bindung eines S-Tokens (kein Pfandgeber) -- Nutzer brauchen 1.32.0.
+  2. ~~PR mergen, Deploy von C1~~ **erledigt** (#681 c9429ba3, Deploy 45905267726 erfolgreich, 26.11. ~22:45 UTC).
   3. Nach 09:00 UTC: `/api/status` → `quanten_w.pfaender_ab = 1795770000`; eine Bindung zeigt `pfand_inhaberin`.
 - **App #147 (offen):** Automatik für Präparatorin und Ausgeber im Pilot (Briefkasten-Runden von selbst, solange
   die Seite offen ist; Ausgeben bleibt von Hand). Kommt ins nächste Release nach 1.32.0.
@@ -29,16 +29,12 @@ in Aequitas und Aequitas-App; Aequitas-Basis `main`, App-Basis `aequitas-app`). 
   - Aequitas #679 (0eba6ef8): P5c im Knoten (Ansicht `nachweis_fehl`/`nachweis_offen`, Prüfvektor). Nur Ansicht.
     Deploy 45899276496 lief an; die Freigabe von `produktion` gibt der Betreiber (eilt nicht).
   - App #146 (eabad024): **1.32.0** mit P5c (Stoff sichern, Nachweis führen, Karte „Fälschung nachweisen“).
-- **Release 1.32.0 läuft:** Build https://github.com/hanoi96international-gif/Aequitas-App/actions/runs/45898897668
-  (`build-apk.yml`, Variante release, ~40 min).
-  1. Das Signieren wartet auf die Freigabe der Umgebung `app-signatur` (Betreiber).
-  2. Danach `release-apk.yml` mit `run_id` = 45898897668, `tag` = `v1.32.0`, Notiz z. B. „Quantengeld: Nachweis
-     einer Fälschung für Annahmestellen, ehrliche Texte, Größe des Loses vor dem Bestellen“. Auch das braucht die
-     Freigabe von `app-signatur`.
-  3. Danach prüfen: die Kette meldet die neue Version (`/download/app.apk` zeigt auf das neue Release).
-- **Danach (Betreiber):** Stichtag der Pfänder (`quantenSPfaenderAbUnix`) mit Datum und Uhrzeit in UTC nennen; dann
-  PR mit Sicherheitsprüfung und Deploy-Wächter, Deploy mindestens 30 min vorher. `quantenSPraepPfandAbUnix` bleibt
-  schlafend. Seit #678 nimmt der Knoten 5 min vor dem Stichtag der Pfänder keine W-Transaktion an (wiederholbar).
+- **App 1.32.0 veröffentlicht** (26.11. 22:56 UTC): Build 45898897668 signiert, Release-Lauf 45905584327,
+  Tag `v1.32.0`, Asset `app-release.apk`. Noch prüfen (aus der Cloud-Umgebung nicht erreichbar): die Kette meldet
+  die neue Version, `/download/app.apk` zeigt auf das neue Release.
+- **Stichtag der Pfänder:** gesetzt (#681, 27.11.2026 09:00 UTC) und ausgerollt; siehe oben. `quantenSPraepPfandAbUnix`
+  bleibt schlafend. Seit #678 nimmt der Knoten **von 08:55 bis 09:00 UTC keine W-Transaktion an** (wiederholbar,
+  503) -- in dieser Zeit nichts am Quantengeld einreichen.
 - **Stichtag P2a** (27.11.2026 07:00 UTC) ist ausgerollt; nach 07:00 UTC `/api/status` → `quanten_w.los_ab =
   1795762800` prüfen.
 - **Pilot Weg B:** mindestens 3·v Gemeldete (21 für 4 von 7, 12 für 3 von 4); die App zeigt die Zahl vor dem
