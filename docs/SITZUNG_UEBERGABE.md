@@ -22,6 +22,12 @@ dezentrales Quantengeld“.
   nötig, bevor die App mit P5b veröffentlicht wird.
 - **App P5b gemergt** (App #143 1d9e71ff): Pfand der Inhaberin (Pfandgeber = Menschen-Wallet, Bestätigung,
   Rückgabe).
+- **BLOCKER (26.11., Befund):** Der Verfall der Präparatorinnen-Pfänder in P4 ist durch eine Absprache von
+  Inhaberin und Stelle B ausnutzbar. Die Öffnungen gehen an beide Stellen; B kennt also die Werte ihrer Stichprobe
+  und kann einen „Nachweis“ bauen, der ehrlichen Gelosten je 10 % nimmt.
+  - **Entscheidung des Betreibers nötig** (siehe `DEZENTRAL.md`, Abschnitt „BEFUND, Blocker“). Der Stichtag der
+    Pfänder bleibt bis dahin schlafend.
+  - Vorschlag: P4 nimmt nur das Pfand der Inhaberin.
 - **Befund vor P5c:** Der Nachweis (P4) bräuchte t Anteile; die Mitfälscher halten sie zurück. **Zuerst P4b
   (Knoten):** `s_faelschung_offenlegen` nimmt je Stelle den Wert w und den Merkle-Pfad statt Anteilen. Die Prüfung
   ist `quantenWMerklePruefen(wurzel, quantenWPruefsumme(K, i, w), i, pfad, n)`, Grenze `w < 2^(quantenWSalzBits+2)`,

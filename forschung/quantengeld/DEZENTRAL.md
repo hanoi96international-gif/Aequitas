@@ -2345,6 +2345,25 @@ und P4 tragen wird; `x/humanity/keeper/quanten_s_pfaender.go`):
   Ein überlebender Mutant zeigte vor dem Test einen echten Fehlerfall: Stünde nur noch ein Pfand im Register und
   zählte `leer()` es nicht mit, fiele es aus Kodierung und StateRoot.
 
+**BEFUND, Blocker für den Stichtag der Pfänder (26.11.): Die Strafe der Gelosten ist durch eine Absprache von
+Inhaberin und Stelle B ausnutzbar.**
+
+- **Warum der Nachweis nichts beweist:** Die Validatoren geben die Öffnung für Stelle b an **jede** der beiden
+  Stellen, sobald Bindung und Wahl final sind (`oeffnungFuerStelle`). Das muss so sein: Die gewählte Stelle verbirgt
+  die Maske z, und jede Stelle muss offline prüfen können.
+- **Ablauf des Angriffs:** Eine Stelle B, die mit der Inhaberin zusammenarbeitet, kennt damit die Werte ihrer
+  Stichprobe. Die Inhaberin baut eine passende Vorlage für B und löst bei A ein. B führt den „Nachweis“, und er
+  besteht.
+- **Folge:** B bekommt das Pfand der Inhaberin, also Geld zwischen den beiden. Dazu bekommt B **je 10 % des Pfands
+  jeder ehrlichen Gelosten**. Das ist pro Token wiederholbar.
+- **Damit fällt die Annahme der Spezifikation** („beides zugleich geht ohne Kopie nicht, also haben ≥ t Geloste
+  geteilt“): Die andere Stelle kann die Kopie selbst geliefert haben.
+- **Was trägt:** Der Teil „Pfand der Inhaberin an B“. Bei einer Absprache bewegt er nur Geld zwischen den
+  Beteiligten, bei echtem Betrug ersetzt er B genau den Schaden D.
+
+**Vorschlag:** P4 nimmt nur das Pfand der Inhaberin. Damit stellt sich die Frage, ob P2 (Pfand der Präparatorinnen)
+ohne Verfall verlangt wird. Das entscheidet der Betreiber.
+
 **Befund beim Bau von P5c (26.11.): Der Nachweis bräuchte die Anteile der Mitfälscher.**
 
 `quanten_w_s_faelschung_offenlegen` nutzt wie das Einlösen `quantenWAuswerten`. Die Kette setzt dabei den Wert w jeder
