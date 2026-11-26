@@ -83,6 +83,13 @@ allen vier Repos):
   länger als die Frist von 7 Tagen). Mutationen 26/26 rot, Tabelle gegen echtes Postgres geprüft. PR mit eigener
   Sicherheitsprüfung (PR-Kommentar). **Empfehlung an den Betreiber:** den Stichtag von P2a bald setzen, damit die
   Token des Pilots ihr Los tragen. Danach P2 (Pfand je Präparatorin).
+  **#670 gemergt** (d9bb7fc5, CI 16/16 grün). Kein Deploy nötig, solange der Stichtag schläft (der nächste Deploy
+  von C1 nimmt den Code mit; der Wächter lässt „schlafend“ durch).
+- **P2 gebaut (26.11.)**: `quanten_s_pfaender.go`, Pfand je Präparatorin (10 AEQ, Nullifier, Rückgabe
+  `quanten_w_s_pfand_zurueck` frühestens 30 Tage nach Abmeldung und nie, solange gebunden). Schläft hinter dem
+  Stichtag der Pfänder `quantenSPfaenderAbUnix` (auch für P3, P4) mit Wächter `quanten-s-pfaender-nicht-verpasst.sh`.
+  PR mit Sicherheitsprüfung. **Für P4 merken:** die Frist des Nachweises mit der Blockzeit prüfen, nicht mit der
+  Buchzeit (zurückdatierbar um `quantenWBuchSpiel`). Danach P3 (Pfand der Inhaberin = D bei der Bindung).
 - Lokales Postgres für `_RealDB`-Tests: `/usr/lib/postgresql/16/bin` (initdb als Nutzer postgres in `/var/tmp`),
   dann `AEQUITAS_TPS_BENCH=1 DATABASE_URL=postgres://postgres@localhost:5432/<db>?sslmode=disable`.
 - **Beweisweg entschieden** (25.11.): Inhaberin haftet + 10 % je Gelostem. Plan P1–P5 in `DEZENTRAL.md`
