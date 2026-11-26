@@ -13,10 +13,8 @@ dezentrales Quantengeld“.
   - **P1** (Spezifikation `s_pfaender.py`): gemergt, #668.
   - **P2a** (Los je Token behalten, eigener Stichtag `quantenSLosBehaltenAbUnix`): gemergt, #670 d9bb7fc5.
   - **P2** (Pfand je Präparatorin, 10 AEQ, Rückgabe `quanten_w_s_pfand_zurueck`): gemergt, #671 1a08955e.
-  - **P3** (Pfand der Inhaberin = D bei der Bindung, Rückgabe `quanten_w_s_ipfand_zurueck`): **PR #672 offen**.
-    - Sicherheitsprüfung als PR-Kommentar; ein Befund (Grenze 256 → 1072) ist im PR behoben.
-    - Lokal: alle Tests mit `-race` grün, Mutationen 38/38.
-    - Bei grüner CI mergen (Squash, volle SHA), dann Zweig zurücksetzen.
+  - **P3** (Pfand der Inhaberin = D bei der Bindung, Rückgabe `quanten_w_s_ipfand_zurueck`): gemergt, #672 95dd0a65
+    (Sicherheitsprüfung als PR-Kommentar, ein Befund im PR behoben, Mutationen 38/38). Keine PRs offen.
   - Alles **schläft**: P2a hinter `quantenSLosBehaltenAbUnix`; P2, P3 (und später P4) hinter
     `quantenSPfaenderAbUnix`, der „Los behalten“ voraussetzt. Je ein Deploy-Wächter in `.github/neustart/`.
 - **Nächster Schritt P4: Nachweis `quanten_w_s_faelschung`.**
