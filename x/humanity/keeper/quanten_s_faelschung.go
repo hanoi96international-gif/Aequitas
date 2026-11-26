@@ -280,10 +280,7 @@ func quantenSFaelschungStrafe(u *quantenWBescheid, K, an string) {
 		if teil <= 0 {
 			continue
 		}
-		e.Pfand -= teil
-		if e.Pfand == 0 {
-			e.N = ""
-		}
+		e.Pfand -= teil // bleibt > 0: teil ist hoechstens ein Zehntel
 		r.Praep[pk] = e
 		u.wege = append(u.wege, quantenWWeg{quantenWPfandAddr, an, teil})
 		summe += teil

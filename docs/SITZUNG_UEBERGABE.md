@@ -13,26 +13,9 @@ dezentrales Quantengeld“.
   https://github.com/hanoi96international-gif/Aequitas/actions/runs/45869279201.
   Er ersetzt den wartenden Deploy für P3 (Run 45857153706), der abgelehnt werden kann.
   Nach 07:00 UTC prüfen: `/api/status` zeigt `quanten_w.los_ab = 1795762800`.
-- **P4 ist zurück im Zweig**, als Patch von ae4de829~1..3805df3e auf main, noch ohne PR. Offen: 16 von 51 Mutationen
-  überleben (erster Lauf, `mut_p4.py` im Scratchpad). Vor dem PR mit Tests töten:
-```
-    UEBERLEBT 0 quanten_s_faelschung.go '\tif tx.QuantenW.Index != 0 || tx.DistributionAt != 0 {' -> '\tif tx.QuantenW.Index != 0 {'
-    UEBERLEBT 1 quanten_s_faelschung.go '\t\treturn reflect.DeepEqual(q, QuantenWAngaben{}) && tx.Wallet != ""' -> '\t\treturn reflect.DeepEqual(q, QuantenWAngaben{})'
-    UEBERLEBT 6 quanten_s_faelschung.go '\tif _, ok := r.IPfand[K]; !ok {\n\t\treturn\n\t}' -> '\t_ = 0'
-    UEBERLEBT 7 quanten_s_faelschung.go '\tf.Fehl, f.Anmeldung = 0, nil' -> '\tf.Anmeldung = nil'
-    UEBERLEBT 10 quanten_s_faelschung.go ' || f.Token.K != f.K ||' -> ' ||'
-    UEBERLEBT 11 quanten_s_faelschung.go ' || (f.An != 0 && f.An != 1) ||' -> ' ||'
-    UEBERLEBT 12 quanten_s_faelschung.go ' || f.Ende <= 0 {' -> ' {'
-    UEBERLEBT 14 quanten_s_faelschung.go '\t\tif p, ok := r.IPfand[f.K]; !ok || p.Ende != f.Ende || r.Token[f.K] !' -> '\t\tif p, ok := r.IPfand[f.K]; ok && p.Ende != f.End'
-    UEBERLEBT 15 quanten_s_faelschung.go '\t\tif t.D == nil || t.C == -1 || t.Fehl >= quantenWFehlMax || t.Inhaber' -> '\t\tif t.C == -1 || t.Fehl >= quantenWFehlMax || t.I'
-    UEBERLEBT 16 quanten_s_faelschung.go '\t\tif t.D == nil || t.C == -1 || t.Fehl >= quantenWFehlMax || t.Inhaber' -> '\t\tif t.D == nil || t.Fehl >= quantenWFehlMax || t.'
-    UEBERLEBT 17 quanten_s_faelschung.go '\t\tif t.D == nil || t.C == -1 || t.Fehl >= quantenWFehlMax || t.Inhaber' -> '\t\tif t.D == nil || t.C == -1 || t.Inhaber != r.IPf'
-    UEBERLEBT 19 quanten_s_faelschung.go '\t\tif a := t.Anmeldung; a != nil && (a.B != 1-f.An || a.Stelle != e.Ste' -> '\t\tif a := t.Anmeldung; a != nil && a.Stelle != e.S'
-    UEBERLEBT 33 quanten_s_faelschung.go '\t\tif e.Pfand == 0 {\n\t\t\te.N = ""' -> '\t\tif false {\n\t\t\te.N = ""'
-    UEBERLEBT 37 quanten_w_s_kette.go '\t\tif e.Eingeloest && quantenSPfaenderAktiv(blockZeit) {\n\t\t\tan := 0' -> '\t\tif e.Eingeloest {\n\t\t\tan := 0'
-    UEBERLEBT 38 quanten_w_s_kette.go '\t\t\tif alt.Stellen[1] == u.felder.WertAn {\n\t\t\t\tan = 1' -> '\t\t\tif false {\n\t\t\t\tan = 1'
-    UEBERLEBT 40 quanten_w_kette.go 'len(r.IPfand) == 0 && len(r.Nachweis) == 0\n}' -> 'len(r.IPfand) == 0\n}'
-```
+- **P4 gebaut, PR offen** (Mutationen 41 rot, 9 gleichwertig, 0 offen). Danach **P5 App**: Pfänder anzeigen und
+  bestätigen, Rückgaben auslösen, Nachweis an der Stelle B (Öffnungen aufbewahren!). Erst danach den Stichtag der
+  Pfänder setzen.
 
 **Stand 26.11. ~16:00 UTC — HIER WEITERMACHEN** (Sitzung „Weiter mit Übergabe“, Zweig
 `claude/uebergabe-fortsetzen-8sor22` in allen vier Repos):

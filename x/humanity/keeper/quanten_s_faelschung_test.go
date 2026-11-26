@@ -403,3 +403,92 @@ func TestQuantenSFaelschung_Tabelle_RealDB(t *testing.T) {
 		t.Fatal("nach dem Neustart ein anderes Register")
 	}
 }
+
+// Vor dem Stichtag der Pfaender gebunden (kein Pfand der Inhaberin), danach
+// eingeloest: kein Nachweis -- er brachte B nichts, und ohne Pfand waere das
+// Register nicht mehr lesbar.
+func TestQuantenSFaelschung_OhnePfandKeinNachweis(t *testing.T) {
+	w := neueIPfandWelt(t, false)
+	z := qwT0
+	w.bereit(z)
+	quantenSPfaenderAbOverride.Store(z + 10)
+	w.einloesen(z + 50)
+	reg := w.cs.quantenWJetzt()
+	if len(reg.Nachweis) != 0 || len(reg.IPfand) != 0 {
+		t.Fatalf("ohne Pfand: %d Nachweise", len(reg.Nachweis))
+	}
+	if _, err := quantenWRegisterLesen(reg.kodiert()); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+}
+
+// Fehlversuche anderer vor dem Einloesen nehmen B keinen Versuch: der
+// Nachweis-Eintrag beginnt bei 0.
+func TestQuantenSFaelschung_FehlversucheNeu(t *testing.T) {
+	w := neueIPfandWelt(t, true)
+	z := qwT0
+	w.bereit(z)
+	w.annehmen(w.anmeldenTx(w.stelle[1], 1, w.probe[1], w.vorlage(1, w.keys[w.anna])), z+20)
+	if g := w.offenlegenAlle(1, z+25); g.Urteil != "abgewiesen" || w.token(w.cs).Fehl != 1 {
+		t.Fatalf("Vorbedingung Fehlversuch: %+v", g)
+	}
+	w.einloesen(z + 50)
+	if n := w.cs.quantenWJetzt().Nachweis[w.p.K]; n == nil || n.Token.Fehl != 0 {
+		t.Fatalf("Nachweis nach einem Fehlversuch: %+v", n)
+	}
+}
+
+// An Stelle 1 eingeloest: der Nachweis gehoert Stelle 0.
+func TestQuantenSFaelschung_EingeloestAnStelle1(t *testing.T) {
+	w := neueIPfandWelt(t, true)
+	z := qwT0
+	w.bereit(z)
+	w.x = append([]int(nil), w.p.bits...) // besteht an jeder Stelle (wie eine Kopie)
+	w.annehmen(w.anmeldenTx(w.stelle[1], 1, w.probe[1], w.vorlage(1, w.keys[w.anna])), z+50)
+	if g := w.offenlegenAlle(1, z+60); g.Urteil != "echt" || g.WertAn != w.stelle[1] {
+		t.Fatalf("Einloesen an 1: %+v", g)
+	}
+	n := w.cs.quantenWJetzt().Nachweis[w.p.K]
+	if n == nil || n.An != 1 {
+		t.Fatalf("Nachweis: %+v", n)
+	}
+	if r := w.praepRegel(w.fwAnmeldenTx(w.stelle[1], 1, w.p.bits, w.anna), z+100); r != "quanten_w_s_stelle" {
+		t.Fatalf("A=1 meldet selbst an: %q", r)
+	}
+	w.annehmen(w.fwAnmeldenTx(w.stelle[0], 0, w.p.bits, w.anna), z+100)
+}
+
+// Lesen ohne offene Anmeldung: dann tragen die Pruefungen des Eintrags selbst.
+func TestQuantenSFaelschung_RegisterLesenOhneAnmeldung(t *testing.T) {
+	w, _ := neueFwWelt(t, true)
+	gut := w.cs.quantenWJetzt().form()
+	if len(gut.Nachweis) != 1 || gut.Nachweis[0].Token.Anmeldung != nil {
+		t.Fatal("Vorbedingung")
+	}
+	for name, aendern := range map[string]func(f *quantenSNachweisForm){
+		"An 2":       func(f *quantenSNachweisForm) { f.An = 2 },
+		"An -1":      func(f *quantenSNachweisForm) { f.An = -1 },
+		"K anders":   func(f *quantenSNachweisForm) { f.Token.K = strings.Repeat("e", 64) },
+		"ungewaehlt": func(f *quantenSNachweisForm) { f.Token.C = -1 },
+		"Fehl voll":  func(f *quantenSNachweisForm) { f.Token.Fehl = quantenWFehlMax },
+	} {
+		f := gut
+		n := gut.Nachweis[0]
+		aendern(&n)
+		f.Nachweis = []quantenSNachweisForm{n}
+		if _, err := quantenWRegisterLesen(f.kodiert()); err == nil {
+			t.Errorf("%s: angenommen", name)
+		}
+	}
+	// Form des Anmeldens: ohne Wallet, mit Zeit -- abgewiesen.
+	for name, f := range map[string]func(tx *Transaction){
+		"ohne Wallet": func(tx *Transaction) { tx.Wallet = "" },
+		"mit Zeit":    func(tx *Transaction) { tx.DistributionAt = qwT0 },
+	} {
+		tx := w.fwAnmeldenTx(w.stelle[1], 1, w.p.bits, w.anna)
+		f(&tx)
+		if r := w.praepRegel(tx, w.fwEnde()+10); r == "" {
+			t.Errorf("Anmelden %s angenommen", name)
+		}
+	}
+}

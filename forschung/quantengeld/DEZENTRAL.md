@@ -2383,6 +2383,23 @@ Der Deploy von C1 muss vor 06:30 UTC freigegeben sein; der Wächter verlangt 30 
   - die Pfänder der Gelosten; ihr Los bleibt dafür auch über das Aufräumen der Toten hinaus.
 - **Ohne Pfand der Inhaberin** (vor dem Stichtag gebunden) gibt es keinen Nachweis. Er brächte B nichts.
 
+**P4 gebaut** (26.11., Konsens, schlafend hinter dem Stichtag der Pfänder; `quanten_s_faelschung.go`) wie im Entwurf.
+- **Tests:**
+  - Nachweis besteht (B bekommt D + je Geloster 1 AEQ, Geld erhalten, ein Nachweis je K).
+  - Ehrliche Inhaberin besteht nie (drei Fehlversuche, keine Strafe).
+  - Missbrauch: A selbst, A als B, Fremder, fremde Vorlage, fremde Bits, nach der Frist; Buchspiel 120 s.
+  - Bindung über die Frist und das Aufräumen hinaus.
+  - Gefälscht im Block.
+  - Lesen mit und ohne Anmeldung.
+  - Ohne Pfand kein Nachweis; Fehlversuche beginnen neu; Einlösen an Stelle 1.
+  - Echte Annahme, Tabelle gegen Postgres.
+- **Mutationen:** 50. 41 sind rot, 9 gleichwertig (doppelte Schutzprüfungen, die eine andere Prüfung deckt, etwa die
+  Form des Tokens beim Lesen). Eine weitere betraf toten Code (N leeren, wenn ein Pfand durch 10 % auf 0 fiele; das
+  geht nicht), der ist entfernt.
+- **Befunde beim Testen:**
+  - Ohne die Bedingung „nur mit Pfand der Inhaberin“ entstünde ein Nachweis, der das Register unlesbar macht.
+  - Ohne die Prüfung von `An` (0 oder 1) beim Lesen stürzte ein späterer Nachweis ab.
+
 ### Offen vor dem Stichtag: Pfand je Präparator und Beweisweg (aus PR #628, 22.11.)
 
 PR #628 (B2 als ein Stück, geschlossen am 23.11., durch B2a–B2d ersetzt; Zweig
