@@ -18,10 +18,10 @@ package keeper
 //     Wallet, der der Nullifier dann gehoert (ohne Nullifier an das Konto).
 //     Ein Nachweis (P4) nimmt das Pfand vorher an die andere Stelle.
 //
-// GRENZE: hoechstens quantenSIPfandHoechstens Eintraege; ist das Register
-// voll, wird keine Bindung angenommen (fail-closed). Jeder Eintrag kostet D
-// (mindestens quantenMindestDeckungMik) und einen ausgegebenen Token, und
-// jeder darf ein faelliges Pfand zurueckgeben.
+// GRENZE: hoechstens quantenSIPfandHoechstens Eintraege (lebende plus tote
+// Token); ist das Register voll, wird keine Bindung angenommen (fail-closed).
+// Jeder Eintrag kostet D (mindestens quantenMindestDeckungMik) und einen
+// ausgegebenen Token, und jeder darf ein faelliges Pfand zurueckgeben.
 //
 // ZEIT: "frueestens nach der Frist" -- eine zurueckdatierte Buchzeit macht
 // die Rueckgabe nur spaeter moeglich.
@@ -39,9 +39,14 @@ const (
 	// Zeile in quantenWTabelle (quanten_w_tabelle.go).
 	quantenWArtIPfand = "ipfand"
 
-	// So viele Pfaender der Inhaberinnen hoechstens (lebende Token plus
-	// beendete, deren Pfand noch nicht zurueck ist).
-	quantenSIPfandHoechstens = 256
+	// So viele Pfaender der Inhaberinnen hoechstens: so viele, wie Token
+	// leben und tot gemerkt sein koennen (quantenSLoseHoechstens). Wer die
+	// Grenze fuellen will, fuellt damit auch die Toten -- und das haelt die
+	// Ausgabe ohnehin an (quantenWToteAufraeumen). Faellige Pfaender kann
+	// jeder zurueckgeben, bevor der tote Eintrag aufgeraeumt wird. Eine
+	// kleine Grenze (frueher 256) liesse sich mit 256 Token zu je 1 AEQ in
+	// 7 Tagen fuellen und sperrte jede Bindung (Sicherheitspruefung #672).
+	quantenSIPfandHoechstens = quantenSLoseHoechstens
 )
 
 // quantenSIPfand: das Pfand einer Inhaberin zu einem Token K.

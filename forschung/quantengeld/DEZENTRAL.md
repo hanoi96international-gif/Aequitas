@@ -2329,7 +2329,12 @@ und P4 tragen wird; `x/humanity/keeper/quanten_s_pfaender.go`):
 - **Gilt für jeden S-Token, auch für Weg A.** Auch dort können die Validatoren mit der Inhaberin zusammen fälschen.
 - **Kein neuer Token mit K, solange zu K ein Pfand liegt.** Sonst überschriebe der neue Token das alte Pfand: Das
   Geld läge für immer im Topf, und das Register wäre nicht mehr lesbar. Dieser Befund kam beim Bau.
-- **Grenze:** höchstens 256 Pfänder; ist das Register voll, wird keine Bindung angenommen (fail-closed).
+- **Grenze:** So viele Pfänder, wie Token leben und tot gemerkt sein können (1072). Ist das Register voll, wird
+  keine Bindung angenommen (fail-closed).
+  - Zuerst waren 256 geplant. Die eigene Sicherheitsprüfung fand: Mit 256 Token zu je 1 AEQ wäre die Grenze in
+    7 Tagen gefüllt, und keine Bindung ginge mehr.
+  - Jetzt füllt, wer die Grenze füllen will, auch die Toten, und das hält die Ausgabe ohnehin an.
+  - Fällige Pfänder kann jeder zurückgeben.
 - **Lesen ist fail-closed:**
   - Ein laufendes Pfand gehört zu einem gebundenen Token derselben Inhaberin, mit Betrag = D.
   - Ein beendetes gehört zu keinem lebenden Token.
