@@ -182,11 +182,12 @@ func quantenWStatus() map[string]interface{} {
 		m["weg_b_ab"] = ab
 	}
 	quantenSLosBehaltenStatus(m) // P2a, Los je Token (quanten_s_los_behalten.go)
+	quantenSPfaenderStatus(m)    // P2, Pfand je Praeparatorin (quanten_s_pfaender.go)
 	return m
 }
 
 func istQuantenWTxArt(t string) bool {
-	if istQuantenWSTxArt(t) || istQuantenSPraepTxArt(t) || istQuantenSBestellTxArt(t) {
+	if istQuantenWSTxArt(t) || istQuantenSPraepTxArt(t) || istQuantenSBestellTxArt(t) || istQuantenSPfandTxArt(t) {
 		return true
 	}
 	switch t {
@@ -327,6 +328,9 @@ func quantenWNurEigeneFelder(tx *Transaction) bool {
 		}
 		if istQuantenSBestellTxArt(tx.Type) {
 			return quantenSBestellNurEigeneFelder(tx, q)
+		}
+		if istQuantenSPfandTxArt(tx.Type) {
+			return quantenSPfandNurEigeneFelder(tx, q)
 		}
 		return false
 	}
@@ -890,7 +894,7 @@ func quantenWZeitGueltig(tx *Transaction, blockZeit int64) bool {
 	case quantenSBestellenTxArt:
 		z := tx.DistributionAt
 		return z > 0 && z <= sattAdd(blockZeit, quantenWVoraus) && blockZeit-z <= quantenWAlt
-	case quantenSLosenTxArt, quantenSBestellFristTxArt:
+	case quantenSLosenTxArt, quantenSBestellFristTxArt, quantenSPfandZurueckTxArt:
 		return tx.DistributionAt == 0
 	case quantenSPraepMeldenTxArt, quantenSPraepAbmeldenTxArt:
 		// Abmelden ohne Wallet (Aufraeumen) traegt keine Zeit.
@@ -949,6 +953,9 @@ func (cs *ChainState) quantenWBescheidLocked(ctx context.Context, tx *Transactio
 	}
 	if istQuantenSBestellTxArt(tx.Type) {
 		return cs.quantenSBestellBescheidLocked(ctx, tx, wallet, reg, blockZeit)
+	}
+	if istQuantenSPfandTxArt(tx.Type) {
+		return cs.quantenSPfandZurueckBescheidLocked(ctx, tx, reg, blockZeit)
 	}
 	alt := reg.Noten[q.K]
 	if alt == nil {

@@ -2282,6 +2282,39 @@ Bestellung je Mensch und R9.
 - Tests: Gutfall (eingelöst und tot), schlafend ohne Spur, Weg A ohne Los, spätes Ende ohne toten Eintrag, Lesen
   mit 15 Missbrauchsfällen, Tabelle gegen echtes Postgres. Mutationen: 26 von 26 rot.
 
+**P2 gebaut** (26.11., Konsens, schlafend hinter dem Stichtag der Pfänder `quantenSPfaenderAbUnix`, der auch P3
+und P4 tragen wird; `x/humanity/keeper/quanten_s_pfaender.go`):
+- **R-P1:** Melden kostet 10 AEQ (Wallet → Pfandtopf). Ohne Deckung wird es abgewiesen.
+  - Wer schon vor dem Stichtag gemeldet ist, legt das Pfand mit einem neuen Melden nach. Meldezeit und Schlüssel
+    bleiben.
+  - Ab dem Stichtag kommt nur ins Los (Abbild der Bestellung), wer ein Pfand liegen hat. Sonst stünden die
+    Präparatorinnen aus der Zeit vor dem Stichtag für immer ohne Pfand im Los.
+- **R-P2:** Der Eintrag merkt sich den Nullifier N des Menschen.
+  - Die Rückgabe geht an die Wallet, der N dann gehört (nach einem Umzug die neue).
+  - Hat N keine Wallet mehr, geht nichts hinaus.
+  - Ein Mensch hat höchstens ein Pfand; auch beim Lesen wird das geprüft.
+  - Ein Konto ohne Nullifier (ohne Gesicht, kann nicht umziehen) bekommt es selbst zurück.
+- **R-P3:** Neue Art `quanten_w_s_pfand_zurueck`, ohne Unterschrift; auslösen darf jeder. Sie geht frühestens
+  30 Tage nach der Abmeldung, und nur wenn das Konto in keinem Los mehr steht, das noch zählt:
+  - kein laufender Token,
+  - kein beendeter Token mit offener Frist von 7 Tagen,
+  - kein toter Eintrag ohne Zeit des Endes (fail-closed),
+  - keine offene Bestellung.
+
+  Ein Eintrag mit Pfand wird nie aufgeräumt.
+- **Zeit:** Alle Bedingungen sind „frühestens“. Eine zurückdatierte Buchzeit macht sie nur strenger. **Für P4
+  wichtig:** Dort ist die Frist ein „spätestens“. Eine um bis zu `quantenWBuchSpiel` zurückdatierte Buchzeit
+  verlängerte sie, darum muss P4 dafür die Blockzeit nehmen.
+- **Setzt P2a voraus:** `quantenSPfaenderAktiv` verlangt „Los behalten“.
+- Pfand und Empfänger rechnet jeder Knoten selbst. Ein Block mit anderem Pfand oder Empfänger wird abgewiesen;
+  dafür gibt es einen Test.
+- Deploy-Wächter: `.github/neustart/quanten-s-pfaender-nicht-verpasst.sh`, Feld `pfaender_ab` im Status.
+- Die App (Pfand anzeigen, bestätigen, Rückgabe auslösen) folgt in P5. Bis dahin schläft der Stichtag.
+- Tests: schlafend, Gutfall mit Erhaltung, Umzug, ohne Nullifier, Mensch ohne Wallet, Melden ohne Deckung oder mit
+  zwei Nullifiern, Nachlegen (auch bei vollem Register, nicht für Abgemeldete), gebunden (Einheit und Kette),
+  gefälscht im Block, Lesen, nur mit „Los behalten“, Nullifier aus echtem Postgres. Mutationen: 47, davon 46 rot und
+  eine gleichwertig (Mensch ohne Wallet: die leere Adresse fällt danach mit derselben Regel).
+
 ### Offen vor dem Stichtag: Pfand je Präparator und Beweisweg (aus PR #628, 22.11.)
 
 PR #628 (B2 als ein Stück, geschlossen am 23.11., durch B2a–B2d ersetzt; Zweig

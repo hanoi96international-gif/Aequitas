@@ -1452,6 +1452,8 @@ func bekannteTxArt(typ string, blockZeit int64) bool {
 		return quantenWAktiv(blockZeit)
 	case quantenSPraepMeldenTxArt, quantenSPraepAbmeldenTxArt, quantenSBestellenTxArt, quantenSLosenTxArt, quantenSBestellFristTxArt: // quanten_s_praeparatoren.go, quanten_s_bestellung.go, schlafend bis quantenSWegBAb
 		return quantenSWegBAktiv(blockZeit)
+	case quantenSPfandZurueckTxArt: // quanten_s_pfaender.go, schlafend bis quantenSPfaenderAb
+		return quantenSPfaenderAktiv(blockZeit)
 	case "vorbehalt", "vorbehalt_ausfuehrung", "kappung":
 		// Stufe 2 (vorbehalt.go, kappung_verteilt.go). Fehlten hier bis
 		// 05.10.2026 ganz: ab der Aktivierung haette jeder Knoten jeden
@@ -8303,7 +8305,8 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			}
 		case quantenWPraegenTxArt, quantenWAnfrageTxArt, quantenWZufallTxArt, quantenWAntwortTxArt, quantenWOffenlegenTxArt, quantenWFristTxArt,
 			quantenWSAusgebenTxArt, quantenWSBindenTxArt, quantenWSWaehlenTxArt, quantenWSAnmeldenTxArt, quantenWSOffenlegenTxArt, quantenWSFristTxArt,
-			quantenSPraepMeldenTxArt, quantenSPraepAbmeldenTxArt, quantenSBestellenTxArt, quantenSLosenTxArt, quantenSBestellFristTxArt:
+			quantenSPraepMeldenTxArt, quantenSPraepAbmeldenTxArt, quantenSBestellenTxArt, quantenSLosenTxArt, quantenSBestellFristTxArt,
+			quantenSPfandZurueckTxArt:
 			// quanten_w_kette.go: jeder Knoten prueft Unterschriften (Wallet,
 			// Validatoren), Hash-Ketten, Pruefsummen, Fristen und Deckung selbst
 			// und rechnet Anteile, Pfand und Wert nach; sie muessen genau die im

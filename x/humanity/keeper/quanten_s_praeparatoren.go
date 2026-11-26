@@ -146,6 +146,10 @@ type quantenSPraep struct {
 	Pub        string // secp256k1 unkomprimiert, 130 Hex-Zeichen (siehe SCHLUESSEL)
 	Gemeldet   int64
 	Abgemeldet int64
+	// P2 (quanten_s_pfaender.go): Pfand im Pfandtopf (0 = keins) und der
+	// Nullifier des Menschen beim Melden ("" = keiner).
+	Pfand int64
+	N     string
 }
 
 // quantenSPraepForm: ein Eintrag in kanonischer Form (Register, Zeile).
@@ -155,6 +159,9 @@ type quantenSPraepForm struct {
 	Pub        string `json:"pub"`
 	Gemeldet   int64  `json:"gemeldet"`
 	Abgemeldet int64  `json:"abgemeldet,omitempty"`
+	// P2: fehlen ohne Pfand -- vor dem Stichtag der Pfaender byte-gleich.
+	Pfand int64  `json:"pfand,omitempty"`
+	N     string `json:"n,omitempty"`
 }
 
 // quantenSPraepLesen: Eintraege aus dem Register, fail-closed (was so nie
@@ -167,10 +174,13 @@ func quantenSPraepLesen(fs []quantenSPraepForm) (map[string]quantenSPraep, error
 	for i, f := range fs {
 		if !istHash64(f.K) || (i > 0 && f.K <= fs[i-1].K) || !kanonischeAdresse(f.Konto) || istSystemAdresse(f.Konto) ||
 			f.K != quantenSPraepK(f.Konto) || !quantenSPraepPubPasst(f.Pub, f.Konto) || f.Gemeldet <= 0 || f.Gemeldet == math.MaxInt64 ||
-			f.Abgemeldet < 0 || (f.Abgemeldet != 0 && f.Abgemeldet < f.Gemeldet) {
+			f.Abgemeldet < 0 || (f.Abgemeldet != 0 && f.Abgemeldet < f.Gemeldet) || !quantenSPraepPfandGueltig(f.Pfand, f.N) {
 			return nil, fmt.Errorf("quanten_w: Praeparator %d: Form", i)
 		}
-		out[f.K] = quantenSPraep{Konto: f.Konto, Pub: f.Pub, Gemeldet: f.Gemeldet, Abgemeldet: f.Abgemeldet}
+		out[f.K] = quantenSPraep{Konto: f.Konto, Pub: f.Pub, Gemeldet: f.Gemeldet, Abgemeldet: f.Abgemeldet, Pfand: f.Pfand, N: f.N}
+	}
+	if err := quantenSPraepEinPfandJeMensch(out); err != nil {
+		return nil, err
 	}
 	return out, nil
 }
@@ -179,7 +189,7 @@ func quantenSPraepLesen(fs []quantenSPraepForm) (map[string]quantenSPraep, error
 func quantenSPraepFormen(m map[string]quantenSPraep) []quantenSPraepForm {
 	var out []quantenSPraepForm
 	for k, e := range m {
-		out = append(out, quantenSPraepForm{K: k, Konto: e.Konto, Pub: e.Pub, Gemeldet: e.Gemeldet, Abgemeldet: e.Abgemeldet})
+		out = append(out, quantenSPraepForm{K: k, Konto: e.Konto, Pub: e.Pub, Gemeldet: e.Gemeldet, Abgemeldet: e.Abgemeldet, Pfand: e.Pfand, N: e.N})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].K < out[j].K })
 	return out
@@ -227,10 +237,11 @@ func quantenSPraepPubAusSig(nachricht, sig, konto string) (string, error) {
 	return pub, nil
 }
 
-// quantenSPraepAufraeumen: Abgemeldete nach dem Nachlauf vergessen.
+// quantenSPraepAufraeumen: Abgemeldete nach dem Nachlauf vergessen -- nie
+// einen Eintrag, dessen Pfand noch liegt (P2: es bleibt bis zur Rueckgabe).
 func quantenSPraepAufraeumen(r *quantenWRegister, zeit int64) {
 	for k, e := range r.Praep {
-		if e.Abgemeldet != 0 && e.Abgemeldet <= zeit-quantenSPraepNachlauf {
+		if e.Pfand == 0 && e.Abgemeldet != 0 && e.Abgemeldet <= zeit-quantenSPraepNachlauf {
 			delete(r.Praep, k)
 		}
 	}
@@ -247,6 +258,9 @@ func quantenSPraepNurEigeneFelder(tx *Transaction, q QuantenWAngaben) bool {
 		return reflect.DeepEqual(q, QuantenWAngaben{}) && tx.DistributionAt == 0
 	}
 	q.WalletSig, q.PQ = "", nil
+	if tx.Type == quantenSPraepMeldenTxArt {
+		q.Pfand = 0 // gerechnet (P2, quanten_s_pfaender.go)
+	}
 	return reflect.DeepEqual(q, QuantenWAngaben{}) && tx.Wallet != ""
 }
 
@@ -291,16 +305,32 @@ func (cs *ChainState) quantenSPraepBescheidLocked(ctx context.Context, tx *Trans
 			return quantenWBefund("quanten_s_praep_mensch", "%s ist kein registrierter Mensch", kurzAdresse(wallet)), nil
 		}
 		quantenSPraepAufraeumen(neu, zeit)
-		if e, da := neu.Praep[q.K]; da {
+		e, da := neu.Praep[q.K]
+		// P2: wer vor dem Stichtag ohne Pfand gemeldet ist, legt es mit einem
+		// neuen Melden nach (Meldezeit und Schluessel bleiben).
+		nachlegen := da && e.Abgemeldet == 0 && e.Pfand == 0 && quantenSPfaenderAktiv(zeit)
+		if da && !nachlegen {
 			if e.Abgemeldet != 0 {
 				return quantenWBefund("quanten_s_praep_doppelt", "%s ist abgemeldet; neu melden ab %d", kurzAdresse(wallet), sattAdd(e.Abgemeldet, quantenSPraepNachlauf)), nil
 			}
 			return quantenWBefund("quanten_s_praep_doppelt", "%s ist schon gemeldet", kurzAdresse(wallet)), nil
 		}
-		if len(neu.Praep) >= quantenSPraepHoechstens {
+		if !da && len(neu.Praep) >= quantenSPraepHoechstens {
 			return quantenWBefund("quanten_s_praep_voll", "Register der Praeparatoren voll (%d)", len(neu.Praep)), nil
 		}
-		neu.Praep[q.K] = quantenSPraep{Konto: wallet, Pub: pub, Gemeldet: zeit}
+		if !da {
+			e = quantenSPraep{Konto: wallet, Pub: pub, Gemeldet: zeit}
+		}
+		if !quantenSPfaenderAktiv(zeit) {
+			neu.Praep[q.K] = e
+			break
+		}
+		e, weg, befund, err := cs.quantenSPfandMeldenLocked(ctx, reg, q.K, wallet, e)
+		if err != nil || befund.regel != "" {
+			return befund, err
+		}
+		neu.Praep[q.K] = e
+		return quantenWBescheid{reg: neu, wege: []quantenWWeg{weg}, felder: QuantenWAngaben{Pfand: weg.mikro}}, nil
 
 	case quantenSPraepAbmeldenTxArt:
 		e, da := reg.Praep[q.K]
@@ -335,6 +365,10 @@ func (cs *ChainState) quantenSPraepAbbildLocked(ctx context.Context, reg *quante
 		if sattAdd(e.Gemeldet, quantenSPraepVorlauf) > T || (e.Abgemeldet != 0 && e.Abgemeldet <= T) {
 			continue
 		}
+		// P2: ab dem Stichtag der Pfaender nur mit Pfand.
+		if e.Pfand == 0 && quantenSPfaenderAktiv(T) {
+			continue
+		}
 		if cs.quantenSPraepIstMenschLocked(ctx, e.Konto) {
 			out = append(out, e.Konto)
 		}
@@ -359,6 +393,12 @@ func (a *APIServer) handleQuantenSPraeparatoren(w http.ResponseWriter, r *http.R
 		e := map[string]interface{}{"konto": f.Konto, "pub": f.Pub, "gemeldet": f.Gemeldet, "im_los_ab": sattAdd(f.Gemeldet, quantenSPraepVorlauf)}
 		if f.Abgemeldet != 0 {
 			e["abgemeldet"] = f.Abgemeldet
+		}
+		if f.Pfand != 0 {
+			e["pfand"] = f.Pfand
+			if f.Abgemeldet != 0 {
+				e["pfand_zurueck_ab"] = sattAdd(f.Abgemeldet, quantenSPraepHaltezeit)
+			}
 		}
 		liste = append(liste, e)
 	}
