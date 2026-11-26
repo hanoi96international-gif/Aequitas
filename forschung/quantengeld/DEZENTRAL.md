@@ -2314,6 +2314,10 @@ und P4 tragen wird; `x/humanity/keeper/quanten_s_pfaender.go`):
   zwei Nullifiern, Nachlegen (auch bei vollem Register, nicht für Abgemeldete), gebunden (Einheit und Kette),
   gefälscht im Block, Lesen, nur mit „Los behalten“, Nullifier aus echtem Postgres. Mutationen: 47, davon 46 rot und
   eine gleichwertig (Mensch ohne Wallet: die leere Adresse fällt danach mit derselben Regel).
+- Befund beim Prüfen (vor dem PR behoben): Die Annahme sperrt die Konten, bevor sie den Bescheid rechnet. Der
+  Empfänger der Rückgabe (Konto oder Wallet des Nullifiers) war nicht gesperrt, also wäre jede Rückgabe mit
+  „wiederholen“ abgewiesen worden. Die Tests hatten nur den Bescheid aufgerufen. Jetzt sperrt die Annahme beide.
+  Ein Test über den echten Annahmeweg deckt beide Fälle ab (Umzug und ohne Nullifier), dazu 2 Mutationen rot.
 
 ### Offen vor dem Stichtag: Pfand je Präparator und Beweisweg (aus PR #628, 22.11.)
 

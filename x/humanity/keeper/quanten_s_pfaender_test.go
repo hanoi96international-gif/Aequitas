@@ -3,7 +3,10 @@ package keeper
 import (
 	"context"
 	"math"
+	"net/http"
+	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 )
 
@@ -499,5 +502,99 @@ func TestQuantenSPfand_Nullifier_RealDB(t *testing.T) {
 	}
 	if n, m := frage(b); n != "" || !m {
 		t.Fatalf("zwei Nullifier: %q %v", n, m)
+	}
+}
+
+// Ueber die echte Annahme (Sperre der Konten vor dem Bescheid): Melden und
+// Rueckgabe gehen durch -- auch an die neue Wallet nach einem Umzug, die
+// vorher gesperrt sein muss -- und der zweite Knoten spielt sie nach.
+func TestQuantenSPfand_Annahme(t *testing.T) {
+	w := neuePfandWelt(t, 1)
+	for _, o := range []*atomic.Int64{&quantenWAbOverride, &quantenSWegBAbOverride, &quantenSLosBehaltenAbOverride} {
+		o.Store(1)
+	}
+	jetzt := nowUnix()
+	fertig, err := w.cs.quantenWAnnehmen(praepTx(t, quantenSPraepMeldenTxArt, w.anna, w.keys[w.anna], jetzt))
+	if err != nil || fertig.QuantenW.Pfand != quantenSPraepPfand {
+		t.Fatalf("Melden: %v %+v", err, fertig.QuantenW)
+	}
+	if err := w.nachspielen(fertig, fertig.BuchAt+3); err != nil {
+		t.Fatalf("Nachspielen Melden: %v", err)
+	}
+	// Abgemeldet vor 31 Tagen, dann umgezogen.
+	_, neu := neuerSchluessel(t)
+	for _, cs := range []*ChainState{w.cs, w.nach} {
+		reg := cs.quantenWJetzt().kopie()
+		e := reg.Praep[quantenSPraepK(w.anna)]
+		e.Abgemeldet = jetzt - quantenSPraepHaltezeit - 86400
+		e.Gemeldet = e.Abgemeldet - 10
+		reg.Praep[quantenSPraepK(w.anna)] = e
+		cs.mu.Lock()
+		if err := cs.quantenWSetzenLocked(context.Background(), reg); err != nil {
+			t.Fatal(err)
+		}
+		cs.mu.Unlock()
+		addHuman(cs, neu, 0)
+	}
+	w.nullifier(pfNAnna, neu)
+	fertig, err = w.cs.quantenWAnnehmen(pfZurueckTx(w.anna))
+	if err != nil || fertig.QuantenW.PfandAn != neu || w.stand(w.cs, neu) != quantenSPraepPfand {
+		t.Fatalf("Rueckgabe ueber die Annahme: %v %+v", err, fertig.QuantenW)
+	}
+	if err := w.nachspielen(fertig, fertig.BuchAt+3); err != nil {
+		t.Fatalf("Nachspielen Rueckgabe: %v", err)
+	}
+	if w.cs.quantenWJetzt().kodiert() != w.nach.quantenWJetzt().kodiert() || w.stand(w.nach, neu) != quantenSPraepPfand {
+		t.Fatal("Knoten weichen ab")
+	}
+	// Ohne Nullifier: an das Konto selbst, ebenfalls vorher gesperrt.
+	fertig, err = w.cs.quantenWAnnehmen(praepTx(t, quantenSPraepMeldenTxArt, w.bert, w.keys[w.bert], jetzt))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := w.nachspielen(fertig, fertig.BuchAt+3); err != nil {
+		t.Fatal(err)
+	}
+	bert := w.stand(w.cs, w.bert)
+	for _, cs := range []*ChainState{w.cs, w.nach} {
+		reg := cs.quantenWJetzt().kopie()
+		e := reg.Praep[quantenSPraepK(w.bert)]
+		e.Abgemeldet = jetzt - quantenSPraepHaltezeit - 86400
+		e.Gemeldet = e.Abgemeldet - 10
+		reg.Praep[quantenSPraepK(w.bert)] = e
+		cs.mu.Lock()
+		if err := cs.quantenWSetzenLocked(context.Background(), reg); err != nil {
+			t.Fatal(err)
+		}
+		cs.mu.Unlock()
+	}
+	fertig, err = w.cs.quantenWAnnehmen(pfZurueckTx(w.bert))
+	if err != nil || fertig.QuantenW.PfandAn != w.bert || w.stand(w.cs, w.bert) != bert+quantenSPraepPfand {
+		t.Fatalf("Rueckgabe ohne Nullifier ueber die Annahme: %v %+v", err, fertig.QuantenW)
+	}
+	if err := w.nachspielen(fertig, fertig.BuchAt+3); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// HTTP: vor dem Stichtag der Pfaender antwortet die Rueckgabe mit 409.
+func TestQuantenSPfand_HTTPSchlafend(t *testing.T) {
+	w := neuePfandWelt(t, math.MaxInt64)
+	for _, o := range []*atomic.Int64{&quantenWAbOverride, &quantenSWegBAbOverride, &quantenSLosBehaltenAbOverride} {
+		o.Store(1)
+	}
+	a := &APIServer{state: w.cs}
+	koerper := `{"quanten_w":{"k":"` + quantenSPraepK(w.anna) + `"}}`
+	rufe := func() string {
+		rec := httptest.NewRecorder()
+		a.handleQuantenW(quantenSPfandZurueckTxArt)(rec, httptest.NewRequest(http.MethodPost, "/api/quanten-w/s_pfand_zurueck", strings.NewReader(koerper)))
+		return rec.Body.String()
+	}
+	if b := rufe(); !strings.Contains(b, "pledges not active") {
+		t.Fatalf("schlafend: %s", b)
+	}
+	quantenSPfaenderAbOverride.Store(1)
+	if b := rufe(); !strings.Contains(b, "quanten_s_pfand_unbekannt") {
+		t.Fatalf("aktiv, ohne Pfand: %s", b)
 	}
 }

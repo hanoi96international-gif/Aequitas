@@ -1345,6 +1345,20 @@ func (cs *ChainState) quantenWAnnehmen(tx Transaction) (Transaction, error) {
 			}
 		}
 	}
+	// P2 (quanten_s_pfaender.go): die Rueckgabe zahlt an das Konto des
+	// Eintrags oder an die Wallet, der sein Nullifier gehoert. Beide vorher
+	// sperren; zieht der Mensch dazwischen um, weist die Pruefung unter der
+	// Sperre mit "wiederholen" ab (der Empfaenger ist dann nicht gesperrt).
+	if istQuantenSPfandTxArt(tx.Type) {
+		if e, da := cs.quantenWJetzt().Praep[q.K]; da {
+			konten = append(konten, e.Konto)
+			if e.N != "" {
+				if w, err := cs.umzugNullifierInhaberLocked(context.Background(), e.N); err == nil && w != "" {
+					konten = append(konten, w)
+				}
+			}
+		}
+	}
 	var fertig Transaction
 	err := cs.runAtomicWithOutbox(konten, false, func(ctx context.Context) (Transaction, error) {
 		at := nowUnix()
@@ -1388,6 +1402,10 @@ func (a *APIServer) handleQuantenW(art string) http.HandlerFunc {
 		}
 		if (istQuantenSPraepTxArt(art) || istQuantenSBestellTxArt(art)) && !quantenSWegBAktiv(time.Now().Unix()) {
 			jsonError(w, "quantum money way B (preparators) not active", http.StatusConflict)
+			return
+		}
+		if istQuantenSPfandTxArt(art) && !quantenSPfaenderAktiv(time.Now().Unix()) {
+			jsonError(w, "quantum money pledges not active", http.StatusConflict)
 			return
 		}
 		if !burstErlaubt("quanten-w:"+erneuerungsAbsender(r), burstQuantenWJeIP, burstFenster) {
