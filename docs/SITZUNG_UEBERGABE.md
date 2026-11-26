@@ -27,6 +27,11 @@ dezentrales Quantengeld“.
   und kann einen „Nachweis“ bauen, der ehrlichen Gelosten je 10 % nimmt.
   - **Entscheidung des Betreibers nötig** (siehe `DEZENTRAL.md`, Abschnitt „BEFUND, Blocker“). Der Stichtag der
     Pfänder bleibt bis dahin schlafend.
+  - **Stand ~20:30 UTC:**
+    - Knoten-PR **#677**: P4b (Werte statt Anteile), Entscheidung umgesetzt, zwei Sicherheitskommentare.
+    - App-PR **#144**: App an die Entscheidung angepasst.
+    - Beide warten auf die CI. Erst #677 mergen und auf C1 ausrollen, dann #144.
+    - Danach P5c (App: Nachweis an Stelle B mit Werten), dann das App-Release.
   - **Entschieden (Betreiber, 26.11.):** Nur die Inhaberin haftet, ihr Pfand ist D + 10 %. Das Pfand der
     Präparatorinnen wird nicht verlangt (eigener Stichtag, schlafend). Gebaut im Zweig, kommt mit PR #677.
   - **App danach anpassen:**
