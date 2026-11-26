@@ -31,9 +31,9 @@ dezentrales Quantengeld“.
   - Danach **P5 App**: Pfand anzeigen und bestätigen (Melden, Binden), Rückgaben, Nachweis an der Stelle. Erst
     dann den Stichtag der Pfänder setzen (Betreiber).
 - **Wartet auf den Betreiber:**
-  - Deploy von C1 für P2a/P2 (Code schläft, Wächter lässt „schlafend“ durch):
-    https://github.com/hanoi96international-gif/Aequitas/actions/runs/45838608998.
-    Der alte, wartende Deploy von #667 (Run 45706825000) ist überholt und kann abgelehnt werden.
+  - Deploys P2a (#670) und #667 sind auf C1 ausgerollt (freigegeben, erfolgreich). Offen: Deploy für P3 (#672,
+    enthält P2): https://github.com/hanoi96international-gif/Aequitas/actions/runs/45857153706 (Code schläft).
+    Der wartende Deploy für P2 (Run 45850259983) ist dadurch überholt und kann abgelehnt werden.
   - Stichtag P2a (Empfehlung: bald, damit Token des Pilots ihr Los tragen): Datum und Uhrzeit in UTC nennen,
     dann PR mit Sicherheitsprüfung.
   - Pilot Weg B (Menschen, IBM-Konten) nach `docs/PILOT_WEG_B.md`.
