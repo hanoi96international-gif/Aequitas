@@ -56,14 +56,15 @@ const (
 	quantenSPraepHaltezeit int64 = 30 * 86400
 )
 
-// STICHTAG DER PFAENDER (Kettenregel; P2, spaeter auch P3 und P4).
-// 9223372036854775807 = math.MaxInt64 = schlafend. Der Betreiber nennt Datum
-// und Uhrzeit (UTC); der PR, der ihn setzt, bekommt eine eigene
-// Sicherheitspruefung, und der Deploy-Waechter
+// STICHTAG DER PFAENDER (Kettenregel; P3 Pfand der Inhaberin, P4 Nachweis
+// einer Faelschung). Gesetzt vom Betreiber am 26.11.2026: 27.11.2026
+// 09:00 UTC, nach "Los behalten" (07:00 UTC) und nach App 1.32.0 (P5c).
+// Das Pfand je Praeparatorin (P2) schaltet er NICHT ein -- es schlaeft
+// hinter quantenSPraepPfandAbUnix. Nie rueckwirkend: der Deploy-Waechter
 // .github/neustart/quanten-s-pfaender-nicht-verpasst.sh haelt jeden Wechsel
 // an, der nicht mindestens 30 Minuten in der Zukunft liegt oder einen
 // laufenden Stichtag aendern wuerde.
-var quantenSPfaenderAbUnix int64 = 9223372036854775807
+var quantenSPfaenderAbUnix int64 = 1795770000
 
 // quantenSPfaenderAbOverride: nur fuer Tests (0 = Stichtag oben).
 var quantenSPfaenderAbOverride atomic.Int64

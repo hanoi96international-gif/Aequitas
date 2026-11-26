@@ -5,6 +5,7 @@ import (
 	"crypto/ecdsa"
 	"encoding/hex"
 	"encoding/json"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -33,9 +34,14 @@ type qwWelt struct {
 func neueQwWelt(t *testing.T, n int) *qwWelt {
 	t.Helper()
 	quantenWAbOverride.Store(qwT0 - 86400)
+	// Pfaender schlafend wie vor dem Stichtag: qwT0 (2030) laege sonst nach
+	// dem echten Stichtag der Pfaender, und jede Bindung braeuchte ein Pfand.
+	// Die Tests der Pfaender (P3/P4, Grenze) schalten sie danach selbst ein;
+	// TestQuantenSPfaender_Stichtag prueft den echten Stichtag.
+	quantenSPfaenderAbOverride.Store(math.MaxInt64)
 	qwLabor(t) // Ablaeufe mit k_note = 64; sichere Groessen: TestQuantenW_SicherePruefgroesse
 	alt := quantenWBetreiberVon
-	t.Cleanup(func() { quantenWAbOverride.Store(0); quantenWBetreiberVon = alt })
+	t.Cleanup(func() { quantenWAbOverride.Store(0); quantenSPfaenderAbOverride.Store(0); quantenWBetreiberVon = alt })
 	w := &qwWelt{t: t, cs: newTestState(), nach: newTestState(), p: qwPraegen(n, 3, 5, int64(n)),
 		betreiber: map[string]string{}, keys: map[string]*ecdsa.PrivateKey{}}
 	quantenWBetreiberVon = func(_ *ChainState, _ context.Context, signing string) (string, error) {
