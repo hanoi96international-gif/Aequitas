@@ -492,3 +492,12 @@ func TestQuantenSIPfand_PfandgeberMissbrauch(t *testing.T) {
 		t.Errorf("Pfandgeber vor dem Stichtag: %q", r)
 	}
 }
+
+// Die Ansicht des Tokens nennt die Deckung (Betrag, den der Pfandgeber unterschreibt).
+func TestQuantenSIPfand_AnsichtDeckung(t *testing.T) {
+	w := neueIPfandWelt(t, false)
+	w.annehmen(w.ausgebenTx(qwT0, ipDeckung), qwT0+1)
+	if d, _ := w.ansicht()["deckung"].(int64); d != ipDeckung {
+		t.Fatalf("deckung in der Ansicht: %v", w.ansicht()["deckung"])
+	}
+}
