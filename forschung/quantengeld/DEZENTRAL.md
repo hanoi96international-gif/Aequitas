@@ -2345,6 +2345,17 @@ und P4 tragen wird; `x/humanity/keeper/quanten_s_pfaender.go`):
   Ein überlebender Mutant zeigte vor dem Test einen echten Fehlerfall: Stünde nur noch ein Pfand im Register und
   zählte `leer()` es nicht mit, fiele es aus Kodierung und StateRoot.
 
+**Stichtag P2a: 27.11.2026 07:00 UTC** (08:00 MEZ; Betreiber 26.11. „Stichtag morgen früh“, „was das Beste für
+aequitas ist“). Gesetzt wird **nur** „Los behalten“ (`quantenSLosBehaltenAbUnix` = 1795762800). Ab dann tragen neue
+Weg-B-Token ihr Los auf der Kette; für Nutzer ändert sich nichts, und es braucht kein App-Update.
+
+Die Pfänder (P2, P3, P4) schlafen weiter hinter `quantenSPfaenderAbUnix`, aus drei Gründen:
+- Die App zeigt die Pfänder noch nicht an (P5).
+- P4 ist noch nicht fertig: Beim ersten Mutationslauf blieben 16 von 51 Mutationen am Leben.
+- Ab dem Stichtag der Pfänder kommt nur mit Pfand ins Los, und Weg B stünde still, bis nachgelegt ist.
+
+Der Deploy von C1 muss vor 06:30 UTC freigegeben sein; der Wächter verlangt 30 Minuten Vorlauf.
+
 **Entwurf P4: Nachweis einer Fälschung (26.11., vor dem Bau).**
 
 - **Nachweis-Eintrag:** Wird ein Token mit Pfand der Inhaberin (P3) ab dem Stichtag an Stelle A eingelöst, legt die

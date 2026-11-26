@@ -325,3 +325,30 @@ func TestQuantenSLosBehalten_Tabelle_RealDB(t *testing.T) {
 		t.Error("manipulierte Zeile geladen")
 	}
 }
+
+// Der echte Stichtag (Betreiber, 26.11.2026): auf die Sekunde, nach Weg B,
+// Status; die Pfaender schlafen weiter.
+func TestQuantenSLosBehalten_Stichtag(t *testing.T) {
+	const ab int64 = 1795762800
+	if quantenSLosBehaltenAbUnix != ab {
+		t.Fatalf("Stichtag Los behalten %d, erwartet %d (27.11.2026 07:00 UTC)", quantenSLosBehaltenAbUnix, ab)
+	}
+	if quantenSLosBehaltenAbOverride.Load() != 0 || quantenSWegBAbOverride.Load() != 0 || quantenSPfaenderAbOverride.Load() != 0 {
+		t.Fatal("Override gesetzt")
+	}
+	if quantenSWegBAbUnix > ab {
+		t.Fatalf("Weg B (%d) erst nach Los behalten (%d) aktiv", quantenSWegBAbUnix, ab)
+	}
+	if quantenSLosBehaltenAktiv(ab-1) || !quantenSLosBehaltenAktiv(ab) {
+		t.Fatal("Stichtag wirkt nicht auf die Sekunde")
+	}
+	if v, da := quantenWStatus()["los_ab"]; !da || v != ab {
+		t.Fatalf("Status nennt den Stichtag nicht: %v", v)
+	}
+	if quantenSPfaenderAktiv(ab + 365*86400) {
+		t.Fatal("Pfaender mitgeschaltet")
+	}
+	if _, da := quantenWStatus()["pfaender_ab"]; da {
+		t.Fatal("pfaender_ab im Status")
+	}
+}
