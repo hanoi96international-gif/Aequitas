@@ -1,6 +1,6 @@
 # Pilot Weg B – Quantengeld mit Handys als Präparatorinnen
 
-Stand 25.11.2026. Diese Anleitung ist für den Betreiber und die Menschen im Pilot (B5).
+Stand 26.11.2026 (Automatik ab der App nach 1.32.0; Pfänder ab 27.11.2026 09:00 UTC). Diese Anleitung ist für den Betreiber und die Menschen im Pilot (B5).
 Technischer Hintergrund: `forschung/quantengeld/DEZENTRAL.md` (Abschnitte B2b, B3, B4b).
 
 ## Was vorher passieren muss (Betreiber)
@@ -41,6 +41,20 @@ Pilot geht v = 4, t = 3 (12 Gemeldete; die Tabelle in `DEZENTRAL.md` 18 nennt di
 **Tag 0 – nach dem Stichtag.** Präparatorinnen: Quantengeld-Seite → „Als Präparatorin melden“.
 Danach in derselben Karte IBM-API-Schlüssel und CRN eingeben und „Zugang sichern“. Der Schlüssel
 bleibt nur im Handy und wird nie wieder angezeigt. Im Los ist man erst **einen Tag nach** dem Melden.
+
+**Automatik (ab der App nach 1.32.0).** Präparatorinnen und Ausgeber tippen einmal
+„Automatisch weiter, solange diese Seite offen ist“. Dann laufen alle „Briefkasten prüfen“-Schritte
+unten von selbst, alle 90 Sekunden. Der Ausgeber wartet so auch das Los ab, fordert die
+Bestätigungen an und sendet das Paket. Ausgeben bestätigt er weiter selbst. Die Automatik hält an,
+wenn man die Seite verlässt, die App in den Hintergrund geht, die Wallet gesperrt ist, nach
+2 Stunden oder nach drei Fehlern in Folge. Für den Pilot heißt das: In einer verabredeten Stunde
+haben alle die Seite offen.
+
+**Ab dem Stichtag der Pfänder (27.11.2026 09:00 UTC)** hinterlegt die Inhaberin bei der Bindung
+Deckung + 10 % als Pfand. Es kommt von ihrer Menschen-Wallet (Pfandgeber), denn ihr Schlüssel je
+Token ist frisch und hat kein Guthaben. Sie braucht dafür App 1.32.0 oder neuer. Das Pfand kommt
+7 Tage nach dem Ende des Tokens zurück. Weist die andere Annahmestelle eine Fälschung nach, geht
+es an sie.
 
 **Tag 1 oder später – eine Ausgabe** (alles an einem Tag; der Auftrag gilt 1 Tag, die Bestellung 2 Tage):
 
@@ -83,7 +97,7 @@ bleibt nur im Handy und wird nie wieder angezeigt. Im Los ist man erst **einen T
 - **Noch nie auf echten Geräten gelaufen.** Alles ist mit Tests geprüft, aber Dateiablage,
   SecureStore, IBM-Warteschlange und die Dauer einer Runde sieht erst der Pilot. Der erste
   Durchlauf ist deshalb auch eine Messung.
-- **Keine Benachrichtigung.** Neue Aufträge sieht man nur, wenn man in die App schaut. Für den
-  Pilot genügt eine Gruppe im Messenger, in der der Ausgeber Bescheid sagt.
+- **Keine Benachrichtigung, nichts im Hintergrund.** Die Automatik läuft nur bei offener Seite.
+  Für den Pilot genügt eine Gruppe im Messenger und eine verabredete Stunde.
 - **IBM-Kontingent.** Kostenlos sind 10 Minuten je 28 Tage. Wie viel eine Messung verbraucht,
   misst der erste Lauf.

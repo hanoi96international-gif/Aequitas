@@ -1,6 +1,6 @@
 # Decentralised private-key quantum money on a public ledger: distributed Wiesner notes and memoryless S-tokens
 
-*Draft for IACR ePrint — Aequitas project, 16 November 2026. Not yet peer reviewed. Comments
+*Draft for IACR ePrint — Aequitas project, 16 November 2026, revised 26 November 2026 (§4.1–4.4, §8). Not yet peer reviewed. Comments
 welcome. Code, specifications and test vectors: this repository
 (`forschung/quantengeld/`, `x/humanity/keeper/quanten_w*.go`, `quanten_s.go`).*
 
@@ -23,6 +23,20 @@ alone.
   immediately and keeps only classical data. The token can be redeemed at one of two fixed
   acceptance points. Each point verifies offline against its own secret, disjoint sample of
   the issuer's records, and redeems on the ledger with the user's signed presentation.
+
+Since the first draft we added three things to Variant S, all running on the ledger:
+- **Sample after binding.** We found that an acceptance point that colludes with the holder
+  defeats the scheme without any validator secret, by revealing only *which* positions it
+  checks. Each preparer now commits salted per-section hashes of the samples, and reveals its
+  openings only after the holder's binding is final (§4.1).
+- **Preparation by phones.** Any registered person can sign up as a preparer. For each token
+  the ledger draws v preparers from a public beacon (drand), so the issuer chooses no one. Each
+  preparer measures its section on its own cloud quantum account (§4.2).
+- **Holder bonds and fraud proofs.** At binding, the holder posts a bond of D + 10 % (D = face
+  value). If the token is redeemed at one point and the other point later shows a
+  holder-signed presentation that passes its own sample, the bond goes to that point. We
+  explain why we do *not* slash the preparers: a colluding acceptance point can fabricate the
+  same evidence, so the ledger cannot tell a leak from collusion (§4.3).
 
 We report a parameter error we found in our own first design: a tolerance of 15 % wrong
 answers is broken by the optimal phase-covariant cloner (14.64 % error per copy). We derive
@@ -179,6 +193,119 @@ hardware. We also ask what can be shown on real devices now.
   registration cannot be replayed. After three failures the token dies (value to the
   basic income). A missed reveal deadline ends the registration without penalty.
 
+### 4.1 A colluding acceptance point, and the sample after binding
+
+**Finding.** Point 0 checks position i in basis dᵢ ⊕ c, point 1 in dᵢ ⊕ 1 ⊕ c: always
+opposite bases. The samples are disjoint and, with the position bit, exact complements. A
+holder measured each position in one basis, so she can answer each position correctly for
+only one of the two points. Against double spending it is therefore essential that she does
+not know, when she binds d, which point checks which position.
+- If point 0 tells her before binding only *which* positions are its own (not u, not t), she
+  sets d there for point 0 and everywhere else for point 1, and passes at both.
+- Point 0 registers first and receives the value. Point 1 accepted offline and is left
+  with nothing.
+- The specification's self-test reproduces this. A randomly guessed half fails at least one
+  point.
+
+**Fix (sample v2).** No one needs a sample before the holder presents, which is always after
+binding.
+1. Each preparer computes its section's part of each sample itself and reports to the issuer
+   only counts (hits, errors) and a salted hash of its positions per point. The issuer can
+   check the honest presentation exactly without learning a single position.
+2. The ledger commits the sample hash as the sequence of per-section hashes and recomputes it
+   at registration from the point's sample and the salts.
+3. Preparers release openings and salts only once d and c are final on the ledger.
+
+Afterwards a point has nothing to reveal before binding, and collusion after binding is
+useless because d is fixed. The remaining exposure is the usual threshold one: a preparer who
+leaks its bits leaks them for its own section. Running on the main ledger since 19 November
+2026. The first token was measured on `ibm_kingston` (20 November): the double presentation
+was rejected, and the honest presentation was redeemed.
+
+**Public audit after the end.** Once a token is redeemed or dead, and that end is final,
+each preparer publishes its signed section: salted values, sample salts, and the d, c and x
+it saw. Anyone can then check that exactly this preparation was committed at issuance and
+count the measurement errors. On the main ledger: 0 errors in 540 hits. This does not prove
+that a quantum computer measured anything. It proves consistency with the commitment.
+
+### 4.2 Preparation by phones (Way B)
+
+Way A needs validators that run servers. Way B lowers the bar to a phone and a free account
+on a cloud quantum computer.
+- **Register.** Only persons in the ledger's proof-of-personhood registry may sign up, at most
+  one entry per person. An entry joins the lottery one day after sign-up. The snapshot used is
+  the one at the time of the order. A withdrawal made after the order cannot move the lottery.
+- **Lottery.** The issuer orders a token (v, t). The ledger then draws v preparers: those with
+  the smallest H(R, K, account) in the snapshot, where R is a drand round whose time lies after
+  the order. Every node verifies the round's BLS signature against the fixed public key of the
+  drand network itself and fetches nothing. A round that is not yet available means no draw
+  and no issuance (fail-closed). The issuer is never in its own draw. An order needs at least
+  3·v eligible entries.
+- **Issuance.** Only the drawn preparers, in draw order, may contribute sections. Each one
+  measures its section on its own account (the API key stays on the device), shares its
+  values t-of-v among the others, and confirms the issuance. Messages travel through an
+  encrypted mailbox at the nodes, bounded per sender and size.
+- **Redemption.** A point loads its sample from each reachable preparer. For a missing
+  preparer it uses the issuer's signed package and t openings of the others (the threshold
+  rule), all checked against the committed root.
+- **What it buys.** A forgery needs t dishonest preparers among the v drawn, which the
+  issuer cannot steer. With 200 registered preparers, 20 % of them malicious: P(≥ t malicious)
+  is 3.1 % for 4-of-7 and 0.53 % for 7-of-13 (`s_weg_b.py --tabelle`). Per token, not per
+  attempt: probing many K does not help while R is unknown. These numbers alone are not enough
+  for real value, hence the bonds in §4.3.
+
+### 4.3 Holder bonds and fraud proofs
+
+**Bond.** From the activation date, binding a token requires a bond of D + 10 % (rounded up,
+saturating). Holder keys are fresh per token and hold no funds, so the bond comes from a
+*bond giver* (a registered person's wallet) who signs for exactly (K, holder, amount). The bond
+is returned 7 days after the token ends, unless a fraud proof succeeds.
+
+**Fraud proof.** After a redemption at point A, the ledger keeps a proof entry for 7 days:
+root, samples and points. Point B may then register a holder-signed presentation (bound to
+the number of failed attempts, at most 3) and reveal its sample in parts of 64 positions. For
+each position B reveals the value w together with its Merkle path. No shares are needed. If it
+passes, the verdict is `forgery` and B receives the holder's bond. The deadline is checked
+against block time, never against the booking time, which can be backdated.
+
+**Why values, not shares.** Our first fraud proof reconstructed w from t shares, as
+redemption does. In a real forgery, though, at least t preparers have colluded. They can
+withhold their shares, and the v − t honest ones are often fewer than t (3 of 7). The proof
+would fail exactly when it is needed. B already holds every w of its sample from the openings,
+and has checked each against its leaf and the root. A wrong w fails at the root.
+
+**Why we do not slash the preparers (finding).** Our plan also forfeited 10 % of each drawn
+preparer's deposit. The fraud proof cannot support this:
+- The openings for point b must go to *both* points. The chosen point is hidden by the mask,
+  and each point must verify offline.
+- A point B colluding with the holder therefore knows the values of its sample. The holder
+  builds a matching presentation for B, redeems at A, and B "proves" a forgery. This takes
+  16 changed positions in our test and no dishonest preparer.
+- A leak by preparers and collusion with B leave identical traces. Even a real leak cannot be
+  attributed, since any t of the v shares suffice.
+
+So only the holder is liable. With a bond of D + 10 %, a ring of holder and preparers loses
+10 % of D on every forgery, which leaves nothing to bribe preparers with. Collusion between
+holder and B only moves the holder's own money between the two. An honest B is made whole,
+plus 10 %, which pays for submitting the proof. Preparer deposits are implemented but stay
+inactive.
+
+**Activation boundary.** The rules switch on at a fixed time. A W transaction whose booking
+time lies before it must sit in a block before it, otherwise the block is invalid. Nodes stop
+accepting W transactions 5 minutes before the boundary, so backdating cannot carry a binding
+without a bond across it.
+
+### 4.4 What this does and does not achieve
+
+After issuance, an S-token is classical data. Its protection against forgery comes from:
+- fewer than t of the v drawn preparers colluding;
+- the ledger redeeming each token once;
+- from the activation date, the holder's bond.
+
+The quantum step makes the preparation physical and auditable after the fact. Today it is not
+a security gain over a well-run ledger: a preparer and its cloud provider know its section,
+and a cloud run cannot be proven to third parties.
+
 ## 5 Parameters
 
 **Our initial parameters were broken.**
@@ -299,10 +426,20 @@ tolerance below 14.6 % meets both targets up to k = 8,192.
 - **Consistent shares.** Verifiable secret sharing (Feldman or Pedersen) would protect
   validators against inconsistent shares from a dishonest minter. Today this only hurts the
   minter's own note.
+- **Single operator today.** The main ledger runs one validator, so finality and blocks
+  depend on one operator. drand removes the lottery from its control; nothing else does yet.
+- **Way B has not yet run on real phones.** Mailbox, device storage, the IBM queue and
+  round-trip times will be measured in the pilot (≥ 21 registered preparers for 4-of-7).
+- **Provider.** If every preparer uses the same cloud provider, that provider sees every
+  section.
 - **Questions for reviewers:**
   1. The general-attack version of the bound for "each position queried once".
-  2. Whether f = (t−1)/v is the right coalition model.
-  3. Economic griefing beyond the attacks we found.
+  2. Whether f = (t−1)/v is the right coalition model, and whether the drawn-preparer model
+     (§4.2) with an unknown beacon round is sound.
+  3. Economic griefing beyond the attacks we found, in particular against the holder bond
+     and the fraud proof (§4.3).
+  4. Whether any proof can attribute a leak to specific preparers without making the
+     openings point-specific, which would break offline acceptance.
 
 ## References
 
@@ -319,5 +456,7 @@ tolerance below 14.6 % meets both targets up to k = 8,192.
   memories and experimental tests, npj Quantum Information 8, 28 (2022), arXiv:2104.11717.
 - M. Bozzio et al., Experimental investigation of practical unforgeable quantum money, npj
   Quantum Information 4, 5 (2018), arXiv:1705.01428.
+- drand / League of Entropy, distributed randomness beacon, https://drand.love (BLS12-381
+  threshold signatures).
 - M. Zhandry, Quantum lightning never strikes the same state twice (and follow-ups on
   group actions).

@@ -2533,6 +2533,23 @@ Inhaberin = D + 10 %, kein Verfall der Gelosten, Angriff „eigene Stelle B“ i
 - Tests: Missbrauch (zurückdatiert über den Stichtag, Fenster des Erzeugers, Pause über den echten Annahmeweg);
   6 Mutationen rot (Grenze, Vergleich, Fenster, Pause-Beginn, Pause in der Annahme, Fenster im Erzeuger).
 
+### Stichtag der Pfänder: 27.11.2026 09:00 UTC (Betreiber, 26.11.2026)
+
+`quantenSPfaenderAbUnix` = 1795770000. Ab dann gilt für jeden S-Token:
+- **P3:** Die Bindung nimmt das Pfand der Inhaberin, Deckung + 10 %, vom Pfandgeber (Menschen-Wallet). Ohne Pfand
+  weist die Kette die Bindung ab. Die App kann das ab **1.32.0** (P5b/P5c); mit 1.31 scheitert die Bindung, darum
+  muss 1.32.0 vorher freigegeben sein.
+- **P4:** Nach dem Einlösen an Stelle A bleibt ein Nachweis-Eintrag 7 Tage. Besteht die andere Stelle B mit Werten
+  und Merkle-Pfad, bekommt sie das Pfand der Inhaberin (Urteil `faelschung`).
+- **P2 (Pfand je Präparatorin) bleibt schlafend** hinter `quantenSPraepPfandAbUnix`.
+- Ab 08:55 UTC nimmt der Knoten 5 Minuten lang keine W-Transaktion an (503, wiederholbar). Eine Buchzeit vor dem
+  Stichtag gehört in einen Block davor (`quanten_s_pfaender_grenze.go`).
+- Deploy von C1 **vor 08:30 UTC** freigeben; der Wächter `quanten-s-pfaender-nicht-verpasst.sh` hält jeden späteren
+  Deploy an (30 min Vorlauf). Verpasst: neuen Stichtag wählen, nie rückwirkend.
+- Tests: `TestQuantenSPfaender_Stichtag` (auf die Sekunde, Status, Grenze der Blockzeit, Pause, P2 schläft). Die
+  Abläufe in `neueQwWelt` (Zeit 2030) laufen mit schlafenden Pfändern wie bisher; die Tests der Pfänder schalten sie
+  selbst ein.
+
 ### Offen vor dem Stichtag: Pfand je Präparator und Beweisweg (aus PR #628, 22.11.)
 
 PR #628 (B2 als ein Stück, geschlossen am 23.11., durch B2a–B2d ersetzt; Zweig
