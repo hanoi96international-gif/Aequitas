@@ -2240,6 +2240,22 @@ Angriffe im Selbsttest; 16 Mutationen rot. Die Wirtschaft ist geprüft: Inhaberi
 einer Fälschung (D − Pfand der Inhaberin − t · 1 AEQ < 0); Stelle B ist schadlos. Die zwei offenen Werte sind
 Parameter (`inhaberin_pfand`, `NACHWEIS_FRIST`). Nächster Schritt: P2 im Knoten, sobald der Betreiber sie bestätigt.
 
+**Befund beim Bau von P2 (26.11.):** Die Kette weiß nach der Ausgabe nicht mehr, **wer** gelost war. Der Token
+speichert nur die Zahl (`NVal`); die Liste kommt mit der Vorlage (Entscheidung 25.11.), und die Bestellung mit dem Los
+wird bei der Ausgabe gelöscht (`quanten_w_s_kette.go`). Ohne diese Liste kann kein Knoten R-P3 prüfen („gebunden,
+solange ein Token mit ihr im Los läuft oder seine Frist offen ist“), und P4 könnte die Gelosten nicht belasten.
+Darum zuerst ein eigener Schritt:
+
+- **P2a Los je Token behalten:** Bei der Ausgabe eines Tokens aus Weg B hält die Kette das Los (in Losreihenfolge)
+  fest, bis zum Ende des Tokens plus `NACHWEIS_FRIST`. Danach wird es vergessen. Die Grenze ist dieselbe wie bei den
+  Token selbst (höchstens so viele wie lebende plus kürzlich beendete). Das Los gehört in die StateRoot und in die
+  Kodierung des Registers (vor dem Stichtag byte-gleich). Damit kann jede Annahmestelle die Liste der Gelosten auch
+  von der Kette nehmen, statt der Vorlage zu glauben.
+- Danach wie geplant: P2 (Pfand je Präparatorin, Rückgabe), P3 (Pfand der Inhaberin), P4 (Nachweis), P5 (App).
+  Ein Stichtag für alles, wenn P4 steht.
+
+Werte (Betreiber hat nicht widersprochen, 26.11.): Pfand der Inhaberin = D, Frist = 7 Tage.
+
 Bis dahin (Pilot ab 26.11.): kein Pfand je Präparator, kein Nachweis. Es tragen das Pfand je Bestellung (B2c), eine
 Bestellung je Mensch und R9.
 

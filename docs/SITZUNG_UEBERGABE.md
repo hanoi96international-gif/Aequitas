@@ -71,8 +71,11 @@ allen vier Repos):
   ist ein Status, kein Job. Neu `deploy/knoten/einrichten.sh` (ein Befehl für beide, gemeinsame Mindestwerte
   4 Kerne/12 GB/80 GB, Wallet und IP einmal; Test `scripts/test_knoten_einrichten.sh`), `docs/KNOTEN_EINRICHTEN.md`.
   App-Tab „Knoten“ zeigt zuerst den gemeinsamen Befehl: **gemergt** App #141 (7922ccd2), Aequitas #667 (ecd7e45f).
-- **P1 Pfänder gebaut** (26.11., `s_pfaender.py`, Selbsttest in der CI, 16 Mutationen rot). P2 (Knoten) erst, wenn
-  der Betreiber Höhe des Pfands der Inhaberin (Vorschlag D) und Frist (Vorschlag 7 Tage) bestätigt.
+- **P1 Pfänder gebaut und gemergt** (#668 0829e7c1). Werte angenommen: Pfand der Inhaberin = D, Frist = 7 Tage.
+- **Befund beim Bau von P2:** Die Kette speichert nach der Ausgabe nicht, wer gelost war (nur `NVal`; Bestellung mit
+  Los wird bei der Ausgabe gelöscht). **Nächster Schritt: P2a „Los je Token behalten“** (Konsens, schlafend, mit
+  Sicherheitsprüfung), dann P2–P5 (`DEZENTRAL.md`, „Entscheidung Beweisweg und Plan Pfänder“). Ein angefangener
+  Entwurf von P2 wurde verworfen, nichts davon ist auf `main`.
 - **Beweisweg entschieden** (25.11.): Inhaberin haftet + 10 % je Gelostem. Plan P1–P5 in `DEZENTRAL.md`
   („Entscheidung Beweisweg und Plan Pfänder“), eigener Stichtag nach dem Pilotstart. **Offen (Betreiber):** Höhe des
   Pfands der Inhaberin (Vorschlag D) und Frist für den Nachweis (Vorschlag 7 Tage). Nächster Schritt: P1 Spezifikation.
