@@ -128,6 +128,51 @@ K_TABELLE = {
     10: (5240, 7808, 0, 0, 0, 0, 0, 0, 0),
 }
 TOLERANZEN = tuple(K_TABELLE)
+
+# WEG C, Schritt C1 (WEG_C.md): Pruefgroesse fuer eine Ausgabe ueber eine
+# echte Quantenleitung -- die Inhaberin misst die Photonen selbst. Zwei
+# Unterschiede zum Chip (ANALYSE.md 5c, Kent u. a. 2022):
+#   - verkippte Basen (theta): der beste Faelscher irrt nur mit
+#     lambda(theta) = wiesner_parameter.faelscher_schranke(theta) statt 14,64 %;
+#   - Mehrphotonen-Pulse: ein Anteil frei_ppm der gemeldeten Stellen gilt als
+#     dem Faelscher bekannt, zusaetzlich zur Absprache (t-1)/v.
+# K_LEITUNG[theta][tol][f16]: wie K_TABELLE (Vielfaches von 8, Faelscher mit
+# (1 - f16/16) * lambda(theta) besteht hoechstens mit 2^-40), exakt gerechnet
+# mit wiesner_parameter.bedingt(). Zeile 0 ist K_TABELLE. Gemessene Werte
+# werden IMMER aufgerundet: theta auf die naechste Stufe, frei auf Sechzehntel.
+THETA_STUFEN = (0, 2, 5, 10)    # Grad
+THETA_ZEHNTEL_MAX = 100         # 10,0 Grad
+FREI_PPM_MAX = 250_000          # hoechstens ein Viertel frei (Kents Handsender: 22 %)
+K_LEITUNG = {
+    0: K_TABELLE,
+    2: {
+        2: (624, 688, 768, 864, 984, 1144, 1360, 1656, 2096),
+        3: (784, 880, 1008, 1160, 1368, 1648, 2048, 2656, 3656),
+        4: (1000, 1152, 1344, 1600, 1952, 2472, 3272, 4640, 7320),
+        5: (1304, 1536, 1848, 2288, 2936, 3960, 5776, 0, 0),
+        6: (1736, 2112, 2640, 3440, 4736, 7088, 0, 0, 0),
+        8: (3448, 4624, 6616, 0, 0, 0, 0, 0, 0),
+        10: (0, 0, 0, 0, 0, 0, 0, 0, 0),
+    },
+    5: {
+        2: (768, 856, 960, 1088, 1256, 1472, 1768, 2184, 2832),
+        3: (1016, 1152, 1320, 1544, 1848, 2272, 2896, 3888, 5632),
+        4: (1360, 1584, 1880, 2280, 2864, 3752, 5232, 8000, 0),
+        5: (1872, 2256, 2784, 3576, 4816, 6984, 0, 0, 0),
+        6: (2680, 3376, 4432, 6160, 0, 0, 0, 0, 0),
+        8: (6800, 0, 0, 0, 0, 0, 0, 0, 0),
+        10: (0, 0, 0, 0, 0, 0, 0, 0, 0),
+    },
+    10: {
+        2: (1184, 1336, 1512, 1752, 2056, 2472, 3064, 3960, 5432),
+        3: (1728, 2000, 2360, 2856, 3560, 4616, 6344, 0, 0),
+        4: (2624, 3176, 3960, 5136, 7032, 0, 0, 0, 0),
+        5: (4288, 5544, 7536, 0, 0, 0, 0, 0, 0),
+        6: (7904, 0, 0, 0, 0, 0, 0, 0, 0),
+        8: (0, 0, 0, 0, 0, 0, 0, 0, 0),
+        10: (0, 0, 0, 0, 0, 0, 0, 0, 0),
+    },
+}
 FEHL_MAX = 3
 FRIST_ANTWORT = 600          # Sekunden nach dem vollstaendigen Zufall
 FRIST_OFFENLEGEN = 1800      # Sekunden nach der Antwort
@@ -273,6 +318,36 @@ def k_note(tol: int, t: int, v: int) -> int:
     if tol not in K_TABELLE or not 0 <= f16 < len(K_TABELLE[tol]):
         return 0
     return K_TABELLE[tol][f16]
+
+
+def theta_stufe(theta_zehntel: int) -> int | None:
+    """Die kleinste Stufe >= dem gemessenen Winkel (Zehntelgrad); None = zu gross."""
+    if not isinstance(theta_zehntel, int) or not 0 <= theta_zehntel <= THETA_ZEHNTEL_MAX:
+        return None
+    for st in THETA_STUFEN:
+        if st * 10 >= theta_zehntel:
+            return st
+    return None
+
+
+def f16_leitung(t: int, v: int, frei_ppm: int) -> int:
+    """ceil(16 ((t-1)/v + frei_ppm/10^6)): Absprache plus freie Mehrphotonen-Stellen."""
+    return -(-(16 * (t - 1) * 10**6 + 16 * frei_ppm * v) // (v * 10**6))
+
+
+def k_leitung(tol: int, t: int, v: int, theta_zehntel: int, frei_ppm: int) -> int:
+    """Pruefgroesse eines Tokens ueber eine echte Leitung; 0 = nicht sicher
+    moeglich (fail-closed bei jeder Eingabe ausserhalb der Grenzen)."""
+    if not all(isinstance(x, int) for x in (tol, t, v, theta_zehntel, frei_ppm)):
+        return 0
+    if not (1 <= t <= v <= V_MAX and 0 <= frei_ppm <= FREI_PPM_MAX):
+        return 0
+    st = theta_stufe(theta_zehntel)
+    if st is None or tol not in K_LEITUNG[st]:
+        return 0
+    f16 = f16_leitung(t, v, frei_ppm)
+    z = K_LEITUNG[st][tol]
+    return z[f16] if 0 <= f16 < len(z) else 0
 
 
 def bestaetigung_text(K: str, wurzel: bytes, n: int, t: int, validatoren: list[str], x: int, anker: bytes, zeit: int,
@@ -978,6 +1053,53 @@ def _selbsttest(fehler: list[str]) -> None:
     # Unsicher heisst 0: tol 8 bei f = 4/16 (Faelscher 11,0 %) braucht k > K_MAX.
     soll(K_TABELLE[8][4] == 0 and K_TABELLE[10][2] == 0, "unsichere Felder nicht 0")
 
+    # WEG C (C1): Pruefgroesse ueber eine echte Leitung.
+    soll(K_LEITUNG[0] is K_TABELLE and tuple(K_LEITUNG) == THETA_STUFEN, "K_LEITUNG: Zeile 0 ist K_TABELLE")
+    for st in THETA_STUFEN:
+        soll(set(K_LEITUNG[st]) == set(K_TABELLE), f"K_LEITUNG[{st}]: Toleranzen")
+        for tol, z in K_LEITUNG[st].items():
+            soll(len(z) == 9 and all(x == 0 or (x % 8 == 0 and K_MIN <= x <= K_MAX) for x in z), f"K_LEITUNG[{st}][{tol}]: Form")
+            soll(all(a <= b or b == 0 for a, b in zip(z, z[1:])), f"K_LEITUNG[{st}][{tol}]: nicht monoton in f")
+    # Mehr Verkippung macht es dem Faelscher leichter: nie eine kleinere Pruefung.
+    for a, b in zip(THETA_STUFEN, THETA_STUFEN[1:]):
+        for tol in K_TABELLE:
+            soll(all(y == 0 or (x != 0 and x <= y) for x, y in zip(K_LEITUNG[a][tol], K_LEITUNG[b][tol])),
+                 f"K_LEITUNG: {b} Grad pruefen weniger als {a} Grad (tol {tol})")
+    # JEDE Zelle der Leitungs-Zeilen gegen die exakte Rechnung: bei k haelt die
+    # Schranke, bei k - 8 nicht; 0 heisst, auch K_MAX haelt nicht.
+    for st in THETA_STUFEN[1:]:
+        lam = wp.faelscher_schranke(st)
+        for tol, z in K_LEITUNG[st].items():
+            for f16, kk in enumerate(z):
+                c = (1 - f16 / 16) * lam
+                if kk == 0:
+                    soll(c <= tol / 100 or wp.bedingt(K_MAX, c, tol, MIN_TREFFER) > 2.0 ** -40,
+                         f"K_LEITUNG[{st}][{tol}][{f16}] = 0, aber K_MAX waere sicher")
+                else:
+                    soll(wp.bedingt(kk, c, tol, MIN_TREFFER) <= 2.0 ** -40 and (kk == K_MIN or wp.bedingt(kk - 8, c, tol, MIN_TREFFER) > 2.0 ** -40),
+                         f"K_LEITUNG[{st}][{tol}][{f16}] = {kk} passt nicht zur exakten Rechnung")
+    # Unsicher heisst 0: tol 8 bei 5 Grad und f = 1/16 braucht k > K_MAX.
+    soll(K_LEITUNG[5][8][1] == 0 and K_LEITUNG[10][10][0] == 0, "K_LEITUNG: unsichere Felder nicht 0")
+    # Missbrauch, Befund 2 (ANALYSE.md 5c): die Tabelle fuer ideale Qubits ist
+    # ueber eine verkippte Leitung NICHT sicher -- bei 5 Grad, tol 4, f = 1/16
+    # kaeme ein Faelscher bei k = K_TABELLE weit ueber 2^-40 durch.
+    c5 = (1 - 1 / 16) * wp.faelscher_schranke(5)
+    soll(wp.bedingt(K_TABELLE[4][1], c5, 4, MIN_TREFFER) > 2.0 ** -30, "Befund 2: ideale Tabelle ueber eine Leitung waere sicher?")
+    soll(wp.bedingt(k_leitung(4, 1, 1, 50, 60_000), c5, 4, MIN_TREFFER) <= 2.0 ** -40, "k_leitung haelt bei 5 Grad nicht")
+    # Aufrunden, nie abrunden.
+    soll(theta_stufe(0) == 0 and theta_stufe(1) == 2 and theta_stufe(20) == 2 and theta_stufe(21) == 5
+         and theta_stufe(50) == 5 and theta_stufe(51) == 10 and theta_stufe(100) == 10, "theta_stufe rundet nicht auf")
+    soll(theta_stufe(101) is None and theta_stufe(-1) is None and theta_stufe(2.0) is None, "theta_stufe: Grenzen")
+    soll(f16_leitung(1, 1, 0) == 0 and f16_leitung(1, 1, 1) == 1 and f16_leitung(1, 1, 62_500) == 1
+         and f16_leitung(1, 1, 62_501) == 2 and f16_leitung(3, 7, 0) == f16_von(3, 7)
+         and f16_leitung(4, 7, 50_000) == 8, "f16_leitung")
+    soll(k_leitung(4, 1, 1, 0, 0) == k_note(4, 1, 1) and k_leitung(4, 3, 5, 0, 0) == k_note(4, 3, 5), "k_leitung ohne Leitung = k_note")
+    soll(k_leitung(4, 1, 1, 21, 0) == K_LEITUNG[5][4][0] and k_leitung(4, 1, 1, 20, 0) == K_LEITUNG[2][4][0], "k_leitung: Stufe")
+    soll(k_leitung(4, 1, 1, 0, FREI_PPM_MAX) == K_TABELLE[4][4], "k_leitung an der Grenze frei_ppm")
+    for args in ((4, 1, 1, 101, 0), (4, 1, 1, 0, FREI_PPM_MAX + 1), (4, 1, 1, 0, -1), (4, 0, 1, 0, 0), (4, 2, 1, 0, 0),
+                 (7, 1, 1, 0, 0), (4, 1, 1, 2.5, 0), (4, 1, 0, 0, 0), (4, 1, 65, 0, 0), (10, 1, 1, 30, 0), (4, 4, 7, 100, 400_000)):
+        soll(k_leitung(*args) == 0, f"k_leitung{args} nicht abgewiesen")
+
 
 def vektor() -> dict:
     """Fester Pruefvektor fuer den Knoten (quanten_w_test.go): Pruefsummen,
@@ -1029,8 +1151,25 @@ def vektor() -> dict:
     }
 
 
+def vektor_leitung() -> dict:
+    """Pruefvektor fuer den Knoten (Weg C, C1): Tabelle und k_leitung-Faelle."""
+    faelle = ((4, 1, 1, 0, 0), (4, 3, 5, 0, 0), (4, 1, 1, 1, 0), (4, 1, 1, 20, 0), (4, 1, 1, 21, 0),
+              (6, 1, 1, 50, 50_000), (6, 1, 1, 50, 62_500), (6, 1, 1, 50, 62_501), (4, 4, 7, 50, 0),
+              (2, 4, 7, 100, 60_000), (4, 1, 1, 101, 0), (4, 1, 1, 0, 250_000), (4, 1, 1, 0, 250_001), (4, 1, 1, 0, -1),
+              (4, 2, 1, 0, 0), (7, 1, 1, 0, 0), (10, 1, 1, 30, 0), (3, 2, 4, 30, 120_000), (4, 1, 0, 0, 0), (4, 1, 64, 0, 0), (4, 1, 65, 0, 0))
+    return {
+        "theta_stufen": list(THETA_STUFEN),
+        "frei_ppm_max": FREI_PPM_MAX,
+        "k_leitung_tabelle": {str(st): {str(t_): list(z) for t_, z in K_LEITUNG[st].items()} for st in THETA_STUFEN},
+        "k_leitung": [list(f) + [k_leitung(*f)] for f in faelle],
+    }
+
+
 if __name__ == "__main__":
-    if "--vektor" in sys.argv:
+    if "--vektor-leitung" in sys.argv:
+        import json
+        print(json.dumps(vektor_leitung(), indent=1))
+    elif "--vektor" in sys.argv:
         import json
         print(json.dumps(vektor(), indent=1))
     else:

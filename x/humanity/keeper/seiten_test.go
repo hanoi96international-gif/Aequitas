@@ -204,3 +204,27 @@ func TestLanding_GleichgewichtInAllenSprachen(t *testing.T) {
 		}
 	}
 }
+
+// Quantengeld auf /quanten (26.11.2026): Der Leitsatz "Quantengeld, das die
+// Physik selbst unkopierbar macht" steht als Ziel (Aequitas entwickelt es);
+// daneben muss stehen, was heute laeuft (Variante S: nach der Ausgabe
+// gewoehnliche Daten) und der Weg, der den Leitsatz wahr macht (Weg C: die
+// Inhaberin misst selbst). Falsch war "eine Kopie hat die Kette abgewiesen"
+// -- abgewiesen wurde eine zweite Vorlage desselben Tokens.
+func TestLanding_QuantengeldEhrlichMitWegC(t *testing.T) {
+	for _, teil := range []string{landingJS, landingQuelle, quantenHTML} {
+		for _, v := range []string{"rejected a copy", "eine Kopie hat die Kette"} {
+			if strings.Contains(teil, v) {
+				t.Errorf("falsche Aussage %q steht noch auf der Seite", v)
+			}
+		}
+	}
+	for _, muss := range []string{`<section id="qwegb"`, `data-i18n="qb-c3-p"`, `href="#qwegb"`, "ordinary data", "Way C", "physics itself"} {
+		if !strings.Contains(quantenHTML, muss) {
+			t.Errorf("/quanten: %q fehlt", muss)
+		}
+	}
+	if !strings.Contains(landingJS, "Weg C") || !strings.Contains(landingJS, "gewöhnliche Daten") {
+		t.Error("deutsche Texte zu Weg C / gewöhnliche Daten fehlen")
+	}
+}
