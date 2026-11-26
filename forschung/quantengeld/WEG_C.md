@@ -46,7 +46,7 @@ Ehrlich bleibt:
 
 | Schritt | Was | Wer |
 |---|---|---|
-| **C1** | Prüfgröße im Knoten mit θ und Anteil freier Stellen als Eingang. Heute kennt die Tabelle nur Toleranz und f; sie gilt nur für ideale Qubits. Prüfvektor aus `wiesner_parameter.py`. | ich |
+| **C1** ✅ | Prüfgröße mit θ und Anteil freier Stellen. **Gebaut 26.11.:** `wiesner_kette.py` `K_LEITUNG`/`k_leitung` (Stufen 0/2/5/10°, frei bis 25 %, immer aufgerundet, sonst 0). Der Selbsttest rechnet **jede** Zelle exakt nach, Zeile 0 ist die alte Tabelle (nachgerechnet). Missbrauch: Die Tabelle für ideale Qubits ließe über 5° einen Fälscher weit über 2⁻⁴⁰ durch. Knoten `quanten_s_leitung.go` (nur Rechnung, noch nicht im Konsens), Prüfvektor `quanten_s_leitung_vektor.json` in der CI. Mutationen: 8 in der Spezifikation, 5 im Knoten, alle rot. | ich |
 | **C2** | Knoten, schlafend: neue Token-Art „Leitung“. Meldung Λ, Teilmenge mit Zufall nach der Meldung, Größen fail-closed. Eigene Sicherheitsprüfung. | ich |
 | **C3** | Schnittstelle Empfänger ↔ App: ein festes, kleines Format für das, was ein Empfänger liefert (Pulsnummern, Basis, Bit, Zeit). Dazu ein Nachbau des Empfängers für Tests. Jedes Gerät, das dieses Format liefert, passt. | ich |
 | **C4** | Gerät und Partner: Sender bei den Präparatorinnen, Empfänger bei der Inhaberin. Kandidaten sind die Gruppen der Arbeit (Bristol: Handsender; Cambridge: Theorie); Vorlage `ANSCHREIBEN.md`. | Betreiber |
