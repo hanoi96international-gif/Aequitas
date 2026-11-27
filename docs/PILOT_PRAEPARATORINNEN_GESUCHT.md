@@ -30,8 +30,10 @@ könnte nur, wer genug Ausgeloste auf seiner Seite hat. **Wir brauchen dafür mi
 **So machst du mit**
 
 1. In der App: **Quantengeld** → „Als Präparatorin melden“.
-2. In derselben Karte den IBM-API-Schlüssel und die CRN eingeben → „Zugang sichern“. Der Schlüssel
-   bleibt nur auf deinem Handy und wird nie wieder angezeigt.
+2. In derselben Karte den IBM-API-Schlüssel und die CRN eingeben → „Zugang sichern“. Die App
+   (ab 1.34.0) prüft den Zugang vorher bei IBM, ohne Rechenzeit zu verbrauchen, und sagt genau, was
+   nicht stimmt (Schlüssel, Instanz, kein Rechner frei, Netz). Eine kurze Anleitung zum IBM-Konto
+   steht in derselben Karte. Der Schlüssel bleibt nur auf deinem Handy und wird nie wieder angezeigt.
 3. Ab dem nächsten Tag kannst du ausgelost werden. Zu verabredeten Terminen: Seite öffnen und
    „Automatisch weiter, solange diese Seite offen ist“ tippen. Den Rest macht die App.
 
@@ -76,6 +78,9 @@ your IBM key and CRN. It is a pilot: tested, but never run with many people on r
 6. **Danach festhalten** (`docs/SITZUNG_UEBERGABE.md`): Zahl der Gemeldeten, Dauer der Runde,
    IBM-Rechenzeit je Messung, Fehler je Treffer, ob eingelöst wurde. Das sind die ersten echten
    Zahlen für Weg B.
+
+**Zählen auf der Website:** Im Abschnitt „Weg B“ der Startseite steht live, wie viele sich gemeldet
+haben und wie viele schon im Los sind (Ziel 21), mit Link auf diese Einladung.
 
 **Wo du Leute findest (Vorschläge):** wer schon in der App registriert ist; Quanten- und
 Physik-Gruppen an Hochschulen (IBM Quantum ist dort verbreitet); Foren zu Grundeinkommen. Wichtig:
