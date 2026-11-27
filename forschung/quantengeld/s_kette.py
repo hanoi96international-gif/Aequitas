@@ -1387,8 +1387,36 @@ def vektor_probe_v2() -> dict:
                              "hash": probe_teil_hash(K, 1, 3, bytes.fromhex("11" * 32), [7, 2, 5]).hex()}}
 
 
+def vektor_s3() -> dict:
+    """Pruefvektor Weg C (C3, App lib/quantenSEmpfaenger.ts; spaeter Knoten C2):
+    Meldung Lambda und oeffentliche Teilmenge, deterministisch."""
+    K = "3c" * 32
+    rng = random.Random(1926)
+    lam = sorted(rng.sample(range(5000), 400))
+    zufall = bytes(range(32))
+    meldungen = []
+    for n_puls, ppm, m in ((5000, 80_000, lam), (5000, 80_001, lam), (1, 1, [0]), (10, 1_000_000, list(range(10))),
+                           (10, 1_000_000, list(range(9))), (1_000_001, 1, [0]), (1_000_000, 1, [0])):
+        try:
+            s3_meldung(n_puls, ppm, m)
+            ok = True
+        except Abgewiesen:
+            ok = False
+        meldungen.append({"n_puls": n_puls, "gamma_det_ppm": ppm, "anzahl": len(m), "ok": ok})
+    return {
+        "k": K, "lambda": lam, "zufall": zufall.hex(),
+        "teilmenge_10": s3_teilmenge(K, lam, zufall, 5, 6, 10),
+        "teilmenge_400": s3_teilmenge(K, lam, zufall, 5, 6, 400),
+        "teilmenge_anderer_zufall": s3_teilmenge(K, lam, bytes(32), 5, 6, 10),
+        "meldungen": meldungen,
+    }
+
+
 if __name__ == "__main__":
-    if "--vektor-probe-v2" in sys.argv:
+    if "--vektor-s3" in sys.argv:
+        import json
+        print(json.dumps(vektor_s3(), indent=1))
+    elif "--vektor-probe-v2" in sys.argv:
         import json
         print(json.dumps(vektor_probe_v2(), indent=1))
     elif "--vektor-abschnitte" in sys.argv:
