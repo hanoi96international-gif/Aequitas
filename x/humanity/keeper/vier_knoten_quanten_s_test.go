@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"math/rand"
 	"net"
 	"net/url"
@@ -331,10 +332,17 @@ func qsVierKnotenModus(t *testing.T, ausfall, abschnitte, rollen bool) {
 	if !ausDatei {
 		quantenWKNoteOverride.Store(int64(kJeStelle))
 	}
+	// Die Pfaender (P3/P4) gelten im Hauptnetz seit dem 27.11.2026 09:00 UTC,
+	// und dieser Test laeuft in echter Zeit. Er prueft den Ablauf S ohne
+	// Pfand wie bisher (wie neueQwWelt); die Pfaender haben eigene Tests
+	// (quanten_s_inhaberin_pfand_test.go, quanten_s_faelschung_test.go,
+	// quanten_s_pfaender_grenze_test.go).
+	quantenSPfaenderAbOverride.Store(math.MaxInt64)
 	altBetreiber := quantenWBetreiberVon
 	t.Cleanup(func() {
 		quantenWAbOverride.Store(0)
 		quantenWKNoteOverride.Store(0)
+		quantenSPfaenderAbOverride.Store(0)
 		quantenWBetreiberVon = altBetreiber
 	})
 

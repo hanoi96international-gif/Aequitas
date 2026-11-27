@@ -7,7 +7,26 @@ Repos); davor ~13:40 UTC Sitzung „Weiter“ (`claude/weiter-uw2p42`), davor ~1
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
-**Stand 27.11. ~07:30 UTC — HIER WEITERMACHEN** (Sitzung „Quantengeld Revolution“):
+**Stand 27.11. ~09:45 UTC — HIER WEITERMACHEN** (Sitzung „Quantengeld Revolution“):
+- **App v1.33.0 veröffentlicht** (09:37 UTC, Release-Schlüssel 473e9de3…). Deploy nach #686 (Run 45958681305) grün.
+- App #150 gemergt (8b4b5018): Release ohne zweite Freigabe (Entscheidung des Betreibers 27.11.). Nur das Signieren
+  braucht den Betreiber; `scripts/release_lauf_pruefen.sh` prüft Herkunft, Signieren und „neuer als das neueste
+  Release“. **Releases veröffentliche ich selbst** (`release-apk.yml` mit run_id und Tag, nach freigegebenem Signieren).
+- C2b in drei schlafenden Schritten: (1) Meldung Λ auf der Kette, höchstens 65.536 Pulse, Lücken-kodiert, Teilmenge
+  mit Zufall eines Blocks nach der Meldung (Vektor `quanten_s3_vektor.json`); (2) Prüfgröße `quantenSKLeitung` für
+  Token mit eingetragener Leitung; (3) Pulse statt Qubits bei den Präparatorinnen.
+- Nächster Code-Schritt **C2b** (siehe unten).
+
+**Stand 27.11. ~07:35 UTC (überholt)** (Sitzung „Quantengeld Revolution“):
+- Gemergt: Aequitas #686 (8d03a53f, **C2a Register der Leitungen**, Konsens, schlafend). Deploy für #682
+  (Run 45911249854) lief schon 06:21 UTC erfolgreich: die Regel „Betreiber allein reicht nicht“ greift 12:00 UTC.
+  Der Merge von #686 startet einen neuen Deploy (Betreiber gibt `produktion` frei; nichts daran eilt, C2a schläft).
+- **App 1.33.0:** Build 45952703198 grün, Job `signieren` wartet auf `app-signatur` (Betreiber). Danach
+  `release-apk.yml` mit `run_id` 45952703198, Tag `v1.33.0`.
+- Nächster Code-Schritt **C2b**: Token-Art „Leitung“ (nennt eine eingetragene Leitung, Meldung Λ, Teilmenge mit
+  Zufall nach der Meldung, `quantenSKLeitung` mit θ/frei der Leitung), schlafend, eigene Sicherheitsprüfung.
+
+**Stand 27.11. ~07:30 UTC (überholt)** (Sitzung „Quantengeld Revolution“):
 - Gemergt: Aequitas #685 (C3-Vektor), App #148 (1.33.0), App #149 (C3, `lib/quantenSEmpfaenger.ts`).
 - **Weg C, C2a gebaut** (PR „Register der Leitungen“, Konsens, schlafend hinter `quantenLeitungAbUnix`):
   Entscheidung des Betreibers 27.11.: Messwerte einer Leitung (θ, frei) mit ⅔ der Prüfer, mindestens 5,
