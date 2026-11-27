@@ -442,6 +442,74 @@ def s3_teilmenge_abschnitte(K: str, lam: list[int], zufall: bytes, meldung_hoehe
     return sorted(aus)
 
 
+
+# Mehrfach-Beweis (C2b-2b-3c Teil 2, WEG_C.md): Ueber eine Leitung geht die
+# Wurzel ueber ALLE N Pulse (bis 2^26). Eine Annahmestelle braucht aber nur die
+# n Blaetter des Tokens (Stelle j = Puls teil[j]). Sie bekommt diese Blaetter
+# und EINEN Beweis, dass sie an genau diesen Pulsen in der Wurzel stehen --
+# oeffentlich (die Blaetter sind Pruefsummen mit Salz), verraet also ihre
+# geheime Stichprobe nicht. Form: Ebene fuer Ebene, Knoten aufsteigend, je
+# fehlendem Nachbarn ein Hash; das verdoppelte letzte Blatt einer ungeraden
+# Ebene (wie merkle_wurzel) braucht keinen. Genau eine Form je (N, Indizes).
+BEWEIS_MAX = 1 << 21   # Hashes hoechstens (n <= N_MAX, Tiefe <= 26: weit darunter)
+
+
+def s3_mehrfachbeweis(blaetter: list[bytes], idx: list[int]) -> list[bytes]:
+    """Beweis fuer die Blaetter an den (aufsteigenden, verschiedenen) Indizes."""
+    n = len(blaetter)
+    if not idx or any(b <= a for a, b in zip(idx, idx[1:])) or idx[0] < 0 or idx[-1] >= n:
+        raise Abgewiesen("Mehrfachbeweis: Indizes")
+    beweis: list[bytes] = []
+    ebene = list(blaetter)
+    bekannt = list(idx)
+    while len(ebene) > 1:
+        groesse = len(ebene)
+        if groesse % 2:
+            ebene.append(ebene[-1])
+        menge = set(bekannt)
+        eltern = []
+        for i in bekannt:
+            s_ = i ^ 1
+            if s_ in menge:
+                if i % 2 == 0:
+                    eltern.append(i // 2)
+                continue
+            if s_ < groesse:
+                beweis.append(ebene[s_])
+            eltern.append(i // 2)
+        ebene = [wk.h(b"\x01", ebene[j], ebene[j + 1]) for j in range(0, len(ebene), 2)]
+        bekannt = sorted(set(eltern))
+    return beweis
+
+
+def s3_mehrfach_pruefen(wurzel: bytes, n: int, idx: list[int], blaetter: list[bytes], beweis: list[bytes]) -> bool:
+    """Streng: genau die Hashes des Beweises, keiner zu viel oder zu wenig."""
+    if not (1 <= n <= N_PULS_MAX) or not idx or len(idx) != len(blaetter) or len(beweis) > BEWEIS_MAX:
+        return False
+    if any(b <= a for a, b in zip(idx, idx[1:])) or idx[0] < 0 or idx[-1] >= n:
+        return False
+    knoten = dict(zip(idx, blaetter))
+    groesse, z = n, 0
+    while groesse > 1:
+        neu = {}
+        for i in sorted(knoten):
+            s_ = i ^ 1
+            if s_ in knoten:
+                if i % 2 == 0:
+                    neu[i // 2] = wk.h(b"\x01", knoten[i], knoten[s_])
+                continue
+            if s_ < groesse:
+                if z >= len(beweis):
+                    return False
+                nachbar = beweis[z]
+                z += 1
+            else:
+                nachbar = knoten[i]          # verdoppeltes letztes Blatt
+            links, rechts = (knoten[i], nachbar) if i % 2 == 0 else (nachbar, knoten[i])
+            neu[i // 2] = wk.h(b"\x01", links, rechts)
+        knoten, groesse = neu, (groesse + 1) // 2
+    return z == len(beweis) and knoten.get(0) == wurzel
+
 # Meldung auf der Kette (C2b, WEG_C.md): hoechstens MELDUNG_MAX Pulse, als
 # Luecken kodiert -- erster Wert der Puls selbst, danach Abstand - 1 zum
 # Vorgaenger --, jede Zahl als LEB128 ohne ueberfluessige Gruppen, das Ganze
@@ -825,6 +893,27 @@ def selbsttest_s3(soll, abgewiesen):
     for ab in range(0, kn5, wk.OFFEN_TEIL):
         r5 = k5.offenlegen(K5, ab, ehrlich[ab:ab + wk.OFFEN_TEIL], 41)
     soll(r5 is True and e5["eingeloest"] and k5.konten["s1"] == START + 1000, "Einloesen ueber die Pulse der Leitung")
+
+    # C2b-2b-3c Teil 2: Mehrfach-Beweis fuer die Blaetter des Tokens.
+    for n_b in (1, 2, 3, 6, 7, 1000, 1025):
+        bl = [wk.pruefsumme(K5, i, rng.getrandbits(126)) for i in range(n_b)]
+        w_b = wk.merkle_wurzel(bl)
+        for idx in ([0], [n_b - 1], sorted(set(rng.sample(range(n_b), min(n_b, 9)))), list(range(n_b))):
+            bw = s3_mehrfachbeweis(bl, idx)
+            soll(s3_mehrfach_pruefen(w_b, n_b, idx, [bl[i] for i in idx], bw), f"Mehrfachbeweis n {n_b}, {len(idx)} Blaetter")
+            if len(idx) == 1:
+                soll(len(bw) <= len(wk.merkle_pfad(bl, idx[0])), "ein Blatt: hoechstens der einfache Pfad")
+    bl = [wk.pruefsumme(K5, i, rng.getrandbits(126)) for i in range(1000)]
+    w_b, idx = wk.merkle_wurzel(bl), [3, 500, 999]
+    bw = s3_mehrfachbeweis(bl, idx)
+    gut_b = [bl[i] for i in idx]
+    soll(not s3_mehrfach_pruefen(w_b, 1000, idx, gut_b, bw[:-1]), "Beweis: ein Hash zu wenig")
+    soll(not s3_mehrfach_pruefen(w_b, 1000, idx, gut_b, bw + [bw[0]]), "Beweis: ein Hash zu viel")
+    soll(not s3_mehrfach_pruefen(w_b, 1000, idx, gut_b, [bytes(32)] + bw[1:]), "Beweis: Hash vertauscht")
+    soll(not s3_mehrfach_pruefen(w_b, 1000, [3, 501, 999], gut_b, bw), "Beweis: anderer Index")
+    soll(not s3_mehrfach_pruefen(w_b, 1000, [500, 3, 999], [gut_b[1], gut_b[0], gut_b[2]], bw), "Beweis: Indizes nicht aufsteigend")
+    soll(not s3_mehrfach_pruefen(w_b, 1001, idx, gut_b, bw), "Beweis: anderes N")
+    soll(not s3_mehrfach_pruefen(w_b, 1000, idx, [bl[4], gut_b[1], gut_b[2]], bw), "Beweis: falsches Blatt")
 
     # C2b-2b-4: mehrere Sender. Mit v = 1 genau die bisherige Teilmenge.
     lam6 = sorted(rng.sample(range(3000), 900))
@@ -1925,6 +2014,21 @@ def vektor_s3_sender() -> dict:
     return {"k": K, "n_puls": n_puls, "lambda": lam, "zufall": zufall.hex(), "faelle": faelle, "meldungen": meldungen}
 
 
+def vektor_s3_beweis() -> dict:
+    """Pruefvektor Mehrfach-Beweis (Knoten und App rechnen gleich)."""
+    rng = random.Random(1127)
+    K = "7a" * 32
+    faelle = []
+    for n, idx in ((1, [0]), (2, [1]), (3, [2]), (5, [0, 4]), (7, [1, 2, 6]), (1000, sorted(rng.sample(range(1000), 37))),
+                   (4097, sorted(rng.sample(range(4097), 200)) + [4096]), (4097, list(range(4097)))):
+        idx = sorted(set(idx))
+        blaetter = [wk.pruefsumme(K, i, rng.getrandbits(126)) for i in range(n)]
+        beweis = s3_mehrfachbeweis(blaetter, idx)
+        faelle.append({"n": n, "idx": idx, "blaetter": [blaetter[i].hex() for i in idx], "wurzel": wk.merkle_wurzel(blaetter).hex(),
+                       "beweis": [b.hex() for b in beweis]})
+    return {"faelle": faelle}
+
+
 def vektor_s3_meldung() -> dict:
     """Pruefvektor der Kodierung (Knoten: quanten_s3_meldung.go)."""
     rng = random.Random(2611)
@@ -1946,6 +2050,9 @@ if __name__ == "__main__":
     if "--vektor-s3-meldung" in sys.argv:
         import json
         print(json.dumps(vektor_s3_meldung(), indent=1))
+    elif "--vektor-s3-beweis" in sys.argv:
+        import json
+        print(json.dumps(vektor_s3_beweis(), indent=1))
     elif "--vektor-s3-sender" in sys.argv:
         import json
         print(json.dumps(vektor_s3_sender(), indent=1))
