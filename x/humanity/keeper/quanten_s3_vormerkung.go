@@ -7,8 +7,9 @@ package keeper
 //   - quanten_w_s3_vormerken (Wallet = Ausgeber, ein Mensch, unterschrieben):
 //     K, Inhaberin, eine eingetragene Leitung (C2a), Zahl der Pulse N, Wurzel
 //     der Pruefsummen ueber alle N Pulse, Deckung. Deckung und Pfand
-//     (quantenS3PfandFuer, C2b-2b-3a) gehen in den Pfandtopf. Die Vormerkung haelt theta, frei und gamma der Leitung FEST:
-//     was das Register spaeter eintraegt, aendert sie nicht. Je Ausgeber eine
+//     (quantenS3PfandFuer, C2b-2b-3a) gehen in den Pfandtopf. Die
+//     Vormerkung haelt theta, frei und gamma der Leitung FEST: was das
+//     Register spaeter eintraegt, aendert sie nicht. Je Ausgeber eine
 //     offene Vormerkung, hoechstens quantenS3VormerkungenHoechstens zugleich.
 //   - quanten_w_s3_melden (Wallet = Inhaberin, unterschrieben, genau einmal):
 //     die gemessenen Pulse in der einen Kodierung (quanten_s3_meldung.go),
@@ -40,7 +41,7 @@ package keeper
 // 2^39 AEQ.
 //
 // Die Ausgabe des Tokens ueber die gezogene Teilmenge (mit der Pruefgroesse
-// der Leitung, quantenSKLeitung) folgt mit C2b-2b-3. Bis dahin weist jede
+// der Leitung, quantenSKLeitung) folgt mit C2b-2b-3b. Bis dahin weist jede
 // andere Ausgabe ein vorgemerktes K ab.
 //
 // ZEIT: Melden zaehlt mit der Buchzeit, die hoechstens quantenSBestellBuchSpiel
@@ -96,7 +97,7 @@ const (
 func quantenS3PfandFuer(deckung int64) int64 { return quantenSBestellPfandFuer(deckung) }
 
 // quantenS3AbUnix: Stichtag (Kettenregel). 9223372036854775807 = math.MaxInt64
-// = schlafend. Ein Datum bekommt er erst mit der Ausgabe (C2b-2b-3), mit
+// = schlafend. Ein Datum bekommt er erst mit der Ausgabe (C2b-2b-3b), mit
 // Deploy-Waechter wie die anderen Stichtage.
 var quantenS3AbUnix int64 = 9223372036854775807
 
