@@ -20,20 +20,23 @@ import (
 //	aequitasd quanten-s-inhaberin neu --datei F --n N --v V --stellen adr=schl,adr=schl [--verschluesseln adr=api,...]
 //	aequitasd quanten-s-inhaberin annehmen --datei F --api URL --validatoren 0xadr,... < paket.json
 //	aequitasd quanten-s-inhaberin abholen --datei F --api URL --k K --validatoren adr=api,...
-//	aequitasd quanten-s-inhaberin einloesen --datei F --api URL --stelle 0|1 > vorlage.json
+//	aequitasd quanten-s-inhaberin einloesen --datei F --api URL --stelle 0|1 [--pfandgeber-variable NAME] > vorlage.json
 //	aequitasd quanten-s-annahme --api URL --validatoren adr=api,... < vorlage.json
 //
 // Die Datei der Inhaberin haelt ihren Schluessel (0600, nie ausgegeben). Die
 // Annahmestelle liest ihren Schluessel aus einer Umgebungsvariablen (nie von
-// der Befehlszeile, die jeder Prozess sehen kann).
+// der Befehlszeile, die jeder Prozess sehen kann). Ebenso der Pfandgeber der
+// Inhaberin beim Einloesen (P3, ab dem Stichtag der Pfaender): seine
+// Menschen-Wallet gibt das Pfand der Bindung, ihr Schluessel steht in der
+// Umgebungsvariablen, die --pfandgeber-variable nennt.
 
 func quantenSInhaberinBefehl(args []string) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
-	return quantenSInhaberinMit(ctx, args, os.Stdin, os.Stdout, os.Stderr)
+	return quantenSInhaberinMit(ctx, args, os.Getenv, os.Stdin, os.Stdout, os.Stderr)
 }
 
-func quantenSInhaberinMit(ctx context.Context, args []string, ein io.Reader, aus, log io.Writer) int {
+func quantenSInhaberinMit(ctx context.Context, args []string, umgebung func(string) string, ein io.Reader, aus, log io.Writer) int {
 	if len(args) == 0 {
 		fmt.Fprintln(log, "ABBRUCH: quanten-s-inhaberin neu | annehmen | abholen | einloesen")
 		return 2
@@ -44,7 +47,7 @@ func quantenSInhaberinMit(ctx context.Context, args []string, ein io.Reader, aus
 	datei := fs.String("datei", "", "Datei der Inhaberin (0600; enthaelt ihren Schluessel)")
 	api := fs.String("api", "", "API eines Knotens (https://... oder http://127.0.0.1:port)")
 	var n, v, stelle *int
-	var stellen, validatoren, k *string
+	var stellen, validatoren, k, pfandVariable *string
 	var frist *time.Duration
 	switch was {
 	case "neu":
@@ -60,6 +63,7 @@ func quantenSInhaberinMit(ctx context.Context, args []string, ein io.Reader, aus
 	case "einloesen":
 		stelle = fs.Int("stelle", -1, "Annahmestelle 0 oder 1")
 		frist = fs.Duration("frist", 15*time.Minute, "Frist je Schritt")
+		pfandVariable = fs.String("pfandgeber-variable", "", "Umgebungsvariable mit dem Schluessel des Pfandgebers (ab dem Stichtag der Pfaender; leer = keiner)")
 	default:
 		fmt.Fprintln(log, "ABBRUCH: quanten-s-inhaberin neu | annehmen | abholen | einloesen")
 		return 2
@@ -92,7 +96,14 @@ func quantenSInhaberinMit(ctx context.Context, args []string, ein io.Reader, aus
 			err = keeper.QuantenSInhaberinAbholen(ctx, *api, *datei, *k, vs, log)
 		}
 	case "einloesen":
-		err = keeper.QuantenSInhaberinEinloesen(ctx, *api, *datei, *stelle, *frist, aus, log)
+		pfand := ""
+		if name := strings.TrimSpace(*pfandVariable); name != "" {
+			if pfand = umgebung(name); pfand == "" {
+				fmt.Fprintf(log, "ABBRUCH: Umgebungsvariable %s ist leer\n", name)
+				return 2
+			}
+		}
+		err = keeper.QuantenSInhaberinEinloesen(ctx, *api, *datei, *stelle, *frist, pfand, aus, log)
 	}
 	if err != nil {
 		fmt.Fprintln(log, "FEHLER:", err)

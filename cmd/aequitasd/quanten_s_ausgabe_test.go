@@ -41,7 +41,7 @@ func TestQuantenSRollenBefehle_Sperren(t *testing.T) {
 	inh := func(name string, args []string, soll int) {
 		t.Helper()
 		var aus, log bytes.Buffer
-		if got := quantenSInhaberinMit(ctx, args, strings.NewReader("{}"), &aus, &log); got != soll {
+		if got := quantenSInhaberinMit(ctx, args, func(string) string { return "" }, strings.NewReader("{}"), &aus, &log); got != soll {
 			t.Fatalf("%s: Exit %d, erwartet %d (%s)", name, got, soll, log.String())
 		}
 	}

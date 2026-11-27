@@ -309,10 +309,7 @@ func quantenSAusgabeLauf(ctx context.Context, a QuantenSAusgabeAuftrag, validato
 		return nil, err
 	}
 	wurzel := hex.EncodeToString(p.wurzel[:])
-	zeit := time.Now().Unix()
-	if a.Jetzt != nil {
-		zeit = a.Jetzt()
-	}
+	zeit := a.jetztUnix()
 	fmt.Fprintf(log, "Token %s: n=%d, %d Stellen je Annahmestelle, Fehlerrate bei passender Basis %d/%d\n", K[:12], m.N, k, falsch, passend)
 	// Die ehrliche Vorlage muss an BEIDEN Stellen bestehen -- exakt wie die
 	// Kette zaehlt, vor jedem Schritt bei den Validatoren und auf der Kette
@@ -404,7 +401,10 @@ func quantenSAusgabeAbschluss(ctx context.Context, a QuantenSAusgabeAuftrag, net
 	for i := range y {
 		d[i] = y[i] ^ z
 	}
-	if err := quantenSBinden(ctx, netz, a.Frist, K, inhaber, inhaberKey, d); err != nil {
+	// Pfand der Inhaberin (ab dem Stichtag der Pfaender): das Werkzeug spielt
+	// auch die Inhaberin, ihr Wegwerfschluessel hat kein Guthaben -- der
+	// Ausgeber gibt das Pfand und bekommt es nach Ende und Frist zurueck.
+	if err := quantenSBinden(ctx, netz, a.Frist, K, inhaber, inhaberKey, d, quantenSPfandgeberZu(a.Schluessel, a.Deckung, a.jetztUnix())); err != nil {
 		return nil, err
 	}
 	if err := quantenSWaehlen(ctx, netz, a.Frist, K, inhaber, inhaberKey, b^z); err != nil {
@@ -465,15 +465,47 @@ func quantenSAusgabeEinreichen(ctx context.Context, a QuantenSAusgabeAuftrag, ne
 	return err
 }
 
+// quantenSPfandgeber (P3, quanten_s_inhaberin_pfand.go): wer bei der Bindung
+// das Pfand der Inhaberin gibt (Deckung + 10 %). Der Schluessel der
+// Inhaberin ist je Token frisch und hat kein Guthaben; ab dem Stichtag der
+// Pfaender weist die Kette eine Bindung ohne Pfand ab.
+type quantenSPfandgeber struct {
+	key     *ecdsa.PrivateKey
+	deckung int64 // die Deckung des Tokens, wie die Kette sie fuehrt
+}
+
+// quantenSPfandgeberZu: nur ab dem Stichtag der Pfaender (vorher weist die
+// Kette die Felder ab). Entscheidet die Uhr des Werkzeugs; liegt sie in den
+// Sekunden um den Stichtag neben der Blockzeit, weist die Kette die Bindung
+// ab, und sie laesst sich wiederholen (fail-closed).
+func quantenSPfandgeberZu(key *ecdsa.PrivateKey, deckung, jetzt int64) *quantenSPfandgeber {
+	if key == nil || !quantenSPfaenderAktiv(jetzt) {
+		return nil
+	}
+	return &quantenSPfandgeber{key: key, deckung: deckung}
+}
+
 // quantenSBinden: die Inhaberin bindet d (= y XOR z), unterschrieben mit
-// ihrem Schluessel; warten, bis es auf der Kette steht.
-func quantenSBinden(ctx context.Context, netz quantenSNetz, frist time.Duration, K, inhaber string, inhaberKey *ecdsa.PrivateKey, d []int) error {
+// ihrem Schluessel; mit Pfandgeber unterschreibt dieser ueber K, Inhaberin und
+// Betrag. Warten, bis es auf der Kette steht.
+func quantenSBinden(ctx context.Context, netz quantenSNetz, frist time.Duration, K, inhaber string, inhaberKey *ecdsa.PrivateKey, d []int, pg *quantenSPfandgeber) error {
 	ds := qsBitsText(d)
 	sigD, err := quantenSUnterschreiben(inhaberKey, quantenWSBindenNachricht(inhaber, K, ds))
 	if err != nil {
 		return err
 	}
-	if err := netz.einreichen(ctx, quantenWSBindenTxArt, inhaber, 0, QuantenWAngaben{K: K, D: ds, WalletSig: sigD}); err != nil {
+	q := QuantenWAngaben{K: K, D: ds, WalletSig: sigD}
+	if pg != nil {
+		von := quantenSAdresse(pg.key)
+		if von == inhaber || pg.deckung <= 0 {
+			return errors.New("Pfandgeber: die Inhaberin selbst oder keine Deckung")
+		}
+		if q.PfandSig, err = quantenSUnterschreiben(pg.key, quantenSIPfandNachricht(von, K, inhaber, quantenSIPfandFuer(pg.deckung))); err != nil {
+			return err
+		}
+		q.PfandVon = von
+	}
+	if err := netz.einreichen(ctx, quantenWSBindenTxArt, inhaber, 0, q); err != nil {
 		return fmt.Errorf("Bindung: %w", err)
 	}
 	_, err = quantenSWartenAuf(ctx, netz, K, frist, "gebunden", func(s map[string]interface{}) bool { return s != nil && s["gebunden"] == true })
@@ -619,6 +651,24 @@ const quantenSUrteilNachlauf = 3 * time.Minute
 // groesser (begrenzt auf 1 h beim Aufruf).
 func quantenSUrteilFrist(schritt time.Duration) time.Duration {
 	return max(schritt, time.Duration(quantenWFristOffen)*time.Second+quantenSUrteilNachlauf)
+}
+
+// jetztUnix: die Uhr des Auftrags (Tests setzen Jetzt).
+func (a QuantenSAusgabeAuftrag) jetztUnix() int64 {
+	if a.Jetzt != nil {
+		return a.Jetzt()
+	}
+	return time.Now().Unix()
+}
+
+// quantenSDeckungAus: die Deckung aus dem Stand eines Tokens (Mikro-AEQ,
+// ganz, positiv, hoechstens 10^15); -1 = unlesbar.
+func quantenSDeckungAus(st map[string]interface{}) int64 {
+	z, ok := st["deckung"].(float64)
+	if !ok || z <= 0 || z > 1e15 || z != float64(int64(z)) {
+		return -1
+	}
+	return int64(z)
 }
 
 func quantenSZahl(v interface{}) int {

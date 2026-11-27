@@ -757,7 +757,11 @@ func quantenSPaketVonKette(ctx context.Context, netz quantenSAbschnittNetz, K st
 // schon die andere Stelle gewaehlt, unterschreibt sie NICHT (das waere eine
 // Doppelvorlage, die die Kette als Fehlversuch zaehlt). speichern sichert die
 // Datei, bevor die Bindung eingereicht wird.
-func quantenSInhaberinEinloesen(ctx context.Context, netz quantenSNetz, frist time.Duration, dat *QuantenSInhaberinDatei, speichern func() error, s int, log io.Writer) (*QuantenSVorlage, error) {
+//
+// pfandKey (P3): der Schluessel, der das Pfand der Inhaberin gibt (ihre
+// Menschen-Wallet; nil = keiner). Ab dem Stichtag der Pfaender braucht die
+// Bindung ein Pfand, und der Schluessel der Datei hat kein Guthaben.
+func quantenSInhaberinEinloesen(ctx context.Context, netz quantenSNetz, frist time.Duration, dat *QuantenSInhaberinDatei, speichern func() error, s int, pfandKey *ecdsa.PrivateKey, log io.Writer) (*QuantenSVorlage, error) {
 	if s != 0 && s != 1 {
 		return nil, fmt.Errorf("Stelle %d (0 oder 1)", s)
 	}
@@ -807,7 +811,15 @@ func quantenSInhaberinEinloesen(ctx context.Context, netz quantenSNetz, frist ti
 		for i := range y {
 			d[i] = y[i] ^ *dat.Z
 		}
-		if err := quantenSBinden(ctx, netz, frist, K, inhaber, key, d); err != nil {
+		var pg *quantenSPfandgeber
+		if pfandKey != nil {
+			deckung := quantenSDeckungAus(st)
+			if deckung <= 0 {
+				return nil, errors.New("die Deckung des Tokens ist auf der Kette nicht lesbar")
+			}
+			pg = quantenSPfandgeberZu(pfandKey, deckung, time.Now().Unix())
+		}
+		if err := quantenSBinden(ctx, netz, frist, K, inhaber, key, d, pg); err != nil {
 			return nil, err
 		}
 		if st, err = netz.stand(ctx, K); err != nil || st == nil {
@@ -1207,9 +1219,20 @@ func QuantenSInhaberinAbholen(ctx context.Context, apiBasis, pfad, K string, val
 
 // QuantenSInhaberinEinloesen: `aequitasd quanten-s-inhaberin einloesen
 // --stelle b`; die Vorlage fuer die Annahmestelle auf aus.
-func QuantenSInhaberinEinloesen(ctx context.Context, apiBasis, pfad string, s int, frist time.Duration, aus, log io.Writer) error {
+//
+// pfandSchluesselHex: der Schluessel des Pfandgebers ("" = keiner), aus einer
+// Umgebungsvariablen (nie auf der Befehlszeile).
+func QuantenSInhaberinEinloesen(ctx context.Context, apiBasis, pfad string, s int, frist time.Duration, pfandSchluesselHex string, aus, log io.Writer) error {
 	if frist <= 0 || frist > time.Hour {
 		return errors.New("Frist: 1 s bis 1 h")
+	}
+	var pfandKey *ecdsa.PrivateKey
+	if pfandSchluesselHex != "" {
+		k, err := crypto.HexToECDSA(strings.TrimPrefix(strings.TrimSpace(pfandSchluesselHex), "0x"))
+		if err != nil {
+			return errors.New("Schluessel des Pfandgebers unlesbar")
+		}
+		pfandKey = k
 	}
 	h, err := neuerQuantenSHTTP(apiBasis)
 	if err != nil {
@@ -1219,7 +1242,7 @@ func QuantenSInhaberinEinloesen(ctx context.Context, apiBasis, pfad string, s in
 	if err != nil {
 		return err
 	}
-	vl, err := quantenSInhaberinEinloesen(ctx, h, frist, d, func() error { return quantenSInhaberinSchreiben(pfad, d, false) }, s, log)
+	vl, err := quantenSInhaberinEinloesen(ctx, h, frist, d, func() error { return quantenSInhaberinSchreiben(pfad, d, false) }, s, pfandKey, log)
 	if err != nil {
 		return err
 	}

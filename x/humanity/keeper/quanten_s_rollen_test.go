@@ -85,7 +85,7 @@ func (w *qsrWelt) annehmen(t *testing.T, p QuantenSPaket) {
 
 func (w *qsrWelt) einloesen(t *testing.T, s int) QuantenSVorlage {
 	t.Helper()
-	vl, err := quantenSInhaberinEinloesen(context.Background(), w.netz, time.Minute, w.dat, func() error { return nil }, s, &w.log)
+	vl, err := quantenSInhaberinEinloesen(context.Background(), w.netz, time.Minute, w.dat, func() error { return nil }, s, nil, &w.log)
 	if err != nil {
 		t.Fatalf("Einloesen: %v\n%s", err, w.log.String())
 	}
@@ -318,7 +318,7 @@ func TestQuantenSRollen_KeineDoppelvorlage(t *testing.T) {
 	w := neueQsrWelt(t)
 	w.annehmen(t, w.ausgeben(t))
 	w.einloesen(t, 0)
-	_, err := quantenSInhaberinEinloesen(context.Background(), w.netz, time.Minute, w.dat, func() error { return nil }, 1, &bytes.Buffer{})
+	_, err := quantenSInhaberinEinloesen(context.Background(), w.netz, time.Minute, w.dat, func() error { return nil }, 1, nil, &bytes.Buffer{})
 	if err == nil || !strings.Contains(err.Error(), "Doppelvorlage") {
 		t.Fatalf("Vorlage fuer die andere Stelle: %v", err)
 	}
@@ -336,7 +336,7 @@ func TestQuantenSRollen_MaskeZuerst(t *testing.T) {
 	w := neueQsrWelt(t)
 	p := w.ausgeben(t)
 	w.annehmen(t, p)
-	_, err := quantenSInhaberinEinloesen(context.Background(), w.netz, time.Minute, w.dat, func() error { return errors.New("Platte voll") }, 0, &bytes.Buffer{})
+	_, err := quantenSInhaberinEinloesen(context.Background(), w.netz, time.Minute, w.dat, func() error { return errors.New("Platte voll") }, 0, nil, &bytes.Buffer{})
 	if err == nil || !strings.Contains(err.Error(), "nichts eingereicht") {
 		t.Fatalf("Speichern gescheitert: %v", err)
 	}
