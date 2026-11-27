@@ -16,6 +16,8 @@ package keeper
 //   - theta: gemessene Verkippung der Basen in Zehntelgrad (0..100),
 //   - frei:  Anteil der Mehrphotonen-Pulse unter den gemeldeten, ppm
 //            (0..quantenSFreiPpmMax).
+//   - gamma: Mindestanteil gemeldeter Pulse gamma_det, ppm (1..10^6): eine
+//            Meldung mit weniger weist die Kette ab (s_kette.KetteS3.melden).
 // Die Stimmen unterschreiben eine EIGENE Nachricht (Domaene
 // aequitas-quanten-leitung-v1): eine Stimme fuer einen Satz gilt nie fuer eine
 // Leitung und umgekehrt. Vorlauf, Fristen, Quorum, PQ-Teil: wie beim Satz.
@@ -72,21 +74,24 @@ type quantenLeitungEintrag struct {
 	Name         string `json:"name"`
 	ThetaZehntel int    `json:"theta"`
 	FreiPpm      int    `json:"frei"`
+	GammaPpm     int    `json:"gamma"`
 	Ab           int64  `json:"ab"`
 	Seit         int64  `json:"seit"` // issued_at der Freischaltung
 }
 
 func istLeitungsName(name string) bool { return strings.HasPrefix(name, quantenLeitungPraefix) }
 
-// quantenLeitungWerteGueltig: im Bereich, den die Pruefgroesse kennt (C1).
-func quantenLeitungWerteGueltig(theta, frei int) bool {
-	return theta >= 0 && theta <= quantenSThetaZehntelMax && frei >= 0 && frei <= quantenSFreiPpmMax
+// quantenLeitungWerteGueltig: im Bereich, den die Pruefgroesse kennt (C1),
+// und ein Mindestanteil gemeldeter Pulse (gamma_det, nie 0).
+func quantenLeitungWerteGueltig(theta, frei, gamma int) bool {
+	return theta >= 0 && theta <= quantenSThetaZehntelMax && frei >= 0 && frei <= quantenSFreiPpmMax &&
+		gamma >= 1 && gamma <= 1_000_000
 }
 
 // quantenLeitungNachricht: was ein Pruefer fuer genau diese Werte unterschreibt.
-func quantenLeitungNachricht(name string, theta, frei int, ab int64) func(wallet string, stimmzeit int64) string {
+func quantenLeitungNachricht(name string, theta, frei, gamma int, ab int64) func(wallet string, stimmzeit int64) string {
 	return func(_ string, stimmzeit int64) string {
-		return fmt.Sprintf("%s|chain:%d|%s|theta:%d|frei:%d|%d|%d", quantenDomaeneLeitung, eingefroreneChainID, name, theta, frei, ab, stimmzeit)
+		return fmt.Sprintf("%s|chain:%d|%s|theta:%d|frei:%d|gamma:%d|%d|%d", quantenDomaeneLeitung, eingefroreneChainID, name, theta, frei, gamma, ab, stimmzeit)
 	}
 }
 
@@ -100,12 +105,12 @@ func (r *quantenGeldRegister) leitung(name string) (quantenLeitungEintrag, bool)
 }
 
 // leitungZu: die Werte einer Leitung, die zur Zeit t gilt (fuer C2b).
-func (r *quantenGeldRegister) leitungZu(name string, t int64) (theta, frei int, ok bool) {
+func (r *quantenGeldRegister) leitungZu(name string, t int64) (theta, frei, gamma int, ok bool) {
 	l, da := r.leitung(name)
 	if !da || t < l.Ab {
-		return 0, 0, false
+		return 0, 0, 0, false
 	}
-	return l.ThetaZehntel, l.FreiPpm, true
+	return l.ThetaZehntel, l.FreiPpm, l.GammaPpm, true
 }
 
 func (r *quantenGeldRegister) mitLeitung(l quantenLeitungEintrag) *quantenGeldRegister {
@@ -127,7 +132,7 @@ func (r *quantenGeldRegister) quantenLeitungenPruefen() error {
 		return fmt.Errorf("Quantengeld-Register: %d Leitungen, hoechstens %d", len(r.Leitungen), quantenLeitungenHoechstens)
 	}
 	for i, l := range r.Leitungen {
-		if !istLeitungsName(l.Name) || !quantenSatzGueltig(l.Name) || !quantenLeitungWerteGueltig(l.ThetaZehntel, l.FreiPpm) ||
+		if !istLeitungsName(l.Name) || !quantenSatzGueltig(l.Name) || !quantenLeitungWerteGueltig(l.ThetaZehntel, l.FreiPpm, l.GammaPpm) ||
 			l.Ab <= 0 || l.Seit <= 0 || (i > 0 && l.Name <= r.Leitungen[i-1].Name) {
 			return fmt.Errorf("Quantengeld-Register: Leitung %d ungueltig", i)
 		}
@@ -142,7 +147,7 @@ func (r *quantenGeldRegister) quantenLeitungenPruefen() error {
 func (r *quantenGeldRegister) quantenLeitungStand() []map[string]interface{} {
 	aus := make([]map[string]interface{}, 0, len(r.Leitungen))
 	for _, l := range r.Leitungen {
-		aus = append(aus, map[string]interface{}{"name": l.Name, "theta_zehntel": l.ThetaZehntel, "frei_ppm": l.FreiPpm, "ab": l.Ab, "beschlossen": l.Seit})
+		aus = append(aus, map[string]interface{}{"name": l.Name, "theta_zehntel": l.ThetaZehntel, "frei_ppm": l.FreiPpm, "gamma_ppm": l.GammaPpm, "ab": l.Ab, "beschlossen": l.Seit})
 	}
 	return aus
 }
