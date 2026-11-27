@@ -155,6 +155,11 @@ type QuantenAngaben struct {
 	// Einmal-Unterschrift (hex) ueber quantenEinloesenNachricht.
 	K      string `json:"k,omitempty"`
 	Einmal string `json:"einmal,omitempty"`
+	// Leitung (quanten_leitung_register.go, Weg C): gemessene Verkippung
+	// (Zehntelgrad) und Anteil freier Mehrphotonen-Pulse (ppm). Nur an einer
+	// Freischaltung "leitung-...", sonst 0.
+	Theta int `json:"theta,omitempty"`
+	Frei  int `json:"frei,omitempty"`
 }
 
 // ------------------------------------------------------------ Register
@@ -185,6 +190,9 @@ type quantenNoteEintrag struct {
 type quantenGeldRegister struct {
 	Saetze []quantenSatzEintrag `json:"saetze,omitempty"` // nach Name
 	Noten  []quantenNoteEintrag `json:"noten,omitempty"`  // nach K
+	// Leitungen (Weg C, quanten_leitung_register.go), nach Name; leer =
+	// Kodierung und StateRoot byte-gleich wie vorher.
+	Leitungen []quantenLeitungEintrag `json:"leitungen,omitempty"`
 	// wurzel: der StateRoot-Teil dieses Stands, einmal gerechnet. Ein
 	// Register wird nach dem Anlegen nie mehr veraendert (jede Aenderung
 	// ist eine Kopie, mitNote/ohneNote/mitSatz), darum darf er bleiben.
@@ -202,7 +210,7 @@ func neuesQuantenRegister(saetze []quantenSatzEintrag, noten []quantenNoteEintra
 }
 
 func (r *quantenGeldRegister) leer() bool {
-	return r == nil || (len(r.Saetze) == 0 && len(r.Noten) == 0)
+	return r == nil || (len(r.Saetze) == 0 && len(r.Noten) == 0 && len(r.Leitungen) == 0)
 }
 
 func (r *quantenGeldRegister) kodiert() string {
@@ -214,12 +222,17 @@ func (r *quantenGeldRegister) kodiert() string {
 }
 
 func (r *quantenGeldRegister) kopie() *quantenGeldRegister {
-	return neuesQuantenRegister(append([]quantenSatzEintrag(nil), r.Saetze...), append([]quantenNoteEintrag(nil), r.Noten...))
+	k := neuesQuantenRegister(append([]quantenSatzEintrag(nil), r.Saetze...), append([]quantenNoteEintrag(nil), r.Noten...))
+	if len(r.Leitungen) > 0 {
+		k.Leitungen = append([]quantenLeitungEintrag(nil), r.Leitungen...)
+	}
+	return k
 }
 
-// nurSaetze: was in chain_config steht -- die Saetze ohne Noten (QG3).
+// nurSaetze: was in chain_config steht -- die Saetze (und die Leitungen,
+// Weg C) ohne Noten (QG3).
 func (r *quantenGeldRegister) nurSaetze() *quantenGeldRegister {
-	return &quantenGeldRegister{Saetze: r.Saetze}
+	return &quantenGeldRegister{Saetze: r.Saetze, Leitungen: r.Leitungen}
 }
 
 func (r *quantenGeldRegister) satz(name string) (quantenSatzEintrag, bool) {
@@ -409,6 +422,9 @@ func (r *quantenGeldRegister) pruefen() error {
 			return fmt.Errorf("Quantengeld-Register: Satz %d ungueltig", i)
 		}
 	}
+	if err := r.quantenLeitungenPruefen(); err != nil {
+		return err
+	}
 	for i, e := range r.Noten {
 		if !istHash64(e.K) || !kanonischeAdresse(e.Von) || !quantenSatzGueltig(e.Satz) || e.Anteile <= 0 || e.Anteile > quantenAnteileHoechstens ||
 			(i > 0 && e.K <= r.Noten[i-1].K) {
@@ -458,12 +474,8 @@ func (cs *ChainState) quantenGeldLaden(ctx context.Context) error {
 // Deploy-Waechter (quantengeld-noten-tabelle.sh) laesst den Wechsel nur zu,
 // solange es keine Note gibt.
 func quantenGeldAusDB(konfig string, db sqlExecutor) (*quantenGeldRegister, error) {
-	saetze, err := quantenGeldRegisterLesen(konfig)
-	if err != nil {
+	if _, err := quantenGeldKonfigLesen(konfig); err != nil {
 		return nil, err
-	}
-	if len(saetze.Noten) != 0 {
-		return nil, fmt.Errorf("Quantengeld-Register: %d Noten in chain_config (Format vor QG3) -- erst in %s umziehen", len(saetze.Noten), quantenNotenTabelle)
 	}
 	rows, err := db.Query(`SELECT k, satz, von, anteile FROM `+quantenNotenTabelle+` LIMIT $1`, quantenNotenHoechstens+1)
 	if err != nil {
@@ -484,7 +496,31 @@ func quantenGeldAusDB(konfig string, db sqlExecutor) (*quantenGeldRegister, erro
 	// Geordnet in Go, nicht per ORDER BY: die Reihenfolge der Datenbank
 	// haengt an ihrer Sortierung (Collation), die StateRoot nicht.
 	sort.Slice(noten, func(i, j int) bool { return noten[i].K < noten[j].K })
+	return quantenGeldAusTeilen(konfig, noten)
+}
+
+// quantenGeldKonfigLesen: was in chain_config steht -- Saetze und Leitungen,
+// nie Noten (Format vor QG3: der Knoten startet nicht).
+func quantenGeldKonfigLesen(konfig string) (*quantenGeldRegister, error) {
+	saetze, err := quantenGeldRegisterLesen(konfig)
+	if err != nil {
+		return nil, err
+	}
+	if len(saetze.Noten) != 0 {
+		return nil, fmt.Errorf("Quantengeld-Register: %d Noten in chain_config (Format vor QG3) -- erst in %s umziehen", len(saetze.Noten), quantenNotenTabelle)
+	}
+	return saetze, nil
+}
+
+// quantenGeldAusTeilen: chain_config und die (sortierten) Noten zu EINEM
+// Register, zusammen streng geprueft.
+func quantenGeldAusTeilen(konfig string, noten []quantenNoteEintrag) (*quantenGeldRegister, error) {
+	saetze, err := quantenGeldKonfigLesen(konfig)
+	if err != nil {
+		return nil, err
+	}
 	r := neuesQuantenRegister(saetze.Saetze, noten)
+	r.Leitungen = saetze.Leitungen
 	if err := r.pruefen(); err != nil {
 		return nil, err
 	}
@@ -645,6 +681,8 @@ type quantenUrteil struct {
 	regel, text string
 	note        quantenNoteEintrag
 	satz        quantenSatzEintrag
+	// leitung: gesetzt, wenn die Freischaltung eine Leitung eintraegt (Weg C).
+	leitung *quantenLeitungEintrag
 	// stimme: 1-basiert die Stimme, an der die Freischaltung scheiterte
 	// (0 = keine einzelne) -- der Sammelweg verwirft genau sie
 	// (quanten_sammeln.go).
@@ -670,7 +708,7 @@ func (cs *ChainState) quantenPraegenUrteilLocked(tx *Transaction, blockZeit int6
 	if !quantenGeldAktiv(blockZeit) || q == nil || tx.Type != "transfer" || !strings.EqualFold(strings.TrimSpace(tx.To), quantenTopfAddr) {
 		return quantenBefund("quanten_form", "keine Anmeldung")
 	}
-	if q.Ordnung != "" || q.Ab != 0 || len(q.Stimmen) != 0 || q.K != "" || q.Einmal != "" || !kanonischeAdresse(w) || !quantenSatzGueltig(q.Satz) {
+	if q.Ordnung != "" || q.Ab != 0 || len(q.Stimmen) != 0 || q.K != "" || q.Einmal != "" || (quantenLeitungAktiv(blockZeit) && (q.Theta != 0 || q.Frei != 0)) || !kanonischeAdresse(w) || !quantenSatzGueltig(q.Satz) {
 		return quantenBefund("quanten_form", "Anmeldung nicht in gueltiger Form")
 	}
 	serie, ok := quantenSerieAusHex(q.Serie)
@@ -732,8 +770,23 @@ func (cs *ChainState) quantenFreischaltungUrteilLocked(ctx context.Context, tx *
 	if q.Serie != "" || q.Sig != "" || q.K != "" || q.Einmal != "" || q.Anteile != 0 || !quantenSatzGueltig(q.Satz) || tx.To != "" || tx.Amount != 0 {
 		return quantenBefund("quanten_form", "Freischaltung nicht in gueltiger Form"), nil
 	}
-	if _, ok := quantenOrdnungGueltig(q.Ordnung); !ok {
-		return quantenBefund("quanten_ordnung", "Gruppenordnung ungueltig oder kleiner als 2^256"), nil
+	// Weg C (quanten_leitung_register.go): ab dem Stichtag traegt ein Name
+	// "leitung-..." eine Leitung ein -- ohne Gruppenordnung, mit Messwerten.
+	// Vorher (und fuer jeden anderen Namen) gilt alles wie bisher.
+	leitung := quantenLeitungAktiv(blockZeit) && istLeitungsName(q.Satz)
+	if leitung {
+		if q.Ordnung != "" || !quantenLeitungWerteGueltig(q.Theta, q.Frei) {
+			return quantenBefund("quanten_leitung", "Leitung ohne Gruppenordnung, theta 0..%d, frei 0..%d", quantenSThetaZehntelMax, quantenSFreiPpmMax), nil
+		}
+	} else {
+		// Vor dem Stichtag kennt kein Knoten diese Felder (sie werden
+		// ueberlesen, wie bisher); danach gehoeren sie nur an eine Leitung.
+		if quantenLeitungAktiv(blockZeit) && (q.Theta != 0 || q.Frei != 0) {
+			return quantenBefund("quanten_form", "Messwerte nur an einer Leitung"), nil
+		}
+		if _, ok := quantenOrdnungGueltig(q.Ordnung); !ok {
+			return quantenBefund("quanten_ordnung", "Gruppenordnung ungueltig oder kleiner als 2^256"), nil
+		}
 	}
 	if strings.HasPrefix(q.Satz, "labor") || strings.HasPrefix(q.Satz, "test") {
 		return quantenBefund("quanten_form", "Spielzeug-/Testsatz %q", q.Satz), nil
@@ -752,8 +805,14 @@ func (cs *ChainState) quantenFreischaltungUrteilLocked(ctx context.Context, tx *
 	if _, da := reg.satz(q.Satz); da {
 		return quantenBefund("quanten_satz_da", "Satz %q ist schon eingetragen", q.Satz), nil
 	}
-	if len(reg.Saetze) >= quantenSaetzeHoechstens {
+	if _, da := reg.leitung(q.Satz); da {
+		return quantenBefund("quanten_satz_da", "Leitung %q ist schon eingetragen", q.Satz), nil
+	}
+	if !leitung && len(reg.Saetze) >= quantenSaetzeHoechstens {
 		return quantenBefund("quanten_voll", "hoechstens %d Saetze", quantenSaetzeHoechstens), nil
+	}
+	if leitung && len(reg.Leitungen) >= quantenLeitungenHoechstens {
+		return quantenBefund("quanten_voll", "hoechstens %d Leitungen", quantenLeitungenHoechstens), nil
 	}
 	pr := cs.verifierRegisterJetzt()
 	stimmberechtigt := map[string]bool{}
@@ -784,6 +843,9 @@ func (cs *ChainState) quantenFreischaltungUrteilLocked(ctx context.Context, tx *
 	}
 	zulassung := cs.lebensnachweisZulassung(ctx)
 	nachricht := quantenFreischaltungNachricht(q.Satz, q.Ordnung, q.Ab)
+	if leitung {
+		nachricht = quantenLeitungNachricht(q.Satz, q.Theta, q.Frei, q.Ab)
+	}
 	stimmen := map[string]bool{}
 	for i := range q.Stimmen {
 		s := &q.Stimmen[i]
@@ -807,7 +869,19 @@ func (cs *ChainState) quantenFreischaltungUrteilLocked(ctx context.Context, tx *
 	if len(stimmen) < noetig {
 		return quantenBefund("quanten_quorum", "%d verschiedene Pruefer, noetig %d (zwei Drittel von %d, mindestens %d)", len(stimmen), noetig, len(stimmberechtigt), quantenFreischaltungMindestPruefer), nil
 	}
+	if leitung {
+		return quantenUrteil{leitung: &quantenLeitungEintrag{Name: q.Satz, ThetaZehntel: q.Theta, FreiPpm: q.Frei, Ab: q.Ab, Seit: zeit}}, nil
+	}
 	return quantenUrteil{satz: quantenSatzEintrag{Name: q.Satz, Ordnung: q.Ordnung, Ab: q.Ab, Seit: zeit}}, nil
+}
+
+// quantenFreischaltungAnwendenLocked: ein gueltiges Urteil ins Register --
+// Satz oder Leitung. Derselbe Weg beim Annehmen und beim Nachspielen.
+func (cs *ChainState) quantenFreischaltungAnwendenLocked(ctx context.Context, u quantenUrteil) error {
+	if u.leitung != nil {
+		return cs.quantenSatzSpeichernLocked(ctx, cs.quantenGeldJetzt().mitLeitung(*u.leitung))
+	}
+	return cs.quantenSatzSpeichernLocked(ctx, cs.quantenGeldJetzt().mitSatz(u.satz))
 }
 
 // ------------------------------------------------------------ Nachspielen
@@ -853,7 +927,7 @@ func (cs *ChainState) applyQuantenFreischaltungLocked(ctx context.Context, tx *T
 	if u.regel != "" {
 		return fmt.Errorf("quanten_freischaltung %s: %s", u.regel, u.text)
 	}
-	return cs.quantenSatzSpeichernLocked(ctx, cs.quantenGeldJetzt().mitSatz(u.satz))
+	return cs.quantenFreischaltungAnwendenLocked(ctx, u)
 }
 
 // ------------------------------------------------------------ Annahme
@@ -993,6 +1067,7 @@ func (cs *ChainState) QuantenStand(k string) map[string]interface{} {
 		"aktiv":           quantenGeldAktiv(jetzt),
 		"topf":            quantenTopfAddr,
 		"saetze":          saetze,
+		"leitungen":       reg.quantenLeitungStand(),
 		"noten":           len(reg.Noten),
 		"gedeckt_aeq":     float64(cs.quantenTopfMikroGelesen()) / 1e6,
 		"mindest_deckung": float64(quantenMindestDeckungMik) / 1e6,
@@ -1044,6 +1119,8 @@ func (a *APIServer) handleQuantenFreischaltung(w http.ResponseWriter, r *http.Re
 		Antragsteller string           `json:"antragsteller"`
 		Satz          string           `json:"satz"`
 		Ordnung       string           `json:"ordnung"`
+		Theta         int              `json:"theta"`
+		Frei          int              `json:"frei"`
 		Ab            int64            `json:"ab"`
 		Beschlossen   int64            `json:"beschlossen"`
 		Stimmen       []VerifierStimme `json:"stimmen"`
@@ -1060,7 +1137,7 @@ func (a *APIServer) handleQuantenFreischaltung(w http.ResponseWriter, r *http.Re
 		return
 	}
 	tx := Transaction{Type: quantenFreischaltungTxArt, Wallet: von, DistributionAt: req.Beschlossen,
-		Quanten: &QuantenAngaben{Satz: req.Satz, Ordnung: req.Ordnung, Ab: req.Ab, Stimmen: req.Stimmen}}
+		Quanten: &QuantenAngaben{Satz: req.Satz, Ordnung: req.Ordnung, Theta: req.Theta, Frei: req.Frei, Ab: req.Ab, Stimmen: req.Stimmen}}
 	err := a.quantenFreischaltungAnnehmen(tx, jetzt)
 	var abgelehnt *quantenAbgelehnt
 	switch {
@@ -1090,7 +1167,7 @@ func (a *APIServer) quantenFreischaltungAnnehmen(tx Transaction, jetzt int64) er
 		if u.regel != "" {
 			return Transaction{}, &quantenAbgelehnt{text: u.regel + ": " + u.text, stimme: u.stimme}
 		}
-		if err := a.state.quantenSatzSpeichernLocked(ctx, a.state.quantenGeldJetzt().mitSatz(u.satz)); err != nil {
+		if err := a.state.quantenFreischaltungAnwendenLocked(ctx, u); err != nil {
 			return Transaction{}, err
 		}
 		return tx, nil
@@ -1115,6 +1192,11 @@ func quantenStatus() map[string]interface{} {
 	m := map[string]interface{}{"topf": quantenTopfAddr, "mindest_pruefer": quantenFreischaltungMindestPruefer, "noten_tabelle": true}
 	if ab := quantenGeldAb(); ab != math.MaxInt64 {
 		m["ab"] = ab
+	}
+	// Weg C (quanten_leitung_register.go): fehlt = schlafend; Waechter
+	// quanten-leitung-nicht-verpasst.sh.
+	if ab := quantenLeitungAb(); ab != math.MaxInt64 {
+		m["leitung_ab"] = ab
 	}
 	return m
 }

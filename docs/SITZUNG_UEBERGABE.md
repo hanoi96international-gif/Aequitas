@@ -7,7 +7,16 @@ Repos); davor ~13:40 UTC Sitzung „Weiter“ (`claude/weiter-uw2p42`), davor ~1
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
-**Stand 27.11. ~06:45 UTC — HIER WEITERMACHEN** (Sitzung „Quantengeld Revolution“, Zweig
+**Stand 27.11. ~07:30 UTC — HIER WEITERMACHEN** (Sitzung „Quantengeld Revolution“):
+- Gemergt: Aequitas #685 (C3-Vektor), App #148 (1.33.0), App #149 (C3, `lib/quantenSEmpfaenger.ts`).
+- **Weg C, C2a gebaut** (PR „Register der Leitungen“, Konsens, schlafend hinter `quantenLeitungAbUnix`):
+  Entscheidung des Betreibers 27.11.: Messwerte einer Leitung (θ, frei) mit ⅔ der Prüfer, mindestens 5,
+  über die vorhandene Freischaltung (`leitung-…`, eigene Domäne der Stimmen). Nächster Schritt **C2b**
+  (Token-Art „Leitung“ mit `quantenSKLeitung`). Ein Stichtag für C2a nur mit C2b zusammen.
+- **App 1.33.0:** Build 45952703198 → Signieren (`app-signatur`), dann `release-apk.yml` (Tag `v1.33.0`).
+- **Betreiber, eilig:** Deploy für #682 (Run 45911249854) **vor 11:30 UTC** freigeben.
+
+**Stand 27.11. ~06:45 UTC (überholt)** (Sitzung „Quantengeld Revolution“, Zweig
 `claude/quantengeld-revolution-eskpsn`):
 - **App 1.33.0** (App #148, 48bbf6c1): Automatik und ehrliche Texte. Build läuft: Run 45952703198
   (`build-apk.yml`, release). Danach: Signieren (`app-signatur`, Betreiber), `release-apk.yml` mit
