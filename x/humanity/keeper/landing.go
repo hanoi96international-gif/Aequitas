@@ -564,7 +564,7 @@ section{padding:64px 16px}
   <div class="nav-top">
     <a href="/" class="logo-wrap">
       <div class="logo-icon">⚖</div>
-      <div><div class="logo-text">AEQUITAS</div><div class="logo-sub" data-i18n="logo-sub">The fairest counterfeit-proof money – from one person for all people</div></div>
+      <div><div class="logo-text">AEQUITAS</div><div class="logo-sub" data-i18n="logo-sub">The fairest money – from one person for all people</div></div>
     </a>
     <select class="lang-sel" id="lang-sel" aria-label="Language">
       <option value="en">🌐 EN</option>
@@ -686,7 +686,7 @@ section{padding:64px 16px}
   <div class="section-inner">
     <div class="reveal">
       <div class="section-label" data-i18n="nav-q">Counterfeit-proof</div>
-      <h2 data-i18n="logo-sub">The fairest counterfeit-proof money – from one person for all people</h2>
+      <h2 data-i18n="logo-sub">The fairest money – from one person for all people</h2>
       <p class="section-sub" data-i18n="qm-sub">Built to stay counterfeit-proof against quantum computers too: one person exists only once, wallets are protected against quantum computers, and the first quantum tokens run on the main network.</p>
       <div class="ben">
         <div class="ben-item"><span class="ben-ico"><svg class="ico" aria-hidden="true"><use href="#i-user"/></svg></span><div><p data-i18n="qm-1">Every person should exist only once: a face check blocks a second account. In the beta a single matching service does this. From the second independent verifier on, the operator alone can no longer register anyone – every node checks this.</p></div></div>
@@ -1374,7 +1374,7 @@ section{padding:64px 16px}
   <div class="section-inner">
     <div class="center-head reveal">
       <div class="section-label" data-i18n="qg-label">Quantum money</div>
-      <h2 data-i18n="qg-h2">Money that physics makes impossible to copy</h2>
+      <h2 data-i18n="qg-h2">Our goal: money that physics makes impossible to copy</h2>
     </div>
     <div class="fn3">
       <div class="fn reveal"><div class="fn-ico"><svg class="ico" aria-hidden="true"><use href="#i-cpu"/></svg></div><div class="fn-n">1</div><h3 data-i18n="qg-c1-h">The idea</h3><p data-i18n="qg-c1-p">A quantum money note is made of qubits in random states. Quantum physics forbids copying an unknown quantum state (no-cloning theorem). Whoever tries to copy a note destroys the information that makes it genuine – the forgery fails the check.</p></div>
