@@ -7,7 +7,18 @@ Repos); davor ~13:40 UTC Sitzung „Weiter“ (`claude/weiter-uw2p42`), davor ~1
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
-**Stand 27.11. ~11:00 UTC — HIER WEITERMACHEN** (Sitzung „Quantengeld Revolution“):
+**Stand 27.11. ~14:30 UTC — HIER WEITERMACHEN** (Sitzung „Quantengeld Revolution“):
+- Gemergt: #689 (fff022c8, C2b-2a Spezifikation `KetteS3`), **#690 (7a976256, C2b-2b-1 γ_det im Register der
+  Leitungen, schlafend)**. Der Merge von #690 startet einen Deploy (Betreiber gibt `produktion` frei; eilt nicht,
+  alles schläft). Vor einem Stichtag der Leitungen müssen alle Knoten #690 haben (strenges Laden des Registers).
+- In Arbeit **C2b-2b-2** (Zweig `claude/quantengeld-revolution-eskpsn`): `quanten_s3_vormerkung.go`, vier Arten
+  `quanten_w_s3_vormerken|melden|ziehen|frist`, schlafend hinter `quantenS3AbUnix` und `quantenLeitungAktiv`.
+  Deckung im Pfandtopf, Werte der Leitung in der Vormerkung festgehalten, Meldung nur als Hash im Register (Ziehen
+  bringt sie wieder), Runde = erste ab Meldung + 600 s, je Ausgeber eine, höchstens 16, Meldung ≤ 128 KiB Hex.
+  Spezifikation `s_kette.KetteS3` entsprechend angepasst (explizite Frist, je Ausgeber eine, Abstand, Länge).
+  Danach **C2b-2b-3**: Ausgabe über die gezogene Teilmenge mit `quantenSKLeitung`, dann Stichtag mit Wächter.
+
+**Stand 27.11. ~11:00 UTC (überholt)** (Sitzung „Quantengeld Revolution“):
 - Gemergt: #687 (bbd7d3c8, C2b-1 Meldung und Teilmenge, nur Rechnung), **#688 (51b15dfe, Befund und Abhilfe):**
   seit dem Stichtag der Pfänder (09:00 UTC) nahm die Kette keine Bindung mit Pfandgeber an (`pfand_von` fehlte in
   `quantenWKonten`, Annahme wies als „wiederholen“ ab) -- App ab 1.32.0 und Werkzeuge betroffen. Jetzt gesperrt und
