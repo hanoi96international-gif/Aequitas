@@ -6,9 +6,10 @@ package keeper
 //
 //   - quanten_w_s3_vormerken (Wallet = Ausgeber, ein Mensch, unterschrieben):
 //     K, Inhaberin, eine eingetragene Leitung (C2a), Zahl der Pulse N, Wurzel
-//     der Pruefsummen ueber alle N Pulse, Deckung. Die Deckung geht in den
-//     Pfandtopf. Die Vormerkung haelt theta, frei und gamma der Leitung FEST:
-//     was das Register spaeter eintraegt, aendert sie nicht. Je Ausgeber eine
+//     der Pruefsummen ueber alle N Pulse, Deckung. Deckung und Pfand
+//     (quantenS3PfandFuer, C2b-2b-3a) gehen in den Pfandtopf. Die
+//     Vormerkung haelt theta, frei und gamma der Leitung FEST: was das
+//     Register spaeter eintraegt, aendert sie nicht. Je Ausgeber eine
 //     offene Vormerkung, hoechstens quantenS3VormerkungenHoechstens zugleich.
 //   - quanten_w_s3_melden (Wallet = Inhaberin, unterschrieben, genau einmal):
 //     die gemessenen Pulse in der einen Kodierung (quanten_s3_meldung.go),
@@ -22,10 +23,25 @@ package keeper
 //   - quanten_w_s3_frist (ohne Wallet, jeder): nach quantenS3Frist geht die
 //     Deckung an den Ausgeber zurueck (an die Wallet seines Nullifiers, nach
 //     einem Umzug die neue, wie P3); erst dann ist der Platz frei. Melden und
-//     Ziehen sind nach der Frist abgewiesen.
+//     Ziehen sind nach der Frist abgewiesen. Das Pfand geht mit zurueck, wenn
+//     nie gemeldet wurde; nach einer Meldung VERFAELLT es ans Grundeinkommen.
+//
+// PFAND GEGEN ABBRUCH (C2b-2b-3a, Befund aus C2b-2b-2): Mit der Meldung steht
+// die Runde fest, die zieht, und ihr Zufall ist oeffentlich, sobald drand ihn
+// zeigt -- jeder kann die Teilmenge dann selbst rechnen, auch ohne dass sie
+// jemand auf die Kette bringt. Ein Ausgeber mit Inhaberin im Bund koennte
+// deshalb nach der Meldung abbrechen und neu vormerken, bis eine Teilmenge
+// viele freie Pulse traegt. Darum zaehlt die MELDUNG, nicht das Ziehen: wer
+// nach ihr nicht ausgibt, verliert das Pfand (wie die Bestellung in Weg B,
+// quantenSBestellPfandFuer). Vor der Meldung ist nichts ueber die Teilmenge
+// bekannt; ein Abbruch kostet dort nichts. Wie selten ein Versuch einem
+// Faelscher hilft, rechnet forschung/quantengeld/s3_versuch.py: auch mit der
+// Schwankung der Teilmenge besteht er hoechstens mit 2^-39,6 je Versuch.
+// Mit mindestens 1 AEQ Pfand je Versuch kostet Wiederholen im Mittel ueber
+// 2^39 AEQ.
 //
 // Die Ausgabe des Tokens ueber die gezogene Teilmenge (mit der Pruefgroesse
-// der Leitung, quantenSKLeitung) folgt mit C2b-2b-3. Bis dahin weist jede
+// der Leitung, quantenSKLeitung) folgt mit C2b-2b-3b. Bis dahin weist jede
 // andere Ausgabe ein vorgemerktes K ab.
 //
 // ZEIT: Melden zaehlt mit der Buchzeit, die hoechstens quantenSBestellBuchSpiel
@@ -76,8 +92,12 @@ const (
 	quantenS3MeldungTxHexMax = 128 << 10
 )
 
+// quantenS3PfandFuer: wie die Bestellung in Weg B, max(quantenWPfand,
+// ceil(D * 10 %)); wie s_kette.s3_pfand.
+func quantenS3PfandFuer(deckung int64) int64 { return quantenSBestellPfandFuer(deckung) }
+
 // quantenS3AbUnix: Stichtag (Kettenregel). 9223372036854775807 = math.MaxInt64
-// = schlafend. Ein Datum bekommt er erst mit der Ausgabe (C2b-2b-3), mit
+// = schlafend. Ein Datum bekommt er erst mit der Ausgabe (C2b-2b-3b), mit
 // Deploy-Waechter wie die anderen Stichtage.
 var quantenS3AbUnix int64 = 9223372036854775807
 
@@ -110,6 +130,7 @@ type quantenS3Vormerkung struct {
 	NPuls                 int
 	Wurzel                [32]byte
 	Deckung               int64 // im Pfandtopf bis Ausgabe oder Frist
+	Pfand                 int64 // im Pfandtopf; verfaellt mit der Frist nach einer Meldung
 	Zeit                  int64
 	Meldung               [32]byte // SHA-256 des Meldungstexts
 	Gemeldet              int
@@ -131,6 +152,7 @@ type quantenS3VormerkungForm struct {
 	NPuls       int    `json:"n_puls"`
 	Wurzel      string `json:"wurzel"`
 	Deckung     int64  `json:"deckung"`
+	Pfand       int64  `json:"pfand"`
 	Zeit        int64  `json:"zeit"`
 	Meldung     string `json:"meldung,omitempty"`
 	Gemeldet    int    `json:"gemeldet,omitempty"`
@@ -142,7 +164,7 @@ type quantenS3VormerkungForm struct {
 
 func (v *quantenS3Vormerkung) form(K string) quantenS3VormerkungForm {
 	f := quantenS3VormerkungForm{K: K, Von: v.Von, N: v.N, Inhaber: v.Inhaber, Leitung: v.Leitung, Theta: v.Theta, Frei: v.Frei, Gamma: v.Gamma,
-		NPuls: v.NPuls, Wurzel: hex.EncodeToString(v.Wurzel[:]), Deckung: v.Deckung, Zeit: v.Zeit}
+		NPuls: v.NPuls, Wurzel: hex.EncodeToString(v.Wurzel[:]), Deckung: v.Deckung, Pfand: v.Pfand, Zeit: v.Zeit}
 	if v.Gemeldet != 0 {
 		f.Meldung, f.Gemeldet, f.MeldungZeit = hex.EncodeToString(v.Meldung[:]), v.Gemeldet, v.MeldungZeit
 	}
@@ -188,7 +210,7 @@ func quantenS3VormerkungenLesen(fs []quantenS3VormerkungForm, r *quantenWRegiste
 		wurzel, okW := quantenWHex32(f.Wurzel)
 		if !istHash64(f.K) || (i > 0 && f.K <= fs[i-1].K) || !kanonischeAdresse(f.Von) || von[f.Von] || !kanonischeAdresse(f.Inhaber) ||
 			f.Inhaber == f.Von || (f.N != "" && !umzugNullifierKanonisch(f.N)) || !istLeitungsName(f.Leitung) || !quantenSatzGueltig(f.Leitung) || !quantenLeitungWerteGueltig(f.Theta, f.Frei, f.Gamma) ||
-			f.NPuls < 1 || f.NPuls > quantenS3PulsMax || !okW || f.Deckung < quantenMindestDeckungMik || f.Zeit <= 0 {
+			f.NPuls < 1 || f.NPuls > quantenS3PulsMax || !okW || f.Deckung < quantenMindestDeckungMik || f.Pfand != quantenS3PfandFuer(f.Deckung) || f.Zeit <= 0 {
 			return nil, falsch
 		}
 		if r.Noten[f.K] != nil || r.Token[f.K] != nil || r.Best[f.K] != nil {
@@ -202,7 +224,7 @@ func quantenS3VormerkungenLesen(fs []quantenS3VormerkungForm, r *quantenWRegiste
 		}
 		von[f.Von] = true
 		v := &quantenS3Vormerkung{Von: f.Von, N: f.N, Inhaber: f.Inhaber, Leitung: f.Leitung, Theta: f.Theta, Frei: f.Frei, Gamma: f.Gamma,
-			NPuls: f.NPuls, Wurzel: wurzel, Deckung: f.Deckung, Zeit: f.Zeit}
+			NPuls: f.NPuls, Wurzel: wurzel, Deckung: f.Deckung, Pfand: f.Pfand, Zeit: f.Zeit}
 		if f.Gemeldet == 0 {
 			if f.Meldung != "" || f.MeldungZeit != 0 || f.Runde != 0 || f.Zufall != "" || f.Teil != "" {
 				return nil, falsch
@@ -264,7 +286,7 @@ func quantenS3NurEigeneFelder(tx *Transaction, q QuantenWAngaben) bool {
 		q.Meldung, q.Runde, q.RundeSig = "", 0, ""
 		return reflect.DeepEqual(q, QuantenWAngaben{}) && tx.Wallet == "" && tx.DistributionAt == 0
 	case quantenS3FristTxArt:
-		q.Pfand, q.PfandAn = 0, "" // gerechnet
+		q.Pfand, q.PfandAn, q.Wert, q.WertAn = 0, "", 0, "" // gerechnet
 		return reflect.DeepEqual(q, QuantenWAngaben{}) && tx.Wallet == "" && tx.DistributionAt == 0
 	}
 	return false
@@ -314,7 +336,15 @@ func (cs *ChainState) quantenS3BescheidLocked(ctx context.Context, tx *Transacti
 			an = v.Von
 		}
 		delete(neu.S3, q.K)
-		return quantenWBescheid{reg: neu, wege: []quantenWWeg{{quantenWPfandAddr, an, v.Deckung}}, felder: QuantenWAngaben{Pfand: v.Deckung, PfandAn: an}}, nil
+		// Nie gemeldet: Deckung und Pfand zurueck. Gemeldet: die Deckung
+		// zurueck (Pfand/PfandAn), das Pfand ans Grundeinkommen (Wert, WertAn
+		// leer = Grundeinkommen) -- auch wenn niemand gezogen hat.
+		if v.Gemeldet == 0 {
+			zurueck := sattAdd(v.Deckung, v.Pfand)
+			return quantenWBescheid{reg: neu, wege: []quantenWWeg{{quantenWPfandAddr, an, zurueck}}, felder: QuantenWAngaben{Pfand: zurueck, PfandAn: an}}, nil
+		}
+		return quantenWBescheid{reg: neu, wege: []quantenWWeg{{quantenWPfandAddr, an, v.Deckung}, {quantenWPfandAddr, ubiPoolAddr, v.Pfand}},
+			felder: QuantenWAngaben{Pfand: v.Deckung, PfandAn: an, Wert: v.Pfand}}, nil
 
 	case quantenS3MeldenTxArt:
 		if wallet != v.Inhaber {
@@ -422,20 +452,22 @@ func (cs *ChainState) quantenS3VormerkenLocked(ctx context.Context, tx *Transact
 	if len(reg.S3) >= quantenS3VormerkungenHoechstens {
 		return quantenWBefund("quanten_w_voll", "zu viele offene Vormerkungen (%d)", len(reg.S3)), nil
 	}
-	if cs.quantenWMikroLocked(ctx, wallet) < q.Deckung {
-		return quantenWBefund("quanten_w_deckung", "%s hat keine %d Mikro-AEQ", kurzAdresse(wallet), q.Deckung), nil
+	pfand := quantenS3PfandFuer(q.Deckung)
+	gesamt := sattAdd(q.Deckung, pfand)
+	if cs.quantenWMikroLocked(ctx, wallet) < gesamt {
+		return quantenWBefund("quanten_w_deckung", "%s hat keine %d Mikro-AEQ (Deckung %d und Pfand %d)", kurzAdresse(wallet), gesamt, q.Deckung, pfand), nil
 	}
 	neu := reg.kopie()
 	neu.S3[q.K] = &quantenS3Vormerkung{Von: wallet, N: n, Inhaber: q.Inhaber, Leitung: q.Leitung, Theta: theta, Frei: frei, Gamma: gamma,
-		NPuls: q.NPuls, Wurzel: wurzel, Deckung: q.Deckung, Zeit: zeit}
-	return quantenWBescheid{reg: neu, wege: []quantenWWeg{{wallet, quantenWPfandAddr, q.Deckung}}, felder: QuantenWAngaben{Pfand: q.Deckung}}, nil
+		NPuls: q.NPuls, Wurzel: wurzel, Deckung: q.Deckung, Pfand: pfand, Zeit: zeit}
+	return quantenWBescheid{reg: neu, wege: []quantenWWeg{{wallet, quantenWPfandAddr, gesamt}}, felder: QuantenWAngaben{Pfand: gesamt}}, nil
 }
 
 // quantenS3Ansicht: fuer GET /api/quanten-w/note (ohne Teilmenge, nur ihre
 // Groesse; die Runde braucht, wer zieht).
 func quantenS3Ansicht(K string, v *quantenS3Vormerkung) map[string]interface{} {
 	m := map[string]interface{}{"k": K, "art": "s3", "von": v.Von, "inhaber": v.Inhaber, "leitung": v.Leitung, "theta": v.Theta, "frei": v.Frei,
-		"gamma": v.Gamma, "n_puls": v.NPuls, "wurzel": hex.EncodeToString(v.Wurzel[:]), "deckung": v.Deckung, "zeit": v.Zeit,
+		"gamma": v.Gamma, "n_puls": v.NPuls, "wurzel": hex.EncodeToString(v.Wurzel[:]), "deckung": v.Deckung, "pfand": v.Pfand, "zeit": v.Zeit,
 		"frist": sattAdd(v.Zeit, quantenS3Frist), "gemeldet": v.Gemeldet}
 	if v.Gemeldet != 0 {
 		r, _ := quantenS3ZiehRunde(v.MeldungZeit)

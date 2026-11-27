@@ -7,7 +7,27 @@ Repos); davor ~13:40 UTC Sitzung „Weiter“ (`claude/weiter-uw2p42`), davor ~1
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
-**Stand 27.11. ~14:45 UTC — HIER WEITERMACHEN** (Sitzung „Quantengeld Revolution“, Zweig
+**Stand 27.11. ~17:30 UTC — HIER WEITERMACHEN** (Sitzung „Weiter mit Übergabe / zweiter Validator“, Zweig
+`claude/handover-second-validator-8uibye` in allen vier Repos):
+- **#691 war schon gemergt** (9ced925); Erinnerung und Abo waren weg. biometric-beta: Dependabot #129–#133 gemergt
+  (alle grün, nur Versionen mit Hash-Pins).
+- **Offen: Aequitas PR #692 (C2b-2b-3a, Pfand gegen Abbruch nach der Meldung, Konsens, schlafend).** Sicherheitsprüfung
+  als PR-Kommentar steht (kein aufhaltender Befund). Nächster Handgriff: CI auf dem Kopf abwarten, dann mergen (Squash,
+  volle Kopf-SHA), Zweig zurücksetzen (`git checkout -B claude/handover-second-validator-8uibye origin/main`,
+  `git merge -s ours --no-edit origin/claude/handover-second-validator-8uibye`, push), Abo #692 beenden, Übergabe nachziehen.
+- Inhalt #692: Vormerken legt Deckung **und** Pfand (`quantenS3PfandFuer` = max(1 AEQ, ⌈10 % D⌉)) in den Pfandtopf;
+  Frist ohne Meldung: beides zurück; nach Meldung: Deckung zurück, Pfand ans Grundeinkommen (Felder `pfand`/`pfand_an`
+  = Rückzahlung, `wert` = verfallenes Pfand, `wert_an` leer = Grundeinkommen). `s3_versuch.py`: je Versuch ≤ 2⁻³⁹·⁶
+  (CI-Kurzlauf). 13 Mutationen rot.
+- **Neu: `docs/ZWEITER_KNOTEN_GESUCHT.md`** — Einladung zum Weitergeben (DE + kurz EN) und Checkliste des Betreibers
+  für die Aufnahme des zweiten Prüfers/Validators (Reihenfolge: erst sein Dienst läuft, dann aufnehmen, dann
+  Test-Registrierung mit zwei Bescheinigungen). Betreiber sucht gerade einen zweiten Menschen.
+- **Danach C2b-2b-3b** (Plan in `WEG_C.md`): Ausgabe über die Teilmenge; Blatt teil[i] in der Wurzel über alle N
+  Pulse (betrifft Prüfpfade beim Einlösen!), Prüfgröße beim Anmelden ≥ `quantenSKLeitung`, 2k ≤ n bei der Ausgabe,
+  Deckung aus dem Pfandtopf in den W-Topf, Pfand zurück. Dann Stichtag mit Deploy-Wächter.
+- Nur Betreiber: zweiter Prüfer/Validator, C4 (Partner und Gerät), Deploy-Freigaben nach #690/#691/#692 (eilt nicht).
+
+**Stand 27.11. ~14:45 UTC (überholt)** (Sitzung „Quantengeld Revolution“, Zweig
 `claude/quantengeld-revolution-eskpsn`, Arbeitsbaum sauber, alles gepusht):
 - **Offen: Aequitas PR #691 (C2b-2b-2).** Code-Stand 1da3736a: CI (Run 46016328503) **ganz grün**. Danach nur noch
   Übergabe-Commits (nur Doku); vor dem Merge die CI auf dem aktuellen Kopf abwarten und dessen volle SHA nehmen. Sicherheitsprüfung als PR-Kommentar steht (kein Befund,
