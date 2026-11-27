@@ -7,7 +7,19 @@ Repos); davor ~13:40 UTC Sitzung „Weiter“ (`claude/weiter-uw2p42`), davor ~1
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
-**Stand 27.11. ~17:45 UTC — HIER WEITERMACHEN** (Zweig `claude/handover-second-validator-8uibye`):
+**Stand 27.11. ~18:00 UTC — HIER WEITERMACHEN** (Zweig `claude/handover-second-validator-8uibye`, alle Repos):
+- **Gemergt:** Aequitas **#695** (3a3674ac, C2b-2b-4 mehrere Sender + Prüfvektor der App + Mehrfach-Beweis
+  `quanten_s3_beweis.go`), App **#151** (b7e5bb4f, Inhaberin melden/ziehen, `lib/quantenS3Inhaberin.ts`), App **#152**
+  (09ac2729, Mehrfach-Beweis `lib/quantenS3Beweis.ts`). Keine PRs offen.
+- Weg C Stand: Kette fertig (schlafend), Gerätevorgabe (`s3_geraet.py`), App kann als Inhaberin melden/ziehen (noch in
+  keinem Bildschirm), Mehrfach-Beweis in Spezifikation/Knoten/App gleich.
+- **Nächster Code-Schritt (C2b-2b-3c Teil 2b):** Dienst der Validatoren liefert für einen Token über eine Leitung die
+  n Blätter + Mehrfach-Beweis (statt aller N Blätter); Annahmestelle in der App prüft damit und rechnet
+  `pruefsumme(K, teil[j], w)`. Hängt am Ausgeber-Werkzeug für S3 (Wurzel aus den Blättern der Sender), und das an der
+  Frage, wie ein Sender seine Werte an die Validatoren gibt (C4, mit dem Gerät zu klären).
+- Beta (nur Betreiber): Impressum/Datenschutz, DSGVO, zweiter Server mit eigenem Betreiber, Deepfake-Aufnahmen.
+
+**Stand 27.11. ~17:45 UTC (überholt)** (Zweig `claude/handover-second-validator-8uibye`):
 - Gemergt: **#694** (db14f90f, Gerätevorgabe `s3_geraet.py`).
 - **Offen: PR #695 (C2b-2b-4, mehrere Sender, Konsens, schlafend).** Entscheidung des Betreibers: „Beides“ (Kette für
   mehrere Sender, erster Versuch mit einem Sender erlaubt, gekennzeichnet). Sicherheitsprüfung als PR-Kommentar steht.
