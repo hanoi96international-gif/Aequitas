@@ -1430,6 +1430,7 @@ section{padding:64px 16px}
       <div class="fn reveal"><div class="fn-ico"><svg class="ico" aria-hidden="true"><use href="#i-shield"/></svg></div><div class="fn-n">3</div><h3 data-i18n="qb-c3-h">A deposit against fraud</h3><p data-i18n="qb-c3-p">From 27 Nov 2026, 09:00 UTC, the holder deposits the backing plus 10 % when binding. If the other acceptance point proves a double presentation, the deposit goes to it. Otherwise it returns 7 days after the end.</p></div>
     </div>
     <p class="section-sub reveal" data-i18n="qb-p"><strong>Honestly:</strong> this has not yet run on real phones. The pilot needs at least 21 registered preparers for 4 of 7. Whoever prepares a section – and their quantum provider – knows it. Protection comes from fewer than 4 of the 7 working together. <strong>Join:</strong> app → Quantum money → “Sign up as preparer”.</p>
+    <p class="section-sub reveal" id="qb-zaehler" hidden><span data-i18n="qb-z-gemeldet">Signed up as preparers</span>: <strong id="qb-gemeldet">–</strong> · <span data-i18n="qb-z-los">already in the lottery</span>: <strong id="qb-imlos">–</strong> · <span data-i18n="qb-z-ziel">needed for the pilot</span>: <strong>21</strong> · <a href="https://github.com/hanoi96international-gif/Aequitas/blob/main/docs/PILOT_PRAEPARATORINNEN_GESUCHT.md" rel="noopener" data-i18n="qb-z-mitmachen">How to join</a></p>
   </div>
 </section>
 

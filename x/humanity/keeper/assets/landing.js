@@ -330,6 +330,10 @@ en: {
   "qb-c3-h": "A deposit against fraud",
   "qb-c3-p": "From 27 Nov 2026, 09:00 UTC, the holder deposits the backing plus 10 % when binding. If the other acceptance point proves a double presentation, the deposit goes to it. Otherwise it returns 7 days after the end.",
   "qb-p": "<strong>Honestly:</strong> this has not yet run on real phones. The pilot needs at least 21 registered preparers for 4 of 7. Whoever prepares a section – and their quantum provider – knows it. Protection comes from fewer than 4 of the 7 working together. <strong>Join:</strong> app → Quantum money → “Sign up as preparer”.",
+  "qb-z-gemeldet": "Signed up as preparers",
+  "qb-z-los": "already in the lottery",
+  "qb-z-ziel": "needed for the pilot",
+  "qb-z-mitmachen": "How to join",
   "qm-sub": "Built to stay counterfeit-proof against quantum computers too: one person exists only once, wallets are protected against quantum computers, and the first quantum tokens run on the main network.",
   "qm-1": "Every person should exist only once: a face check blocks a second account. In the beta a single matching service does this. From the second independent verifier on, the operator alone can no longer register anyone – every node checks this.",
   "qm-2": "Your wallet can be protected against future quantum computers; new wallets are protected automatically.",
@@ -887,6 +891,10 @@ de: {
   "qb-c3-h": "Ein Pfand gegen Betrug",
   "qb-c3-p": "Ab 27.11.2026, 09:00 UTC, hinterlegt die Inhaberin bei der Bindung die Deckung plus 10 % als Pfand. Weist die andere Annahmestelle eine doppelte Vorlage nach, geht das Pfand an sie. Sonst kommt es 7 Tage nach dem Ende zurück.",
   "qb-p": "<strong>Ehrlich:</strong> Auf echten Handys ist das noch nicht gelaufen. Der Pilot braucht mindestens 21 gemeldete Präparatorinnen für 4 von 7. Wer einen Abschnitt präpariert, kennt ihn, und sein Quanten-Anbieter auch. Schutz kommt daher, dass weniger als 4 der 7 zusammenarbeiten. <strong>Mitmachen:</strong> App → Quantengeld → „Als Präparatorin melden“.",
+  "qb-z-gemeldet": "Gemeldete Präparatorinnen",
+  "qb-z-los": "davon schon im Los",
+  "qb-z-ziel": "nötig für den Pilot",
+  "qb-z-mitmachen": "So machst du mit",
   "qm-sub": "Fälschungssicher auch gegen Quantencomputer gebaut: Jeder Mensch existiert nur einmal, Wallets sind gegen Quantencomputer geschützt, und die ersten Quanten-Token laufen im Hauptnetz.",
   "qm-1": "Jeder Mensch soll nur einmal existieren: Ein Gesichtsabgleich verhindert ein zweites Konto. In der Beta macht das ein einziger Abgleichdienst. Ab dem zweiten unabhängigen Prüfer kann der Betreiber allein niemanden mehr registrieren – das prüft jeder Knoten.",
   "qm-2": "Deine Wallet lässt sich gegen künftige Quantencomputer schützen; neue Wallets sind es automatisch.",
@@ -1444,6 +1452,10 @@ es: {
   "qb-c3-h": "Un depósito contra el fraude",
   "qb-c3-p": "Desde el 27/11/2026, 09:00 UTC, la titular deposita la cobertura más un 10 % al vincular. Si el otro punto de aceptación demuestra una doble presentación, el depósito es para él. Si no, se devuelve 7 días después del final.",
   "qb-p": "<strong>Con honestidad:</strong> aún no ha funcionado en móviles reales. El piloto necesita al menos 21 preparadoras registradas para 4 de 7. Quien prepara una sección la conoce, y su proveedor cuántico también. La protección viene de que menos de 4 de las 7 colaboren. <strong>Participa:</strong> app → Dinero cuántico → «Apuntarme como preparadora».",
+  "qb-z-gemeldet": "Preparadoras inscritas",
+  "qb-z-los": "ya en el sorteo",
+  "qb-z-ziel": "necesarias para el piloto",
+  "qb-z-mitmachen": "Cómo participar",
   "qm-sub": "Hecho para seguir siendo infalsificable también frente a ordenadores cuánticos: cada persona existe una sola vez, los monederos están protegidos frente a ordenadores cuánticos y los primeros tokens cuánticos funcionan en la red principal.",
   "qm-1": "Cada persona debe existir una sola vez: una comparación facial impide una segunda cuenta. En la beta lo hace un único servicio de comparación. A partir del segundo verificador independiente, el operador ya no puede registrar a nadie por sí solo; lo comprueba cada nodo.",
   "qm-2": "Tu monedero puede protegerse frente a futuros ordenadores cuánticos; los nuevos lo están automáticamente.",
@@ -2001,6 +2013,10 @@ ru: {
   "qb-c3-h": "Залог против мошенничества",
   "qb-c3-p": "С 27.11.2026, 09:00 UTC, владелица при привязке вносит покрытие плюс 10 % в залог. Если другой пункт приёма докажет повторное предъявление, залог переходит к нему. Иначе он возвращается через 7 дней после окончания.",
   "qb-p": "<strong>Честно:</strong> на настоящих телефонах это ещё не работало. Пилоту нужно не менее 21 записавшегося подготовителя для 4 из 7. Кто готовит часть, знает её, как и его квантовый провайдер. Защита в том, что вместе работают менее 4 из 7. <strong>Участвовать:</strong> приложение → Квантовые деньги → «Записаться подготовителем».",
+  "qb-z-gemeldet": "Зарегистрировано подготовителей",
+  "qb-z-los": "уже в жеребьёвке",
+  "qb-z-ziel": "нужно для пилота",
+  "qb-z-mitmachen": "Как участвовать",
   "qm-sub": "Создан, чтобы оставаться защищённым от подделки и перед квантовыми компьютерами: каждый человек существует один раз, кошельки защищены от квантовых компьютеров, а первые квантовые токены работают в основной сети.",
   "qm-1": "Каждый человек должен существовать только один раз: сверка лица не даёт завести второй аккаунт. В бета-версии это делает единственный сервис сверки. Начиная со второго независимого проверяющего оператор больше не может никого зарегистрировать в одиночку — это проверяет каждый узел.",
   "qm-2": "Кошелёк можно защитить от будущих квантовых компьютеров; новые кошельки защищены автоматически.",
@@ -2558,6 +2574,10 @@ zh: {
   "qb-c3-h": "防欺诈押金",
   "qb-c3-p": "自 2026 年 11 月 27 日 09:00 UTC 起，持有人在绑定时存入面额加 10% 作为押金。若另一个受理点证明了重复出示，押金归它；否则在结束 7 天后退还。",
   "qb-p": "<strong>如实说：</strong>这还没有在真实手机上运行过。试点需要至少 21 位已报名的制备者才能做 7 选 4。制备某一段的人知道这一段，其量子服务商也知道。保护来自 7 人中少于 4 人串通。<strong>参与：</strong>应用 → 量子货币 → “报名成为制备者”。",
+  "qb-z-gemeldet": "已报名的制备者",
+  "qb-z-los": "已可被抽中",
+  "qb-z-ziel": "试点所需",
+  "qb-z-mitmachen": "如何参与",
   "qm-sub": "即使面对量子计算机也要无法伪造：每个人只存在一次，钱包已能抵御量子计算机，首批量子代币已在主网运行。",
   "qm-1": "每个人只应存在一次：人脸比对阻止第二个账户。测试阶段由唯一一个比对服务完成。从第二位独立核验者起，运营方无法再独自注册任何人——每个节点都会检查。",
   "qm-2": "你的钱包可以抵御未来的量子计算机；新钱包自动受保护。",
@@ -3115,6 +3135,10 @@ id: {
   "qb-c3-h": "Jaminan melawan penipuan",
   "qb-c3-p": "Mulai 27/11/2026, 09:00 UTC, pemegang menyetor jaminan sebesar nilai tanggungan plus 10 % saat mengikat. Jika titik penerimaan lain membuktikan penyerahan ganda, jaminan menjadi miliknya. Jika tidak, dikembalikan 7 hari setelah berakhir.",
   "qb-p": "<strong>Jujur saja:</strong> ini belum pernah berjalan di ponsel sungguhan. Pilot butuh setidaknya 21 penyiap terdaftar untuk 4 dari 7. Yang menyiapkan satu bagian mengetahuinya, begitu pula penyedia kuantumnya. Perlindungan datang dari kurang dari 4 dari 7 yang bekerja sama. <strong>Ikut:</strong> aplikasi → Uang kuantum → “Daftar sebagai penyiap”.",
+  "qb-z-gemeldet": "Penyiap terdaftar",
+  "qb-z-los": "sudah ikut undian",
+  "qb-z-ziel": "dibutuhkan untuk pilot",
+  "qb-z-mitmachen": "Cara ikut",
   "qm-sub": "Dibuat agar tetap tak bisa dipalsukan juga terhadap komputer kuantum: setiap orang hanya ada satu kali, dompet terlindungi dari komputer kuantum, dan token kuantum pertama berjalan di jaringan utama.",
   "qm-1": "Setiap orang semestinya hanya ada satu kali: pencocokan wajah mencegah akun kedua. Di beta, ini dilakukan satu layanan pencocokan saja. Mulai pemeriksa independen kedua, operator tidak bisa lagi mendaftarkan siapa pun sendirian – setiap node memeriksanya.",
   "qm-2": "Dompetmu bisa dilindungi dari komputer kuantum masa depan; dompet baru terlindungi otomatis.",
@@ -3672,6 +3696,10 @@ it: {
   "qb-c3-h": "Un deposito contro le frodi",
   "qb-c3-p": "Dal 27/11/2026, ore 09:00 UTC, la titolare deposita la copertura più il 10 % al vincolo. Se l’altro punto di accettazione dimostra una doppia presentazione, il deposito va a lui. Altrimenti torna 7 giorni dopo la fine.",
   "qb-p": "<strong>Onestamente:</strong> non è ancora girato su telefoni veri. Il pilota richiede almeno 21 preparatrici iscritte per 4 su 7. Chi prepara una sezione la conosce, e anche il suo fornitore quantistico. La protezione viene dal fatto che meno di 4 delle 7 collaborino. <strong>Partecipa:</strong> app → Denaro quantistico → «Iscriviti come preparatrice».",
+  "qb-z-gemeldet": "Preparatrici iscritte",
+  "qb-z-los": "già nel sorteggio",
+  "qb-z-ziel": "necessarie per il pilota",
+  "qb-z-mitmachen": "Come partecipare",
   "qm-sub": "Costruito per restare non falsificabile anche contro i computer quantistici: ogni persona esiste una sola volta, i wallet sono protetti dai computer quantistici e i primi token quantistici girano sulla rete principale.",
   "qm-1": "Ogni persona deve esistere una sola volta: un confronto del volto impedisce un secondo account. Nella beta lo fa un unico servizio di confronto. Dal secondo verificatore indipendente in poi, l’operatore da solo non può più registrare nessuno: lo controlla ogni nodo.",
   "qm-2": "Il tuo wallet si può proteggere dai futuri computer quantistici; i nuovi lo sono in automatico.",
@@ -4229,6 +4257,10 @@ tr: {
   "qb-c3-h": "Sahteciliğe karşı teminat",
   "qb-c3-p": "27.11.2026, 09:00 UTC’den itibaren sahibi bağlamada karşılığın %10 fazlasını teminat olarak yatırır. Diğer kabul noktası çifte sunumu kanıtlarsa teminat ona geçer. Aksi hâlde bitişten 7 gün sonra geri döner.",
   "qb-p": "<strong>Dürüstçe:</strong> bu henüz gerçek telefonlarda çalışmadı. Pilot, 7’de 4 için en az 21 kayıtlı hazırlayıcı gerektiriyor. Bir bölümü hazırlayan onu bilir, kuantum sağlayıcısı da. Koruma, 7’den 4’ten azının birlikte çalışmasından gelir. <strong>Katıl:</strong> uygulama → Kuantum parası → “Hazırlayıcı olarak kaydol”.",
+  "qb-z-gemeldet": "Kayıtlı hazırlayıcılar",
+  "qb-z-los": "zaten kurada",
+  "qb-z-ziel": "pilot için gereken",
+  "qb-z-mitmachen": "Nasıl katılırsın",
   "qm-sub": "Kuantum bilgisayarlara karşı da sahtesi yapılamayacak şekilde kuruldu: her insan yalnızca bir kez var, cüzdanlar kuantum bilgisayarlara karşı korunuyor ve ilk kuantum tokenları ana ağda çalışıyor.",
   "qm-1": "Her insan yalnızca bir kez var olmalı: yüz eşleştirmesi ikinci bir hesabı engeller. Betada bunu tek bir eşleştirme hizmeti yapıyor. İkinci bağımsız doğrulayıcıdan itibaren işletmeci tek başına kimseyi kaydedemez – bunu her düğüm denetler.",
   "qm-2": "Cüzdanın gelecekteki kuantum bilgisayarlara karşı korunabilir; yeni cüzdanlar otomatik korunur.",
@@ -4786,6 +4818,10 @@ fr: {
   "qb-c3-h": "Un dépôt contre la fraude",
   "qb-c3-p": "À partir du 27/11/2026, 09:00 UTC, la détentrice dépose la couverture plus 10 % lors de la liaison. Si l’autre point d’acceptation prouve une double présentation, le dépôt lui revient. Sinon, il est rendu 7 jours après la fin.",
   "qb-p": "<strong>Honnêtement :</strong> cela n’a pas encore tourné sur de vrais téléphones. Le pilote demande au moins 21 préparatrices inscrites pour 4 sur 7. Qui prépare une section la connaît, et son fournisseur quantique aussi. La protection vient de ce que moins de 4 des 7 coopèrent. <strong>Participer :</strong> app → Monnaie quantique → « S’inscrire comme préparatrice ».",
+  "qb-z-gemeldet": "Préparatrices inscrites",
+  "qb-z-los": "déjà dans le tirage",
+  "qb-z-ziel": "nécessaires pour le pilote",
+  "qb-z-mitmachen": "Comment participer",
   "qm-sub": "Conçu pour rester infalsifiable aussi face aux ordinateurs quantiques : chaque personne n’existe qu’une fois, les portefeuilles sont protégés contre les ordinateurs quantiques, et les premiers jetons quantiques fonctionnent sur le réseau principal.",
   "qm-1": "Chaque personne ne doit exister qu’une fois : une comparaison du visage empêche un second compte. En bêta, un seul service de comparaison s’en charge. Dès le deuxième vérificateur indépendant, l’opérateur ne peut plus inscrire personne à lui seul – chaque nœud le vérifie.",
   "qm-2": "Ton portefeuille peut être protégé contre les futurs ordinateurs quantiques ; les nouveaux le sont automatiquement.",
@@ -5343,6 +5379,10 @@ pt: {
   "qb-c3-h": "Um depósito contra fraude",
   "qb-c3-p": "A partir de 27/11/2026, 09:00 UTC, a titular deposita a cobertura mais 10 % ao vincular. Se o outro ponto de aceitação provar uma apresentação dupla, o depósito vai para ele. Caso contrário, volta 7 dias após o fim.",
   "qb-p": "<strong>Com honestidade:</strong> isso ainda não rodou em celulares de verdade. O piloto precisa de pelo menos 21 preparadoras inscritas para 4 de 7. Quem prepara uma seção a conhece, e seu provedor quântico também. A proteção vem de menos de 4 das 7 trabalharem juntas. <strong>Participe:</strong> app → Dinheiro quântico → “Inscrever-me como preparadora”.",
+  "qb-z-gemeldet": "Preparadoras inscritas",
+  "qb-z-los": "já no sorteio",
+  "qb-z-ziel": "necessárias para o piloto",
+  "qb-z-mitmachen": "Como participar",
   "qm-sub": "Feita para continuar infalsificável também contra computadores quânticos: cada pessoa existe uma só vez, as carteiras estão protegidas contra computadores quânticos e os primeiros tokens quânticos funcionam na rede principal.",
   "qm-1": "Cada pessoa deve existir uma só vez: uma comparação facial impede uma segunda conta. Na beta isso é feito por um único serviço de comparação. A partir do segundo verificador independente, o operador sozinho não pode mais registrar ninguém – cada nó verifica isso.",
   "qm-2": "A tua carteira pode ser protegida contra futuros computadores quânticos; as novas ficam protegidas automaticamente.",
@@ -5900,6 +5940,10 @@ ar: {
   "qb-c3-h": "وديعة ضد الاحتيال",
   "qb-c3-p": "ابتداءً من 27‏/11‏/2026 الساعة 09:00 UTC، تودِع الحاملة عند الربط قيمة الغطاء زائد 10 %. إذا أثبتت نقطة القبول الأخرى تقديمًا مزدوجًا، تذهب الوديعة إليها. وإلا تُعاد بعد 7 أيام من النهاية.",
   "qb-p": "<strong>بصدق:</strong> لم يعمل هذا بعد على هواتف حقيقية. يحتاج التجريب إلى 21 مُحضِّرًا مسجّلًا على الأقل لـ 4 من 7. من يُحضِّر قسمًا يعرفه، وكذلك مزوّده الكمومي. تأتي الحماية من أن أقل من 4 من الـ 7 يتعاونون. <strong>شارك:</strong> التطبيق ← النقود الكمومية ← «الانضمام مُحضِّرًا».",
+  "qb-z-gemeldet": "المُحضِّرات المسجَّلات",
+  "qb-z-los": "منهن في القرعة",
+  "qb-z-ziel": "المطلوب للتجربة",
+  "qb-z-mitmachen": "كيف تشارك",
   "qm-sub": "مبنية لتبقى غير قابلة للتزوير أمام الحواسيب الكمومية أيضًا: كل إنسان موجود مرة واحدة فقط، والمحافظ محمية من الحواسيب الكمومية، وأول الرموز الكمومية تعمل على الشبكة الرئيسية.",
   "qm-1": "يجب أن يوجد كل إنسان مرة واحدة فقط: مطابقة الوجه تمنع حسابًا ثانيًا. في النسخة التجريبية تقوم بذلك خدمة مطابقة واحدة فقط. ابتداءً من المدقّق المستقل الثاني لا يستطيع المشغّل وحده تسجيل أي أحد – وكل عقدة تتحقق من ذلك.",
   "qm-2": "يمكن حماية محفظتك من الحواسيب الكمومية المستقبلية؛ والمحافظ الجديدة محمية تلقائيًا.",
@@ -6457,6 +6501,10 @@ hi: {
   "qb-c3-h": "धोखाधड़ी के ख़िलाफ़ ज़मानत",
   "qb-c3-p": "27.11.2026, 09:00 UTC से धारक बाँधते समय कवर का मूल्य और 10 % ज़मानत के रूप में जमा करती है। अगर दूसरा स्वीकृति बिंदु दोहरी प्रस्तुति साबित करे, तो ज़मानत उसे मिलती है। वरना अंत के 7 दिन बाद लौट आती है।",
   "qb-p": "<strong>ईमानदारी से:</strong> यह अभी असली फ़ोनों पर नहीं चला है। पायलट को 7 में से 4 के लिए कम से कम 21 पंजीकृत तैयारकर्ता चाहिए। जो एक हिस्सा तैयार करता है, उसे जानता है, और उसका क्वांटम प्रदाता भी। सुरक्षा इसमें है कि 7 में से 4 से कम मिलकर काम करें। <strong>जुड़ें:</strong> ऐप → क्वांटम पैसा → “तैयारकर्ता के रूप में जुड़ें”।",
+  "qb-z-gemeldet": "पंजीकृत तैयारकर्ता",
+  "qb-z-los": "जो लॉटरी में हैं",
+  "qb-z-ziel": "पायलट के लिए ज़रूरी",
+  "qb-z-mitmachen": "कैसे जुड़ें",
   "qm-sub": "क्वांटम कंप्यूटरों के सामने भी नकल-रोधी रहने के लिए बना: हर इंसान सिर्फ़ एक बार मौजूद है, वॉलेट क्वांटम कंप्यूटरों से सुरक्षित हैं, और पहले क्वांटम टोकन मुख्य नेटवर्क पर चल रहे हैं।",
   "qm-1": "हर इंसान सिर्फ़ एक बार मौजूद होना चाहिए: चेहरे का मिलान दूसरा खाता रोकता है। बीटा में यह एक ही मिलान सेवा करती है। दूसरे स्वतंत्र जाँचकर्ता से संचालक अकेले किसी को पंजीकृत नहीं कर सकता – यह हर नोड जाँचता है।",
   "qm-2": "आपका वॉलेट भविष्य के क्वांटम कंप्यूटरों से सुरक्षित किया जा सकता है; नए वॉलेट अपने आप सुरक्षित हैं।",
@@ -7773,6 +7821,31 @@ function setHealthBadge(ok, note) {
   el.title = note;
 }
 
+// Weg B (docs/PILOT_PRAEPARATORINNEN_GESUCHT.md): wie viele Menschen sich als
+// Praeparatorin gemeldet haben und wie viele davon schon im Los sind (einen
+// Tag nach dem Melden) -- live vom Knoten, ausserhalb jedes uebersetzten
+// Elements. Ohne Antwort bleibt die Zeile verborgen (keine erfundene Zahl).
+async function loadPraeparatoren() {
+  const zeile = document.getElementById('qb-zaehler');
+  if (!zeile) return;
+  try {
+    const d = await fetch('/api/quanten-w/praeparatoren').then(r => r.json());
+    if (!d || !Array.isArray(d.praeparatoren)) return;
+    const jetzt = Date.now() / 1000;
+    let gemeldet = 0, imLos = 0;
+    for (const e of d.praeparatoren) {
+      if (!e || e.abgemeldet) continue;
+      gemeldet++;
+      if (typeof e.im_los_ab === 'number' && e.im_los_ab <= jetzt) imLos++;
+    }
+    setText('qb-gemeldet', String(gemeldet));
+    setText('qb-imlos', String(imLos));
+    zeile.hidden = false;
+  } catch (e) {
+    // Zeile bleibt verborgen.
+  }
+}
+
 async function loadStats() {
   try {
     const d = await fetch('/api/status').then(r => r.json());
@@ -7897,6 +7970,7 @@ ladeGleichgewicht();
 renderCountdown();
 loadStats();
 loadBusiness();
+loadPraeparatoren();
 document.getElementById('lang-sel')?.addEventListener('change', loadBusiness);
 
 // Smooth scroll for anchor links
