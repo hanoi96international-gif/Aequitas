@@ -247,6 +247,8 @@ class KetteS:
                 raise Abgewiesen("Einloesen: Stichprobe passt nicht zur Ausgabe (v2)")
         elif probe_hash(K, b, sortiert) != e["proben"][b]:
             raise Abgewiesen("Einloesen: Stichprobe passt nicht zur Ausgabe")
+        if len(sortiert) < e.get("k_min", 0):
+            raise Abgewiesen("Einloesen: Stichprobe kleiner als die Pruefgroesse der Leitung")
         e["anmeldung"] = {"b": b, "stelle": stelle_konto, "x": list(x), "probe": sortiert, "offen": 0,
                           "treffer": 0, "fehler": 0, "zeit": zeit}
 
@@ -273,7 +275,10 @@ class KetteS:
                     or any(not 0 <= y < wk.P for _, y in anteile):
                 raise Abgewiesen("Offenlegen: Anteile")
             v = wk.zusammensetzen(anteile)
-            if v >> (wk.SALZ_BITS + 2) or not wk.merkle_pruefen(e["wurzel"], wk.pruefsumme(K, i, v), i, pfad, e["n"]):
+            # Ueber eine Leitung (S3): Stelle i ist Puls pulse[i], die Wurzel die
+            # ueber alle n_puls Pulse der Vormerkung.
+            blatt, baum = (e["pulse"][i], e["n_puls"]) if e.get("pulse") is not None else (i, e["n"])
+            if v >> (wk.SALZ_BITS + 2) or not wk.merkle_pruefen(e["wurzel"], wk.pruefsumme(K, blatt, v), blatt, pfad, baum):
                 raise Abgewiesen("Offenlegen: Pruefsumme oder Pfad")
             uk, tk = wk.zerlegen(v)
             if (e["d"][i] ^ a["b"] ^ e["c"]) == uk:
@@ -582,8 +587,11 @@ class KetteS3(KetteS):
         l = self.vorgemerkt[K]["leitung"]
         return wk.k_leitung(tol, t, n_val, l["theta"], l["frei"])
 
-    def ausgeben_s3(self, K: str, k_je_stelle: int, proben: list[bytes], stellen: list[str],
+    def ausgeben_s3(self, K: str, proben: list[bytes], stellen: list[str],
                     t: int, n_val: int, tol: int, zeit: int, probe_art: int = 2):
+        """Ausgabe ueber die gezogene Teilmenge (C2b-2b-3b). Die Stichproben
+        stehen hier nur als Hash fest; ihre Groesse prueft das Anmelden
+        (mindestens k_min = k_leitung der festgehaltenen Leitung)."""
         e = self.vorgemerkt.get(K)
         if e is None or e["teil"] is None:
             raise Abgewiesen("Ausgabe S3: Teilmenge nicht gezogen")
@@ -591,8 +599,8 @@ class KetteS3(KetteS):
             raise Abgewiesen("Ausgabe S3: Vormerkung verfallen")
         n = len(e["teil"])
         kn = self.k_note(K, tol, t, n_val)
-        if kn == 0 or k_je_stelle < kn or 2 * k_je_stelle > n:
-            raise Abgewiesen(f"Ausgabe S3: Pruefgroesse {k_je_stelle}, verlangt {kn}, Stellen {n}")
+        if kn == 0 or 2 * kn > n:
+            raise Abgewiesen(f"Ausgabe S3: Pruefgroesse {kn} der Leitung bei {n} Stellen")
         # Die Deckung liegt seit der Vormerkung im Topf: nicht zweimal zahlen.
         self.topf -= e["deckung"]
         self.konten[e["von"]] += e["deckung"]
@@ -603,7 +611,7 @@ class KetteS3(KetteS):
             self.konten[e["von"]] -= e["deckung"]
             self.topf += e["deckung"]
             raise
-        self.token[K]["pulse"] = list(e["teil"])
+        self.token[K].update({"pulse": list(e["teil"]), "n_puls": e["n_puls"], "k_min": kn})
         self.pfaender -= e["pfand"]
         self.konten[e["von"]] += e["pfand"]
         del self.vorgemerkt[K]
@@ -634,7 +642,7 @@ def selbsttest_s3(soll, abgewiesen):
     # Spaeter eingetragene Werte aendern die Vormerkung nicht.
     k3.leitung("leitung-test", 20, 50_000, 1)
     soll(k3.vorgemerkt[K]["leitung"]["gamma"] == 200_000, "Vormerkung haelt gamma fest")
-    abgewiesen(lambda: k3.ausgeben_s3(K, 128, [b"x" * 32] * 2, ["s0", "s1"], 3, 7, 4, 12), "Ausgabe vor dem Ziehen")
+    abgewiesen(lambda: k3.ausgeben_s3(K, [b"x" * 32] * 2, ["s0", "s1"], 3, 7, 4, 12), "Ausgabe vor dem Ziehen")
     lam = sorted(rng.sample(range(100_000), 20_000))
     text = s3_kodieren(lam)
     abgewiesen(lambda: k3.ziehen(K, text, bytes(32), 20 + S3_ZIEH_ABSTAND), "Ziehen vor der Meldung")
@@ -667,12 +675,11 @@ def selbsttest_s3(soll, abgewiesen):
     kn = k3.k_note(K, 4, 3, 7)
     soll(kn == wk.k_leitung(4, 3, 7, 20, 50_000) and kn > wk.k_note(4, 3, 7), "Pruefgroesse der Leitung ueber der des Chips")
     proben = [b"p" * 32, b"q" * 32]
-    abgewiesen(lambda: k3.ausgeben_s3(K, kn - 1, proben, ["s0", "s1"], 3, 7, 4, 30), "Pruefgroesse unter der Leitung")
-    abgewiesen(lambda: k3.ausgeben_s3(K, wk.N_MAX // 2 + 1, proben, ["s0", "s1"], 3, 7, 4, 30), "2k > n")
-    abgewiesen(lambda: k3.ausgeben_s3(K, kn, proben, ["s0", "s0"], 3, 7, 4, 30), "Stellen doppelt")
-    abgewiesen(lambda: k3.ausgeben_s3(K, kn, proben, ["s0", "s1"], 3, 7, 4, 11 + S3_FRIST), "Ausgabe nach der Frist")
+    abgewiesen(lambda: k3.ausgeben_s3(K, proben, ["s0", "s1"], 5, 7, 4, 30), "Leitung nicht sicher (k = 0)")
+    abgewiesen(lambda: k3.ausgeben_s3(K, proben, ["s0", "s0"], 3, 7, 4, 30), "Stellen doppelt")
+    abgewiesen(lambda: k3.ausgeben_s3(K, proben, ["s0", "s1"], 3, 7, 4, 11 + S3_FRIST), "Ausgabe nach der Frist")
     soll(k3.konten["aus"] == START - 1000 - P and k3.topf == 1000, "abgewiesene Ausgabe zahlt nichts doppelt und nichts zurueck")
-    k3.ausgeben_s3(K, kn, proben, ["s0", "s1"], 3, 7, 4, 30)
+    k3.ausgeben_s3(K, proben, ["s0", "s1"], 3, 7, 4, 30)
     e = k3.token[K]
     soll(e["n"] == wk.N_MAX and e["pulse"] == teil and e["wurzel"] == w and e["deckung"] == 1000, "Token ueber die Teilmenge")
     soll(k3.konten["aus"] == START - 1000 and k3.topf == 1000 and k3.pfaender == 0 and K not in k3.vorgemerkt,
@@ -717,6 +724,47 @@ def selbsttest_s3(soll, abgewiesen):
     k4.frist(f"{0:064x}", 5 + S3_FRIST + 1)
     k4.vormerken("f" * 64, letzter, "anna", "leitung-test", 10, w, 1, 5 + S3_FRIST + 1)
     soll(len(k4.vorgemerkt) == S3_VORMERKUNGEN_MAX, "nach der Frist wieder Platz")
+
+    # C2b-2b-3b: der ganze Weg mit echter Praegung ueber N_PULS Pulse. Stelle j
+    # des Tokens ist Puls teil[j]; Pfade gehen gegen die Wurzel ueber ALLE Pulse.
+    n_puls = 6000
+    k5 = KetteS3()
+    for name in ("aus", "anna", "s0", "s1"):
+        k5.konto(name, START, name.encode())
+    k5.leitung("leitung-test", 20, 50_000, 200_000)
+    K5 = "5e" * 32
+    basen = [rng.randrange(2) for _ in range(n_puls)]
+    bits = [rng.randrange(2) for _ in range(n_puls)]
+    pr = wk.Praegung(K5, basen, bits, 1, ["v1"], rng)
+    k5.vormerken(K5, "aus", "anna", "leitung-test", n_puls, pr.wurzel, 1000, 10)
+    lam5 = sorted(rng.sample(range(n_puls), 3000))
+    t5 = s3_kodieren(lam5)
+    k5.melden(K5, "anna", t5, 20)
+    k5.ziehen(K5, t5, bytes(range(32)), 20 + S3_ZIEH_ABSTAND)
+    teil5 = k5.vorgemerkt[K5]["teil"]
+    kn5 = wk.k_leitung(4, 1, 1, 20, 50_000)
+    soll(teil5 == lam5 and 2 * kn5 <= len(teil5), "Meldung unter N_MAX: Teilmenge = Meldung")
+    n5 = len(teil5)
+    probe = [sorted(rng.sample(range(n5), kn5)), sorted(rng.sample(range(n5), kn5 - 1))]
+    k5.ausgeben_s3(K5, [probe_hash(K5, b, probe[b]) for b in (0, 1)], ["s0", "s1"], 1, 1, 4, 30, probe_art=1)
+    e5 = k5.token[K5]
+    soll(e5["pulse"] == teil5 and e5["n_puls"] == n_puls and e5["k_min"] == kn5 and e5["n"] == n5, "Token kennt Pulse und Pruefgroesse")
+    # Die Inhaberin misst Puls teil[j] in Basis y[j]; Stelle 1 prueft y.
+    y = [rng.randrange(2) for _ in range(n5)]
+    x5 = [bits[teil5[j]] if y[j] == basen[teil5[j]] else rng.randrange(2) for j in range(n5)]
+    k5.binden(K5, "anna", list(y))
+    k5.waehlen(K5, "anna", 1)
+    vs5 = [sig(k5.konto_schluessel["anna"], vorlage_text(K5, b, x5)) for b in (0, 1)]
+    abgewiesen(lambda: k5.anmelden(K5, 1, "s1", x5, vs5[1], probe[1], 40), "Stichprobe unter k_min der Leitung")
+    k5.token[K5]["proben"][1] = probe_hash(K5, 1, probe[0])
+    k5.anmelden(K5, 1, "s1", x5, vs5[1], probe[0], 40)
+    falsch = pr.offenlegung(probe[0][:wk.OFFEN_TEIL], [1])
+    abgewiesen(lambda: k5.offenlegen(K5, 0, falsch, 41), "Pfad zum Blatt der Stelle statt des Pulses")
+    ehrlich = pr.offenlegung([teil5[j] for j in probe[0]], [1])
+    r5 = None
+    for ab in range(0, kn5, wk.OFFEN_TEIL):
+        r5 = k5.offenlegen(K5, ab, ehrlich[ab:ab + wk.OFFEN_TEIL], 41)
+    soll(r5 is True and e5["eingeloest"] and k5.konten["s1"] == START + 1000, "Einloesen ueber die Pulse der Leitung")
 
 # ---------------------------------------------------------------- Annahmestellen
 def stichproben(n: int, stellen: int, k: int, rng: random.Random) -> list[list[int]]:
