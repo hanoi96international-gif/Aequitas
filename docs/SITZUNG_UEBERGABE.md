@@ -7,15 +7,11 @@ Repos); davor ~13:40 UTC Sitzung „Weiter“ (`claude/weiter-uw2p42`), davor ~1
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
-**Stand 27.11. ~14:45 UTC — HIER WEITERMACHEN** (Sitzung „Quantengeld Revolution“, Zweig
-`claude/quantengeld-revolution-eskpsn`, Arbeitsbaum sauber, alles gepusht):
-- **Offen: Aequitas PR #691 (C2b-2b-2).** Code-Stand 1da3736a: CI (Run 46016328503) **ganz grün**. Danach nur noch
-  Übergabe-Commits (nur Doku); vor dem Merge die CI auf dem aktuellen Kopf abwarten und dessen volle SHA nehmen. Sicherheitsprüfung als PR-Kommentar steht (kein Befund,
-  der aufhält). **Nächster Handgriff: mergen** (Squash, volle Kopf-SHA aus dem PR holen), dann Zweig zurücksetzen
-  (`git checkout -B claude/quantengeld-revolution-eskpsn origin/main`, `git merge -s ours --no-edit
-  origin/claude/quantengeld-revolution-eskpsn`, push), Abo #691 beenden, Erinnerung `trig_01Uq6y9uDuP2A9NKncqXcVVW`
-  (15:20 UTC) löschen, diese Übergabe nachziehen.
-- Inhalt #691: `quanten_s3_vormerkung.go`, vier Arten `quanten_w_s3_vormerken`, `…_melden`, `…_ziehen`, `…_frist`,
+**Stand 27.11. ~15:05 UTC — HIER WEITERMACHEN** (Sitzung „Quantengeld Revolution“, Zweig
+`claude/quantengeld-revolution-eskpsn`, auf `main` zurückgesetzt, keine PRs offen):
+- **Gemergt: #691 (9ced9258, C2b-2b-2 Vormerken, Melden, Ziehen, Frist; Konsens, schlafend).** Abo und Erinnerung
+  beendet. Der Merge startet einen Deploy (Betreiber gibt `produktion` frei; eilt nicht).
+- Inhalt #691 (gemergt): `quanten_s3_vormerkung.go`, vier Arten `quanten_w_s3_vormerken`, `…_melden`, `…_ziehen`, `…_frist`,
   schlafend hinter `quantenS3AbUnix` (MaxInt64) **und** `quantenLeitungAktiv`. Vormerken nur durch einen Menschen,
   Deckung in den Pfandtopf, θ/frei/γ der Leitung in der Vormerkung festgehalten, Nullifier des Ausgebers dabei; je
   Ausgeber eine, höchstens 16. Melden genau einmal, ≤ 128 KiB Hex, nur SHA-256 im Register. Ziehen: Meldung noch
