@@ -61,6 +61,33 @@ Ehrlich bleibt:
 | **C5** | Messung am Gerät: Fehler E, Verkippung θ, Mehrphotonen-Anteil, Seitenkanäle (Kents Annahmen A und G). Erst mit diesen Werten gibt es eine Prüfgröße. | Partner, ich |
 | **C6** | Erster Token über eine echte Leitung im Hauptnetz, öffentlicher Nachweis, Gutachten. Dann darf die Website ohne „entwickelt“ sagen: unkopierbar durch Physik. | alle |
 
+## Gerätevorgabe: welches Gerätepaar reicht (`s3_geraet.py`, 27.11.2026)
+
+Gerechnet mit den Regeln der Kette (`k_leitung`, 2k ≤ 16.384, Meldung ≤ 65.536, Mehrphotonen-Pulse
+alle als dem Fälscher bekannt). Annahmen, keine Messung: Detektor × Kopplung η = 0,5 (Si-SPAD bei
+850 nm, laut Händler ~58 %), Durchlass T = 0,9, Fehler e = 2 %, Verkippung 2°, 1 MHz.
+
+| mittlere Photonenzahl μ | t 1 von 1 | t 2 von 3 | t 3 von 5 | t 4 von 7 |
+|---|---|---|---|---|
+| 0,03 | k 1.536 (0,23 M Pulse) | k 4.640 (0,69 M) | k 7.320 (1,09 M) | k 7.320 (1,09 M) |
+| 0,05 | k 1.848 (0,17 M) | k 4.640 (0,42 M) | k 7.320 (0,66 M) | k 7.320 (0,66 M) |
+| 0,10 | k 2.288 (0,10 M) | k 7.320 (0,33 M) | nein | nein |
+| 0,20 | nein | nein | nein | nein |
+
+- **Ein Eigenbau reicht rechnerisch:** ein abgeschwächter Laser mit μ ≤ 0,05, Si-SPAD-Detektoren, eine kurze
+  Strecke. Ein Token braucht unter einer Sekunde Pulse, eine echte Note fällt seltener als 10⁻⁶ durch.
+- **Zu viel Licht oder zu viel Verlust geht nicht:** Ab μ ≈ 0,2 oder bei 5 % Gesamt-Wirkungsgrad sind über
+  25 % der gemeldeten Stellen Mehrphotonen-Pulse; die Kette nimmt das nicht an (fail-closed).
+- **Absprache kostet Licht:** Damit t − 1 Präparatorinnen im Bund nicht reichen, muss μ kleiner sein
+  (0,05 statt 0,10). Das Gerät muss dafür nur länger senden.
+
+**Designfrage, die aus der Schwelle folgt (offen, C4):** Wer den Sender bedient, kennt die Werte der
+Pulse, die er sendet. Ein einziger Sender heißt also: Sein Betreiber ist **eine** Präparatorin, die
+alles kennt (t = 1 von 1). Gegen die Inhaberin schützt dann die Physik, gegen den Senderbetreiber nur
+Vertrauen. Für eine Schwelle t von v braucht es **v Sender**, die je ihren Abschnitt der Pulse schicken
+(ein Sender ist billig: Laser, Abschwächer, Polarisationsmodulator; teuer sind die Detektoren beim
+Empfänger). Erst mit mehreren Sendern ist Weg C zugleich physikalisch und dezentral.
+
 ## Hardware, ehrlich
 
 - **Handys reichen nicht.** Ein Empfänger braucht Einzelphotonen-Detektoren in zwei Basen. Es
