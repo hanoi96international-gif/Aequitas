@@ -285,6 +285,9 @@ func (cs *ChainState) quantenSBestellBescheidLocked(ctx context.Context, tx *Tra
 		if neu.Best[q.K] != nil {
 			return quantenWBefund("quanten_w_doppelt", "%s ist schon bestellt", q.K[:12]), nil
 		}
+		if reg.S3[q.K] != nil {
+			return quantenWBefund("quanten_w_doppelt", "%s ist ueber eine Leitung vorgemerkt", q.K[:12]), nil
+		}
 		for _, b := range neu.Best {
 			if b.Ausgeber == wallet {
 				return quantenWBefund("quanten_s_bestellung_offen", "%s hat schon eine Bestellung bis %d", kurzAdresse(wallet), sattAdd(b.Zeit, quantenSBestellFrist)), nil

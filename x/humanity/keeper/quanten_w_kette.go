@@ -136,7 +136,9 @@ func quantenWBuchZeit(art string, buchAt, blockZeit int64) (int64, bool) {
 // die drand-Runde des Loses fest; zurueckdatiert laege sie in der
 // Vergangenheit, und wer den Block erzeugt, kennte das Los vorher.
 func quantenWBuchSpielFuer(art string) int64 {
-	if art == quantenSBestellenTxArt {
+	// S3: die Meldezeit bestimmt die Runde, die zieht
+	// (quanten_s3_vormerkung.go) -- wie beim Bestellen.
+	if art == quantenSBestellenTxArt || istQuantenS3TxArt(art) {
 		return quantenSBestellBuchSpiel
 	}
 	// P4: die Frist des Nachweises ist ein "spaetestens" -- eine weit
@@ -191,11 +193,12 @@ func quantenWStatus() map[string]interface{} {
 	}
 	quantenSLosBehaltenStatus(m) // P2a, Los je Token (quanten_s_los_behalten.go)
 	quantenSPfaenderStatus(m)    // P2, Pfand je Praeparatorin (quanten_s_pfaender.go)
+	quantenS3Status(m)           // Weg C, S3 (quanten_s3_vormerkung.go)
 	return m
 }
 
 func istQuantenWTxArt(t string) bool {
-	if istQuantenWSTxArt(t) || istQuantenSPraepTxArt(t) || istQuantenSBestellTxArt(t) || istQuantenSPfandTxArt(t) || istQuantenSIPfandTxArt(t) || istQuantenSFaelschungTxArt(t) {
+	if istQuantenWSTxArt(t) || istQuantenSPraepTxArt(t) || istQuantenSBestellTxArt(t) || istQuantenSPfandTxArt(t) || istQuantenSIPfandTxArt(t) || istQuantenSFaelschungTxArt(t) || istQuantenS3TxArt(t) {
 		return true
 	}
 	switch t {
@@ -262,6 +265,11 @@ type QuantenWAngaben struct {
 	// Fehlt = das Pfand kommt vom Konto der Inhaberin. Nur ab dem Stichtag der Pfaender.
 	PfandVon string `json:"pfand_von,omitempty"`
 	PfandSig string `json:"pfand_sig,omitempty"`
+	// Weg C, S3 (quanten_s3_vormerkung.go, schlafend): Vormerken mit Leitung
+	// und Zahl der Pulse, Melden und Ziehen mit der Meldung (Hex).
+	Leitung string `json:"leitung,omitempty"`
+	NPuls   int    `json:"n_puls,omitempty"`
+	Meldung string `json:"meldung,omitempty"`
 	// Unterschrift der Wallet (Praegen, Anfrage, Antwort): EIP-191 ODER ML-DSA.
 	WalletSig string   `json:"wallet_sig,omitempty"`
 	PQ        *PQKonto `json:"pq,omitempty"`
@@ -354,6 +362,9 @@ func quantenWNurEigeneFelder(tx *Transaction) bool {
 		if istQuantenSFaelschungTxArt(tx.Type) {
 			return quantenSFaelschungNurEigeneFelder(tx, q)
 		}
+		if istQuantenS3TxArt(tx.Type) {
+			return quantenS3NurEigeneFelder(tx, q)
+		}
 		return false
 	}
 	return reflect.DeepEqual(q, QuantenWAngaben{})
@@ -443,24 +454,28 @@ type quantenWRegister struct {
 	// mit Pfand der Inhaberin (quanten_s_faelschung.go). Eintraege werden
 	// nie geaendert, nur ersetzt.
 	Nachweis map[string]*quantenSNachweis
+	// S3: Weg C, Vormerkungen ueber eine Leitung (quanten_s3_vormerkung.go),
+	// je K. Leer bis zum Stichtag. Eintraege werden nie geaendert, nur ersetzt.
+	S3 map[string]*quantenS3Vormerkung
 }
 
 // leer: nichts im Register (kodiert als "", StateRoot ohne W-Teil).
 func (r *quantenWRegister) leer() bool {
-	return len(r.Noten) == 0 && len(r.Token) == 0 && len(r.Tote) == 0 && len(r.Praep) == 0 && len(r.Best) == 0 && len(r.Lose) == 0 && len(r.IPfand) == 0 && len(r.Nachweis) == 0
+	return len(r.Noten) == 0 && len(r.Token) == 0 && len(r.Tote) == 0 && len(r.Praep) == 0 && len(r.Best) == 0 && len(r.Lose) == 0 && len(r.IPfand) == 0 && len(r.Nachweis) == 0 && len(r.S3) == 0
 }
 
 func neuesQuantenWRegister() *quantenWRegister {
 	return &quantenWRegister{Noten: map[string]*quantenWEintrag{}, Token: map[string]*quantenWSEintrag{}, Tote: map[string]int64{}, Enden: map[string]quantenWEnde{}, Praep: map[string]quantenSPraep{},
 		Best: map[string]*quantenSBestellung{}, Lose: map[string][]string{}, IPfand: map[string]quantenSIPfand{},
-		Nachweis: map[string]*quantenSNachweis{}}
+		Nachweis: map[string]*quantenSNachweis{}, S3: map[string]*quantenS3Vormerkung{}}
 }
 
 func (r *quantenWRegister) kopie() *quantenWRegister {
 	n := &quantenWRegister{Noten: make(map[string]*quantenWEintrag, len(r.Noten)), Token: make(map[string]*quantenWSEintrag, len(r.Token)), Tote: make(map[string]int64, len(r.Tote)),
 		Enden: make(map[string]quantenWEnde, len(r.Enden)), Praep: make(map[string]quantenSPraep, len(r.Praep)),
 		Best: make(map[string]*quantenSBestellung, len(r.Best)), Lose: make(map[string][]string, len(r.Lose)),
-		IPfand: make(map[string]quantenSIPfand, len(r.IPfand)), Nachweis: make(map[string]*quantenSNachweis, len(r.Nachweis))}
+		IPfand: make(map[string]quantenSIPfand, len(r.IPfand)), Nachweis: make(map[string]*quantenSNachweis, len(r.Nachweis)),
+		S3: make(map[string]*quantenS3Vormerkung, len(r.S3))}
 	for k, e := range r.Noten {
 		n.Noten[k] = e
 	}
@@ -487,6 +502,9 @@ func (r *quantenWRegister) kopie() *quantenWRegister {
 	}
 	for k, x := range r.Nachweis {
 		n.Nachweis[k] = x // unveraenderlich: Aenderungen ersetzen den Eintrag
+	}
+	for k, v := range r.S3 {
+		n.S3[k] = v // unveraenderlich: Aenderungen ersetzen den Eintrag
 	}
 	return n
 }
@@ -566,6 +584,9 @@ type quantenWRegisterForm struct {
 	IPfand []quantenSIPfandForm `json:"ipfand,omitempty"`
 	// P4, Nachweise (quanten_s_faelschung.go); fehlt, solange leer.
 	Nachweis []quantenSNachweisForm `json:"nachweis,omitempty"`
+	// S3, Vormerkungen ueber eine Leitung (quanten_s3_vormerkung.go); fehlt,
+	// solange leer.
+	S3 []quantenS3VormerkungForm `json:"s3,omitempty"`
 }
 
 func (r *quantenWRegister) kodiert() string {
@@ -602,6 +623,7 @@ func (r *quantenWRegister) form() quantenWRegisterForm {
 	f.Lose = quantenSLoseFormen(r.Lose)
 	f.IPfand = quantenSIPfandFormen(r.IPfand)
 	f.Nachweis = quantenSNachweiseFormen(r.Nachweis)
+	f.S3 = quantenS3VormerkungenFormen(r.S3)
 	return f
 }
 
@@ -672,7 +694,7 @@ func quantenWRegisterLesen(s string) (*quantenWRegister, error) {
 	if err := dec.Decode(&f); err != nil {
 		return nil, fmt.Errorf("quanten_w: Register: %w", err)
 	}
-	if len(f.Noten) == 0 && len(f.Token) == 0 && len(f.Tote) == 0 && len(f.Praep) == 0 && len(f.Best) == 0 && len(f.Lose) == 0 && len(f.IPfand) == 0 && len(f.Nachweis) == 0 {
+	if len(f.Noten) == 0 && len(f.Token) == 0 && len(f.Tote) == 0 && len(f.Praep) == 0 && len(f.Best) == 0 && len(f.Lose) == 0 && len(f.IPfand) == 0 && len(f.Nachweis) == 0 && len(f.S3) == 0 {
 		return nil, errors.New("quanten_w: leeres Register muss leer kodiert sein")
 	}
 	// Tote: bis zur Grenze praegen, danach sterben noch die lebenden Noten.
@@ -794,6 +816,11 @@ func quantenWRegisterLesen(s string) (*quantenWRegister, error) {
 		return nil, err
 	}
 	r.Lose = lose
+	s3, err := quantenS3VormerkungenLesen(f.S3, r)
+	if err != nil {
+		return nil, err
+	}
+	r.S3 = s3
 	return r, nil
 }
 
@@ -945,11 +972,11 @@ func quantenWZeitGueltig(tx *Transaction, blockZeit int64) bool {
 	case quantenWPraegenTxArt, quantenWAnfrageTxArt, quantenWSAusgebenTxArt:
 		z := tx.DistributionAt
 		return z > 0 && z <= sattAdd(blockZeit, quantenWVoraus) && blockZeit-z <= quantenWAlt
-	case quantenSBestellenTxArt:
+	case quantenSBestellenTxArt, quantenS3VormerkenTxArt:
 		z := tx.DistributionAt
 		return z > 0 && z <= sattAdd(blockZeit, quantenWVoraus) && blockZeit-z <= quantenWAlt
 	case quantenSLosenTxArt, quantenSBestellFristTxArt, quantenSPfandZurueckTxArt, quantenSIPfandZurueckTxArt,
-		quantenSFaelschungAnmeldenTxArt, quantenSFaelschungOffenlegenTxArt:
+		quantenSFaelschungAnmeldenTxArt, quantenSFaelschungOffenlegenTxArt, quantenS3MeldenTxArt, quantenS3ZiehenTxArt, quantenS3FristTxArt:
 		return tx.DistributionAt == 0
 	case quantenSPraepMeldenTxArt, quantenSPraepAbmeldenTxArt:
 		// Abmelden ohne Wallet (Aufraeumen) traegt keine Zeit.
@@ -1017,6 +1044,9 @@ func (cs *ChainState) quantenWBescheidLocked(ctx context.Context, tx *Transactio
 	}
 	if istQuantenSFaelschungTxArt(tx.Type) {
 		return cs.quantenSFaelschungBescheidLocked(ctx, tx, wallet, reg, blockZeit)
+	}
+	if istQuantenS3TxArt(tx.Type) {
+		return cs.quantenS3BescheidLocked(ctx, tx, wallet, reg, blockZeit)
 	}
 	alt := reg.Noten[q.K]
 	if alt == nil {
@@ -1167,6 +1197,10 @@ func (cs *ChainState) quantenWPraegenBescheidLocked(ctx context.Context, tx *Tra
 	// das Register laesst beides zugleich nicht zu (quantenWRegisterLesen).
 	if reg.Best[q.K] != nil {
 		return quantenWBefund("quanten_w_doppelt", "%s ist fuer Weg B bestellt", q.K[:12]), nil
+	}
+	// Weg C: ein vorgemerktes K gehoert der Vormerkung (quanten_s3_vormerkung.go).
+	if reg.S3[q.K] != nil {
+		return quantenWBefund("quanten_w_doppelt", "%s ist ueber eine Leitung vorgemerkt", q.K[:12]), nil
 	}
 	if _, tot := reg.Tote[q.K]; tot {
 		return quantenWBefund("quanten_w_doppelt", "Note %s war schon gepraegt (tot)", q.K[:12]), nil
@@ -1442,6 +1476,12 @@ func (cs *ChainState) quantenWAnnehmen(tx Transaction) (Transaction, error) {
 			}
 		}
 	}
+	// S3: die Frist zahlt die Deckung an den Ausgeber der Vormerkung.
+	if istQuantenS3TxArt(tx.Type) {
+		if v := cs.quantenWJetzt().S3[q.K]; v != nil {
+			konten = append(konten, v.Von)
+		}
+	}
 	var fertig Transaction
 	err := cs.runAtomicWithOutbox(konten, false, func(ctx context.Context) (Transaction, error) {
 		at := nowUnix()
@@ -1490,6 +1530,10 @@ func (a *APIServer) handleQuantenW(art string) http.HandlerFunc {
 		}
 		if (istQuantenSPraepTxArt(art) || istQuantenSBestellTxArt(art)) && !quantenSWegBAktiv(time.Now().Unix()) {
 			jsonError(w, "quantum money way B (preparators) not active", http.StatusConflict)
+			return
+		}
+		if istQuantenS3TxArt(art) && !quantenS3Aktiv(time.Now().Unix()) {
+			jsonError(w, "quantum money over a quantum line not active", http.StatusConflict)
 			return
 		}
 		if (istQuantenSPfandTxArt(art) || istQuantenSIPfandTxArt(art) || istQuantenSFaelschungTxArt(art)) && !quantenSPfaenderAktiv(time.Now().Unix()) {
@@ -1566,6 +1610,9 @@ func (cs *ChainState) quantenWNoteAnsicht(ctx context.Context, k string) map[str
 	}
 	if v := cs.quantenWSTokenAnsichtLocked(ctx, reg, k); v != nil {
 		return v
+	}
+	if v := reg.S3[k]; v != nil {
+		return quantenS3Ansicht(k, v)
 	}
 	if _, tot := reg.Tote[k]; tot {
 		// "tot" heisst hier: beendet (eingeloest oder tot). Das Urteil steht
