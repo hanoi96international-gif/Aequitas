@@ -19,17 +19,24 @@ func qlAktiv(t *testing.T, ab int64) {
 	t.Cleanup(func() { quantenLeitungAbOverride.Store(vorher) })
 }
 
-func qlStimme(f *vrFall, von int, name string, theta, frei int, ab, zeit int64) VerifierStimme {
+// qlGamma: gamma_det der Test-Leitungen (20 %).
+const qlGamma = 200_000
+
+func qlStimme(f *vrFall, von int, name string, theta, frei, gamma int, ab, zeit int64) VerifierStimme {
 	b := f.menschen[von]
-	sig := ed25519.Sign(b.priv, []byte(quantenLeitungNachricht(name, theta, frei, ab)("", zeit)))
+	sig := ed25519.Sign(b.priv, []byte(quantenLeitungNachricht(name, theta, frei, gamma, ab)("", zeit)))
 	return VerifierStimme{Zeit: zeit, Bescheinigung: Lebendigkeitsbescheinigung{PublicKey: b.pubHex,
 		Signature: hex.EncodeToString(sig), Mensch: b.bindung.Mensch, MenschSig: b.bindung.MenschSig, SchluesselSig: b.bindung.SchluesselSig}}
 }
 
 func qlFreischaltung(f *vrFall, name string, theta, frei int, ab, zeit int64, von ...int) Transaction {
-	q := &QuantenAngaben{Satz: name, Theta: theta, Frei: frei, Ab: ab}
+	return qlFreischaltungG(f, name, theta, frei, qlGamma, ab, zeit, von...)
+}
+
+func qlFreischaltungG(f *vrFall, name string, theta, frei, gamma int, ab, zeit int64, von ...int) Transaction {
+	q := &QuantenAngaben{Satz: name, Theta: theta, Frei: frei, Gamma: gamma, Ab: ab}
 	for _, i := range von {
-		q.Stimmen = append(q.Stimmen, qlStimme(f, i, name, theta, frei, ab, zeit))
+		q.Stimmen = append(q.Stimmen, qlStimme(f, i, name, theta, frei, gamma, ab, zeit))
 	}
 	return Transaction{Type: quantenFreischaltungTxArt, Wallet: f.m(0), DistributionAt: zeit, Quanten: q}
 }
@@ -58,11 +65,11 @@ func TestQuantenLeitung_Gutfall(t *testing.T) {
 		t.Fatal(err)
 	}
 	reg := f.cs.quantenGeldJetzt()
-	if _, _, ok := reg.leitungZu("leitung-bristol-1", ab-1); ok {
+	if _, _, _, ok := reg.leitungZu("leitung-bristol-1", ab-1); ok {
 		t.Fatal("Leitung vor ab gueltig")
 	}
-	if th, fr, ok := reg.leitungZu("leitung-bristol-1", ab); !ok || th != 50 || fr != 50_000 {
-		t.Fatalf("Leitung ab ab: %d %d %v", th, fr, ok)
+	if th, fr, ga, ok := reg.leitungZu("leitung-bristol-1", ab); !ok || th != 50 || fr != 50_000 || ga != qlGamma {
+		t.Fatalf("Leitung ab ab: %d %d %d %v", th, fr, ga, ok)
 	}
 	if _, ok := reg.satz("leitung-bristol-1"); ok || len(reg.Saetze) != 0 {
 		t.Fatal("Leitung steht unter den Saetzen")
@@ -126,6 +133,13 @@ func TestQuantenLeitung_Angriffe(t *testing.T) {
 	if r := regel(gedrueckt); r != "quanten_stimme" {
 		t.Fatalf("Werte nach der Abstimmung gedrueckt: %q", r)
 	}
+	// gamma_det nach der Abstimmung gesenkt (eine kleinere Meldung ginge
+	// durch): die Unterschriften passen nicht.
+	gesenkt := qlFreischaltung(f, "leitung-a", 50, 50_000, ab, zeit, qgBis(5)...)
+	gesenkt.Quanten.Gamma = 1
+	if r := regel(gesenkt); r != "quanten_stimme" {
+		t.Fatalf("gamma nach der Abstimmung gesenkt: %q", r)
+	}
 	// Stimmen fuer einen SATZ gelten nicht fuer eine Leitung (eigene Domaene).
 	satzStimmen := qlFreischaltung(f, "leitung-a", 0, 0, ab, zeit)
 	for _, i := range qgBis(5) {
@@ -140,6 +154,9 @@ func TestQuantenLeitung_Angriffe(t *testing.T) {
 		"theta -1":      qlFreischaltung(f, "leitung-a", -1, 0, ab, zeit, qgBis(5)...),
 		"frei zu gross": qlFreischaltung(f, "leitung-a", 0, quantenSFreiPpmMax+1, ab, zeit, qgBis(5)...),
 		"frei -1":       qlFreischaltung(f, "leitung-a", 0, -1, ab, zeit, qgBis(5)...),
+		"gamma 0":       qlFreischaltungG(f, "leitung-a", 0, 0, 0, ab, zeit, qgBis(5)...),
+		"gamma > 10^6":  qlFreischaltungG(f, "leitung-a", 0, 0, 1_000_001, ab, zeit, qgBis(5)...),
+		"gamma -1":      qlFreischaltungG(f, "leitung-a", 0, 0, -1, ab, zeit, qgBis(5)...),
 	} {
 		if r := regel(tx); r != "quanten_leitung" {
 			t.Errorf("%s: %q", name, r)
@@ -162,12 +179,17 @@ func TestQuantenLeitung_Angriffe(t *testing.T) {
 	if r := regel(satzMitWerten); r != "quanten_form" {
 		t.Fatalf("Satz mit Messwerten: %q", r)
 	}
+	satzMitGamma := qgFreischaltung(f, "isogenie-8192", qgSatzN.String(), ab, zeit, qgBis(5)...)
+	satzMitGamma.Quanten.Gamma = 1
+	if r := regel(satzMitGamma); r != "quanten_form" {
+		t.Fatalf("Satz mit gamma: %q", r)
+	}
 }
 
 // Eine Note kann eine Leitung nie als Satz nennen; ein Register von aussen mit
 // falscher Leitung wird abgewiesen.
 func TestQuantenLeitung_RegisterStreng(t *testing.T) {
-	ok := quantenLeitungEintrag{Name: "leitung-a", ThetaZehntel: 20, FreiPpm: 1000, Ab: 10, Seit: 5}
+	ok := quantenLeitungEintrag{Name: "leitung-a", ThetaZehntel: 20, FreiPpm: 1000, GammaPpm: qlGamma, Ab: 10, Seit: 5}
 	gut := &quantenGeldRegister{Leitungen: []quantenLeitungEintrag{ok}}
 	if err := gut.pruefen(); err != nil {
 		t.Fatalf("gueltige Leitung: %v", err)
@@ -186,14 +208,16 @@ func TestQuantenLeitung_RegisterStreng(t *testing.T) {
 		return &quantenGeldRegister{Leitungen: []quantenLeitungEintrag{l}}
 	}
 	for name, r := range map[string]*quantenGeldRegister{
-		"ohne Praefix": falsch(func(l *quantenLeitungEintrag) { l.Name = "bristol" }),
-		"theta":        falsch(func(l *quantenLeitungEintrag) { l.ThetaZehntel = 101 }),
-		"frei":         falsch(func(l *quantenLeitungEintrag) { l.FreiPpm = quantenSFreiPpmMax + 1 }),
-		"ab":           falsch(func(l *quantenLeitungEintrag) { l.Ab = 0 }),
-		"seit":         falsch(func(l *quantenLeitungEintrag) { l.Seit = 0 }),
-		"Reihenfolge":  {Leitungen: []quantenLeitungEintrag{{Name: "leitung-b", Ab: 1, Seit: 1}, {Name: "leitung-a", Ab: 1, Seit: 1}}},
-		"doppelt":      {Leitungen: []quantenLeitungEintrag{{Name: "leitung-a", Ab: 1, Seit: 1}, {Name: "leitung-a", Ab: 1, Seit: 1}}},
-		"wie ein Satz": {Saetze: []quantenSatzEintrag{{Name: "leitung-a", Ordnung: qgSatzN.String(), Ab: 1, Seit: 1}}, Leitungen: []quantenLeitungEintrag{ok}},
+		"ohne Praefix":   falsch(func(l *quantenLeitungEintrag) { l.Name = "bristol" }),
+		"theta":          falsch(func(l *quantenLeitungEintrag) { l.ThetaZehntel = 101 }),
+		"frei":           falsch(func(l *quantenLeitungEintrag) { l.FreiPpm = quantenSFreiPpmMax + 1 }),
+		"gamma 0":        falsch(func(l *quantenLeitungEintrag) { l.GammaPpm = 0 }),
+		"gamma zu gross": falsch(func(l *quantenLeitungEintrag) { l.GammaPpm = 1_000_001 }),
+		"ab":             falsch(func(l *quantenLeitungEintrag) { l.Ab = 0 }),
+		"seit":           falsch(func(l *quantenLeitungEintrag) { l.Seit = 0 }),
+		"Reihenfolge":    {Leitungen: []quantenLeitungEintrag{{Name: "leitung-b", GammaPpm: 1, Ab: 1, Seit: 1}, {Name: "leitung-a", GammaPpm: 1, Ab: 1, Seit: 1}}},
+		"doppelt":        {Leitungen: []quantenLeitungEintrag{{Name: "leitung-a", GammaPpm: 1, Ab: 1, Seit: 1}, {Name: "leitung-a", GammaPpm: 1, Ab: 1, Seit: 1}}},
+		"wie ein Satz":   {Saetze: []quantenSatzEintrag{{Name: "leitung-a", Ordnung: qgSatzN.String(), Ab: 1, Seit: 1}}, Leitungen: []quantenLeitungEintrag{ok}},
 	} {
 		if r.pruefen() == nil {
 			t.Errorf("%s: angenommen", name)
@@ -201,7 +225,7 @@ func TestQuantenLeitung_RegisterStreng(t *testing.T) {
 	}
 	viele := &quantenGeldRegister{}
 	for i := 0; i <= quantenLeitungenHoechstens; i++ {
-		viele.Leitungen = append(viele.Leitungen, quantenLeitungEintrag{Name: "leitung-" + string(rune('a'+i)), Ab: 1, Seit: 1})
+		viele.Leitungen = append(viele.Leitungen, quantenLeitungEintrag{Name: "leitung-" + string(rune('a'+i)), GammaPpm: 1, Ab: 1, Seit: 1})
 	}
 	if viele.pruefen() == nil {
 		t.Fatal("zu viele Leitungen angenommen")
@@ -238,7 +262,7 @@ func TestQuantenLeitung_GrenzenUndLaden(t *testing.T) {
 	ab := zeit + quantenFreischaltungVorlauf
 	voll := &quantenGeldRegister{}
 	for i := 0; i < quantenLeitungenHoechstens; i++ {
-		voll = voll.mitLeitung(quantenLeitungEintrag{Name: "leitung-" + string(rune('a'+i)), Ab: 1, Seit: 1})
+		voll = voll.mitLeitung(quantenLeitungEintrag{Name: "leitung-" + string(rune('a'+i)), GammaPpm: 1, Ab: 1, Seit: 1})
 	}
 	f.cs.quantenGeld.Store(voll)
 	if u := qgUrteil(t, f.cs, qlFreischaltung(f, "leitung-z", 20, 0, ab, zeit, qgBis(5)...), zeit); u.regel != "quanten_voll" {
@@ -266,6 +290,10 @@ func TestQuantenLeitung_GrenzenUndLaden(t *testing.T) {
 	if u := p.urteil(tx, z); u.regel != "quanten_form" {
 		t.Fatalf("Anmeldung mit theta: %+v", u)
 	}
+	tx.Quanten.Theta, tx.Quanten.Gamma = 0, 1
+	if u := p.urteil(tx, z); u.regel != "quanten_form" {
+		t.Fatalf("Anmeldung mit gamma: %+v", u)
+	}
 
 	// Einloesung mit Messwerten: ab dem Stichtag abgewiesen (Form vor allem anderen).
 	e := neuerQgEinloeseFall(t)
@@ -280,5 +308,9 @@ func TestQuantenLeitung_GrenzenUndLaden(t *testing.T) {
 	etx.Quanten.Frei = 5
 	if r := ohne(); r != "quanten_form" || vorher == "quanten_form" {
 		t.Fatalf("Einloesung mit frei: %q (ohne: %q)", r, vorher)
+	}
+	etx.Quanten.Frei, etx.Quanten.Gamma = 0, 1
+	if r := ohne(); r != "quanten_form" {
+		t.Fatalf("Einloesung mit gamma: %q", r)
 	}
 }

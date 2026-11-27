@@ -106,7 +106,7 @@ func (cs *ChainState) quantenEinloesenUrteilLocked(tx *Transaction, blockZeit in
 	if !kanonischeAdresse(empf) || istSystemAdresse(empf) || tx.To != "" ||
 		q.Sig != "" || q.Ordnung != "" || q.Ab != 0 || len(q.Stimmen) != 0 ||
 		!istHash64(q.K) || !quantenSatzGueltig(q.Satz) || q.Anteile < 0 ||
-		(quantenLeitungAktiv(blockZeit) && (q.Theta != 0 || q.Frei != 0)) {
+		(quantenLeitungAktiv(blockZeit) && (q.Theta != 0 || q.Frei != 0 || q.Gamma != 0)) {
 		return nein("quanten_form", "Einloesung nicht in gueltiger Form")
 	}
 	serie, ok := quantenSerieAusHex(q.Serie)

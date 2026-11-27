@@ -160,6 +160,7 @@ type QuantenAngaben struct {
 	// Freischaltung "leitung-...", sonst 0.
 	Theta int `json:"theta,omitempty"`
 	Frei  int `json:"frei,omitempty"`
+	Gamma int `json:"gamma,omitempty"` // gamma_det in ppm (WEG_C.md C2b)
 }
 
 // ------------------------------------------------------------ Register
@@ -708,7 +709,7 @@ func (cs *ChainState) quantenPraegenUrteilLocked(tx *Transaction, blockZeit int6
 	if !quantenGeldAktiv(blockZeit) || q == nil || tx.Type != "transfer" || !strings.EqualFold(strings.TrimSpace(tx.To), quantenTopfAddr) {
 		return quantenBefund("quanten_form", "keine Anmeldung")
 	}
-	if q.Ordnung != "" || q.Ab != 0 || len(q.Stimmen) != 0 || q.K != "" || q.Einmal != "" || (quantenLeitungAktiv(blockZeit) && (q.Theta != 0 || q.Frei != 0)) || !kanonischeAdresse(w) || !quantenSatzGueltig(q.Satz) {
+	if q.Ordnung != "" || q.Ab != 0 || len(q.Stimmen) != 0 || q.K != "" || q.Einmal != "" || (quantenLeitungAktiv(blockZeit) && (q.Theta != 0 || q.Frei != 0 || q.Gamma != 0)) || !kanonischeAdresse(w) || !quantenSatzGueltig(q.Satz) {
 		return quantenBefund("quanten_form", "Anmeldung nicht in gueltiger Form")
 	}
 	serie, ok := quantenSerieAusHex(q.Serie)
@@ -775,13 +776,13 @@ func (cs *ChainState) quantenFreischaltungUrteilLocked(ctx context.Context, tx *
 	// Vorher (und fuer jeden anderen Namen) gilt alles wie bisher.
 	leitung := quantenLeitungAktiv(blockZeit) && istLeitungsName(q.Satz)
 	if leitung {
-		if q.Ordnung != "" || !quantenLeitungWerteGueltig(q.Theta, q.Frei) {
-			return quantenBefund("quanten_leitung", "Leitung ohne Gruppenordnung, theta 0..%d, frei 0..%d", quantenSThetaZehntelMax, quantenSFreiPpmMax), nil
+		if q.Ordnung != "" || !quantenLeitungWerteGueltig(q.Theta, q.Frei, q.Gamma) {
+			return quantenBefund("quanten_leitung", "Leitung ohne Gruppenordnung, theta 0..%d, frei 0..%d, gamma 1..1000000", quantenSThetaZehntelMax, quantenSFreiPpmMax), nil
 		}
 	} else {
 		// Vor dem Stichtag kennt kein Knoten diese Felder (sie werden
 		// ueberlesen, wie bisher); danach gehoeren sie nur an eine Leitung.
-		if quantenLeitungAktiv(blockZeit) && (q.Theta != 0 || q.Frei != 0) {
+		if quantenLeitungAktiv(blockZeit) && (q.Theta != 0 || q.Frei != 0 || q.Gamma != 0) {
 			return quantenBefund("quanten_form", "Messwerte nur an einer Leitung"), nil
 		}
 		if _, ok := quantenOrdnungGueltig(q.Ordnung); !ok {
@@ -844,7 +845,7 @@ func (cs *ChainState) quantenFreischaltungUrteilLocked(ctx context.Context, tx *
 	zulassung := cs.lebensnachweisZulassung(ctx)
 	nachricht := quantenFreischaltungNachricht(q.Satz, q.Ordnung, q.Ab)
 	if leitung {
-		nachricht = quantenLeitungNachricht(q.Satz, q.Theta, q.Frei, q.Ab)
+		nachricht = quantenLeitungNachricht(q.Satz, q.Theta, q.Frei, q.Gamma, q.Ab)
 	}
 	stimmen := map[string]bool{}
 	for i := range q.Stimmen {
@@ -870,7 +871,7 @@ func (cs *ChainState) quantenFreischaltungUrteilLocked(ctx context.Context, tx *
 		return quantenBefund("quanten_quorum", "%d verschiedene Pruefer, noetig %d (zwei Drittel von %d, mindestens %d)", len(stimmen), noetig, len(stimmberechtigt), quantenFreischaltungMindestPruefer), nil
 	}
 	if leitung {
-		return quantenUrteil{leitung: &quantenLeitungEintrag{Name: q.Satz, ThetaZehntel: q.Theta, FreiPpm: q.Frei, Ab: q.Ab, Seit: zeit}}, nil
+		return quantenUrteil{leitung: &quantenLeitungEintrag{Name: q.Satz, ThetaZehntel: q.Theta, FreiPpm: q.Frei, GammaPpm: q.Gamma, Ab: q.Ab, Seit: zeit}}, nil
 	}
 	return quantenUrteil{satz: quantenSatzEintrag{Name: q.Satz, Ordnung: q.Ordnung, Ab: q.Ab, Seit: zeit}}, nil
 }
@@ -1121,6 +1122,7 @@ func (a *APIServer) handleQuantenFreischaltung(w http.ResponseWriter, r *http.Re
 		Ordnung       string           `json:"ordnung"`
 		Theta         int              `json:"theta"`
 		Frei          int              `json:"frei"`
+		Gamma         int              `json:"gamma"`
 		Ab            int64            `json:"ab"`
 		Beschlossen   int64            `json:"beschlossen"`
 		Stimmen       []VerifierStimme `json:"stimmen"`
@@ -1137,7 +1139,7 @@ func (a *APIServer) handleQuantenFreischaltung(w http.ResponseWriter, r *http.Re
 		return
 	}
 	tx := Transaction{Type: quantenFreischaltungTxArt, Wallet: von, DistributionAt: req.Beschlossen,
-		Quanten: &QuantenAngaben{Satz: req.Satz, Ordnung: req.Ordnung, Theta: req.Theta, Frei: req.Frei, Ab: req.Ab, Stimmen: req.Stimmen}}
+		Quanten: &QuantenAngaben{Satz: req.Satz, Ordnung: req.Ordnung, Theta: req.Theta, Frei: req.Frei, Gamma: req.Gamma, Ab: req.Ab, Stimmen: req.Stimmen}}
 	err := a.quantenFreischaltungAnnehmen(tx, jetzt)
 	var abgelehnt *quantenAbgelehnt
 	switch {
