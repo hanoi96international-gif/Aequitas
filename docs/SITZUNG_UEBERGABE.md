@@ -2,20 +2,62 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 26.11.2026 (Sitzung „Weiter mit Übergabe“, Zweig `claude/uebergabe-fortsetzen-8sor22`); davor 24.11. ~11:30 UTC (Sitzung „Weiter nach Übergabe“, Zweig `claude/weiter-nach-uebergabe-gqogtx`); davor ~09:20 UTC (Sitzung „Weiter mit Übergabe“, Zweig `claude/uebergabe-fortsetzen-g5xqox`); davor ~18:05 UTC (Sitzung „Weiter nach Übergabe“, Zweig `claude/weiter-nach-uebergabe-zyl7c6`); davor 22.11.2026 ~18:50 UTC, Sitzung „CL Übergabe weitermachen“ (`claude/cl-uebergabe-weitermachen-jdz5h7`); davor ~16:40 UTC Sitzung „Weiter Übergabe“ (`claude/weiter-uebergabe-1a9yql`); davor 21.11. ~20:15 UTC Sitzung „CL Übergabe weitermachen“; davor ~18:00 UTC Sitzung „Weiter“ (Zweig `claude/admiring-bohr-ob0u0p`, alle vier
-Repos); davor ~13:40 UTC Sitzung „Weiter“ (`claude/weiter-uw2p42`), davor ~19:50 UTC Sitzung „Übergabe“ (`claude/ubergabe-v2cgv1`), ~18:30 UTC Sitzung
-„Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
-dezentrales Quantengeld“.
+Stand: 27.11.2026 ~22:00 UTC (Sitzung „Weiter mit Übergabe / zweiter Validator“, Zweig
+`claude/handover-second-validator-8uibye` in allen vier Repos). Frühere Sitzungen stehen weiter unten.
+Auftrag des Betreibers (27.11.): „Erstmal alles wegen Fördergeld vergessen. Aequitas komplett auf die
+Beine bringen, weiter mit Quantengeld, dass es endlich eine Revolution ist.“
 
-**Stand 27.11. ~18:30 UTC — HIER WEITERMACHEN** (Betreiber: „Alles umsetzen“ – Probelauf Weg C, ehrliche Texte,
-Pilot Weg B vorbereiten):
-- **Offen: Aequitas-PR** (dieser Zweig): Probelauf Weg C (`quanten_s3_probelauf_test.go`: 5 Sender, Empfänger-Nachbau
-  70 % Verlust/1 % Fehler, andere Stelle abgewiesen, gewählte eingelöst, Gegenprobe „allwissend“ besteht überall),
-  ehrliche Website (`qg-h2` „Unser Ziel: …“, `logo-sub` ohne „fälschungssicher“, 12 Sprachen, Test), Einladung
-  `docs/PILOT_PRAEPARATORINNEN_GESUCHT.md` (mind. 21 bzw. 12 Präparatorinnen, DE + EN, Checkliste).
-- **Offen: App-PR** (Zweig `claude/handover-second-validator-8uibye`): `marke.leitsatz` ohne „fälschungssicher“
-  (12 Sprachen), Test `ehrlicheTexte.test.ts`.
-- Nach grüner CI mergen, Zweige zurücksetzen, Übergabe nachziehen.
+## Auf einen Blick (27.11.2026 ~22:00 UTC)
+
+**Offen:** keine PRs in Aequitas, Aequitas-App, aequitas-biometric-beta, aequitas-proof-server.
+
+**Heute gemergt (Reihenfolge):**
+| Repo | PR | Inhalt |
+|---|---|---|
+| biometric-beta | #129–#133 | Dependabot (google-auth, fastapi, redis, python-multipart, cbor2), alle grün |
+| Aequitas | #692 | C2b-2b-3a Pfand gegen Abbruch nach der Meldung; `s3_versuch.py` (≤ 2⁻³⁹·⁶ je Versuch); `docs/ZWEITER_KNOTEN_GESUCHT.md` |
+| Aequitas | #693 | C2b-2b-3b Ausgabe über die gezogene Teilmenge (Blatt teil[i] im Baum über alle Pulse, `k_min`) |
+| Aequitas | #694 | Gerätevorgabe `s3_geraet.py` (Eigenbau μ ≤ 0,05 + Si-SPAD reicht, auch 4 von 7) |
+| Aequitas | #695 | C2b-2b-4 mehrere Sender (Meldung/Teilmenge je Abschnitt, schließt „schiefe Meldung“); Prüfvektor der App; Mehrfach-Beweis `quanten_s3_beweis.go` |
+| App | #151 | Inhaberin über eine Leitung: melden und ziehen (`lib/quantenS3Inhaberin.ts`) |
+| App | #152 | Mehrfach-Beweis (`lib/quantenS3Beweis.ts`) |
+| Aequitas | #696 | Probelauf Weg C; ehrliche Website (12 Sprachen); `docs/PILOT_PRAEPARATORINNEN_GESUCHT.md` |
+| App | #153 | ehrlicher Leitsatz (12 Sprachen) |
+
+**Weg C (Quantengeld durch Physik) – Stand:** Kette fertig und schlafend (`quantenS3AbUnix` = MaxInt64): Leitungen
+(C2a), Vormerken/Melden/Ziehen/Frist, Pfand, Ausgabe über die Teilmenge, mehrere Sender. App: Inhaberin
+melden/ziehen (noch in keinem Bildschirm). Mehrfach-Beweis in Spezifikation/Knoten/App gleich. Probelauf mit
+Nachbau grün. **Ehrlich:** „durch Physik unkopierbar“ braucht Quanten-Hardware bei der Inhaberin (Sender +
+Einzelphotonen-Empfänger). Ohne Labor bleibt es „niemand kann allein fälschen“ (Schwelle, Weg B). Kosten
+(recherchiert 27.11.): Partner ~0 € Hardware; Eigenbau grob 25–60 T€ (SPAD 4,5–15 T$ je Stück); QKD-Paar 100–220 T$.
+
+**Nächste Code-Schritte (nur mit Gerät sinnvoll, C4):** Dienst der Validatoren liefert für einen S3-Token die n
+Blätter + Mehrfach-Beweis; Annahmestelle in der App prüft damit (`pruefsumme(K, teil[j], w)`); Ausgeber-Werkzeug
+(Wurzel aus den Blättern der Sender); Offenlegen in kleineren Teilen; dann Stichtag mit Deploy-Wächter.
+Plan: `forschung/quantengeld/WEG_C.md` (C2b-2b-3c Teil 2).
+
+**Nur der Betreiber (wichtigste zuerst):**
+1. **Zweiter Knotenbetreiber** (`docs/ZWEITER_KNOTEN_GESUCHT.md`): Reihenfolge – sein Dienst läuft, dann aufnehmen,
+   dann Test-Registrierung (ab dem zweiten Prüfer kann der Betreiber allein niemanden registrieren).
+2. **Präparatorinnen für den Pilot Weg B** (`docs/PILOT_PRAEPARATORINNEN_GESUCHT.md`): ≥ 21 (bzw. 12) Menschen mit
+   eigenem IBM-Konto.
+3. **Impressum/Datenschutz** (`rechtstexte-setzen.yml`), **DSGVO-Entscheidung**, Deepfake-Aufnahmen
+   (`docs/BETA_BEREITSCHAFT.md` Abschnitt 3).
+4. **Weg C:** Labor/Partner mit Photonen-Sender und -Empfänger (Vorlagen `forschung/quantengeld/ANSCHREIBEN.md`).
+5. Förderung ruht (Betreiber 27.11.).
+
+**Arbeitsweise (unverändert):** Sicherheitsabschnitt (5 Fragen) in jedem PR; bei Konsens eigene Sicherheitsprüfung
+als PR-Kommentar; Missbrauchstests und Mutationen; `go test -race` grün; Übergabe nach jedem Merge; Merge per Squash
+mit voller Kopf-SHA, danach Zweig auf `main` zurücksetzen (`git checkout -B <zweig> origin/main`,
+`git merge -s ours --no-edit origin/<zweig>`, push).
+
+**Stand 27.11. ~21:45 UTC — HIER WEITERMACHEN** (Betreiber: „Alles umsetzen“, erledigt):
+- **Gemergt:** Aequitas **#696** (a07c03f6: Probelauf Weg C `quanten_s3_probelauf_test.go`, ehrliche Website
+  `qg-h2`/`logo-sub` in 12 Sprachen mit Test, Einladung `docs/PILOT_PRAEPARATORINNEN_GESUCHT.md`), App **#153**
+  (5026ec48: `marke.leitsatz` ohne „fälschungssicher“, Test `ehrlicheTexte.test.ts`). Keine PRs offen.
+- Weg C: weiter Code nur mit Gerät sinnvoll (Dienst der Validatoren mit Blättern + Mehrfach-Beweis, Ausgeber-Werkzeug;
+  hängt an C4). Pilot Weg B: Einladung liegt bereit, braucht ≥ 21 (bzw. 12) Menschen mit eigenem IBM-Konto.
+- Nur Betreiber: Impressum/Datenschutz, DSGVO, zweiter Server mit eigenem Betreiber, Präparatorinnen werben.
 
 **Stand 27.11. ~18:00 UTC (überholt)** (Zweig `claude/handover-second-validator-8uibye`, alle Repos):
 - **Gemergt:** Aequitas **#695** (3a3674ac, C2b-2b-4 mehrere Sender + Prüfvektor der App + Mehrfach-Beweis
