@@ -79,7 +79,32 @@ type quantenSToken struct {
 	// Stichprobe v2 (quanten_s_probe_v2.go): 2 = Proben sind Bindungen aus
 	// Teil-Hashes; 0 = wie bisher (Hash der ganzen Stichprobe).
 	ProbeArt int
+	// Weg C, Token ueber eine Leitung (quanten_s3_ausgabe.go; nil/0 = nicht):
+	// Stelle i ist Puls Pulse[i] der Vormerkung, die Wurzel die ueber alle
+	// NPuls Pulse. KMin: Pruefgroesse der Leitung (quantenSKLeitung mit den
+	// festgehaltenen theta, frei) -- jede Stichprobe mindestens so gross.
+	Pulse []int
+	NPuls int
+	KMin  int
 }
+
+// baum: Blaetter der Wurzel (N, ueber eine Leitung NPuls).
+func (e *quantenSToken) baum() int {
+	if e.Pulse != nil {
+		return e.NPuls
+	}
+	return e.N
+}
+
+// pfadMax: laengster zulaessiger Pfad beim Offenlegen. Bisherige Token wie
+// immer quantenWPfadMax (14); ueber eine Leitung die Tiefe des Baums ueber
+// alle Pulse (hoechstens quantenWMerkleTiefe(quantenS3PulsMax) = 26).
+func (e *quantenSToken) pfadMax() int {
+	return max(quantenWPfadMax, quantenWMerkleTiefe(e.baum()))
+}
+
+// probeGross: ueber eine Leitung mindestens KMin Stellen je Stichprobe.
+func (e *quantenSToken) probeGross(n int) bool { return n >= e.KMin }
 
 // quantenSAnmeldung: eine Annahmestelle hat den Token zum Einloesen angemeldet.
 type quantenSAnmeldung struct {
@@ -152,6 +177,9 @@ func (e *quantenSToken) einloesen(K string, b int, x, probe []int, offen []quant
 	if quantenSProbeHash(K, b, sortiert) != e.Proben[b] || len(offen) != len(sortiert) {
 		return 0, 0, quantenWFehler("S-Einloesen: Stichprobe passt nicht zur Ausgabe")
 	}
+	if !e.probeGross(len(sortiert)) {
+		return 0, 0, quantenWFehler("S-Einloesen: Stichprobe %d Stellen, die Leitung verlangt %d", len(sortiert), e.KMin)
+	}
 	// Basis, die an Stelle b geprueft wird: d XOR b XOR c (fuer die ehrliche
 	// Inhaberin genau ihre Messbasen); quantenWAuswerten zaehlt Treffer
 	// (Basis passt) und Fehler (Wert falsch) und prueft Anteile, Pruefsumme, Pfad.
@@ -161,7 +189,7 @@ func (e *quantenSToken) einloesen(K string, b int, x, probe []int, offen []quant
 		basen[j] = e.D[i] ^ b ^ e.C
 		antwort[j] = x[i]
 	}
-	treffer, fehler, err = quantenWAuswerten(K, e.N, e.T, e.NVal, e.Wurzel, sortiert, basen, antwort, offen)
+	treffer, fehler, err = quantenWAuswertenBlaetter(K, e.baum(), e.Pulse, e.T, e.NVal, e.Wurzel, sortiert, basen, antwort, offen)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -206,6 +234,9 @@ func (e *quantenSToken) anmelden(K string, b int, stelle string, x, probe []int,
 	if len(sortiert) == 0 || !e.probePasst(K, b, sortiert, salze) {
 		return quantenWFehler("S-Anmelden: Stichprobe passt nicht zur Ausgabe")
 	}
+	if !e.probeGross(len(sortiert)) {
+		return quantenWFehler("S-Anmelden: Stichprobe %d Stellen, die Leitung verlangt %d", len(sortiert), e.KMin)
+	}
 	e.Anmeldung = &quantenSAnmeldung{B: b, Stelle: stelle, X: append([]int(nil), x...), Probe: sortiert, Zeit: zeit,
 		Salze: append([][32]byte(nil), salze...)}
 	return nil
@@ -242,7 +273,7 @@ func (e *quantenSToken) offenlegenTeil(K string, ab int, offen []quantenWOffenSt
 		basen[j] = e.D[i] ^ a.B ^ e.C
 		antwort[j] = a.X[i]
 	}
-	tr, fe, err := quantenWAuswerten(K, e.N, e.T, e.NVal, e.Wurzel, stellen, basen, antwort, offen)
+	tr, fe, err := quantenWAuswertenBlaetter(K, e.baum(), e.Pulse, e.T, e.NVal, e.Wurzel, stellen, basen, antwort, offen)
 	if err != nil {
 		return false, false, err
 	}

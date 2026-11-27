@@ -356,6 +356,26 @@ func quantenWFehler(format string, args ...interface{}) error {
 // Wurzel; dann Treffer und Fehler. Ein Fehler hier heisst: die Offenlegung
 // ist ungueltig (nicht: die Note ist falsch).
 func quantenWAuswerten(K string, n, t, v int, wurzel [32]byte, stellen, basen, antwort []int, offen []quantenWOffenStelle) (treffer, fehler int, err error) {
+	return quantenWAuswertenBlaetter(K, n, nil, t, v, wurzel, stellen, basen, antwort, offen)
+}
+
+// quantenWBlatt: das Blatt der Wurzel zu Stelle i. pulse == nil: Blatt i in
+// einem Baum mit baum Blaettern. Sonst (Weg C, Token ueber eine Leitung,
+// quanten_s3_ausgabe.go) Blatt pulse[i] im Baum ueber alle baum Pulse der
+// Vormerkung. false = Stelle ausserhalb.
+func quantenWBlatt(pulse []int, i int) (int, bool) {
+	if pulse == nil {
+		return i, true
+	}
+	if i < 0 || i >= len(pulse) {
+		return 0, false
+	}
+	return pulse[i], true
+}
+
+// quantenWAuswertenBlaetter: wie quantenWAuswerten; die Pruefsumme und der
+// Pfad gehoeren zum Blatt quantenWBlatt(pulse, i) im Baum mit baum Blaettern.
+func quantenWAuswertenBlaetter(K string, baum int, pulse []int, t, v int, wurzel [32]byte, stellen, basen, antwort []int, offen []quantenWOffenStelle) (treffer, fehler int, err error) {
 	if len(offen) != len(stellen) || len(antwort) != len(stellen) || len(basen) != len(stellen) {
 		return 0, 0, quantenWFehler("Zahl der Stellen")
 	}
@@ -376,7 +396,8 @@ func quantenWAuswerten(K string, n, t, v int, wurzel [32]byte, stellen, basen, a
 		if w.Cmp(grenze) >= 0 {
 			return 0, 0, quantenWFehler("Stelle %d: Wert zu gross", i)
 		}
-		if !quantenWMerklePruefen(wurzel, quantenWPruefsumme(K, i, w), i, o.Pfad, n) {
+		blatt, ok := quantenWBlatt(pulse, i)
+		if !ok || !quantenWMerklePruefen(wurzel, quantenWPruefsumme(K, blatt, w), blatt, o.Pfad, baum) {
 			return 0, 0, quantenWFehler("Stelle %d: Pruefsumme oder Pfad passt nicht", i)
 		}
 		basis, bit := quantenWZerlegen(w)

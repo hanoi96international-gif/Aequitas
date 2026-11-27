@@ -36,7 +36,14 @@ type s3Welt struct {
 
 func neueS3Welt(t *testing.T) *s3Welt {
 	t.Helper()
-	w := &s3Welt{qsWelt: neueQsWelt(t, 64, 24), z: qwT0, wurzel: strings.Repeat("5a", 32)}
+	return neueS3WeltN(t, 64)
+}
+
+// neueS3WeltN: mit einer Praegung ueber n Stellen (fuer die Ausgabe: n = Pulse
+// der Vormerkung, quanten_s3_ausgabe_test.go).
+func neueS3WeltN(t *testing.T, n int) *s3Welt {
+	t.Helper()
+	w := &s3Welt{qsWelt: neueQsWelt(t, n, 24), z: qwT0, wurzel: strings.Repeat("5a", 32)}
 	quantenLeitungAbOverride.Store(qwT0 - 30*86400)
 	quantenS3AbOverride.Store(qwT0 - 30*86400)
 	netz, sig := drandTestNetz(t, 0x53a11e)
@@ -339,7 +346,7 @@ func TestQuantenS3_AngriffeVormerken(t *testing.T) {
 	w.abgewiesen("zweite offene Vormerkung", w.vormerkenTx(w.praeger, pk, strings.Repeat("c4", 32), w.anna, s3N, s3Deckung, z+1), z+1, "quanten_s3_offen")
 	// Eine andere Ausgabe des vorgemerkten K: Praegen (W) und Ausgabe (S).
 	w.abgewiesen("W-Praegung mit vorgemerktem K", w.praegenTx(z+1, s3Deckung), z+1, "quanten_w_doppelt")
-	w.abgewiesen("S-Ausgabe mit vorgemerktem K", w.ausgebenTx(z+1, s3Deckung), z+1, "quanten_w_doppelt")
+	w.abgewiesen("S-Ausgabe mit vorgemerktem K (vor dem Ziehen)", w.ausgebenTx(z+1, s3Deckung), z+1, "quanten_s3_nicht_gezogen")
 
 	// Grenze: hoechstens quantenS3VormerkungenHoechstens offene zugleich.
 	for i := 1; i < quantenS3VormerkungenHoechstens; i++ {
